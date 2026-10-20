@@ -114,6 +114,8 @@ function TRF_OnActivate()
 	TRF.active = 1;
 	TRF_Count("activate");
 	TRF_N("TRF_Exp_OnActivate", fresh);
+	-- Baseline save kit (exp_saves.script, config autosave), independent of the experiment.
+	if type(TRF_Saves_OnActivate) == "function" then TRF_Saves_OnActivate(fresh); end;
 end;
 
 -- T2d: after functions.script on savegame load (TRF is restored from the save, or nil for a save made without the mod).
@@ -197,6 +199,8 @@ function TRF_Main()
 	local e = TRF_Cfg().exp;
 	local files = {"exp_hooks.script", "exp_state.script", "exp_trader.script"};
 	if type(e) == "number" and files[e] then TRF_LoadFile(files[e]); end;
+	local sv = TRF_Cfg().autosave;
+	if sv == 1 or sv == 2 then TRF_LoadFile("exp_saves.script"); end;
 	-- map.script is generated and optional; a missing file only logs "cannot load script file" in LOGfile.txt.
 	local m = ExecuteScriptFile(TRF_Path("map.script"));
 	TRF_N("TRF_Exp_Init", wraps, m);

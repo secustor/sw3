@@ -1,0 +1,102 @@
+-- Baseline save kit (config autosave=1 or 2). traffic.script loads this file whenever autosave is set,
+-- whatever exp is. On OnActivate of a system that has no save yet it arms a one-shot timer trigger; when
+-- the timer fires it calls the game's AutoSave native with "TRF E0 <system>". README "Baseline saves".
+-- AutoSave(text) (native 0x5e6ff0): returns at once unless the profile option autosaveOn (profile.info
+-- AUTOSAVEON, Game+0x290 -> +0x14 -> +0x5c) is set. The text goes through LocalizationManager::GetString,
+-- which returns text that does not start with '#' unchanged, so free text works (the developers' own
+-- include/AutoTest2.script calls AutoSave('System_'..name)). The file name is "<#UI_AutoSave> - <text>"
+-- ("Autosave - TRF E0 gredos.sav"); the same text overwrites the same file. The native calls
+-- SaveManager::SaveGame synchronously (no deferred flag), so it must not run while the location is still
+-- loading: OnActivate only arms the timer, the save happens from the trigger action, as the quest scripts
+-- do (Timer_Seq callbacks, trigger actions, dialog callbacks).
+-- Guards: no save in the first system this TRF has seen (cnt.enter < 2: a new game's first system holds
+-- the scripted intro, and E0.2 wants a save after a jump), none during mission 1 (quest label
+-- CurrentQuest is unset until mission_2's ACTION_INIT sets "2"; autosave=2 skips this guard), at most
+-- cap saved systems. The record travels in TRF, so the cap holds per playthrough, not only per session.
+-- State: TRF.exp.saves[<lowercase system>] = {st=1 armed | 2 saved, gen=<TRF.gen when armed>, key=<text>}.
+
+function TRF_Saves_Opt()
+	return {delay=20, cap=6};
+end;
+
+function TRF_Saves_Tab()
+	if type(TRF.exp.saves) ~= "table" then TRF.exp.saves = {}; end;
+	return TRF.exp.saves;
+end;
+
+-- GetCurrentLocation() is the system's script name (LocationManager+0x2c, also the save header's location).
+function TRF_Saves_Sys()
+	local s = TRF_N("GetCurrentLocation");
+	if type(s) ~= "string" or s == "" then return nil; end;
+	return strlower(s);
+end;
+
+function TRF_Saves_Done()
+	local n = 0;
+	for k, v in TRF_Saves_Tab() do
+		if type(v) == "table" and v.st == 2 then n = n + 1; end;
+	end;
+	return n;
+end;
+
+-- Reason not to arm a save for sys, or nil.
+function TRF_Saves_Block(sys)
+	if not sys then return "no location"; end;
+	local e = TRF_Saves_Tab()[sys];
+	if type(e) == "table" and e.st == 2 then return "already saved"; end;
+	if TRF_Saves_Done() >= TRF_Saves_Opt().cap then return "cap "..TRF_Saves_Opt().cap.." reached"; end;
+	local c = TRF.exp.cnt or {};
+	if (c.enter or 0) < 2 then return "first system (enter="..tostring(c.enter or 0)..")"; end;
+	-- GetQuestLabel pushes nil for a label that was never set (AutoTest2.script tests "== nil").
+	if TRF_Cfg().autosave ~= 2 and TRF_N("GetQuestLabel", "CurrentQuest") == nil then return "mission 1 (CurrentQuest unset)"; end;
+	return nil;
+end;
+
+-- Called by traffic.script's TRF_OnActivate. A system armed earlier whose timer never fired (jump
+-- within the delay, or a load) is armed again with the current gen.
+function TRF_Saves_OnActivate(fresh)
+	local sys = TRF_Saves_Sys();
+	local why = TRF_Saves_Block(sys);
+	if why then
+		TRF_L("saves: skip "..tostring(sys).." ("..why..")");
+		return;
+	end;
+	if type(NewTrigger) ~= "function" then
+		TRF_L("saves: NewTrigger missing, no save for "..sys);
+		return;
+	end;
+	local o = TRF_Saves_Opt();
+	local e = {st=1, gen=TRF.gen, key="TRF E0 "..sys};
+	TRF_Saves_Tab()[sys] = e;
+	-- String action: the engine appends "();", the comment hides it (fact 1.14).
+	local t = NewTrigger("timer", nil, "TRF_Saves_Fire("..e.gen..")--", o.delay);
+	TRF_L("saves: armed "..sys.." in "..o.delay.." s gen="..e.gen.." timer="..((t and "ok") or "nil"));
+end;
+
+-- Timer action. A timer from an older gen (restored from a save, or left over from another system)
+-- or one that fires during a jump does nothing.
+function TRF_Saves_Fire(gen)
+	if type(TRF) ~= "table" then return; end;
+	TRF_Init();
+	local sys = TRF_Saves_Sys();
+	local e = nil;
+	if sys then e = TRF_Saves_Tab()[sys]; end;
+	if not TRF.active or gen ~= TRF.gen or type(e) ~= "table" or e.st ~= 1 or e.gen ~= gen then
+		TRF_L("saves: stale timer gen="..tostring(gen).." now="..tostring(TRF.gen).." sys="..tostring(sys).." active="..tostring(TRF.active));
+		return;
+	end;
+	if TRF_Saves_Done() >= TRF_Saves_Opt().cap then
+		TRF_L("saves: cap reached, no save for "..sys);
+		return;
+	end;
+	-- Marked before the call so the save itself records the system as done.
+	e.st = 2;
+	TRF_L("saves: autosave "..sys.." "..e.key);
+	if type(AutoSave) ~= "function" then
+		TRF_L("saves: AutoSave missing");
+		return;
+	end;
+	AutoSave(e.key);
+end;
+
+TRF_L("saves: top-level load");

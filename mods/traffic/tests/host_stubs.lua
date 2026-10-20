@@ -2,7 +2,8 @@
 -- Emulates the engine parts the loader depends on: ExecuteScriptFile, ClearGlobals with the T3 carry,
 -- the save writer's skip rule, string trigger callbacks (s.."();") and a few natives as stubs.
 -- Env: TRF_DIR (mod script dir, trailing slash), TRF_EXP (0..3; unset = use the repo config.script),
--- TRF_BIG, TRF_DEL (config big / del_on_jump). Exit code 1 on any script error or failed check.
+-- TRF_BIG, TRF_DEL, TRF_AUTOSAVE (config big / del_on_jump / autosave). Exit code 1 on any script error
+-- or failed check.
 
 -- Host state lives in an upvalue: emulated ClearGlobals deletes table globals.
 local H = {
@@ -10,6 +11,8 @@ local H = {
 	exp = tonumber(getenv("TRF_EXP") or ""),
 	big = tonumber(getenv("TRF_BIG") or "0"),
 	del = tonumber(getenv("TRF_DEL") or "0"),
+	autosave = tonumber(getenv("TRF_AUTOSAVE") or "0"),
+	labels = {}, autosaves = {},
 	errors = 0, fails = 0, gt = 0, rt = 0,
 	loc = "gredos", last = "aurora",
 	triggers = {}, ships = {}, nflight = 0,
@@ -63,6 +66,15 @@ function TRF_Log(s)
 end;
 
 function GetCurrentLocation() return HOST().loc; end;
+
+-- 0x5e6ff0: exactly one string argument ("invalid params!" otherwise). Records the save text.
+function AutoSave(...)
+	HOST_Want(arg.n == 1 and type(arg[1]) == "string", "AutoSave(text)");
+	print("HOST AutoSave "..tostring(arg[1]));
+	tinsert(HOST().autosaves, arg[1]);
+end;
+-- Quest labels: nil for a label that was never set.
+function GetQuestLabel(k) return HOST().labels[k]; end;
 function GetLastLocation() return HOST().last; end;
 
 function HOST_TeleportToLocation(...)
@@ -174,12 +186,20 @@ function NewTrigger(t, cond, func, v1, v2, v3, v4)
 	return tr;
 end;
 
+-- True when a trigger's string action starts with pre (nil pre matches every trigger except the save kit's).
+function HOST_Is(tr, pre)
+	local saves = type(tr.action) == "string" and strsub(tr.action, 1, 14) == "TRF_Saves_Fire";
+	if not pre then return not saves; end;
+	return type(tr.action) == "string" and strsub(tr.action, 1, strlen(pre)) == pre;
+end;
+
 -- Fire the first pending trigger of a kind, the way Trigger::OnEvent runs a string action.
-function HOST_Fire(kind)
+-- pre selects triggers by action prefix; without it the save kit's timers are left alone.
+function HOST_Fire(kind, pre)
 	local q = HOST().triggers;
 	for i = 1, getn(q) do
 		local tr = q[i];
-		if not tr.fired and tr.kind == kind then
+		if not tr.fired and tr.kind == kind and HOST_Is(tr, pre) then
 			tr.fired = 1;
 			print("HOST fire "..kind.." action="..tostring(tr.action));
 			if type(tr.action) == "string" then dostring(tr.action.."();"); else tr.action(); end;
@@ -198,7 +218,7 @@ function ExecuteScriptFile(path)
 	local name = strsub(path, strlen(pre) + 1);
 	local h = HOST();
 	if name == "config.script" and h.exp then
-		dostring(format("function TRF_Config() return {exp=%d, log=1, big=%d, del_on_jump=%d} end", h.exp, h.big, h.del));
+		dostring(format("function TRF_Config() return {exp=%d, log=1, big=%d, del_on_jump=%d, autosave=%d} end", h.exp, h.big, h.del, h.autosave));
 		return 1;
 	end;
 	local f = openfile(h.dir..name, "r");
@@ -210,14 +230,26 @@ end;
 
 -- Engine emulation ----------------------------------------------------------------
 
-function HOST_Count(kind)
+function HOST_Count(kind, pre)
 	local n = 0;
 	local q = HOST().triggers;
 	for i = 1, getn(q) do
-		if q[i].kind == kind then n = n + 1; end;
+		if q[i].kind == kind and HOST_Is(q[i], pre) then n = n + 1; end;
 	end;
 	return n;
 end;
+
+-- Save kit: timers armed so far, AutoSave calls with a given text (or all).
+function HOST_Armed() return HOST_Count("timer", "TRF_Saves_Fire"); end;
+function HOST_Saved(key)
+	local n = 0;
+	local q = HOST().autosaves;
+	for i = 1, getn(q) do
+		if not key or q[i] == key then n = n + 1; end;
+	end;
+	return n;
+end;
+function HOST_FireSave() return HOST_Fire("timer", "TRF_Saves_Fire"); end;
 
 -- Reserved string keys (HOST_IsProtected) anywhere below t, as " path.key" entries.
 function HOST_Reserved(t, path)
@@ -315,6 +347,7 @@ HOST_Check(TRF == nil, "OnTick before OnEnter leaves TRF nil");
 HOST_Enter("gredos");
 HOST_Check(type(TRF) == "table" and TRF.active == 1 and TRF.version == 1, "OnEnter creates TRF");
 HOST_Ticks(12, 0.5);
+if h.autosave > 0 then HOST_Check(HOST_Armed() == 0, "saves: first system arms no save"); end;
 HOST_Check(TRF.clock.game == 6 and TRF.clock.real == 6, "OnTick accumulates the clock (game="..tostring(TRF.clock.game).." real="..tostring(TRF.clock.real)..")");
 if h.exp == 1 then
 	HOST_Check(type(TRF.exp.hooks) == "table" and TRF.exp.hooks.ticks == 12 and TRF.exp.hooks.prec == 1, "E0.1 hooks dispatched (12 ticks)");
@@ -342,13 +375,16 @@ end;
 TeleportToLocation("elio");
 HOST_Check(h.jumped == "elio" and TRF.active == nil, "wrapper calls BeforeJump and the original");
 TRF_BeforeJump("x");
+h.labels.CurrentQuest = "2";    -- past mission 1
 HOST_Enter("elio");
 HOST_Check(TRF.exp.cnt.enter == 2, "TRF carried across the clear (enter=2)");
+if h.autosave > 0 then HOST_Check(HOST_Armed() == 1 and TRF.exp.saves.elio.st == 1, "saves: second system arms one timer"); end;
 CustomTeleportate("elio", "gredos", "long_jump");
 -- Block the farthest portal's entry point so the next spawn has to fall back to PORTAL L.
 CreateCarcass("Blocker", HOST().objs["PORTAL D"]:GetEntryPoint(10), Vector3(0, 0, 1));
 HOST_Check(h.jumped == "gredos", "CustomTeleportate wrapper passes 3 args");
 HOST_Enter("gredos");
+if h.autosave > 0 then HOST_Check(HOST_Armed() == 2 and HOST_Saved() == 0, "saves: third system armed, nothing saved yet"); end;
 
 -- Save, quit, load: clear, MapInitialization, clear (0x4a7e70), restore, functions.script (T2d).
 local rk = HOST_Reserved(TRF, "TRF");
@@ -369,6 +405,11 @@ if h.exp == 2 then
 end;
 if h.exp == 3 then
 	HOST_Fire("f_died");            -- trigger restored from the save: stale id
+end;
+if h.autosave > 0 then
+	HOST_FireSave();                -- elio timer restored from the save
+	HOST_FireSave();                -- gredos timer restored from the save
+	HOST_Check(HOST_Saved() == 0, "saves: timers restored from a save are stale");
 end;
 HOST_Ticks(4, 0.5);
 HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF after the load");
@@ -395,5 +436,36 @@ TRF = {};
 TRF_OnTick(0.5, 0.5);
 TRF_BeforeJump("x");
 HOST_Check(TRF.active == nil and TRF.exp.cnt.jump == 1, "OnTick ignores and BeforeJump survives an empty TRF");
+
+-- Save kit over a new game: one AutoSave per new system, never two for the same one, at most 6.
+if h.autosave > 0 then
+	print("HOST ---- save kit, new game");
+	TRF = nil; h.triggers = {}; h.autosaves = {}; h.labels.CurrentQuest = nil;
+	HOST_Enter("aurora");
+	HOST_Check(HOST_Armed() == 0, "saves: new game's first system arms no save");
+	HOST_Enter("elio");
+	if h.autosave == 1 then HOST_Check(HOST_Armed() == 0, "saves: mission 1 (CurrentQuest unset) arms no save"); end;
+	h.labels.CurrentQuest = "2";
+	HOST_Enter("gredos");
+	HOST_FireSave();
+	HOST_Check(HOST_Saved("TRF E0 gredos") == 1 and HOST_Saved() == 1, "saves: AutoSave once for gredos");
+	HOST_Check(not HOST_FireSave(), "saves: the timer is one-shot");
+	HOST_Enter("elio");
+	TeleportToLocation("aurora");   -- jump before the timer fires
+	HOST_FireSave();
+	HOST_Check(HOST_Saved() == 1, "saves: a timer that fires during a jump does nothing");
+	HOST_Enter("aurora");
+	HOST_FireSave();
+	HOST_Check(HOST_Saved("TRF E0 aurora") == 1, "saves: AutoSave once for aurora");
+	local armed = HOST_Armed();
+	HOST_Enter("gredos");
+	HOST_Check(HOST_Armed() == armed and not HOST_FireSave() and HOST_Saved("TRF E0 gredos") == 1, "saves: no second save for gredos");
+	foreachi({"s1", "s2", "s3", "s4", "s5", "s6"}, function(i, s) HOST_Enter(s); HOST_FireSave(); end);
+	HOST_Check(HOST_Saved() == 6 and HOST_Saved("TRF E0 s5") == 0 and HOST_Saved("TRF E0 s4") == 1, "saves: capped at 6 ("..HOST_Saved()..")");
+	local want = "";
+	if h.exp == 2 then want = " TRF.exp.state.PI"; end;
+	HOST_Check(HOST_Reserved(TRF, "TRF") == want, "saves: no reserved key in TRF.exp.saves");
+	print("HOST TRF.exp.saves = "..TRF_Dump(TRF.exp.saves, 3));
+end;
 print("HOST errors="..h.errors.." fails="..h.fails);
 if h.errors > 0 or h.fails > 0 then exit(1); end;

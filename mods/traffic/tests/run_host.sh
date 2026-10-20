@@ -33,8 +33,9 @@ run() { # $1 label, then env assignments
 for e in ${EXPS:-default 0 1 2 3}; do
     case $e in
         default) run default ;;
-        2) run exp2 TRF_EXP=2; run exp2-big TRF_EXP=2 TRF_BIG=1 ;;
+        2) run exp2 TRF_EXP=2; run exp2-big TRF_EXP=2 TRF_BIG=1; run exp2-saves TRF_EXP=2 TRF_AUTOSAVE=1 ;;
         3) run exp3 TRF_EXP=3; run exp3-del TRF_EXP=3 TRF_DEL=1 ;;
+        0) run exp0 TRF_EXP=0; run exp0-saves TRF_EXP=0 TRF_AUTOSAVE=1 ;;
         *) run "exp$e" TRF_EXP="$e" ;;
     esac
 done
