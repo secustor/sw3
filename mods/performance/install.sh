@@ -16,7 +16,7 @@
 # Env: WINE_ARCHIVE=<path> uses a local copy of the release archive (still SHA-256 checked).
 #      HEROIC_CHECK=0 skips the "Heroic is running" check (only for tests with a fake HOME).
 #      DISPLAY_MODE=auto|fixed|off (default auto), DISPLAY_FIXED=WxH (for fixed),
-#      RENDER_SCALE=auto|off|0.1..1.0 ([display] render_scale; default auto, off leaves mtld3d alone).
+#      RENDER_SCALE=auto|off|0.1..1.0 ([display] render_scale; default off: a scale below 1 blurs UI text through the MetalFX upscale; auto renders about 1680x1050 pixels).
 set -eu
 GOG_ID=1426253436
 EXE_SHA1=57420a056f63a869148556dd978e5e2478e7ba2d     # sw3cw.exe, GOG v1.12
@@ -69,7 +69,7 @@ grep -q "\"$GOG_ID\"" "$gcfg" || die "$gcfg has no \"$GOG_ID\" entry"
 
 # e) checks. pmode: present (proxy installed), install (install it here), own (installed by an
 # earlier run of this script; upgraded), skip (no proxy available).
-dmode=${DISPLAY_MODE:-auto}; dfixed=${DISPLAY_FIXED:-}; rscale=${RENDER_SCALE:-auto}
+dmode=${DISPLAY_MODE:-auto}; dfixed=${DISPLAY_FIXED:-}; rscale=${RENDER_SCALE:-off}
 tpman=$game/sw3tp-backup/manifest.txt; pfman=$game/sw3-performance-backup/manifest.txt
 pmode=skip; pdll=
 if [ "$display" = 1 ]; then

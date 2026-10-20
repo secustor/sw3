@@ -3,7 +3,7 @@
 # The original game dir is only read.  PATCH_AT=dllmain|dinput, ENABLED=0|1, FORMS=path[,bare] (bare needs WINEDLLPATH, set by run-test.sh),
 # MONITOR=0|1, MONITOR_DISPATCH=0|1, HOOK_B=0|1, HOOK_C=0|1, PRECISE_IS_TRACKPAD=0|1, WHEEL_HOLD=<ticks>,
 # DEBUG_KEYS=0|1, TRACE=0|1 (trace_events), KR/KS/KZ/KP/KA/KM (gains), FLIGHT_STATES (ids), AGG_MOD=ctrl|opt|ctrl+opt, DISPLAY_MODE=auto|fixed|off (default auto), DISPLAY_FIXED=WxH go into sw3tp.ini.
-# RENDER_SCALE=auto|off|<0.01..1.0> (default auto) is [display] render_scale (the DLL sets MTLD3D_CONFIG). Writes Data/GUI/trackpad.cfg if missing.  The unix lib goes to $COPY/aarch64-unix/.
+# RENDER_SCALE=auto|off|<0.01..1.0> (default off; auto blurs UI text through the MetalFX upscale) is [display] render_scale (the DLL sets MTLD3D_CONFIG). Writes Data/GUI/trackpad.cfg if missing.  The unix lib goes to $COPY/aarch64-unix/.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd); . "$here/env.sh"
 [ "$(shasum "$ORIG/sw3cw.exe" | cut -d' ' -f1)" = "$EXE_SHA1" ] || { echo "sw3cw.exe SHA-1 mismatch" >&2; exit 1; }
@@ -29,7 +29,7 @@ printf '[sw3tp]\r\nenabled=%s\r\npatch_at=%s\r\nunixlib_forms=%s\r\nmonitor=%s\r
     "${FLIGHT_STATES:-3,7,8,9,10,27}" "${AGG_MOD:-ctrl}" \
     "${KR:-0.1}" "${KS:-1.5}" "${KZ:-25}" "${KP:-1.0}" "${KA:-1.0}" "${KM:-0.5}" "${KMY:-${KM:-0.5}}" > "$COPY/sw3tp.ini"
 printf '[display]\r\nmode=%s\r\nfixed=%s\r\nmin=1024x768\r\nmax=4096x4096\r\nkeep_bpp=32\r\nfullscreen=TRUE\r\nrender_scale=%s\r\nlog=1\r\n' \
-    "${DISPLAY_MODE:-auto}" "${DISPLAY_FIXED:-}" "${RENDER_SCALE:-auto}" >> "$COPY/sw3tp.ini"
+    "${DISPLAY_MODE:-auto}" "${DISPLAY_FIXED:-}" "${RENDER_SCALE:-off}" >> "$COPY/sw3tp.ini"
 # trackpad.cfg: run once by the mod through Console::Execute("exec ...").
 [ -f "$COPY/Data/GUI/trackpad.cfg" ] || cp "$here/Data/GUI/trackpad.cfg" "$COPY/Data/GUI/trackpad.cfg"
 xattr -d com.apple.quarantine "$COPY/zlib1.dll" "$COPY/zlib1_orig.dll" "$COPY/sw3tp.ini" 2>/dev/null || true

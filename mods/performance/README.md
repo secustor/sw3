@@ -25,19 +25,19 @@ Heroic's first launch on a new prefix installs DirectX 9.0c, as usual.
 **What install.sh changes.**
 - If the proxy is not installed, it renames `zlib1.dll` to `zlib1_orig.dll` (after a SHA-1 check of `sw3cw.exe` and `zlib1.dll`), copies the proxy in and writes `sw3tp.ini` with `[sw3tp] enabled=0`, so the trackpad features stay off. The proxy comes from `../trackpad/` (mods pack) or `mods/trackpad/out/` (source tree, built if missing); the standalone sw3-performance zip does not contain it and skips this step. A later trackpad install takes the proxy over.
 - It replaces the `[display]` section of `<game dir>/sw3tp.ini`; other sections stay unchanged.
-- It writes `render_scale=auto` into `[display]`: at each start the proxy sets `MTLD3D_CONFIG=render.scale=<s>` in the game process, with `s` chosen so mtld3d renders about as many pixels as 1680x1050 (0.52 at 3360x1890, 0.95 at 1728x1117). This wins over `mtld3d.conf`; a `render.scale` already in `MTLD3D_CONFIG` (for example from Heroic's environment options) is kept.
+- It writes `render_scale=off` into `[display]` (native rendering; `RENDER_SCALE=auto` renders about 1680x1050 pixels and upscales with MetalFX, which keeps the GPU cost flat but blurs UI text, as a first run on a 3360x1890 screen showed): at each start the proxy sets `MTLD3D_CONFIG=render.scale=<s>` in the game process, with `s` chosen so mtld3d renders about as many pixels as 1680x1050 (0.52 at 3360x1890, 0.95 at 1728x1117). This wins over `mtld3d.conf`; a `render.scale` already in `MTLD3D_CONFIG` (for example from Heroic's environment options) is kept.
 
 **`[display]` keys** (in `sw3tp.ini`):
 
 | Key | Default | Meaning |
 |---|---|---|
-| `mode` | `off` in the shipped ini, `auto` from install.sh | `auto`: display size; `fixed`: the `fixed` size; `off`: `default.cfg` is not touched |
+| `mode` | `off` (shipped ini and install.sh) | `auto`: display size; `fixed`: the `fixed` size; `off`: `default.cfg` is not touched |
 | `fixed` | empty | `WxH` for `mode=fixed` |
 | `min` | `1024x768` | below this display size `auto` does nothing |
 | `max` | `4096x4096` | a larger display is scaled down to fit, keeping the aspect ratio (even numbers) |
 | `keep_bpp` | `32` | 3rd value of `gr_init_resolution` (`0` keeps the file's) |
 | `fullscreen` | `TRUE` | 4th value |
-| `render_scale` | `off` in the shipped ini, `auto` from install.sh | mtld3d `render.scale`: `auto` (about 1680x1050 pixels of rendering), a number in `0.01`..`1.0`, or `off` (not set) |
+| `render_scale` | `off` (shipped ini and install.sh) | mtld3d `render.scale`: `auto` (about 1680x1050 pixels of rendering), a number in `0.01`..`1.0`, or `off` (not set) |
 | `log` | `1` | writes `display: ...` lines to `sw3tp.log` (`0`: only changes and errors) |
 
 **Env for install.sh:** `DISPLAY_MODE=auto|fixed|off` (default `auto`), `DISPLAY_FIXED=WxH`, `RENDER_SCALE=auto|off|<number>` (default `auto`; written as `render_scale`). With `mode=off` the proxy sets no render scale.
