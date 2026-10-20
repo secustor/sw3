@@ -1,0 +1,31 @@
+{
+  "title": "Star Wolves 3 (Wine) trackpad: keys as held mouse buttons",
+  "rules": [
+    {
+      "description": "SW3 [required]: hold left Option = hold right mouse button (Option+slide = rotate, Shift then Option+slide = altitude, Option tap = order)",
+      "manipulators": [
+        {
+          "type": "basic",
+          "from": { "key_code": "left_option", "modifiers": { "optional": ["any"] } },
+          "to": [ { "pointing_button": "button2" } ],
+          "conditions": [
+            { "type": "frontmost_application_if", "bundle_identifiers": [ "^app\\.mach9\\.loader$" ] }
+          ]
+        }
+      ]
+    },
+    {
+      "description": "SW3 [optional]: hold right Option = hold middle mouse button (free-camera move, Free camera U/F9 only). Removes right Option character composition in the game window",
+      "manipulators": [
+        {
+          "type": "basic",
+          "from": { "key_code": "right_option", "modifiers": { "optional": ["any"] } },
+          "to": [ { "pointing_button": "button3" } ],
+          "conditions": [
+            { "type": "frontmost_application_if", "bundle_identifiers": [ "^app\\.mach9\\.loader$" ] }
+          ]
+        }
+      ]
+    }
+  ]
+}

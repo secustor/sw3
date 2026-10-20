@@ -1,0 +1,414 @@
+426ae9 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+426b05 LMENU/LALT | mov	eax, dword ptr [eax + 0x104]
+426b21 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+426b38 RCONTROL [via 0x426a20] | mov	esi, 0x9d
+426b56 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+426b6d RCONTROL [via 0x426a20] | mov	esi, 0x9d
+426b7e LMENU/LALT | mov	eax, dword ptr [eax + 0x104]
+426b95 RMENU/RALT [via 0x426a20] | mov	esi, 0xb8
+426ba6 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+426bbd RSHIFT [via 0x426a20] | mov	esi, 0x36
+4286fe 0x824 | lea	esi, [eax + 0x824]
+46c0c5 LMENU/LALT | mov	eax, dword ptr [eax + 0x104]
+46c0da RMENU/RALT | mov	eax, dword ptr [eax + 0x304]
+46c0f4 F10 | cmp	dword ptr [eax + 0x134], ecx
+46c13f LCONTROL | mov	eax, dword ptr [eax + 0x98]
+46c154 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+46c169 LMENU/LALT | mov	eax, dword ptr [eax + 0x104]
+46c17e RMENU/RALT | mov	eax, dword ptr [eax + 0x304]
+46c193 DOWN/DOWNARROW | cmp	dword ptr [eax + 0x364], 0x1
+46c1de LCONTROL | mov	eax, dword ptr [eax + 0x98]
+46c1f3 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+46c208 LMENU/LALT | mov	eax, dword ptr [eax + 0x104]
+46c21d RMENU/RALT | mov	eax, dword ptr [eax + 0x304]
+46c232 UP/UPARROW | cmp	dword ptr [eax + 0x344], 0x1
+46c488 LMB | mov	dword ptr [eax + 0x854], ecx
+46c555 LMB | cmp	dword ptr [eax + 0x854], 0x1
+46c619 LMB | mov	eax, dword ptr [eax + 0x854]
+46c632 LMB | cmp	dword ptr [eax + 0x854], -0x1
+46c8e3 0x4 | mov	dword ptr [eax + 0x4], esi
+471d9e 0x1c | fld	dword ptr [eax + 0x1c]
+4725c6 0x1c | fld	dword ptr [eax + 0x1c]
+4725d9 0x1c | fld	dword ptr [eax + 0x1c]
+4832bb ESCAPE | cmp	dword ptr [eax + 0x28], ebx
+4832fc RETURN | cmp	dword ptr [eax + 0x94], ebx
+483309 NUMPADENTER | cmp	dword ptr [eax + 0x294], ebx
+483567 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+48357b RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+483593 UP/UPARROW | cmp	dword ptr [eax + 0x344], ebx
+4835f2 UP/UPARROW [via 0x426a70] | mov	esi, 0xc8
+483615 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+483629 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+483641 DOWN/DOWNARROW | cmp	dword ptr [eax + 0x364], ebx
+48369f DOWN/DOWNARROW [via 0x426a70] | mov	esi, 0xd0
+4836c2 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+4836d6 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+4836ea UP/UPARROW | mov	eax, dword ptr [eax + 0x344]
+4836fe UP/UPARROW | cmp	dword ptr [eax + 0x344], ebx
+483716 UP/UPARROW [via 0x426a70] | mov	esi, 0xc8
+483739 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+48374d RCONTROL | mov	eax, dword ptr [eax + 0x298]
+483761 DOWN/DOWNARROW | mov	eax, dword ptr [eax + 0x364]
+483775 DOWN/DOWNARROW | cmp	dword ptr [eax + 0x364], ebx
+48378d DOWN/DOWNARROW [via 0x426a70] | mov	esi, 0xd0
+4837b0 UP/UPARROW | cmp	dword ptr [eax + 0x344], ebx
+4837bd PRIOR/PGUP | cmp	dword ptr [eax + 0x348], ebx
+483829 DOWN/DOWNARROW | cmp	dword ptr [eax + 0x364], ebx
+483836 NEXT/PGDN | cmp	dword ptr [eax + 0x368], ebx
+4838a2 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+4838b6 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+4838ce TAB | cmp	dword ptr [eax + 0x60], ebx
+483934 TAB [via 0x426a70] | mov	esi, 0xf
+483957 TAB | cmp	dword ptr [eax + 0x60], ebx
+485916 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+48592b RCONTROL | mov	eax, dword ptr [eax + 0x298]
+48594a LMENU/LALT | mov	eax, dword ptr [eax + 0x104]
+48595f RMENU/RALT | mov	eax, dword ptr [eax + 0x304]
+48597a LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+48598f RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+4859c6 ? [via 0x426a70] | call	0x426a70 <.text+0x25a70>
+48c267 ESCAPE [via 0x426a50, ==1] | push	0x1
+48e641 HOME | mov	eax, dword ptr [eax + 0x340]
+48e65c END | mov	eax, dword ptr [eax + 0x360]
+49008b LMB | cmp	dword ptr [eax + 0x854], ebp
+4900ba LMB | mov	eax, dword ptr [eax + 0x854]
+4926f0 LMB | mov	eax, dword ptr [eax + 0x854]
+492807 LMB | cmp	dword ptr [eax + 0x854], 0x1
+492830 LMB | mov	eax, dword ptr [eax + 0x854]
+4d7c03 C | cmp	dword ptr [eax + 0xdc], 0x1
+51fa20 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+51fa3a M | cmp	dword ptr [eax + 0xec], 0x1
+51fa3a M | cmp	dword ptr [eax + 0xec], 0x1
+52d502 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+52d517 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+52d602 RMB | cmp	dword ptr [eax + 0x858], 0x1
+52d61c LCONTROL | mov	eax, dword ptr [eax + 0x98]
+52d631 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+52d646 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+52d663 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+52d689 LMENU/LALT | mov	eax, dword ptr [eax + 0x104]
+52d6a6 RMENU/RALT | mov	eax, dword ptr [eax + 0x304]
+52d6c3 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+52d6d8 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+52d6ed LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+52d702 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+52eaf2 BACK/BACKSPACE | cmp	dword ptr [eax + 0x5c], ebx
+5333a0 0x18 | fld	dword ptr [eax + 0x18]
+5333b0 0x18 | fld	dword ptr [eax + 0x18]
+533475 0x10 | cmp	dword ptr [eax + 0x10], edx
+533548 0x10 | cmp	dword ptr [eax + 0x10], edx
+54e8ab 0x14 | fld	dword ptr [eax + 0x14]
+54e8b9 0x18 | fld	dword ptr [eax + 0x18]
+54ea7e 0x10 | mov	eax, dword ptr [eax + 0x10]
+556de0 RETURN | cmp	dword ptr [eax + 0x94], ebp
+556df1 NUMPADENTER | cmp	dword ptr [eax + 0x294], ebp
+556e02 DOWN/DOWNARROW | cmp	dword ptr [eax + 0x364], ebp
+556e2f UP/UPARROW | cmp	dword ptr [eax + 0x344], ebp
+556e56 TAB | cmp	dword ptr [eax + 0x60], ebp
+556e84 DELETE [via 0x426a50, ==1] | push	0xd3
+55802f RETURN | cmp	dword ptr [eax + 0x94], edi
+55803c NUMPADENTER | cmp	dword ptr [eax + 0x294], edi
+558049 DOWN/DOWNARROW | cmp	dword ptr [eax + 0x364], edi
+558074 UP/UPARROW | cmp	dword ptr [eax + 0x344], edi
+55809b DELETE | cmp	dword ptr [eax + 0x370], edi
+55a41f RETURN | cmp	dword ptr [eax + 0x94], edi
+55a430 NUMPADENTER | cmp	dword ptr [eax + 0x294], edi
+55a441 DOWN/DOWNARROW | cmp	dword ptr [eax + 0x364], edi
+55a46e UP/UPARROW | cmp	dword ptr [eax + 0x344], edi
+55a494 TAB | cmp	dword ptr [eax + 0x60], edi
+55a4c3 DELETE [via 0x426a50, ==1] | push	0xd3
+56dd4a LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+56dd5f RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+56e216 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+56e233 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+56e250 LMENU/LALT | mov	eax, dword ptr [eax + 0x104]
+56e265 RMENU/RALT | mov	eax, dword ptr [eax + 0x304]
+56e2a4 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+56e2b9 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+56e32a LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+56e33f RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+56e358 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+56e36d RCONTROL | mov	eax, dword ptr [eax + 0x298]
+56e40c LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+56e428 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+56e444 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+56e458 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+56e631 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+56e645 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+56e659 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+56e66d RCONTROL | mov	eax, dword ptr [eax + 0x298]
+56e6d8 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+56e6ed RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+573d8c LMENU/LALT | mov	eax, dword ptr [eax + 0x104]
+573da1 RMENU/RALT | mov	eax, dword ptr [eax + 0x304]
+573dd2 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+573de7 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+58f862 LMB | mov	eax, dword ptr [eax + 0x854]
+58fe44 ESCAPE | cmp	dword ptr [eax + 0x28], esi
+58fe49 ESCAPE [via 0x426a70] | mov	esi, 0x1
+58fe86 RMB | mov	eax, dword ptr [eax + 0x858]
+58fecb LMB | mov	eax, dword ptr [eax + 0x854]
+58ff06 LMB | cmp	dword ptr [eax + 0x854], esi
+58ff2d LMB | mov	eax, dword ptr [eax + 0x854]
+5905d5 ESCAPE | cmp	dword ptr [eax + 0x28], 0x1
+5906cd LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+5906e2 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+5906f7 GRAVE | cmp	dword ptr [eax + 0xc8], 0x1
+591538 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+591552 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+591567 RMB | mov	eax, dword ptr [eax + 0x858]
+59159e LEFT/LEFTARROW | mov	eax, dword ptr [eax + 0x350]
+5915cc LEFT/LEFTARROW [via 0x426a70] | mov	esi, 0xcb
+5915d6 RIGHT/RIGHTARROW | mov	eax, dword ptr [eax + 0x358]
+591600 RIGHT/RIGHTARROW [via 0x426a70] | mov	esi, 0xcd
+59160a UP/UPARROW | mov	eax, dword ptr [eax + 0x344]
+591634 UP/UPARROW [via 0x426a70] | mov	esi, 0xc8
+59163e DOWN/DOWNARROW | mov	eax, dword ptr [eax + 0x364]
+59166c DOWN/DOWNARROW [via 0x426a70] | mov	esi, 0xd0
+59170f SPACE | cmp	dword ptr [eax + 0x108], ebx
+591723 LMB | cmp	dword ptr [eax + 0x854], ebx
+591735 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+591752 BACK/BACKSPACE | cmp	dword ptr [eax + 0x5c], ebx
+591762 BACK/BACKSPACE | mov	eax, dword ptr [eax + 0x5c]
+591780 C | cmp	dword ptr [eax + 0xdc], ebx
+591792 D | cmp	dword ptr [eax + 0xa4], ebx
+5917a6 A | cmp	dword ptr [eax + 0x9c], ebx
+5917ba W | cmp	dword ptr [eax + 0x68], ebx
+5917cb S | cmp	dword ptr [eax + 0xa0], ebx
+59189e LMB | mov	eax, dword ptr [eax + 0x854]
+591c3e F1 | cmp	dword ptr [eax + 0x110], ebx
+591c62 PAUSE | cmp	dword ptr [eax + 0x338], ebx
+591c62 PAUSE | cmp	dword ptr [eax + 0x338], ebx
+591c62 PAUSE | cmp	dword ptr [eax + 0x338], ebx
+593079 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+59308e RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+5930a3 RMB | mov	eax, dword ptr [eax + 0x858]
+59316a SPACE | cmp	dword ptr [eax + 0x108], esi
+59317e LMB | cmp	dword ptr [eax + 0x854], esi
+59318c LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+5931a7 BACK/BACKSPACE | cmp	dword ptr [eax + 0x5c], esi
+5931b5 BACK/BACKSPACE | mov	eax, dword ptr [eax + 0x5c]
+593230 LMB | mov	eax, dword ptr [eax + 0x854]
+593490 F1 | cmp	dword ptr [eax + 0x110], esi
+593523 F2 | cmp	dword ptr [eax + 0x114], esi
+59354f F3 | cmp	dword ptr [eax + 0x118], esi
+59362b LEFT/LEFTARROW | mov	eax, dword ptr [eax + 0x350]
+59366b RIGHT/RIGHTARROW | mov	eax, dword ptr [eax + 0x358]
+5936ab F4 | cmp	dword ptr [eax + 0x11c], esi
+5936d9 F5 | cmp	dword ptr [eax + 0x120], esi
+593707 F6 | cmp	dword ptr [eax + 0x124], esi
+59384b F7 | cmp	dword ptr [eax + 0x128], esi
+593930 F8 | cmp	dword ptr [eax + 0x12c], esi
+5939e8 F9 | cmp	dword ptr [eax + 0x130], esi
+593a30 1 | cmp	dword ptr [eax + 0x2c], 0x1
+593ac6 2 | cmp	dword ptr [eax + 0x30], 0x1
+593b4a 3 | cmp	dword ptr [eax + 0x34], 0x1
+593bcd 4 | cmp	dword ptr [eax + 0x38], 0x1
+593c51 PAUSE | cmp	dword ptr [eax + 0x338], 0x1
+5951e4 ESCAPE | cmp	dword ptr [eax + 0x28], esi
+5951e9 ESCAPE [via 0x426a70] | mov	esi, 0x1
+595226 RMB | mov	eax, dword ptr [eax + 0x858]
+59526b LMB | mov	eax, dword ptr [eax + 0x854]
+5952a6 LMB | cmp	dword ptr [eax + 0x854], esi
+5952f7 LMB | mov	eax, dword ptr [eax + 0x854]
+595612 LMB | mov	eax, dword ptr [eax + 0x854]
+59591c L | cmp	dword ptr [eax + 0xbc], 0x1
+595a46 LMB | mov	eax, dword ptr [eax + 0x854]
+595a5a RMB | mov	eax, dword ptr [eax + 0x858]
+595abe CAPITAL/CAPSLOCK | mov	eax, dword ptr [eax + 0x10c]
+595ae2 LMENU/LALT | mov	eax, dword ptr [eax + 0x104]
+595af6 RMENU/RALT | mov	eax, dword ptr [eax + 0x304]
+595c0c LCONTROL | mov	eax, dword ptr [eax + 0x98]
+595c20 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+595c56 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+595c6a RCONTROL | mov	eax, dword ptr [eax + 0x298]
+595c7e LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+595c92 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+595cb7 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+595ccb RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+595cee LCONTROL | mov	eax, dword ptr [eax + 0x98]
+595d02 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+595d16 A | cmp	dword ptr [eax + 0x9c], edi
+595d2f LMENU/LALT | mov	eax, dword ptr [eax + 0x104]
+595d43 RMENU/RALT | mov	eax, dword ptr [eax + 0x304]
+595d57 LMB | mov	eax, dword ptr [eax + 0x854]
+595e3e LCONTROL | mov	eax, dword ptr [eax + 0x98]
+595e52 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+595e66 LMB | mov	eax, dword ptr [eax + 0x854]
+595e8d LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+595ea1 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+595ecc LCONTROL | mov	eax, dword ptr [eax + 0x98]
+595ee0 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+595ef4 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+595f08 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+595f1c LMB | mov	eax, dword ptr [eax + 0x854]
+595f56 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+595f6a RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+595f7e LCONTROL | mov	eax, dword ptr [eax + 0x98]
+595f92 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+595fa6 RMB | mov	eax, dword ptr [eax + 0x858]
+595fc8 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+595fdc RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+595ff0 RMB | mov	eax, dword ptr [eax + 0x858]
+596029 LMB | mov	eax, dword ptr [eax + 0x854]
+5960b4 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+5960c8 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+5960e1 RMB | cmp	dword ptr [eax + 0x858], esi
+5960ee LMB | cmp	dword ptr [eax + 0x854], esi
+59611c LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+596130 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+596193 T | cmp	dword ptr [eax + 0x74], esi
+596217 Y | cmp	dword ptr [eax + 0x78], esi
+5963f8 LEFT/LEFTARROW | mov	eax, dword ptr [eax + 0x350]
+59641a LEFT/LEFTARROW [via 0x426a70] | mov	esi, 0xcb
+596424 UP/UPARROW | mov	eax, dword ptr [eax + 0x344]
+596446 UP/UPARROW [via 0x426a70] | mov	esi, 0xc8
+596450 RIGHT/RIGHTARROW | mov	eax, dword ptr [eax + 0x358]
+596472 RIGHT/RIGHTARROW [via 0x426a70] | mov	esi, 0xcd
+59647c DOWN/DOWNARROW | mov	eax, dword ptr [eax + 0x364]
+59649e DOWN/DOWNARROW [via 0x426a70] | mov	esi, 0xd0
+5964a8 MMB | mov	eax, dword ptr [eax + 0x85c]
+596517 A | cmp	dword ptr [eax + 0x9c], edi
+596544 D | mov	eax, dword ptr [eax + 0xa4]
+596578 R | mov	eax, dword ptr [eax + 0x70]
+59659e E | mov	eax, dword ptr [eax + 0x6c]
+5965c4 Z | mov	eax, dword ptr [eax + 0xd4]
+5965f3 B | cmp	dword ptr [eax + 0xe4], 0x1
+59663e M | mov	eax, dword ptr [eax + 0xec]
+596667 C | mov	eax, dword ptr [eax + 0xdc]
+59668a X | cmp	dword ptr [eax + 0xd8], 0x1
+5966fe COMMA | cmp	dword ptr [eax + 0xf0], esi
+59674e PERIOD | cmp	dword ptr [eax + 0xf4], esi
+59679c F5 [via 0x426a50, ==1] | push	0x3f
+596960 F8 [via 0x426a50, ==1] | push	0x42
+5969c0 LBRACKET [via 0x426a50, ==1] | push	0x1a
+596a1d RBRACKET [via 0x426a50, ==1] | push	0x1b
+596a7d SUBTRACT/NUMPADMINUS | mov	eax, dword ptr [eax + 0x14c]
+596a93 MINUS [via 0x426a20] | mov	esi, 0xc
+596aba ADD/NUMPADPLUS | mov	eax, dword ptr [eax + 0x15c]
+596ad0 EQUALS [via 0x426a20] | mov	esi, 0xd
+596aff Z [via 0x426a50, ==1] | push	0x2c
+596b3f LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+596b53 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+596b8b GRAVE | cmp	dword ptr [eax + 0xc8], 0x1
+596b99 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+596bad RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+596bd0 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+596be4 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+596bf8 GRAVE | cmp	dword ptr [eax + 0xc8], 0x1
+596c26 I | cmp	dword ptr [eax + 0x80], esi
+5978a8 ESCAPE | cmp	dword ptr [eax + 0x28], 0x1
+597d87 B | cmp	dword ptr [eax + 0xe4], 0x1
+597feb MMB | cmp	dword ptr [eax + 0x85c], 0x1
+598248 RMB | mov	eax, dword ptr [eax + 0x858]
+598297 LMENU/LALT | mov	eax, dword ptr [eax + 0x104]
+5982ac RMENU/RALT | mov	eax, dword ptr [eax + 0x304]
+5984d6 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+5984eb RCONTROL | mov	eax, dword ptr [eax + 0x298]
+5985e5 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+5985fa RCONTROL | mov	eax, dword ptr [eax + 0x298]
+59860f LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+598624 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+599014 RMB | mov	eax, dword ptr [eax + 0x858]
+59904d LCONTROL | mov	eax, dword ptr [eax + 0x98]
+599062 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+599077 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+59908c RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+5996b2 LMB | mov	eax, dword ptr [eax + 0x854]
+599a8b RMB | cmp	dword ptr [eax + 0x858], 0x1
+599d97 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+599dac RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+599dc1 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+599dd6 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+599e6c LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+599e81 RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+599e96 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+599eab RCONTROL | mov	eax, dword ptr [eax + 0x298]
+599f12 LMB | mov	eax, dword ptr [eax + 0x854]
+59a4b4 ESCAPE | cmp	dword ptr [eax + 0x28], esi
+59a4b9 ESCAPE [via 0x426a70] | mov	esi, 0x1
+59a4f6 RMB | mov	eax, dword ptr [eax + 0x858]
+59a53b LMB | mov	eax, dword ptr [eax + 0x854]
+59a576 LMB | cmp	dword ptr [eax + 0x854], esi
+59a59d LMB | mov	eax, dword ptr [eax + 0x854]
+59ab8c ESCAPE | cmp	dword ptr [eax + 0x28], esi
+59ab91 ESCAPE [via 0x426a70] | mov	esi, 0x1
+59abaf LCONTROL | mov	eax, dword ptr [eax + 0x98]
+59abc4 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+59ac10 RMB | mov	eax, dword ptr [eax + 0x858]
+59ac45 LMB | cmp	dword ptr [eax + 0x854], esi
+59b3ca ESCAPE | cmp	dword ptr [eax + 0x28], esi
+59b3cf ? [via 0x426a70] | call	0x426a70 <.text+0x25a70>
+59b428 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+59b43d RCONTROL | mov	eax, dword ptr [eax + 0x298]
+59b4d9 RMB | mov	eax, dword ptr [eax + 0x858]
+59b518 LMB | cmp	dword ptr [eax + 0x854], esi
+59baa4 ESCAPE | cmp	dword ptr [eax + 0x28], esi
+59baa9 ESCAPE [via 0x426a70] | mov	esi, 0x1
+59bae6 RMB | mov	eax, dword ptr [eax + 0x858]
+59bb2b LMB | mov	eax, dword ptr [eax + 0x854]
+59bb66 LMB | cmp	dword ptr [eax + 0x854], esi
+59bb8d LMB | mov	eax, dword ptr [eax + 0x854]
+5a020c V | cmp	dword ptr [eax + 0xe0], ecx
+5efdbe F12 | mov	eax, dword ptr [eax + 0x184]
+5efe88 F12 | mov	eax, dword ptr [eax + 0x184]
+5eff60 F12 | mov	eax, dword ptr [eax + 0x184]
+5f0011 F12 | mov	eax, dword ptr [eax + 0x184]
+5f00d0 F12 | mov	eax, dword ptr [eax + 0x184]
+5f0180 F12 | mov	eax, dword ptr [eax + 0x184]
+5f02a4 F12 | mov	eax, dword ptr [eax + 0x184]
+5f030c F12 | mov	eax, dword ptr [eax + 0x184]
+5f030c F12 | mov	eax, dword ptr [eax + 0x184]
+5f036f F12 | mov	eax, dword ptr [eax + 0x184]
+5f036f F12 | mov	eax, dword ptr [eax + 0x184]
+5f03d4 F12 | mov	eax, dword ptr [eax + 0x184]
+5f03d4 F12 | mov	eax, dword ptr [eax + 0x184]
+5f04c2 F12 | mov	eax, dword ptr [eax + 0x184]
+5f04c2 F12 | mov	eax, dword ptr [eax + 0x184]
+5f052d F12 | mov	eax, dword ptr [eax + 0x184]
+5f052d F12 | mov	eax, dword ptr [eax + 0x184]
+5f05cd F12 | mov	eax, dword ptr [eax + 0x184]
+5f05cd F12 | mov	eax, dword ptr [eax + 0x184]
+5f0664 F12 | mov	eax, dword ptr [eax + 0x184]
+653c7c LCONTROL | mov	eax, dword ptr [eax + 0x98]
+653c91 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+653ce2 1 | mov	eax, dword ptr [eax + 0x2c]
+653d3b 2 | mov	eax, dword ptr [eax + 0x30]
+653d90 3 | mov	eax, dword ptr [eax + 0x34]
+653de5 4 | mov	eax, dword ptr [eax + 0x38]
+653e39 5 | mov	eax, dword ptr [eax + 0x3c]
+653e8e 6 | mov	eax, dword ptr [eax + 0x40]
+653ee3 7 | mov	eax, dword ptr [eax + 0x44]
+653f37 8 | mov	eax, dword ptr [eax + 0x48]
+653f8c 9 | mov	eax, dword ptr [eax + 0x4c]
+653fe1 0 | mov	eax, dword ptr [eax + 0x50]
+654035 GRAVE | mov	eax, dword ptr [eax + 0xc8]
+6540e8 LSHIFT | mov	eax, dword ptr [eax + 0xcc]
+6540fd RSHIFT | mov	eax, dword ptr [eax + 0xfc]
+65411b 1 | cmp	dword ptr [eax + 0x2c], edi
+65411b 1 | cmp	dword ptr [eax + 0x2c], edi
+65413b 2 | cmp	dword ptr [eax + 0x30], edi
+65413b 2 | cmp	dword ptr [eax + 0x30], edi
+65415a 3 | cmp	dword ptr [eax + 0x34], edi
+65415a 3 | cmp	dword ptr [eax + 0x34], edi
+65417a 4 | cmp	dword ptr [eax + 0x38], edi
+65417a 4 | cmp	dword ptr [eax + 0x38], edi
+65419a 5 | cmp	dword ptr [eax + 0x3c], edi
+65419a 5 | cmp	dword ptr [eax + 0x3c], edi
+6541b9 6 | cmp	dword ptr [eax + 0x40], edi
+6541b9 6 | cmp	dword ptr [eax + 0x40], edi
+6541d9 7 | cmp	dword ptr [eax + 0x44], edi
+6541d9 7 | cmp	dword ptr [eax + 0x44], edi
+6541f9 8 | cmp	dword ptr [eax + 0x48], edi
+6541f9 8 | cmp	dword ptr [eax + 0x48], edi
+654218 9 | cmp	dword ptr [eax + 0x4c], edi
+654218 9 | cmp	dword ptr [eax + 0x4c], edi
+654238 0 | cmp	dword ptr [eax + 0x50], edi
+654238 0 | cmp	dword ptr [eax + 0x50], edi
+656e99 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+656eb3 RCONTROL | mov	eax, dword ptr [eax + 0x298]
+656ec8 SUBTRACT/NUMPADMINUS | cmp	dword ptr [eax + 0x14c], esi
+656ee7 LCONTROL | mov	eax, dword ptr [eax + 0x98]
+656efc RCONTROL | mov	eax, dword ptr [eax + 0x298]
+656f11 MULTIPLY/NUMPADSTAR | cmp	dword ptr [eax + 0x100], esi
+# loop 596b28-596b84: [esi+eax], esi 0x2c..0x4c = DIK_1..DIK_9 (team select, Shift+team); not listed per key above

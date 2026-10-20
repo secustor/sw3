@@ -1,0 +1,9244 @@
+[
+ {
+  "cls": "global",
+  "name": "GetLength",
+  "impl": "0x5c7ae0",
+  "reg_site": "0x5c7719",
+  "calls": 1,
+  "files": 1,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {
+    "1": [
+     "isstr"
+    ]
+   },
+   "rets": [
+    "number"
+   ],
+   "gettop": true,
+   "ninstr": 52
+  }
+ },
+ {
+  "cls": "global",
+  "name": "RAND",
+  "impl": "0x5c7790",
+  "reg_site": "0x5c7743",
+  "calls": 334,
+  "files": 54,
+  "example": "Scripts/InitTradeSystem.script",
+  "static": {
+   "args": {
+    "1": [
+     "num"
+    ]
+   },
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 22
+  }
+ },
+ {
+  "cls": "global",
+  "name": "RANDF",
+  "impl": "0x5c77d0",
+  "reg_site": "0x5c776d",
+  "calls": 84,
+  "files": 6,
+  "example": "Scripts/include/RandomObjects.script",
+  "static": {
+   "args": {
+    "1": [
+     "num"
+    ]
+   },
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 23
+  }
+ },
+ {
+  "cls": "global",
+  "name": "ExecuteScriptFile",
+  "impl": "0x5d1950",
+  "reg_site": "0x5c7ea7",
+  "calls": 6,
+  "files": 1,
+  "example": "Scripts/MapInitialization.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 68
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetTriggerContext",
+  "impl": "0x5cfa10",
+  "reg_site": "0x5c7ed8",
+  "calls": 101,
+  "files": 34,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {
+    "1": [
+     "iscf",
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 266
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetTriggerUnit",
+  "impl": "0x5ca580",
+  "reg_site": "0x5c7f09",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 18
+  }
+ },
+ {
+  "cls": "global",
+  "name": "AttachEventToTrigger",
+  "impl": "0x5c9890",
+  "reg_site": "0x5c7f39",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 957
+  }
+ },
+ {
+  "cls": "global",
+  "name": "AttachConditionToTrigger",
+  "impl": "0x5c9530",
+  "reg_site": "0x5c7f6a",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "global",
+  "name": "AttachActionToTrigger",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5c7f97",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "global",
+  "name": "ShowMsgBox",
+  "impl": "0x5cf5e0",
+  "reg_site": "0x5c7fc3",
+  "calls": 310,
+  "files": 142,
+  "example": "Scripts/Quests/mission_18d_1/MachineDeath_Gaeon.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ],
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 180
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreateTrigger",
+  "impl": "0x5c8f40",
+  "reg_site": "0x5c7ff0",
+  "calls": 724,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 64
+  }
+ },
+ {
+  "cls": "global",
+  "name": "AddQuest",
+  "impl": "0x5cfe50",
+  "reg_site": "0x5c88ec",
+  "calls": 647,
+  "files": 184,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ],
+    "2": [
+     "str"
+    ],
+    "3": [
+     "str"
+    ],
+    "4": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 115
+  }
+ },
+ {
+  "cls": "global",
+  "name": "RemoveQuest",
+  "impl": "0x5d0000",
+  "reg_site": "0x5c891d",
+  "calls": 160,
+  "files": 42,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 41
+  }
+ },
+ {
+  "cls": "global",
+  "name": "SetQuestState",
+  "impl": "0x5d0070",
+  "reg_site": "0x5c894b",
+  "calls": 754,
+  "files": 180,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ],
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 157
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetQuestState",
+  "impl": "0x5d02e0",
+  "reg_site": "0x5c8979",
+  "calls": 546,
+  "files": 147,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [
+    "number"
+   ],
+   "gettop": true,
+   "ninstr": 47
+  }
+ },
+ {
+  "cls": "global",
+  "name": "SetMissionExitCode",
+  "impl": "0x5c8cb0",
+  "reg_site": "0x5c8c54",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "1": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 39
+  }
+ },
+ {
+  "cls": "global",
+  "name": "AttachNewBaseAI",
+  "impl": "0x5c8d40",
+  "reg_site": "0x5c8c81",
+  "calls": 1,
+  "files": 1,
+  "example": "Scripts/include/DockStation.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 151
+  }
+ },
+ {
+  "cls": "Trigger",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5ca678",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "Trigger",
+  "name": "AttachEvent",
+  "impl": "0x5c9890",
+  "reg_site": "0x5ca698",
+  "calls": 751,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 957
+  }
+ },
+ {
+  "cls": "EventInsidevolume",
+  "name": "SetObject",
+  "impl": "0x5ca830",
+  "reg_site": "0x5ca6c8",
+  "calls": 405,
+  "files": 147,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "isstr"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 115
+  }
+ },
+ {
+  "cls": "EventInsidevolume",
+  "name": "GetTargetObject",
+  "impl": "0x5ca9a0",
+  "reg_site": "0x5ca6e8",
+  "calls": 16,
+  "files": 1,
+  "example": "Scripts/AI/Specials.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 68
+  }
+ },
+ {
+  "cls": "EventInsidevolume",
+  "name": "GetDestination",
+  "impl": "0x5caa80",
+  "reg_site": "0x5ca70b",
+  "calls": 8,
+  "files": 1,
+  "example": "Scripts/AI/Specials.script",
+  "static": {
+   "args": {
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 190
+  }
+ },
+ {
+  "cls": "EventInsidevolume",
+  "name": "SetVolume",
+  "impl": "0x5cab50",
+  "reg_site": "0x5ca72b",
+  "calls": 329,
+  "files": 126,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 125
+  }
+ },
+ {
+  "cls": "EventInsidevolume",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5ca74b",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventInsidevolume",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5ca76e",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventInsidevolume",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5ca78e",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventInsidevolume",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5ca7b1",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventInsidevolume",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5ca7d1",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventInsidevolume",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5ca7f4",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventInsidevolume",
+  "name": "Test",
+  "impl": "0x5cae70",
+  "reg_site": "0x5ca814",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 6
+  }
+ },
+ {
+  "cls": "EventObjectdied",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5caea8",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventObjectdied",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5caec8",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventObjectdied",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5caeeb",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventObjectdied",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5caf0b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventObjectdied",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5caf2b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventObjectdied",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5caf4e",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventObjectdied",
+  "name": "SetObject",
+  "impl": "0x5cafb0",
+  "reg_site": "0x5caf6e",
+  "calls": 405,
+  "files": 147,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 114
+  }
+ },
+ {
+  "cls": "EventObjectdied",
+  "name": "GetLastPosition",
+  "impl": "0x5cb110",
+  "reg_site": "0x5caf91",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 67
+  }
+ },
+ {
+  "cls": "EventInsideobjectvolume",
+  "name": "SetObjects",
+  "impl": "0x5cb320",
+  "reg_site": "0x5cb218",
+  "calls": 9,
+  "files": 4,
+  "example": "Scripts/level_0_01/triggers.script",
+  "static": {
+   "args": {
+    "3": [
+     "isstr"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 156
+  }
+ },
+ {
+  "cls": "EventInsideobjectvolume",
+  "name": "SetVolume",
+  "impl": "0x5cb510",
+  "reg_site": "0x5cb238",
+  "calls": 329,
+  "files": 126,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 77
+  }
+ },
+ {
+  "cls": "EventInsideobjectvolume",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5cb25b",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventInsideobjectvolume",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5cb27b",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventInsideobjectvolume",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5cb29b",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventInsideobjectvolume",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5cb2be",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventInsideobjectvolume",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5cb2de",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventInsideobjectvolume",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5cb301",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventTimer",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5cb618",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventTimer",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5cb638",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventTimer",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5cb65b",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventTimer",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5cb67b",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventTimer",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5cb69b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventTimer",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5cb6be",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventTimer",
+  "name": "SetTime",
+  "impl": "0x5cb780",
+  "reg_site": "0x5cb6de",
+  "calls": 396,
+  "files": 191,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 107
+  }
+ },
+ {
+  "cls": "EventTimer",
+  "name": "SetObject",
+  "impl": "0x5cb8f0",
+  "reg_site": "0x5cb701",
+  "calls": 405,
+  "files": 147,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 124
+  }
+ },
+ {
+  "cls": "EventTimer",
+  "name": "GetObject",
+  "impl": "0x5cba90",
+  "reg_site": "0x5cb721",
+  "calls": 11,
+  "files": 7,
+  "example": "Scripts/Quests/mission_17c/EridanProtectors_Eridan.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 68
+  }
+ },
+ {
+  "cls": "EventTimer",
+  "name": "SetDestination",
+  "impl": "0x5cbb70",
+  "reg_site": "0x5cb744",
+  "calls": 4,
+  "files": 1,
+  "example": "Scripts/AI/Specials.script",
+  "static": {
+   "args": {
+    "2": [
+     "isnum",
+     "str"
+    ],
+    "3": [
+     "isnum",
+     "str"
+    ],
+    "4": [
+     "num"
+    ]
+   },
+   "rets": [
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 506
+  }
+ },
+ {
+  "cls": "EventTimer",
+  "name": "GetDestination",
+  "impl": "0x5cbcc0",
+  "reg_site": "0x5cb764",
+  "calls": 8,
+  "files": 1,
+  "example": "Scripts/AI/Specials.script",
+  "static": {
+   "args": {
+    "2": [
+     "isnum",
+     "str"
+    ],
+    "3": [
+     "isnum",
+     "str"
+    ],
+    "4": [
+     "num"
+    ]
+   },
+   "rets": [
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 409
+  }
+ },
+ {
+  "cls": "EventGrouprelation",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5cbda8",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventGrouprelation",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5cbdc8",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventGrouprelation",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5cbdeb",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventGrouprelation",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5cbe0b",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventGrouprelation",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5cbe2b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventGrouprelation",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5cbe4e",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventGrouprelation",
+  "name": "SetObject",
+  "impl": "0x5cbe80",
+  "reg_site": "0x5cbe6e",
+  "calls": 405,
+  "files": 147,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "isnum",
+     "str"
+    ],
+    "3": [
+     "isnum",
+     "str"
+    ],
+    "4": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 267
+  }
+ },
+ {
+  "cls": "EventAttackcarcass",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5cc228",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventAttackcarcass",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5cc248",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventAttackcarcass",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5cc26b",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventAttackcarcass",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5cc28b",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventAttackcarcass",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5cc2ab",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventAttackcarcass",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5cc2ce",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventAttackcarcass",
+  "name": "SetObject",
+  "impl": "0x5cc370",
+  "reg_site": "0x5cc2ee",
+  "calls": 405,
+  "files": 147,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 146
+  }
+ },
+ {
+  "cls": "EventAttackcarcass",
+  "name": "SetGroup",
+  "impl": "0x5cc680",
+  "reg_site": "0x5cc311",
+  "calls": 9,
+  "files": 1,
+  "example": "Scripts/include/NewTriggers.script",
+  "static": null
+ },
+ {
+  "cls": "EventAttackcarcass",
+  "name": "GetObject",
+  "impl": "0x5cc550",
+  "reg_site": "0x5cc331",
+  "calls": 11,
+  "files": 7,
+  "example": "Scripts/Quests/mission_17c/EridanProtectors_Eridan.script",
+  "static": {
+   "args": {
+    "2": [
+     "isnum",
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 251
+  }
+ },
+ {
+  "cls": "EventAttackcarcass",
+  "name": "GetGroup",
+  "impl": "0x5cc8a0",
+  "reg_site": "0x5cc354",
+  "calls": 265,
+  "files": 262,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 129
+  }
+ },
+ {
+  "cls": "EventSideinsideobjectvolume",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5cca68",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventSideinsideobjectvolume",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5cca88",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventSideinsideobjectvolume",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5ccaab",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventSideinsideobjectvolume",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5ccacb",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventSideinsideobjectvolume",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5ccaeb",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventSideinsideobjectvolume",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5ccb0e",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventSideinsideobjectvolume",
+  "name": "SetObject",
+  "impl": "0x5cccc0",
+  "reg_site": "0x5ccb2e",
+  "calls": 405,
+  "files": 147,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventSideinsideobjectvolume",
+  "name": "SetVolume",
+  "impl": "0x5cce30",
+  "reg_site": "0x5ccb51",
+  "calls": 329,
+  "files": 126,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 76
+  }
+ },
+ {
+  "cls": "EventSideinsideobjectvolume",
+  "name": "SetSide",
+  "impl": "0x5ccb90",
+  "reg_site": "0x5ccb71",
+  "calls": 5,
+  "files": 3,
+  "example": "Scripts/include/NewTriggers.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 86
+  }
+ },
+ {
+  "cls": "EventGroupinsideobjectvolume",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5ccf38",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventGroupinsideobjectvolume",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5ccf58",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventGroupinsideobjectvolume",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5ccf7b",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventGroupinsideobjectvolume",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5ccf9b",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventGroupinsideobjectvolume",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5ccfbb",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventGroupinsideobjectvolume",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5ccfde",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventGroupinsideobjectvolume",
+  "name": "SetObject",
+  "impl": "0x5cd280",
+  "reg_site": "0x5ccffe",
+  "calls": 405,
+  "files": 147,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 164
+  }
+ },
+ {
+  "cls": "EventGroupinsideobjectvolume",
+  "name": "SetVolume",
+  "impl": "0x5cd470",
+  "reg_site": "0x5cd021",
+  "calls": 329,
+  "files": 126,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 76
+  }
+ },
+ {
+  "cls": "EventGroupinsideobjectvolume",
+  "name": "SetGroup",
+  "impl": "0x5cd080",
+  "reg_site": "0x5cd041",
+  "calls": 9,
+  "files": 1,
+  "example": "Scripts/include/NewTriggers.script",
+  "static": {
+   "args": {
+    "2": [
+     "isnum",
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 151
+  }
+ },
+ {
+  "cls": "EventGroupinsideobjectvolume",
+  "name": "GetPilot",
+  "impl": "0x5cd560",
+  "reg_site": "0x5cd064",
+  "calls": 331,
+  "files": 281,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil"
+   ],
+   "gettop": false,
+   "ninstr": 80
+  }
+ },
+ {
+  "cls": "EventSideinsidevolume",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5cd688",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventSideinsidevolume",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5cd6a8",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventSideinsidevolume",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5cd6cb",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventSideinsidevolume",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5cd6eb",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventSideinsidevolume",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5cd70b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventSideinsidevolume",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5cd72e",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventSideinsidevolume",
+  "name": "SetSide",
+  "impl": "0x5cd7b0",
+  "reg_site": "0x5cd74e",
+  "calls": 5,
+  "files": 3,
+  "example": "Scripts/include/NewTriggers.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 87
+  }
+ },
+ {
+  "cls": "EventSideinsidevolume",
+  "name": "SetVolume",
+  "impl": "0x5cd9f0",
+  "reg_site": "0x5cd771",
+  "calls": 329,
+  "files": 126,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 125
+  }
+ },
+ {
+  "cls": "EventSideinsidevolume",
+  "name": "GetPilot",
+  "impl": "0x5cd8e0",
+  "reg_site": "0x5cd791",
+  "calls": 331,
+  "files": 281,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil"
+   ],
+   "gettop": false,
+   "ninstr": 80
+  }
+ },
+ {
+  "cls": "EventGroupinsidevolume",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5cdbb8",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventGroupinsidevolume",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5cdbd8",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventGroupinsidevolume",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5cdbfb",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventGroupinsidevolume",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5cdc1b",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventGroupinsidevolume",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5cdc3b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventGroupinsidevolume",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5cdc5e",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventGroupinsidevolume",
+  "name": "SetGroup",
+  "impl": "0x5cdce0",
+  "reg_site": "0x5cdc7e",
+  "calls": 9,
+  "files": 1,
+  "example": "Scripts/include/NewTriggers.script",
+  "static": {
+   "args": {
+    "2": [
+     "isnum",
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 152
+  }
+ },
+ {
+  "cls": "EventGroupinsidevolume",
+  "name": "SetVolume",
+  "impl": "0x5ce000",
+  "reg_site": "0x5cdca1",
+  "calls": 329,
+  "files": 126,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 140
+  }
+ },
+ {
+  "cls": "EventGroupinsidevolume",
+  "name": "GetPilot",
+  "impl": "0x5cdef0",
+  "reg_site": "0x5cdcc1",
+  "calls": 331,
+  "files": 281,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil"
+   ],
+   "gettop": false,
+   "ninstr": 80
+  }
+ },
+ {
+  "cls": "EventGroupinsidegroupvolume",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5ce1e8",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventGroupinsidegroupvolume",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5ce208",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventGroupinsidegroupvolume",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5ce22b",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventGroupinsidegroupvolume",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5ce24b",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventGroupinsidegroupvolume",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5ce26b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventGroupinsidegroupvolume",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5ce28e",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventGroupinsidegroupvolume",
+  "name": "SetGroups",
+  "impl": "0x5ce330",
+  "reg_site": "0x5ce2ae",
+  "calls": 2,
+  "files": 1,
+  "example": "Scripts/include/NewTriggers.script",
+  "static": {
+   "args": {
+    "2": [
+     "isnum",
+     "str"
+    ],
+    "3": [
+     "isnum",
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 225
+  }
+ },
+ {
+  "cls": "EventGroupinsidegroupvolume",
+  "name": "SetLenght",
+  "impl": "0x5ce860",
+  "reg_site": "0x5ce2d1",
+  "calls": 2,
+  "files": 1,
+  "example": "Scripts/include/NewTriggers.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 108
+  }
+ },
+ {
+  "cls": "EventGroupinsidegroupvolume",
+  "name": "GetPilot_1",
+  "impl": "0x5ce640",
+  "reg_site": "0x5ce2f1",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [
+    "nil"
+   ],
+   "gettop": false,
+   "ninstr": 80
+  }
+ },
+ {
+  "cls": "EventGroupinsidegroupvolume",
+  "name": "GetPilot_2",
+  "impl": "0x5ce750",
+  "reg_site": "0x5ce314",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [
+    "nil"
+   ],
+   "gettop": false,
+   "ninstr": 80
+  }
+ },
+ {
+  "cls": "EventFlightinsidevolume",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5ce9c8",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventFlightinsidevolume",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5ce9e8",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventFlightinsidevolume",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5cea0b",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventFlightinsidevolume",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5cea2b",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventFlightinsidevolume",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5cea4b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventFlightinsidevolume",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5cea6e",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventFlightinsidevolume",
+  "name": "SetObject",
+  "impl": "0x5cec50",
+  "reg_site": "0x5cea8e",
+  "calls": 405,
+  "files": 147,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 124
+  }
+ },
+ {
+  "cls": "EventFlightinsidevolume",
+  "name": "SetVolume",
+  "impl": "0x5cedf0",
+  "reg_site": "0x5ceab1",
+  "calls": 329,
+  "files": 126,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 125
+  }
+ },
+ {
+  "cls": "EventFlightinsidevolume",
+  "name": "GetTargetObject",
+  "impl": "0x5cefa0",
+  "reg_site": "0x5cead1",
+  "calls": 16,
+  "files": 1,
+  "example": "Scripts/AI/Specials.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 68
+  }
+ },
+ {
+  "cls": "EventFlightinsidevolume",
+  "name": "GetDestination",
+  "impl": "0x5cf080",
+  "reg_site": "0x5ceaf4",
+  "calls": 8,
+  "files": 1,
+  "example": "Scripts/AI/Specials.script",
+  "static": {
+   "args": {
+    "2": [
+     "isstr"
+    ],
+    "4": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 329
+  }
+ },
+ {
+  "cls": "EventFlightinsideobjectvolume",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5ceb28",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventFlightinsideobjectvolume",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5ceb48",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventFlightinsideobjectvolume",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5ceb6b",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventFlightinsideobjectvolume",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5ceb8b",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventFlightinsideobjectvolume",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5cebab",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventFlightinsideobjectvolume",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5cebce",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventFlightinsideobjectvolume",
+  "name": "SetObjects",
+  "impl": "0x5cf150",
+  "reg_site": "0x5cebee",
+  "calls": 9,
+  "files": 4,
+  "example": "Scripts/level_0_01/triggers.script",
+  "static": {
+   "args": {
+    "2": [
+     "isstr"
+    ],
+    "4": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 264
+  }
+ },
+ {
+  "cls": "EventFlightinsideobjectvolume",
+  "name": "GetFlight",
+  "impl": "0x5cf3c0",
+  "reg_site": "0x5cec11",
+  "calls": 629,
+  "files": 287,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 68
+  }
+ },
+ {
+  "cls": "EventFlightinsideobjectvolume",
+  "name": "GetDestinationObject",
+  "impl": "0x5cf4a0",
+  "reg_site": "0x5cec31",
+  "calls": 10,
+  "files": 8,
+  "example": "Scripts/Quests/mission_20a/Heart_and_Reason_NK.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 90
+  }
+ },
+ {
+  "cls": "EventFlightdied",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5d0378",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventFlightdied",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5d0398",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventFlightdied",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5d03bb",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventFlightdied",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5d03db",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventFlightdied",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5d03fb",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventFlightdied",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5d041e",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventFlightdied",
+  "name": "SetObject",
+  "impl": "0x5d0450",
+  "reg_site": "0x5d043e",
+  "calls": 405,
+  "files": 147,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventCamerarotate",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5d05c8",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventCamerarotate",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5d05e8",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventCamerarotate",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5d060b",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventCamerarotate",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5d062b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventCamerarotate",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5d064b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventCamerarotate",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5d066e",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventCamerarotate",
+  "name": "SetParams",
+  "impl": "0x5d06a0",
+  "reg_site": "0x5d068e",
+  "calls": 4,
+  "files": 1,
+  "example": "Scripts/level_0_01/triggers.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 140
+  }
+ },
+ {
+  "cls": "EventCamerareach",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5d0898",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventCamerareach",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5d08b8",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventCamerareach",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5d08db",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventCamerareach",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5d08fb",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventCamerareach",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5d091b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventCamerareach",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5d093e",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventCamerareach",
+  "name": "SetParams",
+  "impl": "0x5d0970",
+  "reg_site": "0x5d095e",
+  "calls": 4,
+  "files": 1,
+  "example": "Scripts/level_0_01/triggers.script",
+  "static": {
+   "args": {
+    "2": [
+     "isstr"
+    ],
+    "3": [
+     "num"
+    ],
+    "4": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 158
+  }
+ },
+ {
+  "cls": "EventOnfocus",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5d0b78",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventOnfocus",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5d0b98",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventOnfocus",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5d0bbb",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventOnfocus",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5d0bdb",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventOnfocus",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5d0bfb",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventOnfocus",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5d0c1e",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventOnfocus",
+  "name": "SetObject",
+  "impl": "0x5d0c50",
+  "reg_site": "0x5d0c3e",
+  "calls": 405,
+  "files": 147,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 132
+  }
+ },
+ {
+  "cls": "EventOnhealth",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5d0e08",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventOnhealth",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5d0e28",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventOnhealth",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5d0e4b",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventOnhealth",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5d0e6b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventOnhealth",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5d0e8b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventOnhealth",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5d0eae",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventOnhealth",
+  "name": "SetObject",
+  "impl": "0x5d0f10",
+  "reg_site": "0x5d0ece",
+  "calls": 405,
+  "files": 147,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 132
+  }
+ },
+ {
+  "cls": "EventOnhealth",
+  "name": "SetHealth",
+  "impl": "0x5d10b0",
+  "reg_site": "0x5d0ef1",
+  "calls": 2,
+  "files": 2,
+  "example": "Scripts/include/NewTriggers.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 90
+  }
+ },
+ {
+  "cls": "EventOncameraswitch",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5d11d8",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventOncameraswitch",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5d11f8",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventOncameraswitch",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5d121b",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventOncameraswitch",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5d123b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventOncameraswitch",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5d125b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventOncameraswitch",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5d127e",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventOncameraswitch",
+  "name": "SetCameraType",
+  "impl": "0x5d12b0",
+  "reg_site": "0x5d129e",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 80
+  }
+ },
+ {
+  "cls": "EventOnescort",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5d13b8",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventOnescort",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5d13d8",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventOnescort",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5d13fb",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventOnescort",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5d141b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventOnescort",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5d143b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventOnescort",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5d145e",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventOnescort",
+  "name": "SetObject",
+  "impl": "0x4685e0",
+  "reg_site": "0x5d147e",
+  "calls": 405,
+  "files": 147,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 1
+  }
+ },
+ {
+  "cls": "EventOnpilotintobase",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5d14a8",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventOnpilotintobase",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5d14c8",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventOnpilotintobase",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5d14eb",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventOnpilotintobase",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5d150b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventOnpilotintobase",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5d152b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventOnpilotintobase",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5d154e",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventOnpilotintobase",
+  "name": "SetObject",
+  "impl": "0x5d1580",
+  "reg_site": "0x5d156e",
+  "calls": 405,
+  "files": 147,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 118
+  }
+ },
+ {
+  "cls": "EventOnusespecial",
+  "name": "Activate",
+  "impl": "0x5cad00",
+  "reg_site": "0x5d1708",
+  "calls": 1213,
+  "files": 278,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "EventOnusespecial",
+  "name": "AttachCondition",
+  "impl": "0x5c9530",
+  "reg_site": "0x5d1728",
+  "calls": 725,
+  "files": 193,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventOnusespecial",
+  "name": "AttachAction",
+  "impl": "0x5c96e0",
+  "reg_site": "0x5d174b",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "EventOnusespecial",
+  "name": "AssotiateTrigger",
+  "impl": "0x5cfbe0",
+  "reg_site": "0x5d176b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "EventOnusespecial",
+  "name": "GetAssotiatedData",
+  "impl": "0x5cfd20",
+  "reg_site": "0x5d178b",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "EventOnusespecial",
+  "name": "Delete",
+  "impl": "0x5c9020",
+  "reg_site": "0x5d17ae",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 109
+  }
+ },
+ {
+  "cls": "EventOnusespecial",
+  "name": "SetObject",
+  "impl": "0x5d17e0",
+  "reg_site": "0x5d17ce",
+  "calls": 405,
+  "files": 147,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 118
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreateQuaternionFromVector3",
+  "impl": "0x5de5b0",
+  "reg_site": "0x5d2830",
+  "calls": 53,
+  "files": 40,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 34
+  }
+ },
+ {
+  "cls": "global",
+  "name": "LOG",
+  "impl": "0x5d3d00",
+  "reg_site": "0x5d2860",
+  "calls": 84,
+  "files": 21,
+  "example": "Scripts/MapInitialization.script",
+  "static": {
+   "args": {
+    "1": [
+     "isnum",
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 17
+  }
+ },
+ {
+  "cls": "global",
+  "name": "SLOG",
+  "impl": "0x5d3d40",
+  "reg_site": "0x5d2891",
+  "calls": 61,
+  "files": 8,
+  "example": "Scripts/MapInitialization.script",
+  "static": {
+   "args": {
+    "1": [
+     "isnum",
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 181
+  }
+ },
+ {
+  "cls": "global",
+  "name": "FocusOn",
+  "impl": "0x5d4030",
+  "reg_site": "0x5d28c2",
+  "calls": 86,
+  "files": 65,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "isstr",
+     "type"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [
+    "string"
+   ],
+   "gettop": true,
+   "ninstr": 346
+  }
+ },
+ {
+  "cls": "global",
+  "name": "Message",
+  "impl": "0x5d3fb0",
+  "reg_site": "0x5d28f2",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "1": [
+     "isstr",
+     "str",
+     "type"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [
+    "string"
+   ],
+   "gettop": true,
+   "ninstr": 396
+  }
+ },
+ {
+  "cls": "global",
+  "name": "StartDialog",
+  "impl": "0x5e4ee0",
+  "reg_site": "0x5d2923",
+  "calls": 1264,
+  "files": 230,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ],
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 225
+  }
+ },
+ {
+  "cls": "global",
+  "name": "HideAnswer",
+  "impl": "0x5e52b0",
+  "reg_site": "0x5d2954",
+  "calls": 6,
+  "files": 1,
+  "example": "Scripts/include/DockStation.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 74
+  }
+ },
+ {
+  "cls": "global",
+  "name": "ShowAnswer",
+  "impl": "0x5e53c0",
+  "reg_site": "0x5d2984",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 74
+  }
+ },
+ {
+  "cls": "global",
+  "name": "SetReplaceValue",
+  "impl": "0x5e54d0",
+  "reg_site": "0x5d29b5",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ],
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 96
+  }
+ },
+ {
+  "cls": "global",
+  "name": "StartTradeDialog",
+  "impl": "0x5e5620",
+  "reg_site": "0x5d29e6",
+  "calls": 16,
+  "files": 3,
+  "example": "Scripts/include/OutOfMission.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ],
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 169
+  }
+ },
+ {
+  "cls": "global",
+  "name": "Pause",
+  "impl": "0x5e5900",
+  "reg_site": "0x5d2a16",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "1": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 19
+  }
+ },
+ {
+  "cls": "global",
+  "name": "SetNormalTimeMode",
+  "impl": "0x5e5950",
+  "reg_site": "0x5d2a47",
+  "calls": 836,
+  "files": 283,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 18
+  }
+ },
+ {
+  "cls": "global",
+  "name": "SetPlayerCredits",
+  "impl": "0x5e5a30",
+  "reg_site": "0x5d2a78",
+  "calls": 3,
+  "files": 3,
+  "example": "Scripts/InitTeamScript.script",
+  "static": {
+   "args": {
+    "1": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 27
+  }
+ },
+ {
+  "cls": "global",
+  "name": "AddPlayerCredits",
+  "impl": "0x5e5aa0",
+  "reg_site": "0x5d2aa8",
+  "calls": 130,
+  "files": 30,
+  "example": "Scripts/Quests/mission_15c/Reconnaissance_XT26.script",
+  "static": {
+   "args": {
+    "1": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 27
+  }
+ },
+ {
+  "cls": "global",
+  "name": "SubPlayerCredits",
+  "impl": "0x5e5b10",
+  "reg_site": "0x5d2ad9",
+  "calls": 46,
+  "files": 30,
+  "example": "Scripts/Quests/mission_9c/Blocade_Endoria2_2.script",
+  "static": {
+   "args": {
+    "1": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 27
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetPlayerCredits",
+  "impl": "0x5e5b80",
+  "reg_site": "0x5d2b0a",
+  "calls": 33,
+  "files": 26,
+  "example": "Scripts/Quests/mission_9c/Blocade_Endoria2_2.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 29
+  }
+ },
+ {
+  "cls": "global",
+  "name": "Exit",
+  "impl": "0x5e4230",
+  "reg_site": "0x5d2b3a",
+  "calls": 4,
+  "files": 2,
+  "example": "Scripts/level_0_01/functions.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 19
+  }
+ },
+ {
+  "cls": "global",
+  "name": "AddPost",
+  "impl": "0x5e4290",
+  "reg_site": "0x5d2b6b",
+  "calls": 1001,
+  "files": 167,
+  "example": "Scripts/InitTeamScript.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 84
+  }
+ },
+ {
+  "cls": "global",
+  "name": "RemovePost",
+  "impl": "0x5e4360",
+  "reg_site": "0x5d2b9c",
+  "calls": 208,
+  "files": 84,
+  "example": "Scripts/Quests/mission_9c/Blocade_Elio_2.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 27
+  }
+ },
+ {
+  "cls": "global",
+  "name": "FixTeam",
+  "impl": "0x5e43d0",
+  "reg_site": "0x5d2bcc",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 36
+  }
+ },
+ {
+  "cls": "global",
+  "name": "TradeStationDlg",
+  "impl": "0x5e4500",
+  "reg_site": "0x5d2bfd",
+  "calls": 21,
+  "files": 20,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 30
+  }
+ },
+ {
+  "cls": "global",
+  "name": "PatrolStationDlg",
+  "impl": "0x5e4470",
+  "reg_site": "0x5d2c2e",
+  "calls": 7,
+  "files": 1,
+  "example": "Scripts/include/DockStation.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 40
+  }
+ },
+ {
+  "cls": "global",
+  "name": "TeleportToLocation",
+  "impl": "0x5e4570",
+  "reg_site": "0x5d2c5e",
+  "calls": 142,
+  "files": 139,
+  "example": "Scripts/Quests/mission_16b/Revenge_Deosis.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 30
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CustomTeleportate",
+  "impl": "0x5e45e0",
+  "reg_site": "0x5d2c8f",
+  "calls": 40,
+  "files": 39,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ],
+    "2": [
+     "str"
+    ],
+    "3": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 44
+  }
+ },
+ {
+  "cls": "global",
+  "name": "EndGame",
+  "impl": "0x5e4670",
+  "reg_site": "0x5d2cc0",
+  "calls": 115,
+  "files": 75,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 22
+  }
+ },
+ {
+  "cls": "global",
+  "name": "EnablePortals",
+  "impl": "0x5e46b0",
+  "reg_site": "0x5d2cf0",
+  "calls": 29,
+  "files": 15,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ],
+    "2": [
+     "str"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 27
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetLastLocation",
+  "impl": "0x5e4700",
+  "reg_site": "0x5d2d21",
+  "calls": 171,
+  "files": 169,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetCurrentLocation",
+  "impl": "0x5e47b0",
+  "reg_site": "0x5d2d52",
+  "calls": 7,
+  "files": 3,
+  "example": "Scripts/include/OutOfMission.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 48
+  }
+ },
+ {
+  "cls": "global",
+  "name": "Terminate",
+  "impl": "0x5e4ae0",
+  "reg_site": "0x5d2d82",
+  "calls": 41,
+  "files": 38,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 36
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreatePilot",
+  "impl": "0x5d7340",
+  "reg_site": "0x5d2db3",
+  "calls": 461,
+  "files": 179,
+  "example": "Scripts/InitTeamScript.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 46
+  }
+ },
+ {
+  "cls": "global",
+  "name": "AssignPilotToShip",
+  "impl": "0x4685e0",
+  "reg_site": "0x5d2de4",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 1
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreateTeam",
+  "impl": "0x5d95e0",
+  "reg_site": "0x5d2e14",
+  "calls": 805,
+  "files": 334,
+  "example": "Scripts/InitTeamScript.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 37
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreateCarcass",
+  "impl": "0x5df7c0",
+  "reg_site": "0x5d2e45",
+  "calls": 889,
+  "files": 156,
+  "example": "Scripts/InitTeamScript.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 353
+  }
+ },
+ {
+  "cls": "global",
+  "name": "Vector3",
+  "impl": "0x5ddf60",
+  "reg_site": "0x5d2e76",
+  "calls": 38670,
+  "files": 511,
+  "example": "Scripts/InitTeamScript.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 33
+  }
+ },
+ {
+  "cls": "global",
+  "name": "Quaternion",
+  "impl": "0x5de3e0",
+  "reg_site": "0x5d2ea6",
+  "calls": 53,
+  "files": 13,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 100
+  }
+ },
+ {
+  "cls": "global",
+  "name": "SetPlayerMotherShip",
+  "impl": "0x5d44f0",
+  "reg_site": "0x5d2ed7",
+  "calls": 23,
+  "files": 22,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "isnum",
+     "str"
+    ]
+   },
+   "rets": [
+    "number",
+    "string",
+    "table"
+   ],
+   "gettop": true,
+   "ninstr": 928
+  }
+ },
+ {
+  "cls": "global",
+  "name": "AddPilotToPlayer",
+  "impl": "0x5e4120",
+  "reg_site": "0x5d2f08",
+  "calls": 39,
+  "files": 22,
+  "example": "Scripts/InitTeamScript.script",
+  "static": {
+   "args": {
+    "1": [
+     "isstr"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 82
+  }
+ },
+ {
+  "cls": "global",
+  "name": "PlaceModule",
+  "impl": "0x5e4b80",
+  "reg_site": "0x5d2f38",
+  "calls": 24,
+  "files": 9,
+  "example": "Scripts/Quests/mission_11_1/PrecursorsArtefact_Phantom_Precursors_1.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 153
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetShipName",
+  "impl": "0x5d4e90",
+  "reg_site": "0x5d2f69",
+  "calls": 25,
+  "files": 22,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "isnum",
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 189
+  }
+ },
+ {
+  "cls": "global",
+  "name": "RepairBase",
+  "impl": "0x5d5110",
+  "reg_site": "0x5d2f9a",
+  "calls": 1,
+  "files": 1,
+  "example": "Scripts/include/DockStation.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 31
+  }
+ },
+ {
+  "cls": "global",
+  "name": "QuestActionDone",
+  "impl": "0x5e4860",
+  "reg_site": "0x5d2fca",
+  "calls": 389,
+  "files": 266,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 4
+  }
+ },
+ {
+  "cls": "global",
+  "name": "QuestStart",
+  "impl": "0x5e4880",
+  "reg_site": "0x5d2ffb",
+  "calls": 404,
+  "files": 185,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 25
+  }
+ },
+ {
+  "cls": "global",
+  "name": "QuestChoice",
+  "impl": "0x5e48f0",
+  "reg_site": "0x5d302c",
+  "calls": 103,
+  "files": 41,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ],
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 40
+  }
+ },
+ {
+  "cls": "global",
+  "name": "SetQuestLabel",
+  "impl": "0x5e4980",
+  "reg_site": "0x5d305c",
+  "calls": 767,
+  "files": 222,
+  "example": "Scripts/InitTeamScript.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ],
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 28
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetQuestLabel",
+  "impl": "0x5e49d0",
+  "reg_site": "0x5d308d",
+  "calls": 603,
+  "files": 231,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "string"
+   ],
+   "gettop": true,
+   "ninstr": 24
+  }
+ },
+ {
+  "cls": "global",
+  "name": "ClearQuestLabel",
+  "impl": "0x5e4a10",
+  "reg_site": "0x5d30be",
+  "calls": 68,
+  "files": 32,
+  "example": "Scripts/Quests/mission_9c/Blocade_Elio_2.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 18
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetPlayerQuestState",
+  "impl": "0x5e4a50",
+  "reg_site": "0x5d30ee",
+  "calls": 2,
+  "files": 2,
+  "example": "Scripts/include/OutOfMission.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 23
+  }
+ },
+ {
+  "cls": "global",
+  "name": "ClearQuests",
+  "impl": "0x5e4aa0",
+  "reg_site": "0x5d311f",
+  "calls": 114,
+  "files": 85,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 16
+  }
+ },
+ {
+  "cls": "global",
+  "name": "SetObjectLabel",
+  "impl": "0x5dd880",
+  "reg_site": "0x5d3150",
+  "calls": 1217,
+  "files": 121,
+  "example": "Scripts/Quests/mission_15e/BerserkReturn_NK.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 93
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetObjectLabel",
+  "impl": "0x5dd9c0",
+  "reg_site": "0x5d3180",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "isstr"
+    ]
+   },
+   "rets": [
+    "nil",
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 100
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetObjectByLabel",
+  "impl": "0x5ddb00",
+  "reg_site": "0x5d31b1",
+  "calls": 1211,
+  "files": 115,
+  "example": "Scripts/include/Anomalies.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [
+    "nil"
+   ],
+   "gettop": false,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "global",
+  "name": "SetNavPointLabel",
+  "impl": "0x5ddc90",
+  "reg_site": "0x5d31e2",
+  "calls": 755,
+  "files": 121,
+  "example": "Scripts/Quests/mission_15c/Reconnaissance_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 83
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetNavPointByLabel",
+  "impl": "0x5dddb0",
+  "reg_site": "0x5d3212",
+  "calls": 726,
+  "files": 113,
+  "example": "Scripts/Locations/Gaoba/functions.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [
+    "nil"
+   ],
+   "gettop": false,
+   "ninstr": 51
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetPlayerMotherShip",
+  "impl": "0x5dd780",
+  "reg_site": "0x5d3243",
+  "calls": 133,
+  "files": 120,
+  "example": "Scripts/Movie/declare.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil"
+   ],
+   "gettop": false,
+   "ninstr": 74
+  }
+ },
+ {
+  "cls": "global",
+  "name": "PlacePlayerShipsToHangar",
+  "impl": "0x5e4d80",
+  "reg_site": "0x5d3274",
+  "calls": 13,
+  "files": 6,
+  "example": "Scripts/Quests/mission_6u/After_USS_Debris1.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 105
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreatePortalGlow",
+  "impl": "0x5e5fe0",
+  "reg_site": "0x5d32a4",
+  "calls": 236,
+  "files": 65,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "num"
+    ],
+    "2": [
+     "num"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 247
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreateFadeScreen",
+  "impl": "0x5e6220",
+  "reg_site": "0x5d32d5",
+  "calls": 4,
+  "files": 4,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "1": [
+     "num"
+    ],
+    "2": [
+     "num"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 81
+  }
+ },
+ {
+  "cls": "global",
+  "name": "AddPlayerExperience",
+  "impl": "0x5e6350",
+  "reg_site": "0x5d3306",
+  "calls": 10,
+  "files": 3,
+  "example": "Scripts/Quests/mission_2/TradersLife.script",
+  "static": {
+   "args": {
+    "1": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 127
+  }
+ },
+ {
+  "cls": "global",
+  "name": "RecruitsPayRequest",
+  "impl": "0x5e6cd0",
+  "reg_site": "0x5d3336",
+  "calls": 2,
+  "files": 1,
+  "example": "Scripts/include/recruits.script",
+  "static": {
+   "args": {
+    "1": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 23
+  }
+ },
+ {
+  "cls": "global",
+  "name": "RecruitsPayTest",
+  "impl": "0x5e6d20",
+  "reg_site": "0x5d3367",
+  "calls": 1,
+  "files": 1,
+  "example": "Scripts/include/recruits.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": true,
+   "ninstr": 49
+  }
+ },
+ {
+  "cls": "global",
+  "name": "RecruitsSetMinCount",
+  "impl": "0x5e6db0",
+  "reg_site": "0x5d3398",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "1": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 24
+  }
+ },
+ {
+  "cls": "global",
+  "name": "RecruitsSetMaxCount",
+  "impl": "0x5e6e10",
+  "reg_site": "0x5d33c8",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "1": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 31
+  }
+ },
+ {
+  "cls": "global",
+  "name": "RecruitsGetMsgDlgText",
+  "impl": "0x5e6e80",
+  "reg_site": "0x5d33f9",
+  "calls": 1,
+  "files": 1,
+  "example": "Scripts/include/recruits.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "string"
+   ],
+   "gettop": true,
+   "ninstr": 90
+  }
+ },
+ {
+  "cls": "global",
+  "name": "RecruitsCanProcessLocation",
+  "impl": "0x5e7360",
+  "reg_site": "0x5d342a",
+  "calls": 1,
+  "files": 1,
+  "example": "Scripts/include/recruits.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number",
+    "string"
+   ],
+   "gettop": true,
+   "ninstr": 62
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetRecruitGroupName",
+  "impl": "0x5e73f0",
+  "reg_site": "0x5d345a",
+  "calls": 1,
+  "files": 1,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 7
+  }
+ },
+ {
+  "cls": "global",
+  "name": "SetInitTeamRelation",
+  "impl": "0x5d5190",
+  "reg_site": "0x5d348b",
+  "calls": 624,
+  "files": 204,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "isnum",
+     "str"
+    ],
+    "2": [
+     "isnum",
+     "str"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 272
+  }
+ },
+ {
+  "cls": "global",
+  "name": "SetGroupRelation",
+  "impl": "0x5d5540",
+  "reg_site": "0x5d34bc",
+  "calls": 371,
+  "files": 128,
+  "example": "Scripts/Quests/mission_4_52/Find_Matt_Elio.script",
+  "static": {
+   "args": {
+    "1": [
+     "isnum",
+     "str"
+    ],
+    "2": [
+     "isnum",
+     "str"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 386
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetGroupRelation",
+  "impl": "0x5d5a70",
+  "reg_site": "0x5d34ec",
+  "calls": 283,
+  "files": 149,
+  "example": "Scripts/Quests/mission_15c/Reconnaissance_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "isnum",
+     "str"
+    ],
+    "2": [
+     "isnum",
+     "str"
+    ]
+   },
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 220
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetTeamRelation",
+  "impl": "0x5d5db0",
+  "reg_site": "0x5d351d",
+  "calls": 380,
+  "files": 130,
+  "example": "Scripts/Quests/mission_12e_03/MisteriousHelper_fin_Prien.script",
+  "static": {
+   "args": {
+    "1": [
+     "isnum",
+     "str"
+    ],
+    "2": [
+     "isnum",
+     "str"
+    ]
+   },
+   "rets": [
+    "number"
+   ],
+   "gettop": true,
+   "ninstr": 247
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetLevelDifficult",
+  "impl": "0x5e59a0",
+  "reg_site": "0x5d354e",
+  "calls": 231,
+  "files": 51,
+  "example": "Scripts/InitTradeSystem.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 41
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreatePlayerTeam",
+  "impl": "0x5d6120",
+  "reg_site": "0x5d357e",
+  "calls": 3,
+  "files": 3,
+  "example": "Scripts/Movie/declare.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 260
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetCarcassCountInSphere",
+  "impl": "0x5e68f0",
+  "reg_site": "0x5d35af",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [
+    "number"
+   ],
+   "gettop": true,
+   "ninstr": 83
+  }
+ },
+ {
+  "cls": "global",
+  "name": "OutputToScreenLog",
+  "impl": "0x5e5f00",
+  "reg_site": "0x5d35e0",
+  "calls": 82,
+  "files": 59,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ],
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 61
+  }
+ },
+ {
+  "cls": "global",
+  "name": "LoadCloud",
+  "impl": "0x5e5bf0",
+  "reg_site": "0x5d3610",
+  "calls": 592,
+  "files": 95,
+  "example": "Scripts/Quests/mission_6/Meet_with_Past_B_leftera1.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 137
+  }
+ },
+ {
+  "cls": "global",
+  "name": "PlayVideo",
+  "impl": "0x5e6a20",
+  "reg_site": "0x5d3641",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 48
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetPrevMissionExitCode",
+  "impl": "0x5e6ae0",
+  "reg_site": "0x5d3672",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 28
+  }
+ },
+ {
+  "cls": "global",
+  "name": "RotateSkyBox",
+  "impl": "0x5e5dc0",
+  "reg_site": "0x5d36a2",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 93
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetUserFolder",
+  "impl": "0x5d3c50",
+  "reg_site": "0x5d36cf",
+  "calls": 1,
+  "files": 1,
+  "example": "Scripts/MapInitialization.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 41
+  }
+ },
+ {
+  "cls": "global",
+  "name": "SoundLength",
+  "impl": "0x5e6b50",
+  "reg_site": "0x5d36fc",
+  "calls": 46,
+  "files": 7,
+  "example": "Scripts/Quests/mission_2/TradersLife.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [
+    "number"
+   ],
+   "gettop": true,
+   "ninstr": 64
+  }
+ },
+ {
+  "cls": "global",
+  "name": "ClearFuncMessage",
+  "impl": "0x5e6c30",
+  "reg_site": "0x5d3728",
+  "calls": 2,
+  "files": 1,
+  "example": "Scripts/include/NextTutorialStep.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 45
+  }
+ },
+ {
+  "cls": "global",
+  "name": "UpdateTradeSystem",
+  "impl": "0x5de620",
+  "reg_site": "0x5d3840",
+  "calls": 18,
+  "files": 17,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 27
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreateShop",
+  "impl": "0x5de690",
+  "reg_site": "0x5d3871",
+  "calls": 25,
+  "files": 13,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 35
+  }
+ },
+ {
+  "cls": "global",
+  "name": "DestroyShop",
+  "impl": "0x5de710",
+  "reg_site": "0x5d389e",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 29
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetWhiteMarket",
+  "impl": "0x5de870",
+  "reg_site": "0x5d38ca",
+  "calls": 4,
+  "files": 3,
+  "example": "Scripts/Quests/mission_16a_3/EmpireUnderFire_Simeiz.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 45
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetBlackMarket",
+  "impl": "0x5de900",
+  "reg_site": "0x5d38f7",
+  "calls": 46,
+  "files": 3,
+  "example": "Scripts/InitTradeSystem.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 45
+  }
+ },
+ {
+  "cls": "global",
+  "name": "AutoSave",
+  "impl": "0x5e6ff0",
+  "reg_site": "0x5d3a4f",
+  "calls": 247,
+  "files": 112,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 219
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetCurHP",
+  "impl": "0x5e2d50",
+  "reg_site": "0x5d3a7f",
+  "calls": 28,
+  "files": 9,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": true,
+   "ninstr": 102
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetPilot",
+  "impl": "0x5e7410",
+  "reg_site": "0x5d3ab0",
+  "calls": 853,
+  "files": 239,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ],
+    "2": [
+     "iscf",
+     "isnum",
+     "num",
+     "str"
+    ],
+    "3": [
+     "iscf",
+     "isnum",
+     "num",
+     "str"
+    ]
+   },
+   "rets": [
+    "nil",
+    "string"
+   ],
+   "gettop": true,
+   "ninstr": 469
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CombineStr",
+  "impl": "0x5e74f0",
+  "reg_site": "0x5d3ae1",
+  "calls": 8,
+  "files": 3,
+  "example": "Scripts/include/RandomFmerc.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ],
+    "2": [
+     "iscf",
+     "isnum",
+     "num",
+     "str"
+    ],
+    "3": [
+     "iscf",
+     "isnum",
+     "num",
+     "str"
+    ]
+   },
+   "rets": [
+    "string"
+   ],
+   "gettop": true,
+   "ninstr": 405
+  }
+ },
+ {
+  "cls": "global",
+  "name": "StopHere",
+  "impl": "0x5d6b50",
+  "reg_site": "0x5d3b11",
+  "calls": 108,
+  "files": 66,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 10
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreateRoute",
+  "impl": "0x5e7ad0",
+  "reg_site": "0x5d3b42",
+  "calls": 201,
+  "files": 93,
+  "example": "Scripts/Quests/mission_15c/Reconnaissance_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "global",
+  "name": "ClearRoute",
+  "impl": "0x5e7c00",
+  "reg_site": "0x5d3b73",
+  "calls": 54,
+  "files": 54,
+  "example": "Scripts/Quests/mission_6u/After_USS_Debris4.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 2
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetOwnerTeamOfGroup",
+  "impl": "0x5e7c10",
+  "reg_site": "0x5d3ba3",
+  "calls": 5,
+  "files": 3,
+  "example": "Scripts/include/FloodTradeStations.script",
+  "static": {
+   "args": {
+    "1": [
+     "isnum",
+     "str"
+    ]
+   },
+   "rets": [
+    "nil",
+    "string"
+   ],
+   "gettop": true,
+   "ninstr": 187
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetGroupByName",
+  "impl": "0x5e7e90",
+  "reg_site": "0x5d3bd0",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "1": [
+     "isnum",
+     "str"
+    ]
+   },
+   "rets": [
+    "nil"
+   ],
+   "gettop": false,
+   "ninstr": 130
+  }
+ },
+ {
+  "cls": "global",
+  "name": "RemoveBaseDriver",
+  "impl": "0x5e8040",
+  "reg_site": "0x5d3bfd",
+  "calls": 75,
+  "files": 20,
+  "example": "Scripts/Quests/mission_9c/Blocade_Endoria2_2.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 166
+  }
+ },
+ {
+  "cls": "global",
+  "name": "SetGodMode",
+  "impl": "0x5e3b20",
+  "reg_site": "0x5d3c29",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 99
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "Message",
+  "impl": "0x5d68a0",
+  "reg_site": "0x5d64c8",
+  "calls": 2267,
+  "files": 226,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 212
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "GetSide",
+  "impl": "0x5d73e0",
+  "reg_site": "0x5d64e8",
+  "calls": 54,
+  "files": 17,
+  "example": "Scripts/Quests/mission_9c/Blocade_Endoria2_2.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 104
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "HavePerk",
+  "impl": "0x5d7af0",
+  "reg_site": "0x5d650b",
+  "calls": 114,
+  "files": 18,
+  "example": "Scripts/Quests/mission_9c/Blocade_Dionis.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 145
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "Kill",
+  "impl": "0x5d7cf0",
+  "reg_site": "0x5d652b",
+  "calls": 40,
+  "files": 17,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 86
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "GetPoints",
+  "impl": "0x5d7e10",
+  "reg_site": "0x5d654b",
+  "calls": 2,
+  "files": 1,
+  "example": "Scripts/include/PilotProperties.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 91
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "SetPoints",
+  "impl": "0x5d7f40",
+  "reg_site": "0x5d656e",
+  "calls": 1,
+  "files": 1,
+  "example": "Scripts/include/PilotProperties.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 102
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "GetPiloting",
+  "impl": "0x5d8090",
+  "reg_site": "0x5d658e",
+  "calls": 4,
+  "files": 2,
+  "example": "Scripts/AI/Case_Attack.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 99
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "GetGunnery",
+  "impl": "0x5d81d0",
+  "reg_site": "0x5d65b1",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 191
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "GetMissiles",
+  "impl": "0x5d8300",
+  "reg_site": "0x5d65d1",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 93
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "GetElectronicsOperation",
+  "impl": "0x5d8430",
+  "reg_site": "0x5d65f4",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 93
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "GetFlight",
+  "impl": "0x5d79a0",
+  "reg_site": "0x5d6614",
+  "calls": 629,
+  "files": 287,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil"
+   ],
+   "gettop": false,
+   "ninstr": 101
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "GetFlightRole",
+  "impl": "0x5d7520",
+  "reg_site": "0x5d6634",
+  "calls": 6,
+  "files": 3,
+  "example": "Scripts/AI/Case_Attack.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 108
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "GetShip",
+  "impl": "0x5d7690",
+  "reg_site": "0x5d6657",
+  "calls": 509,
+  "files": 92,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil"
+   ],
+   "gettop": false,
+   "ninstr": 112
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "FocusOnFirstRocket",
+  "impl": "0x5d86a0",
+  "reg_site": "0x5d6677",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ],
+    "3": [
+     "num"
+    ],
+    "4": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "GetGroup",
+  "impl": "0x5d8560",
+  "reg_site": "0x5d669a",
+  "calls": 265,
+  "files": 262,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ],
+    "3": [
+     "num"
+    ],
+    "4": [
+     "num"
+    ]
+   },
+   "rets": [
+    "nil"
+   ],
+   "gettop": true,
+   "ninstr": 219
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "HasProperty",
+  "impl": "0x5d8830",
+  "reg_site": "0x5d66ba",
+  "calls": 665,
+  "files": 6,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 123
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "IsAlive",
+  "impl": "0x5d6b70",
+  "reg_site": "0x5d66dd",
+  "calls": 2143,
+  "files": 148,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 85
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "IsInBase",
+  "impl": "0x5d6c90",
+  "reg_site": "0x5d66fd",
+  "calls": 236,
+  "files": 56,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 97
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "IsEscort",
+  "impl": "0x5d71a0",
+  "reg_site": "0x5d671d",
+  "calls": 1,
+  "files": 1,
+  "example": "Scripts/level_0_02/functions.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "IsCanSayReplica",
+  "impl": "0x5d7060",
+  "reg_site": "0x5d6740",
+  "calls": 138,
+  "files": 28,
+  "example": "Scripts/Quests/mission_9c/Blocade_Endoria2_2.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 97
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "SetRank",
+  "impl": "0x5d89d0",
+  "reg_site": "0x5d6760",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 111
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "SetRankCorporation",
+  "impl": "0x5d8b60",
+  "reg_site": "0x5d6783",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 130
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "SetRankValue",
+  "impl": "0x5d8d20",
+  "reg_site": "0x5d67a3",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 89
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "SetRankUp",
+  "impl": "0x5d8e50",
+  "reg_site": "0x5d67c6",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 98
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "SetRankDown",
+  "impl": "0x5d8f80",
+  "reg_site": "0x5d67e6",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 98
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "SetRankClear",
+  "impl": "0x5d90b0",
+  "reg_site": "0x5d6806",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 86
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "SetPerk",
+  "impl": "0x5d91e0",
+  "reg_site": "0x5d6829",
+  "calls": 822,
+  "files": 11,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 123
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "IsBasePilot",
+  "impl": "0x5d6dd0",
+  "reg_site": "0x5d6849",
+  "calls": 305,
+  "files": 56,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 97
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "GetName",
+  "impl": "0x5d6f10",
+  "reg_site": "0x5d686c",
+  "calls": 21,
+  "files": 13,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 102
+  }
+ },
+ {
+  "cls": "Pilot",
+  "name": "GetTreeName",
+  "impl": "0x5d9380",
+  "reg_site": "0x5d688c",
+  "calls": 1,
+  "files": 1,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 132
+  }
+ },
+ {
+  "cls": "Team",
+  "name": "CreateGroup",
+  "impl": "0x5d9660",
+  "reg_site": "0x5d9568",
+  "calls": 827,
+  "files": 334,
+  "example": "Scripts/InitTeamScript.script",
+  "static": {
+   "args": {
+    "1": [
+     "gettable"
+    ],
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 76
+  }
+ },
+ {
+  "cls": "Team",
+  "name": "AddPilot",
+  "impl": "0x5d9770",
+  "reg_site": "0x5d9588",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "isstr"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 129
+  }
+ },
+ {
+  "cls": "Team",
+  "name": "RemovePilot",
+  "impl": "0x5d9910",
+  "reg_site": "0x5d95ab",
+  "calls": 42,
+  "files": 18,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 373
+  }
+ },
+ {
+  "cls": "Team",
+  "name": "CheckAllegiance",
+  "impl": "0x5d9b20",
+  "reg_site": "0x5d95cb",
+  "calls": 18,
+  "files": 5,
+  "example": "Scripts/Quests/mission_20a/Heart_and_Reason_NK.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 225
+  }
+ },
+ {
+  "cls": "Group",
+  "name": "CreateFlight",
+  "impl": "0x5d9f80",
+  "reg_site": "0x5d9ea8",
+  "calls": 197,
+  "files": 71,
+  "example": "Scripts/InitTeamScript.script",
+  "static": {
+   "args": {
+    "1": [
+     "gettable"
+    ],
+    "2": [
+     "isstr",
+     "str"
+    ]
+   },
+   "rets": [
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 78
+  }
+ },
+ {
+  "cls": "Group",
+  "name": "CreateRadar",
+  "impl": "0x5da090",
+  "reg_site": "0x5d9ec8",
+  "calls": 88,
+  "files": 39,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "3": [
+     "num"
+    ],
+    "4": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 126
+  }
+ },
+ {
+  "cls": "Group",
+  "name": "CreateShipAttachedRadar",
+  "impl": "0x5da260",
+  "reg_site": "0x5d9eeb",
+  "calls": 10,
+  "files": 9,
+  "example": "Scripts/Quests/mission_9c/Blocade_Endoria2_2.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 172
+  }
+ },
+ {
+  "cls": "Group",
+  "name": "DeleteRadar",
+  "impl": "0x5da4c0",
+  "reg_site": "0x5d9f0b",
+  "calls": 91,
+  "files": 37,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 105
+  }
+ },
+ {
+  "cls": "Group",
+  "name": "HavePerk",
+  "impl": "0x5da950",
+  "reg_site": "0x5d9f2b",
+  "calls": 114,
+  "files": 18,
+  "example": "Scripts/Quests/mission_9c/Blocade_Dionis.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [
+    "nil",
+    "number",
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 448
+  }
+ },
+ {
+  "cls": "Group",
+  "name": "AddFlight",
+  "impl": "0x5da630",
+  "reg_site": "0x5d9f4e",
+  "calls": 147,
+  "files": 39,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 103
+  }
+ },
+ {
+  "cls": "Group",
+  "name": "RemoveFlight",
+  "impl": "0x5da7c0",
+  "reg_site": "0x5d9f6e",
+  "calls": 150,
+  "files": 40,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 100
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "AddShip",
+  "impl": "0x5daf30",
+  "reg_site": "0x5dac18",
+  "calls": 396,
+  "files": 114,
+  "example": "Scripts/InitTeamScript.script",
+  "static": {
+   "args": {
+    "2": [
+     "isstr"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 133
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "AddPilot",
+  "impl": "0x5db0e0",
+  "reg_site": "0x5dac38",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "isstr"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 290
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "SetLeader",
+  "impl": "0x5db2f0",
+  "reg_site": "0x5dac5b",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 126
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "Dock",
+  "impl": "0x5db4c0",
+  "reg_site": "0x5dac7b",
+  "calls": 7,
+  "files": 2,
+  "example": "Scripts/Quests/mission_15d_1/Accents_Prien.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 161
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "Attack",
+  "impl": "0x5db700",
+  "reg_site": "0x5dac9b",
+  "calls": 602,
+  "files": 108,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 153
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "Move",
+  "impl": "0x5dbb60",
+  "reg_site": "0x5dacbe",
+  "calls": 885,
+  "files": 148,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 161
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "FocusOn",
+  "impl": "0x5dbdb0",
+  "reg_site": "0x5dacde",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 66
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "SetFormation",
+  "impl": "0x5dbea0",
+  "reg_site": "0x5dad01",
+  "calls": 18,
+  "files": 14,
+  "example": "Scripts/Quests/mission_16d/NightRaid_Vulcan.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 97
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "Patrol",
+  "impl": "0x5dc0e0",
+  "reg_site": "0x5dad21",
+  "calls": 2058,
+  "files": 149,
+  "example": "Scripts/Quests/mission_15c/Reconnaissance_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "type"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 184
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "Delete",
+  "impl": "0x5dbff0",
+  "reg_site": "0x5dad44",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 62
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "GetPosition",
+  "impl": "0x5dc360",
+  "reg_site": "0x5dad64",
+  "calls": 5353,
+  "files": 373,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 81
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "SetOrientation",
+  "impl": "0x5dc600",
+  "reg_site": "0x5dad84",
+  "calls": 79,
+  "files": 50,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 238
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "GetLeader",
+  "impl": "0x5dc480",
+  "reg_site": "0x5dada7",
+  "calls": 57,
+  "files": 12,
+  "example": "Scripts/Quests/mission_6c_1/Convoy1_Prien.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number",
+    "string",
+    "table"
+   ],
+   "gettop": false,
+   "ninstr": 106
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "Escort",
+  "impl": "0x5dc940",
+  "reg_site": "0x5dadc7",
+  "calls": 1707,
+  "files": 186,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 152
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "Stop",
+  "impl": "0x5dce70",
+  "reg_site": "0x5dadea",
+  "calls": 682,
+  "files": 153,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 57
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "Blow",
+  "impl": "0x5dcf40",
+  "reg_site": "0x5dae0a",
+  "calls": 331,
+  "files": 115,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 183
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "IsAlive",
+  "impl": "0x5dd1a0",
+  "reg_site": "0x5dae2d",
+  "calls": 2143,
+  "files": 148,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 221
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "RocketAttack",
+  "impl": "0x5db930",
+  "reg_site": "0x5dae4d",
+  "calls": 9,
+  "files": 8,
+  "example": "Scripts/Quests/mission_5_06/Failure_in_Endoria2.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 153
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "EnableChaseDistanceInfinity",
+  "impl": "0x5dd300",
+  "reg_site": "0x5dae6d",
+  "calls": 27,
+  "files": 4,
+  "example": "Scripts/Quests/mission_15c/Reconnaissance_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 113
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "DisableChaseDistanceInfinity",
+  "impl": "0x5dd480",
+  "reg_site": "0x5dae90",
+  "calls": 3,
+  "files": 1,
+  "example": "Scripts/Quests/mission_1/ReturnHero.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 113
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "SetChaseDistance",
+  "impl": "0x5dd600",
+  "reg_site": "0x5daeb0",
+  "calls": 58,
+  "files": 13,
+  "example": "Scripts/Quests/mission_15c/Reconnaissance_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [
+    "nil"
+   ],
+   "gettop": false,
+   "ninstr": 191
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "GetCount",
+  "impl": "0x5dcb60",
+  "reg_site": "0x5daed3",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 80
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "GetPilotCount",
+  "impl": "0x5dcc60",
+  "reg_site": "0x5daef3",
+  "calls": 325,
+  "files": 78,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 76
+  }
+ },
+ {
+  "cls": "Flight",
+  "name": "GetPilotByNumber",
+  "impl": "0x5dcd60",
+  "reg_site": "0x5daf16",
+  "calls": 273,
+  "files": 56,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [
+    "nil"
+   ],
+   "gettop": false,
+   "ninstr": 81
+  }
+ },
+ {
+  "cls": "Vector3",
+  "name": "Rotate",
+  "impl": "0x5de290",
+  "reg_site": "0x5dde69",
+  "calls": 27,
+  "files": 4,
+  "example": "Scripts/Quests/mission_8a/EmpireHelpers_Dionis.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 38
+  }
+ },
+ {
+  "cls": "Market",
+  "name": "ShipGoodsState",
+  "impl": "0x5de990",
+  "reg_site": "0x5de79a",
+  "calls": 28,
+  "files": 3,
+  "example": "Scripts/InitTradeSystem.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ],
+    "3": [
+     "num"
+    ],
+    "4": [
+     "num"
+    ],
+    "5": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 112
+  }
+ },
+ {
+  "cls": "Market",
+  "name": "ModuleGoodsState",
+  "impl": "0x5deb10",
+  "reg_site": "0x5de7c0",
+  "calls": 14,
+  "files": 1,
+  "example": "Scripts/include/FloodTradeStations.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ],
+    "3": [
+     "num"
+    ],
+    "4": [
+     "num"
+    ],
+    "5": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 112
+  }
+ },
+ {
+  "cls": "Market",
+  "name": "DefaultGoodsPrice",
+  "impl": "0x5dec90",
+  "reg_site": "0x5de7e9",
+  "calls": 2,
+  "files": 1,
+  "example": "Scripts/Quests/mission_16a_3/EmpireUnderFire_Simeiz.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 93
+  }
+ },
+ {
+  "cls": "Market",
+  "name": "CommonGoodsPrice",
+  "impl": "0x5dede0",
+  "reg_site": "0x5de80f",
+  "calls": 2,
+  "files": 1,
+  "example": "Scripts/Quests/mission_16a_3/EmpireUnderFire_Simeiz.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 93
+  }
+ },
+ {
+  "cls": "Market",
+  "name": "ClearGoodsState",
+  "impl": "0x5def30",
+  "reg_site": "0x5de835",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 88
+  }
+ },
+ {
+  "cls": "Market",
+  "name": "ClearMarket",
+  "impl": "0x5df070",
+  "reg_site": "0x5de85e",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 89
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "SetName",
+  "impl": "0x5dfe40",
+  "reg_site": "0x5df1c8",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 83
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "AssignPilot",
+  "impl": "0x5dff40",
+  "reg_site": "0x5df1e8",
+  "calls": 136,
+  "files": 44,
+  "example": "Scripts/InitTeamScript.script",
+  "static": {
+   "args": {
+    "1": [
+     "isstr"
+    ],
+    "2": [
+     "isstr"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 145
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "Dock",
+  "impl": "0x5e02c0",
+  "reg_site": "0x5df20b",
+  "calls": 7,
+  "files": 2,
+  "example": "Scripts/Quests/mission_15d_1/Accents_Prien.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 192
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "Attack",
+  "impl": "0x5e1180",
+  "reg_site": "0x5df22b",
+  "calls": 602,
+  "files": 108,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 156
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "Move",
+  "impl": "0x5e06f0",
+  "reg_site": "0x5df24b",
+  "calls": 885,
+  "files": 148,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 195
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "AddModule",
+  "impl": "0x5e0bc0",
+  "reg_site": "0x5df26e",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 166
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "IsAlive",
+  "impl": "0x5ec0b0",
+  "reg_site": "0x5df28e",
+  "calls": 2143,
+  "files": 148,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 85
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "Delete",
+  "impl": "0x5e09e0",
+  "reg_site": "0x5df2b1",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 142
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "Blow",
+  "impl": "0x5e2300",
+  "reg_site": "0x5df2d1",
+  "calls": 331,
+  "files": 115,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 81
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "ToHangar",
+  "impl": "0x5e13a0",
+  "reg_site": "0x5df2f4",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 65
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "SetOrientation",
+  "impl": "0x5dfcc0",
+  "reg_site": "0x5df314",
+  "calls": 79,
+  "files": 50,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "SetRole",
+  "impl": "0x5e0570",
+  "reg_site": "0x5df334",
+  "calls": 123,
+  "files": 28,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 319
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "AssignPilot",
+  "impl": "0x5e0100",
+  "reg_site": "0x5df357",
+  "calls": 136,
+  "files": 44,
+  "example": "Scripts/InitTeamScript.script",
+  "static": {
+   "args": {
+    "1": [
+     "isstr"
+    ],
+    "2": [
+     "isstr"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 151
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "GetPosition",
+  "impl": "0x5e1ee0",
+  "reg_site": "0x5df377",
+  "calls": 5353,
+  "files": 373,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 102
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "GetPilot",
+  "impl": "0x5d7810",
+  "reg_site": "0x5df39a",
+  "calls": 331,
+  "files": 281,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil"
+   ],
+   "gettop": false,
+   "ninstr": 227
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "SetPosition",
+  "impl": "0x5e2180",
+  "reg_site": "0x5df3ba",
+  "calls": 190,
+  "files": 63,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 114
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "AddModuleToInventory",
+  "impl": "0x5e0f00",
+  "reg_site": "0x5df3dd",
+  "calls": 90,
+  "files": 44,
+  "example": "Scripts/Quests/mission_5_2/Secret_place_Pegas.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 99
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "AddShipToInventory",
+  "impl": "0x5e1040",
+  "reg_site": "0x5df3fd",
+  "calls": 58,
+  "files": 25,
+  "example": "Scripts/Quests/mission_9c/Blocade_Dionis.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 98
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "GetManeurability",
+  "impl": "0x5e2030",
+  "reg_site": "0x5df41d",
+  "calls": 4,
+  "files": 2,
+  "example": "Scripts/AI/Case_Attack.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": true,
+   "ninstr": 105
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "ImBigShip",
+  "impl": "0x5e2e90",
+  "reg_site": "0x5df440",
+  "calls": 8,
+  "files": 5,
+  "example": "Scripts/include/Create_flight_2.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "PlayFX",
+  "impl": "0x5e2890",
+  "reg_site": "0x5df460",
+  "calls": 569,
+  "files": 202,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 153
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "ResetFX",
+  "impl": "0x5e2ac0",
+  "reg_site": "0x5df483",
+  "calls": 4,
+  "files": 1,
+  "example": "Scripts/Quests/mission_15c/Reconnaissance_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 203
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "Rotate",
+  "impl": "0x5e2560",
+  "reg_site": "0x5df4a3",
+  "calls": 27,
+  "files": 4,
+  "example": "Scripts/Quests/mission_8a/EmpireHelpers_Dionis.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 146
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "RotateOff",
+  "impl": "0x5e2750",
+  "reg_site": "0x5df4c6",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 248
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "SetHP",
+  "impl": "0x5e2c20",
+  "reg_site": "0x5df4e6",
+  "calls": 46,
+  "files": 17,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 94
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "SetOverVisibleForPlayer",
+  "impl": "0x5e2420",
+  "reg_site": "0x5df506",
+  "calls": 9,
+  "files": 4,
+  "example": "Scripts/Quests/mission_3/UnexpectedEncounter.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 100
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "AddMeshFX",
+  "impl": "0x5e6530",
+  "reg_site": "0x5df529",
+  "calls": 140,
+  "files": 55,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ],
+    "3": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 148
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "RemoveMeshFX",
+  "impl": "0x5e6760",
+  "reg_site": "0x5df549",
+  "calls": 11,
+  "files": 10,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {
+    "2": [
+     "num",
+     "str"
+    ]
+   },
+   "rets": [
+    "number"
+   ],
+   "gettop": true,
+   "ninstr": 201
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "IsCanPlaceTo",
+  "impl": "0x5e3000",
+  "reg_site": "0x5df56c",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": true,
+   "ninstr": 127
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "DrawBoundSphere",
+  "impl": "0x5e3190",
+  "reg_site": "0x5df58c",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 232
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "ComeToPortal",
+  "impl": "0x5e1870",
+  "reg_site": "0x5df5af",
+  "calls": 62,
+  "files": 32,
+  "example": "Scripts/Quests/mission_9c/Blocade_Endoria2_1.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 157
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "ComeToTradeStation",
+  "impl": "0x5e1a90",
+  "reg_site": "0x5df5cf",
+  "calls": 1,
+  "files": 1,
+  "example": "Scripts/Quests/mission_1/ReturnHero.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 157
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "ApplyImpulse",
+  "impl": "0x5e1cb0",
+  "reg_site": "0x5df5ef",
+  "calls": 141,
+  "files": 60,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 165
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "GetName",
+  "impl": "0x5e1490",
+  "reg_site": "0x5df612",
+  "calls": 21,
+  "files": 13,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "string"
+   ],
+   "gettop": true,
+   "ninstr": 102
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "GetOrientation",
+  "impl": "0x5e15e0",
+  "reg_site": "0x5df632",
+  "calls": 41,
+  "files": 24,
+  "example": "Scripts/Quests/mission_6u/After_USS_Debris1.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 100
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "GetVectorOrientation",
+  "impl": "0x5e1730",
+  "reg_site": "0x5df655",
+  "calls": 113,
+  "files": 40,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 95
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "SetShield",
+  "impl": "0x5e3340",
+  "reg_site": "0x5df675",
+  "calls": 10,
+  "files": 4,
+  "example": "Scripts/Quests/mission_11_1/PrecursorsArtefact_Phantom_Precursors_1.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 99
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "AddToGroup",
+  "impl": "0x5e3490",
+  "reg_site": "0x5df698",
+  "calls": 31,
+  "files": 7,
+  "example": "Scripts/Quests/mission_15c/Reconnaissance_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 110
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "GetGroupName",
+  "impl": "0x5e3610",
+  "reg_site": "0x5df6b8",
+  "calls": 4,
+  "files": 4,
+  "example": "Scripts/Quests/mission_17c/EridanProtectors_Eridan.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 106
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "Push",
+  "impl": "0x5e3790",
+  "reg_site": "0x5df6d8",
+  "calls": 4,
+  "files": 2,
+  "example": "Scripts/include/MineField.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ],
+    "3": [
+     "num"
+    ],
+    "4": [
+     "num"
+    ],
+    "5": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 252
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "ClearInventory",
+  "impl": "0x5e0dd0",
+  "reg_site": "0x5df6fb",
+  "calls": 25,
+  "files": 13,
+  "example": "Scripts/include/FloodTradeStations.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 90
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "SetGodMode",
+  "impl": "0x5e3b20",
+  "reg_site": "0x5df71b",
+  "calls": 428,
+  "files": 128,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 99
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "SetMaxSpeed",
+  "impl": "0x5e3c60",
+  "reg_site": "0x5df73e",
+  "calls": 5,
+  "files": 5,
+  "example": "Scripts/Quests/mission_13a/SavingFriend_a_XT24.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 100
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "GetMaxSpeed",
+  "impl": "0x5e3da0",
+  "reg_site": "0x5df75e",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 88
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "SetSteeringPower",
+  "impl": "0x5e3ec0",
+  "reg_site": "0x5df781",
+  "calls": 5,
+  "files": 5,
+  "example": "Scripts/Quests/mission_13a/SavingFriend_a_XT24.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 100
+  }
+ },
+ {
+  "cls": "Carcass",
+  "name": "GetSteeringPower",
+  "impl": "0x5e4000",
+  "reg_site": "0x5df7a1",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 88
+  }
+ },
+ {
+  "cls": "global",
+  "name": "InitEnvironment",
+  "impl": "0x5e9750",
+  "reg_site": "0x5e92e6",
+  "calls": 118,
+  "files": 118,
+  "example": "Scripts/Movie/coordinates.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 22
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreateNavPoint",
+  "impl": "0x5e9790",
+  "reg_site": "0x5e9313",
+  "calls": 1112,
+  "files": 226,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "3": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 209
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreateLine",
+  "impl": "0x5ea2e0",
+  "reg_site": "0x5e9341",
+  "calls": 512,
+  "files": 172,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "3": [
+     "type"
+    ],
+    "4": [
+     "num"
+    ],
+    "5": [
+     "num"
+    ],
+    "6": [
+     "num"
+    ],
+    "7": [
+     "num"
+    ]
+   },
+   "rets": [
+    "string",
+    "table"
+   ],
+   "gettop": true,
+   "ninstr": 242
+  }
+ },
+ {
+  "cls": "global",
+  "name": "DrawLine",
+  "impl": "0x5ea010",
+  "reg_site": "0x5e936b",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "1": [
+     "type"
+    ],
+    "2": [
+     "type"
+    ],
+    "3": [
+     "num"
+    ],
+    "4": [
+     "num"
+    ],
+    "5": [
+     "num"
+    ],
+    "6": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 209
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreateCloud",
+  "impl": "0x5ea720",
+  "reg_site": "0x5e9394",
+  "calls": 6,
+  "files": 1,
+  "example": "Scripts/include/Create_clouds.script",
+  "static": {
+   "args": {
+    "4": [
+     "str"
+    ],
+    "5": [
+     "num"
+    ],
+    "6": [
+     "num"
+    ],
+    "7": [
+     "num"
+    ],
+    "8": [
+     "num"
+    ],
+    "9": [
+     "num"
+    ],
+    "10": [
+     "num"
+    ],
+    "11": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 166
+  }
+ },
+ {
+  "cls": "global",
+  "name": "reload_script",
+  "impl": "0x5e9010",
+  "reg_site": "0x5e93be",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 68
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreatePortal",
+  "impl": "0x5eab60",
+  "reg_site": "0x5e93ff",
+  "calls": 12,
+  "files": 10,
+  "example": "Scripts/Locations/Gredos/location.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ],
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 193
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreateManagedPortal",
+  "impl": "0x5eadf0",
+  "reg_site": "0x5e942c",
+  "calls": 261,
+  "files": 113,
+  "example": "Scripts/Locations/Gaoba/location.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ],
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 250
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreateTradeStation",
+  "impl": "0x5ec460",
+  "reg_site": "0x5e945a",
+  "calls": 76,
+  "files": 76,
+  "example": "Scripts/Locations/Gaoba/location.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 190
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreateStation",
+  "impl": "0x5ec1d0",
+  "reg_site": "0x5e9484",
+  "calls": 543,
+  "files": 118,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 190
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreateAsteroid",
+  "impl": "0x5ec1d0",
+  "reg_site": "0x5e94ad",
+  "calls": 5959,
+  "files": 94,
+  "example": "Scripts/include/RandomObjects.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 190
+  }
+ },
+ {
+  "cls": "global",
+  "name": "InitMap",
+  "impl": "0x5ed0d0",
+  "reg_site": "0x5e94d7",
+  "calls": 118,
+  "files": 118,
+  "example": "Scripts/Movie/coordinates.script",
+  "static": {
+   "args": {
+    "1": [
+     "num"
+    ],
+    "2": [
+     "num"
+    ],
+    "3": [
+     "num"
+    ],
+    "4": [
+     "num"
+    ],
+    "5": [
+     "num"
+    ],
+    "6": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 82
+  }
+ },
+ {
+  "cls": "global",
+  "name": "PlaySound3D",
+  "impl": "0x5ed250",
+  "reg_site": "0x5e9536",
+  "calls": 2,
+  "files": 1,
+  "example": "Scripts/include/Anomalies.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 65
+  }
+ },
+ {
+  "cls": "global",
+  "name": "PlaySound",
+  "impl": "0x5ed1e0",
+  "reg_site": "0x5e9563",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 111
+  }
+ },
+ {
+  "cls": "global",
+  "name": "PlayMusic",
+  "impl": "0x5ed310",
+  "reg_site": "0x5e9591",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ],
+    "2": [
+     "num"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 80
+  }
+ },
+ {
+  "cls": "global",
+  "name": "AddMusicToPlayList",
+  "impl": "0x5ed430",
+  "reg_site": "0x5e95bf",
+  "calls": 3,
+  "files": 3,
+  "example": "Scripts/level_0_01/music.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 67
+  }
+ },
+ {
+  "cls": "global",
+  "name": "StartPlayList",
+  "impl": "0x5ed650",
+  "reg_site": "0x5e95ec",
+  "calls": 3,
+  "files": 3,
+  "example": "Scripts/level_0_01/music.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 50
+  }
+ },
+ {
+  "cls": "global",
+  "name": "AddMusicToBattlePlayList",
+  "impl": "0x5ed540",
+  "reg_site": "0x5e9616",
+  "calls": 3,
+  "files": 3,
+  "example": "Scripts/level_0_01/music.script",
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 67
+  }
+ },
+ {
+  "cls": "global",
+  "name": "SwitchToMap",
+  "impl": "0x5e9e60",
+  "reg_site": "0x5e9640",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 20
+  }
+ },
+ {
+  "cls": "global",
+  "name": "SwitchToGame",
+  "impl": "0x5e9ec0",
+  "reg_site": "0x5e9669",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 20
+  }
+ },
+ {
+  "cls": "NavPoint",
+  "name": "Delete",
+  "impl": "0x5e9a90",
+  "reg_site": "0x5e96c8",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 62
+  }
+ },
+ {
+  "cls": "NavPoint",
+  "name": "FlashOn",
+  "impl": "0x5e9b70",
+  "reg_site": "0x5e96e8",
+  "calls": 8,
+  "files": 4,
+  "example": "Scripts/Quests/mission_16a_1/EmpireUnderFire_Altrabon.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 202
+  }
+ },
+ {
+  "cls": "NavPoint",
+  "name": "FlashOff",
+  "impl": "0x5e9f10",
+  "reg_site": "0x5e970b",
+  "calls": 4,
+  "files": 3,
+  "example": "Scripts/Quests/mission_16a_1/EmpireUnderFire_Altrabon.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 70
+  }
+ },
+ {
+  "cls": "Line",
+  "name": "Delete",
+  "impl": "0x5ea640",
+  "reg_site": "0x5e9738",
+  "calls": 3504,
+  "files": 219,
+  "example": "Scripts/Quests/mission_16a_2/EmpireUnderFire_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 68
+  }
+ },
+ {
+  "cls": "Portal",
+  "name": "Start",
+  "impl": "0x5eb520",
+  "reg_site": "0x5ea958",
+  "calls": 349,
+  "files": 154,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ],
+    "4": [
+     "str"
+    ],
+    "5": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 219
+  }
+ },
+ {
+  "cls": "Portal",
+  "name": "GetPosition",
+  "impl": "0x5ec850",
+  "reg_site": "0x5ea978",
+  "calls": 5353,
+  "files": 373,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 88
+  }
+ },
+ {
+  "cls": "Portal",
+  "name": "GetOrientation",
+  "impl": "0x5ebc80",
+  "reg_site": "0x5ea99b",
+  "calls": 41,
+  "files": 24,
+  "example": "Scripts/Quests/mission_6u/After_USS_Debris1.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "Portal",
+  "name": "GetEntryPoint",
+  "impl": "0x5eb340",
+  "reg_site": "0x5ea9bb",
+  "calls": 16,
+  "files": 6,
+  "example": "Scripts/Quests/mission_5_1/Mission_USS_Debris1_1.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 140
+  }
+ },
+ {
+  "cls": "Portal",
+  "name": "PlayFX",
+  "impl": "0x5eb160",
+  "reg_site": "0x5ea9db",
+  "calls": 569,
+  "files": 202,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 135
+  }
+ },
+ {
+  "cls": "Portal",
+  "name": "Blow",
+  "impl": "0x5ecbb0",
+  "reg_site": "0x5ea9fe",
+  "calls": 331,
+  "files": 115,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 75
+  }
+ },
+ {
+  "cls": "Portal",
+  "name": "SetHP",
+  "impl": "0x5ebdb0",
+  "reg_site": "0x5eaa1e",
+  "calls": 46,
+  "files": 17,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 85
+  }
+ },
+ {
+  "cls": "Portal",
+  "name": "AddMeshFX",
+  "impl": "0x5e6530",
+  "reg_site": "0x5eaa41",
+  "calls": 140,
+  "files": 55,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ],
+    "3": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 148
+  }
+ },
+ {
+  "cls": "Portal",
+  "name": "RemoveMeshFX",
+  "impl": "0x5e6760",
+  "reg_site": "0x5eaa61",
+  "calls": 11,
+  "files": 10,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {
+    "2": [
+     "num",
+     "str"
+    ]
+   },
+   "rets": [
+    "number"
+   ],
+   "gettop": true,
+   "ninstr": 201
+  }
+ },
+ {
+  "cls": "Portal",
+  "name": "IsEnabled",
+  "impl": "0x5ebed0",
+  "reg_site": "0x5eaa84",
+  "calls": 261,
+  "files": 113,
+  "example": "Scripts/Locations/Gaoba/functions.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 131
+  }
+ },
+ {
+  "cls": "Portal",
+  "name": "IsAlive",
+  "impl": "0x5ec0b0",
+  "reg_site": "0x5eaaa4",
+  "calls": 2143,
+  "files": 148,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 85
+  }
+ },
+ {
+  "cls": "Portal",
+  "name": "SetPosition",
+  "impl": "0x5eb820",
+  "reg_site": "0x5eaac4",
+  "calls": 190,
+  "files": 63,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 102
+  }
+ },
+ {
+  "cls": "Portal",
+  "name": "AddToGroup",
+  "impl": "0x5eb980",
+  "reg_site": "0x5eaae7",
+  "calls": 31,
+  "files": 7,
+  "example": "Scripts/Quests/mission_15c/Reconnaissance_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 110
+  }
+ },
+ {
+  "cls": "Portal",
+  "name": "GetGroupName",
+  "impl": "0x5ebb00",
+  "reg_site": "0x5eab07",
+  "calls": 4,
+  "files": 4,
+  "example": "Scripts/Quests/mission_17c/EridanProtectors_Eridan.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 106
+  }
+ },
+ {
+  "cls": "Portal",
+  "name": "SetGodMode",
+  "impl": "0x5e3b20",
+  "reg_site": "0x5eab2a",
+  "calls": 428,
+  "files": 128,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 99
+  }
+ },
+ {
+  "cls": "Portal",
+  "name": "ImBigShip",
+  "impl": "0x5e2e90",
+  "reg_site": "0x5eab4a",
+  "calls": 8,
+  "files": 5,
+  "example": "Scripts/include/Create_flight_2.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "Station",
+  "name": "GetPosition",
+  "impl": "0x5ec850",
+  "reg_site": "0x5ec708",
+  "calls": 5353,
+  "files": 373,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 88
+  }
+ },
+ {
+  "cls": "Station",
+  "name": "GetOrientation",
+  "impl": "0x5ebc80",
+  "reg_site": "0x5ec728",
+  "calls": 41,
+  "files": 24,
+  "example": "Scripts/Quests/mission_6u/After_USS_Debris1.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 92
+  }
+ },
+ {
+  "cls": "Station",
+  "name": "GetDockingPosition",
+  "impl": "0x5ec970",
+  "reg_site": "0x5ec74b",
+  "calls": 40,
+  "files": 15,
+  "example": "Scripts/Quests/mission_16e/Matrix_Zebos.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 87
+  }
+ },
+ {
+  "cls": "Station",
+  "name": "GetPreDockingPosition",
+  "impl": "0x5eca90",
+  "reg_site": "0x5ec76b",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 87
+  }
+ },
+ {
+  "cls": "Station",
+  "name": "Blow",
+  "impl": "0x5ecbb0",
+  "reg_site": "0x5ec78b",
+  "calls": 331,
+  "files": 115,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": true,
+   "ninstr": 75
+  }
+ },
+ {
+  "cls": "Station",
+  "name": "AddToGroup",
+  "impl": "0x5eccb0",
+  "reg_site": "0x5ec7ae",
+  "calls": 31,
+  "files": 7,
+  "example": "Scripts/Quests/mission_15c/Reconnaissance_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 110
+  }
+ },
+ {
+  "cls": "Station",
+  "name": "GetGroupName",
+  "impl": "0x5ece30",
+  "reg_site": "0x5ec7ce",
+  "calls": 4,
+  "files": 4,
+  "example": "Scripts/Quests/mission_17c/EridanProtectors_Eridan.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 106
+  }
+ },
+ {
+  "cls": "Station",
+  "name": "IsAlive",
+  "impl": "0x5ecfb0",
+  "reg_site": "0x5ec7f1",
+  "calls": 2143,
+  "files": 148,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 88
+  }
+ },
+ {
+  "cls": "Station",
+  "name": "SetGodMode",
+  "impl": "0x5e3b20",
+  "reg_site": "0x5ec811",
+  "calls": 428,
+  "files": 128,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 99
+  }
+ },
+ {
+  "cls": "Station",
+  "name": "ImBigShip",
+  "impl": "0x5e2e90",
+  "reg_site": "0x5ec834",
+  "calls": 8,
+  "files": 5,
+  "example": "Scripts/include/Create_flight_2.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": true,
+   "ninstr": 116
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreateModule",
+  "impl": "0x5ed7e0",
+  "reg_site": "0x5ed723",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "1": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 31
+  }
+ },
+ {
+  "cls": "global",
+  "name": "GetInventory",
+  "impl": "0x5ed840",
+  "reg_site": "0x5ed7a8",
+  "calls": 77,
+  "files": 48,
+  "example": "Scripts/Quests/mission_9e/GoShopping_Ashelon.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 8
+  }
+ },
+ {
+  "cls": "Inventory",
+  "name": "AddModule",
+  "impl": "0x5ed910",
+  "reg_site": "0x5ed878",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 79
+  }
+ },
+ {
+  "cls": "Inventory",
+  "name": "DeleteModule",
+  "impl": "0x5edbb0",
+  "reg_site": "0x5ed898",
+  "calls": 90,
+  "files": 41,
+  "example": "Scripts/Quests/mission_9e/GoShopping_Ashelon.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": false,
+   "ninstr": 69
+  }
+ },
+ {
+  "cls": "Inventory",
+  "name": "AddRocket",
+  "impl": "0x5eda20",
+  "reg_site": "0x5ed8bb",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 79
+  }
+ },
+ {
+  "cls": "Inventory",
+  "name": "AddShip",
+  "impl": "0x5edb30",
+  "reg_site": "0x5ed8db",
+  "calls": 396,
+  "files": 114,
+  "example": "Scripts/InitTeamScript.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 43
+  }
+ },
+ {
+  "cls": "Inventory",
+  "name": "IsExist",
+  "impl": "0x5edcb0",
+  "reg_site": "0x5ed8fb",
+  "calls": 92,
+  "files": 30,
+  "example": "Scripts/Quests/mission_9e/GoShopping_Ashelon.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [
+    "nil",
+    "number"
+   ],
+   "gettop": true,
+   "ninstr": 80
+  }
+ },
+ {
+  "cls": "global",
+  "name": "CreateMovie",
+  "impl": "0x5ee110",
+  "reg_site": "0x5edeb0",
+  "calls": 241,
+  "files": 116,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "num"
+    ]
+   },
+   "rets": [
+    "string"
+   ],
+   "gettop": false,
+   "ninstr": 249
+  }
+ },
+ {
+  "cls": "global",
+  "name": "PlayList",
+  "impl": "0x5ef140",
+  "reg_site": "0x5ededc",
+  "calls": 21,
+  "files": 18,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "type"
+    ],
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 194
+  }
+ },
+ {
+  "cls": "global",
+  "name": "StopCurrentMovie",
+  "impl": "0x5ef6b0",
+  "reg_site": "0x5edf09",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 26
+  }
+ },
+ {
+  "cls": "global",
+  "name": "MovieIsPlaying",
+  "impl": "0x5ef720",
+  "reg_site": "0x5edf36",
+  "calls": 5,
+  "files": 2,
+  "example": "Scripts/Quests/mission_19c/ProblemOfChoice_NK.script",
+  "static": {
+   "args": {},
+   "rets": [
+    "number"
+   ],
+   "gettop": false,
+   "ninstr": 33
+  }
+ },
+ {
+  "cls": "Movie(free/orient)",
+  "name": "InitMovie",
+  "impl": "0x5ee740",
+  "reg_site": "0x5ee338",
+  "calls": 241,
+  "files": 116,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 84
+  }
+ },
+ {
+  "cls": "Movie(free/orient)",
+  "name": "Play",
+  "impl": "0x5ee830",
+  "reg_site": "0x5ee358",
+  "calls": 172,
+  "files": 108,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 30
+  }
+ },
+ {
+  "cls": "Movie(free/orient)",
+  "name": "AddOrientKey",
+  "impl": "0x5ee8a0",
+  "reg_site": "0x5ee37b",
+  "calls": 51,
+  "files": 12,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ],
+    "3": [
+     "num"
+    ],
+    "4": [
+     "num"
+    ],
+    "5": [
+     "num"
+    ],
+    "6": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 120
+  }
+ },
+ {
+  "cls": "Movie(free/orient)",
+  "name": "AddOrientVectorKey",
+  "impl": "0x5eea20",
+  "reg_site": "0x5ee39b",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 102
+  }
+ },
+ {
+  "cls": "Movie(free/orient)",
+  "name": "AddPosKey",
+  "impl": "0x5eec70",
+  "reg_site": "0x5ee3bb",
+  "calls": 260,
+  "files": 109,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ],
+    "3": [
+     "num"
+    ],
+    "4": [
+     "num"
+    ],
+    "5": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 108
+  }
+ },
+ {
+  "cls": "Movie(free/orient)",
+  "name": "SetInterpolate",
+  "impl": "0x5eedc0",
+  "reg_site": "0x5ee3de",
+  "calls": 241,
+  "files": 116,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 140
+  }
+ },
+ {
+  "cls": "Movie(free/orient)",
+  "name": "SetLength",
+  "impl": "0x5eeed0",
+  "reg_site": "0x5ee3fe",
+  "calls": 241,
+  "files": 116,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 49
+  }
+ },
+ {
+  "cls": "Movie(free/orient)",
+  "name": "AttachAction",
+  "impl": "0x5ef330",
+  "reg_site": "0x5ee421",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 49
+  }
+ },
+ {
+  "cls": "Movie(free/orient)",
+  "name": "AttachEscapeScript",
+  "impl": "0x5ef4d0",
+  "reg_site": "0x5ee441",
+  "calls": 218,
+  "files": 111,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 49
+  }
+ },
+ {
+  "cls": "Movie(free/orient)",
+  "name": "AddScriptKey",
+  "impl": "0x5ef3c0",
+  "reg_site": "0x5ee464",
+  "calls": 195,
+  "files": 80,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 77
+  }
+ },
+ {
+  "cls": "Movie(target)",
+  "name": "InitMovie",
+  "impl": "0x5ee740",
+  "reg_site": "0x5ee498",
+  "calls": 241,
+  "files": 116,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 84
+  }
+ },
+ {
+  "cls": "Movie(target)",
+  "name": "Play",
+  "impl": "0x5ee830",
+  "reg_site": "0x5ee4b8",
+  "calls": 172,
+  "files": 108,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 30
+  }
+ },
+ {
+  "cls": "Movie(target)",
+  "name": "AddPosKey",
+  "impl": "0x5eec70",
+  "reg_site": "0x5ee4db",
+  "calls": 260,
+  "files": 109,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ],
+    "3": [
+     "num"
+    ],
+    "4": [
+     "num"
+    ],
+    "5": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 108
+  }
+ },
+ {
+  "cls": "Movie(target)",
+  "name": "SetInterpolate",
+  "impl": "0x5eedc0",
+  "reg_site": "0x5ee4fb",
+  "calls": 241,
+  "files": 116,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 140
+  }
+ },
+ {
+  "cls": "Movie(target)",
+  "name": "SetLength",
+  "impl": "0x5eeed0",
+  "reg_site": "0x5ee51b",
+  "calls": 241,
+  "files": 116,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 49
+  }
+ },
+ {
+  "cls": "Movie(target)",
+  "name": "SetTarget",
+  "impl": "0x5eef70",
+  "reg_site": "0x5ee53e",
+  "calls": 220,
+  "files": 112,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "type"
+    ],
+    "2": [
+     "isstr",
+     "str"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 337
+  }
+ },
+ {
+  "cls": "Movie(target)",
+  "name": "AttachAction",
+  "impl": "0x5ef330",
+  "reg_site": "0x5ee55e",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 49
+  }
+ },
+ {
+  "cls": "Movie(target)",
+  "name": "AttachEscapeScript",
+  "impl": "0x5ef4d0",
+  "reg_site": "0x5ee581",
+  "calls": 218,
+  "files": 111,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 49
+  }
+ },
+ {
+  "cls": "Movie(target)",
+  "name": "AddScriptKey",
+  "impl": "0x5ef3c0",
+  "reg_site": "0x5ee5a1",
+  "calls": 195,
+  "files": 80,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 77
+  }
+ },
+ {
+  "cls": "Movie(target)",
+  "name": "SetFollowRocketParam",
+  "impl": "0x5ef560",
+  "reg_site": "0x5ee5c4",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ],
+    "3": [
+     "num"
+    ],
+    "4": [
+     "num"
+    ],
+    "5": [
+     "num"
+    ],
+    "6": [
+     "num"
+    ],
+    "7": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 105
+  }
+ },
+ {
+  "cls": "Movie(keys)",
+  "name": "InitMovie",
+  "impl": "0x5ee740",
+  "reg_site": "0x5ee5f8",
+  "calls": 241,
+  "files": 116,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 84
+  }
+ },
+ {
+  "cls": "Movie(keys)",
+  "name": "Play",
+  "impl": "0x5ee830",
+  "reg_site": "0x5ee618",
+  "calls": 172,
+  "files": 108,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {},
+   "rets": [],
+   "gettop": false,
+   "ninstr": 30
+  }
+ },
+ {
+  "cls": "Movie(keys)",
+  "name": "AddKeys",
+  "impl": "0x5eeb70",
+  "reg_site": "0x5ee63b",
+  "calls": 135,
+  "files": 27,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ],
+    "3": [
+     "num"
+    ],
+    "4": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 85
+  }
+ },
+ {
+  "cls": "Movie(keys)",
+  "name": "SetInterpolate",
+  "impl": "0x5eedc0",
+  "reg_site": "0x5ee65b",
+  "calls": 241,
+  "files": 116,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 140
+  }
+ },
+ {
+  "cls": "Movie(keys)",
+  "name": "SetLength",
+  "impl": "0x5eeed0",
+  "reg_site": "0x5ee67b",
+  "calls": 241,
+  "files": 116,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 49
+  }
+ },
+ {
+  "cls": "Movie(keys)",
+  "name": "SetTarget",
+  "impl": "0x5eef70",
+  "reg_site": "0x5ee69e",
+  "calls": 220,
+  "files": 112,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "1": [
+     "type"
+    ],
+    "2": [
+     "isstr",
+     "str"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 337
+  }
+ },
+ {
+  "cls": "Movie(keys)",
+  "name": "AttachAction",
+  "impl": "0x5ef330",
+  "reg_site": "0x5ee6be",
+  "calls": 927,
+  "files": 267,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 49
+  }
+ },
+ {
+  "cls": "Movie(keys)",
+  "name": "AttachEscapeScript",
+  "impl": "0x5ef4d0",
+  "reg_site": "0x5ee6e1",
+  "calls": 218,
+  "files": 111,
+  "example": "Scripts/Quests/mission_19a/NewAcquisition_XT86.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 49
+  }
+ },
+ {
+  "cls": "Movie(keys)",
+  "name": "AddScriptKey",
+  "impl": "0x5ef3c0",
+  "reg_site": "0x5ee701",
+  "calls": 195,
+  "files": 80,
+  "example": "Scripts/Quests/mission_16e/Matrix_Eridan.script",
+  "static": {
+   "args": {
+    "2": [
+     "str"
+    ],
+    "3": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 77
+  }
+ },
+ {
+  "cls": "Movie(keys)",
+  "name": "SetFollowRocketParam",
+  "impl": "0x5ef560",
+  "reg_site": "0x5ee724",
+  "calls": 0,
+  "files": 0,
+  "example": null,
+  "static": {
+   "args": {
+    "2": [
+     "num"
+    ],
+    "3": [
+     "num"
+    ],
+    "4": [
+     "num"
+    ],
+    "5": [
+     "num"
+    ],
+    "6": [
+     "num"
+    ],
+    "7": [
+     "num"
+    ]
+   },
+   "rets": [],
+   "gettop": true,
+   "ninstr": 105
+  }
+ }
+]

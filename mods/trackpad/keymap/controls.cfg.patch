@@ -1,0 +1,66 @@
+--- a/Data/GUI/controls.cfg
++++ b/Data/GUI/controls.cfg
+@@ -22,11 +22,14 @@
+ ui_add_action "SelectChaseCamera"	"GAME"	""
+ ui_add_action "SelectTargetCamera"	"GAME"	""
+ 
+-ui_add_action "ShowFlightBars"	"GAME"	""
+-ui_add_action "HideFlightBars"	"GAME"	""
+-ui_add_action "ShowGameLog"	"GAME"	""
+-ui_add_action "HideGameLog"	"GAME"	""
+-ui_add_action "ToggleLaunchMode"	"GAME"	""
++; trackpad mod: the next five actions are never polled by sw3cw.exe (the names do not
++; occur in the exe). Commented out, not deleted. COMMA, PERIOD, A, Z and L keep working
++; through the hardcoded handlers in IState_Game::Update.
++;ui_add_action "ShowFlightBars"	"GAME"	""
++;ui_add_action "HideFlightBars"	"GAME"	""
++;ui_add_action "ShowGameLog"	"GAME"	""
++;ui_add_action "HideGameLog"	"GAME"	""
++;ui_add_action "ToggleLaunchMode"	"GAME"	""
+ 
+ ui_add_action "OpenMail"	"GAME"		"Show mailbox"
+ 
+@@ -40,6 +43,8 @@
+ ui_bind "F"		"ui_exec_action ToggleFocus"
+ ;ui_bind "SPACE"		"ui_exec_action ToggleFocus"
+ ;ui_bind "J"		"gui_toggleconsole"
++; trackpad mod: console on F6 (J is the follow camera below, F6 is only read by the dev FX editor)
++ui_bind "F6"		"gui_toggleconsole"
+ 
+ ui_bind "G"		"ui_exec_action SwitchCamera"
+ ui_bind "S"		"ui_exec_action StopSelection"
+@@ -51,17 +56,29 @@
+ ui_bind "F11"		"ui_exec_action SelectChaseCamera"
+ ui_bind "F12"		"ui_exec_action SelectAsimuthCamera"
+ 
++; trackpad mod: camera modes on letter keys (F9-F12 may need fn, macOS may take F11 for Show Desktop)
++; DIK codes are positional; U J K O have the same labels on US and German/Austrian layouts
++ui_bind "U"		"ui_exec_action SelectFreeCamera"
++ui_bind "J"		"ui_exec_action SelectTargetCamera"
++ui_bind "K"		"ui_exec_action SelectChaseCamera"
++ui_bind "O"		"ui_exec_action SelectAsimuthCamera"
++
++; trackpad mod: F2 = edge rotation off, F4 = on (cvar mouse_scrolling). Arrow keys are not affected
++ui_bind "F2"		"mouse_scrolling FALSE"
++ui_bind "F4"		"mouse_scrolling TRUE"
++
+ ui_bind "PAUSE"		"g_togglepause"
+ ui_bind "SPACE"		"g_togglepause"
+ ui_bind "P"		"g_togglepause"
+ ui_bind "Q"		"ui_exec_action ToggleQuestLog"
+ 
+-ui_bind "COMMA"		"ui_exec_action ShowFlightBars"
+-ui_bind "PERIOD"	"ui_exec_action HideFlightBars"
++; trackpad mod: dead binds (see note above), commented out
++;ui_bind "COMMA"		"ui_exec_action ShowFlightBars"
++;ui_bind "PERIOD"	"ui_exec_action HideFlightBars"
+ 
+-ui_bind "A"	  "ui_exec_action HideGameLog"
+-ui_bind "Z"   "ui_exec_action ShowGameLog"
+-ui_bind "L"   "ui_exec_action ToggleLaunchMode"
++;ui_bind "A"	  "ui_exec_action HideGameLog"
++;ui_bind "Z"   "ui_exec_action ShowGameLog"
++;ui_bind "L"   "ui_exec_action ToggleLaunchMode"
+ 
+ ui_bind "I"	"ui_exec_action OpenMail"
+ 
