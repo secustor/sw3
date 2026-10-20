@@ -8,7 +8,7 @@ Running the GOG Windows build of Star Wolves 3: Civil War (GOG id `1426253436`, 
 |---|---|---|---|
 | sw3-performance | [`mods/performance/`](mods/performance/README.md) | `dist/sw3-performance-<v>.zip` | The setup of sections 7 and 10 as an installer: arm64 Wine `arm64-11.19-2` (SHA-256 checked), prefix `sw3-arm64` with `EmulateModeset=Y`, fullscreen in `default.cfg`, Heroic GamesConfig pointed at both |
 | sw3-trackpad | [`mods/trackpad/`](mods/trackpad/README.md) | `dist/sw3-trackpad-<v>.zip` | Keymap (`controls.cfg` patch) and trackpad gestures (zlib1.dll proxy + `sw3tp.so`) |
-| sw3-traffic | [`mods/traffic/design/`](mods/traffic/design/PROGRESS.md) | none yet | NPC trader traffic with regional boom/bust cycles, pirate progression and bases. Design and engine research only; see `PROGRESS.md` for phases |
+| sw3-traffic | [`mods/traffic/`](mods/traffic/README.md) | none yet | NPC trader traffic with regional boom/bust cycles, pirate progression and bases. Phase 0 engine experiments (DLL hooks + test scripts); see [`PROGRESS.md`](mods/traffic/design/PROGRESS.md) for phases |
 | Pack | top-level `install.sh`, `uninstall.sh` | `dist/sw3-mods-pack-<v>.zip` | Both mods with one installer |
 
 Quit Heroic, then from the repo (or the unpacked pack):

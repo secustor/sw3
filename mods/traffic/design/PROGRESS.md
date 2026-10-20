@@ -6,18 +6,18 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[-]` dropped.
 
 ## Current state (2026-10-20)
 
-- Design and engine research complete; no mod code written yet.
+- Design and engine research complete. Phase 0 code written (2026-10-20): `traffic` module in the sw3tp proxy, loader and E0.1–E0.3 scripts, host tooling; nothing has run in the game yet.
 - Build route decided: Lua scripts under `Data/Scripts/Mods/Traffic/` plus a `traffic` module in the sw3tp `zlib1.dll` proxy (mod-options §5). Pure Lua is the fallback (option i).
-- Test bench: APFS clone `~/Games/Heroic/sw3-tp-test` with `mods/trackpad/run-test.sh`; a `mods/traffic/run-test.sh` variant is still to be written (mod-options §7).
+- Test bench: APFS clone `~/Games/Heroic/sw3-tp-test` with `mods/traffic/install-test.sh` (`EXP=0..3`), `run-test.sh`, `uninstall-test.sh` (mod-options §7).
 - The trackpad mod is installed in the real game; the traffic module will ship in the same proxy DLL.
 
 ## Phase 0: engine experiments (mod-options §7, design §13)
 
 Goal: confirm the facts the design depends on before writing traffic logic. Each experiment records its answer in design §13 and here.
 
-- [ ] E0.1 Hooks and natives alive: T1, T2a–d, T4 attach; `Mods/Traffic/traffic.script` loads last; `TRF_OnEnter`/`OnActivate`/`OnLoad` fire once per entry/load; `dt_game` is 0 while paused; x87 precision check; native globals can be wrapped (`type(TeleportToLocation)`).
-- [ ] E0.2 State across jump and save: T3 carry keeps `TRF` over two jumps; save/quit/load restores it via `TRF_OnLoad`; nested reserved key (`PI`) is dropped; save growth measured with a 1,000-entry dummy table.
-- [ ] E0.3 Trader life cycle primitives: `CreateCarcass` nil on blocked spot; `ComeToTradeStation` behaviour at the dock point; string callbacks `"TRF_OnArrive(1)--"`; `attack`, `f_died`, `f_object_inside` triggers; are NPC flights part of the location snapshot (mod-options Q1).
+- [~] E0.1 (scripts ready, awaiting in-game run: `exp_hooks.script`, `EXP=1`) Hooks and natives alive: T1, T2a–d, T4 attach; `Mods/Traffic/traffic.script` loads last; `TRF_OnEnter`/`OnActivate`/`OnLoad` fire once per entry/load; `dt_game` is 0 while paused; x87 precision check; native globals can be wrapped (`type(TeleportToLocation)`).
+- [~] E0.2 (scripts ready, awaiting in-game run: `exp_state.script`, `EXP=2`) State across jump and save: T3 carry keeps `TRF` over two jumps; save/quit/load restores it via `TRF_OnLoad`; nested reserved key (`PI`) is dropped; save growth measured with a 1,000-entry dummy table.
+- [~] E0.3 (scripts ready, awaiting in-game run: `exp_trader.script`, `EXP=3`) Trader life cycle primitives: `CreateCarcass` nil on blocked spot; `ComeToTradeStation` behaviour at the dock point; string callbacks `"TRF_OnArrive(1)--"`; `attack`, `f_died`, `f_object_inside` triggers; are NPC flights part of the location snapshot (mod-options Q1).
 - [ ] E0.4 Loot and markets: how much fitted gear and cargo drops; can containers be sold; `ModuleGoodsState` on unstocked items; `UpdateTradeSystem(TRUE)` persistence (design 13.6).
 - [ ] E0.5 Events: `_EVENT_ONFOCUS` on NPC ships; `_EVENT_ATTACKCARCASS` fire rate and attacker group; autopause for NPC-vs-NPC fights (design 13.2, 13.6).
 - [ ] E0.6 Text: `CombineStr` key + name; new `.loc` file loads EN/RU; ~110 `News.xml` records load; `ShowMsgBox` before `PatrolStationDlg` (design 13.5, 13.1).
@@ -32,9 +32,9 @@ Exit: every item above has an answer recorded in design §13 (or is explicitly d
 
 Scope (requirement IDs): M1–M13, M19 guard set only where needed, S3, S4, S13, S16, S20; `TRF` fields `version`, `active`, `gen`, `clock`, `sys[idx].dis`, `std.heat`.
 
-- [ ] Module skeleton in sw3tp: `[traffic]` ini section, T1–T4 hooks, byte checks, `TRF_Version`, `TRF_GameTime`, `TRF_RealTime`, `TRF_Log` (mod-options §5).
-- [ ] Host tooling: `tools/check_sites.py` (site bytes, callers, branch scan), Lua 4.0.1 `luac -p` lint, reserved-key lint, static table generator from `GlobalMap.xml` and `CreateManagedPortal` lines (design 5.1, M13).
-- [ ] `traffic.script` loader, `TRF_OnEnter/OnActivate/OnLoad/OnTick`, pre-jump wrappers (`TeleportToLocation`, `CustomTeleportate`).
+- [~] Module skeleton in sw3tp (`mods/traffic/pe/traffic.c`, builds into `zlib1.dll`; untested in game): `[traffic]` ini section, T1–T4 hooks, byte checks, `TRF_Version`, `TRF_GameTime`, `TRF_RealTime`, `TRF_Log` (mod-options §5).
+- [x] Host tooling (`mods/traffic/tools/`: `check_sites.py`, `lint_lua.py`, `gen_map.py` → `map.script`, `get-lua4.sh`; `tests/run_host.sh`): `tools/check_sites.py` (site bytes, callers, branch scan), Lua 4.0.1 `luac -p` lint, reserved-key lint, static table generator from `GlobalMap.xml` and `CreateManagedPortal` lines (design 5.1, M13).
+- [~] `traffic.script` loader (Phase 0 version, host-tested), `TRF_OnEnter/OnActivate/OnLoad/OnTick`, pre-jump wrappers (`TeleportToLocation`, `CustomTeleportate`).
 - [ ] Generator override: replace `R_CreateTraderFlight` by name in the 79 systems (9.1), identity (M2), paths A/B/C, portal spacing, docking by removal.
 - [ ] Caps, governor, lifetime, watchdog, orphan scan, duplicate guard (6.7, 6.8, M9).
 - [ ] Safety rules 9.8 S1–S3, S5–S8, S10–S12; suppression flags with extortion debounce (M4, M5).
@@ -100,3 +100,4 @@ C1–C21 as ordered in design §12 "After v1": cross-system escort contracts, st
 ## Log
 
 - 2026-10-20: design research (two Opus workflows), mod-options decision document, visibility features, regional cycle, trader prosperity, pirate clans and progression, faction sweeps and contracts, salvage, pirate bases, cargo-value-by-tier, volume scaling, faction equipment convoys, danger convoys, reconciliation with mod-options. Docs moved to `mods/traffic/design/`. No code yet.
+- 2026-10-20: implementation session (workflow). `traffic` module in the sw3tp proxy (`mods/traffic/pe/traffic.c`, hooks T1–T4 with byte and prologue checks, natives `TRF_Version/GameTime/RealTime/Log`, callbacks, T3 carry, `[traffic]` ini section, `trf_init` runs independent of `[sw3tp] enabled`); loader and E0.1–E0.3 scripts; generated `map.script` (113 systems, 256 portals, 79 trader systems); host tooling and Lua 4.0.1 harness (all runs pass); test scripts. Installed in the test clone with `EXP=1`; no in-game run yet. Nothing committed.

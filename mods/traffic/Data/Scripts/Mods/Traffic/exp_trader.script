@@ -1,0 +1,345 @@
+-- E0.3 trader life cycle primitives and the snapshot question (mod-options section 7, experiment 3).
+-- OnActivate spawns trader 1 at a portal and sends it to the trade station. Arrival, attack and death
+-- triggers use string callbacks ("TRF_OnArrive(1)--"): the engine runs an action as s.."();" and the
+-- comment hides the "();" (fact 1.14). After a dwell timer trader 1 flies to another portal; when it
+-- leaves or dies, trader 2 spawns and stays docked so the player can jump out while it is alive.
+-- Config del_on_jump=1 deletes live flights in TRF_BeforeJump. On each OnActivate the carcass count
+-- around the recorded spawn and last positions answers whether left-behind ships come back (Q1).
+--
+-- Handles never go into TRF (it is saved, and handles do not survive scenes). They live in the table
+-- below, an upvalue of TRF_Live: not a global, never saved, and re-created on every MapInitialization
+-- run (entry and load), so a load drops them. TRF.exp.trader holds plain data only.
+
+local live = {};
+
+function TRF_Live()
+	return %live;
+end;
+
+function TRF_T_Opt()
+	return {
+		carcass = "Btransport",      -- Trad_BigShips entries 5..7 in include/create_flight_2.script
+		pilot = "Trader",            -- Trad_Pilots
+		group = "Trade_Group_1",     -- created by activate.script in 103 of 114 locations
+		formation = "shipFormationColumn",
+		arrive_r = 150,              -- CHECK: f_object_inside radius around the station centre (game uses 120..150 for "near station")
+		dock_r = 75,                 -- CHECK: f_inside radius around GetDockingPosition (game docking dialogs use 25..110 for the mothership)
+		exit_r = 25,                 -- as ChanceToEarn_xt93.script uses for a portal
+		dwell = 20,                  -- seconds docked before ComeToPortal (timer trigger)
+		count_r = 100,               -- GetCarcassCountInSphere radius
+		log_every = 5,               -- OnTick position log interval, real seconds
+		max_attack_logs = 5
+	};
+end;
+
+function TRF_T_State()
+	if type(TRF.exp.trader) ~= "table" then
+		TRF.exp.trader = {seq=0, acc=0, spawns={}, last={}, ev={}};
+	end;
+	return TRF.exp.trader;
+end;
+
+function TRF_T_Ev(id, what)
+	local s = TRF_T_State();
+	local k = "t"..id;
+	if type(s.ev[k]) ~= "table" then s.ev[k] = {}; end;
+	s.ev[k][what] = (s.ev[k][what] or 0) + 1;
+	return s.ev[k][what];
+end;
+
+function TRF_T_Vec(v)
+	if type(v) ~= "table" then return tostring(v); end;
+	return "("..TRF_F(v.x)..","..TRF_F(v.y)..","..TRF_F(v.z)..")";
+end;
+
+function TRF_T_Dist(a, b)
+	if type(a) ~= "table" or type(b) ~= "table" then return nil; end;
+	local dx = a.x - b.x;
+	local dy = a.y - b.y;
+	local dz = a.z - b.z;
+	return sqrt(dx*dx + dy*dy + dz*dz);
+end;
+
+function TRF_T_Sys()
+	return tostring(TRF_N("GetCurrentLocation"));
+end;
+
+-- First object found among the labels the MapBuilder uses. Returns object, label.
+-- CHECK: GetObjectByLabel on a label the location lacks is expected to return nil without an error.
+function TRF_T_Find(labels)
+	for i = 1, getn(labels) do
+		local o = GetObjectByLabel(labels[i]);
+		if o then return o, labels[i]; end;
+	end;
+	return nil, nil;
+end;
+
+-- All portals found, farthest from the player mothership first (the nearest is usually the one the
+-- player came through, where IncommingAnim puts the mothership at GetEntryPoint(10)).
+function TRF_T_Portals()
+	local labels = TRF_T_PortalLabels();
+	local mp = nil;
+	local ms = TRF_N("GetPlayerMotherShip");
+	if ms then mp = ms:GetPosition(); end;
+	local r = {};
+	for i = 1, getn(labels) do
+		local o = GetObjectByLabel(labels[i]);
+		if o then tinsert(r, {o=o, label=labels[i], d=TRF_T_Dist(o:GetPosition(), mp) or 0}); end;
+	end;
+	sort(r, function(a, b) return a.d > b.d; end);
+	return r;
+end;
+
+function TRF_T_PortalLabels()
+	return {"PORTAL L", "PORTAL R", "PORTAL U", "PORTAL D", "PORTAL_L", "PORTAL_R", "PORTAL_U", "PORTAL_D"};
+end;
+
+function TRF_T_StationLabels()
+	return {"TRADE STATION", "TRADE_STATION", "TRADE"};
+end;
+
+function TRF_T_Count(where, pos)
+	if type(pos) ~= "table" then return; end;
+	local r = TRF_T_Opt().count_r;
+	local n = GetCarcassCountInSphere(Vector3(pos.x, pos.y, pos.z), r);
+	TRF_L("count "..where.." sys="..TRF_T_Sys().." pos="..TRF_T_Vec(pos).." r="..r.." -> "..tostring(n));
+	return n;
+end;
+
+function TRF_T_Group(o)
+	local g = getglobal(o.group);
+	if g then return g; end;
+	-- CHECK: GetGroupByName is registered but unused by shipped scripts.
+	g = TRF_N("GetGroupByName", o.group);
+	TRF_L("CHECK group global "..o.group.." missing; GetGroupByName -> "..tostring(g));
+	return g;
+end;
+
+-- Spawn one single-ship transport flight at a portal, using the primitives NewFlight wraps
+-- (Group:CreateFlight, CreateCarcass, CreatePilot, AssignPilot, AddShip) without its ship_/flight_ globals.
+-- mode "route": dock, dwell, leave through a portal. mode "stay": dock and stay.
+function TRF_T_Spawn(id, mode)
+	local o = TRF_T_Opt();
+	local s = TRF_T_State();
+	local sys = TRF_T_Sys();
+	local portals = TRF_T_Portals();
+	local station, slabel = TRF_T_Find(TRF_T_StationLabels());
+	TRF_L("spawn id="..id.." mode="..mode.." sys="..sys.." portals="..getn(portals).." station="..tostring(slabel));
+	if getn(portals) == 0 then TRF_L("spawn id="..id.." aborted: no portal"); return nil; end;
+	local grp = TRF_T_Group(o);
+	if not grp then TRF_L("spawn id="..id.." aborted: no group "..o.group); return nil; end;
+	local fl = grp:CreateFlight("TRF_e3_"..id.."_"..TRF.gen);
+	TRF_L("CreateFlight id="..id.." -> "..((fl and "ok") or "nil"));
+	if not fl then return nil; end;
+
+	-- CHECK: CreateCarcass is expected to return nil on a blocked spot; try the next portal then.
+	local ship, pos, dir, n0, k = nil, nil, nil, nil, 0;
+	while not ship and k < getn(portals) do
+		k = k + 1;
+		pos = portals[k].o:GetEntryPoint(10);
+		dir = portals[k].o:GetOrientation();
+		if type(pos) == "table" then
+			n0 = TRF_T_Count("before spawn id="..id.." at "..portals[k].label, pos);
+			ship = CreateCarcass(o.carcass, pos, dir);
+			TRF_L("CreateCarcass "..o.carcass.." at "..portals[k].label.." "..TRF_T_Vec(pos).." -> "..((ship and "ok") or "nil"));
+		else
+			TRF_L("GetEntryPoint at "..portals[k].label.." -> "..tostring(pos));
+		end;
+	end;
+	if not ship then return nil; end;
+	local portal = portals[k].o;
+	portal:Start(8, 0);
+	-- Exit through the portal nearest the player (last in the list) unless that is the spawn portal.
+	local e = getn(portals);
+	if e == k and e > 1 then e = e - 1; end;
+	local exitp = portals[e].o;
+	TRF_L("spawn id="..id.." portal="..portals[k].label.." exit="..portals[e].label);
+	local pil = CreatePilot(o.pilot);
+	ship:AssignPilot(pil);
+	fl:AddShip(ship);
+	fl:SetFormation(o.formation);
+	fl:SetOrientation(dir);
+	TRF_T_Count("after spawn id="..id.." (before="..tostring(n0)..")", pos);
+
+	s.spawns[sys] = {x=pos.x, y=pos.y, z=pos.z, id=id};
+	local h = {fl=fl, ship=ship, portal=portal, exitp=exitp, station=station, mode=mode, phase="to_station", sys=sys};
+	TRF_Live()[id] = h;
+
+	if station then
+		-- CHECK: ComeToTradeStation on an NPC transport (shipped scripts only use it on the player mothership).
+		ship:ComeToTradeStation(station);
+		-- Two arrival triggers, to learn which one fires (and where the ship stops): near the station
+		-- centre (how = 1) and at the docking position (how = 2). The first one that fires counts.
+		local dock = station:GetDockingPosition();
+		local t = NewTrigger("f_object_inside", nil, "TRF_OnArrive("..id..",1)--", fl, station, o.arrive_r);
+		local t2 = NewTrigger("f_inside", nil, "TRF_OnArrive("..id..",2)--", fl, dock, o.dock_r);
+		TRF_L("ComeToTradeStation id="..id.." station pos="..TRF_T_Vec(station:GetPosition()).." dock="..TRF_T_Vec(dock)
+			.." arrive triggers station="..((t and "ok") or "nil").." dock="..((t2 and "ok") or "nil"));
+	else
+		h.phase = "no_station";
+		TRF_L("CHECK no trade station label in "..sys.."; sending id="..id.." to exit portal");
+		TRF_T_Leave(id);
+	end;
+	local ta = NewTrigger("attack", nil, "TRF_OnAttack("..id..")--", PLAYER_GROUP, ship);
+	-- CHECK: f_died stays armed after OnExit deletes the flight; a stale OnDied right after OnExit
+	-- means Flight:Delete fires f_died (RandomContacts also leaves its attack trigger armed on Delete).
+	local td = NewTrigger("f_died", nil, "TRF_OnDied("..id..")--", fl);
+	TRF_L("triggers id="..id.." attack="..((ta and "ok") or "nil").." died="..((td and "ok") or "nil"));
+	return h;
+end;
+
+function TRF_T_Leave(id)
+	local h = TRF_Live()[id];
+	local o = TRF_T_Opt();
+	-- CHECK: whether ComeToPortal removes the ship by itself at the portal, or only flies there.
+	h.ship:ComeToPortal(h.exitp);
+	h.phase = "to_portal";
+	local t = NewTrigger("f_object_inside", nil, "TRF_OnExit("..id..")--", h.fl, h.exitp, o.exit_r);
+	TRF_L("ComeToPortal id="..id.." exit pos="..TRF_T_Vec(h.exitp:GetPosition()).." exit trigger="..((t and "ok") or "nil"));
+end;
+
+-- A callback whose id has no live handle comes from a trigger restored by a savegame or from an
+-- earlier scene: log it and do nothing.
+function TRF_T_Handle(name, id)
+	local n = TRF_T_Ev(id, name);
+	local h = TRF_Live()[id];
+	if not h then
+		TRF_L(name.." id="..tostring(id).." #"..n.." stale (no live handle)");
+		return nil;
+	end;
+	local p = nil;
+	if TRF_Is(h.fl:IsAlive()) then p = h.fl:GetPosition(); end;
+	TRF_L(name.." id="..id.." #"..n.." phase="..h.phase.." alive="..tostring(h.fl:IsAlive()).." pos="..TRF_T_Vec(p)
+		.." game="..TRF_F(TRF.clock.game));
+	return h;
+end;
+
+-- Trigger callbacks (globals, named in the trigger strings) ---------------------------
+
+function TRF_OnArrive(id, how)
+	local h = TRF_T_Handle("OnArrive", id);
+	if not h then return; end;
+	local p = h.fl:GetPosition();
+	if h.station then
+		TRF_L("OnArrive id="..id.." how="..tostring(how).." dist station="..TRF_F(TRF_T_Dist(p, h.station:GetPosition()))
+			.." dist dock="..TRF_F(TRF_T_Dist(p, h.station:GetDockingPosition())));
+	end;
+	if h.phase ~= "to_station" then return; end;
+	h.phase = "docked";
+	if h.mode == "route" then
+		local t = NewTrigger("timer", nil, "TRF_OnUndock("..id..")--", TRF_T_Opt().dwell);
+		TRF_L("OnArrive id="..id.." dwell timer="..((t and "ok") or "nil"));
+	end;
+end;
+
+function TRF_OnUndock(id)
+	local h = TRF_T_Handle("OnUndock", id);
+	if not h then return; end;
+	TRF_T_Leave(id);
+end;
+
+function TRF_OnExit(id)
+	local h = TRF_T_Handle("OnExit", id);
+	if not h then return; end;
+	h.phase = "exited";
+	-- As RandomContacts at the end portal: portal:Start(5, 0), then Flight:Delete().
+	h.exitp:Start(5, 0);
+	if TRF_Is(h.fl:IsAlive()) then h.fl:Delete(); end;
+	TRF_Live()[id] = nil;
+	TRF_L("OnExit id="..id.." flight deleted");
+	if id == 1 then TRF_T_Spawn(2, "stay"); end;
+end;
+
+function TRF_OnAttack(id)
+	local h = TRF_T_Handle("OnAttack", id);
+	if not h then return; end;
+	-- Triggers are one-shot; re-arm a few times to see how often the event fires.
+	if TRF_T_Ev(id, "rearm") <= TRF_T_Opt().max_attack_logs and TRF_Is(h.ship:IsAlive()) then
+		NewTrigger("attack", nil, "TRF_OnAttack("..id..")--", PLAYER_GROUP, h.ship);
+	end;
+end;
+
+function TRF_OnDied(id)
+	local h = TRF_T_Handle("OnDied", id);
+	TRF_Live()[id] = nil;
+	if h and id == 1 then TRF_T_Spawn(2, "stay"); end;
+end;
+
+-- Experiment callbacks ------------------------------------------------------------
+
+function TRF_T_ClearLive()
+	local l = TRF_Live();
+	local keys = {};
+	for k, v in l do tinsert(keys, k); end;
+	for i = 1, getn(keys) do l[keys[i]] = nil; end;
+	return getn(keys);
+end;
+
+function TRF_Exp_OnEnter(fresh)
+	local n = TRF_T_ClearLive();
+	TRF_L("OnEnter sys="..TRF_T_Sys().." dropped handles="..n.." fresh="..tostring(fresh));
+end;
+
+function TRF_Exp_OnActivate(fresh)
+	local s = TRF_T_State();
+	local sys = TRF_T_Sys();
+	TRF_L("OnActivate sys="..sys.." last="..tostring(TRF_N("GetLastLocation")));
+	-- Snapshot question: did ships left here come back on this revisit?
+	if s.spawns[sys] then TRF_T_Count("revisit spawn point", s.spawns[sys]); end;
+	if s.last[sys] then
+		TRF_T_Count("revisit last pos id="..tostring(s.last[sys].id).." deleted="..tostring(s.last[sys].deleted), s.last[sys]);
+	end;
+	if TRF_Live()[1] then return; end;
+	s.seq = s.seq + 1;
+	TRF_L("OnActivate spawn #"..s.seq);
+	TRF_T_Spawn(1, "route");
+end;
+
+function TRF_Exp_OnLoad(fresh)
+	local n = TRF_T_ClearLive();
+	TRF_L("OnLoad sys="..TRF_T_Sys().." dropped handles="..n.." fresh="..tostring(fresh).." (restored triggers now report stale ids)");
+	local s = TRF_T_State();
+	TRF_L("OnLoad events="..TRF_Dump(s.ev, 3));
+end;
+
+-- Log position and distances of live traders every log_every real seconds (dock behaviour, Q7).
+function TRF_Exp_OnTick(dg, dr)
+	local s = TRF_T_State();
+	s.acc = s.acc + dr;
+	if s.acc < TRF_T_Opt().log_every then return; end;
+	s.acc = 0;
+	for id, h in TRF_Live() do
+		if TRF_Is(h.fl:IsAlive()) then
+			local p = h.fl:GetPosition();
+			local ds = nil;
+			local dd = nil;
+			if h.station then
+				ds = TRF_T_Dist(p, h.station:GetPosition());
+				dd = TRF_T_Dist(p, h.station:GetDockingPosition());
+			end;
+			TRF_L("pos id="..id.." phase="..h.phase.." pos="..TRF_T_Vec(p).." dist station="..TRF_F(ds).." dist dock="..TRF_F(dd)
+				.." dist exit="..TRF_F(TRF_T_Dist(p, h.exitp:GetPosition())));
+		else
+			TRF_L("pos id="..id.." phase="..h.phase.." not alive");
+		end;
+	end;
+end;
+
+-- Record where live traders are, then delete them if del_on_jump=1 (runs before the jump native,
+-- so before the location snapshot is written).
+function TRF_Exp_BeforeJump(dest)
+	local s = TRF_T_State();
+	local del = (TRF_Cfg().del_on_jump == 1);
+	for id, h in TRF_Live() do
+		local alive = TRF_Is(h.fl:IsAlive());
+		if alive then
+			local p = h.fl:GetPosition();
+			s.last[h.sys] = {x=p.x, y=p.y, z=p.z, id=id, deleted=(del and 1) or 0};
+			if del then h.fl:Delete(); end;
+		end;
+		TRF_L("BeforeJump dest="..tostring(dest).." id="..id.." phase="..h.phase.." alive="..tostring(alive).." deleted="..tostring(del and alive));
+	end;
+	TRF_T_ClearLive();
+end;
+
+TRF_L("top-level load");

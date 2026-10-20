@@ -1,0 +1,208 @@
+-- sw3-traffic loader (Lua 4.0.1).
+-- The DLL hook T2a appends "Mods/Traffic/traffic.script" to sys_IncludeFileList, so ParseSystemScripts
+-- runs this file last on every MapInitialization run (location entry, savegame load, menu): next() visits the
+-- 1..n keys in order (host Lua 4.0.1 and the game's LOGfile.txt agree), but Lua 4.0 does not guarantee it.
+-- TRF_Main runs protected, so an error here cannot stop ParseSystemScripts from loading later includes.
+-- Top level only defines functions and guard-installs wrappers. Data globals set here would be cleared
+-- (entry) or overwritten by the save restore (load); all state lives in the global table TRF.
+
+function TRF_Path(name)
+	return "DATA/Scripts/Mods/Traffic/"..name;
+end;
+
+-- Config table from config.script; defaults when it is missing or broken.
+function TRF_Cfg()
+	if type(TRF_Config) == "function" then
+		local c = TRF_Config();
+		if type(c) == "table" then return c; end;
+	end;
+	return {exp=0, log=1};
+end;
+
+function TRF_ExpId()
+	return "E0."..tostring(TRF_Cfg().exp or 0);
+end;
+
+-- Log through the DLL native (sw3tp.log, "traffic: lua: ..."), else the engine log, else nothing.
+function TRF_L(s)
+	local c = TRF_Cfg();
+	if c.log == 0 then return; end;
+	local line = TRF_ExpId().." "..tostring(s);
+	if type(TRF_Log) == "function" then
+		TRF_Log(line);
+	elseif type(LOG) == "function" then
+		LOG("traffic: lua: "..line);
+	end;
+end;
+
+-- Call a global function by name if it exists; nil otherwise (natives that may be missing).
+-- Passes exactly the arguments given (arg.n), so natives that check lua_gettop see no extra nils.
+function TRF_N(name, ...)
+	local f = getglobal(name);
+	if type(f) == "function" then return call(f, arg); end;
+	return nil;
+end;
+
+-- Engine booleans: some natives return 1/0 (TRUE/FALSE), some nil for false.
+function TRF_Is(v)
+	if v == nil or v == 0 or v == FALSE then return nil; end;
+	return 1;
+end;
+
+function TRF_F(x)
+	if type(x) == "number" then return format("%.3f", x); end;
+	return tostring(x);
+end;
+
+-- One-line dump of a value; depth limits nesting, tables with more than 20 entries are summarised.
+function TRF_Dump(t, depth)
+	if type(t) == "string" then return format("%q", t); end;
+	if type(t) ~= "table" then return tostring(t); end;
+	depth = depth or 3;
+	local n = 0;
+	for k, v in t do n = n + 1; end;
+	if depth <= 0 then return "{..."..n.."}"; end;
+	if n > 20 then return "{<"..n.." entries>}"; end;
+	local s = "{";
+	local first = 1;
+	for k, v in t do
+		if not first then s = s..", "; end;
+		first = nil;
+		s = s..tostring(k).."="..TRF_Dump(v, depth - 1);
+	end;
+	return s.."}";
+end;
+
+-- Create TRF when missing; repair the fields the loader uses when a restored TRF lacks them or has
+-- the wrong type (older or foreign layout). Returns 1 when it created a new table.
+function TRF_Init()
+	if type(TRF) ~= "table" then
+		TRF = {version=1, active=1, gen=0, clock={game=0, real=0}, exp={}};
+		return 1;
+	end;
+	if type(TRF.version) ~= "number" then TRF.version = 1; end;
+	if type(TRF.gen) ~= "number" then TRF.gen = 0; end;
+	if type(TRF.clock) ~= "table" then TRF.clock = {}; end;
+	if type(TRF.clock.game) ~= "number" then TRF.clock.game = 0; end;
+	if type(TRF.clock.real) ~= "number" then TRF.clock.real = 0; end;
+	if type(TRF.exp) ~= "table" then TRF.exp = {}; end;
+	return nil;
+end;
+
+function TRF_Count(name)
+	if type(TRF.exp.cnt) ~= "table" then TRF.exp.cnt = {}; end;
+	if type(TRF.exp.cnt[name]) ~= "number" then TRF.exp.cnt[name] = 0; end;
+	TRF.exp.cnt[name] = TRF.exp.cnt[name] + 1;
+	return TRF.exp.cnt[name];
+end;
+
+-- Callbacks the DLL calls ------------------------------------------------------------
+
+-- T2b: after functions.script on location entry.
+function TRF_OnEnter()
+	local fresh = TRF_Init();
+	TRF.active = 1;
+	TRF.gen = TRF.gen + 1;
+	local n = TRF_Count("enter");
+	if TRF_Cfg().exp == 0 then TRF_L("OnEnter #"..n.." fresh="..tostring(fresh)); end;
+	TRF_N("TRF_Exp_OnEnter", fresh);
+end;
+
+-- T2c: after activate.script on location entry (the location's own flights exist).
+function TRF_OnActivate()
+	local fresh = TRF_Init();
+	TRF.active = 1;
+	TRF_Count("activate");
+	TRF_N("TRF_Exp_OnActivate", fresh);
+end;
+
+-- T2d: after functions.script on savegame load (TRF is restored from the save, or nil for a save made without the mod).
+function TRF_OnLoad()
+	local fresh = TRF_Init();
+	TRF.active = 1;
+	TRF.gen = TRF.gen + 1;
+	local n = TRF_Count("load");
+	if TRF_Cfg().exp == 0 then TRF_L("OnLoad #"..n.." fresh="..tostring(fresh)); end;
+	TRF_N("TRF_Exp_OnLoad", fresh);
+end;
+
+-- T4: every tick_ms of real time; dt_game is scaled game time, dt_real QPC seconds.
+function TRF_OnTick(dt_game, dt_real)
+	if type(TRF) ~= "table" or not TRF.active then return; end;
+	if type(dt_game) ~= "number" then dt_game = 0; end;
+	if type(dt_real) ~= "number" then dt_real = 0; end;
+	if type(TRF.clock) ~= "table" or type(TRF.clock.game) ~= "number" or type(TRF.clock.real) ~= "number" then TRF_Init(); end;
+	if type(TRF.exp) ~= "table" then TRF.exp = {}; end;
+	TRF.clock.game = TRF.clock.game + dt_game;
+	TRF.clock.real = TRF.clock.real + dt_real;
+	TRF_N("TRF_Exp_OnTick", dt_game, dt_real);
+end;
+
+-- Called by the jump wrappers before the original native. Ticks stop until the next OnEnter.
+-- CHECK: a cancelled jump leaves TRF.active nil until the next entry; jumps the engine starts
+-- without these natives (galaxy map, quest C code) bypass this function.
+function TRF_BeforeJump(dest)
+	if type(TRF) ~= "table" then return; end;
+	TRF.active = nil;
+	TRF_Init();
+	TRF_Count("jump");
+	TRF_N("TRF_Exp_BeforeJump", dest);
+end;
+
+-- Jump wrappers. arg holds the exact argument count (arg.n), so call() passes the natives what they got.
+-- TRF_BeforeJump runs protected ("x"): an error in mod code goes to _ALERT and the jump still happens.
+function TRF_Wrap_Teleport(...)
+	call(TRF_BeforeJump, {arg[1]}, "x");
+	return call(TRF_orig_TeleportToLocation, arg);
+end;
+
+function TRF_Wrap_CustomTeleportate(...)
+	call(TRF_BeforeJump, {arg[2]}, "x");
+	return call(TRF_orig_CustomTeleportate, arg);
+end;
+
+-- Guard-install: the saved originals are function globals (survive ClearGlobals, never saved),
+-- so later MapInitialization runs see them and do not wrap twice.
+function TRF_InstallWraps()
+	local w = {tp_before=type(TeleportToLocation), ct_before=type(CustomTeleportate), tp_new=0, ct_new=0};
+	if not TRF_orig_TeleportToLocation and type(TeleportToLocation) == "function" then
+		TRF_orig_TeleportToLocation = TeleportToLocation;
+		TeleportToLocation = TRF_Wrap_Teleport;
+		w.tp_new = 1;
+	end;
+	if not TRF_orig_CustomTeleportate and type(CustomTeleportate) == "function" then
+		TRF_orig_CustomTeleportate = CustomTeleportate;
+		CustomTeleportate = TRF_Wrap_CustomTeleportate;
+		w.ct_new = 1;
+	end;
+	w.tp_after = type(TeleportToLocation);
+	w.ct_after = type(CustomTeleportate);
+	-- A later run redefines TRF_Wrap_*, so test against the saved original. The installed wrapper
+	-- looks up TRF_BeforeJump and TRF_orig_* by name and keeps working.
+	w.tp_wrapped = (TRF_orig_TeleportToLocation and TeleportToLocation ~= TRF_orig_TeleportToLocation) and 1 or 0;
+	w.ct_wrapped = (TRF_orig_CustomTeleportate and CustomTeleportate ~= TRF_orig_CustomTeleportate) and 1 or 0;
+	return w;
+end;
+
+-- ExecuteScriptFile returns 1 on success and nil when the file is missing or fails.
+function TRF_LoadFile(name)
+	local ok = ExecuteScriptFile(TRF_Path(name));
+	if not ok then TRF_L("load "..name.." failed"); end;
+	return ok;
+end;
+
+function TRF_Main()
+	TRF_LoadFile("config.script");
+	local wraps = TRF_InstallWraps();
+	local e = TRF_Cfg().exp;
+	local files = {"exp_hooks.script", "exp_state.script", "exp_trader.script"};
+	if type(e) == "number" and files[e] then TRF_LoadFile(files[e]); end;
+	-- map.script is generated and optional; a missing file only logs "cannot load script file" in LOGfile.txt.
+	local m = ExecuteScriptFile(TRF_Path("map.script"));
+	TRF_N("TRF_Exp_Init", wraps, m);
+	if e == 0 then
+		TRF_L("loaded map="..tostring(m).." TeleportToLocation wrapped="..wraps.tp_wrapped.." CustomTeleportate wrapped="..wraps.ct_wrapped);
+	end;
+end;
+
+call(TRF_Main, {}, "x");

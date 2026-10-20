@@ -1,0 +1,4 @@
+-- Repo default; install-test.sh overwrites this file with the selected experiment.
+-- exp: 0 = loader only, 1 = E0.1 hooks, 2 = E0.2 state, 3 = E0.3 trader. log: 0 silences TRF_L.
+-- Optional keys: big=1 (E0.2 1000-entry table), del_on_jump=1 (E0.3 deletes live flights before a jump).
+function TRF_Config() return {exp=0, log=1} end

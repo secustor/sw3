@@ -9,6 +9,7 @@
 #include <windows.h>
 #include <winternl.h>
 #include "sw3tp_unix.h"
+#include "sw3tp_shared.h"
 
 #define SITE_A      0x4a0632u   /* E8 rel32 -> 0x4250e0 */
 #define INPUT_UPD   0x4250e0u
@@ -96,6 +97,7 @@ static void log_buf(struct buf *b)
     WriteFile(g_log, b->s, b->n, &w, NULL);
 }
 static void log_s(const char *s) { struct buf b; b.n = 0; put_s(&b, s); log_buf(&b); }
+void sw3tp_log(const char *s) { log_s(s); }
 static void put_x64(struct buf *b, unixlib_handle_t v)
 {
     static const char hx[] = "0123456789abcdef";
@@ -1426,6 +1428,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID res)
     g_log = CreateFileA(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);   /* truncated per launch */
     log_s("sw3tp " SW3TP_VERSION);
 
+    trf_init(ini);   /* [traffic] is independent of [sw3tp] enabled and of the site A check */
     if (!GetPrivateProfileIntA("sw3tp", "enabled", 1, ini)) { log_s("attach disabled enabled=0"); return TRUE; }
     read_config();
     if (!site_a_ok()) { log_s("attach mismatch"); return TRUE; }

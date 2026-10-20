@@ -1,0 +1,55 @@
+-- E0.2 state across jump and save (mod-options section 7, experiment 2).
+-- TRF.exp.state is created on the first OnEnter; n counts entries. The nested key PI is a reserved
+-- name: it survives jumps (T3 carry, no save involved) but the save writer drops it (fact 1.10).
+-- Config big=1 adds TRF.exp.big with 1000 numbers to measure save growth.
+
+function TRF_S_Big()
+	if TRF_Cfg().big == 1 and type(TRF.exp.big) ~= "table" then
+		local t = {};
+		for i = 1, 1000 do t[i] = i * 1.5; end;
+		TRF.exp.big = t;
+		TRF_L("created TRF.exp.big with 1000 entries");
+	end;
+end;
+
+function TRF_S_Report(where, fresh)
+	local s = TRF.exp.state;
+	if type(s) ~= "table" then
+		TRF_L(where.." fresh="..tostring(fresh).." TRF.exp.state=nil");
+	else
+		TRF_L(where.." fresh="..tostring(fresh).." n="..tostring(s.n).." PI="..tostring(s.PI)
+			.." PI_survived="..((s.PI == 5) and "yes" or "no").." t[3][1]="..tostring(type(s.t) == "table" and type(s.t[3]) == "table" and s.t[3][1]));
+	end;
+	local nb = 0;
+	if type(TRF.exp.big) == "table" then nb = getn(TRF.exp.big); end;
+	TRF_L(where.." big="..nb.." gen="..TRF.gen.." loc="..tostring(TRF_N("GetCurrentLocation")));
+	TRF_L(where.." dump TRF="..TRF_Dump(TRF, 4));
+end;
+
+function TRF_Exp_OnEnter(fresh)
+	local e = TRF.exp;
+	if type(e.state) ~= "table" then
+		-- PI is deliberately a reserved name (the point of the test); a variable key keeps lint_lua.py quiet.
+		local k = "PI";
+		e.state = {n=1, s="x", t={1, 2, {3}}};
+		e.state[k] = 5;
+		TRF_L("OnEnter created TRF.exp.state");
+	else
+		e.state.n = (e.state.n or 0) + 1;
+	end;
+	TRF_S_Big();
+	TRF_S_Report("OnEnter", fresh);
+end;
+
+-- Pass: fresh=nil, n has the value at save time, PI_survived=no. With a save made at enabled=0: fresh=1.
+function TRF_Exp_OnLoad(fresh)
+	TRF_S_Report("OnLoad", fresh);
+end;
+
+function TRF_Exp_BeforeJump(dest)
+	local n = nil;
+	if type(TRF.exp.state) == "table" then n = TRF.exp.state.n; end;
+	TRF_L("BeforeJump dest="..tostring(dest).." n="..tostring(n));
+end;
+
+TRF_L("top-level load");
