@@ -34,5 +34,8 @@ echo "== ScriptErrors.log"
 if [ -f "$COPY/ScriptErrors.log" ] && [ "$COPY/ScriptErrors.log" -nt "$COPY/.run-start" ]; then
     tail -40 "$COPY/ScriptErrors.log"; cp "$COPY/ScriptErrors.log" "$dir/"
 else echo "(no new ScriptErrors.log)"; fi
+echo "== display (sw3tp.log)"; grep -a '^display: ' "$COPY/sw3tp.log" 2>/dev/null || echo "(none)"
+m=$(find "$COPY/mtld3d-logs" -newer "$COPY/.run-start" -name 'sw3cw-*.log' -exec ls -t {} + | head -1)
+echo "== mtld3d display ${m:-(no new log)}"; [ -n "$m" ] && grep -a -E 'host |fullscreen entered|Reset |scaler|config: render\.scale|MTLD3D_CONFIG' "$m" | head -20 || true
 echo "== EXCEPTION (LOGfile.txt)"; grep -a EXCEPTION "$COPY/LOGfile.txt" 2>/dev/null || echo "(none)"
 echo "saved run to $dir"

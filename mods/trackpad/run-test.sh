@@ -23,5 +23,7 @@ echo "== sw3tp.log (tail)"; tail -8 "$COPY/sw3tp.log" 2>/dev/null || true
 echo "== sw3tp.so (stderr)"; grep -a '^sw3tp.so:' "$COPY/wine-stderr.log" | grep -v ': ev ' | head -20 || true
 echo "   ev lines: $(grep -a -c '^sw3tp.so: ev ' "$COPY/wine-stderr.log" || true)"
 echo "== LOGfile.txt"; grep -a -E 'InitApplication|EXCEPTION' "$COPY/LOGfile.txt" || echo "(no InitApplication/EXCEPTION lines)"
-m=$(find "$COPY/mtld3d-logs" -newer "$COPY/.run-start" -name 'sw3cw-*.log' | head -1)
+echo "== display (sw3tp.log)"; grep -a '^display: ' "$COPY/sw3tp.log" 2>/dev/null || echo "(none)"
+m=$(find "$COPY/mtld3d-logs" -newer "$COPY/.run-start" -name 'sw3cw-*.log' -exec ls -t {} + | head -1)
 echo "== mtld3d ${m:-(no new log)}"; [ -n "$m" ] && grep -a -E 'v0\.14\.0|fault' "$m" | head -10 || true
+echo "== mtld3d display"; [ -n "$m" ] && grep -a -E 'host |fullscreen entered|Reset |scaler|config: render\.scale|MTLD3D_CONFIG' "$m" | head -20 || true
