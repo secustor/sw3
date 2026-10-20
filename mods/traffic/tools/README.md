@@ -1,6 +1,6 @@
 # Traffic host tools
 
-Both tools are stdlib-only Python 3 and are run with `python3 -I`. Neither writes to the game directory.
+The Python tools are stdlib-only Python 3 and are run with `python3 -I`. None writes to the original game directory; `make-test-saves.sh` writes only to the test clone.
 
 ## check_sites.py
 
@@ -15,3 +15,38 @@ Token-based lint for the mod's `*.script` files (Lua 4.0.1 under the SW3 engine)
 
     python3 -I mods/traffic/tools/lint_lua.py --allow TeleportToLocation,CustomTeleportate mods/traffic/Data/Scripts/Mods/Traffic/*.script
     python3 -I mods/traffic/tools/lint_lua.py --host mods/traffic/tests/host_stubs.lua   # Lua 4 syntax checks only
+
+## savetool.py
+
+Reads and edits `.sav` files following `design/mod-research/save-format.md`. That format comes from the disassembly only: no real save existed when the tool was written, so **`selftest` is the only test that runs today**. It checks the doc's section 5 hex, the value grammar (nested tables, number keys, tag index, escapes, NUL bytes, a 1000-entry table), the Lua and JSON text forms, and `info`/`set`/`roundtrip` on a synthetic save with all 17 sections. Exit status 1 on any failure or format mismatch; errors print what was found.
+
+    python3 -I mods/traffic/tools/savetool.py selftest
+    python3 -I mods/traffic/tools/savetool.py info Base.sav          # header, sizes, sections, GLOBAL_TABLE size, triggers, assumptions
+    python3 -I mods/traffic/tools/savetool.py roundtrip Base.sav     # decode + re-encode, must print OK
+    python3 -I mods/traffic/tools/savetool.py dump Base.sav          # top-level globals: type, encoded bytes, entries
+    python3 -I mods/traffic/tools/savetool.py dump Base.sav --global TRF [--json] [--max-depth N]   # or --all, --triggers
+    python3 -I mods/traffic/tools/savetool.py get Base.sav --global TRF
+    python3 -I mods/traffic/tools/savetool.py set Base.sav --out Base-x.sav --global TRF --lua '{version=1, n=5, s="x"}'   # or --json f.json, --nil
+
+- `set` replaces, adds or removes one top-level global, re-encodes the GLOBAL_TABLE, re-deflates (level 9) and rewrites the two size fields. It sets the header name to the `--out` file name (override with `--name`) and refuses names with `\ / : * ? " < > |` or `.` (the game cuts the file name at a `.` but keeps it in the header), strings with NUL bytes, and booleans. It warns about reserved keys (`PI`, `_EVENT_*`, ...) at any depth: they load, but the next in-game save drops them.
+- Lua literals: numbers, strings (`\n`, `\ddd`), nested tables, `name=`, `[n]=`, `["s"]=` and positional entries, `nil`, comments. JSON: arrays for 1..n keys, number keys as `"[n]"`, a class tag as `"__tag"`.
+- `CurrentQuest` and credits are not Lua globals (quest label / team data in other sections, not decoded). Put the wanted values in a `TRF.test` field and set them from the mod at load.
+- `info` lists the format assumptions marked [I] in the doc and which ones the file confirmed (for example the `78 da` zlib header).
+
+## make-test-saves.sh
+
+Builds the Phase 0 test saves from one baseline save. It fails with exit 2 while `BASE` is unset or missing, which is the case until a real save exists:
+
+1. Run the clone (`run-test.sh`), start or load a game, save from the in-game menu as `Base`, quit. The file should appear as `$COPY/Profiles/secustor/Save/Base.sav`.
+2. `BASE="$HOME/Games/Heroic/sw3-tp-test/Profiles/secustor/Save/Base.sav" sh mods/traffic/tools/make-test-saves.sh` (optional `OUT=<dir>`, `NAME=<prefix>`).
+3. If `roundtrip` fails, send its output and `savetool info Base.sav`: the format differs from the doc and no variant is written.
+
+Outputs (in the clone's save dir, listed in the load menu under the same names):
+
+| save | `TRF` | tests |
+|---|---|---|
+| `Base-trf-v1` | `{version=1, active=1, gen=0, clock={game=0,real=0}, exp={state={n=7, s="x", t={1,2,{3}}, PI=5}}}` | `OnLoad` migration from v1; nested tables. `PI` is written by the tool, so this tests the loader (expect `PI=5` after load); save again in the game and `get` `TRF` to test the writer drop |
+| `Base-trf-big` | v1 plus `exp.big` with 1000 records | save growth; the script prints the size delta against v1 |
+| `Base-trf-nil` | removed | load without mod state |
+| `Base-trf-bad` | v1 with `version=99` | migration fallback for an unknown version |
+

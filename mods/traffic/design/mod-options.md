@@ -191,7 +191,7 @@ Calling Lua from the DLL follows `CallLoadLevel` 0x5cf990, but saves and restore
 - Jump: T3 carries `TRF` across the one clear at 0x4dd207. MapInitialization, the location scripts, `TRF_OnEnter` and `TRF_OnActivate` all see the same table.
 - Save: the engine writes `TRF` into `GLOBAL_TABLE` with no hook (1.10).
 - Load: the engine clears data globals and restores `TRF` from the save. `TRF_OnLoad` runs after `functions.script`. It migrates by `TRF.version`, or initialises when `TRF` is nil (a save made before the mod). `TRF_OnLoad` also re-arms what the mod needs in the current location, because `activate.script` does not run after a load. It should normally find its own triggers restored from the save, so it must check before creating duplicates. A generation number in each callback string handles this: stale triggers exit without action.
-- Size: the full-game save goes through an in-memory stream (`script-runtime.md` §11 reports a 2 MB buffer, unconfirmed). Keep `TRF` within tens of KB and measure the save growth (experiment 2).
+- Size: the full-game save goes through an in-memory stream (40 MB memory stream, `save-format.md`). Keep `TRF` within tens of KB and measure the save growth (experiment 2).
 
 ### 5.8 Static verification plan (no game launch)
 
@@ -249,7 +249,7 @@ First three experiments, in the APFS test clone. `mods/trackpad/install-test.sh`
 
 Use a long `SECS` (600 or more), because each experiment needs the user to play. The test profile has no saves, so experiment 2 starts with a new game.
 
-1. **Hooks and natives alive.** Build with T1, T2a-d and T4 enabled. Log only, with one native `TRF_Version`. `traffic.script` logs at top level and from `TRF_OnEnter`/`OnActivate`/`OnLoad`. `TRF_OnTick` logs once per second with `dt_game`, `dt_real` and `TRF_GameTime()`. It also logs `format("%.1f", 16777217 + 1)` (x87 precision) and `type(TeleportToLocation)` before and after a test wrap (question 2). The user starts a new game, flies a while, pauses, and jumps once. Pass:
+1. **Hooks and natives alive.** Build with T1, T2a-d and T4 enabled. Log only, with one native `TRF_Version`. `traffic.script` logs at top level and from `TRF_OnEnter`/`OnActivate`/`OnLoad`. `TRF_OnTick` logs once per second with `dt_game`, `dt_real` and `TRF_GameTime()`. It also logs `16777216 + 1` and `1/3` computed from locals (x87 precision: 16777217.0 means 53/64-bit, 16777216.0 means 24-bit; the earlier `16777217 + 1` probe was wrong, 2^24+2 fits 24 bits) and `type(TeleportToLocation)` before and after a test wrap (question 2). The user starts a new game, flies a while, pauses, and jumps once. Pass:
    - `sw3tp.log` shows 6 attach lines and no mismatch;
    - `LOGfile.txt` shows `Mods/Traffic/traffic.script` after the last game include;
    - OnEnter and OnActivate fire once per entry;
