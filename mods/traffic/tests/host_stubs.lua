@@ -320,15 +320,23 @@ function GetPlayerMotherShip()
 	return h.ms;
 end;
 
--- 0x5e68f0: at least 2 args, x/y/z read from arg 1, radius from arg 2.
+-- 0x5e68f0: at least 2 args, x/y/z read from arg 1, radius from arg 2. The native counts every carcass
+-- (ships, stations, portals, wrecks) whose bounding sphere touches the query sphere (carcass-count.md):
+-- cc_static (default 1) stands for the portal or station that is always in a spawn spot's sphere, cc_ships
+-- adds positions counted like ships (a ship parked at a spot without a handle), extra_carcass a flat count.
+HOST().cc_static = 1; HOST().cc_ships = {};
 function GetCarcassCountInSphere(pos, r)
 	HOST_Want(HOST_IsVec(pos) and type(r) == "number", "GetCarcassCountInSphere(Vector3, radius)");
+	local h = HOST();
 	local n = 0;
-	local ships = HOST().ships;
+	local ships = h.ships;
 	for i = 1, getn(ships) do
 		if ships[i].alive and HOST_Dist(ships[i].pos, pos) <= r then n = n + 1; end;
 	end;
-	return n + (HOST().extra_carcass or 0);
+	for i = 1, getn(h.cc_ships) do
+		if HOST_Dist(h.cc_ships[i], pos) <= r then n = n + 1; end;
+	end;
+	return n + (h.cc_static or 0) + (h.extra_carcass or 0);
 end;
 
 function HOST_Flight(fname, grp)

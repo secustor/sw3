@@ -490,15 +490,77 @@ function TRF_GnWay(list)
 	return r;
 end;
 
--- Spawn spot free (R12): no arrival at key within spacing, no carcass within 20 units of pos.
--- CHECK: GetCarcassCountInSphere is never used by shipped scripts; nil counts as free.
+-- Carcass count in the 20-unit spot sphere at pos, or nil. The native counts every BaseCarcass (ships,
+-- stations, portals, wrecks, rockets) whose bounding sphere touches the query sphere, with no type or HP
+-- filter (design/mod-research/carcass-count.md), so a portal or station next to the spot is counted.
+function TRF_GnCount(pos)
+	if pos == nil or type(pos.x) ~= "number" then return nil; end;
+	return TRF_N("GetCarcassCountInSphere", pos, 20);
+end;
+
+-- Baseline count of spot key at pos for this visit (R12): the first count n seen there is stored in
+-- live.base[key] as {x, y, z, n} (one entry per position: "station" serves the approach point of each
+-- contact) and returned from then on. Ships standing at the spot when it is taken count as scenery for the
+-- visit. nil while no count is known.
+function TRF_GnBase(key, pos, n)
+	local L = TRF_GnLive();
+	if type(L.base) ~= "table" then L.base = {}; end;
+	local k = tostring(key);
+	local l = L.base[k];
+	if type(l) ~= "table" then l = {}; L.base[k] = l; end;
+	for i = 1, getn(l) do
+		local d = TRF_GnDist(l[i], pos);
+		if d and d < 1 and type(l[i].n) == "number" then return l[i].n; end;
+	end;
+	if type(n) ~= "number" or pos == nil or type(pos.x) ~= "number" then return nil; end;
+	tinsert(l, {x=pos.x, y=pos.y, z=pos.z, n=n});
+	TRF_GnD("spot "..k.." base="..n);
+	return n;
+end;
+
+-- Baselines at every trader portal entry point and station approach point, from TRF_Gen_OnActivate
+-- before this visit's mod spawns (later spots are taken on first use in TRF_GnFree).
+function TRF_GnBaseAll()
+	local L = TRF_GnLive();
+	if not L or not TRF_GenReady() or TRF_GnModeQ() ~= "mod" or not TRF_GnValidate() then return; end;
+	local T = TRF_GnT();
+	local st = TRF_GnStation();
+	local list = TRF_GnContacts();
+	for ci = 1, getn(list) do
+		local c, cv = list[ci], L.cv[ci];
+		if TRF_GnIsTrader(c) and type(cv) == "table" then
+			for i = 1, getn(c[3]) do
+				local e = c[3][i]:GetEntryPoint(10);
+				TRF_GnBase(cv.pn[i], e, TRF_GnCount(e));
+			end;
+			local np = nil;
+			if st then np = TRF_GnApproach(c, st, T); end;
+			if np then TRF_GnBase("station", np, TRF_GnCount(np)); end;
+		end;
+	end;
+end;
+
+-- Spawn spot free (R12): no arrival at key within spacing, and the carcass count at pos not above the
+-- spot's baseline (TRF_GnBase), so the portal or station that is always in the sphere never blocks it.
+-- A nil count counts as free. A refusal is logged once per key per minute (live.bzt).
 function TRF_GnFree(key, pos, T)
 	local L = TRF_GnLive();
 	local t = L.port[key];
-	if type(t) == "number" and TRF_GnGt() - t < T.spacing then return nil; end;
-	local n = TRF_N("GetCarcassCountInSphere", pos, 20);
-	TRF_GnD("spot "..tostring(key).." count="..tostring(n));
-	if type(n) == "number" and n > 0 then return nil; end;
+	local gt = TRF_GnGt();
+	if type(t) == "number" and gt - t < T.spacing then return nil; end;
+	local n = TRF_GnCount(pos);
+	local b = TRF_GnBase(key, pos, n);
+	TRF_GnD("spot "..tostring(key).." count="..tostring(n).." base="..tostring(b));
+	if type(n) == "number" and type(b) == "number" and n > b then
+		if type(L.bzt) ~= "table" then L.bzt = {}; end;
+		local k = tostring(key);
+		local lt = L.bzt[k];
+		if type(lt) ~= "number" or gt - lt >= 60 then
+			L.bzt[k] = gt;
+			TRF_GnL("spot "..k.." busy n="..n.." base="..b);
+		end;
+		return nil;
+	end;
 	return 1;
 end;
 
@@ -1376,6 +1438,7 @@ function TRF_Gen_OnActivate()
 		if best then L.port[best] = TRF_GnGt(); end;
 		TRF_GnD("activate arrival portal="..tostring(best).." d="..TRF_F(bd));
 	end;
+	TRF_GnP(TRF_GnBaseAll, {});
 	TRF_GnP(TRF_EntryPlan, {});
 end;
 

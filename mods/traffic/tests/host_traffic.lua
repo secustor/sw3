@@ -874,6 +874,51 @@ function T_G()
 	T_SceneSupp();
 	T_Combat();
 	T_CombatArm();
+	T_Spot();
+end;
+
+-- Spawn spot rule (R12, carcass-count.md): the native also counts the portal or station next to a spot
+-- (stub cc_static 1), so a spot is busy only above its visit baseline; arrival spacing stays.
+function T_Spot()
+	local h = HOST();
+	h.cc_ships = {};
+	T_Jump("gredos");
+	local T = TRF_GnT();
+	local c, cv = __sys_LevelRegisteredContacts[1], TRF.live.cv[1];
+	local key, pos = cv.pn[1], c[3][1]:GetEntryPoint(10);
+	local b = TRF.live.base[key];
+	HOST_Check(type(b) == "table" and getn(b) == 1 and b[1].n == 1, "activate: baseline 1 at portal "..key.." (static carcass)");
+	local np = TRF_GnApproach(c, TRF_GnStation(), T);
+	HOST_Check(np ~= nil and type(TRF.live.base.station) == "table" and TRF.live.base.station[1].n == 1, "activate: baseline 1 at the station approach point");
+	TRF.live.port = {};
+	h.logs = {};
+	HOST_Check(TRF_GnFree(key, pos, T) == 1, "count 1, baseline 1: spot free");
+	tinsert(h.cc_ships, pos);
+	HOST_Check(TRF_GnFree(key, pos, T) == nil, "baseline 1 plus a ship: spot busy");
+	HOST_Check(TRF_GnFree(key, pos, T) == nil, "still busy");
+	local line = "gen: spot "..key.." busy n=2 base=1";
+	HOST_Check(T_LogN(line) == 1, "refusal logged once per key per minute ("..T_LogN(line)..")");
+	TRF.live.port[key] = TRF_GnGt();
+	h.cc_ships = {};
+	HOST_Check(TRF_GnFree(key, pos, T) == nil, "ship gone, inside the arrival spacing: busy");
+	T_Tick(floor(T.spacing * 2) + 2, 0.5);
+	HOST_Check(TRF_GnFree(key, pos, T) == 1, "after the spacing window, ship gone: free");
+	tinsert(h.cc_ships, pos);
+	T_Tick(80, 0.5);
+	HOST_Check(TRF_GnFree(key, pos, T) == nil and T_LogN(line) == 2, "busy again a minute later: logged again");
+	h.logs = nil;
+	-- A ship parked at the spot at activation is part of the baseline for the visit (accepted).
+	T_Jump("gredos");
+	cv = TRF.live.cv[1];
+	key = cv.pn[1];
+	TRF.live.port = {};
+	HOST_Check(TRF.live.base[key][1].n == 2 and TRF_GnFree(key, pos, T) == 1, "ship at the spot at activation: baseline 2, spot free");
+	h.cc_ships = {};
+	-- A spot first seen in TRF_Plan (convoy offset) takes its baseline on first use.
+	local p2 = c[3][1]:GetEntryPoint(40);
+	HOST_Check(TRF_GnFree(key, p2, T) == 1 and getn(TRF.live.base[key]) == 2, "new position: baseline on first use, free");
+	local id = T_Spawn();
+	HOST_Check(id ~= nil, "generator spawns with the static count");
 end;
 
 -- Scene-based suppression (R2): TRF_Quiet and the scene flag (movie, UI natives), spawning under __sys_SOS.

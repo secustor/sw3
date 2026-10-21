@@ -172,7 +172,7 @@ Start and end portals: vanilla rule (random start; end ≠ start when ≥ 2 port
 ### 4.4 Portal spacing (R12)
 
 - At most one arrival per portal per 20 s (`TRF_Tune().spacing`): a start portal whose `live.port[label]` is younger than 20 s is replaced by another random free portal of the contact; none free → skip (`skip_space`). The player's arrival portal is stamped in OnActivate (portal whose entry point is nearest the mothership), so no trader spawns in the player's face.
-- Spawn spot: `GetCarcassCountInSphere(pos, 20) > 0` (CHECK: native never used by shipped scripts; E0.3 logs it; a nil result counts as free) → treat as blocked (same replacement rule). `"station"` uses the same 20 s rule for path B.
+- Spawn spot: `n = GetCarcassCountInSphere(pos, 20)` above the spot's baseline `b` → treat as blocked (same replacement rule). The native counts every carcass (ships, stations, portals, wrecks, rockets) whose bounding sphere touches the query sphere (`mod-research/carcass-count.md`), so the portal next to `GetEntryPoint(10)` or the station next to the approach point is always counted; `n > 0` refused every spot in the game. `b` is the first count taken at that position in the visit (`live.base[key]`, one `{x, y, z, n}` per position): in OnActivate for every trader portal entry point and station approach point, otherwise on first use. A ship standing at a spot when its baseline is taken counts as scenery for the rest of the visit (accepted). A nil count counts as free. A refusal logs `gen: spot <key> busy n=<n> base=<b>`, at most once per key per minute (`live.bzt`). `"station"` uses the same 20 s rule for path B.
 
 ### 4.5 Spawn (`TRF_Spawn(plan)`)
 
@@ -490,7 +490,7 @@ Checked against design sections 4 (M1–M13, M19, M20, S3, S4, S13, S16, S20), 5
 | 12 | 3.3 | `TRF_H` written with the `%H` upvalue | Lua 4 needs `%name` for an upvalue |
 | 13 | 4.1 | `TRF_CurIdx()` lowercases `GetCurrentLocation()` | M13 case-insensitive matching |
 | 14 | 4.2 | Station only from the generated `st` field; label-list fallback removed; real label set listed | The list held `TRADE2`, a `ModuleStation_02` with `CreateNoneStationDocking` (Debris1), and missed `STATION NEUTRAL`, `station_S`, `station01`, `USS_TRADE`, `TriBase`, `TRI_TRADE`, `STOCK*`; closed stations (design 5.1 `station_closed`, 7.1) have no `CreateTradeStationDocking` |
-| 15 | 4.4 | `GetCarcassCountInSphere` marked CHECK, nil = free | Native never used by shipped scripts |
+| 15 | 4.4 | `GetCarcassCountInSphere` against a per-visit spot baseline, nil = free | The native also counts the portal or station at the spot (`mod-research/carcass-count.md`); `n > 0` refused every spawn in the game (2026-10-21) |
 | 16 | 4.5 step 1 | Row lookup written as `NewAllFlight` does it (EASY / NORMAL / else HARD) | `__tablevel[GetLevelDifficult()]` assumed the constants are 1..3 |
 | 17 | 4.5 steps 3, 5; 10.3 | `TRF_GTrade_<k>`, `TRF_GResp_<n>` and the `CreateChoiceFlight` globals are cleared after use; `NewAllFlight` runs under `call(..., "x")` with cleanup and `skip_build` | No handle data globals in the save; a nil `CreateCarcass` inside `NewAllFlight` raises a script error (exit criterion: no `ScriptErrors.log` lines) |
 | 18 | 4.5 step 3 | `CreateGroup` on an existing name after a load marked CHECK | Not verified; vanilla does the same with `Trade_Group_1` |
