@@ -1,5 +1,5 @@
 #!/bin/sh
-# sw3-traffic installer. Usage: ./install.sh [--reset-config] [--restore-only] <game dir>
+# sw3-traffic installer. Usage: ./install.sh [--reset-config] [--restore-only] [--news] <game dir>
 # For GOG Star Wolves 3: Civil War v1.12. Needs the sw3tp proxy (zlib1.dll with the traffic module), installed
 # by the sw3-trackpad or sw3-performance mod of the same release; exits without changes if it is missing.
 # Copies Data/Scripts/Mods/Traffic/ (CRLF scripts), writes its config.script (exp=0 traffic=1 autosave=0) and sets
@@ -7,6 +7,9 @@
 # Re-running upgrades in place and keeps an edited config.script (--reset-config overwrites it).
 # --restore-only writes config.script with enabled=2: the mod then only restores changed station prices and
 # removes its pirate bases (README, Removal); run the game once that way before uninstall.sh.
+# --news (or env NEWS=1): merges the mod's trf_* records (news/trf_news.xml) into Data/Game/News.xml, the one news
+# file the engine reads, copies loc/trf_en.loc to Data/LocData/<language>/ and writes news_mode=2 into config.script
+# (README, News records). A re-run without --news puts News.xml back and removes the loc file.
 # Files it replaces are backed up to <game dir>/sw3-traffic-backup/, files and directories it creates and the
 # previous [traffic] section are recorded in sw3-traffic-backup/manifest.txt; uninstall.sh reverts them.
 set -eu
@@ -17,16 +20,17 @@ VAN_SHA1="include/Create_flight_2.script=3403ead37c2719fe6c6ee09fa05cd301cb0cf58
 include/DockStation.script=1744c15f911c34ebf905a6f1895aaf983de68877"
 here=$(cd "$(dirname "$0")" && pwd)
 
-usage() { echo "usage: $0 [--reset-config] [--restore-only] <game dir>" >&2; exit 2; }
+usage() { echo "usage: $0 [--reset-config] [--restore-only] [--news] <game dir>" >&2; exit 2; }
 die() { echo "install.sh: $*" >&2; exit 1; }
 say() { echo "  $*"; }
 sha1() { shasum "$1" | cut -d' ' -f1; }
 
-game=; reset=0; restore=0
+game=; reset=0; restore=0; news=${NEWS:-0}
 while [ $# -gt 0 ]; do
     case $1 in
     --reset-config) reset=1 ;;
     --restore-only) restore=1 ;;
+    --news) news=1 ;;
     -h|--help) usage ;;
     -*) echo "unknown option $1" >&2; usage ;;
     *) [ -z "$game" ] || usage; game=$1 ;;
@@ -36,6 +40,7 @@ done
 [ -n "$game" ] || usage
 [ -d "$game" ] || die "$game is not a directory"
 game=$(cd "$game" && pwd)
+case "$news" in 0|1) ;; *) die "NEWS must be 0 or 1" ;; esac
 
 # Package files: release layout and source tree are the same here.
 src=$here/Data/Scripts/Mods/Traffic
@@ -47,6 +52,13 @@ for f in $files; do
     n=$(LC_ALL=C tr -cd '\n' < "$src/$f" | wc -c | tr -d ' '); c=$(LC_ALL=C grep -c "$(printf '\r')\$" "$src/$f" || true)
     [ "$n" -gt 0 ] && [ "$n" = "$c" ] || die "package file $f is not CRLF ($c of $n lines)"
 done
+if [ "$news" = 1 ]; then
+    for f in news/trf_news.xml news/merge.awk loc/trf_en.loc; do [ -f "$here/$f" ] || die "--news: package file $f missing"; done
+    for f in news/trf_news.xml loc/trf_en.loc; do
+        n=$(LC_ALL=C tr -cd '\n' < "$here/$f" | wc -c | tr -d ' '); c=$(LC_ALL=C grep -c "$(printf '\r')\$" "$here/$f" || true)
+        [ "$n" -gt 0 ] && [ "$n" = "$c" ] || die "package file $f is not CRLF ($c of $n lines)"
+    done
+fi
 
 # Checks before any write.
 [ -f "$game/sw3cw.exe" ] || die "no sw3cw.exe in $game"
@@ -79,6 +91,29 @@ trfd=; [ ! -d "$modsd" ] || trfd=$(find "$modsd" -mindepth 1 -maxdepth 1 -type d
 modsrel=${modsd#"$game"/}; dst=${trfd#"$game"/}
 ini=$game/sw3tp.ini
 [ -f "$ini" ] || die "no sw3tp.ini in $game; $need. Nothing changed."
+# News records (--news): the engine reads only DATA\GAME\News.xml and every *.loc of DATA\LocData\<folder>\
+# (default.cfg __localization_folder). The merge runs here into a temp file, before any write.
+newsrel=; locrel=; newstmp=
+if [ "$news" = 1 ]; then
+    gd=$(find "$data" -mindepth 1 -maxdepth 1 -type d -iname game | head -1)
+    nf=; [ -z "$gd" ] || nf=$(find "$gd" -mindepth 1 -maxdepth 1 -type f -iname news.xml | head -1)
+    [ -n "$nf" ] || die "--news: no Data/Game/News.xml in $game. Nothing changed."
+    newsrel=${nf#"$game"/}
+    lf=$(sed -n 's/^[[:space:]]*__localization_folder[[:space:]]*"\([^"\\]*\)\\*".*/\1/p' "$game/default.cfg" 2>/dev/null | head -1)
+    [ -n "$lf" ] || lf=English
+    ld=$(find "$data" -mindepth 1 -maxdepth 1 -type d -iname locdata | head -1)
+    lld=; [ -z "$ld" ] || lld=$(find "$ld" -mindepth 1 -maxdepth 1 -type d -iname "$lf" | head -1)
+    [ -n "$lld" ] || die "--news: no Data/LocData/$lf directory in $game. Nothing changed."
+    locrel=${lld#"$game"/}/trf_en.loc
+    newstmp=$(mktemp "${TMPDIR:-/tmp}/sw3trf-news.XXXXXX"); trap 'rm -f "$newstmp"' EXIT
+    rc=0; awk -v frag="$here/news/trf_news.xml" -f "$here/news/merge.awk" "$nf" > "$newstmp" || rc=$?
+    case $rc in
+    0) ;;
+    3) rm -f "$newstmp"; die "--news: $newsrel has no </News> line. Nothing changed." ;;
+    4) rm -f "$newstmp"; die "--news: $newsrel has trf_ records outside the sw3-traffic block. Nothing changed." ;;
+    *) rm -f "$newstmp"; die "--news: merging $newsrel failed (awk exit $rc). Nothing changed." ;;
+    esac
+fi
 
 echo "sw3-traffic $version into $game"
 bk=$game/sw3-traffic-backup; man=$bk/manifest.txt
@@ -118,18 +153,43 @@ for rel in $(sed -n "s|^created \($dst/[^/]*\.script\)\$|\1|p" "$man"); do
     say "removed $rel (not in this release)"
 done
 
-# config.script: the shipped file with exp=0, traffic=1, autosave=0 (enabled=2 with --restore-only).
+# News records: News.xml is backed up on the first merge; without --news an earlier merge is reverted.
+drop() { grep -vxF "$1" "$man" > "$man.new" || true; mv -f "$man.new" "$man"; }
+unput() {
+    if grep -qxF "backup $1" "$man"; then
+        cp -p "$bk/files/$1" "$game/$1.sw3trf-new"; mv -f "$game/$1.sw3trf-new" "$game/$1"
+        rm -f "$bk/files/$1"; drop "backup $1"; say "restored $1 (no --news)"
+    elif grep -qxF "created $1" "$man"; then
+        rm -f "$game/$1"; drop "created $1"; say "removed $1 (no --news)"
+    fi
+}
+if [ "$news" = 1 ]; then
+    if put "$newstmp" "$newsrel"; then say "news: $(grep -c '<name>trf_' "$game/$newsrel") trf_ records merged into $newsrel"
+    else say "unchanged $newsrel (news records)"; fi
+    rm -f "$newstmp"
+    if put "$here/loc/trf_en.loc" "$locrel"; then say "loc: wrote $locrel"; else say "unchanged $locrel"; fi
+    rec "news $newsrel"
+elif grep -q '^news ' "$man"; then
+    for rel in $(sed -n 's/^news //p' "$man"); do unput "$rel"; drop "news $rel"; done
+    for rel in $(sed -n 's|^created \(.*/trf_en\.loc\)$|\1|p;s|^backup \(.*/trf_en\.loc\)$|\1|p' "$man"); do unput "$rel"; done
+fi
+
+# config.script: the shipped file with exp=0, traffic=1, autosave=0 (enabled=2 with --restore-only, news_mode=2
+# with --news).
 cfg=$bk/config.script.new
 printf -- '-- Written by sw3-traffic install.sh. A reinstall keeps an edited file; install.sh --reset-config restores it.\r\n' > "$cfg"
 sed -e '/^function TRF_Config()/s/exp=[0-9]*/exp=0/' -e '/^function TRF_Config()/s/autosave=[0-9]*/autosave=0/' \
     -e '/^function TRF_Config()/s/traffic=[0-9]*/traffic=1/' "$src/config.script" >> "$cfg"
 if [ "$restore" = 1 ]; then sed -e 's/^\([[:blank:]]*\)enabled=[0-9]*/\1enabled=2/' "$cfg" > "$cfg.2"; mv -f "$cfg.2" "$cfg"; fi
+if [ "$news" = 1 ]; then sed -e 's/\([{ ,]\)news_mode=[0-9]*/\1news_mode=2/' "$cfg" > "$cfg.2"; mv -f "$cfg.2" "$cfg"; fi
 for k in 'exp=0' 'autosave=0' 'traffic=1'; do grep -q "TRF_Config() return {.*$k" "$cfg" || die "shipped config.script has no $k on its first line"; done
 [ "$restore" = 0 ] || grep -q 'enabled=2' "$cfg" || die "could not set enabled=2 in config.script"
+[ "$news" = 0 ] || grep -q 'news_mode=2' "$cfg" || die "could not set news_mode=2 in config.script"
 cur=$game/$dst/config.script
 last=$(sed -n 's/^config //p' "$man" | tail -1)
 if [ -f "$cur" ] && [ "$reset" = 0 ] && [ "$restore" = 0 ] && [ -n "$last" ] && [ "$(sha1 "$cur")" != "$last" ]; then
     say "kept $dst/config.script (edited; --reset-config replaces it with the defaults of this release)"
+    [ "$news" = 0 ] || grep -q 'news_mode=2' "$cur" || say "news: set news_mode=2 in $dst/config.script to post the records"
 else
     if put "$cfg" "$dst/config.script"; then
         say "wrote $dst/config.script ($( [ "$restore" = 1 ] && echo 'enabled=2, restore-and-stop' || echo 'exp=0 traffic=1 autosave=0'))"
@@ -169,7 +229,7 @@ else cp "$new" "$ini.sw3trf-new"; mv -f "$ini.sw3trf-new" "$ini"; say "sw3tp.ini
 rm -f "$new"
 
 q=0
-for f in "$ini" "$game/$dst"/*.script; do
+for f in "$ini" "$game/$dst"/*.script ${newsrel:+"$game/$newsrel"} ${locrel:+"$game/$locrel"}; do
     if xattr -p com.apple.quarantine "$f" >/dev/null 2>&1; then xattr -d com.apple.quarantine "$f"; q=$((q + 1)); fi
 done
 sed -i '' "s/^version .*/version $version/" "$man"
@@ -183,6 +243,7 @@ echo "summary:"
 say "scripts: $(echo $files | wc -w | tr -d ' ') files in $dst/ (CRLF checked), quarantine removed from $q file(s)"
 say "config: $(tr -d '\r' < "$cur" | sed -n 's/^function TRF_Config() return {\([^,]*, [^,]*, [^,]*, [^,]*\),.*/\1/p')$(grep -q 'enabled=2' "$cur" && echo ', enabled=2 (restore-and-stop)')"
 say "sw3tp.ini [traffic]: $(sect "$ini" | tr -d '\r' | grep -v '^\[\|^;' | tr '\n' ' ')"
+[ "$news" = 0 ] || say "news: $(grep -c '<name>trf_' "$game/$newsrel") trf_ records in $newsrel, loc $locrel, news_mode $(tr -d '\r' < "$cur" | sed -n 's/.*news_mode=\([0-9]*\).*/\1/p' | head -1)"
 say "backups and manifest: sw3-traffic-backup/"
 echo "done."
 echo "Start the game; the mod logs 'traffic: lua: v1 loaded ... modules=18' to $game/sw3tp.log (README, In-game checks)."

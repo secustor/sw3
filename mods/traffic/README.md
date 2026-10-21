@@ -148,7 +148,7 @@ Defaults are in each module's `TRF_<M>_OptDef()`; a missing key reads its defaul
 | `raids`, `staged`, `contracts`, `esc_speed` | 1, 1, 1, 0 | lane raids, staged raids, escort contracts, contract speed cap (0 off) |
 | `meet`, `hail_start`, `board` | 2, 1, 1 | `meet` 2: announce line and hail (1: vanilla meeting box, 0 off); `hail_start` 2: menu opens at the announce without a focus; `board` 2: screen line only, 0 off |
 | `shop_mode`, `short_price`, `restore` | 1, 1, 1 | 0: vanilla trader shop; 0: shortages as rumour only, no price write; 2: restore with `ClearGoodsState` |
-| `news_mode` | 1 | 0 off, 1 bulletin line, 2 `AddPost` records (needs news records in the clone; not provided by `install-test.sh` yet) |
+| `news_mode` | 1 | 0 off, 1 bulletin line, 2 `AddPost` records (needs the news records: `install-test.sh NEWS=1`, [News records](#news-records-news1)) |
 | `heat_war`, `strict` | 0, 1 | heat 7–9 group war; strict gate (0 off, 2 strict in every quest system) |
 | `pro_set` (env `PRO_SET=taira:6,gredos:9`) | `{}` | test clone only: sets `pro` (clamped to the system's cap) on every entry |
 | `tune` (env `TUNE=T_leg=5`) | | tuning overrides, numbers only (spec 10.4 lists the v0.2 keys) |
@@ -290,6 +290,10 @@ The release zip `sw3-traffic-<v>.zip` (built by `release.sh`) or this folder:
     ./uninstall.sh "<game dir>"
 
 `install.sh` needs the sw3tp proxy (`zlib1.dll` with the traffic module) from the sw3-trackpad or sw3-performance mod of the same release and stops without changes when it is missing or older. It checks the SHA-1 of `sw3cw.exe` (GOG v1.12), `zlib1_orig.dll` and the two game scripts whose functions the mod replaces (`include/Create_flight_2.script`, `include/DockStation.script`), copies `Data/Scripts/Mods/Traffic/` (CRLF checked), writes `config.script` with `exp=0, traffic=1, autosave=0` and sets `[traffic] enabled=1` in `sw3tp.ini`, leaving every other section and key as it was. Backups, the manifest and the previous `[traffic]` section go to `<game>/sw3-traffic-backup/`. A reinstall changes nothing that is already current and keeps an edited `config.script` (`--reset-config` replaces it). `uninstall.sh` removes the scripts and the directories it created and puts the `[traffic]` section back as it was. In the top-level installer, `--mod all` installs performance, trackpad, then traffic, and uninstalls in reverse. The trackpad installer keeps an `sw3tp.ini` that traffic edited, so reinstalling the trackpad does not turn traffic off.
+
+### News records (NEWS=1)
+
+cfg `news_mode 2` posts real news items (`AddPost("trf_<topic>_<v>")`, regional `trf_r<slot>_<topic>_<v>`) instead of the bulletin line, and needs records the game does not have. `tools/gen_news.py` generates them from the `n*` texts of `TRF_UI_Text`, the region homes in `map.script` and the clan and faction names: 191 records (15 global, 22 for each of the 8 regions) in `news/trf_news.xml`, and their `#TRF_N_<name>_Name/_LDesc` strings in a marked block at the end of `loc/trf_en.loc`; rerun it (`--check` reports stale output) after changing those texts or the map. The engine reads only `Data/Game/News.xml` (`design/mod-research/news-records.md`), so the records are merged into that file before `</News>` (`news/merge.awk`, which also replaces an earlier block). `install-test.sh NEWS=1` does this in the clone, keeps the vanilla file as `News.xml.trf-orig`, copies `trf_en.loc` and writes `news_mode=2` unless `NEWS_MODE` is set; a run without `NEWS` restores the file. `install.sh --news` (or `NEWS=1`) does the same with a backup in `sw3-traffic-backup/`; a reinstall without `--news` and `uninstall.sh` restore `News.xml` and remove the loc file. The game loads both at startup (inferred from the exe), so restart it after a change. In game: `ui news post <topic>=<v> slot=<n> mode=2` in `sw3tp.log`, the item in the station news window, no new `ScriptErrors.log` lines.
 
 ## Baseline saves
 

@@ -13,6 +13,9 @@
 # SALV_ADDMOD, CLAN_ACE, SWEEPS, SWEEP_CT, PO, TT4, TT4_SPLIT, FEQ, FORCED_BUST, DCONV, DC_SPEED, BASES, BASE_GLOW, WRECK
 # (integers); FEQ_AT=<system> (debug: the next leg schedules an equipment convoy there, skipping the pro/strength
 # tests); LOC=1 (loc_mode 1 and loc/trf_en.loc copied to Data/LocData/English/, CHECK E0.6; unset removes the copy).
+# NEWS=1: the trf_* records of news/trf_news.xml (tools/gen_news.py) merged into the clone's Data/Game/News.xml
+# (the vanilla file is kept as News.xml.trf-orig), loc/trf_en.loc copied as with LOC=1, and news_mode=2 unless
+# NEWS_MODE is set; unset restores News.xml from News.xml.trf-orig.
 # BASE_AT is not available: trf_base has no forced-site key yet.
 # LEVEL=v01|v02|v1 (default v1): v01 and v02 turn the later features off with the presets the host tests use
 # (tests/host_traffic.lua T_V01, T_V1Off); keys set in the environment win over the preset.
@@ -32,6 +35,7 @@ case "$AUTOSAVE" in 0|1|2) ;; *) echo "AUTOSAVE must be 0..2" >&2; exit 1;; esac
 TRAFFIC=${TRAFFIC:-1}
 case "$TRAFFIC" in 0|1) ;; *) echo "TRAFFIC must be 0 or 1" >&2; exit 1;; esac
 opt=""
+case "${NEWS:-0}" in 0) ;; 1) NEWS_MODE=${NEWS_MODE:-2} ;; *) echo "NEWS must be 0 or 1" >&2; exit 1;; esac
 LEVEL=${LEVEL:-v1}
 case "$LEVEL" in
 v1) pre= ;;
@@ -84,7 +88,16 @@ cp "$tp/out/zlib1.dll" "$COPY/zlib1.dll"
 rm -rf "$SCRIPTS_DST"; mkdir -p "$SCRIPTS_DST"
 cp -R "$SCRIPTS_SRC/." "$SCRIPTS_DST/"
 locd=$COPY/Data/LocData/English
-if [ "${LOC:-0}" = 1 ]; then cp "$here/loc/trf_en.loc" "$locd/trf_en.loc"; else rm -f "$locd/trf_en.loc"; fi
+if [ "${LOC:-0}" = 1 ] || [ "${NEWS:-0}" = 1 ]; then cp "$here/loc/trf_en.loc" "$locd/trf_en.loc"; else rm -f "$locd/trf_en.loc"; fi
+newsx=$COPY/Data/Game/News.xml
+if [ "${NEWS:-0}" = 1 ]; then
+    [ -f "$newsx.trf-orig" ] || cp -p "$newsx" "$newsx.trf-orig"
+    rc=0; awk -v frag="$here/news/trf_news.xml" -f "$here/news/merge.awk" "$newsx.trf-orig" > "$newsx.new" || rc=$?
+    [ "$rc" = 0 ] || { rm -f "$newsx.new"; echo "News.xml merge failed (awk exit $rc: 3 no </News>, 4 trf_ name outside the block)" >&2; exit 1; }
+    mv -f "$newsx.new" "$newsx"
+elif [ -f "$newsx.trf-orig" ]; then
+    mv -f "$newsx.trf-orig" "$newsx"
+fi
 printf 'function TRF_Config() return {exp=%s, log=%s, big=%s, del_on_jump=%s, autosave=%s, traffic=%s%s} end\r\n' \
     "$EXP" "${LOG:-1}" "${BIG:-0}" "${DEL_ON_JUMP:-0}" "$AUTOSAVE" "$TRAFFIC" "$opt" > "$SCRIPTS_DST/config.script"
 
@@ -101,5 +114,6 @@ find "$SCRIPTS_DST" -type f -exec xattr -c {} \; 2>/dev/null || true
 echo "installed zlib1.dll (sha1 $(shasum "$COPY/zlib1.dll" | cut -d' ' -f1))"
 echo "scripts in $SCRIPTS_DST:"; ls "$SCRIPTS_DST" | sed 's/^/  /'
 echo "config.script: $(tr -d '\r' < "$SCRIPTS_DST/config.script")"
-[ ! -f "$locd/trf_en.loc" ] || echo "loc: $locd/trf_en.loc (loc_mode 1)"
+[ ! -f "$locd/trf_en.loc" ] || echo "loc: $locd/trf_en.loc$([ "${LOC:-0}" = 1 ] && echo ' (loc_mode 1)')"
+[ ! -f "$newsx.trf-orig" ] || echo "news: $(grep -c '<name>trf_' "$newsx") trf_ records in $newsx (vanilla in News.xml.trf-orig)"
 echo "sw3tp.ini [traffic]: $(awk '{sub(/\r$/,"")} /^\[/{p=($0=="[traffic]")} p&&!/^\[/{printf "%s ",$0}' "$ini")"
