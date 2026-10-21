@@ -75,7 +75,10 @@ end;
 
 -- Timer action. A timer from an older gen (restored from a save, or left over from another system)
 -- or one that fires during a jump does nothing.
-function TRF_Saves_Fire(gen)
+-- Trigger entry point (review O1): runs TRF_Saves_Fire_Body protected.
+function TRF_Saves_Fire(gen) TRF_Cb("TRF_Saves_Fire", TRF_Saves_Fire_Body, {gen}); end;
+
+function TRF_Saves_Fire_Body(gen)
 	if type(TRF) ~= "table" then return; end;
 	TRF_Init();
 	local sys = TRF_Saves_Sys();

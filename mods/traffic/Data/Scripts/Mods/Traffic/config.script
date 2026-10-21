@@ -4,4 +4,9 @@
 -- Optional keys: big=1 (E0.2 1000-entry table), del_on_jump=1 (E0.3 deletes live flights before a jump).
 -- traffic: 1 = load the v0.1 traffic modules when exp is 0 (missing key = 1), 0 = loader and kits only.
 -- Further v0.1 keys and their defaults: design/v01-spec.md 9 (TRF_OptDef in trf_state.script).
-function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1} end
+-- v0.2 keys (design/v02-spec.md 10.4), listed here with their defaults; a missing key reads the default of the
+-- module's TRF_<M>_OptDef(). enabled 2 = restore changed station prices and stop; pro_set is for the test clone.
+function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
+	enabled=1, cycle=1, prosperity=1, tier_cap=2, cap_traders=5, cap_ships=20, spawn_scale=1.0, band_half=0,
+	parked=1, seed=1, queue=1, raids=1, staged=1, contracts=1, esc_speed=0, meet=2, hail_start=1, board=1,
+	shop_mode=1, short_price=1, restore=1, news_mode=1, heat_war=0, strict=1, pro_set={}} end

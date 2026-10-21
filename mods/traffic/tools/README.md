@@ -9,6 +9,21 @@ Static check of the DLL hook sites (mod-options.md 5.2) and the Lua C API prolog
     python3 -I mods/traffic/tools/check_sites.py --asm .work/exe.asm --write-header mods/traffic/pe/trf_sites.h
     python3 -I mods/traffic/tools/check_sites.py --exe /path/to/sw3cw.exe
 
+## gen_map.py
+
+Generates `Data/Scripts/Mods/Traffic/map.script` (`TRF_MapData()`, CRLF) from `Data/Game/GlobalMap.xml` and the location scripts (read only). `--check` exits 1 when the file differs from what would be written; `--game`, `--out` override the paths. It prints counts and the discrepancies (one-way, broken and conditional portals, xml links without portals, station notes).
+
+    python3 -I mods/traffic/tools/gen_map.py [--check]
+
+Per system: `name`, `idx`, `dir`, `mx`/`my`, `start`, `trader`, `portals`, `inner`, `broken`, and `st`, the docking stations:
+
+- Source: every uncommented `CreateTradeStationDocking(VAR, ...)` (kind `"trade"`) and `CreatePatrolStationDocking(VAR, ship, r, ...)` (kind `"patrol"`) in the system's scripts. `label` is `SetObjectLabel(VAR, ...)`, else `functions.script`'s `VAR = GetObjectByLabel(...)`. Stations without a docking call (Debris1 `TRADE2`, xb13 `STOCK0*`) are not emitted.
+- `x, y, z`: position argument of `VAR = CreateTradeStation/CreateStation(...)`, resolved like portals (top-level `Vector3` names of `location.script`, then of the other scripts).
+- `side`: team of the `DefStation(VAR, "<group>")` guard group (`G = T:CreateGroup("<group>")`, `T = CreateTeam("<team>")`); absent without `DefStation`. The location owner (`GetLocationTeam`) is runtime state and not emitted.
+- `r`: patrol docking radius (default 110); `prm`: the docking call's location parameter (Kadenoa `"kadenoa_tri"`, the dialog's location); `cond=1`: the docking call is inside a block.
+- No `dock` field: `CreateTradeStationDocking` uses the engine's `GetDockingPosition()`, no script gives it.
+- Order: top-level trade dockings, conditional trade dockings, patrol stations. `st[1]` is the main trade station only when its `kind` is `"trade"`; `trf_safety`'s `TRF_Station` also requires `cond ~= 1`.
+
 ## lint_lua.py
 
 Token-based lint for the mod's `*.script` files (Lua 4.0.1 under the SW3 engine). It flags `local function`; `true`/`false`; the `%` operator (`%name` upvalues are allowed) and `#`; `function a:b` and `function a.b` (functions in tables are lost on save); named global functions without the `TRF_` prefix; assignments outside any function body whose target is not `TRF_`-prefixed (pass game globals that a wrapper replaces with `--allow`), and top-level assignments of data (constructor, literal or call result) to `TRF_` names; reserved names (the 0x7acae8 list, `EASY NORMAL HARD NOINIT`, prefixes `_EVENT_ ROLE_ RELATION_ QUEST_ MISSION_`) used as constructor keys, `["..."]` keys or `.field =` targets; bare tests of game helpers that return `FALSE` (0 is true; extend the list with `--bool`); and `== FALSE` against `IsExist`/`IsAlive`/`HavePerk`, which return 1 or nil. Exit status 1 when anything is found.

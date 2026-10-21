@@ -1,6 +1,8 @@
 -- sw3-traffic v0.1 player-facing text (v01-spec 8): output (8.1), templates (8.2), focus line with
--- proximity fallback (8.3), arrival line (8.4, S20). Top level only defines functions; state is in
--- TRF.live (met per trader, line, arr). Log prefix "ui".
+-- proximity fallback (8.3), arrival line (8.4, S20). v0.2 (v02-spec 6.1, 8.2, 9.6): meet 2 announce and hail
+-- arm, text lookup in every module's TRF_<M>_Text(), tier, sweep and prosperity arrival lines, news state and
+-- bulletin. Top level only defines functions; state is in TRF.live (met per trader, line, arr, nbs) and in
+-- TRF.news / TRF.newsx (saved). Log prefix "ui".
 -- Other modules are reached by name and type-checked, so a missing one only disables a feature.
 
 -- Strings ---------------------------------------------------------------------------
@@ -34,6 +36,39 @@ function TRF_UI_Text()
 		arr3 = "FTU reports severe raids in this system; traders fly only under escort",
 		cease = "Cease fire! This is a civilian freighter.",
 		ceasefire = "Cease fire! This is a civilian freighter.",
+		-- v0.2 arrival lines (v02-spec 9.6): band templates with the effective-tier word, sweep, prosperity.
+		arrt1 = "FTU reports $1 on the lanes in this system",
+		arrt2 = "FTU reports heavy raids by $1 in this system",
+		arrt3 = "FTU reports severe raids by $1 in this system; traders fly only under escort",
+		pirw1 = "scavengers",
+		pirw2 = "pirate gangs",
+		pirw3 = "pirate packs",
+		pirw4 = "raiders",
+		arrsweep = "$1 fleet expected; pirates dug in here",   -- faction
+		arrpro1 = "FTU: busy lanes in this system",
+		arrpro2 = "FTU: trade hub, convoys run here",
+		facvks = "MSF",
+		fackfni = "New Empire",
+		factriada = "Triada",
+		facuss = "USS",
+		facinoco = "InoCo",
+		facmerc = "FTU mercenaries",
+		-- News (v02-spec 8.2): key n<topic><variant>; $1 home display name, $2 clan, $3 faction.
+		nbull = "FTU bulletin: $1",
+		nheat5 = "FTU warns captains about the Wolves",
+		nheat7 = "FTU blacklists the Wolves",
+		nhelp5 = "FTU thanks the Wolves",
+		nhelp15 = "FTU names the Wolves friends of the union",
+		nshorton = "Shortages reported at trade stations",
+		nlaneraid = "Raids on trade lanes rising near $1",
+		nlanequiet = "Lanes quiet again near $1",
+		ntradeboom = "Trade booming near $1",
+		ntradebust = "Trade collapsing near $1",
+		npirmass = "$2 massing near $1",
+		npirback = "$2 driven back near $1",
+		nsweepgather = "$3 gathers a fleet against pirates near $1",
+		nsweepfail = "$3 sweep near $1 beaten back",
+		nsweepwin = "$3 clears pirates near $1",
 		-- cfg ui_keys = 1: pre-authored loc keys (design 8.1) instead of plain strings.
 		keyarr = "#TRF_ArriveDis_$1",           -- band
 		keyfocus = "#TRF_Focus_$1_$2",          -- cargo class 0..6, path A/B/C
@@ -51,9 +86,31 @@ function TRF_UI_Esc(s)
 	return r;
 end;
 
+-- Text tables searched after TRF_UI_Text (v02-spec 6.2, 10.2); missing modules are skipped.
+function TRF_UI_TextFns()
+	return {"TRF_Hail_Text", "TRF_Raid_Text", "TRF_Rg_Text", "TRF_Tier_Text", "TRF_Shop_Text"};
+end;
+
+function TRF_UI_TxtErr(m) TRF_L("ui txt table error: "..tostring(m)); end;
+
+-- String of a normalised key, or nil. A table function that fails is skipped.
+function TRF_UI_Find(k)
+	local s = TRF_UI_Text()[k];
+	if type(s) == "string" then return s; end;
+	local fs = TRF_UI_TextFns();
+	for i = 1, getn(fs) do
+		local f = getglobal(fs[i]);
+		if type(f) == "function" then
+			local t = call(f, {}, "x", TRF_UI_TxtErr);
+			if type(t) == "table" and type(t[k]) == "string" then return t[k]; end;
+		end;
+	end;
+	return nil;
+end;
+
 -- Template key -> string with $1..$3 replaced. An unknown key returns the key itself (logged).
 function TRF_Txt(key, a, b, c)
-	local s = TRF_UI_Text()[TRF_UI_Key(key)];
+	local s = TRF_UI_Find(TRF_UI_Key(key));
 	if type(s) ~= "string" then
 		TRF_L("ui txt unknown key="..tostring(key));
 		return tostring(key);
@@ -186,21 +243,27 @@ function TRF_UI_Transports(r, id)
 	return 1;
 end;
 
+-- "FTU freighter Kestrel" (8.2 who part; also the hail box, v02-spec 6.1).
+function TRF_UI_Who(r, id)
+	local hull = TRF_Txt("hull1");
+	if TRF_UI_Transports(r, id) >= 2 then hull = TRF_Txt("hull2"); end;
+	local nm = TRF_UI_Name(r.nm);
+	if nm then return TRF_Txt("who", TRF_Txt("owner"), hull, nm); end;
+	return TRF_Txt("who_noname", TRF_Txt("owner"), hull);
+end;
+
 -- 8.2: "FTU freighter Kestrel: machinery, Aurora -> trade station".
 function TRF_UI_FocusText(r, id)
 	local p = TRF_UI_Path(r);
 	local cls = r.cls;
 	if type(cls) ~= "number" or cls < 1 or cls > 6 then cls = 0; end;
 	if TRF_UI_Opt("ui_keys", 0) == 1 then return TRF_Txt("key_focus", cls, p); end;
-	local hull = TRF_Txt("hull1");
-	if TRF_UI_Transports(r, id) >= 2 then hull = TRF_Txt("hull2"); end;
-	local nm = TRF_UI_Name(r.nm);
-	local who;
-	if nm then
-		who = TRF_Txt("who", TRF_Txt("owner"), hull, nm);
-	else
-		who = TRF_Txt("who_noname", TRF_Txt("owner"), hull);
-	end;
+	return TRF_Txt("focus", TRF_UI_Who(r, id), TRF_Txt("cls"..cls), TRF_UI_DirText(r));
+end;
+
+-- Direction part of the focus line ("Aurora -> trade station"; also "Where are you headed?", v02-spec 6.3).
+function TRF_UI_DirText(r)
+	local p = TRF_UI_Path(r);
 	local dir;
 	if p == "A" then
 		dir = TRF_Txt("dir_a", TRF_UI_SysName(r.from));
@@ -211,7 +274,7 @@ function TRF_UI_FocusText(r, id)
 	else
 		dir = TRF_Txt("dir_c", TRF_UI_SysName(r.from), TRF_UI_SysName(r.to));
 	end;
-	return TRF_Txt("focus", who, TRF_Txt("cls"..cls), dir);
+	return dir;
 end;
 
 -- Output (8.1) ----------------------------------------------------------------------
@@ -295,7 +358,10 @@ end;
 -- Trigger "focus" on the leader ship (cfg ui_focus 1 or 3).
 -- CHECK (design 13.2): _EVENT_ONFOCUS fires when the player selects an NPC ship; the log line and
 -- the ui_focus counter show it. TRF_OnNear covers the case where it never fires.
-function TRF_OnFocus(id, g)
+-- Trigger entry point (review O1): runs TRF_OnFocus_Body protected.
+function TRF_OnFocus(id, g) TRF_Cb("TRF_OnFocus", TRF_OnFocus_Body, {id, g}); end;
+
+function TRF_OnFocus_Body(id, g)
 	if not TRF_UI_GenOk(g) or not TRF_UI_Rec(id) then return; end;
 	TRF_UI_Stat("ui_focus");
 	TRF_L("ui OnFocus id="..id.." gt="..TRF_F(TRF_UI_Gt()));
@@ -305,7 +371,10 @@ function TRF_OnFocus(id, g)
 end;
 
 -- Trigger f_object_inside(fl, mothership, info_r) (cfg ui_focus 2 or 3).
-function TRF_OnNear(id, g)
+-- Trigger entry point (review O1): runs TRF_OnNear_Body protected.
+function TRF_OnNear(id, g) TRF_Cb("TRF_OnNear", TRF_OnNear_Body, {id, g}); end;
+
+function TRF_OnNear_Body(id, g)
 	if not TRF_UI_GenOk(g) or not TRF_UI_Rec(id) then return; end;
 	TRF_UI_Stat("ui_near");
 	TRF_L("ui OnNear id="..id.." gt="..TRF_F(TRF_UI_Gt()));
@@ -314,14 +383,25 @@ function TRF_OnNear(id, g)
 	TRF_FocusLine(id, "near");
 end;
 
--- Trigger f_object_inside(fl, mothership, 70): the vanilla meeting (8.3, until S8 in v0.2).
+-- Trigger f_object_inside(fl, mothership, 70): the vanilla meeting (8.3), or with cfg meet 2 the v0.2
+-- announce (v02-spec 6.1); meet 2 acts as 1 when trf_hail (TRF_OnHail) is not loaded.
 -- _FTrader_Action reads GetTriggerContext():GetFlight(), still valid inside this action, and
 -- compares __sys_FTrader_1..3 with RAND (a script error if _Trader_Init did not run here).
+-- Trigger entry point (review O1): runs TRF_OnMeet_Body protected; on 1 it calls the vanilla meeting
+-- outside TRF_Cb, so an error there keeps the default handler (spec 13, fix 1).
 function TRF_OnMeet(id, g)
+	if TRF_Cb("TRF_OnMeet", TRF_OnMeet_Body, {id, g}) == 1 then call(_FTrader_Action, {}, "x"); end;
+end;
+
+function TRF_OnMeet_Body(id, g)
 	if not TRF_UI_GenOk(g) or not TRF_UI_Rec(id) then return; end;
 	if TRF_UI_Opt("meet", 1) == 0 then return; end;
 	if TRF_UI_Supp() then
 		TRF_L("ui meet id="..id.." skipped (flag)");
+		return;
+	end;
+	if TRF_UI_Opt("meet", 1) == 2 and type(TRF_OnHail) == "function" then
+		TRF_UI_Announce(id);
 		return;
 	end;
 	if type(_FTrader_Action) ~= "function" then
@@ -333,7 +413,121 @@ function TRF_OnMeet(id, g)
 		return;
 	end;
 	TRF_L("ui meet id="..id);
-	call(_FTrader_Action, {}, "x");
+	return 1;
+end;
+
+-- Band remark of the announce (design 7.11): pro 0-2 / 3-5 / 6-9; nil without trf_region.
+function TRF_UI_ProBand(idx)
+	if type(TRF_Pro) ~= "function" or type(idx) ~= "number" then return nil; end;
+	local p = call(TRF_Pro, {idx}, "x", TRF_PErr);
+	if type(p) ~= "number" then return nil; end;
+	if p <= 2 then return 1; end;
+	if p <= 5 then return 2; end;
+	return 3;
+end;
+
+-- meet 2 (v02-spec 6.1 announce): line "FTU <name>, open for trade" + band remark, once per trader;
+-- the hail is armed for hail_arm seconds (r.ha): a focus within hail_r opens it (trf_hail), or with
+-- cfg hail_start 2 the menu opens at once.
+function TRF_UI_Announce(id)
+	local r = TRF_UI_Rec(id);
+	if type(r) ~= "table" or r.ha then return nil; end;
+	r.ha = TRF_UI_Gt() + TRF_UI_Tune("hail_arm", 60);
+	local s = TRF_Txt("open", TRF_UI_Name(r.nm) or TRF_Txt("hull1"));
+	local b = TRF_UI_ProBand(TRF_CurIdx());
+	if b then s = s..". "..TRF_Txt("rem"..b); end;
+	local pilot = nil;
+	if TRF_UI_Opt("ui_out", 1) == 2 then pilot = TRF_UI_Leader(id); end;
+	TRF_Say(s, TRF_UI_Const().secs, pilot);
+	TRF_UI_Stat("ui_announce");
+	TRF_L("ui announce id="..id.." band="..tostring(b));
+	if TRF_UI_Opt("hail_start", 1) == 2 and type(TRF_HailOpen) == "function" then
+		call(TRF_HailOpen, {id, "near"}, "x", TRF_PErr);
+	elseif type(TRF_HailArm) == "function" then
+		call(TRF_HailArm, {id}, "x", TRF_PErr);
+	end;
+	return 1;
+end;
+
+-- Region helpers (trf_region, v02-spec 4.1, 10.1); nil or defaults when it is not loaded --------
+
+function TRF_UI_RgMap()
+	if type(TRF_RgMap) ~= "function" then return nil; end;
+	local m = call(TRF_RgMap, {}, "x", TRF_PErr);
+	if type(m) == "table" then return m; end;
+	return nil;
+end;
+
+-- Home idx of region slot (home given as idx or system name), or nil.
+function TRF_UI_HomeIdx(slot)
+	local rm = TRF_UI_RgMap();
+	if not rm or type(slot) ~= "number" or type(rm[slot]) ~= "table" then return nil; end;
+	local h = rm[slot].home;
+	if type(h) == "number" then return h; end;
+	local m = TRF_Map();
+	if type(h) == "string" and m then return m.by[strlower(h)]; end;
+	return nil;
+end;
+
+-- Region systems (idx list) of slot: TRF_RgMap sys, else map entries with rg == slot.
+function TRF_UI_RgSys(slot)
+	local rm = TRF_UI_RgMap();
+	if rm and type(rm[slot]) == "table" and type(rm[slot].sys) == "table" then return rm[slot].sys; end;
+	local o = {};
+	local m = TRF_Map();
+	if m then
+		for i = 1, getn(m.sys) do
+			if m.sys[i].rg == slot then tinsert(o, i); end;
+		end;
+	end;
+	return o;
+end;
+
+function TRF_UI_RgN()
+	local rm = TRF_UI_RgMap();
+	if rm and type(rm.n) == "number" then return rm.n; end;
+	return 0;
+end;
+
+function TRF_UI_RgOf(idx)
+	if type(TRF_RgOf) ~= "function" or type(idx) ~= "number" then return nil; end;
+	local s = call(TRF_RgOf, {idx}, "x", TRF_PErr);
+	if type(s) == "number" then return s; end;
+	return nil;
+end;
+
+-- Sweep owner display name: a vanilla team name (Vks, Kfni, ...) or an already readable name.
+function TRF_UI_FacName(fac)
+	if type(fac) ~= "string" or fac == "" then return TRF_Txt("facmerc"); end;
+	local s = TRF_UI_Find(TRF_UI_Key("fac"..fac));
+	if s then return s; end;
+	return fac;
+end;
+
+function TRF_UI_ClanName(slot)
+	if type(TRF_ClanName) == "function" then
+		local s = call(TRF_ClanName, {slot}, "x", TRF_PErr);
+		if type(s) == "string" then return s; end;
+	end;
+	return TRF_Txt("pirw2");
+end;
+
+function TRF_UI_Pro(idx)
+	if type(TRF_Pro) ~= "function" then return nil; end;
+	local p = call(TRF_Pro, {idx}, "x", TRF_PErr);
+	if type(p) == "number" then return p; end;
+	return nil;
+end;
+
+-- Faction name when idx is its region's home and a sweep attempt is open there, else nil.
+function TRF_UI_SweepHome(idx)
+	local s = TRF_UI_RgOf(idx);
+	if not s or TRF_UI_HomeIdx(s) ~= idx or type(TRF_SweepOpen) ~= "function" then return nil; end;
+	if not call(TRF_SweepOpen, {s}, "x", TRF_PErr) then return nil; end;
+	local w = nil;
+	if type(TRF_SweepInfo) == "function" then w = call(TRF_SweepInfo, {s}, "x", TRF_PErr); end;
+	if type(w) ~= "table" then w = {}; end;
+	return TRF_UI_FacName(w.fac);
 end;
 
 -- Arrival line (8.4, S20) -----------------------------------------------------------
@@ -378,31 +572,284 @@ function TRF_ArrivalLine()
 		end;
 	end;
 	local d = TRF_UI_Dis(idx);
-	if d < TRF_UI_Tune("arr_dis", 3) then return nil; end;
-	local band = TRF_UI_Band(d);
+	local keys = TRF_UI_Opt("ui_keys", 0) == 1;
+	local text = nil;
+	if d >= TRF_UI_Tune("arr_dis", 3) then
+		local band = TRF_UI_Band(d);
+		if keys then
+			text = TRF_Txt("key_arr", band);
+		else
+			text = TRF_UI_ArrDis(idx, band);
+		end;
+		TRF_L("ui arrival dis="..d.." band="..band);
+	elseif not keys then
+		text = TRF_UI_ArrQuiet(idx);
+		if text then TRF_L("ui arrival dis="..d.." quiet line"); end;
+	end;
+	if not text then return nil; end;
 	if TRF_UI_Supp() then
 		TRF_L("ui arrival skipped (flag) dis="..d);
 		return nil;
 	end;
-	local text;
-	if TRF_UI_Opt("ui_keys", 0) == 1 then
-		text = TRF_Txt("key_arr", band);
-	else
-		text = TRF_Txt("arr"..band);
-	end;
-	TRF_L("ui arrival dis="..d.." band="..band);
 	return TRF_Say(text, TRF_UI_Const().arr_secs);
 end;
 
+-- Disruption line (v02-spec 9.6): v0.1 text without trf_region, else the band template with the
+-- effective-tier word; the sweep sentence follows in a home system with an open sweep.
+function TRF_UI_ArrDis(idx, band)
+	local text;
+	if type(TRF_EffTier) == "function" then
+		local t = call(TRF_EffTier, {idx}, "x", TRF_PErr);
+		if type(t) ~= "number" or t < 1 then t = 1; end;
+		text = TRF_Txt("arrt"..band, TRF_Txt("pirw"..min(floor(t), 4)));
+	else
+		text = TRF_Txt("arr"..band);
+	end;
+	local f = TRF_UI_SweepHome(idx);
+	if f then text = text..". "..TRF_Txt("arrsweep", f); end;
+	return text;
+end;
+
+-- Line below the disruption threshold: the sweep sentence, else the prosperity line (pro 6-7, 8-9).
+function TRF_UI_ArrQuiet(idx)
+	local f = TRF_UI_SweepHome(idx);
+	if f then return TRF_Txt("arrsweep", f); end;
+	local p = TRF_UI_Pro(idx);
+	if not p then return nil; end;
+	if p >= 8 then return TRF_Txt("arrpro2"); end;
+	if p >= 6 then return TRF_Txt("arrpro1"); end;
+	return nil;
+end;
+
 -- Loader OnActivate (entry only, never on load): schedule the arrival line arr_delay seconds after
--- entry. TRF_DueRun checks the generation, so a restored or stale entry does nothing.
+-- entry and the news bulletin (cfg news_mode 1) 12 s after entry. TRF_DueRun checks the generation, so a
+-- restored or stale entry does nothing.
 function TRF_UI_OnActivate()
 	local L = TRF_UI_Live();
-	if not L or L.arr then return; end;
-	if TRF_UI_Opt("arrival_line", 1) == 0 or TRF_UI_Opt("ui", 1) == 0 then return; end;
+	if not L or TRF_UI_Opt("ui", 1) == 0 then return; end;
 	if type(TRF_Due) ~= "function" then
 		TRF_L("ui arrival not scheduled (no TRF_Due)");
 		return;
 	end;
+	if not L.nbs and TRF_UI_Opt("news_mode", 1) == 1 then
+		L.nbs = 1;
+		TRF_Due(TRF_UI_Tune("news_delay", 12), "TRF_NewsShow");
+	end;
+	if L.arr or TRF_UI_Opt("arrival_line", 1) == 0 then return; end;
 	TRF_Due(TRF_UI_Tune("arr_delay", 5), "TRF_ArrivalLine");
+end;
+
+-- News (v02-spec 8.2) ----------------------------------------------------------------
+-- TRF.news[topic] (global) and TRF.newsx[slot][topic] (regional) hold one entry per topic:
+-- {v=variant, n=1 unseen / 0 shown, l=leg of the post}; short also keeps e (latest end leg seen).
+-- The owners of the events post (TRF_NewsPost) or ask for a check (TRF_NewsCheck); display is here.
+
+function TRF_UI_NewsMode()
+	local m = TRF_UI_Opt("news_mode", 1);
+	if m ~= 0 and m ~= 1 and m ~= 2 then return 1; end;
+	return m;
+end;
+
+-- Post record name for cfg news_mode 2 (records added by install-test.sh NEWS=1).
+function TRF_UI_NewsRec(topic, v, slot)
+	if type(slot) == "number" then return "trf_r"..slot.."_"..topic.."_"..v; end;
+	return "trf_"..topic.."_"..v;
+end;
+
+-- Topic table of slot (nil = global), created on demand.
+function TRF_UI_NewsTab(slot)
+	if type(slot) == "number" then
+		if type(TRF.newsx) ~= "table" then TRF.newsx = {}; end;
+		if type(TRF.newsx[slot]) ~= "table" then TRF.newsx[slot] = {}; end;
+		return TRF.newsx[slot];
+	end;
+	if type(TRF.news) ~= "table" then TRF.news = {}; end;
+	return TRF.news;
+end;
+
+-- Post variant v of topic (slot nil = global); v nil removes the topic. A new post replaces the old one
+-- (news_mode 2: RemovePost then AddPost). news_mode 0: nothing. Returns 1 when stored.
+-- CHECK (E0.6): the trf_* records exist only in the test clone's Game/News.xml.
+function TRF_NewsPost(topic, v, slot)
+	if type(TRF) ~= "table" or type(topic) ~= "string" then return nil; end;
+	local mode = TRF_UI_NewsMode();
+	if mode == 0 then return nil; end;
+	local tab = TRF_UI_NewsTab(slot);
+	local old = tab[topic];
+	if mode == 2 and type(old) == "table" and old.v ~= nil then TRF_N("RemovePost", TRF_UI_NewsRec(topic, old.v, slot)); end;
+	if v == nil then
+		tab[topic] = nil;
+		TRF_L("ui news removed "..topic.." slot="..tostring(slot));
+		return 1;
+	end;
+	v = tostring(v);
+	local legs = 0;
+	if type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then legs = TRF.clock.legs; end;
+	tab[topic] = {v=v, n=1, l=legs};
+	if mode == 2 then
+		TRF_N("AddPost", TRF_UI_NewsRec(topic, v, slot));
+		tab[topic].n = 0;
+	end;
+	TRF_UI_Stat("news_post");
+	TRF_L("ui news post "..topic.."="..v.." slot="..tostring(slot).." mode="..mode);
+	return 1;
+end;
+
+-- Threshold topic (heat, help): post the highest level reached when it is above the posted one;
+-- value 0 removes the topic.
+function TRF_UI_NewsLevel(topic, val, lv)
+	local cur = TRF_UI_NewsTab(nil)[topic];
+	if type(val) ~= "number" then return; end;
+	if val <= 0 then
+		if cur then TRF_NewsPost(topic, nil); end;
+		return;
+	end;
+	local cv = 0;
+	if type(cur) == "table" then cv = tonumber(cur.v) or 0; end;
+	for i = 1, getn(lv) do
+		if val >= lv[i] then
+			if cv < lv[i] then TRF_NewsPost(topic, lv[i]); end;
+			return;
+		end;
+	end;
+end;
+
+-- short "on": first active shortage after none for >= 6 legs (L_short). e tracks the latest end leg seen.
+function TRF_UI_NewsShort()
+	if type(TRF.short) ~= "table" or type(TRF.clock) ~= "table" then return; end;
+	local legs = TRF.clock.legs or 0;
+	local mx = nil;
+	for i = 1, getn(TRF.short) do
+		local e = TRF.short[i];
+		if type(e) == "table" and type(e.t) == "number" and e.t > legs and (not mx or e.t > mx) then mx = e.t; end;
+	end;
+	if not mx then return; end;
+	local cur = TRF_UI_NewsTab(nil).short;
+	if type(cur) ~= "table" or type(cur.e) ~= "number" or legs - cur.e >= TRF_UI_Tune("L_short", 6) then
+		TRF_NewsPost("short", nil);
+		if TRF_NewsPost("short", "on") then TRF.news.short.e = mx; end;
+	elseif mx > cur.e then
+		cur.e = mx;
+	end;
+end;
+
+-- Region topics of slot: lane (raid at dis 5, quiet when all < 3 after raid), trade (boom at pro 7,
+-- bust when the highest pro <= 2 after boom).
+function TRF_UI_NewsRegion(slot, topic)
+	local ss = TRF_UI_RgSys(slot);
+	local dmax, pmax = 0, 0;
+	for i = 1, getn(ss) do
+		local d = TRF_UI_Dis(ss[i]);
+		if d > dmax then dmax = d; end;
+		local p = TRF_UI_Pro(ss[i]) or 0;
+		if p > pmax then pmax = p; end;
+	end;
+	local t = TRF_UI_NewsTab(slot);
+	if not topic or topic == "lane" then
+		local c = t.lane;
+		if dmax >= 5 and (type(c) ~= "table" or c.v ~= "raid") then
+			TRF_NewsPost("lane", "raid", slot);
+		elseif type(c) == "table" and c.v == "raid" and dmax < 3 then
+			TRF_NewsPost("lane", "quiet", slot);
+		end;
+	end;
+	if (not topic or topic == "trade") and type(TRF_Pro) == "function" then
+		local c = t.trade;
+		if pmax >= 7 and (type(c) ~= "table" or c.v ~= "boom") then
+			TRF_NewsPost("trade", "boom", slot);
+		elseif type(c) == "table" and c.v == "boom" and pmax <= 2 then
+			TRF_NewsPost("trade", "bust", slot);
+		end;
+	end;
+end;
+
+-- State-driven topics: "heat", "help", "short" (global); "lane", "trade" for region slot (nil = every
+-- region); topic nil = both region topics. TRF_NewsCheck(slot) with a number is the same as (nil, slot).
+-- Event topics (pir, sweep) are posted by trf_region with TRF_NewsPost.
+function TRF_NewsCheck(topic, slot)
+	if type(TRF) ~= "table" then return; end;
+	if type(topic) == "number" and slot == nil then slot = topic; topic = nil; end;
+	if topic == "heat" then
+		local h = nil;
+		if type(TRF.std) == "table" then h = TRF.std.heat; end;
+		TRF_UI_NewsLevel("heat", h, {7, 5});
+		return;
+	end;
+	if topic == "help" then
+		local h = nil;
+		if type(TRF.std) == "table" then h = TRF.std.help; end;
+		TRF_UI_NewsLevel("help", h, {15, 5});
+		return;
+	end;
+	if topic == "short" then TRF_UI_NewsShort(); return; end;
+	if topic ~= nil and topic ~= "lane" and topic ~= "trade" then return; end;
+	if type(slot) == "number" then
+		TRF_UI_NewsRegion(slot, topic);
+		return;
+	end;
+	for s = 1, TRF_UI_RgN() do TRF_UI_NewsRegion(s, topic); end;
+end;
+
+-- Display text of an entry (region topics name the home system, clan and sweep faction).
+function TRF_UI_NewsText(topic, v, slot)
+	local key = TRF_UI_Key("n"..topic..tostring(v));
+	if type(slot) ~= "number" then return TRF_Txt(key); end;
+	local h = TRF_UI_HomeIdx(slot);
+	local home = TRF_Txt("unknown");
+	if h then home = TRF_UI_SysName(h); end;
+	local fac = nil;
+	if type(TRF_SweepInfo) == "function" then
+		local w = call(TRF_SweepInfo, {slot}, "x", TRF_PErr);
+		if type(w) == "table" then fac = w.fac; end;
+	end;
+	return TRF_Txt(key, home, TRF_UI_ClanName(slot), TRF_UI_FacName(fac));
+end;
+
+-- 1 when entry a (slot sa, topic ta) is newer than b: leg desc, then global before regional, lower slot,
+-- topic name.
+function TRF_UI_NewsNewer(a, sa, ta, b, sb, tb)
+	if not b then return 1; end;
+	if a.l ~= b.l then return a.l > b.l; end;
+	if sa ~= sb then return sa < sb; end;
+	return ta < tb;
+end;
+
+-- Newest unseen entry: text, entry (set entry.n = 0 once shown), or nil.
+function TRF_NewsNext()
+	if type(TRF) ~= "table" then return nil; end;
+	local be, bs, bt = nil, 0, "";
+	if type(TRF.news) == "table" then
+		for k, e in TRF.news do
+			if type(k) == "string" and type(e) == "table" and e.n == 1 and type(e.l) == "number"
+				and TRF_UI_NewsNewer(e, 0, k, be, bs, bt) then be = e; bs = 0; bt = k; end;
+		end;
+	end;
+	if type(TRF.newsx) == "table" then
+		for s, t in TRF.newsx do
+			if type(s) == "number" and type(t) == "table" then
+				for k, e in t do
+					if type(k) == "string" and type(e) == "table" and e.n == 1 and type(e.l) == "number"
+						and TRF_UI_NewsNewer(e, s, k, be, bs, bt) then be = e; bs = s; bt = k; end;
+				end;
+			end;
+		end;
+	end;
+	if not be then return nil; end;
+	local slot = nil;
+	if bs > 0 then slot = bs; end;
+	return TRF_UI_NewsText(bt, be.v, slot), be;
+end;
+
+-- Due call 12 s after entry (news_mode 1): the newest unseen entry once as "FTU bulletin: ...".
+-- Not in a vanilla-mode system or under a flag; it then stays unseen for a later entry or the board.
+function TRF_NewsShow()
+	if TRF_UI_NewsMode() ~= 1 or TRF_UI_Opt("ui", 1) == 0 or TRF_UI_Supp() then return nil; end;
+	if type(TRF_SysModeQuiet) == "function" and call(TRF_SysModeQuiet, {}, "x", TRF_PErr) ~= "mod" then return nil; end;
+	local text, e = TRF_NewsNext();
+	if not text then return nil; end;
+	if TRF_Say(TRF_Txt("nbull", text), 10) then
+		e.n = 0;
+		return 1;
+	end;
+	return nil;
 end;

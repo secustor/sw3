@@ -6,9 +6,9 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[-]` dropped.
 
 ## Current state (2026-10-21)
 
-- Design and engine research complete. Phase 0 code written (2026-10-20); E0.1 passed its first in-game run (2026-10-21) except the jump and save/load checks. Phase 1 (v0.1) implemented, host-tested, awaiting in-game run; installed in the clone with `EXP=0 TRAFFIC=1 AUTOSAVE=1`.
+- Design and engine research complete. Phase 0 code written (2026-10-20); E0.1 passed its first in-game run (2026-10-21) except the jump and save/load checks. Phase 1 (v0.1) and Phase 2 (v0.2) implemented, host-tested (30 host runs), awaiting in-game run; v0.2 installed in the clone with `EXP=0 TRAFFIC=1 AUTOSAVE=1`.
 - Build route decided: Lua scripts under `Data/Scripts/Mods/Traffic/` plus a `traffic` module in the sw3tp `zlib1.dll` proxy (mod-options §5). Pure Lua is the fallback (option i).
-- Test bench: APFS clone `~/Games/Heroic/sw3-tp-test` with `mods/traffic/install-test.sh` (`EXP=0..3`, `TRAFFIC=0|1`, `AUTOSAVE=0|1|2`, optional `OVERRIDE`, `DUMP`, `GUARD`), `run-test.sh`, `uninstall-test.sh` (mod-options §7).
+- Test bench: APFS clone `~/Games/Heroic/sw3-tp-test` with `mods/traffic/install-test.sh` (`EXP=0..3`, `TRAFFIC=0|1`, `AUTOSAVE=0|1|2`, optional `OVERRIDE`, `DUMP`, `GUARD`, the v0.2 keys, `PRO_SET`, `TUNE`), `run-test.sh`, `uninstall-test.sh` (mod-options §7).
 - The trackpad mod is installed in the real game; the traffic module will ship in the same proxy DLL.
 
 ## Phase 0: engine experiments (mod-options §7, design §13)
@@ -37,7 +37,7 @@ Scope (requirement IDs): M1–M13, M19 guard set only where needed, S3, S4, S13,
 - [~] Module skeleton in sw3tp (`mods/traffic/pe/traffic.c`, builds into `zlib1.dll`; hooks, natives and tick confirmed in game by E0.1, T3 carry and `OnLoad` pending): `[traffic]` ini section, T1–T4 hooks, byte checks, `TRF_Version`, `TRF_GameTime`, `TRF_RealTime`, `TRF_Log` (mod-options §5).
 - [x] Host tooling (`mods/traffic/tools/`: `check_sites.py`, `lint_lua.py`, `gen_map.py` → `map.script`, `get-lua4.sh`; `tests/run_host.sh`): `tools/check_sites.py` (site bytes, callers, branch scan), Lua 4.0.1 `luac -p` lint, reserved-key lint, static table generator from `GlobalMap.xml` and `CreateManagedPortal` lines (design 5.1, M13).
 - [~] `traffic.script` loader (implemented, host-tested, awaiting in-game run), `TRF_OnEnter/OnActivate/OnLoad/OnTick`, pre-jump wrappers (`TeleportToLocation`, `CustomTeleportate`); v0.1: loads `trf_state`, `trf_safety`, `trf_ui`, `trf_events`, `trf_gen` when `exp` is 0 and cfg `traffic`/`enabled` are not 0, installs the generator thunks, dispatches the callbacks (spec 10.1).
-- [~] Generator override (implemented, host-tested, awaiting in-game run; `trf_gen.script`): wraps `trigger_generator_Action` instead of `R_CreateTraderFlight` (spec 2.1), identity (M2), paths A/B/C, portal spacing, docking by removal. Paths A/B need the `st` field that `gen_map.py` does not emit yet.
+- [~] Generator override (implemented, host-tested, awaiting in-game run; `trf_gen.script`): wraps `trigger_generator_Action` instead of `R_CreateTraderFlight` (spec 2.1), identity (M2), paths A/B/C, portal spacing, docking by removal. Paths A/B use `map.script`'s `st` field (trade and patrol stations, emitted by `gen_map.py`).
 - [~] Caps, governor, lifetime, watchdog, orphan scan, duplicate guard (6.7, 6.8, M9) (implemented, host-tested, awaiting in-game run; `trf_safety.script`, `trf_gen.script`).
 - [~] Safety rules 9.8 S1–S3, S5–S8, S10–S12; suppression flags with extortion debounce (M4, M5) (implemented, host-tested, awaiting in-game run; `trf_safety.script`).
 - [~] Focus line with proximity fallback (8.1); arrival line at `dis ≥ 3` (S20) (implemented, host-tested, awaiting in-game run; `trf_ui.script`).
@@ -48,20 +48,22 @@ Exit criteria (design §12 v0.1): no new `ScriptErrors.log` lines over 30 jumps 
 
 ## Phase 2: v0.2 "help or prey, and the station consequence"
 
+Implementation spec: [v02-spec.md](v02-spec.md) (2026-10-21; decisions and the pending-decision defaults in its section 11, module ownership in 10.2).
+
 Scope: S1, S2, S5–S12, S15, S19, S21, S22–S29 (clan tiers T1–T2 only), S40 (TT1–TT3 holds), M14, M19, M20; `TRF` fields `std.help`, `short`, `shops`, `news`, `newsx`, `sys[idx].pro`, `clock.rt`, `rg`, `clan`.
 
-- [ ] Docking queue, arrival seed, entry precedence (6.4, 6.5).
-- [ ] Lane raids with demand/comply/flee, distress line and nav marker (7.6); staged raids on arrival gated on disruption (S21).
-- [ ] Raid-help pay, in-system escort contract with the `L_pay` table (8.4, 8.5).
-- [ ] Player-initiated hail menu: trade, "Where are you headed?", "Where is traffic in trouble?", "Where is trade booming?" (8.2, S19); patrol-station work board via `__PatrolStationDock_Ok`.
-- [ ] Trader shops `trf_<class>` (8.3); shortage at the named station with restore list (S10, M14).
-- [ ] Heat tiers and graded response (7.8, 8.7); news set (8.9).
-- [ ] Strict gate 9.8 S4 with the deny list (9.9).
-- [ ] Regional cycle: regions, phases, drift, exits, desynchronisation, counterforce timing, starting-region guard; off-screen sweep resolution (6.9, 7.13).
-- [ ] Prosperity bands 0–2 to 5–7, trader tiers TT1–TT3 with tier holds and escort lists, parked ships, prosperity signals (7.11, S23–S26, S40).
-- [ ] Pirate clans T1–T2, real-tier severity words and pay, clan identity signals (7.12, S27–S29).
+- [~] (implemented, host-tested, awaiting in-game run: `trf_gen.script` (`TRF_EntryPlan`, `TRF_SeedSpawn`, `TRF_Q_Tick`), `trf_safety.script`; host `v02-g`) Docking queue, arrival seed, entry precedence (6.4, 6.5).
+- [~] (implemented, host-tested, awaiting in-game run: `trf_raid.script`, `trf_events.script`; host `v02-h`, `v02-j`) Lane raids with demand/comply/flee, distress line and nav marker (7.6); staged raids on arrival gated on disruption (S21).
+- [~] (implemented, host-tested, awaiting in-game run: `trf_raid.script` (help pay), `trf_hail.script` (contracts), `trf_region.script` (`TRF_LPay`, `TRF_PayN`); host `v02-i`, `v02-k`) Raid-help pay, in-system escort contract with the `L_pay` table (8.4, 8.5).
+- [~] (implemented, host-tested, awaiting in-game run: `trf_hail.script`, `trf_ui.script` (announce); host `v02-k`, `v02-l`) Player-initiated hail menu: trade, "Where are you headed?", "Where is traffic in trouble?", "Where is trade booming?" (8.2, S19); patrol-station work board via `__PatrolStationDock_Ok`.
+- [~] (implemented, host-tested, awaiting in-game run: `trf_shop.script` (trade-dock wrapper, `enabled 2` restore-all); host `v02-l`, `v02-m`) Trader shops `trf_<class>` (8.3); shortage at the named station with restore list (S10, M14).
+- [~] (implemented, host-tested, awaiting in-game run: `trf_events.script`, `trf_raid.script` (heat flee), `trf_ui.script` (`TRF_NewsPost`); host `v02-e`, `v02-m`, `traffic-d`) Heat tiers and graded response (7.8, 8.7); news set (8.9).
+- [~] (implemented, host-tested, awaiting in-game run: `trf_safety.script` (`TRF_StrictOk`, `TRF_DenyList`); host `v02-e`, `v02-h`, `v02-l`) Strict gate 9.8 S4 with the deny list (9.9).
+- [~] (implemented, host-tested, awaiting in-game run: `trf_region.script`, `trf_state.script` (v3, migration, catch-up); host `v02-a` to `v02-d`. Open: phase-group criterion and phase lock (v02-spec 13.4 R1, R2); `map.script` has no `rg/dg/pc` fields yet, runtime fallbacks (R3)) Regional cycle: regions, phases, drift, exits, desynchronisation, counterforce timing, starting-region guard; off-screen sweep resolution (6.9, 7.13).
+- [~] (implemented, host-tested, awaiting in-game run: `trf_tier.script`, `trf_region.script`, `trf_gen.script`; host `v02-c`, `v02-e`, `v02-f`) Prosperity bands 0–2 to 5–7, trader tiers TT1–TT3 with tier holds and escort lists, parked ships, prosperity signals (7.11, S23–S26, S40).
+- [~] (implemented, host-tested, awaiting in-game run: `trf_region.script` (clans), `trf_raid.script` (composition), `trf_hail.script` (words); host `v02-d`, `v02-h`) Pirate clans T1–T2, real-tier severity words and pay, clan identity signals (7.12, S27–S29).
 
-Exit criteria: design §12 v0.2 list, including the 200-leg desynchronisation debug run and the pro-6 double-kill test.
+Exit criteria: design §12 v0.2 list, including the 200-leg desynchronisation debug run and the pro-6 double-kill test. In-game procedure: README "In-game checks for the v0.2 exit criteria" (`TUNE=T_leg=5` debug run, `PRO_SET=taira:6`).
 
 ## Phase 3: v1 "identity across jumps and war traffic"
 
@@ -85,22 +87,23 @@ C1–C21 as ordered in design §12 "After v1": cross-system escort contracts, st
 
 ## Decisions pending (owner: user)
 
-| Topic | Options | Design ref |
-|---|---|---|
-| Base founding rule | disruption ≥ 6 held 2 legs + 25 % roll (chosen) vs clan at T4 for 12 legs | 13.8 |
-| Base cap | 2 (chosen) vs 4 | 13.8 |
-| Regions | 11 around pirate homes (chosen) vs 7 manual sectors; merge 1–3-system regions? | 6.9, 13.8 |
-| Hail start | focus + proximity (chosen) vs proximity box vs key binding (byte patch) | 13.5 |
-| Tracking on focus | focus alone adds to the pool (chosen) vs hail/contract only | 5.4 |
-| Triada sweeps | Triada fights clans (chosen) vs FTU mercenaries in Triada regions | 13.8 |
-| Equipment convoy frequency | ~1 per 34 legs map-wide (spec) | 13.8 |
-| Salvage on player kill of an equipment convoy | +1 to local clan (chosen) vs none | 13.8 |
-| TT2 cargo per flight ≈ TT1 at mid levels | accept vs raise TT2 holds | 13.8 |
-| Packaging | one `zlib1.dll` with trackpad + traffic (chosen) vs separate `binkw32.dll` proxy | mod-options §5.1, Q10 |
-| Danger convoy forming point | trade station (chosen) vs portal (C21) | 7.16 |
+| Topic | Options | Design ref | v0.2 status |
+|---|---|---|---|
+| Base founding rule | disruption ≥ 6 held 2 legs + 25 % roll (chosen) vs clan at T4 for 12 legs | 13.8 | taken for v0.2 code (changeable in config); v1 feature, recorded in v02-spec 11.1 #3/#7, not built |
+| Base cap | 2 (chosen) vs 4 | 13.8 | taken for v0.2 code (changeable in config); v1 feature, recorded in v02-spec 11.1 #3/#7, not built |
+| Regions | 11 around pirate homes (chosen) vs 7 manual sectors; merge 1–3-system regions? | 6.9, 13.8 | taken for v0.2 code (changeable in config); merged to 8 regions, v02-spec 11.1 #1 |
+| Hail start | focus + proximity (chosen) vs proximity box vs key binding (byte patch) | 13.5 | taken for v0.2 code (changeable in config: `hail_start` 2 = proximity box); v02-spec 11.1 #2 |
+| Tracking on focus | focus alone adds to the pool (chosen) vs hail/contract only | 5.4 | taken for v0.2 code (changeable in config); v1 feature, recorded in v02-spec 11.1 #3/#7, not built |
+| Triada sweeps | Triada fights clans (chosen) vs FTU mercenaries in Triada regions | 13.8 | taken for v0.2 code (changeable in config); v02-spec 11.1 |
+| Equipment convoy frequency | ~1 per 34 legs map-wide (spec) | 13.8 | taken for v0.2 code (changeable in config); v1 feature, recorded in v02-spec 11.1 #3/#7, not built |
+| Salvage on player kill of an equipment convoy | +1 to local clan (chosen) vs none | 13.8 | taken for v0.2 code (changeable in config); v1 feature, recorded in v02-spec 11.1 #3/#7, not built |
+| TT2 cargo per flight ≈ TT1 at mid levels | accept vs raise TT2 holds | 13.8 | taken for v0.2 code (changeable in config); v02-spec 11.1 |
+| Packaging | one `zlib1.dll` with trackpad + traffic (chosen) vs separate `binkw32.dll` proxy | mod-options §5.1, Q10 | unchanged (one DLL) |
+| Danger convoy forming point | trade station (chosen) vs portal (C21) | 7.16 | taken for v0.2 code (changeable in config); v1 feature, recorded in v02-spec 11.1 #3/#7, not built |
 
 ## Log
 
+- 2026-10-21: v0.2 implementation (workflow): new `trf_region`, `trf_tier`, `trf_raid`, `trf_shop`, `trf_hail`, v0.1 modules extended per `v02-spec.md` (data model v3, migration); loader dispatch per spec 10.3 and `enabled 2`; conformance review (spec 13, five fixes, open R1–R11); host scenarios `v02-a..n` (`tests/host_v02.lua`), all 30 host runs pass, `TRF` save size 34 KB after 200 legs (budget 40 KB). `install-test.sh` gains the v0.2 keys, `PRO_SET`, `TUNE`; README documents v0.2 and its in-game checks. Pending-decision defaults taken for the v0.2 code. Installed in the clone with `EXP=0 TRAFFIC=1 AUTOSAVE=1`; no in-game run yet. Open: 4.7 phase-group criterion misses 28 of 200 legs and regions phase-lock up to 154 legs (R1, R2, need a spec decision); `NEWS=1` install option and `lint_lua.py --calls` not done.
 - 2026-10-21: v0.1 implementation (workflow): `trf_state`, `trf_safety`, `trf_ui`, `trf_events`, `trf_gen` per `v01-spec.md`, wired into `traffic.script`; conformance review (spec 13, open items O1–O10); host harness scenarios a–g (`tests/host_traffic.lua`), all 16 host runs pass. `install-test.sh` gains `TRAFFIC`, `OVERRIDE`, `DUMP`, `GUARD`; README documents v0.1 and the in-game exit checks. Installed in the clone with `EXP=0 TRAFFIC=1 AUTOSAVE=1`; no in-game run yet. Paths A/B need the `st` map field (not generated yet), so only path C occurs in the game.
 - 2026-10-21: first in-game run of E0.1 on the clone passed (see E0.1). Run aborted before the first jump: the mouse could not reach the whole image because the main display is now an external 3360×1890-point (16:9) screen and the game's 1680×1050 (16:10) frame is shown pillarboxed; the clone's `default.cfg` was switched to 1920×1080 (exact 1.75× fit) for the next run.
 - 2026-10-20: design research (two Opus workflows), mod-options decision document, visibility features, regional cycle, trader prosperity, pirate clans and progression, faction sweeps and contracts, salvage, pirate bases, cargo-value-by-tier, volume scaling, faction equipment convoys, danger convoys, reconciliation with mod-options. Docs moved to `mods/traffic/design/`. No code yet.

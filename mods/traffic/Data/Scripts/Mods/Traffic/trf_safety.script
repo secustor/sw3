@@ -9,6 +9,9 @@
 -- table), stl (1 when the station was lost this visit), sck (1 once the station was checked). TRF_LiveReset
 -- seeds capt/caps from cfg and stok = 0; gv and stl tell those defaults from results. gen may set inval (reason string) when a
 -- trader contact fails validation (4.2); TRF_SysMode then returns "vanilla" for the rest of the visit.
+-- v0.2 (design/v02-spec.md 8.3, 9.1, 9.5, 10.2): strict gate R4 with the deny list, band caps, spawn gate by
+-- kind, enabled 2, entry precedence (design 6.5), TRF_Safety_Dump. Extra live fields: gvn (carcass count of
+-- the last governor run), capp (cap_parked), gl (last logged gate denial), gate (gate summary at activate).
 
 -- Helpers --------------------------------------------------------------------------
 
@@ -20,6 +23,11 @@ end;
 function TRF_SafeD(s)
 	local lv = TRF_SafeOpt("log", 1);
 	if type(lv) == "number" and lv >= 2 then TRF_L("safe: "..s); end;
+end;
+
+-- Error handler of protected calls into other modules.
+function TRF_SafePErr(m)
+	if type(TRF_PErr) == "function" then TRF_PErr("safe: "..tostring(m)); else TRF_Err("safe: "..tostring(m)); end;
 end;
 
 -- Config value through trf_state's TRF_Opt, else the raw config, else def.
@@ -187,9 +195,11 @@ end;
 
 -- System mode (2.3). s = {enabled, override, guard, sys (map entry or nil), off, deny, deny2 (name lists),
 -- inval (reason or nil), qs (1 = mission active), ch (chapter)}. Returns "mod" or "vanilla", reason.
--- Reasons: off (enabled 0, override 0 or unknown), observe (override 2), nomap, sys_off, inval, deny, guard.
+-- Reasons: off (enabled 0, override 0 or unknown), restore (enabled 2), observe (override 2), nomap, sys_off,
+-- inval, deny, guard.
 function TRF_SysModeOf(s)
 	if s.enabled == 0 then return "vanilla", "off"; end;
+	if s.enabled == 2 then return "vanilla", "restore"; end;
 	if s.override == 2 then return "vanilla", "observe"; end;
 	if s.override ~= 1 then return "vanilla", "off"; end;
 	local sy = s.sys;
@@ -256,22 +266,215 @@ function TRF_WindChoiceOf(path, d_ms, d_st, ovd, npmax)
 	return "portal";
 end;
 
+-- Strict gate R4 (v02 8.3). s = {mode (cfg strict: 0 never, 1 map, 2 every system), qs (1 = mission
+-- active), q (1 = system named in Quests.xml), ent (deny entry or nil), f (feature)}. A feature set to 0
+-- in the entry is off at any time (staged also by raid = 0). Returns 1 or nil, reason: deny_<f>,
+-- mission_all (strict 2), mission_q, mission_deny.
+function TRF_StrictOkOf(s)
+	local e = s.ent;
+	if type(e) == "table" and (e[s.f] == 0 or (s.f == "staged" and e.raid == 0)) then
+		return nil, "deny_"..tostring(s.f);
+	end;
+	if s.mode == 0 or not s.qs then return 1; end;
+	if s.mode == 2 then return nil, "mission_all"; end;
+	if s.q == 1 then return nil, "mission_q"; end;
+	if type(e) == "table" and e.m == 1 then return nil, "mission_deny"; end;
+	return 1;
+end;
+
+-- Caps before the governor (9.1). b = TRF_BandCaps row {ct, cs, cp, ...} or nil, lt/ls = cfg limits,
+-- gate = strict "band" result. No row or a failed gate -> band 0 row (2 / 10, no parked ship), which is
+-- v0.1. Returns ct, cs, cp.
+function TRF_SafeCapsOf(b, lt, ls, gate)
+	local ct, cs, cp = 2, 10, 0;
+	if gate and type(b) == "table" and type(b.ct) == "number" and type(b.cs) == "number" then
+		ct = b.ct; cs = b.cs; cp = TRF_SafeNum(b.cp, 0);
+	end;
+	return min(ct, lt), min(cs, ls), cp;
+end;
+
+-- Spawn gate by kind (v02 10.2). s = the TRF_CanSpawnOf fields plus kind, gate (strict gate result for the
+-- kind), gov (1 = governor active), nrf, nrs (open raid flights and their ships), rf, rs (raid caps 1 / 8),
+-- npk (parked ships), cp (cap_parked). trader: v0.1. seed: gate + v0.1. staged: gate, no governor, free
+-- raid slot and ship, then v0.1 for the trader (n = trader ships). raid: gate, no governor, raid caps (n = raid
+-- ships). parked: gate, kill cap, cap_parked, ship cap. Returns 1, spare ships or nil, reason.
+function TRF_CanSpawnKindOf(s)
+	local k = s.kind;
+	if s.supp ~= 0 then return nil, "supp"; end;
+	if k ~= "trader" and not s.gate then return nil, "gate"; end;
+	if k == "raid" or k == "staged" then
+		if s.gov then return nil, "gov"; end;
+		if s.nrf >= s.rf then return nil, "raid_cap"; end;
+		local nr = 1;
+		if k == "raid" then nr = s.n; end;
+		if s.nrs + nr > s.rs then return nil, "raid_ships"; end;
+		if k == "raid" then return 1, s.rs - s.nrs - nr; end;
+	end;
+	if k == "parked" then
+		if s.kcap > 0 and s.kills >= s.kcap then return nil, "kills"; end;
+		if s.npk >= s.cp then return nil, "parked_cap"; end;
+		if s.nsh + s.n > s.caps then return nil, "ships"; end;
+		return 1, s.caps - s.nsh - s.n;
+	end;
+	return TRF_CanSpawnOf(s);
+end;
+
+-- Open raid flights and their ships from live.rd (raid records with st ~= "end"; ns = ships spawned).
+function TRF_SafeRaidsOf(rd)
+	local nf, ns = 0, 0;
+	if type(rd) ~= "table" then return 0, 0; end;
+	for n, r in rd do
+		if type(r) == "table" and r.st ~= "end" then
+			nf = nf + 1;
+			ns = ns + TRF_SafeNum(r.ns, 0);
+		end;
+	end;
+	return nf, ns;
+end;
+
+-- Parked ships from live.pk (one entry per parked ship).
+function TRF_SafeParkedOf(pk)
+	local n = 0;
+	if type(pk) ~= "table" then return 0; end;
+	for k, v in pk do n = n + 1; end;
+	return n;
+end;
+
+-- Entry precedence (design 6.5), evaluated once per entry. c = candidates that passed their own rules
+-- (1 or nil), highest first: chase, sweep, convoy, staged, rec, seed (v0.2 has staged and seed only).
+-- A chased record suppresses the staged raid; a sweep suppresses staged raid and seed; a convoy, the
+-- staged raid and a docked record take the seed's place. Returns ent (highest candidate that runs, else
+-- "none") and run = {staged = 1/nil, seed = 1/nil}.
+function TRF_EntryPrecOf(c)
+	local run = {};
+	if c.staged and not (c.chase or c.sweep or c.convoy) then run.staged = 1; end;
+	if c.seed and not (c.sweep or c.convoy or run.staged or c.rec) then run.seed = 1; end;
+	local order = {"chase", "sweep", "convoy", "staged", "rec", "seed"};
+	for i = 1, getn(order) do
+		local k = order[i];
+		if (k == "staged" or k == "seed") then
+			if run[k] then return k, run; end;
+		elseif c[k] then
+			return k, run;
+		end;
+	end;
+	return "none", run;
+end;
+
 -- Contract functions (spec 10.2) -----------------------------------------------------
 
--- R5 authored deny list (design 9.8 S5): Elio rescue, X297 ambush, Grid/Hephaestus escape.
+-- Authored overrides (v02 8.3, design 9.8 S5, 9.9), lowercase system names. m = 1: vanilla generator
+-- while a mission is active (R5); <feature> = 0: that feature never runs there. cfg sys_deny names add
+-- m = 1 entries (TRF_DenyEntry).
+function TRF_DenyList()
+	return {
+		elio   = {m=1, why="Elio rescue"},
+		x297   = {m=1, why="X297 ambush"},
+		gefest = {m=1, why="Grid/Hephaestus escape"},
+		fronn  = {seed=0, raid=0, why="Triada warehouse exploit"},
+	};
+end;
+
+-- R5 names: the m = 1 entries of TRF_DenyList, sorted.
 function TRF_Deny()
-	return {"elio", "x297", "gefest"};
+	local out = {};
+	for k, e in TRF_DenyList() do
+		if type(e) == "table" and e.m == 1 then tinsert(out, k); end;
+	end;
+	sort(out);
+	return out;
+end;
+
+-- Deny entry of a system name, or nil; a cfg sys_deny name adds m = 1.
+function TRF_DenyEntry(name)
+	if type(name) ~= "string" then return nil; end;
+	name = strlower(name);
+	local e = TRF_DenyList()[name];
+	if type(e) ~= "table" then e = nil; end;
+	if TRF_SafeIn(TRF_SafeOpt("sys_deny", {}), name) then
+		if not e then e = {why="cfg sys_deny"}; end;
+		e.m = 1;
+	end;
+	return e;
+end;
+
+-- The 24 systems never named in Game/Quests.xml (design 9.9): the q fallback for a map without q fields.
+function TRF_StrictFree()
+	return {altair=1, areko=1, b_leftera2=1, b_leftera3=1, callipso=1, egleon=1, escaflon=1, farles=1,
+		fiasar=1, fort_russ=1, fronn=1, gaoba=1, golkonda=1, kitaro=1, lasad=1, llanovar1=1, llanovar2=1,
+		sunji=1, tarrot=1, x244=1, xb13=1, xb19=1, xt17=1, xt27=1};
+end;
+
+-- Inputs of TRF_StrictOkOf for system idx (nil = current) and feature f; nil when idx has no map entry.
+function TRF_StrictIn(idx, f)
+	local sy = nil;
+	if idx == nil then
+		sy, idx = TRF_SafeSys();
+	else
+		local m = TRF_SafeMap();
+		if type(m) == "table" and type(m.sys) == "table" and type(idx) == "number" then sy = m.sys[idx]; end;
+	end;
+	if type(sy) ~= "table" or type(sy.name) ~= "string" then return nil; end;
+	local q = sy.q;
+	if type(q) ~= "number" then
+		q = 1;
+		if TRF_StrictFree()[strlower(sy.name)] then q = 0; end;
+	end;
+	local mode = TRF_SafeOpt("strict", 1);
+	if mode ~= 0 and mode ~= 1 and mode ~= 2 then mode = 1; end;
+	return {mode=mode, qs=TRF_Safe_QState(), q=q, ent=TRF_DenyEntry(sy.name), f=f, name=sy.name, idx=idx};
+end;
+
+-- Strict gate (v02 8.3): 1 or nil, reason for system idx (nil = current) and feature (seed, raid, staged,
+-- contract, parked, tt3, band, board). No map entry -> nil, "nomap". A denial counts gate_<feature> and is
+-- logged when it differs from the last one logged this visit.
+function TRF_StrictOk(idx, feature)
+	local s = TRF_StrictIn(idx, feature);
+	local ok, why = nil, "nomap";
+	if s then ok, why = TRF_StrictOkOf(s); end;
+	if ok then return 1, nil; end;
+	TRF_SafeStat("gate_"..tostring(feature));
+	local L = TRF_SafeLive();
+	local nm = "nil";
+	if s then nm = s.name; end;
+	local k = tostring(feature)..":"..tostring(why)..":"..nm;
+	if L and L.gl ~= k then
+		L.gl = k;
+		TRF_SafeL("gate "..tostring(feature).." denied why="..tostring(why).." sys="..nm);
+	end;
+	return nil, why;
+end;
+
+-- 1 while the governor holds (carcass count above gov): tier <= TT2, raids and staged raids off (9.1).
+function TRF_GovActive()
+	local L = TRF_SafeLive();
+	if not L or type(L.gvn) ~= "number" then return nil; end;
+	if L.gvn > TRF_SafeNum(TRF_SafeOpt("gov", 40), 40) then return 1; end;
+	return nil;
 end;
 
 function TRF_Chapter()
 	return TRF_ChapterOf(TRF_Safe_Quest());
 end;
 
--- v0.1 caps from cfg, clamped to the pro 0-2 row (5.1): traders 0..2, ships 0..10.
-function TRF_SafeCaps()
-	local ct = TRF_SafeClamp(TRF_SafeNum(TRF_SafeOpt("cap_traders", 2), 2), 0, 2);
-	local cs = TRF_SafeClamp(TRF_SafeNum(TRF_SafeOpt("cap_ships", 10), 10), 0, 10);
-	return ct, cs;
+-- Caps for the next spawn decision (v02 9.1): band row of the live pro (TRF_BandCaps, trf_tier), cfg limits
+-- (cap_traders 0..5, cap_ships 0..20), strict gate "band", then the governor on the carcass count n (nil:
+-- the count of the last TRF_Governor run). Writes live.capt/caps/capp. Returns ct, cs, cp.
+function TRF_SafeCaps(n)
+	local lt = TRF_SafeClamp(floor(TRF_SafeNum(TRF_SafeOpt("cap_traders", 5), 5)), 0, 5);
+	local ls = TRF_SafeClamp(floor(TRF_SafeNum(TRF_SafeOpt("cap_ships", 20), 20)), 0, 20);
+	local sy, idx = TRF_SafeSys();
+	local b, gate = nil, nil;
+	if idx then
+		gate = TRF_StrictOk(idx, "band");
+		if gate and type(TRF_BandCaps) == "function" then b = call(TRF_BandCaps, {idx}, "x", TRF_SafePErr); end;
+	end;
+	local ct, cs, cp = TRF_SafeCapsOf(b, lt, ls, gate);
+	local L = TRF_SafeLive();
+	if n == nil and L then n = L.gvn; end;
+	ct, cs = TRF_GovernorOf(n, ct, cs, TRF_SafeNum(TRF_SafeOpt("gov", 40), 40));
+	if L then L.capt = ct; L.caps = cs; L.capp = cp; end;
+	return ct, cs, cp;
 end;
 
 -- Inputs of TRF_SysModeOf from the game.
@@ -373,40 +576,50 @@ function TRF_SafetySample()
 	return s;
 end;
 
--- 1, spare ships or nil, reason (5.1). nships = ships of the planned base row. Caps come from the governor;
--- if the visit has none yet (live reset after OnActivate/OnLoad) the governor runs now.
-function TRF_CanSpawn(nships)
+-- 1, spare ships or nil, reason (5.1, v02 10.2). nships = ships of the planned base row (raid: raid ships);
+-- kind trader (default), seed, staged, raid, parked (TRF_CanSpawnKindOf). Caps are recomputed per decision
+-- (band read live); if the visit has no governor count yet (live reset after OnActivate/OnLoad) the
+-- governor runs now. Parked ships count against cap_ships.
+function TRF_CanSpawn(nships, kind)
 	local L = TRF_SafeLive();
 	if not L then return nil, "nolive"; end;
-	if L.gv ~= 1 or type(L.capt) ~= "number" or type(L.caps) ~= "number" then TRF_Governor(); end;
+	if type(kind) ~= "string" then kind = "trader"; end;
+	if L.gv ~= 1 then TRF_Governor(); else TRF_SafeCaps(); end;
 	local ntr, nsh = TRF_SafeCountOf(L.tr);
+	local npk = TRF_SafeParkedOf(L.pk);
+	local nrf, nrs = TRF_SafeRaidsOf(L.rd);
+	local gate = 1;
+	if kind ~= "trader" then gate = TRF_StrictOk(nil, kind); end;
 	local s = {
-		supp = TRF_Supp(), ntr = ntr, nsh = nsh, n = TRF_SafeNum(nships, 0),
-		capt = TRF_SafeNum(L.capt, 0), caps = TRF_SafeNum(L.caps, 0),
-		kills = TRF_SafeNum(L.kills, 0), kcap = TRF_SafeTune("kill_cap", 3)
+		kind = kind, supp = TRF_Supp(), ntr = ntr, nsh = nsh + npk, n = TRF_SafeNum(nships, 0),
+		capt = TRF_SafeNum(L.capt, 0), caps = TRF_SafeNum(L.caps, 0), cp = TRF_SafeNum(L.capp, 0),
+		kills = TRF_SafeNum(L.kills, 0), kcap = TRF_SafeTune("kill_cap", 3),
+		gate = gate, gov = TRF_GovActive(), nrf = nrf, nrs = nrs, npk = npk,
+		rf = TRF_SafeTune("raid_fl", 1), rs = TRF_SafeTune("raid_sh", 8)
 	};
-	local ok, r = TRF_CanSpawnOf(s);
+	local ok, r = TRF_CanSpawnKindOf(s);
 	if not ok then
-		TRF_SafeD("no spawn "..r.." tr="..ntr.."/"..s.capt.." ships="..nsh.."+"..s.n.."/"..s.caps.." kills="..s.kills.." supp="..s.supp);
+		TRF_SafeD("no spawn "..kind.." "..r.." tr="..ntr.."/"..s.capt.." ships="..s.nsh.."+"..s.n.."/"..s.caps
+			.." raids="..nrf.."/"..nrs.." parked="..npk.."/"..s.cp.." kills="..s.kills.." supp="..s.supp);
 	end;
 	return ok, r;
 end;
 
--- Governor (5.2): sets live.capt/caps. Returns capt, caps, carcass count (nil when unknown).
+-- Governor (5.2): counts carcasses (live.gvn), then sets live.capt/caps/capp through TRF_SafeCaps.
+-- Returns capt, caps, carcass count (nil when unknown).
 -- CHECK: one sphere of gov_r (3000) at the origin covers a system.
 function TRF_Governor()
-	local ct, cs = TRF_SafeCaps();
 	local gr = TRF_SafeNum(TRF_SafeOpt("gov_r", 3000), 3000);
 	local n = TRF_Safe_Count(gr);
-	local capt, caps = TRF_GovernorOf(n, ct, cs, TRF_SafeNum(TRF_SafeOpt("gov", 40), 40));
 	local L = TRF_SafeLive();
-	if L then L.capt = capt; L.caps = caps; L.gv = 1; end;
-	TRF_SafeL("governor n="..tostring(n).." r="..gr.." cap="..capt.."/"..caps);
+	if L then L.gvn = n; L.gv = 1; end;
+	local capt, caps, capp = TRF_SafeCaps(n);
+	TRF_SafeL("governor n="..tostring(n).." r="..gr.." cap="..capt.."/"..caps.."/"..capp);
 	return capt, caps, n;
 end;
 
--- Trade station handle or nil (4.2, R10): label from the map's st field, then IsAlive. Sets live.stok and
--- H.st. Once lost (stl 1) it stays off for the visit; no st field means no station.
+-- Trade station handle or nil (4.2, R10): label of the map's st[1] (kind "trade", top-level docking), then
+-- IsAlive. Sets live.stok and H.st. Once lost (stl 1) it stays off for the visit; no such entry, no station.
 function TRF_Station()
 	local L = TRF_SafeLive();
 	local H = TRF_SafeH();
@@ -417,7 +630,10 @@ function TRF_Station()
 	end;
 	local sy = TRF_SafeSys();
 	local lbl = nil;
-	if type(sy) == "table" then lbl = sy.st; end;
+	if type(sy) == "table" and type(sy.st) == "table" then
+		local e = sy.st[1];
+		if type(e) == "table" and e.kind == "trade" and e.cond ~= 1 then lbl = e.label; end;
+	end;
 	local o = TRF_Safe_StObj(lbl);
 	if H then H.st = o; end;
 	if not L then return o; end;
@@ -438,7 +654,7 @@ function TRF_SafeVisitReset()
 	local L = TRF_SafeLive();
 	if L then
 		L.sos_t = nil; L.ext_seen = nil; L.pmn = nil; L.wind = nil; L.sl = nil; L.sm = nil;
-		L.gv = nil; L.stl = nil; L.sck = nil;
+		L.gv = nil; L.stl = nil; L.sck = nil; L.gvn = nil; L.gl = nil; L.gate = nil;
 	end;
 	local H = TRF_SafeH();
 	if H then H.st = nil; end;
@@ -457,7 +673,44 @@ function TRF_Safety_OnActivate()
 	local m, why = TRF_SysModeOf(s);
 	local nm = "nil";
 	if type(s.sys) == "table" then nm = tostring(s.sys.name); end;
-	TRF_SafeL("activate sys="..nm.." mode="..m.." why="..tostring(why).." ch="..tostring(s.ch).." qs="..tostring(s.qs));
+	local L = TRF_SafeLive();
+	local g = TRF_SafeGateSum(nil);
+	if L then L.gate = g; end;
+	TRF_SafeL("activate sys="..nm.." mode="..m.." why="..tostring(why).." ch="..tostring(s.ch).." qs="..tostring(s.qs).." gate="..g);
+end;
+
+-- Gate summary of system idx (nil = current) without counters: "ok", or the first denial and the denied
+-- features ("mission_q:seed,raid,..."), "nomap" without a map entry.
+function TRF_SafeGateSum(idx)
+	local s = TRF_StrictIn(idx, "seed");
+	if not s then return "nomap"; end;
+	local fs = {"seed", "raid", "staged", "contract", "parked", "tt3", "band", "board"};
+	local first, list = nil, "";
+	for i = 1, getn(fs) do
+		s.f = fs[i];
+		local ok, why = TRF_StrictOkOf(s);
+		if not ok then
+			if not first then first = why; end;
+			if list ~= "" then list = list..","; end;
+			list = list..fs[i];
+		end;
+	end;
+	if not first then return "ok"; end;
+	return first..":"..list;
+end;
+
+-- Dump line (v02 10.2): gate, strict inputs, caps, governor; called by TRF_DumpState.
+function TRF_Safety_Dump()
+	local s = TRF_StrictIn(nil, "seed");
+	local L = TRF_SafeLive() or {};
+	local nm, q, qs, mode, dn = "nil", "?", "?", "?", "none";
+	if s then
+		nm = s.name; q = tostring(s.q); qs = tostring(s.qs); mode = tostring(s.mode);
+		if type(s.ent) == "table" then dn = tostring(s.ent.why); end;
+	end;
+	TRF_L("dump gate="..TRF_SafeGateSum(nil).." sys="..nm.." strict="..mode.." qs="..qs.." q="..q.." deny="..dn
+		.." cap="..tostring(L.capt).."/"..tostring(L.caps).."/"..tostring(L.capp).." gov="..tostring(L.gvn)
+		.." gov_on="..tostring(TRF_GovActive()));
 end;
 
 -- After a load sos_t restarts at the load time and ext_seen is nil (spec 6). TRF_Gen_OnLoad resets live

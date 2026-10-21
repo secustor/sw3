@@ -216,7 +216,10 @@ end;
 
 -- Trigger callbacks (globals, named in the trigger strings) ---------------------------
 
-function TRF_OnArrive(id, how)
+-- Trigger entry point (review O1): runs TRF_OnArrive_Body protected.
+function TRF_OnArrive(id, how) TRF_Cb("TRF_OnArrive", TRF_OnArrive_Body, {id, how}); end;
+
+function TRF_OnArrive_Body(id, how)
 	local h = TRF_T_Handle("OnArrive", id);
 	if not h then return; end;
 	local p = h.fl:GetPosition();
@@ -232,13 +235,19 @@ function TRF_OnArrive(id, how)
 	end;
 end;
 
-function TRF_OnUndock(id)
+-- Trigger entry point (review O1): runs TRF_OnUndock_Body protected.
+function TRF_OnUndock(id) TRF_Cb("TRF_OnUndock", TRF_OnUndock_Body, {id}); end;
+
+function TRF_OnUndock_Body(id)
 	local h = TRF_T_Handle("OnUndock", id);
 	if not h then return; end;
 	TRF_T_Leave(id);
 end;
 
-function TRF_OnExit(id)
+-- Trigger entry point (review O1): runs TRF_OnExit_Body protected.
+function TRF_OnExit(id) TRF_Cb("TRF_OnExit", TRF_OnExit_Body, {id}); end;
+
+function TRF_OnExit_Body(id)
 	local h = TRF_T_Handle("OnExit", id);
 	if not h then return; end;
 	h.phase = "exited";
@@ -250,7 +259,10 @@ function TRF_OnExit(id)
 	if id == 1 then TRF_T_Spawn(2, "stay"); end;
 end;
 
-function TRF_OnAttack(id)
+-- Trigger entry point (review O1): runs TRF_OnAttack_Body protected.
+function TRF_OnAttack(id) TRF_Cb("TRF_OnAttack", TRF_OnAttack_Body, {id}); end;
+
+function TRF_OnAttack_Body(id)
 	local h = TRF_T_Handle("OnAttack", id);
 	if not h then return; end;
 	-- Triggers are one-shot; re-arm a few times to see how often the event fires.
@@ -259,7 +271,10 @@ function TRF_OnAttack(id)
 	end;
 end;
 
-function TRF_OnDied(id)
+-- Trigger entry point (review O1): runs TRF_OnDied_Body protected.
+function TRF_OnDied(id) TRF_Cb("TRF_OnDied", TRF_OnDied_Body, {id}); end;
+
+function TRF_OnDied_Body(id)
 	local h = TRF_T_Handle("OnDied", id);
 	TRF_Live()[id] = nil;
 	if h and id == 1 then TRF_T_Spawn(2, "stay"); end;

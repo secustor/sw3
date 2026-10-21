@@ -5,9 +5,16 @@
 
 -- Helpers ---------------------------------------------------------------------------
 
--- Config for the scenario: the repo defaults plus t (TRF_Config returns HOST().cfg).
+-- Config for the scenario: the repo defaults plus t (TRF_Config returns HOST().cfg). The v0.1 scenarios a..g
+-- run with the v0.2 features off (band 0 = v0.1, v02-spec 9.1), so they keep checking the v0.1 behaviour;
+-- T_Cfg2 (host_v02.lua) starts from the v0.2 defaults instead.
+function T_V01()
+	return {prosperity=0, seed=0, parked=0, queue=0, raids=0, staged=0, contracts=0, meet=1, board=0,
+		shop_mode=0, short_price=0, news_mode=0};
+end;
 function T_Cfg(t)
 	local c = {exp=0, log=1, traffic=1};
+	for k, v in T_V01() do c[k] = v; end;
 	if t then for k, v in t do c[k] = v; end; end;
 	HOST().cfg = c;
 end;
@@ -186,7 +193,7 @@ end;
 
 function T_Begin(sys)
 	HOST_Includes();
-	HOST_Check(ExecuteScriptFile("DATA/Scripts/Mods/Traffic/traffic.script") and HOST_V() == 2, "traffic.script loads the v0.1 modules");
+	HOST_Check(ExecuteScriptFile("DATA/Scripts/Mods/Traffic/traffic.script") and HOST_V() == 3, "traffic.script loads the traffic modules");
 	T_Enter(sys or "gredos");
 end;
 
@@ -373,24 +380,36 @@ function T_D()
 	-- Three events in one second count as one stamp.
 	HOST_Fire("attack", pre); HOST_Fire("attack", pre); HOST_Fire("attack", pre);
 	HOST_Check(getn(r.fs) == 1 and TRF.std.heat == 0 and r.pa == TRF.clock.gt, "same second: one stamp, pa set");
-	HOST_Check(T_Msgs("#L_SOS_Replica_00") == 1 and r.resp == 1, "first attack on transport 1: leader says #L_SOS_Replica_00 once");
+	-- v02 8.1: the response starts at the counted attack, graded by heat tier.
+	HOST_Check(T_Msgs("#L_SOS_Replica_00") == 0 and r.resp == nil and TRF.live.patk == nil, "first attack: no response before the counted attack");
 	for i = 1, 3 do T_Tick(2, 0.5); HOST_Fire("attack", pre); end;
 	HOST_Check(getn(r.fs) == 4 and TRF.std.heat == 0 and not r.cnt, "T_deliberate: 4 seconds with attacks -> no heat");
 	-- 21 s later the stamps are out of the 20 s window.
 	T_Tick(42, 0.5);
 	HOST_Fire("attack", pre);
-	HOST_Check(getn(r.fs) == 1 and TRF.std.heat == 0, "T_deliberate: stamps older than 20 s dropped");
-	HOST_Check(h.choice == 4 and h.glows == 4 and getn(TRF_H().resp[1]) == 4, "response: 8 s later four flights and four glows (__sys_SOS_3 100)");
+	HOST_Check(getn(r.fs) == 1 and TRF.std.heat == 0 and h.choice == 0, "T_deliberate: stamps older than 20 s dropped, no response yet");
+	local idx = TRF_CurIdx();
+	-- pro of trf_region (0 when the module is missing).
+	local pro = function(i) if type(TRF_Pro) == "function" then return TRF_Pro(i); end; return 0; end;
+	local pro0 = pro(idx);
+	for i = 1, 4 do T_Tick(2, 0.5); HOST_Fire("attack", pre); end;
+	HOST_Check(TRF.std.heat == 1 and r.cnt == 1 and T_Lines("^Cease fire! This is a civilian freighter%.$") == 1, "T_deliberate: 5th second -> heat 1 and the cease-fire line");
+	HOST_Check(r.resp == 1 and T_Msgs("#L_SOS_Replica_00") == 1 and TRF.live.patk == 1 and pro(idx) == max(pro0 - 1, 0),
+		"counted attack: leader says #L_SOS_Replica_00, patk set, pro -1 ("..pro0.." -> "..pro(idx)..")");
+	-- Heat 1 = tier 0: the __sys_SOS_3 roll, then 50 % for one owner flight (both draws forced).
+	T_Tick(15, 0.5);
+	h.rq = {0, 0};
+	T_Tick(2, 0.5);
+	h.rq = {};
+	HOST_Check(h.choice == 1 and h.glows == 1 and getn(TRF_H().resp[1]) == 1, "response: 8 s later one owner flight and one glow (heat tier 0)");
+	T_Tick(10, 0.5);
 	HOST_Check(T_Msgs("#L_SOS_Replica_01") == 1, "response: #L_SOS_Replica_01 5 s after the flights");
 	local lg = T_LeftGlobals();
 	HOST_Check(lg == "", "response leaves no group or flight globals"..lg);
 	local resp = TRF_H().resp[1];
-	for i = 1, 4 do T_Tick(2, 0.5); HOST_Fire("attack", pre); end;
-	HOST_Check(TRF.std.heat == 1 and r.cnt == 1 and T_Lines("^Cease fire! This is a civilian freighter%.$") == 1, "T_deliberate: 5th second -> heat 1 and the cease-fire line");
 	for i = 1, 6 do T_Tick(2, 0.5); HOST_Fire("attack", pre); end;
-	HOST_Check(TRF.std.heat == 1 and T_Lines("^Cease fire") == 1 and h.choice == 4, "counted once per trader; no second response");
+	HOST_Check(TRF.std.heat == 1 and T_Lines("^Cease fire") == 1 and h.choice == 1, "counted once per trader; no second response");
 	-- Player kill: last transport dies within 10 s of a player attack.
-	local idx = TRF_CurIdx();
 	local k = r.k;
 	for t = 1, getn(x.tp) do
 		x.tp[t].alive = nil;
@@ -432,13 +451,13 @@ function T_D()
 	-- Leg clock: 3 jumps with 900 s each = 12 legs; heat -1 after 10 legs, dis -1 per 3 legs.
 	local L0, H0 = TRF.clock.legs, TRF.std.heat_t;
 	T_Jump("aurora");
-	HOST_Check(resp[1].deleted and resp[4].deleted and TRF.clock.legs == L0 + 1 and T_Open() == 0, "jump: response flights deleted, entry leg, visit reset");
+	HOST_Check(resp[1].deleted and TRF.clock.legs == L0 + 1 and T_Open() == 0, "jump: response flights deleted, entry leg, visit reset");
 	T_Tick(450, 2);
 	T_Jump("gredos");
 	T_Tick(450, 2);
 	T_Jump("aurora");
 	T_Tick(450, 2);
-	HOST_Check(TRF.clock.legs == L0 + 12 and TRF.std.heat == 1 and TRF.std.heat_t == H0 + 10 and TRF.sys[idx] == nil,
+	HOST_Check(TRF.clock.legs == L0 + 12 and TRF.std.heat == 1 and TRF.std.heat_t == H0 + 10 and TRF_Dis(idx) == 0,
 		"3 jumps, 12 legs: heat 2 -> 1, dis 2 -> 0 (legs="..TRF.clock.legs.." heat="..TRF.std.heat..")");
 end;
 
@@ -460,7 +479,10 @@ function T_E()
 	T_Tick(9, 0.5);
 	HOST_Check(T_Lines() == 0, "dis 3: nothing before 5 s");
 	T_Tick(2, 0.5);
-	HOST_Check(T_Lines() == 1 and h.screen[1].t == "FTU reports raids on the lanes in this system", "dis 3: band 1 line after 5 s");
+	-- v02 9.6: tier word of the clan (tier 1 in the guard); the v0.1 text without trf_region.
+	local want = "FTU reports raids on the lanes in this system";
+	if type(TRF_EffTier) == "function" then want = "FTU reports scavengers on the lanes in this system"; end;
+	HOST_Check(T_Lines() == 1 and h.screen[1].t == want, "dis 3: band 1 line after 5 s ("..tostring(h.screen[1] and h.screen[1].t)..")");
 	T_Tick(40, 0.5);
 	HOST_Check(T_Lines() == 1, "arrival line once per entry");
 	-- Suppressed at that moment: not shown and not retried.
@@ -536,8 +558,8 @@ function T_F()
 	local n0 = T_Lines();
 	T_SaveLoad();
 	c = TRF.clock;
-	HOST_Check(TRF.version == 2 and TRF.gen == snap.gen + 1 and c.legs == snap.legs and c.gt == snap.gt and c.dd == snap.dd and TRF.seq == snap.seq,
-		"load: version 2, gen + 1, legs, gt, dd and seq kept (no leg on load)");
+	HOST_Check(TRF.version == 3 and TRF.gen == snap.gen + 1 and c.legs == snap.legs and c.gt == snap.gt and c.dd == snap.dd and TRF.seq == snap.seq,
+		"load: version 3, gen + 1, legs, gt, dd and seq kept (no leg on load)");
 	HOST_Check(TRF.std.heat == 3 and TRF.std.heat_t == snap.ht and TRF.sys[9].dis == 4 and TRF.sys[46].dis == 2
 		and TRF.exp.cnt.enter == snap.en and TRF.exp.cnt.load == 1, "load: heat, dis and the entry/load counters kept");
 	HOST_Check(TRF.live.g == TRF.gen and TRF.live.kills == 0 and getn(TRF.live.due) == 0, "load: visit table reset (kills 0, no due call, no arrival line)");
@@ -550,20 +572,33 @@ function T_F()
 	HOST_Fire("died", olddied);
 	HOST_Check(TRF.std.heat == 3 and TRF.sys[46].dis == 2 and h.errors == e0, "triggers restored with the old gen do nothing");
 	T_Tick(20, 0.5);
-	HOST_Check(T_Lines() == n0, "no arrival line after a load");
+	HOST_Check(T_Lines() - T_Lines("Breaking off") == n0, "no arrival line after a load (heat 3 flee line excepted, v02 8.1)");
+	-- Review O1: an error in a callback body stays in its shim; logged once per name, every one counted.
+	local body, lg, e1, er = TRF_OnExit_Body, TRF_Log, h.errors, T_Stat("err");
+	h.cb_log = 0;
+	TRF_Log = function(s)
+		if strfind(s, " ERROR cb TRF_OnExit: ", 1, 1) then HOST().cb_log = HOST().cb_log + 1; end;
+		print("HOST expected error (mod log): "..s);
+	end;
+	local act = "TRF_OnExit("..a..","..TRF.gen..")--";
+	TRF_OnExit_Body = function(id, g) error("test error in body"); end;
+	local ne = T_Expect(function() dostring(%act); dostring(%act); end);
+	TRF_OnExit_Body, TRF_Log = body, lg;
+	HOST_Check(ne == 0 and h.cb_log == 1 and h.errors == e1 and T_Stat("err_TRF_OnExit") == 2 and T_Stat("err") == er + 2 and TRF_Rec(a) ~= nil,
+		"callback error: not propagated, one ERROR log line, err_TRF_OnExit 2, record kept");
 	HOST_Fire("f_object_inside", "TRF_OnExit("..a..","..TRF.gen..")--");
 	HOST_Check(TRF_Rec(a) == nil and not xa.fl:IsAlive() and T_Stat("remove_exit") == 1, "wound-down trader removed at its exit");
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF after the load");
 	-- Save made without the mod: TRF nil at OnLoad.
 	T_SaveLoad(function() TRF = nil; end);
-	HOST_Check(TRF.version == 2 and TRF.gen == 1 and TRF.clock.legs == 0 and TRF.live.g == 1 and TRF.std.heat == 0, "load without TRF: v2 defaults");
+	HOST_Check(TRF.version == 3 and TRF.gen == 1 and TRF.clock.legs == 0 and TRF.live.g == 1 and TRF.std.heat == 0, "load without TRF: v3 defaults");
 	-- Phase 0 (v1) save.
 	T_SaveLoad(function() TRF = {version=1, active=1, gen=5, clock={game=123, real=4}, exp={cnt={enter=3}}}; end);
-	HOST_Check(TRF.version == 2 and TRF.clock.gt == 123 and TRF.clock.game == nil and TRF.gen == 6 and TRF.clock.legs == 0
+	HOST_Check(TRF.version == 3 and TRF.clock.gt == 123 and TRF.clock.game == nil and TRF.gen == 6 and TRF.clock.legs == 0
 		and TRF.std.heat == 0 and TRF.exp.cnt.enter == 3 and TRF.live.g == 6, "v1 save migrated: clock.gt from clock.game, gen + 1, exp kept");
 	-- Unknown version: reset, heat and gen kept.
 	T_SaveLoad(function() TRF = {version=9, gen=8, std={heat=4}, foo=1, clock={gt=7}}; end);
-	HOST_Check(TRF.version == 2 and TRF.std.heat == 4 and TRF.gen == 9 and TRF.foo == nil and TRF.clock.gt == 0, "unknown version: reset, heat and gen kept");
+	HOST_Check(TRF.version == 3 and TRF.std.heat == 4 and TRF.gen == 9 and TRF.foo == nil and TRF.clock.gt == 0, "unknown version: reset, heat and gen kept");
 	T_Tick(20, 0.5);
 	HOST_Check(TRF.clock.gt == 10, "ticks run after the reset");
 end;
@@ -650,9 +685,9 @@ function T_G()
 		{"B", 100, 10, "portal"}, {"C", 100, nil, "portal"}}, function(i, t)
 		HOST_Check(TRF_WindChoiceOf(t[1], t[2], t[3], 600, 300) == t[4], "TRF_WindChoiceOf case "..i.." = "..t[4]);
 	end);
-	-- Config clamps of v0.1.
+	-- Config clamps (v02 10.2: caps 0..5 / 0..20, spawn_scale 0..1.5 replace the v0.1 2 / 10 / 1).
 	h.cfg.spawn_scale = 5; h.cfg.cap_traders = 9; h.cfg.cap_ships = 50; h.cfg.override = 7; h.cfg.guard = "x";
-	HOST_Check(TRF_Opt("spawn_scale") == 1 and TRF_Opt("cap_traders") == 2 and TRF_Opt("cap_ships") == 10 and TRF_Opt("override") == 1
+	HOST_Check(TRF_Opt("spawn_scale") == 1.5 and TRF_Opt("cap_traders") == 5 and TRF_Opt("cap_ships") == 20 and TRF_Opt("override") == 1
 		and TRF_Opt("guard") == 1, "TRF_Opt clamps spawn_scale, caps, override and guard");
 	h.cfg.spawn_scale = nil; h.cfg.cap_traders = nil; h.cfg.cap_ships = nil; h.cfg.override = nil; h.cfg.guard = 1;
 	-- Game-side inputs: mission state, suppression, extortion debounce, station.
@@ -661,7 +696,7 @@ function T_G()
 	HOST_Check(m == "vanilla" and why == "guard", "TRF_SysMode: gredos chapter 3 with a mission -> guard");
 	local gq = GetPlayerQuestState;
 	GetPlayerQuestState = nil;
-	h.labels.CurrentQuest = "5_1";
+	h.labels.CurrentQuest = "5_1"; h.no_st = 1;
 	T_Jump("elio");
 	m, why = TRF_SysMode();
 	HOST_Check(m == "vanilla" and why == "deny", "missing GetPlayerQuestState counts as a mission (deny list stays vanilla)");
@@ -681,7 +716,7 @@ function T_G()
 	T_Tick(2, 0.5);
 	HOST_Check(TRF_Supp() == 0 and TRF.live.wind == nil, "flags clear: no suppression, wind cleared");
 	HOST_Check(TRF_Station() == nil and TRF.live.stok == 0, "no st field in the map: no station");
-	h.st_label = "TRADE STATION";
+	h.st_label = "TRADE STATION"; h.no_st = nil;
 	T_Jump("gredos");
 	HOST_Check(TRF_Station() == h.station and TRF.live.stok == 1, "st label: station found");
 	h.station.alive = nil;
@@ -721,7 +756,9 @@ function T_G()
 end;
 
 local fn = getglobal("T_"..strupper(HOST().scen));
-if type(fn) == "function" then
+if strsub(HOST().scen, 1, 4) == "v02-" then
+	-- host_v02.lua (loaded next by host_stubs.lua) runs the scenario with these helpers.
+elseif type(fn) == "function" then
 	fn();
 	HOST_Check(T_LeftGlobals() == "", "no handle globals left at the end"..T_LeftGlobals());
 else

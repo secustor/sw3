@@ -3,22 +3,36 @@
 -- absent if not on the map), start=1 starting region, trader=1 vanilla trader contact,
 -- portals: managed portals {name=<global>, to=<system>, x, y, z, cond=1 if not top level},
 -- inner: managed portals whose destination is the system itself,
--- broken: unmanaged portals with a destination (not usable).
+-- broken: unmanaged portals with a destination (not usable),
+-- st: docking stations, main trade station first: {label (SetObjectLabel), x, y, z (creation
+-- position), side (team of the DefStation guard group), kind "trade"|"patrol", r (patrol docking
+-- radius), prm (docking param: dialog location), cond=1 if the docking call is not top level}.
+-- No dock field: trade docking uses the engine's GetDockingPosition, no script gives it.
 function TRF_MapData()
   return {
     sys = {
       {name="ahilles", idx=1, dir="Ahilles", mx=178, my=471, start=1, trader=1,
+        st = {
+          {label="TRADE STATION", x=-400, y=-50, z=500, side="Kfni", kind="trade"}
+        },
         portals = {
           {name="PORTAL_U", to="argon", x=700, y=0, z=700},
           {name="PORTAL_D", to="pegas", x=-700, y=0, z=-800}
         }
       },
       {name="altair", idx=2, dir="Altair", mx=423, my=377, trader=1,
+        st = {
+          {label="TRADE", x=626, y=-20, z=172, side="Vks", kind="trade"},
+          {label="Police_Station", x=-200, y=20, z=350, side="Patrol", kind="patrol", r=120}
+        },
         portals = {
           {name="PORTAL_L", to="altrabon", x=-750, y=-10, z=450}
         }
       },
       {name="altrabon", idx=3, dir="Altrabon", mx=433, my=400, trader=1,
+        st = {
+          {label="TRADE", x=404, y=0, z=-104, side="Vks", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="altair", x=-300, y=0, z=-500},
           {name="PORTAL_R", to="alzed", x=500, y=0, z=300},
@@ -27,11 +41,18 @@ function TRF_MapData()
         }
       },
       {name="alzed", idx=4, dir="Alzed", mx=467, my=396,
+        st = {
+          {label="TRADE", x=252, y=0, z=500, side="Rebel", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="altrabon", x=-700, y=-50, z=-200}
         }
       },
       {name="angarsk", idx=5, dir="Angarsk", mx=316, my=174,
+        st = {
+          {label="TRADE STATION", x=100, y=-50, z=-500, side="Kfni", kind="trade"},
+          {label="PATROL", x=-600, y=0, z=48, side="Kfni", kind="patrol", r=110}
+        },
         portals = {
           {name="PORTAL_R", to="moscowia", x=600, y=0, z=0}
         }
@@ -43,6 +64,10 @@ function TRF_MapData()
         }
       },
       {name="argon", idx=7, dir="Argon", mx=183, my=413, start=1, trader=1,
+        st = {
+          {label="TRADE STATION", x=100, y=-50, z=-150, side="Patrol", kind="trade"},
+          {label="PATROL STATION", x=-100, y=0, z=300, side="Patrol", kind="patrol", r=80}
+        },
         portals = {
           {name="PORTAL_L", to="gefest", x=-600, y=0, z=0},
           {name="PORTAL_R", to="aurora", x=600, y=0, z=0},
@@ -50,12 +75,19 @@ function TRF_MapData()
         }
       },
       {name="ashelon", idx=8, dir="Ashelon", mx=448, my=227, trader=1,
+        st = {
+          {label="Patrol Station", x=340, y=75, z=120, side="Patrol", kind="patrol", r=80}
+        },
         portals = {
           {name="PORTAL_R", to="nj2", x=450, y=80, z=430},
           {name="PORTAL_D", to="hafa", x=-100, y=50, z=-600}
         }
       },
       {name="aurora", idx=9, dir="Aurora", mx=215, my=387, start=1, trader=1,
+        st = {
+          {label="TRADE_STATION", x=70, y=-50, z=-500, side="Vks", kind="trade"},
+          {label="Patrol_Station01", x=250, y=-10, z=150, side="Patrol", kind="patrol", r=110}
+        },
         portals = {
           {name="PORTAL_L", to="argon", x=-700, y=0, z=300},
           {name="PORTAL_R", to="corrino", x=800, y=0, z=-400},
@@ -63,12 +95,18 @@ function TRF_MapData()
         }
       },
       {name="avalon", idx=10, dir="Avalon", mx=43, my=98, trader=1,
+        st = {
+          {label="TRADE_STATION", x=178, y=0, z=-231, side="Kfni", kind="trade"}
+        },
         portals = {
           {name="PORTAL_R", to="gideon", x=700, y=0, z=-150},
           {name="PORTAL_D", to="kassilia", x=-300, y=0, z=-600}
         }
       },
       {name="b_leftera1", idx=11, dir="B_leftera1", mx=552, my=382,
+        st = {
+          {label="patrol 1", x=420, y=20, z=280, side="Patrol", kind="patrol", r=100}
+        },
         portals = {
           {name="PORTAL_L", to="b_leftera2", x=-1000, y=90, z=0},
           {name="PORTAL_R", to="b_leftera3", x=720, y=15, z=-75},
@@ -76,6 +114,10 @@ function TRF_MapData()
         }
       },
       {name="b_leftera2", idx=12, dir="B_leftera2", mx=543, my=390,
+        st = {
+          {label="TRADE_STATION", x=480, y=0, z=-488, side="Triada", kind="trade"},
+          {label="PStation", x=-80, y=0, z=-220, side="Triada", kind="patrol", r=140}
+        },
         portals = {
           {name="PORTAL_R", to="b_leftera1", x=436, y=0, z=380}
         }
@@ -86,12 +128,19 @@ function TRF_MapData()
         }
       },
       {name="callipso", idx=14, dir="Callipso", mx=119, my=574, trader=1,
+        st = {
+          {label="TRADE_STATION", x=100, y=-50, z=-150, side="Patrol", kind="trade"},
+          {label="Patrol_station_01", x=-200, y=40, z=300, side="Patrol", kind="patrol", r=4}
+        },
         portals = {
           {name="PORTAL_L", to="kron", x=-600, y=0, z=0},
           {name="PORTAL_R", to="poseidon", x=600, y=0, z=0}
         }
       },
       {name="corrino", idx=15, dir="Corrino", mx=293, my=441, start=1, trader=1,
+        st = {
+          {label="STATION NEUTRAL", x=-250, y=0, z=-550, side="Patrol", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="aurora", x=-1050, y=0, z=50},
           {name="PORTAL_U", to="taira", x=1000, y=0, z=740},
@@ -99,6 +148,10 @@ function TRF_MapData()
         }
       },
       {name="dalled", idx=16, dir="Dalled", mx=737, my=367, trader=1,
+        st = {
+          {label="TRADE", x=100, y=-20, z=196, side="Uss", kind="trade"},
+          {label="PATROL", x=-500, y=0, z=504, side="Uss", kind="patrol", r=110}
+        },
         portals = {
           {name="PORTAL_L", to="fiasar", x=-800, y=-20, z=0},
           {name="PORTAL_R", to="deosis", x=600, y=0, z=-700},
@@ -106,12 +159,18 @@ function TRF_MapData()
         }
       },
       {name="danstag", idx=17, dir="Danstag", mx=429, my=172, trader=1,
+        st = {
+          {label="TRADE STATION", x=-300, y=0, z=-400, side="Inoco", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="moscowia", x=-800, y=0, z=-100},
           {name="PORTAL_R", to="heos", x=600, y=0, z=-400}
         }
       },
       {name="debris1", idx=18, dir="Debris1", mx=235, my=501, trader=1,
+        st = {
+          {label="TRADE STATION", x=-700, y=-50, z=400, side="Vks", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="debris2", x=-220, y=30, z=-330},
           {name="PORTAL_R", to="debris6", x=600, y=0, z=0},
@@ -128,17 +187,27 @@ function TRF_MapData()
         }
       },
       {name="debris3", idx=20, dir="Debris3", mx=210, my=495, trader=1,
+        st = {
+          {label="PatrolBase", x=-350, y=50, z=250, side="Triada", kind="patrol", r=120}
+        },
         portals = {
           {name="PORTAL_R", to="debris2", x=-50, y=-70, z=550}
         }
       },
       {name="debris4", idx=21, dir="Debris4", mx=235, my=518, trader=1,
+        st = {
+          {label="TRADE STATION", x=100, y=-50, z=-150, side="Uss", kind="trade"},
+          {label="PatrolBase", x=0, y=30, z=400, side="Uss", kind="patrol", r=120}
+        },
         portals = {
           {name="PORTAL_L", to="poseidon", x=-240, y=20, z=-360},
           {name="PORTAL_R", to="debris1", x=340, y=50, z=680}
         }
       },
       {name="debris6", idx=22, dir="Debris6", mx=256, my=508, trader=1,
+        st = {
+          {label="TriBase", x=-250, y=5, z=465, side="Triada", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="debris1", x=-550, y=10, z=250},
           {name="PORTAL_R", to="golkonda", x=600, y=-10, z=-620}
@@ -175,6 +244,10 @@ function TRF_MapData()
         }
       },
       {name="egleon", idx=28, dir="Egleon", mx=531, my=102, trader=1,
+        st = {
+          {label="TRADE STATION", x=620, y=-50, z=-148, side="Inoco", kind="trade"},
+          {label="PSTATION_04", x=-400, y=0, z=-100, side="Inoco", kind="patrol", r=110}
+        },
         portals = {
           {name="PORTAL_L", to="farles", x=-800, y=0, z=600},
           {name="PORTAL_R", to="lidau", x=700, y=-50, z=150},
@@ -182,6 +255,9 @@ function TRF_MapData()
         }
       },
       {name="el_ariash", idx=29, dir="El_ariash", mx=724, my=291, trader=1,
+        st = {
+          {label="TRADE STATION", x=200, y=-50, z=-300, side="Uss", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="hanoi", x=-600, y=0, z=200},
           {name="PORTAL_U", to="x297", x=100, y=0, z=800},
@@ -189,12 +265,18 @@ function TRF_MapData()
         }
       },
       {name="elinor", idx=30, dir="Elinor", mx=265, my=213, trader=1,
+        st = {
+          {label="Police Station", x=0, y=-30, z=150, side="Kfni", kind="patrol", r=140}
+        },
         portals = {
           {name="PORTAL_L", to="endoria1", x=-500, y=0, z=50},
           {name="PORTAL_R", to="proserpina", x=500, y=-70, z=-450}
         }
       },
       {name="elio", idx=31, dir="Elio", mx=146, my=320, start=1, trader=1,
+        st = {
+          {label="TRADE STATION", x=200, y=-50, z=-300, side="Trade", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="valensia", x=-800, y=0, z=0},
           {name="PORTAL_R", to="gredos", x=750, y=0, z=0},
@@ -203,6 +285,9 @@ function TRF_MapData()
         }
       },
       {name="endoria1", idx=32, dir="Endoria1", mx=195, my=244, trader=1,
+        st = {
+          {label="TRADE STATION", x=100, y=-50, z=-150, side="Vks", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="endoria2", x=-600, y=0, z=-400},
           {name="PORTAL_R", to="elinor", x=700, y=0, z=300},
@@ -213,6 +298,9 @@ function TRF_MapData()
         }
       },
       {name="endoria2", idx=33, dir="Endoria2", mx=184, my=247, trader=1,
+        st = {
+          {label="TRADE STATION", x=100, y=-50, z=-300, side="Kfni", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="dionis", x=-600, y=0, z=0},
           {name="PORTAL_R", to="endoria1", x=600, y=0, z=0},
@@ -221,6 +309,10 @@ function TRF_MapData()
         }
       },
       {name="ergelan", idx=34, dir="Ergelan", mx=627, my=360, trader=1,
+        st = {
+          {label="station_S", x=250, y=0, z=500, side="Uss", kind="trade"},
+          {label="station P", x=50, y=20, z=-50, side="Uss", kind="patrol", r=100}
+        },
         portals = {
           {name="PORTAL_L", to="prien", x=-600, y=0, z=-600},
           {name="PORTAL_R", to="vuadil", x=700, y=0, z=-400},
@@ -228,28 +320,46 @@ function TRF_MapData()
         }
       },
       {name="eridan", idx=35, dir="Eridan", mx=384, my=236,
+        st = {
+          {label="TRADE STATION", x=704, y=0, z=-808, side="Kfni", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="shula", x=260, y=0, z=-400}
         }
       },
       {name="escaflon", idx=36, dir="Escaflon", mx=129, my=238, trader=1,
+        st = {
+          {label="Police_Station_1", x=400, y=-5, z=-50, side="Patrol", kind="patrol", r=100}
+        },
         portals = {
           {name="PORTAL_R", to="endoria2", x=0, y=0, z=-530}
         }
       },
       {name="farles", idx=37, dir="Farles", mx=463, my=64,
+        st = {
+          {label="TRADE", x=464, y=0, z=692, side="Inoco", kind="trade"},
+          {label="PSTATION_04", x=-300, y=-20, z=-300, side="Inoco", kind="patrol", r=80}
+        },
         portals = {
           {name="PORTAL_L", to="areko", x=-900, y=150, z=70},
           {name="PORTAL_R", to="egleon", x=900, y=0, z=-60}
         }
       },
       {name="fiasar", idx=38, dir="Fiasar", mx=724, my=412, trader=1,
+        st = {
+          {label="TRADE STATION", x=-500, y=0, z=500, side="Uss", kind="trade"},
+          {label="PSTATION", x=400, y=-10, z=-200, side="Uss", kind="patrol", r=80}
+        },
         portals = {
           {name="PORTAL_U", to="dalled", x=-100, y=0, z=800},
           {name="PORTAL_D", to="kadenoa", x=-200, y=-40, z=-800}
         }
       },
       {name="fort_russ", idx=39, dir="Fort_russ", mx=288, my=279, trader=1,
+        st = {
+          {label="TRADE", x=-196, y=20, z=300, side="Vks", kind="trade"},
+          {label="PATROL_STATION", x=-356, y=0, z=-412, kind="patrol", r=110}
+        },
         portals = {
           {name="PORTAL_L", to="kruger", x=-900, y=20, z=-300},
           {name="PORTAL_R", to="moscowia", x=800, y=-100, z=700}
@@ -264,12 +374,19 @@ function TRF_MapData()
         }
       },
       {name="gaeon", idx=41, dir="Gaeon", mx=470, my=152,
+        st = {
+          {label="TRADE_STATION", x=208, y=-10, z=-220, side="Inoco", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="zebos", x=-800, y=0, z=100},
           {name="PORTAL_R", to="heos", x=800, y=100, z=-800}
         }
       },
       {name="gaoba", idx=42, dir="Gaoba", mx=578, my=182, trader=1,
+        st = {
+          {label="TRADE", x=-304, y=0, z=1104, side="Inoco", kind="trade"},
+          {label="PSTATION", x=600, y=0, z=600, side="Inoco", kind="patrol", r=80}
+        },
         portals = {
           {name="PORTAL_L", to="heos", x=-900, y=0, z=100},
           {name="PORTAL_R", to="lidau", x=800, y=0, z=1400},
@@ -291,24 +408,37 @@ function TRF_MapData()
         }
       },
       {name="golkonda", idx=45, dir="Golkonda", mx=295, my=560, trader=1,
+        st = {
+          {label="TRADE STATION", x=100, y=-50, z=-210, side="Triada", kind="trade"},
+          {label="Patrol station", x=-300, y=0, z=-250, side="Triada", kind="patrol", r=110}
+        },
         portals = {
           {name="PORTAL_L", to="debris6", x=-600, y=0, z=0},
           {name="PORTAL_R", to="xt05", x=600, y=0, z=0}
         }
       },
       {name="gredos", idx=46, dir="Gredos", mx=198, my=338, start=1, trader=1,
+        st = {
+          {label="TRADE STATION", x=50, y=-30, z=-150, side="Vks", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="elio", x=-1000, y=0, z=700},
           {name="PORTAL_D", to="aurora", x=200, y=0, z=-900}
         }
       },
       {name="hafa", idx=47, dir="Hafa", mx=385, my=280, trader=1,
+        st = {
+          {label="TRADE", x=-322, y=0, z=175, side="Vks", kind="trade"}
+        },
         portals = {
           {name="PORTAL_R", to="ashelon", x=500, y=0, z=500},
           {name="PORTAL_D", to="nj2", x=0, y=0, z=-500}
         }
       },
       {name="hanoi", idx=48, dir="Hanoi", mx=647, my=270, trader=1,
+        st = {
+          {label="TRADE STATION", x=200, y=-100, z=-300, side="Vks", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="kadi", x=-800, y=0, z=0},
           {name="PORTAL_R", to="el_ariash", x=800, y=0, z=-200},
@@ -316,11 +446,17 @@ function TRF_MapData()
         }
       },
       {name="haron", idx=49, dir="Haron", mx=53, my=493,
+        st = {
+          {label="station01", x=450, y=0, z=-250, side="Tamplier", kind="trade"}
+        },
         portals = {
           {name="PORTAL_R", to="kron", x=600, y=0, z=0}
         }
       },
       {name="heos", idx=50, dir="Heos", mx=489, my=174, trader=1,
+        st = {
+          {label="PSTATION_02", x=-500, y=0, z=500, side="Inoco", kind="patrol", r=120}
+        },
         portals = {
           {name="PORTAL_L", to="gaeon", x=-1400, y=40, z=-90},
           {name="PORTAL_R", to="gaoba", x=1140, y=200, z=300},
@@ -329,6 +465,12 @@ function TRF_MapData()
         }
       },
       {name="kadenoa", idx=51, dir="Kadenoa", mx=731, my=464, trader=1,
+        st = {
+          {label="USS_TRADE", x=-200, y=10, z=500, side="Uss", kind="trade"},
+          {label="TRI_TRADE", x=200, y=-10, z=-312, side="Triada", kind="trade", prm="kadenoa_tri"},
+          {label="PATROL_USS", x=500, y=-40, z=696, side="Uss", kind="patrol", r=110},
+          {label="TRI_PATROL", x=-492, y=40, z=-496, side="Triada", kind="patrol", r=140, prm="kadenoa_tri"}
+        },
         portals = {
           {name="PORTAL_L", to="dosis", x=-800, y=0, z=100},
           {name="PORTAL_R", to="deosis", x=600, y=20, z=-100},
@@ -337,6 +479,10 @@ function TRF_MapData()
         }
       },
       {name="kadi", idx=52, dir="Kadi", mx=612, my=277, trader=1,
+        st = {
+          {label="TRADE STATION", x=785, y=-45, z=-525, side="Vks", kind="trade"},
+          {label="Colm", x=-565, y=-45, z=-175, side="Vks", kind="patrol", r=90}
+        },
         portals = {
           {name="PORTAL_L", to="prien", x=-1300, y=0, z=-600},
           {name="PORTAL_R", to="hanoi", x=700, y=0, z=-350},
@@ -349,12 +495,18 @@ function TRF_MapData()
         }
       },
       {name="kassilia", idx=53, dir="Kassilia", mx=32, my=209, trader=1,
+        st = {
+          {label="TRADE_STATION", x=-300, y=0, z=500, side="Recruits", kind="trade"}
+        },
         portals = {
           {name="PORTAL_U", to="avalon", x=200, y=50, z=800},
           {name="PORTAL_D", to="valensia", x=350, y=0, z=-800}
         }
       },
       {name="kitaro", idx=54, dir="Kitaro", mx=763, my=562, trader=1,
+        st = {
+          {label="TRADE", x=100, y=30, z=104, side="Triada", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="kondel", x=-500, y=50, z=500},
           {name="PORTAL_U", to="ule", x=208, y=100, z=892},
@@ -365,12 +517,18 @@ function TRF_MapData()
         }
       },
       {name="kondel", idx=55, dir="Kondel", mx=734, my=523, trader=1,
+        st = {
+          {label="TRADE STATION", x=100, y=-30, z=-150, side="Triada", kind="trade"}
+        },
         portals = {
           {name="PORTAL_U", to="kadenoa", x=-600, y=0, z=800},
           {name="PORTAL_D", to="kitaro", x=50, y=20, z=-800}
         }
       },
       {name="kron", idx=56, dir="Kron", mx=98, my=522, trader=1,
+        st = {
+          {label="PATROL", x=-488, y=-30, z=4, side="Patrol", kind="patrol", r=110}
+        },
         portals = {
           {name="PORTAL_L", to="haron", x=-800, y=-20, z=355},
           {name="PORTAL_R", to="debris2", x=900, y=0, z=0},
@@ -378,6 +536,9 @@ function TRF_MapData()
         }
       },
       {name="kruger", idx=57, dir="Kruger", mx=234, my=294, trader=1,
+        st = {
+          {label="TRADE STATION", x=-200, y=0, z=-200, side="Patrol", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="endoria1", x=-700, y=0, z=400},
           {name="PORTAL_R", to="shula", x=700, y=0, z=-500},
@@ -385,18 +546,29 @@ function TRF_MapData()
         }
       },
       {name="lasad", idx=58, dir="Lasad", mx=413, my=117,
+        st = {
+          {label="TRADESTATION", x=-200, y=-100, z=450, side="Inoco", kind="trade"},
+          {label="PSTATION", x=100, y=-100, z=-250, side="Inoco", kind="patrol", r=80}
+        },
         portals = {
           {name="PORTAL_L", to="tarrot", x=-900, y=0, z=-900},
           {name="PORTAL_R", to="areko", x=800, y=0, z=25}
         }
       },
       {name="lidau", idx=59, dir="Lidau", mx=618, my=97, trader=1,
+        st = {
+          {label="TRADE_STATION", x=388, y=-10, z=-624, side="Inoco", kind="trade"},
+          {label="PATROL", x=-92, y=0, z=-300, side="Inoco", kind="patrol", r=110}
+        },
         portals = {
           {name="PORTAL_L", to="egleon", x=-800, y=0, z=-100},
           {name="PORTAL_R", to="gaoba", x=-200, y=0, z=-800}
         }
       },
       {name="llanovar1", idx=60, dir="Llanovar1", mx=177, my=87, trader=1,
+        st = {
+          {label="PATROL", x=0, y=10, z=-200, side="Kfni", kind="patrol", r=80}
+        },
         portals = {
           {name="PORTAL_R", to="nk", x=400, y=0, z=-600},
           {name="PORTAL_U", to="llanovar2", x=300, y=0, z=600},
@@ -409,6 +581,10 @@ function TRF_MapData()
         }
       },
       {name="moscowia", idx=62, dir="Moscowia", mx=323, my=198, trader=1,
+        st = {
+          {label="TRADE STATION", x=100, y=-50, z=-300, side="Kfni", kind="trade"},
+          {label="PATROL", x=100, y=-100, z=488, side="Kfni", kind="patrol", r=110}
+        },
         portals = {
           {name="PORTAL_L", to="angarsk", x=-900, y=20, z=300},
           {name="PORTAL_R", to="nd", x=500, y=10, z=-900},
@@ -418,11 +594,18 @@ function TRF_MapData()
         }
       },
       {name="nd", idx=63, dir="ND", mx=350, my=206, trader=1,
+        st = {
+          {label="TRADE STATION", x=-500, y=50, z=-300, side="Kfni", kind="trade"},
+          {label="PATROL", x=272, y=80, z=-440, side="Kfni", kind="patrol", r=110}
+        },
         portals = {
           {name="PORTAL_L", to="moscowia", x=-900, y=50, z=0}
         }
       },
       {name="nj1", idx=64, dir="NJ1", mx=510, my=317, trader=1,
+        st = {
+          {label="TRADE STATION", x=200, y=-50, z=-200, side="Vks", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="taira", x=-800, y=0, z=0},
           {name="PORTAL_R", to="nj3", x=800, y=40, z=120},
@@ -431,6 +614,9 @@ function TRF_MapData()
         }
       },
       {name="nj2", idx=65, dir="NJ2", mx=503, my=308, trader=1,
+        st = {
+          {label="TRADE STATION", x=215, y=-50, z=-300, side="Vks", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="hafa", x=-800, y=60, z=-100},
           {name="PORTAL_R", to="nj3", x=800, y=0, z=60},
@@ -439,6 +625,10 @@ function TRF_MapData()
         }
       },
       {name="nj3", idx=66, dir="NJ3", mx=518, my=309, trader=1,
+        st = {
+          {label="TRADE STATION", x=100, y=-50, z=-150, side="Vks", kind="trade"},
+          {label="PATROL_STATION", x=-236, y=0, z=188, side="Patrol", kind="patrol", r=110}
+        },
         portals = {
           {name="PORTAL_L", to="nj1", x=-800, y=0, z=100},
           {name="PORTAL_R", to="prien", x=800, y=100, z=-60},
@@ -447,6 +637,9 @@ function TRF_MapData()
         }
       },
       {name="nk", idx=67, dir="NK", mx=298, my=72, trader=1,
+        st = {
+          {label="TRADE", x=200, y=-20, z=0, side="Uft", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="torr", x=-500, y=0, z=300},
           {name="PORTAL_U", to="llanovar1", x=100, y=0, z=525},
@@ -454,16 +647,25 @@ function TRF_MapData()
         }
       },
       {name="pandora", idx=68, dir="Pandora", mx=264, my=246,
+        st = {
+          {label="TRADE_STATION", x=-396, y=0, z=-396, side="Pirates", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="endoria1", x=-640, y=-20, z=50}
         }
       },
       {name="pegas", idx=69, dir="Pegas", mx=120, my=481, start=1,
+        st = {
+          {label="TRADE_STATION", x=100, y=-50, z=-150, side="Pirates", kind="trade"}
+        },
         portals = {
           {name="PORTAL_R", to="ahilles", x=600, y=0, z=0}
         }
       },
       {name="poseidon", idx=70, dir="Poseidon", mx=180, my=565, trader=1,
+        st = {
+          {label="PATROL_STATION", x=604, y=0, z=-388, side="Patrol", kind="patrol", r=110}
+        },
         portals = {
           {name="PORTAL_L", to="callipso", x=-50, y=-70, z=-120},
           {name="PORTAL_R", to="debris4", x=250, y=40, z=-750},
@@ -476,6 +678,10 @@ function TRF_MapData()
         }
       },
       {name="prien", idx=72, dir="Prien", mx=548, my=298, trader=1,
+        st = {
+          {label="TRADE", x=-680, y=30, z=-400, side="Vks", kind="trade"},
+          {label="patrol station01", x=500, y=0, z=900, side="Patrol", kind="patrol", r=80}
+        },
         portals = {
           {name="PORTAL_L", to="nj3", x=-945, y=0, z=330},
           {name="PORTAL_R", to="kadi", x=750, y=0, z=0},
@@ -483,12 +689,19 @@ function TRF_MapData()
         }
       },
       {name="proserpina", idx=73, dir="Proserpina", mx=306, my=121, trader=1,
+        st = {
+          {label="TRADE", x=-590, y=-20, z=-300, side="Kfni", kind="trade"},
+          {label="Police_Station", x=-500, y=-10, z=-50, side="Kfni", kind="patrol", r=90}
+        },
         portals = {
           {name="PORTAL_U", to="nk", x=260, y=0, z=850},
           {name="PORTAL_D", to="elinor", x=0, y=0, z=-900}
         }
       },
       {name="shula", idx=74, dir="Shula", mx=300, my=325, trader=1,
+        st = {
+          {label="TRADE", x=100, y=-10, z=116, side="Vks", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="kruger", x=-700, y=0, z=300},
           {name="PORTAL_R", to="taira", x=650, y=0, z=-750},
@@ -496,16 +709,26 @@ function TRF_MapData()
         }
       },
       {name="simeiz", idx=75, dir="Simeiz", mx=123, my=171,
+        st = {
+          {label="TRADE", x=0, y=0, z=0, side="Kfni", kind="trade"}
+        },
         portals = {
           {name="PORTAL_U", to="gideon", x=0, y=0, z=600}
         }
       },
       {name="solncevka", idx=76, dir="Solncevka", mx=327, my=154, trader=1,
+        st = {
+          {label="TRADE_STATION", x=400, y=0, z=-500, side="Vks", kind="trade"},
+          {label="COP_STATION", x=-500, y=0, z=-400, side="Patrol", kind="patrol", r=110}
+        },
         portals = {
           {name="PORTAL_D", to="moscowia", x=0, y=0, z=-600}
         }
       },
       {name="solpuga", idx=77, dir="Solpuga", mx=154, my=165, trader=1,
+        st = {
+          {label="TRADE_STATION", x=4, y=0, z=92, side="Kfni", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="gideon", x=-700, y=0, z=400},
           {name="PORTAL_R", to="endoria1", x=400, y=0, z=-700},
@@ -518,6 +741,10 @@ function TRF_MapData()
         }
       },
       {name="taira", idx=79, dir="Taira", mx=300, my=369, trader=1,
+        st = {
+          {label="TRADE STATION", x=-460, y=0, z=-424, side="Vks", kind="trade"},
+          {label="PATROL_STATION", x=648, y=0, z=636, side="Patrol", kind="patrol", r=140}
+        },
         portals = {
           {name="PORTAL_R", to="nj1", x=840, y=0, z=-160},
           {name="PORTAL_U", to="shula", x=-100, y=50, z=800},
@@ -530,18 +757,30 @@ function TRF_MapData()
         }
       },
       {name="torr", idx=81, dir="Torr", mx=231, my=133, trader=1,
+        st = {
+          {label="TRADE_STATION", x=50, y=0, z=0, side="Kfni", kind="trade"},
+          {label="PATROL STATION", x=202, y=100, z=-608, side="Kfni", kind="patrol", r=140}
+        },
         portals = {
           {name="PORTAL_U", to="nk", x=340, y=0, z=1000},
           {name="PORTAL_D", to="endoria1", x=-600, y=0, z=-900}
         }
       },
       {name="ule", idx=82, dir="Ule", mx=759, my=507, trader=1,
+        st = {
+          {label="TRADE", x=-202, y=0, z=-206, side="Triada", kind="trade"},
+          {label="PATROL", x=292, y=0, z=-312, side="Triada", kind="patrol", r=110}
+        },
         portals = {
           {name="PORTAL_U", to="deosis", x=-50, y=0, z=700},
           {name="PORTAL_D", to="kitaro", x=-100, y=0, z=-500}
         }
       },
       {name="valensia", idx=83, dir="Valensia", mx=84, my=312, trader=1,
+        st = {
+          {label="TRADE STATION", x=-200, y=-50, z=-300, side="Kfni", kind="trade"},
+          {label="PATROL", x=720, y=0, z=-120, side="Kfni", kind="patrol", r=120}
+        },
         portals = {
           {name="PORTAL_R", to="elio", x=700, y=0, z=-600},
           {name="PORTAL_U", to="kassilia", x=250, y=0, z=700}
@@ -553,6 +792,9 @@ function TRF_MapData()
         }
       },
       {name="vulcan", idx=85, dir="Vulcan", mx=101, my=420,
+        st = {
+          {label="TRADE_STATION", x=600, y=-50, z=200, side="Inoco", kind="trade"}
+        },
         portals = {
           {name="PORTAL_R", to="gefest", x=600, y=0, z=600}
         }
@@ -584,6 +826,10 @@ function TRF_MapData()
         }
       },
       {name="x297", idx=90, dir="x297", mx=739, my=168, trader=1,
+        st = {
+          {label="TRADE STATION", x=-590, y=-50, z=-800, side="Hunter", kind="trade"},
+          {label="GRAN", x=900, y=0, z=-580, side="Hunter", kind="patrol", r=110}
+        },
         portals = {
           {name="PORTAL_L", to="x203", x=-700, y=-60, z=200},
           {name="PORTAL_U", to="x244", x=400, y=100, z=900},
@@ -605,6 +851,9 @@ function TRF_MapData()
         }
       },
       {name="xb17", idx=93, dir="xb17", mx=354, my=448,
+        st = {
+          {label="TRADE STATION", x=452, y=0, z=-100, side="Guard", kind="trade"}
+        },
         portals = {
           {name="PORTAL_DR", to="xb15", x=700, y=-100, z=-700}
         }
@@ -615,12 +864,19 @@ function TRF_MapData()
         }
       },
       {name="xk10", idx=95, dir="xk10", mx=576, my=250, trader=1,
+        st = {
+          {label="TRADE STATION", x=750, y=0, z=0, side="Inoco", kind="trade"},
+          {label="PATROL", x=200, y=-30, z=-232, side="Inoco", kind="patrol", r=110}
+        },
         portals = {
           {name="PORTAL_R", to="kadi", x=400, y=0, z=-550},
           {name="PORTAL_U", to="gaoba", x=350, y=0, z=100}
         }
       },
       {name="xk16", idx=96, dir="xk16", mx=657, my=241, trader=1,
+        st = {
+          {label="TRADE STATION", x=100, y=-50, z=150, side="Pirates", kind="trade"}
+        },
         portals = {
           {name="PORTAL_D", to="hanoi", x=0, y=100, z=-400}
         }
@@ -634,6 +890,9 @@ function TRF_MapData()
         }
       },
       {name="xt11", idx=98, dir="xt11", mx=467, my=526, trader=1,
+        st = {
+          {label="TRADE STATION", x=500, y=50, z=-300, side="Uss", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="xt05", x=-900, y=0, z=-100},
           {name="PORTAL_R", to="xt23", x=700, y=30, z=300},
@@ -646,11 +905,17 @@ function TRF_MapData()
         }
       },
       {name="xt20", idx=100, dir="xt20", mx=671, my=412, trader=1,
+        st = {
+          {label="TRADE", x=200, y=-50, z=97, side="Vks", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="xt45", x=0, y=0, z=-150}
         }
       },
       {name="xt23", idx=101, dir="xt23", mx=494, my=507, trader=1,
+        st = {
+          {label="TRADE_STATION", x=400, y=20, z=-150, side="Pirates", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="xt11", x=-750, y=-200, z=-260},
           {name="PORTAL_R", to="xt26", x=800, y=100, z=500},
@@ -658,11 +923,17 @@ function TRF_MapData()
         }
       },
       {name="xt24", idx=102, dir="xt24", mx=480, my=482, trader=1,
+        st = {
+          {label="TRADE", x=860, y=0, z=-620, side="Grey", kind="trade"}
+        },
         portals = {
           {name="PORTAL_R", to="xt23", x=900, y=0, z=50}
         }
       },
       {name="xt26", idx=103, dir="xt26", mx=541, my=488, trader=1,
+        st = {
+          {label="TRADE", x=-40, y=0, z=-16, side="Pirates", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="xt93", x=-500, y=0, z=-500},
           {name="PORTAL_R", to="xt23", x=500, y=10, z=700},
@@ -680,12 +951,19 @@ function TRF_MapData()
         }
       },
       {name="xt41", idx=106, dir="xt41", mx=514, my=444, trader=1,
+        st = {
+          {label="TRADE STATION", x=50, y=0, z=300, side="Patrol", kind="trade"},
+          {label="PATROL", x=300, y=0, z=-404, side="Patrol", kind="patrol", r=140}
+        },
         portals = {
           {name="PORTAL_L", to="xt81", x=-850, y=20, z=300},
           {name="PORTAL_R", to="xt93", x=700, y=0, z=-100}
         }
       },
       {name="xt45", idx=107, dir="xt45", mx=645, my=438, trader=1,
+        st = {
+          {label="TRADE_STATION", x=100, y=-50, z=150, side="Triada", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="xt93", x=-700, y=0, z=-100},
           {name="PORTAL_R", to="xt20", x=550, y=0, z=600},
@@ -694,6 +972,9 @@ function TRF_MapData()
         }
       },
       {name="xt52", idx=108, dir="xt52", mx=656, my=466, trader=1,
+        st = {
+          {label="TRADE_STATION", x=700, y=-20, z=-196, side="Triada", kind="trade"}
+        },
         portals = {
           {name="PORTAL_L", to="xt54", x=-700, y=0, z=-300},
           {name="PORTAL_R", to="dosis", x=750, y=0, z=100},
@@ -701,6 +982,9 @@ function TRF_MapData()
         }
       },
       {name="xt54", idx=109, dir="xt54", mx=625, my=478,
+        st = {
+          {label="TRADE STATION", x=-350, y=0, z=550, side="Triada", kind="trade"}
+        },
         portals = {
           {name="PORTAL_R", to="xt52", x=850, y=0, z=150}
         }
@@ -718,6 +1002,10 @@ function TRF_MapData()
         }
       },
       {name="xt93", idx=112, dir="xt93", mx=580, my=446, trader=1,
+        st = {
+          {label="TRADE_STATION", x=-397, y=0, z=-194, side="Triada", kind="trade"},
+          {label="PATROL_STATION", x=-550, y=10, z=-500, side="Triada", kind="patrol", r=110}
+        },
         portals = {
           {name="PORTAL_L", to="xt26", x=500, y=0, z=-604},
           {name="PORTAL_R", to="xt45", x=800, y=0, z=100},
@@ -725,6 +1013,9 @@ function TRF_MapData()
         }
       },
       {name="zebos", idx=113, dir="Zebos", mx=447, my=150,
+        st = {
+          {label="STOCK", x=-548, y=0, z=-200, kind="trade"}
+        },
         portals = {
           {name="PORTAL_R", to="gaeon", x=800, y=0, z=50}
         },

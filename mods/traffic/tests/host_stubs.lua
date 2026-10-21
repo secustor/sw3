@@ -5,8 +5,8 @@
 -- natives as stubs that check the argument shapes the game scripts use (HOST_Want).
 -- Env: TRF_DIR (mod script dir, trailing slash), TRF_EXP (0..3; unset = use the repo config.script),
 -- TRF_BIG, TRF_DEL, TRF_AUTOSAVE (config big / del_on_jump / autosave), TRF_SCEN (unset: loader scenario
--- below; a..g: traffic scenario of host_traffic.lua, found through TRF_TESTS). Exit code 1 on any script
--- error, mod-log ERROR line or failed check.
+-- below; a..g: traffic scenario of host_traffic.lua; v02-a..n: v0.2 scenario of host_v02.lua; both found
+-- through TRF_TESTS). Exit code 1 on any script error, mod-log ERROR line or failed check.
 
 -- Host state lives in an upvalue: emulated ClearGlobals deletes table globals.
 local H = {
@@ -25,7 +25,13 @@ local H = {
 	-- v0.1 stubs: RAND state and draw count, forced draws, screen lines, radio lines, vanilla generator
 	-- calls, glows, choice flights, meetings, ejections, quest state, difficulty, block radius, config.
 	seed = 12345, rand = 0, rq = {}, screen = {}, msgs = {}, vgen = {}, van_built = 0,
-	glows = 0, choice = 0, meet = 0, eject = 0, qs = 0, diff = 2, block_r = 3, cfg = nil
+	glows = 0, choice = 0, meet = 0, eject = 0, qs = 0, diff = 1, block_r = 3, cfg = nil,
+	-- v0.2 stubs: message boxes (and boxes opened inside a box callback), markets and their writes, shops
+	-- created, UpdateTradeSystem flags, dialogs, nav points, credits, player level, news posts, relations,
+	-- team per location, vanilla dock originals run.
+	boxes = {}, in_box = nil, box_nested = 0, markets = {}, mwrites = {}, shops_made = {}, upd = {}, dlgs = {},
+	pdlgs = {}, navs = {}, credits = 0, level = 4, posts = {}, rel = {}, teams = {}, trade_ok = 0, patrol_ok = 0,
+	ftrader = 0, speak = 0
 };
 
 function HOST() return %H; end;
@@ -48,9 +54,10 @@ PLAYER_TEAM = "PlayerTeam"; PLAYER_GROUP = "PlayerGroup"; PLAYER_MOTHERSHIP = "P
 _script_path = "DATA/Scripts/";
 _CLASS = {};
 PI = 3.1415926535897932;
-EASY = 1; NORMAL = 2; HARD = 3; NOINIT = 0;
-_EVENT_TIMER = 1; ROLE_ATTACK = 1; ROLE_DEFEND = 2; ROLE_MISSLEDEFENCE = 3; ROLE_REPAIR = 4; ROLE_CLOACKING = 5;
-RELATION_WAR = 0;
+-- Engine values (mod-research/lua-natives.md, constants).
+EASY = 0; NORMAL = 1; HARD = 2; NOINIT = 0;
+_EVENT_TIMER = 1; ROLE_ATTACK = 2; ROLE_DEFEND = 3; ROLE_MISSLEDEFENCE = 6; ROLE_REPAIR = 7; ROLE_CLOACKING = 5;
+RELATION_NEUTRAL = 0; RELATION_WAR = 1; RELATION_FRIEND = 2;
 HOST().qs = FALSE;
 
 -- 0x7acae8 list plus the engine-constant names used here.
@@ -76,10 +83,24 @@ function TRF_RealTime() return HOST().rt; end;
 function TRF_Log(s)
 	if type(s) ~= "string" and type(s) ~= "number" then print("traffic: TRF_Log bad argument"); return nil; end;
 	print("traffic: lua: "..s);
+	if HOST().logs then tinsert(HOST().logs, s); end;
 	if type(s) == "string" and strfind(s, " ERROR ", 1, 1) then
 		HOST().errors = HOST().errors + 1;
 		print("HOST SCRIPT ERROR (mod log): "..s);
+		HOST_Trace();
 	end;
+end;
+
+-- Call stack at an error (the handler of call(..., "x", h) runs at the error point): one line per frame.
+function HOST_Trace()
+	local s = "";
+	for l = 3, 14 do
+		local i = getinfo(l, "Sln");
+		if not i then break; end;
+		local src = i.short_src or i.source or "?";
+		s = s.." < "..gsub(tostring(src), "^.*/", "")..":"..tostring(i.currentline).." "..tostring(i.name);
+	end;
+	print("HOST trace:"..s);
 end;
 
 function GetCurrentLocation() return HOST().loc; end;
@@ -99,9 +120,10 @@ function GetPlayerQuestState(...)
 	return HOST().qs;
 end;
 function GetLevelDifficult() return HOST().diff; end;
+-- Owner team; HOST().teams[loc] overrides the default "Neutral".
 function GetLocationTeam(loc)
 	HOST_Want(type(loc) == "string", "GetLocationTeam(location)");
-	return "Neutral";
+	return HOST().teams[loc] or "Neutral";
 end;
 
 -- RAND(n): 0..n-1 (Park-Miller, exact in doubles; high-order part, the low bits of successive draws
@@ -242,6 +264,13 @@ function CreateCarcass(tpl, pos, dir)
 		HOST_Want(type(it) == "string" and type(n) == "number", "Carcass:AddModuleToInventory(item, count)");
 		tinsert(self.inv, {it, n});
 	end;
+	-- v0.2: ClearInventory (FloodTradeStations.script), SetHP/GetCurHP (absolute HP, 1000 at spawn),
+	-- GetName (template name), SetMaxSpeed (mothership use in vanilla; NPC use is a CHECK).
+	s.hp = 1000;
+	s.ClearInventory = function(self) self.inv = {}; self.cleared = (self.cleared or 0) + 1; end;
+	s.SetHP = function(self, v) HOST_Want(type(v) == "number", "Carcass:SetHP(hp)"); self.hp = v; end;
+	s.GetName = function(self) return self.tpl; end;
+	s.SetMaxSpeed = function(self, v) HOST_Want(type(v) == "number", "Carcass:SetMaxSpeed(v)"); self.vmax = v; end;
 	tinsert(HOST().ships, s);
 	return s;
 end;
@@ -249,6 +278,9 @@ end;
 HOST().ms = {__obj=1, kind="ms", pos=Vector3(-950, 0, 650), alive=1};
 HOST().ms.GetPosition = function(self) return Vector3(self.pos.x, self.pos.y, self.pos.z); end;
 HOST().ms.IsAlive = function(self) return 1; end;
+HOST().ms.GetPilot = function(self)
+	return {kind="pilot", GetFlight = function(self) return {Stop = function(self) HOST().ms_stops = (HOST().ms_stops or 0) + 1; end}; end};
+end;
 function GetPlayerMotherShip() return HOST().ms; end;
 
 -- 0x5e68f0: at least 2 args, x/y/z read from arg 1, radius from arg 2.
@@ -284,6 +316,7 @@ function HOST_Flight(fname, grp)
 		self.patrol = pts;
 	end;
 	f.Move = function(self, v) HOST_Want(HOST_IsVec(v), "Flight:Move(Vector3)"); self.mv = v; end;
+	f.Stop = function(self) self.stopped = (self.stopped or 0) + 1; end;
 	f.Attack = function(self, o) HOST_Want(HOST_IsObj(o), "Flight:Attack(object)"); self.att = o; end;
 	f.GetLeader = function(self) local s = self:Lead(); if s then return s.pilot; end; return nil; end;
 	f.GetPilotCount = function(self) return getn(self.ships); end;
@@ -312,17 +345,136 @@ function CreateTeam(name)
 	end;
 	return t;
 end;
+-- (teamA, teamB) -> RELATION_*: HOST().rel_team["A|B"], else Pirates at war with Trade and the player,
+-- everything else friendly (2).
 function GetTeamRelation(a, b)
-	HOST_Want(type(a) == "string" and b == PLAYER_TEAM, "GetTeamRelation(team, PLAYER_TEAM)");
-	return 2;
+	HOST_Want(type(a) == "string" and type(b) == "string", "GetTeamRelation(team, team)");
+	local t = HOST().rel_team;
+	if t and t[a.."|"..b] then return t[a.."|"..b]; end;
+	if a == "Pirates" and (b == "Trade" or b == PLAYER_TEAM) then return RELATION_WAR; end;
+	return RELATION_FRIEND;
 end;
+-- (groupA, groupB, RELATION_*): group objects or group names (OutOfMission.script 407), PLAYER_GROUP;
+-- one direction per call. Recorded in HOST().rel as {a, b, rel}.
 function SetGroupRelation(g, pg, rel)
-	HOST_Want(HOST_IsGroup(g) and pg == PLAYER_GROUP and type(rel) == "number", "SetGroupRelation(group, PLAYER_GROUP, relation)");
+	local ok = function(x) return HOST_IsGroup(x) or type(x) == "string"; end;
+	HOST_Want(ok(g) and ok(pg) and type(rel) == "number", "SetGroupRelation(group, group, relation)");
+	local nm = function(x) if type(x) == "table" then return x.name; end; return x; end;
+	tinsert(HOST().rel, {nm(g), nm(pg), rel});
 end;
 function CreatePortalGlow(pos, dir, n)
 	HOST_Want(HOST_IsVec(pos) and HOST_IsVec(dir) and type(n) == "number", "CreatePortalGlow(Vector3, Vector3, n)");
 	HOST().glows = HOST().glows + 1;
 end;
+
+-- v0.2 natives ---------------------------------------------------------------------
+-- ShowMsgBox(titleKey, text, onOk[, onCancel]) (lua-natives.md; DockStation.script 178): callbacks are
+-- function values. Recorded in HOST().boxes; HOST_Press runs a button. A box opened while a button
+-- callback runs counts in HOST().box_nested (v02 6.1: the next box comes from a due call).
+function ShowMsgBox(...)
+	local h = HOST();
+	HOST_Want((arg.n == 3 or arg.n == 4) and type(arg[1]) == "string" and type(arg[2]) == "string" and type(arg[3]) == "function"
+		and (arg[4] == nil or type(arg[4]) == "function"), "ShowMsgBox(title, text, ok[, cancel])");
+	if h.in_box then h.box_nested = h.box_nested + 1; end;
+	print("HOST box "..tostring(arg[1]).." | "..tostring(arg[2]));
+	tinsert(h.boxes, {title=arg[1], text=arg[2], ok=arg[3], cancel=arg[4], gt=h.gt});
+end;
+-- Press "ok" or "cancel" on box b (default: the newest); a box without a Cancel callback closes on Cancel.
+function HOST_Press(which, b)
+	local h = HOST();
+	b = b or h.boxes[getn(h.boxes)];
+	HOST_Want(b and not b.done, "HOST_Press: an open box");
+	if not b or b.done then return nil; end;
+	b.done = which;
+	local f = b.ok;
+	if which == "cancel" then f = b.cancel; end;
+	print("HOST press "..which.." on "..tostring(b.text));
+	h.in_box = 1;
+	if f then f(); end;
+	h.in_box = nil;
+	return 1;
+end;
+function HOST_Box() local h = HOST(); return h.boxes[getn(h.boxes)]; end;
+
+-- Markets (InitTradeSystem.script, FloodTradeStations.script): GetWhiteMarket(name) -> Market with
+-- ModuleGoodsState(item, count, sell, buy) and ClearGoodsState(item). Station markets exist for every name
+-- except HOST().no_market[name]; trf_ shops only after CreateShop. Writes go to HOST().mwrites.
+function HOST_Market(name)
+	local m = {__obj=1, kind="market", name=name, goods={}};
+	m.ModuleGoodsState = function(self, it, n, sk, bk)
+		HOST_Want(type(it) == "string" and type(n) == "number" and type(sk) == "number" and type(bk) == "number",
+			"Market:ModuleGoodsState(item, count, sell, buy)");
+		self.goods[it] = {n=n, s=sk, b=bk};
+		tinsert(HOST().mwrites, {shop=self.name, i=it, n=n, s=sk, b=bk});
+	end;
+	m.ClearGoodsState = function(self, it)
+		HOST_Want(type(it) == "string", "Market:ClearGoodsState(item)");
+		self.goods[it] = nil;
+		tinsert(HOST().mwrites, {shop=self.name, i=it, clear=1});
+	end;
+	return m;
+end;
+function GetWhiteMarket(name)
+	local h = HOST();
+	HOST_Want(type(name) == "string", "GetWhiteMarket(name)");
+	if type(name) ~= "string" or (h.no_market and h.no_market[name]) then return nil; end;
+	if not h.markets[name] and strsub(name, 1, 4) ~= "trf_" then h.markets[name] = HOST_Market(name); end;
+	return h.markets[name];
+end;
+function CreateShop(name)
+	local h = HOST();
+	HOST_Want(type(name) == "string", "CreateShop(name)");
+	h.shops_made[name] = (h.shops_made[name] or 0) + 1;
+	if not h.markets[name] then h.markets[name] = HOST_Market(name); end;
+end;
+function UpdateTradeSystem(f) HOST_Want(f == TRUE or f == FALSE, "UpdateTradeSystem(TRUE|FALSE)"); tinsert(HOST().upd, f); end;
+function TradeStationDlg(name) HOST_Want(type(name) == "string", "TradeStationDlg(shop)"); tinsert(HOST().dlgs, name); end;
+function SetTraderFlag(f) HOST_Want(f == TRUE or f == FALSE, "SetTraderFlag(TRUE|FALSE)"); HOST().trflag = f; end;
+-- PatrolStationDlg() or (dialog name), DockStation.script 220-232.
+function PatrolStationDlg(...)
+	HOST_Want(arg.n == 0 or type(arg[1]) == "string", "PatrolStationDlg([dialog])");
+	tinsert(HOST().pdlgs, arg[1] or "");
+end;
+function StartTradeDialog(d) HOST_Want(type(d) == "string", "StartTradeDialog(dialog)"); HOST().tdlg = d; end;
+
+-- Nav points: CreateNavPoint(textKey, Vector3, icon, RGB(), attachObj) -> NavPoint with Delete.
+function RGB(r, g, b) HOST_Want(type(r) == "number" and type(g) == "number" and type(b) == "number", "RGB(r, g, b)"); return r * 65536 + g * 256 + b; end;
+function CreateNavPoint(t, pos, icon, col, obj)
+	HOST_Want(type(t) == "string" and HOST_IsVec(pos) and type(icon) == "string" and type(col) == "number" and (obj == nil or HOST_IsObj(obj)),
+		"CreateNavPoint(text, Vector3, icon, RGB, object)");
+	local n = {__obj=1, kind="nav", pos=pos, text=t, alive=1};
+	n.Delete = function(self) self.alive = nil; self.deleted = 1; end;
+	n.GetPosition = function(self) return self.pos; end;
+	tinsert(HOST().navs, n);
+	return n;
+end;
+function SetNavPointLabel(n, l)
+	HOST_Want(type(n) == "table" and n.kind == "nav" and type(l) == "string", "SetNavPointLabel(navpoint, label)");
+	n.label = l;
+end;
+function GetNavPointByLabel(l)
+	HOST_Want(type(l) == "string", "GetNavPointByLabel(label)");
+	local q = HOST().navs;
+	for i = 1, getn(q) do if q[i].label == l and q[i].alive then return q[i]; end; end;
+	return nil;
+end;
+function HOST_Navs()
+	local n, q = 0, HOST().navs;
+	for i = 1, getn(q) do if q[i].alive then n = n + 1; end; end;
+	return n;
+end;
+
+-- (carcass) -> current HP.
+function GetCurHP(o) HOST_Want(type(o) == "table" and o.__obj, "GetCurHP(carcass)"); return o.hp; end;
+function AddPlayerCredits(n) HOST_Want(type(n) == "number", "AddPlayerCredits(n)"); HOST().credits = HOST().credits + n; end;
+function GetPlayerCredits() return HOST().credits; end;
+function SubPlayerCredits(n) HOST().credits = HOST().credits - n; end;
+function GetPlayerLevel() return HOST().level; end;
+function AddPlayerExperience(x) HOST().xp = (HOST().xp or 0) + x; end;
+-- News: (mailId) strings; recorded as "+id" / "-id".
+function AddPost(id) HOST_Want(type(id) == "string", "AddPost(mailId)"); tinsert(HOST().posts, "+"..id); end;
+function RemovePost(id) HOST_Want(type(id) == "string", "RemovePost(mailId)"); tinsert(HOST().posts, "-"..id); end;
+
 -- Create_flight_2.script CreateChoiceFlight(team, group global name, sign, pos, type, power, orient):
 -- a flight in getglobal(group) with flight_/ship_/pilot_<sign> globals; FALSE without the group.
 function CreateChoiceFlight(team, gname, sign, pos, ty, pw, dir)
@@ -476,7 +628,69 @@ Trad_CargoType = {"Cargo_01", "Cargo_02", "Cargo_03", "Cargo_04", "Cargo_05", "C
 function trigger_generator_Action(...) return HOST_VanGen(arg); end;
 function Case_Eject(p) return HOST_VanEject(p); end;
 function _FTrader_Action() HOST().meet = HOST().meet + 1; end;
+SpeakList_TraderDialog = {"DialogTrader1", "DialogTrader2", "DialogTrader3"};
+SpeakList_TraderDialog_nocost = {"DialogTrader1n", "DialogTrader2n", "DialogTrader3n"};
+function On_FTrader_Start()
+	HOST().ftrader = HOST().ftrader + 1;
+	local x = getn(ShopList_Trader);
+	rn_x = RAND(x) + 1;
+	UpdateTradeSystem(FALSE);
+	SetTraderFlag(TRUE);
+	TradeStationDlg(ShopList_Trader[rn_x]);
+end;
+function _Trader_Speak()
+	HOST().speak = HOST().speak + 1;
+	local x = getn(SpeakList_TraderDialog);
+	Rnd_speak = RAND(x) + 1;
+	if GetPlayerCredits() >= 5000 then StartTradeDialog(SpeakList_TraderDialog[Rnd_speak]);
+	else StartTradeDialog(SpeakList_TraderDialog_nocost[Rnd_speak]); end;
+end;
 ]], "DATA/Scripts/include/RandomContacts.script");
+	-- Create_flight_2.script and FloodTradeStations.script data tables (copied from the game files).
+	dostring([[
+Pir_Pilots = {"PirateRookie", "PirateTough", "PirateCaptain", "PirateSuperAce", "PirateHyperAce"};
+Pir_Fighters = { {{"Brigand_pir1",1,"A"}}, {{"Excalibur_pir1",1,"A"}}, {{"Excalibur_pir1",1,"A"},{"Brigand_pir1",1,"A"}}, {{"Excalibur_pir1",1,"A"},{"Yari_pir1",1,"A"},{"Brigand_pir1",1,"A"}}, {{"Stormcrow_pir1",2,"A"},{"Brigand_pir1",1,"A"}}, {{"Stormcrow_pir1",2,"A"},{"Raptor_pir1",2,"A"}}, {{"Stormcrow_pir1",2,"A"},{"Raptor_pir1",2,"A"},{"Hatchet_pir1",2,"M"}}, {{"Stormcrow_pir1",2,"A"},{"Raptor_pir1",2,"A"},{"Raptor_pir1",2,"A"},{"Hatchet_pir1",1,"M"}}, {{"Stormcrow_pir1",2,"A"},{"Cleaner_pir1",2,"A"},{"Raptor_pir1",2,"A"},{"Raptor_pir1",2,"M"}}, {{"EvilEye_pir1",3,"A"},{"Tiger_pir1",3,"A"},{"Raptor_pir1",2,"M"}}, {{"EvilEye_pir1",3,"A"},{"Stormcrow_pir1",3,"A"},{"EvilEye_pir1",2,"M"}}, {{"EvilEye_pir2",3,"A"},{"Tiger_pir1",3,"A"},{"Cleaner_pir1",2,"A"},{"EvilEye_pir1",2,"M"}}, {{"EvilEye_pir2",3,"A"},{"Tiger_pir2",3,"A"},{"Stormcrow_pir1",3,"A"},{"EvilEye_pir1",2,"M"}}, {{"EvilEye_pir3",3,"A"},{"EvilEye_pir2",3,"A"},{"Tiger_pir2",3,"A"},{"Tiger_pir2",2,"A"},{"EvilEye_pir1",3,"M"}}, {{"Gunslinger_pir1",4,"A"},{"Tiger_pir2",4,"A"},{"EvilEye_pir1",3,"M"}}, {{"Gunslinger_pir1",4,"A"},{"Gunslinger_pir1",4,"A"},{"EvilEye_pir1",3,"M"}}, {{"Gunslinger_pir2",4,"A"},{"Tiger_pir2",3,"A"},{"Tiger_pir2",3,"A"},{"Trident_pir1",3,"M"}}, {{"Gunslinger_pir2",4,"A"},{"Gunslinger_pir1",4,"A"},{"Tiger_pir2",3,"A"},{"Trident_pir1",3,"M"}}, {{"Gunslinger_pir2",4,"A"},{"Gunslinger_pir2",4,"A"},{"Tiger_pir2",4,"A"},{"Tiger_pir2",3,"A"},{"Trident_pir1",4,"M"}}, {{"Gunslinger_pir3",5,"A"},{"Gunslinger_pir2",4,"A"},{"Gunslinger_pir1",4,"A"},{"Gunslinger_pir1",4,"A"},{"Gunslinger_pir1",3,"A"},{"Trident_pir1",4,"M"}}};
+Pir_Bombers = { {{"Naginata_pir1",1,"A"}}, {{"Excalibur_pir2",1,"A"}}, {{"Naginata_pir1",1,"A"},{"Naginata_pir1",1,"A"}}, {{"Excalibur_pir2",1,"A"},{"Naginata_pir1",1,"A"},{"Naginata_pir1",1,"A"}}, {{"Excalibur_pir2",2,"A"},{"Hammerhead_pir1",2,"A"}}, {{"Hammerhead_pir1",2,"A"},{"Hammerhead_pir1",2,"A"}}, {{"Excalibur_pir2",2,"A"},{"Hammerhead_pir1",2,"A"},{"Hatchet_pir1",1,"M"}}, {{"Hammerhead_pir1",2,"A"},{"Hammerhead_pir1",2,"A"},{"Hatchet_pir1",2,"M"}}, {{"Hammerhead_pir1",2,"A"},{"Hammerhead_pir1",2,"A"},{"Excalibur_pir2",2,"A"},{"Hatchet_pir1",2,"M"}}, {{"Bident_pir1",3,"A"},{"Bident_pir1",2,"A"},{"Hatchet_pir1",2,"M"}}, {{"Bident_pir1",3,"A"},{"Bident_pir1",2,"A"},{"EvilEye_pir1",2,"M"}}, {{"Bident_pir1",3,"A"},{"Bident_pir1",2,"A"},{"EvilEye_pir1",2,"M"},{"EvilEye_pir3",2,"C"}}, {{"Bident_pir1",3,"A"},{"Hammerhead_pir1",2,"A"},{"Hammerhead_pir1",2,"A"},{"EvilEye_pir1",2,"M"}}, {{"Bident_pir1",3,"A"},{"Bident_pir1",3,"A"},{"Bident_pir1",3,"A"},{"EvilEye_pir1",3,"M"}}, {{"Hrimturs_pir1",4,"A"},{"Bident_pir1",4,"A"},{"EvilEye_pir1",3,"M"}}, {{"Hrimturs_pir1",4,"A"},{"Hrimturs_pir1",4,"A"},{"Trident_pir1",3,"M"}}, {{"Hrimturs_pir1",4,"A"},{"Hrimturs_pir1",4,"A"},{"EvilEye_pir2",3,"D"},{"Trident_pir1",3,"M"}}, {{"Hrimturs_pir1",4,"A"},{"Hrimturs_pir1",4,"A"},{"Hrimturs_pir1",3,"A"},{"Trident_pir1",3,"M"}}, {{"Hrimturs_pir1",4,"A"},{"Hrimturs_pir1",4,"A"},{"Bident_pir1",3,"A"},{"Bident_pir1",3,"A"},{"Trident_pir1",4,"M"}}, {{"Hrimturs_pir2",5,"A"},{"Hrimturs_pir2",4,"A"},{"Hrimturs_pir1",4,"A"},{"Hrimturs_pir1",3,"A"},{"EvilEye_pir3",4,"C"},{"Trident_pir1",4,"M"}}};
+Gun_List_Unknown = { {"HC1","VC1","CG1","AC1"}, {"HC2","VC2","CG2","AC2"}, {"VC3","CG3","AC3"}};
+Gun_List_Uss = { {"VC1","CG1","AC1"}, {"VC2","CG2","AC2"}, {"VC3","VC4","CG3","CG4"}};
+Gun_List_Triada = { {"VC1","PLC1","PC1","AC1"}, {"VC2","PLC2","PC2","AC2"}, {"VC3","PLC3","PC3","VC4","AC3","AC4"}};
+Gun_List_InoCo = { {"LC1","PLC1","RG1"}, {"LC2","PLC2","RG2"}, {"LC3","LC4","PLC3","RG3"}};
+Gun_List_Vks = { {"HC1","VC1","PLC1","PC1","RG1","CG1","AC1"}, {"HC2","VC2","PLC2","PC2","RG2","CG2","AC2"}, {"HC3","VC3","CG3","AC3"}};
+Gun_List_Kfni = { {"HC1","VC1","PLC1","CG1","AC1"}, {"HC2","VC2","PLC2","CG2","AC2"}, {"HC3","VC3","CG3","AC3","HC4","VC4","CG4","AC4"}};
+Gun_List_Uft = { {"HC2","VC2","LC1","PLC1","PC1","RG1","CG2","AC2"}, {"HC3","VC3","LC2","PLC2","PC2","RG2","CG3","AC3"}, {"HC4","VC4","LC3","PLC3","PC3","RG3","CG4","AC4"}};
+Gun_List_Patrol = { {"HC1","VC1","PC1","CG1","AC1"}, {"HC2","VC2","PC2","CG2","AC2"}, {"HC3","VC3","PC3","CG3","AC3"}};
+Syst_List = { "LRS2","LRS3", "ECM2","ECM3","AMS2","AMS3", "Stealth2","Stealth3","CloD1","CloD2", "LRRNB2","LRRNB3", "RNBot2","RNBot3", "RBot2","RBot3", "ShAmp3","ShAmp4", "EngBoost2","EngAmp2","EngAmp3","ManAmp2", "WBoost2","WBoost3","GunAmp2", "ALS1","ALS2"};
+Location_SideList = { aurora = "Vks", argon = "Vks", ahilles = "Kfni", vulcan = "Inoco", gefest = "Kfni", golkonda = "Triada", debris1 = "Neutral", debris2 = "Neutral", debris3 = "Triada", debris4 = "Uss", debris6 = "Triada", callipso = "Vks", corrino = "Vks", kron = "Vks", pegas = "Neutral", poseidon = "Vks", haron = "Neutral", gredos = "Vks", dionis = "Kfni", kruger = "Vks", llanovar1 = "Kfni", llanovar2 = "Kfni", nk = "Kfni", pandora = "Neutral", proserpina = "Kfni", simeiz = "Kfni", solpuga = "Kfni", torr = "Kfni", elinor = "Kfni", elio = "Kfni", endoria1 = "Vks", endoria2 = "Vks", escaflon = "Vks", valensia = "Kfni", kassilia = "Kfni", avalon = "Kfni", gideon = "Kfni", fort_russ = "Vks", moscowia = "Vks", solncevka = "Vks", nd = "Vks", angarsk = "Kfni", xk10 = "Inoco", altair = "Vks", altrabon = "Vks", ashelon = "Inoco", b_leftera1 = "Triada", b_leftera2 = "Triada", b_leftera3 = "Triada", ergelan = "Uss", kadi = "Vks", nj1 = "Vks", nj2 = "Vks", nj3 = "Vks", prien = "Vks", sunji = "Uss", taira = "Vks", hafa = "Inoco", shula = "Vks", eridan = "Kfni", vuadil = "Uss", hanoi = "Vks", alzed = "Neutral", el_ariash = "Uss", xk16 = "Vks", xt05 = "Triada", xt11 = "Uss", xt17 = "Neutral", xt20 = "Neutral", xt23 = "Neutral", xt24 = "Neutral", xt26 = "Neutral", xt27 = "Neutral", xt39 = "Triada", xt41 = "Vks", xt45 = "Triada", xt52 = "Triada", xt54 = "Neutral", xt81 = "Vks", xt86 = "Vks", xt93 = "Triada", xb13 = "Uss", xb15 = "Uss", xb17 = "Neutral", xb19 = "Neutral", dalled = "Uss", deosis = "Uss", dosis = "Triada", kadenoa = "Uss", kondel = "Triada", kitaro = "Triada", ule = "Triada", fiasar = "Uss", fronn = "Triada", kadenoa_tri = "Triada", areko = "Inoco", gaeon = "Inoco", gaoba = "Inoco", danstag = "Inoco", lasad = "Inoco", lidau = "Inoco", tarrot = "Neutral", farles = "Inoco", heos = "Inoco", zebos = "Inoco", egleon = "Inoco", x220 = "Neutral", x203 = "Neutral", x213 = "Neutral", x244 = "Neutral", x297 = "Neutral", precursors = "Neutral", disonsphere = "Neutral", earth = "Neutral"};
+ShopList_Trader = {"trader1", "trader2", "trader3", "trader4", "trader5", "trader6", "trader7", "trader8", "trader9", "trader10", "trader11", "trader12"};
+]], "DATA/Scripts/include/FloodTradeStations.script");
+	-- DockStation.script 173-238 and CostOfPirates.script InitExpForSaved/ExpForSaved, reduced to records.
+	dostring([[
+function __TradeStation_Action(param)
+	if param == "" then _param = GetCurrentLocation(); else _param = param; end;
+	ShowMsgBox("#UI_TradeStationWndCaption", "#UI_TradeStationDockRequest", __TradeStationDock_Ok, __TradeStationDock_Cancel);
+end;
+function __TradeStationDock_Ok()
+	HOST().trade_ok = HOST().trade_ok + 1;
+	local f = GetPlayerMotherShip():GetPilot():GetFlight();
+	f:Stop();
+	UpdateTradeSystem(FALSE);
+	TradeStationDlg(_param);
+end;
+function __TradeStationDock_Cancel() end;
+function __PSDock_Action(param)
+	if param == "" then _param = GetCurrentLocation(); else _param = param; end;
+	ShowMsgBox("#UI_PatrolStationWndCaption", "#UI_PatrolStationDockRequest", __PatrolStationDock_Ok, __PatrolStationDock_Cancel);
+end;
+function __PatrolStationDock_Ok()
+	HOST().patrol_ok = HOST().patrol_ok + 1;
+	InitExpForSaved(_param);
+	if GetLocationTeam(_param) == "Neutral" then PatrolStationDlg("DialogSystem"); else PatrolStationDlg(); end;
+	ExpForSaved();
+end;
+function __PatrolStationDock_Cancel() end;
+function InitExpForSaved(param) saved_expirience = 0.0; _current_location_COP = param; end;
+function ExpForSaved() if saved_expirience > 0.05 then AddPlayerExperience(saved_expirience); end; end;
+]], "DATA/Scripts/include/DockStation.script");
 end;
 
 -- Trigger context of the action being run (GetTriggerContext); the generator's timer has SetTime/Activate.
@@ -508,7 +722,8 @@ function NewTrigger(t, cond, func, v1, v2, v3, v4)
 		died = function(a, b, c) return HOST_IsObj(a); end,
 		f_died = function(a, b, c) return HOST_IsFlight(a); end,
 		focus = function(a, b, c) return HOST_IsObj(a); end,
-		attack = function(a, b, c) return a == PLAYER_GROUP and HOST_IsObj(b); end
+		attack = function(a, b, c) return a == PLAYER_GROUP and HOST_IsObj(b); end,
+		HP = function(a, b, c) return HOST_IsObj(a) and type(b) == "number"; end
 	};
 	local ok = shape[t];
 	HOST_Want(ok, "NewTrigger kind "..tostring(t).." known to the stub");
@@ -657,15 +872,34 @@ function HOST_SaveCopy(t)
 	return r;
 end;
 
+-- Bytes the save writer would emit for value v (save-format.md 3: type code 4, number 8, string 4 + n,
+-- table 03 .. 04 + tag; entries with a skipped key, a key other than number/string or a value other than
+-- number/string/table are dropped). Engine handles count as tables here (none may be in TRF).
+function HOST_SaveSize(v)
+	local t = type(v);
+	if t == "number" then return 12; end;
+	if t == "string" then return 8 + strlen(v); end;
+	if t ~= "table" then return 0; end;
+	local n = 12;
+	for k, x in v do
+		local kt, xt = type(k), type(x);
+		if (kt == "number" or (kt == "string" and not HOST_IsProtected(k))) and (xt == "number" or xt == "string" or xt == "table") then
+			if kt == "number" then n = n + 12; else n = n + 8 + strlen(k); end;
+			n = n + HOST_SaveSize(x);
+		end;
+	end;
+	return n;
+end;
+
 -- MapInitialization: system.lst (the vanilla includes), then (T2a) Mods/Traffic/traffic.script.
--- HOST().st_label: the map cache gets st=<label> in every system (gen_map.py does not emit st yet).
+-- HOST().st_label: the map cache gets st={{label=<label>, kind="trade"}} in every system (overrides gen_map.py); HOST().no_st: no st anywhere.
 function HOST_MapInit()
 	HOST_Includes();
 	local ok = ExecuteScriptFile("DATA/Scripts/".."Mods/Traffic/traffic.script");
 	local h = HOST();
-	if h.st_label and type(TRF_Map) == "function" then
+	if (h.st_label or h.no_st) and type(TRF_Map) == "function" then
 		local m = TRF_Map();
-		if m then for i = 1, getn(m.sys) do m.sys[i].st = h.st_label; end; end;
+		if m then for i = 1, getn(m.sys) do if h.no_st then m.sys[i].st = nil; else m.sys[i].st = {{label=h.st_label, kind="trade"}}; end; end; end;
 	end;
 	return ok;
 end;
@@ -688,15 +922,16 @@ function HOST_Ticks(n, dt)
 	end;
 end;
 
--- 2 when the v0.1 modules are loaded (v2 TRF), else 1.
+-- 3 when the traffic modules are loaded (v3 TRF, v02-spec 3.1), else 1.
 function HOST_V()
-	if type(TRF_State_Tick) == "function" then return 2; end;
+	if type(TRF_State_Tick) == "function" then return 3; end;
 	return 1;
 end;
 
 if H.scen then
 	print("HOST ==== traffic scenario "..H.scen.." dir="..H.dir);
 	dofile(H.tests.."host_traffic.lua");
+	if strsub(H.scen, 1, 4) == "v02-" then dofile(H.tests.."host_v02.lua"); end;
 	print("HOST errors="..H.errors.." fails="..H.fails);
 	if H.errors > 0 or H.fails > 0 then exit(1); end;
 	exit(0);
@@ -723,7 +958,9 @@ HOST_Check(bad == "", "top level defines only TRF_ functions"..bad);
 HOST_Check(TeleportToLocation == TRF_Wrap_Teleport and TRF_orig_TeleportToLocation == HOST_TeleportToLocation, "TeleportToLocation wrapped once");
 -- v0.1 modules: loaded with exp 0 only (spec 10.1, decision 20); the generator thunk replaces the vanilla action.
 if (h.exp or 0) == 0 then
-	HOST_Check(HOST_V() == 2 and type(TRF_InstallGen) == "function" and type(TRF_Events_Step) == "function", "exp 0 loads the traffic modules");
+	HOST_Check(HOST_V() == 3 and type(TRF_InstallGen) == "function" and type(TRF_Events_Step) == "function", "exp 0 loads the traffic modules");
+	HOST_Check(type(TRF_RegionTick) == "function" and type(TRF_BuildFlight) == "function" and type(TRF_RaidRoll) == "function"
+		and type(TRF_ShopOpen) == "function" and type(TRF_OnHail) == "function", "exp 0 loads the v0.2 modules (region, tier, raid, shop, hail)");
 	HOST_Check(TRF_orig_GenAction == vga and trigger_generator_Action ~= vga and TRF_IsMine(trigger_generator_Action) and not TRF_IsMine(vga), "generator thunk installed, original kept");
 else
 	HOST_Check(HOST_V() == 1 and TRF_InstallGen == nil and trigger_generator_Action == vga, "exp "..h.exp.." loads no traffic module and keeps the vanilla generator");
@@ -733,7 +970,7 @@ end;
 HOST_ClearGlobals();
 HOST_MapInit();
 HOST_Check(TRF_orig_TeleportToLocation == HOST_TeleportToLocation and TRF_orig_CustomTeleportate == HOST_CustomTeleportate, "no double wrap after a second load");
-if HOST_V() == 2 then
+if HOST_V() == 3 then
 	HOST_Check(TRF_orig_GenAction ~= vga and not TRF_IsMine(TRF_orig_GenAction) and TRF_IsMine(trigger_generator_Action), "generator re-wrapped around the redefined vanilla action");
 end;
 
