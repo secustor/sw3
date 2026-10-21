@@ -88,19 +88,24 @@ function TRF_P(name, ...)
 	return nil;
 end;
 
--- Callback names of the hit shims (TRF_Cb), chunk local.
-local CBH = {TRF_OnAttack=1, TRF_OnRaidHit=1, TRF_OnRespHit=1, TRF_OnBaseHit=1, TRF_CvEscHit=1,
-	TRF_FeqAttack=1, TRF_SwHit=1, TRF_CtJoinPart=1, TRF_OnCarrierHit=1};
+-- Callback names of the hit shims (TRF_Cb) -> position of the gen argument in args, chunk local.
+local CBH = {TRF_OnAttack=3, TRF_OnRaidHit=3, TRF_OnRespHit=3, TRF_OnBaseHit=2, TRF_CvEscHit=3,
+	TRF_FeqAttack=3, TRF_SwHit=3, TRF_CtJoinPart=3, TRF_OnCarrierHit=2};
 
 -- Protected trigger callback (review O1): the string action calls a thin shim, the shim calls
 -- TRF_Cb(name, body, {args}). An error in the body stops there (call "x" returns nil) instead of
 -- reaching the engine's trigger execution and ScriptErrors.log. The action strings stay unchanged.
 -- Combat source hit (design/mod-research/combat-state.md 2.1 a2): the shims of player hits on mod ships
--- mark combat through trf_safety's TRF_CombatMark, also on a stale gen. TRF_OnLowHP (pirates on a trader,
--- possibly far away) is left to the raid source, which tests the distance.
+-- mark combat through trf_safety's TRF_CombatMark (debounced there, tune combat_hit_n/combat_hit_win) only
+-- when their gen argument is the current TRF.gen: a stale trigger on a ship dropped at load never counts.
+-- TRF_OnLowHP (pirates on a trader, possibly far away) is left to the raid source, which tests the distance.
 function TRF_Cb(name, f, args)
 	if type(f) ~= "function" then return nil; end;
-	if %CBH[name] and type(TRF_CombatMark) == "function" then call(TRF_CombatMark, {"hit", name}, "x", TRF_Err); end;
+	local gi = %CBH[name];
+	if gi and type(TRF_CombatMark) == "function" and type(args) == "table" and type(TRF) == "table"
+		and args[gi] ~= nil and args[gi] == TRF.gen then
+		call(TRF_CombatMark, {"hit", name}, "x", TRF_Err);
+	end;
 	return call(f, args, "x", function(m) TRF_CbErr(%name, m); end);
 end;
 

@@ -874,7 +874,7 @@ function T_V02_H()
 	ok, why = TRF_Rd_Gate(idx, "raid");
 	HOST_Check(ok == 1, "__sys_SOS alone: raid gate open ("..tostring(why)..")");
 	__sys_SOS = FALSE;
-	TRF_CombatMark("hit", "test");
+	TRF_CombatMark("raid", "test");
 	ok, why = TRF_Rd_Gate(idx, "raid");
 	HOST_Check(not ok and why == "combat", "combat: no raid ("..tostring(why)..")");
 	TRF.live.cbt = nil;
@@ -1106,7 +1106,7 @@ function T_V02_J()
 	TRF.live.ent = nil;
 	TRF_SetDis(idx, 6);
 	h.ms.pos = Vector3(-300, 30, 1500);
-	TRF_CombatMark("hit", "test");
+	TRF_CombatMark("raid", "test");
 	HOST_Check(not TRF_StagedRoll(), "combat: no staged raid");
 	TRF.live.cbt = nil;
 	h.cfg.staged = 0;

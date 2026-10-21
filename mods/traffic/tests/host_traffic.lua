@@ -1111,11 +1111,28 @@ function T_Combat()
 	HOST_Check(TRF_Combat() == nil and TRF.live.cbi == 2, "mothership id change: drop ignored");
 	ms.id = 1; ms.hp = 1000;
 	T_Tick(1, 0.5);
-	-- Hit shims through TRF_Cb mark combat; other callbacks do not.
-	TRF_Cb("TRF_SwDied", function() end, {});
+	-- Hit shims through TRF_Cb mark combat; other callbacks do not. Hits count once seen in combat_hit_n (2)
+	-- distinct seconds within combat_hit_win (6 s); a stale gen never counts.
+	local nop = function() end;
+	h.cfg.log = 2;
+	TRF_Cb("TRF_SwDied", nop, {1, 1, TRF.gen});
 	HOST_Check(TRF_Combat() == nil, "TRF_Cb TRF_SwDied: no combat");
-	TRF_Cb("TRF_OnRaidHit", function() end, {});
-	HOST_Check(TRF_Combat() == 1 and TRF.live.cbw == "hit" and T_LogN("safe: combat on why=hit src=TRF_OnRaidHit") == 1, "TRF_Cb TRF_OnRaidHit: combat (why hit)");
+	TRF_Cb("TRF_OnRaidHit", nop, {1, 1, TRF.gen - 1});
+	TRF_Cb("TRF_OnRaidHit", nop, {1, 1, TRF.gen - 1});
+	T_Tick(2, 0.5);
+	TRF_Cb("TRF_OnRaidHit", nop, {1, 1, TRF.gen - 1});
+	HOST_Check(TRF_Combat() == nil and TRF.live.cbk == nil and T_LogN("combat hit pending") == 0, "stale gen hits in two seconds: no combat, not counted");
+	TRF_Cb("TRF_OnRaidHit", nop, {1, 1, TRF.gen});
+	HOST_Check(TRF_Combat() == nil and T_LogN("safe: combat hit pending n=1/2") == 1, "one hit: no combat, pending line");
+	TRF_Cb("TRF_OnRaidHit", nop, {1, 1, TRF.gen});
+	HOST_Check(TRF_Combat() == nil and T_LogN("combat hit pending") == 1, "second hit in the same second: no combat, no second line");
+	T_Tick(14, 0.5);
+	TRF_Cb("TRF_OnAttack", nop, {7, 1, TRF.gen});
+	HOST_Check(TRF_Combat() == nil and T_LogN("combat hit pending") == 2, "hit 7 s after the last one: no combat, new window line");
+	T_Tick(2, 0.5);
+	TRF_Cb("TRF_OnRaidHit", nop, {1, 1, TRF.gen});
+	HOST_Check(TRF_Combat() == 1 and TRF.live.cbw == "hit" and T_LogN("safe: combat on why=hit src=TRF_OnRaidHit") == 1, "hits in two distinct seconds within 6 s: combat (why hit)");
+	h.cfg.log = nil;
 	-- Raid gate: closed while in combat, open after the hold; __sys_SOS alone keeps it open.
 	local idx = TRF_CurIdx();
 	local ok, why = TRF_Rd_Gate(idx, "raid");

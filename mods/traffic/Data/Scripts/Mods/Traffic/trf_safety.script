@@ -855,8 +855,11 @@ end;
 -- the mothership between two safety ticks (why hp), a player hit on a mod ship through a TRF_Cb shim (why
 -- hit, traffic.script), an open raid in demand or fight within combat_r of the mothership (why raid).
 -- Live fields: cbt (gt of the last event), cbw (its why), cbh, cbi (mothership HP and id of the last
--- sample), cbs (gt of the last sample with a visible scene), cbl (1 while "combat on" is logged). Tune
--- combat_hold 25, combat_hp 0.5, combat_r 1500 (0 = whole system), combat_scene 3. cfg combat 0:
+-- sample), cbs (gt of the last sample with a visible scene), cbl (1 while "combat on" is logged), cbk
+-- (whole seconds of recent hits), cbp (second of the last "hit pending" line). Hits start combat only when
+-- seen in combat_hit_n distinct seconds within combat_hit_win (TRF_CombatHitOk; one bump or a lone hit is
+-- ignored); while in combat every hit refreshes the hold. Tune combat_hold 25, combat_hp 0.5, combat_r
+-- 1500 (0 = whole system), combat_scene 3, combat_hit_n 2, combat_hit_win 6. cfg combat 0:
 -- TRF_Combat is always nil and nothing is sampled. Source a3 of the design (attack triggers of hostile mod
 -- groups on the mothership) is not implemented: shield hits count once the hull drops.
 
@@ -899,6 +902,7 @@ function TRF_CombatMark(why, src, hold)
 	local gt = TRF_SafeGt();
 	if type(hold) ~= "number" then hold = TRF_SafeTune("combat_hold", 25); end;
 	if not TRF_CombatOf(L.cbt, gt, hold) then
+		if why == "hit" and not TRF_CombatHitOk(L, gt, src) then return; end;
 		if L.cbl == 1 then TRF_CombatOff(L, gt); end;
 		L.cbl = 1;
 		TRF_SafeL("combat on why="..tostring(why).." src="..tostring(src).." gt="..TRF_F(gt));
@@ -906,6 +910,42 @@ function TRF_CombatMark(why, src, hold)
 	end;
 	L.cbt = gt;
 	L.cbw = why;
+end;
+
+-- Pure: the hit seconds of list younger than win at second s, plus s once (distinct seconds).
+function TRF_HitSecsOf(list, s, win)
+	local keep = {};
+	local have = nil;
+	if type(list) == "table" then
+		for i = 1, getn(list) do
+			local v = list[i];
+			if type(v) == "number" and s - v < win then
+				tinsert(keep, v);
+				if v == s then have = 1; end;
+			end;
+		end;
+	end;
+	if not have then tinsert(keep, s); end;
+	return keep;
+end;
+
+-- Debounce of the hit source (live table L, outside combat): 1 once hits were seen in tune combat_hit_n
+-- (2) distinct whole seconds within combat_hit_win (6) seconds, else nil (one debug line per window).
+function TRF_CombatHitOk(L, gt, src)
+	local win = TRF_SafeTune("combat_hit_win", 6);
+	local need = TRF_SafeTune("combat_hit_n", 2);
+	local s = floor(gt);
+	L.cbk = TRF_HitSecsOf(L.cbk, s, win);
+	local n = getn(L.cbk);
+	if n >= need then
+		L.cbk = nil; L.cbp = nil;
+		return 1;
+	end;
+	if type(L.cbp) ~= "number" or s - L.cbp >= win then
+		L.cbp = s;
+		TRF_SafeD("combat hit pending n="..n.."/"..tostring(need).." src="..tostring(src).." gt="..TRF_F(gt));
+	end;
+	return nil;
 end;
 
 -- Log the end of a combat (live table L).
@@ -1202,7 +1242,7 @@ function TRF_SafeVisitReset()
 		L.sos_t = nil; L.ext_seen = nil; L.pmn = nil; L.wind = nil; L.sl = nil; L.ss = nil; L.sm = nil;
 		L.gv = nil; L.stl = nil; L.sck = nil; L.gvn = nil; L.gvn0 = nil; L.gvr = nil; L.gl = nil; L.gate = nil;
 		L.qa = nil; L.qai = nil;
-		L.cbt = nil; L.cbw = nil; L.cbh = nil; L.cbi = nil; L.cbs = nil; L.cbl = nil;
+		L.cbt = nil; L.cbw = nil; L.cbh = nil; L.cbi = nil; L.cbs = nil; L.cbl = nil; L.cbk = nil; L.cbp = nil;
 	end;
 	local H = TRF_SafeH();
 	if H then H.st = nil; H.sact = nil; H.sms = nil; H.gvn0 = nil; end;

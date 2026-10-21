@@ -84,7 +84,7 @@ Do not reuse `TRF_AddHeat` as a source. Heat rises only after T_deliberate or a 
 
 ### 2.2 State (plain numbers in `TRF.live`, no handles)
 
-`cbt` gt of the last hostile event, `cbw` its source (log), `cbh` the last mothership HP, `cbi` the mothership `id` of that sample, `cbs` gt of the last sample taken while a scene was visible, `cbg[k]` names of the groups armed for a3. `TRF_LiveReset` rebuilds `TRF.live`, so these clear per visit. `TRF_SafeVisitReset` and `TRF_Safety_OnLoad` also set `cbh, cbi, cbs = nil`, so a load never compares HP across the load. Tune keys: `combat_hold` 25, `combat_hp` 1, `combat_r` 1500 (0 = whole system), `combat_scene` 3.
+`cbt` gt of the last hostile event, `cbw` its source (log), `cbh` the last mothership HP, `cbi` the mothership `id` of that sample, `cbs` gt of the last sample taken while a scene was visible, `cbg[k]` names of the groups armed for a3. `TRF_LiveReset` rebuilds `TRF.live`, so these clear per visit. `TRF_SafeVisitReset` and `TRF_Safety_OnLoad` also set `cbh, cbi, cbs = nil`, so a load never compares HP across the load. Tune keys: `combat_hold` 25, `combat_hp` 1, `combat_r` 1500 (0 = whole system), `combat_scene` 3, `combat_hit_n` 2, `combat_hit_win` 6 (a2 debounce, section 6). Debounce fields `cbk` (whole seconds of recent a2 hits) and `cbp` (second of the last pending line) are cleared with the others.
 
 ### 2.3 Code (Lua 4)
 
@@ -275,9 +275,12 @@ Cases: HP drop → C 1, after 26 s → nil; scene restore drop → nil; ship swa
 | friendly fire on a neutral trader | a2 marks combat | correct: player fire is combat for these gates |
 | quest `SetHP(100000)` restore and `SetPlayerMotherShip` swaps | large drop | the `< 50 %` per-sample cap, `combat_scene` hold-off after a scene, `ms.id` compare |
 | a3 trigger cost | per-update group-name lookup per trigger (0x4bca40) [V], so cost grows with the number of armed groups | arm only on WAR, cap 200 re-arms per visit, gen check |
-| `ATTACKCARCASS` firing rate under sustained fire | unknown (existing CHECK trf_events.script:432) | a2 needs only the first hit, and the re-arm caps already exist |
+| `ATTACKCARCASS` firing rate under sustained fire | unknown (existing CHECK trf_events.script:432) | a2 needs hits in only `combat_hit_n` (2) distinct seconds, and the re-arm caps already exist |
+| a single attributed hit or a stale trigger raises a2 (in game 2026-10-22: one `TRF_OnAttack` with `ev attack id=7 stale gen=39`, a record dropped at load) | false combat for 25 s | in place (2026-10-22): `TRF_Cb` marks only when the callback's gen argument is the current `TRF.gen`, and a2 starts combat only after hits in `combat_hit_n` (2) distinct seconds within `combat_hit_win` (6 s), debug `safe: combat hit pending n=1/2`. Rams do not fire a2 at all: collision damage has no source object, so `_EVENT_ATTACKCARCASS` is never raised (mod-research/damage-type.md) |
 | combat holding back the mod's own content | C used in running sites would cancel raids or sweeps | C only at spawn and open gates (table 3) |
 
 ## 6. Implementation (2026-10-21)
 
 Built as in 2-4 with these differences: `combat_hp` defaults to 0.5 (HP units); `TRF_OnLowHP` is not in the a2 name set (pirates hitting a trader can be far from the mothership, so source b with its distance test covers it); a3 is not built; the live field `cbl` (1 while "combat on" is logged) gives one log line per transition; `TRF_SafeVisitReset` clears all `cb*` fields. The hail on focus skips with reason `flag` (`__disableAction`, `TRF_Supp`), `quiet` (`TRF_Quiet`) or `combat`. trf_station and trf_ui no longer fall back to `__sys_SOS` without trf_safety.
+
+2026-10-22, a2 debounce (`TRF_CombatHitOk`, `TRF_HitSecsOf`): outside combat a hit through `TRF_Cb` starts combat only when hits were seen in at least tune `combat_hit_n` (2) distinct whole seconds within `combat_hit_win` (6 s), the shape of `TRF_Ev_Deliberate`. Until then the hit seconds stay in `live.cbk` and one debug line `safe: combat hit pending n=1/2 src=...` is logged per window; the line `safe: combat on why=hit` stays at the trip. A hit while in combat refreshes the hold as before. `TRF_Cb` marks only when the gen argument of the shim (position per name in `CBH`) is the current `TRF.gen`, so a stale trigger never counts. Sources hp and raid are unchanged. Host: `T_Combat` in traffic-g.
