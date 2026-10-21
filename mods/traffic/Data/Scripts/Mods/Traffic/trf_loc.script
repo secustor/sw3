@@ -306,7 +306,7 @@ function TRF_V1_TuneDef()
 		pool_size=16, record_ttl=8, T_chase=60, handoff_max=2, track_chase_min=5, track_chase_max=15,
 		track_port_min=60, track_port_max=120,
 		-- supply, demand, heat reset (5)
-		convoy_chance=15, sweep_convoy_chance=30, kfni_queen=0, dm_comply=80, dm_comply_esc=20, dm_comply_min=10,
+		convoy_chance=15, sweep_convoy_chance=30, kfni_queen=0,
 		heat_reset_k=100000, heat_reset_max=950000,
 		-- clans, carriers (6.1, 6.2)
 		lr_raid_chance=50, lr_raid_legs=6, lr_raid_max=2, carrier_delay_min=30, carrier_delay_max=90,

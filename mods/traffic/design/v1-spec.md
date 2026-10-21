@@ -52,7 +52,7 @@ Every G feature needs `TRF_StrictOk(cur, feature)`, `__disableAction` clear and 
 |---|---|---|---|---|
 | S14 G | Tracked pool `tp` ≤ 16; focus, hail, contract, robbery, counted attack, rescue track a trader; records written at the exit portal and before a jump; chase through the same portal within 60 s; ≤ 2 arrivals per entry by elapsed legs | portal volume trigger, `TRF_BeforeJump(dest)`, `SetHP` | full HP if `SetHP` fails; no chase flag when a jump bypasses the wraps | 4 |
 | S17 G | Supply convoy in Vks/Kfni border systems, 15 % of spawns (30 % in a sweeping faction's region while attempts are scheduled): 1 owner transport by hull name + 2–4 rung-0 fighters, `TRF_Conv_<n>` on the owner team | `NewFlight`/`NewShip`, `Escort` | transport nil → plain trader spawn | 5.1 |
-| S18 | Demand cargo in the hail (heat < 7, `L_pay ≥ pw`); comply chance by live escorts; 1–3 containers to the mothership | `ClearInventory`, `AddModuleToInventory` | inventory calls fail → effects without cargo move (logged) | 5.2 |
+| S18 | Demand cargo in the hail (heat < 7, `L_pay ≥ pw`); comply chance by relative strength and braveness, as lane raids; 1–3 containers to the mothership | `ClearInventory`, `AddModuleToInventory` | inventory calls fail → effects without cargo move (logged) | 5.2 |
 | 7.8 | Heat reset: paid FTU offer at the 8 relation stations; vanilla resets also reset heat or `fst` | wrappers of `CStation_Action`, `_temp_change` | `heat_offer 0`: vanilla FTU answer only | 5.3 |
 | S27 | `tier_cap` 4: T3 two flights rows 10–14, T4 rows 15–18 plus `Butcher_pir1` at score ≥ 90 | `TRF_PirFlight` | — | 6.1 |
 | S31, S29 G | Carrier raid records `lr` ≤ 2; on-screen carrier from the home-facing portal, ≤ 2 simulated launches at `HANGAROUT`, recovery by distance delete | `CreateCarcass`, `GetVectorOrientation`, `SetPosition`, `Move`, `ComeToPortal` | measured offset `hgo` (E4); spawn 15 off and `SetPosition` | 6.2 |
@@ -196,7 +196,7 @@ Equipment convoys, supply convoys, the TT4 escort flight, raid and clan flights 
 ### 5.2 Demand cargo (S18, design 8.6)
 
 - Offer `optdemand` (`TRF_Supply_HailOpts(id)`): FTU trader, heat < 7, `TRF_LPay() ≥ r.pw`, not under contract, not raided, not demanded before, no flag. At heat 3–6 the refusal box (v02 6.1 `refuse`) offers only this option ("the trader will not talk, but can be threatened").
-- Comply chance `clamp(80 − 20 × live escorts − (heat ≥ 5 and 10 or 0), 10, 80)` %.
+- Comply when `RAND(100) < p`, `p = clamp(100 − 100 × br × q, comply_min 5, comply_max 95)`, the lane raid rule (v02 5.2, `TRF_Rd_ComplyOf`; the same formula in trf_supply when trf_raid is not loaded). `q` = trader `pw` (nil: the player's power) × (live escorts + 0.5) / (player power × 3). Player power by hull, `GetPlayerLevel` list on the `TRF_Ms()` handle: the mean extortion strength `RandomPiratGetMoney` sends against it (`OutOfMission.script` 389–401), levels 1–13 → 3, 6, 6, 8, 11, 14 (6–9), 17.5 (10–13); unlisted hull: `sys_base` of the system, else 5. The 3 is the mothership and 2 fighters (1 on the start hull), a fixed proxy: no script lists the player's live fighters. `br` = `r.br`, one roll per trader shared with lane raids (`TRF_Rd_Brave`). Heat does not change the chance (2026-10-21: the raid model replaced `80 − 20 × escorts − 10 at heat ≥ 5`).
 - Comply: `k = 1 + RAND(3)` containers from the hold mirror, largest stack first; the trader's ships are refilled as v02 5.2 comply (`ClearInventory` + re-add); `mothership:AddModuleToInventory(item, k_item)` per item; heat +2, `dis` +1, shortage if path A and not docked (v02 7.2), flag robbed (tracked), `TRF_Flee(id, "demand")`, line `dmok`.
 - Refusal: `TRF_Flee(id, "demand")`, `TRF_RespStart(id)` (8.7 response at the current heat), distress line without marker, line `dmno`. No shots, no relation write either way.
 - Robbery counts for the paid raid of 7.5.
@@ -583,7 +583,7 @@ Config (defaults in each module's `OptDef`, read through `TRF_Opt`; listed in `c
 | Group | Keys and defaults |
 |---|---|
 | Pool | `pool_size` 16, `record_ttl` 8, `T_chase` 60, `handoff_max` 2, `track_chase_s` 5–15, `track_port_s` 60–120 |
-| Supply, demand, heat | `convoy_chance` 15, `sweep_convoy_chance` 30, `kfni_queen` 0, `dm_comply` 80 / −20 per escort / floor 10 (new), `heat_reset_k` 100000, `heat_reset_max` 950000 (new) |
+| Supply, demand, heat | `convoy_chance` 15, `sweep_convoy_chance` 30, `kfni_queen` 0, `heat_reset_k` 100000, `heat_reset_max` 950000 (new); demand comply reads the v02 raid keys `brave_lo`, `brave_hi`, `comply_min`, `comply_max` |
 | Clans, carriers | `lr_raid_chance` 50, `lr_raid_legs` 6, `lr_raid_max` 2, `carrier_delay` 30–90, `launch_interval` 60, `carrier_waves` 2, `wave_ships` 3 (new), `launch_gap` 2, `hgo` (0, −8, 0), `hgi` (0, −10, 3), `rec_d` 20 (new, E3/E4), `raid_live_cap` 8, `carrier_leave_hp` 0.25, `wave_recover_hp` 0.4 |
 | Salvage | `salv_decay` 8, gains 2 / 1 (≤ 2 per visit) / 3 / 1, stages 1–3 / 4–6 / 7–9 |
 | Faction | `fs0` 3, `fs_pro_legs` 8, `fs_decay_legs` 12, `fst_decay_legs` 10, rung rows 5–9 / 10–14 / 15–17 / 18–20 (new: row bands instead of power bands, 11.1 #4) |
@@ -739,7 +739,7 @@ Reviewed the eight v1 files and the v1 edits of `trf_state`, `trf_region`, `trf_
 | 4.1–4.3 | pool, marks, writes, chase, entry, rebuild | `TRF_TpPack/Unpack`, `TRF_TrackMark/Write/Exit/Gone`, `TRF_Track_BeforeJump`, `TRF_TrackEntry`, `TRF_TrackSpawn`, `TRF_EntryPlan` | conforms after fixes 1, 2, 4 |
 | 4.4 | exclusions | `TRF_TkTracked` (`own`), convoy and clan records never marked | conforms |
 | 5.1 | supply convoys | `TRF_Border(Of)`, `TRF_SupplyRoll`, `TRF_SupplySpawn`, `TRF_SpBuild`, `TRF_SpEnd`, `TRF_Ev_KillV1` | conforms; the 30 % sweep chance applies to any sweep owner f (spec names Vks/Kfni only for the 15 % border case) |
-| 5.2 | demand cargo | `TRF_DemandOk`, `TRF_DemandChanceOf`, `TRF_DemandDo`, `TRF_SpComply`, `TRF_SpRefuse` | conforms |
+| 5.2 | demand cargo | `TRF_DemandOk`, `TRF_DemandChanceOf`, `TRF_SpBrave`, `TRF_SpPlayerSide`, `TRF_DemandDo`, `TRF_SpComply`, `TRF_SpRefuse` | conforms |
 | 5.3 | heat reset | `TRF_InstallRelDock`, `TRF_RelDockAct`, `TRF_SpRelBody`, `TRF_HeatPayOk/No`, `TRF_SpHeatGo`, `TRF_TempChange` | conforms; the original runs once on every path (box, box failure, error) |
 | 6.1 | T3/T4 rows | `TRF_Rd_TierRows`, `TRF_PirFlight`, `TRF_Rd_PirRow`, `TRF_Rd_Build` | conforms |
 | 6.2 | carrier records, on-screen carrier, geometry | `TRF_Cl_LrNew`, `TRF_Cl_LrTick`, `TRF_CarrierEntry/Spawn`, `TRF_CarrierTick`, `TRF_Cl_Frame`, `TRF_HangarPos`, `TRF_Cl_Recover`, `TRF_Cl_Died` | conforms; frame cross products checked; no `Dock` call |

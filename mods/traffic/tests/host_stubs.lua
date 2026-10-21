@@ -303,6 +303,8 @@ end;
 HOST().ms = {__obj=1, kind="ms", pos=Vector3(-950, 0, 650), alive=1, hp=1000, id=1};
 HOST().ms.GetPosition = function(self) return Vector3(self.pos.x, self.pos.y, self.pos.z); end;
 HOST().ms.IsAlive = function(self) return 1; end;
+-- GetName: the hull name in model (nil: an unlisted hull for GetPlayerLevel).
+HOST().ms.GetName = function(self) return self.model; end;
 HOST().ms.SetHP = function(self, v) HOST_Want(type(v) == "number", "Mothership:SetHP(hp)"); self.hp = v; end;
 HOST().ms.inv = {};
 HOST().ms.AddModuleToInventory = function(self, it, n)

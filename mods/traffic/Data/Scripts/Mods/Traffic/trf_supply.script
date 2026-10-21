@@ -38,7 +38,7 @@ end;
 
 -- sp_leave: seconds escorts of a killed convoy keep fighting before they leave.
 function TRF_Supply_TuneDef()
-	return {convoy_chance=15, sweep_convoy_chance=30, kfni_queen=0, dm_comply=80, dm_comply_esc=20, dm_comply_min=10,
+	return {convoy_chance=15, sweep_convoy_chance=30, kfni_queen=0,
 		heat_reset_k=100000, heat_reset_max=950000, sweep_escort_mult=3, pay_cap=30000, ct_dist=400,
 		sp_leave=60};
 end;
@@ -888,11 +888,74 @@ end;
 
 -- Demand cargo (5.2) ---------------------------------------------------------------------------
 
--- Pure: comply chance % = clamp(base - per x escorts - (10 at heat >= 5), lo, base).
-function TRF_DemandChanceOf(esc, heat, base, per, lo)
-	local p = base - per * esc;
-	if heat >= 5 then p = p - 10; end;
-	return TRF_SpClamp(p, lo, base);
+-- Comply chance % of the lane raid model (v02 5.2): trf_raid's TRF_Rd_ComplyOf, else the same formula
+-- clamp(100 - 100 x br x st / sp, comply_min 5, comply_max 95); st trader side, sp player side.
+function TRF_DemandChanceOf(st, sp, br)
+	local p = TRF_SpX("TRF_Rd_ComplyOf", st, sp, br);
+	if type(p) == "number" then return p; end;
+	return TRF_SpClamp(100 - 100 * br * st / max(sp, 0.001), TRF_SpT("comply_min", 5), TRF_SpT("comply_max", 95));
+end;
+
+-- Braveness of trader record r: trf_raid's TRF_Rd_Brave (one roll kept as r.br, shared with lane raids),
+-- else the same roll here, uniform in [brave_lo 0.2, brave_hi 1], kept as r.br.
+function TRF_SpBrave(r)
+	local b = TRF_SpX("TRF_Rd_Brave", r);
+	if type(b) == "number" then return b; end;
+	if type(r.br) == "number" then return r.br; end;
+	local lo, hi = TRF_SpT("brave_lo", 0.2), TRF_SpT("brave_hi", 1);
+	if hi < lo then hi = lo; end;
+	r.br = lo + (hi - lo) * TRF_SpRand(1001) / 1000;
+	return r.br;
+end;
+
+-- Hull names of vanilla GetPlayerLevel (OutOfMission.script 217-232), index = level 1..13.
+function TRF_SpHulls()
+	return {"hm_queen_pl", "arba_t", "mothership_arba_pirate", "mothership_arba", "mothership_astarta", "mothership_old",
+		"mothership_corporate", "mothership_kfni", "mothership_empire", "mothership_lion", "mothership_lion_mk2a_grey",
+		"mothership_lion_mk2a_vks", "mothership_uel"};
+end;
+
+-- Player power by level, on the contact strength scale: the mean strength of the extortion flight vanilla
+-- RandomPiratGetMoney sends against the hull (OutOfMission.script 389-401: level 2 5+RAND(3), 4 7+RAND(3),
+-- 5 10+RAND(3), 6-9 13+RAND(3), 10-13 16+RAND(4)). Levels without extortion: 1 (start hull) 3, 3 (pirate
+-- Arba) as arba_t.
+function TRF_SpHullPw()
+	return {3, 6, 6, 8, 11, 14, 14, 14, 14, 17.5, 17.5, 17.5, 17.5};
+end;
+
+function TRF_SpMsName(m)
+	return m:GetName();
+end;
+
+-- GetPlayerLevel without GetPlayerMotherShip: hull index of the TRF_Ms() handle (case-insensitive), 0 for an
+-- unlisted hull or no mothership.
+function TRF_SpPlayerLevel()
+	local ms = TRF_SpMs();
+	if not ms then return 0; end;
+	local nm = TRF_SpP(TRF_SpMsName, {ms});
+	if type(nm) ~= "string" then return 0; end;
+	nm = strlower(nm);
+	local t = TRF_SpHulls();
+	for i = 1, getn(t) do
+		if t[i] == nm then return i; end;
+	end;
+	return 0;
+end;
+
+-- Player side of a demand: power x ships, and the power. Power by hull (TRF_SpHullPw); unlisted hull or no
+-- mothership: sys_base sb of the current system (as TRF_Rd_Power), else 5. Ships: the mothership plus 2
+-- fighters, 1 on the start hull (no hangar). No script API lists the player's live fighters (none in
+-- vanilla include/, none in the mod), so the count is a fixed proxy.
+function TRF_SpPlayerSide()
+	local lv = TRF_SpPlayerLevel();
+	local pw, ns = nil, 3;
+	if lv >= 1 then pw = TRF_SpHullPw()[lv]; end;
+	if lv == 1 then ns = 1; end;
+	if type(pw) ~= "number" then
+		local s = TRF_SpMapSys(TRF_SpCur());
+		if s and type(s.sb) == "number" and s.sb > 0 then pw = s.sb; else pw = 5; end;
+	end;
+	return pw * ns, pw, lv;
 end;
 
 -- 1 when a raid record on the trader is open or robbed it.
@@ -1021,8 +1084,9 @@ function TRF_SpRefuse(id, r)
 	TRF_SpL("demand id="..id.." refused");
 end;
 
--- Hail option "demand" (from a due call, never inside a box callback): comply roll by live escorts and
--- heat. Returns "comply", "refuse" or nil, reason.
+-- Hail option "demand" (from a due call, never inside a box callback): comply when RAND(100) is below the
+-- comply chance of TRF_DemandChanceOf. Trader side = build power r.pw (nil: the player's) x (live escorts +
+-- 0.5); player side TRF_SpPlayerSide; braveness TRF_SpBrave. Returns "comply", "refuse" or nil, reason.
 function TRF_DemandDo(id)
 	local ok, why = TRF_DemandOk(id);
 	if not ok then
@@ -1032,11 +1096,18 @@ function TRF_DemandDo(id)
 	local r = TRF_SpRec(id);
 	local h = TRF_SpHTr(id);
 	r.dq = 1;
-	local esc = TRF_SpEscAlive(r, h);
-	local p = TRF_DemandChanceOf(esc, TRF_SpHeat(), TRF_SpT("dm_comply", 80), TRF_SpT("dm_comply_esc", 20), TRF_SpT("dm_comply_min", 10));
+	local sp, pp, lv = TRF_SpPlayerSide();
+	local tw = r.pw;
+	if type(tw) ~= "number" or tw <= 0 then tw = pp; end;
+	local st = tw * (TRF_SpEscAlive(r, h) + 0.5);
+	local br = TRF_SpBrave(r);
+	local p = TRF_DemandChanceOf(st, sp, br);
 	local roll = TRF_SpRand(100);
-	TRF_SpL("demand id="..id.." esc="..esc.." p="..p.." roll="..roll);
-	if roll < p then
+	local dc = "refuse";
+	if roll < p then dc = "comply"; end;
+	TRF_SpL("demand id="..id.." st="..TRF_F(st).." sp="..TRF_F(sp).." lv="..lv.." q="..TRF_F(st / sp).." br="..TRF_F(br)
+		.." p="..TRF_F(p).." roll="..roll.." -> "..dc);
+	if dc == "comply" then
 		TRF_SpComply(id, r, h, TRF_SpCur());
 		return "comply";
 	end;

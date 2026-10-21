@@ -376,8 +376,30 @@ function T_V1_C()
 	local sy = TRF_Map().sys[cur];
 	TRF_SetDis(cur, 0);
 	HOST_Check(TRF_BorderOf("Vks", {"Neutral", "Kfni"}) == 1 and not TRF_BorderOf("Kfni", {"Kfni"}) and not TRF_BorderOf("Uss", {"Vks"}), "TRF_BorderOf");
-	HOST_Check(TRF_DemandChanceOf(0, 0, 80, 20, 10) == 80 and TRF_DemandChanceOf(2, 5, 80, 20, 10) == 30 and TRF_DemandChanceOf(4, 6, 80, 20, 10) == 10,
-		"comply chance 80 - 20 per escort, floor 10");
+	-- Demand comply chance on the raid model: clamp(100 - 100 x br x st / sp, 5, 95), trf_raid loaded and not.
+	local dl, ds, dm = TRF_DemandChanceOf(8 * 0.5, 8 * 3, 0.2), TRF_DemandChanceOf(13 * 3.5, 8 * 3, 1), TRF_DemandChanceOf(6 * 1.5, 6 * 3, 0.6);
+	HOST_Check(dl == 95 and ds == 5 and dm == 70, "demand comply chance: lone timid "..dl.." (95), strong brave "..ds.." (5), 1 escort br 0.6 "..dm.." (70)");
+	local oc, ob = TRF_Rd_ComplyOf, TRF_Rd_Brave;
+	TRF_Rd_ComplyOf = nil; TRF_Rd_Brave = nil;
+	local fbt = {};
+	h.rq = {500};
+	local fb = TRF_SpBrave(fbt);
+	h.rq = {1000};
+	local fb2 = TRF_SpBrave(fbt);
+	h.rq = {};
+	local fl, fs, fm = TRF_DemandChanceOf(8 * 0.5, 8 * 3, 0.2), TRF_DemandChanceOf(13 * 3.5, 8 * 3, 1), TRF_DemandChanceOf(6 * 1.5, 6 * 3, 0.6);
+	TRF_Rd_ComplyOf = oc; TRF_Rd_Brave = ob;
+	HOST_Check(abs(fb - 0.6) < 0.001 and fb2 == fb and fbt.br == fb and fl == 95 and fs == 5 and fm == 70,
+		"demand without trf_raid: same braveness roll ("..TRF_F(fb)..", kept) and formula");
+	-- Player side: hull power (GetPlayerLevel list, extortion band means) x 3 ships; start hull 1 ship; unlisted: sb x 3.
+	h.ms.model = "Mothership_Arba";
+	local ps1, pp1, pl1 = TRF_SpPlayerSide();
+	h.ms.model = "hm_queen_pl";
+	local ps2, pp2, pl2 = TRF_SpPlayerSide();
+	h.ms.model = nil;
+	local ps3, pp3, pl3 = TRF_SpPlayerSide();
+	HOST_Check(ps1 == 24 and pp1 == 8 and pl1 == 4 and ps2 == 3 and pl2 == 1 and pl3 == 0 and pp3 == sy.sb and ps3 == 3 * sy.sb,
+		"player side: arba 8 x 3 = "..ps1..", start hull 3 x 1 = "..ps2..", unlisted sb "..tostring(sy.sb).." x 3 = "..ps3);
 	HOST_Check(TRF_HeatCostOf(3, 100000, 950000) == 300000 and TRF_HeatCostOf(9, 100000, 950000) == 900000 and TRF_HeatCostOf(12, 100000, 950000) == 950000,
 		"heat offer cost min(100000 x heat, 950000)");
 	-- Border from GetLocationTeam.
@@ -441,8 +463,24 @@ function T_V1_C()
 	h.ms.inv = {};
 	local o = TRF_Supply_HailOpts(tid);
 	HOST_Check(getn(o) == 1 and o[1] == "demand", "demand offered at heat 3 ("..tostring(o[1] or TRF_Dump({TRF_DemandOk(tid)}))..")");
-	h.rq = {1, 1};
+	-- Lone transport (escorts dead), pw 8 against the arba (8 x 3); br 0.2 rolled by trf_raid and read here.
+	h.ms.model = "mothership_arba";
+	tr.pw = 8;
+	tr.br = nil;
+	h.rq = {0};
+	TRF_Rd_Brave(tr);
+	local ht = TRF_H().tr[tid];
+	local dead = {};
+	for i = 1, getn(ht.sh) do
+		local s, tp = ht.sh[i], nil;
+		for j = 1, getn(ht.tp) do if ht.tp[j] == s then tp = 1; end; end;
+		if not tp and s.alive then s.alive = nil; tinsert(dead, s); end;
+	end;
+	h.rq = {94, 1};
 	local res = TRF_DemandDo(tid);
+	for i = 1, getn(dead) do dead[i].alive = 1; end;
+	HOST_Check(V_Logs("demand id="..tid.." st=4.000 sp=24.000 lv=4 q=0.167 br=0.200 p=95.000 roll=94 -> comply") == 1,
+		"demand: lone transport, timid trader (br from the raid roll) complies at p 95, roll 94");
 	local got = 0;
 	for i = 1, getn(h.ms.inv) do got = got + h.ms.inv[i][2]; end;
 	HOST_Check(res == "comply" and got >= 1 and TRF.std.heat == 5 and tr.dq == 1, "comply: "..got.." containers to the mothership, heat +2");
@@ -451,8 +489,15 @@ function T_V1_C()
 	TRF.std.heat = 7;
 	HOST_Check(not TRF_DemandOk(tid2), "no demand at heat 7");
 	TRF.std.heat = 4;
-	h.rq = {99};
-	HOST_Check(TRF_DemandDo(tid2) == "refuse", "refusal at roll 99");
+	-- Strong escort, brave trader: br rolled by the demand (1.0) and kept for a later raid; p 5 refuses roll 50.
+	local tr2 = TRF.live.tr[tid2];
+	tr2.br = nil;
+	local ne = TRF_SpEscAlive(tr2, TRF_H().tr[tid2]);
+	h.rq = {1000, 50};
+	HOST_Check(ne >= 2 and TRF_DemandDo(tid2) == "refuse" and V_Logs("br=1.000 p=5.000 roll=50 -> refuse") == 1, "demand: "..ne.." escorts, brave trader refuses at p 5, roll 50");
+	local nr = h.rand;
+	HOST_Check(tr2.br == 1 and TRF_Rd_Brave(tr2) == 1 and h.rand == nr, "braveness from the demand kept as r.br and read by trf_raid without a roll");
+	h.ms.model = nil;
 	-- Heat offer at a relation station (CStation_Action wrapped at load): cost, credits, original once.
 	HOST_Check(TRF_InstallRelDock() == 0 and CStation_Action ~= TRF_orig_CStation, "relation dock wrapped at load, not twice");
 	TRF.std.heat = 4;

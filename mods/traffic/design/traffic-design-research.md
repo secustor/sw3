@@ -1185,8 +1185,8 @@ Phase: v1, although the holds come from the TT1–TT3 rows (v0.2). The transport
 
 ### 8.6 Demand cargo (v1)
 
-- Offered in the hail when heat < 7. There is no check of the player's hull or level; the player judges the trader's escort, and the comply chance below falls with it.
-- Comply chance falls with escort count. On comply, 1 to 3 containers move from the trader's inventory to the mothership (`DeleteModule` / `AddModuleToInventory`), heat +2, disruption +1, a shortage if the trader was station-bound, and the trader flees. No shots, no relation change.
+- Offered in the hail when heat < 7. The offer has no check of the player's hull or level; the player judges the trader's escort.
+- Comply chance as the lane raid (7.6): `p = clamp(100 − 100 × br × q, comply_min, comply_max)` with the trader's braveness `br` of 7.6, `q` = trader side over player side. The player side is the hull's power (the strength of the vanilla extortion flight for that hull) × 3 for the mothership and 2 fighters. Heat does not change it. On comply, 1 to 3 containers move from the trader's inventory to the mothership (`DeleteModule` / `AddModuleToInventory`), heat +2, disruption +1, a shortage if the trader was station-bound, and the trader flees. No shots, no relation change.
 - On refusal the trader flees and calls for help (8.7 response).
 
 ### 8.7 Attack, heat and loot
