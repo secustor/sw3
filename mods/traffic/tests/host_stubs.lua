@@ -891,6 +891,11 @@ function NewTrigger(t, cond, func, v1, v2, v3, v4)
 	if not func then return nil; end;
 	local tr = {__obj=1, kind=t, action=func, v1=v1, v2=v2, v3=v3};
 	tr.GetFlight = function(self) return self.v1; end;
+	-- Trigger methods as the action uses them on GetTriggerContext(): SetTime + Activate re-arm the fired
+	-- trigger (RandomContacts.script trigger_generator_Action), Delete removes it (trigger_exit_point_Action).
+	tr.SetTime = function(self, t) HOST_Want(type(t) == "number", "Trigger:SetTime(seconds)"); self.v1 = t; end;
+	tr.Activate = function(self) HOST_Want(not self.deleted, "Trigger:Activate on a live trigger"); self.fired = nil; end;
+	tr.Delete = function(self) HOST_Want(not self.deleted, "Trigger:Delete once"); self.deleted = 1; self.fired = 1; end;
 	tinsert(HOST().triggers, tr);
 	print("HOST NewTrigger "..t.." action="..tostring(func));
 	return tr;
@@ -977,8 +982,19 @@ function HOST_Count(kind, pre)
 	return n;
 end;
 
--- Save kit: timers armed so far, AutoSave calls with a given text (or all).
+-- Triggers of a kind not deleted (a fired, not re-armed trigger still counts: the engine keeps it).
+function HOST_Live(kind, pre)
+	local n = 0;
+	local q = HOST().triggers;
+	for i = 1, getn(q) do
+		if q[i].kind == kind and HOST_Is(q[i], pre) and not q[i].deleted then n = n + 1; end;
+	end;
+	return n;
+end;
+
+-- Save kit: timers created so far, timers still in the trigger list, AutoSave calls with a given text (or all).
 function HOST_Armed() return HOST_Count("timer", "TRF_Saves_Fire"); end;
+function HOST_Kit() return HOST_Live("timer", "TRF_Saves_Fire"); end;
 function HOST_Saved(key)
 	local n = 0;
 	local q = HOST().autosaves;
@@ -1212,6 +1228,7 @@ if h.autosave > 0 then
 	HOST_FireSave();                -- elio timer restored from the save
 	HOST_FireSave();                -- gredos timer restored from the save
 	HOST_Check(HOST_Saved() == 0, "saves: timers restored from a save are stale");
+	HOST_Check(HOST_Kit() == 0, "saves: stale timers delete themselves ("..HOST_Kit().." left)");
 end;
 HOST_Ticks(4, 0.5);
 HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF after the load");
@@ -1259,6 +1276,7 @@ if h.autosave > 0 then
 	HOST_FireSaveQuiet();
 	HOST_Check(HOST_Saved("TRF E0 gredos") == 1 and HOST_Saved() == 1, "saves: AutoSave once for gredos");
 	HOST_Check(not HOST_FireSave(), "saves: the timer is one-shot");
+	HOST_Check((h.autosave ~= 1 or HOST_Armed() == 1) and HOST_Kit() == 0, "saves: the gredos trigger re-armed for the quiet window and deleted at the save");
 	HOST_Enter("elio");
 	TeleportToLocation("aurora");   -- jump before the timer fires
 	HOST_FireSave();
@@ -1271,6 +1289,7 @@ if h.autosave > 0 then
 	HOST_Check(HOST_Armed() == armed and not HOST_FireSave() and HOST_Saved("TRF E0 gredos") == 1, "saves: no second save for gredos");
 	foreachi({"s1", "s2", "s3", "s4", "s5", "s6"}, function(i, s) HOST_Enter(s); HOST_FireSaveQuiet(); end);
 	HOST_Check(HOST_Saved() == 6 and HOST_Saved("TRF E0 s5") == 0 and HOST_Saved("TRF E0 s4") == 1, "saves: capped at 6 ("..HOST_Saved()..")");
+	HOST_Check(HOST_Kit() == 0, "saves: no kit trigger left after the new game ("..HOST_Kit()..")");
 	local want = "";
 	if h.exp == 2 then want = " TRF.exp.state.PI"; end;
 	HOST_Check(HOST_Reserved(TRF, "TRF") == want, "saves: no reserved key in TRF.exp.saves");
@@ -1285,13 +1304,13 @@ if h.autosave > 0 then
 	__sys_SOS = TRUE;
 	HOST_FireSave();
 	local e = TRF.exp.saves.elio;
-	HOST_Check(HOST_Saved() == 0 and e.st == 1 and e.try == 1 and HOST_Armed() == 2, "saves: __sys_SOS defers and re-arms");
+	HOST_Check(HOST_Saved() == 0 and e.st == 1 and e.try == 1 and HOST_Armed() == 1 and HOST_Kit() == 1, "saves: __sys_SOS defers and re-arms the same trigger");
 	__sys_SOS = FALSE; __disableAction = TRUE;
 	HOST_FireSave();
-	HOST_Check(HOST_Saved() == 0 and e.try == 2 and HOST_Armed() == 3, "saves: __disableAction defers and re-arms");
+	HOST_Check(HOST_Saved() == 0 and e.try == 2 and HOST_Armed() == 1 and HOST_Kit() == 1, "saves: __disableAction defers and re-arms the same trigger");
 	__disableAction = FALSE;
 	HOST_FireSave();
-	HOST_Check(HOST_Saved() == 0 and type(e.q) == "number" and HOST_Armed() == 4, "saves: flags clear, quiet window armed");
+	HOST_Check(HOST_Saved() == 0 and type(e.q) == "number" and HOST_Armed() == 1 and HOST_Kit() == 1, "saves: flags clear, quiet window armed on the same trigger");
 	__sys_SOS = TRUE;
 	HOST_Ticks(24, 0.5);
 	HOST_FireSave();
@@ -1303,13 +1322,14 @@ if h.autosave > 0 then
 	HOST_Ticks(24, 0.5);
 	HOST_FireSave();
 	HOST_Check(HOST_Saved("TRF E0 elio") == 1 and HOST_Saved() == 1 and e.st == 2, "saves: one AutoSave after the quiet window");
-	HOST_Check(not HOST_FireSave() and HOST_Saved() == 1, "saves: no timer left after the save");
+	HOST_Check(not HOST_FireSave() and HOST_Saved() == 1 and HOST_Armed() == 1 and HOST_Kit() == 0, "saves: no timer left after the save, the trigger deleted");
 	HOST_Enter("gredos");
 	__sys_SOS = TRUE;
 	local n = 0;
 	while HOST_FireSave() do n = n + 1; end;
 	e = TRF.exp.saves.gredos;
 	HOST_Check(n == 13 and e.st == 3 and e.try == 13 and HOST_Saved() == 1, "saves: gave up after 12 retries (fires="..n..")");
+	HOST_Check(HOST_Armed() == 2 and HOST_Kit() == 0, "saves: 13 fires on one trigger, deleted at gave up (created "..HOST_Armed()..", left "..HOST_Kit()..")");
 	HOST_Enter("elio");
 	HOST_Enter("gredos");
 	HOST_Check(TRF.exp.saves.gredos.st == 1 and TRF.exp.saves.gredos.try == nil, "saves: a later visit arms a system that gave up");
@@ -1348,6 +1368,7 @@ if h.autosave > 0 then
 	HOST_FireSave();
 	HOST_Check(HOST_Saved("TRF E0 aurora") == 1 and HOST_Saved() == 3 and e.st == 2, "saves: one AutoSave after the movie and the dialog");
 	HOST_Check(not HOST_FireSave() and HOST_Saved() == 3, "saves: no timer left after the movie-guard save");
+	HOST_Check(HOST_Kit() == 0, "saves: no kit trigger left after the movie-guard save ("..HOST_Kit()..")");
 	TRF_InMovie = nil; TRF_UiState = nil; MovieIsPlaying = nil;
 	print("HOST TRF.exp.saves = "..TRF_Dump(TRF.exp.saves, 3));
 end;

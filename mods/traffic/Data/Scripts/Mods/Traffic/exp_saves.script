@@ -26,6 +26,11 @@
 -- -1 when their byte check failed; without them the game's MovieIsPlaying() (same MovieManager field).
 -- State: TRF.exp.saves[<lowercase system>] = {st=1 armed | 2 saved | 3 gave up, gen=<TRF.gen when armed>,
 -- key=<text>, try=<deferred fires>, q=<clock.gt of the first clear fire>}. A later visit arms st=3 again.
+-- Trigger lifetime: a fired timer trigger stays in the trigger list and in the save (it is never deleted
+-- by the engine; a save showed two TRF_Saves_Fire(7) entries, one per arm), so each fire reuses its own
+-- trigger (GetTriggerContext(), SetTime, Activate: RandomContacts.script trigger_generator_Action) and
+-- deletes it when the entry ends (saved, gave up, stale, cap): ctx:Delete(), as trigger_exit_point_Action.
+-- NewTrigger only for the first arm (OnActivate) and when no context is available.
 
 function TRF_Saves_Opt()
 	return {delay=20, cap=6, quiet=10, retries=12};
@@ -37,10 +42,27 @@ function TRF_Saves_Gt()
 	return 0;
 end;
 
--- One-shot timer for entry e after secs. String action: the engine appends "();", the comment hides it
--- (fact 1.14).
-function TRF_Saves_Arm(e, secs)
+-- One-shot timer for entry e after secs: re-arms trigger t (the firing one) when given, else a new one.
+-- String action: the engine appends "();", the comment hides it (fact 1.14).
+function TRF_Saves_Arm(e, secs, t)
+	if t then
+		t:SetTime(secs);
+		t:Activate();
+		return t;
+	end;
 	return NewTrigger("timer", nil, "TRF_Saves_Fire("..e.gen..")--", secs);
+end;
+
+-- The trigger whose action runs now, or nil. GetTriggerContext() reads the engine's current trigger, so
+-- it also works below TRF_Cb's call() (trf_gen.script TRF_GenVanillaOne runs the vanilla action that way).
+function TRF_Saves_Ctx()
+	if type(GetTriggerContext) ~= "function" then return nil; end;
+	return GetTriggerContext();
+end;
+
+-- The entry of trigger t ended: delete t so it neither stays in the save nor fires again after a load.
+function TRF_Saves_End(t)
+	if t then t:Delete(); end;
 end;
 
 function TRF_Saves_Tab()
@@ -123,17 +145,20 @@ end;
 function TRF_Saves_Fire(gen) TRF_Cb("TRF_Saves_Fire", TRF_Saves_Fire_Body, {gen}); end;
 
 function TRF_Saves_Fire_Body(gen)
-	if type(TRF) ~= "table" then return; end;
+	local t = TRF_Saves_Ctx();
+	if type(TRF) ~= "table" then TRF_Saves_End(t); return; end;
 	TRF_Init();
 	local sys = TRF_Saves_Sys();
 	local e = nil;
 	if sys then e = TRF_Saves_Tab()[sys]; end;
 	if not TRF.active or gen ~= TRF.gen or type(e) ~= "table" or e.st ~= 1 or e.gen ~= gen then
 		TRF_L("saves: stale timer gen="..tostring(gen).." now="..tostring(TRF.gen).." sys="..tostring(sys).." active="..tostring(TRF.active));
+		TRF_Saves_End(t);
 		return;
 	end;
 	if TRF_Saves_Done() >= TRF_Saves_Opt().cap then
 		TRF_L("saves: cap reached, no save for "..sys);
+		TRF_Saves_End(t);
 		return;
 	end;
 	local o = TRF_Saves_Opt();
@@ -147,15 +172,16 @@ function TRF_Saves_Fire_Body(gen)
 		if e.try > o.retries then
 			e.st = 3;
 			TRF_L("saves: gave up "..sys.." "..fl.." after "..o.retries.." retries");
+			TRF_Saves_End(t);
 			return;
 		end;
-		TRF_Saves_Arm(e, o.delay);
+		TRF_Saves_Arm(e, o.delay, t);
 		TRF_L("saves: deferred "..sys.." "..fl.." retry "..e.try.."/"..o.retries);
 		return;
 	end;
 	if type(e.q) ~= "number" then
 		e.q = gt;
-		TRF_Saves_Arm(e, o.quiet);
+		TRF_Saves_Arm(e, o.quiet, t);
 		TRF_L("saves: quiet "..sys.." "..o.quiet.." s gt="..TRF_F(gt));
 		return;
 	end;
@@ -165,14 +191,17 @@ function TRF_Saves_Fire_Body(gen)
 		if e.try > o.retries then
 			e.st = 3;
 			TRF_L("saves: gave up "..sys.." (quiet "..TRF_F(gt - e.q).." s) after "..o.retries.." retries");
+			TRF_Saves_End(t);
 			return;
 		end;
-		TRF_Saves_Arm(e, o.quiet);
+		TRF_Saves_Arm(e, o.quiet, t);
 		TRF_L("saves: quiet "..sys.." "..TRF_F(gt - e.q).."/"..o.quiet.." s retry "..e.try.."/"..o.retries);
 		return;
 	end;
-	-- Marked before the call so the save itself records the system as done.
+	-- Marked before the call so the save itself records the system as done; the trigger is deleted before
+	-- it too, so the save does not list it.
 	e.st = 2;
+	TRF_Saves_End(t);
 	TRF_L("saves: autosave "..sys.." "..e.key);
 	if type(AutoSave) ~= "function" then
 		TRF_L("saves: AutoSave missing");
