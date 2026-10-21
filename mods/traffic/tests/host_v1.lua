@@ -1966,7 +1966,7 @@ function T_V1_N()
 		TRF.fs[sl] = "98765";
 	end;
 	TRF_NewsPost("feq", "kill_1");
-	for c = 1, 6 do TRF.tsh[c] = 1; end;
+	for k = 1, 5 do TRF.tsh[k] = 2; end;
 	TRF.std.fst = "12345";
 	TRF.tp = {};
 	for k = 1, 16 do

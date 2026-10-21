@@ -1511,7 +1511,7 @@ function T_V02_M()
 	TRF_SetDis(cur, 0);
 	local a = T_Spawn("C");
 	local r = TRF.live.tr[a];
-	local name = TRF_ShopNames()[r.cls];
+	local name = TRF_ShopName(TRF_ShopSlot(r));
 	-- The destination's shortage class gets buy x 1.2.
 	local dest = TRF_ShopDest(r);
 	local sc = nil;
@@ -1520,7 +1520,8 @@ function T_V02_M()
 	V_Hail(a);
 	HOST_Check(V_HailTo("trade"), "hail: Trade option");
 	V_Ok();
-	HOST_Check(h.dlgs[getn(h.dlgs)] == name and h.shops_made[name] == 1 and TRF.tsh[r.cls] == 1 and h.trflag == TRUE, "Trade: CreateShop("..name..") once, dialog on it");
+	HOST_Check(name == "trf_shop_"..r.k and h.dlgs[getn(h.dlgs)] == name and h.shops_made[name] == 1 and TRF.tsh[r.k] == 2 and h.trflag == TRUE,
+		"Trade: CreateShop("..name..") of the trader's slot once, dialog on it");
 	local mk = h.markets[name];
 	local tot = {};
 	for i = 1, getn(r.hold) do tot[r.hold[i].i] = (tot[r.hold[i].i] or 0) + r.hold[i].n; end;
@@ -1541,10 +1542,46 @@ function T_V02_M()
 		HOST_Check(okb >= 1, "short class at the destination: buy x 1.2 ("..okb.." items)");
 	end;
 	HOST_Check(TRF_ShopOpen(a) == nil, "once per trader");
+	-- A second live trader has another slot and its own shop.
 	local b2 = T_Spawn("C");
-	TRF.live.tr[b2].cls = r.cls;
+	local k2 = TRF.live.tr[b2].k;
 	TRF_ShopOpen(b2);
-	HOST_Check(h.shops_made[name] == 1 and h.dlgs[getn(h.dlgs)] == name, "second trader of the class: CreateShop not repeated");
+	local n2 = TRF_ShopName(k2);
+	HOST_Check(k2 ~= r.k and h.shops_made[n2] == 1 and h.dlgs[getn(h.dlgs)] == n2 and h.markets[n2] ~= mk, "second live trader: own shop "..n2);
+	-- Player sales to a's shop, then a new trader in a's slot: known items wiped, an unknown item stays.
+	local ka = r.k;
+	mk.goods["Cargo_01"] = {n=40, s=1, b=1};
+	mk.goods["Trf_NotListed"] = {n=3, s=1, b=1};
+	local eqa = {};
+	for it, g in mk.goods do if g.n == 1 and not tot[it] then eqa[it] = 1; end; end;
+	TRF_Remove(a, "test");
+	local c2 = nil;
+	for t = 1, 8 do
+		local x = T_Spawn("C");
+		if x and TRF.live.tr[x].k == ka then c2 = x; break; end;
+		if x then TRF_Remove(x, "test"); end;
+	end;
+	h.cfg.log = 2;
+	h.logs = {};
+	TRF_ShopOpen(c2);
+	h.cfg.log = nil;
+	local rc = TRF.live.tr[c2 or 0] or {};
+	local totc = {};
+	for i = 1, getn(rc.hold or {}) do totc[rc.hold[i].i] = (totc[rc.hold[i].i] or 0) + rc.hold[i].n; end;
+	local okw = c2 and h.shops_made[name] == 1 and h.dlgs[getn(h.dlgs)] == name;
+	if okw and (mk.goods["Cargo_01"].n ~= (totc["Cargo_01"] or 0)) then okw = nil; end;
+	for it, v in eqa do
+		if okw and not totc[it] and mk.goods[it].n > 1 then okw = nil; end;
+	end;
+	HOST_Check(okw and mk.goods["Trf_NotListed"].n == 3, "same slot, next trader: shop reused, previous stock and sales of listed items wiped, unlisted item kept");
+	HOST_Check(V_Logs("shop: items id="..tostring(c2).." "..name.." hold=") == 1, "log 2: item names of the fill logged");
+	-- Saved tsh: class-shop entries (tsh[cls] = 1, saves before 2026-10-22) are dropped by the repair.
+	TRF.tsh = {[1]=1, [3]=2, [6]=1, [7]=2};
+	TRF_TshFix();
+	HOST_Check(TRF.tsh[1] == nil and TRF.tsh[3] == 2 and TRF.tsh[6] == nil and TRF.tsh[7] == nil, "tsh repair: only slot entries 1..5 = 2 stay");
+	TRF.tsh[ka] = 2; TRF.tsh[k2] = 2;
+	TRF_Remove(b2, "test");
+	if c2 then TRF_Remove(c2, "test"); end;
 	-- Coefficients: difficulty, help >= 5, pro >= 6, sell >= buy + 0.2.
 	local s1, b1 = TRF_ShopCoefOf(1, 0, 0);
 	local s5, b5 = TRF_ShopCoefOf(2, 5, 6);
@@ -1635,7 +1672,7 @@ function T_V02_N()
 	for sl = 1, TRF_RgMap().n do
 		foreachi({"lane", "trade", "pir", "sweep"}, function(i, t) TRF_NewsPost(t, "raid", %sl); end);
 	end;
-	for c = 1, 6 do TRF.tsh[c] = 1; end;
+	for k = 1, 5 do TRF.tsh[k] = 2; end;
 	-- 12 traders removed (8 gone records stay), then live traders up to the caps (band 2), records of 8.
 	for k = 1, 12 do
 		local id = T_Spawn();

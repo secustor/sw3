@@ -521,6 +521,17 @@ function TRF_RepairV4()
 	end;
 end;
 
+-- tsh (trf_shop 7.1): only tsh[k] = 2 for slot shops k 1..5 stays. Saves before 2026-10-22 hold tsh[cls] = 1
+-- for the class shops trf_<cls>, so trf_shop_<k> is created on its first use.
+function TRF_TshFix()
+	local t = TRF_Tab(TRF, "tsh");
+	local keep = {};
+	for k = 1, 5 do
+		if t[k] == 2 then keep[k] = 2; end;
+	end;
+	TRF.tsh = keep;
+end;
+
 -- Type-check every v4 field (wrong type -> default). live keeps its records; its sub-fields are repaired.
 function TRF_Repair()
 	TRF.version = 4;
@@ -542,7 +553,7 @@ function TRF_Repair()
 	TRF_P("TRF_Rg_Fix");
 	TRF_ListFix(TRF, "short", 8);
 	TRF_ListFix(TRF, "shops", 8);
-	TRF_Tab(TRF, "news"); TRF_Tab(TRF, "newsx"); TRF_Tab(TRF, "tsh");
+	TRF_Tab(TRF, "news"); TRF_Tab(TRF, "newsx"); TRF_TshFix();
 	TRF_Tab(TRF, "live");
 	TRF_LiveFix();
 	TRF_Tab(TRF, "exp");
