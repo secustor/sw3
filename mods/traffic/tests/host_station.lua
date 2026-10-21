@@ -471,8 +471,37 @@ function T_STN_C()
 	h.quests.quest_6c_01 = QUEST_PROCESS;
 	T_Enter("taira"); pass("deny_tq", "taira");
 	h.quests.quest_6c_01 = nil;
-	-- A mission active, no taira quest in process: G3 passes, the visit latch (G6) closes the station.
-	h.qs = TRUE; T_Enter("taira"); pass("latch", "taira"); h.qs = FALSE;
+	-- A mission active, no taira quest in process (chapter 9, so the fee rule F4 holds): G3 passes and the visit
+	-- latch (G6) only stops the fee: mood line, dock line with the greeting, nofee=latch and its pass line.
+	local cq0 = h.labels.CurrentQuest;
+	h.labels.CurrentQuest = "9_01";
+	h.qs = TRUE; T_Enter("taira");
+	TRF_SetPro(TRF_CurIdx(), 8); TRF.std.heat = 0;
+	TRF_Stn_Deed(TRF_CurIdx(), 1, "test", nil, 2);
+	Dt = S_Setup({{"0"}});
+	t0 = S_Mark();
+	bt = S_Trade(Dt.trade[1]);
+	HOST_Press("cancel");
+	at = S_None(Dt.none[1]);
+	local dl = S_Line(t0, "stn: dock k=");
+	HOST_Check(S_Logs(t0, "stn: none sys=taira(") == 1 and at.n >= 1 and strfind(dl, "m=1 nofee=latch", 1, 1) and strfind(dl, "greet=stnr1 ", 1, 1)
+		and S_Vanilla(bt) and S_Logs(t0, "stn: pass reason=latch sys=taira at=dock") == 1 and S_Logs(t0, "at=none") == 0
+		and TRF_StnSV().mis == 1, "transit: taira during a mission: mood, greeting, nofee=latch ("..dl..")");
+	-- The mission ends in the same visit: the latch still stops the fee; the next entry charges again.
+	h.qs = FALSE;
+	t0 = S_Mark();
+	bt = S_Trade(Dt.trade[1]);
+	HOST_Press("cancel");
+	HOST_Check(S_Vanilla(bt) and S_Logs(t0, "nofee=latch") == 1, "mission ended in the same visit: the latch still stops the fee");
+	T_Jump("taira");
+	TRF_SetPro(TRF_CurIdx(), 8);
+	Dt = S_Setup({});
+	t0 = S_Mark();
+	bt = S_Trade(Dt.trade[1]);
+	HOST_Press("cancel");
+	HOST_Check(bt.nb == 1 and bt.box.text ~= "#UI_TradeStationDockRequest" and S_Logs(t0, "nofee=-") == 1,
+		"next entry: latch cleared, fee box");
+	h.labels.CurrentQuest = cq0;
 	T_Enter("elio"); pass("deny", "elio");
 	T_Enter("gaoba");
 	__disableAction = TRUE; pass("flag", "gaoba"); __disableAction = FALSE;
@@ -484,21 +513,19 @@ function T_STN_C()
 	T_Enter("kadenoa"); pass("gate:quest", "kadenoa");
 	HOST_Check(TRF_StnSV().mis == 1, "gate:quest at the dock sets the visit latch");
 	h.quests["quest_7a"] = nil;
-	-- Story mission active in a never-named system: latch.
+	-- Story mission active in a never-named system: the latch is set, moods and the dock line run (gaoba: m 0).
 	T_Enter("gaoba");
-	h.qs = TRUE; pass("latch", "gaoba");
-	h.qs = FALSE;
+	h.qs = TRUE;
 	D = S_Setup({{"0"}});
 	local n0 = S_Mark();
+	local a = S_None(D.none[1]);
 	local b = S_Trade(D.trade[1]);
 	HOST_Press("cancel");
-	HOST_Check(S_Vanilla(b) and S_Logs(n0, "stn: dock ") == 0, "mission ended in the same visit: latch holds");
+	h.qs = FALSE;
+	HOST_Check(TRF_StnSV().mis == 1 and S_Logs(n0, "stn: pass") == 0 and S_Logs(n0, "stn: none sys=gaoba(") == 1
+		and S_Logs(n0, "stn: dock k=42 ") == 1 and S_Vanilla(b), "story mission in gaoba: latch set, mood and dock lines");
 	T_Jump("gaoba");
-	D = S_Setup({{"0"}});
-	n0 = S_Mark();
-	b = S_Trade(D.trade[1]);
-	HOST_Press("cancel");
-	HOST_Check(S_Logs(n0, "stn: dock k=42 ") == 1, "next entry: latch cleared, dock line");
+	HOST_Check(TRF_StnSV().mis == nil, "next entry: latch cleared");
 	-- voice_gate 2 (light gate): a mission_q denial changes moods but not the dock; the dock latches.
 	h.cfg.voice_gate = 2;
 	T_Enter("gaoba");
@@ -507,15 +534,15 @@ function T_STN_C()
 	TRF_StrictOk = function(idx, feat) return nil, "mission_q"; end;
 	D = S_Setup({{"0"}});
 	n0 = S_Mark();
-	local a = S_None(D.none[1]);
+	a = S_None(D.none[1]);
 	local an = S_Logs(n0, "stn: pass");
 	b = S_Trade(D.trade[1]);
 	HOST_Press("cancel");
 	local a2 = S_None(D.none[1]);
 	TRF_StrictOk = so;
 	HOST_Check(an == 0 and S_Logs(n0, "stn: pass reason=gate:mission_q sys=gaoba at=dock") == 1 and S_Vanilla(b)
-		and S_Logs(n0, "stn: pass reason=latch sys=gaoba at=none") == 1 and a2.t == "#L_Dnone_univ_msg",
-		"voice_gate 2: moods open under mission_q, dock denied and latched");
+		and TRF_StnSV().mis == 1 and S_Logs(n0, "stn: pass reason=latch") == 0 and S_Logs(n0, "stn: none sys=gaoba(") == 2 and a2.n >= 1,
+		"voice_gate 2: moods open under mission_q, dock denied and latched, moods stay open after the latch");
 	h.cfg.voice_gate = nil;
 	-- voice_gate 1: the same denial closes the moods.
 	T_Enter("gaoba");
@@ -951,12 +978,14 @@ function T_STN_E()
 	HOST_Check(r.box.text == TRF_Txt("stnfeehub", "1000").."\n"..TRF_Txt("stnfeereq"), "fee_cap 1000");
 	HOST_Press("cancel");
 	h.cfg.tune = nil;
-	-- F2: a story mission active: no fee (latch).
+	-- F2: a story mission active: no fee (latch, G6), the dock line still runs.
 	S_Visit("kadenoa", "5_01", 8);
 	h.qs = TRUE;
 	D = S_Setup({});
+	n0 = S_Mark();
 	r = S_Trade(D.trade[1]);
-	HOST_Check(S_Vanilla(r), "story mission active: no fee");
+	HOST_Check(S_Vanilla(r) and S_Logs(n0, "nofee=latch") == 1 and S_Logs(n0, "stn: pass reason=latch sys=kadenoa at=dock") == 1,
+		"story mission active: no fee (nofee=latch)");
 	HOST_Press("cancel");
 	h.qs = FALSE;
 	-- F3: strict 0: no fee.

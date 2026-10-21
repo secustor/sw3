@@ -708,8 +708,9 @@ function TRF_StnGate(at)
 	if TRF_Stn_Flags() then return "flag", idx, nm; end;
 	if TRF_Stn_Quiet() then return "quiet", idx, nm; end;
 	if TRF_Stn_War() then return "trade_war", idx, nm; end;
+	-- G6: the visit latch (SV.mis) only stops the fee (TRF_StnTradeBody, nofee=latch); moods, greeting, news
+	-- and tips go on to G7-G10.
 	if TRF_N("TRF_Safe_QState") then sv.mis = 1; end;
-	if sv.mis == 1 then return "latch", idx, nm; end;
 	if type(TRF_StrictOk) ~= "function" then return "gate:nosafety", idx, nm; end;
 	local ok, gw = TRF_StrictOk(idx, "voice");
 	if not ok then
@@ -972,8 +973,9 @@ function TRF_StnTradeBody(param)
 		end;
 		if shown then sv.nw[k] = 1; end;
 	end;
-	-- Fee (8.5): F1 (the gates above), F2 no story mission, F3 strict not 0, F4 chapter; pv = paid or docked on
-	-- credit in this visit (saved, so a load inside the visit does not charge again).
+	-- Fee (8.5): F1 (the gates above), F2 no story mission and no visit latch (G6: SV.mis, logged as pass
+	-- reason=latch at=dock), F3 strict not 0, F4 chapter; pv = paid or docked on credit in this visit (saved, so a
+	-- load inside the visit does not charge again).
 	local fee, m, nofee = 0, 0, "-";
 	local pro = TRF_N("TRF_Pro", idx);
 	if type(pro) ~= "number" then pro = 0; end;
@@ -981,7 +983,10 @@ function TRF_StnTradeBody(param)
 		m = TRF_StnMOf(er, pro, T.fee_pro);
 		if m > 0 then
 			if e and e.pv == TRF_StnVe() then nofee = "pv";
-			elseif TRF_N("TRF_Safe_QState") then nofee = "qs";
+			elseif sv.mis == 1 or TRF_N("TRF_Safe_QState") then
+				sv.mis = 1;
+				nofee = "latch";
+				TRF_StnPass("latch", nm, "dock");
 			elseif TRF_N("TRF_Opt", "strict") == 0 then nofee = "strict0";
 			elseif ch < T.fee_ch then nofee = "ch";
 			else
