@@ -799,14 +799,32 @@ function T_V02_H()
 	local d0, c0, h0 = TRF_Dis(idx), TRF_ClanScore(slot), V_Hold(r);
 	T_Tick(14, 0.5);
 	HOST_Check(V_Rd(n).st == "demand", "decide waits 8 s (7 s: still demand)");
+	-- A timid trader (br kept from an earlier raid): comply chance 100 - 5 x q, q = trader / raid side.
+	r.br = 0.05;
 	h.rq = {0, 2};
 	T_Tick(4, 0.5);
 	h.rq = {};
+	HOST_Check(r.br == 0.05 and V_Logs("br=0.050 p=") == 1 and V_Logs("roll=0 -> comply") == 1, "decide: kept br reused, roll 0 -> comply");
 	HOST_Check(V_Hold(r) == h0 - 3 and x.tp[1].cleared and T_Lines("Cargo released") == 1, "comply at 8 s: 3 containers off the mirror ("..h0.." -> "..V_Hold(r).."), transport cleared and refilled");
 	local inv = 0;
 	for t = 1, getn(x.tp) do inv = inv + getn(x.tp[t].inv); end;
 	HOST_Check(inv == getn(r.hold), "comply: re-added stacks match the mirror");
 	HOST_Check(TRF_Dis(idx) == d0 + 1 and TRF_ClanScore(slot) == min(99, c0 + 1) and getn(TRF_ShortOf(idx)) >= 1, "comply: dis +1, clan +1, shortage (path A)");
+	-- Comply chance by relative strength and braveness: lone transport, timid trader (p near comply_max);
+	-- strong escort, brave trader (p near comply_min). Raid side: power 5 x 2 ships.
+	HOST_Check(TRF_Rd_EscAlive(r, x) == getn(x.sh) - getn(x.tp) and TRF_Rd_EscAlive({np=1, nt=1}, nil) == 0, "escorts alive: ships minus transports");
+	local pl = TRF_Rd_ComplyOf(5 * (TRF_Rd_EscAlive({np=1, nt=1}, nil) + 0.5), 5 * 2, 0.2);
+	local ps = TRF_Rd_ComplyOf(10 * (TRF_Rd_EscAlive({np=5, nt=1}, nil) + 0.5), 5 * 2, 1);
+	local pm = TRF_Rd_ComplyOf(5 * 1.5, 5 * 2, 0.6);
+	HOST_Check(pl == 95 and ps == 5 and pm == 55, "comply chance: lone timid "..pl.." (95), strong brave "..ps.." (5), 1 escort br 0.6 "..pm.." (55)");
+	-- Braveness: rolled once in [brave_lo, brave_hi], then kept on the record.
+	local bt, nr = {}, h.rand;
+	h.rq = {500};
+	local b1 = TRF_Rd_Brave(bt);
+	h.rq = {1000};
+	local b2 = TRF_Rd_Brave(bt);
+	h.rq = {};
+	HOST_Check(abs(b1 - 0.6) < 0.001 and b2 == b1 and bt.br == b1 and h.rand == nr + 1, "braveness: one roll (0.2 + 0.8 x 500/1000 = "..TRF_F(b1).."), kept as r.br");
 	T_Tick(12, 0.5);
 	HOST_Check(V_Rd(n).st == "end" and V_Rd(n).how == "left" and V_Rd(n).tier == nil and TRF_H().rd[n] == nil and hr.fl.deleted,
 		"leave 5 s after comply: out of view deleted, record ended and stripped ("..tostring(V_Rd(n).how)..")");
@@ -821,7 +839,13 @@ function T_V02_H()
 	HOST_Check(V_Rd(n2).ph == 1 and HOST_Count("attack", "TRF_OnRaidHit("..n2..",1,") == 2, "player hit on a raid ship: ph set, trigger re-armed");
 	HOST_Fire("f_object_inside", "TRF_RaidMeet("..n2..",");
 	T_MoveTr(id2, h.ms.pos.x + 100, 0, h.ms.pos.z);
-	T_Tick(17, 0.5);
+	-- First decision on this trader: br rolled at brave_lo (forced 0) and stored; roll 0 is below p, but
+	-- ph = 1 refuses.
+	T_Tick(14, 0.5);
+	h.rq = {0, 0};
+	T_Tick(3, 0.5);
+	h.rq = {};
+	HOST_Check(r2.br == 0.2 and V_Logs("br=0.200") == 1 and V_Logs("roll=0 -> refuse") == 1, "decide: br rolled once and stored (0.2), ph = 1 refuses at roll 0");
 	HOST_Check(V_Rd(n2).st == "fight" and V_Rd(n2).dc == "refuse" and hr2.fl.att ~= nil and r2.st == "flee" and r2.fl == "raid",
 		"refuse at 8 s: raid attacks, trader flees ("..tostring(r2.st)..")");
 	HOST_Check(T_Lines("pirates on us") == 1 and HOST_Navs() == 1 and h.navs[getn(h.navs)].label == "trf_nav_"..n2, "refuse: distress line and nav marker");

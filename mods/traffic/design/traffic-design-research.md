@@ -725,7 +725,7 @@ Section 6.4. A fleeing trader whose refuge is the station skips the queue and do
 - When: on spawn of a path A or C trader in a system with `danger ≥ 1`, with `raid_chance`, only if Pirates are at war with Trade (true at new game) and the strict gate passes.
 - Where: a nav point on the trader's lane at least `raid_min_station_dist` (400, spec) from the trade and patrol stations [PN §3.2].
 - Who: one `PIRATE_FLIGHT` flight in its own group `TRF_Raid_<n>`, strength = trader strength −1..+2. From v0.2 the composition, power and pilots come from the effective clan tier of the system instead (7.12), and `raid_chance` is multiplied by the tier factor of 7.12 and by `(1 + 0.08 × attr)` (7.11). Pirates start neutral to the player (1.5). If the player is at war with Pirates, the raid group is set neutral to `PLAYER_GROUP` with `SetGroupRelation`, as `RandomPiratGetMoney` does [V], so it does not count as an enemy until the player engages (spec: autopause trigger, 13.6).
-- Sequence: intercept, demand line. The trader complies with 50 %: 1 to 3 containers are deleted from its inventory, the pirates leave through a portal, the trader continues, disruption +1. Otherwise the pirates attack and the trader flees (7.4).
+- Sequence: intercept, demand line. The trader complies when `RAND(100) < p`, `p = clamp(100 − 100 × br × q, comply_min, comply_max)`. `q` is the trader side over the raid side: trader build power × (live escorts + 0.5) over raid power × raid ships. `br` is the trader's braveness, rolled once per trader, uniform in [`brave_lo`, `brave_hi`], and kept for a repeat raid. If the player fired on the raiders first, the trader refuses. On comply, 1 to 3 containers are deleted from its inventory, the pirates leave through a portal, the trader continues, disruption +1. Otherwise the pirates attack and the trader flees (7.4).
 - Pirates leave when their leader drops below 30 % HP or the trader escapes.
 - Raids on a danger convoy (7.16): one roll per convoy, at least T3 composition, no demand step.
 
@@ -1518,7 +1518,8 @@ Distances above a few hundred units are guesses until measured (spec). Vanilla r
 | `raid_chance` by danger 0/1/2/3 | 0 / 10 / 20 / 35 % | 0–50 % | per eligible spawn |
 | `contract_raid_chance` | 40 % | 20–60 % | extra roll for a contracted trader |
 | `raid_min_station_dist` | 400 | 200–800 | |
-| `raid_comply_chance` | 50 % | 20–80 % | |
+| `brave_lo` / `brave_hi` | 0.2 / 1.0 | — | trader braveness range, one roll per trader (7.6) |
+| `comply_min` / `comply_max` | 5 / 95 % | 0–100 % | clamp of the raid comply chance (7.6) |
 | `pirate_leave_hp` | 30 % | — | from v0.2 by clan tier: 50 / 40 / 30 / 30 %, carrier 25 % (7.12) |
 | `staged_raid_dis` | 3 | 3–6 | minimum disruption for a staged raid on arrival |
 | `staged_raid_chance` by dis 3 / 4 / 5 / 6 / 7–9 | 25 / 35 / 45 / 55 / 65 % | 0–80 % | once per entry |

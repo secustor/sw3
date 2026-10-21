@@ -988,7 +988,7 @@ function TRF_Spawn(p)
 	if p.path == "A" then st = "in"; end;
 	local r = {id=id, nm=TRF_GnName(), cls=cls, from=p.from, to=p.to, path=p.path, st=st,
 		ci=p.ci, k=k, ent=p.entn, ext=p.extn, np=getn(sh), nt=getn(tp), esc=added, born=gt,
-		lx=lp.x, ly=lp.y, lz=lp.z, lt=gt, wd=0, tier=p.tier or 1, hold=hold, hp0=hp0};
+		lx=lp.x, ly=lp.y, lz=lp.z, lt=gt, wd=0, tier=p.tier or 1, hold=hold, hp0=hp0, pw=p.pw or p.strength};
 	L.tr[id] = r;
 	if not p.k or L.grp[k] == 0 then L.grp[k] = id; end;
 	H.tr[id] = {fl=fl, sh=sh, tp=tp, ent=p.ent, ext=p.ext, np=p.np, st=p.st, k=k};
