@@ -13,10 +13,31 @@
 -- the scripted intro, and E0.2 wants a save after a jump), none during mission 1 (quest label
 -- CurrentQuest is unset until mission_2's ACTION_INIT sets "2"; autosave=2 skips this guard), at most
 -- cap saved systems. The record travels in TRF, so the cap holds per playthrough, not only per session.
--- State: TRF.exp.saves[<lowercase system>] = {st=1 armed | 2 saved, gen=<TRF.gen when armed>, key=<text>}.
+-- Cutscenes: every mission movie calls _FTrader_exclude() (include/RandomContacts.script), which only sets
+-- __sys_SOS = TRUE; _FTrader_include() sets it FALSE again; DisableRandom() sets __disableAction = TRUE. A
+-- save written during a movie keeps the movie only as an object reference: the action the movie attached
+-- (AttachAction) is not restored on load, so the mission step it starts never runs. Seen in Gredos,
+-- chapter 2 (mission_2 TradersLife.script: EntranceGredos -> Anim_1, a 22.3 s movie whose action
+-- GoTo_Station_1 never ran after loading the save made at 20 s). So the fire defers while either flag is
+-- TRUE (re-armed after delay s, at most retries times, then st=3) and saves only when the flags are clear
+-- at two fires quiet s apart (e.q = clock.gt at the first; flags up again clear e.q).
+-- State: TRF.exp.saves[<lowercase system>] = {st=1 armed | 2 saved | 3 gave up, gen=<TRF.gen when armed>,
+-- key=<text>, try=<deferred fires>, q=<clock.gt of the first clear fire>}. A later visit arms st=3 again.
 
 function TRF_Saves_Opt()
-	return {delay=20, cap=6};
+	return {delay=20, cap=6, quiet=10, retries=12};
+end;
+
+-- Mod game clock (traffic.script TRF_OnTick; trf_safety.script is not loaded for every exp).
+function TRF_Saves_Gt()
+	if type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+-- One-shot timer for entry e after secs. String action: the engine appends "();", the comment hides it
+-- (fact 1.14).
+function TRF_Saves_Arm(e, secs)
+	return NewTrigger("timer", nil, "TRF_Saves_Fire("..e.gen..")--", secs);
 end;
 
 function TRF_Saves_Tab()
@@ -68,8 +89,7 @@ function TRF_Saves_OnActivate(fresh)
 	local o = TRF_Saves_Opt();
 	local e = {st=1, gen=TRF.gen, key="TRF E0 "..sys};
 	TRF_Saves_Tab()[sys] = e;
-	-- String action: the engine appends "();", the comment hides it (fact 1.14).
-	local t = NewTrigger("timer", nil, "TRF_Saves_Fire("..e.gen..")--", o.delay);
+	local t = TRF_Saves_Arm(e, o.delay);
 	TRF_L("saves: armed "..sys.." in "..o.delay.." s gen="..e.gen.." timer="..((t and "ok") or "nil"));
 end;
 
@@ -90,6 +110,39 @@ function TRF_Saves_Fire_Body(gen)
 	end;
 	if TRF_Saves_Done() >= TRF_Saves_Opt().cap then
 		TRF_L("saves: cap reached, no save for "..sys);
+		return;
+	end;
+	local o = TRF_Saves_Opt();
+	local gt = TRF_Saves_Gt();
+	if __sys_SOS == TRUE or __disableAction == TRUE then
+		e.q = nil;
+		e.try = (e.try or 0) + 1;
+		local fl = "(sos="..tostring(__sys_SOS).." dis="..tostring(__disableAction)..")";
+		if e.try > o.retries then
+			e.st = 3;
+			TRF_L("saves: gave up "..sys.." "..fl.." after "..o.retries.." retries");
+			return;
+		end;
+		TRF_Saves_Arm(e, o.delay);
+		TRF_L("saves: deferred "..sys.." "..fl.." retry "..e.try.."/"..o.retries);
+		return;
+	end;
+	if type(e.q) ~= "number" then
+		e.q = gt;
+		TRF_Saves_Arm(e, o.quiet);
+		TRF_L("saves: quiet "..sys.." "..o.quiet.." s gt="..TRF_F(gt));
+		return;
+	end;
+	if gt - e.q < o.quiet then
+		-- Clock behind the timer (no ticks): wait once more, counted as a retry.
+		e.try = (e.try or 0) + 1;
+		if e.try > o.retries then
+			e.st = 3;
+			TRF_L("saves: gave up "..sys.." (quiet "..TRF_F(gt - e.q).." s) after "..o.retries.." retries");
+			return;
+		end;
+		TRF_Saves_Arm(e, o.quiet);
+		TRF_L("saves: quiet "..sys.." "..TRF_F(gt - e.q).."/"..o.quiet.." s retry "..e.try.."/"..o.retries);
 		return;
 	end;
 	-- Marked before the call so the save itself records the system as done.

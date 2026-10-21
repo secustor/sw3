@@ -983,6 +983,13 @@ function HOST_Saved(key)
 	return n;
 end;
 function HOST_FireSave() return HOST_Fire("timer", "TRF_Saves_Fire"); end;
+-- Fire the save timer, let the quiet window (10 s) pass, fire the quiet timer: the save of a clear system.
+function HOST_FireSaveQuiet()
+	if not HOST_FireSave() then return nil; end;
+	HOST_Ticks(24, 0.5);
+	HOST_FireSave();
+	return 1;
+end;
 
 -- Reserved string keys (HOST_IsProtected) anywhere below t, as " path.key" entries.
 function HOST_Reserved(t, path)
@@ -1244,7 +1251,7 @@ if h.autosave > 0 then
 	if h.autosave == 1 then HOST_Check(HOST_Armed() == 0, "saves: mission 1 (CurrentQuest unset) arms no save"); end;
 	h.labels.CurrentQuest = "2";
 	HOST_Enter("gredos");
-	HOST_FireSave();
+	HOST_FireSaveQuiet();
 	HOST_Check(HOST_Saved("TRF E0 gredos") == 1 and HOST_Saved() == 1, "saves: AutoSave once for gredos");
 	HOST_Check(not HOST_FireSave(), "saves: the timer is one-shot");
 	HOST_Enter("elio");
@@ -1252,16 +1259,57 @@ if h.autosave > 0 then
 	HOST_FireSave();
 	HOST_Check(HOST_Saved() == 1, "saves: a timer that fires during a jump does nothing");
 	HOST_Enter("aurora");
-	HOST_FireSave();
+	HOST_FireSaveQuiet();
 	HOST_Check(HOST_Saved("TRF E0 aurora") == 1, "saves: AutoSave once for aurora");
 	local armed = HOST_Armed();
 	HOST_Enter("gredos");
 	HOST_Check(HOST_Armed() == armed and not HOST_FireSave() and HOST_Saved("TRF E0 gredos") == 1, "saves: no second save for gredos");
-	foreachi({"s1", "s2", "s3", "s4", "s5", "s6"}, function(i, s) HOST_Enter(s); HOST_FireSave(); end);
+	foreachi({"s1", "s2", "s3", "s4", "s5", "s6"}, function(i, s) HOST_Enter(s); HOST_FireSaveQuiet(); end);
 	HOST_Check(HOST_Saved() == 6 and HOST_Saved("TRF E0 s5") == 0 and HOST_Saved("TRF E0 s4") == 1, "saves: capped at 6 ("..HOST_Saved()..")");
 	local want = "";
 	if h.exp == 2 then want = " TRF.exp.state.PI"; end;
 	HOST_Check(HOST_Reserved(TRF, "TRF") == want, "saves: no reserved key in TRF.exp.saves");
+	print("HOST TRF.exp.saves = "..TRF_Dump(TRF.exp.saves, 3));
+
+	-- Cutscene guard: a mission movie sets __sys_SOS (_FTrader_exclude), DisableRandom __disableAction.
+	print("HOST ---- save kit, cutscene guard");
+	TRF = nil; h.triggers = {}; h.autosaves = {}; h.labels.CurrentQuest = nil;
+	HOST_Enter("aurora");
+	h.labels.CurrentQuest = "2";
+	HOST_Enter("elio");
+	__sys_SOS = TRUE;
+	HOST_FireSave();
+	local e = TRF.exp.saves.elio;
+	HOST_Check(HOST_Saved() == 0 and e.st == 1 and e.try == 1 and HOST_Armed() == 2, "saves: __sys_SOS defers and re-arms");
+	__sys_SOS = FALSE; __disableAction = TRUE;
+	HOST_FireSave();
+	HOST_Check(HOST_Saved() == 0 and e.try == 2 and HOST_Armed() == 3, "saves: __disableAction defers and re-arms");
+	__disableAction = FALSE;
+	HOST_FireSave();
+	HOST_Check(HOST_Saved() == 0 and type(e.q) == "number" and HOST_Armed() == 4, "saves: flags clear, quiet window armed");
+	__sys_SOS = TRUE;
+	HOST_Ticks(24, 0.5);
+	HOST_FireSave();
+	HOST_Check(HOST_Saved() == 0 and e.q == nil and e.try == 3, "saves: flags up in the quiet window clear it and count a retry");
+	__sys_SOS = FALSE;
+	HOST_FireSave();
+	HOST_FireSave();
+	HOST_Check(HOST_Saved() == 0 and e.try == 4 and e.st == 1, "saves: quiet window not over, no save");
+	HOST_Ticks(24, 0.5);
+	HOST_FireSave();
+	HOST_Check(HOST_Saved("TRF E0 elio") == 1 and HOST_Saved() == 1 and e.st == 2, "saves: one AutoSave after the quiet window");
+	HOST_Check(not HOST_FireSave() and HOST_Saved() == 1, "saves: no timer left after the save");
+	HOST_Enter("gredos");
+	__sys_SOS = TRUE;
+	local n = 0;
+	while HOST_FireSave() do n = n + 1; end;
+	e = TRF.exp.saves.gredos;
+	HOST_Check(n == 13 and e.st == 3 and e.try == 13 and HOST_Saved() == 1, "saves: gave up after 12 retries (fires="..n..")");
+	HOST_Enter("elio");
+	HOST_Enter("gredos");
+	HOST_Check(TRF.exp.saves.gredos.st == 1 and TRF.exp.saves.gredos.try == nil, "saves: a later visit arms a system that gave up");
+	HOST_FireSaveQuiet();
+	HOST_Check(HOST_Saved("TRF E0 gredos") == 1 and HOST_Saved() == 2, "saves: later visit saves gredos");
 	print("HOST TRF.exp.saves = "..TRF_Dump(TRF.exp.saves, 3));
 end;
 print("HOST errors="..h.errors.." fails="..h.fails);

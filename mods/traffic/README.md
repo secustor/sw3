@@ -314,7 +314,7 @@ On `OnActivate` of a system that `TRF.exp.saves` (keyed by the lowercase `GetCur
 - mission 1: the quest label `CurrentQuest` stays unset until mission 2's `ACTION_INIT` sets it to `"2"` (`AUTOSAVE=2` turns this guard off; mission 1 is scripted, so prefer the manual recipe there);
 - systems already saved, and everything after 6 saves. The record lives in `TRF`, so the cap holds for the playthrough, not only the session.
 
-A timer that fires during a jump, after another entry or after a load (`gen` differs) logs `saves: stale timer` and does nothing. If the autosave option is off, the log still shows `saves: autosave` but no file appears.
+A timer that fires during a jump, after another entry or after a load (`gen` differs) logs `saves: stale timer` and does nothing. Cutscene guard: mission movies set `__sys_SOS` (`_FTrader_exclude`) and a save made during a movie loses the movie's attached action (Gredos, mission 2, got stuck that way), so while `__sys_SOS` or `__disableAction` is `TRUE` the kit logs `saves: deferred <system> (sos=.. dis=..) retry n/12` and tries again 20 s later, saves only after the flags were clear at two fires 10 s apart (`saves: quiet <system> 10 s`), and after 12 retries logs `saves: gave up <system>` (a later visit arms it again). If the autosave option is off, the log still shows `saves: autosave` but no file appears.
 
 ### Which saves the experiments need
 
