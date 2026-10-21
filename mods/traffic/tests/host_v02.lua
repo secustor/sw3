@@ -402,6 +402,105 @@ end;
 
 -- e: bands and tiers (spec 9.1-9.3) ---------------------------------------------------------------
 
+-- A TT3 trader at the current pro (9): generation with rolls 0 until one spawns, others removed.
+function V_SpawnT3()
+	local h = HOST();
+	for k = 1, 30 do
+		local before = TRF.seq;
+		h.rq = {0, 0};
+		T_Gen();
+		h.rq = {};
+		if TRF.seq ~= before and TRF_Rec(TRF.seq) then
+			if TRF.live.tr[TRF.seq].tier == 3 then return TRF.seq; end;
+			TRF_Remove(TRF.seq, "test");
+		end;
+		TRF.live.port = {};
+	end;
+	return nil;
+end;
+
+-- Escort flight (cfg esc_flight, v01 4.5, v02 9.3): a TT3 trader as a convoy flight of its transports and an
+-- escort flight of every escort with Escort on the lead transport; counts, labels, handle globals, re-route,
+-- died transport, flee, removal, load adoption; esc_flight 0 builds the single flight.
+function V_EscFlight()
+	local h = HOST();
+	TRF_SetDis(TRF_CurIdx(), 6);
+	h.logs = {};
+	local id = V_SpawnT3();
+	HOST_Check(id ~= nil, "esc_flight: TT3 spawned (dis 6: added escorts up to the tier maximum)");
+	if not id then return; end;
+	local r, x = TRF.live.tr[id], TRF_H().tr[id];
+	local ne = getn(x.sh) - getn(x.tp);
+	local okr, okl, okg = 1, 1, 1;
+	for i = 2, getn(x.ef.ships) do if x.ef.ships[i].role ~= ROLE_DEFEND then okr = nil; end; end;
+	for i = 1, getn(x.sh) do
+		if x.sh[i].label ~= "trf_"..id.."_"..i then okl = nil; end;
+		if getglobal("TRF_ship_trf_"..id.."_"..i) ~= x.sh[i] then okg = nil; end;
+	end;
+	HOST_Check(x.ef and x.ef ~= x.fl and getn(x.fl.ships) == r.nt and r.nt == 2 and getn(x.ef.ships) == ne and ne >= 3
+		and r.np == r.nt + ne and ne <= 5 and r.e1 == 3 and x.ef.esc == x.tp[1] and okr,
+		"esc_flight: convoy flight of "..r.nt.." transports, escort flight of "..ne.." (added "..r.esc.."), Escort on the lead, wingmen ROLE_DEFEND");
+	HOST_Check(okl and okg and V_Logs("spawn id="..id.." ") == 1 and V_Logs(" efl=1 esc="..ne) == 1,
+		"esc_flight: labels trf_<id>_<i> and TRF_ship_ globals across both flights, spawn line efl=1 esc="..ne);
+	HOST_Check(TRF_Rd_EscAlive(r, x) == ne and TRF_SpEscAlive(r, x) == ne, "esc_flight: raid and supply escort counts "..ne);
+	x.ef.esc = nil;
+	TRF_GnReissue(id);
+	HOST_Check(x.ef.esc == x.tp[1], "esc_flight: re-route gives Escort again");
+	x.tp[1].alive = nil;
+	HOST_Fire("died", "TRF_OnShipDied("..id..",1,");
+	HOST_Check(TRF_Rec(id) and x.ef.esc == x.tp[2], "esc_flight: lead transport died, Escort on the next transport");
+	x.ef.esc = nil;
+	T_MoveTr(id, h.ms.pos.x + 60, 0, h.ms.pos.z);
+	x.tp[1].alive = nil;
+	TRF_Flee(id, "test");
+	HOST_Check(TRF.live.tr[id].st == "flee" and x.ef.esc == x.tp[2], "esc_flight: flee gives Escort again");
+	local fl, ef = x.fl, x.ef;
+	TRF_Remove(id, "test");
+	HOST_Check(fl.deleted and ef.deleted and getglobal("TRF_ship_trf_"..id.."_3") == nil, "esc_flight: Remove deletes both flights and the handle globals");
+	-- Load: both flights adopted (escort flight from the first escort's pilot flight), Escort again.
+	local b = V_SpawnT3();
+	if b then
+		T_MoveTr(b, h.ms.pos.x + 60, 0, h.ms.pos.z);
+		local xb = TRF_H().tr[b];
+		local nb, fb, eb = getn(xb.sh), xb.fl, xb.ef;
+		eb.esc = nil;
+		h.logs = {};
+		T_SaveLoad();
+		local y = TRF_H().tr[b];
+		HOST_Check(TRF.live.tr[b] and TRF.live.tr[b].st == "wind" and y and y.fl == fb and y.ef == eb and getn(y.sh) == nb and getn(y.tp) == 2
+			and y.tp[1] == xb.tp[1] and eb.esc == y.tp[1] and V_Logs("load id="..b.." adopted ships="..nb.." via=global efl=1 -> wind") == 1,
+			"esc_flight: load pass adopts the convoy and the escort flight, Escort again");
+		TRF_Remove(b, "test");
+		HOST_Check(fb.deleted and eb.deleted, "esc_flight: adopted trader removed with both flights");
+	else
+		HOST_Check(nil, "esc_flight: second TT3 for the load pass");
+	end;
+	-- TT1 (pro 0) at dis 6: row escorts and the added escorts in the escort flight.
+	TRF_SetPro(TRF_CurIdx(), 0);
+	local t1 = T_Spawn("C");
+	local r1, x1 = TRF.live.tr[t1], TRF_H().tr[t1];
+	local rw = TRF_Row(r1.pw);
+	HOST_Check(r1.tier == 1 and r1.esc == min(2, 4 - rw.esc) and getn(x1.fl.ships) == rw.tp
+		and ((rw.esc + r1.esc == 0 and x1.ef == nil) or (x1.ef and getn(x1.ef.ships) == rw.esc + r1.esc)),
+		"esc_flight TT1: "..rw.tp.." transports, escort flight of "..rw.esc.." row + "..r1.esc.." added escorts");
+	TRF_Remove(t1, "test");
+	TRF_SetPro(TRF_CurIdx(), 9);
+	-- Strict gate: a quest system during a mission keeps one flight per spawn.
+	local pl = {tier=1, row=TRF_Row(8)};
+	h.qs = TRUE;
+	local den = TRF_TierSplitOn(pl);
+	h.qs = FALSE;
+	HOST_Check(den == nil and TRF_TierSplitOn(pl) == 1, "esc_flight: denied system (mission) builds one flight");
+	-- esc_flight 0: today's single flight.
+	h.cfg.esc_flight = 0;
+	local c = V_SpawnT3();
+	local xc = c and TRF_H().tr[c];
+	HOST_Check(xc and xc.ef == nil and getn(xc.fl.ships) == getn(xc.sh) and TRF.live.tr[c].e1 == nil, "esc_flight 0: one flight with every ship");
+	if c then TRF_Remove(c, "test"); end;
+	h.cfg.esc_flight = nil;
+	TRF_SetDis(TRF_CurIdx(), 0);
+end;
+
 -- pro of the current system (dis 0 kept as it is).
 function V_Pro(p) TRF_SetPro(TRF_CurIdx(), p); end;
 
@@ -543,6 +642,7 @@ function T_V02_E()
 	HOST_Check(fl and getn(bs) == 2 and made[1] == 1 and made[2] == 3 and bs[2].pos.z == 1030 and bs[2].role == ROLE_ATTACK
 		and getglobal("flight_trf_bt") == nil and getglobal("ship_trf_bt_1") == nil, "TRF_BuildFlight skips a nil carcass, keeps spots, leaves no globals");
 	fl:Delete(); blk.alive = nil;
+	V_EscFlight();
 	-- Parked ship on entry at band 2; none at band 1.
 	T_Jump("aurora");
 	TRF.sys[idx] = {pro=6};

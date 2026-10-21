@@ -7,7 +7,8 @@
 # GUARD=0|1|2 (design/v01-spec.md 9).
 # Optional v0.2 keys (design/v02-spec.md 10.4), written only when set: ENABLED (config enabled, 2 = restore prices and
 # stop; not the DLL's TRAFFIC_ENABLED), CYCLE, PROSPERITY, TIER_CAP, BAND_HALF, PARKED, SEED, QUEUE, RAIDS, STAGED, CONTRACTS,
-# MEET, HAIL_START, BOARD, SHOP_MODE, SHORT_PRICE, RESTORE, NEWS_MODE, HEAT_WAR, STRICT, TRANSIT, SOS_MODE, COMBAT, HAIL_QUIET (integers);
+# MEET, HAIL_START, BOARD, SHOP_MODE, SHORT_PRICE, RESTORE, NEWS_MODE, HEAT_WAR, STRICT, TRANSIT, SOS_MODE, COMBAT, HAIL_QUIET,
+# ESC_FLIGHT (integers);
 # PRO_SET=gredos:9,kadi:9,taira:9 (sets pro on every entry; test clone only); TUNE=T_leg=5,step=10 (tune overrides).
 # Optional v1 keys (design/v1-spec.md 10.5), written only when set: TRACK, CONV, DEMAND, HEAT_OFFER, CARRIERS, SALVAGE,
 # SALV_ADDMOD, CLAN_ACE, SWEEPS, SWEEP_CT, PO, TT4, TT4_SPLIT, FEQ, FORCED_BUST, DCONV, DC_SPEED, BASES, BASE_GLOW, WRECK
@@ -41,7 +42,7 @@ LEVEL=${LEVEL:-v1}
 case "$LEVEL" in
 v1) pre= ;;
 v02) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0" ;;
-v01) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 prosperity=0 seed=0 parked=0 queue=0 raids=0 staged=0 contracts=0 meet=1 board=0 shop_mode=0 short_price=0 news_mode=0" ;;
+v01) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 prosperity=0 seed=0 parked=0 queue=0 raids=0 staged=0 contracts=0 meet=1 board=0 shop_mode=0 short_price=0 news_mode=0 esc_flight=0" ;;
 *) echo "LEVEL must be v01, v02 or v1" >&2; exit 1 ;;
 esac
 for e in $pre; do
@@ -51,7 +52,7 @@ done
 for k in OVERRIDE DUMP GUARD ENABLED CYCLE PROSPERITY TIER_CAP BAND_HALF PARKED SEED QUEUE RAIDS STAGED CONTRACTS MEET \
          HAIL_START BOARD SHOP_MODE SHORT_PRICE RESTORE NEWS_MODE HEAT_WAR STRICT TRANSIT SOS_MODE COMBAT HAIL_QUIET \
          TRACK CONV DEMAND HEAT_OFFER CARRIERS SALVAGE SALV_ADDMOD CLAN_ACE SWEEPS SWEEP_CT PO TT4 TT4_SPLIT FEQ \
-         FORCED_BUST DCONV DC_SPEED BASES BASE_GLOW WRECK VOICE VOICE_MOODS VOICE_DOCK VOICE_NEWS VOICE_FEE VOICE_GATE; do
+         FORCED_BUST DCONV DC_SPEED BASES BASE_GLOW WRECK ESC_FLIGHT VOICE VOICE_MOODS VOICE_DOCK VOICE_NEWS VOICE_FEE VOICE_GATE; do
     eval v=\${$k:-}
     [ -z "$v" ] && continue
     case "$v" in *[!0-9]*) echo "$k must be a non-negative integer" >&2; exit 1;; esac

@@ -145,6 +145,7 @@ Defaults are in each module's `TRF_<M>_OptDef()`; a missing key reads its defaul
 | `cycle`, `prosperity`, `tier_cap` | 1, 1, 2 | regional cycle; bands and tiers; highest clan tier used for composition |
 | `cap_traders`, `cap_ships`, `spawn_scale`, `band_half` | 5, 20, 1.0, 0 | limits over the band row (v0.1 defaults were 2, 10); halved band steps |
 | `parked`, `seed`, `queue` | 1, 1, 1 | parked ship, arrival seed, docking queue |
+| `esc_flight` | 1 | TT1–TT3 escorts fly as their own flight ordered to escort the lead transport; 0: one flight as vanilla |
 | `raids`, `staged`, `contracts`, `esc_speed` | 1, 1, 1, 0 | lane raids, staged raids, escort contracts, contract speed cap (0 off) |
 | `meet`, `hail_start`, `board` | 2, 2, 1 | `meet` 2: announce line and hail (1: vanilla meeting box, 0 off); `hail_start` 2: menu opens at the meeting (70 units), 1: on selecting the trader within 150 units; `board` 2: screen line only, 0 off |
 | `shop_mode`, `short_price`, `restore` | 1, 1, 1 | 0: vanilla trader shop; 0: shortages as rumour only, no price write; 2: restore with `ClearGoodsState` |

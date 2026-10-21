@@ -16,7 +16,7 @@ function T_V1Off()
 end;
 function T_V01()
 	return {prosperity=0, seed=0, parked=0, queue=0, raids=0, staged=0, contracts=0, meet=1, board=0,
-		shop_mode=0, short_price=0, news_mode=0};
+		shop_mode=0, short_price=0, news_mode=0, esc_flight=0};
 end;
 function T_Cfg(t)
 	local c = {exp=0, log=1, traffic=1};

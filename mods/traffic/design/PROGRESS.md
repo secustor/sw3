@@ -115,6 +115,7 @@ Ordered from cheapest to most expensive; each step assumes the previous one pass
 
 ## Decisions pending (owner: user)
 
+- 2026-10-22, escort flight (cfg `esc_flight` 1, built): TT1–TT3 escorts fly as their own flight ordered `Escort(lead transport)` with `ROLE_DEFEND` wingmen (vanilla convoys order escort flights `Escort(ship)`; no vanilla code shows `ROLE_ATTACK` is needed to engage). To observe in game under a raid: whether the escorts engage the raiders, stay with a fleeing or stopped trader, and pick up the next transport when the lead dies; if not, `esc_flight 0` restores the single flight (v01-spec 4.5 step 5a).
 - 2026-10-21, trader marker (not built, decision deferred): the engine can mark hailable traders with a nav-point icon attached to the lead ship (follows the ship each frame, blinks via `FlashOn`, deleted when the hail opens / before a jump / by label on load; research `mod-research/trader-marker.md`, checks M1-M10). With `hail_start` 2 (box opens at the meeting, default since e6ff1a8) the marker adds little; it becomes worth building if the box should again open only on selection (`hail_start` 1), or as a "this is a mod trader you can still hail" cue on every unhailed trader in the system (option `marker`). Open risk: the icon may take the click meant for the hull.
 
 | Topic | Options | Design ref | v0.2 status |

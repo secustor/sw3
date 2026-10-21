@@ -412,6 +412,8 @@ Family F1–F4 = family of the row the strength gives (v01 1.2; row 20 → F4). 
 
 Class of stack A: Uss/Inoco owner → machinery 40, spare parts 40, others 4 each; Neutral → ore 50, others 10; path A doubles perishables; else uniform. Trader class = class of the largest stack (v01 4.1). The hold mirror `r.hold` lists every stack. No hold or escort is made poorer to stop farming (S40). CHECK [TP] E1: Walrus/Arba holds (`cargoCapacity` 0) load.
 
+Escort flight (cfg `esc_flight` 1, default; v01 4.5 step 5a): TT1–TT3 build through `TRF_BuildSplit` as a convoy flight of the transports (the rows above split after their transports) and one escort flight of every escort (row, tier, disruption and heat escorts) in the same group, ordered `Escort(lead transport)`, escorts `ROLE_DEFEND` except the escort flight's first ship. TT1 then uses `TRF_BuildFlight` instead of `NewAllFlight` with the same row, ranks and no extra draw, so its ships and hold equal the v01 path (host v02-e). Denied systems (strict gate feature `esc_flight`) and `esc_flight` 0 build one flight as in the table. TT4 is unchanged.
+
 `TRF_BuildFlight(pilots, row, group, sign, pos, power, dir, form, space, maxn)`: a copy of `NewAllFlight` 66–139 for one given row, with spacing `space`, at most `maxn` ships, a nil check after every `CreateCarcass` (a nil skips the ship; no ship → delete the flight, return nil), the same globals cleanup as v01 4.5 step 5. Used by TT3, parked ships and `TRF_PirFlight`.
 
 ### 9.4 Parked ships (S25)
@@ -482,6 +484,7 @@ Per-tick cost: `TRF_Raid_Tick` and `TRF_Q_Tick` act every 2 s / 1 s of gt over �
 | `cycle`, `prosperity`, `tier_cap` | 1, 1, 2 | regional cycle on; bands and tiers on; highest effective clan tier |
 | `cap_traders`, `cap_ships`, `spawn_scale`, `band_half` | 5, 20, 1.0, 0 | limits over the band row (9.1); halved increments |
 | `parked`, `seed`, `queue` | 1, 1, 1 | parked ships, arrival seed, docking queue |
+| `esc_flight` | 1 | TT1–TT3 escorts as their own flight ordered `Escort(lead transport)` (9.3); 0: one flight |
 | `raids`, `staged`, `contracts`, `esc_speed` | 1, 1, 1, 0 | raid features; contract speed cap (0 off) |
 | `meet`, `hail_start`, `board` | 2, 2, 1 | 70-unit announce; hail box at 70 units (`hail_start` 2; 1: hail by focus within 150); board box (2: line, 0: off) |
 | `shop_mode`, `short_price`, `restore` | 1, 1, 1 | own trader shops (0 vanilla); shortage price (0 rumour only); restore write (2 `ClearGoodsState`) |
@@ -490,7 +493,7 @@ Per-tick cost: `TRF_Raid_Tick` and `TRF_Q_Tick` act every 2 s / 1 s of gt over �
 | `pro_set` | `{}` | test clone only: `{gredos=9, ...}` sets `pro` (clamped to `pc`) on the next entry and logs it; written by `install-test.sh PRO_SET=gredos:9,kadi:9,taira:9` for the design 12 "pro 9 holds 8x" exit test |
 | `tune` | | new keys: `rg_tick` 2, `rg_catchup` 30, `pp_step` 5, `pro_hi` 7, `pro_step` 6, `pro_visit_max` 2, `sweep_gap` 6, `sweep_wait` 2, `rg_hold` 6, `rg_sep` 6 (4.2a), `raid_min_st` 400, `raid_meet` 250, `brave_lo` 0.2, `brave_hi` 1.0, `comply_min` 5, `comply_max` 95, `ct_raid` 40, `R_threat` 300, `upd_true` 1, `R_radio` 2000, `T_sos_cd` 240, `staged_win` 180, `staged_hp` 0.7, `hail_r` 150, `hail_arm` 60, `hail_cd` 60, `hail_max` 2, `trouble_range` 3, `boom_min_pro` 6, `L_short` 6, `short_coef` 1.5, `short_bonus` 1.2, `pay_cap` 30000, `ct_dist` 400, `q_wait` 180, `q_prio` 30, `seed_min` 15, `seed_max` 30 |
 
-Where each key's default lives: base `TRF_OptDef` (trf_state): `enabled`, `cap_traders`, `cap_ships`, `spawn_scale`, `meet`, `seed`, `queue`, `heat_war`, `strict`, `news_mode`; `TRF_Rg_OptDef`: `cycle`, `tier_cap`, `pro_set`; `TRF_Tier_OptDef`: `prosperity`, `band_half`, `parked`; `TRF_Raid_OptDef`: `raids`, `staged`; `TRF_Hail_OptDef`: `contracts`, `esc_speed`, `hail_start`, `board`; `TRF_Shop_OptDef`: `shop_mode`, `short_price`, `restore`. Tune keys go in the `TRF_<M>_TuneDef()` of the module that reads them.
+Where each key's default lives: base `TRF_OptDef` (trf_state): `enabled`, `cap_traders`, `cap_ships`, `spawn_scale`, `meet`, `seed`, `queue`, `heat_war`, `strict`, `news_mode`; `TRF_Rg_OptDef`: `cycle`, `tier_cap`, `pro_set`; `TRF_Tier_OptDef`: `prosperity`, `band_half`, `parked`, `esc_flight`; `TRF_Raid_OptDef`: `raids`, `staged`; `TRF_Hail_OptDef`: `contracts`, `esc_speed`, `hail_start`, `board`; `TRF_Shop_OptDef`: `shop_mode`, `short_price`, `restore`. Tune keys go in the `TRF_<M>_TuneDef()` of the module that reads them.
 
 ### 10.5 Host scenarios for the verify stage (`tests/host_v02.lua`, run group `v02`)
 
@@ -502,7 +505,7 @@ New stubs: `ShowMsgBox` (records calls; the scenario presses OK or Cancel), `Cre
 | `v02-b` cycle-200 | 4.7 both variants |
 | `v02-c` clamps | 100-leg jump runs 30 ticks only; credits never lift `pro` above the phase target, +2 per visit, none at `dis` 2; kill loss −3; clan visit caps +3 / −6 |
 | `v02-d` sweeps | attempts at +6/+12/+16/+18, 4th certain, failure −10, success `sc ≤ 35` ends Raids in the same tick, open window pauses raids, news `gather/fail/win` |
-| `v02-e` bands and tiers | `pro` 0..9 → `sf`, caps, parked; tier rolls; heat 3 → ≤ TT3, heat 5 → TT2; governor; denied system → band 0, ≤ TT2; TT3 flight 15-unit spacing, nil carcass skipped; holds TT1 identical draws to `FillCargoFlight`, TT2 4–7, TT3 6–9 with ≥ 3 expensive |
+| `v02-e` bands and tiers | `pro` 0..9 → `sf`, caps, parked; tier rolls; heat 3 → ≤ TT3, heat 5 → TT2; governor; denied system → band 0, ≤ TT2; TT3 flight 15-unit spacing, nil carcass skipped; holds TT1 identical draws to `FillCargoFlight`, TT2 4–7, TT3 6–9 with ≥ 3 expensive; `esc_flight`: TT3 and TT1 as convoy + escort flight (counts, `ROLE_DEFEND`, labels, `TRF_ship_` globals, `efl=1 esc=N`), raid/supply escort counts, `Escort` again on re-route, died lead, flee and load adoption, `TRF_Remove` deletes both, denied system and `esc_flight` 0 one flight |
 | `v02-f` anti-farm | `pro` 6 system, two player kills → `pro` 0 and the next spawn TT1 in the same visit; third kill → no spawns (kill cap); heat 5 → TT2 |
 | `v02-g` queue and seed | 3 hold points, one dock at a time, 4th path A diverts, 180 s queue timeout, 30 s player priority; seed at 15–30 s with the chance table; staged raid suppresses the seed |
 | `v02-h` lane raid | roll conditions (war, gate, Fronn, sweep open, governor); demand → comply (hold mirror −1..3, `ClearInventory` + re-add, `dis` +1, clan +1, shortage for path A) and refuse (attack, flee, distress + marker, rate 240 s); leave at the HP threshold; nav marker deleted |
@@ -542,6 +545,7 @@ New stubs: `ShowMsgBox` (records calls; the scenario presses OK or Cancel), `Cre
 23. The region BFS uses `"Portal"` edges only (design 5.1, 6.9), so Earth, DisonSphere and Precursors are independents.
 24. The board box and shortage price writes are skipped in mission conditions (6.4, 7.2: strict gate, system mode); restore writes always run.
 25. Hail boxes and actions run from a due call, not inside a box callback (6.1).
+26. TT1–TT3 escorts fly as their own flight (cfg `esc_flight` 1, 9.3, v01 4.5 step 5a): `Escort(lead transport)` as the vanilla convoys order escort flights, escorts `ROLE_DEFEND` (user rule: escorts defend the trader; no vanilla code ties engagement to `ROLE_ATTACK`). The escort behaviour under a raid is to be observed in game.
 
 ### 11.2 Open points (confidence that the stated behaviour holds)
 

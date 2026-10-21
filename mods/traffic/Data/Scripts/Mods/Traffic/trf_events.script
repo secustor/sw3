@@ -536,7 +536,13 @@ function TRF_Ev_Kill(id, rec, h)
 		L.kills = (L.kills or 0) + 1;
 		if not own then TRF_Ev_AddHeat(TRF_Ev_K().heat_d, "kill "..id); end;
 	end;
-	if h then h.kl = 1; h.kt = gt; end;
+	if h then
+		h.kl = 1; h.kt = gt;
+		-- Escort flight (esc_flight): its Escort target is dead, so it takes the trader's exit route.
+		if TRF_Ev_Alive(h.ef) and h.ext then
+			call(function(f, o) f:Patrol({o:GetEntryPoint(50), o:GetEntryPoint(1)}, FALSE); end, {h.ef, h.ext}, "x", TRF_PErr);
+		end;
+	end;
 	TRF_Ev_L("kill id="..id.." by="..by.." pa="..TRF_F(rec.pa).." gt="..TRF_F(gt).." kills="..tostring(L.kills)
 		.." sys="..tostring(idx).." escorts="..tostring(rec.np));
 	call(TRF_Ev_KillV2, {id, rec, by, idx}, "x", TRF_PErr);
@@ -595,7 +601,8 @@ function TRF_OnShipDied_Body(id, k, g)
 	end;
 	rec.nt = nt;
 	TRF_Ev_D("died id="..id.." k="..tostring(k).." nt="..nt.." np="..tostring(rec.np));
-	if nt > 0 then return; end;
+	-- Escort flight (esc_flight): Escort moves to the next live transport.
+	if nt > 0 then TRF_N("TRF_GnEscOrder", id); return; end;
 	TRF_Ev_Kill(id, rec, h);
 end;
 
@@ -934,7 +941,8 @@ function TRF_Ev_Recover(kind, sv)
 	TRF_Ev_L("recovery sys="..idx.." rec="..L.rec);
 end;
 
--- Escorts of a killed trader: removed at their exit portal (as the vanilla exit) or out of view.
+-- Escorts of a killed trader: removed at their exit portal (as the vanilla exit) or out of view. With an
+-- escort flight (h.ef, esc_flight) its position counts and both flights are deleted.
 function TRF_Ev_Escorts(H)
 	if type(H.tr) ~= "table" then return; end;
 	local ms = TRF_Ev_Pos(TRF_Ev_MShip());
@@ -943,7 +951,8 @@ function TRF_Ev_Escorts(H)
 	for id, h in H.tr do
 		if type(h) == "table" and h.kl then
 			local r = TRF_Ev_RecAny(id);
-			local p = TRF_Ev_Pos(h.fl);
+			local p = nil;
+			if TRF_Ev_Alive(h.ef) then p = TRF_Ev_Pos(h.ef); else p = TRF_Ev_Pos(h.fl); end;
 			if r or not p then
 				h.kl = nil;
 			else
@@ -952,11 +961,13 @@ function TRF_Ev_Escorts(H)
 				if dx and dx < er then
 					TRF_Ev_Start(h.ext, 5, 0);
 					TRF_Ev_Del(h.fl);
+					TRF_Ev_Del(h.ef);
 					h.kl = nil;
 					TRF_Ev_Stat("remove_esc");
 					TRF_Ev_L("escorts id="..id.." left at exit");
 				elseif dm and dm > ovd then
 					TRF_Ev_Del(h.fl);
+					TRF_Ev_Del(h.ef);
 					h.kl = nil;
 					TRF_Ev_Stat("remove_esc");
 					TRF_Ev_L("escorts id="..id.." removed out of view d="..TRF_F(dm));

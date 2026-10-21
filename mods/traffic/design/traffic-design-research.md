@@ -378,7 +378,7 @@ A lane is one path in one system: (entry portal or station) → registered nav p
 | `rec` | pool id or nil | set when tracked (5.4) |
 | `owner` | `Trade` (FTU) by default; `Vks` or `Kfni` for supply convoys; any of Vks, Kfni, Triada, Uss, Inoco for equipment convoys (7.15) | Ambient traders stay on the Trade team, as in vanilla; equipment convoys too, with faction hulls (7.15) |
 | `name` | index into about 40 authored names (EN and RU), prefix "FTU" | Distinct from story convoy names |
-| `hull`, `escorts` | a `Trad_merc_Ships` row (TT1, TT2) or a tier composition (TT3, TT4; 7.11): one or two transports plus 1 to 5 mercenary fighters in the same flight, or for a TT4 convoy 3–4 transports with a separate escort flight of 4–6. The flight is one trader identity: HP, cargo, docking and flee rules read the leader; the trader counts as killed when its last transport dies | Escort count changed by disruption and heat |
+| `hull`, `escorts` | a `Trad_merc_Ships` row (TT1, TT2) or a tier composition (TT3, TT4; 7.11): one or two transports plus 1 to 5 mercenary fighters in the same flight (since 2026-10-22, cfg `esc_flight` 1: in a separate escort flight ordered `Escort(lead)`), or for a TT4 convoy 3–4 transports with a separate escort flight of 4–6. The flight is one trader identity: HP, cargo, docking and flee rules read the leader; the trader counts as killed when its last transport dies | Escort count changed by disruption and heat |
 | `convoy`, `conv_id` | `none`, `TT4`, `danger`, `equipment`, `supply`; convoy id or nil | Convoy form (7.16). A danger convoy differs from the rule above: each transport is its own flight and trader identity with these fields, the members share `conv_id` and group `TRF_Trade_<n>`, and the pooled escort flight belongs to the convoy |
 | `cargo`, `load` | class (5.6), containers per transport | Load follows the tier's hold row (7.11, S40); equipment items of a TT4 hold are listed with the flight |
 | `origin`, `dest` | `portal:<system>` or `station` | |
@@ -712,7 +712,7 @@ Section 6.4. A fleeing trader whose refuge is the station skips the queue and do
 
 - Trigger: leader HP below 50 % (`_EVENT_ONHEALTH`) while an attacker is present, or a hostile flight within `R_threat` (300) when the transport has no escort left.
 - Action: radio line, then move at maximum speed to the nearest refuge: an open trade or patrol station if it is closer than the nearest portal, else the nearest portal. Refuges near stations are preferred [PN §3.2]. On arrival the trader is removed (state `escaped`, no disruption).
-- Escorts are in the same flight and flee with it. Splitting them, or spawning escorts as a separate flight with `Flight:Escort(transport)`, is v1+ (13.6).
+- Escorts are in the same flight and flee with it. Splitting them, or spawning escorts as a separate flight with `Flight:Escort(transport)`, is v1+ (13.6). Built 2026-10-22 for TT1–TT3 (cfg `esc_flight` 1, v01-spec 4.5 step 5a): the escort flight is ordered `Escort(lead transport)` again when the trader flees.
 
 ### 7.5 Calling for help
 
@@ -841,7 +841,7 @@ Traffic volume scales with the prosperity band, not only richness:
 - Effect of `val` on the cycle: it acts only through `raid_chance`, and so through the clan score event "trader killed or robbed by pirates" (+1, at most +3 per visit, 7.12). It can bring the Boom and Build-up exits (clan score 50 and 75) earlier, but never before their minimum lengths (8 and 4 legs × `cyc_k`, 6.9), and it lengthens no phase, so the 6.9 bounds hold.
 - Signals: traffic density first (about 5 traffic ships at `pro` 0–2, 15–16 at 5–7, 18–20 at 8–9 in the worked example below), then the arrival line (8.1), booming answer and rumour (8.2), trader remarks per band 0–2 / 3–5 / 6–9 in the 70-unit announce line, sector news (8.9).
 - Pay: escort and raid-help pay × `(1 + 0.05 × pro)` (8.4). Trader shop sell −0.1 at `pro ≥ 6` (8.3).
-- Mission safety: TT1 and TT2 stay within 9.8 S1 (same portals, nav points, one flight per spawn). TT3, TT4, the band volumes above the 0–2 row (spawn factor and caps) and parked ships need 9.8 S2, 9.8 S3 and 9.8 S4 at spawn. A denied system uses the 0–2 row, so no volume above vanilla runs during a mission. Faction escorts never in border systems or toward an owner at war with the player [TP §6.1].
+- Mission safety: TT1 and TT2 stay within 9.8 S1 (same portals, nav points, one flight per spawn; the escort flight of cfg `esc_flight` is built only where the strict gate passes). TT3, TT4, the band volumes above the 0–2 row (spawn factor and caps) and parked ships need 9.8 S2, 9.8 S3 and 9.8 S4 at spawn. A denied system uses the 0–2 row, so no volume above vanilla runs during a mission. Faction escorts never in border systems or toward an owner at war with the player [TP §6.1].
 - Anti-farm by consequence (replaces [TP §6.4] rules 1–3, keeps rules 4–8). Rich traders are not made poor: a TT3 F4 flight that the vanilla roll gave `Puma_merc1` and `Gunslinger_merc1` keeps them (about 400,000 cr of fitted gear [TP §1.4]), and a TT4 escort flight may use the rich rows. Farming is limited instead by:
   1. Rarity: TT3 needs `pro ≥ 5` and TT4 `pro ≥ 8`, each with its tier roll.
   2. Kill cost: a player kill costs 3 `pro` in total, heat +1 and disruption +2 (5.5, 8.7).

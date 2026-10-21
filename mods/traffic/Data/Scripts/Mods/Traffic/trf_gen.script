@@ -781,7 +781,7 @@ function TRF_GnSlot()
 	local H = TRF_GnH();
 	if H then
 		for id, h in H.tr do
-			if type(h) == "table" and h.kl and type(h.k) == "number" and TRF_GnAlive(h.fl) then used[h.k] = 1; end;
+			if type(h) == "table" and h.kl and type(h.k) == "number" and (TRF_GnAlive(h.fl) or TRF_GnAlive(h.ef)) then used[h.k] = 1; end;
 		end;
 	end;
 	for k = 1, 4 do
@@ -955,14 +955,16 @@ function TRF_Spawn(p)
 	-- p.bld: name of a v1 builder f(p, id, k) returning the flight and setting p.sh / p.tpn (trf_danger).
 	if type(p.bld) == "string" and type(getglobal(p.bld)) == "function" then
 		fl = TRF_GnP(getglobal(p.bld), {p, id, k});
-	elseif (p.tier or 1) >= 2 and type(TRF_BuildTier) == "function" then
+	elseif type(TRF_BuildTier) == "function" and ((p.tier or 1) >= 2 or TRF_GnX("TRF_TierSplitOn", p)) then
+		-- cfg esc_flight 1: TT1-TT3 build as a convoy flight and an escort flight (trf_tier TRF_BuildSplit).
 		fl = TRF_GnP(TRF_BuildTier, {p, id, k});
 	else
 		fl = TRF_GnP(NewAllFlight, {Trad_merc_Pilots, Trad_merc_Ships, "TRF_GTrade_"..k, sign, p.pos, p.strength, p.dir, "shipFormationConvoy"});
 	end;
 	setglobal("TRF_GTrade_"..k, nil);
 	local sh = p.sh or TRF_GnShips(sign);
-	p.sh = nil;
+	local ef, split = p.ef, p.split;
+	p.sh = nil; p.ef = nil; p.split = nil;
 	-- NewAllFlight returns FALSE (0, truthy) on failure; a nil carcass raises an error (nil result here).
 	if not fl or type(fl) == "number" or fl == FALSE then
 		TRF_GnP(TRF_GnBuildFail, {sign, sh});
@@ -974,9 +976,15 @@ function TRF_Spawn(p)
 	local tp = {};
 	for i = 1, min(p.tpn or p.row.tp, getn(sh)) do tp[i] = sh[i]; end;
 	local added = 0;
-	for j = 1, p.esc do
-		local s = TRF_GnP(TRF_GnEscort, {fl, p, j});
-		if s then tinsert(sh, s); added = added + 1; end;
+	if split then
+		-- The split build made the added escorts in the escort flight.
+		added = p.esa or 0;
+		p.esa = nil;
+	else
+		for j = 1, p.esc do
+			local s = TRF_GnP(TRF_GnEscort, {fl, p, j});
+			if s then tinsert(sh, s); added = added + 1; end;
+		end;
 	end;
 	-- Hold mirror (v02 3.2, 9.3): trf_tier TRF_FillHold; TT1 and the fallback are the v0.1 TRF_FillCargo draws.
 	local hold, cls;
@@ -1005,9 +1013,11 @@ function TRF_Spawn(p)
 	local r = {id=id, nm=TRF_GnName(), cls=cls, from=p.from, to=p.to, path=p.path, st=st,
 		ci=p.ci, k=k, ent=p.entn, ext=p.extn, np=getn(sh), nt=getn(tp), esc=added, born=gt,
 		lx=lp.x, ly=lp.y, lz=lp.z, lt=gt, wd=0, tier=p.tier or 1, hold=hold, hp0=hp0, pw=p.pw or p.strength};
+	-- e1: label index of the first escort-flight ship, so the load pass splits the found ships again.
+	if ef then r.e1 = getn(tp) + 1; end;
 	L.tr[id] = r;
 	if not p.k or L.grp[k] == 0 then L.grp[k] = id; end;
-	H.tr[id] = {fl=fl, sh=sh, tp=tp, ent=p.ent, ext=p.ext, np=p.np, st=p.st, k=k};
+	H.tr[id] = {fl=fl, sh=sh, tp=tp, ent=p.ent, ext=p.ext, np=p.np, st=p.st, k=k, ef=ef};
 	if p.np then H.np = p.np; end;
 	TRF.seq = id;
 	if p.path == "B" then L.port.station = gt; elseif p.entn then L.port[p.entn] = gt; end;
@@ -1016,13 +1026,44 @@ function TRF_Spawn(p)
 	TRF_GnP(TRF_GnArmUI, {id});
 	-- p.noord: the v1 caller gives the orders (danger convoy members).
 	if not p.noord then TRF_GnP(TRF_Orders, {id}); end;
+	TRF_GnP(TRF_GnEscOrder, {id});
 	-- Low-HP flee trigger; trf_raid arms the heat reaction from there too (v02 5.2, 8.1).
 	TRF_GnX("TRF_RaidArmLowHP", id);
 	TRF_GnL("spawn id="..id.." path="..p.path.." from="..tostring(p.from).." to="..tostring(p.to)
 		.." ent="..tostring(p.entn).." ext="..tostring(p.extn).." str="..p.strength.." row="..tostring(p.row.row)
 		.." ships="..r.np.."/"..r.nt.." esc+"..added.." k="..k.." nm="..r.nm.." cls="..r.cls
-		.." tier="..r.tier.." hold="..getn(hold));
+		.." tier="..r.tier.." hold="..getn(hold).." efl="..TRF_GnB(ef).." esc="..(getn(sh) - getn(tp)));
 	return id;
+end;
+
+-- 1 for a value, 0 for nil (log fields).
+function TRF_GnB(v)
+	if v then return 1; end;
+	return 0;
+end;
+
+-- Escort flight of trader id (cfg esc_flight 1, h.ef): Escort on the first live transport, as vanilla
+-- quests order an escort flight onto the convoy lead ship and trf_convoy its TT4 escorts. Given at spawn,
+-- on a re-route (TRF_GnReissue), on flee (trf_raid), on load adoption and by the manager step when the target
+-- died or a staged fight took the order (h.eo). Returns 1 when ordered.
+function TRF_GnEscOrder(id)
+	local H = TRF_GnH();
+	local h = H and H.tr[id];
+	if type(h) ~= "table" or not TRF_GnAlive(h.ef) or type(h.tp) ~= "table" then return nil; end;
+	local t = nil;
+	for i = 1, getn(h.tp) do if not t and TRF_GnAlive(h.tp[i]) then t = h.tp[i]; end; end;
+	if not t then return nil; end;
+	TRF_GnP(function(f, s) f:Escort(s); end, {h.ef, t});
+	h.et = t;
+	h.eo = 1;
+	return 1;
+end;
+
+-- Deletes the flights of handle record h: the convoy flight and the escort flight (esc_flight).
+function TRF_GnDelFl(h)
+	if type(h) ~= "table" then return; end;
+	if TRF_GnAlive(h.fl) then TRF_GnP(function(f) f:Delete(); end, {h.fl}); end;
+	if TRF_GnAlive(h.ef) then TRF_GnP(function(f) f:Delete(); end, {h.ef}); end;
 end;
 
 -- Focus, proximity and meeting triggers (spec 8.3); only when trf_ui defines the callbacks.
@@ -1216,7 +1257,7 @@ function TRF_Remove(id, why, fx)
 	if H then h = H.tr[id]; end;
 	if fx and type(fx) ~= "number" then TRF_GnP(function(o) o:Start(5, 0); end, {fx}); end;
 	if type(h) == "table" then
-		if TRF_GnAlive(h.fl) then TRF_GnP(function(f) f:Delete(); end, {h.fl}); end;
+		TRF_GnDelFl(h);
 		H.tr[id] = nil;
 	end;
 	if type(r) == "table" then r.why = tostring(why); TRF_GnStrip(r); end;
@@ -1326,6 +1367,7 @@ function TRF_GnReissue(id)
 		h.fl:Patrol({h.ext:GetEntryPoint(50), h.ext:GetEntryPoint(1)}, FALSE);
 		if r.xa ~= 1 then TRF_GnExitTrig(id); end;
 	end;
+	TRF_GnEscOrder(id);
 end;
 
 -- One record: ship count, station loss, lifetime, watchdog.
@@ -1349,6 +1391,12 @@ function TRF_GnStepOne(id, st, T, gt)
 		return;
 	end;
 	r.nt = nt;
+	-- Escort flight: the order again on the first live transport when its target died or a staged raid
+	-- fight (trf_raid, h.eo nil) took it; not while that fight is open.
+	if h.ef and (h.eo ~= 1 or not TRF_GnAlive(h.et)) then
+		local rf = type(r.rdn) == "number" and type(L.rd) == "table" and type(L.rd[r.rdn]) == "table" and L.rd[r.rdn].st == "fight";
+		if not rf then TRF_GnEscOrder(id); end;
+	end;
 	local lp = TRF_GnPos(TRF_GnLead(id));
 	local d = TRF_GnDist(lp, TRF_GnPos(TRF_GnMs()));
 	-- Station lost (4.2): inbound path A traders leave by the nearest portal.
@@ -1870,11 +1918,12 @@ end;
 -- is not trf_<id>_<n>: the id names another object now, not counted in g; xd = its probe text;
 -- why = "ok", "none" (no handle) or "alive" (handles, none alive); dbg = probe text}. A handle whose id
 -- was taken by another object without a label check is a known risk (crash-load-432500.md 10).
+-- s.ix: the index i of each returned ship.
 function TRF_GnFindG(id)
 	local sign = "trf_"..id;
 	local pre = sign.."_";
 	local sh = {};
-	local s = {g=0, x=0, xd="", why="none", dbg=""};
+	local s = {g=0, x=0, xd="", why="none", dbg="", ix={}};
 	for i = 1, TRF_GnMaxSh() do
 		local o = TRF_GnHnd(sign, i);
 		if o then
@@ -1888,6 +1937,7 @@ function TRF_GnFindG(id)
 				s.g = s.g + 1;
 				if TRF_Is(a) then
 					tinsert(sh, o);
+					tinsert(s.ix, i);
 				elseif s.why ~= "alive" then
 					s.why = "alive";
 					s.dbg = " i="..i.." isalive="..tostring(a);
@@ -1924,6 +1974,7 @@ function TRF_GnFind(id)
 		if why ~= "label" then s.f = s.f + 1; end;
 		if o then
 			tinsert(sh, o);
+			tinsert(s.ix, i);
 		elseif why == "alive" or (why == "obj" and s.why == "label") then
 			if s.why ~= why then s.dbg = " i="..i..dbg; end;
 			s.why = why;
@@ -1938,21 +1989,37 @@ end;
 -- the leader pilot's own (saved) group. Then wind-down: within ovd of the mothership the leader flies to
 -- the nearest portal with an exit trigger of the new gen ("wind"), else (or without a flight) the ships are
 -- deleted ("gone"). No attack, died, focus or meeting trigger is re-armed. nil on error.
-function TRF_GnLoadOne(id, r, T, sh, via)
+-- A record with an escort flight (r.e1, esc_flight) and the label indices ix of sh: ships below e1 are the
+-- transports (convoy flight from the first of them), the others the escorts (escort flight from the first
+-- escort's pilot flight), and Escort is given again (TRF_GnEscOrder).
+function TRF_GnLoadOne(id, r, T, sh, via, ix)
 	local H = TRF_GnH();
 	local sign = "trf_"..id;
-	local fl, g = nil, nil;
+	local fl, g, ef = nil, nil, nil;
+	local split = type(r.e1) == "number" and type(ix) == "table" and getn(ix) == getn(sh);
+	local tp = {};
 	for i = 1, getn(sh) do
-		if not fl then
+		local esc = split and ix[i] >= r.e1;
+		if not esc and split then tinsert(tp, sh[i]); end;
+		if esc and not ef then
+			local f = TRF_GnP(TRF_GnFlOf, {sh[i]});
+			if TRF_GnAlive(f) then ef = f; end;
+		elseif not esc and not fl then
 			local f = TRF_GnP(TRF_GnFlOf, {sh[i]});
 			if TRF_GnAlive(f) then fl = f; g = TRF_GnP(TRF_GnGrpOf, {sh[i]}); end;
 		end;
 	end;
-	local tp = {};
-	local n = r.nt;
-	if type(n) ~= "number" or n < 1 then n = 1; end;
-	for i = 1, min(n, getn(sh)) do tp[i] = sh[i]; end;
-	H.tr[id] = {fl=fl, sh=sh, tp=tp, k=r.k, g=g};
+	if not split then
+		local n = r.nt;
+		if type(n) ~= "number" or n < 1 then n = 1; end;
+		for i = 1, min(n, getn(sh)) do tp[i] = sh[i]; end;
+	elseif not fl then
+		-- No transport left: the escorts are the trader's ships, one flight as without esc_flight.
+		fl = ef; ef = nil;
+		for i = 1, getn(sh) do if not g then g = TRF_GnP(TRF_GnGrpOf, {sh[i]}); end; end;
+		tp = {sh[1]};
+	end;
+	H.tr[id] = {fl=fl, sh=sh, tp=tp, k=r.k, g=g, ef=ef};
 	r.np = getn(sh);
 	r.nt = getn(tp);
 	local lp = sh[1]:GetPosition();
@@ -1962,13 +2029,16 @@ function TRF_GnLoadOne(id, r, T, sh, via)
 	r.st = "wind";
 	via = tostring(via or "label");
 	local tx = "load id="..id.." adopted ships="..getn(sh).." via="..via;
+	if ef then tx = tx.." efl=1"; end;
 	if fl and d and d <= T.ovd and TRF_GnToPortal(id, "wind") then
+		TRF_GnEscOrder(id);
 		-- Found by label (a save without handle globals): the next save carries them.
 		if via ~= "global" then TRF_GnClearSign(sign); TRF_GnKeepSign(sign, sh); end;
 		TRF_GnL(tx.." -> wind d="..TRF_F(d));
 		return "wind";
 	end;
 	if TRF_GnAlive(fl) then fl:Delete(); end;
+	if TRF_GnAlive(ef) then ef:Delete(); end;
 	for i = 1, getn(sh) do if TRF_GnAlive(sh[i]) then sh[i]:Delete(); end; end;
 	H.tr[id] = nil;
 	r.st = "gone";
@@ -2023,7 +2093,7 @@ function TRF_Gen_OnLoad()
 			local sh, s = TRF_GnFind(id);
 			if getn(sh) > 0 then
 				ad = ad + 1;
-				local res = TRF_GnP(TRF_GnLoadOne, {id, r, T, sh, s.via});
+				local res = TRF_GnP(TRF_GnLoadOne, {id, r, T, sh, s.via, s.ix});
 				if not res then r.st = "gone"; TRF_GnClearSign("trf_"..id); end;
 				note("load", res);
 			elseif s.f + s.g > 0 then
@@ -2126,7 +2196,7 @@ function TRF_GnLoadRetry()
 			if getn(sh) > 0 then
 				w.rec[id] = nil; ad = ad + 1;
 				L.tr[id] = r;
-				local res = TRF_GnP(TRF_GnLoadOne, {id, r, T, sh, s.via});
+				local res = TRF_GnP(TRF_GnLoadOne, {id, r, T, sh, s.via, s.ix});
 				if res == "wind" then
 					TRF_GnStat("wind_load");
 					TRF_GnLoadSlot(L, id, r);
@@ -2185,7 +2255,7 @@ function TRF_Gen_BeforeJump(dest)
 	end;
 	local del = function(f) if TRF_GnAlive(f) then f:Delete(); end; end;
 	for id, h in H.tr do
-		if type(h) == "table" then TRF_GnP(del, {h.fl}); end;
+		if type(h) == "table" then TRF_GnP(del, {h.fl}); TRF_GnP(del, {h.ef}); end;
 	end;
 	H.tr = {};
 	local nr = 0;

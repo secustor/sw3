@@ -1814,6 +1814,8 @@ function TRF_Rd_FleeBody(id, why)
 	end;
 	r.fl = tostring(why);
 	r.st = "flee";
+	-- Escort flight (trf_gen, esc_flight): Escort again on the fleeing lead transport.
+	if type(TRF_GnEscOrder) == "function" then TRF_Rd_P(TRF_GnEscOrder, {id}); end;
 	TRF_Rd_Say(TRF_Rd_Txt("flee", TRF_Rd_Name(r), dest), 6, TRF_Rd_LeadPilot(id));
 	TRF_Rd_Stat("flee_"..tostring(why));
 	TRF_Rd_L("flee id="..id.." why="..tostring(why).." to="..kind.." "..tostring(pn).." ds="..TRF_F(ds).." dp="..TRF_F(dp));
@@ -2155,6 +2157,8 @@ function TRF_Rd_StSpawnBody()
 	local rl = TRF_Rd_RaidLead(hr);
 	-- CHECK: transports keep formation while their flight attacks (escorts engage).
 	if rl then TRF_Rd_P(function(f, s) f:Attack(s); end, {h.fl, rl}); end;
+	-- Escort flight (esc_flight) attacks too; the trf_gen step gives Escort again once the fight ends (h.eo).
+	if rl and TRF_Rd_Alive(h.ef) then TRF_Rd_P(function(f, s) f:Attack(s); end, {h.ef, rl}); h.eo = nil; end;
 	if not TRF_Rd_Due(10 + TRF_Rd_Rand(11), "TRF_StagedDistress", n) then TRF_StagedDistress(n); end;
 	TRF_Rd_Stat("staged");
 	TRF_Rd_L("staged spawn n="..n.." id="..id.." path="..tostring(p.path).." tier="..rd.tier.." ships="..tostring(rd.ns)
