@@ -2066,7 +2066,7 @@ function T_V1_N()
 	HOST_Check(V_DataGlobals() == "", "after a load: no TRF_ data globals, no build globals"..V_DataGlobals());
 	local tg = "";
 	for k, v in globals() do
-		if type(k) == "string" and (strfind(k, "^TRF_G") and type(v) ~= "function" or strfind(k, "^flight_trf_")) then tg = tg.." "..k; end;
+		if type(k) == "string" and not T_HandleOk(k) and (strfind(k, "^TRF_G") and type(v) ~= "function" or strfind(k, "^flight_trf_")) then tg = tg.." "..k; end;
 	end;
 	HOST_Check(tg == "", "no TRF_G* or flight_trf_* globals"..tg);
 	TRF_DumpState("test");

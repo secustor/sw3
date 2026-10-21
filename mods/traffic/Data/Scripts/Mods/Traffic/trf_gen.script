@@ -838,12 +838,25 @@ function TRF_GnShips(sign)
 	return r;
 end;
 
--- No handle globals stay for the save (flight_/ship_/pilot_ of NewAllFlight).
+-- Handle globals of trader sign (v01 3.3): NewAllFlight's flight_/ship_/pilot_ and the mod's
+-- TRF_ship_<sign>_<i> (ships without a vanilla global) stay for the save while the record is open, as
+-- vanilla keeps its flights; the load pass finds the ships through them (crash-load-432500.md 10).
+-- TRF_GnClearSign deletes them when the record closes and before a build under the sign.
+function TRF_GnMaxSh() return 16; end;
+
 function TRF_GnClearSign(sign)
 	setglobal("flight_"..sign, nil);
-	for i = 1, 8 do
+	for i = 1, TRF_GnMaxSh() do
 		setglobal("ship_"..sign.."_"..i, nil);
 		setglobal("pilot_"..sign.."_"..i, nil);
+		setglobal("TRF_ship_"..sign.."_"..i, nil);
+	end;
+end;
+
+-- Ship i of sh is kept in TRF_ship_<sign>_<i> unless NewAllFlight's ship_<sign>_<i> already holds it.
+function TRF_GnKeepSign(sign, sh)
+	for i = 1, min(getn(sh), TRF_GnMaxSh()) do
+		if getglobal("ship_"..sign.."_"..i) ~= sh[i] then setglobal("TRF_ship_"..sign.."_"..i, sh[i]); end;
 	end;
 end;
 
@@ -933,7 +946,9 @@ function TRF_Spawn(p)
 	if not grp then TRF_GnStat("skip_grp"); return nil; end;
 	if p.ent then p.ent:Start(8, 0); end;
 	local sign = "trf_"..id;
-	-- NewAllFlight looks the group up by global name; the global is cleared right after (no handle in the save).
+	-- Handle globals an earlier record of this id left under the sign go first.
+	TRF_GnClearSign(sign);
+	-- NewAllFlight looks the group up by global name; the group global is cleared right after.
 	-- TT2/TT3 (v02 9.3) build through trf_tier, which returns the ships in p.sh.
 	setglobal("TRF_GTrade_"..k, grp);
 	local fl;
@@ -956,7 +971,6 @@ function TRF_Spawn(p)
 		TRF_GnL("build failed id="..id.." strength="..p.strength);
 		return nil;
 	end;
-	TRF_GnClearSign(sign);
 	local tp = {};
 	for i = 1, min(p.tpn or p.row.tp, getn(sh)) do tp[i] = sh[i]; end;
 	local added = 0;
@@ -981,8 +995,10 @@ function TRF_Spawn(p)
 	-- Leader HP at spawn (v02 5.2, 9.1). CHECK: GetCurHP on an NPC carcass returns a number (O4).
 	local hp0 = TRF_GnX("GetCurHP", sh[1]);
 	if type(hp0) ~= "number" then hp0 = nil; end;
-	-- CHECK: labels on carcasses survive save/load (load pass and orphan scan depend on it).
+	-- Labels survive the save, but GetObjectByLabel does not return the ships after a load
+	-- (crash-load-432500.md 10): the load pass finds them through the handle globals kept here.
 	for i = 1, getn(sh) do TRF_GnP(SetObjectLabel, {sh[i], sign.."_"..i}); end;
+	TRF_GnKeepSign(sign, sh);
 	local lp = TRF_GnPos(sh[1]) or p.pos;
 	local st = "out";
 	if p.path == "A" then st = "in"; end;
@@ -1204,6 +1220,7 @@ function TRF_Remove(id, why, fx)
 		H.tr[id] = nil;
 	end;
 	if type(r) == "table" then r.why = tostring(why); TRF_GnStrip(r); end;
+	TRF_GnClearSign("trf_"..tostring(id));
 	TRF_GnP(TRF_GnQFree, {id});
 	-- v1: a tracked identity ends with a docking or an unreported death (trf_track); the convoy slot of
 	-- this trader id is released (trf_convoy).
@@ -1810,6 +1827,11 @@ end;
 
 -- Raw natives on a restored object, called through TRF_GnP (an error stays in the mod log).
 function TRF_GnRawAlive(o) return o:IsAlive(); end;
+-- GetObjectLabel 0x5dd9c0 (registered, never called by vanilla; static reading [I]): it checks the class
+-- tag of argument 2 and reads the id of the argument below the top, so it is called (o, o). One argument
+-- logs "isn't 'carcass' classname" and returns the argument. Then the id lookup of IsAlive and the label
+-- string at +0xa0, or nil.
+function TRF_GnRawLabel(o) return GetObjectLabel(o, o); end;
 function TRF_GnRawPos(o) return o:GetPosition(); end;
 function TRF_GnFlOf(s) return s:GetPilot():GetFlight(); end;
 function TRF_GnGrpOf(s)
@@ -1834,12 +1856,69 @@ function TRF_GnProbe(lbl)
 	return nil, "alive", " isalive="..tostring(a).." pos="..ps;
 end;
 
--- Ships labelled trf_<id>_<i> (i <= 8) that answer alive, in label order, and the lookup summary
--- {f = labels found (non-nil), why = "ok", "label" (none found), "obj" or "alive" (found, none alive),
--- dbg = probe text of the first label of that reason}.
-function TRF_GnFind(id)
+-- Handle of ship i of trader sign kept for the save: TRF_ship_<sign>_<i>, else ship_<sign>_<i>; nil when
+-- neither holds an object value.
+function TRF_GnHnd(sign, i)
+	local o = getglobal("TRF_ship_"..sign.."_"..i);
+	if o == nil then o = getglobal("ship_"..sign.."_"..i); end;
+	if type(o) == "table" or type(o) == "userdata" then return o; end;
+	return nil;
+end;
+
+-- Ships of trader id through its handle globals (TRF_GnHnd, i <= TRF_GnMaxSh()) that answer IsAlive, in
+-- index order, and {g = handles kept, x = handles whose label (GetObjectLabel, when it answers a string)
+-- is not trf_<id>_<n>: the id names another object now, not counted in g; xd = its probe text;
+-- why = "ok", "none" (no handle) or "alive" (handles, none alive); dbg = probe text}. A handle whose id
+-- was taken by another object without a label check is a known risk (crash-load-432500.md 10).
+function TRF_GnFindG(id)
+	local sign = "trf_"..id;
+	local pre = sign.."_";
 	local sh = {};
-	local s = {f=0, why="label", dbg=""};
+	local s = {g=0, x=0, xd="", why="none", dbg=""};
+	for i = 1, TRF_GnMaxSh() do
+		local o = TRF_GnHnd(sign, i);
+		if o then
+			local a = TRF_GnP(TRF_GnRawAlive, {o});
+			local lb = nil;
+			if TRF_Is(a) and type(GetObjectLabel) == "function" then lb = TRF_GnP(TRF_GnRawLabel, {o}); end;
+			if type(lb) == "string" and strsub(lb, 1, strlen(pre)) ~= pre then
+				s.x = s.x + 1;
+				if s.xd == "" then s.xd = " xi="..i.." xlabel="..lb; end;
+			else
+				s.g = s.g + 1;
+				if TRF_Is(a) then
+					tinsert(sh, o);
+				elseif s.why ~= "alive" then
+					s.why = "alive";
+					s.dbg = " i="..i.." isalive="..tostring(a);
+				end;
+			end;
+		end;
+	end;
+	if getn(sh) > 0 then s.why = "ok"; end;
+	return sh, s;
+end;
+
+-- Lookup fields of a TRF_GnFind summary for the log: " lbl=<f> glb=<g> via=<via>[ glx=<x>...]<dbg>".
+function TRF_GnFindTx(s)
+	local t = " lbl="..tostring(s.f).." glb="..tostring(s.g).." via="..tostring(s.via);
+	if type(s.x) == "number" and s.x > 0 then t = t.." glx="..s.x..s.xd; end;
+	return t..s.dbg;
+end;
+
+-- Ships of trader id for the load pass (spec 5.5): the handle globals first (TRF_GnFindG). Only when no
+-- handle is kept for id (a save without them), the labels trf_<id>_<i> (i <= 8) as before; after a load
+-- GetObjectByLabel returns the label string for mod ships (crash-load-432500.md 10), so that path finds
+-- them only where the engine pushes the object. Returns the live ships in index order and the summary
+-- {f = labels found (non-nil), g, x, xd of TRF_GnFindG, via = "global" | "label", why = "ok", "label"
+-- (nothing found), "obj" or "alive" (found, none alive), dbg = probe text of the first index of that reason}.
+function TRF_GnFind(id)
+	local sh, s = TRF_GnFindG(id);
+	s.f = 0;
+	s.via = "global";
+	if s.g > 0 then return sh, s; end;
+	s.via = "label";
+	s.why = "label";
 	for i = 1, 8 do
 		local o, why, dbg = TRF_GnProbe("trf_"..id.."_"..i);
 		if why ~= "label" then s.f = s.f + 1; end;
@@ -1859,8 +1938,9 @@ end;
 -- the leader pilot's own (saved) group. Then wind-down: within ovd of the mothership the leader flies to
 -- the nearest portal with an exit trigger of the new gen ("wind"), else (or without a flight) the ships are
 -- deleted ("gone"). No attack, died, focus or meeting trigger is re-armed. nil on error.
-function TRF_GnLoadOne(id, r, T, sh)
+function TRF_GnLoadOne(id, r, T, sh, via)
 	local H = TRF_GnH();
+	local sign = "trf_"..id;
 	local fl, g = nil, nil;
 	for i = 1, getn(sh) do
 		if not fl then
@@ -1880,8 +1960,11 @@ function TRF_GnLoadOne(id, r, T, sh)
 	if type(r.born) ~= "number" then r.born = TRF_GnGt(); end;
 	local d = TRF_GnDist(lp, TRF_GnPos(TRF_GnMs()));
 	r.st = "wind";
-	local tx = "load id="..id.." adopted ships="..getn(sh);
+	via = tostring(via or "label");
+	local tx = "load id="..id.." adopted ships="..getn(sh).." via="..via;
 	if fl and d and d <= T.ovd and TRF_GnToPortal(id, "wind") then
+		-- Found by label (a save without handle globals): the next save carries them.
+		if via ~= "global" then TRF_GnClearSign(sign); TRF_GnKeepSign(sign, sh); end;
 		TRF_GnL(tx.." -> wind d="..TRF_F(d));
 		return "wind";
 	end;
@@ -1889,6 +1972,7 @@ function TRF_GnLoadOne(id, r, T, sh)
 	for i = 1, getn(sh) do if TRF_GnAlive(sh[i]) then sh[i]:Delete(); end; end;
 	H.tr[id] = nil;
 	r.st = "gone";
+	TRF_GnClearSign(sign);
 	local why = "far";
 	if not fl then why = "flight"; end;
 	TRF_GnL(tx.." -> delete why="..why.." d="..TRF_F(d));
@@ -1902,8 +1986,9 @@ function TRF_GnLoadSlot(L, id, r)
 end;
 
 -- Load (spec 5.5), after migration and gen + 1: traders of the saved visit table and orphans found by
--- label wind down; live is then reset keeping only those records (st "wind") and rn. A record whose
--- labels are found but whose ships do not answer alive yet waits in live.lw for TRF_GnLoadRetry.
+-- handle global or label (TRF_GnFind) wind down; live is then reset keeping only those records (st "wind")
+-- and rn. A record whose handles or labels are found but whose ships do not answer alive yet waits in
+-- live.lw for TRF_GnLoadRetry. A record closed here loses its handle globals (TRF_GnClearSign).
 function TRF_Gen_OnLoad()
 	if type(TRF) ~= "table" then return; end;
 	local H = TRF_GnH();
@@ -1938,17 +2023,18 @@ function TRF_Gen_OnLoad()
 			local sh, s = TRF_GnFind(id);
 			if getn(sh) > 0 then
 				ad = ad + 1;
-				local res = TRF_GnP(TRF_GnLoadOne, {id, r, T, sh});
-				if not res then r.st = "gone"; end;
+				local res = TRF_GnP(TRF_GnLoadOne, {id, r, T, sh, s.via});
+				if not res then r.st = "gone"; TRF_GnClearSign("trf_"..id); end;
 				note("load", res);
-			elseif s.f > 0 then
+			elseif s.f + s.g > 0 then
 				-- st stays (not "wind"), so the reset below drops it from tr; the retry puts it back.
 				pend[id] = r; pwhy[id] = s.why; np = np + 1;
-				TRF_GnL("load id="..id.." wait why="..s.why.." lbl="..s.f..s.dbg);
+				TRF_GnL("load id="..id.." wait why="..s.why..TRF_GnFindTx(s));
 				note("load", "wait");
 			else
 				r.st = "gone";
-				TRF_GnL("load id="..id.." gone why=label");
+				TRF_GnClearSign("trf_"..id);
+				TRF_GnL("load id="..id.." gone why=label"..TRF_GnFindTx(s));
 				note("load", "none");
 			end;
 		end;
@@ -1962,20 +2048,29 @@ function TRF_Gen_OnLoad()
 		if id < 1 then id = id + 9999; end;
 		local r = old.tr[id];
 		if not done[id] and (type(r) ~= "table" or r.st == "gone") then
-			local o, why, dbg = TRF_GnProbe("trf_"..id.."_1");
+			-- Handle globals first (TRF_GnFindG), the first label only without them.
+			local gsh, gs = TRF_GnFindG(id);
+			local o, why, dbg, via = nil, gs.why, gs.dbg, "global";
+			if gs.g == 0 then
+				via = "label";
+				o, why, dbg = TRF_GnProbe("trf_"..id.."_1");
+			end;
 			if why ~= "label" then
 				r = {id=id, st="lw", path="C", nm=0, cls=6, from=-1, to=-1, k=0, np=0, nt=1, esc=0, born=TRF_GnGt(), wd=0};
 				old.tr[id] = r;
-				local sh = {};
-				if o then sh = TRF_GnFind(id); end;
+				local sh = gsh;
+				if via == "label" then
+					sh = {};
+					if o then sh = TRF_GnFind(id); end;
+				end;
 				if getn(sh) > 0 then
 					ad = ad + 1;
-					local res = TRF_GnP(TRF_GnLoadOne, {id, r, T, sh});
-					if not res then r.st = "gone"; end;
+					local res = TRF_GnP(TRF_GnLoadOne, {id, r, T, sh, via});
+					if not res then r.st = "gone"; TRF_GnClearSign("trf_"..id); end;
 					note("orphan", res);
 				else
 					pend[id] = r; pwhy[id] = why; np = np + 1;
-					TRF_GnL("load orphan id="..id.." wait why="..why..dbg);
+					TRF_GnL("load orphan id="..id.." wait why="..why..dbg.." via="..via);
 					note("orphan", "wait");
 				end;
 			end;
@@ -2004,9 +2099,10 @@ function TRF_Gen_OnLoad()
 end;
 
 -- Load retry (due call: the first tick after the load, then every 1 s of game time): records of the load
--- pass whose labels were found but whose ships did not answer alive. Ships alive now: the record goes back
--- to live.tr and is adopted (TRF_GnLoadOne). Labels gone, or still not alive after tune load_wait (10 s):
--- dropped with its reason. The id taken by a new record meanwhile: dropped.
+-- pass whose handles or labels were found but whose ships did not answer alive. Ships alive now: the record
+-- goes back to live.tr and is adopted (TRF_GnLoadOne). Handles and labels gone, or still not alive after
+-- tune load_wait (10 s): dropped with its reason and its handle globals. The id taken by a new record
+-- meanwhile: dropped (the globals are the new record's).
 function TRF_GnLoadRetry()
 	local L = TRF_GnLive();
 	if not L or type(L.lw) ~= "table" or type(L.lw.rec) ~= "table" then return; end;
@@ -2030,7 +2126,7 @@ function TRF_GnLoadRetry()
 			if getn(sh) > 0 then
 				w.rec[id] = nil; ad = ad + 1;
 				L.tr[id] = r;
-				local res = TRF_GnP(TRF_GnLoadOne, {id, r, T, sh});
+				local res = TRF_GnP(TRF_GnLoadOne, {id, r, T, sh, s.via});
 				if res == "wind" then
 					TRF_GnStat("wind_load");
 					TRF_GnLoadSlot(L, id, r);
@@ -2038,10 +2134,12 @@ function TRF_GnLoadRetry()
 					TRF_GnStat("remove_load");
 					L.tr[id] = nil;
 					TRF_GnH().tr[id] = nil;
+					TRF_GnClearSign("trf_"..id);
 				end;
-			elseif s.f == 0 or late then
+			elseif s.f + s.g == 0 or late then
 				w.rec[id] = nil; dr = dr + 1;
-				TRF_GnL("load id="..id.." gone why="..s.why.." tries="..w.n..s.dbg);
+				TRF_GnClearSign("trf_"..id);
+				TRF_GnL("load id="..id.." gone why="..s.why.." tries="..w.n..TRF_GnFindTx(s));
 			else
 				left = left + 1;
 			end;

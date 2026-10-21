@@ -466,6 +466,8 @@ end;
 -- v0.2 (3.2): the gone record keeps only id, nm, cls, st, why and gg (gt of removal).
 function TRF_Ev_Close(id, rec, why)
 	rec.st = "gone";
+	-- Handle globals kept for the save go with the record (trf_gen, v01 3.3).
+	if type(TRF_GnClearSign) == "function" then call(TRF_GnClearSign, {"trf_"..tostring(id)}, "x", TRF_PErr); end;
 	local L = TRF_Ev_Live();
 	if L and rec.k then
 		if type(L.grp) ~= "table" then L.grp = {}; end;

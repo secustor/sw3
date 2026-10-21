@@ -85,7 +85,7 @@ So groups are saved game objects, and their members, team and groups are linked 
 
 ### 4.2 Lua state [V]
 
-`savetool info`: Script section of 474,072 bytes, 576 globals, 78 triggers. The mod's handle table `H` is not saved (spec 3.x), so after a load the mod sees its ships only through `GetObjectByLabel("trf_<id>_<i>")` (`TRF_GnFind`).
+`savetool info`: Script section of 474,072 bytes, 576 globals, 78 triggers. The mod's handle table `H` is not saved (spec 3.x), so after a load the mod sees its ships only through `GetObjectByLabel("trf_<id>_<i>")` (`TRF_GnFind`). Superseded by section 10: the label lookup cannot return mod ships, and the load pass now uses saved handle globals.
 
 ### 4.3 `load_none=3` [V/U]
 
@@ -164,3 +164,26 @@ Case (c), timing: `gen: load id=5 wait why=alive lbl=3 i=1 isalive=nil pos=...` 
 - **Signatures** (10): section 7's seven plus 0x40564f `8b 11 8b 42 10 83 c6 78 56 ff d0` (Present with `&[esi+0x78]`), 0x40578d `89 be 90 00 00 00`, 0x405b05 `89 85 90 00 00 00`.
 - **Log**: `stability: attach ok render_lost_guard patch=0x4054d0 stub=0x... batch=[eax+0x90] sigs=10`; `stability: render skipped (batch freed) n=<all skips>`; `stability: render resumed skipped=<k> episodes=<e>`.
 - **Expected after a focus loss**: one `render skipped (batch freed)` per in-frame deactivation, followed by `render resumed` at the next frame. A restore that fails to recreate the batch keeps the render skipped, where vanilla would crash.
+
+## 10. Labels cannot find mod ships after a load; handle globals (2026-10-21, evening)
+
+### 10.1 Finding [V]
+
+Clone run `traffic-runs/0-20261021-232644` (load of Quicksave-36 at 23:17:34, build with section 8.3). `sw3tp.log`: `gen: load id=5 wait why=obj lbl=3 i=1 ret=string`, the same for id 6 (`lbl=3`) and id 7 (`lbl=7`), `gen: load pass load_wait=3 adopted=0 wait=3 seq=7`, `tier: parked 1 wait on load ret=string`, then 11 retries over 11 s and `gen: load id=5|6|7 gone why=obj tries=11 i=1 ret=string`, `tier: parked 1 gone on load why=alive tries=11`. `LOGfile.txt` has `ObjectByLabel '...' is not found` for `trf_5_4..8`, `trf_6_4..8`, `trf_7_8` and `trf_pk_2`, and none for `trf_5_1..3`, `trf_6_1..3`, `trf_7_1..7` or `trf_pk_1`.
+
+So every label of a live mod ship matched, and every one of those lookups returned the label string: case (a) of 8.2. The engine finds the object, but its type is outside {8, 9, 10, 13}, and the native pushes nothing. This holds for fighters and transports alike (id 7 has 7 ships of mixed hulls, the parked ship is a `Btransport`), and it did not change over 11 s, so timing (case c) is ruled out. `GetObjectByLabel` cannot return mod ships after a load.
+
+### 10.2 Route: handle globals [V for vanilla, I for the mod]
+
+Vanilla flights survive a load without labels. `NewAllFlight` leaves `flight_<sign>`, `ship_<sign>_<i>` and `pilot_<sign>_<i>`, and the save keeps them as `{id=}` tables with their class tag (mod-options 1.10). `.work/saves/clone-2026-10-21e/Quicksave-36.sav` holds, for example, `ship_vks12_1..4`. Object ids persist across the load: `IsAlive` resolves `self.id` (8.2), and that is how vanilla scripts use these globals after a load. The mod had deleted its own copies right after the spawn (v01 rule "no handles in the save").
+
+### 10.3 Change (trf_gen, trf_events, trf_tier)
+
+- Spawn: `NewAllFlight`'s globals of `trf_<id>` stay. `TRF_GnKeepSign` writes `TRF_ship_trf_<id>_<i>` for every ship that has no vanilla global (added escorts, TT2 tier escorts, `TRF_BuildFlight` rows), using the label's index. The parked ship goes into `TRF_pk_<j>`. `TRF` itself still holds no handle (v01 3.3).
+- Clear: `TRF_GnClearSign` (i ≤ 16, the four kinds) runs on `TRF_Remove`, on `TRF_Ev_Close` (kill), when the load pass deletes or drops a record (not when the id was reused), and before a build under the sign. `TRF_pk_<j>` goes when its entry goes. ClearGlobals on entry deletes the rest.
+- Load pass: `TRF_GnFind` reads the handle globals first (`TRF_GnFindG`), keeping the handles that answer `IsAlive`. As a cheap check against an id now used by another object, `GetObjectLabel(o, o)` (0x5dd9c0, never called by vanilla; it checks the tag of argument 2 and reads the id of argument 1) must answer a label starting with `trf_<id>_`, or a non-string. The label probe runs only when no handle global exists (saves made before this change). The wait and retry are unchanged. The log lines carry `lbl=<labels found> glb=<handles kept> via=global|label` (`gen: load id=N adopted ships=K via=global -> wind ...`). The orphan scan and the parked ship (`TRF_TrPkFind`) follow the same order. A record adopted by label gets its handle globals for the next save.
+- Host: `T_LoadHandles` in traffic-f (globals present: adopted `via=global` with no label probe; record without globals: `via=label`; globals of ships that never answer `IsAlive`: wait, then dropped after `load_wait` with their globals). In v02-e, the parked ship is kept through `TRF_pk_1`. `HOST_SaveCopy` keeps handle globals at the top level.
+
+### 10.4 Expected at the next load
+
+Quicksave-36 has no mod handle globals, so it keeps the label path and its result (`via=label`, `gone why=obj`). Make a new save with this build and live mod traders, then load it: `gen: load id=N adopted ships=K via=global -> wind d=..` (or `-> delete why=far`), `gen: load pass ... adopted=N wait=0`, `tier: parked 1 kept on load d=.. via=global`. A `glx=` field means a handle's label named another object (id collision). `wait why=alive ... via=global` that ends in `gone why=alive` means the saved ids do not resolve after the load, which disproves 10.2 for mod ships. With `GetObjectLabel` the one-argument error line `isn't 'carcass' classname` in `LOGfile.txt` would mean the tag check differs from the static reading. The check then has no effect.

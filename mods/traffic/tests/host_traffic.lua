@@ -88,7 +88,7 @@ end;
 -- Save, quit, load: clear, MapInitialization, clear, restore (mut may change the restored globals),
 -- location.script again (scene objects; ships and triggers stay, as the engine restores them), T2d.
 function T_SaveLoad(mut)
-	local save = HOST_SaveCopy(globals());
+	local save = HOST_SaveCopy(globals(), 1);
 	print("HOST ---- save/load");
 	HOST_ClearGlobals();
 	HOST_MapInit();
@@ -165,12 +165,49 @@ function T_Msgs(text)
 	return n;
 end;
 
--- Globals the spawn and the response must not leave behind (no handle in the save).
+-- Handle globals kept for the save (v01 3.3): NewAllFlight's flight_/ship_/pilot_ and TRF_ship_ of an open
+-- trader record (or one waiting in the load retry), TRF_pk_<j> of a parked entry. 1 or nil.
+function T_HandleOk(k)
+	if type(TRF) ~= "table" or type(TRF.live) ~= "table" then return nil; end;
+	local L = TRF.live;
+	local a, b, id = strfind(k, "^flight_trf_(%d+)$");
+	if not id then a, b, id = strfind(k, "^ship_trf_(%d+)_%d+$"); end;
+	if not id then a, b, id = strfind(k, "^pilot_trf_(%d+)_%d+$"); end;
+	if not id then a, b, id = strfind(k, "^TRF_ship_trf_(%d+)_%d+$"); end;
+	if id then
+		id = tonumber(id);
+		local r = nil;
+		if type(L.tr) == "table" then r = L.tr[id]; end;
+		if type(r) == "table" and r.st ~= "gone" then return 1; end;
+		if type(L.lw) == "table" and type(L.lw.rec) == "table" and L.lw.rec[id] then return 1; end;
+		return nil;
+	end;
+	local c, d, j = strfind(k, "^TRF_pk_(%d+)$");
+	if j and type(L.pk) == "table" then
+		j = tonumber(j);
+		for i = 1, getn(L.pk) do if L.pk[i] == j then return 1; end; end;
+	end;
+	return nil;
+end;
+
+-- Globals the spawn and the response must not leave behind: group globals, and handle globals of a closed
+-- record or parked entry (T_HandleOk).
 function T_LeftGlobals()
 	local s = "";
 	for k, v in globals() do
-		if type(k) == "string" and (strfind(k, "^flight_trf") or strfind(k, "^ship_trf") or strfind(k, "^pilot_trf")
-			or strfind(k, "^TRF_GTrade_") or strfind(k, "^TRF_GResp_")) then s = s.." "..k; end;
+		if type(k) == "string" and not T_HandleOk(k) and (strfind(k, "^flight_trf") or strfind(k, "^ship_trf") or strfind(k, "^pilot_trf")
+			or strfind(k, "^TRF_ship_trf") or strfind(k, "^TRF_pk_") or strfind(k, "^TRF_GTrade_") or strfind(k, "^TRF_GResp_")) then s = s.." "..k; end;
+	end;
+	return s;
+end;
+
+-- Handle globals of trader id (flight_/ship_/pilot_/TRF_ship_ of sign trf_<id>), as " name" entries.
+function T_SignGlobals(id)
+	local s = "";
+	local sign = "trf_"..id;
+	for k, v in globals() do
+		if type(k) == "string" and (k == "flight_"..sign or strfind(k, "^ship_"..sign.."_%d") or strfind(k, "^pilot_"..sign.."_%d")
+			or strfind(k, "^TRF_ship_"..sign.."_%d")) then s = s.." "..k; end;
 	end;
 	return s;
 end;
@@ -614,6 +651,7 @@ function T_F()
 	T_Tick(20, 0.5);
 	HOST_Check(TRF.clock.gt == 10, "ticks run after the reset");
 	T_LoadAdopt();
+	T_LoadHandles();
 end;
 
 -- g: safety predicates reject what they should (spec 2.3, 5.1, 5.2, 6) ---------------------
@@ -1271,6 +1309,73 @@ function T_LoadAdopt()
 	HOST_Check(T_LogN("dump adopt ") == 1 and T_LogN(" tr=3 ") >= 1, "dump after the retry: tr=3");
 	GetObjectByLabel = h.gobl;
 	h.gobl = nil; h.zl = nil; h.logs = nil;
+end;
+
+-- f, load pass through the handle globals (v01 3.3; design/mod-research/crash-load-432500.md 10). After a
+-- load the game's GetObjectByLabel returns the label string for mod ships (emulated here for trf_<a|b>_*).
+-- Trader a: its ship_ globals come back with the save and it is adopted through them (via=global, no label
+-- probe). Record w: no globals (a save made before them), adopted by label (via=label), and its handles are
+-- kept for the next save. Trader b: globals whose ships never answer IsAlive wait, then are dropped after
+-- load_wait together with their globals. A closed record leaves no handle global.
+function T_LoadHandles()
+	local h = HOST();
+	print("HOST ---- load handles");
+	T_Enter("gredos");
+	T_Tick(20, 0.5);
+	local ms = h.ms.pos;
+	TRF.std.heat = 0;
+	local a = T_Spawn();
+	local b = T_Spawn();
+	HOST_Check(a and b, "two traders before the save");
+	if not a or not b then return; end;
+	T_MoveTr(a, ms.x + 60, 0, ms.z + 40);
+	T_MoveTr(b, ms.x + 90, 0, ms.z - 40);
+	local Ha, Hb = TRF_H().tr[a], TRF_H().tr[b];
+	local na, nb = getn(Ha.sh), getn(Hb.sh);
+	local kept = 1;
+	for i = 1, na do
+		local g = getglobal("TRF_ship_trf_"..a.."_"..i) or getglobal("ship_trf_"..a.."_"..i);
+		if g ~= Ha.sh[i] then kept = nil; end;
+	end;
+	HOST_Check(kept and getglobal("ship_trf_"..a.."_1") == Ha.sh[1] and getglobal("flight_trf_"..a) == Ha.fl,
+		"spawn: NewAllFlight's ship_/flight_ globals and TRF_ship_ for the rest kept for the save");
+	local w = TRF.seq + 200;
+	TRF.live.tr[w] = {id=w, st="out", path="C", nm=0, cls=6, from=-1, to=-1, k=0, np=1, nt=1, esc=0, born=TRF.clock.gt, wd=0};
+	local ws = T_LabelShip("trf_"..w.."_1", ms.x - 60, ms.z - 40, "TRF_Trade_HW");
+	h.lgp = {"trf_"..a.."_", "trf_"..b.."_"};
+	h.lgn = 0;
+	h.logs = {};
+	T_SaveLoad(function()
+		HOST().gobl = GetObjectByLabel;
+		GetObjectByLabel = function(l)
+			local q = HOST().lgp;
+			for i = 1, getn(q) do
+				if strsub(l, 1, strlen(q[i])) == q[i] then
+					HOST().lgn = HOST().lgn + 1;
+					if HOST().gobl(l) then return l; end;
+					return nil;
+				end;
+			end;
+			return HOST().gobl(l);
+		end;
+		for i = 1, getn(%Hb.sh) do %Hb.sh[i].IsAlive = T_NeverAlive; end;
+	end);
+	local L, H = TRF.live, TRF_H();
+	HOST_Check(L.tr[a] and L.tr[a].st == "wind" and H.tr[a].fl == Ha.fl and getn(H.tr[a].sh) == na and H.tr[a].sh[1] == Ha.sh[1]
+		and T_LogN("load id="..a.." adopted ships="..na.." via=global -> wind") == 1 and h.lgn == 0,
+		"load pass: trader adopted through its saved ship_ globals (via=global), no label probe");
+	HOST_Check(L.tr[w] and L.tr[w].st == "wind" and H.tr[w].sh[1] == ws and T_LogN("load id="..w.." adopted ships=1 via=label -> wind") == 1
+		and getglobal("TRF_ship_trf_"..w.."_1") == ws, "load pass: record without globals adopted by label (via=label), its handle kept for the next save");
+	HOST_Check(L.tr[b] == nil and type(L.lw) == "table" and L.lw.rec[b] and T_LogN("load id="..b.." wait why=alive lbl=0 glb="..nb.." via=global") == 1
+		and T_LogN(" adopted=2 wait=1 ") == 1, "load pass: globals of ships that do not answer IsAlive wait (via=global)");
+	T_Tick(24, 0.5);
+	HOST_Check(L.lw == nil and L.tr[b] == nil and T_LogN("load id="..b.." gone why=alive tries=") == 1 and T_SignGlobals(b) == "",
+		"load retry: dead handles dropped after load_wait with their globals"..T_SignGlobals(b));
+	HOST_Check(T_SignGlobals(a) ~= "", "adopted trader keeps its globals while open");
+	TRF_Remove(a, "test");
+	HOST_Check(T_SignGlobals(a) == "", "record closed: its handle globals cleared"..T_SignGlobals(a));
+	GetObjectByLabel = h.gobl;
+	h.gobl = nil; h.lgp = nil; h.lgn = nil; h.logs = nil;
 end;
 
 local fn = getglobal("T_"..strupper(HOST().scen));

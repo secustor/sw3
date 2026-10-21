@@ -207,6 +207,14 @@ function SetObjectLabel(o, l)
 	o.label = l;
 	HOST().objs[l] = o;
 end;
+-- GetObjectLabel 0x5dd9c0 (never called by vanilla): the class tag is checked on argument 2 and the id read
+-- from argument 1, so the mod calls (o, o); without an object as argument 2 it returns that argument.
+-- Label string, or nil for a dead or unlabelled object.
+function GetObjectLabel(o, c)
+	if not HOST_IsObj(c) then return c; end;
+	if not HOST_IsObj(o) or not o.alive then return nil; end;
+	return o.label;
+end;
 
 -- Argument shapes as the game scripts pass them (include/NewTriggers.script, Create_flight_2.script).
 function HOST_IsVec(v) return type(v) == "table" and type(v.x) == "number" and type(v.y) == "number" and type(v.z) == "number"; end;
@@ -1079,13 +1087,17 @@ function HOST_ClearWithCarry()
 end;
 
 -- Save writer: numbers, strings and tables; string keys on the skip list are dropped at every level.
-function HOST_SaveCopy(t)
+-- top (the globals): an engine handle is kept as the object itself. The game saves a handle global as its
+-- {id=} table with the class tag (mod-options 1.10; vanilla's ship_<sign>_<i> survive a load). Handles
+-- inside tables are dropped, so a handle in TRF still fails the tests.
+function HOST_SaveCopy(t, top)
 	local r = {};
 	for k, v in t do
 		local kt, vt = type(k), type(v);
 		if (kt == "number" or kt == "string") and not HOST_IsProtected(k) then
 			if vt == "number" or vt == "string" then r[k] = v;
-			elseif vt == "table" and not v.__obj then r[k] = HOST_SaveCopy(v); end;
+			elseif vt == "table" and v.__obj then if top then r[k] = v; end;
+			elseif vt == "table" then r[k] = HOST_SaveCopy(v); end;
 		end;
 	end;
 	return r;
@@ -1248,7 +1260,7 @@ if h.exp == 2 then
 else
 	HOST_Check(rk == "", "no reserved key in TRF before the save"..rk);
 end;
-local save = HOST_SaveCopy(globals());
+local save = HOST_SaveCopy(globals(), 1);
 HOST_ClearGlobals();
 HOST_MapInit();
 HOST_ClearGlobals();

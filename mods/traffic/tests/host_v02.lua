@@ -552,10 +552,27 @@ function T_V02_E()
 	T_Tick(8, 0.5);
 	local pk = GetObjectByLabel("trf_pk_1");
 	HOST_Check(TRF_ParkedN() == 1 and pk and pk.cleared and pk.flight.stopped, "band 2: one parked ship (emptied, stopped)");
+	-- Load (crash-load-432500.md 10): GetObjectByLabel returns the label string for mod ships, so the
+	-- parked ship is found through its handle global TRF_pk_1 (via=global).
+	HOST_Check(getglobal("TRF_pk_1") == pk, "parked ship: handle global TRF_pk_1 kept for the save");
+	h.ms.pos = Vector3(pk.pos.x + 80, pk.pos.y, pk.pos.z);
+	h.logs = {};
+	T_SaveLoad(function()
+		HOST().gobl = GetObjectByLabel;
+		GetObjectByLabel = function(l)
+			local o = HOST().gobl(l);
+			if o and strsub(l, 1, 4) == "trf_" then return l; end;
+			return o;
+		end;
+	end);
+	HOST_Check(TRF_ParkedN() == 1 and TRF_H().pk[1] and TRF_H().pk[1].sh == pk and getglobal("TRF_pk_1") == pk
+		and V_Logs("parked 1 kept on load d=") == 1 and V_Logs(" via=global") >= 1, "load: parked ship kept through TRF_pk_1 (via=global)");
+	GetObjectByLabel = h.gobl;
+	h.gobl = nil; h.logs = nil;
 	local h0 = TRF.std.heat;
 	pk.alive = nil;
-	HOST_Fire("died", "TRF_ParkDied(1,");
-	HOST_Check(TRF.std.heat == h0 + 1 and TRF_ParkedN() == 0, "parked ship killed: heat +1");
+	HOST_Fire("died", "TRF_ParkDied(1,"..TRF.gen..")--");
+	HOST_Check(TRF.std.heat == h0 + 1 and TRF_ParkedN() == 0 and getglobal("TRF_pk_1") == nil, "parked ship killed: heat +1, handle global cleared");
 	T_Jump("aurora");
 	TRF.sys[idx] = {pro=4};
 	T_Jump("gredos");
@@ -1569,11 +1586,13 @@ end;
 -- n: save size, bounds and lint (spec 3.2, 3.4) ---------------------------------------------------------
 
 -- Non-function TRF_ globals and leftover build globals.
+-- Mod data globals other than TRF and the handle globals of open records and parked entries (T_HandleOk).
 function V_DataGlobals()
 	local s = "";
 	for k, v in globals() do
-		if type(k) == "string" and k ~= "TRF" and strsub(k, 1, 4) == "TRF_" and type(v) ~= "function" then s = s.." "..k; end;
-		if type(k) == "string" and (strfind(k, "^TRF_GRaid_") or strfind(k, "^flight_trf_") or strfind(k, "^ship_trf_") or strfind(k, "^pilot_trf_")) then
+		local ok = type(k) == "string" and T_HandleOk(k);
+		if type(k) == "string" and not ok and k ~= "TRF" and strsub(k, 1, 4) == "TRF_" and type(v) ~= "function" then s = s.." "..k; end;
+		if type(k) == "string" and not ok and (strfind(k, "^TRF_GRaid_") or strfind(k, "^flight_trf_") or strfind(k, "^ship_trf_") or strfind(k, "^pilot_trf_")) then
 			s = s.." "..k;
 		end;
 	end;

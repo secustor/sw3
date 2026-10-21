@@ -23,7 +23,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 
 Other files: `install.sh`, `uninstall.sh` (game install, [below](#installing-into-the-game)), `env.sh`, `install-test.sh`, `run-test.sh`, `uninstall-test.sh` (test clone), `loc/trf_en.loc` (`.loc` scaffold for `loc_mode 1`), `tools/` (site checker, map generator, Lua lint, Lua 4 build), `tests/` (host harness), `VERSION`.
 
-Script rules: top-level code only defines functions and installs the wrappers. All state lives in the table `TRF`, which holds only numbers, strings and nested tables, and none of its keys is a reserved name. Every global carries the `TRF_` prefix. Object handles are never stored in `TRF`.
+Script rules: top-level code only defines functions and installs the wrappers. All state lives in the table `TRF`, which holds only numbers, strings and nested tables, and none of its keys is a reserved name. Every global carries the `TRF_` prefix. Object handles are never stored in `TRF`. The only handles in the save are the handle globals of open traders and parked ships (`NewAllFlight`'s `ship_trf_<id>_<i>` and the mod's `TRF_ship_trf_<id>_<i>`, `TRF_pk_<j>`; `design/v01-spec.md` 3.3), cleared when the record closes.
 
 ## Running the experiments
 
