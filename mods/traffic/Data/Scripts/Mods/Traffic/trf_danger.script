@@ -1297,7 +1297,7 @@ function TRF_Danger_OnLoad()
 	H.dce = {};
 	local seq = TRF.seq;
 	if type(seq) ~= "number" then seq = 0; end;
-	local mp = TRF_DgPos(TRF_DgX("GetPlayerMotherShip"));
+	local mp = TRF_DgPos(TRF_DgX("TRF_Ms"));
 	local nk, nd = 0, 0;
 	for j = 0, 15 do
 		local id = seq - j;

@@ -181,13 +181,32 @@ static const struct trf_msig g_msig[] = {
 #define MSIG_N (sizeof(g_msig) / sizeof(g_msig[0]))
 static int g_movie_ok;
 
+/* Tick hold (design/mod-research/crash-load-5adc5e.md): the frame loop 0x4a04c0 (arg Game = [R], 0x49fa67)
+ * reaches the T4 call 0x4a074e also while [Game+0x19c] == 0 (no location: 0x4a0739 skips only the location
+ * update). CleanupGameLocation 0x4a11c0 zeroes the player manager's team ref ([[R+0x4c]+0x18], 0x5be110 via
+ * 0x4a12b4) and then frees and zeroes +0x19c (0x4a13e3/0x4a13f5); 0x4a0830 stores the new location (0x4a0884).
+ * While it is 0, GetPlayerMotherShip dereferences a null team (0x5adc5e), so TRF_OnTick is not called.
+ * When any of these bytes differ at init the guard is off (ticks run as before). */
+static const struct trf_msig g_lsig[] = {
+    { 0x49fa67, 8, { 0x8b,0x0d,0x10,0xa6,0x7b,0x00,0x8b,0x01 }, "frame loop Game = [R]" },
+    { 0x4a0736, 12, { 0x8b,0x4d,0x08,0x83,0xb9,0x9c,0x01,0x00,0x00,0x00,0x74,0x0c }, "frame [Game+0x19c] gates the location update" },
+    { 0x4a13e3, 6, { 0x8b,0x8f,0x9c,0x01,0x00,0x00 }, "CleanupGameLocation reads +0x19c" },
+    { 0x4a13f5, 6, { 0x89,0xaf,0x9c,0x01,0x00,0x00 }, "CleanupGameLocation zeroes +0x19c" },
+    { 0x4a12ab, 14, { 0x8b,0x15,0x10,0xa6,0x7b,0x00,0x8b,0x72,0x4c,0xe8,0x57,0xce,0x11,0x00 }, "cleanup 0x5be110([R+0x4c])" },
+    { 0x5be218, 14, { 0x8b,0x46,0x18,0x3b,0xc3,0x74,0x03,0x01,0x68,0x24,0x5d,0x89,0x5e,0x18 }, "0x5be110 zeroes team ref +0x18" },
+    { 0x4a0884, 6, { 0x89,0x83,0x9c,0x01,0x00,0x00 }, "0x4a0830 stores +0x19c" },
+};
+#define LSIG_N (sizeof(g_lsig) / sizeof(g_lsig[0]))
+static int g_loc_ok, g_held;
+static unsigned g_held_n;
+
 /* 0 = all ok, else the first mismatching address; *bad = its entry */
-static unsigned movie_verify(unsigned *bad)
+static unsigned sig_verify(const struct trf_msig *t, unsigned n, unsigned *bad)
 {
     unsigned i, k;
-    for (i = 0; i < MSIG_N; i++) {
-        const BYTE *p = (const BYTE *)g_msig[i].a;
-        for (k = 0; k < g_msig[i].n; k++) if (p[k] != g_msig[i].b[k]) { *bad = i; return g_msig[i].a + k; }
+    for (i = 0; i < n; i++) {
+        const BYTE *p = (const BYTE *)t[i].a;
+        for (k = 0; k < t[i].n; k++) if (p[k] != t[i].b[k]) { *bad = i; return t[i].a + k; }
     }
     return 0;
 }
@@ -341,6 +360,13 @@ static void __stdcall trf_tick(void)              /* T4, after 0x49d4a0, once pe
     if (dt_real * 1000.0 < (double)g_tick_ms) return;
     dt_game = g_game_time - g_tick_game;
     g_tick_qpc = now; g_tick_game = g_game_time;
+    if (g_loc_ok && !rdp(rdp(root, 0), 0x19c)) {   /* no location: hold; the held time is dropped */
+        g_held_n++;
+        if (!g_held && g_log_on) { struct tb b; tb_begin(&b, "tick held (no location) n="); tb_u(&b, g_held_n); tb_end(&b); }
+        g_held = 1;
+        return;
+    }
+    if (g_held) { g_held = 0; if (g_log_on) tlog("tick resumed"); }
     if (!g_tick_n++ && g_log_on) {
         struct tb b; tb_begin(&b, "tick first tm="); tb_x(&b, tm); tb_end(&b);
     }
@@ -481,13 +507,20 @@ void trf_init(const char *ini)
     if ((bad = verify())) { tb_begin(&b, "disabled, mismatch at "); tb_x(&b, bad); tb_end(&b); return; }
     {
         unsigned e = 0;
-        if ((bad = movie_verify(&e))) {
+        if ((bad = sig_verify(g_msig, MSIG_N, &e))) {
             tb_begin(&b, "movie: sig mismatch at "); tb_x(&b, bad); tb_s(&b, " ("); tb_s(&b, g_msig[e].what);
             tb_s(&b, "), TRF_InMovie and TRF_UiState return -1"); tb_end(&b);
         } else {
             g_movie_ok = 1;
             tb_begin(&b, "movie: sig ok mm=+0x1a4 play=+0x30 ingame=+0x14 top=[[gi+0xf8]]+0xc dlg=[[r+0x68]+0x28]+0xa8 sigs=");
             tb_u(&b, (unsigned)MSIG_N); tb_end(&b);
+        }
+        if ((bad = sig_verify(g_lsig, LSIG_N, &e))) {
+            tb_begin(&b, "tick guard: sig mismatch at "); tb_x(&b, bad); tb_s(&b, " ("); tb_s(&b, g_lsig[e].what);
+            tb_s(&b, "), ticks are not held"); tb_end(&b);
+        } else {
+            g_loc_ok = 1;
+            tb_begin(&b, "tick guard: sig ok loc=[[R]+0x19c] sigs="); tb_u(&b, (unsigned)LSIG_N); tb_end(&b);
         }
     }
     if (!(g_page = build_page())) { tlog("disabled, stub page failed"); return; }

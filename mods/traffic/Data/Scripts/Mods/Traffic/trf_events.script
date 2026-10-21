@@ -211,8 +211,7 @@ function TRF_Ev_Rand(n)
 end;
 
 function TRF_Ev_MShip()
-	if type(GetPlayerMotherShip) ~= "function" then return nil; end;
-	return GetPlayerMotherShip();
+	return TRF_Ms();
 end;
 
 -- Response team as vanilla Call_SOS_command2: the location team, "Neutral" -> "Patrol".

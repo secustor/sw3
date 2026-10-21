@@ -156,7 +156,7 @@ function TRF_Ba_Ring(p, d, a)
 end;
 
 function TRF_Ba_Ms()
-	local m = TRF_N("GetPlayerMotherShip");
+	local m = TRF_Ms();
 	if TRF_Ba_Alive(m) then return m; end;
 	return nil;
 end;

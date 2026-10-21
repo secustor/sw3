@@ -313,7 +313,12 @@ end;
 HOST().ms.GetPilot = function(self)
 	return {kind="pilot", GetFlight = function(self) return {Stop = function(self) HOST().ms_stops = (HOST().ms_stops or 0) + 1; end}; end};
 end;
-function GetPlayerMotherShip() return HOST().ms; end;
+-- in_tick: depth of TRF_OnTick (HOST_Tick); gpm_tick counts calls from a tick (crash-load-5adc5e.md: none allowed).
+function GetPlayerMotherShip()
+	local h = HOST();
+	if (h.in_tick or 0) > 0 then h.gpm_tick = (h.gpm_tick or 0) + 1; end;
+	return h.ms;
+end;
 
 -- 0x5e68f0: at least 2 args, x/y/z read from arg 1, radius from arg 2.
 function GetCarcassCountInSphere(pos, r)
@@ -970,8 +975,26 @@ function ExecuteScriptFile(path)
 	if f and h.hide and h.hide[name] then closefile(f); f = nil; end;
 	if not f then print("[ScriptSystem] cannot load script file "..path); return nil; end;
 	closefile(f);
-	if dofile(h.dir..name) then return 1; end;
+	if dofile(h.dir..name) then
+		if name == "traffic.script" then HOST_WrapTick(); end;
+		return 1;
+	end;
 	return nil;
+end;
+
+-- Wrap the freshly loaded TRF_OnTick so GetPlayerMotherShip can tell tick calls (HOST().in_tick).
+function HOST_WrapTick()
+	if type(TRF_OnTick) ~= "function" or TRF_OnTick == HOST_Tick then return; end;
+	HOST().tick_fn = TRF_OnTick;
+	TRF_OnTick = HOST_Tick;
+end;
+
+function HOST_Tick(a, b)
+	local h = HOST();
+	h.in_tick = (h.in_tick or 0) + 1;
+	local r = call(h.tick_fn, {a, b});
+	h.in_tick = h.in_tick - 1;
+	return r;
 end;
 
 -- Engine emulation ----------------------------------------------------------------
@@ -1119,6 +1142,7 @@ if H.scen then
 	dofile(H.tests.."host_traffic.lua");
 	if strsub(H.scen, 1, 4) == "v02-" or strsub(H.scen, 1, 3) == "v1-" then dofile(H.tests.."host_v02.lua"); end;
 	if strsub(H.scen, 1, 3) == "v1-" then dofile(H.tests.."host_v1.lua"); end;
+	HOST_Check((H.gpm_tick or 0) == 0, "no GetPlayerMotherShip from a tick (n="..tostring(H.gpm_tick or 0)..")");
 	print("HOST errors="..H.errors.." fails="..H.fails);
 	if H.errors > 0 or H.fails > 0 then exit(1); end;
 	exit(0);
@@ -1375,5 +1399,6 @@ if h.autosave > 0 then
 	TRF_InMovie = nil; TRF_UiState = nil; MovieIsPlaying = nil;
 	print("HOST TRF.exp.saves = "..TRF_Dump(TRF.exp.saves, 3));
 end;
+HOST_Check((h.gpm_tick or 0) == 0, "no GetPlayerMotherShip from a tick (n="..tostring(h.gpm_tick or 0)..")");
 print("HOST errors="..h.errors.." fails="..h.fails);
 if h.errors > 0 or h.fails > 0 then exit(1); end;

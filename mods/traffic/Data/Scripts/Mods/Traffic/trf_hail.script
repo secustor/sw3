@@ -160,7 +160,7 @@ end;
 
 function TRF_HlMs()
 	if type(TRF_GnMs) == "function" then return TRF_HlP(TRF_GnMs, {}); end;
-	return TRF_N("GetPlayerMotherShip");
+	return TRF_Ms();
 end;
 
 -- Leader ship of trader id (first live ship of its convoy).

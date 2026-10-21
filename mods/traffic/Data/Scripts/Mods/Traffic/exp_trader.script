@@ -79,7 +79,7 @@ end;
 function TRF_T_Portals()
 	local labels = TRF_T_PortalLabels();
 	local mp = nil;
-	local ms = TRF_N("GetPlayerMotherShip");
+	local ms = TRF_Ms();
 	if ms then mp = ms:GetPosition(); end;
 	local r = {};
 	for i = 1, getn(labels) do

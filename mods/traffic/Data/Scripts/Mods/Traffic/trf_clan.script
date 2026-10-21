@@ -195,7 +195,7 @@ function TRF_Cl_Dir(a, b)
 end;
 
 function TRF_Cl_MsPos()
-	return TRF_Cl_Pos(TRF_N("GetPlayerMotherShip"));
+	return TRF_Cl_Pos(TRF_Ms());
 end;
 
 function TRF_Cl_Del(o)

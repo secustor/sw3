@@ -223,7 +223,7 @@ function TRF_Rd_Dir(a, b)
 end;
 
 function TRF_Rd_Ms()
-	local m = TRF_N("GetPlayerMotherShip");
+	local m = TRF_Ms();
 	if TRF_Rd_Alive(m) then return m; end;
 	return nil;
 end;

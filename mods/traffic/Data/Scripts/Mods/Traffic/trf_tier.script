@@ -730,7 +730,7 @@ function TRF_Parked_Clear(why)
 	local H = TRF_TrH();
 	if not H then return 0; end;
 	local far = TRF_TrT("pk_far", 600);
-	local ms = TRF_TrX("GetPlayerMotherShip");
+	local ms = TRF_TrX("TRF_Ms");
 	local mp = nil;
 	if TRF_TrAlive(ms) then mp = ms:GetPosition(); end;
 	local n = 0;

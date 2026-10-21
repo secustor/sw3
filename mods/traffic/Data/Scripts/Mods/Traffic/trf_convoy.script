@@ -169,7 +169,7 @@ function TRF_CvBit(v, b)
 end;
 
 function TRF_CvMs()
-	local m = TRF_CvX("GetPlayerMotherShip");
+	local m = TRF_CvX("TRF_Ms");
 	if TRF_CvAlive(m) then return m; end;
 	return nil;
 end;

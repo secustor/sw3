@@ -1081,6 +1081,7 @@ if type(fn) == "function" then
 else
 	HOST_Check(nil, "unknown station scenario "..sc);
 end;
+HOST_Check((HOST().gpm_tick or 0) == 0, "no GetPlayerMotherShip from a tick (n="..tostring(HOST().gpm_tick or 0)..")");
 print("HOST errors="..HOST().errors.." fails="..HOST().fails);
 if HOST().errors > 0 or HOST().fails > 0 then exit(1); end;
 exit(0);

@@ -67,7 +67,7 @@ Run 0-20261021-181134: `OnLoad #18` (NJ2) succeeded and ~300 frames of play foll
 
 - Arming: `TRF_SafeArm(via)` runs at the end of `TRF_Safety_OnActivate` and `TRF_Safety_OnLoad`. It sets `H.sact = 1` and caches `H.sms = GetPlayerMotherShip()`, which is safe right after functions.script. `TRF_SafeVisitReset` (OnEnter, OnLoad) clears both. `H` is the handle table: never saved, and new on every MapInitialization. It logs `safe: armed via=activate|load ms=<id>`.
 - `TRF_CombatSample` runs the hp and raid sources only while armed. The combat-off transition still runs.
-- `TRF_Safe_Ms()` never calls `GetPlayerMotherShip`. It returns the vanilla global `mothership` when alive (quest swaps assign `mothership = SetPlayerMotherShip(..)`), else `H.sms` when alive. The handle must be a table or userdata, and `:IsAlive` runs under `call(.., "x", TRF_SafePErr)`.
+- `TRF_Safe_Ms()` never calls `GetPlayerMotherShip` inside a tick (5.3 has the final form). It returns the vanilla global `mothership` when alive (quest swaps assign `mothership = SetPlayerMotherShip(..)`), else `H.sms` when alive. The handle must be a table or userdata, and `:IsAlive` runs under `call(.., "x", TRF_SafePErr)`.
 - `TRF_Safe_MsHp(ms)`: `GetCurHP` under `call(.., "x", TRF_SafePErr)`.
 - `TRF_Safe_RaidHot(rd, r, ms)`: the mothership position comes from `ms:GetPosition()`, protected and read once per sample. The distance is computed with trf_raid's `TRF_Rd_H` / `TRF_Rd_RaidLeadPos` / `TRF_Rd_Dist`, so `TRF_RaidMsDist` (with its `GetPlayerMotherShip`) is no longer called. An unknown distance still counts as near.
 
@@ -75,8 +75,25 @@ During the teardown window the old `H` is still armed. The sample then only make
 
 Tests: host_traffic.lua `T_CombatArm` (scenario g) covers these cases: a tick between OnEnter and OnActivate makes no `GetCurHP` on the mothership; an armed safety tick makes one `GetCurHP` and no `GetPlayerMotherShip`; the global `mothership` is sampled before the cache; a `GetCurHP` error is caught by the sample; a visit reset disarms and `OnLoad` re-arms.
 
-## 5. Open points
+## 5. Systemic guard (follow-up)
 
-1. The step-timer callers of `GetPlayerMotherShip` (3.2) are still exposed. Option A: a DLL guard in the T4 stub that skips the Lua tick while `[Game+0x19c] == 0` (the location check of 0x4a0739; `Game` = `[ebp+8]` of PreMainLoop, presumably `[g_Root]`) [I]. Option B: route every tick-time mothership read through one helper like `TRF_Safe_Ms`.
-2. Whether this was an in-game load or a galaxy-map jump: the next crash-free run should show which line follows a `top=20` close (`saves: top-level load` or `OnEnter`).
-3. In-game watch: after each load, `safe: armed via=load ms=<id>`. After each entry, `safe: activate ...` followed by `safe: armed via=activate ms=<id>`. The id should match the mothership (id `nil` = no mothership handle, so the hull source is off for that visit). `safe: supp` lines are unchanged. A `safe: ...` ERROR line (`TRF_PErr`) from `TRF_Safe_HpOf`/`TRF_Safe_IsAlive` means a native raised an error that the sample caught.
+### 5.1 `[Game+0x19c]` is the location pointer [V]
+
+- `Game = [g_Root]`: 0x49fa67 `mov ecx,[0x7ba610]; mov eax,[ecx]; jmp 0x49fd50`. 0x49fd50 keeps it in edi and passes it to the frame function 0x4a04c0 (`push edi; call 0x4a04c0` at 0x49fe09), where it is `[ebp+8]`.
+- 0x4a0736 `mov ecx,[ebp+8]; cmp dword [ecx+0x19c],0; je 0x4a074e` skips only the location update 0x4a17a0. T4 at 0x4a074e runs either way.
+- `CleanupGameLocation` 0x4a11c0 (`this` = Game in edi) first calls 0x5be110 with esi = `[g_Root+0x4c]` (0x4a12ab..0x4a12b4). 0x5be110 empties the player manager's team list and zeroes the team ref `+0x18` (0x5be223). Then it deletes `[Game+0x19c]` through its virtual dtor and zeroes it (0x4a13e3..0x4a13f5). `CleanupGameWorld` 0x4a0cd0 does the same at 0x4a0f1d. The location start 0x4a0830 stores the new object (0x51ded0) at 0x4a0884.
+- Stack candidate 0x6b46c8 is the SEH handler of 0x5bde80, the registry lookup that 0x5be230 calls. This matches a failed team lookup just before the crash.
+- Not covered [I]: a tick after 0x4a0830 has stored `+0x19c` but before the new team is registered. The entry path (0x4dd1f3 → 0x4a0830, then the location scripts) looks synchronous.
+
+### 5.2 DLL (mods/traffic/pe/traffic.c)
+
+`g_lsig` (7 byte signatures: 0x49fa67, 0x4a0736, 0x4a13e3, 0x4a13f5, 0x4a12ab, 0x5be218, 0x4a0884) is checked at init with `sig_verify` (the former `movie_verify`, now generic). On success the log line is `traffic: tick guard: sig ok loc=[[R]+0x19c] sigs=7`. On a mismatch it logs `traffic: tick guard: sig mismatch at <addr> (<what>), ticks are not held` and the guard stays off. `trf_tick`, after the tick_ms rate check, skips `TRF_OnTick` while `[[0x7ba610]]+0x19c` is 0 and drops that time. It counts skipped ticks (`g_held_n`, cumulative) and logs once per transition: `traffic: tick held (no location) n=<cumulative skipped ticks>` and `traffic: tick resumed`. `TRF_GameTime` keeps accumulating.
+
+### 5.3 Lua
+
+`TRF_Ms()` (traffic.script) calls `TRF_Safe_Ms()`, or `GetPlayerMotherShip` when trf_safety is not loaded. `TRF_OnTick` sets `H.intick` around the traffic dispatch. `TRF_Safe_Ms` on an armed visit returns the global `mothership` or `H.sms` when alive. Otherwise it returns nil inside a tick, and outside a tick it calls the native (refreshing `H.sms`). Every module read of the mothership goes through it: trf_gen `TRF_GnMs` (only when `H.ms` is dead), trf_raid `TRF_Rd_Ms`, trf_hail `TRF_HlMs`, trf_clan `TRF_Cl_MsPos`, trf_convoy `TRF_CvMs`, trf_danger (convoy scan), trf_supply `TRF_SpMs`, trf_tier `TRF_Parked_Clear`, trf_base `TRF_Ba_Ms`, trf_events `TRF_Ev_MShip`, trf_station `TRF_Stn_MsPos`, exp_trader `TRF_T_Portals`. Host check: the stub counts `GetPlayerMotherShip` calls inside `TRF_OnTick`, and every run asserts 0.
+
+## 6. Open points
+
+1. Whether this was an in-game load or a galaxy-map jump: the next crash-free run should show which line follows a `top=20` close (`saves: top-level load` or `OnEnter`).
+2. In-game watch: `traffic: tick guard: sig ok ...` at start; around every load or jump a `traffic: tick held (no location) n=..` / `traffic: tick resumed` pair (also in the main menu). After each load, `safe: armed via=load ms=<id>`. After each entry, `safe: activate ...` followed by `safe: armed via=activate ms=<id>`. The id should match the mothership (id `nil` = no mothership handle, so the hull source is off for that visit). `safe: supp` lines are unchanged. A `safe: ...` ERROR line (`TRF_PErr`) from `TRF_Safe_HpOf`/`TRF_Safe_IsAlive` means a native raised an error that the sample caught.

@@ -183,7 +183,7 @@ end;
 function TRF_GnMs()
 	local H = TRF_GnH();
 	if H and TRF_GnAlive(H.ms) then return H.ms; end;
-	local m = TRF_N("GetPlayerMotherShip");
+	local m = TRF_Ms();
 	if H then H.ms = m; end;
 	return m;
 end;

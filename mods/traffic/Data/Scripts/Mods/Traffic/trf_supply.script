@@ -177,7 +177,7 @@ end;
 
 function TRF_SpMs()
 	if type(TRF_GnMs) == "function" then return TRF_SpP(TRF_GnMs, {}); end;
-	return TRF_SpX("GetPlayerMotherShip");
+	return TRF_SpX("TRF_Ms");
 end;
 
 function TRF_SpAlive(o)

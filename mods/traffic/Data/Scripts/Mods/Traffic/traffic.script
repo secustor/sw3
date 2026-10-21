@@ -68,6 +68,13 @@ function TRF_N(name, ...)
 	return nil;
 end;
 
+-- Player mothership for module code: trf_safety's TRF_Safe_Ms (never GetPlayerMotherShip from a tick,
+-- design/mod-research/crash-load-5adc5e.md), else the native (trf_safety not loaded: exp kits, enabled 2).
+function TRF_Ms()
+	if type(TRF_Safe_Ms) == "function" then return TRF_Safe_Ms(); end;
+	return TRF_N("GetPlayerMotherShip");
+end;
+
 -- Error handler of TRF_P: a mod log line instead of a ScriptErrors.log entry.
 function TRF_Err(m)
 	TRF_L("ERROR "..tostring(m));
@@ -256,6 +263,10 @@ function TRF_OnTick(dt_game, dt_real)
 	if type(dt_game) ~= "number" then dt_game = 0; end;
 	if type(dt_real) ~= "number" then dt_real = 0; end;
 	if TRF_Traffic() then
+		-- H.intick marks the dispatch for TRF_Safe_Ms (no GetPlayerMotherShip from a tick); every call below
+		-- is protected, so the flag is always cleared.
+		local th = TRF_N("TRF_H");
+		if type(th) == "table" then th.intick = 1; end;
 		-- Clock, legs and due calls; extortion sampling; manager step and dump on their game-time timers.
 		TRF_P("TRF_State_Tick", dt_game, dt_real);
 		TRF_P("TRF_Safety_Tick");
@@ -277,6 +288,7 @@ function TRF_OnTick(dt_game, dt_real)
 			TRF_P("TRF_Base_Step");
 		end;
 		if TRF_P("TRF_DumpDue", dt_game) then TRF_P("TRF_DumpState", "tick"); end;
+		if type(th) == "table" then th.intick = nil; end;
 		return;
 	end;
 	if type(TRF.clock) ~= "table" or type(TRF.clock.gt) ~= "number" or type(TRF.clock.real) ~= "number" then TRF_Init(); end;

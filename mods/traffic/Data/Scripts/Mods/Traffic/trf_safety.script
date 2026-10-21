@@ -17,9 +17,10 @@
 -- bands 3-4. Extra live fields: qa (quest state of the current system: 1, 0, -1 = no ids), qai (its idx).
 -- Chunk local SQ caches the generated quest-id table per MapInitialization (never saved).
 -- Handle fields owned here (TRF_H, never saved, new on every MapInitialization): st (station), sact (1 once the
--- visit is armed at the end of TRF_Safety_OnActivate or TRF_Safety_OnLoad), sms (mothership handle taken then).
--- The combat sample reads game objects only while sact is 1 and never calls GetPlayerMotherShip (mod-research/
--- crash-load-5adc5e.md: that native dereferences the player team without a null check).
+-- visit is armed at the end of TRF_Safety_OnActivate or TRF_Safety_OnLoad), sms (mothership handle taken then);
+-- intick (1 during the TRF_OnTick dispatch) is set by traffic.script. The combat sample reads game objects only
+-- while sact is 1; no tick calls GetPlayerMotherShip (TRF_Safe_Ms, TRF_Ms; mod-research/crash-load-5adc5e.md:
+-- that native dereferences the player team without a null check).
 
 local SQ = {};
 
@@ -932,16 +933,23 @@ function TRF_Safe_Alive(o)
 	return call(TRF_Safe_IsAlive, {o}, "x", TRF_SafePErr);
 end;
 
--- Mothership handle for the tick, or nil before the visit is armed: the vanilla global mothership when alive
--- (functions.script; quest swaps assign mothership = SetPlayerMotherShip(..)), else the handle taken at arming.
--- Never GetPlayerMotherShip: a tick can run while a load or a galaxy-map jump has torn the location down, and
--- that native then reads team+0x150 through a null team (0x5adc5e).
+-- Player mothership for every module (traffic.script TRF_Ms). Armed visit: the vanilla global mothership when
+-- alive (functions.script; quest swaps assign mothership = SetPlayerMotherShip(..)), else the handle taken at
+-- arming. Otherwise, or when both are dead: nil inside a tick (H.intick), else GetPlayerMotherShip (callbacks
+-- and triggers run in a live location; the result refreshes H.sms on an armed visit). A tick can run while a
+-- load or a galaxy-map jump has torn the location down, and that native then reads team+0x150 through a null
+-- team (0x5adc5e).
 function TRF_Safe_Ms()
-	if not TRF_SafeArmed() then return nil; end;
-	if TRF_Safe_Alive(mothership) then return mothership; end;
 	local H = TRF_SafeH();
-	if H and TRF_Safe_Alive(H.sms) then return H.sms; end;
-	return nil;
+	local armed = TRF_SafeArmed();
+	if armed then
+		if TRF_Safe_Alive(mothership) then return mothership; end;
+		if TRF_Safe_Alive(H.sms) then return H.sms; end;
+	end;
+	if H and H.intick == 1 then return nil; end;
+	local m = TRF_N("GetPlayerMotherShip");
+	if armed then H.sms = m; end;
+	return m;
 end;
 
 function TRF_Safe_HpOf(ms)
@@ -1006,6 +1014,7 @@ function TRF_CombatSample(scene)
 	if scene then L.cbs = gt; end;
 	if TRF_SafeArmed() then
 		local ms = TRF_Safe_Ms();
+		if not TRF_Safe_Alive(ms) then ms = nil; end;
 		local hp, id = TRF_Safe_MsHp(ms);
 		local fresh = type(L.cbs) == "number" and gt - L.cbs < T.scene;
 		if not fresh and id == L.cbi and TRF_HpDropOf(L.cbh, hp, T.hp) then

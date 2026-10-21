@@ -211,12 +211,12 @@ function TRF_Stn_Pos(o)
 end;
 
 function TRF_Stn_MsPosRaw()
-	local ms = GetPlayerMotherShip();
+	local ms = TRF_Ms();
 	return TRF_Stn_PosRaw(ms);
 end;
 
 function TRF_Stn_MsPos()
-	if type(GetPlayerMotherShip) ~= "function" then return nil; end;
+	if type(TRF_Ms) ~= "function" then return nil; end;
 	local p = call(TRF_Stn_MsPosRaw, {}, "x", TRF_StnNoErr);
 	if type(p) == "table" and type(p.x) == "number" then return p; end;
 	return nil;
