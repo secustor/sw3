@@ -758,27 +758,23 @@ function TRF_CtLive()
 	return L.ct;
 end;
 
--- L_pay by GetPlayerLevel() (5.6), used without trf_region.
-function TRF_HlLPay()
+-- L_w (TDR 8.4) of system idx (default current): trf_region's TRF_LPay, else 8.
+function TRF_HlLPay(idx)
 	if type(TRF_LPay) == "function" then
-		local v = TRF_HlP(TRF_LPay, {});
+		local v = TRF_HlP(TRF_LPay, {idx});
 		if type(v) == "number" then return v; end;
 	end;
-	local lv = TRF_N("GetPlayerLevel");
-	if type(lv) ~= "number" or lv < 1 then return 8; end;
-	if lv == 1 then return 3; end;
-	if lv <= 3 then return 5; end;
-	if lv == 4 then return 7; end;
-	if lv == 5 then return 10; end;
-	if lv <= 9 then return 13; end;
-	return 16;
+	return 8;
 end;
 
--- Contract pay N_eff: trf_region's TRF_PayN, else min(900 x L_pay, 15000) x 0.75 (T1, pro 0), capped.
+-- Contract pay N_eff: trf_region's TRF_PayN, else 900 x L_w x lk x 0.75 (T1, pro 0, d_k 1), capped.
 function TRF_HlPayN(idx)
 	local n = nil;
 	if type(TRF_PayN) == "function" then n = TRF_HlP(TRF_PayN, {idx}); end;
-	if type(n) ~= "number" then n = min(900 * TRF_HlLPay(), 15000) * 0.75; end;
+	if type(n) ~= "number" then
+		local L = TRF_HlLPay(idx);
+		n = 900 * L * min(1, L / 8) * 0.75;
+	end;
 	return floor(min(n, TRF_HlT("pay_cap")));
 end;
 

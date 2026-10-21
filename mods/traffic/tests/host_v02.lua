@@ -844,24 +844,52 @@ function T_V02_I()
 	V_Begin("gredos", {seed=0, staged=0, queue=0, parked=0});
 	local idx = TRF_CurIdx();
 	TRF_SetDis(idx, 0);
-	-- L_pay by level and the pay formula.
-	local lp = {[0]=8, [1]=3, [2]=5, [3]=5, [4]=7, [5]=10, [6]=13, [9]=13, [10]=16, [13]=16};
-	local bad = "";
-	for l, v in lp do h.level = l; if TRF_LPay() ~= v then bad = bad.." "..l.."->"..TRF_LPay(); end; end;
-	h.level = 4;
-	HOST_Check(bad == "", "L_pay table 0/1/2-3/4/5/6-9/10-13 -> 8/3/5/7/10/13/16"..bad);
-	local tk = 0.75;
-	if TRF_EffTier(idx) >= 2 then tk = 1.0; end;
-	local ne = floor(min(min(900 * 7, 15000) * tk * (1 + 0.05 * TRF_Pro(idx)), 30000));
-	HOST_Check(abs(TRF_PayN(idx) - ne) <= 1, "N_eff at level 4: min(6300, 15000) x tier_k x (1 + 0.05 pro) = "..ne.." ("..TRF_PayN(idx)..")");
-	h.level = 13;
-	TRF_SetPro(idx, 9);
+	-- L_w (TDR 8.4) = clamp(round(0.8 sys_base), 3, 16): sys_base from the map's sb, else the trader contact level.
+	local ms = TRF_Map().sys[idx];
+	local sbm = ms.sb;
+	HOST_Check(type(sbm) == "number" and TRF_SysBase(idx) == sbm and TRF_LPay() == TRF_Clamp(floor(0.8 * sbm + 0.5), 3, 16),
+		"L_w from the map's sb "..tostring(sbm).." = "..TRF_LPay());
+	ms.sb = nil;
+	local sb0 = TRF_SysBase(idx);
+	HOST_Check(type(sb0) == "number" and TRF_LPay() == TRF_Clamp(floor(0.8 * sb0 + 0.5), 3, 16),
+		"map without sb: L_w from the trader contact level "..tostring(sb0).." = "..TRF_LPay());
+	local lw = {};
+	for i, v in {2, 25, 10, 5} do ms.sb = v; lw[i] = TRF_LPay(idx); end;
+	HOST_Check(lw[1] == 3 and lw[2] == 16 and lw[3] == 8 and lw[4] == 4, "L_w clamp: sys_base 2/25/10/5 -> 3/16/8/4 ("..lw[1].."/"..lw[2].."/"..lw[3].."/"..lw[4]..")");
+	local o = 1;
+	if idx == 1 then o = 2; end;
+	local mo = TRF_Map().sys[o];
+	local so = mo.sb;
+	mo.sb = nil;
+	HOST_Check(TRF_LPay(o) == 8, "L_w 8 without sys_base (other system: no sb, no contact list)");
+	mo.sb = so;
+	-- N_eff = min(900 L_w lk tier_k (1 + 0.05 pro) d_k, pay_cap), lk = min(1, L_w / 8), d_k 1.25 / 1 / 0.7.
 	local sl = TRF_RgOf(idx);
+	TRF.clan[sl].sc = 30;
+	TRF_SetPro(idx, 0);
+	ms.sb = 5;
+	HOST_Check(TRF_TierK(idx) == 1.0 and TRF_LK(idx) == 0.5 and TRF_PayN(idx) == 1800,
+		"lk damping at L_w 4: 900 x 4 x 0.5 (T2, pro 0, NORMAL) = 1800 (tier_k "..TRF_TierK(idx)..", "..TRF_PayN(idx)..")");
+	ms.sb = 10;
+	local nn = TRF_PayN(idx);
+	h.diff = HARD;
+	local nh = TRF_PayN(idx);
+	h.diff = EASY;
+	local nz = TRF_PayN(idx);
+	h.diff = NORMAL;
+	HOST_Check(nn == 7200 and abs(nh - 5040) <= 1 and nz == 9000, "d_k at L_w 8, T2, pro 0: NORMAL 7200, HARD x 0.7 = "..nh..", EASY x 1.25 = "..nz);
 	TRF.clan[sl].sc = 99;
-	h.cfg.tune = {pay_cap=10000};
-	HOST_Check(TRF_PayN(idx) <= 10000, "pay_cap bounds N_eff ("..TRF_PayN(idx)..")");
+	TRF_SetPro(idx, 9);
+	ms.sb = 25;
+	h.diff = EASY;
+	local nu = min(30000, 900 * 16 * TRF_TierK(idx) * 1.45 * 1.25);
+	HOST_Check(abs(TRF_PayN(idx) - nu) <= 1 and nu > 15000, "N_eff at L_w 16, tier_k "..TRF_TierK(idx)..", pro 9, EASY = "..TRF_PayN(idx)
+		.." (no 15000 cap before tier_k)");
+	h.cfg.tune = {pay_cap=20000};
+	HOST_Check(TRF_PayN(idx) == 20000, "pay_cap 20000 bounds N_eff "..floor(nu).." ("..TRF_PayN(idx)..")");
 	h.cfg.tune = nil;
-	h.level = 4;
+	h.diff = NORMAL;
+	ms.sb = sbm;
 	TRF.clan[sl].sc = 55;
 	TRF_SetPro(idx, 6);
 	-- Help: 5 distinct seconds of player hits on a raid ship; all raid ships killed -> pay 50 % N_eff.

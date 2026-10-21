@@ -338,19 +338,20 @@ function TRF_Rd_Clan(slot)
 	return TRF_Rd_Txt("clan0");
 end;
 
--- L_pay (5.6): trf_events' table (with trf_region's TRF_LPay first), else 8.
-function TRF_Rd_LPay()
-	local v = TRF_N("TRF_Ev_LPay");
-	if type(v) ~= "number" then v = TRF_N("TRF_LPay"); end;
+-- L_w (TDR 8.4) of system idx (default current): trf_region's TRF_LPay, else 8.
+function TRF_Rd_LPay(idx)
+	local v = TRF_N("TRF_LPay", idx);
 	if type(v) == "number" then return v; end;
 	return 8;
 end;
 
--- N_eff (5.6): trf_region's TRF_PayN, else the same formula from the parts at hand.
+-- N_eff (TDR 8.4): trf_region's TRF_PayN, else the same formula from the parts at hand (d_k 1 without
+-- trf_region).
 function TRF_Rd_PayN(idx)
 	local v = TRF_N("TRF_PayN", idx);
 	if type(v) == "number" then return v; end;
-	local N = min(900 * TRF_Rd_LPay(), 15000);
+	local L = TRF_Rd_LPay(idx);
+	local N = 900 * L * min(1, L / 8);
 	local tk = {0.75, 1.0, 1.5, 2.0};
 	local pro = TRF_N("TRF_Pro", idx);
 	if type(pro) ~= "number" then pro = 0; end;

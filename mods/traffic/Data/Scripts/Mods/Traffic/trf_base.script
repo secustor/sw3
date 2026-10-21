@@ -570,7 +570,7 @@ end;
 function TRF_Ba_PlayerFx(idx, slot, tk)
 	TRF_N("TRF_AddHelp", 2, "base");
 	TRF_N("TRF_AddHeat", -1, "base");
-	local lp = TRF_N("TRF_LPay");
+	local lp = TRF_N("TRF_LPayK", idx);
 	if type(lp) ~= "number" then lp = 8; end;
 	local n = min(TRF_Ba_T("base_reward_k", 2500) * lp * tk, TRF_Ba_T("base_reward_max", 30000));
 	local rg = nil;

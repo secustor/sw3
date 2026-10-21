@@ -11,6 +11,15 @@ Regions (rg, dg, pc; top-level rg): pirate homes = CreatePirateStationDocking sy
 the CreateManagedPortal("Portal", ...) graph, regions of <= 3 systems merged (v0.2 spec 4.1); danger
 from active PIRATE_FLIGHT / RandomPiratGetMoney (design 5.1). Compared with trf_region.script's
 runtime fallback (its built-in lists); a difference is printed and fails --check.
+sb (sys_base, design 5.1, pirate-progression 7.11.1): median power (5th argument) of the uncommented
+NewPirateFlight calls in the system's activate.script (the game scripts have no --[[ ]] blocks or
+disabled if-blocks, so uncommented = active; calls whose power is not a number literal are skipped);
+else the median level (6th argument, as RegisterRandomContact reads it) of the uncommented
+RegisterRandomContact(TRADER_FLIGHT, ...) lines in any of the system's scripts; else the mean sb of the
+managed-portal neighbours (all portal models): each pass gives every system still without sb the mean of
+its neighbours that have one (values of the previous pass), passes repeat until none is added; then 8
+for systems still without a value (no portal path to a system with pirates or traders). Medians of an
+even count and means round half up.
 System keys are the lowercase names the scripts use (portal destinations,
 TeleportToLocation, GetLastLocation comparisons); XML names are matched case-insensitively.
 --check: exit 1 if the output file differs from what would be written.
@@ -69,12 +78,14 @@ def read_lines(path):
         return f.read().replace("\r\n", "\n").replace("\r", "\n").split("\n")
 
 
-def split_args(s):
-    """Split a call argument string at top-level commas."""
+def split_args(s, braces=False):
+    """Split a call argument string at top-level commas (braces=True: {} nest like ())."""
     parts, depth, cur = [], 0, []
     for c in s:
-        if c == "(":
+        if c == "(" or (braces and c == "{"):
             depth += 1
+        elif braces and c == "}":
+            depth -= 1
         elif c == ")":
             if depth == 0:
                 break
@@ -157,6 +168,9 @@ PIR_HOME = re.compile(r"\bCreatePirateStationDocking\s*\(")
 PIR_FLIGHT = re.compile(r"\bRegisterRandomContact\s*\(\s*PIRATE_FLIGHT\b")
 PIR_EXT = re.compile(r"\bOutMissionActivity\s*\(\s*\"RandomPiratGetMoney\"")
 PIR_HULL = re.compile(r"\bCreateStation\s*\(\s*\"Pirate_")
+NPF = re.compile(r"\bNewPirateFlight\s*\((.*)$")
+TRREG = re.compile(r"\bRegisterRandomContact\s*\((\s*TRADER_FLIGHT\b.*)$")
+SB_DEFAULT = 8
 PC_AUTHORED = {"fronn": 2}  # trf_region's pro_cap exception (v0.2 spec 4.1)
 
 
@@ -171,6 +185,63 @@ def pirate_info(sysdir):
                     if rx.search(code):
                         f[k] = True
     return f
+
+
+def median(xs):
+    """Median of a non-empty list, an even count rounded half up to an integer."""
+    xs = sorted(xs)
+    n = len(xs)
+    return int(xs[n // 2]) if n % 2 else int((xs[n // 2 - 1] + xs[n // 2]) / 2.0 + 0.5)
+
+
+def sb_sources(sysdir):
+    """Powers of the uncommented NewPirateFlight calls in activate.script and levels of the uncommented
+    RegisterRandomContact(TRADER_FLIGHT, ...) lines in all scripts; notes for non-literal arguments."""
+    pw, tl, notes = [], [], []
+    for fn in sorted(os.listdir(sysdir)):
+        if not fn.lower().endswith(".script"):
+            continue
+        for ln, raw in enumerate(read_lines(os.path.join(sysdir, fn)), 1):
+            code = strip_comment(raw)
+            for rx, i, acc, act, what in ((NPF, 4, pw, fn.lower() == "activate.script", "NewPirateFlight power"),
+                                          (TRREG, 5, tl, True, "trader level")):
+                m = rx.search(code) if act else None
+                if not m:
+                    continue
+                args = split_args(m.group(1), True)
+                v = args[i] if len(args) > i else ("1" if rx is TRREG else "")  # RegisterRandomContact: level or 1
+                if re.fullmatch(r"[0-9]+", v):
+                    acc.append(int(v))
+                else:
+                    notes.append("%s:%d %s %r not a number" % (fn, ln, what, v))
+    return pw, tl, notes
+
+
+def sys_base(systems, adj):
+    """Set s["sb"] and s["sbsrc"] ("pir", "trader", "nb", "default") for every system."""
+    for s in systems:
+        if s["sbpw"]:
+            s["sb"], s["sbsrc"] = median(s["sbpw"]), "pir"
+        elif s["sbtl"]:
+            s["sb"], s["sbsrc"] = median(s["sbtl"]), "trader"
+        else:
+            s["sb"], s["sbsrc"] = None, None
+    by = {s["idx"]: s for s in systems}
+    while True:
+        upd = {}
+        for s in systems:
+            if s["sb"] is not None:
+                continue
+            vs = [by[n]["sb"] for n in adj[s["idx"]] if by[n]["sb"] is not None]
+            if vs:
+                upd[s["idx"]] = int(sum(vs) / float(len(vs)) + 0.5)
+        if not upd:
+            break
+        for i, v in upd.items():
+            by[i]["sb"], by[i]["sbsrc"] = v, "nb"
+    for s in systems:
+        if s["sb"] is None:
+            s["sb"], s["sbsrc"] = SB_DEFAULT, "default"
 
 
 def adjacency(systems, by, skip):
@@ -488,7 +559,8 @@ def emit(systems, rgl):
          "-- position), side (team of the DefStation guard group), kind \"trade\"|\"patrol\", r (patrol docking",
          "-- radius), prm (docking param: dialog location), cond=1 if the docking call is not top level}.",
          "-- No dock field: trade docking uses the engine's GetDockingPosition, no script gives it.",
-         "-- rg: region slot (absent: independent), dg: danger 0..3 (design 5.1 default rule), pc: pro_cap.",
+         "-- rg: region slot (absent: independent), dg: danger 0..3 (design 5.1 default rule), pc: pro_cap,",
+         "-- sb: sys_base (median NewPirateFlight power, else trader level, else neighbour mean, else 8).",
          "-- Top-level rg[slot]: {name (home folder), home (home system), dg (2 x mean member dg, rounded, 1..3;",
          "-- no reader yet), members (idx list)} (v0.2 spec 4.1).",
          "function TRF_MapData()",
@@ -504,7 +576,7 @@ def emit(systems, rgl):
             head += ", trader=1"
         if s["rg"]:
             head += ", rg=%d" % s["rg"]
-        head += ", dg=%d, pc=%d" % (s["dg"], s["pc"])
+        head += ", dg=%d, pc=%d, sb=%d" % (s["dg"], s["pc"], s["sb"])
         L.append("      {%s," % head)
         if s["st"]:
             L.append("        st = {")
@@ -560,7 +632,7 @@ def main():
         systems.append({
             "name": name, "dir": dirs[name], "mpos": recs.get(name),
             "start": name in START, "trader": has_trader(d), "st": st, "closed": closed,
-            "pir": pirate_info(d),
+            "pir": pirate_info(d), "sbsrcs": sb_sources(d),
             "portals": [p for p in ps if p["managed"] and p["to"] and p["to"] != name],
             "inner": [p for p in ps if p["managed"] and p["to"] == name],
             "broken": [p for p in ps if not p["managed"] and p["to"]],
@@ -637,6 +709,10 @@ def main():
         rgl.append({"name": systems[h - 1]["dir"], "home": systems[h - 1]["name"], "members": mem,
                     "dg": max(1, min(3, int(2.0 * sum(dgs) / len(dgs) + 0.5)))})
     fdiff = fallback_diff(systems, by, rgl, os.path.abspath(a.region))
+    for s in systems:
+        s["sbpw"], s["sbtl"], sbn = s["sbsrcs"]
+        notes += ["%s/%s" % (s["dir"], x) for x in sbn]
+    sys_base(systems, adjacency(systems, by, lambda s, p: False))
 
     data = emit(systems, rgl)
     np = sum(len(s["portals"]) for s in systems)
@@ -662,6 +738,10 @@ def main():
     print("independents: %s" % ",".join(s["name"] for s in systems if not s["rg"]))
     print("danger: %s; pc: %s" % tuple(", ".join("%s=%d" % kv for kv in sorted(
         __import__("collections").Counter(s[k] for s in systems).items())) for k in ("dg", "pc")))
+    sbc = __import__("collections").Counter(s["sbsrc"] for s in systems)
+    print("sb: from pirates %d, trader level %d, neighbours %d, default %d; values: %s" % (
+        sbc["pir"], sbc["trader"], sbc["nb"], sbc["default"], ", ".join("%d=%d" % kv for kv in sorted(
+            __import__("collections").Counter(s["sb"] for s in systems).items()))))
     print("pirate station hulls outside homes: %s" % ",".join(
         s["name"] for s in systems if s["pir"]["hull"] and not s["pir"]["home"]))
     if fdiff is None:

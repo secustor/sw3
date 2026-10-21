@@ -1060,7 +1060,7 @@ function TRF_SweepEnd(how)
 	local idx = TRF_FcCur();
 	local tk = TRF_N("TRF_TierK", idx) or 1;
 	if pd then
-		local pay = min(TRF_FcT("sweep_pay_k") * (TRF_N("TRF_LPay") or 8) * tk, TRF_FcT("pay_cap") or 30000);
+		local pay = min(TRF_FcT("sweep_pay_k") * (TRF_N("TRF_LPayK", idx) or 8) * tk, TRF_FcT("pay_cap") or 30000);
 		local paid = TRF_N("TRF_Pay", pay, "join") or 0;
 		TRF_N("TRF_AddHelp", 1, "join");
 		TRF_N("TRF_AddHeat", -1, "join");
@@ -1205,10 +1205,11 @@ end;
 
 -- Sweep contracts (v1 7.4) ------------------------------------------------------------------------------
 
--- Pay shown in the join offer: min(sweep_pay_k x L_pay x tier_k, pay_cap) at the target.
+-- Pay shown in the join offer: min(sweep_pay_k x L_w x lk x d_k x tier_k, pay_cap) at the target.
 function TRF_FcJoinPay(slot)
-	local tk = TRF_N("TRF_TierK", TRF_SweepTarget(slot)) or 1;
-	return floor(min(TRF_FcT("sweep_pay_k") * (TRF_N("TRF_LPay") or 8) * tk, TRF_FcT("pay_cap") or 30000));
+	local t = TRF_SweepTarget(slot);
+	local tk = TRF_N("TRF_TierK", t) or 1;
+	return floor(min(TRF_FcT("sweep_pay_k") * (TRF_N("TRF_LPayK", t) or 8) * tk, TRF_FcT("pay_cap") or 30000));
 end;
 
 -- Offers for the patrol board of the current system (trf_hail chains one OK/Cancel box per offer, then calls
@@ -1240,7 +1241,7 @@ function TRF_Faction_BoardOffers()
 	if b and TRF_RgCt(slot, 2) == 0 then
 		local tk = TRF_N("TRF_TierK", b) or 1;
 		local pc = TRF_FcT("pay_cap") or 30000;
-		local pay = floor(min(1.5 * min(2500 * (TRF_N("TRF_LPay") or 8) * tk, pc), pc));
+		local pay = floor(min(1.5 * min(2500 * (TRF_N("TRF_LPayK", b) or 8) * tk, pc), pc));
 		tinsert(out, {k="bounty", s=slot, f=f, title=cap, ok=TRF_FcCtOk, a=2,
 			t=TRF_FcTxt("ctbounty", fn, TRF_FcSysName(b), pay)});
 	end;
@@ -1336,6 +1337,11 @@ function TRF_FcPoBest(l, cur, pmin)
 	return best;
 end;
 
+-- Intel price (8.11): po_intel_cost x d_k (8.4, trf_region's TRF_DK; 1 without it).
+function TRF_FcIntelCost()
+	return floor(TRF_FcT("po_intel_cost") * (TRF_N("TRF_DK") or 1));
+end;
+
 -- "box" when the offer box opened, else the reason (the caller runs the original).
 function TRF_FcPoBody()
 	local L = TRF_FcLive();
@@ -1365,7 +1371,7 @@ function TRF_FcPoBody()
 	local rg = TRF_FcRg();
 	local k, s = nil, nil;
 	local cr = TRF_N("GetPlayerCredits") or 0;
-	if cr >= TRF_FcT("po_intel_cost") and type(rg[slot]) == "table" then
+	if cr >= TRF_FcIntelCost() and type(rg[slot]) == "table" then
 		s = TRF_FcPoBest(rg[slot].sys, cur, 8);
 		if s then k = 2; end;
 	end;
@@ -1381,7 +1387,7 @@ function TRF_FcPoBody()
 		if s then k = 1; end;
 	end;
 	if not k then return "notarget"; end;
-	local text = TRF_FcTxt("pooffer"..k, TRF_FcSysName(s), TRF_FcT("po_intel_cost"));
+	local text = TRF_FcTxt("pooffer"..k, TRF_FcSysName(s), TRF_FcIntelCost());
 	if type(ShowMsgBox) ~= "function" then return "nobox"; end;
 	L.po = {k=k, s=s, w="box", g=TRF.gen};
 	-- CHECK (V9, v02 R4): a box opened inside the dock OK callback; fallback cfg po 0.
@@ -1414,7 +1420,7 @@ function TRF_FcPoOrigOnce()
 	if L and type(L.po) == "table" then TRF_FcPoOrig("step"); end;
 end;
 
--- Accept: offer = {k, s, t = legs + po_legs}; intel costs po_intel_cost. Then the original.
+-- Accept: offer = {k, s, t = legs + po_legs}; intel costs po_intel_cost x d_k. Then the original.
 function TRF_FcPoStep()
 	local L = TRF_FcLive();
 	if not L or type(L.po) ~= "table" then return; end;
@@ -1422,7 +1428,7 @@ function TRF_FcPoStep()
 	if po.c == 1 then
 		local ok = 1;
 		if po.k == 2 then
-			local cost = TRF_FcT("po_intel_cost");
+			local cost = TRF_FcIntelCost();
 			if (TRF_N("GetPlayerCredits") or 0) < cost or type(SubPlayerCredits) ~= "function" then
 				ok = nil;
 				TRF_FcSay(TRF_FcTxt("popoor"), 6);

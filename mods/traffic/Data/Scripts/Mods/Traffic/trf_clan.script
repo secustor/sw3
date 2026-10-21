@@ -942,7 +942,7 @@ function TRF_Cl_DiedBody(n, g)
 	TRF_Cl_Died(cr);
 end;
 
--- Carrier destroyed: record removed, clan score -8 (no visit cap), bounty min(k x L_pay, max) when the player
+-- Carrier destroyed: record removed, clan score -8 (no visit cap), bounty min(k x L_w x lk x d_k, max) when the player
 -- group hit it, news war/car cleared, escorts leave; waves lose their recovery (they leave by portal).
 function TRF_Cl_Died(cr)
 	local L, H = TRF_Cl_Live(), TRF_Cl_H();
@@ -955,7 +955,7 @@ function TRF_Cl_Died(cr)
 	end;
 	local paid = 0;
 	if cr.hit == 1 then
-		local lp = TRF_N("TRF_LPay");
+		local lp = TRF_N("TRF_LPayK", cur);
 		if type(lp) ~= "number" then lp = 8; end;
 		local amt = floor(min(TRF_Cl_T("carrier_bounty_k", 1000) * lp, TRF_Cl_T("carrier_bounty_max", 15000)));
 		if type(TRF_Pay) == "function" then

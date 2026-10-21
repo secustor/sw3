@@ -439,8 +439,6 @@ function T_V1_C()
 	tr.hold = {{i="Cargo_01", n=4, s=1}, {i="Cargo_04", n=2, s=1}};
 	TRF.std.heat = 3;
 	h.ms.inv = {};
-	-- The demand needs the player's pay level above the trader's build power (L_pay >= pw).
-	h.level = 20;
 	local o = TRF_Supply_HailOpts(tid);
 	HOST_Check(getn(o) == 1 and o[1] == "demand", "demand offered at heat 3 ("..tostring(o[1] or TRF_Dump({TRF_DemandOk(tid)}))..")");
 	h.rq = {1, 1};
@@ -985,7 +983,7 @@ function T_V1_G()
 	TRF_SweepEnd("test");
 	HOST_Check(sw.won == 1 and r.sw == 1 and h.credits == cr0, "clan side at <= 25 %: success, no pay without a contract");
 	TRF_Faction_BeforeJump();
-	-- Join contract: part done -> success, pay min(2000 x L_pay x tier_k, 30000), fs +1 on top of the win.
+	-- Join contract: part done -> success, pay min(2000 x L_w x lk x d_k x tier_k, 30000), fs +1 on top of the win.
 	s = W_SweepSetup(99);
 	r.ct = 1;
 	sw = W_SweepOn(99);
@@ -998,7 +996,7 @@ function T_V1_G()
 	end;
 	cr0 = h.credits;
 	local f0, st0 = TRF_Fs(s, 1), TRF_Fst(1);
-	local want = min(2000 * TRF_LPay() * TRF_TierK(TRF_CurIdx()), 30000);
+	local want = min(2000 * TRF_LPayK(TRF_CurIdx()) * TRF_TierK(TRF_CurIdx()), 30000);
 	TRF_SweepEnd("test");
 	HOST_Check(sw.won == 1 and r.sw == 1 and h.credits - cr0 == floor(want) and TRF_Fs(s, 1) == f0 + 3 and TRF_Fst(1) == st0 + 1
 		and TRF_Bit(r.ct, 1) == 0, "contract part done: success despite roll 2, pay "..(h.credits - cr0).." = "..floor(want)..", fs +3, fst +1");

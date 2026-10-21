@@ -11,11 +11,11 @@ Static check of the DLL hook sites (mod-options.md 5.2) and the Lua C API prolog
 
 ## gen_map.py
 
-Generates `Data/Scripts/Mods/Traffic/map.script` (`TRF_MapData()`, CRLF) from `Data/Game/GlobalMap.xml` and the location scripts (read only). `--check` exits 1 when the file differs from what would be written or the region fallback differs (below); `--game`, `--out`, `--region` override the paths. It prints counts, the region table and the discrepancies (one-way, broken and conditional portals, xml links without portals, station notes).
+Generates `Data/Scripts/Mods/Traffic/map.script` (`TRF_MapData()`, CRLF) from `Data/Game/GlobalMap.xml` and the location scripts (read only). `--check` exits 1 when the file differs from what would be written or the region fallback differs (below); `--game`, `--out`, `--region` override the paths. It prints counts, the region table, the `sb` sources (`sb: from pirates N, trader level N, neighbours N, default N; values: sb=count, ...`) and the discrepancies (one-way, broken and conditional portals, xml links without portals, station notes).
 
     python3 -I mods/traffic/tools/gen_map.py [--check]
 
-Per system: `name`, `idx`, `dir`, `mx`/`my`, `start`, `trader`, `rg`, `dg`, `pc`, `portals`, `inner`, `broken`, and `st`, the docking stations:
+Per system: `name`, `idx`, `dir`, `mx`/`my`, `start`, `trader`, `rg`, `dg`, `pc`, `sb`, `portals`, `inner`, `broken`, and `st`, the docking stations:
 
 - Source: every uncommented `CreateTradeStationDocking(VAR, ...)` (kind `"trade"`) and `CreatePatrolStationDocking(VAR, ship, r, ...)` (kind `"patrol"`) in the system's scripts. `label` is `SetObjectLabel(VAR, ...)`, else `functions.script`'s `VAR = GetObjectByLabel(...)`. Stations without a docking call (Debris1 `TRADE2`, xb13 `STOCK0*`) are not emitted.
 - `x, y, z`: position argument of `VAR = CreateTradeStation/CreateStation(...)`, resolved like portals (top-level `Vector3` names of `location.script`, then of the other scripts).
@@ -28,6 +28,7 @@ Region fields (v0.2 spec 4.1, design 5.1 and 5.11), read by `trf_region`'s `TRF_
 
 - Homes: systems with an uncommented `CreatePirateStationDocking` call (11). Each system belongs to the nearest home on the `CreateManagedPortal("Portal", ...)` graph (multi-source BFS, ties to the lower home `idx`); `Alien_Portal`/`Prec_Portal` edges are skipped, so Earth, DisonSphere and Precursors are independents (no `rg`). Regions of <= 3 systems merge into the nearest home with a larger region (Dionis -> Elinor, XK16 -> Kadi, XT24 -> XT27); slots follow the home `idx`: 8 regions, 110 systems.
 - Per system: `rg` (slot, absent for independents), `dg` (3 home, 2 active `RegisterRandomContact(PIRATE_FLIGHT, ...)`, 1 active `OutMissionActivity("RandomPiratGetMoney", ...)`, else 0), `pc` (`pro_cap`: 0 without trader registration, 2 Fronn, 3 at `dg` 3, 9 with a trade station, else 5).
+- `sb` (`sys_base`, design 5.1, pirate-progression 7.11.1; read by `trf_region`'s `TRF_SysBase` for `L_w`): the median power (5th argument) of the uncommented `NewPirateFlight` calls in the system's `activate.script` (calls with a non-literal power, `RAND(5)+16` in Pegas, x244, xt54, are skipped and printed as notes); else the median level (6th argument, default 1 as `RegisterRandomContact` reads it) of the uncommented `RegisterRandomContact(TRADER_FLIGHT, ...)` lines in the system's scripts; else the mean `sb` of its managed-portal neighbours (all portal models), filled in passes (each pass gives every system still without `sb` the mean of its neighbours that have one) until a pass adds none; else 8. Even-count medians and means round half up. Current split: 58 pirates, 32 trader level, 22 neighbours, 1 default (Earth).
 - Top level `rg[slot] = {name (home folder), home (home system), dg, members = {idx, ...}}`; region `dg` = 2 x mean member `dg`, rounded, clamped 1..3 (informational, no reader yet).
 - The generator also computes the table the way `trf_region.script`'s fallback does (its `TRF_Rg_Homes`/`PirSys`/`ExtSys`/`NonPortal` lists, `--region` overrides the path) and prints every difference; `--check` fails on a difference as well as on a stale `map.script`.
 

@@ -285,20 +285,23 @@ function TRF_SpCredits()
 	return nil;
 end;
 
--- L_pay (trf_region, else trf_hail's level table, else 8).
-function TRF_SpLPay()
+-- L_w (TDR 8.4) of system idx (default current): trf_region, else trf_hail, else 8.
+function TRF_SpLPay(idx)
 	local v = nil;
-	if type(TRF_LPay) == "function" then v = TRF_SpP(TRF_LPay, {}); end;
-	if type(v) ~= "number" and type(TRF_HlLPay) == "function" then v = TRF_SpP(TRF_HlLPay, {}); end;
+	if type(TRF_LPay) == "function" then v = TRF_SpP(TRF_LPay, {idx}); end;
+	if type(v) ~= "number" and type(TRF_HlLPay) == "function" then v = TRF_SpP(TRF_HlLPay, {idx}); end;
 	if type(v) ~= "number" then return 8; end;
 	return v;
 end;
 
--- Contract base pay N_eff of system idx (trf_region TRF_PayN, else the v02 T1 fallback).
+-- Contract base pay N_eff of system idx (trf_region TRF_PayN, else 900 x L_w x lk x 0.75: T1, pro 0, d_k 1).
 function TRF_SpPayN(idx)
 	local n = nil;
 	if type(TRF_PayN) == "function" then n = TRF_SpP(TRF_PayN, {idx}); end;
-	if type(n) ~= "number" then n = min(900 * TRF_SpLPay(), 15000) * 0.75; end;
+	if type(n) ~= "number" then
+		local L = TRF_SpLPay(idx);
+		n = 900 * L * min(1, L / 8) * 0.75;
+	end;
 	return n;
 end;
 
@@ -892,15 +895,6 @@ function TRF_DemandChanceOf(esc, heat, base, per, lo)
 	return TRF_SpClamp(p, lo, base);
 end;
 
--- Trader strength for the L_pay test: r.pw, r.str, else by tier (TT1 1, TT2 5, TT3 10, TT4 15; CHECK:
--- v02 records keep no strength, the approximation stands until trf_gen stores pw).
-function TRF_SpPw(r)
-	if type(r.pw) == "number" then return r.pw; end;
-	if type(r.str) == "number" then return r.str; end;
-	local t = {1, 5, 10, 15};
-	return t[TRF_SpClamp(floor(r.tier or 1), 1, 4)];
-end;
-
 -- 1 when a raid record on the trader is open or robbed it.
 function TRF_SpRaided(r)
 	local L = TRF_SpLive();
@@ -925,7 +919,7 @@ function TRF_SpEscAlive(r, h)
 	return max(0, (r.np or 1) - (r.nt or 1));
 end;
 
--- 1 or nil, reason: FTU trader, heat < 7, L_pay >= trader strength, no contract, not raided, not demanded
+-- 1 or nil, reason: FTU trader, heat < 7 (no hull or level test, TDR 8.6), no contract, not raided, not demanded
 -- before, no flag, cfg demand 1.
 function TRF_DemandOk(id)
 	if TRF_SpOpt("demand", 1) ~= 1 then return nil, "off"; end;
@@ -939,7 +933,6 @@ function TRF_DemandOk(id)
 	if r.ct or (L and type(L.ct) == "table" and L.ct.id == id) then return nil, "contract"; end;
 	if TRF_SpRaided(r) then return nil, "raid"; end;
 	if TRF_SpSupp() or TRF_SpQuiet() then return nil, "flag"; end;
-	if TRF_SpLPay() < TRF_SpPw(r) then return nil, "weak"; end;
 	return 1;
 end;
 
