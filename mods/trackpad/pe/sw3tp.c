@@ -1479,6 +1479,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID res)
 
     trf_init(ini);   /* [traffic] is independent of [sw3tp] enabled and of the site A check */
     dsp_init(ini);   /* [display]: also independent; runs before the game reads default.cfg */
+    stb_init(ini);   /* [stability]: render lost-device guard, also independent */
     if (!GetPrivateProfileIntA("sw3tp", "enabled", 1, ini)) { log_s("attach disabled enabled=0"); return TRUE; }
     read_config();
     if (!site_a_ok()) { log_s("attach mismatch"); return TRUE; }

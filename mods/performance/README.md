@@ -46,6 +46,30 @@ Heroic's first launch on a new prefix installs DirectX 9.0c, as usual.
 
 **Check:** `sw3tp.log` shows the `display:` lines; the newest `mtld3d-logs/sw3cw-<pid>.log` shows `config: render.scale = <s>` and `fullscreen entered ... display mode <size> set` with the display size.
 
+## Stability
+
+**What.** The sw3tp proxy patches the start of the game's scene render (`0x4054d0`). While the render manager's device-lost flag is set, the render returns at once and draws nothing. Otherwise it runs unchanged. Both the frame and the load-screen renders go through this function, so the check covers all 21 calls to it.
+
+**Why.** When the game window loses focus (`WM_ACTIVATEAPP(FALSE)`), the game frees its quad vertex batch and sets the device-lost flag. It recreates the batch only at the start of the next frame. If the focus loss is handled in the middle of a frame (for example inside the DirectInput poll), the rest of that frame draws engine trails and projectiles through the freed batch, and the game crashes at `0x432500` or `0x4d6050`. Skipping that one render avoids the crash, and the next frame restores the device as before. Analysis: `mods/traffic/design/mod-research/crash-load-432500.md`.
+
+The proxy checks the bytes at seven addresses of `sw3cw.exe` (GOG v1.12) first. If any of them differ, it logs one line and patches nothing.
+
+**`[stability]` keys** (in `sw3tp.ini`; independent of `[sw3tp] enabled`; a missing section means the defaults):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `1` | `0`: the module does nothing |
+| `render_lost_guard` | `1` | `0`: the render hook is not installed |
+| `log` | `1` | writes `stability: ...` lines to `sw3tp.log` (`0`: only a signature mismatch or an install failure) |
+
+`install.sh` writes the section with these defaults.
+
+**Log lines** (`sw3tp.log`):
+- `stability: attach ok render_lost_guard patch=0x4054d0 stub=0x... lost=[eax+0x78] sigs=7`: the hook is installed (at game start).
+- `stability: sig mismatch at 0x... (<what>), render_lost_guard not installed`: a different exe; nothing was patched.
+- `stability: render skipped (device lost) n=<count>`: the first render skipped in an episode; `n` counts all skipped renders since the start.
+- `stability: render resumed skipped=<k> episodes=<e>`: the first render after an episode; `k` renders were skipped in it.
+
 ## Why
 
 - **Rosetta 2 is ending.** macOS 27 is the last release with full Rosetta 2. Afterwards Apple keeps it only for "older, unmaintained gaming titles", and it is unclear whether that covers Wine. This build is native arm64: Wine, mtld3d's macOS half and the compatdb are arm64, and only `sw3cw.exe` is emulated, as i386 code through FEX in WoW64.

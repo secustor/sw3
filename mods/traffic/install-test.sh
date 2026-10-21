@@ -20,6 +20,7 @@
 # LEVEL=v01|v02|v1 (default v1): v01 and v02 turn the later features off with the presets the host tests use
 # (tests/host_traffic.lua T_V01, T_V1Off); keys set in the environment win over the preset.
 # TRAFFIC_ENABLED=0|1, SITE_T1..SITE_T4 (0|1, default 1), TICK_MS (default 250) (sw3tp.ini [traffic]).
+# STABILITY=0|1, RENDER_LOST_GUARD=0|1 (default 1) (sw3tp.ini [stability], mods/performance).
 # The trackpad install-test.sh rewrites sw3tp.ini; run this script again after it.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd); . "$here/env.sh"
@@ -108,6 +109,10 @@ printf '[traffic]\r\nenabled=%s\r\nsite_t1=%s\r\nsite_t2a=%s\r\nsite_t2b=%s\r\ns
     "${TRAFFIC_ENABLED:-1}" "${SITE_T1:-1}" "${SITE_T2A:-1}" "${SITE_T2B:-1}" "${SITE_T2C:-1}" "${SITE_T2D:-1}" \
     "${SITE_T3:-1}" "${SITE_T4:-1}" "${TICK_MS:-250}" "${LOG:-1}" >> "$tmp"
 mv -f "$tmp" "$ini"
+# [stability] (mods/performance/pe/stability.c, in the same zlib1.dll): STABILITY=0|1, RENDER_LOST_GUARD=0|1 (default 1).
+awk '{l=$0; sub(/\r$/,"",l)} l=="[stability]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$ini" > "$tmp"
+printf '[stability]\r\nenabled=%s\r\nrender_lost_guard=%s\r\nlog=1\r\n' "${STABILITY:-1}" "${RENDER_LOST_GUARD:-1}" >> "$tmp"
+mv -f "$tmp" "$ini"
 
 xattr -c "$COPY/zlib1.dll" "$ini" 2>/dev/null || true
 find "$SCRIPTS_DST" -type f -exec xattr -c {} \; 2>/dev/null || true
@@ -117,3 +122,4 @@ echo "config.script: $(tr -d '\r' < "$SCRIPTS_DST/config.script")"
 [ ! -f "$locd/trf_en.loc" ] || echo "loc: $locd/trf_en.loc$([ "${LOC:-0}" = 1 ] && echo ' (loc_mode 1)')"
 [ ! -f "$newsx.trf-orig" ] || echo "news: $(grep -c '<name>trf_' "$newsx") trf_ records in $newsx (vanilla in News.xml.trf-orig)"
 echo "sw3tp.ini [traffic]: $(awk '{sub(/\r$/,"")} /^\[/{p=($0=="[traffic]")} p&&!/^\[/{printf "%s ",$0}' "$ini")"
+echo "sw3tp.ini [stability]: $(awk '{sub(/\r$/,"")} /^\[/{p=($0=="[stability]")} p&&!/^\[/{printf "%s ",$0}' "$ini")"
