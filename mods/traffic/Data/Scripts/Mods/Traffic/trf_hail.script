@@ -779,6 +779,22 @@ function TRF_HlPayN(idx)
 	return floor(min(n, TRF_HlT("pay_cap")));
 end;
 
+-- Effective danger dE of system idx (map entry s) for the contract gate (v02 5.6), the raid roll's rule:
+-- trf_raid's TRF_Rd_DangerEff, else trf_region's TRF_DangerEff, else the map dg with the clan floor in a
+-- region, else 1 (map without dg).
+function TRF_HlDanger(idx, s)
+	local d = TRF_N("TRF_Rd_DangerEff", idx);
+	if type(d) ~= "number" then d = TRF_N("TRF_DangerEff", idx); end;
+	if type(d) ~= "number" then
+		d = 1;
+		if type(s) == "table" and type(s.dg) == "number" then
+			d = s.dg;
+			if TRF_N("TRF_RgOf", idx) then d = max(d, 1); end;
+		end;
+	end;
+	return d;
+end;
+
 -- Offer text and pay for trader id, or nil, reason.
 function TRF_CtOffer(id)
 	if TRF_HlOpt("contracts") ~= 1 then return nil, "off"; end;
@@ -790,11 +806,8 @@ function TRF_CtOffer(id)
 	local idx = TRF_HlCur();
 	local m = TRF_HlMap();
 	if type(idx) ~= "number" or type(m) ~= "table" or type(m.sys[idx]) ~= "table" then return nil, "nomap"; end;
-	-- Map dg (gen_map.py), else trf_region's computed danger (same rule, design 5.1), else 0.
-	local dg = m.sys[idx].dg;
-	if type(dg) ~= "number" and type(TRF_RgDanger) == "function" then dg = TRF_HlP(TRF_RgDanger, {idx}); end;
-	if type(dg) ~= "number" then dg = 0; end;
-	if dg < 1 and TRF_HlDis(idx) < 2 then return nil, "danger"; end;
+	-- Effective danger (clan floor included), as the raid roll uses it.
+	if TRF_HlDanger(idx, m.sys[idx]) < 1 and TRF_HlDis(idx) < 2 then return nil, "danger"; end;
 	if TRF_HlHeat() > 2 then return nil, "heat"; end;
 	if TRF_CtLive() then return nil, "busy"; end;
 	if not TRF_HlStrict(idx, "contract") then return nil, "strict"; end;

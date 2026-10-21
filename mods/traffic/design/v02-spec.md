@@ -48,7 +48,7 @@ Each row is the rule in one line; the detail is in the section named. Every stri
 | S2 | Docking queue: 3 hold points, one dock at a time, 30 s player priority | `Flight:Move`, `GetDockingPosition` | hold-point drift → divert to portal | 9.5 |
 | S5 G | Lane raids: demand, comply by relative strength and braveness (1–3 containers), else attack and flee | `Message`, `Attack`, `ClearInventory`, `ComeToPortal` | `ClearInventory` fails → comply without cargo loss (logged) | 5.1–5.3 |
 | S6 | Raid-help pay 50 % of `N_eff`, only with player-group damage | `attack`/`died` triggers, `AddPlayerCredits` | — | 5.5 |
-| S7 G | In-system escort contract (map `dg ≥ 1` or `dis ≥ 2`), pay `N_eff` from `L_pay` × `tier_k` × prosperity, cap 30000 | `ShowMsgBox`, `SetMaxSpeed` | speed cap off (`esc_speed 0`) | 5.6 |
+| S7 G | In-system escort contract (effective danger `dE ≥ 1` or `dis ≥ 2`), pay `N_eff` from `L_pay` × `tier_k` × prosperity, cap 30000 | `ShowMsgBox`, `SetMaxSpeed` | speed cap off (`esc_speed 0`) | 5.6 |
 | S8 | 70-unit trigger only announces; hail = focus within 150 after the announce | `"focus"` trigger, `ShowMsgBox` chain | `hail_start 2` (default since 2026-10-21): box at 70 units; 1: focus within 150 | 6.1 |
 | S9 | Trader shop `trf_<cls>` from the trader's hold mirror | `CreateShop`, `ModuleGoodsState`, `TradeStationDlg` | `shop_mode 0`: vanilla `On_FTrader_Start` | 7.1 |
 | S10, M14 | Shortage at the named station: +50 % buy for the class, restore list `TRF.shops` | `__TradeStationDock_Ok` wrapper, `ModuleGoodsState` | `short_price 0`: rumour and news only | 7.2 |
@@ -257,7 +257,7 @@ Table: fighters with 75 %, bombers 25 %. Power is `pw` = the tier's power; row =
 
 | Step | Rule |
 |---|---|
-| offer | hail option for a path A or B trader in `in`/`out` state, map `dg ≥ 1` or `dis ≥ 2` (design 8.4 uses `danger`; the clan floor `max(dg, 1)` of 7.12 is for raids and the seed only, else every region system would offer contracts), `TRF_StrictOk(cur, "contract")`, no contract live, trader not raided, heat ≤ 2. Text `ctoffer` with destination (station or system behind the exit portal) and N |
+| offer | hail option for a path A or B trader in `in`/`out` state, effective danger `dE ≥ 1` or `dis ≥ 2` (`TRF_HlDanger`: the raid roll's `TRF_Rd_DangerEff`, else `TRF_DangerEff`, else map `dg` with the clan floor, else 1; so every region system offers contracts, also at map `dg` 0 such as nj1 and taira), `TRF_StrictOk(cur, "contract")`, no contract live, trader not raided, heat ≤ 2. Text `ctoffer` with destination (station or system behind the exit portal) and N |
 | pay | `L_pay` by `GetPlayerLevel()`: 1 → 3, 2–3 → 5, 4 → 7, 5 → 10, 6–9 → 13, 10–13 → 16, 0 → 8. `N = min(900 × L_pay, 15000)`; `N_eff = min(N × tier_k[T] × (1 + 0.05 × pro(cur)), 30000)`, `tier_k` T1 0.75, T2 1.0 (T3 1.5, T4 2.0 in v1), T = effective tier; fixed at accept (`TRF_PayN`) |
 | accept | `live.ct = {id=id, n=N_eff, t=gt}`, `r.ct = 1`; cfg `esc_speed` > 0 → `leaderShip:SetMaxSpeed(esc_speed)` (default 0: off; values not measured); extra raid roll at 40 %; line `ctok` |
 | success | `TRF_OnDocked` or `TRF_OnExit` of that trader (`TRF_CtArrive(id, how)` runs before `TRF_Remove` deletes the flight, so the leader distance can be read) with the mothership ≤ 400 (`ct_dist`) from its leader → `AddPlayerCredits(n)`, help +1 (+2 in Recovery), heat −1, line `ctpaid`, credits +4. Mothership farther → void, line `ctfar` |
@@ -538,7 +538,7 @@ New stubs: `ShowMsgBox` (records calls; the scenario presses OK or Cancel), `Cre
 19. Strict gate uses design 9.9 option 3 (89 quest systems during missions) plus the authored list; Fronn has seed and raids off permanently.
 20. The vanilla paid rumour stays reachable from the hail ("Any news?") with its own chance and price.
 21. Region and clan state live in `trf_region` + `trf_state` (region agent); `TRF_BuildFlight` is shared from `trf_tier` and used by `trf_raid`.
-22. Contracts are offered at map `dg ≥ 1` or `dis ≥ 2` (design 8.4); the clan floor `max(dg, 1)` applies to raids and the seed only (design 7.12).
+22. Contracts are offered at effective danger `dE ≥ 1` or `dis ≥ 2`, the danger the raid roll uses (clan floor included). Before 2026-10-22 the gate read map `dg` without the floor, so region systems at map `dg` 0 (nj1, taira) never offered a contract while raids rolled there.
 23. The region BFS uses `"Portal"` edges only (design 5.1, 6.9), so Earth, DisonSphere and Precursors are independents.
 24. The board box and shortage price writes are skipped in mission conditions (6.4, 7.2: strict gate, system mode); restore writes always run.
 25. Hail boxes and actions run from a due call, not inside a box callback (6.1).
@@ -558,7 +558,7 @@ New stubs: `ShowMsgBox` (records calls; the scenario presses OK or Cancel), `Cre
 | O9 | Hold-point and parked-ship offsets (180–250, 150) are unmeasured; parked ships may block the player's docking ([TP] E8) | low–medium |
 | O10 | `GetPlayerQuestState()` meaning (v01 open) decides the strict gate | medium; `strict 2` fallback |
 | O11 | Clan names and news texts not checked against story names | medium |
-| O12 | One raid flight cap and `rc` 10 % at dE 1 meet "one raid or contract per 20 minutes" only with contracts counted (estimate: 0.5 raids per 20 min at `pro` 3 plus contracts; contracts now need map `dg ≥ 1` or `dis ≥ 2`, so danger-0 systems rely on raids) | medium; tune `rc` after play |
+| O12 | One raid flight cap and `rc` 10 % at dE 1 meet "one raid or contract per 20 minutes" only with contracts counted (estimate: 0.5 raids per 20 min at `pro` 3 plus contracts; contracts need `dE ≥ 1` or `dis ≥ 2`, so only independent danger-0 systems rely on raids) | medium; tune `rc` after play |
 | O13 | Downgrade to v0.1 or removal without `enabled 2` leaves up to 8 changed coefficients (v0.1 resets an unknown version) | high that it happens if done; README step |
 | O14 | Opening the next box from a due call while a box was just closed: whether `OnTick` runs while a modal box is open (if not, the due call runs after it closes, which is the intent) | medium; `hail_start 2` and screen-log answers as fallback |
 | O15 | Readers of gone records: the strip (3.2) assumes no v01 code reads other fields after `TRF_Remove`; the dump and `TRF_Rec` skip gone records today | medium; host scenario `v02-n` |
@@ -577,7 +577,7 @@ Checked against design 5.1, 6.4–6.9, 7.3–7.13, 8.1–8.9, 9.8–9.10, 10.4, 
 | 6 | 3.3 | `clock.rt` repair default `legs`; `TRF_SysFix` v3 rule; downgrade note | a missing `rt` defaulting to 0 would replay 30 ticks; v0.1 `TRF_SysFix` drops entries without `dis`; v0.1 resets unknown versions and loses `shops` (O13) |
 | 7 | 4.1, O7, 11.1 #23 | region BFS on `"Portal"` edges only; Kadi 27; 110 systems in regions | critic BFS over `map.script`: both directions give identical counts; the extra 3 Kadi systems are Earth, DisonSphere, Precursors over non-`"Portal"` edges (design 6.9) |
 | 8 | 4.4 | guard bound 44 / 52 legs | "doubled" was wrong by the two ticks (design 6.9) |
-| 9 | 5.6, 2, 11.1 #22 | contract offer on map `dg ≥ 1`, not `dE` | with the clan floor every region system would offer contracts; design 8.4 says `danger`, and 7.12 applies the floor to raids and the seed only |
+| 9 | 5.6, 2, 11.1 #22 | contract offer on map `dg ≥ 1`, not `dE` (superseded 2026-10-22: the offer uses `dE`, see 11.1 #22) | with the clan floor every region system would offer contracts; design 8.4 says `danger`, and 7.12 applies the floor to raids and the seed only |
 | 10 | 5.6 | `TRF_CtArrive` before `TRF_Remove`; any other removal voids | v01 `TRF_Remove` deletes the flight, so the 400-unit test needs the leader first; lifetime/watchdog removals were unassigned |
 | 11 | 5.2 | threat flee rule (`R_threat` 300) | design 7.4 trigger was missing |
 | 12 | 5.4 | staged raid wind-down rule | design 9.10 item missing |

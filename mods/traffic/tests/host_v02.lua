@@ -1200,6 +1200,20 @@ function T_V02_K()
 	V_Contract(g);
 	T_Jump("aurora");
 	HOST_Check(TRF.live.ct == nil and V_Logs("void (jump)") >= 1, "jump: contract void");
+	-- The gate uses the raid roll's effective danger: nj1 and taira have map dg 0 under a clan (floor 1).
+	local m = TRF_Map();
+	HOST_Check(TRF_HlDanger(64, m.sys[64]) == 1 and TRF_HlDanger(79, m.sys[79]) == 1 and TRF_HlDanger(27, m.sys[27]) == 0,
+		"contract danger: nj1 1, taira 1 (clan floor), earth 0 (independent)");
+	local ord, ode = TRF_Rd_DangerEff, TRF_DangerEff;
+	TRF_Rd_DangerEff, TRF_DangerEff = nil, nil;
+	HOST_Check(TRF_HlDanger(64, m.sys[64]) == 1 and TRF_HlDanger(27, m.sys[27]) == 0 and TRF_HlDanger(27, {}) == 1,
+		"contract danger without trf_raid/trf_region: map dg with the clan floor, 1 without dg");
+	TRF_Rd_DangerEff, TRF_DangerEff = ord, ode;
+	T_Jump("nj1");
+	TRF_SetDis(TRF_CurIdx(), 0);
+	local nj = T_Spawn("B") or T_Spawn("A");
+	local otx, own = TRF_CtOffer(nj);
+	HOST_Check(TRF_CurIdx() == 64 and type(otx) == "string" and own == TRF_HlPayN(64), "nj1 (map dg 0, clan region), dis 0: contract offered ("..tostring(own)..")");
 	T_Jump("gredos");
 	cur = TRF_CurIdx();
 	-- Refusal at heat 3.
