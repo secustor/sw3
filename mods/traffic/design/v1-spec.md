@@ -46,7 +46,7 @@ In-game status: hooks, natives, include order, `OnEnter`/`OnActivate`/`OnTick` a
 
 ## 2. Feature rules by requirement id
 
-Every G feature needs `TRF_StrictOk(cur, feature)`, both suppression flags clear and no extortion debounce (R2, R3) at each spawn step, counts against the caps of 6.7 and the governor (R14), and uses own groups.
+Every G feature needs `TRF_StrictOk(cur, feature)`, `__disableAction` clear and `TRF_Supp() == 0` (R2, R3) at each spawn step, and no combat (`TRF_Combat()`, v01-spec 6 R2 combat; 2026-10-21) when a carrier, sweep, supply run or danger convoy starts (`__sys_SOS` alone only mutes lines and dock boxes), counts against the caps of 6.7 and the governor (R14), and uses own groups.
 
 | Id | Rule | Natives | Fallback if unconfirmed | Sec |
 |---|---|---|---|---|

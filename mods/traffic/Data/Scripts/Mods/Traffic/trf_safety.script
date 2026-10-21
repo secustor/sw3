@@ -828,10 +828,128 @@ end;
 
 -- 1 while vanilla suppresses chatter (__sys_SOS == TRUE: _FTrader_exclude blocks the trader and mercenary
 -- chat, SOS calls, extortion and the patrol fine) or a scripted scene is visible (TRF_Safe_Scene), else nil.
--- For what talks to the player (lines, greetings, mod boxes); spawning reads TRF_Supp only.
+-- For what talks to the player (lines, greetings, mod boxes); spawning reads TRF_Supp, the gates of new
+-- things also TRF_Combat.
 function TRF_Quiet()
 	if __sys_SOS == TRUE or TRF_Safe_Scene() then return 1; end;
 	return nil;
+end;
+
+-- Combat state (design/mod-research/combat-state.md) ------------------------------------------------
+-- The engine has no "in battle" query. live.cbt is the game time of the last hostile event: a hull drop of
+-- the mothership between two safety ticks (why hp), a player hit on a mod ship through a TRF_Cb shim (why
+-- hit, traffic.script), an open raid in demand or fight within combat_r of the mothership (why raid).
+-- Live fields: cbt (gt of the last event), cbw (its why), cbh, cbi (mothership HP and id of the last
+-- sample), cbs (gt of the last sample with a visible scene), cbl (1 while "combat on" is logged). Tune
+-- combat_hold 25, combat_hp 0.5, combat_r 1500 (0 = whole system), combat_scene 3. cfg combat 0:
+-- TRF_Combat is always nil and nothing is sampled. Source a3 of the design (attack triggers of hostile mod
+-- groups on the mothership) is not implemented: shield hits count once the hull drops.
+
+-- Pure: 1 while the last hostile event cbt is younger than hold seconds at gt, else nil.
+function TRF_CombatOf(cbt, gt, hold)
+	if type(cbt) ~= "number" or type(gt) ~= "number" then return nil; end;
+	if gt - cbt < hold then return 1; end;
+	return nil;
+end;
+
+-- Pure: 1 for a hit-sized hull drop old -> new: more than d and less than half of old (a larger drop in
+-- one sample is a quest SetHP restore or a ship swap), else nil.
+function TRF_HpDropOf(old, new, d)
+	if type(old) ~= "number" or type(new) ~= "number" or old <= 0 then return nil; end;
+	local dd = old - new;
+	if dd > d and dd < 0.5 * old then return 1; end;
+	return nil;
+end;
+
+-- 1 unless cfg combat is 0.
+function TRF_CombatOn()
+	if TRF_SafeOpt("combat", 1) == 0 then return nil; end;
+	return 1;
+end;
+
+-- 1 while the player or a mod trader near the mothership is in combat (last hostile event younger than
+-- tune combat_hold), else nil. Reads TRF.live only. For the gates of new things (raids, carriers, sweeps,
+-- supply runs, danger convoys, the hail on focus); running steps never read it.
+function TRF_Combat()
+	local L = TRF_SafeLive();
+	if not L or not TRF_CombatOn() then return nil; end;
+	return TRF_CombatOf(L.cbt, TRF_SafeGt(), TRF_SafeTune("combat_hold", 25));
+end;
+
+-- Record a hostile event now: why hp, hit or raid, src the detail for the log, hold (nil = tune). Logs the
+-- onset only (and the end of the previous combat when the hold ran out between two samples).
+function TRF_CombatMark(why, src, hold)
+	local L = TRF_SafeLive();
+	if not L or not TRF_CombatOn() then return; end;
+	local gt = TRF_SafeGt();
+	if type(hold) ~= "number" then hold = TRF_SafeTune("combat_hold", 25); end;
+	if not TRF_CombatOf(L.cbt, gt, hold) then
+		if L.cbl == 1 then TRF_CombatOff(L, gt); end;
+		L.cbl = 1;
+		TRF_SafeL("combat on why="..tostring(why).." src="..tostring(src).." gt="..TRF_F(gt));
+		TRF_SafeStat("combat_on");
+	end;
+	L.cbt = gt;
+	L.cbw = why;
+end;
+
+-- Log the end of a combat (live table L).
+function TRF_CombatOff(L, gt)
+	L.cbl = nil;
+	TRF_SafeL("combat off last="..tostring(L.cbw).." gt="..TRF_F(gt));
+end;
+
+-- Mothership hull HP and id, or nil (GetCurHP logs on a dead id, so IsAlive first).
+function TRF_Safe_MsHp()
+	local ms = TRF_N("GetPlayerMotherShip");
+	if ms == nil or type(ms) == "number" or type(ms) == "string" or type(ms) == "function" then return nil; end;
+	if not TRF_Is(ms:IsAlive()) then return nil; end;
+	local hp = TRF_N("GetCurHP", ms);
+	if type(hp) ~= "number" then return nil; end;
+	return hp, ms.id;
+end;
+
+-- Number of an open raid record in st demand or fight within r of the mothership (trf_raid's
+-- TRF_RaidMsDist; an unknown distance counts as near; r <= 0: any distance), else nil.
+function TRF_Safe_RaidHot(rd, r)
+	for n, x in rd do
+		if type(x) == "table" and (x.st == "fight" or x.st == "demand") then
+			if r <= 0 then return n; end;
+			local d = TRF_N("TRF_RaidMsDist", n);
+			if type(d) ~= "number" or d <= r then return n; end;
+		end;
+	end;
+	return nil;
+end;
+
+-- Combat tune values from one TRF_Tune() call (the sample runs every tick).
+function TRF_CombatTune()
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = TRF_Tune(); end;
+	if type(t) ~= "table" then t = {}; end;
+	return {hold=TRF_SafeNum(t.combat_hold, 25), hp=TRF_SafeNum(t.combat_hp, 0.5), r=TRF_SafeNum(t.combat_r, 1500),
+		scene=TRF_SafeNum(t.combat_scene, 3)};
+end;
+
+-- Sources hp and raid, every safety tick (scene: the scene flag of this tick). The hull sample is skipped
+-- across a mothership id change and for combat_scene seconds after a visible scene.
+function TRF_CombatSample(scene)
+	local L = TRF_SafeLive();
+	if not L or not TRF_CombatOn() then return; end;
+	local T = TRF_CombatTune();
+	local gt = TRF_SafeGt();
+	local hp, id = TRF_Safe_MsHp();
+	if scene then L.cbs = gt; end;
+	local fresh = type(L.cbs) == "number" and gt - L.cbs < T.scene;
+	if not fresh and id == L.cbi and TRF_HpDropOf(L.cbh, hp, T.hp) then
+		TRF_CombatMark("hp", TRF_F(L.cbh).."->"..TRF_F(hp), T.hold);
+	end;
+	L.cbh = hp; L.cbi = id;
+	if type(L.rd) == "table" then
+		local n = TRF_Safe_RaidHot(L.rd, T.r);
+		if n then TRF_CombatMark("raid", n, T.hold); end;
+	end;
+	if L.cbl == 1 and not TRF_CombatOf(L.cbt, gt, T.hold) then TRF_CombatOff(L, gt); end;
 end;
 
 -- 1 once per suppression onset when a wind-down is due (sets live.wind); nil otherwise. For TRF_WindDown.
@@ -883,6 +1001,7 @@ function TRF_SafetySample()
 	end;
 	L.sl = s;
 	L.ss = ss;
+	TRF_CombatSample(f.scene);
 	return s;
 end;
 
@@ -982,6 +1101,7 @@ function TRF_SafeVisitReset()
 	if L then
 		L.sos_t = nil; L.ext_seen = nil; L.pmn = nil; L.wind = nil; L.sl = nil; L.ss = nil; L.sm = nil;
 		L.gv = nil; L.stl = nil; L.sck = nil; L.gvn = nil; L.gl = nil; L.gate = nil; L.qa = nil; L.qai = nil;
+		L.cbt = nil; L.cbw = nil; L.cbh = nil; L.cbi = nil; L.cbs = nil; L.cbl = nil;
 	end;
 	local H = TRF_SafeH();
 	if H then H.st = nil; end;
@@ -1027,7 +1147,8 @@ function TRF_SafeGateSum(idx)
 	return first..":"..list;
 end;
 
--- Dump line (v02 10.2): gate, strict inputs, caps, governor; called by TRF_DumpState.
+-- Dump line (v02 10.2): gate, strict inputs, caps, governor, combat (cbt = age of the last hostile event);
+-- called by TRF_DumpState.
 function TRF_Safety_Dump()
 	local s = TRF_StrictIn(nil, "seed");
 	local L = TRF_SafeLive() or {};
@@ -1036,9 +1157,12 @@ function TRF_Safety_Dump()
 		nm = s.name; q = tostring(s.q); qs = tostring(s.qs); mode = tostring(s.mode); qa = tostring(s.qa);
 		if type(s.ent) == "table" then dn = tostring(s.ent.why); end;
 	end;
+	local cb, ca = 0, "nil";
+	if TRF_Combat() then cb = 1; end;
+	if type(L.cbt) == "number" then ca = TRF_F(TRF_SafeGt() - L.cbt); end;
 	TRF_L("dump gate="..TRF_SafeGateSum(nil).." sys="..nm.." strict="..mode.." qs="..qs.." q="..q.." qa="..qa.." deny="..dn
 		.." cap="..tostring(L.capt).."/"..tostring(L.caps).."/"..tostring(L.capp).." gov="..tostring(L.gvn)
-		.." gov_on="..tostring(TRF_GovActive()));
+		.." gov_on="..tostring(TRF_GovActive()).." combat="..cb.." cbt="..ca.." cbw="..tostring(L.cbw));
 end;
 
 -- After a load sos_t restarts at the load time and ext_seen is nil (spec 6). TRF_Gen_OnLoad resets live

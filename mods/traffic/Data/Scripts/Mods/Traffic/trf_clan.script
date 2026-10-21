@@ -663,11 +663,13 @@ end;
 
 -- On-screen carrier (v1 6.2) ------------------------------------------------------------------
 
--- Gate of the on-screen carrier in cur for the record's slot: mod mode, flags and debounce, strict gate
--- (feature carrier), deny raid = 0, open sweep attempt, governor. Returns 1 or nil, reason.
+-- Gate of the on-screen carrier in cur for the record's slot: mod mode, flags and debounce, no combat
+-- (TRF_Combat), strict gate (feature carrier), deny raid = 0, open sweep attempt, governor. Returns 1 or
+-- nil, reason. The running carrier's waves read TRF_Rd_Supp only.
 function TRF_Cl_Gate(cur, slot)
 	if type(TRF_SysModeQuiet) == "function" and TRF_SysModeQuiet() ~= "mod" then return nil, "mode"; end;
 	if type(TRF_Rd_Supp) == "function" and TRF_Rd_Supp() then return nil, "supp"; end;
+	if TRF_N("TRF_Combat") then return nil, "combat"; end;
 	if type(TRF_Rd_Strict) == "function" then
 		local ok, why = TRF_Rd_Strict(cur, "carrier");
 		if not ok then return nil, why; end;

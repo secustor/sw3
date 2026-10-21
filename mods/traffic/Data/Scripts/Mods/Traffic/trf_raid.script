@@ -503,6 +503,13 @@ function TRF_Rd_RaidLeadPos(hr)
 	return TRF_Rd_Pos(TRF_Rd_RaidLead(hr));
 end;
 
+-- Distance of raid n's first live ship to the mothership, or nil (trf_safety's combat source raid).
+function TRF_RaidMsDist(n)
+	local H = TRF_Rd_H();
+	if not H or type(H.rd[n]) ~= "table" then return nil; end;
+	return TRF_Rd_Dist(TRF_Rd_RaidLeadPos(H.rd[n]), TRF_Rd_MsPos());
+end;
+
 -- Gates (5.1, 5.4) ---------------------------------------------------------------------------
 
 -- Carcasses above cfg gov (5.2 governor). CHECK: TRF_Safe_Count (GetCarcassCountInSphere) nil = off.
@@ -535,13 +542,20 @@ function TRF_Rd_Strict(idx, feat)
 	return 1;
 end;
 
--- 1 while a flag is set or trf_safety reports pause or wind-down (R2, R3; includes the extortion debounce).
+-- 1 while __disableAction is set or trf_safety reports pause or wind-down (R2, R3; includes the extortion
+-- debounce). __sys_SOS alone only mutes chatter. Running raid steps read this only.
 function TRF_Rd_Supp()
-	if __disableAction == TRUE or __sys_SOS == TRUE then return 1; end;
+	if __disableAction == TRUE then return 1; end;
 	if type(TRF_Supp) == "function" then
 		local s = TRF_Supp();
 		if type(s) == "number" and s ~= 0 then return 1; end;
 	end;
+	return nil;
+end;
+
+-- 1 while trf_safety reports combat (TRF_Combat; missing = not in combat). Gates of new raids only.
+function TRF_Rd_Combat()
+	if TRF_N("TRF_Combat") then return 1; end;
 	return nil;
 end;
 
@@ -551,15 +565,16 @@ function TRF_Rd_War(a, b)
 	return nil;
 end;
 
--- Common gate of lane and staged raids: mod mode, strict gate, deny, flags and debounce, Pirates at war with
--- Trade, no other open raid (skip: this raid; extra: open raids allowed, v1 base_raid_cap and convoy raids),
--- no open sweep, governor off. Returns 1 or nil, reason.
+-- Common gate of lane and staged raids: mod mode, strict gate, deny, flags and debounce, no combat
+-- (TRF_Combat), Pirates at war with Trade, no other open raid (skip: this raid; extra: open raids allowed,
+-- v1 base_raid_cap and convoy raids), no open sweep, governor off. Returns 1 or nil, reason.
 function TRF_Rd_Gate(idx, feat, skip, extra)
 	if type(idx) ~= "number" then return nil, "nosys"; end;
 	if type(TRF_SysModeQuiet) == "function" and TRF_SysModeQuiet() ~= "mod" then return nil, "mode"; end;
 	local ok, why = TRF_Rd_Strict(idx, feat);
 	if not ok then return nil, why; end;
 	if TRF_Rd_Supp() then return nil, "supp"; end;
+	if TRF_Rd_Combat() then return nil, "combat"; end;
 	if not TRF_Rd_War("Pirates", "Trade") then return nil, "peace"; end;
 	if TRF_Rd_Open(skip) > (extra or 0) then return nil, "busy"; end;
 	local slot = TRF_Rd_Slot(idx);

@@ -210,13 +210,20 @@ function TRF_FcDir(a, b)
 	return Vector3((b.x - a.x) / d, (b.y - a.y) / d, (b.z - a.z) / d);
 end;
 
--- 1 while a vanilla flag is set or trf_safety reports pause or wind-down (R2, R3).
+-- 1 while __disableAction is set or trf_safety reports pause or wind-down (R2, R3). The running sweep
+-- (waves, steps) reads this only.
 function TRF_FcSupp()
-	if __disableAction == TRUE or __sys_SOS == TRUE then return 1; end;
+	if __disableAction == TRUE then return 1; end;
 	if type(TRF_Supp) == "function" then
 		local s = TRF_Supp();
 		if type(s) == "number" and s ~= 0 then return 1; end;
 	end;
+	return nil;
+end;
+
+-- 1 while trf_safety reports combat (TRF_Combat; missing = not in combat). Sweep entry and start only.
+function TRF_FcCombat()
+	if TRF_N("TRF_Combat") then return 1; end;
 	return nil;
 end;
 
@@ -772,6 +779,7 @@ function TRF_SweepEntry()
 	if type(TRF_SysModeQuiet) == "function" and TRF_SysModeQuiet() ~= "mod" then return nil, "mode"; end;
 	if type(TRF_StrictOk) == "function" and not TRF_StrictOk(cur, "sweep") then return nil, "strict"; end;
 	if TRF_FcSupp() then return nil, "supp"; end;
+	if TRF_FcCombat() then return nil, "combat"; end;
 	local r = TRF_N("TRF_RgRec", slot);
 	if type(r) ~= "table" or type(r.sn) ~= "number" then return nil, "norec"; end;
 	L.sw = {s=slot, k=r.sn + 1, st="wait", t=TRF_FcGt(), f=TRF_SweepOwner(slot), b=TRF_FcBaseA(slot)};
@@ -789,9 +797,9 @@ function TRF_SweepStart(g, b)
 	if not L or type(L.sw) ~= "table" or L.sw.st ~= "wait" or g ~= TRF.gen then return; end;
 	local sw = L.sw;
 	local r = TRF_N("TRF_RgRec", sw.s);
-	if TRF_FcSupp() or type(r) ~= "table" or r.sn + 1 ~= sw.k or not TRF_N("TRF_SweepOpen", sw.s) then
+	if TRF_FcSupp() or TRF_FcCombat() or type(r) ~= "table" or r.sn + 1 ~= sw.k or not TRF_N("TRF_SweepOpen", sw.s) then
 		sw.st = "done";
-		TRF_FcL("sweep start dropped (supp or attempt gone)");
+		TRF_FcL("sweep start dropped (supp, combat or attempt gone)");
 		return;
 	end;
 	local H = TRF_FcH();
@@ -1333,7 +1341,7 @@ function TRF_FcPoBody()
 	local L = TRF_FcLive();
 	if not L or type(TRF) ~= "table" then return "notrf"; end;
 	L.po = nil;
-	if __disableAction == TRUE or __sys_SOS == TRUE then return "flag"; end;
+	if __disableAction == TRUE or TRF_N("TRF_Quiet") then return "flag"; end;
 	if TRF_FcOpt("po", 1) == 0 then return "off"; end;
 	local o = TRF.offer;
 	if type(o) == "table" and o.k == 3 then

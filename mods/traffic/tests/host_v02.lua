@@ -710,6 +710,9 @@ function V_Raid(id)
 		if type(rd) == "table" and rd.st == "armed" and not TRF_Rec(rd.id) then TRF_Rd_End(k, "cancel"); end;
 	end;
 	local r = TRF.live.tr[id];
+	-- Hits and demand steps of earlier raids in the scenario marked combat (combat-state.md); the gate of a
+	-- new raid would wait for the 25 s hold, so the roll starts clear.
+	TRF.live.cbt = nil;
 	if r.rdn and V_Rd(r.rdn) and V_Rd(r.rdn).st == "armed" then return r.rdn; end;
 	if r.rdn then TRF_Rd_End(r.rdn, "cancel"); r.rdn = nil; end;
 	HOST().rq = {0};
@@ -749,10 +752,15 @@ function T_V02_H()
 	ok, why = TRF_Rd_Gate(idx, "raid");
 	HOST_Check(not ok and (why == "strict" or why == "mode"), "quest system during a mission: no raid ("..tostring(why)..")");
 	h.qs = FALSE;
+	-- combat-state.md: __sys_SOS alone only mutes chatter; combat (TRF_Combat) closes the gate.
 	__sys_SOS = TRUE;
 	ok, why = TRF_Rd_Gate(idx, "raid");
-	HOST_Check(not ok and why == "supp", "__sys_SOS: no raid");
+	HOST_Check(ok == 1, "__sys_SOS alone: raid gate open ("..tostring(why)..")");
 	__sys_SOS = FALSE;
+	TRF_CombatMark("hit", "test");
+	ok, why = TRF_Rd_Gate(idx, "raid");
+	HOST_Check(not ok and why == "combat", "combat: no raid ("..tostring(why)..")");
+	TRF.live.cbt = nil;
 	h.extra_carcass = 50;
 	ok, why = TRF_Rd_Gate(idx, "raid");
 	HOST_Check(not ok and why == "gov", "governor: no raid");
@@ -929,9 +937,9 @@ function T_V02_J()
 	TRF.live.ent = nil;
 	TRF_SetDis(idx, 6);
 	h.ms.pos = Vector3(-300, 30, 1500);
-	__sys_SOS = TRUE;
-	HOST_Check(not TRF_StagedRoll(), "flag set: no staged raid");
-	__sys_SOS = FALSE;
+	TRF_CombatMark("hit", "test");
+	HOST_Check(not TRF_StagedRoll(), "combat: no staged raid");
+	TRF.live.cbt = nil;
 	h.cfg.staged = 0;
 	HOST_Check(not TRF_StagedRoll(), "cfg staged 0: no staged raid");
 	h.cfg.staged = nil;

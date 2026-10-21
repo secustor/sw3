@@ -209,8 +209,9 @@ function TRF_DcGate(idx)
 	local mode = nil;
 	if type(TRF_SysModeQuiet) == "function" then mode = TRF_DgX("TRF_SysModeQuiet"); else mode = TRF_DgX("TRF_SysMode"); end;
 	if mode ~= "mod" then return nil, "mode"; end;
-	if __disableAction == TRUE or __sys_SOS == TRUE then return nil, "flag"; end;
+	if __disableAction == TRUE then return nil, "flag"; end;
 	if type(TRF_Supp) == "function" and TRF_Supp() ~= 0 then return nil, "supp"; end;
+	if TRF_DgX("TRF_Combat") then return nil, "combat"; end;
 	if type(TRF_StrictOk) == "function" then
 		if not TRF_DgX("TRF_StrictOk", idx, "dconv") then return nil, "gate"; end;
 	elseif TRF_DgX("GetPlayerQuestState") == TRUE then

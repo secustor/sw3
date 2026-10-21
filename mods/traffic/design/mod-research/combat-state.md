@@ -277,3 +277,7 @@ Cases: HP drop → C 1, after 26 s → nil; scene restore drop → nil; ship swa
 | a3 trigger cost | per-update group-name lookup per trigger (0x4bca40) [V], so cost grows with the number of armed groups | arm only on WAR, cap 200 re-arms per visit, gen check |
 | `ATTACKCARCASS` firing rate under sustained fire | unknown (existing CHECK trf_events.script:432) | a2 needs only the first hit, and the re-arm caps already exist |
 | combat holding back the mod's own content | C used in running sites would cancel raids or sweeps | C only at spawn and open gates (table 3) |
+
+## 6. Implementation (2026-10-21)
+
+Built as in 2-4 with these differences: `combat_hp` defaults to 0.5 (HP units); `TRF_OnLowHP` is not in the a2 name set (pirates hitting a trader can be far from the mothership, so source b with its distance test covers it); a3 is not built; the live field `cbl` (1 while "combat on" is logged) gives one log line per transition; `TRF_SafeVisitReset` clears all `cb*` fields. The hail on focus skips with reason `flag` (`__disableAction`, `TRF_Supp`), `quiet` (`TRF_Quiet`) or `combat`. trf_station and trf_ui no longer fall back to `__sys_SOS` without trf_safety.

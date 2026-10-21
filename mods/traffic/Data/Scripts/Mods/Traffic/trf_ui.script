@@ -229,15 +229,11 @@ function TRF_UI_Rec(id)
 end;
 
 -- R2: no line while a mission has disabled random contacts (__disableAction) or vanilla suppresses chatter
--- (trf_safety TRF_Quiet: __sys_SOS or a visible scripted scene; without trf_safety, __sys_SOS).
+-- (trf_safety TRF_Quiet: __sys_SOS or a visible scripted scene; without trf_safety, not quiet).
 -- Returns "flag" (__disableAction), "quiet" or nil; the skip lines log it.
 function TRF_UI_Supp()
 	if __disableAction == TRUE then return "flag"; end;
-	if type(TRF_Quiet) == "function" then
-		if TRF_Quiet() then return "quiet"; end;
-		return nil;
-	end;
-	if __sys_SOS == TRUE then return "quiet"; end;
+	if TRF_N("TRF_Quiet") then return "quiet"; end;
 	return nil;
 end;
 

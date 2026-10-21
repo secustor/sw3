@@ -756,6 +756,7 @@ function T_V1_E()
 	c.sc = 99;
 	TRF.lr = {{s=slot, t=cur, e=TRF.clock.legs + 6}};
 	TRF.live.cr = nil;
+	TRF.live.cbt = nil;  -- the carrier hit above marked combat (combat-state.md); a new carrier would wait 25 s
 	TRF_CarrierEntry();
 	for i = 1, 400 do if not (TRF_H().cr and TRF_H().cr.car and TRF_H().cr.car.alive) then T_Tick(1, 0.25); end; end;
 	cr = TRF.live.cr;
@@ -1005,7 +1006,9 @@ function T_V1_G()
 	HOST_Check(sw.st == "done", "faction ships removed at the portal");
 	TRF_Faction_BeforeJump();
 	HOST_Check(TRF.live.sw == nil and TRF_H().sw == nil, "jump clears the sweep");
-	-- sr replaces the off-screen roll after a jump.
+	-- sr replaces the off-screen roll after a jump. The join hits above marked combat (TRF_CtJoinPart through
+	-- TRF_Cb); a new sweep does not enter during combat, so the hold is cleared here.
+	TRF.live.cbt = nil;
 	s = W_SweepSetup(99);
 	sw = W_SweepOn(0);
 	HOST_Check(sw and r.sr == 1, "roll 0 -> success stored (sr 1)");

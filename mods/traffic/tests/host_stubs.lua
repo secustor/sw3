@@ -299,9 +299,11 @@ function CreateCarcass(tpl, pos, dir)
 	return s;
 end;
 -- The player arrived through PORTAL L and sits near it (not counted as a carcass here).
-HOST().ms = {__obj=1, kind="ms", pos=Vector3(-950, 0, 650), alive=1};
+-- hp: hull HP (GetCurHP, SetHP), id: the Carcass table's id field (combat sample, combat-state.md 4).
+HOST().ms = {__obj=1, kind="ms", pos=Vector3(-950, 0, 650), alive=1, hp=1000, id=1};
 HOST().ms.GetPosition = function(self) return Vector3(self.pos.x, self.pos.y, self.pos.z); end;
 HOST().ms.IsAlive = function(self) return 1; end;
+HOST().ms.SetHP = function(self, v) HOST_Want(type(v) == "number", "Mothership:SetHP(hp)"); self.hp = v; end;
 HOST().ms.inv = {};
 HOST().ms.AddModuleToInventory = function(self, it, n)
 	HOST_Want(type(it) == "string" and type(n) == "number", "Mothership:AddModuleToInventory(item, count)");
@@ -870,7 +872,8 @@ end;
 
 -- include/NewTriggers.script NewTrigger, reduced to recording the trigger. The argument shapes per kind
 -- follow its Set* calls and the game's callers: timer (seconds), f_inside (flight, Vector3, r),
--- f_object_inside (flight, object, r), died (object), f_died (flight), focus (object), attack (group, object).
+-- f_object_inside (flight, object, r), died (object), f_died (flight), focus (object), attack (group name or
+-- Group table, object; the object may be the mothership).
 -- Conditions and actions must be named global functions or strings (AttachCondition/AttachAction, fact 1.14).
 function NewTrigger(t, cond, func, v1, v2, v3, v4)
 	local shape = {
@@ -880,7 +883,7 @@ function NewTrigger(t, cond, func, v1, v2, v3, v4)
 		died = function(a, b, c) return HOST_IsObj(a); end,
 		f_died = function(a, b, c) return HOST_IsFlight(a); end,
 		focus = function(a, b, c) return HOST_IsObj(a); end,
-		attack = function(a, b, c) return a == PLAYER_GROUP and HOST_IsObj(b); end,
+		attack = function(a, b, c) return (type(a) == "string" or HOST_IsGroup(a)) and HOST_IsObj(b); end,
 		HP = function(a, b, c) return HOST_IsObj(a) and type(b) == "number"; end
 	};
 	local ok = shape[t];

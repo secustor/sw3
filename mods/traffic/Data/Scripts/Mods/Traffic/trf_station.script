@@ -278,12 +278,8 @@ function TRF_Stn_Flags()
 end;
 
 -- G4b: vanilla suppresses chatter (trf_safety TRF_Quiet: __sys_SOS or a visible scripted scene; without
--- trf_safety, __sys_SOS). No mood, greeting, news, tip, ambient line or fee box; the vanilla box still runs.
+-- trf_safety, not quiet). No mood, greeting, news, tip, ambient line or fee box; the vanilla box still runs.
 function TRF_Stn_Quiet()
-	if type(TRF_Quiet) ~= "function" then
-		if __sys_SOS == TRUE then return 1; end;
-		return nil;
-	end;
 	return TRF_N("TRF_Quiet");
 end;
 

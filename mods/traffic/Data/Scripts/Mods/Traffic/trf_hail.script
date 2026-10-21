@@ -144,13 +144,17 @@ function TRF_HlStrict(idx, feature)
 	return TRF_HlP(TRF_StrictOk, {idx, feature});
 end;
 
--- R2 flags or the extortion debounce (TRF_Supp level 1 or 2).
+-- Why the hail on focus is held back, or nil: "flag" (__disableAction, TRF_Supp level 1 or 2), "quiet"
+-- (TRF_Quiet: vanilla mutes chatter or a scene is visible), "combat" (TRF_Combat). A missing trf_safety
+-- function counts as clear.
 function TRF_HlSupp()
-	if __disableAction == TRUE or __sys_SOS == TRUE then return 1; end;
+	if __disableAction == TRUE then return "flag"; end;
 	if type(TRF_Supp) == "function" then
 		local s = TRF_HlP(TRF_Supp, {});
-		if type(s) == "number" and s ~= 0 then return 1; end;
+		if type(s) == "number" and s ~= 0 then return "flag"; end;
 	end;
+	if TRF_N("TRF_Quiet") then return "quiet"; end;
+	if TRF_N("TRF_Combat") then return "combat"; end;
 	return nil;
 end;
 
@@ -415,10 +419,11 @@ function TRF_HailOpen(id, via)
 	if not L or not r then return nil, "norec"; end;
 	local gt = TRF_HlGt();
 	local why = nil;
+	local sq = TRF_HlSupp();
 	if (r.hn or 0) >= TRF_HlT("hail_max") then why = "max";
 	elseif gt - (r.hlt or -1000) < TRF_HlT("hail_cd") then why = "cd";
 	elseif type(L.hl) == "table" and gt - (L.hl.t or 0) < TRF_HlT("hail_stale") then why = "busy";
-	elseif TRF_HlSupp() then why = "flag";
+	elseif sq then why = sq;
 	elseif TRF_HlRaided(r) then why = "raid";
 	elseif r.st == "wind" or r.st == "gone" then why = "st"; end;
 	if why then
@@ -1218,7 +1223,7 @@ function TRF_BoardDockOk_Body()
 	local L = TRF_HlLive();
 	if not L or type(TRF) ~= "table" then return "notrf"; end;
 	L.bgo = nil;
-	if __disableAction == TRUE or __sys_SOS == TRUE then return "flag"; end;
+	if __disableAction == TRUE or TRF_N("TRF_Quiet") then return "flag"; end;
 	local b = TRF_HlOpt("board");
 	if b == 0 then return "off"; end;
 	local idx = TRF_HlCur();

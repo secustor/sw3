@@ -108,9 +108,10 @@ function TRF_Ev_Rec(id, g, what)
 	return r;
 end;
 
--- 1 while a suppression flag is set or trf_safety reports pause or wind-down (R2, R3).
+-- 1 while __disableAction is set or trf_safety reports pause or wind-down (R2, R3). Vanilla parity: the
+-- attack response (Call_SOS_command) reads neither __sys_SOS nor combat; only its lines go through TRF_Quiet.
 function TRF_Ev_Supp()
-	if __disableAction == TRUE or __sys_SOS == TRUE then return 1; end;
+	if __disableAction == TRUE then return 1; end;
 	if type(TRF_Supp) == "function" then
 		local s = TRF_Supp();
 		if type(s) == "number" and s ~= 0 then return 1; end;
@@ -776,7 +777,7 @@ end;
 
 -- Due call 5 s after the flights: flight 3's leader says the second vanilla line.
 function TRF_RespLine(n, b)
-	if TRF_Ev_Supp() then return; end;
+	if TRF_Ev_Supp() or TRF_N("TRF_Quiet") then return; end;
 	local H = TRF_Ev_H();
 	if not H or type(H.resp) ~= "table" or type(H.resp[n]) ~= "table" then return; end;
 	local t = H.resp[n];

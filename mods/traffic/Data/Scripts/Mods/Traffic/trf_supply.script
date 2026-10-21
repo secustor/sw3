@@ -209,13 +209,25 @@ function TRF_SpLead(id)
 	return nil;
 end;
 
--- R2 flags or the extortion debounce.
+-- R2 flags (__disableAction) or the extortion debounce (TRF_Supp level 1 or 2).
 function TRF_SpSupp()
-	if __disableAction == TRUE or __sys_SOS == TRUE then return 1; end;
+	if __disableAction == TRUE then return 1; end;
 	if type(TRF_Supp) == "function" then
 		local s = TRF_SpP(TRF_Supp, {});
 		if type(s) == "number" and s ~= 0 then return 1; end;
 	end;
+	return nil;
+end;
+
+-- 1 while trf_safety reports combat (TRF_Combat; missing = not in combat). Supply run spawn only.
+function TRF_SpCombat()
+	if TRF_N("TRF_Combat") then return 1; end;
+	return nil;
+end;
+
+-- 1 while vanilla mutes chatter or a scene is visible (trf_safety TRF_Quiet). Talk option and dock box.
+function TRF_SpQuiet()
+	if TRF_N("TRF_Quiet") then return 1; end;
 	return nil;
 end;
 
@@ -518,7 +530,7 @@ function TRF_SupplyRoll(plan)
 	if type(plan) ~= "table" or plan.sup or plan.sid then return nil; end;
 	if TRF_SpOpt("conv", 1) ~= 1 or not plan.st or not plan.np then return nil; end;
 	local cur = TRF_SpCur();
-	if type(cur) ~= "number" or TRF_SpSupp() or TRF_SpSlotBusy() then return nil; end;
+	if type(cur) ~= "number" or TRF_SpSupp() or TRF_SpCombat() or TRF_SpSlotBusy() then return nil; end;
 	local f = TRF_SpFacIdx(TRF_SpTeam(cur));
 	if not f then return nil; end;
 	local ch, sc = 0, nil;
@@ -926,7 +938,7 @@ function TRF_DemandOk(id)
 	local L = TRF_SpLive();
 	if r.ct or (L and type(L.ct) == "table" and L.ct.id == id) then return nil, "contract"; end;
 	if TRF_SpRaided(r) then return nil, "raid"; end;
-	if TRF_SpSupp() then return nil, "flag"; end;
+	if TRF_SpSupp() or TRF_SpQuiet() then return nil, "flag"; end;
 	if TRF_SpLPay() < TRF_SpPw(r) then return nil, "weak"; end;
 	return 1;
 end;
@@ -1128,7 +1140,7 @@ function TRF_SpRelBody(param)
 	local heat = TRF_SpHeat();
 	if heat < 3 then return "heat"; end;
 	if TRF_SpWar("Trade") then return "war"; end;
-	if TRF_SpSupp() then return "flag"; end;
+	if TRF_SpSupp() or TRF_SpQuiet() then return "flag"; end;
 	if not TRF_SpStrict(nil, "offer") then return "strict"; end;
 	if type(ShowMsgBox) ~= "function" then return "nobox"; end;
 	local cost = TRF_HeatCostOf(heat, TRF_SpT("heat_reset_k", 100000), TRF_SpT("heat_reset_max", 950000));

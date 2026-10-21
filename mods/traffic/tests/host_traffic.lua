@@ -872,6 +872,7 @@ function T_G()
 	T_Tick(2, 0.5);
 	HOST_Check(TRF.live.wind == nil, "flag cleared: wind reset for the next onset");
 	T_SceneSupp();
+	T_Combat();
 end;
 
 -- Scene-based suppression (R2): TRF_Quiet and the scene flag (movie, UI natives), spawning under __sys_SOS.
@@ -930,6 +931,115 @@ function T_SceneSupp()
 	sid = T_Spawn();
 	HOST_Check(TRF_Supp() == 0 and sid ~= nil, "__sys_SOS, sos_mode 1: the generator spawns a trader");
 	__sys_SOS = FALSE;
+end;
+
+-- Mod log lines containing pat (plain find) since h.logs was set.
+function T_LogN(pat)
+	local n, q = 0, HOST().logs or {};
+	for i = 1, getn(q) do if strfind(q[i], pat, 1, 1) then n = n + 1; end; end;
+	return n;
+end;
+
+-- Combat state (design/mod-research/combat-state.md): hull sample, hit shims, raid source, cfg combat 0,
+-- and the read sites (raid gate, hail on focus, attack response).
+function T_Combat()
+	local h = HOST();
+	local ms = h.ms;
+	print("HOST ---- combat state");
+	T_Jump("gredos");
+	T_Tick(2, 0.5);
+	HOST_Check(TRF_Combat() == nil and TRF.live.cbh == 1000 and TRF.live.cbi == 1, "no hostile event: not in combat, hull sampled (1000, id 1)");
+	-- Hull drop: combat for combat_hold (25 s), one line per transition.
+	h.logs = {};
+	ms.hp = ms.hp - 50;
+	T_Tick(1, 0.5);
+	HOST_Check(TRF_Combat() == 1 and TRF.live.cbw == "hp" and T_LogN("safe: combat on why=hp") == 1, "hull drop 50: combat on (why hp)");
+	ms.hp = ms.hp - 20;
+	T_Tick(1, 0.5);
+	HOST_Check(T_LogN("safe: combat on") == 1, "second drop while in combat: no second line");
+	T_Tick(48, 0.5);
+	HOST_Check(TRF_Combat() == 1 and T_LogN("safe: combat off") == 0, "24 s after the last drop: still in combat");
+	T_Tick(4, 0.5);
+	HOST_Check(TRF_Combat() == nil and T_LogN("safe: combat off") == 1, "26 s after the last drop: combat off, logged once");
+	T_Tick(4, 0.5);
+	HOST_Check(T_LogN("safe: combat off") == 1 and T_LogN("safe: combat on") == 1, "no further transition lines");
+	-- A drop of half the hull or more in one sample (quest SetHP restore) is ignored; so is a gain.
+	ms:SetHP(100000);
+	T_Tick(1, 0.5);
+	ms:SetHP(1000);
+	T_Tick(1, 0.5);
+	HOST_Check(TRF_Combat() == nil and TRF.live.cbh == 1000, "SetHP 100000 -> 1000 (>= 50 % in one sample): ignored");
+	-- A drop within combat_scene (3 s) after a visible scene is ignored, a later one counts.
+	TRF_InMovie = HOST_InMovie; h.mov = 1;
+	T_Tick(1, 0.5);
+	TRF_InMovie = nil; h.mov = nil;
+	ms.hp = ms.hp - 50;
+	T_Tick(2, 0.5);
+	HOST_Check(TRF_Combat() == nil, "drop 1 s after a scene: ignored");
+	T_Tick(6, 0.5);
+	ms.hp = ms.hp - 50;
+	T_Tick(1, 0.5);
+	HOST_Check(TRF_Combat() == 1, "drop 4 s after the scene: combat");
+	TRF.live.cbt = nil;
+	-- Mothership swap (id change): no comparison across it.
+	ms.id = 2; ms.hp = ms.hp - 50;
+	T_Tick(1, 0.5);
+	HOST_Check(TRF_Combat() == nil and TRF.live.cbi == 2, "mothership id change: drop ignored");
+	ms.id = 1; ms.hp = 1000;
+	T_Tick(1, 0.5);
+	-- Hit shims through TRF_Cb mark combat; other callbacks do not.
+	TRF_Cb("TRF_SwDied", function() end, {});
+	HOST_Check(TRF_Combat() == nil, "TRF_Cb TRF_SwDied: no combat");
+	TRF_Cb("TRF_OnRaidHit", function() end, {});
+	HOST_Check(TRF_Combat() == 1 and TRF.live.cbw == "hit" and T_LogN("safe: combat on why=hit src=TRF_OnRaidHit") == 1, "TRF_Cb TRF_OnRaidHit: combat (why hit)");
+	-- Raid gate: closed while in combat, open after the hold; __sys_SOS alone keeps it open.
+	local idx = TRF_CurIdx();
+	local ok, why = TRF_Rd_Gate(idx, "raid");
+	HOST_Check(not ok and why == "combat", "raid gate in combat: combat ("..tostring(why)..")");
+	-- Hail on focus: skipped in combat (reason combat).
+	local id = T_Spawn();
+	local hr, hw = TRF_HailOpen(id, "test");
+	HOST_Check(id and hr == nil and hw == "combat" and T_LogN("hail id="..tostring(id).." via=test skipped (combat)") == 1, "hail in combat: skipped (combat)");
+	-- Attack response: starts in combat (vanilla parity) and under __sys_SOS.
+	__sys_SOS = TRUE;
+	TRF_RespStart(id);
+	__sys_SOS = FALSE;
+	HOST_Check(TRF_Rec(id) and TRF_Rec(id).resp == 1, "attack response starts in combat and under __sys_SOS");
+	T_Tick(54, 0.5);
+	HOST_Check(TRF_Combat() == nil, "27 s later: combat off");
+	ok, why = TRF_Rd_Gate(idx, "raid");
+	HOST_Check(ok == 1, "raid gate after the hold: open ("..tostring(why)..")");
+	__sys_SOS = TRUE;
+	ok, why = TRF_Rd_Gate(idx, "raid");
+	__sys_SOS = FALSE;
+	HOST_Check(ok == 1, "raid gate under __sys_SOS alone: open ("..tostring(why)..")");
+	-- Raid in fight: combat within combat_r (1500) of the mothership, not beyond.
+	local ship = {__obj=1, pos=Vector3(ms.pos.x + 1000, ms.pos.y, ms.pos.z)};
+	ship.IsAlive = function(self) return 1; end;
+	ship.GetPosition = function(self) return self.pos; end;
+	TRF.live.rd[9] = {n=9, st="fight"};
+	TRF_H().rd[9] = {sh={ship}, dk={}};
+	TRF_CombatSample(nil);
+	HOST_Check(TRF_Combat() == 1 and TRF.live.cbw == "raid", "raid in fight 1000 from the mothership: combat (why raid)");
+	TRF.live.cbt = nil;
+	ship.pos = Vector3(ms.pos.x + 2000, ms.pos.y, ms.pos.z);
+	TRF_CombatSample(nil);
+	HOST_Check(TRF_Combat() == nil, "raid in fight 2000 from the mothership: no combat");
+	TRF.live.rd[9].st = "come";
+	ship.pos = Vector3(ms.pos.x + 100, ms.pos.y, ms.pos.z);
+	TRF_CombatSample(nil);
+	HOST_Check(TRF_Combat() == nil, "raid in st come: no combat");
+	TRF.live.rd[9] = nil; TRF_H().rd[9] = nil;
+	-- cfg combat 0: never in combat.
+	h.cfg.combat = 0;
+	TRF_CombatMark("hit", "test");
+	ms.hp = ms.hp - 50;
+	T_Tick(1, 0.5);
+	HOST_Check(TRF_Combat() == nil and TRF.live.cbt == nil, "cfg combat 0: TRF_Combat nil, nothing marked");
+	h.cfg.combat = nil;
+	ms.hp = 1000;
+	T_Tick(1, 0.5);
+	h.logs = nil;
 end;
 
 local fn = getglobal("T_"..strupper(HOST().scen));
