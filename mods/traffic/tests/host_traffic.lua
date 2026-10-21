@@ -875,6 +875,45 @@ function T_G()
 	T_Combat();
 	T_CombatArm();
 	T_Spot();
+	T_Gov();
+end;
+
+-- Governor (5.2, carcass-count.md): the count at entry is the visit baseline (scenery), the rule applies to
+-- the excess; the baseline is retaken after a reset and survives gen's load-pass live reset.
+function T_Gov()
+	local h = HOST();
+	h.extra_carcass = 99;
+	h.logs = {};
+	T_Jump("gredos");
+	local L = TRF.live;
+	local n0 = L.gvn0;
+	HOST_Check(type(n0) == "number" and n0 >= 100 and L.gvr == n0 and L.gvn == 0, "activate: baseline "..tostring(n0).." (>= 100), excess 0");
+	HOST_Check(T_LogN("safe: governor base n0="..n0.." r=3000") == 1, "baseline logged");
+	local ct0, cs0 = TRF_SafeCaps(0);
+	local ct, cs = TRF_Governor();
+	HOST_Check(ct == ct0 and cs == cs0 and not TRF_GovActive(), "baseline 100, no excess: caps unchanged ("..ct.."/"..cs..")");
+	HOST_Check(T_LogN("safe: governor n=0/"..n0.." r=3000 cap=") >= 1, "governor line shows excess/raw");
+	h.extra_carcass = 99 + 41;
+	ct, cs = TRF_Governor();
+	HOST_Check(ct == max(1, ct0 - 1) and ct0 > 1 and cs <= 12 and TRF_GovActive() == 1 and L.gvn == 41,
+		"excess 41: one trader fewer ("..ct0.."->"..ct.."), ships "..cs.." <= 12");
+	HOST_Check(T_LogN("safe: governor n=41/"..(n0 + 41).." r=3000") == 1, "governor line n=41/"..(n0 + 41));
+	HOST_Check(T_LogN("safe: governor base n0=") == 1, "baseline logged once per visit");
+	TRF_SafeVisitReset();
+	ct, cs = TRF_Governor();
+	HOST_Check(L.gvn0 == n0 + 41 and L.gvn == 0 and ct == ct0 and not TRF_GovActive(), "after a reset: baseline retaken ("..tostring(L.gvn0).."), caps back");
+	HOST_Check(T_LogN("safe: governor base n0=") == 2, "new baseline logged");
+	-- Load: OnLoad takes the baseline, gen's load pass rebuilds live; the next governor run keeps it (H.gvn0).
+	T_SaveLoad();
+	local nb = T_LogN("safe: governor base n0=");
+	h.extra_carcass = 99 + 41 + 41;
+	TRF.live.gv = nil;
+	TRF_CanSpawn(0);
+	HOST_Check(TRF.live.gvn0 == TRF_H().gvn0 and TRF.live.gvn == 41 and T_LogN("safe: governor base n0=") == nb,
+		"after load: baseline kept across the live reset, excess "..tostring(TRF.live.gvn));
+	h.extra_carcass = nil; h.logs = nil;
+	T_Jump("gredos");
+	HOST_Check(TRF.live.gvn == 0 and not TRF_GovActive(), "next entry: new baseline, governor off");
 end;
 
 -- Spawn spot rule (R12, carcass-count.md): the native also counts the portal or station next to a spot

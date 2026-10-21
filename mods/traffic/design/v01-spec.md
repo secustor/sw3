@@ -214,7 +214,7 @@ Response flights (10.3) and vanilla flights are not counted. Spawn factor 1.00; 
 
 ### 5.2 Governor (design 6.7)
 
-In OnActivate (after `activate.script`, so location flights exist) and OnLoad: `n = GetCarcassCountInSphere(Vector3(0,0,0), gov_r)` with `gov_r` 3000 (CHECK: one sphere covers a system; the native returns a count only). `n > 40` → `capt = cap_traders − 1` (minimum 1), `caps = min(cap_ships, 12)`. Logged with `n`.
+In OnActivate (after `activate.script`, so location flights exist), OnLoad and every spawn decision without a count yet: `raw = GetCarcassCountInSphere(Vector3(0,0,0), gov_r)` with `gov_r` 3000 (CHECK: one sphere covers a system). The native counts every carcass, scenery included (`mod-research/carcass-count.md`; 36 to 202 per system in the game with no mod ships), so the first count of the visit is its baseline `live.gvn0` (mirrored in `H.gvn0`, since gen's load pass rebuilds `live`; logged once per visit as `safe: governor base n0=<n> r=<r>`) and the rule applies to the excess `n = max(0, raw − gvn0)` (`live.gvn`, raw in `live.gvr`): wrecks and ships that appeared during the visit. `n > 40` (`gov`) → `capt = cap_traders − 1` (minimum 1), `caps = min(cap_ships, 12)`. Logged as `safe: governor n=<n>/<raw> r=<r> cap=<t>/<s>/<p>`; the dump shows `gov=<n>/<raw>`.
 
 ### 5.3 Lifetime, watchdog, wind-down removal (design 6.8, M3)
 

@@ -65,7 +65,7 @@ The loop has no HP or alive test. A destroyed object stops counting only once it
 ### 1.5 In-game corroboration [L]
 
 - NJ1 (2026-10-21, 15 game minutes, mode mod, gate ok): `skip_roll=13 skip_space=8`, no `spawn`. Every tick that passed the roll was refused by `TRF_GnFree` with `n > 0`.
-- The governor's `GetCarcassCountInSphere(Vector3(0, 0, 0), 3000)` logs `n` = 36 to 202 across runs, e.g. `governor n=181 r=3000` in Taira with `tr=0 ships=0` (no mod ships). Far more than the ships in a system: scenery carcasses count. Side effect: the governor threshold `n > 40` (v01-spec 6) trips on scenery in most systems. Not changed here.
+- The governor's `GetCarcassCountInSphere(Vector3(0, 0, 0), 3000)` logs `n` = 36 to 202 across runs, e.g. `governor n=181 r=3000` in Taira with `tr=0 ships=0` (no mod ships). Far more than the ships in a system: scenery carcasses count. Side effect: the governor threshold `n > 40` tripped on scenery in most systems; since 2026-10-21 it applies to the excess over a per-visit baseline (v01-spec 5.2).
 
 ## 2. Portal:GetEntryPoint(d) [V]
 
@@ -88,4 +88,4 @@ So `GetEntryPoint(10)` is exactly 10 units from the portal's origin along its lo
 
 1. Meaning of `o+0x20` and when a killed ship leaves `LM+0x24` (1.4).
 2. Which constructor builds Portal (0x61e3c0, 0x62b1e0 or 0x64e610) and its typical `+0x548`.
-3. A `debug` run (`cfg log 2`) shows `gen: spot <key> base=<n>` per spot at entry: the static counts per system, to recalibrate the governor (1.5).
+3. A `debug` run (`cfg log 2`) shows `gen: spot <key> base=<n>` per spot at entry: the static counts per system next to the governor's `safe: governor base n0=` (1.5).

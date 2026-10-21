@@ -10,8 +10,9 @@
 -- seeds capt/caps from cfg and stok = 0; gv and stl tell those defaults from results. gen may set inval (reason string) when a
 -- trader contact fails validation (4.2); TRF_SysMode then returns "vanilla" for the rest of the visit.
 -- v0.2 (design/v02-spec.md 8.3, 9.1, 9.5, 10.2): strict gate R4 with the deny list, band caps, spawn gate by
--- kind, enabled 2, entry precedence (design 6.5), TRF_Safety_Dump. Extra live fields: gvn (carcass count of
--- the last governor run), capp (cap_parked), gl (last logged gate denial), gate (gate summary at activate).
+-- kind, enabled 2, entry precedence (design 6.5), TRF_Safety_Dump. Extra live fields: gvn (carcass excess of
+-- the last governor run over the visit baseline gvn0; raw count gvr), capp (cap_parked), gl (last logged gate
+-- denial), gate (gate summary at activate). H.gvn0 mirrors gvn0 across gen's load-pass live reset.
 -- v1 (design/v1-spec.md 10.2, 10.4): deny list merged with trf_loc's TRF_Loc_Deny, the campaign-pass quest
 -- ids (option 1 of design 9.9), strict-gate features of the v1 war traffic, spawn kinds with event bounds,
 -- bands 3-4. Extra live fields: qa (quest state of the current system: 1, 0, -1 = no ids), qai (its idx).
@@ -194,7 +195,8 @@ function TRF_Safe_ExtAlive()
 	return TRF_Is(fl:IsAlive());
 end;
 
--- Carcasses in a sphere at the origin (governor, 5.2). CHECK: never used by shipped scripts; nil = unknown.
+-- Carcasses in a sphere at the origin (governor, 5.2): every carcass, scenery included
+-- (mod-research/carcass-count.md); nil = unknown.
 function TRF_Safe_Count(r)
 	if type(Vector3) ~= "function" then return nil; end;
 	local n = TRF_N("GetCarcassCountInSphere", Vector3(0, 0, 0), r);
@@ -276,8 +278,8 @@ function TRF_CanSpawnOf(s)
 	return 1, s.caps - s.nsh - s.n;
 end;
 
--- Governor (5.2): more than gov carcasses -> one trader fewer (not below 1, never raised) and ships <= 12.
--- n nil (native missing) -> caps unchanged.
+-- Governor (5.2): n = carcasses above the visit baseline (TRF_Governor); more than gov -> one trader fewer
+-- (not below 1, never raised) and ships <= 12. n nil (native missing) -> caps unchanged.
 function TRF_GovernorOf(n, ct, cs, gov)
 	if type(n) == "number" and n > gov then
 		if ct > 1 then ct = ct - 1; end;
@@ -728,7 +730,7 @@ function TRF_StrictOk(idx, feature)
 	return nil, why;
 end;
 
--- 1 while the governor holds (carcass count above gov): tier <= TT2, raids and staged raids off (9.1).
+-- 1 while the governor holds (carcass excess over the baseline above gov): tier <= TT2, raids and staged raids off (9.1).
 function TRF_GovActive()
 	local L = TRF_SafeLive();
 	if not L or type(L.gvn) ~= "number" then return nil; end;
@@ -741,8 +743,8 @@ function TRF_Chapter()
 end;
 
 -- Caps for the next spawn decision (v02 9.1): band row of the live pro (TRF_BandCaps, trf_tier), cfg limits
--- (cap_traders 0..5, cap_ships 0..20), strict gate "band", then the governor on the carcass count n (nil:
--- the count of the last TRF_Governor run). Writes live.capt/caps/capp. Returns ct, cs, cp.
+-- (cap_traders 0..5, cap_ships 0..20), strict gate "band", then the governor on the carcass excess n (nil:
+-- the excess of the last TRF_Governor run). Writes live.capt/caps/capp. Returns ct, cs, cp.
 function TRF_SafeCaps(n)
 	local lt = TRF_SafeClamp(floor(TRF_SafeNum(TRF_SafeOpt("cap_traders", 5), 5)), 0, 5);
 	local ls = TRF_SafeClamp(floor(TRF_SafeNum(TRF_SafeOpt("cap_ships", 20), 20)), 0, 20);
@@ -1128,17 +1130,30 @@ function TRF_CanSpawn(nships, kind, ev)
 	return ok, r;
 end;
 
--- Governor (5.2): counts carcasses (live.gvn), then sets live.capt/caps/capp through TRF_SafeCaps.
--- Returns capt, caps, carcass count (nil when unknown).
--- CHECK: one sphere of gov_r (3000) at the origin covers a system.
+-- Governor (5.2): counts carcasses in a sphere of gov_r (3000) at the origin. The native counts scenery
+-- too (36 to 202 per system with no mod ships), so the first count of the visit is its baseline (live.gvn0,
+-- mirrored in H.gvn0 because gen's load pass rebuilds live; logged once) and the rule applies to the excess
+-- over it (live.gvn, never below 0; raw count live.gvr): wrecks and ships that appeared during the visit.
+-- Then sets live.capt/caps/capp through TRF_SafeCaps. Returns capt, caps, excess (nil when unknown).
 function TRF_Governor()
 	local gr = TRF_SafeNum(TRF_SafeOpt("gov_r", 3000), 3000);
 	local n = TRF_Safe_Count(gr);
 	local L = TRF_SafeLive();
-	if L then L.gvn = n; L.gv = 1; end;
-	local capt, caps, capp = TRF_SafeCaps(n);
-	TRF_SafeL("governor n="..tostring(n).." r="..gr.." cap="..capt.."/"..caps.."/"..capp);
-	return capt, caps, n;
+	local H = TRF_SafeH();
+	local x = nil;
+	if L then
+		if type(L.gvn0) ~= "number" and H and type(H.gvn0) == "number" then L.gvn0 = H.gvn0; end;
+		if type(L.gvn0) ~= "number" and type(n) == "number" then
+			L.gvn0 = n;
+			if H then H.gvn0 = n; end;
+			TRF_SafeL("governor base n0="..n.." r="..gr);
+		end;
+		if type(n) == "number" and type(L.gvn0) == "number" then x = max(0, n - L.gvn0); end;
+		L.gvn = x; L.gvr = n; L.gv = 1;
+	end;
+	local capt, caps, capp = TRF_SafeCaps(x);
+	TRF_SafeL("governor n="..tostring(x).."/"..tostring(n).." r="..gr.." cap="..capt.."/"..caps.."/"..capp);
+	return capt, caps, x;
 end;
 
 -- Trade station handle or nil (4.2, R10): label of the map's st[1] (kind "trade", top-level docking), then
@@ -1177,11 +1192,12 @@ function TRF_SafeVisitReset()
 	local L = TRF_SafeLive();
 	if L then
 		L.sos_t = nil; L.ext_seen = nil; L.pmn = nil; L.wind = nil; L.sl = nil; L.ss = nil; L.sm = nil;
-		L.gv = nil; L.stl = nil; L.sck = nil; L.gvn = nil; L.gl = nil; L.gate = nil; L.qa = nil; L.qai = nil;
+		L.gv = nil; L.stl = nil; L.sck = nil; L.gvn = nil; L.gvn0 = nil; L.gvr = nil; L.gl = nil; L.gate = nil;
+		L.qa = nil; L.qai = nil;
 		L.cbt = nil; L.cbw = nil; L.cbh = nil; L.cbi = nil; L.cbs = nil; L.cbl = nil;
 	end;
 	local H = TRF_SafeH();
-	if H then H.st = nil; H.sact = nil; H.sms = nil; end;
+	if H then H.st = nil; H.sact = nil; H.sms = nil; H.gvn0 = nil; end;
 end;
 
 -- Loader callbacks (10.1) ------------------------------------------------------------
@@ -1239,7 +1255,7 @@ function TRF_Safety_Dump()
 	if TRF_Combat() then cb = 1; end;
 	if type(L.cbt) == "number" then ca = TRF_F(TRF_SafeGt() - L.cbt); end;
 	TRF_L("dump gate="..TRF_SafeGateSum(nil).." sys="..nm.." strict="..mode.." qs="..qs.." q="..q.." qa="..qa.." deny="..dn
-		.." cap="..tostring(L.capt).."/"..tostring(L.caps).."/"..tostring(L.capp).." gov="..tostring(L.gvn)
+		.." cap="..tostring(L.capt).."/"..tostring(L.caps).."/"..tostring(L.capp).." gov="..tostring(L.gvn).."/"..tostring(L.gvr)
 		.." gov_on="..tostring(TRF_GovActive()).." combat="..cb.." cbt="..ca.." cbw="..tostring(L.cbw));
 end;
 
