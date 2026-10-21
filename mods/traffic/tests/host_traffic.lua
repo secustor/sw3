@@ -613,6 +613,7 @@ function T_F()
 	HOST_Check(TRF.version == 4 and TRF.std.heat == 4 and TRF.gen == 9 and TRF.foo == nil and TRF.clock.gt == 0, "unknown version: reset, heat and gen kept");
 	T_Tick(20, 0.5);
 	HOST_Check(TRF.clock.gt == 10, "ticks run after the reset");
+	T_LoadAdopt();
 end;
 
 -- g: safety predicates reject what they should (spec 2.3, 5.1, 5.2, 6) ---------------------
@@ -1178,6 +1179,98 @@ function T_CombatArm()
 	T_Tick(2, 0.5);
 	HOST_Check(h.n_hp >= 1 and TRF.live.cbh == h.ms.hp, "tick after load: hull sampled");
 	GetCurHP = ghp; GetPlayerMotherShip = gpm;
+end;
+
+-- f, load pass adoption (spec 5.5; design/mod-research/crash-load-432500.md 8): traders whose ships answer
+-- the label lookup at OnLoad are adopted, ships that answer IsAlive only after OnLoad are adopted by the
+-- retry, a record without ships is stripped, labels that never give a live ship (IsAlive nil, or a value
+-- that is not an object) are dropped after load_wait (10 s), the parked ship found late is kept.
+function T_LateAlive(self)
+	if HOST().late then return nil; end;
+	if self.alive then return 1; end;
+	return nil;
+end;
+function T_NeverAlive(self) return nil; end;
+function T_LogN(pat)
+	local n = 0;
+	local q = HOST().logs or {};
+	for i = 1, getn(q) do if strfind(q[i], pat, 1, 1) then n = n + 1; end; end;
+	return n;
+end;
+function T_LabelShip(label, x, z, grp)
+	local s = CreateCarcass("Btransport", Vector3(x, 0, z), Vector3(0, 0, 1));
+	s:AssignPilot(CreatePilot("Trader"));
+	HOST_Group(grp, "Trade"):CreateFlight(label):AddShip(s);
+	SetObjectLabel(s, label);
+	return s;
+end;
+
+function T_LoadAdopt()
+	local h = HOST();
+	print("HOST ---- load adopt");
+	-- A new scene: no labelled ship of the earlier steps is left.
+	T_Enter("gredos");
+	T_Tick(20, 0.5);
+	local ms = h.ms.pos;
+	TRF.std.heat = 0;
+	local ids = {T_Spawn()};
+	HOST_Check(ids[1], "a trader before the save");
+	if not ids[1] then return; end;
+	T_MoveTr(ids[1], ms.x + 60, 0, ms.z + 40);
+	local fl1 = TRF_H().tr[ids[1]].fl;
+	-- Records w (two labelled ships, no spawn), v (ship answers IsAlive only after OnLoad), x (ship never
+	-- answers IsAlive), y (no ship), z (label answers with a non-object).
+	local v, w, x, y, z = TRF.seq + 99, TRF.seq + 100, TRF.seq + 101, TRF.seq + 102, TRF.seq + 103;
+	ids[2] = v;
+	foreachi({v, w, x, y, z}, function(i, id)
+		TRF.live.tr[id] = {id=id, st="out", path="C", nm=0, cls=6, from=-1, to=-1, k=0, np=1, nt=2, esc=0, born=TRF.clock.gt, wd=0};
+	end);
+	local ws = T_LabelShip("trf_"..w.."_1", ms.x - 60, ms.z - 40, "TRF_Trade_W");
+	local ws2 = CreateCarcass("Btransport", Vector3(ms.x - 60, 0, ms.z - 20), Vector3(0, 0, 1));
+	ws2:AssignPilot(CreatePilot("Trader"));
+	ws.flight:AddShip(ws2);
+	SetObjectLabel(ws2, "trf_"..w.."_2");
+	local vs = T_LabelShip("trf_"..v.."_1", ms.x + 120, ms.z + 40, "TRF_Trade_V");
+	vs.IsAlive = T_LateAlive;
+	local xs = T_LabelShip("trf_"..x.."_1", ms.x - 60, ms.z + 60, "TRF_Trade_Y");
+	xs.IsAlive = T_NeverAlive;
+	local ps = T_LabelShip("trf_pk_1", ms.x - 80, ms.z - 80, "TRF_Park");
+	ps.IsAlive = T_LateAlive;
+	h.zl = "trf_"..z.."_1";
+	h.logs = {};
+	T_SaveLoad(function()
+		HOST().late = 1;
+		HOST().gobl = GetObjectByLabel;
+		GetObjectByLabel = function(l) if l == HOST().zl then return l; end; return HOST().gobl(l); end;
+	end);
+	local L, H = TRF.live, TRF_H();
+	HOST_Check(L.tr[ids[1]] and L.tr[ids[1]].st == "wind" and L.tr[w] and L.tr[w].st == "wind" and H.tr[ids[1]].fl == fl1
+		and H.tr[w].fl == ws.flight and getn(H.tr[w].sh) == 2 and H.tr[w].sh[2] == ws2 and L.tr[w].np == 2
+		and H.tr[ids[1]].sh[1].cp ~= nil and HOST_Count("f_object_inside", "TRF_OnExit("..ids[1]..","..TRF.gen..")--") == 1,
+		"load pass: found traders adopted (flight from the ship, wind-down with a new-gen exit trigger)");
+	HOST_Check(L.grp[TRF.live.tr[ids[1]].k] == ids[1], "load pass: group slot of an adopted trader stays taken");
+	HOST_Check(L.tr[ids[2]] == nil and type(L.lw) == "table" and L.lw.rec[ids[2]] and L.lw.rec[x] and L.lw.rec[z] and L.lw.rec[y] == nil
+		and L.tr[y] == nil, "load pass: labels found but not alive wait, a record without ships is stripped");
+	HOST_Check(T_LogN("load pass ") == 1 and T_LogN(" adopted=2 wait=3 ") == 1 and T_LogN("gen: load id="..y.." gone why=label") == 1
+		and T_LogN("gen: load id="..x.." wait why=alive lbl=1") == 1 and T_LogN("gen: load id="..z.." wait why=obj lbl=1") == 1,
+		"load pass log: adopted=2 wait=3, reasons label, alive and obj");
+	HOST_Check(T_LogN("dump load ") == 1 and T_LogN(" tr=2 ") == 1, "dump load: tr=2 before the retry");
+	HOST_Check(TRF_ParkedN() == 0 and type(L.pkw) == "table" and getn(L.pkw.j) == 1, "parked ship found but not alive: waits");
+	-- Objects answer alive from the first tick: the retry adopts the late trader and the parked ship.
+	h.late = nil;
+	T_Tick(1, 0.5);
+	HOST_Check(TRF_Rec(ids[2]) and L.tr[ids[2]].st == "wind" and H.tr[ids[2]] and H.tr[ids[2]].sh[1].cp ~= nil
+		and HOST_Count("f_object_inside", "TRF_OnExit("..ids[2]..","..TRF.gen..")--") == 1 and T_LogN("load retry n=1 adopted=1 dropped=0 wait=2") == 1,
+		"load retry: late trader adopted on the first tick");
+	HOST_Check(TRF_ParkedN() == 1 and H.pk[1] and H.pk[1].sh == ps and L.pkw == nil and HOST_Count("died", "TRF_ParkDied(1,"..TRF.gen..")--") == 1,
+		"load retry: parked ship kept with a new handle and a died trigger of the new gen");
+	T_Tick(24, 0.5);
+	HOST_Check(L.lw == nil and T_LogN("gen: load id="..x.." gone why=alive tries=") == 1 and T_LogN("gen: load id="..z.." gone why=obj tries=") == 1
+		and L.tr[x] == nil and L.tr[z] == nil, "load retry: labels never alive dropped after load_wait with their reason");
+	TRF_DumpState("adopt");
+	HOST_Check(T_LogN("dump adopt ") == 1 and T_LogN(" tr=3 ") >= 1, "dump after the retry: tr=3");
+	GetObjectByLabel = h.gobl;
+	h.gobl = nil; h.zl = nil; h.logs = nil;
 end;
 
 local fn = getglobal("T_"..strupper(HOST().scen));
