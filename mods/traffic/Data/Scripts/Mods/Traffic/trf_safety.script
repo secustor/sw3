@@ -147,8 +147,8 @@ function TRF_Safe_Quest()
 end;
 
 -- 1 while a story mission is active, else nil. Called without arguments as OutOfMission.script 386 does.
--- CHECK: GetPlayerQuestState() is TRUE while a story mission is active (fallback: cfg guard 2).
--- A missing native counts as active, so the guard and the deny list stay on the vanilla side.
+-- CHECK: GetPlayerQuestState() is TRUE while a story mission is active. Not reliable (nil during an active
+-- mission and for seconds after a jump), so only the deny list reads it. A missing native counts as active.
 function TRF_Safe_QState()
 	if type(GetPlayerQuestState) ~= "function" then return 1; end;
 	if GetPlayerQuestState() == TRUE then return 1; end;
@@ -213,10 +213,8 @@ function TRF_SysModeOf(s)
 	if TRF_SafeIn(s.off, sy.name) then return "vanilla", "sys_off"; end;
 	if s.inval then return "vanilla", "inval"; end;
 	if s.qs and (TRF_SafeIn(s.deny, sy.name) or TRF_SafeIn(s.deny2, sy.name)) then return "vanilla", "deny"; end;
-	-- R16 as fallback: guard 0 off, 2 start system and chapter <= 4, else (1) also needs an active mission.
-	if s.guard ~= 0 and sy.start == 1 and TRF_SafeNum(s.ch, 0) <= 4 then
-		if s.guard == 2 or s.qs then return "vanilla", "guard"; end;
-	end;
+	-- R16: guard 0 off, 1 or 2 (2 kept for compatibility) start system and chapter <= 4, independent of qs.
+	if s.guard ~= 0 and sy.start == 1 and TRF_SafeNum(s.ch, 0) <= 4 then return "vanilla", "guard"; end;
 	return "mod", nil;
 end;
 

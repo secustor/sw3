@@ -82,7 +82,7 @@ TRF_GenRearm(); TRF_GenTrader(c)                 -- mod path, section 4
   - cfg `override == 0` (untouched vanilla) or `2` (vanilla, observed: counts vanilla traders for the M11 baseline, 5.4);
   - the current system is not in `TRF_MapData()`, is in cfg `sys_off`, or a trader contact failed validation (4.2) (M13, R5 emergency switch);
   - authored deny list (R5, design 9.8 S5): the system is in `TRF_Deny()` = `{"elio", "x297", "gefest"}` (Elio rescue, X297 ambush, Grid/Hephaestus escape; gefest has no trader contact today) or in cfg `sys_deny`, and `GetPlayerQuestState() == TRUE`;
-  - starting-region guard (M20 as fallback, R16): cfg `guard` 1 (default): `sys.start == 1` and chapter ≤ 4 and `GetPlayerQuestState() == TRUE`; `guard` 2: `start == 1` and chapter ≤ 4; `guard` 0: off. Chapter = leading digits of `GetQuestLabel("CurrentQuest")` (shipped values "1", "2", "3", "4_1", "4_2", "4_5", "5_1" … "9e", "12a" … "20c"); nil or "" counts as ≤ 4. CHECK: `GetPlayerQuestState()` (no argument, as `OutOfMission.script` 386 and `LevelUp.script` 32 call it) is TRUE while a story mission is active; if not, `guard 2` is the fallback.
+  - starting-region guard (M20 as fallback, R16): cfg `guard` 1 (default) or 2 (kept for compatibility): `sys.start == 1` and chapter ≤ 4, independent of `GetPlayerQuestState()` (nil during mission 3 in Argon and for seconds after each jump, 2026-10-21); `guard` 0: off. Chapter = leading digits of `GetQuestLabel("CurrentQuest")` (shipped values "1", "2", "3", "4_1", "4_2", "4_5", "5_1" … "9e", "12a" … "20c"); nil or "" counts as ≤ 4. CHECK: `GetPlayerQuestState()` (no argument, as `OutOfMission.script` 386 and `LevelUp.script` 32 call it) is TRUE while a story mission is active; if not, `guard 2` is the fallback.
   - The suppression flags are not a vanilla fallback: under `__sys_SOS` the mod spawns nothing (R2), where vanilla would spawn.
 - `TRF_GenVanillaOne(c)`: `local s = __sys_LevelRegisteredContacts; __sys_LevelRegisteredContacts = {c}; call(TRF_orig_GenAction, {}, "x"); __sys_LevelRegisteredContacts = s`. The original re-arms, re-checks `__disableAction`, picks `c` (with `RAND(1)`), rolls `c[5]` and runs every vanilla step, so non-trader contacts and declined traders behave as vanilla. The only difference is one extra `RAND` draw per tick. Errors inside the original still reach `_ERRORMESSAGE`, as in vanilla. With `override == 2` and a trader contact, it reads `__formation_number` before and after the call and, only if it increased (the roll passed), records `getglobal("flight_randomformation_"..(__formation_number−1))` in the handle table (5.4).
 - Whole-system declines (`TRF_GenReady` false, `__disableAction`, `override 0`) call the original untouched: byte-for-byte vanilla, no extra draw.
@@ -330,7 +330,7 @@ OnActivate schedules `TRF_ArrivalLine` at `gt + 5`. It shows the band text when 
 | `enabled` | 1 | 0: traffic modules not loaded (loader, teleport wrappers and kits only) |
 | `log` | 1 | 0 off, 1 info (spawn, remove, dis/heat changes, entry/load dump), 2 debug (every decision, positions) |
 | `override` | 1 | 1 mod traffic; 0 untouched vanilla; 2 vanilla observed (M11 baseline) |
-| `guard` | 1 | starting-region fallback, 2.3 |
+| `guard` | 1 | starting-region fallback, 2.3: 0 off, 1 or 2 start systems vanilla through chapter 4 |
 | `spawn_scale` | 1.0 | volume factor in `p_eff` |
 | `cap_traders`, `cap_ships`, `gov`, `gov_r` | 2, 10, 40, 3000 | caps and governor |
 | `ui`, `ui_out`, `ui_focus`, `ui_keys`, `arrival_line`, `meet` | 1, 1, 3, 0, 1, 1 | text toggles (8.1, 8.3) |

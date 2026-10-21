@@ -70,7 +70,7 @@ v0.1 ("traders with a purpose", design §12, spec [design/v01-spec.md](design/v0
 - A focus line in the screen log the first time a trader is selected or comes within 200 (`FTU freighter Kestrel: machinery, Aurora -> Elio`). The vanilla trade meeting at 70 stays.
 - An arrival line 5 s after entering a system with disruption ≥ 3 (`FTU reports raids on the lanes in this system`, three bands).
 - Attacking a trader raises heat and starts a response that reproduces the vanilla one. Traders killed by anyone raise the system's disruption, which adds escorts and lowers spawns; pirate kills and time (legs) bring it down.
-- Vanilla behaviour is kept, untouched, in: start systems in chapters 1–4 while a story mission is active (`guard`), `elio`, `x297`, `gefest` while a mission is active, systems not in `map.script`, and whenever `__disableAction` is set. During an extortion (`__sys_SOS`) nothing spawns and no line is shown; after 30 s without an extortion flight, nearby traders leave by a portal and distant ones are deleted.
+- Vanilla behaviour is kept, untouched, in: start systems in chapters 1–4 (`guard`), `elio`, `x297`, `gefest` while a mission is active, systems not in `map.script`, and whenever `__disableAction` is set. During an extortion (`__sys_SOS`) nothing spawns and no line is shown; after 30 s without an extortion flight, nearby traders leave by a portal and distant ones are deleted.
 
 ### Config keys
 
@@ -81,7 +81,7 @@ v0.1 ("traders with a purpose", design §12, spec [design/v01-spec.md](design/v0
 | `traffic` / `enabled` | 1 | 0: the v0.1 modules are not loaded (loader, wrappers and kits only). Only loaded with `exp=0`. |
 | `log` | 1 | 0 off, 1 info, 2 debug (every decision) |
 | `override` | 1 | 1 mod traffic, 0 untouched vanilla, 2 vanilla but counted (M11 baseline) |
-| `guard` | 1 | start-system fallback: 1 during missions in chapters 1–4, 2 always in chapters 1–4, 0 off |
+| `guard` | 1 | start-system fallback: 1 or 2 (2 kept for compatibility) = start systems vanilla in chapters 1–4, 0 off |
 | `dump` | 0 | periodic state dump every `dump` game seconds |
 | `cap_traders`, `cap_ships`, `spawn_scale` | 2, 10, 1.0 | volume (v0.2: 5, 20, 1.0 over the band row) |
 | `ui`, `ui_out`, `ui_focus`, `arrival_line`, `meet` | 1, 1, 3, 1, 1 | text and meeting toggles (v0.2: `meet` 2) |

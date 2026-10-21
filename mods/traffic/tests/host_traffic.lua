@@ -232,19 +232,24 @@ function T_A()
 	nv, r0 = getn(h.vgen), h.rand;
 	T_Gen();
 	HOST_Check(getn(h.vgen) == nv + 1 and h.vgen[nv + 1].rand == r0, "guard: CurrentQuest unset (mission 1) -> untouched original");
-	-- Mission not active, guard 1: the mod decides; a trader contact never reaches the original.
+	-- GetPlayerQuestState not TRUE (in game: nil during mission 3 in Argon and after every jump): guard 1 and 2
+	-- still decline in a start system while the chapter is <= 4.
 	h.labels.CurrentQuest = "3"; h.qs = FALSE;
+	foreachi({1, 2}, function(i, g)
+		local h = HOST();
+		h.cfg.guard = g;
+		local nv, r0 = getn(h.vgen), h.rand;
+		T_Gen();
+		HOST_Check(getn(h.vgen) == nv + 1 and h.vgen[nv + 1].list == %list and h.vgen[nv + 1].rand == r0, "guard "..g..", chapter 3, no quest state: untouched original");
+	end);
+	h.cfg.guard = 1;
+	-- Chapter 5 in a start system: the mod decides; a trader contact never reaches the original.
+	h.labels.CurrentQuest = "5_1";
 	nv, a0 = getn(h.vgen), h.gen_trig.acts;
 	h.rq = {0, 0};
 	T_Gen();
 	h.rq = {};
-	HOST_Check(getn(h.vgen) == nv and h.gen_trig.acts == a0 + 1 and T_Stat("spawn") == 1, "guard 1, no mission: mod path, re-armed by TRF_GenRearm, trader spawned");
-	-- guard 2: start system and chapter <= 4 decline without a mission.
-	h.cfg.guard = 2;
-	nv, r0 = getn(h.vgen), h.rand;
-	T_Gen();
-	HOST_Check(getn(h.vgen) == nv + 1 and h.vgen[nv + 1].list == list and h.vgen[nv + 1].rand == r0, "guard 2, no mission: untouched original");
-	h.cfg.guard = 1;
+	HOST_Check(getn(h.vgen) == nv and h.gen_trig.acts == a0 + 1 and T_Stat("spawn") == 1, "guard 1, chapter 5: mod path, re-armed by TRF_GenRearm, trader spawned");
 	-- Non-trader contact in a mod system: the original with only that contact, then the table is restored.
 	nv, r0 = getn(h.vgen), h.rand;
 	h.rq = {1};
@@ -642,11 +647,13 @@ function T_G()
 		{{deny2={"corrino"}, qs=0}, "mod", nil},
 		{{sys={name="gredos", start=1}, ch=4}, "vanilla", "guard"},
 		{{sys={name="gredos", start=1}, ch=0}, "vanilla", "guard"},
-		{{sys={name="gredos", start=1}, ch=4, qs=0}, "mod", nil},
+		{{sys={name="gredos", start=1}, ch=4, qs=0}, "vanilla", "guard"},
 		{{sys={name="gredos", start=1}, ch=4, qs=0, guard=2}, "vanilla", "guard"},
 		{{sys={name="gredos", start=1}, ch=1, guard=0}, "mod", nil},
 		{{sys={name="gredos", start=1}, ch=5}, "mod", nil},
-		{{ch=1}, "mod", nil}
+		{{sys={name="gredos", start=1}, ch=5, qs=0}, "mod", nil},
+		{{ch=1}, "mod", nil},
+		{{ch=1, qs=0}, "mod", nil}
 	};
 	for i = 1, getn(cases) do
 		local t = cases[i];
@@ -701,6 +708,9 @@ function T_G()
 	h.labels.CurrentQuest = "3"; h.qs = TRUE;
 	local m, why = TRF_SysMode();
 	HOST_Check(m == "vanilla" and why == "guard", "TRF_SysMode: gredos chapter 3 with a mission -> guard");
+	h.qs = FALSE;
+	m, why = TRF_SysMode();
+	HOST_Check(m == "vanilla" and why == "guard", "TRF_SysMode: gredos chapter 3, GetPlayerQuestState not TRUE -> guard");
 	local gq = GetPlayerQuestState;
 	GetPlayerQuestState = nil;
 	h.labels.CurrentQuest = "5_1"; h.no_st = 1;
