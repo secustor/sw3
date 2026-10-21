@@ -873,6 +873,7 @@ function T_G()
 	HOST_Check(TRF.live.wind == nil, "flag cleared: wind reset for the next onset");
 	T_SceneSupp();
 	T_Combat();
+	T_CombatArm();
 end;
 
 -- Scene-based suppression (R2): TRF_Quiet and the scene flag (movie, UI natives), spawning under __sys_SOS.
@@ -1040,6 +1041,59 @@ function T_Combat()
 	ms.hp = 1000;
 	T_Tick(1, 0.5);
 	h.logs = nil;
+end;
+
+-- Tick object reads wait for the armed visit (design/mod-research/crash-load-5adc5e.md): no GetCurHP on the
+-- mothership between entry and activate.script, none from GetPlayerMotherShip in the safety tick at all,
+-- armed again by the load callback, and a failing GetCurHP stays inside the sample.
+function T_CombatArm()
+	local h = HOST();
+	print("HOST ---- combat arm");
+	h.n_hp = 0; h.n_gpm = 0;
+	local ghp, gpm = GetCurHP, GetPlayerMotherShip;
+	GetCurHP = function(o) if o == HOST().ms then HOST().n_hp = HOST().n_hp + 1; end; return %ghp(o); end;
+	GetPlayerMotherShip = function() HOST().n_gpm = HOST().n_gpm + 1; return %gpm(); end;
+	-- Entry without activate.script yet (T_Enter up to TRF_OnEnter).
+	TeleportToLocation("gredos");
+	h.last = h.loc; h.loc = "gredos";
+	h.triggers = {}; h.ships = {}; h.screen = {}; h.msgs = {};
+	HOST_MapInit();
+	T_Scene("gredos");
+	TRF_OnEnter();
+	T_Tick(4, 0.5);
+	HOST_Check(h.n_hp == 0 and TRF_SafeArmed() == nil and TRF.live.cbh == nil, "tick before OnActivate: no GetCurHP on the mothership, not armed");
+	TRF_OnActivate();
+	HOST_Check(TRF_SafeArmed() == 1 and TRF_H().sms == h.ms, "OnActivate arms the visit with the mothership handle");
+	h.n_hp = 0; h.n_gpm = 0;
+	TRF_Safety_Tick();
+	HOST_Check(h.n_hp == 1 and h.n_gpm == 0 and TRF.live.cbh == h.ms.hp, "armed safety tick: one GetCurHP, no GetPlayerMotherShip");
+	-- The vanilla global mothership wins over the cached handle (quest swap: mothership = SetPlayerMotherShip(..)).
+	local sw = {__obj=1, hp=500, id=7};
+	sw.IsAlive = function(self) return 1; end;
+	mothership = sw;
+	TRF_Safety_Tick();
+	HOST_Check(TRF.live.cbi == 7 and TRF.live.cbh == 500, "live global mothership is sampled first");
+	mothership = nil;
+	TRF_Safety_Tick();
+	HOST_Check(TRF.live.cbi == 1, "dead or missing global mothership: cached handle");
+	-- A GetCurHP error stays inside the sample (handler TRF_SafePErr, no hull value, the tick goes on).
+	local ok, pe = GetCurHP, TRF_PErr;
+	GetCurHP = function(o) error("host GetCurHP failure"); end;
+	h.pe = {};
+	TRF_PErr = function(m) tinsert(HOST().pe, m); end;
+	TRF_Safety_Tick();
+	GetCurHP = ok; TRF_PErr = pe;
+	HOST_Check(TRF.live.cbh == nil and getn(h.pe) == 1 and strfind(h.pe[1], "host GetCurHP failure", 1, 1), "GetCurHP error: caught by the sample, one handler call, no hull value");
+	h.pe = nil;
+	-- Load: the reset clears the arming, TRF_Safety_OnLoad arms again.
+	TRF_SafeVisitReset();
+	HOST_Check(TRF_SafeArmed() == nil and TRF_H().sms == nil, "visit reset clears the arming");
+	T_SaveLoad();
+	HOST_Check(TRF_SafeArmed() == 1, "OnLoad arms the visit");
+	h.n_hp = 0;
+	T_Tick(2, 0.5);
+	HOST_Check(h.n_hp >= 1 and TRF.live.cbh == h.ms.hp, "tick after load: hull sampled");
+	GetCurHP = ghp; GetPlayerMotherShip = gpm;
 end;
 
 local fn = getglobal("T_"..strupper(HOST().scen));

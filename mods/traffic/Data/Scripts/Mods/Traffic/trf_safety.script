@@ -16,6 +16,10 @@
 -- ids (option 1 of design 9.9), strict-gate features of the v1 war traffic, spawn kinds with event bounds,
 -- bands 3-4. Extra live fields: qa (quest state of the current system: 1, 0, -1 = no ids), qai (its idx).
 -- Chunk local SQ caches the generated quest-id table per MapInitialization (never saved).
+-- Handle fields owned here (TRF_H, never saved, new on every MapInitialization): st (station), sact (1 once the
+-- visit is armed at the end of TRF_Safety_OnActivate or TRF_Safety_OnLoad), sms (mothership handle taken then).
+-- The combat sample reads game objects only while sact is 1 and never calls GetPlayerMotherShip (mod-research/
+-- crash-load-5adc5e.md: that native dereferences the player team without a null check).
 
 local SQ = {};
 
@@ -899,23 +903,83 @@ function TRF_CombatOff(L, gt)
 	TRF_SafeL("combat off last="..tostring(L.cbw).." gt="..TRF_F(gt));
 end;
 
--- Mothership hull HP and id, or nil (GetCurHP logs on a dead id, so IsAlive first).
-function TRF_Safe_MsHp()
-	local ms = TRF_N("GetPlayerMotherShip");
-	if ms == nil or type(ms) == "number" or type(ms) == "string" or type(ms) == "function" then return nil; end;
-	if not TRF_Is(ms:IsAlive()) then return nil; end;
-	local hp = TRF_N("GetCurHP", ms);
-	if type(hp) ~= "number" then return nil; end;
-	return hp, ms.id;
+-- 1 once this visit is armed (TRF_SafeArm), else nil. Gates the object reads of the combat sample.
+function TRF_SafeArmed()
+	local H = TRF_SafeH();
+	if H and H.sact == 1 then return 1; end;
+	return nil;
 end;
 
--- Number of an open raid record in st demand or fight within r of the mothership (trf_raid's
--- TRF_RaidMsDist; an unknown distance counts as near; r <= 0: any distance), else nil.
-function TRF_Safe_RaidHot(rd, r)
+-- Arm the tick for this visit (end of OnActivate and OnLoad: vanilla functions.script has just called
+-- GetPlayerMotherShip, so the player team exists): H.sms = the mothership, H.sact = 1. via: log tag.
+function TRF_SafeArm(via)
+	local H = TRF_SafeH();
+	if not H then return; end;
+	H.sms = TRF_N("GetPlayerMotherShip");
+	H.sact = 1;
+	local id = nil;
+	if type(H.sms) == "table" then id = H.sms.id; end;
+	TRF_SafeL("armed via="..tostring(via).." ms="..tostring(id));
+end;
+
+function TRF_Safe_IsAlive(o)
+	return TRF_Is(o:IsAlive());
+end;
+
+-- 1 for a live game handle (table or userdata; IsAlive looks the id up, protected), else nil.
+function TRF_Safe_Alive(o)
+	if type(o) ~= "table" and type(o) ~= "userdata" then return nil; end;
+	return call(TRF_Safe_IsAlive, {o}, "x", TRF_SafePErr);
+end;
+
+-- Mothership handle for the tick, or nil before the visit is armed: the vanilla global mothership when alive
+-- (functions.script; quest swaps assign mothership = SetPlayerMotherShip(..)), else the handle taken at arming.
+-- Never GetPlayerMotherShip: a tick can run while a load or a galaxy-map jump has torn the location down, and
+-- that native then reads team+0x150 through a null team (0x5adc5e).
+function TRF_Safe_Ms()
+	if not TRF_SafeArmed() then return nil; end;
+	if TRF_Safe_Alive(mothership) then return mothership; end;
+	local H = TRF_SafeH();
+	if H and TRF_Safe_Alive(H.sms) then return H.sms; end;
+	return nil;
+end;
+
+function TRF_Safe_HpOf(ms)
+	local hp = TRF_N("GetCurHP", ms);
+	if type(hp) ~= "number" then return nil; end;
+	local id = nil;
+	if type(ms) == "table" then id = ms.id; end;
+	return hp, id;
+end;
+
+-- Hull HP and id of the live mothership handle ms (TRF_Safe_Ms), or nil; GetCurHP runs protected.
+function TRF_Safe_MsHp(ms)
+	if not ms then return nil; end;
+	return call(TRF_Safe_HpOf, {ms}, "x", TRF_SafePErr);
+end;
+
+function TRF_Safe_PosOf(o)
+	return o:GetPosition();
+end;
+
+-- Distance of raid n's first live ship to position mp (trf_raid's handle table and lead), or nil.
+function TRF_Safe_RaidDist(n, mp)
+	if not mp then return nil; end;
+	local H = TRF_N("TRF_Rd_H");
+	if type(H) ~= "table" or type(H.rd) ~= "table" or type(H.rd[n]) ~= "table" then return nil; end;
+	return TRF_N("TRF_Rd_Dist", TRF_N("TRF_Rd_RaidLeadPos", H.rd[n]), mp);
+end;
+
+-- Number of an open raid record in st demand or fight within r of mothership handle ms (nil: no handle;
+-- an unknown distance counts as near; r <= 0: any distance), else nil. The mothership position is read once.
+function TRF_Safe_RaidHot(rd, r, ms)
+	local mp, got = nil, nil;
 	for n, x in rd do
 		if type(x) == "table" and (x.st == "fight" or x.st == "demand") then
 			if r <= 0 then return n; end;
-			local d = TRF_N("TRF_RaidMsDist", n);
+			if not got and ms then mp = call(TRF_Safe_PosOf, {ms}, "x", TRF_SafePErr); end;
+			got = 1;
+			local d = TRF_Safe_RaidDist(n, mp);
 			if type(d) ~= "number" or d <= r then return n; end;
 		end;
 	end;
@@ -932,22 +996,26 @@ function TRF_CombatTune()
 end;
 
 -- Sources hp and raid, every safety tick (scene: the scene flag of this tick). The hull sample is skipped
--- across a mothership id change and for combat_scene seconds after a visible scene.
+-- across a mothership id change and for combat_scene seconds after a visible scene. Both sources wait for
+-- the armed visit (TRF_SafeArmed) and use TRF_Safe_Ms, never GetPlayerMotherShip.
 function TRF_CombatSample(scene)
 	local L = TRF_SafeLive();
 	if not L or not TRF_CombatOn() then return; end;
 	local T = TRF_CombatTune();
 	local gt = TRF_SafeGt();
-	local hp, id = TRF_Safe_MsHp();
 	if scene then L.cbs = gt; end;
-	local fresh = type(L.cbs) == "number" and gt - L.cbs < T.scene;
-	if not fresh and id == L.cbi and TRF_HpDropOf(L.cbh, hp, T.hp) then
-		TRF_CombatMark("hp", TRF_F(L.cbh).."->"..TRF_F(hp), T.hold);
-	end;
-	L.cbh = hp; L.cbi = id;
-	if type(L.rd) == "table" then
-		local n = TRF_Safe_RaidHot(L.rd, T.r);
-		if n then TRF_CombatMark("raid", n, T.hold); end;
+	if TRF_SafeArmed() then
+		local ms = TRF_Safe_Ms();
+		local hp, id = TRF_Safe_MsHp(ms);
+		local fresh = type(L.cbs) == "number" and gt - L.cbs < T.scene;
+		if not fresh and id == L.cbi and TRF_HpDropOf(L.cbh, hp, T.hp) then
+			TRF_CombatMark("hp", TRF_F(L.cbh).."->"..TRF_F(hp), T.hold);
+		end;
+		L.cbh = hp; L.cbi = id;
+		if type(L.rd) == "table" then
+			local n = TRF_Safe_RaidHot(L.rd, T.r, ms);
+			if n then TRF_CombatMark("raid", n, T.hold); end;
+		end;
 	end;
 	if L.cbl == 1 and not TRF_CombatOf(L.cbt, gt, T.hold) then TRF_CombatOff(L, gt); end;
 end;
@@ -1104,7 +1172,7 @@ function TRF_SafeVisitReset()
 		L.cbt = nil; L.cbw = nil; L.cbh = nil; L.cbi = nil; L.cbs = nil; L.cbl = nil;
 	end;
 	local H = TRF_SafeH();
-	if H then H.st = nil; end;
+	if H then H.st = nil; H.sact = nil; H.sms = nil; end;
 end;
 
 -- Loader callbacks (10.1) ------------------------------------------------------------
@@ -1124,6 +1192,7 @@ function TRF_Safety_OnActivate()
 	local g = TRF_SafeGateSum(nil);
 	if L then L.gate = g; end;
 	TRF_SafeL("activate sys="..nm.." mode="..m.." why="..tostring(why).." ch="..tostring(s.ch).." qs="..tostring(s.qs).." gate="..g);
+	TRF_SafeArm("activate");
 end;
 
 -- Gate summary of system idx (nil = current) without counters: "ok", or the first denial and the denied
@@ -1172,6 +1241,7 @@ function TRF_Safety_OnLoad()
 	TRF_SafeVisitReset();
 	TRF_Governor();
 	TRF_Station();
+	TRF_SafeArm("load");
 end;
 
 function TRF_Safety_Tick()
