@@ -1,0 +1,118 @@
+# Crash at sw3cw+0x32500 after loading Quicksave-36 (2026-10-21 21:13, clone)
+
+Target `sw3cw.exe` GOG v1.12 (base 0x400000, no ASLR). Sources: `.work/exe.asm` (objdump), the crash report relayed by the user (`page fault on read access to 0x00000014 at 0x00432500: movl 0x14(%esi),%ecx`, ESI=0, frames 0x432500, 0x4298ea, 0x4293c1, 0x49fe0f, 0x67ed86), the archived run `~/Games/Heroic/sw3-tp-test/traffic-runs/0-20261021-211717/sw3tp.log`, the d3d9 log of the same process `~/Games/Heroic/sw3-tp-test/mtld3d-logs/sw3cw-20244.log` (process start 19:13:41Z = 21:13:41 local), and the save `.work/saves/clone-2026-10-21e/Quicksave-36.sav` (inflated and scanned with Python). The game was not run. Tags: **[V]** read in the disassembly, the save bytes or a log; **[I]** inferred; **[U]** unknown.
+
+## 1. Answer
+
+The crash is not caused by mod groups. ESI is the render manager's quad vertex batch `[[g_Root+0x8c]+0x90]`, not a group, team or pilot. The scene render pass drew an engine trail (`TailFX`) into that batch after the batch had been freed. Only the window procedure frees it outside game shutdown, on `WM_ACTIVATEAPP(FALSE)`. The frame restores it at frame start, before any rendering. So the deactivation was handled inside the crashing frame, between the restore check and the render pass. The d3d9 log shows that deactivation (`app deactivated` at 21:13:56) right before the fault, with no reactivation in between.
+
+This is an engine race on focus loss, and it needs no mod Lua to happen. The save restores the mod's groups and ships by itself (section 4), so the proposed fixes (a) recreate groups, (b) spawn into vanilla groups and (c) delete restored ships would not change this crash. No Lua change was made. The mitigation belongs in the DLL (section 5).
+
+## 2. Faulting code
+
+### 2.1 0x432500: quad batch "next slot" [V]
+
+Frameless helper. The batch pointer is passed in ESI (non-standard). Fields: `+0x8` capacity in quads, `+0xc` vertex array, `+0x10` pending quads, `+0x14` first pending quad, `+0x18`/`+0x1c` flush arguments. Element size `0x60` = 4 vertices of 24 bytes [I]. When `+0x10 + +0x14 == +0x8` (full), it flushes through `0x4610a0(base + start*0x60, n*4, [+0x1c], n*6)`, a 4-vertex / 6-index quad draw [I]. Then it returns `base + (start+pending)*0x60` and increments `+0x10`. The first instruction reads `+0x14`, so ESI = 0 faults at address 0x14. This matches the report.
+
+### 2.2 Who passes ESI [V]
+
+All 8 call sites load `esi = [[0x7ba610]+0x8c]+0x90` (`g_Root` = `[0x7ba610]`) right before the call. Sites: `0x43220b` (in 0x431d60), `0x4d32ac`/`0x4d343d` (BigGun SFX, vtable 0x724434), `0x4d40c7`/`0x4d4120`/`0x4d417e` (Laser SFX, 0x7245b4), `0x4d47c9` (Plasma SFX, 0x724694), `0x4d76da` (Tracer SFX, 0x72495c). None of them null-checks ESI. `ProjectileManager` (vtable 0x724898, `+0x18` = 0x4d5f70) also dereferences `[[g_Root+0x8c]+0x90]+0x10` at 0x4d6050 without a check.
+
+### 2.3 Stack [V]
+
+0x432500 faults on its first instruction, so the walk takes frame 1 from the EBP of the nearest framed caller.
+- **0x4298ea**: return after `call *0x18(vtable)` at 0x4298e8 inside `0x429840`. That callee is **0x431d60**, which has an EBP frame and calls 0x432500 directly at 0x43220b. 0x431d60 is slot `+0x18` of vtable **0x719134**: `0x4325f0, 0x539250, 0x539250, 0x431930, 0x543650, 0x543650, 0x431d60, 0x403c20, 0x5a5010`. This has the same shape as ProjectileManager's vtable, so `+0x18` is the render/draw slot of a scene node [I]. The vtable is stored at object `+0x1b0` by the constructor 0x431660 (`movl $0x719134, (%ebp)` at 0x4316a2, `ebp = esi+0x1b0`), next to the strings `TailParams`, `data/pfx/EngineFX/`, `segmentLiveTime`, `segmentLength`, `maxSegmentsCount` and `TailFX` (0x719158..). So the object is an engine trail effect (`TailFX`). 0x431d60 returns early when its segment list (`+0x30`) is empty, so only a trail that has segments (a moving ship) reaches the draw.
+- **0x4293c1**: return after `call *0x4(vtable)` in `0x429390`, the walk over the scene layers (`[g_Root+0x18]+8`, object = node-0x10, `+0x18` enabled). The layer class (vtable 0x718be4, slot 1 = 0x429840) follows the strings `LAYER_ROOTSCENE`, `LAYER_PROCTIMER`, `LAYER_GAMETRASH`, `LAYER_GAMEOBJECT`, `LAYER_GAMEOBJECT_SEARCH`, `LAYER_GAMECARCASS`. 0x429840 calls each child's `+0x18` with the camera position from `[0x7b7608]+0x224`.
+- 0x429390 is called by frameless **0x4054d0** at 0x40556f, the scene render: Clear (`[+0x7c]+0x5a0` slot 0x168), BeginScene (slot 0x158), layer walk, then 0x405c60/0x405d60/0x405e50, Sleep and `ret 4`. The frame function 0x4a04c0 calls it at **0x4a07ab** with `eax = [g_Root+0x8c]`.
+- **0x49fe0f**: return after `call 0x4a04c0` (frame function) in `PreMainLoop`.
+
+So the stack is main loop → frame 0x4a04c0 → scene render 0x4054d0 → layer walk → layer 0x429840 → TailFX draw 0x431d60 → quad batch 0x432500 with a null batch. Flights, groups, AI and pilots are not on it.
+
+## 3. Why the batch was null
+
+### 3.1 Who frees and who creates `+0x90` [V]
+
+- `0x405700` releases `+0xb0`, `+0x80`, `+0x84`, `+0x88`, `+0x8c`, `+0x90`, `+0x94` of the render manager and zeroes each one (`+0x90` at 0x40578d).
+- `0x405810` creates them. `+0x80` is a vertex buffer from the render kernel (slot 0x34). `+0x90` = `new` + `0x406940(..., +0x80, +0x8c)` at 0x405ae6..0x405b05, so the batch wraps the dynamic vertex/index buffers [I]. 0x405810 has a single exit and always stores `+0x90`.
+- Callers of the release 0x405700: the restore 0x405670 (release, kernel slots 0x1c/0x20/0x18, recreate 0x405810), the resize 0x4061c0/0x406210 (release, recreate), the 3D shutdown 0x405ba0 (`STARTED 3D System RELEASE`; called from 0x4a049a after a failed init and from 0x4a1789), and **the window procedure 0x4a0080 for `WM_ACTIVATEAPP` (0x1c) with wParam ≠ 1**, at 0x4a0247. That case calls only 0x405700 and kernel slot 0x1c, then sets the lost flag `[[g_Root+0x8c]+0x78] = 1` and `0x7b75a8 = 0` (app active). It does not recreate anything.
+- `WM_ACTIVATE` (6) sets `0x7b75a8` from `LOWORD(wParam)` (1/2 → 1, else 0). `WM_SIZE` (5) sets it from wParam and calls 0x4061c0 for SIZE_RESTORED/MAXIMIZED. Jump table 0x4a03ac: msgs 2..6 → 0x4a0130, 0x4a00af, default, 0x4a00be, 0x4a014e.
+
+### 3.2 The frame restores before it renders [V]
+
+- The main loop (0x49fda8..0x49fe3c) dispatches one queued message per pass (`PeekMessageA`/`GetMessageA`, `TranslateMessage`, `DispatchMessageA`). It calls the frame 0x4a04c0 only when no message was dispatched and `0x7b75a8 != 0` (0x49fdf7). These are the only `PeekMessage`/`GetMessage`/`DispatchMessage` call sites in the exe.
+- Frame order in 0x4a04c0: lost check `cmp [[g_Root+0x8c]+0x78],0` at 0x4a051c. When the flag is set it calls Sleep(100) and the restore 0x405670, and logs `Game::UpdateGame: handle Lost device ok` on success (after 100 failures, `Game: cannot reset render device`). Then: game-time step 0x4c5e10, keyboard and mouse input 0x4250e0 (×2, 0x4a0612/0x4a0632; hook A of the trackpad DLL sits at 0x4a0632), UI, location update 0x4a17a0 (scripts), T4 0x49d4a0 (TRF_OnTick), hook B 0x601120, then the scene render 0x4054d0 at 0x4a07ab. Nothing between the lost check and the render checks the lost flag again.
+
+A release dispatched between frames is therefore always followed by a restore before the next render. A null `+0x90` in the render means the window procedure ran `WM_ACTIVATEAPP(FALSE)` inside the same frame, after 0x4a051c and before the trail draw.
+
+### 3.3 Evidence that this happened [V]
+
+`mtld3d-logs/sw3cw-20244.log` (one process, 21:13:41..21:17):
+```
+19:13:44Z ... (last start-up lines)
+19:13:56Z INFO mtld3d::d3d9::display] app deactivated, fullscreen window 0x10064 left in place ...
+[mtld3d::d3d9] fault outside d3d9.dll: code=0xc0000005 addr=0x432500 ...
+19:14:14Z / 19:14:24Z / 19:17:15Z / 19:17:16Z  hdr headroom lines
+[mtld3d::d3d9] fault outside d3d9.dll: code=0xc0000005 addr=0x432500 ...
+```
+mtld3d writes `app deactivated` when the deactivation reaches the game window. No `app activated` or `fullscreen kept across Reset` (the restore) follows before the fault. The sw3tp.log of the run ends at `gate t=236 open`, a few frames after `OnLoad #19`. The game did not keep running after the first fault, so the second fault line is the same exception reported again when the crash dialog closed at 21:17 [I]. Earlier sessions log many `app deactivated`/`app activated` pairs without a fault. Those deactivations were dispatched by the main loop between frames [I].
+
+### 3.4 How the message got into the frame [I]
+
+The exe has no message loop inside the frame (3.2). User32 still delivers messages sent from another thread whenever the thread waits inside user32, for example while it waits for the reply to its own cross-thread `SendMessage` or inside `MsgWaitForMultipleObjects`. Wine's DirectInput does both for the mouse and keyboard devices, through its hook thread and its periodic event check. The frame's input step 0x4250e0 calls `IDirectInputDevice8::GetDeviceData` (slot 0x28) and, while it fails, `Acquire` (slot 0x1c) in a loop while the result is `DIERR_INPUTLOST` (0x8007001e, 0x425187..0x4251b2) [V]. The input step is the most likely place where `WM_ACTIVATEAPP(FALSE)` was dispatched. This is from memory of the Wine sources and was not checked against the installed Wine 11.19 build. The trackpad DLL's poll at hook A (0x4a0632) also calls into the Wine mac driver from inside the frame, and is a second candidate. Neither the traffic DLL nor the trackpad DLL calls a user32 message function directly (grep of `mods/`). The `MessageBoxA` helpers (0x455b70, 0x456170) belong to start-up errors and are not on the per-frame path.
+
+### 3.5 Why this save [I]
+
+Two conditions are needed: the focus loss is dispatched inside a frame (3.4), and that frame draws a quad. The first quad decides where it faults: a TailFX with segments at 0x432500, or ProjectileManager at 0x4d6050 (read at 0x10). A frame in a location always reaches 0x4d6050, so condition 2 holds in every location. The race in condition 1 decides. The deactivation came 15 s after process start, at the end of the save load (21:13:56). The cause (user switching away during the multi-second load, or something else) is [U]. Mod ships make the trail path likely right after a load: the three traders were not wound down (`load_none=3`, 4.3) and kept flying with trails. They do not cause the null pointer.
+
+## 4. Groups and ships across a load
+
+### 4.1 Save contents [V]
+
+The inflated save is 3,629,207 bytes; GameObjects is at 0x2129, 2,264,155 bytes. Records start with `13 00 aa ff`, a u32 type, `f0 de bc 0a 00 00 00 00` and a u32 UID. The reader 0x4a59f0 checks the tag `0xffaa0013` and the end tag `0x75767778`. It creates each object from the stream (factory 0x4b67f0) and registers it by UID (0x4a85e0, error `object with UID %d loaded twice or more!`). A second pass reads `LoadFromStream_LocationGameObjects`. Of the 45 record types, 0x3b = group (19 records), 0x3c = team (6) and 0x3a = group member (35).
+
+| object | type | UID | content after the name |
+|---|---|---|---|
+| `Trade_Group_1` | 0x3b | 0xc04c | team 0xc04b, 0 members |
+| `TRF_Trade_1` | 0x3b | | team 0xc04b, 1 member 0xc315 (type 0x3a) |
+| `TRF_Trade_2`, `TRF_Trade_3` | 0x3b | | present |
+| `TRF_Conv_1` | 0x3b | 0xc0a3 | present |
+| `TRF_Park` | 0x3b | 0xc08c | team 0xc04b, 1 member 0xc08d (type 0x3a) |
+| team | 0x3c | 0xc04b | listed in STREAMID_TeamManager (`b2 00 00 00 07 00 00 00 b2 .. c7bd c9bd 4bc0 5ec0 5fc0 60c0`) |
+
+Ship records carry their labels: `trf_5_1..3`, `trf_6_1..3`, `trf_7_1..7` and `trf_pk_1` (class `btransport`). `USS_Group_2` and `PlayerGroup` are also group records. There is no `group_SOS` (no SOS was active).
+
+So groups are saved game objects, and their members, team and groups are linked by UID inside the same section. Restoring a ship does not look a group up by name in the team manager. The exact link fix-up was not traced [I]. The mod's per-spawn groups do not need to be recreated on load. Vanilla runtime groups (`Trade_Group_1`, and `group_SOS` / `group_Pirate_money` / `group_Fmerc_<x>` when they exist) come back the same way [I for the ones not in this save]. Re-running `activate.script` on a load was not checked because the groups do not depend on it.
+
+### 4.2 Lua state [V]
+
+`savetool info`: Script section of 474,072 bytes, 576 globals, 78 triggers. The mod's handle table `H` is not saved (spec 3.x), so after a load the mod sees its ships only through `GetObjectByLabel("trf_<id>_<i>")` (`TRF_GnFind`).
+
+### 4.3 `load_none=3` [V/U]
+
+In OnLoad, all three trader records (ids 5, 6, 7) returned `"none"` from `TRF_GnLoadOne`: `GetObjectByLabel` gave no live ship, although those labels are in the save. The records were marked `gone`, and the restored ships stayed in the scene without mod control. They were neither wound down nor deleted. Why the lookup fails at OnLoad (hook T2d at 0x4a4f21, after all 17 section readers and after 0x4a4cd0/0x4a4530) is [U]. Either the label index or the location object list is filled later, or `IsAlive` answers nil at that point. `LOGfile.txt` tells the two apart: the native logs `ObjectByLabel '<label>' is not found` for a failed lookup. This is a separate defect from the crash. Its effect: uncontrolled mod traders after every load with live traders, and `TRF_Trade_<k>` names in the scene that a later spawn's `CreateGroup` may reuse (spec 4.5 step 3 CHECK).
+
+## 5. Fix (DLL; not made here: `mods/traffic/pe/traffic.c` was outside this task's edit scope)
+
+Skip the scene render while the device is flagged lost. Entry hook on **0x4054d0**, which covers all 21 callers: the frame call 0x4a07ab, the 9 load-progress renders inside `LoadGameFromStream` (0x4a4917..0x4a4c1c) and 11 others. Each caller loads `eax = [..+0x8c]` just before the call [V], and 0x4054d8 `mov esi,eax` then uses `[esi+0x7c]` as the kernel:
+
+```
+; patch 0x4054d0: 83 05 b0 75 7b 00 01  (addl $1, 0x7b75b0)  -> jmp stub; nop; nop
+stub:  cmp  dword [eax+0x78], 0
+       jne  skip
+       add  dword [0x7b75b0], 1        ; the 7 displaced bytes
+       jmp  0x4054d7
+skip:  ret  4                          ; drop the float argument
+```
+
+Signatures to verify (7 bytes each, `g_lsig` style): 0x4054d0 `83 05 b0 75 7b 00 01`, 0x4054d7 `56 8b f0 8b 46`, 0x4a0247 `e8 b4 54 f6 ff` (WndProc release), 0x4a026e `89 5a 78` (lost flag), 0x4a051c `83 78 78 00 74 6e` (frame lost check). The frame after the deactivation does no more drawing. The next frames do not run while `0x7b75a8 = 0`. On reactivation the frame-start restore recreates `+0x90` as before. Log once per transition: `traffic: render held (device lost)` / `traffic: render resumed`.
+
+An alternative is to NOP the in-frame release (0x4a0247 and the kernel slot 0x1c call at 0x4a025b..0x4a0260) and leave both releases to the restore 0x405670, which runs them anyway before the reset. It is riskier, because the device would keep default-pool resources while lost.
+
+Until the DLL guard lands, do not switch away from the game (Cmd-Tab, clicking another window) during a load or in the first seconds after it.
+
+## 6. Watch at the next load of Quicksave-36
+
+- `sw3tp.log`: the same lines as in run 0-20261021-211717 (`st: load gen=40 legs=66`, `safe: armed via=load`, `gen: load pass load_none=3 seq=7`, `ships=0`). `load_none=3` is expected again (4.3).
+- `LOGfile.txt` right after the load: `ObjectByLabel 'trf_5_1' is not found` (and `_6_`, `_7_`) means the label lookup fails at OnLoad. No such lines with `load_none=3` means `IsAlive` is the cause.
+- `mtld3d-logs/sw3cw-<pid>.log`: if it crashes again, check whether an `app deactivated` line comes right before the `fault ... addr=0x432500` (or `0x4d6050`) line with no `app activated` between them. A crash without a preceding deactivation would disprove this analysis.
+- Without a focus change during and after the load, the load should not crash. The mod traders then fly on without mod control (4.3).
