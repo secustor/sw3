@@ -149,7 +149,7 @@ Defaults are in each module's `TRF_<M>_OptDef()`; a missing key reads its defaul
 | `meet`, `hail_start`, `board` | 2, 1, 1 | `meet` 2: announce line and hail (1: vanilla meeting box, 0 off); `hail_start` 2: menu opens at the announce without a focus; `board` 2: screen line only, 0 off |
 | `shop_mode`, `short_price`, `restore` | 1, 1, 1 | 0: vanilla trader shop; 0: shortages as rumour only, no price write; 2: restore with `ClearGoodsState` |
 | `news_mode` | 1 | 0 off, 1 bulletin line, 2 `AddPost` records (needs the news records: `install-test.sh NEWS=1`, [News records](#news-records-news1)) |
-| `heat_war`, `strict` | 0, 1 | heat 7–9 group war; strict gate (0 off, 2 strict in every quest system) |
+| `heat_war`, `strict` | 0, 1 | heat 7–9 group war; strict gate (0 never: also ignores the deny list, tests only; 2 strict in every quest system) |
 | `pro_set` (env `PRO_SET=taira:6,gredos:9`) | `{}` | test clone only: sets `pro` (clamped to the system's cap) on every entry |
 | `tune` (env `TUNE=T_leg=5`) | | tuning overrides, numbers only (spec 10.4 lists the v0.2 keys) |
 

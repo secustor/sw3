@@ -643,6 +643,8 @@ function T_G()
 		{{sys={name="x297"}}, "vanilla", "deny"},
 		{{sys={name="gefest", start=1}}, "vanilla", "deny"},
 		{{sys={name="elio", start=1}, qs=0, ch=5}, "mod", nil},
+		{{sys={name="elio", start=1}, strict=0, ch=5}, "mod", nil},
+		{{sys={name="elio", start=1}, strict=1}, "vanilla", "deny"},
 		{{deny2={"corrino"}}, "vanilla", "deny"},
 		{{deny2={"corrino"}, qs=0}, "mod", nil},
 		{{sys={name="gredos", start=1}, ch=4}, "vanilla", "guard"},

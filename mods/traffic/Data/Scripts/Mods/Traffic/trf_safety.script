@@ -200,7 +200,7 @@ function TRF_ChapterOf(lbl)
 end;
 
 -- System mode (2.3). s = {enabled, override, guard, sys (map entry or nil), off, deny, deny2 (name lists),
--- inval (reason or nil), qs (1 = mission active), ch (chapter)}. Returns "mod" or "vanilla", reason.
+-- inval (reason or nil), qs (1 = mission active), strict (cfg strict, 0 skips the deny list), ch (chapter)}. Returns "mod" or "vanilla", reason.
 -- Reasons: off (enabled 0, override 0 or unknown), restore (enabled 2), observe (override 2), nomap, sys_off,
 -- inval, deny, guard.
 function TRF_SysModeOf(s)
@@ -212,7 +212,8 @@ function TRF_SysModeOf(s)
 	if type(sy) ~= "table" or type(sy.name) ~= "string" then return "vanilla", "nomap"; end;
 	if TRF_SafeIn(s.off, sy.name) then return "vanilla", "sys_off"; end;
 	if s.inval then return "vanilla", "inval"; end;
-	if s.qs and (TRF_SafeIn(s.deny, sy.name) or TRF_SafeIn(s.deny2, sy.name)) then return "vanilla", "deny"; end;
+	-- cfg strict 0 (tests only) also ignores the deny list.
+	if s.qs and s.strict ~= 0 and (TRF_SafeIn(s.deny, sy.name) or TRF_SafeIn(s.deny2, sy.name)) then return "vanilla", "deny"; end;
 	-- R16: guard 0 off, 1 or 2 (2 kept for compatibility) start system and chapter <= 4, independent of qs.
 	if s.guard ~= 0 and sy.start == 1 and TRF_SafeNum(s.ch, 0) <= 4 then return "vanilla", "guard"; end;
 	return "mod", nil;
@@ -726,6 +727,7 @@ function TRF_SafeModeIn()
 		off = TRF_SafeOpt("sys_off", {}),
 		deny = TRF_Deny(),
 		deny2 = TRF_SafeOpt("sys_deny", {}),
+		strict = TRF_SafeNum(TRF_SafeOpt("strict", 1), 1),
 		inval = inval,
 		qs = TRF_Safe_QState(),
 		ch = TRF_Chapter()
