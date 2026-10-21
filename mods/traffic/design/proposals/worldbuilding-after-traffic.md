@@ -352,3 +352,7 @@ Union of blocking unknowns across the 14 proposals, deduplicated. Where to look 
 22. `SetHP` right after spawn survives formation setup (TDR 13.6). Gates 12 step 2.
 23. The player-initiated hail mechanism (focus plus proximity, box chain or key binding; TDR 13.5). Gates 5, 13 and traffic 8.2 itself.
 24. Doc inconsistency to resolve: inventory destroyed on death is 40 % (npc-primitives.md 7, AI.ini 217-219) or 60 % (TDR 13.6); loot caps in 2 and 6 depend on it.
+
+## Added after the ranking
+
+- 15. Active wreck scan (2026-10-21): a key-triggered sensor pulse that returns coarse mass echoes of mod wreck fields, with range and blur from the mothership sensor module. Sub-feature of 2 (battle scars). Effort S plus two small proxy natives. `D/worldbuilding/15-active-wreck-scan.md`.
