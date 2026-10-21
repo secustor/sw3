@@ -58,7 +58,7 @@ static int rel_ok(const unsigned char *buf, unsigned va, int off, unsigned targe
 int main(int argc, char **argv)
 {
     static const unsigned char want_head[] = {
-        0x83,0x78,0x78,0x00, 0x75,0x1e, 0x83,0x3d,0x44,0x33,0x22,0x11,0x00, 0x75,0x0c,
+        0x83,0xb8,0x90,0x00,0x00,0x00,0x00, 0x74,0x1e, 0x83,0x3d,0x44,0x33,0x22,0x11,0x00, 0x75,0x0c,
         0x83,0x05,0xb0,0x75,0x7b,0x00,0x01 };
     unsigned char st[64], pb[STB_PATCH_N];
     const unsigned va = 0x01230000, ep = 0x11223344, skip = 0x10001000, res = 0x10002000;
@@ -69,17 +69,17 @@ int main(int argc, char **argv)
     n = stb_build_stub(st, va, ep, skip, res);
     CHECK(n == STB_STUB_N);
     CHECK(memcmp(st, want_head, sizeof(want_head)) == 0);
-    CHECK(st[22] == 0xe9 && rel_ok(st, va, 22, STB_RENDER_GO));          /* jmp 0x4054d7 */
-    CHECK(st[27] == 0x60 && st[28] == 0xe8 && rel_ok(st, va, 28, res) && st[33] == 0x61);
-    CHECK(st[34] == 0xeb && 36 + (signed char)st[35] == 15);              /* back to run */
-    CHECK(st[36] == 0x60 && st[37] == 0xe8 && rel_ok(st, va, 37, skip) && st[42] == 0x61);
-    CHECK(st[43] == 0xb8 && st[44] == 1 && !st[45] && !st[46] && !st[47]);
-    CHECK(st[48] == 0xc2 && st[49] == 4 && st[50] == 0 && st[51] == 0xcc);
-    CHECK(4 + 2 + st[5] == 36 && 13 + 2 + st[14] == 27);                  /* jne targets */
+    CHECK(st[25] == 0xe9 && rel_ok(st, va, 25, STB_RENDER_GO));          /* jmp 0x4054d7 */
+    CHECK(st[30] == 0x60 && st[31] == 0xe8 && rel_ok(st, va, 31, res) && st[36] == 0x61);
+    CHECK(st[37] == 0xeb && 39 + (signed char)st[38] == 18);              /* back to run */
+    CHECK(st[39] == 0x60 && st[40] == 0xe8 && rel_ok(st, va, 40, skip) && st[45] == 0x61);
+    CHECK(st[46] == 0xb8 && st[47] == 1 && !st[48] && !st[49] && !st[50]);
+    CHECK(st[51] == 0xc2 && st[52] == 4 && st[53] == 0 && st[54] == 0xcc);
+    CHECK(7 + 2 + st[8] == 39 && 16 + 2 + st[17] == 30);                  /* je skip, jne resume */
     stb_patch_bytes(pb, va);
     CHECK(pb[0] == 0xe9 && rel_ok(pb, STB_RENDER, 0, va) && pb[5] == 0x90 && pb[6] == 0x90);
     /* displaced bytes in the stub = the signature at 0x4054d0 */
-    CHECK(g_ssig[0].a == STB_RENDER && g_ssig[0].n == STB_PATCH_N && memcmp(st + 15, g_ssig[0].b, STB_PATCH_N) == 0);
+    CHECK(g_ssig[0].a == STB_RENDER && g_ssig[0].n == STB_PATCH_N && memcmp(st + 18, g_ssig[0].b, STB_PATCH_N) == 0);
     CHECK(g_ssig[1].a == STB_RENDER_GO);
 
     if (argc == 3 && strcmp(argv[1], "--dump") == 0) {

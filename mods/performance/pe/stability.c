@@ -1,8 +1,11 @@
 /* stability: [stability] module of the sw3tp zlib1.dll proxy. render_lost_guard: an entry hook on the
- * scene render 0x4054d0 returns at once while the render manager's device-lost flag is set, so a
- * WM_ACTIVATEAPP(FALSE) handled inside a frame (it frees the quad batch [[g_Root+0x8c]+0x90] and sets
- * the flag) cannot make the trail/projectile draws dereference the freed batch (crash at 0x432500 or
- * 0x4d6050). Analysis: mods/traffic/design/mod-research/crash-load-432500.md. No CRT.
+ * scene render 0x4054d0 returns at once while the render manager's quad batch [eax+0x90] is null, so a
+ * WM_ACTIVATEAPP(FALSE) handled inside a frame (it frees the batch [[g_Root+0x8c]+0x90], nulls the
+ * pointer and sets the lost flag +0x78) cannot make the trail/projectile draws dereference the freed
+ * batch (crash at 0x432500 or 0x4d6050). The lost flag is not the condition: only the render's own
+ * Present (0x405658, status into +0x78) clears it, so skipping on it never ends. The frame-start
+ * restore recreates the batch, and the next render runs. Analysis:
+ * mods/traffic/design/mod-research/crash-load-432500.md section 5. No CRT.
  * Target: sw3cw.exe GOG v1.12, ImageBase 0x400000, no ASLR.
  * -DSW3TP_HOST_TEST builds only the pure part (signature table, stub and patch bytes) for
  * mods/performance/tests/stability_host.c. */
@@ -17,15 +20,21 @@
 
 /* Bytes the hook relies on. 0x4054d0: the 7 bytes moved into the stub (addl $1, 0x7b75b0).
  * 0x4054d7: push esi; mov esi,eax; mov eax,[esi+0x7c] (eax is the render manager on entry).
- * 0x40565a: the only exit, eax = 1 and ret 4 (one stack argument, callee pops; the skip path does
- * the same). 0x4a0247/0x4a026e: WM_ACTIVATEAPP(FALSE) frees the batch (call 0x405700) and sets
- * the lost flag +0x78 = 1 (ebx = 1). 0x4a051c: the frame-start lost check that restores the
- * device. 0x4a07a5: the frame's render call loads eax = [ecx+0x8c] and calls 0x4054d0. */
+ * 0x40564f: the render's Present (kernel slot 0x10) with &[esi+0x78], which writes the device
+ * status into the lost flag (the only clear after init). 0x40565a: the only exit, eax = 1 and
+ * ret 4 (one stack argument, callee pops; the skip path does the same). 0x40578d: the release
+ * 0x405700 nulls the batch pointer +0x90 after destroying it. 0x405b05: the recreate sets it.
+ * 0x4a0247/0x4a026e: WM_ACTIVATEAPP(FALSE) frees the batch (call 0x405700) and sets the lost
+ * flag +0x78 = 1 (ebx = 1). 0x4a051c: the frame-start lost check that restores the device.
+ * 0x4a07a5: the frame's render call loads eax = [ecx+0x8c] and calls 0x4054d0. */
 struct stb_sig { unsigned a; unsigned char n, b[11]; const char *what; };
 static const struct stb_sig g_ssig[] = {
     { 0x4054d0, 7, { 0x83,0x05,0xb0,0x75,0x7b,0x00,0x01 }, "render entry addl $1,0x7b75b0" },
     { 0x4054d7, 6, { 0x56,0x8b,0xf0,0x8b,0x46,0x7c }, "render push esi; esi=eax; [esi+0x7c]" },
+    { 0x40564f, 11, { 0x8b,0x11,0x8b,0x42,0x10,0x83,0xc6,0x78,0x56,0xff,0xd0 }, "render Present(&[esi+0x78]) clears lost" },
     { 0x40565a, 10, { 0x5f,0xb8,0x01,0x00,0x00,0x00,0x5e,0xc2,0x04,0x00 }, "render exit eax=1, ret 4" },
+    { 0x40578d, 6, { 0x89,0xbe,0x90,0x00,0x00,0x00 }, "release nulls batch +0x90" },
+    { 0x405b05, 6, { 0x89,0x85,0x90,0x00,0x00,0x00 }, "recreate sets batch +0x90" },
     { 0x4a0247, 5, { 0xe8,0xb4,0x54,0xf6,0xff }, "WndProc deactivate call 0x405700 (release)" },
     { 0x4a026e, 3, { 0x89,0x5a,0x78 }, "WndProc deactivate lost flag +0x78" },
     { 0x4a051c, 6, { 0x83,0x78,0x78,0x00,0x74,0x6e }, "frame lost check +0x78" },
@@ -61,38 +70,38 @@ static void s_rel(unsigned char **p, unsigned char *buf, unsigned va, unsigned c
  * flags change, and the displaced addl sets them anyway); pushad/popad keep all registers around
  * the C calls (void __stdcall, no args, empty x87 stack); the skip path returns eax = 1 like the
  * original exit and pops the float argument (ret 4), leaving ecx/edx/esi/edi/ebx/ebp as they were.
- *   +0   83 78 78 00          cmp  dword [eax+0x78], 0     ; device lost?
- *   +4   75 1e                jne  skip
- *   +6   83 3d <ep> 00        cmp  dword [ep], 0           ; inside a skip episode?
- *   +13  75 0c                jne  resume
+ *   +0   83 b8 90 00 00 00 00 cmp  dword [eax+0x90], 0     ; quad batch freed?
+ *   +7   74 1e                je   skip
+ *   +9   83 3d <ep> 00        cmp  dword [ep], 0           ; inside a skip episode?
+ *   +16  75 0c                jne  resume
  *   run:
- *   +15  83 05 b0 75 7b 00 01 add  dword [0x7b75b0], 1     ; the displaced 7 bytes
- *   +22  e9 <rel32>           jmp  0x4054d7
+ *   +18  83 05 b0 75 7b 00 01 add  dword [0x7b75b0], 1     ; the displaced 7 bytes
+ *   +25  e9 <rel32>           jmp  0x4054d7
  *   resume:
- *   +27  60                   pushad
- *   +28  e8 <rel32>           call on_resume               ; clears ep, logs once
- *   +33  61                   popad
- *   +34  eb eb                jmp  run
+ *   +30  60                   pushad
+ *   +31  e8 <rel32>           call on_resume               ; clears ep, logs once
+ *   +36  61                   popad
+ *   +37  eb eb                jmp  run
  *   skip:
- *   +36  60                   pushad
- *   +37  e8 <rel32>           call on_skip                 ; counts, sets ep, logs once per episode
- *   +42  61                   popad
- *   +43  b8 01 00 00 00       mov  eax, 1
- *   +48  c2 04 00             ret  4 */
-#define STB_STUB_N 51
+ *   +39  60                   pushad
+ *   +40  e8 <rel32>           call on_skip                 ; counts, sets ep, logs once per episode
+ *   +45  61                   popad
+ *   +46  b8 01 00 00 00       mov  eax, 1
+ *   +51  c2 04 00             ret  4 */
+#define STB_STUB_N 54
 static int stb_build_stub(unsigned char *buf, unsigned va, unsigned ep, unsigned on_skip, unsigned on_resume)
 {
     unsigned char *p = buf;
-    s_put(&p, 0x83); s_put(&p, 0x78); s_put(&p, 0x78); s_put(&p, 0x00);
-    s_put(&p, 0x75); s_put(&p, 36 - 6);
+    s_put(&p, 0x83); s_put(&p, 0xb8); s_u32(&p, 0x90); s_put(&p, 0x00);
+    s_put(&p, 0x74); s_put(&p, 39 - 9);
     s_put(&p, 0x83); s_put(&p, 0x3d); s_u32(&p, ep); s_put(&p, 0x00);
-    s_put(&p, 0x75); s_put(&p, 27 - 15);
+    s_put(&p, 0x75); s_put(&p, 30 - 18);
     s_put(&p, 0x83); s_put(&p, 0x05); s_u32(&p, 0x7b75b0); s_put(&p, 0x01);
     s_rel(&p, buf, va, 0xe9, STB_RENDER_GO);
     s_put(&p, 0x60);
     s_rel(&p, buf, va, 0xe8, on_resume);
     s_put(&p, 0x61);
-    s_put(&p, 0xeb); s_put(&p, (unsigned char)(15 - 36));
+    s_put(&p, 0xeb); s_put(&p, (unsigned char)(18 - 39));
     s_put(&p, 0x60);
     s_rel(&p, buf, va, 0xe8, on_skip);
     s_put(&p, 0x61);
@@ -142,7 +151,7 @@ static void __stdcall stb_on_skip(void)
     if (g_ep) return;
     g_ep = 1;
     g_ep_n++;
-    if (g_slog) { struct slb b; s_begin(&b, "render skipped (device lost) n="); s_d(&b, g_skip_n); s_end(&b); }
+    if (g_slog) { struct slb b; s_begin(&b, "render skipped (batch freed) n="); s_d(&b, g_skip_n); s_end(&b); }
 }
 static void __stdcall stb_on_resume(void)
 {
@@ -199,7 +208,7 @@ void stb_init(const char *ini)
     if (!stb_install(&stub)) { s_begin(&b, "render_lost_guard install failed error="); s_d(&b, GetLastError()); s_end(&b); return; }
     if (g_slog) {
         s_begin(&b, "attach ok render_lost_guard patch="); s_x(&b, STB_RENDER); s_s(&b, " stub="); s_x(&b, stub);
-        s_s(&b, " lost=[eax+0x78] sigs="); s_d(&b, (unsigned)STB_SIG_N); s_end(&b);
+        s_s(&b, " batch=[eax+0x90] sigs="); s_d(&b, (unsigned)STB_SIG_N); s_end(&b);
     }
 }
 #endif

@@ -12,7 +12,7 @@
 #      main display size at each game start ([display] in sw3tp.ini) and sets mtld3d's render.scale
 #      so the GPU renders about as many pixels as at 1680x1050. Installs the proxy with the trackpad
 #      features off if it is missing.
-#      Also writes [stability] with the defaults (render skipped while the D3D device is lost).
+#      Also writes [stability] with the defaults (render skipped while the quad batch is freed after a device loss).
 # Backups and a manifest go to <game dir>/sw3-performance-backup/; uninstall.sh restores them.
 # Env: WINE_ARCHIVE=<path> uses a local copy of the release archive (still SHA-256 checked).
 #      HEROIC_CHECK=0 skips the "Heroic is running" check (only for tests with a fake HOME).
@@ -223,7 +223,7 @@ else
     printf '[display]\r\nmode=%s\r\nfixed=%s\r\nmin=1024x768\r\nmax=4096x4096\r\nkeep_bpp=32\r\nfullscreen=TRUE\r\nrender_scale=%s\r\nlog=1\r\n' "$dmode" "$dfixed" "$rscale" >> "$ini.sw3-new"
     mv -f "$ini.sw3-new" "$ini"
     say "display: sw3tp.ini [display] mode=$dmode${dfixed:+ fixed=$dfixed} render_scale=$rscale"
-    # [stability] (render skipped while the device is lost, README "Stability"): written with the defaults.
+    # [stability] (render skipped while the quad batch is freed, README "Stability"): written with the defaults.
     awk '{l=$0; sub(/\r$/,"",l)} l=="[stability]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$ini" > "$ini.sw3-new"
     printf '[stability]\r\nenabled=1\r\nrender_lost_guard=1\r\nlog=1\r\n' >> "$ini.sw3-new"
     mv -f "$ini.sw3-new" "$ini"

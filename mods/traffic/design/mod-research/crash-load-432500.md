@@ -93,6 +93,8 @@ In OnLoad, all three trader records (ids 5, 6, 7) returned `"none"` from `TRF_Gn
 
 ## 5. Fix (DLL; not made here: `mods/traffic/pe/traffic.c` was outside this task's edit scope)
 
+**Superseded condition (2026-10-21, see section 9):** the guard skips while the batch pointer `[eax+0x90]` is null, not while the lost flag `[eax+0x78]` is set. The lost-flag skip below deadlocked.
+
 Skip the scene render while the device is flagged lost. Entry hook on **0x4054d0**, which covers all 21 callers: the frame call 0x4a07ab, the 9 load-progress renders inside `LoadGameFromStream` (0x4a4917..0x4a4c1c) and 11 others. Each caller loads `eax = [..+0x8c]` just before the call [V], and 0x4054d8 `mov esi,eax` then uses `[esi+0x7c]` as the kernel:
 
 ```
@@ -126,7 +128,7 @@ The fix of section 5 is in the performance mod, not in `traffic.c`: `mods/perfor
 - **Patch**: 0x4054d0 = `e9 <rel32 stub>; 90; 90`. Stub: `cmp dword [eax+0x78],0; jne skip; cmp dword [ep],0; jne resume; run: add dword [0x7b75b0],1; jmp 0x4054d7; resume: pushad; call on_resume; popad; jmp run; skip: pushad; call on_skip; popad; mov eax,1; ret 4`. The skip path leaves every register except eax as the caller set it.
 - **ProjectileManager** [V]: its constructor 0x4d5800 registers the object with the scene node base 0x429000 (ecx = layer 0x17, scene = `[g_Root+0x18]` via 0x404e90). The layer draw slot (+4: 0x429840 in vtable 0x718be4, 0x42a410 in 0x718bf8 and the derived layer vtables) calls each child's +0x18, which is 0x4d5f70 for ProjectileManager (its only pointer is vtable slot 0x7248b0); 0x4d6050 lies inside 0x4d5f70. The scene walk 0x429390 that calls the layers has one caller, 0x40556f in 0x4054d0. So the projectile path is reached from the same scene render, and the hook covers it.
 - **Limits** [I]: a deactivation handled inside 0x4054d0 itself, after the check (for example inside a D3D call that pumps sent messages), is not covered. Load-screen renders during `LoadGameFromStream` are also skipped while the flag is set, so the load screen stays still until the next frame restores the device.
-- **Log**: `stability: attach ok render_lost_guard patch=0x4054d0 stub=0x... lost=[eax+0x78] sigs=7` at start; `stability: render skipped (device lost) n=<all skips>` once per episode; `stability: render resumed skipped=<k> episodes=<e>` at the first render after it.
+- **Log** (as first built; section 9 changes the condition and texts): `stability: attach ok render_lost_guard patch=0x4054d0 stub=0x... lost=[eax+0x78] sigs=7` at start; `stability: render skipped (device lost) n=<all skips>` once per episode; `stability: render resumed skipped=<k> episodes=<e>` at the first render after it.
 
 ## 8. `load_none=3` decided: found ships failed `IsAlive` (2026-10-21)
 
@@ -151,3 +153,14 @@ Two outcomes match the log, and static reading cannot tell them apart: (a) the s
 ### 8.4 Expected at the next load of Quicksave-36
 
 Case (c), timing: `gen: load id=5 wait why=alive lbl=3 i=1 isalive=nil pos=...` (same for 6 and 7), `gen: load pass load_wait=3 adopted=0 wait=3 seq=7`, `tier: parked 1 wait on load ret=table`, then `gen: load id=5 adopted ships=3 -> wind d=..` (or `-> delete why=far d=..` beyond 600), `gen: load retry n=1 adopted=3 dropped=0 wait=0`, `tier: parked 1 kept on load d=..` or `deleted on load`. Cases (a) and (b) persist: `wait why=obj ... ret=string` (a) or `wait why=alive ... isalive=nil pos=<x,y,z|nil>` (b), then `gen: load id=5 gone why=obj|alive tries=11` and `tier: parked 1 gone on load why=alive tries=11`. A `pos` that differs from the ship's place on screen supports (b), an id collision. Without the timing case the ships still fly uncontrolled, but the log then names the cause. The next fix for (b) would be to hold real handles across the save, for example in `TRF` as saved `{id=}` tables like vanilla quest globals, and that needs a check first.
+
+## 9. Lost-flag skip deadlocked; skip on a freed batch (2026-10-21)
+
+**Finding** [V] (live game and disassembly): after init, only the render's own exit clears `+0x78`. At 0x405648..0x405658 (`mov ecx,[esi+0x7c]; mov edx,[ecx]; mov eax,[edx+0x10]; add esi,0x78; push esi; call eax`) the kernel's Present writes the device status into `+0x78`. The restore 0x405670 tests the flag (0x405674), releases (0x405700), resets the kernel slots 0x1c/0x20/0x18 and recreates (0x405810), but does not clear it. With the section 5 guard, every frame after a device loss ran the frame-start restore (Sleep(100), `Game::UpdateGame: handle Lost device ok`) and then skipped the render, because the flag was still set, so Present never ran. `LOGfile.txt` had 88 `handle Lost device ok` lines at 2 per second, mtld3d logged `fullscreen kept across Reset` per restore, the screen froze, and `sw3tp.log` had `stability: render skipped (device lost) n=1` and no `render resumed`.
+
+**New condition**: skip while the quad batch `[eax+0x90] == 0`, which is the crash condition. The release 0x405700 nulls it at 0x40578d (`89 be 90 00 00 00`, edi = 0) after destroying it, the in-frame `WM_ACTIVATEAPP(FALSE)` path calls that release at 0x4a0247, and the recreate sets it at 0x405b05 (`89 85 90 00 00 00`). When the batch exists, the render runs unchanged and Present clears the flag as in vanilla. When it is null, the stub returns `eax = 1`, `ret 4`. After a skip, the next frame start restores the device and the batch, and the render resumes.
+
+- **Stub** (54 bytes): `+0 cmp dword [eax+0x90],0` (`83 b8 90 00 00 00 00`); `+7 je skip` (`74 1e`); `+9 cmp dword [ep],0`; `+16 jne resume` (`75 0c`); run `+18 add dword [0x7b75b0],1`; `+25 jmp 0x4054d7`; resume `+30 pushad; +31 call on_resume; +36 popad; +37 jmp run` (`eb eb`); skip `+39 pushad; +40 call on_skip; +45 popad; +46 mov eax,1; +51 ret 4`.
+- **Signatures** (10): section 7's seven plus 0x40564f `8b 11 8b 42 10 83 c6 78 56 ff d0` (Present with `&[esi+0x78]`), 0x40578d `89 be 90 00 00 00`, 0x405b05 `89 85 90 00 00 00`.
+- **Log**: `stability: attach ok render_lost_guard patch=0x4054d0 stub=0x... batch=[eax+0x90] sigs=10`; `stability: render skipped (batch freed) n=<all skips>`; `stability: render resumed skipped=<k> episodes=<e>`.
+- **Expected after a focus loss**: one `render skipped (batch freed)` per in-frame deactivation, followed by `render resumed` at the next frame. A restore that fails to recreate the batch keeps the render skipped, where vanilla would crash.
