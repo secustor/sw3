@@ -18,6 +18,9 @@
 # (the vanilla file is kept as News.xml.trf-orig), loc/trf_en.loc copied as with LOC=1, and news_mode=2 unless
 # NEWS_MODE is set; unset restores News.xml from News.xml.trf-orig.
 # BASE_AT is not available: trf_base has no forced-site key yet.
+# HAIL_BOX=0|1|2 (default 2 here; the shipped default is 1): tune hail_box (0 hail answers as lines, 1 ShowMsgBox
+# chain, 2 the hail menu as the trade dialog). Data/Scripts/Trade/TRF_Hail.xml is always copied and hail_xml=1
+# written; a hail_box key in TUNE wins.
 # LEVEL=v01|v02|v1 (default v1): v01 and v02 turn the later features off with the presets the host tests use
 # (tests/host_traffic.lua T_V01, T_V1Off); keys set in the environment win over the preset.
 # TRAFFIC_ENABLED=0|1, SITE_T1..SITE_T4 (0|1, default 1), TICK_MS (default 250) (sw3tp.ini [traffic]).
@@ -35,6 +38,8 @@ case "$EXP" in 0|1|2|3) ;; *) echo "EXP must be 0..3" >&2; exit 1;; esac
 if [ "$EXP" = 2 ]; then AUTOSAVE=${AUTOSAVE:-1}; else AUTOSAVE=${AUTOSAVE:-0}; fi
 case "$AUTOSAVE" in 0|1|2) ;; *) echo "AUTOSAVE must be 0..2" >&2; exit 1;; esac
 TRAFFIC=${TRAFFIC:-1}
+HAIL_BOX=${HAIL_BOX:-2}
+case "$HAIL_BOX" in 0|1|2) ;; *) echo "HAIL_BOX must be 0..2" >&2; exit 1;; esac
 case "$TRAFFIC" in 0|1) ;; *) echo "TRAFFIC must be 0 or 1" >&2; exit 1;; esac
 opt=""
 case "${NEWS:-0}" in 0) ;; 1) NEWS_MODE=${NEWS_MODE:-2} ;; *) echo "NEWS must be 0 or 1" >&2; exit 1;; esac
@@ -74,21 +79,23 @@ if [ -n "${PRO_SET:-}" ]; then
     done
     opt="$opt, pro_set={$ps}"
 fi
+tn=""
 if [ -n "${TUNE:-}" ]; then
-    tn=""
     for e in $(printf '%s' "$TUNE" | tr ',' ' '); do
         n=${e%%=*}; v=${e#*=}
         case "$n" in ""|[!A-Za-z_]*|*[!A-Za-z0-9_]*) echo "TUNE: bad key in $e" >&2; exit 1;; esac
         case "$v" in ""|.|*[!0-9.]*|*.*.*) echo "TUNE: bad number in $e" >&2; exit 1;; esac
         tn="$tn${tn:+, }$n=$v"
     done
-    opt="$opt, tune={$tn}"
 fi
+case ", $tn" in *", hail_box="*) ;; *) tn="$tn${tn:+, }hail_box=$HAIL_BOX" ;; esac
+opt="$opt, hail_xml=1, tune={$tn}"
 
 cp "$tp/out/zlib1.dll" "$COPY/zlib1.dll"
 
 rm -rf "$SCRIPTS_DST"; mkdir -p "$SCRIPTS_DST"
 cp -R "$SCRIPTS_SRC/." "$SCRIPTS_DST/"
+cp "$here/Data/Scripts/Trade/TRF_Hail.xml" "$COPY/Data/Scripts/Trade/TRF_Hail.xml"
 locd=$COPY/Data/LocData/English
 if [ "${LOC:-0}" = 1 ] || [ "${NEWS:-0}" = 1 ]; then cp "$here/loc/trf_en.loc" "$locd/trf_en.loc"; else rm -f "$locd/trf_en.loc"; fi
 newsx=$COPY/Data/Game/News.xml
@@ -117,9 +124,11 @@ mv -f "$tmp" "$ini"
 
 xattr -c "$COPY/zlib1.dll" "$ini" 2>/dev/null || true
 find "$SCRIPTS_DST" -type f -exec xattr -c {} \; 2>/dev/null || true
+xattr -c "$COPY/Data/Scripts/Trade/TRF_Hail.xml" 2>/dev/null || true
 echo "installed zlib1.dll (sha1 $(shasum "$COPY/zlib1.dll" | cut -d' ' -f1))"
 echo "scripts in $SCRIPTS_DST:"; ls "$SCRIPTS_DST" | sed 's/^/  /'
 echo "config.script: $(tr -d '\r' < "$SCRIPTS_DST/config.script")"
+echo "hail dialog: $COPY/Data/Scripts/Trade/TRF_Hail.xml"
 [ ! -f "$locd/trf_en.loc" ] || echo "loc: $locd/trf_en.loc$([ "${LOC:-0}" = 1 ] && echo ' (loc_mode 1)')"
 [ ! -f "$newsx.trf-orig" ] || echo "news: $(grep -c '<name>trf_' "$newsx") trf_ records in $newsx (vanilla in News.xml.trf-orig)"
 echo "sw3tp.ini [traffic]: $(awk '{sub(/\r$/,"")} /^\[/{p=($0=="[traffic]")} p&&!/^\[/{printf "%s ",$0}' "$ini")"

@@ -1390,6 +1390,7 @@ function T_V02_K()
 	TRF_SetDis(z1, 4);
 	hd = TRF_Headed(id);
 	HOST_Check(strfind(hd, "Raids on the lane to "..nm(z1), 1, 1), "headed: dis >= 3 neighbour first: "..hd);
+	V_HailDlg();
 	V_HailQuiet();
 	HOST_Check(h.box_nested == 0, "no ShowMsgBox inside a box callback (hail chain)");
 	TRF_Hail_Dump();
@@ -1475,6 +1476,141 @@ function V_HailQuiet()
 	HOST_Fire("f_object_inside", "TRF_OnMeet("..f2..",");
 	HOST_Check(getn(h.boxes) == nb3 and TRF.live.hl == nil and TRF.live.tr[f2].ha == nil, "default hail_start, modal window up: no box");
 	TRF_UiState = us; h.ui = nil;
+end;
+
+-- A fresh trader 40 from the mothership (other traders removed); id and record.
+function V_DlgTrader()
+	local h = HOST();
+	V_ClearTr();
+	T_Tick(2, 0.5);
+	local id = T_Spawn("B") or T_Spawn("A");
+	T_MoveTr(id, h.ms.pos.x + 40, h.ms.pos.y, h.ms.pos.z);
+	return id, TRF.live.tr[id];
+end;
+
+-- Expected visible answers of the open chain: a_<key> in TRF_Hail.xml order, provider items in p slots.
+function V_DlgWant(o)
+	local on, np, fx = {close=1}, 0, TRF_HlDlgFixed();
+	for i = 1, getn(o) do
+		if fx[o[i]] then on[o[i]] = 1; else np = np + 1; on["p"..np] = 1; end;
+	end;
+	local ks, s = TRF_HlDlgKeys(), "";
+	for i = 1, getn(ks) do if on[ks[i]] then s = s..(s ~= "" and " " or "").."a_"..ks[i]; end; end;
+	return s;
+end;
+
+-- Hail menu as the trade dialog TRF_Hail (tune hail_box 2, cfg hail_xml 1; mod-research/hail-dialog.md stage A).
+function V_HailDlg()
+	local h = HOST();
+	local us, f3, dco = TRF_UiState, __sys_FTrader_3, TRF_Dc_HailOpts;
+	TRF.std.heat = 0;
+	h.cfg.tune = {hail_box=2};
+	h.cfg.hail_xml = 1;
+	TRF_UiState = HOST_UiState; h.ui = 0;
+	__sys_FTrader_3 = 0;
+	local cur = TRF_CurIdx();
+	TRF_SetDis(cur, 2);
+	-- Five options (trade, head, escort, trouble, boom): one dialog, no box, the valid answers and the tokens.
+	local a, ra = V_DlgTrader();
+	local nb, nd = getn(h.boxes), getn(h.tdlgs);
+	local res = TRF_HailOpen(a, "focus");
+	local hl = TRF.live.hl;
+	local td = h.tdlgs[nd + 1] or {};
+	HOST_Check(res == "menu" and type(hl) == "table" and hl.w == "dlg" and getn(hl.o) == 5 and getn(h.boxes) == nb
+		and getn(h.tdlgs) == nd + 1 and td.d == "TRF_Hail" and td.init == "TRF_HlDlgInit" and h.dlg and h.dlg.open,
+		"hail_box 2: StartTradeDialog(TRF_Hail, TRF_HlDlgInit), no box ("..TRF_Dump(hl and hl.o)..")");
+	local want = V_DlgWant(hl.o);
+	HOST_Check(want == "a_trade a_head a_esc a_trouble a_boom a_close" and HOST_DlgVis() == want,
+		"dialog shows the 5 options and close: "..HOST_DlgVis());
+	HOST_Check(HOST_DlgText() == "FTU "..TRF_HlName(ra)..": What do you need, Wolves?" and not strfind(HOST_DlgText(), "#", 1, 1),
+		"dialog text with #who# and #head#: "..tostring(HOST_DlgText()));
+	HOST_Check(V_Logs("hail id="..a.." via=focus menu n=5 hn=1 dlg=1") == 1 and h.ui == 4, "log menu n=5 dlg=1; UI dialog flag while open");
+	-- Pick trade: routed as the box OK (due call, TRF_HailDo), the trader shop opens; nothing inside the callback.
+	local name = TRF_ShopName(TRF_ShopSlot(ra));
+	local ndl = getn(h.dlgs);
+	HOST_DlgPick("a_trade");
+	HOST_Check(getn(h.dlgs) == ndl and getn(h.boxes) == nb and V_Logs("dialog pick key=trade id="..a) == 1, "pick trade: recorded, nothing opened in the callback");
+	T_Tick(1, 0.5);
+	HOST_Check(getn(h.dlgs) == ndl + 1 and h.dlgs[getn(h.dlgs)] == name and ra.trd == 1 and TRF.live.hl == nil
+		and V_Logs("hail id="..a.." option trade") == 1 and V_Logs("hail id="..a.." closed (trade)") == 1,
+		"pick trade: TradeStationDlg("..name..") as the box path, chain closed");
+	T_Tick(3, 0.5);
+	HOST_Check(V_Logs("hail id="..a.." closed (dialog closed)") == 0, "dialog check after a pick: no second close");
+	-- A provider item in slot p1 (label token) and close: the chain closes, the trader stays hailable.
+	TRF_Dc_HailOpts = function(id) return {{k="xtest", t="Test label", s="Test answer"}}; end;
+	local b, rb = V_DlgTrader();
+	TRF_HailOpen(b, "focus");
+	hl = TRF.live.hl;
+	HOST_Check(type(hl) == "table" and hl.w == "dlg" and HOST_DlgVis() == V_DlgWant(hl.o) and strfind(HOST_DlgVis(), "a_p1", 1, 1)
+		and not strfind(HOST_DlgVis(), "a_p2", 1, 1) and HOST_DlgText("a_p1") == "- Test label" and h.dlg.rv.p2 == "",
+		"provider item in slot p1: "..HOST_DlgVis().." / "..tostring(HOST_DlgText("a_p1")));
+	HOST_DlgPick("a_p1");
+	T_Tick(1, 0.5);
+	local bx = HOST_Box();
+	HOST_Check(getn(h.boxes) == nb + 1 and bx.text == "Test answer" and bx.cancel == nil and TRF.live.hl.w == "ans",
+		"pick p1: the item's answer box after the due call");
+	HOST_Press("ok");
+	HOST_Check(TRF.live.hl == nil, "answer OK closes the chain");
+	TRF_Dc_HailOpts = dco;
+	local c, rc = V_DlgTrader();
+	TRF_HailOpen(c, "focus");
+	HOST_DlgPick("a_close");
+	HOST_Check(TRF.live.hl == nil and V_Logs("hail id="..c.." closed (close)") == 1 and type(rc.ha) == "number" and rc.ha > TRF_HlGt(),
+		"pick close: chain closed, hail re-armed");
+	-- Stale picks: after the chain is gone, and from a chain of another gen.
+	nd = getn(h.dlgs);
+	TRF_HlDlgA_trade();
+	HOST_Check(V_Logs("dialog pick key=trade id=nil stale (ignored)") == 1 and getn(h.dlgs) == nd, "pick without a chain: ignored");
+	local e, re = V_DlgTrader();
+	TRF_HailOpen(e, "focus");
+	TRF.gen = TRF.gen + 1;
+	HOST_DlgPick("a_trade");
+	TRF.gen = TRF.gen - 1;
+	T_Tick(1, 0.5);
+	HOST_Check(V_Logs("dialog pick key=trade id="..e.." stale (ignored)") == 1 and TRF.live.hl == nil and getn(h.dlgs) == nd and re.trd == nil,
+		"pick after a gen change: ignored, no shop");
+	-- Esc (dialog closed without an answer): the due check closes the chain.
+	local g = V_DlgTrader();
+	TRF_HailOpen(g, "focus");
+	HOST_DlgEsc();
+	T_Tick(3, 0.5);
+	HOST_Check(TRF.live.hl == nil and V_Logs("hail id="..g.." closed (dialog closed)") == 1, "Esc: chain closed by TRF_HlDlgCheck");
+	-- Fallbacks to the box chain: hail_xml 0, StartTradeDialog missing, UI not idle.
+	local fb = {{"xml", function() HOST().cfg.hail_xml = 0; end, function() HOST().cfg.hail_xml = 1; end},
+		{"native", function() V_StartTD = StartTradeDialog; StartTradeDialog = nil; end, function() StartTradeDialog = V_StartTD; end},
+		{"ui=-1", function() HOST().ui = -1; end, function() HOST().ui = 0; end}};
+	for i = 1, getn(fb) do
+		local x = V_DlgTrader();
+		nb, nd = getn(h.boxes), getn(h.tdlgs);
+		fb[i][2]();
+		TRF_HailOpen(x, "focus");
+		fb[i][3]();
+		HOST_Check(getn(h.tdlgs) == nd and getn(h.boxes) == nb + 1 and strfind(HOST_Box().text, ": Trade?", 1, 1) and TRF.live.hl.w == "menu"
+			and V_Logs("dialog fallback why="..fb[i][1]) == 1 and V_Logs("hail id="..x.." via=focus menu n=5 hn=1") == 1
+			and V_Logs("hail id="..x.." via=focus menu n=5 hn=1 dlg=1") == 0, "fallback ("..fb[i][1].."): box chain");
+		V_HailEnd();
+	end;
+	-- Refusal at heat 3 with demand cargo: the dialog with demand and close only.
+	h.cfg.demand = 1;
+	TRF.std.heat = 3;
+	local q, rq = V_DlgTrader();
+	nb = getn(h.boxes);
+	h.cfg.log = 2;
+	res = TRF_HailOpen(q, "focus");
+	h.cfg.log = 1;
+	HOST_Check(V_Logs("hl: dialog answers id="..q.." show= demand close") == 1, "log 2: the answer visibility list");
+	HOST_Check(res == "refuse" and type(TRF.live.hl) == "table" and TRF.live.hl.w == "dlg" and getn(h.boxes) == nb
+		and HOST_DlgVis() == "a_demand a_close" and V_Logs("hail id="..q.." refused heat=3 (demand dialog)") == 1
+		and HOST_DlgText() == "FTU "..TRF_HlName(rq)..": We have nothing to say to the Wolves. Keep your distance.",
+		"refusal at heat 3: dialog with demand and close only: "..HOST_DlgVis());
+	HOST_DlgPick("a_close");
+	HOST_Check(TRF.live.hl == nil, "refusal dialog: close");
+	TRF.std.heat = 0;
+	h.cfg.demand = nil; h.cfg.hail_xml = nil; h.cfg.tune = nil;
+	TRF_UiState = us; h.ui = nil;
+	__sys_FTrader_3 = f3;
+	TRF_SetDis(cur, 0);
+	V_ClearTr();
 end;
 
 -- l: dock wrappers (spec 6.4, 7.2) -------------------------------------------------------------------

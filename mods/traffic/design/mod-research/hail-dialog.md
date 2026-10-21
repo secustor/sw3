@@ -111,3 +111,30 @@ What cannot be dynamic, and the workaround:
 
 - Which three DialogWindow fields 3.1 substitutes (message, answer, pilot name) [I].
 - E0.6 (mod loc file) for a RU version or loc-key texts; not needed for the EN plain-text dialog.
+
+## 9. Implemented (stage A, 2026-10-22)
+
+Code: `Data/Scripts/Trade/TRF_Hail.xml` (vanilla schema, validates against `G/XMLSchema/Dialogs.xsd`; ASCII, CRLF, no BOM as the vanilla files), `trf_hail.script` `TRF_HlDlgOpen`, `TRF_HlDlgInit`, `TRF_HlDlgPick`, `TRF_HlDlgCheck`; tune `hail_box` 2 (default stays 1; `install-test.sh` `HAIL_BOX`, default 2 on the clone); cfg `hail_xml` 1, written by `install.sh` and `install-test.sh` when they copied the file. Host scenario `v02-k` (`V_HailDlg`).
+
+Differences from section 5:
+
+- Message `FTU #who#: #head#`: `who` is the trader name (`TRF_HlName`), `head` is `dlghead` or, for the heat 3-6 refusal, `dlgrefuse` (new text keys). The text does not start with `#` (3.6).
+- Answers `a_trade`, `a_head`, `a_news`, `a_esc`, `a_demand`, `a_p1`..`a_p5`, `a_sweep`, `a_trouble`, `a_boom`, `a_close` (14). Provider items other than demand (`feqinfo`, `sesc`, `feq`, `dc`, new keys) take the next slot `p<i>` with the label `- #p<i>#` instead of fixed answers; more items than slots fall back to the boxes (`why=slots`). Callbacks `TRF_HlDlgA_<key>`, each ending the dialog (no `go_message_name`).
+- `SetReplaceValue`, `HideAnswer` and `ShowAnswer` run in the init, after the file is loaded (3.4: before `StartTradeDialog` there is no dialog of ours to act on).
+- Gate: `hail_xml` 1, `StartTradeDialog` and `TRF_UiState` present, `TRF_UiState() == 0`, `TRF_InMovie() ~= 1`, else the box chain (`hl: dialog fallback why=xml|native|uistate|ui=<v>|movie|store|slots|error`, once per reason and visit). A pick is routed as the box OK of that option (`hl.k`, `hl.c = "ok"`, `TRF_HailStep` from a due call), so trade, news, the escort and offer boxes and the provider actions are unchanged. `TRF_HlDlgCheck` (1 s due) closes a chain still waiting while `TRF_UiState` has no dialog flag (Esc or never shown) instead of falling back to the boxes.
+
+In-game checks (clone, `EXP=0 TRAFFIC=1 LOG=2`, `HAIL_BOX` 2 is the clone default):
+
+| # | Check | Expected |
+|---|---|---|
+| D1 | hail a trader at the 70-unit meeting | dialog window with the Trader portrait and only the valid answers; `hl: hail id=N via=meet menu n=K hn=1 dlg=1`, `hl: dialog answers id=N show=...` |
+| D2 | text | `FTU <name>: What do you need, Wolves?`, provider labels `- <label>`; no `#` left |
+| D3 | each answer once (trade, head, news, esc, trouble, boom, a provider item, close) | `hl: dialog pick key=<k> id=N`, then `hl: hail id=N option <k>` once; trade opens the shop, news the vanilla rumour, escort the OK/Cancel box after the window closed; close: `closed (close)` |
+| D4 | heat 3-6 with demand cargo | only `Drop some of your cargo` and `Nothing, carry on`; `refused heat=H (demand dialog)` |
+| D5 | `dt_game` while the window is up | 0 |
+| D7 | hail during a movie or with a modal window up | no dialog (`dialog fallback why=ui=...` or the hail skipped), no late window |
+| D8 | Esc in the dialog | `hl: hail id=N closed (dialog closed)`; the trader is hailable again after `hail_cd` |
+| D9 | `ScriptErrors.log`, `LOGfile.txt` | no `not found in dialog`, `not exist in scriptspace`, `Not found Dialog` |
+| D10 | `HAIL_BOX=1` reinstall | the box chain as before |
+
+D6 (answer text set inside a callback) belongs to stage B.

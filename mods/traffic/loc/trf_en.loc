@@ -71,6 +71,8 @@ FILETYPE STANDART
 #TRF_dirb = trade station
 #TRF_dirc = FTU
 #TRF_dirret = returning to
+#TRF_dlghead = What do you need, Wolves?
+#TRF_dlgrefuse = We have nothing to say to the Wolves. Keep your distance.
 #TRF_dmno = FTU: Never! Mayday, the Wolves are threatening us!
 #TRF_dmok = FTU: Fine, take it! Just let us go.
 #TRF_facftu = FTU mercenaries

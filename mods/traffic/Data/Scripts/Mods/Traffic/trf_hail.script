@@ -24,6 +24,10 @@
 -- Box callbacks and trigger actions are shims through TRF_Cb. Callbacks only record the choice; the next
 -- box and every action run from the due call TRF_HailStep, never inside a box callback (6.1, decision 25).
 -- Other modules are called by name after a type check, so a missing one only disables its part.
+-- Tune hail_box 2 (design/mod-research/hail-dialog.md stage A): the menu is one trade dialog
+-- (Data/Scripts/Trade/TRF_Hail.xml, TRF_HlDlgOpen) whose answers record the pick as a box OK would; every
+-- follow-up (answer, offer and contract boxes) is the box chain's. cfg hail_xml 1 (set by the installers when
+-- they copied the file) is required; otherwise, and when the native or an idle UI is missing, the boxes run.
 
 -- Helpers --------------------------------------------------------------------------
 
@@ -41,11 +45,12 @@ end;
 
 -- Defaults of the cfg keys this module owns (10.4).
 function TRF_Hail_OptDef()
-	return {contracts=1, esc_speed=0, hail_start=2, board=1};
+	return {contracts=1, esc_speed=0, hail_start=2, board=1, hail_xml=0};
 end;
 
 -- Tune keys read here (10.4). hail_rearm, hail_stale and hail_box are not in the spec table: focus re-arms
--- per trader, age of an open box chain that counts as stale (6.1 "older than 120 s"), 0 = answers as lines.
+-- per trader, age of an open box chain that counts as stale (6.1 "older than 120 s"), hail_box 0 = answers
+-- as lines, 1 = the ShowMsgBox chain, 2 = the menu as the trade dialog TRF_Hail (needs cfg hail_xml 1).
 function TRF_Hail_TuneDef()
 	return {hail_r=150, hail_arm=60, hail_cd=60, hail_max=2, hail_rearm=20, hail_stale=120, hail_box=1,
 		trouble_range=3, boom_min_pro=6, ct_dist=400, pay_cap=30000};
@@ -62,6 +67,7 @@ function TRF_HlOpt(key, def)
 	if key == "contracts" and v ~= 0 and v ~= 1 then return d; end;
 	if key == "hail_start" and v ~= 1 and v ~= 2 then return d; end;
 	if key == "board" and v ~= 0 and v ~= 1 and v ~= 2 then return d; end;
+	if key == "hail_xml" and v ~= 0 and v ~= 1 then return d; end;
 	if key == "esc_speed" and v < 0 then return 0; end;
 	return v;
 end;
@@ -452,8 +458,10 @@ function TRF_HailOpen(id, via)
 			if x.demand and st then
 				st.id = id; st.x = {demand=x.demand}; st.of = nil; st.oh = nil;
 				L.hl = {id=id, g=TRF.gen, o={"demand"}, k=1, t=gt, rf=1};
-				TRF_HlL("hail id="..id.." refused heat="..heat.." (demand box)");
 				TRF_HailShow();
+				local how = "box";
+				if type(L.hl) == "table" and L.hl.w == "dlg" then how = "dialog"; end;
+				TRF_HlL("hail id="..id.." refused heat="..heat.." (demand "..how..")");
 				return "refuse";
 			end;
 		end;
@@ -474,8 +482,10 @@ function TRF_HailOpen(id, via)
 	end;
 	L.hl = {id=id, g=TRF.gen, o=o, k=1, t=gt};
 	TRF_HlStat("hl_menu");
-	TRF_HlL("hail id="..id.." via="..tostring(via).." menu n="..getn(o).." hn="..r.hn);
 	TRF_HailShow();
+	local dl = "";
+	if type(L.hl) == "table" and L.hl.w == "dlg" then dl = " dlg=1"; end;
+	TRF_HlL("hail id="..id.." via="..tostring(via).." menu n="..getn(o).." hn="..r.hn..dl);
 	return "menu";
 end;
 
@@ -509,6 +519,11 @@ function TRF_HailShow()
 	local key = hl.o[hl.k];
 	hl.w = "menu";
 	hl.t = TRF_HlGt();
+	-- hail_box 2: the whole menu as one dialog, tried once per chain; after a fallback the boxes follow.
+	if hl.k == 1 and not hl.dt and TRF_HlT("hail_box") == 2 then
+		hl.dt = 1;
+		if TRF_HlDlgOpen(hl, r) then return; end;
+	end;
 	local text = TRF_Txt("hailq", TRF_HlWho(r, hl.id), TRF_HlLabel(hl.id, key));
 	if hl.rf == 1 then text = TRF_Txt("refuse", TRF_HlName(r)).."\n"..text; end;
 	if not TRF_HlBox("#UI_FTrader_confirm", text, TRF_HailOk, TRF_HailNext) then
@@ -534,6 +549,211 @@ function TRF_HlAnswer(text)
 		TRF_HlClose("nobox");
 		TRF_HlSay(text, id, nil, 1);
 	end;
+end;
+
+-- Hail dialog (tune hail_box 2, design/mod-research/hail-dialog.md 5 stage A) -------------------------------
+
+-- Data/Scripts/Trade/TRF_Hail.xml has one node msg00 ("FTU #who#: #head#") with one answer a_<key> per entry
+-- of TRF_HlDlgKeys (provider items in the slots p1..p5 as "- #p<i>#"). Every answer ends the dialog and calls
+-- TRF_HlDlgA_<key>, which records the pick like the box OK of that option (TRF_HlDlgPick -> TRF_HailStep).
+-- StartTradeDialog runs the init TRF_HlDlgInit after loading the file and before the window opens; it shows
+-- the answers of the option list, hides the rest and sets the #tokens# (SetReplaceValue and HideAnswer act on
+-- the loaded dialog only, so nothing can be set before StartTradeDialog). Handle store st.dlg = {id, g, on
+-- (answer key -> 1), dk (slot -> option key), who, head}: one dialog at a time, cleared by the pick.
+
+-- Answer keys of msg00 in file order.
+function TRF_HlDlgKeys()
+	return {"trade", "head", "news", "esc", "demand", "p1", "p2", "p3", "p4", "p5", "sweep", "trouble", "boom", "close"};
+end;
+
+-- Option keys with an answer of their own; every other key (provider items) takes the next p slot.
+function TRF_HlDlgFixed() return {trade=1, head=1, news=1, esc=1, demand=1, sweep=1, trouble=1, boom=1}; end;
+
+-- Number of p slots: TRF_HlV1Opts gives at most 5 items (feqinfo, demand, sesc, feq, dc); demand has its own
+-- answer, so one slot is spare for a new provider key.
+function TRF_HlDlgNp() return 5; end;
+
+-- Answer callbacks named in TRF_Hail.xml (<lua_function>, called without arguments).
+function TRF_HlDlgA_trade() TRF_HlDlgPick("trade"); end;
+function TRF_HlDlgA_head() TRF_HlDlgPick("head"); end;
+function TRF_HlDlgA_news() TRF_HlDlgPick("news"); end;
+function TRF_HlDlgA_esc() TRF_HlDlgPick("esc"); end;
+function TRF_HlDlgA_demand() TRF_HlDlgPick("demand"); end;
+function TRF_HlDlgA_p1() TRF_HlDlgPick("p1"); end;
+function TRF_HlDlgA_p2() TRF_HlDlgPick("p2"); end;
+function TRF_HlDlgA_p3() TRF_HlDlgPick("p3"); end;
+function TRF_HlDlgA_p4() TRF_HlDlgPick("p4"); end;
+function TRF_HlDlgA_p5() TRF_HlDlgPick("p5"); end;
+function TRF_HlDlgA_sweep() TRF_HlDlgPick("sweep"); end;
+function TRF_HlDlgA_trouble() TRF_HlDlgPick("trouble"); end;
+function TRF_HlDlgA_boom() TRF_HlDlgPick("boom"); end;
+function TRF_HlDlgA_close() TRF_HlDlgPick("close"); end;
+
+-- Why the dialog cannot open now, or nil: "xml" (cfg hail_xml not 1: file not installed), "native" (no
+-- StartTradeDialog), "uistate" (no TRF_UiState), "ui=<v>" (a movie, modal window or dialog is up, or -1
+-- unknown: a dialog started then would be queued, hail-dialog.md 1.7), "movie", "store" (no handle table).
+function TRF_HlDlgWhy()
+	if TRF_HlOpt("hail_xml") ~= 1 then return "xml"; end;
+	if type(StartTradeDialog) ~= "function" then return "native"; end;
+	if type(TRF_UiState) ~= "function" then return "uistate"; end;
+	local u = TRF_HlP(TRF_UiState, {});
+	if u ~= 0 then return "ui="..tostring(u); end;
+	if type(TRF_InMovie) == "function" and TRF_HlP(TRF_InMovie, {}) == 1 then return "movie"; end;
+	if not TRF_HlStore() then return "store"; end;
+	return nil;
+end;
+
+-- Fallback to the box chain: stat hl_dlgfb, one log line per reason and visit (handle table).
+function TRF_HlDlgFb(why)
+	TRF_HlStat("hl_dlgfb");
+	local h = nil;
+	if type(TRF_H) == "function" then h = TRF_H(); end;
+	if type(h) == "table" then
+		if type(h.hldf) ~= "table" then h.hldf = {}; end;
+		if h.hldf[why] then return; end;
+		h.hldf[why] = 1;
+	end;
+	TRF_HlL("dialog fallback why="..tostring(why));
+end;
+
+-- Visible answers of chain hl (answer key -> 1, close always) and the p slots (slot -> option key); nil when
+-- the provider items need more than TRF_HlDlgNp() slots.
+function TRF_HlDlgMap(hl)
+	local fx, on, dk, np = TRF_HlDlgFixed(), {close=1}, {}, 0;
+	for i = 1, getn(hl.o) do
+		local k = hl.o[i];
+		if fx[k] then
+			on[k] = 1;
+		else
+			np = np + 1;
+			if np > TRF_HlDlgNp() then return nil; end;
+			on["p"..np] = 1;
+			dk["p"..np] = k;
+		end;
+	end;
+	return on, dk;
+end;
+
+function TRF_HlDlgCall()
+	StartTradeDialog("TRF_Hail", "TRF_HlDlgInit");
+	return 1;
+end;
+
+-- Open the menu of chain hl (trader record r) as the dialog: 1 when StartTradeDialog ran, nil after a
+-- fallback (the caller shows the box chain).
+function TRF_HlDlgOpen(hl, r)
+	local why = TRF_HlDlgWhy();
+	local on, dk = nil, nil;
+	if not why then
+		on, dk = TRF_HlDlgMap(hl);
+		if not on then why = "slots"; end;
+	end;
+	if why then TRF_HlDlgFb(why); return nil; end;
+	local head = TRF_Txt("dlghead");
+	if hl.rf == 1 then head = TRF_Txt("dlgrefuse"); end;
+	local st = TRF_HlStore();
+	st.dlg = {id=hl.id, g=hl.g, on=on, dk=dk, who=TRF_HlName(r), head=head};
+	hl.w = "dlg";
+	if TRF_HlP(TRF_HlDlgCall, {}) ~= 1 then
+		st.dlg = nil;
+		hl.w = "menu";
+		TRF_HlDlgFb("error");
+		return nil;
+	end;
+	TRF_HlStat("hl_dlg");
+	TRF_Due(1, "TRF_HlDlgCheck");
+	return 1;
+end;
+
+-- Dialog record of the open chain, or nil when the chain is gone, of another gen or not waiting for it.
+function TRF_HlDlgCur()
+	local L = TRF_HlLive();
+	local st = TRF_HlStore();
+	if not L or not st or type(st.dlg) ~= "table" then return nil; end;
+	local hl, d = L.hl, st.dlg;
+	if not TRF_HlValid(hl) or hl.w ~= "dlg" or d.id ~= hl.id or d.g ~= hl.g then return nil; end;
+	return d;
+end;
+
+-- Init of StartTradeDialog (shim). A stale record leaves only the close answer.
+function TRF_HlDlgInit() TRF_Cb("TRF_HlDlgInit", TRF_HlDlgInit_Body, {}); end;
+
+function TRF_HlDlgInit_Body()
+	local d = TRF_HlDlgCur();
+	local on, dk, who, head, id = {close=1}, {}, TRF_Txt("hull1"), "", nil;
+	if d then
+		on = d.on; dk = d.dk; who = d.who; head = d.head; id = d.id;
+	else
+		TRF_HlL("dialog init stale");
+	end;
+	local ks = TRF_HlDlgKeys();
+	local vis = "";
+	for i = 1, getn(ks) do
+		if on[ks[i]] then
+			TRF_N("ShowAnswer", "a_"..ks[i]);
+			vis = vis.." "..ks[i];
+		else
+			TRF_N("HideAnswer", "a_"..ks[i]);
+		end;
+	end;
+	TRF_N("SetReplaceValue", "who", who);
+	TRF_N("SetReplaceValue", "head", head);
+	for i = 1, TRF_HlDlgNp() do
+		local t = "";
+		if id and dk["p"..i] then t = TRF_HlLabel(id, dk["p"..i]); vis = vis.." p"..i.."="..dk["p"..i]; end;
+		TRF_N("SetReplaceValue", "p"..i, t);
+	end;
+	if type(TRF_LDbg) == "function" then TRF_LDbg("hl: dialog answers id="..tostring(id).." show="..vis); end;
+end;
+
+-- Answer callback (shim): the pick of answer key. A pick that does not belong to the open dialog chain is
+-- ignored (an invalid chain is dropped as TRF_HailCb does); close ends the chain; any other answer is the box
+-- OK of its option: hl.k, hl.c = "ok", then TRF_HailStep from a due call.
+function TRF_HlDlgPick(key) TRF_Cb("TRF_HlDlgPick", TRF_HlDlgPick_Body, {key}); end;
+
+function TRF_HlDlgPick_Body(key)
+	local L = TRF_HlLive();
+	local d = TRF_HlDlgCur();
+	local st = TRF_HlStore();
+	if st then st.dlg = nil; end;
+	local hl = nil;
+	if L then hl = L.hl; end;
+	local id = nil;
+	if type(hl) == "table" then id = hl.id; end;
+	if not d then
+		TRF_HlStat("hl_dlg_stale");
+		TRF_HlL("dialog pick key="..tostring(key).." id="..tostring(id).." stale (ignored)");
+		if L and type(hl) == "table" and not TRF_HlValid(hl) then L.hl = nil; end;
+		return;
+	end;
+	TRF_HlL("dialog pick key="..tostring(key).." id="..tostring(id));
+	if TRF_HlGt() - (hl.t or 0) >= TRF_HlT("hail_stale") then TRF_HlClose("stale"); return; end;
+	if key == "close" then TRF_HlClose("close"); return; end;
+	local ok = d.dk[key] or key;
+	local k = nil;
+	for i = 1, getn(hl.o) do if hl.o[i] == ok then k = i; end; end;
+	if not k or not d.on[key] then TRF_HlClose("unexpected "..tostring(key)); return; end;
+	hl.k = k;
+	hl.c = "ok";
+	hl.w = "wait";
+	if not TRF_Due(0.1, "TRF_HailStep") then TRF_HlClose("due refused"); end;
+end;
+
+-- Due call after the dialog opened (the game clock stands while it is up): a chain still waiting for the
+-- dialog while TRF_UiState has no dialog flag (4) was closed without an answer (Esc) or never shown, and is
+-- closed. Unknown state (-1) re-checks until the chain is hail_stale old.
+function TRF_HlDlgCheck()
+	local L = TRF_HlLive();
+	if not L or type(L.hl) ~= "table" or L.hl.w ~= "dlg" then return; end;
+	local hl = L.hl;
+	if not TRF_HlValid(hl) then L.hl = nil; return; end;
+	local u = TRF_HlP(TRF_UiState, {});
+	local up = nil;
+	if type(u) ~= "number" or u < 0 or floor(u / 4) - floor(u / 8) * 2 == 1 then up = 1; end;
+	if up and TRF_HlGt() - (hl.t or 0) < TRF_HlT("hail_stale") and TRF_Due(1, "TRF_HlDlgCheck") then return; end;
+	local st = TRF_HlStore();
+	if st then st.dlg = nil; end;
+	TRF_HlClose("dialog closed");
 end;
 
 -- Box callbacks (shims). They only record the choice and schedule TRF_HailStep.
@@ -1481,5 +1701,8 @@ function TRF_Hail_Text()
 		rfeq = "$1 equipment convoy due in $2 soon.",   -- faction, system
 		bmfeq = "$1 equipment convoy due in $2",        -- faction, system
 		optfeqinfo = "Who are you",
+		-- hail dialog (hail_box 2): text after "FTU <name>: "
+		dlghead = "What do you need, Wolves?",
+		dlgrefuse = "We have nothing to say to the Wolves. Keep your distance.",
 	};
 end;

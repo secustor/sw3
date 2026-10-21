@@ -35,7 +35,9 @@ local H = {
 	ftrader = 0, speak = 0,
 	-- v1 stubs: quest states by id, stations made, docks of CreatePirateStationDocking, groups by name, vanilla
 	-- relation and pirate dock originals run, modules added (AddModule), mothership inventory.
-	quests = {}, stations = {}, pdocks = {}, groups = {}, cst = {}, pir_ok = 0, mods = {}
+	quests = {}, stations = {}, pdocks = {}, groups = {}, cst = {}, pir_ok = 0, mods = {},
+	-- hail dialog stubs: StartTradeDialog calls {d, init}, the mod dialog loaded (HOST().dlg), answer calls.
+	tdlgs = {}, dlg = nil, dlg_calls = {}
 };
 
 function HOST() return %H; end;
@@ -503,7 +505,101 @@ function PatrolStationDlg(...)
 	HOST_Want(arg.n == 0 or type(arg[1]) == "string", "PatrolStationDlg([dialog])");
 	tinsert(HOST().pdlgs, arg[1] or "");
 end;
-function StartTradeDialog(d) HOST_Want(type(d) == "string", "StartTradeDialog(dialog)"); HOST().tdlg = d; end;
+-- StartTradeDialog(dialog[, init]) (mod-research/hail-dialog.md 1.4): loads DATA\Scripts\Trade\<dialog>.xml and
+-- runs the global init (by name) before the window opens. Recorded in HOST().tdlg (name) and HOST().tdlgs
+-- ({d, init}). A mod dialog file (TRF_DIR../../Trade/<dialog>.xml) becomes HOST().dlg = {name, msg, ans = {answer
+-- name -> {t, fn, hidden}}, order, rv = {token -> value}, open}: HideAnswer, ShowAnswer and SetReplaceValue act
+-- on it (an unknown answer name fails), HOST_DlgPick(answer) closes it and calls the answer's lua_function,
+-- HOST_DlgEsc() closes it without an answer. While it is open a HOST().ui of 0 reads 4 (dialog flag).
+function StartTradeDialog(...)
+	local h = HOST();
+	HOST_Want((arg.n == 1 or arg.n == 2) and type(arg[1]) == "string" and (arg[2] == nil or type(arg[2]) == "string"),
+		"StartTradeDialog(dialog[, init])");
+	h.tdlg = arg[1];
+	tinsert(h.tdlgs, {d=arg[1], init=arg[2]});
+	local x = HOST_DlgXml(arg[1]);
+	if x then x.init = arg[2]; h.dlg = x; end;
+	if arg[2] then
+		local f = getglobal(arg[2]);
+		HOST_Want(type(f) == "function", "StartTradeDialog init "..tostring(arg[2]).." defined");
+		if type(f) == "function" then f(); end;
+	end;
+	if x then
+		x.open = 1;
+		x.ui0 = h.ui;
+		if h.ui == 0 then h.ui = 4; end;
+	end;
+end;
+-- Mod dialog file of name parsed (message, answers with text and lua_function), or nil.
+function HOST_DlgXml(name)
+	local f = openfile(HOST().dir.."../../Trade/"..name..".xml", "r");
+	if not f then return nil; end;
+	local s = read(f, "*a");
+	closefile(f);
+	local x = {name=name, ans={}, order={}, rv={}};
+	local _, _, msg = strfind(s, "<message>([^<]*)</message>");
+	x.msg = msg;
+	gsub(s, '<DialogAnswer name="([^"]+)">%s*<answer>([^<]*)</answer>%s*<lua_function>([^<]*)</lua_function>',
+		function(n, t, fn) local y = %x; y.ans[n] = {t=t, fn=fn}; tinsert(y.order, n); end);
+	return x;
+end;
+function HOST_DlgAns(n, hide, what)
+	local d = HOST().dlg;
+	HOST_Want(type(n) == "string", what.."(answer)");
+	tinsert(HOST().dlg_calls, what.." "..tostring(n));
+	HOST_Want(d and d.ans[n], what..": answer '"..tostring(n).."' in the current dialog");
+	if d and d.ans[n] then d.ans[n].hidden = hide; end;
+end;
+function HideAnswer(n) HOST_DlgAns(n, 1, "HideAnswer"); end;
+function ShowAnswer(n) HOST_DlgAns(n, nil, "ShowAnswer"); end;
+function SetReplaceValue(k, v)
+	local d = HOST().dlg;
+	HOST_Want(type(k) == "string" and type(v) == "string", "SetReplaceValue(key, value)");
+	HOST_Want(d, "SetReplaceValue: a dialog is loaded");
+	if d then d.rv[k] = v; end;
+end;
+-- Visible answers of the open dialog in file order, space separated ("" without one).
+function HOST_DlgVis()
+	local d, s = HOST().dlg, "";
+	if not d or not d.open then return ""; end;
+	for i = 1, getn(d.order) do if not d.ans[d.order[i]].hidden then s = s..(s ~= "" and " " or "")..d.order[i]; end; end;
+	return s;
+end;
+-- Text with the #tokens# replaced (unknown ones kept): the message, or answer n.
+function HOST_DlgText(n)
+	local d = HOST().dlg;
+	if not d then return nil; end;
+	local s = d.msg;
+	if n then s = d.ans[n] and d.ans[n].t; end;
+	if not s then return nil; end;
+	local dv = d.rv;
+	local r = gsub(s, "#(%w+)#", function(k) return %dv[k] or "#"..k.."#"; end);
+	return r;
+end;
+function HOST_DlgEsc()
+	local h = HOST();
+	local d = h.dlg;
+	HOST_Want(d and d.open, "HOST_DlgEsc: an open dialog");
+	if not d or not d.open then return nil; end;
+	d.open = nil;
+	h.ui = d.ui0;
+	return 1;
+end;
+-- Pick visible answer n of the open dialog: the dialog closes (no go_message_name), then its lua_function runs.
+function HOST_DlgPick(n)
+	local h = HOST();
+	local d = h.dlg;
+	HOST_Want(d and d.open and d.ans[n] and not d.ans[n].hidden, "HOST_DlgPick: visible answer "..tostring(n));
+	if not d or not d.open or not d.ans[n] then return nil; end;
+	HOST_DlgEsc();
+	local f = getglobal(d.ans[n].fn);
+	HOST_Want(type(f) == "function", "lua_function "..tostring(d.ans[n].fn).." defined");
+	print("HOST dialog pick "..n);
+	h.in_box = 1;
+	if type(f) == "function" then f(); end;
+	h.in_box = nil;
+	return 1;
+end;
 
 -- Nav points: CreateNavPoint(textKey, Vector3, icon, RGB(), attachObj) -> NavPoint with Delete.
 function RGB(r, g, b) HOST_Want(type(r) == "number" and type(g) == "number" and type(b) == "number", "RGB(r, g, b)"); return r * 65536 + g * 256 + b; end;

@@ -1706,7 +1706,7 @@ Scope:
 - Faction supply convoys in border systems.
 - Demand cargo.
 - Heat reset at the FTU relation station.
-- XML hail dialog if 13.5 confirms that a new dialog file and plain loc keys work.
+- XML hail dialog if 13.5 confirms that a new dialog file and plain loc keys work. Stage A implemented (tune `hail_box` 2, `mod-research/hail-dialog.md`), checks D1-D10 pending in game.
 - Full EN and RU localisation, complete deny list from a campaign pass, tuning pass on section 11.
 - Clan tiers T3–T4 (S27), carrier raids (S31), salvage (S36), carrier items of S29.
 - Faction strength and tech ladder (S32), on-screen sweeps (S33), sweep contracts (S34), pirate-side offers (S35), TT4 convoys (S30) with bands 8–9 (spawn factor 1.75 and 2.0, 5 flights, 20 ships, convoys of 3–4 transports and 4–6 escorts).
@@ -1803,7 +1803,7 @@ Each item says what depends on it and the fallback if scripts alone cannot do it
 |---|---|---|
 | Can `CombineStr` join a loc key with a system or ship name, or two keys? | Focus line, rumours, trouble answer (8.2) | Pre-built keys, cargo and direction only; the trouble answer names one system with a per-severity key |
 | Does a new plain-text `.loc` file load, in EN and RU? | All new text | Put keys in a folder whose keys are plain text |
-| Can a new dialog XML in `Scripts/Trade/` use plain text without the DYNAMIC/STANDARD header problem? | XML hail menu | `ShowMsgBox` chain |
+| Can a new dialog XML in `Scripts/Trade/` use plain text without the DYNAMIC/STANDARD header problem? Static analysis says yes (`mod-research/hail-dialog.md`); stage A implemented (`TRF_Hail.xml`, tune `hail_box` 2), checks D1-D10 pending in game | XML hail menu | `ShowMsgBox` chain (`hail_box` 1, also the automatic fallback) |
 | How should the player start a hail: focus plus proximity, a re-armed proximity box, or a key binding (byte patch)? | Hail | Focus plus proximity, else one proximity box per trader |
 | Are system display names available as loc keys? | Rumours, focus line, trouble answer | Author name keys |
 | Do about 110 new `News.xml` records (per-sector cycle, sweep, salvage and base posts, global equipment convoy posts, 8.9) load with EN and RU loc, and does `RemovePost` per sector topic work? | Sector news for both sides (S26) | Fewer, global posts; the booming and trouble answers carry the system detail |
