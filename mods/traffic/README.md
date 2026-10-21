@@ -30,7 +30,7 @@ Script rules: top-level code only defines functions and installs the wrappers. A
 The game must be launched by the user. The scripts only prepare the test clone (`~/Games/Heroic/sw3-tp-test`) and collect the logs.
 
     EXP=1 TRAFFIC=0 mods/traffic/install-test.sh   # EXP=0..3; also TRAFFIC, LOG, BIG, DEL_ON_JUMP, AUTOSAVE, OVERRIDE, DUMP, GUARD, the v0.2 and v1 keys, LEVEL, PRO_SET, TUNE, FEQ_AT, LOC, TRAFFIC_ENABLED, SITE_T1..SITE_T4, TICK_MS
-    SECS=900 mods/traffic/run-test.sh       # SECS defaults to 600; play during that time
+    SECS=900 mods/traffic/run-test.sh       # SECS defaults to 600; play during that time; SECS=0 waits until you quit the game
     mods/traffic/uninstall-test.sh
 
 `install-test.sh` installs the rebuilt `zlib1.dll` and the scripts, writes `config.script` with the selected experiment, and writes the `[traffic]` section of `sw3tp.ini`. After the game is killed, `run-test.sh` prints the `ExecuteScriptFile` lines from `LOGfile.txt` that load `Mods/Traffic/`, the new `ScriptErrors.log`, and every `traffic:` line from `sw3tp.log`. Lines from the scripts look like `traffic: lua: E0.<n> ...`.

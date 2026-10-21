@@ -1,5 +1,5 @@
 #!/bin/sh
-# Launch the traffic test clone with Wine (not Heroic), wait SECS (default 600, the user plays), kill the prefix's Wine session,
+# Launch the traffic test clone with Wine (not Heroic), wait SECS (default 600, the user plays; SECS=0 waits until the game exits), kill the prefix's Wine session,
 # print the experiment log and save it under $COPY/traffic-runs/<EXP>-<timestamp>/.  stderr goes to $COPY/wine-stderr.log.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd); . "$here/env.sh"
@@ -8,14 +8,18 @@ if pgrep -f 'sw3cw\.exe' >/dev/null; then echo "sw3cw.exe already running; not s
 winpath="Z:$(printf '%s' "$COPY/sw3cw.exe" | tr '/' '\\')"
 rm -f "$COPY/sw3tp.log" "$COPY/ScriptErrors.log"
 mkdir -p "$COPY/mtld3d-logs"; touch "$COPY/.run-start"
-echo "The game will be killed after $SECS seconds."
+if [ "$SECS" = 0 ]; then echo "No time limit: quit the game to finish the run."; else echo "The game will be killed after $SECS seconds."; fi
 cd "$COPY"
 WINEDEBUG=${WINEDEBUG:--all,+loaddll} WINEDLLOVERRIDES=winemenubuilder.exe=d WINEDLLPATH=${WINEDLLPATH:-$COPY} \
     "$WINE/bin/wine" "$winpath" 2> "$COPY/wine-stderr.log" > /dev/null &
 pid=$!
-sleep "$SECS"
-"$WINE/bin/wineserver" -k || true
-wait "$pid" 2>/dev/null || true
+if [ "$SECS" = 0 ]; then
+    wait "$pid" 2>/dev/null || true
+else
+    sleep "$SECS"
+    "$WINE/bin/wineserver" -k || true
+    wait "$pid" 2>/dev/null || true
+fi
 
 exp=$(tr -d '\r' < "$SCRIPTS_DST/config.script" 2>/dev/null | sed -n 's/.*exp=\([0-9]*\).*/\1/p')
 dir="$COPY/traffic-runs/${exp:-x}-$(date +%Y%m%d-%H%M%S)"
