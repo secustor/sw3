@@ -199,10 +199,12 @@ function TRF_ChapterOf(lbl)
 	return tonumber(strsub(lbl, a, b)) or 0;
 end;
 
--- System mode (2.3). s = {enabled, override, guard, sys (map entry or nil), off, deny, deny2 (name lists),
--- inval (reason or nil), qs (1 = mission active), strict (cfg strict, 0 skips the deny list), ch (chapter)}. Returns "mod" or "vanilla", reason.
+-- System mode (2.3). s = {enabled, override, guard, sys (map entry or nil), off, deny, deny2, denyq (name
+-- lists; denyq = the deny names marked tq, teleport targets), inval (reason or nil), qs (1 = mission active),
+-- strict (cfg strict, 0 skips the deny list), qa (TRF_SafeQQa: 1 a quest naming the system is in process, 0
+-- none, nil unknown), transit (cfg transit), ch (chapter)}. Returns "mod" or "vanilla", reason.
 -- Reasons: off (enabled 0, override 0 or unknown), restore (enabled 2), observe (override 2), nomap, sys_off,
--- inval, deny, guard.
+-- inval, deny, deny_tq, guard.
 function TRF_SysModeOf(s)
 	if s.enabled == 0 then return "vanilla", "off"; end;
 	if s.enabled == 2 then return "vanilla", "restore"; end;
@@ -213,7 +215,14 @@ function TRF_SysModeOf(s)
 	if TRF_SafeIn(s.off, sy.name) then return "vanilla", "sys_off"; end;
 	if s.inval then return "vanilla", "inval"; end;
 	-- cfg strict 0 (tests only) also ignores the deny list.
-	if s.qs and s.strict ~= 0 and (TRF_SafeIn(s.deny, sy.name) or TRF_SafeIn(s.deny2, sy.name)) then return "vanilla", "deny"; end;
+	if s.qs and s.strict ~= 0 then
+		if TRF_SafeIn(s.deny2, sy.name) then return "vanilla", "deny"; end;
+		if TRF_SafeIn(s.deny, sy.name) then
+			if not TRF_SafeIn(s.denyq, sy.name) then return "vanilla", "deny"; end;
+			-- Transit (cfg transit 1): a teleport target while no quest naming it is in process stays mod.
+			if s.transit ~= 1 or s.qa ~= 0 then return "vanilla", "deny_tq"; end;
+		end;
+	end;
 	-- R16: guard 0 off, 1 or 2 (2 kept for compatibility) start system and chapter <= 4, independent of qs.
 	if s.guard ~= 0 and sy.start == 1 and TRF_SafeNum(s.ch, 0) <= 4 then return "vanilla", "guard"; end;
 	return "mod", nil;
@@ -279,11 +288,12 @@ end;
 
 -- Strict gate R4 (v02 8.3, v1 10.4). s = {mode (cfg strict: 0 never, 1 map, 2 every system), qs (1 =
 -- mission active), q (1 = system named in Quests.xml), qa (its quest ids: 1 one is QUEST_PROCESS, 0 none,
--- nil no ids or no GetQuestState), ent (deny entry or nil), f (feature)}. A feature set to 0 in the entry
--- is off at any time (staged and carrier also by raid = 0). Option 1 (design 9.9): a q system with ids is
--- denied while one of them is in process and open otherwise; without ids the v0.2 rule holds (denied while
--- a mission is active). Returns 1 or nil, reason: deny_<f>, quest, mission_all (strict 2), mission_q,
--- mission_deny.
+-- nil no ids or no GetQuestState), ent (deny entry or nil), f (feature), transit (cfg transit)}. A feature
+-- set to 0 in the entry is off at any time (staged and carrier also by raid = 0). Option 1 (design 9.9): a q
+-- system with ids is denied while one of them is in process and open otherwise; without ids the v0.2 rule
+-- holds (denied while a mission is active). An m = 1 entry denies during a mission (mission_deny), except a
+-- tq entry (teleport target) with transit 1 and qa 0 (transit rule, as TRF_SysModeOf). Returns 1 or nil,
+-- reason: deny_<f>, quest, mission_all (strict 2), mission_q, mission_deny.
 function TRF_StrictOkOf(s)
 	local e = s.ent;
 	if type(e) == "table" and (e[s.f] == 0 or ((s.f == "staged" or s.f == "carrier") and e.raid == 0)) then
@@ -294,7 +304,7 @@ function TRF_StrictOkOf(s)
 	if not s.qs then return 1; end;
 	if s.mode == 2 then return nil, "mission_all"; end;
 	if s.q == 1 and s.qa ~= 0 then return nil, "mission_q"; end;
-	if type(e) == "table" and e.m == 1 then return nil, "mission_deny"; end;
+	if type(e) == "table" and e.m == 1 and not (e.tq == 1 and s.transit == 1 and s.qa == 0) then return nil, "mission_deny"; end;
 	return 1;
 end;
 
@@ -393,8 +403,10 @@ end;
 -- Authored overrides (v02 8.3, design 9.8 S5, 9.9, v1 10.4), lowercase system names. m = 1: vanilla
 -- generator while a mission is active (R5); <feature> = 0: that feature never runs there (Fronn: no seed,
 -- raid, equipment convoy, danger convoy or base). trf_loc's TRF_Loc_Deny() entries are merged over these
--- (their fields replace the authored ones). The campaign-pass teleport targets get m = 1 unless the map
--- carries its own teleport field tq (trf_loc reads that one).
+-- (their fields replace the authored ones). The campaign-pass teleport targets get m = 1, tq = 1 unless the
+-- map carries its own teleport field tq (trf_loc reads that one; its teleport entries, why "teleport
+-- target", get tq = 1 here). tq entries are vanilla only while a quest naming the system is in process
+-- (TRF_SysModeOf, cfg transit).
 -- cfg sys_deny names add m = 1 entries (TRF_DenyEntry). A new table per call (TRF_DenyEntry writes to it).
 function TRF_DenyList()
 	local t = {
@@ -411,13 +423,14 @@ function TRF_DenyList()
 				local n = strlower(k);
 				if type(t[n]) ~= "table" then t[n] = {}; end;
 				for f, v in e do t[n][f] = v; end;
+				if t[n].why == "teleport target" and t[n].tq == nil then t[n].tq = 1; end;
 			end;
 		end;
 		if TRF_SafeMapTq() then return t; end;
 	end;
 	local tq = TRF_SafeTeleports();
 	for i = 1, getn(tq) do
-		if type(t[tq[i]]) ~= "table" then t[tq[i]] = {m=1, why="teleport target"}; end;
+		if type(t[tq[i]]) ~= "table" then t[tq[i]] = {m=1, tq=1, why="teleport target"}; end;
 	end;
 	return t;
 end;
@@ -503,17 +516,18 @@ function TRF_SafeQA(idx, sy)
 	return v;
 end;
 
--- R5 names: the m = 1 entries of TRF_DenyList, sorted.
-function TRF_Deny()
+-- R5 names: the m = 1 entries of dl (nil = TRF_DenyList()), sorted; tq = 1: only those marked tq.
+function TRF_Deny(dl, tq)
 	local out = {};
-	for k, e in TRF_DenyList() do
-		if type(e) == "table" and e.m == 1 then tinsert(out, k); end;
+	if type(dl) ~= "table" then dl = TRF_DenyList(); end;
+	for k, e in dl do
+		if type(e) == "table" and e.m == 1 and (tq ~= 1 or e.tq == 1) then tinsert(out, k); end;
 	end;
 	sort(out);
 	return out;
 end;
 
--- Deny entry of a system name, or nil; a cfg sys_deny name adds m = 1.
+-- Deny entry of a system name, or nil; a cfg sys_deny name adds m = 1 and drops tq (no transit rule).
 function TRF_DenyEntry(name)
 	if type(name) ~= "string" then return nil; end;
 	name = strlower(name);
@@ -521,7 +535,7 @@ function TRF_DenyEntry(name)
 	if type(e) ~= "table" then e = nil; end;
 	if TRF_SafeIn(TRF_SafeOpt("sys_deny", {}), name) then
 		if not e then e = {why="cfg sys_deny"}; end;
-		e.m = 1;
+		e.m = 1; e.tq = nil;
 	end;
 	return e;
 end;
@@ -635,6 +649,20 @@ function TRF_SafeQi()
 	return c.qi;
 end;
 
+-- q (1 = system named in Quests.xml: map q, else not in TRF_StrictFree) and qa (TRF_SafeQA, nil when q is
+-- 0 or strict mode is 0) of system idx with map entry sy. Shared by TRF_StrictIn and TRF_SafeModeIn.
+function TRF_SafeQQa(idx, sy, mode)
+	if type(sy) ~= "table" or type(sy.name) ~= "string" then return nil, nil; end;
+	local q = sy.q;
+	if type(q) ~= "number" then
+		q = 1;
+		if TRF_StrictFree()[strlower(sy.name)] then q = 0; end;
+	end;
+	local qa = nil;
+	if q == 1 and mode ~= 0 then qa = TRF_SafeQA(idx, sy); end;
+	return q, qa;
+end;
+
 -- Inputs of TRF_StrictOkOf for system idx (nil = current) and feature f; nil when idx has no map entry.
 function TRF_StrictIn(idx, f)
 	local sy = nil;
@@ -645,16 +673,11 @@ function TRF_StrictIn(idx, f)
 		if type(m) == "table" and type(m.sys) == "table" and type(idx) == "number" then sy = m.sys[idx]; end;
 	end;
 	if type(sy) ~= "table" or type(sy.name) ~= "string" then return nil; end;
-	local q = sy.q;
-	if type(q) ~= "number" then
-		q = 1;
-		if TRF_StrictFree()[strlower(sy.name)] then q = 0; end;
-	end;
 	local mode = TRF_SafeOpt("strict", 1);
 	if mode ~= 0 and mode ~= 1 and mode ~= 2 then mode = 1; end;
-	local qa = nil;
-	if q == 1 and mode ~= 0 then qa = TRF_SafeQA(idx, sy); end;
-	return {mode=mode, qs=TRF_Safe_QState(), q=q, qa=qa, ent=TRF_DenyEntry(sy.name), f=f, name=sy.name, idx=idx};
+	local q, qa = TRF_SafeQQa(idx, sy, mode);
+	return {mode=mode, qs=TRF_Safe_QState(), q=q, qa=qa, ent=TRF_DenyEntry(sy.name), f=f, name=sy.name, idx=idx,
+		transit=TRF_SafeNum(TRF_SafeOpt("transit", 1), 1)};
 end;
 
 -- Strict gate (v02 8.3, v1 10.2): 1 or nil, reason for system idx (nil = current) and feature (seed, raid,
@@ -719,15 +742,22 @@ function TRF_SafeModeIn()
 	local L = TRF_SafeLive();
 	local inval = nil;
 	if L then inval = L.inval; end;
+	local sy, idx = TRF_SafeSys();
+	local dl = TRF_DenyList();
+	local strict = TRF_SafeNum(TRF_SafeOpt("strict", 1), 1);
+	local q, qa = TRF_SafeQQa(idx, sy, strict);
 	return {
 		enabled = TRF_SafeOpt("enabled", 1),
 		override = TRF_SafeOpt("override", 1),
 		guard = TRF_SafeNum(TRF_SafeOpt("guard", 1), 1),
-		sys = TRF_SafeSys(),
+		sys = sy,
 		off = TRF_SafeOpt("sys_off", {}),
-		deny = TRF_Deny(),
+		deny = TRF_Deny(dl),
+		denyq = TRF_Deny(dl, 1),
 		deny2 = TRF_SafeOpt("sys_deny", {}),
-		strict = TRF_SafeNum(TRF_SafeOpt("strict", 1), 1),
+		strict = strict,
+		qa = qa,
+		transit = TRF_SafeNum(TRF_SafeOpt("transit", 1), 1),
 		inval = inval,
 		qs = TRF_Safe_QState(),
 		ch = TRF_Chapter()
@@ -745,7 +775,7 @@ function TRF_SysMode()
 		L.sm = k;
 		local nm = "nil";
 		if type(s.sys) == "table" then nm = tostring(s.sys.name); end;
-		TRF_SafeL("mode "..m.." why="..tostring(why).." sys="..nm.." ch="..tostring(s.ch).." qs="..tostring(s.qs).." guard="..tostring(s.guard));
+		TRF_SafeL("mode "..m.." why="..tostring(why).." sys="..nm.." ch="..tostring(s.ch).." qs="..tostring(s.qs).." qa="..tostring(s.qa).." guard="..tostring(s.guard));
 	end;
 	return m, why;
 end;

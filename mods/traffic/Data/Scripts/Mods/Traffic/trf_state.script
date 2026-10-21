@@ -57,7 +57,7 @@ function TRF_OptDef()
 		cap_traders=5, cap_ships=20, gov=40, gov_r=3000,
 		ui=1, ui_out=1, ui_focus=3, ui_keys=0, arrival_line=1, meet=2,
 		heat=1, dis=1, response=1, dock_mode=0,
-		seed=1, queue=1, heat_war=0, strict=1, news_mode=1,
+		seed=1, queue=1, heat_war=0, strict=1, transit=1, news_mode=1,
 		sys_off={}, sys_deny={}, dump=0, tune={}};
 end;
 
@@ -86,7 +86,7 @@ function TRF_OptEnum()
 		staged=1, contracts=1, shop_mode=1, short_price=1, heat_war=1,
 		track=1, conv=1, demand=1, heat_offer=1, carriers=1, salvage=1, salv_addmod=1, clan_ace=1, sweeps=1,
 		sweep_ct=1, po=1, tt4=1, tt4_split=1, feq=1, forced_bust=1, dconv=1, dc_speed=1, bases=1, base_glow=1,
-		wreck=1, loc_mode=1};
+		wreck=1, loc_mode=1, transit=1};
 end;
 
 function TRF_Clamp(x, lo, hi)

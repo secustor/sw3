@@ -655,7 +655,16 @@ function T_G()
 		{{sys={name="gredos", start=1}, ch=5}, "mod", nil},
 		{{sys={name="gredos", start=1}, ch=5, qs=0}, "mod", nil},
 		{{ch=1}, "mod", nil},
-		{{ch=1, qs=0}, "mod", nil}
+		{{ch=1, qs=0}, "mod", nil},
+		-- Transit rule: tq (teleport target) entries are vanilla only while a quest naming the system runs.
+		{{sys={name="taira"}, deny={"taira"}, denyq={"taira"}, qa=0, transit=1}, "mod", nil},
+		{{sys={name="taira"}, deny={"taira"}, denyq={"taira"}, qa=1, transit=1}, "vanilla", "deny_tq"},
+		{{sys={name="taira"}, deny={"taira"}, denyq={"taira"}, transit=1}, "vanilla", "deny_tq"},
+		{{sys={name="taira"}, deny={"taira"}, denyq={"taira"}, qa=0, transit=0}, "vanilla", "deny_tq"},
+		{{sys={name="taira"}, deny={"taira"}, denyq={"taira"}, qa=0, transit=1, qs=0}, "mod", nil},
+		{{sys={name="taira"}, deny={"taira"}, denyq={"taira"}, qa=0, transit=1, strict=0}, "mod", nil},
+		{{sys={name="taira"}, deny={"taira"}, denyq={"taira"}, qa=0, transit=1, deny2={"taira"}}, "vanilla", "deny"},
+		{{sys={name="elio", start=1}, qa=0, transit=1}, "vanilla", "deny"}
 	};
 	for i = 1, getn(cases) do
 		local t = cases[i];
@@ -665,6 +674,39 @@ function T_G()
 		local m, why = TRF_SysModeOf(s);
 		HOST_Check(m == t[2] and why == t[3], "TRF_SysModeOf case "..i.." -> "..m.." "..tostring(why));
 	end;
+	-- Strict gate, transit rule: a tq entry with transit 1 and qa 0 opens every feature during a mission.
+	local gfs = {"seed", "raid", "staged", "contract", "parked", "tt3", "band", "board", "track", "conv", "tt4",
+		"sweep", "carrier", "feq", "dconv", "offer"};
+	local gate = function(t)
+		local s = {mode=1, qs=1, q=1, qa=0, ent={m=1, tq=1, why="teleport target"}, transit=1};
+		for k, v in t do s[k] = v; end;
+		if s.qa == -1 then s.qa = nil; end;
+		local n, why = 0, nil;
+		for i = 1, getn(%gfs) do
+			s.f = %gfs[i];
+			local ok, w = TRF_StrictOkOf(s);
+			if ok then n = n + 1; elseif not why then why = w; end;
+		end;
+		return n, why;
+	end;
+	local gn, gw = gate({});
+	HOST_Check(gn == getn(gfs) and gw == nil, "strict gate: tq entry, mission, qa 0, transit 1 -> every feature ok");
+	gn, gw = gate({transit=0});
+	HOST_Check(gn == 0 and gw == "mission_deny", "strict gate: tq entry, transit 0 -> mission_deny ("..tostring(gw)..")");
+	gn, gw = gate({qa=1});
+	HOST_Check(gn == 0 and gw == "quest", "strict gate: tq entry, qa 1 -> quest ("..tostring(gw)..")");
+	gn, gw = gate({qa=-1});
+	HOST_Check(gn == 0 and gw == "mission_q", "strict gate: tq entry, qa nil -> mission_q ("..tostring(gw)..")");
+	gn, gw = gate({ent=TRF_DenyEntry("elio")});
+	HOST_Check(gn == 0 and gw == "mission_deny", "strict gate: authored elio, qa 0, transit 1 -> mission_deny ("..tostring(gw)..")");
+	h.cfg.sys_deny = {"taira"};
+	local sde = TRF_DenyEntry("taira");
+	HOST_Check(sde.m == 1 and sde.tq == nil, "cfg sys_deny drops tq from a teleport-target entry");
+	gn, gw = gate({ent=sde});
+	HOST_Check(gn == 0 and gw == "mission_deny", "strict gate: cfg sys_deny teleport target -> mission_deny ("..tostring(gw)..")");
+	h.cfg.sys_deny = nil;
+	gn, gw = gate({ent={m=1, tq=1, feq=0, why="teleport target"}});
+	HOST_Check(gn == getn(gfs) - 1 and gw == "deny_feq", "strict gate: transit keeps a feature set to 0 in the entry off");
 	-- Suppression: 0 none, 1 pause, 2 wind-down.
 	foreachi({{nil, nil, 100, nil, nil, 0}, {1, nil, 100, nil, nil, 2}, {1, 1, 100, 0, nil, 2}, {nil, 1, 100, nil, nil, 1},
 		{nil, 1, 100, 71, nil, 1}, {nil, 1, 100, 70, nil, 2}, {nil, 1, 100, 0, 1, 1}}, function(i, t)
@@ -720,6 +762,47 @@ function T_G()
 	m, why = TRF_SysMode();
 	HOST_Check(m == "vanilla" and why == "deny", "missing GetPlayerQuestState counts as a mission (deny list stays vanilla)");
 	GetPlayerQuestState = gq;
+	-- Transit rule in the game: taira (campaign-pass teleport target) during a mission.
+	h.qs = TRUE; h.logs = {};
+	local lg = 0;
+	T_Jump("taira");
+	local te = TRF_DenyList().taira;
+	HOST_Check(type(te) == "table" and te.m == 1 and te.tq == 1 and TRF_DenyList().x297.tq == nil and TRF_DenyEntry("taira").tq == 1,
+		"deny list: teleport target taira marked tq, authored x297 not");
+	m, why = TRF_SysMode();
+	HOST_Check(m == "mod" and TRF_SafeModeIn().qa == 0, "transit: taira during a mission, no taira quest in process -> mod");
+	local ti = TRF_CurIdx();
+	local pr0, pk0, p0 = h.cfg.prosperity, h.cfg.parked, TRF_Pro(ti);
+	h.cfg.prosperity = 1; h.cfg.parked = 1;
+	TRF_SetPro(ti, 6);
+	local ct, cs, cp = TRF_SafeCaps(0);
+	HOST_Check(TRF_SafeGateSum(nil) == "ok" and TRF_StrictOk(ti, "band") == 1 and TRF_StrictOk(ti, "parked") == 1
+		and ct > 2 and cs > 10 and cp >= 1, "transit: taira gate ok, band 2 row "..tostring(ct).."/"..tostring(cs).."/"..tostring(cp)..", parked allowed");
+	h.logs = {};
+	TRF_Safety_Dump();
+	lg = 0;
+	for i = 1, getn(h.logs) do
+		if strfind(h.logs[i], "dump gate=ok sys=taira", 1, 1) and strfind(h.logs[i], "qa=0 deny=teleport target", 1, 1) then lg = lg + 1; end;
+	end;
+	HOST_Check(lg == 1, "transit: taira dump line gate=ok with deny=teleport target");
+	h.cfg.transit = 0;
+	HOST_Check(strfind(TRF_SafeGateSum(nil), "^mission_deny:") and not TRF_StrictOk(ti, "band"), "transit 0: taira gate mission_deny");
+	h.cfg.transit = nil;
+	TRF_SetPro(ti, p0); h.cfg.prosperity = pr0; h.cfg.parked = pk0;
+	h.logs = {};
+	h.cfg.transit = 0;
+	local v0 = T_Stat("van_deny_tq");
+	m, why = TRF_SysMode();
+	lg = 0;
+	for i = 1, getn(h.logs) do if strfind(h.logs[i], "mode vanilla why=deny_tq sys=taira", 1, 1) then lg = lg + 1; end; end;
+	HOST_Check(m == "vanilla" and why == "deny_tq" and T_Stat("van_deny_tq") == v0 + 1 and lg == 1,
+		"transit 0: taira during a mission -> deny_tq, counted and logged ("..tostring(why)..")");
+	h.cfg.transit = nil;
+	h.quests.quest_6c_01 = QUEST_PROCESS;
+	T_Jump("taira");
+	m, why = TRF_SysMode();
+	HOST_Check(m == "vanilla" and why == "deny_tq" and TRF_SafeModeIn().qa == 1, "transit: taira quest 6c_01 in process -> deny_tq");
+	h.quests.quest_6c_01 = nil; h.logs = nil;
 	h.qs = FALSE;
 	__sys_SOS = TRUE;
 	T_Tick(2, 0.5);

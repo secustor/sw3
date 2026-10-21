@@ -70,7 +70,7 @@ v0.1 ("traders with a purpose", design §12, spec [design/v01-spec.md](design/v0
 - A focus line in the screen log the first time a trader is selected or comes within 200 (`FTU freighter Kestrel: machinery, Aurora -> Elio`). The vanilla trade meeting at 70 stays.
 - An arrival line 5 s after entering a system with disruption ≥ 3 (`FTU reports raids on the lanes in this system`, three bands).
 - Attacking a trader raises heat and starts a response that reproduces the vanilla one. Traders killed by anyone raise the system's disruption, which adds escorts and lowers spawns; pirate kills and time (legs) bring it down.
-- Vanilla behaviour is kept, untouched, in: start systems in chapters 1–4 (`guard`), `elio`, `x297`, `gefest` while a mission is active, systems not in `map.script`, and whenever `__disableAction` is set. During an extortion (`__sys_SOS`) nothing spawns and no line is shown; after 30 s without an extortion flight, nearby traders leave by a portal and distant ones are deleted.
+- Vanilla behaviour is kept, untouched, in: start systems in chapters 1–4 (`guard`), `elio`, `x297`, `gefest` while a mission is active, systems not in `map.script`, and whenever `__disableAction` is set. Campaign teleport targets (Taira, Hanoi, Zebos and the others on the deny list as `teleport target`) are vanilla only while a quest that names them is in progress; in transit, when a mission is running but no quest in progress names the system, they keep mod traffic, and the strict feature gate follows the same rule (`dump gate=ok ... deny=teleport target`: band row, parked ship and the other features as in any system) (`transit` 1, the default; 0 restores the old rule that shuts every teleport target during any mission, gate `mission_deny`). During an extortion (`__sys_SOS`) nothing spawns and no line is shown; after 30 s without an extortion flight, nearby traders leave by a portal and distant ones are deleted.
 
 ### Config keys
 
@@ -150,6 +150,7 @@ Defaults are in each module's `TRF_<M>_OptDef()`; a missing key reads its defaul
 | `shop_mode`, `short_price`, `restore` | 1, 1, 1 | 0: vanilla trader shop; 0: shortages as rumour only, no price write; 2: restore with `ClearGoodsState` |
 | `news_mode` | 1 | 0 off, 1 bulletin line, 2 `AddPost` records (needs the news records: `install-test.sh NEWS=1`, [News records](#news-records-news1)) |
 | `heat_war`, `strict` | 0, 1 | heat 7–9 group war; strict gate (0 never: also ignores the deny list, tests only; 2 strict in every quest system) |
+| `transit` (env `TRANSIT`) | 1 | teleport-target deny entries: 1 vanilla and strict gate closed only while a quest naming the system is in progress (`qa` not 0), else mod with the gate open; 0 vanilla and `mission_deny` during any mission. Log `safe: mode vanilla why=deny_tq`, counter `van_deny_tq` |
 | `pro_set` (env `PRO_SET=taira:6,gredos:9`) | `{}` | test clone only: sets `pro` (clamped to the system's cap) on every entry |
 | `tune` (env `TUNE=T_leg=5`) | | tuning overrides, numbers only (spec 10.4 lists the v0.2 keys) |
 
