@@ -7,7 +7,13 @@ here=$(cd "$(dirname "$0")" && pwd)
 action=${SW3_ACTION:-install}
 GOG_ID=1426253436
 if [ -d "$here/mods" ]; then root=$here/mods; else root=$here; fi
-avail=; for d in "$root"/*/; do [ -f "$d/install.sh" ] && avail="$avail $(basename "$d")"; done
+# Install order: performance and trackpad first (both can install the sw3tp proxy), traffic after them (it
+# needs the proxy); other mods follow in folder order. Uninstall runs in reverse.
+avail=; for m in performance trackpad traffic; do [ -f "$root/$m/install.sh" ] && avail="$avail $m"; done
+for d in "$root"/*/; do
+    m=$(basename "$d"); [ -f "$d/install.sh" ] || continue
+    case " $avail " in *" $m "*) ;; *) avail="$avail $m" ;; esac
+done
 avail=${avail# }
 # Pass-through flags: the long options each mod's $action.sh accepts (its "--name)" case patterns).
 opts() { grep -E '^[[:space:]]*(-[a-z]+[|])?--[a-z][a-z-]*[)]' "$1" | sed -E 's/^[[:space:]]*(-[a-z]+[|])?(--[a-z][a-z-]*)[)].*/\2/'; }
@@ -44,7 +50,7 @@ for m in $sel; do
     if [ "$m" = all ]; then mods=$avail; break; fi
     case " $avail " in *" $m "*) ;; *) echo "unknown mod: $m" >&2; usage ;; esac
 done
-# Keep the folder order (performance before trackpad); uninstall runs in reverse.
+# Keep the install order of $avail; uninstall runs in reverse.
 if [ "$mods" != "$avail" ]; then
     for a in $avail; do case " $sel " in *" $a "*) mods="$mods $a" ;; esac; done
 fi

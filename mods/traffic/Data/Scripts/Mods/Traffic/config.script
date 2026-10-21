@@ -5,8 +5,12 @@
 -- traffic: 1 = load the v0.1 traffic modules when exp is 0 (missing key = 1), 0 = loader and kits only.
 -- Further v0.1 keys and their defaults: design/v01-spec.md 9 (TRF_OptDef in trf_state.script).
 -- v0.2 keys (design/v02-spec.md 10.4), listed here with their defaults; a missing key reads the default of the
--- module's TRF_<M>_OptDef(). enabled 2 = restore changed station prices and stop; pro_set is for the test clone.
+-- module's TRF_<M>_OptDef(). enabled 2 = restore changed station prices (and remove pirate bases) and stop;
+-- pro_set is for the test clone. v1 keys (design/v1-spec.md 10.5), defaults of the v1 modules; tier_cap 4.
 function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
-	enabled=1, cycle=1, prosperity=1, tier_cap=2, cap_traders=5, cap_ships=20, spawn_scale=1.0, band_half=0,
+	enabled=1, cycle=1, prosperity=1, tier_cap=4, cap_traders=5, cap_ships=20, spawn_scale=1.0, band_half=0,
 	parked=1, seed=1, queue=1, raids=1, staged=1, contracts=1, esc_speed=0, meet=2, hail_start=1, board=1,
-	shop_mode=1, short_price=1, restore=1, news_mode=1, heat_war=0, strict=1, pro_set={}} end
+	shop_mode=1, short_price=1, restore=1, news_mode=1, heat_war=0, strict=1, pro_set={},
+	track=1, conv=1, demand=1, heat_offer=1, carriers=1, salvage=1, salv_addmod=0, clan_ace=0, sweeps=1,
+	sweep_ct=1, po=1, tt4=1, tt4_split=0, feq=1, forced_bust=1, dconv=1, dc_speed=1, bases=1, base_glow=0,
+	wreck=0, lang="en", loc_mode=0} end

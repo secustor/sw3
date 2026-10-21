@@ -2,7 +2,7 @@
 
 NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic is Lua 4.0.1 scripts under `Data/Scripts/Mods/Traffic/`. A `traffic` module in the sw3tp `zlib1.dll` proxy loads them, registers the `TRF_*` natives, calls the Lua entry, load and tick callbacks, and carries the global `TRF` across the global clear on location entry. No game file is edited. Status and the experiment checklist are in [design/PROGRESS.md](design/PROGRESS.md); the build design is in [design/mod-options.md](design/mod-options.md) (sections 5 and 7).
 
-Phase 0 runs experiments E0.1 to E0.3. Phase 1 (v0.1 traffic, [below](#v01-traffic-exp0-traffic1)) and Phase 2 (v0.2, [below](#v02-traffic-exp0-traffic1)) are implemented and host-tested, not yet run in the game.
+**Status (2026-10-21).** v0.1, v0.2 and v1 ([below](#v1-traffic-exp0-traffic1)) are implemented and host-tested: 44 host runs (`tests/run_host.sh`) pass with no script error, including a 200-leg full-state run whose save is 37,517 bytes against the 40,000-byte budget. Host tests stub every engine call, so they check logic and argument shapes, not the game's answers. Confirmed in the game (E0.1): the DLL hooks and natives, the include order, `OnEnter`, `OnActivate` and `OnTick`. Not yet confirmed in the game: `TRF` carried across a jump, `OnLoad`, and every NPC primitive the traffic uses (spawning, orders, docking, triggers); no v0.1, v0.2 or v1 traffic has run in the game. The first in-game test plan is in [design/PROGRESS.md](design/PROGRESS.md) (Next in-game test plan). Known gaps: `map.script` lacks the v1 map fields (`ba`, `bs`, `qi`, `tq`, `it`, `fm`; `gen_map.py` does not emit them yet), so pirate bases cannot be founded, the quest-id deny list falls back to the v0.2 mission rule and item prices use a built-in table.
 
 ## Files
 
@@ -10,17 +10,18 @@ Phase 0 runs experiments E0.1 to E0.3. Phase 1 (v0.1 traffic, [below](#v01-traff
 
 | file | role |
 |---|---|
-| `traffic.script` | Loader. The DLL appends it to `sys_IncludeFileList`, so it runs last on every MapInitialization. Defines `TRF_OnEnter/OnActivate/OnLoad/OnTick/BeforeJump`, `TRF_Init`, `TRF_L` (log), `TRF_Dump`. Wraps `TeleportToLocation` and `CustomTeleportate` once, so that `TRF_BeforeJump(dest)` runs before every scripted jump. Loads `config.script`, the experiment file chosen by `exp`, `exp_saves.script` when `autosave` is 1 or 2, and `map.script`. Each callback forwards to `TRF_Exp_<name>` if the experiment file defines it; `OnActivate` also calls `TRF_Saves_OnActivate`. With `exp=0` and `traffic` not 0 it also loads the v0.1 modules below, calls `TRF_InstallGen()` and dispatches each callback to the modules (`design/v01-spec.md` 10.1), each call protected (`TRF_P`). The v0.2 modules load after them, then `TRF_InstallTradeDock` and `TRF_InstallBoard` run; dispatch order in `design/v02-spec.md` 10.3. With `enabled=2` only state, safety and shop load. |
-| `config.script` | `TRF_Config()` returns `{exp=0..3, log=0/1, big=0/1, del_on_jump=0/1, autosave=0..2, traffic=0/1}` plus the optional v0.1 keys (`v01-spec.md` 9) and v0.2 keys (`v02-spec.md` 10.4). The repo default is `exp=0, autosave=0, traffic=1`; `install-test.sh` rewrites the file. |
+| `traffic.script` | Loader. The DLL appends it to `sys_IncludeFileList`, so it runs last on every MapInitialization. Defines `TRF_OnEnter/OnActivate/OnLoad/OnTick/BeforeJump`, `TRF_Init`, `TRF_L` (log), `TRF_Dump`. Wraps `TeleportToLocation` and `CustomTeleportate` once, so that `TRF_BeforeJump(dest)` runs before every scripted jump. Loads `config.script`, the experiment file chosen by `exp`, `exp_saves.script` when `autosave` is 1 or 2, and `map.script`. Each callback forwards to `TRF_Exp_<name>` if the experiment file defines it; `OnActivate` also calls `TRF_Saves_OnActivate`. With `exp=0` and `traffic` not 0 it also loads the v0.1 modules below, calls `TRF_InstallGen()` and dispatches each callback to the modules (`design/v01-spec.md` 10.1), each call protected (`TRF_P`). The v0.2 modules load after them, then `TRF_InstallTradeDock` and `TRF_InstallBoard` run; dispatch order in `design/v02-spec.md` 10.3. The v1 modules load last, then `TRF_InstallPirDock` and `TRF_InstallRelDock` run (`design/v1-spec.md` 10.3). With `enabled=2` only state, safety, shop and base load. |
+| `config.script` | `TRF_Config()` returns `{exp=0..3, log=0/1, big=0/1, del_on_jump=0/1, autosave=0..2, traffic=0/1}` plus the optional v0.1 keys (`v01-spec.md` 9), v0.2 keys (`v02-spec.md` 10.4) and v1 keys (`v1-spec.md` 10.5). The repo default is `exp=0, autosave=0, traffic=1`; `install-test.sh` rewrites the file. |
 | `trf_state.script`, `trf_safety.script`, `trf_ui.script`, `trf_events.script`, `trf_gen.script` | v0.1 traffic (`design/v01-spec.md` 10.2), extended by v0.2: saved table (v3 since v0.2) and visit state; safety rules, caps, governor and strict gate; player-facing lines and news; attack, heat tiers, kills and response; generator wrap, spawn, routes, queue and seed, manager step, load pass. |
 | `trf_region.script`, `trf_tier.script`, `trf_raid.script`, `trf_shop.script`, `trf_hail.script` | v0.2 (`design/v02-spec.md` 10.1): regional cycle, prosperity and clans; bands, tiers, holds, parked ships; raids and help pay; trader shops, shortages and restore; hail menu, contracts and work board. Each loads on its own. |
+| `trf_loc.script`, `trf_track.script`, `trf_faction.script`, `trf_clan.script`, `trf_convoy.script`, `trf_danger.script`, `trf_supply.script`, `trf_base.script` | v1 (`design/v1-spec.md` 10.1, load order 10.3): text tables and deny list; tracked pool; faction strength, sweeps and offers; clans T3–T4, carriers, salvage; TT4 and equipment convoys; danger convoys; supply convoys, demand cargo, heat reset; pirate bases. Each loads on its own. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
 | `exp_saves.script` | Baseline save kit (any `exp`): one `AutoSave` per new system, see [Baseline saves](#baseline-saves). |
 | `map.script` | Generated by `tools/gen_map.py`: `TRF_MapData()` returns the systems, portals and docking stations (`st`). |
 
-Other files: `env.sh`, `install-test.sh`, `run-test.sh`, `uninstall-test.sh` (test clone), `tools/` (site checker, map generator, Lua lint, Lua 4 build), `tests/` (host harness), `VERSION`.
+Other files: `install.sh`, `uninstall.sh` (game install, [below](#installing-into-the-game)), `env.sh`, `install-test.sh`, `run-test.sh`, `uninstall-test.sh` (test clone), `loc/trf_en.loc` (`.loc` scaffold for `loc_mode 1`), `tools/` (site checker, map generator, Lua lint, Lua 4 build), `tests/` (host harness), `VERSION`.
 
 Script rules: top-level code only defines functions and installs the wrappers. All state lives in the table `TRF`, which holds only numbers, strings and nested tables, and none of its keys is a reserved name. Every global carries the `TRF_` prefix. Object handles are never stored in `TRF`.
 
@@ -28,7 +29,7 @@ Script rules: top-level code only defines functions and installs the wrappers. A
 
 The game must be launched by the user. The scripts only prepare the test clone (`~/Games/Heroic/sw3-tp-test`) and collect the logs.
 
-    EXP=1 TRAFFIC=0 mods/traffic/install-test.sh   # EXP=0..3; also TRAFFIC, LOG, BIG, DEL_ON_JUMP, AUTOSAVE, OVERRIDE, DUMP, GUARD, the v0.2 keys, PRO_SET, TUNE, TRAFFIC_ENABLED, SITE_T1..SITE_T4, TICK_MS
+    EXP=1 TRAFFIC=0 mods/traffic/install-test.sh   # EXP=0..3; also TRAFFIC, LOG, BIG, DEL_ON_JUMP, AUTOSAVE, OVERRIDE, DUMP, GUARD, the v0.2 and v1 keys, LEVEL, PRO_SET, TUNE, FEQ_AT, LOC, TRAFFIC_ENABLED, SITE_T1..SITE_T4, TICK_MS
     SECS=900 mods/traffic/run-test.sh       # SECS defaults to 600; play during that time
     mods/traffic/uninstall-test.sh
 
@@ -95,10 +96,10 @@ For other keys, edit `<clone>/Data/Scripts/Mods/Traffic/config.script` after the
     EXP=1 TRAFFIC=0 sh mods/traffic/install-test.sh              # E0.1 hook experiment only
     SECS=1800 sh mods/traffic/run-test.sh                         # the user plays; logs land in <clone>/traffic-runs/
 
-Lines in `sw3tp.log` (all `traffic: lua: v0.2 ...` since the v0.2 modules are wired in; v0.1 builds wrote `v0.1`):
+Lines in `sw3tp.log` (all `traffic: lua: v1 ...` since the v1 modules are wired in; earlier builds wrote `v0.1` or `v0.2`):
 
-- once per location entry: `loaded map=1 modules=10 TeleportToLocation wrapped=1 CustomTeleportate wrapped=1` (5 in v0.1 builds) and `gen: install generator=1 case_eject=1 ... mine=1/1`. `modules` below 5 or a missing install line means the mod stays vanilla: look at the `load <file> failed` line before it.
-- `dump enter|load|jump|tick v=3 gen=<n> sys=<name>(<idx>) legs=<n> ... heat=<h>/<n> ... mode=mod|vanilla`, followed by `dump dis <system>=<n> ...` and `dump stat ...`: `gen` grows by one per entry and per load, `legs` by one per entry and every 300 game s in a system; neither goes back. `mode=vanilla` comes with a `safe: mode vanilla why=<reason>` line.
+- once per location entry: `loaded map=1 modules=18 TeleportToLocation wrapped=1 CustomTeleportate wrapped=1` (5 in v0.1 builds, 10 in v0.2) and `gen: install generator=1 case_eject=1 ... mine=1/1`. `modules` below 5 or a missing install line means the mod stays vanilla: look at the `load <file> failed` line before it.
+- `dump enter|load|jump|tick v=4 gen=<n> sys=<name>(<idx>) legs=<n> ... heat=<h>/<n> ... mode=mod|vanilla`, followed by `dump dis <system>=<n> ...` and `dump stat ...`: `gen` grows by one per entry and per load, `legs` by one per entry and every 300 game s in a system; neither goes back. `mode=vanilla` comes with a `safe: mode vanilla why=<reason>` line.
 - `gen: spawn id=<n> path=C ...`, `gen: remove id=<n> why=exit|dock|life|stuck|wind|jump|lost|station ...`, `ui say ... text=...`, `st: dis`, `st: heat`, `ev kill`, `ev resp`.
 - `dump stat spawn=<n> skip_cap=<n> ...`: spawn, skip and removal counters for this visit.
 - `ERROR <message>`: a mod error caught by the mod. It never reaches `ScriptErrors.log`, so any such line is a bug to report.
@@ -113,7 +114,7 @@ Lines in `sw3tp.log` (all `traffic: lua: v0.2 ...` since the v0.2 modules are wi
 | Missions 1–3 unchanged | Play missions 1–3 from a new game with `EXP=0 TRAFFIC=1`, then from the same save with `TRAFFIC=0`. Same briefings, triggers, spawns and outcomes; no stuck objective. During the missions the start systems log `mode=vanilla why=guard` (CHECK: needs `GetPlayerQuestState()` to be TRUE in a mission; else rerun with `GUARD=2`). |
 | 8x speed holds | In Gredos, Aurora and one core system with 2 traders alive: 8x stays selectable and is not dropped back. Repeat with `override=0` to compare. |
 | Counters survive save/load and a jump | Note `gen`, `legs`, `heat` and the `dump dis` values, jump: `dump enter` shows `gen` and `legs` at least one higher and the same `heat`/`dis` (minus decay). Save (kit or manual) in a system, quit, relaunch and load: `dump load` shows the saved `legs`, `heat` and `dis` and `gen` one higher. Confirms the T3 carry and `OnLoad`, still open from E0.1. |
-| Mod added to a mid-campaign save | Load a save made without the mod installed: `dump load` shows `v=3 gen=1 legs=0` and no `ERROR` line; traffic spawns in that system or the next eligible one. |
+| Mod added to a mid-campaign save | Load a save made without the mod installed: `dump load` shows `v=4 gen=1 legs=0` and no `ERROR` line; traffic spawns in that system or the next eligible one. |
 | An ambient extortion does not empty the system | Wait for an extortion demand outside a mission: no spawn while it lasts (`skip_supp` grows), traders keep flying for 30 s, and after the extortion ends `spawn` grows again in the same system. |
 | 13.2 / 13.4 / 13.6 answers | Record whether the focus line came from selection or proximity, the `.sav` size with and without the mod, and the 8x and `CombineStr` results in design §13. |
 
@@ -156,10 +157,10 @@ Defaults are in each module's `TRF_<M>_OptDef()`; a missing key reads its defaul
 
 ### Log lines (v0.2)
 
-All lines are `traffic: lua: v0.2 ...` in `sw3tp.log`. The v0.1 lines above still apply.
+All lines are `traffic: lua: v1 ...` in `sw3tp.log` since v1 (`v0.2` before). The v0.1 lines above still apply.
 
-- Load: `loaded map=1 modules=10 ...` (5 v0.1 + 5 v0.2; 3 with `enabled 2`), `gen: install ...`, `shop: install trade_dock=1 mine=1`, `hl: install board=1 mine=1`. A missing install line or `load <file> failed` names the missing feature.
-- Dump (on entry, load, jump and every `dump` s): `dump enter v=3 ... help=<n> rt=<n>`, then `dump rg n=8 rt=<leg> QBURXV... sc ...` (one phase letter per region: Q Quiet, B Boom, U Build-up, R Raids, X Bust, V Recovery, then the clan scores), one `dump rg <slot> <home> ph=<phase> len=<n> sc=<n> tier=<n> sn= sl= ...` per region, `dump pro <sys>=<pro> ...`, `dump tier pro= band= sf= caps= ...`, `dump raid ...`, `dump hail ...`, `dump shop short ... shops ...`, `dump gate=ok|<why> sys= strict= ...`.
+- Load: `loaded map=1 modules=18 ...` (5 v0.1 + 5 v0.2 + 8 v1; 4 with `enabled 2`), `gen: install ...`, `shop: install trade_dock=1 mine=1`, `hl: install board=1 mine=1`. A missing install line or `load <file> failed` names the missing feature.
+- Dump (on entry, load, jump and every `dump` s): `dump enter v=4 ... help=<n> rt=<n>`, then `dump rg n=8 rt=<leg> QBURXV... sc ...` (one phase letter per region: Q Quiet, B Boom, U Build-up, R Raids, X Bust, V Recovery, then the clan scores), one `dump rg <slot> <home> ph=<phase> len=<n> sc=<n> tier=<n> sn= sl= ...` per region, `dump pro <sys>=<pro> ...`, `dump tier pro= band= sf= caps= ...`, `dump raid ...`, `dump hail ...`, `dump shop short ... shops ...`, `dump gate=ok|<why> sys= strict= ...`.
 - Cycle: `rg: init fresh=1 slots=8/8 ...`, `rg: tick x<n> legs=<L> <letters> sc ...` (every 2 legs), `rg: sweep <slot> planned|attempt <k> won|failed ...`, `rg: pro <sys>(<idx>) <old> -> <new> (<why>)`, `rg: clan <slot> <old> -> <new> (<why>)`, `rg: pro_set <sys> = <n>`.
 - Entry: `tier: entry <sys> pro= band= sf= caps= parked= gov=`, `gen: entry plan: seed chance= roll= in <s> s`, `gen: seed id= tier=`, `tier: parked <label> at ...`, `gen: queue id= hold= ...`.
 - Spawn: `gen: spawn id=... tier=<1..3> hold=<n>`.
@@ -174,7 +175,7 @@ All lines are `traffic: lua: v0.2 ...` in `sw3tp.log`. The v0.1 lines above stil
     EXP=0 TRAFFIC=1 AUTOSAVE=1 TUNE=T_leg=5 sh mods/traffic/install-test.sh         # 200-leg debug run (below)
     EXP=0 TRAFFIC=1 AUTOSAVE=1 PRO_SET=taira:6 sh mods/traffic/install-test.sh      # pro-6 double-kill test
     SECS=1800 sh mods/traffic/run-test.sh
-    grep -a 'traffic: lua: v0.2 \(rg: tick\|rg: sweep\|dump rg\)' <clone>/sw3tp.log      # cycle trace
+    grep -a 'traffic: lua: v1 \(rg: tick\|rg: sweep\|dump rg\)' <clone>/sw3tp.log        # cycle trace
 
 ### In-game checks for the v0.2 exit criteria (design §12)
 
@@ -186,7 +187,7 @@ All lines are `traffic: lua: v0.2 ...` in `sw3tp.log`. The v0.1 lines above stil
 | Trouble answer → staged raid in about half of the entries; killing it lowers `dis` | Ask a trader or the patrol board `Where is traffic in trouble?`, fly to a named system with `dump dis <sys>=5` or more, and enter it 4–6 times: about half show `raid: staged planned`. Kill the raid flight: the next `dump dis` for that system is lower. |
 | No station keeps a changed coefficient; restore-all works | After `shop: apply <shop>` and a later `shop: short expire`, dock there again: `shop: restore <shop>`, the price is back to vanilla, and `dump shop shops` no longer lists it. Then install with `ENABLED=2`, dock at each station listed in `dump shop shops`, until `shop: restore done`. |
 | Convoy missions 6c, 6c_1, 6c_2, 9c, 12c and `m18c_escort` play the same | Play each once with the mod and compare with `TRAFFIC=0` (or a vanilla run): same briefings, spawns, escort behaviour and outcomes. The mission systems log `dump gate=<why>` or `mode=vanilla`. |
-| 200-leg desynchronisation debug run | Install with `TUNE=T_leg=5` (one leg per 5 game s, so 200 legs take 1000 game s, about 2 min at 8x). Start or load a save in chapter 5 or later (guard off) and wait in a quiet system without acting. Each `rg: tick ... legs=<L> <letters>` line is one sample. At every sample the letters include B, U or R, and X or V. No region shows `sc` ≥ 75 for more than 18 legs. By leg 200 each region has gone V → Q twice. Compare with the host run (`v02-b`): the host shows the phase-group criterion missing on 28 of 200 legs and phase lock of up to 154 legs (spec 13.4 R1, R2), so expect the same deviations in the game. Reinstall without `TUNE` afterwards. |
+| 200-leg desynchronisation debug run | Install with `TUNE=T_leg=5` (one leg per 5 game s, so 200 legs take 1000 game s, about 2 min at 8x). Start or load a save in chapter 5 or later (guard off) and wait in a quiet system without acting. Each `rg: tick ... legs=<L> <letters>` line is one sample. At almost every sample (host: ≥ 98 % of legs) the letters include B, U or R, and X or V. No two regions show the same letter for more than 25 legs in a row, each region shows every letter within 120 legs, and no region shows `sc` ≥ 75 for more than 18 legs. By leg 200 each region has gone V → Q twice. `rg: <slot> wait sep`, `wait cover` and `take cover` lines are the exit coordination (spec 4.2a) at work. Reinstall without `TUNE` afterwards. |
 | Missions 1–4 the same with the cycle on; no raid above T1 in a guard system before chapter 5 | Play missions 1–4 from a new game. `dump rg 3 gefest ... gx=1`, and every `raid: go` / `raid: staged spawn` in a start system shows `tier=1`. |
 | Pro-6 double kill: TT1 in the same visit | Install with `PRO_SET=taira:6` (any non-start system with a trade station), enter Taira outside a mission (`dump gate=ok`, `mode=mod`). Kill two traders: `rg: pro taira(79) 6 -> 3 (kill <id>)`, then `3 -> 0`, and the next `gen: spawn` in the same visit shows `tier=1`. A third kill stops further spawns (`kills=3`, kill cap). |
 | `pro` 9 in Gredos, Kadi, Taira holds 8x | Install with `PRO_SET=gredos:9,kadi:9,taira:9` (Kadi is capped to 3), check that 8x stays selectable in each, and compare with vanilla (`TRAFFIC=0`). |
@@ -197,6 +198,98 @@ Every `CHECK:` comment in the v0.2 modules marks an engine fact that the host st
 ### Removal and downgrade
 
 Changed station prices are stored in the game's market, not in `TRF`. Before uninstalling or going back to v0.1, install with `ENABLED=2`, dock at every station that `dump shop shops` lists, and wait for `shop: restore done`. Otherwise up to 8 stations keep +50 % buy prices for one cargo class (spec O13).
+
+## v1 traffic (`EXP=0 TRAFFIC=1`)
+
+v1 ("identity across jumps and war traffic", design §12, spec [design/v1-spec.md](design/v1-spec.md)) adds eight modules on top of v0.2: `trf_loc` (text tables, `.loc` scaffold, quest-id deny list), `trf_track` (tracked pool, chase, meeting again), `trf_faction` (faction strength and tech ladder, on-screen sweeps, sweep contracts, pirate-side offers), `trf_clan` (clan tiers T3–T4, carrier raids, salvage), `trf_convoy` (TT4 convoys, equipment convoys, forced Bust, convoy slot), `trf_danger` (danger convoys), `trf_supply` (faction supply convoys, demand cargo, heat reset) and `trf_base` (pirate bases). The saved table is version 4. It is implemented and host-tested (44 host runs, 14 of them v1), not yet run in the game. Each v1 module loads on its own; `loaded ... modules=18` means all 18 traffic modules are in, a lower count names the missing ones in the `load <file> failed` lines before it.
+
+### What the player sees
+
+- Meeting again: a trader the player selected (focus) is tracked. When it leaves by a portal and the player follows within 60 s, it arrives 5–15 s after the player, with the damage it had (`They followed us!`). A tracked trader that left earlier arrives by portal 60–120 s after entry in the system it was headed to, or is found docked; it greets the player (`Wolves again. We remember you.`). The pool keeps 16 records for 8 legs.
+- Supply convoys: in Vks/Kfni border systems a trader spawn becomes a faction transport (Walrus hull) with 2–4 owner fighters about 15 % of the time (30 % while that faction's sweep is scheduled). Killing one costs standing with its faction; if pirates take it, the local clan gains salvage.
+- Demand cargo: the hail menu offers `Demand cargo` (also at heat 3–6, when traders refuse to talk). The trader complies (80 % minus 20 % per live escort, at least 10 %), drops 1–3 containers into the mothership's inventory and flees; heat +2. A refusal starts the attack response.
+- Heat reset: at an FTU relation station with heat ≥ 3 a box offers to clear heat for 100,000 cr per heat point (at most 950,000). The vanilla relation repair with Trade also clears heat.
+- Clans T3–T4: clans with a high score raid with bigger flights; T4 clans send carrier raids (a pirate mothership arrives 30–90 s after entry, launches up to 2 waves of 3 fighters from its hangar and recovers them; it leaves at 25 % HP). Clans gain salvage (failed sweeps, raided faction convoys, destroyed patrols) and field salvaged faction hulls for a few legs; news reports it.
+- Factions: Vks, Kfni and the others have a strength 1..9 per region that rises with prosperity and falls with losses; their fighters and sweeps use a tech ladder of their own hulls. Sweeps against a strong clan are attempts: up to 4 per Raids phase, watched on-screen when the player is in the target system (`fac: sweep start`); faction flights withdraw when they lose 40 %. Patrol stations of the owner offer a join contract (`... Join it for <n> cr?`) and a base bounty; a joined attempt succeeds and pays. Pirate stations offer a paid raid tip-off and intel (`po`).
+- TT4 convoys: at `pro` 8–9, 25 % / 40 % of trade-hub traffic is a convoy of 3 / 4 transports with 4 / 6 escorts and 2–4 equipment items (45,000–95,000 cr each). Killing one forces the region into Bust at the next region tick.
+- Equipment convoys: one at a time map-wide, from a faction with strength ≥ 2 in a `pro` ≥ 6 system, about once per 30–35 legs: military transports with faction warship escorts and holds of 85,000–400,000 cr. Wave 1 of faction reinforcements comes 20–30 s after the first counted attack, wave 2 at 50 % transport HP one rung higher. Killing it gives heat +3, faction standing −1, strength −1 and a forced Bust; pirates taking it give the clan salvage +3. The owner may offer a defence contract (4x escort pay, ≤ 30,000 cr).
+- Danger convoys: at disruption ≥ 4 or in a Raids-phase region, 2–3 traders gather at the trade station (up to 120 s) and leave together with 3–5 escorts; 20 % still fly alone.
+- Pirate bases: a clan founds a base (at most 2 map-wide) in an allow-list system that has stayed at disruption ≥ 6, never while the player is there. It holds a garrison, raises disruption around it, sends raids and survives leave, revisit, save and load. Destroying it resets the system's disruption and pays a bounty. Not active in-game yet: `map.script` has no allow-list (`ba`) until `gen_map.py` emits it (Status).
+- Text: all lines are English plain text (`lang` `ru` falls back to English per key until the RU table exists).
+
+### Config keys (v1)
+
+Defaults are in each module's `OptDef`; `config.script` lists them all. `install-test.sh` writes only the keys set in the environment (capitals, e.g. `FEQ=0`). Tuning keys (spec 10.5) go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `track` | 1 | tracked pool, chase and meeting again |
+| `conv`, `demand`, `heat_offer` | 1, 1, 1 | supply convoys, `Demand cargo` hail option, heat-reset box at FTU relation stations |
+| `carriers`, `salvage`, `salv_addmod`, `clan_ace` | 1, 1, 0, 0 | T4 carrier raids; salvage; salvaged flights also get military modules (CHECK [PP] X1); ace perks on clan leaders (CHECK [PP] X3) |
+| `sweeps`, `sweep_ct`, `po` | 1, 1, 1 | on-screen sweeps (0: off-screen roll only, as v0.2); join/bounty contracts on the patrol board; pirate-station offers |
+| `tt4`, `tt4_split` | 1, 0 | TT4 convoys at `pro` 8–9; 1: two escort flights of 3 instead of one |
+| `feq`, `forced_bust`, `feq_at` | 1, 1, `""` | equipment convoys; forced Bust after a TT4 or equipment convoy kill; `feq_at` (env `FEQ_AT=<system>`): debug, schedules an equipment convoy in that system at the next leg |
+| `dconv`, `dc_speed` | 1, 1 | danger convoys; cap the convoy's speed to its slowest transport |
+| `bases`, `base_glow`, `wreck` | 1, 0, 0 | pirate bases; glow/cloak FX on base raid spawns (CHECK [PB] E6); wreck carcass when a destroyed base is not restored (CHECK [PB] E2) |
+| `tier_cap` | 4 | highest clan tier used (v0.2 default was 2) |
+| `lang`, `loc_mode` | `"en"`, 0 | text language; `loc_mode 1` (env `LOC=1`) passes `#TRF_<key>` keys and needs `loc/trf_en.loc`, which `install-test.sh LOC=1` copies to `Data/LocData/English/` (CHECK E0.6) |
+
+### Log lines (v1)
+
+Every line of the mod is now `traffic: lua: v1 ...` in `sw3tp.log`; the v0.1 and v0.2 lines above keep their text after that prefix.
+
+- Load: `loaded map=1 modules=18 ...`, `fac: install pirdock=1 mine=1`, `sp: install reldock=<n> mine=1/1`, `fac: fs init slots=8/8 def=33333`. With `enabled 2`: `modules=4`.
+- Dump (entry, load, jump, `dump` s): `dump enter v=4 ...`, then `dump v4 fst=<5 digits> tp=<pool> lr=<n> base=<n> feq=<state> offer=<k> fs 1=<5 digits> ...`, `dump tp n=`, `dump tq exits=`, `dump fac ...`, `dump clan lr= salv= carrier=`, `dump cv feq= cvs= e= lv=`, `dump dc danger= leaving=`, `dump supply n= border= ...`, `dump base n= allow= on=`, `loc: dump lang= mode= en= deny= qcur=`, `dump gate=ok ... qs= q= qa=`.
+- Tracking: `tk: write <record> (<dest> d=<n>) pool=<n>`, `tk: chased id= to <sys> dt=`, `tk: jump dest= written= chased= pool=`, `tk: entry id= e= d= fl= -> chase|port|dock`, `tk: spawn chase|port|dock pool id= -> id= from= tier= ... dm=<damage>`, `tk: expire|evict|drop|trim ...`.
+- Supply, demand, heat: `sp: roll f= ... chance=`, `sp: spawn id= f= hull=Walrus_... esc= grp=TRF_Conv_<n>`, `sp: demand id= esc= p= roll=`, `sp: heat offer heat= cost=`, `sp: heat reset ...`, `sp: temp_change <team> ok= credits <a> -> <b>`, `fac: fst <faction> <old> -> <new> (<why>)`.
+- Clans: `clan: score <slot> <old> -> <new> (<why>)`, `clan: lr new|expired|removed slot= tier=`, `clan: carrier due in <s> s slot=`, `clan: carrier <n> hull=<hull> tier= sc= via=<portal> esc= hp0=`, `clan: launch n=...`, `clan: wave n= patrols|raids ...`, `clan: salv <slot> <old> -> <new> f= (<why>)`, `clan: salv flight slot= stage= f= ships= lead=`, `clan: salv decay leg <L> ...`.
+- Factions and sweeps: `rg: sweep <slot> planned for leg <L>`, `rg: sweep <slot> attempt <k> won|failed (p=) ...` (off-screen), `fac: sweep entry slot= k= f= in <s> s`, `fac: sweep start slot= k= f= roll= p= rung= waves= ...`, `fac: sweep end (withdraw|window|wiped|lost) slot= k= won=<0|1> ... join=<pay>`, `fac: po offer|accepted|entry|paid ...`, `rg: pay ...`.
+- Convoys: `cv: tt4 id= transports= escorts= src= ...`, `cv: forced bust slot= sys= (tt4|feq <id>)`, `cv: feq scheduled f= sys= r= leg=`, `cv: feq due in <s> s`, `cv: feq build id= ... escorts=`, `cv: feq appears id= path= hp0= ships= tier=`, `cv: feq attacked by p id= wave1 at +<s> s`, `cv: feq wave 1|2 rung= ships=` (or `feq wave 2 skipped (cap)`), `cv: feq contract accepted id=`, `cv: feq end kill|completed|... id= f= src=`, `cv: feq cooldown over leg=`, `cv: slot released (...)`, `cv: tt4_value_miss`/`feq_value_miss` (hold outside its value window; tuning).
+- Danger convoys: `dc: start n= mode= N= esc= ...`, `dc: member n= j=<i>/<N> id=`, `dc: leave n= (complete|timeout) members= lead= exit= waited=`, `dc: wind|end|jump ...`.
+- Bases: `base found <sys>(<idx>) leg= p= roll= slot=`, `base active ...`, `base created|enter|load <sys> object=... h=`, `base garrison <sys> tier= flights= ships=`, `base attacked`, `base wave 1 ...`, `base destroyed <sys>(<idx>) by=player|...`, `base drop ...`, `base jump: garrison flights deleted=`.
+
+### Running it on the clone
+
+    EXP=0 TRAFFIC=1 AUTOSAVE=1 sh mods/traffic/install-test.sh                        # v1 with defaults
+    EXP=0 TRAFFIC=1 AUTOSAVE=1 FEQ_AT=taira sh mods/traffic/install-test.sh           # equipment convoy debug (next leg)
+    EXP=0 TRAFFIC=1 AUTOSAVE=1 PRO_SET=gredos:9 sh mods/traffic/install-test.sh       # TT4 and band 9 volume
+    EXP=0 TRAFFIC=1 AUTOSAVE=1 TUNE=T_leg=5 sh mods/traffic/install-test.sh           # 200-leg run with forced Busts
+    EXP=0 TRAFFIC=1 AUTOSAVE=1 LEVEL=v01 sh mods/traffic/install-test.sh              # v0.1 or v0.2 feature set only (LEVEL=v02)
+    SECS=1800 sh mods/traffic/run-test.sh
+    grep -a 'traffic: lua: v1 \(tk:\|cv: feq\|fac: sweep\|clan: carrier\|dc: \|base \)' <clone>/sw3tp.log
+
+### In-game checks for the v1 exit criteria (design §12)
+
+| criterion | how to check |
+|---|---|
+| Full campaign without mission breakage | Over the playthrough: no new `ScriptErrors.log` lines and no `ERROR` lines; each mission plays as with `TRAFFIC=0`. Mission systems log `dump gate=<why>`; `loc: dump ... qcur=<id>` names the active quest when the quest-id deny list is in the map (Status). |
+| 8x holds wherever it held in vanilla | Repeat the v0.2 8x check with v1 traffic in Gredos, Aurora and a `pro` 9 trade hub (`PRO_SET=gredos:9`). |
+| An attacked trader can be followed and is found ahead, damaged | Select a trader (focus), damage it until it flees to a portal (`raid: flee` or `gen: remove id= why=exit`), and jump through the same portal within 60 s: `tk: chased id=` before the jump, `tk: entry id= ... -> chase` and `tk: spawn chase ... dm=<n>` 5–15 s after arrival; the trader shows its damage and says `They followed us!`. |
+| A consequence seen within two system visits | Ask testers after two visits whether they saw a thinner lane, a shortage price, a news item or a trader met again (`tk: spawn port|dock` with `Wolves again`). |
+| First on-screen sweep against a T4 clan usually fails; a joined attempt succeeds and pays | With `TUNE=T_leg=5`, wait for `rg: sweep <slot> planned for leg <L>` in a region whose `dump rg` score is ≥ 75 (T4), then be in the target system at that leg: `fac: sweep entry`, `fac: sweep start`, and most first attempts end `fac: sweep end (withdraw) ... won=0` with a news post. For the joined case, accept the join box at a patrol station of the sweeping faction (`dump fac ... ct1`), take part in the fight: `won=1 join=<pay>` and a `rg: pay` line. |
+| A base appears only in allow-list systems, never in front of the player, survives leave/revisit/save/load, its destruction resets disruption | Blocked until `gen_map.py` emits `ba`/`bs`: today `dump base n=0 allow=0`. Then: `base found <sys>` only for allow-list systems and never for the current one; leave and revisit (`base enter <sys> object=alive`), save and load (`base load <sys> object=alive`); destroy it: `base destroyed ... by=player` and the next `dump dis <sys>` is 0. |
+| 8x holds with a carrier group of 10 ships | In a T4 region (score ≥ 75), wait for `clan: carrier due` and `clan: carrier <n> hull=...` in a busy system: 8x stays selectable while carrier, escorts and waves are alive. |
+| Carrier launch at `HANGAROUT`, recovery by distance, no recovered fighter in the player's hangar | Watch a carrier wave: fighters appear at the hangar exit (`clan: launch n=`), fly back after the raid and vanish within about 20 units of the hangar (`dump stat ... carrier_recover=<n>`); the player's hangar holds no new ship afterwards. CHECK: the hangar offsets (`hgo`, `hgi`) and `rec_d` are guesses until measured. |
+| Equipment convoy waves, cap, forced Bust, never two at once | Install with `FEQ_AT=<sys>` for a `pro` ≥ 6 system owned by a faction, jump once and go there: `cv: feq scheduled`, `cv: feq due in <s> s`, `cv: feq appears`. Attack it: `cv: feq attacked by p ... wave1 at +<20..30> s`, then `cv: feq wave 1`; at half transport HP `cv: feq wave 2` (`skipped (cap)` while 14 ships live; the live count never exceeds 14). Kill it: `cv: forced bust slot=<s>` and the next `rg: tick` shows `X` for that region. Over the 200-leg run `dump v4 ... feq=` never shows two records. |
+| `pro` 9 shows ≥ 16 traffic ships | `PRO_SET=gredos:9`: `dump tier pro=9 band=... caps=5/20/2` and `dump enter ... ships=<n>` with n ≥ 16 after a few minutes; if 8x drops, rerun with `BAND_HALF=1` and expect ≥ 12. |
+| TT4 kill forces Bust; the 18-leg T4 bound holds | In a Boom region at `pro` 8–9 (`PRO_SET`), kill a `cv: tt4 id=` convoy: `cv: forced bust slot= ... (tt4 <id>)` and the next `rg: tick` shows `X`. In the `TUNE=T_leg=5` run, no region shows `sc` ≥ 75 for more than 18 legs (host: up to 20 when clans are pushed every leg). |
+| Danger convoys at `dis` 5 form, leave together, keep the transport rate | Enter a system with `dump dis <sys>=5` (or a region in `R`): `dc: start`, `dc: member ... j=<i>/<N>` at the station, `dc: leave n= (complete) members=<N>`. Over 30 min count transports per hour from `gen: spawn` and `dc: member` lines, compare with a run with `DCONV=0` (±25 %); no `dump dc` sample shows two convoys. |
+
+Every `CHECK:` comment in the v1 modules marks an engine fact the host stubs only shape-check: `CreateStation`, `Escort`, `SetPosition`/`GetVectorOrientation` (carrier launch), `AddModule`, `GetQuestState` for unknown ids, `GetMaxSpeed`, `Blow`, `PlayFX`. Spec 11.3 (V1–V12) and 13.4 list them with fallbacks.
+
+### Removal and downgrade (v1)
+
+Pirate bases are stations in the game's snapshots and station prices live in the market, neither in `TRF`. Before uninstalling or going back to v0.2, run once with `enabled 2` (`ENABLED=2` on the clone, `install.sh --restore-only` in the game): bases are removed (`base bases removed`) and the stations of `dump shop shops` restore their prices when docked (`shop: restore done`). v0.2 resets a version-4 `TRF` (unknown version) and drops `fs`, `tp`, `base` and the other v1 fields.
+
+## Installing into the game
+
+The release zip `sw3-traffic-<v>.zip` (built by `release.sh`) or this folder:
+
+    ./install.sh "<game dir>"                  # or, from the repo root: ./install.sh --mod trackpad --mod traffic
+    ./install.sh --restore-only "<game dir>"   # enabled=2: restore prices, remove bases, then stop
+    ./uninstall.sh "<game dir>"
+
+`install.sh` needs the sw3tp proxy (`zlib1.dll` with the traffic module) from the sw3-trackpad or sw3-performance mod of the same release and stops without changes when it is missing or older. It checks the SHA-1 of `sw3cw.exe` (GOG v1.12), `zlib1_orig.dll` and the two game scripts whose functions the mod replaces (`include/Create_flight_2.script`, `include/DockStation.script`), copies `Data/Scripts/Mods/Traffic/` (CRLF checked), writes `config.script` with `exp=0, traffic=1, autosave=0` and sets `[traffic] enabled=1` in `sw3tp.ini`, leaving every other section and key as it was. Backups, the manifest and the previous `[traffic]` section go to `<game>/sw3-traffic-backup/`. A reinstall changes nothing that is already current and keeps an edited `config.script` (`--reset-config` replaces it). `uninstall.sh` removes the scripts and the directories it created and puts the `[traffic]` section back as it was. In the top-level installer, `--mod all` installs performance, trackpad, then traffic, and uninstalls in reverse. The trackpad installer keeps an `sw3tp.ini` that traffic edited, so reinstalling the trackpad does not turn traffic off.
 
 ## Baseline saves
 
@@ -244,7 +337,9 @@ A timer that fires during a jump, after another entry or after a load (`gen` dif
 ## Host checks (no game)
 
     mods/traffic/tools/get-lua4.sh                       # builds .work/lua4/bin/lua once
-    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment + v0.1 scenarios a..g (tests/host_traffic.lua) + v0.2 scenarios v02-a..n (tests/host_v02.lua)
+    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment + v0.1 scenarios a..g (tests/host_traffic.lua) + v0.2 scenarios v02-a..n (tests/host_v02.lua) + v1 scenarios v1-a..n (tests/host_v1.lua)
     python3 -I mods/traffic/tools/lint_lua.py --allow TeleportToLocation,CustomTeleportate mods/traffic/Data/Scripts/Mods/Traffic/*.script
+
+The run takes about 25 s and prints one `== <scenario>: exit 0, <n> traffic lines, 0 fails` line per run (44 runs); any other line names the failed check. `v1-n` prints the worst-case save size by part (`HOST info TRF save size ...`).
 
 `tests/host_stubs.lua` stubs the natives and emulates ClearGlobals with the T3 carry, the save writer's skip rule and string trigger actions (`s.."();"`). Its stubs check argument shapes against the game's usage (`NewTrigger` per kind, `CreateCarcass`, `GetCarcassCountInSphere`). With `TRF_AUTOSAVE=1` (runs `exp0-saves`, `exp2-saves`) it also stubs `AutoSave` and `GetQuestLabel` and checks the save kit: no save in the first system or during mission 1, one `AutoSave` per new system, none for a system already saved, stale timers after a jump or a load, and the cap of 6. It then runs entry, ticks (clock sum), the experiment dispatch, the E0.3 trigger chain, two wrapped jumps, a save/load with a reserved-key scan of `TRF`, a load without `TRF` and a load with a foreign `TRF` layout, and dumps `TRF`. It exits 1 on any script error or failed check. Set `LUA4` to use another interpreter.

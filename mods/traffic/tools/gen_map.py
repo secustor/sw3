@@ -7,6 +7,10 @@ CreatePortal lines of Data/Scripts/Locations/*/location.script (portals, positio
 RegisterRandomContact(TRADER_FLIGHT / R_CreateTraderFlight in any *.script of a system.
 Stations: CreateTradeStationDocking / CreatePatrolStationDocking calls of a system, with the
 SetObjectLabel label, CreateTradeStation/CreateStation position and DefStation guard team (st).
+Regions (rg, dg, pc; top-level rg): pirate homes = CreatePirateStationDocking systems, nearest home on
+the CreateManagedPortal("Portal", ...) graph, regions of <= 3 systems merged (v0.2 spec 4.1); danger
+from active PIRATE_FLIGHT / RandomPiratGetMoney (design 5.1). Compared with trf_region.script's
+runtime fallback (its built-in lists); a difference is printed and fails --check.
 System keys are the lowercase names the scripts use (portal destinations,
 TeleportToLocation, GetLastLocation comparisons); XML names are matched case-insensitively.
 --check: exit 1 if the output file differs from what would be written.
@@ -20,6 +24,8 @@ import xml.etree.ElementTree as ET
 GAME = "/Users/secustor/Games/Heroic/Star Wolves 3 - Civil War"
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Data", "Scripts",
                    "Mods", "Traffic", "map.script")
+REGION = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Data", "Scripts",
+                      "Mods", "Traffic", "trf_region.script")
 START = ["ahilles", "argon", "aurora", "corrino", "elio", "gefest", "gredos", "pegas"]
 SKIP_DIRS = {"_template_"}
 
@@ -123,12 +129,12 @@ def parse_location(path):
                 env[m.group(1)] = m.group(2)
         m = PORTAL.match(raw.split("--", 1)[0]) if code.strip() else None
         if m:
-            var, fn, _model, dest, rest = m.groups()
+            var, fn, model, dest, rest = m.groups()
             args = split_args(rest)
             pos = eval_vec(args[0], env) if args else None
             if pos is None:
                 notes.append("%s:%d %s position unresolved" % (os.path.basename(path), ln, var))
-            portals.append({"var": var, "managed": fn == "CreateManagedPortal",
+            portals.append({"var": var, "managed": fn == "CreateManagedPortal", "model": model,
                             "to": dest.strip().lower(), "pos": pos, "depth": depth, "line": ln})
         for w in WORD.findall(code):
             if w in OPEN_KW:
@@ -145,6 +151,144 @@ def has_trader(sysdir):
                 if TRADER.search(strip_code_keep_names(raw)):
                     return True
     return False
+
+
+PIR_HOME = re.compile(r"\bCreatePirateStationDocking\s*\(")
+PIR_FLIGHT = re.compile(r"\bRegisterRandomContact\s*\(\s*PIRATE_FLIGHT\b")
+PIR_EXT = re.compile(r"\bOutMissionActivity\s*\(\s*\"RandomPiratGetMoney\"")
+PIR_HULL = re.compile(r"\bCreateStation\s*\(\s*\"Pirate_")
+PC_AUTHORED = {"fronn": 2}  # trf_region's pro_cap exception (v0.2 spec 4.1)
+
+
+def pirate_info(sysdir):
+    """Uncommented pirate calls in a system's scripts: home, flight, ext (money event), hull."""
+    f = {"home": False, "flight": False, "ext": False, "hull": False}
+    for fn in sorted(os.listdir(sysdir)):
+        if fn.lower().endswith(".script"):
+            for raw in read_lines(os.path.join(sysdir, fn)):
+                code = strip_comment(raw)
+                for k, rx in (("home", PIR_HOME), ("flight", PIR_FLIGHT), ("ext", PIR_EXT), ("hull", PIR_HULL)):
+                    if rx.search(code):
+                        f[k] = True
+    return f
+
+
+def adjacency(systems, by, skip):
+    """Undirected portal adjacency by idx, sorted; skip(s, p) drops an edge (trf_region TRF_RgAdj)."""
+    adj = {s["idx"]: set() for s in systems}
+    for s in systems:
+        for p in s["portals"]:
+            t = by.get(p["to"])
+            if skip(s, p) or not t or t["idx"] == s["idx"]:
+                continue
+            adj[s["idx"]].add(t["idx"])
+            adj[t["idx"]].add(s["idx"])
+    return {k: sorted(v) for k, v in adj.items()}
+
+
+def bfs(adj, s):
+    dist, front, d = {s: 0}, [s], 0
+    while front:
+        nxt = []
+        for u in front:
+            for v in adj[u]:
+                if v not in dist:
+                    dist[v] = d + 1
+                    nxt.append(v)
+        front, d = nxt, d + 1
+    return dist
+
+
+def regions(systems, by, homes, skip):
+    """Replicates TRF_RgBuild's fallback: owner home per system (multi-source BFS, ties to the lower
+    home idx), regions of <= 3 systems merged into the nearest home with > 3, slots by home idx.
+    Returns ({idx: slot}, [home idx per slot])."""
+    adj = adjacency(systems, by, skip)
+    homes = sorted(homes)
+    own, dist, front, d = {}, {}, [], 0
+    for h in homes:
+        own[h], dist[h] = h, 0
+        front.append(h)
+    while front:
+        nxt = []
+        for u in front:
+            for v in adj[u]:
+                if v not in dist:
+                    dist[v], own[v] = d + 1, own[u]
+                    nxt.append(v)
+                elif dist[v] == d + 1 and own[u] < own[v]:
+                    own[v] = own[u]
+        front, d = nxt, d + 1
+    cnt = {}
+    for h in own.values():
+        cnt[h] = cnt.get(h, 0) + 1
+    mg = {}
+    for h in homes:
+        if cnt.get(h, 0) <= 3:
+            dh, best, bd = bfs(adj, h), None, None
+            for o in homes:
+                if o != h and cnt.get(o, 0) > 3 and o in dh and (bd is None or dh[o] < bd):
+                    best, bd = o, dh[o]
+            if best:
+                mg[h] = best
+    slots = [h for h in homes if h not in mg and cnt.get(h, 0) > 0]
+    of = {i: slots.index(mg.get(h, h)) + 1 for i, h in own.items() if mg.get(h, h) in slots}
+    return of, slots
+
+
+def danger_pc(s, home, flight, ext):
+    """Design 5.1 default danger and the pro_cap rule of TRF_RgBuild."""
+    dg = 3 if home else 2 if flight else 1 if ext else 0
+    if not s["trader"]:
+        pc = 0
+    elif s["name"] in PC_AUTHORED:
+        pc = PC_AUTHORED[s["name"]]
+    elif dg == 3:
+        pc = 3
+    elif any(t["kind"] == "trade" for t in s["st"]):
+        pc = 9
+    else:
+        pc = 5
+    return dg, pc
+
+
+def lua_list(text, fn):
+    """Quoted strings / name="v" pairs of the return table of function fn in trf_region.script."""
+    m = re.search(r"function " + fn + r"\(\)\s*return\s*\{(.*?)\};", text, re.S)
+    if not m:
+        return None
+    body = m.group(1)
+    pairs = re.findall(r"([A-Za-z_0-9]+)\s*=\s*\"([^\"]*)\"", body)
+    return dict(pairs) if pairs else re.findall(r"\"([^\"]*)\"", body)
+
+
+def fallback_diff(systems, by, rgl, path):
+    """Region table of trf_region's runtime fallback (built-in lists, non-Portal edges by name) against
+    the generated fields. Returns diff lines, or None if the script or a list is missing."""
+    try:
+        with open(path, encoding="cp1251", newline="") as f:
+            text = f.read()
+    except OSError:
+        return None
+    ls = [lua_list(text, n) for n in ("TRF_Rg_Homes", "TRF_Rg_PirSys", "TRF_Rg_ExtSys", "TRF_Rg_NonPortal")]
+    if any(x is None for x in ls):
+        return None
+    hs, pir, ext, nonp = ls
+    out = ["unknown system in trf_region lists: %s" % n for n in hs + pir + ext if n not in by]
+    homes = [by[n]["idx"] for n in hs if n in by]
+    of, slots = regions(systems, by, homes, lambda s, p: nonp.get(s["name"]) == p["var"])
+    names = {s["idx"]: s["name"] for s in systems}
+    gslots = [r["home"] for r in rgl]
+    fslots = [names[h] for h in slots]
+    if gslots != fslots:
+        out.append("region homes: generated %s, fallback %s" % (",".join(gslots), ",".join(fslots)))
+    for s in systems:
+        dg, pc = danger_pc(s, s["idx"] in homes, s["name"] in pir, s["name"] in ext)
+        a = (s.get("rg"), s["dg"], s["pc"])
+        b = (of.get(s["idx"]), dg, pc)
+        if a != b:
+            out.append("%s: generated rg=%s dg=%s pc=%s, fallback rg=%s dg=%s pc=%s" % ((s["name"],) + a + b))
+    return out
 
 
 def strip_comment(line):
@@ -333,7 +477,7 @@ def emit_st(st):
     return "{%s}" % f
 
 
-def emit(systems):
+def emit(systems, rgl):
     L = ["-- Generated by mods/traffic/tools/gen_map.py from the game files. Do not edit.",
          "-- sys[i]: name (lowercase script name), idx, dir (folder), mx/my (GlobalMap marker,",
          "-- absent if not on the map), start=1 starting region, trader=1 vanilla trader contact,",
@@ -344,6 +488,9 @@ def emit(systems):
          "-- position), side (team of the DefStation guard group), kind \"trade\"|\"patrol\", r (patrol docking",
          "-- radius), prm (docking param: dialog location), cond=1 if the docking call is not top level}.",
          "-- No dock field: trade docking uses the engine's GetDockingPosition, no script gives it.",
+         "-- rg: region slot (absent: independent), dg: danger 0..3 (design 5.1 default rule), pc: pro_cap.",
+         "-- Top-level rg[slot]: {name (home folder), home (home system), dg (2 x mean member dg, rounded, 1..3;",
+         "-- no reader yet), members (idx list)} (v0.2 spec 4.1).",
          "function TRF_MapData()",
          "  return {",
          "    sys = {"]
@@ -355,6 +502,9 @@ def emit(systems):
             head += ", start=1"
         if s["trader"]:
             head += ", trader=1"
+        if s["rg"]:
+            head += ", rg=%d" % s["rg"]
+        head += ", dg=%d, pc=%d" % (s["dg"], s["pc"])
         L.append("      {%s," % head)
         if s["st"]:
             L.append("        st = {")
@@ -378,6 +528,11 @@ def emit(systems):
     L.append("    by = {")
     for si, s in enumerate(systems):
         L.append('      [%s]=%d%s' % (lua_str(s["name"]), s["idx"], "," if si < len(systems) - 1 else ""))
+    L += ["    },", "    rg = {"]
+    for ri, r in enumerate(rgl):
+        L.append("      {name=%s, home=%s, dg=%d, members={%s}}%s" % (
+            lua_str(r["name"]), lua_str(r["home"]), r["dg"], ",".join(str(i) for i in r["members"]),
+            "," if ri < len(rgl) - 1 else ""))
     L += ["    }", "  }", "end", ""]
     return "\r\n".join(L).encode("ascii")
 
@@ -387,6 +542,7 @@ def main():
     ap.add_argument("--game", default=GAME)
     ap.add_argument("--out", default=OUT)
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--region", default=REGION)
     a = ap.parse_args()
 
     locdir = os.path.join(a.game, "Data", "Scripts", "Locations")
@@ -404,6 +560,7 @@ def main():
         systems.append({
             "name": name, "dir": dirs[name], "mpos": recs.get(name),
             "start": name in START, "trader": has_trader(d), "st": st, "closed": closed,
+            "pir": pirate_info(d),
             "portals": [p for p in ps if p["managed"] and p["to"] and p["to"] != name],
             "inner": [p for p in ps if p["managed"] and p["to"] == name],
             "broken": [p for p in ps if not p["managed"] and p["to"]],
@@ -467,7 +624,21 @@ def main():
         if len(tr) > 1:
             disc.append("several trade stations: %s %s" % (s["name"], ",".join(t["label"] for t in tr)))
 
-    data = emit(systems)
+    # Regions, danger, pro_cap (design 5.1, 5.11; v0.2 spec 4.1)
+    homes = [s["idx"] for s in systems if s["pir"]["home"]]
+    of, slots = regions(systems, by, homes, lambda s, p: p["model"] != "Portal")
+    for s in systems:
+        s["rg"] = of.get(s["idx"])
+        s["dg"], s["pc"] = danger_pc(s, s["pir"]["home"], s["pir"]["flight"], s["pir"]["ext"])
+    rgl = []
+    for slot, h in enumerate(slots, 1):
+        mem = sorted(i for i, g in of.items() if g == slot)
+        dgs = [systems[i - 1]["dg"] for i in mem]
+        rgl.append({"name": systems[h - 1]["dir"], "home": systems[h - 1]["name"], "members": mem,
+                    "dg": max(1, min(3, int(2.0 * sum(dgs) / len(dgs) + 0.5)))})
+    fdiff = fallback_diff(systems, by, rgl, os.path.abspath(a.region))
+
+    data = emit(systems, rgl)
     np = sum(len(s["portals"]) for s in systems)
     print("systems: %d (xml records %d, xml links %d)" % (len(systems), len(recs), len(links)))
     print("managed portals: %d, undirected portal links: %d, inner portals: %d, broken portals: %d"
@@ -485,6 +656,21 @@ def main():
     print("trade labels: %s" % ", ".join(sorted(set(
         s["st"][0]["label"] for s in systems if s["st"] and s["st"][0]["kind"] == "trade"))))
     print("start systems: %s" % ",".join(s["name"] for s in systems if s["start"]))
+    merged = [systems[h - 1]["name"] for h in homes if h not in slots]
+    print("regions: %d from %d homes (merged: %s): %s" % (len(rgl), len(homes), ",".join(merged) or "none",
+          ", ".join("%d %s %d dg%d" % (i, r["home"], len(r["members"]), r["dg"]) for i, r in enumerate(rgl, 1))))
+    print("independents: %s" % ",".join(s["name"] for s in systems if not s["rg"]))
+    print("danger: %s; pc: %s" % tuple(", ".join("%s=%d" % kv for kv in sorted(
+        __import__("collections").Counter(s[k] for s in systems).items())) for k in ("dg", "pc")))
+    print("pirate station hulls outside homes: %s" % ",".join(
+        s["name"] for s in systems if s["pir"]["hull"] and not s["pir"]["home"]))
+    if fdiff is None:
+        print("region fallback: trf_region.script or its lists not found, not compared")
+    else:
+        print("region fallback (trf_region built-in lists): %s" % ("identical" if not fdiff else
+              "%d differences" % len(fdiff)))
+        for x in fdiff:
+            print("  fallback: " + x)
     print("discrepancies: %d" % len(disc))
     for x in disc:
         print("  " + x)
@@ -501,7 +687,7 @@ def main():
         except OSError:
             same = False
         print("check: %s %s" % (out, "up to date" if same else "DIFFERS"))
-        return 0 if same else 1
+        return 0 if same and not fdiff else 1
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "wb") as f:
         f.write(data)

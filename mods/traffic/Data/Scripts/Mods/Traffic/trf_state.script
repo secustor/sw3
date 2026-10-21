@@ -1,12 +1,14 @@
--- sw3-traffic state module (v0.1 spec 3, 7, 9, 10.2; v0.2 spec 3, 10.2). Lua 4.0.1.
--- Saved table TRF (version 3), visit table TRF.live, handle table H (never saved), config accessors,
+-- sw3-traffic state module (v0.1 spec 3, 7, 9, 10.2; v0.2 spec 3, 10.2; v1 spec 3). Lua 4.0.1.
+-- Saved table TRF (version 4), visit table TRF.live, handle table H (never saved), config accessors,
 -- leg clock, disruption and heat bookkeeping, scheduled calls, the state dump.
 -- Pure logic: natives only through TRF_N (GetCurrentLocation, GetObjectByLabel, GetLevelDifficult) and
 -- guarded handle calls in the dump. Top level defines functions and the two chunk locals below.
 
 -- Handle table (spec 3.3). The chunk runs on every MapInitialization, so H starts empty after every
 -- entry and load. Only TRF_H and TRF_HClear touch it directly.
-local H = {tr={}, grp={}, resp={}, pir={}, van={}};
+-- H.due: scheduled calls (TRF_Due). They are gen-checked and never survive a load, so they stay out of the
+-- save (v1 spec 3.4).
+local H = {tr={}, grp={}, resp={}, pir={}, van={}, due={}};
 -- Derived static data: map cache (TRF_Map), built on first use per MapInitialization.
 local M = {};
 
@@ -18,7 +20,7 @@ function TRF_HClear()
 	local ks = {};
 	for k, v in h do tinsert(ks, k); end;
 	for i = 1, getn(ks) do h[ks[i]] = nil; end;
-	h.tr = {}; h.grp = {}; h.resp = {}; h.pir = {}; h.van = {};
+	h.tr = {}; h.grp = {}; h.resp = {}; h.pir = {}; h.van = {}; h.due = {};
 end;
 
 -- Logging -------------------------------------------------------------------------
@@ -59,8 +61,10 @@ function TRF_OptDef()
 		sys_off={}, sys_deny={}, dump=0, tune={}};
 end;
 
--- v0.2 modules with TRF_<M>_OptDef, TRF_<M>_TuneDef and TRF_<M>_Dump (v0.2 spec 10.2, 10.4).
-function TRF_ModList() return {"Rg", "Tier", "Raid", "Hail", "Shop"}; end;
+-- v0.2 and v1 modules with TRF_<M>_OptDef, TRF_<M>_TuneDef and TRF_<M>_Dump (v0.2 spec 10.2, 10.4; v1 10.1).
+function TRF_ModList()
+	return {"Rg", "Tier", "Raid", "Hail", "Shop", "Loc", "Track", "Faction", "Clan", "Convoy", "Danger", "Supply", "Base"};
+end;
 
 -- Value of key in the first module table getglobal("TRF_"..M..suffix)() that has it, else nil.
 function TRF_ModDef(key, suffix)
@@ -79,7 +83,10 @@ end;
 function TRF_OptEnum()
 	return {override=2, guard=2, dock_mode=2, log=2, enabled=2, meet=2, board=2, news_mode=2, strict=2,
 		hail_start=-2, restore=-2, cycle=1, prosperity=1, band_half=1, parked=1, seed=1, queue=1, raids=1,
-		staged=1, contracts=1, shop_mode=1, short_price=1, heat_war=1};
+		staged=1, contracts=1, shop_mode=1, short_price=1, heat_war=1,
+		track=1, conv=1, demand=1, heat_offer=1, carriers=1, salvage=1, salv_addmod=1, clan_ace=1, sweeps=1,
+		sweep_ct=1, po=1, tt4=1, tt4_split=1, feq=1, forced_bust=1, dconv=1, dc_speed=1, bases=1, base_glow=1,
+		wreck=1, loc_mode=1};
 end;
 
 function TRF_Clamp(x, lo, hi)
@@ -90,7 +97,7 @@ end;
 
 -- Config value with its default (base table, else the first v0.2 module that defines the key); a value
 -- of the wrong type reads as the default. Clamps (v0.2 spec 10.2): spawn_scale 0..1.5, cap_traders 0..5,
--- cap_ships 0..20, tier_cap 1..2; enumerations 0..n (TRF_OptEnum, negative n: 1..-n) else the default.
+-- cap_ships 0..20, tier_cap 1..4 (v1 10.5); enumerations 0..n (TRF_OptEnum, negative n: 1..-n) else the default.
 function TRF_Opt(key)
 	local d = TRF_OptDef()[key];
 	if d == nil then d = TRF_ModDef(key, "_OptDef"); end;
@@ -100,7 +107,7 @@ function TRF_Opt(key)
 	if key == "spawn_scale" then return TRF_Clamp(v, 0, 1.5); end;
 	if key == "cap_traders" then return TRF_Clamp(floor(v), 0, 5); end;
 	if key == "cap_ships" then return TRF_Clamp(floor(v), 0, 20); end;
-	if key == "tier_cap" then return TRF_Clamp(floor(v), 1, 2); end;
+	if key == "tier_cap" then return TRF_Clamp(floor(v), 1, 4); end;
 	local e = TRF_OptEnum()[key];
 	if e then
 		local lo, hi = 0, e;
@@ -111,13 +118,15 @@ function TRF_Opt(key)
 	return v;
 end;
 
--- Tuning constants (spec 9 `tune`): base table, then every TRF_<M>_TuneDef() (keys not yet present),
--- then cfg tune for keys present. Loop periods stay positive.
+-- Tuning constants (spec 9 `tune`): base table, then every TRF_<M>_TuneDef() (keys not yet present), then
+-- the v1 tuning table TRF_V1_TuneDef() (trf_loc, v1 10.5; replaces values of the same type), then cfg tune
+-- for keys present with the same type. Values are numbers or tables (ranges and lists, v1 10.5). Loop
+-- periods stay positive.
 function TRF_Tune()
 	local t = {spacing=20, T_dock=20, lifetime=720, ovd=600, wd_move=20, wd_t=60, step=10,
 		T_leg=300, dis_decay=3, heat_decay=10, dis_k=0.12, T_del=5, T_win=20, pk_win=10,
 		sos_db=30, arr_delay=5, arr_dis=3, info_r=200, np_max=300, np_r=30, dock_to=90,
-		kill_cap=3, p_max=0.95};
+		kill_cap=3, p_max=0.95, stat_max=48, fs0=3};
 	local ms = TRF_ModList();
 	for i = 1, getn(ms) do
 		local f = getglobal("TRF_"..ms[i].."_TuneDef");
@@ -125,21 +134,30 @@ function TRF_Tune()
 			local mt = call(f, {}, "x", TRF_PErr);
 			if type(mt) == "table" then
 				for k, v in mt do
-					if t[k] == nil and type(v) == "number" then t[k] = v; end;
+					if t[k] == nil and (type(v) == "number" or type(v) == "table") then t[k] = v; end;
 				end;
+			end;
+		end;
+	end;
+	if type(TRF_V1_TuneDef) == "function" then
+		local vt = call(TRF_V1_TuneDef, {}, "x", TRF_PErr);
+		if type(vt) == "table" then
+			for k, v in vt do
+				if (type(v) == "number" or type(v) == "table") and (t[k] == nil or type(t[k]) == type(v)) then t[k] = v; end;
 			end;
 		end;
 	end;
 	local o = TRF_Opt("tune");
 	if type(o) == "table" then
 		for k, v in o do
-			if type(v) == "number" and t[k] ~= nil then t[k] = v; end;
+			if t[k] ~= nil and type(v) == type(t[k]) then t[k] = v; end;
 		end;
 	end;
 	if t.T_leg < 1 then t.T_leg = 300; end;
 	if t.step < 0.5 then t.step = 10; end;
 	if t.dis_decay < 1 then t.dis_decay = 3; end;
 	if t.heat_decay < 1 then t.heat_decay = 10; end;
+	if type(t.stat_max) ~= "number" or t.stat_max < 8 then t.stat_max = 48; end;
 	return t;
 end;
 
@@ -231,10 +249,82 @@ end;
 
 function TRF_NewClock() return {legs=0, tleg=0, gt=0, real=0, dd=0, rt=0}; end;
 
--- v3 (v0.2 spec 3.1). rg and clan stay empty until TRF_Rg_Init (trf_region) fills them.
+-- v4 (v1 spec 3.1). rg and clan stay empty until TRF_Rg_Init (trf_region) fills them; the v4 slot
+-- fields (fs, rg.ct, clan.sv/sf) are filled by TRF_V4Fill after it. feq and offer stay nil.
 function TRF_Fresh()
-	return {version=3, active=1, gen=0, seq=0, clock=TRF_NewClock(), sys={}, std={heat=0, heat_t=0, help=0},
-		live={}, exp={}, rg={}, clan={}, short={}, shops={}, news={}, newsx={}, tsh={}};
+	return {version=4, active=1, gen=0, seq=0, clock=TRF_NewClock(), sys={}, std={heat=0, heat_t=0, help=0, fst="55555"},
+		live={}, exp={}, rg={}, clan={}, short={}, shops={}, news={}, newsx={}, tsh={}, fs={}, tp={}, lr={}, base={}};
+end;
+
+-- Bits (v1 spec 3.1; Lua 4 has no bit operators): bit b (1, 2, 4, ...) of v is 0 or 1; set and clear
+-- change v only when the bit differs. A non-number v reads as 0.
+function TRF_Bit(v, b)
+	if type(v) ~= "number" or type(b) ~= "number" or b < 1 then return 0; end;
+	return mod(floor(v / b), 2);
+end;
+
+function TRF_BitSet(v, b)
+	if type(v) ~= "number" then v = 0; end;
+	if TRF_Bit(v, b) == 0 then return v + b; end;
+	return v;
+end;
+
+function TRF_BitClr(v, b)
+	if type(v) ~= "number" then v = 0; end;
+	if TRF_Bit(v, b) == 1 then return v - b; end;
+	return v;
+end;
+
+-- 1 for a string of 5 digits (fs[slot], std.fst).
+function TRF_Digits5(v)
+	return type(v) == "string" and strlen(v) == 5 and not strfind(v, "[^0-9]") and 1 or nil;
+end;
+
+-- v4 slot fields (v1 3.1, 3.3) for every region slot: fs[slot] (fs0 in every digit), rg[slot].ct 0..7,
+-- rg[slot].sr 1..2 (else absent), clan[slot].sv 0..9 and .sf 0..5; std.fst. Fills missing or wrong
+-- values only (idempotent, like TRF_Fs_Init), so it runs after TRF_Rg_Init, at migration and on repair.
+-- fs entries of slots that no longer exist are removed.
+function TRF_V4Fill()
+	local fs = TRF_Tab(TRF, "fs");
+	local s = TRF_Tab(TRF, "std");
+	if not TRF_Digits5(s.fst) then s.fst = "55555"; end;
+	local d0 = TRF_Tune().fs0;
+	if type(d0) ~= "number" then d0 = 3; end;
+	local def = strrep(format("%d", TRF_Clamp(floor(d0), 0, 9)), 5);
+	local rg = TRF_Tab(TRF, "rg");
+	local clan = TRF_Tab(TRF, "clan");
+	for slot, r in rg do
+		if type(slot) == "number" and type(r) == "table" then
+			if not TRF_Digits5(fs[slot]) then fs[slot] = def; end;
+			-- ct is a bit field: out of range means corrupt, so reset (a clamp to 7 would accept both contracts
+			-- and force a Bust; trf_region TRF_Rg_Fix does the same).
+			r.ct = floor(TRF_Num(r, "ct", 0));
+			if r.ct < 0 or r.ct > 7 then r.ct = 0; end;
+			if type(r.sr) ~= "number" or (r.sr ~= 1 and r.sr ~= 2) then r.sr = nil; end;
+			local c = clan[slot];
+			if type(c) == "table" then
+				c.sv = TRF_Clamp(floor(TRF_Num(c, "sv", 0)), 0, 9);
+				c.sf = TRF_Clamp(floor(TRF_Num(c, "sf", 0)), 0, 5);
+			end;
+		end;
+	end;
+	local bad = {};
+	for k, v in fs do
+		if type(rg[k]) ~= "table" then tinsert(bad, k); end;
+	end;
+	for i = 1, getn(bad) do fs[bad[i]] = nil; end;
+end;
+
+-- v3 -> v4 (v1 spec 3.3): new fields with their defaults; phases, pro, shortages and shops stay.
+function TRF_Migrate4()
+	TRF.fs = {};
+	TRF_Tab(TRF, "std").fst = "55555";
+	TRF.tp = {}; TRF.lr = {}; TRF.base = {};
+	TRF.feq = nil; TRF.offer = nil;
+	TRF.version = 4;
+	TRF_P("TRF_Fs_Init");
+	TRF_V4Fill();
+	TRF_StL("migrate v3 -> v4");
 end;
 
 -- v2 -> v3 (v0.2 spec 3.3): new fields, rt = legs, regions and start pro by TRF_Rg_Init(1).
@@ -252,13 +342,13 @@ function TRF_Migrate3()
 	TRF_StL("migrate v2 -> v3 legs="..c.legs);
 end;
 
--- v1 -> v2 -> v3, unknown version -> reset (std.heat, std.help and shops kept, so the next trade dock
--- restores changed prices; gen kept so restored triggers stay stale).
--- Returns 1 when TRF had an older or unknown version.
+-- v1 -> v2 -> v3 -> v4, unknown version -> reset (std.heat, std.help and shops kept, so the next trade dock
+-- restores changed prices; gen kept so restored triggers stay stale; base cleared, so base objects are
+-- orphans on the next entry, v1 9.7). Returns 1 when TRF had an older or unknown version.
 function TRF_Migrate()
 	if type(TRF) ~= "table" then return nil; end;
 	local v = TRF.version;
-	if v == 3 then return nil; end;
+	if v == 4 then return nil; end;
 	if v == 1 then
 		if type(TRF.clock) ~= "table" then TRF.clock = {}; end;
 		local c = TRF.clock;
@@ -272,6 +362,10 @@ function TRF_Migrate()
 	end;
 	if v == 2 then
 		TRF_Migrate3();
+		v = 3;
+	end;
+	if v == 3 then
+		TRF_Migrate4();
 		return 1;
 	end;
 	local heat, help, shops = 0, 0, {};
@@ -287,7 +381,9 @@ function TRF_Migrate()
 	f.shops = shops;
 	TRF = f;
 	TRF_P("TRF_Rg_Init", 1);
-	TRF_StL("migrate version "..tostring(v).." -> 3 (reset, heat, help and shops kept)");
+	TRF_P("TRF_Fs_Init");
+	TRF_V4Fill();
+	TRF_StL("migrate version "..tostring(v).." -> 4 (reset, heat, help and shops kept)");
 	return 1;
 end;
 
@@ -303,8 +399,8 @@ function TRF_Tab(t, k)
 	return t[k];
 end;
 
--- System entries (v0.2 spec 3.1): numeric key, table value, dis 1..9 and pro 1..pc(idx); 0 or a wrong
--- type removes the field, an entry with neither field is removed.
+-- System entries (v0.2 spec 3.1, v1 3.1): numeric key, table value, dis 1..9, pro 1..pc(idx), bh 1..3; 0 or
+-- a wrong type removes the field, an entry with none of the three is removed.
 function TRF_SysFix()
 	local s = TRF_Tab(TRF, "sys");
 	local bad = {};
@@ -322,7 +418,9 @@ function TRF_SysFix()
 			else
 				v.pro = nil;
 			end;
-			if v.dis == nil and v.pro == nil then tinsert(bad, k); end;
+			if type(v.bh) == "number" then v.bh = TRF_Clamp(floor(v.bh), 0, 3); else v.bh = nil; end;
+			if v.bh == 0 then v.bh = nil; end;
+			if v.dis == nil and v.pro == nil and v.bh == nil then tinsert(bad, k); end;
 		end;
 	end;
 	for i = 1, getn(bad) do s[bad[i]] = nil; end;
@@ -341,9 +439,91 @@ function TRF_ListFix(t, k, n)
 	return l;
 end;
 
--- Type-check every v3 field (wrong type -> default). live keeps its records; its sub-fields are repaired.
+-- 1 for a packed pool record of 14 integers (v1 4.1; trf_track TRF_TpUnpack reads it).
+function TRF_TpOk(s)
+	if type(s) ~= "string" or strlen(s) > 80 or strfind(s, "[^%d,%-]") then return nil; end;
+	local _, nn = gsub(s, "%-?%d+", "");
+	local _, nc = gsub(s, ",", "");
+	if nn == 14 and nc == 13 then return 1; end;
+	return nil;
+end;
+
+-- 1 when system idx may hold a base record (allow-list ba = 1, v1 9.1). Without the map, or with a map
+-- that has no ba field yet (not regenerated), every system is allowed.
+function TRF_BaseAllowed(idx)
+	local m = TRF_Map();
+	if type(idx) ~= "number" then return nil; end;
+	if not m then return 1; end;
+	if not m.sys[idx] then return nil; end;
+	if m.sys[idx].ba == 1 then return 1; end;
+	for i = 1, getn(m.sys) do
+		if m.sys[i].ba ~= nil then return nil; end;
+	end;
+	return 1;
+end;
+
+-- v4 checks (v1 3.3): slot fields and fst (TRF_V4Fill), tp records and count, lr, base, feq, offer.
+-- Wrong entries are dropped one by one.
+function TRF_RepairV4()
+	TRF_V4Fill();
+	local m = TRF_Map();
+	local legs = TRF.clock.legs;
+	local ps = TRF_Tune().pool_size;
+	if type(ps) ~= "number" then ps = 16; end;
+	ps = TRF_Clamp(floor(ps), 1, 16);
+	local l = {};
+	if type(TRF.tp) == "table" then
+		for i = 1, getn(TRF.tp) do
+			if TRF_TpOk(TRF.tp[i]) and getn(l) < ps then tinsert(l, TRF.tp[i]); end;
+		end;
+	end;
+	TRF.tp = l;
+	l = {};
+	if type(TRF.lr) == "table" then
+		for i = 1, getn(TRF.lr) do
+			local e = TRF.lr[i];
+			if type(e) == "table" and type(e.s) == "number" and type(TRF.rg[e.s]) == "table" and type(e.t) == "number"
+				and (not m or m.sys[e.t]) and type(e.e) == "number" and getn(l) < 2 then
+				tinsert(l, e);
+			end;
+		end;
+	end;
+	TRF.lr = l;
+	l = {};
+	if type(TRF.base) == "table" then
+		for i = 1, getn(TRF.base) do
+			local b = TRF.base[i];
+			if type(b) == "table" and type(b.k) == "number" and (b.k == 1 or b.k == 2 or b.k == 3)
+				and TRF_BaseAllowed(b.s) and getn(l) < 4 then
+				b.h = TRF_Clamp(floor(TRF_Num(b, "h", 9)), 0, 9);
+				TRF_Num(b, "t", legs);
+				if b.w ~= 1 then b.w = 0; end;
+				tinsert(l, b);
+			end;
+		end;
+	end;
+	TRF.base = l;
+	local q = TRF.feq;
+	if q ~= nil and not (type(q) == "table" and (q.k == 1 or q.k == 2) and type(q.f) == "number" and q.f >= 1 and q.f <= 5
+		and q.f == floor(q.f) and type(q.s) == "number" and type(q.t) == "number") then
+		TRF.feq = nil;
+		TRF_StL("repair: feq dropped");
+	elseif type(q) == "table" then
+		q.r = TRF_Clamp(floor(TRF_Num(q, "r", 0)), 0, 3);
+	end;
+	local o = TRF.offer;
+	if o ~= nil and not (type(o) == "table" and (o.k == 1 or o.k == 2 or o.k == 3) and type(o.s) == "number"
+		and type(o.t) == "number") then
+		TRF.offer = nil;
+		TRF_StL("repair: offer dropped");
+	elseif type(o) == "table" then
+		o.p = max(0, floor(TRF_Num(o, "p", 0)));
+	end;
+end;
+
+-- Type-check every v4 field (wrong type -> default). live keeps its records; its sub-fields are repaired.
 function TRF_Repair()
-	TRF.version = 3;
+	TRF.version = 4;
 	TRF_Num(TRF, "gen", 0);
 	TRF_Num(TRF, "seq", 0);
 	if TRF.seq < 0 or TRF.seq > 9999 then TRF.seq = 0; end;
@@ -366,6 +546,7 @@ function TRF_Repair()
 	TRF_Tab(TRF, "live");
 	TRF_LiveFix();
 	TRF_Tab(TRF, "exp");
+	TRF_RepairV4();
 end;
 
 -- Create, migrate and repair TRF. Returns 1 when it created a new table.
@@ -374,6 +555,8 @@ function TRF_Init()
 		TRF = TRF_Fresh();
 		TRF_LiveReset();
 		TRF_P("TRF_Rg_Init", 1);
+		TRF_P("TRF_Fs_Init");
+		TRF_V4Fill();
 		return 1;
 	end;
 	TRF_Migrate();
@@ -386,7 +569,8 @@ end;
 -- Sub-fields of TRF.live with their types; missing or wrong ones get defaults, records stay.
 function TRF_LiveFix()
 	local l = TRF.live;
-	TRF_Tab(l, "tr"); TRF_Tab(l, "port"); TRF_Tab(l, "due"); TRF_Tab(l, "stat");
+	TRF_Tab(l, "tr"); TRF_Tab(l, "port"); TRF_Tab(l, "stat");
+	l.due = nil;
 	local g = TRF_Tab(l, "grp");
 	for k = 1, 4 do TRF_Num(g, k, 0); end;
 	TRF_Num(l, "kills", 0); TRF_Num(l, "rec", 0); TRF_Num(l, "rn", 0); TRF_Num(l, "nrd", 0);
@@ -417,19 +601,31 @@ function TRF_LiveReset(keep)
 	else
 		TRF_HClear();
 	end;
+	TRF_H().due = {};
 	TRF.live = {g=TRF.gen, tr=tr, grp={0, 0, 0, 0}, port={}, kills=0, rec=0, rn=rn, nrd=nrd,
-		capt=TRF_Opt("cap_traders"), caps=TRF_Opt("cap_ships"), stok=0, due={}, line=-1000,
+		capt=TRF_Opt("cap_traders"), caps=TRF_Opt("cap_ships"), stok=0, line=-1000,
 		step=0, dmp=0, stat={}};
 end;
 
--- Gone trader records: keep the 8 newest by gg (v0.2 spec 3.2), called by the manager step.
--- Returns the number removed.
+-- Fields a gone trader record keeps (v0.2 3.2; v1 3.2 adds tb, pi, cv, xt).
+function TRF_GoneKeep()
+	return {id=1, nm=1, cls=1, st=1, why=1, gg=1, tb=1, pi=1, cv=1, xt=1};
+end;
+
+-- Gone trader records: stripped to TRF_GoneKeep, the 8 newest by gg kept (v0.2 spec 3.2), called by the
+-- manager step. Returns the number removed.
 function TRF_LivePrune()
 	if type(TRF) ~= "table" or type(TRF.live) ~= "table" or type(TRF.live.tr) ~= "table" then return 0; end;
 	local tr = TRF.live.tr;
 	local g = {};
+	local keep = TRF_GoneKeep();
 	for id, r in tr do
-		if type(r) == "table" and r.st == "gone" then tinsert(g, {id=id, gg=r.gg or 0}); end;
+		if type(r) == "table" and r.st == "gone" then
+			tinsert(g, {id=id, gg=r.gg or 0});
+			local ks = {};
+			for k, v in r do if not keep[k] then tinsert(ks, k); end; end;
+			for i = 1, getn(ks) do r[ks[i]] = nil; end;
+		end;
 	end;
 	if getn(g) <= 8 then return 0; end;
 	sort(g, function(a, b) if a.gg ~= b.gg then return a.gg > b.gg; end; return a.id > b.id; end);
@@ -450,15 +646,15 @@ function TRF_Rec(id)
 	return nil;
 end;
 
--- Counter in TRF.live.stat (spawn, skip_<reason>, van_<reason>, remove_<why>). New keys beyond 96 count
--- in stat.other (v0.2 spec 3.4).
+-- Counter in TRF.live.stat (spawn, skip_<reason>, van_<reason>, remove_<why>). New keys beyond stat_max
+-- (48, v1 3.4; was 96) count in stat.other.
 function TRF_Stat(key, n)
 	if type(TRF) ~= "table" or type(TRF.live) ~= "table" then return; end;
 	local s = TRF_Tab(TRF.live, "stat");
 	if s[key] == nil then
 		local c = 0;
 		for k, v in s do c = c + 1; end;
-		if c >= 96 then key = "other"; end;
+		if c >= TRF_Tune().stat_max - 1 then key = "other"; end;
 	end;
 	s[key] = (s[key] or 0) + (n or 1);
 	return s[key];
@@ -501,13 +697,13 @@ function TRF_Dis(idx)
 	return 0;
 end;
 
--- Writes field k (dis or pro) of system idx; 0 clears it, an entry without dis and pro is removed.
+-- Writes field k (dis, pro or bh) of system idx; 0 clears it, an entry without dis, pro and bh is removed.
 function TRF_SysSet(idx, k, v)
 	if type(TRF.sys) ~= "table" then TRF.sys = {}; end;
 	local e = TRF.sys[idx];
 	if type(e) ~= "table" then e = {}; end;
 	if v == 0 then e[k] = nil; else e[k] = v; end;
-	if e.dis == nil and e.pro == nil then TRF.sys[idx] = nil; else TRF.sys[idx] = e; end;
+	if e.dis == nil and e.pro == nil and e.bh == nil then TRF.sys[idx] = nil; else TRF.sys[idx] = e; end;
 end;
 
 -- Write dis clamped to 0..9 (pro kept); 0 clears it.
@@ -600,16 +796,19 @@ function TRF_Decay()
 		end;
 		if s.heat <= 0 then s.heat = 0; s.heat_t = c.legs; end;
 	end;
+	-- v1 (9.2): base disruption floors after the decay step (trf_base, may be missing).
+	TRF_P("TRF_Base_Floors");
 	-- v0.2: regional cycle up to the current leg, then shortage expiry (both protected, may be missing).
 	TRF_P("TRF_RegionCatchup");
 	TRF_P("TRF_ShortExpire");
 end;
 
--- One leg (S13): legs + 1, then decay.
+-- One leg (S13): legs + 1, then decay (with the region catch-up), then the base leg step (v1 9.2).
 function TRF_AddLeg(why)
 	TRF.clock.legs = TRF.clock.legs + 1;
 	TRF_LDbg("st: leg "..TRF.clock.legs.." ("..tostring(why)..")");
 	TRF_Decay();
+	TRF_P("TRF_Base_Leg", TRF.clock.legs);
 end;
 
 -- Scheduled calls (spec 3.2 due) ---------------------------------------------------
@@ -618,7 +817,7 @@ end;
 -- (at most 32 entries, v0.2 spec 3.2; callers handle nil).
 function TRF_Due(dt, fname, a, b)
 	if not TRF_LiveOk() or type(fname) ~= "string" or type(dt) ~= "number" then return nil; end;
-	local d = TRF_Tab(TRF.live, "due");
+	local d = TRF_Tab(%H, "due");
 	if getn(d) >= 32 then TRF_Stat("skip_due"); TRF_StL("due list full, dropped "..fname); return nil; end;
 	tinsert(d, {t=TRF.clock.gt + dt, f=fname, a=a, b=b, g=TRF.gen});
 	return 1;
@@ -627,8 +826,9 @@ end;
 -- Run due calls (each protected); entries of another gen are dropped. Calls scheduled while running
 -- go to the new list and run on a later tick. At most 16 calls per tick.
 function TRF_DueRun()
-	if not TRF_LiveOk() or type(TRF.live.due) ~= "table" then return 0; end;
-	local d, gt = TRF.live.due, TRF.clock.gt;
+	local h = %H;
+	if not TRF_LiveOk() or type(h.due) ~= "table" then return 0; end;
+	local d, gt = h.due, TRF.clock.gt;
 	local keep, run = {}, {};
 	for i = 1, getn(d) do
 		local e = d[i];
@@ -636,7 +836,7 @@ function TRF_DueRun()
 			if e.t <= gt and getn(run) < 16 then tinsert(run, e); else tinsert(keep, e); end;
 		end;
 	end;
-	TRF.live.due = keep;
+	h.due = keep;
 	for i = 1, getn(run) do
 		local e = run[i];
 		local f = getglobal(e.f);
@@ -827,7 +1027,19 @@ function TRF_DumpState(why)
 	local st = l.stat;
 	if type(st) ~= "table" then st = {}; end;
 	TRF_L("dump stat"..TRF_Kv(st));
-	-- v0.2 module dumps (each protected; missing modules skipped).
+	local fs = "";
+	if type(TRF.fs) == "table" then
+		for k, v in TRF.fs do fs = fs.." "..tostring(k).."="..tostring(v); end;
+	end;
+	local nb, nl, ntp = 0, 0, 0;
+	if type(TRF.base) == "table" then nb = getn(TRF.base); end;
+	if type(TRF.lr) == "table" then nl = getn(TRF.lr); end;
+	if type(TRF.tp) == "table" then ntp = getn(TRF.tp); end;
+	local fk, ok = "none", "none";
+	if type(TRF.feq) == "table" then fk = tostring(TRF.feq.k).."/"..tostring(TRF.feq.f).."@"..TRF_SysName(TRF.feq.s); end;
+	if type(TRF.offer) == "table" then ok = tostring(TRF.offer.k).."@"..TRF_SysName(TRF.offer.s); end;
+	TRF_L("dump v4 fst="..tostring(std.fst).." tp="..ntp.." lr="..nl.." base="..nb.." feq="..fk.." offer="..ok.." fs"..fs);
+	-- v0.2 and v1 module dumps (each protected; missing modules skipped).
 	local ms = TRF_ModList();
 	tinsert(ms, "Safety");
 	for i = 1, getn(ms) do TRF_P("TRF_"..ms[i].."_Dump"); end;

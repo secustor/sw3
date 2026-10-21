@@ -6,9 +6,10 @@
 
 -- Helpers ---------------------------------------------------------------------------
 
--- Config with the v0.2 defaults plus t.
+-- Config with the v0.2 defaults (v1 features off, T_V1Off) plus t.
 function T_Cfg2(t)
 	local c = {exp=0, log=1, traffic=1};
+	for k, v in T_V1Off() do c[k] = v; end;
 	if t then for k, v in t do c[k] = v; end; end;
 	HOST().cfg = c;
 end;
@@ -74,14 +75,29 @@ function T_V02_A()
 	h.labels.CurrentQuest = "5_1";
 	V_Begin("gredos");
 	local m = TRF_RgMap();
-	HOST_Check(TRF.version == 3 and m.n == 8 and getn(TRF.rg) == 8 and V_N(TRF.clan) == 8 and TRF.clock.legs - TRF.clock.rt < 2
-		and TRF.std.help == 0, "new game: v3 with 8 regions, rt within one tick of legs, help 0");
+	HOST_Check(TRF.version == 4 and m.n == 8 and getn(TRF.rg) == 8 and V_N(TRF.clan) == 8 and TRF.clock.legs - TRF.clock.rt < 2
+		and TRF.std.help == 0, "new game: v4 with 8 regions, rt within one tick of legs, help 0");
 	local want = {14, 15, 11, 17, 27, 14, 4, 8};
 	local sz, tot = "", 0;
 	for i = 1, m.n do sz = sz.." "..getn(m[i].sys); tot = tot + getn(m[i].sys); if getn(m[i].sys) ~= want[i] then sz = sz.."!"; end; end;
 	HOST_Check(not strfind(sz, "!", 1, 1) and tot == 110, "region sizes 14 15 11 17 27 14 4 8, 110 systems (spec 4.1):"..sz);
 	HOST_Check(m.of[V_Idx("earth")] == nil and m.of[V_Idx("precursors")] == nil and m.of[V_Idx("disonsphere")] == nil,
 		"earth, precursors, disonsphere have no region");
+	-- Static map fields (gen_map.py) against the runtime fallback on the same map without them.
+	local mp, fm = TRF_Map(), {sys={}};
+	fm.by = mp.by;
+	for i = 1, getn(mp.sys) do
+		local c = {};
+		for k, v in mp.sys[i] do c[k] = v; end;
+		c.rg = nil; c.dg = nil; c.pc = nil;
+		fm.sys[i] = c;
+	end;
+	local fb, fd = TRF_RgBuild(fm), 0;
+	for i = 1, getn(mp.sys) do
+		if fb.of[i] ~= m.of[i] or fb.dg[i] ~= m.dg[i] or fb.pc[i] ~= m.pc[i] then fd = fd + 1; end;
+	end;
+	HOST_Check(type(mp.rg) == "table" and type(mp.sys[1].dg) == "number" and fb.n == m.n and fd == 0,
+		"map rg/dg/pc present and equal to the runtime fallback ("..fd.." systems differ)");
 	local line = TRF_RgLine();
 	HOST_Check(strsub(line, 1, 8) == "QBBURXXV" and V_AllPhases(line), "start phases guard off: every phase present ("..line..")");
 	local ok, bad = V_ProOk();
@@ -94,19 +110,19 @@ function T_V02_A()
 	local g = V_Idx("gredos");
 	local sg = TRF_RgOf(g);
 	local tp = TRF_PhaseTarget(sg);
-	HOST_Check(TRF.version == 3 and TRF.clock.rt == 40 and TRF.std.help == 0 and V_N(TRF.short) == 0 and V_N(TRF.shops) == 0
-		and type(TRF.news) == "table" and type(TRF.newsx) == "table" and type(TRF.tsh) == "table" and V_Logs("migrate v2 -> v3") == 1,
+	HOST_Check(TRF.version == 4 and TRF.clock.rt == 40 and TRF.std.help == 0 and V_N(TRF.short) == 0 and V_N(TRF.shops) == 0
+		and type(TRF.news) == "table" and type(TRF.newsx) == "table" and type(TRF.tsh) == "table" and V_Logs("migrate v2 -> v3") == 1 and V_Logs("migrate v3 -> v4") == 1,
 		"v2 -> v3: rt = legs, help 0, short/shops/news/newsx/tsh added, logged");
 	HOST_Check(TRF.sys[46].dis == 4 and TRF.sys[9].dis == 1 and TRF.std.heat == 3 and TRF.gen == 5 and TRF.exp.cnt.enter == 7,
 		"v2 -> v3 keeps dis, heat, gen + 1, exp");
 	HOST_Check(getn(TRF.rg) == 8 and TRF_Pro(g) == min(tp, TRF_ProCap(g)) and V_ProOk(), "v2 -> v3: rg/clan initialised, pro = start target ("..TRF_Pro(g)..")");
 	-- v1 save.
 	T_SaveLoad(function() TRF = {version=1, active=1, gen=3, clock={game=40, real=2}, exp={cnt={enter=2}}}; end);
-	HOST_Check(TRF.version == 3 and TRF.clock.gt == 40 and TRF.clock.game == nil and getn(TRF.rg) == 8 and TRF.exp.cnt.enter == 2
+	HOST_Check(TRF.version == 4 and TRF.clock.gt == 40 and TRF.clock.game == nil and getn(TRF.rg) == 8 and TRF.exp.cnt.enter == 2
 		and V_Logs("migrate v1 -> v2") == 1 and V_Logs("migrate v2 -> v3") == 2, "v1 -> v2 -> v3");
 	-- Unknown version keeps heat, help and shops.
 	T_SaveLoad(function() TRF = {version=7, gen=9, std={heat=5, help=12}, shops={{s=46, sh="gredos", c=1}}, clock={legs=3}, foo=1}; end);
-	HOST_Check(TRF.version == 3 and TRF.std.heat == 5 and TRF.std.help == 12 and getn(TRF.shops) == 1 and TRF.shops[1].sh == "gredos"
+	HOST_Check(TRF.version == 4 and TRF.std.heat == 5 and TRF.std.help == 12 and getn(TRF.shops) == 1 and TRF.shops[1].sh == "gredos"
 		and TRF.gen == 10 and TRF.foo == nil and getn(TRF.rg) == 8, "unknown version: reset, heat, help and shops kept");
 	-- Repair of wrong types on load.
 	T_SaveLoad(function()
@@ -120,7 +136,7 @@ function T_V02_A()
 		and type(TRF.news) == "table" and type(TRF.tsh) == "table", "repair: rt, broken slot, clan out of range, pro clamp, help, list of 8, pt, types");
 	-- Mid-campaign add: a save made without the mod.
 	T_SaveLoad(function() TRF = nil; end);
-	HOST_Check(TRF.version == 3 and getn(TRF.rg) == 8 and TRF.clock.rt == 0 and V_ProOk(), "save without TRF: fresh v3 with regions");
+	HOST_Check(TRF.version == 4 and getn(TRF.rg) == 8 and TRF.clock.rt == 0 and V_ProOk(), "save without TRF: fresh v4 with regions");
 	-- Guard on (chapter 3): the Gefest region starts in Quiet with score 0 and doubled lengths.
 	h.labels.CurrentQuest = "3";
 	T_SaveLoad(function() TRF = nil; end);
@@ -135,6 +151,7 @@ function T_V02_A()
 	dostring(src);
 	local rc = TRF_Config();
 	h.cfg = {exp=0, log=1, traffic=1};
+	dostring("function TRF_Config() return HOST().cfg; end");
 	local diff = "";
 	for k, v in rc do
 		if type(v) == "table" then
@@ -143,7 +160,7 @@ function T_V02_A()
 			diff = diff.." "..k.."="..tostring(v).."/"..tostring(TRF_Opt(k));
 		end;
 	end;
-	HOST_Check(diff == "" and rc.enabled == 1 and rc.meet == 2 and rc.cap_traders == 5, "config.script v0.2 keys equal the module defaults"..diff);
+	HOST_Check(diff == "" and rc.enabled == 1 and rc.meet == 2 and rc.cap_traders == 5, "config.script v0.2 and v1 keys equal the module defaults"..diff);
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF");
 end;
 
@@ -155,16 +172,20 @@ end;
 function V_Run200(quest, label, push)
 	local h = HOST();
 	h.labels.CurrentQuest = quest;
-	h.seed = 1;
+	h.seed = tonumber(getenv("TRF_SEED") or "") or 1;
 	TRF = nil;
 	TRF_State_OnEnter(1);
 	local m = TRF_RgMap();
 	local n = m.n;
-	local R = {miss=0, maxhi=0, lenbad=0, lenmsg="", rq={}, seen={}, pair=0, pairmsg="", maxlen={}, frozen=0};
+	local R = {miss=0, maxhi=0, lenbad=0, lenmsg="", rq={}, seen={}, pair=0, pairmsg="", maxlen={}, frozen=0, gap=0, over=0};
+	local hold = TRF_RgTune().rg_hold;
+	local vis = {};
 	local hi, last, start, gxs, same = {}, {}, {}, {}, {};
 	for s = 1, n do
 		hi[s] = 0; last[s] = TRF_Phase(s); start[s] = nil; gxs[s] = TRF.rg[s].gx; R.rq[s] = 0; R.seen[s] = {};
 		R.seen[s][last[s]] = 1;
+		vis[s] = {};
+		for p = 0, 5 do vis[s][p] = TRF.clock.legs; end;
 		same[s] = {};
 		for t = 1, n do same[s][t] = 0; end;
 	end;
@@ -198,9 +219,10 @@ function V_Run200(quest, label, push)
 				if start[s] then
 					local len = TRF.rg[s].pt - start[s];
 					local mn, mx = TRF_RgLen(s, last[s], gxs[s], TRF_RgTune());
-					if len < mn or len > mx then
+					if len - mx > R.over then R.over = len - mx; end;
+					if len < mn or len > mx + hold then
 						R.lenbad = R.lenbad + 1;
-						R.lenmsg = R.lenmsg.." s"..s.."p"..last[s].."="..len.."("..mn..".."..mx..")";
+						R.lenmsg = R.lenmsg.." s"..s.."p"..last[s].."="..len.."("..mn..".."..mx.."+"..hold..")";
 					end;
 					local k = s.."_"..last[s];
 					if not R.maxlen[k] or len > R.maxlen[k] then R.maxlen[k] = len; end;
@@ -209,9 +231,14 @@ function V_Run200(quest, label, push)
 				gxs[s] = TRF.rg[s].gx;
 				last[s] = ph;
 			end;
-			-- A phase still running beyond its maximum (plus the 2-leg tick) is frozen.
+			-- A phase still running beyond its maximum + 10 (rg_hold 6, the 2-leg tick, margin) is frozen.
 			local mn, mx = TRF_RgLen(s, ph, TRF.rg[s].gx, TRF_RgTune());
-			if TRF.clock.legs - TRF.rg[s].pt > mx + 2 then R.frozen = R.frozen + 1; end;
+			if TRF.clock.legs - TRF.rg[s].pt > mx + 10 then R.frozen = R.frozen + 1; end;
+			-- Legs since the region was last in each phase (start counts as a visit of the start phase only).
+			vis[s][ph] = TRF.clock.legs;
+			for p = 0, 5 do
+				if TRF.clock.legs - vis[s][p] > R.gap then R.gap = TRF.clock.legs - vis[s][p]; end;
+			end;
 		end;
 		for s = 1, n do
 			for t = s + 1, n do
@@ -227,13 +254,14 @@ function V_Run200(quest, label, push)
 		if R.rq[s] < R.rqmin then R.rqmin = R.rq[s]; end;
 		for p = 0, 5 do if not R.seen[s][p] then R.allph = nil; end; end;
 	end;
-	print(format("HOST %s: legs without Boom, Build-up/Raids or Bust/Recovery %d of 200; max sc>=75 run %d; min Recovery->Quiet %d; max pair in one phase %d (%s); frozen %d",
-		label, R.miss, R.maxhi, R.rqmin, R.pair, R.pairmsg, R.frozen));
+	print(format("HOST %s: legs without Boom, Build-up/Raids or Bust/Recovery %d of 200; max sc>=75 run %d; min Recovery->Quiet %d; max pair in one phase %d (%s); frozen %d; max legs between visits of a phase %d; max legs past mx %d",
+		label, R.miss, R.maxhi, R.rqmin, R.pair, R.pairmsg, R.frozen, R.gap, R.over));
 	return R;
 end;
 
--- Longest phase maximum (Boom 20 at ck 1.20 -> 24 legs, guard off): two regions in the same phase longer
--- than that move in step.
+-- Cycle criteria (spec 4.2a, 4.7): every phase group at >= 98 % of the legs, no pair of regions in one
+-- phase for more than 25 consecutive legs (longest maximum: Boom 20 at ck 1.20 -> 24), every phase again
+-- within 120 legs; lengths within mn..mx + rg_hold; under constant pushing no phase past mx + 10.
 function T_V02_B()
 	local h = HOST();
 	h.labels.CurrentQuest = "5_1";
@@ -241,18 +269,17 @@ function T_V02_B()
 	local nlog = getn(h.logs);
 	h.logs = nil;
 	local R = V_Run200("5_1", "v02-b");
-	HOST_Check(R.lenbad == 0, "guard off: every phase length within mn..mx"..R.lenmsg);
+	HOST_Check(R.lenbad == 0, "guard off: every phase length within mn..mx + rg_hold"..R.lenmsg);
 	HOST_Check(R.maxhi <= 18, "guard off: sc >= 75 at most 18 consecutive legs ("..R.maxhi..")");
 	HOST_Check(R.rqmin >= 2 and R.allph, "guard off: every region visits every phase, Recovery -> Quiet at least twice ("..R.rqmin..")");
-	-- Phase lock: two regions in the same phase for more than the longest phase maximum (24 legs) move in step.
-	-- Measured, not a check: the exit rules are the same for every region, so a pair that aligns stays aligned
-	-- (open point for the spec, like O8).
-	print("HOST info phase lock: longest run of two regions in the same phase "..R.pair.." legs (regions "..R.pairmsg..", bound 24)");
-	HOST_Check(R.frozen == 0, "guard off: no phase runs past its maximum");
-	-- Spec 4.7 also asks for Boom, Build-up/Raids and Bust/Recovery at every leg: measured, not a check (open O8).
-	print("HOST info spec 4.7 phase-group criterion: "..R.miss.." of 200 legs miss a group (guard off)");
+	HOST_Check(R.frozen == 0, "guard off: no phase runs past mx + 10");
+	HOST_Check(R.miss <= 4, "guard off: Boom, Build-up/Raids and Bust/Recovery present at >= 98 % of legs ("..R.miss.." of 200 miss)");
+	HOST_Check(R.pair <= 25, "guard off: no two regions in one phase > 25 legs ("..R.pair..", "..R.pairmsg..")");
+	HOST_Check(R.gap <= 120, "guard off: every region in every phase within 120 legs ("..R.gap..")");
 	local G = V_Run200("3", "v02-b guard");
-	HOST_Check(G.lenbad == 0 and G.maxhi <= 18 and G.frozen == 0, "guard on: lengths within mn..mx (Gefest doubled), sc >= 75 <= 18 legs"..G.lenmsg);
+	HOST_Check(G.lenbad == 0 and G.maxhi <= 18 and G.frozen == 0, "guard on: lengths within mn..mx + rg_hold (Gefest doubled), sc >= 75 <= 18 legs"..G.lenmsg);
+	HOST_Check(G.miss <= 4 and G.pair <= 25 and G.gap <= 120,
+		"guard on: groups at >= 98 % of legs ("..G.miss.."), pair run <= 25 ("..G.pair.."), every phase within 120 legs ("..G.gap..")");
 	local gs = V_Slot("gefest");
 	local mn3, mx3 = TRF_RgLen(gs, 3, 1, TRF_RgTune());
 	HOST_Check(TRF_RgLen(gs, 1, 1, TRF_RgTune()) == 2 * TRF_RgLen(gs, 1, 0, TRF_RgTune()) and mx3 == 18,
@@ -262,12 +289,14 @@ function T_V02_B()
 		if TRF_Map().sys[i].start == 1 and TRF_EffTier(i) ~= 1 then t1 = nil; end;
 	end;
 	HOST_Check(t1, "guard on: every start system has effective tier 1");
-	print("HOST info spec 4.7 phase-group criterion: "..G.miss.." of 200 legs miss a group (guard on)");
-	-- Constant player pushing: phases end by their maximum, never freeze.
+	-- Constant player pushing: the player shifts phases but freezes none (each ends by mx + 10).
 	local D = V_Run200("5_1", "v02-b push down", "down");
-	HOST_Check(D.lenbad == 0 and D.frozen == 0 and D.allph and D.maxhi <= 18, "pirate kills every leg (score -6): no phase frozen, every phase visited"..D.lenmsg);
+	HOST_Check(D.lenbad == 0 and D.frozen == 0 and D.over <= 10 and D.allph and D.gap <= 120 and D.maxhi <= 18,
+		"pirate kills every leg (score -6): no phase past mx + 10 ("..D.over.."), every phase within 120 legs ("..D.gap..")"..D.lenmsg);
 	local U = V_Run200("5_1", "v02-b push up", "up");
-	HOST_Check(U.lenbad == 0 and U.frozen == 0 and U.allph and U.maxhi <= 18, "trader kills every leg (pro -3, dis +2): no phase frozen, every phase visited"..U.lenmsg);
+	HOST_Check(U.lenbad == 0 and U.frozen == 0 and U.over <= 10 and U.allph and U.gap <= 120 and U.maxhi <= 18,
+		"trader kills every leg (pro -3, dis +2): no phase past mx + 10 ("..U.over.."), every phase within 120 legs ("..U.gap..")"..U.lenmsg);
+	print("HOST info push: legs missing a group "..D.miss.." / "..U.miss..", longest pair run "..D.pair.." / "..U.pair.." (down / up, not checked)");
 	h.logs = {};
 end;
 
@@ -384,7 +413,8 @@ function T_V02_E()
 	local idx = TRF_CurIdx();
 	TRF_SetDis(idx, 0);
 	local want = {{0, 1.00, 2, 10, 0, 0}, {2, 1.00, 2, 10, 0, 0}, {3, 1.25, 3, 12, 0, 10}, {4, 1.25, 3, 12, 0, 10},
-		{5, 1.50, 4, 16, 1, 15}, {6, 1.50, 4, 16, 1, 15}, {7, 1.50, 4, 16, 1, 20}, {9, 1.50, 4, 16, 1, 20}};
+		{5, 1.50, 4, 16, 1, 15}, {6, 1.50, 4, 16, 1, 15}, {7, 1.50, 4, 16, 1, 20}, {8, 1.75, 5, 20, 2, 20},
+		{9, 2.00, 5, 20, 2, 20}};
 	for i = 1, getn(want) do
 		local w = want[i];
 		V_Pro(w[1]);
@@ -396,7 +426,7 @@ function T_V02_E()
 	h.cfg.band_half = 1;
 	V_Pro(9);
 	local c = TRF_BandCaps(idx);
-	HOST_Check(c.sf == 1.25 and c.ct == 3 and c.cs == 13, "band_half: pro 9 -> 1.25 / 3 / 13");
+	HOST_Check(c.sf == 1.50 and c.ct == 3 and c.cs == 15, "band_half: pro 9 -> 1.50 / 3 / 15 (v1 band 4)");
 	h.cfg.band_half = nil;
 	h.cfg.prosperity = 0;
 	HOST_Check(TRF_Band(idx) == 0 and TRF_TierPick(idx, 8, 20) == 1, "prosperity 0: band 0, TT1");
@@ -429,7 +459,7 @@ function T_V02_E()
 	TRF_Governor();
 	t, why = TRF_TierPick(idx, 8, 20);
 	local ct, cs = TRF_SafeCaps();
-	HOST_Check(t == 2 and why == "gov" and TRF_GovActive() and ct == 3 and cs == 12, "governor (50 carcasses) -> TT2, caps 4/16 -> 3/12 ("..tostring(why)..")");
+	HOST_Check(t == 2 and why == "gov" and TRF_GovActive() and ct == 4 and cs == 12, "governor (50 carcasses) -> TT2, pro 9 caps 5/20 -> 4/12 ("..tostring(why)..")");
 	h.extra_carcass = nil;
 	TRF_Governor();
 	h.qs = TRUE; h.rq = {0};
@@ -1276,7 +1306,7 @@ function T_V02_L()
 	local es, eb = TRF_DefCoefOf("elio", 2);
 	HOST_Check(m == "vanilla" and getn(TRF.shops) == 0 and getn(w) >= 1 and w[1].b == eb and w[1].s == es, "vanilla-mode system (deny list, mission): restore runs, nothing applied");
 	h.qs = FALSE;
-	-- enabled 2: state, safety, shop only; every changed station restored at the next trade dock.
+	-- enabled 2: state, safety, shop and base (v1 10.3) only; every changed station restored at the next trade dock.
 	T_Jump("gredos");
 	TRF_ShortAdd(cur, 1, TRF.clock.legs + 6);
 	V_TradeDock();
@@ -1287,8 +1317,8 @@ function T_V02_L()
 	T_Jump("gredos");
 	h.mwrites = {};
 	V_TradeDock();
-	HOST_Check(V_Logs("modules=3 ") == 2 and getn(TRF.shops) == 0 and V_Logs("restore done") >= 1 and getn(V_Writes("gredos")) >= 1,
-		"enabled 2: 3 modules loaded, restored although the shortage is active, 'restore done'");
+	HOST_Check(V_Logs("modules=4 ") == 2 and getn(TRF.shops) == 0 and V_Logs("restore done") >= 1 and getn(V_Writes("gredos")) >= 1,
+		"enabled 2: 4 modules loaded, restored although the shortage is active, 'restore done'");
 	h.cfg.enabled = nil;
 	T_Jump("aurora");
 	HOST_Check(TRF_ShopIsMine(__TradeStationDock_Ok) and TRF_HailIsMine(__PatrolStationDock_Ok), "next MapInitialization: re-wrapped once");
@@ -1448,7 +1478,7 @@ function T_V02_N()
 	local one = ids[1];
 	for k = 1, getn(ids) do
 		local r = TRF.live.tr[ids[k]];
-		r.fs = {1, 2, 3, 4, 5}; r.ha = 99999; r.hn = 1; r.hlt = 10; r.trd = 1; r.hd = 1; r.tb = 1; r.bm = 1;
+		r.fs = {1, 2, 3, 4, 5}; r.ha = 99999; r.hn = 1; r.hlt = 10; r.trd = 1; r.hd = 1; r.tu = 1; r.bm = 1;
 	end;
 	local n = 0;
 	local nlive = function()
@@ -1486,9 +1516,9 @@ function T_V02_N()
 	HOST_Check(V_N(TRF.live.rd) <= 6, "at most 6 raid records ("..V_N(TRF.live.rd)..")");
 	-- due: 32 accepted, the 33rd refused.
 	local ok = 1;
-	TRF.live.due = {};
+	TRF_H().due = {};
 	for i = 1, 32 do if not TRF_Due(500 + i, "TRF_HostNoop", i, "x") then ok = nil; end; end;
-	HOST_Check(ok and TRF_Due(1, "TRF_HostNoop") == nil and getn(TRF.live.due) == 32, "TRF_Due: 32 entries, the 33rd refused");
+	HOST_Check(ok and TRF_Due(1, "TRF_HostNoop") == nil and getn(TRF_H().due) == 32 and TRF.live.due == nil, "TRF_Due: 32 entries in H (not saved), the 33rd refused");
 	for i = 1, 140 do TRF_Stat("k"..i); end;
 	HOST_Check(V_N(TRF.live.stat) <= 97 and TRF.live.stat.other ~= nil, "stat: keys beyond 96 counted in 'other' ("..V_N(TRF.live.stat)..")");
 	TRF.live.hl = {id=one, g=TRF.gen, o={"trade", "head", "news", "esc", "trouble", "boom"}, k=3, t=10, w="menu"};
@@ -1498,7 +1528,7 @@ function T_V02_N()
 	local size = 8 + 3 + HOST_SaveSize(TRF);
 	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
-	print("HOST info TRF save size "..size.." bytes:"..parts.." live.tr="..HOST_SaveSize(TRF.live.tr).." live.due="..HOST_SaveSize(TRF.live.due)
+	print("HOST info TRF save size "..size.." bytes:"..parts.." live.tr="..HOST_SaveSize(TRF.live.tr).." H.due (not saved)="..HOST_SaveSize(TRF_H().due)
 		.." live.stat="..HOST_SaveSize(TRF.live.stat).." live.rd="..HOST_SaveSize(TRF.live.rd));
 	HOST_Check(size <= 40000, "full-state TRF after 200 legs: "..size.." bytes <= 40000 (spec 3.4)");
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key anywhere in TRF");
@@ -1515,7 +1545,9 @@ function TRF_HostNoop() end;
 -- Dispatch ---------------------------------------------------------------------------------
 
 local fn = getglobal("T_V02_"..strupper(strsub(HOST().scen, 5)));
-if type(fn) == "function" then
+if strsub(HOST().scen, 1, 3) == "v1-" then
+	-- host_v1.lua (loaded next by host_stubs.lua) runs the scenario with these helpers.
+elseif type(fn) == "function" then
 	fn();
 	HOST_Check(T_LeftGlobals() == "", "no handle globals left at the end"..T_LeftGlobals());
 else

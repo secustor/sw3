@@ -1,0 +1,367 @@
+-- sw3-traffic v1 localisation layer (L1), deny list from the campaign pass (L2) and the v1 tuning table (L3).
+-- Spec: design/v1-spec.md 10.1, 10.4, 10.5. Lua 4.0.1. Top level defines functions only; no saved state.
+-- The merged text table, the language and the quest-state cache live in the handle table (TRF_H().loc),
+-- which is rebuilt on every MapInitialization. Log prefix "loc:".
+-- Text lookup: TRF_Txt (trf_ui) asks TRF_LocTxt(key) first. EN is one merged table: every module's
+-- TRF_<M>_Text() in TRF_Loc_TextFns() order (first definition of a key wins), then TRF_Loc_Text() for the
+-- v1 keys that other modules emit. RU (cp1251, CRLF) is TRF_Loc_RU(), empty in v1 (decision 11.1 #17);
+-- a missing RU key falls back to EN. Keys are normalised as TRF_UI_Key: lowercase letters and digits.
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_LocL(s) TRF_L("loc: "..tostring(s)); end;
+
+function TRF_LocErr(m)
+	if type(TRF_PErr) == "function" then TRF_PErr("loc: "..tostring(m)); else TRF_LocL("ERROR "..tostring(m)); end;
+end;
+
+-- Silent handler for natives that may error on unknown input (GetQuestState).
+function TRF_LocNoErr(m) end;
+
+function TRF_LocStat(k)
+	if type(TRF_Stat) == "function" then TRF_Stat(k); end;
+end;
+
+-- Defaults of the cfg keys this module owns (10.5).
+function TRF_Loc_OptDef()
+	return {lang="en", loc_mode=0};
+end;
+
+-- cfg value: TRF_Opt, raw config, this module's default; a wrong type reads as the default.
+function TRF_LocOpt(key)
+	local d = TRF_Loc_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	return v;
+end;
+
+function TRF_LocKey(key)
+	local k = gsub(strlower(tostring(key)), "[^%w]", "");
+	return k;
+end;
+
+-- Per-MapInitialization cache (handle table), or nil without trf_state.
+function TRF_LocCache()
+	if type(TRF_H) ~= "function" then return nil; end;
+	local h = TRF_H();
+	if type(h) ~= "table" then return nil; end;
+	if type(h.loc) ~= "table" then h.loc = {}; end;
+	return h.loc;
+end;
+
+function TRF_LocGt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+function TRF_LocMap()
+	local m = nil;
+	if type(TRF_Map) == "function" then m = TRF_Map(); elseif type(TRF_MapData) == "function" then m = TRF_MapData(); end;
+	if type(m) == "table" and type(m.sys) == "table" then return m; end;
+	return nil;
+end;
+
+-- Constants without a cfg key: quest-state cache age (s).
+function TRF_LocK()
+	return {qa_ttl=30};
+end;
+
+-- Language and mode (10.4) ------------------------------------------------------------
+
+-- cfg lang: "en" (default) or "ru"; anything else reads as "en". Cached per MapInitialization.
+function TRF_Loc_Lang()
+	local c = TRF_LocCache();
+	if c and type(c.lang) == "string" then return c.lang; end;
+	local l = TRF_LocOpt("lang");
+	if type(l) ~= "string" then l = "en"; end;
+	l = strlower(l);
+	if l ~= "ru" then l = "en"; end;
+	if c then c.lang = l; end;
+	return l;
+end;
+
+-- cfg loc_mode: 0 plain text (default), 1 "#TRF_<key>" keys of the .loc scaffold (CHECK E0.6).
+function TRF_Loc_Mode()
+	local c = TRF_LocCache();
+	if c and type(c.mode) == "number" then return c.mode; end;
+	local m = 0;
+	if TRF_LocOpt("loc_mode") == 1 then m = 1; end;
+	if c then c.mode = m; end;
+	return m;
+end;
+
+-- Text tables ----------------------------------------------------------------------
+
+-- Every text table in lookup order: v0.1/v0.2 modules, v1 modules, then this file's v1 table.
+function TRF_Loc_TextFns()
+	return {"TRF_UI_Text", "TRF_Hail_Text", "TRF_Raid_Text", "TRF_Rg_Text", "TRF_Tier_Text", "TRF_Shop_Text",
+		"TRF_Track_Text", "TRF_Supply_Text", "TRF_Clan_Text", "TRF_Faction_Text", "TRF_Convoy_Text",
+		"TRF_Danger_Text", "TRF_Base_Text", "TRF_Loc_Text"};
+end;
+
+-- Number of text-table functions defined now (a module loaded after the cache was built rebuilds it).
+function TRF_LocFnCount()
+	local fs = TRF_Loc_TextFns();
+	local n = 0;
+	for i = 1, getn(fs) do
+		if type(getglobal(fs[i])) == "function" then n = n + 1; end;
+	end;
+	return n;
+end;
+
+-- Merge of every text table, normalised keys, first definition wins. A table function that fails is skipped.
+function TRF_LocMerge()
+	local t = {};
+	local fs = TRF_Loc_TextFns();
+	for i = 1, getn(fs) do
+		local f = getglobal(fs[i]);
+		if type(f) == "function" then
+			local m = call(f, {}, "x", TRF_LocErr);
+			if type(m) == "table" then
+				for k, v in m do
+					if type(k) == "string" and type(v) == "string" then
+						local nk = TRF_LocKey(k);
+						if t[nk] == nil then t[nk] = v; end;
+					end;
+				end;
+			end;
+		end;
+	end;
+	return t;
+end;
+
+-- EN: key -> text, all modules (cached).
+function TRF_Loc_EN()
+	local c = TRF_LocCache();
+	local n = TRF_LocFnCount();
+	if c and type(c.en) == "table" and c.nf == n then return c.en; end;
+	local t = TRF_LocMerge();
+	if c then c.en = t; c.nf = n; end;
+	return t;
+end;
+
+-- RU: key -> cp1251 text. Empty in v1 (decision 11.1 #17); keys as in TRF_Loc_EN.
+function TRF_Loc_RU()
+	return {};
+end;
+
+function TRF_LocRU()
+	local c = TRF_LocCache();
+	if c and type(c.ru) == "table" then return c.ru; end;
+	local t = {};
+	local m = call(TRF_Loc_RU, {}, "x", TRF_LocErr);
+	if type(m) == "table" then
+		for k, v in m do
+			if type(k) == "string" and type(v) == "string" then t[TRF_LocKey(k)] = v; end;
+		end;
+	end;
+	if c then c.ru = t; end;
+	return t;
+end;
+
+-- Text of key in the current language, EN per key as fallback; nil for an unknown key.
+function TRF_LocTxt(key)
+	local k = TRF_LocKey(key);
+	if TRF_Loc_Lang() == "ru" then
+		local s = TRF_LocRU()[k];
+		if type(s) == "string" then return s; end;
+	end;
+	local s = TRF_Loc_EN()[k];
+	if type(s) == "string" then return s; end;
+	return nil;
+end;
+
+-- loc_mode 1: the scaffold key of key ("#TRF_<key>"), or nil when the key has no EN text.
+function TRF_LocKeyOf(key)
+	local k = TRF_LocKey(key);
+	if type(TRF_Loc_EN()[k]) ~= "string" then return nil; end;
+	return "#TRF_"..k;
+end;
+
+-- Fixed text of a template for the .loc scaffold: $n placeholders removed (the CombineStr fallback of
+-- design 13.5), spaces and punctuation tidied; empty -> "FTU".
+function TRF_Loc_Plain(s)
+	local r = gsub(tostring(s), "%$%d", "");
+	r = gsub(r, "%(%s*%)", "");
+	r = gsub(r, "%s+([,%.:;!%?])", "%1");
+	r = gsub(r, "%s%s+", " ");
+	r = gsub(r, "^[%s,%.:;%->]+", "");
+	r = gsub(r, "[%s,:;%->]+$", "");
+	r = gsub(r, "\n", " ");
+	if r == "" then r = "FTU"; end;
+	return r;
+end;
+
+-- Lines of mods/traffic/loc/trf_en.loc (10.4): header, one "#TRF_<key> = <fixed text>" per key, sorted.
+-- The caller writes them with CRLF; the game reads cp1251 (EN text is ASCII).
+function TRF_Loc_LocLines()
+	local en = TRF_Loc_EN();
+	local ks = {};
+	for k, v in en do tinsert(ks, k); end;
+	sort(ks);
+	local o = {"LOCALE_FILE", "FILETYPE STANDART", "",
+		"; sw3-traffic EN text scaffold, generated from the TRF_<M>_Text tables (trf_loc TRF_Loc_LocLines).",
+		"; Used with cfg loc_mode 1 only; templates lose their $n names (design 13.5 CombineStr fallback).", ""};
+	for i = 1, getn(ks) do tinsert(o, "#TRF_"..ks[i].." = "..TRF_Loc_Plain(en[ks[i]])); end;
+	return o;
+end;
+
+-- v1 EN texts of keys emitted by other modules (10.4 key list); a module's own TRF_<M>_Text wins.
+-- Placeholders follow the spec's argument order where it names one; $n are TRF_Txt arguments a, b, c.
+function TRF_Loc_Text()
+	return {
+		-- track (4.3)
+		chased = "They followed us!",
+		-- supply, demand, heat reset (5.2, 5.3)
+		dmok = "All right, take it. Let us go!",
+		dmno = "We will not be robbed. Calling for help!",
+		heatoffer = "FTU will clear the Wolves' record for $1 cr. Pay?",   -- cost
+		heatpaid = "FTU record cleared. Traders will talk to you again.",
+		heatpoor = "Not enough credits to clear the FTU record.",
+		-- faction contracts and pirate-side offers (7.4, 7.5)
+		ctjoin = "$1 sweep against the pirates in $2. Join it for $3 cr?",  -- faction, system, pay
+		ctbounty = "$1 bounty on the pirate base in $2: $3 cr. Accept?",    -- faction, system, pay
+		ctdone = "Contract complete. $1 cr transferred.",                   -- pay
+		pooffer1 = "A fat trader is due in $1. Hit it and we pay you well. Deal?",          -- system
+		pooffer2 = "For 2000 cr we tell you when a rich convoy runs in $1. Deal?",          -- system
+		popaid = "Your share for the job: $1 cr.",                          -- pay
+		-- convoys (8.4, 8.5)
+		optfeq = "Escort us to $1 for $2 cr?",                              -- destination, pay
+		feqid = "$1 supply run: equipment, $2 -> $3",                       -- faction, origin, destination
+		optdc = "Escort our convoy",                                        -- hail option label (trf_danger)
+	};
+end;
+
+-- Deny list (L2, 10.4) ----------------------------------------------------------------
+
+-- Authored deny entries (lowercase system names, TRF_DenyList format): m = 1 vanilla generator while a
+-- mission is active; <feature> = 0 never there. Teleport targets of the campaign pass (map tq = 1) get m = 1.
+function TRF_Loc_Deny()
+	local t = {
+		elio   = {m=1, why="Elio rescue"},
+		x297   = {m=1, why="X297 ambush"},
+		gefest = {m=1, why="Grid/Hephaestus escape"},
+		fronn  = {seed=0, raid=0, feq=0, dconv=0, base=0, why="Triada warehouse exploit"},
+	};
+	local m = TRF_LocMap();
+	if m then
+		for i = 1, getn(m.sys) do
+			local s = m.sys[i];
+			if type(s) == "table" and s.tq == 1 and type(s.name) == "string" then
+				local n = strlower(s.name);
+				if type(t[n]) ~= "table" then t[n] = {why="teleport target"}; end;
+				t[n].m = 1;
+			end;
+		end;
+	end;
+	return t;
+end;
+
+-- Quest ids of system idx (map qi, generated from the campaign pass), or nil.
+function TRF_DenyQ(idx)
+	local m = TRF_LocMap();
+	if not m or type(idx) ~= "number" or type(m.sys[idx]) ~= "table" then return nil; end;
+	local q = m.sys[idx].qi;
+	if type(q) == "table" and getn(q) > 0 then return q; end;
+	return nil;
+end;
+
+-- 1 when any quest id of idx is QUEST_PROCESS, 0 when none, nil when the system has no ids or
+-- GetQuestState is missing (callers then use the v0.2 rule). Cached per entry, refreshed after qa_ttl
+-- seconds so a quest taken during the visit is seen. CHECK (V8): GetQuestState of an id that never
+-- started returns QUEST_NOINIT; an error counts as not active (stat loc_qerr).
+function TRF_QuestActive(idx)
+	local q = TRF_DenyQ(idx);
+	if not q then return nil; end;
+	if type(GetQuestState) ~= "function" or QUEST_PROCESS == nil then return nil; end;
+	local c = TRF_LocCache();
+	local gt = TRF_LocGt();
+	if c then
+		if type(c.qa) ~= "table" then c.qa = {}; end;
+		local e = c.qa[idx];
+		if type(e) == "table" and gt >= e.t and gt - e.t < TRF_LocK().qa_ttl then return e.v; end;
+	end;
+	local v = 0;
+	for i = 1, getn(q) do
+		if type(q[i]) == "string" then
+			local st = call(GetQuestState, {q[i]}, "x", TRF_LocNoErr);
+			if st == nil then TRF_LocStat("loc_qerr"); end;
+			if st ~= nil and st == QUEST_PROCESS then v = 1; break; end;
+		end;
+	end;
+	if c then c.qa[idx] = {v=v, t=gt}; end;
+	return v;
+end;
+
+-- v1 tuning table (L3, 10.5) -------------------------------------------------------------
+
+-- Merged into TRF_Tune by trf_state before the cfg override (numbers only). Naming: a range "a-b" is
+-- <key>_min / <key>_max; a per-rung, per-tier or per-attempt list is <key><i> (rung 0..3, tier 1..4,
+-- attempt 1..4, band 3..4, pro 8..9); a vector is <key>_x/_y/_z.
+function TRF_V1_TuneDef()
+	return {
+		-- pool (4)
+		pool_size=16, record_ttl=8, T_chase=60, handoff_max=2, track_chase_min=5, track_chase_max=15,
+		track_port_min=60, track_port_max=120,
+		-- supply, demand, heat reset (5)
+		convoy_chance=15, sweep_convoy_chance=30, kfni_queen=0, dm_comply=80, dm_comply_esc=20, dm_comply_min=10,
+		heat_reset_k=100000, heat_reset_max=950000,
+		-- clans, carriers (6.1, 6.2)
+		lr_raid_chance=50, lr_raid_legs=6, lr_raid_max=2, carrier_delay_min=30, carrier_delay_max=90,
+		launch_interval=60, carrier_waves=2, wave_ships=3, launch_gap=2, hgo_x=0, hgo_y=-8, hgo_z=0,
+		hgi_x=0, hgi_y=-10, hgi_z=3, rec_d=20, raid_live_cap=8, carrier_leave_hp=0.25, wave_recover_hp=0.4,
+		carrier_bounty_k=1000, carrier_bounty_max=15000,
+		-- salvage (6.3): decay, flight-loss cap, stage lower bounds 1 / 4 / 7 (gains 2 / 1 / 3 / 1 are fixed)
+		salv_decay=8, salv_flight=1, salv_visit_max=2, salv_st1=1, salv_st2=4, salv_st3=7,
+		-- faction strength, standing (7.1, 7.6); rung rows 5-9 / 10-14 / 15-17 / 18-20 are fixed (7.2)
+		fs0=3, fs_pro_legs=8, fs_decay_legs=12, fst_decay_legs=10,
+		-- sweeps (7.3, 7.4); sweep_base 20 / 45 / 75 and sweep_pir_flights are fixed; sweep_gap and
+		-- sweep_wait stay in trf_region's table
+		sweep_window=240, sweep_withdraw=0.4, sweep_win_left=0.25, cap_sweep=14, sweep_part=2,
+		sweep_part_fire=4, sweep_pay_k=2000, sweep_escort_mult=3, sweep_gap_s=20,
+		-- pirate-side offers (7.5)
+		po_legs=8, po_intel_cost=2000, po_pay_k=0.5,
+		-- bands 8-9 (rows fixed in TRF_BandCaps: 1.75 / 2.00, 5 / 20 / 2), TT4 (8.1, 8.2)
+		tt4_p8=25, tt4_p9=40, tt4_tp8=3, tt4_tp9=4, tt4_e8=4, tt4_e9=6, tt4_vmin=45000, tt4_vmax=95000,
+		tt4_eq_min=2, tt4_eq_max=4, tt4_redraw=8,
+		-- equipment convoys (8.4); wave 1 at feq_wave1_s + 0..feq_wave1_x s; hold windows per rung
+		feq_chance=25, feq_min_strength=2, feq_min_pro=6, feq_due_legs=6, feq_cooldown_legs=20,
+		feq_announce_chance=50, feq_announce_range=3, feq_num=3, feq_escorts=2, feq_w1_0=1, feq_w1_1=2,
+		feq_w1_2=2, feq_w1_3=3, feq_wave1_s=20, feq_wave1_x=10, feq_wave2_hp=0.5, cap_feq=14,
+		feq_raid_t3=30, feq_raid_t4=50, feq_off_t3=20, feq_off_t4=35, feq_pay_mult=4,
+		feq_v0lo=85000, feq_v0hi=120000, feq_v1lo=110000, feq_v1hi=200000, feq_v2lo=160000, feq_v2hi=300000,
+		feq_v3lo=260000, feq_v3hi=400000,
+		-- danger convoys (8.5)
+		dconv_dis=4, dconv_form_s=120, dconv_solo_pct=20, dconv_max_transports=3, dconv_gap_lo=20,
+		dconv_gap_hi=40, dconv_drift=40,
+		-- bases (9); garrison by tier (9.3), the halved chance with a patrol station and the 1.5 bounty are fixed
+		base_life=60, found_dis=6, found_hold=2, found_chance=25, found_delay=2,
+		found_keep=4, max_bases=2, base_cooldown=20, base_hp=100000,
+		base_wave=2, cap_base=16, base_dis_floor=5, base_nb_floor=2, base_raid_cap=1,
+		base_reward_k=2500, base_reward_max=30000, wreck_legs=10,
+		-- rumours and answers (trf_hail): range of v1 rumours in jumps
+		rumour_range=3,
+		-- bounds
+		pay_cap=30000, stat_max=48,
+	};
+end;
+
+-- Dump ---------------------------------------------------------------------------------
+
+function TRF_Loc_Dump()
+	local en, ru = 0, 0;
+	for k, v in TRF_Loc_EN() do en = en + 1; end;
+	for k, v in TRF_LocRU() do ru = ru + 1; end;
+	local dn = 0;
+	for k, v in TRF_Loc_Deny() do dn = dn + 1; end;
+	local cur, q = nil, "none";
+	if type(TRF_CurIdx) == "function" then cur = TRF_CurIdx(); end;
+	if cur then
+		local ids = TRF_DenyQ(cur);
+		if ids then q = getn(ids).."/"..tostring(TRF_QuestActive(cur)); end;
+	end;
+	TRF_LocL("dump lang="..TRF_Loc_Lang().." mode="..TRF_Loc_Mode().." en="..en.." ru="..ru.." deny="..dn
+		.." qcur="..q);
+end;

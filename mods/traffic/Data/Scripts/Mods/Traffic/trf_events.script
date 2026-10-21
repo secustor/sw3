@@ -7,6 +7,13 @@
 -- v0.2 (spec 8.1, 9.1, 9.6, 10.2): counted attack -> patk, pro -1, graded response by heat tier; kill ->
 -- raid record, clan, shortage, contract, pro; raid flights excluded from the eject watch; clan score and
 -- credit on pirate kills; TRF_HeatTier and the heat-reaction poll.
+-- v1 (v1-spec 6.3, 7.6, 8.3, 8.7, 10.2): faction-owned traders (r.own, supply convoys): counted attack ->
+-- fst -1 once per visit (not on a group seeded hostile), kill without counted player fire -> salvage +1 to
+-- the clan (<= 2 per visit, live.fsv), no heat; TT4 (or equipment) convoy killed with counted player fire ->
+-- forced Bust; tracked traders -> TRF_TrackGone; response flights at the owner's rung (TRF_FacFlight) with
+-- died/attack triggers for the same salvage rule; salvaged pirate flights (H.svf) -> TRF_SalvUse on death.
+-- Base and carrier triggers have their own shims (TRF_OnBaseHit/TRF_OnBaseDied in trf_base, TRF_OnCarrierDied
+-- in trf_clan); on-screen sweep and equipment convoy flights give salvage only through their outcome.
 
 -- Constants without a tune key.
 function TRF_Ev_K()
@@ -253,6 +260,77 @@ function TRF_Ev_CurIdx()
 	return TRF_CurIdx();
 end;
 
+-- v1 helpers ------------------------------------------------------------------------------------
+
+-- Faction index 1..5 (Vks, Kfni, Triada, Uss, Inoco) of a team name: trf_faction's TRF_FacIdx, else this list.
+function TRF_Ev_FacIdx(team)
+	local f = TRF_N("TRF_FacIdx", team);
+	if type(f) == "number" then
+		if f >= 1 and f <= 5 then return f; end;
+		return nil;
+	end;
+	local t = {vks=1, kfni=2, triada=3, uss=4, inoco=5};
+	if type(team) == "string" then return t[strlower(team)]; end;
+	return nil;
+end;
+
+-- Team name of faction f: trf_faction's TRF_FacTeam, else this list.
+function TRF_Ev_FacTeam(f)
+	local t = TRF_N("TRF_FacTeam", f);
+	if type(t) == "string" and t ~= "" then return t; end;
+	local l = {"Vks", "Kfni", "Triada", "Uss", "Inoco"};
+	return l[f];
+end;
+
+-- Bit b of a bit field (v1-spec 3.1 rule), 0 or 1.
+function TRF_Ev_Bit(v, b)
+	if type(v) ~= "number" then return 0; end;
+	return mod(floor(v / b), 2);
+end;
+
+-- Owner faction of a trader record (supply convoys set own = 1..5), else nil (FTU).
+function TRF_Ev_Own(rec)
+	if type(rec) == "table" and type(rec.own) == "number" and rec.own >= 1 and rec.own <= 5 then return rec.own; end;
+	return nil;
+end;
+
+-- 1 when f's groups toward the player were seeded hostile: team war or fst <= 2 (TRF_FstRel, 7.6).
+function TRF_Ev_Hostile(f)
+	if RELATION_WAR == nil then return nil; end;
+	if TRF_N("TRF_FstRel", f) == RELATION_WAR then return 1; end;
+	local t = TRF_Ev_FacTeam(f);
+	if t and TRF_N("GetTeamRelation", t, PLAYER_TEAM) == RELATION_WAR then return 1; end;
+	return nil;
+end;
+
+-- Counted attack on an f group: fst -1 once per visit (live.fstv[f]), nothing for a group seeded hostile.
+function TRF_Ev_FstHit(f, why)
+	if type(TRF_FstHit) == "function" then
+		if call(TRF_FstHit, {f, TRF_Ev_Hostile(f), why}, "x", TRF_PErr) then TRF_Ev_L("fst f="..f.." -1 ("..tostring(why)..")"); end;
+		return;
+	end;
+	local L = TRF_Ev_Live();
+	if not L or not f or TRF_Ev_Hostile(f) then return; end;
+	if type(L.fstv) ~= "table" then L.fstv = {}; end;
+	if L.fstv[f] == 1 then return; end;
+	L.fstv[f] = 1;
+	TRF_N("TRF_FstAdd", f, -1, why);
+	TRF_Ev_L("fst f="..f.." -1 ("..tostring(why)..")");
+end;
+
+-- Faction flight of f destroyed without counted player fire in a region system: clan salvage +1, at most
+-- 2 per visit (live.fsv, 6.3).
+function TRF_Ev_Salv(f, why)
+	local L = TRF_Ev_Live();
+	local idx = TRF_Ev_CurIdx();
+	if not L or not f or not idx or TRF_Ev_Opt("salvage", 1) == 0 then return; end;
+	local slot = TRF_N("TRF_RgOf", idx);
+	if type(slot) ~= "number" then return; end;
+	-- The per-visit cap (live.fsv, salv_visit_max) is applied once, inside TRF_SalvAdd (trf_clan).
+	local a = TRF_N("TRF_SalvAdd", slot, 1, f, why);
+	TRF_Ev_L("salvage slot="..slot.." f="..f.." +"..tostring(a).." ("..tostring(why)..") fsv="..tostring(L.fsv));
+end;
+
 -- Text from trf_ui, else the 8.2 literal.
 function TRF_Ev_Txt(key, lit)
 	if type(TRF_Txt) == "function" then
@@ -341,6 +419,13 @@ function TRF_Ev_Counted(id, rec)
 		TRF_Ev_ProAdd(TRF_Ev_CurIdx(), -1, "attack "..id);
 	end;
 	if not rec.resp then TRF_RespStart(id); end;
+	-- v1: fst -1 once per visit for an f group (7.6); a counted attack tracks an FTU trader (4.2).
+	local f = TRF_Ev_Own(rec);
+	if f then
+		TRF_Ev_FstHit(f, "attack "..id);
+	elseif rec.feq ~= 1 then
+		TRF_N("TRF_TrackMark", id, "attack");
+	end;
 end;
 
 -- Re-arm the one-shot attack trigger on transport k, at most arm_max times per trader.
@@ -364,6 +449,7 @@ end;
 -- Trigger entry point (review O1): runs TRF_OnAttack_Body protected.
 function TRF_OnAttack(id, k, g) TRF_Cb("TRF_OnAttack", TRF_OnAttack_Body, {id, k, g}); end;
 
+-- v1: attacks on a pirate base arrive through trf_base's own shim TRF_OnBaseHit (one trigger per station).
 function TRF_OnAttack_Body(id, k, g)
 	local rec = TRF_Ev_Rec(id, g, "attack");
 	if not rec then return; end;
@@ -388,7 +474,8 @@ function TRF_Ev_Close(id, rec, why)
 	TRF_Ev_Stat("remove_"..why);
 	rec.why = why;
 	rec.gg = TRF_Ev_Gt();
-	local keep = {id=1, nm=1, cls=1, st=1, why=1, gg=1};
+	local keep = {id=1, nm=1, cls=1, st=1, why=1, gg=1, tb=1, pi=1, cv=1, xt=1};
+	if type(TRF_GoneKeep) == "function" then keep = TRF_GoneKeep(); end;
 	local ks = {};
 	for k, v in rec do
 		if not keep[k] then tinsert(ks, k); end;
@@ -427,7 +514,7 @@ function TRF_Ev_KillV2(id, rec, by, idx)
 	if rec.path == "A" then TRF_Ev_Short(idx, rec.cls); end;
 	if type(L.ct) == "table" and L.ct.id == id then TRF_N("TRF_CtLost", id); end;
 	local d = -1;
-	if by == "player" then d = -3; end;
+	if by == "player" and not TRF_Ev_Own(rec) then d = -3; end;
 	TRF_Ev_ProAdd(idx, d, "kill "..id);
 end;
 
@@ -438,16 +525,41 @@ function TRF_Ev_Kill(id, rec, h)
 	local by = "other";
 	-- CHECK: the engine reports no killer; a player attack event within pk_win is the proxy (design 13.2).
 	if type(rec.pa) == "number" and gt - rec.pa <= TRF_Ev_Tune("pk_win", 10) then by = "player"; end;
-	TRF_Ev_AddDis(idx, TRF_Ev_K().kill_dis, "kill "..id);
+	-- v1 5.1: a faction-owned trader (supply convoy) gives no heat; taken by pirates it gives dis +1.
+	local own = TRF_Ev_Own(rec);
+	local kd = TRF_Ev_K().kill_dis;
+	if own and by ~= "player" then kd = 1; end;
+	TRF_Ev_AddDis(idx, kd, "kill "..id);
 	if by == "player" then
 		L.kills = (L.kills or 0) + 1;
-		TRF_Ev_AddHeat(TRF_Ev_K().heat_d, "kill "..id);
+		if not own then TRF_Ev_AddHeat(TRF_Ev_K().heat_d, "kill "..id); end;
 	end;
 	if h then h.kl = 1; h.kt = gt; end;
 	TRF_Ev_L("kill id="..id.." by="..by.." pa="..TRF_F(rec.pa).." gt="..TRF_F(gt).." kills="..tostring(L.kills)
 		.." sys="..tostring(idx).." escorts="..tostring(rec.np));
 	call(TRF_Ev_KillV2, {id, rec, by, idx}, "x", TRF_PErr);
+	call(TRF_Ev_KillV1, {id, rec, by, idx}, "x", TRF_PErr);
 	TRF_Ev_Close(id, rec, "kill");
+end;
+
+-- v1 kill effects (5.1, 6.3, 8.3, 4.3), before the record is closed. Counted player fire: the kill proxy
+-- (by "player") or a counted attack (T_deliberate) on the trader in this visit.
+-- Equipment convoy transports count here only if trf_convoy keeps them as trader records with feq = 1
+-- (TRF_FeqEnd applies the same forced Bust; TRF_ForcedBust only sets a bit, so a repeat is harmless).
+function TRF_Ev_KillV1(id, rec, by, idx)
+	local pf = by == "player" or rec.cnt == 1;
+	local own = TRF_Ev_Own(rec);
+	if own and not pf then TRF_Ev_Salv(own, "conv"); end;
+	if pf and not rec.cv and (rec.tier == 4 or rec.feq == 1) and type(idx) == "number"
+		and TRF_Ev_Opt("forced_bust", 1) ~= 0 then
+		local why = "tt4";
+		if rec.feq == 1 then why = "feq"; end;
+		TRF_N("TRF_ForcedBust", idx, why.." "..id);
+		TRF_Ev_L("forced bust sys="..idx.." ("..why.." "..id..")");
+	end;
+	if TRF_Ev_Bit(rec.tb, 1) == 1 or rec.pi then TRF_N("TRF_TrackGone", id, "kill"); end;
+	-- Paid raid (7.5): the tip-off trader (tb bit 2) killed with player fire.
+	if pf then TRF_N("TRF_PoDone", id, "kill"); end;
 end;
 
 -- Trigger callback: transport k of trader id died. nt is recounted from the handles (dead mask plus
@@ -513,8 +625,11 @@ function TRF_RespStart(id)
 	rec.resp = 1;
 	local p = TRF_Ev_Leader(id);
 	call(TRF_Ev_Msg, {p, "#L_SOS_Replica_00", 6}, "x", TRF_PErr);
-	TRF_Ev_Due(8, "TRF_RespSpawn", n);
-	TRF_Ev_L("resp start id="..id.." n="..n.." speaker="..tostring(p and 1));
+	-- v1 (5.1, 8.7): a supply convoy's response comes from its owner; else the location owner's faction.
+	local f = TRF_Ev_Own(rec);
+	if not f then f = TRF_Ev_FacIdx(TRF_Ev_RespTeam()); end;
+	TRF_Ev_Due(8, "TRF_RespSpawn", n, f or 0);
+	TRF_Ev_L("resp start id="..id.." n="..n.." f="..tostring(f).." speaker="..tostring(p and 1));
 end;
 
 -- Heat tier (8.1): 0 heat 0-2, 1 heat 3-4, 2 heat 5-6, 3 heat 7-9 or the Trade team at war with the player.
@@ -548,14 +663,23 @@ end;
 
 -- Response rows by heat tier (8.1): tier 0 one owner flight (type 1) at 50 %, tiers 1-2 types 1 and 2,
 -- both at power L_pay; tier 3 the vanilla set. Returns rows (nil: no help), tier.
-function TRF_Ev_RespPick()
+-- v1 (7.2): with an owner faction f and trf_faction loaded, rows of tiers 0-2 carry the owner's rung
+-- (TRF_Rung of the current region slot, rung 1 outside regions), which replaces the L_pay power.
+function TRF_Ev_RespPick(f)
 	local t = TRF_HeatTier();
 	local all = TRF_Ev_RespRows();
 	if t >= 3 then return all, t; end;
 	local lp = TRF_Ev_LPay();
+	local rung = nil;
+	if type(f) == "number" and f >= 1 and f <= 5 and type(TRF_FacFlight) == "function" then
+		local slot = TRF_N("TRF_RgOf", TRF_Ev_CurIdx());
+		rung = 1;
+		if type(slot) == "number" then rung = TRF_N("TRF_Rung", slot, f) or 1; end;
+	end;
 	local r1 = all[1];
 	r1.ty = 1;
 	r1.pw = lp;
+	r1.rung = rung;
 	if t == 0 then
 		if TRF_Ev_Rand(100) >= 50 then return nil, t; end;
 		return {r1}, t;
@@ -563,16 +687,18 @@ function TRF_Ev_RespPick()
 	local r2 = all[2];
 	r2.ty = 2;
 	r2.pw = lp;
+	r2.rung = rung;
 	return {r1, r2}, t;
 end;
 
 -- Builds response n from rows (default: the vanilla set); runs protected. Returns the number of flights.
-function TRF_Ev_RespBuild(n, rows)
+function TRF_Ev_RespBuild(n, rows, f)
 	local H = TRF_Ev_H();
 	local ms = TRF_Ev_MShip();
 	if not H or not ms then return 0; end;
 	local x = ms:GetPosition();
 	local team = TRF_Ev_RespTeam();
+	if type(f) == "number" and f >= 1 and f <= 5 and TRF_Ev_FacTeam(f) then team = TRF_Ev_FacTeam(f); end;
 	local gname = "TRF_GResp_"..n;
 	local grp = TRF_Ev_Group(team, "TRF_Resp_"..n);
 	if not grp then TRF_Ev_L("resp n="..n.." no group team="..team); return 0; end;
@@ -586,7 +712,14 @@ function TRF_Ev_RespBuild(n, rows)
 	H.resp[n] = {};
 	for j = 1, getn(rows) do
 		local r = rows[j];
-		local fl = TRF_Ev_Choice(team, gname, "trf_sos_"..n.."_"..j, TRF_Ev_Off(x, r.f[1], r.f[2], r.f[3]), r.ty, r.pw, Vector3(r.d[1], r.d[2], r.d[3]));
+		local sign = "trf_sos_"..n.."_"..j;
+		local pos, dir = TRF_Ev_Off(x, r.f[1], r.f[2], r.f[3]), Vector3(r.d[1], r.d[2], r.d[3]);
+		local fl = nil;
+		if r.rung and type(TRF_FacFlight) == "function" then
+			fl = call(TRF_FacFlight, {f, r.rung, r.ty, gname, sign, pos, dir, 6}, "x", TRF_PErr);
+			if not fl or type(fl) == "number" then fl = nil; end;
+		end;
+		if not fl then fl = TRF_Ev_Choice(team, gname, sign, pos, r.ty, r.pw, dir); end;
 		if fl then
 			fl:Attack(ms);
 			tinsert(H.resp[n], fl);
@@ -624,15 +757,18 @@ function TRF_RespSpawn(n, b)
 		TRF_Ev_L("resp n="..n.." no help sos3="..s3.." roll="..tostring(roll));
 		return;
 	end;
-	local rows, tier = TRF_Ev_RespPick();
+	local f = nil;
+	if type(b) == "number" and b >= 1 and b <= 5 then f = b; end;
+	local rows, tier = TRF_Ev_RespPick(f);
 	if not rows then
 		TRF_Ev_L("resp n="..n.." no help (heat tier 0 roll)");
 		return;
 	end;
-	local c = call(TRF_Ev_RespBuild, {n, rows}, "x", TRF_PErr);
+	local c = call(TRF_Ev_RespBuild, {n, rows, f}, "x", TRF_PErr);
 	TRF_Ev_RespClear(n);
-	TRF_Ev_L("resp n="..n.." flights="..tostring(c).." tier="..tostring(tier).." sos3="..s3.." roll="..tostring(roll));
+	TRF_Ev_L("resp n="..n.." flights="..tostring(c).." tier="..tostring(tier).." f="..tostring(f).." sos3="..s3.." roll="..tostring(roll));
 	if type(c) == "number" and c > 0 then
+		if f then call(TRF_Ev_RespArm, {n, f}, "x", TRF_PErr); end;
 		TRF_Ev_Stat("resp");
 		TRF_Ev_Due(5, "TRF_RespLine", n);
 	end;
@@ -652,6 +788,68 @@ function TRF_RespLine(n, b)
 		i = i + 1;
 	end;
 	TRF_Ev_Msg(p, "#L_SOS_Replica_01", 6);
+end;
+
+-- v1 6.3: died and attack (PLAYER_GROUP) triggers on every ship of response n of faction f. Per flight j
+-- H.rsv[n][j] = {f, ns ships, dk dead, pf player fire, done}. Handles and counters stay in H (visit only).
+function TRF_Ev_RespArm(n, f)
+	local H = TRF_Ev_H();
+	if not H or type(H.resp) ~= "table" or type(H.resp[n]) ~= "table" then return; end;
+	if type(H.rsv) ~= "table" then H.rsv = {}; end;
+	H.rsv[n] = {};
+	for j = 1, getn(H.resp[n]) do
+		local fl = H.resp[n][j];
+		local e = {f=f, ns=0, dk=0};
+		H.rsv[n][j] = e;
+		if TRF_Ev_Alive(fl) then
+			local c = fl:GetPilotCount();
+			if type(c) ~= "number" then c = 0; end;
+			for i = 1, min(c, 8) do
+				local p = fl:GetPilotByNumber(i);
+				local sh = nil;
+				if p then sh = p:GetShip(); end;
+				if TRF_Ev_Alive(sh) then
+					e.ns = e.ns + 1;
+					TRF_Ev_Trig("attack", "TRF_OnRespHit("..n..","..j..","..TRF.gen..")--", PLAYER_GROUP, sh);
+					TRF_Ev_Trig("died", "TRF_OnRespDied("..n..","..j..","..TRF.gen..")--", sh);
+				end;
+			end;
+		end;
+	end;
+end;
+
+function TRF_Ev_RespE(n, j, g)
+	if type(TRF) ~= "table" or g ~= TRF.gen then return nil; end;
+	local H = TRF_Ev_H();
+	if not H or type(H.rsv) ~= "table" or type(H.rsv[n]) ~= "table" then return nil; end;
+	local e = H.rsv[n][j];
+	if type(e) ~= "table" then return nil; end;
+	return e;
+end;
+
+-- Player fire on a ship of response flight j: no salvage for that flight. No fst change: response flights
+-- are sent at the player (decision 19).
+function TRF_OnRespHit(n, j, g) TRF_Cb("TRF_OnRespHit", TRF_Ev_RespHitBody, {n, j, g}); end;
+
+function TRF_Ev_RespHitBody(n, j, g)
+	local e = TRF_Ev_RespE(n, j, g);
+	if e then e.pf = 1; end;
+end;
+
+-- Last ship of response flight j dead without player fire: salvage +1 for its faction (6.3).
+function TRF_OnRespDied(n, j, g) TRF_Cb("TRF_OnRespDied", TRF_Ev_RespDiedBody, {n, j, g}); end;
+
+function TRF_Ev_RespDiedBody(n, j, g)
+	local e = TRF_Ev_RespE(n, j, g);
+	if not e or e.done then return; end;
+	e.dk = e.dk + 1;
+	if e.dk < e.ns then return; end;
+	e.done = 1;
+	if e.pf then
+		TRF_Ev_D("resp n="..n.." flight "..j.." destroyed with player fire");
+		return;
+	end;
+	TRF_Ev_Salv(e.f, "resp");
 end;
 
 -- Pirate kills (7.4, 7.10) --------------------------------------------------------------------
@@ -679,7 +877,13 @@ function TRF_Ev_PirEject(pilot)
 	end;
 	if type(H.pir) ~= "table" then H.pir = {}; end;
 	if type(H.pirb) ~= "table" then H.pirb = {}; end;
+	if type(H.pirs) ~= "table" then H.pirs = {}; end;
 	local b = TRF_Ev_Butcher(pilot);
+	-- v1 6.3: a flight registered in H.svf carries salvaged gear (consumed when it dies).
+	local sv = nil;
+	if type(H.svf) == "table" then
+		for i = 1, getn(H.svf) do if H.svf[i] == fl then sv = 1; end; end;
+	end;
 	for i = 1, getn(H.pir) do
 		if H.pir[i] == fl then
 			if b then H.pirb[i] = 1; end;
@@ -689,6 +893,7 @@ function TRF_Ev_PirEject(pilot)
 	if getn(H.pir) >= TRF_Ev_K().pir_max then return; end;
 	tinsert(H.pir, fl);
 	H.pirb[getn(H.pir)] = b;
+	H.pirs[getn(H.pir)] = sv;
 	TRF_Ev_D("pirate flight watched side="..side.." n="..getn(H.pir).." butcher="..tostring(b));
 end;
 
@@ -712,13 +917,14 @@ end;
 -- One killed pirate flight: dis - 1 in the current system, at most rec_max per visit. kind: "pirate"
 -- (watched vanilla flight), "butcher" (one with a Butcher_* hull), "raid" (from trf_raid).
 -- v0.2 (4.5, 9.1, 9.6): clan score -2 (-4 for a Butcher; the visit cap is TRF_ClanAdd's); +1 visit credit
--- when the system's dis is 0.
-function TRF_Ev_Recover(kind)
+-- when the system's dis is 0. v1 (6.3): sv 1 = the flight carried salvaged gear -> TRF_SalvUse.
+function TRF_Ev_Recover(kind, sv)
 	local L = TRF_Ev_Live();
 	local idx = TRF_Ev_CurIdx();
 	if not L or not idx then return; end;
 	TRF_Ev_Stat("pirate_kill");
 	local slot = TRF_N("TRF_RgOf", idx);
+	if sv == 1 and type(slot) == "number" then TRF_N("TRF_SalvUse", slot, "kill"); end;
 	if type(slot) == "number" then
 		local d = -2;
 		if kind == "butcher" then d = -4; end;
@@ -784,21 +990,24 @@ function TRF_Events_Step()
 	local H = TRF_Ev_H();
 	if not H then return; end;
 	if type(H.pir) == "table" and getn(H.pir) > 0 then
-		local keep, kb = {}, {};
+		local keep, kb, ks = {}, {}, {};
 		if type(H.pirb) ~= "table" then H.pirb = {}; end;
+		if type(H.pirs) ~= "table" then H.pirs = {}; end;
 		for i = 1, getn(H.pir) do
 			local f = H.pir[i];
 			if TRF_Ev_Alive(f) then
 				tinsert(keep, f);
 				kb[getn(keep)] = H.pirb[i];
+				ks[getn(keep)] = H.pirs[i];
 			elseif H.pirb[i] then
-				TRF_Ev_Recover("butcher");
+				TRF_Ev_Recover("butcher", H.pirs[i]);
 			else
-				TRF_Ev_Recover("pirate");
+				TRF_Ev_Recover("pirate", H.pirs[i]);
 			end;
 		end;
 		H.pir = keep;
 		H.pirb = kb;
+		H.pirs = ks;
 	end;
 	TRF_Ev_Escorts(H);
 	call(TRF_Ev_HeatStep, {}, "x", TRF_PErr);

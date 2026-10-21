@@ -10,6 +10,11 @@
 -- TRF_FillHold; without trf_tier every spawn is the v0.1 TT1 path), hold mirror, hp0, docking queue
 -- (TRF_Q_*), entry plan and arrival seed, visit credits, gone-record strip. Calls into trf_raid, trf_hail,
 -- trf_shop and trf_region go through TRF_GnX, so a missing module only disables its part.
+-- v1 (v1 spec 8.5, 8.6, 10.2): supply roll and danger convoys in TRF_GenTrader, builder hook p.bld and
+-- group slot p.k in TRF_Spawn, forced-portal plans (TRF_Plan fx), the 8.6 entry precedence with the v1
+-- providers, track / convoy-slot / danger hooks in TRF_OnExit, TRF_Remove and the watchdog, TRF_QPoints,
+-- v1 wind-downs and escort deletes on a jump. Every v1 call is guarded: without the v1 files the draws
+-- and orders are the v0.2 ones.
 
 -- Helpers --------------------------------------------------------------------------
 
@@ -572,6 +577,26 @@ function TRF_GenTrader(c, ci)
 	if not ok then TRF_GnStat("skip_"..tostring(why)); return nil; end;
 	local plan, pw = TRF_Plan(c, ci, nil, why);
 	if not plan then TRF_GnStat("skip_"..tostring(pw)); TRF_GnD("plan ci="..tostring(ci).." -> "..tostring(pw)); return nil; end;
+	-- v1 convoy forms in rank order (8.6): TT4 came from the tier pick, then supply (5.1), then danger (8.5).
+	-- A failed supply build spawns the plain trader (5.1 fallback). TRF_DcPlan leaves plan.dcp: "none" =
+	-- nothing spawns this tick (chance / N), "convoy", "single"; unset (error) = single.
+	local sup = nil;
+	if (plan.tier or 1) < 4 and type(TRF_SupplyRoll) == "function" and TRF_GnX("TRF_SupplyRoll", plan) == 1 then
+		sup = 1;
+		local sid = TRF_GnX("TRF_SupplySpawn", plan);
+		if sid then return sid; end;
+		TRF_GnStat("skip_supply_build");
+	end;
+	if not sup and type(TRF_DcPlan) == "function" then
+		plan.dcp = nil;
+		TRF_GnX("TRF_DcPlan", plan);
+		if plan.dcp == "none" then TRF_GnStat("skip_dc_none"); return nil; end;
+		if plan.dcp == "convoy" then
+			local did = TRF_GnX("TRF_DcStart", plan);
+			if not did then TRF_GnStat("skip_dc_start"); end;
+			return did;
+		end;
+	end;
 	local spare;
 	ok, spare = TRF_CanSpawn(plan.n, "trader");
 	if not ok then TRF_GnStat("skip_"..tostring(spare)); return nil; end;
@@ -586,7 +611,9 @@ end;
 -- strength, row, n (base ships), esc (added), from, to (system idx, 0 = station, -1 unknown), ci}
 -- plus the v02 tier fields (TRF_TierPlan: tier, pw, tpn, tesc, ne) or nil, reason.
 -- force: path "B" for the arrival seed (no path draw); free: free ships for the tier fit test.
-function TRF_Plan(c, ci, force, free)
+-- fx (v1 convoy members, trf_danger): si entry portal index (path C unless forced), nf no spot test,
+-- off spawn point offset along the portal axis, s strength (no draw). Also sets lv (contact level).
+function TRF_Plan(c, ci, force, free, fx)
 	local L = TRF_GnLive();
 	local T = TRF_GnT();
 	if type(ci) ~= "number" then
@@ -605,6 +632,8 @@ function TRF_Plan(c, ci, force, free)
 	if force then
 		if not st or not np then return nil, "seed_station"; end;
 		path = force;
+	elseif fx and fx.si then
+		path = "C";
 	elseif st and np then
 		local r = TRF_GnRand(100);
 		if n >= 2 then
@@ -615,13 +644,20 @@ function TRF_Plan(c, ci, force, free)
 	end;
 	local ix = TRF_GnPortalIdx(n);
 	local si, ei = ix[1], ix[2];
+	if fx and type(fx.si) == "number" and ps[fx.si] then
+		si = fx.si;
+		if n >= 2 and ei == si then ei = si + 1; if ei > n then ei = 1; end; end;
+	end;
 	local pos, dir;
 	if path == "B" then
 		pos = np;
 		if not TRF_GnFree("station", pos, T) then return nil, "space"; end;
 		dir = Vector3(0, 0, 1);
 	else
-		if not TRF_GnFree(cv.pn[si], ps[si]:GetEntryPoint(10), T) then
+		local off = 0;
+		if fx and type(fx.off) == "number" then off = fx.off; end;
+		if fx and fx.si and not fx.nf and not TRF_GnFree(cv.pn[si], ps[si]:GetEntryPoint(10 + off), T) then return nil, "space"; end;
+		if not (fx and fx.si) and not TRF_GnFree(cv.pn[si], ps[si]:GetEntryPoint(10), T) then
 			local free = {};
 			for i = 1, n do
 				if i ~= si and TRF_GnFree(cv.pn[i], ps[i]:GetEntryPoint(10), T) then tinsert(free, i); end;
@@ -634,17 +670,18 @@ function TRF_Plan(c, ci, force, free)
 				ei = o[TRF_GnRand(getn(o)) + 1];
 			end;
 		end;
-		pos = ps[si]:GetEntryPoint(10);
+		pos = ps[si]:GetEntryPoint(10 + off);
 		dir = ps[si]:GetOrientation();
 	end;
 	-- Strength as vanilla (RandomContacts.script 235-238): level-4 .. level+3, clamped 1..20.
 	local lv = c[6];
 	if type(lv) ~= "number" then lv = 1; end;
-	local strength = lv - 4 + TRF_GnRand(8);
+	local strength;
+	if fx and type(fx.s) == "number" then strength = fx.s; else strength = lv - 4 + TRF_GnRand(8); end;
 	if strength > 20 then strength = 20; end;
 	if strength < 1 then strength = 1; end;
 	local row = TRF_GnRow(strength);
-	local p = {path=path, pos=pos, dir=dir, np=np, st=st, strength=strength, row=row, n=row.tp + row.esc, ci=ci, esc=0};
+	local p = {path=path, pos=pos, dir=dir, np=np, st=st, strength=strength, row=row, n=row.tp + row.esc, ci=ci, esc=0, lv=lv};
 	local cur = TRF_CurIdx();
 	if path ~= "B" then p.ent = ps[si]; p.entn = cv.pn[si]; end;
 	if path ~= "A" then p.ext = ps[ei]; p.extn = cv.pn[ei]; end;
@@ -827,7 +864,8 @@ function TRF_Spawn(p)
 	local gt = TRF_GnGt();
 	local id = TRF_NewId();
 	if not id then TRF_GnStat("skip_id"); return nil; end;
-	local k = TRF_GnSlot();
+	-- p.k: a convoy member uses the group slot of its convoy (trf_danger).
+	local k = p.k or TRF_GnSlot();
 	if not k then TRF_GnStat("skip_grp"); return nil; end;
 	local grp = TRF_GnP(TRF_GnGroup, {k});
 	if not grp then TRF_GnStat("skip_grp"); return nil; end;
@@ -837,7 +875,10 @@ function TRF_Spawn(p)
 	-- TT2/TT3 (v02 9.3) build through trf_tier, which returns the ships in p.sh.
 	setglobal("TRF_GTrade_"..k, grp);
 	local fl;
-	if (p.tier or 1) >= 2 and type(TRF_BuildTier) == "function" then
+	-- p.bld: name of a v1 builder f(p, id, k) returning the flight and setting p.sh / p.tpn (trf_danger).
+	if type(p.bld) == "string" and type(getglobal(p.bld)) == "function" then
+		fl = TRF_GnP(getglobal(p.bld), {p, id, k});
+	elseif (p.tier or 1) >= 2 and type(TRF_BuildTier) == "function" then
 		fl = TRF_GnP(TRF_BuildTier, {p, id, k});
 	else
 		fl = TRF_GnP(NewAllFlight, {Trad_merc_Pilots, Trad_merc_Ships, "TRF_GTrade_"..k, sign, p.pos, p.strength, p.dir, "shipFormationConvoy"});
@@ -887,7 +928,7 @@ function TRF_Spawn(p)
 		ci=p.ci, k=k, ent=p.entn, ext=p.extn, np=getn(sh), nt=getn(tp), esc=added, born=gt,
 		lx=lp.x, ly=lp.y, lz=lp.z, lt=gt, wd=0, tier=p.tier or 1, hold=hold, hp0=hp0};
 	L.tr[id] = r;
-	L.grp[k] = id;
+	if not p.k or L.grp[k] == 0 then L.grp[k] = id; end;
 	H.tr[id] = {fl=fl, sh=sh, tp=tp, ent=p.ent, ext=p.ext, np=p.np, st=p.st, k=k};
 	if p.np then H.np = p.np; end;
 	TRF.seq = id;
@@ -895,7 +936,8 @@ function TRF_Spawn(p)
 	TRF_GnStat("spawn");
 	if type(TRF_ArmShips) == "function" then TRF_GnP(TRF_ArmShips, {id}); end;
 	TRF_GnP(TRF_GnArmUI, {id});
-	TRF_GnP(TRF_Orders, {id});
+	-- p.noord: the v1 caller gives the orders (danger convoy members).
+	if not p.noord then TRF_GnP(TRF_Orders, {id}); end;
 	-- Low-HP flee trigger; trf_raid arms the heat reaction from there too (v02 5.2, 8.1).
 	TRF_GnX("TRF_RaidArmLowHP", id);
 	TRF_GnL("spawn id="..id.." path="..p.path.." from="..tostring(p.from).." to="..tostring(p.to)
@@ -1068,6 +1110,8 @@ function TRF_OnExit_Body(id, g)
 	local fx = nil;
 	if H and H.tr[id] then fx = H.tr[id].ext; end;
 	TRF_GnP(TRF_GnSafeArrive, {id, r, "exit"});
+	-- v1: a tracked trader's pool record is written before the delete (trf_track, spec 4.2).
+	TRF_GnX("TRF_TrackExit", id, r.to);
 	TRF_Remove(id, "exit", fx);
 end;
 
@@ -1082,6 +1126,10 @@ function TRF_Remove(id, why, fx)
 	local born = nil;
 	if type(r) == "table" then
 		if r.st == "gone" then return nil; end;
+		-- v1: danger convoy member (contract count, inbound members dock together) before the state changes.
+		if type(r.cv) == "number" then TRF_GnX("TRF_DcGone", id, r, why); end;
+		-- v1 4.2: a tracked trader fleeing out through a portal is written while its flight still exists.
+		if why == "escaped" then TRF_GnX("TRF_TrackGone", id, why); end;
 		r.st = "gone";
 		born = r.born;
 		if type(r.k) == "number" and L.grp[r.k] == id then L.grp[r.k] = 0; end;
@@ -1095,6 +1143,10 @@ function TRF_Remove(id, why, fx)
 	end;
 	if type(r) == "table" then r.why = tostring(why); TRF_GnStrip(r); end;
 	TRF_GnP(TRF_GnQFree, {id});
+	-- v1: a tracked identity ends with a docking or an unreported death (trf_track); the convoy slot of
+	-- this trader id is released (trf_convoy).
+	if why == "dock" or why == "lost" then TRF_GnX("TRF_TrackGone", id, why); end;
+	TRF_GnX("TRF_ConvFree", id);
 	TRF_GnStat("remove_"..tostring(why));
 	TRF_GnL("remove id="..tostring(id).." why="..tostring(why).." age="..TRF_F(TRF_GnGt() - (born or TRF_GnGt())));
 	return 1;
@@ -1104,7 +1156,9 @@ end;
 function TRF_GnStrip(r)
 	if type(r) ~= "table" then return; end;
 	if type(r.gg) ~= "number" then r.gg = TRF_GnGt(); end;
-	local keep = {id=1, nm=1, cls=1, st=1, why=1, gg=1};
+	-- v1 3.2: tracking fields stay too (TRF_GoneKeep in trf_state).
+	local keep = {id=1, nm=1, cls=1, st=1, why=1, gg=1, tb=1, pi=1, cv=1, xt=1};
+	if type(TRF_GoneKeep) == "function" then keep = TRF_GoneKeep(); end;
 	local ks = {};
 	for k, v in r do if not keep[k] then tinsert(ks, k); end; end;
 	for i = 1, getn(ks) do r[ks[i]] = nil; end;
@@ -1142,6 +1196,10 @@ function TRF_WindDown()
 	TRF_GnQClear();
 	TRF_GnX("TRF_Raid_WindDown");
 	TRF_GnX("TRF_Parked_Clear", "wind");
+	-- v1 wind-downs (spec 10.2): their flights and convoy members first, so the loop below skips members
+	-- they already sent to dock ("dock") or to a portal ("wind").
+	local v1 = {"TRF_Danger_WindDown", "TRF_Convoy_WindDown", "TRF_Clan_WindDown", "TRF_Faction_WindDown"};
+	for i = 1, getn(v1) do TRF_GnX(v1[i]); end;
 	local T = TRF_GnT();
 	local mp = TRF_GnPos(TRF_GnMs());
 	local sp = TRF_GnPos(TRF_GnStation());
@@ -1222,7 +1280,9 @@ function TRF_GnStepOne(id, st, T, gt)
 	end;
 	if gt - (r.born or gt) > T.lifetime and d and d > T.ovd then TRF_Remove(id, "life"); return; end;
 	-- Queued traders hold still on purpose; TRF_Q_Tick times them out (v02 9.5).
-	if r.st == "dock" or r.st == "queue" or not lp then return; end;
+	if r.st == "dock" or r.st == "queue" or r.st == "form" or not lp then return; end;
+	-- v1: inbound danger convoy followers wait for their lead (trf_danger).
+	if type(r.cv) == "number" and TRF_GnX("TRF_DcHold", id, r) then r.lt = gt; return; end;
 	-- A trader in an open raid (demand stop, staged fight) holds still on purpose; the raid step ends that.
 	local rd = nil;
 	if type(r.rdn) == "number" and type(L.rd) == "table" then rd = L.rd[r.rdn]; end;
@@ -1321,29 +1381,103 @@ end;
 
 -- Entry plan and arrival seed (v02 9.5, design 6.5) --------------------------------------
 
--- Once per entry from TRF_Gen_OnActivate, after decay and region catch-up: a staged raid (trf_raid
--- TRF_StagedRoll, design 6.5 item 4) takes the place of the plain seed (item 6). Sets live.ent to
--- "staged", "seed" or "none" and returns it.
+-- Once per entry from TRF_Gen_OnActivate, after decay, region catch-up and base reconciliation. v1
+-- precedence (spec 8.6), highest first: 1 chased tracked arrival (suppresses the staged raid), 2a on-screen
+-- sweep (staged raid and seed), 2b carrier raid (staged raid), 3 equipment convoy when 2a does not play
+-- (staged raid, takes the seed's place, reserves the slot itself), 4 staged raid (seed's place), 5 seed
+-- with an identity (a pirate tip-off, b tracked record treated as docked), 6 plain seed. Tracked portal
+-- arrivals run beside it (handoff_max with item 1). Each provider is nil without its module, so the v0.2
+-- draws stay the same. Sets live.ent ("staged", "seed", "sweep", "feq", "po", "none") and returns it.
 function TRF_EntryPlan()
 	local L = TRF_GnLive();
 	if not L then return nil; end;
 	if L.ent then return L.ent; end;
 	L.ent = "none";
 	if not TRF_GenReady() or TRF_GnModeQ() ~= "mod" then return L.ent; end;
-	if TRF_GnX("TRF_StagedRoll") then
+	local nost, noseed = nil, nil;
+	local tk = TRF_GnX("TRF_TrackEntry");
+	if type(tk) ~= "table" then tk = {}; end;
+	local nh, hm = 0, TRF_GnTv("handoff_max", 2);
+	if type(tk.chase) == "number" then
+		local a, b = TRF_GnTv("track_chase_min", 5), TRF_GnTv("track_chase_max", 15);
+		if TRF_Due(a + TRF_GnRand(max(1, b - a + 1)), "TRF_TrackSpawn", tk.chase, "chase") then nh = 1; nost = 1; end;
+	end;
+	if type(tk.port) == "table" then
+		local a, b = TRF_GnTv("track_port_min", 60), TRF_GnTv("track_port_max", 120);
+		for i = 1, getn(tk.port) do
+			if nh < hm and type(tk.port[i]) == "number" and TRF_Due(a + TRF_GnRand(max(1, b - a + 1)), "TRF_TrackSpawn", tk.port[i], "port") then nh = nh + 1; end;
+		end;
+	end;
+	if TRF_GnX("TRF_SweepEntry") then nost = 1; noseed = "sweep"; end;
+	if TRF_GnX("TRF_CarrierEntry") then nost = 1; end;
+	if not noseed and TRF_GnX("TRF_FeqEntry") then nost = 1; noseed = "feq"; end;
+	if not nost and TRF_GnX("TRF_StagedRoll") then
 		L.ent = "staged";
 		TRF_GnL("entry plan: staged raid, no seed");
+		noseed = "staged";
+	end;
+	local idn = nil;
+	if type(tk.dock) == "table" and type(tk.dock[1]) == "number" then idn = tk.dock[1]; end;
+	if noseed then
+		if L.ent == "none" then L.ent = noseed; end;
+		-- A displaced identity seed undocks when that event ends (TRF_SeedResume).
+		if idn or type(TRF_PoEntry) == "function" then L.sdq = {i=idn, p=1}; end;
+		if noseed ~= "staged" then TRF_GnL("entry plan: "..noseed..", no seed"); end;
 		return L.ent;
 	end;
-	local ch, why = TRF_GnSeedChance();
-	if not ch then TRF_GnD("entry plan: no seed ("..tostring(why)..")"); return L.ent; end;
-	local roll = TRF_GnRand(100);
-	if not (roll < ch) then TRF_GnD("entry plan: seed chance="..ch.." roll="..roll.." -> no"); return L.ent; end;
+	if TRF_GnX("TRF_PoEntry") then return TRF_GnPoSeed(L); end;
+	return TRF_GnSeedPlan(L, idn);
+end;
+
+-- Pirate tip-off seed (7.5 fulfil, 8.6 item 5a): the seed without the chance roll; TRF_SeedSpawn marks the
+-- trader (tb bit 2, tracked) and reports it with TRF_PoDone(id, "spawn"). Deviation: the tier comes from the
+-- normal pick, not "the highest tier pro allows" (TT4 for intel). Returns live.ent.
+function TRF_GnPoSeed(L)
 	local a, b = TRF_GnTv("seed_min", 15), TRF_GnTv("seed_max", 30);
 	local dt = a + TRF_GnRand(max(1, b - a + 1));
-	if TRF_Due(dt, "TRF_SeedSpawn") then L.ent = "seed"; end;
-	TRF_GnL("entry plan: seed chance="..ch.." roll="..roll.." in "..dt.." s");
+	L.spo = 1;
+	if TRF_Due(dt, "TRF_SeedSpawn") then L.ent = "po"; else L.spo = nil; end;
+	TRF_GnL("entry plan: pirate tip-off seed in "..dt.." s");
 	return L.ent;
+end;
+
+-- Seed of this entry (items 5b, 6): a tracked dock record (pool index idn) undocks without the chance
+-- roll, the plain seed with it (v02 9.5). Returns live.ent.
+function TRF_GnSeedPlan(L, idn)
+	local ch, why = TRF_GnSeedChance();
+	if not ch then TRF_GnD("entry plan: no seed ("..tostring(why)..")"); return L.ent; end;
+	local roll = -1;
+	if idn then
+		L.sdk = idn;
+	else
+		roll = TRF_GnRand(100);
+		if not (roll < ch) then TRF_GnD("entry plan: seed chance="..ch.." roll="..roll.." -> no"); return L.ent; end;
+	end;
+	local a, b = TRF_GnTv("seed_min", 15), TRF_GnTv("seed_max", 30);
+	local dt = a + TRF_GnRand(max(1, b - a + 1));
+	if TRF_Due(dt, "TRF_SeedSpawn") then L.ent = "seed"; else L.sdk = nil; end;
+	if idn then
+		TRF_GnL("entry plan: tracked seed pool="..idn.." in "..dt.." s");
+	else
+		TRF_GnL("entry plan: seed chance="..ch.." roll="..roll.." in "..dt.." s");
+	end;
+	return L.ent;
+end;
+
+-- v1: the identity seed a sweep, an equipment convoy or a staged raid displaced (8.6 item 5) undocks now,
+-- if caps allow; called by those modules when their event ends. Returns "po", "seed" or nil.
+function TRF_SeedResume()
+	local L = TRF_GnLive();
+	if not L or type(L.sdq) ~= "table" then return nil; end;
+	local q = L.sdq;
+	L.sdq = nil;
+	if not TRF_GenReady() or TRF_GnModeQ() ~= "mod" then return nil; end;
+	if q.p == 1 and TRF_GnX("TRF_PoEntry") and TRF_GnPoSeed(L) == "po" then return "po"; end;
+	if type(q.i) == "number" then
+		local e = L.ent;
+		if TRF_GnSeedPlan(L, q.i) == "seed" and e ~= "seed" then return "seed"; end;
+	end;
+	return nil;
 end;
 
 -- Trader contact indices with an approach point at the usable trade station, or nil.
@@ -1384,6 +1518,15 @@ end;
 function TRF_SeedSpawn()
 	if not TRF_GenReady() or TRF_GnModeQ() ~= "mod" then return nil; end;
 	if type(TRF_Supp) == "function" and TRF_Supp() ~= 0 then TRF_GnStat("skip_seed_supp"); return nil; end;
+	-- v1 (8.6 item 5b): a tracked record treated as docked undocks with its identity (trf_track).
+	local L = TRF_GnLive();
+	if L and type(L.sdk) == "number" then
+		local i = L.sdk;
+		L.sdk = nil;
+		local tid = TRF_GnX("TRF_TrackSpawn", i, "dock");
+		if tid then TRF_GnStat("seed_track"); else TRF_GnStat("skip_seed_track"); end;
+		return tid;
+	end;
 	if not TRF_GnValidate() then return nil; end;
 	local cis = TRF_GnSeedContacts();
 	if not cis then TRF_GnStat("skip_seed_station"); return nil; end;
@@ -1402,6 +1545,12 @@ function TRF_SeedSpawn()
 		r.seed = 1;
 		TRF_GnStat("seed");
 		TRF_GnL("seed id="..id.." tier="..tostring(r.tier));
+		if L and L.spo then
+			L.spo = nil;
+			if type(TRF_BitSet) == "function" then r.tb = TRF_BitSet(r.tb, 2); end;
+			TRF_GnX("TRF_TrackMark", id, "po");
+			TRF_GnX("TRF_PoDone", id, "spawn");
+		end;
 	end;
 	return id;
 end;
@@ -1421,14 +1570,29 @@ function TRF_GnQ()
 	return q;
 end;
 
--- Hold points of trader h's station: hp1 = dock + d * q_hp1, hp2/3 = dock + d * q_hp2 +- p * q_hpw, with d
--- toward the approach point and p across it. CHECK (O9): distances unmeasured. nil without a station.
+-- Hold points of trader h's station (TRF_QPoints with its station and approach point).
 function TRF_GnQPts(h)
 	local st = h.st;
 	if not TRF_GnAlive(st) then st = TRF_GnStation(); end;
 	if not st or not h.np then return nil; end;
+	return TRF_QPoints(st, h.np);
+end;
+
+-- Hold points of station st: hp1 = dock + d * q_hp1, hp2/3 = dock + d * q_hp2 +- p * q_hpw, with d toward
+-- approach point np and p across it. CHECK (O9): distances unmeasured. v1 (forming danger convoy): st
+-- defaults to the usable station, np to the approach point of the first seed contact, else the last
+-- spawn's. nil without a station or approach point.
+function TRF_QPoints(st, np)
+	if not TRF_GnAlive(st) then st = TRF_GnStation(); end;
+	if not st then return nil; end;
+	if not np then
+		local cis = TRF_GnSeedContacts();
+		if cis then np = TRF_GnApproach(TRF_GnContacts()[cis[1]], st, TRF_GnT()); end;
+		local H = TRF_GnH();
+		if not np and H then np = H.np; end;
+	end;
+	if not np then return nil; end;
 	local dock = st:GetDockingPosition();
-	local np = h.np;
 	local dx, dy, dz = np.x - dock.x, np.y - dock.y, np.z - dock.z;
 	local l = sqrt(dx * dx + dy * dy + dz * dz);
 	if l < 0.001 then dx, dy, dz, l = 0, 0, 1, 1; end;
@@ -1545,7 +1709,8 @@ function TRF_Q_Tick(dg)
 		for j = 1, 3 do
 			local id = q.hp[j];
 			q.hp[j] = 0;
-			if id ~= 0 and TRF_Rec(id) then TRF_GnQDivert(id, "station"); end;
+			-- Forming danger convoy members are moved by trf_danger, not diverted.
+			if id ~= 0 and TRF_Rec(id) and TRF_Rec(id).st ~= "form" then TRF_GnQDivert(id, "station"); end;
 		end;
 		q.dk = 0;
 		return;
@@ -1566,9 +1731,10 @@ function TRF_Q_Tick(dg)
 		local id = q.hp[j];
 		if id ~= 0 then
 			local r = TRF_Rec(id);
-			if not r or r.st ~= "queue" then
+			-- A forming danger convoy member keeps its hold point (trf_danger frees it at departure).
+			if not r or (r.st ~= "queue" and r.st ~= "form") then
 				q.hp[j] = 0;
-			elseif gt - (r.qt or gt) > wait then
+			elseif r.st == "queue" and gt - (r.qt or gt) > wait then
 				q.hp[j] = 0;
 				TRF_GnQDivert(id, "wait");
 			end;
@@ -1662,7 +1828,7 @@ function TRF_Gen_OnLoad()
 	else
 		local tr = {};
 		for id, r in old.tr do if type(r) == "table" and r.st == "wind" then tr[id] = r; end; end;
-		TRF.live = {g=TRF.gen, tr=tr, grp={0, 0, 0, 0}, port={}, kills=0, rec=0, rn=old.rn or 0, due={}, stat={}};
+		TRF.live = {g=TRF.gen, tr=tr, grp={0, 0, 0, 0}, port={}, kills=0, rec=0, rn=old.rn or 0, stat={}};
 	end;
 	local st = TRF_GnLive().stat;
 	-- remove_load: deleted (out of view or no flight); remove_orphan: every orphan found; wind_load: sent to a portal.
@@ -1681,8 +1847,10 @@ function TRF_Kv2(t)
 	return s;
 end;
 
--- Before a jump: delete every traffic trader and response flight (M3), st = "gone".
-function TRF_Gen_BeforeJump()
+-- Before a jump: delete every traffic trader and response flight (M3), st = "gone". v1: also the danger
+-- convoy escort flights (the other v1 modules delete their flights in their own BeforeJump, which the
+-- loader runs first; spec 10.3).
+function TRF_Gen_BeforeJump(dest)
 	local L = TRF_GnLive();
 	local H = TRF_GnH();
 	if not L or not H then return; end;
@@ -1713,6 +1881,9 @@ function TRF_Gen_BeforeJump()
 		end;
 	end;
 	H.resp = {};
+	local nv = TRF_GnX("TRF_DcDelAll", H);
 	for k = 1, 4 do L.grp[k] = 0; end;
-	TRF_GnL("jump: traders deleted="..n.." response flights="..nr);
+	local sv = "";
+	if type(nv) == "number" and nv > 0 then sv = " v1="..nv; end;
+	TRF_GnL("jump: traders deleted="..n.." response flights="..nr..sv);
 end;

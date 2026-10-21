@@ -6,7 +6,8 @@
 -- Env: TRF_DIR (mod script dir, trailing slash), TRF_EXP (0..3; unset = use the repo config.script),
 -- TRF_BIG, TRF_DEL, TRF_AUTOSAVE (config big / del_on_jump / autosave), TRF_SCEN (unset: loader scenario
 -- below; a..g: traffic scenario of host_traffic.lua; v02-a..n: v0.2 scenario of host_v02.lua; both found
--- through TRF_TESTS). Exit code 1 on any script error, mod-log ERROR line or failed check.
+-- through TRF_TESTS; v1-a..n: v1 scenario of host_v1.lua, loaded after both). Exit code 1 on any script error,
+-- mod-log ERROR line or failed check.
 
 -- Host state lives in an upvalue: emulated ClearGlobals deletes table globals.
 local H = {
@@ -31,7 +32,10 @@ local H = {
 	-- team per location, vanilla dock originals run.
 	boxes = {}, in_box = nil, box_nested = 0, markets = {}, mwrites = {}, shops_made = {}, upd = {}, dlgs = {},
 	pdlgs = {}, navs = {}, credits = 0, level = 4, posts = {}, rel = {}, teams = {}, trade_ok = 0, patrol_ok = 0,
-	ftrader = 0, speak = 0
+	ftrader = 0, speak = 0,
+	-- v1 stubs: quest states by id, stations made, docks of CreatePirateStationDocking, groups by name, vanilla
+	-- relation and pirate dock originals run, modules added (AddModule), mothership inventory.
+	quests = {}, stations = {}, pdocks = {}, groups = {}, cst = {}, pir_ok = 0, mods = {}
 };
 
 function HOST() return %H; end;
@@ -58,13 +62,14 @@ PI = 3.1415926535897932;
 EASY = 0; NORMAL = 1; HARD = 2; NOINIT = 0;
 _EVENT_TIMER = 1; ROLE_ATTACK = 2; ROLE_DEFEND = 3; ROLE_MISSLEDEFENCE = 6; ROLE_REPAIR = 7; ROLE_CLOACKING = 5;
 RELATION_NEUTRAL = 0; RELATION_WAR = 1; RELATION_FRIEND = 2;
+QUEST_DONE = 0; QUEST_FAILED = 1; QUEST_PROCESS = 2; QUEST_NOINIT = 3;
 HOST().qs = FALSE;
 
 -- 0x7acae8 list plus the engine-constant names used here.
 function HOST_IsProtected(k)
 	if type(k) ~= "string" then return nil; end;
 	if HOST().protected[k] then return 1; end;
-	if strfind(k, "^_EVENT_") or strfind(k, "^ROLE_") or strfind(k, "^RELATION_") then return 1; end;
+	if strfind(k, "^_EVENT_") or strfind(k, "^ROLE_") or strfind(k, "^RELATION_") or strfind(k, "^QUEST_") or strfind(k, "^MISSION_") then return 1; end;
 	return nil;
 end;
 foreachi({"_CLASS", "PI", "_VERSION", "_INPUT", "_OUTPUT", "_STDERR", "_STDIN", "_STDOUT",
@@ -220,6 +225,7 @@ function HOST_Pilot(tpl)
 		print("HOST Message "..tostring(text));
 		tinsert(HOST().msgs, {t=text, gt=HOST().gt});
 	end;
+	p.SetPerk = function(self, k) HOST_Want(type(k) == "string", "Pilot:SetPerk(perk)"); self.perks = (self.perks or 0) + 1; end;
 	return p;
 end;
 function CreatePilot(tpl)
@@ -235,7 +241,8 @@ function CreateCarcass(tpl, pos, dir)
 	for i = 1, getn(ships) do
 		if ships[i].alive and HOST_Dist(ships[i].pos, pos) < HOST().block_r then print("HOST CreateCarcass blocked"); return nil; end;
 	end;
-	local s = {__obj=1, kind="ship", tpl=tpl, pos=Vector3(pos.x, pos.y, pos.z), alive=1, inv={}};
+	local s = {__obj=1, kind="ship", tpl=tpl, pos=Vector3(pos.x, pos.y, pos.z), alive=1, inv={}, spawn=Vector3(pos.x, pos.y, pos.z)};
+	if dir then s.ori = Vector3(dir.x, dir.y, dir.z); end;
 	s.AssignPilot = function(self, p)
 		HOST_Want(type(p) == "table" and p.kind == "pilot", "Carcass:AssignPilot(pilot)");
 		self.pilot = p; p.ship = self;
@@ -255,9 +262,9 @@ function CreateCarcass(tpl, pos, dir)
 	s.GetPilot = function(self) return self.pilot; end;
 	s.Delete = function(self) self.alive = nil; end;
 	s.SetRole = function(self, r) HOST_Want(type(r) == "number", "Carcass:SetRole(ROLE_*)"); self.role = r; end;
-	-- 1 for transports, nil for fighters (vanilla tests it bare).
+	-- 1 for transports (Walrus and Arba hulls included, v1 CHECK), nil for fighters (vanilla tests it bare).
 	s.ImBigShip = function(self)
-		if strfind(self.tpl, "_tr", 1, 1) or strfind(self.tpl, "transport", 1, 1) then return 1; end;
+		if strfind(self.tpl, "_tr", 1, 1) or strfind(self.tpl, "transport", 1, 1) or strfind(self.tpl, "Walrus_", 1, 1) then return 1; end;
 		return nil;
 	end;
 	s.AddModuleToInventory = function(self, it, n)
@@ -271,6 +278,18 @@ function CreateCarcass(tpl, pos, dir)
 	s.SetHP = function(self, v) HOST_Want(type(v) == "number", "Carcass:SetHP(hp)"); self.hp = v; end;
 	s.GetName = function(self) return self.tpl; end;
 	s.SetMaxSpeed = function(self, v) HOST_Want(type(v) == "number", "Carcass:SetMaxSpeed(v)"); self.vmax = v; end;
+	-- v1: heading (the spawn direction, or s.ori set by a scenario), teleport, move order, module fit (never
+	-- used in vanilla), destruction, effect, speed (never used in vanilla; 100 or vmax).
+	s.GetVectorOrientation = function(self) local o = self.ori or Vector3(0, 0, 1); return Vector3(o.x, o.y, o.z); end;
+	s.SetPosition = function(self, v) HOST_Want(HOST_IsVec(v), "Carcass:SetPosition(Vector3)"); self.pos = Vector3(v.x, v.y, v.z); end;
+	s.Move = function(self, v) HOST_Want(HOST_IsVec(v), "Carcass:Move(Vector3)"); self.mv = v; end;
+	s.AddModule = function(self, m)
+		HOST_Want(type(m) == "string", "Carcass:AddModule(module)");
+		tinsert(HOST().mods, m); self.mods = (self.mods or 0) + 1;
+	end;
+	s.Blow = function(self) self.alive = nil; self.blown = 1; end;
+	s.PlayFX = function(self, fx) HOST_Want(type(fx) == "string", "Carcass:PlayFX(effect)"); self.fx = fx; end;
+	s.GetMaxSpeed = function(self) return self.vmax or 100; end;
 	tinsert(HOST().ships, s);
 	return s;
 end;
@@ -278,6 +297,12 @@ end;
 HOST().ms = {__obj=1, kind="ms", pos=Vector3(-950, 0, 650), alive=1};
 HOST().ms.GetPosition = function(self) return Vector3(self.pos.x, self.pos.y, self.pos.z); end;
 HOST().ms.IsAlive = function(self) return 1; end;
+HOST().ms.inv = {};
+HOST().ms.AddModuleToInventory = function(self, it, n)
+	HOST_Want(type(it) == "string" and type(n) == "number", "Mothership:AddModuleToInventory(item, count)");
+	print("HOST ms inventory +"..n.." "..it);
+	tinsert(self.inv, {it, n});
+end;
 HOST().ms.GetPilot = function(self)
 	return {kind="pilot", GetFlight = function(self) return {Stop = function(self) HOST().ms_stops = (HOST().ms_stops or 0) + 1; end}; end};
 end;
@@ -309,15 +334,17 @@ function HOST_Flight(fname, grp)
 	f.IsAlive = function(self) if self:Lead() then return 1; end; return nil; end;
 	f.GetPosition = function(self) local s = self:Lead(); if s then return s:GetPosition(); end; return Vector3(0, 0, 0); end;
 	f.Delete = function(self) print("HOST Flight:Delete "..self.name); foreachi(self.ships, function(i, s) s.alive = nil; end); self.deleted = 1; end;
+	-- Patrol(points, loop): FALSE flies once (v0.1 lanes), TRUE loops (location garrisons, v1 clan sides).
 	f.Patrol = function(self, pts, loop)
-		local ok = type(pts) == "table" and getn(pts) >= 1 and loop == FALSE;
+		local ok = type(pts) == "table" and getn(pts) >= 1 and (loop == FALSE or loop == TRUE);
 		if ok then for i = 1, getn(pts) do if not HOST_IsVec(pts[i]) then ok = nil; end; end; end;
-		HOST_Want(ok, "Flight:Patrol({Vector3, ...}, FALSE)");
+		HOST_Want(ok, "Flight:Patrol({Vector3, ...}, FALSE|TRUE)");
 		self.patrol = pts;
 	end;
 	f.Move = function(self, v) HOST_Want(HOST_IsVec(v), "Flight:Move(Vector3)"); self.mv = v; end;
 	f.Stop = function(self) self.stopped = (self.stopped or 0) + 1; end;
 	f.Attack = function(self, o) HOST_Want(HOST_IsObj(o), "Flight:Attack(object)"); self.att = o; end;
+	f.Escort = function(self, o) HOST_Want(HOST_IsObj(o), "Flight:Escort(object)"); self.esc = o; end;
 	f.GetLeader = function(self) local s = self:Lead(); if s then return s.pilot; end; return nil; end;
 	f.GetPilotCount = function(self) return getn(self.ships); end;
 	f.GetPilotByNumber = function(self, i)
@@ -330,6 +357,7 @@ end;
 
 function HOST_Group(name, team)
 	local g = {__obj=1, kind="group", name=name, team=team or "Trade"};
+	HOST().groups[name] = g;
 	g.CreateFlight = function(self, fname)
 		HOST_Want(type(fname) == "string", "Group:CreateFlight(name)");
 		return HOST_Flight(fname, self);
@@ -361,6 +389,16 @@ function SetGroupRelation(g, pg, rel)
 	HOST_Want(ok(g) and ok(pg) and type(rel) == "number", "SetGroupRelation(group, group, relation)");
 	local nm = function(x) if type(x) == "table" then return x.name; end; return x; end;
 	tinsert(HOST().rel, {nm(g), nm(pg), rel});
+end;
+-- (name) -> group created under that name, else nil (lua-natives.md, never used in vanilla).
+function GetGroupByName(n) HOST_Want(type(n) == "string", "GetGroupByName(name)"); return HOST().groups[n]; end;
+-- (groupA, groupB) -> the last SetGroupRelation of the pair, else nil when the stub has no record.
+function GetGroupRelation(a, b)
+	HOST_Want((HOST_IsGroup(a) or type(a) == "string") and (HOST_IsGroup(b) or type(b) == "string"), "GetGroupRelation(group, group)");
+	local nm = function(x) if type(x) == "table" then return x.name; end; return x; end;
+	local q, r = HOST().rel, nil;
+	for i = 1, getn(q) do if q[i][1] == nm(a) and q[i][2] == nm(b) then r = q[i][3]; end; end;
+	return r;
 end;
 function CreatePortalGlow(pos, dir, n)
 	HOST_Want(HOST_IsVec(pos) and HOST_IsVec(dir) and type(n) == "number", "CreatePortalGlow(Vector3, Vector3, n)");
@@ -466,6 +504,33 @@ end;
 
 -- (carcass) -> current HP.
 function GetCurHP(o) HOST_Want(type(o) == "table" and o.__obj, "GetCurHP(carcass)"); return o.hp; end;
+
+-- v1 natives -----------------------------------------------------------------------
+-- (questId) -> QUEST_* state: HOST().quests[id], QUEST_NOINIT for an unknown id (CHECK v1 10.4).
+function GetQuestState(id)
+	HOST_Want(type(id) == "string", "GetQuestState(questId)");
+	return HOST().quests[id] or QUEST_NOINIT;
+end;
+-- CreateStation(model, pos, dir[, flag]) -> station object: HP 100000, SetHP, Blow (wreck flag), Delete, IsAlive,
+-- docking position; counted by GetCarcassCountInSphere like a carcass.
+function CreateStation(model, pos, dir, fl)
+	HOST_Want(type(model) == "string" and HOST_IsVec(pos) and HOST_IsVec(dir), "CreateStation(model, Vector3, Vector3[, flag])");
+	local s = HOST_Obj("station", pos.x, pos.y, pos.z);
+	s.label = nil; s.kind = "station"; s.model = model; s.hp = 100000;
+	s.SetHP = function(self, v) HOST_Want(type(v) == "number", "Station:SetHP(hp)"); self.hp = v; end;
+	s.Blow = function(self) self.alive = nil; self.blown = 1; end;
+	s.Delete = function(self) self.alive = nil; self.deleted = 1; end;
+	s.GetName = function(self) return self.model; end;
+	tinsert(HOST().stations, s);
+	tinsert(HOST().ships, s);
+	print("HOST CreateStation "..model);
+	return s;
+end;
+-- DockStation.script CreateDocking(action, pos, ship, r, param, obj), recorded in HOST().pdocks.
+function CreateDocking(a, pos, ship, r, p, o)
+	HOST_Want(type(a) == "string" and HOST_IsVec(pos) and type(r) == "number", "CreateDocking(action, Vector3, ship, r, param, obj)");
+	tinsert(HOST().pdocks, {a=a, pos=pos, r=r, p=p, o=o});
+end;
 function AddPlayerCredits(n) HOST_Want(type(n) == "number", "AddPlayerCredits(n)"); HOST().credits = HOST().credits + n; end;
 function GetPlayerCredits() return HOST().credits; end;
 function SubPlayerCredits(n) HOST().credits = HOST().credits - n; end;
@@ -691,6 +756,94 @@ function __PatrolStationDock_Cancel() end;
 function InitExpForSaved(param) saved_expirience = 0.0; _current_location_COP = param; end;
 function ExpForSaved() if saved_expirience > 0.05 then AddPlayerExperience(saved_expirience); end; end;
 ]], "DATA/Scripts/include/DockStation.script");
+	-- v1: faction, recruit, robot and cargo tables (host_v1_tables.lua, from Create_flight_2.script).
+	local f = openfile(HOST().tests.."host_v1_tables.lua", "r");
+	if f then
+		local src = read(f, "*a");
+		closefile(f);
+		dostring(src, "DATA/Scripts/include/Create_flight_2.script");
+	end;
+	-- v1: DockStation.script 1-20, 403-470, 562-603 (relation station, pirate dock) and Create_flight_2.script
+	-- NewFlight / NewRobotFlight, reduced to records: HOST().cst (relation docks run), pir_ok (pirate dock Ok).
+	dostring([[
+_tab_sid = {
+	{"Kfni","KFNI_AllowChange","ans00","ans000",700000,"New Empire"},
+	{"Vks","VKS_AllowChange","ans01","ans001",650000,"MSF"},
+	{"Triada","Triada_AllowChange","ans02","ans002",850000,"Triada"},
+	{"Uss","USS_AllowChange","ans03","ans003",800000,"USS"},
+	{"Inoco","InoCo_AllowChange","ans04","ans004",900000,"InoCo"},
+	{"Hunter","Hunter_AllowChange","ans07","ans007",600000,"Border Sector"},
+	{"Guard","Merc_AllowChange","ans08","ans008",750000,"mercenaries"},
+	{"Trade","Trade_AllowChange","ans09","ans009",950000,"FTU"}};
+DialogList_Rep = {"DialogC1","DialogC2","DialogC3","DialogC4","DialogC5","DialogC6","DialogC7","DialogC8"};
+ShopList_Kontraband = {"pirate1", "pirate2", "pirate3", "pirate4", "pirate5", "pirate6", "pirate7"};
+function CStation_Action(param)
+	tinsert(HOST().cst, param);
+	_param = param;
+	ShowMsgBox("#UI_StationC_confirm", "#UI_StationC_dock", OnCStationStart, OnCStationCancel);
+end;
+function OnCStationCancel() end;
+function OnCStationStart() StartTradeDialog(DialogList_Rep[tonumber(_param)] or "DialogC1"); end;
+function _temp_change(nameAI)
+	local N = GetPlayerCredits();
+	local moneyAI = 0;
+	for i, _x in _tab_sid do if _x[1] == nameAI then moneyAI = _x[5]; end; end;
+	local tip = tonumber(_param);
+	if (tip == 1) or (tip == 5) then moneyAI = 0; end;
+	if N >= moneyAI then
+		SetGroupRelation(nameAI.."Group_1", PLAYER_GROUP, RELATION_NEUTRAL);
+		SubPlayerCredits(moneyAI);
+		OutputToScreenLog("#UI_CStationOk", 7);
+	else
+		OutputToScreenLog("#UI_CStationNot", 7);
+	end;
+end;
+function CreatePirateStationDocking(__PirateStation, ship, radius, param1, boolUseRadius)
+	local boolUse = boolUseRadius or FALSE;
+	local rd = radius or 110;
+	if boolUse == FALSE then rd = 5; end;
+	if (__PirateStation) then
+		local xyz_st = Vector3(0, 0, 0);
+		if (boolUse == FALSE) then xyz_st = __PirateStation:GetDockingPosition(); else xyz_st = __PirateStation:GetPosition(); end;
+		CreateDocking("__PirDock_Action", xyz_st, ship, rd, param1 or "", __PirateStation);
+	end;
+end;
+function __PirDock_Action(param)
+	if (param == "") then _param = ShopList_Kontraband[RAND(getn(ShopList_Kontraband)) + 1]; else _param = param; end;
+	ShowMsgBox("#UI_StationC_confirm", "#UI_StationC_dock", __PirStationDock_Ok, __PirStationDock_Cancel);
+end;
+function __PirStationDock_Ok()
+	HOST().pir_ok = HOST().pir_ok + 1;
+	UpdateTradeSystem(FALSE);
+	SetTraderFlag(TRUE);
+	TradeStationDlg(_param);
+end;
+function __PirStationDock_Cancel() end;
+]], "DATA/Scripts/include/DockStation.script");
+	dostring([[
+function NewFlight(group, sign, carcas, pil, location, orient2, formation)
+	local grp = getglobal(group);
+	if not grp then return FALSE; end;
+	local flight = grp:CreateFlight("flight_"..sign);
+	setglobal("flight_"..sign, flight);
+	local ship = CreateCarcass(carcas, location, orient2 or Vector3(0, 0, 1));
+	local pilot = CreatePilot(pil);
+	ship:AssignPilot(pilot);
+	flight:AddShip(ship);
+	setglobal("ship_"..sign.."_1", ship);
+	setglobal("pilot_"..sign.."_1", pilot);
+	flight:SetFormation(formation or "shipFormation");
+	return flight;
+end;
+function NewRobotFlight(group, sign, location, type, power, orient)
+	local level = power or 1;
+	if level < 1 then level = 1; end;
+	if level > 20 then level = 20; end;
+	if type == 1 then return NewFlight(group, sign, Robot_Fighters[level][1][1], "AutoGun", location, orient); end;
+	if type == 2 then return NewFlight(group, sign, Robot_Fighters2[level][1][1], "AutoGun", location, orient); end;
+	return FALSE;
+end;
+]], "DATA/Scripts/include/Create_flight_2.script");
 end;
 
 -- Trigger context of the action being run (GetTriggerContext); the generator's timer has SetTime/Activate.
@@ -800,6 +953,8 @@ function ExecuteScriptFile(path)
 		return 1;
 	end;
 	local f = openfile(h.dir..name, "r");
+	-- HOST().hide[name]: the file counts as missing (v1-a: v0.2 behaviour without the v1 files).
+	if f and h.hide and h.hide[name] then closefile(f); f = nil; end;
 	if not f then print("[ScriptSystem] cannot load script file "..path); return nil; end;
 	closefile(f);
 	if dofile(h.dir..name) then return 1; end;
@@ -922,16 +1077,17 @@ function HOST_Ticks(n, dt)
 	end;
 end;
 
--- 3 when the traffic modules are loaded (v3 TRF, v02-spec 3.1), else 1.
+-- 4 when the traffic modules are loaded (v4 TRF, v1-spec 3.1), else 1.
 function HOST_V()
-	if type(TRF_State_Tick) == "function" then return 3; end;
+	if type(TRF_State_Tick) == "function" then return 4; end;
 	return 1;
 end;
 
 if H.scen then
 	print("HOST ==== traffic scenario "..H.scen.." dir="..H.dir);
 	dofile(H.tests.."host_traffic.lua");
-	if strsub(H.scen, 1, 4) == "v02-" then dofile(H.tests.."host_v02.lua"); end;
+	if strsub(H.scen, 1, 4) == "v02-" or strsub(H.scen, 1, 3) == "v1-" then dofile(H.tests.."host_v02.lua"); end;
+	if strsub(H.scen, 1, 3) == "v1-" then dofile(H.tests.."host_v1.lua"); end;
 	print("HOST errors="..H.errors.." fails="..H.fails);
 	if H.errors > 0 or H.fails > 0 then exit(1); end;
 	exit(0);
@@ -958,7 +1114,7 @@ HOST_Check(bad == "", "top level defines only TRF_ functions"..bad);
 HOST_Check(TeleportToLocation == TRF_Wrap_Teleport and TRF_orig_TeleportToLocation == HOST_TeleportToLocation, "TeleportToLocation wrapped once");
 -- v0.1 modules: loaded with exp 0 only (spec 10.1, decision 20); the generator thunk replaces the vanilla action.
 if (h.exp or 0) == 0 then
-	HOST_Check(HOST_V() == 3 and type(TRF_InstallGen) == "function" and type(TRF_Events_Step) == "function", "exp 0 loads the traffic modules");
+	HOST_Check(HOST_V() == 4 and type(TRF_InstallGen) == "function" and type(TRF_Events_Step) == "function", "exp 0 loads the traffic modules");
 	HOST_Check(type(TRF_RegionTick) == "function" and type(TRF_BuildFlight) == "function" and type(TRF_RaidRoll) == "function"
 		and type(TRF_ShopOpen) == "function" and type(TRF_OnHail) == "function", "exp 0 loads the v0.2 modules (region, tier, raid, shop, hail)");
 	HOST_Check(TRF_orig_GenAction == vga and trigger_generator_Action ~= vga and TRF_IsMine(trigger_generator_Action) and not TRF_IsMine(vga), "generator thunk installed, original kept");
@@ -970,7 +1126,7 @@ end;
 HOST_ClearGlobals();
 HOST_MapInit();
 HOST_Check(TRF_orig_TeleportToLocation == HOST_TeleportToLocation and TRF_orig_CustomTeleportate == HOST_CustomTeleportate, "no double wrap after a second load");
-if HOST_V() == 3 then
+if HOST_V() == 4 then
 	HOST_Check(TRF_orig_GenAction ~= vga and not TRF_IsMine(TRF_orig_GenAction) and TRF_IsMine(trigger_generator_Action), "generator re-wrapped around the redefined vanilla action");
 end;
 

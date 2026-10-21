@@ -8,15 +8,15 @@ Running the GOG Windows build of Star Wolves 3: Civil War (GOG id `1426253436`, 
 |---|---|---|---|
 | sw3-performance | [`mods/performance/`](mods/performance/README.md) | `dist/sw3-performance-<v>.zip` | The setup of sections 7 and 10 as an installer: arm64 Wine `arm64-11.19-2` (SHA-256 checked), prefix `sw3-arm64` with `EmulateModeset=Y`, fullscreen in `default.cfg`, Heroic GamesConfig pointed at both; game resolution follows the main display (`[display]` in `sw3tp.ini`, mtld3d `render.scale` set to match) |
 | sw3-trackpad | [`mods/trackpad/`](mods/trackpad/README.md) | `dist/sw3-trackpad-<v>.zip` | Keymap (`controls.cfg` patch) and trackpad gestures (zlib1.dll proxy + `sw3tp.so`) |
-| sw3-traffic | [`mods/traffic/`](mods/traffic/README.md) | none yet | NPC trader traffic with regional boom/bust cycles, pirate progression and bases. Phase 0 engine experiments (DLL hooks + test scripts); see [`PROGRESS.md`](mods/traffic/design/PROGRESS.md) for phases |
-| Pack | top-level `install.sh`, `uninstall.sh` | `dist/sw3-mods-pack-<v>.zip` | Both mods with one installer |
+| sw3-traffic | [`mods/traffic/`](mods/traffic/README.md) | `dist/sw3-traffic-<v>.zip` | NPC trader traffic (Lua scripts loaded by the sw3tp proxy) with regional boom/bust cycles, convoys, pirate clans and bases, faction sweeps. Needs the proxy from sw3-trackpad or sw3-performance. v1 is host-tested, not yet run in the game; see [`PROGRESS.md`](mods/traffic/design/PROGRESS.md) |
+| Pack | top-level `install.sh`, `uninstall.sh` | `dist/sw3-mods-pack-<v>.zip` | sw3-performance and sw3-trackpad with one installer (sw3-traffic is not in the pack yet) |
 
 Quit Heroic, then from the repo (or the unpacked pack):
 ```sh
-./install.sh --mod all                     # or --mod performance, --mod trackpad (repeatable)
+./install.sh --mod all                     # or --mod performance, --mod trackpad, --mod traffic (repeatable)
 ./uninstall.sh --mod all
 ```
-The game dir comes from Heroic's `gog_store/installed.json` (else `~/Games/Heroic/Star Wolves 3 - Civil War`); `--game-dir <path>` overrides it. `./install.sh --help` lists the mods and options.
+Mods install in the order performance, trackpad, traffic (traffic needs the proxy the other two install) and uninstall in reverse. The game dir comes from Heroic's `gog_store/installed.json` (else `~/Games/Heroic/Star Wolves 3 - Civil War`); `--game-dir <path>` overrides it. `./install.sh --help` lists the mods and options.
 Build the zips with `./release.sh`.
 
 ## Setup

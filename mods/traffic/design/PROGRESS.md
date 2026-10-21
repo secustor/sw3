@@ -6,10 +6,10 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[-]` dropped.
 
 ## Current state (2026-10-21)
 
-- Design and engine research complete. Phase 0 code written (2026-10-20); E0.1 passed its first in-game run (2026-10-21) except the jump and save/load checks. Phase 1 (v0.1) and Phase 2 (v0.2) implemented, host-tested (30 host runs), awaiting in-game run; v0.2 installed in the clone with `EXP=0 TRAFFIC=1 AUTOSAVE=1`.
+- Design and engine research complete. Phase 0 code written (2026-10-20); E0.1 passed its first in-game run (2026-10-21) except the jump and save/load checks. Phases 1–3 (v0.1, v0.2, v1) implemented, host-tested (44 host runs), awaiting in-game run; v1 installed in the clone with `EXP=0 TRAFFIC=1 AUTOSAVE=1`. Next: the in-game test plan below.
 - Build route decided: Lua scripts under `Data/Scripts/Mods/Traffic/` plus a `traffic` module in the sw3tp `zlib1.dll` proxy (mod-options §5). Pure Lua is the fallback (option i).
-- Test bench: APFS clone `~/Games/Heroic/sw3-tp-test` with `mods/traffic/install-test.sh` (`EXP=0..3`, `TRAFFIC=0|1`, `AUTOSAVE=0|1|2`, optional `OVERRIDE`, `DUMP`, `GUARD`, the v0.2 keys, `PRO_SET`, `TUNE`), `run-test.sh`, `uninstall-test.sh` (mod-options §7).
-- The trackpad mod is installed in the real game; the traffic module will ship in the same proxy DLL.
+- Test bench: APFS clone `~/Games/Heroic/sw3-tp-test` with `mods/traffic/install-test.sh` (`EXP=0..3`, `TRAFFIC=0|1`, `AUTOSAVE=0|1|2`, optional `OVERRIDE`, `DUMP`, `GUARD`, the v0.2 and v1 keys, `LEVEL`, `PRO_SET`, `TUNE`, `FEQ_AT`, `LOC`), `run-test.sh`, `uninstall-test.sh` (mod-options §7).
+- The trackpad mod is installed in the real game, with a proxy DLL older than the traffic module. The traffic module ships in the same proxy DLL; `mods/traffic/install.sh` installs the scripts into the game once the trackpad (or performance) mod of this release has put that DLL in place.
 
 ## Phase 0: engine experiments (mod-options §7, design §13)
 
@@ -69,21 +69,46 @@ Exit criteria: design §12 v0.2 list, including the 200-leg desynchronisation de
 
 Scope: S14, S17, S18, S30–S39, S41–S45, M15–M18, M21; `TRF` fields `fs`, `lr`, `base`, `offer`, `sys[idx].bh`, `feq`, `std.fst`.
 
-- [ ] Tracked pool, chase through the portal, meeting again (5.4, 6.6).
-- [ ] Faction supply convoys (7.9); demand cargo (8.6); heat reset at the FTU relation station.
-- [ ] Clan tiers T3–T4, carrier raids with simulated launch/recovery, salvage (7.12, S31, S36).
-- [ ] Faction strength and tech ladder, on-screen sweeps as escalating attempts, sweep contracts, pirate-side offers (7.13, 8.10, 8.11, S32–S35).
-- [ ] TT4 convoys with bands 8–9 (7.11, S30); TT4 holds and forced Bust (S40, S41).
-- [ ] Faction equipment convoys with reinforcement waves, clan raids, defence contract, faction standing (7.15, M21, S42, S43).
-- [ ] Danger convoys and the convoy slot (7.16, S44, S45).
-- [ ] Pirate bases: founding, garrison, raids from the base, assault, destruction effects, reconciliation across snapshot/load (7.14, M15–M18, S37–S39).
-- [ ] XML hail dialog if 13.5 allows; full EN/RU localisation; deny list from a campaign pass; tuning pass on §11.
+Implementation spec: [v1-spec.md](v1-spec.md) (2026-10-21; decisions in 11, module ownership in 10.2, critic log 12, conformance review 13). Data model v4; the eight v1 modules load after the v0.2 ones, each on its own (`loaded ... modules=18`).
+
+- [~] (implemented, host-tested, awaiting in-game run: `trf_track.script`, `trf_gen.script` (pool write on escape, tracked arrivals), `trf_events.script`; host `v1-b`) Tracked pool, chase through the portal, meeting again (5.4, 6.6).
+- [~] (implemented, host-tested, awaiting in-game run: `trf_supply.script` (supply convoys, `optdemand`, `_temp_change` and `CStation_Action` wrappers); host `v1-c`) Faction supply convoys (7.9); demand cargo (8.6); heat reset at the FTU relation station.
+- [~] (implemented, host-tested, awaiting in-game run: `trf_clan.script`, `trf_raid.script` (carrier waves, convoy raids); host `v1-d`, `v1-e`. CHECK: `HANGAROUT`/`HANGARIN` offsets and `rec_d` are guesses until E0.9) Clan tiers T3–T4, carrier raids with simulated launch/recovery, salvage (7.12, S31, S36).
+- [~] (implemented, host-tested, awaiting in-game run: `trf_faction.script`, `trf_region.script` (sweep schedule, contract bits); host `v1-f`, `v1-g`, `v1-h`) Faction strength and tech ladder, on-screen sweeps as escalating attempts, sweep contracts, pirate-side offers (7.13, 8.10, 8.11, S32–S35).
+- [~] (implemented, host-tested, awaiting in-game run: `trf_convoy.script`, `trf_tier.script` (bands 8–9); host `v1-i`. TT4 holds miss their value window 2 % of the time, logged `tt4_value_miss`) TT4 convoys with bands 8–9 (7.11, S30); TT4 holds and forced Bust (S40, S41).
+- [~] (implemented, host-tested, awaiting in-game run: `trf_convoy.script`; host `v1-j`. Wave 2 usually finds the `cap_feq` 14 full; equipment holds miss their rung window 13–19 %) Faction equipment convoys with reinforcement waves, clan raids, defence contract, faction standing (7.15, M21, S42, S43).
+- [~] (implemented, host-tested, awaiting in-game run: `trf_danger.script`, `trf_safety.script` (convoy counted as one flight); host `v1-k`) Danger convoys and the convoy slot (7.16, S44, S45).
+- [~] (implemented, host-tested, awaiting in-game run: `trf_base.script`; host `v1-l` with a map fixture. Blocked in the game: `map.script` has no `ba`/`bs` allow-list fields until `gen_map.py` emits them) Pirate bases: founding, garrison, raids from the base, assault, destruction effects, reconciliation across snapshot/load (7.14, M15–M18, S37–S39).
+- [~] (partly: `trf_loc.script` (EN tables, `.loc` scaffold `loc/trf_en.loc`, `loc_mode`, quest-id deny rule), `TRF_V1_TuneDef` tuning table; host `v1-m`. Open: XML hail dialog deferred (v1-spec 11.1 #1); RU text after v1; the deny list needs `qi` from a `gen_map.py` campaign pass) XML hail dialog if 13.5 allows; full EN/RU localisation; deny list from a campaign pass; tuning pass on §11.
+- [~] (implemented, host-tested, awaiting in-game run: `traffic.script` (v1 load order, dispatch, `TRF_Every`, `TRF_BeforeJump(dest, how)`), `config.script` (22 v1 keys, `tier_cap` 4), `trf_state.script` (v4, due list in the handle table); host `v1-a`, `v1-n`: 44 runs pass, worst-case save 37,517 bytes of 40,000) Integration and save budget.
+- [~] (implemented, tested on a fake game dir, not yet run against the real game: `mods/traffic/install.sh`, `uninstall.sh`, top-level `install.sh --mod traffic` (order performance, trackpad, traffic), `release.sh` → `dist/sw3-traffic-<v>.zip`; `install-test.sh` gains the v1 keys, `LEVEL`, `FEQ_AT`, `LOC`, `BAND_HALF`) Packaging: SHA-1 checks, manifest and backups in `<game>/sw3-traffic-backup/`, needs the sw3tp proxy with the traffic module, `[traffic] enabled=1` with the other `sw3tp.ini` sections kept, `--restore-only` for removal. The real game's proxy predates the traffic module, so the trackpad mod has to be reinstalled first.
+- [ ] `gen_map.py`: v1 map fields `ba`, `bs`, `qi`, `tq`, `it`, `fm`, the top-level `rg` table, `--loc`, `--check` for the ladder hulls and the allow-list (v1-spec 10.2). Until then: no bases, v0.2 mission rule instead of quest ids, built-in item prices.
 
 Exit criteria: design §12 v1 list (full campaign without mission breakage, 8x parity, first sweep attempt usually fails on-screen, base life cycle, carrier launch at `HANGAROUT`, equipment convoy wave timing, 200-leg run never shows two equipment convoy records).
 
 ## After v1 (not committed)
 
-C1–C21 as ordered in design §12 "After v1": cross-system escort contracts, station supply deliveries, work board contracts on real traffic, scavengers, faction clashes, hunters, off-screen loss rolls, DLL natives for cargo/market/order/ship-list reads (mod-options §5.4 phase 2), real carrier launch via DLL native, portal gathering for danger convoys.
+C1–C21 as ordered in design §12 "After v1": cross-system escort contracts, station supply deliveries, work board contracts on real traffic, scavengers, faction clashes, hunters, off-screen loss rolls, DLL natives for cargo/market/order/ship-list reads (mod-options §5.4 phase 2), real carrier launch via DLL native, portal gathering for danger convoys. Added by the v1 implementation (v1-spec 13.4 and the verify report):
+
+- RU text table (`TRF_Loc_RU`) and the XML hail dialog (deferred, v1-spec 11.1 #1).
+- `BASE_AT=<sys>` debug key (needs a forced-site cfg key in `trf_base`).
+- Forced tier for the pirate tip-off trader (highest tier `pro` allows, TT4 for intel; needs a field in `TRF_Plan`/`TRF_TierPlan`).
+- `TRF_Tune()` cache (rebuilds about 400 entries per read; 48 µs on the host).
+- Tuning: equipment-convoy wave 2 vs `cap_feq`, hold value windows, the T4 duration bound under constant pushes (20 legs on the host).
+- sw3-traffic in the mods pack once v1 has passed its in-game checks.
+
+## Next in-game test plan
+
+Ordered from cheapest to most expensive; each step assumes the previous one passed. Install on the clone, play, then `SECS=<s> sh mods/traffic/run-test.sh` collects `sw3tp.log`, `ScriptErrors.log` and `LOGfile.txt` into `<clone>/traffic-runs/`. Every step: no new `ScriptErrors.log` lines and no `traffic: lua: ... ERROR` lines.
+
+1. E0.1 jump and save (about 10 min). `EXP=1 TRAFFIC=0 sh mods/traffic/install-test.sh`. Load any save outside a mission, jump once, save, quit, relaunch, load. Look for the E0.1 counters one higher after the jump (T3 carry) and one `TRF_OnLoad` after the load. Copy the save to `.work/saves/Base.sav` and run `tools/savetool.py roundtrip` on it (first real save for the tools).
+2. v0.1 smoke (about 20 min). `EXP=0 TRAFFIC=1 AUTOSAVE=1 LEVEL=v01`. Load a mid-campaign save made without the mod: `dump load v=4 gen=1 legs=0`; `loaded map=1 modules=18`; `gen: spawn` within a few minutes; select a trader (focus line); jump and save/load again (`gen`, `legs`, `heat`, `dis` carried). README "In-game checks for the v0.1 exit criteria", rows 4 and 5.
+3. v0.1 criteria (1–3 h). Same install: 8x in Gredos, Aurora and a core system; an extortion; 30 jumps in three sectors; then missions 1–3 from a new game with and without the mod (README v0.1 table).
+4. v0.2 passive and short checks (about 1 h). `LEVEL=v02`: `TUNE=T_leg=5` 200-leg run (waiting only); `PRO_SET=taira:6` double kill; `PRO_SET=gredos:9,kadi:9,taira:9` 8x; parked ship after leaving (README v0.2 table rows 7, 9–11).
+5. v0.2 play checks (2–4 h). `LEVEL=v02`: 20 min free roam for raids and contracts, contract pay, no autopause, trouble answer to a staged raid, shortage and `ENABLED=2` restore-all; then missions 1–4 with the cycle on and the convoy missions 6c, 6c_1, 6c_2, 9c, 12c, `m18c_escort` (README v0.2 table).
+6. v1 smoke and short checks (about 1 h). Default install (`EXP=0 TRAFFIC=1 AUTOSAVE=1`): `loaded ... modules=18`, `fac: install pirdock=1`, `sp: install reldock`; chase a damaged trader through a portal (`tk: spawn chase`); `FEQ_AT=<sys>` equipment convoy waves and kill; `PRO_SET=gredos:9` ≥ 16 ships and a TT4 kill (forced Bust); danger convoys at `dis` ≥ 4 (README v1 table rows 3, 9–12).
+7. v1 long checks (several hours). `TUNE=T_leg=5` 200-leg run with forced Busts; a T4 region: on-screen sweep (fail and joined success), carrier raid with 10 ships at 8x and the hangar recovery; the in-game test of 8x parity (README v1 table rows 2, 5, 7, 8, 11).
+8. Bases (after `gen_map.py` emits `ba`/`bs`) and the full campaign playthrough (days): README v1 table rows 1 and 6.
 
 ## Decisions pending (owner: user)
 
@@ -103,6 +128,7 @@ C1–C21 as ordered in design §12 "After v1": cross-system escort contracts, st
 
 ## Log
 
+- 2026-10-21: v1 implementation (workflow): new `trf_loc`, `trf_track`, `trf_faction`, `trf_clan`, `trf_convoy`, `trf_danger`, `trf_supply`, `trf_base` per `v1-spec.md` (data model v4); loader dispatch per spec 10.3; conformance review (spec 13, 11 fixes); host scenarios `v1-a..n` (`tests/host_v1.lua`), all 44 host runs pass. The worst-case save measured 41,849 bytes; the due list moved from `TRF.live` to the handle table (its entries never survive a load), now 37,517 bytes of 40,000. Packaging: `mods/traffic/install.sh`/`uninstall.sh` (tested on a fake game dir), `--mod traffic` in the top-level installer, `dist/sw3-traffic-<v>.zip` from `release.sh`. `install-test.sh` gains the v1 keys, `LEVEL`, `FEQ_AT`, `LOC`. Installed in the clone with `EXP=0 TRAFFIC=1 AUTOSAVE=1`; no in-game run yet. Open: `gen_map.py` v1 fields (bases blocked in the game), `BASE_AT`, RU text, equipment-convoy wave 2 vs the ship cap.
 - 2026-10-21: v0.2 implementation (workflow): new `trf_region`, `trf_tier`, `trf_raid`, `trf_shop`, `trf_hail`, v0.1 modules extended per `v02-spec.md` (data model v3, migration); loader dispatch per spec 10.3 and `enabled 2`; conformance review (spec 13, five fixes, open R1–R11); host scenarios `v02-a..n` (`tests/host_v02.lua`), all 30 host runs pass, `TRF` save size 34 KB after 200 legs (budget 40 KB). `install-test.sh` gains the v0.2 keys, `PRO_SET`, `TUNE`; README documents v0.2 and its in-game checks. Pending-decision defaults taken for the v0.2 code. Installed in the clone with `EXP=0 TRAFFIC=1 AUTOSAVE=1`; no in-game run yet. Open: 4.7 phase-group criterion misses 28 of 200 legs and regions phase-lock up to 154 legs (R1, R2, need a spec decision); `NEWS=1` install option and `lint_lua.py --calls` not done.
 - 2026-10-21: v0.1 implementation (workflow): `trf_state`, `trf_safety`, `trf_ui`, `trf_events`, `trf_gen` per `v01-spec.md`, wired into `traffic.script`; conformance review (spec 13, open items O1–O10); host harness scenarios a–g (`tests/host_traffic.lua`), all 16 host runs pass. `install-test.sh` gains `TRAFFIC`, `OVERRIDE`, `DUMP`, `GUARD`; README documents v0.1 and the in-game exit checks. Installed in the clone with `EXP=0 TRAFFIC=1 AUTOSAVE=1`; no in-game run yet. Paths A/B need the `st` map field (not generated yet), so only path C occurs in the game.
 - 2026-10-21: first in-game run of E0.1 on the clone passed (see E0.1). Run aborted before the first jump: the mouse could not reach the whole image because the main display is now an external 3360×1890-point (16:9) screen and the game's 1680×1050 (16:10) frame is shown pillarboxed; the clone's `default.cfg` was switched to 1920×1080 (exact 1.75× fit) for the next run.

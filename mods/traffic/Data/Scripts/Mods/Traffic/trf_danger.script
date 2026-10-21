@@ -1,0 +1,1349 @@
+-- sw3-traffic danger convoys (v1 spec 8.5, 8.6; design 7.16, 8.15). Lua 4.0.1.
+-- In a danger system (dis >= dconv_dis or the region in Raids) FTU traders pool: a spawn that passes the
+-- p_eff roll becomes a risk taker (dconv_solo_pct), else a convoy of N = 2..dconv_max_transports with
+-- chance 1/N (else nothing), so the expected transports per tick stay p_eff. Members are FTU traders
+-- with their own trader record (r.cv = convoy id), built as transports only (TRF_DcBuild); one pooled
+-- escort flight (3-5 cheap/mid mercenary hulls) shares group TRF_Trade_<k> of member 1. Forming: the
+-- station's 3 hold points (or the first lane nav point of member 1's entry portal without a station),
+-- members 20-40 s apart, leave when complete or dconv_form_s after the first arrival. Inbound (lead
+-- path A): all members through one portal, docking as one queue slot. Visit state only: live.dc[n]
+-- (n = member 1's trader id), handles in TRF_H().dc / .dce. trf_gen calls TRF_DcPlan, TRF_DcStart,
+-- TRF_DcGone, TRF_DcHold, TRF_Danger_WindDown; the loader calls TRF_Dc_Step (1 s), TRF_Danger_BeforeJump,
+-- TRF_Danger_OnLoad. Calls into other v1 modules are guarded (missing module = feature off).
+-- Top level only defines functions.
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_DgL(s) TRF_L("dc: "..tostring(s)); end;
+
+function TRF_DgD(s)
+	local v = TRF_DgOpt("log", 1);
+	if type(v) == "number" and v >= 2 then TRF_DgL(s); end;
+end;
+
+function TRF_DgErr(m)
+	TRF_DgL("ERROR "..tostring(m));
+	TRF_DgStat("err_dc");
+end;
+
+-- Protected call; nil on error.
+function TRF_DgP(f, args)
+	if type(f) ~= "function" then return nil; end;
+	return call(f, args, "x", TRF_DgErr);
+end;
+
+-- Protected call of a global by name when it exists.
+function TRF_DgX(name, ...)
+	local f = getglobal(name);
+	if type(f) ~= "function" then return nil; end;
+	return call(f, arg, "x", TRF_DgErr);
+end;
+
+function TRF_DgStat(k)
+	if type(TRF_Stat) == "function" then TRF_Stat(k); end;
+end;
+
+-- Error handler for natives that may be missing (CHECK calls): counted, not logged.
+function TRF_DgQuiet(m)
+	TRF_DgStat("dc_native_fail");
+end;
+
+-- Config keys of this module (spec 10.5).
+function TRF_Danger_OptDef()
+	return {dconv=1, dc_speed=1};
+end;
+
+-- Tune keys (spec 10.5; TRF_V1_TuneDef may define them too, TRF_Tune wins).
+function TRF_Danger_TuneDef()
+	return {dconv_dis=4, dconv_form_s=120, dconv_solo_pct=20, dconv_max_transports=3, dconv_gap_lo=20,
+		dconv_gap_hi=40, dconv_drift=40, dc_pt_r=30, dc_redo=10, dc_lost_s=90};
+end;
+
+function TRF_DgOpt(key, def)
+	local d = TRF_Danger_OptDef()[key];
+	if d == nil then d = def; end;
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_Cfg) == "function" then
+		local c = TRF_Cfg();
+		if type(c) == "table" then v = c[key]; end;
+	end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then v = d; end;
+	return v;
+end;
+
+function TRF_DgT(key, def)
+	if type(TRF_Tune) == "function" then
+		local t = TRF_Tune();
+		if type(t) == "table" and type(t[key]) == "number" then return t[key]; end;
+	end;
+	local d = TRF_Danger_TuneDef()[key];
+	if type(d) == "number" then return d; end;
+	return def;
+end;
+
+function TRF_DgGt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+function TRF_DgRand(n)
+	if type(RAND) ~= "function" or type(n) ~= "number" or n < 1 then return 0; end;
+	return RAND(n);
+end;
+
+-- Visit table of this gen with live.dc, or nil.
+function TRF_DgLive()
+	if type(TRF) ~= "table" or type(TRF.live) ~= "table" then return nil; end;
+	if type(TRF_LiveOk) == "function" and not TRF_LiveOk() then return nil; end;
+	local L = TRF.live;
+	if type(L.dc) ~= "table" then L.dc = {}; end;
+	return L;
+end;
+
+-- Handle table with dc (escort flights of live convoys) and dce (escorts leaving), or nil.
+function TRF_DgH()
+	if type(TRF_H) ~= "function" then return nil; end;
+	local H = TRF_H();
+	if type(H) ~= "table" then return nil; end;
+	if type(H.dc) ~= "table" then H.dc = {}; end;
+	if type(H.dce) ~= "table" then H.dce = {}; end;
+	if type(H.tr) ~= "table" then H.tr = {}; end;
+	return H;
+end;
+
+function TRF_DgAlive(o)
+	if o == nil or type(o) == "number" or type(o) == "string" or type(o) == "function" then return nil; end;
+	return TRF_Is(o:IsAlive());
+end;
+
+function TRF_DgPos(o)
+	if TRF_DgAlive(o) then return o:GetPosition(); end;
+	return nil;
+end;
+
+function TRF_DgDist(a, b)
+	if a == nil or b == nil or type(a.x) ~= "number" or type(b.x) ~= "number" then return nil; end;
+	local dx, dy, dz = a.x - b.x, a.y - b.y, a.z - b.z;
+	return sqrt(dx * dx + dy * dy + dz * dz);
+end;
+
+function TRF_DgTrig(kind, cb, a, b, c)
+	if type(NewTrigger) ~= "function" then return nil; end;
+	return NewTrigger(kind, nil, cb, a, b, c);
+end;
+
+function TRF_DgCur()
+	local i = TRF_DgX("TRF_CurIdx");
+	if type(i) == "number" then return i; end;
+	return nil;
+end;
+
+function TRF_DgHeat()
+	if type(TRF) == "table" and type(TRF.std) == "table" and type(TRF.std.heat) == "number" then return TRF.std.heat; end;
+	return 0;
+end;
+
+function TRF_DgDis(idx)
+	if type(TRF_Dis) == "function" and type(idx) == "number" then return TRF_Dis(idx); end;
+	return 0;
+end;
+
+-- Functions of trf_gen / trf_state this module needs.
+function TRF_DgReady()
+	local need = {"TRF_GnLive", "TRF_GnH", "TRF_Plan", "TRF_Spawn", "TRF_Remove", "TRF_Rec", "TRF_Due",
+		"TRF_GnContacts", "TRF_GnNav", "TRF_GnExitTrig", "TRF_GnNearPortal", "TRF_CanSpawn", "TRF_BuildFlight"};
+	for i = 1, getn(need) do
+		if type(getglobal(need[i])) ~= "function" then return nil; end;
+	end;
+	return 1;
+end;
+
+-- Text: TRF_LocTxt (trf_loc), the ui tables, then this module's table; $1..$3 replaced.
+function TRF_DgTxt(key, a, b, c)
+	local s = TRF_DgX("TRF_LocTxt", key);
+	if type(s) ~= "string" and type(TRF_UI_Find) == "function" then s = TRF_DgX("TRF_UI_Find", key); end;
+	if type(s) ~= "string" then s = TRF_Danger_Text()[key]; end;
+	if type(s) ~= "string" then return tostring(key); end;
+	local v = {a, b, c};
+	for i = 1, 3 do
+		if strfind(s, "$"..i, 1, 1) then
+			local r = gsub(tostring(v[i] or ""), "%%", "%%%%");
+			s = gsub(s, "%$"..i, r);
+		end;
+	end;
+	return s;
+end;
+
+-- EN texts (spec 10.4; RU later through trf_loc). Hail option key "dc" reads "optdc".
+function TRF_Danger_Text()
+	return {
+		optdc = "Escort our convoy",
+		dcoffer = "Escort our convoy to $1 for $2 cr?",   -- destination, pay
+		dcok = "Convoy acknowledges. Form up with us, Wolves.",
+		dcgo = "FTU convoy: all ships, move out.",
+		dcpaid = "Convoy through. $1 cr transferred.",
+		dcfar = "Convoy through, but you were not with us. No pay.",
+		dclost = "Convoy lost. Contract void.",
+		dcstation = "the station",
+		rdconv = "Traders in $1 only fly in convoys now."   -- system (unused rumour; rgather is the hail's)
+	};
+end;
+
+-- Danger system and gates (8.5) -------------------------------------------------------
+
+-- 1 when system idx is a danger system: dis >= dconv_dis or its region in Raids (ph 3). No RAND.
+function TRF_DangerSys(idx)
+	if type(idx) ~= "number" then return nil; end;
+	if TRF_DgDis(idx) >= TRF_DgT("dconv_dis", 4) then return 1; end;
+	local slot = nil;
+	if type(TRF_RgOf) == "function" then slot = TRF_DgX("TRF_RgOf", idx); end;
+	if type(slot) == "number" and type(TRF_Phase) == "function" and TRF_DgX("TRF_Phase", slot) == 3 then return 1; end;
+	return nil;
+end;
+
+-- Gates of the staged raid (v02 5.4) for feature dconv: nil, reason when a convoy may not form.
+function TRF_DcGate(idx)
+	if TRF_DgOpt("dconv", 1) == 0 then return nil, "cfg"; end;
+	if type(idx) ~= "number" then return nil, "nosys"; end;
+	local mode = nil;
+	if type(TRF_SysModeQuiet) == "function" then mode = TRF_DgX("TRF_SysModeQuiet"); else mode = TRF_DgX("TRF_SysMode"); end;
+	if mode ~= "mod" then return nil, "mode"; end;
+	if __disableAction == TRUE or __sys_SOS == TRUE then return nil, "flag"; end;
+	if type(TRF_Supp) == "function" and TRF_Supp() ~= 0 then return nil, "supp"; end;
+	if type(TRF_StrictOk) == "function" then
+		if not TRF_DgX("TRF_StrictOk", idx, "dconv") then return nil, "gate"; end;
+	elseif TRF_DgX("GetPlayerQuestState") == TRUE then
+		return nil, "gate";
+	end;
+	-- Fronn (raid = 0) and every deny entry never form one, whatever the mission state.
+	local m = TRF_DgX("TRF_Map");
+	if type(m) == "table" and type(m.sys) == "table" and type(m.sys[idx]) == "table" and type(TRF_DenyEntry) == "function" then
+		local e = TRF_DgX("TRF_DenyEntry", m.sys[idx].name);
+		if type(e) == "table" and (e.raid == 0 or e.dconv == 0 or e.m == 1) then return nil, "deny"; end;
+	end;
+	if type(TRF_GovActive) == "function" and TRF_DgX("TRF_GovActive") then return nil, "gov"; end;
+	return 1;
+end;
+
+-- Convoy slot (8.6) --------------------------------------------------------------------
+
+-- Live slot {k, id} or nil: trf_convoy's TRF_ConvSlot, else live.cvs.
+function TRF_DgSlot()
+	if type(TRF_ConvSlot) == "function" then
+		local s = TRF_DgX("TRF_ConvSlot");
+		if type(s) == "table" then return s; end;
+		return nil;
+	end;
+	local L = TRF_DgLive();
+	if L and type(L.cvs) == "table" then return L.cvs; end;
+	return nil;
+end;
+
+-- Takes the slot for convoy n (slot id -n, never a trader id, so TRF_Remove's TRF_ConvFree(id) of a
+-- member leaves it alone). Returns 1 when taken.
+function TRF_DgTake(n)
+	if type(TRF_ConvTake) == "function" then return TRF_DgX("TRF_ConvTake", 1, -n); end;
+	local L = TRF_DgLive();
+	if not L or type(L.cvs) == "table" then return nil; end;
+	L.cvs = {k=1, id=-n};
+	return 1;
+end;
+
+function TRF_DgFree(n)
+	if type(TRF_ConvFree) == "function" then TRF_DgX("TRF_ConvFree", -n); return; end;
+	local L = TRF_DgLive();
+	if L and type(L.cvs) == "table" and L.cvs.id == -n then L.cvs = nil; end;
+end;
+
+-- Open convoy record (any state), or nil.
+function TRF_DgOpen(L)
+	for n, dc in L.dc do
+		if type(dc) == "table" then return n, dc; end;
+	end;
+	return nil;
+end;
+
+-- Spawn budget (8.5) -------------------------------------------------------------------
+
+-- Escort count max(3, min(5, N + d + h)): d +1 at dis 3-5, +2 at >= 6; h +1 at heat >= 5.
+function TRF_DcEscN(N, idx)
+	local dis = TRF_DgDis(idx);
+	local d = 0;
+	if dis >= 6 then d = 2; elseif dis >= 3 then d = 1; end;
+	local h = 0;
+	if TRF_DgHeat() >= 5 then h = 1; end;
+	return max(3, min(5, N + d + h));
+end;
+
+-- Risk taker (7.16): a strength of the contact's level range whose row is family F1/F2 when the plan's
+-- row is F3/F4 and the range has one; the plan is redrawn at that strength (its own path, tier and 7.7
+-- escorts). The plan stays as it is when no such row exists or the redraw fails.
+function TRF_DcSolo(plan)
+	if type(TRF_GnRow) ~= "function" or type(plan.lv) ~= "number" then return; end;
+	local r0 = TRF_GnRow(plan.strength);
+	if (r0.fam or 1) <= 2 then return; end;
+	local ok = {};
+	for s = max(1, plan.lv - 4), min(20, plan.lv + 3) do
+		local r = TRF_GnRow(s);
+		if (r.fam or 4) <= 2 then tinsert(ok, s); end;
+	end;
+	if getn(ok) == 0 then return; end;
+	local s = ok[TRF_DgRand(getn(ok)) + 1];
+	local c = TRF_GnContacts()[plan.ci];
+	local p = TRF_DgP(TRF_Plan, {c, plan.ci, nil, plan.free, {s=s}});
+	if type(p) ~= "table" then TRF_DgStat("dc_solo_keep"); return; end;
+	local ks = {};
+	for k, v in plan do tinsert(ks, k); end;
+	for i = 1, getn(ks) do plan[ks[i]] = nil; end;
+	for k, v in p do plan[k] = v; end;
+	TRF_DgStat("dc_solo_fam");
+end;
+
+-- Gathering mode of plan: 3 inbound (path A, formed through its portal), 1 the station's hold points,
+-- 2 the first lane nav point of the entry portal; nil when none is possible.
+function TRF_DcMode(plan)
+	if plan.path == "A" then
+		if plan.ent and plan.np then return 3; end;
+		return nil;
+	end;
+	if plan.st and plan.np and type(TRF_QPoints) == "function" and TRF_DgX("TRF_QPoints", plan.st, plan.np) then return 1; end;
+	if plan.ent and TRF_DcLanePt(plan.ci, plan.ent) then return 2; end;
+	return nil;
+end;
+
+-- First registered nav point of contact ci on the lane of entry portal ent: the nav point nearest its
+-- entry point that is at least 150 units away (else the nearest). nil without nav points.
+function TRF_DcLanePt(ci, ent)
+	local c = TRF_GnContacts()[ci];
+	if type(c) ~= "table" or type(c[4]) ~= "table" or not ent or type(ent) == "number" then return nil; end;
+	local e = ent:GetEntryPoint(10);
+	local best, bd, near, nd = nil, nil, nil, nil;
+	for i = 1, getn(c[4]) do
+		local d = TRF_DgDist(c[4][i], e);
+		if d then
+			if not nd or d < nd then near = c[4][i]; nd = d; end;
+			if d >= 150 and (not bd or d < bd) then best = c[4][i]; bd = d; end;
+		end;
+	end;
+	return best or near;
+end;
+
+-- TRF_GenTrader hook after the p_eff roll and the supply roll (8.5): "single", "convoy" or nil (nothing
+-- spawns this tick); the result is also left in plan.dcp ("none" for nil), so trf_gen tells an error
+-- (plan.dcp unset) from a refusal. No RAND outside a gated danger system with a free slot.
+function TRF_DcPlan(plan)
+	if type(plan) ~= "table" then return "single"; end;
+	plan.dcp = "single";
+	if (plan.tier or 1) >= 4 or not TRF_DgReady() then return "single"; end;
+	local cur = TRF_DgCur();
+	if not TRF_DangerSys(cur) then return "single"; end;
+	local ok, why = TRF_DcGate(cur);
+	if not ok then TRF_DgStat("dc_skip_"..tostring(why)); return "single"; end;
+	local L = TRF_DgLive();
+	if not L or TRF_DgSlot() or TRF_DgOpen(L) then TRF_DgStat("dc_skip_slot"); return "single"; end;
+	if L.wind == 1 then return "single"; end;
+	if TRF_DgRand(100) < TRF_DgT("dconv_solo_pct", 20) then
+		TRF_DcSolo(plan);
+		plan.dcp = "single";
+		TRF_DgStat("dc_solo");
+		return "single";
+	end;
+	local mx = max(2, floor(TRF_DgT("dconv_max_transports", 3)));
+	local N = 2 + TRF_DgRand(mx - 1);
+	if TRF_DgRand(N) ~= 0 then
+		plan.dcp = "none";
+		TRF_DgStat("dc_none");
+		TRF_DgD("plan N="..N.." -> none");
+		return nil;
+	end;
+	local m = TRF_DcMode(plan);
+	if not m then TRF_DgStat("dc_skip_point"); return "single"; end;
+	-- Caps: one flight in cap_traders (checked by trf_gen), N transports + escorts in cap_ships.
+	local E = TRF_DcEscN(N, cur);
+	local fit = TRF_CanSpawn(N + E, "trader");
+	if not fit and N > 2 then
+		N = 2;
+		E = TRF_DcEscN(N, cur);
+		fit = TRF_CanSpawn(N + E, "trader");
+	end;
+	if not fit then TRF_DgStat("dc_skip_ships"); return "single"; end;
+	plan.dcn = N;
+	plan.dce = E;
+	plan.dcm = m;
+	plan.dcp = "convoy";
+	TRF_DgStat("dc_plan");
+	return "convoy";
+end;
+
+-- Builders --------------------------------------------------------------------------------
+
+-- Transport rows of a member plan: TT3 the two transports of TRF_TierRow3, else the first row.tp entries
+-- of the vanilla row (Trad_merc_Ships). nil without the tables.
+function TRF_DcRow(plan)
+	if (plan.tier or 1) == 3 and type(TRF_TierRow3) == "function" then
+		local r3 = TRF_DgP(TRF_TierRow3, {plan});
+		if type(r3) == "table" and getn(r3) >= 1 then
+			local out = {r3[1]};
+			if r3[2] then tinsert(out, r3[2]); end;
+			return out;
+		end;
+	end;
+	if type(Trad_merc_Ships) ~= "table" or type(plan.row) ~= "table" then return nil; end;
+	local src = Trad_merc_Ships[plan.row.row];
+	if type(src) ~= "table" or getn(src) < 1 then return nil; end;
+	local n = max(1, min(plan.tpn or plan.row.tp or 1, getn(src), 2));
+	local out = {};
+	for i = 1, n do tinsert(out, src[i]); end;
+	return out;
+end;
+
+-- Member flight without escorts (plan.bld of trf_gen TRF_Spawn; group global TRF_GTrade_<k> is set).
+-- Sets plan.sh and plan.tpn. Returns the flight or nil.
+function TRF_DcBuild(plan, id, k)
+	local row = TRF_DcRow(plan);
+	if not row then return nil; end;
+	local fl, sh = TRF_BuildFlight(Trad_merc_Pilots, row, "TRF_GTrade_"..k, "trf_"..id, plan.pos, plan.pw or plan.strength,
+		plan.dir, "shipFormationConvoy", 15, 4);
+	if not fl or type(sh) ~= "table" or getn(sh) == 0 then return nil; end;
+	plan.sh = sh;
+	plan.tpn = getn(sh);
+	return fl;
+end;
+
+-- Escort hull: Puma_merc1 and Gunslinger_merc1 stay in TT4 flights (replaced by the mid-range hull).
+function TRF_DcHull(h, fam)
+	local mid = {"Tiger_merc1", "Stormcrow_merc2", "Stormcrow_merc3", "Trident_merc1"};
+	if type(TRF_TrMid) == "function" then mid = TRF_TrMid(); end;
+	if h == "Puma_merc1" or h == "Gunslinger_merc1" or type(h) ~= "string" then return mid[fam] or mid[1]; end;
+	return h;
+end;
+
+-- Expected TT3 members of a convoy (escort mix): member 1's tier plus the TT3 share of the others by pro
+-- (40 / 60 / 80 % at pro 5 / 6 / >= 7, none at heat >= 5), rounded. No RAND.
+function TRF_DcMidN(plan, N, idx)
+	local m = 0;
+	if (plan.tier or 1) == 3 then m = 1; end;
+	local p = 0;
+	if type(TRF_TrPro) == "function" then p = TRF_TrPro(idx) or 0; end;
+	local q = 0;
+	if p >= 7 then q = 0.8; elseif p == 6 then q = 0.6; elseif p == 5 then q = 0.4; end;
+	if TRF_DgHeat() >= 5 then q = 0; end;
+	return m + floor((N - 1) * q + 0.5);
+end;
+
+-- Pooled escort flight trf_dce_<n> in group slot k at pos: E ships, mid hulls first (rank 3), cheap of
+-- the lead's family (rank 2). Labels trf_dce_<n>_<i> for the load scan. Returns flight, ships or nil.
+function TRF_DcEscBuild(n, plan, k, pos, E, mid)
+	local fam = 1;
+	if type(plan.row) == "table" and type(plan.row.fam) == "number" then fam = max(1, min(4, plan.row.fam)); end;
+	local cheap = {"Hatchet_merc1", "Stormcrow_merc1", "Stormcrow_merc2", "Tiger_merc1"};
+	if type(TRF_TrCheap) == "function" then cheap = TRF_TrCheap(); end;
+	local mids = {"Tiger_merc1", "Stormcrow_merc2", "Stormcrow_merc3", "Trident_merc1"};
+	if type(TRF_TrMid) == "function" then mids = TRF_TrMid(); end;
+	local row = {};
+	for i = 1, E do
+		if i <= mid then
+			tinsert(row, {TRF_DcHull(mids[fam], fam), 3, "A"});
+		else
+			tinsert(row, {TRF_DcHull(cheap[fam], fam), 2, "A"});
+		end;
+	end;
+	local H = TRF_DgH();
+	local g = nil;
+	if H and type(H.grp) == "table" then g = H.grp[k]; end;
+	if not g and type(TRF_GnGroup) == "function" then g = TRF_DgX("TRF_GnGroup", k); end;
+	if not g then return nil; end;
+	setglobal("TRF_GTrade_"..k, g);
+	local fl, sh = TRF_DgP(TRF_BuildFlight, {Trad_merc_Pilots, row, "TRF_GTrade_"..k, "trf_dce_"..n, pos, 10,
+		plan.dir or Vector3(0, 0, 1), "shipFormation", 15, 5});
+	setglobal("TRF_GTrade_"..k, nil);
+	if not fl or type(sh) ~= "table" then return nil; end;
+	for i = 1, getn(sh) do TRF_DgX("SetObjectLabel", sh[i], "trf_dce_"..n.."_"..i); end;
+	return fl, sh;
+end;
+
+-- Gathering points ---------------------------------------------------------------------
+
+-- Point of member j: hold point j (mode 1), else the stored centre with 40 units per member.
+function TRF_DcPoint(dc, j)
+	if dc.m == 1 and type(TRF_QPoints) == "function" and type(dc.nx) == "number" then
+		local pts = TRF_DgX("TRF_QPoints", nil, Vector3(dc.nx, dc.ny, dc.nz));
+		if type(pts) == "table" and pts[1] then
+			local p = pts[min(j, getn(pts))];
+			if j <= getn(pts) then return p; end;
+			return Vector3(p.x, p.y + 40 * (j - getn(pts)), p.z);
+		end;
+	end;
+	return Vector3(dc.gx + 40 * (j - 1), dc.gy, dc.gz);
+end;
+
+-- Escort hold point: 50 units above the centre.
+function TRF_DcEscPt(dc)
+	return Vector3(dc.gx, dc.gy + 50, dc.gz);
+end;
+
+-- Member orders while forming: path B Move from the approach point, else through the portal mouth; then
+-- the f_inside trigger at its point. Station mode reserves hold point j in the docking queue.
+function TRF_DcGather(n, dc, j, id)
+	local H = TRF_DgH();
+	local h = H and H.tr[id];
+	local r = TRF_Rec(id);
+	if not h or not r or not TRF_DgAlive(h.fl) then return nil; end;
+	local p = TRF_DcPoint(dc, j);
+	if r.path == "B" or not h.ent then
+		h.fl:Move(p);
+	else
+		h.fl:Patrol({h.ent:GetEntryPoint(70), p}, FALSE);
+	end;
+	r.st = "form";
+	if dc.m == 1 and type(TRF_GnQ) == "function" and j <= 3 then
+		local q = TRF_GnQ();
+		if q.hp[j] == 0 then q.hp[j] = id; end;
+	end;
+	TRF_DgTrig("f_inside", "TRF_DcAtPoint("..n..","..j..","..TRF.gen..")--", h.fl, p, TRF_DgT("dc_pt_r", 30));
+	return 1;
+end;
+
+-- Start and members -------------------------------------------------------------------
+
+-- Common member set-up after TRF_Spawn: convoy id, record in dc.
+function TRF_DcJoin(n, dc, id)
+	local r = TRF_Rec(id);
+	if not r then return nil; end;
+	r.cv = n;
+	tinsert(dc.id, id);
+	tinsert(dc.a, 0);
+	dc.ns = getn(dc.id);
+	return getn(dc.id);
+end;
+
+-- Convoy of plan (TRF_DcPlan said "convoy"): member 1 now with the escort flight, members 2..N 20-40 s
+-- apart (inbound: all now). Returns member 1's trader id, or nil (nothing built, slot free again).
+function TRF_DcStart(plan)
+	local L = TRF_DgLive();
+	local H = TRF_DgH();
+	if not L or not H or not TRF_DgReady() then return nil; end;
+	local k = nil;
+	if type(TRF_GnSlot) == "function" then k = TRF_GnSlot(); end;
+	if not k then TRF_DgStat("dc_skip_grp"); return nil; end;
+	local m = plan.dcm or 1;
+	local N = plan.dcn or 2;
+	plan.k = k;
+	plan.esc = 0;
+	plan.bld = "TRF_DcBuild";
+	if m ~= 3 then plan.noord = 1; end;
+	local id = TRF_Spawn(plan);
+	if not id then TRF_DgStat("dc_skip_build"); return nil; end;
+	local n = id;
+	if not TRF_DgTake(n) then
+		-- Another form took the slot meanwhile: member 1 flies as a single trader.
+		local r1 = TRF_Rec(id);
+		if r1 and m ~= 3 then TRF_DgX("TRF_Orders", id); end;
+		TRF_DgStat("dc_skip_take");
+		return id;
+	end;
+	local gt = TRF_DgGt();
+	local dc = {id={}, a={}, st="form", t0=gt, n=N, ns=0, e=plan.dce or 3, ct=0, ok=0, m=m, k=k, ci=plan.ci, ld=0};
+	if m == 3 then dc.st = "in"; end;
+	-- Portal index of member 1 (lane and inbound members use it).
+	local c = TRF_GnContacts()[plan.ci];
+	if type(c) == "table" and type(c[3]) == "table" and plan.ent then
+		for i = 1, getn(c[3]) do if c[3][i] == plan.ent then dc.si = i; end; end;
+	end;
+	local ctr = nil;
+	if m == 1 then
+		-- The approach point is kept, so every member uses the same hold points.
+		dc.nx = plan.np.x; dc.ny = plan.np.y; dc.nz = plan.np.z;
+		local pts = TRF_DgX("TRF_QPoints", plan.st, plan.np);
+		if type(pts) == "table" then ctr = pts[1]; end;
+	elseif m == 2 then
+		ctr = TRF_DcLanePt(plan.ci, plan.ent);
+	else
+		ctr = plan.np;
+	end;
+	if not ctr then ctr = plan.pos; end;
+	dc.gx = ctr.x; dc.gy = ctr.y; dc.gz = ctr.z;
+	L.dc[n] = dc;
+	TRF_DcJoin(n, dc, id);
+	dc.ld = id;
+	-- Escort flight behind member 1 (inbound: behind all members, which spawn 30 apart in the mouth).
+	local tpn = plan.tpn or 1;
+	local p = plan.pos;
+	local ep = Vector3(p.x, p.y, p.z + 15 * (tpn + 1));
+	if m == 3 and plan.ent then ep = plan.ent:GetEntryPoint(20 + 30 * N); end;
+	local efl, esh = TRF_DcEscBuild(n, plan, k, ep, dc.e, min(dc.e, TRF_DcMidN(plan, N, TRF_DgCur())));
+	if efl then
+		H.dc[n] = {fl=efl, sh=esh};
+		dc.e = getn(esh);
+		TRF_DcAttach(n, dc);
+	else
+		dc.e = 0;
+		TRF_DgStat("dc_esc_fail");
+	end;
+	if m == 3 then
+		-- Inbound: member 1 runs the path A route (TRF_Orders in TRF_Spawn), the others follow at once.
+		for j = 2, N do TRF_DcMember_Body(n, j); end;
+		if efl then TRF_DgP(function(f, s) f:Escort(s); end, {efl, TRF_DgLead(id)}); end;
+		TRF_DcRaid(n, "in");
+	else
+		TRF_DcGather(n, dc, 1, id);
+		if efl then TRF_DgP(function(f, q) f:Move(q); end, {efl, TRF_DcEscPt(dc)}); end;
+		local lo, hi = TRF_DgT("dconv_gap_lo", 20), TRF_DgT("dconv_gap_hi", 40);
+		local t = 0;
+		for j = 2, N do
+			t = t + lo + TRF_DgRand(max(1, hi - lo + 1));
+			if not TRF_Due(t, "TRF_DcMember", n, j) then dc.n = j - 1; end;
+		end;
+	end;
+	TRF_DgStat("dc_start");
+	TRF_DgL("start n="..n.." mode="..m.." N="..N.." esc="..dc.e.." k="..k.." path="..tostring(plan.path)
+		.." tier="..tostring(plan.tier).." at "..floor(dc.gx)..","..floor(dc.gy)..","..floor(dc.gz));
+	return id;
+end;
+
+-- First live ship of trader id.
+function TRF_DgLead(id)
+	if type(TRF_GnLead) == "function" then return TRF_GnLead(id); end;
+	return nil;
+end;
+
+-- Due call: member j of convoy n (spec 8.5 form). Protected.
+function TRF_DcMember(n, j)
+	return TRF_DgP(TRF_DcMember_Body, {n, j});
+end;
+
+-- Builds member j: station mode its own path (A drawn becomes C: arrives through a portal), lane mode
+-- member 1's portal, inbound member 1's portal 30 units further along per member. A blocked spot retries
+-- after dc_redo s while the form window is open. Returns the trader id or nil.
+function TRF_DcMember_Body(n, j)
+	local L = TRF_DgLive();
+	if not L or type(L.dc[n]) ~= "table" then return nil; end;
+	local dc = L.dc[n];
+	if dc.st ~= "form" and dc.st ~= "in" then return nil; end;
+	if not TRF_DgReady() then return nil; end;
+	if type(TRF_GenReady) == "function" and not TRF_GenReady() then return nil; end;
+	if type(TRF_Supp) == "function" and TRF_Supp() ~= 0 then TRF_DcDrop(dc, "supp"); return nil; end;
+	if L.wind == 1 then TRF_DcDrop(dc, "wind"); return nil; end;
+	-- Kill cap and ships (the convoy is one flight, so the trader count is not tested again).
+	local ok, why = TRF_CanSpawn(1, "trader");
+	if not ok and why ~= "cap" then TRF_DcDrop(dc, why); return nil; end;
+	if not ok and type(TRF_SafeCountOf) == "function" then
+		local nt, ns = TRF_SafeCountOf(L.tr);
+		if ns + 1 > (L.caps or 20) then TRF_DcDrop(dc, "ships"); return nil; end;
+	end;
+	local c = TRF_GnContacts()[dc.ci];
+	if type(c) ~= "table" then TRF_DcDrop(dc, "contact"); return nil; end;
+	local plan = nil;
+	if dc.m == 3 then
+		plan = TRF_DgP(TRF_Plan, {c, dc.ci, "A", nil, {si=dc.si, nf=1, off=30 * (j - 1)}});
+	elseif dc.m == 2 then
+		plan = TRF_DgP(TRF_Plan, {c, dc.ci, nil, nil, {si=dc.si}});
+	else
+		plan = TRF_DgP(TRF_Plan, {c, dc.ci, nil, nil, nil});
+	end;
+	if type(plan) ~= "table" then
+		dc.rt = (dc.rt or 0) + 1;
+		if dc.st == "form" and dc.rt <= 3 and TRF_Due(TRF_DgT("dc_redo", 10), "TRF_DcMember", n, j) then
+			TRF_DgD("member n="..n.." j="..j.." retry");
+			return nil;
+		end;
+		TRF_DcDrop(dc, "space");
+		return nil;
+	end;
+	if plan.path == "A" and dc.m ~= 3 then plan.path = "C"; plan.to = -1; end;
+	plan.k = dc.k;
+	plan.esc = 0;
+	plan.bld = "TRF_DcBuild";
+	plan.noord = 1;
+	local id = TRF_Spawn(plan);
+	if not id then TRF_DcDrop(dc, "build"); return nil; end;
+	local jj = TRF_DcJoin(n, dc, id);
+	if dc.m == 3 then
+		-- Follower: through the same mouth toward the approach point; no arrival trigger (one queue slot).
+		local H = TRF_DgH();
+		local h = H.tr[id];
+		local lh = H.tr[dc.ld];
+		local np = (lh and lh.np) or plan.np;
+		if h and np and h.ent then
+			h.fl:Patrol({h.ent:GetEntryPoint(70 + 30 * (j - 1)), Vector3(np.x, np.y + 30 * (j - 1), np.z)}, FALSE);
+		end;
+	else
+		TRF_DcGather(n, dc, jj, id);
+	end;
+	TRF_DgL("member n="..n.." j="..jj.."/"..dc.n.." id="..id.." path="..plan.path.." tier="..tostring(plan.tier));
+	return id;
+end;
+
+-- A member that will not come: the convoy waits for one less.
+function TRF_DcDrop(dc, why)
+	dc.n = max(dc.ns, dc.n - 1);
+	TRF_DgStat("dc_drop_"..tostring(why));
+	TRF_DgD("member dropped ("..tostring(why)..") n="..dc.n);
+end;
+
+-- Trigger entry point (review O1): member j of convoy n reached its point.
+function TRF_DcAtPoint(n, j, g) TRF_Cb("TRF_DcAtPoint", TRF_DcAtPoint_Body, {n, j, g}); end;
+
+function TRF_DcAtPoint_Body(n, j, g)
+	if type(TRF) ~= "table" or g ~= TRF.gen then return; end;
+	local L = TRF_DgLive();
+	if not L or type(L.dc[n]) ~= "table" then return; end;
+	TRF_DcArrive(n, L.dc[n], j);
+end;
+
+function TRF_DcArrive(n, dc, j)
+	if dc.st ~= "form" or dc.a[j] ~= 0 then return; end;
+	local id = dc.id[j];
+	local r = TRF_Rec(id);
+	if not r or r.st ~= "form" then return; end;
+	dc.a[j] = 1;
+	local H = TRF_DgH();
+	local h = H and H.tr[id];
+	if h and TRF_DgAlive(h.fl) then TRF_DgP(function(f) f:Stop(); end, {h.fl}); end;
+	if not dc.ta then dc.ta = TRF_DgGt(); dc.ld = id; end;
+	TRF_DgD("at point n="..n.." j="..j.." id="..id);
+end;
+
+-- Escort ships counted in cap_ships: they ride in the h.sh of one open member (dc.ec), moved to the
+-- next open member when that one is gone.
+function TRF_DcAttach(n, dc)
+	local H = TRF_DgH();
+	if not H or type(H.dc[n]) ~= "table" then return; end;
+	if dc.ec and TRF_Rec(dc.ec) then return; end;
+	dc.ec = nil;
+	for i = 1, getn(dc.id) do
+		local id = dc.id[i];
+		local h = H.tr[id];
+		if not dc.ec and TRF_Rec(id) and type(h) == "table" and type(h.sh) == "table" then
+			local sh = H.dc[n].sh;
+			local r = TRF_Rec(id);
+			for s = 1, getn(sh) do
+				if TRF_DgAlive(sh[s]) then tinsert(h.sh, sh[s]); r.np = (r.np or 0) + 1; end;
+			end;
+			dc.ec = id;
+		end;
+	end;
+end;
+
+-- Raid roll (8.5): one per convoy at departure (inbound: at arrival), raid_chance x max(tf, 1.25) x
+-- (1 + 0.08 attr), at least T3 (T1 in guard systems), no demand step (trf_clan TRF_RaidOn). Without
+-- TRF_RaidOn the v0.2 lane roll of the lead (path A/C only) is the fallback.
+function TRF_DcRaid(n, why)
+	local L = TRF_DgLive();
+	if not L or type(L.dc[n]) ~= "table" then return nil; end;
+	local dc = L.dc[n];
+	local ids = {};
+	for i = 1, getn(dc.id) do if TRF_Rec(dc.id[i]) then tinsert(ids, dc.id[i]); end; end;
+	if getn(ids) == 0 then return nil; end;
+	if type(TRF_RaidOn) ~= "function" then return TRF_DgX("TRF_RaidRoll", dc.ld, "lane"); end;
+	if TRF_DgOpt("raids", 1) ~= 1 then return nil; end;
+	local cur = TRF_DgCur();
+	if type(TRF_Rd_Gate) == "function" then
+		local ok, no = TRF_DgX("TRF_Rd_Gate", cur, "raid");
+		if not ok then TRF_DgStat("dc_raid_skip_"..tostring(no)); return nil; end;
+	end;
+	local dE = 1;
+	if type(TRF_DangerEff) == "function" then dE = TRF_DgX("TRF_DangerEff", cur) or 1; end;
+	dE = max(0, min(3, floor(dE)));
+	local rc = {0, 0.10, 0.20, 0.35};
+	local attr = TRF_DgX("TRF_Attr", cur);
+	if type(attr) ~= "number" then attr = 0; end;
+	local p = rc[dE + 1] * 1.25 * (1 + 0.08 * attr);
+	local roll = TRF_DgRand(10000);
+	if not (roll < p * 10000) then
+		TRF_DgStat("dc_raid_no");
+		TRF_DgD("raid roll n="..n.." p="..TRF_F(p).." roll="..roll.." -> no");
+		return nil;
+	end;
+	local tier = 3;
+	if type(TRF_Rd_Tier) == "function" then tier = max(3, TRF_DgX("TRF_Rd_Tier", cur) or 1); end;
+	if type(TRF_Rd_Guard) == "function" and TRF_DgX("TRF_Rd_Guard", cur) then tier = 1; end;
+	local res = TRF_DgX("TRF_RaidOn", ids, tier, "dc");
+	TRF_DgStat("dc_raid");
+	TRF_DgL("raid n="..n.." why="..tostring(why).." tier="..tier.." p="..TRF_F(p).." ids="..getn(ids).." res="..tostring(res));
+	return res;
+end;
+
+-- Leave (8.5) ------------------------------------------------------------------------------
+
+-- Portal map name of object o (current system), or nil.
+function TRF_DgPortName(o)
+	if not o or type(o) == "number" or type(TRF_GnMatch) ~= "function" then return nil; end;
+	local sy = nil;
+	if type(TRF_GnSys) == "function" then sy = TRF_GnSys(); end;
+	local q = TRF_GnMatch(sy, o:GetPosition());
+	if q then return q.name, q.to; end;
+	return nil;
+end;
+
+-- Departure: members not yet spawned dropped, lead = first member at the point, every forming member
+-- flies the lead's lane to its exit in column (15 apart), speed capped to the slowest (cfg dc_speed),
+-- escorts Escort(lead), one raid roll.
+function TRF_DcLeave(n, why)
+	local L = TRF_DgLive();
+	local H = TRF_DgH();
+	if not L or not H or type(L.dc[n]) ~= "table" then return nil; end;
+	local dc = L.dc[n];
+	if dc.st ~= "form" then return nil; end;
+	dc.st = "go";
+	dc.n = dc.ns;
+	local ids = {};
+	-- Arrived members first (lead first), then the ones still on their way.
+	if TRF_Rec(dc.ld) and TRF_Rec(dc.ld).st == "form" and not TRF_Rec(dc.ld).fl then tinsert(ids, dc.ld); end;
+	for pass = 1, 2 do
+		for i = 1, getn(dc.id) do
+			local id = dc.id[i];
+			local r = TRF_Rec(id);
+			local arr = (dc.a[i] == 1 and 1) or 2;
+			if r and r.st == "form" and not r.fl and id ~= ids[1] and arr == pass then tinsert(ids, id); end;
+		end;
+	end;
+	if type(TRF_GnQ) == "function" and type(L.q) == "table" then
+		local q = TRF_GnQ();
+		for j = 1, 3 do
+			for i = 1, getn(dc.id) do if q.hp[j] == dc.id[i] then q.hp[j] = 0; end; end;
+		end;
+	end;
+	if getn(ids) == 0 then TRF_DgL("leave n="..n.." ("..tostring(why)..") no member"); return nil; end;
+	local lead = ids[1];
+	dc.ld = lead;
+	local lr = TRF_Rec(lead);
+	local lh = H.tr[lead];
+	if not lh then TRF_DgL("leave n="..n.." no lead handles"); return nil; end;
+	local ext, nm = lh.ext, lr.ext;
+	if not ext then ext, nm = TRF_GnNearPortal(lr.ci, TRF_DgPos(TRF_DgLead(lead)) or Vector3(dc.gx, dc.gy, dc.gz)); end;
+	if not ext then TRF_DgL("leave n="..n.." no exit portal"); return nil; end;
+	local to = lr.to;
+	if type(to) ~= "number" or to <= 0 then
+		local pn, pto = TRF_DgPortName(ext);
+		if pn then nm = nm or pn; end;
+		to = -1;
+		if pto and type(TRF_GnSysIdx) == "function" then to = TRF_GnSysIdx(pto); end;
+	end;
+	local nav = TRF_GnNav(lr.ci);
+	local gt = TRF_DgGt();
+	for c = 1, getn(ids) do
+		local id = ids[c];
+		local r = TRF_Rec(id);
+		local h = H.tr[id];
+		if r and h and TRF_DgAlive(h.fl) then
+			local off = 15 * (c - 1);
+			local pts = {};
+			for i = 1, getn(nav) do
+				local w = nav[i];
+				tinsert(pts, Vector3(w.x, w.y, w.z + off));
+			end;
+			tinsert(pts, ext:GetEntryPoint(50));
+			tinsert(pts, ext:GetEntryPoint(1));
+			h.ext = ext;
+			r.ext = nm;
+			r.to = to;
+			if r.path ~= "B" then r.path = "C"; end;
+			r.st = "out";
+			r.xa = nil;
+			r.lt = gt; r.wd = 0;
+			h.fl:Patrol(pts, FALSE);
+			TRF_GnExitTrig(id);
+		end;
+	end;
+	TRF_DcSpeed(ids);
+	local e = H.dc[n];
+	if e and TRF_DgAlive(e.fl) then TRF_DgP(function(f, s) f:Escort(s); end, {e.fl, TRF_DgLead(lead)}); end;
+	local lp = TRF_DgLead(lead);
+	if lp and type(TRF_Say) == "function" then TRF_DgP(TRF_Say, {TRF_DgTxt("dcgo"), 6, lp:GetPilot()}); end;
+	TRF_DgStat("dc_leave_"..tostring(why));
+	TRF_DgL("leave n="..n.." ("..tostring(why)..") members="..getn(ids).."/"..dc.ns.." lead="..lead.." exit="..tostring(nm)
+		.." waited="..TRF_F(gt - (dc.ta or dc.t0)));
+	TRF_DcRaid(n, "go");
+	return 1;
+end;
+
+-- Speed cap to the slowest transport of the members (cfg dc_speed 1). CHECK (V12): GetMaxSpeed is never
+-- used by vanilla and SetMaxSpeed only on the mothership; nothing changes when either fails.
+function TRF_DcSpeed(ids)
+	if TRF_DgOpt("dc_speed", 1) ~= 1 then return; end;
+	local H = TRF_DgH();
+	local v = nil;
+	local all = {};
+	for i = 1, getn(ids) do
+		local h = H.tr[ids[i]];
+		if h and type(h.tp) == "table" then
+			for s = 1, getn(h.tp) do
+				if TRF_DgAlive(h.tp[s]) then
+					tinsert(all, h.tp[s]);
+					local x = call(function(o) return o:GetMaxSpeed(); end, {h.tp[s]}, "x", TRF_DgQuiet);
+					if type(x) == "number" and x > 0 and (not v or x < v) then v = x; end;
+				end;
+			end;
+		end;
+	end;
+	if not v then TRF_DgStat("dc_speed_none"); return; end;
+	for i = 1, getn(all) do TRF_DgP(function(o, x) o:SetMaxSpeed(x); end, {all[i], v}); end;
+	TRF_DgD("speed cap "..TRF_F(v).." ships="..getn(all));
+end;
+
+-- End, removal hooks -------------------------------------------------------------------
+
+-- trf_gen TRF_Remove hook (before r.st becomes "gone" and the flight is deleted): contract count of a
+-- member that docked or exited near the player; an inbound lead's docking removes the followers with it.
+function TRF_DcGone(id, r, why)
+	local L = TRF_DgLive();
+	if not L or type(r) ~= "table" or type(r.cv) ~= "number" then return; end;
+	local dc = L.dc[r.cv];
+	if type(dc) ~= "table" or dc.st == "jump" then return; end;
+	if (why == "exit" or why == "dock") and dc.ct > 0 and dc.st ~= "wind" and r.st ~= "wind" then
+		local d = TRF_DgDist(TRF_DgPos(TRF_DgLead(id)), TRF_DgPos(TRF_DgX("TRF_GnMs")));
+		local lim = 400;
+		if type(TRF_HlT) == "function" then lim = TRF_HlT("ct_dist") or 400; end;
+		if d and d <= lim then dc.ok = dc.ok + 1; else dc.far = 1; end;
+	end;
+	if dc.st == "in" and why == "dock" and id == dc.ld and dc.rm ~= 1 then
+		dc.rm = 1;
+		for i = 1, getn(dc.id) do
+			local m = dc.id[i];
+			local rm = TRF_Rec(m);
+			if m ~= id and rm then
+				TRF_DgX("TRF_GnSafeArrive", m, rm, "dock");
+				TRF_Remove(m, "dock");
+			end;
+		end;
+		dc.rm = nil;
+	end;
+end;
+
+-- trf_gen TRF_GnStepOne hook: 1 when the watchdog must leave member id alone (forming, or an inbound
+-- follower while its lead is open).
+function TRF_DcHold(id, r)
+	if r.st == "form" then return 1; end;
+	local L = TRF_DgLive();
+	if not L or type(r.cv) ~= "number" then return nil; end;
+	local dc = L.dc[r.cv];
+	if type(dc) == "table" and dc.st == "in" and id ~= dc.ld and TRF_Rec(dc.ld) then return 1; end;
+	return nil;
+end;
+
+-- Every member gone: contract paid, slot released, escorts leave through the lead's exit (deleted when
+-- out of view), record removed.
+function TRF_DcEnd(n)
+	local L = TRF_DgLive();
+	local H = TRF_DgH();
+	if not L or type(L.dc[n]) ~= "table" then return nil; end;
+	local dc = L.dc[n];
+	if dc.ct > 0 and dc.st ~= "wind" then
+		if dc.ok > 0 then
+			local cap = TRF_DgT("pay_cap", 30000);
+			local pay = floor(min(dc.ct * dc.ok, cap));
+			TRF_DgX("AddPlayerCredits", pay);
+			local hp = 1;
+			if type(TRF_HlRecovery) == "function" and TRF_DgX("TRF_HlRecovery") then hp = 2; end;
+			TRF_DgX("TRF_AddHelp", hp, "dc");
+			TRF_DgX("TRF_AddHeat", -1, "dc");
+			TRF_DgX("TRF_ProCredit", 4, "dc");
+			TRF_DgX("TRF_Say", TRF_DgTxt("dcpaid", format("%d", pay)), 8);
+			TRF_DgStat("dc_paid");
+			TRF_DgL("contract n="..n.." paid "..pay.." ok="..dc.ok.." help+"..hp);
+		elseif dc.far == 1 then
+			TRF_DgX("TRF_Say", TRF_DgTxt("dcfar"), 8);
+			TRF_DgStat("dc_ct_far");
+		else
+			TRF_DgX("TRF_Say", TRF_DgTxt("dclost"), 8);
+			TRF_DgStat("dc_ct_lost");
+		end;
+	end;
+	TRF_DgFree(n);
+	local e = H and H.dc[n];
+	if H then H.dc[n] = nil; end;
+	if type(e) == "table" and TRF_DgAlive(e.fl) then TRF_DcEscLeave(n, e, dc); end;
+	L.dc[n] = nil;
+	TRF_DgStat("dc_end");
+	TRF_DgL("end n="..n.." members="..dc.ns.." ok="..dc.ok.." st="..tostring(dc.st));
+	return 1;
+end;
+
+-- Escort flight leaves: each ship ComeToPortal the lead's exit (else the nearest portal), deleted at the
+-- portal (step) or when out of view.
+function TRF_DcEscLeave(n, e, dc)
+	local H = TRF_DgH();
+	local lp = nil;
+	for s = 1, getn(e.sh) do if not lp then lp = TRF_DgPos(e.sh[s]); end; end;
+	local mp = TRF_DgPos(TRF_DgX("TRF_GnMs"));
+	local ovd = 600;
+	if type(TRF_GnT) == "function" then ovd = TRF_GnT().ovd or 600; end;
+	local d = TRF_DgDist(lp, mp);
+	local o = nil;
+	if lp and (not d or d <= ovd) then o = TRF_GnNearPortal(dc.ci, lp); end;
+	if not o then
+		TRF_DgP(function(f) f:Delete(); end, {e.fl});
+		TRF_DgStat("dc_esc_del");
+		return;
+	end;
+	for s = 1, getn(e.sh) do
+		if TRF_DgAlive(e.sh[s]) then TRF_DgP(function(x, p) x:ComeToPortal(p); end, {e.sh[s], o}); end;
+	end;
+	H.dce[n] = {fl=e.fl, sh=e.sh, o=o, t=TRF_DgGt()};
+end;
+
+-- Leaving escorts: deleted within 30 units of their portal, when out of view, or after 180 s.
+function TRF_DcEscStep()
+	local H = TRF_DgH();
+	if not H then return; end;
+	local mp = TRF_DgPos(TRF_DgX("TRF_GnMs"));
+	local gt = TRF_DgGt();
+	local ks = {};
+	for n, e in H.dce do tinsert(ks, n); end;
+	for i = 1, getn(ks) do
+		local e = H.dce[ks[i]];
+		local p = nil;
+		if type(e) == "table" then for s = 1, getn(e.sh) do if not p then p = TRF_DgPos(e.sh[s]); end; end; end;
+		local dp = TRF_DgDist(p, TRF_DgPos(e and e.o));
+		local dm = TRF_DgDist(p, mp);
+		if not p or (dp and dp < 30) or (dm and dm > 600) or gt - (e.t or gt) > 180 then
+			if p and dp and dp < 30 then TRF_DgP(function(o) o:Start(5, 0); end, {e.o}); end;
+			if TRF_DgAlive(e.fl) then TRF_DgP(function(f) f:Delete(); end, {e.fl}); end;
+			for s = 1, getn(e.sh) do if TRF_DgAlive(e.sh[s]) then TRF_DgP(function(x) x:Delete(); end, {e.sh[s]}); end; end;
+			H.dce[ks[i]] = nil;
+		end;
+	end;
+end;
+
+-- Step (1 s, loader) -------------------------------------------------------------------------
+
+-- Forming: arrivals by distance (trigger fallback), drift re-orders every dc_redo s, escort hold, leave
+-- when complete or dconv_form_s after the first arrival; station lost -> leave. Going/inbound: escort
+-- target follows the lead; inbound lead lost -> next member takes the route. All gone -> end.
+function TRF_Dc_Step()
+	if type(TRF) ~= "table" or not TRF.active then return; end;
+	local L = TRF_DgLive();
+	if not L then return; end;
+	local gt = TRF_DgGt();
+	if type(L.dct) == "number" and gt >= L.dct and gt - L.dct < 1 then return; end;
+	L.dct = gt;
+	TRF_DcEscStep();
+	local ks = {};
+	for n, dc in L.dc do tinsert(ks, n); end;
+	for i = 1, getn(ks) do TRF_DgP(TRF_DcStepOne, {ks[i], gt}); end;
+end;
+
+function TRF_DcStepOne(n, gt)
+	local L = TRF_DgLive();
+	local H = TRF_DgH();
+	if not L or not H then return; end;
+	local dc = L.dc[n];
+	if type(dc) ~= "table" then L.dc[n] = nil; return; end;
+	local open = 0;
+	for i = 1, getn(dc.id) do if TRF_Rec(dc.id[i]) then open = open + 1; end; end;
+	local pending = 0;
+	if dc.st == "form" then pending = max(0, dc.n - dc.ns); end;
+	if open == 0 and pending == 0 then TRF_DcEnd(n); return; end;
+	if open == 0 and gt - dc.t0 > TRF_DgT("dconv_form_s", 120) + TRF_DgT("dc_lost_s", 90) then TRF_DcEnd(n); return; end;
+	TRF_DcAttach(n, dc);
+	local e = H.dc[n];
+	if dc.st == "form" then
+		if dc.m == 1 and type(TRF_GnStation) == "function" and not TRF_GnStation() then TRF_DcLeave(n, "station"); return; end;
+		local redo = not dc.rd or gt - dc.rd >= TRF_DgT("dc_redo", 10);
+		if redo then dc.rd = gt; end;
+		local wait, arr = 0, 0;
+		for j = 1, getn(dc.id) do
+			local id = dc.id[j];
+			local r = TRF_Rec(id);
+			if r and r.st == "form" and not r.fl then
+				wait = wait + 1;
+				local h = H.tr[id];
+				local p = TRF_DcPoint(dc, j);
+				local d = TRF_DgDist(TRF_DgPos(TRF_DgLead(id)), p);
+				if dc.a[j] ~= 1 and d and d <= TRF_DgT("dc_pt_r", 30) then TRF_DcArrive(n, dc, j); end;
+				if dc.a[j] == 1 then
+					arr = arr + 1;
+					-- CHECK (V7, design 13.8): whether stopped NPC transports drift; re-ordered when they do.
+					if redo and d and d > TRF_DgT("dconv_drift", 40) and h and TRF_DgAlive(h.fl) then
+						TRF_DgP(function(f, q) f:Move(q); end, {h.fl, p});
+						TRF_DgStat("dc_drift");
+					end;
+				end;
+			end;
+		end;
+		if e and TRF_DgAlive(e.fl) and redo then
+			local q = TRF_DcEscPt(dc);
+			local d = TRF_DgDist(TRF_DgPos(e.sh[1]) or TRF_DgPos(e.sh[2]), q);
+			if d and d > 60 then dc.es = nil; TRF_DgP(function(f, x) f:Move(x); end, {e.fl, q});
+			elseif d and dc.es ~= 1 then dc.es = 1; TRF_DgP(function(f) f:Stop(); end, {e.fl}); end;
+		end;
+		local fs = TRF_DgT("dconv_form_s", 120);
+		if pending == 0 and wait > 0 and arr == wait then TRF_DcLeave(n, "complete");
+		elseif dc.ta and gt - dc.ta >= fs then TRF_DcLeave(n, "time");
+		elseif not dc.ta and gt - dc.t0 >= fs + TRF_DgT("dc_lost_s", 90) and wait > 0 then TRF_DcLeave(n, "late"); end;
+		return;
+	end;
+	-- Lead gone: the first open member leads (inbound: it takes the path A route and the queue slot).
+	if not TRF_Rec(dc.ld) then
+		local nl = nil;
+		for i = 1, getn(dc.id) do if not nl and TRF_Rec(dc.id[i]) then nl = dc.id[i]; end; end;
+		if nl then
+			dc.ld = nl;
+			if dc.st == "in" and TRF_Rec(nl).st == "in" then TRF_DgX("TRF_Orders", nl); end;
+			if e and TRF_DgAlive(e.fl) then TRF_DgP(function(f, s) f:Escort(s); end, {e.fl, TRF_DgLead(nl)}); end;
+			TRF_DgD("lead n="..n.." -> "..nl);
+		end;
+	end;
+	-- Inbound lead diverted (queue full, station lost): the followers leave by portal too.
+	if dc.st == "in" then
+		local lr = TRF_Rec(dc.ld);
+		if lr and lr.st ~= "in" and lr.st ~= "queue" and lr.st ~= "dock" then
+			dc.st = "go";
+			for i = 1, getn(dc.id) do
+				local m = dc.id[i];
+				local rm = TRF_Rec(m);
+				if m ~= dc.ld and rm and rm.st == "in" then
+					if not TRF_DgX("TRF_GnToPortal", m, "out") then TRF_Remove(m, "queue"); end;
+				end;
+			end;
+			TRF_DgL("inbound n="..n.." lead diverted ("..tostring(lr.st)..")");
+		end;
+	end;
+end;
+
+-- Contract (8.5) ---------------------------------------------------------------------------
+
+-- Offer for member id: text, pay per member (N_eff), or nil, reason. While forming or flying, heat <= 2,
+-- no other contract, strict gate "contract", no flag, not in wind-down.
+function TRF_DcOffer(id)
+	local L = TRF_DgLive();
+	local r = TRF_Rec(id);
+	if not L or not r or type(r.cv) ~= "number" then return nil, "norec"; end;
+	local dc = L.dc[r.cv];
+	if type(dc) ~= "table" then return nil, "nodc"; end;
+	if dc.st ~= "form" and dc.st ~= "go" and dc.st ~= "in" then return nil, "st"; end;
+	if dc.ct > 0 then return nil, "used"; end;
+	if TRF_DgOpt("contracts", 1) ~= 1 then return nil, "off"; end;
+	if L.wind == 1 then return nil, "wind"; end;
+	if TRF_DgHeat() > 2 then return nil, "heat"; end;
+	if type(TRF_CtLive) == "function" and TRF_DgX("TRF_CtLive") then return nil, "busy"; end;
+	if type(TRF_Supp) == "function" and TRF_Supp() ~= 0 then return nil, "flag"; end;
+	local cur = TRF_DgCur();
+	if type(TRF_StrictOk) == "function" and not TRF_DgX("TRF_StrictOk", cur, "contract") then return nil, "strict"; end;
+	local nf = nil;
+	if type(TRF_PayN) == "function" then nf = TRF_DgX("TRF_PayN", cur);
+	elseif type(TRF_HlPayN) == "function" then nf = TRF_DgX("TRF_HlPayN", cur); end;
+	if type(nf) ~= "number" or nf <= 0 then return nil, "pay"; end;
+	nf = floor(nf);
+	local lr = TRF_Rec(dc.ld) or r;
+	local dest = TRF_DgTxt("dcstation");
+	if dc.st ~= "in" and type(lr.to) == "number" and lr.to > 0 then
+		local s = TRF_DgX("TRF_UI_SysName", lr.to) or TRF_DgX("TRF_SysName", lr.to);
+		if type(s) == "string" then dest = s; end;
+	end;
+	local tot = floor(min(nf * max(1, dc.n), TRF_DgT("pay_cap", 30000)));
+	return TRF_DgTxt("dcoffer", dest, format("%d", tot)), nf;
+end;
+
+-- Hail options of member id (trf_hail adds them): {"dc"} or {}.
+function TRF_Dc_HailOpts(id)
+	if TRF_DcOffer(id) then return {"dc"}; end;
+	return {};
+end;
+
+-- Accepts the convoy contract of member id at nf per member reaching the exit or dock. Returns 1.
+function TRF_DcAccept(id, nf)
+	local L = TRF_DgLive();
+	local r = TRF_Rec(id);
+	if not L or not r or type(r.cv) ~= "number" or type(L.dc[r.cv]) ~= "table" then return nil; end;
+	local ok, why = TRF_DcOffer(id);
+	if not ok or type(nf) ~= "number" then TRF_DgL("contract id="..id.." not accepted ("..tostring(why)..")"); return nil; end;
+	local dc = L.dc[r.cv];
+	dc.ct = nf;
+	dc.ok = 0;
+	TRF_DgX("TRF_Say", TRF_DgTxt("dcok"), 6);
+	TRF_DgStat("dc_ct");
+	TRF_DgL("contract n="..r.cv.." accepted nf="..nf.." members="..dc.n);
+	return 1;
+end;
+
+-- Hail option "dc" (trf_hail TRF_HailDo dispatches unknown keys here): the contract box of the open hail.
+function TRF_Dc_HailDo(key, id)
+	local L = TRF_DgLive();
+	if not L or type(L.hl) ~= "table" then return nil; end;
+	local hl = L.hl;
+	id = id or hl.id;
+	local text, nf = TRF_DcOffer(id);
+	if not text then TRF_DgX("TRF_HlClose", "dc offer gone"); return nil; end;
+	hl.n = nf;
+	hl.w = "dcct";
+	hl.t = TRF_DgGt();
+	if not TRF_DgX("TRF_HlBox", "#UI_FTrader_confirm", text, TRF_DcCtOk, TRF_HailClose) then TRF_DgX("TRF_HlClose", "nobox"); end;
+	return 1;
+end;
+
+-- Box OK (protected shim); the accept runs from a due call, as the v0.2 contract box.
+function TRF_DcCtOk() TRF_Cb("TRF_DcCtOk", TRF_DcCtOk_Body, {}); end;
+
+function TRF_DcCtOk_Body()
+	local L = TRF_DgLive();
+	if not L or type(L.hl) ~= "table" or L.hl.g ~= TRF.gen or L.hl.w ~= "dcct" then return; end;
+	L.hl.w = "wait";
+	if not TRF_Due(0.1, "TRF_DcCtDo") then TRF_DgX("TRF_HlClose", "due refused"); end;
+end;
+
+function TRF_DcCtDo()
+	local L = TRF_DgLive();
+	if not L or type(L.hl) ~= "table" then return; end;
+	local id, nf = L.hl.id, L.hl.n;
+	TRF_DgX("TRF_HlClose", "dc accept");
+	TRF_DcAccept(id, nf);
+end;
+
+-- Amount a raid answer pays (v02 5.5 rule, 50 % of the contract amount) for member id, or nil.
+function TRF_DcPayFor(id)
+	local L = TRF_DgLive();
+	local r = TRF_Rec(id);
+	if not L or not r or type(r.cv) ~= "number" or type(L.dc[r.cv]) ~= "table" then return nil; end;
+	local dc = L.dc[r.cv];
+	local nf = dc.ct;
+	if nf <= 0 and type(TRF_PayN) == "function" then nf = TRF_DgX("TRF_PayN", TRF_DgCur()) or 0; end;
+	local open = 0;
+	for i = 1, getn(dc.id) do if TRF_Rec(dc.id[i]) then open = open + 1; end; end;
+	return floor(0.5 * min(nf * open, TRF_DgT("pay_cap", 30000)));
+end;
+
+-- Wind-down, jump, load ------------------------------------------------------------------
+
+-- trf_gen TRF_WindDown, before its per-trader loop: members at the hold points dock (removed) with the
+-- escorts; a lane group returns through its portal; unspawned members dropped; contract paused (void).
+function TRF_Danger_WindDown()
+	local L = TRF_DgLive();
+	local H = TRF_DgH();
+	if not L or not H then return; end;
+	local T_dock = 20;
+	if type(TRF_GnT) == "function" then T_dock = TRF_GnT().T_dock or 20; end;
+	local ks = {};
+	for n, dc in L.dc do tinsert(ks, n); end;
+	for i = 1, getn(ks) do
+		local n = ks[i];
+		local dc = L.dc[n];
+		local was = dc.st;
+		dc.st = "wind";
+		dc.n = dc.ns;
+		if was == "form" then
+			for j = 1, getn(dc.id) do
+				local id = dc.id[j];
+				local r = TRF_Rec(id);
+				if r and r.st == "form" then
+					if dc.m == 1 then
+						r.st = "dock";
+						TRF_Due(T_dock, "TRF_OnDocked", id);
+					elseif not TRF_DgX("TRF_GnToPortal", id, "wind") then
+						TRF_Remove(id, "wind");
+					end;
+				end;
+			end;
+		end;
+		local e = H.dc[n];
+		if type(e) == "table" and TRF_DgAlive(e.fl) then
+			H.dc[n] = nil;
+			if was == "form" and dc.m == 1 then
+				-- Deleted by TRF_DcEscStep when its 180 s run out, T_dock from now (with the members).
+				H.dce[n] = {fl=e.fl, sh=e.sh, t=TRF_DgGt() + T_dock - 180};
+			else
+				TRF_DcEscLeave(n, e, dc);
+			end;
+		end;
+		TRF_DgFree(n);
+		TRF_DgL("wind n="..n.." was="..tostring(was).." members="..dc.ns);
+	end;
+end;
+
+-- Before a jump (before TRF_Gen_BeforeJump): escort flights deleted, convoys closed without effects
+-- (members are deleted by trf_gen; st "jump" keeps TRF_DcGone quiet).
+function TRF_Danger_BeforeJump()
+	local L = TRF_DgLive();
+	local H = TRF_DgH();
+	if not H then return; end;
+	local n = TRF_DcDelAll(H);
+	if L then
+		for k, dc in L.dc do if type(dc) == "table" then dc.st = "jump"; TRF_DgFree(k); end; end;
+	end;
+	if n > 0 then TRF_DgL("jump: escort flights deleted="..n); end;
+end;
+
+-- Deletes every escort flight in H.dc and H.dce. Returns the count.
+function TRF_DcDelAll(H)
+	local n = 0;
+	local lists = {H.dc, H.dce};
+	for l = 1, 2 do
+		local t = lists[l];
+		if type(t) == "table" then
+			for k, e in t do
+				if type(e) == "table" then
+					if TRF_DgAlive(e.fl) then TRF_DgP(function(f) f:Delete(); end, {e.fl}); n = n + 1; end;
+					if type(e.sh) == "table" then
+						for s = 1, getn(e.sh) do if TRF_DgAlive(e.sh[s]) then TRF_DgP(function(x) x:Delete(); end, {e.sh[s]}); end; end;
+					end;
+				end;
+			end;
+		end;
+	end;
+	H.dc = {};
+	H.dce = {};
+	return n;
+end;
+
+-- Load (after trf_gen's load pass; live was reset, members wind down as traders): escort ships found by
+-- label trf_dce_<id>_<i> for the 16 ids up to seq go to the nearest portal within view, else deleted.
+function TRF_Danger_OnLoad()
+	local H = TRF_DgH();
+	if not H or type(TRF) ~= "table" then return; end;
+	H.dc = {};
+	H.dce = {};
+	local seq = TRF.seq;
+	if type(seq) ~= "number" then seq = 0; end;
+	local mp = TRF_DgPos(TRF_DgX("GetPlayerMotherShip"));
+	local nk, nd = 0, 0;
+	for j = 0, 15 do
+		local id = seq - j;
+		if id < 1 then id = id + 9999; end;
+		local sh = {};
+		for i = 1, 5 do
+			local o = TRF_DgX("GetObjectByLabel", "trf_dce_"..id.."_"..i);
+			if TRF_DgAlive(o) then tinsert(sh, o); end;
+		end;
+		if getn(sh) > 0 then
+			local p = sh[1]:GetPosition();
+			local d = TRF_DgDist(p, mp);
+			local o = nil;
+			if d and d <= 600 and type(TRF_GnNearPortal) == "function" then o = TRF_DgP(TRF_GnNearPortal, {nil, p}); end;
+			local fl = TRF_DgP(function(s) return s:GetPilot():GetFlight(); end, {sh[1]});
+			if o then
+				for i = 1, getn(sh) do TRF_DgP(function(x, q) x:ComeToPortal(q); end, {sh[i], o}); end;
+				H.dce[id] = {fl=fl, sh=sh, o=o, t=TRF_DgGt()};
+				nk = nk + 1;
+			else
+				if TRF_DgAlive(fl) then TRF_DgP(function(f) f:Delete(); end, {fl}); end;
+				for i = 1, getn(sh) do if TRF_DgAlive(sh[i]) then TRF_DgP(function(x) x:Delete(); end, {sh[i]}); end; end;
+				nd = nd + 1;
+			end;
+		end;
+	end;
+	if nk + nd > 0 then TRF_DgL("load: escort flights to portal="..nk.." deleted="..nd); end;
+end;
+
+-- Dump line: live convoy and leaving escorts. Returns the line.
+function TRF_Danger_Dump()
+	local L = TRF_DgLive() or {dc={}};
+	local H = TRF_DgH() or {dce={}};
+	local s = "dump dc";
+	local cur = TRF_DgCur();
+	s = s.." danger="..tostring(TRF_DangerSys(cur));
+	for n, dc in L.dc do
+		if type(dc) == "table" then
+			local open = 0;
+			for i = 1, getn(dc.id) do if TRF_Rec(dc.id[i]) then open = open + 1; end; end;
+			s = s.." n="..n.." st="..tostring(dc.st).." m="..tostring(dc.m).." mem="..open.."/"..dc.ns.."/"..dc.n
+				.." esc="..tostring(dc.e).." ld="..tostring(dc.ld).." ct="..tostring(dc.ct).." ok="..tostring(dc.ok);
+		end;
+	end;
+	local ne = 0;
+	for k, e in H.dce do ne = ne + 1; end;
+	s = s.." leaving="..ne;
+	TRF_L(s);
+	return s;
+end;

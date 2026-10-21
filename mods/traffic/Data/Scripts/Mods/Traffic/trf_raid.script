@@ -7,6 +7,12 @@
 -- Trigger callbacks are string actions "TRF_RaidGo(n,g)--" whose shims run the body through TRF_Cb and
 -- exit when g is not TRF.gen; every public entry point runs protected (TRF_PErr). Other modules are reached
 -- by name with a type check, so a missing module only disables a feature.
+-- v1 (v1-spec 6.1, 6.2, 9.4, 10.2): T3/T4 raids of two flights (gunboat, Butcher_pir1 at clan score >= 90,
+-- first flight salvaged through trf_clan's TRF_SalvFlight), raid_live_cap on clan ships, record kinds "cr"
+-- (carrier wave, recovered by its carrier), "fq"/"dc" (no-demand convoy raids from TRF_RaidOn, nd = 1),
+-- base-system and base-neighbour raids (trf_base), no staged raid while a carrier, sweep or equipment
+-- convoy plays here. H.rd[n] gains fls (every flight), dl (ships removed by recovery), tg (non-trader
+-- targets), bp (base return point); H.rdt[n] holds TRF_RaidOn targets until the raid spawns.
 
 -- Defaults and constants -------------------------------------------------------------
 
@@ -46,13 +52,14 @@ function TRF_Rd_K()
 end;
 
 -- Raid tiers (5.3, design 7.12): row band in Pir_Fighters/Pir_Bombers, power band and offset to sys_base,
--- Pir_Pilots index of lead and wings (NORMAL), ships. T3/T4 are v1 rows, unused while tier_cap is 2.
+-- Pir_Pilots index of lead and wings (NORMAL), ships. T3/T4 (v1 6.1): a second flight of ns2 ships
+-- (T3 <= 7 ships, T4 <= 8 alive with Butcher_pir1).
 function TRF_Rd_TierRows()
 	return {
 		{lo=1, hi=4, plo=1, phi=6, off=-3, lead=1, wing=1, ns=2},
 		{lo=5, hi=9, plo=4, phi=11, off=0, lead=2, wing=1, ns=4},
-		{lo=10, hi=14, plo=8, phi=15, off=2, lead=3, wing=2, ns=5},
-		{lo=15, hi=18, plo=11, phi=18, off=3, lead=4, wing=3, ns=6}
+		{lo=10, hi=14, plo=8, phi=15, off=2, lead=3, wing=2, ns=4, ns2=3},
+		{lo=15, hi=18, plo=11, phi=18, off=3, lead=4, wing=3, ns=4, ns2=4}
 	};
 end;
 
@@ -137,6 +144,7 @@ function TRF_Rd_H()
 	if type(H.rd) ~= "table" then H.rd = {}; end;
 	if type(H.nav) ~= "table" then H.nav = {}; end;
 	if type(H.rdl) ~= "table" then H.rdl = {}; end;
+	if type(H.rdt) ~= "table" then H.rdt = {}; end;
 	return H;
 end;
 
@@ -544,15 +552,16 @@ function TRF_Rd_War(a, b)
 end;
 
 -- Common gate of lane and staged raids: mod mode, strict gate, deny, flags and debounce, Pirates at war with
--- Trade, no other open raid (skip: this raid), no open sweep, governor off. Returns 1 or nil, reason.
-function TRF_Rd_Gate(idx, feat, skip)
+-- Trade, no other open raid (skip: this raid; extra: open raids allowed, v1 base_raid_cap and convoy raids),
+-- no open sweep, governor off. Returns 1 or nil, reason.
+function TRF_Rd_Gate(idx, feat, skip, extra)
 	if type(idx) ~= "number" then return nil, "nosys"; end;
 	if type(TRF_SysModeQuiet) == "function" and TRF_SysModeQuiet() ~= "mod" then return nil, "mode"; end;
 	local ok, why = TRF_Rd_Strict(idx, feat);
 	if not ok then return nil, why; end;
 	if TRF_Rd_Supp() then return nil, "supp"; end;
 	if not TRF_Rd_War("Pirates", "Trade") then return nil, "peace"; end;
-	if TRF_Rd_Open(skip) > 0 then return nil, "busy"; end;
+	if TRF_Rd_Open(skip) > (extra or 0) then return nil, "busy"; end;
 	local slot = TRF_Rd_Slot(idx);
 	if slot and TRF_N("TRF_SweepOpen", slot) then return nil, "sweep"; end;
 	if TRF_Rd_GovOn() then return nil, "gov"; end;
@@ -686,52 +695,182 @@ function TRF_Rd_BuildFlight(pilots, row, group, sign, pos, dir, form)
 	return fl;
 end;
 
--- One pirate flight of tier 1..4 at power pw (5.3): fighters 75 %, bombers 25 %; row = clamp(__tablevel[pw],
--- lo, hi) with the difficulty table of NewAllFlight; the first ns entries; pilots from Pir_Pilots by tier
--- (EASY -1, HARD +1, clamped 1..5), so CostOfHead pays by tier. group: global name of the group, as
--- NewAllFlight takes it. Built by trf_tier's TRF_BuildFlight when loaded. Returns the flight or nil.
-function TRF_PirFlight(tier, pw, group, sign, pos, dir)
+-- Lead and wing pilot names of tier 1..4 (Pir_Pilots by tier, EASY -1, HARD +1, clamped 1..5).
+function TRF_Rd_TierPilots(tier)
+	local b = TRF_Rd_TierRows()[TRF_Rd_Clamp(floor(tonumber(tier) or 1), 1, 4)];
+	local adj = 0;
+	local d = TRF_N("GetLevelDifficult");
+	if d ~= nil and d == EASY then adj = -1; elseif d ~= nil and d == HARD then adj = 1; end;
+	return Pir_Pilots[TRF_Rd_Clamp(b.lead + adj, 1, 5)], Pir_Pilots[TRF_Rd_Clamp(b.wing + adj, 1, 5)];
+end;
+
+-- Row of one pirate flight of tier 1..4 at power pw (5.3): kind 1 fighters, 2 bombers, nil 75 / 25 %; row =
+-- clamp(__tablevel[pw], lo, hi) with the difficulty table of NewAllFlight; the first ns entries (nil: the
+-- tier's ns). Returns row {{fit, rank, role}}, pilots, formation, power, lead, wing or nil.
+function TRF_Rd_PirRow(tier, pw, kind, ns)
 	if type(Pir_Fighters) ~= "table" or type(Pir_Bombers) ~= "table" or type(Pir_Pilots) ~= "table" then
 		TRF_Rd_L("pirflight: no Pir_* tables");
 		return nil;
 	end;
 	local b = TRF_Rd_TierRows()[TRF_Rd_Clamp(floor(tonumber(tier) or 1), 1, 4)];
+	if kind == nil then
+		kind = 1;
+		if TRF_Rd_Rand(100) >= 75 then kind = 2; end;
+	end;
 	local tab, form = Pir_Fighters, "shipFormation";
-	if TRF_Rd_Rand(100) >= 75 then tab = Pir_Bombers; form = "shipFormationClaw"; end;
+	if kind == 2 then tab = Pir_Bombers; form = "shipFormationClaw"; end;
 	local p = TRF_Rd_Clamp(floor(tonumber(pw) or 1), 1, 20);
 	local src = tab[TRF_Rd_Clamp(TRF_Rd_LvTab()[p], b.lo, b.hi)];
 	if type(src) ~= "table" then return nil; end;
-	local adj = 0;
-	local d = TRF_N("GetLevelDifficult");
-	if d ~= nil and d == EASY then adj = -1; elseif d ~= nil and d == HARD then adj = 1; end;
-	local lead = Pir_Pilots[TRF_Rd_Clamp(b.lead + adj, 1, 5)];
-	local wing = Pir_Pilots[TRF_Rd_Clamp(b.wing + adj, 1, 5)];
+	local lead, wing = TRF_Rd_TierPilots(tier);
 	-- Row ranks: 5 lead, 1 wings. The pilot list resolves to the same names under a direct index and under
 	-- NewAllFlight's __tabpilot lookup (EASY {1,1,2,2,3}, NORMAL {1,2,2,3,4}, HARD {1,2,3,4,5}).
 	local pilots = {wing, wing, lead, lead, lead};
 	local row = {};
-	for i = 1, min(getn(src), b.ns) do
+	for i = 1, min(getn(src), ns or b.ns) do
 		local e = src[i];
 		local rk = 1;
 		if i == 1 then rk = 5; end;
 		if type(e) == "table" then tinsert(row, {e[1], rk, e[3]}); end;
 	end;
 	if getn(row) == 0 then return nil; end;
+	return row, pilots, form, p, lead, wing;
+end;
+
+-- Builds a row with trf_tier's TRF_BuildFlight when loaded, else the local fallback.
+function TRF_Rd_Build(pilots, row, group, sign, pos, p, dir, form)
 	if type(TRF_BuildFlight) == "function" then
-		return TRF_BuildFlight(pilots, row, group, sign, pos, p, dir, form, 5, b.ns);
+		return TRF_BuildFlight(pilots, row, group, sign, pos, p, dir, form, 5, 8);
 	end;
 	return TRF_Rd_BuildFlight(pilots, row, group, sign, pos, dir, form);
 end;
 
+-- One pirate flight of tier 1..4 at power pw (5.3; row as TRF_Rd_PirRow, kind nil = 75 % fighters), at most
+-- maxn ships; pilots from Pir_Pilots by tier, so CostOfHead pays by tier. group: global name of the group,
+-- as NewAllFlight takes it. Returns the flight or nil.
+function TRF_PirFlight(tier, pw, group, sign, pos, dir, kind, maxn)
+	local row, pilots, form, p = TRF_Rd_PirRow(tier, pw, kind, nil);
+	if not row then return nil; end;
+	if type(maxn) == "number" then
+		while getn(row) > max(1, floor(maxn)) do tremove(row); end;
+	end;
+	return TRF_Rd_Build(pilots, row, group, sign, pos, p, dir, form);
+end;
+
+-- Walrus_pir3/4 gunboat of a T3 raid (v1 6.1), lead pilot of the tier, loot as Pir_BigShips
+-- (FillCargoFlight fills big ships only). Returns the flight or nil.
+function TRF_Rd_Gunboat(tier, pw, group, sign, pos, dir)
+	local lead = TRF_Rd_TierPilots(tier);
+	local fit = "Walrus_pir3";
+	if TRF_Rd_Rand(2) == 1 then fit = "Walrus_pir4"; end;
+	local fl = TRF_Rd_Build({lead, lead, lead, lead, lead}, {{fit, 5, "A"}}, group, sign, pos, pw, dir, "shipFormation");
+	if TRF_Rd_Obj(fl) and type(FillCargoFlight) == "function" and type(Pir_CargoType) == "table" then
+		TRF_Rd_P(FillCargoFlight, {fl, Pir_CargoType, pw, 30, 3});
+	end;
+	return fl;
+end;
+
+-- Ships of a flight (count).
+function TRF_Rd_FlN(fl)
+	local sh = TRF_Rd_P(TRF_Rd_FlShips, {fl});
+	if type(sh) == "table" then return getn(sh); end;
+	return 0;
+end;
+
+-- Flights of raid handle hr (fls, else fl).
+function TRF_Rd_Fls(hr)
+	if type(hr) ~= "table" then return {}; end;
+	if type(hr.fls) == "table" then return hr.fls; end;
+	if hr.fl then return {hr.fl}; end;
+	return {};
+end;
+
+-- Order fn(flight, a) on every live flight of hr (protected per flight).
+function TRF_Rd_Order(hr, fn, a)
+	local l = TRF_Rd_Fls(hr);
+	for i = 1, getn(l) do
+		if TRF_Rd_Alive(l[i]) then TRF_Rd_P(fn, {l[i], a}); end;
+	end;
+end;
+
+-- Live clan ships in the system other than raid skip: open raid records plus trf_clan's carrier escorts
+-- (raid_live_cap, v1 6.1).
+function TRF_Rd_ClanAlive(skip)
+	local L, H = TRF_Rd_Live(), TRF_Rd_H();
+	local c = 0;
+	if L and H then
+		for k, rd in L.rd do
+			if k ~= skip and type(rd) == "table" and rd.st ~= "end" then c = c + TRF_Rd_AliveN(H.rd[k]); end;
+		end;
+	end;
+	local v = TRF_N("TRF_CarrierAlive");
+	if type(v) == "number" then c = c + v; end;
+	return c;
+end;
+
+-- Composition of raid n (5.3, v1 6.1): T1/T2 one flight; T3 fighters plus bombers (75 %) or a gunboat
+-- (25 %); T4 fighters plus bombers and Butcher_pir1 at clan score >= 90. The first flight carries salvaged
+-- gear when the clan has salvage (TRF_SalvFlight; rd.sv, rd.n1). At most raid_live_cap minus the clan ships
+-- alive. Clan ace perks with cfg clan_ace 1 (CHECK [PP] X3). Returns the list of flights or nil.
+function TRF_Rd_Comp(n, rd, gname, sign, pos, dir, pw, cur)
+	local T = TRF_Rd_Clamp(floor(tonumber(rd.tier) or 1), 1, 4);
+	local b = TRF_Rd_TierRows()[T];
+	local slot = TRF_Rd_Slot(cur);
+	local cap = TRF_Rd_T("raid_live_cap", 8) - TRF_Rd_ClanAlive(n);
+	if cap < 1 then TRF_Rd_Stat("raid_skip_livecap"); TRF_Rd_L("spawn n="..n.." raid_live_cap reached"); return nil; end;
+	local kind = nil;
+	if T >= 3 then kind = 1; end;
+	local fl, st = nil, nil;
+	if slot and type(TRF_SalvFlight) == "function" then
+		fl, st = TRF_Rd_P(TRF_SalvFlight, {slot, gname, sign, pos, dir, pw, T, kind, min(b.ns, cap)});
+		if TRF_Rd_Obj(fl) then
+			rd.sv = 1;
+			if st == 3 then rd.bv = 1; end;
+		else
+			fl = nil;
+		end;
+	end;
+	if not fl then fl = TRF_PirFlight(T, pw, gname, sign, pos, dir, kind, cap); end;
+	if not TRF_Rd_Obj(fl) then return nil; end;
+	local fls = {fl};
+	rd.n1 = TRF_Rd_FlN(fl);
+	if T >= 3 and TRF_Rd_Opt("clan_ace", 0) == 1 then
+		local p = TRF_Rd_FlLeader(fl);
+		if p then TRF_Rd_P(function(x) x:SetPerk("Hard_to_Kill"); x:SetPerk("Gunnery_3"); end, {p}); end;
+	end;
+	if T < 3 then return fls; end;
+	cap = cap - rd.n1;
+	local sc = nil;
+	if slot then sc = TRF_N("TRF_ClanScore", slot); end;
+	local but = T == 4 and type(sc) == "number" and sc >= 90 and cap >= 2;
+	local n2 = min(b.ns2 or 3, cap);
+	if but then n2 = min(n2, cap - 1); end;
+	if n2 >= 1 then
+		local p2 = Vector3(pos.x + 25, pos.y, pos.z);
+		local f2 = nil;
+		if T == 3 and TRF_Rd_Rand(100) < 25 then f2 = TRF_Rd_Gunboat(T, pw, gname, sign.."b", p2, dir); end;
+		if not TRF_Rd_Obj(f2) then f2 = TRF_PirFlight(T, pw, gname, sign.."b", p2, dir, 2, n2); end;
+		if TRF_Rd_Obj(f2) then tinsert(fls, f2); cap = cap - TRF_Rd_FlN(f2); end;
+	end;
+	if but and cap >= 1 then
+		local lead = TRF_Rd_TierPilots(T);
+		local f3 = TRF_Rd_Build({lead, lead, lead, lead, lead}, {{"Butcher_pir1", 5, "A"}}, gname, sign.."c",
+			Vector3(pos.x - 30, pos.y, pos.z), pw, dir, "shipFormation");
+		if TRF_Rd_Obj(f3) then tinsert(fls, f3); rd.bv = 1; end;
+	end;
+	return fls;
+end;
+
 -- Raid power (5.3): clamp(sys_base + offset, band). sys_base from the map (sb), else the level of the
--- raided trader's contact, else 5.
+-- raided trader's contact (ci may be nil for v1 carrier waves and convoy raids), else 5.
 function TRF_Rd_Power(tier, idx, ci)
 	local b = TRF_Rd_TierRows()[TRF_Rd_Clamp(tier, 1, 4)];
 	local s = TRF_Rd_Sys(idx);
 	local sb = nil;
 	if s and type(s.sb) == "number" then sb = s.sb; end;
 	if not sb then
-		local c = TRF_Rd_Contacts()[ci];
+		local c = nil;
+		if type(ci) == "number" then c = TRF_Rd_Contacts()[ci]; end;
 		if type(c) == "table" and type(c[6]) == "number" then sb = c[6]; else sb = 5; end;
 	end;
 	return TRF_Rd_Clamp(floor(sb + b.off), b.plo, b.phi);
@@ -762,15 +901,20 @@ function TRF_Rd_Calm(n, rd)
 	if type(SetGroupRelation) ~= "function" or RELATION_NEUTRAL == nil then return; end;
 	local r = nil;
 	local L = TRF_Rd_Live();
-	if L then r = L.tr[rd.id]; end;
+	-- Carrier waves and convoy raids may have no trader id (Lua 4: t[nil] is an error).
+	if L and rd.id ~= nil then r = L.tr[rd.id]; end;
 	if type(r) == "table" and type(r.k) == "number" then
 		SetGroupRelation("TRF_Raid_"..n, "TRF_Trade_"..r.k, RELATION_NEUTRAL);
 		SetGroupRelation("TRF_Trade_"..r.k, "TRF_Raid_"..n, RELATION_NEUTRAL);
 	end;
+	if type(rd.tgg) == "string" then
+		SetGroupRelation("TRF_Raid_"..n, rd.tgg, RELATION_NEUTRAL);
+		SetGroupRelation(rd.tgg, "TRF_Raid_"..n, RELATION_NEUTRAL);
+	end;
 end;
 
--- Builds raid n at pos: group, flight, labels, relations, attack and died triggers on every ship.
--- Returns 1 or nil.
+-- Builds raid n at pos: group, flights (TRF_Rd_Comp), labels, relations, attack and died triggers on every
+-- ship. Returns 1 or nil.
 function TRF_Rd_Spawn(n, rd, pos, dir)
 	local H = TRF_Rd_H();
 	if not H then return nil; end;
@@ -786,19 +930,27 @@ function TRF_Rd_Spawn(n, rd, pos, dir)
 	local gname, sign = "TRF_GRaid_"..n, "trf_raid_"..n;
 	-- The builder looks the group up by global name; the global is cleared right after (no handle saved).
 	setglobal(gname, grp);
-	local fl = TRF_Rd_P(TRF_PirFlight, {rd.tier, pw, gname, sign, pos, dir});
+	local fls = TRF_Rd_P(TRF_Rd_Comp, {n, rd, gname, sign, pos, dir, pw, cur});
 	setglobal(gname, nil);
 	TRF_Rd_ClearSign(sign);
-	if not TRF_Rd_Obj(fl) then return nil; end;
-	local sh = TRF_Rd_P(TRF_Rd_FlShips, {fl});
-	if type(sh) ~= "table" or getn(sh) == 0 then
-		TRF_Rd_P(function(f) f:Delete(); end, {fl});
+	TRF_Rd_ClearSign(sign.."b");
+	TRF_Rd_ClearSign(sign.."c");
+	if type(fls) ~= "table" or getn(fls) == 0 then return nil; end;
+	local sh = {};
+	for i = 1, getn(fls) do
+		local s1 = TRF_Rd_P(TRF_Rd_FlShips, {fls[i]});
+		if type(s1) == "table" then
+			for j = 1, getn(s1) do if getn(sh) < TRF_Rd_K().ships_max then tinsert(sh, s1[j]); end; end;
+		end;
+	end;
+	if getn(sh) == 0 then
+		for i = 1, getn(fls) do TRF_Rd_P(function(f) f:Delete(); end, {fls[i]}); end;
 		return nil;
 	end;
 	if type(SetObjectLabel) == "function" then
 		for j = 1, getn(sh) do TRF_Rd_P(SetObjectLabel, {sh[j], sign.."_"..j}); end;
 	end;
-	H.rd[n] = {fl=fl, sh=sh, dk={}};
+	H.rd[n] = {fl=fls[1], fls=fls, sh=sh, dk={}, dl={}};
 	rd.pw = pw;
 	rd.ns = getn(sh);
 	-- CHECK (O4): GetCurHP on NPC ships; without it the leave-at-HP rule is off for this raid.
@@ -810,6 +962,75 @@ function TRF_Rd_Spawn(n, rd, pos, dir)
 		TRF_Rd_Trig("died", TRF_Rd_Cb("TRF_OnRaidDied", n, j), sh[j]);
 	end;
 	return 1;
+end;
+
+-- Pirate bases (v1 9.4) -------------------------------------------------------------------------
+
+-- Registered portal of cur facing a system with an active base, and its map name; nil without trf_base,
+-- in a guard system while the guard is active and in a system with a deny entry.
+function TRF_Rd_BasePortal(cur)
+	if type(TRF_BaseActive) ~= "function" then return nil; end;
+	local sy = TRF_Rd_Sys(cur);
+	if not sy or type(sy.portals) ~= "table" or TRF_Rd_Guard(cur) or TRF_N("TRF_DenyEntry", sy.name) then return nil; end;
+	local m = TRF_N("TRF_Map");
+	if type(m) ~= "table" or type(m.by) ~= "table" then return nil; end;
+	for i = 1, getn(sy.portals) do
+		local q = sy.portals[i];
+		local k = nil;
+		if type(q) == "table" and type(q.to) == "string" then k = m.by[strlower(q.to)]; end;
+		if k and TRF_Rd_P(TRF_BaseActive, {k}) then
+			local o = TRF_N("TRF_GnPortalObj", q.name);
+			if TRF_Rd_Obj(o) then return o, q.name; end;
+		end;
+	end;
+	return nil;
+end;
+
+-- 1 when cur holds an active base.
+function TRF_Rd_BaseHere(cur)
+	if type(TRF_BaseActive) ~= "function" or type(cur) ~= "number" then return nil; end;
+	if TRF_Rd_P(TRF_BaseActive, {cur}) then return 1; end;
+	return nil;
+end;
+
+-- Effective danger with bases: 3 in the base system, at least 2 next to one (9.4).
+function TRF_Rd_BaseDanger(cur, d)
+	if TRF_Rd_BaseHere(cur) then return 3; end;
+	if TRF_Rd_BasePortal(cur) then return max(d, 2); end;
+	return d;
+end;
+
+-- Open raids allowed besides a new one: convoy raids ignore the busy rule, a base system has base_raid_cap.
+function TRF_Rd_Extra(rd, cur)
+	if type(rd) == "table" and rd.kind then return 99; end;
+	if TRF_Rd_BaseHere(cur) then return TRF_Rd_T("base_raid_cap", 1); end;
+	return 0;
+end;
+
+-- Leaving base raid: every flight returns to the base object (label TRF_PBASE_<idx>). Returns 1 if ordered.
+function TRF_Rd_BaseBack(n, hr)
+	local b = TRF_N("GetObjectByLabel", "TRF_PBASE_"..tostring(TRF_Rd_Cur()));
+	local p = TRF_Rd_Pos(b);
+	if not p or type(hr) ~= "table" then return nil; end;
+	hr.bp = p;
+	TRF_Rd_Order(hr, function(f, q) f:Move(q); end, p);
+	return 1;
+end;
+
+-- Raid step of a raid returning to its base: ships inside 60 units are removed (hr.dl), the last one ends it.
+function TRF_Rd_BaseStep(n, rd, hr)
+	if type(hr) ~= "table" or not hr.bp then TRF_Rd_Delete(n); TRF_Rd_End(n, "left"); return; end;
+	if type(hr.dl) ~= "table" then hr.dl = {}; end;
+	for j = 1, getn(hr.sh) do
+		local s = hr.sh[j];
+		local d = TRF_Rd_Dist(TRF_Rd_Pos(s), hr.bp);
+		if not hr.dk[j] and d and d <= 60 then
+			hr.dl[j] = 1;
+			TRF_Rd_P(function(o) o:Delete(); end, {s});
+		end;
+	end;
+	if TRF_Rd_AliveN(hr) == 0 then TRF_Rd_End(n, "left"); return; end;
+	TRF_Rd_Order(hr, function(f, q) f:Move(q); end, hr.bp);
 end;
 
 -- Lane raid: roll and arm (5.1) -----------------------------------------------------------------
@@ -829,13 +1050,13 @@ function TRF_Rd_RollBody(id, why)
 	if L.stgb == 1 or r.rdn then return nil; end;
 	if why ~= "contract" and r.path == "B" then return nil; end;
 	local cur = TRF_Rd_Cur();
-	local ok, no = TRF_Rd_Gate(cur, "raid");
+	local ok, no = TRF_Rd_Gate(cur, "raid", nil, TRF_Rd_Extra(nil, cur));
 	if not ok then
 		TRF_Rd_Stat("raid_skip_"..tostring(no));
 		TRF_Rd_D("roll id="..id.." why="..tostring(why).." skip "..tostring(no));
 		return nil;
 	end;
-	local dE = TRF_Rd_DangerEff(cur);
+	local dE = TRF_Rd_BaseDanger(cur, TRF_Rd_DangerEff(cur));
 	local T = TRF_Rd_Tier(cur);
 	local p;
 	if why == "contract" then
@@ -887,7 +1108,8 @@ function TRF_Rd_GoBody(n, g)
 	local h = TRF_Rd_HTr(rd.id);
 	local lead = TRF_Rd_Lead(rd.id);
 	if not TRF_Rd_Rec(rd.id) or not h or not lead or not H then TRF_Rd_End(n, "cancel"); return; end;
-	local ok, no = TRF_Rd_Gate(TRF_Rd_Cur(), "raid", n);
+	local cur = TRF_Rd_Cur();
+	local ok, no = TRF_Rd_Gate(cur, "raid", n, TRF_Rd_Extra(rd, cur));
 	if not ok then
 		TRF_Rd_Stat("raid_skip_"..tostring(no));
 		TRF_Rd_End(n, "cancel");
@@ -897,13 +1119,27 @@ function TRF_Rd_GoBody(n, g)
 	local rp = Vector3(rd.rx, rd.ry, rd.rz);
 	local d = TRF_Rd_Dist(rp, TRF_Rd_MsPos());
 	local pos, dir, via;
-	-- M3: out of view at the raid point, else through the registered portal nearest the point.
-	if not d or d > TRF_Rd_T("ovd", 600) then
+	-- v1 9.4: in a base system the raid leaves the base (trf_base's TRF_BaseRaidPos) and returns to it.
+	if TRF_Rd_BaseHere(cur) and type(TRF_BaseRaidPos) == "function" then
+		pos = TRF_Rd_P(TRF_BaseRaidPos, {cur, rp});
+		if TRF_Rd_Obj(pos) and type(pos.x) == "number" then
+			dir = TRF_Rd_Dir(pos, lead:GetPosition());
+			via = "base";
+			rd.bs = 1;
+		else
+			pos = nil;
+		end;
+	end;
+	-- M3: out of view at the raid point, else through the registered portal nearest the point (next to a
+	-- base: the portal facing it).
+	if pos then
+	elseif not d or d > TRF_Rd_T("ovd", 600) then
 		pos = Vector3(rd.rx, rd.ry + 40, rd.rz + 150);
 		dir = TRF_Rd_Dir(pos, lead:GetPosition());
 		via = "point";
 	else
-		local o, nm = TRF_Rd_SpawnPortal(rp, h.ext, 1);
+		local o, nm = TRF_Rd_BasePortal(cur);
+		if not o or o == h.ext then o, nm = TRF_Rd_SpawnPortal(rp, h.ext, 1); end;
 		if not o then
 			TRF_Rd_Stat("raid_skip_noportal");
 			TRF_Rd_End(n, "cancel");
@@ -921,7 +1157,7 @@ function TRF_Rd_GoBody(n, g)
 		return;
 	end;
 	local hr = H.rd[n];
-	TRF_Rd_P(function(f, p) f:Move(p); end, {hr.fl, lead:GetPosition()});
+	TRF_Rd_Order(hr, function(f, p) f:Move(p); end, lead:GetPosition());
 	TRF_Rd_Trig("f_object_inside", TRF_Rd_Cb("TRF_RaidMeet", n), hr.fl, lead, TRF_Rd_T("raid_meet", 250));
 	rd.st = "come";
 	rd.t = gt;
@@ -948,9 +1184,11 @@ function TRF_Rd_Meet(n, rd)
 	local h = TRF_Rd_HTr(rd.id);
 	if not TRF_Rd_Rec(rd.id) or not h or not hr then TRF_RaidLeave(n, "gone"); return; end;
 	if TRF_Rd_Supp() then TRF_RaidLeave(n, "supp"); return; end;
+	-- v1 convoy raids (TRF_RaidOn): no demand step.
+	if rd.nd == 1 then TRF_Rd_Refuse(n, rd, hr); return; end;
 	TRF_Rd_Say(TRF_Rd_Txt("demand", TRF_Rd_Clan(TRF_Rd_Slot(TRF_Rd_Cur()))), 6, TRF_Rd_P(TRF_Rd_FlLeader, {hr.fl}));
 	TRF_Rd_P(function(f) f:Stop(); end, {h.fl});
-	TRF_Rd_P(function(f) f:Stop(); end, {hr.fl});
+	TRF_Rd_Order(hr, function(f) f:Stop(); end);
 	rd.st = "demand";
 	rd.t = TRF_Rd_Gt();
 	if not TRF_Rd_Due(8, "TRF_RaidDecide", n) then TRF_RaidLeave(n, "due"); return; end;
@@ -1059,7 +1297,7 @@ end;
 -- Refuse (5.2): attack, distress with marker, trader flees.
 function TRF_Rd_Refuse(n, rd, hr)
 	local lead = TRF_Rd_Lead(rd.id);
-	if lead then TRF_Rd_P(function(f, s) f:Attack(s); end, {hr.fl, lead}); end;
+	if lead then TRF_Rd_Order(hr, function(f, s) f:Attack(s); end, lead); end;
 	rd.st = "fight";
 	rd.t = TRF_Rd_Gt();
 	rd.dc = "refuse";
@@ -1080,6 +1318,11 @@ function TRF_Rd_ToPortal(n, hr, lp)
 	if not TRF_Rd_Obj(o) or not ls then return nil; end;
 	-- CHECK (E0.3): whether ComeToPortal removes the ship by itself; the exit trigger or the step deletes it.
 	TRF_Rd_P(function(s, p) s:ComeToPortal(p); end, {ls, o});
+	local fls = TRF_Rd_Fls(hr);
+	for i = 2, getn(fls) do
+		local p = TRF_Rd_P(TRF_Rd_FlLeader, {fls[i]});
+		if p then TRF_Rd_P(function(x, q) local s = x:GetShip(); if s then s:ComeToPortal(q); end; end, {p, o}); end;
+	end;
 	hr.prt = o;
 	hr.pt = TRF_Rd_Gt();
 	if hr.ptg ~= 1 then
@@ -1096,7 +1339,10 @@ function TRF_Rd_Delete(n)
 	if L and type(L.rd[n]) == "table" then L.rd[n].del = 1; end;
 	if not H or type(H.rd[n]) ~= "table" then return; end;
 	local hr = H.rd[n];
-	if TRF_Rd_Alive(hr.fl) then TRF_Rd_P(function(f) f:Delete(); end, {hr.fl}); end;
+	local fls = TRF_Rd_Fls(hr);
+	for i = 1, getn(fls) do
+		if TRF_Rd_Alive(fls[i]) then TRF_Rd_P(function(f) f:Delete(); end, {fls[i]}); end;
+	end;
 	if type(hr.sh) == "table" then
 		for j = 1, getn(hr.sh) do
 			if TRF_Rd_Alive(hr.sh[j]) then TRF_Rd_P(function(s) s:Delete(); end, {hr.sh[j]}); end;
@@ -1112,7 +1358,7 @@ end;
 function TRF_Rd_LeaveBody(n, why)
 	local rd = TRF_Rd_Get(n, nil, "leave");
 	if not rd or rd.st == "leave" then return; end;
-	if rd.st == "armed" then TRF_Rd_End(n, "cancel"); return; end;
+	if rd.st == "armed" or rd.st == "wait" or rd.st == "launch" then TRF_Rd_End(n, "cancel"); return; end;
 	local H = TRF_Rd_H();
 	local hr = nil;
 	if H then hr = H.rd[n]; end;
@@ -1127,6 +1373,19 @@ function TRF_Rd_LeaveBody(n, why)
 	TRF_Rd_Calm(n, rd);
 	local lp = TRF_Rd_RaidLeadPos(hr);
 	local dm = TRF_Rd_Dist(lp, TRF_Rd_MsPos());
+	-- v1: a carrier wave flies back under its carrier (trf_clan deletes it there), a base raid to its base.
+	if dm and dm <= TRF_Rd_T("ovd", 600) then
+		if rd.kind == "cr" and TRF_N("TRF_CarrierRecall", n) then
+			rd.rec = 1;
+			TRF_Rd_L("leave n="..n.." why="..tostring(why).." to carrier");
+			return;
+		end;
+		if rd.bs == 1 and TRF_Rd_BaseBack(n, hr) then
+			rd.rec = 2;
+			TRF_Rd_L("leave n="..n.." why="..tostring(why).." to base");
+			return;
+		end;
+	end;
 	if not dm or dm > TRF_Rd_T("ovd", 600) or not TRF_Rd_ToPortal(n, hr, lp) then
 		TRF_Rd_Delete(n);
 		TRF_Rd_End(n, "left");
@@ -1154,7 +1413,7 @@ function TRF_Rd_Pay(n, rd)
 	if rd.hit ~= 1 or rd.paid or rd.tk == 1 then return; end;
 	local L = TRF_Rd_Live();
 	local r = nil;
-	if L then r = L.tr[rd.id]; end;
+	if L and rd.id ~= nil then r = L.tr[rd.id]; end;
 	if type(r) ~= "table" or r.why == "kill" then return; end;
 	local cur = TRF_Rd_Cur();
 	local amt = floor(0.5 * TRF_Rd_PayN(cur));
@@ -1227,13 +1486,18 @@ function TRF_Rd_End(n, how)
 			H.rdx[n] = H.rd[n].fl;
 		end;
 		H.rd[n] = nil;
+		H.rdt[n] = nil;
 	end;
 	-- A raid that never spawned does not mark the trader as raided.
 	if was == "armed" or how == "build" then
 		local r = TRF_Rd_Rec(rd.id);
 		if r and r.rdn == n then r.rdn = nil; end;
 	end;
-	if how == "killed" and type(TRF_Ev_Recover) == "function" then TRF_Rd_P(TRF_Ev_Recover, {"raid"}); end;
+	if how == "killed" and type(TRF_Ev_Recover) == "function" then
+		local k = "raid";
+		if rd.bv == 1 then k = "butcher"; end;
+		TRF_Rd_P(TRF_Ev_Recover, {k});
+	end;
 	if was ~= "armed" then TRF_Rd_Pay(n, rd); end;
 	TRF_Rd_Stat("raid_end_"..tostring(how));
 	TRF_Rd_L("end n="..n.." id="..tostring(rd.id).." how="..tostring(how).." was="..tostring(was).." dc="..tostring(rd.dc)
@@ -1311,10 +1575,24 @@ end;
 
 function TRF_OnRaidDied(n, j, g) TRF_Rd_Cb2("TRF_OnRaidDied", TRF_Rd_DiedBody, {n, j, g}); end;
 
--- Raid ship j died: help counts when the player hit it within hit_win; the last ship ends the raid.
+-- Salvaged first flight (ships 1..n1) all dead: one salvage point used (trf_clan, v1 6.3), once.
+function TRF_Rd_SalvDead(n, rd, hr)
+	if rd.sv ~= 1 or rd.svu == 1 or type(rd.n1) ~= "number" or type(hr) ~= "table" then return; end;
+	for j = 1, rd.n1 do
+		if not hr.dk[j] then return; end;
+	end;
+	rd.svu = 1;
+	local slot = TRF_Rd_Slot(TRF_Rd_Cur());
+	if slot then TRF_N("TRF_SalvUse", slot, "kill"); end;
+end;
+
+-- Raid ship j died: help counts when the player hit it within hit_win; the last ship ends the raid. Ships
+-- removed by a recovery (hr.dl) do not count.
 function TRF_Rd_DiedBody(n, j, g)
 	local rd = TRF_Rd_Get(n, g or -1, "died");
 	if not rd or rd.del == 1 or type(j) ~= "number" then return; end;
+	local H0 = TRF_Rd_H();
+	if H0 and type(H0.rd[n]) == "table" and type(H0.rd[n].dl) == "table" and H0.rd[n].dl[j] then return; end;
 	local gt = TRF_Rd_Gt();
 	if type(rd.lh) == "table" and type(rd.lh[j]) == "number" and gt - rd.lh[j] <= TRF_Rd_K().hit_win and rd.hit ~= 1 then
 		rd.hit = 1;
@@ -1325,6 +1603,7 @@ function TRF_Rd_DiedBody(n, j, g)
 	local hr = nil;
 	if H then hr = H.rd[n]; end;
 	if hr then hr.dk[j] = 1; end;
+	TRF_Rd_SalvDead(n, rd, hr);
 	if TRF_Rd_AliveN(hr) == 0 then TRF_Rd_End(n, "killed"); end;
 end;
 
@@ -1664,6 +1943,12 @@ function TRF_Rd_StRollBody()
 	local L = TRF_Rd_Live();
 	local cur = TRF_Rd_Cur();
 	if not L or not cur or L.ent == "staged" or L.stg then return nil; end;
+	-- v1 8.6: a carrier raid, an on-screen sweep or an equipment convoy (slot reserved) plays here.
+	if type(L.cr) == "table" or type(L.sw) == "table" or type(L.fq) == "table"
+		or (type(L.cvs) == "table" and L.cvs.k == 4) then
+		TRF_Rd_Stat("staged_skip_event");
+		return nil;
+	end;
 	local dis = TRF_Rd_Dis(cur);
 	local need = 3;
 	if TRF_Rd_Guard(cur) then need = 5; end;
@@ -1795,7 +2080,7 @@ function TRF_Rd_StSpawnBody()
 	local pos = Vector3(e.x, e.y + 40, e.z + 150);
 	if not TRF_Rd_Spawn(n, rd, pos, TRF_Rd_Dir(pos, lead:GetPosition())) then TRF_Rd_End(n, "build"); return; end;
 	local hr = H.rd[n];
-	TRF_Rd_P(function(f, s) f:Attack(s); end, {hr.fl, lead});
+	TRF_Rd_Order(hr, function(f, s) f:Attack(s); end, lead);
 	local rl = TRF_Rd_RaidLead(hr);
 	-- CHECK: transports keep formation while their flight attacks (escorts engage).
 	if rl then TRF_Rd_P(function(f, s) f:Attack(s); end, {h.fl, rl}); end;
@@ -1838,6 +2123,8 @@ function TRF_Rd_StEndBody(n)
 	TRF_RaidLeave(n, "window");
 	if alive then TRF_Flee(rd.id, "staged"); end;
 	TRF_Rd_L("staged window end n="..n.." trader="..tostring(alive and 1));
+	-- v1 8.6 item 5: an identity seed the staged raid displaced undocks now (trf_gen).
+	if type(TRF_SeedResume) == "function" then call(TRF_SeedResume, {}, "x", TRF_PErr); end;
 end;
 
 -- Raid step every 2 s of game time (5.2 fight row) ------------------------------------------------
@@ -1873,6 +2160,11 @@ function TRF_Rd_StepOne(n)
 		if not r then TRF_Rd_End(n, "cancel"); elseif gt - rd.t > K.armed_t then TRF_Rd_End(n, "stale"); end;
 		return;
 	end;
+	-- v1: waiting convoy raid (TRF_RaidOn) and carrier wave in launch (trf_clan builds it).
+	if rd.st == "wait" or rd.st == "launch" then
+		if gt - rd.t > K.armed_t then TRF_Rd_End(n, "stale"); end;
+		return;
+	end;
 	local H = TRF_Rd_H();
 	local hr = nil;
 	if H then hr = H.rd[n]; end;
@@ -1887,11 +2179,12 @@ function TRF_Rd_StepOne(n)
 	if rd.st == "come" then
 		if not r then TRF_RaidLeave(n, "gone"); return; end;
 		if gt - rd.t >= K.meet_t then TRF_Rd_Meet(n, rd); return; end;
-		TRF_Rd_P(function(f, p) f:Move(p); end, {hr.fl, lead:GetPosition()});
+		TRF_Rd_Order(hr, function(f, p) f:Move(p); end, lead:GetPosition());
 	elseif rd.st == "demand" then
 		if not r then TRF_RaidLeave(n, "gone"); elseif gt - rd.t > K.demand_t then TRF_RaidLeave(n, "timeout"); end;
 	elseif rd.st == "fight" then
 		if not r then
+			if TRF_Rd_Retarget(n, rd, hr) then rd.tg = nil; return; end;
 			if type(rd.tg) ~= "number" then rd.tg = gt; end;
 			if gt - rd.tg >= K.gone_t then TRF_RaidLeave(n, "gone"); end;
 			return;
@@ -1907,8 +2200,44 @@ function TRF_Rd_StepOne(n)
 		local lp = TRF_Rd_RaidLeadPos(hr);
 		local dm = TRF_Rd_Dist(lp, TRF_Rd_MsPos());
 		if not dm or dm > TRF_Rd_T("ovd", 600) then TRF_Rd_Delete(n); TRF_Rd_End(n, "left"); return; end;
+		if rd.rec == 1 then
+			if not TRF_N("TRF_CarrierRecall", n) then rd.rec = nil; TRF_Rd_ToPortal(n, hr, lp); end;
+			return;
+		end;
+		if rd.rec == 2 then TRF_Rd_BaseStep(n, rd, hr); return; end;
 		if gt - (hr.pt or rd.t) >= K.leave_t then TRF_Rd_ToPortal(n, hr, lp); end;
 	end;
+end;
+
+-- Raid without a live trader target (v1 convoy raids): the next live member of rd.ids, else the nearest
+-- live non-trader target (hr.tg). Returns 1 when an attack order went out.
+function TRF_Rd_Retarget(n, rd, hr)
+	if type(rd.ids) == "table" then
+		for i = 1, getn(rd.ids) do
+			local id = rd.ids[i];
+			local r = TRF_Rd_Rec(id);
+			local lead = TRF_Rd_Lead(id);
+			if r and lead then
+				rd.id = id;
+				if not r.rdn then r.rdn = n; end;
+				TRF_Rd_Order(hr, function(f, s) f:Attack(s); end, lead);
+				TRF_Flee(id, "raid");
+				TRF_Rd_L("retarget n="..n.." id="..id);
+				return 1;
+			end;
+		end;
+	end;
+	if type(hr) ~= "table" or type(hr.tg) ~= "table" then return nil; end;
+	local lp = TRF_Rd_RaidLeadPos(hr);
+	local best, bd = nil, nil;
+	for i = 1, getn(hr.tg) do
+		local o = hr.tg[i];
+		local d = TRF_Rd_Dist(TRF_Rd_Pos(o), lp);
+		if d and (not bd or d < bd) then best = o; bd = d; end;
+	end;
+	if not best then return nil; end;
+	TRF_Rd_Order(hr, function(f, s) f:Attack(s); end, best);
+	return 1;
 end;
 
 -- Manager step (every tune step): low-HP poll (fallback of the HP trigger), raid ships left from a load,
@@ -1999,6 +2328,7 @@ function TRF_Rd_JumpBody()
 	end;
 	H.rdl = {};
 	H.rd = {};
+	H.rdt = {};
 	TRF_Rd_L("jump: raids ended="..c);
 end;
 
@@ -2055,7 +2385,7 @@ function TRF_Raid_Dump()
 			TRF_L("dump rd n="..tostring(n).." id="..tostring(rd.id).." st="..tostring(rd.st).." why="..tostring(rd.why)
 				.." tier="..tostring(rd.tier).." pw="..tostring(rd.pw).." ns="..tostring(rd.ns).." dc="..tostring(rd.dc)
 				.." ph="..tostring(rd.ph).." hit="..tostring(rd.hit).." sg="..tostring(rd.sg).." how="..tostring(rd.how)
-				.." paid="..tostring(rd.paid));
+				.." paid="..tostring(rd.paid).." kind="..tostring(rd.kind).." sv="..tostring(rd.sv).." rec="..tostring(rd.rec));
 		end;
 	end;
 end;

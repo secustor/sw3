@@ -2,8 +2,25 @@
 -- Spec: design/v02-spec.md 5.6, 6.1-6.4, 10.1. The 70-unit announce and the hail arm are in trf_ui
 -- (TRF_OnMeet_Body, cfg meet 2); this file owns the focus request, the ShowMsgBox chain, the answers and
 -- the __PatrolStationDock_Ok wrapper. Top level defines functions only. State: TRF.live.hl (open box
--- chain), live.ct (contract), live.board / live.bgo (board); per trader record ha, hn, hlt, hr (focus
--- arms), trd, hd, nw, tb, bm (options used), ct, hds (heat distress shown). Log prefix "hl:".
+-- chain), live.ct (contract), live.board / live.bgo / live.bk / live.bc (board); per trader record ha, hn,
+-- hlt, hr (focus arms), trd, hd, nw, tu, bm (options used; tu was tb in v0.2, tb is v1 tracking bits), ct,
+-- hds (heat distress shown), hx (v1 options used, ",key,"). Log prefix "hl:".
+-- v1 (v1-spec 7.4, 8.4, 8.5, 10.2): option providers, the refusal box with demand cargo, the sweep
+-- offers in the hail (cfg board 2), v1 rumours, carrier and base words in the trouble answer, the
+-- equipment convoy line in the booming answer, faction offer boxes after the patrol board.
+-- v1 option providers TRF_Supply_HailOpts, TRF_Feq_HailOpts, TRF_Dc_HailOpts are called as f(id, r) and
+-- return nil or a list of items. An item is an option key, label TRF_Txt("opt"..key), run on OK by the
+-- provider's TRF_<M>_HailDo(key, id) (TRF_Supply_HailDo, TRF_Feq_HailDo, TRF_Dc_HailDo) with the menu
+-- still open: a HailDo that opens its own box sets hl.w, otherwise the menu is closed after it. Without a
+-- HailDo: "demand" runs TRF_DemandDo(id); "feq" is the offer box TRF_FeqOffer(id) whose OK calls
+-- TRF_FeqAccept(id). An item can also be a table {k=key, t=label, s=answer, q=offer, ok=accept, f=action,
+-- a=arg, x=1}: s: OK shows the answer s. q: OK shows the offer box q (OK/Cancel), its OK calls ok(id, a);
+-- label "Need an escort" unless t is given. f: OK closes the menu and calls f(id, a); a string result is
+-- said. x = 1: only provider options are offered (no trade, news, escort). The lead of an equipment convoy
+-- (TRF_FeqId(id) gives its identity line) gets only the provider options and "Who are you" (8.4). f and ok
+-- are global function names or functions; items stay in the handle table (TRF_H().hlx), never in TRF.
+-- Faction offers (TRF_Faction_BoardOffers(), board and hail) are lists of {text (or q, t), title, ok, no,
+-- a}: one OK/Cancel box each, chained by due calls; OK calls ok(a) (a string result is said), Cancel no(a).
 -- Box callbacks and trigger actions are shims through TRF_Cb. Callbacks only record the choice; the next
 -- box and every action run from the due call TRF_HailStep, never inside a box callback (6.1, decision 25).
 -- Other modules are called by name after a type check, so a missing one only disables its part.
@@ -49,12 +66,15 @@ function TRF_HlOpt(key, def)
 	return v;
 end;
 
+-- Tune value: TRF_Tune, this module's table, then the v1 table (trf_loc).
 function TRF_HlT(key)
 	if type(TRF_Tune) == "function" then
 		local t = TRF_Tune();
 		if type(t) == "table" and type(t[key]) == "number" then return t[key]; end;
 	end;
-	return TRF_Hail_TuneDef()[key];
+	local v = TRF_Hail_TuneDef()[key];
+	if v == nil and type(TRF_V1_TuneDef) == "function" then v = TRF_V1_TuneDef()[key]; end;
+	return v;
 end;
 
 function TRF_HlLive()
@@ -254,16 +274,137 @@ function TRF_HlNewsOk()
 	return nil;
 end;
 
--- Valid options in menu order; each once per trader.
+-- v1 option items (see the header) -------------------------------------------------
+
+-- Handle-table store of the open menu: {id, x = {key = item}, of = offer list, oh = trader id of a hail
+-- item offer, bof = board offers}. nil without trf_state (no v1 items then).
+function TRF_HlStore()
+	if type(TRF_H) ~= "function" then return nil; end;
+	local h = TRF_H();
+	if type(h) ~= "table" then return nil; end;
+	if type(h.hlx) ~= "table" then h.hlx = {x={}}; end;
+	return h.hlx;
+end;
+
+function TRF_HlUsed(r, k)
+	if type(r.hx) == "string" and strfind(r.hx, ","..k..",", 1, 1) then return 1; end;
+	return nil;
+end;
+
+function TRF_HlUse(r, k)
+	if not TRF_HlUsed(r, k) then r.hx = (r.hx or ",")..k..","; end;
+end;
+
+-- f is a global function name or a function; protected call, nil when missing or on error.
+function TRF_HlCall(f, args)
+	if type(f) == "string" then f = getglobal(f); end;
+	if type(f) ~= "function" then return nil; end;
+	return call(f, args, "x", TRF_HlErr);
+end;
+
+-- Provider item as a table with an action, or nil (see the header). dn = the provider's HailDo name.
+-- A key of a built-in option gets a "v" prefix; ko keeps the provider's key.
+function TRF_HlItem(it, dn, id)
+	if type(it) == "string" then it = {k=it}; end;
+	if type(it) ~= "table" or type(it.k) ~= "string" or it.k == "" then return nil; end;
+	it.ko = it.k;
+	local res = {trade=1, head=1, news=1, esc=1, trouble=1, boom=1, sweep=1};
+	if res[it.k] then it.k = "v"..it.k; end;
+	if it.s == nil and it.q == nil and it.f == nil then
+		if type(getglobal(dn)) == "function" then
+			it.d = dn;
+		elseif it.ko == "feq" and type(TRF_FeqOffer) == "function" then
+			local q = TRF_HlP(TRF_FeqOffer, {id});
+			if type(q) ~= "string" then return nil; end;
+			it.q = q;
+			it.ok = "TRF_FeqAccept";
+		elseif it.ko == "demand" then
+			it.f = "TRF_DemandDo";
+		else
+			return nil;
+		end;
+	end;
+	return it;
+end;
+
+-- Items of the v1 providers for trader id: key list, key -> item, only (1 when an item has x = 1).
+function TRF_HlV1Opts(id, r)
+	local keys, x, only = {}, {}, nil;
+	local ps = {"TRF_Supply_HailOpts", "TRF_Feq_HailOpts", "TRF_Dc_HailOpts"};
+	local ds = {"TRF_Supply_HailDo", "TRF_Feq_HailDo", "TRF_Dc_HailDo"};
+	local l0 = {};
+	if type(TRF_FeqId) == "function" then
+		local t = TRF_HlP(TRF_FeqId, {id});
+		if type(t) == "string" then l0 = {{k="feqinfo", s=t}}; only = 1; end;
+	end;
+	for i = 0, getn(ps) do
+		local l = l0;
+		if i > 0 then
+			l = nil;
+			local f = getglobal(ps[i]);
+			if type(f) == "function" then l = TRF_HlP(f, {id, r}); end;
+		end;
+		if type(l) == "table" then
+			for j = 1, getn(l) do
+				local it = TRF_HlItem(l[j], ds[i] or "", id);
+				if it and not x[it.k] and not TRF_HlUsed(r, it.k) then
+					x[it.k] = it;
+					tinsert(keys, it.k);
+					if it.x == 1 then only = 1; end;
+				end;
+			end;
+		end;
+	end;
+	return keys, x, only;
+end;
+
+-- Item of key in the open menu of trader id, or nil.
+function TRF_HlGetItem(id, key)
+	local st = TRF_HlStore();
+	if st and st.id == id and type(st.x) == "table" then return st.x[key]; end;
+	return nil;
+end;
+
+-- Faction offers for the hail (cfg board 2, v1-spec 7.4): FTU traders only; nil when there are none.
+function TRF_HlSweepOffers(r)
+	if TRF_HlOpt("board") ~= 2 or type(TRF_Faction_BoardOffers) ~= "function" then return nil; end;
+	if type(r) ~= "table" or type(r.own) == "number" then return nil; end;
+	local l = TRF_HlP(TRF_Faction_BoardOffers, {});
+	if type(l) ~= "table" or getn(l) == 0 then return nil; end;
+	return l;
+end;
+
+-- Valid options in menu order; each once per trader. v1 provider items follow the escort option, then the
+-- sweep offers (board 2); an item with x = 1 leaves only the provider items.
 function TRF_HailOpts(id, r)
 	local o = {};
-	if not r.trd then tinsert(o, "trade"); end;
-	if not r.hd then tinsert(o, "head"); end;
-	if not r.nw and TRF_HlNewsOk() then tinsert(o, "news"); end;
-	if not r.ct and TRF_CtOffer(id) then tinsert(o, "esc"); end;
-	if not r.tb then tinsert(o, "trouble"); end;
-	if not r.bm then tinsert(o, "boom"); end;
+	local keys, x, only = TRF_HlV1Opts(id, r);
+	if not only then
+		if not r.trd then tinsert(o, "trade"); end;
+		if not r.hd then tinsert(o, "head"); end;
+		if not r.nw and TRF_HlNewsOk() then tinsert(o, "news"); end;
+		if not r.ct and TRF_CtOffer(id) then tinsert(o, "esc"); end;
+	end;
+	for i = 1, getn(keys) do tinsert(o, keys[i]); end;
+	if not only then
+		if not TRF_HlUsed(r, "sweep") and TRF_HlSweepOffers(r) then tinsert(o, "sweep"); end;
+		if not r.tu then tinsert(o, "trouble"); end;
+		if not r.bm then tinsert(o, "boom"); end;
+	end;
+	local st = TRF_HlStore();
+	if st then st.id = id; st.x = x; st.of = nil; st.oh = nil; end;
 	return o;
+end;
+
+-- Menu label of key.
+function TRF_HlLabel(id, key)
+	local it = TRF_HlGetItem(id, key);
+	if it then
+		if type(it.t) == "string" then return it.t; end;
+		if it.q ~= nil then return TRF_Txt("optesc"); end;
+		return TRF_Txt("opt"..it.k);
+	end;
+	return TRF_Txt("opt"..tostring(key));
 end;
 
 -- Open the hail for trader id (focus request, or the announce with cfg hail_start 2). Returns "menu",
@@ -288,14 +429,29 @@ function TRF_HailOpen(id, via)
 	L.hl = nil;
 	r.hn = (r.hn or 0) + 1;
 	r.hlt = gt;
+	-- v1-spec 4.2: a hail tracks the trader.
+	TRF_P("TRF_TrackMark", id, "hail");
 	local heat = TRF_HlHeat();
-	if heat >= 3 or TRF_HlTradeWar() then
-		TRF_HlSay(TRF_Txt("refuse", TRF_HlName(r)), id);
+	local war = TRF_HlTradeWar();
+	if heat >= 3 or war then
 		if heat >= 5 and heat <= 6 and not r.hds and type(TRF_Distress) == "function" then
 			r.hds = 1;
 			TRF_HlP(TRF_Distress, {id, "heat"});
 		end;
 		TRF_HlStat("hl_refuse");
+		-- v1-spec 5.2: at heat 3-6 the refusal is a box that offers demand cargo only.
+		if heat <= 6 and not war and TRF_HlT("hail_box") ~= 0 and type(ShowMsgBox) == "function" then
+			local keys, x = TRF_HlV1Opts(id, r);
+			local st = TRF_HlStore();
+			if x.demand and st then
+				st.id = id; st.x = {demand=x.demand}; st.of = nil; st.oh = nil;
+				L.hl = {id=id, g=TRF.gen, o={"demand"}, k=1, t=gt, rf=1};
+				TRF_HlL("hail id="..id.." refused heat="..heat.." (demand box)");
+				TRF_HailShow();
+				return "refuse";
+			end;
+		end;
+		TRF_HlSay(TRF_Txt("refuse", TRF_HlName(r)), id);
 		TRF_HlL("hail id="..id.." refused heat="..heat);
 		return "refuse";
 	end;
@@ -347,11 +503,17 @@ function TRF_HailShow()
 	local key = hl.o[hl.k];
 	hl.w = "menu";
 	hl.t = TRF_HlGt();
-	local text = TRF_Txt("hailq", TRF_HlWho(r, hl.id), TRF_Txt("opt"..tostring(key)));
+	local text = TRF_Txt("hailq", TRF_HlWho(r, hl.id), TRF_HlLabel(hl.id, key));
+	if hl.rf == 1 then text = TRF_Txt("refuse", TRF_HlName(r)).."\n"..text; end;
 	if not TRF_HlBox("#UI_FTrader_confirm", text, TRF_HailOk, TRF_HailNext) then
+		local id, rf = hl.id, hl.rf;
 		TRF_HlClose("nobox");
-		r.hd = 1;
-		TRF_HlSay(TRF_Headed(hl.id), hl.id);
+		if rf == 1 then
+			TRF_HlSay(TRF_Txt("refuse", TRF_HlName(r)), id);
+		else
+			r.hd = 1;
+			TRF_HlSay(TRF_Headed(id), id);
+		end;
 	end;
 end;
 
@@ -373,8 +535,11 @@ function TRF_HailOk() TRF_Cb("TRF_HailOk", TRF_HailCb, {"ok"}); end;
 function TRF_HailNext() TRF_Cb("TRF_HailNext", TRF_HailCb, {"next"}); end;
 function TRF_HailClose() TRF_Cb("TRF_HailClose", TRF_HailCb, {"close"}); end;
 function TRF_CtAccept() TRF_Cb("TRF_CtAccept", TRF_HailCb, {"acc"}); end;
+function TRF_HlOfOk() TRF_Cb("TRF_HlOfOk", TRF_HailCb, {"oacc"}); end;
+function TRF_HlOfNo() TRF_Cb("TRF_HlOfNo", TRF_HailCb, {"onext"}); end;
 
--- c: "ok", "next" (menu box), "close" (answer OK, contract Cancel), "acc" (contract OK).
+-- c: "ok", "next" (menu box), "close" (answer OK, contract Cancel), "acc" (contract OK), "oacc", "onext"
+-- (v1 offer box OK, Cancel).
 function TRF_HailCb(c)
 	local L = TRF_HlLive();
 	if not L then return; end;
@@ -387,6 +552,7 @@ function TRF_HailCb(c)
 	if c == "close" then TRF_HlClose("ok"); return; end;
 	local want = "menu";
 	if c == "acc" then want = "ct"; end;
+	if c == "oacc" or c == "onext" then want = "of"; end;
 	if hl.w ~= want then TRF_HlClose("unexpected "..tostring(c).." in "..tostring(hl.w)); return; end;
 	hl.c = c;
 	hl.w = "wait";
@@ -408,6 +574,10 @@ function TRF_HailStep()
 		TRF_HailDo(hl.o[hl.k]);
 	elseif c == "acc" then
 		TRF_CtDo();
+	elseif c == "oacc" then
+		TRF_HlOfStep(1);
+	elseif c == "onext" then
+		TRF_HlOfStep(nil);
 	else
 		TRF_HlClose("no choice");
 	end;
@@ -441,14 +611,108 @@ function TRF_HailDo(key)
 		hl.t = TRF_HlGt();
 		if not TRF_HlBox("#UI_FTrader_confirm", text, TRF_CtAccept, TRF_HailClose) then TRF_HlClose("nobox"); end;
 	elseif key == "trouble" then
-		r.tb = 1;
+		r.tu = 1;
 		TRF_HlAnswer(TRF_Trouble(TRF_HlCur()));
 	elseif key == "boom" then
 		r.bm = 1;
 		TRF_HlAnswer(TRF_Boom(TRF_HlCur()));
+	elseif key == "sweep" then
+		TRF_HlUse(r, "sweep");
+		local l = TRF_HlSweepOffers(r);
+		if not l then TRF_HlClose("offer gone"); return; end;
+		TRF_HlOfStart(l, nil);
 	else
-		TRF_HlClose("unknown option");
+		TRF_HailDoV1(id, r, key);
 	end;
+end;
+
+-- v1 provider item of key: answer, offer box, or action after the menu closes.
+function TRF_HailDoV1(id, r, key)
+	local it = TRF_HlGetItem(id, key);
+	if not it or not r then TRF_HlClose("unknown option"); return; end;
+	TRF_HlUse(r, it.k);
+	if type(it.s) == "string" then
+		TRF_HlAnswer(it.s);
+	elseif it.d then
+		-- Provider's HailDo with the menu open; it keeps the chain when it opened its own box (hl.w set).
+		local L = TRF_HlLive();
+		local v = TRF_HlCall(it.d, {it.ko, id});
+		TRF_HlL("hail id="..id.." "..key.." -> "..tostring(it.d).." "..tostring(v));
+		if L and type(L.hl) == "table" and L.hl.w == "wait" then TRF_HlClose(key); end;
+	elseif it.q ~= nil then
+		TRF_HlOfStart({{q=it.q, ok=it.ok, a=it.a}}, id);
+	else
+		TRF_HlClose(key);
+		local v = TRF_HlCall(it.f, {id, it.a});
+		TRF_HlL("hail id="..id.." "..key.." -> "..tostring(v));
+		if type(v) == "string" then TRF_HlSay(v, id); end;
+	end;
+end;
+
+-- Offer chain (v1): list l of {q or t, ok, a}; hid = trader id for a hail item offer (ok(hid, a)), nil for
+-- faction offers (ok(a)). One OK/Cancel box per offer; the next box comes from TRF_HailStep.
+function TRF_HlOfStart(l, hid)
+	local st = TRF_HlStore();
+	local L = TRF_HlLive();
+	if not st or not L or type(L.hl) ~= "table" then TRF_HlClose("no store"); return; end;
+	st.of = l;
+	st.oh = hid;
+	L.hl.oq = 1;
+	TRF_HlOfShow();
+end;
+
+function TRF_HlOfText(e)
+	if type(e) ~= "table" then return nil; end;
+	if type(e.q) == "string" then return e.q; end;
+	if type(e.t) == "string" then return e.t; end;
+	if type(e.text) == "string" then return e.text; end;
+	return nil;
+end;
+
+-- Box of the first offer from hl.oq that has a text; none left -> chain closed.
+function TRF_HlOfShow()
+	local L = TRF_HlLive();
+	local hl = L.hl;
+	local st = TRF_HlStore();
+	local l = nil;
+	if st then l = st.of; end;
+	if type(l) ~= "table" or type(hl.oq) ~= "number" then TRF_HlClose("no offers"); return; end;
+	local text = nil;
+	while hl.oq <= getn(l) do
+		text = TRF_HlOfText(l[hl.oq]);
+		if text then break; end;
+		hl.oq = hl.oq + 1;
+	end;
+	if not text then TRF_HlClose("offers done"); return; end;
+	hl.w = "of";
+	hl.t = TRF_HlGt();
+	if not TRF_HlBox("#UI_FTrader_confirm", text, TRF_HlOfOk, TRF_HlOfNo) then TRF_HlClose("nobox"); end;
+end;
+
+-- Due step after an offer box: accept (acc = 1) calls ok, then the next offer.
+function TRF_HlOfStep(acc)
+	local L = TRF_HlLive();
+	local hl = L.hl;
+	local st = TRF_HlStore();
+	local l = nil;
+	if st then l = st.of; end;
+	if type(l) ~= "table" or type(hl.oq) ~= "number" then TRF_HlClose("no offers"); return; end;
+	local e = l[hl.oq];
+	if type(e) == "table" then
+		local args = {e.a};
+		if st.oh then args = {st.oh, e.a}; end;
+		if acc then
+			local v = TRF_HlCall(e.ok, args);
+			TRF_HlStat("hl_offer_acc");
+			TRF_HlL("offer "..hl.oq.." accepted -> "..tostring(v));
+			if type(v) == "string" then TRF_HlSay(v, st.oh); end;
+		elseif e.no then
+			TRF_HlCall(e.no, args);
+		end;
+	end;
+	hl.oq = hl.oq + 1;
+	if hl.oq > getn(l) then TRF_HlClose("offers done"); return; end;
+	TRF_HlOfShow();
 end;
 
 -- Trade: trf_shop's trader shop (cfg shop_mode 1), else the vanilla trader shop (On_FTrader_Start).
@@ -559,6 +823,7 @@ function TRF_CtDo()
 		if lead then TRF_HlP(function(s) s:SetMaxSpeed(%v); end, {lead}); end;
 	end;
 	if type(TRF_RaidRoll) == "function" then TRF_HlP(TRF_RaidRoll, {id, "contract"}); end;
+	TRF_P("TRF_TrackMark", id, "contract");
 	TRF_HlSay(TRF_Txt("ctok"), id);
 	TRF_HlStat("ct_accept");
 	TRF_HlL("contract id="..id.." accepted n="..n);
@@ -705,15 +970,29 @@ function TRF_Trouble(idx)
 	local s = "";
 	for i = 1, getn(o) do
 		if i > 1 then s = s..", "; end;
-		s = s..TRF_Txt("tritem", TRF_HlSysName(o[i].i), TRF_Txt("sev"..min(TRF_HlTier(o[i].i), 4)));
+		s = s..TRF_Txt("tritem", TRF_HlSysName(o[i].i), TRF_HlSevWord(o[i].i));
 	end;
 	return TRF_Txt("trhead", s), getn(o);
 end;
 
--- "Trade is good in: Gredos (booming), ..." (S26): pro >= boom_min_pro and dis < 3.
+-- Severity word of a system: tier word; "carrier" for a carrier target, ", pirate base" with an active base
+-- (v1-spec 6.2, 9.5).
+function TRF_HlSevWord(i)
+	local w = TRF_Txt("sev"..min(TRF_HlTier(i), 4));
+	if type(TRF_UI_CarAt) == "function" and TRF_UI_CarAt(i) then w = TRF_Txt("sev5"); end;
+	if type(TRF_UI_BaseAt) == "function" and TRF_UI_BaseAt(i) == 2 then w = TRF_Txt("sevbase", w); end;
+	return w;
+end;
+
+-- "Trade is good in: Gredos (booming), ..." (S26): pro >= boom_min_pro and dis < 3. v1-spec 8.4: a
+-- scheduled equipment convoy within range adds a line (feq_announce_chance).
 function TRF_Boom(idx)
 	local o = TRF_HlPick(idx, TRF_HlT("trouble_range"), TRF_HlBoomV);
-	if getn(o) == 0 then return TRF_Txt("bmnone"), 0; end;
+	local fq = TRF_HlFeqLine(idx, "bmfeq");
+	if getn(o) == 0 then
+		if fq then return TRF_Txt("bmnone").." "..fq, 0; end;
+		return TRF_Txt("bmnone"), 0;
+	end;
 	local s = "";
 	for i = 1, getn(o) do
 		if i > 1 then s = s..", "; end;
@@ -721,7 +1000,96 @@ function TRF_Boom(idx)
 		if o[i].v >= 8 then w = "bm2"; end;
 		s = s..TRF_Txt("tritem", TRF_HlSysName(o[i].i), TRF_Txt(w));
 	end;
+	if fq then return TRF_Txt("bmhead", s)..". "..fq, getn(o); end;
 	return TRF_Txt("bmhead", s), getn(o);
+end;
+
+-- Systems within depth jumps of idx: idx -> jumps (idx itself 0).
+function TRF_HlNear(idx, depth)
+	local near = {};
+	if type(idx) ~= "number" then return near; end;
+	near[idx] = 0;
+	local l = TRF_HlBfs(idx, depth);
+	for i = 1, getn(l) do near[l[i].i] = l[i].d; end;
+	return near;
+end;
+
+function TRF_HlRoll(pct)
+	if type(pct) ~= "number" then return nil; end;
+	local r = nil;
+	if type(TRF_Rand) == "function" then r = TRF_Rand(100); elseif type(RAND) == "function" then r = RAND(100); end;
+	if type(r) == "number" and r < pct then return 1; end;
+	return nil;
+end;
+
+-- Line key ("rfeq" rumour, "bmfeq" booming answer) for a scheduled equipment convoy within
+-- feq_announce_range jumps, rolled with feq_announce_chance (v1-spec 8.4); nil otherwise.
+function TRF_HlFeqLine(idx, key)
+	-- trf_convoy's announce (stable roll per record and system) when loaded.
+	if type(TRF_FeqDue) == "function" then
+		local d = TRF_HlP(TRF_FeqDue, {idx});
+		if type(d) ~= "table" or type(d.s) ~= "number" then return nil; end;
+		if key == "rfeq" and type(d.txt) == "string" then return d.txt; end;
+		local fn = "";
+		if type(TRF_UI_FacOf) == "function" then fn = TRF_UI_FacOf(d.f); end;
+		return TRF_Txt(key, fn, TRF_HlSysName(d.s));
+	end;
+	if type(TRF_UI_Feq) ~= "function" then return nil; end;
+	local q = TRF_UI_Feq();
+	if not q or type(idx) ~= "number" then return nil; end;
+	local near = TRF_HlNear(idx, TRF_HlT("feq_announce_range") or 3);
+	if near[q.s] == nil or not TRF_HlRoll(TRF_HlT("feq_announce_chance") or 50) then return nil; end;
+	return TRF_Txt(key, TRF_UI_FacOf(q.f), TRF_HlSysName(q.s));
+end;
+
+-- Nearest entry of list l by jumps in near, ties by idx; f(e) -> idx or nil.
+function TRF_HlNearest(l, near, f)
+	local best, bd, bi = nil, 99, 0;
+	if type(l) ~= "table" then return nil; end;
+	for i = 1, getn(l) do
+		local e = l[i];
+		local x = nil;
+		if type(e) == "table" then x = f(e); end;
+		if type(x) == "number" and near[x] and (near[x] < bd or (near[x] == bd and x < bi)) then
+			best = e; bd = near[x]; bi = x;
+		end;
+	end;
+	return best;
+end;
+
+function TRF_HlBaseIdx(e) if e.k == 1 or e.k == 2 then return e.s; end; return nil; end;
+
+function TRF_HlCarIdx(e)
+	if type(e.e) == "number" and type(TRF.clock) == "table" and TRF.clock.legs < e.e then return e.t; end;
+	return nil;
+end;
+
+-- v1 rumours within rumour_range jumps (v1-spec 6.2, 6.3, 9.2): pirate base (active, then gathering),
+-- carrier raid, salvage stage 2-3 of a clan whose home is near; nil when none.
+function TRF_HlRumourV1(idx)
+	if type(TRF) ~= "table" then return nil; end;
+	local near = TRF_HlNear(idx, TRF_HlT("rumour_range") or 3);
+	local b = TRF_HlNearest(TRF.base, near, TRF_HlBaseIdx);
+	if b then
+		if b.k == 2 then return TRF_Txt("rbase", TRF_HlSysName(b.s)); end;
+		return TRF_Txt("rgather", TRF_HlSysName(b.s));
+	end;
+	local c = TRF_HlNearest(TRF.lr, near, TRF_HlCarIdx);
+	if c and type(TRF_UI_ClanName) == "function" then
+		return TRF_Txt("rcar", TRF_UI_ClanName(c.s), TRF_HlSysName(c.t));
+	end;
+	if type(TRF_UI_Salv) == "function" and type(TRF_UI_RgN) == "function" then
+		for s = 1, TRF_UI_RgN() do
+			local st, f = TRF_UI_Salv(s);
+			local h = TRF_HlHome(s);
+			if st >= 2 and type(f) == "number" and f >= 1 and f <= 5 and h and near[h] then
+				local w = "rsalvf";
+				if st >= 3 then w = "rsalvc"; end;
+				return TRF_Txt("rsalv", TRF_UI_FacOf(f), TRF_Txt(w), TRF_HlSysName(h));
+			end;
+		end;
+	end;
+	return nil;
 end;
 
 -- Home idx of region slot (TRF_RgMap home: idx or system name), or nil.
@@ -730,11 +1098,14 @@ function TRF_HlHome(slot)
 	return nil;
 end;
 
--- First true rumour (6.3): raided neighbour, shortage within 2 jumps, busy neighbour, scheduled sweep
--- with its home within 3 jumps, else "quiet". Reads saved state only.
+-- First true rumour (6.3): raided neighbour, v1 base / carrier / salvage rumour, shortage within 2 jumps,
+-- equipment convoy due (rolled), busy neighbour, scheduled sweep with its home within 3 jumps, else
+-- "quiet". Reads saved state only.
 function TRF_HlRumourText(idx)
 	local n1 = TRF_HlPick(idx, 1, TRF_HlTroubleV);
 	if getn(n1) > 0 then return TRF_Txt("rdis", TRF_HlSysName(n1[1].i)); end;
+	local v1 = TRF_HlRumourV1(idx);
+	if v1 then return v1; end;
 	if type(TRF) == "table" and type(TRF.short) == "table" and type(TRF.clock) == "table" then
 		local near = {};
 		near[idx] = 0;
@@ -750,6 +1121,8 @@ function TRF_HlRumourText(idx)
 		end;
 		if best then return TRF_Txt("rshort", TRF_HlSysName(best.i), TRF_Txt("cls"..tostring(best.c))); end;
 	end;
+	local fq = TRF_HlFeqLine(idx, "rfeq");
+	if fq then return fq; end;
 	local b1 = TRF_HlPick(idx, 1, TRF_HlBoomV);
 	if getn(b1) > 0 then return TRF_Txt("rpro", TRF_HlSysName(b1[1].i)); end;
 	if type(TRF_RgMap) == "function" and type(TRF_SweepInfo) == "function" then
@@ -818,7 +1191,7 @@ end;
 -- The vanilla patrol dialog, once per docking (live.bgo cleared first).
 function TRF_BoardOrig(why)
 	local L = TRF_HlLive();
-	if L then L.bgo = nil; end;
+	if L then L.bgo = nil; L.bk = nil; L.bc = nil; end;
 	if type(TRF_orig_PatrolOk) == "function" then
 		call(TRF_orig_PatrolOk, {}, "x");
 	else
@@ -861,14 +1234,22 @@ function TRF_BoardDockOk_Body()
 	end;
 	local bt, be = nil, nil;
 	if type(TRF_NewsNext) == "function" and TRF_UI_Opt("news_mode", 1) == 1 then bt, be = TRF_NewsNext(); end;
+	local of = TRF_BoardOffers();
 	if L.board == text and not bt then
 		TRF_HlSay(short, nil, 8);
-		return "same";
+		if getn(of) == 0 then return "same"; end;
+		-- v1: faction offers still open their boxes (TRF_BoardOfShow), then the original.
+		L.bgo = 1;
+		L.bk = 1;
+		if TRF_BoardOfShow() then return "box"; end;
+		L.bgo = nil;
+		return "nobox";
 	end;
 	L.board = text;
 	local full = text;
 	if bt then full = full.."\n"..TRF_Txt("nbull", bt); end;
 	L.bgo = 1;
+	L.bk = 1;
 	-- CHECK (O1, 13.1): a box opened here shows before PatrolStationDlg; fallback cfg board 2.
 	if TRF_HlBox("#UI_PatrolStationWndCaption", full, TRF_BoardGo, TRF_BoardGo) then
 		if type(be) == "table" then be.n = 0; end;
@@ -881,19 +1262,120 @@ function TRF_BoardDockOk_Body()
 	return "nobox";
 end;
 
--- Board box OK and Cancel: the original once per docking. An error here still runs it.
+-- Board box OK and Cancel: the original once per docking, after the faction offer boxes. An error here
+-- still runs it.
 function TRF_BoardGo()
-	if TRF_Cb("TRF_BoardGo", TRF_BoardGo_Body, {}) ~= 0 then TRF_BoardOrig("go"); end;
+	local v = TRF_Cb("TRF_BoardGo", TRF_BoardGo_Body, {});
+	if v ~= 0 and v ~= 2 then TRF_BoardOrig("go"); end;
 end;
 
--- 1 when the original is still due for this docking, 0 when it already ran.
+-- 1 when the original is still due for this docking, 0 when it already ran, 2 when faction offers follow
+-- (TRF_BoardOfDue runs the original after them).
 function TRF_BoardGo_Body()
 	local L = TRF_HlLive();
 	if L and L.bgo ~= 1 then
 		TRF_HlL("board go: original already ran");
 		return 0;
 	end;
+	local st = TRF_HlStore();
+	if L and st and type(st.bof) == "table" and type(L.bk) == "number" and L.bk <= getn(st.bof) then
+		if TRF_Due(0.1, "TRF_BoardOfDue") then return 2; end;
+	end;
 	return 1;
+end;
+
+-- Faction offers of the patrol board (v1-spec 7.4, TRF_Faction_BoardOffers), kept in the handle table;
+-- entries without a text are dropped. {} without trf_faction or the handle table.
+function TRF_BoardOffers()
+	local st = TRF_HlStore();
+	if not st then return {}; end;
+	st.bof = nil;
+	if type(TRF_Faction_BoardOffers) ~= "function" then return {}; end;
+	local l = TRF_HlP(TRF_Faction_BoardOffers, {});
+	local o = {};
+	if type(l) == "table" then
+		for i = 1, getn(l) do
+			if TRF_HlOfText(l[i]) then tinsert(o, l[i]); end;
+		end;
+	end;
+	st.bof = o;
+	return o;
+end;
+
+-- The original, unless it already ran for this docking.
+function TRF_BoardOrigOnce(why)
+	local L = TRF_HlLive();
+	if L and L.bgo ~= 1 then return; end;
+	TRF_BoardOrig(why);
+end;
+
+-- Box of board offer live.bk; 1 when shown. CHECK (V9, v02 R4): boxes chained before PatrolStationDlg;
+-- fallback cfg board 2 (offers in the hail).
+function TRF_BoardOfShow()
+	local L = TRF_HlLive();
+	local st = TRF_HlStore();
+	if not L or not st or type(st.bof) ~= "table" or type(L.bk) ~= "number" then return nil; end;
+	local e = st.bof[L.bk];
+	local text = TRF_HlOfText(e);
+	if not text then return nil; end;
+	local cap = "#UI_PatrolStationWndCaption";
+	if type(e.title) == "string" then cap = e.title; end;
+	if TRF_HlBox(cap, text, TRF_BoardOfOk, TRF_BoardOfNo) then
+		TRF_HlStat("hl_boardoffer");
+		TRF_HlL("board offer "..L.bk.."/"..getn(st.bof));
+		return 1;
+	end;
+	return nil;
+end;
+
+-- Due call after the board box: the first offer box, else the original.
+function TRF_BoardOfDue()
+	if TRF_Cb("TRF_BoardOfDue", TRF_BoardOfShow, {}) ~= 1 then TRF_BoardOrigOnce("ofdue"); end;
+end;
+
+-- Offer box OK / Cancel (shims): record the choice, TRF_BoardOfStep follows; an error or a refused due call
+-- runs the original.
+function TRF_BoardOfOk()
+	if TRF_Cb("TRF_BoardOfOk", TRF_BoardOfCb, {1}) == nil then TRF_BoardOrigOnce("ofok"); end;
+end;
+
+function TRF_BoardOfNo()
+	if TRF_Cb("TRF_BoardOfNo", TRF_BoardOfCb, {0}) == nil then TRF_BoardOrigOnce("ofno"); end;
+end;
+
+-- 1 when the step is scheduled, 0 when the original already ran, nil when the due call was refused.
+function TRF_BoardOfCb(acc)
+	local L = TRF_HlLive();
+	if not L or L.bgo ~= 1 then return 0; end;
+	L.bc = acc;
+	if TRF_Due(0.1, "TRF_BoardOfStep") then return 1; end;
+	return nil;
+end;
+
+function TRF_BoardOfStep()
+	if TRF_Cb("TRF_BoardOfStep", TRF_BoardOfStep_Body, {}) ~= 1 then TRF_BoardOrigOnce("ofstep"); end;
+end;
+
+-- Accept (bc 1) calls ok(a); then the next offer box (1), else 0 and the original follows.
+function TRF_BoardOfStep_Body()
+	local L = TRF_HlLive();
+	local st = TRF_HlStore();
+	if not L or L.bgo ~= 1 then return 0; end;
+	local acc = L.bc;
+	L.bc = nil;
+	local e = nil;
+	if st and type(st.bof) == "table" and type(L.bk) == "number" then e = st.bof[L.bk]; end;
+	if acc == 1 and type(e) == "table" then
+		local v = TRF_HlCall(e.ok, {e.a});
+		TRF_HlStat("hl_offer_acc");
+		TRF_HlL("board offer "..tostring(L.bk).." accepted -> "..tostring(v));
+		if type(v) == "string" then TRF_HlSay(v, nil, 8); end;
+	elseif type(e) == "table" and e.no then
+		TRF_HlCall(e.no, {e.a});
+	end;
+	L.bk = (L.bk or 1) + 1;
+	if TRF_BoardOfShow() then return 1; end;
+	return 0;
 end;
 
 -- Loader callbacks and dump ----------------------------------------------------------
@@ -901,13 +1383,13 @@ end;
 function TRF_Hail_BeforeJump()
 	TRF_CtVoid("jump");
 	local L = TRF_HlLive();
-	if L then L.hl = nil; L.bgo = nil; end;
+	if L then L.hl = nil; L.bgo = nil; L.bk = nil; L.bc = nil; end;
 end;
 
 function TRF_Hail_OnLoad()
 	TRF_CtVoid("load");
 	local L = TRF_HlLive();
-	if L then L.hl = nil; L.bgo = nil; end;
+	if L then L.hl = nil; L.bgo = nil; L.bk = nil; L.bc = nil; end;
 end;
 
 function TRF_Hail_Dump()
@@ -920,7 +1402,14 @@ function TRF_Hail_Dump()
 	if type(L.ct) == "table" then ct = tostring(L.ct.id)..":"..tostring(L.ct.n); end;
 	local b = "none";
 	if type(L.board) == "string" then b = "set"; end;
-	TRF_L("dump hail hl="..hl.." ct="..ct.." board="..b.." wrapped="..tostring(TRF_HailIsMine(__PatrolStationDock_Ok)));
+	local st = TRF_HlStore();
+	local nx, nb = 0, 0;
+	if st then
+		if type(st.x) == "table" then for k, v in st.x do nx = nx + 1; end; end;
+		if type(st.bof) == "table" then nb = getn(st.bof); end;
+	end;
+	TRF_L("dump hail hl="..hl.." ct="..ct.." board="..b.." v1opts="..nx.." boardoffers="..nb.."@"..tostring(L.bk)
+		.." wrapped="..tostring(TRF_HailIsMine(__PatrolStationDock_Ok)));
 end;
 
 -- Strings (6.2). Looked up by TRF_Txt after TRF_UI_Text; keys in TRF_UI_Key form (lowercase, letters and
@@ -964,5 +1453,18 @@ function TRF_Hail_Text()
 		ctlost = "Contract lost: FTU $1 destroyed.",
 		brdhead = "Patrol report",
 		brdline = "$1: $2",
+		-- v1 (v1-spec 5.2, 6.2, 6.3, 7.4, 8.4, 9.2)
+		optdemand = "Drop some of your cargo",
+		optsweep = "Any work against the pirates",
+		sevbase = "$1, pirate base",                    -- severity word
+		rgather = "Pirates are gathering in $1.",       -- system
+		rbase = "Pirates have a base in $1.",           -- system
+		rcar = "$1 carriers raid as far as $2.",        -- clan, system
+		rsalv = "Pirates seen flying $1 $2 near $3.",   -- faction, rsalvf / rsalvc, system
+		rsalvf = "fighters",
+		rsalvc = "navy corvettes",
+		rfeq = "$1 equipment convoy due in $2 soon.",   -- faction, system
+		bmfeq = "$1 equipment convoy due in $2",        -- faction, system
+		optfeqinfo = "Who are you",
 	};
 end;

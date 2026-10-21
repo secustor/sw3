@@ -8,12 +8,19 @@
 -- Config for the scenario: the repo defaults plus t (TRF_Config returns HOST().cfg). The v0.1 scenarios a..g
 -- run with the v0.2 features off (band 0 = v0.1, v02-spec 9.1), so they keep checking the v0.1 behaviour;
 -- T_Cfg2 (host_v02.lua) starts from the v0.2 defaults instead.
+-- v1 features off and the v0.2 tier cap (v1-spec 10.5), so the v0.1 and v0.2 scenarios keep checking their
+-- behaviour with the v1 files loaded; host_v1.lua starts from the v1 defaults.
+function T_V1Off()
+	return {tier_cap=2, track=0, conv=0, demand=0, heat_offer=0, carriers=0, salvage=0, sweeps=0, sweep_ct=0,
+		po=0, tt4=0, feq=0, forced_bust=0, dconv=0, bases=0};
+end;
 function T_V01()
 	return {prosperity=0, seed=0, parked=0, queue=0, raids=0, staged=0, contracts=0, meet=1, board=0,
 		shop_mode=0, short_price=0, news_mode=0};
 end;
 function T_Cfg(t)
 	local c = {exp=0, log=1, traffic=1};
+	for k, v in T_V1Off() do c[k] = v; end;
 	for k, v in T_V01() do c[k] = v; end;
 	if t then for k, v in t do c[k] = v; end; end;
 	HOST().cfg = c;
@@ -193,7 +200,7 @@ end;
 
 function T_Begin(sys)
 	HOST_Includes();
-	HOST_Check(ExecuteScriptFile("DATA/Scripts/Mods/Traffic/traffic.script") and HOST_V() == 3, "traffic.script loads the traffic modules");
+	HOST_Check(ExecuteScriptFile("DATA/Scripts/Mods/Traffic/traffic.script") and HOST_V() == 4, "traffic.script loads the traffic modules");
 	T_Enter(sys or "gredos");
 end;
 
@@ -558,11 +565,11 @@ function T_F()
 	local n0 = T_Lines();
 	T_SaveLoad();
 	c = TRF.clock;
-	HOST_Check(TRF.version == 3 and TRF.gen == snap.gen + 1 and c.legs == snap.legs and c.gt == snap.gt and c.dd == snap.dd and TRF.seq == snap.seq,
-		"load: version 3, gen + 1, legs, gt, dd and seq kept (no leg on load)");
+	HOST_Check(TRF.version == 4 and TRF.gen == snap.gen + 1 and c.legs == snap.legs and c.gt == snap.gt and c.dd == snap.dd and TRF.seq == snap.seq,
+		"load: version 4, gen + 1, legs, gt, dd and seq kept (no leg on load)");
 	HOST_Check(TRF.std.heat == 3 and TRF.std.heat_t == snap.ht and TRF.sys[9].dis == 4 and TRF.sys[46].dis == 2
 		and TRF.exp.cnt.enter == snap.en and TRF.exp.cnt.load == 1, "load: heat, dis and the entry/load counters kept");
-	HOST_Check(TRF.live.g == TRF.gen and TRF.live.kills == 0 and getn(TRF.live.due) == 0, "load: visit table reset (kills 0, no due call, no arrival line)");
+	HOST_Check(TRF.live.g == TRF.gen and TRF.live.kills == 0 and getn(TRF_H().due) == 0 and TRF.live.due == nil, "load: visit table reset (kills 0, no due call, no arrival line)");
 	HOST_Check(TRF.live.tr[a] and TRF.live.tr[a].st == "wind" and xa.sh[1].cp ~= nil
 		and HOST_Count("f_object_inside", "TRF_OnExit("..a..","..TRF.gen..")--") == 1, "load pass: trader in view winds down to a portal");
 	HOST_Check(TRF.live.tr[b] == nil and not xb.fl:IsAlive() and T_Stat("remove_load") == 1 and T_Stat("wind_load") == 1, "load pass: trader out of view deleted");
@@ -591,14 +598,14 @@ function T_F()
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF after the load");
 	-- Save made without the mod: TRF nil at OnLoad.
 	T_SaveLoad(function() TRF = nil; end);
-	HOST_Check(TRF.version == 3 and TRF.gen == 1 and TRF.clock.legs == 0 and TRF.live.g == 1 and TRF.std.heat == 0, "load without TRF: v3 defaults");
+	HOST_Check(TRF.version == 4 and TRF.gen == 1 and TRF.clock.legs == 0 and TRF.live.g == 1 and TRF.std.heat == 0, "load without TRF: v4 defaults");
 	-- Phase 0 (v1) save.
 	T_SaveLoad(function() TRF = {version=1, active=1, gen=5, clock={game=123, real=4}, exp={cnt={enter=3}}}; end);
-	HOST_Check(TRF.version == 3 and TRF.clock.gt == 123 and TRF.clock.game == nil and TRF.gen == 6 and TRF.clock.legs == 0
+	HOST_Check(TRF.version == 4 and TRF.clock.gt == 123 and TRF.clock.game == nil and TRF.gen == 6 and TRF.clock.legs == 0
 		and TRF.std.heat == 0 and TRF.exp.cnt.enter == 3 and TRF.live.g == 6, "v1 save migrated: clock.gt from clock.game, gen + 1, exp kept");
 	-- Unknown version: reset, heat and gen kept.
 	T_SaveLoad(function() TRF = {version=9, gen=8, std={heat=4}, foo=1, clock={gt=7}}; end);
-	HOST_Check(TRF.version == 3 and TRF.std.heat == 4 and TRF.gen == 9 and TRF.foo == nil and TRF.clock.gt == 0, "unknown version: reset, heat and gen kept");
+	HOST_Check(TRF.version == 4 and TRF.std.heat == 4 and TRF.gen == 9 and TRF.foo == nil and TRF.clock.gt == 0, "unknown version: reset, heat and gen kept");
 	T_Tick(20, 0.5);
 	HOST_Check(TRF.clock.gt == 10, "ticks run after the reset");
 end;
@@ -756,8 +763,8 @@ function T_G()
 end;
 
 local fn = getglobal("T_"..strupper(HOST().scen));
-if strsub(HOST().scen, 1, 4) == "v02-" then
-	-- host_v02.lua (loaded next by host_stubs.lua) runs the scenario with these helpers.
+if strsub(HOST().scen, 1, 4) == "v02-" or strsub(HOST().scen, 1, 3) == "v1-" then
+	-- host_v02.lua or host_v1.lua (loaded next by host_stubs.lua) runs the scenario with these helpers.
 elseif type(fn) == "function" then
 	fn();
 	HOST_Check(T_LeftGlobals() == "", "no handle globals left at the end"..T_LeftGlobals());

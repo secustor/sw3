@@ -155,14 +155,24 @@ TRF_RegionTick(L)   for slot = 1..n:
   1 drift: each trader system pro +-1 toward target (<= pc); score +-step toward target,
            step = 10 if ph in {1,2} and R >= 7 (pro_hi) else 5
   2 counterforce: sweep schedule (4.4); Raids / Recovery dis effect; short expiry (TRF_ShortExpire)
-  3 exit: len = L - pt; if len >= mx or (len >= mn and exit(slot)) then advance(slot, L)
-  4 news check for the slot (8.2)
+  3 exit wish: 2 if len >= mx + rg_hold or (Raids and sw = 1 and len >= mn); 1 if len >= mx or (len >= mn and exit(slot)); else 0
+then for all slots: coordinate the wishes (4.2a); advance every slot with wish > 0; news check per slot (8.2)
 advance: ph = mod(ph + 1, 6); pt = L; gx = 1 if guard active and slot holds a guard system else 0;
          sw = 0 when leaving Raids (sn, sl = 0); entry effects: Raids -> schedule attempt 1 if sl == 0;
          Bust -> shortages; Build-up / Bust -> news "pir"
 ```
 
 Cost: one tick touches ≤ 113 systems; ≤ 30 ticks per call; work runs only on leg changes (entry, `T_leg`), never per frame.
+
+### 4.2a Exit coordination (`TRF_RgCoord`, closes 13.4 R1, R2)
+
+Groups: Boom; Build-up/Raids; Bust/Recovery (Quiet none). Per tick, O(regions), no saved state:
+
+- Separation: a wish-1 region waits when another region entered the next phase less than `rg_sep` (6) legs ago or enters it in this tick (lower slot first; wish 2 always moves). A pair that converges splits again at its next phase change.
+- Coverage: when a group would end the tick empty, one wish-1 region leaving it waits; if there is none, the region furthest past `mn` in the phase before the group (Quiet, Boom, Raids) advances, if `len ≥ mn`, its own group keeps a region and its `sc` < 75 (a Raids exit drops the sweep schedule, 4.4).
+- Bound: a wait ends at `mx + rg_hold` (6) legs (wish 2), so lengths stay within `mn .. mx + 6`, phases keep distinct lengths, and no player action freezes a phase.
+
+Host (`v02-b`, seeds 1–20, 200 legs): 0–2 legs miss a group, longest pair run ≤ 24 legs, every phase again within ≤ 78 legs, at most 6 legs past `mx`. 800 legs, seeds 1–5: ≤ 8 legs miss a group (guard on).
 
 ### 4.3 Desynchronisation at init (`TRF_Rg_Init`)
 
@@ -195,7 +205,7 @@ Active while `TRF_Chapter() ≤ 4` (v01 2.3). In the 8 `start = 1` systems the e
 
 ### 4.7 The 200-leg desynchronisation run (host scenario `v02-b`)
 
-Deterministic `RAND` stub (Park–Miller `x = mod(16807 × x, 2147483647)`, seed 1, exact in doubles; `RAND(n) = floor(x / 2147483647 × n)`), new game, `CurrentQuest = "5_1"` (guard off), no player action, `TRF_AddLeg` 200 times. At every leg: at least one region in Boom, one in Build-up or Raids, one in Bust or Recovery; no region with `sc ≥ 75` for more than 18 consecutive legs; every phase length within `mn..mx`; at the end every region has passed Recovery → Quiet at least twice. Second variant with `CurrentQuest = "3"`: bounds only, Gefest region lengths doubled (except Raids max), all guard-system raids T1. The run prints one line per 10 legs (`legs`, phase letters, scores) for the review log.
+Deterministic `RAND` stub (Park–Miller `x = mod(16807 × x, 2147483647)`, seed 1, exact in doubles; `RAND(n) = floor(x / 2147483647 × n)`), new game, `CurrentQuest = "5_1"` (guard off), no player action, `TRF_AddLeg` 200 times. At ≥ 98 % of legs (≤ 4 of 200): at least one region in Boom, one in Build-up or Raids, one in Bust or Recovery; no two regions in one phase for more than 25 consecutive legs; every region in every phase within 120 legs; no region with `sc ≥ 75` for more than 18 consecutive legs; every phase length within `mn..mx + rg_hold`; at the end every region has passed Recovery → Quiet at least twice. Push variants (pirate kills every leg, trader kills every leg): no phase past `mx + 10`, every phase within 120 legs; group coverage and pair runs are printed only (the player may shift phases). Second variant with `CurrentQuest = "3"`: bounds only, Gefest region lengths doubled (except Raids max), all guard-system raids T1. The run prints one line per 10 legs (`legs`, phase letters, scores) for the review log.
 
 ## 5. Raids, distress, help and contracts (S5, S6, S7, S12, S21)
 
@@ -478,7 +488,7 @@ Per-tick cost: `TRF_Raid_Tick` and `TRF_Q_Tick` act every 2 s / 1 s of gt over �
 | `news_mode` | 1 | 0 off, 1 bulletin, 2 `AddPost` records |
 | `heat_war`, `strict` | 0, 1 | heat 7–9 group war; strict gate mode (8.3) |
 | `pro_set` | `{}` | test clone only: `{gredos=9, ...}` sets `pro` (clamped to `pc`) on the next entry and logs it; written by `install-test.sh PRO_SET=gredos:9,kadi:9,taira:9` for the design 12 "pro 9 holds 8x" exit test |
-| `tune` | | new keys: `rg_tick` 2, `rg_catchup` 30, `pp_step` 5, `pro_hi` 7, `pro_step` 6, `pro_visit_max` 2, `sweep_gap` 6, `sweep_wait` 2, `raid_min_st` 400, `raid_meet` 250, `comply` 50, `ct_raid` 40, `R_threat` 300, `upd_true` 1, `R_radio` 2000, `T_sos_cd` 240, `staged_win` 180, `staged_hp` 0.7, `hail_r` 150, `hail_arm` 60, `hail_cd` 60, `hail_max` 2, `trouble_range` 3, `boom_min_pro` 6, `L_short` 6, `short_coef` 1.5, `short_bonus` 1.2, `pay_cap` 30000, `ct_dist` 400, `q_wait` 180, `q_prio` 30, `seed_min` 15, `seed_max` 30 |
+| `tune` | | new keys: `rg_tick` 2, `rg_catchup` 30, `pp_step` 5, `pro_hi` 7, `pro_step` 6, `pro_visit_max` 2, `sweep_gap` 6, `sweep_wait` 2, `rg_hold` 6, `rg_sep` 6 (4.2a), `raid_min_st` 400, `raid_meet` 250, `comply` 50, `ct_raid` 40, `R_threat` 300, `upd_true` 1, `R_radio` 2000, `T_sos_cd` 240, `staged_win` 180, `staged_hp` 0.7, `hail_r` 150, `hail_arm` 60, `hail_cd` 60, `hail_max` 2, `trouble_range` 3, `boom_min_pro` 6, `L_short` 6, `short_coef` 1.5, `short_bonus` 1.2, `pay_cap` 30000, `ct_dist` 400, `q_wait` 180, `q_prio` 30, `seed_min` 15, `seed_max` 30 |
 
 Where each key's default lives: base `TRF_OptDef` (trf_state): `enabled`, `cap_traders`, `cap_ships`, `spawn_scale`, `meet`, `seed`, `queue`, `heat_war`, `strict`, `news_mode`; `TRF_Rg_OptDef`: `cycle`, `tier_cap`, `pro_set`; `TRF_Tier_OptDef`: `prosperity`, `band_half`, `parked`; `TRF_Raid_OptDef`: `raids`, `staged`; `TRF_Hail_OptDef`: `contracts`, `esc_speed`, `hail_start`, `board`; `TRF_Shop_OptDef`: `shop_mode`, `short_price`, `restore`. Tune keys go in the `TRF_<M>_TuneDef()` of the module that reads them.
 
@@ -544,7 +554,7 @@ New stubs: `ShowMsgBox` (records calls; the scenario presses OK or Cancel), `Cre
 | O5 | Raid groups on the Pirates team at war with `TRF_Trade_k` groups by group relation; neutral raids do not trigger autopause (13.6) | medium |
 | O6 | Trader buying from its shop does not reduce the ship's own hold (no market read until the DLL native `TRF_MarketGet`) | high that the gap exists; low impact |
 | O7 | Region table: the 29-system Kadi of the first count came from non-`"Portal"` edges in `map.script` (Earth, DisonSphere, Precursors), not from edge direction: both directions give the same counts (critic BFS). With `"Portal"` edges the expected sizes are those of 4.1 (Kadi 27 after the XK16 merge) | high that the method holds; counts to be regenerated |
-| O8 | Cycle lengths and the "every phase present" criterion with 8 regions and the sweep odds of 11.1 #11 are computed, not run; `v02-b` checks them | medium |
+| O8 | Cycle lengths and the phase-group criterion with 8 regions and the sweep odds of 11.1 #11 are host-run only (`v02-b`, 4.2a), not seen in the game | medium |
 | O9 | Hold-point and parked-ship offsets (180–250, 150) are unmeasured; parked ships may block the player's docking ([TP] E8) | low–medium |
 | O10 | `GetPlayerQuestState()` meaning (v01 open) decides the strict gate | medium; `strict 2` fallback |
 | O11 | Clan names and news texts not checked against story names | medium |
@@ -608,7 +618,7 @@ Reviewed `trf_region`, `trf_tier`, `trf_raid`, `trf_hail`, `trf_shop` and the v0
 | 3.1–3.3 | v3 fields, migration, repair | `TRF_Fresh`, `TRF_Migrate`, `TRF_Migrate3`, `TRF_Repair`, `TRF_SysFix`, `TRF_ListFix`, `TRF_Rg_Fix`, `TRF_Rg_Init` | conforms |
 | 3.2, 3.4 | visit bounds | `TRF_Due` (32), `TRF_Stat` (96 + `other`), `TRF_Ev_Close`/`TRF_GnStrip`, `TRF_LivePrune` (8 gone), `TRF_Rd_Strip`/`TRF_Rd_Prune` (6 raids), `TRF_LiveReset` (`nrd` kept on load) | conforms; visit sub-fields are created lazily, so `live.pc`/`pv` read nil (not 0) after a reset |
 | 4.1 | regions | `TRF_RgMap`, `TRF_RgBuild`, `TRF_RgAdj`, `TRF_RgOwners` | deviates until `gen_map.py` emits the fields: runtime BFS that skips `PORTAL_A`/`PORTAL_P`, danger from built-in lists; result equals 4.1 (8 regions, 14/15/11/17/27/14/4/8, 110 systems) (R3) |
-| 4.2–4.4 | phases, tick, catch-up, sweeps | `TRF_RegionCatchup`, `TRF_RegionTick`, `TRF_RgTickSlot`, `TRF_RgAdvance`, `TRF_RgLen`, `TRF_RgExit`, `TRF_RgSweepPlan`, `TRF_RgSweepRoll`, `TRF_SweepOpen`, `TRF_RgFaction` | conforms after fix 1; criterion 4.7 fails (R1), phase lock (R2) |
+| 4.2–4.4 | phases, tick, catch-up, sweeps | `TRF_RegionCatchup`, `TRF_RegionTick`, `TRF_RgTickSlot`, `TRF_RgAdvance`, `TRF_RgLen`, `TRF_RgExit`, `TRF_RgSweepPlan`, `TRF_RgSweepRoll`, `TRF_SweepOpen`, `TRF_RgFaction` | conforms after fix 1; criterion 4.7 and phase lock fixed by 4.2a (R1, R2 closed) |
 | 4.5, 9.1 | credits, losses, clamps | `TRF_ProCredit`, `TRF_ProAdd`, `TRF_ClanAdd`, `TRF_Ev_KillV2`, `TRF_Ev_Counted`, `TRF_Ev_Recover`, `TRF_GnSafeArrive` | conforms |
 | 4.6 | guard | `TRF_RgGuardOn`, `TRF_EffTier`, `TRF_Rg_Init` (gx), `TRF_Rd_Guard` | conforms after fix 4 |
 | 5.1 | lane raid roll | `TRF_RaidRoll`/`TRF_Rd_RollBody`, `TRF_Rd_Gate`, `TRF_Rd_Strict`, `TRF_Rd_RaidPoint` | conforms; path A uses the midpoint of entry → approach point as its one raid-point candidate (path A has no registered route points) |
@@ -655,8 +665,8 @@ Verified after the fixes: `luac -p`, `lint_lua.py` 0 findings, CRLF on every fil
 
 | # | Sev. | Item |
 |---|---|---|
-| R1 | high (criterion), low (play) | 4.7 phase-group criterion fails: seed 1, 28 of 200 legs (guard off) and 30 (guard on) lack a group; 5 seeds 178 of 1000. Mostly Bust/Recovery: after a sweep `sc` ≤ 35, so Bust and Recovery exit at `mn`. Raising their `mn` to 6 gives 54 of 1000 (region agent); no tried variant reaches 0. Spec decision on the numbers or the criterion (O8) |
-| R2 | medium | Phase lock: two regions converge into the same phase with the same start leg and stay locked; seeds 1–5 over 300 legs give longest runs of 152, 50, 142, 40, 36 legs (pairs 1/5, 2/5, 1/6, 5/8, 1/8). Cause: one global tick every 2 legs, lengths rounded to 2, identical exit rules; neighbouring `ck` values give equal `mn`/`mx` for most phases (1.15 and 1.10: Quiet 6/12, Boom 10/24 vs 10/22). The 4.3 offsets only desynchronise the start. Options: per-slot tick parity, a wider `ck` spread, a deterministic per-phase jitter of `mn` |
+| R1 | closed | Fixed by 4.2a (coverage rule; criterion relaxed to ≥ 98 % of legs). Was: 4.7 phase-group criterion fails: seed 1, 28 of 200 legs (guard off) and 30 (guard on) lack a group; 5 seeds 178 of 1000. Mostly Bust/Recovery: after a sweep `sc` ≤ 35, so Bust and Recovery exit at `mn`. Raising their `mn` to 6 gives 54 of 1000 (region agent); no tried variant reaches 0. Spec decision on the numbers or the criterion (O8) |
+| R2 | closed | Fixed by 4.2a (separation rule, pair runs ≤ 25 checked). Was: phase lock: two regions converge into the same phase with the same start leg and stay locked; seeds 1–5 over 300 legs give longest runs of 152, 50, 142, 40, 36 legs (pairs 1/5, 2/5, 1/6, 5/8, 1/8). Cause: one global tick every 2 legs, lengths rounded to 2, identical exit rules; neighbouring `ck` values give equal `mn`/`mx` for most phases (1.15 and 1.10: Quiet 6/12, Boom 10/24 vs 10/22). The 4.3 offsets only desynchronise the start. Options: per-slot tick parity, a wider `ck` spread, a deterministic per-phase jitter of `mn` |
 | R3 | medium | `map.script` has no `rg`, `dg`, `pc`, `q`, `sb`, `rgs` (gen_map.py not updated). Runtime fallbacks: region BFS and danger lists (trf_region), 24 never-named systems for `q` (trf_safety), contact level for `sb` (trf_raid). The danger lists are hand-copied from the game files and need the generator's `--check` once it emits `dg` |
 | R4 | medium | The board box opens inside `__PatrolStationDock_Ok`, itself the OK callback of the docking box: the nested-box case decision 25 avoids for the hail. 6.4 accepts it with `board 2` as the fallback (O1, E0.6) |
 | R5 | medium | `GetTeamRelation("Pirates", "Trade")` has no shipped precedent. If it does not return `RELATION_WAR`, lane and staged raids never run (stat `raid_skip_peace`, `staged_skip_peace`); E0.5 must log the value |

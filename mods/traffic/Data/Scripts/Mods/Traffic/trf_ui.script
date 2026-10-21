@@ -3,6 +3,10 @@
 -- arm, text lookup in every module's TRF_<M>_Text(), tier, sweep and prosperity arrival lines, news state and
 -- bulletin. Top level only defines functions; state is in TRF.live (met per trader, line, arr, nbs) and in
 -- TRF.news / TRF.newsx (saved). Log prefix "ui".
+-- v1 (v1-spec 6.2, 6.3, 9.3, 10.2, 10.4): TRF_Txt asks the loc layer first (trf_loc TRF_LocTxt, cfg loc_mode),
+-- arrival line with T3/T4 words, carrier line, base radio line and the base as sweep target; focus line with
+-- faction convoys, danger convoy members, the tracked "seen in" suffix and salvaged pirate ships; news topics
+-- war (regional) and feq (global). v1 state is read from TRF.base, TRF.lr, TRF.clan[slot].sv/sf and TRF.feq.
 -- Other modules are reached by name and type-checked, so a missing one only disables a feature.
 
 -- Strings ---------------------------------------------------------------------------
@@ -53,6 +57,32 @@ function TRF_UI_Text()
 		facuss = "USS",
 		facinoco = "InoCo",
 		facmerc = "FTU mercenaries",
+		-- Raid lines (copies of TRF_Raid_Text): TRF_Rd_Txt routes keys found here through TRF_Txt, so the loc
+		-- layer covers them.
+		sos = "FTU $1: pirates on us, any ship assist!",
+		demand = "$1: Cut your engines and drop cargo, trader.",
+		comply = "FTU $1: Cargo released. Don't shoot.",
+		flee = "FTU $1: Breaking off, heading for $2.",
+		thanks = "FTU $1: Thank you, Wolves. We owe you.",
+		fleegate = "the jump gate",
+		clan0 = "Pirates",
+		noname = "freighter",
+		-- v1 arrival lines (v1-spec 6.1, 6.2, 9.3): tier words, carrier target, base radio.
+		packs = "pirate packs",
+		raiders = "raiders",
+		arrivecarrier = "FTU reports $1 carriers raiding in this system",   -- clan
+		baseradiowar = "Pirate base: Wolves on scope. Burn them!",
+		baseradiotrade = "Pirate base: trade or move on, Wolves.",
+		-- v1 focus line (4.3, 5.1, 6.3, 8.5).
+		hullconv = "supply transport",
+		inconvoy = "$1, in convoy",                     -- focus text
+		seenin = "seen in $1",                          -- system
+		seenline = "$1 ($2)",                           -- focus text, seenin
+		metagain = "Wolves again. We remember you.",
+		salvcap = "Pirate in a captured $1 $2",         -- faction, salvfighter / salvcorvette
+		salvgear = "Pirate fighter with $1 gear",       -- faction
+		salvfighter = "fighter",
+		salvcorvette = "corvette",
 		-- News (v02-spec 8.2): key n<topic><variant>; $1 home display name, $2 clan, $3 faction.
 		nbull = "FTU bulletin: $1",
 		nheat5 = "FTU warns captains about the Wolves",
@@ -69,6 +99,15 @@ function TRF_UI_Text()
 		nsweepgather = "$3 gathers a fleet against pirates near $1",
 		nsweepfail = "$3 sweep near $1 beaten back",
 		nsweepwin = "$3 clears pirates near $1",
+		-- v1 news (v1-spec 3.1): regional war/<variant>[_<f>], global feq/<variant>_<f>. Regional $1 home,
+		-- $2 clan, $3 faction of the variant; global $1 faction.
+		nwarsalv2 = "Pirates near $1 fly captured $3 fighters",
+		nwarsalv3 = "Pirates near $1 fly captured $3 corvettes",
+		nwarbase = "$2 set up a pirate base near $1",
+		nwarbasex = "Lanes around $1 are safe again",
+		nwarcar = "$2 carriers raid the lanes near $1",
+		nfeqkill = "$1 equipment convoy destroyed; FTU blames the Wolves",
+		nfeqlost = "$1 equipment convoy lost to pirates",
 		-- cfg ui_keys = 1: pre-authored loc keys (design 8.1) instead of plain strings.
 		keyarr = "#TRF_ArriveDis_$1",           -- band
 		keyfocus = "#TRF_Focus_$1_$2",          -- cargo class 0..6, path A/B/C
@@ -86,15 +125,22 @@ function TRF_UI_Esc(s)
 	return r;
 end;
 
--- Text tables searched after TRF_UI_Text (v02-spec 6.2, 10.2); missing modules are skipped.
+-- Text tables searched after TRF_UI_Text when trf_loc is not loaded (v02-spec 6.2, 10.2; v1 modules as in
+-- TRF_Loc_TextFns); missing modules are skipped.
 function TRF_UI_TextFns()
-	return {"TRF_Hail_Text", "TRF_Raid_Text", "TRF_Rg_Text", "TRF_Tier_Text", "TRF_Shop_Text"};
+	return {"TRF_Hail_Text", "TRF_Raid_Text", "TRF_Rg_Text", "TRF_Tier_Text", "TRF_Shop_Text", "TRF_Track_Text",
+		"TRF_Supply_Text", "TRF_Clan_Text", "TRF_Faction_Text", "TRF_Convoy_Text", "TRF_Danger_Text", "TRF_Base_Text"};
 end;
 
 function TRF_UI_TxtErr(m) TRF_L("ui txt table error: "..tostring(m)); end;
 
--- String of a normalised key, or nil. A table function that fails is skipped.
+-- String of a normalised key, or nil: the loc layer (trf_loc, language and merged tables), else the
+-- tables here. A table function that fails is skipped.
 function TRF_UI_Find(k)
+	if type(TRF_LocTxt) == "function" then
+		local l = call(TRF_LocTxt, {k}, "x", TRF_UI_TxtErr);
+		if type(l) == "string" then return l; end;
+	end;
 	local s = TRF_UI_Text()[k];
 	if type(s) == "string" then return s; end;
 	local fs = TRF_UI_TextFns();
@@ -109,7 +155,13 @@ function TRF_UI_Find(k)
 end;
 
 -- Template key -> string with $1..$3 replaced. An unknown key returns the key itself (logged).
+-- cfg loc_mode 1 (trf_loc): the scaffold key "#TRF_<key>" instead, arguments dropped (CHECK E0.6; lines
+-- joined from several keys then show several keys).
 function TRF_Txt(key, a, b, c)
+	if type(TRF_Loc_Mode) == "function" and TRF_Loc_Mode() == 1 and type(TRF_LocKeyOf) == "function" then
+		local lk = TRF_LocKeyOf(key);
+		if lk then return lk; end;
+	end;
 	local s = TRF_UI_Find(TRF_UI_Key(key));
 	if type(s) ~= "string" then
 		TRF_L("ui txt unknown key="..tostring(key));
@@ -140,10 +192,15 @@ function TRF_UI_Opt(key, def)
 	return v;
 end;
 
+-- Tune value: TRF_Tune, else the v1 table (trf_loc), else def.
 function TRF_UI_Tune(key, def)
 	if type(TRF_Tune) == "function" then
 		local t = TRF_Tune();
 		if type(t) == "table" and type(t[key]) == "number" then return t[key]; end;
+	end;
+	if type(TRF_V1_TuneDef) == "function" then
+		local v = TRF_V1_TuneDef()[key];
+		if type(v) == "number" then return v; end;
 	end;
 	return def;
 end;
@@ -243,22 +300,51 @@ function TRF_UI_Transports(r, id)
 	return 1;
 end;
 
--- "FTU freighter Kestrel" (8.2 who part; also the hail box, v02-spec 6.1).
+-- "FTU freighter Kestrel" (8.2 who part; also the hail box, v02-spec 6.1). A supply convoy (r.own = f,
+-- v1-spec 5.1) is "<faction> supply transport Kestrel".
 function TRF_UI_Who(r, id)
 	local hull = TRF_Txt("hull1");
 	if TRF_UI_Transports(r, id) >= 2 then hull = TRF_Txt("hull2"); end;
+	local own = TRF_Txt("owner");
+	if type(r.own) == "number" and r.own >= 1 and r.own <= 5 then
+		own = TRF_UI_FacOf(r.own);
+		hull = TRF_Txt("hullconv");
+	end;
 	local nm = TRF_UI_Name(r.nm);
-	if nm then return TRF_Txt("who", TRF_Txt("owner"), hull, nm); end;
-	return TRF_Txt("who_noname", TRF_Txt("owner"), hull);
+	if nm then return TRF_Txt("who", own, hull, nm); end;
+	return TRF_Txt("who_noname", own, hull);
 end;
 
--- 8.2: "FTU freighter Kestrel: machinery, Aurora -> trade station".
+-- Bit b (1, 2, 4, ...) of a bit field (v1-spec 3.1 TRF_Bit rule); 1 or nil.
+function TRF_UI_Bit(v, b)
+	if type(v) ~= "number" or type(b) ~= "number" or b < 1 then return nil; end;
+	if mod(floor(v / b), 2) == 1 then return 1; end;
+	return nil;
+end;
+
+-- 8.2: "FTU freighter Kestrel: machinery, Aurora -> trade station". v1: ", in convoy" for a danger convoy
+-- member (r.cv); " (seen in Gredos)" for a trader that was tracked before this line (tb bit 1, v1-spec 4.3)
+-- and came from another system.
 function TRF_UI_FocusText(r, id)
 	local p = TRF_UI_Path(r);
 	local cls = r.cls;
 	if type(cls) ~= "number" or cls < 1 or cls > 6 then cls = 0; end;
 	if TRF_UI_Opt("ui_keys", 0) == 1 then return TRF_Txt("key_focus", cls, p); end;
-	return TRF_Txt("focus", TRF_UI_Who(r, id), TRF_Txt("cls"..cls), TRF_UI_DirText(r));
+	local s = TRF_Txt("focus", TRF_UI_Who(r, id), TRF_Txt("cls"..cls), TRF_UI_DirText(r));
+	if r.cv ~= nil then s = TRF_Txt("inconvoy", s); end;
+	local cur = nil;
+	if type(TRF_CurIdx) == "function" then cur = TRF_CurIdx(); end;
+	-- trf_track's memo when loaded (TRF_TrackSeen), else the origin of a trader tracked before this line.
+	local fr = nil;
+	if type(TRF_TrackSeen) == "function" then
+		fr = call(TRF_TrackSeen, {id}, "x", TRF_PErr);
+	elseif TRF_UI_Bit(r.tb, 1) then
+		fr = r.from;
+	end;
+	if type(fr) == "number" and fr >= 1 and fr ~= cur then
+		s = TRF_Txt("seenline", s, TRF_Txt("seenin", TRF_UI_SysName(fr)));
+	end;
+	return s;
 end;
 
 -- Direction part of the focus line ("Aurora -> trade station"; also "Where are you headed?", v02-spec 6.3).
@@ -347,9 +433,13 @@ function TRF_FocusLine(id, via)
 	local pilot = nil;
 	if TRF_UI_Opt("ui_out", 1) == 2 then pilot = TRF_UI_Leader(id); end;
 	if TRF_Say(TRF_UI_FocusText(r, id), c.secs, pilot) then
+		-- met 2: tracked before this line (rebuilt from the pool), read by the announce (metagain).
 		r.met = 1;
+		if TRF_UI_Bit(r.tb, 1) then r.met = 2; end;
 		L.line = gt;
 		TRF_L("ui focus id="..id.." shown via="..tostring(via or "due"));
+		-- v1-spec 4.2: the focus line tracks the trader (decision 11.1 #2), after the text read tb.
+		TRF_P("TRF_TrackMark", id, "focus");
 		return 1;
 	end;
 	return nil;
@@ -436,6 +526,14 @@ function TRF_UI_Announce(id)
 	local s = TRF_Txt("open", TRF_UI_Name(r.nm) or TRF_Txt("hull1"));
 	local b = TRF_UI_ProBand(TRF_CurIdx());
 	if b then s = s..". "..TRF_Txt("rem"..b); end;
+	-- v1-spec 4.3: a trader met before says so once: trf_track's TRF_TrackMetAgain when loaded (once per
+	-- visit), else tracked before its focus line (met 2).
+	if type(TRF_TrackMetAgain) == "function" then
+		local m = call(TRF_TrackMetAgain, {id}, "x", TRF_PErr);
+		if type(m) == "string" then s = s..". "..m; end;
+	elseif r.met == 2 or (not r.met and TRF_UI_Bit(r.tb, 1)) then
+		s = s..". "..TRF_Txt("metagain");
+	end;
 	local pilot = nil;
 	if TRF_UI_Opt("ui_out", 1) == 2 then pilot = TRF_UI_Leader(id); end;
 	TRF_Say(s, TRF_UI_Const().secs, pilot);
@@ -519,15 +617,125 @@ function TRF_UI_Pro(idx)
 	return nil;
 end;
 
--- Faction name when idx is its region's home and a sweep attempt is open there, else nil.
+-- Faction name when idx is the target of its region's open sweep attempt, else nil. Target (v1-spec 7.3):
+-- the system of an active base of the region's clan, else the home.
 function TRF_UI_SweepHome(idx)
 	local s = TRF_UI_RgOf(idx);
-	if not s or TRF_UI_HomeIdx(s) ~= idx or type(TRF_SweepOpen) ~= "function" then return nil; end;
+	if not s or type(TRF_SweepOpen) ~= "function" then return nil; end;
+	local tgt = TRF_UI_BaseOfRg(s) or TRF_UI_HomeIdx(s);
+	if tgt ~= idx then return nil; end;
 	if not call(TRF_SweepOpen, {s}, "x", TRF_PErr) then return nil; end;
 	local w = nil;
 	if type(TRF_SweepInfo) == "function" then w = call(TRF_SweepInfo, {s}, "x", TRF_PErr); end;
 	if type(w) ~= "table" then w = {}; end;
 	return TRF_UI_FacName(w.fac);
+end;
+
+-- v1 state readers (v1-spec 3.1); nil or 0 when the v1 fields are absent -------------------------
+
+function TRF_UI_Legs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+-- Kind of the base record at idx: 1 P (gathering), 2 A (active), or nil (none or destroyed).
+function TRF_UI_BaseAt(idx)
+	if type(TRF) ~= "table" or type(TRF.base) ~= "table" or type(idx) ~= "number" then return nil; end;
+	for i = 1, getn(TRF.base) do
+		local b = TRF.base[i];
+		if type(b) == "table" and b.s == idx and (b.k == 1 or b.k == 2) then return b.k; end;
+	end;
+	return nil;
+end;
+
+-- System idx of an active base in region slot, or nil.
+function TRF_UI_BaseOfRg(slot)
+	if type(TRF) ~= "table" or type(TRF.base) ~= "table" or type(slot) ~= "number" then return nil; end;
+	for i = 1, getn(TRF.base) do
+		local b = TRF.base[i];
+		if type(b) == "table" and b.k == 2 and type(b.s) == "number" and TRF_UI_RgOf(b.s) == slot then return b.s; end;
+	end;
+	return nil;
+end;
+
+-- Running carrier raid record {s, t, e} targeting idx, or nil.
+function TRF_UI_CarAt(idx)
+	if type(TRF) ~= "table" or type(TRF.lr) ~= "table" or type(idx) ~= "number" then return nil; end;
+	local L = TRF_UI_Legs();
+	for i = 1, getn(TRF.lr) do
+		local r = TRF.lr[i];
+		if type(r) == "table" and r.t == idx and type(r.e) == "number" and L < r.e then return r; end;
+	end;
+	return nil;
+end;
+
+-- Salvage stage 0..3 and last losing faction 0..5 of region slot (6.3).
+function TRF_UI_Salv(slot)
+	local sv, sf = 0, 0;
+	if type(TRF) == "table" and type(TRF.clan) == "table" and type(slot) == "number" and type(TRF.clan[slot]) == "table" then
+		local c = TRF.clan[slot];
+		if type(c.sv) == "number" then sv = c.sv; end;
+		if type(c.sf) == "number" then sf = c.sf; end;
+	end;
+	local st = nil;
+	if type(TRF_SalvStage) == "function" then st = call(TRF_SalvStage, {slot}, "x", TRF_PErr); end;
+	if type(st) ~= "number" then
+		st = 0;
+		if sv >= 7 then st = 3; elseif sv >= 4 then st = 2; elseif sv >= 1 then st = 1; end;
+	end;
+	return st, sf;
+end;
+
+-- Display name of faction index f (1..5: Vks, Kfni, Triada, Uss, Inoco).
+function TRF_UI_FacOf(f)
+	local team = nil;
+	if type(TRF_FacTeam) == "function" then team = call(TRF_FacTeam, {f}, "x", TRF_PErr); end;
+	if type(team) ~= "string" then
+		local l = {"Vks", "Kfni", "Triada", "Uss", "Inoco"};
+		team = l[f];
+	end;
+	return TRF_UI_FacName(team);
+end;
+
+-- Equipment convoy record while scheduled (k 1), or nil.
+function TRF_UI_Feq()
+	if type(TRF) == "table" and type(TRF.feq) == "table" and TRF.feq.k == 1 and type(TRF.feq.s) == "number" then return TRF.feq; end;
+	return nil;
+end;
+
+-- Salvaged pirate ships (6.3 signals) ------------------------------------------------------
+
+-- Focus line of a salvaged ship: stage 1 "<faction> gear", 2 captured fighter, 3 captured corvette.
+function TRF_SalvLine(f, st)
+	if type(f) ~= "number" or f < 1 or f > 5 or type(st) ~= "number" then return nil; end;
+	local fac = TRF_UI_FacOf(f);
+	local text;
+	if st >= 3 then
+		text = TRF_Txt("salvcap", fac, TRF_Txt("salvcorvette"));
+	elseif st == 2 then
+		text = TRF_Txt("salvcap", fac, TRF_Txt("salvfighter"));
+	else
+		text = TRF_Txt("salvgear", fac);
+	end;
+	TRF_UI_Stat("ui_salv");
+	return TRF_Say(text, TRF_UI_Const().secs);
+end;
+
+-- Arm the focus line on a salvaged ship (for trf_clan's TRF_SalvFlight). CHECK (design 13.2): focus on
+-- pirate ships fires as on traders.
+function TRF_UI_ArmSalv(ship, f, st)
+	if not ship or type(NewTrigger) ~= "function" or type(TRF) ~= "table" then return nil; end;
+	if type(f) ~= "number" or type(st) ~= "number" then return nil; end;
+	call(NewTrigger, {"focus", nil, "TRF_OnSalvFocus("..floor(f)..","..floor(st)..","..TRF.gen..")--", ship}, "x", TRF_PErr);
+	return 1;
+end;
+
+-- Trigger entry point: runs TRF_OnSalvFocus_Body protected.
+function TRF_OnSalvFocus(f, st, g) TRF_Cb("TRF_OnSalvFocus", TRF_OnSalvFocus_Body, {f, st, g}); end;
+
+function TRF_OnSalvFocus_Body(f, st, g)
+	if not TRF_UI_GenOk(g) or TRF_UI_Opt("ui", 1) == 0 or TRF_UI_Supp() then return; end;
+	TRF_SalvLine(f, st);
 end;
 
 -- Arrival line (8.4, S20) -----------------------------------------------------------
@@ -571,10 +779,21 @@ function TRF_ArrivalLine()
 			return nil;
 		end;
 	end;
+	-- v1-spec 9.3: pirate radio line of an active base, after the arrival line.
+	if TRF_UI_BaseAt(idx) == 2 and type(TRF_Due) == "function" then
+		TRF_Due(TRF_UI_Const().arr_secs, "TRF_BaseRadioLine", idx);
+	end;
 	local d = TRF_UI_Dis(idx);
 	local keys = TRF_UI_Opt("ui_keys", 0) == 1;
 	local text = nil;
-	if d >= TRF_UI_Tune("arr_dis", 3) then
+	local car = TRF_UI_CarAt(idx);
+	if car and not keys then
+		-- v1-spec 6.2: the carrier line replaces the tier line; the sweep sentence still follows.
+		text = TRF_Txt("arrivecarrier", TRF_UI_ClanName(car.s));
+		local f = TRF_UI_SweepHome(idx);
+		if f then text = text..". "..TRF_Txt("arrsweep", f); end;
+		TRF_L("ui arrival dis="..d.." carrier slot="..tostring(car.s));
+	elseif d >= TRF_UI_Tune("arr_dis", 3) then
 		local band = TRF_UI_Band(d);
 		if keys then
 			text = TRF_Txt("key_arr", band);
@@ -601,13 +820,31 @@ function TRF_UI_ArrDis(idx, band)
 	if type(TRF_EffTier) == "function" then
 		local t = call(TRF_EffTier, {idx}, "x", TRF_PErr);
 		if type(t) ~= "number" or t < 1 then t = 1; end;
-		text = TRF_Txt("arrt"..band, TRF_Txt("pirw"..min(floor(t), 4)));
+		t = min(floor(t), 4);
+		-- v1-spec 6.1: T3 packs, T4 raiders.
+		local w = {"pirw1", "pirw2", "packs", "raiders"};
+		text = TRF_Txt("arrt"..band, TRF_Txt(w[t]));
 	else
 		text = TRF_Txt("arr"..band);
 	end;
 	local f = TRF_UI_SweepHome(idx);
 	if f then text = text..". "..TRF_Txt("arrsweep", f); end;
 	return text;
+end;
+
+-- Due call from TRF_ArrivalLine: one pirate radio line in a system with an active base (v1-spec 9.3):
+-- "trade or move on" while Pirates and the player are not at war, else the war line.
+function TRF_BaseRadioLine(idx)
+	if TRF_UI_Opt("ui", 1) == 0 or TRF_UI_Supp() then return nil; end;
+	if type(TRF_CurIdx) ~= "function" or TRF_CurIdx() ~= idx or TRF_UI_BaseAt(idx) ~= 2 then return nil; end;
+	local key = "baseradiotrade";
+	if type(GetTeamRelation) == "function" and RELATION_WAR ~= nil then
+		local v = call(GetTeamRelation, {"Pirates", PLAYER_TEAM}, "x", TRF_PErr);
+		if v ~= nil and v == RELATION_WAR then key = "baseradiowar"; end;
+	end;
+	TRF_UI_Stat("ui_baseradio");
+	TRF_L("ui base radio idx="..idx.." "..key);
+	return TRF_Say(TRF_Txt(key), TRF_UI_Const().arr_secs);
 end;
 
 -- Line below the disruption threshold: the sweep sentence, else the prosperity line (pro 6-7, 8-9).
@@ -763,12 +1000,43 @@ function TRF_UI_NewsRegion(slot, topic)
 	end;
 end;
 
+-- Variant "salv2_3" -> "salv2", 3 (faction suffix of the v1 topics war and feq); else v, nil.
+function TRF_UI_NewsVar(v)
+	v = tostring(v);
+	local a, b, base, f = strfind(v, "^(.-)_(%d)$");
+	if a and base ~= "" then return base, tonumber(f); end;
+	return v, nil;
+end;
+
+-- v1 topic war of slot from the clan's salvage (6.3): post salv2_<f> / salv3_<f> when the stage reaches 2 / 3
+-- with faction f and the entry does not already show that faction at that stage or higher. Base and carrier
+-- posts (trf_base, trf_clan) are not replaced by a salvage post.
+function TRF_UI_NewsWar(slot)
+	if type(slot) ~= "number" then return; end;
+	local st, f = TRF_UI_Salv(slot);
+	if st < 2 or type(f) ~= "number" or f < 1 or f > 5 then return; end;
+	local c = TRF_UI_NewsTab(slot).war;
+	if type(c) == "table" and c.v ~= nil then
+		local base, cf = TRF_UI_NewsVar(c.v);
+		if base ~= "salv2" and base ~= "salv3" then return; end;
+		if cf == f and tonumber(strsub(base, 5)) >= min(st, 3) then return; end;
+	end;
+	TRF_NewsPost("war", "salv"..min(st, 3).."_"..f, slot);
+end;
+
 -- State-driven topics: "heat", "help", "short" (global); "lane", "trade" for region slot (nil = every
 -- region); topic nil = both region topics. TRF_NewsCheck(slot) with a number is the same as (nil, slot).
--- Event topics (pir, sweep) are posted by trf_region with TRF_NewsPost.
+-- v1: "war" (salvage stage, region slot or every region). Event topics (pir, sweep; v1 war base / basex /
+-- car, feq kill_<f> / lost_<f>) are posted by their owners with TRF_NewsPost.
 function TRF_NewsCheck(topic, slot)
 	if type(TRF) ~= "table" then return; end;
 	if type(topic) == "number" and slot == nil then slot = topic; topic = nil; end;
+	if topic == "war" then
+		if type(slot) == "number" then TRF_UI_NewsWar(slot); return; end;
+		for s = 1, TRF_UI_RgN() do TRF_UI_NewsWar(s); end;
+		return;
+	end;
+	if topic == "feq" then return; end;
 	if topic == "heat" then
 		local h = nil;
 		if type(TRF.std) == "table" then h = TRF.std.heat; end;
@@ -790,10 +1058,17 @@ function TRF_NewsCheck(topic, slot)
 	for s = 1, TRF_UI_RgN() do TRF_UI_NewsRegion(s, topic); end;
 end;
 
--- Display text of an entry (region topics name the home system, clan and sweep faction).
+-- Display text of an entry (region topics name the home system, clan and sweep faction). A v1 variant with
+-- a faction suffix ("salv2_3", "kill_1") names that faction: $3 in region topics, $1 in global ones.
 function TRF_UI_NewsText(topic, v, slot)
-	local key = TRF_UI_Key("n"..topic..tostring(v));
-	if type(slot) ~= "number" then return TRF_Txt(key); end;
+	local base, vf = TRF_UI_NewsVar(v);
+	local key = TRF_UI_Key("n"..topic..base);
+	local fn = nil;
+	if vf and vf >= 1 and vf <= 5 then fn = TRF_UI_FacOf(vf); end;
+	if type(slot) ~= "number" then
+		if fn then return TRF_Txt(key, fn); end;
+		return TRF_Txt(key);
+	end;
 	local h = TRF_UI_HomeIdx(slot);
 	local home = TRF_Txt("unknown");
 	if h then home = TRF_UI_SysName(h); end;
@@ -802,6 +1077,7 @@ function TRF_UI_NewsText(topic, v, slot)
 		local w = call(TRF_SweepInfo, {slot}, "x", TRF_PErr);
 		if type(w) == "table" then fac = w.fac; end;
 	end;
+	if fn then return TRF_Txt(key, home, TRF_UI_ClanName(slot), fn); end;
 	return TRF_Txt(key, home, TRF_UI_ClanName(slot), TRF_UI_FacName(fac));
 end;
 
