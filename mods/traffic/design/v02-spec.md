@@ -279,7 +279,7 @@ Table: fighters with 75 %, bombers 25 %. Power is `pw` = the tier's power; row =
 | answer | | `ShowMsgBox("#UI_FTrader_confirm", text, TRF_HailClose)` (one-button form, `DockStation.script` 274); escort: OK → `TRF_CtAccept`, Cancel → close |
 | close | answer OK, last Cancel, stale callback | `live.hl = nil` |
 
-Every box callback checks `live.hl`, its `g` and the record; a mismatch closes without action. Jump and load clear `live.hl`. CHECK: plain text in the `ShowMsgBox` text argument (precedent: `CombineStr` results); the titles are vanilla keys. M10 holds: boxes open only after the player focused a trader within 150.
+Every box callback checks `live.hl`, its `g` and the record; a mismatch closes without action. Jump and load clear `live.hl`. CHECK: plain text in the `ShowMsgBox` text argument (precedent: `CombineStr` results); the titles are vanilla keys. M10 holds: boxes open only after the player focused a trader within 150. The hail is player-initiated: `TRF_HlSupp`, the focus line and the meeting's hail arming read `TRF_QuietHail` (trf_safety: a visible scene only; with cfg `hail_quiet` 1 also `__sys_SOS`, the `TRF_Quiet` rule), so under `__sys_SOS` alone (mission 6 holds it for whole visits) only the announce line is muted (`ui meet id=N line muted (quiet) hail armed`); hail answers go through `TRF_HlSay(..., hq 1)`, contract outcomes and the board stay on `TRF_Quiet`.
 
 ### 6.2 Text templates (`TRF_Hail_Text()` and, for the rows marked R, `TRF_Raid_Text()`; looked up by `TRF_Txt` after `TRF_UI_Text`, so a raid line works without `trf_hail`)
 

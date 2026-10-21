@@ -145,7 +145,7 @@ function TRF_HlStrict(idx, feature)
 end;
 
 -- Why the hail on focus is held back, or nil: "flag" (__disableAction, TRF_Supp level 1 or 2), "quiet"
--- (TRF_Quiet: vanilla mutes chatter or a scene is visible), "combat" (TRF_Combat). A missing trf_safety
+-- (TRF_QuietHail: a scene is visible; also __sys_SOS with cfg hail_quiet 1), "combat" (TRF_Combat). A missing trf_safety
 -- function counts as clear.
 function TRF_HlSupp()
 	if __disableAction == TRUE then return "flag"; end;
@@ -153,7 +153,7 @@ function TRF_HlSupp()
 		local s = TRF_HlP(TRF_Supp, {});
 		if type(s) == "number" and s ~= 0 then return "flag"; end;
 	end;
-	if TRF_N("TRF_Quiet") then return "quiet"; end;
+	if TRF_N("TRF_QuietHail") then return "quiet"; end;
 	if TRF_N("TRF_Combat") then return "combat"; end;
 	return nil;
 end;
@@ -185,12 +185,13 @@ function TRF_HlDistMs(id)
 	return d;
 end;
 
--- One line through TRF_Say; the trader's leader pilot speaks with cfg ui_out 2.
-function TRF_HlSay(text, id, secs)
+-- One line through TRF_Say; the trader's leader pilot speaks with cfg ui_out 2. hq 1: an answer to the
+-- player's hail (TRF_Say hq, muted only as the hail is); contract outcomes and the board stay plain lines.
+function TRF_HlSay(text, id, secs, hq)
 	if type(TRF_Say) ~= "function" or type(text) ~= "string" then return nil; end;
 	local p = nil;
 	if id and type(TRF_UI_Leader) == "function" and TRF_UI_Opt("ui_out", 1) == 2 then p = TRF_UI_Leader(id); end;
-	return TRF_Say(text, secs or 8, p);
+	return TRF_Say(text, secs or 8, p, hq);
 end;
 
 function TRF_HlName(r)
@@ -456,7 +457,7 @@ function TRF_HailOpen(id, via)
 				return "refuse";
 			end;
 		end;
-		TRF_HlSay(TRF_Txt("refuse", TRF_HlName(r)), id);
+		TRF_HlSay(TRF_Txt("refuse", TRF_HlName(r)), id, nil, 1);
 		TRF_HlL("hail id="..id.." refused heat="..heat);
 		return "refuse";
 	end;
@@ -467,7 +468,7 @@ function TRF_HailOpen(id, via)
 	end;
 	if TRF_HlT("hail_box") == 0 or type(ShowMsgBox) ~= "function" then
 		r.hd = 1;
-		TRF_HlSay(TRF_Headed(id), id);
+		TRF_HlSay(TRF_Headed(id), id, nil, 1);
 		TRF_HlL("hail id="..id.." answered as a line (no box)");
 		return "line";
 	end;
@@ -514,10 +515,10 @@ function TRF_HailShow()
 		local id, rf = hl.id, hl.rf;
 		TRF_HlClose("nobox");
 		if rf == 1 then
-			TRF_HlSay(TRF_Txt("refuse", TRF_HlName(r)), id);
+			TRF_HlSay(TRF_Txt("refuse", TRF_HlName(r)), id, nil, 1);
 		else
 			r.hd = 1;
-			TRF_HlSay(TRF_Headed(id), id);
+			TRF_HlSay(TRF_Headed(id), id, nil, 1);
 		end;
 	end;
 end;
@@ -531,7 +532,7 @@ function TRF_HlAnswer(text)
 	if not TRF_HlBox("#UI_FTrader_confirm", text, TRF_HailClose) then
 		local id = hl.id;
 		TRF_HlClose("nobox");
-		TRF_HlSay(text, id);
+		TRF_HlSay(text, id, nil, 1);
 	end;
 end;
 
@@ -650,7 +651,7 @@ function TRF_HailDoV1(id, r, key)
 		TRF_HlClose(key);
 		local v = TRF_HlCall(it.f, {id, it.a});
 		TRF_HlL("hail id="..id.." "..key.." -> "..tostring(v));
-		if type(v) == "string" then TRF_HlSay(v, id); end;
+		if type(v) == "string" then TRF_HlSay(v, id, nil, 1); end;
 	end;
 end;
 
@@ -710,7 +711,7 @@ function TRF_HlOfStep(acc)
 			local v = TRF_HlCall(e.ok, args);
 			TRF_HlStat("hl_offer_acc");
 			TRF_HlL("offer "..hl.oq.." accepted -> "..tostring(v));
-			if type(v) == "string" then TRF_HlSay(v, st.oh); end;
+			if type(v) == "string" then TRF_HlSay(v, st.oh, nil, 1); end;
 		elseif e.no then
 			TRF_HlCall(e.no, args);
 		end;
@@ -825,7 +826,7 @@ function TRF_CtDo()
 	end;
 	if type(TRF_RaidRoll) == "function" then TRF_HlP(TRF_RaidRoll, {id, "contract"}); end;
 	TRF_P("TRF_TrackMark", id, "contract");
-	TRF_HlSay(TRF_Txt("ctok"), id);
+	TRF_HlSay(TRF_Txt("ctok"), id, nil, 1);
 	TRF_HlStat("ct_accept");
 	TRF_HlL("contract id="..id.." accepted n="..n);
 end;

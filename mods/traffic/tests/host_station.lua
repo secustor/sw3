@@ -455,8 +455,25 @@ function T_STN_C()
 		HOST_Check(ok, "gate "..why.." in "..sys..": vanilla line and box");
 	end;
 	T_Enter("elio"); pass("deny", "elio");
-	T_Enter("nk"); pass("deny", "nk");
+	-- nk is a campaign teleport target (tq): with no nk quest in process G3 lets it through, the voice list closes it.
+	T_Enter("nk"); pass("vdeny", "nk");
 	T_Enter("x203"); pass("vdeny", "x203");
+	-- G3 transit rule: taira (teleport target, tq), no taira quest in process: moods and greeting run.
+	T_Enter("taira");
+	local Dt = S_Setup({{"0"}});
+	local t0 = S_Mark();
+	local at = S_None(Dt.none[1]);
+	local bt = S_Trade(Dt.trade[1]);
+	HOST_Press("cancel");
+	HOST_Check(S_Logs(t0, "stn: pass") == 0 and S_Logs(t0, "stn: none sys=taira(") == 1 and S_Logs(t0, "stn: dock k="..TRF_CurIdx().." ") == 1
+		and at.n >= 1 and bt.nb >= 1, "transit: taira without a taira quest in process: mood line and dock line");
+	-- A quest naming taira in process: deny_tq on both paths; elio (authored) stays deny.
+	h.quests.quest_6c_01 = QUEST_PROCESS;
+	T_Enter("taira"); pass("deny_tq", "taira");
+	h.quests.quest_6c_01 = nil;
+	-- A mission active, no taira quest in process: G3 passes, the visit latch (G6) closes the station.
+	h.qs = TRUE; T_Enter("taira"); pass("latch", "taira"); h.qs = FALSE;
+	T_Enter("elio"); pass("deny", "elio");
 	T_Enter("gaoba");
 	__disableAction = TRUE; pass("flag", "gaoba"); __disableAction = FALSE;
 	h.rel_team = {["Trade|PlayerTeam"] = RELATION_WAR};

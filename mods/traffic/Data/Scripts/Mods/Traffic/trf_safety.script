@@ -842,6 +842,14 @@ function TRF_Quiet()
 	return nil;
 end;
 
+-- Quiet for what the player starts (focus line of a selected trader, the hail armed at the meeting, the hail
+-- box and its answers): 1 only while a scripted scene is visible (TRF_Safe_Scene), since __sys_SOS mutes
+-- vanilla's trader-initiated chat, not a contact the player asked for. cfg hail_quiet 1: the TRF_Quiet rule.
+function TRF_QuietHail()
+	if TRF_SafeOpt("hail_quiet", 0) == 1 then return TRF_Quiet(); end;
+	return TRF_Safe_Scene();
+end;
+
 -- Combat state (design/mod-research/combat-state.md) ------------------------------------------------
 -- The engine has no "in battle" query. live.cbt is the game time of the last hostile event: a hull drop of
 -- the mothership between two safety ticks (why hp), a player hit on a mod ship through a TRF_Cb shim (why

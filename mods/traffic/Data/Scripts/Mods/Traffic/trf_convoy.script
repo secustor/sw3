@@ -963,8 +963,20 @@ function TRF_CvFeq()
 	return f;
 end;
 
+-- Deny entry de of system idx under the transit rule (trf_safety TRF_SysModeOf, TRF_StrictOkOf): "deny"
+-- for an authored m = 1 entry (elio, x297, gefest, cfg sys_deny), "deny_tq" for a campaign teleport target
+-- (tq = 1) the strict gate for feature f denies (a quest naming the system in process, cfg transit 0 during
+-- a mission), else nil (also for an entry without m = 1).
+function TRF_CvDenyM(idx, de, f)
+	if type(de) ~= "table" or de.m ~= 1 then return nil; end;
+	if de.tq ~= 1 then return "deny"; end;
+	if type(TRF_StrictOk) ~= "function" or not TRF_CvX("TRF_StrictOk", idx, f) then return "deny_tq"; end;
+	return nil;
+end;
+
 -- Eligible systems (v1 8.4 creation): owner f 1..5 now, open trade station and trader registration, pro >=
--- feq_min_pro, fs >= feq_min_strength, no border, not Fronn, no m = 1 deny entry, no guard system.
+-- feq_min_pro, fs >= feq_min_strength, no border, not Fronn, no authored m = 1 deny entry, no teleport target
+-- the transit rule closes for feature feq (TRF_CvDenyM), no guard system.
 -- force: system name (cfg feq_at) skips the pro, fs and border tests. Returns {{idx, f, w}, ...}.
 function TRF_CvFeqCand(force)
 	local m = TRF_CvMap();
@@ -981,8 +993,7 @@ function TRF_CvFeqCand(force)
 		local pro = TRF_CvX("TRF_Pro", idx) or 0;
 		if ok and not force and pro < mp then ok = nil; end;
 		if ok then
-			local e = TRF_CvX("TRF_DenyEntry", nm);
-			if type(e) == "table" and e.m == 1 then ok = nil; end;
+			if TRF_CvDenyM(idx, TRF_CvX("TRF_DenyEntry", nm), "feq") then ok = nil; end;
 		end;
 		if ok and TRF_CvGuard(idx) then ok = nil; end;
 		if ok then

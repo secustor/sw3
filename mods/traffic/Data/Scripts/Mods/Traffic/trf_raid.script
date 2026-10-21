@@ -982,12 +982,26 @@ end;
 
 -- Pirate bases (v1 9.4) -------------------------------------------------------------------------
 
+-- Deny entry de of system idx under the transit rule (trf_safety TRF_SysModeOf, TRF_StrictOkOf): "deny"
+-- for an authored m = 1 entry (elio, x297, gefest, cfg sys_deny), "deny_tq" for a campaign teleport target
+-- (tq = 1) the strict gate for feature f denies (a quest naming the system in process, cfg transit 0 during
+-- a mission), else nil (also for an entry without m = 1).
+function TRF_Rd_DenyM(idx, de, f)
+	if type(de) ~= "table" or de.m ~= 1 then return nil; end;
+	if de.tq ~= 1 then return "deny"; end;
+	if type(TRF_StrictOk) ~= "function" or not TRF_StrictOk(idx, f) then return "deny_tq"; end;
+	return nil;
+end;
+
 -- Registered portal of cur facing a system with an active base, and its map name; nil without trf_base,
--- in a guard system while the guard is active and in a system with a deny entry.
+-- in a guard system while the guard is active and in a system with a deny entry (a feature entry without
+-- m = 1, an authored m = 1 entry, a teleport target the transit rule closes for feature raid).
 function TRF_Rd_BasePortal(cur)
 	if type(TRF_BaseActive) ~= "function" then return nil; end;
 	local sy = TRF_Rd_Sys(cur);
-	if not sy or type(sy.portals) ~= "table" or TRF_Rd_Guard(cur) or TRF_N("TRF_DenyEntry", sy.name) then return nil; end;
+	if not sy or type(sy.portals) ~= "table" or TRF_Rd_Guard(cur) then return nil; end;
+	local de = TRF_N("TRF_DenyEntry", sy.name);
+	if type(de) == "table" and (de.m ~= 1 or TRF_Rd_DenyM(cur, de, "raid")) then return nil; end;
 	local m = TRF_N("TRF_Map");
 	if type(m) ~= "table" or type(m.by) ~= "table" then return nil; end;
 	for i = 1, getn(sy.portals) do

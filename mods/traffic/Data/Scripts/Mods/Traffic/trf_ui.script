@@ -230,10 +230,19 @@ end;
 
 -- R2: no line while a mission has disabled random contacts (__disableAction) or vanilla suppresses chatter
 -- (trf_safety TRF_Quiet: __sys_SOS or a visible scripted scene; without trf_safety, not quiet).
--- Returns "flag" (__disableAction), "quiet" or nil; the skip lines log it.
+-- Returns "flag" (__disableAction), "quiet" or nil; the skip lines log it. For what the mod starts (arrival,
+-- news, announce and salvage lines).
 function TRF_UI_Supp()
 	if __disableAction == TRUE then return "flag"; end;
 	if TRF_N("TRF_Quiet") then return "quiet"; end;
+	return nil;
+end;
+
+-- TRF_UI_Supp for what the player starts (focus line, hail arming, hail answers): "quiet" through trf_safety
+-- TRF_QuietHail (a visible scene; also __sys_SOS with cfg hail_quiet 1).
+function TRF_UI_SuppHail()
+	if __disableAction == TRUE then return "flag"; end;
+	if TRF_N("TRF_QuietHail") then return "quiet"; end;
 	return nil;
 end;
 
@@ -382,10 +391,12 @@ end;
 -- Show one line. cfg ui_out 1: OutputToScreenLog; 2: pilot:Message when a pilot is given, else 1.
 -- Returns 1 if shown. CHECK (E0.6): a plain string in OutputToScreenLog is readable on screen
 -- (shipped scripts pass only # keys); if not, set ui_out 2. The log line records what was sent.
-function TRF_Say(text, secs, pilot)
+-- hq 1: a line the player asked for (focus line, hail answer), muted by TRF_UI_SuppHail instead of TRF_UI_Supp.
+function TRF_Say(text, secs, pilot, hq)
 	if TRF_UI_Opt("ui", 1) == 0 then return nil; end;
 	if type(text) ~= "string" or text == "" then return nil; end;
-	local q = TRF_UI_Supp();
+	local q = nil;
+	if hq == 1 then q = TRF_UI_SuppHail(); else q = TRF_UI_Supp(); end;
 	if q then
 		TRF_L("ui say skipped ("..q..") text="..text);
 		return nil;
@@ -420,7 +431,7 @@ function TRF_FocusLine(id, via)
 	local L = TRF_UI_Live();
 	if type(r) ~= "table" or not L or r.met then return nil; end;
 	if TRF_UI_Opt("ui", 1) == 0 then return nil; end;
-	local q = TRF_UI_Supp();
+	local q = TRF_UI_SuppHail();
 	if q then
 		TRF_L("ui focus id="..id.." skipped ("..q..")");
 		return nil;
@@ -438,7 +449,7 @@ function TRF_FocusLine(id, via)
 	end;
 	local pilot = nil;
 	if TRF_UI_Opt("ui_out", 1) == 2 then pilot = TRF_UI_Leader(id); end;
-	if TRF_Say(TRF_UI_FocusText(r, id), c.secs, pilot) then
+	if TRF_Say(TRF_UI_FocusText(r, id), c.secs, pilot, 1) then
 		-- met 2: tracked before this line (rebuilt from the pool), read by the announce (metagain).
 		r.met = 1;
 		if TRF_UI_Bit(r.tb, 1) then r.met = 2; end;
@@ -492,13 +503,18 @@ end;
 function TRF_OnMeet_Body(id, g)
 	if not TRF_UI_GenOk(g) or not TRF_UI_Rec(id) then return; end;
 	if TRF_UI_Opt("meet", 1) == 0 then return; end;
+	local hl = nil;
+	if TRF_UI_Opt("meet", 1) == 2 and type(TRF_OnHail) == "function" then hl = 1; end;
+	-- meet 2: the hail is player-initiated (TRF_UI_SuppHail); only the announce line follows TRF_UI_Supp.
 	local q = TRF_UI_Supp();
+	if hl then q = TRF_UI_SuppHail(); end;
 	if q then
 		TRF_L("ui meet id="..id.." skipped ("..q..")");
 		return;
 	end;
-	if TRF_UI_Opt("meet", 1) == 2 and type(TRF_OnHail) == "function" then
-		TRF_UI_Announce(id);
+	if hl then
+		local m = TRF_UI_Supp();
+		if TRF_UI_Announce(id) and m then TRF_L("ui meet id="..id.." line muted ("..m..") hail armed"); end;
 		return;
 	end;
 	if type(_FTrader_Action) ~= "function" then

@@ -269,7 +269,29 @@ function TRF_Ba_Nb(idx)
 	return out;
 end;
 
--- 1 when a neighbour effect skips idx: guard system while the guard is active (R16), or a deny entry.
+-- Deny entry de of system idx under the transit rule (trf_safety TRF_SysModeOf, TRF_StrictOkOf): "deny"
+-- for an authored m = 1 entry (elio, x297, gefest, cfg sys_deny), "deny_tq" for a campaign teleport target
+-- (tq = 1) the strict gate for feature f denies (a quest naming the system in process, cfg transit 0 during
+-- a mission), else nil (also for an entry without m = 1).
+function TRF_Ba_DenyM(idx, de, f)
+	if type(de) ~= "table" or de.m ~= 1 then return nil; end;
+	if de.tq ~= 1 then return "deny"; end;
+	if type(TRF_StrictOk) ~= "function" or not TRF_StrictOk(idx, f) then return "deny_tq"; end;
+	return nil;
+end;
+
+-- 1 when idx has a deny entry that keeps bases out: a feature entry without m = 1 (Fronn), an authored
+-- m = 1 entry, or a teleport target the transit rule closes for feature base (TRF_Ba_DenyM).
+function TRF_Ba_Denied(idx, nm)
+	if type(TRF_DenyEntry) ~= "function" then return nil; end;
+	local de = TRF_DenyEntry(nm);
+	if type(de) ~= "table" then return nil; end;
+	if de.m ~= 1 or TRF_Ba_DenyM(idx, de, "base") then return 1; end;
+	return nil;
+end;
+
+-- 1 when a neighbour effect skips idx: guard system while the guard is active (R16), or a deny entry
+-- (TRF_Ba_Denied).
 function TRF_Ba_Skip(idx)
 	local s = TRF_Ba_Sys(idx);
 	if not s then return 1; end;
@@ -278,7 +300,7 @@ function TRF_Ba_Skip(idx)
 		if type(TRF_RgGuardOn) == "function" then g = TRF_Ba_P(TRF_RgGuardOn, {}); end;
 		if g then return 1; end;
 	end;
-	if type(TRF_DenyEntry) == "function" and TRF_DenyEntry(s.name) then return 1; end;
+	if TRF_Ba_Denied(idx, s.name) then return 1; end;
 	return nil;
 end;
 
@@ -483,7 +505,7 @@ function TRF_Ba_Found(L, cur, al)
 		local slot = TRF_Ba_Slot(idx);
 		local ok = bh >= need and idx ~= cur and slot and not TRF_BaseOf(idx);
 		if ok and TRF_N("TRF_SweepOpen", slot) then ok = nil; end;
-		if ok and type(TRF_DenyEntry) == "function" and TRF_DenyEntry(TRF_Ba_Name(idx)) then ok = nil; end;
+		if ok and TRF_Ba_Denied(idx, TRF_Ba_Name(idx)) then ok = nil; end;
 		if ok then
 			local nb = TRF_Ba_Nb(idx);
 			for j = 1, getn(nb) do

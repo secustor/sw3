@@ -678,6 +678,19 @@ function TRF_StnPass(why, nm, at)
 	TRF_StnL("pass reason="..tostring(why).." sys="..tostring(nm or "?").." at="..tostring(at));
 end;
 
+-- G3 for the deny entry de of system idx under the transit rule (trf_safety TRF_SysModeOf, TRF_StrictOkOf):
+-- "deny" for an authored m = 1 entry (elio, x297, gefest, cfg sys_deny); "deny_tq" for a campaign teleport
+-- target (tq = 1) while TRF_StrictOk(idx, "voice") denies it with quest, mission_q or mission_deny (a quest
+-- naming the system in process, cfg transit 0 during a mission); else nil (G4-G10 decide).
+function TRF_StnDenyM(idx, de)
+	if type(de) ~= "table" or de.m ~= 1 then return nil; end;
+	if de.tq ~= 1 then return "deny"; end;
+	if type(TRF_StrictOk) ~= "function" then return "deny_tq"; end;
+	local ok, gw = TRF_StrictOk(idx, "voice");
+	if not ok and (gw == "quest" or gw == "mission_q" or gw == "mission_deny") then return "deny_tq"; end;
+	return nil;
+end;
+
 -- Gates G1-G9 for at = "none" (moods) or "dock". Returns reason or nil, idx, name. G9 includes the start-system
 -- guard: guard systems stay vanilla (no mood, greeting, news, tip, ambient line or fee).
 function TRF_StnGate(at)
@@ -689,8 +702,8 @@ function TRF_StnGate(at)
 	local idx = TRF_N("TRF_CurIdx");
 	if type(idx) ~= "number" then return "nomap"; end;
 	local nm = strlower(TRF_StnName(idx));
-	local de = TRF_N("TRF_DenyEntry", nm);
-	if type(de) == "table" and de.m == 1 then return "deny", idx, nm; end;
+	local dw = TRF_StnDenyM(idx, TRF_N("TRF_DenyEntry", nm));
+	if dw then return dw, idx, nm; end;
 	if TRF_StnVDeny()[nm] then return "vdeny", idx, nm; end;
 	if TRF_Stn_Flags() then return "flag", idx, nm; end;
 	if TRF_Stn_Quiet() then return "quiet", idx, nm; end;

@@ -1235,8 +1235,74 @@ function T_V02_K()
 	TRF_SetDis(z1, 4);
 	hd = TRF_Headed(id);
 	HOST_Check(strfind(hd, "Raids on the lane to "..nm(z1), 1, 1), "headed: dis >= 3 neighbour first: "..hd);
+	V_HailQuiet();
 	HOST_Check(h.box_nested == 0, "no ShowMsgBox inside a box callback (hail chain)");
 	TRF_Hail_Dump();
+end;
+
+-- Close an open hail chain (Cancel through the boxes).
+function V_HailEnd()
+	for i = 1, 12 do
+		if not TRF.live.hl then return; end;
+		HOST_Press("cancel");
+		T_Tick(1, 0.5);
+	end;
+end;
+
+-- Remove the traders, spawn one 40 from the mothership; focus line (TRF_OnFocus), then the meeting (TRF_OnMeet).
+-- scene 1: a TRF_UiState dialog flag is set after the spawn (a scene pauses spawning).
+-- Returns id, screen lines added by the focus, then by the meeting.
+function V_FocusMeet(scene)
+	local h = HOST();
+	V_ClearTr();
+	T_Tick(8, 0.5);
+	local id = T_Spawn("B") or T_Spawn("A");
+	T_MoveTr(id, h.ms.pos.x + 40, h.ms.pos.y, h.ms.pos.z);
+	if scene == 1 then TRF_UiState = HOST_UiState; h.ui = 4; end;
+	local s0 = getn(h.screen);
+	HOST_Fire("focus", "TRF_OnFocus("..id..",");
+	local s1 = getn(h.screen);
+	HOST_Fire("f_object_inside", "TRF_OnMeet("..id..",");
+	return id, s1 - s0, getn(h.screen) - s1;
+end;
+
+-- Player-initiated contact under the quest chatter flag (cfg hail_quiet): __sys_SOS mutes the announce line
+-- only (hail_quiet 0); a visible scene mutes the focus line and the meeting; hail_quiet 1 is the old rule.
+function V_HailQuiet()
+	local h = HOST();
+	TRF.std.heat = 0;
+	__sys_SOS = TRUE;
+	local a, fa, ma = V_FocusMeet();
+	local ra = TRF.live.tr[a];
+	HOST_Check(fa == 1 and ra.met and V_Logs("ui focus id="..a.." shown via=focus") == 1, "__sys_SOS, hail_quiet 0: focus line shown");
+	HOST_Check(ma == 0 and type(ra.ha) == "number" and V_Logs("ui meet id="..a.." line muted (quiet) hail armed") == 1
+		and V_Logs("ui say skipped (quiet) text=FTU") >= 1, "__sys_SOS, hail_quiet 0: announce line muted, hail armed");
+	local nb = getn(h.boxes);
+	HOST_Fire("focus", "TRF_OnHail("..a..",");
+	HOST_Check(getn(h.boxes) == nb + 1 and type(TRF.live.hl) == "table" and TRF.live.hl.id == a, "__sys_SOS, hail_quiet 0: hail box opens");
+	V_HailEnd();
+	HOST_Check(TRF_HlSay("host hail answer", a, nil, 1) == 1 and not TRF_HlSay("host plain line", a), "__sys_SOS: hail answer shown, plain line muted");
+	-- hail_quiet 1: the old rule, everything muted by __sys_SOS.
+	h.cfg.hail_quiet = 1;
+	local b, fb, mb = V_FocusMeet();
+	HOST_Check(fb == 0 and mb == 0 and TRF.live.tr[b].ha == nil and V_Logs("ui focus id="..b.." skipped (quiet)") == 1
+		and V_Logs("ui meet id="..b.." skipped (quiet)") == 1, "__sys_SOS, hail_quiet 1: focus and meeting skipped (quiet)");
+	local ok, why = TRF_HailOpen(b, "focus");
+	HOST_Check(ok == nil and why == "quiet", "__sys_SOS, hail_quiet 1: hail skipped (quiet) "..tostring(why));
+	h.cfg.hail_quiet = nil;
+	__sys_SOS = FALSE;
+	-- A visible scene (TRF_UiState dialog flag): focus and meeting skipped (quiet); the hail box closed (the
+	-- pause level reads first: flag).
+	local us = TRF_UiState;
+	local c, fc, mc = V_FocusMeet(1);
+	HOST_Check(fc == 0 and mc == 0 and TRF.live.tr[c].ha == nil and V_Logs("ui focus id="..c.." skipped (quiet)") == 1
+		and V_Logs("ui meet id="..c.." skipped (quiet)") == 1, "scene, hail_quiet 0: focus and meeting skipped (quiet)");
+	ok, why = TRF_HailOpen(c, "focus");
+	HOST_Check(ok == nil and why == "flag", "scene: hail skipped ("..tostring(why)..")");
+	TRF_UiState = us; h.ui = nil;
+	-- No flag: the announce line is shown again.
+	local d, fd, md = V_FocusMeet();
+	HOST_Check(fd == 1 and md == 1 and type(TRF.live.tr[d].ha) == "number" and V_Logs("ui meet id="..d.." line muted") == 0, "no flag: focus and announce lines");
 end;
 
 -- l: dock wrappers (spec 6.4, 7.2) -------------------------------------------------------------------

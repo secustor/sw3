@@ -1312,7 +1312,8 @@ function TRF_PirDockOk()
 end;
 
 -- 1 when idx may be an offer target: other system with a trade station, not a guard system while the guard
--- is active, no deny entry with m = 1, no active quest id, not Fronn.
+-- is active, no authored m = 1 deny entry, no teleport target the transit rule closes for feature offer
+-- (TRF_FcDenyM), no active quest id, not Fronn.
 function TRF_FcPoTgtOk(idx, cur)
 	local m = TRF_FcMap();
 	local rg = TRF_FcRg();
@@ -1320,10 +1321,20 @@ function TRF_FcPoTgtOk(idx, cur)
 	local s = m.sys[idx];
 	if strlower(s.name or "") == "fronn" then return nil; end;
 	if s.start == 1 and (type(TRF_RgGuardOn) ~= "function" or TRF_RgGuardOn()) then return nil; end;
-	local de = TRF_N("TRF_DenyEntry", s.name);
-	if type(de) == "table" and de.m == 1 then return nil; end;
+	if TRF_FcDenyM(idx, TRF_N("TRF_DenyEntry", s.name), "offer") then return nil; end;
 	if TRF_N("TRF_QuestActive", idx) == 1 then return nil; end;
 	return 1;
+end;
+
+-- Deny entry de of system idx under the transit rule (trf_safety TRF_SysModeOf, TRF_StrictOkOf): "deny"
+-- for an authored m = 1 entry (elio, x297, gefest, cfg sys_deny), "deny_tq" for a campaign teleport target
+-- (tq = 1) the strict gate for feature f denies (a quest naming the system in process, cfg transit 0 during
+-- a mission), else nil (also for an entry without m = 1).
+function TRF_FcDenyM(idx, de, f)
+	if type(de) ~= "table" or de.m ~= 1 then return nil; end;
+	if de.tq ~= 1 then return "deny"; end;
+	if type(TRF_StrictOk) ~= "function" or not TRF_StrictOk(idx, f) then return "deny_tq"; end;
+	return nil;
 end;
 
 -- Highest pro target (ties idx) of list (idx values), at least pmin; nil when none.

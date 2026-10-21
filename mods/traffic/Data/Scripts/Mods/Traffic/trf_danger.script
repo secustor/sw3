@@ -206,23 +206,32 @@ end;
 function TRF_DcGate(idx)
 	if TRF_DgOpt("dconv", 1) == 0 then return nil, "cfg"; end;
 	if type(idx) ~= "number" then return nil, "nosys"; end;
-	local mode = nil;
-	if type(TRF_SysModeQuiet) == "function" then mode = TRF_DgX("TRF_SysModeQuiet"); else mode = TRF_DgX("TRF_SysMode"); end;
-	if mode ~= "mod" then return nil, "mode"; end;
+	local mode, mw = nil, nil;
+	if type(TRF_SysModeQuiet) == "function" then mode, mw = TRF_DgX("TRF_SysModeQuiet"); else mode, mw = TRF_DgX("TRF_SysMode"); end;
+	if mode ~= "mod" then
+		if mw == "deny_tq" then return nil, "deny_tq"; end;
+		return nil, "mode";
+	end;
 	if __disableAction == TRUE then return nil, "flag"; end;
 	if type(TRF_Supp) == "function" and TRF_Supp() ~= 0 then return nil, "supp"; end;
 	if TRF_DgX("TRF_Combat") then return nil, "combat"; end;
+	local e = nil;
+	local m = TRF_DgX("TRF_Map");
+	if type(m) == "table" and type(m.sys) == "table" and type(m.sys[idx]) == "table" and type(TRF_DenyEntry) == "function" then
+		e = TRF_DgX("TRF_DenyEntry", m.sys[idx].name);
+	end;
+	if type(e) ~= "table" then e = {}; end;
+	-- A teleport target (tq) is closed only by the strict gate (transit rule: a quest naming it in process).
 	if type(TRF_StrictOk) == "function" then
-		if not TRF_DgX("TRF_StrictOk", idx, "dconv") then return nil, "gate"; end;
+		if not TRF_DgX("TRF_StrictOk", idx, "dconv") then
+			if e.m == 1 and e.tq == 1 then return nil, "deny_tq"; end;
+			return nil, "gate";
+		end;
 	elseif TRF_DgX("GetPlayerQuestState") == TRUE then
 		return nil, "gate";
 	end;
-	-- Fronn (raid = 0) and every deny entry never form one, whatever the mission state.
-	local m = TRF_DgX("TRF_Map");
-	if type(m) == "table" and type(m.sys) == "table" and type(m.sys[idx]) == "table" and type(TRF_DenyEntry) == "function" then
-		local e = TRF_DgX("TRF_DenyEntry", m.sys[idx].name);
-		if type(e) == "table" and (e.raid == 0 or e.dconv == 0 or e.m == 1) then return nil, "deny"; end;
-	end;
+	-- Fronn (raid = 0, dconv = 0) and every authored m = 1 entry never form one, whatever the mission state.
+	if e.raid == 0 or e.dconv == 0 or (e.m == 1 and e.tq ~= 1) then return nil, "deny"; end;
 	if type(TRF_GovActive) == "function" and TRF_DgX("TRF_GovActive") then return nil, "gov"; end;
 	return 1;
 end;

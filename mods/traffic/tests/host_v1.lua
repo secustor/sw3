@@ -1762,6 +1762,36 @@ function T_V1_M()
 	for i = 1, getn(cs) do if cs[i][1] == fr then hit = 1; end; end;
 	TRF_SetDis(fr, 9);
 	HOST_Check(not hit and not TRF_DcGate(fr) and not TRF_BaseAllowed(fr), "Fronn: no equipment convoy candidate, no danger convoy gate, no base site");
+	-- Transit rule for targets (trf_safety TRF_StrictOkOf): taira (teleport target, tq) during a mission with no
+	-- taira quest in process is eligible for carrier, feq, offer, base and raid; quest 6c_01 in process closes
+	-- it (deny_tq); elio (authored m = 1) stays denied (deny).
+	local ta, el = V_Idx("taira"), V_Idx("elio");
+	local te, ee = TRF_DenyEntry("taira"), TRF_DenyEntry("elio");
+	local dh = {TRF_Cl_DenyM, TRF_CvDenyM, TRF_FcDenyM, TRF_Ba_DenyM, TRF_Rd_DenyM};
+	local df = {"carrier", "feq", "offer", "base", "raid"};
+	local qr = function() TRF.live.qa = nil; TRF.live.qai = nil; TRF_H().loc = nil; end;
+	h.qs = TRUE; qr();
+	local n1, n2, n3 = 0, 0, 0;
+	for i = 1, getn(dh) do
+		if dh[i](ta, te, df[i]) == nil then n1 = n1 + 1; end;
+		if dh[i](el, ee, df[i]) == "deny" then n2 = n2 + 1; end;
+	end;
+	HOST_Check(te.tq == 1 and n1 == getn(dh) and n2 == getn(dh) and not TRF_Ba_Skip(ta) and TRF_Ba_Skip(el) == 1,
+		"transit: taira (tq, qa 0) eligible "..n1.."/"..getn(dh)..", elio (authored) denied "..n2.."/"..getn(dh));
+	h.quests.quest_6c_01 = QUEST_PROCESS; qr();
+	for i = 1, getn(dh) do if dh[i](ta, te, df[i]) == "deny_tq" then n3 = n3 + 1; end; end;
+	HOST_Check(n3 == getn(dh) and TRF_Ba_Skip(ta) == 1, "transit: taira quest 6c_01 in process -> deny_tq "..n3.."/"..getn(dh));
+	h.quests.quest_6c_01 = nil; qr();
+	-- Danger convoy gate in the current system: taira open during a mission, deny_tq with its quest, elio deny.
+	T_Jump("taira");
+	local g1, w1 = TRF_DcGate(TRF_CurIdx());
+	h.quests.quest_6c_01 = QUEST_PROCESS; qr();
+	local g2, w2 = TRF_DcGate(TRF_CurIdx());
+	h.quests.quest_6c_01 = nil; h.qs = FALSE; qr();
+	T_Jump("elio");
+	local g3, w3 = TRF_DcGate(TRF_CurIdx());
+	HOST_Check(g1 == 1 and not g2 and w2 == "deny_tq" and not g3 and w3 == "deny",
+		"transit: danger convoy gate taira "..tostring(w1)..", with its quest "..tostring(w2)..", elio "..tostring(w3));
 	TRF_Loc_Dump();
 	HOST_Check(V_Logs("loc: dump") >= 1, "loc dump line");
 end;
