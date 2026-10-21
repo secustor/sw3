@@ -1,0 +1,28 @@
+# Tool versions for the sw3 mods (https://mise.jdx.dev). `mise install` fetches them.
+#
+# Not managed here, see the build scripts:
+# - Homebrew LLVM clang (i686-pc-windows-msvc target for the proxy DLL), `brew install llvm`;
+#   mods/trackpad/build.sh reads LLVM=/opt/homebrew/opt/llvm/bin. Apple clang + codesign from Xcode CLT.
+# - Lua 4.0.1 for the host harness: `sh mods/traffic/tools/get-lua4.sh` builds it into .work/lua4/bin.
+
+[tools]
+python = "3.12"
+
+[tasks.lint]
+description = "Lint the traffic mod's Lua 4 scripts and the cross-module call check"
+run = [
+  "python3 -I mods/traffic/tools/lint_lua.py mods/traffic/Data/Scripts/Mods/Traffic/*.script",
+  "python3 -I mods/traffic/tools/lint_lua.py --calls -q mods/traffic/Data/Scripts/Mods/Traffic/*.script",
+]
+
+[tasks.host]
+description = "Run the Lua 4 host harness (all scenarios)"
+run = "sh mods/traffic/tests/run_host.sh"
+
+[tasks.build]
+description = "Build the sw3tp proxy DLL (trackpad, performance and traffic modules)"
+run = "sh mods/trackpad/build.sh"
+
+[tasks.release]
+description = "Build the release zips into dist/"
+run = "sh release.sh"
