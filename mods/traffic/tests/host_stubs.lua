@@ -84,6 +84,11 @@ function SLOG(s) print("SLOG: "..tostring(s)); end;
 function TRF_Version() return 1; end;
 function TRF_GameTime() return HOST().gt; end;
 function TRF_RealTime() return HOST().rt; end;
+-- Movie and UI reads (traffic.c TRF_InMovie / TRF_UiState, game MovieIsPlaying): undefined by default; the
+-- save kit's cutscene-guard block installs these, driven by HOST().mov, HOST().ui and HOST().mip.
+function HOST_InMovie() return HOST().mov; end;
+function HOST_UiState() return HOST().ui; end;
+function HOST_MovieIsPlaying() return HOST().mip; end;
 -- An " ERROR " line (TRF_Err, TRF_GnErr: a mod error caught by a protected call) counts as a script error.
 function TRF_Log(s)
 	if type(s) ~= "string" and type(s) ~= "number" then print("traffic: TRF_Log bad argument"); return nil; end;
@@ -1310,6 +1315,40 @@ if h.autosave > 0 then
 	HOST_Check(TRF.exp.saves.gredos.st == 1 and TRF.exp.saves.gredos.try == nil, "saves: a later visit arms a system that gave up");
 	HOST_FireSaveQuiet();
 	HOST_Check(HOST_Saved("TRF E0 gredos") == 1 and HOST_Saved() == 2, "saves: later visit saves gredos");
+
+	-- Movie guard: TRF_InMovie (1/0, -1 unknown), else MovieIsPlaying(); TRF_UiState modal/dialog flags.
+	print("HOST ---- save kit, movie guard");
+	TRF_InMovie = HOST_InMovie; MovieIsPlaying = HOST_MovieIsPlaying;
+	h.mov = 1; h.mip = FALSE;
+	HOST_Enter("aurora");
+	e = TRF.exp.saves.aurora;
+	HOST_FireSave();
+	HOST_Check(HOST_Saved() == 2 and e.st == 1 and e.try == 1 and e.q == nil, "saves: TRF_InMovie() == 1 defers");
+	h.mov = -1; h.mip = TRUE;
+	HOST_FireSave();
+	HOST_Check(HOST_Saved() == 2 and e.try == 2 and e.q == nil, "saves: TRF_InMovie() == -1 falls back to MovieIsPlaying() == TRUE, defers");
+	TRF_InMovie = nil;
+	HOST_FireSave();
+	HOST_Check(HOST_Saved() == 2 and e.try == 3 and e.q == nil, "saves: no TRF_InMovie, MovieIsPlaying() == TRUE defers");
+	TRF_InMovie = HOST_InMovie; h.mov = 0;
+	HOST_FireSave();
+	HOST_Check(HOST_Saved() == 2 and e.try == 3 and type(e.q) == "number", "saves: TRF_InMovie() == 0 wins over MovieIsPlaying(), quiet window armed");
+	TRF_UiState = HOST_UiState; h.ui = 4;
+	HOST_Ticks(24, 0.5);
+	HOST_FireSave();
+	HOST_Check(HOST_Saved() == 2 and e.try == 4 and e.q == nil, "saves: TRF_UiState() dialog flag defers");
+	h.ui = 2;
+	HOST_FireSave();
+	HOST_Check(HOST_Saved() == 2 and e.try == 5 and e.q == nil, "saves: TRF_UiState() modal flag defers");
+	h.mov = -1; h.mip = FALSE; h.ui = -1;
+	HOST_FireSave();
+	HOST_Check(HOST_Saved() == 2 and e.try == 5 and type(e.q) == "number", "saves: all clear (InMovie -1, MovieIsPlaying FALSE, UiState -1), quiet window armed");
+	h.ui = 0;
+	HOST_Ticks(24, 0.5);
+	HOST_FireSave();
+	HOST_Check(HOST_Saved("TRF E0 aurora") == 1 and HOST_Saved() == 3 and e.st == 2, "saves: one AutoSave after the movie and the dialog");
+	HOST_Check(not HOST_FireSave() and HOST_Saved() == 3, "saves: no timer left after the movie-guard save");
+	TRF_InMovie = nil; TRF_UiState = nil; MovieIsPlaying = nil;
 	print("HOST TRF.exp.saves = "..TRF_Dump(TRF.exp.saves, 3));
 end;
 print("HOST errors="..h.errors.." fails="..h.fails);

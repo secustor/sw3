@@ -19,8 +19,11 @@
 -- (AttachAction) is not restored on load, so the mission step it starts never runs. Seen in Gredos,
 -- chapter 2 (mission_2 TradersLife.script: EntranceGredos -> Anim_1, a 22.3 s movie whose action
 -- GoTo_Station_1 never ran after loading the save made at 20 s). So the fire defers while either flag is
--- TRUE (re-armed after delay s, at most retries times, then st=3) and saves only when the flags are clear
--- at two fires quiet s apart (e.q = clock.gt at the first; flags up again clear e.q).
+-- TRUE, while a movie plays (TRF_Saves_InMovie), or while TRF_UiState reports a modal window or an open
+-- XML dialog (re-armed after delay s, at most retries times, then st=3), and saves only when all of them
+-- are clear at two fires quiet s apart (e.q = clock.gt at the first; any of them up again clears e.q).
+-- Movie and UI reads: natives TRF_InMovie / TRF_UiState (traffic.c, design/mod-research/movie-state.md),
+-- -1 when their byte check failed; without them the game's MovieIsPlaying() (same MovieManager field).
 -- State: TRF.exp.saves[<lowercase system>] = {st=1 armed | 2 saved | 3 gave up, gen=<TRF.gen when armed>,
 -- key=<text>, try=<deferred fires>, q=<clock.gt of the first clear fire>}. A later visit arms st=3 again.
 
@@ -93,6 +96,27 @@ function TRF_Saves_OnActivate(fresh)
 	TRF_L("saves: armed "..sys.." in "..o.delay.." s gen="..e.gen.." timer="..((t and "ok") or "nil"));
 end;
 
+-- 1 while a movie plays, else nil. TRF_InMovie returns 1/0, or -1 (unknown) when its byte check failed;
+-- missing or -1 falls back to MovieIsPlaying() (pushes 1/0; it also counts main-menu movies).
+function TRF_Saves_InMovie()
+	if type(TRF_InMovie) == "function" then
+		local m = TRF_InMovie();
+		if m == 1 then return 1; end;
+		if m == 0 then return nil; end;
+	end;
+	if type(MovieIsPlaying) == "function" and MovieIsPlaying() == TRUE then return 1; end;
+	return nil;
+end;
+
+-- TRF_UiState() flags when one blocks a save (2 modal window on top, 4 XML dialog open, 1 movie), else nil.
+-- Missing native or -1 (unknown): nil.
+function TRF_Saves_Ui()
+	if type(TRF_UiState) ~= "function" then return nil; end;
+	local u = TRF_UiState();
+	if type(u) == "number" and u > 0 then return u; end;
+	return nil;
+end;
+
 -- Timer action. A timer from an older gen (restored from a save, or left over from another system)
 -- or one that fires during a jump does nothing.
 -- Trigger entry point (review O1): runs TRF_Saves_Fire_Body protected.
@@ -114,10 +138,12 @@ function TRF_Saves_Fire_Body(gen)
 	end;
 	local o = TRF_Saves_Opt();
 	local gt = TRF_Saves_Gt();
-	if __sys_SOS == TRUE or __disableAction == TRUE then
+	local mov = TRF_Saves_InMovie();
+	local ui = TRF_Saves_Ui();
+	if __sys_SOS == TRUE or __disableAction == TRUE or mov or ui then
 		e.q = nil;
 		e.try = (e.try or 0) + 1;
-		local fl = "(sos="..tostring(__sys_SOS).." dis="..tostring(__disableAction)..")";
+		local fl = "(sos="..tostring(__sys_SOS).." dis="..tostring(__disableAction).." mov="..tostring(mov).." ui="..tostring(ui)..")";
 		if e.try > o.retries then
 			e.st = 3;
 			TRF_L("saves: gave up "..sys.." "..fl.." after "..o.retries.." retries");

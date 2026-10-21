@@ -1,6 +1,6 @@
 /* traffic: hook module of the sw3-traffic mod, linked into the sw3tp zlib1.dll proxy
  * (mods/traffic/design/mod-options.md 5.1-5.5, 5.8 item 2). Seven E8 rel32 call-site patches,
- * four natives, Lua callbacks, and the TRF carry across the location-entry ClearGlobals.
+ * six natives, Lua callbacks, and the TRF carry across the location-entry ClearGlobals.
  * Target: sw3cw.exe GOG v1.12, ImageBase 0x400000, no ASLR. No CRT.
  * Callbacks from the stubs are __stdcall (callee pops); natives are __cdecl int f(lua_State *).
  * clang emits SSE2 for double math here, so the game's x87 precision setting does not apply. */
@@ -151,19 +151,86 @@ static int __cdecl n_log(lua_State *L)
     return 1;
 }
 
+/* ---- movie / UI state natives (design/mod-research/movie-state.md 1.2, 1.5, 4) ----
+ * R = [0x7ba610], Game = [R+0], GI = [R+4], MD = [R+0x68], MM = [Game+0x1a4]. MM is created per location and
+ * freed and zeroed in CleanupGameLocation, so every pointer of the chain is re-read and null-checked on every
+ * call. No hook: plain loads on the game thread (natives run there). The reads depend on the offsets in
+ * g_msig; when any of those bytes differ at init, both natives return -1 (unknown).
+ *   TRF_InMovie()  1 while a mission movie plays (MM && [MM+0x30] && [MM+0x14]: playing, in-game mode, so
+ *                  the main-menu backdrop movies do not count), else 0; -1 unknown.
+ *   TRF_UiState()  bit flags, 0 = free play, -1 unknown: 1 movie (as TRF_InMovie), 2 modal window on top
+ *                  (top state of the GI stack [[GI+0xf8]]+0xc == 20: XML dialog, message box, other modal
+ *                  windows), 4 XML dialog open (d = [MD+0x28], d && [d+0xa8] == 0; also while a dialog
+ *                  window is not on top). */
+enum { UI_MOVIE = 1, UI_MODAL = 2, UI_DIALOG = 4 };
+struct trf_msig { unsigned a; unsigned char n, b[25]; const char *what; };
+static const struct trf_msig g_msig[] = {
+    { 0x5ef75d, 18, { 0x8b,0x0d,0x10,0xa6,0x7b,0x00,0x8b,0x11,0x8b,0x82,0xa4,0x01,0x00,0x00,0x83,0x78,0x30,0x00 },
+      "MovieIsPlaying [[R]+0x1a4]+0x30" },
+    { 0x4da24b, 9, { 0xd9,0x5b,0x40,0x89,0x6b,0x30,0x89,0x6b,0x48 }, "MM::Play +0x30=1" },
+    { 0x4da2c7, 22, { 0x83,0x7b,0x14,0x00,0x74,0x15,0xe8,0x3e,0x3c,0xf5,0xff,0x8d,0x88,0xf4,0x00,0x00,0x00,
+      0xb8,0x12,0x00,0x00,0x00 }, "MM::Play +0x14 gates push 18 on GI+0xf4" },
+    { 0x4da7ca, 25, { 0x8d,0x88,0xf4,0x00,0x00,0x00,0x8b,0x41,0x04,0x85,0xc0,0x74,0x13,0x8b,0x00,0x85,0xc0,
+      0x74,0x0d,0x83,0x78,0x0c,0x12,0x75,0x07 }, "MM::End top [[GI+0xf8]]+0xc == 18" },
+    { 0x42df4d, 4, { 0x8b,0x40,0x04,0xc3 }, "GI = [R+4]" },
+    { 0x541588, 20, { 0x8b,0x0d,0x10,0xa6,0x7b,0x00,0x8b,0x49,0x04,0x81,0xc1,0xf4,0x00,0x00,0x00,0xb8,0x14,0x00,
+      0x00,0x00 }, "modal OnActivate push 20 on [R+4]+0xf4" },
+    { 0x49e11d, 4, { 0x8b,0x40,0x68,0xc3 }, "MD = [R+0x68]" },
+    { 0x4cec8b, 14, { 0x8b,0x47,0x28,0x85,0xc0,0x74,0x34,0x83,0xb8,0xa8,0x00,0x00,0x00,0x00 }, "MD+0x28, d+0xa8" },
+};
+#define MSIG_N (sizeof(g_msig) / sizeof(g_msig[0]))
+static int g_movie_ok;
+
+/* 0 = all ok, else the first mismatching address; *bad = its entry */
+static unsigned movie_verify(unsigned *bad)
+{
+    unsigned i, k;
+    for (i = 0; i < MSIG_N; i++) {
+        const BYTE *p = (const BYTE *)g_msig[i].a;
+        for (k = 0; k < g_msig[i].n; k++) if (p[k] != g_msig[i].b[k]) { *bad = i; return g_msig[i].a + k; }
+    }
+    return 0;
+}
+
+static unsigned rdp(unsigned p, unsigned off) { return p ? *(const unsigned *)(p + off) : 0; }
+static int in_movie(unsigned root)
+{
+    unsigned mm = rdp(rdp(root, 0), 0x1a4);
+    return mm && rdp(mm, 0x30) && rdp(mm, 0x14);
+}
+static int ui_state(void)
+{
+    unsigned root = *(const unsigned *)ROOT_SLOT, gi = rdp(root, 4), st, d;
+    int f = 0;
+    if (in_movie(root)) f |= UI_MOVIE;
+    st = rdp(rdp(gi, 0xf8), 0);                   /* top node -> state */
+    if (st && *(const int *)(st + 0xc) == 20) f |= UI_MODAL;
+    d = rdp(rdp(root, 0x68), 0x28);
+    if (d && !rdp(d, 0xa8)) f |= UI_DIALOG;
+    return f;
+}
+static int __cdecl n_inmovie(lua_State *L)
+{
+    lua_pushnumber(L, !g_movie_ok ? -1.0 : in_movie(*(const unsigned *)ROOT_SLOT) ? 1.0 : 0.0);
+    return 1;
+}
+static int __cdecl n_uistate(lua_State *L) { lua_pushnumber(L, g_movie_ok ? (double)ui_state() : -1.0); return 1; }
+
 /* ---- C side of the stubs, all __stdcall ---- */
 static void __stdcall trf_register(void)          /* T1, after 0x5c7e80 */
 {
-    static const struct { const char *name; lua_CFunction f; } nat[4] = {
-        { "TRF_Version", n_version }, { "TRF_GameTime", n_gametime }, { "TRF_RealTime", n_realtime }, { "TRF_Log", n_log } };
+    static const struct { const char *name; lua_CFunction f; } nat[] = {
+        { "TRF_Version", n_version }, { "TRF_GameTime", n_gametime }, { "TRF_RealTime", n_realtime }, { "TRF_Log", n_log },
+        { "TRF_InMovie", n_inmovie }, { "TRF_UiState", n_uistate } };
+    const int nn = (int)(sizeof(nat) / sizeof(nat[0]));
     lua_State *L = lstate();
     struct tb b;
     int top, i;
     if (!L) { tlog("register skipped L=NULL"); return; }
     top = lua_gettop(L);
-    for (i = 0; i < 4; i++) { lua_pushcclosure(L, nat[i].f, 0); lua_setglobal(L, nat[i].name); }
+    for (i = 0; i < nn; i++) { lua_pushcclosure(L, nat[i].f, 0); lua_setglobal(L, nat[i].name); }
     lua_settop(L, top);
-    tb_begin(&b, "natives registered n=4 L="); tb_x(&b, (unsigned)L); tb_end(&b);
+    tb_begin(&b, "natives registered n="); tb_i(&b, nn); tb_s(&b, " L="); tb_x(&b, (unsigned)L); tb_end(&b);
 }
 
 static int ends_ci(const char *s, const char *suf)
@@ -412,6 +479,17 @@ void trf_init(const char *ini)
     for (i = 0; i < S_N; i++) { if (i) tb_s(&b, ","); tb_s(&b, g_site_name[i]); tb_s(&b, g_site_on[i] ? ":1" : ":0"); }
     tb_end(&b);
     if ((bad = verify())) { tb_begin(&b, "disabled, mismatch at "); tb_x(&b, bad); tb_end(&b); return; }
+    {
+        unsigned e = 0;
+        if ((bad = movie_verify(&e))) {
+            tb_begin(&b, "movie: sig mismatch at "); tb_x(&b, bad); tb_s(&b, " ("); tb_s(&b, g_msig[e].what);
+            tb_s(&b, "), TRF_InMovie and TRF_UiState return -1"); tb_end(&b);
+        } else {
+            g_movie_ok = 1;
+            tb_begin(&b, "movie: sig ok mm=+0x1a4 play=+0x30 ingame=+0x14 top=[[gi+0xf8]]+0xc dlg=[[r+0x68]+0x28]+0xa8 sigs=");
+            tb_u(&b, (unsigned)MSIG_N); tb_end(&b);
+        }
+    }
     if (!(g_page = build_page())) { tlog("disabled, stub page failed"); return; }
     for (i = 0; i < S_N; i++) {
         BYTE *stub = g_page + 0x20 * i;
