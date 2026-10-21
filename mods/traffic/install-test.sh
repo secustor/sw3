@@ -39,8 +39,8 @@ case "${NEWS:-0}" in 0) ;; 1) NEWS_MODE=${NEWS_MODE:-2} ;; *) echo "NEWS must be
 LEVEL=${LEVEL:-v1}
 case "$LEVEL" in
 v1) pre= ;;
-v02) pre="tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0" ;;
-v01) pre="tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 prosperity=0 seed=0 parked=0 queue=0 raids=0 staged=0 contracts=0 meet=1 board=0 shop_mode=0 short_price=0 news_mode=0" ;;
+v02) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0" ;;
+v01) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 prosperity=0 seed=0 parked=0 queue=0 raids=0 staged=0 contracts=0 meet=1 board=0 shop_mode=0 short_price=0 news_mode=0" ;;
 *) echo "LEVEL must be v01, v02 or v1" >&2; exit 1 ;;
 esac
 for e in $pre; do
@@ -50,7 +50,7 @@ done
 for k in OVERRIDE DUMP GUARD ENABLED CYCLE PROSPERITY TIER_CAP BAND_HALF PARKED SEED QUEUE RAIDS STAGED CONTRACTS MEET \
          HAIL_START BOARD SHOP_MODE SHORT_PRICE RESTORE NEWS_MODE HEAT_WAR STRICT \
          TRACK CONV DEMAND HEAT_OFFER CARRIERS SALVAGE SALV_ADDMOD CLAN_ACE SWEEPS SWEEP_CT PO TT4 TT4_SPLIT FEQ \
-         FORCED_BUST DCONV DC_SPEED BASES BASE_GLOW WRECK; do
+         FORCED_BUST DCONV DC_SPEED BASES BASE_GLOW WRECK VOICE VOICE_MOODS VOICE_DOCK VOICE_NEWS VOICE_FEE VOICE_GATE; do
     eval v=\${$k:-}
     [ -z "$v" ] && continue
     case "$v" in *[!0-9]*) echo "$k must be a non-negative integer" >&2; exit 1;; esac
