@@ -228,9 +228,16 @@ function TRF_UI_Rec(id)
 	return nil;
 end;
 
--- R2: no line while a mission or extortion has disabled random contacts.
+-- R2: no line while a mission has disabled random contacts (__disableAction) or vanilla suppresses chatter
+-- (trf_safety TRF_Quiet: __sys_SOS or a visible scripted scene; without trf_safety, __sys_SOS).
+-- Returns "flag" (__disableAction), "quiet" or nil; the skip lines log it.
 function TRF_UI_Supp()
-	if __disableAction == TRUE or __sys_SOS == TRUE then return 1; end;
+	if __disableAction == TRUE then return "flag"; end;
+	if type(TRF_Quiet) == "function" then
+		if TRF_Quiet() then return "quiet"; end;
+		return nil;
+	end;
+	if __sys_SOS == TRUE then return "quiet"; end;
 	return nil;
 end;
 
@@ -382,8 +389,9 @@ end;
 function TRF_Say(text, secs, pilot)
 	if TRF_UI_Opt("ui", 1) == 0 then return nil; end;
 	if type(text) ~= "string" or text == "" then return nil; end;
-	if TRF_UI_Supp() then
-		TRF_L("ui say skipped (flag) text="..text);
+	local q = TRF_UI_Supp();
+	if q then
+		TRF_L("ui say skipped ("..q..") text="..text);
 		return nil;
 	end;
 	if type(secs) ~= "number" then secs = TRF_UI_Const().secs; end;
@@ -416,8 +424,9 @@ function TRF_FocusLine(id, via)
 	local L = TRF_UI_Live();
 	if type(r) ~= "table" or not L or r.met then return nil; end;
 	if TRF_UI_Opt("ui", 1) == 0 then return nil; end;
-	if TRF_UI_Supp() then
-		TRF_L("ui focus id="..id.." skipped (flag)");
+	local q = TRF_UI_Supp();
+	if q then
+		TRF_L("ui focus id="..id.." skipped ("..q..")");
 		return nil;
 	end;
 	local c = TRF_UI_Const();
@@ -487,8 +496,9 @@ end;
 function TRF_OnMeet_Body(id, g)
 	if not TRF_UI_GenOk(g) or not TRF_UI_Rec(id) then return; end;
 	if TRF_UI_Opt("meet", 1) == 0 then return; end;
-	if TRF_UI_Supp() then
-		TRF_L("ui meet id="..id.." skipped (flag)");
+	local q = TRF_UI_Supp();
+	if q then
+		TRF_L("ui meet id="..id.." skipped ("..q..")");
 		return;
 	end;
 	if TRF_UI_Opt("meet", 1) == 2 and type(TRF_OnHail) == "function" then
@@ -807,8 +817,9 @@ function TRF_ArrivalLine()
 		if text then TRF_L("ui arrival dis="..d.." quiet line"); end;
 	end;
 	if not text then return nil; end;
-	if TRF_UI_Supp() then
-		TRF_L("ui arrival skipped (flag) dis="..d);
+	local q = TRF_UI_Supp();
+	if q then
+		TRF_L("ui arrival skipped ("..q..") dis="..d);
 		return nil;
 	end;
 	return TRF_Say(text, TRF_UI_Const().arr_secs);

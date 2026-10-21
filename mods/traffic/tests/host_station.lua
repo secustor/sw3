@@ -523,9 +523,19 @@ function T_STN_C()
 	TRF_Traffic = function() return nil; end;
 	pass("off", "gaoba");
 	TRF_Traffic = tf;
-	-- G4: __sys_SOS and the extortion debounce (TRF_Supp() ~= 0).
+	-- G4: the suppression level (TRF_Supp() ~= 0); G4b: quiet (TRF_Quiet: __sys_SOS or a visible scene), no
+	-- mood, greeting or fee box, the vanilla box runs. sos_mode 2: __sys_SOS raises the level (flag).
 	T_Enter("gaoba");
+	__sys_SOS = TRUE; pass("quiet", "gaoba"); __sys_SOS = FALSE;
+	T_Enter("gaoba");
+	-- A movie raises the level too (TRF_Supp 1), so G4 reports it first.
+	TRF_InMovie = HOST_InMovie; h.mov = 1;
+	pass("flag", "gaoba");
+	TRF_InMovie = nil; h.mov = nil;
+	T_Enter("gaoba");
+	h.cfg.sos_mode = 2;
 	__sys_SOS = TRUE; pass("flag", "gaoba"); __sys_SOS = FALSE;
+	h.cfg.sos_mode = nil;
 	T_Enter("gaoba");
 	local su = TRF_Supp;
 	TRF_Supp = function() return 1; end;
@@ -840,6 +850,27 @@ function T_STN_E()
 	local r2 = S_Trade(D.trade[1]);
 	HOST_Check(h.credits == cr0 and h.trade_ok == ok0 and r2.nb == 1 and r2.box.text ~= "#UI_TradeStationDockRequest", "Cancel: no charge, no dock, box again");
 	HOST_Press("cancel");
+	-- Quiet (__sys_SOS), then a dialog flag of TRF_UiState (level 1, reason flag): no fee box and no greeting,
+	-- the vanilla box; the fee is asked once the flag is clear.
+	S_Visit("kadenoa", "5_01", 8);
+	D = S_Setup({});
+	cr0 = h.credits;
+	n0 = S_Mark();
+	__sys_SOS = TRUE;
+	r = S_Trade(D.trade[1]);
+	__sys_SOS = FALSE;
+	HOST_Check(S_Vanilla(r) and r.nm == 0 and h.credits == cr0 and S_Logs(n0, "stn: pass reason=quiet sys=kadenoa at=dock") == 1
+		and S_Logs(n0, "stn: dock ") == 0, "__sys_SOS: quiet, no greeting, no fee box, vanilla box");
+	HOST_Press("cancel");
+	TRF_UiState = HOST_UiState; h.ui = 4;
+	r = S_Trade(D.trade[1]);
+	HOST_Check(S_Vanilla(r) and h.credits == cr0 and S_Logs(n0, "stn: dock ") == 0, "TRF_UiState dialog flag: quiet, no fee box");
+	HOST_Press("cancel");
+	h.ui = -1;
+	r = S_Trade(D.trade[1]);
+	HOST_Check(r.nb == 1 and r.box.text ~= "#UI_TradeStationDockRequest" and S_Logs(n0, "stn: dock k=51 ") == 1, "flag clear (UiState -1 = unknown): fee box");
+	HOST_Press("cancel");
+	TRF_UiState = nil; h.ui = nil;
 	-- Credits below the fee: docks on credit, no charge, -1.
 	S_Visit("kadenoa", "5_01", 8);
 	h.credits = 100;

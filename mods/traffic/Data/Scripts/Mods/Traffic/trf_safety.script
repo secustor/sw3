@@ -5,7 +5,7 @@
 -- then the contract functions that gather inputs and call the predicates.
 -- Top level defines functions only; state lives in TRF.live (plain data), handles in TRF_H().
 -- Extra TRF.live fields owned here: pmn (1 once __sys_Pirate_Money was nil this visit), sl (last TRF_Supp
--- level, for logging), sm (last TRF_SysMode result, for logging), gv (1 once the governor ran on this live
+-- level, for logging), ss (last __sys_SOS flag 1/0, for logging), sm (last TRF_SysMode result, for logging), gv (1 once the governor ran on this live
 -- table), stl (1 when the station was lost this visit), sck (1 once the station was checked). TRF_LiveReset
 -- seeds capt/caps from cfg and stok = 0; gv and stl tell those defaults from results. gen may set inval (reason string) when a
 -- trader contact fails validation (4.2); TRF_SysMode then returns "vanilla" for the rest of the visit.
@@ -155,13 +155,30 @@ function TRF_Safe_QState()
 	return nil;
 end;
 
--- Suppression globals (R2): dis = __disableAction, sos = __sys_SOS, money = __sys_Pirate_Money is a number.
+-- Suppression globals (R2): dis = __disableAction, sos = __sys_SOS, money = __sys_Pirate_Money is a number,
+-- scene = TRF_Safe_Scene().
 function TRF_Safe_Flags()
 	local f = {};
 	if __disableAction == TRUE then f.dis = 1; end;
 	if __sys_SOS == TRUE then f.sos = 1; end;
 	if type(__sys_Pirate_Money) == "number" then f.money = 1; end;
+	f.scene = TRF_Safe_Scene();
 	return f;
+end;
+
+-- Scripted scene visible (R2): 1 while a mission movie plays (TRF_InMovie() == 1; when that native is missing
+-- or returns -1, the game's MovieIsPlaying() == TRUE) or TRF_UiState() reports a flag (> 0: movie, modal
+-- window on top, XML dialog open; missing or -1 = unknown, ignored), else nil. Natives: pe/traffic.c.
+function TRF_Safe_Scene()
+	local m = nil;
+	if type(TRF_InMovie) == "function" then m = TRF_InMovie(); end;
+	if m == 1 then return 1; end;
+	if m ~= 0 and type(MovieIsPlaying) == "function" and MovieIsPlaying() == TRUE then return 1; end;
+	if type(TRF_UiState) == "function" then
+		local u = TRF_UiState();
+		if type(u) == "number" and u > 0 then return 1; end;
+	end;
+	return nil;
 end;
 
 -- Extortion flight alive. flight_pir_mon_1 is userdata that survives ClearGlobals and may come from an
@@ -229,13 +246,18 @@ function TRF_SysModeOf(s)
 end;
 
 -- Suppression level (R2, R3): 0 none, 1 pause (no spawn, no line), 2 wind-down.
--- dis/sos: flags (1 or nil); gt: now; sos_t: gt when __sys_SOS was first seen TRUE (nil = not yet sampled);
--- ext: extortion flight alive; db: debounce seconds (30).
-function TRF_SuppOf(dis, sos, gt, sos_t, ext, db)
+-- dis/sos/scene: flags (1 or nil); gt: now; sos_t: gt when __sys_SOS was first seen TRUE (nil = not yet
+-- sampled); ext: extortion flight alive; db: debounce seconds (30); sm: cfg sos_mode (nil = 1).
+-- dis -> 2. sos_mode 1: __sys_SOS alone (vanilla _FTrader_exclude around scripted sequences) does not count;
+-- a visible scene -> 1. sos_mode 2 (the old rule): sos -> 1, then 2 after db unless the extortion flight lives.
+function TRF_SuppOf(dis, sos, gt, sos_t, ext, db, scene, sm)
 	if dis then return 2; end;
-	if not sos then return 0; end;
-	if ext or type(sos_t) ~= "number" or gt - sos_t < db then return 1; end;
-	return 2;
+	if sos and sm == 2 then
+		if ext or type(sos_t) ~= "number" or gt - sos_t < db then return 1; end;
+		return 2;
+	end;
+	if scene then return 1; end;
+	return 0;
 end;
 
 -- Spawn gate (5.1). s = {supp, ntr, nsh (live traffic flights / ships), n (ships of the planned base row),
@@ -785,16 +807,31 @@ function TRF_SysModeQuiet()
 	return TRF_SysModeOf(TRF_SafeModeIn());
 end;
 
+-- cfg sos_mode: 1 (default) __sys_SOS alone does not suppress, 2 the old debounce rule (R2, R3).
+function TRF_SafeSosMode()
+	if TRF_SafeOpt("sos_mode", 1) == 2 then return 2; end;
+	return 1;
+end;
+
 -- 0 none, 1 pause, 2 wind-down (R2, R3). Reads the flags now, so a flag set since the last tick counts.
 function TRF_Supp()
 	local f = TRF_Safe_Flags();
 	local L = TRF_SafeLive();
+	local sm = TRF_SafeSosMode();
 	local sos_t, ext = nil, nil;
 	if L then
 		sos_t = L.sos_t;
-		if f.sos and not f.dis and L.ext_seen == 1 then ext = TRF_Safe_ExtAlive(); end;
+		if f.sos and not f.dis and sm == 2 and L.ext_seen == 1 then ext = TRF_Safe_ExtAlive(); end;
 	end;
-	return TRF_SuppOf(f.dis, f.sos, TRF_SafeGt(), sos_t, ext, TRF_SafeTune("sos_db", 30));
+	return TRF_SuppOf(f.dis, f.sos, TRF_SafeGt(), sos_t, ext, TRF_SafeTune("sos_db", 30), f.scene, sm);
+end;
+
+-- 1 while vanilla suppresses chatter (__sys_SOS == TRUE: _FTrader_exclude blocks the trader and mercenary
+-- chat, SOS calls, extortion and the patrol fine) or a scripted scene is visible (TRF_Safe_Scene), else nil.
+-- For what talks to the player (lines, greetings, mod boxes); spawning reads TRF_Supp only.
+function TRF_Quiet()
+	if __sys_SOS == TRUE or TRF_Safe_Scene() then return 1; end;
+	return nil;
 end;
 
 -- 1 once per suppression onset when a wind-down is due (sets live.wind); nil otherwise. For TRF_WindDown.
@@ -835,12 +872,17 @@ function TRF_SafetySample()
 		L.pmn = 1;
 	end;
 	local s = TRF_Supp();
-	-- wind is per onset; cleared only when neither flag is set, so a __disableAction wind-down runs once.
+	-- wind is per onset; cleared only at level 0, so a __disableAction wind-down runs once.
 	if s == 0 then L.wind = nil; end;
-	if s ~= TRF_SafeNum(L.sl, 0) then
-		TRF_SafeL("supp "..TRF_SafeNum(L.sl, 0).."->"..s.." dis="..tostring(f.dis).." sos="..tostring(f.sos).." ext_seen="..tostring(L.ext_seen));
+	-- Logged on a level change and on a __sys_SOS change (sos_mode 1 keeps the level at 0 under __sys_SOS).
+	local ss = 0;
+	if f.sos then ss = 1; end;
+	if s ~= TRF_SafeNum(L.sl, 0) or ss ~= TRF_SafeNum(L.ss, 0) then
+		TRF_SafeL("supp "..TRF_SafeNum(L.sl, 0).."->"..s.." dis="..tostring(f.dis).." sos="..tostring(f.sos).." scene="..tostring(f.scene)
+			.." sos_mode="..TRF_SafeSosMode().." ext_seen="..tostring(L.ext_seen));
 	end;
 	L.sl = s;
+	L.ss = ss;
 	return s;
 end;
 
@@ -938,7 +980,7 @@ end;
 function TRF_SafeVisitReset()
 	local L = TRF_SafeLive();
 	if L then
-		L.sos_t = nil; L.ext_seen = nil; L.pmn = nil; L.wind = nil; L.sl = nil; L.sm = nil;
+		L.sos_t = nil; L.ext_seen = nil; L.pmn = nil; L.wind = nil; L.sl = nil; L.ss = nil; L.sm = nil;
 		L.gv = nil; L.stl = nil; L.sck = nil; L.gvn = nil; L.gl = nil; L.gate = nil; L.qa = nil; L.qai = nil;
 	end;
 	local H = TRF_SafeH();

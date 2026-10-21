@@ -707,10 +707,13 @@ function T_G()
 	h.cfg.sys_deny = nil;
 	gn, gw = gate({ent={m=1, tq=1, feq=0, why="teleport target"}});
 	HOST_Check(gn == getn(gfs) - 1 and gw == "deny_feq", "strict gate: transit keeps a feature set to 0 in the entry off");
-	-- Suppression: 0 none, 1 pause, 2 wind-down.
-	foreachi({{nil, nil, 100, nil, nil, 0}, {1, nil, 100, nil, nil, 2}, {1, 1, 100, 0, nil, 2}, {nil, 1, 100, nil, nil, 1},
-		{nil, 1, 100, 71, nil, 1}, {nil, 1, 100, 70, nil, 2}, {nil, 1, 100, 0, 1, 1}}, function(i, t)
-		HOST_Check(TRF_SuppOf(t[1], t[2], t[3], t[4], t[5], 30) == t[6], "TRF_SuppOf case "..i.." = "..t[6]);
+	-- Suppression: 0 none, 1 pause, 2 wind-down. {dis, sos, gt, sos_t, ext, scene, sos_mode, level}.
+	foreachi({{nil, nil, 100, nil, nil, nil, nil, 0}, {1, nil, 100, nil, nil, nil, 1, 2}, {1, 1, 100, 0, nil, nil, 2, 2},
+		{nil, 1, 100, nil, nil, nil, 1, 0}, {nil, 1, 100, 0, nil, nil, 1, 0}, {nil, 1, 100, 0, nil, nil, nil, 0},
+		{nil, 1, 100, nil, nil, nil, 2, 1}, {nil, 1, 100, 71, nil, nil, 2, 1}, {nil, 1, 100, 70, nil, nil, 2, 2},
+		{nil, 1, 100, 0, 1, nil, 2, 1}, {nil, nil, 100, nil, nil, 1, 1, 1}, {1, nil, 100, nil, nil, 1, 1, 2},
+		{nil, 1, 100, 0, nil, 1, 1, 1}, {nil, 1, 100, 0, nil, 1, 2, 2}, {nil, nil, 100, nil, nil, 1, 2, 1}}, function(i, t)
+		HOST_Check(TRF_SuppOf(t[1], t[2], t[3], t[4], t[5], 30, t[6], t[7]) == t[8], "TRF_SuppOf case "..i.." = "..t[8]);
 	end);
 	-- Spawn gate.
 	local sp = function(t)
@@ -804,9 +807,21 @@ function T_G()
 	HOST_Check(m == "vanilla" and why == "deny_tq" and TRF_SafeModeIn().qa == 1, "transit: taira quest 6c_01 in process -> deny_tq");
 	h.quests.quest_6c_01 = nil; h.logs = nil;
 	h.qs = FALSE;
+	-- sos_mode 1 (default): __sys_SOS alone does not suppress; logged once with sos=1, quiet for lines.
+	h.logs = {};
 	__sys_SOS = TRUE;
 	T_Tick(2, 0.5);
-	HOST_Check(TRF_Supp() == 1 and not TRF_CanSpawn(0), "__sys_SOS: pause, no spawn");
+	local ln = 0;
+	for i = 1, getn(h.logs) do if strfind(h.logs[i], "safe: supp 0->0 dis=nil sos=1 scene=nil sos_mode=1", 1, 1) then ln = ln + 1; end; end;
+	HOST_Check(TRF_Supp() == 0 and TRF_CanSpawn(0) and TRF_Quiet() == 1 and ln == 1, "__sys_SOS, sos_mode 1: no suppression, spawn allowed, quiet, one supp line");
+	__sys_SOS = FALSE;
+	T_Tick(2, 0.5);
+	h.logs = nil;
+	-- sos_mode 2: the old rule (pause, wind-down after sos_db 30 s unless the extortion flight lives).
+	h.cfg.sos_mode = 2;
+	__sys_SOS = TRUE;
+	T_Tick(2, 0.5);
+	HOST_Check(TRF_Supp() == 1 and not TRF_CanSpawn(0), "__sys_SOS, sos_mode 2: pause, no spawn");
 	__sys_Pirate_Money = 500;
 	flight_pir_mon_1 = HOST_Flight("flight_pir_mon_1", HOST_Group("group_Pirate_money", "Pirates"));
 	flight_pir_mon_1:AddShip(CreateCarcass("Raptor_merc1", Vector3(0, 0, 900), Vector3(0, 0, 1)));
@@ -815,6 +830,7 @@ function T_G()
 	flight_pir_mon_1.ships[1].alive = nil;
 	HOST_Check(TRF_Supp() == 2, "extortion flight dead after 30 s of __sys_SOS: wind-down");
 	__sys_SOS = FALSE; __sys_Pirate_Money = nil; flight_pir_mon_1 = nil;
+	h.cfg.sos_mode = nil;
 	T_Tick(2, 0.5);
 	HOST_Check(TRF_Supp() == 0 and TRF.live.wind == nil, "flags clear: no suppression, wind cleared");
 	HOST_Check(TRF_Station() == nil and TRF.live.stok == 0, "no st field in the map: no station");
@@ -855,6 +871,65 @@ function T_G()
 	__disableAction = FALSE;
 	T_Tick(2, 0.5);
 	HOST_Check(TRF.live.wind == nil, "flag cleared: wind reset for the next onset");
+	T_SceneSupp();
+end;
+
+-- Scene-based suppression (R2): TRF_Quiet and the scene flag (movie, UI natives), spawning under __sys_SOS.
+function T_SceneSupp()
+	local h = HOST();
+	print("HOST ---- scene-based suppression");
+	HOST_Check(TRF_Quiet() == nil and TRF_Supp() == 0, "no flag, no scene: not quiet, level 0");
+	__sys_SOS = TRUE;
+	HOST_Check(TRF_Quiet() == 1, "__sys_SOS: quiet");
+	h.logs = {};
+	local said = TRF_Say("host quiet line", 5);
+	HOST_Check(not said and getn(h.logs) == 1 and strfind(h.logs[1], "ui say skipped (quiet) text=host quiet line", 1, 1), "__sys_SOS: TRF_Say skips (quiet)");
+	h.logs = nil;
+	__sys_SOS = FALSE;
+	TRF_InMovie = HOST_InMovie; MovieIsPlaying = HOST_MovieIsPlaying; TRF_UiState = HOST_UiState;
+	h.mov = 1; h.mip = FALSE; h.ui = 0;
+	HOST_Check(TRF_Quiet() == 1 and TRF_Supp() == 1, "TRF_InMovie() == 1: quiet, pause");
+	h.mov = 0; h.mip = TRUE;
+	HOST_Check(TRF_Quiet() == nil and TRF_Supp() == 0, "TRF_InMovie() == 0 wins over MovieIsPlaying()");
+	h.mov = -1;
+	HOST_Check(TRF_Quiet() == 1 and TRF_Supp() == 1, "TRF_InMovie() == -1: MovieIsPlaying() == TRUE counts");
+	TRF_InMovie = nil;
+	HOST_Check(TRF_Quiet() == 1, "no TRF_InMovie: MovieIsPlaying() == TRUE counts");
+	h.mip = FALSE; h.ui = 4;
+	HOST_Check(TRF_Quiet() == 1 and TRF_Supp() == 1, "TRF_UiState() dialog flag: quiet, pause");
+	h.ui = -1;
+	HOST_Check(TRF_Quiet() == nil and TRF_Supp() == 0, "TRF_UiState() == -1 (unknown): ignored");
+	h.ui = 2;
+	__disableAction = TRUE;
+	HOST_Check(TRF_Supp() == 2, "scene and __disableAction: wind-down");
+	__disableAction = FALSE;
+	h.logs = {};
+	T_Tick(2, 0.5);
+	local ln = 0;
+	for i = 1, getn(h.logs) do if strfind(h.logs[i], "safe: supp 0->1 dis=nil sos=nil scene=1 sos_mode=1", 1, 1) then ln = ln + 1; end; end;
+	HOST_Check(ln == 1 and not TRF_CanSpawn(0), "scene: supp 0->1 logged with scene=1, no spawn");
+	h.logs = nil;
+	TRF_UiState = nil; MovieIsPlaying = nil;
+	h.mov = nil; h.mip = nil; h.ui = nil;
+	T_Tick(2, 0.5);
+	-- Spawn gate under __sys_SOS: sos_mode 1 spawns (generator and seed), sos_mode 2 skips the seed.
+	T_Jump("gredos");
+	__sys_SOS = TRUE;
+	T_Tick(2, 0.5);
+	local k0 = T_Stat("skip_seed_supp");
+	local s0 = TRF.seq;
+	h.rq = {0, 0};
+	local sid = TRF_SeedSpawn();
+	h.rq = {};
+	HOST_Check(sid ~= nil and TRF.seq ~= s0 and TRF_Rec(sid) and TRF_Rec(sid).seed == 1 and T_Stat("skip_seed_supp") == k0,
+		"__sys_SOS, sos_mode 1: seed spawns ("..tostring(sid).." "..TRF_Dump(TRF.live.stat, 1)..")");
+	h.cfg.sos_mode = 2;
+	sid = TRF_SeedSpawn();
+	HOST_Check(sid == nil and T_Stat("skip_seed_supp") == k0 + 1, "__sys_SOS, sos_mode 2: seed skipped (skip_seed_supp)");
+	h.cfg.sos_mode = nil;
+	sid = T_Spawn();
+	HOST_Check(TRF_Supp() == 0 and sid ~= nil, "__sys_SOS, sos_mode 1: the generator spawns a trader");
+	__sys_SOS = FALSE;
 end;
 
 local fn = getglobal("T_"..strupper(HOST().scen));
