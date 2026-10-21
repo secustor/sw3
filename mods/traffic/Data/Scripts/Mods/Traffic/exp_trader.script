@@ -210,7 +210,7 @@ function TRF_T_Handle(name, id)
 	local p = nil;
 	if TRF_Is(h.fl:IsAlive()) then p = h.fl:GetPosition(); end;
 	TRF_L(name.." id="..id.." #"..n.." phase="..h.phase.." alive="..tostring(h.fl:IsAlive()).." pos="..TRF_T_Vec(p)
-		.." game="..TRF_F(TRF.clock.game));
+		.." gt="..TRF_F(TRF.clock.gt));
 	return h;
 end;
 

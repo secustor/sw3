@@ -2,7 +2,7 @@
 
 NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic is Lua 4.0.1 scripts under `Data/Scripts/Mods/Traffic/`. A `traffic` module in the sw3tp `zlib1.dll` proxy loads them, registers the `TRF_*` natives, calls the Lua entry, load and tick callbacks, and carries the global `TRF` across the global clear on location entry. No game file is edited. Status and the experiment checklist are in [design/PROGRESS.md](design/PROGRESS.md); the build design is in [design/mod-options.md](design/mod-options.md) (sections 5 and 7).
 
-Phase 0 only runs experiments E0.1 to E0.3 and has no traffic yet.
+Phase 0 runs experiments E0.1 to E0.3. Phase 1 (v0.1 traffic, [below](#v01-traffic-exp0-traffic1)) is implemented and host-tested, not yet run in the game.
 
 ## Files
 
@@ -10,8 +10,9 @@ Phase 0 only runs experiments E0.1 to E0.3 and has no traffic yet.
 
 | file | role |
 |---|---|
-| `traffic.script` | Loader. The DLL appends it to `sys_IncludeFileList`, so it runs last on every MapInitialization. Defines `TRF_OnEnter/OnActivate/OnLoad/OnTick/BeforeJump`, `TRF_Init`, `TRF_L` (log), `TRF_Dump`. Wraps `TeleportToLocation` and `CustomTeleportate` once, so that `TRF_BeforeJump(dest)` runs before every scripted jump. Loads `config.script`, the experiment file chosen by `exp`, `exp_saves.script` when `autosave` is 1 or 2, and `map.script`. Each callback forwards to `TRF_Exp_<name>` if the experiment file defines it; `OnActivate` also calls `TRF_Saves_OnActivate`. |
-| `config.script` | `TRF_Config()` returns `{exp=0..3, log=0/1, big=0/1, del_on_jump=0/1, autosave=0..2}`. The repo default is `exp=0, autosave=0`; `install-test.sh` rewrites the file. |
+| `traffic.script` | Loader. The DLL appends it to `sys_IncludeFileList`, so it runs last on every MapInitialization. Defines `TRF_OnEnter/OnActivate/OnLoad/OnTick/BeforeJump`, `TRF_Init`, `TRF_L` (log), `TRF_Dump`. Wraps `TeleportToLocation` and `CustomTeleportate` once, so that `TRF_BeforeJump(dest)` runs before every scripted jump. Loads `config.script`, the experiment file chosen by `exp`, `exp_saves.script` when `autosave` is 1 or 2, and `map.script`. Each callback forwards to `TRF_Exp_<name>` if the experiment file defines it; `OnActivate` also calls `TRF_Saves_OnActivate`. With `exp=0` and `traffic` not 0 it also loads the v0.1 modules below, calls `TRF_InstallGen()` and dispatches each callback to the modules (`design/v01-spec.md` 10.1), each call protected (`TRF_P`). |
+| `config.script` | `TRF_Config()` returns `{exp=0..3, log=0/1, big=0/1, del_on_jump=0/1, autosave=0..2, traffic=0/1}` plus the optional v0.1 keys (`v01-spec.md` 9). The repo default is `exp=0, autosave=0, traffic=1`; `install-test.sh` rewrites the file. |
+| `trf_state.script`, `trf_safety.script`, `trf_ui.script`, `trf_events.script`, `trf_gen.script` | v0.1 traffic (`design/v01-spec.md` 10.2): saved table v2 and visit state; safety rules, caps and governor; player-facing lines; attack, heat, kills and response; generator wrap, spawn, routes, manager step, load pass. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -26,7 +27,7 @@ Script rules: top-level code only defines functions and installs the wrappers. A
 
 The game must be launched by the user. The scripts only prepare the test clone (`~/Games/Heroic/sw3-tp-test`) and collect the logs.
 
-    EXP=1 mods/traffic/install-test.sh      # EXP=0..3; also LOG, BIG, DEL_ON_JUMP, AUTOSAVE, TRAFFIC_ENABLED, SITE_T1..SITE_T4, TICK_MS
+    EXP=1 TRAFFIC=0 mods/traffic/install-test.sh   # EXP=0..3; also TRAFFIC, LOG, BIG, DEL_ON_JUMP, AUTOSAVE, OVERRIDE, DUMP, GUARD, TRAFFIC_ENABLED, SITE_T1..SITE_T4, TICK_MS
     SECS=900 mods/traffic/run-test.sh       # SECS defaults to 600; play during that time
     mods/traffic/uninstall-test.sh
 
@@ -55,6 +56,64 @@ Enter a system that has a trade station and watch the transport. Attack it once.
 What happens: on `OnActivate`, a `Btransport` flight spawns at the portal farthest from the player (if `CreateCarcass` returns nil it tries the next portal) and gets `ComeToTradeStation`. It also gets three string-callback triggers: two arrival triggers (`"TRF_OnArrive(1,1)--"`, `f_object_inside` within 150 of the station; `"TRF_OnArrive(1,2)--"`, `f_inside` within 75 of `GetDockingPosition()`; the first one that fires counts, the log line's `how=` says which), `attack` and `f_died`. After 20 s docked it gets `ComeToPortal` and an `f_object_inside` exit trigger, and on exit the portal plays `Start(5, 0)` and the flight is deleted. Trader 2 then spawns and stays docked. Before the jump, the positions of the live traders are recorded, and with `del_on_jump=1` their flights are deleted. On every `OnActivate`, `GetCarcassCountInSphere` is logged around the recorded spawn point and the recorded last position. Every 5 s the log shows each live trader's position, its distance to the station centre, to `GetDockingPosition()` and to the exit portal. After a load, triggers restored from the save log `stale (no live handle)`.
 
 Pass: `CreateCarcass ... -> ok`, and each callback logs its id (`OnArrive id=1`, `OnAttack id=1`, `OnDied` or `OnExit id=1`). The string callbacks therefore work. The position lines show whether the ship stops at the dock point. On the revisit, the count around the last position answers mod-options question 1: a non-zero count with `deleted=0` means that NPC flights are part of the location snapshot. Every `CHECK` line marks an assumption that the run confirms or refutes.
+
+## v0.1 traffic (`EXP=0 TRAFFIC=1`)
+
+v0.1 ("traders with a purpose", design §12, spec [design/v01-spec.md](design/v01-spec.md)) replaces the vanilla random trader contact in the 79 systems that have one. It is implemented and host-tested; it has not run in the game yet.
+
+### What the player sees
+
+- FTU freighters with a name and a cargo class (`FTU freighter Kestrel`), spawned by the vanilla generator tick at the contact's own portals. They fly portal to portal (path C). Paths A and B (to or from the trade station) need the station field `st` in `map.script`, which `gen_map.py` does not emit yet, so they do not occur in the game.
+- At most 2 traffic flights and 10 traffic ships per system (1 flight when the system already holds more than 40 objects), a lifetime of 720 s, and a watchdog that removes stuck traders when out of view.
+- A focus line in the screen log the first time a trader is selected or comes within 200 (`FTU freighter Kestrel: machinery, Aurora -> Elio`). The vanilla trade meeting at 70 stays.
+- An arrival line 5 s after entering a system with disruption ≥ 3 (`FTU reports raids on the lanes in this system`, three bands).
+- Attacking a trader raises heat and starts a response that reproduces the vanilla one. Traders killed by anyone raise the system's disruption, which adds escorts and lowers spawns; pirate kills and time (legs) bring it down.
+- Vanilla behaviour is kept, untouched, in: start systems in chapters 1–4 while a story mission is active (`guard`), `elio`, `x297`, `gefest` while a mission is active, systems not in `map.script`, and whenever `__disableAction` is set. During an extortion (`__sys_SOS`) nothing spawns and no line is shown; after 30 s without an extortion flight, nearby traders leave by a portal and distant ones are deleted.
+
+### Config keys
+
+`install-test.sh` writes `exp, log, big, del_on_jump, autosave, traffic` and, when set in the environment, `override`, `dump`, `guard`. Every other key reads as its default (`TRF_OptDef` in `trf_state.script`; full table in spec 9):
+
+| key | default | meaning |
+|---|---|---|
+| `traffic` / `enabled` | 1 | 0: the v0.1 modules are not loaded (loader, wrappers and kits only). Only loaded with `exp=0`. |
+| `log` | 1 | 0 off, 1 info, 2 debug (every decision) |
+| `override` | 1 | 1 mod traffic, 0 untouched vanilla, 2 vanilla but counted (M11 baseline) |
+| `guard` | 1 | start-system fallback: 1 during missions in chapters 1–4, 2 always in chapters 1–4, 0 off |
+| `dump` | 0 | periodic state dump every `dump` game seconds |
+| `cap_traders`, `cap_ships`, `spawn_scale` | 2, 10, 1.0 | volume |
+| `ui`, `ui_out`, `ui_focus`, `arrival_line`, `meet` | 1, 1, 3, 1, 1 | text and meeting toggles |
+| `heat`, `dis`, `response`, `dock_mode` | 1, 1, 1, 0 | counters, attack response, docking variant |
+| `sys_off`, `sys_deny`, `tune` | `{}` | per-system off switch, extra deny list, tuning overrides |
+
+For other keys, edit `<clone>/Data/Scripts/Mods/Traffic/config.script` after the install (one line, CRLF).
+
+### Running it on the clone
+
+    EXP=0 TRAFFIC=1 AUTOSAVE=1 sh mods/traffic/install-test.sh   # normal v0.1 mode, with the baseline save kit
+    EXP=1 TRAFFIC=0 sh mods/traffic/install-test.sh              # E0.1 hook experiment only
+    SECS=1800 sh mods/traffic/run-test.sh                         # the user plays; logs land in <clone>/traffic-runs/
+
+Lines in `sw3tp.log` (all `traffic: lua: v0.1 ...`):
+
+- once per location entry: `loaded map=1 modules=5 TeleportToLocation wrapped=1 CustomTeleportate wrapped=1` and `gen: install generator=1 case_eject=1 ... mine=1/1`. `modules` below 5 or a missing install line means the mod stays vanilla: look at the `load <file> failed` line before it.
+- `dump enter|load|jump|tick v=2 gen=<n> sys=<name>(<idx>) legs=<n> ... heat=<h>/<n> ... mode=mod|vanilla`, followed by `dump dis <system>=<n> ...` and `dump stat ...`: `gen` grows by one per entry and per load, `legs` by one per entry and every 300 game s in a system; neither goes back. `mode=vanilla` comes with a `safe: mode vanilla why=<reason>` line.
+- `gen: spawn id=<n> path=C ...`, `gen: remove id=<n> why=exit|dock|life|stuck|wind|jump|lost|station ...`, `ui say ... text=...`, `st: dis`, `st: heat`, `ev kill`, `ev resp`.
+- `dump stat spawn=<n> skip_cap=<n> ...`: spawn, skip and removal counters for this visit.
+- `ERROR <message>`: a mod error caught by the mod. It never reaches `ScriptErrors.log`, so any such line is a bug to report.
+- `ScriptErrors.log` must have no new lines. Lines that name `TRF_` functions come from trigger callbacks, which run unprotected (spec 13, O1).
+
+### In-game checks for the v0.1 exit criteria (design §12)
+
+| criterion | how to check |
+|---|---|
+| No new `ScriptErrors.log` lines over 30 jumps in three sectors | One session (or several, each with a load) with 30 jumps across three sectors. `run-test.sh` prints the new `ScriptErrors.log`; also no `ERROR` lines in `sw3tp.log`. |
+| Missions 1–3 unchanged | Play missions 1–3 from a new game with `EXP=0 TRAFFIC=1`, then from the same save with `TRAFFIC=0`. Same briefings, triggers, spawns and outcomes; no stuck objective. During the missions the start systems log `mode=vanilla why=guard` (CHECK: needs `GetPlayerQuestState()` to be TRUE in a mission; else rerun with `GUARD=2`). |
+| 8x speed holds | In Gredos, Aurora and one core system with 2 traders alive: 8x stays selectable and is not dropped back. Repeat with `override=0` to compare. |
+| Counters survive save/load and a jump | Note `gen`, `legs`, `heat` and the `dump dis` values, jump: `dump enter` shows `gen` and `legs` at least one higher and the same `heat`/`dis` (minus decay). Save (kit or manual) in a system, quit, relaunch and load: `dump load` shows the saved `legs`, `heat` and `dis` and `gen` one higher. Confirms the T3 carry and `OnLoad`, still open from E0.1. |
+| Mod added to a mid-campaign save | Load a save made without the mod installed: `dump load` shows `v=2 gen=1 legs=0` and no `ERROR` line; traffic spawns in that system or the next eligible one. |
+| An ambient extortion does not empty the system | Wait for an extortion demand outside a mission: no spawn while it lasts (`skip_supp` grows), traders keep flying for 30 s, and after the extortion ends `spawn` grows again in the same system. |
+| 13.2 / 13.4 / 13.6 answers | Record whether the focus line came from selection or proximity, the `.sav` size with and without the mod, and the 8x and `CombineStr` results in design §13. |
 
 ## Baseline saves
 
@@ -102,7 +161,7 @@ A timer that fires during a jump, after another entry or after a load (`gen` dif
 ## Host checks (no game)
 
     mods/traffic/tools/get-lua4.sh                       # builds .work/lua4/bin/lua once
-    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment
+    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment + v0.1 scenarios a..g (tests/host_traffic.lua)
     python3 -I mods/traffic/tools/lint_lua.py --allow TeleportToLocation,CustomTeleportate mods/traffic/Data/Scripts/Mods/Traffic/*.script
 
 `tests/host_stubs.lua` stubs the natives and emulates ClearGlobals with the T3 carry, the save writer's skip rule and string trigger actions (`s.."();"`). Its stubs check argument shapes against the game's usage (`NewTrigger` per kind, `CreateCarcass`, `GetCarcassCountInSphere`). With `TRF_AUTOSAVE=1` (runs `exp0-saves`, `exp2-saves`) it also stubs `AutoSave` and `GetQuestLabel` and checks the save kit: no save in the first system or during mission 1, one `AutoSave` per new system, none for a system already saved, stale timers after a jump or a load, and the cap of 6. It then runs entry, ticks (clock sum), the experiment dispatch, the E0.3 trigger chain, two wrapped jumps, a save/load with a reserved-key scan of `TRF`, a load without `TRF` and a load with a foreign `TRF` layout, and dumps `TRF`. It exits 1 on any script error or failed check. Set `LUA4` to use another interpreter.

@@ -1,7 +1,10 @@
 #!/bin/sh
 # Install the traffic mod into the test clone (the trackpad proxy must be there; it is installed first if missing).
 # Copies the rebuilt zlib1.dll (contains the traffic module) and the mod scripts, writes config.script and the [traffic] ini section.
-# Env: EXP=0..3 (default 1), LOG=0|1, BIG=0|1, DEL_ON_JUMP=0|1, AUTOSAVE=0|1|2 (default 1 for EXP=2, else 0) (config.script);
+# Env: EXP=0..3 (default 1), TRAFFIC=0|1 (default 1; v0.1 traffic modules, loaded only with EXP=0), LOG=0|1|2, BIG=0|1,
+# DEL_ON_JUMP=0|1, AUTOSAVE=0|1|2 (default 1 for EXP=2, else 0) (config.script). Normal v0.1 mode: EXP=0 TRAFFIC=1;
+# hook experiment E0.1: EXP=1 TRAFFIC=0. Optional v0.1 keys, written only when set: OVERRIDE=0|1|2, DUMP=<game s>,
+# GUARD=0|1|2 (design/v01-spec.md 9).
 # TRAFFIC_ENABLED=0|1, SITE_T1..SITE_T4 (0|1, default 1), TICK_MS (default 250) (sw3tp.ini [traffic]).
 # The trackpad install-test.sh rewrites sw3tp.ini; run this script again after it.
 set -eu
@@ -15,13 +18,22 @@ EXP=${EXP:-1}
 case "$EXP" in 0|1|2|3) ;; *) echo "EXP must be 0..3" >&2; exit 1;; esac
 if [ "$EXP" = 2 ]; then AUTOSAVE=${AUTOSAVE:-1}; else AUTOSAVE=${AUTOSAVE:-0}; fi
 case "$AUTOSAVE" in 0|1|2) ;; *) echo "AUTOSAVE must be 0..2" >&2; exit 1;; esac
+TRAFFIC=${TRAFFIC:-1}
+case "$TRAFFIC" in 0|1) ;; *) echo "TRAFFIC must be 0 or 1" >&2; exit 1;; esac
+opt=""
+for k in OVERRIDE DUMP GUARD; do
+    eval v=\${$k:-}
+    [ -z "$v" ] && continue
+    case "$v" in *[!0-9]*) echo "$k must be a non-negative integer" >&2; exit 1;; esac
+    opt="$opt, $(printf '%s' "$k" | tr 'A-Z' 'a-z')=$v"
+done
 
 cp "$tp/out/zlib1.dll" "$COPY/zlib1.dll"
 
 rm -rf "$SCRIPTS_DST"; mkdir -p "$SCRIPTS_DST"
 cp -R "$SCRIPTS_SRC/." "$SCRIPTS_DST/"
-printf 'function TRF_Config() return {exp=%s, log=%s, big=%s, del_on_jump=%s, autosave=%s} end\r\n' \
-    "$EXP" "${LOG:-1}" "${BIG:-0}" "${DEL_ON_JUMP:-0}" "$AUTOSAVE" > "$SCRIPTS_DST/config.script"
+printf 'function TRF_Config() return {exp=%s, log=%s, big=%s, del_on_jump=%s, autosave=%s, traffic=%s%s} end\r\n' \
+    "$EXP" "${LOG:-1}" "${BIG:-0}" "${DEL_ON_JUMP:-0}" "$AUTOSAVE" "$TRAFFIC" "$opt" > "$SCRIPTS_DST/config.script"
 
 ini="$COPY/sw3tp.ini"; [ -f "$ini" ] || : > "$ini"
 tmp="$ini.new"

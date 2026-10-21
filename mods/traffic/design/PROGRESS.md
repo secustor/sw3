@@ -4,11 +4,11 @@ Tracking document for the trader-traffic mod. The design is in [traffic-design-r
 
 Status legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[-]` dropped.
 
-## Current state (2026-10-20)
+## Current state (2026-10-21)
 
-- Design and engine research complete. Phase 0 code written (2026-10-20): `traffic` module in the sw3tp proxy, loader and E0.1–E0.3 scripts, host tooling; nothing has run in the game yet.
+- Design and engine research complete. Phase 0 code written (2026-10-20); E0.1 passed its first in-game run (2026-10-21) except the jump and save/load checks. Phase 1 (v0.1) implemented, host-tested, awaiting in-game run; installed in the clone with `EXP=0 TRAFFIC=1 AUTOSAVE=1`.
 - Build route decided: Lua scripts under `Data/Scripts/Mods/Traffic/` plus a `traffic` module in the sw3tp `zlib1.dll` proxy (mod-options §5). Pure Lua is the fallback (option i).
-- Test bench: APFS clone `~/Games/Heroic/sw3-tp-test` with `mods/traffic/install-test.sh` (`EXP=0..3`, `AUTOSAVE=0|1|2`), `run-test.sh`, `uninstall-test.sh` (mod-options §7).
+- Test bench: APFS clone `~/Games/Heroic/sw3-tp-test` with `mods/traffic/install-test.sh` (`EXP=0..3`, `TRAFFIC=0|1`, `AUTOSAVE=0|1|2`, optional `OVERRIDE`, `DUMP`, `GUARD`), `run-test.sh`, `uninstall-test.sh` (mod-options §7).
 - The trackpad mod is installed in the real game; the traffic module will ship in the same proxy DLL.
 
 ## Phase 0: engine experiments (mod-options §7, design §13)
@@ -24,23 +24,25 @@ Goal: confirm the facts the design depends on before writing traffic logic. Each
 - [ ] E0.7 Performance: 16 and 20 traffic ships at `pro` 7 and 9 without the 8x fallback ([PP] X7, [TP] E6); fallback is the halved band increments (design 6.7).
 - [ ] E0.8 Pirate base: runtime `Pirate_station2_Lit` survives leave/revisit and save/load; dead station restored as wreck or not; `died`/`SetHP`; shop on a runtime station ([PB] E1–E6, E10, E11).
 - [ ] E0.9 Carriers: `HANGAROUT` offset; delete distance before dock completion; fighter docking into an NPC carrier ends in the player's hangar ([NC] E1, E1b, E3–E5).
-- [~] E0.1 Hooks and natives alive: **first in-game run 2026-10-21 (Corrino, no jump yet)**: all 7 sites attached, natives registered, include appended as entry 45 and loaded last, `TRF_OnEnter`/`OnActivate` fired once each (status 0), `dt_game` is 0 in menus/pause and tracks `dt_real` in flight, x87 at 53-bit (`16777216+1 = 16777217.0`), `type(TeleportToLocation)` is `function` before and after the wrap, `ScriptErrors.log` empty. Still open: counts across a jump (T3 carry), `OnLoad`.
+- [~] E0.1 Hooks and natives alive: **first in-game run 2026-10-21 (Corrino, no jump yet)**: all 7 sites attached, natives registered, include appended as entry 45 and loaded last, `TRF_OnEnter`/`OnActivate` fired once each (status 0), `dt_game` is 0 in menus/pause and tracks `dt_real` in flight, x87 at 53-bit (`16777216+1 = 16777217.0`), `type(TeleportToLocation)` is `function` before and after the wrap, `ScriptErrors.log` empty. Still open, pending the next run: counts across a jump (T3 carry) and save/quit/load (`OnLoad`); the v0.1 run checks both (README "In-game checks for the v0.1 exit criteria").
 
 Exit: every item above has an answer recorded in design §13 (or is explicitly deferred to the phase that needs it).
 
 ## Phase 1: v0.1 "traders with a purpose" (design §12)
 
+Implementation spec: [v01-spec.md](v01-spec.md) (2026-10-21; decisions in its section 11).
+
 Scope (requirement IDs): M1–M13, M19 guard set only where needed, S3, S4, S13, S16, S20; `TRF` fields `version`, `active`, `gen`, `clock`, `sys[idx].dis`, `std.heat`.
 
-- [~] Module skeleton in sw3tp (`mods/traffic/pe/traffic.c`, builds into `zlib1.dll`; untested in game): `[traffic]` ini section, T1–T4 hooks, byte checks, `TRF_Version`, `TRF_GameTime`, `TRF_RealTime`, `TRF_Log` (mod-options §5).
+- [~] Module skeleton in sw3tp (`mods/traffic/pe/traffic.c`, builds into `zlib1.dll`; hooks, natives and tick confirmed in game by E0.1, T3 carry and `OnLoad` pending): `[traffic]` ini section, T1–T4 hooks, byte checks, `TRF_Version`, `TRF_GameTime`, `TRF_RealTime`, `TRF_Log` (mod-options §5).
 - [x] Host tooling (`mods/traffic/tools/`: `check_sites.py`, `lint_lua.py`, `gen_map.py` → `map.script`, `get-lua4.sh`; `tests/run_host.sh`): `tools/check_sites.py` (site bytes, callers, branch scan), Lua 4.0.1 `luac -p` lint, reserved-key lint, static table generator from `GlobalMap.xml` and `CreateManagedPortal` lines (design 5.1, M13).
-- [~] `traffic.script` loader (Phase 0 version, host-tested), `TRF_OnEnter/OnActivate/OnLoad/OnTick`, pre-jump wrappers (`TeleportToLocation`, `CustomTeleportate`).
-- [ ] Generator override: replace `R_CreateTraderFlight` by name in the 79 systems (9.1), identity (M2), paths A/B/C, portal spacing, docking by removal.
-- [ ] Caps, governor, lifetime, watchdog, orphan scan, duplicate guard (6.7, 6.8, M9).
-- [ ] Safety rules 9.8 S1–S3, S5–S8, S10–S12; suppression flags with extortion debounce (M4, M5).
-- [ ] Focus line with proximity fallback (8.1); arrival line at `dis ≥ 3` (S20).
-- [ ] Heat with `T_deliberate`, disruption with spawn/escort effects and pirate-kill recovery, leg clock (5.5, 7.10, 8.7); vanilla-equivalent attack response.
-- [ ] Config toggles and debug dump (S16).
+- [~] `traffic.script` loader (implemented, host-tested, awaiting in-game run), `TRF_OnEnter/OnActivate/OnLoad/OnTick`, pre-jump wrappers (`TeleportToLocation`, `CustomTeleportate`); v0.1: loads `trf_state`, `trf_safety`, `trf_ui`, `trf_events`, `trf_gen` when `exp` is 0 and cfg `traffic`/`enabled` are not 0, installs the generator thunks, dispatches the callbacks (spec 10.1).
+- [~] Generator override (implemented, host-tested, awaiting in-game run; `trf_gen.script`): wraps `trigger_generator_Action` instead of `R_CreateTraderFlight` (spec 2.1), identity (M2), paths A/B/C, portal spacing, docking by removal. Paths A/B need the `st` field that `gen_map.py` does not emit yet.
+- [~] Caps, governor, lifetime, watchdog, orphan scan, duplicate guard (6.7, 6.8, M9) (implemented, host-tested, awaiting in-game run; `trf_safety.script`, `trf_gen.script`).
+- [~] Safety rules 9.8 S1–S3, S5–S8, S10–S12; suppression flags with extortion debounce (M4, M5) (implemented, host-tested, awaiting in-game run; `trf_safety.script`).
+- [~] Focus line with proximity fallback (8.1); arrival line at `dis ≥ 3` (S20) (implemented, host-tested, awaiting in-game run; `trf_ui.script`).
+- [~] Heat with `T_deliberate`, disruption with spawn/escort effects and pirate-kill recovery, leg clock (5.5, 7.10, 8.7); vanilla-equivalent attack response (implemented, host-tested, awaiting in-game run; `trf_events.script`, `trf_state.script`).
+- [~] Config toggles and debug dump (S16) (implemented, host-tested, awaiting in-game run; `config.script`, `trf_state.script`; `install-test.sh` writes `traffic` and, when set, `override`, `dump`, `guard`).
 
 Exit criteria (design §12 v0.1): no new `ScriptErrors.log` lines over 30 jumps in three sectors; missions 1–3 unchanged; 8x holds in Gredos, Aurora and one core system; counters survive save/load and a jump; mod can be added to a mid-campaign save; an ambient extortion does not empty a system; 13.2/13.4/13.6 answers recorded.
 
@@ -99,6 +101,7 @@ C1–C21 as ordered in design §12 "After v1": cross-system escort contracts, st
 
 ## Log
 
+- 2026-10-21: v0.1 implementation (workflow): `trf_state`, `trf_safety`, `trf_ui`, `trf_events`, `trf_gen` per `v01-spec.md`, wired into `traffic.script`; conformance review (spec 13, open items O1–O10); host harness scenarios a–g (`tests/host_traffic.lua`), all 16 host runs pass. `install-test.sh` gains `TRAFFIC`, `OVERRIDE`, `DUMP`, `GUARD`; README documents v0.1 and the in-game exit checks. Installed in the clone with `EXP=0 TRAFFIC=1 AUTOSAVE=1`; no in-game run yet. Paths A/B need the `st` map field (not generated yet), so only path C occurs in the game.
 - 2026-10-21: first in-game run of E0.1 on the clone passed (see E0.1). Run aborted before the first jump: the mouse could not reach the whole image because the main display is now an external 3360×1890-point (16:9) screen and the game's 1680×1050 (16:10) frame is shown pillarboxed; the clone's `default.cfg` was switched to 1920×1080 (exact 1.75× fit) for the next run.
 - 2026-10-20: design research (two Opus workflows), mod-options decision document, visibility features, regional cycle, trader prosperity, pirate clans and progression, faction sweeps and contracts, salvage, pirate bases, cargo-value-by-tier, volume scaling, faction equipment convoys, danger convoys, reconciliation with mod-options. Docs moved to `mods/traffic/design/`. No code yet.
 - 2026-10-20: implementation session (workflow). `traffic` module in the sw3tp proxy (`mods/traffic/pe/traffic.c`, hooks T1–T4 with byte and prologue checks, natives `TRF_Version/GameTime/RealTime/Log`, callbacks, T3 carry, `[traffic]` ini section, `trf_init` runs independent of `[sw3tp] enabled`); loader and E0.1–E0.3 scripts; generated `map.script` (113 systems, 256 portals, 79 trader systems); host tooling and Lua 4.0.1 harness (all runs pass); test scripts. Installed in the test clone with `EXP=1`; no in-game run yet. Committed as `e1af58c`.

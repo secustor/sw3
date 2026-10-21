@@ -1,0 +1,1282 @@
+-- sw3-traffic generator module (v0.1 spec 2, 4, 5, 6, 10.2). Lua 4.0.1.
+-- Wraps the vanilla random-contact generator action (trigger_generator_Action, include/RandomContacts.script)
+-- and Case_Eject with thunks reinstalled on every MapInitialization run. Declined ticks run the vanilla
+-- original; the mod path builds a traffic trader with the vanilla builder primitives (NewAllFlight,
+-- FillCargoFlight copy), routes it (paths A/B/C), docks by removal, exits through a portal, and the
+-- manager step handles lifetime, watchdog, station loss and wind-down. Load pass and orphan scan in
+-- TRF_Gen_OnLoad. Top level only defines functions. Plain data in TRF.live, handles in TRF_H() only.
+-- Needs trf_state and trf_safety (TRF_GenReady checks their functions); trf_ui and trf_events are optional.
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_GnL(s)
+	TRF_L("gen: "..tostring(s));
+end;
+
+-- Debug line (cfg log 2).
+function TRF_GnD(s)
+	local v = TRF_GnOpt("log", 1);
+	if type(v) == "number" and v >= 2 then TRF_L("gen: "..tostring(s)); end;
+end;
+
+-- Error handler for protected mod calls: the message goes to the mod log, not ScriptErrors.log.
+function TRF_GnErr(m)
+	TRF_L("gen: ERROR "..tostring(m));
+	if type(TRF) == "table" and type(TRF.live) == "table" and type(TRF.live.stat) == "table" then
+		TRF.live.stat.err_gen = (TRF.live.stat.err_gen or 0) + 1;
+	end;
+end;
+
+-- Protected call; nil on error.
+function TRF_GnP(f, args)
+	return call(f, args, "x", TRF_GnErr);
+end;
+
+function TRF_GnOpt(key, def)
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil then v = TRF_Cfg()[key]; end;
+	if v == nil then v = def; end;
+	return v;
+end;
+
+-- Tune constants (trf_state TRF_Tune merges cfg tune); defaults when trf_state is missing.
+function TRF_GnT()
+	if type(TRF_Tune) == "function" then
+		local t = TRF_Tune();
+		if type(t) == "table" then return t; end;
+	end;
+	return {spacing=20, T_dock=20, lifetime=720, ovd=600, wd_move=20, wd_t=60, step=10, dis_k=0.12,
+		info_r=200, np_max=300, np_r=30, dock_to=90, p_max=0.95};
+end;
+
+function TRF_GnStat(k)
+	if type(TRF_Stat) == "function" then TRF_Stat(k); return; end;
+	local L = TRF_GnLive();
+	if L then L.stat[k] = (L.stat[k] or 0) + 1; end;
+end;
+
+function TRF_GnGt()
+	if type(TRF) ~= "table" or type(TRF.clock) ~= "table" then return 0; end;
+	if type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	if type(TRF.clock.game) == "number" then return TRF.clock.game; end;
+	return 0;
+end;
+
+-- RAND as the game defines it (0..n-1).
+function TRF_GnRand(n)
+	if type(RAND) ~= "function" or type(n) ~= "number" or n < 1 then return 0; end;
+	return RAND(n);
+end;
+
+-- Visit table with the sub-tables this module writes, or nil.
+function TRF_GnLive()
+	if type(TRF) ~= "table" or type(TRF.live) ~= "table" then return nil; end;
+	local L = TRF.live;
+	if type(L.tr) ~= "table" then L.tr = {}; end;
+	if type(L.grp) ~= "table" then L.grp = {0, 0, 0, 0}; end;
+	if type(L.port) ~= "table" then L.port = {}; end;
+	if type(L.stat) ~= "table" then L.stat = {}; end;
+	if type(L.cv) ~= "table" then L.cv = {}; end;
+	return L;
+end;
+
+-- Handle table with its sub-tables, or nil.
+function TRF_GnH()
+	if type(TRF_H) ~= "function" then return nil; end;
+	local H = TRF_H();
+	if type(H) ~= "table" then return nil; end;
+	if type(H.tr) ~= "table" then H.tr = {}; end;
+	if type(H.grp) ~= "table" then H.grp = {}; end;
+	if type(H.resp) ~= "table" then H.resp = {}; end;
+	if type(H.van) ~= "table" then H.van = {}; end;
+	return H;
+end;
+
+-- 1 for a live engine object (userdata in the game, table in the host harness).
+function TRF_GnAlive(o)
+	if o == nil or type(o) == "number" or type(o) == "string" or type(o) == "function" then return nil; end;
+	return TRF_Is(o:IsAlive());
+end;
+
+function TRF_GnPos(o)
+	if TRF_GnAlive(o) then return o:GetPosition(); end;
+	return nil;
+end;
+
+-- Distance of two positions with x, y, z fields (Vector3 or plain table), or nil.
+function TRF_GnDist(a, b)
+	if a == nil or b == nil or type(a.x) ~= "number" or type(b.x) ~= "number" then return nil; end;
+	local dx, dy, dz = a.x - b.x, a.y - b.y, a.z - b.z;
+	return sqrt(dx * dx + dy * dy + dz * dz);
+end;
+
+-- Player mothership (cached in H.ms).
+function TRF_GnMs()
+	local H = TRF_GnH();
+	if H and TRF_GnAlive(H.ms) then return H.ms; end;
+	local m = TRF_N("GetPlayerMotherShip");
+	if H then H.ms = m; end;
+	return m;
+end;
+
+-- First live ship of trader id (its flight leader in convoy order).
+function TRF_GnLead(id)
+	local H = TRF_GnH();
+	if not H or type(H.tr[id]) ~= "table" or type(H.tr[id].sh) ~= "table" then return nil; end;
+	local sh = H.tr[id].sh;
+	for i = 1, getn(sh) do
+		if TRF_GnAlive(sh[i]) then return sh[i]; end;
+	end;
+	return nil;
+end;
+
+function TRF_GnTrig(kind, cb, a, b, c)
+	if type(NewTrigger) ~= "function" then return nil; end;
+	return NewTrigger(kind, nil, cb, a, b, c);
+end;
+
+-- Callback string with the current gen: TRF_GnCb("TRF_OnArrive", 17, 0) -> "TRF_OnArrive(17,0,4)--".
+function TRF_GnCb(name, id, how)
+	if how then return name.."("..id..","..how..","..TRF.gen..")--"; end;
+	return name.."("..id..","..TRF.gen..")--";
+end;
+
+-- Map entry and idx of the current system, or nil.
+function TRF_GnSys()
+	local m = TRF_N("TRF_Map");
+	local idx = TRF_N("TRF_CurIdx");
+	if type(m) ~= "table" or type(idx) ~= "number" or type(m.sys[idx]) ~= "table" then return nil, nil; end;
+	return m.sys[idx], idx;
+end;
+
+function TRF_GnSysIdx(name)
+	local m = TRF_N("TRF_Map");
+	if type(m) ~= "table" or type(name) ~= "string" then return -1; end;
+	return m.by[strlower(name)] or -1;
+end;
+
+function TRF_GnDis(idx)
+	if type(TRF_Dis) == "function" and type(idx) == "number" then return TRF_Dis(idx); end;
+	return 0;
+end;
+
+-- Map portal (within 25 units) of the current system at position p, or nil.
+function TRF_GnMatch(sy, p)
+	if type(sy) ~= "table" or type(sy.portals) ~= "table" or p == nil then return nil; end;
+	local best, bd = nil, 25;
+	for i = 1, getn(sy.portals) do
+		local q = sy.portals[i];
+		local d = TRF_GnDist(p, q);
+		if d and d <= bd then best = q; bd = d; end;
+	end;
+	return best;
+end;
+
+-- Portal object of a map portal name: label "PORTAL L", label "PORTAL_L", then the global.
+function TRF_GnPortalObj(name)
+	if type(name) ~= "string" then return nil; end;
+	local o = TRF_N("GetObjectByLabel", gsub(name, "_", " "));
+	if not o then o = TRF_N("GetObjectByLabel", name); end;
+	if not o then
+		o = getglobal(name);
+		if type(o) == "number" or type(o) == "string" or type(o) == "function" then o = nil; end;
+	end;
+	return o;
+end;
+
+function TRF_GnContacts()
+	local l = __sys_LevelRegisteredContacts;
+	if type(l) ~= "table" then return {}; end;
+	return l;
+end;
+
+function TRF_GnIsTrader(c)
+	local tf = TRADER_FLIGHT;
+	if type(tf) ~= "string" then tf = "R_CreateTraderFlight"; end;
+	return type(c) == "table" and c[1] == tf;
+end;
+
+-- Install (spec 2.2) -----------------------------------------------------------------
+
+-- Chunk name of a function, "" when unknown (no debug library or no source).
+function TRF_GnSrc(f)
+	if type(getinfo) ~= "function" or type(f) ~= "function" then return ""; end;
+	local i = getinfo(f, "S");
+	if type(i) == "table" and type(i.source) == "string" then return i.source; end;
+	return "";
+end;
+
+-- 1 when f is one of this module's thunks: identity with the thunk of an earlier run (kept as an upvalue
+-- of TRF_GenThunkGA/CE, not as a global, so AttachAction's global-name lookup still finds only the
+-- vanilla name), or a chunk name under Mods/Traffic.
+-- CHECK: the chunk name ExecuteScriptFile gives lua_dobuffer is unknown; the install line logs it.
+function TRF_IsMine(f)
+	if type(f) ~= "function" then return nil; end;
+	if type(TRF_GenThunkGA) == "function" and f == TRF_GenThunkGA() then return 1; end;
+	if type(TRF_GenThunkCE) == "function" and f == TRF_GenThunkCE() then return 1; end;
+	local s = strlower(TRF_GnSrc(f));
+	if strfind(s, "mods/traffic", 1, 1) or strfind(s, "mods\\traffic", 1, 1) then return 1; end;
+	return nil;
+end;
+
+-- Called from TRF_Main on every MapInitialization run. The vanilla includes have just redefined both
+-- functions, so the originals saved here are this run's. TRF_orig_* are function globals: they survive
+-- ClearGlobals and are never saved. Returns {ga, ce} = 1 when wrapped in this run.
+function TRF_InstallGen()
+	local w = {ga=0, ce=0};
+	local src = TRF_GnSrc(trigger_generator_Action);
+	if type(trigger_generator_Action) == "function" and not TRF_IsMine(trigger_generator_Action) then
+		TRF_orig_GenAction = trigger_generator_Action;
+		local ga = function()
+			if type(TRF_GenAction) == "function" then return TRF_GenAction(); end;
+			if type(TRF_orig_GenAction) == "function" then return TRF_orig_GenAction(); end;
+		end;
+		trigger_generator_Action = ga;
+		TRF_GenThunkGA = function() return %ga; end;
+		w.ga = 1;
+	end;
+	if type(Case_Eject) == "function" and not TRF_IsMine(Case_Eject) then
+		TRF_orig_Case_Eject = Case_Eject;
+		local ce = function(p)
+			if type(TRF_CaseEject) == "function" then return TRF_CaseEject(p); end;
+			if type(TRF_orig_Case_Eject) == "function" then return TRF_orig_Case_Eject(p); end;
+			return 2;
+		end;
+		Case_Eject = ce;
+		TRF_GenThunkCE = function() return %ce; end;
+		w.ce = 1;
+	end;
+	TRF_GnL("install generator="..w.ga.." case_eject="..w.ce.." src="..src
+		.." mine="..tostring(TRF_IsMine(trigger_generator_Action)).."/"..tostring(TRF_IsMine(Case_Eject)));
+	return w;
+end;
+
+-- Name of the computed workflow task; same as TRF_InstallGen.
+function TRF_Gen_Install()
+	return TRF_InstallGen();
+end;
+
+-- Decision (spec 2.3) ----------------------------------------------------------------
+
+-- 1 when the mod may act on this generator tick: TRF and the visit table of this gen, cfg enabled,
+-- the original saved, and the trf_state / trf_safety functions present.
+function TRF_GenReady()
+	if type(TRF) ~= "table" or not TRF.active or type(TRF.live) ~= "table" then return nil; end;
+	if type(TRF_LiveOk) == "function" and not TRF_LiveOk() then return nil; end;
+	if type(TRF_orig_GenAction) ~= "function" then return nil; end;
+	local need = {"TRF_H", "TRF_Opt", "TRF_Tune", "TRF_Rec", "TRF_Due", "TRF_NewId", "TRF_Row", "TRF_Map",
+		"TRF_CurIdx", "TRF_SysMode", "TRF_CanSpawn"};
+	for i = 1, getn(need) do
+		if type(getglobal(need[i])) ~= "function" then return nil; end;
+	end;
+	if TRF_Opt("enabled") == 0 then return nil; end;
+	return 1;
+end;
+
+function TRF_GenRearm()
+	local t = GetTriggerContext();
+	local iv = _sys_RandomContactsInterval;
+	if type(iv) ~= "number" then iv = 100; end;
+	if t then
+		t:SetTime(iv);
+		t:Activate();
+	end;
+end;
+
+-- Runs the vanilla original with the contact table reduced to c: it re-arms, re-checks __disableAction,
+-- picks c (RAND(1)), rolls c[5] and runs every vanilla step. Errors reach _ERRORMESSAGE as in vanilla.
+-- override 2: a vanilla trader that was built is kept in H.van for the M11 count (5.4).
+function TRF_GenVanillaOne(c, ci)
+	local s = __sys_LevelRegisteredContacts;
+	local f0 = __formation_number;
+	__sys_LevelRegisteredContacts = {c};
+	call(TRF_orig_GenAction, {}, "x");
+	__sys_LevelRegisteredContacts = s;
+	if TRF_GnOpt("override", 1) == 2 and TRF_GnIsTrader(c) and type(f0) == "number"
+		and type(__formation_number) == "number" and __formation_number > f0 then
+		local f = getglobal("flight_randomformation_"..(__formation_number - 1));
+		local H = TRF_GnH();
+		if H and f and type(f) ~= "number" then
+			tinsert(H.van, f);
+			TRF_GnStat("van_spawn");
+		end;
+	end;
+end;
+
+-- Returns nil (untouched original), {how="one", c, ci} (vanilla for this contact) or {how="mod", c, ci}.
+function TRF_GnDecide()
+	if not TRF_GenReady() or __disableAction == TRUE then return nil; end;
+	local ov = TRF_Opt("override");
+	if ov == 0 then return nil; end;
+	local list = __sys_LevelRegisteredContacts;
+	if type(list) ~= "table" or getn(list) < 1 then return nil; end;
+	local mode = TRF_SysMode();
+	if mode ~= "mod" and ov ~= 2 then return nil; end;
+	-- Same draw as GetRandomContact (RandomContacts.script 136-142).
+	local ci = TRF_GnRand(getn(list)) + 1;
+	local c = list[ci];
+	if type(c) ~= "table" then return nil; end;
+	if mode ~= "mod" or not TRF_GnIsTrader(c) then return {how="one", c=c, ci=ci}; end;
+	if not TRF_GnValidate() then return {how="one", c=c, ci=ci}; end;
+	return {how="mod", c=c, ci=ci};
+end;
+
+-- Thunk target. The decision runs protected: an error there falls back to the untouched original.
+function TRF_GenAction()
+	local d = TRF_GnP(TRF_GnDecide, {});
+	if type(d) ~= "table" then return TRF_orig_GenAction(); end;
+	if d.how == "one" then return TRF_GenVanillaOne(d.c, d.ci); end;
+	TRF_GenRearm();
+	TRF_GnP(TRF_GenTrader, {d.c, d.ci});
+end;
+
+-- Contact validation (spec 4.2) --------------------------------------------------------
+
+-- Checks every trader contact once per visit; caches portal names and destinations in live.cv[ci].
+-- Failure sets live.inval (TRF_SysMode then returns "vanilla" for the visit, M13). Returns 1 if valid.
+function TRF_GnValidate()
+	local L = TRF_GnLive();
+	if not L then return nil; end;
+	if L.inval then return nil; end;
+	if L.vd == 1 then return 1; end;
+	local why = TRF_GnP(TRF_GnValidateAll, {});
+	L.vd = 1;
+	if why ~= "ok" then
+		L.inval = tostring(why or "error");
+		TRF_GnStat("van_inval");
+		TRF_GnL("contacts invalid ("..L.inval.."): vanilla for this visit");
+		return nil;
+	end;
+	return 1;
+end;
+
+-- "ok" or the reason of the first failure.
+function TRF_GnValidateAll()
+	local L = TRF_GnLive();
+	local sy = TRF_GnSys();
+	if not sy then return "nomap"; end;
+	local list = TRF_GnContacts();
+	local n = 0;
+	for ci = 1, getn(list) do
+		local c = list[ci];
+		if TRF_GnIsTrader(c) then
+			if type(c[3]) ~= "table" or getn(c[3]) < 1 then return "portals ci="..ci; end;
+			if type(c[4]) ~= "table" or getn(c[4]) < 1 then return "navpoints ci="..ci; end;
+			local cv = {pn={}, pt={}};
+			for i = 1, getn(c[3]) do
+				local p = c[3][i];
+				if p == nil or type(p) == "number" or type(p) == "string" then return "portal "..i.." ci="..ci; end;
+				local e = p:GetEntryPoint(10);
+				if e == nil or type(e.x) ~= "number" then return "entry "..i.." ci="..ci; end;
+				local q = TRF_GnMatch(sy, p:GetPosition());
+				if not q then return "nomatch "..i.." ci="..ci; end;
+				cv.pn[i] = q.name;
+				cv.pt[i] = TRF_GnSysIdx(q.to);
+			end;
+			L.cv[ci] = cv;
+			n = n + 1;
+		end;
+	end;
+	TRF_GnD("contacts valid traders="..n);
+	return "ok";
+end;
+
+-- Station, approach point, portals (spec 4.2-4.4) ---------------------------------------
+
+-- Usable trade station handle or nil (trf_safety TRF_Station: map st label, IsAlive, loss for the visit).
+function TRF_GnStation()
+	if type(TRF_Station) ~= "function" then return nil; end;
+	local s = TRF_Station();
+	if TRF_GnAlive(s) then return s; end;
+	return nil;
+end;
+
+-- Registered nav point of contact c nearest the station, within np_max (R6), or nil.
+function TRF_GnApproach(c, st, T)
+	local sp = TRF_GnPos(st);
+	if not sp or type(c[4]) ~= "table" then return nil; end;
+	local best, bd = nil, T.np_max;
+	for i = 1, getn(c[4]) do
+		local d = TRF_GnDist(c[4][i], sp);
+		if d and d <= bd then best = c[4][i]; bd = d; end;
+	end;
+	return best;
+end;
+
+-- Vanilla GetRandomPortalIndexes (RandomContacts.script 118-134): {start, end}, end ~= start for 2+.
+function TRF_GnPortalIdx(n)
+	if n <= 1 then return {1, 1}; end;
+	local a = TRF_GnRand(n) + 1;
+	local b = a;
+	while b == a do b = TRF_GnRand(n) + 1; end;
+	return {b, a};
+end;
+
+-- Vanilla GetRandomWayPointList (145-167): getn(list) draws with repetition.
+function TRF_GnWay(list)
+	local r = {};
+	if type(list) ~= "table" then return r; end;
+	local n = getn(list);
+	for i = 1, n do r[i] = list[TRF_GnRand(n) + 1]; end;
+	return r;
+end;
+
+-- Spawn spot free (R12): no arrival at key within spacing, no carcass within 20 units of pos.
+-- CHECK: GetCarcassCountInSphere is never used by shipped scripts; nil counts as free.
+function TRF_GnFree(key, pos, T)
+	local L = TRF_GnLive();
+	local t = L.port[key];
+	if type(t) == "number" and TRF_GnGt() - t < T.spacing then return nil; end;
+	local n = TRF_N("GetCarcassCountInSphere", pos, 20);
+	TRF_GnD("spot "..tostring(key).." count="..tostring(n));
+	if type(n) == "number" and n > 0 then return nil; end;
+	return 1;
+end;
+
+-- Nearest registered portal to position p: portals of the trader's contact, else of any trader contact,
+-- else the map portals of the system. Returns portal, map name.
+function TRF_GnNearPortal(ci, p)
+	local L = TRF_GnLive();
+	local cand = {};
+	local list = TRF_GnContacts();
+	local add = function(c, ci2)
+		local cv = %L.cv[ci2];
+		if type(c) == "table" and type(c[3]) == "table" then
+			for i = 1, getn(c[3]) do
+				local nm = nil;
+				if type(cv) == "table" then nm = cv.pn[i]; end;
+				tinsert(%cand, {o=c[3][i], n=nm});
+			end;
+		end;
+	end;
+	if type(ci) == "number" and TRF_GnIsTrader(list[ci]) then add(list[ci], ci); end;
+	if getn(cand) == 0 then
+		for i = 1, getn(list) do
+			if TRF_GnIsTrader(list[i]) then add(list[i], i); end;
+		end;
+	end;
+	if getn(cand) == 0 then
+		local sy = TRF_GnSys();
+		if sy then
+			for i = 1, getn(sy.portals) do
+				local o = TRF_GnPortalObj(sy.portals[i].name);
+				if o then tinsert(cand, {o=o, n=sy.portals[i].name}); end;
+			end;
+		end;
+	end;
+	local best, bn, bd = nil, nil, nil;
+	for i = 1, getn(cand) do
+		local o = cand[i].o;
+		if o and type(o) ~= "number" and type(o) ~= "string" then
+			local d = TRF_GnDist(o:GetPosition(), p);
+			if not best or (d and (not bd or d < bd)) then best = o; bn = cand[i].n; bd = d; end;
+		end;
+	end;
+	return best, bn;
+end;
+
+-- Plan and roll (spec 4.3-4.5, 5.1, 7.2) ----------------------------------------------
+
+-- Fallback row when TRF_Row returns no table (trf_state shape: {row, tp, esc, fam, cheap, p2}).
+function TRF_GnRow(strength)
+	local r = TRF_Row(strength);
+	if type(r) == "table" and type(r.tp) == "number" and type(r.esc) == "number" then return r; end;
+	return {row=1, tp=1, esc=1, fam=1, cheap="Hatchet_merc1", p2=2};
+end;
+
+-- Mod path of one generator tick: p_eff roll, gates, plan, spawn.
+function TRF_GenTrader(c, ci)
+	local T = TRF_GnT();
+	local cur = TRF_CurIdx();
+	local fd = 1;
+	if TRF_GnOpt("dis", 1) ~= 0 then fd = max(0, 1 - T.dis_k * TRF_GnDis(cur)); end;
+	local sc = TRF_GnOpt("spawn_scale", 1);
+	if type(sc) ~= "number" then sc = 1; end;
+	sc = max(0, min(1, sc));
+	local pr = c[5];
+	if type(pr) ~= "number" then pr = 100; end;
+	local p = min(T.p_max, pr / 100 * sc * fd);
+	local roll = TRF_GnRand(10000);
+	if not (roll < p * 10000) then
+		TRF_GnStat("skip_roll");
+		TRF_GnD("roll ci="..tostring(ci).." p="..TRF_F(p).." roll="..roll.." -> no");
+		return nil;
+	end;
+	local ok, why = TRF_CanSpawn(0);
+	if not ok then TRF_GnStat("skip_"..tostring(why)); return nil; end;
+	local plan, pw = TRF_Plan(c, ci);
+	if not plan then TRF_GnStat("skip_"..tostring(pw)); TRF_GnD("plan ci="..tostring(ci).." -> "..tostring(pw)); return nil; end;
+	local spare;
+	ok, spare = TRF_CanSpawn(plan.n);
+	if not ok then TRF_GnStat("skip_"..tostring(spare)); return nil; end;
+	if type(spare) == "number" and plan.esc > spare then plan.esc = max(0, spare); end;
+	return TRF_Spawn(plan);
+end;
+
+-- Plan for contact c: {path, ent, ext (portal handles), entn, extn (map names), pos, dir, np, st,
+-- strength, row, n (base ships), esc (added), from, to (system idx, 0 = station, -1 unknown), ci}
+-- or nil, reason.
+function TRF_Plan(c, ci)
+	local L = TRF_GnLive();
+	local T = TRF_GnT();
+	if type(ci) ~= "number" then
+		local list = TRF_GnContacts();
+		for i = 1, getn(list) do if list[i] == c then ci = i; end; end;
+	end;
+	local cv = L.cv[ci];
+	if type(cv) ~= "table" then return nil, "valid"; end;
+	local ps = c[3];
+	local n = getn(ps);
+	local st = TRF_GnStation();
+	local np = nil;
+	if st then np = TRF_GnApproach(c, st, T); end;
+	-- Path (design 6.3): A/B need a usable station and an approach point.
+	local path = "C";
+	if st and np then
+		local r = TRF_GnRand(100);
+		if n >= 2 then
+			if r < 40 then path = "A"; elseif r < 70 then path = "B"; end;
+		else
+			if r < 55 then path = "A"; else path = "B"; end;
+		end;
+	end;
+	local ix = TRF_GnPortalIdx(n);
+	local si, ei = ix[1], ix[2];
+	local pos, dir;
+	if path == "B" then
+		pos = np;
+		if not TRF_GnFree("station", pos, T) then return nil, "space"; end;
+		dir = Vector3(0, 0, 1);
+	else
+		if not TRF_GnFree(cv.pn[si], ps[si]:GetEntryPoint(10), T) then
+			local free = {};
+			for i = 1, n do
+				if i ~= si and TRF_GnFree(cv.pn[i], ps[i]:GetEntryPoint(10), T) then tinsert(free, i); end;
+			end;
+			if getn(free) == 0 then return nil, "space"; end;
+			si = free[TRF_GnRand(getn(free)) + 1];
+			if n >= 2 and ei == si then
+				local o = {};
+				for i = 1, n do if i ~= si then tinsert(o, i); end; end;
+				ei = o[TRF_GnRand(getn(o)) + 1];
+			end;
+		end;
+		pos = ps[si]:GetEntryPoint(10);
+		dir = ps[si]:GetOrientation();
+	end;
+	-- Strength as vanilla (RandomContacts.script 235-238): level-4 .. level+3, clamped 1..20.
+	local lv = c[6];
+	if type(lv) ~= "number" then lv = 1; end;
+	local strength = lv - 4 + TRF_GnRand(8);
+	if strength > 20 then strength = 20; end;
+	if strength < 1 then strength = 1; end;
+	local row = TRF_GnRow(strength);
+	local p = {path=path, pos=pos, dir=dir, np=np, st=st, strength=strength, row=row, n=row.tp + row.esc, ci=ci, esc=0};
+	local cur = TRF_CurIdx();
+	if path ~= "B" then p.ent = ps[si]; p.entn = cv.pn[si]; end;
+	if path ~= "A" then p.ext = ps[ei]; p.extn = cv.pn[ei]; end;
+	if path == "A" then p.from = cv.pt[si]; p.to = 0;
+	elseif path == "B" then p.from = 0; p.to = cv.pt[ei];
+	else p.from = cv.pt[si]; p.to = cv.pt[ei]; end;
+	-- Added escorts (7.2): dmax over current and destination system; at most 4 escorts in total.
+	if TRF_GnOpt("dis", 1) ~= 0 then
+		local dest = cur;
+		if path ~= "A" and type(p.to) == "number" and p.to > 0 then dest = p.to; end;
+		local dm = max(TRF_GnDis(cur), TRF_GnDis(dest));
+		if dm >= 6 then p.esc = 2; elseif dm >= 3 then p.esc = 1; end;
+		p.esc = max(0, min(p.esc, 4 - row.esc));
+	end;
+	return p;
+end;
+
+-- Spawn (spec 4.5) -----------------------------------------------------------------
+
+-- First group slot k (1..4) that no open record uses (wound-down records after a load included).
+function TRF_GnSlot()
+	local L = TRF_GnLive();
+	local used = {};
+	for id, r in L.tr do
+		if type(r) == "table" and r.st ~= "gone" and type(r.k) == "number" then used[r.k] = 1; end;
+	end;
+	-- Escorts of a killed trader (trf_events h.kl) still fly in their group: re-seeding its relation for a
+	-- new trader would make escorts that fight the player peaceful again.
+	local H = TRF_GnH();
+	if H then
+		for id, h in H.tr do
+			if type(h) == "table" and h.kl and type(h.k) == "number" and TRF_GnAlive(h.fl) then used[h.k] = 1; end;
+		end;
+	end;
+	for k = 1, 4 do
+		if not used[k] then return k; end;
+	end;
+	return nil;
+end;
+
+-- Group TRF_Trade_<k> (created on first use in a visit), relation re-seeded from the Trade team (R8, M6).
+-- CHECK: CreateGroup on a name that already exists in the scene (after a load) returns a usable group.
+function TRF_GnGroup(k)
+	local H = TRF_GnH();
+	local g = H.grp[k];
+	if not g then
+		local team = CreateTeam("Trade");
+		if not team then return nil; end;
+		g = team:CreateGroup("TRF_Trade_"..k);
+		H.grp[k] = g;
+	end;
+	if g then SetGroupRelation(g, PLAYER_GROUP, GetTeamRelation("Trade", PLAYER_TEAM)); end;
+	return g;
+end;
+
+-- Random name index not used by an open record of this visit.
+function TRF_GnName()
+	local L = TRF_GnLive();
+	local names = {};
+	if type(TRF_Names) == "function" then names = TRF_Names(); end;
+	local n = getn(names);
+	if n == 0 then return 0; end;
+	local used = {};
+	for id, r in L.tr do
+		if type(r) == "table" and r.st ~= "gone" and type(r.nm) == "number" then used[r.nm] = 1; end;
+	end;
+	local free = {};
+	for i = 1, n do if not used[i] then tinsert(free, i); end; end;
+	if getn(free) == 0 then return TRF_GnRand(n) + 1; end;
+	return free[TRF_GnRand(getn(free)) + 1];
+end;
+
+-- Ships that NewAllFlight left in ship_<sign>_<i> (convoy order: transports first).
+function TRF_GnShips(sign)
+	local r = {};
+	for i = 1, 8 do
+		local s = getglobal("ship_"..sign.."_"..i);
+		if s == nil or type(s) == "number" then return r; end;
+		r[i] = s;
+	end;
+	return r;
+end;
+
+-- No handle globals stay for the save (flight_/ship_/pilot_ of NewAllFlight).
+function TRF_GnClearSign(sign)
+	setglobal("flight_"..sign, nil);
+	for i = 1, 8 do
+		setglobal("ship_"..sign.."_"..i, nil);
+		setglobal("pilot_"..sign.."_"..i, nil);
+	end;
+end;
+
+-- One added escort j (spec 4.5 step 6): cheap carcass of the row family, rank-2 pilot as NewAllFlight
+-- maps it, ROLE_ATTACK. Returns the ship or nil.
+function TRF_GnEscort(fl, plan, j)
+	local p = plan.pos;
+	local q = Vector3(p.x, p.y, p.z + 15 * (plan.n + j));
+	local s = CreateCarcass(plan.row.cheap or "Hatchet_merc1", q, plan.dir);
+	if not s then return nil; end;
+	s:AssignPilot(CreatePilot(Trad_merc_Pilots[plan.row.p2 or 2]));
+	fl:AddShip(s);
+	s:SetRole(ROLE_ATTACK);
+	return s;
+end;
+
+-- Cargo class of an item (spec 4.1, provisional): 1 machinery, 2 spare parts, 3 ore, 4 fuel,
+-- 5 perishables, 6 general freight.
+function TRF_GnCls(item)
+	local m = {Cargo_01=1, Cargo_05=1, Cargo_10=1, Cargo_06=2, Cargo_09=2, Uranium=3, Barrel_02=4,
+		Cargo_04=5, Cargo_08=5, Cargo_02=6, Cargo_03=6, Cargo_07=6};
+	return m[item] or 6;
+end;
+
+-- FillCargoFlight(flight, Trad_CargoType, power, 100, 6) (Create_flight_2.script 141-159), copied line
+-- for line with the same RAND draws, returning the stacks {{item, count}, ...}.
+function TRF_FillCargo(fl, strength)
+	local out = {};
+	local CType = Trad_CargoType;
+	if type(CType) ~= "table" or not fl then return out; end;
+	local V = 100;
+	local X = 6;
+	local P = strength or 10;
+	local numcargo = getn(CType);
+	if (V > TRF_GnRand(100)) and (X > 0) and (numcargo > 10) then
+		P = floor(P / 4);
+		for i = 1, fl:GetPilotCount() do
+			local _ship = fl:GetPilotByNumber(i):GetShip();
+			-- Bare test as vanilla (same ships get cargo, same draws).
+			if (_ship:ImBigShip()) then
+				if X > 2 then
+					local it = CType[TRF_GnRand(numcargo - 5) + P + 1];
+					local k = TRF_GnRand(2) + 1;
+					_ship:AddModuleToInventory(it, k);
+					tinsert(out, {it, k});
+				end;
+				local it = CType[TRF_GnRand(numcargo - 5) + P + 1];
+				local k = TRF_GnRand(X) + 1;
+				_ship:AddModuleToInventory(it, k);
+				tinsert(out, {it, k});
+			end;
+		end;
+	end;
+	return out;
+end;
+
+-- Class of the largest stack (first on a tie); 6 when nothing was loaded.
+function TRF_GnHoldCls(st)
+	local best, bn = 6, 0;
+	if type(st) ~= "table" then return best; end;
+	for i = 1, getn(st) do
+		if type(st[i][2]) == "number" and st[i][2] > bn then best = TRF_GnCls(st[i][1]); bn = st[i][2]; end;
+	end;
+	return best;
+end;
+
+-- Delete what a failed build left behind.
+function TRF_GnBuildFail(sign, sh)
+	local f = getglobal("flight_"..sign);
+	if TRF_GnAlive(f) then f:Delete(); end;
+	for i = 1, getn(sh) do
+		if TRF_GnAlive(sh[i]) then sh[i]:Delete(); end;
+	end;
+end;
+
+-- Builds plan p. Returns the trader id or nil.
+function TRF_Spawn(p)
+	local L = TRF_GnLive();
+	local H = TRF_GnH();
+	local gt = TRF_GnGt();
+	local id = TRF_NewId();
+	if not id then TRF_GnStat("skip_id"); return nil; end;
+	local k = TRF_GnSlot();
+	if not k then TRF_GnStat("skip_grp"); return nil; end;
+	local grp = TRF_GnP(TRF_GnGroup, {k});
+	if not grp then TRF_GnStat("skip_grp"); return nil; end;
+	if p.ent then p.ent:Start(8, 0); end;
+	local sign = "trf_"..id;
+	-- NewAllFlight looks the group up by global name; the global is cleared right after (no handle in the save).
+	setglobal("TRF_GTrade_"..k, grp);
+	local fl = TRF_GnP(NewAllFlight, {Trad_merc_Pilots, Trad_merc_Ships, "TRF_GTrade_"..k, sign, p.pos, p.strength, p.dir, "shipFormationConvoy"});
+	setglobal("TRF_GTrade_"..k, nil);
+	local sh = TRF_GnShips(sign);
+	-- NewAllFlight returns FALSE (0, truthy) on failure; a nil carcass raises an error (nil result here).
+	if not fl or type(fl) == "number" or fl == FALSE then
+		TRF_GnP(TRF_GnBuildFail, {sign, sh});
+		TRF_GnClearSign(sign);
+		TRF_GnStat("skip_build");
+		TRF_GnL("build failed id="..id.." strength="..p.strength);
+		return nil;
+	end;
+	TRF_GnClearSign(sign);
+	local tp = {};
+	for i = 1, min(p.row.tp, getn(sh)) do tp[i] = sh[i]; end;
+	local added = 0;
+	for j = 1, p.esc do
+		local s = TRF_GnP(TRF_GnEscort, {fl, p, j});
+		if s then tinsert(sh, s); added = added + 1; end;
+	end;
+	local hold = TRF_GnP(TRF_FillCargo, {fl, p.strength});
+	-- CHECK: labels on carcasses survive save/load (load pass and orphan scan depend on it).
+	for i = 1, getn(sh) do TRF_GnP(SetObjectLabel, {sh[i], sign.."_"..i}); end;
+	local lp = TRF_GnPos(sh[1]) or p.pos;
+	local st = "out";
+	if p.path == "A" then st = "in"; end;
+	local r = {id=id, nm=TRF_GnName(), cls=TRF_GnHoldCls(hold), from=p.from, to=p.to, path=p.path, st=st,
+		ci=p.ci, k=k, ent=p.entn, ext=p.extn, np=getn(sh), nt=getn(tp), esc=added, born=gt,
+		lx=lp.x, ly=lp.y, lz=lp.z, lt=gt, wd=0};
+	L.tr[id] = r;
+	L.grp[k] = id;
+	H.tr[id] = {fl=fl, sh=sh, tp=tp, ent=p.ent, ext=p.ext, np=p.np, st=p.st, k=k};
+	if p.np then H.np = p.np; end;
+	TRF.seq = id;
+	if p.path == "B" then L.port.station = gt; elseif p.entn then L.port[p.entn] = gt; end;
+	TRF_GnStat("spawn");
+	if type(TRF_ArmShips) == "function" then TRF_GnP(TRF_ArmShips, {id}); end;
+	TRF_GnP(TRF_GnArmUI, {id});
+	TRF_GnP(TRF_Orders, {id});
+	TRF_GnL("spawn id="..id.." path="..p.path.." from="..tostring(p.from).." to="..tostring(p.to)
+		.." ent="..tostring(p.entn).." ext="..tostring(p.extn).." str="..p.strength.." row="..tostring(p.row.row)
+		.." ships="..r.np.."/"..r.nt.." esc+"..added.." k="..k.." nm="..r.nm.." cls="..r.cls);
+	return id;
+end;
+
+-- Focus, proximity and meeting triggers (spec 8.3); only when trf_ui defines the callbacks.
+function TRF_GnArmUI(id)
+	local H = TRF_GnH();
+	local h = H.tr[id];
+	local ms = TRF_GnMs();
+	if TRF_GnOpt("ui", 1) ~= 0 then
+		local m = TRF_GnOpt("ui_focus", 3);
+		local lead = TRF_GnLead(id);
+		if (m == 1 or m == 3) and lead and type(TRF_OnFocus) == "function" then
+			TRF_GnTrig("focus", TRF_GnCb("TRF_OnFocus", id), lead);
+		end;
+		if (m == 2 or m == 3) and ms and type(TRF_OnNear) == "function" then
+			TRF_GnTrig("f_object_inside", TRF_GnCb("TRF_OnNear", id), h.fl, ms, TRF_GnT().info_r);
+		end;
+	end;
+	if TRF_GnOpt("meet", 1) ~= 0 and ms and type(TRF_OnMeet) == "function" then
+		TRF_GnTrig("f_object_inside", TRF_GnCb("TRF_OnMeet", id), h.fl, ms, 70);
+	end;
+end;
+
+-- Orders, arrival, docking, exit (spec 4.6) ----------------------------------------------
+
+-- Registered nav points of the trader's contact, drawn as vanilla.
+function TRF_GnNav(ci)
+	local c = TRF_GnContacts()[ci];
+	if type(c) ~= "table" then return {}; end;
+	return TRF_GnWay(c[4]);
+end;
+
+function TRF_GnExitTrig(id)
+	local H = TRF_GnH();
+	local r = TRF_Rec(id);
+	local h = H.tr[id];
+	if not r or not h or not h.ext then return nil; end;
+	r.xa = 1;
+	return TRF_GnTrig("f_object_inside", TRF_GnCb("TRF_OnExit", id), h.fl, h.ext, 20);
+end;
+
+-- Route of trader id from its spawn point. Path C is the vanilla route (R1, R6).
+function TRF_Orders(id)
+	local H = TRF_GnH();
+	local r = TRF_Rec(id);
+	local h = H.tr[id];
+	if not r or not h or not TRF_GnAlive(h.fl) then return nil; end;
+	local T = TRF_GnT();
+	if r.path == "A" then
+		h.fl:Patrol({h.ent:GetEntryPoint(70), h.np}, FALSE);
+		TRF_GnTrig("f_inside", TRF_GnCb("TRF_OnArrive", id, 0), h.fl, h.np, T.np_r);
+		return 1;
+	end;
+	local pts = {};
+	if r.path == "C" then pts[1] = h.ent:GetEntryPoint(70); end;
+	local w = TRF_GnNav(r.ci);
+	for i = 1, getn(w) do tinsert(pts, w[i]); end;
+	tinsert(pts, h.ext:GetEntryPoint(50));
+	tinsert(pts, h.ext:GetEntryPoint(1));
+	h.fl:Patrol(pts, FALSE);
+	if r.path == "B" then
+		TRF_GnExitTrig(id);
+	else
+		-- As vanilla (RandomContacts.script 270-287): the exit volume is armed at the first patrol point,
+		-- since the trader spawns at GetEntryPoint(10), inside the exit volume of a single-portal system.
+		TRF_GnTrig("f_inside", TRF_GnCb("TRF_ArmExit", id), h.fl, pts[1], 5);
+	end;
+	return 1;
+end;
+
+function TRF_ArmExit(id, g)
+	if g ~= TRF.gen then return; end;
+	local r = TRF_Rec(id);
+	if not r or r.xa == 1 then return; end;
+	TRF_GnExitTrig(id);
+	TRF_GnD("exit armed id="..id);
+end;
+
+-- how 0: approach point (f_inside np, np_r); 1: near the station; 2: docking position (dock_mode 1/2).
+function TRF_OnArrive(id, how, g)
+	if g ~= TRF.gen then return; end;
+	local r = TRF_Rec(id);
+	local H = TRF_GnH();
+	if not r or not H or not H.tr[id] then return; end;
+	local h = H.tr[id];
+	local T = TRF_GnT();
+	if how ~= 0 then
+		if r.st ~= "dock" or r.dkd == 1 then return; end;
+		r.dkd = 1;
+		TRF_Due(T.T_dock, "TRF_OnDocked", id);
+		TRF_GnD("docked id="..id.." how="..tostring(how));
+		return;
+	end;
+	if r.st ~= "in" then return; end;
+	r.st = "dock";
+	local mode = TRF_GnOpt("dock_mode", 0);
+	local st = h.st;
+	if not TRF_GnAlive(st) then st = TRF_GnStation(); end;
+	if mode == 0 or not st then
+		TRF_Due(T.T_dock, "TRF_OnDocked", id);
+		TRF_GnD("approach id="..id.." removal in "..T.T_dock);
+		return;
+	end;
+	local dock = st:GetDockingPosition();
+	if mode == 1 then
+		-- CHECK: ComeToTradeStation on an NPC carcass (E0.3; shipped scripts use it on the mothership only).
+		local lead = TRF_GnP(function(f) return f:GetLeader():GetShip(); end, {h.fl}) or TRF_GnLead(id);
+		if lead then lead:ComeToTradeStation(st); end;
+		TRF_GnTrig("f_object_inside", TRF_GnCb("TRF_OnArrive", id, 1), h.fl, st, 150);
+	else
+		h.fl:Move(dock);
+	end;
+	TRF_GnTrig("f_inside", TRF_GnCb("TRF_OnArrive", id, 2), h.fl, dock, 75);
+	TRF_Due(T.dock_to, "TRF_OnDocked", id);
+	TRF_GnD("approach id="..id.." dock_mode="..mode);
+end;
+
+-- Due call: docking by removal (M3), no portal effect.
+function TRF_OnDocked(id, b)
+	local r = TRF_Rec(id);
+	if r and r.st == "dock" then TRF_Remove(id, "dock"); end;
+end;
+
+function TRF_OnExit(id, g)
+	if g ~= TRF.gen then return; end;
+	if not TRF_Rec(id) then return; end;
+	local H = TRF_GnH();
+	local fx = nil;
+	if H and H.tr[id] then fx = H.tr[id].ext; end;
+	TRF_Remove(id, "exit", fx);
+end;
+
+-- Closes record id (st = "gone" before Delete, so died triggers fired by Delete are ignored), deletes
+-- its flight, frees its group slot. fx: portal that plays the exit effect. Returns 1 if it was open.
+-- CHECK (E0.3): whether Flight:Delete fires died / f_died.
+function TRF_Remove(id, why, fx)
+	local L = TRF_GnLive();
+	local H = TRF_GnH();
+	if not L then return nil; end;
+	local r = L.tr[id];
+	if type(r) == "table" then
+		if r.st == "gone" then return nil; end;
+		r.st = "gone";
+		if type(r.k) == "number" and L.grp[r.k] == id then L.grp[r.k] = 0; end;
+	end;
+	local h = nil;
+	if H then h = H.tr[id]; end;
+	if fx and type(fx) ~= "number" then TRF_GnP(function(o) o:Start(5, 0); end, {fx}); end;
+	if type(h) == "table" then
+		if TRF_GnAlive(h.fl) then TRF_GnP(function(f) f:Delete(); end, {h.fl}); end;
+		H.tr[id] = nil;
+	end;
+	TRF_GnStat("remove_"..tostring(why));
+	TRF_GnL("remove id="..tostring(id).." why="..tostring(why).." age="..TRF_F(TRF_GnGt() - ((r and r.born) or TRF_GnGt())));
+	return 1;
+end;
+
+-- Leader ship to the nearest registered portal with a new exit trigger (wind-down, watchdog, station
+-- lost, load pass). st: the record's new state. Returns 1 if ordered.
+function TRF_GnToPortal(id, st)
+	local L = TRF_GnLive();
+	local H = TRF_GnH();
+	local r = L.tr[id];
+	local h = H.tr[id];
+	local lead = TRF_GnLead(id);
+	if type(r) ~= "table" or not h or not lead then return nil; end;
+	local o, nm = TRF_GnNearPortal(r.ci, lead:GetPosition());
+	if not o then return nil; end;
+	-- CHECK (E0.3): whether ComeToPortal removes the ship by itself or only flies there.
+	lead:ComeToPortal(o);
+	h.ext = o;
+	if nm then r.ext = nm; end;
+	r.st = st;
+	r.xa = 1;
+	TRF_GnTrig("f_object_inside", TRF_GnCb("TRF_OnExit", id), h.fl, o, 20);
+	return 1;
+end;
+
+-- Wind-down (spec 6, R3): once per suppression onset. Near traders leave by portal (path A near the
+-- station docks), far ones are deleted.
+function TRF_WindDown()
+	local L = TRF_GnLive();
+	if not L then return; end;
+	L.wind = 1;
+	local T = TRF_GnT();
+	local mp = TRF_GnPos(TRF_GnMs());
+	local sp = TRF_GnPos(TRF_GnStation());
+	local ids = {};
+	for id, r in L.tr do
+		if type(r) == "table" and r.st ~= "gone" and r.st ~= "dock" and r.st ~= "wind" then tinsert(ids, id); end;
+	end;
+	for i = 1, getn(ids) do
+		local id = ids[i];
+		local r = L.tr[id];
+		local lp = TRF_GnPos(TRF_GnLead(id));
+		local dm, ds = TRF_GnDist(lp, mp), TRF_GnDist(lp, sp);
+		local ch = "delete";
+		if type(TRF_WindChoice) == "function" then
+			ch = TRF_WindChoice(r.path, dm, ds);
+		elseif dm and dm <= T.ovd then
+			ch = "portal";
+		end;
+		if ch == "dock" then
+			r.st = "dock";
+			TRF_Due(T.T_dock, "TRF_OnDocked", id);
+		elseif ch == "portal" and TRF_GnP(TRF_GnToPortal, {id, "wind"}) then
+			TRF_GnStat("wind_portal");
+		else
+			TRF_Remove(id, "wind");
+		end;
+		TRF_GnL("wind id="..id.." -> "..ch.." d="..TRF_F(dm));
+	end;
+end;
+
+-- Manager step (spec 5.3, 4.2, 6) ----------------------------------------------------------
+
+-- Remaining route of trader id from its current position (watchdog stage 1).
+function TRF_GnReissue(id)
+	local H = TRF_GnH();
+	local r = TRF_Rec(id);
+	local h = H.tr[id];
+	if not r or not h then return; end;
+	if r.st == "wind" then
+		local lead = TRF_GnLead(id);
+		if lead and h.ext then lead:ComeToPortal(h.ext); end;
+	elseif r.path == "A" and r.st == "in" then
+		if h.np then h.fl:Patrol({h.np}, FALSE); end;
+	elseif h.ext then
+		h.fl:Patrol({h.ext:GetEntryPoint(50), h.ext:GetEntryPoint(1)}, FALSE);
+		if r.xa ~= 1 then TRF_GnExitTrig(id); end;
+	end;
+end;
+
+-- One record: ship count, station loss, lifetime, watchdog.
+function TRF_GnStepOne(id, st, T, gt)
+	local L = TRF_GnLive();
+	local H = TRF_GnH();
+	local r = L.tr[id];
+	local h = H.tr[id];
+	if type(h) ~= "table" then TRF_Remove(id, "lost"); return; end;
+	local np, nt, dead = 0, 0, nil;
+	for i = 1, getn(h.sh) do if TRF_GnAlive(h.sh[i]) then np = np + 1; end; end;
+	for i = 1, getn(h.tp) do
+		if TRF_GnAlive(h.tp[i]) then nt = nt + 1; elseif not dead then dead = i; end;
+	end;
+	r.np = np;
+	if np == 0 then TRF_Remove(id, "lost"); return; end;
+	if nt == 0 and getn(h.tp) > 0 then
+		-- All transports dead but no died event closed the record: report it as the trigger would.
+		if type(TRF_OnShipDied) == "function" and dead then TRF_OnShipDied(id, dead, TRF.gen); end;
+		if TRF_Rec(id) then r.nt = 0; TRF_Remove(id, "lost"); end;
+		return;
+	end;
+	r.nt = nt;
+	local lp = TRF_GnPos(TRF_GnLead(id));
+	local d = TRF_GnDist(lp, TRF_GnPos(TRF_GnMs()));
+	-- Station lost (4.2): inbound path A traders leave by the nearest portal.
+	if r.path == "A" and r.st == "in" and not st then
+		if not TRF_GnToPortal(id, "out") then TRF_Remove(id, "station"); end;
+		TRF_GnL("station lost: id="..id.." to portal");
+		return;
+	end;
+	if gt - (r.born or gt) > T.lifetime and d and d > T.ovd then TRF_Remove(id, "life"); return; end;
+	if r.st == "dock" or not lp then return; end;
+	if r.wd == 3 and d and d > T.ovd then TRF_Remove(id, "stuck"); return; end;
+	local mv = TRF_GnDist(lp, {x=r.lx or 0, y=r.ly or 0, z=r.lz or 0});
+	if not r.lt or not mv or mv >= T.wd_move then
+		r.lx = lp.x; r.ly = lp.y; r.lz = lp.z; r.lt = gt; r.wd = 0;
+		return;
+	end;
+	if gt - r.lt < T.wd_t then return; end;
+	if type(r.pa) == "number" and gt - r.pa < 30 then return; end;
+	if r.wd == 0 or r.wd == nil then
+		TRF_GnReissue(id);
+		r.wd = 1;
+		TRF_GnStat("wd_1");
+		TRF_GnL("watchdog id="..id.." stage 1 (re-route)");
+	elseif r.wd == 1 then
+		if not d or d > T.ovd then
+			TRF_Remove(id, "stuck");
+			return;
+		end;
+		local ns = r.st;
+		if ns == "in" then ns = "out"; end;
+		if not TRF_GnToPortal(id, ns) then TRF_Remove(id, "stuck"); return; end;
+		r.wd = 3;
+		TRF_GnStat("wd_2");
+		TRF_GnL("watchdog id="..id.." stage 2 (portal) d="..TRF_F(d));
+	end;
+	r.lt = gt;
+end;
+
+-- Called by the loader every step (10 s of game time). Runs at most once per half step, so a per-tick
+-- call is harmless.
+function TRF_Gen_Step()
+	if type(TRF) ~= "table" or not TRF.active then return; end;
+	local L = TRF_GnLive();
+	local H = TRF_GnH();
+	if not L or not H then return; end;
+	if type(TRF_LiveOk) == "function" and not TRF_LiveOk() then return; end;
+	local T = TRF_GnT();
+	local gt = TRF_GnGt();
+	if type(L.gs) == "number" and gt >= L.gs and gt - L.gs < T.step * 0.5 then return; end;
+	L.gs = gt;
+	TRF_GnMs();
+	local st = TRF_GnP(TRF_GnStation, {});
+	if type(TRF_SafeWindOnset) == "function" then
+		if TRF_SafeWindOnset() then TRF_GnP(TRF_WindDown, {}); end;
+	elseif type(TRF_Supp) == "function" and TRF_Supp() == 2 and L.wind ~= 1 then
+		TRF_GnP(TRF_WindDown, {});
+	end;
+	local ids = {};
+	for id, r in L.tr do tinsert(ids, id); end;
+	for i = 1, getn(ids) do
+		local id = ids[i];
+		local r = L.tr[id];
+		if type(r) ~= "table" or r.st == "gone" then
+			L.tr[id] = nil;
+			-- Escorts of a killed trader (h.kl) stay with trf_events until they leave.
+			if type(H.tr[id]) == "table" and not H.tr[id].kl then H.tr[id] = nil; end;
+		else
+			TRF_GnP(TRF_GnStepOne, {id, st, T, gt});
+		end;
+	end;
+	local keep = {};
+	for i = 1, getn(H.van) do
+		if TRF_GnAlive(H.van[i]) then tinsert(keep, H.van[i]); end;
+	end;
+	H.van = keep;
+end;
+
+-- Loader callbacks (spec 10.1) ----------------------------------------------------------
+
+-- After activate.script: mothership, group slots, stamp of the player's arrival portal (4.4).
+function TRF_Gen_OnActivate()
+	local L = TRF_GnLive();
+	local H = TRF_GnH();
+	if not L or not H then return; end;
+	for k = 1, 4 do if type(L.grp[k]) ~= "number" then L.grp[k] = 0; end; end;
+	local mp = TRF_GnPos(TRF_GnMs());
+	local sy = TRF_GnSys();
+	if not mp or not sy then return; end;
+	local best, bd = nil, 600;
+	for i = 1, getn(sy.portals) do
+		local d = TRF_GnDist(mp, sy.portals[i]);
+		if d and d < bd then best = sy.portals[i].name; bd = d; end;
+	end;
+	if best then L.port[best] = TRF_GnGt(); end;
+	TRF_GnD("activate arrival portal="..tostring(best).." d="..TRF_F(bd));
+end;
+
+-- Live ships labelled trf_<id>_<i> (i <= 8), in label order.
+function TRF_GnFind(id)
+	local sh = {};
+	for i = 1, 8 do
+		local o = TRF_N("GetObjectByLabel", "trf_"..id.."_"..i);
+		if TRF_GnAlive(o) then tinsert(sh, o); end;
+	end;
+	return sh;
+end;
+
+-- Load pass for one trader found by label: minimal handles and wind-down (portal within ovd, else
+-- delete). No attack, died, focus or meeting trigger is re-armed. Returns "wind" (sent to a portal),
+-- "gone" (deleted), "none" (no live ship found) or nil (error).
+function TRF_GnLoadOne(id, r, T)
+	local H = TRF_GnH();
+	local sh = TRF_GnFind(id);
+	if getn(sh) == 0 then r.st = "gone"; return "none"; end;
+	local fl = sh[1]:GetPilot():GetFlight();
+	local tp = {};
+	local n = r.nt;
+	if type(n) ~= "number" or n < 1 then n = 1; end;
+	for i = 1, min(n, getn(sh)) do tp[i] = sh[i]; end;
+	H.tr[id] = {fl=fl, sh=sh, tp=tp};
+	r.np = getn(sh);
+	r.nt = getn(tp);
+	local lp = sh[1]:GetPosition();
+	r.lx = lp.x; r.ly = lp.y; r.lz = lp.z; r.lt = TRF_GnGt(); r.wd = 0;
+	if type(r.born) ~= "number" then r.born = TRF_GnGt(); end;
+	local d = TRF_GnDist(lp, TRF_GnPos(TRF_GnMs()));
+	r.st = "wind";
+	if d and d <= T.ovd and TRF_GnToPortal(id, "wind") then return "wind"; end;
+	if TRF_GnAlive(fl) then fl:Delete(); end;
+	for i = 1, getn(sh) do if TRF_GnAlive(sh[i]) then sh[i]:Delete(); end; end;
+	H.tr[id] = nil;
+	r.st = "gone";
+	return "gone";
+end;
+
+-- Load (spec 5.5), after migration and gen + 1: traders of the saved visit table and orphans found by
+-- label wind down; live is then reset keeping only those records (st "wind") and rn.
+function TRF_Gen_OnLoad()
+	if type(TRF) ~= "table" then return; end;
+	local H = TRF_GnH();
+	if not H then return; end;
+	TRF_GnMs();
+	local T = TRF_GnT();
+	local old = TRF.live;
+	if type(old) ~= "table" then old = {}; TRF.live = old; end;
+	if type(old.tr) ~= "table" then old.tr = {}; end;
+	local cnt = {};
+	local note = function(why, res)
+		local k = why.."_"..tostring(res);
+		%cnt[k] = (%cnt[k] or 0) + 1;
+	end;
+	local ids = {};
+	for id, r in old.tr do tinsert(ids, id); end;
+	for i = 1, getn(ids) do
+		local id = ids[i];
+		local r = old.tr[id];
+		if type(id) == "number" and type(r) == "table" and r.st ~= "gone" then
+			local res = TRF_GnP(TRF_GnLoadOne, {id, r, T});
+			if not res then r.st = "gone"; end;
+			note("load", res);
+		end;
+	end;
+	-- Orphan scan: the 16 ids up to seq (wrapping below 1 to 9999) without an open record.
+	local seq = TRF.seq;
+	if type(seq) ~= "number" then seq = 0; end;
+	for j = 0, 15 do
+		local id = seq - j;
+		if id < 1 then id = id + 9999; end;
+		local r = old.tr[id];
+		if (type(r) ~= "table" or r.st == "gone") and TRF_GnAlive(TRF_N("GetObjectByLabel", "trf_"..id.."_1")) then
+			r = {id=id, st="wind", path="C", nm=0, cls=6, from=-1, to=-1, k=0, np=0, nt=1, esc=0, born=TRF_GnGt(), wd=0};
+			old.tr[id] = r;
+			local res = TRF_GnP(TRF_GnLoadOne, {id, r, T});
+			if not res then r.st = "gone"; end;
+			note("orphan", res);
+		end;
+	end;
+	if type(TRF_LiveReset) == "function" then
+		TRF_LiveReset(1);
+	else
+		local tr = {};
+		for id, r in old.tr do if type(r) == "table" and r.st == "wind" then tr[id] = r; end; end;
+		TRF.live = {g=TRF.gen, tr=tr, grp={0, 0, 0, 0}, port={}, kills=0, rec=0, rn=old.rn or 0, due={}, stat={}};
+	end;
+	local st = TRF_GnLive().stat;
+	-- remove_load: deleted (out of view or no flight); remove_orphan: every orphan found; wind_load: sent to a portal.
+	st.remove_load = cnt.load_gone;
+	st.wind_load = cnt.load_wind;
+	st.remove_orphan = (cnt.orphan_gone or 0) + (cnt.orphan_wind or 0);
+	if st.remove_orphan == 0 then st.remove_orphan = nil; end;
+	TRF_GnL("load pass"..TRF_Kv2(cnt).." seq="..seq);
+end;
+
+-- " k=v" pairs of a table (log helper; trf_state's TRF_Kv when present).
+function TRF_Kv2(t)
+	if type(TRF_Kv) == "function" then return TRF_Kv(t); end;
+	local s = "";
+	for k, v in t do s = s.." "..tostring(k).."="..tostring(v); end;
+	return s;
+end;
+
+-- Before a jump: delete every traffic trader and response flight (M3), st = "gone".
+function TRF_Gen_BeforeJump()
+	local L = TRF_GnLive();
+	local H = TRF_GnH();
+	if not L or not H then return; end;
+	local n = 0;
+	local ids = {};
+	for id, r in L.tr do tinsert(ids, id); end;
+	for i = 1, getn(ids) do
+		local r = L.tr[ids[i]];
+		if type(r) == "table" and r.st ~= "gone" then
+			if TRF_Remove(ids[i], "jump") then n = n + 1; end;
+		end;
+	end;
+	local del = function(f) if TRF_GnAlive(f) then f:Delete(); end; end;
+	for id, h in H.tr do
+		if type(h) == "table" then TRF_GnP(del, {h.fl}); end;
+	end;
+	H.tr = {};
+	local nr = 0;
+	for k, v in H.resp do
+		if type(v) == "table" and not v.__obj then
+			for j = 1, getn(v) do TRF_GnP(del, {v[j]}); nr = nr + 1; end;
+		else
+			TRF_GnP(del, {v});
+			nr = nr + 1;
+		end;
+	end;
+	H.resp = {};
+	for k = 1, 4 do L.grp[k] = 0; end;
+	TRF_GnL("jump: traders deleted="..n.." response flights="..nr);
+end;

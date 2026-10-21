@@ -1,0 +1,408 @@
+-- sw3-traffic v0.1 player-facing text (v01-spec 8): output (8.1), templates (8.2), focus line with
+-- proximity fallback (8.3), arrival line (8.4, S20). Top level only defines functions; state is in
+-- TRF.live (met per trader, line, arr). Log prefix "ui".
+-- Other modules are reached by name and type-checked, so a missing one only disables a feature.
+
+-- Strings ---------------------------------------------------------------------------
+
+-- English strings; a localisation file replaces only this function. Keys are looked up after
+-- TRF_UI_Key (lowercase, letters and digits only), so "dir_a", "dirA" and "DIR A" are the same key.
+-- $1..$3 are the arguments a, b, c of TRF_Txt.
+function TRF_UI_Text()
+	return {
+		owner = "FTU",
+		hull1 = "freighter",
+		hull2 = "freighters",
+		who = "$1 $2 $3",                       -- owner, hull word, name
+		whononame = "$1 $2",                    -- owner, hull word
+		station = "trade station",
+		unknown = "unknown space",
+		cls0 = "cargo",
+		cls1 = "machinery",
+		cls2 = "spare parts",
+		cls3 = "ore and uranium",
+		cls4 = "fuel",
+		cls5 = "perishables",
+		cls6 = "general freight",
+		dira = "$1 -> trade station",           -- path A: origin system
+		dirb = "trade station -> $1",           -- path B: destination system
+		dirc = "$1 -> $2",                      -- path C: origin, destination
+		dirret = "returning to $1",             -- path C, same system at both ends
+		focus = "$1: $2, $3",                   -- who, cargo, direction
+		arr1 = "FTU reports raids on the lanes in this system",
+		arr2 = "FTU reports heavy raids on the lanes in this system",
+		arr3 = "FTU reports severe raids in this system; traders fly only under escort",
+		cease = "Cease fire! This is a civilian freighter.",
+		ceasefire = "Cease fire! This is a civilian freighter.",
+		-- cfg ui_keys = 1: pre-authored loc keys (design 8.1) instead of plain strings.
+		keyarr = "#TRF_ArriveDis_$1",           -- band
+		keyfocus = "#TRF_Focus_$1_$2",          -- cargo class 0..6, path A/B/C
+	};
+end;
+
+function TRF_UI_Key(key)
+	local k = gsub(strlower(tostring(key)), "[^%w]", "");
+	return k;
+end;
+
+-- Escape % in a replacement string for gsub.
+function TRF_UI_Esc(s)
+	local r = gsub(s, "%%", "%%%%");
+	return r;
+end;
+
+-- Template key -> string with $1..$3 replaced. An unknown key returns the key itself (logged).
+function TRF_Txt(key, a, b, c)
+	local s = TRF_UI_Text()[TRF_UI_Key(key)];
+	if type(s) ~= "string" then
+		TRF_L("ui txt unknown key="..tostring(key));
+		return tostring(key);
+	end;
+	local v = {a, b, c};
+	for i = 1, 3 do
+		if strfind(s, "$"..i, 1, 1) then
+			s = gsub(s, "%$"..i, TRF_UI_Esc(tostring(v[i] or "")));
+		end;
+	end;
+	return s;
+end;
+
+-- Helpers ---------------------------------------------------------------------------
+
+-- Display constants without a cfg key: focus line 6 s and 6 s apart (8.3); arrival line length.
+function TRF_UI_Const()
+	return {secs=6, gap=6, arr_secs=8};
+end;
+
+-- cfg value through TRF_Opt (trf_state), else the raw config, else def.
+function TRF_UI_Opt(key, def)
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil then v = TRF_Cfg()[key]; end;
+	if v == nil then v = def; end;
+	return v;
+end;
+
+function TRF_UI_Tune(key, def)
+	if type(TRF_Tune) == "function" then
+		local t = TRF_Tune();
+		if type(t) == "table" and type(t[key]) == "number" then return t[key]; end;
+	end;
+	return def;
+end;
+
+function TRF_UI_Live()
+	if type(TRF) == "table" and type(TRF.live) == "table" then return TRF.live; end;
+	return nil;
+end;
+
+function TRF_UI_Gt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then
+		return TRF.clock.gt;
+	end;
+	return 0;
+end;
+
+function TRF_UI_GenOk(g)
+	if type(TRF) == "table" and type(g) == "number" and g == TRF.gen then return 1; end;
+	return nil;
+end;
+
+function TRF_UI_Rec(id)
+	if type(TRF_Rec) == "function" and type(id) == "number" then return TRF_Rec(id); end;
+	return nil;
+end;
+
+-- R2: no line while a mission or extortion has disabled random contacts.
+function TRF_UI_Supp()
+	if __disableAction == TRUE or __sys_SOS == TRUE then return 1; end;
+	return nil;
+end;
+
+function TRF_UI_Stat(name)
+	local L = TRF_UI_Live();
+	if not L or type(L.stat) ~= "table" then return; end;
+	if type(L.stat[name]) ~= "number" then L.stat[name] = 0; end;
+	L.stat[name] = L.stat[name] + 1;
+end;
+
+function TRF_UI_Hnd(id)
+	if type(TRF_H) ~= "function" then return nil; end;
+	local H = TRF_H();
+	if type(H) == "table" and type(H.tr) == "table" then return H.tr[id]; end;
+	return nil;
+end;
+
+function TRF_UI_GetLeader(fl)
+	if not TRF_Is(fl:IsAlive()) then return nil; end;
+	return fl:GetLeader();
+end;
+
+-- Leader pilot of trader id (for ui_out 2), or nil.
+function TRF_UI_Leader(id)
+	local h = TRF_UI_Hnd(id);
+	if type(h) ~= "table" or not h.fl then return nil; end;
+	return call(TRF_UI_GetLeader, {h.fl}, "x", TRF_PErr);
+end;
+
+-- System display name ("Gredos"); idx 0 is the trade station.
+function TRF_UI_SysName(idx)
+	if idx == 0 then return TRF_Txt("station"); end;
+	local m = nil;
+	if type(TRF_Map) == "function" then
+		m = TRF_Map();
+	elseif type(TRF_MapData) == "function" then
+		m = TRF_MapData();
+	end;
+	if type(idx) == "number" and type(m) == "table" and type(m.sys) == "table" and type(m.sys[idx]) == "table" then
+		local s = m.sys[idx];
+		if type(s.dir) == "string" then return s.dir; end;
+		if type(s.name) == "string" then return s.name; end;
+	end;
+	return TRF_Txt("unknown");
+end;
+
+function TRF_UI_Name(nm)
+	if type(TRF_Names) ~= "function" or type(nm) ~= "number" then return nil; end;
+	local l = TRF_Names();
+	if type(l) == "table" and type(l[nm]) == "string" then return l[nm]; end;
+	return nil;
+end;
+
+-- Path from the record; derived from from/to (0 = station) when missing.
+function TRF_UI_Path(r)
+	local p = r.path;
+	if p == "A" or p == "B" or p == "C" then return p; end;
+	if r.to == 0 then return "A"; end;
+	if r.from == 0 then return "B"; end;
+	return "C";
+end;
+
+-- Live transports: record nt, else the handle list, else 1.
+function TRF_UI_Transports(r, id)
+	if type(r.nt) == "number" then return r.nt; end;
+	local h = TRF_UI_Hnd(id);
+	if type(h) == "table" and type(h.tp) == "table" then return getn(h.tp); end;
+	return 1;
+end;
+
+-- 8.2: "FTU freighter Kestrel: machinery, Aurora -> trade station".
+function TRF_UI_FocusText(r, id)
+	local p = TRF_UI_Path(r);
+	local cls = r.cls;
+	if type(cls) ~= "number" or cls < 1 or cls > 6 then cls = 0; end;
+	if TRF_UI_Opt("ui_keys", 0) == 1 then return TRF_Txt("key_focus", cls, p); end;
+	local hull = TRF_Txt("hull1");
+	if TRF_UI_Transports(r, id) >= 2 then hull = TRF_Txt("hull2"); end;
+	local nm = TRF_UI_Name(r.nm);
+	local who;
+	if nm then
+		who = TRF_Txt("who", TRF_Txt("owner"), hull, nm);
+	else
+		who = TRF_Txt("who_noname", TRF_Txt("owner"), hull);
+	end;
+	local dir;
+	if p == "A" then
+		dir = TRF_Txt("dir_a", TRF_UI_SysName(r.from));
+	elseif p == "B" then
+		dir = TRF_Txt("dir_b", TRF_UI_SysName(r.to));
+	elseif r.from == r.to then
+		dir = TRF_Txt("dir_ret", TRF_UI_SysName(r.from));
+	else
+		dir = TRF_Txt("dir_c", TRF_UI_SysName(r.from), TRF_UI_SysName(r.to));
+	end;
+	return TRF_Txt("focus", who, TRF_Txt("cls"..cls), dir);
+end;
+
+-- Output (8.1) ----------------------------------------------------------------------
+
+function TRF_UI_Msg(p, text, secs)
+	p:Message(text, secs);
+	return 1;
+end;
+
+function TRF_UI_Out(text, secs)
+	OutputToScreenLog(text, secs);
+	return 1;
+end;
+
+-- Show one line. cfg ui_out 1: OutputToScreenLog; 2: pilot:Message when a pilot is given, else 1.
+-- Returns 1 if shown. CHECK (E0.6): a plain string in OutputToScreenLog is readable on screen
+-- (shipped scripts pass only # keys); if not, set ui_out 2. The log line records what was sent.
+function TRF_Say(text, secs, pilot)
+	if TRF_UI_Opt("ui", 1) == 0 then return nil; end;
+	if type(text) ~= "string" or text == "" then return nil; end;
+	if TRF_UI_Supp() then
+		TRF_L("ui say skipped (flag) text="..text);
+		return nil;
+	end;
+	if type(secs) ~= "number" then secs = TRF_UI_Const().secs; end;
+	if TRF_UI_Opt("ui_out", 1) == 2 and pilot then
+		if call(TRF_UI_Msg, {pilot, text, secs}, "x", TRF_PErr) then
+			TRF_L("ui say out=2 secs="..secs.." text="..text);
+			return 1;
+		end;
+		TRF_L("ui say pilot:Message failed, using OutputToScreenLog");
+	end;
+	if type(OutputToScreenLog) ~= "function" then
+		TRF_L("ui say no OutputToScreenLog text="..text);
+		return nil;
+	end;
+	if call(TRF_UI_Out, {text, secs}, "x", TRF_PErr) then
+		TRF_L("ui say out=1 secs="..secs.." text="..text);
+		return 1;
+	end;
+	TRF_L("ui say OutputToScreenLog failed text="..text);
+	return nil;
+end;
+
+-- Focus line (8.3) ------------------------------------------------------------------
+
+-- Once per trader (met). Lines are at least gap seconds apart: a line due earlier is scheduled at
+-- line + gap through TRF_Due and dropped if the trader is gone by then (TRF_Rec). Called by the
+-- triggers below and by TRF_DueRun (id only). Returns 1 if shown.
+function TRF_FocusLine(id, via)
+	local r = TRF_UI_Rec(id);
+	local L = TRF_UI_Live();
+	if type(r) ~= "table" or not L or r.met then return nil; end;
+	if TRF_UI_Opt("ui", 1) == 0 then return nil; end;
+	if TRF_UI_Supp() then
+		TRF_L("ui focus id="..id.." skipped (flag)");
+		return nil;
+	end;
+	local c = TRF_UI_Const();
+	local gt = TRF_UI_Gt();
+	if type(L.line) == "number" and gt >= L.line and gt - L.line < c.gap then
+		if type(TRF_Due) == "function" then
+			TRF_Due(L.line + c.gap - gt, "TRF_FocusLine", id);
+			TRF_L("ui focus id="..id.." due in "..TRF_F(L.line + c.gap - gt));
+		else
+			TRF_L("ui focus id="..id.." dropped (no TRF_Due)");
+		end;
+		return nil;
+	end;
+	local pilot = nil;
+	if TRF_UI_Opt("ui_out", 1) == 2 then pilot = TRF_UI_Leader(id); end;
+	if TRF_Say(TRF_UI_FocusText(r, id), c.secs, pilot) then
+		r.met = 1;
+		L.line = gt;
+		TRF_L("ui focus id="..id.." shown via="..tostring(via or "due"));
+		return 1;
+	end;
+	return nil;
+end;
+
+-- Trigger "focus" on the leader ship (cfg ui_focus 1 or 3).
+-- CHECK (design 13.2): _EVENT_ONFOCUS fires when the player selects an NPC ship; the log line and
+-- the ui_focus counter show it. TRF_OnNear covers the case where it never fires.
+function TRF_OnFocus(id, g)
+	if not TRF_UI_GenOk(g) or not TRF_UI_Rec(id) then return; end;
+	TRF_UI_Stat("ui_focus");
+	TRF_L("ui OnFocus id="..id.." gt="..TRF_F(TRF_UI_Gt()));
+	local m = TRF_UI_Opt("ui_focus", 3);
+	if m ~= 1 and m ~= 3 then return; end;
+	TRF_FocusLine(id, "focus");
+end;
+
+-- Trigger f_object_inside(fl, mothership, info_r) (cfg ui_focus 2 or 3).
+function TRF_OnNear(id, g)
+	if not TRF_UI_GenOk(g) or not TRF_UI_Rec(id) then return; end;
+	TRF_UI_Stat("ui_near");
+	TRF_L("ui OnNear id="..id.." gt="..TRF_F(TRF_UI_Gt()));
+	local m = TRF_UI_Opt("ui_focus", 3);
+	if m ~= 2 and m ~= 3 then return; end;
+	TRF_FocusLine(id, "near");
+end;
+
+-- Trigger f_object_inside(fl, mothership, 70): the vanilla meeting (8.3, until S8 in v0.2).
+-- _FTrader_Action reads GetTriggerContext():GetFlight(), still valid inside this action, and
+-- compares __sys_FTrader_1..3 with RAND (a script error if _Trader_Init did not run here).
+function TRF_OnMeet(id, g)
+	if not TRF_UI_GenOk(g) or not TRF_UI_Rec(id) then return; end;
+	if TRF_UI_Opt("meet", 1) == 0 then return; end;
+	if TRF_UI_Supp() then
+		TRF_L("ui meet id="..id.." skipped (flag)");
+		return;
+	end;
+	if type(_FTrader_Action) ~= "function" then
+		TRF_L("ui meet id="..id.." no _FTrader_Action");
+		return;
+	end;
+	if type(__sys_FTrader_1) ~= "number" or type(__sys_FTrader_2) ~= "number" or type(__sys_FTrader_3) ~= "number" then
+		TRF_L("ui meet id="..id.." skipped (no _Trader_Init chances)");
+		return;
+	end;
+	TRF_L("ui meet id="..id);
+	call(_FTrader_Action, {}, "x");
+end;
+
+-- Arrival line (8.4, S20) -----------------------------------------------------------
+
+function TRF_UI_Dis(idx)
+	local d = nil;
+	if type(TRF_Dis) == "function" then
+		d = TRF_Dis(idx);
+	elseif type(TRF) == "table" and type(TRF.sys) == "table" and type(TRF.sys[idx]) == "table" then
+		d = TRF.sys[idx].dis;
+	end;
+	if type(d) ~= "number" then return 0; end;
+	return d;
+end;
+
+-- Severity band of design 11: 3-4 -> 1, 5-6 -> 2, 7-9 -> 3.
+function TRF_UI_Band(d)
+	if d <= 4 then return 1; end;
+	if d <= 6 then return 2; end;
+	return 3;
+end;
+
+-- Due call from TRF_UI_OnActivate: once per entry (arr), also when not shown (no retry, design 8.1).
+-- Returns 1 if shown.
+function TRF_ArrivalLine()
+	local L = TRF_UI_Live();
+	if not L or L.arr then return nil; end;
+	L.arr = 1;
+	if TRF_UI_Opt("arrival_line", 1) == 0 or TRF_UI_Opt("ui", 1) == 0 then return nil; end;
+	local idx = nil;
+	if type(TRF_CurIdx) == "function" then idx = TRF_CurIdx(); end;
+	if not idx then
+		TRF_L("ui arrival skipped (system not in map)");
+		return nil;
+	end;
+	-- Vanilla systems (guard, deny list, sys_off, override 0/2) get no mod text.
+	if type(TRF_SysModeQuiet) == "function" then
+		local m = call(TRF_SysModeQuiet, {}, "x", TRF_PErr);
+		if m ~= "mod" then
+			TRF_L("ui arrival skipped (mode "..tostring(m)..")");
+			return nil;
+		end;
+	end;
+	local d = TRF_UI_Dis(idx);
+	if d < TRF_UI_Tune("arr_dis", 3) then return nil; end;
+	local band = TRF_UI_Band(d);
+	if TRF_UI_Supp() then
+		TRF_L("ui arrival skipped (flag) dis="..d);
+		return nil;
+	end;
+	local text;
+	if TRF_UI_Opt("ui_keys", 0) == 1 then
+		text = TRF_Txt("key_arr", band);
+	else
+		text = TRF_Txt("arr"..band);
+	end;
+	TRF_L("ui arrival dis="..d.." band="..band);
+	return TRF_Say(text, TRF_UI_Const().arr_secs);
+end;
+
+-- Loader OnActivate (entry only, never on load): schedule the arrival line arr_delay seconds after
+-- entry. TRF_DueRun checks the generation, so a restored or stale entry does nothing.
+function TRF_UI_OnActivate()
+	local L = TRF_UI_Live();
+	if not L or L.arr then return; end;
+	if TRF_UI_Opt("arrival_line", 1) == 0 or TRF_UI_Opt("ui", 1) == 0 then return; end;
+	if type(TRF_Due) ~= "function" then
+		TRF_L("ui arrival not scheduled (no TRF_Due)");
+		return;
+	end;
+	TRF_Due(TRF_UI_Tune("arr_delay", 5), "TRF_ArrivalLine");
+end;

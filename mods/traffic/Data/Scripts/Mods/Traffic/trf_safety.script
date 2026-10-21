@@ -1,0 +1,474 @@
+-- sw3-traffic v0.1 safety module (Lua 4.0.1). Spec: design/v01-spec.md 2.3, 4.2, 5.1, 5.2, 6, 10.2.
+-- Rules: R2 flags, R3 extortion debounce, R5 switch and deny list, R10 station by label, R16 starting-region
+-- guard (used as a vanilla fallback, spec 11 decision 4), caps, governor and visit kill cap.
+-- Layout: accessors (one native or engine global each), pure predicates (*Of, explicit inputs, host-testable),
+-- then the contract functions that gather inputs and call the predicates.
+-- Top level defines functions only; state lives in TRF.live (plain data), handles in TRF_H().
+-- Extra TRF.live fields owned here: pmn (1 once __sys_Pirate_Money was nil this visit), sl (last TRF_Supp
+-- level, for logging), sm (last TRF_SysMode result, for logging), gv (1 once the governor ran on this live
+-- table), stl (1 when the station was lost this visit), sck (1 once the station was checked). TRF_LiveReset
+-- seeds capt/caps from cfg and stok = 0; gv and stl tell those defaults from results. gen may set inval (reason string) when a
+-- trader contact fails validation (4.2); TRF_SysMode then returns "vanilla" for the rest of the visit.
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_SafeL(s)
+	TRF_L("safe: "..s);
+end;
+
+-- Debug line (cfg log 2).
+function TRF_SafeD(s)
+	local lv = TRF_SafeOpt("log", 1);
+	if type(lv) == "number" and lv >= 2 then TRF_L("safe: "..s); end;
+end;
+
+-- Config value through trf_state's TRF_Opt, else the raw config, else def.
+function TRF_SafeOpt(key, def)
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil then v = TRF_Cfg()[key]; end;
+	if v == nil then v = def; end;
+	return v;
+end;
+
+-- Numeric tune constant (spec 9 `tune`): TRF_Tune(), else cfg tune, else def.
+function TRF_SafeTune(key, def)
+	local v = nil;
+	if type(TRF_Tune) == "function" then
+		local t = TRF_Tune();
+		if type(t) == "table" then v = t[key]; end;
+	end;
+	if type(v) ~= "number" then
+		local t = TRF_Cfg().tune;
+		if type(t) == "table" then v = t[key]; end;
+	end;
+	if type(v) ~= "number" then v = def; end;
+	return v;
+end;
+
+function TRF_SafeNum(v, def)
+	if type(v) == "number" then return v; end;
+	return def;
+end;
+
+function TRF_SafeClamp(v, lo, hi)
+	if v < lo then return lo; end;
+	if v > hi then return hi; end;
+	return v;
+end;
+
+-- Visit table, or nil before trf_state has built it (nothing is created here).
+function TRF_SafeLive()
+	if type(TRF) == "table" and type(TRF.live) == "table" then return TRF.live; end;
+	return nil;
+end;
+
+function TRF_SafeH()
+	if type(TRF_H) == "function" then
+		local h = TRF_H();
+		if type(h) == "table" then return h; end;
+	end;
+	return nil;
+end;
+
+-- Mod game clock (clock.gt; v1 layout clock.game).
+function TRF_SafeGt()
+	if type(TRF) ~= "table" or type(TRF.clock) ~= "table" then return 0; end;
+	if type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return TRF_SafeNum(TRF.clock.game, 0);
+end;
+
+function TRF_SafeStat(k)
+	local L = TRF_SafeLive();
+	if not L then return; end;
+	if type(L.stat) ~= "table" then L.stat = {}; end;
+	L.stat[k] = TRF_SafeNum(L.stat[k], 0) + 1;
+end;
+
+-- name in a list of names ({"elio"}) or a set ({elio=1}); case-insensitive.
+function TRF_SafeIn(list, name)
+	if type(list) ~= "table" or type(name) ~= "string" then return nil; end;
+	name = strlower(name);
+	for k, v in list do
+		if type(v) == "string" and strlower(v) == name then return 1; end;
+		if type(k) == "string" and strlower(k) == name and v and v ~= 0 then return 1; end;
+	end;
+	return nil;
+end;
+
+-- Map: trf_state's cached TRF_Map(), else the generated TRF_MapData().
+function TRF_SafeMap()
+	if type(TRF_Map) == "function" then
+		local m = TRF_Map();
+		if type(m) == "table" then return m; end;
+	end;
+	if type(TRF_MapData) == "function" then return TRF_MapData(); end;
+	return nil;
+end;
+
+-- Map entry of the current system and its idx, or nil (M13: not in the map).
+function TRF_SafeSys()
+	local m = TRF_SafeMap();
+	if type(m) ~= "table" or type(m.sys) ~= "table" then return nil; end;
+	local idx = nil;
+	if type(TRF_CurIdx) == "function" then
+		idx = TRF_CurIdx();
+	else
+		local n = TRF_Safe_Loc();
+		if type(n) == "string" and type(m.by) == "table" then idx = m.by[strlower(n)]; end;
+	end;
+	if type(idx) ~= "number" or type(m.sys[idx]) ~= "table" then return nil; end;
+	return m.sys[idx], idx;
+end;
+
+-- Accessors: one native or engine global each --------------------------------------
+
+function TRF_Safe_Loc()
+	return TRF_N("GetCurrentLocation");
+end;
+
+-- CurrentQuest label; nil when never set (mission 1).
+function TRF_Safe_Quest()
+	return TRF_N("GetQuestLabel", "CurrentQuest");
+end;
+
+-- 1 while a story mission is active, else nil. Called without arguments as OutOfMission.script 386 does.
+-- CHECK: GetPlayerQuestState() is TRUE while a story mission is active (fallback: cfg guard 2).
+-- A missing native counts as active, so the guard and the deny list stay on the vanilla side.
+function TRF_Safe_QState()
+	if type(GetPlayerQuestState) ~= "function" then return 1; end;
+	if GetPlayerQuestState() == TRUE then return 1; end;
+	return nil;
+end;
+
+-- Suppression globals (R2): dis = __disableAction, sos = __sys_SOS, money = __sys_Pirate_Money is a number.
+function TRF_Safe_Flags()
+	local f = {};
+	if __disableAction == TRUE then f.dis = 1; end;
+	if __sys_SOS == TRUE then f.sos = 1; end;
+	if type(__sys_Pirate_Money) == "number" then f.money = 1; end;
+	return f;
+end;
+
+-- Extortion flight alive. flight_pir_mon_1 is userdata that survives ClearGlobals and may come from an
+-- earlier scene: callers touch it only after ext_seen (spec 6).
+function TRF_Safe_ExtAlive()
+	local fl = flight_pir_mon_1;
+	if fl == nil or type(fl) == "number" or type(fl) == "string" or type(fl) == "function" then return nil; end;
+	return TRF_Is(fl:IsAlive());
+end;
+
+-- Carcasses in a sphere at the origin (governor, 5.2). CHECK: never used by shipped scripts; nil = unknown.
+function TRF_Safe_Count(r)
+	if type(Vector3) ~= "function" then return nil; end;
+	local n = TRF_N("GetCarcassCountInSphere", Vector3(0, 0, 0), r);
+	if type(n) ~= "number" then return nil; end;
+	return n;
+end;
+
+-- Live object with that label, or nil (R10).
+function TRF_Safe_StObj(label)
+	if type(label) ~= "string" or label == "" or type(GetObjectByLabel) ~= "function" then return nil; end;
+	local o = GetObjectByLabel(label);
+	if o and TRF_Is(o:IsAlive()) then return o; end;
+	return nil;
+end;
+
+-- Pure predicates ------------------------------------------------------------------
+
+-- Chapter from a CurrentQuest label: leading digits ("4_1" -> 4, "12a" -> 12); nil, "" or no digits -> 0 (<= 4).
+function TRF_ChapterOf(lbl)
+	if type(lbl) == "number" then return lbl; end;
+	if type(lbl) ~= "string" then return 0; end;
+	local a, b = strfind(lbl, "^%d+");
+	if not a then return 0; end;
+	return tonumber(strsub(lbl, a, b)) or 0;
+end;
+
+-- System mode (2.3). s = {enabled, override, guard, sys (map entry or nil), off, deny, deny2 (name lists),
+-- inval (reason or nil), qs (1 = mission active), ch (chapter)}. Returns "mod" or "vanilla", reason.
+-- Reasons: off (enabled 0, override 0 or unknown), observe (override 2), nomap, sys_off, inval, deny, guard.
+function TRF_SysModeOf(s)
+	if s.enabled == 0 then return "vanilla", "off"; end;
+	if s.override == 2 then return "vanilla", "observe"; end;
+	if s.override ~= 1 then return "vanilla", "off"; end;
+	local sy = s.sys;
+	if type(sy) ~= "table" or type(sy.name) ~= "string" then return "vanilla", "nomap"; end;
+	if TRF_SafeIn(s.off, sy.name) then return "vanilla", "sys_off"; end;
+	if s.inval then return "vanilla", "inval"; end;
+	if s.qs and (TRF_SafeIn(s.deny, sy.name) or TRF_SafeIn(s.deny2, sy.name)) then return "vanilla", "deny"; end;
+	-- R16 as fallback: guard 0 off, 2 start system and chapter <= 4, else (1) also needs an active mission.
+	if s.guard ~= 0 and sy.start == 1 and TRF_SafeNum(s.ch, 0) <= 4 then
+		if s.guard == 2 or s.qs then return "vanilla", "guard"; end;
+	end;
+	return "mod", nil;
+end;
+
+-- Suppression level (R2, R3): 0 none, 1 pause (no spawn, no line), 2 wind-down.
+-- dis/sos: flags (1 or nil); gt: now; sos_t: gt when __sys_SOS was first seen TRUE (nil = not yet sampled);
+-- ext: extortion flight alive; db: debounce seconds (30).
+function TRF_SuppOf(dis, sos, gt, sos_t, ext, db)
+	if dis then return 2; end;
+	if not sos then return 0; end;
+	if ext or type(sos_t) ~= "number" or gt - sos_t < db then return 1; end;
+	return 2;
+end;
+
+-- Spawn gate (5.1). s = {supp, ntr, nsh (live traffic flights / ships), n (ships of the planned base row),
+-- capt, caps (effective caps), kills, kcap (visit kill cap, <= 0 = off)}.
+-- Returns 1, spare ships (room for added escorts) or nil, reason (supp, kills, cap, ships).
+function TRF_CanSpawnOf(s)
+	if s.supp ~= 0 then return nil, "supp"; end;
+	if s.kcap > 0 and s.kills >= s.kcap then return nil, "kills"; end;
+	if s.ntr >= s.capt then return nil, "cap"; end;
+	if s.nsh + s.n > s.caps then return nil, "ships"; end;
+	return 1, s.caps - s.nsh - s.n;
+end;
+
+-- Governor (5.2): more than gov carcasses -> one trader fewer (not below 1, never raised) and ships <= 12.
+-- n nil (native missing) -> caps unchanged.
+function TRF_GovernorOf(n, ct, cs, gov)
+	if type(n) == "number" and n > gov then
+		if ct > 1 then ct = ct - 1; end;
+		if cs > 12 then cs = 12; end;
+	end;
+	return ct, cs;
+end;
+
+-- Live traffic flights and ships from the visit records (st ~= "gone", np = live ships).
+function TRF_SafeCountOf(tr)
+	local nt, ns = 0, 0;
+	if type(tr) ~= "table" then return 0, 0; end;
+	for id, r in tr do
+		if type(r) == "table" and r.st ~= "gone" then
+			nt = nt + 1;
+			ns = ns + TRF_SafeNum(r.np, 0);
+		end;
+	end;
+	return nt, ns;
+end;
+
+-- Wind-down action for one trader (spec 6, R3 row): "delete" farther than ovd (600) from the mothership or
+-- distance unknown; "dock" on path A within np_max (300) of the station; else "portal" (ComeToPortal + exit).
+function TRF_WindChoiceOf(path, d_ms, d_st, ovd, npmax)
+	if type(d_ms) ~= "number" or d_ms > ovd then return "delete"; end;
+	if path == "A" and type(d_st) == "number" and d_st <= npmax then return "dock"; end;
+	return "portal";
+end;
+
+-- Contract functions (spec 10.2) -----------------------------------------------------
+
+-- R5 authored deny list (design 9.8 S5): Elio rescue, X297 ambush, Grid/Hephaestus escape.
+function TRF_Deny()
+	return {"elio", "x297", "gefest"};
+end;
+
+function TRF_Chapter()
+	return TRF_ChapterOf(TRF_Safe_Quest());
+end;
+
+-- v0.1 caps from cfg, clamped to the pro 0-2 row (5.1): traders 0..2, ships 0..10.
+function TRF_SafeCaps()
+	local ct = TRF_SafeClamp(TRF_SafeNum(TRF_SafeOpt("cap_traders", 2), 2), 0, 2);
+	local cs = TRF_SafeClamp(TRF_SafeNum(TRF_SafeOpt("cap_ships", 10), 10), 0, 10);
+	return ct, cs;
+end;
+
+-- Inputs of TRF_SysModeOf from the game.
+function TRF_SafeModeIn()
+	local L = TRF_SafeLive();
+	local inval = nil;
+	if L then inval = L.inval; end;
+	return {
+		enabled = TRF_SafeOpt("enabled", 1),
+		override = TRF_SafeOpt("override", 1),
+		guard = TRF_SafeNum(TRF_SafeOpt("guard", 1), 1),
+		sys = TRF_SafeSys(),
+		off = TRF_SafeOpt("sys_off", {}),
+		deny = TRF_Deny(),
+		deny2 = TRF_SafeOpt("sys_deny", {}),
+		inval = inval,
+		qs = TRF_Safe_QState(),
+		ch = TRF_Chapter()
+	};
+end;
+
+-- "mod" or "vanilla", reason (2.3). Counts van_<reason> in live.stat; logs when the result changes.
+function TRF_SysMode()
+	local s = TRF_SafeModeIn();
+	local m, why = TRF_SysModeOf(s);
+	if why then TRF_SafeStat("van_"..why); end;
+	local L = TRF_SafeLive();
+	local k = m..":"..tostring(why);
+	if L and L.sm ~= k then
+		L.sm = k;
+		local nm = "nil";
+		if type(s.sys) == "table" then nm = tostring(s.sys.name); end;
+		TRF_SafeL("mode "..m.." why="..tostring(why).." sys="..nm.." ch="..tostring(s.ch).." qs="..tostring(s.qs).." guard="..tostring(s.guard));
+	end;
+	return m, why;
+end;
+
+-- TRF_SysMode without the van_<reason> count and the change log (dump, arrival line).
+function TRF_SysModeQuiet()
+	return TRF_SysModeOf(TRF_SafeModeIn());
+end;
+
+-- 0 none, 1 pause, 2 wind-down (R2, R3). Reads the flags now, so a flag set since the last tick counts.
+function TRF_Supp()
+	local f = TRF_Safe_Flags();
+	local L = TRF_SafeLive();
+	local sos_t, ext = nil, nil;
+	if L then
+		sos_t = L.sos_t;
+		if f.sos and not f.dis and L.ext_seen == 1 then ext = TRF_Safe_ExtAlive(); end;
+	end;
+	return TRF_SuppOf(f.dis, f.sos, TRF_SafeGt(), sos_t, ext, TRF_SafeTune("sos_db", 30));
+end;
+
+-- 1 once per suppression onset when a wind-down is due (sets live.wind); nil otherwise. For TRF_WindDown.
+function TRF_SafeWindOnset()
+	local L = TRF_SafeLive();
+	if not L or L.wind == 1 or TRF_Supp() ~= 2 then return nil; end;
+	L.wind = 1;
+	TRF_SafeL("wind-down onset gt="..TRF_F(TRF_SafeGt()));
+	return 1;
+end;
+
+-- Wind-down action from distances, with the tune values (see TRF_WindChoiceOf).
+function TRF_WindChoice(path, d_ms, d_st)
+	return TRF_WindChoiceOf(path, d_ms, d_st, TRF_SafeTune("ovd", 600), TRF_SafeTune("np_max", 300));
+end;
+
+-- Extortion tracking (spec 6), every tick. Returns the suppression level.
+function TRF_SafetySample()
+	local L = TRF_SafeLive();
+	if not L then return TRF_Supp(); end;
+	local f = TRF_Safe_Flags();
+	local gt = TRF_SafeGt();
+	if f.sos then
+		if type(L.sos_t) ~= "number" then
+			L.sos_t = gt;
+			TRF_SafeD("sos on gt="..TRF_F(gt));
+		end;
+	elseif L.sos_t then
+		L.sos_t = nil;
+		TRF_SafeD("sos off gt="..TRF_F(gt));
+	end;
+	if f.money then
+		if L.pmn == 1 and L.ext_seen ~= 1 then
+			L.ext_seen = 1;
+			TRF_SafeL("extortion seen gt="..TRF_F(gt));
+		end;
+	else
+		L.pmn = 1;
+	end;
+	local s = TRF_Supp();
+	-- wind is per onset; cleared only when neither flag is set, so a __disableAction wind-down runs once.
+	if s == 0 then L.wind = nil; end;
+	if s ~= TRF_SafeNum(L.sl, 0) then
+		TRF_SafeL("supp "..TRF_SafeNum(L.sl, 0).."->"..s.." dis="..tostring(f.dis).." sos="..tostring(f.sos).." ext_seen="..tostring(L.ext_seen));
+	end;
+	L.sl = s;
+	return s;
+end;
+
+-- 1, spare ships or nil, reason (5.1). nships = ships of the planned base row. Caps come from the governor;
+-- if the visit has none yet (live reset after OnActivate/OnLoad) the governor runs now.
+function TRF_CanSpawn(nships)
+	local L = TRF_SafeLive();
+	if not L then return nil, "nolive"; end;
+	if L.gv ~= 1 or type(L.capt) ~= "number" or type(L.caps) ~= "number" then TRF_Governor(); end;
+	local ntr, nsh = TRF_SafeCountOf(L.tr);
+	local s = {
+		supp = TRF_Supp(), ntr = ntr, nsh = nsh, n = TRF_SafeNum(nships, 0),
+		capt = TRF_SafeNum(L.capt, 0), caps = TRF_SafeNum(L.caps, 0),
+		kills = TRF_SafeNum(L.kills, 0), kcap = TRF_SafeTune("kill_cap", 3)
+	};
+	local ok, r = TRF_CanSpawnOf(s);
+	if not ok then
+		TRF_SafeD("no spawn "..r.." tr="..ntr.."/"..s.capt.." ships="..nsh.."+"..s.n.."/"..s.caps.." kills="..s.kills.." supp="..s.supp);
+	end;
+	return ok, r;
+end;
+
+-- Governor (5.2): sets live.capt/caps. Returns capt, caps, carcass count (nil when unknown).
+-- CHECK: one sphere of gov_r (3000) at the origin covers a system.
+function TRF_Governor()
+	local ct, cs = TRF_SafeCaps();
+	local gr = TRF_SafeNum(TRF_SafeOpt("gov_r", 3000), 3000);
+	local n = TRF_Safe_Count(gr);
+	local capt, caps = TRF_GovernorOf(n, ct, cs, TRF_SafeNum(TRF_SafeOpt("gov", 40), 40));
+	local L = TRF_SafeLive();
+	if L then L.capt = capt; L.caps = caps; L.gv = 1; end;
+	TRF_SafeL("governor n="..tostring(n).." r="..gr.." cap="..capt.."/"..caps);
+	return capt, caps, n;
+end;
+
+-- Trade station handle or nil (4.2, R10): label from the map's st field, then IsAlive. Sets live.stok and
+-- H.st. Once lost (stl 1) it stays off for the visit; no st field means no station.
+function TRF_Station()
+	local L = TRF_SafeLive();
+	local H = TRF_SafeH();
+	if L and L.stl == 1 then
+		L.stok = 0;
+		if H then H.st = nil; end;
+		return nil;
+	end;
+	local sy = TRF_SafeSys();
+	local lbl = nil;
+	if type(sy) == "table" then lbl = sy.st; end;
+	local o = TRF_Safe_StObj(lbl);
+	if H then H.st = o; end;
+	if not L then return o; end;
+	local was = L.stok;
+	if o then L.stok = 1; else L.stok = 0; end;
+	if was == 1 and not o then
+		L.stl = 1;
+		TRF_SafeL("station "..tostring(lbl).." lost");
+	elseif L.sck ~= 1 then
+		TRF_SafeL("station label="..tostring(lbl).." ok="..L.stok);
+	end;
+	L.sck = 1;
+	return o;
+end;
+
+-- Per-visit safety fields back to their start values (entry, load).
+function TRF_SafeVisitReset()
+	local L = TRF_SafeLive();
+	if L then
+		L.sos_t = nil; L.ext_seen = nil; L.pmn = nil; L.wind = nil; L.sl = nil; L.sm = nil;
+		L.gv = nil; L.stl = nil; L.sck = nil;
+	end;
+	local H = TRF_SafeH();
+	if H then H.st = nil; end;
+end;
+
+-- Loader callbacks (10.1) ------------------------------------------------------------
+
+function TRF_Safety_OnEnter()
+	TRF_SafeVisitReset();
+end;
+
+function TRF_Safety_OnActivate()
+	TRF_Governor();
+	TRF_Station();
+	local s = TRF_SafeModeIn();
+	local m, why = TRF_SysModeOf(s);
+	local nm = "nil";
+	if type(s.sys) == "table" then nm = tostring(s.sys.name); end;
+	TRF_SafeL("activate sys="..nm.." mode="..m.." why="..tostring(why).." ch="..tostring(s.ch).." qs="..tostring(s.qs));
+end;
+
+-- After a load sos_t restarts at the load time and ext_seen is nil (spec 6). TRF_Gen_OnLoad resets live
+-- afterwards (capt/caps back to cfg, stok 0); TRF_CanSpawn reruns the governor (gv nil) and gen's next
+-- TRF_Station call finds the station again (stl nil).
+function TRF_Safety_OnLoad()
+	TRF_SafeVisitReset();
+	TRF_Governor();
+	TRF_Station();
+end;
+
+function TRF_Safety_Tick()
+	TRF_SafetySample();
+end;

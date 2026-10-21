@@ -2,4 +2,6 @@
 -- exp: 0 = loader only, 1 = E0.1 hooks, 2 = E0.2 state, 3 = E0.3 trader. log: 0 silences TRF_L.
 -- autosave: 1 = baseline save kit (exp_saves.script), 2 = the same without the mission 1 guard, 0 = off.
 -- Optional keys: big=1 (E0.2 1000-entry table), del_on_jump=1 (E0.3 deletes live flights before a jump).
-function TRF_Config() return {exp=0, log=1, autosave=0} end
+-- traffic: 1 = load the v0.1 traffic modules when exp is 0 (missing key = 1), 0 = loader and kits only.
+-- Further v0.1 keys and their defaults: design/v01-spec.md 9 (TRF_OptDef in trf_state.script).
+function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1} end

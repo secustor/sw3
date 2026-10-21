@@ -74,7 +74,7 @@ function TRF_Exp_OnTick(dg, dr)
 	TRF_L("tick #"..h.ticks.." dt_game="..TRF_F(dg).." dt_real="..TRF_F(dr)
 		.." sum_game="..TRF_F(h.sum_game).." sum_real="..TRF_F(h.sum_real)
 		.." TRF_GameTime="..TRF_F(TRF_N("TRF_GameTime")).." TRF_RealTime="..TRF_F(TRF_N("TRF_RealTime"))
-		.." clock.game="..TRF_F(TRF.clock.game));
+		.." clock.gt="..TRF_F(TRF.clock.gt));
 	h.acc = 0;
 	h.sum_game = 0;
 	h.sum_real = 0;
