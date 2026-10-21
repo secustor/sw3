@@ -281,6 +281,65 @@ Every `CHECK:` comment in the v1 modules marks an engine fact the host stubs onl
 
 Pirate bases are stations in the game's snapshots and station prices live in the market, neither in `TRF`. Before uninstalling or going back to v0.2, run once with `enabled 2` (`ENABLED=2` on the clone, `install.sh --restore-only` in the game): bases are removed (`base bases removed`) and the stations of `dump shop shops` restore their prices when docked (`shop: restore done`). v0.2 resets a version-4 `TRF` (unknown version) and drops `fs`, `tp`, `base` and the other v1 fields.
 
+## Station voices (`EXP=0 TRAFFIC=1`)
+
+Station voices (proposal 3 steps 1 and 2, spec [design/station-voices-spec.md](design/station-voices-spec.md), design `design/worldbuilding/03-station-voices.md`) is one module, `trf_station`, loaded after the v1 files. It wraps two vanilla dock functions of `DockStation.script`: `_NoneStation_Action` (closed stations) and `__TradeStation_Action` (trade docking). It never wraps `__TradeStationDock_Ok`: the fee box OK calls it by name, so trf_shop's wrapper runs on every docking. It is implemented and host-tested (50 host runs, 6 of them `stn-a`..`stn-f`), not yet run in the game. The load line counts it separately: `loaded map=1 modules=18 extra=1 ...` (`extra=0` means `trf_station.script` failed to load and both stations stay vanilla).
+
+### What the player sees
+
+- Closed stations change their line with the region: martial law during an open sweep of the system owner or for 20 legs after an owner change (Hafa, Moscowia, ND, Solncevka, Endoria 2, Aurora, Corrino, Shula, Taira), silence at disruption 7, a blockade line in Raids, "no free berths" in Bust or a shortage, "under reconstruction" in Recovery, "officials at lunch" in Boom. Mod lines replace some of them: New Empire and USS martial law, the sealed depot, a dead pirate den (clan tier 1 in Bust/Recovery) and a friendly den at heat 5. Silent stations and quest dialog keys never change.
+- Trade stations keep a standing per station (-3..5). Escort contracts, sweep and danger convoy escorts and answered raids near the station raise it by 1 per visit (ceiling 5); killing or attacking traders and demanding cargo lower it (at most 2 per visit); robbing a navy supply run the station tipped sets it to -3 and stops its tips until the region is Quiet. It decays one step toward 0 per 12 legs; heat 5 caps it at 0, heat 7 at -2.
+- On approach the dockmaster greets by standing (radio line, speaker of the station owner), and from chapter 4 at standing 2+ reads the harbour news (the S19/S26 trouble and boom answers); standing 4+ adds one region tip (sweep, supply run, pirate base); standing 1+ without news gives an ambient line (chapters 0-5, 7-11).
+- Fees from chapter 5: a hub surcharge at `pro` ≥ 8 for standing ≤ 2 and a penalty at -2 (x2) and -3 (x3), `fee = round100(200 L_w (1 + 0.1 pro) m d_k)`, at most 10,000 cr. Paying a penalty buys back one step (never above -1, once per visit). Too few credits: the box docks on credit (no charge, standing -1, no news). Cancel never pays and never docks. A fee paid (or a docking on credit) is not asked again in the same visit, also after a load. No fee while any story mission runs, with `strict 0`, or in a system whose quest ids are in process.
+- Start systems stay vanilla in chapters 1-4 (the `guard`): no mood, greeting, news, tip, ambient line or fee there (`stn: pass reason=mode:guard`).
+
+### Config keys (station voices)
+
+Defaults are in `TRF_Stn_OptDef`/`TRF_Stn_TuneDef`; `config.script` does not list them (a missing key reads the module default). `install-test.sh` has no environment names for the cfg keys yet: edit the installed `config.script`. Tune keys go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `voice` | 1 | 0: both wrappers pass (vanilla) |
+| `voice_moods` | 2 | 0 moods off, 1 vanilla keys only, 2 plus the mod variants |
+| `voice_dock`, `voice_news`, `voice_fee` | 1, 1, 1 | greetings; news, tips and ambient lines; fees and buy-back |
+| `voice_gate` | 1 | mood gate: 1 strict, 2 light (only `quest` and `deny_voice` close the moods; the dock stays strict) |
+| `voice_force` | `""` | debug: force this vanilla key on every closed station (`"2"` shows the never-placed blockade line) |
+| tune `stn_decay`, `stn_near`, `stn_pos` | 12, 2500, 60 | legs per decay step; raid deed distance mothership-station; identity match radius (0 = dock param only) |
+| tune `fee_k`, `fee_pro`, `fee_cap`, `fee_ch`, `news_ch` | 200, 8, 10000, 5, 4 | fee constant, hub threshold, cap, first fee chapter, first news chapter |
+| tune `own_legs`, `mood_dis`, `mood_rdis`, `pir_heat`, `heat_c1`, `heat_c2` | 20, 7, 5, 5, 5, 7 | owner-change martial law; mood rows 3, 4, 7b; heat caps of the rung |
+| tune `stn_radio`, `stn_gap` | 8, 6 | greeting seconds; spacing to the last TRF radio or focus line |
+
+### Log lines (station voices)
+
+- Load and entry: `stn: install none=1 trade=1 mine=1/1` on every MapInitialization, `stn: enter ve=<leg> sys=<n>(<idx>) latch=<0/1> pruned=<n> vo=<leg or ->`, `stn: load latch=<0/1>`, `stn: owner sys=<n> static=<s> now=<t> vo=<leg>`.
+- Closed stations: `stn: none sys=<n>(<idx>) tip=<p> -> <key> rule=<0..8|7b> ph= dis= own= mood=<0|1|2> spk=<template>` (changes at `log 1`, every call at `log 2`).
+- Gates: `stn: pass reason=<off|nomap|deny|vdeny|flag|trade_war|latch|gate:<why>|mode:<why>|row|table|tip|error> sys=<n> at=<none|dock>`, once per reason and visit.
+- Docking: `stn: dock k=<key> param=<p> id=<prm+pos|pos|prm> d=<dist> st= e= heat= greet=<key|-> news=<0/1> tip=<kind|-> amb=<key|-> fee=<n> m=<m> nofee=<pv|qs|strict0|ch|->`, `stn: idmis k= jp= jx= d=`, `stn: fee k= fee= L_w= pro= m= dk= box=<0/1>`, `stn: fee k= ok=<1/0> cr=<a>-><b> credit=<0/1> buyback=<0/1>`, `stn: docked k= up=<0/1>`, `stn: stale box`.
+- Standing: `stn: deed k= d=<+1|-1|0|set> why=<why> st=<a>-><b> cap=<-|ceil|gv|dn|far> dist=<d|->`, `stn: decay k= st=<a>-><b> n=`, `stn: tip k= kind=<sweep|feq|base> sys= tf=`, `stn: rob k= st=-3 nt=1`.
+- Dump: `dump stn ve=<ve> n=<count> <k>:<st>/<lg>/<gv>/<bv>/<tf>[!] ... vo <name>=<leg> ... wrapped=1/1`.
+
+Keys are `idx + 200 (j - 1)`: Kadenoa's USS trade station is 51, its Triada station (`kadenoa_tri`) 251.
+
+### In-game checks (station voices)
+
+Run on the clone with cfg `log 2` (edit the installed `config.script`) and grep `traffic: lua: v1 stn:` in `sw3tp.log`.
+
+| # | fact | confirming log line |
+|---|---|---|
+| C1 | `__Wait_Action` reaches the wrapper for closed stations placed in activate.script | `stn: none sys=gaoba(42) tip=5 -> 5 rule=8` on approach; `ScriptErrors.log` empty |
+| C2 | re-install after every include (entry, load), no double wrap | `stn: install none=1 trade=1 mine=1/1` after each `OnEnter`/`OnLoad` line; one Message per approach |
+| C3 | `__system_Dock_array[N][5]:GetPosition()` is the map creation position, before and after a load | `stn: dock k=51 ... id=prm+pos d=<small>` and `k=251 ... id=prm+pos`; `id=prm` after a load means the handle does not answer: set tune `stn_pos=0` |
+| C4 | plain strings in `Pilot:Message` | screenshot plus `stn: none ... mood=2 spk=DispetcherKFNI` or `stn: dock ... greet=stnr2` |
+| C5 | `ShowMsgBox` from the approach with plain text and `\n`; OK reaches trf_shop's wrapper | `stn: fee ... box=1`, then `stn: fee ... ok=1`, `stn: docked k=..` and trf_shop's `shop:` line in the same second |
+| C6 | radio and screen-log lines readable while the box is open | screenshot; `stn: dock ... news=1` (fallback: move the news to `TRF_Stn_Docked`) |
+| C7 | the new `.loc` keys load (`loc_mode 1`) | the box shows `Heavy traffic surcharge ...` instead of `#TRF_stnfeehub` |
+| C8 | `SubPlayerCredits` inside the OK callback | `stn: fee k=.. ok=1 cr=a->b` with b = a - fee and the trade window's credit display |
+| C9 | `GetLocationTeam` reflects `Transfer_To_NI`/`HafaLife` after the include | `stn: owner sys=moscowia static=Vks now=Kfni vo=<leg>` |
+| C10 | a quest `ChangeFuncDocking` bypasses the wrapper (mission 2, Gredos) | no `stn: dock` line for the quest dock; vanilla box text |
+| C11 | mission detection holds for the fee | during a mission `stn: pass reason=gate:quest` or `reason=latch`; after it, a new entry logs `stn: dock ... fee=<n>` |
+| C12 | vanilla key `2` (never placed) loads | `voice_force "2"`: `stn: none ... -> 2 rule=0`, a readable blockade line |
+| C13 | the `DispetcherKFNI` template works outside a beacon | `stn: none ... spk=DispetcherKFNI` with a portrait |
+
 ## Installing into the game
 
 The release zip `sw3-traffic-<v>.zip` (built by `release.sh`) or this folder:

@@ -651,6 +651,7 @@ end;
 -- original always runs afterwards, unprotected by a mod handler so vanilla errors keep their path.
 function TRF_TradeDockOk()
 	call(TRF_ShopDock, {}, "x", TRF_ShopErr);
+	TRF_P("TRF_Stn_Docked");
 	local f = TRF_orig_TradeOk;
 	if type(f) == "function" then call(f, {}, "x"); end;
 end;

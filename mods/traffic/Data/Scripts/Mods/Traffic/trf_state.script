@@ -63,7 +63,7 @@ end;
 
 -- v0.2 and v1 modules with TRF_<M>_OptDef, TRF_<M>_TuneDef and TRF_<M>_Dump (v0.2 spec 10.2, 10.4; v1 10.1).
 function TRF_ModList()
-	return {"Rg", "Tier", "Raid", "Hail", "Shop", "Loc", "Track", "Faction", "Clan", "Convoy", "Danger", "Supply", "Base"};
+	return {"Rg", "Tier", "Raid", "Hail", "Shop", "Loc", "Track", "Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Stn"};
 end;
 
 -- Value of key in the first module table getglobal("TRF_"..M..suffix)() that has it, else nil.
@@ -547,6 +547,7 @@ function TRF_Repair()
 	TRF_LiveFix();
 	TRF_Tab(TRF, "exp");
 	TRF_RepairV4();
+	TRF_P("TRF_Stn_Fix");
 end;
 
 -- Create, migrate and repair TRF. Returns 1 when it created a new table.
@@ -737,6 +738,7 @@ function TRF_AddHeat(d, why)
 	if type(TRF) ~= "table" or type(TRF.std) ~= "table" or type(TRF.std.heat) ~= "number" then return 0; end;
 	local s = TRF.std;
 	local old = s.heat;
+	if type(d) == "number" then TRF_P("TRF_Stn_OnHeat", d, why); end;
 	if type(d) ~= "number" or TRF_Opt("heat") == 0 then return old; end;
 	local new = TRF_Clamp(floor(old + d + 0.5), 0, 9);
 	if old == 0 and new > 0 then s.heat_t = TRF.clock.legs; end;
@@ -756,6 +758,7 @@ function TRF_AddHelp(d, why)
 	local old = s.help;
 	if type(d) ~= "number" then return old; end;
 	s.help = TRF_Clamp(floor(old + d + 0.5), 0, 99);
+	TRF_P("TRF_Stn_OnHelp", d, why);
 	if s.help ~= old then
 		TRF_StL("help "..old.." -> "..s.help.." ("..tostring(why)..")");
 		TRF_P("TRF_NewsCheck", "help");

@@ -14,6 +14,8 @@
 -- v1 (design/v1-spec.md 10.3): trf_loc, trf_track, trf_faction, trf_clan, trf_convoy, trf_danger, trf_supply and
 -- trf_base load one by one after the v0.2 files; enabled 2 adds trf_base (base removal). Missing service
 -- functions are skipped (TRF_P), so a failed v1 file only disables its features.
+-- Station voices (design/station-voices-spec.md 12.2): trf_station loads last, after the v1 files, counted in the
+-- load line as extra= (modules= keeps the v1 count); TRF_InstallStation runs after TRF_InstallTradeDock.
 
 function TRF_Path(name)
 	return "DATA/Scripts/Mods/Traffic/"..name;
@@ -184,6 +186,7 @@ function TRF_OnEnter()
 	if TRF_Traffic() then
 		TRF_P("TRF_State_OnEnter", fresh);
 		TRF_P("TRF_Safety_OnEnter");
+		TRF_P("TRF_Stn_OnEnter");
 		TRF.active = 1;
 	else
 		TRF.active = 1;
@@ -207,6 +210,7 @@ function TRF_OnActivate()
 		TRF_P("TRF_Track_OnActivate");
 		TRF_P("TRF_Gen_OnActivate");
 		TRF_P("TRF_UI_OnActivate");
+		TRF_P("TRF_Stn_OnActivate");
 		TRF_P("TRF_DumpState", "enter");
 	end;
 	TRF_N("TRF_Exp_OnActivate", fresh);
@@ -225,7 +229,7 @@ function TRF_OnLoad()
 		TRF_P("TRF_Tier_OnLoad");
 		TRF_P("TRF_Raid_OnLoad");
 		TRF_P("TRF_Hail_OnLoad");
-		local v1 = {"Base", "Track", "Clan", "Faction", "Convoy", "Danger", "Supply"};
+		local v1 = {"Base", "Track", "Clan", "Faction", "Convoy", "Danger", "Supply", "Stn"};
 		for i = 1, getn(v1) do TRF_P("TRF_"..v1[i].."_OnLoad"); end;
 		TRF.active = 1;
 		TRF_P("TRF_DumpState", "load");
@@ -286,7 +290,7 @@ function TRF_BeforeJump(dest, how)
 	if TRF_Traffic() then
 		TRF_P("TRF_Hail_BeforeJump");
 		TRF_P("TRF_Track_BeforeJump", dest, how);
-		local v1 = {"Faction", "Clan", "Convoy", "Danger", "Supply", "Base"};
+		local v1 = {"Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Stn"};
 		for i = 1, getn(v1) do TRF_P("TRF_"..v1[i].."_BeforeJump"); end;
 		TRF_P("TRF_Raid_BeforeJump");
 		TRF_P("TRF_Gen_BeforeJump", dest);
@@ -353,7 +357,7 @@ function TRF_Main()
 	-- installs run on every MapInitialization, after the vanilla includes have redefined the wrapped functions.
 	-- cfg enabled 2 (checked before TRF_TrafficOn, which only tests enabled ~= 0): state, safety, shop and the
 	-- trade-dock wrapper, so changed station prices are restored at the next trade docking.
-	local nm = 0;
+	local nm, ne = 0, 0;
 	if TRF_TrafficOn() and TRF_Cfg().enabled == 2 then
 		local mods = {"trf_state.script", "trf_safety.script", "trf_shop.script", "trf_base.script"};
 		for i = 1, getn(mods) do if TRF_LoadFile(mods[i]) then nm = nm + 1; end; end;
@@ -369,15 +373,18 @@ function TRF_Main()
 			for i = 1, getn(v2) do if TRF_LoadFile(v2[i]) then nm = nm + 1; end; end;
 			local v1 = {"loc", "track", "faction", "clan", "convoy", "danger", "supply", "base"};
 			for i = 1, getn(v1) do if TRF_LoadFile("trf_"..v1[i]..".script") then nm = nm + 1; end; end;
+			local ex = {"station"};
+			for i = 1, getn(ex) do if TRF_LoadFile("trf_"..ex[i]..".script") then ne = ne + 1; end; end;
 			TRF_P("TRF_InstallGen");
 			TRF_P("TRF_InstallTradeDock");
+			TRF_P("TRF_InstallStation");
 			TRF_P("TRF_InstallBoard");
 			TRF_P("TRF_InstallPirDock");
 			TRF_P("TRF_InstallRelDock");
 		end;
 	end;
 	if e == 0 then
-		TRF_L("loaded map="..tostring(m).." modules="..nm.." TeleportToLocation wrapped="..wraps.tp_wrapped.." CustomTeleportate wrapped="..wraps.ct_wrapped);
+		TRF_L("loaded map="..tostring(m).." modules="..nm.." extra="..ne.." TeleportToLocation wrapped="..wraps.tp_wrapped.." CustomTeleportate wrapped="..wraps.ct_wrapped);
 	end;
 end;
 

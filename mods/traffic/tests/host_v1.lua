@@ -1707,6 +1707,12 @@ function T_V1_M()
 	local lf = W_Read(h.dir.."../../../../loc/trf_en.loc");
 	local fl = {};
 	if lf then gsub(lf, "([^\r\n]*)\r?\n", function(x) tinsert(%fl, x); end); end;
+	-- Only the generated scaffold is compared: the gen_news.py block (loc/trf_en.loc, "; sw3-traffic news records begin")
+	-- follows it and is checked by gen_news.py --check.
+	local cut = getn(fl);
+	for i = 1, getn(fl) do if cut == getn(fl) and strfind(fl[i], "^; sw3%-traffic news records begin") then cut = i - 1; end; end;
+	while cut > 0 and fl[cut] == "" do cut = cut - 1; end;
+	for i = getn(fl), cut + 1, -1 do tremove(fl, i); end;
 	local diff = "";
 	if getn(fl) ~= getn(ll) then diff = " lines "..getn(fl).."/"..getn(ll); end;
 	for i = 1, min(getn(fl), getn(ll)) do if fl[i] ~= ll[i] and strlen(diff) < 200 then diff = diff.." ["..i.."] "..fl[i].." | "..ll[i]; end; end;
