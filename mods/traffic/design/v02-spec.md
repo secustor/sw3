@@ -49,7 +49,7 @@ Each row is the rule in one line; the detail is in the section named. Every stri
 | S5 G | Lane raids: demand, comply 50 % (1–3 containers), else attack and flee | `Message`, `Attack`, `ClearInventory`, `ComeToPortal` | `ClearInventory` fails → comply without cargo loss (logged) | 5.1–5.3 |
 | S6 | Raid-help pay 50 % of `N_eff`, only with player-group damage | `attack`/`died` triggers, `AddPlayerCredits` | — | 5.5 |
 | S7 G | In-system escort contract (map `dg ≥ 1` or `dis ≥ 2`), pay `N_eff` from `L_pay` × `tier_k` × prosperity, cap 30000 | `ShowMsgBox`, `SetMaxSpeed` | speed cap off (`esc_speed 0`) | 5.6 |
-| S8 | 70-unit trigger only announces; hail = focus within 150 after the announce | `"focus"` trigger, `ShowMsgBox` chain | `hail_start 2`: box at 70 units | 6.1 |
+| S8 | 70-unit trigger only announces; hail = focus within 150 after the announce | `"focus"` trigger, `ShowMsgBox` chain | `hail_start 2` (default since 2026-10-21): box at 70 units; 1: focus within 150 | 6.1 |
 | S9 | Trader shop `trf_<cls>` from the trader's hold mirror | `CreateShop`, `ModuleGoodsState`, `TradeStationDlg` | `shop_mode 0`: vanilla `On_FTrader_Start` | 7.1 |
 | S10, M14 | Shortage at the named station: +50 % buy for the class, restore list `TRF.shops` | `__TradeStationDock_Ok` wrapper, `ModuleGoodsState` | `short_price 0`: rumour and news only | 7.2 |
 | S11 | "Where are you headed?" with one true rumour | — | — | 6.3 |
@@ -271,7 +271,7 @@ Table: fighters with 75 %, bombers 25 %. Power is `pw` = the tier's power; row =
 
 | State | Entered by | Rule |
 |---|---|---|
-| announce | v01 meeting trigger (70 units), cfg `meet` 2 (v0.2 default; 1 = v0.1 vanilla box, 0 off; `meet` 2 acts as 1 when `TRF_OnHail` is not defined) | line `open` + the band remark (6.2; screen log, once per trader); `r.ha = gt + 60`; `NewTrigger("focus", nil, "TRF_OnHail(id,g)--", leaderShip)` (a second focus trigger next to the v01 focus-line trigger; both may fire on one focus) |
+| announce | v01 meeting trigger (70 units; cfg `hail_start` 2, the default, opens the box here via `meet`, even when the line is muted; blocked only by a scene or modal window, combat, or the pause flag), cfg `meet` 2 (v0.2 default; 1 = v0.1 vanilla box, 0 off; `meet` 2 acts as 1 when `TRF_OnHail` is not defined) | line `open` + the band remark (6.2; screen log, once per trader); `r.ha = gt + 60`; `NewTrigger("focus", nil, "TRF_OnHail(id,g)--", leaderShip)` (a second focus trigger next to the v01 focus-line trigger; both may fire on one focus) |
 | request | `TRF_OnHail` (focus fired) | proceed when gen and record valid, `gt ≤ ha`, mothership ≤ `hail_r` (150, design `hail_radius`) from the leader, `hn < 2`, `gt − hlt ≥ 60`, `live.hl` empty (or older than 120 s), no flag, no debounce, no raid on it; else re-arm the focus trigger (≤ 20 per trader). `hail_start 2`: the announce opens the menu directly |
 | refuse | heat ≥ 3, or Trade team relation W | line `refuse`; `hn + 1`; heat 5–6 also a distress line without marker, once |
 | menu | | `hn + 1`, `hlt = gt`; options (only valid ones, each once per trader): Trade (7.1, `shop_mode` 1), Where are you headed? (6.3), Any news? (vanilla rumour: shown if `__sys_FTrader_3 > RAND(100)` at menu build; calls `call(_Trader_Speak, {}, "x")`; a rescued trader gives it free: `Rnd_speak = RAND(getn(SpeakList_TraderDialog)) + 1` then `StartTradeDialog(SpeakList_TraderDialog_nocost[Rnd_speak])`, as `_Trader_Speak` 414–423 does below 5000 cr), Escort (5.6), Where is traffic in trouble? (6.4), Where is trade booming? (6.4). `live.hl = {id, g, o={...}, k=1, t=gt}` |
@@ -483,7 +483,7 @@ Per-tick cost: `TRF_Raid_Tick` and `TRF_Q_Tick` act every 2 s / 1 s of gt over �
 | `cap_traders`, `cap_ships`, `spawn_scale`, `band_half` | 5, 20, 1.0, 0 | limits over the band row (9.1); halved increments |
 | `parked`, `seed`, `queue` | 1, 1, 1 | parked ships, arrival seed, docking queue |
 | `raids`, `staged`, `contracts`, `esc_speed` | 1, 1, 1, 0 | raid features; contract speed cap (0 off) |
-| `meet`, `hail_start`, `board` | 2, 1, 1 | 70-unit announce; hail by focus (2: box at 70 units); board box (2: line, 0: off) |
+| `meet`, `hail_start`, `board` | 2, 2, 1 | 70-unit announce; hail box at 70 units (`hail_start` 2; 1: hail by focus within 150); board box (2: line, 0: off) |
 | `shop_mode`, `short_price`, `restore` | 1, 1, 1 | own trader shops (0 vanilla); shortage price (0 rumour only); restore write (2 `ClearGoodsState`) |
 | `news_mode` | 1 | 0 off, 1 bulletin, 2 `AddPost` records |
 | `heat_war`, `strict` | 0, 1 | heat 7–9 group war; strict gate mode (8.3) |
@@ -518,7 +518,7 @@ New stubs: `ShowMsgBox` (records calls; the scenario presses OK or Cancel), `Cre
 ### 11.1 Decisions
 
 1. Regions: 11 homes, regions of ≤ 3 systems merged into the nearest remaining home (pending-decision default) → 8 regions (provisional list 4.1); start-phase formula and `ck` use N = 8.
-2. Hail start = focus + proximity (focus within 150 after the 70-unit announce); proximity box is cfg `hail_start 2`.
+2. Hail start = proximity box at 70 units (cfg `hail_start 2`, default since the 2026-10-21 in-game test: the focus path felt like nothing happened, especially with the announce line muted); focus within 150 after the announce is `hail_start 1`.
 3. Tracking on focus alone adds to the pool (pending default) is recorded for v1; v0.2 has no pool.
 4. Effective tier = min(real tier, `tier_cap` 2) for composition, words and pay, so information stays true while composition stops at T2; scores are not capped, so the cycle runs unchanged.
 5. TT1 hold stays the vanilla fill; TT2 cargo per flight ≈ TT1 at mid levels accepted as designed (pending default).

@@ -6,9 +6,9 @@
 
 -- Helpers ---------------------------------------------------------------------------
 
--- Config with the v0.2 defaults (v1 features off, T_V1Off) plus t.
+-- Config with the v0.2 defaults (v1 features off, T_V1Off) plus t; hail_start 1 (the focus path) unless t sets it.
 function T_Cfg2(t)
-	local c = {exp=0, log=1, traffic=1};
+	local c = {exp=0, log=1, traffic=1, hail_start=1};
 	for k, v in T_V1Off() do c[k] = v; end;
 	if t then for k, v in t do c[k] = v; end; end;
 	HOST().cfg = c;
@@ -1303,6 +1303,23 @@ function V_HailQuiet()
 	-- No flag: the announce line is shown again.
 	local d, fd, md = V_FocusMeet();
 	HOST_Check(fd == 1 and md == 1 and type(TRF.live.tr[d].ha) == "number" and V_Logs("ui meet id="..d.." line muted") == 0, "no flag: focus and announce lines");
+	-- Default hail_start (2): the box opens at the meeting, also under __sys_SOS with the line muted; no box
+	-- while a modal window is up (TRF_UiState 2); the later modal-free meeting of another trader opens one.
+	h.cfg.hail_start = nil;
+	__sys_SOS = TRUE;
+	local nb2 = getn(h.boxes);
+	local e, fe, me = V_FocusMeet();
+	HOST_Check(me == 0 and getn(h.boxes) == nb2 + 1 and type(TRF.live.hl) == "table" and TRF.live.hl.id == e
+		and V_Logs("ui meet id="..e.." line muted (quiet) hail armed") == 1 and V_Logs("hail id="..e.." via=meet menu") == 1,
+		"default hail_start, __sys_SOS: box opens at the meeting via=meet, line muted");
+	V_HailEnd();
+	__sys_SOS = FALSE;
+	local nb3 = getn(h.boxes);
+	local f2 = V_FocusMeet(1);
+	h.ui = 2;
+	HOST_Fire("f_object_inside", "TRF_OnMeet("..f2..",");
+	HOST_Check(getn(h.boxes) == nb3 and TRF.live.hl == nil and TRF.live.tr[f2].ha == nil, "default hail_start, modal window up: no box");
+	TRF_UiState = us; h.ui = nil;
 end;
 
 -- l: dock wrappers (spec 6.4, 7.2) -------------------------------------------------------------------

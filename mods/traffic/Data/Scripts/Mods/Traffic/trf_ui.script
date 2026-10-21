@@ -562,8 +562,8 @@ function TRF_UI_Announce(id)
 	TRF_Say(s, TRF_UI_Const().secs, pilot);
 	TRF_UI_Stat("ui_announce");
 	TRF_L("ui announce id="..id.." band="..tostring(b));
-	if TRF_UI_Opt("hail_start", 1) == 2 and type(TRF_HailOpen) == "function" then
-		call(TRF_HailOpen, {id, "near"}, "x", TRF_PErr);
+	if TRF_UI_Opt("hail_start", 2) == 2 and type(TRF_HailOpen) == "function" then
+		call(TRF_HailOpen, {id, "meet"}, "x", TRF_PErr);
 	elseif type(TRF_HailArm) == "function" then
 		call(TRF_HailArm, {id}, "x", TRF_PErr);
 	end;

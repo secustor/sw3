@@ -41,7 +41,7 @@ end;
 
 -- Defaults of the cfg keys this module owns (10.4).
 function TRF_Hail_OptDef()
-	return {contracts=1, esc_speed=0, hail_start=1, board=1};
+	return {contracts=1, esc_speed=0, hail_start=2, board=1};
 end;
 
 -- Tune keys read here (10.4). hail_rearm, hail_stale and hail_box are not in the spec table: focus re-arms
