@@ -2,8 +2,10 @@
 """Lint traffic mod *.script files for Lua 4.0.1 and SW3 engine pitfalls.
 
 Usage: python3 -I lint_lua.py [--host] [--allow NAME[,NAME]] [--bool NAME[,NAME]] FILE...
+       python3 -I lint_lua.py --calls [-v] [-q] FILE...
 Exit status 1 when any finding is reported. Token-based heuristics, not a parser.
 --host: Lua 4 syntax checks only, for host harness files that define engine natives and constants.
+--calls: cross-file check of TRF_ definitions and references; exit status 1 only on errors.
 """
 import argparse
 import re
@@ -161,6 +163,230 @@ def check_assign(toks, i, allow, add):
                 add(ln, "top-level data assignment to '%s' (only functions may be set at load time)" % t[1])
 
 
+# ---- --calls: cross-file check of the mod's own TRF_ functions ----
+NATIVES = set("TRF_Version TRF_GameTime TRF_RealTime TRF_Log TRF_InMovie TRF_UiState".split())  # pe/traffic.c
+TOLERANT = {"TRF_N", "TRF_P", "getglobal"}    # look the name up and skip a missing function
+TRF_NAME = re.compile(r"TRF_\w+$")
+TRF_ACTION = re.compile(r"(TRF_\w+)\s*\(")    # string trigger action "TRF_Name(..."
+OPEN = {"(": ")", "{": "}", "[": "]"}
+
+
+def tolerant(callee, k, tol):
+    """Call passes argument k to getglobal + type check (TRF_N, TRF_P, *X helpers, auto-detected)."""
+    return (k == 0 and (callee in TOLERANT or re.match(r"TRF_\w*X$", callee or ""))) or (callee, k) in tol
+
+
+def str_kind(callee, k):
+    if callee and callee.endswith("Due"):
+        return "due"
+    if callee and re.search(r"Cb\d*$", callee):
+        return "cb"
+    return "str"
+
+
+def scan_calls(path):
+    """Definitions, global assignments and TRF_ references of one file."""
+    with open(path, "r", encoding="latin-1", newline="") as f:
+        toks = tokenize(f.read())
+    v = [t[1] for t in toks]
+    kinds = [t[0] for t in toks]
+    n = len(toks)
+    defs, assigns, refs, guards, tolp = [], set(), [], set(), []
+    stack, brackets = [], []    # block stack ('f'/'b'); open brackets [kind, callee, argidx]
+    scope, sname, params = None, None, []    # current top-level function (token index) and its parameters
+    for i, (kind, val, ln) in enumerate(toks):
+        prev = v[i - 1] if i else ""
+        nxt = v[i + 1] if i + 1 < n else ""
+        if kind == "name":
+            if val == "function":
+                if not stack:
+                    scope, sname, params = i, None, []
+                name, j = None, i            # j: token before the parameter list
+                if i + 2 < n and kinds[i + 1] == "name" and v[i + 2] == "(":
+                    name, j = v[i + 1], i + 1
+                elif prev == "=" and i >= 2 and kinds[i - 2] == "name" and (i < 3 or v[i - 3] not in (".", ":", "local")):
+                    name = v[i - 2]          # TRF_X = function(...)
+                if not stack:
+                    sname = name
+                if j + 1 < n and v[j + 1] == "(":
+                    k, ps, va = j + 2, [], False
+                    while k < n and v[k] != ")":
+                        if v[k] == "...":
+                            va = True
+                        elif kinds[k] == "name":
+                            ps.append(v[k])
+                        k += 1
+                    if not stack:
+                        params = ps
+                    if name and name.startswith(PREFIX):
+                        defs.append((name, len(ps), va, ln, not stack and j == i + 1, path))
+                stack.append("f")
+            elif val in ("if", "do", "repeat"):
+                stack.append("b")
+            elif val in ("end", "until"):
+                if stack:
+                    stack.pop()
+                if not stack:
+                    scope, sname, params = None, None, []
+            elif val == "getglobal" and nxt == "(" and i + 3 < n and v[i + 3] == ")" and v[i + 2] in params:
+                if sname:
+                    tolp.append((sname, params.index(v[i + 2])))
+            elif val.startswith(PREFIX) and prev not in (".", ":", "function"):
+                if prev == "(" and i >= 2 and v[i - 2] == "type" and nxt == ")":
+                    guards.add((scope, val))
+                elif nxt == "=" and prev != "local":
+                    assigns.add(val)
+                elif nxt in ("(", "{") or kinds[i + 1:i + 2] == ["str"]:
+                    refs.append(("call", val, ln, scope) + count_args(toks, i + 1))
+                elif prev != "local" and not (nxt == "," and not brackets):    # not a multiple-assignment target
+                    refs.append(("val", val, ln, scope, None, False))
+        elif kind == "str":
+            s = val[1:-1]
+            m = TRF_ACTION.match(s)
+            top = brackets[-1] if brackets else None
+            whole = prev in ("(", ",", "{", "=") and nxt in (",", ")", "}", ";", "")
+            if m:
+                refs.append(("action", m.group(1), ln, scope, None, False))
+            elif TRF_NAME.match(s) and whole and prev != ".." and nxt != "..":
+                if top and top[0] == "(" and top[1] and prev in ("(", ","):
+                    callee, k = top[1], top[2]
+                    if callee == "setglobal" and k == 0:
+                        assigns.add(s)
+                    else:
+                        refs.append(("str@%s:%d" % (callee, k), s, ln, scope, callee, k))
+                else:
+                    refs.append(("str", s, ln, scope, None, None))
+        if val in OPEN and kind == "op":
+            callee = prev if val == "(" and i and kinds[i - 1] == "name" and prev not in KEYWORDS else None
+            brackets.append([val, callee, 0])
+        elif val in (")", "}", "]") and kind == "op":
+            if brackets:
+                brackets.pop()
+        elif val == "," and brackets:
+            brackets[-1][2] += 1
+    return defs, assigns, refs, guards, tolp
+
+
+def count_args(toks, i):
+    """(nargs, multi) of the call whose argument list starts at token i; multi: the last arg may expand."""
+    if toks[i][1] != "(":
+        return 1, False      # f{...} / f"..."
+    depth, commas, j = 0, 0, i
+    while j < len(toks):
+        kind, t = toks[j][0], toks[j][1]
+        if kind == "op" and t in OPEN:
+            depth += 1
+        elif kind == "op" and t in (")", "}", "]"):
+            depth -= 1
+            if depth == 0:
+                break
+        elif t == "," and depth == 1:
+            commas += 1
+        j += 1
+    if j == i + 1:
+        return 0, False
+    return commas + 1, toks[j - 1][1] in (")", "...")
+
+
+# Load sets (traffic.script TRF_Main): cfg exp 1..3 loads one exp kit and no trf_* module, exp 0 loads the
+# trf_* modules; traffic.script holds fallbacks that a later module redefines (TRF_Init).
+KITS = ("exp_hooks.script", "exp_state.script", "exp_trader.script")
+LOADER = "traffic.script"
+
+
+def base(p):
+    return p.replace("\\", "/").rsplit("/", 1)[-1]
+
+
+def exclusive(p, q):
+    """Files never loaded together."""
+    a, b = base(p), base(q)
+    return a != b and (a in KITS or b in KITS) and (a in KITS or a.startswith("trf_")) \
+        and (b in KITS or b.startswith("trf_"))
+
+
+def lint_calls(paths, verbose=False, quiet=False):
+    defs, assigns, refs, guards, tol = {}, set(), [], set(), set()
+    out, nexcl = [], 0
+    add = lambda p, ln, kind, msg: out.append((kind, "%s:%d: %s: %s" % (p, ln, kind, msg)))
+    for p in paths:
+        d, a, r, g, t = scan_calls(p)
+        for name, np, va, ln, top, _ in d:
+            lst = defs.setdefault(name, [])
+            for o in lst:
+                if not (top and o[4]):
+                    continue
+                if exclusive(o[5], p):
+                    nexcl += 1
+                elif base(o[5]) == LOADER and base(p) != LOADER:
+                    add(p, ln, "info", "%s redefines the loader fallback (%s:%d)" % (name, o[5], o[3]))
+                else:
+                    add(p, ln, "error", "duplicate definition of %s (first at %s:%d)" % (name, o[5], o[3]))
+                break
+            lst.append((name, np, va, ln, top, p))
+        assigns |= a
+        refs += [(p,) + x for x in r]
+        guards |= {(p, s, nm) for s, nm in g}
+        tol |= set(t)
+
+    def target(name, p):
+        """Definition a call from file p reaches: same file, else a later-loaded module, else the loader."""
+        c = [d for d in defs.get(name, []) if not exclusive(d[5], p)]
+        c.sort(key=lambda d: (d[5] != p, base(d[5]) == LOADER, not d[4]))
+        return c[0] if c else None
+
+    optional = []
+    for p, kind, name, ln, scope, x, y in refs:
+        if kind.startswith("str@") and not (x.startswith(PREFIX) or x == "getglobal"):
+            continue        # engine call (CreateGroup, SetGroupRelation, ...): a label, not a function
+        dfn = target(name, p)
+        known = dfn or name in assigns or name in NATIVES
+        guarded = (p, scope, name) in guards
+        excl = "" if known or name not in defs else " (only in %s)" % ", ".join(
+            sorted({base(d[5]) for d in defs[name]}))
+        if kind == "call":
+            if not known:
+                if guarded:
+                    optional.append((p, ln, name))
+                else:
+                    add(p, ln, "error", "call to undefined %s%s" % (name, excl))
+                continue
+            if dfn and not dfn[2]:
+                nargs, multi = x, y
+                if nargs > dfn[1]:
+                    add(p, ln, "warn", "%s called with %d args, defined with %d (%s:%d)"
+                        % (name, nargs, dfn[1], dfn[5], dfn[3]))
+                elif nargs < dfn[1] and not multi:
+                    add(p, ln, "info", "%s called with %d args, defined with %d (%s:%d)"
+                        % (name, nargs, dfn[1], dfn[5], dfn[3]))
+        elif known:
+            continue
+        elif guarded or (kind.startswith("str@") and tolerant(x, y, tol)):
+            optional.append((p, ln, name))
+        elif kind == "val":
+            add(p, ln, "warn", "reference to undefined %s%s" % (name, excl))
+        elif kind == "action":
+            add(p, ln, "warn", "trigger action calls undefined %s%s" % (name, excl))
+        else:
+            what = str_kind(x, y) if kind.startswith("str@") else "str"
+            where = " (arg %d of %s)" % (y + 1, x) if kind.startswith("str@") else ""
+            label = {"due": "scheduled call", "cb": "callback name", "str": "string reference"}[what]
+            add(p, ln, "warn", "%s to undefined %s%s%s" % (label, name, where, excl))
+    out.sort(key=lambda o: (o[1].split(":")[0], int(o[1].split(":")[1])))
+    for kind, line in out:
+        if not (quiet and kind == "info"):
+            print(line)
+    if verbose:
+        for p, ln, name in optional:
+            print("%s:%d: optional: %s not defined (guarded or looked up)" % (p, ln, name))
+    cnt = {k: sum(1 for kk, _ in out if kk == k) for k in ("error", "warn", "info")}
+    print("%d error(s), %d warn(s), %d info, %d optional unresolved (%d distinct), %d redefinition(s) in "
+          "exclusive load sets; %d TRF_ functions, %d references in %d file(s)"
+          % (cnt["error"], cnt["warn"], cnt["info"], len(optional), len({o[2] for o in optional}), nexcl,
+             len(defs), len(refs), len(paths)), file=sys.stderr)
+    return 1 if cnt["error"] else 0
+
+
 def names(vals):
     return {x for s in vals for x in s.split(",") if x}
 
@@ -173,8 +399,14 @@ def main():
                     help="extra functions returning TRUE/FALSE")
     ap.add_argument("--host", action="store_true",
                     help="host harness file: only the Lua 4 syntax checks")
+    ap.add_argument("--calls", action="store_true",
+                    help="cross-file check of TRF_ definitions, references and argument counts")
+    ap.add_argument("-v", "--verbose", action="store_true", help="--calls: also list the optional references")
+    ap.add_argument("-q", "--quiet", action="store_true", help="--calls: count the info findings, do not list them")
     ap.add_argument("files", nargs="+")
     a = ap.parse_args()
+    if a.calls:
+        return lint_calls(a.files, a.verbose, a.quiet)
     allow, bools = names(a.allow), BOOL_FUNCS | names(a.bool)
     found = []
     for p in a.files:
