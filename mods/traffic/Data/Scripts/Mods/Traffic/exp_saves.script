@@ -33,7 +33,7 @@
 -- NewTrigger only for the first arm (OnActivate) and when no context is available.
 
 function TRF_Saves_Opt()
-	return {delay=20, cap=6, quiet=10, retries=12};
+	return {delay=20, cap=6, quiet=10, retries=45};
 end;
 
 -- Mod game clock (traffic.script TRF_OnTick; trf_safety.script is not loaded for every exp).
@@ -176,7 +176,9 @@ function TRF_Saves_Fire_Body(gen)
 			return;
 		end;
 		TRF_Saves_Arm(e, o.delay, t);
-		TRF_L("saves: deferred "..sys.." "..fl.." retry "..e.try.."/"..o.retries);
+		if e.try == 1 or e.try == o.retries or e.try == 5 * floor(e.try / 5) then
+			TRF_L("saves: deferred "..sys.." "..fl.." retry "..e.try.."/"..o.retries);
+		end;
 		return;
 	end;
 	if type(e.q) ~= "number" then

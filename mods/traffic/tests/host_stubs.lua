@@ -1328,8 +1328,8 @@ if h.autosave > 0 then
 	local n = 0;
 	while HOST_FireSave() do n = n + 1; end;
 	e = TRF.exp.saves.gredos;
-	HOST_Check(n == 13 and e.st == 3 and e.try == 13 and HOST_Saved() == 1, "saves: gave up after 12 retries (fires="..n..")");
-	HOST_Check(HOST_Armed() == 2 and HOST_Kit() == 0, "saves: 13 fires on one trigger, deleted at gave up (created "..HOST_Armed()..", left "..HOST_Kit()..")");
+	HOST_Check(n == 46 and e.st == 3 and e.try == 46 and HOST_Saved() == 1, "saves: gave up after 45 retries (fires="..n..")");
+	HOST_Check(HOST_Armed() == 2 and HOST_Kit() == 0, "saves: 46 fires on one trigger, deleted at gave up (created "..HOST_Armed()..", left "..HOST_Kit()..")");
 	HOST_Enter("elio");
 	HOST_Enter("gredos");
 	HOST_Check(TRF.exp.saves.gredos.st == 1 and TRF.exp.saves.gredos.try == nil, "saves: a later visit arms a system that gave up");
