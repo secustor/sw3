@@ -1,6 +1,6 @@
 -- sw3-traffic station voices module (Lua 4.0.1). Spec: design/station-voices-spec.md (design
 -- worldbuilding/03-station-voices.md, proposal 3 steps 1 and 2). Prefix Stn (TRF_Stn_* public, TRF_Stn<X>
--- internal), log prefix "stn:".
+-- internal), log module=station.
 -- Owns: the wrappers of _NoneStation_Action (closed-station moods) and __TradeStation_Action (dockmaster:
 -- greeting, harbour news, region tips, ambient lines, hub and penalty fees with their own box). The fee box
 -- OK calls the global __TradeStationDock_Ok by name (trf_shop's wrapper, then vanilla); this module never
@@ -23,13 +23,15 @@ local SV = {g={}, p={}, c={}, nw={}, up={}, dn={}, pl={}, nd={}};
 
 function TRF_StnSV() return %SV; end;
 
-function TRF_StnL(s)
-	TRF_L("stn: "..tostring(s));
+-- logfmt event line, module=station (design/log-format.md).
+function TRF_StnE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "station"); call(TRF_Lf, arg);
 end;
 
--- Error handler for protected calls: trf_state's TRF_PErr, else the loader's TRF_Err.
+-- Error handler for protected calls: an event=error line, counted in stat err.
 function TRF_StnErr(m)
-	if type(TRF_PErr) == "function" then TRF_PErr("stn: "..tostring(m)); else TRF_Err("stn: "..tostring(m)); end;
+	TRF_StnE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
 end;
 
 -- Silent handler (station handle position, mothership position): nil is the answer.
@@ -41,8 +43,10 @@ function TRF_StnLog()
 	return v;
 end;
 
-function TRF_StnDbg(s)
-	if TRF_StnLog() >= 2 then TRF_StnL(s); end;
+-- Debug event line (log 2).
+function TRF_StnDE(event, ...)
+	if TRF_StnLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_StnE, arg);
 end;
 
 function TRF_StnCl(x, lo, hi)
@@ -146,9 +150,10 @@ function TRF_StnDist(a, b)
 	return sqrt(dx * dx + dy * dy + dz * dz);
 end;
 
+-- Rounded number for a log value, nil when not a number.
 function TRF_StnF(x)
-	if type(x) == "number" then return format("%d", floor(x + 0.5)); end;
-	return "-";
+	if type(x) == "number" then return floor(x + 0.5); end;
+	return nil;
 end;
 
 -- Trade stations of system idx in map order (map sys[idx].st entries with kind "trade").
@@ -533,10 +538,10 @@ function TRF_StnGet(k, mk, T)
 	local a = e.st;
 	local st, lg, n = TRF_StnDecayOf(e.st, e.lg, legs, T.stn_decay);
 	e.st = st; e.lg = lg;
-	if st ~= a then TRF_StnL("decay k="..k.." st="..a.."->"..st.." n="..n); end;
+	if st ~= a then TRF_StnE("decay", "station_key", k, "standing_before", a, "standing_after", st, "decay_steps", n); end;
 	if e.nt == 1 then
 		local slot = TRF_N("TRF_RgOf", TRF_StnIdx(k));
-		if TRF_N("TRF_Phase", slot) == 0 then e.nt = nil; TRF_StnDbg("tipban k="..k.." cleared (quiet)"); end;
+		if TRF_N("TRF_Phase", slot) == 0 then e.nt = nil; TRF_StnDE("tip_ban_clear", "station_key", k, "reason", "quiet"); end;
 	end;
 	return e;
 end;
@@ -580,24 +585,25 @@ function TRF_StnDeedK(k, d, why, ceil, dist)
 	if not e then return nil; end;
 	local legs, ve = TRF_StnLegs(), TRF_StnVe();
 	local a = e.st;
-	local cap, dt = "-", "0";
+	local cap, dt = "none", "0";
 	if type(ceil) ~= "number" then ceil = 5; end;
 	if d == -9 then
 		e.st = -3; e.nt = 1; e.tf = nil; e.ts = nil; e.lg = legs; dt = "set";
-		TRF_StnL("rob k="..k.." st=-3 nt=1");
+		TRF_StnE("rob", "station_key", k, "standing_after", -3, "tip_ban", "true");
 	elseif d > 0 then
-		if e.st >= ceil then cap = "ceil";
-		elseif e.gv == ve then cap = "gv";
+		if e.st >= ceil then cap = "ceiling";
+		elseif e.gv == ve then cap = "visit_gain";
 		else
 			e.st = min(e.st + 1, ceil); e.gv = ve; e.lg = legs; sv.up[k] = 1; dt = "+1";
 		end;
 	elseif d < 0 then
-		if (sv.dn[k] or 0) >= 2 then cap = "dn";
+		if (sv.dn[k] or 0) >= 2 then cap = "visit_loss";
 		else
 			e.st = max(e.st - 1, -3); sv.dn[k] = (sv.dn[k] or 0) + 1; e.lg = legs; dt = "-1";
 		end;
 	end;
-	TRF_StnL("deed k="..k.." d="..dt.." why="..tostring(why).." st="..a.."->"..e.st.." cap="..cap.." dist="..TRF_StnF(dist));
+	TRF_StnE("deed", "station_key", k, "change", dt, "reason", tostring(why), "standing_before", a, "standing_after", e.st,
+		"cap", cap, "distance", TRF_StnF(dist));
 	return e.st;
 end;
 
@@ -605,7 +611,7 @@ end;
 function TRF_Stn_Deed(idx, d, why, pos, ceil)
 	if type(TRF) ~= "table" or type(idx) ~= "number" or type(d) ~= "number" then return nil; end;
 	local j, dist = TRF_StnPick(idx, pos);
-	if not j then TRF_StnDbg("deed skip why="..tostring(why).." (no trade station)"); return nil; end;
+	if not j then TRF_StnDE("deed_skip", "reason", tostring(why), "result", "no_trade_station"); return nil; end;
 	return TRF_StnDeedK(TRF_Stn_Key(idx, j), d, why, ceil, dist);
 end;
 
@@ -632,19 +638,20 @@ function TRF_Stn_OnHelp(d, why)
 	end;
 	if strfind(why, "^raid %d") then
 		local j, dist = TRF_StnPick(idx, nil);
-		if not j then TRF_StnDbg("deed skip why="..why.." (no trade station)"); return; end;
+		if not j then TRF_StnDE("deed_skip", "reason", why, "result", "no_trade_station"); return; end;
 		local k = TRF_Stn_Key(idx, j);
 		if not dist or dist > TRF_StnT("stn_near") then
 			local e = TRF_StnGet(k, nil);
 			local st = 0;
 			if e then st = e.st; end;
-			TRF_StnL("deed k="..k.." d=0 why="..why.." st="..st.."->"..st.." cap=far dist="..TRF_StnF(dist));
+			TRF_StnE("deed", "station_key", k, "change", "0", "reason", why, "standing_before", st, "standing_after", st,
+				"cap", "far", "distance", TRF_StnF(dist));
 			return;
 		end;
 		TRF_StnDeedK(k, 1, why, nil, dist);
 		return;
 	end;
-	TRF_StnDbg("deed skip why="..why);
+	TRF_StnDE("deed_skip", "reason", why, "result", "unhandled");
 end;
 
 -- trf_state hook in TRF_AddHeat (S1): kills, attacks, demands lose a rung; feq kill robs the tippers.
@@ -660,7 +667,7 @@ function TRF_Stn_OnHeat(d, why)
 		TRF_Stn_Deed(idx, -1, why);
 		return;
 	end;
-	TRF_StnDbg("deed skip why="..why);
+	TRF_StnDE("deed_skip", "reason", why, "result", "unhandled");
 end;
 
 -- Contract: gates (4) ---------------------------------------------------------------
@@ -675,7 +682,7 @@ function TRF_StnPass(why, nm, at)
 		local i = TRF_N("TRF_CurIdx");
 		if type(i) == "number" then nm = strlower(TRF_StnName(i)); else nm = TRF_Stn_Loc(); end;
 	end;
-	TRF_StnL("pass reason="..tostring(why).." sys="..tostring(nm or "?").." at="..tostring(at));
+	TRF_StnE("pass", "reason", tostring(why), "system", tostring(nm or "?"), "at", tostring(at));
 end;
 
 -- G3 for the deny entry de of system idx under the transit rule (trf_safety TRF_SysModeOf, TRF_StrictOkOf):
@@ -737,11 +744,6 @@ function TRF_StnIsMine(f)
 	return nil;
 end;
 
-function TRF_StnMine01(f)
-	if TRF_StnIsMine(f) then return "1"; end;
-	return "0";
-end;
-
 -- Called from TRF_Main on every MapInitialization after TRF_InstallTradeDock (DockStation.script has just
 -- redefined both functions). TRF_orig_* and the thunks are function globals (survive ClearGlobals, never
 -- saved). Returns {none, trade} = 1 when wrapped in this run.
@@ -767,8 +769,8 @@ function TRF_InstallStation()
 		TRF_StnTradeThunk = function() return %w; end;
 		r.trade = 1;
 	end;
-	TRF_StnL("install none="..r.none.." trade="..r.trade.." mine="..TRF_StnMine01(_NoneStation_Action).."/"
-		..TRF_StnMine01(__TradeStation_Action));
+	TRF_StnE("install", "none_installed", TRF_KvB(r.none), "trade_installed", TRF_KvB(r.trade),
+		"none_wrapped", TRF_KvB(TRF_StnIsMine(_NoneStation_Action)), "trade_wrapped", TRF_KvB(TRF_StnIsMine(__TradeStation_Action)));
 	return r;
 end;
 
@@ -843,9 +845,10 @@ function TRF_StnNoneBody(param)
 		spk = r.spk;
 		mood = 2;
 	end;
-	local line = "none sys="..nm.."("..idx..") tip="..tip.." -> "..key.." rule="..rule.." ph="..TRF_StnS(ph).." dis="..dis
-		.." own="..TRF_StnS(own).." mood="..mood.." spk="..tostring(spk);
-	if mood > 0 then TRF_StnL(line); else TRF_StnDbg(line); end;
+	local lf = TRF_StnDE;
+	if mood > 0 then lf = TRF_StnE; end;
+	lf("mood", "system", nm, "system_index", idx, "vanilla_key", tip, "mood_key", key, "rule", rule, "phase", ph,
+		"disruption", dis, "owner", own, "mood", mood, "speaker", tostring(spk));
 	return r;
 end;
 
@@ -918,7 +921,9 @@ function TRF_StnTradeBody(param)
 	local j, how, d, jp, jx = TRF_StnIdOf(TRF_StnTl(idx), prm, pos, T.stn_pos);
 	if not j then TRF_StnPass(how, nm, "dock"); return "pass"; end;
 	local k = TRF_Stn_Key(idx, j);
-	if how == "pos" then TRF_StnL("idmis k="..k.." jp="..tostring(jp).." jx="..tostring(jx).." d="..TRF_StnF(d)); end;
+	if how == "pos" then
+		TRF_StnE("id_mismatch", "station_key", k, "param_station", jp, "position_station", jx, "distance", TRF_StnF(d));
+	end;
 	sv.k = k;
 	local e = TRF_StnGet(k, nil, T);
 	local st, nt = 0, nil;
@@ -932,18 +937,19 @@ function TRF_StnTradeBody(param)
 	if prm ~= "" then own = TRF_Stn_Team(prm); else own = TRF_Stn_Team(loc); end;
 	local spk = TRF_StnSpk()[own or "Neutral"] or "DialogSystem";
 	-- Greeting, once per visit.
-	local gk = "-";
+	local gk, gs = nil, nil;
 	if TRF_StnOpt("voice_dock") == 1 and not sv.g[k] then
 		local key = TRF_StnGreetOf(er, nt);
 		if not key then
 			sv.g[k] = 1;
 		else
 			local ok, gw = TRF_StnGreet(key, spk, T);
-			if ok then sv.g[k] = 1; gk = key; else gk = key.."("..tostring(gw)..")"; end;
+			gk = key;
+			if ok then sv.g[k] = 1; else gs = tostring(gw); end;
 		end;
 	end;
 	-- Info line, once per visit, never after docking on credit.
-	local nwf, tipk, amb = 0, "-", "-";
+	local nwf, tipk, amb = 0, nil, nil;
 	if TRF_StnOpt("voice_news") == 1 and not sv.nw[k] and not sv.c[k] then
 		local newsok = ch >= T.news_ch;
 		local shown = nil;
@@ -962,9 +968,9 @@ function TRF_StnTradeBody(param)
 				TRF_Stn_Say(tx, 10);
 				tipk = kind;
 				shown = 1;
-				local tf = "-";
-				if kind == "feq" then tf = tostring(TRF_StnLegs()); end;
-				TRF_StnL("tip k="..k.." kind="..kind.." sys="..TRF_StnName(ts).." tf="..tf);
+				local tf = nil;
+				if kind == "feq" then tf = TRF_StnLegs(); end;
+				TRF_StnE("tip", "station_key", k, "kind", kind, "system", TRF_StnName(ts), "tip_leg", tf);
 			end;
 		end;
 		if not shown and er >= 1 then
@@ -976,19 +982,19 @@ function TRF_StnTradeBody(param)
 	-- Fee (8.5): F1 (the gates above), F2 no story mission and no visit latch (G6: SV.mis, logged as pass
 	-- reason=latch at=dock), F3 strict not 0, F4 chapter; pv = paid or docked on credit in this visit (saved, so a
 	-- load inside the visit does not charge again).
-	local fee, m, nofee = 0, 0, "-";
+	local fee, m, nofee = 0, 0, nil;
 	local pro = TRF_N("TRF_Pro", idx);
 	if type(pro) ~= "number" then pro = 0; end;
 	if TRF_StnOpt("voice_fee") == 1 and not sv.p[k] then
 		m = TRF_StnMOf(er, pro, T.fee_pro);
 		if m > 0 then
-			if e and e.pv == TRF_StnVe() then nofee = "pv";
+			if e and e.pv == TRF_StnVe() then nofee = "paid_visit";
 			elseif sv.mis == 1 or TRF_N("TRF_Safe_QState") then
 				sv.mis = 1;
 				nofee = "latch";
 				TRF_StnPass("latch", nm, "dock");
-			elseif TRF_N("TRF_Opt", "strict") == 0 then nofee = "strict0";
-			elseif ch < T.fee_ch then nofee = "ch";
+			elseif TRF_N("TRF_Opt", "strict") == 0 then nofee = "strict_0";
+			elseif ch < T.fee_ch then nofee = "chapter";
 			else
 				local L = TRF_N("TRF_LPay", idx);
 				if type(L) ~= "number" then L = 8; end;
@@ -999,8 +1005,9 @@ function TRF_StnTradeBody(param)
 			end;
 		end;
 	end;
-	TRF_StnL("dock k="..k.." param="..prm.." id="..how.." d="..TRF_StnF(d).." st="..st.." e="..er.." heat="..heat
-		.." greet="..gk.." news="..nwf.." tip="..tipk.." amb="..amb.." fee="..fee.." m="..m.." nofee="..nofee);
+	TRF_StnE("dock", "station_key", k, "param", prm, "via", how, "distance", TRF_StnF(d), "standing", st, "rung", er,
+		"heat", heat, "greeting", gk, "greeting_skip", gs, "news", TRF_KvB(nwf), "tip", tipk, "ambient", amb, "fee", fee,
+		"fee_multiplier", m, "no_fee_reason", nofee);
 	if fee <= 0 then return "go"; end;
 	local cr = TRF_Stn_Credits();
 	local fs = format("%d", fee);
@@ -1015,8 +1022,8 @@ function TRF_StnTradeBody(param)
 	if prm == "" then setglobal("_param", loc); else setglobal("_param", prm); end;
 	local ok = TRF_Stn_Box(text);
 	local fl = sv.fl or {};
-	TRF_StnL("fee k="..k.." fee="..fee.." L_w="..tostring(fl.L).." pro="..pro.." m="..m.." dk="..tostring(fl.dk)
-		.." box="..(ok and 1 or 0));
+	TRF_StnE("fee", "station_key", k, "fee", fee, "world_level", fl.L, "prosperity", pro, "fee_multiplier", m,
+		"difficulty_factor", fl.dk, "box", TRF_KvB(ok and 1 or 0));
 	if ok then return "box"; end;
 	sv.box = nil;
 	return "go";
@@ -1041,7 +1048,7 @@ function TRF_StnFeeOkBody()
 	local sv = %SV;
 	local b = sv.box;
 	sv.box = nil;
-	if type(b) ~= "table" or type(TRF) ~= "table" or b.g ~= TRF.gen then TRF_StnL("stale box"); return; end;
+	if type(b) ~= "table" or type(TRF) ~= "table" or b.g ~= TRF.gen then TRF_StnE("stale_box", "answer", "ok"); return; end;
 	local cr = TRF_Stn_Credits();
 	local cr2 = cr;
 	local credit, bb = 0, 0;
@@ -1060,7 +1067,8 @@ function TRF_StnFeeOkBody()
 			e.lg = TRF_StnLegs();
 			sv.up[b.k] = 1;
 			bb = 1;
-			TRF_StnL("deed k="..b.k.." d=+1 why=buyback st="..a.."->"..e.st.." cap=- dist=-");
+			TRF_StnE("deed", "station_key", b.k, "change", "+1", "reason", "buyback", "standing_before", a, "standing_after", e.st,
+				"cap", "none", "distance", nil);
 		end;
 	else
 		sv.p[b.k] = 1;
@@ -1069,16 +1077,17 @@ function TRF_StnFeeOkBody()
 		TRF_StnDeedK(b.k, -1, "credit", nil, nil);
 		TRF_StnGet(b.k, 1).pv = TRF_StnVe();
 	end;
-	TRF_StnL("fee k="..b.k.." ok=1 cr="..cr.."->"..cr2.." credit="..credit.." buyback="..bb);
+	TRF_StnE("fee_ok", "station_key", b.k, "credits_before", cr, "credits_after", cr2, "credit", TRF_KvB(credit),
+		"buyback", TRF_KvB(bb));
 end;
 
 function TRF_StnFeeNoBody()
 	local sv = %SV;
 	local b = sv.box;
 	sv.box = nil;
-	if type(b) ~= "table" then TRF_StnL("stale box"); return; end;
+	if type(b) ~= "table" then TRF_StnE("stale_box", "answer", "cancel"); return; end;
 	local cr = TRF_Stn_Credits();
-	TRF_StnL("fee k="..b.k.." ok=0 cr="..cr.."->"..cr.." credit=0 buyback=0");
+	TRF_StnE("fee_cancel", "station_key", b.k, "credits_before", cr, "credits_after", cr, "credit", "false", "buyback", "false");
 end;
 
 -- trf_shop hook in TRF_TradeDockOk (8.6): result line when the standing rose this visit.
@@ -1092,7 +1101,7 @@ function TRF_Stn_Docked()
 		sv.nd[k] = 1;
 		TRF_Stn_Say(TRF_StnTxt("stnnoted"), 8);
 	end;
-	TRF_StnL("docked k="..k.." up="..up);
+	TRF_StnE("docked", "station_key", k, "standing_up", TRF_KvB(up));
 end;
 
 -- Contract: loader callbacks, repair, dump -------------------------------------------
@@ -1133,19 +1142,19 @@ function TRF_Stn_OnActivate()
 		local vo = TRF_StnVo();
 		if now and now ~= so and vo[idx] == nil then
 			vo[idx] = TRF_StnVe();
-			TRF_StnL("owner sys="..nm.." static="..so.." now="..now.." vo="..vo[idx]);
+			TRF_StnE("owner", "system", nm, "static_owner", so, "owner", now, "owner_visit", vo[idx]);
 		end;
 	end;
-	local v = "-";
-	if type(idx) == "number" and type(TRF.vo) == "table" and TRF.vo[idx] then v = tostring(TRF.vo[idx]); end;
-	TRF_StnL("enter ve="..TRF_StnVe().." sys="..nm.."("..tostring(idx)..") latch="..(sv.mis or 0).." pruned="
-		..(sv.pr or 0).." vo="..v);
+	local v = nil;
+	if type(idx) == "number" and type(TRF.vo) == "table" and TRF.vo[idx] then v = TRF.vo[idx]; end;
+	TRF_StnE("enter", "visit", TRF_StnVe(), "system", nm, "system_index", idx, "latch", TRF_KvB(sv.mis),
+		"pruned_count", sv.pr or 0, "owner_visit", v);
 end;
 
 function TRF_Stn_OnLoad()
 	local sv = %SV;
 	if TRF_N("TRF_Safe_QState") then sv.mis = 1; end;
-	TRF_StnL("load latch="..(sv.mis or 0));
+	TRF_StnE("load", "latch", TRF_KvB(sv.mis));
 end;
 
 function TRF_Stn_BeforeJump()
@@ -1218,27 +1227,31 @@ function TRF_Stn_TuneDef()
 		own_legs=20, mood_dis=7, mood_rdis=5, pir_heat=5, heat_c1=5, heat_c2=7, stn_radio=8, stn_gap=6};
 end;
 
--- "dump stn ve=<ve> n=<count> <k>:<st>/<lg>/<gv>/<bv>/<tf>[!] ... vo <name>=<leg> ... wrapped=<none>/<trade>".
+-- "module=station event=dump visit=<ve> record_count=<n> records=<k>:<st>/<lg>/<gv>/<bv>/<tf>[!],...
+-- owner_visits=<name>:<leg>,... none_wrapped=<bool> trade_wrapped=<bool>" (records, owner_visits nil when empty).
 function TRF_Stn_Dump()
 	if type(TRF) ~= "table" then return; end;
 	local ks = {};
 	if type(TRF.stn) == "table" then for k, e in TRF.stn do if type(k) == "number" then tinsert(ks, k); end; end; end;
 	sort(ks);
-	local s = "dump stn ve="..TRF_StnS(TRF.ve).." n="..getn(ks);
+	local rs = nil;
 	for i = 1, getn(ks) do
 		local e = TRF.stn[ks[i]];
 		if type(e) == "table" then
-			s = s.." "..ks[i]..":"..tostring(e.st).."/"..tostring(e.lg).."/"..TRF_StnS(e.gv).."/"..TRF_StnS(e.bv).."/"..TRF_StnS(e.tf);
-			if e.nt == 1 then s = s.."!"; end;
+			local r = ks[i]..":"..tostring(e.st).."/"..tostring(e.lg).."/"..TRF_StnS(e.gv).."/"..TRF_StnS(e.bv).."/"..TRF_StnS(e.tf);
+			if e.nt == 1 then r = r.."!"; end;
+			if rs then rs = rs..","..r; else rs = r; end;
 		end;
 	end;
-	s = s.." vo";
-	local nv = 0;
+	local vs = nil;
 	if type(TRF.vo) == "table" then
-		for k, v in TRF.vo do s = s.." "..TRF_StnName(k).."="..tostring(v); nv = nv + 1; end;
+		for k, v in TRF.vo do
+			local r = TRF_StnName(k)..":"..tostring(v);
+			if vs then vs = vs..","..r; else vs = r; end;
+		end;
 	end;
-	if nv == 0 then s = s.." none"; end;
-	TRF_L(s.." wrapped="..TRF_StnMine01(_NoneStation_Action).."/"..TRF_StnMine01(__TradeStation_Action));
+	TRF_StnE("dump", "visit", TRF.ve, "record_count", getn(ks), "records", rs, "owner_visits", vs,
+		"none_wrapped", TRF_KvB(TRF_StnIsMine(_NoneStation_Action)), "trade_wrapped", TRF_KvB(TRF_StnIsMine(__TradeStation_Action)));
 end;
 
 -- Texts (9), EN only; keys in TRF_UI_Key form.

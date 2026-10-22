@@ -22,14 +22,16 @@ end;
 
 -- Logging -----------------------------------------------------------------------------
 
-function TRF_Ev_L(s)
-	TRF_L("ev "..tostring(s));
+-- logfmt event line, module=events (design/log-format.md).
+function TRF_EvE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "events"); call(TRF_Lf, arg);
 end;
 
--- Debug lines only at cfg log 2.
-function TRF_Ev_D(s)
+-- Debug event lines only at cfg log 2.
+function TRF_EvDE(event, ...)
 	local v = TRF_Ev_Opt("log", 1);
-	if type(v) == "number" and v >= 2 then TRF_L("ev "..tostring(s)); end;
+	if type(v) ~= "number" or v < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_EvE, arg);
 end;
 
 -- Config and state helpers --------------------------------------------------------------
@@ -100,11 +102,11 @@ end;
 function TRF_Ev_Rec(id, g, what)
 	if not TRF_Ev_Live() then return nil; end;
 	if g ~= TRF.gen then
-		TRF_Ev_D(what.." id="..tostring(id).." stale gen="..tostring(g).." now="..tostring(TRF.gen));
+		TRF_EvDE("stale_callback", "source", what, "trader_id", id, "generation", g, "current_generation", TRF.gen);
 		return nil;
 	end;
 	local r = TRF_Ev_RecAny(id);
-	if not r then TRF_Ev_D(what.." id="..tostring(id).." no record"); end;
+	if not r then TRF_EvDE("no_record", "source", what, "trader_id", id); end;
 	return r;
 end;
 
@@ -121,7 +123,7 @@ end;
 
 function TRF_Ev_Due(dt, fname, a, b)
 	if type(TRF_Due) ~= "function" then
-		TRF_Ev_L("no TRF_Due; "..fname.." dropped");
+		TRF_EvE("missing_function", "function", "TRF_Due", "source", fname, "result", "dropped");
 		return nil;
 	end;
 	return TRF_Due(dt, fname, a, b);
@@ -240,12 +242,12 @@ end;
 
 function TRF_Ev_AddHeat(d, why)
 	if TRF_Ev_Opt("heat", 1) == 0 then return; end;
-	if type(TRF_AddHeat) == "function" then TRF_AddHeat(d, why); else TRF_Ev_L("no TRF_AddHeat ("..why..")"); end;
+	if type(TRF_AddHeat) == "function" then TRF_AddHeat(d, why); else TRF_EvE("missing_function", "function", "TRF_AddHeat", "reason", why); end;
 end;
 
 function TRF_Ev_AddDis(idx, d, why)
 	if TRF_Ev_Opt("dis", 1) == 0 or not idx then return; end;
-	if type(TRF_AddDis) == "function" then TRF_AddDis(idx, d, why); else TRF_Ev_L("no TRF_AddDis ("..why..")"); end;
+	if type(TRF_AddDis) == "function" then TRF_AddDis(idx, d, why); else TRF_EvE("missing_function", "function", "TRF_AddDis", "reason", why); end;
 end;
 
 function TRF_Ev_DisOf(idx)
@@ -306,7 +308,7 @@ end;
 -- Counted attack on an f group: fst -1 once per visit (live.fstv[f]), nothing for a group seeded hostile.
 function TRF_Ev_FstHit(f, why)
 	if type(TRF_FstHit) == "function" then
-		if call(TRF_FstHit, {f, TRF_Ev_Hostile(f), why}, "x", TRF_PErr) then TRF_Ev_L("fst f="..f.." -1 ("..tostring(why)..")"); end;
+		if call(TRF_FstHit, {f, TRF_Ev_Hostile(f), why}, "x", TRF_PErr) then TRF_EvE("faction_standing", "faction", f, "reason", tostring(why), "change", -1); end;
 		return;
 	end;
 	local L = TRF_Ev_Live();
@@ -315,7 +317,7 @@ function TRF_Ev_FstHit(f, why)
 	if L.fstv[f] == 1 then return; end;
 	L.fstv[f] = 1;
 	TRF_N("TRF_FstAdd", f, -1, why);
-	TRF_Ev_L("fst f="..f.." -1 ("..tostring(why)..")");
+	TRF_EvE("faction_standing", "faction", f, "reason", tostring(why), "change", -1);
 end;
 
 -- Faction flight of f destroyed without counted player fire in a region system: clan salvage +1, at most
@@ -328,7 +330,7 @@ function TRF_Ev_Salv(f, why)
 	if type(slot) ~= "number" then return; end;
 	-- The per-visit cap (live.fsv, salv_visit_max) is applied once, inside TRF_SalvAdd (trf_clan).
 	local a = TRF_N("TRF_SalvAdd", slot, 1, f, why);
-	TRF_Ev_L("salvage slot="..slot.." f="..f.." +"..tostring(a).." ("..tostring(why)..") fsv="..tostring(L.fsv));
+	TRF_EvE("salvage", "slot", slot, "faction", f, "reason", tostring(why), "amount", a, "visit_salvage", L.fsv);
 end;
 
 -- Text from trf_ui, else the 8.2 literal.
@@ -355,7 +357,7 @@ function TRF_ArmShips(id)
 	local L = TRF_Ev_Live();
 	local h = TRF_Ev_HTr(id);
 	if not L or not h or type(h.tp) ~= "table" then
-		TRF_Ev_L("arm id="..tostring(id).." no handles");
+		TRF_EvE("arm", "trader_id", id, "result", "no_handles");
 		return 0;
 	end;
 	local rec = L.tr[id];
@@ -369,10 +371,15 @@ function TRF_ArmShips(id)
 		if TRF_Ev_Alive(ship) then
 			local ta = TRF_Ev_Trig("attack", TRF_Ev_CbAttack(id, k), PLAYER_GROUP, ship);
 			local td = TRF_Ev_Trig("died", TRF_Ev_CbDied(id, k), ship);
-			if ta and td then n = n + 1; else TRF_Ev_L("arm id="..id.." k="..k.." attack="..tostring(ta and 1).." died="..tostring(td and 1)); end;
+			if ta and td then
+				n = n + 1;
+			else
+				TRF_EvE("arm", "trader_id", id, "ship", k, "attack_trigger", TRF_KvB(ta and 1), "died_trigger", TRF_KvB(td and 1),
+					"result", "failed");
+			end;
 		end;
 	end;
-	TRF_Ev_D("arm id="..id.." transports="..getn(h.tp).." armed="..n);
+	TRF_EvDE("arm", "trader_id", id, "transport_count", getn(h.tp), "armed_count", n);
 	return n;
 end;
 
@@ -406,7 +413,7 @@ function TRF_Ev_Deliberate(id, rec, gt)
 	if type(TRF_Say) == "function" then
 		shown = TRF_Say(TRF_Ev_Txt("cease", "Cease fire! This is a civilian freighter."), 6, TRF_Ev_Leader(id));
 	end;
-	TRF_Ev_L("counted attack id="..id.." gt="..TRF_F(gt).." line="..tostring(shown));
+	TRF_EvE("counted_attack", "trader_id", id, "game_time", TRF_F(gt), "line_shown", TRF_KvB(shown));
 	TRF_Ev_Counted(id, rec);
 end;
 
@@ -438,7 +445,7 @@ function TRF_Ev_Rearm(id, k, rec)
 	if type(rec.arm) ~= "number" then rec.arm = 0; end;
 	local mx = TRF_Ev_K().arm_max;
 	if rec.arm >= mx then
-		if rec.arm == mx then rec.arm = mx + 1; TRF_Ev_L("attack id="..id.." re-arm cap "..mx); end;
+		if rec.arm == mx then rec.arm = mx + 1; TRF_EvE("attack", "trader_id", id, "rearm_max", mx, "result", "rearm_cap"); end;
 		return;
 	end;
 	rec.arm = rec.arm + 1;
@@ -455,7 +462,7 @@ function TRF_OnAttack_Body(id, k, g)
 	if not rec then return; end;
 	local gt = TRF_Ev_Gt();
 	rec.pa = gt;
-	TRF_Ev_D("attack id="..id.." k="..tostring(k).." gt="..TRF_F(gt).." arm="..tostring(rec.arm));
+	TRF_EvDE("attack", "trader_id", id, "ship", k, "game_time", TRF_F(gt), "arm_count", rec.arm);
 	TRF_Ev_Deliberate(id, rec, gt);
 	TRF_Ev_Rearm(id, k, rec);
 end;
@@ -543,8 +550,8 @@ function TRF_Ev_Kill(id, rec, h)
 			call(function(f, o) f:Patrol({o:GetEntryPoint(50), o:GetEntryPoint(1)}, FALSE); end, {h.ef, h.ext}, "x", TRF_PErr);
 		end;
 	end;
-	TRF_Ev_L("kill id="..id.." by="..by.." pa="..TRF_F(rec.pa).." gt="..TRF_F(gt).." kills="..tostring(L.kills)
-		.." sys="..tostring(idx).." escorts="..tostring(rec.np));
+	TRF_EvE("kill", "trader_id", id, "system_index", idx, "by", by, "last_attack_time", TRF_F(rec.pa), "game_time", TRF_F(gt),
+		"kill_count", L.kills, "ship_count", rec.np);
 	call(TRF_Ev_KillV2, {id, rec, by, idx}, "x", TRF_PErr);
 	call(TRF_Ev_KillV1, {id, rec, by, idx}, "x", TRF_PErr);
 	TRF_Ev_Close(id, rec, "kill");
@@ -563,7 +570,7 @@ function TRF_Ev_KillV1(id, rec, by, idx)
 		local why = "tt4";
 		if rec.feq == 1 then why = "feq"; end;
 		TRF_N("TRF_ForcedBust", idx, why.." "..id);
-		TRF_Ev_L("forced bust sys="..idx.." ("..why.." "..id..")");
+		TRF_EvE("forced_bust", "system_index", idx, "trader_id", id, "reason", why);
 	end;
 	if TRF_Ev_Bit(rec.tb, 1) == 1 or rec.pi then TRF_N("TRF_TrackGone", id, "kill"); end;
 	-- Paid raid (7.5): the tip-off trader (tb bit 2) killed with player fire.
@@ -600,7 +607,7 @@ function TRF_OnShipDied_Body(id, k, g)
 		if nt < 0 then nt = 0; end;
 	end;
 	rec.nt = nt;
-	TRF_Ev_D("died id="..id.." k="..tostring(k).." nt="..nt.." np="..tostring(rec.np));
+	TRF_EvDE("died", "trader_id", id, "ship", k, "transport_count", nt, "ship_count", rec.np);
 	-- Escort flight (esc_flight): Escort moves to the next live transport.
 	if nt > 0 then TRF_N("TRF_GnEscOrder", id); return; end;
 	TRF_Ev_Kill(id, rec, h);
@@ -626,7 +633,7 @@ function TRF_RespStart(id)
 	if TRF_Ev_Opt("response", 1) == 0 then rec.resp = 2; return; end;
 	if TRF_Ev_Supp() then
 		TRF_Ev_Stat("skip_supp");
-		TRF_Ev_D("resp id="..id.." suppressed");
+		TRF_EvDE("response", "trader_id", id, "result", "suppressed");
 		return;
 	end;
 	local n = (L.rn or 0) + 1;
@@ -638,7 +645,7 @@ function TRF_RespStart(id)
 	local f = TRF_Ev_Own(rec);
 	if not f then f = TRF_Ev_FacIdx(TRF_Ev_RespTeam()); end;
 	TRF_Ev_Due(8, "TRF_RespSpawn", n, f or 0);
-	TRF_Ev_L("resp start id="..id.." n="..n.." f="..tostring(f).." speaker="..tostring(p and 1));
+	TRF_EvE("response_start", "trader_id", id, "response_id", n, "faction", f, "speaker", TRF_KvB(p and 1));
 end;
 
 -- Heat tier (8.1): 0 heat 0-2, 1 heat 3-4, 2 heat 5-6, 3 heat 7-9 or the Trade team at war with the player.
@@ -702,7 +709,7 @@ function TRF_Ev_RespBuild(n, rows, f)
 	if type(f) == "number" and f >= 1 and f <= 5 and TRF_Ev_FacTeam(f) then team = TRF_Ev_FacTeam(f); end;
 	local gname = "TRF_GResp_"..n;
 	local grp = TRF_Ev_Group(team, "TRF_Resp_"..n);
-	if not grp then TRF_Ev_L("resp n="..n.." no group team="..team); return 0; end;
+	if not grp then TRF_EvE("response_spawn", "response_id", n, "team", team, "result", "no_group"); return 0; end;
 	setglobal(gname, grp);
 	if type(rows) ~= "table" then rows = TRF_Ev_RespRows(); end;
 	for j = 1, getn(rows) do
@@ -748,26 +755,27 @@ function TRF_RespSpawn(n, b)
 	if not TRF_Ev_Live() or type(n) ~= "number" then return; end;
 	if TRF_Ev_Supp() then
 		TRF_Ev_Stat("skip_supp");
-		TRF_Ev_L("resp n="..n.." suppressed at spawn");
+		TRF_EvE("response_spawn", "response_id", n, "result", "suppressed");
 		return;
 	end;
 	local s3 = __sys_SOS_3;
 	if type(s3) ~= "number" then s3 = 0; end;
 	local roll = TRF_Ev_Rand(100);
 	if not (s3 > roll) then
-		TRF_Ev_L("resp n="..n.." no help sos3="..s3.." roll="..tostring(roll));
+		TRF_EvE("response_spawn", "response_id", n, "sos_chance", s3, "roll", roll, "result", "no_help");
 		return;
 	end;
 	local f = nil;
 	if type(b) == "number" and b >= 1 and b <= 5 then f = b; end;
 	local rows, tier = TRF_Ev_RespPick(f);
 	if not rows then
-		TRF_Ev_L("resp n="..n.." no help (heat tier 0 roll)");
+		TRF_EvE("response_spawn", "response_id", n, "reason", "heat_tier_0", "result", "no_help");
 		return;
 	end;
 	local c = call(TRF_Ev_RespBuild, {n, rows, f}, "x", TRF_PErr);
 	TRF_Ev_RespClear(n);
-	TRF_Ev_L("resp n="..n.." flights="..tostring(c).." tier="..tostring(tier).." f="..tostring(f).." sos3="..s3.." roll="..tostring(roll));
+	TRF_EvE("response_spawn", "response_id", n, "faction", f, "tier", tier, "sos_chance", s3, "roll", roll, "flight_count", c,
+		"result", "spawned");
 	if type(c) == "number" and c > 0 then
 		if f then call(TRF_Ev_RespArm, {n, f}, "x", TRF_PErr); end;
 		TRF_Ev_Stat("resp");
@@ -847,7 +855,7 @@ function TRF_Ev_RespDiedBody(n, j, g)
 	if e.dk < e.ns then return; end;
 	e.done = 1;
 	if e.pf then
-		TRF_Ev_D("resp n="..n.." flight "..j.." destroyed with player fire");
+		TRF_EvDE("response_flight", "response_id", n, "flight", j, "reason", "player_fire", "result", "destroyed");
 		return;
 	end;
 	TRF_Ev_Salv(e.f, "resp");
@@ -895,7 +903,7 @@ function TRF_Ev_PirEject(pilot)
 	tinsert(H.pir, fl);
 	H.pirb[getn(H.pir)] = b;
 	H.pirs[getn(H.pir)] = sv;
-	TRF_Ev_D("pirate flight watched side="..side.." n="..getn(H.pir).." butcher="..tostring(b));
+	TRF_EvDE("pirate_watch", "side", side, "flight_count", getn(H.pir), "butcher", TRF_KvB(b));
 end;
 
 -- 1 when the pilot's ship is a Butcher_* corvette (9.6: score -4). Carcass:GetName() is the template name.
@@ -934,11 +942,11 @@ function TRF_Ev_Recover(kind, sv)
 	if TRF_Ev_DisOf(idx) <= 0 then TRF_N("TRF_ProCredit", 1, "pirate kill"); end;
 	if TRF_Ev_Opt("dis", 1) == 0 then return; end;
 	L.rec = L.rec or 0;
-	if L.rec >= TRF_Ev_K().rec_max then TRF_Ev_D("recovery cap rec="..L.rec); return; end;
+	if L.rec >= TRF_Ev_K().rec_max then TRF_EvDE("recovery", "recovery_count", L.rec, "result", "cap"); return; end;
 	if TRF_Ev_DisOf(idx) <= 0 then return; end;
 	L.rec = L.rec + 1;
 	TRF_Ev_AddDis(idx, -1, "pirate kill");
-	TRF_Ev_L("recovery sys="..idx.." rec="..L.rec);
+	TRF_EvE("recovery", "system_index", idx, "recovery_count", L.rec);
 end;
 
 -- Escorts of a killed trader: removed at their exit portal (as the vanilla exit) or out of view. With an
@@ -964,13 +972,13 @@ function TRF_Ev_Escorts(H)
 					TRF_Ev_Del(h.ef);
 					h.kl = nil;
 					TRF_Ev_Stat("remove_esc");
-					TRF_Ev_L("escorts id="..id.." left at exit");
+					TRF_EvE("escorts_removed", "trader_id", id, "reason", "exit");
 				elseif dm and dm > ovd then
 					TRF_Ev_Del(h.fl);
 					TRF_Ev_Del(h.ef);
 					h.kl = nil;
 					TRF_Ev_Stat("remove_esc");
-					TRF_Ev_L("escorts id="..id.." removed out of view d="..TRF_F(dm));
+					TRF_EvE("escorts_removed", "trader_id", id, "reason", "out_of_view", "distance", TRF_F(dm));
 				end;
 			end;
 		end;

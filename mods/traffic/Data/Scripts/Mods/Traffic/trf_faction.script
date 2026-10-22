@@ -1,4 +1,4 @@
--- sw3-traffic factions (v1 spec 7, 3.1, 10.1; design 7.13, 8.10, 8.11, 8.13). Lua 4.0.1. Log prefix "fac".
+-- sw3-traffic factions (v1 spec 7, 3.1, 10.1; design 7.13, 8.10, 8.11, 8.13). Lua 4.0.1. Log module=faction.
 -- Faction strength TRF.fs[slot] and standing TRF.std.fst: 5-digit strings, digit f for f = 1..5 (Vks, Kfni,
 -- Triada, Uss, Inoco). Tech ladder from each faction's own Create_flight_2 tables (row band per rung).
 -- On-screen sweep attempts (live.sw; the outcome itself is trf_region's TRF_RgSweepOut), sweep contracts
@@ -48,14 +48,21 @@ end;
 
 -- Logging, config, state helpers -------------------------------------------------------------
 
-function TRF_FcL(s) TRF_L("fac: "..tostring(s)); end;
-
-function TRF_FcD(s)
-	if type(TRF_LDbg) == "function" then TRF_LDbg("fac: "..tostring(s)); end;
+-- logfmt event line, module=faction (design/log-format.md).
+function TRF_FcE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "faction"); call(TRF_Lf, arg);
 end;
 
+-- Debug event line (log 2; nothing without trf_state's TRF_Opt).
+function TRF_FcDE(event, ...)
+	if type(TRF_Opt) ~= "function" or TRF_Opt("log") < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_FcE, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
 function TRF_FcErr(m)
-	if type(TRF_PErr) == "function" then TRF_PErr(m); else TRF_L("ERROR "..tostring(m)); end;
+	TRF_FcE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
 end;
 
 -- Error handler that drops the message (probing vanilla group names).
@@ -348,7 +355,7 @@ function TRF_Fs_Init()
 		if type(k) ~= "number" or k < 1 or k > n or k ~= floor(k) then tinsert(bad, k); end;
 	end;
 	for i = 1, getn(bad) do TRF.fs[bad[i]] = nil; end;
-	if c > 0 then TRF_FcL("fs init slots="..c.."/"..n.." def="..def); end;
+	if c > 0 then TRF_FcE("region_standing_init", "slot_count", c, "region_count", n, "default", def); end;
 	return c;
 end;
 
@@ -370,7 +377,8 @@ function TRF_FsAdd(slot, f, d, why)
 	local new = TRF_FcClamp(floor(old + d + 0.5), 0, 9);
 	if new ~= old then
 		TRF.fs[slot] = TRF_FcSetDig(s, f, new);
-		TRF_FcL("fs "..slot.." "..TRF_FacTeam(f).." "..old.." -> "..new.." ("..tostring(why)..")");
+		TRF_FcE("region_standing", "slot", slot, "faction", TRF_FacTeam(f), "reason", tostring(why), "standing_before", old,
+			"standing_after", new);
 	end;
 	return new;
 end;
@@ -400,7 +408,8 @@ function TRF_FstAdd(f, d, why)
 	local new = TRF_FcClamp(floor(old + d + 0.5), 0, 9);
 	if new ~= old then
 		TRF.std.fst = TRF_FcSetDig(TRF.std.fst, f, new);
-		TRF_FcL("fst "..TRF_FacTeam(f).." "..old.." -> "..new.." ("..tostring(why)..")");
+		TRF_FcE("faction_standing", "faction", TRF_FacTeam(f), "reason", tostring(why), "standing_before", old,
+			"standing_after", new);
 	end;
 	return new;
 end;
@@ -536,7 +545,7 @@ end;
 -- Returns flight, ships or nil.
 function TRF_FacFlight(f, rung, kind, group, sign, pos, dir, maxn)
 	local t = TRF_FcTabs(f);
-	if not t then TRF_FcL("facflight: no tables for f="..tostring(f)); return nil; end;
+	if not t then TRF_FcE("flight", "faction", f, "result", "no_tables"); return nil; end;
 	local r = TRF_FcRungEff(f, rung);
 	local b = TRF_FcRungRows()[r + 1];
 	local tab, form = t.fi, "shipFormation";
@@ -643,18 +652,24 @@ function TRF_Faction_Tick(L)
 		end;
 		if drift and TRF_FcDigOk(TRF.fs[slot]) then
 			local s = TRF_FcDrift(TRF.fs[slot], d0);
-			if s ~= TRF.fs[slot] then TRF_FcD("fs "..slot.." drift "..TRF.fs[slot].." -> "..s); TRF.fs[slot] = s; end;
+			if s ~= TRF.fs[slot] then
+				TRF_FcDE("region_standing_drift", "slot", slot, "standing_before", TRF.fs[slot], "standing_after", s);
+				TRF.fs[slot] = s;
+			end;
 		end;
 		-- Contract bits: join needs a scheduled attempt, bounty an active base (v1 7.4).
 		local r = TRF_N("TRF_RgRec", slot);
 		if type(r) == "table" and type(r.ct) == "number" and r.ct > 0 then
-			if TRF_RgCt(slot, 1) == 1 and (type(r.sl) ~= "number" or r.sl <= 0) then TRF_RgCtClr(slot, 1); TRF_FcL("ct join "..slot.." cleared"); end;
-			if TRF_RgCt(slot, 2) == 1 and not TRF_FcBaseA(slot) then TRF_RgCtClr(slot, 2); TRF_FcL("ct bounty "..slot.." cleared"); end;
+			if TRF_RgCt(slot, 1) == 1 and (type(r.sl) ~= "number" or r.sl <= 0) then TRF_RgCtClr(slot, 1); TRF_FcE("contract_clear", "slot", slot, "contract", "join"); end;
+			if TRF_RgCt(slot, 2) == 1 and not TRF_FcBaseA(slot) then TRF_RgCtClr(slot, 2); TRF_FcE("contract_clear", "slot", slot, "contract", "bounty"); end;
 		end;
 	end;
 	if TRF_FcCross(L, rt, TRF_FcT("fst_decay_legs")) and type(TRF.std) == "table" and TRF_FcDigOk(TRF.std.fst) then
 		local s = TRF_FcDrift(TRF.std.fst, 5);
-		if s ~= TRF.std.fst then TRF_FcD("fst drift "..TRF.std.fst.." -> "..s); TRF.std.fst = s; end;
+		if s ~= TRF.std.fst then
+			TRF_FcDE("faction_standing_drift", "standing_before", TRF.std.fst, "standing_after", s);
+			TRF.std.fst = s;
+		end;
 	end;
 	TRF_FcOfferExpire(L);
 end;
@@ -761,7 +776,7 @@ function TRF_FcSweepRel(g, sw)
 	end;
 	local pr = TRF_FstRel(sw.f);
 	if pr ~= nil then TRF_FcP(SetGroupRelation, {g, PLAYER_GROUP, pr}); end;
-	TRF_FcD("sweep rel g="..g.." foes="..getn(foes).." player="..tostring(pr));
+	TRF_FcDE("sweep_relation", "group", g, "foe_count", getn(foes), "player_relation", pr);
 	if pr == W then return 1; end;
 	return nil;
 end;
@@ -787,7 +802,7 @@ function TRF_SweepEntry()
 	local dt = 20 + TRF_FcRand(21);
 	if not TRF_Due(dt, "TRF_SweepStart", TRF.gen) then L.sw = nil; return nil, "due"; end;
 	TRF_FcStat("sweep_entry");
-	TRF_FcL("sweep entry slot="..slot.." k="..L.sw.k.." f="..L.sw.f.." in "..dt.." s base="..tostring(L.sw.b));
+	TRF_FcE("sweep_entry", "slot", slot, "attempt", L.sw.k, "faction", L.sw.f, "delay", dt, "base", L.sw.b);
 	return 1;
 end;
 
@@ -799,14 +814,14 @@ function TRF_SweepStart(g, b)
 	local r = TRF_N("TRF_RgRec", sw.s);
 	if TRF_FcSupp() or TRF_FcCombat() or type(r) ~= "table" or r.sn + 1 ~= sw.k or not TRF_N("TRF_SweepOpen", sw.s) then
 		sw.st = "done";
-		TRF_FcL("sweep start dropped (supp, combat or attempt gone)");
+		TRF_FcE("sweep_start", "reason", "suppressed_combat_or_attempt_gone", "result", "dropped");
 		return;
 	end;
 	local H = TRF_FcH();
 	local cur = TRF_FcCur();
 	local pn = TRF_FcSweepPortal(cur, sw.f);
 	local pt = TRF_FcPortalObj(pn);
-	if not H or not TRF_FcObj(pt) then sw.st = "done"; TRF_FcL("sweep start: no portal "..tostring(pn)); return; end;
+	if not H or not TRF_FcObj(pt) then sw.st = "done"; TRF_FcE("sweep_start", "portal", pn, "result", "no_portal"); return; end;
 	-- Roll once: a stored on-screen roll, attempt 4 certain, else the chance of trf_region.
 	local p = 100;
 	if r.sr == 1 or r.sr == 2 then
@@ -830,7 +845,7 @@ function TRF_SweepStart(g, b)
 	local team = TRF_FacTeam(sw.f) or "Trade";
 	local tm = TRF_N("CreateTeam", team);
 	if TRF_FcObj(tm) then H.fg = tm:CreateGroup("TRF_Sweep_"..TRF.gen); end;
-	if not TRF_FcObj(H.fg) then sw.st = "done"; TRF_FcL("sweep start: no group on "..team); return; end;
+	if not TRF_FcObj(H.fg) then sw.st = "done"; TRF_FcE("sweep_start", "team", team, "result", "no_group"); return; end;
 	if not sw.b then
 		TRF_FcP(TRF_FcClanSpawn, {sw, H, cur});
 		sw.nc = getn(H.cs);
@@ -845,8 +860,8 @@ function TRF_SweepStart(g, b)
 	if type(TRF_ClanName) == "function" then cl = TRF_ClanName(sw.s); end;
 	TRF_FcSay(TRF_FcTxt("swfac", TRF_FcFacName(sw.f), cl), 8);
 	TRF_FcStat("sweep_on");
-	TRF_FcL("sweep start slot="..sw.s.." k="..sw.k.." f="..sw.f.." roll="..sw.roll.." p="..p.." rung="..sw.r
-		.." waves="..sw.nw.." clan="..sw.nc.." base="..tostring(sw.b).." portal="..tostring(pn).." hostile="..tostring(sw.hs));
+	TRF_FcE("sweep_start", "slot", sw.s, "attempt", sw.k, "faction", sw.f, "roll", sw.roll, "chance", p, "rung", sw.r,
+		"wave_count", sw.nw, "clan_ship_count", sw.nc, "base", sw.b, "portal", pn, "hostile", TRF_KvB(sw.hs), "result", "started");
 end;
 
 -- Raid power of tier at idx (v02 5.3, v1 6.1): clamp(sb + off, plo, phi) with trf_raid's tier rows; sb from
@@ -931,13 +946,13 @@ function TRF_SweepWave(j, g)
 		-- Full: the wave waits for losses (re-tried every sweep_gap_s while the window has 30 s left).
 		local gap = TRF_FcT("sweep_gap_s");
 		if TRF_FcGt() + gap < sw.t0 + TRF_FcT("sweep_window") - 30 and TRF_Due(gap, "TRF_SweepWave", j, g) then return; end;
-		TRF_FcL("sweep wave "..j.." skipped (cap)");
+		TRF_FcE("sweep_wave", "wave", j, "reason", "cap", "result", "skipped");
 		sw.wv = sw.wv + 1;
 		return;
 	end;
 	if type(TRF_CanSpawn) == "function" then
 		local ok, why = TRF_CanSpawn(room, "sweep");
-		if not ok then TRF_FcL("sweep wave "..j.." skipped ("..tostring(why)..")"); sw.wv = sw.wv + 1; return; end;
+		if not ok then TRF_FcE("sweep_wave", "wave", j, "reason", tostring(why), "result", "skipped"); sw.wv = sw.wv + 1; return; end;
 	end;
 	TRF_FcP(function(p) p:Start(8, 0); end, {H.pt});
 	local pos = H.pt:GetEntryPoint(10 + 15 * j);
@@ -956,7 +971,7 @@ function TRF_SweepWave(j, g)
 	end;
 	setglobal(gname, nil);
 	sw.wv = sw.wv + 1;
-	if not TRF_FcObj(fl) then TRF_FcL("sweep wave "..j.." build failed"); return; end;
+	if not TRF_FcObj(fl) then TRF_FcE("sweep_wave", "wave", j, "result", "build_failed"); return; end;
 	if type(sh) ~= "table" then sh = TRF_FcFlShips(fl); end;
 	tinsert(H.ff, fl);
 	for i = 1, getn(sh) do
@@ -968,7 +983,7 @@ function TRF_SweepWave(j, g)
 	end;
 	sw.nf = sw.nf + getn(sh);
 	TRF_FcOrders(sw, H);
-	TRF_FcD("sweep wave "..j.."/"..sw.nw.." ships="..getn(sh).." nf="..sw.nf);
+	TRF_FcDE("sweep_wave", "wave", j, "wave_count", sw.nw, "ship_count", getn(sh), "faction_ship_count", sw.nf, "result", "spawned");
 end;
 
 -- Orders: every faction flight attacks the nearest live clan ship, else the base (CHECK [PB] E7: NPC
@@ -1082,8 +1097,9 @@ function TRF_SweepEnd(how)
 	TRF_FcLeave(H.fs, H.pt);
 	if won then TRF_FcLeave(H.cs, H.pt); end;
 	TRF_FcStat("sweep_end_"..sw.won);
-	TRF_FcL("sweep end ("..tostring(how)..") slot="..sw.s.." k="..sw.k.." won="..sw.won.." roll="..tostring(sw.roll)
-		.." left="..format("%.2f", left).." nf="..sw.nf.." kf="..sw.kf.." nc="..sw.nc.." kc="..sw.kc.." pk="..sw.pk.." hit="..sw.hit.." join="..tostring(pd));
+	TRF_FcE("sweep_end", "slot", sw.s, "attempt", sw.k, "reason", how, "roll", sw.roll, "clan_left", format("%.2f", left),
+		"faction_ship_count", sw.nf, "faction_killed", sw.kf, "clan_ship_count", sw.nc, "clan_killed", sw.kc,
+		"player_kills", sw.pk, "hit_count", sw.hit, "join", TRF_KvB(pd), "won", TRF_KvB(sw.won));
 end;
 
 -- Base record of idx destroyed but the object still alive: blow it on the next entry (w = 1).
@@ -1127,7 +1143,7 @@ function TRF_FcOut(sw, H, gt)
 	if late then r = nil; end;
 	local n = TRF_FcDelNear(H.fs, p, r);
 	if sw.won == 1 then n = n + TRF_FcDelNear(H.cs, p, r); end;
-	if n == 0 then sw.st = "done"; TRF_FcD("sweep out done"); end;
+	if n == 0 then sw.st = "done"; TRF_FcDE("sweep_out", "result", "done"); end;
 end;
 
 -- Deliberate fire on ship j: distinct whole seconds within win; returns 1 once del stamps are reached.
@@ -1170,7 +1186,7 @@ function TRF_FcPartBody(n, j, g)
 	if not sw then return; end;
 	H.hc[j] = H.hc[j] or {n=0, s=-1, t0=floor(TRF_FcGt()), a=0};
 	H.hc[j].h = 1;
-	if TRF_FcDelib(H.hc, j) then sw.hit = (sw.hit or 0) + 1; TRF_FcD("sweep clan ship "..j.." under fire hit="..sw.hit); end;
+	if TRF_FcDelib(H.hc, j) then sw.hit = (sw.hit or 0) + 1; TRF_FcDE("sweep_clan_hit", "ship", j, "hit_count", sw.hit); end;
 	TRF_FcRearm(H.hc, j, H.cs[j], TRF_FcCb("TRF_CtJoinPart", n, j));
 end;
 
@@ -1178,7 +1194,7 @@ function TRF_FcHitBody(n, j, g)
 	local sw, H = TRF_FcSwOk(g);
 	if not sw then return; end;
 	if TRF_FcDelib(H.hf, j) then
-		TRF_FcL("sweep faction ship "..j.." counted attack hostile="..tostring(sw.hs));
+		TRF_FcE("sweep_faction_attack", "ship", j, "hostile", TRF_KvB(sw.hs));
 		if sw.f >= 1 then TRF_FstHit(sw.f, sw.hs, "sweep attack"); end;
 	end;
 	TRF_FcRearm(H.hf, j, H.fs[j], TRF_FcCb("TRF_SwHit", n, j));
@@ -1188,7 +1204,7 @@ function TRF_FcDiedBody(n, j, g)
 	local sw, H = TRF_FcSwOk(g);
 	if not sw then return; end;
 	if j >= 100 then
-		TRF_FcD("sweep faction ship "..(j - 100).." died");
+		TRF_FcDE("sweep_faction_died", "ship", j - 100);
 		return;
 	end;
 	if type(H.hc[j]) == "table" and H.hc[j].h == 1 then sw.pk = (sw.pk or 0) + 1; end;
@@ -1200,7 +1216,7 @@ function TRF_FcDiedBody(n, j, g)
 		end;
 		if left == 0 then sw.svf = 2; TRF_N("TRF_SalvUse", sw.s, "sweep"); end;
 	end;
-	TRF_FcD("sweep clan ship "..j.." died pk="..sw.pk);
+	TRF_FcDE("sweep_clan_died", "ship", j, "player_kills", sw.pk);
 end;
 
 -- Sweep contracts (v1 7.4) ------------------------------------------------------------------------------
@@ -1256,7 +1272,7 @@ function TRF_FcCtOk(a)
 	TRF_RgCtSet(slot, a);
 	local f = TRF_SweepOwner(slot);
 	TRF_FcStat("ct_acc_"..a);
-	TRF_FcL("contract bit "..a.." accepted slot="..slot.." f="..f);
+	TRF_FcE("contract", "slot", slot, "faction", f, "contract_bit", a, "result", "accepted");
 	return TRF_FcTxt("ctok", TRF_FcFacName(f));
 end;
 
@@ -1289,7 +1305,7 @@ function TRF_InstallPirDock()
 		TRF_PirThunk = function() return %w; end;
 		n = 1;
 	end;
-	TRF_FcL("install pirdock="..n.." mine="..tostring(TRF_FcIsMine(__PirStationDock_Ok)));
+	TRF_FcE("install", "installed_count", n, "pirdock_wrapped", TRF_KvB(TRF_FcIsMine(__PirStationDock_Ok)));
 	return n;
 end;
 
@@ -1300,7 +1316,7 @@ function TRF_FcPoOrig(why)
 	if type(TRF_orig_PirOk) == "function" then
 		call(TRF_orig_PirOk, {}, "x");
 	else
-		TRF_FcL("pirdock: no original ("..tostring(why)..")");
+		TRF_FcE("pirdock", "reason", tostring(why), "result", "no_original");
 	end;
 end;
 
@@ -1365,7 +1381,7 @@ function TRF_FcPoBody()
 		local paid = TRF_N("TRF_Pay", o.p or 0, "po") or 0;
 		TRF.offer = nil;
 		TRF_FcSay(TRF_FcTxt("popaid", paid), 8);
-		TRF_FcL("po paid "..paid);
+		TRF_FcE("offer_paid", "pay", paid);
 		return "paid";
 	end;
 	if type(o) == "table" then return "pending"; end;
@@ -1407,7 +1423,7 @@ function TRF_FcPoBody()
 		return "boxfail";
 	end;
 	TRF_FcStat("po_box");
-	TRF_FcL("po offer k="..k.." s="..TRF_FcSysName(s).."("..s..")");
+	TRF_FcE("offer", "offer_kind", k, "system", TRF_FcSysName(s), "system_index", s);
 	return "box";
 end;
 
@@ -1451,10 +1467,10 @@ function TRF_FcPoStep()
 			TRF.offer = {k=po.k, s=po.s, t=TRF_FcLegs() + TRF_FcT("po_legs")};
 			TRF_FcSay(TRF_FcTxt("poacc", TRF_FcSysName(po.s)), 6);
 			TRF_FcStat("po_acc_"..po.k);
-			TRF_FcL("po accepted k="..po.k.." s="..po.s.." till "..TRF.offer.t);
+			TRF_FcE("offer_accept", "offer_kind", po.k, "system_index", po.s, "until_leg", TRF.offer.t);
 		end;
 	else
-		TRF_FcD("po declined");
+		TRF_FcDE("offer_decline");
 	end;
 	TRF_FcPoOrig("step");
 end;
@@ -1465,7 +1481,7 @@ function TRF_FcOfferExpire(L)
 	if type(o) ~= "table" then return; end;
 	if (o.k == 1 or o.k == 2) and type(o.t) == "number" and L > o.t then
 		TRF.offer = nil;
-		TRF_FcL("po offer expired k="..o.k);
+		TRF_FcE("offer_expire", "offer_kind", o.k);
 	end;
 end;
 
@@ -1478,7 +1494,7 @@ function TRF_PoEntry()
 	local o = TRF.offer;
 	if type(o) ~= "table" or (o.k ~= 1 and o.k ~= 2) or TRF_FcOpt("po", 1) == 0 then return nil; end;
 	if TRF_FcCur() ~= o.s then return nil; end;
-	TRF_FcL("po entry k="..o.k.." s="..o.s);
+	TRF_FcE("offer_entry", "offer_kind", o.k, "system_index", o.s);
 	return {k=o.k, s=o.s, tb=2};
 end;
 
@@ -1491,7 +1507,7 @@ function TRF_PoDone(id, how)
 	if not L or type(o) ~= "table" then return nil; end;
 	if how == "spawn" then
 		L.poi = id;
-		if o.k == 2 then TRF.offer = nil; TRF_FcL("po intel spawned id="..tostring(id)); end;
+		if o.k == 2 then TRF.offer = nil; TRF_FcE("offer_intel_spawn", "trader_id", id); end;
 		return 1;
 	end;
 	-- The tip-off trader: the id reported at its spawn, or a trader record with tb bit 2 (v1 3.2).
@@ -1505,7 +1521,7 @@ function TRF_PoDone(id, how)
 		local c = TRF_N("TRF_ClanRec", slot);
 		if type(c) == "table" and type(c.sc) == "number" then c.sc = TRF_FcClamp(c.sc + 5, 0, 99); end;
 		L.poi = nil;
-		TRF_FcL("po paid raid done ("..how..") id="..tostring(id).." owed="..p.." clan sc="..tostring(c and c.sc));
+		TRF_FcE("offer_raid_done", "trader_id", id, "reason", how, "owed", p, "clan_score", c and c.sc);
 		return 1;
 	end;
 	return nil;
@@ -1524,7 +1540,7 @@ function TRF_Faction_WindDown()
 	TRF_FcLeave(H.fs, H.pt);
 	TRF_FcLeave(H.cs, H.pt);
 	sw.st = "out"; sw.te = TRF_FcGt(); sw.won = 1;
-	TRF_FcL("sweep wind-down slot="..sw.s.." (resolves off-screen, sr="..tostring(sw.roll)..")");
+	TRF_FcE("sweep_wind_down", "slot", sw.s, "roll", sw.roll, "result", "off_screen");
 end;
 
 -- Jump: every sweep ship deleted, handle and visit fields dropped (the stored roll stays in rg.sr).
@@ -1550,31 +1566,33 @@ function TRF_Faction_OnLoad()
 		if TRF_FcAlive(b) then TRF_FcP(function(o) o:Delete(); end, {b}); n = n + 1; end;
 	end;
 	TRF_Fs_Init();
-	if n > 0 then TRF_FcL("load: "..n.." sweep ships deleted"); end;
+	if n > 0 then TRF_FcE("load", "deleted_count", n); end;
 end;
 
 -- Dump (TRF_DumpState) ------------------------------------------------------------------------------------
 
 function TRF_Faction_Dump()
-	if type(TRF) ~= "table" then TRF_L("dump fac none"); return; end;
+	if type(TRF) ~= "table" then TRF_FcE("dump", "state", "none"); return; end;
 	local rg = TRF_FcRg();
-	local fs = "";
+	local fs = nil;
 	for slot = 1, rg.n do
 		local r = TRF_N("TRF_RgRec", slot);
 		local ct = 0;
 		if type(r) == "table" and type(r.ct) == "number" then ct = r.ct; end;
-		fs = fs.." "..slot..":"..tostring(type(TRF.fs) == "table" and TRF.fs[slot]).."/o"..TRF_SweepOwner(slot).."/ct"..ct;
+		-- <slot>:<standing digits>/o<sweep owner>/ct<contract bits>
+		local e = slot..":"..tostring(type(TRF.fs) == "table" and TRF.fs[slot]).."/o"..TRF_SweepOwner(slot).."/ct"..ct;
+		if fs then fs = fs..","..e; else fs = e; end;
 	end;
-	local fst = "?";
-	if type(TRF.std) == "table" then fst = tostring(TRF.std.fst); end;
-	local o = "none";
+	local fst = nil;
+	if type(TRF.std) == "table" then fst = TRF.std.fst; end;
+	local o = nil;
 	if type(TRF.offer) == "table" then o = tostring(TRF.offer.k)..":"..tostring(TRF.offer.s)..":"..tostring(TRF.offer.t)..":"..tostring(TRF.offer.p); end;
-	local sw = "none";
+	local sw = nil;
 	local L = TRF_FcLive();
 	if L and type(L.sw) == "table" then
 		local s = L.sw;
 		sw = tostring(s.s)..":"..tostring(s.k)..":"..tostring(s.st)..":r"..tostring(s.roll)..":f"..tostring(s.nf).."-"..tostring(s.kf)
 			..":c"..tostring(s.nc).."-"..tostring(s.kc)..":pk"..tostring(s.pk);
 	end;
-	TRF_L("dump fac fst="..fst.." offer="..o.." sw="..sw.." fs"..fs);
+	TRF_FcE("dump", "faction_standing", fst, "offer", o, "sweep", sw, "region_standings", fs);
 end;

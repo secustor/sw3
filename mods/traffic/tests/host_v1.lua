@@ -479,7 +479,7 @@ function T_V1_C()
 	h.rq = {94, 1};
 	local res = TRF_DemandDo(tid);
 	for i = 1, getn(dead) do dead[i].alive = 1; end;
-	HOST_Check(V_Logs("demand id="..tid.." st=4.000 sp=24.000 lv=4 q=0.167 br=0.200 p=95.000 roll=94 -> comply") == 1,
+	HOST_Check(V_Logs("module=supply event=demand trader_id="..tid.." trader_strength=4.000 player_strength=24.000 player_level=4 strength_ratio=0.167 braveness=0.200 chance=95.000 roll=94 result=comply") == 1,
 		"demand: lone transport, timid trader (br from the raid roll) complies at p 95, roll 94");
 	local got = 0;
 	for i = 1, getn(h.ms.inv) do got = got + h.ms.inv[i][2]; end;
@@ -494,7 +494,7 @@ function T_V1_C()
 	tr2.br = nil;
 	local ne = TRF_SpEscAlive(tr2, TRF_H().tr[tid2]);
 	h.rq = {1000, 50};
-	HOST_Check(ne >= 2 and TRF_DemandDo(tid2) == "refuse" and V_Logs("br=1.000 p=5.000 roll=50 -> refuse") == 1, "demand: "..ne.." escorts, brave trader refuses at p 5, roll 50");
+	HOST_Check(ne >= 2 and TRF_DemandDo(tid2) == "refuse" and V_Logs("braveness=1.000 chance=5.000 roll=50 result=refuse") == 1, "demand: "..ne.." escorts, brave trader refuses at p 5, roll 50");
 	local nr = h.rand;
 	HOST_Check(tr2.br == 1 and TRF_Rd_Brave(tr2) == 1 and h.rand == nr, "braveness from the demand kept as r.br and read by trf_raid without a roll");
 	h.ms.model = nil;
@@ -551,7 +551,7 @@ function T_V1_C()
 	TRF_Map().it = nil;
 	HOST_Check(found and v == 43000 and miss == 1, "shop items include the faction cargo lists; hold value 43000, one unknown ("..v..")");
 	TRF_Supply_Dump();
-	HOST_Check(V_Logs("dump supply") >= 1, "dump line");
+	HOST_Check(V_Logs("module=supply event=dump ") >= 1, "dump line");
 	TRF_Supply_BeforeJump();
 	HOST_Check(TRF.live.sp == nil, "jump clears the visit state");
 end;
@@ -927,7 +927,7 @@ function T_V1_F()
 	HOST_Check(TRF_Fs(s, 1) == 4, "won sweep: fs +2");
 	TRF.fs[s] = "33333"; c.sv = 0; c.sf = 0;
 	TRF_Faction_Dump();
-	HOST_Check(V_Logs("dump fac") >= 1, "faction dump line");
+	HOST_Check(V_Logs("module=faction event=dump ") >= 1, "faction dump line");
 end;
 
 -- g: sweeps as attempts (spec 7.3, 7.4) ----------------------------------------------------------------
@@ -1687,7 +1687,7 @@ function T_V1_L()
 		SetObjectLabel(o3, "TRF_PBASE_"..kit);
 		TRF_Base_OnActivate();
 	end;
-	HOST_Check(o3.deleted == 1 and getn(TRF.base) == 0 and V_Logs("bases removed") >= 1, "enabled 2 removes the base");
+	HOST_Check(o3.deleted == 1 and getn(TRF.base) == 0 and V_Logs("module=base event=bases_removed") >= 1, "enabled 2 removes the base");
 	h.cfg.enabled = nil;
 	-- Never founded in front of the player: dis held and the roll forced while the player is in the system.
 	TRF.base = {};
@@ -1696,7 +1696,7 @@ function T_V1_L()
 	HOST_Check(W_Base("kitaro") == nil, "no founding while the player is in the system");
 	T_Jump("kondel");
 	TRF_Base_Dump();
-	HOST_Check(V_Logs("dump base") >= 1, "base dump line");
+	HOST_Check(V_Logs("module=base event=dump ") >= 1, "base dump line");
 end;
 
 -- m: localisation and the deny list (spec 10.4) -------------------------------------------------------
@@ -2070,7 +2070,7 @@ function T_V1_N()
 	end;
 	HOST_Check(tg == "", "no TRF_G* or flight_trf_* globals"..tg);
 	TRF_DumpState("test");
-	local dl = {"dump v4", "dump tp", "dump fac", "dump clan", "dump cv", "dump dc", "dump supply", "dump base", "loc: dump"};
+	local dl = {"dump v4", "dump tp", "module=faction event=dump", "dump clan", "dump cv", "dump dc", "module=supply event=dump", "module=base event=dump", "loc: dump"};
 	local md = "";
 	for i = 1, getn(dl) do if V_Logs(dl[i]) == 0 then md = md.." "..dl[i]; end; end;
 	HOST_Check(md == "", "TRF_DumpState calls every v1 dump"..md);

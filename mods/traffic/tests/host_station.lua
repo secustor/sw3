@@ -227,7 +227,7 @@ end;
 function T_STN_A()
 	local h = HOST();
 	S_Begin("gaoba");
-	HOST_Check(V_Logs("stn: install none=1 trade=1 mine=1/1") >= 1, "install: both wrapped, mine=1/1");
+	HOST_Check(V_Logs("module=station event=install none_installed=true trade_installed=true none_wrapped=true trade_wrapped=true") >= 1, "install: both wrapped, mine=1/1");
 	local src = function(f) return getinfo(f, "S").source or ""; end;
 	local van = function()
 		return strfind(%src(TRF_orig_NoneSt), "DockStation.script", 1, 1) and strfind(%src(TRF_orig_TradeSt), "DockStation.script", 1, 1);
@@ -243,7 +243,7 @@ function T_STN_A()
 	local a = S_None(D.none[1]);
 	local b = S_Trade(D.trade[1]);
 	HOST_Check(a.n == 1 and a.t == "#L_Dnone_live_msg" and a.spk == "DialogSystem" and a.ntm == 1 and S_Vanilla(b)
-		and S_Logs(n0, "stn: pass reason=off sys=gaoba at=none") == 1 and S_Logs(n0, "stn: pass reason=off sys=gaoba at=dock") == 1,
+		and S_Logs(n0, "module=station event=pass reason=off system=gaoba at=none") == 1 and S_Logs(n0, "module=station event=pass reason=off system=gaoba at=dock") == 1,
 		"voice 0: vanilla line DialogNone_live (DialogSystem) and the vanilla box");
 	HOST_Press("cancel");
 	h.cfg.voice = nil;
@@ -252,21 +252,21 @@ function T_STN_A()
 	local ok0 = h.trade_ok;
 	a = S_None(D.none[1]);
 	b = S_Trade(D.trade[1]);
-	HOST_Check(a.n == 1 and a.ntm == 1 and S_Logs(n0, "stn: none sys=gaoba(42) tip=1") <= 1 and S_Vanilla(b)
-		and S_Logs(n0, "stn: dock k=42 ") == 1, "voice 1: one Message, one box, dock line");
+	HOST_Check(a.n == 1 and a.ntm == 1 and S_Logs(n0, "module=station event=mood system=gaoba system_index=42 vanilla_key=1") <= 1 and S_Vanilla(b)
+		and S_Logs(n0, "module=station event=dock station_key=42 ") == 1, "voice 1: one Message, one box, dock line");
 	HOST_Press("ok");
-	HOST_Check(h.trade_ok == ok0 + 1 and S_Logs(n0, "stn: docked k=42 up=0") == 1, "OK: trf_shop wrapper (docked line) and vanilla dock");
+	HOST_Check(h.trade_ok == ok0 + 1 and S_Logs(n0, "module=station event=docked station_key=42 standing_up=false") == 1, "OK: trf_shop wrapper (docked line) and vanilla dock");
 	-- Every MapInitialization installs again over the fresh vanilla originals.
 	local o1, o2 = TRF_orig_NoneSt, TRF_orig_TradeSt;
 	n0 = S_Mark();
 	T_Enter("gaoba");
 	HOST_Check(TRF_orig_NoneSt ~= o1 and TRF_orig_TradeSt ~= o2 and van() and TRF_StnIsMine(_NoneStation_Action)
-		and S_Logs(n0, "stn: install none=1 trade=1 mine=1/1") == 1, "entry: installed again over the new originals");
+		and S_Logs(n0, "module=station event=install none_installed=true trade_installed=true none_wrapped=true trade_wrapped=true") == 1, "entry: installed again over the new originals");
 	o1 = TRF_orig_NoneSt;
 	n0 = S_Mark();
 	T_SaveLoad();
-	HOST_Check(TRF_orig_NoneSt ~= o1 and van() and TRF_StnIsMine(__TradeStation_Action) and S_Logs(n0, "stn: install none=1 trade=1 mine=1/1") >= 1
-		and S_Logs(n0, "stn: load latch=0") == 1, "load: installed again, load line");
+	HOST_Check(TRF_orig_NoneSt ~= o1 and van() and TRF_StnIsMine(__TradeStation_Action) and S_Logs(n0, "module=station event=install none_installed=true trade_installed=true none_wrapped=true trade_wrapped=true") >= 1
+		and S_Logs(n0, "module=station event=load latch=false") == 1, "load: installed again, load line");
 	D = S_Setup({{"1"}});
 	a = S_None(D.none[1]);
 	HOST_Check(a.n == 1 and a.ntm == 1, "after load: one Message per approach");
@@ -278,7 +278,7 @@ function T_STN_A()
 	local ne = S_Expect(function() local t = %a; t.r = S_None(%D.none[1]); end);
 	a = a.r;
 	TRF_StnMoodOf = mo;
-	HOST_Check(a.n == 1 and a.t == "#L_Dnone_live_msg" and ne == 1 and S_Logs(n0, "stn: pass reason=error") == 1,
+	HOST_Check(a.n == 1 and a.t == "#L_Dnone_live_msg" and ne == 1 and S_Logs(n0, "module=station event=pass reason=error") == 1,
 		"error in the body: vanilla line, one ERROR line ("..ne..")");
 	-- Error in the dock body: vanilla box.
 	local to = TRF_StnTradeBody;
@@ -396,7 +396,7 @@ function T_STN_B()
 	h.cfg.voice_moods = 0;
 	local n0 = S_Mark();
 	case("off", {pirate="pirate", ["0"]="0"});
-	HOST_Check(S_Logs(n0, "stn: pass reason=off") == 1, "voice_moods 0: moods pass");
+	HOST_Check(S_Logs(n0, "module=station event=pass reason=off") == 1, "voice_moods 0: moods pass");
 	h.cfg.voice_moods = nil;
 	S_MoodReset(sl0);
 	HOST_Check(bad.s == "", "mood rows 0-8 and 7b, one Message and one SetNormalTimeMode per approach"..bad.s);
@@ -415,14 +415,14 @@ function T_STN_B()
 	local vo = TRF.vo[hi];
 	D = S_Setup({{"0"}});
 	local a = S_None(D.none[1]);
-	HOST_Check(vo == TRF.ve and S_Logs(n0, "stn: owner sys=hafa static=Inoco now=Vks vo=") == 1 and a.t == "#L_Dnone_war_closed_VKS_msg"
+	HOST_Check(vo == TRF.ve and S_Logs(n0, "module=station event=owner system=hafa static_owner=Inoco owner=Vks owner_visit=") == 1 and a.t == "#L_Dnone_war_closed_VKS_msg"
 		and a.spk == "DispetcherVKS", "owner change hafa: TRF.vo set, martial law 3_vks");
 	TRF.clock.legs = TRF.clock.legs + 20;
 	T_Enter("hafa");
 	S_Rg().ph = 0;
 	D = S_Setup({{"0"}});
 	a = S_None(D.none[1]);
-	HOST_Check(TRF.vo[hi] == vo and S_Logs(n0, "stn: owner ") == 1 and a.t == "#L_Dnone_univ_msg", "after own_legs legs: vanilla again, vo kept");
+	HOST_Check(TRF.vo[hi] == vo and S_Logs(n0, "module=station event=owner ") == 1 and a.t == "#L_Dnone_univ_msg", "after own_legs legs: vanilla again, vo kept");
 	-- moscowia now Kfni (static Vks): New Empire martial law variant with its speaker.
 	h.teams.moscowia = "Kfni";
 	T_Enter("moscowia");
@@ -450,8 +450,8 @@ function T_STN_C()
 		local a = S_None(D.none[1]);
 		local b = S_Trade(D.trade[1] or D.extra[1]);
 		HOST_Press("cancel");
-		local ok = a.t == "#L_Dnone_univ_msg" and S_Vanilla(b) and b.nm == 0 and S_Logs(n0, "stn: dock ") == 0
-			and S_Logs(n0, "stn: pass reason="..why.." sys="..sys.." at=none") == 1 and S_Logs(n0, "stn: pass reason="..why.." sys="..sys.." at=dock") == 1;
+		local ok = a.t == "#L_Dnone_univ_msg" and S_Vanilla(b) and b.nm == 0 and S_Logs(n0, "module=station event=dock ") == 0
+			and S_Logs(n0, "module=station event=pass reason="..why.." system="..sys.." at=none") == 1 and S_Logs(n0, "module=station event=pass reason="..why.." system="..sys.." at=dock") == 1;
 		HOST_Check(ok, "gate "..why.." in "..sys..": vanilla line and box");
 	end;
 	T_Enter("elio"); pass("deny", "elio");
@@ -465,7 +465,7 @@ function T_STN_C()
 	local at = S_None(Dt.none[1]);
 	local bt = S_Trade(Dt.trade[1]);
 	HOST_Press("cancel");
-	HOST_Check(S_Logs(t0, "stn: pass") == 0 and S_Logs(t0, "stn: none sys=taira(") == 1 and S_Logs(t0, "stn: dock k="..TRF_CurIdx().." ") == 1
+	HOST_Check(S_Logs(t0, "module=station event=pass") == 0 and S_Logs(t0, "module=station event=mood system=taira ") == 1 and S_Logs(t0, "module=station event=dock station_key="..TRF_CurIdx().." ") == 1
 		and at.n >= 1 and bt.nb >= 1, "transit: taira without a taira quest in process: mood line and dock line");
 	-- A quest naming taira in process: deny_tq on both paths; elio (authored) stays deny.
 	h.quests.quest_6c_01 = QUEST_PROCESS;
@@ -483,23 +483,23 @@ function T_STN_C()
 	bt = S_Trade(Dt.trade[1]);
 	HOST_Press("cancel");
 	at = S_None(Dt.none[1]);
-	local dl = S_Line(t0, "stn: dock k=");
-	HOST_Check(S_Logs(t0, "stn: none sys=taira(") == 1 and at.n >= 1 and strfind(dl, "m=1 nofee=latch", 1, 1) and strfind(dl, "greet=stnr1 ", 1, 1)
-		and S_Vanilla(bt) and S_Logs(t0, "stn: pass reason=latch sys=taira at=dock") == 1 and S_Logs(t0, "at=none") == 0
+	local dl = S_Line(t0, "module=station event=dock station_key=");
+	HOST_Check(S_Logs(t0, "module=station event=mood system=taira ") == 1 and at.n >= 1 and strfind(dl, "fee_multiplier=1 no_fee_reason=latch", 1, 1) and strfind(dl, "greeting=stnr1 ", 1, 1)
+		and S_Vanilla(bt) and S_Logs(t0, "module=station event=pass reason=latch system=taira at=dock") == 1 and S_Logs(t0, "at=none") == 0
 		and TRF_StnSV().mis == 1, "transit: taira during a mission: mood, greeting, nofee=latch ("..dl..")");
 	-- The mission ends in the same visit: the latch still stops the fee; the next entry charges again.
 	h.qs = FALSE;
 	t0 = S_Mark();
 	bt = S_Trade(Dt.trade[1]);
 	HOST_Press("cancel");
-	HOST_Check(S_Vanilla(bt) and S_Logs(t0, "nofee=latch") == 1, "mission ended in the same visit: the latch still stops the fee");
+	HOST_Check(S_Vanilla(bt) and S_Logs(t0, "no_fee_reason=latch") == 1, "mission ended in the same visit: the latch still stops the fee");
 	T_Jump("taira");
 	TRF_SetPro(TRF_CurIdx(), 8);
 	Dt = S_Setup({});
 	t0 = S_Mark();
 	bt = S_Trade(Dt.trade[1]);
 	HOST_Press("cancel");
-	HOST_Check(bt.nb == 1 and bt.box.text ~= "#UI_TradeStationDockRequest" and S_Logs(t0, "nofee=-") == 1,
+	HOST_Check(bt.nb == 1 and bt.box.text ~= "#UI_TradeStationDockRequest" and S_Logs(t0, "no_fee_reason=nil") == 1,
 		"next entry: latch cleared, fee box");
 	h.labels.CurrentQuest = cq0;
 	T_Enter("elio"); pass("deny", "elio");
@@ -522,8 +522,8 @@ function T_STN_C()
 	local b = S_Trade(D.trade[1]);
 	HOST_Press("cancel");
 	h.qs = FALSE;
-	HOST_Check(TRF_StnSV().mis == 1 and S_Logs(n0, "stn: pass") == 0 and S_Logs(n0, "stn: none sys=gaoba(") == 1
-		and S_Logs(n0, "stn: dock k=42 ") == 1 and S_Vanilla(b), "story mission in gaoba: latch set, mood and dock lines");
+	HOST_Check(TRF_StnSV().mis == 1 and S_Logs(n0, "module=station event=pass") == 0 and S_Logs(n0, "module=station event=mood system=gaoba ") == 1
+		and S_Logs(n0, "module=station event=dock station_key=42 ") == 1 and S_Vanilla(b), "story mission in gaoba: latch set, mood and dock lines");
 	T_Jump("gaoba");
 	HOST_Check(TRF_StnSV().mis == nil, "next entry: latch cleared");
 	-- voice_gate 2 (light gate): a mission_q denial changes moods but not the dock; the dock latches.
@@ -535,13 +535,13 @@ function T_STN_C()
 	D = S_Setup({{"0"}});
 	n0 = S_Mark();
 	a = S_None(D.none[1]);
-	local an = S_Logs(n0, "stn: pass");
+	local an = S_Logs(n0, "module=station event=pass");
 	b = S_Trade(D.trade[1]);
 	HOST_Press("cancel");
 	local a2 = S_None(D.none[1]);
 	TRF_StrictOk = so;
-	HOST_Check(an == 0 and S_Logs(n0, "stn: pass reason=gate:mission_q sys=gaoba at=dock") == 1 and S_Vanilla(b)
-		and TRF_StnSV().mis == 1 and S_Logs(n0, "stn: pass reason=latch") == 0 and S_Logs(n0, "stn: none sys=gaoba(") == 2 and a2.n >= 1,
+	HOST_Check(an == 0 and S_Logs(n0, "module=station event=pass reason=gate:mission_q system=gaoba at=dock") == 1 and S_Vanilla(b)
+		and TRF_StnSV().mis == 1 and S_Logs(n0, "module=station event=pass reason=latch") == 0 and S_Logs(n0, "module=station event=mood system=gaoba ") == 2 and a2.n >= 1,
 		"voice_gate 2: moods open under mission_q, dock denied and latched, moods stay open after the latch");
 	h.cfg.voice_gate = nil;
 	-- voice_gate 1: the same denial closes the moods.
@@ -551,7 +551,7 @@ function T_STN_C()
 	n0 = S_Mark();
 	a = S_None(D.none[1]);
 	TRF_StrictOk = so;
-	HOST_Check(S_Logs(n0, "stn: pass reason=gate:mission_q sys=gaoba at=none") == 1, "voice_gate 1: mission_q closes the moods");
+	HOST_Check(S_Logs(n0, "module=station event=pass reason=gate:mission_q system=gaoba at=none") == 1, "voice_gate 1: mission_q closes the moods");
 	-- strict 0: the dock is open, but no fee (stn-e checks the fee).
 	h.cfg.strict = 0;
 	T_Enter("gaoba");
@@ -559,7 +559,7 @@ function T_STN_C()
 	n0 = S_Mark();
 	b = S_Trade(D.trade[1]);
 	HOST_Press("cancel");
-	HOST_Check(S_Logs(n0, "stn: dock k=42 ") == 1, "strict 0: dock line (gate open)");
+	HOST_Check(S_Logs(n0, "module=station event=dock station_key=42 ") == 1, "strict 0: dock line (gate open)");
 	h.cfg.strict = nil;
 	-- G1: TRF_Traffic() false.
 	T_Enter("gaoba");
@@ -618,7 +618,7 @@ function T_STN_C()
 	n0 = S_Mark();
 	b = S_Trade(D.trade[1]);
 	HOST_Press("cancel");
-	HOST_Check(S_Logs(n0, "stn: dock k="..TRF_CurIdx().." ") == 1, gs.." at chapter 5: guard off, dock line");
+	HOST_Check(S_Logs(n0, "module=station event=dock station_key="..TRF_CurIdx().." ") == 1, gs.." at chapter 5: guard off, dock line");
 	h.labels.CurrentQuest = cq;
 	-- G10: the current dock row is not __TradeStation_Action: reason=row, vanilla box.
 	T_Enter("gaoba");
@@ -629,7 +629,7 @@ function T_STN_C()
 	local nb0 = getn(h.boxes);
 	TRF_Stn_Trade("");
 	HOST_Check(getn(h.boxes) == nb0 + 1 and h.boxes[getn(h.boxes)].text == "#UI_TradeStationDockRequest"
-		and S_Logs(n0, "stn: pass reason=row sys=gaoba at=dock") == 1, "G10: row of another function: reason=row, vanilla box");
+		and S_Logs(n0, "module=station event=pass reason=row system=gaoba at=dock") == 1, "G10: row of another function: reason=row, vanilla box");
 	HOST_Press("cancel");
 	T_Enter("gaoba");
 	-- Unknown system: nomap.
@@ -643,7 +643,7 @@ function T_STN_C()
 	b = S_Trade(1);
 	HOST_Press("cancel");
 	h.loc = loc0;
-	HOST_Check(S_Vanilla(b) and S_Logs(n1, "stn: pass reason=nomap") == 1, "unknown system: nomap");
+	HOST_Check(S_Vanilla(b) and S_Logs(n1, "module=station event=pass reason=nomap") == 1, "unknown system: nomap");
 end;
 
 -- d: standing (7, 8.2-8.4) ----------------------------------------------------------------------
@@ -662,33 +662,33 @@ function T_STN_D()
 	local n0 = S_Mark();
 	TRF_AddHelp(1, "contract");
 	TRF_AddHelp(1, "sesc");
-	HOST_Check(st() == 1 and S_Logs(n0, "stn: deed k=42 d=+1 why=contract st=0->1 cap=-") == 1
-		and S_Logs(n0, "stn: deed k=42 d=0 why=sesc st=1->1 cap=gv") == 1, "gain +1, second gain in the visit capped (gv)");
+	HOST_Check(st() == 1 and S_Logs(n0, "module=station event=deed station_key=42 change=+1 reason=contract standing_before=0 standing_after=1 cap=none") == 1
+		and S_Logs(n0, "module=station event=deed station_key=42 change=0 reason=sesc standing_before=1 standing_after=1 cap=visit_gain") == 1, "gain +1, second gain in the visit capped (gv)");
 	T_SaveLoad();
 	n0 = S_Mark();
 	TRF_AddHelp(1, "dc");
-	HOST_Check(st() == 1 and S_Logs(n0, "cap=gv") == 1, "after a load: no second gain in the same visit");
+	HOST_Check(st() == 1 and S_Logs(n0, "cap=visit_gain") == 1, "after a load: no second gain in the same visit");
 	T_Enter("gaoba");
 	ms(4000);
 	n0 = S_Mark();
 	TRF_AddHelp(1, "raid 3");
 	ms(1000);
 	TRF_AddHelp(1, "raid 3");
-	HOST_Check(st() == 2 and S_Logs(n0, "why=raid 3 st=1->1 cap=far dist=4000") == 1 and S_Logs(n0, "d=+1 why=raid 3 st=1->2 cap=- dist=1000") == 1,
+	HOST_Check(st() == 2 and S_Logs(n0, "reason=\"raid 3\" standing_before=1 standing_after=1 cap=far distance=4000") == 1 and S_Logs(n0, "change=+1 reason=\"raid 3\" standing_before=1 standing_after=2 cap=none distance=1000") == 1,
 		"raid deed only within stn_near of the station");
 	T_Enter("gaoba");
 	n0 = S_Mark();
 	TRF_Stn_Deed(idx, 1, "test", nil, 2);
 	TRF_AddHelp(1, "join");
-	HOST_Check(st() == 2 and S_Logs(n0, "why=test st=2->2 cap=ceil") == 1, "ceiling respected");
+	HOST_Check(st() == 2 and S_Logs(n0, "reason=test standing_before=2 standing_after=2 cap=ceiling") == 1, "ceiling respected");
 	local h0 = TRF.std.heat;
 	n0 = S_Mark();
 	TRF_AddHeat(1, "kill 7");
 	TRF_AddHeat(1, "attack 7");
 	TRF_AddHeat(1, "demand 7");
 	TRF_AddHeat(-1, "contract");
-	HOST_Check(st() == 0 and S_Logs(n0, "d=-1 why=kill 7 st=2->1") == 1 and S_Logs(n0, "d=-1 why=attack 7 st=1->0") == 1
-		and S_Logs(n0, "why=demand 7 st=0->0 cap=dn") == 1, "losses: at most two per visit");
+	HOST_Check(st() == 0 and S_Logs(n0, "change=-1 reason=\"kill 7\" standing_before=2 standing_after=1") == 1 and S_Logs(n0, "change=-1 reason=\"attack 7\" standing_before=1 standing_after=0") == 1
+		and S_Logs(n0, "reason=\"demand 7\" standing_before=0 standing_after=0 cap=visit_loss") == 1, "losses: at most two per visit");
 	TRF.std.heat = 0;
 	-- Lazy decay: 4 -> 2 after 24 legs.
 	TRF.stn[k] = {st=4, lg=TRF.clock.legs};
@@ -760,11 +760,11 @@ function T_STN_D()
 	local r = S_Trade(D.trade[1]);
 	if r.nb > 0 then HOST_Press("cancel"); end;
 	HOST_Check(strfind(r.scr, TRF_Txt("stntipfeq", "gaoba"), 1, 1) and TRF.stn[k].ts == idx and TRF.stn[k].tf == TRF.clock.legs
-		and S_Logs(n0, "stn: tip k=42 kind=feq sys=gaoba") == 1, "supply-run tip at e 4 records tf/ts");
+		and S_Logs(n0, "module=station event=tip station_key=42 kind=feq system=gaoba") == 1, "supply-run tip at e 4 records tf/ts");
 	n0 = S_Mark();
 	TRF_AddHeat(1, "feq kill");
 	TRF.std.heat = 0;
-	HOST_Check(TRF.stn[k].st == -3 and TRF.stn[k].nt == 1 and TRF.stn[k].tf == nil and S_Logs(n0, "stn: rob k=42 st=-3 nt=1") == 1,
+	HOST_Check(TRF.stn[k].st == -3 and TRF.stn[k].nt == 1 and TRF.stn[k].tf == nil and S_Logs(n0, "module=station event=rob station_key=42 standing_after=-3 tip_ban=true") == 1,
 		"feq kill: the tipping station sets -3 and the tip ban");
 	S_NewVisit();
 	r = S_Trade(D.trade[1]);
@@ -795,7 +795,7 @@ function T_STN_D()
 	if r.nb > 0 then HOST_Press("cancel"); end;
 	local tsw = TRF_Txt("stntipsweep", TRF_SweepInfo(slot).fac, TRF_ClanName(slot), TRF_StnName(TRF_RgMap()[slot].home));
 	HOST_Check(strfind(r.scr, tsw, 1, 1) and not strfind(r.scr, "supply run", 1, 1) and TRF.stn[k].tf == nil
-		and S_Logs(n0, "stn: tip k=42 kind=sweep") == 1, "sweep tip first, before the supply run");
+		and S_Logs(n0, "module=station event=tip station_key=42 kind=sweep") == 1, "sweep tip first, before the supply run");
 	TRF.feq = nil;
 	local base0 = TRF.base;
 	T_Enter("gaoba");
@@ -808,7 +808,7 @@ function T_STN_D()
 	r = S_Trade(D.trade[1]);
 	if r.nb > 0 then HOST_Press("cancel"); end;
 	TRF.base = base0;
-	HOST_Check(strfind(r.scr, TRF_Txt("stntipbase", TRF_StnName(idx)), 1, 1) and S_Logs(n0, "stn: tip k=42 kind=base sys=gaoba") == 1,
+	HOST_Check(strfind(r.scr, TRF_Txt("stntipbase", TRF_StnName(idx)), 1, 1) and S_Logs(n0, "module=station event=tip station_key=42 kind=base system=gaoba") == 1,
 		"base tip without sweep and supply run");
 	-- Radio spacing (stn_gap): a greeting within 6 s of another TRF line waits for the next approach.
 	T_Enter("gaoba");
@@ -821,7 +821,7 @@ function T_STN_D()
 	TRF.clock.gt = TRF.clock.gt + 10;
 	local rg2 = S_Trade(D.trade[1]);
 	if rg2.nb > 0 then HOST_Press("cancel"); end;
-	HOST_Check(r.nm == 0 and S_Logs(n0, "greet=stnr1(gap)") == 1 and rg2.msg == TRF_Txt("stnr1").."|",
+	HOST_Check(r.nm == 0 and S_Logs(n0, "greeting=stnr1 greeting_skip=gap") == 1 and rg2.msg == TRF_Txt("stnr1").."|",
 		"radio spacing: greeting skipped inside stn_gap, sent on the next approach");
 	-- parked kill: -1.
 	T_Enter("gaoba");
@@ -829,7 +829,7 @@ function T_STN_D()
 	n0 = S_Mark();
 	TRF_AddHeat(1, "parked kill");
 	TRF.std.heat = 0;
-	HOST_Check(TRF.stn[k].st == 1 and S_Logs(n0, "d=-1 why=parked kill st=2->1") == 1, "parked kill: -1");
+	HOST_Check(TRF.stn[k].st == 1 and S_Logs(n0, "change=-1 reason=\"parked kill\" standing_before=2 standing_after=1") == 1, "parked kill: -1");
 	-- Rise this visit: result line after docking.
 	T_Enter("gaoba");
 	TRF.stn[k] = {st=1, lg=TRF.clock.legs};
@@ -840,7 +840,7 @@ function T_STN_D()
 	r = S_Trade(D.trade[1]);
 	local s0 = getn(h.screen);
 	HOST_Press("ok");
-	HOST_Check(S_Screen(s0, TRF_Txt("stnnoted")) and S_Logs(n0, "stn: docked k=42 up=1") == 1, "noted line after docking");
+	HOST_Check(S_Screen(s0, TRF_Txt("stnnoted")) and S_Logs(n0, "module=station event=docked station_key=42 standing_up=true") == 1, "noted line after docking");
 	-- Entry prune: st 0 entries without tf/nt are dropped.
 	TRF.stn[k] = {st=0, lg=TRF.clock.legs};
 	T_Enter("gaoba");
@@ -871,8 +871,8 @@ function T_STN_E()
 	HOST_Check(r.nb == 1 and r.box.text == TRF_Txt("stnfeehub", format("%d", want)).."\n"..TRF_Txt("stnfeereq")
 		and want == floor(200 * TRF_LPay(idx) * 1.8 / 100 + 0.5) * 100, "chapter 5, pro 8: hub fee box ("..want..")");
 	HOST_Press("ok");
-	HOST_Check(h.credits == cr0 - want and h.trade_ok == ok0 + 1 and S_Logs(n0, "stn: docked k=51") == 1
-		and S_Logs(n0, "stn: fee k=51 ok=1 cr="..cr0.."->"..(cr0 - want).." credit=0 buyback=0") == 1, "OK: paid, docked through trf_shop's wrapper");
+	HOST_Check(h.credits == cr0 - want and h.trade_ok == ok0 + 1 and S_Logs(n0, "module=station event=docked station_key=51") == 1
+		and S_Logs(n0, "module=station event=fee_ok station_key=51 credits_before="..cr0.." credits_after="..(cr0 - want).." credit=false buyback=false") == 1, "OK: paid, docked through trf_shop's wrapper");
 	r = S_Trade(D.trade[1]);
 	HOST_Check(S_Vanilla(r), "second approach in the visit: vanilla box");
 	HOST_Press("cancel");
@@ -882,7 +882,7 @@ function T_STN_E()
 	cr0 = h.credits;
 	n0 = S_Mark();
 	r = S_Trade(D.trade[1]);
-	HOST_Check(S_Vanilla(r) and h.credits == cr0 and TRF.stn[k].pv == TRF.ve and S_Logs(n0, "nofee=pv") == 1,
+	HOST_Check(S_Vanilla(r) and h.credits == cr0 and TRF.stn[k].pv == TRF.ve and S_Logs(n0, "no_fee_reason=paid_visit") == 1,
 		"load in the visit after paying: no second fee");
 	HOST_Press("cancel");
 	-- Cancel: nothing paid, no dock, the next approach asks again.
@@ -903,16 +903,16 @@ function T_STN_E()
 	__sys_SOS = TRUE;
 	r = S_Trade(D.trade[1]);
 	__sys_SOS = FALSE;
-	HOST_Check(S_Vanilla(r) and r.nm == 0 and h.credits == cr0 and S_Logs(n0, "stn: pass reason=quiet sys=kadenoa at=dock") == 1
-		and S_Logs(n0, "stn: dock ") == 0, "__sys_SOS: quiet, no greeting, no fee box, vanilla box");
+	HOST_Check(S_Vanilla(r) and r.nm == 0 and h.credits == cr0 and S_Logs(n0, "module=station event=pass reason=quiet system=kadenoa at=dock") == 1
+		and S_Logs(n0, "module=station event=dock ") == 0, "__sys_SOS: quiet, no greeting, no fee box, vanilla box");
 	HOST_Press("cancel");
 	TRF_UiState = HOST_UiState; h.ui = 4;
 	r = S_Trade(D.trade[1]);
-	HOST_Check(S_Vanilla(r) and h.credits == cr0 and S_Logs(n0, "stn: dock ") == 0, "TRF_UiState dialog flag: quiet, no fee box");
+	HOST_Check(S_Vanilla(r) and h.credits == cr0 and S_Logs(n0, "module=station event=dock ") == 0, "TRF_UiState dialog flag: quiet, no fee box");
 	HOST_Press("cancel");
 	h.ui = -1;
 	r = S_Trade(D.trade[1]);
-	HOST_Check(r.nb == 1 and r.box.text ~= "#UI_TradeStationDockRequest" and S_Logs(n0, "stn: dock k=51 ") == 1, "flag clear (UiState -1 = unknown): fee box");
+	HOST_Check(r.nb == 1 and r.box.text ~= "#UI_TradeStationDockRequest" and S_Logs(n0, "module=station event=dock station_key=51 ") == 1, "flag clear (UiState -1 = unknown): fee box");
 	HOST_Press("cancel");
 	TRF_UiState = nil; h.ui = nil;
 	-- Credits below the fee: docks on credit, no charge, -1.
@@ -928,7 +928,7 @@ function T_STN_E()
 	D = S_Setup({});
 	n0 = S_Mark();
 	r = S_Trade(D.trade[1]);
-	HOST_Check(S_Vanilla(r) and TRF.stn[k].st == -1 and S_Logs(n0, "why=credit") == 0, "load in the visit after docking on credit: no box, no second -1");
+	HOST_Check(S_Vanilla(r) and TRF.stn[k].st == -1 and S_Logs(n0, "reason=credit") == 0, "load in the visit after docking on credit: no box, no second -1");
 	HOST_Press("cancel");
 	h.credits = 100000;
 	-- Penalty: st -2 pays double and buys back once per visit, never above -1.
@@ -984,7 +984,7 @@ function T_STN_E()
 	D = S_Setup({});
 	n0 = S_Mark();
 	r = S_Trade(D.trade[1]);
-	HOST_Check(S_Vanilla(r) and S_Logs(n0, "nofee=latch") == 1 and S_Logs(n0, "stn: pass reason=latch sys=kadenoa at=dock") == 1,
+	HOST_Check(S_Vanilla(r) and S_Logs(n0, "no_fee_reason=latch") == 1 and S_Logs(n0, "module=station event=pass reason=latch system=kadenoa at=dock") == 1,
 		"story mission active: no fee (nofee=latch)");
 	HOST_Press("cancel");
 	h.qs = FALSE;
@@ -994,7 +994,7 @@ function T_STN_E()
 	D = S_Setup({});
 	n0 = S_Mark();
 	r = S_Trade(D.trade[1]);
-	HOST_Check(S_Vanilla(r) and S_Logs(n0, "nofee=strict0") == 1, "strict 0: no fee");
+	HOST_Check(S_Vanilla(r) and S_Logs(n0, "no_fee_reason=strict_0") == 1, "strict 0: no fee");
 	HOST_Press("cancel");
 	h.cfg.strict = nil;
 	-- voice_fee 0.
@@ -1013,7 +1013,7 @@ function T_STN_E()
 	cr0, ok0 = h.credits, h.trade_ok;
 	n0 = S_Mark();
 	HOST_Press("ok", r.box);
-	HOST_Check(h.credits == cr0 and h.trade_ok == ok0 + 1 and S_Logs(n0, "stn: stale box") == 1, "stale box after a load: docks, no charge");
+	HOST_Check(h.credits == cr0 and h.trade_ok == ok0 + 1 and S_Logs(n0, "module=station event=stale_box") == 1, "stale box after a load: docks, no charge");
 end;
 
 -- f: identity and save (3.3, 3.4, D4) ------------------------------------------------------------
@@ -1028,8 +1028,8 @@ function T_STN_F()
 	S_Trade(D.trade[1]); HOST_Press("cancel");
 	S_Trade(D.trade[2]); HOST_Press("cancel");
 	S_Trade(D.extra[1]); HOST_Press("cancel");
-	HOST_Check(getn(D.trade) == 2 and S_Logs(n0, "stn: dock k=51 param= id=prm+pos d=0") == 1
-		and S_Logs(n0, "stn: dock k=251 param=kadenoa_tri id=prm+pos d=0") == 1 and S_Logs(n0, "stn: pass reason=table sys=kadenoa at=dock") == 1,
+	HOST_Check(getn(D.trade) == 2 and S_Logs(n0, "module=station event=dock station_key=51 param=\"\" via=prm+pos distance=0") == 1
+		and S_Logs(n0, "module=station event=dock station_key=251 param=kadenoa_tri via=prm+pos distance=0") == 1 and S_Logs(n0, "module=station event=pass reason=table system=kadenoa at=dock") == 1,
 		"kadenoa: keys 51 and 251 by param and position; quest dock passes");
 	-- A dock with the wrong param at the other station's position: position wins.
 	T_Enter("kadenoa");
@@ -1037,7 +1037,7 @@ function T_STN_F()
 	D = S_Setup({}, {{"", e2.x, e2.y, e2.z}});
 	n0 = S_Mark();
 	S_Trade(D.extra[1]); HOST_Press("cancel");
-	HOST_Check(S_Logs(n0, "stn: idmis k=251 jp=1 jx=2") == 1 and S_Logs(n0, "stn: dock k=251 param= id=pos") == 1, "position mismatch: idmis, id=pos");
+	HOST_Check(S_Logs(n0, "module=station event=id_mismatch station_key=251 param_station=1 position_station=2") == 1 and S_Logs(n0, "module=station event=dock station_key=251 param=\"\" via=pos") == 1, "position mismatch: idmis, id=pos");
 	-- Station handle whose GetPosition errors: param alone.
 	T_Enter("kadenoa");
 	D = S_Setup({});
@@ -1045,14 +1045,14 @@ function T_STN_F()
 	n0 = S_Mark();
 	local e0 = h.errors;
 	S_Trade(D.trade[2]); HOST_Press("cancel");
-	HOST_Check(h.errors == e0 and S_Logs(n0, "stn: dock k=251 param=kadenoa_tri id=prm d=-") == 1, "GetPosition error: id=prm, no error");
+	HOST_Check(h.errors == e0 and S_Logs(n0, "module=station event=dock station_key=251 param=kadenoa_tri via=prm distance=nil") == 1, "GetPosition error: id=prm, no error");
 	-- stn_pos 0: param only.
 	h.cfg.tune = {stn_pos=0};
 	T_Enter("kadenoa");
 	D = S_Setup({}, {{"", 600, 0, 600}});
 	n0 = S_Mark();
 	S_Trade(D.extra[1]); HOST_Press("cancel");
-	HOST_Check(S_Logs(n0, "stn: dock k=51 param= id=prm") == 1, "stn_pos 0: param only");
+	HOST_Check(S_Logs(n0, "module=station event=dock station_key=51 param=\"\" via=prm") == 1, "stn_pos 0: param only");
 	h.cfg.tune = nil;
 	-- Records survive a load.
 	T_Enter("kadenoa");
@@ -1095,7 +1095,7 @@ function T_STN_F()
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF");
 	n0 = S_Mark();
 	TRF_DumpState("test");
-	HOST_Check(S_Logs(n0, "dump stn ve=") == 1 and S_Logs(n0, " wrapped=1/1") == 1, "dump stn line");
+	HOST_Check(S_Logs(n0, "module=station event=dump visit=") == 1 and S_Logs(n0, " none_wrapped=true trade_wrapped=true") == 1, "dump stn line");
 	-- Entry prunes nothing here (tf and nt keep the entries).
 	T_Enter("kadenoa");
 	local m = 0;

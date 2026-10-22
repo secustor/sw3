@@ -16,6 +16,11 @@ function TRF_Live()
 	return %live;
 end;
 
+-- logfmt event line, module=exp kit=trader (design/log-format.md).
+function TRF_TxE(event, ...)
+	tinsert(arg, 1, "trader"); tinsert(arg, 1, "kit"); tinsert(arg, 1, event); tinsert(arg, 1, "exp"); call(TRF_Lf, arg);
+end;
+
 function TRF_T_Opt()
 	return {
 		carcass = "Btransport",      -- Trad_BigShips entries 5..7 in include/create_flight_2.script
@@ -47,9 +52,16 @@ function TRF_T_Ev(id, what)
 	return s.ev[k][what];
 end;
 
+-- Position as a log list value x,y,z (nil when not a table).
 function TRF_T_Vec(v)
-	if type(v) ~= "table" then return tostring(v); end;
-	return "("..TRF_F(v.x)..","..TRF_F(v.y)..","..TRF_F(v.z)..")";
+	if type(v) ~= "table" then return nil; end;
+	return TRF_F(v.x)..","..TRF_F(v.y)..","..TRF_F(v.z);
+end;
+
+-- "ok" when v is set, else "nil" (the result of a create or trigger call).
+function TRF_T_Ok(v)
+	if v then return "ok"; end;
+	return "nil";
 end;
 
 function TRF_T_Dist(a, b)
@@ -98,11 +110,14 @@ function TRF_T_StationLabels()
 	return {"TRADE STATION", "TRADE_STATION", "TRADE"};
 end;
 
-function TRF_T_Count(where, pos)
+-- Carcass count around pos; where names the moment (before_spawn, after_spawn, revisit_spawn, revisit_last),
+-- id, portal, before (count before the spawn) and deleted (flag at the jump) are logged as given.
+function TRF_T_Count(where, pos, id, portal, before, deleted)
 	if type(pos) ~= "table" then return; end;
 	local r = TRF_T_Opt().count_r;
 	local n = GetCarcassCountInSphere(Vector3(pos.x, pos.y, pos.z), r);
-	TRF_L("count "..where.." sys="..TRF_T_Sys().." pos="..TRF_T_Vec(pos).." r="..r.." -> "..tostring(n));
+	TRF_TxE("count", "where", where, "trader_id", id, "system", TRF_T_Sys(), "portal", portal, "position", TRF_T_Vec(pos),
+		"radius", r, "carcass_count_before", before, "deleted", deleted, "carcass_count", n);
 	return n;
 end;
 
@@ -111,7 +126,7 @@ function TRF_T_Group(o)
 	if g then return g; end;
 	-- CHECK: GetGroupByName is registered but unused by shipped scripts.
 	g = TRF_N("GetGroupByName", o.group);
-	TRF_L("CHECK group global "..o.group.." missing; GetGroupByName -> "..tostring(g));
+	TRF_TxE("check", "group", o.group, "reason", "group_global_missing", "via", "GetGroupByName", "result", tostring(g));
 	return g;
 end;
 
@@ -124,12 +139,12 @@ function TRF_T_Spawn(id, mode)
 	local sys = TRF_T_Sys();
 	local portals = TRF_T_Portals();
 	local station, slabel = TRF_T_Find(TRF_T_StationLabels());
-	TRF_L("spawn id="..id.." mode="..mode.." sys="..sys.." portals="..getn(portals).." station="..tostring(slabel));
-	if getn(portals) == 0 then TRF_L("spawn id="..id.." aborted: no portal"); return nil; end;
+	TRF_TxE("spawn", "trader_id", id, "mode", mode, "system", sys, "portal_count", getn(portals), "station", slabel);
+	if getn(portals) == 0 then TRF_TxE("spawn", "trader_id", id, "reason", "no_portal", "result", "aborted"); return nil; end;
 	local grp = TRF_T_Group(o);
-	if not grp then TRF_L("spawn id="..id.." aborted: no group "..o.group); return nil; end;
+	if not grp then TRF_TxE("spawn", "trader_id", id, "group", o.group, "reason", "no_group", "result", "aborted"); return nil; end;
 	local fl = grp:CreateFlight("TRF_e3_"..id.."_"..TRF.gen);
-	TRF_L("CreateFlight id="..id.." -> "..((fl and "ok") or "nil"));
+	TRF_TxE("create_flight", "trader_id", id, "result", TRF_T_Ok(fl));
 	if not fl then return nil; end;
 
 	-- CHECK: CreateCarcass is expected to return nil on a blocked spot; try the next portal then.
@@ -139,11 +154,12 @@ function TRF_T_Spawn(id, mode)
 		pos = portals[k].o:GetEntryPoint(10);
 		dir = portals[k].o:GetOrientation();
 		if type(pos) == "table" then
-			n0 = TRF_T_Count("before spawn id="..id.." at "..portals[k].label, pos);
+			n0 = TRF_T_Count("before_spawn", pos, id, portals[k].label, nil, nil);
 			ship = CreateCarcass(o.carcass, pos, dir);
-			TRF_L("CreateCarcass "..o.carcass.." at "..portals[k].label.." "..TRF_T_Vec(pos).." -> "..((ship and "ok") or "nil"));
+			TRF_TxE("create_carcass", "carcass", o.carcass, "portal", portals[k].label, "position", TRF_T_Vec(pos),
+				"result", TRF_T_Ok(ship));
 		else
-			TRF_L("GetEntryPoint at "..portals[k].label.." -> "..tostring(pos));
+			TRF_TxE("entry_point", "portal", portals[k].label, "result", tostring(pos));
 		end;
 	end;
 	if not ship then return nil; end;
@@ -153,13 +169,13 @@ function TRF_T_Spawn(id, mode)
 	local e = getn(portals);
 	if e == k and e > 1 then e = e - 1; end;
 	local exitp = portals[e].o;
-	TRF_L("spawn id="..id.." portal="..portals[k].label.." exit="..portals[e].label);
+	TRF_TxE("spawn", "trader_id", id, "portal", portals[k].label, "exit", portals[e].label);
 	local pil = CreatePilot(o.pilot);
 	ship:AssignPilot(pil);
 	fl:AddShip(ship);
 	fl:SetFormation(o.formation);
 	fl:SetOrientation(dir);
-	TRF_T_Count("after spawn id="..id.." (before="..tostring(n0)..")", pos);
+	TRF_T_Count("after_spawn", pos, id, nil, n0, nil);
 
 	s.spawns[sys] = {x=pos.x, y=pos.y, z=pos.z, id=id};
 	local h = {fl=fl, ship=ship, portal=portal, exitp=exitp, station=station, mode=mode, phase="to_station", sys=sys};
@@ -173,18 +189,18 @@ function TRF_T_Spawn(id, mode)
 		local dock = station:GetDockingPosition();
 		local t = NewTrigger("f_object_inside", nil, "TRF_OnArrive("..id..",1)--", fl, station, o.arrive_r);
 		local t2 = NewTrigger("f_inside", nil, "TRF_OnArrive("..id..",2)--", fl, dock, o.dock_r);
-		TRF_L("ComeToTradeStation id="..id.." station pos="..TRF_T_Vec(station:GetPosition()).." dock="..TRF_T_Vec(dock)
-			.." arrive triggers station="..((t and "ok") or "nil").." dock="..((t2 and "ok") or "nil"));
+		TRF_TxE("come_to_trade_station", "trader_id", id, "station_position", TRF_T_Vec(station:GetPosition()),
+			"dock_position", TRF_T_Vec(dock), "station_trigger", TRF_T_Ok(t), "dock_trigger", TRF_T_Ok(t2));
 	else
 		h.phase = "no_station";
-		TRF_L("CHECK no trade station label in "..sys.."; sending id="..id.." to exit portal");
+		TRF_TxE("check", "trader_id", id, "system", sys, "reason", "no_trade_station_label", "result", "exit_portal");
 		TRF_T_Leave(id);
 	end;
 	local ta = NewTrigger("attack", nil, "TRF_OnAttack("..id..")--", PLAYER_GROUP, ship);
 	-- CHECK: f_died stays armed after OnExit deletes the flight; a stale OnDied right after OnExit
 	-- means Flight:Delete fires f_died (RandomContacts also leaves its attack trigger armed on Delete).
 	local td = NewTrigger("f_died", nil, "TRF_OnDied("..id..")--", fl);
-	TRF_L("triggers id="..id.." attack="..((ta and "ok") or "nil").." died="..((td and "ok") or "nil"));
+	TRF_TxE("triggers", "trader_id", id, "attack", TRF_T_Ok(ta), "died", TRF_T_Ok(td));
 	return h;
 end;
 
@@ -195,7 +211,7 @@ function TRF_T_Leave(id)
 	h.ship:ComeToPortal(h.exitp);
 	h.phase = "to_portal";
 	local t = NewTrigger("f_object_inside", nil, "TRF_OnExit("..id..")--", h.fl, h.exitp, o.exit_r);
-	TRF_L("ComeToPortal id="..id.." exit pos="..TRF_T_Vec(h.exitp:GetPosition()).." exit trigger="..((t and "ok") or "nil"));
+	TRF_TxE("come_to_portal", "trader_id", id, "exit_position", TRF_T_Vec(h.exitp:GetPosition()), "exit_trigger", TRF_T_Ok(t));
 end;
 
 -- A callback whose id has no live handle comes from a trigger restored by a savegame or from an
@@ -204,13 +220,13 @@ function TRF_T_Handle(name, id)
 	local n = TRF_T_Ev(id, name);
 	local h = TRF_Live()[id];
 	if not h then
-		TRF_L(name.." id="..tostring(id).." #"..n.." stale (no live handle)");
+		TRF_TxE("callback", "source", name, "trader_id", id, "event_count", n, "reason", "no_live_handle", "result", "stale");
 		return nil;
 	end;
 	local p = nil;
 	if TRF_Is(h.fl:IsAlive()) then p = h.fl:GetPosition(); end;
-	TRF_L(name.." id="..id.." #"..n.." phase="..h.phase.." alive="..tostring(h.fl:IsAlive()).." pos="..TRF_T_Vec(p)
-		.." gt="..TRF_F(TRF.clock.gt));
+	TRF_TxE("callback", "source", name, "trader_id", id, "event_count", n, "phase", h.phase, "alive", tostring(h.fl:IsAlive()),
+		"position", TRF_T_Vec(p), "game_time", TRF_F(TRF.clock.gt));
 	return h;
 end;
 
@@ -224,14 +240,14 @@ function TRF_OnArrive_Body(id, how)
 	if not h then return; end;
 	local p = h.fl:GetPosition();
 	if h.station then
-		TRF_L("OnArrive id="..id.." how="..tostring(how).." dist station="..TRF_F(TRF_T_Dist(p, h.station:GetPosition()))
-			.." dist dock="..TRF_F(TRF_T_Dist(p, h.station:GetDockingPosition())));
+		TRF_TxE("arrive", "trader_id", id, "via", how, "station_distance", TRF_F(TRF_T_Dist(p, h.station:GetPosition())),
+			"dock_distance", TRF_F(TRF_T_Dist(p, h.station:GetDockingPosition())));
 	end;
 	if h.phase ~= "to_station" then return; end;
 	h.phase = "docked";
 	if h.mode == "route" then
 		local t = NewTrigger("timer", nil, "TRF_OnUndock("..id..")--", TRF_T_Opt().dwell);
-		TRF_L("OnArrive id="..id.." dwell timer="..((t and "ok") or "nil"));
+		TRF_TxE("arrive", "trader_id", id, "dwell_timer", TRF_T_Ok(t));
 	end;
 end;
 
@@ -255,7 +271,7 @@ function TRF_OnExit_Body(id)
 	h.exitp:Start(5, 0);
 	if TRF_Is(h.fl:IsAlive()) then h.fl:Delete(); end;
 	TRF_Live()[id] = nil;
-	TRF_L("OnExit id="..id.." flight deleted");
+	TRF_TxE("exit", "trader_id", id, "result", "flight_deleted");
 	if id == 1 then TRF_T_Spawn(2, "stay"); end;
 end;
 
@@ -292,29 +308,30 @@ end;
 
 function TRF_Exp_OnEnter(fresh)
 	local n = TRF_T_ClearLive();
-	TRF_L("OnEnter sys="..TRF_T_Sys().." dropped handles="..n.." fresh="..tostring(fresh));
+	TRF_TxE("enter", "system", TRF_T_Sys(), "fresh", TRF_KvB(fresh), "dropped_handle_count", n);
 end;
 
 function TRF_Exp_OnActivate(fresh)
 	local s = TRF_T_State();
 	local sys = TRF_T_Sys();
-	TRF_L("OnActivate sys="..sys.." last="..tostring(TRF_N("GetLastLocation")));
+	TRF_TxE("activate", "system", sys, "last_location", TRF_N("GetLastLocation"));
 	-- Snapshot question: did ships left here come back on this revisit?
-	if s.spawns[sys] then TRF_T_Count("revisit spawn point", s.spawns[sys]); end;
+	if s.spawns[sys] then TRF_T_Count("revisit_spawn", s.spawns[sys], s.spawns[sys].id, nil, nil, nil); end;
 	if s.last[sys] then
-		TRF_T_Count("revisit last pos id="..tostring(s.last[sys].id).." deleted="..tostring(s.last[sys].deleted), s.last[sys]);
+		TRF_T_Count("revisit_last", s.last[sys], s.last[sys].id, nil, nil, TRF_KvB(s.last[sys].deleted));
 	end;
 	if TRF_Live()[1] then return; end;
 	s.seq = s.seq + 1;
-	TRF_L("OnActivate spawn #"..s.seq);
+	TRF_TxE("activate_spawn", "spawn_count", s.seq);
 	TRF_T_Spawn(1, "route");
 end;
 
 function TRF_Exp_OnLoad(fresh)
 	local n = TRF_T_ClearLive();
-	TRF_L("OnLoad sys="..TRF_T_Sys().." dropped handles="..n.." fresh="..tostring(fresh).." (restored triggers now report stale ids)");
+	-- Triggers restored from the save now report stale ids.
+	TRF_TxE("load", "system", TRF_T_Sys(), "fresh", TRF_KvB(fresh), "dropped_handle_count", n);
 	local s = TRF_T_State();
-	TRF_L("OnLoad events="..TRF_Dump(s.ev, 3));
+	TRF_TxE("load_events", "events", s.ev);
 end;
 
 -- Log position and distances of live traders every log_every real seconds (dock behaviour, Q7).
@@ -332,10 +349,10 @@ function TRF_Exp_OnTick(dg, dr)
 				ds = TRF_T_Dist(p, h.station:GetPosition());
 				dd = TRF_T_Dist(p, h.station:GetDockingPosition());
 			end;
-			TRF_L("pos id="..id.." phase="..h.phase.." pos="..TRF_T_Vec(p).." dist station="..TRF_F(ds).." dist dock="..TRF_F(dd)
-				.." dist exit="..TRF_F(TRF_T_Dist(p, h.exitp:GetPosition())));
+			TRF_TxE("position", "trader_id", id, "phase", h.phase, "position", TRF_T_Vec(p), "station_distance", TRF_F(ds),
+				"dock_distance", TRF_F(dd), "exit_distance", TRF_F(TRF_T_Dist(p, h.exitp:GetPosition())));
 		else
-			TRF_L("pos id="..id.." phase="..h.phase.." not alive");
+			TRF_TxE("position", "trader_id", id, "phase", h.phase, "alive", "false");
 		end;
 	end;
 end;
@@ -352,9 +369,10 @@ function TRF_Exp_BeforeJump(dest)
 			s.last[h.sys] = {x=p.x, y=p.y, z=p.z, id=id, deleted=(del and 1) or 0};
 			if del then h.fl:Delete(); end;
 		end;
-		TRF_L("BeforeJump dest="..tostring(dest).." id="..id.." phase="..h.phase.." alive="..tostring(alive).." deleted="..tostring(del and alive));
+		TRF_TxE("before_jump", "destination", dest, "trader_id", id, "phase", h.phase, "alive", TRF_KvB(alive and 1),
+			"deleted", TRF_KvB(del and alive and 1));
 	end;
 	TRF_T_ClearLive();
 end;
 
-TRF_L("top-level load");
+TRF_TxE("top_level_load");

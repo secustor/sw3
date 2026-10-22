@@ -2,11 +2,16 @@
 -- Logs from top level, from every callback with counters, and once per real second from OnTick.
 -- State: TRF.exp.hooks (numbers only).
 
+-- logfmt event line, module=exp kit=hooks (design/log-format.md).
+function TRF_HkE(event, ...)
+	tinsert(arg, 1, "hooks"); tinsert(arg, 1, "kit"); tinsert(arg, 1, event); tinsert(arg, 1, "exp"); call(TRF_Lf, arg);
+end;
+
+-- Native values and types as key, value pairs (spliced last into a TRF_HkE call).
 function TRF_H_Natives()
-	return "TRF_Version="..tostring(TRF_N("TRF_Version"))
-		.." TRF_GameTime="..TRF_F(TRF_N("TRF_GameTime"))
-		.." TRF_RealTime="..TRF_F(TRF_N("TRF_RealTime"))
-		.." types Log/Version/GameTime/RealTime="..type(TRF_Log).."/"..type(TRF_Version).."/"..type(TRF_GameTime).."/"..type(TRF_RealTime);
+	return "version", TRF_N("TRF_Version"), "native_game_time", TRF_F(TRF_N("TRF_GameTime")),
+		"native_real_time", TRF_F(TRF_N("TRF_RealTime")), "log_type", type(TRF_Log), "version_type", type(TRF_Version),
+		"game_time_type", type(TRF_GameTime), "real_time_type", type(TRF_RealTime);
 end;
 
 -- x87 precision control. 2^24 + 1 needs 25 mantissa bits: 16777217.0 at 53/64-bit precision,
@@ -17,16 +22,14 @@ function TRF_H_Precision(where)
 	local a = 16777216;
 	local b = 1;
 	local c = 3;
-	TRF_L("x87 "..where..": 16777216 + 1 = "..format("%.1f", a + b).." 1/3 = "..format("%.17g", b / c));
+	TRF_HkE("x87", "where", where, "sum_2_24_plus_1", format("%.1f", a + b), "one_third", format("%.17g", b / c));
 end;
 
-function TRF_H_Where()
-	return "loc="..tostring(TRF_N("GetCurrentLocation")).." last="..tostring(TRF_N("GetLastLocation"));
-end;
-
-function TRF_H_Cnt()
+-- Callback counters and locations as key, value pairs (spliced last into a TRF_HkE call).
+function TRF_H_CntWhere()
 	local c = TRF.exp.cnt or {};
-	return "enter="..(c.enter or 0).." activate="..(c.activate or 0).." load="..(c.load or 0).." jump="..(c.jump or 0);
+	return "enter_count", c.enter or 0, "activate_count", c.activate or 0, "load_count", c.load or 0, "jump_count", c.jump or 0,
+		"location", TRF_N("GetCurrentLocation"), "last_location", TRF_N("GetLastLocation");
 end;
 
 function TRF_H_State()
@@ -37,29 +40,31 @@ function TRF_H_State()
 end;
 
 function TRF_Exp_Init(w, map_ok)
-	TRF_L("init TeleportToLocation before="..w.tp_before.." after="..w.tp_after.." new_wrap="..w.tp_new.." wrapped="..w.tp_wrapped);
-	TRF_L("init CustomTeleportate before="..w.ct_before.." after="..w.ct_after.." new_wrap="..w.ct_new.." wrapped="..w.ct_wrapped);
-	TRF_L("init "..TRF_H_Natives().." map="..tostring(map_ok));
+	TRF_HkE("init", "function", "TeleportToLocation", "type_before", w.tp_before, "type_after", w.tp_after,
+		"new_wrap", TRF_KvB(w.tp_new), "wrapped", TRF_KvB(w.tp_wrapped));
+	TRF_HkE("init", "function", "CustomTeleportate", "type_before", w.ct_before, "type_after", w.ct_after,
+		"new_wrap", TRF_KvB(w.ct_new), "wrapped", TRF_KvB(w.ct_wrapped));
+	TRF_HkE("init", "map", TRF_KvB(map_ok), TRF_H_Natives());
 	TRF_H_Precision("load");
 end;
 
 function TRF_Exp_OnEnter(fresh)
 	local h = TRF_H_State();
-	TRF_L("OnEnter "..TRF_H_Cnt().." fresh="..tostring(fresh).." gen="..TRF.gen.." "..TRF_H_Where());
-	TRF_L("OnEnter "..TRF_H_Natives());
+	TRF_HkE("enter", "fresh", TRF_KvB(fresh), "generation", TRF.gen, TRF_H_CntWhere());
+	TRF_HkE("enter_natives", TRF_H_Natives());
 	if h.prec == 0 then
 		h.prec = 1;
-		TRF_H_Precision("first OnEnter");
+		TRF_H_Precision("first_enter");
 	end;
 end;
 
 function TRF_Exp_OnActivate(fresh)
-	TRF_L("OnActivate "..TRF_H_Cnt().." fresh="..tostring(fresh).." "..TRF_H_Where());
+	TRF_HkE("activate", "fresh", TRF_KvB(fresh), TRF_H_CntWhere());
 end;
 
 function TRF_Exp_OnLoad(fresh)
-	TRF_L("OnLoad "..TRF_H_Cnt().." fresh="..tostring(fresh).." gen="..TRF.gen.." "..TRF_H_Where());
-	TRF_L("OnLoad "..TRF_H_Natives());
+	TRF_HkE("load", "fresh", TRF_KvB(fresh), "generation", TRF.gen, TRF_H_CntWhere());
+	TRF_HkE("load_natives", TRF_H_Natives());
 end;
 
 -- Logs once per real second: the last deltas, their sums over that second, and the native clocks.
@@ -71,17 +76,16 @@ function TRF_Exp_OnTick(dg, dr)
 	h.sum_real = h.sum_real + dr;
 	h.acc = h.acc + dr;
 	if h.acc < 1 then return; end;
-	TRF_L("tick #"..h.ticks.." dt_game="..TRF_F(dg).." dt_real="..TRF_F(dr)
-		.." sum_game="..TRF_F(h.sum_game).." sum_real="..TRF_F(h.sum_real)
-		.." TRF_GameTime="..TRF_F(TRF_N("TRF_GameTime")).." TRF_RealTime="..TRF_F(TRF_N("TRF_RealTime"))
-		.." clock.gt="..TRF_F(TRF.clock.gt));
+	TRF_HkE("tick", "tick_count", h.ticks, "dt_game", TRF_F(dg), "dt_real", TRF_F(dr), "sum_game", TRF_F(h.sum_game),
+		"sum_real", TRF_F(h.sum_real), "native_game_time", TRF_F(TRF_N("TRF_GameTime")),
+		"native_real_time", TRF_F(TRF_N("TRF_RealTime")), "game_time", TRF_F(TRF.clock.gt));
 	h.acc = 0;
 	h.sum_game = 0;
 	h.sum_real = 0;
 end;
 
 function TRF_Exp_BeforeJump(dest)
-	TRF_L("BeforeJump dest="..tostring(dest).." "..TRF_H_Cnt().." "..TRF_H_Where());
+	TRF_HkE("before_jump", "destination", dest, TRF_H_CntWhere());
 end;
 
-TRF_L("top-level load");
+TRF_HkE("top_level_load");
