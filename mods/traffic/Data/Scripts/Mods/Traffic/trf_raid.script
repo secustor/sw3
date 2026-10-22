@@ -1264,9 +1264,23 @@ function TRF_Rd_ComplyOf(st, sr, br)
 	return TRF_Rd_Clamp(100 - 100 * br * st / max(sr, 0.001), TRF_Rd_T("comply_min", 5), TRF_Rd_T("comply_max", 95));
 end;
 
+-- Player side power added to the trader side of a decide: trf_supply's TRF_SpPlayerSide (power x ships
+-- proxy) when the trader rd.id holds the live escort contract (trf_hail TRF_CtLive) and the mothership is
+-- within R_threat of the trader leader; else 0 (no contract, not near, or trf_supply absent).
+function TRF_Rd_PlayerSide(rd, r, h)
+	local ct = TRF_N("TRF_CtLive");
+	if type(ct) ~= "table" or ct.id ~= rd.id then return 0; end;
+	local d = TRF_Rd_Dist(TRF_Rd_Pos(TRF_Rd_Lead(rd.id)), TRF_Rd_MsPos());
+	if not d or d > TRF_Rd_T("R_threat", 300) then return 0; end;
+	local ps = TRF_N("TRF_SpPlayerSide");
+	if type(ps) ~= "number" or ps <= 0 then return 0; end;
+	return ps;
+end;
+
 -- Due call 8 s after the demand: refuse when the player fired on the raiders, else comply when RAND(100)
 -- is below the comply chance of TRF_Rd_ComplyOf. Raid side = power x ships (nil: 5, 1 ship); trader side =
--- build power r.pw (nil: the raid's) x (live escorts + 0.5).
+-- build power r.pw (nil: the raid's) x (live escorts + 0.5), plus the player side (TRF_Rd_PlayerSide) under
+-- a live escort contract with the mothership near.
 function TRF_RaidDecide(n, b)
 	call(TRF_Rd_DecideBody, {n}, "x", TRF_PErr);
 end;
@@ -1285,14 +1299,15 @@ function TRF_Rd_DecideBody(n)
 	if type(pw) ~= "number" or pw <= 0 then pw = 5; end;
 	if type(ns) ~= "number" or ns < 1 then ns = 1; end;
 	if type(tw) ~= "number" or tw <= 0 then tw = pw; end;
-	local st, sr = tw * (TRF_Rd_EscAlive(r, h) + 0.5), pw * ns;
+	local ps = TRF_Rd_PlayerSide(rd, r, h);
+	local st, sr = tw * (TRF_Rd_EscAlive(r, h) + 0.5) + ps, pw * ns;
 	local br = TRF_Rd_Brave(r);
 	local p = TRF_Rd_ComplyOf(st, sr, br);
 	local roll = TRF_Rd_Rand(100);
 	local dc = "refuse";
 	if rd.ph ~= 1 and roll < p then dc = "comply"; end;
-	TRF_RdE("decide", "raid_id", n, "trader_id", rd.id, "trader_strength", TRF_F(st), "raid_strength", TRF_F(sr),
-		"strength_ratio", TRF_F(st / sr), "braveness", TRF_F(br), "chance", TRF_F(p), "roll", roll, "result", dc);
+	TRF_RdE("decide", "raid_id", n, "trader_id", rd.id, "trader_strength", TRF_F(st), "player_strength", TRF_F(ps),
+		"raid_strength", TRF_F(sr), "strength_ratio", TRF_F(st / sr), "braveness", TRF_F(br), "chance", TRF_F(p), "roll", roll, "result", dc);
 	if dc == "comply" then
 		TRF_Rd_Comply(n, rd, r, h);
 	else

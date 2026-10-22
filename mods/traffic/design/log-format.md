@@ -132,7 +132,7 @@ gen: load id=9 adopted ships=5 via=global -> wind
 module=generator event=load trader_id=9 result=adopted ship_count=5 via=global state=wind
 
 raid: decide n=3 id=7 st=12.5 sr=30 q=0.42 br=0.62 p=74 roll=51 -> comply
-module=raid event=decide raid_id=3 trader_id=7 trader_strength=12.5 raid_strength=30 strength_ratio=0.42 braveness=0.62 chance=74 roll=51 result=comply
+module=raid event=decide raid_id=3 trader_id=7 trader_strength=12.5 player_strength=0 raid_strength=30 strength_ratio=0.42 braveness=0.62 chance=74 roll=51 result=comply
 
 safe: combat on why=hit src=TRF_OnAttack
 module=safety event=combat_on reason=hit source=TRF_OnAttack

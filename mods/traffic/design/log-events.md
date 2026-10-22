@@ -196,7 +196,7 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `armed` | `module=raid event=armed raid_id=1 trader_id=11 source=lane path=A danger_eff=1 tier=2 chance=0.172 point=125,0,-490` | 1 |
 | `go` | `module=raid event=go raid_id=1 trader_id=11 via=point tier=2 power=4 ship_count=2 distance=1566.916` | 1 |
 | `demand` | `module=raid event=demand raid_id=1 trader_id=11` | 1 |
-| `decide` | `module=raid event=decide raid_id=3 trader_id=7 trader_strength=12.5 raid_strength=30 strength_ratio=0.42 braveness=0.62 chance=74 roll=51 result=comply` | 1 |
+| `decide` | `module=raid event=decide raid_id=3 trader_id=7 trader_strength=12.5 player_strength=0 raid_strength=30 strength_ratio=0.42 braveness=0.62 chance=74 roll=51 result=comply` | 1 |
 | `rob` | `module=raid event=rob trader_id=7 cargo_lost=0 result=no_loss reason=no_hold_mirror` (or `reason=clear_inventory_failed`) | 1 |
 | `comply` | `module=raid event=comply raid_id=1 trader_id=11 cargo_lost=3 disruption=1` | 1 |
 | `refuse` | `module=raid event=refuse raid_id=2 trader_id=13 player_fired=true` | 1 |

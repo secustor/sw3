@@ -980,6 +980,41 @@ function T_V02_H()
 	HOST_Check(V_Rd(n2).st == "leave" or V_Rd(n2).st == "end", "raid leader at 30 % HP: raid leaves ("..tostring(V_Rd(n2).st)..")");
 	if V_Rd(n2).st == "leave" then HOST_FireAll("f_object_inside", "TRF_RaidGone("..n2..","); end;
 	HOST_Check(V_Rd(n2).st == "end" and HOST_Navs() == 0, "raid ended: nav marker deleted");
+	-- 3. Player side under a live escort contract: TRF_Rd_PlayerSide adds trf_supply's power x ships proxy when
+	-- the trader holds the contract and the mothership is within R_threat of its leader.
+	local id3 = T_Spawn("C");
+	local r3, x3 = TRF.live.tr[id3], TRF_H().tr[id3];
+	local n3 = V_Raid(id3);
+	HOST_Fire("f_inside", "TRF_RaidGo("..n3..",");
+	HOST_Fire("f_object_inside", "TRF_RaidMeet("..n3..",");
+	T_MoveTr(id3, h.ms.pos.x + 100, 0, h.ms.pos.z);
+	local rd3 = V_Rd(n3);
+	local p0 = TRF_Rd_PlayerSide(rd3, r3, x3);
+	local octl, osps = TRF_CtLive, TRF_SpPlayerSide;
+	TRF_CtLive = function() return {id=%id3, n=1, t=0}; end;
+	TRF_SpPlayerSide = function() return 15, 5, 2; end;
+	local p1 = TRF_Rd_PlayerSide(rd3, r3, x3);
+	T_MoveTr(id3, h.ms.pos.x + 1000, 0, h.ms.pos.z);
+	local p2 = TRF_Rd_PlayerSide(rd3, r3, x3);
+	TRF_SpPlayerSide = nil;
+	T_MoveTr(id3, h.ms.pos.x + 100, 0, h.ms.pos.z);
+	local p3 = TRF_Rd_PlayerSide(rd3, r3, x3);
+	TRF_SpPlayerSide = function() return 15, 5, 2; end;
+	HOST_Check(p0 == 0 and p1 == 15 and p2 == 0 and p3 == 0, "player side: no contract "..p0.." (0), contract and near "..p1.." (15), far "..p2.." (0), no trf_supply "..p3.." (0)");
+	-- Decide with the player near: br is set so the trader side alone stays above comply_min and the added
+	-- power drives the chance to comply_min 5; roll 5 refuses.
+	local pw3, ns3 = rd3.pw or 5, rd3.ns or 1;
+	local st3, sr3 = (r3.pw or pw3) * (TRF_Rd_EscAlive(r3, x3) + 0.5), pw3 * ns3;
+	r3.br = 0.95 * sr3 / (st3 + 7.5);
+	local c3 = TRF_Rd_ComplyOf(st3, sr3, r3.br);
+	h.rq = {5};
+	TRF_RaidDecide(n3);
+	h.rq = {};
+	TRF_CtLive, TRF_SpPlayerSide = octl, osps;
+	HOST_Check(c3 > 5 and V_Logs("player_strength=15.000 ") == 1 and V_Logs("chance=5.000 roll=5 result=refuse") == 1 and V_Rd(n3).dc == "refuse",
+		"decide: contracted trader with the player near counts player_strength 15, chance "..TRF_F(c3).." -> 5, roll 5 refuses");
+	HOST_Check(TRF_CtLive == octl and TRF_SpPlayerSide == osps, "player side stubs restored");
+	TRF_Remove(id3, "test");
 	HOST_Check(T_BadCallbacks() == "", "every callback carries the gen"..T_BadCallbacks());
 	TRF_Raid_Dump();
 end;
