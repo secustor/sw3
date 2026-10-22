@@ -921,7 +921,7 @@ function T_V02_H()
 	h.rq = {0, 2};
 	T_Tick(4, 0.5);
 	h.rq = {};
-	HOST_Check(r.br == 0.05 and V_Logs("br=0.050 p=") == 1 and V_Logs("roll=0 -> comply") == 1, "decide: kept br reused, roll 0 -> comply");
+	HOST_Check(r.br == 0.05 and V_Logs("braveness=0.050 chance=") == 1 and V_Logs("roll=0 result=comply") == 1, "decide: kept br reused, roll 0 -> comply");
 	HOST_Check(V_Hold(r) == h0 - 3 and x.tp[1].cleared and T_Lines("Cargo released") == 1, "comply at 8 s: 3 containers off the mirror ("..h0.." -> "..V_Hold(r).."), transport cleared and refilled");
 	local inv = 0;
 	for t = 1, getn(x.tp) do inv = inv + getn(x.tp[t].inv); end;
@@ -962,7 +962,7 @@ function T_V02_H()
 	h.rq = {0, 0};
 	T_Tick(3, 0.5);
 	h.rq = {};
-	HOST_Check(r2.br == 0.2 and V_Logs("br=0.200") == 1 and V_Logs("roll=0 -> refuse") == 1, "decide: br rolled once and stored (0.2), ph = 1 refuses at roll 0");
+	HOST_Check(r2.br == 0.2 and V_Logs("braveness=0.200 ") == 1 and V_Logs("roll=0 result=refuse") == 1, "decide: br rolled once and stored (0.2), ph = 1 refuses at roll 0");
 	HOST_Check(V_Rd(n2).st == "fight" and V_Rd(n2).dc == "refuse" and hr2.fl.att ~= nil and r2.st == "flee" and r2.fl == "raid",
 		"refuse at 8 s: raid attacks, trader flees ("..tostring(r2.st)..")");
 	HOST_Check(T_Lines("pirates on us") == 1 and HOST_Navs() == 1 and h.navs[getn(h.navs)].label == "trf_nav_"..n2, "refuse: distress line and nav marker");
@@ -1301,7 +1301,7 @@ function T_V02_K()
 	local g = T_Spawn("B") or T_Spawn("A");
 	V_Contract(g);
 	T_Jump("aurora");
-	HOST_Check(TRF.live.ct == nil and V_Logs("void (jump)") >= 1, "jump: contract void");
+	HOST_Check(TRF.live.ct == nil and V_Logs("result=void reason=jump") >= 1, "jump: contract void");
 	-- The gate uses the raid roll's effective danger: nj1 and taira have map dg 0 under a clan (floor 1).
 	local m = TRF_Map();
 	HOST_Check(TRF_HlDanger(64, m.sys[64]) == 1 and TRF_HlDanger(79, m.sys[79]) == 1 and TRF_HlDanger(27, m.sys[27]) == 0,
@@ -1320,11 +1320,11 @@ function T_V02_K()
 	tinsert(h.rq, 0);
 	local otx, own = TRF_CtOffer(nj);
 	HOST_Check(TRF_CurIdx() == 64 and type(otx) == "string" and own == TRF_HlPayN(64) and njr.co == 1
-		and V_Logs("offer id="..nj.." dE=1 dis=0 br=0.20 p=36.7 roll=0 -> yes") == 1,
+		and V_Logs("event=contract_offer trader_id="..nj.." danger_eff=1 disruption=0 braveness=0.20 chance=36.7 roll=0 result=offered") == 1,
 		"nj1 (map dg 0, clan region), dis 0, br 0.2: offer roll 0 < p 36.7, contract offered ("..tostring(own)..")");
 	local nr0 = h.rand;
 	local otx2 = TRF_CtOffer(nj);
-	HOST_Check(type(otx2) == "string" and h.rand == nr0 and V_Logs("offer id="..nj.." ") == 1, "offer decision sticks: second call, no draw, no log");
+	HOST_Check(type(otx2) == "string" and h.rand == nr0 and V_Logs("event=contract_offer trader_id="..nj.." ") == 1, "offer decision sticks: second call, no draw, no log");
 	njr.co = 0;
 	local otx3, why3 = TRF_CtOffer(nj);
 	HOST_Check(otx3 == nil and why3 == "roll", "r.co 0: no offer, reason roll");
@@ -1337,7 +1337,7 @@ function T_V02_K()
 	nkr.br, nkr.co = 1, nil;
 	tinsert(h.rq, 10);
 	local otx4, why4 = TRF_CtOffer(nk);
-	HOST_Check(otx4 == nil and why4 == "roll" and nkr.co == 0 and V_Logs("offer id="..nk.." dE=1 dis=0 br=1.00 p=10.0 roll=10 -> no") == 1,
+	HOST_Check(otx4 == nil and why4 == "roll" and nkr.co == 0 and V_Logs("event=contract_offer trader_id="..nk.." danger_eff=1 disruption=0 braveness=1.00 chance=10.0 roll=10 result=declined") == 1,
 		"br 1: p 10, roll 10 -> no offer, kept as r.co 0");
 	local orb = TRF_Rd_Brave;
 	TRF_Rd_Brave = nil;
@@ -1462,9 +1462,9 @@ function V_HailQuiet()
 	__sys_SOS = TRUE;
 	local a, fa, ma = V_FocusMeet();
 	local ra = TRF.live.tr[a];
-	HOST_Check(fa == 1 and ra.met and V_Logs("ui focus id="..a.." shown via=focus") == 1, "__sys_SOS, hail_quiet 0: focus line shown");
-	HOST_Check(ma == 0 and type(ra.ha) == "number" and V_Logs("ui meet id="..a.." line muted (quiet) hail armed") == 1
-		and V_Logs("ui say skipped (quiet) text=FTU") >= 1, "__sys_SOS, hail_quiet 0: announce line muted, hail armed");
+	HOST_Check(fa == 1 and ra.met and V_Logs("module=ui event=focus trader_id="..a.." via=focus result=shown") == 1, "__sys_SOS, hail_quiet 0: focus line shown");
+	HOST_Check(ma == 0 and type(ra.ha) == "number" and V_Logs("module=ui event=meet trader_id="..a.." hail_armed=true result=line_muted reason=quiet") == 1
+		and V_Logs("module=ui event=say result=skipped reason=quiet message=\"FTU") >= 1, "__sys_SOS, hail_quiet 0: announce line muted, hail armed");
 	local nb = getn(h.boxes);
 	HOST_Fire("focus", "TRF_OnHail("..a..",");
 	HOST_Check(getn(h.boxes) == nb + 1 and type(TRF.live.hl) == "table" and TRF.live.hl.id == a, "__sys_SOS, hail_quiet 0: hail box opens");
@@ -1473,8 +1473,8 @@ function V_HailQuiet()
 	-- hail_quiet 1: the old rule, everything muted by __sys_SOS.
 	h.cfg.hail_quiet = 1;
 	local b, fb, mb = V_FocusMeet();
-	HOST_Check(fb == 0 and mb == 0 and TRF.live.tr[b].ha == nil and V_Logs("ui focus id="..b.." skipped (quiet)") == 1
-		and V_Logs("ui meet id="..b.." skipped (quiet)") == 1, "__sys_SOS, hail_quiet 1: focus and meeting skipped (quiet)");
+	HOST_Check(fb == 0 and mb == 0 and TRF.live.tr[b].ha == nil and V_Logs("module=ui event=focus trader_id="..b.." result=skipped reason=quiet") == 1
+		and V_Logs("module=ui event=meet trader_id="..b.." result=skipped reason=quiet") == 1, "__sys_SOS, hail_quiet 1: focus and meeting skipped (quiet)");
 	local ok, why = TRF_HailOpen(b, "focus");
 	HOST_Check(ok == nil and why == "quiet", "__sys_SOS, hail_quiet 1: hail skipped (quiet) "..tostring(why));
 	h.cfg.hail_quiet = nil;
@@ -1483,14 +1483,14 @@ function V_HailQuiet()
 	-- pause level reads first: flag).
 	local us = TRF_UiState;
 	local c, fc, mc = V_FocusMeet(1);
-	HOST_Check(fc == 0 and mc == 0 and TRF.live.tr[c].ha == nil and V_Logs("ui focus id="..c.." skipped (quiet)") == 1
-		and V_Logs("ui meet id="..c.." skipped (quiet)") == 1, "scene, hail_quiet 0: focus and meeting skipped (quiet)");
+	HOST_Check(fc == 0 and mc == 0 and TRF.live.tr[c].ha == nil and V_Logs("module=ui event=focus trader_id="..c.." result=skipped reason=quiet") == 1
+		and V_Logs("module=ui event=meet trader_id="..c.." result=skipped reason=quiet") == 1, "scene, hail_quiet 0: focus and meeting skipped (quiet)");
 	ok, why = TRF_HailOpen(c, "focus");
 	HOST_Check(ok == nil and why == "flag", "scene: hail skipped ("..tostring(why)..")");
 	TRF_UiState = us; h.ui = nil;
 	-- No flag: the announce line is shown again.
 	local d, fd, md = V_FocusMeet();
-	HOST_Check(fd == 1 and md == 1 and type(TRF.live.tr[d].ha) == "number" and V_Logs("ui meet id="..d.." line muted") == 0, "no flag: focus and announce lines");
+	HOST_Check(fd == 1 and md == 1 and type(TRF.live.tr[d].ha) == "number" and V_Logs("module=ui event=meet trader_id="..d.." hail_armed=true result=line_muted") == 0, "no flag: focus and announce lines");
 	-- Default hail_start (2): the box opens at the meeting, also under __sys_SOS with the line muted; no box
 	-- while a modal window is up (TRF_UiState 2); the later modal-free meeting of another trader opens one.
 	h.cfg.hail_start = nil;
@@ -1498,7 +1498,8 @@ function V_HailQuiet()
 	local nb2 = getn(h.boxes);
 	local e, fe, me = V_FocusMeet();
 	HOST_Check(me == 0 and getn(h.boxes) == nb2 + 1 and type(TRF.live.hl) == "table" and TRF.live.hl.id == e
-		and V_Logs("ui meet id="..e.." line muted (quiet) hail armed") == 1 and V_Logs("hail id="..e.." via=meet menu") == 1,
+		and V_Logs("module=ui event=meet trader_id="..e.." hail_armed=true result=line_muted reason=quiet") == 1
+		and V_Logs("module=hail event=hail trader_id="..e.." via=meet answer_count=") == 1,
 		"default hail_start, __sys_SOS: box opens at the meeting via=meet, line muted");
 	V_HailEnd();
 	__sys_SOS = FALSE;
@@ -1557,18 +1558,18 @@ function V_HailDlg()
 		"dialog shows the 5 options and close: "..HOST_DlgVis());
 	HOST_Check(HOST_DlgText() == "FTU "..TRF_HlName(ra)..": What do you need, Wolves?" and not strfind(HOST_DlgText(), "#", 1, 1),
 		"dialog text with #who# and #head#: "..tostring(HOST_DlgText()));
-	HOST_Check(V_Logs("hail id="..a.." via=focus menu n=5 hn=1 dlg=1") == 1 and h.ui == 4, "log menu n=5 dlg=1; UI dialog flag while open");
+	HOST_Check(V_Logs("module=hail event=hail trader_id="..a.." via=focus answer_count=5 hail_count=1 dialog=true") == 1 and h.ui == 4, "log menu n=5 dlg=1; UI dialog flag while open");
 	-- Pick trade: routed as the box OK (due call, TRF_HailDo), the trader shop opens; nothing inside the callback.
 	local name = TRF_ShopName(TRF_ShopSlot(ra));
 	local ndl = getn(h.dlgs);
 	HOST_DlgPick("a_trade");
-	HOST_Check(getn(h.dlgs) == ndl and getn(h.boxes) == nb and V_Logs("dialog pick key=trade id="..a) == 1, "pick trade: recorded, nothing opened in the callback");
+	HOST_Check(getn(h.dlgs) == ndl and getn(h.boxes) == nb and V_Logs("event=dialog_pick trader_id="..a.." key=trade") == 1, "pick trade: recorded, nothing opened in the callback");
 	T_Tick(1, 0.5);
 	HOST_Check(getn(h.dlgs) == ndl + 1 and h.dlgs[getn(h.dlgs)] == name and ra.trd == 1 and TRF.live.hl == nil
-		and V_Logs("hail id="..a.." option trade") == 1 and V_Logs("hail id="..a.." closed (trade)") == 1,
+		and V_Logs("event=option trader_id="..a.." key=trade") == 1 and V_Logs("event=close trader_id="..a.." reason=trade") == 1,
 		"pick trade: TradeStationDlg("..name..") as the box path, chain closed");
 	T_Tick(3, 0.5);
-	HOST_Check(V_Logs("hail id="..a.." closed (dialog closed)") == 0, "dialog check after a pick: no second close");
+	HOST_Check(V_Logs("event=close trader_id="..a.." reason=\"dialog closed\"") == 0, "dialog check after a pick: no second close");
 	-- A provider item in slot p1 (label token) and close: the chain closes, the trader stays hailable.
 	TRF_Dc_HailOpts = function(id) return {{k="xtest", t="Test label", s="Test answer"}}; end;
 	local b, rb = V_DlgTrader();
@@ -1588,26 +1589,26 @@ function V_HailDlg()
 	local c, rc = V_DlgTrader();
 	TRF_HailOpen(c, "focus");
 	HOST_DlgPick("a_close");
-	HOST_Check(TRF.live.hl == nil and V_Logs("hail id="..c.." closed (close)") == 1 and type(rc.ha) == "number" and rc.ha > TRF_HlGt(),
+	HOST_Check(TRF.live.hl == nil and V_Logs("event=close trader_id="..c.." reason=close") == 1 and type(rc.ha) == "number" and rc.ha > TRF_HlGt(),
 		"pick close: chain closed, hail re-armed");
 	-- Stale picks: after the chain is gone, and from a chain of another gen.
 	nd = getn(h.dlgs);
 	TRF_HlDlgA_trade();
-	HOST_Check(V_Logs("dialog pick key=trade id=nil stale (ignored)") == 1 and getn(h.dlgs) == nd, "pick without a chain: ignored");
+	HOST_Check(V_Logs("event=dialog_pick trader_id=nil key=trade result=ignored reason=stale") == 1 and getn(h.dlgs) == nd, "pick without a chain: ignored");
 	local e, re = V_DlgTrader();
 	TRF_HailOpen(e, "focus");
 	TRF.gen = TRF.gen + 1;
 	HOST_DlgPick("a_trade");
 	TRF.gen = TRF.gen - 1;
 	T_Tick(1, 0.5);
-	HOST_Check(V_Logs("dialog pick key=trade id="..e.." stale (ignored)") == 1 and TRF.live.hl == nil and getn(h.dlgs) == nd and re.trd == nil,
+	HOST_Check(V_Logs("event=dialog_pick trader_id="..e.." key=trade result=ignored reason=stale") == 1 and TRF.live.hl == nil and getn(h.dlgs) == nd and re.trd == nil,
 		"pick after a gen change: ignored, no shop");
 	-- Esc (dialog closed without an answer): the due check closes the chain.
 	local g = V_DlgTrader();
 	TRF_HailOpen(g, "focus");
 	HOST_DlgEsc();
 	T_Tick(3, 0.5);
-	HOST_Check(TRF.live.hl == nil and V_Logs("hail id="..g.." closed (dialog closed)") == 1, "Esc: chain closed by TRF_HlDlgCheck");
+	HOST_Check(TRF.live.hl == nil and V_Logs("event=close trader_id="..g.." reason=\"dialog closed\"") == 1, "Esc: chain closed by TRF_HlDlgCheck");
 	-- Fallbacks to the box chain: hail_xml 0, StartTradeDialog missing, UI not idle.
 	local fb = {{"xml", function() HOST().cfg.hail_xml = 0; end, function() HOST().cfg.hail_xml = 1; end},
 		{"native", function() V_StartTD = StartTradeDialog; StartTradeDialog = nil; end, function() StartTradeDialog = V_StartTD; end},
@@ -1619,8 +1620,9 @@ function V_HailDlg()
 		TRF_HailOpen(x, "focus");
 		fb[i][3]();
 		HOST_Check(getn(h.tdlgs) == nd and getn(h.boxes) == nb + 1 and strfind(HOST_Box().text, ": Trade?", 1, 1) and TRF.live.hl.w == "menu"
-			and V_Logs("dialog fallback why="..fb[i][1]) == 1 and V_Logs("hail id="..x.." via=focus menu n=5 hn=1") == 1
-			and V_Logs("hail id="..x.." via=focus menu n=5 hn=1 dlg=1") == 0, "fallback ("..fb[i][1].."): box chain");
+			and V_Logs("event=dialog_fallback reason="..TRF_KvV(fb[i][1])) == 1
+			and V_Logs("event=hail trader_id="..x.." via=focus answer_count=5 hail_count=1 dialog=false") == 1
+			and V_Logs("event=hail trader_id="..x.." via=focus answer_count=5 hail_count=1 dialog=true") == 0, "fallback ("..fb[i][1].."): box chain");
 		V_HailEnd();
 	end;
 	-- Refusal at heat 3 with demand cargo: the dialog with demand and close only.
@@ -1631,9 +1633,9 @@ function V_HailDlg()
 	h.cfg.log = 2;
 	res = TRF_HailOpen(q, "focus");
 	h.cfg.log = 1;
-	HOST_Check(V_Logs("hl: dialog answers id="..q.." show= demand close") == 1, "log 2: the answer visibility list");
+	HOST_Check(V_Logs("module=hail event=dialog_answers trader_id="..q.." answers=demand,close ") == 1, "log 2: the answer visibility list");
 	HOST_Check(res == "refuse" and type(TRF.live.hl) == "table" and TRF.live.hl.w == "dlg" and getn(h.boxes) == nb
-		and HOST_DlgVis() == "a_demand a_close" and V_Logs("hail id="..q.." refused heat=3 (demand dialog)") == 1
+		and HOST_DlgVis() == "a_demand a_close" and V_Logs("event=hail trader_id="..q.." heat=3 demand_via=dialog result=refused") == 1
 		and HOST_DlgText() == "FTU "..TRF_HlName(rq)..": We have nothing to say to the Wolves. Keep your distance.",
 		"refusal at heat 3: dialog with demand and close only: "..HOST_DlgVis());
 	HOST_DlgPick("a_close");
@@ -1760,7 +1762,7 @@ function T_V02_L()
 	T_Jump("gredos");
 	h.mwrites = {};
 	V_TradeDock();
-	HOST_Check(V_Logs(" module_count=4 ") == 2 and getn(TRF.shops) == 0 and V_Logs("restore done") >= 1 and getn(V_Writes("gredos")) >= 1,
+	HOST_Check(V_Logs(" module_count=4 ") == 2 and getn(TRF.shops) == 0 and V_Logs("event=restore pending_count=0 result=done") >= 1 and getn(V_Writes("gredos")) >= 1,
 		"enabled 2: 4 modules loaded, restored although the shortage is active, 'restore done'");
 	h.cfg.enabled = nil;
 	T_Jump("aurora");
@@ -1843,7 +1845,7 @@ function T_V02_M()
 		if okw and not totc[it] and mk.goods[it].n > 1 then okw = nil; end;
 	end;
 	HOST_Check(okw and mk.goods["Trf_NotListed"].n == 3, "same slot, next trader: shop reused, previous stock and sales of listed items wiped, unlisted item kept");
-	HOST_Check(V_Logs("shop: items id="..tostring(c2).." "..name.." hold=") == 1, "log 2: item names of the fill logged");
+	HOST_Check(V_Logs("module=shop event=items trader_id="..tostring(c2).." shop="..name.." hold=") == 1, "log 2: item names of the fill logged");
 	-- Saved tsh: class-shop entries (tsh[cls] = 1, saves before 2026-10-22) are dropped by the repair.
 	TRF.tsh = {[1]=1, [3]=2, [6]=1, [7]=2};
 	TRF_TshFix();
@@ -2018,8 +2020,8 @@ function T_V02_N()
 	T_SaveLoad();
 	HOST_Check(V_DataGlobals() == "", "after a load: no TRF_ data globals, no build globals"..V_DataGlobals());
 	TRF_DumpState("test");
-	HOST_Check(V_Logs("module=region event=dump region_count=8 ") >= 1 and V_Logs("module=safety event=dump gate=") >= 1 and V_Logs("dump shop") >= 1 and V_Logs("dump raid") >= 1
-		and V_Logs("dump hail") >= 1 and V_Logs("module=tier event=dump ") >= 1, "TRF_DumpState calls every module dump");
+	HOST_Check(V_Logs("module=region event=dump region_count=8 ") >= 1 and V_Logs("module=safety event=dump gate=") >= 1 and V_Logs("module=shop event=dump") >= 1 and V_Logs("module=raid event=dump") >= 1
+		and V_Logs("module=hail event=dump") >= 1 and V_Logs("module=tier event=dump ") >= 1, "TRF_DumpState calls every module dump");
 end;
 
 function TRF_HostNoop() end;

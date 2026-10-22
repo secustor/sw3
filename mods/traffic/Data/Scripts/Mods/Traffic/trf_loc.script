@@ -9,10 +9,13 @@
 
 -- Helpers --------------------------------------------------------------------------
 
-function TRF_LocL(s) TRF_L("loc: "..tostring(s)); end;
+-- One logfmt event line of module loc (design/log-format.md 5).
+function TRF_LocE(event, ...) tinsert(arg, 1, event); tinsert(arg, 1, "loc"); call(TRF_Lf, arg); end;
 
+-- Error handler of the protected calls: event=error, counted in stat err.
 function TRF_LocErr(m)
-	if type(TRF_PErr) == "function" then TRF_PErr("loc: "..tostring(m)); else TRF_LocL("ERROR "..tostring(m)); end;
+	TRF_LocE("error", "message", tostring(m));
+	if type(TRF_Stat) == "function" then TRF_Stat("err"); end;
 end;
 
 -- Silent handler for natives that may error on unknown input (GetQuestState).
@@ -356,12 +359,12 @@ function TRF_Loc_Dump()
 	for k, v in TRF_LocRU() do ru = ru + 1; end;
 	local dn = 0;
 	for k, v in TRF_Loc_Deny() do dn = dn + 1; end;
-	local cur, q = nil, "none";
+	local cur, nq, qa = nil, nil, nil;
 	if type(TRF_CurIdx) == "function" then cur = TRF_CurIdx(); end;
 	if cur then
 		local ids = TRF_DenyQ(cur);
-		if ids then q = getn(ids).."/"..tostring(TRF_QuestActive(cur)); end;
+		if ids then nq = getn(ids); qa = TRF_KvB(TRF_QuestActive(cur)); end;
 	end;
-	TRF_LocL("dump lang="..TRF_Loc_Lang().." mode="..TRF_Loc_Mode().." en="..en.." ru="..ru.." deny="..dn
-		.." qcur="..q);
+	TRF_LocE("dump", "language", TRF_Loc_Lang(), "mode", TRF_Loc_Mode(), "en_count", en, "ru_count", ru, "deny_count", dn,
+		"deny_quest_count", nq, "quest_active", qa);
 end;

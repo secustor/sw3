@@ -56,11 +56,15 @@ end;
 
 -- Helpers ----------------------------------------------------------------------------------
 
-function TRF_Cl_L(s) TRF_L("clan: "..tostring(s)); end;
+-- One logfmt event line of module clan (design/log-format.md 5).
+function TRF_ClE(event, ...) tinsert(arg, 1, event); tinsert(arg, 1, "clan"); call(TRF_Lf, arg); end;
 
-function TRF_Cl_D(s)
+-- Debug event line (cfg log 2).
+function TRF_ClDE(event, ...)
 	local v = TRF_Cl_Opt("log", 1);
-	if type(v) == "number" and v >= 2 then TRF_L("clan: "..tostring(s)); end;
+	if type(v) ~= "number" or v < 2 then return; end;
+	tinsert(arg, 1, event);
+	call(TRF_ClE, arg);
 end;
 
 -- cfg value: TRF_Opt, else this module's default, else the raw config, else def.
@@ -277,7 +281,7 @@ function TRF_Cl_Score(slot, d, why)
 	if type(c) ~= "table" or type(c.sc) ~= "number" or type(d) ~= "number" then return 0; end;
 	local old = c.sc;
 	c.sc = TRF_Cl_Clamp(floor(old + d + 0.5), 0, 99);
-	if c.sc ~= old then TRF_Cl_L("score "..slot.." "..old.." -> "..c.sc.." ("..tostring(why)..")"); end;
+	if c.sc ~= old then TRF_ClE("score", "slot", slot, "reason", why, "previous_score", old, "clan_score", c.sc); end;
 	return c.sc - old;
 end;
 
@@ -333,7 +337,10 @@ function TRF_Cl_SalvAddBody(slot, d, f, why)
 	if not c then return 0; end;
 	d = floor(d);
 	if d > 0 then
-		if type(f) ~= "number" or f < 1 or f > 5 then TRF_Cl_D("salv "..slot.." +"..d.." no faction ("..tostring(why)..")"); return 0; end;
+		if type(f) ~= "number" or f < 1 or f > 5 then
+			TRF_ClDE("salvage", "slot", slot, "source", why, "amount", d, "result", "skipped", "reason", "no_faction");
+			return 0;
+		end;
 		local ev = {sweep=1, feqt=1, feqk=1, feq=1};
 		local L = TRF_Cl_Live();
 		if not ev[tostring(why)] and L then
@@ -342,7 +349,7 @@ function TRF_Cl_SalvAddBody(slot, d, f, why)
 			L.fsv = L.fsv + a;
 			if a <= 0 then
 				TRF_Cl_Stat("salv_cap");
-				TRF_Cl_D("salv "..slot.." visit cap ("..tostring(why)..")");
+				TRF_ClDE("salvage", "slot", slot, "source", why, "result", "skipped", "reason", "visit_cap");
 				return 0;
 			end;
 			d = a;
@@ -356,7 +363,7 @@ function TRF_Cl_SalvAddBody(slot, d, f, why)
 	local a = c.sv - old;
 	if a ~= 0 then
 		TRF_Cl_Stat("salv_"..tostring(why));
-		TRF_Cl_L("salv "..slot.." "..old.." -> "..c.sv.." f="..c.sf.." ("..tostring(why)..")");
+		TRF_ClE("salvage", "slot", slot, "source", why, "previous_salvage", old, "salvage", c.sv, "faction", c.sf, "result", "added");
 		if TRF_SalvStage(slot) ~= s0 then TRF_P("TRF_NewsCheck", "war", slot); end;
 	end;
 	return a;
@@ -376,7 +383,7 @@ function TRF_Cl_SalvUseBody(slot, why)
 	if c.sv == 0 then c.sf = 0; end;
 	if c.sv ~= old then
 		TRF_Cl_Stat("salv_use");
-		TRF_Cl_L("salv "..slot.." "..old.." -> "..c.sv.." used ("..tostring(why)..")");
+		TRF_ClE("salvage", "slot", slot, "source", why, "previous_salvage", old, "salvage", c.sv, "result", "used");
 	end;
 	return c.sv;
 end;
@@ -395,10 +402,10 @@ function TRF_Cl_Decay(L, rm)
 			local c = TRF_Cl_Rec(slot);
 			c.sv = sv - 1;
 			if c.sv == 0 then c.sf = 0; end;
-			s = s.." "..slot..":"..c.sv;
+			s = s..","..slot..":"..c.sv;
 		end;
 	end;
-	if s ~= "" then TRF_Cl_L("salv decay leg "..L..s); end;
+	if s ~= "" then TRF_ClE("salvage_decay", "legs", L, "salvage", strsub(s, 2)); end;
 end;
 
 -- Losing faction's lists: {tm, sx, cap, md}; md from the map field fm when generated.
@@ -455,7 +462,7 @@ function TRF_SalvFlight(slot, group, sign, pos, dir, pw, tier, kind, maxn)
 	if st == 1 and TRF_Cl_Opt("salv_addmod", 0) == 1 and sh[1] then
 		for i = 1, min(sv, 3, getn(fc.md)) do
 			if not TRF_Cl_P(function(s, m) s:AddModule(m); return 1; end, {sh[1], fc.md[i]}) then
-				TRF_Cl_L("salv AddModule "..tostring(fc.md[i]).." failed");
+				TRF_ClE("salvage_flight", "ship_module", fc.md[i], "result", "failed", "reason", "add_module");
 			end;
 		end;
 	end;
@@ -467,7 +474,7 @@ function TRF_SalvFlight(slot, group, sign, pos, dir, pw, tier, kind, maxn)
 		for i = 1, getn(sh) do TRF_Cl_P(TRF_UI_ArmSalv, {sh[i], f, st}); end;
 	end;
 	TRF_Cl_Stat("salv_flight"..st);
-	TRF_Cl_L("salv flight slot="..slot.." stage="..st.." f="..f.." ships="..getn(sh).." lead="..tostring(row[1][1]));
+	TRF_ClE("salvage_flight", "slot", slot, "stage", st, "faction", f, "ship_count", getn(sh), "lead", row[1][1]);
 	return fl, st, sh;
 end;
 
@@ -495,7 +502,7 @@ function TRF_Cl_LrDel(idx, why)
 	local i, e = TRF_LrOf(idx);
 	if not i then return nil; end;
 	tremove(TRF.lr, i);
-	TRF_Cl_L("lr removed slot="..e.s.." t="..e.t.." ("..tostring(why)..")");
+	TRF_ClE("carrier_record", "slot", e.s, "target_system_index", e.t, "reason", why, "result", "removed");
 	return 1;
 end;
 
@@ -571,15 +578,15 @@ function TRF_Cl_LrTick(L, rm)
 				if not paused then TRF_N("TRF_AddDis", e.t, 1, "carrier"); end;
 				tinsert(keep, e);
 			elseif paused then
-				TRF_Cl_L("lr expired slot="..e.s.." t="..e.t.." during a sweep attempt");
+				TRF_ClE("carrier_record", "slot", e.s, "target_system_index", e.t, "result", "expired", "reason", "sweep_attempt");
 			else
 				TRF_Cl_Score(e.s, 3, "carrier record unanswered");
 				TRF_N("TRF_AddDis", e.t, 2, "carrier end");
 				TRF_Cl_Stat("lr_expired");
-				TRF_Cl_L("lr expired slot="..e.s.." t="..e.t.." +3");
+				TRF_ClE("carrier_record", "slot", e.s, "target_system_index", e.t, "clan_score_change", 3, "result", "expired");
 			end;
 		else
-			TRF_Cl_L("lr dropped bad record "..i);
+			TRF_ClE("carrier_record", "record_index", i, "result", "dropped", "reason", "bad_record");
 		end;
 	end;
 	TRF.lr = keep;
@@ -614,7 +621,8 @@ function TRF_Cl_LrNew(L, rm)
 				local e = {s=slot, t=pick, e=L + TRF_Cl_T("lr_raid_legs", 6)};
 				tinsert(lr, e);
 				TRF_Cl_Stat("lr_new");
-				TRF_Cl_L("lr new slot="..slot.." tier="..T.." t="..pick.." e="..e.e.." cands="..getn(c));
+				TRF_ClE("carrier_record", "slot", slot, "tier", T, "target_system_index", pick, "end_legs", e.e, "candidate_count", getn(c),
+					"result", "new");
 				if T >= 4 and TRF_Cl_WarV(slot) ~= "car" then TRF_P("TRF_NewsPost", "war", "car", slot); end;
 			end;
 		end;
@@ -716,14 +724,14 @@ function TRF_Cl_EntryBody()
 	local ok, why = TRF_Cl_Gate(cur, e.s);
 	if not ok then
 		TRF_Cl_Stat("carrier_skip_"..tostring(why));
-		TRF_Cl_L("carrier entry skipped ("..tostring(why)..") slot="..e.s);
+		TRF_ClE("carrier_entry", "slot", e.s, "result", "skipped", "reason", why);
 		return nil;
 	end;
 	local lo, hi = TRF_Cl_T("carrier_delay_min", 30), TRF_Cl_T("carrier_delay_max", 90);
 	local dt = lo + TRF_Cl_Rand(max(1, hi - lo + 1));
 	if type(TRF_Due) ~= "function" or not TRF_Due(dt, "TRF_CarrierSpawn", i) then return nil; end;
 	L.cr = {i=i, s=e.s, st="due", t=TRF_Cl_Gt(), w=0, n=0};
-	TRF_Cl_L("carrier due in "..dt.." s slot="..e.s.." e="..e.e);
+	TRF_ClE("carrier_entry", "slot", e.s, "end_legs", e.e, "delay", dt, "result", "due");
 	return 1;
 end;
 
@@ -749,7 +757,7 @@ function TRF_Cl_SpawnBody()
 	if not ok then
 		cr.st = "skip";
 		TRF_Cl_Stat("carrier_skip_"..tostring(why));
-		TRF_Cl_L("carrier skipped ("..tostring(why)..")");
+		TRF_ClE("carrier", "result", "skipped", "reason", why);
 	end;
 end;
 
@@ -826,7 +834,7 @@ function TRF_Cl_Spawn(cr, e, cur, H)
 	local rm = TRF_Cl_RgMap();
 	if not rm or type(rm[e.s]) ~= "table" or type(Pir_Pilots) ~= "table" or type(CreateCarcass) ~= "function" then return nil; end;
 	local prt, pn = TRF_Cl_HomePortal(cur, rm[e.s].home);
-	if not prt then TRF_Cl_L("carrier: no portal"); return nil; end;
+	if not prt then TRF_ClE("carrier", "result", "failed", "reason", "no_portal"); return nil; end;
 	local cap = TRF_N("TRF_RgTierCap");
 	if type(cap) ~= "number" then cap = 4; end;
 	local T = min(TRF_N("TRF_ClanTier", e.s) or 3, cap);
@@ -853,7 +861,7 @@ function TRF_Cl_Spawn(cr, e, cur, H)
 			car = nil;
 		end;
 	end;
-	if not car then TRF_Cl_Stat("carrier_skip"); TRF_Cl_L("carrier_skip: CreateCarcass "..hull.." nil"); return nil; end;
+	if not car then TRF_Cl_Stat("carrier_skip"); TRF_ClE("carrier", "hull_type", hull, "result", "failed", "reason", "create_carcass_nil"); return nil; end;
 	local L = TRF.live;
 	local k = (L.ncr or 0) + 1;
 	L.ncr = k;
@@ -862,7 +870,7 @@ function TRF_Cl_Spawn(cr, e, cur, H)
 	if TRF_Cl_Obj(tm) then grp = TRF_Cl_P(function(t, n) return t:CreateGroup(n); end, {tm, "TRF_Pir_"..k}); end;
 	local fl = nil;
 	if TRF_Cl_Obj(grp) then fl = TRF_Cl_P(function(g, n) return g:CreateFlight(n); end, {grp, "flight_trf_cr_"..k}); end;
-	if not TRF_Cl_Obj(fl) then TRF_Cl_Del(car); TRF_Cl_L("carrier: no group or flight"); return nil; end;
+	if not TRF_Cl_Obj(fl) then TRF_Cl_Del(car); TRF_ClE("carrier", "result", "failed", "reason", "no_group_or_flight"); return nil; end;
 	TRF_Cl_P(function(s, p) s:AssignPilot(CreatePilot(p)); end, {car, Pir_Pilots[4]});
 	TRF_Cl_P(function(f, s) f:AddShip(s); end, {fl, car});
 	TRF_N("SetObjectLabel", car, "trf_cr_"..k);
@@ -899,8 +907,8 @@ function TRF_Cl_Spawn(cr, e, cur, H)
 	cr.tier = T;
 	cr.pw = pw;
 	TRF_Cl_Stat("carrier");
-	TRF_Cl_L(format("carrier %d hull=%s tier=%d sc=%d via=%s esc=%d hp0=%s hold=%d,%d,%d", k, hull, T, sc, tostring(pn),
-		getn(esh), TRF_F(cr.hp0), floor(hp.x), floor(hp.y), floor(hp.z)));
+	TRF_ClE("carrier", "carrier_id", k, "hull_type", hull, "tier", T, "clan_score", sc, "via", pn, "escort_count", getn(esh),
+		"hull_start", TRF_F(cr.hp0), "hold_point", format("%d,%d,%d", floor(hp.x), floor(hp.y), floor(hp.z)), "result", "spawned");
 	return 1;
 end;
 
@@ -927,7 +935,7 @@ function TRF_Cl_Hold(cr)
 	cr.st = "hold";
 	cr.t = TRF_Cl_Gt();
 	cr.lt = cr.t + TRF_Cl_K().hold_d;
-	TRF_Cl_L("carrier "..cr.n.." holds");
+	TRF_ClE("carrier", "carrier_id", cr.n, "result", "hold");
 end;
 
 function TRF_OnCarrierHit(k, g) TRF_Cl_Cb2("TRF_OnCarrierHit", TRF_Cl_HitBody, {k, g}); end;
@@ -937,7 +945,7 @@ function TRF_Cl_HitBody(k, g)
 	if type(TRF) ~= "table" or g ~= TRF.gen then return; end;
 	local cr = TRF_Cl_Cr(k);
 	if not cr then return; end;
-	if cr.hit ~= 1 then cr.hit = 1; TRF_Cl_L("carrier "..k.." hit by the player"); end;
+	if cr.hit ~= 1 then cr.hit = 1; TRF_ClE("carrier", "carrier_id", k, "result", "hit_by_player"); end;
 	if cr.neu == 1 and type(SetGroupRelation) == "function" and RELATION_WAR ~= nil then
 		SetGroupRelation("TRF_Pir_"..k, PLAYER_GROUP, RELATION_WAR);
 		cr.neu = 2;
@@ -989,7 +997,7 @@ function TRF_Cl_Died(cr)
 	cr.ek = 1;
 	if H then TRF_Cl_EscOut(H.cr, H.cr.prt); end;
 	TRF_Cl_Stat("carrier_killed");
-	TRF_Cl_L("carrier "..tostring(cr.n).." destroyed hit="..tostring(cr.hit).." bounty="..paid);
+	TRF_ClE("carrier", "carrier_id", cr.n, "player_hit", TRF_KvB(cr.hit), "bounty", paid, "result", "destroyed");
 end;
 
 -- Escort ships to portal o (ComeToPortal per ship); deleted later in the portal volume or out of view.
@@ -1048,7 +1056,7 @@ function TRF_Cl_Launch(cr, hc)
 	hc.lq = {n=n, j=1, at=TRF_Cl_Gt(), row=row, lead=lead, wing=wing};
 	cr.w = cr.w + 1;
 	TRF_Cl_Stat("carrier_wave");
-	TRF_Cl_L("carrier "..cr.n.." wave "..cr.w.." n="..n.." tier="..wt.." ships="..getn(row));
+	TRF_ClE("carrier_wave", "carrier_id", cr.n, "wave", cr.w, "raid_id", n, "tier", wt, "ship_count", getn(row));
 	return 1;
 end;
 
@@ -1071,7 +1079,7 @@ function TRF_Cl_LaunchShip(hc, q, rd)
 		s = TRF_Cl_P(CreateCarcass, {e[1], Vector3(X.x - 15 * u.x, X.y - 15 * u.y, X.z - 15 * u.z), fd});
 		if TRF_Cl_Obj(s) then TRF_Cl_P(function(x, p) x:SetPosition(p); end, {s, X}); else s = nil; end;
 	end;
-	if not s then TRF_Cl_Stat("carrier_launch_fail"); TRF_Cl_L("launch n="..q.n.." "..tostring(e[1]).." nil"); return nil; end;
+	if not s then TRF_Cl_Stat("carrier_launch_fail"); TRF_ClE("launch", "raid_id", q.n, "hull_type", e[1], "result", "failed"); return nil; end;
 	local pil = q.wing;
 	if getn(hr.sh) == 0 then pil = q.lead; end;
 	TRF_Cl_P(function(x, p) x:AssignPilot(CreatePilot(p)); end, {s, pil});
@@ -1135,7 +1143,7 @@ function TRF_Cl_WaveDone(n, rd, hc)
 		local pts = {Vector3(cp.x + R, cp.y, cp.z), Vector3(cp.x, cp.y, cp.z + R), Vector3(cp.x - R, cp.y, cp.z), Vector3(cp.x, cp.y, cp.z - R)};
 		TRF_Cl_P(function(f, p) f:Patrol(p, FALSE); end, {hr.fl, pts});
 	end;
-	TRF_Cl_L("wave n="..n.." patrols (no trader)");
+	TRF_ClE("wave", "raid_id", n, "result", "patrol", "reason", "no_trader");
 end;
 
 -- Wave n takes the nearest free trader near p: raid relations, Move, meet trigger, state come. Returns 1.
@@ -1150,7 +1158,7 @@ function TRF_Cl_WaveGo(n, rd, hr, p)
 	TRF_Cl_Trig("f_object_inside", TRF_Rd_Cb("TRF_RaidMeet", n), hr.fl, lead, TRF_Cl_T("raid_meet", 250));
 	rd.st = "come";
 	rd.t = TRF_Cl_Gt();
-	TRF_Cl_L("wave n="..n.." raids id="..id);
+	TRF_ClE("wave", "raid_id", n, "trader_id", id, "result", "raid");
 	return 1;
 end;
 
@@ -1194,7 +1202,7 @@ function TRF_Cl_Recover(n, hc)
 		end;
 	end;
 	if left == 0 and type(TRF_RaidEnd) == "function" then
-		TRF_Cl_L("wave n="..n.." recovered");
+		TRF_ClE("wave", "raid_id", n, "result", "recovered");
 		TRF_RaidEnd(n, "rec");
 	end;
 end;
@@ -1242,7 +1250,7 @@ function TRF_Cl_Exit(cr, rm, why)
 	end;
 	hc.xp = hc.prt;
 	if why == "wind" or not TRF_Cl_Obj(hc.xp) then hc.xp = TRF_Cl_NearPortal(TRF_Cl_Pos(hc.car)); end;
-	TRF_Cl_L("carrier "..cr.n.." exit ("..tostring(why)..") waves="..getn(ws));
+	TRF_ClE("carrier", "carrier_id", cr.n, "reason", why, "wave_count", getn(ws), "result", "exit");
 end;
 
 -- Ships of the carrier group still alive: carrier and escorts.
@@ -1283,7 +1291,7 @@ function TRF_Cl_ExitStep(cr, hc)
 	end;
 	if getn(TRF_Cl_GroupShips(hc)) == 0 then
 		cr.st = "done";
-		TRF_Cl_L("carrier "..tostring(cr.n).." gone");
+		TRF_ClE("carrier", "carrier_id", cr.n, "result", "gone");
 	end;
 end;
 
@@ -1396,9 +1404,13 @@ function TRF_Cl_RaidOnBody(ids, tier, why, delay)
 	local cur = TRF_Cl_Cur();
 	if not L or not Hr or not cur then return nil; end;
 	local ok, no = TRF_Rd_Gate(cur, "raid", nil, 99);
-	if not ok then TRF_Cl_Stat("raidon_skip_"..tostring(no)); TRF_Cl_L("raidon "..why.." skipped ("..tostring(no)..")"); return nil; end;
+	if not ok then
+		TRF_Cl_Stat("raidon_skip_"..tostring(no));
+		TRF_ClE("raid_on", "source", why, "result", "skipped", "reason", TRF_N("TRF_Rd_Why", no) or no);
+		return nil;
+	end;
 	local guard = TRF_Rd_Guard(cur);
-	if guard and why == "fq" then TRF_Cl_L("raidon fq: guard system"); return nil; end;
+	if guard and why == "fq" then TRF_ClE("raid_on", "source", why, "result", "skipped", "reason", "guard_system"); return nil; end;
 	if type(TRF_Rd_ClanAlive) == "function" and TRF_Rd_ClanAlive(nil) >= TRF_Cl_T("raid_live_cap", 8) then
 		TRF_Cl_Stat("raidon_skip_livecap");
 		return nil;
@@ -1432,7 +1444,8 @@ function TRF_Cl_RaidOnBody(ids, tier, why, delay)
 			rd.rx, rd.ry, rd.rz = rp.x, rp.y, rp.z;
 			r.rdn = n;
 			TRF_Cl_Stat("raidon_armed");
-			TRF_Cl_L(format("raidon %s n=%d armed id=%d tier=%d point=%d,%d,%d", why, n, tids[1], T, floor(rp.x), floor(rp.y), floor(rp.z)));
+			TRF_ClE("raid_on", "raid_id", n, "trader_id", tids[1], "source", why, "tier", T,
+				"point", format("%d,%d,%d", floor(rp.x), floor(rp.y), floor(rp.z)), "result", "armed");
 			return n;
 		end;
 		delay = 0;
@@ -1441,7 +1454,7 @@ function TRF_Cl_RaidOnBody(ids, tier, why, delay)
 	if delay <= 0 or type(TRF_Due) ~= "function" or not TRF_Due(delay, "TRF_RaidOnGo", n) then
 		TRF_Cl_RaidOnGoBody(n);
 	else
-		TRF_Cl_L("raidon "..why.." n="..n.." tier="..T.." in "..delay.." s targets="..(getn(tids) + getn(objs)));
+		TRF_ClE("raid_on", "raid_id", n, "source", why, "tier", T, "delay", delay, "target_count", getn(tids) + getn(objs), "result", "due");
 	end;
 	local e = L.rd[n];
 	if type(e) == "table" and e.st ~= "end" then return n; end;
@@ -1496,7 +1509,7 @@ function TRF_Cl_RaidOnGoBody(n)
 		TRF_Flee(rd.id, "raid");
 	end;
 	TRF_Cl_Stat("raidon");
-	TRF_Cl_L("raidon "..tostring(rd.kind).." n="..n.." tier="..rd.tier.." ships="..tostring(rd.ns).." id="..tostring(rd.id));
+	TRF_ClE("raid_on", "raid_id", n, "trader_id", rd.id, "kind", rd.kind, "tier", rd.tier, "ship_count", rd.ns, "result", "go");
 end;
 
 -- Loader callbacks -------------------------------------------------------------------------------
@@ -1533,7 +1546,7 @@ function TRF_Cl_JumpBody()
 	H.s3 = {};
 	local cr = TRF_Cl_Cr(nil);
 	if cr then cr.st = "done"; end;
-	if getn(l) > 0 then TRF_Cl_L("jump: carrier group deleted ships="..getn(l)); end;
+	if getn(l) > 0 then TRF_ClE("jump", "deleted_count", getn(l)); end;
 end;
 
 -- Load (visit state reset): carrier ships found by label (trf_cr_<k>, trf_ce_<k>_<j>, k <= 4) are deleted
@@ -1570,7 +1583,7 @@ function TRF_Cl_LoadBody()
 			end;
 		end;
 	end;
-	if del + kept > 0 then TRF_Cl_L("load: carrier ships deleted="..del.." leaving="..kept); end;
+	if del + kept > 0 then TRF_ClE("load", "deleted_count", del, "leaving_count", kept); end;
 end;
 
 -- Ships left from a load: deleted inside the portal volume or out of view.
@@ -1596,30 +1609,32 @@ function TRF_Clan_Dump()
 	local lr = TRF_Cl_Lr();
 	for i = 1, getn(lr) do
 		local e = lr[i];
-		if type(e) == "table" then s = s.." "..tostring(e.s)..">"..tostring(e.t).."@"..tostring(e.e); end;
+		if type(e) == "table" then s = s..","..tostring(e.s)..">"..tostring(e.t).."@"..tostring(e.e); end;
 	end;
 	local v = "";
 	local rm = TRF_Cl_RgMap();
 	if rm then
 		for slot = 1, rm.n do
 			local sv, sf = TRF_Cl_Sv(slot);
-			if sv > 0 then v = v.." "..slot..":"..sv.."/"..sf; end;
+			if sv > 0 then v = v..","..slot..":"..sv.."/"..sf; end;
 		end;
 	end;
-	local c = "none";
 	local cr = TRF_Cl_Cr(nil);
-	if cr then
-		c = tostring(cr.st).." n="..tostring(cr.n).." w="..tostring(cr.w).." hit="..tostring(cr.hit).." hp0="..TRF_F(cr.hp0);
-	end;
+	local c = cr or {};
+	local hit = nil;
+	if cr then hit = TRF_KvB(cr.hit); end;
 	local fsv = nil;
 	if type(TRF.live) == "table" then fsv = TRF.live.fsv; end;
-	TRF_L("dump clan lr="..getn(lr)..s.." salv="..v.." fsv="..tostring(fsv).." carrier="..c);
+	TRF_ClE("dump", "record_count", getn(lr), "records", strsub(s, 2), "salvage", strsub(v, 2), "visit_salvage", fsv,
+		"carrier_state", c.st, "carrier_id", c.n, "carrier_waves", c.w, "carrier_hit", hit, "carrier_hull_start", TRF_F(c.hp0));
 	local L = TRF_Cl_Legs();
 	for i = 1, getn(lr) do
 		local e = lr[i];
 		if type(e) == "table" then
-			TRF_L("dump lr "..i.." slot="..tostring(e.s).." clan="..tostring(TRF_N("TRF_ClanName", e.s)).." target="
-				..tostring(TRF_N("TRF_SysName", e.t)).." legs_left="..tostring(type(e.e) == "number" and e.e - L));
+			local left = nil;
+			if type(e.e) == "number" then left = e.e - L; end;
+			TRF_ClE("dump_record", "record_index", i, "slot", e.s, "clan", TRF_N("TRF_ClanName", e.s),
+				"target", TRF_N("TRF_SysName", e.t), "legs_left", left);
 		end;
 	end;
 end;

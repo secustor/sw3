@@ -73,14 +73,23 @@ end;
 
 -- Logging, config, state helpers ------------------------------------------------------
 
-function TRF_Rd_L(s)
-	TRF_L("raid: "..tostring(s));
+-- One logfmt event line of module raid (design/log-format.md 5).
+function TRF_RdE(event, ...) tinsert(arg, 1, event); tinsert(arg, 1, "raid"); call(TRF_Lf, arg); end;
+
+-- Debug event line (cfg log 2).
+function TRF_RdDE(event, ...)
+	local v = TRF_Rd_Opt("log", 1);
+	if type(v) ~= "number" or v < 2 then return; end;
+	tinsert(arg, 1, event);
+	call(TRF_RdE, arg);
 end;
 
--- Debug line (cfg log 2).
-function TRF_Rd_D(s)
-	local v = TRF_Rd_Opt("log", 1);
-	if type(v) == "number" and v >= 2 then TRF_L("raid: "..tostring(s)); end;
+-- Gate refusal code (TRF_Rd_Gate, also the stat suffix) as the logged reason word.
+function TRF_Rd_Why(no)
+	local t = {gov="governor", supp="suppressed", nosys="no_system"};
+	local w = t[tostring(no)];
+	if w then return w; end;
+	return no;
 end;
 
 -- cfg value: TRF_Opt, else this module's default, else the raw config, else def.
@@ -448,7 +457,7 @@ function TRF_Rd_Get(n, g, what)
 	local L = TRF_Rd_Live();
 	if not L or type(n) ~= "number" then return nil; end;
 	if g ~= nil and g ~= TRF.gen then
-		TRF_Rd_D(tostring(what).." n="..n.." stale gen="..tostring(g));
+		TRF_RdDE("stale", "raid_id", n, "step", what, "generation", g);
 		return nil;
 	end;
 	local rd = L.rd[n];
@@ -534,7 +543,7 @@ function TRF_Rd_Strict(idx, feat)
 	if type(TRF_StrictOk) == "function" then
 		local ok, why = TRF_StrictOk(idx, feat);
 		if not ok then
-			TRF_Rd_D("strict "..tostring(feat).." denied: "..tostring(why));
+			TRF_RdDE("strict", "feature", feat, "result", "denied", "reason", why);
 			return nil, "strict";
 		end;
 		return 1;
@@ -725,7 +734,7 @@ end;
 -- tier's ns). Returns row {{fit, rank, role}}, pilots, formation, power, lead, wing or nil.
 function TRF_Rd_PirRow(tier, pw, kind, ns)
 	if type(Pir_Fighters) ~= "table" or type(Pir_Bombers) ~= "table" or type(Pir_Pilots) ~= "table" then
-		TRF_Rd_L("pirflight: no Pir_* tables");
+		TRF_RdE("pirflight", "result", "failed", "reason", "no_pir_tables");
 		return nil;
 	end;
 	local b = TRF_Rd_TierRows()[TRF_Rd_Clamp(floor(tonumber(tier) or 1), 1, 4)];
@@ -833,7 +842,7 @@ function TRF_Rd_Comp(n, rd, gname, sign, pos, dir, pw, cur)
 	local b = TRF_Rd_TierRows()[T];
 	local slot = TRF_Rd_Slot(cur);
 	local cap = TRF_Rd_T("raid_live_cap", 8) - TRF_Rd_ClanAlive(n);
-	if cap < 1 then TRF_Rd_Stat("raid_skip_livecap"); TRF_Rd_L("spawn n="..n.." raid_live_cap reached"); return nil; end;
+	if cap < 1 then TRF_Rd_Stat("raid_skip_livecap"); TRF_RdE("spawn", "raid_id", n, "result", "skipped", "reason", "raid_live_cap"); return nil; end;
 	local kind = nil;
 	if T >= 3 then kind = 1; end;
 	local fl, st = nil, nil;
@@ -1083,7 +1092,7 @@ function TRF_Rd_RollBody(id, why)
 	local ok, no = TRF_Rd_Gate(cur, "raid", nil, TRF_Rd_Extra(nil, cur));
 	if not ok then
 		TRF_Rd_Stat("raid_skip_"..tostring(no));
-		TRF_Rd_D("roll id="..id.." why="..tostring(why).." skip "..tostring(no));
+		TRF_RdDE("roll", "trader_id", id, "source", why, "result", "skipped", "reason", TRF_Rd_Why(no));
 		return nil;
 	end;
 	local dE = TRF_Rd_BaseDanger(cur, TRF_Rd_DangerEff(cur));
@@ -1102,13 +1111,13 @@ function TRF_Rd_RollBody(id, why)
 	local roll = TRF_Rd_Rand(10000);
 	if not (roll < p * 10000) then
 		TRF_Rd_Stat("raid_roll_no");
-		TRF_Rd_D("roll id="..id.." why="..tostring(why).." dE="..dE.." T="..T.." p="..TRF_F(p).." roll="..roll.." -> no");
+		TRF_RdDE("roll", "trader_id", id, "source", why, "danger_eff", dE, "tier", T, "chance", TRF_F(p), "roll", roll, "result", "no_raid");
 		return nil;
 	end;
 	local rp = TRF_Rd_RaidPoint(r, h, cur);
 	if not rp then
 		TRF_Rd_Stat("skip_raidpt");
-		TRF_Rd_L("roll id="..id.." no raid point (path "..tostring(r.path)..")");
+		TRF_RdE("roll", "trader_id", id, "path", r.path, "result", "skipped", "reason", "no_raid_point");
 		return nil;
 	end;
 	local n = TRF_Rd_NewN(L);
@@ -1121,8 +1130,8 @@ function TRF_Rd_RollBody(id, why)
 		return nil;
 	end;
 	TRF_Rd_Stat("raid_armed");
-	TRF_Rd_L(format("armed n=%d id=%d why=%s path=%s dE=%d T=%d p=%.3f point=%d,%d,%d", n, id, tostring(why),
-		tostring(r.path), dE, T, p, floor(rp.x), floor(rp.y), floor(rp.z)));
+	TRF_RdE("armed", "raid_id", n, "trader_id", id, "source", why, "path", r.path, "danger_eff", dE, "tier", T,
+		"chance", format("%.3f", p), "point", format("%d,%d,%d", floor(rp.x), floor(rp.y), floor(rp.z)));
 	return n;
 end;
 
@@ -1192,8 +1201,8 @@ function TRF_Rd_GoBody(n, g)
 	rd.st = "come";
 	rd.t = gt;
 	TRF_Rd_Stat("raid_go");
-	TRF_Rd_L("go n="..n.." id="..rd.id.." via="..via.." tier="..rd.tier.." pw="..tostring(rd.pw).." ships="..tostring(rd.ns)
-		.." d="..TRF_F(d));
+	TRF_RdE("go", "raid_id", n, "trader_id", rd.id, "via", via, "tier", rd.tier, "power", rd.pw, "ship_count", rd.ns,
+		"distance", TRF_F(d));
 end;
 
 -- Meet and decide (5.2) -------------------------------------------------------------------------
@@ -1222,7 +1231,7 @@ function TRF_Rd_Meet(n, rd)
 	rd.st = "demand";
 	rd.t = TRF_Rd_Gt();
 	if not TRF_Rd_Due(8, "TRF_RaidDecide", n) then TRF_RaidLeave(n, "due"); return; end;
-	TRF_Rd_L("demand n="..n.." id="..rd.id);
+	TRF_RdE("demand", "raid_id", n, "trader_id", rd.id);
 end;
 
 -- Live escorts of trader record r: live ships of h.sh minus live transports h.tp, else r.np - r.nt.
@@ -1280,8 +1289,8 @@ function TRF_Rd_DecideBody(n)
 	local roll = TRF_Rd_Rand(100);
 	local dc = "refuse";
 	if rd.ph ~= 1 and roll < p then dc = "comply"; end;
-	TRF_Rd_L("decide n="..n.." id="..rd.id.." st="..TRF_F(st).." sr="..TRF_F(sr).." q="..TRF_F(st / sr).." br="..TRF_F(br)
-		.." p="..TRF_F(p).." roll="..roll.." -> "..dc);
+	TRF_RdE("decide", "raid_id", n, "trader_id", rd.id, "trader_strength", TRF_F(st), "raid_strength", TRF_F(sr),
+		"strength_ratio", TRF_F(st / sr), "braveness", TRF_F(br), "chance", TRF_F(p), "roll", roll, "result", dc);
 	if dc == "comply" then
 		TRF_Rd_Comply(n, rd, r, h);
 	else
@@ -1294,7 +1303,7 @@ end;
 -- the old mirror and re-adds it (comply without cargo loss). Returns the containers removed.
 function TRF_Rd_Rob(r, h, k)
 	if type(r.hold) ~= "table" or getn(r.hold) == 0 or type(h.tp) ~= "table" then
-		TRF_Rd_L("comply id="..tostring(r.id).." no hold mirror: no cargo loss");
+		TRF_RdE("rob", "trader_id", r.id, "cargo_lost", 0, "result", "no_loss", "reason", "no_hold_mirror");
 		return 0;
 	end;
 	local new = {};
@@ -1324,7 +1333,7 @@ function TRF_Rd_Rob(r, h, k)
 	if fail then
 		use = r.hold;
 		lost = 0;
-		TRF_Rd_L("comply id="..tostring(r.id).." ClearInventory failed: no cargo loss");
+		TRF_RdE("rob", "trader_id", r.id, "cargo_lost", 0, "result", "no_loss", "reason", "clear_inventory_failed");
 	end;
 	for j, v in cleared do
 		for i = 1, getn(use) do
@@ -1355,7 +1364,7 @@ function TRF_Rd_Comply(n, rd, r, h)
 	if not TRF_Rd_Due(5, "TRF_RaidLeave", n, "comply") then TRF_RaidLeave(n, "comply"); end;
 	if not TRF_Rd_Due(10, "TRF_Rd_Resume", rd.id) then TRF_Rd_Resume(rd.id); end;
 	TRF_Rd_Stat("raid_comply");
-	TRF_Rd_L("comply n="..n.." id="..rd.id.." lost="..lost.." dis="..TRF_Rd_Dis(cur));
+	TRF_RdE("comply", "raid_id", n, "trader_id", rd.id, "cargo_lost", lost, "disruption", TRF_Rd_Dis(cur));
 end;
 
 -- Due call: the robbed trader resumes its route.
@@ -1375,7 +1384,7 @@ function TRF_Rd_Refuse(n, rd, hr)
 	TRF_Distress(rd.id, "raid", 1);
 	TRF_Flee(rd.id, "raid");
 	TRF_Rd_Stat("raid_refuse");
-	TRF_Rd_L("refuse n="..n.." id="..rd.id.." ph="..tostring(rd.ph));
+	TRF_RdE("refuse", "raid_id", n, "trader_id", rd.id, "player_fired", TRF_KvB(rd.ph));
 end;
 
 -- Leave, gone, end (5.2) -------------------------------------------------------------------------
@@ -1448,12 +1457,12 @@ function TRF_Rd_LeaveBody(n, why)
 	if dm and dm <= TRF_Rd_T("ovd", 600) then
 		if rd.kind == "cr" and TRF_N("TRF_CarrierRecall", n) then
 			rd.rec = 1;
-			TRF_Rd_L("leave n="..n.." why="..tostring(why).." to carrier");
+			TRF_RdE("leave", "raid_id", n, "reason", why, "destination", "carrier");
 			return;
 		end;
 		if rd.bs == 1 and TRF_Rd_BaseBack(n, hr) then
 			rd.rec = 2;
-			TRF_Rd_L("leave n="..n.." why="..tostring(why).." to base");
+			TRF_RdE("leave", "raid_id", n, "reason", why, "destination", "base");
 			return;
 		end;
 	end;
@@ -1462,7 +1471,7 @@ function TRF_Rd_LeaveBody(n, why)
 		TRF_Rd_End(n, "left");
 		return;
 	end;
-	TRF_Rd_L("leave n="..n.." why="..tostring(why).." d="..TRF_F(dm));
+	TRF_RdE("leave", "raid_id", n, "reason", why, "distance", TRF_F(dm));
 end;
 
 function TRF_RaidGone(n, g) TRF_Rd_Cb2("TRF_RaidGone", TRF_Rd_GoneBody, {n, g}); end;
@@ -1503,7 +1512,7 @@ function TRF_Rd_Pay(n, rd)
 	if r.st ~= "gone" then r.res = 1; end;
 	TRF_Rd_Say(TRF_Rd_Txt("thanks", TRF_Rd_Name(r)), 6, TRF_Rd_LeadPilot(rd.id));
 	TRF_Rd_Stat("raid_paid");
-	TRF_Rd_L("paid n="..n.." id="..rd.id.." cr="..amt.." help+"..d);
+	TRF_RdE("paid", "raid_id", n, "trader_id", rd.id, "credits", amt, "help", d);
 end;
 
 -- Ended record keeps n, id, st, how, paid (3.2).
@@ -1571,8 +1580,8 @@ function TRF_Rd_End(n, how)
 	end;
 	if was ~= "armed" then TRF_Rd_Pay(n, rd); end;
 	TRF_Rd_Stat("raid_end_"..tostring(how));
-	TRF_Rd_L("end n="..n.." id="..tostring(rd.id).." how="..tostring(how).." was="..tostring(was).." dc="..tostring(rd.dc)
-		.." hit="..tostring(rd.hit).." paid="..tostring(rd.paid));
+	TRF_RdE("end", "raid_id", n, "trader_id", rd.id, "previous_state", was, "decision", rd.dc, "help_counted", TRF_KvB(rd.hit),
+		"paid", rd.paid, "result", how);
 	TRF_Rd_Strip(rd);
 	TRF_Rd_Prune(L);
 end;
@@ -1595,7 +1604,7 @@ function TRF_Rd_Rearm(n, j, rd)
 	if type(rd.arm) ~= "number" then rd.arm = 0; end;
 	local mx = TRF_Rd_K().arm_max;
 	if rd.arm >= mx then
-		if rd.arm == mx then rd.arm = mx + 1; TRF_Rd_L("hit n="..n.." re-arm cap "..mx); end;
+		if rd.arm == mx then rd.arm = mx + 1; TRF_RdE("hit", "raid_id", n, "rearm_max", mx, "result", "rearm_cap"); end;
 		return;
 	end;
 	rd.arm = rd.arm + 1;
@@ -1638,7 +1647,7 @@ function TRF_Rd_HitBody(n, j, g)
 			rd.hit = 1;
 			rd.fs = {};
 			TRF_Rd_Stat("raid_help");
-			TRF_Rd_L("help counted n="..n.." ship="..j.." (T_deliberate)");
+			TRF_RdE("help", "raid_id", n, "ship", j, "reason", "deliberate", "result", "counted");
 		end;
 	end;
 	TRF_Rd_Rearm(n, j, rd);
@@ -1668,7 +1677,7 @@ function TRF_Rd_DiedBody(n, j, g)
 	if type(rd.lh) == "table" and type(rd.lh[j]) == "number" and gt - rd.lh[j] <= TRF_Rd_K().hit_win and rd.hit ~= 1 then
 		rd.hit = 1;
 		TRF_Rd_Stat("raid_help");
-		TRF_Rd_L("help counted n="..n.." ship="..j.." (kill after hit)");
+		TRF_RdE("help", "raid_id", n, "ship", j, "reason", "kill_after_hit", "result", "counted");
 	end;
 	local H = TRF_Rd_H();
 	local hr = nil;
@@ -1697,7 +1706,7 @@ function TRF_Rd_Nav(n, lead)
 	local col = TRF_N("RGB", 255, 80, 80);
 	local nav = CreateNavPoint("", lead:GetPosition(), "nav_target.dds", col, lead);
 	if not TRF_Rd_Obj(nav) then
-		TRF_Rd_L("nav n="..n.." CreateNavPoint returned nil");
+		TRF_RdE("nav", "raid_id", n, "result", "failed", "reason", "create_nav_point_nil");
 		return nil;
 	end;
 	TRF_N("SetNavPointLabel", nav, "trf_nav_"..n);
@@ -1721,11 +1730,11 @@ function TRF_Rd_SosBody(id, why, mark)
 	local gt = TRF_Rd_Gt();
 	local d = TRF_Rd_Dist(lead:GetPosition(), TRF_Rd_MsPos());
 	if not d or d > TRF_Rd_T("R_radio", 2000) then
-		TRF_Rd_D("sos id="..id.." why="..tostring(why).." out of radio range d="..TRF_F(d));
+		TRF_RdDE("sos", "trader_id", id, "reason", why, "distance", TRF_F(d), "result", "out_of_radio_range");
 		return nil;
 	end;
 	if type(L.sos) == "number" and gt - L.sos < TRF_Rd_T("T_sos_cd", 240) then
-		TRF_Rd_D("sos id="..id.." why="..tostring(why).." cooldown");
+		TRF_RdDE("sos", "trader_id", id, "reason", why, "result", "cooldown");
 		return nil;
 	end;
 	L.sos = gt;
@@ -1733,7 +1742,7 @@ function TRF_Rd_SosBody(id, why, mark)
 	local nav = nil;
 	if mark and type(r.rdn) == "number" then nav = TRF_Rd_P(TRF_Rd_Nav, {r.rdn, lead}); end;
 	TRF_Rd_Stat("sos");
-	TRF_Rd_L("sos id="..id.." why="..tostring(why).." nav="..tostring(nav and 1).." d="..TRF_F(d));
+	TRF_RdE("sos", "trader_id", id, "reason", why, "nav_marked", TRF_KvB(nav and 1), "distance", TRF_F(d));
 	return 1;
 end;
 
@@ -1809,7 +1818,7 @@ function TRF_Rd_FleeBody(id, why)
 		dest = TRF_Rd_PortalDest(pn) or TRF_Rd_Txt("fleegate");
 		kind = "portal";
 	else
-		TRF_Rd_L("flee id="..id.." why="..tostring(why).." no refuge");
+		TRF_RdE("flee", "trader_id", id, "reason", why, "result", "no_refuge");
 		return nil;
 	end;
 	r.fl = tostring(why);
@@ -1818,7 +1827,8 @@ function TRF_Rd_FleeBody(id, why)
 	if type(TRF_GnEscOrder) == "function" then TRF_Rd_P(TRF_GnEscOrder, {id}); end;
 	TRF_Rd_Say(TRF_Rd_Txt("flee", TRF_Rd_Name(r), dest), 6, TRF_Rd_LeadPilot(id));
 	TRF_Rd_Stat("flee_"..tostring(why));
-	TRF_Rd_L("flee id="..id.." why="..tostring(why).." to="..kind.." "..tostring(pn).." ds="..TRF_F(ds).." dp="..TRF_F(dp));
+	TRF_RdE("flee", "trader_id", id, "reason", why, "refuge", kind, "portal", pn, "station_distance", TRF_F(ds),
+		"portal_distance", TRF_F(dp));
 	return 1;
 end;
 
@@ -1840,7 +1850,7 @@ function TRF_Rd_SafeBody(id, how, g)
 		if h and TRF_Rd_Alive(h.fl) then TRF_Rd_P(function(f) f:Delete(); end, {h.fl}); end;
 		r.st = "gone";
 	end;
-	TRF_Rd_L("escaped id="..id.." how="..tostring(how));
+	TRF_RdE("escaped", "trader_id", id, "via", how);
 end;
 
 function TRF_OnLowHP(id, g) TRF_Rd_Cb2("TRF_OnLowHP", TRF_Rd_LowBody, {id, g}); end;
@@ -2038,16 +2048,16 @@ function TRF_Rd_StRollBody()
 	local roll = TRF_Rd_Rand(100);
 	if not (roll < c) then
 		TRF_Rd_Stat("staged_roll_no");
-		TRF_Rd_D("staged roll dis="..dis.." c="..c.." roll="..roll.." -> no");
+		TRF_RdDE("staged_roll", "disruption", dis, "chance", c, "roll", roll, "result", "no_raid");
 		return nil;
 	end;
 	local e = TRF_Rd_StPlace(cur);
-	if not e then TRF_Rd_Stat("staged_skip_place"); TRF_Rd_L("staged: no placement"); return nil; end;
+	if not e then TRF_Rd_Stat("staged_skip_place"); TRF_RdE("staged_plan", "result", "failed", "reason", "no_placement"); return nil; end;
 	if not TRF_Rd_Due(5 + TRF_Rd_Rand(6), "TRF_StagedSpawn") then return nil; end;
 	L.stg = e;
 	L.ent = "staged";
-	TRF_Rd_L(format("staged planned dis=%d c=%d roll=%d ci=%d ei=%d path=%s at %d,%d,%d", dis, c, roll, e.ci, e.ei,
-		e.path, floor(e.x), floor(e.y), floor(e.z)));
+	TRF_RdE("staged_plan", "disruption", dis, "chance", c, "roll", roll, "contact_index", e.ci, "entry_index", e.ei,
+		"path", e.path, "point", format("%d,%d,%d", floor(e.x), floor(e.y), floor(e.z)), "result", "planned");
 	return 1;
 end;
 
@@ -2114,7 +2124,7 @@ function TRF_Rd_StSpawnBody()
 	local ok, no = TRF_Rd_Gate(cur, "staged");
 	if not ok then
 		TRF_Rd_Stat("staged_skip_"..tostring(no));
-		TRF_Rd_L("staged spawn skipped: "..tostring(no));
+		TRF_RdE("staged_spawn", "result", "skipped", "reason", TRF_Rd_Why(no));
 		return;
 	end;
 	local c = TRF_Rd_Contacts()[e.ci];
@@ -2161,8 +2171,8 @@ function TRF_Rd_StSpawnBody()
 	if rl and TRF_Rd_Alive(h.ef) then TRF_Rd_P(function(f, s) f:Attack(s); end, {h.ef, rl}); h.eo = nil; end;
 	if not TRF_Rd_Due(10 + TRF_Rd_Rand(11), "TRF_StagedDistress", n) then TRF_StagedDistress(n); end;
 	TRF_Rd_Stat("staged");
-	TRF_Rd_L("staged spawn n="..n.." id="..id.." path="..tostring(p.path).." tier="..rd.tier.." ships="..tostring(rd.ns)
-		.." hp0="..TRF_F(r.hp0));
+	TRF_RdE("staged_spawn", "raid_id", n, "trader_id", id, "path", p.path, "tier", rd.tier, "ship_count", rd.ns,
+		"hull_start", TRF_F(r.hp0));
 end;
 
 -- Due call: distress line with marker; the staged window (staged_win) starts here.
@@ -2197,7 +2207,7 @@ function TRF_Rd_StEndBody(n)
 	local alive = TRF_Rd_Rec(rd.id);
 	TRF_RaidLeave(n, "window");
 	if alive then TRF_Flee(rd.id, "staged"); end;
-	TRF_Rd_L("staged window end n="..n.." trader="..tostring(alive and 1));
+	TRF_RdE("staged_window_end", "raid_id", n, "trader_alive", TRF_KvB(alive and 1));
 	-- v1 8.6 item 5: an identity seed the staged raid displaced undocks now (trf_gen).
 	if type(TRF_SeedResume) == "function" then call(TRF_SeedResume, {}, "x", TRF_PErr); end;
 end;
@@ -2297,7 +2307,7 @@ function TRF_Rd_Retarget(n, rd, hr)
 				if not r.rdn then r.rdn = n; end;
 				TRF_Rd_Order(hr, function(f, s) f:Attack(s); end, lead);
 				TRF_Flee(id, "raid");
-				TRF_Rd_L("retarget n="..n.." id="..id);
+				TRF_RdE("retarget", "raid_id", n, "trader_id", id);
 				return 1;
 			end;
 		end;
@@ -2373,7 +2383,7 @@ function TRF_Rd_WindBody()
 		local rd = L.rd[ns[i]];
 		if rd.st == "armed" then TRF_Rd_End(ns[i], "wind"); else TRF_RaidLeave(ns[i], "wind"); end;
 	end;
-	if getn(ns) > 0 then TRF_Rd_L("wind-down raids="..getn(ns)); end;
+	if getn(ns) > 0 then TRF_RdE("wind_down", "raid_count", getn(ns)); end;
 end;
 
 -- Before a jump (M3): every raid flight and marker deleted, records ended (pay check as 5.5).
@@ -2404,7 +2414,7 @@ function TRF_Rd_JumpBody()
 	H.rdl = {};
 	H.rd = {};
 	H.rdt = {};
-	TRF_Rd_L("jump: raids ended="..c);
+	TRF_RdE("jump", "ended_count", c);
 end;
 
 -- Load (after TRF_Gen_OnLoad's live reset; raid records are not kept): raid ships of the 8 newest raid ids
@@ -2444,23 +2454,25 @@ function TRF_Rd_LoadBody()
 			end;
 		end;
 	end;
-	TRF_Rd_L("load: raid ships deleted="..del.." leaving="..kept.." markers="..nav.." nrd="..nrd);
+	TRF_RdE("load", "next_raid_id", nrd, "deleted_count", del, "leaving_count", kept, "marker_count", nav);
 end;
 
 -- Dump: one summary line and one line per raid record.
 function TRF_Raid_Dump()
 	local L = TRF_Rd_Live();
-	if not L then TRF_L("dump raid no live"); return; end;
-	local stg = "0";
-	if type(L.stg) == "table" then stg = tostring(L.stg.path).."@"..tostring(L.stg.ci); end;
-	TRF_L("dump raid nrd="..tostring(L.nrd).." open="..TRF_Rd_Open(nil).." sos="..TRF_F(L.sos).." ent="..tostring(L.ent)
-		.." stg="..stg.." help="..tostring(type(TRF.std) == "table" and TRF.std.help));
+	if not L then TRF_RdE("dump", "result", "no_live"); return; end;
+	local stg = {};
+	if type(L.stg) == "table" then stg = L.stg; end;
+	local help = nil;
+	if type(TRF.std) == "table" then help = TRF.std.help; end;
+	TRF_RdE("dump", "next_raid_id", L.nrd, "open_count", TRF_Rd_Open(nil), "sos_time", TRF_F(L.sos), "entry", L.ent,
+		"staged_path", stg.path, "staged_contact_index", stg.ci, "help", help);
 	for n, rd in L.rd do
 		if type(rd) == "table" then
-			TRF_L("dump rd n="..tostring(n).." id="..tostring(rd.id).." st="..tostring(rd.st).." why="..tostring(rd.why)
-				.." tier="..tostring(rd.tier).." pw="..tostring(rd.pw).." ns="..tostring(rd.ns).." dc="..tostring(rd.dc)
-				.." ph="..tostring(rd.ph).." hit="..tostring(rd.hit).." sg="..tostring(rd.sg).." how="..tostring(rd.how)
-				.." paid="..tostring(rd.paid).." kind="..tostring(rd.kind).." sv="..tostring(rd.sv).." rec="..tostring(rd.rec));
+			TRF_RdE("dump_raid", "raid_id", n, "trader_id", rd.id, "state", rd.st, "source", rd.why, "tier", rd.tier,
+				"power", rd.pw, "ship_count", rd.ns, "decision", rd.dc, "player_fired", TRF_KvB(rd.ph),
+				"help_counted", TRF_KvB(rd.hit), "staged", TRF_KvB(rd.sg), "end_reason", rd.how, "paid", rd.paid,
+				"kind", rd.kind, "clan_flight", TRF_KvB(rd.sv), "recall", rd.rec);
 		end;
 	end;
 end;

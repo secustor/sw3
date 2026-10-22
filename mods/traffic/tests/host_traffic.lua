@@ -1008,7 +1008,7 @@ function T_SceneSupp()
 	HOST_Check(TRF_Quiet() == 1, "__sys_SOS: quiet");
 	h.logs = {};
 	local said = TRF_Say("host quiet line", 5);
-	HOST_Check(not said and getn(h.logs) == 1 and strfind(h.logs[1], "ui say skipped (quiet) text=host quiet line", 1, 1), "__sys_SOS: TRF_Say skips (quiet)");
+	HOST_Check(not said and getn(h.logs) == 1 and strfind(h.logs[1], "module=ui event=say result=skipped reason=quiet message=\"host quiet line\"", 1, 1), "__sys_SOS: TRF_Say skips (quiet)");
 	h.logs = nil;
 	__sys_SOS = FALSE;
 	TRF_InMovie = HOST_InMovie; MovieIsPlaying = HOST_MovieIsPlaying; TRF_UiState = HOST_UiState;
@@ -1140,7 +1140,7 @@ function T_Combat()
 	-- Hail on focus: skipped in combat (reason combat).
 	local id = T_Spawn();
 	local hr, hw = TRF_HailOpen(id, "test");
-	HOST_Check(id and hr == nil and hw == "combat" and T_LogN("hail id="..tostring(id).." via=test skipped (combat)") == 1, "hail in combat: skipped (combat)");
+	HOST_Check(id and hr == nil and hw == "combat" and T_LogN("module=hail event=hail trader_id="..tostring(id).." via=test result=skipped reason=combat") == 1, "hail in combat: skipped (combat)");
 	-- Attack response: starts in combat (vanilla parity) and under __sys_SOS.
 	__sys_SOS = TRUE;
 	TRF_RespStart(id);
