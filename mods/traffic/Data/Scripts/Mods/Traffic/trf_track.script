@@ -8,10 +8,11 @@
 -- Spawning goes through trf_gen (TRF_Plan, TRF_Spawn) and trf_tier (TRF_TierComp); every call into
 -- another module is guarded, so a missing module only disables that part. Top level defines functions only.
 
-function TRF_TkL(s) TRF_L("tk: "..tostring(s)); end;
+-- Event line, module=track (design/log-format.md): TRF_TkE(event, k1, v1, ...); TRF_TkDE only at log 2.
+function TRF_TkE(event, ...) tinsert(arg, 1, event); tinsert(arg, 1, "track"); call(TRF_Lf, arg); end;
 
-function TRF_TkD(s)
-	if type(TRF_Opt) == "function" and TRF_Opt("log") >= 2 then TRF_TkL(s); end;
+function TRF_TkDE(event, ...)
+	if type(TRF_Opt) == "function" and TRF_Opt("log") >= 2 then tinsert(arg, 1, event); call(TRF_TkE, arg); end;
 end;
 
 function TRF_TkNoErr(m) end;
@@ -215,7 +216,7 @@ function TRF_TkDrop(id, why)
 	if not i then return nil; end;
 	tremove(TRF.tp, i);
 	TRF_TkStat("tk_drop");
-	TRF_TkL("drop id="..id.." why="..tostring(why).." s="..TRF_SysName(r.s).." pool="..getn(TRF.tp));
+	TRF_TkE("drop", "trader_id", id, "reason", why, "system", TRF_SysName(r.s), "pool_count", getn(TRF.tp));
 	return 1;
 end;
 
@@ -236,7 +237,7 @@ function TRF_TkPut(r)
 		end;
 		local k = bi or ci or 1;
 		TRF_TkStat("tk_evict");
-		TRF_TkL("evict "..tostring(tp[k]));
+		TRF_TkE("evict", "record", tp[k]);
 		tremove(tp, k);
 	end;
 	tinsert(tp, s);
@@ -260,7 +261,7 @@ function TRF_TkExpire()
 			tinsert(keep, tp[i]);
 		else
 			n = n + 1;
-			TRF_TkL("expire "..tostring(tp[i]));
+			TRF_TkE("expire", "record", tp[i]);
 		end;
 	end;
 	TRF.tp = keep;
@@ -380,7 +381,7 @@ function TRF_TrackMark(id, why)
 	if TRF_Bit(r.tb, 1) == 0 then
 		r.tb = TRF_BitSet(r.tb, 1);
 		TRF_TkStat("tk_mark");
-		TRF_TkD("mark id="..id.." why="..tostring(why));
+		TRF_TkDE("mark", "trader_id", id, "reason", why);
 	end;
 	return 1;
 end;
@@ -413,7 +414,8 @@ function TRF_TrackWrite(id, sys, d, fr)
 	-- The pool id a rebuilt trader came from is replaced by its live id.
 	if type(r.pi) == "number" and r.pi ~= id then TRF_TkDrop(r.pi, "renamed"); end;
 	TRF_TkStat("tk_write");
-	TRF_TkL("write "..TRF_TpPack(rec).." ("..TRF_SysName(sys).." d="..rec.d..") pool="..getn(TRF.tp));
+	TRF_TkE("write", "trader_id", rec.id, "system", TRF_SysName(sys), "route_state", rec.d, "record", TRF_TpPack(rec),
+		"pool_count", getn(TRF.tp));
 	return i;
 end;
 
@@ -489,9 +491,9 @@ end;
 -- how "custom" (scripted long jump): nothing written.
 function TRF_Track_BeforeJump(dest, how)
 	if type(TRF) ~= "table" or type(TRF.live) ~= "table" or type(TRF.live.tr) ~= "table" then return; end;
-	if how == "custom" then TRF_TkL("jump custom: no writes"); return; end;
+	if how == "custom" then TRF_TkE("jump", "reason", "custom", "result", "no_writes"); return; end;
 	local ok, why = TRF_TkWriteOk();
-	if not ok then TRF_TkL("jump: no writes ("..tostring(why)..")"); return; end;
+	if not ok then TRF_TkE("jump", "reason", why, "result", "no_writes"); return; end;
 	local cur = TRF_CurIdx();
 	local tr = TRF.live.tr;
 	local ids, n = {}, 0;
@@ -529,11 +531,11 @@ function TRF_Track_BeforeJump(dest, how)
 				TRF.tp[j] = TRF_TpPack(rec);
 				nc = nc + 1;
 				TRF_TkStat("tk_chase");
-				TRF_TkL("chased id="..w.id.." to "..TRF_SysName(di).." dt="..TRF_F(gt - w.x));
+				TRF_TkE("chased", "trader_id", w.id, "destination", TRF_SysName(di), "elapsed", TRF_F(gt - w.x));
 			end;
 		end;
 	end;
-	TRF_TkL("jump dest="..tostring(dest).." written="..n.." chased="..nc.." pool="..getn(TRF_TkPool()));
+	TRF_TkE("jump", "destination", dest, "written_count", n, "chased_count", nc, "pool_count", getn(TRF_TkPool()));
 end;
 
 -- Arrivals (4.3) --------------------------------------------------------------------------------------
@@ -566,8 +568,8 @@ function TRF_TkPlanEntry(q)
 	TRF_TkExpire();
 	local cur = TRF_CurIdx();
 	if type(cur) ~= "number" then return; end;
-	if TRF_TkEscortMission() or TRF_TkSupp() > 0 then TRF_TkD("entry: no arrivals (escort or flag)"); return; end;
-	if type(TRF_GnModeQ) == "function" and TRF_GnModeQ() ~= "mod" then TRF_TkD("entry: not mod mode"); return; end;
+	if TRF_TkEscortMission() or TRF_TkSupp() > 0 then TRF_TkDE("entry", "reason", "escort_or_suppressed", "result", "no_arrivals"); return; end;
+	if type(TRF_GnModeQ) == "function" and TRF_GnModeQ() ~= "mod" then TRF_TkDE("entry", "reason", "not_mod_mode", "result", "no_arrivals"); return; end;
 	if not TRF_TkGate(cur, "track") then return; end;
 	local tp = TRF_TkPool();
 	local c = {};
@@ -595,7 +597,7 @@ function TRF_TkPlanEntry(q)
 		local en = {i=r.id, h=how};
 		if how ~= "dock" then en.j = nj; nj = nj + 1; end;
 		tinsert(q, en);
-		TRF_TkL("entry id="..r.id.." e="..e.." d="..r.d.." fl="..r.fl.." -> "..how);
+		TRF_TkE("entry", "trader_id", r.id, "legs_elapsed", e, "route_state", r.d, "flags", r.fl, "result", how);
 	end;
 end;
 
@@ -760,7 +762,7 @@ function TRF_TkTrimHold(id, n)
 	for j = 1, getn(h.tp) do
 		if TRF_TkAlive(h.tp[j]) then
 			if not call(function(x) x:ClearInventory(); return 1; end, {h.tp[j]}, "x", TRF_TkNoErr) then
-				TRF_TkL("trim id="..id.." ClearInventory failed: hold kept");
+				TRF_TkE("trim", "trader_id", id, "reason", "clear_inventory_failed", "result", "hold_kept");
 				return 0;
 			end;
 			for i = 1, getn(new) do
@@ -798,7 +800,7 @@ function TRF_TrackSpawn(i, how)
 	local en = nil;
 	for j = 1, getn(q) do if type(q[j]) == "table" and q[j].i == i and not q[j].id then en = q[j]; end; end;
 	local p, why = TRF_TkPlan(rec, how, (en and en.j) or 0, free);
-	if not p then TRF_TkStat("tk_skip"); TRF_TkD("spawn id="..i.." plan: "..tostring(why)); return nil; end;
+	if not p then TRF_TkStat("tk_skip"); TRF_TkDE("spawn", "pool_id", i, "reason", why, "result", "no_plan"); return nil; end;
 	TRF_TkTier(p, rec, free);
 	local spare;
 	ok, spare = TRF_CanSpawn(p.n, "trader");
@@ -840,8 +842,8 @@ function TRF_TrackSpawn(i, how)
 		end;
 	end;
 	TRF_TkStat("tk_spawn");
-	TRF_TkL("spawn "..how.." pool id="..rec.id.." -> id="..id.." from="..TRF_SysName(rec.fr).." tier="..tostring(r.tier)
-		.."/"..rec.tt.." pw="..tostring(en.pw).." e="..rec.e.." hold-"..cut.." dm="..rec.dm.." fl="..rec.fl);
+	TRF_TkE("spawn", "pool_id", rec.id, "trader_id", id, "via", how, "origin", TRF_SysName(rec.fr), "tier", r.tier,
+		"pool_tier", rec.tt, "power", en.pw, "escort_count", rec.e, "hold_cut", cut, "damage_band", rec.dm, "flags", rec.fl);
 	return id;
 end;
 
@@ -881,16 +883,23 @@ end;
 function TRF_Track_Dump()
 	if type(TRF) ~= "table" then return; end;
 	local tp = TRF_TkPool();
-	local s = "dump tp n="..getn(tp);
-	for i = 1, getn(tp) do s = s.." ["..tostring(tp[i]).."]"; end;
-	TRF_L(s);
+	-- records: packed records joined with ";" (each is itself a comma list); arrivals: pool_id/how/trader_id,...
+	local s = "";
+	for i = 1, getn(tp) do
+		if i > 1 then s = s..";"; end;
+		s = s..tostring(tp[i]);
+	end;
+	TRF_TkE("dump", "part", "pool", "pool_count", getn(tp), "records", s);
 	local q = TRF_TkQ();
 	if q then
-		local t = "dump tq";
+		local t = "";
 		for i = 1, getn(q) do
 			local e = q[i];
-			if type(e) == "table" then t = t.." "..tostring(e.i)..":"..tostring(e.h)..":"..tostring(e.id); end;
+			if type(e) == "table" then
+				if t ~= "" then t = t..","; end;
+				t = t..tostring(e.i).."/"..tostring(e.h).."/"..tostring(e.id);
+			end;
 		end;
-		TRF_L(t.." exits="..getn(q.w));
+		TRF_TkE("dump", "part", "arrivals", "arrivals", t, "exit_write_count", getn(q.w));
 	end;
 end;

@@ -343,7 +343,7 @@ function T_V1_B()
 	HOST_Check(getn(TRF.tp) == n0, "CustomTeleportate: no pool write");
 	T_Enter("aurora");
 	TRF_Track_Dump();
-	HOST_Check(V_Logs("dump tp n=") >= 1 and HOST_Reserved(TRF, "TRF") == "", "dump line, no reserved key");
+	HOST_Check(V_Logs("module=track event=dump part=pool pool_count=") >= 1 and HOST_Reserved(TRF, "TRF") == "", "dump line, no reserved key");
 end;
 
 -- c: supply convoys, demand cargo, heat reset (spec 5) -------------------------------------------------
@@ -1385,7 +1385,7 @@ function T_V1_J()
 	HOST_Check(fq3.st == "end" and h.credits - cr0 == min(30000, 4 * TRF_PayN(al)) and TRF.std.help == min(99, hp0 + 2),
 		"defence pay "..(h.credits - cr0).." = min(4 x N_eff, 30000), help +2");
 	TRF_Convoy_Dump();
-	HOST_Check(V_Logs("dump cv") >= 1, "convoy dump line");
+	HOST_Check(V_Logs("module=convoy event=dump") >= 1, "convoy dump line");
 end;
 
 -- k: danger convoys and the convoy slot (spec 8.5, 8.6) -------------------------------------------------
@@ -1547,7 +1547,7 @@ function T_V1_K()
 	end;
 	HOST_Check(two == 0 and unheld == 0, "300 ticks: never two convoys, slot held while one is open ("..two.."/"..unheld..")");
 	TRF_Danger_Dump();
-	HOST_Check(V_Logs("dump dc") >= 1, "danger dump line");
+	HOST_Check(V_Logs("module=danger event=dump") >= 1, "danger dump line");
 end;
 
 -- l: pirate bases (spec 9) --------------------------------------------------------------------------------
@@ -2070,7 +2070,7 @@ function T_V1_N()
 	end;
 	HOST_Check(tg == "", "no TRF_G* or flight_trf_* globals"..tg);
 	TRF_DumpState("test");
-	local dl = {"module=state event=dump_v4 ", "dump tp", "dump fac", "dump clan", "dump cv", "dump dc", "dump supply", "dump base", "loc: dump"};
+	local dl = {"module=state event=dump_v4 ", "module=track event=dump", "dump fac", "dump clan", "module=convoy event=dump", "module=danger event=dump", "dump supply", "dump base", "loc: dump"};
 	local md = "";
 	for i = 1, getn(dl) do if V_Logs(dl[i]) == 0 then md = md.." "..dl[i]; end; end;
 	HOST_Check(md == "", "TRF_DumpState calls every v1 dump"..md);
