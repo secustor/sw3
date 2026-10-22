@@ -878,10 +878,17 @@ function T_V02_H()
 	ok, why = TRF_Rd_Gate(idx, "raid");
 	HOST_Check(not ok and why == "combat", "combat: no raid ("..tostring(why)..")");
 	TRF.live.cbt = nil;
+	-- Scenery in the sphere (87 to 143 raw in the game) is the visit baseline, not an excess: gate open.
+	local cs0, gv0 = h.cc_static, TRF.live.gvn0;
+	h.cc_static = (h.cc_static or 0) + 120;
+	TRF.live.gvn0 = TRF_Safe_Count(3000);
+	ok, why = TRF_Rd_Gate(idx, "raid");
+	HOST_Check(ok == 1 and TRF_GovExcess() == 0, "governor: raw count above gov but no excess -> raid gate open ("..tostring(why)..")");
 	h.extra_carcass = 50;
 	ok, why = TRF_Rd_Gate(idx, "raid");
 	HOST_Check(not ok and why == "gov", "governor: no raid");
 	h.extra_carcass = nil;
+	h.cc_static = cs0; TRF.live.gvn0 = gv0;
 	h.cfg.raids = 0;
 	local a0 = T_Spawn("C");
 	HOST_Check(TRF_RaidRoll(a0, "lane") == nil and TRF.live.tr[a0].rdn == nil, "cfg raids 0: no roll");

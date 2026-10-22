@@ -522,12 +522,14 @@ end;
 
 -- Gates (5.1, 5.4) ---------------------------------------------------------------------------
 
--- Carcasses above cfg gov (5.2 governor). CHECK: TRF_Safe_Count (GetCarcassCountInSphere) nil = off.
+-- Carcass excess over the visit baseline above cfg gov (5.2 governor; trf_safety TRF_GovExcess). Without
+-- the baseline (no trf_safety) the raw count is used. CHECK: TRF_Safe_Count nil = off.
 function TRF_Rd_GovOn()
 	local gr = TRF_Rd_Opt("gov_r", 3000);
 	local gv = TRF_Rd_Opt("gov", 40);
 	if type(gr) ~= "number" or type(gv) ~= "number" or type(TRF_Safe_Count) ~= "function" then return nil; end;
-	local n = TRF_Safe_Count(gr);
+	local n = TRF_N("TRF_GovExcess");
+	if type(n) ~= "number" then n = TRF_Safe_Count(gr); end;
 	if type(n) == "number" and n > gv then return 1; end;
 	return nil;
 end;

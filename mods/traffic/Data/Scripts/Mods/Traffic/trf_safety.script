@@ -744,6 +744,16 @@ function TRF_Chapter()
 	return TRF_ChapterOf(TRF_Safe_Quest());
 end;
 
+-- Carcass excess over the visit baseline from a fresh count (the raid gate asks between governor ticks);
+-- nil when the count or the baseline is unknown. The raw count is 36 to 202 of scenery per system.
+function TRF_GovExcess()
+	local L = TRF_SafeLive();
+	if not L or type(L.gvn0) ~= "number" then return nil; end;
+	local n = TRF_Safe_Count(TRF_SafeNum(TRF_SafeOpt("gov_r", 3000), 3000));
+	if type(n) ~= "number" then return nil; end;
+	return max(0, n - L.gvn0);
+end;
+
 -- Caps for the next spawn decision (v02 9.1): band row of the live pro (TRF_BandCaps, trf_tier), cfg limits
 -- (cap_traders 0..5, cap_ships 0..20), strict gate "band", then the governor on the carcass excess n (nil:
 -- the excess of the last TRF_Governor run). Writes live.capt/caps/capp. Returns ct, cs, cp.
