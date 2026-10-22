@@ -233,7 +233,7 @@ function T_V1_B()
 	r = TRF_Rec(a);
 	HOST_Check(r and t1 and t1 >= 5 and t1 <= 15.5 and r.nm == nm and r.cls == cls and TRF_TpFind(a) == nil,
 		"chased arrival at "..tostring(t1).." s with the same id, name and class; record left the pool");
-	HOST_Check(r and r.fl ~= nil and V_Logs("flee id="..a.." why=chased") == 1 and V_Logs(TRF_TkTxt("chased")) >= 1, "chased trader flees and says so");
+	HOST_Check(r and r.fl ~= nil and V_Logs("module=raid event=flee trader_id="..a.." reason=chased") == 1 and V_Logs(TRF_TkTxt("chased")) >= 1, "chased trader flees and says so");
 	-- Late chase (beyond T_chase): no chased bit.
 	V_ClearTr();
 	local b = T_Spawn("C");
@@ -668,7 +668,7 @@ function T_V1_D()
 	HOST_Check(v1 == "salv2_3" and same and v2 == "salv3_3", "news war: salv2_3 once, then salv3_3 ("..tostring(v1).." / "..tostring(v2)..")");
 	c.sv = 0; c.sf = 0;
 	TRF_Clan_Dump();
-	HOST_Check(V_Logs("dump clan") >= 1, "clan dump line");
+	HOST_Check(V_Logs("module=clan event=dump") >= 1, "clan dump line");
 end;
 
 -- e: carriers (spec 6.2) ---------------------------------------------------------------------------
@@ -1838,7 +1838,7 @@ function T_V1_M()
 	HOST_Check(g1 == 1 and not g2 and w2 == "deny_tq" and not g3 and w3 == "deny",
 		"transit: danger convoy gate taira "..tostring(w1)..", with its quest "..tostring(w2)..", elio "..tostring(w3));
 	TRF_Loc_Dump();
-	HOST_Check(V_Logs("loc: dump") >= 1, "loc dump line");
+	HOST_Check(V_Logs("module=loc event=dump") >= 1, "loc dump line");
 end;
 
 -- n: 200 legs with everything on, nobody-wins clamps, save size and lint (spec 3.4, 4.7, 8.3) -----------
@@ -2070,7 +2070,7 @@ function T_V1_N()
 	end;
 	HOST_Check(tg == "", "no TRF_G* or flight_trf_* globals"..tg);
 	TRF_DumpState("test");
-	local dl = {"dump v4", "dump tp", "dump fac", "dump clan", "dump cv", "dump dc", "dump supply", "dump base", "loc: dump"};
+	local dl = {"dump v4", "dump tp", "dump fac", "module=clan event=dump", "dump cv", "dump dc", "dump supply", "dump base", "module=loc event=dump"};
 	local md = "";
 	for i = 1, getn(dl) do if V_Logs(dl[i]) == 0 then md = md.." "..dl[i]; end; end;
 	HOST_Check(md == "", "TRF_DumpState calls every v1 dump"..md);

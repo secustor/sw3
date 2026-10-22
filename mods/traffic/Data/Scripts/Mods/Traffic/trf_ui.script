@@ -133,7 +133,10 @@ function TRF_UI_TextFns()
 		"TRF_Stn_Text"};
 end;
 
-function TRF_UI_TxtErr(m) TRF_L("ui txt table error: "..tostring(m)); end;
+-- One logfmt event line of module ui (design/log-format.md 5).
+function TRF_UiE(event, ...) tinsert(arg, 1, event); tinsert(arg, 1, "ui"); call(TRF_Lf, arg); end;
+
+function TRF_UI_TxtErr(m) TRF_UiE("text_table_error", "message", tostring(m)); end;
 
 -- String of a normalised key, or nil: the loc layer (trf_loc, language and merged tables), else the
 -- tables here. A table function that fails is skipped.
@@ -165,7 +168,7 @@ function TRF_Txt(key, a, b, c)
 	end;
 	local s = TRF_UI_Find(TRF_UI_Key(key));
 	if type(s) ~= "string" then
-		TRF_L("ui txt unknown key="..tostring(key));
+		TRF_UiE("text", "key", key, "result", "unknown_key");
 		return tostring(key);
 	end;
 	local v = {a, b, c};
@@ -398,26 +401,26 @@ function TRF_Say(text, secs, pilot, hq)
 	local q = nil;
 	if hq == 1 then q = TRF_UI_SuppHail(); else q = TRF_UI_Supp(); end;
 	if q then
-		TRF_L("ui say skipped ("..q..") text="..text);
+		TRF_UiE("say", "result", "skipped", "reason", q, "message", text);
 		return nil;
 	end;
 	if type(secs) ~= "number" then secs = TRF_UI_Const().secs; end;
 	if TRF_UI_Opt("ui_out", 1) == 2 and pilot then
 		if call(TRF_UI_Msg, {pilot, text, secs}, "x", TRF_PErr) then
-			TRF_L("ui say out=2 secs="..secs.." text="..text);
+			TRF_UiE("say", "output", 2, "seconds", secs, "message", text);
 			return 1;
 		end;
-		TRF_L("ui say pilot:Message failed, using OutputToScreenLog");
+		TRF_UiE("say", "output", 2, "result", "fallback", "reason", "pilot_message_failed");
 	end;
 	if type(OutputToScreenLog) ~= "function" then
-		TRF_L("ui say no OutputToScreenLog text="..text);
+		TRF_UiE("say", "result", "failed", "reason", "no_output_to_screen_log", "message", text);
 		return nil;
 	end;
 	if call(TRF_UI_Out, {text, secs}, "x", TRF_PErr) then
-		TRF_L("ui say out=1 secs="..secs.." text="..text);
+		TRF_UiE("say", "output", 1, "seconds", secs, "message", text);
 		return 1;
 	end;
-	TRF_L("ui say OutputToScreenLog failed text="..text);
+	TRF_UiE("say", "output", 1, "result", "failed", "message", text);
 	return nil;
 end;
 
@@ -433,7 +436,7 @@ function TRF_FocusLine(id, via)
 	if TRF_UI_Opt("ui", 1) == 0 then return nil; end;
 	local q = TRF_UI_SuppHail();
 	if q then
-		TRF_L("ui focus id="..id.." skipped ("..q..")");
+		TRF_UiE("focus", "trader_id", id, "result", "skipped", "reason", q);
 		return nil;
 	end;
 	local c = TRF_UI_Const();
@@ -441,9 +444,9 @@ function TRF_FocusLine(id, via)
 	if type(L.line) == "number" and gt >= L.line and gt - L.line < c.gap then
 		if type(TRF_Due) == "function" then
 			TRF_Due(L.line + c.gap - gt, "TRF_FocusLine", id);
-			TRF_L("ui focus id="..id.." due in "..TRF_F(L.line + c.gap - gt));
+			TRF_UiE("focus", "trader_id", id, "delay", TRF_F(L.line + c.gap - gt), "result", "due");
 		else
-			TRF_L("ui focus id="..id.." dropped (no TRF_Due)");
+			TRF_UiE("focus", "trader_id", id, "result", "dropped", "reason", "no_due");
 		end;
 		return nil;
 	end;
@@ -454,7 +457,7 @@ function TRF_FocusLine(id, via)
 		r.met = 1;
 		if TRF_UI_Bit(r.tb, 1) then r.met = 2; end;
 		L.line = gt;
-		TRF_L("ui focus id="..id.." shown via="..tostring(via or "due"));
+		TRF_UiE("focus", "trader_id", id, "via", via or "due", "result", "shown");
 		-- v1-spec 4.2: the focus line tracks the trader (decision 11.1 #2), after the text read tb.
 		TRF_P("TRF_TrackMark", id, "focus");
 		return 1;
@@ -471,7 +474,7 @@ function TRF_OnFocus(id, g) TRF_Cb("TRF_OnFocus", TRF_OnFocus_Body, {id, g}); en
 function TRF_OnFocus_Body(id, g)
 	if not TRF_UI_GenOk(g) or not TRF_UI_Rec(id) then return; end;
 	TRF_UI_Stat("ui_focus");
-	TRF_L("ui OnFocus id="..id.." gt="..TRF_F(TRF_UI_Gt()));
+	TRF_UiE("on_focus", "trader_id", id, "game_time", TRF_F(TRF_UI_Gt()));
 	local m = TRF_UI_Opt("ui_focus", 3);
 	if m ~= 1 and m ~= 3 then return; end;
 	TRF_FocusLine(id, "focus");
@@ -484,7 +487,7 @@ function TRF_OnNear(id, g) TRF_Cb("TRF_OnNear", TRF_OnNear_Body, {id, g}); end;
 function TRF_OnNear_Body(id, g)
 	if not TRF_UI_GenOk(g) or not TRF_UI_Rec(id) then return; end;
 	TRF_UI_Stat("ui_near");
-	TRF_L("ui OnNear id="..id.." gt="..TRF_F(TRF_UI_Gt()));
+	TRF_UiE("on_near", "trader_id", id, "game_time", TRF_F(TRF_UI_Gt()));
 	local m = TRF_UI_Opt("ui_focus", 3);
 	if m ~= 2 and m ~= 3 then return; end;
 	TRF_FocusLine(id, "near");
@@ -509,23 +512,23 @@ function TRF_OnMeet_Body(id, g)
 	local q = TRF_UI_Supp();
 	if hl then q = TRF_UI_SuppHail(); end;
 	if q then
-		TRF_L("ui meet id="..id.." skipped ("..q..")");
+		TRF_UiE("meet", "trader_id", id, "result", "skipped", "reason", q);
 		return;
 	end;
 	if hl then
 		local m = TRF_UI_Supp();
-		if TRF_UI_Announce(id) and m then TRF_L("ui meet id="..id.." line muted ("..m..") hail armed"); end;
+		if TRF_UI_Announce(id) and m then TRF_UiE("meet", "trader_id", id, "hail_armed", "true", "result", "line_muted", "reason", m); end;
 		return;
 	end;
 	if type(_FTrader_Action) ~= "function" then
-		TRF_L("ui meet id="..id.." no _FTrader_Action");
+		TRF_UiE("meet", "trader_id", id, "result", "skipped", "reason", "no_ftrader_action");
 		return;
 	end;
 	if type(__sys_FTrader_1) ~= "number" or type(__sys_FTrader_2) ~= "number" or type(__sys_FTrader_3) ~= "number" then
-		TRF_L("ui meet id="..id.." skipped (no _Trader_Init chances)");
+		TRF_UiE("meet", "trader_id", id, "result", "skipped", "reason", "no_trader_init_chances");
 		return;
 	end;
-	TRF_L("ui meet id="..id);
+	TRF_UiE("meet", "trader_id", id, "result", "vanilla");
 	return 1;
 end;
 
@@ -561,7 +564,7 @@ function TRF_UI_Announce(id)
 	if TRF_UI_Opt("ui_out", 1) == 2 then pilot = TRF_UI_Leader(id); end;
 	TRF_Say(s, TRF_UI_Const().secs, pilot);
 	TRF_UI_Stat("ui_announce");
-	TRF_L("ui announce id="..id.." band="..tostring(b));
+	TRF_UiE("announce", "trader_id", id, "band", b);
 	if TRF_UI_Opt("hail_start", 2) == 2 and type(TRF_HailOpen) == "function" then
 		call(TRF_HailOpen, {id, "meet"}, "x", TRF_PErr);
 	elseif type(TRF_HailArm) == "function" then
@@ -791,14 +794,14 @@ function TRF_ArrivalLine()
 	local idx = nil;
 	if type(TRF_CurIdx) == "function" then idx = TRF_CurIdx(); end;
 	if not idx then
-		TRF_L("ui arrival skipped (system not in map)");
+		TRF_UiE("arrival", "result", "skipped", "reason", "system_not_in_map");
 		return nil;
 	end;
 	-- Vanilla systems (guard, deny list, sys_off, override 0/2) get no mod text.
 	if type(TRF_SysModeQuiet) == "function" then
 		local m = call(TRF_SysModeQuiet, {}, "x", TRF_PErr);
 		if m ~= "mod" then
-			TRF_L("ui arrival skipped (mode "..tostring(m)..")");
+			TRF_UiE("arrival", "mode", m, "result", "skipped", "reason", "system_mode");
 			return nil;
 		end;
 	end;
@@ -815,7 +818,7 @@ function TRF_ArrivalLine()
 		text = TRF_Txt("arrivecarrier", TRF_UI_ClanName(car.s));
 		local f = TRF_UI_SweepHome(idx);
 		if f then text = text..". "..TRF_Txt("arrsweep", f); end;
-		TRF_L("ui arrival dis="..d.." carrier slot="..tostring(car.s));
+		TRF_UiE("arrival", "disruption", d, "carrier_slot", car.s, "result", "carrier");
 	elseif d >= TRF_UI_Tune("arr_dis", 3) then
 		local band = TRF_UI_Band(d);
 		if keys then
@@ -823,15 +826,15 @@ function TRF_ArrivalLine()
 		else
 			text = TRF_UI_ArrDis(idx, band);
 		end;
-		TRF_L("ui arrival dis="..d.." band="..band);
+		TRF_UiE("arrival", "disruption", d, "band", band, "result", "disruption");
 	elseif not keys then
 		text = TRF_UI_ArrQuiet(idx);
-		if text then TRF_L("ui arrival dis="..d.." quiet line"); end;
+		if text then TRF_UiE("arrival", "disruption", d, "result", "quiet"); end;
 	end;
 	if not text then return nil; end;
 	local q = TRF_UI_Supp();
 	if q then
-		TRF_L("ui arrival skipped ("..q..") dis="..d);
+		TRF_UiE("arrival", "disruption", d, "result", "skipped", "reason", q);
 		return nil;
 	end;
 	return TRF_Say(text, TRF_UI_Const().arr_secs);
@@ -867,7 +870,7 @@ function TRF_BaseRadioLine(idx)
 		if v ~= nil and v == RELATION_WAR then key = "baseradiowar"; end;
 	end;
 	TRF_UI_Stat("ui_baseradio");
-	TRF_L("ui base radio idx="..idx.." "..key);
+	TRF_UiE("base_radio", "system_index", idx, "key", key);
 	return TRF_Say(TRF_Txt(key), TRF_UI_Const().arr_secs);
 end;
 
@@ -889,7 +892,7 @@ function TRF_UI_OnActivate()
 	local L = TRF_UI_Live();
 	if not L or TRF_UI_Opt("ui", 1) == 0 then return; end;
 	if type(TRF_Due) ~= "function" then
-		TRF_L("ui arrival not scheduled (no TRF_Due)");
+		TRF_UiE("arrival", "result", "not_scheduled", "reason", "no_due");
 		return;
 	end;
 	if not L.nbs and TRF_UI_Opt("news_mode", 1) == 1 then
@@ -940,7 +943,7 @@ function TRF_NewsPost(topic, v, slot)
 	if mode == 2 and type(old) == "table" and old.v ~= nil then TRF_N("RemovePost", TRF_UI_NewsRec(topic, old.v, slot)); end;
 	if v == nil then
 		tab[topic] = nil;
-		TRF_L("ui news removed "..topic.." slot="..tostring(slot));
+		TRF_UiE("news", "topic", topic, "slot", slot, "result", "removed");
 		return 1;
 	end;
 	v = tostring(v);
@@ -952,7 +955,7 @@ function TRF_NewsPost(topic, v, slot)
 		tab[topic].n = 0;
 	end;
 	TRF_UI_Stat("news_post");
-	TRF_L("ui news post "..topic.."="..v.." slot="..tostring(slot).." mode="..mode);
+	TRF_UiE("news", "topic", topic, "variant", v, "slot", slot, "mode", mode, "result", "posted");
 	return 1;
 end;
 

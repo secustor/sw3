@@ -31,10 +31,21 @@
 
 -- Helpers --------------------------------------------------------------------------
 
-function TRF_HlL(s) TRF_L("hl: "..tostring(s)); end;
+-- One logfmt event line of module hail (design/log-format.md 5).
+function TRF_HlE(event, ...) tinsert(arg, 1, event); tinsert(arg, 1, "hail"); call(TRF_Lf, arg); end;
 
+-- Debug event line (cfg log 2).
+function TRF_HlDE(event, ...)
+	local v = TRF_HlOpt("log", 1);
+	if type(v) ~= "number" or v < 2 then return; end;
+	tinsert(arg, 1, event);
+	call(TRF_HlE, arg);
+end;
+
+-- Error handler of the protected calls: event=error, counted in stat err.
 function TRF_HlErr(m)
-	if type(TRF_PErr) == "function" then TRF_PErr("hl: "..tostring(m)); else TRF_L("hl: ERROR "..tostring(m)); end;
+	TRF_HlE("error", "message", tostring(m));
+	if type(TRF_Stat) == "function" then TRF_Stat("err"); end;
 end;
 
 -- Protected call; nil on error or when f is not a function.
@@ -253,12 +264,12 @@ function TRF_OnHail_Body(id, g)
 	TRF_HlStat("hl_focus");
 	local gt = TRF_HlGt();
 	if type(r.ha) ~= "number" or gt > r.ha then
-		TRF_HlL("focus id="..id.." not armed (ha="..tostring(r.ha)..")");
+		TRF_HlE("focus", "trader_id", id, "hail_armed_at", r.ha, "result", "not_armed");
 		return;
 	end;
 	local d = TRF_HlDistMs(id);
 	if not d or d > TRF_HlT("hail_r") then
-		TRF_HlL("focus id="..id.." too far d="..TRF_F(d));
+		TRF_HlE("focus", "trader_id", id, "distance", TRF_F(d), "result", "too_far");
 	else
 		TRF_HailOpen(id, "focus");
 	end;
@@ -436,7 +447,7 @@ function TRF_HailOpen(id, via)
 	elseif TRF_HlRaided(r) then why = "raid";
 	elseif r.st == "wind" or r.st == "gone" then why = "st"; end;
 	if why then
-		TRF_HlL("hail id="..id.." via="..tostring(via).." skipped ("..why..")");
+		TRF_HlE("hail", "trader_id", id, "via", via, "result", "skipped", "reason", why);
 		TRF_HlStat("hl_skip_"..why);
 		return nil, why;
 	end;
@@ -463,31 +474,31 @@ function TRF_HailOpen(id, via)
 				TRF_HailShow();
 				local how = "box";
 				if type(L.hl) == "table" and L.hl.w == "dlg" then how = "dialog"; end;
-				TRF_HlL("hail id="..id.." refused heat="..heat.." (demand "..how..")");
+				TRF_HlE("hail", "trader_id", id, "heat", heat, "demand_via", how, "result", "refused");
 				return "refuse";
 			end;
 		end;
 		TRF_HlSay(TRF_Txt("refuse", TRF_HlName(r)), id, nil, 1);
-		TRF_HlL("hail id="..id.." refused heat="..heat);
+		TRF_HlE("hail", "trader_id", id, "heat", heat, "result", "refused");
 		return "refuse";
 	end;
 	local o = TRF_HailOpts(id, r);
 	if getn(o) == 0 then
-		TRF_HlL("hail id="..id.." no options left");
+		TRF_HlE("hail", "trader_id", id, "answer_count", 0, "result", "no_options");
 		return nil, "none";
 	end;
 	if TRF_HlT("hail_box") == 0 or type(ShowMsgBox) ~= "function" then
 		r.hd = 1;
 		TRF_HlSay(TRF_Headed(id), id, nil, 1);
-		TRF_HlL("hail id="..id.." answered as a line (no box)");
+		TRF_HlE("hail", "trader_id", id, "result", "line", "reason", "no_box");
 		return "line";
 	end;
 	L.hl = {id=id, g=TRF.gen, o=o, k=1, t=gt};
 	TRF_HlStat("hl_menu");
 	TRF_HailShow();
-	local dl = "";
-	if type(L.hl) == "table" and L.hl.w == "dlg" then dl = " dlg=1"; end;
-	TRF_HlL("hail id="..id.." via="..tostring(via).." menu n="..getn(o).." hn="..r.hn..dl);
+	local dl = 0;
+	if type(L.hl) == "table" and L.hl.w == "dlg" then dl = 1; end;
+	TRF_HlE("hail", "trader_id", id, "via", via, "answer_count", getn(o), "hail_count", r.hn, "dialog", TRF_KvB(dl));
 	return "menu";
 end;
 
@@ -509,7 +520,7 @@ function TRF_HlClose(why)
 	if r and (r.hn or 0) < TRF_HlT("hail_max") then
 		r.ha = max(r.ha or 0, TRF_HlGt() + TRF_HlT("hail_cd") + TRF_HlT("hail_arm"));
 	end;
-	TRF_HlL("hail id="..tostring(hl.id).." closed ("..tostring(why)..")");
+	TRF_HlE("close", "trader_id", hl.id, "reason", why);
 end;
 
 -- Box k of the menu: "<who>: <option>?" OK = this option, Cancel = next option.
@@ -615,7 +626,7 @@ function TRF_HlDlgFb(why)
 		if h.hldf[why] then return; end;
 		h.hldf[why] = 1;
 	end;
-	TRF_HlL("dialog fallback why="..tostring(why));
+	TRF_HlE("dialog_fallback", "reason", why);
 end;
 
 -- Visible answers of chain hl (answer key -> 1, close always) and the p slots (slot -> option key); nil when
@@ -686,14 +697,14 @@ function TRF_HlDlgInit_Body()
 	if d then
 		on = d.on; dk = d.dk; who = d.who; head = d.head; id = d.id;
 	else
-		TRF_HlL("dialog init stale");
+		TRF_HlE("dialog_init", "result", "stale");
 	end;
 	local ks = TRF_HlDlgKeys();
-	local vis = "";
+	local vis, lab = "", "";
 	for i = 1, getn(ks) do
 		if on[ks[i]] then
 			TRF_N("ShowAnswer", "a_"..ks[i]);
-			vis = vis.." "..ks[i];
+			vis = vis..","..ks[i];
 		else
 			TRF_N("HideAnswer", "a_"..ks[i]);
 		end;
@@ -702,10 +713,10 @@ function TRF_HlDlgInit_Body()
 	TRF_N("SetReplaceValue", "head", head);
 	for i = 1, TRF_HlDlgNp() do
 		local t = "";
-		if id and dk["p"..i] then t = TRF_HlLabel(id, dk["p"..i]); vis = vis.." p"..i.."="..dk["p"..i]; end;
+		if id and dk["p"..i] then t = TRF_HlLabel(id, dk["p"..i]); lab = lab..",p"..i.."_"..dk["p"..i]; end;
 		TRF_N("SetReplaceValue", "p"..i, t);
 	end;
-	if type(TRF_LDbg) == "function" then TRF_LDbg("hl: dialog answers id="..tostring(id).." show="..vis); end;
+	TRF_HlDE("dialog_answers", "trader_id", id, "answers", strsub(vis, 2), "labels", strsub(lab, 2));
 end;
 
 -- Answer callback (shim): the pick of answer key. A pick that does not belong to the open dialog chain is
@@ -724,11 +735,11 @@ function TRF_HlDlgPick_Body(key)
 	if type(hl) == "table" then id = hl.id; end;
 	if not d then
 		TRF_HlStat("hl_dlg_stale");
-		TRF_HlL("dialog pick key="..tostring(key).." id="..tostring(id).." stale (ignored)");
+		TRF_HlE("dialog_pick", "trader_id", id, "key", key, "result", "ignored", "reason", "stale");
 		if L and type(hl) == "table" and not TRF_HlValid(hl) then L.hl = nil; end;
 		return;
 	end;
-	TRF_HlL("dialog pick key="..tostring(key).." id="..tostring(id));
+	TRF_HlE("dialog_pick", "trader_id", id, "key", key);
 	if TRF_HlGt() - (hl.t or 0) >= TRF_HlT("hail_stale") then TRF_HlClose("stale"); return; end;
 	if key == "close" then TRF_HlClose("close"); return; end;
 	local ok = d.dk[key] or key;
@@ -774,7 +785,7 @@ function TRF_HailCb(c)
 	local hl = L.hl;
 	if not TRF_HlValid(hl) then
 		L.hl = nil;
-		TRF_HlL("box "..tostring(c).." stale");
+		TRF_HlE("box", "button", c, "result", "stale");
 		return;
 	end;
 	if c == "close" then TRF_HlClose("ok"); return; end;
@@ -818,7 +829,7 @@ function TRF_HailDo(key)
 	local id = hl.id;
 	local r = TRF_HlRec(id);
 	TRF_HlStat("hl_opt_"..tostring(key));
-	TRF_HlL("hail id="..id.." option "..tostring(key));
+	TRF_HlE("option", "trader_id", id, "key", key);
 	if key == "trade" then
 		-- r.trd after the call: TRF_ShopOpen refuses a trader whose trd is already set.
 		TRF_HlClose("trade");
@@ -865,14 +876,14 @@ function TRF_HailDoV1(id, r, key)
 		-- Provider's HailDo with the menu open; it keeps the chain when it opened its own box (hl.w set).
 		local L = TRF_HlLive();
 		local v = TRF_HlCall(it.d, {it.ko, id});
-		TRF_HlL("hail id="..id.." "..key.." -> "..tostring(it.d).." "..tostring(v));
+		TRF_HlE("option_result", "trader_id", id, "key", key, "handler", it.d, "result", v);
 		if L and type(L.hl) == "table" and L.hl.w == "wait" then TRF_HlClose(key); end;
 	elseif it.q ~= nil then
 		TRF_HlOfStart({{q=it.q, ok=it.ok, a=it.a}}, id);
 	else
 		TRF_HlClose(key);
 		local v = TRF_HlCall(it.f, {id, it.a});
-		TRF_HlL("hail id="..id.." "..key.." -> "..tostring(v));
+		TRF_HlE("option_result", "trader_id", id, "key", key, "result", v);
 		if type(v) == "string" then TRF_HlSay(v, id, nil, 1); end;
 	end;
 end;
@@ -932,7 +943,7 @@ function TRF_HlOfStep(acc)
 		if acc then
 			local v = TRF_HlCall(e.ok, args);
 			TRF_HlStat("hl_offer_acc");
-			TRF_HlL("offer "..hl.oq.." accepted -> "..tostring(v));
+			TRF_HlE("offer", "offer_index", hl.oq, "result", "accepted", "reply", v);
 			if type(v) == "string" then TRF_HlSay(v, st.oh, nil, 1); end;
 		elseif e.no then
 			TRF_HlCall(e.no, args);
@@ -950,12 +961,12 @@ function TRF_HlTrade(id)
 	if type(TRF_UI_Opt) == "function" then m = TRF_UI_Opt("shop_mode", 1); end;
 	if m == 1 and type(TRF_ShopOpen) == "function" then
 		local v = TRF_HlP(TRF_ShopOpen, {id});
-		TRF_HlL("trade id="..id.." shop="..tostring(v));
+		TRF_HlE("trade", "trader_id", id, "via", "shop", "result", v);
 		return;
 	end;
 	if type(On_FTrader_Start) == "function" then
 		call(On_FTrader_Start, {}, "x");
-		TRF_HlL("trade id="..id.." vanilla shop");
+		TRF_HlE("trade", "trader_id", id, "via", "vanilla");
 	end;
 end;
 
@@ -1043,11 +1054,11 @@ function TRF_CtOfferRoll(id, r, idx, s)
 	local br = TRF_HlBrave(r);
 	local p = TRF_CtOfferP(dE, dis, br);
 	local roll = TRF_HlDraw(100);
-	local res = "no";
+	local res = "declined";
 	r.co = 0;
-	if type(roll) == "number" and roll < p then r.co = 1; res = "yes"; end;
-	TRF_HlL("offer id="..tostring(id).." dE="..tostring(dE).." dis="..tostring(dis).." br="..format("%.2f", br)
-		.." p="..format("%.1f", p).." roll="..tostring(roll).." -> "..res);
+	if type(roll) == "number" and roll < p then r.co = 1; res = "offered"; end;
+	TRF_HlE("contract_offer", "trader_id", id, "danger_eff", dE, "disruption", dis, "braveness", format("%.2f", br),
+		"chance", format("%.1f", p), "roll", roll, "result", res);
 	if r.co == 1 then return 1; end;
 	return nil;
 end;
@@ -1083,7 +1094,7 @@ function TRF_CtDo()
 	local r = TRF_HlRec(id);
 	local ok, why = TRF_CtOffer(id);
 	if not r or not ok or type(n) ~= "number" then
-		TRF_HlL("contract id="..id.." not accepted ("..tostring(why)..")");
+		TRF_HlE("contract", "trader_id", id, "result", "not_accepted", "reason", why);
 		return;
 	end;
 	L.ct = {id=id, n=n, t=TRF_HlGt()};
@@ -1098,7 +1109,7 @@ function TRF_CtDo()
 	TRF_P("TRF_TrackMark", id, "contract");
 	TRF_HlSay(TRF_Txt("ctok"), id, nil, 1);
 	TRF_HlStat("ct_accept");
-	TRF_HlL("contract id="..id.." accepted n="..n);
+	TRF_HlE("contract", "trader_id", id, "pay", n, "result", "accepted");
 end;
 
 function TRF_HlRecovery()
@@ -1120,14 +1131,14 @@ function TRF_CtArrive(id, how)
 	-- A fleeing trader that reaches its exit escaped (5.6 void rule), whichever exit trigger fired first.
 	if r and r.fl then
 		TRF_HlStat("ct_void");
-		TRF_HlL("contract id="..id.." "..tostring(how).." void (fled: "..tostring(r.fl)..")");
+		TRF_HlE("contract", "trader_id", id, "via", how, "fled", r.fl, "result", "void", "reason", "fled");
 		return nil;
 	end;
 	local d = TRF_HlDistMs(id);
 	if not d or d > TRF_HlT("ct_dist") then
 		TRF_HlSay(TRF_Txt("ctfar"), id);
 		TRF_HlStat("ct_far");
-		TRF_HlL("contract id="..id.." "..tostring(how).." void (far d="..TRF_F(d)..")");
+		TRF_HlE("contract", "trader_id", id, "via", how, "distance", TRF_F(d), "result", "void", "reason", "far");
 		return nil;
 	end;
 	local n = floor(ct.n or 0);
@@ -1139,7 +1150,7 @@ function TRF_CtArrive(id, how)
 	if type(TRF_ProCredit) == "function" then TRF_HlP(TRF_ProCredit, {4, "contract"}); end;
 	TRF_HlSay(TRF_Txt("ctpaid", format("%d", n)), id);
 	TRF_HlStat("ct_paid");
-	TRF_HlL("contract id="..id.." "..tostring(how).." paid n="..n.." d="..TRF_F(d).." help+"..h);
+	TRF_HlE("contract", "trader_id", id, "via", how, "pay", n, "distance", TRF_F(d), "help", h, "result", "paid");
 	return 1;
 end;
 
@@ -1154,7 +1165,7 @@ function TRF_CtLost(id)
 	if type(L.tr) == "table" then r = L.tr[id]; end;
 	TRF_HlSay(TRF_Txt("ctlost", TRF_HlName(r)));
 	TRF_HlStat("ct_lost");
-	TRF_HlL("contract id="..id.." lost");
+	TRF_HlE("contract", "trader_id", id, "result", "lost");
 	return 1;
 end;
 
@@ -1162,7 +1173,7 @@ end;
 function TRF_CtVoid(why)
 	local L = TRF_HlLive();
 	if not L or type(L.ct) ~= "table" then return nil; end;
-	TRF_HlL("contract id="..tostring(L.ct.id).." void ("..tostring(why)..")");
+	TRF_HlE("contract", "trader_id", L.ct.id, "result", "void", "reason", why);
 	TRF_HlStat("ct_void");
 	L.ct = nil;
 	return 1;
@@ -1461,7 +1472,7 @@ function TRF_InstallBoard()
 		TRF_BoardThunk = function() return %w; end;
 		n = 1;
 	end;
-	TRF_HlL("install board="..n.." mine="..tostring(TRF_HailIsMine(__PatrolStationDock_Ok)));
+	TRF_HlE("install", "board_installed", TRF_KvB(n), "wrapped", TRF_KvB(TRF_HailIsMine(__PatrolStationDock_Ok)));
 	return n;
 end;
 
@@ -1472,7 +1483,7 @@ function TRF_BoardOrig(why)
 	if type(TRF_orig_PatrolOk) == "function" then
 		call(TRF_orig_PatrolOk, {}, "x");
 	else
-		TRF_HlL("board: no original ("..tostring(why)..")");
+		TRF_HlE("board_original", "source", why, "result", "missing");
 	end;
 end;
 
@@ -1506,7 +1517,7 @@ function TRF_BoardDockOk_Body()
 	-- Mission conditions (vanilla system mode, strict gate): line only, so no extra box in a mission.
 	if b == 2 or mode ~= "mod" or not TRF_HlStrict(idx, "board") then
 		TRF_HlSay(short, nil, 8);
-		TRF_HlL("board line (board="..b.." mode="..tostring(mode)..")");
+		TRF_HlE("board", "board_mode", b, "mode", mode, "result", "line");
 		return "line";
 	end;
 	local bt, be = nil, nil;
@@ -1531,7 +1542,7 @@ function TRF_BoardDockOk_Body()
 	if TRF_HlBox("#UI_PatrolStationWndCaption", full, TRF_BoardGo, TRF_BoardGo) then
 		if type(be) == "table" then be.n = 0; end;
 		TRF_HlStat("hl_board");
-		TRF_HlL("board box idx="..idx);
+		TRF_HlE("board", "system_index", idx, "result", "box");
 		return "box";
 	end;
 	L.bgo = nil;
@@ -1551,7 +1562,7 @@ end;
 function TRF_BoardGo_Body()
 	local L = TRF_HlLive();
 	if L and L.bgo ~= 1 then
-		TRF_HlL("board go: original already ran");
+		TRF_HlE("board_go", "result", "skipped", "reason", "original_ran");
 		return 0;
 	end;
 	local st = TRF_HlStore();
@@ -1599,7 +1610,7 @@ function TRF_BoardOfShow()
 	if type(e.title) == "string" then cap = e.title; end;
 	if TRF_HlBox(cap, text, TRF_BoardOfOk, TRF_BoardOfNo) then
 		TRF_HlStat("hl_boardoffer");
-		TRF_HlL("board offer "..L.bk.."/"..getn(st.bof));
+		TRF_HlE("board_offer", "offer_index", L.bk, "offer_count", getn(st.bof));
 		return 1;
 	end;
 	return nil;
@@ -1645,7 +1656,7 @@ function TRF_BoardOfStep_Body()
 	if acc == 1 and type(e) == "table" then
 		local v = TRF_HlCall(e.ok, {e.a});
 		TRF_HlStat("hl_offer_acc");
-		TRF_HlL("board offer "..tostring(L.bk).." accepted -> "..tostring(v));
+		TRF_HlE("board_offer", "offer_index", L.bk, "result", "accepted", "reply", v);
 		if type(v) == "string" then TRF_HlSay(v, nil, 8); end;
 	elseif type(e) == "table" and e.no then
 		TRF_HlCall(e.no, {e.a});
@@ -1671,22 +1682,20 @@ end;
 
 function TRF_Hail_Dump()
 	local L = TRF_HlLive() or {};
-	local hl, ct = "none", "none";
-	if type(L.hl) == "table" then
-		local o = L.hl.o or {};
-		hl = tostring(L.hl.id)..":"..tostring(L.hl.k).."/"..getn(o)..":"..tostring(L.hl.w);
-	end;
-	if type(L.ct) == "table" then ct = tostring(L.ct.id)..":"..tostring(L.ct.n); end;
-	local b = "none";
-	if type(L.board) == "string" then b = "set"; end;
+	local hl, ct, nopt = {}, {}, nil;
+	if type(L.hl) == "table" then hl = L.hl; nopt = getn(L.hl.o or {}); end;
+	if type(L.ct) == "table" then ct = L.ct; end;
+	local b = 0;
+	if type(L.board) == "string" then b = 1; end;
 	local st = TRF_HlStore();
 	local nx, nb = 0, 0;
 	if st then
 		if type(st.x) == "table" then for k, v in st.x do nx = nx + 1; end; end;
 		if type(st.bof) == "table" then nb = getn(st.bof); end;
 	end;
-	TRF_L("dump hail hl="..hl.." ct="..ct.." board="..b.." v1opts="..nx.." boardoffers="..nb.."@"..tostring(L.bk)
-		.." wrapped="..tostring(TRF_HailIsMine(__PatrolStationDock_Ok)));
+	TRF_HlE("dump", "hail_trader_id", hl.id, "hail_step", hl.k, "hail_option_count", nopt, "hail_wait", hl.w,
+		"contract_trader_id", ct.id, "contract_pay", ct.n, "board", TRF_KvB(b), "v1_option_count", nx,
+		"board_offer_count", nb, "board_offer_index", L.bk, "wrapped", TRF_KvB(TRF_HailIsMine(__PatrolStationDock_Ok)));
 end;
 
 -- Strings (6.2). Looked up by TRF_Txt after TRF_UI_Text; keys in TRF_UI_Key form (lowercase, letters and
