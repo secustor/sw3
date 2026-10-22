@@ -309,7 +309,7 @@ function T_V02_C()
 	-- 100 legs between two entries: 30 ticks, the rest skipped.
 	TRF.clock.legs = TRF.clock.legs + 99;
 	T_Jump("aurora");
-	HOST_Check(V_Logs("rg: tick x30 legs=") == 1 and V_Logs("rg: catchup skipped") == 1 and TRF.clock.legs - TRF.clock.rt < 2,
+	HOST_Check(V_Logs("module=region event=tick tick_count=30 legs=") == 1 and V_Logs("module=region event=catchup skipped_legs=") == 1 and TRF.clock.legs - TRF.clock.rt < 2,
 		"100-leg jump: 30 ticks, older legs skipped");
 	T_Jump("gredos");
 	local g = V_Idx("gredos");
@@ -377,14 +377,14 @@ function T_V02_D()
 		tinsert(legs, L - L0);
 	end;
 	HOST_Check(legs[1] == 6 and legs[2] == 12 and legs[3] == 16 and legs[4] == 18, "attempts at +6/+12/+16/+18 ("..legs[1].."/"..legs[2].."/"..legs[3].."/"..legs[4]..")");
-	HOST_Check(r.sw == 1 and r.sl == 0 and c.sc <= 35 and V_Logs("attempt 4 won (p=100)") == 1, "attempt 4 certain: sc <= 35");
-	HOST_Check(V_Logs("attempt 1 failed") == 1 and V_Logs("sc=89 next") == 1 and TRF.newsx[s].sweep.v == "win", "failure: score -10; news fail then win");
+	HOST_Check(r.sw == 1 and r.sl == 0 and c.sc <= 35 and V_Logs("chance=100 attempt=4 result=won") == 1, "attempt 4 certain: sc <= 35");
+	HOST_Check(V_Logs(" attempt=1 result=failed") == 1 and V_Logs("clan_score=89 next_leg=") == 1 and TRF.newsx[s].sweep.v == "win", "failure: score -10; news fail then win");
 	-- Through the tick: a won attempt ends Raids in the same tick.
 	r.ph = 3; r.pt = TRF.clock.rt - 4; r.sw = 0; r.sn = 0; c.sc = 90; r.sl = TRF.clock.rt + 2;
 	h.rq = {0};
 	TRF_AddLeg("test"); TRF_AddLeg("test");
 	h.rq = {};
-	HOST_Check(TRF_Phase(s) == 4 and TRF_ClanScore(s) <= 35 and V_Logs("attempt 1 won") == 1, "won attempt: Raids ends in the same tick (now "..TRF_Phase(s).." sc "..TRF_ClanScore(s)..")");
+	HOST_Check(TRF_Phase(s) == 4 and TRF_ClanScore(s) <= 35 and V_Logs(" attempt=1 result=won") == 1, "won attempt: Raids ends in the same tick (now "..TRF_Phase(s).." sc "..TRF_ClanScore(s)..")");
 	-- Open window (2 legs before the attempt) pauses raids of that clan.
 	r.ph = 3; r.pt = TRF.clock.legs; r.sw = 0; r.sl = TRF.clock.legs + 2;
 	HOST_Check(TRF_SweepOpen(s) == 1, "window open 2 legs before the attempt");
@@ -2018,7 +2018,7 @@ function T_V02_N()
 	T_SaveLoad();
 	HOST_Check(V_DataGlobals() == "", "after a load: no TRF_ data globals, no build globals"..V_DataGlobals());
 	TRF_DumpState("test");
-	HOST_Check(V_Logs("dump rg n=8") >= 1 and V_Logs("dump gate=") >= 1 and V_Logs("dump shop") >= 1 and V_Logs("dump raid") >= 1
+	HOST_Check(V_Logs("module=region event=dump region_count=8 ") >= 1 and V_Logs("dump gate=") >= 1 and V_Logs("dump shop") >= 1 and V_Logs("dump raid") >= 1
 		and V_Logs("dump hail") >= 1 and V_Logs("dump tier") >= 1, "TRF_DumpState calls every module dump");
 end;
 
