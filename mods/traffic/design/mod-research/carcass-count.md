@@ -88,4 +88,4 @@ So `GetEntryPoint(10)` is exactly 10 units from the portal's origin along its lo
 
 1. Meaning of `o+0x20` and when a killed ship leaves `LM+0x24` (1.4).
 2. Which constructor builds Portal (0x61e3c0, 0x62b1e0 or 0x64e610) and its typical `+0x548`.
-3. A `debug` run (`cfg log 2`) shows `gen: spot <key> base=<n>` per spot at entry: the static counts per system next to the governor's `safe: governor base n0=` (1.5).
+3. A `debug` run (`cfg log 2`) shows `module=generator event=spot_base spot=<key> base_count=<n>` per spot at entry: the static counts per system next to the governor's `module=safety event=governor_base carcass_count=` (1.5).

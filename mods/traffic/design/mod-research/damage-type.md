@@ -4,7 +4,7 @@ Target `sw3cw.exe` GOG v1.12 (base 0x400000, no ASLR). Sources: `.work/exe.asm` 
 
 ## 1. Question
 
-The combat source "hit" (`TRF_Cb` → `TRF_CombatMark("hit", ..)`, traffic.script:103) fired when the user rammed a trader (`combat on why=hit src=TRF_OnAttack gt=19351.982`, sw3tp.log:1005 [V]). Can the mod tell a collision from a weapon hit? Which argument of 0x622540 is the type, who passes what, where `_EVENT_ATTACKCARCASS` (24) is raised, and what is the cheapest hook?
+The combat source "hit" (`TRF_Cb` → `TRF_CombatMark("hit", ..)`, traffic.script:103) fired when the user rammed a trader (`combat on why=hit src=TRF_OnAttack gt=19351.982`, sw3tp.log:1005 [V]; shorthand form of that run's log). Can the mod tell a collision from a weapon hit? Which argument of 0x622540 is the type, who passes what, where `_EVENT_ATTACKCARCASS` (24) is raised, and what is the cheapest hook?
 
 ## 2. Answer
 
@@ -77,7 +77,7 @@ Native (registered in `trf_register`): `TRF_DmgInfo(id)` → `age_hit_ms, type, 
 
 Lua use:
 - in `TRF_Cb` for the CBH names, mark "hit" only when `age_hit_ms < 1000`;
-- in `TRF_CombatSample`, skip a mothership HP drop when `age_col_ms < 750` and `age_hit_ms` is older. A ram also lowers the mothership hull, so source a1 (`why=hp`) can misfire on rams as well [I].
+- in `TRF_CombatSample`, skip a mothership HP drop when `age_col_ms < 750` and `age_hit_ms` is older. A ram also lowers the mothership hull, so source a1 (`reason=hp`) can misfire on rams as well [I].
 
 Cost: one table write per damage call (hundreds per second in a large battle) [I].
 
@@ -92,7 +92,7 @@ Count a "hit" only when the attack events of one ship fall in **2 distinct whole
 ## 6. Open checks
 
 1. **What hit the trader at gt 19351.982 [U].** Run once with a logging build of the hook (victim id, type, src, shooter id, dmg). Ram a trader with all weapons and turrets disabled and no fighters out. If no `src != 0` line appears, the ram did not cause the event, so look at turret auto-fire, a right-click attack order or a fighter.
-2. The log also shows `ev attack id=7 stale gen=39 now=41`: the trigger dated from an older generation, and trader 7 was "gone why=obj" at load. `TRF_Cb` marks combat before the gen test (traffic.script:103), so a stale trigger on a ship the mod no longer tracks still marks combat [V log, code].
+2. The log also shows `ev attack id=7 stale gen=39 now=41` (shorthand form of that run's log): the trigger dated from an older generation, and trader 7 was "gone why=obj" at load. `TRF_Cb` marks combat before the gen test (traffic.script:103), so a stale trigger on a ship the mod no longer tracks still marks combat [V log, code].
 3. Missile hits through the projectile path vs only through the explosion 0x49d820 [I].
 4. Type 3 source (0x60a600, `carcass+0xacc`) not identified [U].
 5. Shooter id via `[src+0x54]+0x94` for pilot-class shooters (class 0x7b6300) [I].

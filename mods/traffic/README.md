@@ -34,31 +34,31 @@ The game must be launched by the user. The scripts only prepare the test clone (
     SECS=900 mods/traffic/run-test.sh       # SECS defaults to 600; play during that time; SECS=0 waits until you quit the game
     mods/traffic/uninstall-test.sh
 
-`install-test.sh` installs the rebuilt `zlib1.dll` and the scripts, writes `config.script` with the selected experiment, and writes the `[traffic]` section of `sw3tp.ini`. After the game is killed, `run-test.sh` prints the `ExecuteScriptFile` lines from `LOGfile.txt` that load `Mods/Traffic/`, the new `ScriptErrors.log`, and every `traffic:` line from `sw3tp.log`. Lines from the scripts look like `traffic: lua: E0.<n> ...`.
+`install-test.sh` installs the rebuilt `zlib1.dll` and the scripts, writes `config.script` with the selected experiment, and writes the `[traffic]` section of `sw3tp.ini`. After the game is killed, `run-test.sh` prints the `ExecuteScriptFile` lines from `LOGfile.txt` that load `Mods/Traffic/`, the new `ScriptErrors.log`, and every `traffic:` line from `sw3tp.log`. Lines from the scripts look like `traffic: lua: exp=E0.<n> module=exp ...`.
 
 ### E0.1 hooks and natives (`EXP=1`)
 
 Start a new game, fly for a while, pause the game for a few seconds, then jump once.
 
-Logs: `top-level load`; `init` lines with `type(TeleportToLocation)` before and after the wrap, `TRF_Version()`, the native clocks and the x87 check `16777216 + 1` and `1/3` (`16777217.0` and `0.33333333333333331` = 53/64-bit precision, `16777216.0` and `0.3333333432674408` = 24-bit); one `OnEnter`/`OnActivate`/`OnLoad`/`BeforeJump` line per event, with counters and the location; one `tick` line per real second with `dt_game`, `dt_real`, their sums over that second, `TRF_GameTime()` and `TRF_RealTime()`.
+Logs (all `kit=hooks`): `event=top_level_load`; `event=init` lines with `type_before` and `type_after` of `TeleportToLocation` (before and after the wrap), `version`, the native clocks, and `event=x87` with the check `16777216 + 1` and `1/3` as `sum_2_24_plus_1` and `one_third` (`16777217.0` and `0.33333333333333331` = 53/64-bit precision, `16777216.0` and `0.3333333432674408` = 24-bit); one `event=enter`/`activate`/`load`/`before_jump` line per event, with counters and the location; one `event=tick` line per real second with `dt_game`, `dt_real`, their sums `sum_game` and `sum_real` over that second, `native_game_time` and `native_real_time`.
 
-Pass: `sw3tp.log` shows 7 `attach ok` lines (T1, T2a–T2d, T3, T4) and no `traffic: disabled`. `LOGfile.txt` loads `Mods/Traffic/traffic.script` after the last game include. Each entry gives exactly one `OnEnter` and one `OnActivate`. `sum_game` reads 0 while paused (or the log shows what happens instead). `ScriptErrors.log` has no new lines.
+Pass: `sw3tp.log` shows 7 `attach ok` lines (T1, T2a–T2d, T3, T4) and no `traffic: disabled`. `LOGfile.txt` loads `Mods/Traffic/traffic.script` after the last game include. Each entry gives exactly one `event=enter` and one `event=activate` line. `sum_game` reads 0 while paused (or the log shows what happens instead). `ScriptErrors.log` has no new lines.
 
 ### E0.2 state across jumps and a save (`EXP=2`, optionally `BIG=1`)
 
 Start a new game and jump twice. Save, quit, relaunch and load (the save kit is on by default for `EXP=2` and makes the save itself, see [Baseline saves](#baseline-saves)). Repeat once with a save made with `TRAFFIC_ENABLED=0`. With `BIG=1`, compare the `.sav` size with that of a save made without it.
 
-Logs: each `OnEnter` logs `n`, `PI`, `PI_survived` and a dump of `TRF`. `OnLoad` logs the same values plus `fresh` (1 = `TRF` was nil after the load).
+Logs (`kit=state`): each entry writes `event=report source=enter` with `entry_count`, `pi`, `pi_survived` and `nested_value`, plus `event=report_size` and `event=report_dump` (a dump of `TRF`). A load writes the same with `source=load`, and `fresh=true` when `TRF` was nil after the load.
 
-Pass: `n` grows by one per entry, and `PI_survived=yes` after jumps. After the load, `OnLoad` (not `OnEnter`) fires with `fresh=nil`, `n` keeps the saved value and `PI_survived=no`, which shows that the save writer drops the nested reserved key. A save made with the mod disabled loads with `fresh=1`. With `site_t3=0`, `TRF` is recreated on every entry and `n` stays 1.
+Pass: `entry_count` grows by one per entry, and `pi_survived=true` after jumps. After the load, `source=load` (not `source=enter`) reports `fresh=false`, `entry_count` keeps the saved value and `pi_survived=false`, which shows that the save writer drops the nested reserved key. A save made with the mod disabled loads with `fresh=true`. With `site_t3=0`, `TRF` is recreated on every entry and `entry_count` stays 1.
 
 ### E0.3 trader life cycle (`EXP=3`, `DEL_ON_JUMP=0` or `1`)
 
 Enter a system that has a trade station and watch the transport. Attack it once. Wait until it has left and the second transport is docked, then jump out and come back. Run this twice, once with `DEL_ON_JUMP=1` and once with `DEL_ON_JUMP=0`.
 
-What happens: on `OnActivate`, a `Btransport` flight spawns at the portal farthest from the player (if `CreateCarcass` returns nil it tries the next portal) and gets `ComeToTradeStation`. It also gets three string-callback triggers: two arrival triggers (`"TRF_OnArrive(1,1)--"`, `f_object_inside` within 150 of the station; `"TRF_OnArrive(1,2)--"`, `f_inside` within 75 of `GetDockingPosition()`; the first one that fires counts, the log line's `how=` says which), `attack` and `f_died`. After 20 s docked it gets `ComeToPortal` and an `f_object_inside` exit trigger, and on exit the portal plays `Start(5, 0)` and the flight is deleted. Trader 2 then spawns and stays docked. Before the jump, the positions of the live traders are recorded, and with `del_on_jump=1` their flights are deleted. On every `OnActivate`, `GetCarcassCountInSphere` is logged around the recorded spawn point and the recorded last position. Every 5 s the log shows each live trader's position, its distance to the station centre, to `GetDockingPosition()` and to the exit portal. After a load, triggers restored from the save log `stale (no live handle)`.
+What happens: on `OnActivate`, a `Btransport` flight spawns at the portal farthest from the player (if `CreateCarcass` returns nil it tries the next portal) and gets `ComeToTradeStation`. It also gets three string-callback triggers: two arrival triggers (`"TRF_OnArrive(1,1)--"`, `f_object_inside` within 150 of the station; `"TRF_OnArrive(1,2)--"`, `f_inside` within 75 of `GetDockingPosition()`; the first one that fires counts, the `event=arrive` line's `via=` says which), `attack` and `f_died`. After 20 s docked it gets `ComeToPortal` and an `f_object_inside` exit trigger, and on exit the portal plays `Start(5, 0)` and the flight is deleted. Trader 2 then spawns and stays docked. Before the jump, the positions of the live traders are recorded, and with `del_on_jump=1` their flights are deleted. On every `OnActivate`, `GetCarcassCountInSphere` is logged around the recorded spawn point and the recorded last position. Every 5 s the log shows each live trader's position, its distance to the station centre, to `GetDockingPosition()` and to the exit portal. After a load, triggers restored from the save log `reason=no_live_handle result=stale`.
 
-Pass: `CreateCarcass ... -> ok`, and each callback logs its id (`OnArrive id=1`, `OnAttack id=1`, `OnDied` or `OnExit id=1`). The string callbacks therefore work. The position lines show whether the ship stops at the dock point. On the revisit, the count around the last position answers mod-options question 1: a non-zero count with `deleted=0` means that NPC flights are part of the location snapshot. Every `CHECK` line marks an assumption that the run confirms or refutes.
+Pass: `event=create_carcass ... result=ok`, and each callback logs its source and id (`event=callback kit=trader source=OnArrive trader_id=1`, `source=OnAttack trader_id=1`, `source=OnDied` or `source=OnExit trader_id=1`). The string callbacks therefore work. The `event=position` lines show whether the ship stops at the dock point. On the revisit, the count around the last position answers mod-options question 1: a non-zero count with `deleted=0` means that NPC flights are part of the location snapshot. Every `CHECK` line marks an assumption that the run confirms or refutes.
 
 ## v0.1 traffic (`EXP=0 TRAFFIC=1`)
 
@@ -71,7 +71,7 @@ v0.1 ("traders with a purpose", design §12, spec [design/v01-spec.md](design/v0
 - A focus line in the screen log the first time a trader is selected or comes within 200 (`FTU freighter Kestrel: machinery, Aurora -> Elio`). The vanilla trade meeting at 70 stays.
 - An arrival line 5 s after entering a system with disruption ≥ 3 (`FTU reports raids on the lanes in this system`, three bands).
 - Attacking a trader raises heat and starts a response that reproduces the vanilla one. Traders killed by anyone raise the system's disruption, which adds escorts and lowers spawns; pirate kills and time (legs) bring it down.
-- Vanilla behaviour is kept, untouched, in: start systems in chapters 1–4 (`guard`), `elio`, `x297`, `gefest` while a mission is active, systems not in `map.script`, and whenever `__disableAction` is set. Campaign teleport targets (Taira, Hanoi, Zebos and the others on the deny list as `teleport target`) are vanilla only while a quest that names them is in progress; in transit, when a mission is running but no quest in progress names the system, they keep mod traffic, and the strict feature gate follows the same rule (`dump gate=ok ... deny=teleport target`: band row, parked ship and the other features as in any system) (`transit` 1, the default; 0 restores the old rule that shuts every teleport target during any mission, gate `mission_deny`). `__sys_SOS` (vanilla `_FTrader_exclude`, set by quest scripts around scripted sequences, for whole visits in mission 6, and by an extortion) does not stop spawning (`sos_mode` 1, the default), as in vanilla, whose generator checks only `__disableAction`; while it is set the mod stays quiet as vanilla's trader chat does: no arrival, news or announce line, no station mood, greeting or fee box (the vanilla dock box runs), and the mod's board, offer and heat-offer boxes and the hail demand option stay closed. What the player starts stays open (`hail_quiet` 0, the default): the focus line of a selected trader, the hail armed at the 70-unit meeting (log `ui meet id=N line muted (quiet) hail armed`), the hail box and its answers. New mod content does not start in a fight: while the player is in combat (`combat`, below) no raid, on-screen carrier, sweep, supply run or danger convoy starts and the hail on focus is skipped; the attack response still starts, as vanilla's does. A visible scripted scene (mission movie, modal window or XML dialog: `TRF_InMovie`, `MovieIsPlaying`, `TRF_UiState`) pauses spawning and lines. `sos_mode` 2 restores the old rule: under `__sys_SOS` nothing spawns and no line is shown; after 30 s without an extortion flight, nearby traders leave by a portal and distant ones are deleted.
+- Vanilla behaviour is kept, untouched, in: start systems in chapters 1–4 (`guard`), `elio`, `x297`, `gefest` while a mission is active, systems not in `map.script`, and whenever `__disableAction` is set. Campaign teleport targets (Taira, Hanoi, Zebos and the others on the deny list as `teleport target`) are vanilla only while a quest that names them is in progress; in transit, when a mission is running but no quest in progress names the system, they keep mod traffic, and the strict feature gate follows the same rule (`module=safety event=dump gate=ok ... deny_reason=teleport target`: band row, parked ship and the other features as in any system) (`transit` 1, the default; 0 restores the old rule that shuts every teleport target during any mission, gate `mission_deny`). `__sys_SOS` (vanilla `_FTrader_exclude`, set by quest scripts around scripted sequences, for whole visits in mission 6, and by an extortion) does not stop spawning (`sos_mode` 1, the default), as in vanilla, whose generator checks only `__disableAction`; while it is set the mod stays quiet as vanilla's trader chat does: no arrival, news or announce line, no station mood, greeting or fee box (the vanilla dock box runs), and the mod's board, offer and heat-offer boxes and the hail demand option stay closed. What the player starts stays open (`hail_quiet` 0, the default): the focus line of a selected trader, the hail armed at the 70-unit meeting (log `module=ui event=meet trader_id=N hail_armed=true result=line_muted reason=quiet`), the hail box and its answers. New mod content does not start in a fight: while the player is in combat (`combat`, below) no raid, on-screen carrier, sweep, supply run or danger convoy starts and the hail on focus is skipped; the attack response still starts, as vanilla's does. A visible scripted scene (mission movie, modal window or XML dialog: `TRF_InMovie`, `MovieIsPlaying`, `TRF_UiState`) pauses spawning and lines. `sos_mode` 2 restores the old rule: under `__sys_SOS` nothing spawns and no line is shown; after 30 s without an extortion flight, nearby traders leave by a portal and distant ones are deleted.
 
 ### Config keys
 
@@ -97,13 +97,22 @@ For other keys, edit `<clone>/Data/Scripts/Mods/Traffic/config.script` after the
     EXP=1 TRAFFIC=0 sh mods/traffic/install-test.sh              # E0.1 hook experiment only
     SECS=1800 sh mods/traffic/run-test.sh                         # the user plays; logs land in <clone>/traffic-runs/
 
+A tail filter for the live log is in [design/log-format.md](design/log-format.md) section 8.
+
 Lines in `sw3tp.log` (all `traffic: lua: exp=v1 ...` since the logfmt change, design/log-format.md; `traffic: lua: v1 ...` before, earlier builds wrote `v0.1` or `v0.2`):
 
-- once per location entry: `module=core event=loaded map=true module_count=18 extra_count=1 teleport_wrapped=true custom_teleportate_wrapped=true` (5 in v0.1 builds, 10 in v0.2) and `gen: install generator=1 case_eject=1 ... mine=1/1`. `module_count` below 5 or a missing install line means the mod stays vanilla: look at the `module=core event=file_load file=<file> result=failed` line before it.
-- `dump enter|load|jump|tick v=4 gen=<n> sys=<name>(<idx>) legs=<n> ... heat=<h>/<n> ... mode=mod|vanilla`, followed by `dump dis <system>=<n> ...` and `dump stat ...`: `gen` grows by one per entry and per load, `legs` by one per entry and every 300 game s in a system; neither goes back. `mode=vanilla` comes with a `safe: mode vanilla why=<reason>` line.
-- `gen: spawn id=<n> path=C ...`, `gen: remove id=<n> why=exit|dock|life|stuck|wind|jump|lost|station ...`, `ui say ... text=...`, `st: dis`, `st: heat`, `ev kill`, `ev resp`.
-- `dump stat spawn=<n> skip_cap=<n> ...`: spawn, skip and removal counters for this visit.
-- `ERROR <message>`: a mod error caught by the mod. It never reaches `ScriptErrors.log`, so any such line is a bug to report.
+- once per location entry: `module=core event=loaded map=true module_count=18 extra_count=1 teleport_wrapped=true custom_teleportate_wrapped=true` (5 in v0.1 builds, 10 in v0.2) and `module=generator event=install generator=true case_eject=true source=<s> generator_mine=true case_eject_mine=true`. `module_count` below 5 or a missing install line means the mod stays vanilla: look at the `module=core event=file_load file=<file> result=failed` line before it.
+- `module=state event=dump source=enter|load|jump|tick version=4 generation=<n> system=<name> system_index=<idx> legs=<n> ... heat=<h> ... mode=mod|vanilla`, followed by `module=state event=dump_disruption <system>=<n> ...` and `module=state event=dump_stat ...`: `generation` grows by one per entry and per load, `legs` by one per entry and every 300 game s in a system; neither goes back. `mode=vanilla` comes with a `module=safety event=mode system=<name> mode=vanilla reason=<reason> ...` line.
+- One line per event (example lines for all of them are in design/log-events.md):
+  - `module=generator event=spawn trader_id=<n> path=C ...`
+  - `module=generator event=remove trader_id=<n> reason=exit|dock|life|stuck|wind|jump|lost|station age=<s>`
+  - `module=ui event=say output=1 seconds=10 message="..."`
+  - `module=state event=disruption system=<name> system_index=<idx> reason=<why> old=<n> new=<n>`
+  - `module=state event=heat reason="kill <id>" old=<n> new=<n>`
+  - `module=events event=kill trader_id=<n> system_index=<idx> by=player ... kill_count=<n> ship_count=<n>`
+  - `module=events event=response_start trader_id=<n> response_id=<n> faction=<n> speaker=<bool>`
+- `module=state event=dump_stat spawn=<n> skip_cap=<n> ...`: spawn, skip and removal counters for this visit.
+- `module=<module> event=error message=<message>`: a mod error caught by the mod. It never reaches `ScriptErrors.log`, so any such line is a bug to report.
 - `module=core event=error source=<name> repeats=counted_not_logged message="<message>"`: an error in trigger callback `<name>` (spec 13, O1), logged once per callback and visit; repeats only raise `stat err_<name>` and `err` in the dump.
 - `ScriptErrors.log` must have no new lines. Mod trigger callbacks run protected (spec 13, O1); a line from `_FTrader_Action` or another vanilla function called by the mod keeps the default handler.
 
@@ -111,17 +120,17 @@ Lines in `sw3tp.log` (all `traffic: lua: exp=v1 ...` since the logfmt change, de
 
 | criterion | how to check |
 |---|---|
-| No new `ScriptErrors.log` lines over 30 jumps in three sectors | One session (or several, each with a load) with 30 jumps across three sectors. `run-test.sh` prints the new `ScriptErrors.log`; also no `ERROR` lines in `sw3tp.log`. |
-| Missions 1–3 unchanged | Play missions 1–3 from a new game with `EXP=0 TRAFFIC=1`, then from the same save with `TRAFFIC=0`. Same briefings, triggers, spawns and outcomes; no stuck objective. The start systems log `mode=vanilla why=guard` for the whole run (chapter 4 or lower; no dependence on `GetPlayerQuestState()`). |
+| No new `ScriptErrors.log` lines over 30 jumps in three sectors | One session (or several, each with a load) with 30 jumps across three sectors. `run-test.sh` prints the new `ScriptErrors.log`; also no `event=error` lines in `sw3tp.log`. |
+| Missions 1–3 unchanged | Play missions 1–3 from a new game with `EXP=0 TRAFFIC=1`, then from the same save with `TRAFFIC=0`. Same briefings, triggers, spawns and outcomes; no stuck objective. The start systems log `module=safety event=mode ... mode=vanilla reason=guard` for the whole run (chapter 4 or lower; no dependence on `GetPlayerQuestState()`). |
 | 8x speed holds | In Gredos, Aurora and one core system with 2 traders alive: 8x stays selectable and is not dropped back. Repeat with `override=0` to compare. |
-| Counters survive save/load and a jump | Note `gen`, `legs`, `heat` and the `dump dis` values, jump: `dump enter` shows `gen` and `legs` at least one higher and the same `heat`/`dis` (minus decay). Save (kit or manual) in a system, quit, relaunch and load: `dump load` shows the saved `legs`, `heat` and `dis` and `gen` one higher. Confirms the T3 carry and `OnLoad`, still open from E0.1. |
-| Mod added to a mid-campaign save | Load a save made without the mod installed: `dump load` shows `v=4 gen=1 legs=0` and no `ERROR` line; traffic spawns in that system or the next eligible one. |
-| An ambient extortion does not empty the system | Wait for an extortion demand outside a mission: `safe: supp 0->0 ... sos=1`, `spawn` keeps growing while it lasts (pause only while its box is open, `scene=1`) and no mod line is shown. With `SOS_MODE=2`: no spawn while it lasts (`skip_supp` grows), traders keep flying for 30 s, and after the extortion ends `spawn` grows again in the same system. |
+| Counters survive save/load and a jump | Note `generation`, `legs`, `heat` and the `module=state event=dump_disruption` values, jump: `event=dump source=enter` shows `generation` and `legs` at least one higher and the same `heat`/disruption (minus decay). Save (kit or manual) in a system, quit, relaunch and load: `event=dump source=load` shows the saved `legs`, `heat` and disruption and `generation` one higher. Confirms the T3 carry and `OnLoad`, still open from E0.1. |
+| Mod added to a mid-campaign save | Load a save made without the mod installed: `module=state event=dump source=load` shows `version=4 generation=1 legs=0` and no `event=error` line; traffic spawns in that system or the next eligible one. |
+| An ambient extortion does not empty the system | Wait for an extortion demand outside a mission: `module=safety event=suppression old=0 new=0 ... sos=true`, `spawn` keeps growing while it lasts (pause only while its box is open, `scene=true`) and no mod line is shown. With `SOS_MODE=2`: no spawn while it lasts (`skip_supp` grows), traders keep flying for 30 s, and after the extortion ends `spawn` grows again in the same system. |
 | 13.2 / 13.4 / 13.6 answers | Record whether the focus line came from selection or proximity, the `.sav` size with and without the mod, and the 8x and `CombineStr` results in design §13. |
 
 ## v0.2 traffic (`EXP=0 TRAFFIC=1`)
 
-v0.2 ("help or prey, and the station consequence", design §12, spec [design/v02-spec.md](design/v02-spec.md)) adds five modules on top of v0.1: `trf_region` (regional cycle, prosperity, clans), `trf_tier` (bands, trader tiers, holds, parked ships), `trf_raid` (lane and staged raids, distress, help pay), `trf_shop` (trader shops, shortages, price restore) and `trf_hail` (hail menu, contracts, patrol work board). It is implemented and host-tested (30 host runs), not yet run in the game. Each v0.2 module loads on its own; a missing or failing file only turns its features off (`loaded ... modules=` below 10).
+v0.2 ("help or prey, and the station consequence", design §12, spec [design/v02-spec.md](design/v02-spec.md)) adds five modules on top of v0.1: `trf_region` (regional cycle, prosperity, clans), `trf_tier` (bands, trader tiers, holds, parked ships), `trf_raid` (lane and staged raids, distress, help pay), `trf_shop` (trader shops, shortages, price restore) and `trf_hail` (hail menu, contracts, patrol work board). It is implemented and host-tested (30 host runs), not yet run in the game. Each v0.2 module loads on its own; a missing or failing file only turns its features off (`event=loaded ... module_count=` below 10).
 
 ### What the player sees
 
@@ -134,7 +143,7 @@ v0.2 ("help or prey, and the station consequence", design §12, spec [design/v02
 - Shortages: a killed or robbed path A trader, or a region entering Bust, makes its cargo class short at the target station for 6 legs. The station then buys that class at +50 %. When the shortage ends, the vanilla price comes back at the next docking there. At most 8 stations change, and all are listed in `TRF.shops`.
 - Heat tiers: heat 3 makes traders flee from the player; heat 5 limits spawns to TT2, and the response grows with the tier. Killing traders in a system lowers its `pro` by 3 per kill (kill cap 3 per visit).
 - News: a bulletin line on arrival (`FTU bulletin: Trade booming near Elinor`), one per topic.
-- Strict gate: in the 89 quest systems during a mission, the board box, raids, TT3, bands and price writes are off (`safe: gate ... denied why=mission_q`).
+- Strict gate: in the 89 quest systems during a mission, the board box, raids, TT3, bands and price writes are off (`module=safety event=gate feature=<feature> system=<name> reason=mission_q result=denied`).
 
 ### Config keys (v0.2)
 
@@ -152,29 +161,72 @@ Defaults are in each module's `TRF_<M>_OptDef()`; a missing key reads its defaul
 | `shop_mode`, `short_price`, `restore` | 1, 1, 1 | 0: vanilla trader shop; 0: shortages as rumour only, no price write; 2: restore with `ClearGoodsState` |
 | `news_mode` | 1 | 0 off, 1 bulletin line, 2 `AddPost` records (needs the news records: `install-test.sh NEWS=1`, [News records](#news-records-news1)) |
 | `heat_war`, `strict` | 0, 1 | heat 7–9 group war; strict gate (0 never: also ignores the deny list, tests only; 2 strict in every quest system) |
-| `transit` (env `TRANSIT`) | 1 | teleport-target deny entries: 1 vanilla and strict gate closed only while a quest naming the system is in progress (`qa` not 0), else mod with the gate open; 0 vanilla and `mission_deny` during any mission. Log `safe: mode vanilla why=deny_tq`, counter `van_deny_tq` |
-| `sos_mode` (env `SOS_MODE`) | 1 | 1: scene-based suppression, `__sys_SOS` alone does not pause spawning (only lines, greetings and the fee box are skipped); pause while a movie plays or `TRF_UiState()` reports a modal window or dialog, wind-down on `__disableAction`. 2: the old rule, `__sys_SOS` pauses and winds down after `sos_db` (30 s) unless an extortion flight lives. Log `safe: supp a->b dis= sos= scene= sos_mode=` (also on each `__sys_SOS` change) |
-| `combat` (env `COMBAT`) | 1 | 1: combat state `TRF_Combat()` for the gates of new raids, carriers, sweeps, supply runs, danger convoys and the hail on focus (skip reason `combat`). A hostile event is a mothership hull drop between two safety ticks (more than tune `combat_hp` 0.5 and less than half the hull; ignored across a ship swap and for tune `combat_scene` 3 s after a scene), player hits on a mod ship in tune `combat_hit_n` (2) distinct seconds within tune `combat_hit_win` (6 s), or a raid in its demand or fight step within tune `combat_r` (1500, 0 = whole system) of the mothership; combat holds tune `combat_hold` (25 s) after the last one. Running raids, sweeps and carrier waves do not read it. 0: never in combat (tests, compatibility). Log `safe: combat on why=hp\|hit\|raid src=...`, `safe: combat off last=...`; dump `combat= cbt= cbw=` |
-| `hail_quiet` (env `HAIL_QUIET`) | 0 | 0: `__sys_SOS` mutes only what the mod starts (arrival, news and announce lines, station greetings); the focus line, the hail arming at the meeting and the hail box with its answers stay open, and only a visible scene (`TRF_Safe_Scene`), the suppression level and combat hold them back. 1: the old rule, `__sys_SOS` also skips the focus line and the meeting (`ui focus id=N skipped (quiet)`, `ui meet id=N skipped (quiet)`), so no hail is armed |
+| `transit` (env `TRANSIT`) | 1 | teleport-target deny entries: 1 vanilla and strict gate closed only while a quest naming the system is in progress (`qa` not 0), else mod with the gate open; 0 vanilla and `mission_deny` during any mission. Log `module=safety event=mode ... mode=vanilla reason=deny_tq`, counter `van_deny_tq` |
+| `sos_mode` (env `SOS_MODE`) | 1 | 1: scene-based suppression, `__sys_SOS` alone does not pause spawning (only lines, greetings and the fee box are skipped); pause while a movie plays or `TRF_UiState()` reports a modal window or dialog, wind-down on `__disableAction`. 2: the old rule, `__sys_SOS` pauses and winds down after `sos_db` (30 s) unless an extortion flight lives. Log `module=safety event=suppression old=<a> new=<b> disable_action= sos= scene= sos_mode=` (also on each `__sys_SOS` change) |
+| `combat` (env `COMBAT`) | 1 | 1: combat state `TRF_Combat()` for the gates of new raids, carriers, sweeps, supply runs, danger convoys and the hail on focus (skip reason `combat`). A hostile event is a mothership hull drop between two safety ticks (more than tune `combat_hp` 0.5 and less than half the hull; ignored across a ship swap and for tune `combat_scene` 3 s after a scene), player hits on a mod ship in tune `combat_hit_n` (2) distinct seconds within tune `combat_hit_win` (6 s), or a raid in its demand or fight step within tune `combat_r` (1500, 0 = whole system) of the mothership; combat holds tune `combat_hold` (25 s) after the last one. Running raids, sweeps and carrier waves do not read it. 0: never in combat (tests, compatibility). Log `module=safety event=combat_on reason=hp\|hit\|raid source=...`, `module=safety event=combat_off last_reason=...`; dump `combat= combat_age= combat_reason=` |
+| `hail_quiet` (env `HAIL_QUIET`) | 0 | 0: `__sys_SOS` mutes only what the mod starts (arrival, news and announce lines, station greetings); the focus line, the hail arming at the meeting and the hail box with its answers stay open, and only a visible scene (`TRF_Safe_Scene`), the suppression level and combat hold them back. 1: the old rule, `__sys_SOS` also skips the focus line and the meeting (`module=ui event=focus trader_id=N result=skipped reason=quiet`, `module=ui event=meet trader_id=N result=skipped reason=quiet`), so no hail is armed |
 | `pro_set` (env `PRO_SET=taira:6,gredos:9`) | `{}` | test clone only: sets `pro` (clamped to the system's cap) on every entry |
 | `tune` (env `TUNE=T_leg=5`) | | tuning overrides, numbers only (spec 10.4 lists the v0.2 keys) |
-| tune `hail_box` (env `HAIL_BOX`, test clone default 2) | 1 | 0: hail answers as radio lines; 1: the `ShowMsgBox` chain; 2: the hail menu as one trade dialog (`Data/Scripts/Trade/TRF_Hail.xml`, `FTU <name>: What do you need, Wolves?` with one answer per option and `Nothing, carry on`); answers, offers and contracts after a pick still use boxes. Needs cfg `hail_xml=1` (written by `install.sh` and `install-test.sh` when they copied the file); without it, without `StartTradeDialog` or while `TRF_UiState()` is not 0 the box chain runs (`hl: dialog fallback why=...`). Log `hl: hail id=N via=... menu n=K hn=H dlg=1`, `hl: dialog pick key=... id=N`. Not yet checked in the game (`design/mod-research/hail-dialog.md` 9) |
+| tune `hail_box` (env `HAIL_BOX`, test clone default 2) | 1 | 0: hail answers as radio lines; 1: the `ShowMsgBox` chain; 2: the hail menu as one trade dialog (`Data/Scripts/Trade/TRF_Hail.xml`, `FTU <name>: What do you need, Wolves?` with one answer per option and `Nothing, carry on`); answers, offers and contracts after a pick still use boxes. Needs cfg `hail_xml=1` (written by `install.sh` and `install-test.sh` when they copied the file); without it, without `StartTradeDialog` or while `TRF_UiState()` is not 0 the box chain runs (`module=hail event=dialog_fallback reason=...`). Log `module=hail event=hail trader_id=N via=... answer_count=K hail_count=H dialog=true`, `module=hail event=dialog_pick trader_id=N key=...`. Not yet checked in the game (`design/mod-research/hail-dialog.md` 9) |
 
 `pro` caps: 9 with a trade station, 5 trader without one, 3 at danger 3 (pirate homes such as Kadi), 2 Fronn, 0 without trader registration. `PRO_SET=kadi:9` therefore gives 3.
 
 ### Log lines (v0.2)
 
-All lines are `traffic: lua: exp=v1 ...` in `sw3tp.log` since v1 (`v0.2` before). The v0.1 lines above still apply.
+All lines are `traffic: lua: exp=v1 module=... event=...` in `sw3tp.log` since v1 (`v0.2` before, and shorthand lines before the logfmt change, design/log-format.md). The v0.1 lines above still apply. One entry per event; design/log-events.md has an example line and the log level of each.
 
-- Load: `module=core event=loaded map=true module_count=18 ...` (5 v0.1 + 5 v0.2 + 8 v1; 4 with `enabled 2`), `gen: install ...`, `shop: install trade_dock=1 mine=1`, `hl: install board=1 mine=1`. A missing install line or `event=file_load file=<file> result=failed` names the missing feature.
-- Dump (on entry, load, jump and every `dump` s): `dump enter v=4 ... help=<n> rt=<n>`, then `dump rg n=8 rt=<leg> QBURXV... sc ...` (one phase letter per region: Q Quiet, B Boom, U Build-up, R Raids, X Bust, V Recovery, then the clan scores), one `dump rg <slot> <home> ph=<phase> len=<n> sc=<n> tier=<n> sn= sl= ...` per region, `dump pro <sys>=<pro> ...`, `dump tier pro= band= sf= caps= ...`, `dump raid ...`, `dump hail ...`, `dump shop short ... shops ...`, `dump gate=ok|<why> sys= strict= ...`.
-- Cycle: `rg: init fresh=1 slots=8/8 ...`, `rg: tick x<n> legs=<L> <letters> sc ...` (every 2 legs), `rg: sweep <slot> planned|attempt <k> won|failed ...`, `rg: pro <sys>(<idx>) <old> -> <new> (<why>)`, `rg: clan <slot> <old> -> <new> (<why>)`, `rg: pro_set <sys> = <n>`.
-- Entry: `tier: entry <sys> pro= band= sf= caps= parked= gov=`, `gen: entry plan: seed chance= roll= in <s> s`, `gen: seed id= tier=`, `tier: parked <label> at ...`, `gen: queue id= hold= ...`.
-- Spawn: `gen: spawn id=... tier=<1..3> hold=<n>`.
-- Raids: `raid: go n= id= via= tier= ships=`, `raid: demand`, `raid: comply ... lost= dis=`, `raid: refuse`, `raid: sos id= why=raid|staged|heat nav=`, `raid: flee`, `raid: help counted ...`, `raid: paid n= id= cr=`, `raid: end n= id= how= ...`, `raid: staged planned|spawn|window end ...`.
-- Hail and contract: `ui announce id= band=`, `hl: hail id= via=focus menu n=` (` dlg=1` with `hail_box` 2), `hl: dialog pick key= id=`, `hl: dialog fallback why=`, `hl: hail id= option <name>`, `hl: offer id= dE= dis= br= p= roll= -> yes|no`, `hl: contract id= accepted n=<cr>`, `hl: contract id= exit paid n=<cr>`, `hl: board box|line ...`.
-- Shops: `shop: open id= trf_<class> s= b= ...`, `shop: short new <sys>(<idx>) cls= till=<leg>`, `shop: short expire ...`, `shop: apply <shop> cls= s= b= ...`, `shop: restore <shop> ...`, `shop: restore done|pending=<n>` (`enabled 2`).
-- Other: `st: help <old> -> <new> (<why>)`, `ui news post <topic>=<v> slot= mode=`, `safe: gate <feature> denied why=<reason> sys=`.
+- Load: `module=core event=loaded map=true module_count=18 ...` (5 v0.1 + 5 v0.2 + 8 v1; 4 with `enabled 2`), `module=shop event=install trade_dock=true wrapped=true restore_pending_count=0`, `module=hail event=install board_installed=true wrapped=true`. A missing install line or `module=core event=file_load file=<file> result=failed` names the missing feature.
+- Dump (on entry, load, jump and every `dump` s):
+  - `module=state event=dump source=enter ... help=<n> region_leg=<n>`
+  - `module=region event=dump region_count=8 region_tick=<leg> phases=QBURXV... clan_scores=<n>,...` (one phase letter per region: Q Quiet, B Boom, U Build-up, R Raids, X Bust, V Recovery, then the clan scores)
+  - `module=region event=dump region=<slot> system=<home> system_count=<n> phase=<phase> phase_length=<n> clan_score=<n> tier=<n> sweep_attempt=<n> sweep_leg=<n> ...` (one per region)
+  - `module=state event=dump_prosperity <sys>=<pro> ...`
+  - `module=tier event=dump prosperity=<n> band=<n> spawn_factor=<f> trader_cap=<n> ship_cap=<n> parked_cap=<n> ...`
+  - `module=raid event=dump ...`, `module=hail event=dump ...`, `module=shop event=dump shortages=... restore_list=... trader_shops=...`
+  - `module=safety event=dump gate=ok|<why> system=<name> strict=<n> ...`
+- Cycle:
+  - `module=region event=init fresh=true slot_count=8 region_count=8 legs=0 guard=true phases=<letters> clan_scores=<n>,...`
+  - `module=region event=tick tick_count=<n> legs=<L> phases=<letters> clan_scores=<n>,...` (every 2 legs)
+  - `module=region event=sweep_plan region=<slot> leg=<L>` and `module=region event=sweep region=<slot> faction=<n> via=off clan_score=<n> chance=<n> attempt=<k> result=won|failed`
+  - `module=region event=prosperity system=<sys> system_index=<idx> reason=<why> old_prosperity=<n> prosperity=<n>`
+  - `module=region event=clan_score region=<slot> reason=<why> old_clan_score=<n> clan_score=<n>`
+  - `module=region event=prosperity_set system=<sys> prosperity=<n>`
+- Entry:
+  - `module=tier event=entry system=<sys> prosperity=<n> band=<n> spawn_factor=<f> trader_cap=<n> ship_cap=<n> parked_cap=<n> governor=<bool>`
+  - `module=generator event=entry_plan via=chance chance=<n> roll=<n> delay=<s> result=seed|no_seed`
+  - `module=generator event=seed trader_id=<n> tier=<n>`
+  - `module=tier event=parked_spawn slot=<n> template=<t> position=<x,y,z> family=<n> result=spawned`
+  - `module=generator event=queue trader_id=<n> hold_point=<n> docking_id=<n> player_at_dock_age=<s> result=hold`
+- Spawn: `module=generator event=spawn trader_id=<n> path=A|B|C ... tier=<1..3> ... hold_count=<n>`.
+- Raids:
+  - `module=raid event=go raid_id=<n> trader_id=<n> via=point tier=<1..3> power=<n> ship_count=<n> distance=<d>`
+  - `module=raid event=demand raid_id=<n> trader_id=<n>`
+  - `module=raid event=comply raid_id=<n> trader_id=<n> cargo_lost=<n> disruption=<n>`
+  - `module=raid event=refuse raid_id=<n> trader_id=<n> player_fired=<bool>`
+  - `module=raid event=sos trader_id=<n> reason=raid|staged|heat nav_marked=<bool> distance=<d>`
+  - `module=raid event=flee trader_id=<n> reason=heat refuge=portal ...`
+  - `module=raid event=help raid_id=<n> ship=<n> reason=deliberate|kill_after_hit result=counted`
+  - `module=raid event=paid raid_id=<n> trader_id=<n> credits=<n> help=<n>`
+  - `module=raid event=end raid_id=<n> trader_id=<n> previous_state=<s> decision=<d> help_counted=<bool> paid=<n> result=<r>`
+  - `module=raid event=staged_plan ... result=planned`, `module=raid event=staged_spawn raid_id=<n> trader_id=<n> path=C tier=<n> ship_count=<n> hull_start=<hp>`, `module=raid event=staged_window_end raid_id=<n> trader_alive=<bool>`
+- Hail and contract:
+  - `module=ui event=announce trader_id=<n> band=<n>`
+  - `module=hail event=hail trader_id=<n> via=focus answer_count=<n> hail_count=<n>` (plus `dialog=true` with `hail_box` 2)
+  - `module=hail event=dialog_pick trader_id=<n> key=<key>`, `module=hail event=dialog_fallback reason=<why>`, `module=hail event=option trader_id=<n> key=<name>`
+  - `module=hail event=contract_offer trader_id=<n> danger_eff=<n> disruption=<n> braveness=<f> chance=<n> roll=<n> result=offered|declined`
+  - `module=hail event=contract trader_id=<n> pay=<cr> result=accepted`
+  - `module=hail event=contract trader_id=<n> via=dock|exit pay=<cr> distance=<d> help=<n> result=paid`
+  - `module=hail event=board board_mode=2 mode=mod result=line` or `module=hail event=board system_index=<idx> result=box`
+- Shops:
+  - `module=shop event=open trader_id=<n> shop=trf_shop_<n> sell_coef=<s> buy_coef=<b> ...`
+  - `module=shop event=shortage system=<sys> system_index=<idx> cargo_class=<n> until_legs=<leg> shortage_count=<n> result=new`, and `... result=cleared|expired`
+  - `module=shop event=apply shop=<shop> cargo_class=<n> sell_coef=<s> buy_coef=<b> item_count=<n> until_legs=<leg>`
+  - `module=shop event=restore shop=<shop> cargo_class=<n> sell_coef=<s> buy_coef=<b> item_count=<n> mode=<n>`
+  - `module=shop event=restore pending_count=<n> result=done|pending` (`enabled 2`)
+- Other:
+  - `module=state event=help reason=<why> old=<n> new=<n>`
+  - `module=ui event=news topic=<topic> variant=<v> slot=<n> mode=<n> result=posted`
+  - `module=safety event=gate feature=<feature> system=<sys> reason=<reason> result=denied`
 
 ### Running it on the clone
 
@@ -182,33 +234,33 @@ All lines are `traffic: lua: exp=v1 ...` in `sw3tp.log` since v1 (`v0.2` before)
     EXP=0 TRAFFIC=1 AUTOSAVE=1 TUNE=T_leg=5 sh mods/traffic/install-test.sh         # 200-leg debug run (below)
     EXP=0 TRAFFIC=1 AUTOSAVE=1 PRO_SET=taira:6 sh mods/traffic/install-test.sh      # pro-6 double-kill test
     SECS=1800 sh mods/traffic/run-test.sh
-    grep -a 'traffic: lua: exp=v1 \(rg: tick\|rg: sweep\|dump rg\)' <clone>/sw3tp.log        # cycle trace
+    grep -a 'traffic: lua: exp=v1 module=region event=\(tick\|sweep\|dump\)' <clone>/sw3tp.log        # cycle trace
 
 ### In-game checks for the v0.2 exit criteria (design §12)
 
 | criterion | how to check |
 |---|---|
-| One raid or contract per 20 min of free roam in danger 1–2 systems | Free roam 20 min outside missions in region systems that are not pirate homes (effective danger 1–2: every region system counts at least 1; no dump line shows it). Count `raid: go`, `raid: staged spawn` and `hl: contract ... accepted` (or a `Need an escort?` box). |
-| Contract pay within ±50 % of a pirate flight kill of similar risk | Compare `hl: contract ... n=<cr>` with the credits gained for killing a pirate flight of the same tier (`raid: go ... tier=`). |
-| No autopause from raids the player has not joined | During `raid: go` / `raid: staged spawn` without attacking anything: the game does not pause and wingmen keep their orders. |
-| Trouble answer → staged raid in about half of the entries; killing it lowers `dis` | Ask a trader or the patrol board `Where is traffic in trouble?`, fly to a named system with `dump dis <sys>=5` or more, and enter it 4–6 times: about half show `raid: staged planned`. Kill the raid flight: the next `dump dis` for that system is lower. |
-| No station keeps a changed coefficient; restore-all works | After `shop: apply <shop>` and a later `shop: short expire`, dock there again: `shop: restore <shop>`, the price is back to vanilla, and `dump shop shops` no longer lists it. Then install with `ENABLED=2`, dock at each station listed in `dump shop shops`, until `shop: restore done`. |
-| Convoy missions 6c, 6c_1, 6c_2, 9c, 12c and `m18c_escort` play the same | Play each once with the mod and compare with `TRAFFIC=0` (or a vanilla run): same briefings, spawns, escort behaviour and outcomes. The mission systems log `dump gate=<why>` or `mode=vanilla`. |
-| 200-leg desynchronisation debug run | Install with `TUNE=T_leg=5` (one leg per 5 game s, so 200 legs take 1000 game s, about 2 min at 8x). Start or load a save in chapter 5 or later (guard off) and wait in a quiet system without acting. Each `rg: tick ... legs=<L> <letters>` line is one sample. At almost every sample (host: ≥ 98 % of legs) the letters include B, U or R, and X or V. No two regions show the same letter for more than 25 legs in a row, each region shows every letter within 120 legs, and no region shows `sc` ≥ 75 for more than 18 legs. By leg 200 each region has gone V → Q twice. `rg: <slot> wait sep`, `wait cover` and `take cover` lines are the exit coordination (spec 4.2a) at work. Reinstall without `TUNE` afterwards. |
-| Missions 1–4 the same with the cycle on; no raid above T1 in a guard system before chapter 5 | Play missions 1–4 from a new game. `dump rg 3 gefest ... gx=1`, and every `raid: go` / `raid: staged spawn` in a start system shows `tier=1`. |
-| Pro-6 double kill: TT1 in the same visit | Install with `PRO_SET=taira:6` (any non-start system with a trade station), enter Taira outside a mission (`dump gate=ok`, `mode=mod`). Kill two traders: `rg: pro taira(79) 6 -> 3 (kill <id>)`, then `3 -> 0`, and the next `gen: spawn` in the same visit shows `tier=1`. A third kill stops further spawns (`kills=3`, kill cap). |
+| One raid or contract per 20 min of free roam in danger 1–2 systems | Free roam 20 min outside missions in region systems that are not pirate homes (effective danger 1–2: every region system counts at least 1; no dump line shows it). Count `module=raid event=go`, `module=raid event=staged_spawn` and `module=hail event=contract ... result=accepted` (or a `Need an escort?` box). |
+| Contract pay within ±50 % of a pirate flight kill of similar risk | Compare `module=hail event=contract ... pay=<cr>` with the credits gained for killing a pirate flight of the same tier (`module=raid event=go ... tier=`). |
+| No autopause from raids the player has not joined | During `module=raid event=go` / `event=staged_spawn` without attacking anything: the game does not pause and wingmen keep their orders. |
+| Trouble answer → staged raid in about half of the entries; killing it lowers `dis` | Ask a trader or the patrol board `Where is traffic in trouble?`, fly to a named system with `module=state event=dump_disruption <sys>=5` or more, and enter it 4–6 times: about half show `module=raid event=staged_plan ... result=planned`. Kill the raid flight: the next `dump_disruption` for that system is lower. |
+| No station keeps a changed coefficient; restore-all works | After `module=shop event=apply shop=<shop>` and a later `module=shop event=shortage ... result=expired`, dock there again: `module=shop event=restore shop=<shop>`, the price is back to vanilla, and `restore_list` in `module=shop event=dump` no longer lists it. Then install with `ENABLED=2`, dock at each station listed in `restore_list`, until `module=shop event=restore pending_count=0 result=done`. |
+| Convoy missions 6c, 6c_1, 6c_2, 9c, 12c and `m18c_escort` play the same | Play each once with the mod and compare with `TRAFFIC=0` (or a vanilla run): same briefings, spawns, escort behaviour and outcomes. The mission systems log `module=safety event=dump gate=<why>` or `mode=vanilla`. |
+| 200-leg desynchronisation debug run | Install with `TUNE=T_leg=5` (one leg per 5 game s, so 200 legs take 1000 game s, about 2 min at 8x). Start or load a save in chapter 5 or later (guard off) and wait in a quiet system without acting. Each `module=region event=tick ... legs=<L> phases=<letters>` line is one sample. At almost every sample (host: ≥ 98 % of legs) the letters include B, U or R, and X or V. No two regions show the same letter for more than 25 legs in a row, each region shows every letter within 120 legs, and no region shows `clan_score` ≥ 75 for more than 18 legs. By leg 200 each region has gone V → Q twice. `module=region event=coordinate region=<slot> ... reason=separation result=wait`, `reason=coverage result=wait` and `reason=coverage result=advance` lines are the exit coordination (spec 4.2a) at work. Reinstall without `TUNE` afterwards. |
+| Missions 1–4 the same with the cycle on; no raid above T1 in a guard system before chapter 5 | Play missions 1–4 from a new game. `module=region event=dump region=3 system=gefest ... guard_scaled=true`, and every `module=raid event=go` / `event=staged_spawn` in a start system shows `tier=1`. |
+| Pro-6 double kill: TT1 in the same visit | Install with `PRO_SET=taira:6` (any non-start system with a trade station), enter Taira outside a mission (`module=safety event=dump gate=ok`, `module=state event=dump ... mode=mod`). Kill two traders: `module=region event=prosperity system=taira system_index=79 reason="kill <id>" old_prosperity=6 prosperity=3`, then `old_prosperity=3 prosperity=0`, and the next `module=generator event=spawn` in the same visit shows `tier=1`. A third kill stops further spawns (`kill_count=3`, kill cap). |
 | `pro` 9 in Gredos, Kadi, Taira holds 8x | Install with `PRO_SET=gredos:9,kadi:9,taira:9` (Kadi is capped to 3), check that 8x stays selectable in each, and compare with vanilla (`TRAFFIC=0`). |
-| No station keeps a parked ship after the visit | After `tier: parked <label>`, jump out and back: the old parked ship is gone and at most one `tier: parked` line appears per entry. |
+| No station keeps a parked ship after the visit | After `module=tier event=parked_spawn ... result=spawned`, jump out and back: the old parked ship is gone and at most one such line appears per entry. |
 
 Every `CHECK:` comment in the v0.2 modules marks an engine fact that the host stubs assume and the game has to confirm. Spec 11.2 (O1–O15) and 13.4 (R1–R11) list them with fallbacks: plain text in `ShowMsgBox`, the focus event on NPC ships (`hail_start 2`), a box before `PatrolStationDlg` (`board 2`), container sales and `ModuleGoodsState` (`short_price 0`, `shop_mode 0`), the `"HP"` trigger, and `GetTeamRelation("Pirates","Trade")` returning war (without it no raid runs).
 
 ### Removal and downgrade
 
-Changed station prices are stored in the game's market, not in `TRF`. Before uninstalling or going back to v0.1, install with `ENABLED=2`, dock at every station that `dump shop shops` lists, and wait for `shop: restore done`. Otherwise up to 8 stations keep +50 % buy prices for one cargo class (spec O13).
+Changed station prices are stored in the game's market, not in `TRF`. Before uninstalling or going back to v0.1, install with `ENABLED=2`, dock at every station that `restore_list` in `module=shop event=dump` lists, and wait for `module=shop event=restore pending_count=0 result=done`. Otherwise up to 8 stations keep +50 % buy prices for one cargo class (spec O13).
 
 ## v1 traffic (`EXP=0 TRAFFIC=1`)
 
-v1 ("identity across jumps and war traffic", design §12, spec [design/v1-spec.md](design/v1-spec.md)) adds eight modules on top of v0.2: `trf_loc` (text tables, `.loc` scaffold, quest-id deny list), `trf_track` (tracked pool, chase, meeting again), `trf_faction` (faction strength and tech ladder, on-screen sweeps, sweep contracts, pirate-side offers), `trf_clan` (clan tiers T3–T4, carrier raids, salvage), `trf_convoy` (TT4 convoys, equipment convoys, forced Bust, convoy slot), `trf_danger` (danger convoys), `trf_supply` (faction supply convoys, demand cargo, heat reset) and `trf_base` (pirate bases). The saved table is version 4. It is implemented and host-tested (44 host runs, 14 of them v1), not yet run in the game. Each v1 module loads on its own; `loaded ... modules=18` means all 18 traffic modules are in, a lower count names the missing ones in the `load <file> failed` lines before it.
+v1 ("identity across jumps and war traffic", design §12, spec [design/v1-spec.md](design/v1-spec.md)) adds eight modules on top of v0.2: `trf_loc` (text tables, `.loc` scaffold, quest-id deny list), `trf_track` (tracked pool, chase, meeting again), `trf_faction` (faction strength and tech ladder, on-screen sweeps, sweep contracts, pirate-side offers), `trf_clan` (clan tiers T3–T4, carrier raids, salvage), `trf_convoy` (TT4 convoys, equipment convoys, forced Bust, convoy slot), `trf_danger` (danger convoys), `trf_supply` (faction supply convoys, demand cargo, heat reset) and `trf_base` (pirate bases). The saved table is version 4. It is implemented and host-tested (44 host runs, 14 of them v1), not yet run in the game. Each v1 module loads on its own; `event=loaded ... module_count=18` means all 18 traffic modules are in, a lower count names the missing ones in the `event=file_load file=<file> result=failed` lines before it.
 
 ### What the player sees
 
@@ -217,7 +269,7 @@ v1 ("identity across jumps and war traffic", design §12, spec [design/v1-spec.m
 - Demand cargo: the hail menu offers `Demand cargo` (also at heat 3–6, when traders refuse to talk). The trader complies (80 % minus 20 % per live escort, at least 10 %), drops 1–3 containers into the mothership's inventory and flees; heat +2. A refusal starts the attack response.
 - Heat reset: at an FTU relation station with heat ≥ 3 a box offers to clear heat for 100,000 cr per heat point (at most 950,000). The vanilla relation repair with Trade also clears heat.
 - Clans T3–T4: clans with a high score raid with bigger flights; T4 clans send carrier raids (a pirate mothership arrives 30–90 s after entry, launches up to 2 waves of 3 fighters from its hangar and recovers them; it leaves at 25 % HP). Clans gain salvage (failed sweeps, raided faction convoys, destroyed patrols) and field salvaged faction hulls for a few legs; news reports it.
-- Factions: Vks, Kfni and the others have a strength 1..9 per region that rises with prosperity and falls with losses; their fighters and sweeps use a tech ladder of their own hulls. Sweeps against a strong clan are attempts: up to 4 per Raids phase, watched on-screen when the player is in the target system (`fac: sweep start`); faction flights withdraw when they lose 40 %. Patrol stations of the owner offer a join contract (`... Join it for <n> cr?`) and a base bounty; a joined attempt succeeds and pays. Pirate stations offer a paid raid tip-off and intel (`po`).
+- Factions: Vks, Kfni and the others have a strength 1..9 per region that rises with prosperity and falls with losses; their fighters and sweeps use a tech ladder of their own hulls. Sweeps against a strong clan are attempts: up to 4 per Raids phase, watched on-screen when the player is in the target system (`module=faction event=sweep_start`); faction flights withdraw when they lose 40 %. Patrol stations of the owner offer a join contract (`... Join it for <n> cr?`) and a base bounty; a joined attempt succeeds and pays. Pirate stations offer a paid raid tip-off and intel (`module=faction event=offer`).
 - TT4 convoys: at `pro` 8–9, 25 % / 40 % of trade-hub traffic is a convoy of 3 / 4 transports with 4 / 6 escorts and 2–4 equipment items (45,000–95,000 cr each). Killing one forces the region into Bust at the next region tick.
 - Equipment convoys: one at a time map-wide, from a faction with strength ≥ 2 in a `pro` ≥ 6 system, about once per 30–35 legs: military transports with faction warship escorts and holds of 85,000–400,000 cr. Wave 1 of faction reinforcements comes 20–30 s after the first counted attack, wave 2 at 50 % transport HP one rung higher. Killing it gives heat +3, faction standing −1, strength −1 and a forced Bust; pirates taking it give the clan salvage +3. The owner may offer a defence contract (4x escort pay, ≤ 30,000 cr).
 - Danger convoys: at disruption ≥ 4 or in a Raids-phase region, 2–3 traders gather at the trade station (up to 120 s) and leave together with 3–5 escorts; 20 % still fly alone.
@@ -243,17 +295,78 @@ Defaults are in each module's `OptDef`; `config.script` lists them all. `install
 
 ### Log lines (v1)
 
-Every line of the mod is now `traffic: lua: exp=v1 ...` in `sw3tp.log`; the v0.1 and v0.2 lines above keep their text after that prefix.
+Every line of the mod is now `traffic: lua: exp=v1 module=... event=...` in `sw3tp.log`; the v0.1 and v0.2 lines above use the same logfmt form.
 
-- Load: `module=core event=loaded map=true module_count=18 ...`, `fac: install pirdock=1 mine=1`, `sp: install reldock=<n> mine=1/1`, `fac: fs init slots=8/8 def=33333`. With `enabled 2`: `module_count=4`.
-- Dump (entry, load, jump, `dump` s): `dump enter v=4 ...`, then `dump v4 fst=<5 digits> tp=<pool> lr=<n> base=<n> feq=<state> offer=<k> fs 1=<5 digits> ...`, `dump tp n=`, `dump tq exits=`, `dump fac ...`, `dump clan lr= salv= carrier=`, `dump cv feq= cvs= e= lv=`, `dump dc danger= leaving=`, `dump supply n= border= ...`, `dump base n= allow= on=`, `loc: dump lang= mode= en= deny= qcur=`, `dump gate=ok ... qs= q= qa=`.
-- Tracking: `tk: write <record> (<dest> d=<n>) pool=<n>`, `tk: chased id= to <sys> dt=`, `tk: jump dest= written= chased= pool=`, `tk: entry id= e= d= fl= -> chase|port|dock`, `tk: spawn chase|port|dock pool id= -> id= from= tier= ... dm=<damage>`, `tk: expire|evict|drop|trim ...`.
-- Supply, demand, heat: `sp: roll f= ... chance=`, `sp: spawn id= f= hull=Walrus_... esc= grp=TRF_Conv_<n>`, `sp: demand id= esc= p= roll=`, `sp: heat offer heat= cost=`, `sp: heat reset ...`, `sp: temp_change <team> ok= credits <a> -> <b>`, `fac: fst <faction> <old> -> <new> (<why>)`.
-- Clans: `clan: score <slot> <old> -> <new> (<why>)`, `clan: lr new|expired|removed slot= tier=`, `clan: carrier due in <s> s slot=`, `clan: carrier <n> hull=<hull> tier= sc= via=<portal> esc= hp0=`, `clan: launch n=...`, `clan: wave n= patrols|raids ...`, `clan: salv <slot> <old> -> <new> f= (<why>)`, `clan: salv flight slot= stage= f= ships= lead=`, `clan: salv decay leg <L> ...`.
-- Factions and sweeps: `rg: sweep <slot> planned for leg <L>`, `rg: sweep <slot> attempt <k> won|failed (p=) ...` (off-screen), `fac: sweep entry slot= k= f= in <s> s`, `fac: sweep start slot= k= f= roll= p= rung= waves= ...`, `fac: sweep end (withdraw|window|wiped|lost) slot= k= won=<0|1> ... join=<pay>`, `fac: po offer|accepted|entry|paid ...`, `rg: pay ...`.
-- Convoys: `cv: tt4 id= transports= escorts= src= ...`, `cv: forced bust slot= sys= (tt4|feq <id>)`, `cv: feq scheduled f= sys= r= leg=`, `cv: feq due in <s> s`, `cv: feq build id= ... escorts=`, `cv: feq appears id= path= hp0= ships= tier=`, `cv: feq attacked by p id= wave1 at +<s> s`, `cv: feq wave 1|2 rung= ships=` (or `feq wave 2 skipped (cap)`), `cv: feq contract accepted id=`, `cv: feq end kill|completed|... id= f= src=`, `cv: feq cooldown over leg=`, `cv: slot released (...)`, `cv: tt4_value_miss`/`feq_value_miss` (hold outside its value window; tuning).
-- Danger convoys: `dc: start n= mode= N= esc= ...`, `dc: member n= j=<i>/<N> id=`, `dc: leave n= (complete|timeout) members= lead= exit= waited=`, `dc: wind|end|jump ...`.
-- Bases: `base found <sys>(<idx>) leg= p= roll= slot=`, `base active ...`, `base created|enter|load <sys> object=... h=`, `base garrison <sys> tier= flights= ships=`, `base attacked`, `base wave 1 ...`, `base destroyed <sys>(<idx>) by=player|...`, `base drop ...`, `base jump: garrison flights deleted=`.
+- Load: `module=core event=loaded map=true module_count=18 ...`, `module=faction event=install installed_count=1 pirdock_wrapped=true`, `module=supply event=install installed_count=2 reldock_wrapped=true temp_change_wrapped=true`, `module=faction event=region_standing_init slot_count=8 region_count=8 default=3`. With `enabled 2`: `module_count=4`.
+- Dump (entry, load, jump, `dump` s):
+  - `module=state event=dump source=enter ...`
+  - `module=state event=dump_v4 faction_standing=<5 digits> track_pool_count=<n> clan_raid_count=<n> base_count=<n> equipment_convoy=<state> offer=<k> faction_strength=<5 digits>,...`
+  - `module=track event=dump part=pool pool_count=<n> records=...` and `module=track event=dump part=arrivals arrivals=... exit_write_count=<n>`
+  - `module=faction event=dump faction_standing=... offer=... sweep=... region_standings=...`
+  - `module=clan event=dump record_count=<n> records=... salvage=... carrier_state=...`
+  - `module=convoy event=dump feq_record=... convoy_slot=... live_state=...`
+  - `module=danger event=dump danger=<bool> leaving_count=<n>`
+  - `module=supply event=dump convoy_count=<n> convoys=... border=...`
+  - `module=base event=dump record_count=<n> allow_count=<n> enabled=<bool> records=...`
+  - `module=loc event=dump language=<l> mode=<n> en_count=<n> deny_count=<n> deny_quest_count=<n> quest_active=<bool>`
+  - `module=safety event=dump gate=ok ... quest_state=<n> quest=<n> quest_active=<...>`
+- Tracking:
+  - `module=track event=write trader_id=<n> system=<dest> route_state=<n> record=<record> pool_count=<n>`
+  - `module=track event=chased trader_id=<n> destination=<sys> elapsed=<s>`
+  - `module=track event=jump destination=<sys> written_count=<n> chased_count=<n> pool_count=<n>`
+  - `module=track event=entry trader_id=<n> legs_elapsed=<n> route_state=<n> flags=<n> result=chase|port|dock`
+  - `module=track event=spawn pool_id=<n> trader_id=<n> via=chase|port|dock origin=<sys> tier=<n> pool_tier=<n> ... damage_band=<n> flags=<n>`
+  - `module=track event=expire|evict|drop|trim ...`
+- Supply, demand, heat:
+  - `module=supply event=roll faction=<n> system=<sys> sweep=<bool> escort_count=<n> chance=<n> result=spawn`
+  - `module=supply event=spawn trader_id=<n> faction=<n> hull=Walrus_... escort_count=<n> escort_planned=<n> group=TRF_Conv_<n> ...`
+  - `module=supply event=demand trader_id=<n> ... chance=<n> roll=<n> result=comply|refuse`
+  - `module=supply event=heat_offer heat=<n> cost=<cr> tip=<n>` and `module=supply event=heat_reset reason=paid heat_before=<n> heat_after=<n>`
+  - `module=supply event=temp_change name=<team> credits_before=<a> credits_after=<b> accepted=<bool>`
+  - `module=faction event=faction_standing faction=<n> reason=<why> standing_before=<old> standing_after=<new>`
+- Clans:
+  - `module=clan event=score slot=<n> reason=<why> previous_score=<old> clan_score=<new>`
+  - `module=clan event=carrier_record slot=<n> tier=<n> ... result=new|expired|removed`
+  - `module=clan event=carrier_entry slot=<n> end_legs=<n> delay=<s> result=due`
+  - `module=clan event=carrier carrier_id=<n> hull_type=<hull> tier=<n> clan_score=<n> via=<portal> escort_count=<n> hull_start=<hp> hold_point=<x,y,z> result=spawned`
+  - `module=clan event=carrier_wave carrier_id=<n> wave=<n> raid_id=<n> tier=<n> ship_count=<n>`, `module=clan event=launch raid_id=<n> hull_type=<hull> result=failed`
+  - `module=clan event=wave raid_id=<n> trader_id=<n> result=patrol|raid|recovered`
+  - `module=clan event=salvage slot=<n> source=<s> previous_salvage=<old> salvage=<new> faction=<n> result=added|used`
+  - `module=clan event=salvage_flight slot=<n> stage=<n> faction=<n> ship_count=<n> lead=<hull>`
+  - `module=clan event=salvage_decay legs=<L> salvage=<slot:salvage,...>`
+- Factions and sweeps:
+  - `module=region event=sweep_plan region=<slot> leg=<L>` and `module=region event=sweep region=<slot> faction=<n> via=off clan_score=<n> chance=<n> attempt=<k> result=won|failed` (off-screen)
+  - `module=faction event=sweep_entry slot=<n> attempt=<k> faction=<n> delay=<s> base=<...>`
+  - `module=faction event=sweep_start slot=<n> attempt=<k> faction=<n> roll=<n> chance=<n> rung=<n> wave_count=<n> ... result=started`
+  - `module=faction event=sweep_end slot=<n> attempt=<k> reason=withdraw|window|wiped|lost ... join=<bool> won=<bool>`
+  - `module=faction event=offer|offer_accept|offer_entry|offer_paid ...` and `module=region event=pay reason=<why> amount=<n>`
+- Convoys:
+  - `module=convoy event=tt4 trader_id=<n> escort_source=<s> faction=<n> transport_count=<n> escort_count=<n> ...`
+  - `module=convoy event=forced_bust region=<slot> system=<sys> reason="tt4 <id>"` (or `"feq <id>"`)
+  - `module=convoy event=feq_schedule faction=<n> system=<sys> forced=<bool> rung=<n> leg=<L> candidate_count=<n> result=scheduled`
+  - `module=convoy event=feq_entry faction=<n> rung=<n> delay=<s> result=due`
+  - `module=convoy event=feq_build trader_id=<n> faction=<n> hull_name=<hull> transport_count=<n> escort_count=<n>`
+  - `module=convoy event=feq_appear trader_id=<n> path=<p> hull_start=<hp> ship_count=<n> tier=<n> ...`
+  - `module=convoy event=feq_attack trader_id=<n> attacker=p wave1_delay=<s>`
+  - `module=convoy event=feq_wave wave=1|2 rung=<n> ship_count=<n>` (or `wave=2 reason=cap result=skipped`)
+  - `module=convoy event=feq_contract trader_id=<n> result=accepted`
+  - `module=convoy event=feq_end trader_id=<n> faction=<n> ... result=kill|...` (and `event=feq_expire ... result=completed|taken_off_screen`)
+  - `module=convoy event=feq_cooldown_over leg=<L>`, `module=convoy event=slot_release ...`
+  - `module=convoy event=tt4_value_miss` / `event=feq_value_miss` (hold outside its value window; tuning).
+- Danger convoys:
+  - `module=danger event=start convoy_id=<n> mode=<n> member_planned=<N> escort_count=<n> ...`
+  - `module=danger event=member convoy_id=<n> member=<j> member_planned=<N> trader_id=<n> path=<p> tier=<n>`
+  - `module=danger event=leave convoy_id=<n> reason=complete|timeout member_count=<n> member_spawned=<n> lead_id=<n> exit=<portal> waited=<s> result=go`
+  - `module=danger event=wind|end|jump ...`
+- Bases:
+  - `module=base event=found system=<sys> system_index=<idx> slot=<n> leg=<L> chance=<n> roll=<n> result=founded`
+  - `module=base event=active system=<sys> system_index=<idx> leg=<L> disruption=<n>`
+  - `module=base event=create system=<sys> hull_band=<n> result=created` and `module=base event=reconcile source=enter|load system=<sys> object=alive hull_band=<n>`
+  - `module=base event=garrison system=<sys> tier=<n> power=<n> salvage=<n> flight_count=<n> ship_count=<n>`
+  - `module=base event=attacked system=<sys> game_time=<s>`, `module=base event=wave system=<sys> wave=<n> flight_count=<n> ship_count=<n>`
+  - `module=base event=destroyed system=<sys> system_index=<idx> slot=<n> by=player|... off_screen=<bool>`
+  - `module=base event=drop system=<sys> system_index=<idx> stage=<n> reason=cooldown|low_disruption|player_stayed|records|removed`
+  - `module=base event=jump deleted_count=<n>`
 
 ### Running it on the clone
 
@@ -263,42 +376,42 @@ Every line of the mod is now `traffic: lua: exp=v1 ...` in `sw3tp.log`; the v0.1
     EXP=0 TRAFFIC=1 AUTOSAVE=1 TUNE=T_leg=5 sh mods/traffic/install-test.sh           # 200-leg run with forced Busts
     EXP=0 TRAFFIC=1 AUTOSAVE=1 LEVEL=v01 sh mods/traffic/install-test.sh              # v0.1 or v0.2 feature set only (LEVEL=v02)
     SECS=1800 sh mods/traffic/run-test.sh
-    grep -a 'traffic: lua: exp=v1 \(tk:\|cv: feq\|fac: sweep\|clan: carrier\|dc: \|base \)' <clone>/sw3tp.log
+    grep -a 'traffic: lua: exp=v1 \(module=\(track\|clan\) \|event=feq_\|module=faction event=sweep\|module=danger\|module=base\)' <clone>/sw3tp.log
 
 ### In-game checks for the v1 exit criteria (design §12)
 
 | criterion | how to check |
 |---|---|
-| Full campaign without mission breakage | Over the playthrough: no new `ScriptErrors.log` lines and no `ERROR` lines; each mission plays as with `TRAFFIC=0`. Mission systems log `dump gate=<why>`; `loc: dump ... qcur=<id>` names the active quest when the quest-id deny list is in the map (Status). |
+| Full campaign without mission breakage | Over the playthrough: no new `ScriptErrors.log` lines and no `event=error` lines; each mission plays as with `TRAFFIC=0`. Mission systems log `module=safety event=dump gate=<why>`; `module=loc event=dump ... quest_active=true` marks an active quest when the quest-id deny list is in the map (Status). |
 | 8x holds wherever it held in vanilla | Repeat the v0.2 8x check with v1 traffic in Gredos, Aurora and a `pro` 9 trade hub (`PRO_SET=gredos:9`). |
-| An attacked trader can be followed and is found ahead, damaged | Select a trader (focus), damage it until it flees to a portal (`raid: flee` or `gen: remove id= why=exit`), and jump through the same portal within 60 s: `tk: chased id=` before the jump, `tk: entry id= ... -> chase` and `tk: spawn chase ... dm=<n>` 5–15 s after arrival; the trader shows its damage and says `They followed us!`. |
-| A consequence seen within two system visits | Ask testers after two visits whether they saw a thinner lane, a shortage price, a news item or a trader met again (`tk: spawn port|dock` with `Wolves again`). |
-| First on-screen sweep against a T4 clan usually fails; a joined attempt succeeds and pays | With `TUNE=T_leg=5`, wait for `rg: sweep <slot> planned for leg <L>` in a region whose `dump rg` score is ≥ 75 (T4), then be in the target system at that leg: `fac: sweep entry`, `fac: sweep start`, and most first attempts end `fac: sweep end (withdraw) ... won=0` with a news post. For the joined case, accept the join box at a patrol station of the sweeping faction (`dump fac ... ct1`), take part in the fight: `won=1 join=<pay>` and a `rg: pay` line. |
-| A base appears only in allow-list systems, never in front of the player, survives leave/revisit/save/load, its destruction resets disruption | Blocked until `gen_map.py` emits `ba`/`bs`: today `dump base n=0 allow=0`. Then: `base found <sys>` only for allow-list systems and never for the current one; leave and revisit (`base enter <sys> object=alive`), save and load (`base load <sys> object=alive`); destroy it: `base destroyed ... by=player` and the next `dump dis <sys>` is 0. |
-| 8x holds with a carrier group of 10 ships | In a T4 region (score ≥ 75), wait for `clan: carrier due` and `clan: carrier <n> hull=...` in a busy system: 8x stays selectable while carrier, escorts and waves are alive. |
-| Carrier launch at `HANGAROUT`, recovery by distance, no recovered fighter in the player's hangar | Watch a carrier wave: fighters appear at the hangar exit (`clan: launch n=`), fly back after the raid and vanish within about 20 units of the hangar (`dump stat ... carrier_recover=<n>`); the player's hangar holds no new ship afterwards. CHECK: the hangar offsets (`hgo`, `hgi`) and `rec_d` are guesses until measured. |
-| Equipment convoy waves, cap, forced Bust, never two at once | Install with `FEQ_AT=<sys>` for a `pro` ≥ 6 system owned by a faction, jump once and go there: `cv: feq scheduled`, `cv: feq due in <s> s`, `cv: feq appears`. Attack it: `cv: feq attacked by p ... wave1 at +<20..30> s`, then `cv: feq wave 1`; at half transport HP `cv: feq wave 2` (`skipped (cap)` while 14 ships live; the live count never exceeds 14). Kill it: `cv: forced bust slot=<s>` and the next `rg: tick` shows `X` for that region. Over the 200-leg run `dump v4 ... feq=` never shows two records. |
-| `pro` 9 shows ≥ 16 traffic ships | `PRO_SET=gredos:9`: `dump tier pro=9 band=... caps=5/20/2` and `dump enter ... ships=<n>` with n ≥ 16 after a few minutes; if 8x drops, rerun with `BAND_HALF=1` and expect ≥ 12. |
-| TT4 kill forces Bust; the 18-leg T4 bound holds | In a Boom region at `pro` 8–9 (`PRO_SET`), kill a `cv: tt4 id=` convoy: `cv: forced bust slot= ... (tt4 <id>)` and the next `rg: tick` shows `X`. In the `TUNE=T_leg=5` run, no region shows `sc` ≥ 75 for more than 18 legs (host: up to 20 when clans are pushed every leg). |
-| Danger convoys at `dis` 5 form, leave together, keep the transport rate | Enter a system with `dump dis <sys>=5` (or a region in `R`): `dc: start`, `dc: member ... j=<i>/<N>` at the station, `dc: leave n= (complete) members=<N>`. Over 30 min count transports per hour from `gen: spawn` and `dc: member` lines, compare with a run with `DCONV=0` (±25 %); no `dump dc` sample shows two convoys. |
+| An attacked trader can be followed and is found ahead, damaged | Select a trader (focus), damage it until it flees to a portal (`module=raid event=flee` or `module=generator event=remove trader_id=<n> reason=exit`), and jump through the same portal within 60 s: `module=track event=chased trader_id=<n>` before the jump, `module=track event=entry trader_id=<n> ... result=chase` and `module=track event=spawn ... via=chase ... damage_band=<n>` 5–15 s after arrival; the trader shows its damage and says `They followed us!`. |
+| A consequence seen within two system visits | Ask testers after two visits whether they saw a thinner lane, a shortage price, a news item or a trader met again (`module=track event=spawn ... via=port|dock` with `Wolves again`). |
+| First on-screen sweep against a T4 clan usually fails; a joined attempt succeeds and pays | With `TUNE=T_leg=5`, wait for `module=region event=sweep_plan region=<slot> leg=<L>` in a region whose `module=region event=dump` `clan_score` is ≥ 75 (T4), then be in the target system at that leg: `module=faction event=sweep_entry`, `module=faction event=sweep_start`, and most first attempts end `module=faction event=sweep_end ... reason=withdraw ... won=false` with a news post. For the joined case, accept the join box at a patrol station of the sweeping faction (`module=faction event=dump ... region_standings=...ct1`), take part in the fight: `join=true won=true` and a `module=region event=pay` line. |
+| A base appears only in allow-list systems, never in front of the player, survives leave/revisit/save/load, its destruction resets disruption | Blocked until `gen_map.py` emits `ba`/`bs`: today `module=base event=dump record_count=0 allow_count=0`. Then: `module=base event=found system=<sys> ... result=founded` only for allow-list systems and never for the current one; leave and revisit (`module=base event=reconcile source=enter system=<sys> object=alive`), save and load (`module=base event=reconcile source=load system=<sys> object=alive`); destroy it: `module=base event=destroyed ... by=player` and the next `module=state event=dump_disruption` value for `<sys>` is 0. |
+| 8x holds with a carrier group of 10 ships | In a T4 region (score ≥ 75), wait for `module=clan event=carrier_entry ... result=due` and `module=clan event=carrier carrier_id=<n> hull_type=... result=spawned` in a busy system: 8x stays selectable while carrier, escorts and waves are alive. |
+| Carrier launch at `HANGAROUT`, recovery by distance, no recovered fighter in the player's hangar | Watch a carrier wave: fighters appear at the hangar exit (`module=clan event=carrier_wave carrier_id=<n> wave=<n> ...`), fly back after the raid and vanish within about 20 units of the hangar (`module=state event=dump_stat ... carrier_recover=<n>`); the player's hangar holds no new ship afterwards. CHECK: the hangar offsets (`hgo`, `hgi`) and `rec_d` are guesses until measured. |
+| Equipment convoy waves, cap, forced Bust, never two at once | Install with `FEQ_AT=<sys>` for a `pro` ≥ 6 system owned by a faction, jump once and go there: `module=convoy event=feq_schedule ... result=scheduled`, `module=convoy event=feq_entry ... delay=<s> result=due`, `module=convoy event=feq_appear`. Attack it: `module=convoy event=feq_attack ... attacker=p wave1_delay=<20..30>`, then `module=convoy event=feq_wave wave=1`; at half transport HP `event=feq_wave wave=2` (`reason=cap result=skipped` while 14 ships live; the live count never exceeds 14). Kill it: `module=convoy event=forced_bust region=<s>` and the next `module=region event=tick` shows `X` for that region in `phases`. Over the 200-leg run `module=state event=dump_v4 ... equipment_convoy=` never shows two records. |
+| `pro` 9 shows ≥ 16 traffic ships | `PRO_SET=gredos:9`: `module=tier event=dump prosperity=9 band=... trader_cap=5 ship_cap=20 parked_cap=2` and `module=state event=dump source=enter ... ship_count=<n>` with n ≥ 16 after a few minutes; if 8x drops, rerun with `BAND_HALF=1` and expect ≥ 12. |
+| TT4 kill forces Bust; the 18-leg T4 bound holds | In a Boom region at `pro` 8–9 (`PRO_SET`), kill a `module=convoy event=tt4 trader_id=<n>` convoy: `module=convoy event=forced_bust region=<slot> ... reason="tt4 <id>"` and the next `module=region event=tick` shows `X`. In the `TUNE=T_leg=5` run, no region shows `clan_score` ≥ 75 for more than 18 legs (host: up to 20 when clans are pushed every leg). |
+| Danger convoys at `dis` 5 form, leave together, keep the transport rate | Enter a system with `module=state event=dump_disruption <sys>=5` (or a region in `R`): `module=danger event=start`, `module=danger event=member ... member=<j> member_planned=<N>` at the station, `module=danger event=leave ... reason=complete member_count=<N>`. Over 30 min count transports per hour from `module=generator event=spawn` and `module=danger event=member` lines, compare with a run with `DCONV=0` (±25 %); no `module=danger event=dump` sample shows two convoys. |
 
 Every `CHECK:` comment in the v1 modules marks an engine fact the host stubs only shape-check: `CreateStation`, `Escort`, `SetPosition`/`GetVectorOrientation` (carrier launch), `AddModule`, `GetQuestState` for unknown ids, `GetMaxSpeed`, `Blow`, `PlayFX`. Spec 11.3 (V1–V12) and 13.4 list them with fallbacks.
 
 ### Removal and downgrade (v1)
 
-Pirate bases are stations in the game's snapshots and station prices live in the market, neither in `TRF`. Before uninstalling or going back to v0.2, run once with `enabled 2` (`ENABLED=2` on the clone, `install.sh --restore-only` in the game): bases are removed (`base bases removed`) and the stations of `dump shop shops` restore their prices when docked (`shop: restore done`). v0.2 resets a version-4 `TRF` (unknown version) and drops `fs`, `tp`, `base` and the other v1 fields.
+Pirate bases are stations in the game's snapshots and station prices live in the market, neither in `TRF`. Before uninstalling or going back to v0.2, run once with `enabled 2` (`ENABLED=2` on the clone, `install.sh --restore-only` in the game): bases are removed (`module=base event=bases_removed`) and the stations in `restore_list` of `module=shop event=dump` restore their prices when docked (`module=shop event=restore pending_count=0 result=done`). v0.2 resets a version-4 `TRF` (unknown version) and drops `fs`, `tp`, `base` and the other v1 fields.
 
 ## Station voices (`EXP=0 TRAFFIC=1`)
 
-Station voices (proposal 3 steps 1 and 2, spec [design/station-voices-spec.md](design/station-voices-spec.md), design `design/worldbuilding/03-station-voices.md`) is one module, `trf_station`, loaded after the v1 files. It wraps two vanilla dock functions of `DockStation.script`: `_NoneStation_Action` (closed stations) and `__TradeStation_Action` (trade docking). It never wraps `__TradeStationDock_Ok`: the fee box OK calls it by name, so trf_shop's wrapper runs on every docking. It is implemented and host-tested (50 host runs, 6 of them `stn-a`..`stn-f`), not yet run in the game. The load line counts it separately: `loaded map=1 modules=18 extra=1 ...` (`extra=0` means `trf_station.script` failed to load and both stations stay vanilla).
+Station voices (proposal 3 steps 1 and 2, spec [design/station-voices-spec.md](design/station-voices-spec.md), design `design/worldbuilding/03-station-voices.md`) is one module, `trf_station`, loaded after the v1 files. It wraps two vanilla dock functions of `DockStation.script`: `_NoneStation_Action` (closed stations) and `__TradeStation_Action` (trade docking). It never wraps `__TradeStationDock_Ok`: the fee box OK calls it by name, so trf_shop's wrapper runs on every docking. It is implemented and host-tested (50 host runs, 6 of them `stn-a`..`stn-f`), not yet run in the game. The load line counts it separately: `module=core event=loaded map=true module_count=18 extra_count=1 ...` (`extra_count=0` means `trf_station.script` failed to load and both stations stay vanilla).
 
 ### What the player sees
 
 - Closed stations change their line with the region: martial law during an open sweep of the system owner or for 20 legs after an owner change (Hafa, Moscowia, ND, Solncevka, Endoria 2, Aurora, Corrino, Shula, Taira), silence at disruption 7, a blockade line in Raids, "no free berths" in Bust or a shortage, "under reconstruction" in Recovery, "officials at lunch" in Boom. Mod lines replace some of them: New Empire and USS martial law, the sealed depot, a dead pirate den (clan tier 1 in Bust/Recovery) and a friendly den at heat 5. Silent stations and quest dialog keys never change.
 - Trade stations keep a standing per station (-3..5). Escort contracts, sweep and danger convoy escorts and answered raids near the station raise it by 1 per visit (ceiling 5); killing or attacking traders and demanding cargo lower it (at most 2 per visit); robbing a navy supply run the station tipped sets it to -3 and stops its tips until the region is Quiet. It decays one step toward 0 per 12 legs; heat 5 caps it at 0, heat 7 at -2.
 - On approach the dockmaster greets by standing (radio line, speaker of the station owner), and from chapter 4 at standing 2+ reads the harbour news (the S19/S26 trouble and boom answers); standing 4+ adds one region tip (sweep, supply run, pirate base); standing 1+ without news gives an ambient line (chapters 0-5, 7-11).
-- Fees from chapter 5: a hub surcharge at `pro` ≥ 8 for standing ≤ 2 and a penalty at -2 (x2) and -3 (x3), `fee = round100(200 L_w (1 + 0.1 pro) m d_k)`, at most 10,000 cr. Paying a penalty buys back one step (never above -1, once per visit). Too few credits: the box docks on credit (no charge, standing -1, no news). Cancel never pays and never docks. A fee paid (or a docking on credit) is not asked again in the same visit, also after a load. No fee while any story mission runs or ran earlier in the visit (the visit latch, `nofee=latch`), with `strict 0`, or in a system whose quest ids are in process. The latch stops only the fee: during a mission the moods, greeting, news and tips still play (also in campaign teleport targets such as NJ1 and Taira while no quest naming the system is in process).
-- Start systems stay vanilla in chapters 1-4 (the `guard`): no mood, greeting, news, tip, ambient line or fee there (`stn: pass reason=mode:guard`).
+- Fees from chapter 5: a hub surcharge at `pro` ≥ 8 for standing ≤ 2 and a penalty at -2 (x2) and -3 (x3), `fee = round100(200 L_w (1 + 0.1 pro) m d_k)`, at most 10,000 cr. Paying a penalty buys back one step (never above -1, once per visit). Too few credits: the box docks on credit (no charge, standing -1, no news). Cancel never pays and never docks. A fee paid (or a docking on credit) is not asked again in the same visit, also after a load. No fee while any story mission runs or ran earlier in the visit (the visit latch, `no_fee_reason=latch`), with `strict 0`, or in a system whose quest ids are in process. The latch stops only the fee: during a mission the moods, greeting, news and tips still play (also in campaign teleport targets such as NJ1 and Taira while no quest naming the system is in process).
+- Start systems stay vanilla in chapters 1-4 (the `guard`): no mood, greeting, news, tip, ambient line or fee there (`module=station event=pass reason=mode:guard`).
 
 ### Config keys (station voices)
 
@@ -318,34 +431,47 @@ Defaults are in `TRF_Stn_OptDef`/`TRF_Stn_TuneDef`; `config.script` does not lis
 
 ### Log lines (station voices)
 
-- Load and entry: `stn: install none=1 trade=1 mine=1/1` on every MapInitialization, `stn: enter ve=<leg> sys=<n>(<idx>) latch=<0/1> pruned=<n> vo=<leg or ->`, `stn: load latch=<0/1>`, `stn: owner sys=<n> static=<s> now=<t> vo=<leg>`.
-- Closed stations: `stn: none sys=<n>(<idx>) tip=<p> -> <key> rule=<0..8|7b> ph= dis= own= mood=<0|1|2> spk=<template>` (changes at `log 1`, every call at `log 2`).
-- Gates: `stn: pass reason=<off|nomap|deny|vdeny|flag|trade_war|latch|gate:<why>|mode:<why>|row|table|tip|error> sys=<n> at=<none|dock>`, once per reason and visit.
-- Docking: `stn: dock k=<key> param=<p> id=<prm+pos|pos|prm> d=<dist> st= e= heat= greet=<key|-> news=<0/1> tip=<kind|-> amb=<key|-> fee=<n> m=<m> nofee=<pv|latch|strict0|ch|->`, `stn: idmis k= jp= jx= d=`, `stn: fee k= fee= L_w= pro= m= dk= box=<0/1>`, `stn: fee k= ok=<1/0> cr=<a>-><b> credit=<0/1> buyback=<0/1>`, `stn: docked k= up=<0/1>`, `stn: stale box`.
-- Standing: `stn: deed k= d=<+1|-1|0|set> why=<why> st=<a>-><b> cap=<-|ceil|gv|dn|far> dist=<d|->`, `stn: decay k= st=<a>-><b> n=`, `stn: tip k= kind=<sweep|feq|base> sys= tf=`, `stn: rob k= st=-3 nt=1`.
-- Dump: `dump stn ve=<ve> n=<count> <k>:<st>/<lg>/<gv>/<bv>/<tf>[!] ... vo <name>=<leg> ... wrapped=1/1`.
+- Load and entry:
+  - `module=station event=install none_installed=true trade_installed=true none_wrapped=true trade_wrapped=true` on every MapInitialization
+  - `module=station event=enter visit=<leg> system=<n> system_index=<idx> latch=<bool> pruned_count=<n> owner_visit=<leg or nil>`
+  - `module=station event=load latch=<bool>`
+  - `module=station event=owner system=<n> static_owner=<s> owner=<t> owner_visit=<leg>`
+- Closed stations: `module=station event=mood system=<n> system_index=<idx> vanilla_key=<p> mood_key=<key> rule=<0..8|7b> phase= disruption= owner= mood=<0|1|2> speaker=<template>` (changes at `log 1`, every call at `log 2`).
+- Gates: `module=station event=pass reason=<off|nomap|deny|vdeny|flag|trade_war|latch|gate:<why>|mode:<why>|row|table|tip|error> system=<n> at=<none|dock>`, once per reason and visit.
+- Docking:
+  - `module=station event=dock station_key=<k> param=<p> via=<prm+pos|pos|prm> distance=<dist> standing= rung= heat= greeting=<key|-> news=<bool> tip=<kind|nil> ambient=<key|nil> fee=<n> fee_multiplier=<m> no_fee_reason=<paid_visit|latch|strict_0|chapter>`
+  - `module=station event=id_mismatch station_key=<k> param_station=<jp> position_station=<jx> distance=<d>`
+  - `module=station event=fee station_key=<k> fee=<n> world_level=<L_w> prosperity=<pro> fee_multiplier=<m> difficulty_factor=<dk> box=<bool>`
+  - `module=station event=fee_ok station_key=<k> credits_before=<a> credits_after=<b> credit=<bool> buyback=<bool>` (`event=fee_cancel` for Cancel)
+  - `module=station event=docked station_key=<k> standing_up=<bool>`, `module=station event=stale_box answer=ok|cancel`
+- Standing:
+  - `module=station event=deed station_key=<k> change=<+1|-1|0|set> reason=<why> standing_before=<a> standing_after=<b> cap=<none|ceiling|visit_gain|visit_loss|far> distance=<d>`
+  - `module=station event=decay station_key=<k> standing_before=<a> standing_after=<b> decay_steps=<n>`
+  - `module=station event=tip station_key=<k> kind=<sweep|feq|base> system=<n> tip_leg=<L>`
+  - `module=station event=rob station_key=<k> standing_after=-3 tip_ban=true`
+- Dump: `module=station event=dump visit=<ve> record_count=<n> records=<k>:<st>/<lg>/<gv>/<bv>/<tf>[!] ... owner_visits=<name>:<leg>,... none_wrapped=true trade_wrapped=true`.
 
 Keys are `idx + 200 (j - 1)`: Kadenoa's USS trade station is 51, its Triada station (`kadenoa_tri`) 251.
 
 ### In-game checks (station voices)
 
-Run on the clone with cfg `log 2` (edit the installed `config.script`) and grep `traffic: lua: exp=v1 stn:` in `sw3tp.log`.
+Run on the clone with cfg `log 2` (edit the installed `config.script`) and grep `traffic: lua: exp=v1 module=station` in `sw3tp.log`.
 
 | # | fact | confirming log line |
 |---|---|---|
-| C1 | `__Wait_Action` reaches the wrapper for closed stations placed in activate.script | `stn: none sys=gaoba(42) tip=5 -> 5 rule=8` on approach; `ScriptErrors.log` empty |
-| C2 | re-install after every include (entry, load), no double wrap | `stn: install none=1 trade=1 mine=1/1` after each `OnEnter`/`OnLoad` line; one Message per approach |
-| C3 | `__system_Dock_array[N][5]:GetPosition()` is the map creation position, before and after a load | `stn: dock k=51 ... id=prm+pos d=<small>` and `k=251 ... id=prm+pos`; `id=prm` after a load means the handle does not answer: set tune `stn_pos=0` |
-| C4 | plain strings in `Pilot:Message` | screenshot plus `stn: none ... mood=2 spk=DispetcherKFNI` or `stn: dock ... greet=stnr2` |
-| C5 | `ShowMsgBox` from the approach with plain text and `\n`; OK reaches trf_shop's wrapper | `stn: fee ... box=1`, then `stn: fee ... ok=1`, `stn: docked k=..` and trf_shop's `shop:` line in the same second |
-| C6 | radio and screen-log lines readable while the box is open | screenshot; `stn: dock ... news=1` (fallback: move the news to `TRF_Stn_Docked`) |
+| C1 | `__Wait_Action` reaches the wrapper for closed stations placed in activate.script | `module=station event=mood system=gaoba system_index=42 vanilla_key=5 mood_key=5 rule=8` on approach; `ScriptErrors.log` empty |
+| C2 | re-install after every include (entry, load), no double wrap | `module=station event=install none_installed=true trade_installed=true none_wrapped=true trade_wrapped=true` after each `module=core event=enter` / `event=load` line; one Message per approach |
+| C3 | `__system_Dock_array[N][5]:GetPosition()` is the map creation position, before and after a load | `module=station event=dock station_key=51 ... via=prm+pos distance=<small>` and `station_key=251 ... via=prm+pos`; `via=prm` after a load means the handle does not answer: set tune `stn_pos=0` |
+| C4 | plain strings in `Pilot:Message` | screenshot plus `module=station event=mood ... mood=2 speaker=DispetcherKFNI` or `module=station event=dock ... greeting=stnr2` |
+| C5 | `ShowMsgBox` from the approach with plain text and `\n`; OK reaches trf_shop's wrapper | `module=station event=fee ... box=true`, then `module=station event=fee_ok ...`, `module=station event=docked station_key=..` and trf_shop's `module=shop` line in the same second |
+| C6 | radio and screen-log lines readable while the box is open | screenshot; `module=station event=dock ... news=true` (fallback: move the news to `TRF_Stn_Docked`) |
 | C7 | the new `.loc` keys load (`loc_mode 1`) | the box shows `Heavy traffic surcharge ...` instead of `#TRF_stnfeehub` |
-| C8 | `SubPlayerCredits` inside the OK callback | `stn: fee k=.. ok=1 cr=a->b` with b = a - fee and the trade window's credit display |
-| C9 | `GetLocationTeam` reflects `Transfer_To_NI`/`HafaLife` after the include | `stn: owner sys=moscowia static=Vks now=Kfni vo=<leg>` |
-| C10 | a quest `ChangeFuncDocking` bypasses the wrapper (mission 2, Gredos) | no `stn: dock` line for the quest dock; vanilla box text |
-| C11 | mission detection holds for the fee | during a mission `stn: pass reason=gate:quest`, or `stn: dock ... nofee=latch` with `stn: pass reason=latch ... at=dock` (greeting and moods still play); after it, a new entry logs `stn: dock ... fee=<n>` |
-| C12 | vanilla key `2` (never placed) loads | `voice_force "2"`: `stn: none ... -> 2 rule=0`, a readable blockade line |
-| C13 | the `DispetcherKFNI` template works outside a beacon | `stn: none ... spk=DispetcherKFNI` with a portrait |
+| C8 | `SubPlayerCredits` inside the OK callback | `module=station event=fee_ok station_key=.. credits_before=a credits_after=b` with b = a - fee and the trade window's credit display |
+| C9 | `GetLocationTeam` reflects `Transfer_To_NI`/`HafaLife` after the include | `module=station event=owner system=moscowia static_owner=Vks owner=Kfni owner_visit=<leg>` |
+| C10 | a quest `ChangeFuncDocking` bypasses the wrapper (mission 2, Gredos) | no `module=station event=dock` line for the quest dock; vanilla box text |
+| C11 | mission detection holds for the fee | during a mission `module=station event=pass reason=gate:quest`, or `module=station event=dock ... no_fee_reason=latch` with `module=station event=pass reason=latch ... at=dock` (greeting and moods still play); after it, a new entry logs `module=station event=dock ... fee=<n>` |
+| C12 | vanilla key `2` (never placed) loads | `voice_force "2"`: `module=station event=mood ... mood_key=2 rule=0`, a readable blockade line |
+| C13 | the `DispetcherKFNI` template works outside a beacon | `module=station event=mood ... speaker=DispetcherKFNI` with a portrait |
 
 ## Installing into the game
 
@@ -359,7 +485,7 @@ The release zip `sw3-traffic-<v>.zip` (built by `release.sh`) or this folder:
 
 ### News records (NEWS=1)
 
-cfg `news_mode 2` posts real news items (`AddPost("trf_<topic>_<v>")`, regional `trf_r<slot>_<topic>_<v>`) instead of the bulletin line, and needs records the game does not have. `tools/gen_news.py` generates them from the `n*` texts of `TRF_UI_Text`, the region homes in `map.script` and the clan and faction names: 191 records (15 global, 22 for each of the 8 regions) in `news/trf_news.xml`, and their `#TRF_N_<name>_Name/_LDesc` strings in a marked block at the end of `loc/trf_en.loc`; rerun it (`--check` reports stale output) after changing those texts or the map. The engine reads only `Data/Game/News.xml` (`design/mod-research/news-records.md`), so the records are merged into that file before `</News>` (`news/merge.awk`, which also replaces an earlier block). `install-test.sh NEWS=1` does this in the clone, keeps the vanilla file as `News.xml.trf-orig`, copies `trf_en.loc` and writes `news_mode=2` unless `NEWS_MODE` is set; a run without `NEWS` restores the file. `install.sh --news` (or `NEWS=1`) does the same with a backup in `sw3-traffic-backup/`; a reinstall without `--news` and `uninstall.sh` restore `News.xml` and remove the loc file. The game loads both at startup (inferred from the exe), so restart it after a change. In game: `ui news post <topic>=<v> slot=<n> mode=2` in `sw3tp.log`, the item in the station news window, no new `ScriptErrors.log` lines.
+cfg `news_mode 2` posts real news items (`AddPost("trf_<topic>_<v>")`, regional `trf_r<slot>_<topic>_<v>`) instead of the bulletin line, and needs records the game does not have. `tools/gen_news.py` generates them from the `n*` texts of `TRF_UI_Text`, the region homes in `map.script` and the clan and faction names: 191 records (15 global, 22 for each of the 8 regions) in `news/trf_news.xml`, and their `#TRF_N_<name>_Name/_LDesc` strings in a marked block at the end of `loc/trf_en.loc`; rerun it (`--check` reports stale output) after changing those texts or the map. The engine reads only `Data/Game/News.xml` (`design/mod-research/news-records.md`), so the records are merged into that file before `</News>` (`news/merge.awk`, which also replaces an earlier block). `install-test.sh NEWS=1` does this in the clone, keeps the vanilla file as `News.xml.trf-orig`, copies `trf_en.loc` and writes `news_mode=2` unless `NEWS_MODE` is set; a run without `NEWS` restores the file. `install.sh --news` (or `NEWS=1`) does the same with a backup in `sw3-traffic-backup/`; a reinstall without `--news` and `uninstall.sh` restore `News.xml` and remove the loc file. The game loads both at startup (inferred from the exe), so restart it after a change. In game: `module=ui event=news topic=<topic> variant=<v> slot=<n> mode=2 result=posted` in `sw3tp.log`, the item in the station news window, no new `ScriptErrors.log` lines.
 
 ## Baseline saves
 

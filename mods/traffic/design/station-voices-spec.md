@@ -2,7 +2,7 @@
 
 Status: spec for implementation, 2026-10-21. Design: `D/worldbuilding/03-station-voices.md` (cited as "03 n.n"), proposal: `D/proposals/worldbuilding-after-traffic.md` section 3 and engine facts 3, 4, 13, 14.
 Paths: `D` = `mods/traffic/design`, `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `T` = `mods/traffic/tests`, `G` = game `Data/Scripts` (read-only; line numbers from the test clone's `include/DockStation.script`).
-Module: new `S/trf_station.script`, prefix `Stn` (`TRF_Stn_*` public, `TRF_Stn<X>` internal), log prefix `stn:`.
+Module: new `S/trf_station.script`, prefix `Stn` (`TRF_Stn_*` public, `TRF_Stn<X>` internal), log lines `module=station`.
 
 ## 1. Scope
 
@@ -94,7 +94,7 @@ Deeds (7.2) choose the station without the dock array: the only trade station of
 
 ## 4. Gates and pass-through
 
-"Pass" = the original vanilla function runs with the unchanged `param`, no mod text, no fee. Every pass logs `stn: pass reason=<r> sys=<name> at=none|dock` once per reason and visit.
+"Pass" = the original vanilla function runs with the unchanged `param`, no mod text, no fee. Every pass logs `module=station event=pass reason=<r> system=<name> at=none|dock` once per reason and visit.
 
 | # | Rule | Applies to | Reason |
 |---|---|---|---|
@@ -103,7 +103,7 @@ Deeds (7.2) choose the station without the dock array: the only trade station of
 | G3 | authored deny (`TRF_DenyEntry(name).m == 1` without `tq`: elio, x297, gefest, cfg `sys_deny`); a campaign teleport target (`tq = 1`) only under the transit rule (trf_safety `TRF_StrictOkOf`): `TRF_StrictOk(idx, "voice")` denies it with `quest`, `mission_q` or `mission_deny` (a quest naming the system in process, `qa` unknown or cfg `transit 0` during a mission), else G4-G10 decide (`TRF_StnDenyM`); or the voice list `nk xt23 xt24 x203 x213 x220 earth precursors disonsphere fronn` | both, at any time | `deny` / `deny_tq` / `vdeny` |
 | G4 | `__disableAction == TRUE`, `__sys_SOS == TRUE`, or `TRF_Supp() ~= 0` (extortion debounce) | both | `flag` |
 | G5 | `GetTeamRelation("Trade", PLAYER_TEAM) == RELATION_WAR` | both | `trade_war` |
-| G6 | visit latch `SV.mis == 1` (set by G8 or by `TRF_Safe_QState()` at entry, load, any approach or the fee step; stays until the next MapInitialization). It stops only the fee (F2): the dock logs `nofee=latch` and `stn: pass reason=latch at=dock` from the fee step; moods, greeting, harbour news and tips go on to G7-G10 | fee step | `latch` |
+| G6 | visit latch `SV.mis == 1` (set by G8 or by `TRF_Safe_QState()` at entry, load, any approach or the fee step; stays until the next MapInitialization). It stops only the fee (F2): the dock logs `no_fee_reason=latch` and `module=station event=pass reason=latch at=dock` from the fee step; moods, greeting, harbour news and tips go on to G7-G10 | fee step | `latch` |
 | G7 | mood gate: `voice_gate 1`: `TRF_StrictOk(idx, "voice")` must return 1. `voice_gate 2` (light): deny only when the reason is `quest` or `deny_voice`; `mission_q`, `mission_all`, `mission_deny` are ignored | moods | `gate:<why>` |
 | G8 | dock gate (always strict, independent of `voice_gate`): `TRF_StrictOk(idx, "voice") == 1`; a denial with reason `quest` or `mission_*` also sets `SV.mis = 1` | trade | `gate:<why>` |
 | G9 | `TRF_SysModeQuiet()` not `"mod"`, including reason `guard` (start system, chapter <= 4: the stations stay vanilla, as for every other traffic feature) | both | `mode:<why>` |
@@ -111,7 +111,7 @@ Deeds (7.2) choose the station without the dock array: the only trade station of
 
 Mission-named-system rule (proposal fact 13): the fee is charged only when all of F1-F4 hold; `GetPlayerQuestState` is never the only test.
 - F1 G1-G10 pass (so `TRF_StrictOk(idx, "voice")` passed: quest ids of the system not in process, option 1 of TDR 9.9).
-- F2 no visit latch (G6): `SV.mis` nil and `TRF_N("TRF_Safe_QState")` nil (no story mission active anywhere, none seen earlier in this visit); else `nofee=latch`.
+- F2 no visit latch (G6): `SV.mis` nil and `TRF_N("TRF_Safe_QState")` nil (no story mission active anywhere, none seen earlier in this visit); else `no_fee_reason=latch`.
 - F3 cfg `strict ~= 0` (with `strict 0` the gate is open and cannot detect missions: no fee, reason `strict0`).
 - F4 `TRF_Chapter() >= fee_ch` (5).
 
@@ -161,11 +161,11 @@ Rows 2-8 come from 03 6 unchanged; row 0 is the debug key, row 7b the step-2 pir
 | friendly den | row 7b | `stnpirheat` | `PirateTough` |
 
 - O3 `voice_moods 0`: moods off (pass `reason=off`), dockmaster unaffected.
-- O4 Every call (including vanilla results) logs `stn: none sys=<n>(<idx>) tip=<p> -> <key> rule=<#> ph=<ph> dis=<dis> own=<team> mood=<0|1|2> spk=<tpl>` at cfg `log 2`; rule-0..7b changes also at `log 1`.
+- O4 Every call (including vanilla results) logs `module=station event=mood system=<n> system_index=<idx> vanilla_key=<p> mood_key=<key> rule=<#> phase=<ph> disruption=<dis> owner=<team> mood=<0|1|2> speaker=<tpl>` at cfg `log 2`; rule-0..7b changes also at `log 1`.
 
 ### 5.4 Owner change (`TRF.vo`)
 
-Static owners (FloodTradeStations.script 11-76): `hafa Inoco`, `moscowia Vks`, `nd Vks`, `solncevka Vks`, `endoria2 Vks`, `aurora Vks`, `corrino Vks`, `shula Vks`, `taira Vks` (`TRF_StnOwners()`). At `TRF_Stn_OnActivate` in one of these: `now = GetLocationTeam(name)`; `now ~= static` and `TRF.vo[idx] == nil` -> `TRF.vo[idx] = TRF.ve`, log `stn: owner sys=<n> static=<s> now=<t> vo=<leg>`. Never reset (one change per system per campaign).
+Static owners (FloodTradeStations.script 11-76): `hafa Inoco`, `moscowia Vks`, `nd Vks`, `solncevka Vks`, `endoria2 Vks`, `aurora Vks`, `corrino Vks`, `shula Vks`, `taira Vks` (`TRF_StnOwners()`). At `TRF_Stn_OnActivate` in one of these: `now = GetLocationTeam(name)`; `now ~= static` and `TRF.vo[idx] == nil` -> `TRF.vo[idx] = TRF.ve`, log `module=station event=owner system=<n> static_owner=<s> owner=<t> owner_visit=<leg>`. Never reset (one change per system per campaign).
 
 ## 6. Wrappers
 
@@ -243,7 +243,7 @@ No existing hook carries a station or a position, so two one-line hooks go into 
 | equipment convoy killed (trf_convoy 1615) | `feq kill` | `rob7.15`: every `TRF.stn` entry with `ts == cur` and `tf` set -> `st = -3`, `nt = 1`, `tf`/`ts` nil (no cap) | set -3 | - |
 | penalty fee paid while `st <= -2` (8.5) | - | `buyback` | +1 once per visit (`bv`) | -1 |
 | docking on credit (8.5) | - | `credit` | -1 once per visit | - |
-| any other `why` (`join`, `base`, `feq contract`, `feq defended`, `heat reset ...`, help with `d <= 0`, heat with `d <= 0`) | | ignored, `stn: deed skip why=<w>` at `log 2` | | |
+| any other `why` (`join`, `base`, `feq contract`, `feq defended`, `heat reset ...`, help with `d <= 0`, heat with `d <= 0`) | | ignored, `module=station event=deed_skip reason=<w>` at `log 2` | | |
 
 - S1 Hooks: `TRF_AddHelp(d, why)` calls `TRF_P("TRF_Stn_OnHelp", d, why)` after its clamp; `TRF_AddHeat(d, why)` calls `TRF_P("TRF_Stn_OnHeat", d, why)` after its type checks and before its `cfg heat 0` return. `OnHelp` acts on `d > 0`, `OnHeat` on `d > 0`. The current system is `TRF_CurIdx()`; a system without a trade station drops the deed.
 - S2 Shortage relief: no separate deed. Design 03 5.4 counts only #1 parcel deliveries (not built) and excludes the player selling containers; a shortage cleared by an escorted trader already gives `esc8.4`.
@@ -252,14 +252,14 @@ No existing hook carries a station or a position, so two one-line hooks go into 
 ### 7.3 Caps and clamps (applied in `TRF_Stn_Deed`)
 
 1. C1 Decay first (7.4).
-2. C2 Gain (`d > 0`): `st >= ceil` -> dropped, log `d=0 why=<w> cap=ceil`, `gv` unchanged. `gv == TRF.ve` -> dropped, `cap=gv`. Else `st = min(st + 1, ceil)`, `gv = TRF.ve`, `lg = legs`, `SV.up[k] = 1`.
-3. C3 Loss (`d < 0`, not -9): `SV.dn[k] >= 2` -> dropped, `cap=dn`. Else `st = max(st - 1, -3)`, `SV.dn[k] + 1`, `lg = legs`.
+2. C2 Gain (`d > 0`): `st >= ceil` -> dropped, log `change=0 reason=<w> cap=ceiling`, `gv` unchanged. `gv == TRF.ve` -> dropped, `cap=visit_gain`. Else `st = min(st + 1, ceil)`, `gv = TRF.ve`, `lg = legs`, `SV.up[k] = 1`.
+3. C3 Loss (`d < 0`, not -9): `SV.dn[k] >= 2` -> dropped, `cap=visit_loss`. Else `st = max(st - 1, -3)`, `SV.dn[k] + 1`, `lg = legs`.
 4. C4 A reload resets `SV.dn` but not `gv` (saved), so a reload cannot add a second gain in one visit (03 5.5 rule 4).
 5. C5 Docking itself never changes `st`.
 
 ### 7.4 Lazy decay
 
-On every read of entry `e`: `n = floor((legs - lg) / stn_decay)`; `n > 0` -> `st` moves `n` steps toward 0 (not past 0), `lg = lg + n x stn_decay`; `st == 0` -> `lg = legs`. Log `stn: decay k=<k> st=<a>-><b> n=<n>` when `st` changed.
+On every read of entry `e`: `n = floor((legs - lg) / stn_decay)`; `n > 0` -> `st` moves `n` steps toward 0 (not past 0), `lg = lg + n x stn_decay`; `st == 0` -> `lg = legs`. Log `module=station event=decay station_key=<k> standing_before=<a> standing_after=<b> decay_steps=<n>` when `st` changed.
 
 ### 7.5 Readers
 
@@ -278,7 +278,7 @@ On every read of entry `e`: `n = floor((legs - lg) / stn_decay)`; `n > 0` -> `st
 
 ### 8.2 Steps per approach
 
-1. Gates (4), identity (3.3), `e` (7.1). Log `stn: dock k=<k> param=<p> id=<how> d=<dist> st=<st> e=<e> heat=<h> ...`.
+1. Gates (4), identity (3.3), `e` (7.1). Log `module=station event=dock station_key=<k> param=<p> via=<how> distance=<dist> standing=<st> rung=<e> heat=<h> ...`.
 2. Greeting (once per visit, `SV.g[k]`): line by `e` (table 8.4, `e == -3` with `nt == 1` -> `stntiprob`); radio `CreatePilot(spk):Message(text, stn_radio)` (8 s), speaker by owner (8.7); skipped when another TRF radio or focus line started less than `stn_gap` (6 s) ago (`TRF.live.line`, `SV.rt`); on success `SV.rt = gt`, `TRF.live.line = gt`.
 3. Info line (once per visit, `SV.nw[k]`, never when `SV.c[k]`), screen log through `TRF_Say(text, 10)`:
    - `e >= 2` and 8.1 news allowed: `t, nt = TRF_Trouble(idx)`, `b, nb = TRF_Boom(idx)` (trf_hail, S19/S26 answers, read-only); `nt + nb > 0` -> `TRF_Txt("stnnews", t, b)`.
@@ -291,7 +291,7 @@ On every read of entry `e`: `n = floor((legs - lg) / stn_decay)`; `n > 0` -> `st
 
 Region tip, first that exists (slot = `TRF_RgOf(idx)`):
 1. sweep: `i = TRF_SweepInfo(slot)`, `i.sl > 0` -> `stntipsweep` (faction `i.fac`, clan `TRF_ClanName(slot)`, home `TRF_SysName(home)`).
-2. supply run: `TRF.feq` with `k == 1` -> `stntipfeq` (`TRF_SysName(TRF.feq.s)`); writes `tf = legs`, `ts = TRF.feq.s`; log `stn: tip k=<k> kind=feq sys=<n> tf=<leg>`.
+2. supply run: `TRF.feq` with `k == 1` -> `stntipfeq` (`TRF_SysName(TRF.feq.s)`); writes `tf = legs`, `ts = TRF.feq.s`; log `module=station event=tip station_key=<k> kind=feq system=<n> tip_leg=<leg>`.
 3. base: first `TRF.base` entry with `k == 1 or k == 2` and `TRF_RgOf(e.s) == slot` -> `stntipbase`.
 `nt` is cleared on read when `TRF_Phase(slot) == 0`.
 
@@ -321,7 +321,7 @@ Ambient (decision 5; `stnamb*`): ch 0-5 `stnamb1`; ch 6 none; ch 7-9 `stnamb2`; 
 
 ### 8.6 After docking (`TRF_Stn_Docked`, called from trf_shop's `TRF_TradeDockOk`)
 
-`SV.k` set and `SV.up[k] == 1` and not yet shown -> `TRF_Say(TRF_Txt("stnnoted"), 8)`. Log `stn: docked k=<k> up=<0|1>`. No box.
+`SV.k` set and `SV.up[k] == 1` and not yet shown -> `TRF_Say(TRF_Txt("stnnoted"), 8)`. Log `module=station event=docked station_key=<k> standing_up=<true|false>`. No box.
 
 ### 8.7 Speakers by owner (`own = GetLocationTeam(param ~= "" and param or GetCurrentLocation())`)
 
@@ -405,28 +405,28 @@ Ambient (decision 5; `stnamb*`): ch 0-5 `stnamb1`; ch 6 none; ch 7-9 `stnamb2`; 
 
 `config.script` is not changed: a missing key reads the module default (as v0.2/v1 keys).
 
-## 11. Log lines (`TRF_L("stn: ...")`) and dump
+## 11. Log lines (`TRF_StnE("<event>", ...)`) and dump
 
 | Line | When |
 |---|---|
-| `stn: install none=<0/1> trade=<0/1> mine=<0/1>/<0/1>` | every MapInitialization |
-| `stn: enter ve=<leg> sys=<n>(<idx>) latch=<0/1> pruned=<n> vo=<leg or ->` | `TRF_Stn_OnActivate` |
-| `stn: load latch=<0/1>` | `TRF_Stn_OnLoad` |
-| `stn: owner sys=<n> static=<s> now=<t> vo=<leg>` | 5.4 |
-| `stn: none sys=<n>(<idx>) tip=<p> -> <key> rule=<r> ph=<ph> dis=<d> own=<t> mood=<m> spk=<tpl>` | 5.3 O4 |
-| `stn: pass reason=<r> sys=<n> at=<none/dock>` | 4, once per reason and visit |
-| `stn: dock k=<k> param=<p> id=<prm+pos/pos/prm> d=<dist> st=<st> e=<e> heat=<h> greet=<key/-> news=<0/1> tip=<kind/-> amb=<key/-> fee=<n> m=<m>` | 8.2 |
-| `stn: idmis k=<k> jp=<j> jx=<j> d=<dist>` | 3.3 I4 |
-| `stn: fee k=<k> fee=<n> L_w=<l> pro=<p> m=<m> dk=<x> box=<0/1>` | box opened |
-| `stn: fee k=<k> ok=<1/0> cr=<a>-><b> credit=<0/1> buyback=<0/1>` | OK / Cancel |
-| `stn: deed k=<k> d=<+1/-1/0/set> why=<w> st=<a>-><b> cap=<-/ceil/gv/dn> dist=<d/->` | 7.3 |
-| `stn: deed skip why=<w>` | log 2 |
-| `stn: decay k=<k> st=<a>-><b> n=<n>` | 7.4 |
-| `stn: tip k=<k> kind=<sweep/feq/base> sys=<n> tf=<leg>` | 8.3 |
-| `stn: rob k=<k> st=-3 nt=1` | 7.2 `feq kill` |
-| `stn: docked k=<k> up=<0/1>` | 8.6 |
-| `stn: stale box` | W7 |
-| `dump stn ve=<ve> n=<count> <k>:<st>/<lg>/<gv or ->/<bv or ->/<tf or ->[!] ... vo <name>=<leg> ... wrapped=<none>/<trade>` | `TRF_Stn_Dump` (`!` = `nt`) |
+| `module=station event=install none_installed=<bool> trade_installed=<bool> none_wrapped=<bool> trade_wrapped=<bool>` | every MapInitialization |
+| `module=station event=enter visit=<leg> system=<n> system_index=<idx> latch=<bool> pruned_count=<n> owner_visit=<leg or nil>` | `TRF_Stn_OnActivate` |
+| `module=station event=load latch=<bool>` | `TRF_Stn_OnLoad` |
+| `module=station event=owner system=<n> static_owner=<s> owner=<t> owner_visit=<leg>` | 5.4 |
+| `module=station event=mood system=<n> system_index=<idx> vanilla_key=<p> mood_key=<key> rule=<r> phase=<ph> disruption=<d> owner=<t> mood=<m> speaker=<tpl>` | 5.3 O4 |
+| `module=station event=pass reason=<r> system=<n> at=<none/dock>` | 4, once per reason and visit |
+| `module=station event=dock station_key=<k> param=<p> via=<prm+pos/pos/prm> distance=<dist> standing=<st> rung=<e> heat=<h> greeting=<key/nil> news=<bool> tip=<kind/nil> ambient=<key/nil> fee=<n> fee_multiplier=<m> no_fee_reason=<paid_visit/latch/strict_0/chapter>` | 8.2 |
+| `module=station event=id_mismatch station_key=<k> param_station=<j> position_station=<j> distance=<dist>` | 3.3 I4 |
+| `module=station event=fee station_key=<k> fee=<n> world_level=<l> prosperity=<p> fee_multiplier=<m> difficulty_factor=<x> box=<bool>` | box opened |
+| `module=station event=fee_ok station_key=<k> credits_before=<a> credits_after=<b> credit=<bool> buyback=<bool>` (`fee_cancel` with the same keys) | OK / Cancel |
+| `module=station event=deed station_key=<k> change=<+1/-1/0/set> reason=<w> standing_before=<a> standing_after=<b> cap=<none/ceiling/visit_gain/visit_loss/far> distance=<d/nil>` | 7.3 |
+| `module=station event=deed_skip reason=<w>` | log 2 |
+| `module=station event=decay station_key=<k> standing_before=<a> standing_after=<b> decay_steps=<n>` | 7.4 |
+| `module=station event=tip station_key=<k> kind=<sweep/feq/base> system=<n> tip_leg=<leg>` | 8.3 |
+| `module=station event=rob station_key=<k> standing_after=-3 tip_ban=true` | 7.2 `feq kill` |
+| `module=station event=docked station_key=<k> standing_up=<bool>` | 8.6 |
+| `module=station event=stale_box answer=<ok/cancel>` | W7 |
+| `module=station event=dump visit=<ve> record_count=<n> records=<k>:<st>/<lg>/<gv or ->/<bv or ->/<tf or ->[!],... owner_visits=<name>:<leg>,... none_wrapped=<bool> trade_wrapped=<bool>` | `TRF_Stn_Dump` (`!` = tip ban) |
 
 ## 12. Module contract and edits
 
@@ -490,9 +490,9 @@ Stubs (defined in host_station.lua, since they must load before the scenario; `h
 |---|---|---|
 | `stn-a` install | T_Begin gaoba; install log; approach a `1` station and the trade station with `voice 0`, then `1`; T_Enter again; T_SaveLoad; error injection (`TRF_StnMoodOf` raising) | thunks installed and mine; `TRF_orig_*` are the vanilla chunk's functions after each MapInitialization; one approach gives exactly one Message / one box; `voice 0`: vanilla key `DialogNone_live` with `DialogSystem` and box text `#UI_TradeStationDockRequest`; error -> vanilla line plus `ERROR` log, no script error |
 | `stn-b` moods | fixtures per row (phase, `dis`, sweep open with owner, `TRF.vo`, shortage, clan `sc`, heat, `voice_force`) for one station of each class; `voice_moods` 1 and 2; hafa with `HOST().teams.hafa = "Vks"`, moscowia `Kfni` | every row of 5.2 gives its key or variant and speaker; `TRF.vo[hafa]` set once, martial law ends after `own_legs` legs; silent keys never change; `SetNormalTimeMode` counted once per approach |
-| `stn-c` gates | elio, nk (`tq`, no quest: `vdeny`), taira (`tq`: moods and dock line with no taira quest; `deny_tq` with quest 6c_01 in process; during a mission at chapter 9: mood, greeting `stnr1`, `m=1 nofee=latch` and `reason=latch at=dock` only, the latch still stops the fee after the mission ends in the visit, the next entry shows the fee box); gaoba during a mission: latch set, mood and dock lines; `voice_gate 2`: moods stay open after the dock latch, `__disableAction`, trade war, `strict 0`, quest id in process (`qi` fixture), `h.qs = TRUE` in a never-named system, `voice_gate 2` with `mission_q`, latch then mission end in the same visit, then T_Jump | each G rule gives its `stn: pass reason=` line and the vanilla call; `voice_gate 2` changes moods but not the dock; latch holds until the next entry |
+| `stn-c` gates | elio, nk (`tq`, no quest: `vdeny`), taira (`tq`: moods and dock line with no taira quest; `deny_tq` with quest 6c_01 in process; during a mission at chapter 9: mood, greeting `stnr1`, `mood=1 no_fee_reason=latch` and `reason=latch at=dock` only, the latch still stops the fee after the mission ends in the visit, the next entry shows the fee box); gaoba during a mission: latch set, mood and dock lines; `voice_gate 2`: moods stay open after the dock latch, `__disableAction`, trade war, `strict 0`, quest id in process (`qi` fixture), `h.qs = TRUE` in a never-named system, `voice_gate 2` with `mission_q`, latch then mission end in the same visit, then T_Jump | each G rule gives its `module=station event=pass reason=` line and the vanilla call; `voice_gate 2` changes moods but not the dock; latch holds until the next entry |
 | `stn-d` standing | gaoba ch 9: `TRF_AddHelp(1, "contract")`, `TRF_AddHelp(1, "raid 3")` with the mothership 1,000 and 4,000 from the station; second gain in a visit; T_SaveLoad then a gain; T_Jump out and back then a gain; ceilings via `TRF_Stn_Deed(..., ceil)`; losses (`kill`, `attack`, `demand`) three in a visit; 24 legs of T_Tick; heat 5 and 7; greetings for `st` -3..5; ch 3 vs 4 news; ambient by chapter; tip feq then `TRF_AddHeat(1, "feq kill")`; region to Quiet | deltas, caps and `cap=` tags as 7.3; decay -2 rungs after 24 legs; `e` capped by heat; greeting key and speaker `InocoDispetcher`; news only at `e >= 2`, ch >= 4, once per visit; `rob` sets -3 and `nt`, no tip until Quiet |
-| `stn-e` fees | kadenoa (`USS_TRADE`, `pro` 8) ch 4 and 5; OK; Cancel; second approach; credits below the fee; `st` -2 and -3 with buy-back twice in one visit; rung 3; EASY; `fee_cap`; `h.qs = TRUE` (`nofee=latch`); `strict 0` | ch 4 no box; fee equals the 8.5 formula (computed in the test from `TRF_LPay`, `TRF_Pro`, `TRF_DK`); OK: credits `- fee`, `HOST().trade_ok + 1`, trf_shop's wrapper ran; Cancel: credits unchanged, no dock; second approach vanilla box; on credit: no charge, docks, `st - 1`; buy-back once, never above -1; rung 3 no hub fee; no fee under F2/F3 |
+| `stn-e` fees | kadenoa (`USS_TRADE`, `pro` 8) ch 4 and 5; OK; Cancel; second approach; credits below the fee; `st` -2 and -3 with buy-back twice in one visit; rung 3; EASY; `fee_cap`; `h.qs = TRUE` (`no_fee_reason=latch`); `strict 0` | ch 4 no box; fee equals the 8.5 formula (computed in the test from `TRF_LPay`, `TRF_Pro`, `TRF_DK`); OK: credits `- fee`, `HOST().trade_ok + 1`, trf_shop's wrapper ran; Cancel: credits unchanged, no dock; second approach vanilla box; on credit: no charge, docks, `st - 1`; buy-back once, never above -1; rung 3 no hub fee; no fee under F2/F3 |
 | `stn-f` identity and save | kadenoa both stations (param `""` and `"kadenoa_tri"`); a quest dock with param `""` 800 units from any map station; station handle whose `GetPosition` errors; T_SaveLoad; corrupted `TRF.stn`/`TRF.vo`/`TRF.ve` then `TRF_Repair`; all 76 keys filled with full records | keys 51 and 251 (`id=prm+pos`); quest dock `reason=table`; error -> `id=prm`; records survive the load; Fix clamps and drops as D4; `HOST_SaveSize(TRF.stn) <= 6000` and `8 + 3 + HOST_SaveSize(TRF) < 40000`; dump line present; `lint_lua.py --calls` clean |
 
 All 44 existing runs stay green except a failure that exists before this change (13.1).
@@ -505,19 +505,19 @@ All 44 existing runs stay green except a failure that exists before this change 
 
 | # | Fact | Confirming log line (test clone, `log 2`) |
 |---|---|---|
-| C1 | `__Wait_Action` reaches the wrapper for activate-placed closed stations (fact 14 path) | `stn: none sys=gaoba(42) tip=5 -> 5 rule=8` on approach; `ScriptErrors.log` empty |
-| C2 | Re-install after every include (entry, load), no double wrap | `stn: install none=1 trade=1 mine=1/1` after each `OnEnter`/`OnLoad` line; one Message per approach |
-| C3 | Station identity: `[N][5]:GetPosition()` equals the map creation position, before and after a load (fact 14) | `stn: dock k=51 ... id=prm+pos d=<small>` and `k=251 ... id=prm+pos` before and after load; `id=prm` after load means tagged handles do not answer (then tune `stn_pos 0`) |
-| C4 | Plain strings in `Pilot:Message` (greetings, mod variants) | screenshot plus `stn: none ... mood=2 spk=DispetcherKFNI` / `stn: dock ... greet=stnr2` |
-| C5 | `ShowMsgBox` from the approach with a plain text and `"\n"`; OK reaches trf_shop's wrapper (fact 3) | `stn: fee ... box=1`, then `stn: fee ... ok=1`, `stn: docked k=..` and trf_shop's `shop:` line in the same second |
-| C6 | Radio and screen-log lines readable while the box is open (03 EV.4) | screenshot; `stn: dock ... news=1`; fallback: move news to `TRF_Stn_Docked` |
+| C1 | `__Wait_Action` reaches the wrapper for activate-placed closed stations (fact 14 path) | `module=station event=mood system=gaoba system_index=42 vanilla_key=5 mood_key=5 rule=8` on approach; `ScriptErrors.log` empty |
+| C2 | Re-install after every include (entry, load), no double wrap | `module=station event=install none_installed=true trade_installed=true none_wrapped=true trade_wrapped=true` after each `OnEnter`/`OnLoad` line; one Message per approach |
+| C3 | Station identity: `[N][5]:GetPosition()` equals the map creation position, before and after a load (fact 14) | `module=station event=dock station_key=51 ... via=prm+pos distance=<small>` and `station_key=251 ... via=prm+pos` before and after load; `via=prm` after load means tagged handles do not answer (then tune `stn_pos 0`) |
+| C4 | Plain strings in `Pilot:Message` (greetings, mod variants) | screenshot plus `module=station event=mood ... mood=2 speaker=DispetcherKFNI` / `module=station event=dock ... greeting=stnr2` |
+| C5 | `ShowMsgBox` from the approach with a plain text and `"\n"`; OK reaches trf_shop's wrapper (fact 3) | `module=station event=fee ... box=true`, then `event=fee_ok ...`, `event=docked station_key=..` and trf_shop's `module=shop` line in the same second |
+| C6 | Radio and screen-log lines readable while the box is open (03 EV.4) | screenshot; `module=station event=dock ... news=true`; fallback: move news to `TRF_Stn_Docked` |
 | C7 | New `.loc` keys load (`loc_mode 1`, fact 4) | box shows `Heavy traffic surcharge` text instead of `#TRF_stnfeehub` |
-| C8 | `SubPlayerCredits` inside the OK callback | `stn: fee k=.. ok=1 cr=a->b` with `b = a - fee` and the trade window's credit display |
-| C9 | `GetLocationTeam` reflects `Transfer_To_NI`/`HafaLife` after the include | `stn: owner sys=moscowia static=Vks now=Kfni vo=<leg>` |
-| C10 | Quest `ChangeFuncDocking` bypasses the wrapper (mission 2, Gredos) | no `stn: dock` line for the quest dock; vanilla box text |
-| C11 | Mission detection holds for the fee (fact 13) | during a mission: `stn: pass reason=gate:quest`, or `stn: dock ... nofee=latch` with `stn: pass reason=latch ... at=dock`; after the mission, a new entry logs `stn: dock ... fee=<n>` |
-| C12 | Vanilla key `2` (never placed) loads | `voice_force "2"`: `stn: none ... -> 2 rule=0`, readable blockade line |
-| C13 | `DispetcherKFNI` template works outside a beacon | `stn: none ... spk=DispetcherKFNI` with a portrait |
+| C8 | `SubPlayerCredits` inside the OK callback | `module=station event=fee_ok station_key=.. credits_before=a credits_after=b` with `b = a - fee` and the trade window's credit display |
+| C9 | `GetLocationTeam` reflects `Transfer_To_NI`/`HafaLife` after the include | `module=station event=owner system=moscowia static_owner=Vks owner=Kfni owner_visit=<leg>` |
+| C10 | Quest `ChangeFuncDocking` bypasses the wrapper (mission 2, Gredos) | no `module=station event=dock` line for the quest dock; vanilla box text |
+| C11 | Mission detection holds for the fee (fact 13) | during a mission: `module=station event=pass reason=gate:quest`, or `module=station event=dock ... no_fee_reason=latch` with `event=pass reason=latch ... at=dock`; after the mission, a new entry logs `event=dock ... fee=<n>` |
+| C12 | Vanilla key `2` (never placed) loads | `voice_force "2"`: `module=station event=mood ... mood_key=2 rule=0`, readable blockade line |
+| C13 | `DispetcherKFNI` template works outside a beacon | `module=station event=mood ... speaker=DispetcherKFNI` with a portrait |
 
 ## 15. Conformance checklist
 
@@ -545,7 +545,7 @@ All 44 existing runs stay green except a failure that exists before this change 
 22. [ ] Penalty buy-back once per visit (`bv`), never above -1.
 23. [ ] All 27 text keys of section 9 in `TRF_Stn_Text`; registered in `TRF_Loc_TextFns` and `TRF_UI_TextFns`; scaffold part of `loc/trf_en.loc` regenerated, news block unchanged.
 24. [ ] Config and tune keys of section 10 with defaults and clamps; `TRF_ModList` contains `"Stn"`.
-25. [ ] Log lines of section 11 with prefix `stn:`; `dump stn` printed by `TRF_DumpState`.
+25. [ ] Log lines of section 11 (`module=station`); `event=dump` printed by `TRF_DumpState`.
 26. [ ] traffic.script changed only as 12.2; other files only as 12.3.
 27. [ ] Host scenarios `stn-a`..`stn-f` pass; previously green runs stay green; run_host.sh runs 50.
 28. [ ] Size: `TRF.stn` worst case <= 6,000 bytes, TRF < 40,000 bytes on the host.
@@ -554,11 +554,11 @@ All 44 existing runs stay green except a failure that exists before this change 
 Review findings:
 - G9 lets the start-system guard through, so moods, greetings, ambient lines (and fees at `fee_ch <= 4`) reached start systems in chapters 1-4: G9 now passes on reason `guard` too (`mode:guard`); host `stn-c`. Fixed 2026-10-21.
 - Fee not blocked by the guard at a tuned `fee_ch` of 1-4: covered by the G9 fix (the fee block is never reached under the guard). Fixed 2026-10-21.
-- Fee charged twice in one visit across a save and load (`SV.p` is not saved): saved `pv` stamp (3.1, 8.5), `nofee=pv`, repaired by D4; host `stn-e`. Fixed 2026-10-21.
+- Fee charged twice in one visit across a save and load (`SV.p` is not saved): saved `pv` stamp (3.1, 8.5), `no_fee_reason=paid_visit`, repaired by D4; host `stn-e`. Fixed 2026-10-21.
 - run_host.sh: the `HOST_ENTRY=... run` prefix stayed set after the function call in POSIX sh, so runs after `stn` used host_station.lua: the entry is now a plain variable reset after the stn loop. Fixed 2026-10-21.
 - `stn-c` gaps: G1 `TRF_Traffic()` false, G4 `__sys_SOS` and `TRF_Supp() ~= 0`, G7 `voice_gate 2` with `quest` and `deny_voice`, G9 `mode:sys_off` and `mode:guard` (plus guard off at chapter 5), G10 `reason=row` added. Fixed 2026-10-21.
-- G3 denied every campaign teleport target (game log `stn: pass reason=deny sys=nj1 at=dock`, `sys=taira`) although trf_safety's transit rule keeps them mod: G3 now denies a `tq` entry only through the strict gate (`deny_tq`); authored entries stay `deny`. Host `stn-c`. Fixed 2026-10-21.
-- G6 visit latch closed moods, greetings, news and tips for the whole visit whenever a story mission was active (nearly always in the campaign), so the stations never spoke: the latch now stops only the fee (`nofee=latch`, `reason=latch at=dock`). Host `stn-c`, `stn-e`. Fixed 2026-10-21.
+- G3 denied every campaign teleport target (game log `module=station event=pass reason=deny system=nj1 at=dock`, `system=taira`) although trf_safety's transit rule keeps them mod: G3 now denies a `tq` entry only through the strict gate (`deny_tq`); authored entries stay `deny`. Host `stn-c`. Fixed 2026-10-21.
+- G6 visit latch closed moods, greetings, news and tips for the whole visit whenever a story mission was active (nearly always in the campaign), so the stations never spoke: the latch now stops only the fee (`no_fee_reason=latch`, `reason=latch at=dock`). Host `stn-c`, `stn-e`. Fixed 2026-10-21.
 - `stn-d` gaps: sweep tip before the supply-run tip, base tip, radio spacing `stn_gap` (`greet=stnr1(gap)`, greeting on the next approach), `parked kill` -1 added. Fixed 2026-10-21.
 - `stn-f` gap: the D4 trim to 76 entries by smallest `lg` is tested with the key filter bypassed. Fixed 2026-10-21.
 
@@ -568,6 +568,6 @@ Where the code differs from the text above:
 - Loader: `trf_station` loads from its own list after the v1 files and is counted as `extra_count=` in the `event=loaded` line, so `module_count=18` (checked by host_v1 `v1-a`) keeps its meaning.
 - Size (3.4, 13 `stn-f`): on the `HOST_SaveSize` grammar a full record (with `pv`) costs about 200 bytes, so 76 full records are 15.2 KB, not 5.3 KB; the host checks `TRF.stn <= 16000` and TRF (24 KB) `< 40000`. A plain `{st, lg}` record is 68 bytes.
 - `TRF_Stn_Fix` (D4) keeps absent `TRF.stn`, `TRF.vo` and `TRF.ve` absent (lazy creation); present non-table values become `{}`.
-- Log additions: `stn: dock ... nofee=<pv|latch|strict0|ch|->` (`pv`: already paid or docked on credit in this visit, also after a load), `stn: deed ... cap=far` (raid help beyond `stn_near`), `stn: pass reason=tip` (closed-station key of class other).
+- Log additions: `module=station event=dock ... no_fee_reason=<paid_visit|latch|strict_0|chapter>` (`paid_visit`: already paid or docked on credit in this visit, also after a load), `module=station event=deed ... cap=far` (raid help beyond `stn_near`), `module=station event=pass reason=tip` (closed-station key of class other).
 - The tip ban `nt` is cleared on read when `TRF_Phase(slot) == 0`, which includes systems without a region (slot nil).
 - Host: the `_NoneStation_Action` stub is the vanilla function, so `stn-a` sees `#L_Dnone_live_msg` (the `_tab_dlg_pilots` text of key `1`); expected `ERROR` lines are recorded without counting through `S_Expect`. The CHECK list C1-C13 is in README "In-game checks (station voices)"; PROGRESS.md has a pointer to it.

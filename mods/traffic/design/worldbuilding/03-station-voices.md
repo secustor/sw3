@@ -194,12 +194,13 @@ Counts (census): `5` 19, `5other` 16, `pirate` 14, `4tri` 13, `4` 13, `1` 13, `4
 
 **Debug dump** (`TRF_DumpState`, prefix as v01-spec 9):
 ```
-voice none sys=gaoba(42) tip=1 -> 5 rule=3 phase=3 dis=7 gate=mod
-voice dock k=42 param= st=2 e=2 heat=1 rung=2 news=1 tip=0 fee=0 m=0
-voice fee k=51 fee=3600 L_w=10 pro=8 m=1 ok=1 cr=120400->116800
-voice deed k=42 d=+1 why=raid8.5 st=1->2 up=1 dn=0
-voice pass reason=deny|flag|nk|trade_war|guard|latch|table sys=elio
-dump stn 42:2/310/318 51:0/0/301 251:-2/280/300 vo: moscowia=412
+module=station event=mood system=gaoba system_index=42 vanilla_key=1 mood_key=5 rule=3 phase=3 disruption=7
+module=station event=dock station_key=42 param="" standing=2 rung=2 heat=1 news=true tip=nil fee=0 fee_multiplier=0
+module=station event=fee station_key=51 fee=3600 world_level=10 prosperity=8 fee_multiplier=1 box=true
+module=station event=fee_ok station_key=51 credits_before=120400 credits_after=116800 credit=false buyback=false
+module=station event=deed station_key=42 change=+1 reason=raid8.5 standing_before=1 standing_after=2 cap=none
+module=station event=pass reason=deny|flag|nk|trade_war|guard|latch|table system=elio at=dock
+module=station event=dump visit=3 record_count=3 records=42:2/310/318,51:0/0/301,251:-2/280/300 owner_visits=moscowia:412 none_wrapped=true trade_wrapped=true
 ```
 
 ## 7. Dependencies and interactions
@@ -221,13 +222,13 @@ Conflicts and rules:
 
 Style of `D/PROGRESS.md` Phase 0. Run on the test clone, `log 2`.
 
-- [ ] EV.1 Wrapper alive and pass-through. With `voice 0`, then `1`, approach a closed and a trade station in Gaoba; `ScriptErrors.log` empty; time drops from 8x as before. Proof: `voice none sys=gaoba tip=5 -> 5 rule=8` and `voice dock k=42 ... fee=0`, and after a jump and a load the same lines (wrappers re-installed each MapInitialization run).
-- [ ] EV.2 Vanilla key swap. `voice_force "2"`: the living station speaks the blockade key (the first in-game use of tip `2`); `"3_vks"` speaks through DispetcherVKS. Proof: `voice none ... -> 2 rule=force`, screenshot of the radio line.
-- [ ] EV.3 Station key. Dock at both Kadenoa stations, save, load, dock again. Proof: `voice dock k=51 param=` and `voice dock k=251 param=kadenoa_tri` before and after the load.
-- [ ] EV.4 Text order. Radio line and screen-log line issued just before `ShowMsgBox`: both readable while the box is open? Proof: screenshot plus `voice dock ... news=1`. Fallback: show news in the dispatcher result slot after OK.
-- [ ] EV.5 Fee box. A plain-string text with `|` and a number from `format`, then the same with `CombineStr` and a mod key. OK charges and docks, Cancel does neither, not enough credits docks on credit with `st` -1. Proof: `voice fee ... ok=1 cr=a->b` with `b = a - fee`, `ok=0` lines without a credit change, and `voice fee ... credit=1` with `voice deed ... why=credit`.
-- [ ] EV.6 Deed path. Answer a staged raid near the Gaoba trade station; next approach greets at the new rung; 12 legs later one rung lower. Proof: `voice deed k=42 d=+1 why=raid8.5` and `dump stn 42:` with the decayed value. Then save after a deed, load, do a second deed in the same visit: `voice deed ... d=0 why=cap gv=<TRF.ve>`.
-- [ ] EV.7 Mission pass-through. During mission 2 at Gredos (quest dock `mission_2/TradersLife.script:402`) and during any mission with `voice_gate 1`: vanilla box, no text. Proof: `voice pass reason=deny sys=gredos`; after the mission ends in Gredos, the same visit still logs `voice pass reason=latch`. With `voice_gate 2`, check that no quest-made closed station (mission_15b in xt05) changes its line while that mission runs.
+- [ ] EV.1 Wrapper alive and pass-through. With `voice 0`, then `1`, approach a closed and a trade station in Gaoba; `ScriptErrors.log` empty; time drops from 8x as before. Proof: `module=station event=mood system=gaoba vanilla_key=5 mood_key=5 rule=8` and `module=station event=dock station_key=42 ... fee=0`, and after a jump and a load the same lines (wrappers re-installed each MapInitialization run).
+- [ ] EV.2 Vanilla key swap. `voice_force "2"`: the living station speaks the blockade key (the first in-game use of tip `2`); `"3_vks"` speaks through DispetcherVKS. Proof: `module=station event=mood ... mood_key=2 rule=force`, screenshot of the radio line.
+- [ ] EV.3 Station key. Dock at both Kadenoa stations, save, load, dock again. Proof: `module=station event=dock station_key=51 param=""` and `event=dock station_key=251 param=kadenoa_tri` before and after the load.
+- [ ] EV.4 Text order. Radio line and screen-log line issued just before `ShowMsgBox`: both readable while the box is open? Proof: screenshot plus `module=station event=dock ... news=true`. Fallback: show news in the dispatcher result slot after OK.
+- [ ] EV.5 Fee box. A plain-string text with `|` and a number from `format`, then the same with `CombineStr` and a mod key. OK charges and docks, Cancel does neither, not enough credits docks on credit with `st` -1. Proof: `module=station event=fee_ok ... credits_before=a credits_after=b` with `b = a - fee`, `event=fee_cancel` lines without a credit change, and `event=fee_ok ... credit=true` with `event=deed ... reason=credit`.
+- [ ] EV.6 Deed path. Answer a staged raid near the Gaoba trade station; next approach greets at the new rung; 12 legs later one rung lower. Proof: `module=station event=deed station_key=42 change=+1 reason=raid8.5` and `module=station event=dump ... records=42:...` with the decayed value. Then save after a deed, load, do a second deed in the same visit: `module=station event=deed ... change=0 reason=<w> cap=visit_gain`.
+- [ ] EV.7 Mission pass-through. During mission 2 at Gredos (quest dock `mission_2/TradersLife.script:402`) and during any mission with `voice_gate 1`: vanilla box, no text. Proof: `module=station event=pass reason=deny system=gredos`; after the mission ends in Gredos, the same visit still logs `module=station event=pass reason=latch`. With `voice_gate 2`, check that no quest-made closed station (mission_15b in xt05) changes its line while that mission runs.
 
 Exit: EV.1-EV.3 and EV.7 pass for step 1; EV.4-EV.6 for step 2.
 

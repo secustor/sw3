@@ -4,6 +4,8 @@ Status: decided 2026-10-22, replaces the shorthand lines (`hl: hail id=4 ... hn=
 line the mod writes to `sw3tp.log` from Lua. The DLL's own lines (`mods/traffic/pe/traffic.c`,
 `mods/performance/pe/*.c`) keep their text for now; converting them is a separate step (section 7).
 
+Every event the modules write, with an example line and its level: [log-events.md](log-events.md).
+
 ## 1. Line shape
 
 ```
@@ -108,14 +110,13 @@ function TRF_Lf(module, event, ...) ... end;
 
 Each module keeps a one-line wrapper that fixes its module name, e.g. `function TRF_HlE(event, ...)`, built
 with `tinsert(arg, 1, event); tinsert(arg, 1, "hail"); call(TRF_Lf, arg);`. Varargs are used because a
-Lua 4 table constructor with a nil value truncates `getn`; `arg.n` does not. The old string helpers
-(`TRF_HlL(s)` and friends) are removed once their module is converted, so a leftover shorthand call fails
-`--calls`.
+Lua 4 table constructor with a nil value truncates `getn`; `arg.n` does not. Every module is converted and
+the old string helpers (`TRF_HlL(s)` and friends) are removed; only the frame writer `TRF_L(s)` is left, so a
+leftover shorthand call fails `--calls`.
 
 Lint: `lint_lua.py` checks that `TRF_Lf`'s module and event and a `TRF_*E` wrapper's event are literal
 snake_case strings, and that every literal key argument (3rd, 5th, ... of `TRF_Lf`; 2nd, 4th, ... of a
-wrapper) matches `^[a-z][a-z0-9_]*$`. Once every module is converted, the old `TRF_*L("` helpers are
-removed and the lint forbids them. `TRF_KvB(v)` prints a 1/TRUE flag as `true`/`false`. The former table
+wrapper) matches `^[a-z][a-z0-9_]*$`. The old `TRF_*L("` helpers are removed and the lint forbids them. `TRF_KvB(v)` prints a 1/TRUE flag as `true`/`false`. The former table
 dumper `TRF_Kv(t)` of trf_state is now `TRF_KvTab`.
 
 ## 6. Examples (before and after)
@@ -152,5 +153,10 @@ module=raid event=roll ... result=skipped reason=governor
 ## 8. Tail filter
 
 ```
-tail -F ~/Games/Heroic/sw3-tp-test/sw3tp.log | /usr/bin/grep -a --line-buffered -E 'traffic: (lua: .*(module=(safety|generator|hail|raid|station|shop|supply|ui) |event=(activate|mode|combat|load|spawn|demand|stability))|.*ERROR)' | sed -u -E 's/^traffic: (lua: )?exp=[^ ]+ //'
+tail -F ~/Games/Heroic/sw3-tp-test/sw3tp.log | /usr/bin/grep -a --line-buffered -E 'stability: |traffic: (lua: .*(module=(core|safety|generator|hail|raid|station|shop|supply|ui) |event=(activate|load|spawn|demand|error)( |$))|[^l]|l[^u])' | sed -u -E 's/^traffic: (lua: )?exp=[^ ]+ //'
 ```
+
+Lua lines of the listed modules, plus `activate`, `load`, `spawn`, `demand` and `error` events of every other
+module (`( |$)` keeps the exp kits' `activate_spawn` and `load_natives` out), the DLL's own `traffic: ` lines and the
+stability lines of the performance module. `combat_on`, `combat_off` and `mode` come with `module=safety`. The
+`sed` strips the frame and the experiment id.

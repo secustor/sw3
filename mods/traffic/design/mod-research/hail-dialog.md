@@ -51,8 +51,8 @@ Feasible. Call `StartTradeDialog("TRF_Hail", "TRF_HlDlgInit")`: it loads `DATA\S
 | 4.1 | The "header problem": vanilla dialog locs are `LOCALE_FILE` + `FILETYPE DYNAMIC` with hex-encrypted values (`G/LocData/English/Trade/DialogTrader1.loc:4-7`); a mod cannot write that encryption | file | V |
 | 4.2 | The loader dispatches on FILETYPE, not on the folder: `SYSTEM` 0x59d040, `STANDART` 0x59d160, `DYNAMIC` 0x59d4f0 (`LoadDynamicLOCFile`), `MODDING` 0x59d900 (0x59cf47-0x59cfe5); else error 0x731378. `STANDART` and `MODDING` both add entries through 0x59db40 | exe | V (same table: I) |
 | 4.3 | `*.loc` of `LocData\English\` load at manager init (0x59c2aa); `Trade\` (0x721008) is loaded by 0x4a27b0, called from the location loader (0x4dd29c) and 0x4e68de. A mod file `LocData/English/Trade/trf_hail.loc` or the root `trf_en.loc` both fit | exe, `news-records.md` 2.2-2.3 | V calls; I that the file loads |
-| 4.4 | Mod `.loc` status: **not confirmed**. E0.6 is open (`PROGRESS.md:23`); every logged run has `loc: dump ... mode=0` and `news post ... mode=1` (`traffic-runs/*/traffic-lines.txt`); the clone has no `Data/LocData/English/trf_en.loc`; station-voice check C7 is pending (`README.md:339`). Station voices and news run on plain strings today | logs, files | V |
-| 4.5 | Plain text without any loc file already works in the game's boxes: hail menu box shown and answered in flight (`0-20261022-000913`: `hl: hail id=8 via=meet menu n=5`, `option trade`) | log | L |
+| 4.4 | Mod `.loc` status: **not confirmed**. E0.6 is open (`PROGRESS.md:23`); every logged run has `loc: dump ... mode=0` and `news post ... mode=1` (`traffic-runs/*/traffic-lines.txt`; log quotes in the shorthand form of those runs); the clone has no `Data/LocData/English/trf_en.loc`; station-voice check C7 is pending (`README.md:339`). Station voices and news run on plain strings today | logs, files | V |
+| 4.5 | Plain text without any loc file already works in the game's boxes: hail menu box shown and answered in flight (`0-20261022-000913`: `hl: hail id=8 via=meet menu n=5`, `option trade`; shorthand form of that run's log) | log | L |
 
 ## 5. Proposal
 
@@ -88,7 +88,7 @@ What cannot be dynamic, and the workaround:
 4. Missing or broken XML: after a failed load `StartTradeDialog` still runs the init and `Start` with a null or older dialog (0x5e576d-0x5e5896); the outcome is not traced [U]. Ship the file with the mod, check its SHA at install, and keep `hail_box` 1 when the file is absent.
 5. `__disableAction` only blocks the vanilla random-contact generator (`RandomContacts.script:187-205`; `DisableRandom` in 3 quest scripts) [V]. `TRF_HlSupp` already refuses the hail on it (`trf_hail.script:151`); keep that check before `StartTradeDialog`.
 6. Esc or a close button on DialogWindow without an answer [U]: `TRF_HlDlgCheck` after the dialog closes clears `hl`.
-7. Own scene flag: `TRF_Safe_Scene` counts any `TRF_UiState() > 0` as a scene (`trf_safety.script:178-188`), and the log shows `safe: supp 0->1 ... scene=1` while the hail box was up (`0-20261022-000913`) [L]. Harmless while time is frozen; exempt `hl.w == "dlg"` if suppression counters matter.
+7. Own scene flag: `TRF_Safe_Scene` counts any `TRF_UiState() > 0` as a scene (`trf_safety.script:178-188`), and the log shows `safe: supp 0->1 ... scene=1` while the hail box was up (`0-20261022-000913`, shorthand form of that run's log) [L]. Harmless while time is frozen; exempt `hl.w == "dlg"` if suppression counters matter.
 8. `TRF_InMovie`/`TRF_UiState` are confirmed in game for movies and modal tops (`PROGRESS.md:158`) but return -1 when their byte check fails; then use `MovieIsPlaying()` and accept the queue risk.
 9. One new Dialog object per `StartTradeDialog` (0x4ce746, 0xbc bytes) [V]; whether finished dialogs are freed is not traced [U]. Vanilla does the same per rumour.
 
@@ -96,9 +96,9 @@ What cannot be dynamic, and the workaround:
 
 | # | Check | Expected |
 |---|---|---|
-| D1 | `HAIL_BOX=2`, hail a trader in flight | dialog window with portrait, `FTU <name>: <greeting>`, only the valid answers; `hl: hail id=.. dialog` line |
+| D1 | `HAIL_BOX=2`, hail a trader in flight | dialog window with portrait, `FTU <name>: <greeting>`, only the valid answers; `module=hail event=hail trader_id=.. dialog=true` line |
 | D2 | `#who#`, `#m0#`, `- #l_feq#` replaced | names and pay shown, no `#` left |
-| D3 | each stage-A answer | `hl: hail id=.. option <key>` once; trade opens the shop, news the vanilla rumour, escort the OK/Cancel box after the window closes |
+| D3 | each stage-A answer | `module=hail event=option trader_id=.. key=<key>` once; trade opens the shop, news the vanilla rumour, escort the OK/Cancel box after the window closes |
 | D4 | refusal at heat 3-6 | only demand and close |
 | D5 | `dt_game` while the window is up (E0.1 tick lines) | 0 |
 | D6 | stage B: `SetReplaceValue` in an answer callback, then `go msg10` | `msg10` shows the new text (not the previous value) |
@@ -119,21 +119,21 @@ Code: `Data/Scripts/Trade/TRF_Hail.xml` (vanilla schema, validates against `G/XM
 Differences from section 5:
 
 - Message `FTU #who#: #head#`: `who` is the trader name (`TRF_HlName`), `head` is `dlghead` or, for the heat 3-6 refusal, `dlgrefuse` (new text keys). The text does not start with `#` (3.6).
-- Answers `a_trade`, `a_head`, `a_news`, `a_esc`, `a_demand`, `a_p1`..`a_p5`, `a_sweep`, `a_trouble`, `a_boom`, `a_close` (14). Provider items other than demand (`feqinfo`, `sesc`, `feq`, `dc`, new keys) take the next slot `p<i>` with the label `- #p<i>#` instead of fixed answers; more items than slots fall back to the boxes (`why=slots`). Callbacks `TRF_HlDlgA_<key>`, each ending the dialog (no `go_message_name`).
+- Answers `a_trade`, `a_head`, `a_news`, `a_esc`, `a_demand`, `a_p1`..`a_p5`, `a_sweep`, `a_trouble`, `a_boom`, `a_close` (14). Provider items other than demand (`feqinfo`, `sesc`, `feq`, `dc`, new keys) take the next slot `p<i>` with the label `- #p<i>#` instead of fixed answers; more items than slots fall back to the boxes (`reason=slots`). Callbacks `TRF_HlDlgA_<key>`, each ending the dialog (no `go_message_name`).
 - `SetReplaceValue`, `HideAnswer` and `ShowAnswer` run in the init, after the file is loaded (3.4: before `StartTradeDialog` there is no dialog of ours to act on).
-- Gate: `hail_xml` 1, `StartTradeDialog` and `TRF_UiState` present, `TRF_UiState() == 0`, `TRF_InMovie() ~= 1`, else the box chain (`hl: dialog fallback why=xml|native|uistate|ui=<v>|movie|store|slots|error`, once per reason and visit). A pick is routed as the box OK of that option (`hl.k`, `hl.c = "ok"`, `TRF_HailStep` from a due call), so trade, news, the escort and offer boxes and the provider actions are unchanged. `TRF_HlDlgCheck` (1 s due) closes a chain still waiting while `TRF_UiState` has no dialog flag (Esc or never shown) instead of falling back to the boxes.
+- Gate: `hail_xml` 1, `StartTradeDialog` and `TRF_UiState` present, `TRF_UiState() == 0`, `TRF_InMovie() ~= 1`, else the box chain (`module=hail event=dialog_fallback reason=xml|native|uistate|ui=<v>|movie|store|slots|error`, once per reason and visit). A pick is routed as the box OK of that option (`hl.k`, `hl.c = "ok"`, `TRF_HailStep` from a due call), so trade, news, the escort and offer boxes and the provider actions are unchanged. `TRF_HlDlgCheck` (1 s due) closes a chain still waiting while `TRF_UiState` has no dialog flag (Esc or never shown) instead of falling back to the boxes.
 
 In-game checks (clone, `EXP=0 TRAFFIC=1 LOG=2`, `HAIL_BOX` 2 is the clone default):
 
 | # | Check | Expected |
 |---|---|---|
-| D1 | hail a trader at the 70-unit meeting | dialog window with the Trader portrait and only the valid answers; `hl: hail id=N via=meet menu n=K hn=1 dlg=1`, `hl: dialog answers id=N show=...` |
+| D1 | hail a trader at the 70-unit meeting | dialog window with the Trader portrait and only the valid answers; `module=hail event=hail trader_id=N via=meet answer_count=K hail_count=1 dialog=true`, `module=hail event=dialog_answers trader_id=N answers=...` (level 2) |
 | D2 | text | `FTU <name>: What do you need, Wolves?`, provider labels `- <label>`; no `#` left |
-| D3 | each answer once (trade, head, news, esc, trouble, boom, a provider item, close) | `hl: dialog pick key=<k> id=N`, then `hl: hail id=N option <k>` once; trade opens the shop, news the vanilla rumour, escort the OK/Cancel box after the window closed; close: `closed (close)` |
-| D4 | heat 3-6 with demand cargo | only `Drop some of your cargo` and `Nothing, carry on`; `refused heat=H (demand dialog)` |
+| D3 | each answer once (trade, head, news, esc, trouble, boom, a provider item, close) | `module=hail event=dialog_pick trader_id=N key=<k>`, then `module=hail event=option trader_id=N key=<k>` once; trade opens the shop, news the vanilla rumour, escort the OK/Cancel box after the window closed; close: `module=hail event=close trader_id=N reason=close` |
+| D4 | heat 3-6 with demand cargo | only `Drop some of your cargo` and `Nothing, carry on`; `module=hail event=hail trader_id=N heat=H demand_via=dialog result=refused` |
 | D5 | `dt_game` while the window is up | 0 |
-| D7 | hail during a movie or with a modal window up | no dialog (`dialog fallback why=ui=...` or the hail skipped), no late window |
-| D8 | Esc in the dialog | `hl: hail id=N closed (dialog closed)`; the trader is hailable again after `hail_cd` |
+| D7 | hail during a movie or with a modal window up | no dialog (`event=dialog_fallback reason=ui=...` or the hail skipped), no late window |
+| D8 | Esc in the dialog | `module=hail event=close trader_id=N reason="dialog closed"`; the trader is hailable again after `hail_cd` |
 | D9 | `ScriptErrors.log`, `LOGfile.txt` | no `not found in dialog`, `not exist in scriptspace`, `Not found Dialog` |
 | D10 | `HAIL_BOX=1` reinstall | the box chain as before |
 

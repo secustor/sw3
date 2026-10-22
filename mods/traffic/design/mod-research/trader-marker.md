@@ -162,7 +162,7 @@ function TRF_MkOff(id, why)
 	if not M or not M[id] then return; end;
 	TRF_HlP(function(o) o:Delete(); end, {M[id].o});
 	M[id] = nil;
-	TRF_HlL("mk off id="..tostring(id).." ("..tostring(why)..")");
+	TRF_HlDE("marker_off", "trader_id", id, "reason", tostring(why));
 end;
 
 -- 1 s step (traffic.script s1 block: TRF_P("TRF_Mk_Step")). No mothership -> do nothing (teardown window).
