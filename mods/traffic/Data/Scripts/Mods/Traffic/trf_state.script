@@ -974,7 +974,8 @@ function TRF_DumpVan()
 	return nf, ns;
 end;
 
-function TRF_Kv(t)
+-- Sorted " k=v" pairs of a table (dump lines; TRF_Kv in traffic.script is the logfmt helper).
+function TRF_KvTab(t)
 	local ks = {};
 	for k, v in t do tinsert(ks, tostring(k)); end;
 	sort(ks);
@@ -1041,7 +1042,7 @@ function TRF_DumpState(why)
 	end;
 	local st = l.stat;
 	if type(st) ~= "table" then st = {}; end;
-	TRF_L("dump stat"..TRF_Kv(st));
+	TRF_L("dump stat"..TRF_KvTab(st));
 	local fs = "";
 	if type(TRF.fs) == "table" then
 		for k, v in TRF.fs do fs = fs.." "..tostring(k).."="..tostring(v); end;

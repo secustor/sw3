@@ -209,7 +209,7 @@ function S_Visit(sys, ch, pro)
 	if pro then TRF_SetPro(TRF_CurIdx(), pro); end;
 end;
 
--- Runs f with a mod log that records but does not count ERROR lines (expected errors); returns their number.
+-- Runs f with a mod log that records but does not count ERROR / event=error lines (expected errors); returns their number.
 function S_Expect(f)
 	local lg = TRF_Log;
 	TRF_Log = function(s)
@@ -219,7 +219,7 @@ function S_Expect(f)
 	local n0 = S_Mark();
 	f();
 	TRF_Log = lg;
-	return S_Logs(n0, " ERROR ");
+	return S_Logs(n0, " ERROR ") + S_Logs(n0, " event=error ");
 end;
 
 -- a: install (12.1, 6.1) ---------------------------------------------------------------------

@@ -6,6 +6,9 @@ Usage: python3 -I lint_lua.py [--host] [--allow NAME[,NAME]] [--bool NAME[,NAME]
 Exit status 1 when any finding is reported. Token-based heuristics, not a parser.
 --host: Lua 4 syntax checks only, for host harness files that define engine natives and constants.
 --calls: cross-file check of TRF_ definitions and references; exit status 1 only on errors.
+Log keys (mod scripts, not --host; design/log-format.md): TRF_Lf(module, event, k1, v1, ...) needs literal
+snake_case module and event ([a-z][a-z0-9_]*), a module wrapper TRF_<Mod>E(event, k1, v1, ...) a literal
+snake_case event; every key that is a string literal (Lf: 3rd, 5th, ...; *E: 2nd, 4th, ...) must be snake_case.
 """
 import argparse
 import re
@@ -26,6 +29,8 @@ NIL_NATIVES = {"IsExist", "IsAlive", "HavePerk"}
 KEYWORDS = set("and break do else elseif end for function if in local nil not or repeat "
                "return then until while".split())
 PREFIX = "TRF_"
+SNAKE = re.compile(r"[a-z][a-z0-9_]*$")
+LOG_WRAPPER = re.compile(r"TRF_[A-Za-z]*E$")    # module log wrapper TRF_<Mod>E(event, k1, v1, ...)
 
 TOKEN = re.compile(r"""
     (?P<nl>\n)
@@ -93,6 +98,9 @@ def lint(path, allow, bools, host=False):
             elif val in ("end", "until"):
                 if stack:
                     stack.pop()
+            elif not host and nxt == "(" and prev not in ("function", ".", ":") and (
+                    val == "TRF_Lf" or LOG_WRAPPER.match(val)):
+                check_log_call(toks, i, add)
             elif not host and (val in bools or val in NIL_NATIVES) and nxt == "(":
                 k = i
                 while k >= 2 and v[k - 1] in (".", ":") and kinds[k - 2] == "name":
@@ -132,6 +140,45 @@ def lint(path, allow, bools, host=False):
             elif val == "=" and not in_func and not braces and not host:
                 check_assign(toks, i, allow, add)
     return out
+
+
+def call_args(toks, i):
+    """Token ranges [(start, end)) of the arguments of the call whose '(' is token i."""
+    args, depth, start, j = [], 0, i + 1, i
+    while j < len(toks):
+        kind, t = toks[j][0], toks[j][1]
+        if kind == "op" and t in ("(", "{", "["):
+            depth += 1
+        elif kind == "op" and t in (")", "}", "]"):
+            depth -= 1
+            if depth == 0:
+                break
+        elif t == "," and depth == 1:
+            args.append((start, j))
+            start = j + 1
+        j += 1
+    if j > i + 1:
+        args.append((start, j))
+    return args
+
+
+def check_log_call(toks, i, add):
+    """TRF_Lf(module, event, k, v, ...) / TRF_<Mod>E(event, k, v, ...): literal snake_case names and keys."""
+    name, ln = toks[i][1], toks[i][2]
+    args = call_args(toks, i + 1)
+    if name != "TRF_Lf" and not args:
+        return          # TRF_GenThunkCE(): not a log wrapper
+    fixed = ("module", "event") if name == "TRF_Lf" else ("event",)
+    lit = lambda a: a[1] - a[0] == 1 and toks[a[0]][0] == "str"
+    for k, what in enumerate(fixed):
+        if k >= len(args) or not lit(args[k]):
+            add(ln, "%s: %s (argument %d) must be a literal snake_case string" % (name, what, k + 1))
+        elif not SNAKE.match(toks[args[k][0]][1][1:-1]):
+            add(ln, "%s: %s %s is not snake_case" % (name, what, toks[args[k][0]][1]))
+    for k in range(len(fixed), len(args), 2):
+        a = args[k]
+        if lit(a) and not SNAKE.match(toks[a[0]][1][1:-1]):
+            add(toks[a[0]][2], "%s: key %s (argument %d) is not snake_case" % (name, toks[a[0]][1], k + 1))
 
 
 def check_assign(toks, i, allow, add):

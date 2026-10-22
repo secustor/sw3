@@ -1760,7 +1760,7 @@ function T_V02_L()
 	T_Jump("gredos");
 	h.mwrites = {};
 	V_TradeDock();
-	HOST_Check(V_Logs("modules=4 ") == 2 and getn(TRF.shops) == 0 and V_Logs("restore done") >= 1 and getn(V_Writes("gredos")) >= 1,
+	HOST_Check(V_Logs(" module_count=4 ") == 2 and getn(TRF.shops) == 0 and V_Logs("restore done") >= 1 and getn(V_Writes("gredos")) >= 1,
 		"enabled 2: 4 modules loaded, restored although the shortage is active, 'restore done'");
 	h.cfg.enabled = nil;
 	T_Jump("aurora");

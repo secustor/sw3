@@ -69,7 +69,7 @@ Exit criteria: design §12 v0.2 list, including the 200-leg desynchronisation de
 
 Scope: S14, S17, S18, S30–S39, S41–S45, M15–M18, M21; `TRF` fields `fs`, `lr`, `base`, `offer`, `sys[idx].bh`, `feq`, `std.fst`.
 
-Implementation spec: [v1-spec.md](v1-spec.md) (2026-10-21; decisions in 11, module ownership in 10.2, critic log 12, conformance review 13). Data model v4; the eight v1 modules load after the v0.2 ones, each on its own (`loaded ... modules=18`).
+Implementation spec: [v1-spec.md](v1-spec.md) (2026-10-21; decisions in 11, module ownership in 10.2, critic log 12, conformance review 13). Data model v4; the eight v1 modules load after the v0.2 ones, each on its own (`module=core event=loaded ... module_count=18`).
 
 - [~] (implemented, host-tested, awaiting in-game run: `trf_track.script`, `trf_gen.script` (pool write on escape, tracked arrivals), `trf_events.script`; host `v1-b`) Tracked pool, chase through the portal, meeting again (5.4, 6.6).
 - [~] (implemented, host-tested, awaiting in-game run: `trf_supply.script` (supply convoys, `optdemand`, `_temp_change` and `CStation_Action` wrappers); host `v1-c`) Faction supply convoys (7.9); demand cargo (8.6); heat reset at the FTU relation station.
@@ -110,7 +110,7 @@ Ordered from cheapest to most expensive; each step assumes the previous one pass
 3. v0.1 criteria (1–3 h). Same install: 8x in Gredos, Aurora and a core system; an extortion; 30 jumps in three sectors; then missions 1–3 from a new game with and without the mod (README v0.1 table).
 4. v0.2 passive and short checks (about 1 h). `LEVEL=v02`: `TUNE=T_leg=5` 200-leg run (waiting only); `PRO_SET=taira:6` double kill; `PRO_SET=gredos:9,kadi:9,taira:9` 8x; parked ship after leaving (README v0.2 table rows 7, 9–11).
 5. v0.2 play checks (2–4 h). `LEVEL=v02`: 20 min free roam for raids and contracts, contract pay, no autopause, trouble answer to a staged raid, shortage and `ENABLED=2` restore-all; then missions 1–4 with the cycle on and the convoy missions 6c, 6c_1, 6c_2, 9c, 12c, `m18c_escort` (README v0.2 table).
-6. v1 smoke and short checks (about 1 h). Default install (`EXP=0 TRAFFIC=1 AUTOSAVE=1`): `loaded ... modules=18`, `fac: install pirdock=1`, `sp: install reldock`; chase a damaged trader through a portal (`tk: spawn chase`); `FEQ_AT=<sys>` equipment convoy waves and kill; `PRO_SET=gredos:9` ≥ 16 ships and a TT4 kill (forced Bust); danger convoys at `dis` ≥ 4 (README v1 table rows 3, 9–12).
+6. v1 smoke and short checks (about 1 h). Default install (`EXP=0 TRAFFIC=1 AUTOSAVE=1`): `module=core event=loaded ... module_count=18`, `fac: install pirdock=1`, `sp: install reldock`; chase a damaged trader through a portal (`tk: spawn chase`); `FEQ_AT=<sys>` equipment convoy waves and kill; `PRO_SET=gredos:9` ≥ 16 ships and a TT4 kill (forced Bust); danger convoys at `dis` ≥ 4 (README v1 table rows 3, 9–12).
 7. v1 long checks (several hours). `TUNE=T_leg=5` 200-leg run with forced Busts; a T4 region: on-screen sweep (fail and joined success), carrier raid with 10 ships at 8x and the hangar recovery; the in-game test of 8x parity (README v1 table rows 2, 5, 7, 8, 11).
 8. Bases (after `gen_map.py` emits `ba`/`bs`) and the full campaign playthrough (days): README v1 table rows 1 and 6.
 

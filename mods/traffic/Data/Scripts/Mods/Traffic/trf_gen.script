@@ -2226,9 +2226,9 @@ function TRF_GnLoadRetry()
 	end;
 end;
 
--- " k=v" pairs of a table (log helper; trf_state's TRF_Kv when present).
+-- " k=v" pairs of a table (log helper; trf_state's TRF_KvTab when present).
 function TRF_Kv2(t)
-	if type(TRF_Kv) == "function" then return TRF_Kv(t); end;
+	if type(TRF_KvTab) == "function" then return TRF_KvTab(t); end;
 	local s = "";
 	for k, v in t do s = s.." "..tostring(k).."="..tostring(v); end;
 	return s;

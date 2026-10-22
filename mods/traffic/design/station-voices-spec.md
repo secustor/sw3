@@ -565,7 +565,7 @@ Review findings:
 ## 16. Implementation notes (2026-10-21)
 
 Where the code differs from the text above:
-- Loader: `trf_station` loads from its own list after the v1 files and is counted as `extra=` in the `loaded ...` line, so `modules=18` (checked by host_v1 `v1-a`) keeps its meaning.
+- Loader: `trf_station` loads from its own list after the v1 files and is counted as `extra_count=` in the `event=loaded` line, so `module_count=18` (checked by host_v1 `v1-a`) keeps its meaning.
 - Size (3.4, 13 `stn-f`): on the `HOST_SaveSize` grammar a full record (with `pv`) costs about 200 bytes, so 76 full records are 15.2 KB, not 5.3 KB; the host checks `TRF.stn <= 16000` and TRF (24 KB) `< 40000`. A plain `{st, lg}` record is 68 bytes.
 - `TRF_Stn_Fix` (D4) keeps absent `TRF.stn`, `TRF.vo` and `TRF.ve` absent (lazy creation); present non-table values become `{}`.
 - Log additions: `stn: dock ... nofee=<pv|latch|strict0|ch|->` (`pv`: already paid or docked on credit in this visit, also after a load), `stn: deed ... cap=far` (raid help beyond `stn_near`), `stn: pass reason=tip` (closed-station key of class other).

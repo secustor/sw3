@@ -97,14 +97,14 @@ For other keys, edit `<clone>/Data/Scripts/Mods/Traffic/config.script` after the
     EXP=1 TRAFFIC=0 sh mods/traffic/install-test.sh              # E0.1 hook experiment only
     SECS=1800 sh mods/traffic/run-test.sh                         # the user plays; logs land in <clone>/traffic-runs/
 
-Lines in `sw3tp.log` (all `traffic: lua: v1 ...` since the v1 modules are wired in; earlier builds wrote `v0.1` or `v0.2`):
+Lines in `sw3tp.log` (all `traffic: lua: exp=v1 ...` since the logfmt change, design/log-format.md; `traffic: lua: v1 ...` before, earlier builds wrote `v0.1` or `v0.2`):
 
-- once per location entry: `loaded map=1 modules=18 TeleportToLocation wrapped=1 CustomTeleportate wrapped=1` (5 in v0.1 builds, 10 in v0.2) and `gen: install generator=1 case_eject=1 ... mine=1/1`. `modules` below 5 or a missing install line means the mod stays vanilla: look at the `load <file> failed` line before it.
+- once per location entry: `module=core event=loaded map=true module_count=18 extra_count=1 teleport_wrapped=true custom_teleportate_wrapped=true` (5 in v0.1 builds, 10 in v0.2) and `gen: install generator=1 case_eject=1 ... mine=1/1`. `module_count` below 5 or a missing install line means the mod stays vanilla: look at the `module=core event=file_load file=<file> result=failed` line before it.
 - `dump enter|load|jump|tick v=4 gen=<n> sys=<name>(<idx>) legs=<n> ... heat=<h>/<n> ... mode=mod|vanilla`, followed by `dump dis <system>=<n> ...` and `dump stat ...`: `gen` grows by one per entry and per load, `legs` by one per entry and every 300 game s in a system; neither goes back. `mode=vanilla` comes with a `safe: mode vanilla why=<reason>` line.
 - `gen: spawn id=<n> path=C ...`, `gen: remove id=<n> why=exit|dock|life|stuck|wind|jump|lost|station ...`, `ui say ... text=...`, `st: dis`, `st: heat`, `ev kill`, `ev resp`.
 - `dump stat spawn=<n> skip_cap=<n> ...`: spawn, skip and removal counters for this visit.
 - `ERROR <message>`: a mod error caught by the mod. It never reaches `ScriptErrors.log`, so any such line is a bug to report.
-- `ERROR cb <name>: <message>`: an error in trigger callback `<name>` (spec 13, O1), logged once per callback and visit; repeats only raise `stat err_<name>` and `err` in the dump.
+- `module=core event=error source=<name> repeats=counted_not_logged message="<message>"`: an error in trigger callback `<name>` (spec 13, O1), logged once per callback and visit; repeats only raise `stat err_<name>` and `err` in the dump.
 - `ScriptErrors.log` must have no new lines. Mod trigger callbacks run protected (spec 13, O1); a line from `_FTrader_Action` or another vanilla function called by the mod keeps the default handler.
 
 ### In-game checks for the v0.1 exit criteria (design §12)
@@ -164,9 +164,9 @@ Defaults are in each module's `TRF_<M>_OptDef()`; a missing key reads its defaul
 
 ### Log lines (v0.2)
 
-All lines are `traffic: lua: v1 ...` in `sw3tp.log` since v1 (`v0.2` before). The v0.1 lines above still apply.
+All lines are `traffic: lua: exp=v1 ...` in `sw3tp.log` since v1 (`v0.2` before). The v0.1 lines above still apply.
 
-- Load: `loaded map=1 modules=18 ...` (5 v0.1 + 5 v0.2 + 8 v1; 4 with `enabled 2`), `gen: install ...`, `shop: install trade_dock=1 mine=1`, `hl: install board=1 mine=1`. A missing install line or `load <file> failed` names the missing feature.
+- Load: `module=core event=loaded map=true module_count=18 ...` (5 v0.1 + 5 v0.2 + 8 v1; 4 with `enabled 2`), `gen: install ...`, `shop: install trade_dock=1 mine=1`, `hl: install board=1 mine=1`. A missing install line or `event=file_load file=<file> result=failed` names the missing feature.
 - Dump (on entry, load, jump and every `dump` s): `dump enter v=4 ... help=<n> rt=<n>`, then `dump rg n=8 rt=<leg> QBURXV... sc ...` (one phase letter per region: Q Quiet, B Boom, U Build-up, R Raids, X Bust, V Recovery, then the clan scores), one `dump rg <slot> <home> ph=<phase> len=<n> sc=<n> tier=<n> sn= sl= ...` per region, `dump pro <sys>=<pro> ...`, `dump tier pro= band= sf= caps= ...`, `dump raid ...`, `dump hail ...`, `dump shop short ... shops ...`, `dump gate=ok|<why> sys= strict= ...`.
 - Cycle: `rg: init fresh=1 slots=8/8 ...`, `rg: tick x<n> legs=<L> <letters> sc ...` (every 2 legs), `rg: sweep <slot> planned|attempt <k> won|failed ...`, `rg: pro <sys>(<idx>) <old> -> <new> (<why>)`, `rg: clan <slot> <old> -> <new> (<why>)`, `rg: pro_set <sys> = <n>`.
 - Entry: `tier: entry <sys> pro= band= sf= caps= parked= gov=`, `gen: entry plan: seed chance= roll= in <s> s`, `gen: seed id= tier=`, `tier: parked <label> at ...`, `gen: queue id= hold= ...`.
@@ -182,7 +182,7 @@ All lines are `traffic: lua: v1 ...` in `sw3tp.log` since v1 (`v0.2` before). Th
     EXP=0 TRAFFIC=1 AUTOSAVE=1 TUNE=T_leg=5 sh mods/traffic/install-test.sh         # 200-leg debug run (below)
     EXP=0 TRAFFIC=1 AUTOSAVE=1 PRO_SET=taira:6 sh mods/traffic/install-test.sh      # pro-6 double-kill test
     SECS=1800 sh mods/traffic/run-test.sh
-    grep -a 'traffic: lua: v1 \(rg: tick\|rg: sweep\|dump rg\)' <clone>/sw3tp.log        # cycle trace
+    grep -a 'traffic: lua: exp=v1 \(rg: tick\|rg: sweep\|dump rg\)' <clone>/sw3tp.log        # cycle trace
 
 ### In-game checks for the v0.2 exit criteria (design §12)
 
@@ -243,9 +243,9 @@ Defaults are in each module's `OptDef`; `config.script` lists them all. `install
 
 ### Log lines (v1)
 
-Every line of the mod is now `traffic: lua: v1 ...` in `sw3tp.log`; the v0.1 and v0.2 lines above keep their text after that prefix.
+Every line of the mod is now `traffic: lua: exp=v1 ...` in `sw3tp.log`; the v0.1 and v0.2 lines above keep their text after that prefix.
 
-- Load: `loaded map=1 modules=18 ...`, `fac: install pirdock=1 mine=1`, `sp: install reldock=<n> mine=1/1`, `fac: fs init slots=8/8 def=33333`. With `enabled 2`: `modules=4`.
+- Load: `module=core event=loaded map=true module_count=18 ...`, `fac: install pirdock=1 mine=1`, `sp: install reldock=<n> mine=1/1`, `fac: fs init slots=8/8 def=33333`. With `enabled 2`: `module_count=4`.
 - Dump (entry, load, jump, `dump` s): `dump enter v=4 ...`, then `dump v4 fst=<5 digits> tp=<pool> lr=<n> base=<n> feq=<state> offer=<k> fs 1=<5 digits> ...`, `dump tp n=`, `dump tq exits=`, `dump fac ...`, `dump clan lr= salv= carrier=`, `dump cv feq= cvs= e= lv=`, `dump dc danger= leaving=`, `dump supply n= border= ...`, `dump base n= allow= on=`, `loc: dump lang= mode= en= deny= qcur=`, `dump gate=ok ... qs= q= qa=`.
 - Tracking: `tk: write <record> (<dest> d=<n>) pool=<n>`, `tk: chased id= to <sys> dt=`, `tk: jump dest= written= chased= pool=`, `tk: entry id= e= d= fl= -> chase|port|dock`, `tk: spawn chase|port|dock pool id= -> id= from= tier= ... dm=<damage>`, `tk: expire|evict|drop|trim ...`.
 - Supply, demand, heat: `sp: roll f= ... chance=`, `sp: spawn id= f= hull=Walrus_... esc= grp=TRF_Conv_<n>`, `sp: demand id= esc= p= roll=`, `sp: heat offer heat= cost=`, `sp: heat reset ...`, `sp: temp_change <team> ok= credits <a> -> <b>`, `fac: fst <faction> <old> -> <new> (<why>)`.
@@ -263,7 +263,7 @@ Every line of the mod is now `traffic: lua: v1 ...` in `sw3tp.log`; the v0.1 and
     EXP=0 TRAFFIC=1 AUTOSAVE=1 TUNE=T_leg=5 sh mods/traffic/install-test.sh           # 200-leg run with forced Busts
     EXP=0 TRAFFIC=1 AUTOSAVE=1 LEVEL=v01 sh mods/traffic/install-test.sh              # v0.1 or v0.2 feature set only (LEVEL=v02)
     SECS=1800 sh mods/traffic/run-test.sh
-    grep -a 'traffic: lua: v1 \(tk:\|cv: feq\|fac: sweep\|clan: carrier\|dc: \|base \)' <clone>/sw3tp.log
+    grep -a 'traffic: lua: exp=v1 \(tk:\|cv: feq\|fac: sweep\|clan: carrier\|dc: \|base \)' <clone>/sw3tp.log
 
 ### In-game checks for the v1 exit criteria (design §12)
 
@@ -329,7 +329,7 @@ Keys are `idx + 200 (j - 1)`: Kadenoa's USS trade station is 51, its Triada stat
 
 ### In-game checks (station voices)
 
-Run on the clone with cfg `log 2` (edit the installed `config.script`) and grep `traffic: lua: v1 stn:` in `sw3tp.log`.
+Run on the clone with cfg `log 2` (edit the installed `config.script`) and grep `traffic: lua: exp=v1 stn:` in `sw3tp.log`.
 
 | # | fact | confirming log line |
 |---|---|---|

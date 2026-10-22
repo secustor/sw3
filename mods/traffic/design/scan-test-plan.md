@@ -1027,7 +1027,7 @@ HOST_Check(V_Logs("dump scan cl i=1 m=80000 n=1 k=sc s=4.90 s2=4.90 b=strong brg
 
 ```lua
 -- i1
-HOST_Check(nd > 20 and type(TRF_Sc_Tick) ~= "function" and type(TRF_ScanPulse) ~= "function" and V_Logs("load trf_scan.script failed") == 1
+HOST_Check(nd > 20 and type(TRF_Sc_Tick) ~= "function" and type(TRF_ScanPulse) ~= "function" and V_Logs("event=file_load file=trf_scan.script result=failed") == 1
 	and HOST().errors == e0, "sc-i i1: without trf_scan the other modules run unchanged");
 -- i3
 HOST_Check(SC_Echoes(m) == "000 strong|" and HOST().errors == e0, "sc-i i3: trf_scan runs without trf_base and trf_clan");
@@ -1124,7 +1124,7 @@ Steps on successive free-flight edges: 1 SC2, 2 SC3, 3 SC4 place, 4 SC5 (only wi
 
 ### 5.3 Experiments, log lines and decisions
 
-All lines are `traffic: lua: E0.30 <text>` in `sw3tp.log` (`TRF_L`, `S/traffic.script:52-60`; `run-test.sh` collects them). The column "Spec" names the CHECK items of spec 11.1 each experiment answers.
+All lines are `traffic: lua: exp=E0.30 <text>` in `sw3tp.log` (`TRF_L`, `S/traffic.script:52-60`; `run-test.sh` collects them). The column "Spec" names the CHECK items of spec 11.1 each experiment answers.
 
 | Id | Spec | Setup and trigger | Exact lines | Decides |
 |---|---|---|---|---|

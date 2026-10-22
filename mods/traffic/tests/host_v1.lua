@@ -168,7 +168,7 @@ function T_V1_A()
 	h.logs = {};
 	T_Jump("aurora");
 	HOST_Check(nd > 100 and type(TRF_TrackEntry) ~= "function" and type(TRF_Fs) ~= "function" and type(TRF_BaseOf) ~= "function"
-		and V_Logs("modules=10 ") >= 1, "v1 files missing: "..nd.." v1 functions gone, 10 modules loaded");
+		and V_Logs(" module_count=10 ") >= 1, "v1 files missing: "..nd.." v1 functions gone, 10 modules loaded");
 	local ids = {};
 	for k = 1, 6 do local id = T_Spawn(); if id then tinsert(ids, id); end; TRF.live.port = {}; end;
 	T_Tick(40, 0.5);
@@ -176,10 +176,10 @@ function T_V1_A()
 	HOST_Check(getn(ids) >= 2 and TRF.version == 4 and getn(TRF.tp) == 0 and TRF.feq == nil and getn(TRF.base) == 0
 		and TRF.std.fst == "55555", "v1 files missing: traders spawn, legs run, v4 fields unchanged ("..getn(ids).." traders)");
 	T_Jump("gredos");
-	HOST_Check(h.errors == 0 and V_Logs(" ERROR") == 0, "v1 files missing: no script error, no ERROR line");
+	HOST_Check(h.errors == 0 and V_Logs(" ERROR") == 0 and V_Logs(" event=error ") == 0, "v1 files missing: no script error, no ERROR line");
 	h.hide = nil;
 	T_Jump("aurora");
-	HOST_Check(type(TRF_TrackEntry) == "function" and V_Logs("modules=18 ") >= 1, "v1 files back: 18 modules loaded");
+	HOST_Check(type(TRF_TrackEntry) == "function" and V_Logs(" module_count=18 ") >= 1, "v1 files back: 18 modules loaded");
 end;
 
 -- b: tracked pool (spec 4) ---------------------------------------------------------------------------

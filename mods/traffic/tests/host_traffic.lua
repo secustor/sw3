@@ -626,7 +626,7 @@ function T_F()
 	local body, lg, e1, er = TRF_OnExit_Body, TRF_Log, h.errors, T_Stat("err");
 	h.cb_log = 0;
 	TRF_Log = function(s)
-		if strfind(s, " ERROR cb TRF_OnExit: ", 1, 1) then HOST().cb_log = HOST().cb_log + 1; end;
+		if strfind(s, " module=core event=error source=TRF_OnExit ", 1, 1) then HOST().cb_log = HOST().cb_log + 1; end;
 		print("HOST expected error (mod log): "..s);
 	end;
 	local act = "TRF_OnExit("..a..","..TRF.gen..")--";

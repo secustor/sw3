@@ -48,16 +48,56 @@ function TRF_Traffic()
 	return type(TRF_State_Tick) == "function" and TRF_TrafficOn();
 end;
 
--- Log through the DLL native (sw3tp.log, "traffic: lua: ..."), else the engine log, else nothing.
+-- Log through the DLL native (sw3tp.log, "traffic: lua: exp=<id> ..."), else the engine log, else nothing.
+-- Lines are logfmt (design/log-format.md); new log sites use TRF_Lf, TRF_L stays for unconverted modules.
 function TRF_L(s)
 	local c = TRF_Cfg();
 	if c.log == 0 then return; end;
-	local line = TRF_ExpId().." "..tostring(s);
+	local line = "exp="..TRF_ExpId().." "..tostring(s);
 	if type(TRF_Log) == "function" then
 		TRF_Log(line);
 	elseif type(LOG) == "function" then
 		LOG("traffic: lua: "..line);
 	end;
+end;
+
+-- logfmt value (log-format.md 3): numbers via tostring, nil as nil, tables through TRF_Dump in quotes; a
+-- string (or other value) is bare unless it is empty or contains a space, "=" or a double quote, then it is
+-- double-quoted with " escaped as \".
+function TRF_KvV(v)
+	if type(v) == "number" then return tostring(v); end;
+	local s;
+	if type(v) == "table" then s = TRF_Dump(v, 3); else s = tostring(v); end;
+	if type(v) ~= "table" and s ~= "" and not strfind(s, '[ ="]') then return s; end;
+	return '"'..gsub(s, '"', '\\"')..'"';
+end;
+
+-- logfmt flag: "true" for 1 / TRUE, else "false" (the mod's 1/0 and 1/nil flags, log-format.md 3).
+function TRF_KvB(v)
+	if v == 1 or (TRUE ~= nil and v == TRUE) then return "true"; end;
+	return "false";
+end;
+
+-- "k1=v1 k2=v2" from alternating key, value arguments; arg.n keeps nil values in place, an odd trailing key
+-- gets =nil. Keys are written with tostring, values through TRF_KvV.
+function TRF_Kv(...)
+	local s = "";
+	local i = 1;
+	while i <= arg.n do
+		if i > 1 then s = s.." "; end;
+		s = s..tostring(arg[i]).."="..TRF_KvV(arg[i + 1]);
+		i = i + 2;
+	end;
+	return s;
+end;
+
+-- One logfmt event line: "exp=<id> module=<module> event=<event> k1=v1 ...". Module wrappers fix the module
+-- (tinsert(arg, 1, event); tinsert(arg, 1, "<module>"); call(TRF_Lf, arg)). Nothing is built when log is 0.
+function TRF_Lf(module, event, ...)
+	if TRF_Cfg().log == 0 then return; end;
+	local s = "module="..tostring(module).." event="..tostring(event);
+	if arg.n > 0 then s = s.." "..call(TRF_Kv, arg); end;
+	TRF_L(s);
 end;
 
 -- Call a global function by name if it exists; nil otherwise (natives that may be missing).
@@ -75,9 +115,9 @@ function TRF_Ms()
 	return TRF_N("GetPlayerMotherShip");
 end;
 
--- Error handler of TRF_P: a mod log line instead of a ScriptErrors.log entry.
+-- Error handler of TRF_P: a mod log line (event=error) instead of a ScriptErrors.log entry.
 function TRF_Err(m)
-	TRF_L("ERROR "..tostring(m));
+	TRF_Lf("core", "error", "message", tostring(m));
 end;
 
 -- Protected call of a module function by name (nil when missing or on error), so an error in one
@@ -110,7 +150,7 @@ function TRF_Cb(name, f, args)
 end;
 
 -- Error handler of TRF_Cb: every error is counted (traffic: live.stat err_<name> and err; exp kits:
--- exp.cnt err_<name>), only the first per name and visit is logged (TRF_PErr, else TRF_Err).
+-- exp.cnt err_<name>), only the first per name and visit is logged (event=error source=<name>).
 function TRF_CbErr(name, m)
 	local n = nil;
 	if type(TRF_Stat) == "function" then
@@ -122,8 +162,8 @@ function TRF_CbErr(name, m)
 		if type(TRF_Stat) == "function" then TRF_Stat("err"); end;
 		return;
 	end;
-	local s = "cb "..tostring(name)..": "..tostring(m).." (repeats counted, not logged)";
-	if type(TRF_PErr) == "function" then TRF_PErr(s); else TRF_Err(s); end;
+	if type(TRF_Stat) == "function" then TRF_Stat("err"); end;
+	TRF_Lf("core", "error", "source", tostring(name), "repeats", "counted_not_logged", "message", tostring(m));
 end;
 
 -- Game-time period timer in the handle table (never saved; restarts on entry and load): 1 every p seconds.
@@ -213,7 +253,7 @@ function TRF_OnEnter()
 		TRF.gen = TRF.gen + 1;
 	end;
 	local n = TRF_Count("enter");
-	if TRF_Cfg().exp == 0 then TRF_L("OnEnter #"..n.." fresh="..tostring(fresh)); end;
+	if TRF_Cfg().exp == 0 then TRF_Lf("core", "enter", "enter_count", n, "fresh", TRF_KvB(fresh)); end;
 	TRF_N("TRF_Exp_OnEnter", fresh);
 end;
 
@@ -258,7 +298,7 @@ function TRF_OnLoad()
 		TRF.gen = TRF.gen + 1;
 	end;
 	local n = TRF_Count("load");
-	if TRF_Cfg().exp == 0 then TRF_L("OnLoad #"..n.." fresh="..tostring(fresh)); end;
+	if TRF_Cfg().exp == 0 then TRF_Lf("core", "load", "load_count", n, "fresh", TRF_KvB(fresh)); end;
 	TRF_N("TRF_Exp_OnLoad", fresh);
 end;
 
@@ -362,7 +402,7 @@ end;
 -- ExecuteScriptFile returns 1 on success and nil when the file is missing or fails.
 function TRF_LoadFile(name)
 	local ok = ExecuteScriptFile(TRF_Path(name));
-	if not ok then TRF_L("load "..name.." failed"); end;
+	if not ok then TRF_Lf("core", "file_load", "file", name, "result", "failed"); end;
 	return ok;
 end;
 
@@ -409,7 +449,8 @@ function TRF_Main()
 		end;
 	end;
 	if e == 0 then
-		TRF_L("loaded map="..tostring(m).." modules="..nm.." extra="..ne.." TeleportToLocation wrapped="..wraps.tp_wrapped.." CustomTeleportate wrapped="..wraps.ct_wrapped);
+		TRF_Lf("core", "loaded", "map", TRF_KvB(m), "module_count", nm, "extra_count", ne,
+			"teleport_wrapped", TRF_KvB(wraps.tp_wrapped), "custom_teleportate_wrapped", TRF_KvB(wraps.ct_wrapped));
 	end;
 end;
 

@@ -91,12 +91,13 @@ function TRF_RealTime() return HOST().rt; end;
 function HOST_InMovie() return HOST().mov; end;
 function HOST_UiState() return HOST().ui; end;
 function HOST_MovieIsPlaying() return HOST().mip; end;
--- An " ERROR " line (TRF_Err, TRF_GnErr: a mod error caught by a protected call) counts as a script error.
+-- An " ERROR " or " event=error " line (TRF_Err, TRF_CbErr, TRF_GnErr: a mod error caught by a protected call)
+-- counts as a script error.
 function TRF_Log(s)
 	if type(s) ~= "string" and type(s) ~= "number" then print("traffic: TRF_Log bad argument"); return nil; end;
 	print("traffic: lua: "..s);
 	if HOST().logs then tinsert(HOST().logs, s); end;
-	if type(s) == "string" and strfind(s, " ERROR ", 1, 1) then
+	if type(s) == "string" and (strfind(s, " ERROR ", 1, 1) or strfind(s, " event=error ", 1, 1)) then
 		HOST().errors = HOST().errors + 1;
 		print("HOST SCRIPT ERROR (mod log): "..s);
 		HOST_Trace();
@@ -1285,6 +1286,19 @@ for k, v in globals() do
 end;
 HOST_Check(bad == "", "top level defines only TRF_ functions"..bad);
 HOST_Check(TeleportToLocation == TRF_Wrap_Teleport and TRF_orig_TeleportToLocation == HOST_TeleportToLocation, "TeleportToLocation wrapped once");
+-- logfmt helpers (design/log-format.md 5).
+HOST_Check(TRF_KvV("abc") == "abc" and TRF_KvV("a b") == '"a b"' and TRF_KvV('say "hi"') == '"say \\"hi\\""'
+	and TRF_KvV("k=v") == '"k=v"' and TRF_KvV(nil) == "nil" and TRF_KvV(2.5) == "2.5" and TRF_KvV(3) == "3"
+	and TRF_KvV("") == '""' and TRF_KvV({1}) == '"{1=1}"', "TRF_KvV: bare, quoted (space, =, escaped quote, empty), nil, number, table");
+HOST_Check(TRF_Kv("a", 1, "b", nil, "c", "x y") == 'a=1 b=nil c="x y"' and TRF_Kv("k") == "k=nil" and TRF_Kv() == "",
+	"TRF_Kv: nil in the middle kept, odd key =nil, empty");
+HOST_Check(TRF_KvB(1) == "true" and TRF_KvB(TRUE) == "true" and TRF_KvB(0) == "false" and TRF_KvB(nil) == "false", "TRF_KvB: 1/TRUE true, 0/nil false");
+h.logs = {};
+TRF_Lf("core", "host_check", "a", 1, "b", nil);
+TRF_Lf("core", "host_bare");
+HOST_Check(getn(h.logs) == 2 and strfind(h.logs[1], "^exp=[^ ]+ module=core event=host_check a=1 b=nil$")
+	and strfind(h.logs[2], "^exp=[^ ]+ module=core event=host_bare$"), "TRF_Lf: exp= first, then module=core event=, then the pairs");
+h.logs = nil;
 -- v0.1 modules: loaded with exp 0 only (spec 10.1, decision 20); the generator thunk replaces the vanilla action.
 if (h.exp or 0) == 0 then
 	HOST_Check(HOST_V() == 4 and type(TRF_InstallGen) == "function" and type(TRF_Events_Step) == "function", "exp 0 loads the traffic modules");
