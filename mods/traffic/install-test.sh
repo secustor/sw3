@@ -10,6 +10,11 @@
 # MEET, HAIL_START, BOARD, SHOP_MODE, SHORT_PRICE, RESTORE, NEWS_MODE, HEAT_WAR, STRICT, TRANSIT, SOS_MODE, COMBAT, HAIL_QUIET,
 # ESC_FLIGHT (integers);
 # PRO_SET=gredos:9,kadi:9,taira:9 (sets pro on every entry; test clone only); TUNE=T_leg=5,step=10 (tune overrides).
+# PROFILE=lab (test lab): adds the tune keys ct_off_min=100 (every hailed path A/B trader offers a contract),
+# ct_raid=100 (every accepted contract rolls a raid), raid_p=100 (every lane raid roll succeeds) and T_leg=5 (one leg
+# per 5 game s), and LOG=2 when LOG is unset. A key given in TUNE wins (TUNE=raid_p=0 turns lane raids off, so an
+# armed lane raid never blocks the contract raid with reason=busy). T_leg=5 also speeds up heat decay (1 per 50 game
+# s), region phases and pro drift; TUNE=heat_decay=600 keeps heat at the T_leg=300 rate.
 # Optional v1 keys (design/v1-spec.md 10.5), written only when set: TRACK, CONV, DEMAND, HEAT_OFFER, CARRIERS, SALVAGE,
 # SALV_ADDMOD, CLAN_ACE, SWEEPS, SWEEP_CT, PO, TT4, TT4_SPLIT, FEQ, FORCED_BUST, DCONV, DC_SPEED, BASES, BASE_GLOW, WRECK
 # (integers); FEQ_AT=<system> (debug: the next leg schedules an equipment convoy there, skipping the pro/strength
@@ -38,6 +43,8 @@ case "$EXP" in 0|1|2|3) ;; *) echo "EXP must be 0..3" >&2; exit 1;; esac
 if [ "$EXP" = 2 ]; then AUTOSAVE=${AUTOSAVE:-1}; else AUTOSAVE=${AUTOSAVE:-0}; fi
 case "$AUTOSAVE" in 0|1|2) ;; *) echo "AUTOSAVE must be 0..2" >&2; exit 1;; esac
 TRAFFIC=${TRAFFIC:-1}
+PROFILE=${PROFILE:-}
+case "$PROFILE" in "") ;; lab) LOG=${LOG:-2} ;; *) echo "PROFILE must be lab or unset" >&2; exit 1;; esac
 HAIL_BOX=${HAIL_BOX:-2}
 case "$HAIL_BOX" in 0|1|2) ;; *) echo "HAIL_BOX must be 0..2" >&2; exit 1;; esac
 case "$TRAFFIC" in 0|1) ;; *) echo "TRAFFIC must be 0 or 1" >&2; exit 1;; esac
@@ -86,6 +93,11 @@ if [ -n "${TUNE:-}" ]; then
         case "$n" in ""|[!A-Za-z_]*|*[!A-Za-z0-9_]*) echo "TUNE: bad key in $e" >&2; exit 1;; esac
         case "$v" in ""|.|*[!0-9.]*|*.*.*) echo "TUNE: bad number in $e" >&2; exit 1;; esac
         tn="$tn${tn:+, }$n=$v"
+    done
+fi
+if [ "$PROFILE" = lab ]; then
+    for e in ct_off_min=100 ct_raid=100 raid_p=100 T_leg=5; do
+        case ", $tn" in *", ${e%%=*}="*) ;; *) tn="$tn${tn:+, }$e" ;; esac
     done
 fi
 case ", $tn" in *", hail_box="*) ;; *) tn="$tn${tn:+, }hail_box=$HAIL_BOX" ;; esac

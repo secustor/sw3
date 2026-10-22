@@ -893,6 +893,28 @@ function T_V02_H()
 	local a0 = T_Spawn("C");
 	HOST_Check(TRF_RaidRoll(a0, "lane") == nil and TRF.live.tr[a0].rdn == nil, "cfg raids 0: no roll");
 	h.cfg.raids = nil;
+	-- Tune raid_p (lab key): 100 always raids (or skips for want of a raid point), 0 never.
+	h.cfg.log = 2;
+	h.cfg.tune = {raid_p=100};
+	TRF.live.cbt = nil;
+	local np0 = V_Logs("reason=no_raid_point");
+	h.rq = {9999};
+	local n1 = TRF_RaidRoll(a0, "lane");
+	h.rq = {};
+	HOST_Check((n1 and V_Rd(n1) and V_Rd(n1).st == "armed") or V_Logs("reason=no_raid_point") == np0 + 1,
+		"tune raid_p 100: roll 9999 of 10000 still raids ("..tostring(n1)..")");
+	if n1 then TRF_Rd_End(n1, "cancel"); end;
+	TRF.live.tr[a0].rdn = nil;
+	h.cfg.tune = {raid_p=0};
+	local nr0 = V_Logs("trader_id="..a0.." source=lane");
+	local z = nil;
+	h.rq = {0, 0, 0};
+	for k = 1, 3 do z = z or TRF_RaidRoll(a0, "lane"); end;
+	h.rq = {};
+	HOST_Check(z == nil and V_Logs("chance=0.000 roll=0 result=no_raid") == 3 and V_Logs("trader_id="..a0.." source=lane") == nr0 + 3,
+		"tune raid_p 0: roll 0 gives no_raid at chance 0");
+	h.cfg.tune = nil;
+	h.cfg.log = 1;
 	TRF_Remove(a0, "test");
 	-- 1. Comply (path A, not docked: shortage).
 	local id = T_Spawn("A");

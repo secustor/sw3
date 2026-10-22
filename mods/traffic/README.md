@@ -30,7 +30,7 @@ Script rules: top-level code only defines functions and installs the wrappers. A
 
 The game must be launched by the user. The scripts only prepare the test clone (`~/Games/Heroic/sw3-tp-test`) and collect the logs.
 
-    EXP=1 TRAFFIC=0 mods/traffic/install-test.sh   # EXP=0..3; also TRAFFIC, LOG, BIG, DEL_ON_JUMP, AUTOSAVE, OVERRIDE, DUMP, GUARD, the v0.2 and v1 keys, LEVEL, PRO_SET, TUNE, HAIL_BOX, FEQ_AT, LOC, TRAFFIC_ENABLED, SITE_T1..SITE_T4, TICK_MS
+    EXP=1 TRAFFIC=0 mods/traffic/install-test.sh   # EXP=0..3; also TRAFFIC, LOG, BIG, DEL_ON_JUMP, AUTOSAVE, OVERRIDE, DUMP, GUARD, the v0.2 and v1 keys, LEVEL, PRO_SET, TUNE, PROFILE, HAIL_BOX, FEQ_AT, LOC, TRAFFIC_ENABLED, SITE_T1..SITE_T4, TICK_MS
     SECS=900 mods/traffic/run-test.sh       # SECS defaults to 600; play during that time; SECS=0 waits until you quit the game
     mods/traffic/uninstall-test.sh
 
@@ -234,8 +234,12 @@ All lines are `traffic: lua: exp=v1 module=... event=...` in `sw3tp.log` since v
     EXP=0 TRAFFIC=1 AUTOSAVE=1 sh mods/traffic/install-test.sh                      # v0.2 with defaults
     EXP=0 TRAFFIC=1 AUTOSAVE=1 TUNE=T_leg=5 sh mods/traffic/install-test.sh         # 200-leg debug run (below)
     EXP=0 TRAFFIC=1 AUTOSAVE=1 PRO_SET=taira:6 sh mods/traffic/install-test.sh      # pro-6 double-kill test
+    PROFILE=lab EXP=0 TRAFFIC=1 AUTOSAVE=1 sh mods/traffic/install-test.sh          # test lab (below)
+    BASE=.work/saves/Base.sav sh mods/traffic/tools/mk_lab_saves.sh                 # lab saves, game closed
     SECS=1800 sh mods/traffic/run-test.sh
     grep -a 'traffic: lua: exp=v1 module=region event=\(tick\|sweep\|dump\)' <clone>/sw3tp.log        # cycle trace
+
+`PROFILE=lab` adds the tune keys `ct_off_min=100` (every hailed path A/B trader offers a contract), `ct_raid=100` (every accepted contract rolls a raid), `raid_p=100` (every lane raid roll succeeds) and `T_leg=5`, and sets `LOG=2` when `LOG` is unset. Keys given in `TUNE` win, e.g. `TUNE=raid_p=0` (no lane raids, so an armed lane raid never blocks the contract raid with `reason=busy`) or `TUNE=heat_decay=600` (heat decays at the `T_leg=300` rate). `tools/mk_lab_saves.sh` writes `TRF lab heat4.sav` (heat 4), `TRF lab recovery.sav` (the save's region in Recovery) and `TRF lab pro9.sav` (`pro` 9 on every `TRF.sys` entry) from one save with a TRF v4 table; its header lists the limits of each. `design/PROGRESS.md` (Lab sessions) gives the order of checks.
 
 ### In-game checks for the v0.2 exit criteria (design §12)
 
@@ -518,7 +522,7 @@ Movie and UI natives (`pe/traffic.c`, [design/mod-research/movie-state.md](desig
 ### Which saves the experiments need
 
 - E0.1: none.
-- E0.2: one save in any quiet system after at least one jump (the kit's first `Autosave - TRF E0 <system>` is that save), then quit, relaunch and load it. Also one save made with `TRAFFIC_ENABLED=0` for the "TRF nil" case: with the DLL module disabled no `TRF` exists and the kit does not run, so save manually. `tools/make-test-saves.sh` can instead derive the `trf-nil`, `trf-v1`, `trf-big` and `trf-bad` variants from the one baseline, so a single real save is enough.
+- E0.2: one save in any quiet system after at least one jump (the kit's first `Autosave - TRF E0 <system>` is that save), then quit, relaunch and load it. Also one save made with `TRAFFIC_ENABLED=0` for the "TRF nil" case: with the DLL module disabled no `TRF` exists and the kit does not run, so save manually. `tools/make-test-saves.sh` can instead derive the `trf-nil`, `trf-v1`, `trf-big` and `trf-bad` variants from the one baseline, so a single real save is enough. `tools/mk_lab_saves.sh` derives the lab saves (heat 4, Recovery, `pro` 9) from the same baseline.
 - E0.3: none.
 
 ### Manual recipe (fallback)

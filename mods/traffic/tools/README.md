@@ -1,6 +1,6 @@
 # Traffic host tools
 
-The Python tools are stdlib-only Python 3 and are run with `python3 -I`. None writes to the original game directory; `make-test-saves.sh` writes only to the test clone.
+The Python tools are stdlib-only Python 3 and are run with `python3 -I`. None writes to the original game directory; `make-test-saves.sh` and `mk_lab_saves.sh` write only to the test clone or `OUT`.
 
 ## check_sites.py
 
@@ -77,3 +77,12 @@ Outputs (in the clone's save dir, listed in the load menu under the same names):
 | `Base-trf-nil` | removed | load without mod state |
 | `Base-trf-bad` | v1 with `version=99` | migration fallback for an unknown version |
 
+## mk_lab_saves.sh
+
+Builds the test lab saves from one save with a TRF v4 table (default `BASE=.work/saves/Base.sav`, e.g. a kit autosave) with `savetool.py get --json`, `mk_lab_saves.py` and `set --json`. `OUT` defaults to the clone's save dir; the script refuses to write there while `sw3cw.exe` runs. Run it with `OUT=.work/saves/lab` to inspect the results first.
+
+| save | `TRF` edit | tests |
+|---|---|---|
+| `TRF lab heat4` | `std.heat=4`, `std.heat_t=clock.legs` | hail refusal menu (heat 3-6); heat falls 1 per `heat_decay` legs |
+| `TRF lab recovery` | `rg[slot]` of the save's system: `ph=5`, `pt=clock.legs`, Raids fields cleared | raid help pays help 2 in Recovery; the phase lasts 4-10 legs at least, so use `T_leg=300` |
+| `TRF lab pro9` | `pro=9` on every `TRF.sys` entry | high-traffic checks; region ticks move `pro` back toward the phase target (`PRO_SET` holds it) |

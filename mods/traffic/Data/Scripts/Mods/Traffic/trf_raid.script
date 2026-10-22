@@ -21,9 +21,10 @@ function TRF_Raid_OptDef()
 	return {raids=1, staged=1};
 end;
 
--- Tune keys read here (10.4); trf_state merges them before the cfg tune override.
+-- Tune keys read here (10.4); trf_state merges them before the cfg tune override. raid_p >= 0 replaces the
+-- lane raid chance (%, test key; -1 = the rc formula).
 function TRF_Raid_TuneDef()
-	return {raid_min_st=400, raid_meet=250, ct_raid=40, R_threat=300, R_radio=2000,
+	return {raid_min_st=400, raid_meet=250, ct_raid=40, raid_p=-1, R_threat=300, R_radio=2000,
 		T_sos_cd=240, staged_win=180, staged_hp=0.7, brave_lo=0.2, brave_hi=1, comply_min=5, comply_max=95};
 end;
 
@@ -1102,6 +1103,8 @@ function TRF_Rd_RollBody(id, why)
 	local p;
 	if why == "contract" then
 		p = TRF_Rd_T("ct_raid", 40) / 100;
+	elseif TRF_Rd_T("raid_p", -1) >= 0 then
+		p = TRF_Rd_T("raid_p", -1) / 100;
 	else
 		local rc = {0, 0.10, 0.20, 0.35};
 		local tf = 1.0;
