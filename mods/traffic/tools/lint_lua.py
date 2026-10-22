@@ -9,8 +9,10 @@ Exit status 1 when any finding is reported. Token-based heuristics, not a parser
 Log keys (mod scripts, not --host; design/log-format.md): TRF_Lf(module, event, k1, v1, ...) needs literal
 snake_case module and event ([a-z][a-z0-9_]*), a module wrapper TRF_<Mod>E(event, k1, v1, ...) a literal
 snake_case event; every key that is a string literal (Lf: 3rd, 5th, ...; *E: 2nd, 4th, ...) must be snake_case.
+The pre-logfmt string helpers (TRF_<Mod>L, TRF_<Mod>Dbg) are findings, as is TRF_L outside traffic.script.
 """
 import argparse
+import os
 import re
 import sys
 
@@ -31,6 +33,7 @@ KEYWORDS = set("and break do else elseif end for function if in local nil not or
 PREFIX = "TRF_"
 SNAKE = re.compile(r"[a-z][a-z0-9_]*$")
 LOG_WRAPPER = re.compile(r"TRF_[A-Za-z]*E$")    # module log wrapper TRF_<Mod>E(event, k1, v1, ...)
+OLD_LOG = re.compile(r"TRF_(L|[A-Za-z]*(L|Dbg))$")  # pre-logfmt string helpers: only TRF_Lf may call TRF_L
 
 TOKEN = re.compile(r"""
     (?P<nl>\n)
@@ -101,6 +104,9 @@ def lint(path, allow, bools, host=False):
             elif not host and nxt == "(" and prev not in ("function", ".", ":") and (
                     val == "TRF_Lf" or LOG_WRAPPER.match(val)):
                 check_log_call(toks, i, add)
+            elif not host and nxt == "(" and prev not in ("function", ".", ":") and OLD_LOG.match(val) and (
+                    val != "TRF_L" or os.path.basename(path) != "traffic.script"):
+                add(toks[i][2], "%s: string log helper; use TRF_Lf or the module's TRF_<Mod>E wrapper (design/log-format.md)" % val)
             elif not host and (val in bools or val in NIL_NATIVES) and nxt == "(":
                 k = i
                 while k >= 2 and v[k - 1] in (".", ":") and kinds[k - 2] == "name":

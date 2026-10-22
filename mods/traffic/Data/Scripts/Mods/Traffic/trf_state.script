@@ -35,11 +35,6 @@ function TRF_StDE(event, ...)
 	if TRF_Opt("log") >= 2 then tinsert(arg, 1, event); call(TRF_StE, arg); end;
 end;
 
--- Debug string line (cfg log 2); shim for modules not yet converted to event lines (trf_hail).
-function TRF_LDbg(s)
-	if TRF_Opt("log") >= 2 then TRF_L(s); end;
-end;
-
 -- Error handler for protected mod calls, call(f, args, "x", TRF_PErr): the message goes to the mod log
 -- and stat err instead of ScriptErrors.log.
 function TRF_PErr(m)
@@ -980,16 +975,6 @@ function TRF_DumpVan()
 		end;
 	end;
 	return nf, ns;
-end;
-
--- Sorted " k=v" pairs of a table (dump lines; TRF_Kv in traffic.script is the logfmt helper).
-function TRF_KvTab(t)
-	local ks = {};
-	for k, v in t do tinsert(ks, tostring(k)); end;
-	sort(ks);
-	local s = "";
-	for i = 1, getn(ks) do s = s.." "..ks[i].."="..tostring(t[ks[i]]); end;
-	return s;
 end;
 
 -- Appends the string keys of table t in sorted order, each followed by its value, to the pair list a (a.n

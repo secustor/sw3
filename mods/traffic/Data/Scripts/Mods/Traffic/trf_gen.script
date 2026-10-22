@@ -2257,14 +2257,6 @@ function TRF_GnLoadRetry()
 	end;
 end;
 
--- " k=v" pairs of a table (log helper; trf_state's TRF_KvTab when present).
-function TRF_Kv2(t)
-	if type(TRF_KvTab) == "function" then return TRF_KvTab(t); end;
-	local s = "";
-	for k, v in t do s = s.." "..tostring(k).."="..tostring(v); end;
-	return s;
-end;
-
 -- Before a jump: delete every traffic trader and response flight (M3), st = "gone". v1: also the danger
 -- convoy escort flights (the other v1 modules delete their flights in their own BeforeJump, which the
 -- loader runs first; spec 10.3).
