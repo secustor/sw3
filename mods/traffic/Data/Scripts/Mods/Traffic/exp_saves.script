@@ -85,16 +85,21 @@ function TRF_Saves_Done()
 	return n;
 end;
 
--- Reason not to arm a save for sys, or nil.
+-- logfmt event line, module=exp kit=saves (design/log-format.md).
+function TRF_SvE(event, ...)
+	tinsert(arg, 1, "saves"); tinsert(arg, 1, "kit"); tinsert(arg, 1, event); tinsert(arg, 1, "exp"); call(TRF_Lf, arg);
+end;
+
+-- Reason not to arm a save for sys (snake_case log value), or nil.
 function TRF_Saves_Block(sys)
-	if not sys then return "no location"; end;
+	if not sys then return "no_location"; end;
 	local e = TRF_Saves_Tab()[sys];
-	if type(e) == "table" and e.st == 2 then return "already saved"; end;
-	if TRF_Saves_Done() >= TRF_Saves_Opt().cap then return "cap "..TRF_Saves_Opt().cap.." reached"; end;
+	if type(e) == "table" and e.st == 2 then return "already_saved"; end;
+	if TRF_Saves_Done() >= TRF_Saves_Opt().cap then return "cap_reached"; end;
 	local c = TRF.exp.cnt or {};
-	if (c.enter or 0) < 2 then return "first system (enter="..tostring(c.enter or 0)..")"; end;
+	if (c.enter or 0) < 2 then return "first_system"; end;
 	-- GetQuestLabel pushes nil for a label that was never set (AutoTest2.script tests "== nil").
-	if TRF_Cfg().autosave ~= 2 and TRF_N("GetQuestLabel", "CurrentQuest") == nil then return "mission 1 (CurrentQuest unset)"; end;
+	if TRF_Cfg().autosave ~= 2 and TRF_N("GetQuestLabel", "CurrentQuest") == nil then return "mission_1_current_quest_unset"; end;
 	return nil;
 end;
 
@@ -104,18 +109,19 @@ function TRF_Saves_OnActivate(fresh)
 	local sys = TRF_Saves_Sys();
 	local why = TRF_Saves_Block(sys);
 	if why then
-		TRF_L("saves: skip "..tostring(sys).." ("..why..")");
+		local c = TRF.exp.cnt or {};
+		TRF_SvE("skip", "system", sys, "reason", why, "enter_count", c.enter or 0, "cap", TRF_Saves_Opt().cap);
 		return;
 	end;
 	if type(NewTrigger) ~= "function" then
-		TRF_L("saves: NewTrigger missing, no save for "..sys);
+		TRF_SvE("skip", "system", sys, "reason", "new_trigger_missing");
 		return;
 	end;
 	local o = TRF_Saves_Opt();
 	local e = {st=1, gen=TRF.gen, key="TRF E0 "..sys};
 	TRF_Saves_Tab()[sys] = e;
 	local t = TRF_Saves_Arm(e, o.delay);
-	TRF_L("saves: armed "..sys.." in "..o.delay.." s gen="..e.gen.." timer="..((t and "ok") or "nil"));
+	TRF_SvE("armed", "system", sys, "delay", o.delay, "generation", e.gen, "timer", TRF_KvB(t and 1));
 end;
 
 -- 1 while a movie plays, else nil. TRF_InMovie returns 1/0, or -1 (unknown) when its byte check failed;
@@ -152,12 +158,12 @@ function TRF_Saves_Fire_Body(gen)
 	local e = nil;
 	if sys then e = TRF_Saves_Tab()[sys]; end;
 	if not TRF.active or gen ~= TRF.gen or type(e) ~= "table" or e.st ~= 1 or e.gen ~= gen then
-		TRF_L("saves: stale timer gen="..tostring(gen).." now="..tostring(TRF.gen).." sys="..tostring(sys).." active="..tostring(TRF.active));
+		TRF_SvE("stale_timer", "system", sys, "generation", gen, "current_generation", TRF.gen, "active", TRF_KvB(TRF.active));
 		TRF_Saves_End(t);
 		return;
 	end;
 	if TRF_Saves_Done() >= TRF_Saves_Opt().cap then
-		TRF_L("saves: cap reached, no save for "..sys);
+		TRF_SvE("skip", "system", sys, "reason", "cap_reached");
 		TRF_Saves_End(t);
 		return;
 	end;
@@ -168,23 +174,25 @@ function TRF_Saves_Fire_Body(gen)
 	if __sys_SOS == TRUE or __disableAction == TRUE or mov or ui then
 		e.q = nil;
 		e.try = (e.try or 0) + 1;
-		local fl = "(sos="..tostring(__sys_SOS).." dis="..tostring(__disableAction).." mov="..tostring(mov).." ui="..tostring(ui)..")";
+		local sos, dis = TRF_KvB(__sys_SOS), TRF_KvB(__disableAction);
 		if e.try > o.retries then
 			e.st = 3;
-			TRF_L("saves: gave up "..sys.." "..fl.." after "..o.retries.." retries");
+			TRF_SvE("gave_up", "system", sys, "sos", sos, "disable_action", dis, "movie", TRF_KvB(mov), "ui_state", ui,
+				"retries", o.retries);
 			TRF_Saves_End(t);
 			return;
 		end;
 		TRF_Saves_Arm(e, o.delay, t);
 		if e.try == 1 or e.try == o.retries or e.try == 5 * floor(e.try / 5) then
-			TRF_L("saves: deferred "..sys.." "..fl.." retry "..e.try.."/"..o.retries);
+			TRF_SvE("deferred", "system", sys, "sos", sos, "disable_action", dis, "movie", TRF_KvB(mov), "ui_state", ui,
+				"retry", e.try, "retries", o.retries);
 		end;
 		return;
 	end;
 	if type(e.q) ~= "number" then
 		e.q = gt;
 		TRF_Saves_Arm(e, o.quiet, t);
-		TRF_L("saves: quiet "..sys.." "..o.quiet.." s gt="..TRF_F(gt));
+		TRF_SvE("quiet", "system", sys, "quiet", o.quiet, "game_time", TRF_F(gt));
 		return;
 	end;
 	if gt - e.q < o.quiet then
@@ -192,24 +200,24 @@ function TRF_Saves_Fire_Body(gen)
 		e.try = (e.try or 0) + 1;
 		if e.try > o.retries then
 			e.st = 3;
-			TRF_L("saves: gave up "..sys.." (quiet "..TRF_F(gt - e.q).." s) after "..o.retries.." retries");
+			TRF_SvE("gave_up", "system", sys, "reason", "quiet", "quiet_elapsed", TRF_F(gt - e.q), "retries", o.retries);
 			TRF_Saves_End(t);
 			return;
 		end;
 		TRF_Saves_Arm(e, o.quiet, t);
-		TRF_L("saves: quiet "..sys.." "..TRF_F(gt - e.q).."/"..o.quiet.." s retry "..e.try.."/"..o.retries);
+		TRF_SvE("quiet", "system", sys, "quiet", o.quiet, "quiet_elapsed", TRF_F(gt - e.q), "retry", e.try, "retries", o.retries);
 		return;
 	end;
 	-- Marked before the call so the save itself records the system as done; the trigger is deleted before
 	-- it too, so the save does not list it.
 	e.st = 2;
 	TRF_Saves_End(t);
-	TRF_L("saves: autosave "..sys.." "..e.key);
+	TRF_SvE("autosave", "system", sys, "key", e.key);
 	if type(AutoSave) ~= "function" then
-		TRF_L("saves: AutoSave missing");
+		TRF_SvE("autosave", "system", sys, "result", "auto_save_missing");
 		return;
 	end;
 	AutoSave(e.key);
 end;
 
-TRF_L("saves: top-level load");
+TRF_SvE("top_level_load");

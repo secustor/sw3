@@ -1,4 +1,4 @@
--- sw3-traffic pirate bases (v1 spec 9, M15-M18, S37-S39, R13; design 7.14, 8.12). Lua 4.0.1. Log prefix "base".
+-- sw3-traffic pirate bases (v1 spec 9, M15-M18, S37-S39, R13; design 7.14, 8.12). Lua 4.0.1. Log module=base.
 -- Saved state: TRF.base[i] = {s=idx, k=1 P / 2 A / 3 D, h=HP tenths 0..9, t=leg, w} (<= 4 records) and
 -- TRF.sys[idx].bh (legs in a row at dis >= found_dis). w on a D record: 1 = destroyed off-screen, object still
 -- alive (blown on entry); 0 on P and A records. The radio line of an A base system is trf_ui's (TRF_ArrivalLine).
@@ -52,11 +52,16 @@ end;
 
 -- Logging, config ------------------------------------------------------------------------------------
 
-function TRF_Ba_L(s) TRF_L("base "..tostring(s)); end;
+-- logfmt event line, module=base (design/log-format.md).
+function TRF_BaE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "base"); call(TRF_Lf, arg);
+end;
 
-function TRF_Ba_D(s)
+-- Debug event line (log 2).
+function TRF_BaDE(event, ...)
 	local v = TRF_Ba_Opt("log", 1);
-	if type(v) == "number" and v >= 2 then TRF_L("base "..tostring(s)); end;
+	if type(v) ~= "number" or v < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_BaE, arg);
 end;
 
 function TRF_Ba_Opt(key, def)
@@ -364,12 +369,13 @@ function TRF_Ba_NLive()
 	return n;
 end;
 
-function TRF_Ba_Drop(r, why)
+function TRF_Ba_Drop(r, why, dis, keep)
 	local l = TRF_Ba_Recs();
 	local k = {};
 	for i = 1, getn(l) do if l[i] ~= r then tinsert(k, l[i]); end; end;
 	TRF.base = k;
-	TRF_Ba_L("drop "..TRF_Ba_Name(r.s).."("..r.s..") k="..r.k.." ("..tostring(why)..")");
+	TRF_BaE("drop", "system", TRF_Ba_Name(r.s), "system_index", r.s, "stage", r.k, "reason", tostring(why), "disruption", dis,
+		"disruption_keep", keep);
 end;
 
 -- Region slot and phase of idx.
@@ -466,14 +472,14 @@ function TRF_Ba_Life(L, cur)
 				if TRF_Ba_Dis(r.s) >= keep then
 					r.k = 2; r.t = L; r.w = 0; r.h = 9;
 					TRF_Ba_Stat("base_act");
-					TRF_Ba_L("active "..TRF_Ba_Name(r.s).."("..r.s..") leg="..L.." dis="..TRF_Ba_Dis(r.s));
+					TRF_BaE("active", "system", TRF_Ba_Name(r.s), "system_index", r.s, "leg", L, "disruption", TRF_Ba_Dis(r.s));
 					local slot = TRF_Ba_Slot(r.s);
 					if slot then TRF_P("TRF_NewsPost", "war", "base", slot); end;
 				else
-					TRF_Ba_Drop(r, "dis "..TRF_Ba_Dis(r.s).." < "..keep);
+					TRF_Ba_Drop(r, "low_disruption", TRF_Ba_Dis(r.s), keep);
 				end;
 			elseif L >= t + dl + 6 then
-				TRF_Ba_Drop(r, "player stayed");
+				TRF_Ba_Drop(r, "player_stayed");
 			end;
 		end;
 	end;
@@ -525,9 +531,10 @@ function TRF_Ba_Found(L, cur, al)
 			if roll < p then
 				tinsert(TRF.base, {s=idx, k=1, h=9, t=L, w=0});
 				TRF_Ba_Stat("base_found");
-				TRF_Ba_L("found "..TRF_Ba_Name(idx).."("..idx..") leg="..L.." p="..p.." roll="..roll.." slot="..slot);
+				TRF_BaE("found", "system", TRF_Ba_Name(idx), "system_index", idx, "slot", slot, "leg", L, "chance", p, "roll", roll,
+					"result", "founded");
 			else
-				TRF_Ba_D("found "..TRF_Ba_Name(idx).." roll "..roll.." >= "..p);
+				TRF_BaDE("found", "system", TRF_Ba_Name(idx), "system_index", idx, "chance", p, "roll", roll, "result", "missed");
 			end;
 		end;
 	end;
@@ -583,7 +590,7 @@ function TRF_Ba_Pay(n, why)
 	if type(TRF_Pay) == "function" then TRF_Pay(n, why); return n; end;
 	TRF_N("AddPlayerCredits", n);
 	TRF_Ba_Stat("pay_"..why);
-	TRF_Ba_L("pay "..n.." ("..why..")");
+	TRF_BaE("pay", "reason", why, "amount", n);
 	return n;
 end;
 
@@ -631,7 +638,7 @@ function TRF_BaseDestroyed(idx, by)
 			if type(c.sc) == "number" then
 				local old = c.sc;
 				c.sc = TRF_Clamp(floor(old - 25), 0, 99);
-				TRF_Ba_L("clan "..slot.." "..old.." -> "..c.sc.." (base gone)");
+				TRF_BaE("clan_score", "slot", slot, "reason", "base_gone", "clan_score_before", old, "clan_score_after", c.sc);
 			end;
 			c.sv = 0;
 			c.sf = 0;
@@ -646,7 +653,8 @@ function TRF_BaseDestroyed(idx, by)
 	end;
 	if cur == idx then TRF_Ba_P(TRF_Ba_RaidsOff, {}); end;
 	TRF_Ba_Stat("base_kill");
-	TRF_Ba_L("destroyed "..TRF_Ba_Name(idx).."("..idx..") by="..tostring(by).." w="..r.w.." slot="..tostring(slot));
+	TRF_BaE("destroyed", "system", TRF_Ba_Name(idx), "system_index", idx, "slot", slot, "by", tostring(by),
+		"off_screen", TRF_KvB(r.w));
 	return 1;
 end;
 
@@ -711,7 +719,7 @@ function TRF_Ba_Create(idx, r)
 	local b = TRF_Ba_P(CreateStation, {nm.model, p, Vector3(0, 0, 1)});
 	if not TRF_Ba_Obj(b) then
 		TRF_Ba_Stat("base_create_fail");
-		TRF_Ba_L("base_create_fail "..TRF_Ba_Name(idx).." (retry next entry)");
+		TRF_BaE("create", "system", TRF_Ba_Name(idx), "result", "failed");
 		return nil;
 	end;
 	TRF_N("SetObjectLabel", b, TRF_Ba_Label(idx));
@@ -722,7 +730,7 @@ function TRF_Ba_Create(idx, r)
 		local full = TRF_Ba_T("base_hp", 100000);
 		TRF_Ba_P(function(o, v) o:SetHP(v); end, {b, max(h * full / 10, full / 20)});
 	end;
-	TRF_Ba_L("created "..TRF_Ba_Name(idx).." h="..h);
+	TRF_BaE("create", "system", TRF_Ba_Name(idx), "hull_band", h, "result", "created");
 	return b;
 end;
 
@@ -768,7 +776,7 @@ function TRF_Ba_Dock(idx, b)
 		shop = ShopList_Kontraband[mod(idx, 7) + 1];
 	end;
 	TRF_Ba_P(CreatePirateStationDocking, {b, ms, 60, shop, TRUE});
-	TRF_Ba_D("dock "..TRF_Ba_Name(idx).." shop="..shop);
+	TRF_BaDE("dock", "system", TRF_Ba_Name(idx), "shop", shop);
 end;
 
 -- Nav point on the station, label TRF_PBASE_NP_<idx> (reused when found).
@@ -834,7 +842,7 @@ function TRF_Ba_Reg(idx, j, fl, kd, sv)
 	local room = TRF_Ba_T("cap_base", 16) - TRF_Ba_NShips();
 	if room <= 0 then
 		TRF_Ba_Del(fl);
-		TRF_Ba_D("flight "..j.." over cap_base");
+		TRF_BaDE("flight", "flight", j, "reason", "cap_base", "result", "deleted");
 		return nil;
 	end;
 	for s = 1, getn(sh) do
@@ -940,7 +948,8 @@ function TRF_Ba_Garrison(idx, b, bs, only)
 		end;
 	end;
 	bs.gp = 1;
-	TRF_Ba_L("garrison "..TRF_Ba_Name(idx).." tier="..tier.." pw="..pw.." flights="..n.." ships="..TRF_Ba_NShips().." sv="..sv);
+	TRF_BaE("garrison", "system", TRF_Ba_Name(idx), "tier", tier, "power", pw, "salvage", sv, "flight_count", n,
+		"ship_count", TRF_Ba_NShips());
 	return n;
 end;
 
@@ -982,7 +991,7 @@ function TRF_Ba_Wave(idx, which)
 			n = n + 1;
 		end;
 	end;
-	TRF_Ba_L("wave "..which.." "..TRF_Ba_Name(idx).." flights="..n.." ships="..TRF_Ba_NShips());
+	TRF_BaE("wave", "system", TRF_Ba_Name(idx), "wave", which, "flight_count", n, "ship_count", TRF_Ba_NShips());
 	return n;
 end;
 
@@ -1029,7 +1038,7 @@ function TRF_Ba_Orphan(idx, b)
 	TRF_Ba_Del(b);
 	TRF_Ba_NavDel(idx);
 	TRF_Ba_Stat("base_orphan");
-	TRF_Ba_L("orphan deleted "..TRF_Ba_Name(idx));
+	TRF_BaE("orphan", "system", TRF_Ba_Name(idx), "result", "deleted");
 end;
 
 -- Wreck carcass for a missing D object (cfg wreck 1, legs < t + wreck_legs).
@@ -1042,7 +1051,7 @@ function TRF_Ba_Wreck(idx, r)
 	local w = TRF_Ba_P(CreateCarcass, {TRF_Ba_Names().wreck, p, Vector3(0, 0, 1)});
 	if TRF_Ba_Obj(w) then
 		TRF_N("SetObjectLabel", w, lb);
-		TRF_Ba_L("wreck "..TRF_Ba_Name(idx));
+		TRF_BaE("wreck", "system", TRF_Ba_Name(idx));
 	end;
 end;
 
@@ -1066,7 +1075,7 @@ function TRF_Ba_Reconcile(mode)
 		if st == "alive" then
 			local ok = TRF_Ba_P(function(o) o:Blow(); return 1; end, {b});
 			if not ok then TRF_Ba_Del(b); end;
-			TRF_Ba_L("blown "..TRF_Ba_Name(idx).." (D record) w="..tostring(r.w).." ok="..tostring(ok));
+			TRF_BaE("blown", "system", TRF_Ba_Name(idx), "stage", 3, "off_screen", TRF_KvB(r.w), "result", TRF_Ba_BlownOf(ok));
 		elseif not st then
 			TRF_Ba_Wreck(idx, r);
 		end;
@@ -1111,7 +1120,7 @@ function TRF_Ba_Reconcile(mode)
 	elseif type(TRF_Supp) ~= "function" or TRF_Supp() == 0 then
 		TRF_Ba_Garrison(idx, b, bs, nil);
 	end;
-	TRF_Ba_L(mode.." "..TRF_Ba_Name(idx).." object="..tostring(st or "created").." h="..tostring(r.h));
+	TRF_BaE("reconcile", "source", mode, "system", TRF_Ba_Name(idx), "object", st or "created", "hull_band", r.h);
 end;
 
 -- Loader OnActivate, after the state and safety steps.
@@ -1150,7 +1159,7 @@ function TRF_Ba_HitBody(idx, g)
 	if RELATION_WAR ~= nil and type(SetGroupRelation) == "function" then
 		TRF_Ba_P(SetGroupRelation, {TRF_Ba_GName(idx), PLAYER_GROUP, RELATION_WAR});
 	end;
-	TRF_Ba_L("attacked "..TRF_Ba_Name(idx).." gt="..TRF_F(bs.atk));
+	TRF_BaE("attacked", "system", TRF_Ba_Name(idx), "game_time", TRF_F(bs.atk));
 	if bs.w ~= 1 then
 		bs.w = 1;
 		TRF_Ba_Wave(idx, 1);
@@ -1169,7 +1178,7 @@ function TRF_Ba_HPBody(idx, p, g)
 	local h = TRF_Ba_Band(hb.b);
 	if not h then h = max(0, (tonumber(p) or 1) - 1); end;
 	r.h = h;
-	TRF_Ba_D("hp "..TRF_Ba_Name(idx).." band="..h);
+	TRF_BaDE("hp", "system", TRF_Ba_Name(idx), "hull_band", h);
 	if h < 5 and bs.w2 ~= 1 then
 		bs.w2 = 1;
 		TRF_Ba_Wave(idx, 2);
@@ -1228,7 +1237,7 @@ function TRF_Ba_JumpBody()
 		if TRF_Ba_Alive(fl) then TRF_Ba_Del(fl); n = n + 1; end;
 	end;
 	if TRF_H then TRF_H().bs = nil; end;
-	if n > 0 then TRF_Ba_L("jump: garrison flights deleted="..n); end;
+	if n > 0 then TRF_BaE("jump", "deleted_count", n); end;
 end;
 
 -- cfg enabled 2 (restore-and-stop): the base object of this system (and its nav point and wreck) is deleted
@@ -1243,7 +1252,7 @@ function TRF_Base_Remove()
 	TRF_Ba_NavDel(idx);
 	local r = TRF_BaseOf(idx);
 	if r then TRF_Ba_Drop(r, "removed"); end;
-	if getn(TRF_Ba_Recs()) == 0 and (r or TRF_Ba_Obj(b)) then TRF_Ba_L("bases removed"); end;
+	if getn(TRF_Ba_Recs()) == 0 and (r or TRF_Ba_Obj(b)) then TRF_BaE("bases_removed"); end;
 end;
 
 -- Raid spawn point (9.4): base_spawn_offset 60-120 from the base on the side facing toward (Vector3), else a
@@ -1263,22 +1272,31 @@ function TRF_BaseRaidPos(idx, toward)
 	return TRF_Ba_Ring(p, d, TRF_Ba_Rand(360));
 end;
 
--- Dump: one line per record and the visit state.
+-- "blown" when the Blow call answered, else "deleted" (the object was deleted instead).
+function TRF_Ba_BlownOf(ok)
+	if ok then return "blown"; end;
+	return "deleted";
+end;
+
+-- Dump: the records as one list value (<system>:<P|A|D>/h<hull band>/t<leg>/w<off-screen>/bh<legs>) and the
+-- visit state (nil keys without a base visit).
 function TRF_Base_Dump()
 	local l = TRF_Ba_Recs();
 	local kn = {"P", "A", "D"};
-	local s = "dump base n="..getn(l).." allow="..getn(TRF_Ba_Allow()).." on="..tostring(TRF_Ba_On());
+	local s = nil;
 	for i = 1, getn(l) do
 		local r = l[i];
 		local e = TRF.sys and TRF.sys[r.s];
 		local bh = 0;
 		if type(e) == "table" and type(e.bh) == "number" then bh = e.bh; end;
-		s = s.." "..TRF_Ba_Name(r.s)..":"..kn[r.k].." h="..tostring(r.h).." t="..tostring(r.t).." w="..tostring(r.w).." bh="..bh;
+		local c = TRF_Ba_Name(r.s)..":"..kn[r.k].."/h"..tostring(r.h).."/t"..tostring(r.t).."/w"..tostring(r.w).."/bh"..bh;
+		if s then s = s..","..c; else s = c; end;
 	end;
 	local L = TRF_Ba_Live();
+	local vs, va, vw, vw2, vn = nil, nil, nil, nil, nil;
 	if L and type(L.bs) == "table" then
-		s = s.." visit="..TRF_Ba_Name(L.bs.s).." atk="..TRF_F(L.bs.atk).." w="..tostring(L.bs.w).."/"..tostring(L.bs.w2)
-			.." ships="..TRF_Ba_NShips();
+		vs = TRF_Ba_Name(L.bs.s); va = TRF_F(L.bs.atk); vw = TRF_KvB(L.bs.w); vw2 = TRF_KvB(L.bs.w2); vn = TRF_Ba_NShips();
 	end;
-	TRF_L(s);
+	TRF_BaE("dump", "record_count", getn(l), "allow_count", getn(TRF_Ba_Allow()), "enabled", TRF_KvB(TRF_Ba_On()),
+		"records", s, "visit_system", vs, "attacked_time", va, "wave_1", vw, "wave_2", vw2, "ship_count", vn);
 end;
