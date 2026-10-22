@@ -1193,8 +1193,10 @@ function V_Hail(id)
 	return TRF.live.hl;
 end;
 
--- Accept an escort contract from trader id (hail, escort option, offer OK). Returns live.ct.
+-- Accept an escort contract from trader id (hail, escort option, offer OK). Returns live.ct. The offer
+-- decision is set to yes (r.co = 1), so the escort option does not depend on the roll.
 function V_Contract(id)
+	TRF.live.tr[id].co = 1;
 	V_Hail(id);
 	if not V_HailTo("esc") then return nil; end;
 	V_Ok();
@@ -1312,8 +1314,38 @@ function T_V02_K()
 	T_Jump("nj1");
 	TRF_SetDis(TRF_CurIdx(), 0);
 	local nj = T_Spawn("B") or T_Spawn("A");
+	local njr = TRF.live.tr[nj];
+	-- Offer roll: p = clamp(100 x min(1, (dE + 0.5 x dis) / 3) x (1.3 - br), 5, 95); dE 1, dis 0, br 0.2 -> 36.7.
+	njr.br, njr.co = 0.2, nil;
+	tinsert(h.rq, 0);
 	local otx, own = TRF_CtOffer(nj);
-	HOST_Check(TRF_CurIdx() == 64 and type(otx) == "string" and own == TRF_HlPayN(64), "nj1 (map dg 0, clan region), dis 0: contract offered ("..tostring(own)..")");
+	HOST_Check(TRF_CurIdx() == 64 and type(otx) == "string" and own == TRF_HlPayN(64) and njr.co == 1
+		and V_Logs("offer id="..nj.." dE=1 dis=0 br=0.20 p=36.7 roll=0 -> yes") == 1,
+		"nj1 (map dg 0, clan region), dis 0, br 0.2: offer roll 0 < p 36.7, contract offered ("..tostring(own)..")");
+	local nr0 = h.rand;
+	local otx2 = TRF_CtOffer(nj);
+	HOST_Check(type(otx2) == "string" and h.rand == nr0 and V_Logs("offer id="..nj.." ") == 1, "offer decision sticks: second call, no draw, no log");
+	njr.co = 0;
+	local otx3, why3 = TRF_CtOffer(nj);
+	HOST_Check(otx3 == nil and why3 == "roll", "r.co 0: no offer, reason roll");
+	HOST_Check(abs(TRF_CtOfferP(0, 0, 0.5) - 5) < 0.001 and abs(TRF_CtOfferP(3, 0, 0.2) - 95) < 0.001
+		and abs(TRF_CtOfferP(1, 0, 1) - 10) < 0.001 and abs(TRF_CtOfferP(0, 2, 1) - 10) < 0.001,
+		"TRF_CtOfferP: dE 0 dis 0 -> min 5, dE 3 br 0.2 -> max 95, dE 1 br 1 -> 10, dis 2 counts as dE 1");
+	-- br 1 -> p 10: roll 10 declines; without trf_raid the braveness is rolled here and kept as r.br.
+	local nk = T_Spawn("B") or T_Spawn("A");
+	local nkr = TRF.live.tr[nk];
+	nkr.br, nkr.co = 1, nil;
+	tinsert(h.rq, 10);
+	local otx4, why4 = TRF_CtOffer(nk);
+	HOST_Check(otx4 == nil and why4 == "roll" and nkr.co == 0 and V_Logs("offer id="..nk.." dE=1 dis=0 br=1.00 p=10.0 roll=10 -> no") == 1,
+		"br 1: p 10, roll 10 -> no offer, kept as r.co 0");
+	local orb = TRF_Rd_Brave;
+	TRF_Rd_Brave = nil;
+	nkr.br = nil;
+	tinsert(h.rq, 500);
+	local b4 = TRF_HlBrave(nkr);
+	TRF_Rd_Brave = orb;
+	HOST_Check(abs(b4 - 0.6) < 0.001 and nkr.br == b4 and TRF_Rd_Brave(nkr) == b4, "braveness without trf_raid: 0.2 + 0.8 x 500/1000, kept as r.br for the raid");
 	T_Jump("gredos");
 	cur = TRF_CurIdx();
 	-- Refusal at heat 3.
@@ -1485,6 +1517,7 @@ function V_DlgTrader()
 	T_Tick(2, 0.5);
 	local id = T_Spawn("B") or T_Spawn("A");
 	T_MoveTr(id, h.ms.pos.x + 40, h.ms.pos.y, h.ms.pos.z);
+	TRF.live.tr[id].co = 1;
 	return id, TRF.live.tr[id];
 end;
 
