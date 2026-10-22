@@ -111,7 +111,7 @@ function T_V02_A()
 	local sg = TRF_RgOf(g);
 	local tp = TRF_PhaseTarget(sg);
 	HOST_Check(TRF.version == 4 and TRF.clock.rt == 40 and TRF.std.help == 0 and V_N(TRF.short) == 0 and V_N(TRF.shops) == 0
-		and type(TRF.news) == "table" and type(TRF.newsx) == "table" and type(TRF.tsh) == "table" and V_Logs("migrate v2 -> v3") == 1 and V_Logs("migrate v3 -> v4") == 1,
+		and type(TRF.news) == "table" and type(TRF.newsx) == "table" and type(TRF.tsh) == "table" and V_Logs("event=migrate from_version=2 to_version=3") == 1 and V_Logs("event=migrate from_version=3 to_version=4") == 1,
 		"v2 -> v3: rt = legs, help 0, short/shops/news/newsx/tsh added, logged");
 	HOST_Check(TRF.sys[46].dis == 4 and TRF.sys[9].dis == 1 and TRF.std.heat == 3 and TRF.gen == 5 and TRF.exp.cnt.enter == 7,
 		"v2 -> v3 keeps dis, heat, gen + 1, exp");
@@ -119,7 +119,7 @@ function T_V02_A()
 	-- v1 save.
 	T_SaveLoad(function() TRF = {version=1, active=1, gen=3, clock={game=40, real=2}, exp={cnt={enter=2}}}; end);
 	HOST_Check(TRF.version == 4 and TRF.clock.gt == 40 and TRF.clock.game == nil and getn(TRF.rg) == 8 and TRF.exp.cnt.enter == 2
-		and V_Logs("migrate v1 -> v2") == 1 and V_Logs("migrate v2 -> v3") == 2, "v1 -> v2 -> v3");
+		and V_Logs("event=migrate from_version=1 to_version=2") == 1 and V_Logs("event=migrate from_version=2 to_version=3") == 2, "v1 -> v2 -> v3");
 	-- Unknown version keeps heat, help and shops.
 	T_SaveLoad(function() TRF = {version=7, gen=9, std={heat=5, help=12}, shops={{s=46, sh="gredos", c=1}}, clock={legs=3}, foo=1}; end);
 	HOST_Check(TRF.version == 4 and TRF.std.heat == 5 and TRF.std.help == 12 and getn(TRF.shops) == 1 and TRF.shops[1].sh == "gredos"
@@ -440,7 +440,7 @@ function V_EscFlight()
 	HOST_Check(x.ef and x.ef ~= x.fl and getn(x.fl.ships) == r.nt and r.nt == 2 and getn(x.ef.ships) == ne and ne >= 3
 		and r.np == r.nt + ne and ne <= 5 and r.e1 == 3 and x.ef.esc == x.tp[1] and okr,
 		"esc_flight: convoy flight of "..r.nt.." transports, escort flight of "..ne.." (added "..r.esc.."), Escort on the lead, wingmen ROLE_DEFEND");
-	HOST_Check(okl and okg and V_Logs("spawn id="..id.." ") == 1 and V_Logs(" efl=1 esc="..ne) == 1,
+	HOST_Check(okl and okg and V_Logs("event=spawn trader_id="..id.." ") == 1 and V_Logs(" escort_flight=true escort_count="..ne) == 1,
 		"esc_flight: labels trf_<id>_<i> and TRF_ship_ globals across both flights, spawn line efl=1 esc="..ne);
 	HOST_Check(TRF_Rd_EscAlive(r, x) == ne and TRF_SpEscAlive(r, x) == ne, "esc_flight: raid and supply escort counts "..ne);
 	x.ef.esc = nil;
@@ -468,7 +468,7 @@ function V_EscFlight()
 		T_SaveLoad();
 		local y = TRF_H().tr[b];
 		HOST_Check(TRF.live.tr[b] and TRF.live.tr[b].st == "wind" and y and y.fl == fb and y.ef == eb and getn(y.sh) == nb and getn(y.tp) == 2
-			and y.tp[1] == xb.tp[1] and eb.esc == y.tp[1] and V_Logs("load id="..b.." adopted ships="..nb.." via=global efl=1 -> wind") == 1,
+			and y.tp[1] == xb.tp[1] and eb.esc == y.tp[1] and V_Logs("event=load trader_id="..b.." result=adopted ship_count="..nb.." via=global escort_flight=true state=wind") == 1,
 			"esc_flight: load pass adopts the convoy and the escort flight, Escort again");
 		TRF_Remove(b, "test");
 		HOST_Check(fb.deleted and eb.deleted, "esc_flight: adopted trader removed with both flights");
@@ -666,7 +666,7 @@ function T_V02_E()
 		end;
 	end);
 	HOST_Check(TRF_ParkedN() == 1 and TRF_H().pk[1] and TRF_H().pk[1].sh == pk and getglobal("TRF_pk_1") == pk
-		and V_Logs("parked 1 kept on load d=") == 1 and V_Logs(" via=global") >= 1, "load: parked ship kept through TRF_pk_1 (via=global)");
+		and V_Logs("event=parked_load slot=1 result=kept distance=") == 1 and V_Logs(" via=global") >= 1, "load: parked ship kept through TRF_pk_1 (via=global)");
 	GetObjectByLabel = h.gobl;
 	h.gobl = nil; h.logs = nil;
 	local h0 = TRF.std.heat;
@@ -2018,8 +2018,8 @@ function T_V02_N()
 	T_SaveLoad();
 	HOST_Check(V_DataGlobals() == "", "after a load: no TRF_ data globals, no build globals"..V_DataGlobals());
 	TRF_DumpState("test");
-	HOST_Check(V_Logs("dump rg n=8") >= 1 and V_Logs("dump gate=") >= 1 and V_Logs("dump shop") >= 1 and V_Logs("dump raid") >= 1
-		and V_Logs("dump hail") >= 1 and V_Logs("dump tier") >= 1, "TRF_DumpState calls every module dump");
+	HOST_Check(V_Logs("dump rg n=8") >= 1 and V_Logs("module=safety event=dump gate=") >= 1 and V_Logs("dump shop") >= 1 and V_Logs("dump raid") >= 1
+		and V_Logs("dump hail") >= 1 and V_Logs("module=tier event=dump ") >= 1, "TRF_DumpState calls every module dump");
 end;
 
 function TRF_HostNoop() end;

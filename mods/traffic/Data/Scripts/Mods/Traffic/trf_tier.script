@@ -8,15 +8,19 @@
 
 -- Helpers --------------------------------------------------------------------------
 
-function TRF_TrL(s) TRF_L("tier: "..tostring(s)); end;
+-- Event line of module tier (design/log-format.md): event, then key/value pairs.
+function TRF_TrE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "tier"); call(TRF_Lf, arg);
+end;
 
-function TRF_TrD(s)
+-- Debug event line (cfg log 2).
+function TRF_TrDE(event, ...)
 	local v = TRF_TrOpt("log", 1);
-	if type(v) == "number" and v >= 2 then TRF_TrL(s); end;
+	if type(v) == "number" and v >= 2 then tinsert(arg, 1, event); call(TRF_TrE, arg); end;
 end;
 
 function TRF_TrErr(m)
-	TRF_TrL("ERROR "..tostring(m));
+	TRF_TrE("error", "message", tostring(m));
 	TRF_TrStat("err_tier");
 end;
 
@@ -350,7 +354,7 @@ function TRF_TierPlan(plan)
 	plan.tier = t;
 	plan.twhy = why;
 	if type(plan.esc) == "number" then plan.esc = max(0, min(plan.esc, c.tmax - c.ne)); end;
-	TRF_TrD("plan tier="..t.." ("..tostring(why)..") str="..tostring(plan.strength).." n="..tostring(plan.n).." esc+"..tostring(plan.esc));
+	TRF_TrDE("plan", "tier", t, "reason", why, "strength", plan.strength, "ship_count", plan.n, "escorts_added", plan.esc);
 	return t;
 end;
 
@@ -722,7 +726,7 @@ function TRF_Parked_Spawn()
 	end;
 	if why then
 		TRF_TrStat("skip_park_"..why);
-		TRF_TrD("parked: none ("..why..")");
+		TRF_TrDE("parked_spawn", "reason", why, "result", "none");
 		return nil;
 	end;
 	-- Position (9.4): dock - d * pk_back + p * pk_side, d toward the approach point, p across it.
@@ -751,7 +755,7 @@ function TRF_Parked_Spawn()
 	local fl, sh = TRF_TrP(TRF_BuildFlight, {Trad_merc_Pilots, {{tpl, 1, "A"}}, "TRF_GPark", "trf_park_"..n, pos, 1,
 		Vector3(d.x, d.y, d.z), "shipFormation", 15, 1});
 	setglobal("TRF_GPark", nil);
-	if not fl or type(sh) ~= "table" or not sh[1] then TRF_TrStat("skip_park_build"); TRF_TrL("parked: build failed "..tpl); return nil; end;
+	if not fl or type(sh) ~= "table" or not sh[1] then TRF_TrStat("skip_park_build"); TRF_TrE("parked_spawn", "template", tpl, "reason", "build", "result", "failed"); return nil; end;
 	local s = sh[1];
 	-- CHECK: ClearInventory and Flight:Stop on an NPC transport right after the build (spec 9.4).
 	TRF_TrP(function(x) x:ClearInventory(); end, {s});
@@ -764,7 +768,8 @@ function TRF_Parked_Spawn()
 	tinsert(L.pk, n);
 	TRF_TrArmPark(n, s);
 	TRF_TrStat("park");
-	TRF_TrL("parked "..tpl.." at "..floor(pos.x)..","..floor(pos.y)..","..floor(pos.z).." fam="..fam);
+	TRF_TrE("parked_spawn", "slot", n, "template", tpl, "position", floor(pos.x)..","..floor(pos.y)..","..floor(pos.z), "family", fam,
+		"result", "spawned");
 	return 1;
 end;
 
@@ -795,7 +800,7 @@ function TRF_ParkDied_Body(n, g)
 	setglobal("TRF_pk_"..n, nil);
 	TRF_TrX("TRF_AddHeat", 1, "parked kill");
 	TRF_TrStat("park_kill");
-	TRF_TrL("parked "..n.." destroyed");
+	TRF_TrE("parked_destroyed", "slot", n);
 end;
 
 function TRF_TrDelPk(h)
@@ -839,12 +844,12 @@ function TRF_TrPkLoad(j, o, far, mp, via)
 		tinsert(L.pk, j);
 		setglobal("TRF_pk_"..j, o);
 		TRF_TrArmPark(j, o);
-		TRF_TrL("parked "..j.." kept on load d="..floor(d).." via="..via);
+		TRF_TrE("parked_load", "slot", j, "result", "kept", "distance", floor(d), "via", via);
 		return nil;
 	end;
 	TRF_TrDelPk({fl=fl, sh=o});
 	setglobal("TRF_pk_"..j, nil);
-	TRF_TrL("parked "..j.." deleted on load d="..tostring(d and floor(d)).." via="..via);
+	TRF_TrE("parked_load", "slot", j, "result", "deleted", "distance", d and floor(d), "via", via);
 	return 1;
 end;
 
@@ -873,11 +878,11 @@ function TRF_Parked_LoadRetry()
 			local why = "label";
 			if o ~= nil then why = "alive"; end;
 			setglobal("TRF_pk_"..j, nil);
-			TRF_TrL("parked "..j.." gone on load why="..why.." tries="..w.n.." via="..via);
+			TRF_TrE("parked_load", "slot", j, "result", "gone", "reason", why, "try_count", w.n, "via", via);
 		end;
 	end;
 	w.j = keep;
-	if w.n == 1 or getn(keep) == 0 then TRF_TrL("parked load retry n="..w.n.." wait="..getn(keep)); end;
+	if w.n == 1 or getn(keep) == 0 then TRF_TrE("parked_load_retry", "try_count", w.n, "wait_count", getn(keep)); end;
 	if getn(keep) == 0 or not TRF_TrX("TRF_Due", 1, "TRF_Parked_LoadRetry") then L.pkw = nil; end;
 end;
 
@@ -905,7 +910,7 @@ function TRF_Parked_Clear(why)
 			elseif o ~= nil then
 				-- Handle or label found, ship not alive yet (trf_gen load pass, spec 5.5): TRF_Parked_LoadRetry.
 				tinsert(wait, j);
-				TRF_TrL("parked "..j.." wait on load ret="..type(o).." via="..via);
+				TRF_TrE("parked_load", "slot", j, "result", "wait", "return_type", type(o), "via", via);
 			end;
 		end;
 		if getn(wait) > 0 and L then
@@ -937,7 +942,7 @@ function TRF_Parked_Clear(why)
 		end;
 	end;
 	L.pk = keep;
-	if n > 0 then TRF_TrL("parked removed="..n.." ("..tostring(why)..")"); end;
+	if n > 0 then TRF_TrE("parked_clear", "reason", why, "removed_count", n); end;
 	return n;
 end;
 
@@ -952,8 +957,8 @@ function TRF_Tier_OnActivate()
 	if not idx then return; end;
 	local c = TRF_BandCaps(idx);
 	L.band = c.band;
-	TRF_TrL("entry "..tostring(TRF_TrX("TRF_SysName", idx)).." pro="..c.pro.." band="..c.band.." sf="..TRF_F(c.sf)
-		.." caps="..c.ct.."/"..c.cs.." parked="..c.cp.." gov="..tostring(L.tgv));
+	TRF_TrE("entry", "system", TRF_TrX("TRF_SysName", idx), "prosperity", c.pro, "band", c.band, "spawn_factor", TRF_F(c.sf),
+		"trader_cap", c.ct, "ship_cap", c.cs, "parked_cap", c.cp, "governor", TRF_KvB(L.tgv));
 	if c.cp > 0 and TRF_TrOpt("parked", 1) ~= 0 then TRF_TrX("TRF_Due", 3, "TRF_Parked_Spawn"); end;
 	if c.cp > 1 and TRF_TrOpt("parked", 1) ~= 0 then TRF_TrX("TRF_Due", 6, "TRF_Parked_Spawn"); end;
 end;
@@ -983,7 +988,7 @@ function TRF_Tier_Step()
 	L.pk = keep;
 end;
 
--- Dump line: band row, open traders per tier, parked ships, docking queue. Returns the line.
+-- Dump line: band row, open traders per tier, parked ships, docking queue.
 function TRF_Tier_Dump()
 	local idx = TRF_TrCur();
 	local c = TRF_BandCaps(idx);
@@ -997,13 +1002,13 @@ function TRF_Tier_Dump()
 			end;
 		end;
 	end;
-	local q = "-";
+	-- Docking queue: the trader in the docking slot and the three hold points (none without a queue).
+	local dk, q = "none", "none";
 	if type(L.q) == "table" and type(L.q.hp) == "table" then
-		q = tostring(L.q.dk).."/"..tostring(L.q.hp[1])..","..tostring(L.q.hp[2])..","..tostring(L.q.hp[3]);
+		dk = L.q.dk;
+		q = tostring(L.q.hp[1])..","..tostring(L.q.hp[2])..","..tostring(L.q.hp[3]);
 	end;
-	local s = "dump tier pro="..c.pro.." band="..c.band.." sf="..TRF_F(c.sf).." caps="..c.ct.."/"..c.cs.."/"..c.cp
-		.." gov="..tostring(L.tgv).." tt="..nt[1].."/"..nt[2].."/"..nt[3].."/"..nt[4].." parked="..TRF_ParkedN().." q="..q
-		.." ent="..tostring(L.ent);
-	TRF_L(s);
-	return s;
+	TRF_TrE("dump", "prosperity", c.pro, "band", c.band, "spawn_factor", TRF_F(c.sf), "trader_cap", c.ct, "ship_cap", c.cs,
+		"parked_cap", c.cp, "governor", TRF_KvB(L.tgv), "tier_counts", nt[1]..","..nt[2]..","..nt[3]..","..nt[4],
+		"parked_count", TRF_ParkedN(), "docking_id", dk, "hold_points", q, "entry_plan", L.ent);
 end;

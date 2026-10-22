@@ -27,19 +27,21 @@ local SQ = {};
 
 -- Helpers --------------------------------------------------------------------------
 
-function TRF_SafeL(s)
-	TRF_L("safe: "..s);
+-- Event line of module safety (design/log-format.md): event, then key/value pairs.
+function TRF_SafeE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "safety"); call(TRF_Lf, arg);
 end;
 
--- Debug line (cfg log 2).
-function TRF_SafeD(s)
+-- Debug event line (cfg log 2).
+function TRF_SafeDE(event, ...)
 	local lv = TRF_SafeOpt("log", 1);
-	if type(lv) == "number" and lv >= 2 then TRF_L("safe: "..s); end;
+	if type(lv) == "number" and lv >= 2 then tinsert(arg, 1, event); call(TRF_SafeE, arg); end;
 end;
 
--- Error handler of protected calls into other modules.
+-- Error handler of protected calls into other modules: trf_state's TRF_PErr (event=error, stat err), else
+-- an event=error line of this module.
 function TRF_SafePErr(m)
-	if type(TRF_PErr) == "function" then TRF_PErr("safe: "..tostring(m)); else TRF_Err("safe: "..tostring(m)); end;
+	if type(TRF_PErr) == "function" then TRF_PErr(m); else TRF_SafeE("error", "message", tostring(m)); end;
 end;
 
 -- Config value through trf_state's TRF_Opt, else the raw config, else def.
@@ -725,7 +727,7 @@ function TRF_StrictOk(idx, feature)
 	local k = tostring(feature)..":"..tostring(why)..":"..nm;
 	if L and L.gl ~= k then
 		L.gl = k;
-		TRF_SafeL("gate "..tostring(feature).." denied why="..tostring(why).." sys="..nm);
+		TRF_SafeE("gate", "feature", feature, "system", nm, "reason", why, "result", "denied");
 	end;
 	return nil, why;
 end;
@@ -804,7 +806,7 @@ function TRF_SysMode()
 		L.sm = k;
 		local nm = "nil";
 		if type(s.sys) == "table" then nm = tostring(s.sys.name); end;
-		TRF_SafeL("mode "..m.." why="..tostring(why).." sys="..nm.." ch="..tostring(s.ch).." qs="..tostring(s.qs).." qa="..tostring(s.qa).." guard="..tostring(s.guard));
+		TRF_SafeE("mode", "system", nm, "mode", m, "reason", why, "chapter", s.ch, "quest_state", s.qs, "quest_active", s.qa, "guard", s.guard);
 	end;
 	return m, why;
 end;
@@ -905,7 +907,7 @@ function TRF_CombatMark(why, src, hold)
 		if why == "hit" and not TRF_CombatHitOk(L, gt, src) then return; end;
 		if L.cbl == 1 then TRF_CombatOff(L, gt); end;
 		L.cbl = 1;
-		TRF_SafeL("combat on why="..tostring(why).." src="..tostring(src).." gt="..TRF_F(gt));
+		TRF_SafeE("combat_on", "reason", why, "source", src, "game_time", TRF_F(gt));
 		TRF_SafeStat("combat_on");
 	end;
 	L.cbt = gt;
@@ -943,7 +945,7 @@ function TRF_CombatHitOk(L, gt, src)
 	end;
 	if type(L.cbp) ~= "number" or s - L.cbp >= win then
 		L.cbp = s;
-		TRF_SafeD("combat hit pending n="..n.."/"..tostring(need).." src="..tostring(src).." gt="..TRF_F(gt));
+		TRF_SafeDE("combat_hit_pending", "hit_count", n, "hits_needed", need, "source", src, "game_time", TRF_F(gt));
 	end;
 	return nil;
 end;
@@ -951,7 +953,7 @@ end;
 -- Log the end of a combat (live table L).
 function TRF_CombatOff(L, gt)
 	L.cbl = nil;
-	TRF_SafeL("combat off last="..tostring(L.cbw).." gt="..TRF_F(gt));
+	TRF_SafeE("combat_off", "last_reason", L.cbw, "game_time", TRF_F(gt));
 end;
 
 -- 1 once this visit is armed (TRF_SafeArm), else nil. Gates the object reads of the combat sample.
@@ -970,7 +972,7 @@ function TRF_SafeArm(via)
 	H.sact = 1;
 	local id = nil;
 	if type(H.sms) == "table" then id = H.sms.id; end;
-	TRF_SafeL("armed via="..tostring(via).." ms="..tostring(id));
+	TRF_SafeE("armed", "via", via, "mothership_id", id);
 end;
 
 function TRF_Safe_IsAlive(o)
@@ -1084,7 +1086,7 @@ function TRF_SafeWindOnset()
 	local L = TRF_SafeLive();
 	if not L or L.wind == 1 or TRF_Supp() ~= 2 then return nil; end;
 	L.wind = 1;
-	TRF_SafeL("wind-down onset gt="..TRF_F(TRF_SafeGt()));
+	TRF_SafeE("wind_down_onset", "game_time", TRF_F(TRF_SafeGt()));
 	return 1;
 end;
 
@@ -1102,16 +1104,16 @@ function TRF_SafetySample()
 	if f.sos then
 		if type(L.sos_t) ~= "number" then
 			L.sos_t = gt;
-			TRF_SafeD("sos on gt="..TRF_F(gt));
+			TRF_SafeDE("sos_on", "game_time", TRF_F(gt));
 		end;
 	elseif L.sos_t then
 		L.sos_t = nil;
-		TRF_SafeD("sos off gt="..TRF_F(gt));
+		TRF_SafeDE("sos_off", "game_time", TRF_F(gt));
 	end;
 	if f.money then
 		if L.pmn == 1 and L.ext_seen ~= 1 then
 			L.ext_seen = 1;
-			TRF_SafeL("extortion seen gt="..TRF_F(gt));
+			TRF_SafeE("extortion_seen", "game_time", TRF_F(gt));
 		end;
 	else
 		L.pmn = 1;
@@ -1123,8 +1125,8 @@ function TRF_SafetySample()
 	local ss = 0;
 	if f.sos then ss = 1; end;
 	if s ~= TRF_SafeNum(L.sl, 0) or ss ~= TRF_SafeNum(L.ss, 0) then
-		TRF_SafeL("supp "..TRF_SafeNum(L.sl, 0).."->"..s.." dis="..tostring(f.dis).." sos="..tostring(f.sos).." scene="..tostring(f.scene)
-			.." sos_mode="..TRF_SafeSosMode().." ext_seen="..tostring(L.ext_seen));
+		TRF_SafeE("suppression", "old", TRF_SafeNum(L.sl, 0), "new", s, "disable_action", TRF_KvB(f.dis), "sos", TRF_KvB(f.sos),
+			"scene", TRF_KvB(f.scene), "sos_mode", TRF_SafeSosMode(), "extortion_seen", TRF_KvB(L.ext_seen));
 	end;
 	L.sl = s;
 	L.ss = ss;
@@ -1171,9 +1173,9 @@ function TRF_CanSpawn(nships, kind, ev)
 	};
 	local ok, r = TRF_CanSpawnKindOf(s);
 	if not ok then
-		TRF_SafeD("no spawn "..kind.." "..r.." tr="..ntr.."/"..s.capt.." ships="..s.nsh.."+"..s.n.."/"..s.caps
-			.." raids="..nrf.."/"..nrs.." parked="..npk.."/"..s.cp.." kills="..s.kills.." supp="..s.supp
-			.." ev="..ev.."/"..tostring(ecap));
+		TRF_SafeDE("no_spawn", "kind", kind, "reason", r, "trader_count", ntr, "trader_cap", s.capt, "ship_count", s.nsh,
+			"new_ship_count", s.n, "ship_cap", s.caps, "raid_flight_count", nrf, "raid_ship_count", nrs, "parked_count", npk,
+			"parked_cap", s.cp, "kill_count", s.kills, "suppression", s.supp, "event_count", ev, "event_cap", ecap);
 	end;
 	return ok, r;
 end;
@@ -1194,13 +1196,13 @@ function TRF_Governor()
 		if type(L.gvn0) ~= "number" and type(n) == "number" then
 			L.gvn0 = n;
 			if H then H.gvn0 = n; end;
-			TRF_SafeL("governor base n0="..n.." r="..gr);
+			TRF_SafeE("governor_base", "carcass_count", n, "radius", gr);
 		end;
 		if type(n) == "number" and type(L.gvn0) == "number" then x = max(0, n - L.gvn0); end;
 		L.gvn = x; L.gvr = n; L.gv = 1;
 	end;
 	local capt, caps, capp = TRF_SafeCaps(x);
-	TRF_SafeL("governor n="..tostring(x).."/"..tostring(n).." r="..gr.." cap="..capt.."/"..caps.."/"..capp);
+	TRF_SafeE("governor", "excess_count", x, "carcass_count", n, "radius", gr, "trader_cap", capt, "ship_cap", caps, "parked_cap", capp);
 	return capt, caps, x;
 end;
 
@@ -1227,9 +1229,9 @@ function TRF_Station()
 	if o then L.stok = 1; else L.stok = 0; end;
 	if was == 1 and not o then
 		L.stl = 1;
-		TRF_SafeL("station "..tostring(lbl).." lost");
+		TRF_SafeE("station", "label", lbl, "result", "lost");
 	elseif L.sck ~= 1 then
-		TRF_SafeL("station label="..tostring(lbl).." ok="..L.stok);
+		TRF_SafeE("station", "label", lbl, "found", TRF_KvB(L.stok));
 	end;
 	L.sck = 1;
 	return o;
@@ -1264,7 +1266,7 @@ function TRF_Safety_OnActivate()
 	local L = TRF_SafeLive();
 	local g = TRF_SafeGateSum(nil);
 	if L then L.gate = g; end;
-	TRF_SafeL("activate sys="..nm.." mode="..m.." why="..tostring(why).." ch="..tostring(s.ch).." qs="..tostring(s.qs).." gate="..g);
+	TRF_SafeE("activate", "system", nm, "mode", m, "reason", why, "chapter", s.ch, "quest_state", s.qs, "gate", g);
 	TRF_SafeArm("activate");
 end;
 
@@ -1302,9 +1304,10 @@ function TRF_Safety_Dump()
 	local cb, ca = 0, "nil";
 	if TRF_Combat() then cb = 1; end;
 	if type(L.cbt) == "number" then ca = TRF_F(TRF_SafeGt() - L.cbt); end;
-	TRF_L("dump gate="..TRF_SafeGateSum(nil).." sys="..nm.." strict="..mode.." qs="..qs.." q="..q.." qa="..qa.." deny="..dn
-		.." cap="..tostring(L.capt).."/"..tostring(L.caps).."/"..tostring(L.capp).." gov="..tostring(L.gvn).."/"..tostring(L.gvr)
-		.." gov_on="..tostring(TRF_GovActive()).." combat="..cb.." cbt="..ca.." cbw="..tostring(L.cbw));
+	TRF_SafeE("dump", "gate", TRF_SafeGateSum(nil), "system", nm, "strict", mode, "quest_state", qs, "quest", q, "quest_active", qa,
+		"deny_reason", dn, "trader_cap", L.capt, "ship_cap", L.caps, "parked_cap", L.capp, "governor_excess", L.gvn,
+		"governor_count", L.gvr, "governor_on", TRF_KvB(TRF_GovActive()), "combat", TRF_KvB(cb), "combat_age", ca,
+		"combat_reason", L.cbw);
 end;
 
 -- After a load sos_t restarts at the load time and ext_seen is nil (spec 6). TRF_Gen_OnLoad resets live

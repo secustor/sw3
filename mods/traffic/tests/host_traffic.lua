@@ -824,7 +824,7 @@ function T_G()
 	TRF_Safety_Dump();
 	lg = 0;
 	for i = 1, getn(h.logs) do
-		if strfind(h.logs[i], "dump gate=ok sys=taira", 1, 1) and strfind(h.logs[i], "qa=0 deny=teleport target", 1, 1) then lg = lg + 1; end;
+		if strfind(h.logs[i], "module=safety event=dump gate=ok system=taira", 1, 1) and strfind(h.logs[i], "quest_active=0 deny_reason=\"teleport target\"", 1, 1) then lg = lg + 1; end;
 	end;
 	HOST_Check(lg == 1, "transit: taira dump line gate=ok with deny=teleport target");
 	h.cfg.transit = 0;
@@ -836,7 +836,7 @@ function T_G()
 	local v0 = T_Stat("van_deny_tq");
 	m, why = TRF_SysMode();
 	lg = 0;
-	for i = 1, getn(h.logs) do if strfind(h.logs[i], "mode vanilla why=deny_tq sys=taira", 1, 1) then lg = lg + 1; end; end;
+	for i = 1, getn(h.logs) do if strfind(h.logs[i], "event=mode system=taira mode=vanilla reason=deny_tq", 1, 1) then lg = lg + 1; end; end;
 	HOST_Check(m == "vanilla" and why == "deny_tq" and T_Stat("van_deny_tq") == v0 + 1 and lg == 1,
 		"transit 0: taira during a mission -> deny_tq, counted and logged ("..tostring(why)..")");
 	h.cfg.transit = nil;
@@ -851,7 +851,7 @@ function T_G()
 	__sys_SOS = TRUE;
 	T_Tick(2, 0.5);
 	local ln = 0;
-	for i = 1, getn(h.logs) do if strfind(h.logs[i], "safe: supp 0->0 dis=nil sos=1 scene=nil sos_mode=1", 1, 1) then ln = ln + 1; end; end;
+	for i = 1, getn(h.logs) do if strfind(h.logs[i], "module=safety event=suppression old=0 new=0 disable_action=false sos=true scene=false sos_mode=1", 1, 1) then ln = ln + 1; end; end;
 	HOST_Check(TRF_Supp() == 0 and TRF_CanSpawn(0) and TRF_Quiet() == 1 and ln == 1, "__sys_SOS, sos_mode 1: no suppression, spawn allowed, quiet, one supp line");
 	__sys_SOS = FALSE;
 	T_Tick(2, 0.5);
@@ -927,28 +927,28 @@ function T_Gov()
 	local L = TRF.live;
 	local n0 = L.gvn0;
 	HOST_Check(type(n0) == "number" and n0 >= 100 and L.gvr == n0 and L.gvn == 0, "activate: baseline "..tostring(n0).." (>= 100), excess 0");
-	HOST_Check(T_LogN("safe: governor base n0="..n0.." r=3000") == 1, "baseline logged");
+	HOST_Check(T_LogN("module=safety event=governor_base carcass_count="..n0.." radius=3000") == 1, "baseline logged");
 	local ct0, cs0 = TRF_SafeCaps(0);
 	local ct, cs = TRF_Governor();
 	HOST_Check(ct == ct0 and cs == cs0 and not TRF_GovActive(), "baseline 100, no excess: caps unchanged ("..ct.."/"..cs..")");
-	HOST_Check(T_LogN("safe: governor n=0/"..n0.." r=3000 cap=") >= 1, "governor line shows excess/raw");
+	HOST_Check(T_LogN("module=safety event=governor excess_count=0 carcass_count="..n0.." radius=3000 trader_cap=") >= 1, "governor line shows excess/raw");
 	h.extra_carcass = 99 + 41;
 	ct, cs = TRF_Governor();
 	HOST_Check(ct == max(1, ct0 - 1) and ct0 > 1 and cs <= 12 and TRF_GovActive() == 1 and L.gvn == 41,
 		"excess 41: one trader fewer ("..ct0.."->"..ct.."), ships "..cs.." <= 12");
-	HOST_Check(T_LogN("safe: governor n=41/"..(n0 + 41).." r=3000") == 1, "governor line n=41/"..(n0 + 41));
-	HOST_Check(T_LogN("safe: governor base n0=") == 1, "baseline logged once per visit");
+	HOST_Check(T_LogN("module=safety event=governor excess_count=41 carcass_count="..(n0 + 41).." radius=3000") == 1, "governor line n=41/"..(n0 + 41));
+	HOST_Check(T_LogN("module=safety event=governor_base carcass_count=") == 1, "baseline logged once per visit");
 	TRF_SafeVisitReset();
 	ct, cs = TRF_Governor();
 	HOST_Check(L.gvn0 == n0 + 41 and L.gvn == 0 and ct == ct0 and not TRF_GovActive(), "after a reset: baseline retaken ("..tostring(L.gvn0).."), caps back");
-	HOST_Check(T_LogN("safe: governor base n0=") == 2, "new baseline logged");
+	HOST_Check(T_LogN("module=safety event=governor_base carcass_count=") == 2, "new baseline logged");
 	-- Load: OnLoad takes the baseline, gen's load pass rebuilds live; the next governor run keeps it (H.gvn0).
 	T_SaveLoad();
-	local nb = T_LogN("safe: governor base n0=");
+	local nb = T_LogN("module=safety event=governor_base carcass_count=");
 	h.extra_carcass = 99 + 41 + 41;
 	TRF.live.gv = nil;
 	TRF_CanSpawn(0);
-	HOST_Check(TRF.live.gvn0 == TRF_H().gvn0 and TRF.live.gvn == 41 and T_LogN("safe: governor base n0=") == nb,
+	HOST_Check(TRF.live.gvn0 == TRF_H().gvn0 and TRF.live.gvn == 41 and T_LogN("module=safety event=governor_base carcass_count=") == nb,
 		"after load: baseline kept across the live reset, excess "..tostring(TRF.live.gvn));
 	h.extra_carcass = nil; h.logs = nil;
 	T_Jump("gredos");
@@ -974,7 +974,7 @@ function T_Spot()
 	tinsert(h.cc_ships, pos);
 	HOST_Check(TRF_GnFree(key, pos, T) == nil, "baseline 1 plus a ship: spot busy");
 	HOST_Check(TRF_GnFree(key, pos, T) == nil, "still busy");
-	local line = "gen: spot "..key.." busy n=2 base=1";
+	local line = "module=generator event=spot spot="..key.." carcass_count=2 base_count=1 result=busy";
 	HOST_Check(T_LogN(line) == 1, "refusal logged once per key per minute ("..T_LogN(line)..")");
 	TRF.live.port[key] = TRF_GnGt();
 	h.cc_ships = {};
@@ -1031,7 +1031,7 @@ function T_SceneSupp()
 	h.logs = {};
 	T_Tick(2, 0.5);
 	local ln = 0;
-	for i = 1, getn(h.logs) do if strfind(h.logs[i], "safe: supp 0->1 dis=nil sos=nil scene=1 sos_mode=1", 1, 1) then ln = ln + 1; end; end;
+	for i = 1, getn(h.logs) do if strfind(h.logs[i], "module=safety event=suppression old=0 new=1 disable_action=false sos=false scene=true sos_mode=1", 1, 1) then ln = ln + 1; end; end;
 	HOST_Check(ln == 1 and not TRF_CanSpawn(0), "scene: supp 0->1 logged with scene=1, no spawn");
 	h.logs = nil;
 	TRF_UiState = nil; MovieIsPlaying = nil;
@@ -1077,16 +1077,16 @@ function T_Combat()
 	h.logs = {};
 	ms.hp = ms.hp - 50;
 	T_Tick(1, 0.5);
-	HOST_Check(TRF_Combat() == 1 and TRF.live.cbw == "hp" and T_LogN("safe: combat on why=hp") == 1, "hull drop 50: combat on (why hp)");
+	HOST_Check(TRF_Combat() == 1 and TRF.live.cbw == "hp" and T_LogN("module=safety event=combat_on reason=hp") == 1, "hull drop 50: combat on (why hp)");
 	ms.hp = ms.hp - 20;
 	T_Tick(1, 0.5);
-	HOST_Check(T_LogN("safe: combat on") == 1, "second drop while in combat: no second line");
+	HOST_Check(T_LogN("module=safety event=combat_on") == 1, "second drop while in combat: no second line");
 	T_Tick(48, 0.5);
-	HOST_Check(TRF_Combat() == 1 and T_LogN("safe: combat off") == 0, "24 s after the last drop: still in combat");
+	HOST_Check(TRF_Combat() == 1 and T_LogN("module=safety event=combat_off") == 0, "24 s after the last drop: still in combat");
 	T_Tick(4, 0.5);
-	HOST_Check(TRF_Combat() == nil and T_LogN("safe: combat off") == 1, "26 s after the last drop: combat off, logged once");
+	HOST_Check(TRF_Combat() == nil and T_LogN("module=safety event=combat_off") == 1, "26 s after the last drop: combat off, logged once");
 	T_Tick(4, 0.5);
-	HOST_Check(T_LogN("safe: combat off") == 1 and T_LogN("safe: combat on") == 1, "no further transition lines");
+	HOST_Check(T_LogN("module=safety event=combat_off") == 1 and T_LogN("module=safety event=combat_on") == 1, "no further transition lines");
 	-- A drop of half the hull or more in one sample (quest SetHP restore) is ignored; so is a gain.
 	ms:SetHP(100000);
 	T_Tick(1, 0.5);
@@ -1121,17 +1121,17 @@ function T_Combat()
 	TRF_Cb("TRF_OnRaidHit", nop, {1, 1, TRF.gen - 1});
 	T_Tick(2, 0.5);
 	TRF_Cb("TRF_OnRaidHit", nop, {1, 1, TRF.gen - 1});
-	HOST_Check(TRF_Combat() == nil and TRF.live.cbk == nil and T_LogN("combat hit pending") == 0, "stale gen hits in two seconds: no combat, not counted");
+	HOST_Check(TRF_Combat() == nil and TRF.live.cbk == nil and T_LogN("event=combat_hit_pending") == 0, "stale gen hits in two seconds: no combat, not counted");
 	TRF_Cb("TRF_OnRaidHit", nop, {1, 1, TRF.gen});
-	HOST_Check(TRF_Combat() == nil and T_LogN("safe: combat hit pending n=1/2") == 1, "one hit: no combat, pending line");
+	HOST_Check(TRF_Combat() == nil and T_LogN("module=safety event=combat_hit_pending hit_count=1 hits_needed=2") == 1, "one hit: no combat, pending line");
 	TRF_Cb("TRF_OnRaidHit", nop, {1, 1, TRF.gen});
-	HOST_Check(TRF_Combat() == nil and T_LogN("combat hit pending") == 1, "second hit in the same second: no combat, no second line");
+	HOST_Check(TRF_Combat() == nil and T_LogN("event=combat_hit_pending") == 1, "second hit in the same second: no combat, no second line");
 	T_Tick(14, 0.5);
 	TRF_Cb("TRF_OnAttack", nop, {7, 1, TRF.gen});
-	HOST_Check(TRF_Combat() == nil and T_LogN("combat hit pending") == 2, "hit 7 s after the last one: no combat, new window line");
+	HOST_Check(TRF_Combat() == nil and T_LogN("event=combat_hit_pending") == 2, "hit 7 s after the last one: no combat, new window line");
 	T_Tick(2, 0.5);
 	TRF_Cb("TRF_OnRaidHit", nop, {1, 1, TRF.gen});
-	HOST_Check(TRF_Combat() == 1 and TRF.live.cbw == "hit" and T_LogN("safe: combat on why=hit src=TRF_OnRaidHit") == 1, "hits in two distinct seconds within 6 s: combat (why hit)");
+	HOST_Check(TRF_Combat() == 1 and TRF.live.cbw == "hit" and T_LogN("module=safety event=combat_on reason=hit source=TRF_OnRaidHit") == 1, "hits in two distinct seconds within 6 s: combat (why hit)");
 	h.cfg.log = nil;
 	-- Raid gate: closed while in combat, open after the hold; __sys_SOS alone keeps it open.
 	local idx = TRF_CurIdx();
@@ -1306,24 +1306,24 @@ function T_LoadAdopt()
 	HOST_Check(L.grp[TRF.live.tr[ids[1]].k] == ids[1], "load pass: group slot of an adopted trader stays taken");
 	HOST_Check(L.tr[ids[2]] == nil and type(L.lw) == "table" and L.lw.rec[ids[2]] and L.lw.rec[x] and L.lw.rec[z] and L.lw.rec[y] == nil
 		and L.tr[y] == nil, "load pass: labels found but not alive wait, a record without ships is stripped");
-	HOST_Check(T_LogN("load pass ") == 1 and T_LogN(" adopted=2 wait=3 ") == 1 and T_LogN("gen: load id="..y.." gone why=label") == 1
-		and T_LogN("gen: load id="..x.." wait why=alive lbl=1") == 1 and T_LogN("gen: load id="..z.." wait why=obj lbl=1") == 1,
+	HOST_Check(T_LogN("event=load_pass ") == 1 and T_LogN(" adopted_count=2 wait_count=3 ") == 1 and T_LogN("module=generator event=load trader_id="..y.." result=gone reason=label") == 1
+		and T_LogN("module=generator event=load trader_id="..x.." result=wait reason=alive label_count=1") == 1 and T_LogN("module=generator event=load trader_id="..z.." result=wait reason=obj label_count=1") == 1,
 		"load pass log: adopted=2 wait=3, reasons label, alive and obj");
-	HOST_Check(T_LogN("dump load ") == 1 and T_LogN(" tr=2 ") == 1, "dump load: tr=2 before the retry");
+	HOST_Check(T_LogN("module=state event=dump source=load ") == 1 and T_LogN(" trader_count=2 ") == 1, "dump load: tr=2 before the retry");
 	HOST_Check(TRF_ParkedN() == 0 and type(L.pkw) == "table" and getn(L.pkw.j) == 1, "parked ship found but not alive: waits");
 	-- Objects answer alive from the first tick: the retry adopts the late trader and the parked ship.
 	h.late = nil;
 	T_Tick(1, 0.5);
 	HOST_Check(TRF_Rec(ids[2]) and L.tr[ids[2]].st == "wind" and H.tr[ids[2]] and H.tr[ids[2]].sh[1].cp ~= nil
-		and HOST_Count("f_object_inside", "TRF_OnExit("..ids[2]..","..TRF.gen..")--") == 1 and T_LogN("load retry n=1 adopted=1 dropped=0 wait=2") == 1,
+		and HOST_Count("f_object_inside", "TRF_OnExit("..ids[2]..","..TRF.gen..")--") == 1 and T_LogN("event=load_retry try_count=1 adopted_count=1 dropped_count=0 wait_count=2") == 1,
 		"load retry: late trader adopted on the first tick");
 	HOST_Check(TRF_ParkedN() == 1 and H.pk[1] and H.pk[1].sh == ps and L.pkw == nil and HOST_Count("died", "TRF_ParkDied(1,"..TRF.gen..")--") == 1,
 		"load retry: parked ship kept with a new handle and a died trigger of the new gen");
 	T_Tick(24, 0.5);
-	HOST_Check(L.lw == nil and T_LogN("gen: load id="..x.." gone why=alive tries=") == 1 and T_LogN("gen: load id="..z.." gone why=obj tries=") == 1
+	HOST_Check(L.lw == nil and T_LogN("module=generator event=load trader_id="..x.." result=gone reason=alive try_count=") == 1 and T_LogN("module=generator event=load trader_id="..z.." result=gone reason=obj try_count=") == 1
 		and L.tr[x] == nil and L.tr[z] == nil, "load retry: labels never alive dropped after load_wait with their reason");
 	TRF_DumpState("adopt");
-	HOST_Check(T_LogN("dump adopt ") == 1 and T_LogN(" tr=3 ") >= 1, "dump after the retry: tr=3");
+	HOST_Check(T_LogN("module=state event=dump source=adopt ") == 1 and T_LogN(" trader_count=3 ") >= 1, "dump after the retry: tr=3");
 	GetObjectByLabel = h.gobl;
 	h.gobl = nil; h.zl = nil; h.logs = nil;
 end;
@@ -1379,14 +1379,14 @@ function T_LoadHandles()
 	end);
 	local L, H = TRF.live, TRF_H();
 	HOST_Check(L.tr[a] and L.tr[a].st == "wind" and H.tr[a].fl == Ha.fl and getn(H.tr[a].sh) == na and H.tr[a].sh[1] == Ha.sh[1]
-		and T_LogN("load id="..a.." adopted ships="..na.." via=global -> wind") == 1 and h.lgn == 0,
+		and T_LogN("event=load trader_id="..a.." result=adopted ship_count="..na.." via=global escort_flight=false state=wind") == 1 and h.lgn == 0,
 		"load pass: trader adopted through its saved ship_ globals (via=global), no label probe");
-	HOST_Check(L.tr[w] and L.tr[w].st == "wind" and H.tr[w].sh[1] == ws and T_LogN("load id="..w.." adopted ships=1 via=label -> wind") == 1
+	HOST_Check(L.tr[w] and L.tr[w].st == "wind" and H.tr[w].sh[1] == ws and T_LogN("event=load trader_id="..w.." result=adopted ship_count=1 via=label escort_flight=false state=wind") == 1
 		and getglobal("TRF_ship_trf_"..w.."_1") == ws, "load pass: record without globals adopted by label (via=label), its handle kept for the next save");
-	HOST_Check(L.tr[b] == nil and type(L.lw) == "table" and L.lw.rec[b] and T_LogN("load id="..b.." wait why=alive lbl=0 glb="..nb.." via=global") == 1
-		and T_LogN(" adopted=2 wait=1 ") == 1, "load pass: globals of ships that do not answer IsAlive wait (via=global)");
+	HOST_Check(L.tr[b] == nil and type(L.lw) == "table" and L.lw.rec[b] and T_LogN("event=load trader_id="..b.." result=wait reason=alive label_count=0 global_count="..nb.." via=global") == 1
+		and T_LogN(" adopted_count=2 wait_count=1 ") == 1, "load pass: globals of ships that do not answer IsAlive wait (via=global)");
 	T_Tick(24, 0.5);
-	HOST_Check(L.lw == nil and L.tr[b] == nil and T_LogN("load id="..b.." gone why=alive tries=") == 1 and T_SignGlobals(b) == "",
+	HOST_Check(L.lw == nil and L.tr[b] == nil and T_LogN("event=load trader_id="..b.." result=gone reason=alive try_count=") == 1 and T_SignGlobals(b) == "",
 		"load retry: dead handles dropped after load_wait with their globals"..T_SignGlobals(b));
 	HOST_Check(T_SignGlobals(a) ~= "", "adopted trader keeps its globals while open");
 	TRF_Remove(a, "test");

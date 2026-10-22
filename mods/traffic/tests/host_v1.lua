@@ -127,7 +127,7 @@ function T_V1_A()
 	for s = 1, m.n do
 		if TRF.fs[s] ~= "33333" or TRF.rg[s].ct ~= 0 or TRF.clan[s].sv ~= 0 or TRF.clan[s].sf ~= 0 then ok = nil; end;
 	end;
-	HOST_Check(ok and V_Logs("migrate v3 -> v4") == 1, "v3 save -> v4 defaults, logged once");
+	HOST_Check(ok and V_Logs("event=migrate from_version=3 to_version=4") == 1, "v3 save -> v4 defaults, logged once");
 	HOST_Check(TRF.rg[sg].ph == 2 and TRF_Pro(g) == min(6, TRF_ProCap(g)) and TRF_Dis(g) == 3 and getn(TRF.shops) == 1 and getn(TRF.short) == 1,
 		"v3 -> v4 keeps phases, pro, dis, shortages and shops");
 	-- Repair: each wrong entry dropped or clamped on its own.
@@ -2070,7 +2070,7 @@ function T_V1_N()
 	end;
 	HOST_Check(tg == "", "no TRF_G* or flight_trf_* globals"..tg);
 	TRF_DumpState("test");
-	local dl = {"dump v4", "dump tp", "dump fac", "dump clan", "dump cv", "dump dc", "dump supply", "dump base", "loc: dump"};
+	local dl = {"module=state event=dump_v4 ", "dump tp", "dump fac", "dump clan", "dump cv", "dump dc", "dump supply", "dump base", "loc: dump"};
 	local md = "";
 	for i = 1, getn(dl) do if V_Logs(dl[i]) == 0 then md = md.." "..dl[i]; end; end;
 	HOST_Check(md == "", "TRF_DumpState calls every v1 dump"..md);
