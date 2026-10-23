@@ -1866,7 +1866,7 @@ function T_V02_M()
 	local s, b = TRF_ShopCoefOf(2, TRF.std.help, TRF_Pro(cur));
 	local eq, okc = 0, 1;
 	for it, g in mk.goods do
-		if g.n == 1 and not tot[it] then eq = eq + 1; if g.s ~= s or g.b ~= b then okc = nil; end; end;
+		if g.n == 2 and not tot[it] then eq = eq + 1; if g.s ~= s or g.b ~= b then okc = nil; end; end;
 	end;
 	HOST_Check(eq >= 3 and eq <= 6 and okc, "3-6 equipment items at the NORMAL coefficients "..s.."/"..b.." ("..eq..")");
 	if sc then
@@ -1888,7 +1888,7 @@ function T_V02_M()
 	mk.goods["Cargo_01"] = {n=40, s=1, b=1};
 	mk.goods["Trf_NotListed"] = {n=3, s=1, b=1};
 	local eqa = {};
-	for it, g in mk.goods do if g.n == 1 and not tot[it] then eqa[it] = 1; end; end;
+	for it, g in mk.goods do if g.n == 2 and not tot[it] then eqa[it] = 1; end; end;
 	TRF_Remove(a, "test");
 	local c2 = nil;
 	for t = 1, 8 do

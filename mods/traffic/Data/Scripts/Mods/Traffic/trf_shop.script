@@ -136,10 +136,10 @@ function TRF_Shop_Clear(m, item)
 	return call(TRF_Shop_ClearRaw, {m, item}, "x", TRF_ShopErr);
 end;
 
--- UpdateTradeSystem(TRUE) after writes (CorrectOldShop 575, IDots_XT05.script 142); tune upd_true 0 uses
--- FALSE as On_FTrader_Start does. CHECK E0.4: TRUE restocks no other shop.
+-- FALSE sets every market's stock to its target, as On_FTrader_Start (RandomContacts.script 409) does before the
+-- trader window. TRUE would move stock only 35% toward the target, so count 1-2 rows show 0 (mod-research/ships/shop-save.md 2.3).
 function TRF_Shop_Update()
-	if TRF_ShopTune("upd_true", 1) == 1 then TRF_N("UpdateTradeSystem", TRUE); else TRF_N("UpdateTradeSystem", FALSE); end;
+	TRF_N("UpdateTradeSystem", FALSE);
 end;
 
 function TRF_Shop_Create(name)
@@ -772,7 +772,7 @@ end;
 
 -- Opens the trader's shop trf_shop_<k> (k = TRF_ShopSlot(r); once per trader, r.trd): wiped first (count 0
 -- with the coefficients for every item of TRF_ShopWipeList, so the previous trader's stock and the player's
--- sales of those items do not carry over), then the hold mirror with its totals, 3..6 equipment items of the
+-- sales of those items do not carry over), then the hold mirror with its totals, 3..6 equipment items (count 2) of the
 -- owner, then the dialog. Cfg log 2 adds a line with the item names put. Items of a class
 -- short at the trader's destination get buy x short_bonus (sell kept >= buy + 0.2).
 -- Called from a due call (trf_hail), never inside a box callback. Returns 1 or nil, reason.
@@ -820,7 +820,7 @@ function TRF_ShopOpen(id)
 	local want = 3 + TRF_Shop_Rand(4);
 	while ne < want and getn(pool) > 0 do
 		local it = tremove(pool, TRF_Shop_Rand(getn(pool)) + 1);
-		if TRF_Shop_Put(m, it, 1, s, b) then ne = ne + 1; pe = pe..","..it; end;
+		if TRF_Shop_Put(m, it, 2, s, b) then ne = ne + 1; pe = pe..","..it; end;
 	end;
 	TRF_Shop_Update();
 	TRF_N("SetTraderFlag", TRUE);
@@ -845,7 +845,7 @@ end;
 
 -- tsh_visit: 1 creates trf_shop_<k> once per MapInitialization (fallback if E0.4 shows no persistence).
 function TRF_Shop_TuneDef()
-	return {L_short=6, short_coef=1.5, short_bonus=1.2, upd_true=1, tsh_visit=0};
+	return {L_short=6, short_coef=1.5, short_bonus=1.2, tsh_visit=0};
 end;
 
 function TRF_Shop_Dump()
