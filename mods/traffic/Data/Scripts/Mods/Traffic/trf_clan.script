@@ -50,7 +50,7 @@ function TRF_Cl_Fac()
 		{tm="Kfni", sx="kfni", cap={"Stormcrow_kfni1", "Cleaner_kfni1", "Jaguar_kfni2"}, md={"HC3", "SRM2", "ECM2"}},
 		{tm="Triada", sx="tri", cap={"Stormcrow_tri1", "Stormcrow_tri2", "Cleaner_tri2", "Cleaner_tri3"}, md={"VC3", "ECM3", "ShAmp2"}},
 		{tm="Uss", sx="uss", cap={"Stormcrow_uss1", "Raptor_uss2", "Tiger_uss1"}, md={"VC3", "ManAmp1", "ShAmp2"}},
-		{tm="Inoco", sx="ino", cap={"Stormcrow_ino1", "Raptor_ino1", "Tiger_ino1"}, md={"LC3", "ECM3", "ALS1"}}
+		{tm="Inoco", sx="ino", cap={"Stormcrow_ino1", "Raptor_ino1", "Tiger_ino1"}, md={"RG2", "LC3", "ECM3", "ALS1", "ShAmp1"}}
 	};
 end;
 
