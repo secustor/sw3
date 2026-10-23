@@ -465,9 +465,10 @@ function TRF_DcEscBuild(n, plan, k, pos, E, mid)
 	if H and type(H.grp) == "table" then g = H.grp[k]; end;
 	if not g and type(TRF_GnGroup) == "function" then g = TRF_DgX("TRF_GnGroup", k); end;
 	if not g then return nil; end;
+	local args = {Trad_merc_Pilots, row, "TRF_GTrade_"..k, "trf_dce_"..n, pos, 10, plan.dir or Vector3(0, 0, 1),
+		"shipFormation", 15, 5};
 	setglobal("TRF_GTrade_"..k, g);
-	local fl, sh = TRF_DgP(TRF_BuildFlight, {Trad_merc_Pilots, row, "TRF_GTrade_"..k, "trf_dce_"..n, pos, 10,
-		plan.dir or Vector3(0, 0, 1), "shipFormation", 15, 5});
+	local fl, sh = TRF_DgP(TRF_BuildFlight, args);
 	setglobal("TRF_GTrade_"..k, nil);
 	if not fl or type(sh) ~= "table" then return nil; end;
 	for i = 1, getn(sh) do TRF_DgX("SetObjectLabel", sh[i], "trf_dce_"..n.."_"..i); end;

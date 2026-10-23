@@ -18,11 +18,11 @@
 # Optional v1 keys (design/v1-spec.md 10.5), written only when set: TRACK, CONV, DEMAND, HEAT_OFFER, CARRIERS, SALVAGE,
 # SALV_ADDMOD, CLAN_ACE, SWEEPS, SWEEP_CT, PO, TT4, TT4_SPLIT, FEQ, FORCED_BUST, DCONV, DC_SPEED, BASES, BASE_GLOW, WRECK
 # (integers); FEQ_AT=<system> (debug: the next leg schedules an equipment convoy there, skipping the pro/strength
-# tests); LOC=1 (loc_mode 1 and loc/trf_en.loc copied to Data/LocData/English/, CHECK E0.6; unset removes the copy).
+# tests); BASE_AT=<system> (debug: the next leg founds a pirate base there, skipping the disruption hold, open sweep,
+# neighbour and chance tests; the system must be on the map allow-list with a site); LOC=1 (loc_mode 1 and loc/trf_en.loc copied to Data/LocData/English/, CHECK E0.6; unset removes the copy).
 # NEWS=1: the trf_* records of news/trf_news.xml (tools/gen_news.py) merged into the clone's Data/Game/News.xml
 # (the vanilla file is kept as News.xml.trf-orig), loc/trf_en.loc copied as with LOC=1, and news_mode=2 unless
 # NEWS_MODE is set; unset restores News.xml from News.xml.trf-orig.
-# BASE_AT is not available: trf_base has no forced-site key yet.
 # HAIL_BOX=0|1|2 (default 2 here; the shipped default is 1): tune hail_box (0 hail answers as lines, 1 ShowMsgBox
 # chain, 2 the hail menu as the trade dialog). Data/Scripts/Trade/TRF_Hail.xml is always copied and hail_xml=1
 # written; a hail_box key in TUNE wins.
@@ -73,6 +73,10 @@ done
 if [ -n "${FEQ_AT:-}" ]; then
     case "$FEQ_AT" in *[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_]*) echo "FEQ_AT: bad system name" >&2; exit 1;; esac
     opt="$opt, feq_at=\"$(printf '%s' "$FEQ_AT" | tr 'A-Z' 'a-z')\""
+fi
+if [ -n "${BASE_AT:-}" ]; then
+    case "$BASE_AT" in *[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_]*) echo "BASE_AT: bad system name" >&2; exit 1;; esac
+    opt="$opt, base_at=\"$(printf '%s' "$BASE_AT" | tr 'A-Z' 'a-z')\""
 fi
 case "${LOC:-0}" in 0) ;; 1) opt="$opt, loc_mode=1" ;; *) echo "LOC must be 0 or 1" >&2; exit 1;; esac
 if [ -n "${PRO_SET:-}" ]; then

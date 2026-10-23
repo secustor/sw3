@@ -283,20 +283,20 @@ Engine facts the features need, deduplicated, numbered after `D/PROGRESS.md` Pha
 | E | Test | Merges | Gates |
 |---|---|---|---|
 | E0.3 (extends) | String callbacks with parameters; NPC flights after a load (snapshot or full save) | WB facts 5, 15; EW4.3, EW4.7, EW2.7, EW8.7, E12.6, D6, FP7, R9 | 2, 4, 7, 8, 10, 11, 12, 13 |
-| E0.4 (extends) | Container and quest-object sale (`Cargo_crate`, `Cargo_002`, `Uranium`, `Cargo_Electronic_1/2`) at stations, shortage stations and trader shops | WB fact 7; E-PCL.2, EV.4 of #5 | 1, 5 |
+| E0.4 (extends) | Container and quest-object sale (`Cargo_crate`, `Cargo_002`, `Uranium`, `Cargo_Electronic_1/2`) at stations, shortage stations and trader shops | WB fact 7; E-PCL.2, E-VT.4 | 1, 5 |
 | E0.5 (extends) | Player-initiated hail (focus plus proximity) | WB fact 23 | 5, 13, traffic 8.2 |
-| E0.6 (extends) | Box from each dock callback (trade, patrol, pirate), second box from an OK, text readable before a box, `CombineStr` with a number and a string, new loc keys, plain strings | WB facts 3, 4; E-PCL.3, EV.4/EV.5 of #3, EV.3 of #5, EW4.4, E-SV6, E7.8, EW8.1, EW8.5, E9.1, E9.2, D5, E12.4, EC.2, EC.5 | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14 |
-| E0.8 (extends) | Runtime `CreateCarcass` and `CreateStation` objects persist with labels; a destroyed one returns dead or missing; runtime nav points persist or not | WB facts 1, 2; EW2.1, EW2.2, EW2.4, E7.1, E7.3, E7.4, E7.5, E-SV3, E-SV8, EV.5 of #5 | 2, 5, 6, 7 |
+| E0.6 (extends) | Box from each dock callback (trade, patrol, pirate), second box from an OK, text readable before a box, `CombineStr` with a number and a string, new loc keys, plain strings | WB facts 3, 4; E-PCL.3, EV.4/EV.5 of #3, E-VT.3, EW4.4, E-SV6, E7.8, EW8.1, EW8.5, E9.1, E9.2, D5, E12.4, EC.2, EC.5 | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14 |
+| E0.8 (extends) | Runtime `CreateCarcass` and `CreateStation` objects persist with labels; a destroyed one returns dead or missing; runtime nav points persist or not | WB facts 1, 2; EW2.1, EW2.2, EW2.4, E7.1, E7.3, E7.4, E7.5, E-SV3, E-SV8, E-VT.5 | 2, 5, 6, 7 |
 | E0.10 | `DeleteModule` removes one unit; `AddModuleToInventory` hand-over; adsorption at 8x | WB fact 6; E-PCL.1, FP9 | 1, 5, 11 |
 | E0.11 | Logbook off-mission: `AddQuest`, `SetQuestState`, `RemoveQuest` with new keys; whether an open entry turns `GetPlayerQuestState()` TRUE; `ClearQuests()` effect | WB fact 20; E-PCL.4, EW4.5, EC.1, EC.3, EC.4 | 1, 4, 14 |
-| E0.12 | Mission signal: `GetPlayerQuestState()` true during missions and false in free time; the visit latch after a mission ends in-system; chapter deny tables | WB fact 13; E-PCL.6, EV.7 of #3, EV.9 of #5, E7.10, D9, FP8 | all spawning features (1-13), 14 posting |
+| E0.12 | Mission signal: `GetPlayerQuestState()` true during missions and false in free time; the visit latch after a mission ends in-system; chapter deny tables | WB fact 13; E-PCL.6, EV.7 of #3, E-VT.9, E7.10, D9, FP8 | all spawning features (1-13), 14 posting |
 | E0.13 | Group-level war with `PLAYER_GROUP`: autopause, unordered wingmen, team flip after a kill, after a jump and after a load, vanilla groups pulled in; for Pirates, faction and Merc teams | WB fact 12; E-PCL.7, EW2.6, EW4.12, E-SV7, E7.7, E7.9, D7, FP6, E12.2, R3 | 1 (customs run), 2, 4 (vendetta), 6, 7, 10, 11, 12 (release gate), 13 (HOSTILE) |
 | E0.14 | Two mod groups of the same team at war fight; vanilla group stays out | D1 | 10 (else Hunter-team fallback) |
 | E0.15 | Escort AI: `Escort(mothership)` and `Escort(trader)` engage attackers after group-level WAR seeding; faction escort engages pirates unseeded | WB fact 11; E12.1, R2, E9.4, D2 | 9 (escort), 10, 12, 13 |
 | E0.16 | Dock identity from `param` (Kadenoa's two docks), and position match of closed military stations | WB fact 14 (avoided); E-PCL.5, EV.3 of #3, E9.5 | 1, 3, 9 |
 | E0.17 | `CostOfHead` call pattern at hand-in; `Case_Eject` for mod pilots; `base` trigger and `Case_RescuePodDestruction` for NPC pods; transports never eject | WB facts 8, 9; E9.3, EW4.9, EW4.10, EW4.11, EW4.13, E-SV5 | 4 step 2, 6 (inference), 9 (hand-in standing) |
 | E0.18 | `HP` trigger at absolute hit points; attached nav point on a ship that flees through `ComeToPortal` | WB fact 10; EW4.1, EW4.2 | 4 |
-| E0.19 | `died` and `attack` triggers on runtime `_inv` hulks and asteroids; inventory dropped on death and the 40 % or 60 % share | WB facts 21, 24; EW2.3, EW2.8, E7.2 | 2, 7 |
+| E0.19 | `died` and `attack` triggers on runtime `_inv` hulks and asteroids; inventory dropped on death and the 40 % destroyed share (`G/AI/AI.ini:219` `40;25;40`; which value applies is open) | WB facts 21, 24; EW2.3, EW2.8, E7.2 | 2, 7 |
 | E0.20 | `SetHP` right after spawn survives formation setup | WB fact 22; EW4.6, E12.8 | 4 (chase), 8 (damage bands), 12 step 2 |
 | E0.21 | `dt_real` in `TRF_OnTick`: zero while paused and in menus, unaffected by 8x, carried across loads; game time across a load | EW8.3, D10, EC.8, E12.11, FP12 | 8, 9, 10, 11, 14 |
 | E0.22 | A `Stop()`ped flight holds off-axis at a portal without blocking arrivals | WB fact 17; FP1 | 11 (12 uses the same waiting spot) |
@@ -310,7 +310,7 @@ Engine facts the features need, deduplicated, numbered after `D/PROGRESS.md` Pha
 
 Host tests without the game (tests/run_host.sh): EW8.6 freight simulation, EC.6 charter generation, FP11 200-leg pressure run. They gate tuning, not engine facts.
 
-Duplicate ids: #3 and #5 both use `EV.1`-`EV.7` for different tests; the table above names them with the feature number.
+Ids: the tests of #3 use the prefix `EV`, those of #5 the prefix `E-VT` (renamed from `EV` on 2026-10-23, since both files numbered their tests from 1).
 
 ## 8. Open decisions for the user
 

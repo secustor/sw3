@@ -22,7 +22,11 @@ for systems still without a value (no portal path to a system with pirates or tr
 even count and means round half up.
 System keys are the lowercase names the scripts use (portal destinations,
 TeleportToLocation, GetLastLocation comparisons); XML names are matched case-insensitively.
---check: exit 1 if the output file differs from what would be written.
+v1 fields (tools/README.md): q, tq, qi from the campaign pass over Data/Scripts/Quests and Game/Quests.xml;
+ba, bs (pirate base allow-list and site); top-level it (Modules.xml costs) and fm (reference-fit modules).
+--check: exit 1 if the output file differs from what would be written, a runtime fallback list differs, the
+allow-list differs from BA_EXPECT or the hull check (Create_flight_2 tables, ShipDescriptions.xml,
+Carcasses.xml, hull literals of the mod scripts) finds a problem. --loc: also loc/trf_en.loc (Lua 4).
 """
 import argparse
 import os
@@ -35,6 +39,9 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Data", "Sc
                    "Mods", "Traffic", "map.script")
 REGION = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Data", "Scripts",
                       "Mods", "Traffic", "trf_region.script")
+SAFETY = os.path.join(os.path.dirname(REGION), "trf_safety.script")
+LOC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "loc", "trf_en.loc")
+LUA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", ".work", "lua4", "bin", "lua")
 START = ["ahilles", "argon", "aurora", "corrino", "elio", "gefest", "gredos", "pegas"]
 SKIP_DIRS = {"_template_"}
 
@@ -497,6 +504,411 @@ def strip_code_keep_names(line):
     return line if i < 0 else line[:i]
 
 
+QSTR = re.compile(r'"(quest_[^"]+)"')
+QCALL = re.compile(r'\b(?:AddQuest|SetQuestState|GetQuestState)\s*\(\s*"(quest_[^"]+)"')
+TELE = re.compile(r'\b(?:TeleportToLocation|CustomTeleportate)\s*\(\s*"([^"]+)"')
+
+
+def quest_dirs(qdir):
+    """Mission directories and their fold root: a directory whose name minus its last _part (repeatedly)
+    is an existing directory folds into the topmost such ancestor (mission_12e_01 -> mission_12e)."""
+    dirs = sorted(d for d in os.listdir(qdir) if os.path.isdir(os.path.join(qdir, d)))
+    have = set(dirs)
+
+    def parent(d):
+        p = d
+        while "_" in p[len("mission_"):]:
+            p = p.rsplit("_", 1)[0]
+            if p in have:
+                return p
+        return None
+    root = {}
+    for d in dirs:
+        r = d
+        while parent(r):
+            r = parent(r)
+        root[d] = r
+    return dirs, root
+
+
+def campaign(game, known, sysdirs):
+    """Campaign pass (v1-spec 1.5, 10.4) over Data/Scripts/Quests and Data/Game/Quests.xml.
+    Returns {q: set of systems named in Quests.xml, qi: {sys: sorted ids}, tq: set, pairs, stats}."""
+    data = os.path.join(game, "Data")
+    qdir = os.path.join(data, "Scripts", "Quests")
+    xr = ET.parse(os.path.join(data, "Game", "Quests.xml")).getroot()
+    xloc, named = {}, set()
+    for m in xr:
+        for a in m:
+            ls = set((x.text or "").strip().lower() for x in a.iter("location"))
+            xloc[(m.get("name"), (a.get("name") or "").lower())] = ls
+            named |= ls
+    dirs, root = quest_dirs(qdir)
+    S, I, words, tps, nscr, own_ids, add_ids = {}, {}, {}, set(), 0, {}, set()
+    for d in dirs:
+        s, ids, ws = set(), set(), {}
+        for fn in sorted(os.listdir(os.path.join(qdir, d))):
+            if not fn.lower().endswith(".script"):
+                continue
+            nscr += 1
+            base = fn[:-7].lower()
+            best = None
+            for k in known:
+                if base.endswith("_" + k) and (best is None or len(k) > len(best)):
+                    best = k
+            fs = set([best]) if best else set()
+            fs |= set(x for x in xloc.get((d, base), ()) if x in known)
+            code = "\n".join(strip_comment(l) for l in read_lines(os.path.join(qdir, d, fn)))
+            for m in TELE.finditer(code):
+                v = m.group(1).lower()
+                if v in known:
+                    tps.add(v)
+                    fs.add(v)
+            for m in QCALL.finditer(code):
+                ids.add(m.group(1))
+            add_ids |= set(re.findall(r'\bAddQuest\s*\(\s*"(quest_[^"]+)"', code))
+            s |= fs
+            for k in fs:
+                ws.setdefault(k, set()).update(WORD.findall(strip_code(code)))
+        S[d], I[d], words[d] = s, ids, ws
+        own_ids[d] = ids
+    grp = {}
+    for d in dirs:
+        grp.setdefault(root[d], []).append(d)
+    qi = {}
+    for r, ds in grp.items():
+        ids = set().union(*[I[d] for d in ds])
+        for d in ds:
+            for k in S[d]:
+                qi.setdefault(k, set()).update(ids)
+    qi = {k: sorted(v) for k, v in qi.items() if v}
+    # (system, label) pairs a quest script reaches through the system's functions.script globals.
+    pairs = set()
+    for d in dirs:
+        for k, ws in words[d].items():
+            fp = os.path.join(sysdirs[k], "functions.script") if k in sysdirs else None
+            if not fp or not os.path.isfile(fp):
+                continue
+            for ln, code, depth in scan(fp):
+                mm = BYLBL.match(code)
+                if mm and mm.group(1) in ws:
+                    pairs.add((k, mm.group(2)))
+    stats = {"dirs": len(dirs), "scripts": nscr, "mapped": sum(1 for d in dirs if S[d]),
+             "noid": sum(1 for d in dirs if S[d] and not own_ids[d]), "groups": len(grp),
+             "ids": len(set(x for v in qi.values() for x in v)), "addq": len(add_ids),
+             "quest_sys": sorted(set().union(*S.values())), "xml_named": sorted(named & set(known)),
+             "xml_unknown": sorted(named - set(known))}
+    return {"q": named & set(known), "qi": qi, "tq": tps, "pairs": sorted(pairs), "stats": stats}
+
+
+SEC = re.compile(r"<!--\s*([A-Za-z]+)\s*-->")
+SDNAME = re.compile(r'<ShipDescription\s+name="([^"]+)"')
+SDCARC = re.compile(r"<carcass>\s*([^<\s]+)\s*</carcass>")
+SDMOD = re.compile(r"<module>\s*([^<\s]+)\s*</module>")
+FAC = [("Vks", "nav", "VKS"), ("Kfni", "kfni", "KFNI"), ("Tri", "tri", "Triada"), ("USS", "uss", "USS"),
+       ("Ino", "ino", "Inoco")]  # v1 faction order f = 1..5: table prefix, fit suffix, ShipDescriptions section
+FM_REF = ["Tiger_nav2", "Jaguar_kfni2", "Tiger_tri1", "Tiger_uss1", "Tiger_ino1"]  # v1-spec 6.3 rung-1 reference fits
+
+
+def ship_descs(path):
+    """{fit: {line, sec (section comment), carcass, modules}} from ShipDescriptions.xml (line scan)."""
+    out, sec, cur = {}, None, None
+    with open(path, encoding="utf-8", newline="") as f:
+        for ln, l in enumerate(f.read().replace("\r\n", "\n").split("\n"), 1):
+            m = SEC.search(l)
+            if m:
+                sec = m.group(1)
+            m = SDNAME.search(l)
+            if m:
+                cur = out.setdefault(m.group(1), {"line": ln, "sec": sec, "carcass": None, "modules": []})
+                continue
+            m = SDCARC.search(l)
+            if m and cur:
+                cur["carcass"] = m.group(1)
+            m = SDMOD.search(l)
+            if m and cur:
+                cur["modules"].append(m.group(1))
+            if "</ShipDescription>" in l:
+                cur = None
+    return out
+
+
+def faction_tables(path):
+    """{"<Prefix>_<Kind>": [[fit, ...] per row]} of the 20-row tables in include/Create_flight_2.script."""
+    lines = [strip_comment(l) for l in read_lines(path)]
+    text = "\n".join(lines)
+    out = {}
+    for m in re.finditer(r"^\s*((?:Vks|Kfni|Tri|USS|Ino|Pir)_(?:Fighters|Bombers|BigShips))\s*=\s*\{", text, re.M):
+        i, depth, rows, cur = m.end(), 1, [], None
+        while i < len(text) and depth > 0:
+            c = text[i]
+            if c == "{":
+                depth += 1
+                if depth == 2:
+                    cur = i
+            elif c == "}":
+                if depth == 2 and cur is not None:
+                    rows.append(re.findall(r'\{\s*"([^"]+)"', text[cur:i + 1]))
+                    cur = None
+                depth -= 1
+            elif c == '"':
+                i = text.index('"', i + 1)
+            i += 1
+        out[m.group(1)] = rows
+    return out
+
+
+def carcass_names(path):
+    return set(e.get("name") for e in ET.parse(path).getroot() if e.get("name"))
+
+
+def module_costs(path):
+    """{item: cost} of Data/Game/Modules.xml (first entry of a duplicated name) and the duplicates."""
+    out, dup = {}, []
+    for e in ET.parse(path).getroot():
+        n, c = e.get("name"), e.findtext("cost")
+        if not n or c is None:
+            continue
+        if n in out:
+            dup.append(n)
+            continue
+        out[n] = int(c.strip())
+    return out, dup
+
+
+def lua_lits(path):
+    """String literals of a mod script (comments stripped), with line numbers."""
+    out = []
+    for ln, raw in enumerate(read_lines(path), 1):
+        for m in re.finditer(r'"([^"\\]*)"', strip_comment(raw)):
+            out.append((ln, m.group(1)))
+    return out
+
+
+def hull_check(game, src):
+    """--check of the hull names (v1-spec 1.2, 6.3, 7.2). Returns (fm lists, problem lines, stats)."""
+    data = os.path.join(game, "Data")
+    sd = ship_descs(os.path.join(data, "Game", "ShipDescriptions.xml"))
+    cn = carcass_names(os.path.join(data, "Game", "Carcasses.xml"))
+    ft = faction_tables(os.path.join(data, "Scripts", "include", "Create_flight_2.script"))
+    bad, notes, n = [], [], [0]
+
+    def fit_ok(name, why, sec=None):
+        n[0] += 1
+        e = sd.get(name)
+        if not e:
+            bad.append("%s: %s not in ShipDescriptions.xml" % (why, name))
+            return False
+        if e["carcass"] not in cn:
+            bad.append("%s: %s carcass %s not in Carcasses.xml" % (why, name, e["carcass"]))
+        if sec and e["sec"] != sec:
+            bad.append("%s: %s in block %s (line %d), not %s" % (why, name, e["sec"], e["line"], sec))
+        return True
+
+    def rows(f, lo, hi, kinds=("Fighters", "Bombers")):
+        out = set()
+        for k in kinds:
+            for r in ft.get("%s_%s" % (FAC[f][0], k), [])[lo - 1:hi]:
+                out.update(r)
+        return out
+    fm = []
+    for f, (px, sx, sec) in enumerate(FAC):
+        for k in ("Fighters", "Bombers", "BigShips"):
+            t = ft.get("%s_%s" % (px, k))
+            if not t or len(t) != 20:
+                bad.append("Create_flight_2 %s_%s: %s rows, expected 20" % (px, k, len(t) if t else 0))
+                continue
+            for ri, r in enumerate(t[4:], 5):  # ladder rows 5-20 (rungs 0-3); rows 1-4 are never drawn
+                for x in r:
+                    fit_ok(x, "%s_%s row %d" % (px, k, ri), sec if k != "BigShips" else None)
+        big = ["Butcher_%s%d" % (sx, i) for i in (1, 2, 3)] + ["Walrus_%s%d" % (sx, i) for i in (1, 2, 3, 4)]
+        big += ["StoneArrow%d" % i for i in (1, 2, 3)] if sx == "nav" else ["StoneArrow_%s%d" % (sx, i) for i in (1, 2, 3)]
+        big += {"nav": ["Battleship_1"], "kfni": ["Battleship_kfni1"]}.get(sx, [])
+        for x in big:
+            fit_ok(x, "ladder %s" % px, sec)
+        ref = FM_REF[f]
+        if fit_ok(ref, "fm %s" % px, sec):
+            if ref not in rows(f, 10, 14):
+                bad.append("fm %s: %s not in the rung-1 rows 10-14 of %s_Fighters/_Bombers" % (px, ref, px))
+            ms = []
+            for x in sd[ref]["modules"]:
+                if x not in ms:
+                    ms.append(x)
+            fm.append(ms)
+        else:
+            fm.append([])
+    # Salvage stage-2 lists (trf_clan TRF_Cl_Fac cap, v1-spec 6.3): rung 0-1 rows of the faction, its block.
+    cl = os.path.join(src, "trf_clan.script")
+    caps = []
+    if os.path.isfile(cl):
+        for raw in read_lines(cl):
+            m = re.search(r'\{tm="(\w+)", sx="(\w+)", cap=\{([^}]*)\}, md=\{([^}]*)\}\}', strip_comment(raw))
+            if m:
+                caps.append((m.group(2), re.findall(r'"([^"]+)"', m.group(3)), re.findall(r'"([^"]+)"', m.group(4))))
+    if len(caps) != 5:
+        bad.append("trf_clan TRF_Cl_Fac: %d faction rows, expected 5" % len(caps))
+    for f, (sx, cap, md) in enumerate(caps[:5]):
+        if sx != FAC[f][1]:
+            bad.append("trf_clan TRF_Cl_Fac row %d: sx %s, expected %s" % (f + 1, sx, FAC[f][1]))
+            continue
+        for x in cap:
+            if fit_ok(x, "salvage cap %s" % FAC[f][0], FAC[f][2]) and x not in rows(f, 5, 14):
+                bad.append("salvage cap %s: %s not in the rung 0-1 rows 5-14" % (FAC[f][0], x))
+        if md != fm[f][:len(md)]:
+            notes.append("trf_clan TRF_Cl_Fac md %s: %s, generated fm %s (fm wins at runtime)"
+                         % (FAC[f][0], ",".join(md), ",".join(fm[f])))
+    for x in CARCASS_REF:
+        n[0] += 1
+        if x not in cn:
+            bad.append("carcass %s not in Carcasses.xml" % x)
+    # Every literal in the mod scripts that names a hull (stem of a fit name plus a digit or "_") must
+    # resolve to a fit or a carcass (trf_danger escort lists, trf_raid, trf_clan carriers, trf_tier ...).
+    stems = set(re.match(r"[A-Za-z]+", x).group(0) for x in sd)
+    nlit = 0
+    for fn in sorted(os.listdir(src)):
+        if not fn.endswith(".script") or fn == "map.script":
+            continue
+        for ln, s in lua_lits(os.path.join(src, fn)):
+            m = re.fullmatch(r"([A-Za-z]+)[A-Za-z0-9_]*", s)
+            if not m or m.group(1) not in stems or not re.search(r"[0-9_]", s) or s.endswith("_"):
+                continue
+            nlit += 1
+            if s not in sd and s not in cn and not any(re.fullmatch(re.escape(s) + r"[0-9]+", x) for x in sd):
+                bad.append("%s:%d hull literal %r not in ShipDescriptions.xml or Carcasses.xml" % (fn, ln, s))
+    return fm, bad, {"fits": n[0], "literals": nlit, "notes": notes}
+
+
+# Names lint_lua.py rejects as table keys (save skip list, mod-options 1.8)
+RESERVED_KEYS = set("_CLASS PI _VERSION _INPUT _OUTPUT _STDERR _STDIN _STDOUT TRUE FALSE PLAYER_TEAM PLAYER_GROUP "
+                    "PLAYER_MOTHERSHIP EASY NORMAL HARD NOINIT and break do else elseif end for function if in "
+                    "local nil not or repeat return then until while".split())
+RESERVED_PREFIX = ("_EVENT_", "ROLE_", "RELATION_", "QUEST_", "MISSION_")
+# Carcasses named by the mod: trf_base station and wreck, the carrier fits' hull, the Btransport hull
+# (NewShip with a carcass name, as Quests/mission_6c_1/Convoy1_NJ2.script 169-170)
+CARCASS_REF = ["Pirate_station2_Lit", "p_station2_destroyed", "Mothership_arba_pirate", "Btransport"]
+
+
+def strict_free_diff(systems, path):
+    """q = 0 systems against trf_safety's TRF_StrictFree list (the runtime fallback without q).
+    Returns diff lines, or None if the script or the list is missing."""
+    try:
+        with open(path, encoding="cp1251", newline="") as f:
+            text = f.read()
+    except OSError:
+        return None
+    m = re.search(r"function TRF_StrictFree\(\)\s*return\s*\{(.*?)\};", text, re.S)
+    if not m:
+        return None
+    fb = sorted(re.findall(r"([a-z_0-9]+)\s*=\s*1", m.group(1)))
+    gen = sorted(s["name"] for s in systems if s["q"] == 0)
+    if fb == gen:
+        return []
+    return ["q = 0: generated only %s; TRF_StrictFree only %s" % (
+        ",".join(sorted(set(gen) - set(fb))) or "-", ",".join(sorted(set(fb) - set(gen))) or "-")]
+
+
+BA_EXPECT = ["altair", "escaflon", "fiasar", "fort_russ", "kitaro", "xb13"]  # v1-spec 9.1, [PB] 6.1
+BS_OVERRIDE = {}  # authored sites {system: (x, y, z)}, filled after [PB] E12
+BS_RINGS, BS_ST, BS_PORTAL, BS_OBJ = (600, 900, 1200), 400, 300, 150
+OBJPOS = re.compile(r"\b(CreateStation|CreateTradeStation|CreateAsteroid)\s*\((.*)$")
+
+
+def loc_objects(path, env):
+    """CreateStation/CreateTradeStation/CreateAsteroid calls of location.script: (fn, model, pos|None, line)."""
+    out = []
+    for ln, code, depth in scan(path):
+        m = OBJPOS.search(code)
+        if m:
+            args = split_args(m.group(2))
+            out.append((m.group(1), args[0].strip().strip('"'), eval_vec(args[1], env) if len(args) > 1 else None, ln))
+    return out
+
+
+def dist(a, b):
+    return sum((x - y) ** 2 for x, y in zip(a, b)) ** 0.5
+
+
+def base_site(s):
+    """Generator rule of v1-spec 9.1 for bs: rings around the mean portal/station position, plane y = 0."""
+    if s["name"] in BS_OVERRIDE:
+        return list(BS_OVERRIDE[s["name"]]), "override"
+    pp = [p["pos"] for p in s["allp"] if p["pos"] is not None]
+    sp = [t["pos"] for t in s["st"] if t["pos"] is not None]
+    op = [o[2] for o in s["objs"] if o[2] is not None]
+    pts = pp + sp
+    if not pts:
+        return None, "no portal or station position"
+    cx = sum(p[0] for p in pts) / len(pts)
+    cz = sum(p[2] for p in pts) / len(pts)
+    import math
+    for r in BS_RINGS:
+        for k in range(12):
+            a = math.radians(30 * k)
+            c = [int(round(cx + r * math.cos(a))), 0, int(round(cz + r * math.sin(a)))]
+            if all(dist(c, p) >= BS_ST for p in sp) and all(dist(c, p) >= BS_PORTAL for p in pp) \
+                    and all(dist(c, p) >= BS_OBJ for p in op):
+                return c, "ring %d bearing %d" % (r, 30 * k)
+    return None, "no free candidate"
+
+
+def lua_q(s):
+    """Lua string literal of a cp1251 text, bytes outside printable ASCII as \\ddd."""
+    out = []
+    for c in s:
+        if 32 <= ord(c) < 127 and c not in '"\\':
+            out.append(c)
+        else:
+            out += ["\\%d" % b for b in c.encode("cp1251")]
+    return '"%s"' % "".join(out)
+
+
+def wrap(items, indent, width=110):
+    """Comma-separated items in lines of at most width characters (the last item without a comma)."""
+    L, cur = [], ""
+    for i, x in enumerate(items):
+        x += "," if i < len(items) - 1 else ""
+        if cur and len(indent) + len(cur) + 1 + len(x) > width:
+            L.append(indent + cur)
+            cur = x
+        else:
+            cur = (cur + " " + x) if cur else x
+    if cur:
+        L.append(indent + cur)
+    return L
+
+
+LOC_NEWS = "; sw3-traffic news records begin"
+
+
+def loc_scaffold(lua, src):
+    """Lines of TRF_Loc_LocLines() run by Lua 4 over the module files (trf_*.script)."""
+    import subprocess
+    args = [lua]
+    for fn in sorted(os.listdir(src)):
+        if fn.startswith("trf_") and fn.endswith(".script"):
+            args += ["-e", 'dofile("%s")' % os.path.join(src, fn).replace("\\", "/")]
+    args += ["-e", 'TRF_Lf = function(...) end; local l = TRF_Loc_LocLines(); '
+                   'for i = 1, getn(l) do write(l[i].."\\n"); end']
+    p = subprocess.run(args, capture_output=True)
+    if p.returncode != 0 or p.stderr:
+        raise SystemExit("gen_map: lua failed (%d): %s" % (p.returncode, p.stderr.decode("latin1")[:400]))
+    return p.stdout.decode("ascii").split("\n")[:-1]
+
+
+def loc_text(old, scaffold):
+    """trf_en.loc bytes: the scaffold, then the gen_news.py block of the old file (if any), CRLF."""
+    lines = old.replace("\r\n", "\n").split("\n") if old else []
+    news = []
+    for i, l in enumerate(lines):
+        if l.startswith(LOC_NEWS):
+            news = lines[i:]
+            break
+    while news and news[-1] == "":
+        news.pop()
+    out = list(scaffold) + ([""] + news if news else [])
+    return ("\r\n".join(out) + "\r\n").encode("ascii")
+
+
 def parse_xml(path):
     root = ET.parse(path).getroot()
     recs, links = {}, []
@@ -548,7 +960,7 @@ def emit_st(st):
     return "{%s}" % f
 
 
-def emit(systems, rgl):
+def emit(systems, rgl, items, fm):
     L = ["-- Generated by mods/traffic/tools/gen_map.py from the game files. Do not edit.",
          "-- sys[i]: name (lowercase script name), idx, dir (folder), mx/my (GlobalMap marker,",
          "-- absent if not on the map), start=1 starting region, trader=1 vanilla trader contact,",
@@ -561,8 +973,12 @@ def emit(systems, rgl):
          "-- No dock field: trade docking uses the engine's GetDockingPosition, no script gives it.",
          "-- rg: region slot (absent: independent), dg: danger 0..3 (design 5.1 default rule), pc: pro_cap,",
          "-- sb: sys_base (median NewPirateFlight power, else trader level, else neighbour mean, else 8).",
+         "-- q: 1 named in Quests.xml or by a quest script, else 0 (v0.2 R5); tq=1 literal TeleportToLocation/",
+         "-- CustomTeleportate target of a quest script; qi: quest ids of the system's quest scripts (campaign",
+         "-- pass, tools/README.md); ba=1 pirate base allow-list, bs: base site {x, y, z} (v1-spec 9.1).",
          "-- Top-level rg[slot]: {name (home folder), home (home system), dg (2 x mean member dg, rounded, 1..3;",
-         "-- no reader yet), members (idx list)} (v0.2 spec 4.1).",
+         "-- no reader yet), members (idx list)} (v0.2 spec 4.1); it[item]: Modules.xml cost; fm[f]: modules",
+         "-- of faction f's rung-1 reference fit, f = Vks, Kfni, Triada, Uss, Inoco (v1-spec 6.3).",
          "function TRF_MapData()",
          "  return {",
          "    sys = {"]
@@ -576,8 +992,18 @@ def emit(systems, rgl):
             head += ", trader=1"
         if s["rg"]:
             head += ", rg=%d" % s["rg"]
-        head += ", dg=%d, pc=%d, sb=%d" % (s["dg"], s["pc"], s["sb"])
+        head += ", dg=%d, pc=%d, sb=%d, q=%d" % (s["dg"], s["pc"], s["sb"], s["q"])
+        if s["tq"]:
+            head += ", tq=1"
+        if s["ba"]:
+            head += ", ba=1"
         L.append("      {%s," % head)
+        if s["bs"]:
+            L.append("        bs = {x=%s, y=%s, z=%s}," % tuple(num(c) for c in s["bs"]))
+        if s["qi"]:
+            L.append("        qi = {")
+            L += wrap([lua_q(x) for x in s["qi"]], "          ")
+            L.append("        },")
         if s["st"]:
             L.append("        st = {")
             for ti, t in enumerate(s["st"]):
@@ -605,6 +1031,11 @@ def emit(systems, rgl):
         L.append("      {name=%s, home=%s, dg=%d, members={%s}}%s" % (
             lua_str(r["name"]), lua_str(r["home"]), r["dg"], ",".join(str(i) for i in r["members"]),
             "," if ri < len(rgl) - 1 else ""))
+    L += ["    },", "    it = {"]
+    L += wrap(["%s=%d" % (k, items[k]) for k in sorted(items)], "      ")
+    L += ["    },", "    fm = {"]
+    for f, ms in enumerate(fm):
+        L.append("      {%s}%s" % (", ".join(lua_q(x) for x in ms), "," if f < len(fm) - 1 else ""))
     L += ["    }", "  }", "end", ""]
     return "\r\n".join(L).encode("ascii")
 
@@ -615,6 +1046,11 @@ def main():
     ap.add_argument("--out", default=OUT)
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--region", default=REGION)
+    ap.add_argument("--safety", default=SAFETY)
+    ap.add_argument("--loc", action="store_true", help="also write (or with --check compare) loc/trf_en.loc")
+    ap.add_argument("--loc-out", default=LOC)
+    ap.add_argument("--lua", default=LUA)
+    ap.add_argument("-v", "--verbose", action="store_true", help="list the quest-touched (system, label) pairs")
     a = ap.parse_args()
 
     locdir = os.path.join(a.game, "Data", "Scripts", "Locations")
@@ -632,7 +1068,8 @@ def main():
         systems.append({
             "name": name, "dir": dirs[name], "mpos": recs.get(name),
             "start": name in START, "trader": has_trader(d), "st": st, "closed": closed,
-            "pir": pirate_info(d), "sbsrcs": sb_sources(d),
+            "pir": pirate_info(d), "sbsrcs": sb_sources(d), "allp": ps, "path": d,
+            "objs": loc_objects(os.path.join(d, "location.script"), env),
             "portals": [p for p in ps if p["managed"] and p["to"] and p["to"] != name],
             "inner": [p for p in ps if p["managed"] and p["to"] == name],
             "broken": [p for p in ps if not p["managed"] and p["to"]],
@@ -714,7 +1151,36 @@ def main():
         notes += ["%s/%s" % (s["dir"], x) for x in sbn]
     sys_base(systems, adjacency(systems, by, lambda s, p: False))
 
-    data = emit(systems, rgl)
+    # Campaign pass: q, qi, tq (v1-spec 1.5, 10.4)
+    camp = campaign(a.game, set(by), {s["name"]: s["path"] for s in systems})
+    for s in systems:
+        s["q"] = 1 if s["name"] in camp["q"] or s["name"] in camp["qi"] or s["name"] in camp["tq"] else 0
+        s["qi"] = camp["qi"].get(s["name"], [])
+        s["tq"] = s["name"] in camp["tq"]
+    qdiff = strict_free_diff(systems, os.path.abspath(a.safety))
+    # Pirate base allow-list and sites: ba, bs (v1-spec 9.1)
+    padj = adjacency(systems, by, lambda s, p: p["model"] != "Portal")
+    for s in systems:
+        s["pirmodel"] = any(o[0] == "CreateStation" and "pirat" in o[1].lower() for o in s["objs"])
+        nbdg = any(systems[n - 1]["dg"] >= 1 for n in padj[s["idx"]])
+        s["ba"] = (s["q"] == 0 and not s["pirmodel"] and s["name"] != "fronn" and not s["start"]
+                   and s["trader"] and (s["dg"] >= 1 or nbdg))
+        s["bs"], s["bswhy"] = base_site(s) if s["ba"] else (None, None)
+        for o in s["objs"]:
+            if s["ba"] and o[2] is None:
+                notes.append("%s/location.script:%d %s(%s) position unresolved (not in the bs clearance)"
+                             % (s["dir"], o[3], o[0], o[1]))
+    ba = [s["name"] for s in systems if s["ba"]]
+    badiff = [] if ba == BA_EXPECT else ["allow-list: generated %s, expected %s (BA_EXPECT)"
+                                          % (",".join(ba), ",".join(BA_EXPECT))]
+    # Item costs (it, Modules.xml) and the hull --check with the fm lists (v1-spec 6.3, 7.2)
+    items, idup = module_costs(os.path.join(a.game, "Data", "Game", "Modules.xml"))
+    for k in items:
+        assert re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", k) and not k.startswith(RESERVED_PREFIX) \
+            and k not in RESERVED_KEYS, k
+    fm, hbad, hst = hull_check(a.game, os.path.dirname(os.path.abspath(a.region)))
+
+    data = emit(systems, rgl, items, fm)
     np = sum(len(s["portals"]) for s in systems)
     print("systems: %d (xml records %d, xml links %d)" % (len(systems), len(recs), len(links)))
     print("managed portals: %d, undirected portal links: %d, inner portals: %d, broken portals: %d"
@@ -751,6 +1217,44 @@ def main():
               "%d differences" % len(fdiff)))
         for x in fdiff:
             print("  fallback: " + x)
+    cs = camp["stats"]
+    print("campaign: %d mission dirs (%d fold groups), %d scripts, %d dirs mapped to systems (%d without own ids), "
+          "%d quest ids (%d from AddQuest)" % (cs["dirs"], cs["groups"], cs["scripts"], cs["mapped"], cs["noid"],
+                                              cs["ids"], cs["addq"]))
+    nq = [s for s in systems if s["qi"]]
+    print("qi: %d systems, %d ids in total, max %d (%s); q=1 without ids: %s" % (
+        len(nq), sum(len(s["qi"]) for s in nq), max(len(s["qi"]) for s in nq),
+        ",".join(s["name"] for s in nq if len(s["qi"]) == max(len(x["qi"]) for x in nq)),
+        ",".join(s["name"] for s in systems if s["q"] and not s["qi"]) or "none"))
+    print("q: %d named (Quests.xml %d), %d never named: %s" % (
+        sum(s["q"] for s in systems), len(cs["xml_named"]), sum(1 - s["q"] for s in systems),
+        ",".join(s["name"] for s in systems if not s["q"])))
+    if cs["xml_unknown"]:
+        print("  Quests.xml locations without a system: %s" % ",".join(cs["xml_unknown"]))
+    print("tq: %d teleport targets: %s" % (sum(s["tq"] for s in systems), ",".join(s["name"] for s in systems if s["tq"])))
+    print("quest-touched (system, label) pairs: %d (review only, -v lists them)" % len(camp["pairs"]))
+    if a.verbose:
+        for k, l in camp["pairs"]:
+            print("  pair: %s %s" % (k, l))
+    if qdiff is None:
+        print("q fallback: trf_safety.script or TRF_StrictFree not found, not compared")
+    else:
+        print("q fallback (trf_safety TRF_StrictFree): %s" % ("identical" if not qdiff else "%d differences" % len(qdiff)))
+        for x in qdiff:
+            print("  fallback: " + x)
+    print("ba: %s; bs: %s" % (",".join(ba) or "none", ", ".join(
+        "%s %s (%s)" % (s["name"], ",".join(num(c) for c in s["bs"]) if s["bs"] else "none", s["bswhy"])
+        for s in systems if s["ba"])))
+    for x in badiff:
+        print("  check: " + x)
+    print("it: %d items (Modules.xml), duplicates kept first: %s" % (len(items), ",".join(idup) or "none"))
+    print("fm: %s" % "; ".join("%s %s" % (FAC[f][0], ",".join(m)) for f, m in enumerate(fm)))
+    print("hulls: %d fit/carcass checks, %d hull literals in the mod scripts, %d problems" % (
+        hst["fits"], hst["literals"], len(hbad)))
+    for x in hbad:
+        print("  hull: " + x)
+    for x in hst["notes"]:
+        print("  note: " + x)
     print("discrepancies: %d" % len(disc))
     for x in disc:
         print("  " + x)
@@ -767,12 +1271,39 @@ def main():
         except OSError:
             same = False
         print("check: %s %s" % (out, "up to date" if same else "DIFFERS"))
-        return 0 if same and not fdiff else 1
+        ok = same and not fdiff and not qdiff and not badiff and not hbad
+        if a.loc:
+            ok = loc_step(a) and ok
+        return 0 if ok else 1
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "wb") as f:
         f.write(data)
     print("wrote %s (%d bytes)" % (out, len(data)))
+    if a.loc:
+        loc_step(a)
     return 0
+
+
+def loc_step(a):
+    """--loc: write loc/trf_en.loc (scaffold from TRF_Loc_LocLines, gen_news.py block kept); with --check
+    compare instead. Returns True when written or up to date."""
+    path = os.path.abspath(a.loc_out)
+    try:
+        with open(path, "rb") as f:
+            old = f.read().decode("ascii")
+    except OSError:
+        old = ""
+    sc = loc_scaffold(os.path.abspath(a.lua), os.path.dirname(os.path.abspath(a.region)))
+    data = loc_text(old, sc)
+    keys = len([l for l in sc if l.startswith("#TRF_")])
+    if a.check:
+        same = old.encode("ascii") == data
+        print("check: %s %s (%d keys)" % (path, "up to date" if same else "DIFFERS", keys))
+        return same
+    with open(path, "wb") as f:
+        f.write(data)
+    print("wrote %s (%d keys, %d bytes)" % (path, keys, len(data)))
+    return True
 
 
 if __name__ == "__main__":

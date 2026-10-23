@@ -972,19 +972,19 @@ function TRF_Spawn(p)
 	local sign = "trf_"..id;
 	-- Handle globals an earlier record of this id left under the sign go first.
 	TRF_GnClearSign(sign);
-	-- NewAllFlight looks the group up by global name; the group global is cleared right after.
+	-- NewAllFlight looks the group up by global name; the group global is set around the one protected
+	-- build call, so every exit clears it (v1 spec 13.4 O5).
 	-- TT2/TT3 (v02 9.3) build through trf_tier, which returns the ships in p.sh.
-	setglobal("TRF_GTrade_"..k, grp);
-	local fl;
+	local bf, ba = NewAllFlight, {Trad_merc_Pilots, Trad_merc_Ships, "TRF_GTrade_"..k, sign, p.pos, p.strength, p.dir, "shipFormationConvoy"};
 	-- p.bld: name of a v1 builder f(p, id, k) returning the flight and setting p.sh / p.tpn (trf_danger).
 	if type(p.bld) == "string" and type(getglobal(p.bld)) == "function" then
-		fl = TRF_GnP(getglobal(p.bld), {p, id, k});
+		bf = getglobal(p.bld); ba = {p, id, k};
 	elseif type(TRF_BuildTier) == "function" and ((p.tier or 1) >= 2 or TRF_GnX("TRF_TierSplitOn", p)) then
 		-- cfg esc_flight 1: TT1-TT3 build as a convoy flight and an escort flight (trf_tier TRF_BuildSplit).
-		fl = TRF_GnP(TRF_BuildTier, {p, id, k});
-	else
-		fl = TRF_GnP(NewAllFlight, {Trad_merc_Pilots, Trad_merc_Ships, "TRF_GTrade_"..k, sign, p.pos, p.strength, p.dir, "shipFormationConvoy"});
+		bf = TRF_BuildTier; ba = {p, id, k};
 	end;
+	setglobal("TRF_GTrade_"..k, grp);
+	local fl = TRF_GnP(bf, ba);
 	setglobal("TRF_GTrade_"..k, nil);
 	local sh = p.sh or TRF_GnShips(sign);
 	local ef, split = p.ef, p.split;

@@ -354,6 +354,6 @@ Steps 2-4 and 8-11 belong to scan v1; step 5 can wait for scan v2 (15 9), but th
 | O4 | Vanilla wrecks removed by label | not traced; if one shows up in play, add a per-system skip list to `gen_map.py` |
 | O5 | Echo flood in fields like Kruger (22 single-member clusters: 14 x 80,000, 3 x 40,000, 4 x 2,500, 1 x 8,000) | per-pulse cap and nearest-first order in the module spec, not in the generator |
 | O6 | `GetName` and `GetPosition` on dead handles | Follows scan-spec 4.9 (protected reads, context position first, 1 s sample as the fallback, kind mass when the name is unknown); kit step SC7 decides (KX4) |
-| O7 | 15 6.2 and 6.4 text | sensor lengths (F3), station masses (F2) and the hull-table shape (15 6.4 `{mass, sens}`, now `{m=, sl=, sr=, hg=}`, scan-spec C19) need a text fix in the design |
-| O8 | Key source (IN0) | Resolved 2026-10-21: Lua cfg `scan_key` passed as `dik` (scan-spec C18, 6; `key-input-native.md` K13), no `sw3tp.ini` key. Design 15 6.3 still reads `[traffic] scan_key` and needs the text change (scan-spec O1) |
+| O7 | 15 6.2 and 6.4 text | Closed 2026-10-23: design 15 6.2 gives the data sensor lengths (F3) and station mass 0 with `scan_m_base` for a base death (F2); 15 6.4 gives `hm[lower-case name] = {m=, sl=, sr=, hg=}` (scan-spec C19) |
+| O8 | Key source (IN0) | Resolved 2026-10-21: Lua cfg `scan_key` passed as `dik` (scan-spec C18, 6; `key-input-native.md` K13), no `sw3tp.ini` key. Closed 2026-10-23: design 15 6.3 gives cfg `scan_key` default 49 (N), polled every 250 ms, and no ini key; the default itself stays a user decision (scan-spec O1) |
 | O9 | Kit prefix | Resolved 2026-10-21: `TRF_ScX_` and Phase 0 id E0.30 (test plan 5); this spec keeps only the loader and lint edits (8.4) |

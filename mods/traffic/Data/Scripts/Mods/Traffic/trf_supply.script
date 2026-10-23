@@ -632,14 +632,15 @@ function TRF_SpBuild(plan)
 	local gt = TRF_SpGt();
 	if plan.ent then TRF_SpP(function(o) o:Start(8, 0); end, {plan.ent}); end;
 	-- NewFlight looks the group up by global name; the global is cleared right after (no handle in the save).
+	-- Only protected calls between the set and the clear (v1 spec 13.4 O5).
+	local ep = Vector3(plan.pos.x, plan.pos.y, plan.pos.z + 25);
 	setglobal("TRF_GConv", grp);
 	local fl = TRF_SpP(NewFlight, {"TRF_GConv", sign, hull, pil, plan.pos, plan.dir, "shipFormationColumn"});
 	local tsh = getglobal("ship_"..sign.."_1");
-	local ep = Vector3(plan.pos.x, plan.pos.y, plan.pos.z + 25);
 	local efl = nil;
 	-- NewFlight returns FALSE (0, truthy) on failure; a nil carcass raises an error (nil result here).
 	if fl and type(fl) ~= "number" and TRF_SpAlive(tsh) then
-		efl = TRF_SpEscorts(f, "TRF_GConv", sign.."e", ep, plan.dir, plan.sne or 2);
+		efl = TRF_SpP(TRF_SpEscorts, {f, "TRF_GConv", sign.."e", ep, plan.dir, plan.sne or 2});
 	end;
 	setglobal("TRF_GConv", nil);
 	TRF_SpClearSign(sign);

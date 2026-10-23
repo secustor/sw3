@@ -351,7 +351,7 @@ Union of blocking unknowns across the 14 proposals, deduplicated. Where to look 
 21. A `died` trigger on a runtime `CreateAsteroid`/`CreateCarcass` object and whether a destroyed asteroid or wreck drops its inventory as pick-ups (closest precedents: GoShopping_Hafa.script 150, BerserkReturn_NK.script 145/1052; 13.6 loot test). Gates 2, 7.
 22. `SetHP` right after spawn survives formation setup (TDR 13.6). Gates 12 step 2.
 23. The player-initiated hail mechanism (focus plus proximity, box chain or key binding; TDR 13.5). Gates 5, 13 and traffic 8.2 itself.
-24. Doc inconsistency to resolve: inventory destroyed on death is 40 % (npc-primitives.md 7, AI.ini 217-219) or 60 % (TDR 13.6); loot caps in 2 and 6 depend on it.
+24. Resolved 2026-10-23: inventory destroyed on death is 40 % (`G/AI/AI.ini:219` `PercentToExcludeInventory = 40;25;40`, comment line 218 "inventory destroyed on explosion, percent"; npc-primitives.md 7; 02 section 5 `pe` 0.4). The 60 % of TDR 13.6 was the installed-equipment value `PercentToExclude = 60;80` (line 217) and is corrected there. Still open: which of the three values applies (difficulty or hull class, trader-progression E7); 25 % would raise the loot caps in 2 and 6.
 
 ## Added after the ranking
 

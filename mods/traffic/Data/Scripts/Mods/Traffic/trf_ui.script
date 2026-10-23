@@ -666,11 +666,25 @@ end;
 
 -- Kind of the base record at idx: 1 P (gathering), 2 A (active), or nil (none or destroyed).
 function TRF_UI_BaseAt(idx)
+	local b = TRF_UI_BaseRec(idx);
+	if b then return b.k; end;
+	return nil;
+end;
+
+-- P or A base record of system idx (TRF.base), or nil.
+function TRF_UI_BaseRec(idx)
 	if type(TRF) ~= "table" or type(TRF.base) ~= "table" or type(idx) ~= "number" then return nil; end;
 	for i = 1, getn(TRF.base) do
 		local b = TRF.base[i];
-		if type(b) == "table" and b.s == idx and (b.k == 1 or b.k == 2) then return b.k; end;
+		if type(b) == "table" and b.s == idx and (b.k == 1 or b.k == 2) then return b; end;
 	end;
+	return nil;
+end;
+
+-- A base record of idx whose radio line has not been given yet (a ~= 1), or nil.
+function TRF_UI_BaseRadioDue(idx)
+	local b = TRF_UI_BaseRec(idx);
+	if b and b.k == 2 and b.a ~= 1 then return b; end;
 	return nil;
 end;
 
@@ -805,8 +819,9 @@ function TRF_ArrivalLine()
 			return nil;
 		end;
 	end;
-	-- v1-spec 9.3: pirate radio line of an active base, after the arrival line.
-	if TRF_UI_BaseAt(idx) == 2 and type(TRF_Due) == "function" then
+	-- v1-spec 9.3: pirate radio line of an active base, after the arrival line, on the first entry after
+	-- activation only (record flag a).
+	if TRF_UI_BaseRadioDue(idx) and type(TRF_Due) == "function" then
 		TRF_Due(TRF_UI_Const().arr_secs, "TRF_BaseRadioLine", idx);
 	end;
 	local d = TRF_UI_Dis(idx);
@@ -860,10 +875,13 @@ function TRF_UI_ArrDis(idx, band)
 end;
 
 -- Due call from TRF_ArrivalLine: one pirate radio line in a system with an active base (v1-spec 9.3):
--- "trade or move on" while Pirates and the player are not at war, else the war line.
+-- "trade or move on" while Pirates and the player are not at war, else the war line. Once per activation:
+-- the saved base record gets a = 1 when the line is shown.
 function TRF_BaseRadioLine(idx)
 	if TRF_UI_Opt("ui", 1) == 0 or TRF_UI_Supp() then return nil; end;
-	if type(TRF_CurIdx) ~= "function" or TRF_CurIdx() ~= idx or TRF_UI_BaseAt(idx) ~= 2 then return nil; end;
+	if type(TRF_CurIdx) ~= "function" or TRF_CurIdx() ~= idx then return nil; end;
+	local br = TRF_UI_BaseRadioDue(idx);
+	if not br then return nil; end;
 	local key = "baseradiotrade";
 	if type(GetTeamRelation) == "function" and RELATION_WAR ~= nil then
 		local v = call(GetTeamRelation, {"Pirates", PLAYER_TEAM}, "x", TRF_PErr);
@@ -871,7 +889,9 @@ function TRF_BaseRadioLine(idx)
 	end;
 	TRF_UI_Stat("ui_baseradio");
 	TRF_UiE("base_radio", "system_index", idx, "key", key);
-	return TRF_Say(TRF_Txt(key), TRF_UI_Const().arr_secs);
+	local shown = TRF_Say(TRF_Txt(key), TRF_UI_Const().arr_secs);
+	if shown then br.a = 1; end;
+	return shown;
 end;
 
 -- Line below the disruption threshold: the sweep sentence, else the prosperity line (pro 6-7, 8-9).

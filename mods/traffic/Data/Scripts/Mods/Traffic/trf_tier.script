@@ -751,9 +751,10 @@ function TRF_Parked_Spawn()
 	end;
 	if not g then TRF_TrStat("skip_park_grp"); return nil; end;
 	TRF_TrP(function(x) SetGroupRelation(x, PLAYER_GROUP, GetTeamRelation("Trade", PLAYER_TEAM)); end, {g});
+	local args = {Trad_merc_Pilots, {{tpl, 1, "A"}}, "TRF_GPark", "trf_park_"..n, pos, 1, Vector3(d.x, d.y, d.z),
+		"shipFormation", 15, 1};
 	setglobal("TRF_GPark", g);
-	local fl, sh = TRF_TrP(TRF_BuildFlight, {Trad_merc_Pilots, {{tpl, 1, "A"}}, "TRF_GPark", "trf_park_"..n, pos, 1,
-		Vector3(d.x, d.y, d.z), "shipFormation", 15, 1});
+	local fl, sh = TRF_TrP(TRF_BuildFlight, args);
 	setglobal("TRF_GPark", nil);
 	if not fl or type(sh) ~= "table" or not sh[1] then TRF_TrStat("skip_park_build"); TRF_TrE("parked_spawn", "template", tpl, "reason", "build", "result", "failed"); return nil; end;
 	local s = sh[1];

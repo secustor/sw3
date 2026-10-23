@@ -541,7 +541,11 @@ function TRF_Ev_Kill(id, rec, h)
 	TRF_Ev_AddDis(idx, kd, "kill "..id);
 	if by == "player" then
 		L.kills = (L.kills or 0) + 1;
-		if not own then TRF_Ev_AddHeat(TRF_Ev_K().heat_d, "kill "..id); end;
+		if not own then
+			TRF_Ev_AddHeat(TRF_Ev_K().heat_d, "kill "..id);
+			-- Equipment convoy heat top-up (v1 8.4, TRF_FeqEnd) counts this kill heat.
+			TRF_N("TRF_FeqKillMark", id);
+		end;
 	end;
 	if h then
 		h.kl = 1; h.kt = gt;

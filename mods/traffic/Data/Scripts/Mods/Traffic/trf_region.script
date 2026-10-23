@@ -1,6 +1,6 @@
 -- sw3-traffic regional cycle (v0.2 spec 4, 9.1, 9.6; design 6.9, 7.11-7.13). Lua 4.0.1.
 -- Region table from TRF_MapData, phase machine, off-screen sweeps, prosperity (TRF.sys[idx].pro),
--- clan scores and tiers, pay helpers, trouble and boom queries for the hail menu.
+-- clan scores and tiers, pay helpers, the jump-range walk (TRF_RgNear).
 -- Saved state: TRF.rg[slot], TRF.clan[slot], TRF.sys[idx].pro, TRF.clock.rt (trf_state creates and repairs
 -- the fields). Region work runs only on leg changes (TRF_RegionCatchup, called by TRF_Decay).
 -- Random draws only through TRF_Rand, so a seeded RAND gives a reproducible run (spec 4.7).
@@ -92,12 +92,18 @@ function TRF_RgOpt(key)
 	return v;
 end;
 
--- TRF_Tune() with this module's defaults filled in (also when trf_state does not merge them).
+-- Copy of TRF_Tune() with this module's defaults filled in (also when trf_state does not merge them).
+-- Cached in the handle table (rgt) while TRF_Tune returns the same table; callers must not write into it.
 function TRF_RgTune()
+	local s, h = nil, nil;
+	if type(TRF_Tune) == "function" then s = TRF_Tune(); end;
+	if type(s) ~= "table" then s = nil; end;
+	if s and type(TRF_H) == "function" then h = TRF_H(); end;
+	if type(h) == "table" and type(h.rgt) == "table" and h.rgt.s == s then return h.rgt.t; end;
 	local t = {};
-	if type(TRF_Tune) == "function" then t = TRF_Tune(); end;
+	if s then for k, v in s do t[k] = v; end; end;
 	local d = TRF_Rg_TuneDef();
-	d.L_short = 6; d.trouble_range = 3; d.boom_min_pro = 6;
+	d.L_short = 6;
 	for k, v in d do
 		if type(t[k]) ~= "number" then t[k] = v; end;
 	end;
@@ -107,6 +113,7 @@ function TRF_RgTune()
 	t.sweep_gap = max(1, floor(t.sweep_gap));
 	t.rg_hold = max(0, floor(t.rg_hold));
 	t.rg_sep = max(0, floor(t.rg_sep));
+	if type(h) == "table" then h.rgt = {s=s, t=t}; end;
 	return t;
 end;
 
@@ -791,13 +798,6 @@ function TRF_RgCmpPro(a, b)
 	return a < b;
 end;
 
--- Sort order of query rows: v desc, jumps asc, idx asc.
-function TRF_RgCmpQ(a, b)
-	if a.v ~= b.v then return a.v > b.v; end;
-	if a.j ~= b.j then return a.j < b.j; end;
-	return a.idx < b.idx;
-end;
-
 -- dis change by the cycle (cfg dis 0 freezes it).
 function TRF_RgDis(idx, d)
 	if type(TRF_Opt) == "function" and TRF_Opt("dis") == 0 then return; end;
@@ -1331,40 +1331,6 @@ function TRF_RgNear(idx, range)
 		front = nxt;
 	end;
 	return out;
-end;
-
--- Systems with dis >= 3 within trouble_range jumps of idx (default current), order dis desc, jumps,
--- idx; at most 3 rows {idx, name, j, v=dis, tier=effective clan tier}.
-function TRF_Region_WhereTrouble(idx)
-	if type(idx) ~= "number" then idx = TRF_CurIdx(); end;
-	local T = TRF_RgTune();
-	local l = {};
-	local near = TRF_RgNear(idx, T.trouble_range);
-	for i = 1, getn(near) do
-		local e = near[i];
-		local d = TRF_Dis(e.idx);
-		if d >= 3 then tinsert(l, {idx=e.idx, name=TRF_SysName(e.idx), j=e.j, v=d, tier=TRF_EffTier(e.idx)}); end;
-	end;
-	sort(l, TRF_RgCmpQ);
-	while getn(l) > 3 do tremove(l); end;
-	return l;
-end;
-
--- Systems with pro >= boom_min_pro and dis < 3 within trouble_range jumps, order pro desc, jumps, idx;
--- at most 3 rows {idx, name, j, v=pro}.
-function TRF_Region_WhereBooming(idx)
-	if type(idx) ~= "number" then idx = TRF_CurIdx(); end;
-	local T = TRF_RgTune();
-	local l = {};
-	local near = TRF_RgNear(idx, T.trouble_range);
-	for i = 1, getn(near) do
-		local e = near[i];
-		local p = TRF_Pro(e.idx);
-		if p >= T.boom_min_pro and TRF_Dis(e.idx) < 3 then tinsert(l, {idx=e.idx, name=TRF_SysName(e.idx), j=e.j, v=p}); end;
-	end;
-	sort(l, TRF_RgCmpQ);
-	while getn(l) > 3 do tremove(l); end;
-	return l;
 end;
 
 -- Dump (TRF_DumpState) ----------------------------------------------------------------------

@@ -29,6 +29,23 @@ end;
 
 function V_Idx(name) return TRF_Map().by[name]; end;
 
+-- Mission in the current system: the vanilla mission flag plus one of the system's quest ids in
+-- QUEST_PROCESS, so the strict gate (TRF_SafeQA over the map's qi) sees an active quest. V_QuestOff
+-- clears both and the per-visit cache.
+function V_QuestOn()
+	local h = HOST();
+	h.qs = TRUE;
+	local cur = TRF_CurIdx();
+	local qi = TRF_SafeQIds(cur, TRF_Map().sys[cur]);
+	if type(qi) == "table" and qi[1] then h.quests[qi[1]] = QUEST_PROCESS; end;
+	TRF.live.qa = nil; TRF.live.qai = nil; TRF_H().loc = nil;
+end;
+function V_QuestOff()
+	local h = HOST();
+	h.qs = FALSE; h.quests = {};
+	TRF.live.qa = nil; TRF.live.qai = nil; TRF_H().loc = nil;
+end;
+
 -- Region slot of a system (trf_region), its record and clan.
 function V_Slot(name) return TRF_RgOf(V_Idx(name)); end;
 
@@ -487,9 +504,9 @@ function V_EscFlight()
 	TRF_SetPro(TRF_CurIdx(), 9);
 	-- Strict gate: a quest system during a mission keeps one flight per spawn.
 	local pl = {tier=1, row=TRF_Row(8)};
-	h.qs = TRUE;
+	V_QuestOn();
 	local den = TRF_TierSplitOn(pl);
-	h.qs = FALSE;
+	V_QuestOff();
 	HOST_Check(den == nil and TRF_TierSplitOn(pl) == 1, "esc_flight: denied system (mission) builds one flight");
 	-- esc_flight 0: today's single flight.
 	h.cfg.esc_flight = 0;
@@ -561,11 +578,11 @@ function T_V02_E()
 	HOST_Check(t == 2 and why == "gov" and TRF_GovActive() and ct == 4 and cs == 12, "governor (50 carcasses) -> TT2, pro 9 caps 5/20 -> 4/12 ("..tostring(why)..")");
 	h.extra_carcass = nil;
 	TRF_Governor();
-	h.qs = TRUE; h.rq = {0};
+	V_QuestOn(); h.rq = {0};
 	t, why = TRF_TierPick(idx, 8, 20);
 	ct, cs = TRF_SafeCaps();
 	HOST_Check(t == 2 and why == "gate" and ct == 2 and cs == 10, "quest system during a mission (strict gate): band 0 caps 2/10, <= TT2 ("..tostring(why)..")");
-	h.qs = FALSE;
+	V_QuestOff();
 	h.rq = {0};
 	t, why = TRF_TierPick(idx, 8, 3);
 	HOST_Check(t == 1 and why == "ships", "3 free ships -> TT1");
@@ -865,10 +882,10 @@ function T_V02_H()
 	ok, why = TRF_Rd_Gate(idx, "raid");
 	HOST_Check(not ok and why == "peace", "Pirates not at war with Trade: no raid ("..tostring(why)..")");
 	h.rel_team = nil;
-	h.qs = TRUE;
+	V_QuestOn();
 	ok, why = TRF_Rd_Gate(idx, "raid");
 	HOST_Check(not ok and (why == "strict" or why == "mode"), "quest system during a mission: no raid ("..tostring(why)..")");
-	h.qs = FALSE;
+	V_QuestOff();
 	-- combat-state.md: __sys_SOS alone only mutes chatter; combat (TRF_Combat) closes the gate.
 	__sys_SOS = TRUE;
 	ok, why = TRF_Rd_Gate(idx, "raid");
@@ -1766,11 +1783,11 @@ function T_V02_L()
 	__sys_SOS = FALSE;
 	HOST_Check(getn(h.boxes) == b0 + 1 and getn(h.screen) == s0 and h.patrol_ok == p0 + 4, "flag set: original only");
 	-- Quest system during a mission: line, then the original (no extra box).
-	h.qs = TRUE;
+	V_QuestOn();
 	TRF_SetDis(V_Idx("aurora"), 0);
 	b0, s0 = getn(h.boxes), getn(h.screen);
 	V_PatrolDock();
-	h.qs = FALSE;
+	V_QuestOff();
 	HOST_Check(getn(h.boxes) == b0 + 1 and getn(h.screen) == s0 + 1 and h.patrol_ok == p0 + 5, "mission in a quest system: line then the original");
 	-- Trade dock: shortage class 2 here -> buy x 1.5 for class-2 items, recorded in TRF.shops.
 	TRF_ShortAdd(cur, 2, TRF.clock.legs + 6);
@@ -1805,7 +1822,7 @@ function T_V02_L()
 	-- Vanilla-mode system: no apply; restore still runs.
 	T_Jump("elio");
 	local ei = TRF_CurIdx();
-	h.qs = TRUE;
+	V_QuestOn();
 	TRF.shops = {{s=ei, sh="elio", c=1}};
 	TRF_ShortAdd(ei, 4, TRF.clock.legs + 6);
 	h.mwrites = {};
@@ -1814,7 +1831,7 @@ function T_V02_L()
 	local m, why = TRF_SysMode();
 	local es, eb = TRF_DefCoefOf("elio", 2);
 	HOST_Check(m == "vanilla" and getn(TRF.shops) == 0 and getn(w) >= 1 and w[1].b == eb and w[1].s == es, "vanilla-mode system (deny list, mission): restore runs, nothing applied");
-	h.qs = FALSE;
+	V_QuestOff();
 	-- enabled 2: state, safety, shop and base (v1 10.3) only; every changed station restored at the next trade dock.
 	T_Jump("gredos");
 	TRF_ShortAdd(cur, 1, TRF.clock.legs + 6);

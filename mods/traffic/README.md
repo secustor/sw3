@@ -30,7 +30,7 @@ Script rules: top-level code only defines functions and installs the wrappers. A
 
 The game must be launched by the user. The scripts only prepare the test clone (`~/Games/Heroic/sw3-tp-test`) and collect the logs.
 
-    EXP=1 TRAFFIC=0 mods/traffic/install-test.sh   # EXP=0..3; also TRAFFIC, LOG, BIG, DEL_ON_JUMP, AUTOSAVE, OVERRIDE, DUMP, GUARD, the v0.2 and v1 keys, LEVEL, PRO_SET, TUNE, PROFILE, HAIL_BOX, FEQ_AT, LOC, TRAFFIC_ENABLED, SITE_T1..SITE_T4, TICK_MS
+    EXP=1 TRAFFIC=0 mods/traffic/install-test.sh   # EXP=0..3; also TRAFFIC, LOG, BIG, DEL_ON_JUMP, AUTOSAVE, OVERRIDE, DUMP, GUARD, the v0.2 and v1 keys, LEVEL, PRO_SET, TUNE, PROFILE, HAIL_BOX, FEQ_AT, BASE_AT, LOC, TRAFFIC_ENABLED, SITE_T1..SITE_T4, TICK_MS
     SECS=900 mods/traffic/run-test.sh       # SECS defaults to 600; play during that time; SECS=0 waits until you quit the game
     mods/traffic/uninstall-test.sh
 
@@ -294,7 +294,7 @@ Defaults are in each module's `OptDef`; `config.script` lists them all. `install
 | `tt4`, `tt4_split` | 1, 0 | TT4 convoys at `pro` 8–9; 1: two escort flights of 3 instead of one |
 | `feq`, `forced_bust`, `feq_at` | 1, 1, `""` | equipment convoys; forced Bust after a TT4 or equipment convoy kill; `feq_at` (env `FEQ_AT=<system>`): debug, schedules an equipment convoy in that system at the next leg |
 | `dconv`, `dc_speed` | 1, 1 | danger convoys; cap the convoy's speed to its slowest transport |
-| `bases`, `base_glow`, `wreck` | 1, 0, 0 | pirate bases; glow/cloak FX on base raid spawns (CHECK [PB] E6); wreck carcass when a destroyed base is not restored (CHECK [PB] E2) |
+| `bases`, `base_glow`, `wreck`, `base_at` | 1, 0, 0, `""` | pirate bases; glow/cloak FX on base raid spawns (CHECK [PB] E6); wreck carcass when a destroyed base is not restored (CHECK [PB] E2); `base_at` (env `BASE_AT=<system>`): debug, founds a base in that allow-list system at the next leg (skips the disruption hold, open sweep, neighbour and chance tests; caps, deny entries and the player rule still apply) |
 | `tier_cap` | 4 | highest clan tier used (v0.2 default was 2) |
 | `lang`, `loc_mode` | `"en"`, 0 | text language; `loc_mode 1` (env `LOC=1`) passes `#TRF_<key>` keys and needs `loc/trf_en.loc`, which `install-test.sh LOC=1` copies to `Data/LocData/English/` (CHECK E0.6) |
 
@@ -364,7 +364,7 @@ Every line of the mod is now `traffic: lua: exp=v1 module=... event=...` in `sw3
   - `module=danger event=leave convoy_id=<n> reason=complete|timeout member_count=<n> member_spawned=<n> lead_id=<n> exit=<portal> waited=<s> result=go`
   - `module=danger event=wind|end|jump ...`
 - Bases:
-  - `module=base event=found system=<sys> system_index=<idx> slot=<n> leg=<L> chance=<n> roll=<n> result=founded`
+  - `module=base event=found system=<sys> system_index=<idx> slot=<n> leg=<L> chance=<n> roll=<n> forced=true|false result=founded`
   - `module=base event=active system=<sys> system_index=<idx> leg=<L> disruption=<n>`
   - `module=base event=create system=<sys> hull_band=<n> result=created` and `module=base event=reconcile source=enter|load system=<sys> object=alive hull_band=<n>`
   - `module=base event=garrison system=<sys> tier=<n> power=<n> salvage=<n> flight_count=<n> ship_count=<n>`
@@ -377,6 +377,7 @@ Every line of the mod is now `traffic: lua: exp=v1 module=... event=...` in `sw3
 
     EXP=0 TRAFFIC=1 AUTOSAVE=1 sh mods/traffic/install-test.sh                        # v1 with defaults
     EXP=0 TRAFFIC=1 AUTOSAVE=1 FEQ_AT=taira sh mods/traffic/install-test.sh           # equipment convoy debug (next leg)
+    EXP=0 TRAFFIC=1 AUTOSAVE=1 BASE_AT=<sys> sh mods/traffic/install-test.sh          # pirate base debug (next leg; allow-list system)
     EXP=0 TRAFFIC=1 AUTOSAVE=1 PRO_SET=gredos:9 sh mods/traffic/install-test.sh       # TT4 and band 9 volume
     EXP=0 TRAFFIC=1 AUTOSAVE=1 TUNE=T_leg=5 sh mods/traffic/install-test.sh           # 200-leg run with forced Busts
     EXP=0 TRAFFIC=1 AUTOSAVE=1 LEVEL=v01 sh mods/traffic/install-test.sh              # v0.1 or v0.2 feature set only (LEVEL=v02)

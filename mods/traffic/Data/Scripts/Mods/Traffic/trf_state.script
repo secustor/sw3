@@ -121,11 +121,76 @@ function TRF_Opt(key)
 	return v;
 end;
 
--- Tuning constants (spec 9 `tune`): base table, then every TRF_<M>_TuneDef() (keys not yet present), then
--- the v1 tuning table TRF_V1_TuneDef() (trf_loc, v1 10.5; replaces values of the same type), then cfg tune
--- for keys present with the same type. Values are numbers or tables (ranges and lists, v1 10.5). Loop
--- periods stay positive.
+-- Tuning constants (spec 9 `tune`), built by TRF_TuneBuild and cached in H.tune (v1 spec 13.4 O3): the
+-- table, a copy of the cfg tune it was built from and the TuneDef functions it read. A changed cfg tune or a
+-- (re)defined TuneDef function rebuilds it; H is empty after every entry and load. Callers share the
+-- returned table and must not write into it.
 function TRF_Tune()
+	local h = %H;
+	local o = TRF_CfgGet("tune", nil);
+	if type(o) ~= "table" then o = nil; end;
+	local c = h.tune;
+	if type(c) == "table" then
+		local ok = TRF_TuneSame(c.o, o);
+		for i = 1, getn(c.n) do
+			if not ok then break; end;
+			if getglobal(c.n[i]) ~= c.f[i] then ok = nil; end;
+		end;
+		if ok then return c.t; end;
+	end;
+	c = {n={}, f={}, o=TRF_TuneCopy(o)};
+	local ms = TRF_ModList();
+	for i = 1, getn(ms) do tinsert(c.n, "TRF_"..ms[i].."_TuneDef"); end;
+	tinsert(c.n, "TRF_V1_TuneDef");
+	for i = 1, getn(c.n) do c.f[i] = getglobal(c.n[i]); end;
+	c.t = TRF_TuneBuild(o);
+	h.tune = c;
+	return c.t;
+end;
+
+-- Copy of a cfg tune table, one level deep (range and list values), or nil.
+function TRF_TuneCopy(o)
+	if type(o) ~= "table" then return nil; end;
+	local r = {};
+	for k, v in o do
+		if type(v) == "table" then
+			local w = {};
+			for i, x in v do w[i] = x; end;
+			r[k] = w;
+		else
+			r[k] = v;
+		end;
+	end;
+	return r;
+end;
+
+-- 1 when cfg tune tables a and b (or nil) hold the same keys and values, one level deep.
+function TRF_TuneSame(a, b)
+	if a == nil or b == nil then return a == b; end;
+	local n = 0;
+	for k, v in a do
+		n = n + 1;
+		local w = b[k];
+		if v ~= w then
+			if type(v) ~= "table" or type(w) ~= "table" then return nil; end;
+			local m = 0;
+			for i, x in v do
+				m = m + 1;
+				if w[i] ~= x then return nil; end;
+			end;
+			for i, x in w do m = m - 1; end;
+			if m ~= 0 then return nil; end;
+		end;
+	end;
+	for k, v in b do n = n - 1; end;
+	return n == 0;
+end;
+
+-- Builds the tune table: base table, then every TRF_<M>_TuneDef() (keys not yet present), then the v1
+-- tuning table TRF_V1_TuneDef() (trf_loc, v1 10.5; replaces values of the same type), then cfg tune o for
+-- keys present with the same type. Values are numbers or tables (ranges and lists, v1 10.5). Loop periods
+-- stay positive.
+function TRF_TuneBuild(o)
 	local t = {spacing=20, T_dock=20, lifetime=720, ovd=600, wd_move=20, wd_t=60, step=10,
 		T_leg=300, dis_decay=3, heat_decay=10, dis_k=0.12, T_del=5, T_win=20, pk_win=10,
 		sos_db=30, arr_delay=5, arr_dis=3, info_r=200, np_max=300, np_r=30, dock_to=90,
@@ -151,7 +216,6 @@ function TRF_Tune()
 			end;
 		end;
 	end;
-	local o = TRF_Opt("tune");
 	if type(o) == "table" then
 		for k, v in o do
 			if t[k] ~= nil and type(v) == type(t[k]) then t[k] = v; end;
@@ -502,6 +566,7 @@ function TRF_RepairV4()
 				b.h = TRF_Clamp(floor(TRF_Num(b, "h", 9)), 0, 9);
 				TRF_Num(b, "t", legs);
 				if b.w ~= 1 then b.w = 0; end;
+				if b.a ~= 1 or b.k ~= 2 then b.a = nil; end;
 				tinsert(l, b);
 			end;
 		end;

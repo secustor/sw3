@@ -1,7 +1,8 @@
 -- sw3-traffic pirate bases (v1 spec 9, M15-M18, S37-S39, R13; design 7.14, 8.12). Lua 4.0.1. Log module=base.
--- Saved state: TRF.base[i] = {s=idx, k=1 P / 2 A / 3 D, h=HP tenths 0..9, t=leg, w} (<= 4 records) and
+-- Saved state: TRF.base[i] = {s=idx, k=1 P / 2 A / 3 D, h=HP tenths 0..9, t=leg, w, a} (<= 4 records) and
 -- TRF.sys[idx].bh (legs in a row at dis >= found_dis). w on a D record: 1 = destroyed off-screen, object still
--- alive (blown on entry); 0 on P and A records. The radio line of an A base system is trf_ui's (TRF_ArrivalLine).
+-- alive (blown on entry); 0 on P and A records. a = 1 on an A record: its radio line was given (trf_ui
+-- TRF_BaseRadioLine, first entry after activation, 9.3); absent otherwise.
 -- Visit state TRF.live.bs = {s, atk, w, w2, gp, ld, hb}; garrison records in TRF.live.pg (k "g", sv flag).
 -- Handles only in the trf_state handle table: H.bs = {b station, nav, wr wreck, fl[j], kd[j], sv[j], svd[j]}.
 -- Trigger callbacks are string actions "TRF_OnBaseDied(idx,g)--" whose shims run through TRF_Cb and exit
@@ -13,9 +14,9 @@
 
 -- Defaults ------------------------------------------------------------------------------------------
 
--- Config keys (10.5).
+-- Config keys (10.5). base_at: debug, system name whose founding is forced (10.2 `BASE_AT`, TRF_Ba_Found).
 function TRF_Base_OptDef()
-	return {bases=1, base_glow=0, wreck=0};
+	return {bases=1, base_glow=0, wreck=0, base_at=""};
 end;
 
 -- Tune keys (10.5, bases row). base_patrols / base_turrets by tier (9.3 table).
@@ -25,12 +26,10 @@ function TRF_Base_TuneDef()
 		base_raid_cap=1, base_reward_k=2500, base_reward_max=30000, wreck_legs=10};
 end;
 
--- Rumour texts (keys normalised as TRF_Txt does); TRF_UI_Text keys of the same name win. $1 system, $2 clan.
+-- Text table of this module (TRF_Loc_TextFns, TRF_UI_TextFns). The base rumours rgather and rbase are
+-- trf_hail's keys (TRF_HlRumour, shared namespace, first definition wins); none of their own here.
 function TRF_Base_Text()
-	return {
-		rgather = "Pirates are gathering in $1.",
-		rbase = "$2 have built a station in $1."
-	};
+	return {};
 end;
 
 -- Constants without a tune key: patrol radius and spawn ring, sentry ring, wave ring, records kept, ships per
@@ -497,11 +496,14 @@ end;
 
 -- Founding (9.2): no record, no cooldown, no open sweep of the clan, P + A < max_bases, no "Portal" neighbour
 -- with a P or A record, bh >= found_hold + 1, not in front of the player, roll found_chance (halved with a
--- patrol station).
+-- patrol station). cfg base_at (debug, env BASE_AT): only that allow-list system is considered, and it skips
+-- the bh, open sweep, neighbour and roll tests; record, caps, deny entries and the player rule still apply.
 function TRF_Ba_Found(L, cur, al)
 	local mx = TRF_Ba_T("max_bases", 2);
 	local need = TRF_Ba_T("found_hold", 2) + 1;
 	local ch = TRF_Ba_T("found_chance", 25);
+	local force = TRF_Ba_Opt("base_at", "");
+	if type(force) ~= "string" or force == "" then force = nil; else force = strlower(force); end;
 	for i = 1, getn(al) do
 		if TRF_Ba_NLive() >= mx or getn(TRF_Ba_Recs()) >= TRF_Ba_K().rec_max then return; end;
 		local idx = al[i];
@@ -509,10 +511,12 @@ function TRF_Ba_Found(L, cur, al)
 		local bh = 0;
 		if type(e) == "table" and type(e.bh) == "number" then bh = e.bh; end;
 		local slot = TRF_Ba_Slot(idx);
-		local ok = bh >= need and idx ~= cur and slot and not TRF_BaseOf(idx);
-		if ok and TRF_N("TRF_SweepOpen", slot) then ok = nil; end;
+		local fc = force and strlower(TRF_Ba_Name(idx)) == force;
+		local ok = (bh >= need or fc) and idx ~= cur and slot and not TRF_BaseOf(idx);
+		if ok and force and not fc then ok = nil; end;
+		if ok and not fc and TRF_N("TRF_SweepOpen", slot) then ok = nil; end;
 		if ok and TRF_Ba_Denied(idx, TRF_Ba_Name(idx)) then ok = nil; end;
-		if ok then
+		if ok and not fc then
 			local nb = TRF_Ba_Nb(idx);
 			for j = 1, getn(nb) do
 				local o = TRF_BaseOf(nb[j]);
@@ -528,11 +532,12 @@ function TRF_Ba_Found(L, cur, al)
 				end;
 			end;
 			local roll = TRF_Ba_Rand(100);
+			if fc then p = 100; end;
 			if roll < p then
 				tinsert(TRF.base, {s=idx, k=1, h=9, t=L, w=0});
 				TRF_Ba_Stat("base_found");
 				TRF_BaE("found", "system", TRF_Ba_Name(idx), "system_index", idx, "slot", slot, "leg", L, "chance", p, "roll", roll,
-					"result", "founded");
+					"forced", TRF_KvB(fc), "result", "founded");
 			else
 				TRF_BaDE("found", "system", TRF_Ba_Name(idx), "system_index", idx, "chance", p, "roll", roll, "result", "missed");
 			end;
@@ -873,9 +878,10 @@ function TRF_Ba_ClanFlight(idx, tier, pw, j, pos, dir, salv)
 	local sign = "trf_pb_"..idx.."_"..j;
 	local hb = TRF_Ba_H();
 	if not hb or not TRF_Ba_Obj(hb.grp) then return nil; end;
+	local slot = TRF_Ba_Slot(idx);
+	-- Only protected calls between setglobal and its clear (v1 spec 13.4 O5).
 	setglobal(gname, hb.grp);
 	local fl, sv = nil, nil;
-	local slot = TRF_Ba_Slot(idx);
 	if salv and slot and type(TRF_SalvFlight) == "function" then
 		fl = TRF_Ba_P(TRF_SalvFlight, {slot, gname, sign, pos, dir, pw, tier});
 		if TRF_Ba_Obj(fl) then sv = 1; end;
@@ -1060,9 +1066,8 @@ function TRF_Ba_Reconcile(mode)
 	local idx = TRF_Ba_Cur();
 	if not idx or not TRF_Ba_Sys(idx) then return; end;
 	if TRF_Cfg().enabled == 2 then TRF_Base_Remove(); return; end;
-	local site = TRF_Ba_Site(idx);
 	local r = TRF_BaseOf(idx);
-	if not site and not r then return; end;
+	-- Also without a site and a record: a base object left by a map regeneration that removed bs is deleted.
 	local b, st = TRF_Ba_Find(idx);
 	local L = TRF_Ba_Live();
 	if not L then return; end;

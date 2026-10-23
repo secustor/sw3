@@ -898,6 +898,14 @@ function TRF_FcClanSpawn(sw, H, cur)
 	local pw = TRF_FcPirPower(tier, cur);
 	local dir = TRF_FcDir(P, TRF_FcPos(H.pt));
 	setglobal(gname, grp);
+	TRF_FcP(TRF_FcClanSpawnBody, {sw, H, P, nfl, cap, gname, tier, pw, dir});
+	setglobal(gname, nil);
+	sw.nc = getn(H.cs);
+end;
+
+-- Flights of TRF_FcClanSpawn, run protected between the set and the clear of the group global gname
+-- (v1 spec 13.4 O5).
+function TRF_FcClanSpawnBody(sw, H, P, nfl, cap, gname, tier, pw, dir)
 	for j = 1, nfl do
 		if getn(H.cs) < cap then
 			local pos = Vector3(P.x + 40 * (j - 1), P.y, P.z);
@@ -929,8 +937,6 @@ function TRF_FcClanSpawn(sw, H, cur)
 			if type(TRF_Rd_ClearSign) == "function" then TRF_Rd_ClearSign("trf_swc_"..j); end;
 		end;
 	end;
-	setglobal(gname, nil);
-	sw.nc = getn(H.cs);
 end;
 
 -- Wave j of the faction side (due call): fighters and bombers alternate at rung sw.r, the last wave is the
@@ -958,17 +964,19 @@ function TRF_SweepWave(j, g)
 	local pos = H.pt:GetEntryPoint(10 + 15 * j);
 	local dir = TRF_FcDir(TRF_FcPos(H.pt), pos);
 	local gname = "TRF_GSweep_"..TRF.gen;
-	setglobal(gname, H.fg);
-	local fl, sh = nil, nil;
+	-- Builder and arguments first: only the protected build runs while the group global is set (v1 13.4 O5).
+	local bf, ba;
 	if sw.big == 1 and j == sw.nw then
 		local bs = nil;
 		if sw.k >= K.bs_k and (sw.f == 1 or sw.f == 2) and TRF_Fs(sw.s, sw.f) >= K.bs_fs then bs = 1; end;
-		fl, sh = TRF_FcP(TRF_FcBigFlight, {sw.f, sw.r, gname, "trf_swf_"..j, pos, dir, bs});
+		bf, ba = TRF_FcBigFlight, {sw.f, sw.r, gname, "trf_swf_"..j, pos, dir, bs};
 	else
 		local kind = 1;
 		if mod(j, 2) == 0 then kind = 2; end;
-		fl, sh = TRF_FcP(TRF_FacFlight, {sw.f, sw.r, kind, gname, "trf_swf_"..j, pos, dir, room});
+		bf, ba = TRF_FacFlight, {sw.f, sw.r, kind, gname, "trf_swf_"..j, pos, dir, room};
 	end;
+	setglobal(gname, H.fg);
+	local fl, sh = TRF_FcP(bf, ba);
 	setglobal(gname, nil);
 	sw.wv = sw.wv + 1;
 	if not TRF_FcObj(fl) then TRF_FcE("sweep_wave", "wave", j, "result", "build_failed"); return; end;

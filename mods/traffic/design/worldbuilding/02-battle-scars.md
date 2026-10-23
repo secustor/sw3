@@ -252,7 +252,7 @@ E0.x style, run on the test clone with `TRF_Log`. Each item passes on the logged
 |---|---|---|
 | EW2.1 | Debug key places a trader scar in Gaoba; leave and return twice (PB E1 analogue, also E0.8) | `TRF scar E1 sid=421 hulk=1 deco=3/3 dup=0` on both revisits |
 | EW2.2 | Destroy the hulk, leave, return | `TRF scar E2 sid=421 hulk=dead` or `hulk=nil` (decides the `st` 1 dead/nil row) |
-| EW2.3 | Hulk with 10 x `Cargo_04`, destroy it, collect; count in the cargo screen (resolves 40 % vs 60 %, WB:57) | `TRF scar E3 placed=10` and the hand count recorded in TDR 13.6 |
+| EW2.3 | Hulk with 10 x `Cargo_04`, destroy it, collect; count in the cargo screen (confirms the 40 % destroyed of `G/AI/AI.ini:219` and which of `40;25;40` applies, WB:57) | `TRF scar E3 placed=10` and the hand count recorded in TDR 13.6 |
 | EW2.4 | Fill the hulk, leave, return without refill, destroy it | `TRF scar E4 refill=0` and drops seen: inventory is kept in the snapshot |
 | EW2.5 | Entry with the gate failing (forced by debug) deletes a placed scar | `TRF scar E5 hide sid=421 dt_game=0.00`, no pop-in on video |
 | EW2.6 | Scavenger flight: neutral, moves, strips, exits; no autopause (13.6) | `TRF scv E6 arrive=52s strip=90s exit=1 autopause=0` |

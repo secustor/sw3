@@ -883,8 +883,9 @@ function TRF_Cl_Spawn(cr, e, cur, H)
 	local gname, sign = "TRF_GCar_"..k, "trf_ce_"..k;
 	local efl, esh = nil, {};
 	if type(TRF_PirFlight) == "function" then
+		local args = {T, pw, gname, sign, Vector3(pos.x + 40, pos.y, pos.z), dir, 1, TRF_Cl_K().esc};
 		setglobal(gname, grp);
-		efl = TRF_Cl_P(TRF_PirFlight, {T, pw, gname, sign, Vector3(pos.x + 40, pos.y, pos.z), dir, 1, TRF_Cl_K().esc});
+		efl = TRF_Cl_P(TRF_PirFlight, args);
 		setglobal(gname, nil);
 		if type(TRF_Rd_ClearSign) == "function" then TRF_Rd_ClearSign(sign); end;
 	end;
