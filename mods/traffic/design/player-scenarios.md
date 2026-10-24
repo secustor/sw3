@@ -1,6 +1,6 @@
 # sw3-traffic: player scenarios and user stories
 
-This document describes how the traffic mod and its worldbuilding features look from the player's seat. It has five personas, a catalogue of every feature, ten scenarios with timelines, 95 user stories with acceptance criteria, a traceability matrix and the open decisions that change what the player experiences. It decides nothing. Rules, numbers and text come from the specs and the code (as of 2026-10-24) and cite them by section. Where the specs and the code disagree, the code value is used and the disagreement is listed in section 8.
+This document describes how the traffic mod and its worldbuilding features look from the player's seat. It has five personas, a catalogue of every feature, eleven scenarios with timelines, 103 user stories with acceptance criteria, a traceability matrix and the open decisions that change what the player experiences. It decides nothing. Rules, numbers and text come from the specs and the code (as of 2026-10-24) and cite them by section. Where the specs and the code disagree, the code value is used and the disagreement is listed in section 8.
 
 How to read it:
 
@@ -108,6 +108,7 @@ Ids: `T` = traffic core and v1 war traffic, `W` = worldbuilding features, `X` = 
 | W25 | Mercenary clans: rival role | Three of the twelve clans in the rival role (chosen by standing and fortune) snipe contracts, answer raids, keep an FTU escort rating, may turn hostile | [SPEC] [HOOK] optional (kill with killer, exe-hook-survey row 1) | WB13; WB12 6 |
 | W26 | Mercenary clans: options beyond the visit | Bookings by captains and clans (M2), revenge flights (M1), warnings, outbid and lane reports (M3), announced hunts (M14), debt markers (M15), calls paid in standing (M4), ace transfer (M7) | [SPEC] | WB12 6; proposals/merc-packs-beyond-flavour D |
 | W27 | Mercenary clans: fortune and mothership stages | Fortune from regional work sets stages Crew, Squadron, Flagship (Cavalier corvette), Mothership (`Base_mercenary_1`) with a fighter wing; losses drop a stage | [SPEC] | WB12 4, 6; proposals/merc-unified-clans C, D |
+| W28 | Mercenary clans: Black Legion, the elite clan | Legend lines from chapter 1, the strongest clan from chapter 5 by a stage floor, hire only through a gate from chapter 7, an elite HOSTILE challenge; beating it is recorded once as an achievement, then the Legion withdraws and re-forms one stage lower | [SPEC] | WB12 11 |
 | X01 | After-v1 candidates C1-C21 | Cross-system escorts, station deliveries, hunters, faction clashes and others | [IDEA] | TDR 3 (COULD table), 12; PROGRESS *After v1* |
 | X02 | Trader nav marker | A blinking nav icon on hailable traders | [IDEA] decision deferred | PROGRESS *Decisions pending* 2026-10-21 |
 
@@ -432,6 +433,29 @@ Session 3 (decay and the cycle):
 - Outcomes: items only from the cache (sale value about 0.36 x budget on NORMAL, WB07 5); contraband pay `0.5 x J` jumps x base without `tier_k`, capped at `pay_cap`; clan score -2 to -6 for the cache owner, +2 for the intel seller. Planned saved state: `TRF.stash[1..4]`, `TRF.stx`, `TRF.job`, `TRF.pcl`.
 - What could go wrong / safety: the planned designs keep caches, offers, tips and the treasurer out of missions (`GetPlayerQuestState()`), write group-level war only (no team relation), and fix cache contents from a stored seed so a reload cannot reroll (WB07 6). The treasurer and runtime asteroid persistence depend on engine experiments E0.8 and E0.19 (WB00 7). Pirate-dock boxes opened from a dock OK callback need E0.6 (`po 0` is the fallback for the built S35 offer).
 
+### S11. Black Legion: legend, first meeting, defeat and re-formation
+
+- Persona: P3 Vasco. Setting: one campaign from chapter 2 to chapter 11 over several sessions; the Torr region (pirate clan Bone Hounds), mostly the never-named systems Llanovar1 and Llanovar2. Times give the chapter and the game time since the start of that row's session. Everything here is planned only (WB12 11); the outpost idea of WB12 11.8 is not shown. In chapters 1-4 the Legion is a legend: lines only, no ship.
+- Goal: beat the best mercenary unit in the game.
+
+| Time | Player does | Mod does (mechanic) | Player sees or hears | Ids | Status |
+|---|---|---|---|---|---|
+| ch 2 | Docks at a trade station between missions | Legend line from the chapter 1-3 ambient pool, no system or region named because of the leash (WB12 11.2; WB03 3) | "Black Legion crews drank here once. Nobody asks them twice." | W28, W04 | [SPEC] |
+| ch 4 | Docks at a patrol station | Harbour rumour naming the Torr region; one Hunting post with `news_mode` 2 (WB12 11.2) | "Black Legion winters in the Torr lanes. They don't take cheap contracts." and a Hunting post | W28, W04, T17 | [SPEC] |
+| ch 5, 0:00 | Enters Llanovar1 | Clan records created; the Legion's fortune starts at its floor 55 (stage 3); fielded stage capped at 2 before chapter 7; presence roll (WB12 6, 11.1) | 3 fighters and 3 bombers at the portal, signature line | W28, W24, W27 | [SPEC] |
+| ch 5, 0:02 | Flies to them | Hire gate fails (chapter below 7, fewer than 6 completed hires); no box (WB12 11.3) | "Black Legion. We don't fly for carriers nobody has heard of. Come back with a record, Wolves." | W28, W24 | [SPEC] |
+| ch 9, 0:00 | Has worked Torr contracts for several visits | Wolves rating `w` 4 or more in Torr, Legion `rel` 0: it takes a rival slot ahead of the fortune ranking (WB12 11.4, WB13 4) | patrol board: escort ratings with the Legion and the Wolves | W28, W25, T15 | [SPEC] |
+| ch 9, 1:10 | Takes more Torr contracts while `w` is at least the Legion's `rp_eq` | grudge reaches 5; HOSTILE chance 100 %, `hp >= 3` (WB12 11.4) | nothing yet | W28, W25 | [SPEC] |
+| ch 9, 1:30 | Enters Llanovar2 far from the station | HOSTILE: the mothership holds 1,500 units out, 3 fighters and 3 bombers flown by aces attack (WB12 11.1, WB13 6) | warning line, nav marker "Mercenary mothership" | W28, W25, W27 | [SPEC] |
+| ch 9, 1:38 | Kills 4 wing ships, then the mothership | Elite break-off; counted fire on the mothership, no hired or called unit: beaten. `bt` 1, `dj1`, `dc1` 9 written at once; bloc 1 clans `rel` +1; Legion `rel` 0 to -1 (flagship destroyed); withdrawal 60 jumps (WB12 11.5) | "Legion, break off. Wolves, we will remember the name." Engine loot, no bounty | W28, W25 | [SPEC] |
+| ch 9, 2:00 | Docks at a patrol station | Deeds line on the board from now on; Hunting post once (WB12 11.5) | "Deeds: the Star Wolves broke the Black Legion (first in chapter 9, beaten 1)." | W28, T15, T17 | [SPEC] |
+| ch 10 | Plays on; about 60 jumps pass | Legion absent; rumour during the withdrawal; its stage 4 slot stays empty (WB12 11.1, 11.5) | "The Black Legion went home to Torr to count its dead. Nobody has seen that before." | W28, T14 | [SPEC] |
+| ch 11, 0:00 | Enters Llanovar1 | Legion re-formed at home at stage 3 (Cavalier and wing), `rel` back to -1 or better; stage 4 closed for 40 more jumps (WB12 11.5) | "Black Legion, back on the lanes. The Wolves know why we were away." | W28, W27 | [SPEC] |
+| ch 11, 0:03 | Flies to the Legion | First non-hostile meeting after the beating: ace transfer at the office price (no 1.5 premium), once (WB12 11.5; P M7) | transfer box | W28, W26 | [SPEC] |
+
+- Outcomes: a permanent record (`bt`, `dj1`, `dc1`, `djl`) and title lines, `rel` +1 with every bloc 1 clan once, one Legion ace. No credits beyond the engine's loot. Planned saved state: `TRF.mc.e` and `bt` in `TRF.mc.t[8]`, about 40 B.
+- What could go wrong / safety: a reload before the fight replays the same spawn and a reload after keeps the record (EL.4); shooting a hired Legion is betrayal and never counts (EL.5); HOSTILE keeps the 2,500-unit station rule and the strict gate; a hired or called unit in the visit voids the beating (EL.3); the withdrawal counts jumps, not 8x time (EL.6).
+
 ## 5. User stories
 
 Format: id, feature id, status, priority. Priority: Must = built core traffic, safety, save and config; Should = built v1 and worldbuilding step 1 features, the prepared wreck scan and the wave 1 proposals (parcels, stashes; PROPOSALS *Suggested order*); Could = step 2 work and wave 2 and 3 proposals. Acceptance criteria cite the spec section or the code default.
@@ -736,6 +760,30 @@ Format: id, feature id, status, priority. Priority: Must = built core traffic, s
   - Fortune from regional work sets the stage: Crew, Squadron, Flagship (Cavalier corvette with a wing) from `fo` 55, Mothership (`Base_mercenary_1` with a wing of up to 5) from `fo` 78; at most 2 clans at stage 4 map-wide; no big ship before chapter 7 (WB12 4, 6).
   - The stage shows only through lines, nav markers and board lines; a lost corvette or mothership drops the stage at once and closes it for 20 or 40 jumps; a clan is never removed and keeps its name (WB12 6).
 
+- **US-96** (W28, [SPEC], Could) As Lena, I want to hear of the Black Legion before I can meet it so that the mercenary world exists from chapter 1.
+  - Chapters 1-3: legend lines in the station ambient pool, the hail rumour answer and the patrol board, none naming a system or region; chapter 4: a harbour rumour naming the Torr region and one Hunting post with `news_mode` 2 (WB12 11.2).
+  - No Legion flight, box or saved state before chapter 5 (WB12 3, 11.2).
+- **US-97** (W28, [SPEC], Could) As Oleg, I want the Black Legion to be the strongest clan at every stage without reading my level so that it stays a fixed top end.
+  - Same power rule as every clan, no Legion term; fortune floor 55 from chapter 5 and 78 from chapter 7; stage 4 slot 1 reserved; off-screen losses stop at `hp` 2 (WB12 11.1).
+  - Every clan at stage 4 flies `{RecruitOfficer_<k>, RecruitAce_<k> x4}` with up to 3 fighters and 3 bombers; nothing reads `GetPlayerLevel` (WB12 11.1).
+- **US-98** (W28, [SPEC], Could) As Marek, I want the Black Legion for hire only once I have a record so that hiring it means something.
+  - Box only from chapter 7, after 6 completed hires across all clans or one beating, at `rel >= 0`, `bk` 0, no `owe`; otherwise a refusal line and no box (WB12 11.3).
+  - Fee x 1.5, capped at `pay_cap`; the wing only, never the flagship (WB12 11.3).
+- **US-99** (W28, [SPEC], Could) As Vasco, I want to challenge the Black Legion on its home lanes so that I can earn a fight with it.
+  - The Legion takes a rival slot when `rel <= 0` and the Wolves' rating in Torr is 4 or more; HOSTILE from chapter 7 at grudge 5, chance 100 %, once per 24 legs, `hp >= 3`, more than 2,500 from every trade station (WB12 11.4; WB13 4, 6).
+  - It books only for T4 employers in Raids with a reason of its own, and never lends its flagship to a hunt (WB12 11.4).
+- **US-100** (W28, [SPEC], Could) As Vasco, I want a clear rule for when I have beaten the Legion so that the achievement cannot be claimed by accident or by others.
+  - Counts: the Legion's break-off (flagship dead, 4 of 6 wing ships dead, or flagship below 25 % HP) in a HOSTILE meeting it started, with counted player fire on the flagship or on 3 dead wing ships, and no hired or called unit in the visit (WB12 11.5).
+  - Does not count: off-screen losses, kills while hired or called units fly, shooting a hired Legion, booked or hunt flights, the station break-off, a wind-down (WB12 11.5).
+- **US-101** (W28, [SPEC], Could) As Vasco, I want a lasting record of beating the Legion so that the deed is remembered.
+  - First beating: `dj1`, `dc1`, `djl`, `bt` written at the event; board deeds line and title lines from then on; `rel` +1 (at most 2) with every bloc 1 clan once; a Legion ace at `max(office cost, resale + 10 %)`, once (WB12 11.5).
+  - No credits beyond the engine's loot, no bounty; later beatings raise `bt` and `djl` only (WB12 11.5).
+- **US-102** (W28, [SPEC], Could) As Oleg, I want a beaten Legion to come back so that nobody wins for good.
+  - After a beating the Legion is absent for 60 jumps and re-forms at home at stage 3 under its own name; stage 4 returns after 40 more jumps (WB12 11.5).
+  - `rel` +1 up to 0 if it was driven off, -1 down to -2 if its flagship was destroyed (WB12 11.5).
+- **US-103** (W28, [SPEC], Could) As Oleg, I want the Legion to be impossible to farm so that the achievement stays rare.
+  - Reload, re-entry, hire-and-betray, feeding, third-party kills and 8x idling are closed by the rules of WB12 11.6 (exploits 34-43), each with an in-game check EL.1-EL.7.
+
 ### 5.10 Safety, configuration, saves, performance and text
 
 - **US-78** (T04, [BUILT], Must) As Lena, I want the mod to stand down where missions happen so that no story mission breaks.
@@ -773,74 +821,75 @@ Format: id, feature id, status, priority. Priority: Must = built core traffic, s
 
 Generated from the "Ids" column of the scenario timelines (x = the feature appears in at least one step of that scenario).
 
-| Id | Feature | S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8 | S9 | S10 | Count |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| T01 | Ambient FTU traders | x |  |  |  |  |  |  |  |  |  | 1 |
-| T02 | Docking queue and arrival seed | x | x |  |  |  |  |  |  |  |  | 2 |
-| T03 | Arrival lines | x | x | x | x |  | x |  | x |  |  | 6 |
-| T04 | Mission safety | x |  | x |  |  |  |  |  | x |  | 3 |
-| T05 | Leg clock and leg cap | x | x |  |  |  |  |  | x | x |  | 4 |
-| T06 | Heat, help and the FTU response | x | x |  | x |  | x | x |  |  |  | 5 |
-| T07 | Disruption |  |  | x |  |  |  |  |  |  |  | 1 |
-| T08 | Regional cycle | x | x | x |  |  | x | x |  |  |  | 5 |
-| T09 | Prosperity bands and trader tiers |  | x |  |  |  |  | x | x |  |  | 3 |
-| T10 | Pirate clans and tiers | x |  | x |  |  |  |  |  |  | x | 3 |
-| T11 | Lane raids and staged raids |  | x | x |  |  |  |  |  |  |  | 2 |
-| T12 | Raid-help pay |  |  | x |  |  |  | x |  |  |  | 2 |
-| T13 | In-system escort contract |  | x |  |  |  |  | x |  | x |  | 3 |
-| T14 | Hail menu and rumours | x | x | x | x |  | x | x | x |  |  | 7 |
-| T15 | Patrol-station board |  | x | x |  |  |  |  |  |  | x | 3 |
-| T16 | Trader shops and station shortages | x | x |  |  |  | x |  | x | x |  | 5 |
-| T17 | News bulletins | x | x | x |  |  | x |  | x |  |  | 5 |
-| T18 | Tracked traders |  |  | x |  |  | x |  |  | x |  | 3 |
-| T19 | Faction supply convoys |  |  | x |  |  |  |  |  |  |  | 1 |
-| T20 | Demand cargo and FTU heat reset |  |  |  |  |  | x |  |  |  |  | 1 |
-| T21 | Clan T3-T4, carriers, salvage |  |  | x |  |  |  |  | x |  |  | 2 |
-| T22 | Faction strength and standing |  |  | x |  |  | x |  | x |  |  | 3 |
-| T23 | On-screen sweeps and sweep contracts |  |  | x |  |  |  |  | x | x |  | 3 |
-| T24 | Pirate-side offers |  |  |  |  |  | x |  |  |  |  | 1 |
-| T25 | TT4 convoys and forced Bust |  | x |  |  |  | x |  | x |  |  | 3 |
-| T26 | Faction equipment convoys |  |  |  |  |  | x |  | x |  |  | 2 |
-| T27 | Danger convoys |  |  | x |  |  |  | x |  | x |  | 3 |
-| T28 | Pirate bases |  |  |  |  |  |  |  | x | x |  | 2 |
-| T29 | English and Russian text |  |  |  |  |  |  |  |  | x |  | 1 |
-| T30 | Config and install options |  |  |  |  |  |  |  |  | x |  | 1 |
-| T31 | Save, load, jump and pause integrity |  |  |  |  |  |  | x |  | x |  | 2 |
-| W01 | Worldbuilding plumbing | x | x | x | x | x |  | x | x | x | x | 9 |
-| W02 | Closed-station moods |  |  | x |  |  | x |  |  |  |  | 2 |
-| W03 | Dockmaster standing | x | x | x | x |  | x | x |  | x |  | 7 |
-| W04 | Greetings, harbour news and tips |  | x |  |  |  | x |  | x |  |  | 3 |
-| W05 | Docking fees | x | x |  |  |  | x |  | x | x |  | 5 |
-| W06 | Local station events |  | x |  |  |  |  |  |  | x |  | 2 |
-| W07 | Survivors and beacons step 1 | x |  |  | x |  |  |  |  | x |  | 3 |
-| W08 | Survivors step 2 |  |  |  | x |  |  |  |  |  |  | 1 |
-| W09 | Faction service ladder step 1 | x | x |  |  | x | x |  | x |  |  | 5 |
-| W10 | Faction ladder step 2 |  |  |  |  |  |  |  | x |  |  | 1 |
-| W11 | Charter goals step 1 |  |  |  |  |  |  | x |  | x |  | 2 |
-| W12 | Charter step 2 |  |  |  |  |  |  | x |  |  |  | 1 |
-| W13 | Battle scars step 1 |  |  | x | x | x |  |  |  | x |  | 4 |
-| W14 | Battle scars step 2 |  |  |  | x |  |  |  |  |  |  | 1 |
-| W15 | Active wreck scan |  |  |  | x |  |  |  |  |  |  | 1 |
-| W16 | Wanted captains step 1 |  |  |  |  | x |  |  |  | x |  | 2 |
-| W17 | Wanted captains step 2 |  |  |  |  | x |  |  |  |  |  | 1 |
-| W18 | Veterans |  |  |  |  | x |  |  |  |  |  | 1 |
-| W19 | Sealed parcels |  | x |  |  |  |  |  |  |  | x | 2 |
-| W20 | Clan stashes |  |  |  |  |  |  |  |  |  | x | 1 |
-| W21 | Wolves Freight |  |  |  |  |  |  |  | x |  |  | 1 |
-| W22 | Deserters |  |  |  |  | x |  |  |  |  |  | 1 |
-| W23 | Front pressure |  |  |  |  |  |  |  | x |  |  | 1 |
-| W24 | Mercenary clans: hire role |  |  |  |  |  |  |  | x |  |  | 1 |
-| W25 | Mercenary clans: rival role |  |  |  |  |  |  |  | x |  |  | 1 |
-| W26 | Mercenary clans: options beyond the visit |  |  |  |  |  |  |  |  |  |  | 0 |
-| W27 | Mercenary clans: fortune and mothership stages |  |  |  |  |  |  |  | x |  |  | 1 |
-| X01 | After-v1 candidates C1-C21 |  |  |  |  |  |  |  |  |  |  | 0 |
-| X02 | Trader nav marker |  |  |  |  |  |  |  |  |  |  | 0 |
+| Id | Feature | S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8 | S9 | S10 | S11 | Count |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| T01 | Ambient FTU traders | x |  |  |  |  |  |  |  |  |  |  | 1 |
+| T02 | Docking queue and arrival seed | x | x |  |  |  |  |  |  |  |  |  | 2 |
+| T03 | Arrival lines | x | x | x | x |  | x |  | x |  |  |  | 6 |
+| T04 | Mission safety | x |  | x |  |  |  |  |  | x |  |  | 3 |
+| T05 | Leg clock and leg cap | x | x |  |  |  |  |  | x | x |  |  | 4 |
+| T06 | Heat, help and the FTU response | x | x |  | x |  | x | x |  |  |  |  | 5 |
+| T07 | Disruption |  |  | x |  |  |  |  |  |  |  |  | 1 |
+| T08 | Regional cycle | x | x | x |  |  | x | x |  |  |  |  | 5 |
+| T09 | Prosperity bands and trader tiers |  | x |  |  |  |  | x | x |  |  |  | 3 |
+| T10 | Pirate clans and tiers | x |  | x |  |  |  |  |  |  | x |  | 3 |
+| T11 | Lane raids and staged raids |  | x | x |  |  |  |  |  |  |  |  | 2 |
+| T12 | Raid-help pay |  |  | x |  |  |  | x |  |  |  |  | 2 |
+| T13 | In-system escort contract |  | x |  |  |  |  | x |  | x |  |  | 3 |
+| T14 | Hail menu and rumours | x | x | x | x |  | x | x | x |  |  | x | 8 |
+| T15 | Patrol-station board |  | x | x |  |  |  |  |  |  | x | x | 4 |
+| T16 | Trader shops and station shortages | x | x |  |  |  | x |  | x | x |  |  | 5 |
+| T17 | News bulletins | x | x | x |  |  | x |  | x |  |  | x | 6 |
+| T18 | Tracked traders |  |  | x |  |  | x |  |  | x |  |  | 3 |
+| T19 | Faction supply convoys |  |  | x |  |  |  |  |  |  |  |  | 1 |
+| T20 | Demand cargo and FTU heat reset |  |  |  |  |  | x |  |  |  |  |  | 1 |
+| T21 | Clan T3-T4, carriers, salvage |  |  | x |  |  |  |  | x |  |  |  | 2 |
+| T22 | Faction strength and standing |  |  | x |  |  | x |  | x |  |  |  | 3 |
+| T23 | On-screen sweeps and sweep contracts |  |  | x |  |  |  |  | x | x |  |  | 3 |
+| T24 | Pirate-side offers |  |  |  |  |  | x |  |  |  |  |  | 1 |
+| T25 | TT4 convoys and forced Bust |  | x |  |  |  | x |  | x |  |  |  | 3 |
+| T26 | Faction equipment convoys |  |  |  |  |  | x |  | x |  |  |  | 2 |
+| T27 | Danger convoys |  |  | x |  |  |  | x |  | x |  |  | 3 |
+| T28 | Pirate bases |  |  |  |  |  |  |  | x | x |  |  | 2 |
+| T29 | English and Russian text |  |  |  |  |  |  |  |  | x |  |  | 1 |
+| T30 | Config and install options |  |  |  |  |  |  |  |  | x |  |  | 1 |
+| T31 | Save, load, jump and pause integrity |  |  |  |  |  |  | x |  | x |  |  | 2 |
+| W01 | Worldbuilding plumbing | x | x | x | x | x |  | x | x | x | x |  | 9 |
+| W02 | Closed-station moods |  |  | x |  |  | x |  |  |  |  |  | 2 |
+| W03 | Dockmaster standing | x | x | x | x |  | x | x |  | x |  |  | 7 |
+| W04 | Greetings, harbour news and tips |  | x |  |  |  | x |  | x |  |  | x | 4 |
+| W05 | Docking fees | x | x |  |  |  | x |  | x | x |  |  | 5 |
+| W06 | Local station events |  | x |  |  |  |  |  |  | x |  |  | 2 |
+| W07 | Survivors and beacons step 1 | x |  |  | x |  |  |  |  | x |  |  | 3 |
+| W08 | Survivors step 2 |  |  |  | x |  |  |  |  |  |  |  | 1 |
+| W09 | Faction service ladder step 1 | x | x |  |  | x | x |  | x |  |  |  | 5 |
+| W10 | Faction ladder step 2 |  |  |  |  |  |  |  | x |  |  |  | 1 |
+| W11 | Charter goals step 1 |  |  |  |  |  |  | x |  | x |  |  | 2 |
+| W12 | Charter step 2 |  |  |  |  |  |  | x |  |  |  |  | 1 |
+| W13 | Battle scars step 1 |  |  | x | x | x |  |  |  | x |  |  | 4 |
+| W14 | Battle scars step 2 |  |  |  | x |  |  |  |  |  |  |  | 1 |
+| W15 | Active wreck scan |  |  |  | x |  |  |  |  |  |  |  | 1 |
+| W16 | Wanted captains step 1 |  |  |  |  | x |  |  |  | x |  |  | 2 |
+| W17 | Wanted captains step 2 |  |  |  |  | x |  |  |  |  |  |  | 1 |
+| W18 | Veterans |  |  |  |  | x |  |  |  |  |  |  | 1 |
+| W19 | Sealed parcels |  | x |  |  |  |  |  |  |  | x |  | 2 |
+| W20 | Clan stashes |  |  |  |  |  |  |  |  |  | x |  | 1 |
+| W21 | Wolves Freight |  |  |  |  |  |  |  | x |  |  |  | 1 |
+| W22 | Deserters |  |  |  |  | x |  |  |  |  |  |  | 1 |
+| W23 | Front pressure |  |  |  |  |  |  |  | x |  |  |  | 1 |
+| W24 | Mercenary clans: hire role |  |  |  |  |  |  |  | x |  |  | x | 2 |
+| W25 | Mercenary clans: rival role |  |  |  |  |  |  |  | x |  |  | x | 2 |
+| W26 | Mercenary clans: options beyond the visit |  |  |  |  |  |  |  |  |  |  | x | 1 |
+| W27 | Mercenary clans: fortune and mothership stages |  |  |  |  |  |  |  | x |  |  | x | 2 |
+| W28 | Mercenary clans: Black Legion, the elite clan |  |  |  |  |  |  |  |  |  |  | x | 1 |
+| X01 | After-v1 candidates C1-C21 |  |  |  |  |  |  |  |  |  |  |  | 0 |
+| X02 | Trader nav marker |  |  |  |  |  |  |  |  |  |  |  | 0 |
 
 Features not covered by a scenario:
 
 - X01 (after-v1 candidates C1-C21): a list of ideas without player-facing designs (TDR 3 COULD table, 12). A timeline would have to invent their behaviour.
 - X02 (trader nav marker): a pending user decision with no chosen behaviour (PROGRESS *Decisions pending*, 2026-10-21).
-- W26 (mercenary clan options beyond the visit): stories US-88 to US-94; full timelines are in `proposals/merc-packs-beyond-flavour.md` section E and `proposals/merc-unified-clans.md` section H, not repeated here.
+- W26 (mercenary clan options beyond the visit): S11 shows only the Legion ace transfer; the other options have stories US-88 to US-94, and full timelines are in `proposals/merc-packs-beyond-flavour.md` section E and `proposals/merc-unified-clans.md` section H, not repeated here.
 
 ## 7. Open questions and pending user decisions
 
@@ -862,7 +911,7 @@ Listed, not decided. Each changes what the player sees.
    - H1 accept mid-stage optional sinks at about 28 % of the farm; H2 freight repair charge as step 2 only; H3 accept late wallet growth.
 4. Active wreck scan: O1 the scan key (default N, `scan_key` 49 in the Lua config; GRAVE is taken by the exe) and O3 the pulse cost (default none, the sensor module price is the cost). Related: O2 live-ship echoes (default off), O12 a *no returns* line (default silence), O6 `loc_mode` 1 drops the bearing and band.
 5. Defaults taken for the code but still owned by the user (PROGRESS *Decisions pending*): tracking on focus alone, base founding rule and cap 2, Triada sweeps, equipment-convoy frequency, danger convoys forming at the station, the escort flight form, the hail start.
-6. Mercenary clans (W24-W27, 12 and 13 merged 2026-10-24): the recommended answers of `proposals/merc-unified-clans.md` section I (Q1-Q11: merge, rival choice by standing and fortune, stage hulls, big ships never hired, `mc_launch` off, loss rule, no big ship before chapter 7, at most 2 motherships, clans keep their names, stage never shown as a number, build order) and `proposals/merc-packs-beyond-flavour.md` section G (Q1-Q13) are applied in WB12 and WB13 as working defaults, pending user confirmation (WB12 10).
+6. Mercenary clans (W24-W27, 12 and 13 merged 2026-10-24): the recommended answers of `proposals/merc-unified-clans.md` section I (Q1-Q11: merge, rival choice by standing and fortune, stage hulls, big ships never hired, `mc_launch` off, loss rule, no big ship before chapter 7, at most 2 motherships, clans keep their names, stage never shown as a number, build order) and `proposals/merc-packs-beyond-flavour.md` section G (Q1-Q13) are applied in WB12 and WB13 as working defaults, pending user confirmation (WB12 10). The Black Legion rules (W28, WB12 11) add EL Q1-EL Q8: no Legion power term and a stage floor, the stage 4 pilot list and mixed wing for every clan, legend only in chapters 1-4, the hire gate, the rival and HOSTILE exceptions, the definition of a beating with its reward and withdrawal, and the outpost as an idea only.
 
 ## 8. Inconsistencies noticed while writing
 

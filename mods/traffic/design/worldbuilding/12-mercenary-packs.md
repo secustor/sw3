@@ -2,7 +2,7 @@
 
 Detailed design of proposal 12 in `../proposals/worldbuilding-after-traffic.md` (lines 223-239). Paths: `G` = `/Users/secustor/Games/Heroic/Star Wolves 3 - Civil War/Data`, TDR = `../traffic-design-research.md`, LN = `../mod-research/lua-natives.md`, NP = `../mod-research/npc-primitives.md`, MO = `../mod-options.md`, V01 = `../v01-spec.md`, WB = the proposal file. "Inference" marks what I derived and did not verify.
 
-**Status 2026-10-24: specs 12 and 13 are merged into one clan module with one record per clan.** This document owns the record (`TRF.mc`), the three roles, fortune and stages, the hire role and the bundle of options beyond the visit. `13-rival-packs.md` keeps the rival role behaviour (SNIPE, ANSWER, PASS, HOSTILE). Sources of the write-back: UC = `../proposals/merc-unified-clans.md` (merge, fortune, mothership stages; its section G lists the edits), P = `../proposals/merc-packs-beyond-flavour.md` (options M1..M18, bundle in its section D), TR = `../proposals/merc-trader-reuse.md` (reuse of built state and code; edits in its section E), PA = `../mod-research/merc-prior-art.md` (prior art cited by P). Further paths used in the copied text: `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `CF2` = `G/Scripts/include/Create_flight_2.script`, `SD` = `G/Game/ShipDescriptions.xml`, `CX` = `G/Game/Carcasses.xml`, NC = `../research/npc-carriers.md`. Tags copied from the sources: **[V]** verified in the file and line given, **[I]** inference, **[new]** new constant or design element. The user has not answered the open questions of UC and P yet; each section that applies a recommended answer says so once with "Default, pending user confirmation" and the question numbers (UC section I, P section G). Section 10 lists every rejected or deferred item.
+**Status 2026-10-24: specs 12 and 13 are merged into one clan module with one record per clan.** This document owns the record (`TRF.mc`), the three roles, fortune and stages, the hire role and the bundle of options beyond the visit. `13-rival-packs.md` keeps the rival role behaviour (SNIPE, ANSWER, PASS, HOSTILE). Sources of the write-back: UC = `../proposals/merc-unified-clans.md` (merge, fortune, mothership stages; its section G lists the edits), P = `../proposals/merc-packs-beyond-flavour.md` (options M1..M18, bundle in its section D), TR = `../proposals/merc-trader-reuse.md` (reuse of built state and code; edits in its section E), PA = `../mod-research/merc-prior-art.md` (prior art cited by P). Further paths used in the copied text: `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `CF2` = `G/Scripts/include/Create_flight_2.script`, `SD` = `G/Game/ShipDescriptions.xml`, `CX` = `G/Game/Carcasses.xml`, NC = `../research/npc-carriers.md`. Tags copied from the sources: **[V]** verified in the file and line given, **[I]** inference, **[new]** new constant or design element. The user has not answered the open questions of UC and P yet; each section that applies a recommended answer says so once with "Default, pending user confirmation" and the question numbers (UC section I, P section G). Section 10 lists every rejected or deferred item. Section 11 (added 2026-10-24) makes the Black Legion the elite clan: the fixed top case of the general rules, with a stage floor, a legend phase in chapters 1-4, a hire gate and an achievement for beating it.
 
 ## 1. Summary
 
@@ -13,6 +13,7 @@ Detailed design of proposal 12 in `../proposals/worldbuilding-after-traffic.md` 
 - Pay: none. It is a sink. Fee `700 x L_w x tier_k x (1 + 0.05 x pro) x d_k` times `mc_size_k` by stage, capped at `pay_cap`, plus a prize share of `25 x L_w^2 x d_k` per ship of a group the pack is at war with that dies while the pack flies (about 25-40 % of that ship's loot, uncapped), plus blood money of 4 x the share per pack ship lost. About 10-20 % of the stage's farm rate when used (section 5).
 - Cost to the player: credits, and standing per clan (`rel` -3..3). Abandoning a fighting pack, failing to pay or shooting it costs `rel` and can blacklist the Wolves at the Exchange. Heat 5+ raises the fee, heat 7+ closes hire.
 - Needs: traffic v0.2 regions, phases, clan tiers and the 8.5 fire proxy (6.9, 7.12, 8.5), v1 sweep schedule (7.13), strict gate and deny list (9.8 S4, 9.9), caps (6.7); shares the escort slot with #9; the #4 wing pilot hook, #7 `src` 5 and the stash grudge hook (`S/trf_stash.script:1056`, `:1060` in the working tree, TR F.8), the #6 pod path; checks EM.0-EM.6 (P C.1) and EMS.1-EMS.6 (section 8). The former step 2 (standing pack across jumps, which needed the snapshot and `SetHP` answers, WB engine facts 15, 22) is replaced by calls paid in standing (P M4, section 9).
+- Black Legion (section 11): the elite clan. Same power rule as every clan; a stage floor (3 from chapter 5, 4 from chapter 7) and the reserved stage 4 slot keep it at the top. Legend lines from chapter 1, first flight in chapter 5, hire only through a gate from chapter 7, an elite HOSTILE challenge; beating it is recorded once as an achievement, and the Legion withdraws for 60 jumps and re-forms one stage lower.
 - Default, pending user confirmation: UC Q1 (merge), Q3 (stage hulls), Q4 (big ships never escort or hire); P Q10 (step 2 replaced by M4).
 
 ## 2. The player's experience
@@ -52,7 +53,7 @@ What the player notices later:
 
 | Stage | Behaviour |
 |---|---|
-| Ch 1-4 | Off. No pack, no board line. |
+| Ch 1-4 | Off. No pack, no hire box, no pack board line. Only the Black Legion legend lines of section 11.2 (no flight; no system name in chapters 1-3). |
 | Ch 5-6 | Packs in the cycling regions; Golkonda (Debris) and XT27 carry the chapter 5 news. |
 | Ch 7-11 (war open, patron chosen) | Vks-owned systems (`GetLocationTeam(sys) == "Vks"`, `G/Scripts/include/FloodTradeStations.script:256`): pack chance x0.5 (registration rule, `:411`). Kfni-owned systems: x1.25 (`:435`). Packs ignore the patron: they are neutral to every faction and never fight faction ships, so they work for MSF and NESF contractors alike. Kassilia (the Exchange, mission `Freelancers_Kassilia`, `G/Game/Quests.xml:343`) never gets a mod pack; it already holds fifteen vanilla merc flights (`G/Scripts/Locations/Kassilia/activate.script:106-162`). |
 | Ch 12-15 | Vks-owned systems x0 (`:537`, `:558`). Calls (P M4) never spawn there (the former step 2 standing pack waited outside them). No Grey or Berserk involvement. |
@@ -87,6 +88,8 @@ Stage composition (UC D.1; fighters per row capped by `maxn` of `TRF_BuildFlight
 The fielded stage is capped by chapter: at most 2 before chapter 7 (`mc_st_ch`), so no big ship appears before the chapter in which 13 allows hostile meetings; the record keeps its true stage (UC C.4). Hulls (UC D.2) [V]: `Cavalier_1` and `Cavalier_pat2/3` are Corvettes with 2,500 base HP and speed 6; `Base_mercenary_1` is a BigShip with 2,000 base HP, speed 4.5, 4 turrets and 6 hangars, named "Mercenary mothership" (`#M_Name_MShipMerc`, `G/LocData/English/s_carcasses.loc:17-19`), the merc base of vanilla missions 3 and 4.1. No new hull is proposed.
 
 Default, pending user confirmation: UC Q3 (Cavalier and `Base_mercenary_1`), Q7 (no big ship before chapter 7).
+
+Section 11.1 proposes for every clan at stage 4 the pilot list `mc_st4_pil` `{RecruitOfficer_<k>, RecruitAce_<k> x4}` and a mixed wing of up to 3 fighters and 3 bombers (`mc_st4_n` 6) in place of the 5 fighters above (EL Q2).
 
 **What feeds what.** One table for every role, merged from this spec and `13-rival-packs.md` section 4 (UC G.1): one row per player action with `rel`, grudge `g`, fortune `fo` and condition `hp`. Counted fire on any non-hostile clan ship is betrayal (this spec's rule) plus 13's heat +1. Rows marked P come from P D.2; the fortune values are UC C.3 [new].
 
@@ -191,6 +194,8 @@ Exploits of fortune and stages (UC F; the closing rule is copied in short):
 32. Re-enter until the mothership appears: appearance per (clan, leg, system) hash, `met` cooldown 4 legs per clan; each re-entry costs a jump.
 33. Story interference: strict gate, deny list, permanent exclusions; groups `TRF_Merc_<n>` and `TRF_Hunt_<n>` only; `RegisterNaemnik` never called; `Base_mercenary_1` is a vanilla story hull (missions 3, 4.1), so no mod mothership spawns in a system while a quest that names it is in process (strict gate).
 
+Exploits of the elite clan (section 11.6): 34-43.
+
 ## 6. Mechanics
 
 **Clan data** (static, copied at chunk load from the vanilla tables so other mods cannot shift them): key and bloc from `_Fmerc_names`/`_Fmerc_groups` (`RandomFmerc.script:9-11`), display name from `#RC_FLIGHT_NAME<c>` (`m_recruits.loc:8-52`, plain text), pilot list `{RecruitPilot_<k>, RecruitOfficer_<k>, RecruitAce_<k> x3}` as `RegisterNaemnik` builds it (`RandomFmerc.script:67-90`), ship rows `Rec_Fighters`/`Rec_Bombers` by unit type 1 / 2 (`Create_flight_2.script:696-746`); `Rec_BigShips` (`:750-773`) is used only for the stage 3 corvette, never as a unit type (UC B.3 item 13).
@@ -204,7 +209,7 @@ Exploits of fortune and stages (UC F; the closing rule is copied in short):
 | 5 | Cimmerians | 1 | 2 | Kadi (6) | Ergelan `:208` |
 | 6 | Fortune Favorites | 2 | 1 | Dionis (1) | Escaflon `:191` |
 | 7 | Nomads | 1 | 1 | Golkonda (5) | template line in 81 systems |
-| 8 | Black Legion | 2 | 1 | Torr (8) | NK `:201`, Aurora `:308` |
+| 8 | Black Legion (elite, section 11) | 2 | 1 | Torr (8) | NK `:201`, Aurora `:308` |
 | 9 | Shining Guards | 1 | 1 | Moscowia (7) | none |
 | 10 | Stardust | 2 | 2 | XT27 (11) | xt26 `:224` (type 2), Kadi `:383`, Avalon `:218` |
 | 11 | Horsemen of the Apocalypse | 1 | 1 | XT24 (10) | none |
@@ -252,7 +257,7 @@ Positive event gains are capped at `mc_fo_ev` 12 per clan per phase of its `at` 
 | 3 | Flagship | 55 | 47 | 1 |
 | 4 | Mothership | 78 | 70 | 2 |
 
-Stage rules: a stage goes up only after two region ticks in a row at or above the threshold; it goes down at the first tick below the down value. At most `mc_ms_max` 2 clans are at stage 4 map-wide, chosen by `fo`, ties by hash; a third waits at stage 3. After a big-ship loss stage `mk` and above stay closed until `TRF.clock.j >= ml + mc_bs_j[mk]` (20 jumps for the corvette, 40 for the mothership). The fielded stage is capped at 2 before chapter 7 (`mc_st_ch`). A stage 4 clan whose `at` region is in Bust does not field its mothership ("laid up: no contracts to pay the fuel", UC D.6). The stage is shown only through lines, markers and board lines, never as a number (UC Q10).
+Stage rules: a stage goes up only after two region ticks in a row at or above the threshold; it goes down at the first tick below the down value. At most `mc_ms_max` 2 clans are at stage 4 map-wide, chosen by `fo`, ties by hash; a third waits at stage 3. Slot 1 is reserved for the Black Legion and stays empty while it is withdrawn or below stage 4 (section 11.1). After a big-ship loss stage `mk` and above stay closed until `TRF.clock.j >= ml + mc_bs_j[mk]` (20 jumps for the corvette, 40 for the mothership). The fielded stage is capped at 2 before chapter 7 (`mc_st_ch`). A stage 4 clan whose `at` region is in Bust does not field its mothership ("laid up: no contracts to pay the fuel", UC D.6). The stage is shown only through lines, markers and board lines, never as a number (UC Q10).
 
 Big-ship loss (UC D.5): corvette killed: `fo` := min(`fo`, 42), stage 2 at once, `ml` := `TRF.clock.j`, `mk` 3, stage 3 closed for 20 jumps. Mothership killed: `fo` := min(`fo`, 62), stage 3 at once, `ml`, `mk` 4, stage 4 closed for 40 jumps, and the clan still needs `fo >= 78` for two ticks afterwards. Either loss also costs `hp` -1. A clan is never removed: a broken clan re-forms as stage 1 or 2 by fortune, under its own name, in another region. Who killed it does not matter for the clan (the engine reports no killer), but counted player fire on a non-hostile clan ship is betrayal (section 4).
 
@@ -309,26 +314,28 @@ OK: `GetPlayerCredits() >= fee` (LN line 255) else `#UI_Fmerc_nojoined3`; `SubPl
 | `cd`, `cj`, `bh`, `ft`, `gt`, `n`, `k` | `t[c]` | | re-form leg and jump, last broken region, last hostile, grudge decay, jobs taken, ships lost to the player | 13 |
 | `ml`, `mk` | `t[c]` | | jump of the last big-ship loss, stage lost (3 or 4) [new] | |
 | `ue` | `t[c]` | | positive fortune gained this phase, packed with the phase id [new] | |
-| `t` total | 22 keys | 1,725 | 12 x (12 + 8 + about 122) + 21 [I] | |
+| `bt` | `t[c]` | | times the elite clan was beaten by the Wolves (section 11.5) [new] | |
+| `t` total | 23 keys | 1,728 | 12 x (12 + 8 + about 122) + 24 [I]; `bt` is non-zero for one clan only | |
 | `w` | digit string, 11 | 28 | Wolves rating per region 0..9 | 13 `w` |
 | `h`, `hb` | packed, during a hire | 89 | hire record (`c`, `sys`, `ty`, `pw`, `n`, `tr`, `fee`, `sh`, `bm`, `k`, `lo`, `g`) plus one HP band digit per ship and a big-ship flag | 12, TR |
 | `r`, `x`, `n` | packed / number | 77 | M4 call (`c`, `ej`, `lj`), Exchange blacklist jump, next-entry note | P, TR |
 | `TRF.clan[slot]` `mn`, `mg`, `mo` | numbers | 726 | M2 notice, M14 stash grudge, M3 outbid | TR:208 |
+| `e` | packed string | 36 | elite clan index `el` (from `mc_el_c`, 0 = off) and the Wolves' deeds `dj1` (jump of the first beating), `dc1` (its chapter), `djl` (jump of the last) (section 11.5) [new] | |
 | table | | 22 | key `mc` | |
 
 Dropped against the former 12, 13 and P layouts: `TRF.merc`, `TRF.rv`, `TRF.mj`, `TRF.rv.j`, `TRF.mseed` (fixed hash), `TRF.mercx` (now `mc.x`), `TRF.mnote` (now `mc.n`), `TRF.mh` (now `mc.h`, `mc.hb`), `TRF.mbk` (now `TRF.clan` fields), `TRF.mr` (now `mc.r`), `rp` (now `fo`), `lost` (now `hp`), `r[i].h` (home is static per clan), `r[i].at` (now `met`), `sys[idx]` (the per-clan `met` cooldown closes 13 exploit 6), `TRF.pack` (P M4). Accessors [new, TR D]: `TRF_McDig(c, k)` / `TRF_McSetDig(c, k, v)` over `s`, `TRF_McT(c)` / `TRF_McPutT(c, r)` over `t`, `TRF_McRel(c)`.
 
-Save budget (UC C.5; host grammar: number 12 B, string 8 + n, key 8 + n, table 12 + entries): about 2.9 KB worst case and about 1.0 KB typical for the merged packed record with fortune and stages [I], against about 3.9 KB for 12 and 13 kept apart. Host full state is 80,349 B with stashes against a budget of 100,000 B (`../PROGRESS.md`) [V]; with the merged record about 83.2 KB worst case. Visit state (phase `due|wait|meet|hired|leaving`, due time, portal label, box count, three HP samples, seeded group names, the fielded stage) lives in a chunk local of the module, never in `TRF.live`, because the load pass rebuilds `TRF.live` (TR F.4); handles live in the never-saved handle table (V01 3.3).
+Save budget (UC C.5; host grammar: number 12 B, string 8 + n, key 8 + n, table 12 + entries): about 2.95 KB worst case (about 40 B of it for the elite clan, section 11.7) and about 1.0 KB typical for the merged packed record with fortune and stages [I], against about 3.9 KB for 12 and 13 kept apart. Host full state is 80,349 B with stashes against a budget of 100,000 B (`../PROGRESS.md`) [V]; with the merged record about 83.3 KB worst case. Visit state (phase `due|wait|meet|hired|leaving`, due time, portal label, box count, three HP samples, seeded group names, the fielded stage) lives in a chunk local of the module, never in `TRF.live`, because the load pass rebuilds `TRF.live` (TR F.4); handles live in the never-saved handle table (V01 3.3).
 
 **Save/load (`TRF_OnLoad`).** No mod NPC flight resumes after a load: traders wind down, raid ships are deleted or sent away, captains follow the orphan rule (TR F.5) [V]. Every rival, booked, hunt and big-ship spawn of this module is per visit and void on load (13 rule kept); only a hired fighter wing resumes (E12.6). Big ships are never hired, so no big ship needs a resume path or `SetHP` bands (UC G.4 item 1). Gen bump (old trigger strings exit). `tr` is clamped to `merc_hire_s + 60`. If `TRF.mc.h.sys` is the current system: the hired ships are found through handle globals (`TRF_GnFindG` with a sign argument), waiting as `TRF_GnLoadRetry` does, never by label, because after a load `GetObjectByLabel` does not return mod ships (TR F.1) [V]; alive ships are re-adopted (`Escort`, relations, triggers re-armed); if none are found (NPC flights not in the save, WB engine fact 15), the wing is rebuilt from `n - lo` ships with `SetHP` per band (fallback without `SetHP`: ships with band < 5 are not rebuilt). The escort slot `live.esc` is cleared on every load (`S/trf_plumb.script:1125-1128`, `:1146`), so the module takes it again with `TRF_EscortTake("merc")` after `TRF_Pl_OnLoad` (TR F.3). Orphan scan carve-out: `TRF_PlOrphans` deletes live ships labelled `trf_merc_<n>_<j>` at load (`S/trf_plumb.script:1095-1121`, `:67`) [V], which would delete a hired wing whenever the label lookup works. The module registers `Merc=1` in the adoption list (`TRF_PlAdopt()`, which returns `{Nest=1}` in the working tree, `S/trf_plumb.script:282-284`, uncommitted) so the plumbing scan skips `Merc` groups, and deletes its own unhired ships in `TRF_Mc_OnLoad`, keeping the hired wing found by handle globals (UC G.4 item 3, recommended over staying on the label scan). Labels stay within `j` 1..6 per `n`; a stage 4 visit with a replacement wave uses a second label number. An unhired pack is wound down like a traffic orphan (V01 5.5). No refund, no re-roll.
 
 **Safety rules reused.** M3 (portal arrival and exit only), M4/S2 and S3 at every spawn, line, box and seed, M5 (own group, no `Timer_Seq`), M6 and S15 (group relations only, never a Merc, Pirates or faction team), M9 (orphan scan of `trf_merc_` labels, with the module's own adoption and deletion described in Save/load), M10, M20 (chapter 5), S4 strict gate, S5 and the permanent exclusion above, S8, S9, S11, S12, S14 (caps, governor), S16. Wind-down (9.10): the pack flies to the nearest portal and is deleted there; the hire ends with the 50 % refund rule.
 
-**Config (S16).** `merc` 1, `merc_board` 1; options beyond the visit `merc_book`, `merc_report`, `merc_hunt`, `merc_marker`, `merc_calls`, `merc_transfer` (each 1; P D.2); tuning `c_hire` 700, `c_share` 25, `c_blood` 4, `merc_reserve_k` 2, `merc_owe_j` 60, `merc_hire_s` 600, `merc_wait_s` 240, `merc_cd` 4, `merc_reach` 6, `merc_p` {5,10,35,55,15,5}, `merc_sweep_p` 25, `merc_p_max` 80, `merc_rel_decay` 20, `merc_grief_decay` 10, `merc_black` 30 (jumps, x `bk`, max 90); the P constants `merc_rev_n` 3, `merc_book_p` 20/40 %, `merc_book_legs` 12, `merc_ret_k` 0.5, `merc_rep_cd` 28, `merc_call_j` 30, `merc_call_rel` 1, `merc_call_gap` 8, `merc_rc_jobs` 3, `merc_rc_k` 1.5, `merc_hunt_n` 4, `merc_hunt_k` 1.0, `merc_dm_j` 60, `merc_sw_legs` 2 (P C); the fortune and stage constants `mc_*` (Fortune and stage, above); the rival role keeps the `rv_*` keys of `13-rival-packs.md` section 6 except `rv_ships_cap` (replaced by `mc_ships`); per-system `sys_off` applies. Removed with the former step 2: `merc_persist`, `c_wage`, `sign_k`, `merc_wait_legs`, `merc_ships2`.
+**Config (S16).** `merc` 1, `merc_board` 1; options beyond the visit `merc_book`, `merc_report`, `merc_hunt`, `merc_marker`, `merc_calls`, `merc_transfer` (each 1; P D.2); tuning `c_hire` 700, `c_share` 25, `c_blood` 4, `merc_reserve_k` 2, `merc_owe_j` 60, `merc_hire_s` 600, `merc_wait_s` 240, `merc_cd` 4, `merc_reach` 6, `merc_p` {5,10,35,55,15,5}, `merc_sweep_p` 25, `merc_p_max` 80, `merc_rel_decay` 20, `merc_grief_decay` 10, `merc_black` 30 (jumps, x `bk`, max 90); the P constants `merc_rev_n` 3, `merc_book_p` 20/40 %, `merc_book_legs` 12, `merc_ret_k` 0.5, `merc_rep_cd` 28, `merc_call_j` 30, `merc_call_rel` 1, `merc_call_gap` 8, `merc_rc_jobs` 3, `merc_rc_k` 1.5, `merc_hunt_n` 4, `merc_hunt_k` 1.0, `merc_dm_j` 60, `merc_sw_legs` 2 (P C); the fortune and stage constants `mc_*` (Fortune and stage, above); the rival role keeps the `rv_*` keys of `13-rival-packs.md` section 6 except `rv_ships_cap` (replaced by `mc_ships`); per-system `sys_off` applies; the elite clan keys `mc_el_c` 8, `mc_el_fo` 55 / 78, `mc_el_hp` 2, `mc_el_jobs` 6, `mc_el_fee_k` 1.5, `mc_el_w` 4, `mc_el_g` 5, `mc_el_fight_cd` 24, `mc_el_break` (4 of 6 wing ships or 25 % flagship HP), `mc_el_wd` 60 and the stage 4 keys `mc_st4_pil`, `mc_st4_n` 6 (section 11). Removed with the former step 2: `merc_persist`, `c_wage`, `sign_k`, `merc_wait_legs`, `merc_ships2`.
 
 **Debug dump.** `TRF_Dump("merc")` through `TRF_Log` (field names follow `TRF.mc`; the record is unpacked for the dump, TR D): `mc c=4 k=stardragoon b=2 rel=1 at=6 jobs=3 hp=4 fo=41 sg=2 rl=0 met=812 bk=0` per clan, `mh c=4 sys=gaoba ty=1 pw=14 n=4 hp=10,9,7,10 tr=420 fee=12600 sh=2500 bm=10000 k=3 lo=0 g=7`, `mcx=0`, and event lines `mc roll sys=gaoba p=55 r=23 -> c4`, `mc hire c=4 fee=12600`, `mc seed grp=TRF_Raid_2 why=fire`, `mc end c=4 k=3 share=7500 blood=0 owe=0 rel=0->1`.
 
-**Text keys** (EN, RU; 13.5): `#TRF_MC_Sig_<c>` (12, "Star Dragoons, working these lanes."), offer by `rel` band (3), box text per clan (12, one `%d`; the share is stated in the offer line), `#TRF_MC_On`, `#TRF_MC_Engage`, `#TRF_MC_Navy`, `#TRF_MC_End`, `#TRF_MC_Share` (`%d`), `#TRF_MC_Leave`, `#TRF_MC_Grief`, `#TRF_MC_Abandoned`, `#TRF_MC_Refuse`, `#TRF_MC_Heat`, `#TRF_MC_Traitor`, `#TRF_MC_Black`, `#TRF_MC_Board_<c>` (12), `#TRF_MC_Nav`; about 50 keys. Lines are a `TRF_Mc_Text()` table read through `TRF_Txt` (`S/trf_ui.script:165`) with substitutions, so names go into lines directly and the "signature first, then the line" fallback and the former vanilla-key fallback paragraph are no longer needed (TR E.1, F.14); plain text in `ShowMsgBox` is still check E0.6. P adds 42 keys (EN and RU, 84 strings) for M2, M1, M12, M3, M14, M15, M4 and M7 (list in P D.2). The merged module has 12 signature keys instead of 24 (13's `#TRF_Rv_Sig_<clan>` goes) and about 14 new stage and mothership lines (UC D.7); total about 130 keys against about 137 for 12, 13 and P separately [I].
+**Text keys** (EN, RU; 13.5): `#TRF_MC_Sig_<c>` (12, "Star Dragoons, working these lanes."), offer by `rel` band (3), box text per clan (12, one `%d`; the share is stated in the offer line), `#TRF_MC_On`, `#TRF_MC_Engage`, `#TRF_MC_Navy`, `#TRF_MC_End`, `#TRF_MC_Share` (`%d`), `#TRF_MC_Leave`, `#TRF_MC_Grief`, `#TRF_MC_Abandoned`, `#TRF_MC_Refuse`, `#TRF_MC_Heat`, `#TRF_MC_Traitor`, `#TRF_MC_Black`, `#TRF_MC_Board_<c>` (12), `#TRF_MC_Nav`; about 50 keys. Lines are a `TRF_Mc_Text()` table read through `TRF_Txt` (`S/trf_ui.script:165`) with substitutions, so names go into lines directly and the "signature first, then the line" fallback and the former vanilla-key fallback paragraph are no longer needed (TR E.1, F.14); plain text in `ShowMsgBox` is still check E0.6. P adds 42 keys (EN and RU, 84 strings) for M2, M1, M12, M3, M14, M15, M4 and M7 (list in P D.2). The merged module has 12 signature keys instead of 24 (13's `#TRF_Rv_Sig_<clan>` goes) and about 14 new stage and mothership lines (UC D.7); total about 130 keys against about 137 for 12, 13 and P separately [I]. The elite clan adds about 33 keys (section 11.7), about 163 in total [I].
 
 **Options beyond the visit** (P section B and D; full text, prior art, exploits and checks in P; state fields are in `TRF.mc`, section 6 Saved state; UC G.3 changes applied). Build order is P D.1; section 9 places them in build step 5. Board notices, the retainer, outbid and hunt pay-off boxes and this spec's board line go through the dock dispatcher `TRF_DockLine`/`TRF_DockBox` (`S/trf_plumb.script:300-310`, TR B.9 row 26) [V], with the boxes below the #4 informant (P EM.2); arrival warnings and next-entry notes go through `TRF_ArrivalLine`, whose cap of 3 lines per entry is shared with #2, #6, #7, #10 and #11 (TR F.18).
 - M2 Exchange book. At each region tick, in a region in Build-up or Raids whose clan is at `T_eff >= 3`, or whose clan holds a stash grudge against the Wolves (M14), the employer (the region's captain if active, else the clan) asks the units present in order of lowest `rel`. A unit with `rel <= 0` accepts with `merc_book_p` 20 % in Build-up, 40 % in Raids, doubled at `rel <= -2`, `owe > 0` or a stash grudge, at most 80 %, rolled on a fixed hash. A loyal unit refuses and warns (M3). The first eligible tick of a phase posts only a board notice. The player can pay a retainer `merc_ret_k` 0.5 x fee to keep a candidate off the book for the phase; it is credited against the next hire of that unit in that region in the same phase. Booking may target a free or a rival-role clan; the former employer value `ek` 4 "a #13 rival" is removed, since a rival is a clan state, not an employer (UC G.3). Status: bundle.
@@ -382,6 +389,7 @@ Style of `../PROGRESS.md` E0.x; each line is the proof. Run in a never-named sys
 - [ ] EMS.4 8x headroom: mothership + 6 fighters + a raid of 4 + 2 traders in a `pro` 5 system. Log: `TRF mc EMS.4 ships=<n> fallback=<0/1>`. Gates stage 4; merges E0.29, E12.7, R10.
 - [ ] EMS.5 `HANGAROUT` offset and `CreateCarcass` at it on `Base_mercenary_1` (NC E4, E5). Gates `mc_launch`.
 - [ ] EMS.6 Pods: Cavalier pilot ejects or not; no pod from the mothership; no `CostOfHead`. Gates the loot rules.
+- [ ] EL.1-EL.7 (section 11.7): stage 4 pilot list, seven-ship visit under two label numbers, beaten detection, reload, betrayal while hired, withdrawal in jumps, Legion ace transfer. EL.O1-EL.O3 belong to the outpost idea (section 11.8) and are not planned.
 
 ## 9. Phasing
 
@@ -397,6 +405,8 @@ Build order of the merged module (UC G.5). Steps 0 and 1 neither block nor are b
 | 5 | P bundle M2, M1 + M12, M3, M14, M15, M4, M7 | L | `trf_captain`, `trf_raid`, `trf_stash` hooks (TR G 7-11) |
 | 6 | Stage 3 corvette; HOSTILE (13 step 2) | M | none beyond step 4 |
 | 7 | Stage 4 mothership, replacement wave behind `mc_launch` | M | none; needs EMS.1-EMS.5 |
+| 8 | Black Legion (section 11): `el` and deeds, stage floor and reserved slot (pure part, with step 1), legend lines (with step 3), hire gate (step 3), rival entry, HOSTILE variant and booking rule (steps 4-6), beaten detection, rewards, withdrawal and re-formation, stage 4 pilot list and mixed wing (step 7) | M | none beyond steps 1-7; needs EL.1-EL.7 |
+| 9 | Legion outpost (section 11.8, idea only) | M-L | not planned; would need EL.O1-EL.O3 and its own allow-list entry |
 
 Total for the merged module about L, against M + M (12 step 1, 13 step 1) plus M + M (12 step 2, 13 step 2) for the separate features [V for the estimates]. The mothership adds about 200-300 Lua lines on the trf_clan pattern [I]. P D.2's earlier split (step 1b, 1c, 2) is replaced by build step 5. Default, pending user confirmation: UC Q11 (build order), UC Q1 (merge instead of the minimum variant of two modules).
 
@@ -444,6 +454,14 @@ Questions added by the 2026-10-24 write-back. Each recommended answer is applied
 | P Q11 | Same-bloc talk-out (M12) | yes | section 6 Options, Whom the pack fights |
 | P Q12 | Office hook M11 | deferred until EM.0 | list below |
 | P Q13 | Route sweep report M16 (a) | optional, after the bundle | list below |
+| EL Q1 | Black Legion strength: no Legion power term; stage floor 3 from chapter 5 and 4 from chapter 7; stage 4 slot 1 reserved; off-screen losses stop at `hp` 2 | yes | section 11.1 |
+| EL Q2 | Stage 4 pilot list `{RecruitOfficer_<k>, RecruitAce_<k> x4}` and a mixed wing of 3 fighters and 3 bombers for every clan at stage 4 | yes | sections 4, 11.1 |
+| EL Q3 | Legend only in chapters 1-4 (lines, board, one Hunting post), first Legion flight in chapter 5 | yes; the chapter 4 sighting is deferred | section 11.2 |
+| EL Q4 | Hire gate: chapter 7, 6 completed hires across all clans or one beating, `rel >= 0`, `bk` 0, no `owe`; fee x 1.5 capped | yes | section 11.3 |
+| EL Q5 | Rival entry by `w >= 4` in Torr ahead of the fortune ranking; HOSTILE at `g >= 5`, chance 100 %, once per 24 legs, `hp >= 3`; bookings only from T4 employers in Raids with a reason of its own | yes | section 11.4 |
+| EL Q6 | Beaten = elite break-off in a HOSTILE meeting the Legion started, with counted player fire and no hired or called unit; reward once; withdrawal 60 jumps; re-form one stage lower | yes | section 11.5 |
+| EL Q7 | Legion outpost as an idea only, on the parked mothership in `llanovar1` or `llanovar2` | idea | section 11.8 |
+| EL Q8 | No dockable trade station without a new map object and shop | out of scope | section 11.8 |
 
 Rejected or deferred (nothing dropped silently; reasons from UC and P):
 - Step 2 standing pack (signing, wages, `TRF.pack`, E12.8, E12.9): replaced by P M4 (no `SetHP` per band, no rebuild per entry, no ships beyond the hangar).
@@ -458,3 +476,155 @@ Rejected or deferred (nothing dropped silently; reasons from UC and P):
 - P deferred: M5 freight cover (needs #8; conflicts with "never a #8 freighter guard"), M11 office follows the cycle (exe patch P4, after EM.0).
 - P M1 "the #13 HOSTILE bomber flight becomes a booked unit" and the P D.2 dependency "gives #13 the booked bomber flight": superseded, the HOSTILE bomber flight now comes from stage 2 (UC D.4).
 - P rejected: M8 contract terms, M10 packs as an off-screen economic actor, M13 bounty hunt contract (pay without play), M16 (b) follow-through sweep (breaks the one-visit rule), M17 feud meeting (stays rejected; rival roles cover the feud, UC G.3), M18 contact jobs (income from a sink feature), M7 variant B (office discount, needs an exe hook), and the prior-art mechanics of P B.1.
+- Black Legion (section 11): an elite power offset `mc_el_off` (rejected after the user's clarification: the Legion is the top case of the general rule); a Legion-only pilot template (none exists: all clan templates are equal, `Pilots.xml:4407-5463`); `RecruitHyperAce` for Legion pilots (generic face); a `rel >= 2` hire gate (unreachable, `rel` rises only by hiring that clan); a separate discount factor after a beating (the `rel` change carries it); a separate withdrawn-until field `wd` (the withdrawal reuses `rl`, `cd`, `cj`, `ml`, `mk`); Legion flights in chapters 1-4 and the chapter 4 sighting (deferred, section 11.2); a Legion trade station with its own shop and the `Merc_Base` station model (out of scope, Kassilia name; section 11.8).
+
+## 11. Black Legion, the elite clan
+
+Added 2026-10-24 from the user's request: "Use the black legion as a very strong mercenary group from the beginning which should be an achievement to beat --> the best of the best. Later maybe having a station." User clarification of the same day: a T4 or stage 4 clan is a threat comparable to the Legion and can reach near top-end gear, so the Legion is the fixed top case of the general rules, not a separate power system. It differs from the other eleven clans by four things only: a stage floor, a legend phase in chapters 1-4, a hire gate and the beat-it achievement. Gear gathering by clans is designed in `../proposals/merc-clan-gear.md` and is not repeated here. Tags as in the status line: [V], [I], [new]. The defaults of this section are listed as EL Q1-EL Q8 in section 10.
+
+### 11.1 Identity and strength
+
+Vanilla facts [V]: display name "Mercenary unit Black Legion", office text "#COUNT# true legionaries" and "ready to rout any enemy, be it a pirate clan or a regular army" (`G/LocData/English/m_recruits.loc:36-38`); key `blacklegion`, index 8 of `_Fmerc_names`, bloc 2 (`G/Scripts/include/RandomFmerc.script:9-11`); pilot list `{RecruitPilot_blacklegion, RecruitOfficer_blacklegion, RecruitAce_blacklegion x3}` (`RandomFmerc.script:81-82`); templates `RecruitAce_blacklegion` (`G/Game/Pilots.xml:4479`), `RecruitOfficer_blacklegion` (`:4899`), `RecruitPilot_blacklegion` (`:5247`), face `recruits8` (`:4484`). Home region Torr (section 6 table): `llanovar1`, `llanovar2`, `nk`, `torr` (`S/map.script:1636`; systems at `:823`, `:833`, `:921`, `:1102`); `llanovar1` and `llanovar2` are never named in `Quests.xml` (`q=0`), `torr` is named, `nk` is permanently excluded (section 3).
+
+The vanilla templates give the Legion nothing of its own [V]: all 36 `Recruit*_<clan>` templates have piloting, guns, rockets and electronic warfare 10, and every clan's Ace has 18 perks, Officer 12 and Pilot 6 (`Pilots.xml:4407-5463`, my count). The vanilla office can also sell an office unit under the Legion's name at any time (`G/Game/Recruits.xml:155-160`, P A.2); the mod cannot gate the office (P M11 deferred, exe patch), so office contracts stay vanilla and are read only through `GetRecruitGroupName()` (section 6, bloc rule).
+
+**Flag.** The elite clan is `mc_el_c` 8 [new], copied into the saved record as `el` at creation (section 6 Saved state); `mc_el_c` 0 turns every rule of this section off and leaves the Legion an ordinary clan.
+
+**Strength by the general rule.** The Legion uses the same power `pw = clamp(sys_base(s) + off(T_eff(s)) + mc_st_off[sg] - (4 - hp), 1, 20)` as every clan (section 4). No elite power offset exists (`mc_el_off` 0, rejected in section 10). What makes it the top case:
+- Stage floor [new]: from creation (chapter 5) the Legion's fortune never falls below `mc_el_fo` 55 (stage 3), and from chapter 7 (`mc_st_ch`) never below 78 (stage 4). Fortune still rises and takes losses above the floor. The floor never overrides a big-ship cooldown (`ml`, `mk`, section 6) or the chapter cap: before chapter 7 the Legion fields stage 2 like any clan.
+- `mc_ms_max` slot 1 is reserved for the Legion [new]; other clans share the second stage 4 slot. While the Legion is withdrawn or below stage 4 the reserved slot stays empty, so the 8x load bound of EMS.4 holds.
+- Off-screen losses stop at `hp` 2 (`mc_el_hp` [new]); on-screen losses count in full.
+- Its home region Torr is a T-tier region like any other: the Legion meets the Wolves at the world's tier of the system it is in, so in a T4 region it is as strong as any stage 4 clan there, and stronger only because it is always at stage 4 from chapter 7.
+- Nothing reads `GetPlayerLevel`, hull, wallet or kill count (R3, P rules).
+
+**Stage 4 composition, proposed for every clan** [new]. To make stage 4 the top of the scale without a Legion-only term, two changes apply to every clan at stage 4, and the Legion has them more often only because of its floor:
+
+| Item | Every clan at stage 4 | Rationale |
+|---|---|---|
+| Pilot list `mc_st4_pil` | `{RecruitOfficer_<k>, RecruitAce_<k> x4}`; the mothership pilot `RecruitAce_<k>` instead of `RecruitOfficer_<k>` | Rows use pilot ranks 1-5; rank 5 occurs only in row 20 of each table (`CF2:719`, `:746`, `:773`) [V]. NORMAL maps ranks through `{1,2,2,3,4}` (`CF2:92`; `TRF_TrTabs`, `S/trf_tier.script:205`) [V], so list index 5 is reached only on HARD and the vanilla list gives Officers to every rank 2-3 entry. Dropping `RecruitPilot` from the list makes rank 1 an Officer and every rank 2-5 an Ace on NORMAL, with existing templates only. `RecruitHyperAce` (24 perks, `Pilots.xml:3076`) is not used: its face is the generic `Recruit`, so the clan icon and face would be lost. |
+| Wing `mc_st4_n` | `Rec_Fighters` at `pw`, at most 3, plus `Rec_Bombers` at `pw - 2`, at most 3: up to 6 wing ships, 7 with the mothership (`mc_ships` 7) | The mixed rows of stage 2 (section 4 table) carried up to stage 4, as the Legion's type 1 placement plus its bombers; the bomber flight takes labels under a second label number, as the replacement wave already does (Save/load). |
+
+Example [I arithmetic on section 4]: a mid T3 Raids system with `sys_base` 12 gives a stage 4 clan `pw` 15, NORMAL row 12 for fighters (`__tablevel[15]` = 12, `CF2:91`) and row 11 for bombers (`pw - 2` 13 maps to 11): Stormcrow_merc3, Cleaner_merc1, EvilEye_merc1 (`CF2:710`) and Bident_merc1 x2, Raptor_merc3 (`CF2:736`), all Aces. In a late T4 system `pw` reaches the clamp 20: NORMAL fighter row 17 (Puma, Panthera, Raptor_merc4, `CF2:716`) and bomber row 15 (Hrimturs_merc1 x2, Trident_merc3, `CF2:741`). Late, the clamp and NORMAL's row cap of 17 make the stage 4 wing the strongest merc composition the tables give; gear beyond the fitted hulls is the subject of `../proposals/merc-clan-gear.md`.
+
+Default, pending user confirmation: EL Q1 (no Legion power term; floor 3 from chapter 5 and 4 from chapter 7; stage 4 slot 1 reserved), EL Q2 (stage 4 pilot list and mixed wing for every clan).
+
+### 11.2 From the beginning: the legend in chapters 1-4
+
+Packs are off in chapters 1-4 (section 3: the leash `__crash_Freedom` in chapters 1-3, `G/Scripts/include/OutOfMission.script:21`, no hangar before chapter 4, the guard M20 in chapter 4). The Legion therefore exists from the start as a reputation only: text lines, no flight, no box, no saved state. The lines read the chapter (`TRF_Chapter`, `S/trf_safety.script:745`) and need no record, since `TRF.mc` is created at chapter 5.
+
+| Chapter | Channel | Content [new] | Rule |
+|---|---|---|---|
+| 1-3 | station voices ambient pool (W04, `03-station-voices.md` section 3); hail rumour answer (8.2); patrol board line (S19) | "Black Legion crews drank here once. Nobody asks them twice."; "The Exchange ratings came out. Black Legion first, again."; "Nobody has broken the Black Legion in the field. Nobody living." | no system or region name, because system names invite off-route jumps that trigger the leash (`03-station-voices.md:52`) |
+| 4 | harbour news (on from chapter 4, `03-station-voices.md:53`); the #13 rumour slot (13 section 3, chapter 4 row) | "Black Legion winters in the Torr lanes. They don't take cheap contracts." | may name the Torr region, as 13's chapter 4 rumours name rival homes |
+| 4 | Hunting post, only with `news_mode` 2 (T17; `../mod-research/news-records.md` section 0), once, at the first patrol dock in chapter 4 | "Hey, mercenary brotherhood!\|Somebody asked again who flies the best birds in the sector. Same answer as every year: the Black Legion. No team has broken them in the field. Think you can? Hunting will print your name. Good luck, brothers. You'll need it." | style of the vanilla Hunting channel ("Heya, mercenary brotherhood!", `G/LocData/English/x_news.loc:330`, record `news004_4`); the vanilla channel's first post is in chapter 4 [I from the record name], so the mod post does not open the channel early |
+| 5 | first flight (section 11.3) | elite signature, the hire refusal line | the guard ends |
+
+The lines follow S2, S3, the strict gate and the deny list of the channel that shows them; they write nothing.
+
+This is a compromise with mission safety: the user asked for the Legion "from the beginning", and the design gives a named reputation from chapter 1 and ships from chapter 5. The alternative the user may want: one non-interactive sighting in chapter 4, a Legion wing crossing portal to portal (the PASS pattern of 13 section 6) in a never-named, non-guard system during free time, neutral, no box, no fight. Its risks: it needs the PASS code and the E0.13 team gate before the hire feature exists; a player may shoot it, which is betrayal under section 4 before any hire teaches what the Exchange is; and a chapter 4 hangar wing would face a stage 2 flight at the region's tier. It is listed in section 10 as deferred.
+
+Default, pending user confirmation: EL Q3 (legend only in chapters 1-4, first flight in chapter 5).
+
+### 11.3 Hire
+
+Gate [new]. The Legion's meeting opens the box only when all hold: chapter >= 7; the Wolves' completed hires across all clans (sum of `jobs`) >= `mc_el_jobs` 6, or the Wolves have beaten the Legion once (`dj1` > 0, section 11.5); `rel` with the Legion >= 0; `bk` 0 with the Legion; no `owe` anywhere; every other check of section 6 Meeting and hire. Otherwise the leader says the refusal line ("Black Legion. We don't fly for carriers nobody has heard of. Come back with a record, Wolves.") and no box opens (M10 holds).
+
+Why not `rel >= 2`: `rel` with a clan rises only from completed hires of that clan (section 4, first row of What feeds what), so a `rel >= 2` gate cannot be reached without hiring the Legion first. The gate uses the Wolves' record with the Exchange instead. A chapter 5 player cannot pass it: the chapter rule alone closes chapters 5-6, and six completed hires take several hours of pack work [I: at most about 6-7 hires per hour by section 5, and about 0.5-1 in normal play].
+
+Price [new]: `fee x mc_el_fee_k` 1.5, still capped at `pay_cap` (`S/trf_region.script:72`) [V]: mid stage 4 12,600 x 1.4 x 1.5 = 26,500, late 30,000 at the cap [I arithmetic]. Share and blood money as section 5. The retainer and outbid price (P M2, M3) is 0.5 x this fee.
+
+What is hired: the wing only (up to 6 ships at stage 4). The Legion never lends its flagship (UC D.4); at stage 4 the mothership holds at its hold point and the meeting trigger sits on it at 150 units (section 6 Spawn). Calls (P M4) follow the same gate and bring the wing only. Shooting a hired Legion ship is betrayal under section 4 and never counts as beating it (section 11.5).
+
+Default, pending user confirmation: EL Q4 (gate and premium).
+
+### 11.4 Rival role, HOSTILE meetings and bookings
+
+Rival slot. The Legion occupies one of the 3 rival slots (`rv_count`) when it is in the rival role; the slot limit is unchanged. Its floor would win the fortune ranking of the rival candidate rule (section 6 Roles) at almost every tick, so the Legion is not ranked by fortune [new]: it takes a free slot ahead of the ranked candidates when `rel <= 0`, no Wolves retainer and the Wolves' rating `w` in the Torr region >= `mc_el_w` 4 (the Wolves work its home lanes); otherwise it is not a candidate. The office-bloc rule still applies, so a player holding a bloc 2 office unit (including the office's "Black Legion") never meets the Legion as a rival.
+
+Home eligibility [new]: 13 section 4 needs a home region with at least 4 systems with a trader registration. Torr has 4 (`trader=1` at `S/map.script:823`, `:833`, `:921`, `:1102`), but `nk` is permanently excluded, which leaves 3 [I: this is why Torr is missing from 13's inferred list]. For the Legion 3 eligible trader systems suffice.
+
+HOSTILE [new] (13 section 6, chapter 7 and later, station rule and strict gate unchanged):
+- Threshold `mc_el_g` 5 instead of `rv_hostile_g` 6. The Legion's grudge rises only while the Wolves' rating in Torr is at least its `rp_eq` (7 or more at stage 4, section 4), so reaching 5 already needs about 8-10 working visits in the Torr region [I: `w` +2 per visit at most, `rv_w_decay` 8].
+- Frequency: chance 100 % once eligible ("the Legion never bluffs"), at most once per `mc_el_fight_cd` 24 legs (16 for other clans), only at `hp >= 3`.
+- Break-off `mc_el_break`: the Legion leaves when its flagship dies, when 4 of 6 wing ships are dead, or when the flagship is below 25 % HP (other stage 4 clans: half the fighters or 50 %).
+- The flagship is the stage 3 corvette or the stage 4 mothership; the Legion always fields one from chapter 7 unless a cooldown or a Bust lay-up holds it at a lower stage (section 6).
+
+Bookings [new] (P M1, M2, M14): the Legion refuses cheap contracts. It accepts a booking only from an employer at `T_eff` 4 in Raids, and only with a reason of its own (`rel <= -2`, `owe > 0` or `bk > 0`); a stash grudge alone never books it; the chance is `merc_book_p` 40 %, not doubled. Booked Legion ships are `merc_rev_n` 3 fighters with the stage 4 pilot list at the employer's row and power, so a booking adds pilot skill, not ships. A Legion hunt (M14) never includes its corvette. A same-bloc hired unit cannot talk a booked Legion flight out of the fight (P M12 exception). Refusal line: "The Legion doesn't fly for scavenger money."
+
+Default, pending user confirmation: EL Q5 (rival entry, HOSTILE variant, booking rule).
+
+### 11.5 Beating the Legion
+
+**What counts as beaten** [new]. All of:
+1. A HOSTILE meeting of the rival role in which the Legion fields its flagship and the group war was set by the Legion's HOSTILE action (13 section 6), not by counted player fire on a non-hostile Legion ship.
+2. The meeting ends by the Legion's break-off (section 11.4): (a) the flagship dies, or (b) the Legion leaves with 4 of 6 wing ships dead or the flagship below 25 % HP.
+3. Counted player-group fire (8.5 proxy, `T_deliberate`) on the flagship for (a), and for (b) on the flagship or on at least 3 of the dead wing ships.
+4. No hired pack and no called unit flew in that visit (`TRF.mc.h` and `TRF.mc.r` empty for the visit), because the engine reports no killer (UC D.5) and a third party's kill must not count.
+5. The result is written to `TRF.mc` at the event (`died` or break-off), as every loss is (UC C.7).
+
+**What does not count:** kills by third parties off screen (off-screen results cost `hp` only and stop at `hp` 2); kills while a hired pack or a called unit is present; shooting a hired Legion or any non-hostile Legion ship (betrayal under section 4: `rel` := -3, bloc-mates -2, `bk` +1, blacklist, heat); booked and hunt flights (no flagship); a HOSTILE meeting ended by the station rule or by a wind-down; a reload, since a load before the event replays the same spawn from the saved record and fixed hash and a load after it keeps the result.
+
+**Reward, on the first beating only** (`dj1` 0 before) [new]:
+- Personal record: `dj1` := `TRF.clock.j`, `dc1` := chapter, `djl` := `TRF.clock.j`, `bt` +1 (section 6 Saved state).
+- Title: from then on the patrol board line (S19, through `TRF_DockLine`, `S/trf_plumb.script:300-310`) shows "Deeds: the Star Wolves broke the Black Legion (first in chapter <dc1>, beaten <bt>).", and every clan's opening line at `rel >= 0` has a title variant ("The Wolves who broke the Legion. Same price, more respect."). Hunting post with `news_mode` 2, once.
+- Standing, once: `rel` +1, at most 2, with every bloc 1 clan (the Legion's rivals at the Exchange); no change for bloc 2. The discount follows from that `rel` through `disc` (section 5); no separate discount factor exists.
+- Ace transfer unlocked: at the first non-hostile meeting with the re-formed Legion at `rel >= -1` and `bk` 0, one Legion ace with his hull is offered without the 3-hire requirement and without the 1.5 premium: price `max(office cost, resale + 10 %)`, capped at `pay_cap`, once per campaign (`rc`), gated by EM.3 like P M7.
+- Loot: the engine's drop of the dead ships only (NP:124); no bounty (`RecruitPilot_*` and `RecruitAce_*` are in no `CostOfHead` table, section 4); no new credit payment; kill XP x0.1 off mission (R6).
+
+A later beating counts for the record again (`bt` +1, `djl`, board line), with no second reward.
+
+**Consequence for the Legion: withdrawal and re-formation** [new]. Nobody wins and no clan is removed (R2, UC Q6). After any beating the Legion withdraws: `rl` := 2 (absent, its rival slot is freed), re-form at `legs >= cd` with `cd` := legs + `rv_cd_legs` 24 and `TRF.clock.j >= cj` with `cj` := `TRF.clock.j` + `mc_el_wd` 60 jumps (1.5 x the 40-jump mothership cooldown, about 4-5 hours at 12-15 jumps per hour [I]). It re-forms under the same name in its home region (an exception to the broken re-form, which picks a region other than `bh`), one stage lower: `fo` := 62, stage 3, `hp` 4, `g` 2, and stage 4 closed by `ml` := `cj`, `mk` 4 until `TRF.clock.j >= ml + mc_bs_j[4]` (40 more jumps). Standing by how it was beaten: driven off with the flagship alive, `rel` +1 up to 0 ("a clean fight"); flagship destroyed, `rel` -1 down to -2 ("You cost us a mothership."). Negative `rel` then recovers one step per 20 jumps (section 4), so the Legion usually returns as a rival candidate and the record can be fought for again about 100 jumps after a beating. The withdrawal reuses `rl`, `cd`, `cj`, `ml` and `mk`; no separate withdrawn-until field is added.
+
+Lines [new]: break-off "Legion, break off. Wolves, we will remember the name."; rumour during the withdrawal "The Black Legion went home to Torr to count its dead. Nobody has seen that before."; re-form arrival "Black Legion, back on the lanes. The Wolves know why we were away."
+
+Default, pending user confirmation: EL Q6 (definition, reward, withdrawal 60 jumps, re-form one stage lower).
+
+### 11.6 Exploits and closing rules
+
+Numbered after section 5 (exploits 34-43).
+
+| # | Exploit | Closing rule | In-game check |
+|---|---|---|---|
+| 34 | Farm the Legion's loot by repeated defeats | each beating means 60 jumps of absence and 40 more at stage 3; HOSTILE at most once per 24 legs and only at `g >= 5`, `hp >= 3`; reward once; engine drop only, no bounty, kill XP x0.1 | EMS.2 drop value; EL.3 |
+| 35 | Reload around the fight | result written at the event; stage and spawn from the saved record and fixed hash; the reward checks `dj1` | EL.4 |
+| 36 | Hire, then shoot the Legion | betrayal under section 4; the war was set by the player, so rule 1 of 11.5 fails; the flagship is never in a hire | EL.5 |
+| 37 | Feed or wear the Legion down first (lure it into raids, provoke hunts) | off-screen losses stop at `hp` 2; HOSTILE needs `hp >= 3`; on-screen losses outside a HOSTILE meeting are not a beating | EL.3 |
+| 38 | Let a hired pack or a call do the killing | rule 4 of 11.5: no beating in a visit with a hired or called unit | EL.3 |
+| 39 | Re-enter until the HOSTILE roll comes | appearance and action per (clan, leg, system) hash, `met` cooldown, `mc_el_fight_cd` 24 legs | EL.4 |
+| 40 | Idle at 8x to bring the Legion back sooner | withdrawal and the stage 4 cooldown count jumps (`TRF.clock.j`) | EL.6 |
+| 41 | Buy the hire gate with cheap hires | `jobs` counts only completed hires (half the hire time or a counted kill, section 4); no `owe`, `bk` 0 | E12.4 with the gate |
+| 42 | Use the elite wing as a farming escort | fee x 1.5 at the cap, share and blood money as every clan (exploit 2 numbers apply with a higher fee) | E12.7 |
+| 43 | Resell the transferred ace's hull | price `max(office cost, resale + 10 %)` after D8/E0.25 | EM.3 |
+
+### 11.7 State, text and checks
+
+Saved state (section 6 table): `el` and the deeds `dj1`, `dc1`, `djl` in the module string `TRF.mc.e`, `bt` in `t[8]`; about 40 B worst case [I: key 9 + string 8 + 19 characters for `e`, about 3 B for `bt`]. Withdrawal uses existing fields.
+
+Text keys [new]: legend lines 6 (chapters 1-3 three, chapter 4 two, board one), Hunting posts 3 records x 2 keys, signatures by stage 3, hire refusal and box text 3, booking refusal 1, HOSTILE warning, break-off and loss lines 4, title lines 3, withdrawal rumour and re-form line 2, transfer box 1: about 33 keys, 66 strings with RU; the module total becomes about 163 keys.
+
+Checks [new]:
+- [ ] EL.1 Build: `TRF_BuildFlight` with `{RecruitOfficer_blacklegion, RecruitAce_blacklegion x4}` on NORMAL and HARD rows 12, 17 and 20; every rank 2-5 entry an Ace on NORMAL; mothership with `RecruitAce_blacklegion` (merged with EMS.1). Log: `TRF mc EL.1 row=<r> ranks=<list> tpl=<list>`.
+- [ ] EL.2 Seven ships: mothership plus 3 fighters and 3 bombers under two label numbers survive the orphan scan and fit `cap_ships` at 8x (merged with EMS.4). Log: `TRF mc EL.2 ships=7 labels=<n1>,<n2> fallback=<0/1>`.
+- [ ] EL.3 Beaten detection: flagship kill with counted fire, break-off at 4 of 6, and a run with a hired pack present (must not count). Log: `TRF mc EL.3 how=<1|2> fire=<0/1> hired=<0/1> counted=<0/1> bt=<n>`.
+- [ ] EL.4 Reload: save before the meeting, beat, load: no record, same spawn; save after, load: record kept. Log: `TRF mc EL.4 dj1=<j> same_spawn=1`.
+- [ ] EL.5 Betrayal while hired: `rel` -3, `bk` +1, no `bt`. Log: `TRF mc EL.5 rel=-3 bk=<n> bt=<n>`.
+- [ ] EL.6 Withdrawal at 8x idle: no re-form before `cj`. Log: `TRF mc EL.6 j=<j> cj=<j> rl=2`.
+- [ ] EL.7 Legion ace transfer at the office price after a beating (merged with EM.3, E0.25). Log: `TRF mc EL.7 price=<cr> rc=1`.
+
+### 11.8 Station, later (step 3) [IDEA]
+
+A Legion outpost in its home region, built on the pirate-base machinery (`../v1-spec.md` section 9, `S/trf_base.script`). Idea only; nothing below is specified for building.
+
+What the files support:
+- Hull. `Base_mercenary_1` ("Mercenary mothership", BigShip, 2,000 base HP, `SD:4186-4192`, `CX:821`) can be placed with `CreateCarcass` at a fixed site; the pirate-base research names a big-ship base by `CreateCarcass` as a working fallback (`../research/pirate-bases.md:11`). It is a ship class, and the location snapshot keeps only stations, space carcasses and portals (`../research/pirate-bases.md:133`), so the outpost must be re-created on every entry, like a base garrison, with its HP band from the record (`SetHP`, E0.20).
+- Site. `llanovar1` or `llanovar2` (never named, `trader=1`, `S/map.script:823`, `:833`), placed by the ring rule of `../v1-spec.md` 9.1. Neither is on the pirate-base allow-list (`dg` 0, no `ba`), so the outpost needs its own allow-list entry [new].
+- Offer through the existing meeting trigger, not a dock: the 150-unit stage 4 meeting trigger on the mothership (section 6 Spawn) opens the box chain: hire box (section 11.3 gate), the ace transfer (11.5), a rumour line and the deeds and rating lines (11.5, 13 `w`). The scripted dock functions work on any object with a position (`CreatePirateStationDocking` with `boolUseRadius` TRUE, `../research/pirate-bases.md:103`), but they open `TradeStationDlg(shop)` on a named engine shop.
+- When: only while the Legion is active, at stage 4, with `at` = Torr and no rival action that visit; the outpost is the Legion's own mothership parked at home, so it uses the reserved stage 4 slot and adds no second big ship.
+
+Out of scope: a real dockable trade station with its own shop. The only shops the files document are vanilla named shops (the contraband `pirateN` shops are shared with vanilla stations and must not be destroyed, `../research/pirate-bases.md:123`), a mod row in a shop window is unverified (`../mod-research/adding-ships.md:417`, O4), and a persistent station needs a `Station` object. The one vanilla merc station model, `Merc_Base` (`Station`, 300,000 HP, `CX:7796`, used at `G/Scripts/Locations/Kassilia/location.script:80`), shows the name "Mercenary base Sherwood" (`G/LocData/English/s_carcasses.loc:328`), which belongs to Kassilia. A Legion station therefore needs a new map object and shop, which no research note covers.
+
+Risks: a parked big ship in a never-named system counts against `cap_ships` and the governor on every entry (EMS.4); shooting it is betrayal; it shares `live.box` with station boxes; `Base_mercenary_1` is a story hull of missions 3 and 4.1 (exploit 33), so it never spawns while a quest that names it is in process.
+
+Checks (idea only): EL.O1 the parked mothership holds its site at 1x and 8x after `Move` and `Stop`; EL.O2 the 150-unit meeting trigger re-arms after each box chain; EL.O3 re-creation on entry with `SetHP` per band and no duplicate after a load.
+
+Default, pending user confirmation: EL Q7 (outpost as an idea only), EL Q8 (no trade station without a new map object).
