@@ -2057,6 +2057,15 @@ function T_V1_N()
 	TRF.vo = {};
 	for sn, so in TRF_StnOwners() do if V_Idx(sn) then TRF.vo[V_Idx(sn)] = skl; end; end;
 	TRF.ve = skl;
+	-- Survivors worst case (design/survivors-spec.md 3.4): 4 full records, carried survivors, totals, every region
+	-- budget, 16 cooldown stamps, 4 silent systems, the rumour.
+	TRF.sv = {b={}, c={n=6, cr=180000, pc=180000, s1=113, s2=112, f=5, lg=skl}, st={res=9999, sold=9999, lost=9999}, r={}, sd=9999,
+		hl=skl, cd={}, x={110, 111, 112, 113}, rm={s=113, k=2, lg=skl}};
+	for k = 1, 4 do
+		tinsert(TRF.sv.b, {s=109 + k, si=1139, x=-99999, y=-99999, z=-99999, n=3, n0=3, f=5, nm=99, lg=skl, src=3, sl=2, pf=10000, pp=10000, bx=1});
+	end;
+	for k = 1, 11 do TRF.sv.r[k] = 9; end;
+	for k = 1, 16 do TRF.sv.cd[97 + k] = skl; end;
 	-- Raids, due and stat at their bounds.
 	for k = 1, 10 do
 		local id = ids[1 + mod(k, getn(ids))];
@@ -2079,7 +2088,7 @@ function T_V1_N()
 	HOST_Check(getn(TRF.tp) <= 16 and getn(TRF.lr) <= 2 and getn(TRF.base) <= 4 and getn(L.pg) <= 8 and V_N(L.dc) <= 1
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");
 	local size = 8 + 3 + HOST_SaveSize(TRF);
-	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "live"};
+	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	local lp, ll = "", {"tr", "stat", "rd", "cvs", "tq", "sw", "fq", "cr", "dc", "bs", "pg"};
 	for i = 1, getn(ll) do lp = lp.." "..ll[i].."="..HOST_SaveSize(L[ll[i]]); end;

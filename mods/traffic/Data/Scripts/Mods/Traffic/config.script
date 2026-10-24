@@ -12,10 +12,12 @@
 -- 2 = the hail menu as the trade dialog TRF_Hail (needs hail_xml=1; otherwise the box chain runs).
 -- Worldbuilding plumbing (design/wb-plumbing-spec.md): wb_box_after_fee (default 0) = 1 allows an offer box at the
 -- trade dock after a station fee box (set once E0.6 passes); tune help_floor/help_decay (C1) and leg_cap (D1).
+-- Survivors and beacons (design/survivors-spec.md 6): enable_survivors (default 1) = 0 turns trf_survive off; the
+-- other sv_* keys and the tune keys (k_pod, sv_ttl, ...) read their module defaults when missing.
 function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
 	enabled=1, cycle=1, prosperity=1, tier_cap=4, cap_traders=5, cap_ships=20, spawn_scale=1.0, band_half=0,
 	parked=1, esc_flight=1, seed=1, queue=1, raids=1, staged=1, contracts=1, esc_speed=0, meet=2, hail_start=2, board=1,
 	shop_mode=1, short_price=1, restore=1, news_mode=1, heat_war=0, strict=1, pro_set={},
 	track=1, conv=1, demand=1, heat_offer=1, carriers=1, salvage=1, salv_addmod=0, clan_ace=0, sweeps=1,
 	sweep_ct=1, po=1, tt4=1, tt4_split=0, feq=1, forced_bust=1, dconv=1, dc_speed=1, bases=1, base_glow=0,
-	wreck=0, lang="en", loc_mode=0, hail_xml=0} end
+	wreck=0, lang="en", loc_mode=0, hail_xml=0, enable_survivors=1} end

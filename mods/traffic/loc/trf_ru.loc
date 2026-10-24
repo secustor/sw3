@@ -1,7 +1,7 @@
 LOCALE_FILE
 FILETYPE STANDART
 
-; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), cp1251.
+; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text) and the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), cp1251.
 ; Same keys and fixed texts as loc/trf_en.loc (no $n placeholders); used with cfg loc_mode 1 in a Russian install.
 ; Other #TRF_ keys have no RU line yet (design/station-voices-spec.md 13.5).
 
@@ -39,3 +39,19 @@ FILETYPE STANDART
 #TRF_stntipfeq = Скоро придёт конвой снабжения флота.
 #TRF_stntiprob = Вы использовали нашу наводку, чтобы ограбить флот.
 #TRF_stntipsweep = Против пиратов собирают флот. Держитесь пока подальше от этих трасс.
+#TRF_svfull = Места для спасённых больше нет.
+#TRF_svloss = Аварийный маяк: грузовик Торгового союза погиб. Спасательные капсулы подают сигнал.
+#TRF_svlost = Спасённых передали проходящему патрулю Торгового союза.
+#TRF_svnear = ...кто-нибудь на этой частоте... экипаж Торгового союза, нас осталось немного... воздуха на несколько часов...
+#TRF_svpaid = Спасённые переданы Торговому союзу. Кредиты переведены.
+#TRF_svpick = Спасённый на борту.
+#TRF_svpickall = Все спасённые на борту. Их примет любая станция Торгового союза.
+#TRF_svrumlost = Где-то рядом пропал транспорт. Экипаж так и не нашли.
+#TRF_svrumsaved = Волки вытащили экипаж из беды.
+#TRF_svrumtaken = Пираты подобрали экипаж грузовика неподалёку. Больше их никто не увидит.
+#TRF_svseed = Ретранслятор Торгового союза: здесь замолчал грузовик. Его аварийный маяк ещё работает.
+#TRF_svsilent = Маяк в этой системе замолчал.
+#TRF_svthanks1 = Их семьи уже перестали надеяться. Торговый союз этого не забудет, Волки.
+#TRF_svthanks2 = Торговый союз забирает экипаж. Медики уже ждут.
+#TRF_svthanks3 = Ещё один экипаж вернулся живым. Трассы у вас в долгу, Волки.
+#TRF_svthanksw = Торговый союз записал спасение. Экипаж запомнит, кто за ним прилетел.

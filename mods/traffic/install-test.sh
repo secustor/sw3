@@ -23,6 +23,9 @@
 # neighbour and chance tests; the system must be on the map allow-list with a site); LOC=1 (loc_mode 1 and loc/trf_en.loc copied to Data/LocData/English/, CHECK E0.6; unset removes the copy;
 # loc/trf_ru.loc, the station voices keys in Russian, goes to Data/LocData/Russian/ the same way when the clone has that folder).
 # VOICE_EVENTS=0|1 (station events, design/station-voices-spec.md 17).
+# SURVIVORS=0|1 (cfg enable_survivors, survivors and beacons, design/survivors-spec.md); SV_SEEDED=0|1 (credited
+# beacons seeded on entry), SV_SLAVERS=0|1 (off-screen slaver roll), SV_CH4=0|1 (witnessed beacons in chapter 4 free
+# time), SV_DK=0|1 (difficulty factor in the pay); written only when set.
 # NEWS=1: the trf_* records of news/trf_news.xml (tools/gen_news.py) merged into the clone's Data/Game/News.xml
 # (the vanilla file is kept as News.xml.trf-orig), loc/trf_en.loc copied as with LOC=1, and news_mode=2 unless
 # NEWS_MODE is set; unset restores News.xml from News.xml.trf-orig.
@@ -68,7 +71,7 @@ for k in OVERRIDE DUMP GUARD ENABLED CYCLE PROSPERITY TIER_CAP BAND_HALF PARKED 
          HAIL_START BOARD SHOP_MODE SHORT_PRICE RESTORE NEWS_MODE HEAT_WAR STRICT TRANSIT SOS_MODE COMBAT HAIL_QUIET \
          TRACK CONV DEMAND HEAT_OFFER CARRIERS SALVAGE SALV_ADDMOD CLAN_ACE SWEEPS SWEEP_CT PO TT4 TT4_SPLIT FEQ \
          FORCED_BUST DCONV DC_SPEED BASES BASE_GLOW WRECK ESC_FLIGHT VOICE VOICE_MOODS VOICE_DOCK VOICE_NEWS VOICE_FEE VOICE_GATE \
-         WB_BOX_AFTER_FEE VOICE_EVENTS; do
+         WB_BOX_AFTER_FEE VOICE_EVENTS SV_SEEDED SV_SLAVERS SV_CH4 SV_DK; do
     eval v=\${$k:-}
     [ -z "$v" ] && continue
     case "$v" in *[!0-9]*) echo "$k must be a non-negative integer" >&2; exit 1;; esac
@@ -83,6 +86,7 @@ if [ -n "${BASE_AT:-}" ]; then
     opt="$opt, base_at=\"$(printf '%s' "$BASE_AT" | tr 'A-Z' 'a-z')\""
 fi
 case "${LOC:-0}" in 0) ;; 1) opt="$opt, loc_mode=1" ;; *) echo "LOC must be 0 or 1" >&2; exit 1;; esac
+case "${SURVIVORS:-}" in "") ;; 0|1) opt="$opt, enable_survivors=$SURVIVORS" ;; *) echo "SURVIVORS must be 0 or 1" >&2; exit 1;; esac
 if [ -n "${PRO_SET:-}" ]; then
     ps=""
     for e in $(printf '%s' "$PRO_SET" | tr ',' ' '); do

@@ -1147,6 +1147,8 @@ function TRF_RegionTick(L)
 	TRF_P("TRF_Faction_Tick", L);
 	TRF_P("TRF_Clan_Tick", L);
 	TRF_P("TRF_Convoy_Tick", L);
+	-- Survivors (design/survivors-spec.md): region budget reset at Raids, off-screen slaver roll, expiry.
+	TRF_P("TRF_Sv_RegionTick", L);
 end;
 
 -- Forced Bust (v1 8.3): every slot with ct bit 4 clears it; in Quiet, Boom or Build-up with sc < 75 and a

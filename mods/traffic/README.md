@@ -17,6 +17,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_loc.script`, `trf_track.script`, `trf_faction.script`, `trf_clan.script`, `trf_convoy.script`, `trf_danger.script`, `trf_supply.script`, `trf_base.script` | v1 (`design/v1-spec.md` 10.1, load order 10.3): text tables and deny list; tracked pool; faction strength, sweeps and offers; clans T3–T4, carriers, salvage; TT4 and equipment convoys; danger convoys; supply convoys, demand cargo, heat reset; pirate bases. Each loads on its own. |
 | `trf_station.script` | Station voices ([design/station-voices-spec.md](design/station-voices-spec.md)): closed-station moods, dockmaster standing, greetings, news, tips, fees and the local station events (ore barge, tanker shuttle, refugee launch). Loads after `trf_plumb`. |
 | `trf_plumb.script` | Worldbuilding plumbing ([design/wb-plumbing-spec.md](design/wb-plumbing-spec.md)): the dock dispatcher behind the trade, patrol, pirate and request wrappers, the `_NoneStation_Action` chain, the `CostOfHead` wrapper and the `Case_Eject` handler list, the visit slots (box lock, scripted event, escort, arrival lines), the job slot, owed payers, ship caps, nav markers, 8.5 raid-help resolvers and the group-prefix orphan scan. Loads after the v1 files, before `trf_station`. |
+| `trf_survive.script` | Survivors and beacons step 1 ([design/survivors-spec.md](design/survivors-spec.md)): escape pods and a radio beacon after an FTU freighter loss (witnessed: standing only) or seeded on entry into a raided system (credits, region budget, fixed roll), pickup by the mothership, hand-in at FTU trade docks, expiry, the off-screen slaver roll, rumours. Loads after `trf_station`. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -505,6 +506,37 @@ Shared infrastructure for the worldbuilding features (spec [design/wb-plumbing-s
 
 In-game checks: `module=plumb event=install cost_of_head_installed=true cost_of_head_wrapped=true` after each `module=core event=enter` and `event=load`; at a patrol station `module=hail event=board ... result=lines` then `module=plumb event=dock kind=patrol ... result=vanilla` and the patrol dialog; a station fee box OK gives `module=plumb event=dock kind=trade ... reason=after_fee`; after 15 game minutes in one system (3 legs of 300 s) `module=state event=leg_cap ... result=reached`.
 
+## Survivors and beacons (`EXP=0 TRAFFIC=1`)
+
+Survivors and beacons (proposal 6 step 1, spec [design/survivors-spec.md](design/survivors-spec.md), design `design/worldbuilding/06-survivors-beacons.md`) is one module, `trf_survive`, loaded after `trf_station` (`module=core event=loaded ... extra_count=3`). It uses the plumbing: a trade dock line at order 30, a seed provider that claims nothing, the arrival line queue and a nav marker. Implemented and host-tested (`sv-a`..`sv-g`), not run in the game.
+
+### What the player sees
+
+- From chapter 5 (in chapter 4 free time only the first case): when pirates kill an FTU freighter in the player's system and the player did not fire on it, 5 s later `Distress beacon: FTU freighter lost. Escape pods transmitting.`, and a radio buoy with one to three escape pods and a nav marker sit at the loss point for 4 legs. These survivors pay no credits, only standing.
+- Entering a system with `dis` 4+ or a region in Raids or Bust can show `FTU relay: a freighter went silent here. Its distress beacon is still transmitting.` (25 %, at most 2 per region and cycle, the same answer after a reload and the same jump). These survivors pay `0.15 x TRF_PayN` of that system each (about 230 cr early to 4,800 cr late), fixed when the beacon appears.
+- Fly the mothership within 60 units of a pod to take it aboard (`Survivor aboard.`); at most 6 aboard and from at most two systems (`No room for more survivors.`). Survivors kept more than 8 legs are handed to a passing patrol (no pay).
+- Dock at any FTU trade station: credits for the seeded survivors (`Survivors handed over to FTU. <n> credits transferred.`), help +1 (+2 in Recovery), heat -1 at most once per 10 legs, `pro` +1 in the loss systems (up to the phase target), dockmaster standing +1. In a denied system (New Kyoto, Earth, the Berserk X-systems, ...) or during a mission there only the credits are paid.
+- A beacon not visited in time goes silent (`The beacon in this system has gone silent.` on the next entry); in a T2+ region pirates may take the pods off-screen, and traders then say `Pirates picked up a freighter crew near <system>. Nobody will see them again.`
+
+### Config keys (survivors)
+
+`config.script` lists `enable_survivors=1`; the other keys read the module defaults. `install-test.sh` writes `SURVIVORS` (`enable_survivors`), `SV_SEEDED`, `SV_SLAVERS`, `SV_CH4` and `SV_DK` when set; tune keys go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `enable_survivors` | 1 | 0 turns the module off |
+| `sv_seeded`, `sv_slavers`, `sv_ch4`, `sv_dk` | 1 | seeded beacons, off-screen slaver roll, chapter 4 witnessed beacons, difficulty factor in the pay |
+| `sv_deny` | `{}` | extra system names without beacons |
+| tune `k_pod`, `sv_ttl`, `sv_carry`, `sv_carry_max`, `sv_max`, `sv_cd`, `sv_seed_chance`, `sv_seed_cyc`, `sv_heat_cd`, `sv_pick_r`, `sv_slave_off` | 15, 4, 8, 6, 4, 8, 25, 2, 10, 60, 35 | pay percent, lifetimes in legs, caps, cooldowns, seed chance and budget, pickup radius, off-screen roll (full list in the spec, section 6) |
+
+### Log lines (survivors)
+
+`module=survive event=loss ... result=beacon|none reason=<r>` per FTU loss in the system, `event=seed ... roll=<r> chance=25 budget_used=<n> budget=2 result=...` per entry (level 1 for a beacon and for `budget`, `roll`, `point`), `event=place ... found=<n> made=<n> deleted=<n>`, `event=pick ... distance=<d> left=<n>`, `event=hand kind=ftu ... pay=<n> ... result=paid|credits_only|skipped`, `event=expire`, `event=slaver_roll`, `event=dump`; full list in `design/log-events.md` (survive).
+
+### In-game checks (survivors)
+
+Experiments E-SV1 to E-SV5, E-SV8 and E-SV9 of the design, with the confirming lines in the spec section 10: placement (`event=place ... made=4 failed=0`), pickup at 8x (`event=pick ... distance=<= 60` for each pod, no `ScriptErrors.log` line), save and load in the system (`event=place ... found=3 made=0 ... reason=load`), hand-in once per docking (`event=hand ... result=paid` and `module=region event=pay reason=sv`), loss detection (`event=loss ... position_source=ship`), the marker (`module=plumb event=marker owner=sv ... result=added`), the roll across a reload (the same `event=seed ... roll=<r>`).
+
 ## Installing into the game
 
 The release zip `sw3-traffic-<v>.zip` (built by `release.sh`) or this folder:
@@ -567,9 +599,9 @@ Movie and UI natives (`pe/traffic.c`, [design/mod-research/movie-state.md](desig
 ## Host checks (no game)
 
     mods/traffic/tools/get-lua4.sh                       # builds .work/lua4/bin/lua once
-    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment + v0.1 scenarios a..g (tests/host_traffic.lua) + v0.2 scenarios v02-a..n (tests/host_v02.lua) + v1 scenarios v1-a..n (tests/host_v1.lua) + station voices stn-a..f (tests/host_station.lua) + plumbing pl-a..e (tests/host_plumb.lua)
+    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment + v0.1 scenarios a..g (tests/host_traffic.lua) + v0.2 scenarios v02-a..n (tests/host_v02.lua) + v1 scenarios v1-a..n (tests/host_v1.lua) + station voices stn-a..h (tests/host_station.lua) + plumbing pl-a..e (tests/host_plumb.lua) + survivors sv-a..g (tests/host_survive.lua)
     python3 -I mods/traffic/tools/lint_lua.py --allow TeleportToLocation,CustomTeleportate mods/traffic/Data/Scripts/Mods/Traffic/*.script
 
-The run prints one `== <scenario>: exit 0, <n> traffic lines, 0 fails` line per run (55 runs); any other line names the failed check. `v1-n` prints the worst-case save size by part (`HOST info TRF save size ...`).
+The run prints one `== <scenario>: exit 0, <n> traffic lines, 0 fails` line per run (64 runs); any other line names the failed check. `v1-n` prints the worst-case save size by part (`HOST info TRF save size ...`).
 
 `tests/host_stubs.lua` stubs the natives and emulates ClearGlobals with the T3 carry, the save writer's skip rule and string trigger actions (`s.."();"`). Its stubs check argument shapes against the game's usage (`NewTrigger` per kind, `CreateCarcass`, `GetCarcassCountInSphere`). With `TRF_AUTOSAVE=1` (runs `exp0-saves`, `exp2-saves`) it also stubs `AutoSave` and `GetQuestLabel` and checks the save kit: no save in the first system or during mission 1, one `AutoSave` per new system, none for a system already saved, stale timers after a jump or a load, and the cap of 6. It then runs entry, ticks (clock sum), the experiment dispatch, the E0.3 trigger chain, two wrapped jumps, a save/load with a reserved-key scan of `TRF`, a load without `TRF` and a load with a foreign `TRF` layout, and dumps `TRF`. It exits 1 on any script error or failed check. Set `LUA4` to use another interpreter.

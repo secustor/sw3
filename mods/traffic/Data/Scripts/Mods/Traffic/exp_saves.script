@@ -86,7 +86,7 @@ function TRF_Saves_Done()
 end;
 
 -- logfmt event line, module=exp kit=saves (design/log-format.md).
-function TRF_SvE(event, ...)
+function TRF_SavesE(event, ...)
 	tinsert(arg, 1, "saves"); tinsert(arg, 1, "kit"); tinsert(arg, 1, event); tinsert(arg, 1, "exp"); call(TRF_Lf, arg);
 end;
 
@@ -110,18 +110,18 @@ function TRF_Saves_OnActivate(fresh)
 	local why = TRF_Saves_Block(sys);
 	if why then
 		local c = TRF.exp.cnt or {};
-		TRF_SvE("skip", "system", sys, "reason", why, "enter_count", c.enter or 0, "cap", TRF_Saves_Opt().cap);
+		TRF_SavesE("skip", "system", sys, "reason", why, "enter_count", c.enter or 0, "cap", TRF_Saves_Opt().cap);
 		return;
 	end;
 	if type(NewTrigger) ~= "function" then
-		TRF_SvE("skip", "system", sys, "reason", "new_trigger_missing");
+		TRF_SavesE("skip", "system", sys, "reason", "new_trigger_missing");
 		return;
 	end;
 	local o = TRF_Saves_Opt();
 	local e = {st=1, gen=TRF.gen, key="TRF E0 "..sys};
 	TRF_Saves_Tab()[sys] = e;
 	local t = TRF_Saves_Arm(e, o.delay);
-	TRF_SvE("armed", "system", sys, "delay", o.delay, "generation", e.gen, "timer", TRF_KvB(t and 1));
+	TRF_SavesE("armed", "system", sys, "delay", o.delay, "generation", e.gen, "timer", TRF_KvB(t and 1));
 end;
 
 -- 1 while a movie plays, else nil. TRF_InMovie returns 1/0, or -1 (unknown) when its byte check failed;
@@ -158,12 +158,12 @@ function TRF_Saves_Fire_Body(gen)
 	local e = nil;
 	if sys then e = TRF_Saves_Tab()[sys]; end;
 	if not TRF.active or gen ~= TRF.gen or type(e) ~= "table" or e.st ~= 1 or e.gen ~= gen then
-		TRF_SvE("stale_timer", "system", sys, "generation", gen, "current_generation", TRF.gen, "active", TRF_KvB(TRF.active));
+		TRF_SavesE("stale_timer", "system", sys, "generation", gen, "current_generation", TRF.gen, "active", TRF_KvB(TRF.active));
 		TRF_Saves_End(t);
 		return;
 	end;
 	if TRF_Saves_Done() >= TRF_Saves_Opt().cap then
-		TRF_SvE("skip", "system", sys, "reason", "cap_reached");
+		TRF_SavesE("skip", "system", sys, "reason", "cap_reached");
 		TRF_Saves_End(t);
 		return;
 	end;
@@ -177,14 +177,14 @@ function TRF_Saves_Fire_Body(gen)
 		local sos, dis = TRF_KvB(__sys_SOS), TRF_KvB(__disableAction);
 		if e.try > o.retries then
 			e.st = 3;
-			TRF_SvE("gave_up", "system", sys, "sos", sos, "disable_action", dis, "movie", TRF_KvB(mov), "ui_state", ui,
+			TRF_SavesE("gave_up", "system", sys, "sos", sos, "disable_action", dis, "movie", TRF_KvB(mov), "ui_state", ui,
 				"retries", o.retries);
 			TRF_Saves_End(t);
 			return;
 		end;
 		TRF_Saves_Arm(e, o.delay, t);
 		if e.try == 1 or e.try == o.retries or e.try == 5 * floor(e.try / 5) then
-			TRF_SvE("deferred", "system", sys, "sos", sos, "disable_action", dis, "movie", TRF_KvB(mov), "ui_state", ui,
+			TRF_SavesE("deferred", "system", sys, "sos", sos, "disable_action", dis, "movie", TRF_KvB(mov), "ui_state", ui,
 				"retry", e.try, "retries", o.retries);
 		end;
 		return;
@@ -192,7 +192,7 @@ function TRF_Saves_Fire_Body(gen)
 	if type(e.q) ~= "number" then
 		e.q = gt;
 		TRF_Saves_Arm(e, o.quiet, t);
-		TRF_SvE("quiet", "system", sys, "quiet", o.quiet, "game_time", TRF_F(gt));
+		TRF_SavesE("quiet", "system", sys, "quiet", o.quiet, "game_time", TRF_F(gt));
 		return;
 	end;
 	if gt - e.q < o.quiet then
@@ -200,24 +200,24 @@ function TRF_Saves_Fire_Body(gen)
 		e.try = (e.try or 0) + 1;
 		if e.try > o.retries then
 			e.st = 3;
-			TRF_SvE("gave_up", "system", sys, "reason", "quiet", "quiet_elapsed", TRF_F(gt - e.q), "retries", o.retries);
+			TRF_SavesE("gave_up", "system", sys, "reason", "quiet", "quiet_elapsed", TRF_F(gt - e.q), "retries", o.retries);
 			TRF_Saves_End(t);
 			return;
 		end;
 		TRF_Saves_Arm(e, o.quiet, t);
-		TRF_SvE("quiet", "system", sys, "quiet", o.quiet, "quiet_elapsed", TRF_F(gt - e.q), "retry", e.try, "retries", o.retries);
+		TRF_SavesE("quiet", "system", sys, "quiet", o.quiet, "quiet_elapsed", TRF_F(gt - e.q), "retry", e.try, "retries", o.retries);
 		return;
 	end;
 	-- Marked before the call so the save itself records the system as done; the trigger is deleted before
 	-- it too, so the save does not list it.
 	e.st = 2;
 	TRF_Saves_End(t);
-	TRF_SvE("autosave", "system", sys, "key", e.key);
+	TRF_SavesE("autosave", "system", sys, "key", e.key);
 	if type(AutoSave) ~= "function" then
-		TRF_SvE("autosave", "system", sys, "result", "auto_save_missing");
+		TRF_SavesE("autosave", "system", sys, "result", "auto_save_missing");
 		return;
 	end;
 	AutoSave(e.key);
 end;
 
-TRF_SvE("top_level_load");
+TRF_SavesE("top_level_load");

@@ -563,6 +563,8 @@ function TRF_Ev_Kill(id, rec, h)
 		"kill_count", L.kills, "ship_count", rec.np);
 	call(TRF_Ev_KillV2, {id, rec, by, idx}, "x", TRF_PErr);
 	call(TRF_Ev_KillV1, {id, rec, by, idx}, "x", TRF_PErr);
+	-- Survivors (design/survivors-spec.md): the witnessed loss and its beacon, before the record is stripped.
+	TRF_P("TRF_Sv_OnLoss", id, rec, h, by, idx);
 	TRF_Ev_Close(id, rec, "kill");
 end;
 

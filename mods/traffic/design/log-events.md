@@ -395,6 +395,32 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `orphan` | `module=plumb event=orphan deleted_count=2 global_count=1` (load: ships `trf_<prefix>_<n>_<j>`, globals `TRF_G<prefix>_*`) | 1 |
 | `dump` | `module=plumb event=dump box_holder=nil event_slot=staged escort=nil arrival_count=1 job=nil marker_count=0 jumps=12 real_seconds=3600.500 visit_tick_legs=2 line_count=4 box_count=3 cap_count=0 cost_of_head_wrapped=true` | 1 |
 
+## survive (`trf_survive.script`; `TRF_SvE`, `TRF_SvDE`)
+
+Survivors and beacons, step 1 (`design/survivors-spec.md` 7).
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=survive event=error message=<m>` | 1 |
+| `loss` | `module=survive event=loss trader_id=17 fire=false help=true system=gaoba pods=2 position_source=ship mode=full result=beacon beacon=1` (no beacon: `result=none reason=<chapter, owner, station_event, fire, disable_action, sys_sos, suppressed, deny, deny_story, gate:<why>, mode:<why>, record, cooldown, governor, position, portal, station>`) | 1 |
+| `seed` | `module=survive event=seed system=gaoba roll=5 chance=25 region=5 budget_used=1 budget=2 pods=1 pay=2970 pay_pirate=4950 result=beacon beacon=1` (none: `result=none reason=<budget, roll, point>` at level 1; `off, chapter, plan, chase, sweep, carrier, feq, deny, gate:<why>, record, cooldown, region, quiet` at level 2) | 1 |
+| `place` | `module=survive event=place system=gaoba beacon=1 found=0 made=3 deleted=0 failed=0 pods_before=2 pods=2 reason=enter` (reason loss, enter, load); `... beacon=1 result=skipped reason=gate:quest` | 1 |
+| `pick` | `module=survive event=pick system=gaoba beacon=1 pod=2 distance=23.1 left=1 carried=1 credits=0` | 1 |
+| `full` | `module=survive event=full system=gaoba beacon=1 carried=6 carry_max=6` | 1 |
+| `pod_lost` | `module=survive event=pod_lost system=gaoba beacon=1 pod=2 left=1` | 1 |
+| `beacon_lost` | `module=survive event=beacon_lost system=gaoba beacon=1 pods=2` | 1 |
+| `hand` | `module=survive event=hand kind=ftu system=gaoba carried=3 pay=7290 help_before=4 help=5 heat_before=1 heat=0 heat_rule=applied prosperity=gaoba:4->5 result=paid` (`heat_rule` applied, cooldown, zero); `... carried=2 pay=3000 result=credits_only reason=deny`; `... carried=2 result=skipped reason=deny` | 1 |
+| `expire` | `module=survive event=expire system=gaoba beacon=1 pods=2 source=1 slaver=0 age=5 reason=ttl` (reason ttl, cap); `module=survive event=expire kind=carried carried=2 credits=900 age=9 reason=carry` | 1 |
+| `slaver_roll` | `module=survive event=slaver_roll system=gaoba beacon=1 tier=2 roll=12 chance=35 leg=40 result=taken` (`result=kept` at level 2) | 1 |
+| `budget_reset` | `module=survive event=budget_reset region=5 leg=40 budget_used=2` | 1 |
+| `enter` | `module=survive event=enter system=gaoba mode=full seed_plan=ok beacon=1 seeded=true pods=2 lines=svseed beacon_count=1` | 1 |
+| `load` | `module=survive event=load system=gaoba beacon=1 pods=2` (gated: `result=skipped reason=gate:quest`) | 1 |
+| `dump` | `module=survive event=dump beacon_count=1 beacons=gaoba:2/2/0/40/2/0/2430 carried=1 credits=2430 pirate_credits=0 rescued=7 sold=0 lost=2 cooldowns=gaoba:40 region_budget=5:1/2 heat_leg=31 silent=nil rumour=nil seed=1234` | 1 |
+| `near` | `module=survive event=near system=gaoba beacon=1 distance=380.2` | 2 |
+| `clear` | `module=survive event=clear system=gaoba deleted_count=3 reason=jump` | 2 |
+| `jump` | `module=survive event=jump system=gaoba deleted_count=3` | 2 |
+| `rumour` | `module=survive event=rumour system=heos rumour_system=gaoba kind=svrumtaken` | 2 |
+
 ## supply (`trf_supply.script`; `TRF_SpE`)
 
 | Event | Example line | Level |
@@ -514,7 +540,7 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `recovery` | `module=events event=recovery recovery_count=2 result=cap` / `event=recovery system_index=46 recovery_count=1` | 2 (`result=cap`), 1 |
 | `escorts_removed` | `module=events event=escorts_removed trader_id=1 reason=exit` / `reason=out_of_view distance=900.000` | 1 |
 
-## exp (`exp_trader.script`, `exp_saves.script`, `exp_hooks.script`, `exp_state.script`; `TRF_TxE`, `TRF_SvE`, `TRF_HkE`, `TRF_EsE`)
+## exp (`exp_trader.script`, `exp_saves.script`, `exp_hooks.script`, `exp_state.script`; `TRF_TxE`, `TRF_SavesE`, `TRF_HkE`, `TRF_EsE`)
 
 All lines are `module=exp event=<e> kit=<trader|saves|hooks|state> ...`; rows that start with `event=` leave out `module=exp`.
 
