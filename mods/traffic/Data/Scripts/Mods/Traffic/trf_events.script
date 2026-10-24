@@ -496,14 +496,17 @@ function TRF_Ev_ProAdd(idx, d, why)
 	if type(idx) == "number" and type(TRF_ProAdd) == "function" then call(TRF_ProAdd, {idx, d, why}, "x", TRF_PErr); end;
 end;
 
--- Shortage of class cls at system idx for L_short legs (7.2), through trf_shop.
-function TRF_Ev_Short(idx, cls)
+-- Shortage of class cls at system idx for L_short legs (7.2), through trf_shop. pk = 1: the lost trader took
+-- counted player-group fire (rec.pa), so the shortage is never a relief target (00 section 6).
+function TRF_Ev_Short(idx, cls, pk)
 	if type(idx) ~= "number" or type(TRF_ShortAdd) ~= "function" then return; end;
 	local c = cls;
 	if type(c) ~= "number" or c < 1 or c > 6 then c = 6; end;
 	local legs = 0;
 	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then legs = TRF.clock.legs; end;
-	call(TRF_ShortAdd, {idx, c, legs + TRF_Ev_Tune("L_short", 6)}, "x", TRF_PErr);
+	local p = nil;
+	if pk == 1 then p = 1; end;
+	call(TRF_ShortAdd, {idx, c, legs + TRF_Ev_Tune("L_short", 6), p}, "x", TRF_PErr);
 end;
 
 -- v0.2 kill effects (5.2, 5.4, 5.6, 7.2, 9.1, 9.6): the trader's raid record (no pay), clan +1 when an open
@@ -520,7 +523,11 @@ function TRF_Ev_KillV2(id, rec, by, idx)
 			if type(slot) == "number" then TRF_N("TRF_ClanAdd", slot, 1, "raid kill "..id); end;
 		end;
 	end;
-	if rec.path == "A" then TRF_Ev_Short(idx, rec.cls); end;
+	if rec.path == "A" then
+		local pk = nil;
+		if type(rec.pa) == "number" then pk = 1; end;
+		TRF_Ev_Short(idx, rec.cls, pk);
+	end;
 	if type(L.ct) == "table" and L.ct.id == id then TRF_N("TRF_CtLost", id); end;
 	local d = -1;
 	if by == "player" and not TRF_Ev_Own(rec) then d = -3; end;
@@ -919,12 +926,25 @@ function TRF_Ev_Butcher(pilot)
 	return nil;
 end;
 
--- Case_Eject thunk target: the vanilla result is returned unchanged.
+-- Case_Eject thunk target. With trf_plumb its handler list runs (TRF_PlEject: the vanilla result, then the
+-- handlers; this module's is TRF_Ev_EjectH); without it the vanilla result is returned unchanged.
 function TRF_CaseEject(pilot)
+	if type(TRF_PlEject) == "function" then return TRF_PlEject(pilot, "TRF_orig_Case_Eject"); end;
 	local r = 2;
 	if type(TRF_orig_Case_Eject) == "function" then r = TRF_orig_Case_Eject(pilot); end;
 	call(TRF_Ev_PirEject, {pilot}, "x", TRF_PErr);
 	return r;
+end;
+
+-- Case_Eject handler (trf_plumb): the pirate watch; the result is not changed.
+function TRF_Ev_EjectH(pilot, r, ne)
+	call(TRF_Ev_PirEject, {pilot}, "x", TRF_PErr);
+	return nil;
+end;
+
+-- Registrations (trf_plumb TRF_InstallPlumb).
+function TRF_Events_Plumb()
+	TRF_EjectReg("TRF_Ev_EjectH");
 end;
 
 -- One killed pirate flight: dis - 1 in the current system, at most rec_max per visit. kind: "pirate"

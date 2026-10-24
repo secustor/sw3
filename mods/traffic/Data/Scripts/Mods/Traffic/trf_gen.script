@@ -1540,45 +1540,114 @@ end;
 -- with an identity (a pirate tip-off, b tracked record treated as docked), 6 plain seed. Tracked portal
 -- arrivals run beside it (handoff_max with item 1). Each provider is nil without its module, so the v0.2
 -- draws stay the same. Sets live.ent ("staged", "seed", "sweep", "feq", "po", "none") and returns it.
+-- The steps are seed providers fn(c) in the arrival-seed order of 00 section 6 (chased record > sweep >
+-- equipment convoy > staged raid > #8 freighter > #5 captain > tracked docked record > plain seed), registered
+-- with trf_plumb's TRF_SeedReg by TRF_Gen_Plumb; without trf_plumb the same list (TRF_GnSeedDef) runs. c =
+-- {L, tk, nh, nost (no staged raid), noseed (reason no seed runs), idn (tracked dock record), done (stop)}.
+-- The scripted events (sweep, equipment convoy, staged raid) take trf_plumb's event slot themselves.
 function TRF_EntryPlan()
 	local L = TRF_GnLive();
 	if not L then return nil; end;
 	if L.ent then return L.ent; end;
 	L.ent = "none";
 	if not TRF_GenReady() or TRF_GnModeQ() ~= "mod" then return L.ent; end;
-	local nost, noseed = nil, nil;
 	local tk = TRF_GnX("TRF_TrackEntry");
 	if type(tk) ~= "table" then tk = {}; end;
-	local nh, hm = 0, TRF_GnTv("handoff_max", 2);
+	local c = {L=L, tk=tk, nh=0};
+	if type(tk.dock) == "table" and type(tk.dock[1]) == "number" then c.idn = tk.dock[1]; end;
+	local l = nil;
+	if type(TRF_SeedList) == "function" then l = TRF_SeedList(); end;
+	if type(l) ~= "table" then l = TRF_GnSeedDef(); end;
+	for i = 1, getn(l) do
+		local f = l[i];
+		if type(f) == "string" then f = getglobal(f); end;
+		if type(f) == "function" then TRF_GnP(f, {c}); end;
+		if c.done then break; end;
+	end;
+	return L.ent;
+end;
+
+-- Seed providers with their TRF_SeedReg priorities (00 section 6 arrival-seed order; 400 #8 freighter and 300
+-- #5 captain are left to those features). The carrier raid keeps its v1 8.6 place after the sweep.
+function TRF_GnSeedPrio()
+	return {{800, "TRF_GnSeedChase"}, {700, "TRF_GnSeedSweep"}, {650, "TRF_GnSeedCarrier"}, {600, "TRF_GnSeedFeq"},
+		{500, "TRF_GnSeedStaged"}, {250, "TRF_GnSeedHold"}, {200, "TRF_GnSeedPo"}, {100, "TRF_GnSeedPlain"}};
+end;
+
+function TRF_GnSeedDef()
+	local p, o = TRF_GnSeedPrio(), {};
+	for i = 1, getn(p) do tinsert(o, p[i][2]); end;
+	return o;
+end;
+
+-- Registrations (trf_plumb TRF_InstallPlumb).
+function TRF_Gen_Plumb()
+	local p = TRF_GnSeedPrio();
+	for i = 1, getn(p) do TRF_SeedReg(p[i][1], p[i][2]); end;
+end;
+
+-- 1 chased tracked arrival (no staged raid) and the tracked portal arrivals (handoff_max with it).
+function TRF_GnSeedChase(c)
+	local tk = c.tk;
+	local hm = TRF_GnTv("handoff_max", 2);
 	if type(tk.chase) == "number" then
 		local a, b = TRF_GnTv("track_chase_min", 5), TRF_GnTv("track_chase_max", 15);
-		if TRF_Due(a + TRF_GnRand(max(1, b - a + 1)), "TRF_TrackSpawn", tk.chase, "chase") then nh = 1; nost = 1; end;
+		if TRF_Due(a + TRF_GnRand(max(1, b - a + 1)), "TRF_TrackSpawn", tk.chase, "chase") then c.nh = 1; c.nost = 1; end;
 	end;
 	if type(tk.port) == "table" then
 		local a, b = TRF_GnTv("track_port_min", 60), TRF_GnTv("track_port_max", 120);
 		for i = 1, getn(tk.port) do
-			if nh < hm and type(tk.port[i]) == "number" and TRF_Due(a + TRF_GnRand(max(1, b - a + 1)), "TRF_TrackSpawn", tk.port[i], "port") then nh = nh + 1; end;
+			if c.nh < hm and type(tk.port[i]) == "number" and TRF_Due(a + TRF_GnRand(max(1, b - a + 1)), "TRF_TrackSpawn", tk.port[i], "port") then c.nh = c.nh + 1; end;
 		end;
 	end;
-	if TRF_GnX("TRF_SweepEntry") then nost = 1; noseed = "sweep"; end;
-	if TRF_GnX("TRF_CarrierEntry") then nost = 1; end;
-	if not noseed and TRF_GnX("TRF_FeqEntry") then nost = 1; noseed = "feq"; end;
-	if not nost and TRF_GnX("TRF_StagedRoll") then
-		L.ent = "staged";
+end;
+
+-- 2a on-screen sweep: no staged raid, no seed.
+function TRF_GnSeedSweep(c)
+	if TRF_GnX("TRF_SweepEntry") then c.nost = 1; c.noseed = "sweep"; end;
+end;
+
+-- 2b carrier raid: no staged raid.
+function TRF_GnSeedCarrier(c)
+	if TRF_GnX("TRF_CarrierEntry") then c.nost = 1; end;
+end;
+
+-- 3 equipment convoy when no sweep plays: no staged raid, no seed.
+function TRF_GnSeedFeq(c)
+	if not c.noseed and TRF_GnX("TRF_FeqEntry") then c.nost = 1; c.noseed = "feq"; end;
+end;
+
+-- 4 staged raid: takes the seed's place.
+function TRF_GnSeedStaged(c)
+	if not c.nost and TRF_GnX("TRF_StagedRoll") then
+		c.L.ent = "staged";
 		TRF_GnE("entry_plan", "reason", "staged", "result", "no_seed");
-		noseed = "staged";
+		c.noseed = "staged";
 	end;
-	local idn = nil;
-	if type(tk.dock) == "table" and type(tk.dock[1]) == "number" then idn = tk.dock[1]; end;
-	if noseed then
-		if L.ent == "none" then L.ent = noseed; end;
-		-- A displaced identity seed undocks when that event ends (TRF_SeedResume).
-		if idn or type(TRF_PoEntry) == "function" then L.sdq = {i=idn, p=1}; end;
-		if noseed ~= "staged" then TRF_GnE("entry_plan", "reason", noseed, "result", "no_seed"); end;
-		return L.ent;
+end;
+
+-- An event took the seed's place: the identity seed waits for its end (TRF_SeedResume); stops the list.
+function TRF_GnSeedHold(c)
+	if not c.noseed then return; end;
+	local L = c.L;
+	if L.ent == "none" then L.ent = c.noseed; end;
+	if c.idn or type(TRF_PoEntry) == "function" then L.sdq = {i=c.idn, p=1}; end;
+	if c.noseed ~= "staged" then TRF_GnE("entry_plan", "reason", c.noseed, "result", "no_seed"); end;
+	c.done = 1;
+end;
+
+-- 5a pirate tip-off seed.
+function TRF_GnSeedPo(c)
+	if TRF_GnX("TRF_PoEntry") then
+		TRF_GnPoSeed(c.L);
+		c.done = 1;
 	end;
-	if TRF_GnX("TRF_PoEntry") then return TRF_GnPoSeed(L); end;
-	return TRF_GnSeedPlan(L, idn);
+end;
+
+-- 5b tracked docked record, 6 plain seed.
+function TRF_GnSeedPlain(c)
+	TRF_GnSeedPlan(c.L, c.idn);
+	c.done = 1;
 end;
 
 -- Pirate tip-off seed (7.5 fulfil, 8.6 item 5a): the seed without the chance roll; TRF_SeedSpawn marks the

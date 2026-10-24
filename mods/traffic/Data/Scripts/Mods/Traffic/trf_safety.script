@@ -1166,6 +1166,8 @@ function TRF_CanSpawn(nships, kind, ev)
 	if L.gv ~= 1 then TRF_Governor(); else TRF_SafeCaps(); end;
 	local ntr, nsh = TRF_SafeCountOf(L.tr);
 	local npk = TRF_SafeParkedOf(L.pk);
+	-- Ships of the groups registered with trf_plumb's TRF_CapReg count in cap_ships (00 section 6).
+	if type(TRF_CapShips) == "function" then nsh = nsh + TRF_SafeNum(call(TRF_CapShips, {}, "x", TRF_PErr), 0); end;
 	local nrf, nrs = TRF_SafeRaidsOf(L.rd);
 	local gate = 1;
 	if kind == "clan" then gate = TRF_StrictOk(nil, "raid"); elseif kind ~= "trader" then gate = TRF_StrictOk(nil, kind); end;

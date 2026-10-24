@@ -10,6 +10,7 @@ Log keys (mod scripts, not --host; design/log-format.md): TRF_Lf(module, event, 
 snake_case module and event ([a-z][a-z0-9_]*), a module wrapper TRF_<Mod>E(event, k1, v1, ...) a literal
 snake_case event; every key that is a string literal (Lf: 3rd, 5th, ...; *E: 2nd, 4th, ...) must be snake_case.
 The pre-logfmt string helpers (TRF_<Mod>L, TRF_<Mod>Dbg) are findings, as is TRF_L outside traffic.script.
+Group names: a "TRF_<Name>_" or "TRF_G<Name>_" literal joined with '..' must use a name of GROUP_PREFIXES.
 """
 import argparse
 import os
@@ -34,6 +35,12 @@ PREFIX = "TRF_"
 SNAKE = re.compile(r"[a-z][a-z0-9_]*$")
 LOG_WRAPPER = re.compile(r"TRF_[A-Za-z]*E$")    # module log wrapper TRF_<Mod>E(event, k1, v1, ...)
 OLD_LOG = re.compile(r"TRF_(L|[A-Za-z]*(L|Dbg))$")  # pre-logfmt string helpers: only TRF_Lf may call TRF_L
+# Group and allocator prefixes (design/worldbuilding/00-economy-and-progression.md section 6, "Group and allocator
+# names"; design/wb-plumbing-spec.md 9): a "TRF_<Name>_" literal joined with '..' (a group name built at run time)
+# or its group global "TRF_G<Name>_" must use a listed name. All-capital names are labels, not groups.
+GROUP_PREFIXES = set("Raid Pir Resp Trade Feq Conv Sweep SwP PBase Car "
+                     "Cust Scv Cap Esc Def Pick Push Merc Rival Fw".split())
+GROUP_LIT = re.compile(r'"TRF_(G?)([A-Z][A-Za-z]*)_"$')
 
 TOKEN = re.compile(r"""
     (?P<nl>\n)
@@ -133,6 +140,10 @@ def lint(path, allow, bools, host=False):
         elif kind == "str" and not host and reserved(val[1:-1]) and prev == "[" and i + 2 < n \
                 and v[i + 1] == "]" and v[i + 2] == "=":
             add(ln, "reserved name %s used as a table key (dropped by save/clear)" % val)
+        elif kind == "str" and not host and nxt == ".." and GROUP_LIT.match(val):
+            gm = GROUP_LIT.match(val)
+            if not gm.group(2).isupper() and gm.group(2) not in GROUP_PREFIXES:
+                add(ln, "group prefix %s is not in GROUP_PREFIXES (00 section 6 allocator list)" % val)
         elif kind == "op":
             if val == "{":
                 braces += 1

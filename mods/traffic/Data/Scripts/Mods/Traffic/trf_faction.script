@@ -407,11 +407,36 @@ function TRF_FstAdd(f, d, why)
 	local old = TRF_FcDig(TRF.std.fst, f, 5);
 	local new = TRF_FcClamp(floor(old + d + 0.5), 0, 9);
 	if new ~= old then
+		local s0 = TRF.std.fst;
 		TRF.std.fst = TRF_FcSetDig(TRF.std.fst, f, new);
+		TRF_FstClamp(s0);
+		if TRF_Fst(f) == old then
+			TRF_FcE("faction_standing", "faction", TRF_FacTeam(f), "reason", tostring(why), "standing_before", old,
+				"standing_after", old, "result", "frozen");
+			return old;
+		end;
 		TRF_FcE("faction_standing", "faction", TRF_FacTeam(f), "reason", tostring(why), "standing_before", old,
 			"standing_after", new);
 	end;
 	return new;
+end;
+
+-- Once after each event that writes TRF.std.fst (00 section 6, 10-deserters.md:202): every digit clamped 0..9,
+-- and a faction whose team is at war with the player (relation W) keeps its digit of old (the string before
+-- the event; nil: clamp only). Returns the new string.
+function TRF_FstClamp(old)
+	if type(TRF) ~= "table" or type(TRF.std) ~= "table" then return nil; end;
+	local cur = TRF.std.fst;
+	if not TRF_FcDigOk(cur) then cur = "55555"; end;
+	if not TRF_FcDigOk(old) then old = nil; end;
+	local s = "";
+	for f = 1, 5 do
+		local v = TRF_FcClamp(TRF_FcDig(cur, f, 5), 0, 9);
+		if old and TRF_FcWar(TRF_FacTeam(f), PLAYER_TEAM) then v = TRF_FcDig(old, f, 5); end;
+		s = s..v;
+	end;
+	TRF.std.fst = s;
+	return s;
 end;
 
 -- Relation seed of f's groups toward PLAYER_GROUP: WAR at fst <= 2 or with the team at war, else NEUTRAL.
@@ -665,10 +690,12 @@ function TRF_Faction_Tick(L)
 		end;
 	end;
 	if TRF_FcCross(L, rt, TRF_FcT("fst_decay_legs")) and type(TRF.std) == "table" and TRF_FcDigOk(TRF.std.fst) then
-		local s = TRF_FcDrift(TRF.std.fst, 5);
-		if s ~= TRF.std.fst then
-			TRF_FcDE("faction_standing_drift", "standing_before", TRF.std.fst, "standing_after", s);
+		local s0 = TRF.std.fst;
+		local s = TRF_FcDrift(s0, 5);
+		if s ~= s0 then
 			TRF.std.fst = s;
+			s = TRF_FstClamp(s0);
+			if s ~= s0 then TRF_FcDE("faction_standing_drift", "standing_before", s0, "standing_after", s); end;
 		end;
 	end;
 	TRF_FcOfferExpire(L);
@@ -797,10 +824,12 @@ function TRF_SweepEntry()
 	if TRF_FcCombat() then return nil, "combat"; end;
 	local r = TRF_N("TRF_RgRec", slot);
 	if type(r) ~= "table" or type(r.sn) ~= "number" then return nil, "norec"; end;
+	-- Scripted-event slot (trf_plumb, 00 section 6): the on-screen sweep ranks first.
+	if type(TRF_EventSlotTake) == "function" and not TRF_EventSlotTake("sweep") then return nil, "event_slot"; end;
 	L.sw = {s=slot, k=r.sn + 1, st="wait", t=TRF_FcGt(), f=TRF_SweepOwner(slot), b=TRF_FcBaseA(slot)};
 	if L.sw.b ~= cur then L.sw.b = nil; end;
 	local dt = 20 + TRF_FcRand(21);
-	if not TRF_Due(dt, "TRF_SweepStart", TRF.gen) then L.sw = nil; return nil, "due"; end;
+	if not TRF_Due(dt, "TRF_SweepStart", TRF.gen) then L.sw = nil; TRF_N("TRF_EventSlotFree", "sweep"); return nil, "due"; end;
 	TRF_FcStat("sweep_entry");
 	TRF_FcE("sweep_entry", "slot", slot, "attempt", L.sw.k, "faction", L.sw.f, "delay", dt, "base", L.sw.b);
 	return 1;
@@ -1328,11 +1357,30 @@ function TRF_FcPoOrig(why)
 	end;
 end;
 
--- Installed over __PirStationDock_Ok: an offer box (the original runs after either button), else the
--- original at once. Any error in the mod part runs the original.
+-- Installed over __PirStationDock_Ok: the dock dispatcher of trf_plumb (kind pir: the owed payers, then one
+-- box, S35 offer first; the original once, after the answer when a box opened, design/wb-plumbing-spec.md 4).
+-- Without trf_plumb the original only.
 function TRF_PirDockOk()
-	local how = call(TRF_FcPoBody, {}, "x", TRF_FcErr);
-	if how ~= "box" then TRF_FcPoOrig(how or "error"); end;
+	if type(TRF_PlDock) == "function" then return TRF_PlDock("pir", "TRF_orig_PirOk", {}); end;
+	TRF_FcPoOrig("no_plumb");
+end;
+
+-- Registrations (trf_plumb TRF_InstallPlumb): the paid raid as an owed payer, the S35 offer box (prio 400).
+function TRF_Faction_Plumb()
+	TRF_OweReg("TRF_FcPoOwe");
+	TRF_DockBox("pir", 400, "TRF_FcPoBox");
+end;
+
+-- Owed payer (00 section 6): a fulfilled paid raid (offer k 3) pays at the next pirate docking outside a visible
+-- scene (TRF_Quiet, as before the dispatcher). Returns the line.
+function TRF_FcPoOwe(kind)
+	if kind ~= "pir" or type(TRF) ~= "table" or TRF_FcOpt("po", 1) == 0 or TRF_N("TRF_Quiet") then return nil; end;
+	local o = TRF.offer;
+	if type(o) ~= "table" or o.k ~= 3 then return nil; end;
+	local paid = TRF_N("TRF_Pay", o.p or 0, "po") or 0;
+	TRF.offer = nil;
+	TRF_FcE("offer_paid", "pay", paid);
+	return TRF_FcTxt("popaid", paid);
 end;
 
 -- 1 when idx may be an offer target: other system with a trade station, not a guard system while the guard
@@ -1377,7 +1425,16 @@ function TRF_FcIntelCost()
 	return floor(TRF_FcT("po_intel_cost") * (TRF_N("TRF_DK") or 1));
 end;
 
--- "box" when the offer box opened, else the reason (the caller runs the original).
+-- Box candidate of kind pir (S35, prio 400): the offer box spec, else nil (no offer; the reason in the debug
+-- log). The dispatcher has already skipped under __disableAction and __sys_SOS; a visible scene is tested here.
+function TRF_FcPoBox(kind)
+	local why = TRF_FcPoBody();
+	if type(why) == "table" then return why; end;
+	TRF_FcDE("pirdock", "reason", tostring(why), "result", "no_offer");
+	return nil;
+end;
+
+-- Offer box spec (L.po set), else the reason.
 function TRF_FcPoBody()
 	local L = TRF_FcLive();
 	if not L or type(TRF) ~= "table" then return "notrf"; end;
@@ -1385,13 +1442,6 @@ function TRF_FcPoBody()
 	if __disableAction == TRUE or TRF_N("TRF_Quiet") then return "flag"; end;
 	if TRF_FcOpt("po", 1) == 0 then return "off"; end;
 	local o = TRF.offer;
-	if type(o) == "table" and o.k == 3 then
-		local paid = TRF_N("TRF_Pay", o.p or 0, "po") or 0;
-		TRF.offer = nil;
-		TRF_FcSay(TRF_FcTxt("popaid", paid), 8);
-		TRF_FcE("offer_paid", "pay", paid);
-		return "paid";
-	end;
 	if type(o) == "table" then return "pending"; end;
 	local cur = TRF_FcCur();
 	local slot = TRF_FcSlotOf(cur);
@@ -1423,43 +1473,33 @@ function TRF_FcPoBody()
 	end;
 	if not k then return "notarget"; end;
 	local text = TRF_FcTxt("pooffer"..k, TRF_FcSysName(s), TRF_FcIntelCost());
-	if type(ShowMsgBox) ~= "function" then return "nobox"; end;
 	L.po = {k=k, s=s, w="box", g=TRF.gen};
-	-- CHECK (V9, v02 R4): a box opened inside the dock OK callback; fallback cfg po 0.
-	if not TRF_FcP(function(a, b) ShowMsgBox("#UI_StationC_confirm", a, TRF_PoOk, TRF_PoNo); return 1; end, {text}) then
-		L.po = nil;
-		return "boxfail";
-	end;
+	-- CHECK (V9, v02 R4, E0.6): a box opened inside the dock OK callback; fallback cfg po 0.
 	TRF_FcStat("po_box");
 	TRF_FcE("offer", "offer_kind", k, "system", TRF_FcSysName(s), "system_index", s);
-	return "box";
+	return {title="#UI_StationC_confirm", text=text, ok="TRF_FcPoAcc", no="TRF_FcPoDec", fail="TRF_FcPoFail", own="pirate_offer"};
 end;
 
--- Box callbacks: record the choice; TRF_PoStep (due call) acts and then runs the original.
-function TRF_PoOk() TRF_Cb("TRF_PoOk", TRF_FcPoCb, {1}); end;
-function TRF_PoNo() TRF_Cb("TRF_PoNo", TRF_FcPoCb, {0}); end;
+-- Box answers (trf_plumb runs the original afterwards).
+function TRF_FcPoAcc() TRF_FcPoStep(1); end;
+function TRF_FcPoDec() TRF_FcPoStep(0); end;
 
-function TRF_FcPoCb(c)
+-- The box could not open.
+function TRF_FcPoFail()
 	local L = TRF_FcLive();
-	if not L or type(L.po) ~= "table" or L.po.w ~= "box" or L.po.g ~= TRF.gen then TRF_FcPoOrig("stale"); return; end;
-	L.po.c = c;
-	L.po.w = "wait";
-	if not TRF_Due(0.1, "TRF_PoStep") then TRF_FcPoStep(); end;
+	if L then L.po = nil; end;
 end;
 
-function TRF_PoStep() call(TRF_FcPoStep, {}, "x", TRF_FcErr); TRF_FcPoOrigOnce(); end;
-
--- Runs the original unless TRF_FcPoStep already did (L.po cleared by TRF_FcPoOrig).
-function TRF_FcPoOrigOnce()
+-- Accept (c 1): offer = {k, s, t = legs + po_legs}; intel costs po_intel_cost x d_k. L.po is cleared.
+function TRF_FcPoStep(c)
 	local L = TRF_FcLive();
-	if L and type(L.po) == "table" then TRF_FcPoOrig("step"); end;
-end;
-
--- Accept: offer = {k, s, t = legs + po_legs}; intel costs po_intel_cost x d_k. Then the original.
-function TRF_FcPoStep()
-	local L = TRF_FcLive();
-	if not L or type(L.po) ~= "table" then return; end;
+	if not L or type(L.po) ~= "table" or L.po.w ~= "box" or L.po.g ~= TRF.gen then
+		if L then L.po = nil; end;
+		TRF_FcE("pirdock", "reason", "stale", "result", "no_offer");
+		return;
+	end;
 	local po = L.po;
+	po.c = c;
 	if po.c == 1 then
 		local ok = 1;
 		if po.k == 2 then
@@ -1480,7 +1520,7 @@ function TRF_FcPoStep()
 	else
 		TRF_FcDE("offer_decline");
 	end;
-	TRF_FcPoOrig("step");
+	L.po = nil;
 end;
 
 -- Offers of kind 1 or 2 past their leg are dropped.

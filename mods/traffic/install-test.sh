@@ -17,7 +17,8 @@
 # s), region phases and pro drift; TUNE=heat_decay=600 keeps heat at the T_leg=300 rate.
 # Optional v1 keys (design/v1-spec.md 10.5), written only when set: TRACK, CONV, DEMAND, HEAT_OFFER, CARRIERS, SALVAGE,
 # SALV_ADDMOD, CLAN_ACE, SWEEPS, SWEEP_CT, PO, TT4, TT4_SPLIT, FEQ, FORCED_BUST, DCONV, DC_SPEED, BASES, BASE_GLOW, WRECK
-# (integers); FEQ_AT=<system> (debug: the next leg schedules an equipment convoy there, skipping the pro/strength
+# (integers); WB_BOX_AFTER_FEE=0|1 (worldbuilding plumbing, design/wb-plumbing-spec.md 4.2: 1 allows an offer box at the
+# trade dock after a station fee box, set once E0.6 passes); FEQ_AT=<system> (debug: the next leg schedules an equipment convoy there, skipping the pro/strength
 # tests); BASE_AT=<system> (debug: the next leg founds a pirate base there, skipping the disruption hold, open sweep,
 # neighbour and chance tests; the system must be on the map allow-list with a site); LOC=1 (loc_mode 1 and loc/trf_en.loc copied to Data/LocData/English/, CHECK E0.6; unset removes the copy).
 # NEWS=1: the trf_* records of news/trf_news.xml (tools/gen_news.py) merged into the clone's Data/Game/News.xml
@@ -64,7 +65,8 @@ done
 for k in OVERRIDE DUMP GUARD ENABLED CYCLE PROSPERITY TIER_CAP BAND_HALF PARKED SEED QUEUE RAIDS STAGED CONTRACTS MEET \
          HAIL_START BOARD SHOP_MODE SHORT_PRICE RESTORE NEWS_MODE HEAT_WAR STRICT TRANSIT SOS_MODE COMBAT HAIL_QUIET \
          TRACK CONV DEMAND HEAT_OFFER CARRIERS SALVAGE SALV_ADDMOD CLAN_ACE SWEEPS SWEEP_CT PO TT4 TT4_SPLIT FEQ \
-         FORCED_BUST DCONV DC_SPEED BASES BASE_GLOW WRECK ESC_FLIGHT VOICE VOICE_MOODS VOICE_DOCK VOICE_NEWS VOICE_FEE VOICE_GATE; do
+         FORCED_BUST DCONV DC_SPEED BASES BASE_GLOW WRECK ESC_FLIGHT VOICE VOICE_MOODS VOICE_DOCK VOICE_NEWS VOICE_FEE VOICE_GATE \
+         WB_BOX_AFTER_FEE; do
     eval v=\${$k:-}
     [ -z "$v" ] && continue
     case "$v" in *[!0-9]*) echo "$k must be a non-negative integer" >&2; exit 1;; esac

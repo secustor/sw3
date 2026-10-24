@@ -1953,7 +1953,8 @@ function T_V1_N()
 	for i = 1, getn(TRF_Map().sys) do TRF_SetDis(i, 1 + mod(i, 8)); if TRF_ProCap(i) > 0 then TRF_SetPro(i, TRF_ProCap(i)); end; end;
 	TRF_SetDis(cur, 0);
 	TRF.short = {};
-	for i = 1, 9 do TRF_ShortAdd(i * 3, 1 + mod(i, 6), TRF.clock.legs + 6); end;
+	-- pk on every entry (player-caused, design/wb-plumbing-spec.md 11).
+	for i = 1, 9 do TRF_ShortAdd(i * 3, 1 + mod(i, 6), TRF.clock.legs + 6, 1); end;
 	TRF.shops = {};
 	for i = 1, 8 do tinsert(TRF.shops, {s=i * 3, sh=TRF_SysName(i * 3), c=1 + mod(i, 6)}); end;
 	TRF.std.help = 15; TRF.std.heat = 2;
@@ -2027,6 +2028,16 @@ function T_V1_N()
 	L.pg = {};
 	for k = 1, 8 do tinsert(L.pg, {n=9999, k=2, sv=1, st="on"}); end;
 	L.fsv = 2; L.fstv = {1, 1, 1, 1, 1};
+	-- Worldbuilding plumbing at its bounds (design/wb-plumbing-spec.md 12): one job of 6 fields of 24
+	-- characters, 8 markers with 24-character labels and 8-character owners, every visit slot, the clocks.
+	TRF.job = nil;
+	local jf = {};
+	for k = 1, 6 do jf["f"..k] = strrep("x", 24); end;
+	HOST_Check(TRF_JobTake(5, jf) == 1, "plumb worst case: job taken");
+	TRF.mk = "";
+	for k = 1, 8 do TRF.mk = TRF.mk.."TRF_"..strrep("m", 19)..k.."="..strrep("o", 8)..";"; end;
+	L.box = "dock_patrol"; L.bt = 99999.5; L.ev = "vendetta"; L.esc = "mercpack"; L.arq = 3; L.ag = 99999.5; L.bkd = ",join,bounty,";
+	TRF.clock.j = 99999; TRF.clock.rs = 999999.5; TRF.clock.vl = 3; TRF.std.ht = 99999;
 	-- Raids, due and stat at their bounds.
 	for k = 1, 10 do
 		local id = ids[1 + mod(k, getn(ids))];

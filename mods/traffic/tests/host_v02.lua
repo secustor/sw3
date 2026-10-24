@@ -1758,24 +1758,24 @@ function T_V02_L()
 	HOST_Check(TRF_HailIsMine(__PatrolStationDock_Ok) and not TRF_HailIsMine(TRF_orig_PatrolOk) and TRF_ShopIsMine(__TradeStationDock_Ok)
 		and not TRF_ShopIsMine(TRF_orig_TradeOk), "both dock functions wrapped over the vanilla originals");
 	HOST_Check(TRF_InstallBoard() == 0 and TRF_InstallTradeDock() == 0, "second install in the same MapInitialization: no double wrap");
-	-- Board: box before the original, original exactly once (OK).
+	-- Board (S19 answers as dock lines, trf_plumb kind patrol, design/wb-plumbing-spec.md 4): the report and boom
+	-- lines, then the original exactly once; no box without a board offer.
 	TRF_SetDis(V_Idx("aurora"), 5);
-	local p0, b0 = h.patrol_ok, getn(h.boxes);
+	local p0, b0, s0 = h.patrol_ok, getn(h.boxes), getn(h.screen);
 	V_PatrolDock();
-	local bx = HOST_Box();
-	HOST_Check(getn(h.boxes) == b0 + 2 and bx.title == "#UI_PatrolStationWndCaption" and strfind(bx.text, "Raids reported", 1, 1) and h.patrol_ok == p0,
-		"board: report box before the patrol dialog");
-	HOST_Press("ok");
-	HOST_Check(h.patrol_ok == p0 + 1 and getn(h.pdlgs) == 1, "board OK: original once");
+	local rl = nil;
+	for i = s0 + 1, getn(h.screen) do if strfind(h.screen[i].t, "Raids reported", 1, 1) then rl = 1; end; end;
+	HOST_Check(getn(h.boxes) == b0 + 1 and rl and getn(h.screen) >= s0 + 2 and h.patrol_ok == p0 + 1 and getn(h.pdlgs) == 1,
+		"board: report and boom lines, then the patrol dialog once (no box)");
 	-- Same text again: one line, then the original.
-	local s0 = getn(h.screen);
+	s0 = getn(h.screen);
 	V_PatrolDock();
-	HOST_Check(getn(h.boxes) == b0 + 3 and h.patrol_ok == p0 + 2 and getn(h.screen) == s0 + 1, "same report: screen line, then the original");
-	-- New text, Cancel: original exactly once.
+	HOST_Check(getn(h.boxes) == b0 + 2 and h.patrol_ok == p0 + 2 and getn(h.screen) == s0 + 1, "same report: screen line, then the original");
+	-- New text: the full report again, the original exactly once.
 	TRF_SetDis(V_Idx("argon"), 4);
+	s0 = getn(h.screen);
 	V_PatrolDock();
-	HOST_Press("cancel");
-	HOST_Check(h.patrol_ok == p0 + 3, "board Cancel: original once");
+	HOST_Check(h.patrol_ok == p0 + 3 and getn(h.screen) >= s0 + 2, "new report: lines, then the original once");
 	-- Flags: the original only.
 	__sys_SOS = TRUE;
 	b0, s0 = getn(h.boxes), getn(h.screen);

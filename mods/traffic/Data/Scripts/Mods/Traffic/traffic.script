@@ -16,6 +16,9 @@
 -- functions are skipped (TRF_P), so a failed v1 file only disables its features.
 -- Station voices (design/station-voices-spec.md 12.2): trf_station loads last, after the v1 files, counted in the
 -- load line as extra= (modules= keeps the v1 count); TRF_InstallStation runs after TRF_InstallTradeDock.
+-- Worldbuilding plumbing (design/wb-plumbing-spec.md): trf_plumb loads after the v1 files and before trf_station
+-- (also counted as extra=); TRF_InstallPlumb runs first after the loads (wraps CostOfHead, collects the module
+-- registrations of the dock dispatcher and the other shared registries).
 
 function TRF_Path(name)
 	return "DATA/Scripts/Mods/Traffic/"..name;
@@ -246,6 +249,7 @@ function TRF_OnEnter()
 	if TRF_Traffic() then
 		TRF_P("TRF_State_OnEnter", fresh);
 		TRF_P("TRF_Safety_OnEnter");
+		TRF_P("TRF_Pl_OnEnter");
 		TRF_P("TRF_Stn_OnEnter");
 		TRF.active = 1;
 	else
@@ -264,6 +268,9 @@ function TRF_OnActivate()
 	TRF_Count("activate");
 	if TRF_Traffic() then
 		TRF_P("TRF_State_OnActivate");
+		-- Entry time of the arrival lines (live.ag) before any module, so the entry plan's seed providers
+		-- (TRF_Gen_OnActivate) may queue a line.
+		TRF_P("TRF_Pl_OnActivate");
 		TRF_P("TRF_Safety_OnActivate");
 		TRF_P("TRF_Base_OnActivate");
 		TRF_P("TRF_Tier_OnActivate");
@@ -289,7 +296,7 @@ function TRF_OnLoad()
 		TRF_P("TRF_Tier_OnLoad");
 		TRF_P("TRF_Raid_OnLoad");
 		TRF_P("TRF_Hail_OnLoad");
-		local v1 = {"Base", "Track", "Clan", "Faction", "Convoy", "Danger", "Supply", "Stn"};
+		local v1 = {"Base", "Track", "Clan", "Faction", "Convoy", "Danger", "Supply", "Pl", "Stn"};
 		for i = 1, getn(v1) do TRF_P("TRF_"..v1[i].."_OnLoad"); end;
 		TRF.active = 1;
 		TRF_P("TRF_DumpState", "load");
@@ -353,9 +360,11 @@ function TRF_BeforeJump(dest, how)
 	TRF_Init();
 	TRF_Count("jump");
 	if TRF_Traffic() then
+		-- Jump counter TRF.clock.j (+1 here, never on load).
+		TRF_P("TRF_State_BeforeJump");
 		TRF_P("TRF_Hail_BeforeJump");
 		TRF_P("TRF_Track_BeforeJump", dest, how);
-		local v1 = {"Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Stn"};
+		local v1 = {"Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Pl", "Stn"};
 		for i = 1, getn(v1) do TRF_P("TRF_"..v1[i].."_BeforeJump"); end;
 		TRF_P("TRF_Raid_BeforeJump");
 		TRF_P("TRF_Gen_BeforeJump", dest);
@@ -438,8 +447,9 @@ function TRF_Main()
 			for i = 1, getn(v2) do if TRF_LoadFile(v2[i]) then nm = nm + 1; end; end;
 			local v1 = {"loc", "track", "faction", "clan", "convoy", "danger", "supply", "base"};
 			for i = 1, getn(v1) do if TRF_LoadFile("trf_"..v1[i]..".script") then nm = nm + 1; end; end;
-			local ex = {"station"};
+			local ex = {"plumb", "station"};
 			for i = 1, getn(ex) do if TRF_LoadFile("trf_"..ex[i]..".script") then ne = ne + 1; end; end;
+			TRF_P("TRF_InstallPlumb");
 			TRF_P("TRF_InstallGen");
 			TRF_P("TRF_InstallTradeDock");
 			TRF_P("TRF_InstallStation");

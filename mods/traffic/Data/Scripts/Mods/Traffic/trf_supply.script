@@ -1072,7 +1072,8 @@ function TRF_SpComply(id, r, h, cur)
 	TRF_SpX("TRF_AddHeat", 2, "demand "..id);
 	if type(cur) == "number" then
 		TRF_SpX("TRF_AddDis", cur, 1, "demand "..id);
-		if r.path == "A" then TRF_SpP(TRF_ShortAdd, {cur, r.cls}); end;
+		-- Player robbery: pk = 1, never a relief target (00 section 6).
+		if r.path == "A" then TRF_SpP(TRF_ShortAdd, {cur, r.cls, nil, 1}); end;
 	end;
 	TRF_SpX("TRF_TrackMark", id, "rob");
 	TRF_SpX("TRF_PoDone", id, "rob");

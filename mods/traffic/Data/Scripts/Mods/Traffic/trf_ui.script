@@ -799,8 +799,9 @@ function TRF_UI_Band(d)
 end;
 
 -- Due call from TRF_UI_OnActivate: once per entry (arr), also when not shown (no retry, design 8.1).
--- Returns 1 if shown.
-function TRF_ArrivalLine()
+-- Returns 1 if shown. (Named TRF_ArrivalLine before trf_plumb: that name is now the mod line queue,
+-- design/wb-plumbing-spec.md 5.4, whose lines follow this one at 3 s steps.)
+function TRF_UI_ArrivalLine()
 	local L = TRF_UI_Live();
 	if not L or L.arr then return nil; end;
 	L.arr = 1;
@@ -874,7 +875,7 @@ function TRF_UI_ArrDis(idx, band)
 	return text;
 end;
 
--- Due call from TRF_ArrivalLine: one pirate radio line in a system with an active base (v1-spec 9.3):
+-- Due call from TRF_UI_ArrivalLine: one pirate radio line in a system with an active base (v1-spec 9.3):
 -- "trade or move on" while Pirates and the player are not at war, else the war line. Once per activation:
 -- the saved base record gets a = 1 when the line is shown.
 function TRF_BaseRadioLine(idx)
@@ -920,7 +921,7 @@ function TRF_UI_OnActivate()
 		TRF_Due(TRF_UI_Tune("news_delay", 12), "TRF_NewsShow");
 	end;
 	if L.arr or TRF_UI_Opt("arrival_line", 1) == 0 then return; end;
-	TRF_Due(TRF_UI_Tune("arr_delay", 5), "TRF_ArrivalLine");
+	TRF_Due(TRF_UI_Tune("arr_delay", 5), "TRF_UI_ArrivalLine");
 end;
 
 -- News (v02-spec 8.2) ----------------------------------------------------------------

@@ -2,12 +2,15 @@
 -- Spec: design/v02-spec.md 5.6, 6.1-6.4, 10.1. The 70-unit announce and the hail arm are in trf_ui
 -- (TRF_OnMeet_Body, cfg meet 2); this file owns the focus request, the ShowMsgBox chain, the answers and
 -- the __PatrolStationDock_Ok wrapper. Top level defines functions only. State: TRF.live.hl (open box
--- chain), live.ct (contract), live.board / live.bgo / live.bk / live.bc (board); per trader record ha, hn,
+-- chain), live.ct (contract), live.board / live.bkd (board: last full report, declined offer kinds); per trader record ha, hn,
 -- hlt, hr (focus arms), trd, hd, nw, tu, bm (options used; tu was tb in v0.2, tb is v1 tracking bits), ct,
 -- hds (heat distress shown), hx (v1 options used, ",key,"). Log prefix "hl:".
 -- v1 (v1-spec 7.4, 8.4, 8.5, 10.2): option providers, the refusal box with demand cargo, the sweep
 -- offers in the hail (cfg board 2), v1 rumours, carrier and base words in the trouble answer, the
 -- equipment convoy line in the booming answer, faction offer boxes after the patrol board.
+-- Worldbuilding plumbing (design/wb-plumbing-spec.md 4): the patrol board runs in trf_plumb's dock dispatcher
+-- (kind patrol): the S19 answers as lines, one 8.10 offer box per docking; the hail boxes take the message
+-- box lock (owner "hail", freed when the chain closes).
 -- v1 option providers TRF_Supply_HailOpts, TRF_Feq_HailOpts, TRF_Dc_HailOpts are called as f(id, r) and
 -- return nil or a list of items. An item is an option key, label TRF_Txt("opt"..key), run on OK by the
 -- provider's TRF_<M>_HailDo(key, id) (TRF_Supply_HailDo, TRF_Feq_HailDo, TRF_Dc_HailDo) with the menu
@@ -233,6 +236,8 @@ end;
 -- CHECK (O1, E0.6): plain text in the text argument (precedent: CombineStr results); "\n" breaks lines.
 function TRF_HlBox(title, text, ok, cancel)
 	if TRF_HlT("hail_box") == 0 or type(ShowMsgBox) ~= "function" then return nil; end;
+	-- Message box lock (trf_plumb, 00 section 6): one mod box at a time.
+	if type(TRF_BoxTake) == "function" and not TRF_BoxTake("hail") then TRF_HlStat("hl_boxlock"); return nil; end;
 	if TRF_HlP(TRF_HlBoxCall, {title, text, ok, cancel}) == 1 then return 1; end;
 	TRF_HlStat("hl_boxfail");
 	return nil;
@@ -513,6 +518,7 @@ end;
 function TRF_HlClose(why)
 	local L = TRF_HlLive();
 	if not L then return; end;
+	TRF_N("TRF_BoxFree", "hail");
 	local hl = L.hl;
 	L.hl = nil;
 	if type(hl) ~= "table" then return; end;
@@ -736,7 +742,7 @@ function TRF_HlDlgPick_Body(key)
 	if not d then
 		TRF_HlStat("hl_dlg_stale");
 		TRF_HlE("dialog_pick", "trader_id", id, "key", key, "result", "ignored", "reason", "stale");
-		if L and type(hl) == "table" and not TRF_HlValid(hl) then L.hl = nil; end;
+		if L and type(hl) == "table" and not TRF_HlValid(hl) then L.hl = nil; TRF_N("TRF_BoxFree", "hail"); end;
 		return;
 	end;
 	TRF_HlE("dialog_pick", "trader_id", id, "key", key);
@@ -759,7 +765,7 @@ function TRF_HlDlgCheck()
 	local L = TRF_HlLive();
 	if not L or type(L.hl) ~= "table" or L.hl.w ~= "dlg" then return; end;
 	local hl = L.hl;
-	if not TRF_HlValid(hl) then L.hl = nil; return; end;
+	if not TRF_HlValid(hl) then L.hl = nil; TRF_N("TRF_BoxFree", "hail"); return; end;
 	local u = TRF_HlP(TRF_UiState, {});
 	local up = nil;
 	if type(u) ~= "number" or u < 0 or floor(u / 4) - floor(u / 8) * 2 == 1 then up = 1; end;
@@ -784,7 +790,7 @@ function TRF_HailCb(c)
 	if not L then return; end;
 	local hl = L.hl;
 	if not TRF_HlValid(hl) then
-		L.hl = nil;
+		L.hl = nil; TRF_N("TRF_BoxFree", "hail");
 		TRF_HlE("box", "button", c, "result", "stale");
 		return;
 	end;
@@ -803,7 +809,7 @@ function TRF_HailStep()
 	local L = TRF_HlLive();
 	if not L then return; end;
 	local hl = L.hl;
-	if not TRF_HlValid(hl) then L.hl = nil; return; end;
+	if not TRF_HlValid(hl) then L.hl = nil; TRF_N("TRF_BoxFree", "hail"); return; end;
 	local c = hl.c;
 	hl.c = nil;
 	if c == "next" then
@@ -1400,9 +1406,12 @@ function TRF_HlRumourText(idx)
 		local l = TRF_HlBfs(idx, 2);
 		for i = 1, getn(l) do near[l[i].i] = l[i].d; end;
 		local best = nil;
-		for i = 1, getn(TRF.short) do
-			local e = TRF.short[i];
-			if type(e) == "table" and type(e.s) == "number" and near[e.s] and type(e.t) == "number" and e.t > TRF.clock.legs then
+		-- Relief targets only (trf_shop TRF_ShortRelief: active, not player-caused, no job; 00 section 6).
+		local rl = TRF_N("TRF_ShortRelief");
+		if type(rl) ~= "table" then rl = {}; end;
+		for i = 1, getn(rl) do
+			local e = rl[i];
+			if near[e.s] then
 				local c = {i=e.s, d=near[e.s], c=e.c};
 				if not best or c.d < best.d or (c.d == best.d and c.i < best.i) then best = c; end;
 			end;
@@ -1476,10 +1485,8 @@ function TRF_InstallBoard()
 	return n;
 end;
 
--- The vanilla patrol dialog, once per docking (live.bgo cleared first).
+-- The vanilla patrol dialog without trf_plumb.
 function TRF_BoardOrig(why)
-	local L = TRF_HlLive();
-	if L then L.bgo = nil; L.bk = nil; L.bc = nil; end;
 	if type(TRF_orig_PatrolOk) == "function" then
 		call(TRF_orig_PatrolOk, {}, "x");
 	else
@@ -1487,89 +1494,68 @@ function TRF_BoardOrig(why)
 	end;
 end;
 
--- Installed over __PatrolStationDock_Ok. Any error in the mod part runs the original at once.
+-- Installed over __PatrolStationDock_Ok: the dock dispatcher of trf_plumb (kind patrol, design/wb-plumbing-spec.md
+-- 4): the S19 board line first, the owed payers, then at most one box (8.10 contract offer first) and the
+-- original once (after the answer when a box opened). Without trf_plumb the original only.
 function TRF_BoardDockOk()
-	local how = call(TRF_BoardDockOk_Body, {}, "x", TRF_HlErr);
-	if how ~= "box" then TRF_BoardOrig(how or "error"); end;
+	if type(TRF_PlDock) == "function" then return TRF_PlDock("patrol", "TRF_orig_PatrolOk", {}); end;
+	TRF_BoardOrig("no_plumb");
 end;
 
--- Board text: trouble line, boom line. Returns text, short form (one line).
+-- Registrations (trf_plumb TRF_InstallPlumb): S19 answers at line order 10, the 8.10 offer box at prio 400.
+function TRF_Hail_Plumb()
+	TRF_DockLine("patrol", 10, "TRF_BoardLine");
+	TRF_DockBox("patrol", 400, "TRF_BoardOfBox");
+end;
+
+-- Board text: trouble line, boom line. Returns text, short form (one line), boom line.
 function TRF_BoardText(idx)
 	local t = TRF_Trouble(idx);
 	local b = TRF_Boom(idx);
-	return t.."\n"..b, TRF_Txt("brdline", TRF_Txt("brdhead"), t);
+	return t.."\n"..b, TRF_Txt("brdline", TRF_Txt("brdhead"), t), b;
 end;
 
--- "box" when the board box opened (TRF_BoardGo runs the original), else the reason; the caller then
--- runs the original.
-function TRF_BoardDockOk_Body()
-	local L = TRF_HlLive();
-	if not L or type(TRF) ~= "table" then return "notrf"; end;
-	L.bgo = nil;
-	if __disableAction == TRUE or TRF_N("TRF_Quiet") then return "flag"; end;
-	local b = TRF_HlOpt("board");
-	if b == 0 then return "off"; end;
-	local idx = TRF_HlCur();
-	if type(idx) ~= "number" then return "nomap"; end;
-	local text, short = TRF_BoardText(idx);
+-- 1 when the board may show its full report and offers here: cfg board 1, system mode "mod", strict gate.
+function TRF_BoardFull(idx)
+	if TRF_HlOpt("board") ~= 1 then return nil; end;
 	local mode = "mod";
 	if type(TRF_SysModeQuiet) == "function" then mode = TRF_HlP(TRF_SysModeQuiet, {}); end;
-	-- Mission conditions (vanilla system mode, strict gate): line only, so no extra box in a mission.
-	if b == 2 or mode ~= "mod" or not TRF_HlStrict(idx, "board") then
-		TRF_HlSay(short, nil, 8);
-		TRF_HlE("board", "board_mode", b, "mode", mode, "result", "line");
-		return "line";
-	end;
-	local bt, be = nil, nil;
-	if type(TRF_NewsNext) == "function" and TRF_UI_Opt("news_mode", 1) == 1 then bt, be = TRF_NewsNext(); end;
-	local of = TRF_BoardOffers();
-	if L.board == text and not bt then
-		TRF_HlSay(short, nil, 8);
-		if getn(of) == 0 then return "same"; end;
-		-- v1: faction offers still open their boxes (TRF_BoardOfShow), then the original.
-		L.bgo = 1;
-		L.bk = 1;
-		if TRF_BoardOfShow() then return "box"; end;
-		L.bgo = nil;
-		return "nobox";
-	end;
-	L.board = text;
-	local full = text;
-	if bt then full = full.."\n"..TRF_Txt("nbull", bt); end;
-	L.bgo = 1;
-	L.bk = 1;
-	-- CHECK (O1, 13.1): a box opened here shows before PatrolStationDlg; fallback cfg board 2.
-	if TRF_HlBox("#UI_PatrolStationWndCaption", full, TRF_BoardGo, TRF_BoardGo) then
-		if type(be) == "table" then be.n = 0; end;
-		TRF_HlStat("hl_board");
-		TRF_HlE("board", "system_index", idx, "result", "box");
-		return "box";
-	end;
-	L.bgo = nil;
-	TRF_HlSay(short, nil, 8);
-	return "nobox";
+	if mode ~= "mod" or not TRF_HlStrict(idx, "board") then return nil, mode; end;
+	return 1, mode;
 end;
 
--- Board box OK and Cancel: the original once per docking, after the faction offer boxes. An error here
--- still runs it.
-function TRF_BoardGo()
-	local v = TRF_Cb("TRF_BoardGo", TRF_BoardGo_Body, {});
-	if v ~= 0 and v ~= 2 then TRF_BoardOrig("go"); end;
-end;
-
--- 1 when the original is still due for this docking, 0 when it already ran, 2 when faction offers follow
--- (TRF_BoardOfDue runs the original after them).
-function TRF_BoardGo_Body()
+-- Dock line of kind patrol (S19, 00 section 6 order 10): "Patrol report: <trouble>" on every docking; while the
+-- report changed since the last full one, also the boom line and the next news bulletin (cfg news_mode 1).
+-- Mission conditions (vanilla system mode, strict gate) and cfg board 2: the trouble line only. TRF_Quiet (a
+-- visible scene; the dispatcher skips __sys_SOS itself): no board, so no report or bulletin counts as shown.
+function TRF_BoardLine(kind)
 	local L = TRF_HlLive();
-	if L and L.bgo ~= 1 then
-		TRF_HlE("board_go", "result", "skipped", "reason", "original_ran");
-		return 0;
+	if not L or type(TRF) ~= "table" or TRF_N("TRF_Quiet") then return nil; end;
+	local b = TRF_HlOpt("board");
+	if b == 0 then return nil; end;
+	local idx = TRF_HlCur();
+	if type(idx) ~= "number" then return nil; end;
+	local text, short, bm = TRF_BoardText(idx);
+	local full, mode = TRF_BoardFull(idx);
+	if not full then
+		TRF_HlE("board", "board_mode", b, "mode", mode or "mod", "result", "line");
+		return short;
 	end;
-	local st = TRF_HlStore();
-	if L and st and type(st.bof) == "table" and type(L.bk) == "number" and L.bk <= getn(st.bof) then
-		if TRF_Due(0.1, "TRF_BoardOfDue") then return 2; end;
+	local out = {short};
+	if L.board ~= text then
+		L.board = text;
+		tinsert(out, bm);
+		if type(TRF_NewsNext) == "function" and TRF_UI_Opt("news_mode", 1) == 1 then
+			local bt, be = TRF_NewsNext();
+			if bt then
+				tinsert(out, TRF_Txt("nbull", bt));
+				if type(be) == "table" then be.n = 0; end;
+			end;
+		end;
 	end;
-	return 1;
+	TRF_HlStat("hl_board");
+	TRF_HlE("board", "system_index", idx, "line_count", getn(out), "result", "lines");
+	return out;
 end;
 
 -- Faction offers of the patrol board (v1-spec 7.4, TRF_Faction_BoardOffers), kept in the handle table;
@@ -1590,80 +1576,57 @@ function TRF_BoardOffers()
 	return o;
 end;
 
--- The original, unless it already ran for this docking.
-function TRF_BoardOrigOnce(why)
+-- Box candidate of kind patrol (8.10, prio 400): the first board offer not declined in this visit (live.bkd,
+-- ",<k>," entries), as a box spec; one offer per docking. None under TRF_Quiet (a visible scene).
+function TRF_BoardOfBox(kind)
 	local L = TRF_HlLive();
-	if L and L.bgo ~= 1 then return; end;
-	TRF_BoardOrig(why);
-end;
-
--- Box of board offer live.bk; 1 when shown. CHECK (V9, v02 R4): boxes chained before PatrolStationDlg;
--- fallback cfg board 2 (offers in the hail).
-function TRF_BoardOfShow()
-	local L = TRF_HlLive();
-	local st = TRF_HlStore();
-	if not L or not st or type(st.bof) ~= "table" or type(L.bk) ~= "number" then return nil; end;
-	local e = st.bof[L.bk];
-	local text = TRF_HlOfText(e);
-	if not text then return nil; end;
-	local cap = "#UI_PatrolStationWndCaption";
-	if type(e.title) == "string" then cap = e.title; end;
-	if TRF_HlBox(cap, text, TRF_BoardOfOk, TRF_BoardOfNo) then
-		TRF_HlStat("hl_boardoffer");
-		TRF_HlE("board_offer", "offer_index", L.bk, "offer_count", getn(st.bof));
-		return 1;
+	if not L or type(TRF) ~= "table" or TRF_N("TRF_Quiet") then return nil; end;
+	local idx = TRF_HlCur();
+	if type(idx) ~= "number" or not TRF_BoardFull(idx) then return nil; end;
+	local of = TRF_BoardOffers();
+	local dl = L.bkd;
+	if type(dl) ~= "string" then dl = ","; end;
+	for i = 1, getn(of) do
+		local e = of[i];
+		if not strfind(dl, ","..tostring(e.k)..",", 1, 1) then
+			local cap = "#UI_PatrolStationWndCaption";
+			if type(e.title) == "string" then cap = e.title; end;
+			TRF_HlStat("hl_boardoffer");
+			TRF_HlE("board_offer", "offer_index", i, "offer_count", getn(of));
+			return {title=cap, text=TRF_HlOfText(e), ok="TRF_BoardOfAcc", no="TRF_BoardOfDec", a=i, own="board_offer"};
+		end;
 	end;
 	return nil;
 end;
 
--- Due call after the board box: the first offer box, else the original.
-function TRF_BoardOfDue()
-	if TRF_Cb("TRF_BoardOfDue", TRF_BoardOfShow, {}) ~= 1 then TRF_BoardOrigOnce("ofdue"); end;
-end;
-
--- Offer box OK / Cancel (shims): record the choice, TRF_BoardOfStep follows; an error or a refused due call
--- runs the original.
-function TRF_BoardOfOk()
-	if TRF_Cb("TRF_BoardOfOk", TRF_BoardOfCb, {1}) == nil then TRF_BoardOrigOnce("ofok"); end;
-end;
-
-function TRF_BoardOfNo()
-	if TRF_Cb("TRF_BoardOfNo", TRF_BoardOfCb, {0}) == nil then TRF_BoardOrigOnce("ofno"); end;
-end;
-
--- 1 when the step is scheduled, 0 when the original already ran, nil when the due call was refused.
-function TRF_BoardOfCb(acc)
-	local L = TRF_HlLive();
-	if not L or L.bgo ~= 1 then return 0; end;
-	L.bc = acc;
-	if TRF_Due(0.1, "TRF_BoardOfStep") then return 1; end;
-	return nil;
-end;
-
-function TRF_BoardOfStep()
-	if TRF_Cb("TRF_BoardOfStep", TRF_BoardOfStep_Body, {}) ~= 1 then TRF_BoardOrigOnce("ofstep"); end;
-end;
-
--- Accept (bc 1) calls ok(a); then the next offer box (1), else 0 and the original follows.
-function TRF_BoardOfStep_Body()
-	local L = TRF_HlLive();
+-- Offer box OK: ok(a) of offer i; its reply is the returned line.
+function TRF_BoardOfAcc(i)
 	local st = TRF_HlStore();
-	if not L or L.bgo ~= 1 then return 0; end;
-	local acc = L.bc;
-	L.bc = nil;
 	local e = nil;
-	if st and type(st.bof) == "table" and type(L.bk) == "number" then e = st.bof[L.bk]; end;
-	if acc == 1 and type(e) == "table" then
-		local v = TRF_HlCall(e.ok, {e.a});
-		TRF_HlStat("hl_offer_acc");
-		TRF_HlE("board_offer", "offer_index", L.bk, "result", "accepted", "reply", v);
-		if type(v) == "string" then TRF_HlSay(v, nil, 8); end;
-	elseif type(e) == "table" and e.no then
-		TRF_HlCall(e.no, {e.a});
+	if st and type(st.bof) == "table" and type(i) == "number" then e = st.bof[i]; end;
+	if type(e) ~= "table" then return nil; end;
+	local v = TRF_HlCall(e.ok, {e.a});
+	TRF_HlStat("hl_offer_acc");
+	TRF_HlE("board_offer", "offer_index", i, "result", "accepted", "reply", v);
+	if type(v) == "string" then return v; end;
+	return nil;
+end;
+
+-- Offer box Cancel: no(a) of offer i, and the offer is not shown again in this visit.
+function TRF_BoardOfDec(i)
+	local L = TRF_HlLive();
+	local st = TRF_HlStore();
+	local e = nil;
+	if st and type(st.bof) == "table" and type(i) == "number" then e = st.bof[i]; end;
+	if type(e) ~= "table" then return nil; end;
+	if L then
+		local dl = L.bkd;
+		if type(dl) ~= "string" then dl = ","; end;
+		L.bkd = dl..tostring(e.k)..",";
 	end;
-	L.bk = (L.bk or 1) + 1;
-	if TRF_BoardOfShow() then return 1; end;
-	return 0;
+	if e.no then TRF_HlCall(e.no, {e.a}); end;
+	TRF_HlE("board_offer", "offer_index", i, "result", "declined");
+	return nil;
 end;
 
 -- Loader callbacks and dump ----------------------------------------------------------
@@ -1671,13 +1634,13 @@ end;
 function TRF_Hail_BeforeJump()
 	TRF_CtVoid("jump");
 	local L = TRF_HlLive();
-	if L then L.hl = nil; L.bgo = nil; L.bk = nil; L.bc = nil; end;
+	if L then L.hl = nil; L.bkd = nil; end;
 end;
 
 function TRF_Hail_OnLoad()
 	TRF_CtVoid("load");
 	local L = TRF_HlLive();
-	if L then L.hl = nil; L.bgo = nil; L.bk = nil; L.bc = nil; end;
+	if L then L.hl = nil; L.bkd = nil; end;
 end;
 
 function TRF_Hail_Dump()
@@ -1695,7 +1658,7 @@ function TRF_Hail_Dump()
 	end;
 	TRF_HlE("dump", "hail_trader_id", hl.id, "hail_step", hl.k, "hail_option_count", nopt, "hail_wait", hl.w,
 		"contract_trader_id", ct.id, "contract_pay", ct.n, "board", TRF_KvB(b), "v1_option_count", nx,
-		"board_offer_count", nb, "board_offer_index", L.bk, "wrapped", TRF_KvB(TRF_HailIsMine(__PatrolStationDock_Ok)));
+		"board_offer_count", nb, "board_declined", L.bkd, "wrapped", TRF_KvB(TRF_HailIsMine(__PatrolStationDock_Ok)));
 end;
 
 -- Strings (6.2). Looked up by TRF_Txt after TRF_UI_Text; keys in TRF_UI_Key form (lowercase, letters and

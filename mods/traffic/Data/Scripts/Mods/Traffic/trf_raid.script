@@ -1380,7 +1380,11 @@ function TRF_Rd_Comply(n, rd, r, h)
 	if cur and type(TRF_AddDis) == "function" then TRF_AddDis(cur, 1, "raid comply"); end;
 	local slot = TRF_Rd_Slot(cur);
 	if slot then TRF_N("TRF_ClanAdd", slot, 1, "rob"); end;
-	if r.path == "A" and type(TRF_Ev_Short) == "function" then TRF_Ev_Short(cur, r.cls); end;
+	if r.path == "A" and type(TRF_Ev_Short) == "function" then
+		local pk = nil;
+		if type(r.pa) == "number" then pk = 1; end;
+		TRF_Ev_Short(cur, r.cls, pk);
+	end;
 	if not TRF_Rd_Due(5, "TRF_RaidLeave", n, "comply") then TRF_RaidLeave(n, "comply"); end;
 	if not TRF_Rd_Due(10, "TRF_Rd_Resume", rd.id) then TRF_Rd_Resume(rd.id); end;
 	TRF_Rd_Stat("raid_comply");
@@ -1517,6 +1521,13 @@ function TRF_Rd_Pay(n, rd)
 	if type(r) ~= "table" or r.why == "kill" then return; end;
 	local cur = TRF_Rd_Cur();
 	local amt = floor(0.5 * TRF_Rd_PayN(cur));
+	-- 8.5 raid-help resolvers (trf_plumb TRF_RaidHelp, 00 section 6): a captain claim cancels the credits,
+	-- warrant ships are excluded, otherwise the lowest factor applies once.
+	local rule = nil;
+	if type(TRF_RaidHelp) == "function" then
+		local a2, why = TRF_RaidHelp(n, rd, amt);
+		if type(a2) == "number" then amt = max(0, floor(a2)); rule = why; end;
+	end;
 	if amt > 0 then TRF_N("AddPlayerCredits", amt); end;
 	local d = 1;
 	local slot = TRF_Rd_Slot(cur);
@@ -1532,7 +1543,7 @@ function TRF_Rd_Pay(n, rd)
 	if r.st ~= "gone" then r.res = 1; end;
 	TRF_Rd_Say(TRF_Rd_Txt("thanks", TRF_Rd_Name(r)), 6, TRF_Rd_LeadPilot(rd.id));
 	TRF_Rd_Stat("raid_paid");
-	TRF_RdE("paid", "raid_id", n, "trader_id", rd.id, "credits", amt, "help", d);
+	TRF_RdE("paid", "raid_id", n, "trader_id", rd.id, "credits", amt, "help", d, "help_rule", rule);
 end;
 
 -- Ended record keeps n, id, st, how, paid (3.2).
@@ -2073,7 +2084,9 @@ function TRF_Rd_StRollBody()
 	end;
 	local e = TRF_Rd_StPlace(cur);
 	if not e then TRF_Rd_Stat("staged_skip_place"); TRF_RdE("staged_plan", "result", "failed", "reason", "no_placement"); return nil; end;
-	if not TRF_Rd_Due(5 + TRF_Rd_Rand(6), "TRF_StagedSpawn") then return nil; end;
+	-- Scripted-event slot (trf_plumb, 00 section 6): one per visit.
+	if type(TRF_EventSlotTake) == "function" and not TRF_EventSlotTake("staged") then TRF_Rd_Stat("staged_skip_slot"); return nil; end;
+	if not TRF_Rd_Due(5 + TRF_Rd_Rand(6), "TRF_StagedSpawn") then TRF_N("TRF_EventSlotFree", "staged"); return nil; end;
 	L.stg = e;
 	L.ent = "staged";
 	TRF_RdE("staged_plan", "disruption", dis, "chance", c, "roll", roll, "contact_index", e.ci, "entry_index", e.ei,

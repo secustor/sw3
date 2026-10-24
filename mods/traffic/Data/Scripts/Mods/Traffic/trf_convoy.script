@@ -1095,11 +1095,20 @@ function TRF_FeqEntry()
 	if type(L.sw) == "table" then TRF_CvE("feq_entry", "reason", "sweep", "result", "deferred"); return nil; end;
 	local ok, why = TRF_CvGate(cur, "feq");
 	if not ok then TRF_CvE("feq_entry", "reason", why, "result", "gated"); TRF_CvStat("skip_feq_"..tostring(why)); return nil; end;
-	if not TRF_ConvTake(4, 0) then TRF_CvE("feq_entry", "reason", "slot_busy", "result", "skipped"); return nil; end;
+	-- Scripted-event slot (trf_plumb, 00 section 6): the equipment convoy ranks after the on-screen sweep.
+	if type(TRF_EventSlotTake) == "function" and not TRF_EventSlotTake("feq") then
+		TRF_CvE("feq_entry", "reason", "event_slot", "result", "skipped");
+		return nil;
+	end;
+	if not TRF_ConvTake(4, 0) then
+		TRF_CvX("TRF_EventSlotFree", "feq");
+		TRF_CvE("feq_entry", "reason", "slot_busy", "result", "skipped");
+		return nil;
+	end;
 	local a, b = TRF_CvT("feq_app_min"), TRF_CvT("feq_app_max");
 	local dt = a + TRF_CvRand(max(1, b - a + 1));
 	L.fq = {n=TRF.gen, id=0, f=f.f, r=f.r, st="due", t0=TRF_CvGt() + dt, try=0};
-	if not TRF_CvX("TRF_Due", dt, "TRF_FeqSpawn") then L.fq.st = "end"; L.cvs = nil; return nil; end;
+	if not TRF_CvX("TRF_Due", dt, "TRF_FeqSpawn") then L.fq.st = "end"; L.cvs = nil; TRF_CvX("TRF_EventSlotFree", "feq"); return nil; end;
 	TRF_CvE("feq_entry", "faction", f.f, "rung", f.r, "delay", dt, "result", "due");
 	return 1;
 end;

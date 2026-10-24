@@ -105,6 +105,9 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `help` | `module=state event=help reason=contract old=0 new=1` | 1 |
 | `decay_disruption` | `module=state event=decay_disruption legs=3 system_count=2` | 1 |
 | `decay_heat` | `module=state event=decay_heat legs=11 heat=1` | 1 |
+| `decay_help` | `module=state event=decay_help legs=40 help=14 steps=1` (decision C1: 1 per `help_decay` legs above `help_floor`) | 1 |
+| `leg_cap` | `module=state event=leg_cap legs=12 visit_tick_legs=3 cap=3 result=reached` (decision D1, once per visit) | 1 |
+| `leg_cap` | `module=state event=leg_cap legs=12 visit_tick_legs=3 cap=3` (each capped leg) | 2 |
 | `leg` | `module=state event=leg reason=enter legs=1` | 2 |
 | `due` | `module=state event=due function=<f> reason=list_full result=dropped` | 1 |
 | `due` | `module=state event=due function=<f> reason=no_function result=skipped` | 1 |
@@ -173,13 +176,12 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `contract` | `module=hail event=contract trader_id=4 result=lost` | 1 |
 | `contract` | `module=hail event=contract trader_id=4 result=void reason=jump` | 1 |
 | `install` | `module=hail event=install board_installed=true wrapped=true` | 1 |
-| `board_original` | `module=hail event=board_original source=go result=missing` | 1 |
-| `board` | `module=hail event=board board_mode=2 mode=mod result=line` | 1 |
-| `board` | `module=hail event=board system_index=46 result=box` | 1 |
-| `board_go` | `module=hail event=board_go result=skipped reason=original_ran` | 1 |
-| `board_offer` | `module=hail event=board_offer offer_index=1 offer_count=2` | 1 |
-| `board_offer` | `module=hail event=board_offer offer_index=1 result=accepted reply=text` | 1 |
-| `dump` | `module=hail event=dump hail_trader_id=4 hail_step=1 hail_option_count=5 hail_wait=dlg contract_trader_id=4 contract_pay=1417 board=true v1_option_count=0 board_offer_count=0 board_offer_index=nil wrapped=true` | 1 |
+| `board_original` | `module=hail event=board_original source=no_plumb result=missing` (without trf_plumb) | 1 |
+| `board` | `module=hail event=board board_mode=2 mode=mod result=line` (trouble line only) | 1 |
+| `board` | `module=hail event=board system_index=46 line_count=3 result=lines` (S19 dock lines, trf_plumb kind patrol) | 1 |
+| `board_offer` | `module=hail event=board_offer offer_index=1 offer_count=2` (the 8.10 box of this docking) | 1 |
+| `board_offer` | `module=hail event=board_offer offer_index=1 result=accepted reply=text` / `result=declined` | 1 |
+| `dump` | `module=hail event=dump hail_trader_id=4 hail_step=1 hail_option_count=5 hail_wait=dlg contract_trader_id=4 contract_pay=1417 board=true v1_option_count=0 board_offer_count=0 board_declined=,join, wrapped=true` | 1 |
 | `error` | `module=hail event=error message=msg` | 1 |
 
 ## raid (`trf_raid.script`; `TRF_RdE`, `TRF_RdDE`)
@@ -201,7 +203,7 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `comply` | `module=raid event=comply raid_id=1 trader_id=11 cargo_lost=3 disruption=1` | 1 |
 | `refuse` | `module=raid event=refuse raid_id=2 trader_id=13 player_fired=true` | 1 |
 | `leave` | `module=raid event=leave raid_id=2 reason=comply destination=carrier` / `destination=base` / `distance=900` | 1 |
-| `paid` | `module=raid event=paid raid_id=2 trader_id=6 credits=658 help=1` | 1 |
+| `paid` | `module=raid event=paid raid_id=2 trader_id=6 credits=658 help=1 help_rule=nil` (`help_rule`: trf_plumb raid-help rule, nil without resolvers) | 1 |
 | `end` | `module=raid event=end raid_id=1 trader_id=11 previous_state=leave decision=comply help_counted=false paid=nil result=left` | 1 |
 | `hit` | `module=raid event=hit raid_id=2 rearm_max=3 result=rearm_cap` | 1 |
 | `help` | `module=raid event=help raid_id=2 ship=1 reason=deliberate result=counted` (or `reason=kill_after_hit`) | 1 |
@@ -261,7 +263,7 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 
 | Event | Example line | Level |
 |---|---|---|
-| `shortage` | `module=shop event=shortage system=callipso system_index=14 cargo_class=3 until_legs=16 shortage_count=1 dropped_system=x dropped_class=2 dropped_until_legs=9 result=new` (dropped keys only when one was dropped) | 1 |
+| `shortage` | `module=shop event=shortage system=callipso system_index=14 cargo_class=3 until_legs=16 shortage_count=1 dropped_system=x dropped_class=2 dropped_until_legs=9 result=new` (dropped keys only when one was dropped; otherwise `player_caused=<bool>` before `result`, the `pk` flag) | 1 |
 | `shortage` | `module=shop event=shortage system=callipso system_index=14 cargo_class=3 removed_count=1 result=cleared` | 1 |
 | `shortage` | `module=shop event=shortage removed_count=1 left_count=0 legs=16 result=expired` | 1 |
 | `apply` | `module=shop event=apply shop=gredos result=skipped reason=no_vanilla_list` / `reason=no_market` | 1 |
@@ -355,6 +357,37 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `load` | `module=station event=load latch=false` | 1 |
 | `dump` | `module=station event=dump visit=1 record_count=1 records=42:1/3/-/-/-! owner_visits=hafa:3 none_wrapped=true trade_wrapped=true` | 1 |
 
+## plumb (`trf_plumb.script`; `TRF_PlE`, `TRF_PlDE`)
+
+Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trade`, `patrol`, `pir`, `req`).
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=plumb event=error message=<m>` (a handler failed; the dispatcher goes on) | 1 |
+| `install` | `module=plumb event=install cost_of_head_installed=true cost_of_head_wrapped=true line_count=4 box_count=3 none_count=1 cost_of_head_count=0 eject_count=1 owe_count=1 seed_count=8 raid_help_count=0 cap_count=0` | 1 |
+| `dock` | `module=plumb event=dock kind=trade line_count=2 result=vanilla` / `... box=station_fee priority=400 result=box` | 1 |
+| `dock` | `module=plumb event=dock kind=trade line_count=0 result=skipped reason=sys_sos` (or `reason=disable_action`) | 1 |
+| `dock` | `module=plumb event=dock kind=trade line_count=4 result=vanilla reason=after_fee` (or `reason=box_lock`, `box=<own> result=vanilla reason=box_failed`) | 1 |
+| `dock` | `module=plumb event=dock original=TRF_orig_TradeOk result=no_original` | 1 |
+| `box_answer` | `module=plumb event=box_answer kind=pir box=pirate_offer answer=1 result=done` (or `result=stale`: another generation) | 1 |
+| `box_answer` | `module=plumb event=box_answer kind=trade box=p_high result=dropped` (a pending box of an earlier docking) / `answer=1 result=stale` (no box) | 1 |
+| `box_lock` | `module=plumb event=box_lock owner=dock_trade holder=hail result=stale` | 1 |
+| `box_lock` | `module=plumb event=box_lock owner=hail holder=dock_trade result=refused` | 2 |
+| `none` | `module=plumb event=none param=1 handler=<f> result=handled` | 2 |
+| `cost_of_head` | `module=plumb event=cost_of_head pilot=PirateCaptain count=1 price_before=1800 price_after=2300` | 1 |
+| `eject` | `module=plumb event=eject result_before=2 result_after=1` | 1 |
+| `event_slot` | `module=plumb event=event_slot kind=staged rank=3 result=taken` / `holder=sweep result=refused` / `result=freed` | 1 |
+| `escort_slot` | `module=plumb event=escort_slot owner=pack result=taken` / `holder=pack result=refused` | 1 |
+| `arrival_line` | `module=plumb event=arrival_line owner=beacon line_index=1 delay=8.000 result=queued` | 1 |
+| `arrival_line` | `module=plumb event=arrival_line owner=p4 line_index=4 result=dropped reason=cap` (or `reason=no_entry`, `reason=due`) | 1 |
+| `arrival_line` | `module=plumb event=arrival_line owner=beacon result=shown` (or `result=not_shown`) | 2 |
+| `job` | `module=plumb event=job kind=1 field_count=2 result=taken` / `holder=1 result=refused` / `result=cleared` | 1 |
+| `raid_help` | `module=plumb event=raid_help raid_id=7 credits_before=1063 credits_after=398 rule=excluded_factor resolver_count=3` (rule: none, factor, excluded, excluded_factor, cancel) | 1 |
+| `marker` | `module=plumb event=marker owner=pcl label=TRF_Pcl_1 result=added` / `result=refused reason=quest` (or `label`, `cap`) / `result=failed reason=create_nav_point_nil` | 1 |
+| `marker` | `module=plumb event=marker owner=pcl deleted_count=1 result=cleared` / `reason=jump deleted_count=3 result=cleared` (or `reason=load`) | 1 |
+| `orphan` | `module=plumb event=orphan deleted_count=2 global_count=1` (load: ships `trf_<prefix>_<n>_<j>`, globals `TRF_G<prefix>_*`) | 1 |
+| `dump` | `module=plumb event=dump box_holder=nil event_slot=staged escort=nil arrival_count=1 job=nil marker_count=0 jumps=12 real_seconds=3600.500 visit_tick_legs=2 line_count=4 box_count=3 cap_count=0 cost_of_head_wrapped=true` | 1 |
+
 ## supply (`trf_supply.script`; `TRF_SpE`)
 
 | Event | Example line | Level |
@@ -391,6 +424,7 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `region_standing_init` | `module=faction event=region_standing_init slot_count=8 region_count=8 default=3` | 1 |
 | `region_standing` | `module=faction event=region_standing slot=5 faction=Vks reason="sweep won" standing_before=3 standing_after=5` | 1 |
 | `faction_standing` | `module=faction event=faction_standing faction=Vks reason=why standing_before=5 standing_after=4` | 1 |
+| `faction_standing` | `module=faction event=faction_standing faction=Vks reason=why standing_before=5 standing_after=5 result=frozen` (team at war with the player, `TRF_FstClamp`) | 1 |
 | `region_standing_drift` | `module=faction event=region_standing_drift slot=5 standing_before=88881 standing_after=77772` | 2 |
 | `faction_standing_drift` | `module=faction event=faction_standing_drift standing_before=18555 standing_after=27555` | 2 |
 | `flight` | `module=faction event=flight faction=1 result=no_tables` | 1 |
@@ -410,6 +444,7 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `contract` | `module=faction event=contract slot=5 faction=1 contract_bit=1 result=accepted` | 1 |
 | `install` | `module=faction event=install installed_count=1 pirdock_wrapped=true` | 1 |
 | `pirdock` | `module=faction event=pirdock reason=why result=no_original` | 1 |
+| `pirdock` | `module=faction event=pirdock reason=heat result=no_offer` (box candidate without an offer) / `reason=stale result=no_offer` (answer of another generation, level 1) | 2 |
 | `offer_paid` | `module=faction event=offer_paid pay=900` | 1 |
 | `offer` | `module=faction event=offer offer_kind=1 system=taira system_index=47` | 1 |
 | `offer_accept` | `module=faction event=offer_accept offer_kind=1 system_index=47 until_leg=30` | 1 |
@@ -538,6 +573,7 @@ All lines are `module=exp event=<e> kit=<trader|saves|hooks|state> ...`; rows th
 | `feq_entry` | `module=convoy event=feq_entry reason=sweep result=deferred` | 1 |
 | `feq_entry` | `module=convoy event=feq_entry reason=gate result=gated` | 1 |
 | `feq_entry` | `module=convoy event=feq_entry reason=slot_busy result=skipped` | 1 |
+| `feq_entry` | `module=convoy event=feq_entry reason=event_slot result=skipped` (trf_plumb's scripted-event slot is held) | 1 |
 | `feq_entry` | `module=convoy event=feq_entry faction=1 rung=1 delay=32 result=due` | 1 |
 | `feq_spawn` | `module=convoy event=feq_spawn reason=cap try=1 result=refused` | 1 |
 | `feq_spawn` | `module=convoy event=feq_spawn reason=gate result=given_up` | 1 |

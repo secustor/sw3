@@ -5,6 +5,10 @@
 -- greeting, harbour news, region tips, ambient lines, hub and penalty fees with their own box). The fee box
 -- OK calls the global __TradeStationDock_Ok by name (trf_shop's wrapper, then vanilla); this module never
 -- wraps it. Deeds arrive through two hooks in trf_state (TRF_AddHelp, TRF_AddHeat) and TRF_Stn_Deed.
+-- With trf_plumb (design/wb-plumbing-spec.md 4) both thunks call its dispatchers: the mood is a
+-- _NoneStation_Action handler (prio 100, after a #9 depot match; the mood providers are TRF_Voice_Prov), the
+-- dockmaster runs as the request line (kind req, order 10) and the fee box as its box candidate (prio 400), and
+-- the docked line is the trade dock line at order 90 (dockmaster result). Without trf_plumb the old bodies run.
 -- Saved fields (version 4, created lazily, repaired by TRF_Stn_Fix):
 --   TRF.stn[k] = {st=-3..5, lg=leg, gv=ve, bv=ve, pv=ve, tf=leg, ts=idx, nt=1}, k = idx + 200 (j - 1), j = ordinal of
 --   the station among the map's trade stations of system idx; optional fields only when set, an entry at
@@ -777,6 +781,7 @@ end;
 -- Installed over _NoneStation_Action (6.2). The mod part is protected; the original runs unprotected by a
 -- mod handler, with the mood key or the unchanged param.
 function TRF_Stn_None(param)
+	if type(TRF_PlNone) == "function" then return TRF_PlNone(param, "TRF_orig_NoneSt"); end;
 	local r = call(TRF_StnNoneBody, {param}, "x", TRF_StnErr);
 	if type(r) == "table" and r.text then
 		if call(TRF_Stn_SpeakRaw, {r.spk, r.text}, "x", TRF_StnErr) then return; end;
@@ -787,15 +792,31 @@ function TRF_Stn_None(param)
 	return call(TRF_orig_NoneSt, {param}, "x");
 end;
 
--- Mood provider names (5.2 row 1), each f(idx, tip) -> key or nil. Empty in steps 1-2.
+-- _NoneStation_Action handler (trf_plumb, prio 100, also under the flags: the gates G4/G4b log them): 0 when
+-- the mod variant was spoken, the key for the vanilla function, nil to pass on (gate closed or error).
+function TRF_Stn_NoneH(param)
+	local r = call(TRF_StnNoneBody, {param}, "x", TRF_StnErr);
+	if type(r) == "table" and r.text then
+		if call(TRF_Stn_SpeakRaw, {r.spk, r.text}, "x", TRF_StnErr) then return 0; end;
+	end;
+	if r == nil then TRF_StnPass("error", nil, "none"); end;
+	if type(r) == "table" then return r.key; end;
+	return nil;
+end;
+
+-- Mood providers (5.2 row 1), each f(idx, tip) -> key or nil: trf_plumb's TRF_Voice_Prov list (names or
+-- functions, registered with TRF_VoiceProvReg by #10 and #11), else none.
 function TRF_Stn_Prov()
+	local l = TRF_N("TRF_Voice_Prov");
+	if type(l) == "table" then return l; end;
 	return {};
 end;
 
 function TRF_StnProvKey(idx, tip)
 	local ps = TRF_Stn_Prov();
 	for i = 1, getn(ps) do
-		local f = getglobal(ps[i]);
+		local f = ps[i];
+		if type(f) == "string" then f = getglobal(f); end;
 		if type(f) == "function" then
 			local k = call(f, {idx, tip}, "x", TRF_StnErr);
 			if type(k) == "string" and k ~= "" then return k; end;
@@ -855,6 +876,7 @@ end;
 -- Installed over __TradeStation_Action (6.3): the body shows greeting and news and may open the fee box;
 -- otherwise the original opens the vanilla box with the unchanged param.
 function TRF_Stn_Trade(param)
+	if type(TRF_PlDock) == "function" then return TRF_PlDock("req", "TRF_orig_TradeSt", {param}); end;
 	local r = call(TRF_StnTradeBody, {param}, "x", TRF_StnErr);
 	if r == "box" then return; end;
 	if r == nil then TRF_StnPass("error", nil, "dock"); end;
@@ -905,10 +927,12 @@ function TRF_StnGreet(key, spk, T)
 	return 1;
 end;
 
--- Body of the trade wrapper (8.2): "pass", "go" (vanilla box follows) or "box" (fee box open).
-function TRF_StnTradeBody(param)
+-- Body of the trade wrapper (8.2): "pass", "go" (vanilla box follows) or "box" (fee box open). stage 1
+-- (trf_plumb): the fee box is not opened but kept in SV.fb for TRF_Stn_FeeBox ("staged").
+function TRF_StnTradeBody(param, stage)
 	local sv = %SV;
 	sv.k = nil;
+	sv.fb = nil;
 	local why, idx, nm = TRF_StnGate("dock");
 	if why then TRF_StnPass(why, nm, "dock"); return "pass"; end;
 	local row = TRF_Stn_Row();
@@ -1018,6 +1042,10 @@ function TRF_StnTradeBody(param)
 		text = TRF_StnTxt("stncredit");
 	end;
 	text = text.."\n"..TRF_StnTxt("stnfeereq");
+	if stage == 1 then
+		sv.fb = {text=text, k=k, idx=idx, fee=fee, m=m, cr=cr, prm=prm, loc=loc, pro=pro};
+		return "staged";
+	end;
 	sv.box = {k=k, idx=idx, fee=fee, m=m, cr=cr, g=TRF.gen};
 	if prm == "" then setglobal("_param", loc); else setglobal("_param", prm); end;
 	local ok = TRF_Stn_Box(text);
@@ -1027,6 +1055,45 @@ function TRF_StnTradeBody(param)
 	if ok then return "box"; end;
 	sv.box = nil;
 	return "go";
+end;
+
+-- Request line (trf_plumb kind req, order 10, also under the flags: the gates log them): greeting, news and
+-- the staged fee; shows no line of its own (the greeting is a radio line).
+function TRF_Stn_ReqLine(kind, param)
+	local sv = %SV;
+	local r = call(TRF_StnTradeBody, {param, 1}, "x", TRF_StnErr);
+	if r == nil then sv.fb = nil; TRF_StnPass("error", nil, "dock"); end;
+	return nil;
+end;
+
+-- Box candidate of kind req (prio 400, the #3 fee box): the staged fee as a box spec (fee = 1: no offer box
+-- follows at the trade dock until E0.6), else nil.
+function TRF_Stn_FeeBox(kind, param)
+	local sv = %SV;
+	local fb = sv.fb;
+	sv.fb = nil;
+	if type(fb) ~= "table" then return nil; end;
+	sv.box = {k=fb.k, idx=fb.idx, fee=fb.fee, m=fb.m, cr=fb.cr, g=TRF.gen};
+	if fb.prm == "" then setglobal("_param", fb.loc); else setglobal("_param", fb.prm); end;
+	local fl = sv.fl or {};
+	TRF_StnE("fee", "station_key", fb.k, "fee", fb.fee, "world_level", fl.L, "prosperity", fb.pro, "fee_multiplier", fb.m,
+		"difficulty_factor", fl.dk, "box", "true");
+	return {title="#UI_TradeStationWndCaption", text=fb.text, ok="TRF_Stn_FeeOk", no="TRF_Stn_FeeNo", fail="TRF_Stn_FeeFail",
+		fee=1, own="station_fee"};
+end;
+
+-- The fee box could not open: no box pending.
+function TRF_Stn_FeeFail()
+	local sv = %SV;
+	sv.box = nil;
+end;
+
+-- Registrations (trf_plumb TRF_InstallPlumb).
+function TRF_Stn_Plumb()
+	TRF_NoneStationReg(100, "TRF_Stn_NoneH", 1);
+	TRF_DockLine("req", 10, "TRF_Stn_ReqLine", 1);
+	TRF_DockBox("req", 400, "TRF_Stn_FeeBox");
+	TRF_DockLine("trade", 90, "TRF_Stn_DockedLine");
 end;
 
 -- Fee box callbacks (6.3): the mod part through TRF_Cb (generation check in the body), then the vanilla
@@ -1090,18 +1157,31 @@ function TRF_StnFeeNoBody()
 	TRF_StnE("fee_cancel", "station_key", b.k, "credits_before", cr, "credits_after", cr, "credit", "false", "buyback", "false");
 end;
 
--- trf_shop hook in TRF_TradeDockOk (8.6): result line when the standing rose this visit.
-function TRF_Stn_Docked()
+-- Result line when the standing rose this visit (8.6), once per station and visit, else nil; logs docked.
+function TRF_Stn_DockedText()
 	local sv = %SV;
 	local k = sv.k;
-	if type(k) ~= "number" then return; end;
+	if type(k) ~= "number" then return nil; end;
 	local up = 0;
+	local t = nil;
 	if sv.up[k] == 1 then up = 1; end;
 	if up == 1 and not sv.nd[k] then
 		sv.nd[k] = 1;
-		TRF_Stn_Say(TRF_StnTxt("stnnoted"), 8);
+		t = TRF_StnTxt("stnnoted");
 	end;
 	TRF_StnE("docked", "station_key", k, "standing_up", TRF_KvB(up));
+	return t;
+end;
+
+-- Trade dock line (trf_plumb kind trade, order 90: dockmaster result).
+function TRF_Stn_DockedLine(kind)
+	return TRF_Stn_DockedText();
+end;
+
+-- trf_shop hook in TRF_TradeDockOk without trf_plumb (8.6).
+function TRF_Stn_Docked()
+	local t = TRF_Stn_DockedText();
+	if t then TRF_Stn_Say(t, 8); end;
 end;
 
 -- Contract: loader callbacks, repair, dump -------------------------------------------

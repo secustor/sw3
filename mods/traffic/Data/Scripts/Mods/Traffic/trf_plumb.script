@@ -1,0 +1,1030 @@
+-- sw3-traffic shared worldbuilding plumbing (Lua 4.0.1). Spec: design/wb-plumbing-spec.md (design
+-- worldbuilding/00-economy-and-progression.md section 6 and the section 8 rules C1, D1). Prefix Pl (TRF_Pl_*
+-- loader and contract functions, TRF_Pl<X> internal), log module=plumb. Public API names are the ones of 00
+-- section 6 (TRF_DockLine, TRF_DockBox, TRF_BoxTake, ...).
+-- Owns: the dock dispatcher (kinds trade, patrol, pir, req) that the existing wrapper thunks of trf_shop,
+-- trf_hail, trf_faction and trf_station call; the _NoneStation_Action chain; the CostOfHead wrapper (installed
+-- here) and its handler chain; the Case_Eject handler list (trf_gen's thunk, trf_events' target calls it);
+-- the visit slots in TRF.live (box lock, scripted-event slot, escort slot, arrival line queue); the job slot
+-- TRF.job; owed payers; ship-cap registrations; nav markers; the 8.5 raid-help resolvers; the group prefix
+-- list and its orphan scan at load.
+-- Registries live in the chunk local P (never saved; rebuilt by every MapInitialization). TRF_InstallPlumb runs
+-- after every file is loaded and calls TRF_<M>_Plumb() of each module in TRF_PlMods(), which register there.
+-- Saved fields: TRF.job (one open job), TRF.mk (packed marker labels, for the cleanup after a load), TRF.live
+-- box/bt/ev/esc/arq/ag (visit slots; TRF.live is rebuilt on entry and load). Handles: TRF_H().mk.
+-- Top level: functions and P only.
+
+local P = {dock={}, none={}, coh={}, ej={}, owe={}, seed={}, rh={}, cap={}, vp={}, run={}};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_PlReg() return %P; end;
+
+-- logfmt event line, module=plumb (design/log-format.md).
+function TRF_PlE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "plumb"); call(TRF_Lf, arg);
+end;
+
+function TRF_PlLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_PlDE(event, ...)
+	if TRF_PlLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_PlE, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_PlErr(m)
+	TRF_PlE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler (alive tests): nil is the answer.
+function TRF_PlNoErr(m) end;
+
+function TRF_PlCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- cfg value (TRF_Opt merges TRF_Pl_OptDef), else the default.
+function TRF_PlOpt(key)
+	local v = TRF_N("TRF_Opt", key);
+	if v == nil then v = TRF_Pl_OptDef()[key]; end;
+	return v;
+end;
+
+-- Constants without a cfg key (spec 2): box lock stale after box_stale game s; arrival lines arr_gap s apart,
+-- at most arr_max per entry; at most mk_max markers, labels up to mk_len characters; a job holds at most
+-- job_max fields, strings up to job_len; the orphan scan probes labels trf_<x>_<n>_<j>, n 1..scan_n, j 1..scan_j.
+function TRF_PlK()
+	return {box_stale=60, arr_gap=3, arr_max=3, mk_max=8, mk_len=24, job_max=6, job_len=24, scan_n=4, scan_j=6};
+end;
+
+function TRF_PlLive()
+	if type(TRF) == "table" and type(TRF.live) == "table" then return TRF.live; end;
+	return nil;
+end;
+
+function TRF_PlGt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+-- Function value of f (a function, or the name of a global function), else nil.
+function TRF_PlFn(f)
+	if type(f) == "string" then f = getglobal(f); end;
+	if type(f) == "function" then return f; end;
+	return nil;
+end;
+
+-- Protected call of handler f with args; nil when f is missing or fails.
+function TRF_PlCall(f, args)
+	local fn = TRF_PlFn(f);
+	if not fn then return nil; end;
+	return call(fn, args, "x", TRF_PlErr);
+end;
+
+-- Handler name for the log (a function value logs as "function").
+function TRF_PlName(f)
+	if type(f) == "string" then return f; end;
+	return type(f);
+end;
+
+-- Inserts {o=order, f=fn, al=always} into list l, sorted by o (ascending when asc is 1, else descending),
+-- after the entries of the same o (registration order). An entry with the same f is replaced, so a second
+-- registration only moves it. Returns 1, or nil for a bad fn.
+function TRF_PlIns(l, o, f, al, asc)
+	if type(f) ~= "string" and type(f) ~= "function" then return nil; end;
+	if type(o) ~= "number" then o = 0; end;
+	for i = 1, getn(l) do
+		if l[i].f == f then tremove(l, i); break; end;
+	end;
+	local k = getn(l) + 1;
+	for i = 1, getn(l) do
+		if (asc == 1 and o < l[i].o) or (asc ~= 1 and o > l[i].o) then k = i; break; end;
+	end;
+	tinsert(l, k, {o=o, f=f, al=al});
+	return 1;
+end;
+
+-- 1 when o is a live engine object (IsAlive answers true).
+function TRF_PlAlive(o)
+	if o == nil or type(o) == "number" or type(o) == "string" or type(o) == "function" then return nil; end;
+	local v = call(function(x) return x:IsAlive(); end, {o}, "x", TRF_PlNoErr);
+	return TRF_Is(v);
+end;
+
+function TRF_PlDel(o)
+	if o == nil or type(o) == "number" or type(o) == "string" or type(o) == "function" then return nil; end;
+	return call(function(x) x:Delete(); return 1; end, {o}, "x", TRF_PlNoErr);
+end;
+
+-- Line through trf_ui's TRF_Say (8 s, the dock line spacing of trf_hail and trf_station), else the screen log.
+function TRF_PlSay(text, secs)
+	if type(text) ~= "string" or text == "" then return nil; end;
+	if type(secs) ~= "number" then secs = 8; end;
+	if type(TRF_Say) == "function" then return TRF_Say(text, secs); end;
+	if type(OutputToScreenLog) == "function" then OutputToScreenLog(text, secs); return 1; end;
+	return nil;
+end;
+
+-- Appends a handler result (nil, a string, or a list of strings) to the line list out.
+function TRF_PlLines(out, v)
+	if type(v) == "string" then
+		if v ~= "" then tinsert(out, v); end;
+	elseif type(v) == "table" then
+		for i = 1, getn(v) do
+			if type(v[i]) == "string" and v[i] ~= "" then tinsert(out, v[i]); end;
+		end;
+	end;
+end;
+
+-- Static tables ---------------------------------------------------------------------
+
+-- Dock kinds (spec 3.1): ow = line order of the owed payers (nil: none), rep = 1 when a box replaces the
+-- vanilla call (the request box; the fee box's OK calls __TradeStationDock_Ok itself), t = default box title.
+function TRF_PlKinds()
+	return {
+		trade = {ow=50, t="#UI_TradeStationWndCaption"},
+		patrol = {ow=30, t="#UI_PatrolStationWndCaption"},
+		pir = {ow=50, t="#UI_StationC_confirm"},
+		req = {rep=1, t="#UI_TradeStationWndCaption"}};
+end;
+
+-- Modules whose TRF_<M>_Plumb() registers handlers (TRF_InstallPlumb).
+function TRF_PlMods()
+	return {"Shop", "Hail", "Faction", "Events", "Gen", "Stn"};
+end;
+
+-- Group and allocator prefixes of the worldbuilding features (00 section 6, "Group and allocator names"):
+-- group TRF_<name>_<n>, group global TRF_G<name>_<n>, ship labels trf_<lowercase name>_<n>_<j>; each has the
+-- orphan scan at load. Traffic's own prefixes (TRF_Raid_, TRF_Pir_, TRF_Resp_, ...) keep the scans of their
+-- modules. The lint list is GROUP_PREFIXES in tools/lint_lua.py. Names only (a "TRF_..." literal reads as a
+-- function reference to the --calls lint).
+function TRF_PlGroups()
+	return {"Cust", "Scv", "Cap", "Esc", "Def", "Pick", "Push", "Merc", "Rival", "Fw"};
+end;
+
+-- Scripted-event slot order (00 section 6): rank 1 first. Kinds outside the table rank as optional.
+function TRF_EventRank()
+	return {sweep=1, feq=2, staged=3, push=4, deserter=5, vendetta=6, hostile=7, optional=8};
+end;
+
+-- Ship-cap trim ranks by name (00 section 6: rival, pack, scavenger, then skip).
+function TRF_CapRank()
+	return {rival=1, pack=2, scavenger=3};
+end;
+
+-- Registration (spec 3) -------------------------------------------------------------
+
+function TRF_PlKind(kind)
+	local p = %P;
+	if type(p.dock[kind]) ~= "table" then p.dock[kind] = {line={}, box={}}; end;
+	return p.dock[kind];
+end;
+
+-- Line handler fn(kind, param) of a dock kind, run in ascending order; returns nil, a line or a list of
+-- lines. always = 1: also runs while __disableAction or __sys_SOS is set (restores and handlers that apply
+-- their own gate and log it).
+function TRF_DockLine(kind, order, fn, always)
+	if type(kind) ~= "string" then return nil; end;
+	return TRF_PlIns(TRF_PlKind(kind).line, order, fn, always, 1);
+end;
+
+-- Box candidate fn(kind, param) of a dock kind: the highest prio whose fn returns a box spec wins.
+function TRF_DockBox(kind, prio, fn)
+	if type(kind) ~= "string" then return nil; end;
+	return TRF_PlIns(TRF_PlKind(kind).box, prio, fn, nil, 0);
+end;
+
+-- _NoneStation_Action handler fn(param), highest prio first: nil passes on, a string is the key the vanilla
+-- function gets (the chain stops), 0 = handled (no vanilla call). always as in TRF_DockLine.
+function TRF_NoneStationReg(prio, fn, always)
+	return TRF_PlIns(%P.none, prio, fn, always, 0);
+end;
+
+-- Mood provider fn(idx, tip) -> key or nil (03 section 6, row 1 of the station's mood table).
+function TRF_VoiceProvReg(fn)
+	return TRF_PlIns(%P.vp, getn(%P.vp) + 1, fn, nil, 1);
+end;
+
+-- Provider list (names or functions) in registration order; trf_station's TRF_Stn_Prov reads it.
+function TRF_Voice_Prov()
+	local l, o = %P.vp, {};
+	for i = 1, getn(l) do tinsert(o, l[i].f); end;
+	return o;
+end;
+
+-- CostOfHead handler fn(pilot_name, count, price) -> a price; only a larger price is taken.
+function TRF_CostOfHeadReg(fn)
+	return TRF_PlIns(%P.coh, getn(%P.coh) + 1, fn, nil, 1);
+end;
+
+-- Case_Eject handler fn(pilot, result, noeject) -> nil or 1..3 (ignored while __NoEject is set).
+function TRF_EjectReg(fn)
+	return TRF_PlIns(%P.ej, getn(%P.ej) + 1, fn, nil, 1);
+end;
+
+-- Owed payer fn(kind) -> line or nil; all run at the kind's ow line order, before any box.
+function TRF_OweReg(fn)
+	return TRF_PlIns(%P.owe, getn(%P.owe) + 1, fn, nil, 1);
+end;
+
+-- Arrival seed provider fn(c), highest prio first (trf_gen's TRF_EntryPlan).
+function TRF_SeedReg(prio, fn)
+	return TRF_PlIns(%P.seed, prio, fn, nil, 0);
+end;
+
+-- Seed providers in order, or nil when none is registered (TRF_EntryPlan then uses its own list).
+function TRF_SeedList()
+	local l, o = %P.seed, {};
+	for i = 1, getn(l) do tinsert(o, l[i].f); end;
+	if getn(o) == 0 then return nil; end;
+	return o;
+end;
+
+-- 8.5 raid-help resolver fn(n, rd, credits) -> nil, "cancel", {ex=ships} or a factor 0..1.
+function TRF_RaidHelpReg(fn)
+	return TRF_PlIns(%P.rh, getn(%P.rh) + 1, fn, nil, 1);
+end;
+
+-- Ship-cap group: countfn(group) -> live ships; trim = rank (1 rival, 2 pack, 3 scavenger, or the name;
+-- nil or 0 never trimmed). A second registration of the group replaces the first.
+function TRF_CapReg(group, countfn, trim)
+	if type(group) ~= "string" or TRF_PlFn(countfn) == nil and type(countfn) ~= "string" then return nil; end;
+	if type(trim) == "string" then trim = TRF_CapRank()[trim]; end;
+	if type(trim) ~= "number" then trim = 0; end;
+	local l = %P.cap;
+	for i = 1, getn(l) do
+		if l[i].g == group then tremove(l, i); break; end;
+	end;
+	tinsert(l, {g=group, f=countfn, t=trim});
+	return 1;
+end;
+
+-- Registration counts for the install and dump lines: {line, box, none, coh, ej, owe, seed, rh, cap}.
+function TRF_PlCounts()
+	local p = %P;
+	local nl, nb = 0, 0;
+	for k, d in p.dock do nl = nl + getn(d.line); nb = nb + getn(d.box); end;
+	return {line=nl, box=nb, none=getn(p.none), coh=getn(p.coh), ej=getn(p.ej), owe=getn(p.owe), seed=getn(p.seed),
+		rh=getn(p.rh), cap=getn(p.cap)};
+end;
+
+-- Dock dispatcher (spec 4) ----------------------------------------------------------
+
+-- Skip reason while vanilla runs a scene or mutes the chatter (00 section 6), else nil.
+function TRF_PlFlag()
+	if __disableAction == TRUE then return "disable_action"; end;
+	if __sys_SOS == TRUE then return "sys_sos"; end;
+	return nil;
+end;
+
+-- The saved vanilla function by global name, once; its results are passed through.
+function TRF_PlOrig(oname, args)
+	local f = getglobal(oname);
+	if type(f) ~= "function" then
+		TRF_PlE("dock", "original", tostring(oname), "result", "no_original");
+		return;
+	end;
+	return call(f, args, "x");
+end;
+
+-- Called by the dock wrapper thunks (trf_shop, trf_hail, trf_faction, trf_station). kind: trade, patrol, pir,
+-- req; oname: global name of the saved vanilla function; args: its arguments. Lines, then at most one box,
+-- then the vanilla function exactly once: at once and with its results passed through, or after the box
+-- answer (nothing returned here). A nested call of the same kind runs only the vanilla function.
+function TRF_PlDock(kind, oname, args)
+	local p = %P;
+	if type(args) ~= "table" then args = {}; end;
+	if type(TRF) ~= "table" or p.run[kind] == 1 then return TRF_PlOrig(oname, args); end;
+	p.run[kind] = 1;
+	local r = call(TRF_PlDockBody, {kind, oname, args}, "x", TRF_PlErr);
+	p.run[kind] = nil;
+	if r == "box" then return; end;
+	return TRF_PlOrig(oname, args);
+end;
+
+-- Owed payers of 00 section 6 into the line list out.
+function TRF_PlOwe(kind, out)
+	local l = %P.owe;
+	for i = 1, getn(l) do TRF_PlLines(out, TRF_PlCall(l[i].f, {kind})); end;
+end;
+
+-- Why no box may open for kind now, or nil: a pending box of an earlier docking is stale (a docking needs
+-- the modal box closed) and is dropped first.
+function TRF_PlBoxWhy(kind)
+	local p = %P;
+	if type(p.box) == "table" then
+		TRF_BoxFree("dock_"..p.box.k);
+		TRF_PlE("box_answer", "kind", p.box.k, "box", tostring(p.box.s.own), "result", "dropped");
+		p.box = nil;
+		TRF_PlBoxThunk = nil;
+	end;
+	if kind == "trade" and p.fee == 1 and TRF_PlOpt("wb_box_after_fee") ~= 1 then return "after_fee"; end;
+	local L = TRF_PlLive();
+	if L and type(L.box) == "string" and L.box ~= "dock_"..kind and not TRF_PlBoxStale(L) then return "box_lock"; end;
+	return nil;
+end;
+
+-- "box" when a box opened (the vanilla call follows the answer), "skip" under the flags, else "go".
+function TRF_PlDockBody(kind, oname, args)
+	local K = TRF_PlKind(kind);
+	local ki = TRF_PlKinds()[kind] or {};
+	local fl = TRF_PlFlag();
+	local out = {};
+	local a1 = args[1];
+	local owed = nil;
+	for i = 1, getn(K.line) do
+		local e = K.line[i];
+		if not fl and ki.ow and not owed and e.o > ki.ow then TRF_PlOwe(kind, out); owed = 1; end;
+		if not fl or e.al == 1 then TRF_PlLines(out, TRF_PlCall(e.f, {kind, a1})); end;
+	end;
+	if not fl and ki.ow and not owed then TRF_PlOwe(kind, out); end;
+	for i = 1, getn(out) do TRF_PlSay(out[i]); end;
+	if fl then
+		TRF_PlE("dock", "kind", kind, "line_count", getn(out), "result", "skipped", "reason", fl);
+		return "skip";
+	end;
+	local why = TRF_PlBoxWhy(kind);
+	if why then
+		TRF_PlE("dock", "kind", kind, "line_count", getn(out), "result", "vanilla", "reason", why);
+		return "go";
+	end;
+	for i = 1, getn(K.box) do
+		local e = K.box[i];
+		local s = TRF_PlCall(e.f, {kind, a1});
+		if type(s) == "table" and type(s.text) == "string" then
+			if TRF_PlShow(kind, oname, args, s) then
+				TRF_PlE("dock", "kind", kind, "line_count", getn(out), "box", tostring(s.own or TRF_PlName(e.f)), "priority", e.o,
+					"result", "box");
+				return "box";
+			end;
+			TRF_PlE("dock", "kind", kind, "line_count", getn(out), "box", tostring(s.own or TRF_PlName(e.f)), "result", "vanilla",
+				"reason", "box_failed");
+			return "go";
+		end;
+	end;
+	TRF_PlE("dock", "kind", kind, "line_count", getn(out), "result", "vanilla");
+	return "go";
+end;
+
+function TRF_PlShowRaw(title, text)
+	ShowMsgBox(title, text, TRF_PlBoxOk, TRF_PlBoxNo);
+	return 1;
+end;
+
+-- Opens box spec s (spec 4.2) under the lock dock_<kind>; 1 when shown. On failure s.fail(s.a) runs.
+function TRF_PlShow(kind, oname, args, s)
+	local p = %P;
+	local own = "dock_"..kind;
+	if type(ShowMsgBox) ~= "function" or not TRF_BoxTake(own) then TRF_PlCall(s.fail, {s.a}); return nil; end;
+	local title = s.title;
+	if type(title) ~= "string" then
+		local ki = TRF_PlKinds()[kind];
+		title = "#UI_StationC_confirm";
+		if type(ki) == "table" and type(ki.t) == "string" then title = ki.t; end;
+	end;
+	local bx = {k=kind, o=oname, args=args, s=s, g=TRF.gen};
+	p.box = bx;
+	-- The open box also lives in a function global (survives ClearGlobals), so an answer after a
+	-- MapInitialization (P rebuilt) still finds it; its handlers test the generation themselves.
+	TRF_PlBoxThunk = function() return %bx; end;
+	if not call(TRF_PlShowRaw, {title, s.text}, "x", TRF_PlErr) then
+		p.box = nil;
+		TRF_PlBoxThunk = nil;
+		TRF_BoxFree(own);
+		TRF_PlCall(s.fail, {s.a});
+		return nil;
+	end;
+	return 1;
+end;
+
+-- Box buttons: the spec's handler (protected; a returned string is shown as a line), then the vanilla call
+-- once (not for the request kind, whose box replaces it). During the handler of a fee box (s.fee = 1) a
+-- nested trade docking opens no box (00 section 6, until E0.6; cfg wb_box_after_fee 1 allows it).
+function TRF_PlBoxOk() TRF_PlAnswer(1); end;
+function TRF_PlBoxNo() TRF_PlAnswer(0); end;
+
+function TRF_PlAnswer(a)
+	local p = %P;
+	local b = p.box;
+	p.box = nil;
+	if type(b) ~= "table" and type(TRF_PlBoxThunk) == "function" then b = TRF_PlBoxThunk(); end;
+	TRF_PlBoxThunk = nil;
+	if type(b) ~= "table" then TRF_PlE("box_answer", "answer", a, "result", "stale"); return; end;
+	TRF_BoxFree("dock_"..b.k);
+	if b.s.fee == 1 then p.fee = 1; end;
+	TRF_Cb("TRF_PlAnswer", TRF_PlAnsBody, {b, a});
+	p.fee = nil;
+	local ki = TRF_PlKinds()[b.k];
+	if type(ki) ~= "table" or ki.rep ~= 1 then TRF_PlOrig(b.o, b.args); end;
+end;
+
+-- An answer from another generation (a box carried over a load) still runs the handler, which tests the
+-- generation of its own record (station fee, pirate offer) or finds nothing (board offers in H).
+function TRF_PlAnsBody(b, a)
+	local s = b.s;
+	local res = "done";
+	if type(TRF) ~= "table" or b.g ~= TRF.gen then res = "stale"; end;
+	local f = s.no;
+	if a == 1 then f = s.ok; end;
+	local v = nil;
+	if f then v = TRF_PlCall(f, {s.a}); end;
+	if type(v) == "string" then TRF_PlSay(v); end;
+	TRF_PlE("box_answer", "kind", b.k, "box", tostring(s.own), "answer", a, "result", res);
+end;
+
+-- _NoneStation_Action chain (spec 4.3) ---------------------------------------------
+
+-- Called by trf_station's thunk: handlers by prio (under the flags only the always ones), then the vanilla
+-- function once with the key, unless a handler returned 0 (it spoke itself).
+function TRF_PlNone(param, oname)
+	local l = %P.none;
+	local key = param;
+	if type(TRF) == "table" then
+		local fl = TRF_PlFlag();
+		for i = 1, getn(l) do
+			local e = l[i];
+			if not fl or e.al == 1 then
+				local v = TRF_PlCall(e.f, {param});
+				if v == 0 then TRF_PlDE("none", "param", tostring(param), "handler", TRF_PlName(e.f), "result", "handled"); return; end;
+				if type(v) == "string" then key = v; break; end;
+			end;
+		end;
+	end;
+	return TRF_PlOrig(oname, {key});
+end;
+
+-- CostOfHead and Case_Eject (spec 4.4, 4.5) ----------------------------------------
+
+-- CostOfHead(pilot_name, count) body: the vanilla price, then each handler; never below the vanilla price.
+-- The vanilla call is unprotected, so its errors keep the vanilla path.
+function TRF_PlCoH(name, count)
+	local f = TRF_orig_CostOfHead;
+	local price = 0;
+	if type(f) == "function" then price = f(name, count); end;
+	if type(price) ~= "number" then return price; end;
+	local l = %P.coh;
+	local p0 = price;
+	for i = 1, getn(l) do
+		local v = TRF_PlCall(l[i].f, {name, count, price});
+		if type(v) == "number" and v > price then price = v; end;
+	end;
+	if price ~= p0 then
+		TRF_PlE("cost_of_head", "pilot", tostring(name), "count", count, "price_before", p0, "price_after", price);
+	end;
+	return price;
+end;
+
+-- 1 while the quest label __NoEject names a pilot (AI/Case_Eject.script 16-22).
+function TRF_PlNoEject()
+	local v = TRF_N("GetQuestLabel", "__NoEject");
+	if type(v) == "string" and v ~= "" then return 1; end;
+	return nil;
+end;
+
+-- Case_Eject(pilot) body (trf_events' TRF_CaseEject): the vanilla result, then each handler; a handler may
+-- return 1..3 except while __NoEject is set (then the vanilla result stands).
+function TRF_PlEject(pilot, oname)
+	local f = getglobal(oname);
+	local r = 2;
+	if type(f) == "function" then r = f(pilot); end;
+	local ne = TRF_PlNoEject();
+	local r0 = r;
+	local l = %P.ej;
+	for i = 1, getn(l) do
+		local v = TRF_PlCall(l[i].f, {pilot, r, ne});
+		if not ne and (v == 1 or v == 2 or v == 3) then r = v; end;
+	end;
+	if r ~= r0 then TRF_PlE("eject", "result_before", r0, "result_after", r); end;
+	return r;
+end;
+
+-- 1 when f is this module's CostOfHead wrapper (thunk identity of an earlier run, or a Mods/Traffic chunk).
+function TRF_PlIsMine(f)
+	if type(f) ~= "function" then return nil; end;
+	if type(TRF_PlCoHThunk) == "function" and f == TRF_PlCoHThunk() then return 1; end;
+	if type(TRF_IsMine) == "function" and TRF_IsMine(f) then return 1; end;
+	return nil;
+end;
+
+-- Called from TRF_Main on every MapInitialization after the files load: wraps CostOfHead once over this run's
+-- vanilla function (TRF_orig_CostOfHead and the thunk are function globals: they survive ClearGlobals and
+-- are never saved), then every module registers (TRF_<M>_Plumb). Returns {coh = 1 when wrapped now}.
+function TRF_InstallPlumb()
+	local r = {coh=0};
+	if type(CostOfHead) == "function" and not TRF_PlIsMine(CostOfHead) then
+		TRF_orig_CostOfHead = CostOfHead;
+		local w = function(n, c)
+			if type(TRF_PlCoH) == "function" then return TRF_PlCoH(n, c); end;
+			if type(TRF_orig_CostOfHead) == "function" then return TRF_orig_CostOfHead(n, c); end;
+			return 0;
+		end;
+		CostOfHead = w;
+		TRF_PlCoHThunk = function() return %w; end;
+		r.coh = 1;
+	end;
+	local ms = TRF_PlMods();
+	for i = 1, getn(ms) do TRF_P("TRF_"..ms[i].."_Plumb"); end;
+	local c = TRF_PlCounts();
+	TRF_PlE("install", "cost_of_head_installed", TRF_KvB(r.coh), "cost_of_head_wrapped", TRF_KvB(TRF_PlIsMine(CostOfHead)),
+		"line_count", c.line, "box_count", c.box, "none_count", c.none, "cost_of_head_count", c.coh, "eject_count", c.ej,
+		"owe_count", c.owe, "seed_count", c.seed, "raid_help_count", c.rh, "cap_count", c.cap);
+	return r;
+end;
+
+-- Visit slots (spec 5) -------------------------------------------------------------
+
+-- 1 when the lock was taken more than box_stale game seconds ago (a box closed without freeing it).
+function TRF_PlBoxStale(L)
+	return type(L.bt) == "number" and TRF_PlGt() - L.bt > TRF_PlK().box_stale and 1 or nil;
+end;
+
+-- Message box lock live.box: 1 when free, stale or already held by owner (then held by owner), else nil.
+function TRF_BoxTake(owner)
+	local L = TRF_PlLive();
+	if not L or type(owner) ~= "string" then return nil; end;
+	if type(L.box) == "string" and L.box ~= owner then
+		if not TRF_PlBoxStale(L) then
+			TRF_PlDE("box_lock", "owner", owner, "holder", L.box, "result", "refused");
+			return nil;
+		end;
+		TRF_PlE("box_lock", "owner", owner, "holder", L.box, "result", "stale");
+	end;
+	L.box = owner;
+	L.bt = TRF_PlGt();
+	return 1;
+end;
+
+function TRF_BoxFree(owner)
+	local L = TRF_PlLive();
+	if not L or L.box ~= owner then return nil; end;
+	L.box = nil;
+	L.bt = nil;
+	return 1;
+end;
+
+function TRF_BoxHolder()
+	local L = TRF_PlLive();
+	if L and type(L.box) == "string" and not TRF_PlBoxStale(L) then return L.box; end;
+	return nil;
+end;
+
+-- Scripted-event slot, one per visit (live.ev). The first claim wins and the slot stays taken for the
+-- visit; claimants ask in TRF_EventRank order at entry (TRF_EntryPlan's providers). 1 when taken by kind.
+function TRF_EventSlotTake(kind)
+	local L = TRF_PlLive();
+	if not L or type(kind) ~= "string" then return nil; end;
+	if L.ev == kind then return 1; end;
+	local rk = TRF_EventRank()[kind] or TRF_EventRank().optional;
+	if L.ev == nil then
+		L.ev = kind;
+		TRF_PlE("event_slot", "kind", kind, "rank", rk, "result", "taken");
+		return 1;
+	end;
+	TRF_PlE("event_slot", "kind", kind, "rank", rk, "holder", L.ev, "result", "refused");
+	return nil;
+end;
+
+-- Frees the slot when kind holds it (its event could not start). Returns 1 when freed.
+function TRF_EventSlotFree(kind)
+	local L = TRF_PlLive();
+	if not L or L.ev ~= kind then return nil; end;
+	L.ev = nil;
+	TRF_PlE("event_slot", "kind", kind, "result", "freed");
+	return 1;
+end;
+
+function TRF_EventSlot()
+	local L = TRF_PlLive();
+	if L then return L.ev; end;
+	return nil;
+end;
+
+-- Escort slot, one per visit (live.esc): the first hire wins.
+function TRF_EscortTake(owner)
+	local L = TRF_PlLive();
+	if not L or type(owner) ~= "string" then return nil; end;
+	if L.esc == owner then return 1; end;
+	if L.esc ~= nil then
+		TRF_PlE("escort_slot", "owner", owner, "holder", L.esc, "result", "refused");
+		return nil;
+	end;
+	L.esc = owner;
+	TRF_PlE("escort_slot", "owner", owner, "result", "taken");
+	return 1;
+end;
+
+function TRF_EscortFree(owner)
+	local L = TRF_PlLive();
+	if not L or L.esc ~= owner then return nil; end;
+	L.esc = nil;
+	return 1;
+end;
+
+-- Arrival line queue (spec 5.4): traffic's own line runs at arr_delay (5 s) after entry; mod lines follow at
+-- arr_gap (3 s) steps in call order, at most arr_max per entry, the rest dropped. Only during an entry (live.ag
+-- set by TRF_Pl_OnActivate; a load sets none). Returns 1 when queued.
+function TRF_ArrivalLine(owner, text)
+	local L = TRF_PlLive();
+	if not L or type(text) ~= "string" or text == "" then return nil, "arg"; end;
+	owner = tostring(owner);
+	if type(L.ag) ~= "number" then
+		TRF_PlE("arrival_line", "owner", owner, "result", "dropped", "reason", "no_entry");
+		return nil, "entry";
+	end;
+	local K = TRF_PlK();
+	local n = (L.arq or 0) + 1;
+	if n > K.arr_max then
+		TRF_PlE("arrival_line", "owner", owner, "line_index", n, "result", "dropped", "reason", "cap");
+		return nil, "cap";
+	end;
+	local d = 5;
+	local t = TRF_N("TRF_Tune");
+	if type(t) == "table" and type(t.arr_delay) == "number" then d = t.arr_delay; end;
+	local dt = max(0, L.ag + d + K.arr_gap * n - TRF_PlGt());
+	if not TRF_N("TRF_Due", dt, "TRF_PlArrSay", owner, text) then
+		TRF_PlE("arrival_line", "owner", owner, "line_index", n, "result", "dropped", "reason", "due");
+		return nil, "due";
+	end;
+	L.arq = n;
+	TRF_PlE("arrival_line", "owner", owner, "line_index", n, "delay", TRF_F(dt), "result", "queued");
+	return 1;
+end;
+
+-- Due call of a queued arrival line.
+function TRF_PlArrSay(owner, text)
+	local secs = 8;
+	local c = TRF_N("TRF_UI_Const");
+	if type(c) == "table" and type(c.arr_secs) == "number" then secs = c.arr_secs; end;
+	local ok = TRF_PlSay(text, secs);
+	TRF_PlDE("arrival_line", "owner", tostring(owner), "result", ok and "shown" or "not_shown");
+	return ok;
+end;
+
+-- Job slot TRF.job (spec 5.5): one open job {k = kind, flat fields; names and strings up to job_len}. 1 when
+-- taken, else nil, reason.
+function TRF_JobTake(kind, rec)
+	if type(TRF) ~= "table" or (type(kind) ~= "number" and type(kind) ~= "string") then return nil, "kind"; end;
+	if type(TRF.job) == "table" then
+		TRF_PlE("job", "kind", kind, "holder", TRF.job.k, "result", "refused");
+		return nil, "busy";
+	end;
+	local K = TRF_PlK();
+	local j, n = {k=kind}, 0;
+	if type(rec) == "table" then
+		for k, v in rec do
+			if type(k) ~= "string" or k == "k" or strlen(k) > K.job_len or (type(v) ~= "number" and type(v) ~= "string")
+				or (type(v) == "string" and strlen(v) > K.job_len) then
+				return nil, "field";
+			end;
+			n = n + 1;
+			j[k] = v;
+		end;
+	end;
+	if n > K.job_max then return nil, "size"; end;
+	TRF.job = j;
+	TRF_PlE("job", "kind", kind, "field_count", n, "result", "taken");
+	return 1;
+end;
+
+function TRF_JobGet()
+	if type(TRF) == "table" and type(TRF.job) == "table" then return TRF.job; end;
+	return nil;
+end;
+
+function TRF_JobClear()
+	if type(TRF) ~= "table" or type(TRF.job) ~= "table" then return nil; end;
+	TRF_PlE("job", "kind", TRF.job.k, "result", "cleared");
+	TRF.job = nil;
+	return 1;
+end;
+
+-- Raid help (8.5, spec 6) -----------------------------------------------------------
+
+-- Pure: credits after the resolver results rs for a raid of ns ships. "cancel" (or {cancel = 1}) -> 0;
+-- {ex = k} entries add up and scale by (ns - ex) / ns; numbers are factors 0..1 of which only the lowest
+-- applies (factors never multiply). Returns floor(credits), rule.
+function TRF_RaidHelpOf(amt, ns, rs)
+	local ex, f = 0, nil;
+	for i = 1, getn(rs) do
+		local v = rs[i];
+		if v == "cancel" or (type(v) == "table" and v.cancel == 1) then return 0, "cancel"; end;
+		if type(v) == "table" and type(v.ex) == "number" then ex = ex + max(0, floor(v.ex)); end;
+		if type(v) == "number" then
+			local x = TRF_PlCl(v, 0, 1);
+			if not f or x < f then f = x; end;
+		end;
+	end;
+	local a, how = amt, "none";
+	if ex > 0 then
+		if type(ns) ~= "number" or ns <= ex then return 0, "excluded"; end;
+		a = a * (ns - ex) / ns;
+		how = "excluded";
+	end;
+	if f then
+		a = a * f;
+		if how == "none" then how = "factor"; else how = how.."_factor"; end;
+	end;
+	return floor(a), how;
+end;
+
+-- trf_raid's TRF_Rd_Pay asks here: the registered resolvers, then TRF_RaidHelpOf. Returns credits, rule.
+function TRF_RaidHelp(n, rd, amt)
+	local l = %P.rh;
+	local rs = {};
+	for i = 1, getn(l) do
+		local v = TRF_PlCall(l[i].f, {n, rd, amt});
+		if v ~= nil then tinsert(rs, v); end;
+	end;
+	if getn(rs) == 0 then return amt, "none"; end;
+	local ns = nil;
+	if type(rd) == "table" then ns = rd.ns; end;
+	local a, how = TRF_RaidHelpOf(amt, ns, rs);
+	TRF_PlE("raid_help", "raid_id", n, "credits_before", amt, "credits_after", a, "rule", how, "resolver_count", getn(rs));
+	return a, how;
+end;
+
+-- Ship caps (spec 7) ----------------------------------------------------------------
+
+-- Live ships of the registered groups (trf_safety's TRF_CanSpawn adds them to the cap_ships count).
+function TRF_CapShips()
+	local l = %P.cap;
+	local n = 0;
+	for i = 1, getn(l) do
+		local v = TRF_PlCall(l[i].f, {l[i].g});
+		if type(v) == "number" and v > 0 then n = n + floor(v); end;
+	end;
+	return n;
+end;
+
+-- Pure: which groups give up ships when over ships are above the cap. list = {{g, n, t}, ...} (t: trim rank,
+-- 0 never). Lowest rank first, each up to its n. Returns the plan {{g = group, n = ships}, ...} and the ships
+-- still over (to skip).
+function TRF_CapTrimOf(list, over)
+	local c = {};
+	for i = 1, getn(list) do
+		local e = list[i];
+		if type(e) == "table" and type(e.t) == "number" and e.t > 0 and type(e.n) == "number" and e.n > 0 then tinsert(c, e); end;
+	end;
+	sort(c, function(a, b) if a.t ~= b.t then return a.t < b.t; end; return a.g < b.g; end);
+	local plan = {};
+	local left = max(0, over or 0);
+	for i = 1, getn(c) do
+		if left <= 0 then break; end;
+		local k = min(c[i].n, left);
+		tinsert(plan, {g=c[i].g, n=k});
+		left = left - k;
+	end;
+	return plan, left;
+end;
+
+function TRF_CapTrim(over)
+	local l = %P.cap;
+	local list = {};
+	for i = 1, getn(l) do
+		local v = TRF_PlCall(l[i].f, {l[i].g});
+		if type(v) ~= "number" then v = 0; end;
+		tinsert(list, {g=l[i].g, n=floor(v), t=l[i].t});
+	end;
+	return TRF_CapTrimOf(list, over);
+end;
+
+-- Nav markers (spec 8) --------------------------------------------------------------
+
+function TRF_PlMkH()
+	local H = TRF_N("TRF_H");
+	if type(H) ~= "table" then return nil; end;
+	if type(H.mk) ~= "table" then H.mk = {}; end;
+	return H.mk;
+end;
+
+-- TRF.mk = "label=owner;..." in label order (labels for the cleanup after a load), nil when empty.
+function TRF_PlMkSave()
+	local m = TRF_PlMkH();
+	if type(TRF) ~= "table" or not m then return; end;
+	local ks = {};
+	for k, e in m do tinsert(ks, k); end;
+	sort(ks);
+	local s = "";
+	for i = 1, getn(ks) do s = s..ks[i].."="..tostring(m[ks[i]].o)..";"; end;
+	if s == "" then TRF.mk = nil; else TRF.mk = s; end;
+end;
+
+-- Labels of TRF.mk, in order.
+function TRF_PlMkLabels()
+	local o = {};
+	if type(TRF) ~= "table" or type(TRF.mk) ~= "string" then return o; end;
+	local s = TRF.mk;
+	local i = 1;
+	while i <= strlen(s) do
+		local a = strfind(s, ";", i, 1);
+		if not a then break; end;
+		local e = strsub(s, i, a - 1);
+		local b = strfind(e, "=", 1, 1);
+		if b then tinsert(o, strsub(e, 1, b - 1)); end;
+		i = a + 1;
+	end;
+	return o;
+end;
+
+function TRF_PlMkCount()
+	local m = TRF_PlMkH();
+	local n = 0;
+	if m then for k, e in m do n = n + 1; end; end;
+	return n;
+end;
+
+-- Deletes marker label through its handle; look = 1 (a saved label without a handle, after a load) through the
+-- engine lookup by label instead. A label deleted through its handle is never looked up again: the lookup
+-- returns the first match even when dead (mod-research/hooks/runtime-limits.md 5). 1 when one was deleted.
+function TRF_PlMkDel(label, look)
+	local m = TRF_PlMkH();
+	if m and type(m[label]) == "table" then
+		local d = TRF_PlDel(m[label].n);
+		m[label] = nil;
+		return d;
+	end;
+	if look ~= 1 then return nil; end;
+	local o = TRF_N("GetNavPointByLabel", label);
+	if o ~= nil and TRF_PlDel(o) then return 1; end;
+	return nil;
+end;
+
+-- Nav marker of owner at x, y, z labelled label (TRF_*, at most mk_len characters, no "=" or ";"). Refused while
+-- a story mission runs (GetPlayerQuestState() == TRUE) and above mk_max markers. Returns 1, or nil, reason.
+function TRF_MarkerAdd(owner, label, x, y, z)
+	local K = TRF_PlK();
+	if type(owner) ~= "string" or owner == "" or strfind(owner, "[=;]") then return nil, "owner"; end;
+	if type(label) ~= "string" or strsub(label, 1, 4) ~= "TRF_" or strlen(label) > K.mk_len or strfind(label, "[=;]") then
+		TRF_PlE("marker", "owner", owner, "label", tostring(label), "result", "refused", "reason", "label");
+		return nil, "label";
+	end;
+	if type(x) ~= "number" or type(y) ~= "number" or type(z) ~= "number" then return nil, "position"; end;
+	if TRF_N("GetPlayerQuestState") == TRUE then
+		TRF_PlE("marker", "owner", owner, "label", label, "result", "refused", "reason", "quest");
+		return nil, "quest";
+	end;
+	local m = TRF_PlMkH();
+	if not m or type(CreateNavPoint) ~= "function" or type(Vector3) ~= "function" then return nil, "native"; end;
+	TRF_PlMkDel(label);
+	if TRF_PlMkCount() >= K.mk_max then
+		TRF_PlMkSave();
+		TRF_PlE("marker", "owner", owner, "label", label, "result", "refused", "reason", "cap");
+		return nil, "cap";
+	end;
+	local col = TRF_N("RGB", 80, 200, 255);
+	if type(col) ~= "number" then col = 0; end;
+	local nav = call(CreateNavPoint, {"", Vector3(x, y, z), "nav_target.dds", col}, "x", TRF_PlErr);
+	if nav == nil or type(nav) == "number" then
+		TRF_PlE("marker", "owner", owner, "label", label, "result", "failed", "reason", "create_nav_point_nil");
+		TRF_PlMkSave();
+		return nil, "create";
+	end;
+	TRF_N("SetNavPointLabel", nav, label);
+	m[label] = {o=owner, n=nav};
+	TRF_PlMkSave();
+	TRF_PlE("marker", "owner", owner, "label", label, "result", "added");
+	return 1;
+end;
+
+-- Deletes the markers of owner (nil: all). Returns the number deleted.
+function TRF_MarkerClear(owner)
+	local m = TRF_PlMkH();
+	if not m then return 0; end;
+	local ks = {};
+	for k, e in m do
+		if owner == nil or (type(e) == "table" and e.o == owner) then tinsert(ks, k); end;
+	end;
+	local n = 0;
+	for i = 1, getn(ks) do
+		if TRF_PlMkDel(ks[i]) then n = n + 1; end;
+	end;
+	TRF_PlMkSave();
+	if getn(ks) > 0 then TRF_PlE("marker", "owner", tostring(owner), "deleted_count", n, "result", "cleared"); end;
+	return n;
+end;
+
+-- Every marker: the handles of this visit, and by label the saved labels without a handle (after a load the
+-- handles are gone). One delete per marker.
+function TRF_PlMkAll(why)
+	local l = TRF_PlMkLabels();
+	local m = TRF_PlMkH() or {};
+	local ks, n = {}, 0;
+	for k, e in m do tinsert(ks, k); end;
+	for i = 1, getn(l) do
+		if type(m[l[i]]) ~= "table" and TRF_PlMkDel(l[i], 1) then n = n + 1; end;
+	end;
+	for i = 1, getn(ks) do
+		if TRF_PlMkDel(ks[i]) then n = n + 1; end;
+	end;
+	if type(TRF) == "table" then TRF.mk = nil; end;
+	if getn(l) > 0 or n > 0 then TRF_PlE("marker", "reason", why, "deleted_count", n, "result", "cleared"); end;
+	return n;
+end;
+
+-- Orphan scan (spec 9) ---------------------------------------------------------------
+
+-- After a load: build-time group globals TRF_G<prefix><n> restored with the save are cleared, and ships
+-- labelled trf_<prefix lowercase><n>_<j> (n 1..scan_n, j 1..scan_j) are deleted. Returns ships, globals.
+function TRF_PlOrphans()
+	local K = TRF_PlK();
+	local gs = TRF_PlGroups();
+	local del = {};
+	for k, v in globals() do
+		if type(k) == "string" and strsub(k, 1, 5) == "TRF_G" then
+			for i = 1, getn(gs) do
+				local p = "TRF_G"..gs[i].."_";
+				if strsub(k, 1, strlen(p)) == p then tinsert(del, k); end;
+			end;
+		end;
+	end;
+	for i = 1, getn(del) do setglobal(del[i], nil); end;
+	local n = 0;
+	for i = 1, getn(gs) do
+		local lp = "trf_"..strlower(gs[i]).."_";
+		for a = 1, K.scan_n do
+			for j = 1, K.scan_j do
+				local o = TRF_N("GetObjectByLabel", lp..a.."_"..j);
+				if TRF_PlAlive(o) and TRF_PlDel(o) then n = n + 1; end;
+			end;
+		end;
+	end;
+	if n + getn(del) > 0 then TRF_PlE("orphan", "deleted_count", n, "global_count", getn(del)); end;
+	return n, getn(del);
+end;
+
+-- Contract: loader callbacks, repair, defaults, dump ------------------------------------
+
+-- Entry: the visit slots start empty (TRF_LiveReset already rebuilt TRF.live).
+function TRF_Pl_OnEnter()
+	local L = TRF_PlLive();
+	if not L then return; end;
+	L.box = nil; L.bt = nil; L.ev = nil; L.esc = nil; L.arq = nil; L.ag = nil;
+end;
+
+-- Activation (entry only): arrival lines count from now.
+function TRF_Pl_OnActivate()
+	local L = TRF_PlLive();
+	if L then L.ag = TRF_PlGt(); L.arq = 0; end;
+end;
+
+-- Load: slots cleared, markers of the saved visit deleted, orphan scan.
+function TRF_Pl_OnLoad()
+	local p = %P;
+	p.box = nil; p.fee = nil; p.run = {};
+	local L = TRF_PlLive();
+	if L then L.box = nil; L.bt = nil; L.ev = nil; L.esc = nil; L.arq = nil; L.ag = nil; end;
+	call(TRF_PlMkAll, {"load"}, "x", TRF_PlErr);
+	call(TRF_PlOrphans, {}, "x", TRF_PlErr);
+end;
+
+-- Before every jump: all markers deleted (00 section 6).
+function TRF_Pl_BeforeJump()
+	local p = %P;
+	p.box = nil; p.fee = nil;
+	TRF_PlMkAll("jump");
+end;
+
+-- Repair (TRF_Repair): TRF.job a table with a number or string k and flat fields, TRF.mk a string.
+function TRF_Pl_Fix()
+	if type(TRF) ~= "table" then return; end;
+	local j = TRF.job;
+	if j ~= nil and (type(j) ~= "table" or (type(j.k) ~= "number" and type(j.k) ~= "string")) then TRF.job = nil; j = nil; end;
+	if type(j) == "table" then
+		local bad = {};
+		for k, v in j do
+			if type(k) ~= "string" or (type(v) ~= "number" and type(v) ~= "string") then tinsert(bad, k); end;
+		end;
+		for i = 1, getn(bad) do j[bad[i]] = nil; end;
+	end;
+	if TRF.mk ~= nil and type(TRF.mk) ~= "string" then TRF.mk = nil; end;
+end;
+
+-- wb_box_after_fee: 1 allows an offer box at the trade dock after a #3 fee box (set once E0.6 passes).
+function TRF_Pl_OptDef()
+	return {wb_box_after_fee=0};
+end;
+
+function TRF_Pl_TuneDef()
+	return {};
+end;
+
+function TRF_Pl_Dump()
+	local L = TRF_PlLive() or {};
+	local jk = nil;
+	if type(TRF) == "table" and type(TRF.job) == "table" then jk = TRF.job.k; end;
+	local c = {};
+	if type(TRF) == "table" and type(TRF.clock) == "table" then c = TRF.clock; end;
+	local n = TRF_PlCounts();
+	TRF_PlE("dump", "box_holder", L.box, "event_slot", L.ev, "escort", L.esc, "arrival_count", L.arq, "job", jk,
+		"marker_count", TRF_PlMkCount(), "jumps", c.j, "real_seconds", TRF_F(c.rs), "visit_tick_legs", c.vl,
+		"line_count", n.line, "box_count", n.box, "cap_count", n.cap, "cost_of_head_wrapped", TRF_KvB(TRF_PlIsMine(CostOfHead)));
+end;
