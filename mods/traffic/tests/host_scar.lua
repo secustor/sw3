@@ -326,6 +326,18 @@ function T_SC_B()
 	n0 = S_Mark();
 	TRF_ScAdd({sys=ss[6], k=0, kind=1, fac=0, x=0, y=0, z=0, leg=Lb, ttl=8, on=1, mine=0, lv=0, seed=1, nd=2, st=0, hid=0, scv=1, rec=0, nm=0, rf=0}, T);
 	HOST_Check(getn(TRF.scar) == 5 and not TRF_ScAt(ss[1]) and TRF_ScAt(ss[5]) and S_Logs(n0, "reason=fight_cap") == 1, "scar_fight_max 4: the oldest on-screen record goes, the lootable one stays");
+	T.scar_fight_max = 0;
+	local ia, ra = TRF_ScAdd({sys=ss[7], k=0, kind=1, fac=0, x=0, y=0, z=0, leg=Lb, ttl=8, on=1, mine=0, lv=0, seed=1, nd=2, st=0, hid=0, scv=1, rec=0, nm=0, rf=0}, T);
+	HOST_Check(ia == nil and ra == "fight_cap" and getn(TRF.scar) == 1 and TRF_ScAt(ss[5]) and not TRF_ScAt(ss[7]),
+		"scar_fight_max 0: the on-screen records go, no new one is added");
+	T.scar_fight_max = 4;
+	-- An expired record elsewhere is dropped before a source could refresh it; scar_cd then applies.
+	TRF.scar = nil;
+	TRF.sys[cs].scd = nil;
+	SC_Rec(cs, {leg=TRF.clock.legs - 13, ttl=12});
+	n0 = S_Mark();
+	HOST_Check(TRF_ScWrite(cs, {src=2, kind=1, fac=0, lv=1, rec=0, on=0, mine=0}) == nil and not TRF_ScAt(cs) and S_Logs(n0, "module=scar event=expire") == 1
+		and S_Logs(n0, "reason=cooldown") == 1, "an expired record is not refreshed: dropped, then scar_cd");
 	-- Pure victim order and ttl.
 	HOST_Check(TRF_ScTtlOf(1, 0, 0, T.scar_ttl) == 12 and TRF_ScTtlOf(4, 0, 0, T.scar_ttl) == 20 and TRF_ScTtlOf(3, 1, 0, T.scar_ttl) == 8
 		and TRF_ScTtlOf(3, 1, 1, T.scar_ttl) == 12 and TRF_ScTtlOf(4, 0, 1, T.scar_ttl) == 30, "ttl: per kind, fight 8 on-screen, mine x 1.5, at most 30");
@@ -559,6 +571,15 @@ function T_SC_E()
 	HOST_Check(r.st == 1 and not SC_Hulk(sid) and SC_Objs(sid) == r.nd and r.nd >= 2 and r.nd <= 3, "placed at the next entry: 2-3 decorations, no hulk");
 	HOST_Check(not (type(TRF.mk) == "string" and strfind(TRF.mk, "TRF_SCAR_", 1, 1)), "no beacon marker for an on-screen scar");
 	HOST_Check(getn(TRF_ScCargo(r, g, "full")) == 0, "no cargo for an on-screen wreck (exploit 1)");
+	-- An on-screen record shrinks from age > ttl / 2 (one decoration per entry, never the last); it stays st 1.
+	local nd0 = r.nd;
+	r.ttl = 30; r.leg = TRF.clock.legs - 16;
+	SC_Jump("heos");
+	n0 = S_Mark();
+	SC_Jump("gaoba", 1);
+	r = SC_R(g);
+	HOST_Check(r.st == 1 and r.nd == nd0 - 1 and SC_Objs(sid) == nd0 - 1 and S_Logs(n0, "module=scar event=shrink sid="..sid) == 1,
+		"on-screen record past ttl / 2: one decoration fewer ("..r.nd.." of "..nd0..")");
 	-- A named fight end with one death; player fire: mine 1, ttl 12. The system's record is refreshed instead.
 	TRF.scar = nil;
 	SC_Dead(1, 300, -300, 0, 1);
@@ -598,8 +619,17 @@ function T_SC_E()
 	HOST_Check(S_Logs(n0, "module=scar event=dead class=1 ") >= 1 and TRF.sv and TRF.sv.b[1] and TRF.sv.b[1].src == 1, "trader death recorded by trf_events; survivors' witnessed record");
 	TRF.live.rd[rn].st = "fight";
 	TRF.live.rd[rn].hit = 1;
+	TRF.live.rd[rn].tk = nil;
+	TRF_Rd_End(rn, "stale");
+	HOST_Check(S_Logs(n0, "module=scar event=fight_end") == 0, "raid end without a fight (no raid ship dead, target alive): no fight end");
+	TRF.live.rd[rn].st = "fight";
+	TRF.live.rd[rn].hit = 1;
+	TRF.live.rd[rn].tk = 1;
 	TRF_Rd_End(rn, "left");
-	HOST_Check(S_Logs(n0, "module=scar event=fight_end fight=raid") == 1, "raid end recorded by trf_raid");
+	HOST_Check(S_Logs(n0, "module=scar event=fight_end fight=raid") == 1, "raid end after its target was killed recorded by trf_raid");
+	-- A leg passes during the visit: the witnessed loss is still this visit's (stamped at or after the entry leg).
+	TRF.clock.legs = TRF.clock.legs + 1;
+	TRF.clock.vl = (TRF.clock.vl or 0) + 1;
 	n0 = S_Mark();
 	SC_Jump("heos");
 	i, r = TRF_ScAt(g);
@@ -622,6 +652,16 @@ function T_SC_E()
 	n0 = S_Mark();
 	SC_Jump("heos");
 	HOST_Check(not TRF_ScAt(g) and S_Logs(n0, "reason=position") == 1, "deaths without a position: no scar");
+	-- trf_danger: a danger convoy that ends without a loss is no fight end; one with a loss (TRF_DcLoss) is.
+	n0 = S_Mark();
+	TRF.live.dc = {};
+	TRF.live.dc[7] = {id={}, a={}, st="go", n=2, ns=2, ok=0, ct=0, e=3, m=1, k=1};
+	TRF_DcEnd(7);
+	HOST_Check(S_Logs(n0, "module=danger event=end convoy_id=7") == 1 and S_Logs(n0, "module=scar event=fight_end") == 0, "danger convoy end without a loss: no fight end");
+	TRF.live.dc[8] = {id={}, a={}, st="go", n=2, ns=2, ok=0, ct=0, e=3, m=1, k=1};
+	HOST_Check(TRF_DcLoss(8) == 1 and TRF.live.dc[8].dd == 1, "TRF_DcLoss counts the member death");
+	TRF_DcEnd(8);
+	HOST_Check(S_Logs(n0, "module=scar event=fight_end fight=convoy") == 1, "danger convoy end after a loss: fight end");
 end;
 
 -- f: gates, chapters, toggles --------------------------------------------------------------------
@@ -657,6 +697,10 @@ function T_SC_F()
 	HOST_Check(S_Logs(n0, "result=moved reason=chapter5") == 1 and (moved == 1 or S_Logs(n0, "alternative=nil") == 1), "chapter 5: source 1 moves to another region system or none");
 	HOST_Check(TRF_ScLineOf({on=0, st=1, hid=0, kind=2, rec=0, fac=0}, "full", 5, "corrino", 1) == nil
 		and TRF_ScLineOf({on=0, st=1, hid=0, kind=2, rec=0, fac=0}, "full", 6, "corrino", 1) == "scararrivec", "chapter 5: no convoy line in Corrino");
+	HOST_Check(TRF_ScLineOf({on=0, st=1, hid=0, kind=1, rec=1, fac=0}, "full", 5, "corrino", 1) == nil
+		and TRF_ScLineOf({on=0, st=1, hid=0, kind=1, rec=1, fac=0}, "full", 6, "corrino", 1) == "scararrivet"
+		and TRF_ScNav({sys=co, k=0, on=0, st=1, kind=1, leg=TRF.clock.legs, x=0, y=0, z=0}, "full") == nil,
+		"chapter 5: no recorder line and no marker for a trader record written before");
 	-- Chapter modes: 3 visual (hulk without cargo, no marker, no line), 4 free time (TT1 row, marker), 4 without.
 	TRF.scar = nil;
 	h.labels.CurrentQuest = "3";
@@ -669,9 +713,16 @@ function T_SC_F()
 	T_Tick(20, 0.5);
 	r = SC_R(g);
 	local hk = SC_Hulk(sid);
-	HOST_Check(r.st == 1 and hk and getn(hk.inv) == 0 and hk.cleared == 1 and not (type(TRF.mk) == "string" and strfind(TRF.mk, "TRF_SCAR_", 1, 1))
-		and S_Logs(n0, "module=scar event=enter system=gaoba mode=visual") == 1 and S_Logs(n0, "module=plumb event=arrival_line owner=scar") == 0,
-		"chapter 3: visual only (no cargo, no marker, no line)");
+	HOST_Check(r.st == 0 and not hk and SC_Objs(sid) == 0 and not (type(TRF.mk) == "string" and strfind(TRF.mk, "TRF_SCAR_", 1, 1))
+		and S_Logs(n0, "module=scar event=enter system=gaoba mode=visual") == 1 and S_Logs(n0, "mode=visual result=wait") == 1
+		and S_Logs(n0, "module=plumb event=arrival_line owner=scar") == 0, "chapter 3: an off-screen record waits unplaced (no empty hulk, no marker, no line)");
+	h.labels.CurrentQuest = "4_1";
+	h.quests.quest_Help = QUEST_PROCESS;
+	SC_Jump("heos");
+	SC_Jump("gaoba");
+	hk = SC_Hulk(sid);
+	HOST_Check(SC_R(g).st == 1 and hk and getn(hk.inv) >= 1, "the same record in chapter 4 free time: placed with its cargo");
+	h.quests = {};
 	TRF.scar = nil;
 	h.labels.CurrentQuest = "4_1";
 	h.quests.quest_Help = QUEST_PROCESS;
@@ -731,6 +782,15 @@ function T_SC_F()
 		"mission starts in the visit: marker gone, objects stay");
 	h.qs = FALSE; h.quests = {};
 	TRF_Map().sys[g].q = 0;
+	-- S2: __disableAction at the entry hides the scar (state kept, no marker, no line).
+	SC_Jump("heos");
+	n0 = S_Mark();
+	SC_Jump("gaoba", 1, function() __disableAction = TRUE; end);
+	r = SC_R(g);
+	HOST_Check(r.hid == 1 and r.st == 1 and SC_Objs(sid) == 0 and S_Logs(n0, "reason=hold:disable_action") == 1
+		and not (type(TRF.mk) == "string" and strfind(TRF.mk, "TRF_SCAR_", 1, 1)), "S2 __disableAction at the entry: hidden, state kept");
+	__disableAction = FALSE;
+	HOST_Check(TRF_ScHold() == nil, "hold ends with the flag");
 	-- Toggles: enable_scar_loot 0 (hulk without cargo); enable_scars 0 (nothing).
 	SC_Begin("heos", "9_1", {enable_scar_loot=0});
 	r = SC_Rec(g, {kind=1, lv=2, seed=4321, k=5});
@@ -772,6 +832,12 @@ function T_SC_G()
 	n0 = S_Mark();
 	TRF_Sc_Step();
 	HOST_Check(r.st == 2 and S_Logs(n0, "reason=poll") == 1, "10 s poll: st 2");
+	-- Expiry deletes a dead hulk that the label lookup still answers (EW2.2).
+	hk.Delete = function(self) self.deleted = 1; end;
+	r.leg = TRF.clock.legs - 31;
+	n0 = S_Mark();
+	TRF_ScExpireAll(nil);
+	HOST_Check(hk.deleted == 1 and not SC_R(g) and S_Logs(n0, "module=scar event=expire sid="..sid) == 1, "expiry deletes a dead hulk the label still answers");
 	-- Jump read.
 	TRF.scar = nil;
 	SC_Jump("heos");
@@ -818,6 +884,9 @@ function T_SC_G()
 		"repair: bad records dropped, fields clamped, on-screen without loot");
 	HOST_Check(getn(TRF.std.slog) == 3 and getn(TRF.std.rpay) == 2 and TRF.std.lic == nil and TRF.rg[1].bsc == nil and TRF.rg[1].bsh == L
 		and (TRF.sys[g] == nil or TRF.sys[g].scd == nil), "repair: slog 3, rpay 2, lic, bsc/bsh legs, stale scd dropped");
+	TRF.scar = {{sys=g, x=1, y=1, z=1, kind=5, on=1}};
+	TRF_Repair();
+	HOST_Check(TRF.scar[1].kind == 3, "repair: kind 5 (fight) takes the sweep hulls (kind 3)");
 	TRF.scar = 5;
 	TRF_Repair();
 	HOST_Check(TRF.scar == nil, "repair: a non-table TRF.scar becomes absent");

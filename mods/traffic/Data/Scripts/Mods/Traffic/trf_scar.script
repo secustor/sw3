@@ -200,8 +200,10 @@ function TRF_Sc_DelRaw(o)
 	return 1;
 end;
 
+-- Deletes o; a handle that no longer answers alive (a dead hulk, CHECK EW2.2) is deleted too, without an error line.
 function TRF_Sc_Del(o)
-	if not TRF_Sc_Alive(o) then return nil; end;
+	if type(o) ~= "table" and type(o) ~= "userdata" then return nil; end;
+	if not TRF_Sc_Alive(o) then return call(TRF_Sc_DelRaw, {o}, "x", TRF_ScNoErr); end;
 	return call(TRF_Sc_DelRaw, {o}, "x", TRF_ScErr);
 end;
 
@@ -228,6 +230,13 @@ end;
 function TRF_Sc_Find(label)
 	local o = TRF_N("GetObjectByLabel", label);
 	if TRF_Sc_Alive(o) then return o; end;
+	return nil;
+end;
+
+-- Any object the label lookup answers, alive or dead (not the label string): the delete paths only (EW2.2).
+function TRF_Sc_FindAny(label)
+	local o = TRF_N("GetObjectByLabel", label);
+	if type(o) == "table" or type(o) == "userdata" then return o; end;
 	return nil;
 end;
 
@@ -651,7 +660,8 @@ function TRF_ScDrop(i, why)
 end;
 
 -- Adds record r: at the scar_fight_max cap an on-screen record replaces the oldest on-screen one; at scar_max the
--- 6.1 order picks the record to drop. Returns the new index.
+-- 6.1 order picks the record to drop. Returns the new index, or nil and the reason (fight_cap, cap) when the cap
+-- still holds (scar_fight_max 0, or no candidate).
 function TRF_ScAdd(r, T)
 	local l = TRF_ScRecs();
 	local cur = TRF_N("TRF_CurIdx");
@@ -664,12 +674,15 @@ function TRF_ScAdd(r, T)
 			TRF_ScDrop(w, "fight_cap");
 			n = n - 1;
 		end;
+		if n >= T.scar_fight_max then return nil, "fight_cap"; end;
 	end;
-	while getn(l) >= min(T.scar_max, TRF_ScK().rec_max) do
+	local cap = min(T.scar_max, TRF_ScK().rec_max);
+	while getn(l) >= cap do
 		local w = TRF_ScVictimOf(l, nil, cur);
 		if not w then break; end;
 		TRF_ScDrop(w, "cap");
 	end;
+	if getn(l) >= cap then return nil, "cap"; end;
 	tinsert(l, r);
 	return getn(l);
 end;
@@ -708,8 +721,18 @@ function TRF_ScCh5Of(nm, ch, kind)
 	return kind == 1 and ch == 5 and type(nm) == "string" and TRF_ScCh5()[strlower(nm)] ~= nil;
 end;
 
--- Placement gate of system idx (S4, S5, 6.7): deny list, strict gate (feature "scar"), system mode (the start
--- system guard, R16). Returns nil or the reason.
+-- S2 and S3 (9.8, 02 6.7; trf_survive's TRF_SvHold): __disableAction, __sys_SOS, trf_safety's suppression (the
+-- extortion debounce, a scene). Returns the reason or nil.
+function TRF_ScHold()
+	if __disableAction == TRUE then return "disable_action"; end;
+	if __sys_SOS == TRUE then return "sys_sos"; end;
+	local sp = TRF_N("TRF_Supp");
+	if type(sp) == "number" and sp ~= 0 then return "suppressed"; end;
+	return nil;
+end;
+
+-- Placement gate of system idx (S2-S5, 6.7): deny list, strict gate (feature "scar"), system mode (the start
+-- system guard, R16), the S2/S3 hold. Returns nil or the reason.
 function TRF_ScGate(idx)
 	if type(idx) ~= "number" then return "nomap"; end;
 	local dw = TRF_ScDenyOf(TRF_ScName(idx));
@@ -719,6 +742,8 @@ function TRF_ScGate(idx)
 	if not ok then return "gate:"..tostring(gw); end;
 	local mode, mw = TRF_N("TRF_SysModeQuiet");
 	if mode ~= "mod" then return "mode:"..tostring(mw); end;
+	local hw = TRF_ScHold();
+	if hw then return "hold:"..hw; end;
 	-- Debug (CHECK EW2.5): cfg scar_gate_fail names a system whose gate fails for scars.
 	local dg = TRF_ScOpt("scar_gate_fail");
 	if type(dg) == "string" and dg ~= "" and strlower(dg) == TRF_ScName(idx) then return "gate:debug"; end;
@@ -740,6 +765,10 @@ function TRF_ScWrite(idx, s)
 	if not why then why = TRF_ScDenyOf(nm); end;
 	if not why and TRF_ScCh5Of(nm, TRF_N("TRF_Chapter"), s.kind) then why = "chapter5"; end;
 	local i, r = TRF_ScAt(idx);
+	-- An expired record is dropped first, so scar_cd applies; the current system's waits for its entry (M3).
+	if not why and r and TRF_ScExpired(r) then
+		if r.sys == TRF_N("TRF_CurIdx") then why = "expired"; else TRF_ScDrop(i, "ttl"); i, r = nil, nil; end;
+	end;
 	if not why and r then
 		local res = "kept";
 		if r.st <= 1 and r.rf ~= 1 then r.leg = legs; r.rf = 1; res = "refresh"; end;
@@ -773,7 +802,12 @@ function TRF_ScWrite(idx, s)
 	local n = {sys=idx, k=TRF_ScNextK(idx), kind=s.kind, fac=s.fac or 0, x=floor((s.x or 0) + 0.5), y=floor((s.y or 0) + 0.5),
 		z=floor((s.z or 0) + 0.5), leg=legs, ttl=TRF_ScTtlOf(s.kind, s.on, s.mine, T.scar_ttl), on=s.on or 0, mine=s.mine or 0, lv=s.lv or 0,
 		seed=seed, nd=nd, st=0, hid=0, scv=TRF_ScScvOf(seed, tier, bust, guard, s.lv), rec=s.rec or 0, nm=nmi, rf=0};
-	i = TRF_ScAdd(n, T);
+	local aw = nil;
+	i, aw = TRF_ScAdd(n, T);
+	if not i then
+		TRF_ScE("source", "source", s.src, "system", nm, "kind", TRF_ScKindName(s.kind), "result", "none", "reason", aw);
+		return nil, aw;
+	end;
 	TRF_ScE("source", "source", s.src, "system", nm, "sid", TRF_ScSid(n), "kind", TRF_ScKindName(n.kind), "faction", n.fac,
 		"cap_row", n.lv, "seed", n.seed, "ttl", n.ttl, "decorations", n.nd, "scavenger", n.scv, "recorder", n.rec, "mine", n.mine,
 		"on_screen", n.on, "result", "new", "record_count", getn(TRF.scar));
@@ -923,7 +957,10 @@ function TRF_ScFightWrite(idx)
 	local T, K = TRF_ScTune(), TRF_ScK();
 	local legs = TRF_ScLegs();
 	local sv = TRF_N("TRF_Sv_Site", idx);
-	if type(sv) == "table" and (sv.src ~= 1 or sv.lg ~= legs) then sv = nil; end;
+	-- This visit's loss: stamped at or after the entry leg (legs less the visit's game-time legs, clock.vl).
+	local l0 = legs;
+	if type(TRF.clock) == "table" and type(TRF.clock.vl) == "number" then l0 = legs - TRF.clock.vl; end;
+	if type(sv) == "table" and (sv.src ~= 1 or type(sv.lg) ~= "number" or sv.lg < l0) then sv = nil; end;
 	for i = 1, getn(dd) do
 		if type(dd[i].x) ~= "number" and dd[i].c == 1 and sv then dd[i].x = sv.x; dd[i].y = sv.y; dd[i].z = sv.z; end;
 	end;
@@ -1011,7 +1048,7 @@ end;
 function TRF_ScClear(sid)
 	local n = 0;
 	for j = 0, 4 do
-		local o = TRF_ScGet(sid, j);
+		local o = TRF_ScGet(sid, j) or TRF_Sc_FindAny(TRF_ScLbl(sid, j));
 		if o and TRF_Sc_Del(o) then n = n + 1; end;
 		TRF_ScUnset(sid, j);
 	end;
@@ -1031,7 +1068,7 @@ function TRF_ScProbe(idx)
 		if not own[sid] then
 			local n = 0;
 			for j = 0, 4 do
-				local o = TRF_Sc_Find(TRF_ScLbl(sid, j));
+				local o = TRF_Sc_FindAny(TRF_ScLbl(sid, j));
 				if o and TRF_Sc_Del(o) then n = n + 1; end;
 				setglobal(TRF_ScGlb(sid, j), nil);
 			end;
@@ -1116,11 +1153,12 @@ function TRF_ScCargo(r, idx, mode)
 end;
 
 -- Nav marker of record r (6.5): only an off-screen record with st 1, age <= scar_fresh_legs, outside the visual mode
--- and outside the wind-down; the text is the scar key with loc_mode 1, else the vanilla #M_Name_Crash_site
+-- and outside the wind-down, never for a trader record under the chapter 5 rule; the text is the scar key with loc_mode 1, else the vanilla #M_Name_Crash_site
 -- (s_carcasses.loc 236), icon nav_Crash_site.dds. trf_plumb deletes it before every jump and when a mission starts.
 function TRF_ScNav(r, mode)
 	local sc = %SC;
-	if r.on == 1 or r.st ~= 1 or mode == "visual" or TRF_ScAge(r) > TRF_ScT("scar_fresh_legs") or sc.wd == 1 then
+	if r.on == 1 or r.st ~= 1 or mode == "visual" or TRF_ScAge(r) > TRF_ScT("scar_fresh_legs") or sc.wd == 1
+		or TRF_ScCh5Of(TRF_ScName(r.sys), TRF_N("TRF_Chapter"), r.kind) then
 		TRF_N("TRF_MarkerClear", "scar");
 		return nil;
 	end;
@@ -1150,7 +1188,7 @@ function TRF_ScPlace(i, idx, mode, why)
 		r.x = floor(p.x + 0.5); r.y = floor(p.y + 0.5); r.z = floor(p.z + 0.5);
 	end;
 	local c = {x=r.x, y=r.y, z=r.z};
-	local hu = TRF_ScHulls()[r.kind];
+	local hu = TRF_ScHulls()[r.kind] or TRF_ScHulls()[3];
 	local hres = "none";
 	local hulk = nil;
 	if r.on ~= 1 and r.st ~= 2 then
@@ -1198,8 +1236,9 @@ end;
 
 -- The reconcile table of 6.5 for record i of the current system idx at entry: gate fails -> hide (state kept); st 0
 -- or hid 1 -> create; st 1 with the hulk alive -> reuse; st 1 with the hulk dead or missing -> opened while away
--- (st 2, no refill); st 2 or 3 -> leave it, from age > ttl / 2 one decoration fewer per entry, never the last.
--- Expired records are dropped before (TRF_ScExpireAll). Returns the action.
+-- (st 2, no refill); st 2 or 3, and an on-screen record (no hulk, st 1) -> leave it, from age > ttl / 2 one
+-- decoration fewer per entry, never the last. An off-screen record to create waits in the visual mode (chapters 1-3,
+-- chapter 4 outside free time: on-screen scars only, 02 3), so its first hulk carries its cargo. Expired records are dropped before (TRF_ScExpireAll). Returns the action.
 function TRF_ScReconcile(i, idx, mode)
 	local r = TRF_ScRecs()[i];
 	local sid = TRF_ScSid(r);
@@ -1219,17 +1258,14 @@ function TRF_ScReconcile(i, idx, mode)
 		if n > 0 or r.st >= 1 then r.hid = 1; end;
 		res = "hide";
 		TRF_ScE("hide", "sid", sid, "system", nm, "state", r.st, "deleted", n, "reason", gate);
+	elseif (r.st == 0 or r.hid == 1) and r.on ~= 1 and mode == "visual" then
+		TRF_ScClear(sid);
+		res = "wait";
 	elseif r.st == 0 or r.hid == 1 then
 		TRF_ScClear(sid);
 		if TRF_ScPlace(i, idx, mode, "enter") then res = "create"; else res = "failed"; end;
-	elseif r.st == 1 then
-		if r.on == 1 then
-			res = "reuse";
-			for j = 1, r.nd do
-				local o = TRF_ScGet(sid, j);
-				if o then TRF_ScSet(sid, j, o); end;
-			end;
-		elseif hulk then
+	elseif r.st == 1 and r.on ~= 1 then
+		if hulk then
 			res = "reuse";
 			TRF_ScSet(sid, 0, hulk);
 			TRF_Sc_Trig(hulk, "TRF_ScarDied("..sid..","..TRF.gen..")--");
@@ -1248,6 +1284,7 @@ function TRF_ScReconcile(i, idx, mode)
 		end;
 	else
 		res = "leave";
+		if r.on == 1 then res = "reuse"; end;
 		local found = {};
 		for j = 1, r.nd do
 			local o = TRF_ScGet(sid, j);
@@ -1269,20 +1306,18 @@ function TRF_ScReconcile(i, idx, mode)
 end;
 
 -- Arrival line key of record r (design 2): a fresh placed off-screen wreck names its kind (the freighter by name);
--- an opened or stripped one is "picked clean"; nothing for on-screen records and in the visual mode; no convoy line
--- under the chapter 5 rule.
+-- an opened or stripped one is "picked clean"; nothing for on-screen records and in the visual mode; no trader or
+-- convoy line under the chapter 5 rule (also for a record written before chapter 5).
 function TRF_ScLineOf(r, mode, ch, nm, fresh)
 	if r.on == 1 or mode == "visual" or r.hid == 1 then return nil; end;
 	if r.st >= 2 then return "scarold"; end;
 	if r.st ~= 1 or fresh ~= 1 then return nil; end;
+	if (r.kind == 1 or r.kind == 2) and TRF_ScCh5Of(nm, ch, 1) then return nil; end;
 	if r.kind == 1 then
 		if r.rec == 1 then return "scararrivet"; end;
 		return "scararrivet0";
 	end;
-	if r.kind == 2 then
-		if ch == 5 and TRF_ScCh5()[nm] then return nil; end;
-		return "scararrivec";
-	end;
+	if r.kind == 2 then return "scararrivec"; end;
 	if r.kind == 3 then
 		if r.fac == 0 then return "scararrivep"; end;
 		return "scararrives";
@@ -1507,6 +1542,8 @@ function TRF_Sc_Fix()
 						st=TRF_ScFld(e, "st", 0, 3, 0), hid=TRF_ScFld(e, "hid", 0, 1, 0), scv=TRF_ScFld(e, "scv", 0, 4, 1),
 						rec=TRF_ScFld(e, "rec", 0, 1, 0), nm=TRF_ScFld(e, "nm", 0, 40, 0), rf=TRF_ScFld(e, "rf", 0, 1, 0)};
 					r.leg = legs;
+					-- kind 5 (02 6.2: fight) is written as the class of the dead with on 1 (V3): it takes the sweep hulls.
+					if r.kind == 5 then r.kind = 3; end;
 					if type(e.leg) == "number" and e.leg <= legs then r.leg = e.leg; end;
 					r.ttl = TRF_ScFld(e, "ttl", 8, 30, TRF_ScTtlOf(r.kind, r.on, r.mine, T.scar_ttl));
 					if r.on == 1 then r.lv = 0; r.rec = 0; end;

@@ -1591,6 +1591,12 @@ function TRF_Rd_End(n, how)
 	if how ~= "killed" then TRF_Rd_Delete(n); end;
 	TRF_Rd_NavDel(n);
 	local H = TRF_Rd_H();
+	-- Battle scars source 7: a fight took place (raid ships dead, the target killed, a wave recovered after damage).
+	local fought = nil;
+	if how == "killed" or how == "rec" or rd.tk == 1 then fought = 1; end;
+	if H and type(H.rd[n]) == "table" and type(H.rd[n].dk) == "table" then
+		for k, v in H.rd[n].dk do fought = 1; end;
+	end;
 	if H then
 		-- The ended flight stays excluded from the v01 eject watch (a late Case_Eject must not count it twice).
 		if type(H.rd[n]) == "table" and H.rd[n].fl then
@@ -1612,8 +1618,9 @@ function TRF_Rd_End(n, how)
 	end;
 	if was ~= "armed" then TRF_Rd_Pay(n, rd); end;
 	if how == "killed" and rd.hit == 1 then TRF_N("TRF_Ch_Note", 4, TRF_Rd_Cur(), 0); end;
-	-- Battle scars source 7: the raid or staged raid ended on-screen (a scar when one of its deaths is in the cluster).
-	if was ~= "armed" and how ~= "build" and how ~= "cancel" and how ~= "jump" then
+	-- Battle scars source 7: the raid or staged raid ended on-screen after a fight (a scar when one of its deaths is in
+	-- the cluster).
+	if fought and was ~= "armed" and how ~= "build" and how ~= "cancel" and how ~= "jump" then
 		local sw = "raid";
 		if rd.sg == 1 then sw = "staged"; end;
 		TRF_P("TRF_Sc_Fight", sw, rd.hit);

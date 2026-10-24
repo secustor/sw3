@@ -75,12 +75,12 @@ Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case m
 | trf_region `TRF_RgSweepOut` | `TRF_P("TRF_Sc_Sweep", slot, L, won, f)` when `how == "off"` | source 3 (target from trf_faction's `TRF_SweepTarget`) |
 | trf_region `TRF_RegionTick` | `TRF_P("TRF_Sc_RegionTick", L)` at the end | expiry outside the current system |
 | trf_events `TRF_OnShipDied_Body` | `TRF_P("TRF_Sc_Dead", cls, own, h.tp[k], cnt, rec.lx, rec.ly, rec.lz)` | trader transport death (class 1; 2 for equipment, danger and supply convoy members) |
-| trf_raid `TRF_Rd_DiedBody`, `TRF_Rd_End` | `TRF_Sc_Dead(3, 0, hr.sh[j], rd.hit)`; `TRF_Sc_Fight("raid" | "staged", rd.hit)` unless armed, build, cancel or jump | raid ship death (clan carrier waves too), raid and staged raid end |
+| trf_raid `TRF_Rd_DiedBody`, `TRF_Rd_End` | `TRF_Sc_Dead(3, 0, hr.sh[j], rd.hit)`; `TRF_Sc_Fight("raid" | "staged", rd.hit)` after a fight (`killed`, `rec`, `rd.tk`, a ship in `hr.dk`), never armed, build, cancel or jump | raid ship death (clan carrier waves too), raid and staged raid end |
 | trf_faction `TRF_FcDiedBody`, `TRF_SweepEnd` | `TRF_Sc_Dead(3, sw.f, H.fs[j], nil)` / `(3, 0, H.cs[j], hit)`; `TRF_Sc_Fight("sweep", pk or hit)` | sweep ship deaths, the sweep window end |
 | trf_clan `TRF_Cl_Died` | `TRF_Sc_Dead(3, 0, H.cr.car, cr.hit)`, `TRF_Sc_Fight("carrier", cr.hit)` | carrier death |
 | trf_base `TRF_Ba_DiedBody` | `TRF_Sc_Dead(4, 0, hb.b, player)`, `TRF_Sc_Fight("base", player)` | base death in view |
 | trf_convoy `TRF_FeqEnd` | `TRF_Sc_Fight("convoy", 1)` on a kill, `("convoy", fq.pc)` when taken in view | equipment convoy end |
-| trf_danger `TRF_DcEnd` | `TRF_Sc_Fight("convoy", nil)` when members were lost | danger convoy end |
+| trf_events `TRF_OnShipDied_Body`, trf_danger `TRF_DcLoss`, `TRF_DcEnd` | `TRF_N("TRF_DcLoss", rec.cv)` (`dc.dd` + 1); `TRF_Sc_Fight("convoy", nil)` when `dc.dd` > 0 | danger convoy member death, convoy end |
 | trf_survive | `TRF_Sv_Site(idx)`, `TRF_Sv_SiteLink(idx, sid)` (new) | the shared loss site (SV 3.1 R2) |
 | trf_plumb `TRF_MarkerAdd(owner, label, x, y, z, text, icon)` | 6th and 7th argument (new, optional) | the wreckage text and icon (WB 8) |
 | trf_state `TRF_ModList`, `TRF_Repair`, `TRF_SysSet`, `TRF_SysFix` | `"Sc"`; `TRF_P("TRF_Sc_Fix")`; `sk`, `scd` kept | OptDef, TuneDef, Dump; repair |
@@ -94,8 +94,8 @@ No dock registration (step 2: trade line 40 recorder, patrol box 200 licence) an
 
 - G1 Module: `TRF`, the traffic modules, cfg `enable_scars` 1. Off: no source, no placement, existing records and objects untouched (V27).
 - G2 Creation (`TRF_ScWrite`): never an off-screen record in the current system (W1, `reason=current`); never in a denied system (`TRF_ScDenyOf`: Earth, Precursors, DisonSphere, Fronn, B_leftera1, NK, X203, X213, X220, X297 and traffic's authored names, `TRF_DenyList` entries with `m = 1` and no `tq`: Elio, Gefest); the chapter 5 rule for trader kinds (`reason=chapter5`); `scar_cd` (`reason=cooldown`).
-- G3 Placement (`TRF_ScGate(idx)`): the deny list, the strict gate `TRF_StrictOk(idx, "scar")` (`gate:<why>`), the system mode `TRF_SysModeQuiet() == "mod"` (`mode:<why>`, the start-system guard R16), the debug key `scar_gate_fail` (`gate:debug`).
-- G4 Chapter mode (`TRF_ScChMode`): `full` from chapter 5; `ch4` in chapter 4 free time (`quest_Help` in process or the label `CountPauseQuest` > 0): cargo at the TT1 row, marker and line; else `visual`: objects only (an empty hulk), no marker, no line (02 3, chapters 1-3 and chapter 4 outside free time).
+- G3 Placement (`TRF_ScGate(idx)`): the deny list, the strict gate `TRF_StrictOk(idx, "scar")` (`gate:<why>`), the system mode `TRF_SysModeQuiet() == "mod"` (`mode:<why>`, the start-system guard R16), the S2/S3 hold `TRF_ScHold` (`hold:disable_action|sys_sos|suppressed`: `__disableAction`, `__sys_SOS`, trf_safety's `TRF_Supp`, as trf_survive's `TRF_SvHold`; 02 6.7), the debug key `scar_gate_fail` (`gate:debug`). The same gate hides at entry, skips the marker on load and starts the wind-down during the visit.
+- G4 Chapter mode (`TRF_ScChMode`): `full` from chapter 5; `ch4` in chapter 4 free time (`quest_Help` in process or the label `CountPauseQuest` > 0): cargo at the TT1 row, marker and line; else `visual`: on-screen scars only, no marker, no line (02 3, chapters 1-3 and chapter 4 outside free time); an off-screen record to create waits unplaced (`result=wait`).
 - G5 Guard (`TRF_RgGuardOn`, chapter <= 4): `scv` = 1 at creation (no scavengers, 02 3 and 6.6).
 
 ### 5.2 Sources 1-3 (02 6.1)
@@ -111,15 +111,15 @@ No dock registration (step 2: trade line 40 recorder, patrol box 200 licence) an
 ### 5.3 Source 7 (on-screen fights)
 
 - During the visit traffic's death points report each dead mod ship (`TRF_Sc_Dead(class, owner, handle, mine, fx, fy, fz)`: the handle's position now, else the fallback, the trader record's watchdog position) and each named fight end (`TRF_Sc_Fight(what, mine)`; hooks in 4).
-- At `TRF_BeforeJump` (`TRF_ScFightWrite`): trader deaths without a position take the survivors' witnessed loss point of this visit (`TRF_Sv_Site`, `src` 1, `lg` = this leg); the densest cluster (`TRF_ScClusterOf`: the death with the most others within `scar_radius` 300, and those deaths) makes a record when it holds `scar_min_dead` (3) deaths, or one after a named fight end (V14). Its kind is the most common class (ties base, convoy, trader, sweep; pirates and navy use the sweep hulls), its owner the most common owner of that class, `mine` 1 when a member or a fight end had player-group fire. `lv` 0, `rec` 0, `nm` 0, `scv` 1, `ttl` 8 (x 1.5 = 12 with `mine`).
+- At `TRF_BeforeJump` (`TRF_ScFightWrite`): trader deaths without a position take the survivors' witnessed loss point of this visit (`TRF_Sv_Site`, `src` 1, `lg` at or after the entry leg, `legs - clock.vl`); the densest cluster (`TRF_ScClusterOf`: the death with the most others within `scar_radius` 300, and those deaths) makes a record when it holds `scar_min_dead` (3) deaths, or one after a named fight end (V14). Named fight ends: a raid or carrier wave only after a fight (`killed`, `rec`, its target killed or one of its ships dead), a danger convoy only after a member death (`TRF_DcLoss`). Its kind is the most common class (ties base, convoy, trader, sweep; pirates and navy use the sweep hulls), its owner the most common owner of that class, `mine` 1 when a member or a fight end had player-group fire. `lv` 0, `rec` 0, `nm` 0, `scv` 1, `ttl` 8 (x 1.5 = 12 with `mine`).
 - Site: the centroid by the site rule; a failing centroid moves away from the nearest station (else from the nearest blocking object) in 50-unit steps up to 300, else no scar (`reason=site`). A witnessed beacon within 300 of the centroid is linked (`TRF_Sv_SiteLink(idx, sid)` sets `TRF.sv.b[i].si`) and exempt from the 150-unit object rule (02 7: pods at the scar site).
 - The record goes through the same creation rules (deny list, chapter 5 rule, refresh of an existing record of the system, `scar_cd`) and is placed at the next entry (M3).
 
 ### 5.4 One scar per system, `scar_cd`, `scar_max`
 
-- A source in a system with a record never adds loot: `st` <= 1 moves `leg` to now once (`rf` 1, so a record lives at most 2 x `ttl`), keeping `lv`, `seed` and `rec` (`result=refresh`); otherwise `result=kept` (exploit 5).
+- A source in a system with a record never adds loot: `st` <= 1 moves `leg` to now once (`rf` 1, so a record lives at most 2 x `ttl`), keeping `lv`, `seed` and `rec` (`result=refresh`); otherwise `result=kept` (exploit 5). An expired record is dropped first (then `scar_cd`); the current system's expired record refuses the source (`reason=expired`) and expires at the next entry.
 - Expiry (`legs - leg > ttl`) at every entry (all records) and every region tick (records outside the current system, M3): the record is dropped (its objects in the current system deleted; elsewhere the orphan probe of the next entry deletes them) and `TRF.sys[idx].scd = legs + scar_cd` (4).
-- At `scar_fight_max` (4) on-screen records a new on-screen record replaces the oldest on-screen one (mine 0 first); at `scar_max` (12) the new record replaces the oldest `lv` 0 record with `mine` 0, then the oldest `lv` 0 record, then the oldest lootable record (`TRF_ScVictimOf`). The current system's record is never a candidate (V16).
+- At `scar_fight_max` (4) on-screen records a new on-screen record replaces the oldest on-screen one (mine 0 first); at `scar_max` (12) the new record replaces the oldest `lv` 0 record with `mine` 0, then the oldest `lv` 0 record, then the oldest lootable record (`TRF_ScVictimOf`). The current system's record is never a candidate (V16). When the cap still holds (`scar_fight_max` 0, or no candidate) the new record is refused (`result=none reason=fight_cap|cap`).
 
 ### 5.5 Placement (`TRF_ScPlace`, 02 6.5)
 
@@ -146,13 +146,14 @@ Order: the debug record (`scar_at`), expiry, the orphan probe, the reconcile of 
 |---|---|---|
 | none (sids `idx x 10 + k`, k 0..9) | any label answers | orphan: deleted (`event=orphan`, 50 lookups) |
 | any `st`, gate fails | found | deleted before the first frame, `hid` 1, `st`, loot and `rec` kept (`hide`) |
+| `st` 0, or `hid` 1, off-screen, visual mode | - | wait: nothing placed, state kept (`wait`) |
 | `st` 0, or `hid` 1, gate passes | - | create (5.5); `hid` 0 (`create`, `failed` when blocked) |
-| `st` 1 | hulk alive | reuse: handles and the trigger again, no refill (`reuse`; refill only if EW2.4 shows that inventory is lost: constant `refill` 0) |
-| `st` 1 | hulk dead or nil | opened while away: `st` 2, no penalty, no refill (`opened`, `event=open reason=entry`) |
-| `st` 2 or 3 | any | leave it; from age > `ttl / 2` one decoration deleted per entry, never the last (`leave`, `shrink`) |
+| `st` 1, off-screen | hulk alive | reuse: handles and the trigger again, no refill (`reuse`; refill only if EW2.4 shows that inventory is lost: constant `refill` 0) |
+| `st` 1, off-screen | hulk dead or nil | opened while away: `st` 2, no penalty, no refill (`opened`, `event=open reason=entry`) |
+| `st` 2 or 3; on-screen `st` 1 | any | leave it (on-screen: `reuse`); from age > `ttl / 2` one decoration deleted per entry, never the last (`leave`, `shrink`) |
 | expired | any | deleted, dropped (`event=expire reason=ttl`) |
 
-Objects are looked up by this visit's handle, the handle global (kept only when `GetObjectLabel` answers our label), then `GetObjectByLabel` (only an object that answers alive). The reconcile line also logs the raw label answer (`lookup=alive|dead|none|string`) for EW2.2.
+Objects are looked up by this visit's handle, the handle global (kept only when `GetObjectLabel` answers our label), then `GetObjectByLabel` (only an object that answers alive). The delete paths (hide, expiry, orphan probe) also delete an object the label lookup answers dead (EW2.2). The reconcile line also logs the raw label answer (`lookup=alive|dead|none|string`) for EW2.2.
 
 ### 5.7 Hulk death
 
@@ -161,7 +162,7 @@ Objects are looked up by this visit's handle, the handle global (kept only when 
 ### 5.8 Marker, lines, wind-down
 
 - Marker (`TRF_ScNav`): only an off-screen record with `st` 1, age <= `scar_fresh_legs` (4), outside the visual mode and the wind-down; `TRF_MarkerAdd("scar", "TRF_SCAR_<sid>_NP", x, y, z, text, "nav_Crash_site.dds")` with `text` the vanilla key `#M_Name_Crash_site` (`G/LocData/English/s_carcasses.loc:236`), or `#TRF_scarnav` with `loc_mode` 1. trf_plumb refuses it during a mission, deletes it when a mission starts, before every jump and on load (the module re-adds it on load).
-- Scar line (`TRF_ScLineOf`, queued with `TRF_ArrivalLine("scar", text)`, 00: after the #6 beacon line): a fresh placed off-screen wreck: trader `scararrivet` (with the recorder) or `scararrivet0` ($1 the trader name), convoy `scararrivec` (not in the chapter 5 systems), sweep `scararrives` (navy) or `scararrivep` (pirates), base `scararriveb`; an opened or stripped wreck: `scarold`. None for on-screen records, hidden records and the visual mode.
+- Scar line (`TRF_ScLineOf`, queued with `TRF_ArrivalLine("scar", text)`, 00: after the #6 beacon line): a fresh placed off-screen wreck: trader `scararrivet` (with the recorder) or `scararrivet0` ($1 the trader name), convoy `scararrivec` (not in the chapter 5 systems), sweep `scararrives` (navy) or `scararrivep` (pirates), base `scararriveb`; an opened or stripped wreck: `scarold`. None for on-screen records, hidden records and the visual mode; no trader or convoy line and no trader marker in Corrino and Debris1/2/4/6 while the chapter is 5, also for a record written earlier.
 - Wind-down (`TRF_Sc_Step`): the gate failing during the visit (a mission began) deletes the marker once (`event=wind_down`); the objects stay until the jump (M3) and are hidden at the next gated entry.
 
 ### 5.9 Save, load, snapshot
@@ -200,11 +201,11 @@ Constants without a key (`TRF_ScK`): holds, `kv`, portal 300, nav point 150, obj
 | Line | When |
 |---|---|
 | `module=scar event=source source=1 system=callipso sid=140 kind=trader faction=0 cap_row=2 seed=1348 ttl=12 decorations=3 scavenger=0 recorder=1 mine=0 on_screen=0 result=new record_count=1` | new record (sources 1, 2, 3, 7, 9 debug) |
-| `module=scar event=source source=2 system=callipso sid=140 kind=trader state=0 leg=4 result=refresh` | refresh (`kept`); `result=moved reason=chapter5`; `result=none reason=cooldown|chapter5` (level 1), `current|deny|roll|step2` (level 2) |
+| `module=scar event=source source=2 system=callipso sid=140 kind=trader state=0 leg=4 result=refresh` | refresh (`kept`); `result=moved reason=chapter5`; `result=none reason=cooldown|chapter5|fight_cap|cap` (level 1), `current|deny|roll|step2|expired` (level 2) |
 | `module=scar event=fight system=gaoba death_count=1 cluster=1 fights=raid kind=trader faction=0 mine=1 x=210 z=-174 moved=200 linked=true result=scar` | source 7 at the jump; `result=none reason=few|position|site` |
 | `module=scar event=dead class=3 faction=0 mine=0 position=true death_count=1`, `event=fight_end fight=raid mine=1 fight_count=1` | level 2 |
 | `module=scar event=place sid=420 system=gaoba kind=trader hulk=made decorations=3 decorations_wanted=3 cargo=Cargo_10x2/Uraniumx1/Cargo_08x1 value=5450 cap=8000 mode=full state=1 reason=enter` | placement; `result=failed reason=blocked|site` |
-| `module=scar event=reconcile sid=420 system=gaoba state=1 hidden=0 hulk=alive lookup=alive mode=full result=reuse` | every entry with a record (`create`, `failed`, `reuse`, `opened`, `leave`, `shrink`, `hide`) |
+| `module=scar event=reconcile sid=420 system=gaoba state=1 hidden=0 hulk=alive lookup=alive mode=full result=reuse` | every entry with a record (`create`, `failed`, `wait`, `reuse`, `opened`, `leave`, `shrink`, `hide`) |
 | `module=scar event=hide sid=504 system=heos state=1 deleted=3 reason=gate:quest` | gate fails at entry |
 | `module=scar event=open sid=420 system=gaoba reason=died` | hulk death (`poll`, `jump`, `entry`) |
 | `module=scar event=expire sid=140 system=callipso kind=trader on_screen=0 state=2 age=13 ttl=12 deleted=0 reason=ttl` | dropped (`cap`, `fight_cap`, `site`) |
@@ -227,12 +228,12 @@ Entry as `host_survive.lua`: `host_station.lua` up to its first scenario. No new
 | Run | Covers |
 |---|---|
 | `sc-a` | `extra_count=6`, `TRF_ModList`, the five toggles, tune defaults; TT rows; `V_cap` (8,000, 5,333 at `L_w` 4, sweep 0.6, `lv` 0 and fight 0); cargo from the seed within `V_cap` and above 0.6 `V_cap`, fixed, never a quest-handled name (40 seeds), VC3 and ShAmp3 never in a sweep wreck; source 1 after a forced Bust (TT1, no recorder) and after Raids (TT3 at `pro` 6, recorder, a name, site unset); source 2 roll (about 25 %, below and above) and through `TRF_RgTickSlot`; source 3 directly (faction on a failure) and through `TRF_RgSweepOut` (success: pirates; an on-screen attempt is not source 3); sources 4-6 step 2 |
-| `sc-b` | `k` from `sk`; refresh once (leg, `rf`), kept; `st` 2 never refreshed; expiry at the region tick, `scd`, the cooldown, the next `k`; `scar_max` order (oldest `lv` 0 with `mine` 0, oldest `lv` 0, oldest lootable); the current system's record never replaced; `scar_fight_max`; ttl and scavenger-roll rules |
+| `sc-b` | `k` from `sk`; refresh once (leg, `rf`), kept; `st` 2 never refreshed; expiry at the region tick, `scd`, the cooldown, the next `k`; `scar_max` order (oldest `lv` 0 with `mine` 0, oldest `lv` 0, oldest lootable); the current system's record never replaced; `scar_fight_max` 4 and 0; an expired record is dropped, not refreshed; ttl and scavenger-roll rules |
 | `sc-c` | placement order (hulk, D1..D3), site written, handle global, `ClearInventory` then the cargo within `V_cap`, the died trigger with the generation; the site rule (station 400, portal 300, nav 150, object 150) on the live site and pure; the move-away rule (moved 50, more than 300 inside: none, passing: stays); marker label, owner and text; the scar line through the queue; sweep site 150-250 from the nav point farthest from stations; blocked spot (nothing placed, `st` 0) then placed |
 | `sc-d` | create; orphan probe; reuse with the snapshot (no duplicate, `lookup=alive`, globals); hulk dead in the snapshot: opened, picked-clean line; leave, shrink by one per entry from age > `ttl / 2`, never the last; hulk missing: opened; gate fails (quest): hidden before the first frame, no marker, state kept; free entry: created again with its cargo; hidden opened wreck without hulk; hidden stripped wreck with an empty hulk; expiry at the region tick and the orphan probe; expiry at the entry |
-| `sc-e` | two deaths: none; three deaths 300+ apart: none; three within 300: on-screen record at the centroid (no cargo, ttl 8, written at the jump), placed at the next entry (decorations only, no marker); a raid end with one death and player fire (ttl 12); move-away (50) and none at the station; trader deaths through `TRF_OnShipDied`, the raid end through `TRF_Rd_End`, the survivors link (`si`, `TRF_Sv_Site`); cluster and class rules; deaths without a position |
-| `sc-f` | W1; the deny list (12 names); chapter 5 (no trader scar in Corrino, sweep stays, source 1 moved, no convoy line); chapter 3 visual (empty hulk, no marker, no line); chapter 4 free time (TT1 cargo, marker); chapter 4 outside free time; `CountPauseQuest`; the guard (`scv` 1); age > `scar_fresh_legs` (no marker, no line); wind-down; `enable_scar_loot` 0; `enable_scars` 0 |
-| `sc-g` | died trigger (st 2, marker gone, once), stale generation, poll, jump read; load (no placement, handles, trigger with the new generation, marker); dump lines; repair (records, fields, step 2 fields, stale `scd`, non-table); `TRF.scar` worst case 5,721 bytes <= 5,800; no reserved key; debug keys `scar_at` and `scar_gate_fail` |
+| `sc-e` | two deaths: none; three deaths 300+ apart: none; three within 300: on-screen record at the centroid (no cargo, ttl 8, written at the jump), placed at the next entry (decorations only, no marker); it shrinks past `ttl / 2`; a raid end with one death and player fire (ttl 12); move-away (50) and none at the station; trader deaths through `TRF_OnShipDied`, the raid end through `TRF_Rd_End` (none without a fight), the survivors link (`si`, `TRF_Sv_Site`) after a leg passed in the visit; cluster and class rules; deaths without a position; danger convoy end with and without a loss (`TRF_DcLoss`, `TRF_DcEnd`) |
+| `sc-f` | W1; the deny list (12 names); chapter 5 (no trader scar in Corrino, sweep stays, source 1 moved, no convoy line, no trader line or marker for an older record); chapter 3 visual (the record waits unplaced, no marker, no line; placed with its cargo in chapter 4 free time); chapter 4 free time (TT1 cargo, marker); chapter 4 outside free time; `CountPauseQuest`; the guard (`scv` 1); age > `scar_fresh_legs` (no marker, no line); wind-down; S2 `__disableAction` at the entry (hidden, state kept); `enable_scar_loot` 0; `enable_scars` 0 |
+| `sc-g` | died trigger (st 2, marker gone, once), stale generation, poll, expiry deletes the dead hulk, jump read; load (no placement, handles, trigger with the new generation, marker); dump lines; repair (records, fields, kind 5 to 3, step 2 fields, stale `scd`, non-table); `TRF.scar` worst case 5,721 bytes <= 5,800; no reserved key; debug keys `scar_at` and `scar_gate_fail` |
 
 Changed scenarios: `sv-a`, `lad-a`, `ch-a` (`extra_count=6`), `stn-g` (the RU key set includes the scar keys), `v1-m` (the generated `trf_en.loc` scaffold has the 8 `#TRF_scar*` lines), `v1-n` (the scar worst case, the step 2 fields and `sk`/`scd` in every system in the full-state save; the dump list). All 86 host runs pass.
 
@@ -241,7 +242,7 @@ Changed scenarios: `sv-a`, `lad-a`, `ch-a` (`extra_count=6`), `stn-g` (the RU ke
 | # | Fact | Confirming log line |
 |---|---|---|
 | EW2.1 | `SCAR_AT=gaoba`: a trader scar placed in Gaoba; leave and return twice; runtime `CreateCarcass` objects persist in the snapshot and `GetObjectByLabel` finds the `<Station>` and SpaceCarcass objects after re-entry (the label path is the one this check confirms) | `module=scar event=place sid=<sid> system=gaoba ... hulk=made decorations=3`, then on both returns `module=scar event=reconcile sid=<sid> system=gaoba state=1 hidden=0 hulk=alive lookup=alive ... result=reuse` and `event=dump_probe ... expected=4 found=4`; no second hull on screen |
-| EW2.2 | destroy the hulk, leave, return | `module=scar event=open sid=<sid> ... reason=died`, then `module=scar event=reconcile ... state=2 ... lookup=<dead|none> ... result=leave` (decides the `st` 1 dead/nil row) |
+| EW2.2 | destroy the hulk, leave, return | `module=scar event=open sid=<sid> ... reason=died`, then `module=scar event=reconcile ... state=2 ... lookup=<dead|none> ... result=leave` (decides the `st` 1 dead/nil row); at expiry `event=expire ... deleted=<n>` counts the dead hulk, and no hull is left on screen (a dead hulk kept as the engine wreck mesh must answer `Delete`) |
 | EW2.3 | a hulk with its cargo destroyed and collected; the 40 % share of `G/AI/AI.ini:219` | `module=scar event=place ... cargo=<list> value=<v>` and the hand count in TDR 13.6 |
 | EW2.4 | inventory kept in the snapshot: return, no refill, destroy | `module=scar event=reconcile ... result=reuse` with no `event=place`, and drops seen (else set the constant `refill` 1) |
 | EW2.5 | `SCAR_GATE_FAIL=gaoba` after EW2.1: the entry deletes the placed scar before the first frame | `module=scar event=hide sid=<sid> system=gaoba state=1 deleted=4 reason=gate:debug` before the first tick line; no pop-in on video |
@@ -252,9 +253,9 @@ Changed scenarios: `sv-a`, `lad-a`, `ch-a` (`extra_count=6`), `stn-g` (the RU ke
 
 ## 11. Deviations
 
-- V1 Off-screen sites are chosen at the first placement, not at creation: registered nav points (`__sys_LevelRegisteredContacts`) exist only for the current system and the map has none. `x`, `y`, `z` stay 0 while `st` is 0; without registered trader contacts the map's portal-station midpoints are the candidates. A record without any passing point is dropped (`reason=site`).
+- V1 Off-screen sites are chosen at the first placement, not at creation: registered nav points (`__sys_LevelRegisteredContacts`) exist only for the current system and the map has none. Source 1 does not keep its shortage station and takes the nav points of any trader contact, not only of a lane ending at that station. `x`, `y`, `z` stay 0 while `st` is 0; without registered trader contacts the map's portal-station midpoints are the candidates. A record without any passing point is dropped (`reason=site`).
 - V2 Field `rf` added: "moves leg forward at most once per record" needs memory.
-- V3 On-screen records keep the class of the dead as `kind` (1-4) with `on` 1, because the hull row "2-3 of the above by the dead ships' class" needs it; their ttl is the fight entry (8). `kind` 5 is accepted by the repair and not written in step 1.
+- V3 On-screen records keep the class of the dead as `kind` (1-4) with `on` 1, because the hull row "2-3 of the above by the dead ships' class" needs it; their ttl is the fight entry (8). `kind` 5 is not written in step 1; the repair turns a saved `kind` 5 into 3 (the sweep hulls).
 - V4 `nd` counts the decorations left: a shrink and a failed decoration spot lower it, so a hidden record comes back with its shrunk field.
 - V5 The `died` callback is the string `TRF_ScarDied(<sid>,<gen>)--` with the generation, as every traffic trigger (the host rule `T_BadCallbacks`); one global function, idempotent.
 - V6 Handle globals `TRF_SCH_<sid>_<j>` beside the labels (the survivors V4 pattern): the label is the entry path (EW2.1), the global the load path (EW2.7).
@@ -265,13 +266,13 @@ Changed scenarios: `sv-a`, `lad-a`, `ch-a` (`extra_count=6`), `stn-g` (the RU ke
 - V11 Source 2 roll and the record seed come from a fixed hash of system, leg and source (no RAND draw, no saved seed): the shared RAND stream is unchanged and a reload before the same tick gives the same answer (exploit 6).
 - V12 Source 3 hooks into trf_region's `TRF_RgSweepOut` (`how` off), where the off-screen attempt resolves; trf_faction provides the target (`TRF_SweepTarget`).
 - V13 A forced Bust is a Bust entered from a phase other than Raids (trf_region's own rule in `TRF_RgEnter`).
-- V14 Source 7: a named fight end needs at least one death in the cluster; other clusters need `scar_min_dead`. Response-flight deaths (8.7) are not reported (their callback has no ship handle). Equipment, danger and supply convoy transports report through `TRF_OnShipDied` as class 2.
+- V14 Source 7: a named fight end needs at least one death in the cluster; other clusters need `scar_min_dead`. A raid end counts as a fight end only after a fight, a danger convoy end only after a member death. Response-flight deaths (8.7) are not reported (their callback has no ship handle). Equipment, danger and supply convoy transports report through `TRF_OnShipDied` as class 2.
 - V15 A failing on-screen centroid moves away from the nearest station, or from the nearest blocking object when the system has no station.
 - V16 The current system's record is never a replacement candidate, and the region tick skips its expiry (M3); its record expires at the next entry.
-- V17 The visual mode also places the hulk, with an empty hold; such a hulk keeps its empty hold when the record is reused in a later chapter (no refill, exploit 2).
+- V17 The visual mode places no off-screen record: it waits with `st` 0 (or hidden) for the first entry in chapter 4 free time or later, so the first hulk carries its cargo. A record placed earlier keeps its objects.
 - V18 The chapter 4 TT1 cap applies at placement (cargo time), not at creation.
 - V19 A blocked hulk spot: three more spots 60 units off; then nothing is placed and the record waits for the next entry.
-- V20 The survivors link: `si` is set on a witnessed record (`src` 1, this leg) whose loss point is within `scar_radius` of the centroid; that beacon is exempt from the object rule; a trader death without a position takes its loss point. survivors-spec 3.1 R2 documents the reverse side.
+- V20 The survivors link: `si` is set on a witnessed record (`src` 1, stamped in this visit) whose loss point is within `scar_radius` of the centroid; that beacon is exempt from the object rule; a trader death without a position takes its loss point. survivors-spec 3.1 R2 documents the reverse side.
 - V21 The scar line is due at the plumbing slot (8 s as the first mod line, 11 s after the #6 beacon line), not at a fixed 10 s.
 - V22 The authored deny names of traffic (`TRF_DenyList` `m = 1` without `tq`: Elio, X297, Gefest) stand for the design's "authored S5 list".
 - V23 Records are never written in a denied system (the design only hides them); creation also checks the chapter 5 rule and `scar_cd`.

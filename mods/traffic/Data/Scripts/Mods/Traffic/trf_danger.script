@@ -924,6 +924,14 @@ function TRF_DcGone(id, r, why)
 	end;
 end;
 
+-- trf_events TRF_OnShipDied hook: a transport of danger convoy n died (dc.dd, read by TRF_DcEnd for battle scars).
+function TRF_DcLoss(n)
+	local L = TRF_DgLive();
+	if not L or type(n) ~= "number" or type(L.dc[n]) ~= "table" then return nil; end;
+	L.dc[n].dd = (L.dc[n].dd or 0) + 1;
+	return 1;
+end;
+
 -- trf_gen TRF_GnStepOne hook: 1 when the watchdog must leave member id alone (forming, or an inbound
 -- follower while its lead is open).
 function TRF_DcHold(id, r)
@@ -964,8 +972,8 @@ function TRF_DcEnd(n)
 			TRF_DgStat("dc_ct_lost");
 		end;
 	end;
-	-- Battle scars source 7 (design/scar-spec.md 5.3): a danger convoy that lost members in view.
-	if type(dc.ns) == "number" and type(dc.ok) == "number" and dc.ok < dc.ns and dc.st ~= "wind" then TRF_P("TRF_Sc_Fight", "convoy", nil); end;
+	-- Battle scars source 7 (design/scar-spec.md 5.3): a danger convoy that lost a member in view (TRF_DcLoss).
+	if (dc.dd or 0) > 0 and dc.st ~= "wind" then TRF_P("TRF_Sc_Fight", "convoy", nil); end;
 	TRF_DgFree(n);
 	local e = H and H.dc[n];
 	if H then H.dc[n] = nil; end;
