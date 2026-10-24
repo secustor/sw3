@@ -682,6 +682,20 @@ function T_DM_G()
 		"page lists the dropped stacks, handle in TRF_H().dp");
 	DM_End();
 	HOST_Check(getn(r.hold) == 1 and r.hold[1].i == "Cargo_04" and r.hold[1].n == 1, "the hold lost the robbed stacks");
+	-- Witnesses: a live container is no witness (TRF_SpDropNear). The background at the leader is the same with the
+	-- container alive or gone; a container made after the mark does not add one at a kill (slack 1, one extra carcass).
+	local hh = TRF_SpHTr(id);
+	local lq = {x=lp.x, y=lp.y, z=lp.z};
+	local bq = TRF_SpBack(lq, hh, id);
+	o.alive = nil;
+	local bq0 = TRF_SpBack(lq, hh, id);
+	o.alive = 1;
+	h.extra_carcass = 1;
+	local wq, wy = TRF_SpWitness(lq, hh, bq0, 0);
+	h.extra_carcass = nil;
+	HOST_Check(TRF_SpDropNear(lq, 1500) == 1 and TRF_SpDropNear({x=lp.x + 5000, y=lp.y, z=lp.z}, 1500) == 0
+		and bq and bq == bq0 and wq == 0 and wy == "none",
+		"drop container never a witness: background "..tostring(bq).."/"..tostring(bq0)..", kill "..tostring(wq).." "..tostring(wy));
 	-- Second drop: next slot.
 	local id2 = DM_Trader(nil, 0);
 	n0 = S_Mark();
@@ -731,11 +745,14 @@ function T_DM_G()
 	DM_End();
 	HOST_Check(TRF_SpDropLbl(6) == "trf_drop_1_6" and TRF_SpDropLbl(7) == "trf_drop_2_1" and TRF_SpDropLbl(24) == "trf_drop_4_6",
 		"labels trf_drop_<1..4>_<1..6>");
-	-- Load: trf_plumb's orphan scan deletes a container restored with the save (group Drop).
+	-- Load: trf_plumb's orphan scan deletes a container restored with the save (group Drop), a destroyed one too
+	-- (o2 answers dead; the host label table also still answers the deleted inventory_failed container of slot 3).
+	o2.alive = nil;
+	o2.Delete = function(self) self.alive = nil; self.del = 1; end;
 	n0 = S_Mark();
 	local pn, pg = TRF_PlOrphans();
-	HOST_Check(pn == 2 and not o2.alive and not o6.alive and S_Logs(n0, "module=plumb event=orphan deleted_count=2") == 1,
-		"orphan scan at load: both live containers deleted ("..tostring(pn)..")");
+	HOST_Check(pn == 3 and o2.del == 1 and not o6.alive and S_Logs(n0, "module=plumb event=orphan deleted_count=3") == 1,
+		"orphan scan at load: live and destroyed containers deleted ("..tostring(pn)..")");
 	TRF_Supply_OnLoad();
 	HOST_Check(TRF_H().dp == nil, "load: drop handles cleared");
 	-- Before a jump: every live container of the visit deleted.

@@ -1460,21 +1460,36 @@ function TRF_SpPlayerNear(p, r)
 	return n;
 end;
 
+-- Live drop containers (TRF_H().dp, 5.7) within r of p: mod objects, never witnesses, so the background and the
+-- kill count both leave them out.
+function TRF_SpDropNear(p, r)
+	local H = TRF_SpH();
+	local n = 0;
+	if type(H) ~= "table" or type(H.dp) ~= "table" or type(p) ~= "table" then return 0; end;
+	for s, o in H.dp.o do
+		if TRF_SpX("TRF_Sc_Alive", o) then
+			local d = TRF_SpDist(TRF_SpPosOf(o), p);
+			if d and d <= r then n = n + 1; end;
+		end;
+	end;
+	return n;
+end;
+
 -- Background at the mark: the count within witness_r of the leader less the map stations and portals, the
--- mothership, the player's other ships (TRF_SpPlayerNear), the flight's live ships and the mod's other live ships
--- (TRF_SpOthersNear, so they count as witnesses at a kill); scenery, wrecks, player ships the crew flights miss and
--- vanilla ships remain (CHECK W3); nil without a count.
+-- mothership, the player's other ships (TRF_SpPlayerNear), the flight's live ships, the live drop containers
+-- (TRF_SpDropNear) and the mod's other live ships (TRF_SpOthersNear, so they count as witnesses at a kill); scenery,
+-- wrecks, player ships the crew flights miss and vanilla ships remain (CHECK W3); nil without a count.
 function TRF_SpBack(p, h, id)
 	local R = TRF_SpT("witness_r", 1500);
 	local n = TRF_SpCount(p, R);
 	if not n then return nil; end;
 	local ns, np = TRF_SpStatic(p, R);
-	return max(0, n - ns - np - TRF_SpOwnNear(h, p, R) - TRF_SpPlayerNear(p, R) - TRF_SpOthersNear(id, p, R));
+	return max(0, n - ns - np - TRF_SpOwnNear(h, p, R) - TRF_SpPlayerNear(p, R) - TRF_SpDropNear(p, R) - TRF_SpOthersNear(id, p, R));
 end;
 
 -- Witnesses of a kill at p: the map stations within witness_r, else the count less the background b, the map
--- portals, the mothership, the player's other ships, the flight's live ships, the nd transports of the flight that
--- died earlier in the mark (their wrecks, CHECK W3) and tune witness_dead; seen when that excess is more than tune
+-- portals, the mothership, the player's other ships, the flight's live ships, the live drop containers, the nd
+-- transports of the flight that died earlier in the mark (their wrecks, CHECK W3) and tune witness_dead; seen when that excess is more than tune
 -- witness_slack (rockets in flight, CHECK W2). No position or no count: 1 (a retraction needs a count). Returns the
 -- count and the reason.
 function TRF_SpWitness(p, h, b, nd)
@@ -1484,7 +1499,8 @@ function TRF_SpWitness(p, h, b, nd)
 	if ns > 0 then return ns, "station"; end;
 	local n = TRF_SpCount(p, R);
 	if not n then return 1, "no_count"; end;
-	local w = n - (b or 0) - np - TRF_SpOwnNear(h, p, R) - TRF_SpPlayerNear(p, R) - (nd or 0) - TRF_SpT("witness_dead", 0);
+	local w = n - (b or 0) - np - TRF_SpOwnNear(h, p, R) - TRF_SpPlayerNear(p, R) - TRF_SpDropNear(p, R) - (nd or 0)
+		- TRF_SpT("witness_dead", 0);
 	if w > TRF_SpT("witness_slack", 1) and w > 0 then return w, "ship"; end;
 	return 0, "none";
 end;

@@ -984,7 +984,9 @@ end;
 -- Orphan scan (spec 9) ---------------------------------------------------------------
 
 -- After a load: build-time group globals TRF_G<prefix><n> restored with the save are cleared, and ships
--- labelled trf_<prefix lowercase><n>_<j> (n 1..scan_n, j 1..scan_j) are deleted. Returns ships, globals.
+-- labelled trf_<prefix lowercase><n>_<j> (n 1..scan_n, j 1..scan_j) are deleted. Group Drop (trf_supply's
+-- containers, destructible) also deletes an object the label lookup answers dead, as trf_scar's probe does (EW2.2).
+-- Returns ships, globals.
 function TRF_PlOrphans()
 	local K = TRF_PlK();
 	local gs = TRF_PlGroups();
@@ -1004,7 +1006,7 @@ function TRF_PlOrphans()
 		for a = 1, K.scan_n do
 			for j = 1, K.scan_j do
 				local o = TRF_N("GetObjectByLabel", lp..a.."_"..j);
-				if TRF_PlAlive(o) and TRF_PlDel(o) then n = n + 1; end;
+				if (TRF_PlAlive(o) or gs[i] == "Drop") and TRF_PlDel(o) then n = n + 1; end;
 			end;
 		end;
 	end;
