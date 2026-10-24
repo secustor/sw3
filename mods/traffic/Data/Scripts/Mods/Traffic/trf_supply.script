@@ -1620,9 +1620,9 @@ end;
 
 -- trf_events TRF_OnShipDied_Body, transport k of a marked trader died: witnesses at its position (handle, else
 -- the watchdog position rec.lx/ly/lz); the first seen kill sets dw.w = 1 (typed: dw.wc, dw.wt of its first
--- witness). dw.v keeps the via of the check. On the count path dw.d counts the unseen transport deaths of the mark
--- (their wrecks at the next kill); the typed rule needs no wreck counter (wrecks are cls 10). Returns the witness
--- count or nil.
+-- witness; dw.b and dw.d are cleared, unused once w = 1, which keeps the mark at its spec 3 size). dw.v keeps the
+-- via of the check. On the count path dw.d counts the unseen transport deaths of the mark (their wrecks at the next
+-- kill); the typed rule needs no wreck counter (wrecks are cls 10). Returns the witness count or nil.
 function TRF_DemandSeen(id, k, rec, h)
 	local pw = TRF_SpPw(rec);
 	if not pw or pw.w == 1 or TRF_SpGt() - pw.t > TRF_SpT("witness_t", 180) then return nil; end;
@@ -1636,7 +1636,7 @@ function TRF_DemandSeen(id, k, rec, h)
 	if via then pw.v = via; end;
 	if n > 0 then
 		pw.w = 1;
-		if c then pw.wc = c.cls; pw.wt = c.tpl; end;
+		if c then pw.wc = c.cls; pw.wt = c.tpl; pw.b = nil; pw.d = nil; end;
 	elseif via ~= "typed" then
 		pw.d = nd + 1;
 	end;

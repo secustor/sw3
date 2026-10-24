@@ -893,6 +893,61 @@ function T_DM_H()
 	HOST_Check(type(pw8) == "table" and type(pw8.b) == "number" and S_Logs(n0, "event=demand_kill trader_id="..id8) >= 1
 		and S_Logs(n0, "reason=none witnessed=false via=count") >= 1 and S_Logs(n0, "heat=2 via=count") == 1
 		and S_Logs(n0, "via=typed") == 0 and S_Logs(nm, "event=witness_probe") == 0, "native nil: the count path (via=count, background "..tostring(pw8 and pw8.b)..")");
+	-- A mark on the typed path (no b), the native nil at the kill: the count path inside the mark, b nil counts as 0,
+	-- an unseen transport death sets dw.d; two carcasses more at the kill are witnesses (beyond witness_slack 1).
+	local id9, r9, x9 = DM_Trader(nil, 2);
+	local pw9 = DM_Mark(id9);
+	h.carc_why = "off";
+	n0 = S_Mark();
+	DM_Kill(id9, 1);
+	T_Tick(2, 0.5);
+	h.carc_why = nil;
+	HOST_Check(type(pw9) == "table" and pw9.b == nil and pw9.v == "count" and type(pw9.d) == "number" and pw9.d >= 1
+		and S_Logs(n0, "event=demand_kill trader_id="..id9.." ship=1 witness_count=0 reason=none witnessed=false via=count") == 1
+		and S_Logs(n0, "event=demand_retract trader_id="..id9) == 1 and S_Logs(n0, "heat=2 via=count") == 1,
+		"typed mark, count kill: b nil as 0, dw.d set, retracted via=count ("..TRF_Dump(pw9)..")");
+	local id10, r10, x10 = DM_Trader(nil, 2);
+	local pw10 = DM_Mark(id10);
+	local p10 = x10.tp[1].pos;
+	h.carc_why = "off";
+	h.cc_ships = {Vector3(p10.x + 100, p10.y, p10.z), Vector3(p10.x + 200, p10.y, p10.z)};
+	n0 = S_Mark();
+	DM_Kill(id10, 1);
+	T_Tick(2, 0.5);
+	h.carc_why = nil;
+	h.cc_ships = {};
+	HOST_Check(type(pw10) == "table" and pw10.b == nil and pw10.w == 1 and pw10.wc == nil
+		and S_Logs(n0, "event=demand_kill trader_id="..id10.." ship=1 witness_count=2 reason=ship witnessed=true via=count") == 1
+		and S_Logs(n0, "event=demand_witnessed trader_id="..id10.." reason=witness") == 1, "typed mark, count kill, two carcasses more: witnessed");
+	-- A count mark (b), the first transport unseen on the count path (dw.d 1), the second seen on the typed path by a
+	-- station: dw.b and dw.d cleared, so the mark keeps the size of spec 3.
+	h.carc_why = "off";
+	local id11, r11, x11 = DM_Trader(nil, 2);
+	if getn(x11.tp) < 2 then
+		local e = HOST_Obj("tp2", x11.tp[1].pos.x + 30, 0, x11.tp[1].pos.z);
+		e.kind = "ship";
+		tinsert(x11.tp, e);
+		tinsert(x11.sh, e);
+	end;
+	local pw11 = DM_Mark(id11);
+	n0 = S_Mark();
+	x11.tp[1].alive = nil;
+	TRF_OnShipDied(id11, 1, TRF.gen);
+	HOST_Check(type(pw11) == "table" and type(pw11.b) == "number" and pw11.d == 1 and pw11.w == 0
+		and S_Logs(n0, "event=demand_kill trader_id="..id11.." ship=1 witness_count=0 reason=none witnessed=false via=count") == 1,
+		"count mark, first transport unseen: dw.b, dw.d 1 ("..TRF_Dump(pw11)..")");
+	h.carc_why = nil;
+	local p11 = x11.tp[2].pos;
+	h.carc = {{id=910, cls=8, tpl="station_ftu", team="FTU", hp=9000, hpmax=9000, x=p11.x + 600, y=p11.y, z=p11.z, pl=0}};
+	x11.tp[2].alive = nil;
+	TRF_OnShipDied(id11, 2, TRF.gen);
+	HOST_Check(pw11.w == 1 and pw11.v == "typed" and pw11.wc == 8 and pw11.wt == "station_ftu" and pw11.b == nil and pw11.d == nil
+		and S_Logs(n0, "event=demand_kill trader_id="..id11.." ship=2 witness_count=1 reason=station witnessed=true via=typed witness_cls=8") == 1,
+		"typed witness after a count kill: dw.b and dw.d cleared ("..TRF_Dump(pw11)..")");
+	for k = 1, getn(x11.sh) do x11.sh[k].alive = nil; end;
+	T_Tick(2, 0.5);
+	HOST_Check(S_Logs(n0, "event=demand_witnessed trader_id="..id11.." reason=witness") == 1
+		and S_Logs(n0, "via=typed witness_cls=8 witness_tpl=station_ftu") >= 2, "the mixed mark ends witnessed with the typed witness");
 	TRF_Carcasses = nil;
 	h.carc = nil;
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF");
