@@ -1,5 +1,6 @@
--- Station voices scenarios (design/station-voices-spec.md 13) under stock Lua 4.0.1: TRF_STN=a..f, run by
--- run_host.sh as its own entry point. a install, b moods, c gates, d standing, e fees, f identity and save.
+-- Station voices scenarios (design/station-voices-spec.md 13) under stock Lua 4.0.1: TRF_STN=a..h, run by
+-- run_host.sh as its own entry point. a install, b moods, c gates, d standing, e fees, f identity and save,
+-- g station events (spec 17) and the RU text, h mood providers and the plumbing review carry-overs.
 -- host_stubs.lua routes TRF_SCEN to the other scenario files, so this file loads its stubs and helpers only:
 -- the text before the line "if H.scen then" (H1), then host_traffic.lua and host_v02.lua for T_Begin,
 -- T_Enter, T_Jump, T_SaveLoad, T_Tick, V_Logs, V_Idx (H2, scenario "v1-stn": both skip their dispatch).
@@ -1084,14 +1085,14 @@ function T_STN_F()
 	local n = 0;
 	TRF.stn = {};
 	for kk, vv in ks do
-		TRF.stn[kk] = {st=-3, lg=L, gv=L, bv=L, pv=L, tf=L, ts=42, nt=1};
+		TRF.stn[kk] = {st=-3, lg=L, gv=L, bv=L, pv=L, tf=L, ts=42, nt=1, ec=L};
 		n = n + 1;
 	end;
 	TRF.vo = {};
 	local ow = TRF_StnOwners();
 	for nm, t in ow do if V_Idx(nm) then TRF.vo[V_Idx(nm)] = L; end; end;
 	local ss, ts = HOST_SaveSize(TRF.stn), 8 + 3 + HOST_SaveSize(TRF);
-	HOST_Check(n == 76 and ks[251] == 1 and ss <= 16000 and ts < 100000, "size: "..n.." keys, TRF.stn "..ss.." bytes, TRF "..ts.." bytes");
+	HOST_Check(n == 76 and ks[251] == 1 and ss <= 17700 and ts < 100000, "size: "..n.." keys, TRF.stn "..ss.." bytes, TRF "..ts.." bytes");
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF");
 	n0 = S_Mark();
 	TRF_DumpState("test");
@@ -1114,6 +1115,407 @@ function T_STN_F()
 	local nt, low = 0, 0;
 	for kk, vv in TRF.stn do nt = nt + 1; if vv.lg < 4 then low = low + 1; end; end;
 	HOST_Check(nt == 76 and low == 0 and TRF.stn[5].lg == 4, "Fix: more than 76 entries, smallest lg dropped ("..nt..")");
+end;
+
+-- g: station events (17) ----------------------------------------------------------------------
+
+-- Dock rows activate.script would place (HOST().evrows = {{func, tip}, ...}), set by the scene before
+-- TRF_OnActivate, so the entry plan sees them; the scene's trade station also answers the map label of the
+-- system (TRF_Station, trf_gen's path A). HOST().evhook runs after the module files are loaded (an override of a
+-- module function for this entry).
+S_Scene0 = T_Scene;
+function T_Scene(sys)
+	S_Scene0(sys);
+	local h = HOST();
+	if not h.evrows then return; end;
+	local m = TRF_Map();
+	local s = m.sys[m.by[sys]];
+	if s and s.st and s.st[1] and s.st[1].label then h.objs[s.st[1].label] = h.station; end;
+	local rows = {};
+	for i = 1, getn(h.evrows) do
+		local e = h.evrows[i];
+		tinsert(rows, {e[1], Vector3(100 * i + 40, 0, 900), e[2] or "", 5, HOST_Obj("EVROW"..i, 100 * i, 0, 900)});
+	end;
+	__system_Dock_array = rows;
+	if h.evhook then h.evhook(); end;
+end;
+
+-- Dock rows of one kind (functions: an entry clears table globals).
+function S_EvBarge() return {{"_NoneStation_Action", "5other"}}; end;
+function S_EvShuttle() return {{"__TradeStation_Action", ""}}; end;
+function S_EvLaunch() return {{"_NoneStation_Action", "1"}}; end;
+
+function S_Ev() return TRF_StnSV().ev; end;
+
+-- Entry with the event rows; the mothership waits far from every portal and the station.
+function S_EvEnter(sys, rows)
+	local h = HOST();
+	h.evrows = rows;
+	T_Enter(sys);
+	h.ms.pos = Vector3(5000, 0, 5000);
+end;
+
+-- The due spawn (ev_dt 5 + 0..4 s).
+function S_EvRun() T_Tick(24, 0.5); end;
+
+-- Mothership next to the lead ship of trader id.
+function S_MsTo(id)
+	local p = TRF_GnLead(id):GetPosition();
+	HOST().ms.pos = Vector3(p.x + 50, p.y, p.z);
+end;
+
+-- Docking of path A trader id: the approach trigger, then T_dock (20 s).
+function S_EvDock(id)
+	HOST_Fire("f_inside", "TRF_OnArrive("..id..",0,");
+	T_Tick(50, 0.5);
+end;
+
+-- Legs past the event cooldown (ev_cd 24).
+function S_EvCool()
+	for i = 1, 24 do TRF_AddLeg("test"); end;
+end;
+
+-- Occurrences of the plain text pat in s.
+function S_Count(s, pat)
+	local n, i = 0, 1;
+	if type(s) ~= "string" then return 0; end;
+	while 1 do
+		local a, e = strfind(s, pat, i, 1);
+		if not a then return n; end;
+		n = n + 1;
+		i = e + 1;
+	end;
+end;
+
+function S_ReadFile(p)
+	local f = openfile(p, "rb");
+	if not f then return nil; end;
+	local s = read(f, "*a");
+	closefile(f);
+	return s;
+end;
+
+function T_STN_G()
+	local h = HOST();
+	h.labels.CurrentQuest = "9_01";
+	S_Begin("gaoba", {log=2, staged=0, seed=0, parked=0, queue=0, feq=0, sweeps=0, tune={ev_p=100, ev_dt=5}});
+	local idx = TRF_CurIdx();
+	local k = S_Key(1);
+	HOST_Check(S_Ev() == nil, "no dock rows at the first entry: no event");
+	-- Barge: planned at entry, spawned with a small raid of kind stn, defended: event pay instead of 8.5, deed.
+	local n0 = S_Mark();
+	S_EvEnter("gaoba", S_EvBarge());
+	local ev = S_Ev();
+	HOST_Check(ev and ev.kind == "barge" and ev.st == "plan" and TRF.live.ev == "optional"
+		and S_Logs(n0, "module=station event=ev_plan kind=barge system=gaoba station_key=42 kind_count=1 chance=100 ") == 1,
+		"barge: planned at entry, slot optional taken");
+	local c0 = h.credits;
+	S_EvRun();
+	ev = S_Ev();
+	local r = ev and TRF_Rec(ev.id);
+	local rd = ev and type(ev.rn) == "number" and V_Rd(ev.rn);
+	HOST_Check(ev.st == "run" and r and r.sev == 1 and r.path == "A" and rd and rd.kind == "stn" and rd.tier == 1
+		and TRF.stn[k] and TRF.stn[k].ec == TRF.clock.legs and S_Logs(n0, "module=station event=ev_spawn kind=barge station_key=42 trader_id="..ev.id.." raid_id="..tostring(ev.rn)) == 1
+		and S_Screen(0, "Dockmaster: an ore barge is inbound with pirates on its tail. Cover it to the station and the harbour pays.") == nil,
+		"barge: path A trader (sev), raid T1 kind stn, cooldown stamp ec, radio line");
+	HOST_Check(h.msgs[getn(h.msgs)].t == "Dockmaster: an ore barge is inbound with pirates on its tail. Cover it to the station and the harbour pays."
+		and h.spk[getn(h.spk)] == "InocoDispetcher", "barge: dockmaster radio line, owner speaker");
+	local st1 = r.st;
+	r.st = "in";
+	local co, cw = TRF_CtOffer(ev.id);
+	r.st = st1;
+	HOST_Check(co == nil and cw == "used", "event ship: no escort contract offer ("..tostring(cw)..")");
+	local n = ev.rn;
+	if V_Rd(n).st == "armed" then HOST_Fire("f_inside", "TRF_RaidGo("..n..","); end;
+	local hr = TRF_H().rd[n];
+	HOST_Check(hr and getn(hr.sh) == 2, "barge raid: a small flight ("..(hr and getn(hr.sh) or 0).." ships)");
+	HOST_Fire("attack", "TRF_OnRaidHit("..n..",1,");
+	local want = floor(TRF_PayN(idx) * 40 / 100);
+	n0 = S_Mark();
+	for j = 1, getn(hr.sh) do hr.sh[j].alive = nil; HOST_Fire("died", "TRF_OnRaidDied("..n..","..j..","); end;
+	ev = S_Ev();
+	HOST_Check(ev.st == "end" and ev.res == "defended" and h.credits - c0 == want and want > 0
+		and S_Logs(n0, "module=raid event=paid raid_id="..n.." trader_id="..ev.id.." credits=0 ") == 1
+		and S_Logs(n0, "module=station event=ev_end kind=barge station_key=42 trader_id="..ev.id.." raid_id="..n.." result=defended reason=raid_help pay="..want.." ") == 1
+		and S_Logs(n0, "module=station event=deed station_key=42 change=+1 reason=\"event barge\" standing_before=0 standing_after=1") == 1
+		and S_Screen(0, "Dockmaster: they are in. "..want.." credits for your trouble, Wolves."),
+		"barge defended: 0.4 N_eff = "..want.." instead of the 8.5 credits (paid "..(h.credits - c0).."), deed +1");
+	TRF_Remove(ev.id, "test");
+	-- Cooldown: the same station within ev_cd legs plans nothing; the slot stays free for others.
+	n0 = S_Mark();
+	S_EvEnter("gaoba", S_EvBarge());
+	HOST_Check(S_Ev() == nil and TRF.live.ev == nil and S_Logs(n0, "module=station event=ev_plan system=gaoba station_key=42 roll=nil result=skipped reason=cooldown") == 1,
+		"cooldown: no event within ev_cd legs");
+	-- Shuttle: escorted to the station (mothership within ev_r at the docking): delivered, pay, deed.
+	S_EvCool();
+	S_EvEnter("gaoba", S_EvShuttle());
+	S_EvRun();
+	ev = S_Ev();
+	HOST_Check(ev and ev.kind == "shuttle" and ev.st == "run" and ev.rn == nil and TRF_Rec(ev.id), "shuttle: spawned, no raid");
+	c0 = h.credits;
+	S_MsTo(ev.id);
+	want = floor(TRF_PayN(idx) * 40 / 100);
+	local st0 = TRF_Stn_Rung(idx, 1);
+	n0 = S_Mark();
+	S_EvDock(ev.id);
+	HOST_Check(ev.res == "delivered" and h.credits - c0 == want and TRF.stn[k].st == st0 + 1 and TRF_Rec(ev.id) == nil
+		and S_Logs(n0, "module=station event=ev_end kind=shuttle station_key=42 trader_id="..ev.id.." raid_id=nil result=delivered reason=dock pay="..want.." distance=") == 1
+		and S_Logs(n0, "module=generator event=remove trader_id="..ev.id.." reason=dock") == 1,
+		"shuttle delivered: pay "..want..", standing +1, docked");
+	-- Shuttle docking without the mothership near: far, no pay, no deed.
+	S_EvCool();
+	S_EvEnter("gaoba", S_EvShuttle());
+	S_EvRun();
+	ev = S_Ev();
+	c0 = h.credits;
+	st0 = TRF_Stn_Rung(idx, 1);
+	n0 = S_Mark();
+	S_EvDock(ev.id);
+	HOST_Check(ev.res == "far" and h.credits == c0 and TRF.stn[k].st == st0 and S_Logs(n0, "result=far reason=dock pay=0 ") == 1
+		and S_Screen(0, "Dockmaster: they made it, but not with your help. No pay."), "shuttle far: no pay, no deed");
+	-- Launch: waits at its gate (form, no watchdog) until the mothership comes within ev_meet, then flies in.
+	S_EvCool();
+	S_EvEnter("gaoba", S_EvLaunch());
+	S_EvRun();
+	ev = S_Ev();
+	r = ev and TRF_Rec(ev.id);
+	HOST_Check(ev and ev.kind == "launch" and ev.st == "wait" and r and r.st == "form" and HOST_Count("f_inside", "TRF_OnArrive("..ev.id..",0,") == 0,
+		"launch: spawned and waiting, no orders");
+	T_Tick(140, 0.5);
+	HOST_Check(ev.st == "wait" and TRF_Rec(ev.id) and TRF_Rec(ev.id).st == "form", "launch: still waiting after 70 s far away");
+	S_MsTo(ev.id);
+	n0 = S_Mark();
+	T_Tick(4, 0.5);
+	HOST_Check(ev.st == "run" and r.st == "in" and HOST_Count("f_inside", "TRF_OnArrive("..ev.id..",0,") == 1
+		and S_Logs(n0, "module=station event=ev_pickup kind=launch trader_id="..ev.id.." distance=50") == 1 and S_Screen(0, "Launch: thank you, Wolves! We follow you to the station."),
+		"launch: pickup within ev_meet, path A orders");
+	c0 = h.credits;
+	want = floor(TRF_PayN(idx) * 40 / 100);
+	st0 = TRF_Stn_Rung(idx, 1);
+	S_EvDock(ev.id);
+	HOST_Check(ev.res == "delivered" and h.credits - c0 == want and TRF.stn[k].st == st0 + 1, "launch delivered: pay "..want..", standing +1");
+	-- Launch never picked up: the generator's lifetime removal ends it (expired).
+	S_EvCool();
+	S_EvEnter("gaoba", S_EvLaunch());
+	S_EvRun();
+	ev = S_Ev();
+	TRF_Remove(ev.id, "life");
+	n0 = S_Mark();
+	T_Tick(4, 0.5);
+	HOST_Check(ev.res == "expired" and S_Logs(n0, "result=expired reason=life pay=0 ") == 1 and S_Screen(0, "Dockmaster: we lost them."), "launch expired: no pay");
+	-- Barge killed by its raid: lost.
+	S_EvCool();
+	S_EvEnter("gaoba", S_EvBarge());
+	S_EvRun();
+	ev = S_Ev();
+	c0 = h.credits;
+	local x = TRF_H().tr[ev.id];
+	n0 = S_Mark();
+	for t = 1, getn(x.tp) do x.tp[t].alive = nil; HOST_Fire("died", "TRF_OnShipDied("..ev.id..","..t..","); end;
+	T_Tick(4, 0.5);
+	HOST_Check(ev.res == "lost" and h.credits == c0 and S_Logs(n0, "module=station event=ev_end kind=barge ") == 1, "barge lost: no pay ("..tostring(ev.res)..")");
+	for q, e in TRF.live.rd do if type(e) == "table" and e.st ~= "end" then TRF_Rd_End(q, "cancel"); end; end;
+	-- Slot: a sweep that claimed the scripted-event slot at entry wins; the event is refused (log 1 line).
+	S_EvCool();
+	h.evhook = function() TRF_SweepEntry = function() TRF_EventSlotTake("sweep"); return nil; end; end;
+	n0 = S_Mark();
+	S_EvEnter("gaoba", S_EvShuttle());
+	h.evhook = nil;
+	HOST_Check(S_Ev() == nil and TRF.live.ev == "sweep" and S_Logs(n0, "result=skipped reason=slot") == 1
+		and S_Logs(n0, "module=plumb event=event_slot kind=optional rank=8 holder=sweep result=refused") == 1, "slot held by a sweep: event refused");
+	-- Gates: a quest id of the system in process (strict gate), a story mission (free roam), chapter, voice_events 0.
+	h.quests["quest_7a"] = QUEST_PROCESS;
+	n0 = S_Mark();
+	S_EvEnter("kadenoa", S_EvShuttle());
+	HOST_Check(S_Ev() == nil and S_Logs(n0, "module=station event=ev_plan system=kadenoa station_key=nil roll=nil result=skipped reason=gate:quest") == 1, "strict gate: quest in process, no event");
+	h.quests["quest_7a"] = nil;
+	h.qs = TRUE;
+	n0 = S_Mark();
+	S_EvEnter("gaoba", S_EvShuttle());
+	HOST_Check(S_Ev() == nil and S_Logs(n0, "result=skipped reason=latch") == 1, "story mission active: no event");
+	h.qs = FALSE;
+	h.labels.CurrentQuest = "4_01";
+	n0 = S_Mark();
+	S_EvEnter("gaoba", S_EvShuttle());
+	HOST_Check(S_Ev() == nil and S_Logs(n0, "result=skipped reason=chapter") == 1, "chapter 4: no event");
+	h.labels.CurrentQuest = "9_01";
+	h.cfg.voice_events = 0;
+	n0 = S_Mark();
+	S_EvEnter("gaoba", S_EvShuttle());
+	HOST_Check(S_Ev() == nil and S_Logs(n0, "result=skipped reason=off") == 1 and TRF.live.ev == nil, "voice_events 0: no event");
+	h.cfg.voice_events = nil;
+	-- A jump before the spawn ends the plan (void); a load drops the visit record, the cooldown stamp stays.
+	n0 = S_Mark();
+	S_EvEnter("gaoba", S_EvShuttle());
+	ev = S_Ev();
+	h.evrows = nil;
+	T_Jump("gaoba");
+	HOST_Check(ev and ev.res == "void" and S_Logs(n0, "module=station event=ev_end kind=shuttle station_key=42 trader_id=nil raid_id=nil result=void reason=jump") == 1,
+		"jump before the spawn: void");
+	S_EvEnter("gaoba", S_EvShuttle());
+	S_EvRun();
+	ev = S_Ev();
+	local L1 = TRF.stn[k].ec;
+	HOST_Check(ev and ev.st == "run" and L1 == TRF.clock.legs, "planned and spawned again (no stamp from the void plan)");
+	T_SaveLoad();
+	HOST_Check(S_Ev() == nil and TRF.stn[k].ec == L1, "load: no visit record, ec kept");
+	T_Tick(4, 0.5);
+	-- Prune keeps a st 0 entry while its cooldown runs, drops it after ev_cd legs; Fix checks ec.
+	h.evrows = nil;
+	TRF.stn[k] = {st=0, lg=TRF.clock.legs, ec=TRF.clock.legs};
+	T_Enter("gaoba");
+	HOST_Check(TRF.stn[k] and TRF.stn[k].ec ~= nil, "prune: entry kept while the event cooldown runs");
+	S_EvCool();
+	T_Enter("gaoba");
+	HOST_Check(TRF.stn[k] == nil, "prune: dropped after ev_cd legs");
+	local L = TRF.clock.legs;
+	TRF.stn = {[42]={st=1, lg=L, ec=L + 5}, [51]={st=1, lg=L, ec="x"}, [251]={st=1, lg=L, ec=L}};
+	TRF_Stn_Fix();
+	HOST_Check(TRF.stn[42].ec == nil and TRF.stn[51].ec == nil and TRF.stn[251].ec == L, "Fix: ec not a number or past legs -> nil");
+	n0 = S_Mark();
+	TRF_DumpState("test");
+	HOST_Check(S_Logs(n0, "module=station event=dump ") == 1 and S_Logs(n0, " event_legs=251:"..L.." ") == 1, "dump: event_legs");
+	-- Pure parts.
+	local kk = TRF_StnEvKindsOf({{"__TradeStation_Action"}, {"_NoneStation_Action", 0, "4ino"}, {"_NoneStation_Action", 0, "3adm"}, {"_NoneStation_Action", 0, "pirate"}});
+	HOST_Check(getn(kk) == 3 and kk[1] == "barge" and kk[2] == "launch" and kk[3] == "shuttle" and getn(TRF_StnEvKindsOf({{"_NoneStation_Action", 0, "5"}, {"_PirDock_Action"}})) == 0,
+		"kinds: barge (private/restricted), launch (civil), shuttle (trade); silent and pirate none");
+	HOST_Check(TRF_StnEvPayOf(10000, 40) == 4000 and TRF_StnEvPayOf(nil, 40) == 0 and TRF_StnEvPayOf(10000, 0) == 0, "pay: k percent of N_eff");
+	-- RU text: every station key of the EN tables, cp1251 (no byte outside ASCII and 0xA8, 0xB8, 0xC0-0xFF), CRLF.
+	local ru = S_ReadFile(h.dir.."../../../../loc/trf_ru.loc");
+	local want, got, bad = {}, {}, "";
+	for kx, v in TRF_Stn_Text() do want[TRF_LocKey(kx)] = 1; end;
+	local nl, ncr, b2 = S_Count(ru, "\n"), S_Count(ru, "\r\n"), strfind(ru or "", "[\128-\167\169-\183\185-\191]");
+	local i = 1;
+	while ru do
+		local a, e, kx = strfind(ru, "#TRF_(%w+) = [^\r]+\r\n", i);
+		if not a then break; end;
+		got[kx] = 1;
+		i = e + 1;
+	end;
+	for kx, v in want do if not got[kx] then bad = bad.." missing:"..kx; end; end;
+	for kx, v in got do if not want[kx] then bad = bad.." extra:"..kx; end; end;
+	HOST_Check(ru and strsub(ru, 1, 13) == "LOCALE_FILE\r\n" and bad == "" and nl == ncr and not b2, "loc/trf_ru.loc: every station key, cp1251, CRLF"..bad);
+	for id, rr in TRF.live.tr do if type(rr) == "table" and rr.st ~= "gone" then TRF_Remove(id, "test"); end; end;
+end;
+
+-- h: mood providers and the plumbing review carry-overs ------------------------------------------
+
+function S_ProvOne(idx, tip) return "1"; end;
+function S_ProvNil(idx, tip) return nil; end;
+function S_ProvErr(idx, tip) error("injected provider error"); end;
+
+function T_STN_H()
+	local h = HOST();
+	S_Begin("gaoba", {log=2});
+	local idx = TRF_CurIdx();
+	local k = S_Key(1);
+	-- Mood providers (5.2 row 1, contract f(idx, tip) -> key or nil): read from trf_plumb's registry.
+	local D = S_Setup({{"0"}, {"5"}});
+	S_MoodReset(S_Rg().sl);
+	S_Rg().ph = 1;
+	local n0 = S_Mark();
+	S_None(D.none[1]);
+	HOST_Check(getn(TRF_Stn_Prov()) == 0 and S_Logs(n0, "vanilla_key=0 mood_key=3adm rule=7 ") == 1, "no provider: Boom row 7 gives 3adm");
+	TRF_VoiceProvReg("S_ProvNil");
+	TRF_VoiceProvReg("S_ProvOne");
+	local pl = TRF_Stn_Prov();
+	local vp = TRF_Voice_Prov();
+	HOST_Check(getn(pl) == 2 and pl[1] == "S_ProvNil" and pl[2] == "S_ProvOne" and vp[1] == pl[1] and vp[2] == pl[2], "TRF_Stn_Prov is the plumbing registry, in registration order");
+	n0 = S_Mark();
+	local a = S_None(D.none[1]);
+	local b = S_None(D.none[2]);
+	HOST_Check(a.t == "#L_Dnone_live_msg" and S_Logs(n0, "vanilla_key=0 mood_key=1 rule=1 ") == 1 and b.t == "#L_Dnone_other_msg"
+		and S_Logs(n0, "vanilla_key=5 mood_key=5 rule=1 ") == 1, "provider key wins over the mood table (rule 1); silent stations stay vanilla");
+	TRF_InstallPlumb();
+	HOST_Check(getn(TRF_Stn_Prov()) == 2, "a second install keeps one entry per provider");
+	-- A provider that errors is skipped; the next one answers.
+	T_Enter("gaoba");
+	HOST_Check(getn(TRF_Stn_Prov()) == 0, "entry: the registry starts empty (modules register in TRF_<M>_Plumb)");
+	D = S_Setup({{"0"}});
+	S_MoodReset(S_Rg().sl);
+	S_Rg().ph = 1;
+	TRF_VoiceProvReg("S_ProvErr");
+	TRF_VoiceProvReg("S_ProvOne");
+	a = {};
+	n0 = S_Mark();
+	local ne = S_Expect(function() local t = %a; t.r = S_None(%D.none[1]); end);
+	HOST_Check(ne == 1 and a.r.t == "#L_Dnone_live_msg" and S_Logs(n0, "mood_key=1 rule=1 ") == 1, "provider error caught, the next provider's key used");
+	-- (a) Station fee box that cannot open: event=fee box=false, then the vanilla box; an opened one logs box=true.
+	S_Visit("kadenoa", "5_01", 8);
+	D = S_Setup({});
+	h.smn = 0;
+	local sm = ShowMsgBox;
+	ShowMsgBox = function(...)
+		HOST().smn = HOST().smn + 1;
+		if HOST().smn == 1 then error("injected ShowMsgBox failure"); end;
+		return call(%sm, arg);
+	end;
+	b = {};
+	n0 = S_Mark();
+	ne = S_Expect(function() local t = %b; t.r = S_Trade(%D.trade[1]); end);
+	ShowMsgBox = sm;
+	b = b.r;
+	HOST_Check(ne == 1 and S_Vanilla(b) and S_Logs(n0, "module=station event=fee station_key=51 ") == 1 and S_Logs(n0, " box=false") == 1
+		and S_Logs(n0, " box=true") == 0 and S_Logs(n0, "module=plumb event=dock kind=req line_count=0 box=station_fee result=vanilla reason=box_failed") == 1,
+		"fee box failed to open: box=false, vanilla box");
+	HOST_Press("cancel");
+	n0 = S_Mark();
+	b = S_Trade(D.trade[1]);
+	HOST_Check(b.nb == 1 and not S_Vanilla(b) and S_Logs(n0, "module=station event=fee station_key=51 ") == 1 and S_Logs(n0, " box=true") == 1,
+		"fee box opened: box=true after the show");
+	HOST_Press("cancel");
+	-- (a) Pirate offer box: the stat and event=offer follow the show result (lock refused, then opened).
+	local L = TRF.live;
+	local sp = {text="offer", ok="TRF_FcPoAcc", no="TRF_FcPoDec", fail="TRF_FcPoFail", shown="TRF_FcPoShown", own="pirate_offer"};
+	L.po = {k=1, s=idx, w="box", g=TRF.gen};
+	TRF_BoxTake("hail");
+	local s0 = L.stat.po_box or 0;
+	n0 = S_Mark();
+	local ok = TRF_PlShow("pir", "TRF_orig_PirOk", {}, sp);
+	HOST_Check(ok == nil and L.po == nil and (L.stat.po_box or 0) == s0
+		and S_Logs(n0, "module=faction event=offer offer_kind=1 system=") == 1 and S_Logs(n0, " system_index="..idx.." box=false") == 1, "pirate offer, box lock refused: box=false, no stat");
+	TRF_BoxFree("hail");
+	L.po = {k=1, s=idx, w="box", g=TRF.gen};
+	n0 = S_Mark();
+	ok = TRF_PlShow("pir", "TRF_orig_PirOk", {}, sp);
+	HOST_Check(ok == 1 and (L.stat.po_box or 0) == s0 + 1 and S_Logs(n0, "module=faction event=offer offer_kind=1 system=") == 1 and S_Logs(n0, " system_index="..idx.." box=true") == 1,
+		"pirate offer opened: box=true, stat po_box");
+	HOST_Press("cancel");
+	-- (b) The docked line (order 90) runs under __disableAction: standing rose, OK pressed while the flag is set.
+	S_Visit("gaoba", "9_01");
+	D = S_Setup({});
+	TRF_Stn_Deed(idx, 1, "test");
+	b = S_Trade(D.trade[1]);
+	HOST_Check(S_Vanilla(b), "gaoba: vanilla box (no fee)");
+	__disableAction = TRUE;
+	n0 = S_Mark();
+	HOST_Press("ok");
+	__disableAction = FALSE;
+	HOST_Check(S_Logs(n0, "module=station event=docked station_key=42 standing_up=true") == 1 and TRF_StnSV().nd[42] == 1
+		and S_Logs(n0, "module=ui event=say result=skipped reason=flag message=\"Dockmaster: noted, Wolves.\"") == 1
+		and S_Logs(n0, "module=plumb event=dock kind=trade ") == 1 and S_Logs(n0, "result=skipped reason=disable_action") == 1, "docked line under __disableAction (always handler; TRF_Say mutes the text as before)");
+	-- (c) Leg cap D1: stat leg_cap and its debug line once per visit, also across a load; again after an entry.
+	h.cfg.tune = {T_leg=5};
+	T_Enter("gaoba");
+	local l0 = TRF.clock.legs;
+	n0 = S_Mark();
+	T_Tick(120, 0.5);
+	HOST_Check(TRF.clock.legs == l0 + 3 and TRF.clock.vl == 3 and TRF.clock.vc == 1 and T_Stat("leg_cap") == 1
+		and S_Logs(n0, "module=state event=leg_cap legs="..(l0 + 3).." visit_tick_legs=3 cap=3 result=reached") == 1
+		and S_Logs(n0, "module=state event=leg_cap legs="..(l0 + 3).." visit_tick_legs=3 cap=3 result=dropped") == 1, "leg cap: counted once in 60 s ("..T_Stat("leg_cap")..")");
+	T_SaveLoad();
+	n0 = S_Mark();
+	T_Tick(40, 0.5);
+	HOST_Check(TRF.clock.vc == 1 and S_Logs(n0, "event=leg_cap") == 0, "after a load: no second count in the visit");
+	T_Enter("gaoba");
+	HOST_Check(TRF.clock.vc == nil, "entry clears vc");
+	n0 = S_Mark();
+	T_Tick(120, 0.5);
+	HOST_Check(T_Stat("leg_cap") == 1 and S_Logs(n0, "result=dropped") == 1, "next visit: counted once again");
+	TRF.clock.vc = 7;
+	TRF_Repair();
+	HOST_Check(TRF.clock.vc == nil, "repair: vc other than 1 -> nil");
+	h.cfg.tune = nil;
 end;
 
 -- Dispatch (H3) ------------------------------------------------------------------------------

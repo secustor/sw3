@@ -1076,7 +1076,8 @@ function TRF_CtOffer(id)
 	if not r then return nil, "norec"; end;
 	if r.path ~= "A" and r.path ~= "B" then return nil, "path"; end;
 	if r.st ~= "in" and r.st ~= "out" then return nil, "st"; end;
-	if r.ct or type(r.rdn) == "number" then return nil, "used"; end;
+	-- r.sev: a station event ship (trf_station) pays through its event, never a contract.
+	if r.ct or r.sev or type(r.rdn) == "number" then return nil, "used"; end;
 	local idx = TRF_HlCur();
 	local m = TRF_HlMap();
 	if type(idx) ~= "number" or type(m) ~= "table" or type(m.sys[idx]) ~= "table" then return nil, "nomap"; end;

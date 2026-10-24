@@ -1228,8 +1228,10 @@ end;
 
 -- Safe arrival (v02 9.1, 5.6, 7.2), before TRF_Remove deletes the flight: contract check, visit credits
 -- (+1 with leader HP >= 50 % of hp0, +2 more for a path A delivery; none for a fleeing trader or a
--- wind-down exit), shortage cleared by a path A delivery.
+-- wind-down exit), shortage cleared by a path A delivery. A station event ship (trf_station, r.sev) is resolved
+-- first, while its flight still exists (distance to the mothership).
 function TRF_GnSafeArrive(id, r, how)
+	if r.sev == 1 then TRF_GnX("TRF_Stn_EvArrive", id, how); end;
 	TRF_GnX("TRF_CtArrive", id, how);
 	if how == "dock" and r.path == "A" then TRF_GnX("TRF_ShortClear", TRF_CurIdx(), r.cls); end;
 	if r.fl or r.st == "wind" then return; end;

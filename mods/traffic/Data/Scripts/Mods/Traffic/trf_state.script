@@ -315,8 +315,8 @@ end;
 
 -- Saved table: create, migrate, repair (spec 3.1) ----------------------------------
 
--- j: jumps (TRF_State_BeforeJump), rs: unpaused real seconds, vl: game-time legs counted in this visit
--- (design/wb-plumbing-spec.md 10).
+-- j: jumps (TRF_State_BeforeJump), rs: unpaused real seconds, vl: game-time legs counted in this visit, vc (1 or
+-- absent): the leg cap dropped time in this visit (design/wb-plumbing-spec.md 10).
 function TRF_NewClock() return {legs=0, tleg=0, gt=0, real=0, dd=0, rt=0, j=0, rs=0, vl=0}; end;
 
 -- v4 (v1 spec 3.1). rg and clan stay empty until TRF_Rg_Init (trf_region) fills them; the v4 slot
@@ -612,6 +612,7 @@ function TRF_Repair()
 	local c = TRF_Tab(TRF, "clock");
 	TRF_Num(c, "legs", 0); TRF_Num(c, "tleg", 0); TRF_Num(c, "gt", 0); TRF_Num(c, "real", 0); TRF_Num(c, "dd", 0);
 	TRF_Num(c, "j", 0); TRF_Num(c, "rs", 0); TRF_Num(c, "vl", 0);
+	if c.vc ~= nil and c.vc ~= 1 then c.vc = nil; end;
 	if c.dd > c.legs then c.dd = c.legs; end;
 	-- A missing rt never defaults to 0, which would replay rg_catchup region ticks.
 	if type(c.rt) ~= "number" or c.rt > c.legs or c.rt < 0 then c.rt = c.legs; end;
@@ -972,6 +973,7 @@ function TRF_State_OnEnter(fresh)
 	TRF_LiveReset();
 	TRF.clock.tleg = 0;
 	TRF.clock.vl = 0;
+	TRF.clock.vc = nil;
 	TRF_AddLeg("enter");
 	TRF_P("TRF_ProSet");
 	TRF_StE("enter", "generation", TRF.gen, "fresh", TRF_KvB(fresh or f), "system", TRF_SysName(TRF_CurIdx()), "legs", TRF.clock.legs);
@@ -1016,7 +1018,9 @@ end;
 
 -- Tick: clocks, leg clock (T_leg of game time), due calls. rs counts dt_real only while dt_game > 0 (the
 -- unpaused proxy until E0.21 measures pause and menus). Decision D1 (00 section 8): at most leg_cap (3)
--- game-time legs per visit (clock.vl, reset by the entry; a load keeps it); entry legs always count.
+-- game-time legs per visit (clock.vl, reset by the entry; a load keeps it); entry legs always count. Time beyond
+-- the cap is dropped; stat leg_cap and its debug line count once per visit (clock.vc = 1 from the first drop,
+-- cleared by the entry, kept by a load).
 function TRF_State_Tick(dg, dr)
 	if type(TRF) ~= "table" or not TRF.active then return; end;
 	if type(dg) ~= "number" or dg < 0 then dg = 0; end;
@@ -1038,8 +1042,11 @@ function TRF_State_Tick(dg, dr)
 		c.tleg = c.tleg - T;
 		if lc > 0 and (c.vl or 0) >= lc then
 			c.tleg = 0;
-			TRF_Stat("leg_cap");
-			TRF_StDE("leg_cap", "legs", c.legs, "visit_tick_legs", c.vl, "cap", lc);
+			if c.vc ~= 1 then
+				c.vc = 1;
+				TRF_Stat("leg_cap");
+				TRF_StDE("leg_cap", "legs", c.legs, "visit_tick_legs", c.vl, "cap", lc, "result", "dropped");
+			end;
 			break;
 		end;
 		c.vl = (c.vl or 0) + 1;

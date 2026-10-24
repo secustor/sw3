@@ -198,6 +198,13 @@ FILETYPE STANDART
 #TRF_stnamb3 = Border crews talk about berserk skirmishes again.
 #TRF_stncredit = Docking on credit. The harbour will remember.
 #TRF_stndepot = Depot control. The lanes are not safe, we sealed the bays. Try the trade station.
+#TRF_stnevbarge = Dockmaster: an ore barge is inbound with pirates on its tail. Cover it to the station and the harbour pays.
+#TRF_stnevfar = Dockmaster: they made it, but not with your help. No pay.
+#TRF_stnevlaunch = Dockmaster: a refugee launch is adrift near the gate. Bring it in to the station and the harbour pays.
+#TRF_stnevlost = Dockmaster: we lost them.
+#TRF_stnevmet = Launch: thank you, Wolves! We follow you to the station.
+#TRF_stnevok = Dockmaster: they are in. credits for your trouble, Wolves.
+#TRF_stnevshuttle = Dockmaster: a tanker shuttle is inbound. Escort it to the station and the harbour pays.
 #TRF_stnfeehub = Heavy traffic surcharge: credits.
 #TRF_stnfeepen = Penalty docking fee: credits.
 #TRF_stnfeereq = Initiate docking?

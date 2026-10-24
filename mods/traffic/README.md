@@ -15,7 +15,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_state.script`, `trf_safety.script`, `trf_ui.script`, `trf_events.script`, `trf_gen.script` | v0.1 traffic (`design/v01-spec.md` 10.2), extended by v0.2: saved table (v3 since v0.2) and visit state; safety rules, caps, governor and strict gate; player-facing lines and news; attack, heat tiers, kills and response; generator wrap, spawn, routes, queue and seed, manager step, load pass. |
 | `trf_region.script`, `trf_tier.script`, `trf_raid.script`, `trf_shop.script`, `trf_hail.script` | v0.2 (`design/v02-spec.md` 10.1): regional cycle, prosperity and clans; bands, tiers, holds, parked ships; raids and help pay; trader shops, shortages and restore; hail menu, contracts and work board. Each loads on its own. |
 | `trf_loc.script`, `trf_track.script`, `trf_faction.script`, `trf_clan.script`, `trf_convoy.script`, `trf_danger.script`, `trf_supply.script`, `trf_base.script` | v1 (`design/v1-spec.md` 10.1, load order 10.3): text tables and deny list; tracked pool; faction strength, sweeps and offers; clans T3–T4, carriers, salvage; TT4 and equipment convoys; danger convoys; supply convoys, demand cargo, heat reset; pirate bases. Each loads on its own. |
-| `trf_station.script` | Station voices ([design/station-voices-spec.md](design/station-voices-spec.md)): closed-station moods, dockmaster standing, greetings, news, tips and fees. Loads after `trf_plumb`. |
+| `trf_station.script` | Station voices ([design/station-voices-spec.md](design/station-voices-spec.md)): closed-station moods, dockmaster standing, greetings, news, tips, fees and the local station events (ore barge, tanker shuttle, refugee launch). Loads after `trf_plumb`. |
 | `trf_plumb.script` | Worldbuilding plumbing ([design/wb-plumbing-spec.md](design/wb-plumbing-spec.md)): the dock dispatcher behind the trade, patrol, pirate and request wrappers, the `_NoneStation_Action` chain, the `CostOfHead` wrapper and the `Case_Eject` handler list, the visit slots (box lock, scripted event, escort, arrival lines), the job slot, owed payers, ship caps, nav markers, 8.5 raid-help resolvers and the group-prefix orphan scan. Loads after the v1 files, before `trf_station`. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
@@ -281,7 +281,7 @@ v1 ("identity across jumps and war traffic", design §12, spec [design/v1-spec.m
 - Equipment convoys: one at a time map-wide, from a faction with strength ≥ 2 in a `pro` ≥ 6 system, about once per 30–35 legs: military transports with faction warship escorts and holds of 85,000–400,000 cr. Wave 1 of faction reinforcements comes 20–30 s after the first counted attack, wave 2 at 50 % transport HP one rung higher. Killing it gives heat +3, faction standing −1, strength −1 and a forced Bust; pirates taking it give the clan salvage +3. The owner may offer a defence contract (4x escort pay, ≤ 30,000 cr).
 - Danger convoys: at disruption ≥ 4 or in a Raids-phase region, 2–3 traders gather at the trade station (up to 120 s) and leave together with 3–5 escorts; 20 % still fly alone.
 - Pirate bases: a clan founds a base (at most 2 map-wide) in an allow-list system that has stayed at disruption ≥ 6, never while the player is there. It holds a garrison, raises disruption around it, sends raids and survives leave, revisit, save and load. Destroying it resets the system's disruption and pays a bounty. Not active in-game yet: `map.script` has no allow-list (`ba`) until `gen_map.py` emits it (Status).
-- Text: all lines are English plain text (`lang` `ru` falls back to English per key until the RU table exists).
+- Text: all lines are English plain text (`lang` `ru` falls back to English per key until the RU table exists). The station voices lines exist in Russian as `loc/trf_ru.loc` (cp1251) for `loc_mode 1` in a Russian install (`install-test.sh` `LOC=1` copies it to the clone's `Data/LocData/Russian/` when that folder exists).
 
 ### Config keys (v1)
 
@@ -411,7 +411,7 @@ Pirate bases are stations in the game's snapshots and station prices live in the
 
 ## Station voices (`EXP=0 TRAFFIC=1`)
 
-Station voices (proposal 3 steps 1 and 2, spec [design/station-voices-spec.md](design/station-voices-spec.md), design `design/worldbuilding/03-station-voices.md`) is one module, `trf_station`, loaded after the v1 files. It wraps two vanilla dock functions of `DockStation.script`: `_NoneStation_Action` (closed stations) and `__TradeStation_Action` (trade docking). It never wraps `__TradeStationDock_Ok`: the fee box OK calls it by name, so trf_shop's wrapper runs on every docking. It is implemented and host-tested (50 host runs, 6 of them `stn-a`..`stn-f`), not yet run in the game. The load line counts it separately: `module=core event=loaded map=true module_count=18 extra_count=1 ...` (`extra_count=0` means `trf_station.script` failed to load and both stations stay vanilla).
+Station voices (proposal 3 steps 1 and 2, spec [design/station-voices-spec.md](design/station-voices-spec.md), design `design/worldbuilding/03-station-voices.md`) is one module, `trf_station`, loaded after the v1 files. It wraps two vanilla dock functions of `DockStation.script`: `_NoneStation_Action` (closed stations) and `__TradeStation_Action` (trade docking). It never wraps `__TradeStationDock_Ok`: the fee box OK calls it by name, so trf_shop's wrapper runs on every docking. It is implemented and host-tested (57 host runs, 8 of them `stn-a`..`stn-h`), not yet run in the game. The load line counts it separately: `module=core event=loaded map=true module_count=18 extra_count=1 ...` (`extra_count=0` means `trf_station.script` failed to load and both stations stay vanilla).
 
 ### What the player sees
 
@@ -420,10 +420,12 @@ Station voices (proposal 3 steps 1 and 2, spec [design/station-voices-spec.md](d
 - On approach the dockmaster greets by standing (radio line, speaker of the station owner), and from chapter 4 at standing 2+ reads the harbour news (the S19/S26 trouble and boom answers); standing 4+ adds one region tip (sweep, supply run, pirate base); standing 1+ without news gives an ambient line (chapters 0-5, 7-11).
 - Fees from chapter 5: a hub surcharge at `pro` ≥ 8 for standing ≤ 2 and a penalty at -2 (x2) and -3 (x3), `fee = round100(200 L_w (1 + 0.1 pro) m d_k)`, at most 10,000 cr. Paying a penalty buys back one step (never above -1, once per visit). Too few credits: the box docks on credit (no charge, standing -1, no news). Cancel never pays and never docks. A fee paid (or a docking on credit) is not asked again in the same visit, also after a load. No fee while any story mission runs or ran earlier in the visit (the visit latch, `no_fee_reason=latch`), with `strict 0`, or in a system whose quest ids are in process. The latch stops only the fee: during a mission the moods, greeting, news and tips still play (also in campaign teleport targets such as NJ1 and Taira while no quest naming the system is in process).
 - Start systems stay vanilla in chapters 1-4 (the `guard`): no mood, greeting, news, tip, ambient line or fee there (`module=station event=pass reason=mode:guard`).
+- Station events (spec section 17), from chapter 5 in free roam and only where the strict gate is open: at most one per visit, 25 % per entry and at most one per station in 24 legs, chosen by the stations of the system. Near a depot or company yard an ore barge comes in with two pirates on its tail: shoot at them and the barge's rescue pays instead of the raid help. With a trade station a tanker shuttle comes in: fly with it until it docks. Near a living station a refugee launch waits at a gate: fly to it, it follows to the station. The dockmaster announces it by radio; success pays 0.4 of the shared pay base (`N_eff`) and raises the standing by one (ceiling 4); a ship lost, left alone or never picked up pays nothing. A story mission, a sweep, an equipment convoy or a staged raid in the same visit takes precedence (one scripted event per visit).
+- Russian text: `loc/trf_ru.loc` has the station lines in Russian (cp1251) for a Russian install with `loc_mode 1`; the other modules' lines have no RU text yet.
 
 ### Config keys (station voices)
 
-Defaults are in `TRF_Stn_OptDef`/`TRF_Stn_TuneDef`; `config.script` does not list them (a missing key reads the module default). `install-test.sh` has no environment names for the cfg keys yet: edit the installed `config.script`. Tune keys go through `TUNE=key=value,...`.
+Defaults are in `TRF_Stn_OptDef`/`TRF_Stn_TuneDef`; `config.script` does not list them (a missing key reads the module default). `install-test.sh` writes `VOICE`, `VOICE_MOODS`, `VOICE_DOCK`, `VOICE_NEWS`, `VOICE_FEE`, `VOICE_GATE` and `VOICE_EVENTS` when set; `voice_force` needs an edit of the installed `config.script`. Tune keys go through `TUNE=key=value,...`.
 
 | key | default | meaning |
 |---|---|---|
@@ -436,6 +438,9 @@ Defaults are in `TRF_Stn_OptDef`/`TRF_Stn_TuneDef`; `config.script` does not lis
 | tune `fee_k`, `fee_pro`, `fee_cap`, `fee_ch`, `news_ch` | 200, 8, 10000, 5, 4 | fee constant, hub threshold, cap, first fee chapter, first news chapter |
 | tune `own_legs`, `mood_dis`, `mood_rdis`, `pir_heat`, `heat_c1`, `heat_c2` | 20, 7, 5, 5, 5, 7 | owner-change martial law; mood rows 3, 4, 7b; heat caps of the rung |
 | tune `stn_radio`, `stn_gap` | 8, 6 | greeting seconds; spacing to the last TRF radio or focus line |
+| `voice_events` | 1 | 0: no station events |
+| tune `ev_cd`, `ev_p`, `ev_k`, `ev_ch` | 24, 25, 40, 5 | event cooldown per station (legs), chance per entry (%), pay k in % of `N_eff`, first chapter |
+| tune `ev_r`, `ev_meet`, `ev_tier`, `ev_dt` | 800, 300, 1, 20 | escort distance at the docking, launch pickup distance, barge raid tier, spawn delay base (s) |
 
 ### Log lines (station voices)
 
@@ -449,7 +454,7 @@ Defaults are in `TRF_Stn_OptDef`/`TRF_Stn_TuneDef`; `config.script` does not lis
 - Docking:
   - `module=station event=dock station_key=<k> param=<p> via=<prm+pos|pos|prm> distance=<dist> standing= rung= heat= greeting=<key|-> news=<bool> tip=<kind|nil> ambient=<key|nil> fee=<n> fee_multiplier=<m> no_fee_reason=<paid_visit|latch|strict_0|chapter>`
   - `module=station event=id_mismatch station_key=<k> param_station=<jp> position_station=<jx> distance=<d>`
-  - `module=station event=fee station_key=<k> fee=<n> world_level=<L_w> prosperity=<pro> fee_multiplier=<m> difficulty_factor=<dk> box=<bool>`
+  - `module=station event=fee station_key=<k> fee=<n> world_level=<L_w> prosperity=<pro> fee_multiplier=<m> difficulty_factor=<dk> box=<bool>` (after the box opened, or `box=false` when it could not)
   - `module=station event=fee_ok station_key=<k> credits_before=<a> credits_after=<b> credit=<bool> buyback=<bool>` (`event=fee_cancel` for Cancel)
   - `module=station event=docked station_key=<k> standing_up=<bool>`, `module=station event=stale_box answer=ok|cancel`
 - Standing:
@@ -457,7 +462,11 @@ Defaults are in `TRF_Stn_OptDef`/`TRF_Stn_TuneDef`; `config.script` does not lis
   - `module=station event=decay station_key=<k> standing_before=<a> standing_after=<b> decay_steps=<n>`
   - `module=station event=tip station_key=<k> kind=<sweep|feq|base> system=<n> tip_leg=<L>`
   - `module=station event=rob station_key=<k> standing_after=-3 tip_ban=true`
-- Dump: `module=station event=dump visit=<ve> record_count=<n> records=<k>:<st>/<lg>/<gv>/<bv>/<tf>[!] ... owner_visits=<name>:<leg>,... none_wrapped=true trade_wrapped=true`.
+- Station events:
+  - `module=station event=ev_plan kind=<barge|shuttle|launch> system=<n> station_key=<k> kind_count=<n> chance=<p> roll=<r> delay=<s> result=planned` (`result=skipped reason=<why>` at `log 2`, `reason=slot` at `log 1`)
+  - `module=station event=ev_spawn kind=<kind> station_key=<k> trader_id=<id> raid_id=<n|nil> tier=<t> ship_count=<n> cooldown_leg=<L>`, `module=station event=ev_pickup kind=launch trader_id=<id> distance=<d>`
+  - `module=station event=ev_end kind=<kind> station_key=<k> trader_id=<id> raid_id=<n> result=<defended|delivered|far|no_help|lost|expired|void> reason=<why> pay=<cr> distance=<d>`
+- Dump: `module=station event=dump visit=<ve> record_count=<n> records=<k>:<st>/<lg>/<gv>/<bv>/<tf>[!] ... owner_visits=<name>:<leg>,... event_legs=<k>:<leg>,... event_kind=<kind> event_state=<st> event_result=<res> none_wrapped=true trade_wrapped=true`.
 
 Keys are `idx + 200 (j - 1)`: Kadenoa's USS trade station is 51, its Triada station (`kadenoa_tri`) 251.
 
@@ -480,6 +489,10 @@ Run on the clone with cfg `log 2` (edit the installed `config.script`) and grep 
 | C11 | mission detection holds for the fee | during a mission `module=station event=pass reason=gate:quest`, or `module=station event=dock ... no_fee_reason=latch` with `module=station event=pass reason=latch ... at=dock` (greeting and moods still play); after it, a new entry logs `module=station event=dock ... fee=<n>` |
 | C12 | vanilla key `2` (never placed) loads | `voice_force "2"`: `module=station event=mood ... mood_key=2 rule=0`, a readable blockade line |
 | C13 | the `DispetcherKFNI` template works outside a beacon | `module=station event=mood ... speaker=DispetcherKFNI` with a portrait |
+| C14 | an event ship spawns on trf_gen's path A and flies to the station (`TUNE=ev_p=100,ev_cd=1`, chapter 5+, free roam) | `module=station event=ev_spawn kind=shuttle station_key=<k> trader_id=<id>` with `module=generator event=spawn trader_id=<id> path=A`, later `module=generator event=approach trader_id=<id>` and `module=station event=ev_end ... result=delivered` when flown along |
+| C15 | the barge raid is a small flight and help pays the event | `module=clan event=raid_on raid_id=<n> trader_id=<id> source=stn tier=1 ...`, `module=raid event=paid raid_id=<n> ... credits=0 ... help_rule=cancel`, `module=station event=ev_end kind=barge ... result=defended ... pay=<p>` |
+| C16 | the refugee launch holds at its gate until the pickup | no `module=generator event=watchdog trader_id=<id>` while it waits; `module=station event=ev_pickup kind=launch trader_id=<id> distance=<d>`, then `module=generator event=approach trader_id=<id>` |
+| C17 | `loc/trf_ru.loc` loads in a Russian install (`loc_mode 1`) | Russian greeting and fee box text instead of `#TRF_stnfeehub` (needs a Russian game; the clone has `LocData/English` only) |
 
 ## Worldbuilding plumbing (`EXP=0 TRAFFIC=1`)
 

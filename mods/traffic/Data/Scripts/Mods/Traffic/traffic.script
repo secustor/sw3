@@ -15,7 +15,8 @@
 -- trf_base load one by one after the v0.2 files; enabled 2 adds trf_base (base removal). Missing service
 -- functions are skipped (TRF_P), so a failed v1 file only disables its features.
 -- Station voices (design/station-voices-spec.md 12.2): trf_station loads last, after the v1 files, counted in the
--- load line as extra= (modules= keeps the v1 count); TRF_InstallStation runs after TRF_InstallTradeDock.
+-- load line as extra= (modules= keeps the v1 count); TRF_InstallStation runs after TRF_InstallTradeDock; its
+-- station events (spec 17) step every 1 s (TRF_Stn_Step).
 -- Worldbuilding plumbing (design/wb-plumbing-spec.md): trf_plumb loads after the v1 files and before trf_station
 -- (also counted as extra=); TRF_InstallPlumb runs first after the loads (wraps CostOfHead, collects the module
 -- registrations of the dock dispatcher and the other shared registries).
@@ -330,6 +331,7 @@ function TRF_OnTick(dt_game, dt_real)
 			TRF_P("TRF_Dc_Step");
 			TRF_P("TRF_Carrier_Step");
 			TRF_P("TRF_Pl_Step");
+			TRF_P("TRF_Stn_Step");
 		end;
 		if TRF_Every("s2", dt_game, 2) then TRF_P("TRF_Sweep_Step"); end;
 		if TRF_P("TRF_StepDue", dt_game) then

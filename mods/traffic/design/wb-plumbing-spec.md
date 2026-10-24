@@ -41,7 +41,7 @@ Config: `wb_box_after_fee` (default 0, enum 0..1, `install-test.sh` `WB_BOX_AFTE
 
 `TRF.live` is rebuilt on entry (`TRF_LiveReset`) and by the load pass, and `TRF_Pl_OnEnter`/`TRF_Pl_OnLoad` clear the slot fields again, so every slot starts empty on entry and on load.
 
-Scripted-event order (`TRF_EventRank`): sweep 1, feq 2, staged 3, push 4, deserter 5, vendetta 6, hostile 7, optional 8. Traffic's users: `TRF_SweepEntry` (sweep), `TRF_FeqEntry` (feq, before its convoy slot), `TRF_Rd_StRollBody` (staged, after the placement, so the RAND draws stay as before). They run in that order inside `TRF_EntryPlan`, so the first claim is the highest rank at entry.
+Scripted-event order (`TRF_EventRank`): sweep 1, feq 2, staged 3, push 4, deserter 5, vendetta 6, hostile 7, optional 8. Traffic's users: `TRF_SweepEntry` (sweep), `TRF_FeqEntry` (feq, before its convoy slot), `TRF_Rd_StRollBody` (staged, after the placement, so the RAND draws stay as before); trf_station's local events take `optional` in `TRF_Stn_OnActivate`, after the entry plan (station-voices-spec 17). They run in that order inside `TRF_EntryPlan`, so the first claim is the highest rank at entry.
 
 ## 4. Dock dispatcher
 
@@ -55,7 +55,7 @@ The existing wrapper thunks stay where they are, with their install guards and l
 4. Box: a pending box of an earlier docking is dropped (a docking needs the modal box closed). No box when kind is `trade` during the answer of a fee box (`s.fee = 1`) and cfg `wb_box_after_fee` is 0 (`reason=after_fee`), or when another owner holds the box lock (`reason=box_lock`). Otherwise the candidates by prio; the first box spec wins and opens under the lock `dock_<kind>`; lower candidates are not asked.
 5. The vanilla function exactly once: at once with its results passed through, or after the box answer (`TRF_PlBoxOk`/`TRF_PlBoxNo` -> the spec's `ok`/`no` with `a`, protected; a returned string is shown as a line; then the vanilla function). For kind `req` the box replaces the vanilla call (4.2).
 
-Box spec: `{title (default per kind), text, ok, no, a, own (log name), fee = 1 (a #3 fee box), fail (called when the box cannot open)}`. The open box is also kept in a function global (`TRF_PlBoxThunk`), so an answer after a MapInitialization still runs the spec's handler, which tests its own generation (`event=box_answer ... result=stale`).
+Box spec: `{title (default per kind), text, ok, no, a, own (log name), fee = 1 (a #3 fee box), fail (called when the box cannot open: lock refused, no `ShowMsgBox`, an error), shown (called after the box opened; the owner's stat and log of an open box, 2026-10-24)}`. The open box is also kept in a function global (`TRF_PlBoxThunk`), so an answer after a MapInitialization still runs the spec's handler, which tests its own generation (`event=box_answer ... result=stale`).
 
 ### 4.2 Orders
 
@@ -136,7 +136,7 @@ Feature groups: `TRF_<name>_<n>` for name in Cust, Scv, Cap, Esc, Def, Pick, Pus
 
 - `TRF.clock.j`: +1 in `TRF_State_BeforeJump`, called first in `TRF_BeforeJump` (traffic branch); never on load. `TRF_Jumps()`.
 - `TRF.clock.rs`: sum of `dt_real` while `dt_game > 0` in `TRF_State_Tick`. `dt_game > 0` is the unpaused proxy until E0.21 measures pause, menus and 8x; saved in `TRF`, so it is carried across loads and never reset. `TRF_RealSecs()`. Features store stamps against both counters.
-- D1 (00 section 8): at most `leg_cap` (3) game-time legs per visit (`TRF.clock.vl`, reset by `TRF_State_OnEnter`, kept by a load, so a reload cannot reopen the count); time beyond the cap is dropped (`tleg = 0`, stat `leg_cap`, `event=leg_cap ... result=reached` once). The entry leg always counts. `leg_cap 0` turns the cap off.
+- D1 (00 section 8): at most `leg_cap` (3) game-time legs per visit (`TRF.clock.vl`, reset by `TRF_State_OnEnter`, kept by a load, so a reload cannot reopen the count); time beyond the cap is dropped (`tleg = 0`; `event=leg_cap ... result=reached` once; stat `leg_cap` and the debug line `event=leg_cap ... result=dropped` once per visit, at the first drop, flag `TRF.clock.vc = 1` cleared by the entry and kept by a load, 2026-10-24). The entry leg always counts. `leg_cap 0` turns the cap off.
 - C1 (00 section 8): `help` above `help_floor` (10) loses 1 per `help_decay` (20) legs since `TRF.std.ht`, never below 10 (`event=decay_help`); `TRF_AddHelp` restarts the mark when help rises above 10; `help_decay 0` turns it off. One-off purchases bought with help (#8 slots) stay.
 - TDR 5.9 note: `help` was "0..99, no decay"; with C1 it decays to 10 (1 per 20 legs above 10), so the help >= 5 shop coefficient and the #1 waiver reflect recent work. The #9 changes (decay stop at 6 under a permit; `fst` frozen at team war) are accepted (C2); the freeze is 11.
 
@@ -151,7 +151,7 @@ Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Measured in 
 
 | Field | Cap | Worst case (bytes) |
 |---|---|---|
-| `TRF.clock.j`, `rs`, `vl` | numbers | 21 + 22 + 22 |
+| `TRF.clock.j`, `rs`, `vl`, `vc` | numbers (`vc` 1 or absent) | 21 + 22 + 22 + 22 |
 | `TRF.std.ht` | number | 22 |
 | `TRF.live.box`, `bt`, `ev`, `esc`, `arq`, `ag`, `aqt`, `bkd` | one each | 30 + 22 + 26 + 27 + 23 + 22 + 23 + 32 |
 | `TRF.job` | 1 job, 6 fields, kind, names and strings <= 24 (`TRF_Pl_Fix` drops a job over the caps) | 296 |

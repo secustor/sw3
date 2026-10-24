@@ -2,10 +2,10 @@
 # Check the mod scripts on the host: CRLF line endings, luac -p, lint_lua.py, then the loader scenario of
 # host_stubs.lua for each experiment and the v0.1 traffic scenarios a..g of host_traffic.lua under stock
 # Lua 4.0.1, then the v0.2 scenarios v02-a..n of host_v02.lua, the v1 scenarios v1-a..n of host_v1.lua and the
-# station voices scenarios stn-a..f of host_station.lua and the worldbuilding plumbing scenarios pl-a..e of
+# station voices scenarios stn-a..h of host_station.lua and the worldbuilding plumbing scenarios pl-a..e of
 # host_plumb.lua (each its own entry point).
 # Env: LUA4 (interpreter), LUAC4, EXPS (default "default 0 1 2 3 traffic v02 v1 stn pl"), SCENS (default a..g), V02
-# (default a..n), V1 (default a..n), STN (default a..f), PL (default a..e).
+# (default a..n), V1 (default a..n), STN (default a..h), PL (default a..e).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
@@ -48,7 +48,7 @@ for e in ${EXPS:-default 0 1 2 3 traffic v02 v1 stn pl}; do
         traffic) for s in ${SCENS:-a b c d e f g}; do run "traffic-$s" TRF_SCEN="$s"; done ;;
         v02) for s in ${V02:-a b c d e f g h i j k l m n}; do run "v02-$s" TRF_SCEN="v02-$s"; done ;;
         v1) for s in ${V1:-a b c d e f g h i j k l m n}; do run "v1-$s" TRF_SCEN="v1-$s"; done ;;
-        stn) entry=host_station.lua; for s in ${STN:-a b c d e f}; do run "stn-$s" TRF_STN="$s"; done; entry=host_stubs.lua ;;
+        stn) entry=host_station.lua; for s in ${STN:-a b c d e f g h}; do run "stn-$s" TRF_STN="$s"; done; entry=host_stubs.lua ;;
         pl) entry=host_plumb.lua; for s in ${PL:-a b c d e}; do run "pl-$s" TRF_PLUMB="$s"; done; entry=host_stubs.lua ;;
         *) run "exp$e" TRF_EXP="$e" ;;
     esac

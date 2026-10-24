@@ -20,7 +20,9 @@
 # (integers); WB_BOX_AFTER_FEE=0|1 (worldbuilding plumbing, design/wb-plumbing-spec.md 4.2: 1 allows an offer box at the
 # trade dock after a station fee box, set once E0.6 passes); FEQ_AT=<system> (debug: the next leg schedules an equipment convoy there, skipping the pro/strength
 # tests); BASE_AT=<system> (debug: the next leg founds a pirate base there, skipping the disruption hold, open sweep,
-# neighbour and chance tests; the system must be on the map allow-list with a site); LOC=1 (loc_mode 1 and loc/trf_en.loc copied to Data/LocData/English/, CHECK E0.6; unset removes the copy).
+# neighbour and chance tests; the system must be on the map allow-list with a site); LOC=1 (loc_mode 1 and loc/trf_en.loc copied to Data/LocData/English/, CHECK E0.6; unset removes the copy;
+# loc/trf_ru.loc, the station voices keys in Russian, goes to Data/LocData/Russian/ the same way when the clone has that folder).
+# VOICE_EVENTS=0|1 (station events, design/station-voices-spec.md 17).
 # NEWS=1: the trf_* records of news/trf_news.xml (tools/gen_news.py) merged into the clone's Data/Game/News.xml
 # (the vanilla file is kept as News.xml.trf-orig), loc/trf_en.loc copied as with LOC=1, and news_mode=2 unless
 # NEWS_MODE is set; unset restores News.xml from News.xml.trf-orig.
@@ -66,7 +68,7 @@ for k in OVERRIDE DUMP GUARD ENABLED CYCLE PROSPERITY TIER_CAP BAND_HALF PARKED 
          HAIL_START BOARD SHOP_MODE SHORT_PRICE RESTORE NEWS_MODE HEAT_WAR STRICT TRANSIT SOS_MODE COMBAT HAIL_QUIET \
          TRACK CONV DEMAND HEAT_OFFER CARRIERS SALVAGE SALV_ADDMOD CLAN_ACE SWEEPS SWEEP_CT PO TT4 TT4_SPLIT FEQ \
          FORCED_BUST DCONV DC_SPEED BASES BASE_GLOW WRECK ESC_FLIGHT VOICE VOICE_MOODS VOICE_DOCK VOICE_NEWS VOICE_FEE VOICE_GATE \
-         WB_BOX_AFTER_FEE; do
+         WB_BOX_AFTER_FEE VOICE_EVENTS; do
     eval v=\${$k:-}
     [ -z "$v" ] && continue
     case "$v" in *[!0-9]*) echo "$k must be a non-negative integer" >&2; exit 1;; esac
@@ -116,6 +118,10 @@ cp -R "$SCRIPTS_SRC/." "$SCRIPTS_DST/"
 cp "$here/Data/Scripts/Trade/TRF_Hail.xml" "$COPY/Data/Scripts/Trade/TRF_Hail.xml"
 locd=$COPY/Data/LocData/English
 if [ "${LOC:-0}" = 1 ] || [ "${NEWS:-0}" = 1 ]; then cp "$here/loc/trf_en.loc" "$locd/trf_en.loc"; else rm -f "$locd/trf_en.loc"; fi
+locr=$COPY/Data/LocData/Russian
+if [ -d "$locr" ]; then
+    if [ "${LOC:-0}" = 1 ] || [ "${NEWS:-0}" = 1 ]; then cp "$here/loc/trf_ru.loc" "$locr/trf_ru.loc"; else rm -f "$locr/trf_ru.loc"; fi
+fi
 newsx=$COPY/Data/Game/News.xml
 if [ "${NEWS:-0}" = 1 ]; then
     [ -f "$newsx.trf-orig" ] || cp -p "$newsx" "$newsx.trf-orig"
@@ -148,6 +154,7 @@ echo "scripts in $SCRIPTS_DST:"; ls "$SCRIPTS_DST" | sed 's/^/  /'
 echo "config.script: $(tr -d '\r' < "$SCRIPTS_DST/config.script")"
 echo "hail dialog: $COPY/Data/Scripts/Trade/TRF_Hail.xml"
 [ ! -f "$locd/trf_en.loc" ] || echo "loc: $locd/trf_en.loc$([ "${LOC:-0}" = 1 ] && echo ' (loc_mode 1)')"
+[ ! -f "$locr/trf_ru.loc" ] || echo "loc: $locr/trf_ru.loc"
 [ ! -f "$newsx.trf-orig" ] || echo "news: $(grep -c '<name>trf_' "$newsx") trf_ records in $newsx (vanilla in News.xml.trf-orig)"
 echo "sw3tp.ini [traffic]: $(awk '{sub(/\r$/,"")} /^\[/{p=($0=="[traffic]")} p&&!/^\[/{printf "%s ",$0}' "$ini")"
 echo "sw3tp.ini [stability]: $(awk '{sub(/\r$/,"")} /^\[/{p=($0=="[stability]")} p&&!/^\[/{printf "%s ",$0}' "$ini")"

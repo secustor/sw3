@@ -382,7 +382,8 @@ function TRF_PlShowRaw(title, text)
 	return 1;
 end;
 
--- Opens box spec s (spec 4.2) under the lock dock_<kind>; 1 when shown. On failure s.fail(s.a) runs.
+-- Opens box spec s (spec 4.2) under the lock dock_<kind>; 1 when shown, then s.shown(s.a) runs (the owner's
+-- stat and log of an open box). On failure (lock refused, no ShowMsgBox, an error) s.fail(s.a) runs instead.
 function TRF_PlShow(kind, oname, args, s)
 	local p = %P;
 	local own = "dock_"..kind;
@@ -405,6 +406,7 @@ function TRF_PlShow(kind, oname, args, s)
 		TRF_PlCall(s.fail, {s.a});
 		return nil;
 	end;
+	TRF_PlCall(s.shown, {s.a});
 	return 1;
 end;
 

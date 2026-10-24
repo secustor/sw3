@@ -107,7 +107,7 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `decay_heat` | `module=state event=decay_heat legs=11 heat=1` | 1 |
 | `decay_help` | `module=state event=decay_help legs=40 help=14 steps=1` (decision C1: 1 per `help_decay` legs above `help_floor`) | 1 |
 | `leg_cap` | `module=state event=leg_cap legs=12 visit_tick_legs=3 cap=3 result=reached` (decision D1, once per visit) | 1 |
-| `leg_cap` | `module=state event=leg_cap legs=12 visit_tick_legs=3 cap=3` (each capped leg) | 2 |
+| `leg_cap` | `module=state event=leg_cap legs=12 visit_tick_legs=3 cap=3 result=dropped` (first drop of the visit, with stat `leg_cap`) | 2 |
 | `leg` | `module=state event=leg reason=enter legs=1` | 2 |
 | `due` | `module=state event=due function=<f> reason=list_full result=dropped` | 1 |
 | `due` | `module=state event=due function=<f> reason=no_function result=skipped` | 1 |
@@ -324,6 +324,7 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `raid_on` | `module=clan event=raid_on source=fq result=skipped reason=governor` | 1 |
 | `raid_on` | `module=clan event=raid_on source=fq result=skipped reason=guard_system` | 1 |
 | `raid_on` | `module=clan event=raid_on raid_id=3 trader_id=4 source=fq tier=2 point=1,2,3 result=armed` | 1 |
+| `raid_on` | `module=clan event=raid_on raid_id=1 trader_id=6 source=stn tier=1 point=1,2,3 result=armed` (station event barge: the asked tier, no T3 floor) | 1 |
 | `raid_on` | `module=clan event=raid_on raid_id=3 source=fq tier=2 delay=5 target_count=2 result=due` | 1 |
 | `raid_on` | `module=clan event=raid_on raid_id=3 trader_id=4 kind=cv tier=2 ship_count=3 result=go` | 1 |
 | `jump` | `module=clan event=jump deleted_count=4` | 1 |
@@ -347,7 +348,7 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `id_mismatch` | `module=station event=id_mismatch station_key=251 param_station=1 position_station=2 distance=40` | 1 |
 | `tip` | `module=station event=tip station_key=42 kind=feq system=gaoba tip_leg=35` | 1 |
 | `dock` | `module=station event=dock station_key=51 param="" via=prm+pos distance=0 standing=0 rung=0 heat=0 greeting=stnr1 greeting_skip=gap news=false tip=nil ambient=nil fee=0 fee_multiplier=0 no_fee_reason=paid_visit` (no_fee_reason: paid_visit, latch, strict_0, chapter) | 1 |
-| `fee` | `module=station event=fee station_key=42 fee=7800 world_level=10 prosperity=3 fee_multiplier=3 difficulty_factor=1 box=true` | 1 |
+| `fee` | `module=station event=fee station_key=42 fee=7800 world_level=10 prosperity=3 fee_multiplier=3 difficulty_factor=1 box=true` (after the dispatcher's show; `box=false`: the box could not open) | 1 |
 | `fee_ok` | `module=station event=fee_ok station_key=51 credits_before=a credits_after=b credit=false buyback=false` | 1 |
 | `fee_cancel` | `module=station event=fee_cancel station_key=51 credits_before=a credits_after=a credit=false buyback=false` | 1 |
 | `stale_box` | `module=station event=stale_box answer=ok` (or `answer=cancel`) | 1 |
@@ -355,7 +356,12 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `owner` | `module=station event=owner system=hafa static_owner=Inoco owner=Vks owner_visit=3` | 1 |
 | `enter` | `module=station event=enter visit=1 system=gaoba system_index=42 latch=false pruned_count=0 owner_visit=nil` | 1 |
 | `load` | `module=station event=load latch=false` | 1 |
-| `dump` | `module=station event=dump visit=1 record_count=1 records=42:1/3/-/-/-! owner_visits=hafa:3 none_wrapped=true trade_wrapped=true` | 1 |
+| `dump` | `module=station event=dump visit=1 record_count=1 records=42:1/3/-/-/-! owner_visits=hafa:3 event_legs=42:3 event_kind=barge event_state=end event_result=defended none_wrapped=true trade_wrapped=true` | 1 |
+| `ev_plan` | `module=station event=ev_plan kind=barge system=gaoba station_key=42 kind_count=1 chance=25 roll=7 delay=27 result=planned` (station events, spec 17.2) | 1 |
+| `ev_plan` | `module=station event=ev_plan system=gaoba station_key=42 roll=nil result=skipped reason=cooldown` (reason: off, a gate reason, latch, chapter, class, station, cooldown, chance, due, slot) | 2 (`reason=slot`: 1) |
+| `ev_spawn` | `module=station event=ev_spawn kind=barge station_key=42 trader_id=6 raid_id=1 tier=1 ship_count=2 cooldown_leg=128` | 1 |
+| `ev_pickup` | `module=station event=ev_pickup kind=launch trader_id=4 distance=50` | 1 |
+| `ev_end` | `module=station event=ev_end kind=shuttle station_key=42 trader_id=2 raid_id=nil result=delivered reason=dock pay=3104 distance=50` (result: defended, delivered, far, no_help, lost, expired, void) | 1 |
 
 ## plumb (`trf_plumb.script`; `TRF_PlE`, `TRF_PlDE`)
 
@@ -447,7 +453,7 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `pirdock` | `module=faction event=pirdock reason=why result=no_original` | 1 |
 | `pirdock` | `module=faction event=pirdock reason=heat result=no_offer` (box candidate without an offer) / `reason=stale result=no_offer` (answer of another generation, level 1) | 2 |
 | `offer_paid` | `module=faction event=offer_paid pay=900` | 1 |
-| `offer` | `module=faction event=offer offer_kind=1 system=taira system_index=47` | 1 |
+| `offer` | `module=faction event=offer offer_kind=1 system=taira system_index=47 box=true` (after the dispatcher's show, with stat `po_box`; `box=false`: the box could not open, no stat) | 1 |
 | `offer_accept` | `module=faction event=offer_accept offer_kind=1 system_index=47 until_leg=30` | 1 |
 | `offer_decline`, `offer_expire`, `offer_entry` | `module=faction event=offer_decline` / `event=offer_expire offer_kind=1` / `event=offer_entry offer_kind=1 system_index=47` | 2 (`offer_decline`), 1 |
 | `offer_intel_spawn` | `module=faction event=offer_intel_spawn trader_id=4` | 1 |

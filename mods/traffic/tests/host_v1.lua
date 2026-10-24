@@ -2045,6 +2045,18 @@ function T_V1_N()
 	for k = 1, 8 do TRF.mk = TRF.mk.."TRF_"..strrep("m", 19)..k.."="..strrep("o", 8)..";"; end;
 	L.box = "dock_patrol"; L.bt = 99999.5; L.ev = "vendetta"; L.esc = "mercpack"; L.arq = 3; L.ag = 99999.5; L.bkd = ",join,bounty,";
 	TRF.clock.j = 99999; TRF.clock.rs = 999999.5; TRF.clock.vl = 3; TRF.std.ht = 99999;
+	TRF.clock.vc = 1;
+	-- Station voices worst case (station-voices-spec 3.4, 17.7): 76 trade-station keys (the D4 cap) with a full record, every
+	-- transferable system with an owner change, the visit stamp.
+	TRF.stn = {};
+	local skl = TRF.clock.legs;
+	local skn = 0;
+	for sk, sv in TRF_StnKeys() do
+		if skn < 76 then TRF.stn[sk] = {st=-3, lg=skl, gv=skl, bv=skl, pv=skl, tf=skl, ts=42, nt=1, ec=skl}; skn = skn + 1; end;
+	end;
+	TRF.vo = {};
+	for sn, so in TRF_StnOwners() do if V_Idx(sn) then TRF.vo[V_Idx(sn)] = skl; end; end;
+	TRF.ve = skl;
 	-- Raids, due and stat at their bounds.
 	for k = 1, 10 do
 		local id = ids[1 + mod(k, getn(ids))];
@@ -2067,7 +2079,7 @@ function T_V1_N()
 	HOST_Check(getn(TRF.tp) <= 16 and getn(TRF.lr) <= 2 and getn(TRF.base) <= 4 and getn(L.pg) <= 8 and V_N(L.dc) <= 1
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");
 	local size = 8 + 3 + HOST_SaveSize(TRF);
-	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "live"};
+	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	local lp, ll = "", {"tr", "stat", "rd", "cvs", "tq", "sw", "fq", "cr", "dc", "bs", "pg"};
 	for i = 1, getn(ll) do lp = lp.." "..ll[i].."="..HOST_SaveSize(L[ll[i]]); end;
