@@ -42,9 +42,10 @@ function TRF_TrStat(k)
 end;
 
 -- Defaults of this module's config keys (spec 10.4). esc_flight 1: TT1-TT3 escorts fly as their own flight
--- (TRF_BuildSplit); 0: one flight as before.
+-- (TRF_BuildSplit); 0: one flight as before. mc_names: 2 = the TRF_McP_ pilot templates are merged (install.sh --pilots;
+-- design/proposals/merc-pilot-names.md); kept here, next to TRF_BuildFlight's ov, until the clan module trf_merc reads it.
 function TRF_Tier_OptDef()
-	return {prosperity=1, band_half=0, parked=1, esc_flight=1};
+	return {prosperity=1, band_half=0, parked=1, esc_flight=1, mc_names=0};
 end;
 
 -- Tune keys of trf_tier and of the trf_gen queue and seed (spec 9.4, 9.5, 10.4), TT4 chances and sizes
@@ -364,7 +365,11 @@ end;
 -- ships space units apart, at most maxn, a nil carcass skips that ship (it keeps its spot). No
 -- flight_/ship_/pilot_ globals are left. power is kept for the call shape (the row is given).
 -- Returns flight, ships (in row order), made (row index of each ship); nil when no ship was built.
-function TRF_BuildFlight(pilots, row, group, sign, pos, power, dir, form, space, maxn)
+-- ov (optional, design/proposals/merc-pilot-names.md 4.4): table of row index to pilot template, used before the
+-- rank template; when CreatePilot of it gives no engine object (userdata in the game, table in the host harness;
+-- a template missing from Pilots.xml), that ship gets the rank template, as without ov. Clan flights pass the
+-- clan's pilot list, so the fallback of an Ace-class entry is RecruitAce_<clan>.
+function TRF_BuildFlight(pilots, row, group, sign, pos, power, dir, form, space, maxn, ov)
 	local grp = getglobal(group);
 	if sign == nil or type(row) ~= "table" or type(pilots) ~= "table" or not grp or type(grp) == "number" then return nil; end;
 	local tl, tp = TRF_TrTabs();
@@ -380,7 +385,13 @@ function TRF_BuildFlight(pilots, row, group, sign, pos, power, dir, form, space,
 			local ship = CreateCarcass(e[1], Vector3(pos.x, pos.y, pos.z + (i - 1) * space), dir);
 			if ship then
 				local rk = TRF_TrClamp(floor(e[2] or 1), 1, 5);
-				ship:AssignPilot(CreatePilot(pilots[tp[rk]] or pilots[1]));
+				local p = nil;
+				if type(ov) == "table" and type(ov[i]) == "string" then
+					p = CreatePilot(ov[i]);
+					if type(p) ~= "table" and type(p) ~= "userdata" then p = nil; end;
+				end;
+				if p == nil then p = CreatePilot(pilots[tp[rk]] or pilots[1]); end;
+				ship:AssignPilot(p);
 				fl:AddShip(ship);
 				if getn(sh) > 0 then ship:SetRole(roles[e[3] or "A"] or ROLE_ATTACK); end;
 				tinsert(sh, ship);

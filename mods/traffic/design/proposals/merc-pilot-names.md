@@ -1,6 +1,6 @@
 # Mercenary clans: unique pilot names
 
-**Status 2026-10-24:** feasibility study, read-only investigation. Question from the user: "Can we have unique names for each pilot of the mercenary clans?" Context: `../worldbuilding/12-mercenary-packs.md` (spec 12, the merged clan module), `merc-packs-beyond-flavour.md` (P), `merc-unified-clans.md` (UC). Paths: `G` = game `Data/`, `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `A` = `.work/exe.asm` (line after the colon). Tags: **[V]** verified in the file, line or VA given; **[I]** inference; **[new]** design proposed here.
+**Status 2026-10-24:** feasibility study; option B is implemented as an opt-in `Pilots.xml` merge fragment (section 7), tested on copies of the vanilla files and in the host harness, not run in the game. Open before use: EN.1 to EN.4 (section 6.4; EN.5 to EN.7 also open). Question from the user: "Can we have unique names for each pilot of the mercenary clans?" Context: `../worldbuilding/12-mercenary-packs.md` (spec 12, the merged clan module), `merc-packs-beyond-flavour.md` (P), `merc-unified-clans.md` (UC). Paths: `G` = game `Data/`, `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `A` = `.work/exe.asm` (line after the colon). Tags: **[V]** verified in the file, line or VA given; **[I]** inference; **[new]** design proposed here.
 
 ## 0. Verdict
 
@@ -89,7 +89,7 @@ News records cannot carry a runtime name: `header` and `text` are fixed loc keys
 One `GamePilot` per name, a copy of the clan's `RecruitAce_<clan>` element with three changes [new]:
 
 ```xml
-<GamePilot name="TRF_McP_blacklegion_01">
+<GamePilot name="TRF_McP_blacklegion_0_0">
 	<callsign>Legate Varro</callsign>
 	<full_name>Legate Varro</full_name>
 	... rest copied from RecruitAce_blacklegion (Pilots.xml:4479-4514): face recruits8, stats 10, 18 perks
@@ -98,9 +98,11 @@ One `GamePilot` per name, a copy of the clan's `RecruitAce_<clan>` element with 
 
 Plain-text callsigns, not loc keys: `GetString` passes them through (1.3 item 3) [V], so they show in every language, need no `.loc` line, and stay readable after the mod is removed (4.5). The cost is that Russian players see Latin names; Pilots.xml is pure ASCII (`../mod-research/adding-ships.md:127`), so Cyrillic names would need keys in `trf_ru.loc`. Names are proper nouns, so plain text is the default here.
 
+Implemented (section 7): template names are `TRF_McP_<clan>_<slot>_<gen>` (slot 0 leader, 1-4 aces; gen 0 or 1, 5.1), and every slot, the leader's included, copies `RecruitAce_<clan>` as above; `RecruitOfficer_<clan>` is not used [V `mods/traffic/merge/Pilots.xml`]. The vanilla file is ASCII with CRLF line ends, its prolog declares `encoding="UTF-8"`, line 2 is the comment `<!-- edited by hands -->`, and an empty line precedes `</Pilots>`; it validates against `G/XMLSchema/Pilots.xsd`, whose `GamePilot` sequence is `callsign`, `full_name`, `upkeep`, `background`, `face_texture`, `sign_texture`, the four skills, `kills`, `points`, `morale`, `mapping_name`, `PerkDefines` [V]. The copies keep that order and the vanilla lines; the merged file validates [V xmllint].
+
 ### 4.2 Counts and sizes
 
-`RecruitAce_blacklegion` is 986 bytes, `RecruitOfficer_*` 826, `RecruitPilot_*` 659 [V `wc -c` of the elements]. Vanilla `Pilots.xml` is 196,276 bytes [V].
+`RecruitAce_blacklegion` is 986 bytes, `RecruitOfficer_*` 826, `RecruitPilot_*` 659 [V `wc -c` of the elements]. Vanilla `Pilots.xml` is 196,276 bytes [V]. The generated B fragment is 116,123 bytes [V].
 
 | Variant | Names per clan | Templates | XML added | Loc lines |
 |---|---|---|---|---|
@@ -117,7 +119,7 @@ Plain-text callsigns, not loc keys: `GetString` passes them through (1.3 item 3)
 
 ### 4.4 CreatePilot, GetPilot and template collisions
 
-- `CreatePilot` of a name that does not exist logs `[ScriptSystem] Warning! No such pilot in CreatePilot() function` (0x737330) and returns 1 without pushing a pilot (0x5d73a8-0x5d73bc, `A:623661`) [V]. Lua then receives a non-table value, most likely its own argument, as for `GetObjectByLabel` (`crash-load-432500.md:141`) [I]. The builder therefore tests `type(p) == "table"` and falls back to `RecruitAce_<clan>`. This makes a missing merge safe at every spawn [new].
+- `CreatePilot` of a name that does not exist logs `[ScriptSystem] Warning! No such pilot in CreatePilot() function` (0x737330) and returns 1 without pushing a pilot (0x5d73a8-0x5d73bc, `A:623661`) [V]. Lua then receives a non-table value, most likely its own argument, as for `GetObjectByLabel` (`crash-load-432500.md:141`) [I]. The builder therefore tests the result and falls back to the row's own template, which is `RecruitAce_<clan>` for an Ace-class entry of the clan pilot list. This makes a missing merge safe at every spawn [new]. Corrected 2026-10-24: the test was written as `type(p) == "table"`, but the mod treats engine objects as userdata in the game and tables in the host harness (`S/trf_gen.script:188`, `S/trf_base.script:135`) [V], so that test alone could fall back at every spawn in the game. The implemented test accepts table or userdata and falls back on anything else [V `S/trf_tier.script`].
 - `GetPilot(name)` (0x5e7410) goes through 0x527eb0 to 0x51f940, which walks the location object list and returns the first object whose name record equals the argument (`A:385353`) [V]. With shared templates, `GetPilot("RecruitAce_stardragoon")` is ambiguous, as `worldbuilding-after-traffic.md:317` says. The clan module never needs it: `TRF_BuildFlight` returns the ships (`S/trf_tier.script:367-399`) and `ship:GetPilot()` gives each pilot [V]. With one template per name and a roster that never spawns a name twice (5.2), even a `GetPilot` by name would be unambiguous.
 - `TRF_BuildFlight` picks `pilots[tp[rk]]` per row entry and passes `CreatePilot` straight into `AssignPilot` (`S/trf_tier.script:383`) [V]. Named pilots need one optional argument: a table `ov` of row index to template, used first, with the type test above [new].
 
@@ -202,13 +204,13 @@ With option A every line above is the same, but the speaker label and the target
 | 11 | Horsemen of the Apocalypse (`apocalypserider`, recruits11) | kill, avenge, punish, "without asking too many questions" (`:49-50`) | grim nicknames |
 | 12 | Golden Griffins (`goldgrifon`, recruits12) | pirate hunters, "tens of clans we've eliminated" (`:54`) | heraldic names |
 
-Rules for the authored list: no name that appears in `G/LocData/English` or in the mod's text (grep checked for every example below: 0 hits in the game; "Harlan" is already the M15 example in P), no story or lore name (`04-wanted-captains.md` section 3 rules), at most 14 characters [I: UI width unknown].
+Rules for the authored list: no name that appears in `G/LocData/English` or in the mod's text (grep checked for every example below: 0 hits in the game; "Harlan" is already the M15 example in P), no story or lore name (`04-wanted-captains.md` section 3 rules), at most 14 characters [I: UI width unknown]. For comparison [V `Pilots.xml` callsigns through `m_pilots.loc`]: the named story pilots of the "Personal" block show at most 9 characters (`Alexandra`, `Adm.Trump`), the longest callsign of a named person is `Charles Dickens` (15), the longest of any template `Security force captain` (22).
 
 ### 5.7 Example names (placeholders, not final text)
 
 | Slot | Black Legion (gen 0 / gen 1) | Stardust | Star Dragoons |
 |---|---|---|---|
-| 0 leader | Legate Varro / Legate Cassius | Hippolyta / Otrera | Major Ostrander / Major Calder |
+| 0 leader | Legate Varro / Legate Cassius | Hippolyta / Otrera | Major Ostrander / Major Calder (corrected 2026-10-24: `Major Ostrander` has 15 characters, above the rule of 5.6; the table uses `Major Osten`) |
 | 1 ace | Corvus / Sabinus | Antiope / Thalestris | Harlan / Reyes |
 | 2 ace | Drusus / Marcellus | Melanippe / Myrina | Keel / Lindqvist |
 | 3 ace | Scaevola / Nerva | Lysippe / Areto | Voss / Halloran |
@@ -245,7 +247,7 @@ Recommend **A, then B as opt-in**. The roster, assignment and lines of A are the
 | Document, section | Change |
 |---|---|
 | Spec 12 section 1 Summary | one line: clan leaders and aces have names; with the opt-in data merge the engine shows them |
-| Spec 12 section 6 "Clan data" | `TRF_Mc_Names()`: 5 slots x 2 names per clan, plain text; template names `TRF_McP_<clan>_<nn>` |
+| Spec 12 section 6 "Clan data" | `TRF_Mc_Names()`: 5 slots x 2 names per clan, plain text; template names `TRF_McP_<clan>_<slot>_<gen>` (corrected 2026-10-24 from `_<nn>`) |
 | Spec 12 section 6 "Spawn" | assignment rule 5.2; leader speaks; `TRF_BuildFlight` optional `ov` with the type fallback (4.4) |
 | Spec 12 section 6 "Saved state" | rows `p0..p4`, `px`, `pt`; `dn` in `e`; budget +0.6 KB worst |
 | Spec 12 section 6 "Text keys" | `$1` name argument in signature, offer, engage and end lines; new keys `#TRF_MC_Mourn`, `#TRF_MC_NewAce`, `#TRF_MC_NewLead`, `#TRF_MC_WithWolves`; about 8 keys, 16 strings with RU |
@@ -259,6 +261,8 @@ Recommend **A, then B as opt-in**. The roster, assignment and lines of A are the
 | UC C.2 and C.5, P M7 and M15 | the same fields and budget; M7 risk line "generic callsign" replaced by "named under B" |
 | `03-station-voices.md` section 3 | ambient lines may name the current Legion legate |
 
+Applied 2026-10-24, the minimum for the implemented part: spec 12 section 1 and section 6 (Clan data, Spawn, Saved state, Config), spec 13 section 6, UC C.2 and C.5. The other rows wait for the `trf_merc` build.
+
 ### 6.4 In-game checks
 
 - [ ] EN.1 Display: one merged template `TRF_McP_test` with callsign `Testname` on a hostile and a friendly NPC fighter; target panel, radio speaker of `Message`, and a free speaker pilot as in `OnYourOwnFailed_Corrino.script:55`. Proof: screenshot and `TRF mc EN.1 tpl=TRF_McP_test type=table`.
@@ -266,7 +270,7 @@ Recommend **A, then B as opt-in**. The roster, assignment and lines of A are the
 - [ ] EN.3 M7 with a named template: roster, pilot card, level-up box and logbook show the name and the clan face; save, load, name kept. Proof: screenshots and `TRF mc EN.3 roster=<n>`.
 - [ ] EN.4 Uninstall: restore vanilla `Pilots.xml`, load the EN.3 save, open the roster and level a pilot. Proof: no crash, name shown, run notes.
 - [ ] EN.5 Plain text in Russian: the same save with `__localization_folder "Russian\"` shows the Latin name.
-- [ ] EN.6 Merge: the installer merge yields 120 `TRF_McP_` elements, `xmllint` clean, the game loads it, vanilla elements unchanged (diff).
+- [ ] EN.6 Merge: the installer merge yields 120 `TRF_McP_` elements, `xmllint` clean, the game loads it, vanilla elements unchanged (diff). Host part done 2026-10-24 on copies (`tests/test_pilots.sh`, section 7); open: the game loads the merged file.
 - [ ] EN.7 (optional, documents the rejection of D) `Carcass:SetName("x")` on a test fighter: target panel text and `GetName()` before and after. Merged with EW4.8 of `04-wanted-captains.md`.
 
 ### 6.5 Open questions for the user
@@ -279,3 +283,29 @@ Recommend **A, then B as opt-in**. The roster, assignment and lines of A are the
 6. Should the Black Legion get more named slots than the other clans, since its elite list fields up to six aces? Recommendation: no; four aces like every clan, the rest stay "Veteran mercenary".
 7. Replacement delay `mc_nm_j`? Recommendation: 12 jumps, on `TRF.clock.j` so 8x idling does not shorten it.
 8. Portraits: keep the clan face for all named pilots? Recommendation: yes; new faces need new textures, which no research note covers.
+
+## 7. Implementation of option B (2026-10-24)
+
+Built from sections 4 to 6 and tested on copies of the vanilla files and in the host harness; not run in the game. The roster (5.1, 5.3, 5.4), the assignment of 5.2 and the lines of 5.5 belong to the clan module `trf_merc`, which does not exist yet, so no game code calls the new parts. Paths below are under `mods/traffic/`.
+
+| Part | File | What it does |
+|---|---|---|
+| Name table | `merge/pilot_names.json` | 12 clans x 5 slots x 2 names = 120 placeholder names, the only place the names live; per clan `rc` = the `#RC_FLIGHT_NAME<rc>` index and the face `recruits<rc>` [V `m_recruits.loc`, `Recruits.xml`, `Pilots.xml`] |
+| Generator | `tools/gen_pilots.py` | reads the vanilla `Pilots.xml` (argument) and the table, checks both, writes the fragment and `merc_names.script`; `--check` fails on stale output, `--locdata` adds the game `.loc` check; validates the merged document with `xmllint --schema Pilots.xsd` when available |
+| Fragment | `merge/Pilots.xml` | 120 `GamePilot` elements between `<!--sw3-traffic pilots begin ...-->` and `<!--sw3-traffic pilots end-->`, sorted by clan, slot, gen; CRLF, ASCII |
+| Merge | `merge/pilots_merge.awk` | the `news/merge.awk` pattern: drops an earlier block, inserts the fragment before `</Pilots>`, `frag=""` only drops it; exit 3 without `</Pilots>`, exit 4 with a `TRF_` template outside the block |
+| Installer | `install.sh --pilots` (env `PILOTS=1`), `uninstall.sh` | backs up `Data/Game/Pilots.xml`, merges, writes `mc_names=2`; a re-run without the flag restores the file and writes `mc_names=0` (also in a kept edited `config.script`); independent of `--news` |
+| Config | `config.script` `mc_names=0`; default in `TRF_Tier_OptDef` | read nowhere yet. The default sits in a module table because host scenario `v02-a` requires one for every `config.script` key (`tests/host_v02.lua:164-180`) [V] |
+| Script hook | `trf_tier.script` `TRF_BuildFlight(..., ov)` | 4.4 with the corrected object test; with `ov` nil the calls are the same as before |
+| Name lookup | `Data/Scripts/Mods/Traffic/merc_names.script` (generated) | `TRF_Mc_Names()` (code table, never saved) and `TRF_McName(clan, slot, gen)` returning the template name and the plain name, nil outside slot 0..4, gen 0..1 or for an unknown clan |
+| Tests | `tests/host_pilots.lua` (`mcp-a..c`), `tests/test_pilots.sh` | both run by `tests/run_host.sh` |
+
+Choices made while building [new]:
+- Template names `TRF_McP_<clan>_<slot>_<gen>`; `gen` is the slot's death count mod 2 (5.1), computed by the caller.
+- Every slot copies `RecruitAce_<clan>`, the leader included, as 4.1 says.
+- Names keep the 14-character rule of 5.6, are printable ASCII without `& < > " \`, and are unique ignoring case. `gen_pilots.py` checks that none occurs in the mod's text (`loc/*.loc`, `news/*.xml`, the `.script` files) or, with `--locdata`, in the game's English `.loc` files: 0 hits [V]. Clan tone follows 5.6; Black Legion and Stardust use the 5.7 examples, Star Dragoons too except `Major Osten`.
+- `merc_names.script` is installed with the other scripts, but nothing loads it: the loader is `traffic.script`, which this step does not touch. The line to add in `TRF_Main`, after the loop over the `ex` modules: `if TRF_Cfg().mc_names == 2 then TRF_LoadFile("merc_names.script"); end;`. Option A needs `TRF_Mc_Names()` without the merge as well, so once `trf_merc` exists it should load the file whenever `trf_merc` loads and use the templates only with `mc_names` 2.
+
+Tests 2026-10-24 [V]: `tests/run_host.sh` exits 0 with every run at 0 fails, including `mcp-a` (table and `TRF_McName`), `mcp-b` (`ov` with the merge present: leader on row 1 or on row 3, non-string entries ignored, no globals left) and `mcp-c` (`CreatePilot` returning its argument or 1: each ship falls back to its row template; `ov` nil or empty gives the old calls). `tests/test_pilots.sh` (43 checks) on copies under `.work/pilots/`: the merge adds exactly 120 templates, a second run is idempotent, the revert gives the vanilla file byte for byte, exit 3 and 4 cases, no name clash with the 290 vanilla templates, 120 non-empty unique callsigns, CRLF and ASCII fragment, well-formed fragment, schema-valid merged file, `gen_pilots.py --check`, `sh -n` of both installer scripts, and an installer run on a fake game tree: `--pilots`, re-run, `--pilots` with `--news`, `--news` alone (pilots reverted, news kept), `--pilots` alone, a kept edited config without the flag, `--restore-only --pilots`, `uninstall.sh`, and an abort without writes on a clashing file.
+
+Still open, in the game only: EN.1 (target panel and radio speaker show the callsign), EN.2 (missing template: log line and fallback), EN.3 (M7 with a named template; needs `trf_merc`), EN.4 (uninstall with a hired named pilot in a save); EN.5 to EN.7 as listed in 6.4.

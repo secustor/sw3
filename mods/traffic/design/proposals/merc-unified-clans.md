@@ -109,6 +109,8 @@ Form follows TR section D: one digit string `s` with fixed offsets, plus packed 
 | `cd`, `cj`, `bh`, `ft`, `gt`, `n`, `k` | `t[c]` | | re-form leg and jump, last broken region, last hostile, grudge decay, jobs taken, ships lost to the player | 13 |
 | `ml`, `mk` | `t[c]` | | jump of the last big-ship loss, stage lost (3 or 4) [new] | |
 | `ue` | `t[c]` | | positive fortune gained this phase, packed with the phase id [new] | |
+| `p0..p4` | `s`, 5 digits per clan | 60 | deaths and transfers per named pilot slot, one digit 0..9 each (slot 0 leader, 1-4 aces) (`merc-pilot-names.md` 5.4, added 2026-10-24, not in the totals of this table) [new] | names |
+| `px`, `pt` | `t[c]` | 504 | open vacancy `slot,jump` and mourning flag; slot of the ace with the Wolves [new] | names |
 | `t` total | 22 keys | 1,725 | 12 x (12 + 8 + about 122) + 21 [I] | |
 | `w` | digit string, 11 | 28 | Wolves rating per region 0..9 | 13 `w` |
 | `h`, `hb` | packed, during a hire | 89 | 12 hire record plus one band digit and a big-ship flag | 12, TR |
@@ -203,7 +205,7 @@ Host grammar: number 12 B, string 8 + n, string key 8 + n, number key 12, table 
 | 12 + P packed, plus 13 keyed | about 3.9 KB | about 1.5 KB | [I] |
 | **Merged, packed, with fortune and stages (C.2)** | **about 2.9 KB** | **about 1.0 KB** | [I] |
 
-Host full state is 80,349 B with stashes against a budget of 100,000 B (TR:90, citing `D/PROGRESS.md`) [V]. With the merged record: about 83.2 KB worst case. Fortune, stage, role and the big-ship stamps cost about 0.5 KB of the 2.9 KB.
+Host full state is 80,349 B with stashes against a budget of 100,000 B (TR:90, citing `D/PROGRESS.md`) [V]. With the merged record: about 83.2 KB worst case. Fortune, stage, role and the big-ship stamps cost about 0.5 KB of the 2.9 KB. Named pilots (`merc-pilot-names.md` 5.4, added 2026-10-24): `p0..p4`, `px`, `pt` and `dn` (in `e`) add about 0.6 KB worst case and about 150 B typical [I]. The cfg key `mc_names` (0; 2 after `install.sh --pilots`) and the template fallback of `TRF_BuildFlight`'s `ov` are in `12-mercenary-packs.md` section 6 (Config, Spawn).
 
 ### C.6 Clocks and update points
 

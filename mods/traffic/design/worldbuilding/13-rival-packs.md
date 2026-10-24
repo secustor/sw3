@@ -140,6 +140,8 @@ Also closed: letting the rival answer first and then joining to lower `g` costs 
 
 ## 6. Mechanics
 
+**Named pilots** (added 2026-10-24, `../proposals/merc-pilot-names.md` 5.2, 6.3). SNIPE, HOSTILE, break-off and signature lines are spoken and signed by the clan leader (`ship:GetPilot():Message` on the leader's ship), `$1` = the leader's name from `TRF_McName(clan, 0, p0 mod 2)` [new]. Rival flights are built with `TRF_BuildFlight(..., ov)`; `ov` names a `TRF_McP_` template only when cfg `mc_names` is 2, and a `CreatePilot` result that is not an engine object (neither table nor userdata) falls back to the row's template, `RecruitAce_<clan>` for an Ace-class entry [V `S/trf_tier.script`, host scenario `mcp-c`; I in game, EN.2]. The roster fields `p0..p4`, `px`, `pt` are in the unified record (`12-mercenary-packs.md` section 6, Saved state).
+
 **Saved state.** Superseded by the unified record `TRF.mc` (`12-mercenary-packs.md` section 6, Saved state; UC C.2): `rp` becomes fortune `fo`, `hp` is the merged condition, `g`, `cd`, `cj`, `bh`, `ft`, `gt`, `n`, `k` are clan fields, `r[i].h` is the static home, `r[i].at` is `met`, `w` becomes `TRF.mc.w`, `sys[idx]` is dropped, and `j` is the shared `TRF.clock.j`. The former table (`TRF.rv`; short non-reserved keys, TDR 10.1 lint):
 
 | Field | Type, bounds | Meaning |

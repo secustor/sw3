@@ -34,14 +34,15 @@ stage_performance() {
     cp "$s/install.sh" "$s/uninstall.sh" "$s/README.md" "$s/LICENSE" "$s/VERSION" "$s/WINE_RELEASE" "$s/wine-release.sha256" "$1/"
     chmod 755 "$1/install.sh" "$1/uninstall.sh"
 }
-stage_traffic() {   # own files only: scripts (CRLF, as in the repo), hail dialog XML, installer, README, VERSION
+stage_traffic() {   # own files only: scripts (CRLF, as in the repo), hail dialog XMLs, news and pilot merge files, installer, README, VERSION
     s=$here/mods/traffic
     mkdir -p "$1/Data/Scripts/Mods/Traffic"
     cp "$s"/Data/Scripts/Mods/Traffic/*.script "$1/Data/Scripts/Mods/Traffic/"
-    mkdir -p "$1/Data/Scripts/Trade"; cp "$s/Data/Scripts/Trade/TRF_Hail.xml" "$1/Data/Scripts/Trade/"
+    mkdir -p "$1/Data/Scripts/Trade"; cp "$s/Data/Scripts/Trade/TRF_Hail.xml" "$s/Data/Scripts/Trade/TRF_HailPg.xml" "$1/Data/Scripts/Trade/"
     cp "$s/install.sh" "$s/uninstall.sh" "$s/README.md" "$s/VERSION" "$1/"
     mkdir -p "$1/loc" "$1/news"
     cp "$s"/loc/*.loc "$1/loc/"; cp "$s/news/trf_news.xml" "$s/news/merge.awk" "$1/news/"
+    mkdir -p "$1/merge"; cp "$s/merge/Pilots.xml" "$s/merge/pilots_merge.awk" "$1/merge/"   # install.sh --pilots
     cp "$here/mods/trackpad/LICENSE" "$1/LICENSE"
     chmod 755 "$1/install.sh" "$1/uninstall.sh"
 }

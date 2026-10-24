@@ -45,6 +45,9 @@
 -- page, no No witnesses); tune demand_k, witness_t, witness_r, witness_dead read the trf_supply TuneDef. demand_drop
 -- (default 0, until E0.4 confirms drops) = 1 leaves the robbed stacks in a cargo01_destroyed_inv container beside the
 -- trader instead of the mothership.
+-- Named mercenary pilots (design/proposals/merc-pilot-names.md, option B): mc_names (default 0) = 2 means the
+-- TRF_McP_ templates are merged into Data/Game/Pilots.xml (written by install.sh --pilots, 0 again when a re-run
+-- without --pilots reverts the merge); read nowhere yet (the clan module trf_merc is not built).
 function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
 	enabled=1, cycle=1, prosperity=1, tier_cap=4, cap_traders=5, cap_ships=20, spawn_scale=1.0, band_half=0,
 	parked=1, esc_flight=1, seed=1, queue=1, raids=1, staged=1, contracts=1, esc_speed=0, meet=2, hail_start=2, board=1,
@@ -60,4 +63,4 @@ function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
 	enable_freight=1, fw_max_ships=1, fw_onscreen=1, fw_losses=1, fw_prize_gap=1, fw_marker=1,
 	nest=0, nest_mode=1,
 	enable_parcels=1, enable_contraband=0, enable_customs=0, enable_intercept=0,
-	demand_page=1, demand_drop=0} end
+	demand_page=1, demand_drop=0, mc_names=0} end
