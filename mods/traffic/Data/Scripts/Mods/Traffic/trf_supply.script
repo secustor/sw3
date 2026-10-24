@@ -1153,10 +1153,10 @@ function TRF_SpComply(id, r, h, cur)
 	local nm = TRF_SpName(r);
 	local line = TRF_SpTxt("dmok", nm);
 	local its = TRF_SpItems(mv);
-	local got = TRF_SpTxt("dmpgot", nm, its);
+	local jet = TRF_SpTxt("dmpgot", nm, its);
 	-- loc_mode 1 drops $2: the item list follows the key.
-	if not strfind(got, its, 1, 1) then got = got..": "..its; end;
-	TRF_SpAnswer(id, line, line.."\n"..got, 1);
+	if not strfind(jet, its, 1, 1) then jet = jet..": "..its; end;
+	TRF_SpAnswer(id, line, line.."\n"..jet, 1);
 	TRF_SpX("TRF_Flee", id, "demand");
 	TRF_SpStat("dm_comply");
 	TRF_SpE("demand_comply", "trader_id", id, "container_count", cnt, "moved_count", moved, "heat", TRF_SpHeat(),
@@ -1229,18 +1229,21 @@ function TRF_SpCount(p, r)
 	return nil;
 end;
 
--- Map stations and portals of the current system within r of p: station count, portal count.
+-- Map stations and portals (managed, inner and broken: every portal object the native counts) of the current
+-- system within r of p: station count, portal count.
 function TRF_SpStatic(p, r)
 	local sy = TRF_SpMapSys(TRF_SpCur());
 	local c = {0, 0};
 	if not sy or type(p) ~= "table" then return 0, 0; end;
-	local ls = {sy.st or {}, sy.portals or {}};
-	for j = 1, 2 do
+	local ls = {sy.st or {}, sy.portals or {}, sy.inner or {}, sy.broken or {}};
+	for j = 1, getn(ls) do
+		local cj = 2;
+		if j == 1 then cj = 1; end;
 		for i = 1, getn(ls[j]) do
 			local q = ls[j][i];
 			if type(q) == "table" and type(q.x) == "number" and type(q.z) == "number" then
 				local d = TRF_SpDist({x=q.x, y=q.y or 0, z=q.z}, p);
-				if d and d <= r then c[j] = c[j] + 1; end;
+				if d and d <= r then c[cj] = c[cj] + 1; end;
 			end;
 		end;
 	end;

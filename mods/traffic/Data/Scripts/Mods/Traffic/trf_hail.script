@@ -992,9 +992,10 @@ function TRF_HlPgDlg(hl, text)
 	local on = {leave=1};
 	if hl.pn == 1 then on.nowit = 1; end;
 	local who = TRF_HlName(TRF_HlRec(hl.id));
-	local pre = "FTU "..who..": ";
+	-- The prefix is cut by pattern: trf_supply names the trader with its own fallback (TRF_SpName), not TRF_HlName.
 	local m1 = text;
-	if strsub(text, 1, strlen(pre)) == pre then m1 = strsub(text, strlen(pre) + 1); end;
+	local s0, e0 = strfind(text, "^FTU [^:\n]*: ");
+	if e0 then m1 = strsub(text, e0 + 1); end;
 	st.dlg = {id=hl.id, g=hl.g, on=on, dk={}, pg=1, who=who, m1=m1};
 	hl.w = "dlg";
 	if TRF_HlP(TRF_HlPgCall, {}) ~= 1 then
