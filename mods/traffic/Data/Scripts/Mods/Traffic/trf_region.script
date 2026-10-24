@@ -908,6 +908,9 @@ function TRF_RgSweepOut(slot, L, won, k, how, p100)
 	local f = 0;
 	if type(TRF_SweepOwner) == "function" then f = call(TRF_SweepOwner, {slot}, "x", TRF_PErr) or 0; end;
 	r.sr = nil;
+	-- Dynamic nests (design/nest-spec.md 5.3): a success marks the target system for the Bust count nest_f_swept; read
+	-- before the outcome, since a won sweep destroys the active base that is the target (TRF_SweepTarget).
+	TRF_P("TRF_Nest_Sweep", slot, L, won);
 	if won then
 		c.sc = min(c.sc, 35);
 		r.sw = 1; r.sl = 0; r.sn = 0;
@@ -939,8 +942,6 @@ function TRF_RgSweepOut(slot, L, won, k, how, p100)
 	if how == "off" then TRF_P("TRF_Sc_Sweep", slot, L, won, f); end;
 	-- Wanted captains (design/captain-spec.md 5.6): a sweep success kills or drives off the region's captain.
 	TRF_P("TRF_Cap_Sweep", slot, L, won, how);
-	-- Dynamic nests (design/nest-spec.md 5.3): a success marks the target system for the Bust count nest_f_swept.
-	TRF_P("TRF_Nest_Sweep", slot, L, won);
 end;
 
 -- Resolve attempt k = sn + 1 off-screen (region tick counterforce). An attempt playing on-screen now

@@ -212,8 +212,9 @@ function T_NE_A()
 	end;
 	local ng = 0; for k, v in gs do ng = ng + 1; end;
 	HOST_Check(ns == 58 and nf == 547 and nc == 5 and ng == 5, "table: 58 systems, 547 flights, 5 conditional (Solncevka), 5 group spellings ("..ns.."/"..nf.."/"..nc.."/"..ng..")");
-	HOST_Check(np == 13 + 9 and NE_Has(pins, "aurora:pir_1") and NE_Has(pins, "pegas:Pir02") and NE_Has(pins, "xt93:Pir01") and NE_Has(pins, "kassilia:pir07"),
-		"pins: 13 signs in 7 systems plus every sign of the two class V systems"..pins);
+	HOST_Check(np == 26 + 9 and NE_Has(pins, "aurora:pir_1") and NE_Has(pins, "pegas:Pir02") and NE_Has(pins, "xt93:Pir01") and NE_Has(pins, "kassilia:pir07")
+		and NE_Has(pins, "debris1:pir06") and NE_Has(pins, "debris1:pir11") and not NE_Has(pins, "debris1:pir04"),
+		"pins: 26 signs in 8 systems (13 of Debris1 named by Mission_USS_Debris1_1/_2) plus every sign of the two class V systems"..pins);
 	local gk = d.golkonda;
 	HOST_Check(gk.g == "PiratesGroup_1" and getn(gk.f) == 10 and gk.f[1].s == "Pirate01" and gk.f[1].p == 12 and gk.f[6].t == 2
 		and gk.f[7].s == "pir07" and gk.f[7].x == -516 and getn(gk.f[1].r) == 3 and gk.f[1].rr == 1449, "Golkonda row data (activate.script 108-149)");
@@ -324,9 +325,20 @@ function T_NE_B()
 	HOST_Check(getglobal("TRF_GNest_1") == nil and TRF_NeNE().a == nil, "build global cleared, wrapper disarmed");
 	local n1 = S_Mark();
 	local qf = NewPirateFlight("PiratesGroup_1", "pir07", Vector3(3000, 0, 3000), 1, 5, Vector3(0, 0, 1));
-	HOST_Check(S_Logs(n1, "event=call sign=pir07 result=pass reason=unarmed") == 1 and qf.group.name == "PiratesGroup_1", "after activate.script: a quest call of a listed sign is vanilla");
+	HOST_Check(S_Logs(n1, "module=nest event=call ") == 0 and qf.group.name == "PiratesGroup_1", "after activate.script: a quest call of a listed sign is vanilla, no call line");
 	T_Tick(40, 0.5);
 	HOST_Check(NE_Has(NE_Scr(0), "is crowded") and TRF.clan[gs].nl == 3, "arrival line Full, nl = phase + 1");
+	-- An error in the decision (set after the MapInitialization reload): the vanilla call, the rest of activate.script runs.
+	NE_Jump("xb13");
+	n1 = S_Mark();
+	-- The handler is counted instead of logged, so the expected errors are not script errors of the run.
+	h.ne_err = 0;
+	NE_Jump("golkonda", {pre=function()
+		TRF_NeDecide = function() error("decide"); end;
+		TRF_NeErr = function(m) HOST().ne_err = HOST().ne_err + 1; end;
+	end});
+	HOST_Check(flight_pir07 and flight_pir07.group.name == "PiratesGroup_1" and h.ne_err == 10 and S_Logs(n1, "result=substituted") == 0
+		and TRF_NeNE().a == nil, "decision error: every flight vanilla, the handler ran per call ("..h.ne_err..")");
 	-- Same phase again: no second phase line; Quiet T1: 7 fielded, 3 stubs.
 	NE_Jump("xb13");
 	NE_Phase(gs, 0, 10);
@@ -383,6 +395,19 @@ function T_NE_B()
 	for i = 1, 10 do if v.fl[i] then fl = v.fl[i]; end; end;
 	HOST_Check(fl and fl.group.name == "TRF_Nest_1" and fl.patrol and getn(fl.patrol) >= 1 and fl.ships[1].label and strfind(fl.ships[1].label, "^trf_nest_"),
 		"mode 2 flights in the nest group on the static route, labelled");
+	-- nest_mode 2 in Pandora after mission 8a: activate.script deleted every vanilla flight; none built again.
+	NE_Jump("kruger");
+	n0 = S_Mark();
+	NE_Jump("pandora", {extra=function(d)
+		for i = 1, getn(d.f) do
+			local fl = getglobal("flight_"..d.f[i].s);
+			if fl:IsAlive() then fl:Delete(); end;
+		end;
+	end});
+	rl = NE_Line(n0, "module=nest event=replace ");
+	al = NE_Line(n0, "module=nest event=activate ");
+	HOST_Check(NE_Kv(rl, "deleted") == "0" and NE_Kv(rl, "spawned") == "0" and NE_Kv(al, "fielded") == "0" and NE_Kv(al, "gone") == "15"
+		and TRF_Nest_Alive() == 0, "mode 2 Pandora: no flight built again, 15 gone "..tostring(rl).." "..tostring(al));
 	NE_Set("nest_mode", nil);
 	NE_Jump("xb13");
 	HOST_Check(T_LeftGlobals() == "", "no group global left"..T_LeftGlobals());
@@ -399,7 +424,19 @@ function T_NE_C()
 	NE_Jump("golkonda");
 	HOST_Check(NE_Kv(NE_Line(n0, "module=nest event=mode "), "reason") == "off" and S_Logs(n0, "result=substituted") == 0
 		and flight_pir07 and flight_pir07.group.name == "PiratesGroup_1" and NE_V().fl[1] == nil, "nest 0: vanilla flights in PiratesGroup_1");
-	HOST_Check(S_Logs(n0, "event=call ") == 10 and S_Logs(n0, "reason=unarmed") == 10, "nest 0: the wrapper passes every call through");
+	HOST_Check(S_Logs(n0, "event=call ") == 0, "nest 0: the wrapper passes every call through, no call line (E16.1)");
+	-- E16.2 with nest 0: the probe at entry and after activate.script.
+	TRF_Carcasses = HOST_Carcasses;
+	h.carc = {};
+	NE_Jump("xb13");
+	n0 = S_Mark();
+	NE_Jump("golkonda", {pre=function() HOST().carc = {}; end, extra=function(d) HOST().carc = {{id=1, cls=3, team="Pirates", hp=100, x=0, y=0, z=0}}; end});
+	HOST_Check(S_Logs(n0, "module=nest event=probe at=enter pirates=0") == 1 and S_Logs(n0, "module=nest event=probe at=activate pirates=1") == 1,
+		"nest 0: probe lines at entry and activation");
+	TRF_Carcasses = nil; h.carc = nil;
+	n0 = S_Mark();
+	NE_Jump("xb13");
+	HOST_Check(S_Logs(n0, "module=nest event=probe ") == 0, "no probe in a system without data");
 	NE_Set("nest", 1);
 	local function_check = function(sys, why, prev, ch)
 		if ch then HOST().labels.CurrentQuest = ch; end;
@@ -549,16 +586,36 @@ function T_NE_D()
 	NE_Jump("xb13");
 	TRF_Nest_Sweep(gs, TRF.clock.legs, 1);
 	HOST_Check(TRF.clan[gs].ns == TRF_SweepTarget(gs), "sweep won: target marked");
+	-- An active base in another nest system of the region is the target: a won sweep (trf_region) destroys the base,
+	-- and the target is read before that.
+	local bi = nil;
+	for nm, e in TRF_NestData() do
+		local x = V_Idx(nm);
+		if x and TRF_RgOf(x) == gs and x ~= TRF_SweepTarget(gs) and nm ~= "x297" and nm ~= "el_ariash" then bi = x; end;
+	end;
+	local b0 = TRF.base;
+	TRF.base = {{s=bi, k=2, h=9, t=0, w=0}};
+	TRF.clan[gs].ns = nil;
+	TRF_RgSweepOut(gs, TRF.clock.legs, 1, 1, "on", 50);
+	HOST_Check(bi and TRF.base[1].k == 3 and TRF.clan[gs].ns == bi, "sweep won over an active base: its system is the target "..tostring(bi));
+	TRF.base = b0;
 	NE_Phase(gs, 4, 30);
 	TRF.clan[gs].ns = gi;
 	n0 = S_Mark();
+	h.rel = {};
 	NE_Jump("golkonda");
+	local nr = 0;
+	for q = 1, getn(h.rel) do if h.rel[q][1] == "TRF_Nest_1" or h.rel[q][2] == "TRF_Nest_1" then nr = nr + 1; end; end;
 	T_Tick(40, 0.5);
 	HOST_Check(NE_Kv(NE_Line(n0, "module=nest event=mode "), "f") == "0" and NE_Kv(NE_Line(n0, "module=nest event=activate "), "fielded") == "0"
 		and NE_Has(NE_Scr(0), "swept the pirate nest"), "Bust in the sweep target: f 0, none fielded, Swept line");
+	HOST_Check(nr == 0, "no nest group: no relation written for it ("..nr..")");
 	TRF.clan[gs].nk = 4;
 	TRF_Nest_Phase(gs, 5);
-	HOST_Check(TRF.clan[gs].ns == nil and TRF.clan[gs].nk == 4, "Recovery: target cleared");
+	HOST_Check(TRF.clan[gs].ns == nil and TRF.clan[gs].nk == 4 and TRF.clan[gs].nl == nil, "Recovery: target cleared, the phase line open again");
+	TRF.clan[gs].nl = 3;
+	TRF_Nest_Phase(gs, 2);
+	HOST_Check(TRF.clan[gs].nl == nil, "Build-up again in the next cycle: its line shows once more");
 	TRF_Nest_Phase(gs, 0);
 	HOST_Check(TRF.clan[gs].nk == nil, "Quiet: nk cleared");
 	-- Sweep and Triada wave relation lists.
@@ -694,6 +751,26 @@ function T_NE_F()
 		and TRF.nest[V_Idx("xt27")].c == 1 and TRF.nest[V_Idx("xt27")].l == -5, "repair: k outside 1..nv, no static data, bad keys dropped; future stamps read now; c only 1");
 	HOST_Check(TRF.nv == nil and TRF.nst.n == 0 and TRF.nst.k == 5 and TRF.nst.p == 0 and TRF.clan[gs].nk == nil and TRF.clan[gs].nl == nil
 		and TRF.clan[gs].ns == nil, "repair: bad nv, counters, clan fields");
+	-- Without map data: the records and the visit are only type-checked.
+	local mp = TRF_Map;
+	TRF_Map = function() return nil; end;
+	TRF.nest = {[gi]={k=3, l=1}};
+	TRF.nv = {i=gi, b="101"};
+	TRF_Nest_Fix();
+	HOST_Check(TRF.nest[gi] and TRF.nest[gi].k == 3 and TRF.nv and TRF.nv.b == "101", "repair without map data: records and visit kept");
+	TRF.nest = 5; TRF.nv = 7;
+	TRF_Nest_Fix();
+	HOST_Check(type(TRF.nest) == "table" and TRF.nv == nil, "repair without map data: wrong types dropped");
+	TRF_Map = mp;
+	-- cfg enabled 2: trf_state's repair drops the nest fields.
+	TRF.nest = {[gi]={k=3, l=1}}; TRF.nv = {i=gi, b="1"}; TRF.nst = {n=1, k=0, p=0};
+	TRF.clan[gs].nk = 2; TRF.clan[gs].nl = 3; TRF.clan[gs].ns = gi;
+	local en = h.cfg.enabled;
+	h.cfg.enabled = 2;
+	TRF_Repair();
+	h.cfg.enabled = en;
+	HOST_Check(TRF.nest == nil and TRF.nv == nil and TRF.nst == nil and TRF.clan[gs].nk == nil and TRF.clan[gs].nl == nil and TRF.clan[gs].ns == nil,
+		"enabled 2: TRF.nest, nv, nst and the clan fields dropped");
 	-- Save bound: 56 records at their widest (the nest systems without the two excluded ones), a 31-bit visit, the
 	-- counters at the cap, nk, nl and ns in every clan record.
 	TRF.nest = {};

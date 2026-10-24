@@ -385,25 +385,25 @@ function TRF_NestData()
 			{s="PirPatrol03", x=1012, y=0, z=-384, t=1, p=2, rk=2, rr=963, r={{1000, 0, -400}, {1000, 10, -100}, {700, 20, 0}, {200, 0, -900}, {500, 0, -600}, {400, 12, -300}}},
 		}},
 		debris1 = {g="PiratesGroup_1", a={-800, -800}, f={
-			{s="Pir01", x=-800, y=200, z=-720, t=1, p=8, rk=1, rr=539, r={{-720, 200, -720}, {-300, 0, -700}}},
-			{s="Pir02", x=-800, y=220, z=-720, t=1, p=3, rk=2, rr=179, r={{-720, 220, -720}, {-880, 220, -720}, {-880, 220, -880}, {-720, 220, -880}}},
-			{s="Pir03", x=-800, y=180, z=-720, t=1, p=4, rk=3, rr=179, r={{-720, 180, -720}, {-720, 180, -880}, {-880, 180, -880}, {-880, 180, -720}}},
+			{s="Pir01", x=-800, y=200, z=-720, t=1, p=8, rk=1, rr=539, pin=1, r={{-720, 200, -720}, {-300, 0, -700}}},
+			{s="Pir02", x=-800, y=220, z=-720, t=1, p=3, rk=2, rr=179, pin=1, r={{-720, 220, -720}, {-880, 220, -720}, {-880, 220, -880}, {-720, 220, -880}}},
+			{s="Pir03", x=-800, y=180, z=-720, t=1, p=4, rk=3, rr=179, pin=1, r={{-720, 180, -720}, {-720, 180, -880}, {-880, 180, -880}, {-880, 180, -720}}},
 			{s="pir04", x=764, y=0, z=360, t=1, p=5, rk=18, rr=321, r={{796, 0, 504}, {444, 0, 380}, {764, 0, 120}}},
 			{s="pir05", x=684, y=0, z=-352, t=1, p=6, rk=13, rr=384, r={{912, 0, -660}, {596, 0, -648}, {448, 0, -388}, {880, 0, -176}}},
-			{s="pir06", x=-392, y=0, z=188, t=1, p=8, rk=10, rr=268, r={{-188, 0, 60}, {-128, 0, 228}, {-420, 0, 364}, {-576, 0, 12}, {-332, 0, -56}}},
+			{s="pir06", x=-392, y=0, z=188, t=1, p=8, rk=10, rr=268, pin=1, r={{-188, 0, 60}, {-128, 0, 228}, {-420, 0, 364}, {-576, 0, 12}, {-332, 0, -56}}},
 			{s="pir07", x=792, y=0, z=-528, t=2, p=5, rk=15, rr=363, r={{976, 0, -840}, {592, 0, -808}, {596, 0, -524}, {960, 0, -364}}},
 			{s="pir08", x=764, y=0, z=-828, t=1, p=9, rk=14, rr=276, r={{500, 0, -908}, {704, 0, -628}, {996, 0, -756}, {856, 0, -988}}},
-			{s="pir09", x=-340, y=0, z=-880, t=2, p=6, rk=6, rr=420, r={{20, 0, -948}, {-172, 0, -732}, {-532, 0, -696}, {-748, 0, -976}}},
-			{s="pir10", x=-668, y=0, z=-500, t=2, p=10, rk=4, rr=464, r={{-588, 0, -384}, {-836, 0, -192}, {-952, 0, -672}, {-916, 0, -892}, {-800, 0, -568}}},
-			{s="pir11", x=-952, y=0, z=-388, t=1, p=9, rk=5, rr=592, r={{-928, 0, -136}, {-440, 0, -140}, {-376, 0, -252}, {-984, 0, -608}}},
-			{s="pir12", x=-904, y=0, z=-12, t=1, p=7, rk=8, rr=482, r={{-896, 0, 212}, {-536, 0, 76}, {-456, 0, -188}, {-904, 0, -240}}},
-			{s="pir13", x=-796, y=0, z=712, t=1, p=6, rk=12, rr=293, r={{-504, 0, 696}, {-840, 0, 940}, {-956, 0, 484}}},
-			{s="pir14", x=-472, y=0, z=540, t=1, p=6, rk=11, rr=544, r={{-592, 0, 600}, {-896, 0, 504}, {-928, 0, 244}, {-476, 0, 132}}},
-			{s="pir15", x=-392, y=0, z=912, t=2, p=4, rk=16, rr=445, r={{-652, 0, 964}, {-716, 0, 612}, {-32, 0, 652}, {-120, 0, 900}}},
+			{s="pir09", x=-340, y=0, z=-880, t=2, p=6, rk=6, rr=420, pin=1, r={{20, 0, -948}, {-172, 0, -732}, {-532, 0, -696}, {-748, 0, -976}}},
+			{s="pir10", x=-668, y=0, z=-500, t=2, p=10, rk=4, rr=464, pin=1, r={{-588, 0, -384}, {-836, 0, -192}, {-952, 0, -672}, {-916, 0, -892}, {-800, 0, -568}}},
+			{s="pir11", x=-952, y=0, z=-388, t=1, p=9, rk=5, rr=592, pin=1, r={{-928, 0, -136}, {-440, 0, -140}, {-376, 0, -252}, {-984, 0, -608}}},
+			{s="pir12", x=-904, y=0, z=-12, t=1, p=7, rk=8, rr=482, pin=1, r={{-896, 0, 212}, {-536, 0, 76}, {-456, 0, -188}, {-904, 0, -240}}},
+			{s="pir13", x=-796, y=0, z=712, t=1, p=6, rk=12, rr=293, pin=1, r={{-504, 0, 696}, {-840, 0, 940}, {-956, 0, 484}}},
+			{s="pir14", x=-472, y=0, z=540, t=1, p=6, rk=11, rr=544, pin=1, r={{-592, 0, 600}, {-896, 0, 504}, {-928, 0, 244}, {-476, 0, 132}}},
+			{s="pir15", x=-392, y=0, z=912, t=2, p=4, rk=16, rr=445, pin=1, r={{-652, 0, 964}, {-716, 0, 612}, {-32, 0, 652}, {-120, 0, 900}}},
 			{s="pir16", x=184, y=0, z=880, t=1, p=5, rk=17, rr=384, r={{548, 0, 760}, {320, 0, 584}, {20, 0, 632}, {-92, 0, 896}}},
 			{s="pir17", x=504, y=0, z=696, t=1, p=8, rk=19, rr=426, r={{664, 0, 676}, {896, 0, 564}, {592, 0, 280}, {380, 0, 520}}},
-			{s="pir18", x=208, y=0, z=-672, t=1, p=7, rk=9, rr=862, r={{-196, 0, -676}, {-560, 0, -756}, {-604, 0, -960}, {-176, 0, -948}}},
-			{s="pir19", x=-312, y=0, z=-780, t=1, p=10, rk=7, rr=637, r={{-196, 0, -484}, {-8, 0, -756}, {324, 0, -756}, {256, 0, -888}, {-128, 0, -904}}},
+			{s="pir18", x=208, y=0, z=-672, t=1, p=7, rk=9, rr=862, pin=1, r={{-196, 0, -676}, {-560, 0, -756}, {-604, 0, -960}, {-176, 0, -948}}},
+			{s="pir19", x=-312, y=0, z=-780, t=1, p=10, rk=7, rr=637, pin=1, r={{-196, 0, -484}, {-8, 0, -756}, {324, 0, -756}, {256, 0, -888}, {-128, 0, -904}}},
 		}},
 		debris2 = {g="Pirate_Group_1", a={0, 0}, f={
 			{s="Pir_5", x=151, y=5, z=157, t=1, p=3, rk=2, rr=170, r={{-19, 5, 157}, {251, 5, 77}, {131, 5, 77}}},
@@ -1185,11 +1185,16 @@ function TRF_NeStub(sign)
 		SetFormation=TRF_NeNoop, SetOrientation=TRF_NeNoop, IsAlive=TRF_NeNil};
 end;
 
--- The vanilla call with the caller's arguments (unprotected: its errors are vanilla's), the pass logged at level 2.
-function TRF_NeOrig(why, g, s, l, ty, p, o)
-	TRF_NeDE("call", "sign", tostring(s), "result", "pass", "reason", why);
+-- The vanilla call with the caller's arguments (unprotected: its errors are vanilla's).
+function TRF_NeOrig(g, s, l, ty, p, o)
 	if type(TRF_orig_NewPirateFlight) ~= "function" then return FALSE; end;
 	return TRF_orig_NewPirateFlight(g, s, l, ty, p, o);
+end;
+
+-- A pass of an armed visit's call, logged at level 2 (no visit record: no line, so a vanilla-mode visit has none, E16.1).
+function TRF_NePass(why, sign)
+	TRF_NeDE("call", "sign", tostring(sign), "result", "pass", "reason", why);
+	return {};
 end;
 
 function TRF_NeGroupRaw(gn)
@@ -1208,26 +1213,45 @@ function TRF_NeGroup(a)
 	return g;
 end;
 
--- NewPirateFlight while installed (design 6). Not armed, a sign not in the system's table, a group other than the
--- system's vanilla group or a second call of a sign: the vanilla call. nest_mode 2: the vanilla call, its flight
--- recorded. Planned and fielded: the vanilla builder with group TRF_GNest_1 and the nest power, protected; any error
--- or a non-object result: the vanilla call (result=failed reason=build). Planned and skipped: the stub.
+-- NewPirateFlight while installed (design 6). The decision runs protected (TRF_NeDecide): an error there gives the
+-- vanilla call. A substituted flight or a stub is returned as decided; every other case is the vanilla call with the
+-- caller's arguments, unprotected (its errors are vanilla's, and a partial build is never repeated); nest_mode 2
+-- records its flight.
 function TRF_Nest_NPF(group, sign, location, ty, power, orient)
+	local r = call(TRF_NeDecide, {group, sign, location, ty, power, orient}, "x", TRF_NeErr);
+	if type(r) == "table" and r.ret then return r.ret; end;
+	local fl = TRF_NeOrig(group, sign, location, ty, power, orient);
+	if type(r) == "table" and r.rec then call(TRF_NeRecord, {r.rec, sign, fl}, "x", TRF_NeErr); end;
+	return fl;
+end;
+
+-- nest_mode 2: the vanilla flight of row i recorded.
+function TRF_NeRecord(i, sign, fl)
 	local a = %NE.a;
-	if type(a) ~= "table" or a.on ~= 1 or a.gen ~= TRF_NeGen() then return TRF_NeOrig("unarmed", group, sign, location, ty, power, orient); end;
+	if type(a) ~= "table" then return; end;
+	if TRF_NeObj(fl) then a.van[i] = fl; end;
+	TRF_NeDE("call", "sign", sign, "result", "recorded");
+end;
+
+-- Decision of one call: {ret = flight or stub} when decided, {rec = i} for nest_mode 2, else {} (the vanilla call).
+-- No visit record: the vanilla call, no line. Not armed or another generation, a sign not in the system's table, a
+-- group other than the system's vanilla group or a second call of a sign: a pass. Planned and fielded: the vanilla
+-- builder with group TRF_GNest_1 and the nest power, protected; any error or a non-object result: the vanilla call
+-- (result=failed reason=build). Planned and skipped: the stub.
+function TRF_NeDecide(group, sign, location, ty, power, orient)
+	local a = %NE.a;
+	if type(a) ~= "table" then return {}; end;
+	if a.on ~= 1 or a.gen ~= TRF_NeGen() then return TRF_NePass("unarmed", sign); end;
 	local i = a.by[sign];
-	if not i then return TRF_NeOrig("unlisted", group, sign, location, ty, power, orient); end;
+	if not i then return TRF_NePass("unlisted", sign); end;
 	if group ~= a.d.g then
 		a.unk = a.unk + 1;
-		return TRF_NeOrig("group", group, sign, location, ty, power, orient);
+		return TRF_NePass("group", sign);
 	end;
-	if a.st[i] then return TRF_NeOrig("repeat", group, sign, location, ty, power, orient); end;
+	if a.st[i] then return TRF_NePass("repeat", sign); end;
 	if a.mode == 2 then
-		local fl = TRF_orig_NewPirateFlight(group, sign, location, ty, power, orient);
 		a.st[i] = "rec";
-		if TRF_NeObj(fl) then a.van[i] = fl; end;
-		TRF_NeDE("call", "sign", sign, "result", "recorded");
-		return fl;
+		return {rec=i};
 	end;
 	local pin = nil;
 	if a.d.f[i].pin == 1 then pin = 1; end;
@@ -1241,19 +1265,19 @@ function TRF_Nest_NPF(group, sign, location, ty, power, orient)
 			a.st[i] = "sub";
 			a.fl[i] = fl;
 			TRF_NeDE("call", "sign", sign, "result", "substituted", "power", pw, "vanilla_power", power, "pinned", TRF_KvB(pin));
-			return fl;
+			return {ret=fl};
 		end;
 		a.st[i] = "van";
 		a.fail = a.fail + 1;
 		TRF_NeE("call", "sign", sign, "result", "failed", "reason", "build");
-		return TRF_orig_NewPirateFlight(group, sign, location, ty, power, orient);
+		return {};
 	end;
 	local sb = TRF_NeStub(sign);
 	setglobal("flight_"..sign, sb);
 	a.st[i] = "stub";
 	a.sb[sign] = sb;
 	TRF_NeDE("call", "sign", sign, "result", "stub", "reason", a.plan.sk[i] or "count");
-	return sb;
+	return {ret=sb};
 end;
 
 -- Entry (TRF_OnEnter, after trf_safety) --------------------------------------------------------------
@@ -1341,6 +1365,9 @@ function TRF_NeEnterBody()
 	if why == "off" then lf = TRF_NeDE; end;
 	lf("mode", "system", nm, "mode", mode, "reason", why or "ok", "phase", ph, "tier", T, "f", f, "dp", dp, "vanilla_count", nv,
 		"memory", k, "pins", pins);
+	-- E16.2 probe in every system with data (also with nest 0); pr asks TRF_Nest_OnActivate for the second probe.
+	TRF_NeProbe("enter");
+	ne.v.pr = 1;
 	if mode ~= "nest" then return; end;
 	local P = TRF_NestPlanOf(d.f, f, k, dp, TRF_NeCaches(cur), tn.nest_cache_r);
 	local by = {};
@@ -1350,7 +1377,6 @@ function TRF_NeEnterBody()
 	TRF.nv = {i=cur, b=""};
 	TRF_NeE("plan", "system", nm, "target", P.n, "fielded", P.nf, "skipped", nv - P.nf, "pins", P.pins, "mode", ne.a.mode,
 		"plan", TRF_NeBitsOf(P.fl, nv));
-	TRF_NeProbe("enter");
 end;
 
 -- Activation (TRF_OnActivate, after trf_safety) -------------------------------------------------------
@@ -1370,12 +1396,14 @@ function TRF_NeVanRel(g)
 	return to, from;
 end;
 
--- Writes relations to and from to the nest group toward the player (the group handle of this visit, else its name).
+-- Writes relations to and from to the nest group toward the player (the group handle of this visit, else its name);
+-- recorded only while no nest group exists (every flight stubbed or the builds failed).
 function TRF_NeRelSet(v, to, from)
+	v.rel = to; v.relf = from;
+	if (v.nf or 0) == 0 and not TRF_NeObj(v.grp) then return; end;
 	local g = v.grp or TRF_NeK().grp;
 	TRF_NeSetRel(g, PLAYER_GROUP, to);
 	TRF_NeSetRel(PLAYER_GROUP, g, from);
-	v.rel = to; v.relf = from;
 end;
 
 -- Labels, triggers (design 6): per flight one f_died; with nest_trig 2 per ship one died (scars, the flight-level
@@ -1414,15 +1442,19 @@ end;
 
 -- nest_mode 2 (design 6 mechanism b): every recorded vanilla flight of an unpinned sign is deleted; the plan's
 -- fielded unpinned signs are built again with the same sign in the nest group at the nest power from the static row
--- and patrol its static route. Pinned signs stay vanilla flights. Returns deleted, spawned.
+-- and patrol its static route. A recorded flight no longer alive was removed by the location script (Pandora after
+-- mission 8a): gone, not built again. Pinned signs stay vanilla flights. Returns deleted, spawned.
 function TRF_NeReplace(a)
 	local nd, ns = 0, 0;
 	local K = TRF_NeK();
 	for i = 1, getn(a.d.f) do
 		local r = a.d.f[i];
 		if r.pin ~= 1 and a.van[i] then
-			if TRF_NeAlive(a.van[i]) and TRF_NeDel(a.van[i]) then nd = nd + 1; end;
-			if a.plan.fl[i] and TRF_NeGroup(a) then
+			local alive = TRF_NeAlive(a.van[i]);
+			if alive and TRF_NeDel(a.van[i]) then nd = nd + 1; end;
+			if not alive then
+				a.st[i] = "gone";
+			elseif a.plan.fl[i] and TRF_NeGroup(a) then
 				local fl = call(TRF_orig_NewPirateFlight, {K.gg, r.s, Vector3(r.x, r.y, r.z), r.t, a.plan.pw[i], Vector3(0, 0, 1)}, "x", TRF_NeNoErr);
 				if TRF_NeObj(fl) then
 					call(TRF_NePatrolRaw, {fl, TRF_NeRoute(r)}, "x", TRF_NeNoErr);
@@ -1451,7 +1483,11 @@ end;
 function TRF_Nest_OnActivate()
 	local ne = %NE;
 	local a = ne.a;
-	if type(a) ~= "table" then setglobal(TRF_NeK().gg, nil); return; end;
+	if type(a) ~= "table" then
+		setglobal(TRF_NeK().gg, nil);
+		if ne.v.pr == 1 then TRF_NeProbe("activate"); end;
+		return;
+	end;
 	a.on = nil;
 	call(TRF_NeActBody, {a}, "x", TRF_NeErr);
 	local left = TRF_NeClear(a);
@@ -1471,6 +1507,7 @@ function TRF_NeActBody(a)
 	local bits = {};
 	for i = 1, nv do
 		if a.st[i] == "stub" then ns = ns + 1; end;
+		if a.st[i] == "gone" then v.gone[i] = 1; ng = ng + 1; end;
 		if a.plan.fl[i] and not a.st[i] and a.mode ~= 2 then nmiss = nmiss + 1; end;
 		local fl = a.fl[i];
 		if fl then
@@ -1620,6 +1657,7 @@ function TRF_Nest_Step()
 end;
 
 function TRF_NeStepBody(v)
+	if (v.nf or 0) == 0 and not TRF_NeObj(v.grp) then return; end;
 	local to, from = TRF_NeVanRel(v.d.g);
 	if to == v.vto and from == v.vfrom then return; end;
 	local first = v.vto == nil;
@@ -1695,6 +1733,9 @@ function TRF_Nest_Phase(slot, ph)
 	if not c then return; end;
 	if ph == 0 then c.nk = nil; end;
 	if ph ~= 3 and ph ~= 4 then c.ns = nil; end;
+	-- Every phase entry opens that phase's line again (a phase recurs in the next cycle; the Swept mark 7 is set
+	-- again by the Swept line within Bust).
+	c.nl = nil;
 end;
 
 -- Sweep outcome of slot (trf_region TRF_RgSweepOut): a success marks the sweep target (trf_faction TRF_SweepTarget)
@@ -1760,7 +1801,12 @@ function TRF_Nest_Fix()
 	if type(TRF) ~= "table" then return; end;
 	local legs = TRF_NeLegs();
 	local K = TRF_NeK();
-	if TRF.nest ~= nil then
+	-- Without map data the system names are unknown: TRF.nest and TRF.nv are only type-checked (trf_region's rule).
+	local map = nil;
+	if type(TRF_Map) == "function" and TRF_Map() then map = 1; end;
+	if TRF.nest ~= nil and not map then
+		if type(TRF.nest) ~= "table" then TRF.nest = {}; end;
+	elseif TRF.nest ~= nil then
 		local out = {};
 		if type(TRF.nest) == "table" then
 			for idx, e in TRF.nest do
@@ -1777,7 +1823,9 @@ function TRF_Nest_Fix()
 		end;
 		TRF.nest = out;
 	end;
-	if TRF.nv ~= nil then
+	if TRF.nv ~= nil and not map then
+		if type(TRF.nv) ~= "table" then TRF.nv = nil; end;
+	elseif TRF.nv ~= nil then
 		local x = TRF.nv;
 		local ok = nil;
 		if type(x) == "table" and type(x.i) == "number" and type(x.b) == "string" then

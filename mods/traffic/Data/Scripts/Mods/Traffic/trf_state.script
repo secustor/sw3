@@ -648,6 +648,13 @@ function TRF_Repair()
 	TRF_P("TRF_Sh_Fix");
 	TRF_P("TRF_Fr_Fix");
 	TRF_P("TRF_Nest_Fix");
+	-- cfg enabled 2 (restore-and-stop, trf_nest not loaded): the dynamic nest fields go (design 16 section 6, Removal).
+	if type(TRF_Cfg) == "function" and TRF_Cfg().enabled == 2 then
+		TRF.nest = nil; TRF.nv = nil; TRF.nst = nil;
+		for k, cl in TRF.clan do
+			if type(cl) == "table" then cl.nk = nil; cl.nl = nil; cl.ns = nil; end;
+		end;
+	end;
 end;
 
 -- Create, migrate and repair TRF. Returns 1 when it created a new table.

@@ -12,8 +12,8 @@ route and rr 9999), rr (the largest distance from the spawn point to a route poi
 (1 = nearest to the anchor: the position of the pirate station of CreatePirateStationDocking or
 CreateNoneStationDocking(..., "pirate"), else the system centre; ties in file order) and pin (the sign is used in
 activate.script outside its NewPirateFlight and Patrol lines other than through a stub method, or a quest script of
-the system names it). A system whose quests name every sign is class V (always vanilla; the runtime excludes it through
-its deny entry, nest = 0).
+the system names it: its file name ends in the system name, optionally followed by _<n>). A system whose quests name
+every sign is class V (always vanilla; the runtime excludes it through its deny entry, nest = 0).
 Checks (exit 1, also without --check): a non-pinned sign used in activate.script with a method outside the stub set
 (STUB), a sign named in functions.script, the pinned signs differ from PINS_EXPECT, the class V systems differ from
 VANILLA_EXPECT, the system or flight count differs from SYS_EXPECT / FLIGHTS_EXPECT, a group name outside GROUPS.
@@ -37,6 +37,8 @@ STUB = {"Patrol", "Move", "Escort", "Attack", "Delete", "SetFormation", "SetOrie
 GROUPS = {"PiratesGroup_1", "Pirate_Group_1", "Pirates_Group_1", "PirateGroup_1", "Pirate_Group_1_1"}
 PINS_EXPECT = {
     "ahilles": ["Pirate02"], "argon": ["Pir03"], "aurora": ["pir_1"], "kassilia": ["pir07"],
+    "debris1": ["Pir01", "Pir02", "Pir03", "pir06", "pir09", "pir10", "pir11", "pir12", "pir13", "pir14", "pir15", "pir18",
+                "pir19"],
     "pegas": ["Pir02", "pir04", "pir07", "pir08", "pir14"], "xt52": ["Pir01", "pir02", "pir04"], "xt93": ["Pir01"],
 }
 VANILLA_EXPECT = {"el_ariash", "x297"}
@@ -140,7 +142,8 @@ REF = r"\b(flight|ship|pilot)_%s(_\d+)?\b"
 
 
 def quest_refs(game, name, signs):
-    """Signs named by the quest scripts of system name (file name <x>_<name>.script or <name>.script)."""
+    """Signs named by the quest scripts of system name (the name is the last token of the file name or comes before a
+    numeric part suffix: <name>.script, <x>_<name>.script, <x>_<name>_<n>.script)."""
     qd = os.path.join(game, "Data", "Scripts", "Quests")
     hit = set()
     for root, _, files in os.walk(qd):
@@ -148,7 +151,7 @@ def quest_refs(game, name, signs):
             if not f.lower().endswith(".script"):
                 continue
             base = f[:-7].lower()
-            if not (base == name or base.endswith("_" + name)):
+            if not re.search(r"(^|_)" + re.escape(name) + r"(_\d+)?$", base):
                 continue
             text = "\n".join(gen_map.strip_comment(l) for l in rd(os.path.join(root, f)))
             for s in signs:

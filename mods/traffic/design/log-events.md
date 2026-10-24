@@ -629,7 +629,7 @@ Dynamic nests, step 1 (`design/nest-spec.md` 7). `index` is the row of the syste
 | `mode` | `module=nest event=mode system=golkonda mode=nest reason=ok phase=2 tier=3 f=100 dp=1 vanilla_count=10 memory=0 pins=0` / `mode=vanilla reason=<excluded, guard, sysmode, gate_<strict reason>, no_region, supp>` (E16.1) | 1 |
 | `mode` | `module=nest event=mode system=gaoba mode=vanilla reason=no_data` / `system=golkonda mode=vanilla reason=off ...` (cfg `nest` 0) | 2 |
 | `plan` | `module=nest event=plan system=golkonda target=7 fielded=7 skipped=3 pins=0 mode=1 plan=1010011111` | 1 |
-| `call` | `module=nest event=call sign=pir07 result=substituted power=15 vanilla_power=14 pinned=false` / `result=stub reason=<count, cache>` / `result=recorded` (nest_mode 2) / `result=pass reason=<unarmed, unlisted, group, repeat>` (E16.1, E16.3) | 2 |
+| `call` | `module=nest event=call sign=pir07 result=substituted power=15 vanilla_power=14 pinned=false` / `result=stub reason=<count, cache>` / `result=recorded` (nest_mode 2) / `result=pass reason=<unarmed, unlisted, group, repeat>` (only while a visit record exists: no line in a vanilla-mode visit or after activation, E16.1, E16.3) | 2 |
 | `call` | `module=nest event=call sign=pir07 result=failed reason=build` (the vanilla flight is built instead) | 1 |
 | `activate` | `module=nest event=activate system=golkonda fielded=10 stub=0 gone=0 unknown=0 missing=0 failed=0 relation=war stub_left=0 mode=1` (E16.1, E16.4) | 1 |
 | `replace` | `module=nest event=replace system=golkonda deleted=10 spawned=5` (nest_mode 2, E16.11) | 1 |
