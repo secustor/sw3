@@ -154,6 +154,11 @@ FILETYPE STANDART
 #TRF_ladrank56 = Partner
 #TRF_ladrank57 = Board guest
 #TRF_ladrival = You fly under papers. The has nothing for you.
+#TRF_ladsec1 = Imperial Security
+#TRF_ladsec2 = New Empire Security
+#TRF_ladsec3 = The Triumvirate
+#TRF_ladsec4 = USS Security
+#TRF_ladsec5 = InoCo Security
 #TRF_ladsettle = Your file shows open violations. Settle for cr and we close it.
 #TRF_ladsettled = File closed. Do not make us open it again.
 #TRF_ladvoid1 = NESF papers? This is MSF space now.

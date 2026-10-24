@@ -481,13 +481,23 @@ function TRF_LadRankText(f, war)
 	return TRF_LadTxt("ladline", TRF_LadFacName(f), t, v), b, v;
 end;
 
--- Status of the empire f in slot (09 2): "void" (a valid permit of the other empire for this region: its
--- papers do not apply here), "rival" (a valid permit of the other empire elsewhere), "permit" (own valid
--- permit for this region), else "none". Returns the status, its text and the legs left.
-function TRF_LadStatus(f, slot)
+-- 1 when the system loc was moved to f by Transfer_To_NI, else nil: the Vks systems that FloodTradeStations.script
+-- InitShopList gives to Kfni at step1..step3 (moscowia; nd, solncevka, endoria2; aurora, corrino, shula, taira).
+function TRF_LadMovedOf(loc, f)
+	if f ~= 2 or type(loc) ~= "string" then return nil; end;
+	local m = {moscowia=1, nd=1, solncevka=1, endoria2=1, aurora=1, corrino=1, shula=1, taira=1};
+	if m[strlower(loc)] == 1 then return 1; end;
+	return nil;
+end;
+
+-- Status of the empire f in slot at station system loc (09 2): "void" (the system was moved to f by
+-- Transfer_To_NI and the other empire's permit for this region is valid: its papers no longer apply here),
+-- "rival" (any other valid permit of the other empire), "permit" (own valid permit for this region), else
+-- "none". Returns the status, its text and the legs left.
+function TRF_LadStatus(f, slot, loc)
 	local o = TRF_LadRival(f);
 	if not o then return "corp", nil, nil; end;
-	if TRF_LadLic(o, slot) then return "void", TRF_LadTxt("ladvoid"..f), nil; end;
+	if TRF_LadLic(o, slot) and TRF_LadMovedOf(loc, f) then return "void", TRF_LadTxt("ladvoid"..f), nil; end;
 	if TRF_LadAnyLic(o) then return "rival", TRF_LadTxt("ladrival", TRF_LadFacName(o), TRF_LadFacName(f)), nil; end;
 	local till = TRF_LadLic(f, slot);
 	if till then
@@ -517,7 +527,7 @@ function TRF_Lad_DockLine(kind, param)
 	local war = TRF_LadWar(f);
 	local text, b, v = TRF_LadRankText(f, war);
 	local st, stx, left = "war", nil, nil;
-	if not war then st, stx, left = TRF_LadStatus(f, slot); end;
+	if not war then st, stx, left = TRF_LadStatus(f, slot, loc); end;
 	if stx then text = text.." "..stx; end;
 	TRF_LadE("rank_line", "system", strlower(loc), "faction", TRF_LadTeamOf(f), "standing", v, "band", b, "war", TRF_KvB(war),
 		"region", slot, "status", st, "permit_legs_left", left);
@@ -540,7 +550,8 @@ function TRF_LadBoxWhy(f, loc, idx)
 	return nil;
 end;
 
--- Box candidate of kind patrol, prio 300: settlement at fst <= 3, else the permit of an empire; nothing from an
+-- Box candidate of kind patrol, prio 300: settlement at fst <= 3, else (or when no settlement is offered) the
+-- permit of an empire; nothing from an
 -- empire while a permit of the other empire is valid; one ladder box per docking (the dispatcher opens the first
 -- spec); an offer declined in this visit is not shown again.
 function TRF_Lad_DockBox(kind, param)
@@ -559,7 +570,10 @@ function TRF_Lad_DockBox(kind, param)
 		return nil;
 	end;
 	local v = TRF_LadFst(f);
-	if v <= 3 then return TRF_LadSettleSpec(f, slot, idx, v); end;
+	if v <= 3 then
+		local sp = TRF_LadSettleSpec(f, slot, idx, v);
+		if sp then return sp; end;
+	end;
 	return TRF_LadPermitSpec(f, slot, idx, v);
 end;
 
@@ -582,7 +596,7 @@ function TRF_LadSettleSpec(f, slot, idx, v)
 	return {text=text, ok="TRF_Lad_SettleOk", no="TRF_Lad_SettleNo", a=a, own="lad_settle"};
 end;
 
--- Permit box spec or nil (09 4, 5, 6): Vks and Kfni only, fst >= 4 (an open file settles first), no valid
+-- Permit box spec or nil (09 4, 5, 6): Vks and Kfni only (at fst <= 3 after the settlement), no valid
 -- permit of f for this region (the rival gate is in TRF_Lad_DockBox).
 function TRF_LadPermitSpec(f, slot, idx, v)
 	local lv = %LV;
@@ -639,7 +653,8 @@ end;
 
 -- Permit purchase (09 4): the other empire's permits void (no refund), the other empire -1, lic[f][slot] = legs +
 -- permit_legs, f +1 at most once per permit_legs and never above rank_hold, then TRF_FstClamp once, which caps the
--- other empire at rival_cap (TRF_Lad_Cap; a faction at war keeps its digit). Returns the reply line.
+-- other empire at rival_cap (TRF_Lad_Cap; a faction at war keeps its digit). Shows the issue line, then the cap
+-- line (09 2 step 4); returns the reply line only when nothing was bought.
 function TRF_LadBuy(a)
 	if type(a) ~= "table" or a.g ~= TRF_LadGen() or not TRF_LadOn() then
 		TRF_LadE("permit_buy", "result", "stale");
@@ -681,9 +696,9 @@ function TRF_LadBuy(a)
 	TRF_LadE("permit_buy", "faction", TRF_LadTeamOf(f), "region", slot, "price", price, "credits", c0, "till", lic[f][slot],
 		"standing_before", v0, "standing_after", v1, "gain", gain, "rival", TRF_LadTeamOf(o), "rival_before", r0, "rival_after", r1,
 		"voided_count", voided, "result", "bought");
-	local out = TRF_LadTxt("ladissued", TRF_LadRgName(slot), TRF_LadT("permit_legs"));
+	TRF_LadSay(TRF_LadTxt("ladissued", TRF_LadRgName(slot), TRF_LadT("permit_legs")), TRF_LadK().secs);
 	TRF_LadSay(TRF_LadTxt("ladcapped", TRF_LadFacName(o), TRF_LadT("rival_cap"), TRF_LadFacName(f)), TRF_LadK().secs);
-	return out;
+	return nil;
 end;
 
 -- Settlement (09 4): fst := 4, sc[f] = legs. Returns the reply line.
@@ -715,8 +730,9 @@ end;
 -- Hand-in standing and prisoners of war (09 4, 6), CostOfHead chain ---------------------------------
 
 -- CostOfHead handler (trf_plumb TRF_CostOfHeadReg): the previous price is returned unchanged; a pirate pilot
--- (Pir_Pilots) handed in at f's patrol station gives f +1 (never above hand_cap, once per lad_hand_cd legs and
--- once per docking); the other empire's pilot at an empire station (prisoner of war) also costs that empire 1.
+-- (Pir_Pilots) handed in at f's patrol station from chapter 5 gives f +1 (never above hand_cap or the rival cap,
+-- once per lad_hand_cd legs and once per docking); the other empire's pilot at an empire station (prisoner of
+-- war) also costs that empire 1.
 function TRF_Lad_CoH(name, count, price)
 	call(TRF_LadHand, {name, count, price}, "x", TRF_LadErr);
 	return price;
@@ -734,13 +750,18 @@ function TRF_LadHand(name, count, price)
 	local lv = %LV;
 	local legs = TRF_LadLegs();
 	local v0 = TRF_LadFst(f);
+	local cap = TRF_LadT("hand_cap");
+	local rc = TRF_Lad_Cap(f);
+	if type(rc) == "number" and rc < cap then cap = rc; end;
+	local ch = TRF_N("TRF_Chapter");
 	if not kind then why = "template";
+	elseif type(ch) ~= "number" or ch < 5 then why = "chapter";
 	elseif TRF_LadDeny(TRF_LadIdxOf(loc), loc) then why = "deny";
 	elseif TRF_LadWar(f) then why = "war";
 	elseif lv.hand[f] == 1 then why = "docking";
 	elseif not TRF_LadCdOf(TRF_LadGet("hc", f), legs, TRF_LadT("lad_hand_cd")) then why = "cooldown";
-	elseif TRF_LadGainOf(v0, TRF_LadT("hand_cap")) ~= 1 then why = "cap"; end;
-	if why == "template" or why == "docking" then
+	elseif TRF_LadGainOf(v0, cap) ~= 1 then why = "cap"; end;
+	if why == "template" or why == "docking" or why == "chapter" then
 		TRF_LadDE("handin", "system", strlower(loc), "faction", TRF_LadTeamOf(f), "pilot", tostring(name), "count", count, "price", price,
 			"standing", v0, "result", "none", "reason", why);
 		return;
@@ -763,7 +784,7 @@ function TRF_LadHand(name, count, price)
 		"kind", kind, "standing_before", v0, "standing_after", v1, "rival", TRF_LadTeamOf(o), "rival_before", r0, "rival_after", r1,
 		"result", "credited");
 	local line = TRF_LadRankText(f, nil);
-	TRF_LadSay(TRF_LadTxt("ladhand", TRF_LadFacName(f), line), TRF_LadK().secs);
+	TRF_LadSay(TRF_LadTxt("ladhand", TRF_LadTxt("ladsec"..f), line), TRF_LadK().secs);
 end;
 
 -- Portal-fine waiver (09 6, 00 E4): wrapper over _PatrolGIBDD_shtraf ------------------------------------
@@ -1050,7 +1071,9 @@ function TRF_Lad_Text()
 		ladpoor = "Not enough credits. Come back when you can pay.",
 		ladsettle = "Your file shows open violations. Settle for $1 cr and we close it.",  -- price
 		ladsettled = "File closed. Do not make us open it again.",
-		ladhand = "$1 notes your service. $2",                                             -- faction, rank line
+		ladhand = "$1 notes your service. $2",                                             -- speaker (ladsec<f>), rank line
+		ladsec1 = "Imperial Security", ladsec2 = "New Empire Security", ladsec3 = "The Triumvirate",
+		ladsec4 = "USS Security", ladsec5 = "InoCo Security",
 		ladgibdd = "Permit on file. Move along, and keep the portal clear.",
 		ladgibddrg = "Permit for the $1 sector only. Pay up.",                             -- sector
 	};

@@ -249,6 +249,11 @@ function T_LAD_B()
 	r = L_Dock();
 	HOST_Check(L_Has(r.scr, "NESF standing: Civilian, no file (5)") == nil and L_Has(r.scr, "NESF standing: Unregistered (5). You fly under MSF papers. The NESF has nothing for you.|")
 		and r.nb == 0 and S_Logs(n0, "reason=rival") == 1, "rival papers: line, nothing offered ("..r.scr..")");
+	-- Same region, never transferred (Angarsk, Kfni since the start): the rival line, not the void line.
+	T_Enter("angarsk");
+	r = L_Dock();
+	HOST_Check(L_Has(r.scr, "NESF standing: Unregistered (5). You fly under MSF papers. The NESF has nothing for you.|") and r.nb == 0,
+		"untransferred NESF system in the permit's region: rival line ("..r.scr..")");
 	-- Void: Moscowia moved to the New Empire; the MSF permit of the region does not apply there.
 	h.teams.moscowia = "Kfni";
 	T_Enter("moscowia");
@@ -309,8 +314,8 @@ function T_LAD_C()
 	local s = L_Press(r, "ok");
 	HOST_Check(h.credits == 81100 and TRF.lad.lic[1][slot] == L0 + 24 and TRF_Fst(1) == 6 and TRF_Fst(2) == 4 and TRF.lad.pg[1] == L0,
 		"bought: 18900 cr, valid 24 legs, MSF +1 (5 -> 6), NESF -1 (5 -> 4), stamp ("..h.credits.." "..TRF.std.fst..")");
-	HOST_Check(L_Has(s, "Permit issued. Moscowia sector, valid 24 legs.|") and L_Has(s, "NESF standing capped at 4 while you carry MSF papers.|")
-		and h.pdlgs[getn(h.pdlgs)] == "", "issue and cap lines, then the vanilla dialog ("..s..")");
+	HOST_Check(L_Has(s, "Permit issued. Moscowia sector, valid 24 legs.|NESF standing capped at 4 while you carry MSF papers.|")
+		and h.pdlgs[getn(h.pdlgs)] == "", "issue line, then the cap line, then the vanilla dialog ("..s..")");
 	HOST_Check(S_Logs(n0, "event=permit_buy faction=Vks region="..slot.." price=18900 credits=100000 till="..(L0 + 24).." standing_before=5 standing_after=6 gain=gained rival=Kfni rival_before=5 rival_after=4 voided_count=0 result=bought") == 1,
 		"permit_buy log line");
 	-- Rival cap: NESF gains stop at 4 while the MSF permit is valid.
@@ -398,7 +403,9 @@ function T_LAD_D()
 	T_Enter("fort_russ");
 	n0 = S_Mark();
 	r = L_Dock();
-	HOST_Check(r.nb == 0 and S_Logs(n0, "event=settle faction=Vks standing=3 region="..L_Slot("fort_russ").." price=60000 result=none reason=cooldown") == 1, "cooldown: no box");
+	HOST_Check(r.nb == 1 and L_Has(r.box.text, "Transit permit for MSF space") and S_Logs(n0, "event=settle faction=Vks standing=3 region="..L_Slot("fort_russ").." price=60000 result=none reason=cooldown") == 1,
+		"cooldown: no settlement, the permit box instead");
+	L_Press(r, "cancel");
 	L_Legs(20);
 	T_Enter("fort_russ");
 	L_Fst(1, 3);
@@ -441,7 +448,7 @@ function T_LAD_E()
 	local n0 = S_Mark();
 	local s0 = getn(h.screen);
 	local p = CostOfHead("PirateTough", 2);
-	HOST_Check(p == 800 and TRF_Fst(1) == 6 and TRF.lad.hc[1] == TRF.clock.legs and S_Screen(s0, "MSF notes your service. MSF standing: Licensed carrier (6).")
+	HOST_Check(p == 800 and TRF_Fst(1) == 6 and TRF.lad.hc[1] == TRF.clock.legs and S_Screen(s0, "Imperial Security notes your service. MSF standing: Licensed carrier (6).")
 		and S_Logs(n0, "event=handin system=fort_russ faction=Vks pilot=PirateTough count=2 price=800 kind=pirate standing_before=5 standing_after=6 rival=nil rival_before=nil rival_after=nil result=credited") == 1,
 		"pirate pods: vanilla price passed through, MSF +1, line");
 	n0 = S_Mark();
@@ -481,6 +488,29 @@ function T_LAD_E()
 	L_Press(r, "cancel");
 	CostOfHead("VksAce", 1);
 	HOST_Check(TRF.std.fst == "55555", "MSF pilots at a NESF station: NESF +1, MSF -1 ("..TRF.std.fst..")");
+	-- Rival cap: MSF papers hold NESF at 4; a hand-in at a NESF station gains nothing, stamps nothing, costs MSF nothing.
+	L_Legs(10);
+	L_Lic(1, L_Slot("fort_russ"), 10);
+	TRF.std.fst = "64555";
+	r = L_Dock();
+	L_Press(r, "cancel");
+	local hc2 = TRF.lad.hc[2];
+	n0 = S_Mark();
+	CostOfHead("VksAce", 1);
+	HOST_Check(TRF.std.fst == "64555" and TRF.lad.hc[2] == hc2 and S_Logs(n0, "event=handin system=llanovar1 faction=Kfni pilot=VksAce count=1 price=1800 kind=pow standing=4 result=none reason=cap") == 1,
+		"rival cap: no credit, no stamp, no prisoner cost ("..TRF.std.fst..")");
+	TRF.lad.lic = nil;
+	-- Chapter 4: read-only, no credit.
+	h.labels.CurrentQuest = "4_1";
+	T_Enter("golkonda");
+	r = L_Dock();
+	L_Press(r, "cancel");
+	n0 = S_Mark();
+	local v4 = TRF_Fst(3);
+	CostOfHead("PirateTough", 1);
+	HOST_Check(TRF_Fst(3) == v4 and S_Logs(n0, "event=handin system=golkonda faction=Triada pilot=PirateTough count=1 price=800 standing="..v4.." result=none reason=chapter") == 1,
+		"chapter 4: no hand-in credit");
+	h.labels.CurrentQuest = "9_1";
 	-- Corporation: pirates at a Triada station.
 	T_Enter("golkonda");
 	r = L_Dock();

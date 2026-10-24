@@ -26,7 +26,7 @@ Module: new `S/trf_ladder.script`, prefix `Lad` (`TRF_Lad_*` public, `TRF_Lad<X>
 | Q9 | Escort-kill penalty | step 2 (fst := 1 and the permits void, as designed) | - |
 | C2 | TDR 5.9 changes | accepted: decay stops at `rank_hold` under a permit of f (`TRF_Lad_Hold`, read by trf_faction's drift); fst of a faction at war is frozen (`TRF_FstClamp`, already there) | `rank_hold` |
 | - | Rival gate | while a permit of the other empire is valid, an empire offers nothing (09 2, Llanovar 1: "The New Empire has nothing for you") | `rival_cap` |
-| - | Unlock | rank line from chapter 1; boxes from chapter 5 (`TRF_Chapter() >= 5`); hand-in standing, the waiver and the sync in every chapter | - |
+| - | Unlock | rank line from chapter 1; boxes and hand-in standing from chapter 5 (`TRF_Chapter() >= 5`; 09 3: chapters 1-4 read-only); the waiver needs a permit, which is bought from chapter 5; the sync in every chapter (V17) | - |
 
 ## 3. Data model
 
@@ -99,22 +99,22 @@ Step 2 hook points: `TRF_Lad_Plumb` registers the depot with `TRF_NoneStationReg
 ### 5.2 Rank line (`TRF_Lad_DockLine`, patrol line 50, `always = 1`)
 
 Every docking clears `LV.hand` and counts `LV.dk`, also under the flags; then G1 (and `lad_rankline`), G4, G2, G3. The line is `ladline` (`"<faction> standing: <title> (<fst>)."`) with the title `ladrank<f><band>` (band 1..7 of fst 0-2, 3, 4-5, 6, 7, 8, 9; band 1 at war), and for Vks and Kfni one status text:
-- `void` (`ladvoid<f>`): a valid permit of the other empire for this region; the system belongs to this empire now (`Transfer_To_NI` moved it).
-- `rival` (`ladrival`): a valid permit of the other empire elsewhere.
+- `void` (`ladvoid<f>`): a valid permit of the other empire for this region at a system that `Transfer_To_NI` moved to this empire (`TRF_LadMovedOf`: the eight Vks systems `FloodTradeStations.script` `InitShopList` gives to Kfni, so only `ladvoid2` occurs).
+- `rival` (`ladrival`): any other valid permit of the other empire (another region, or a system of this region that was never moved).
 - `permit` (`ladperm`, legs left = till - legs).
 - `none` (`ladnoperm`).
 Shown through the dispatcher (`TRF_Say`, 8 s). Example: `MSF standing: Licensed carrier (6). Permit valid 4 more legs.`
 
 ### 5.3 Offer box (`TRF_Lad_DockBox`, patrol box 300)
 
-G1, G4, G2, G3, G5, G6 in that order (the first failing is `reason=`). Then fst <= 3 gives the settlement spec, else the permit spec. The dispatcher opens the first spec of the highest prio, so an 8.10 contract box (400) wins and the ladder is not asked; a ladder box keeps lower candidates from being asked. A declined offer is not shown again this visit (`LV.dec`). Box title: the patrol caption (`#UI_PatrolStationWndCaption`); the first text line is `ladhead` (`"MSF Sector Command, Moscowia:"`).
+G1, G4, G2, G3, G5, G6 in that order (the first failing is `reason=`). Then fst <= 3 gives the settlement spec; when no settlement is offered (cooldown, declined, `lad_settle` 0) or fst >= 4, the permit spec. The dispatcher opens the first spec of the highest prio, so an 8.10 contract box (400) wins and the ladder is not asked; a ladder box keeps lower candidates from being asked. A declined offer is not shown again this visit (`LV.dec`). Box title: the patrol caption (`#UI_PatrolStationWndCaption`); the first text line is `ladhead` (`"MSF Sector Command, Moscowia:"`).
 
 - Permit (Vks, Kfni; `lad_permit`; no valid permit of f for this region): price `round(c_p x L_rg x (1 + 0.05 R) x d_k x disc)`, R = `TRF_RgR(slot)`, disc 0.75 at fst 8 and 9. Text `ladpermit` + `ladwarn<f>`. Fort Russ (Moscowia region, L_rg 15, R 1): 18,900; the design example with R 5: 22,500.
 - Settlement (every faction; `lad_settle`; `sc[f]` absent or at least `settle_cd` legs old): price `round(c_s x L_rg x (4 - fst) x d_k)`. Text `ladsettle`.
 
 ### 5.4 Permit purchase (`TRF_LadBuy`, box OK)
 
-A record from another generation buys nothing (`result=stale`). Credits checked (`ladpoor`, `result=poor`), then `SubPlayerCredits(price)`. In this order: the other empire's permits void (no refund); the other empire fst -1; `lic[f][slot] = legs + permit_legs`; f +1 when `pg[f]` is absent or at least `permit_legs` old and fst < `rank_hold` (`gain=gained`, `pg[f] = legs`; else `gain=cooldown` or `gain=cap`); `TRF_FstClamp` once, which caps the other empire at `rival_cap` (`min(fst - 1, 4)`; a faction at war keeps its digit). Lines: `ladissued` as the box reply, `ladcapped`.
+A record from another generation buys nothing (`result=stale`). Credits checked (`ladpoor`, `result=poor`), then `SubPlayerCredits(price)`. In this order: the other empire's permits void (no refund); the other empire fst -1; `lic[f][slot] = legs + permit_legs`; f +1 when `pg[f]` is absent or at least `permit_legs` old and fst < `rank_hold` (`gain=gained`, `pg[f] = legs`; else `gain=cooldown` or `gain=cap`); `TRF_FstClamp` once, which caps the other empire at `rival_cap` (`min(fst - 1, 4)`; a faction at war keeps its digit). Lines: `ladissued`, then `ladcapped` (09 2 step 4); the box reply is empty.
 
 ### 5.5 Hold and rival cap (trf_faction)
 
@@ -123,7 +123,7 @@ A record from another generation buys nothing (`result=stale`). Credits checked 
 
 ### 5.6 Hand-in and prisoners of war (`TRF_Lad_CoH`, CostOfHead handler)
 
-`TRF_PlCoH` calls the vanilla `CostOfHead` first; the ladder handler returns the price unchanged, so it never raises or lowers a bounty. When `price > 0`, the owner f of `_current_location_COP` (set by `InitExpForSaved(_param)` in the vanilla patrol dock) is a faction and the template is in `Pir_Pilots` (`kind=pirate`, any faction) or in the other empire's list at an empire station (`Kfni_Pilots` at Vks, `Vks_Pilots` at Kfni: `kind=pow`): G3, G5, not yet credited this docking (`docking`, level 2), `hc[f]` absent or at least `lad_hand_cd` legs old (`cooldown`), fst < `hand_cap` (`cap`). Then f +1, `hc[f] = legs`, `LV.hand[f] = 1`; for `pow` the other empire -1. Line `ladhand` with the new rank line. Own-side pilots are priced 0 by the vanilla function and never reach the handler's credit.
+`TRF_PlCoH` calls the vanilla `CostOfHead` first; the ladder handler returns the price unchanged, so it never raises or lowers a bounty. When `price > 0`, the owner f of `_current_location_COP` (set by `InitExpForSaved(_param)` in the vanilla patrol dock) is a faction and the template is in `Pir_Pilots` (`kind=pirate`, any faction) or in the other empire's list at an empire station (`Kfni_Pilots` at Vks, `Vks_Pilots` at Kfni: `kind=pow`): chapter >= 5 (`chapter`, level 2), G3, G5, not yet credited this docking (`docking`, level 2), `hc[f]` absent or at least `lad_hand_cd` legs old (`cooldown`), fst < the lower of `hand_cap` and `TRF_Lad_Cap(f)` (`cap`: no stamp, no flag, no prisoner cost). Then f +1, `hc[f] = legs`, `LV.hand[f] = 1`; for `pow` the other empire -1. Line `ladhand` with the speaker `ladsec<f>` ("Imperial Security" for Vks) and the new rank line. Own-side pilots are priced 0 by the vanilla function and never reach the handler's credit.
 
 ### 5.7 Portal-fine waiver (`TRF_Lad_Shtraf`, over `_PatrolGIBDD_shtraf`)
 
@@ -165,7 +165,7 @@ Constants without a key (`TRF_LadK`): permit discount 75 % at rank 8 and 9, line
 | `module=ladder event=permit_offer faction=Vks standing=4 region=6 level=15 prosperity=1 difficulty_k=1.000 price=18900 legs=24 result=offered` | permit box; level 2 `result=none reason=<owner, deny, war, chapter, nomap, gate:<why>, region, rival, corporation, off, valid, declined>` |
 | `module=ladder event=permit_buy faction=Vks region=6 price=18900 credits=100000 till=29 standing_before=5 standing_after=6 gain=gained rival=Kfni rival_before=5 rival_after=4 voided_count=0 result=bought` | purchase (`gain` gained, cooldown, cap); `result=declined`, `poor`, `no_credits`, `error`, `stale` |
 | `module=ladder event=settle faction=Vks standing=2 region=6 level=15 price=120000 result=offered`, `... standing_before=2 standing_after=4 result=paid` | settlement offer and payment (`declined`, `poor`, `stale`, `none reason=standing`); level 2 `result=none reason=<off, cooldown, declined>` |
-| `module=ladder event=handin system=fort_russ faction=Vks pilot=PirateTough count=2 price=800 kind=pirate standing_before=5 standing_after=6 rival=nil rival_before=nil rival_after=nil result=credited` | hand-in credit; `result=none reason=<deny, war, cooldown, cap>`; level 2 `template`, `docking` |
+| `module=ladder event=handin system=fort_russ faction=Vks pilot=PirateTough count=2 price=800 kind=pirate standing_before=5 standing_after=6 rival=nil rival_before=nil rival_after=nil result=credited` | hand-in credit; `result=none reason=<deny, war, cooldown, cap>`; level 2 `template`, `chapter`, `docking` |
 | `module=ladder event=gibdd_waive system=altair faction=Vks region=5 credits=100000 credits_after=100000 till=34 result=waived` | waiver; `result=fined reason=<owner, deny, war, none, region, exit>` |
 | `module=ladder event=reset_sync faction=Vks name=Vks paid=650000 standing_before=1 standing_after=4 result=synced` | after a vanilla reset (`synced`, `kept`, `free`, `war`, `off`) |
 | `module=ladder event=permit_expire faction=Vks region=6 till=29 leg=29 reason=dock` | expired permit removed (reason enter, load, dock) |
@@ -177,7 +177,7 @@ Mapping to the design's lines (09 6, 8): `TRF lad f=1 fst=7 band=5 lic={6:812} p
 
 ## 8. Texts (`TRF_Lad_Text`; `#TRF_lad<name>` in `loc/trf_en.loc` and `loc/trf_ru.loc`)
 
-Rank titles `ladrank<f><b>` (35 keys, the 09 2 table), faction names `ladfac1..5` (MSF, NESF, Triada, USS, InoCo), and 18 others: `ladline` ($1 faction, $2 title, $3 fst), `ladnoperm`, `ladperm` ($1 legs), `ladrival` ($1 other empire, $2 faction), `ladvoid1`, `ladvoid2`, `ladhead` ($1 faction, $2 sector), `ladpermit` ($1 faction, $2 legs, $3 price), `ladwarn1`, `ladwarn2`, `ladissued` ($1 sector, $2 legs), `ladcapped` ($1 other empire, $2 cap, $3 faction), `ladpoor`, `ladsettle` ($1 price), `ladsettled`, `ladhand` ($1 faction, $2 rank line), `ladgibdd`, `ladgibddrg` ($1 sector). 58 keys. RU: written by hand, cp1251, CRLF, fixed texts without the placeholders (as the other RU lines); checked by `stn-g`. Step 2 keys (`#TRF_Lad_EscKill`, the escort, depot and warrant lines) are not defined.
+Rank titles `ladrank<f><b>` (35 keys, the 09 2 table), faction names `ladfac1..5` (MSF, NESF, Triada, USS, InoCo), and 18 others: `ladline` ($1 faction, $2 title, $3 fst), `ladnoperm`, `ladperm` ($1 legs), `ladrival` ($1 other empire, $2 faction), `ladvoid1`, `ladvoid2`, `ladhead` ($1 faction, $2 sector), `ladpermit` ($1 faction, $2 legs, $3 price), `ladwarn1`, `ladwarn2`, `ladissued` ($1 sector, $2 legs), `ladcapped` ($1 other empire, $2 cap, $3 faction), `ladpoor`, `ladsettle` ($1 price), `ladsettled`, `ladhand` ($1 speaker, $2 rank line), `ladsec1..5` (the speakers: Imperial Security, New Empire Security, The Triumvirate, USS Security, InoCo Security), `ladgibdd`, `ladgibddrg` ($1 sector). 63 keys. RU: written by hand, cp1251, CRLF, fixed texts without the placeholders (as the other RU lines); checked by `stn-g`. Step 2 keys (`#TRF_Lad_EscKill`, the escort, depot and warrant lines) are not defined.
 
 ## 9. Host scenarios (`T/host_ladder.lua`, `TRF_LAD=a..g`; run_host.sh item `lad`)
 
@@ -186,10 +186,10 @@ Entry as `host_survive.lua`: `host_station.lua` up to its first scenario. New st
 | Run | Covers |
 |---|---|
 | `lad-a` | `extra_count=4`; install line, wrap once over the vanilla function, re-wrap on the next MapInitialization; patrol line 50 (always) and box 300, one CostOfHead handler, no `_NoneStation_Action` handler; the rank line for 5 factions x fst 0..9 against the design's titles with the empire status; the `rank_line` log line; a Neutral and a denied station (fronn); the war rule (band 1, no box, fst frozen); pure band, price, settlement and hand-in kind functions; 35 rank keys |
-| `lad-b` | chapter 4 (line only); fst 3 settlement, fst 4 permit with the price formula and the box text; declined not shown again; strict gate (line only); corporations (no permit); valid permit (legs left, no offer); rival gate at a NESF station; void line after a transfer; the 8.10 box at 400 wins; one box per docking (a 200 candidate not asked); vanilla dialog once after the answer; `__sys_SOS`, `__disableAction`; `lad_permit 0`, `lad_rankline 0`, `lad_enabled 0` |
+| `lad-b` | chapter 4 (line only); fst 3 settlement, fst 4 permit with the price formula and the box text; declined not shown again; strict gate (line only); corporations (no permit); valid permit (legs left, no offer); rival gate at a NESF station; rival line at an untransferred NESF system of the permit's region (Angarsk); void line after a transfer; the 8.10 box at 400 wins; one box per docking (a 200 candidate not asked); vanilla dialog once after the answer; `__sys_SOS`, `__disableAction`; `lad_permit 0`, `lad_rankline 0`, `lad_enabled 0` |
 | `lad-c` | purchase (credits, till, MSF +1, NESF -1 and the cap, stamp, lines, log); rival capped at 4 (`result=capped`); hold 7 -> 6 and stays, rival drift stays at 4; second permit within 24 legs (no gain); never above 6; poor; stale answer after a load; void on purchase (rival 9 -> 4); expiry at the till leg and the decay after it |
-| `lad-d` | settlement 120,000 at fst 2 (fst := 4, stamp, line); cooldown; 20 legs later 60,000 at fst 3; poor; Triada settlement (132,000); war; `lad_settle 0` |
-| `lad-e` | hand-in through the chain (price passed through, +1, line, log); second template in the docking; cooldown; +1 after 10 legs; `hand_cap` 7; own pilots; prisoners of war both ways; pirates at Triada; war; denied system; `lad_handin 0` |
+| `lad-d` | settlement 120,000 at fst 2 (fst := 4, stamp, line); cooldown (the permit box instead); 20 legs later 60,000 at fst 3; poor; Triada settlement (132,000); war; `lad_settle 0` |
+| `lad-e` | hand-in through the chain (price passed through, +1, line, log); second template in the docking; cooldown; +1 after 10 legs; `hand_cap` 7; own pilots; prisoners of war both ways; the rival cap (no credit, no stamp, no prisoner cost); chapter 4 (no credit); pirates at Triada; war; denied system; `lad_handin 0` |
 | `lad-f` | fine without a permit; permit of another region (line, fine); waiver (no fine, no box, leader line, `_PatrolGIBDD_prava` once); `__sys_SOS` and a player who moved (the original's prava timers); war; `lad_gibdd 0`; NESF waiver; paid reset at war (1 -> 4); free reset (tip 1); 99,999 paid; still at war; fst 6 kept; `lad_reset_sync 0` |
 | `lad-g` | dump lines; save/load (permits kept, visit state reset, the permit counts after the load); repair; absent stays absent; `TRF.lad` worst case 1,175 bytes <= 1,200; no reserved key |
 
@@ -217,8 +217,8 @@ Changed scenarios: `pl-a` (6 trade and patrol lines, 4 boxes, 1 CostOfHead handl
 - V4 Box title: the dispatcher's patrol caption; the design's title (`MSF Sector Command, Moscowia`) is the first line of the text (`ladhead`), since a mod string as a `ShowMsgBox` title is untested (E0.6).
 - V5 The hand-in line shows when `CostOfHead` credits (inside the vanilla dialog), not "on close": there is no close hook of `PatrolStationDlg`.
 - V6 Rival gate: an empire offers nothing (no permit, no settlement) while the other empire's permit is valid (09 2 Llanovar 1 line). The purchase still voids the other empire's permits, for a permit the gate does not see (after a repair or a tune change); tested by a direct call.
-- V7 The prisoner-of-war cost to the other empire applies only with the credit (shares the hand-in cooldown, the cap and the per-docking flag).
-- V8 Faction names in the lines are own keys (`ladfac1..5`: MSF, NESF, ...) instead of trf_region's `fac<team>` ("New Empire"), to match the design's lines; the void line names "New Empire space".
+- V7 The prisoner-of-war cost to the other empire applies only with the credit (shares the hand-in cooldown, the cap, the rival cap and the per-docking flag).
+- V8 Faction names in the lines are own keys (`ladfac1..5`: MSF, NESF, ...) instead of trf_region's `fac<team>` ("New Empire"), to match the design's lines; the void line names "New Empire space". The hand-in speakers `ladsec2..5` are not in the design, which gives only "Imperial Security" for Vks.
 - V9 Size: 1,164 bytes worst case in the host grammar against "under 1 KB" (41 numbers); the field names cost the difference. Hard bound: 2 x region slots permits, 12 stamps, 5 step 2 fields.
 - V10 The waiver uses the deny list and the war rule but not the strict gate: it opens no box and spawns nothing (09 6 names only the war rule). The exit is called directly (`_PatrolGIBDD_prava()`), not through `Timer_Seq(10, ...)` as the original's `__sys_SOS` path does; the mod arms no timer. A failing exit falls back to the fine.
 - V11 The rank-line handler is registered `always = 1` so a docking under the flags still clears the per-docking hand-in flag; under the flags it returns no line (00: lines skip while `__disableAction` or `__sys_SOS`).
@@ -226,6 +226,8 @@ Changed scenarios: `pl-a` (6 trade and patrol lines, 4 boxes, 1 CostOfHead handl
 - V13 Region slots: `lic` keys run 1..`TRF_RgMap().n` (8 on the current map), not 1..11; the worst-case figure uses 11. Sector names are the region home's display name (`TRF_UI_SysName`), not localised.
 - V14 "Valid until that leg": valid while `legs < till`, `till = legs + permit_legs`, so a permit counts 24 legs and shows "valid 4 more legs" 20 legs after purchase (09 2).
 - V15 The permit gain cooldown (`pg`) uses `permit_legs` as its length (09 4 "at most +1 per `permit_legs` per faction").
+- V16 A declined permit or settlement offer is not offered again in the same visit (`LV.dec`, cleared by entry and load), on top of the design's one ladder box per docking, so Cancel does not bring the same box back at the next docking in the system.
+- V17 The relation-reset sync runs in every chapter, chapters 1-4 included (09 3 says read-only there): it replaces trf_supply's v1 rule (fst at least 5 after any accepted reset, every chapter), and leaving it out before chapter 5 would bring that rule and 09 exploit 4 back.
 
 ## 12. Left out (step 2 and later)
 
