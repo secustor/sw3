@@ -1373,12 +1373,17 @@ end;
 
 -- Owed payer (00 section 6): a fulfilled paid raid (offer k 3) pays at the next pirate docking outside a visible
 -- scene (TRF_Quiet, as before the dispatcher). Returns the line.
+-- The payment is that docking's offer (v1-spec 7.5): live.pp tells TRF_FcPoBody to open no box.
 function TRF_FcPoOwe(kind)
-	if kind ~= "pir" or type(TRF) ~= "table" or TRF_FcOpt("po", 1) == 0 or TRF_N("TRF_Quiet") then return nil; end;
+	if kind ~= "pir" then return nil; end;
+	local L = TRF_FcLive();
+	if L then L.pp = nil; end;
+	if type(TRF) ~= "table" or TRF_FcOpt("po", 1) == 0 or TRF_N("TRF_Quiet") then return nil; end;
 	local o = TRF.offer;
 	if type(o) ~= "table" or o.k ~= 3 then return nil; end;
 	local paid = TRF_N("TRF_Pay", o.p or 0, "po") or 0;
 	TRF.offer = nil;
+	if L then L.pp = 1; end;
 	TRF_FcE("offer_paid", "pay", paid);
 	return TRF_FcTxt("popaid", paid);
 end;
@@ -1439,6 +1444,7 @@ function TRF_FcPoBody()
 	local L = TRF_FcLive();
 	if not L or type(TRF) ~= "table" then return "notrf"; end;
 	L.po = nil;
+	if L.pp == 1 then L.pp = nil; return "paid"; end;
 	if __disableAction == TRUE or TRF_N("TRF_Quiet") then return "flag"; end;
 	if TRF_FcOpt("po", 1) == 0 then return "off"; end;
 	local o = TRF.offer;

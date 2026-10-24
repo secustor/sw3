@@ -1568,10 +1568,11 @@ function TRF_EntryPlan()
 end;
 
 -- Seed providers with their TRF_SeedReg priorities (00 section 6 arrival-seed order; 400 #8 freighter and 300
--- #5 captain are left to those features). The carrier raid keeps its v1 8.6 place after the sweep.
+-- #5 captain are left to those features). The carrier raid keeps its v1 8.6 place after the sweep. The hold
+-- (450) stops the list before #8 and #5 once an event took the seed's place.
 function TRF_GnSeedPrio()
 	return {{800, "TRF_GnSeedChase"}, {700, "TRF_GnSeedSweep"}, {650, "TRF_GnSeedCarrier"}, {600, "TRF_GnSeedFeq"},
-		{500, "TRF_GnSeedStaged"}, {250, "TRF_GnSeedHold"}, {200, "TRF_GnSeedPo"}, {100, "TRF_GnSeedPlain"}};
+		{500, "TRF_GnSeedStaged"}, {450, "TRF_GnSeedHold"}, {200, "TRF_GnSeedPo"}, {100, "TRF_GnSeedPlain"}};
 end;
 
 function TRF_GnSeedDef()

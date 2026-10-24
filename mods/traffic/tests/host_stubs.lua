@@ -605,7 +605,7 @@ end;
 -- Nav points: CreateNavPoint(textKey, Vector3, icon, RGB(), attachObj) -> NavPoint with Delete.
 function RGB(r, g, b) HOST_Want(type(r) == "number" and type(g) == "number" and type(b) == "number", "RGB(r, g, b)"); return r * 65536 + g * 256 + b; end;
 function CreateNavPoint(t, pos, icon, col, obj)
-	HOST_Want(type(t) == "string" and HOST_IsVec(pos) and type(icon) == "string" and type(col) == "number" and (obj == nil or HOST_IsObj(obj)),
+	HOST_Want(type(t) == "string" and HOST_IsVec(pos) and type(icon) == "string" and (col == nil or type(col) == "number") and (obj == nil or HOST_IsObj(obj)),
 		"CreateNavPoint(text, Vector3, icon, RGB, object)");
 	local n = {__obj=1, kind="nav", pos=pos, text=t, alive=1};
 	n.Delete = function(self) self.alive = nil; self.deleted = 1; end;

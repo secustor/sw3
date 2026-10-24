@@ -60,10 +60,10 @@ function TRF_PlOpt(key)
 end;
 
 -- Constants without a cfg key (spec 2): box lock stale after box_stale game s; arrival lines arr_gap s apart,
--- at most arr_max per entry; at most mk_max markers, labels up to mk_len characters; a job holds at most
+-- at most arr_max per entry; at most mk_max markers, labels up to mk_len characters, owners up to mk_own; a job holds at most
 -- job_max fields, strings up to job_len; the orphan scan probes labels trf_<x>_<n>_<j>, n 1..scan_n, j 1..scan_j.
 function TRF_PlK()
-	return {box_stale=60, arr_gap=3, arr_max=3, mk_max=8, mk_len=24, job_max=6, job_len=24, scan_n=4, scan_j=6};
+	return {box_stale=60, arr_gap=3, arr_max=3, mk_max=8, mk_len=24, mk_own=8, job_max=6, job_len=24, scan_n=4, scan_j=6};
 end;
 
 function TRF_PlLive()
@@ -255,16 +255,18 @@ function TRF_RaidHelpReg(fn)
 end;
 
 -- Ship-cap group: countfn(group) -> live ships; trim = rank (1 rival, 2 pack, 3 scavenger, or the name;
--- nil or 0 never trimmed). A second registration of the group replaces the first.
-function TRF_CapReg(group, countfn, trim)
+-- nil or 0 never trimmed); trimfn(group, n) removes up to n ships of the group and returns the number removed
+-- (TRF_CapTrimDo; without it the group frees nothing). A second registration of the group replaces the first.
+function TRF_CapReg(group, countfn, trim, trimfn)
 	if type(group) ~= "string" or TRF_PlFn(countfn) == nil and type(countfn) ~= "string" then return nil; end;
 	if type(trim) == "string" then trim = TRF_CapRank()[trim]; end;
 	if type(trim) ~= "number" then trim = 0; end;
+	if type(trimfn) ~= "string" and type(trimfn) ~= "function" then trimfn = nil; end;
 	local l = %P.cap;
 	for i = 1, getn(l) do
 		if l[i].g == group then tremove(l, i); break; end;
 	end;
-	tinsert(l, {g=group, f=countfn, t=trim});
+	tinsert(l, {g=group, f=countfn, t=trim, x=trimfn});
 	return 1;
 end;
 
@@ -649,12 +651,19 @@ function TRF_ArrivalLine(owner, text)
 	local d = 5;
 	local t = TRF_N("TRF_Tune");
 	if type(t) == "table" and type(t.arr_delay) == "number" then d = t.arr_delay; end;
-	local dt = max(0, L.ag + d + K.arr_gap * n - TRF_PlGt());
+	-- Due time: the slot after the entry, at least arr_gap after the last queued line and not in the past
+	-- (live.aqt), so lines queued late keep their spacing.
+	local gt = TRF_PlGt();
+	local due = L.ag + d + K.arr_gap;
+	if type(L.aqt) == "number" then due = max(due, L.aqt + K.arr_gap); end;
+	due = max(due, gt);
+	local dt = due - gt;
 	if not TRF_N("TRF_Due", dt, "TRF_PlArrSay", owner, text) then
 		TRF_PlE("arrival_line", "owner", owner, "line_index", n, "result", "dropped", "reason", "due");
 		return nil, "due";
 	end;
 	L.arq = n;
+	L.aqt = due;
 	TRF_PlE("arrival_line", "owner", owner, "line_index", n, "delay", TRF_F(dt), "result", "queued");
 	return 1;
 end;
@@ -673,6 +682,7 @@ end;
 -- taken, else nil, reason.
 function TRF_JobTake(kind, rec)
 	if type(TRF) ~= "table" or (type(kind) ~= "number" and type(kind) ~= "string") then return nil, "kind"; end;
+	if type(kind) == "string" and strlen(kind) > TRF_PlK().job_len then return nil, "kind"; end;
 	if type(TRF.job) == "table" then
 		TRF_PlE("job", "kind", kind, "holder", TRF.job.k, "result", "refused");
 		return nil, "busy";
@@ -797,6 +807,26 @@ function TRF_CapTrim(over)
 	return TRF_CapTrimOf(list, over);
 end;
 
+-- A spawn over the cap (trf_safety's TRF_CanSpawn): the TRF_CapTrim plan for over ships, each planned group's
+-- trimfn asked for its share. Returns the ships freed (the caller skips when still over).
+function TRF_CapTrimDo(over)
+	if type(over) ~= "number" or over <= 0 then return 0; end;
+	local plan = TRF_CapTrim(over);
+	local l = %P.cap;
+	local freed = 0;
+	for i = 1, getn(plan) do
+		local e = plan[i];
+		for j = 1, getn(l) do
+			if l[j].g == e.g and l[j].x ~= nil then
+				local v = TRF_PlCall(l[j].x, {e.g, e.n});
+				if type(v) == "number" and v > 0 then freed = freed + min(floor(v), e.n); end;
+			end;
+		end;
+	end;
+	if getn(plan) > 0 then TRF_PlE("cap_trim", "over_count", over, "group_count", getn(plan), "freed_count", freed); end;
+	return freed;
+end;
+
 -- Nav markers (spec 8) --------------------------------------------------------------
 
 function TRF_PlMkH()
@@ -862,7 +892,7 @@ end;
 -- a story mission runs (GetPlayerQuestState() == TRUE) and above mk_max markers. Returns 1, or nil, reason.
 function TRF_MarkerAdd(owner, label, x, y, z)
 	local K = TRF_PlK();
-	if type(owner) ~= "string" or owner == "" or strfind(owner, "[=;]") then return nil, "owner"; end;
+	if type(owner) ~= "string" or owner == "" or strlen(owner) > K.mk_own or strfind(owner, "[=;]") then return nil, "owner"; end;
 	if type(label) ~= "string" or strsub(label, 1, 4) ~= "TRF_" or strlen(label) > K.mk_len or strfind(label, "[=;]") then
 		TRF_PlE("marker", "owner", owner, "label", tostring(label), "result", "refused", "reason", "label");
 		return nil, "label";
@@ -880,9 +910,12 @@ function TRF_MarkerAdd(owner, label, x, y, z)
 		TRF_PlE("marker", "owner", owner, "label", label, "result", "refused", "reason", "cap");
 		return nil, "cap";
 	end;
+	-- The engine's RGB() value is passed through (a Vector3 in the game, trader-marker.md); without RGB the
+	-- 3-argument form takes the default colour.
 	local col = TRF_N("RGB", 80, 200, 255);
-	if type(col) ~= "number" then col = 0; end;
-	local nav = call(CreateNavPoint, {"", Vector3(x, y, z), "nav_target.dds", col}, "x", TRF_PlErr);
+	local a = {"", Vector3(x, y, z), "nav_target.dds"};
+	if col ~= nil then a[4] = col; end;
+	local nav = call(CreateNavPoint, a, "x", TRF_PlErr);
 	if nav == nil or type(nav) == "number" then
 		TRF_PlE("marker", "owner", owner, "label", label, "result", "failed", "reason", "create_nav_point_nil");
 		TRF_PlMkSave();
@@ -967,13 +1000,13 @@ end;
 function TRF_Pl_OnEnter()
 	local L = TRF_PlLive();
 	if not L then return; end;
-	L.box = nil; L.bt = nil; L.ev = nil; L.esc = nil; L.arq = nil; L.ag = nil;
+	L.box = nil; L.bt = nil; L.ev = nil; L.esc = nil; L.arq = nil; L.ag = nil; L.aqt = nil;
 end;
 
 -- Activation (entry only): arrival lines count from now.
 function TRF_Pl_OnActivate()
 	local L = TRF_PlLive();
-	if L then L.ag = TRF_PlGt(); L.arq = 0; end;
+	if L then L.ag = TRF_PlGt(); L.arq = 0; L.aqt = nil; end;
 end;
 
 -- Load: slots cleared, markers of the saved visit deleted, orphan scan.
@@ -981,7 +1014,7 @@ function TRF_Pl_OnLoad()
 	local p = %P;
 	p.box = nil; p.fee = nil; p.run = {};
 	local L = TRF_PlLive();
-	if L then L.box = nil; L.bt = nil; L.ev = nil; L.esc = nil; L.arq = nil; L.ag = nil; end;
+	if L then L.box = nil; L.bt = nil; L.ev = nil; L.esc = nil; L.arq = nil; L.ag = nil; L.aqt = nil; end;
 	call(TRF_PlMkAll, {"load"}, "x", TRF_PlErr);
 	call(TRF_PlOrphans, {}, "x", TRF_PlErr);
 end;
@@ -991,6 +1024,13 @@ function TRF_Pl_BeforeJump()
 	local p = %P;
 	p.box = nil; p.fee = nil;
 	TRF_PlMkAll("jump");
+end;
+
+-- Every 1 s (traffic.script): no markers while a story mission runs (00 section 6); the markers added before it
+-- started are deleted when GetPlayerQuestState() turns TRUE.
+function TRF_Pl_Step()
+	if TRF_PlMkCount() == 0 and (type(TRF) ~= "table" or TRF.mk == nil) then return; end;
+	if TRF_N("GetPlayerQuestState") == TRUE then TRF_PlMkAll("quest"); end;
 end;
 
 -- Repair (TRF_Repair): TRF.job a table with a number or string k and flat fields, TRF.mk a string.
@@ -1005,7 +1045,17 @@ function TRF_Pl_Fix()
 		end;
 		for i = 1, getn(bad) do j[bad[i]] = nil; end;
 	end;
-	if TRF.mk ~= nil and type(TRF.mk) ~= "string" then TRF.mk = nil; end;
+	-- The caps of TRF_JobTake and TRF_MarkerAdd (spec 12): a job over them, or a longer TRF.mk, is dropped.
+	local K = TRF_PlK();
+	if type(j) == "table" then
+		local n, big = 0, nil;
+		for k, v in j do
+			if k ~= "k" then n = n + 1; end;
+			if strlen(k) > K.job_len or (type(v) == "string" and strlen(v) > K.job_len) then big = 1; end;
+		end;
+		if big or n > K.job_max then TRF.job = nil; end;
+	end;
+	if TRF.mk ~= nil and (type(TRF.mk) ~= "string" or strlen(TRF.mk) > K.mk_max * (K.mk_len + K.mk_own + 2)) then TRF.mk = nil; end;
 end;
 
 -- wb_box_after_fee: 1 allows an offer box at the trade dock after a #3 fee box (set once E0.6 passes).

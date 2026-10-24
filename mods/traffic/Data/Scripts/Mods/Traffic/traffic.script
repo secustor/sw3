@@ -329,6 +329,7 @@ function TRF_OnTick(dt_game, dt_real)
 			TRF_P("TRF_Feq_Step");
 			TRF_P("TRF_Dc_Step");
 			TRF_P("TRF_Carrier_Step");
+			TRF_P("TRF_Pl_Step");
 		end;
 		if TRF_Every("s2", dt_game, 2) then TRF_P("TRF_Sweep_Step"); end;
 		if TRF_P("TRF_StepDue", dt_game) then

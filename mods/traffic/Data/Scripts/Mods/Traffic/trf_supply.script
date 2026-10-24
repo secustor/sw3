@@ -827,9 +827,17 @@ function TRF_SupplyCtDo(id)
 	local L = TRF_SpLive();
 	local text, n = TRF_SpCtOffer(id);
 	if not L or not text then TRF_SpE("contract", "trader_id", id, "reason", tostring(n), "result", "no_offer"); return nil; end;
+	-- The box lock (trf_plumb live.box): the hail menu that called this closes after it (TRF_HailDoV1), so its
+	-- lock passes to this box and is freed at the answer.
+	if TRF_N("TRF_BoxHolder") == "hail" then TRF_N("TRF_BoxFree", "hail"); end;
+	if type(TRF_BoxTake) == "function" and not TRF_BoxTake("supply_ct") then
+		TRF_SpE("contract", "trader_id", id, "reason", "box_lock", "result", "no_offer");
+		return nil;
+	end;
 	L.spc = {id=id, n=n, g=TRF.gen};
 	if type(ShowMsgBox) ~= "function" or not TRF_SpP(function(t, a, b) ShowMsgBox("#UI_FTrader_confirm", t, a, b); return 1; end, {text, TRF_SpCtOk, TRF_SpCtNo}) then
 		L.spc = nil;
+		TRF_N("TRF_BoxFree", "supply_ct");
 		return nil;
 	end;
 	return 1;
@@ -840,6 +848,7 @@ function TRF_SpCtNo() TRF_Cb("TRF_SpCtNo", TRF_SpCtCb, {"no"}); end;
 
 -- Box callback: records the choice only; the action runs from a due call.
 function TRF_SpCtCb(c)
+	TRF_N("TRF_BoxFree", "supply_ct");
 	local L = TRF_SpLive();
 	if not L or type(L.spc) ~= "table" or L.spc.g ~= TRF.gen then return; end;
 	if c ~= "ok" then L.spc = nil; return; end;
@@ -1215,12 +1224,15 @@ function TRF_SpRelBody(param)
 	if TRF_SpSupp() or TRF_SpQuiet() then return "flag"; end;
 	if not TRF_SpStrict(nil, "offer") then return "strict"; end;
 	if type(ShowMsgBox) ~= "function" then return "nobox"; end;
+	-- One mod box at a time (trf_plumb live.box, 00 section 6): held until the answer.
+	if type(TRF_BoxTake) == "function" and not TRF_BoxTake("heat_offer") then return "box_lock"; end;
 	local cost = TRF_HeatCostOf(heat, TRF_SpT("heat_reset_k", 100000), TRF_SpT("heat_reset_max", 950000));
 	L.hp = {p=tostring(param), k=cost, g=TRF.gen};
 	TRF_SpX("SetNormalTimeMode");
 	local text = TRF_SpTxt("heatoffer", format("%d", cost));
 	if not TRF_SpP(function(t, a, b) ShowMsgBox("#UI_StationC_confirm", t, a, b); return 1; end, {text, TRF_HeatPayOk, TRF_HeatPayNo}) then
 		L.hp = nil;
+		TRF_N("TRF_BoxFree", "heat_offer");
 		return "boxfail";
 	end;
 	TRF_SpE("heat_offer", "heat", heat, "cost", cost, "tip", tip);
@@ -1232,6 +1244,7 @@ function TRF_HeatPayNo() TRF_Cb("TRF_HeatPayNo", TRF_SpHeatCb, {"no"}); end;
 
 -- Box callback: records the choice only; payment and the original run from a due call (v02 decision 25).
 function TRF_SpHeatCb(c)
+	TRF_N("TRF_BoxFree", "heat_offer");
 	local L = TRF_SpLive();
 	if not L or type(L.hp) ~= "table" or L.hp.c then return; end;
 	L.hp.c = c;

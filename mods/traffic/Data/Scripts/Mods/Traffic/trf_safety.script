@@ -1184,6 +1184,15 @@ function TRF_CanSpawn(nships, kind, ev)
 		rf = TRF_SafeTune("raid_fl", 1), rs = TRF_SafeTune("raid_sh", 8), ecap = ecap, ev = ev
 	};
 	local ok, r = TRF_CanSpawnKindOf(s);
+	-- Over cap_ships: the registered groups give up ships first (rival, pack, scavenger; trf_plumb
+	-- TRF_CapTrimDo), then the spawn is skipped for the ships still over (00 section 6).
+	if not ok and r == "ships" and type(TRF_CapTrimDo) == "function" then
+		local fr = TRF_SafeNum(call(TRF_CapTrimDo, {s.nsh + s.n - s.caps}, "x", TRF_PErr), 0);
+		if fr > 0 then
+			s.nsh = s.nsh - fr;
+			ok, r = TRF_CanSpawnKindOf(s);
+		end;
+	end;
 	if not ok then
 		TRF_SafeDE("no_spawn", "kind", kind, "reason", r, "trader_count", ntr, "trader_cap", s.capt, "ship_count", s.nsh,
 			"new_ship_count", s.n, "ship_cap", s.caps, "raid_flight_count", nrf, "raid_ship_count", nrs, "parked_count", npk,

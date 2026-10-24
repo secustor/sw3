@@ -516,7 +516,13 @@ function T_V1_C()
 	CStation_Action("3");
 	HOST_Press("ok");
 	T_Tick(2, 0.5);
-	HOST_Check(getn(h.cst) == 3 and TRF.std.heat == 6 and h.credits == 100, "too poor: nothing changes, the original runs");
+	HOST_Check(getn(h.cst) == 3 and TRF.std.heat == 6 and h.credits == 100 and TRF.live.box == nil, "too poor: nothing changes, the original runs, box lock free");
+	-- The heat offer takes the shared box lock: while another mod box is open the original runs at once.
+	TRF_BoxTake("hail");
+	nb = getn(h.boxes);
+	CStation_Action("4");
+	HOST_Check(getn(h.boxes) == nb + 1 and getn(h.cst) == 4 and HOST_Box().title == "#UI_StationC_confirm" and TRF.live.box == "hail", "heat offer: lock held, the original at once");
+	TRF_BoxFree("hail");
 	-- Vanilla reset through _temp_change: Trade -> heat 0; a faction -> fst at least 5.
 	TRF.std.heat = 5;
 	h.credits = 1000000;
@@ -1125,8 +1131,9 @@ function T_V1_H()
 	TRF_PoDone(77, "kill");
 	HOST_Check(pe and pe.k == 1 and TRF.offer.k == 3 and TRF.offer.p > 0 and TRF.offer.p <= 30000, "paid raid: entry seed, kill -> pay owed "..tostring(TRF.offer.p));
 	local c1, p = h.credits, TRF.offer.p;
+	local nbp = getn(h.boxes);
 	W_PirDock();
-	HOST_Check(h.credits == c1 + p and TRF.offer == nil, "pay owed paid at the next pirate docking, offer cleared");
+	HOST_Check(h.credits == c1 + p and TRF.offer == nil and getn(h.boxes) == nbp, "pay owed paid at the next pirate docking, offer cleared, no offer box");
 	-- Expiry after po_legs (8).
 	TRF.offer = {k=1, s=3, t=TRF.clock.legs - 1};
 	TRF_Faction_Tick(TRF.clock.legs);

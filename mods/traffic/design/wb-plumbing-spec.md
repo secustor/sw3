@@ -26,7 +26,7 @@ Config: `wb_box_after_fee` (default 0, enum 0..1, `install-test.sh` `WB_BOX_AFTE
 | `TRF_EjectReg(fn)` | 4 | `fn(pilot, result, noeject)` -> nil or 1..3 |
 | `TRF_SeedReg(prio, fn)`, `TRF_SeedList()` | 6 | arrival seed provider `fn(c)`, highest prio first (trf_gen `TRF_EntryPlan`) |
 | `TRF_RaidHelpReg(fn)` | 9 | `fn(n, rd, credits)` -> nil, `"cancel"` (or `{cancel = 1}`), `{ex = ships}` or a factor 0..1 |
-| `TRF_CapReg(group, countfn, trim)` | 6 | `countfn(group)` -> live ships; `trim` 1 rival, 2 pack, 3 scavenger (or the name), nil/0 never trimmed |
+| `TRF_CapReg(group, countfn, trim, trimfn)` | 6 | `countfn(group)` -> live ships; `trim` 1 rival, 2 pack, 3 scavenger (or the name), nil/0 never trimmed; `trimfn(group, n)` removes up to n ships, returns the number removed |
 
 ## 3. Visit slots and saved fields
 
@@ -35,7 +35,7 @@ Config: `wb_box_after_fee` (default 0, enum 0..1, `install-test.sh` `WB_BOX_AFTE
 | `TRF_BoxTake(owner)`, `TRF_BoxFree(owner)`, `TRF_BoxHolder()` | `live.box`, `live.bt` | one mod box at a time; 1 when free, held by the same owner, or stale (taken more than `box_stale` game s ago: a box closed without its free) |
 | `TRF_EventSlotTake(kind)`, `TRF_EventSlotFree(kind)`, `TRF_EventSlot()`, `TRF_EventRank()` | `live.ev` | one scripted event per visit; first claim wins and the slot stays taken for the visit; only the holder frees it (its event could not start) |
 | `TRF_EscortTake(owner)`, `TRF_EscortFree(owner)` | `live.esc` | one escort hire per visit, first wins |
-| `TRF_ArrivalLine(owner, text)` | `live.arq`, `live.ag` | see 5 |
+| `TRF_ArrivalLine(owner, text)` | `live.arq`, `live.ag`, `live.aqt` | see 5 |
 | `TRF_JobTake(kind, rec)`, `TRF_JobGet()`, `TRF_JobClear()` | `TRF.job` | one open job `{k = kind, flat fields}`; at most `job_max` number or string fields, field names and strings up to `job_len`; refused when one is open |
 | `TRF_MarkerAdd(owner, label, x, y, z)`, `TRF_MarkerClear(owner)` | `TRF.mk`, `TRF_H().mk` | see 8 |
 
@@ -98,7 +98,7 @@ trf_gen's thunk calls trf_events' `TRF_CaseEject`, which calls `TRF_PlEject(pilo
 
 ## 5. Arrival lines
 
-`TRF_ArrivalLine(owner, text)` queues a mod line for this entry: traffic's own line runs at `arr_delay` (5 s, trf_ui's due call, renamed `TRF_UI_ArrivalLine`); mod lines follow at `arr_gap` (3 s) steps in call order (8, 11, 14 s), at most `arr_max` (3) per entry, the rest dropped (`reason=cap`). Built on `TRF_Due` with the entry time `live.ag` set by `TRF_Pl_OnActivate`; after a load there is no entry, so no line (`reason=no_entry`). The feature order of 00 (#6 beacon, #2 scar, #11 front, #10 crackdown, #7 stash) is the order in which those features call it from their OnActivate.
+`TRF_ArrivalLine(owner, text)` queues a mod line for this entry: traffic's own line runs at `arr_delay` (5 s, trf_ui's due call, renamed `TRF_UI_ArrivalLine`); mod lines follow at `arr_gap` (3 s) steps in call order (8, 11, 14 s), at most `arr_max` (3) per entry, the rest dropped (`reason=cap`). Built on `TRF_Due` with the entry time `live.ag` set by `TRF_Pl_OnActivate`; each line is due at the later of its slot after the entry, `arr_gap` after the previous line (`live.aqt`) and now, so lines queued late keep the spacing; after a load there is no entry, so no line (`reason=no_entry`). The feature order of 00 (#6 beacon, #2 scar, #11 front, #10 crackdown, #7 stash) is the order in which those features call it from their OnActivate.
 
 ## 6. Arrival seed order
 
@@ -111,8 +111,8 @@ trf_gen's thunk calls trf_events' `TRF_CaseEject`, which calls `TRF_PlEject(pilo
 | 650 | `TRF_GnSeedCarrier` | carrier raid: no staged raid (v1 8.6 place) |
 | 600 | `TRF_GnSeedFeq` | equipment convoy when no sweep plays: no staged raid, no seed |
 | 500 | `TRF_GnSeedStaged` | staged raid: takes the seed's place |
+| 450 | `TRF_GnSeedHold` | an event took the seed's place: the identity seed waits (`TRF_SeedResume`); stops the list, so no #8 or #5 seed follows |
 | 400, 300 | #8 freighter, #5 captain | features |
-| 250 | `TRF_GnSeedHold` | an event took the seed's place: the identity seed waits (`TRF_SeedResume`); stops the list |
 | 200 | `TRF_GnSeedPo` | pirate tip-off seed |
 | 100 | `TRF_GnSeedPlain` | tracked docked record, else the plain seed |
 
@@ -122,11 +122,11 @@ The RAND draws and the `entry_plan` log lines are the same as before the convers
 
 `TRF_Rd_Pay` asks `TRF_RaidHelp(n, rd, credits)`. Pure rule `TRF_RaidHelpOf(credits, ns, results)`: a cancel gives 0 credits (help, heat and the visit credit still apply); exclusions add up and scale by `(ns - ex) / ns` (all ships excluded: 0); of the factors only the lowest applies, once (factors never multiply). Logged as `event=raid_help` and as `help_rule=` on `module=raid event=paid`.
 
-`TRF_CapShips()` (sum of the registered counts) is added to the traffic ship count in trf_safety's `TRF_CanSpawn`, so the groups count against `cap_ships`. The governor counts carcasses with the native, which already includes these ships. `TRF_CapTrim(over)` / pure `TRF_CapTrimOf(list, over)`: the plan `{{g, n}, ...}` that frees `over` ships, lowest trim rank first (rival, pack, scavenger), and the ships still over (the caller skips its spawn).
+`TRF_CapShips()` (sum of the registered counts) is added to the traffic ship count in trf_safety's `TRF_CanSpawn`, so the groups count against `cap_ships`. The governor counts carcasses with the native, which already includes these ships. `TRF_CapTrim(over)` / pure `TRF_CapTrimOf(list, over)`: the plan `{{g, n}, ...}` that frees `over` ships, lowest trim rank first (rival, pack, scavenger), and the ships still over. When `TRF_CanSpawn` would refuse with `ships`, it calls `TRF_CapTrimDo(over)`: each planned group's `trimfn(group, n)` (4th argument of `TRF_CapReg`) removes up to n ships and returns the number removed (`event=cap_trim`); the check runs again with the freed ships, and the spawn is skipped for the ships still over. A group registered without `trimfn` frees nothing.
 
 ## 8. Nav markers
 
-`TRF_MarkerAdd(owner, label, x, y, z)`: label `TRF_*`, at most `mk_len` characters, no `=` or `;`; refused while `GetPlayerQuestState() == TRUE` (`reason=quest`) and above `mk_max` markers (`reason=cap`). `CreateNavPoint("", Vector3(x, y, z), "nav_target.dds", RGB(80, 200, 255))` (the 4-argument form; the host stub's native, CHECK E0.8 in the game), `SetNavPointLabel`. Handles in `TRF_H().mk`, labels in `TRF.mk = "label=owner;..."`. `TRF_MarkerClear(owner)` (nil: all). `TRF_Pl_BeforeJump` deletes every marker; `TRF_Pl_OnLoad` deletes the markers of the saved visit by label (`GetNavPointByLabel`), since a feature re-adds its markers after a load. A marker with a handle is deleted through it and never looked up by label again (the lookup returns the first match even when dead), so each marker is deleted once.
+`TRF_MarkerAdd(owner, label, x, y, z)`: label `TRF_*`, at most `mk_len` characters, no `=` or `;`; refused while `GetPlayerQuestState() == TRUE` (`reason=quest`) and above `mk_max` markers (`reason=cap`). `CreateNavPoint("", Vector3(x, y, z), "nav_target.dds", RGB(80, 200, 255))` (the 4-argument form; the host stub's native, CHECK E0.8 in the game), `SetNavPointLabel`. Handles in `TRF_H().mk`, labels in `TRF.mk = "label=owner;..."`. `TRF_MarkerClear(owner)` (nil: all). Owner at most `mk_own` (8) characters. The RGB value is passed through unchanged (a Vector3 in the game, mod-research/trader-marker.md); without `RGB` the 3-argument form is used. `TRF_Pl_Step` (every 1 s) deletes every marker once `GetPlayerQuestState() == TRUE` (`reason=quest`), so markers added before a mission do not stay through it. `TRF_Pl_BeforeJump` deletes every marker; `TRF_Pl_OnLoad` deletes the markers of the saved visit by label (`GetNavPointByLabel`), since a feature re-adds its markers after a load. A marker with a handle is deleted through it and never looked up by label again (the lookup returns the first match even when dead), so each marker is deleted once.
 
 ## 9. Group prefixes and the orphan scan
 
@@ -147,17 +147,17 @@ Feature groups: `TRF_<name>_<n>` for name in Cust, Scv, Cap, Esc, Def, Pick, Pus
 
 ## 12. Data fields and byte cost
 
-Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Measured in `v1-n`: 38,267 bytes before, 39,298 after (budget 40,000).
+Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Measured in `v1-n`: 38,267 bytes before, 39,298 after (budget 100,000).
 
 | Field | Cap | Worst case (bytes) |
 |---|---|---|
 | `TRF.clock.j`, `rs`, `vl` | numbers | 21 + 22 + 22 |
 | `TRF.std.ht` | number | 22 |
-| `TRF.live.box`, `bt`, `ev`, `esc`, `arq`, `ag`, `bkd` | one each | 30 + 22 + 26 + 27 + 23 + 22 + 32 |
-| `TRF.job` | 1 job, 6 fields, names and strings <= 24 | 296 |
-| `TRF.mk` | 8 markers, labels <= 24, owner 8 | 290 |
+| `TRF.live.box`, `bt`, `ev`, `esc`, `arq`, `ag`, `aqt`, `bkd` | one each | 30 + 22 + 26 + 27 + 23 + 22 + 23 + 32 |
+| `TRF.job` | 1 job, 6 fields, kind, names and strings <= 24 (`TRF_Pl_Fix` drops a job over the caps) | 296 |
+| `TRF.mk` | 8 markers, labels <= 24, owner <= 8 (`TRF_Pl_Fix` drops a longer string) | 290 |
 | `TRF.short[i].pk` | 8 entries | 8 x 22 |
-| total | | 1,031 |
+| total | | 1,054 |
 
 ## 13. Host scenarios (`tests/host_plumb.lua`, `TRF_PLUMB=a..e`)
 
@@ -166,8 +166,8 @@ Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Measured in 
 | `pl-a` | install (CostOfHead wrapped over the vanilla chunk, second install without a double wrap, every installer again, re-wrap on the next MapInitialization); trade dock line order (5, 10, payers at 50, 90, 95), one box of the highest prio with a spec, lower candidates not asked, original after OK and after Cancel exactly once; `__sys_SOS` and `__disableAction` skip; pending box dropped and its late answer ignored; box lock held (no box) and stale (taken over); nested dispatch; result pass-through; fee box -> no offer box with `wb_box_after_fee 0`, offer box with 1; patrol 8.10 offer box, decline remembered for the visit, accept reply line |
 | `pl-b` | `_NoneStation_Action` chain: station handler, depot at prio 300 (0, key, nil), voice provider, `__disableAction`; `CostOfHead` chain (lower ignored, larger taken, errors caught); `Case_Eject` (vanilla kept, override 1, invalid 7 ignored, `__NoEject`) |
 | `pl-c` | `clock.j` per jump and not on load, `clock.rs` with `dt_game` 0 and > 0 and across a load; D1 cap, kept across a load, reset by the entry, `leg_cap 0`; C1 decay steps, floor, mark restart, repair |
-| `pl-d` | box lock, escort slot, event slot (staged raid refused while held, takes it when free), slots cleared on entry and load, seed provider order with a feature provider and a stop, arrival lines at 8/11/14 s and the fourth dropped, none after a load, job slot (refusals, save, repair), markers (quest refusal, label rule, cap, clear by owner, cleanup on load and jump), worst-case bytes |
-| `pl-e` | raid-help pure rule and `TRF_Rd_Pay` with resolvers (exclusion plus the lowest factor; cancel), ship caps (count in `TRF_CanSpawn`, trim plans), `TRF_FstClamp` (war freeze in `TRF_FstAdd`, clamp), pk (relief, merge, kill shortage), orphan scan at load, host left-globals rule, dump |
+| `pl-d` | box lock, escort slot, event slot (staged raid refused while held, takes it when free), slots cleared on entry and load, seed provider order with a feature provider and a stop, the hold stopping the list before #8 after a staged raid, arrival lines at 8/11/14 s and the fourth dropped, late lines spaced 3 s, none after a load, job slot (refusals, save, repair), markers (quest refusal, deletion when a mission starts, owner and label rules, cap, clear by owner, cleanup on load and jump), worst-case bytes |
+| `pl-e` | raid-help pure rule and `TRF_Rd_Pay` with resolvers (exclusion plus the lowest factor; cancel), ship caps (count in `TRF_CanSpawn`, trim plans, trim before the skip), S35 paid docking without an offer box, supply contract box lock, `TRF_FstClamp` (war freeze in `TRF_FstAdd`, clamp), pk (relief, merge, kill shortage), orphan scan at load, host left-globals rule, dump |
 
 Existing scenarios changed: `v02-l` (the S19 board is now lines, no board box; see D5), `v1-n` (plumb worst case added to the full-state save), `host_traffic.lua` `T_LeftGlobals` (new group globals). All 55 host runs pass.
 
@@ -181,7 +181,7 @@ Existing scenarios changed: `v02-l` (the S19 board is now lines, no board box; s
 - D6 C19: traffic had no `CostOfHead` wrapper to convert. trf_plumb installs the wrapper with an empty chain; the C19 bounty bonus itself is not implemented.
 - D7 `Case_Eject` handlers are still called while `__NoEject` is set (with `noeject = 1`), so traffic's pirate watch keeps counting; their results are ignored then.
 - D8 Scripted-event slot: no preemption. The first claim wins and the 00 order holds because traffic's claimants ask in that order inside the entry plan; a feature that claims at entry registers its seed provider at the matching prio.
-- D9 Box lock: a lock older than 60 game s counts as stale (a box closed without its free). The hail chain takes the lock (owner `hail`) at each box and frees it in `TRF_HlClose` and in its stale paths.
+- D9 Box lock: a lock older than 60 game s counts as stale (a box closed without its free). The hail chain takes the lock (owner `hail`) at each box and frees it in `TRF_HlClose` and in its stale paths. The heat offer at `CStation_Action` (owner `heat_offer`; when refused the original runs at once) and the supply contract box (owner `supply_ct`, which takes over the hail menu's lock since the menu closes after it) take it too and free it at the answer.
 - D10 Name clash: trf_ui's due call `TRF_ArrivalLine()` (traffic's own arrival line) is renamed `TRF_UI_ArrivalLine`, so `TRF_ArrivalLine(owner, text)` can be the 00 queue API. The v0.1/v0.2/v1 specs still use the old name.
 - D11 `clock.rs` uses `dt_game > 0` as the unpaused test (E0.21 not run).
 - D12 The orphan scan needs a label convention for the new groups (section 9); feature specs must follow it.

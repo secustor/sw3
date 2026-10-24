@@ -337,7 +337,9 @@ end;
 
 -- d: visit slots, seed order, arrival lines, job slot, markers (spec 5, 8) ---------------------------
 
-function P_SeedRec(c) P_Rec("p450"); end;
+function P_SeedRec(c) P_Rec("p400"); end;
+function P_SeedNo(c) P_Rec("TRF_GnSeedStaged"); c.noseed = "staged"; end;
+function P_CapTrim1(g, n) local h = HOST(); h.trim = (h.trim or "")..g..":"..n..","; return n; end;
 function P_SeedStop(c) P_Rec("p260"); c.done = 1; end;
 
 function T_PL_D()
@@ -372,7 +374,7 @@ function T_PL_D()
 	T_SaveLoad();
 	HOST_Check(TRF.live.box == nil and TRF.live.ev == nil, "load: slots empty");
 	-- Seed order: the providers of 00 section 6 in priority order; a provider may stop the list.
-	TRF_SeedReg(450, "P_SeedRec");
+	TRF_SeedReg(400, "P_SeedRec");
 	TRF_SeedReg(260, "P_SeedStop");
 	local nm = {"Chase", "Sweep", "Carrier", "Feq", "Staged", "Hold", "Po", "Plain"};
 	local keep = {};
@@ -385,9 +387,16 @@ function T_PL_D()
 	h.pord = {};
 	TRF.live.ent = nil;
 	TRF_EntryPlan();
+	HOST_Check(P_Ord() == "TRF_GnSeedChase,TRF_GnSeedSweep,TRF_GnSeedCarrier,TRF_GnSeedFeq,TRF_GnSeedStaged,TRF_GnSeedHold,p400,p260,",
+		"seed providers in order: chase, sweep, carrier, feq, staged, hold, a #8-slot provider, then a stop ("..P_Ord()..")");
+	-- An event took the seed's place: the hold stops the list before the #8 and #5 slots.
+	setglobal("TRF_GnSeedStaged", P_SeedNo);
+	h.pord = {};
+	TRF.live.ent = nil;
+	TRF_EntryPlan();
 	for k, fn in keep do setglobal(k, fn); end;
-	HOST_Check(P_Ord() == "TRF_GnSeedChase,TRF_GnSeedSweep,TRF_GnSeedCarrier,TRF_GnSeedFeq,TRF_GnSeedStaged,p450,p260,",
-		"seed providers in order: chase, sweep, carrier, feq, staged, a #8-slot provider, then a stop ("..P_Ord()..")");
+	HOST_Check(P_Ord() == "TRF_GnSeedChase,TRF_GnSeedSweep,TRF_GnSeedCarrier,TRF_GnSeedFeq,TRF_GnSeedStaged,TRF_GnSeedHold,",
+		"no seed after the staged raid: the hold stops the list before #8 ("..P_Ord()..")");
 	-- Arrival lines: traffic's at 5 s, then mod lines at 3 s steps, at most 3 per entry.
 	T_Jump("aurora");
 	local g0 = h.gt;
@@ -403,6 +412,20 @@ function T_PL_D()
 	end;
 	HOST_Check(seen == "P arr 1|P arr 2|P arr 3|" and at[1] >= 8 and at[1] < 9 and at[2] >= 11 and at[2] < 12 and at[3] >= 14 and at[3] < 15,
 		"arrival lines at 8, 11, 14 s ("..tostring(at[1])..", "..tostring(at[2])..", "..tostring(at[3])..")");
+	-- Lines queued after their slot keep the 3 s spacing.
+	T_Jump("gredos");
+	T_Tick(20, 0.5);
+	g0 = h.gt;
+	local ns = getn(h.screen);
+	TRF_ArrivalLine("p6", "P arr 6");
+	TRF_ArrivalLine("p7", "P arr 7");
+	T_Tick(8, 0.5);
+	at = {};
+	for i = ns + 1, getn(h.screen) do
+		local e = h.screen[i];
+		if strsub(e.t, 1, 5) == "P arr" then tinsert(at, e.gt - g0); end;
+	end;
+	HOST_Check(getn(at) == 2 and at[1] < 1 and at[2] >= 3 and at[2] < 4, "late lines: the first at once, the second 3 s after it is due ("..tostring(at[1])..", "..tostring(at[2])..")");
 	T_SaveLoad();
 	HOST_Check(TRF_ArrivalLine("p5", "P arr 5") == nil, "after a load: no arrival line (no entry)");
 	-- Job slot.
@@ -414,12 +437,24 @@ function T_PL_D()
 	TRF.job = {k={}};
 	TRF_Pl_Fix();
 	HOST_Check(TRF.job == nil, "repair: a broken job is dropped");
+	HOST_Check(TRF_JobTake(strrep("k", 25), {}) == nil and TRF.job == nil, "job kind longer than 24 refused");
+	TRF.job = {k=1, s=strrep("x", 30)};
+	TRF.mk = strrep("x", 300);
+	TRF_Pl_Fix();
+	HOST_Check(TRF.job == nil and TRF.mk == nil, "repair: a job string over 24 and a TRF.mk over 272 characters dropped");
 	-- Markers: refused under a story mission, TRF_ labels only, at most 8, deleted before a jump and after a load.
 	local nv0 = HOST_Navs();
 	h.qs = TRUE;
 	local ok, why = TRF_MarkerAdd("p1", "TRF_P1_A", 100, 0, 100);
 	h.qs = FALSE;
 	HOST_Check(ok == nil and why == "quest" and HOST_Navs() == nv0, "marker refused while GetPlayerQuestState() == TRUE");
+	HOST_Check(TRF_MarkerAdd("p1", "TRF_P1_Q", 0, 0, 0) == 1 and HOST_Navs() == nv0 + 1, "marker before the mission");
+	h.qs = TRUE;
+	T_Tick(2, 0.5);
+	h.qs = FALSE;
+	HOST_Check(HOST_Navs() == nv0 and TRF.mk == nil, "mission started: the marker is deleted");
+	ok, why = TRF_MarkerAdd("p123456789", "TRF_P1_O", 0, 0, 0);
+	HOST_Check(ok == nil and why == "owner", "marker owner longer than 8 refused");
 	ok, why = TRF_MarkerAdd("p1", "trf_bad", 0, 0, 0);
 	HOST_Check(ok == nil and why == "label", "marker label must start with TRF_");
 	HOST_Check(TRF_MarkerAdd("p1", "TRF_P1_A", 100, 0, 100) == 1 and HOST_Navs() == nv0 + 1 and GetNavPointByLabel("TRF_P1_A") and TRF.mk == "TRF_P1_A=p1;",
@@ -504,6 +539,37 @@ function T_PL_E()
 	local ok1 = TRF_CanSpawn(caps - 8, "trader");
 	local ok2, why2 = TRF_CanSpawn(caps - 7, "trader");
 	HOST_Check(ok1 and not ok2 and why2 == "ships", "cap_ships counts the 8 registered ships (cap "..tostring(caps)..")");
+	-- Over the cap the trimmable groups give up ships first (rival before pack), then the spawn is skipped.
+	TRF_CapReg("TRF_Rival_1", "P_CapD", "rival", "P_CapTrim1");
+	h.trim = nil;
+	n0 = S_Mark();
+	ok2, why2 = TRF_CanSpawn(caps - 7, "trader");
+	HOST_Check(ok2 and h.trim == "TRF_Rival_1:1," and S_Logs(n0, "module=plumb event=cap_trim over_count=1 group_count=1 freed_count=1") == 1, "over by 1: the rival frees 1, the spawn fits");
+	h.trim = nil;
+	ok2, why2 = TRF_CanSpawn(caps - 5, "trader");
+	HOST_Check(not ok2 and why2 == "ships" and h.trim == "TRF_Rival_1:1,", "over by 3: rival 1, the pack has no trim, skipped");
+	TRF_CapReg("TRF_Rival_1", "P_CapD", "rival");
+	h.trim = nil;
+	-- S35: the owed payment is that docking's offer; the mark is gone at the next pirate docking.
+	local of0 = TRF.offer;
+	TRF.offer = {k=3, s=3, t=TRF.clock.legs + 8, p=100};
+	HOST_Check(type(TRF_FcPoOwe("pir")) == "string" and TRF.offer == nil and TRF.live.pp == 1 and TRF_FcPoBody() == "paid" and TRF.live.pp == nil,
+		"owed S35 payment: no offer box in the same docking");
+	TRF.live.pp = 1;
+	HOST_Check(TRF_FcPoOwe("pir") == nil and TRF.live.pp == nil, "next pirate docking: the paid mark cleared");
+	TRF.offer = of0;
+	-- Supply contract box: takes the hail's lock, frees it at the answer; refused while another box holds it.
+	local sco = TRF_SpCtOffer;
+	TRF_SpCtOffer = function(id) return "P contract", 100; end;
+	TRF_BoxTake("hail");
+	local nbx = getn(h.boxes);
+	HOST_Check(TRF_SupplyCtDo(5) == 1 and getn(h.boxes) == nbx + 1 and TRF.live.box == "supply_ct", "contract box: the lock passes from the hail");
+	HOST_Press("cancel");
+	HOST_Check(TRF.live.box == nil and TRF.live.spc == nil, "contract box answered: lock free");
+	TRF_BoxTake("meeting");
+	HOST_Check(TRF_SupplyCtDo(5) == nil and getn(h.boxes) == nbx + 1, "contract box refused while another mod box is open");
+	TRF_BoxFree("meeting");
+	TRF_SpCtOffer = sco;
 	-- fst clamp: a faction whose team is at war with the player keeps its standing; drift too.
 	TRF.std.fst = "55555";
 	local tm = TRF_FacTeam(1);

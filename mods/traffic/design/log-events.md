@@ -384,7 +384,8 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `job` | `module=plumb event=job kind=1 field_count=2 result=taken` / `holder=1 result=refused` / `result=cleared` | 1 |
 | `raid_help` | `module=plumb event=raid_help raid_id=7 credits_before=1063 credits_after=398 rule=excluded_factor resolver_count=3` (rule: none, factor, excluded, excluded_factor, cancel) | 1 |
 | `marker` | `module=plumb event=marker owner=pcl label=TRF_Pcl_1 result=added` / `result=refused reason=quest` (or `label`, `cap`) / `result=failed reason=create_nav_point_nil` | 1 |
-| `marker` | `module=plumb event=marker owner=pcl deleted_count=1 result=cleared` / `reason=jump deleted_count=3 result=cleared` (or `reason=load`) | 1 |
+| `marker` | `module=plumb event=marker owner=pcl deleted_count=1 result=cleared` / `reason=jump deleted_count=3 result=cleared` (or `reason=load`, `reason=quest`: a mission started) | 1 |
+| `cap_trim` | `module=plumb event=cap_trim over_count=3 group_count=2 freed_count=3` (a spawn over `cap_ships`: the planned groups' trim calls) | 1 |
 | `orphan` | `module=plumb event=orphan deleted_count=2 global_count=1` (load: ships `trf_<prefix>_<n>_<j>`, globals `TRF_G<prefix>_*`) | 1 |
 | `dump` | `module=plumb event=dump box_holder=nil event_slot=staged escort=nil arrival_count=1 job=nil marker_count=0 jumps=12 real_seconds=3600.500 visit_tick_legs=2 line_count=4 box_count=3 cap_count=0 cost_of_head_wrapped=true` | 1 |
 
@@ -399,7 +400,7 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `spawn` | `module=supply event=spawn trader_id=1 faction=1 hull=H escort_count=2 escort_planned=2 group=TRF_Conv_1 war=false sweep=false entry=PORTAL_L hold_count=2` | 1 |
 | `build` | `module=supply event=build faction=1 reason=why result=failed` | 1 |
 | `end` | `module=supply event=end trader_id=1 faction=1 reason=dock` | 1 |
-| `contract` | `module=supply event=contract trader_id=1 ... result=no_offer` / `result=not_accepted` / `pay=900 result=accepted` | 1 |
+| `contract` | `module=supply event=contract trader_id=1 ... result=no_offer` (also `reason=box_lock`: another mod box is open) / `result=not_accepted` / `pay=900 result=accepted` | 1 |
 | `contract` | `module=supply event=contract trader_id=1 distance=300.000 pay=900 result=paid` | 1 |
 | `contract` | `module=supply event=contract trader_id=1 reason=kill fled=false distance=... result=void` / `reason=jump result=void` | 1 |
 | `demand_fail` | `module=supply event=demand_fail trader_id=6 reason=clear_inventory_failed result=no_cargo_moved` | 1 |
