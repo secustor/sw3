@@ -59,7 +59,7 @@ function TRF_OptDef()
 		enabled=1, override=1, guard=1, spawn_scale=1.0,
 		cap_traders=5, cap_ships=20, gov=40, gov_r=3000,
 		ui=1, ui_out=1, ui_focus=3, ui_keys=0, arrival_line=1, meet=2,
-		heat=1, dis=1, response=1, dock_mode=0,
+		heat=1, dis=1, response=1, dock_mode=2,
 		seed=1, queue=1, heat_war=0, strict=1, transit=1, news_mode=1, sos_mode=1, combat=1, hail_quiet=0,
 		sys_off={}, sys_deny={}, dump=0, tune={}};
 end;

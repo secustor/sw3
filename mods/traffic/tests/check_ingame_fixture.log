@@ -224,3 +224,5 @@ traffic: lua: exp=v1 module=nest event=call sign=Pir07 result=stub reason=count
 traffic: lua: exp=v1 module=safety event=activate system=aurora mode=mod reason=nil chapter=6 quest_state=nil gate=ok
 traffic: lua: exp=v1 module=nest event=activate system=aurora fielded=5 stub=2 gone=0 unknown=0 missing=0 failed=0 relation=war mode=1
 traffic: lua: exp=v1 module=nest event=arrival system=aurora line=nestquiet result=queued
+traffic: lua: exp=v1 module=generator event=approach trader_id=9 dock_mode=2
+traffic: lua: exp=v1 module=generator event=docked trader_id=9 arrival_kind=2

@@ -710,6 +710,23 @@ def c_pcl6(ctx):
     return res
 
 
+def c_dock(ctx):
+    res = Res()
+    res.logpart = True
+    ap = [r for r in ctx.find("generator", "approach") if r.get("dock_mode") == "2"]
+    dk = ctx.find("generator", "docked", arrival_kind="2")
+    ids = set(r.get("trader_id") for r in ap)
+    ok = [r for r in dk if r.get("trader_id") in ids]
+    if not ok:
+        if len(ap) >= 3:
+            res.fails.append("%d approach lines with dock_mode=2 and no docked arrival_kind=2 (removals by the dock_to timeout only)" % len(ap))
+        else:
+            res.missing.append("%d approach lines with dock_mode=2 (need a docked arrival_kind=2, or 3+ approaches); install with DOCK_MODE=2 LOG=3 and watch traders at a trade station" % len(ap))
+    res.ev("approach dock_mode=2", ap)
+    res.ev("docked arrival_kind=2 for an approached trader", ok)
+    return res
+
+
 def c_pcl_flow(ctx):
     res = Res()
     res.logpart = True
@@ -771,6 +788,8 @@ ITEMS = [
     ("E-PCL.6", "the mission signal", c_pcl6,
      "the quest_state=1 lines fall inside the mission you played, the others in free time"),
     ("PCL.flow", "parcel flow: full delivery, expiry (pass criteria)", c_pcl_flow, None),
+    ("D-DOCK", "trader docking mode 2", c_dock,
+     "a trader bound for the trade station flies to its docking position and vanishes there (not 300 units out)"),
 ]
 
 
@@ -871,7 +890,7 @@ def parse_eyes(vals):
 SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", "E16.4": "PASS", "E16.5": "NO DATA",
             "E16.6": "FAIL", "E16.7": "PASS", "E16.8": "MANUAL", "E16.9": "MANUAL", "E16.10": "MANUAL",
             "E16.11": "NO DATA", "E-PCL.1": "PASS", "E-PCL.2": "MANUAL", "E-PCL.3": "MANUAL", "E-PCL.4": "MANUAL",
-            "E-PCL.5": "FAIL", "E-PCL.6": "NO DATA", "PCL.flow": "PASS"}
+            "E-PCL.5": "FAIL", "E-PCL.6": "NO DATA", "PCL.flow": "PASS", "D-DOCK": "MANUAL"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 
 

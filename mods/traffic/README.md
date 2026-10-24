@@ -99,7 +99,7 @@ v0.1 ("traders with a purpose", design §12, spec [design/v01-spec.md](design/v0
 | `dump` | 0 | periodic state dump every `dump` game seconds |
 | `cap_traders`, `cap_ships`, `spawn_scale` | 2, 10, 1.0 | volume (v0.2: 5, 20, 1.0 over the band row) |
 | `ui`, `ui_out`, `ui_focus`, `arrival_line`, `meet` | 1, 1, 3, 1, 1 | text and meeting toggles (v0.2: `meet` 2) |
-| `heat`, `dis`, `response`, `dock_mode` | 1, 1, 1, 0 | counters, attack response, docking variant |
+| `heat`, `dis`, `response`, `dock_mode` | 1, 1, 1, 2 | counters, attack response, docking variant (2: flight to the docking position, arrival within 75 units, removal after 90 s; 0: removal at the approach point; 1: `ComeToTradeStation`) |
 | `sys_off`, `sys_deny`, `tune` | `{}` | per-system off switch, extra deny list, tuning overrides |
 
 For other keys, edit `<clone>/Data/Scripts/Mods/Traffic/config.script` after the install (one line, CRLF).

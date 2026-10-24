@@ -1195,7 +1195,7 @@ function TRF_OnArrive_Body(id, how, g)
 	if r.st ~= "in" then return; end;
 	if how == 0 and TRF_GnQueue(id, r, h) then return; end;
 	r.st = "dock";
-	local mode = TRF_GnOpt("dock_mode", 0);
+	local mode = TRF_GnOpt("dock_mode", 2);
 	local st = h.st;
 	if not TRF_GnAlive(st) then st = TRF_GnStation(); end;
 	if mode == 0 or not st then
