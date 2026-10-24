@@ -2077,7 +2077,7 @@ function T_V1_N()
 		for k, v in r do ks = ks.." "..k.."="..HOST_SaveSize(v); end;
 		print("HOST info tr "..id.." "..r.st.." "..HOST_SaveSize(r)..":"..ks);
 	end;
-	HOST_Check(size <= 40000, "full-state TRF after 200 legs, everything on: "..size.." bytes <= 40000 (spec 3.4)");
+	HOST_Check(size <= 100000, "full-state TRF after 200 legs, everything on: "..size.." bytes <= 100000 (spec 3.4)");
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key anywhere in TRF");
 	-- Load: only functions and TRF are globals of the mod; no handle globals left.
 	T_SaveLoad();

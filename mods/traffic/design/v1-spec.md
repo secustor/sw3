@@ -111,7 +111,9 @@ Created lazily by the owning module's accessor (v02 3.2): `cvs` convoy slot `{k=
 - If a v1 module is not loaded its fields stay at their defaults and every reader uses `TRF_N` with a default (rung 1, `fst` 5, no salvage, no base), so the v0.2 behaviour remains.
 - Downgrade to v0.2: v0.2 resets an unknown version (v02 3.3) and drops `base`, so base stations would stay in their snapshots. README step: run `enabled 2` (restore-and-stop, which now also removes bases, 9.8) before going back or removing the mod.
 
-### 3.4 Size budget (≤ 40,000 bytes for `TRF`, measured on the host with the save grammar)
+### 3.4 Size budget (≤ 100,000 bytes for `TRF`, measured on the host with the save grammar; 40,000 until 2026-10-24)
+
+Raised from 40,000 to 100,000 on 2026-10-24 for the worldbuilding features: the engine save stream has no small limit (mod-research/save-format.md), the 40,000 figure was the mod's own target for small saves. The bounds below still hold per record type; typical states stay near 20 KB.
 
 v0.2 full state after 200 legs, measured by `v02-n` on 2026-10-21: 33,946 bytes (`sys` 7,117, `rg` 1,260, `clan` 380, `short` 729, `shops` 761, `news` 267, `newsx` 2,996, `live` 19,692 of which `tr` 10,928, `due` 4,321, `stat` 2,316, `rd` 690). v1 additions at their bounds, computed with the grammar of `mod-research/save-format.md` (number 12 bytes, string 8 + length, table 12 + entries, number key 12, string key 8 + length):
 
@@ -735,7 +737,7 @@ Reviewed the eight v1 files and the v1 edits of `trf_state`, `trf_region`, `trf_
 | 2 | G features: strict gate, flags, caps, governor | `TRF_StrictOk(Of)`, `TRF_CanSpawn(KindOf)`, `TRF_SafeEvCap`, `TRF_DcGate`, `TRF_Cl_Gate`, `TRF_CvGate`, `TRF_TkGate`, `TRF_SpStrict` | conforms; danger convoys and the tracked rebuild use kind `trader` and check the governor themselves |
 | 3.1–3.3 | v4 fields, migration, repair | `TRF_Fresh`, `TRF_Migrate4`, `TRF_V4Fill`, `TRF_RepairV4`, `TRF_Rg_Fix`, `TRF_Fs_Init` | conforms after fix 6 |
 | 3.2 | gone-record keep list `tb`, `pi`, `cv`, `xt` | `TRF_GoneKeep`, `TRF_LivePrune`, `TRF_GnStrip`, `TRF_Ev_Close` | conforms after fix 1 |
-| 3.4 | size ≤ 40,000 | `TRF_Stat` (48 keys), packed `tp` | not measured at the v1 bound (`v1-n` pending); v02-n with every v1 file loaded but mostly idle: 35,140 bytes |
+| 3.4 | size ≤ 100,000 (40,000 until 2026-10-24) | `TRF_Stat` (48 keys), packed `tp` | not measured at the v1 bound (`v1-n` pending); v02-n with every v1 file loaded but mostly idle: 35,140 bytes |
 | 4.1–4.3 | pool, marks, writes, chase, entry, rebuild | `TRF_TpPack/Unpack`, `TRF_TrackMark/Write/Exit/Gone`, `TRF_Track_BeforeJump`, `TRF_TrackEntry`, `TRF_TrackSpawn`, `TRF_EntryPlan` | conforms after fixes 1, 2, 4 |
 | 4.4 | exclusions | `TRF_TkTracked` (`own`), convoy and clan records never marked | conforms |
 | 5.1 | supply convoys | `TRF_Border(Of)`, `TRF_SupplyRoll`, `TRF_SupplySpawn`, `TRF_SpBuild`, `TRF_SpEnd`, `TRF_Ev_KillV1` | conforms; the 30 % sweep chance applies to any sweep owner f (spec names Vks/Kfni only for the 15 % border case) |

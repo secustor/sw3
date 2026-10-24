@@ -2095,7 +2095,7 @@ function T_V02_N()
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	print("HOST info TRF save size "..size.." bytes:"..parts.." live.tr="..HOST_SaveSize(TRF.live.tr).." H.due (not saved)="..HOST_SaveSize(TRF_H().due)
 		.." live.stat="..HOST_SaveSize(TRF.live.stat).." live.rd="..HOST_SaveSize(TRF.live.rd));
-	HOST_Check(size <= 40000, "full-state TRF after 200 legs: "..size.." bytes <= 40000 (spec 3.4)");
+	HOST_Check(size <= 100000, "full-state TRF after 200 legs: "..size.." bytes <= 100000 (v1-spec 3.4)");
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key anywhere in TRF");
 	-- Load: only functions and TRF are globals of the mod; no handle globals left.
 	T_SaveLoad();

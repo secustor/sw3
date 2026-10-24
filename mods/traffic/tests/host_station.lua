@@ -1091,7 +1091,7 @@ function T_STN_F()
 	local ow = TRF_StnOwners();
 	for nm, t in ow do if V_Idx(nm) then TRF.vo[V_Idx(nm)] = L; end; end;
 	local ss, ts = HOST_SaveSize(TRF.stn), 8 + 3 + HOST_SaveSize(TRF);
-	HOST_Check(n == 76 and ks[251] == 1 and ss <= 16000 and ts < 40000, "size: "..n.." keys, TRF.stn "..ss.." bytes, TRF "..ts.." bytes");
+	HOST_Check(n == 76 and ks[251] == 1 and ss <= 16000 and ts < 100000, "size: "..n.." keys, TRF.stn "..ss.." bytes, TRF "..ts.." bytes");
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF");
 	n0 = S_Mark();
 	TRF_DumpState("test");

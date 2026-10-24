@@ -90,7 +90,7 @@ Deeds (7.2) choose the station without the dock array: the only trade station of
 | `TRF.stn` worst case (76 full entries) | about 5,300 |
 | `TRF.stn` typical (10-20 stations visited, pruned) | 400-1,400 |
 | `TRF.vo` (9 entries) + `TRF.ve` | about 130 |
-| TRF today (43 legs, 5.6 KB) + worst case | about 11 KB, budget 40,000 |
+| TRF today (43 legs, 5.6 KB) + worst case | about 11 KB, budget 100,000 (40,000 until 2026-10-24) |
 
 ## 4. Gates and pass-through
 
@@ -548,7 +548,7 @@ All 44 existing runs stay green except a failure that exists before this change 
 25. [ ] Log lines of section 11 (`module=station`); `event=dump` printed by `TRF_DumpState`.
 26. [ ] traffic.script changed only as 12.2; other files only as 12.3.
 27. [ ] Host scenarios `stn-a`..`stn-f` pass; previously green runs stay green; run_host.sh runs 50.
-28. [ ] Size: `TRF.stn` worst case <= 6,000 bytes, TRF < 40,000 bytes on the host.
+28. [ ] Size: `TRF.stn` worst case <= 6,000 bytes, TRF < 100,000 bytes on the host.
 29. [ ] CHECK items C1-C13 listed in `D/PROGRESS.md` "Next in-game test plan" with their log lines.
 
 Review findings:
