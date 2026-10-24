@@ -323,8 +323,32 @@ HOST().ms.AddModuleToInventory = function(self, it, n)
 	print("HOST ms inventory +"..n.." "..it);
 	tinsert(self.inv, {it, n});
 end;
+-- The mothership's pilot (side "Player") and flight: pwing lists the pilots of that flight after the mothership's
+-- (fighters, HOST_PlayerShip); crew maps a pilot name to a pilot for GetPilot (vanilla GetPilot("Hero")).
+HOST().pwing = {}; HOST().crew = {};
 HOST().ms.GetPilot = function(self)
-	return {kind="pilot", GetFlight = function(self) return {Stop = function(self) HOST().ms_stops = (HOST().ms_stops or 0) + 1; end}; end};
+	local fl = {Stop = function(self) HOST().ms_stops = (HOST().ms_stops or 0) + 1; end};
+	fl.GetPilotCount = function(self) return getn(HOST().pwing); end;
+	fl.GetPilotByNumber = function(self, i) HOST_Want(type(i) == "number", "Flight:GetPilotByNumber(i)"); return HOST().pwing[i]; end;
+	return {kind="pilot", GetFlight = function(self) return %fl; end, GetSide = function(self) return "Player"; end,
+		GetShip = function(self) return HOST().ms; end};
+end;
+function GetPilot(name)
+	HOST_Want(type(name) == "string", "GetPilot(name)");
+	return HOST().crew[name];
+end;
+-- A player fighter at (x, y, z): a live ship with a pilot of side "Player" (flight fl, default none), counted by
+-- GetCarcassCountInSphere through cc_ships while alive (the scenario adds its position).
+function HOST_PlayerShip(x, y, z, fl)
+	local s = HOST_Obj("pf", x, y, z);
+	s.kind = "ship";
+	local q = {kind="pilot", ship=s};
+	q.GetShip = function(self) return self.ship; end;
+	q.GetSide = function(self) return "Player"; end;
+	q.GetFlight = function(self) return %fl; end;
+	s.pilot = q;
+	s.GetPilot = function(self) return self.pilot; end;
+	return s, q;
 end;
 -- in_tick: depth of TRF_OnTick (HOST_Tick); gpm_tick counts calls from a tick (crash-load-5adc5e.md: none allowed).
 function GetPlayerMotherShip()

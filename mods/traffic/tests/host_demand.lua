@@ -1,13 +1,15 @@
--- Demand result page and No witnesses scenarios (design/demand-page-spec.md 9) under stock Lua 4.0.1: TRF_DM=a..e,
+-- Demand result page and No witnesses scenarios (design/demand-page-spec.md 9) under stock Lua 4.0.1: TRF_DM=a..f,
 -- run by run_host.sh as its own entry point. a the page as boxes through the hail menu (comply: answer, items, the
 -- question box, Leave; refusal: one box), the item names, demand_k, the items log value, cfg demand_page 0; b the
 -- page as the dialog TRF_HailPg (hail_box 2: answers, tokens, Leave, Esc, No witnesses, the refusal page, the
 -- fallback to the boxes); c No witnesses and every ship killed unseen: retracted (heat back, kill heat skipped, pro
 -- and dis as a kill, the lost line); d witnessed: a ship in range, a station in range, an escort left alive, no
--- count native; e the time-out (step and late kill), the refused marks, the dump and the save size.
--- Loads host_station.lua up to its first scenario, as host_captain.lua does. No new native stub:
--- GetCarcassCountInSphere (HOST().cc_ships, cc_static), StartTradeDialog/SetReplaceValue/ShowAnswer/HideAnswer,
--- ShowMsgBox, CombineStr and NewTrigger exist in host_stubs.lua.
+-- count native (witness_slack 0); e the time-out (step and late kill), the refused marks, the dump and the save size;
+-- f the subtractions of the witness count: the player's fighters, witness_slack, the flight's earlier wrecks.
+-- Loads host_station.lua up to its first scenario, as host_captain.lua does. Natives from host_stubs.lua:
+-- GetCarcassCountInSphere (HOST().cc_ships, cc_static), GetPilot (HOST().crew), the mothership pilot's flight
+-- (HOST().pwing, HOST_PlayerShip), StartTradeDialog/SetReplaceValue/ShowAnswer/HideAnswer, ShowMsgBox, CombineStr
+-- and NewTrigger.
 
 local f = openfile((getenv("TRF_TESTS") or "./").."host_station.lua", "r");
 if not f then print("HOST FAIL host_demand.lua: cannot open host_station.lua"); exit(1); end;
@@ -147,8 +149,8 @@ function T_DM_A()
 	local h = HOST();
 	DM_Begin();
 	local T = TRF_Tune();
-	HOST_Check(T.demand_k == 3 and T.witness_t == 180 and T.witness_r == 1500 and T.witness_dead == 0 and TRF_Opt("demand_page") == 1,
-		"tune demand_k 3, witness_t 180, witness_r 1500, witness_dead 0; cfg demand_page 1");
+	HOST_Check(T.demand_k == 3 and T.witness_t == 180 and T.witness_r == 1500 and T.witness_dead == 0 and T.witness_slack == 1
+		and TRF_Opt("demand_page") == 1, "tune demand_k 3, witness_t 180, witness_r 1500, witness_dead 0, witness_slack 1; cfg demand_page 1");
 	-- Through the hail menu (box chain): Cancel until the demand option, OK -> the page after the due call.
 	local id, r = DM_Trader(nil, 0);
 	local nb = getn(h.boxes);
@@ -378,11 +380,12 @@ function T_DM_C()
 	V_ClearTr();
 end;
 
--- d: witnessed -----------------------------------------------------------------------------------------
+-- d: witnessed (witness_slack 0: one ship is a witness; f covers the slack) ---------------------------
 
 function T_DM_D()
 	local h = HOST();
 	DM_Begin();
+	h.cfg.tune = {witness_slack=0};
 	local cur = TRF_CurIdx();
 	-- A ship in range of the kill (not of the flight): witnessed, the demand and kill heat stay.
 	local id, r, x = DM_Trader(nil, 2);
@@ -445,7 +448,7 @@ function T_DM_D()
 	HOST_Check(S_Logs(n0, "event=demand_kill trader_id="..id5.." ship=1 witness_count=1 reason=no_count witnessed=true") == 1
 		and S_Logs(n0, "event=demand_witnessed trader_id="..id5) == 1, "no GetCarcassCountInSphere: witnessed");
 	-- witness_dead 1 takes one carcass off each count: the ship 300 away is masked.
-	h.cfg.tune = {witness_dead=1};
+	h.cfg.tune = {witness_dead=1, witness_slack=0};
 	local id6, r6, x6 = DM_Trader(nil, 2);
 	DM_Mark(id6);
 	p = x6.tp[1].pos;
@@ -454,7 +457,7 @@ function T_DM_D()
 	DM_Kill(id6, 1);
 	T_Tick(2, 0.5);
 	h.cc_ships = {};
-	h.cfg.tune = nil;
+	h.cfg.tune = {witness_slack=0};
 	HOST_Check(S_Logs(n0, "event=demand_retract trader_id="..id6) == 1, "witness_dead 1: one carcass less per count");
 	-- A mod ship (here a raid ship) within witness_r at the mark and still there at the kill: not in the
 	-- background, so a witness.
@@ -484,6 +487,97 @@ function T_DM_D()
 	h.cc_ships = {};
 	HOST_Check(S_Logs(n0, "event=kill trader_id="..id8.." system_index="..cur.." by=other") == 1 and S_Logs(n0, "event=demand_witnessed trader_id="..id8) == 1
 		and not DM_Said(s0, m0, TRF_SpTxt("dmpseen", TRF_SpName({nm=r8.nm}))), "witnessed kill by others: no witness line");
+	h.cfg.tune = nil;
+	V_ClearTr();
+end;
+
+-- f: subtractions of the witness count (spec 5.3) -------------------------------------------------------
+
+-- A flight of the player's crew pilot nm (GetPilot) holding the pilots of ships ls.
+function DM_CrewWing(nm, ls)
+	local fl = {ps={}};
+	for i = 1, getn(ls) do tinsert(fl.ps, ls[i]:GetPilot()); end;
+	fl.GetPilotCount = function(self) return getn(self.ps); end;
+	fl.GetPilotByNumber = function(self, i) return self.ps[i]; end;
+	local q = {kind="pilot"};
+	q.GetSide = function(self) return "Player"; end;
+	q.GetFlight = function(self) return %fl; end;
+	q.GetShip = function(self) return nil; end;
+	HOST().crew[nm] = q;
+	return fl;
+end;
+
+function T_DM_F()
+	local h = HOST();
+	DM_Begin();
+	-- Two player fighters launched after the mark, 200 from the kill, no other ship: no witness. One flies in the
+	-- mothership's flight, the other in the flight of the crew pilot Hero.
+	local id, r, x = DM_Trader(nil, 2);
+	local pw = DM_Mark(id);
+	local p = x.tp[1].pos;
+	local f1 = HOST_PlayerShip(p.x + 200, p.y, p.z);
+	local f2 = HOST_PlayerShip(p.x - 200, p.y, p.z);
+	h.pwing = {f1:GetPilot()};
+	DM_CrewWing("Hero", {f2});
+	h.cc_ships = {Vector3(p.x + 200, p.y, p.z), Vector3(p.x - 200, p.y, p.z)};
+	HOST_Check(TRF_SpPlayerNear(p, 1500) == 2 and TRF_SpPlayerNear(p, 100) == 0, "two player fighters found within witness_r, none within 100");
+	local n0 = S_Mark();
+	DM_Kill(id, 1);
+	T_Tick(2, 0.5);
+	HOST_Check(type(pw) == "table" and S_Logs(n0, "event=demand_kill trader_id="..id.." ship=1 witness_count=0 reason=none witnessed=false") == 1
+		and S_Logs(n0, "event=demand_retract trader_id="..id) == 1 and S_Logs(n0, "module=supply event=error") == 0,
+		"two player fighters near the kill, no other ship: not seen, retracted");
+	-- One vanilla ship more (a rocket in flight to the native): within witness_slack 1, not seen. The fighters are
+	-- near at the mark too: taken off the background as well, so they are not subtracted twice.
+	local id2, r2, x2 = DM_Trader(nil, 2);
+	local pw2 = DM_Mark(id2);
+	p = x2.tp[1].pos;
+	HOST_Check(type(pw2) == "table" and pw2.b == 0, "fighters at the mark: background 0 ("..TRF_Dump(pw2)..")");
+	f1.pos = Vector3(p.x + 200, p.y, p.z); f2.pos = Vector3(p.x - 200, p.y, p.z);
+	h.cc_ships = {Vector3(p.x + 200, p.y, p.z), Vector3(p.x - 200, p.y, p.z), Vector3(p.x + 300, p.y, p.z)};
+	n0 = S_Mark();
+	DM_Kill(id2, 1);
+	T_Tick(2, 0.5);
+	HOST_Check(S_Logs(n0, "event=demand_kill trader_id="..id2.." ship=1 witness_count=0 reason=none") == 1
+		and S_Logs(n0, "event=demand_retract trader_id="..id2) == 1, "fighters and one ship more: within witness_slack 1, retracted");
+	-- Two vanilla ships next to the fighters: the excess 2 is more than the slack, seen.
+	h.cc_ships = {};
+	local id3, r3, x3 = DM_Trader(nil, 2);
+	DM_Mark(id3);
+	p = x3.tp[1].pos;
+	f1.pos = Vector3(p.x + 200, p.y, p.z); f2.pos = Vector3(p.x - 200, p.y, p.z);
+	h.cc_ships = {Vector3(p.x + 200, p.y, p.z), Vector3(p.x - 200, p.y, p.z), Vector3(p.x + 300, p.y, p.z), Vector3(p.x - 300, p.y, p.z)};
+	n0 = S_Mark();
+	DM_Kill(id3, 1);
+	T_Tick(2, 0.5);
+	HOST_Check(S_Logs(n0, "event=demand_kill trader_id="..id3.." ship=1 witness_count=2 reason=ship witnessed=true") == 1
+		and S_Logs(n0, "event=demand_witnessed trader_id="..id3.." reason=witness") == 1, "fighters and two ships more: beyond witness_slack, witnessed");
+	h.cc_ships = {}; h.pwing = {}; h.crew = {};
+	-- The wreck of the flight's first transport is in the count at the second death (witness_slack 0, so one
+	-- carcass would be a witness): not seen. A second transport is added when the flight has one.
+	h.cfg.tune = {witness_slack=0};
+	local id4, r4, x4 = DM_Trader(nil, 2);
+	if getn(x4.tp) < 2 then
+		local e = HOST_Obj("tp2", x4.tp[1].pos.x + 30, 0, x4.tp[1].pos.z);
+		e.kind = "ship";
+		tinsert(x4.tp, e);
+		tinsert(x4.sh, e);
+	end;
+	local pw4 = DM_Mark(id4);
+	p = x4.tp[1].pos;
+	n0 = S_Mark();
+	x4.tp[1].alive = nil;
+	TRF_OnShipDied(id4, 1, TRF.gen);
+	HOST_Check(type(pw4) == "table" and r4.dw == pw4 and pw4.d == 1 and pw4.w == 0
+		and S_Logs(n0, "event=demand_kill trader_id="..id4.." ship=1 witness_count=0 reason=none") == 1, "first transport unseen, dw.d = 1 ("..TRF_Dump(pw4)..")");
+	h.cc_ships = {Vector3(p.x, p.y, p.z)};
+	for k = 1, getn(x4.sh) do x4.sh[k].alive = nil; end;
+	for k = 2, getn(x4.tp) do TRF_OnShipDied(id4, k, TRF.gen); end;
+	T_Tick(2, 0.5);
+	h.cc_ships = {};
+	h.cfg.tune = nil;
+	HOST_Check(S_Logs(n0, "event=demand_kill trader_id="..id4.." ship=2 witness_count=0 reason=none witnessed=false") == 1
+		and S_Logs(n0, "event=demand_retract trader_id="..id4) == 1, "the first transport's wreck at the second death: not seen, retracted");
 	V_ClearTr();
 end;
 
@@ -527,11 +621,11 @@ function T_DM_E()
 	n0 = S_Mark();
 	TRF_Supply_Dump();
 	HOST_Check(S_Logs(n0, "demand_page_option=1 prey_count=1") == 1, "dump: demand_page_option, prey_count");
-	local pw = {t=99999999.5, w=1, b=999};
+	local pw = {t=99999999.5, w=1, b=999, d=8};
 	local one = HOST_SaveSize(pw) + 8 + strlen("dw");
 	local sz = 8 * one;
 	print("HOST demand dw worst case bytes "..sz.." ("..one.." per record)");
-	HOST_Check(one == 85 and sz <= 700, "dw: 85 bytes per record, "..sz.." bytes on 8 live records <= 700 (spec 3)");
+	HOST_Check(one == 106 and sz <= 850, "dw: 106 bytes per record, "..sz.." bytes on 8 live records <= 850 (spec 3)");
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF");
 	V_ClearTr();
 end;

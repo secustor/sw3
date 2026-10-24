@@ -33,10 +33,11 @@ Trader record field `dw` (in `TRF.live.tr[id]`, saved with the record, stripped 
 | `dw.t` | game time (`TRF.clock.gt`) of the mark |
 | `dw.w` | 0, 1 once a transport kill had a witness |
 | `dw.b` | background count at the mark (5.2), nil without a count |
+| `dw.d` | unseen transport deaths of the flight since the mark (their wrecks, 5.3); absent until the first one |
 
 Hail chain fields (`TRF.live.hl`, visit state): `pn` (1: No witnesses offered), states `w = "pg"`, `"pgq"`, and `"dlg"` with the handle store `st.dlg.pg = 1`.
 
-Size: one mark is 85 bytes in the save writer's count (`HOST_SaveSize`, key and table); at most one per live trader record (a trader is demanded once), 680 bytes for 8 live records (host `dm-e`). The host full-state scenario (`v1-n`) is unchanged at 78,425 bytes (limit 100,000).
+Size: one mark is 106 bytes in the save writer's count (`HOST_SaveSize`, key and table, with `d`); at most one per live trader record (a trader is demanded once), 848 bytes for 8 live records (host `dm-e`). `d` is at most the flight's transport count (`ships_max` 8). The host full-state scenario (`v1-n`) is unchanged at 78,425 bytes (limit 100,000).
 
 ## 4. Hooks
 
@@ -56,15 +57,21 @@ Containers: `k = 1 + RAND(demand_k)`; `demand_k` 0 or 1 (or less) gives 1 withou
 
 ### 5.2 Mark (`TRF_DemandNoWit`)
 
-Refused (`event=demand_prey ... result=refused`) without a record (`norec`), when the trader was not demanded (`not_demanded`), is gone (`st`) or is marked already (`marked`). Otherwise the background `b` is taken around the leader's position P0: `count(P0, witness_r)` less the map stations and portals of the system within `witness_r` (`TRF_Map().sys[cur].st`, `.portals`, `.inner`, `.broken`), the mothership, the flight's live ships (handles `h.sh`) and the mod's other live ships (`TRF_SpOthersNear`: other traders' `H.tr[*].sh`, raid ships `H.rd[*].sh`) within `witness_r`, at least 0. What stays in `b`: scenery, wrecks, the player's fighters (no script API lists them, v1 5.2) and vanilla ships already there (CHECK W3). A mod ship near at the mark is not in `b`, so it is a witness at the kill when it is still within `witness_r`. Then `rec.dw = {t, w = 0, b}`.
+Refused (`event=demand_prey ... result=refused`) without a record (`norec`), when the trader was not demanded (`not_demanded`), is gone (`st`) or is marked already (`marked`). Otherwise the background `b` is taken around the leader's position P0: `count(P0, witness_r)` less the map stations and portals of the system within `witness_r` (`TRF_Map().sys[cur].st`, `.portals`, `.inner`, `.broken`), the mothership, the player's other ships (`TRF_SpPlayerNear`, 5.3), the flight's live ships (handles `h.sh`) and the mod's other live ships (`TRF_SpOthersNear`: other traders' `H.tr[*].sh`, raid ships `H.rd[*].sh`) within `witness_r`, at least 0. What stays in `b`: scenery, wrecks, player ships the crew flights miss and vanilla ships already there (CHECK W3). A mod ship near at the mark is not in `b`, so it is a witness at the kill when it is still within `witness_r`. Then `rec.dw = {t, w = 0, b}`.
 
 ### 5.3 Witnesses at a kill (`TRF_DemandSeen`, `TRF_SpWitness`)
 
 At every transport death of a marked record within `witness_t`, while `dw.w` is 0, the kill position K is the dead handle's `GetPosition` (protected, silent), else the watchdog position `rec.lx/ly/lz`. Witnesses:
 
 1. A map station within `witness_r` of K: one witness per station (`reason=station`).
-2. Else `n = GetCarcassCountInSphere(Vector3(K), witness_r)` less `b`, the map portals within `witness_r`, the mothership and the flight's live ships within `witness_r`, and tune `witness_dead`; more than 0 is a witness (`reason=ship`).
+2. Else the excess `w = n - b - portals - ms - player - own - dw.d - witness_dead`, with `n = GetCarcassCountInSphere(Vector3(K), witness_r)`, the map portals, the mothership (`ms`), the player's other live ships (`player`) and the flight's live ships (`own`), each within `witness_r` of K. More than tune `witness_slack` is a witness (`reason=ship`, `witness_count=w`); otherwise `witness_count=0 reason=none`.
 3. No position (`no_position`) or no count (`no_count`, native missing or an error): 1 witness. A retraction needs a count.
+
+The native counts every carcass with no type filter (`D/mod-research/carcass-count.md` 1.2-1.4): ships, rockets in flight and wrecks (SpaceCarcass). The subtractions for what the player and the flight bring after the mark:
+
+- Player ships (`TRF_SpPlayerNear`, CHECK W2). No native lists the `PLAYER_GROUP` ships (`D/mod-research/combat-state.md` 1.3). The list is built from the flights the scripts can reach: the flight of the mothership's pilot (`GetPlayerMotherShip():GetPilot():GetFlight()`) and the flights of the crew pilots found by name (`GetPilot(name)` for `Hero`, `Sedoy`, `Validol`, `Tramp`, `Kalem`, `Lastochka`, `Lastochka2`, `Yana`, `Uel`, `Cleric`, `Alex`, `Blade`, `Viper`, `Natali`, `Alexandra`, `Aia` and the hired templates `RecruitPilot`, `RecruitOfficer`, `TRF_SpCrew`). Every pilot of those flights whose `GetSide()` equals the mothership pilot's adds its live ship, once per Carcass `id`, the mothership excluded. A wing with no listed pilot is missed. One protected call (`TRF_SpP`); an error gives 0 player ships.
+- Rockets in flight and other short-lived objects cannot be listed. Tune `witness_slack` (default 1) is the excess a kill may have and still read no witness: a single vanilla ship within `witness_r` is therefore not a witness at the default.
+- Wrecks of the flight (CHECK W3). Each unseen transport death of the mark adds 1 to `dw.d`; later kills take `dw.d` off, beside `witness_dead` for the dying transport itself (CHECK W1). Deaths before the mark are not counted: a wreck near the leader then is in `b`. The wreck is subtracted wherever the earlier transport died, also beyond `witness_r` (transports fly together). Escorts have no death trigger (DV5), so their wrecks are not subtracted.
 
 The first witnessed kill sets `dw.w = 1`; later kills are not counted.
 
@@ -91,6 +98,7 @@ The lines are FTU radio lines (`TRF_SpSay`, nil speaker, as `sesclost`): `dmplos
 | `witness_t` | 180 | `TRF_Supply_TuneDef` | seconds of game time from the mark |
 | `witness_r` | 1500 | `TRF_Supply_TuneDef` | witness radius around a kill |
 | `witness_dead` | 0 | `TRF_Supply_TuneDef` | carcasses taken off each kill count (CHECK W1) |
+| `witness_slack` | 1 | `TRF_Supply_TuneDef` | excess of a kill count that is still no witness: the margin for the player's rockets in flight and other short-lived objects (CHECK W2) |
 
 With `witness_r` 1500 every kill within 1500 of a station is seen; in most systems the station and the portals are closer than that to each other, so the option works out on the lanes and away from the stations.
 
@@ -118,17 +126,18 @@ trf_supply `TRF_Supply_Text`: `dmpgot` (`FTU $1 jettisons: $2`, name, item list)
 
 Dialog file `Data/Scripts/Trade/TRF_HailPg.xml` (ASCII, CRLF): start `msg10`, message `FTU #who#: #m1#`, pilot `Trader`, answers `a_leave` (`- #lleave#`, `TRF_HlDlgA_leave`) and `a_nowit` (`- #lnowit#`, `TRF_HlDlgA_nowit`), no `go_message_name`. Installed by `install.sh` (manifest, removed by `uninstall.sh`) and `install-test.sh` (removed by `uninstall-test.sh`) beside `TRF_Hail.xml`; cfg `hail_xml` 1 covers both files.
 
-## 9. Host scenarios (`T/host_demand.lua`, `TRF_DM=a..e`; run_host.sh item `dm`)
+## 9. Host scenarios (`T/host_demand.lua`, `TRF_DM=a..f`; run_host.sh item `dm`)
 
-Entry as `host_captain.lua`: `host_station.lua` up to its first scenario. No new native stub (`GetCarcassCountInSphere` counts live ships, `cc_ships` and `cc_static`). Flights are placed at a point with no map station or portal within `witness_r` (`DM_Far`).
+Entry as `host_captain.lua`: `host_station.lua` up to its first scenario. `GetCarcassCountInSphere` counts live ships, `cc_ships` and `cc_static`; stubs for 5.3 (`T/host_stubs.lua`): `GetPilot(name)` from `HOST().crew`, the mothership pilot's `GetSide` (`Player`) and flight (`GetPilotCount`, `GetPilotByNumber` over `HOST().pwing`), `HOST_PlayerShip` for a fighter. Flights are placed at a point with no map station or portal within `witness_r` (`DM_Far`).
 
 | Run | Covers |
 |---|---|
 | `dm-a` | tune and cfg defaults; the hail menu box chain to the demand option, OK, nothing inside the callback, the page box after the due call (answer and `2 x Cargo_01, 1 x Cargo_04`), no separate line, the `items` log value, `event=page`; the question box from the due call, Cancel = Leave (lock free, no mark); the refusal page (one box, no question); `demand_k` 1 (one container, no roll) and 0; item names through `CombineStr`, the id fallback, `dmpnone`; `demand_page` 0 and `hail_box` 0 (lines); `loc_mode` 1 (the page as keys with the item list) |
 | `dm-b` | `hail_box` 2: `StartTradeDialog("TRF_HailPg", "TRF_HlPgInit")`, answers `a_leave a_nowit`, `FTU <name>: <answer>\n<items>`, labels, the level 2 answers line; Leave; Esc; No witnesses (recorded in the pick, the mark from the due call, `dw = {t, 0, 0}`); the refusal page (Leave only); a `nowit` pick on it; the box fallback with the UI not idle; the hail menu dialog, `a_demand`, the page dialog on the menu's chain (its pending dialog check leaves the page open), then Leave, No witnesses or Esc with one close |
 | `dm-c` | mark, every ship killed unseen 10 s later: `demand_kill ... reason=none`, retracted, heat 4 -> 2 without kill heat, pro -3, dis +2, the lost line, the mark gone; an unmarked kill gives the kill heat |
-| `dm-d` | a ship 300 from the kill (witnessed, heat 4 + 1, the witness line); a ship 1600 away (retracted); a station 600 away (`reason=station`); an escort alive after the transports (`reason=survivor`); no count native (`reason=no_count`); `witness_dead` 1 masks one carcass; a raid ship within range at the mark and at the kill (witnessed); a seen kill without player fire (no witness line) |
+| `dm-d` | with `witness_slack` 0: a ship 300 from the kill (witnessed, heat 4 + 1, the witness line); a ship 1600 away (retracted); a station 600 away (`reason=station`); an escort alive after the transports (`reason=survivor`); no count native (`reason=no_count`); `witness_dead` 1 masks one carcass; a raid ship within range at the mark and at the kill (witnessed); a seen kill without player fire (no witness line) |
 | `dm-e` | step time-out (`witness_t` 30), the kill after it (kill heat); a late kill before the step (`reason=late_kill`); refused marks (not demanded, marked twice, no record); dump; the save size of the mark; no reserved key |
+| `dm-f` | two player fighters 200 from the kill, launched after the mark (one in the mothership's flight, one in the flight of crew pilot `Hero`), no other ship: not seen, retracted; the fighters at the mark and the kill with one vanilla ship more: `b` 0, within `witness_slack` 1, retracted; with two ships more: `witness_count=2`, witnessed; `witness_slack` 0, two transports: the first dies unseen (`dw.d` 1), its wreck is in the count at the second death: not seen, retracted |
 
 Changed scenarios: `v1-c` (the demand checks run with `demand_page` 0, as lines), `v1-m` (the generated `trf_en.loc` has the 7 `#TRF_dmp*` lines), `stn-g` (the RU key set includes the `dmp*` keys).
 
@@ -141,8 +150,8 @@ Changed scenarios: `v1-c` (the demand checks run with `demand_page` 0, as lines)
 | DP2 | Leave, No witnesses and Esc on the page | `event=close trader_id=N reason=leave`; `reason=nowit` then `module=supply event=demand_prey ... result=marked`; Esc: `reason="dialog closed"` |
 | DP3 | `CombineStr("#M_Name_Cargo_01", "")` returns the item's name (no placeholder in the text); otherwise the page shows the ids | the page text; `items=` in the log always has ids |
 | W1 | Whether `GetCarcassCountInSphere` still counts the transport at its `died` trigger (the native has no HP test, carcass-count.md 1.2) | with nothing else near: `event=demand_kill ... witness_count=0 reason=none`; `witness_count=1 reason=ship` on every unseen kill means it does: set `TUNE=witness_dead=1` |
-| W2 | The background of the mark holds at the kill position: a flight killed 1-2 km from where it was marked reads no witness without other ships | `event=demand_prey ... background_count=B`, `event=demand_kill ... witness_count=0` |
-| W3 | A vanilla patrol or pirate flight within 1500 of the kill is counted when it came after the mark; one already within `witness_r` of the trader at the mark is in `b` (no script list of vanilla ships) and is not counted, the mod's own flights are (5.2) | `event=demand_kill ... reason=ship witnessed=true`, `event=demand_witnessed ... reason=witness` |
+| W2 | The background of the mark holds at the kill position: a flight killed 1-2 km from where it was marked reads no witness without other ships, also with the player's fighters launched after the mark and firing rockets near the kill. The fighters are found through the crew flights (5.3): `GetPilot(name)` returns nil for a pilot not in the game without a script error, `Pilot:GetSide()` of the crew pilots equals the mothership pilot's, a docked fighter is not alive or not within `witness_r`, and a hired wing without a crew pilot shows as a witness per ship. More rockets than `witness_slack` near the kill read as a witness | `event=demand_prey ... background_count=B`, `event=demand_kill ... witness_count=0`; no `module=supply event=error` at the kill; `reason=ship` with only the player's ships near means a missed wing or more rockets than the slack: raise `TUNE=witness_slack` |
+| W3 | A vanilla patrol or pirate flight within 1500 of the kill is counted when it came after the mark; one already within `witness_r` of the trader at the mark is in `b` (no script list of vanilla ships) and is not counted, the mod's own flights are (5.2). The wreck of a transport that died earlier in the mark is counted at the next kill and taken off with `dw.d` | `event=demand_kill ... reason=ship witnessed=true`, `event=demand_witnessed ... reason=witness`; a flight killed one transport at a time with nothing else near: `ship=2 witness_count=0 reason=none` |
 | W4 | Box path (`HAIL_BOX=1`): answer box, then `No witnesses?` | `event=page ... via=box`, then `event=close ... reason=leave\|nowit` |
 
 ## 11. Deviations
@@ -156,6 +165,8 @@ Changed scenarios: `v1-c` (the demand checks run with `demand_page` 0, as lines)
 - DV7 The news line is an FTU radio line, not a `News.xml` record: the news topics (`TRF_NewsPost`) carry no per-trader items, and the demand never set a tracked-pool "robbed" bit (5.6).
 - DV8 No position or no count at a kill counts as a witness, so the demand is never retracted without a count.
 - DV9 Tune `witness_dead` (default 0) added for CHECK W1.
+- DV11 Player ships come from the flights of the mothership's pilot and of named crew pilots (5.3), not from the player group, which no native lists. Rockets are covered by tune `witness_slack` (default 1), which also hides one vanilla ship at a kill.
+- DV12 Wrecks of the flight are counted by unseen deaths since the mark (`dw.d`), not by position: the handle table's dead mask `h.dk` also holds deaths before the mark, whose wrecks are in `b`.
 - DV10 The retraction does not depend on who made the kill (`by`); without player fire there is no kill heat to skip, only the demand heat comes back. The witness line `dmpseen` needs a player kill.
 
 ## 12. Left out
