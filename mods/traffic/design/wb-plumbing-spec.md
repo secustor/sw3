@@ -25,7 +25,7 @@ Config: `wb_box_after_fee` (default 0, enum 0..1, `install-test.sh` `WB_BOX_AFTE
 | `TRF_CostOfHeadReg(fn)` | 3 | `fn(pilot_name, count, price)` -> price; only a larger price is taken |
 | `TRF_EjectReg(fn)` | 4 | `fn(pilot, result, noeject)` -> nil or 1..3 |
 | `TRF_SeedReg(prio, fn)`, `TRF_SeedList()` | 6 | arrival seed provider `fn(c)`, highest prio first (trf_gen `TRF_EntryPlan`) |
-| `TRF_RaidHelpReg(fn)` | 9 | `fn(n, rd, credits)` -> nil, `"cancel"` (or `{cancel = 1}`), `{ex = ships}` or a factor 0..1 |
+| `TRF_RaidHelpReg(fn)` | 9 | `fn(n, rd, credits)` -> nil, `"cancel"` (or `{cancel = 1}`, `{cancel = 1, nohelp = 1}`), `{ex = ships}` or a factor 0..1 |
 | `TRF_CapReg(group, countfn, trim, trimfn)` | 6 | `countfn(group)` -> live ships; `trim` 1 rival, 2 pack, 3 scavenger (or the name), nil/0 never trimmed; `trimfn(group, n)` removes up to n ships, returns the number removed |
 
 ## 3. Visit slots and saved fields
@@ -121,7 +121,7 @@ The RAND draws and the `entry_plan` log lines are the same as before the convers
 
 ## 7. Raid help (8.5) and ship caps
 
-`TRF_Rd_Pay` asks `TRF_RaidHelp(n, rd, credits)`. Pure rule `TRF_RaidHelpOf(credits, ns, results)`: a cancel gives 0 credits (help, heat and the visit credit still apply); exclusions add up and scale by `(ns - ex) / ns` (all ships excluded: 0); of the factors only the lowest applies, once (factors never multiply). Logged as `event=raid_help` and as `help_rule=` on `module=raid event=paid`.
+`TRF_Rd_Pay` asks `TRF_RaidHelp(n, rd, credits)`. Pure rule `TRF_RaidHelpOf(credits, ns, results)`: a cancel gives 0 credits (help, heat and the visit credit still apply; with `nohelp = 1` the third result is 1 and `TRF_Rd_Pay` skips help and heat, the visit credit stays: trf_captain); exclusions add up and scale by `(ns - ex) / ns` (all ships excluded: 0); of the factors only the lowest applies, once (factors never multiply). Logged as `event=raid_help` and as `help_rule=` on `module=raid event=paid`.
 
 `TRF_CapShips()` (sum of the registered counts) is added to the traffic ship count in trf_safety's `TRF_CanSpawn`, so the groups count against `cap_ships`. The governor counts carcasses with the native, which already includes these ships. `TRF_CapTrim(over)` / pure `TRF_CapTrimOf(list, over)`: the plan `{{g, n}, ...}` that frees `over` ships, lowest trim rank first (rival, pack, scavenger), and the ships still over. When `TRF_CanSpawn` would refuse with `ships`, it calls `TRF_CapTrimDo(over)`: each planned group's `trimfn(group, n)` (4th argument of `TRF_CapReg`) removes up to n ships and returns the number removed (`event=cap_trim`); the check runs again with the freed ships, and the spawn is skipped for the ships still over. A group registered without `trimfn` frees nothing.
 

@@ -501,7 +501,7 @@ Wanted captains, step 1 (`design/captain-spec.md` 7). `slot` is the clan region 
 | `plan` | `module=captain event=plan slot=4 system=xt05 chance=30 roll=87 via=neighbour result=none reason=roll`; `... state=1 result=none reason=<chapter, region_off, tier, state_<n>, low, gap, deny, strict:<why>, mode, hold:<why>, escort, sweep, cap:<why>>` | 2 |
 | `spawn` | `module=captain event=spawn slot=4 generation=1 name=4 system=xb13 mode=raid raid_id=1 tier=3 pilot=PirateSuperAce hull=EvilEye_pir2 wing_count=0 escapes=0 notoriety=0 grudge=0 via=debug` (mode raid, patrol); `module=captain event=spawn slot=4 generation=1 result=skipped reason=<record, placement, no_raid_module, build, portal, wind, a gate reason>` | 1 |
 | `hp` | `module=captain event=hp slot=4 hp_start=1000 threshold=350` (arming; `threshold=nil` for a chase arrival; EW4.1) | 1 |
-| `met` | `module=captain event=met slot=4 generation=1 system=xb13` (the first player hit) | 1 |
+| `met` | `module=captain event=met slot=4 generation=1 system=xb13` (the first player hit on him or his own wing) | 1 |
 | `help` | `module=captain event=help slot=4 reason=deliberate result=counted` (the 8.5 proxy on the captain) | 1 |
 | `flee` | `module=captain event=flee slot=4 hp=300 threshold=350 portal=PORTAL_U destination=xb15 reason=trigger` (or `reason=poll`) | 1 |
 | `escaped` | `module=captain event=escaped slot=4 generation=1 to=xb15 seen=xb15 escapes=1 grudge=1 due=5 lie_low=0 counted=true chain=false reason=portal` (reason portal, watchdog, jump, vanished; EW4.2) | 1 |
@@ -510,7 +510,7 @@ Wanted captains, step 1 (`design/captain-spec.md` 7). `slot` is the clan region 
 | `chase` | `module=captain event=chase slot=4 destination=xb15 hp_band=3 wing_count=0 result=written` / `... system=xb15 hp_band=3 wing_count=0 delay=8 result=planned` / `... hp_band=3 hp=300 wing_count=0 portal=PORTAL_R result=arrived` (EW4.6) / `... system=<s> result=dropped reason=<disabled, other_system, record, busy, slot, due, no_plan, a gate reason>` | 1 |
 | `death` | `module=captain event=death slot=4 generation=1 player=true claim=22275 sweep=false reason=died` (reason died, poll, jump; EW4.3) | 1 |
 | `claim` | `module=captain event=claim slot=4 generation=1 amount=22275 kind=1 result=written` / `... amount=777 age=41 result=expired` / `... result=dropped reason=cap` | 1 |
-| `raid_help` | `module=captain event=raid_help slot=4 raid_id=1 credits=9281 result=held` / `result=cancelled reason=claim` / `result=paid` (the 8.5 resolver) | 1 |
+| `raid_help` | `module=captain event=raid_help slot=4 raid_id=1 credits=9281 help=1 result=held` / `result=cancelled reason=claim` / `help=1 result=paid` (the 8.5 resolver; on a load `slot=nil raid_id=nil ... result=paid`) | 1 |
 | `paid` | `module=captain event=paid slot=4 generation=1 amount=12345 paid=12345 faction=4 system=xb13 result=paid` / `... amount=5000 wait=1800 result=wait` (the prize gap) | 1 |
 | `board` | `module=captain event=board system=xb13 line_count=3 result=lines` (EW4.4) | 1 |
 | `board` | `module=captain event=board result=none reason=<disabled, board_disabled, chapter, quiet, nosys, mode, strict>` | 2 |
@@ -529,7 +529,7 @@ Wanted captains, step 1 (`design/captain-spec.md` 7). `slot` is the clan region 
 | `tick` | `module=captain event=tick leg=4 jumps=3 record_count=8 claim_count=0` | 2 |
 | `enter` | `module=captain event=enter system=xb13 arrival_portal=PORTAL_R plan=wait slot=4` | 2 |
 | `wind_down` | `module=captain event=wind_down slot=4 state=leave` | 1 |
-| `dump` | `module=captain event=dump record_count=8 claim_count=1 jumps=212 last_claim=197 vendettas=0 chase=nil visit=nil visit_slot=nil` | 1 |
+| `dump` | `module=captain event=dump record_count=8 claim_count=1 jumps=212 last_claim=197 vendettas=0 held=nil chase=nil visit=nil visit_slot=nil` | 1 |
 | `dump_rec` | `module=captain event=dump_rec slot=5 name=7 generation=1 state=1 template=4 escapes=1 notoriety=2 grudge=2 seen=xb13 due=0 lie_low=0 died=0 born=640 met=1 last=91 tip=nil quest=1` (one per record) | 1 |
 | `dump_claim` | `module=captain event=dump_claim index=1 slot=5 generation=1 amount=26700 kind=1 leg=812` (one per claim) | 1 |
 

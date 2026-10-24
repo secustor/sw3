@@ -194,8 +194,8 @@ function T_CAP_A()
 	local hr4 = TRF_CapHullOf(rows[4], 20, lv);
 	HOST_Check(pw == 16 and hr == 13 and hr2 == 5 and hr4 == 16, "hull: one row up (T3 sb 14: power 16, row 13; T2 low floor 5; T4 power at most phi + 1 = 19 -> row 16)");
 	HOST_Check(TRF_CapN1Of(rows[2], 0) == 3 and TRF_CapN1Of(rows[3], 2) == 5 and TRF_CapWingOf(rows[2], 0, 0, 8, 6) == 3
-		and TRF_CapWingOf(rows[2], 3, 0, 8, 6) == 3 and TRF_CapWingOf(rows[3], 3, 4, 8, 6) == 3 and TRF_CapWingOf(rows[4], 3, 0, 8, 6) == 6,
-		"wing: ns - 1 + esc within the tier's ships, raid_live_cap less the captain, wing_max");
+		and TRF_CapWingOf(rows[2], 3, 0, 8, 6) == 3 and TRF_CapWingOf(rows[3], 3, 5, 8, 6) == 3 and TRF_CapWingOf(rows[4], 3, 0, 8, 6) == 6,
+		"wing: ns - 1 + esc within the tier's ships, raid_live_cap less the clan ships alive (the captain included), wing_max");
 	HOST_Check(TRF_CapPickOf({{1, 0}, {2, 3}, {3, 1}}, 0) == 2 and TRF_CapPickOf({{1, 0}, {2, 3}, {3, 1}}, 3) == 3 and TRF_CapPickOf({{1, 0}}, 5) == nil,
 		"weighted pick, nil when every weight is 0");
 	HOST_Check(TRF_CapNextNmOf({[2]=1, [3]=1}, 1, 24) == 4 and TRF_CapNextNmOf({}, 24, 24) == 1, "successor name: next free index, wrapped at 24");
@@ -313,10 +313,16 @@ function T_CAP_B()
 	TRF.clock.j = TRF.clock.j + 10;
 	TRF_Cap_RegionTick(L + 323);
 	HOST_Check(CP_R(s).st == 4, "no Boom entry this tick: no successor");
+	-- An unpaid kill claim of this generation keeps the clan leaderless (its logbook entry stays).
+	TRF.claim = {{slot=s, gen=CP_R(s).gen, nm=CP_R(s).nm, amt=5000, kind=1, leg=L + 323}};
+	TRF.rg[s].pt = L + 324;
+	TRF_Cap_RegionTick(L + 324);
+	HOST_Check(CP_R(s).st == 4 and CP_R(s).gen == 2 and TRF.claim, "Boom entry with his claim unpaid: no successor yet");
+	TRF.claim = nil;
 	TRF.rg[s].pt = L + 324;
 	TRF_Cap_RegionTick(L + 324);
 	r = CP_R(s);
-	HOST_Check(r.st == 1 and r.gen == 3 and r.pv == nm1 and r.gr == 2, "next Boom entry after 10 jumps: successor, pv = the dead captain's name");
+	HOST_Check(r.st == 1 and r.gen == 3 and r.pv == nm1 and r.gr == 2, "next Boom entry after 10 jumps (claim paid): successor, pv = the dead captain's name");
 	-- The successor's first line names the dead captain (TRF_CapIntro).
 	-- Successor while the clan is at T1: born hiding.
 	r.st = 0;
@@ -410,7 +416,12 @@ function T_CAP_C()
 	HOST_Check(TRF_CapGate(xi, s, r) == "region_off", "cfg cap_regions_off names the home");
 	h.cfg.cap_regions_off = nil;
 	HOST_Check(TRF_CapSysGate(V_Idx("fronn")) == "deny" and TRF_CapSysGate(V_Idx("x297")) == "deny" and TRF_CapSysGate(V_Idx("nk")) == "deny"
-		and TRF_CapSysGate(V_Idx("elio")) == "deny" and TRF_CapSysGate(V_Idx("earth") or 0) == "deny", "permanent exclusion and the authored deny list");
+		and TRF_CapSysGate(V_Idx("earth") or 0) == "deny", "permanent exclusion (Fronn also raid 0 in the deny list)");
+	HOST_Check(TRF_CapExcl(V_Idx("elio")) == nil and TRF_CapExcl(V_Idx("gefest")) == nil and TRF_CapSysGate(V_Idx("gefest")) ~= "deny",
+		"m = 1 deny entries (Elio, Gefest) are not excluded for good");
+	h.qs = TRUE;
+	HOST_Check(strfind(TRF_CapSysGate(V_Idx("elio")) or "", "strict:", 1, 1) == 1, "Elio in a story mission: the strict gate denies it");
+	h.qs = FALSE;
 	-- Chance: seen 80, tip 100, neighbour 30, far 0, debug 100.
 	local ch, via = TRF_CapChance(xi, s, r);
 	HOST_Check(ch == 80 and via == "seen", "seen here: cap_spawn_seen 80");
@@ -507,6 +518,15 @@ function T_CAP_D()
 	HOST_Check(rel == RELATION_NEUTRAL and v.neu == 1, "seeded neutral toward the player (Pirates at war, S15)");
 	local scr = CP_Scr(s0);
 	HOST_Check(CP_Has(scr, TRF_Txt("capintro", TRF_CapNm(CP_R(s)), TRF_ClanName(s))) and CP_Has(scr, TRF_Txt("capraid")), "intro and raid radio lines");
+	-- Escapes add ships to the first raid flight inside the tier's ships per raid (T3: 7, the captain included).
+	CP_Begin("callipso", "9_1", {cap_at="xb13"});
+	CP_R(s).esc = 3;
+	T_Jump("xt05");
+	CP_Enter("xb13");
+	n, rd = CP_Raid();
+	local tot = 0;
+	if n then tot = 1 + TRF_Rd_AliveN(TRF_H().rd[n]); end;
+	HOST_Check(n and rd.n1x == 6 and tot >= 2 and tot <= rows[3].ns + rows[3].ns2, "raid of a captain with 3 escapes: "..tot.." ships with him, at most 7");
 	HOST_Check(TRF_Cap_Alive() == 1 and TRF_CapShips() >= 1, "the captain counts in raid_live_cap and cap_ships");
 	-- Patrol: no staged trader possible (cap_traders 0) -> his own wing patrols the lane, then the window ends.
 	CP_Begin("callipso", "9_1", {cap_at="xb13", cap_traders=0});
@@ -523,6 +543,10 @@ function T_CAP_D()
 	HOST_Check(v and v.st == "patrol" and CP_Raid() == nil and CP_Wing(s) == 3 and fl.patrol and TRF_CapCP().h.wfl.esc == sh,
 		"no trader target: patrol with his own wing of 3 (ns - 1), escorting him");
 	HOST_Check(TRF_Cap_Alive() == 4, "captain and wing counted");
+	HOST_Check(HOST_Count("attack", "TRF_CapWHit("..s..",") == 3, "attack proxy armed on each wing ship");
+	CP_Fire("attack", "TRF_CapWHit", s);
+	HOST_Check(v.op == 1 and v.ph ~= 1 and v.hit ~= 1 and v.neu == 2 and CP_R(s).met == 1 and h.quests["trf_cap_"..s] == QUEST_PROCESS,
+		"a hit on his wing opens the fight (WAR, met, logbook), no help on him");
 	local r0 = CP_R(s);
 	local st0, e0 = r0.st, r0.esc;
 	T_Tick(2 * 245, 0.5);
@@ -601,7 +625,8 @@ function T_CAP_E()
 	T_Jump("xt05");
 	local sg = getn(h.screen);
 	CP_Enter("xb13");
-	HOST_Check(CP_Has(CP_Scr(sg), TRF_Txt("capgrudge", TRF_UI_SysName(CP_R(s).last))), "fought before with a grudge: the grudge taunt");
+	HOST_Check(CP_Has(CP_Scr(sg), TRF_Txt("capintro", TRF_CapNm(CP_R(s)), TRF_ClanName(s))) and CP_Has(CP_Scr(sg), TRF_Txt("capgrudge", TRF_UI_SysName(CP_R(s).last))),
+		"fought before with a grudge: the introduction, then the grudge taunt");
 	v = TRF_CapCP().v;
 	sh = CP_Ship(s);
 	CP_Hits(s, 5);
@@ -721,14 +746,16 @@ function T_CAP_F()
 	n = CP_Raid();
 	TRF.live.rd[n].hit = 1;
 	local c0 = h.credits;
+	local help0 = TRF.std.help;
 	n0 = S_Mark();
 	CP_KillRaid(n);
 	HOST_Check(h.credits == c0 and S_Logs(n0, "module=captain event=raid_help slot="..s.." raid_id="..n) == 1 and S_Logs(n0, "result=held") == 1
-		and S_Logs(n0, "module=raid event=paid raid_id="..n.." trader_id=") == 1 and S_Logs(n0, "credits=0") >= 1, "raid wing down, captain alive: 8.5 credits held");
+		and S_Logs(n0, "module=raid event=paid raid_id="..n.." trader_id=") == 1 and S_Logs(n0, "credits=0") >= 1 and TRF.std.help == help0
+		and TRF.capg.ow ~= nil, "raid wing down, captain alive: 8.5 credits and help held (TRF.capg.ow)");
 	CP_Hits(s, 5);
 	CP_Kill(s);
-	HOST_Check(h.credits == c0 and S_Logs(n0, "result=cancelled reason=claim") == 1 and TRF.claim and TRF.claim[1].slot == s,
-		"claim written for the raid's captain: the 8.5 credits are cancelled (one fight, one price)");
+	HOST_Check(h.credits == c0 and S_Logs(n0, "result=cancelled reason=claim") == 1 and TRF.claim and TRF.claim[1].slot == s and TRF.std.help == help0
+		and TRF.capg.ow == nil, "claim written for the raid's captain: the 8.5 credits and help are cancelled (one fight, one price)");
 	-- Escape after the wing died: the held credits are paid.
 	CP_Begin("callipso", "9_1", {cap_at="xb13"});
 	T_Jump("xt05");
@@ -737,6 +764,7 @@ function T_CAP_F()
 	TRF.live.rd[n].hit = 1;
 	c0 = h.credits;
 	n0 = S_Mark();
+	help0 = TRF.std.help;
 	CP_KillRaid(n);
 	local held = 0;
 	local hl = S_Line(n0, "result=held");
@@ -744,7 +772,22 @@ function T_CAP_F()
 	CP_Hits(s, 5);
 	CP_Fire("HP", "TRF_CapHP", s);
 	CP_Fire("f_object_inside", "TRF_CapGone", s);
-	HOST_Check(held > 0 and h.credits == c0 + held and S_Logs(n0, "result=paid") >= 1, "he escaped: the held 8.5 credits are paid ("..held..")");
+	HOST_Check(held > 0 and h.credits == c0 + held and S_Logs(n0, "result=paid") >= 1 and TRF.std.help == help0 + 1,
+		"he escaped: the held 8.5 credits and help are paid once ("..held..")");
+	-- Save and load while the credits are held: the load ends the fight without a claim and pays them.
+	CP_Begin("callipso", "9_1", {cap_at="xb13"});
+	T_Jump("xt05");
+	CP_Enter("xb13");
+	n = CP_Raid();
+	TRF.live.rd[n].hit = 1;
+	c0 = h.credits;
+	help0 = TRF.std.help;
+	n0 = S_Mark();
+	CP_KillRaid(n);
+	held = tonumber(CP_Kv(S_Line(n0, "result=held"), "credits") or "0") or 0;
+	T_SaveLoad();
+	HOST_Check(held > 0 and h.credits == c0 + held and TRF.capg.ow == nil and TRF.std.help == help0 + 1 and S_Logs(n0, "result=paid") == 1,
+		"load with the 8.5 credits held: paid with the help ("..held..")");
 	-- A captain raid with help counted and the captain dying first: the raid pays nothing later (claim).
 	CP_Begin("callipso", "9_1", {cap_at="xb13"});
 	T_Jump("xt05");
@@ -806,7 +849,7 @@ function T_CAP_G()
 	CP_R(s3).st = 1; CP_R(s3).lj = TRF_Jumps() + 5; CP_R(s3).seen = V_Idx("kadi");
 	d = CP_Dock();
 	local price = TRF_CapPrice(r);
-	local wl = TRF_Txt("capbrd", TRF_CapNm(r), TRF_ClanName(s), TRF_Txt("sev"..TRF_EffTier(xi))).." "..TRF_Txt("capesc", 1).." "..TRF_Txt("capseen", TRF_UI_SysName(xi), format("%d", price));
+	local wl = TRF_Txt("capbrd", TRF_CapNm(r), TRF_ClanName(s), TRF_Txt("sev"..TRF_EffTier(xi))).." "..TRF_Txt("capesc", 1).." "..TRF_Txt("capraids", TRF_UI_SysName(xi)).." "..TRF_Txt("capseen", TRF_UI_SysName(xi), format("%d", price));
 	HOST_Check(CP_Has(d.scr, TRF_Txt("caphead")) and CP_Has(d.scr, wl) and CP_Has(d.scr, TRF_Txt("capnone", TRF_ClanName(s2)))
 		and CP_Has(d.scr, TRF_Txt("capquiet", TRF_CapNm(CP_R(s3)), TRF_ClanName(s3))) and not CP_Has(d.scr, TRF_CapNm(CP_R(CP_Slot("dosis")))),
 		"board (EW4.4): wanted with the price from seen and the escapes, leaderless, lying low; hiding clans not listed");
@@ -824,6 +867,13 @@ function T_CAP_G()
 	HOST_Check(d.nb == 0, "no second offer for a captain with a valid tip");
 	-- Declined: not offered again this visit; poor; mission; toggles.
 	CP_R(s).ti = nil;
+	-- Not sold while seen is denied now by the strict gate (design 5 exploit 9).
+	HOST_Check(TRF_CapIntelPick(xi) ~= nil, "informant candidate without a deny");
+	CP_DenyIdx = xi;
+	local so = TRF_StrictOk;
+	TRF_StrictOk = function(i, k) if i == CP_DenyIdx then return nil, "quest"; end; return 1; end;
+	HOST_Check(TRF_CapIntelPick(xi) == nil, "no informant for a captain seen in a system the strict gate denies");
+	TRF_StrictOk = so;
 	d = CP_Dock();
 	CP_Press(d, "cancel");
 	d = CP_Dock();
@@ -952,13 +1002,14 @@ function T_CAP_H()
 	TRF.cap[s] = {nm=99, gen="x", st=9, tp=1, esc=7, noto=-1, gr=12, seen=V_Idx("fronn"), due="a", born=TRF.clock.legs + 50, q=5, ti="t"};
 	TRF.claim = {{slot=s, gen=1, amt=1, leg=0}, {slot=99, gen=1, amt=1, leg=0}, {slot=s, gen=1, amt=2, leg=0}, {slot=s, gen=1, amt=3, leg=0}, {slot=s, gen=1, amt=4, leg=0}};
 	TRF.capch = {slot=s, to=1, hpb=99};
-	TRF.capg = {lc="x", vn=99};
+	TRF.capg = {lc="x", vn=99, ow=5000, oh=7};
 	TRF_Cap_Fix();
 	r = CP_R(s);
 	HOST_Check(r.nm == s and r.gen == 1 and r.st == 1 and r.tp == 3 and r.esc == 0 and r.noto == 0 and r.gr == 0 and r.seen == TRF_RgMap()[s].home
 		and r.due == 0 and r.born == TRF.clock.legs and r.q == nil and r.ti == nil, "repair: fields to their defaults, seen never excluded");
-	HOST_Check(getn(TRF.claim) == 3 and TRF.claim[1].amt == 1 and TRF.claim[3].amt == 3 and TRF.capch == nil and TRF.capg.lc == nil and TRF.capg.vn == 0,
-		"repair: at most 3 claims (bad slot dropped), capch shape, capg");
+	HOST_Check(getn(TRF.claim) == 3 and TRF.claim[1].amt == 1 and TRF.claim[3].amt == 3 and TRF.capch == nil and TRF.capg.lc == nil and TRF.capg.vn == 0
+		and TRF.capg.ow == 5000 and TRF.capg.oh == 1, "repair: at most 3 claims (bad slot dropped), capch shape, capg (held credits kept)");
+	TRF.capg.ow = nil; TRF.capg.oh = nil;
 	TRF.cap = "bad";
 	TRF_Cap_Fix();
 	HOST_Check(type(TRF.cap) == "table" and getn(TRF.cap) == TRF_RgMap().n, "repair: a non-table TRF.cap is rebuilt");
@@ -971,7 +1022,7 @@ function T_CAP_H()
 	end;
 	local cl = {};
 	for k = 1, 3 do tinsert(cl, {slot=11, gen=999, nm=24, amt=30000, kind=2, leg=-99999}); end;
-	local sz = HOST_SaveSize(cap) + HOST_SaveSize(cl) + HOST_SaveSize({slot=11, to=113, hpb=10, leg=-99999, wn=6, cg=999}) + HOST_SaveSize({lc=99999, vn=11})
+	local sz = HOST_SaveSize(cap) + HOST_SaveSize(cl) + HOST_SaveSize({slot=11, to=113, hpb=10, leg=-99999, wn=6, cg=999}) + HOST_SaveSize({lc=99999, vn=11, ow=10000000, oh=2})
 		+ 3 * 8 + strlen("cap") + strlen("claim") + strlen("capch") + strlen("capg") + 22;
 	print("HOST captain worst case bytes "..sz.." (cap "..HOST_SaveSize(cap)..", claim "..HOST_SaveSize(cl)..")");
 	HOST_Check(sz <= 5900, "TRF.cap at 11 records, 3 claims, capch, capg and the prize stamp: "..sz.." bytes <= 5900 (spec 3.3)");

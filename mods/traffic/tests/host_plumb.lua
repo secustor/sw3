@@ -503,6 +503,9 @@ function T_PL_E()
 		and t({{ex=1}}) == "750:excluded" and t({{ex=1}, 0.5}) == "375:excluded_factor" and t({{ex=4}}) == "0:excluded"
 		and t({}) == "1000:none" and t({1.5}) == "1000:factor" and t({{cancel=1}}) == "0:cancel",
 		"raid help: lowest factor once, cancel, exclusions");
+	local a1, w1, nh1 = TRF_RaidHelpOf(1000, 4, {"cancel", {cancel=1, nohelp=1}});
+	local a2, w2, nh2 = TRF_RaidHelpOf(1000, 4, {"cancel", 0.5});
+	HOST_Check(a1 == 0 and w1 == "cancel" and nh1 == 1 and a2 == 0 and nh2 == nil, "raid help: a nohelp cancel also takes help and heat");
 	-- Resolvers through trf_raid's pay path.
 	TRF_RaidHelpReg("P_RhA");
 	TRF_RaidHelpReg("P_RhB");

@@ -249,7 +249,7 @@ function TRF_SeedList()
 	return o;
 end;
 
--- 8.5 raid-help resolver fn(n, rd, credits) -> nil, "cancel", {ex=ships} or a factor 0..1.
+-- 8.5 raid-help resolver fn(n, rd, credits) -> nil, "cancel", {cancel=1, nohelp=1}, {ex=ships} or a factor 0..1.
 function TRF_RaidHelpReg(fn)
 	return TRF_PlIns(%P.rh, getn(%P.rh) + 1, fn, nil, 1);
 end;
@@ -722,13 +722,22 @@ end;
 -- Raid help (8.5, spec 6) -----------------------------------------------------------
 
 -- Pure: credits after the resolver results rs for a raid of ns ships. "cancel" (or {cancel = 1}) -> 0;
--- {ex = k} entries add up and scale by (ns - ex) / ns; numbers are factors 0..1 of which only the lowest
--- applies (factors never multiply). Returns floor(credits), rule.
+-- {cancel = 1, nohelp = 1} also takes the raid's help and heat (third result 1); {ex = k} entries add up and
+-- scale by (ns - ex) / ns; numbers are factors 0..1 of which only the lowest applies (factors never multiply).
+-- Returns floor(credits), rule[, nohelp].
 function TRF_RaidHelpOf(amt, ns, rs)
 	local ex, f = 0, nil;
+	local cn, nh = nil, nil;
 	for i = 1, getn(rs) do
 		local v = rs[i];
-		if v == "cancel" or (type(v) == "table" and v.cancel == 1) then return 0, "cancel"; end;
+		if v == "cancel" or (type(v) == "table" and v.cancel == 1) then
+			cn = 1;
+			if type(v) == "table" and v.nohelp == 1 then nh = 1; end;
+		end;
+	end;
+	if cn then return 0, "cancel", nh; end;
+	for i = 1, getn(rs) do
+		local v = rs[i];
 		if type(v) == "table" and type(v.ex) == "number" then ex = ex + max(0, floor(v.ex)); end;
 		if type(v) == "number" then
 			local x = TRF_PlCl(v, 0, 1);
@@ -748,7 +757,7 @@ function TRF_RaidHelpOf(amt, ns, rs)
 	return floor(a), how;
 end;
 
--- trf_raid's TRF_Rd_Pay asks here: the registered resolvers, then TRF_RaidHelpOf. Returns credits, rule.
+-- trf_raid's TRF_Rd_Pay asks here: the registered resolvers, then TRF_RaidHelpOf. Returns credits, rule[, nohelp].
 function TRF_RaidHelp(n, rd, amt)
 	local l = %P.rh;
 	local rs = {};
@@ -759,9 +768,9 @@ function TRF_RaidHelp(n, rd, amt)
 	if getn(rs) == 0 then return amt, "none"; end;
 	local ns = nil;
 	if type(rd) == "table" then ns = rd.ns; end;
-	local a, how = TRF_RaidHelpOf(amt, ns, rs);
+	local a, how, nh = TRF_RaidHelpOf(amt, ns, rs);
 	TRF_PlE("raid_help", "raid_id", n, "credits_before", amt, "credits_after", a, "rule", how, "resolver_count", getn(rs));
-	return a, how;
+	return a, how, nh;
 end;
 
 -- Ship caps (spec 7) ----------------------------------------------------------------

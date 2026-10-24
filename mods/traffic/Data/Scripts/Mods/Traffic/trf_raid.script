@@ -856,7 +856,8 @@ function TRF_Rd_Comp(n, rd, gname, sign, pos, dir, pw, cur)
 	if T >= 3 then kind = 1; end;
 	local fl, st = nil, nil;
 	local n1, ns1 = cap, nil;
-	if type(rd.n1x) == "number" and rd.n1x >= 1 then n1 = min(cap, floor(rd.n1x)); ns1 = n1; end;
+	-- A captain's raid stays inside the tier's ships per raid, the captain counted (design 04 sections 4 and 5).
+	if type(rd.n1x) == "number" and rd.n1x >= 1 then cap = min(cap, b.ns + (b.ns2 or 0) - 1); n1 = min(cap, floor(rd.n1x)); ns1 = n1; end;
 	if slot and type(TRF_SalvFlight) == "function" and rd.nosv ~= 1 then
 		fl, st = TRF_Rd_P(TRF_SalvFlight, {slot, gname, sign, pos, dir, pw, T, kind, min(b.ns, cap)});
 		if TRF_Rd_Obj(fl) then
@@ -1531,21 +1532,24 @@ function TRF_Rd_Pay(n, rd)
 	local amt = floor(0.5 * TRF_Rd_PayN(cur));
 	-- 8.5 raid-help resolvers (trf_plumb TRF_RaidHelp, 00 section 6): a captain claim cancels the credits,
 	-- warrant ships are excluded, otherwise the lowest factor applies once.
-	local rule = nil;
+	local rule, noh = nil, nil;
 	if type(TRF_RaidHelp) == "function" then
-		local a2, why = TRF_RaidHelp(n, rd, amt);
+		local a2, why, nh = TRF_RaidHelp(n, rd, amt);
 		if type(a2) == "number" then amt = max(0, floor(a2)); rule = why; end;
+		if nh == 1 then noh = 1; end;
 	end;
 	if amt > 0 then TRF_N("AddPlayerCredits", amt); end;
 	local d = 1;
 	local slot = TRF_Rd_Slot(cur);
 	if slot and TRF_N("TRF_Phase", slot) == 5 then d = 2; end;
-	if type(TRF_AddHelp) == "function" then
+	-- A resolver that also takes help and heat (trf_captain: they come once, from the claim or the held pay).
+	if noh == 1 then d = 0; end;
+	if d > 0 and type(TRF_AddHelp) == "function" then
 		TRF_AddHelp(d, "raid "..n);
-	elseif type(TRF) == "table" and type(TRF.std) == "table" then
+	elseif d > 0 and type(TRF) == "table" and type(TRF.std) == "table" then
 		TRF.std.help = TRF_Rd_Clamp((TRF.std.help or 0) + d, 0, 99);
 	end;
-	if type(TRF_AddHeat) == "function" then TRF_AddHeat(-1, "raid help "..n); end;
+	if d > 0 and type(TRF_AddHeat) == "function" then TRF_AddHeat(-1, "raid help "..n); end;
 	TRF_N("TRF_ProCredit", 4, "raid help");
 	rd.paid = amt;
 	if r.st ~= "gone" then r.res = 1; end;

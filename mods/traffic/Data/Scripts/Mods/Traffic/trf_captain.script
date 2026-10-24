@@ -20,7 +20,7 @@
 -- ship cap, marker with an attached object, prize gap), trf_state (TRF_ModList, TRF_Repair).
 -- Saved fields: TRF.cap[slot] = {nm, gen, st, tp, esc, noto, gr, gr_t, seen, due, lj, dj, born, met, last[, ti, pv, q,
 -- ql]}, TRF.claim[i] = {slot, gen, nm, amt, kind, leg} (at most 3), TRF.capch = {slot, to, hpb, leg, wn, cg} or nil,
--- TRF.capg = {lc, vn}. Jump stamps (due, lj, dj, lc) are TRF.clock.j values (TRF_Jumps).
+-- TRF.capg = {lc, vn[, ow, oh]}. Jump stamps (due, lj, dj, lc) are TRF.clock.j values (TRF_Jumps).
 -- Visit state lives in the chunk local CP (never saved; rebuilt by every MapInitialization), the handles in CP.h.
 -- Layout as trf_scar: helpers, accessors, static tables, pure functions (*Of), state, gates, spawn, fight, dock,
 -- region tick, contract functions. Top level: functions and CP only.
@@ -420,10 +420,10 @@ function TRF_CapN1Of(b, esc)
 end;
 
 -- Wing of his own flight (patrol, chase): n1 within the tier's ships per raid less the captain, the raid_live_cap
--- room and wing_max.
+-- room (alive = the clan ships alive, the captain included: TRF_Rd_ClanAlive) and wing_max.
 function TRF_CapWingOf(b, esc, alive, livecap, wmax)
 	local n = TRF_CapN1Of(b, esc);
-	n = min(n, b.ns + (b.ns2 or 0) - 1, livecap - 1 - (alive or 0), wmax);
+	n = min(n, b.ns + (b.ns2 or 0) - 1, livecap - (alive or 0), wmax);
 	return max(0, n);
 end;
 
@@ -474,7 +474,8 @@ function TRF_CapRec(slot)
 	return nil;
 end;
 
--- TRF.capg = {lc, vn}: jump stamp of the last claim written (cap_gap_j), vendettas alive (step 2).
+-- TRF.capg = {lc, vn[, ow, oh]}: jump stamp of the last claim written (cap_gap_j), vendettas alive (step 2), the held
+-- 8.5 credits and help of the open captain fight (TRF_Cap_RaidHelp; saved so a load pays them).
 function TRF_CapG()
 	if type(TRF) ~= "table" then return {}; end;
 	if type(TRF.capg) ~= "table" then TRF.capg = {vn=0}; end;
@@ -507,14 +508,15 @@ function TRF_CapEnsure()
 	TRF_CapE("init", "record_count", n);
 end;
 
--- 1 when system idx is never a captain system: the permanent exclusion and traffic's authored deny entries for good
--- (TRF_DenyList m = 1 without tq: elio, x297, gefest; cfg sys_deny).
+-- 1 when system idx is never a captain system: the permanent exclusion and traffic's deny entries for good (raid or
+-- staged 0, e.g. Fronn). m = 1 entries (elio, x297, gefest, cfg sys_deny) deny only while a mission runs; the strict
+-- gate S4 (TRF_CapSysGate) handles them.
 function TRF_CapExcl(idx)
 	if type(idx) ~= "number" then return 1; end;
 	local nm = TRF_CapName(idx);
 	if TRF_CapDenyP()[nm] then return 1; end;
 	local e = TRF_N("TRF_DenyEntry", nm);
-	if type(e) == "table" and e.m == 1 and e.tq ~= 1 then return 1; end;
+	if type(e) == "table" and (e.raid == 0 or e.staged == 0) then return 1; end;
 	return nil;
 end;
 
@@ -772,7 +774,7 @@ function TRF_CapSpawnBody(slot, cg)
 		if lead then TRF_CapOrder(h.fl, "attack", lead); end;
 	else
 		v.st = "patrol";
-		local nw = TRF_CapWingOf(b, r.esc, TRF_Cap_Alive(), TRF_CapTv("raid_live_cap", 8), TRF_CapK().wing_max);
+		local nw = TRF_CapWingOf(b, r.esc, TRF_N("TRF_Rd_ClanAlive") or TRF_Cap_Alive(), TRF_CapTv("raid_live_cap", 8), TRF_CapK().wing_max);
 		if type(TRF_CanSpawn) == "function" and nw > 0 then
 			local ok, spare = TRF_CanSpawn(nw, "raid");
 			if not ok then nw = 0; elseif type(spare) == "number" then nw = min(nw, max(0, spare)); end;
@@ -911,28 +913,35 @@ function TRF_CapArm(v, r, chase)
 	end;
 	TRF_CapTrig("died", TRF_CapCb("TRF_CapDied", v.slot, v.cg), s);
 	TRF_CapTrig("attack", TRF_CapCb("TRF_CapHit", v.slot, v.cg), PLAYER_GROUP, s);
+	-- His own wing: a hit opens the fight (not counted as help on him).
+	if type(h.wsh) == "table" then
+		for j = 1, getn(h.wsh) do
+			if TRF_CapAlive(h.wsh[j]) then TRF_CapTrig("attack", TRF_CapCb("TRF_CapWHit", v.slot, v.cg), PLAYER_GROUP, h.wsh[j]); end;
+		end;
+	end;
 	local p = TRF_CapPos(s);
 	if p then TRF_N("TRF_MarkerAdd", "cap", "TRF_CAP_"..v.slot.."_NP", p.x, p.y, p.z, "#L_nav_kill_target", "nav_target.dds", s); end;
 	TRF_CapE("hp", "slot", v.slot, "hp_start", hp, "threshold", v.thr);
 end;
 
--- Radio lines at the spawn (design 2 step 2): the successor's claim, else the grudge taunt (fought before, grudge),
--- else the return line (escaped before), else the introduction; then the raid or patrol order.
+-- Radio lines at the spawn (design 2 step 2): the successor's claim, else the introduction followed by the grudge
+-- taunt (fought before, grudge) or the return line (escaped before); then the raid or patrol order.
 function TRF_CapIntro(v, r)
 	local h = %CP.h;
 	local nm, cl = TRF_CapNm(r), TRF_CapClan(v.slot);
 	local t = nil;
 	if type(r.pv) == "number" and r.pv > 0 then
-		t = TRF_CapTxt("capsucc", TRF_CapTxt("capnm"..r.pv), cl);
+		TRF_CapSay(TRF_CapTxt("capsucc", TRF_CapTxt("capnm"..r.pv), cl), 10, h.pilot);
 		r.pv = nil;
-	elseif r.met == 1 and (r.gr or 0) > 0 and (r.last or 0) > 0 then
-		t = TRF_CapTxt("capgrudge", TRF_CapSysTxt(r.last));
-	elseif (r.esc or 0) > 0 then
-		t = TRF_CapTxt("capback");
 	else
-		t = TRF_CapTxt("capintro", nm, cl);
+		TRF_CapSay(TRF_CapTxt("capintro", nm, cl), 10, h.pilot);
+		if r.met == 1 and (r.gr or 0) > 0 and (r.last or 0) > 0 then
+			t = TRF_CapTxt("capgrudge", TRF_CapSysTxt(r.last));
+		elseif (r.esc or 0) > 0 then
+			t = TRF_CapTxt("capback");
+		end;
+		if t then TRF_CapSay(t, 8, h.pilot); end;
 	end;
-	TRF_CapSay(t, 10, h.pilot);
 	if v.st == "raid" then TRF_CapSay(TRF_CapTxt("capraid"), 8, h.pilot); else TRF_CapSay(TRF_CapTxt("cappatrol", nm), 8, h.pilot); end;
 end;
 
@@ -949,19 +958,10 @@ function TRF_CapHitBody(slot, cg, g)
 	if g ~= TRF_CapGen() then return; end;
 	local v = TRF_CapV(slot, cg);
 	if not v or v.st == "dead" or v.st == "gone" or v.st == "end" then return; end;
-	local r = TRF_CapRec(slot);
 	local gt = TRF_CapGt();
 	v.lh = gt;
-	if v.ph ~= 1 then
-		v.ph = 1;
-		if v.neu == 1 and RELATION_WAR ~= nil then TRF_CapRel("TRF_Cap_"..slot, PLAYER_GROUP, RELATION_WAR); v.neu = 2; end;
-		if r and r.gen == cg then
-			r.met = 1;
-			r.last = TRF_CapCur() or 0;
-			if r.q ~= 1 then TRF_CapQOpen(slot, r); end;
-		end;
-		TRF_CapE("met", "slot", slot, "generation", cg, "system", TRF_CapName(TRF_CapCur()));
-	end;
+	v.ph = 1;
+	TRF_CapOpen(v, slot, cg);
 	if v.hit ~= 1 then
 		local need, win = TRF_CapTv("T_del", 5), TRF_CapTv("T_win", 20);
 		local s = floor(gt);
@@ -987,6 +987,33 @@ function TRF_CapHitBody(slot, cg, g)
 	if v.arm <= TRF_CapK().arm_max and type(h) == "table" and TRF_CapAlive(h.ship) then
 		TRF_CapTrig("attack", TRF_CapCb("TRF_CapHit", slot, cg), PLAYER_GROUP, h.ship);
 	end;
+end;
+
+-- The first player hit on him or his own wing opens the fight: relation WAR if seeded neutral, met, last, the logbook
+-- entry (design 6 arming, the 8.5 proxy on captain and wing).
+function TRF_CapOpen(v, slot, cg)
+	if v.op == 1 then return; end;
+	v.op = 1;
+	local r = TRF_CapRec(slot);
+	if v.neu == 1 and RELATION_WAR ~= nil then TRF_CapRel("TRF_Cap_"..slot, PLAYER_GROUP, RELATION_WAR); v.neu = 2; end;
+	if r and r.gen == cg then
+		r.met = 1;
+		r.last = TRF_CapCur() or 0;
+		if r.q ~= 1 then TRF_CapQOpen(slot, r); end;
+	end;
+	TRF_CapE("met", "slot", slot, "generation", cg, "system", TRF_CapName(TRF_CapCur()));
+end;
+
+function TRF_CapWHit(slot, cg, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_CapWHit", TRF_CapWHitBody, {slot, cg, g}); else TRF_CapWHitBody(slot, cg, g); end;
+end;
+
+-- Attack of PLAYER_GROUP on a ship of his own wing: opens the fight only (no help on him, no claim).
+function TRF_CapWHitBody(slot, cg, g)
+	if g ~= TRF_CapGen() then return; end;
+	local v = TRF_CapV(slot, cg);
+	if not v or v.st == "dead" or v.st == "gone" or v.st == "end" then return; end;
+	TRF_CapOpen(v, slot, cg);
 end;
 
 function TRF_CapHP(slot, cg, g)
@@ -1236,35 +1263,48 @@ function TRF_Cap_RaidEnd(n, how, tk)
 	end;
 end;
 
--- 8.5 raid-help resolver (trf_plumb TRF_RaidHelpReg, 00 section 6): the captain's raid pays no 8.5 credits when a claim
--- was written for its captain ("cancel"). While his fight is still open the credits are held (cancel now) and paid
--- by TRF_CapOwe85 when it ends without a claim (design 5 exploit 5: if he escapes, 8.5 pays as usual).
+-- 8.5 raid-help resolver (trf_plumb TRF_RaidHelpReg, 00 section 6): the captain's raid pays no 8.5 credits, help or
+-- heat when a claim was written for its captain (help and heat come once, from the claim). While his fight is still
+-- open the credits and help are held (TRF.capg ow, oh; cancel now) and paid by TRF_CapOwe85 when it ends without a
+-- claim (design 5 exploit 5: if he escapes, 8.5 pays as usual).
 function TRF_Cap_RaidHelp(n, rd, amt)
 	local v = %CP.v;
 	if type(rd) ~= "table" or rd.cap == nil or type(v) ~= "table" or v.rn ~= n then return nil; end;
 	if v.claim == 1 then
 		TRF_CapE("raid_help", "slot", v.slot, "raid_id", n, "credits", amt, "result", "cancelled", "reason", "claim");
-		return "cancel";
+		return {cancel=1, nohelp=1};
 	end;
 	if v.st == "raid" or v.st == "patrol" or v.st == "flee" or v.st == "leave" or v.st == "chase" then
-		v.owe = (v.owe or 0) + (amt or 0);
-		TRF_CapE("raid_help", "slot", v.slot, "raid_id", n, "credits", amt, "result", "held");
-		return "cancel";
+		local g = TRF_CapG();
+		local d = 1;
+		local rs = TRF_N("TRF_Rd_Slot", TRF_CapCur());
+		if rs and TRF_N("TRF_Phase", rs) == 5 then d = 2; end;
+		g.ow = (g.ow or 0) + max(0, floor(amt or 0));
+		g.oh = max(g.oh or 0, d);
+		TRF_CapE("raid_help", "slot", v.slot, "raid_id", n, "credits", amt, "help", d, "result", "held");
+		return {cancel=1, nohelp=1};
 	end;
 	return nil;
 end;
 
--- Held 8.5 credits: dropped after a claim, else paid now.
+-- Held 8.5 credits and help (TRF.capg ow, oh): dropped after a claim (v.claim), else paid now with help and heat -1.
+-- v is nil on a load (the cut-off fight ended without a claim).
 function TRF_CapOwe85(v)
-	local a = v.owe;
-	v.owe = nil;
-	if type(a) ~= "number" or a <= 0 then return; end;
-	if v.claim == 1 then
-		TRF_CapE("raid_help", "slot", v.slot, "raid_id", v.rn, "credits", a, "result", "cancelled", "reason", "claim");
+	local g = TRF_CapG();
+	local a, d = g.ow, g.oh or 1;
+	g.ow = nil;
+	g.oh = nil;
+	if type(a) ~= "number" then return; end;
+	local slot, rn = nil, nil;
+	if type(v) == "table" then slot = v.slot; rn = v.rn; end;
+	if type(v) == "table" and v.claim == 1 then
+		TRF_CapE("raid_help", "slot", slot, "raid_id", rn, "credits", a, "result", "cancelled", "reason", "claim");
 		return;
 	end;
-	TRF_N("AddPlayerCredits", a);
-	TRF_CapE("raid_help", "slot", v.slot, "raid_id", v.rn, "credits", a, "result", "paid");
+	if a > 0 then TRF_N("AddPlayerCredits", a); end;
+	TRF_N("TRF_AddHelp", d, "captain raid help");
+	TRF_N("TRF_AddHeat", -1, "captain raid help");
+	TRF_CapE("raid_help", "slot", slot, "raid_id", rn, "credits", a, "help", d, "result", "paid");
 end;
 
 -- Chase (design 6, S14 pattern) ------------------------------------------------------------
@@ -1322,7 +1362,12 @@ function TRF_CapChaseBody(slot, cg)
 	local ap = %CP.ap;
 	if ap then
 		local l = TRF_CapPortals();
-		for i = 1, getn(l) do if l[i].name == ap then e = l[i]; o = TRF_N("TRF_GnPortalObj", ap); end; end;
+		for i = 1, getn(l) do
+			if l[i].name == ap then
+				local ao = TRF_N("TRF_GnPortalObj", ap);
+				if TRF_CapObj(ao) then e = l[i]; o = ao; end;
+			end;
+		end;
 	end;
 	if not why and not TRF_CapObj(o) then why = "portal"; end;
 	if why then TRF_CapVoid(v, why); return; end;
@@ -1408,6 +1453,7 @@ function TRF_CapBoardText(e)
 	if e.kind == "low" then return TRF_CapTxt("capquiet", TRF_CapNm(r), cl); end;
 	local t = TRF_CapTxt("capbrd", TRF_CapNm(r), cl, TRF_CapTxt("sev"..TRF_CapCl(TRF_CapTier(r.seen), 1, 4)));
 	if (r.esc or 0) > 0 then t = t.." "..TRF_CapTxt("capesc", r.esc); end;
+	t = t.." "..TRF_CapTxt("capraids", TRF_CapSysTxt(r.seen));
 	return t.." "..TRF_CapTxt("capseen", TRF_CapSysTxt(r.seen), format("%d", TRF_CapPrice(r)));
 end;
 
@@ -1462,7 +1508,8 @@ function TRF_Cap_Owe(kind)
 end;
 
 -- Informant candidate: the first wanted board entry that is active (st 1), not lying low, without a valid tip, in a
--- system off the deny list, not declined in this visit. Returns the entry or nil.
+-- system off the deny list now (the exclusion and the strict gate S4, design 5 exploit 9), not declined in this visit.
+-- Returns the entry or nil.
 function TRF_CapIntelPick(idx)
 	local l = TRF_CapBoardList(idx);
 	local legs = TRF_CapLegs();
@@ -1470,7 +1517,7 @@ function TRF_CapIntelPick(idx)
 		local e = l[i];
 		local r = e.r;
 		if e.kind == "wanted" and r.st == 1 and not %CP.dec[e.slot] and not (type(r.ti) == "number" and legs - r.ti <= TRF_CapK().tip_legs)
-			and not TRF_CapExcl(r.seen) then
+			and not TRF_CapExcl(r.seen) and (type(TRF_StrictOk) ~= "function" or TRF_StrictOk(r.seen, "staged")) then
 			return e;
 		end;
 	end;
@@ -1671,7 +1718,8 @@ function TRF_Cap_RegionTick(L)
 					TRF_CapE("retire", "slot", s, "generation", r.gen, "age", L - r.born, "life", T.cap_life);
 				end;
 				-- Step 2 hook: pods adrift (st 5) and the hold window of a captain aboard (st 6, cap_hold_legs) resolve here.
-				if rg.ph == 1 and rg.pt == L and (r.st == 0 or (r.st == 4 and J >= (r.dj or 0) + T.cap_succ_j)) then
+				-- An unpaid kill claim of this generation keeps the clan leaderless (its logbook entry stays open).
+				if rg.ph == 1 and rg.pt == L and (r.st == 0 or (r.st == 4 and J >= (r.dj or 0) + T.cap_succ_j and not TRF_CapClaimAt(s, r.gen))) then
 					r = TRF_CapSucc(s, r, L, "boom");
 					if tier <= 1 then r.st = 3; end;
 				end;
@@ -1759,6 +1807,8 @@ function TRF_Cap_OnLoad()
 	local cp = %CP;
 	cp.v = nil;
 	cp.orph = {};
+	-- 8.5 credits held for a fight the load cut off: it ended without a claim (design 5 exploit 5).
+	if type(TRF) == "table" and type(TRF.capg) == "table" and TRF.capg.ow ~= nil then TRF_CapOwe85(nil); end;
 	if not TRF_CapOn() then return; end;
 	local mp = TRF_CapMsPos();
 	local ovd = TRF_CapTv("ovd", 600);
@@ -1991,6 +2041,7 @@ function TRF_Cap_Fix()
 		if type(g) ~= "table" then g = {}; end;
 		local o = {vn=TRF_CapFld(g, "vn", 0, K.rec_n, 0)};
 		if TRF_CapNum(g.lc, 0, J) then o.lc = floor(g.lc); end;
+		if TRF_CapNum(g.ow, 0, 10000000) then o.ow = floor(g.ow); o.oh = TRF_CapFld(g, "oh", 1, 2, 1); end;
 		TRF.capg = o;
 	end;
 end;
@@ -2033,7 +2084,7 @@ function TRF_Cap_Dump()
 	local g = TRF.capg or {};
 	local ch = TRF.capch;
 	local v = %CP.v;
-	TRF_CapE("dump", "record_count", n, "claim_count", getn(cl), "jumps", TRF_CapJ(), "last_claim", g.lc, "vendettas", g.vn or 0,
+	TRF_CapE("dump", "record_count", n, "claim_count", getn(cl), "jumps", TRF_CapJ(), "last_claim", g.lc, "vendettas", g.vn or 0, "held", g.ow,
 		"chase", ch and ch.slot, "visit", v and v.st, "visit_slot", v and v.slot);
 end;
 
@@ -2058,6 +2109,7 @@ function TRF_Cap_Text()
 		caphead = "WANTED BY THE PATROL",
 		capbrd = "$1, captain of the $2 ($3).",                                       -- name, clan, tier word
 		capesc = "Escaped $1 times.",                                                  -- escapes
+		capraids = "Raids the lanes of $1.",                                           -- system
 		capseen = "Last seen: $1. Dead or alive: $2 cr.",                              -- system, price
 		capnone = "The $1 are leaderless. No price posted.",                           -- clan
 		capquiet = "$1 of the $2 is lying low.",                                       -- name, clan
