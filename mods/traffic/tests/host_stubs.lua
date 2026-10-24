@@ -982,6 +982,29 @@ function ExpForSaved() if saved_expirience > 0.05 then AddPlayerExperience(saved
 		closefile(f);
 		dostring(src, "DATA/Scripts/include/Create_flight_2.script");
 	end;
+	-- Create_flight_2.script NewPiratesFlight / NewPirateFlight (671-689), as in the game: redefined by every
+	-- MapInitialization (system.lst), so trf_nest's TRF_InstallNest wraps this run's function (design/nest-spec.md 9).
+	-- HOST().npf counts the calls that reached the builder.
+	dostring([[
+function NewPiratesFlight(group, sign, location, type, power, orient)
+  return NewPirateFlight(group, sign, location, type, power, orient);
+end;
+function NewPirateFlight(group, sign, location, type, power, orient)
+	HOST().npf = (HOST().npf or 0) + 1;
+	if (type==1) then
+		return NewAllFlight(Pir_Pilots, Pir_Fighters, group, sign, location, power, orient);
+	elseif (type==2) then
+		return NewAllFlight(Pir_Pilots, Pir_Bombers, group, sign, location, power, orient, "shipFormationClaw");
+	elseif (type==3) then
+		local flight=NewAllFlight(Pir_Pilots, Pir_BigShips, group, sign, location, power, orient);
+		FillCargoFlight(flight, Pir_CargoType, power, 30, 3);
+		return flight;
+	else
+		LOG("bad flight type");
+		return FALSE;
+	end;
+end;
+]], "DATA/Scripts/include/Create_flight_2.script");
 	-- v1: DockStation.script 1-20, 403-470, 562-603 (relation station, pirate dock) and Create_flight_2.script
 	-- NewFlight / NewRobotFlight, reduced to records: HOST().cst (relation docks run), pir_ok (pirate dock Ok).
 	dostring([[

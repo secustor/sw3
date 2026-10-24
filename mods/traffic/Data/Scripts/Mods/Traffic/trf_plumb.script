@@ -264,7 +264,7 @@ end;
 
 -- Modules whose TRF_<M>_Plumb() registers handlers (TRF_InstallPlumb).
 function TRF_PlMods()
-	return {"Shop", "Hail", "Faction", "Events", "Gen", "Stn", "Sv", "Lad", "Ch", "Cap", "Sh", "Fr"};
+	return {"Shop", "Hail", "Faction", "Events", "Gen", "Stn", "Sv", "Lad", "Ch", "Cap", "Sh", "Fr", "Nest"};
 end;
 
 -- Group and allocator prefixes of the worldbuilding features (00 section 6, "Group and allocator names"):
@@ -272,8 +272,15 @@ end;
 -- orphan scan at load. Traffic's own prefixes (TRF_Raid_, TRF_Pir_, TRF_Resp_, ...) keep the scans of their
 -- modules. The lint list is GROUP_PREFIXES in tools/lint_lua.py. Names only (a "TRF_..." literal reads as a
 -- function reference to the --calls lint). Drop: trf_supply's demand_drop containers (labels trf_drop_<a>_<j>, no group).
+-- Nest: trf_nest's group TRF_Nest_1 (global TRF_GNest_1 only during activate.script, ships trf_nest_<i>_<j>); its ships
+-- are adopted at load (TRF_Nest_OnLoad), so the orphan scan clears only its build global (TRF_PlAdopt).
 function TRF_PlGroups()
-	return {"Cust", "Scv", "Cap", "Esc", "Def", "Pick", "Push", "Merc", "Rival", "Fw", "Drop", "Sh"};
+	return {"Cust", "Scv", "Cap", "Esc", "Def", "Pick", "Push", "Merc", "Rival", "Fw", "Drop", "Sh", "Nest"};
+end;
+
+-- Groups whose ships their module adopts after a load (no label scan in TRF_PlOrphans).
+function TRF_PlAdopt()
+	return {Nest=1};
 end;
 
 -- Scripted-event slot order (00 section 6): rank 1 first. Kinds outside the table rank as optional.
@@ -1091,7 +1098,7 @@ end;
 -- After a load: build-time group globals TRF_G<prefix><n> restored with the save are cleared, and ships
 -- labelled trf_<prefix lowercase><n>_<j> (n 1..scan_n, j 1..scan_j) are deleted. Group Drop (trf_supply's
 -- containers, destructible) also deletes an object the label lookup answers dead, as trf_scar's probe does (EW2.2).
--- Returns ships, globals.
+-- Groups of TRF_PlAdopt (Nest) keep their ships: their module adopts them. Returns ships, globals.
 function TRF_PlOrphans()
 	local K = TRF_PlK();
 	local gs = TRF_PlGroups();
@@ -1106,9 +1113,12 @@ function TRF_PlOrphans()
 	end;
 	for i = 1, getn(del) do setglobal(del[i], nil); end;
 	local n = 0;
+	local ad = TRF_PlAdopt();
 	for i = 1, getn(gs) do
 		local lp = "trf_"..strlower(gs[i]).."_";
-		for a = 1, K.scan_n do
+		local na = K.scan_n;
+		if ad[gs[i]] then na = 0; end;
+		for a = 1, na do
 			for j = 1, K.scan_j do
 				local o = TRF_N("GetObjectByLabel", lp..a.."_"..j);
 				if (TRF_PlAlive(o) or gs[i] == "Drop") and TRF_PlDel(o) then n = n + 1; end;

@@ -442,9 +442,10 @@ end;
 function TRF_DenyList()
 	local t = {
 		elio   = {m=1, why="Elio rescue"},
-		x297   = {m=1, why="X297 ambush"},
+		x297   = {m=1, nest=0, why="X297 ambush"},
 		gefest = {m=1, why="Grid/Hephaestus escape"},
 		fronn  = {seed=0, raid=0, feq=0, dconv=0, base=0, why="Triada warehouse exploit"},
+		el_ariash = {nest=0, why="El Ariash quest flights"},
 	};
 	local ld = nil;
 	if type(TRF_Loc_Deny) == "function" then ld = call(TRF_Loc_Deny, {}, "x", TRF_SafePErr); end;
@@ -461,7 +462,8 @@ function TRF_DenyList()
 	end;
 	local tq = TRF_SafeTeleports();
 	for i = 1, getn(tq) do
-		if type(t[tq[i]]) ~= "table" then t[tq[i]] = {m=1, tq=1, why="teleport target"}; end;
+		if type(t[tq[i]]) ~= "table" then t[tq[i]] = {m=1, tq=1, why="teleport target"};
+		elseif t[tq[i]].m == nil and t[tq[i]].nest == 0 then t[tq[i]].m = 1; t[tq[i]].tq = 1; end;
 	end;
 	return t;
 end;

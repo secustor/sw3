@@ -39,6 +39,8 @@
 # STASHES=0|1 (cfg enable_stashes, clan stashes, design/stash-spec.md); STASH_AT=<system> (debug: a known cache record
 # there, placed at its entry, CHECK E7.1-E7.11); written only when set.
 # FREIGHT=0|1 (cfg enable_freight, Wolves Freight, design/freight-spec.md, CHECK EW8.1-EW8.8); written only when set.
+# NESTS=0|1 (cfg nest, dynamic nests, design/nest-spec.md, CHECK E16.1-E16.11); NEST_MODE=1|2 (cfg nest_mode, 2 the
+# delete-and-replace fallback, E16.11); written only when set.
 # NEWS=1: the trf_* records of news/trf_news.xml (tools/gen_news.py) merged into the clone's Data/Game/News.xml
 # (the vanilla file is kept as News.xml.trf-orig), loc/trf_en.loc copied as with LOC=1, and news_mode=2 unless
 # NEWS_MODE is set; unset restores News.xml from News.xml.trf-orig.
@@ -130,6 +132,8 @@ case "${SCAR_LOOT:-}" in "") ;; 0|1) opt="$opt, enable_scar_loot=$SCAR_LOOT" ;; 
 case "${CAPTAINS:-}" in "") ;; 0|1) opt="$opt, cap_enable=$CAPTAINS" ;; *) echo "CAPTAINS must be 0 or 1" >&2; exit 1;; esac
 case "${STASHES:-}" in "") ;; 0|1) opt="$opt, enable_stashes=$STASHES" ;; *) echo "STASHES must be 0 or 1" >&2; exit 1;; esac
 case "${FREIGHT:-}" in "") ;; 0|1) opt="$opt, enable_freight=$FREIGHT" ;; *) echo "FREIGHT must be 0 or 1" >&2; exit 1;; esac
+case "${NESTS:-}" in "") ;; 0|1) opt="$opt, nest=$NESTS" ;; *) echo "NESTS must be 0 or 1" >&2; exit 1;; esac
+case "${NEST_MODE:-}" in "") ;; 1|2) opt="$opt, nest_mode=$NEST_MODE" ;; *) echo "NEST_MODE must be 1 or 2" >&2; exit 1;; esac
 if [ -n "${PRO_SET:-}" ]; then
     ps=""
     for e in $(printf '%s' "$PRO_SET" | tr ',' ' '); do

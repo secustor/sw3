@@ -158,9 +158,9 @@ end;
 function T_SC_A()
 	local h = HOST();
 	SC_Begin("gaoba", "9_1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=9") >= 1, "trf_scar loads after trf_charter (extra_count=9 with trf_captain, trf_stash and trf_freight)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=10") >= 1, "trf_scar loads after trf_charter (extra_count=10 with trf_captain, trf_stash, trf_freight and trf_nest)");
 	local ml = TRF_ModList();
-	HOST_Check(ml[getn(ml) - 3] == "Sc" and type(TRF_Sc_TuneDef) == "function" and TRF_Opt("enable_scars") == 1 and TRF_Opt("enable_scar_loot") == 1
+	HOST_Check(ml[getn(ml) - 4] == "Sc" and type(TRF_Sc_TuneDef) == "function" and TRF_Opt("enable_scars") == 1 and TRF_Opt("enable_scar_loot") == 1
 		and TRF_Opt("enable_scavengers") == 1 and TRF_Opt("enable_scar_recorder") == 1 and TRF_Opt("enable_salvage_licence") == 1,
 		"TRF_ModList has Sc; the five toggles of 6.8 default to 1");
 	local T = TRF_ScTune();

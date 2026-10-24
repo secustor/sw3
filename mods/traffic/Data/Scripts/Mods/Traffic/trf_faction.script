@@ -801,19 +801,22 @@ function TRF_FcAliveN(l)
 end;
 
 -- Sweep owner relations on group g toward the clan side: own clan group, base garrison, vanilla pirate groups
--- (names tried, skipped when GetGroupRelation answers nil), open raid groups; both directions. Toward the
--- player: TRF_FstRel. Returns 1 when the player relation is WAR (hostile seed).
+-- (the five spellings of the nest systems, design/nest-spec.md 5.6; names tried, skipped when GetGroupRelation answers
+-- nil), the nest group of trf_nest, open raid groups; both directions. Toward the player: TRF_FstRel. Returns 1 when
+-- the player relation is WAR (hostile seed).
 function TRF_FcSweepRel(g, sw)
 	if type(SetGroupRelation) ~= "function" or RELATION_WAR == nil then return nil; end;
 	local W = RELATION_WAR;
 	local foes = {"TRF_SwP_"..TRF.gen};
 	if sw.b then tinsert(foes, "TRF_PBase_"..sw.b); end;
-	local van = {"PiratesGroup_1", "PiratesGroup_2", "Pirate_Group"};
+	local van = {"PiratesGroup_1", "PiratesGroup_2", "Pirate_Group", "Pirate_Group_1", "Pirates_Group_1", "PirateGroup_1", "Pirate_Group_1_1"};
 	for i = 1, getn(van) do
 		if type(GetGroupRelation) == "function" and call(GetGroupRelation, {van[i], PLAYER_GROUP}, "x", TRF_FcNoErr) ~= nil then
 			tinsert(foes, van[i]);
 		end;
 	end;
+	local ng = TRF_N("TRF_Nest_Grp");
+	if ng then tinsert(foes, ng); end;
 	local L = TRF_FcLive();
 	if L and type(L.rd) == "table" then
 		for n, rd in L.rd do

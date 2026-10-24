@@ -1541,11 +1541,12 @@ function TRF_CvFeqBig(fq, h, rung, lead, ms)
 	return 1;
 end;
 
--- Triada waves fight the clan raid groups and the vanilla pirate groups present (v1 8.4, 7.3 names).
+-- Triada waves fight the clan raid groups, the vanilla pirate groups present (v1 8.4, 7.3 names; the five spellings
+-- of the nest systems, design/nest-spec.md 5.6) and the nest group of trf_nest.
 function TRF_CvFeqTriada(fq, g)
 	if fq.f ~= 3 or RELATION_WAR == nil then return; end;
 	local L = TRF_CvLive();
-	local names = {"PiratesGroup_1", "PiratesGroup_2", "Pirate_Group"};
+	local names = {"PiratesGroup_1", "PiratesGroup_2", "Pirate_Group", "Pirate_Group_1", "Pirates_Group_1", "PirateGroup_1", "Pirate_Group_1_1"};
 	if L and type(L.rd) == "table" then
 		for k, rd in L.rd do
 			if type(k) == "number" and type(rd) == "table" and rd.st ~= "end" then tinsert(names, "TRF_Raid_"..k); end;
@@ -1557,6 +1558,8 @@ function TRF_CvFeqTriada(fq, g)
 			TRF_CvP(function(a, b) SetGroupRelation(a, b, RELATION_WAR); SetGroupRelation(b, a, RELATION_WAR); end, {g, o});
 		end;
 	end;
+	local ng = TRF_N("TRF_Nest_Grp");
+	if ng then TRF_CvP(function(a, b) SetGroupRelation(a, b, RELATION_WAR); SetGroupRelation(b, a, RELATION_WAR); end, {g, ng}); end;
 end;
 
 -- 1 s step (v1 10.3): TT4 slot check and escorts, leaving ships, then the equipment event: outcome of a

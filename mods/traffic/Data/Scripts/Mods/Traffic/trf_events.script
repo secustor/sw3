@@ -906,6 +906,8 @@ function TRF_Ev_PirEject(pilot)
 	if side ~= "Pirates" and side ~= "Pirate" then return; end;
 	local fl = pilot:GetFlight();
 	if not fl then return; end;
+	-- Dynamic nests (design/nest-spec.md 5.4): a nest flight counts once through trf_nest's died callback.
+	if TRF_N("TRF_Nest_Owns", fl) then return; end;
 	-- v0.2: raid flights count once through their raid record (trf_raid TRF_Rd_End).
 	if type(H.rd) == "table" then
 		for n, hr in H.rd do
