@@ -504,9 +504,7 @@ function TRF_Ev_Short(idx, cls, pk)
 	if type(c) ~= "number" or c < 1 or c > 6 then c = 6; end;
 	local legs = 0;
 	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then legs = TRF.clock.legs; end;
-	local p = nil;
-	if pk == 1 then p = 1; end;
-	call(TRF_ShortAdd, {idx, c, legs + TRF_Ev_Tune("L_short", 6), p}, "x", TRF_PErr);
+	call(TRF_ShortAdd, {idx, c, legs + TRF_Ev_Tune("L_short", 6), pk}, "x", TRF_PErr);
 end;
 
 -- v0.2 kill effects (5.2, 5.4, 5.6, 7.2, 9.1, 9.6): the trader's raid record (no pay), clan +1 when an open

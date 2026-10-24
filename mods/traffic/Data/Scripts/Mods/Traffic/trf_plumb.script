@@ -996,11 +996,15 @@ end;
 
 -- Contract: loader callbacks, repair, defaults, dump ------------------------------------
 
+-- The visit slot fields of live (box lock, event and escort slots, arrival line queue), cleared.
+function TRF_PlSlotsClear(L)
+	L.box = nil; L.bt = nil; L.ev = nil; L.esc = nil; L.arq = nil; L.ag = nil; L.aqt = nil;
+end;
+
 -- Entry: the visit slots start empty (TRF_LiveReset already rebuilt TRF.live).
 function TRF_Pl_OnEnter()
 	local L = TRF_PlLive();
-	if not L then return; end;
-	L.box = nil; L.bt = nil; L.ev = nil; L.esc = nil; L.arq = nil; L.ag = nil; L.aqt = nil;
+	if L then TRF_PlSlotsClear(L); end;
 end;
 
 -- Activation (entry only): arrival lines count from now.
@@ -1014,7 +1018,7 @@ function TRF_Pl_OnLoad()
 	local p = %P;
 	p.box = nil; p.fee = nil; p.run = {};
 	local L = TRF_PlLive();
-	if L then L.box = nil; L.bt = nil; L.ev = nil; L.esc = nil; L.arq = nil; L.ag = nil; L.aqt = nil; end;
+	if L then TRF_PlSlotsClear(L); end;
 	call(TRF_PlMkAll, {"load"}, "x", TRF_PlErr);
 	call(TRF_PlOrphans, {}, "x", TRF_PlErr);
 end;

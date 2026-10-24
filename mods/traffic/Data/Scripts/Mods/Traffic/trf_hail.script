@@ -1544,6 +1544,7 @@ function TRF_BoardLine(kind)
 	local out = {short};
 	if L.board ~= text then
 		L.board = text;
+		TRF_HlStat("hl_board");
 		tinsert(out, bm);
 		if type(TRF_NewsNext) == "function" and TRF_UI_Opt("news_mode", 1) == 1 then
 			local bt, be = TRF_NewsNext();
@@ -1553,7 +1554,6 @@ function TRF_BoardLine(kind)
 			end;
 		end;
 	end;
-	TRF_HlStat("hl_board");
 	TRF_HlE("board", "system_index", idx, "line_count", getn(out), "result", "lines");
 	return out;
 end;
