@@ -7,7 +7,8 @@
 -- here) and its handler chain; the Case_Eject handler list (trf_gen's thunk, trf_events' target calls it);
 -- the visit slots in TRF.live (box lock, scripted-event slot, escort slot, arrival line queue); the job slot
 -- TRF.job; owed payers; ship-cap registrations; nav markers; the 8.5 raid-help resolvers; the group prefix
--- list and its orphan scan at load.
+-- list and its orphan scan at load; the typed object query TRF_Near / TRF_NearCount over the DLL native
+-- TRF_Carcasses (pe/API.md).
 -- Registries live in the chunk local P (never saved; rebuilt by every MapInitialization). TRF_InstallPlumb runs
 -- after every file is loaded and calls TRF_<M>_Plumb() of each module in TRF_PlMods(), which register there.
 -- Saved fields: TRF.job (one open job), TRF.mk (packed marker labels, for the cleanup after a load), TRF.live
@@ -123,6 +124,115 @@ end;
 function TRF_PlDel(o)
 	if o == nil or type(o) == "number" or type(o) == "string" or type(o) == "function" then return nil; end;
 	return call(function(x) x:Delete(); return 1; end, {o}, "x", TRF_PlNoErr);
+end;
+
+-- Typed object query (spec 16, pe/API.md) -----------------------------------------------------
+-- TRF_Near(pos, r, f) -> list, "typed" | nil, "count" | nil, "pos". Shared: every module that counts or picks
+-- engine objects near a point calls this instead of GetCarcassCountInSphere (which counts every carcass:
+-- scenery, wrecks, portals, rockets).
+--   pos  {x, y, z} or a Vector3 (number fields x, y, z), or an object handle (its GetPosition); pos and r nil:
+--        every object of the location.
+--   r    radius; a record is kept when its position is within r (point test); with a sphere, records
+--        without a position are dropped.
+--   f    optional filter, every given field must hold: cls = {3, 4, ...} class ids kept; alive = 1 (hp > 0);
+--        player = 1 (pl == 1) or 0 (pl ~= 1); not_ids = {uid, ...} dropped; not_names = {tpl, ...} template
+--        names dropped (the native gives no label).
+-- Records (traffic.c TRF_Carcasses, one per carcass of the location, read-only, never stored in TRF):
+--   id     uid, the `id` field of the object's Lua handle
+--   cls    class id: 2 BaseCarcass, 3 ShipCarcass, 4 BigCarcass, 5 BigShip, 6 Interceptor, 7 Corvette, 8 Station,
+--          9 TradeStation, 10 SpaceCarcass (wrecks, scenery), 11 NullCarcass, 12 RocketCarcass, 13 Portal, -1 unknown
+--   tpl    template name (Carcasses.xml), nil when unreadable
+--   team   team name through pilot, flight and group (cls 3..9 with a live pilot), else nil
+--   hp     current hull HP, hpmax hit_points (nil when unreadable)
+--   x,y,z  position, nil when the engine's position cache is not valid
+--   pl     1 when the team is the player's team, else 0
+-- nil, "count": no native (no DLL or an older one), ini carcasses=0, a signature mismatch at init, an engine
+-- read that failed or an error; the caller keeps its GetCarcassCountInSphere path. nil, "pos": pos or r unusable.
+function TRF_PlXyzRaw(p)
+	local x, y, z = p.x, p.y, p.z;
+	if type(x) == "number" and type(y) == "number" and type(z) == "number" then return {x=x, y=y, z=z}; end;
+	return nil;
+end;
+
+function TRF_PlPosRaw(o)
+	local p = o:GetPosition();
+	return {x=p.x, y=p.y, z=p.z};
+end;
+
+-- Position of pos as {x, y, z}: number fields x, y, z (table or Vector3), else an object's GetPosition; else nil.
+function TRF_PlPos(pos)
+	if type(pos) ~= "table" and type(pos) ~= "userdata" then return nil; end;
+	local p = call(TRF_PlXyzRaw, {pos}, "x", TRF_PlNoErr);
+	if type(p) == "table" then return p; end;
+	p = call(TRF_PlPosRaw, {pos}, "x", TRF_PlNoErr);
+	if type(p) == "table" and type(p.x) == "number" and type(p.y) == "number" and type(p.z) == "number" then return p; end;
+	return nil;
+end;
+
+-- 1 when v is an element of list l.
+function TRF_PlIn(l, v)
+	if type(l) ~= "table" then return nil; end;
+	for i = 1, getn(l) do
+		if l[i] == v then return 1; end;
+	end;
+	return nil;
+end;
+
+-- 1 when record c passes filter f (nil: no filter).
+function TRF_PlKeep(c, f)
+	if type(c) ~= "table" then return nil; end;
+	if not f then return 1; end;
+	if type(f.cls) == "table" and not TRF_PlIn(f.cls, c.cls) then return nil; end;
+	if f.alive == 1 and not (type(c.hp) == "number" and c.hp > 0) then return nil; end;
+	if f.player == 1 and c.pl ~= 1 then return nil; end;
+	if f.player == 0 and c.pl == 1 then return nil; end;
+	if c.id ~= nil and TRF_PlIn(f.not_ids, c.id) then return nil; end;
+	if c.tpl ~= nil and TRF_PlIn(f.not_names, c.tpl) then return nil; end;
+	return 1;
+end;
+
+-- 1 when record c has a position within r of p.
+function TRF_PlInR(c, p, r)
+	if type(c.x) ~= "number" or type(c.y) ~= "number" or type(c.z) ~= "number" then return nil; end;
+	local dx, dy, dz = c.x - p.x, c.y - p.y, c.z - p.z;
+	if dx * dx + dy * dy + dz * dz <= r * r then return 1; end;
+	return nil;
+end;
+
+function TRF_Near(pos, r, f)
+	local p, a = nil, {};
+	if pos ~= nil or r ~= nil then
+		p = TRF_PlPos(pos);
+		if not p or type(r) ~= "number" or r < 0 then
+			TRF_PlDE("near", "result", "failed", "reason", "pos");
+			return nil, "pos";
+		end;
+		a = {p.x, p.y, p.z, r};
+	end;
+	if type(f) ~= "table" then f = nil; end;
+	if type(TRF_Carcasses) ~= "function" then
+		TRF_PlDE("near", "via", "count", "reason", "no_native");
+		return nil, "count";
+	end;
+	local t, why = call(TRF_Carcasses, a, "x", TRF_PlNoErr);
+	if type(t) ~= "table" then
+		TRF_PlDE("near", "via", "count", "reason", tostring(why or "error"));
+		return nil, "count";
+	end;
+	local out = {};
+	for i = 1, getn(t) do
+		local c = t[i];
+		if TRF_PlKeep(c, f) and (not p or TRF_PlInR(c, p, r)) then tinsert(out, c); end;
+	end;
+	TRF_PlDE("near", "via", "typed", "record_count", getn(t), "kept_count", getn(out));
+	return out, "typed";
+end;
+
+-- Number of TRF_Near records, via; nil, via when TRF_Near returns nil.
+function TRF_NearCount(pos, r, f)
+	local l, via = TRF_Near(pos, r, f);
+	if type(l) ~= "table" then return nil, via; end;
+	return getn(l), via;
 end;
 
 -- Line through trf_ui's TRF_Say (8 s, the dock line spacing of trf_hail and trf_station), else the screen log.

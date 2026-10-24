@@ -399,6 +399,7 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `cap_trim` | `module=plumb event=cap_trim over_count=3 group_count=2 freed_count=3` (a spawn over `cap_ships`: the planned groups' trim calls) | 1 |
 | `orphan` | `module=plumb event=orphan deleted_count=2 global_count=1` (load: ships `trf_<prefix>_<n>_<j>`, globals `TRF_G<prefix>_*`) | 1 |
 | `prize` | `module=plumb event=prize owner=captain real_seconds=3600 gap=1800` (a combat prize paid: the shared gap of 00 B1 starts, `TRF.clock.pz`) | 1 |
+| `near` | `module=plumb event=near via=typed record_count=12 kept_count=3` / `via=count reason=no_native` (or `reason=off`, `sig`, `arg`, `noroot`, `nolm`: the `TRF_Carcasses` why; `error`: it raised) / `result=failed reason=pos` (`TRF_Near`, spec 16) | 2 |
 | `dump` | `module=plumb event=dump box_holder=nil event_slot=staged escort=nil arrival_count=1 job=nil marker_count=0 jumps=12 real_seconds=3600.500 visit_tick_legs=2 line_count=4 box_count=3 cap_count=0 cost_of_head_wrapped=true` | 1 |
 
 ## survive (`trf_survive.script`; `TRF_SvE`, `TRF_SvDE`)

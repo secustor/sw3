@@ -1,6 +1,6 @@
 # Read natives a DLL could add (inventory, modules, ships, markets, time, AI, recruits)
 
-Target `sw3cw.exe` GOG v1.12, image base 0x400000, no ASLR. Static work only: `.work/exe.asm` (objdump), file bytes via `.work/scripts/rd.py`, and Hopper pseudo-code through REA (worked in this session). The game was not run. Nothing here is implemented. Tags: **[V]** read from the asm or the file bytes, **[I]** inferred (meaning, runtime behaviour, or a link not read end to end). Helper used for this note: `.work/hooks/natives/f <va> [n]` prints cleaned asm from `exe.asm`.
+Target `sw3cw.exe` GOG v1.12, image base 0x400000, no ASLR. Static work only: `.work/exe.asm` (objdump), file bytes via `.work/scripts/rd.py`, and Hopper pseudo-code through REA (worked in this session). The game was not run. Implemented since: `TRF_Carcasses` (section 3), built 2026-10-24, unverified in the game; its guards, signatures, ini key and Lua wrapper `TRF_Near` are in [../../../pe/API.md](../../../pe/API.md). Nothing else here is implemented. Tags: **[V]** read from the asm or the file bytes, **[I]** inferred (meaning, runtime behaviour, or a link not read end to end). Helper used for this note: `.work/hooks/natives/f <va> [n]` prints cleaned asm from `exe.asm`.
 
 Related: [../lua-natives.md](../lua-natives.md) (registrations), [../sensor-module-read.md](../sensor-module-read.md) (handle resolution, slot chain, guarded-read C helpers), [../carcass-count.md](../carcass-count.md) (layer lists, class tree), [../key-input-native.md](../key-input-native.md), [../hook-options.md](../hook-options.md) section 4 D, [../ships/shop-save.md](../ships/shop-save.md).
 
@@ -172,6 +172,8 @@ A second native `TRF_CarcassInfo(c)` returns `{name, cost=[o+0x44c], hp=[o+0xd4]
 - Init signatures: 0x61ffa7 `89 86 f0 0e 00 00`; 0x624017 `83 bf 00 0f 00 00 00`; 0x607476 `8d 9f 1c 04 00 00 68 5c 58 72 00`; 0x6073fe `8d 9f ac 03 00 00`; 0x5e2e47 `d9 80 d4 00 00 00`; 0x5e3e89 `d9 80 54 0d 00 00`.
 
 ## 3. Ship and carcass enumeration
+
+Status: `TRF_Carcasses` built 2026-10-24, unverified ([../../../pe/API.md](../../../pe/API.md)): as the sketch below, with a 16-region `rd_ok` cache, a point sphere test, 22 signatures (the ones listed at the end of this section for the walk, class getter, HP, pilot chain, plus the mesh position 0x403810/0x403871/0x403890, mesh 0x61056b, uid 0x5dd842, name 0x5e157f, team name 0x524957/0x5d74d2, TeamManager 0x4a12ab and the player-team cache 0x5be232; the hangar ones belong to `TRF_Hangar`, not built) and the class values at 0x7b52f8/0x7b5560/0x7b5324. `TRF_Hangar` is not built.
 
 Feasible with plain reads. Every link below is a field read, except the class id (one byte-pattern decode, no call).
 

@@ -1,6 +1,6 @@
 /* traffic: hook module of the sw3-traffic mod, linked into the sw3tp zlib1.dll proxy
  * (mods/traffic/design/mod-options.md 5.1-5.5, 5.8 item 2). Seven E8 rel32 call-site patches,
- * six natives, Lua callbacks, the TRF carry across the location-entry ClearGlobals, a C _ERRORMESSAGE that
+ * seven natives (API.md), Lua callbacks, the TRF carry across the location-entry ClearGlobals, a C _ERRORMESSAGE that
  * logs a traceback (T1) and a Lua stack leak guard (T4). TRF_Log lines carry at most 485 chars of the Lua string.
  * Target: sw3cw.exe GOG v1.12, ImageBase 0x400000, no ASLR. No CRT.
  * Callbacks from the stubs are __stdcall (callee pops); natives are __cdecl int f(lua_State *).
@@ -60,7 +60,8 @@ static int  (__cdecl *const lua_getstack)(lua_State *, int, lua_Debug *) = API(0
 static int  (__cdecl *const lua_getinfo)(lua_State *, const char *, lua_Debug *) = API(0x660180);
 static const unsigned g_used_api[] = { 0x65de50, 0x65de60, 0x65df50, 0x65dfa0, 0x65e100, 0x65e1d0, 0x65e200,
     0x65e280, 0x65e2c0, 0x65e340, 0x65e3f0, 0x65e5a0, 0x65e610, 0x65e670, 0x65e8f0, 0x65e7a0, 0x65e970,
-    0x65f530, 0x65f9b0, 0x660180 };
+    0x65f530, 0x65f9b0, 0x660180,
+    0x65e0c0, 0x65e560, 0x65e5d0 };   /* lua_tonumber, lua_newtable (TRF_Carcasses), lua_settable (checked for later setters) */
 
 static lua_State *lstate(void) { return *(lua_State **)L_SLOT; }
 
@@ -261,6 +262,185 @@ static int __cdecl n_inmovie(lua_State *L)
 }
 static int __cdecl n_uistate(lua_State *L) { lua_pushnumber(L, g_movie_ok ? (double)ui_state() : -1.0); return 1; }
 
+/* ---- object list native (design/mod-research/hooks/read-natives.md 3, exe-hook-survey.md row 3,
+ * carcass-count.md 1.2; API.md) ----
+ * TRF_Carcasses([cx, cy, cz, r]) -> { {id=, cls=, tpl=, team=, hp=, hpmax=, x=, y=, z=, pl=}, ... } or nil, why.
+ * Walks the carcass list of the LayerManager, LM = [[0x7ba610]+0x18], list [LM+0x24], node = [list+8],
+ * data = [node], next = [node+8], obj = data-8, and skips what GetCarcassCountInSphere's collector 0x49b380
+ * skips ([obj+0x20] set, [obj+0x804] == 0, [obj+0x83c] == 0), at most CS_WALK_MAX nodes.
+ *   id     uid [o+0x94] (the `id` of the Lua handle)       cls  class id from (o+4)->vtbl[0] = `b8 imm32 c3`,
+ *   tpl    template name [[o+0x9c]+0x1c]                         *(int *)imm32: 2 Base .. 13 Portal, -1 unknown
+ *   hp     *(float *)(o+0xd4), hpmax *(float *)(o+0x3dc)
+ *   x,y,z  mesh [o+0x540]: world pos mesh+0x7c when [mesh+0x158] & 2, else mesh+0x50 when [mesh+0x170] == 0
+ *          (no parent: local = world), else absent
+ *   team   cls 3..9: weak links pilot [o+0xf8c] -> flight +0xa8 -> group +0x14c -> team +0xfc, name [[t+0x9c]+0x1c]
+ *   pl     1 when that team is the cached GamePlayer team [[R+0x4c]+0x18], else 0
+ * With a sphere (four numbers, r >= 0) only records whose position is within r of (cx, cy, cz) (a point test,
+ * unlike the sphere-sphere test of 0x49a800); without one every record. why: "off" (ini carcasses=0), "sig"
+ * (g_csig mismatch at init), "arg" (not 0 or 4 numbers), "noroot", "nolm". No SEH and no engine call: every
+ * load goes through rd_ok (VirtualQuery with a region cache, as committed_rw; the exe image is always
+ * readable), on the game thread (natives run there). */
+#define CS_WALK_MAX 4096
+#define IMG_LO  0x400000u   /* sw3cw.exe headers, .text, .rdata, .data (rd.py section table) */
+#define IMG_HI  0x7bf000u
+#define TEXT_LO 0x401000u
+#define TEXT_HI 0x6fb02bu
+#define DATA_LO 0x79b000u
+static void (__cdecl *const lua_newtable)(lua_State *) = API(0x65e560);
+static double (__cdecl *const lua_tonumber)(lua_State *, int) = API(0x65e0c0);
+static const struct trf_msig g_csig[] = {
+    { 0x49b377, 17, { 0x8b,0x0d,0x10,0xa6,0x7b,0x00,0x8b,0x51,0x18,0x8b,0x42,0x24,0x8b,0x58,0x08,0x85,0xdb },
+      "LM = [R+0x18], list [LM+0x24], head [list+8]" },
+    { 0x49b38e, 7, { 0x8b,0x03,0x85,0xc0,0x8b,0x5b,0x08 }, "data [node], next [node+8]" },
+    { 0x49b39b, 3, { 0x8d,0x78,0xf8 }, "obj = data-8" },
+    { 0x49b3a6, 24, { 0x83,0x7f,0x20,0x00,0x75,0xda,0x83,0xbf,0x04,0x08,0x00,0x00,0x00,0x74,0xd1,0x83,0xbf,0x3c,
+      0x08,0x00,0x00,0x00,0x74,0xc8 }, "skip [o+0x20], [o+0x804], [o+0x83c]" },
+    { 0x61f1b0, 6, { 0xb8,0x60,0x55,0x7b,0x00,0xc3 }, "ShipCarcass class getter mov eax, 0x7b5560; ret" },
+    { 0x607130, 6, { 0xb8,0xb0,0x51,0x7b,0x00,0xc3 }, "GameObject class getter mov eax, 0x7b51b0; ret" },
+    { 0x5dd842, 6, { 0x8b,0x90,0x94,0x00,0x00,0x00 }, "uid [o+0x94]" },
+    { 0x5e157f, 13, { 0x8b,0x80,0x9c,0x00,0x00,0x00,0x85,0xc0,0x74,0x18,0x8b,0x40,0x1c }, "name [[o+0x9c]+0x1c]" },
+    { 0x5e2e47, 6, { 0xd9,0x80,0xd4,0x00,0x00,0x00 }, "GetCurHP [o+0xd4]" },
+    { 0x50213a, 6, { 0xd9,0x81,0xdc,0x03,0x00,0x00 }, "hit_points [o+0x3dc]" },
+    { 0x61056b, 6, { 0x8b,0xb6,0x40,0x05,0x00,0x00 }, "mesh [o+0x540]" },
+    { 0x403810, 22, { 0x83,0xec,0x0c,0xf6,0x86,0x58,0x01,0x00,0x00,0x02,0x75,0x74,0x8b,0x8e,0x70,0x01,0x00,0x00,
+      0x85,0xc9,0x74,0x4b }, "mesh pos flag [m+0x158] & 2, parent [m+0x170]" },
+    { 0x403871, 9, { 0x8b,0x4e,0x50,0x8b,0x56,0x54,0x8b,0x46,0x58 }, "mesh local pos +0x50" },
+    { 0x403890, 3, { 0x8d,0x46,0x7c }, "mesh world pos +0x7c" },
+    { 0x5d7945, 6, { 0x8b,0x87,0x8c,0x0f,0x00,0x00 }, "ship pilot [o+0xf8c]" },
+    { 0x524880, 6, { 0x8b,0x81,0xa8,0x00,0x00,0x00 }, "pilot flight [p+0xa8]" },
+    { 0x5248b7, 6, { 0x8b,0x88,0x4c,0x01,0x00,0x00 }, "flight group [f+0x14c]" },
+    { 0x524932, 6, { 0x8b,0x88,0xfc,0x00,0x00,0x00 }, "group team [g+0xfc]" },
+    { 0x524957, 6, { 0x05,0x9c,0x00,0x00,0x00,0xc3 }, "team name record t+0x9c" },
+    { 0x5d74d2, 3, { 0x8b,0x40,0x1c }, "name string [rec+0x1c]" },
+    { 0x4a12ab, 9, { 0x8b,0x15,0x10,0xa6,0x7b,0x00,0x8b,0x72,0x4c }, "TeamManager [R+0x4c]" },
+    { 0x5be232, 5, { 0x8b,0xf0,0x8b,0x46,0x18 }, "player team cache [tm+0x18]" },
+};
+#define CSIG_N (sizeof(g_csig) / sizeof(g_csig[0]))
+/* class records read by the decode (file values, carcass-count.md 1.2): BaseCarcass, ShipCarcass, BigCarcass */
+static const struct { unsigned a; int v; } g_ccls[] = { { 0x7b52f8, 2 }, { 0x7b5560, 3 }, { 0x7b5324, 4 } };
+static int g_cs_on, g_cs_ok, g_cs_cut;
+
+/* readable-region cache, cleared at the start of every call (a region can be freed between calls) */
+#define RD_N 16
+static unsigned g_rd_lo[RD_N], g_rd_hi[RD_N], g_rd_i;
+static void rd_reset(void) { unsigned k; for (k = 0; k < RD_N; k++) g_rd_lo[k] = g_rd_hi[k] = 0; g_rd_i = 0; }
+static int rd_ok(unsigned a, unsigned n)
+{
+    MEMORY_BASIC_INFORMATION mi;
+    unsigned k, lo, hi;
+    if (a < 0x10000u || a + n < a) return 0;
+    if (a >= IMG_LO && a + n <= IMG_HI) return 1;
+    for (k = 0; k < RD_N; k++) if (a >= g_rd_lo[k] && a + n <= g_rd_hi[k]) return 1;
+    if (!VirtualQuery((void *)a, &mi, sizeof(mi))) return 0;
+    if (mi.State != MEM_COMMIT || (mi.Protect & (PAGE_GUARD | PAGE_NOACCESS))) return 0;
+    if (!(mi.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ |
+                        PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) return 0;
+    lo = (unsigned)mi.BaseAddress; hi = lo + (unsigned)mi.RegionSize;
+    if (a + n > hi) return 0;                     /* straddles two regions: refuse */
+    g_rd_lo[g_rd_i] = lo; g_rd_hi[g_rd_i] = hi; g_rd_i = (g_rd_i + 1) % RD_N;
+    return 1;
+}
+static unsigned grd(unsigned p, unsigned off) { return p && rd_ok(p + off, 4) ? *(const unsigned *)(p + off) : 0; }
+static int grf(unsigned p, unsigned off, double *v)  /* finite float, |v| < 1e9 */
+{
+    float f;
+    if (!p || !rd_ok(p + off, 4)) return 0;
+    f = *(const float *)(p + off);
+    if (f != f || f > 1e9f || f < -1e9f) return 0;
+    *v = (double)f;
+    return 1;
+}
+static int galive(unsigned p) { return p && rd_ok(p + 0x20, 4) && !*(const unsigned *)(p + 0x20); }
+static unsigned gwk(unsigned p, unsigned off) { unsigned q = grd(p, off); return galive(q) ? q : 0; }   /* weak ref */
+/* [rec+0x1c]: printable string of 1..63 bytes, else 0 */
+static const char *gname(unsigned rec)
+{
+    unsigned s = grd(rec, 0x1c), i;
+    for (i = 0; s && i < 64; i++) {
+        unsigned char c;
+        if (!rd_ok(s + i, 1)) return 0;
+        c = *(const unsigned char *)(s + i);
+        if (!c) return i ? (const char *)s : 0;
+        if (c < 0x20 || c > 0x7e) return 0;
+    }
+    return 0;
+}
+static int cls_id(unsigned o)                     /* (o+4)->vtbl[0] = b8 imm32 c3, *(int *)imm32 */
+{
+    unsigned f = grd(grd(o + 4, 0), 0), rec;
+    const BYTE *b = (const BYTE *)f;
+    int c;
+    if (f < TEXT_LO || f + 6 > TEXT_HI || b[0] != 0xb8 || b[5] != 0xc3) return -1;
+    rec = *(const unsigned *)(b + 1);
+    if (rec < DATA_LO || rec + 4 > IMG_HI) return -1;
+    c = *(const int *)rec;
+    return c > 0 && c < 256 ? c : -1;
+}
+static int cs_fail(lua_State *L, const char *why) { lua_pushnil(L); lua_pushstring(L, why); return 2; }
+static void cs_setn(lua_State *L, const char *k, double v) { lua_pushstring(L, k); lua_pushnumber(L, v); lua_rawset(L, -3); }
+static void cs_sets(lua_State *L, const char *k, const char *v) { lua_pushstring(L, k); lua_pushstring(L, v); lua_rawset(L, -3); }
+
+static int __cdecl n_carcasses(lua_State *L)
+{
+    unsigned R, lm, list, node, me;
+    double q[4] = { 0, 0, 0, 0 }, pos[3];
+    int sph = 0, n = 0, guard = 0, i, t = lua_type(L, 1);
+    if (!g_cs_on) return cs_fail(L, "off");
+    if (!g_cs_ok) return cs_fail(L, "sig");
+    if (t != -1 && t != 1) {                      /* LUA_TNONE, LUA_TNIL: no sphere */
+        for (i = 0; i < 4; i++) {
+            if (lua_type(L, i + 1) != T_NUMBER) return cs_fail(L, "arg");
+            q[i] = lua_tonumber(L, i + 1);
+        }
+        if (!(q[3] >= 0.0)) return cs_fail(L, "arg");
+        sph = 1;
+    }
+    rd_reset();
+    R = grd(ROOT_SLOT, 0);
+    if (!R) return cs_fail(L, "noroot");
+    lm = grd(R, 0x18); list = grd(lm, 0x24);
+    if (!list) return cs_fail(L, "nolm");
+    node = grd(list, 8);
+    me = gwk(grd(R, 0x4c), 0x18);
+    lua_newtable(L);                              /* [list] */
+    while (node && guard < CS_WALK_MAX) {
+        unsigned d = grd(node, 0), o = d ? d - 8 : 0, m, tm = 0;
+        const char *s;
+        double hp;
+        int c, havep = 0;
+        guard++;
+        node = grd(node, 8);
+        if (!o || !galive(o) || !grd(o, 0x804) || !grd(o, 0x83c)) continue;
+        m = grd(o, 0x540);
+        if (m && rd_ok(m + 0x158, 4)) {
+            unsigned off = (*(const unsigned *)(m + 0x158) & 2) ? 0x7c : !grd(m, 0x170) ? 0x50 : 0;
+            havep = off && grf(m, off, &pos[0]) && grf(m, off + 4, &pos[1]) && grf(m, off + 8, &pos[2]);
+        }
+        if (sph) {
+            double dx, dy, dz;
+            if (!havep) continue;
+            dx = pos[0] - q[0]; dy = pos[1] - q[1]; dz = pos[2] - q[2];
+            if (dx * dx + dy * dy + dz * dz > q[3] * q[3]) continue;
+        }
+        c = cls_id(o);
+        if (c >= 3 && c <= 9) tm = gwk(gwk(gwk(gwk(o, 0xf8c), 0xa8), 0x14c), 0xfc);
+        lua_newtable(L);                          /* [list rec] */
+        cs_setn(L, "id", (double)grd(o, 0x94));
+        cs_setn(L, "cls", (double)c);
+        if ((s = gname(grd(o, 0x9c)))) cs_sets(L, "tpl", s);
+        if (tm && (s = gname(grd(tm, 0x9c)))) cs_sets(L, "team", s);
+        if (grf(o, 0xd4, &hp)) cs_setn(L, "hp", hp);
+        if (grf(o, 0x3dc, &hp)) cs_setn(L, "hpmax", hp);
+        if (havep) { cs_setn(L, "x", pos[0]); cs_setn(L, "y", pos[1]); cs_setn(L, "z", pos[2]); }
+        cs_setn(L, "pl", tm && tm == me ? 1.0 : 0.0);
+        lua_rawseti(L, -2, ++n);                  /* list[n] = rec; [list] */
+    }
+    if (node && !g_cs_cut++) {
+        struct tb b; tb_begin(&b, "carcasses walk cut nodes="); tb_i(&b, CS_WALK_MAX); tb_end(&b);
+    }
+    return 1;
+}
+
 /* ---- Lua error traceback (exe-hook-survey row 12, hooks/hook-mechanisms.md 2.2 E-b) ----
  * lua_error -> message 0x65f810 calls the global _ERRORMESSAGE with the message, unprotected, then longjmps.
  * n_errmsg replaces baselib's luaB__ERRORMESSAGE 0x65ade0 (set before T1; no shipped script assigns it):
@@ -391,7 +571,7 @@ static void __stdcall trf_register(void)          /* T1, after 0x5c7e80 */
 {
     static const struct { const char *name; lua_CFunction f; } nat[] = {
         { "TRF_Version", n_version }, { "TRF_GameTime", n_gametime }, { "TRF_RealTime", n_realtime }, { "TRF_Log", n_log },
-        { "TRF_InMovie", n_inmovie }, { "TRF_UiState", n_uistate } };
+        { "TRF_InMovie", n_inmovie }, { "TRF_UiState", n_uistate }, { "TRF_Carcasses", n_carcasses } };
     const int nn = (int)(sizeof(nat) / sizeof(nat[0]));
     lua_State *L = lstate();
     struct tb b;
@@ -664,6 +844,7 @@ void trf_init(const char *ini)
     g_log_on = (int)GetPrivateProfileIntA("traffic", "log", 1, ini);
     g_tb_on = (int)GetPrivateProfileIntA("traffic", "traceback", 1, ini);
     g_guard_on = (int)GetPrivateProfileIntA("traffic", "stack_guard", 1, ini);
+    g_cs_on = (int)GetPrivateProfileIntA("traffic", "carcasses", 0, ini) != 0;
     QueryPerformanceFrequency(&g_qpf);
     QueryPerformanceCounter(&g_qpc0);
     tb_begin(&b, "config tick_ms="); tb_i(&b, g_tick_ms); tb_s(&b, " log="); tb_i(&b, g_log_on);
@@ -689,6 +870,18 @@ void trf_init(const char *ini)
             g_loc_ok = 1;
             tb_begin(&b, "tick guard: sig ok loc=[[R]+0x19c] sigs="); tb_u(&b, (unsigned)LSIG_N); tb_end(&b);
         }
+        if ((bad = sig_verify(g_csig, CSIG_N, &e))) {
+            tb_begin(&b, "carcasses sig mismatch what="); tb_q(&b, g_csig[e].what, 400, 0); tb_s(&b, " at "); tb_x(&b, bad);
+            tb_end(&b);
+        } else {
+            for (i = 0; i < (int)(sizeof(g_ccls) / sizeof(g_ccls[0])); i++)
+                if (*(const int *)g_ccls[i].a != g_ccls[i].v) break;
+            if (i < (int)(sizeof(g_ccls) / sizeof(g_ccls[0]))) {
+                tb_begin(&b, "carcasses sig mismatch what=class_id at "); tb_x(&b, g_ccls[i].a); tb_end(&b);
+            } else g_cs_ok = 1;
+        }
+        tb_begin(&b, "carcasses on="); tb_i(&b, g_cs_on); tb_s(&b, g_cs_ok ? " sig=ok sigs=" : " sig=bad sigs=");
+        tb_u(&b, (unsigned)CSIG_N); tb_end(&b);
     }
     if (!(g_page = build_page())) { tlog("disabled, stub page failed"); return; }
     for (i = 0; i < S_N; i++) {

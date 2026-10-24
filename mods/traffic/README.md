@@ -30,7 +30,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `../Trade/TRF_Hail.xml` (`Data/Scripts/Trade/`, CRLF) | Hail menu as a trade dialog (tune `hail_box` 2): one node, one answer per hail option, installed with the scripts. |
 | `../Trade/TRF_HailPg.xml` (`Data/Scripts/Trade/`, CRLF) | Demand result page as a trade dialog (tune `hail_box` 2): node `msg10` with Leave and No witnesses (`design/demand-page-spec.md`), installed with the scripts. |
 
-Other files: `install.sh`, `uninstall.sh` (game install, [below](#installing-into-the-game)), `env.sh`, `install-test.sh`, `run-test.sh`, `uninstall-test.sh` (test clone), `loc/trf_en.loc` (`.loc` scaffold for `loc_mode 1`), `tools/` (site checker, map generator, Lua lint, Lua 4 build), `tests/` (host harness), `VERSION`.
+Other files: `install.sh`, `uninstall.sh` (game install, [below](#installing-into-the-game)), `env.sh`, `install-test.sh`, `run-test.sh`, `uninstall-test.sh` (test clone), `loc/trf_en.loc` (`.loc` scaffold for `loc_mode 1`), `tools/` (site checker, map generator, Lua lint, Lua 4 build), `tests/` (host harness), `pe/` (the DLL module `traffic.c`, its Lua API in [pe/API.md](pe/API.md)), `VERSION`.
 
 Script rules: top-level code only defines functions and installs the wrappers. All state lives in the table `TRF`, which holds only numbers, strings and nested tables, and none of its keys is a reserved name. Every global carries the `TRF_` prefix. Object handles are never stored in `TRF`. The only handles in the save are the handle globals of open traders and parked ships (`NewAllFlight`'s `ship_trf_<id>_<i>` and the mod's `TRF_ship_trf_<id>_<i>`, `TRF_pk_<j>`; `design/v01-spec.md` 3.3), cleared when the record closes.
 
@@ -506,11 +506,12 @@ Run on the clone with cfg `log 2` (edit the installed `config.script`) and grep 
 
 ## Worldbuilding plumbing (`EXP=0 TRAFFIC=1`)
 
-Shared infrastructure for the worldbuilding features (spec [design/wb-plumbing-spec.md](design/wb-plumbing-spec.md), rules of `design/worldbuilding/00-economy-and-progression.md` sections 6 and 8), one module, `trf_plumb`, loaded after the v1 files and before `trf_station` (counted in `extra_count=`). Implemented and host-tested (`pl-a`..`pl-e`), not run in the game.
+Shared infrastructure for the worldbuilding features (spec [design/wb-plumbing-spec.md](design/wb-plumbing-spec.md), rules of `design/worldbuilding/00-economy-and-progression.md` sections 6 and 8), one module, `trf_plumb`, loaded after the v1 files and before `trf_station` (counted in `extra_count=`). Implemented and host-tested (`pl-a`..`pl-f`), not run in the game.
 
 - Dockings run through one dispatcher: lines in a fixed order, then at most one box, then the vanilla dock exactly once (after the box answer when one opened). Nothing of the mod runs while `__disableAction` or `__sys_SOS` is set, except the price restore and the station's request and mood handlers, whose own gates test the same flags (spec D4). After a station fee box no offer box follows at the trade dock until E0.6 passes (cfg `wb_box_after_fee` 0; 1 allows it, `install-test.sh` `WB_BOX_AFTER_FEE`).
 - Help decays: above 10 it loses 1 per 20 legs (tune `help_floor`, `help_decay`; decision C1). At most 3 game-time legs count per visit, jumps always count (tune `leg_cap`; decision D1), so parking at 8x no longer speeds up the region cycle.
 - A faction whose team is at war with the player keeps its standing (`module=faction event=faction_standing ... result=frozen`). Player-caused shortages are not named by rumours as places to deliver to.
+- Typed object query `TRF_Near(pos, r, f)` / `TRF_NearCount` over the DLL native `TRF_Carcasses` ([pe/API.md](pe/API.md), spec 16): records with uid, class, template, team, HP and position, filtered by class, alive, player, uid and template; `nil, "count"` without the native, so callers keep their `GetCarcassCountInSphere` path. No caller uses it yet.
 - Log lines: `module=plumb event=install ...` on every MapInitialization, `event=dock kind=<trade|patrol|pir|req> line_count=<n> result=<vanilla|box|skipped>` per docking, `event=dump ... jumps=<n> real_seconds=<s> visit_tick_legs=<n>`; full list in `design/log-events.md` (plumb).
 
 In-game checks: `module=plumb event=install cost_of_head_installed=true cost_of_head_wrapped=true` after each `module=core event=enter` and `event=load`; at a patrol station `module=hail event=board ... result=lines` then `module=plumb event=dock kind=patrol ... result=vanilla` and the patrol dialog; a station fee box OK gives `module=plumb event=dock kind=trade ... reason=after_fee`; after 15 game minutes in one system (3 legs of 300 s) `module=state event=leg_cap ... result=reached`.
@@ -691,12 +692,13 @@ The release zip `sw3-traffic-<v>.zip` (built by `release.sh`) or this folder:
 
 ### DLL keys and log lines (`sw3tp.ini [traffic]`)
 
-Two diagnostics in `pe/traffic.c` ([design/mod-research/exe-hook-survey.md](design/mod-research/exe-hook-survey.md) rows 11 and 12), both on by default:
+Every native, callback and key of the DLL, with its guards, in-game status and the Lua wrapper to call, is in [pe/API.md](pe/API.md). Two diagnostics in `pe/traffic.c` ([design/mod-research/exe-hook-survey.md](design/mod-research/exe-hook-survey.md) rows 11 and 12), both on by default, and one native switch:
 
 | key | default | meaning |
 |---|---|---|
 | `traceback` | 1 | at T1, after the natives, a DLL C function replaces baselib's `_ERRORMESSAGE`: every Lua error is logged with its stack to `sw3tp.log`, then the same `error: <msg>` text as before (with the `<source: line n>` location) goes to `_ALERT`, so `ScriptErrors.log` keeps its line |
 | `stack_guard` | 1 | at T4, every frame: Lua stack slots left at the top level (each evaluated trigger condition leaves one) are dropped with `lua_settop(L, 0)` |
+| `carcasses` | 0 (`install-test.sh` writes 1, `CARCASSES=0` off) | `TRF_Carcasses()` answers with the typed object list (class, template, team, HP, position of every carcass of the location); 0 keeps it registered, returning `nil, "off"`. Init line `traffic: carcasses on=<0/1> sig=<ok/bad> sigs=22`. Lua callers use `TRF_Near` (trf_plumb), which falls back to the count path |
 
 The `config` init line shows `traceback=<0|1> stack_guard=<0|1>`. The lines are logfmt with `module=dll` and no `exp` key, and are written whatever `log` is set to:
 

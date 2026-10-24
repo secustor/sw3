@@ -1,8 +1,8 @@
--- Worldbuilding plumbing scenarios (design/wb-plumbing-spec.md 13) under stock Lua 4.0.1: TRF_PLUMB=a..e, run by
+-- Worldbuilding plumbing scenarios (design/wb-plumbing-spec.md 13) under stock Lua 4.0.1: TRF_PLUMB=a..f, run by
 -- run_host.sh as its own entry point. a dock dispatcher (order, one box, skip, nesting, fee box, lock, double
 -- wrap), b _NoneStation_Action chain, CostOfHead and Case_Eject, c clocks across a load and the C1/D1 rules,
 -- d visit slots, seed order, arrival lines, job slot and markers, e raid help, ship caps, fst clamp, pk and the
--- orphan scan.
+-- orphan scan, f the typed object query TRF_Near (spec 16).
 -- Loads host_station.lua up to its first scenario (stubs of host_stubs.lua, the helpers of host_traffic.lua
 -- and host_v02.lua, the DockStation.script stubs and the S_* helpers), then adds CostOfPirates.script's
 -- CostOfHead to the vanilla includes.
@@ -625,6 +625,86 @@ function T_PL_E()
 	n0 = S_Mark();
 	TRF_DumpState("test");
 	HOST_Check(S_Logs(n0, "module=plumb event=dump ") == 1, "dump: plumb line");
+end;
+
+-- f: typed object query TRF_Near / TRF_NearCount (spec 16) -------------------------------------------
+
+-- uids of a TRF_Near list joined by ",", or the via when the list is nil.
+function P_Ids(l, via)
+	if type(l) ~= "table" then return "nil:"..tostring(via); end;
+	local s = "";
+	for i = 1, getn(l) do
+		if i > 1 then s = s..","; end;
+		s = s..tostring(l[i].id);
+	end;
+	return s..":"..tostring(via);
+end;
+function P_NearErr(...) error("injected"); end;
+function P_NearAll(...) return HOST().carc; end;
+
+function T_PL_F()
+	local h = HOST();
+	P_Begin("gredos", {seed=0, queue=0, parked=0, staged=0, raids=0, log=2});
+	h.carc = {
+		{id=101, cls=6, tpl="Interceptor_X", team="PlayerTeam", hp=500, hpmax=600, x=100, y=0, z=0, pl=1},
+		{id=102, cls=3, tpl="trader_ship", team="TRF_Trade_1", hp=800, hpmax=800, x=150, y=0, z=0, pl=0},
+		{id=103, cls=10, tpl="wreck_hull", hp=50, hpmax=100, x=120, y=10, z=0, pl=0},
+		{id=104, cls=3, tpl="pirate_ship", team="Pirates", hp=0, hpmax=500, x=110, y=0, z=0, pl=0},
+		{id=105, cls=13, tpl="portal", hp=1000, hpmax=1000, x=2000, y=0, z=0, pl=0},
+		{id=106, cls=3, tpl="far_ship", team="Pirates", hp=300, hpmax=300, pl=0},
+		{id=107, cls=9, tpl="trade_station", team="FTU", hp=9000, hpmax=9000, x=90, y=0, z=0, pl=0}};
+	local ships = {3, 4, 5, 6, 7};
+	local here = Vector3(100, 0, 0);
+	local sz0 = HOST_SaveSize(TRF);
+	local e0 = h.errors;
+	-- Count path: no native (the default of every other run), native answers nil, why, native raises.
+	TRF_Carcasses = nil;
+	local n0 = S_Mark();
+	local l, via = TRF_Near(here, 100);
+	local c, cv = TRF_NearCount(here, 100, {cls=ships});
+	HOST_Check(l == nil and via == "count" and c == nil and cv == "count"
+		and S_Logs(n0, "module=plumb event=near via=count reason=no_native") == 2, "count path: no native -> nil, count");
+	TRF_Carcasses = HOST_Carcasses;
+	h.carc_why = "off";
+	n0 = S_Mark();
+	HOST_Check(P_Ids(TRF_Near(here, 100)) == "nil:count" and S_Logs(n0, "module=plumb event=near via=count reason=off") == 1,
+		"count path: native nil, off -> nil, count");
+	h.carc_why = "sig";
+	HOST_Check(P_Ids(TRF_Near()) == "nil:count", "count path: native nil, sig -> nil, count");
+	h.carc_why = nil;
+	TRF_Carcasses = P_NearErr;
+	n0 = S_Mark();
+	HOST_Check(P_Ids(TRF_Near(here, 100)) == "nil:count" and h.errors == e0 and S_Logs(n0, "reason=error") == 1,
+		"count path: native raises -> nil, count, no script error");
+	-- Typed path: whole location (no arguments to the native), sphere, filters.
+	TRF_Carcasses = HOST_Carcasses;
+	h.carc_n = 0;
+	HOST_Check(P_Ids(TRF_Near()) == "101,102,103,104,105,106,107:typed" and h.carc_n == 1, "typed: whole location, every record");
+	n0 = S_Mark();
+	HOST_Check(P_Ids(TRF_Near(here, 100)) == "101,102,103,104,107:typed"
+		and S_Logs(n0, "module=plumb event=near via=typed record_count=5 kept_count=5") == 1,
+		"typed: sphere r 100 drops the far portal and the record without a position");
+	HOST_Check(P_Ids(TRF_Near(here, 100, {cls=ships, alive=1})) == "101,102:typed", "typed: cls ships and alive drop wreck, station, dead ship");
+	HOST_Check(P_Ids(TRF_Near(here, 100, {cls=ships, player=0})) == "102,104:typed"
+		and P_Ids(TRF_Near(here, 100, {cls=ships, player=1})) == "101:typed", "typed: player 0 and 1");
+	HOST_Check(P_Ids(TRF_Near(here, 100, {cls=ships, alive=1, not_ids={102}})) == "101:typed"
+		and P_Ids(TRF_Near(here, 100, {cls=ships, alive=1, not_names={"Interceptor_X"}})) == "102:typed", "typed: not_ids and not_names");
+	HOST_Check(P_Ids(TRF_Near(HOST_Obj("pl_f_probe", 100, 0, 0), 100, {cls={9}})) == "107:typed", "typed: position from a handle");
+	HOST_Check(P_Ids(TRF_Near(here, 25)) == "101,103,104,107:typed" and P_Ids(TRF_Near(here, 0)) == "101:typed", "typed: radius bounds (point test)");
+	c, cv = TRF_NearCount(nil, nil, {cls={13}});
+	local c2, cv2 = TRF_NearCount(nil, nil, {cls=ships, player=0, alive=1});
+	HOST_Check(c == 1 and cv == "typed" and c2 == 2 and cv2 == "typed", "count: whole location by class, far and positionless ships kept");
+	-- A native that ignores the sphere: the Lua side applies it again.
+	TRF_Carcasses = P_NearAll;
+	HOST_Check(P_Ids(TRF_Near(here, 100, {cls=ships})) == "101,102,104:typed", "typed: sphere applied in Lua as well");
+	-- Bad positions.
+	TRF_Carcasses = HOST_Carcasses;
+	HOST_Check(P_Ids(TRF_Near("x", 10)) == "nil:pos" and P_Ids(TRF_Near(here)) == "nil:pos" and P_Ids(TRF_Near(here, -1)) == "nil:pos"
+		and P_Ids(TRF_Near(nil, 10)) == "nil:pos" and P_Ids(TRF_Near({x=1, y=2}, 10)) == "nil:pos", "pos: unusable pos or r -> nil, pos");
+	HOST_Check(P_Ids(TRF_Near({x=100, y=0, z=0}, 5)) == "101:typed", "pos: plain {x, y, z} table");
+	HOST_Check(HOST_SaveSize(TRF) == sz0 and h.errors == e0, "TRF unchanged, no script error");
+	TRF_Carcasses = nil;
+	h.carc = nil;
 end;
 
 -- Dispatch ---------------------------------------------------------------------------------

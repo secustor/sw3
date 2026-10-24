@@ -91,6 +91,24 @@ function TRF_RealTime() return HOST().rt; end;
 function HOST_InMovie() return HOST().mov; end;
 function HOST_UiState() return HOST().ui; end;
 function HOST_MovieIsPlaying() return HOST().mip; end;
+-- Object list (traffic.c TRF_Carcasses): undefined by default, so every run stays on the count path; a
+-- scenario sets TRF_Carcasses = HOST_Carcasses. HOST().carc is the record list of the location, HOST().carc_why
+-- makes the native answer nil, why ("off", "sig", ...). With a sphere (four numbers) only records with a
+-- position within r, as the native; calls counted in HOST().carc_n.
+function HOST_Carcasses(...)
+	local h = HOST();
+	h.carc_n = (h.carc_n or 0) + 1;
+	HOST_Want(arg.n == 0 or (arg.n == 4 and type(arg[1]) == "number" and type(arg[2]) == "number"
+		and type(arg[3]) == "number" and type(arg[4]) == "number"), "TRF_Carcasses() or TRF_Carcasses(cx, cy, cz, r)");
+	if h.carc_why then return nil, h.carc_why; end;
+	local out = {};
+	for i = 1, getn(h.carc or {}) do
+		local c = h.carc[i];
+		if arg.n == 0 then tinsert(out, c);
+		elseif type(c.x) == "number" and HOST_Dist(c, Vector3(arg[1], arg[2], arg[3])) <= arg[4] then tinsert(out, c); end;
+	end;
+	return out;
+end;
 -- An " ERROR " or " event=error " line (TRF_Err, TRF_CbErr, TRF_GnErr: a mod error caught by a protected call)
 -- counts as a script error.
 function TRF_Log(s)

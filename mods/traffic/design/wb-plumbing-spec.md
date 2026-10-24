@@ -1,6 +1,6 @@
 # Worldbuilding plumbing: spec and implementation notes
 
-Shared infrastructure of `design/worldbuilding/00-economy-and-progression.md` section 6 ("Shared infrastructure and arbitration") and the section 8 rules C1 (help decay) and D1 (legs per visit). Status: implemented and host-tested (`tests/host_plumb.lua`, runs `pl-a`..`pl-e`), not run in the game.
+Shared infrastructure of `design/worldbuilding/00-economy-and-progression.md` section 6 ("Shared infrastructure and arbitration") and the section 8 rules C1 (help decay) and D1 (legs per visit). Status: implemented and host-tested (`tests/host_plumb.lua`, runs `pl-a`..`pl-f`), not run in the game. Section 16 adds the typed object query `TRF_Near` over the DLL native `TRF_Carcasses` ([../pe/API.md](../pe/API.md)).
 
 Module: new `Data/Scripts/Mods/Traffic/trf_plumb.script`, prefix `Pl` (`TRF_Pl_*` loader and contract functions, `TRF_Pl<X>` internal), log `module=plumb`. The public names are the ones of 00 section 6 (`TRF_DockLine`, `TRF_BoxTake`, ...). Clock counters and C1/D1 live in `trf_state.script`, `TRF_FstClamp` in `trf_faction.script`, `TRF.short.pk` in `trf_shop.script`.
 
@@ -161,7 +161,7 @@ Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Measured in 
 | `TRF.short[i].pk` | 8 entries | 8 x 22 |
 | total | | 1,054 |
 
-## 13. Host scenarios (`tests/host_plumb.lua`, `TRF_PLUMB=a..e`)
+## 13. Host scenarios (`tests/host_plumb.lua`, `TRF_PLUMB=a..f`)
 
 | Run | Covers |
 |---|---|
@@ -170,6 +170,7 @@ Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Measured in 
 | `pl-c` | `clock.j` per jump and not on load, `clock.rs` with `dt_game` 0 and > 0 and across a load; D1 cap, kept across a load, reset by the entry, `leg_cap 0`; C1 decay steps, floor, mark restart, repair |
 | `pl-d` | box lock, escort slot, event slot (staged raid refused while held, takes it when free), slots cleared on entry and load, seed provider order with a feature provider and a stop, the hold stopping the list before #8 after a staged raid, arrival lines at 8/11/14 s and the fourth dropped, late lines spaced 3 s, none after a load, job slot (refusals, save, repair), markers (quest refusal, deletion when a mission starts, owner and label rules, cap, clear by owner, cleanup on load and jump), worst-case bytes |
 | `pl-e` | raid-help pure rule and `TRF_Rd_Pay` with resolvers (exclusion plus the lowest factor; cancel), ship caps (count in `TRF_CanSpawn`, trim plans, trim before the skip), S35 paid docking without an offer box, supply contract box lock, `TRF_FstClamp` (war freeze in `TRF_FstAdd`, clamp), pk (relief, merge, kill shortage), orphan scan at load, host left-globals rule, dump |
+| `pl-f` | `TRF_Near` / `TRF_NearCount` (section 16): count path without the native, with `nil, "off"`, `nil, "sig"` and a raising native (no script error); typed path for the whole location (native called with no arguments), the sphere (far portal and positionless record dropped, radius bounds), filters `cls`, `alive`, `player` 0 and 1, `not_ids`, `not_names`, a handle as `pos`, the sphere applied again in Lua when the native ignores it, unusable `pos`/`r` (`nil, "pos"`), `TRF` unchanged |
 
 Existing scenarios changed: `v02-l` (the S19 board is now lines, no board box; see D5), `v1-n` (plumb worst case added to the full-state save), `host_traffic.lua` `T_LeftGlobals` (new group globals). All 55 host runs pass.
 
@@ -191,9 +192,54 @@ Existing scenarios changed: `v02-l` (the S19 board is now lines, no board box; s
 - D14 The ship-cap governor needs no change: its native carcass count includes the registered ships.
 - D15 The lint "group/global prefix list" did not exist in `tools/lint_lua.py`; `GROUP_PREFIXES` and its check are new.
 - D16 A raid-help cancel removes only the credits; help, heat -1 and the visit credit of the answered raid stay.
+- D17 `TRF_Near` resolves a handle through its own `TRF_PlPos` (number fields `x, y, z` first, then a protected `GetPosition`), the same body as trf_scar's `TRF_Sc_Pos`; plumb is shared infrastructure and must not depend on a feature module.
+- D18 `TRF_Near` returns a third form `nil, "pos"` for an unusable `pos` or `r` (the brief named only `nil, "count"`): the count fallback needs the same position and would fail too.
+- D19 `not_names` matches the template name `tpl` only; the native reads no object label (labels live in the Lua-side label table of the engine, not traced).
+- D20 `[traffic] carcasses` defaults to 0 in `traffic.c` and in the shipped `sw3tp.ini` until the in-game check of section 16.6 passes; `install-test.sh` writes 1 (`CARCASSES=0` turns it off). `lua_settable` 0x65e5d0 is in `g_used_api` (checked at init) but not called: the native sets fields with `lua_rawset` as the read-natives sketch does.
 
 ## 15. Left out and open
 
 - "At most one merc-style flight (pack or rival) per entry" (ship caps row of 00 section 6) is a rule of #12 and #13; no traffic code needs it yet and no API was asked for.
 - In-game checks: E0.6 (box from each dock callback, a second box from an OK: the patrol 8.10 box and the pirate offer open inside the dock OK as before; `wb_box_after_fee` stays 0 until it passes), E0.8 (runtime nav points with 4 arguments and their persistence), E0.17 (`CostOfHead` call pattern), E0.21 (`dt_real` while paused), E0.24 (wrappers alive).
 - 8.5 raid-help resolvers of #4, #9, #12, #13, owed payers of #4, #10, #11, #14, seed providers of #5, #8 and the other registrations come with their features.
+
+## 16. Typed object query (`TRF_Near`, `TRF_NearCount`)
+
+Shared helper over the DLL native `TRF_Carcasses` (`pe/traffic.c`, documented in [../pe/API.md](../pe/API.md); research [mod-research/hooks/read-natives.md](mod-research/hooks/read-natives.md) 3). It answers what `GetCarcassCountInSphere` cannot: which objects are near a point, of which class, team and HP. The count native counts every carcass in the sphere (scenery, wrecks, portals, rockets, stations; [mod-research/carcass-count.md](mod-research/carcass-count.md)), so callers needed baselines.
+
+### 16.1 API
+
+`TRF_Near(pos, r, f) -> list, via`; `TRF_NearCount(pos, r, f) -> n, via`.
+
+- `pos`: a table or Vector3 with number fields `x, y, z`, or an object handle (its `GetPosition`, protected). `pos` and `r` both nil: every object of the location (the native is called with no arguments).
+- `r`: radius, `>= 0`. Point test on the record position, in the native and again in Lua (a record without a position is dropped when a sphere is given).
+- `f`: optional filter table, every given field must hold: `cls = {3, 4, ...}` (class ids kept), `alive = 1` (`hp > 0`), `player = 1` (`pl == 1`) or `0` (`pl ~= 1`), `not_ids = {uid, ...}`, `not_names = {tpl, ...}`.
+- `via`: `"typed"` with the record list (possibly empty); `nil, "count"` when the native is missing (no DLL or an older one), answers `nil, why` (`off`, `sig`, `arg`, `noroot`, `nolm`) or raises: the caller keeps its `GetCarcassCountInSphere` path; `nil, "pos"` when `pos` or `r` is unusable.
+
+Records (fields in the API.md table): `id` (uid, the handle's `id`), `cls` (2 BaseCarcass .. 13 Portal, -1 unknown), `tpl`, `team` (cls 3..9 with a pilot), `hp`, `hpmax`, `x, y, z` (nil when unknown), `pl` (1 player team). The records are fresh tables per call; callers must not store them in `TRF`.
+
+### 16.2 Rules
+
+- No caller uses it yet; every existing count path is unchanged. The host stub `TRF_Carcasses` is undefined by default, so every other host run stays on the count path.
+- Cost: the native builds one table per object of the location (a few hundred). Call it per event or per step (spawn decision, witness check), not from every `TRF_OnTick`.
+- Errors: the native call is protected (`TRF_PlNoErr`); no error reaches `ScriptErrors.log`.
+
+### 16.3 Log
+
+Level 2 only: `module=plumb event=near via=typed record_count=<n> kept_count=<k>`, `event=near via=count reason=<no_native|off|sig|arg|noroot|nolm|error>`, `event=near result=failed reason=pos` (log-events.md, plumb).
+
+### 16.4 Data and byte cost
+
+Nothing saved: `TRF` is unchanged (`pl-f` checks `HOST_SaveSize(TRF)` before and after). No handles are kept.
+
+### 16.5 Follow-ups (not in this step)
+
+- The witness rule of trf_supply's No witnesses window (`witness_r`, the background count `dw.b` and `witness_slack` of [demand-page-spec.md](demand-page-spec.md)): count live non-player ships near the demand through `TRF_Near(pos, witness_r, {cls={3,4,5,6,7}, alive=1, player=0, not_ids=<the target's ships>})` instead of a carcass count against a baseline, count fallback as now.
+- The ship-cap governor (trf_safety `GetCarcassCountInSphere(Vector3(0,0,0), r)` with a scenery baseline): count ships only (`cls` 3..7) and drop the baseline on the typed path.
+- Spawn-spot checks (trf_gen, radius 20, and exp_trader): a spot is free when no ship (`cls` 3..9) is within the radius, so a portal or station at the spot no longer counts.
+- Finding traders the mod did not create (team and template), and load adoption (`load_none`) by uid.
+
+### 16.6 In-game check
+
+With `CARCASSES=1` (the `install-test.sh` default): `traffic: carcasses on=1 sig=ok sigs=22` at start; in a system with a known convoy, the first caller's records (logged at `log=2` by that follow-up) show the trader rows with `team=` their CreateTeam name, `hp == GetCurHP(handle)` and `hpmax` equal to `<hit_points>` of the template; the player's fighters have `pl=1`.
+

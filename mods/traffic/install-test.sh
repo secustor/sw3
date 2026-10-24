@@ -44,7 +44,8 @@
 # page) are always copied and hail_xml=1 written; a hail_box key in TUNE wins.
 # LEVEL=v01|v02|v1 (default v1): v01 and v02 turn the later features off with the presets the host tests use
 # (tests/host_traffic.lua T_V01, T_V1Off); keys set in the environment win over the preset.
-# TRAFFIC_ENABLED=0|1, SITE_T1..SITE_T4 (0|1, default 1), TICK_MS (default 250) (sw3tp.ini [traffic]).
+# TRAFFIC_ENABLED=0|1, SITE_T1..SITE_T4 (0|1, default 1), TICK_MS (default 250), CARCASSES=0|1 (default 1 with
+# TRAFFIC=1, else 0: the TRF_Carcasses native, pe/API.md) (sw3tp.ini [traffic]).
 # STABILITY=0|1, RENDER_LOST_GUARD=0|1 (default 1) (sw3tp.ini [stability], mods/performance).
 # The trackpad install-test.sh rewrites sw3tp.ini; run this script again after it.
 set -eu
@@ -64,6 +65,7 @@ case "$PROFILE" in "") ;; lab) LOG=${LOG:-2} ;; *) echo "PROFILE must be lab or 
 HAIL_BOX=${HAIL_BOX:-2}
 case "$HAIL_BOX" in 0|1|2) ;; *) echo "HAIL_BOX must be 0..2" >&2; exit 1;; esac
 case "$TRAFFIC" in 0|1) ;; *) echo "TRAFFIC must be 0 or 1" >&2; exit 1;; esac
+case "${CARCASSES:-$TRAFFIC}" in 0|1) ;; *) echo "CARCASSES must be 0 or 1" >&2; exit 1;; esac
 opt=""
 case "${NEWS:-0}" in 0) ;; 1) NEWS_MODE=${NEWS_MODE:-2} ;; *) echo "NEWS must be 0 or 1" >&2; exit 1;; esac
 LEVEL=${LEVEL:-v1}
@@ -174,9 +176,9 @@ printf 'function TRF_Config() return {exp=%s, log=%s, big=%s, del_on_jump=%s, au
 ini="$COPY/sw3tp.ini"; [ -f "$ini" ] || : > "$ini"
 tmp="$ini.new"
 awk '{l=$0; sub(/\r$/,"",l)} l=="[traffic]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$ini" > "$tmp"
-printf '[traffic]\r\nenabled=%s\r\nsite_t1=%s\r\nsite_t2a=%s\r\nsite_t2b=%s\r\nsite_t2c=%s\r\nsite_t2d=%s\r\nsite_t3=%s\r\nsite_t4=%s\r\ntick_ms=%s\r\nlog=%s\r\n' \
+printf '[traffic]\r\nenabled=%s\r\nsite_t1=%s\r\nsite_t2a=%s\r\nsite_t2b=%s\r\nsite_t2c=%s\r\nsite_t2d=%s\r\nsite_t3=%s\r\nsite_t4=%s\r\ntick_ms=%s\r\nlog=%s\r\ncarcasses=%s\r\n' \
     "${TRAFFIC_ENABLED:-1}" "${SITE_T1:-1}" "${SITE_T2A:-1}" "${SITE_T2B:-1}" "${SITE_T2C:-1}" "${SITE_T2D:-1}" \
-    "${SITE_T3:-1}" "${SITE_T4:-1}" "${TICK_MS:-250}" "${LOG:-1}" >> "$tmp"
+    "${SITE_T3:-1}" "${SITE_T4:-1}" "${TICK_MS:-250}" "${LOG:-1}" "${CARCASSES:-$TRAFFIC}" >> "$tmp"
 mv -f "$tmp" "$ini"
 # [stability] (mods/performance/pe/stability.c, in the same zlib1.dll): STABILITY=0|1, RENDER_LOST_GUARD=0|1 (default 1).
 awk '{l=$0; sub(/\r$/,"",l)} l=="[stability]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$ini" > "$tmp"

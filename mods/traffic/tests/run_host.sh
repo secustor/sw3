@@ -2,13 +2,13 @@
 # Check the mod scripts on the host: CRLF line endings, luac -p, lint_lua.py, then the loader scenario of
 # host_stubs.lua for each experiment and the v0.1 traffic scenarios a..g of host_traffic.lua under stock
 # Lua 4.0.1, then the v0.2 scenarios v02-a..n of host_v02.lua, the v1 scenarios v1-a..n of host_v1.lua and the
-# station voices scenarios stn-a..h of host_station.lua, the worldbuilding plumbing scenarios pl-a..e of
+# station voices scenarios stn-a..h of host_station.lua, the worldbuilding plumbing scenarios pl-a..f of
 # host_plumb.lua, the survivors scenarios sv-a..g of host_survive.lua, the faction ladder scenarios lad-a..g of
 # host_ladder.lua, the charter scenarios ch-a..h of host_charter.lua, the battle scars scenarios sc-a..g of
 # host_scar.lua, the wanted captains scenarios cap-a..h of host_captain.lua and the demand page scenarios dm-a..g of
 # host_demand.lua (each its own entry point).
 # Env: LUA4 (interpreter), LUAC4, EXPS (default "default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm"), SCENS (default a..g),
-# V02 (default a..n), V1 (default a..n), STN (default a..h), PL (default a..e), SV (default a..g), LAD (default a..g), CH
+# V02 (default a..n), V1 (default a..n), STN (default a..h), PL (default a..f), SV (default a..g), LAD (default a..g), CH
 # (default a..h), SC (default a..g), CAP (default a..h), DM (default a..g).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
@@ -53,7 +53,7 @@ for e in ${EXPS:-default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm}; do
         v02) for s in ${V02:-a b c d e f g h i j k l m n}; do run "v02-$s" TRF_SCEN="v02-$s"; done ;;
         v1) for s in ${V1:-a b c d e f g h i j k l m n}; do run "v1-$s" TRF_SCEN="v1-$s"; done ;;
         stn) entry=host_station.lua; for s in ${STN:-a b c d e f g h}; do run "stn-$s" TRF_STN="$s"; done; entry=host_stubs.lua ;;
-        pl) entry=host_plumb.lua; for s in ${PL:-a b c d e}; do run "pl-$s" TRF_PLUMB="$s"; done; entry=host_stubs.lua ;;
+        pl) entry=host_plumb.lua; for s in ${PL:-a b c d e f}; do run "pl-$s" TRF_PLUMB="$s"; done; entry=host_stubs.lua ;;
         sv) entry=host_survive.lua; for s in ${SV:-a b c d e f g}; do run "sv-$s" TRF_SV="$s"; done; entry=host_stubs.lua ;;
         lad) entry=host_ladder.lua; for s in ${LAD:-a b c d e f g}; do run "lad-$s" TRF_LAD="$s"; done; entry=host_stubs.lua ;;
         ch) entry=host_charter.lua; for s in ${CH:-a b c d e f g h}; do run "ch-$s" TRF_CH="$s"; done; entry=host_stubs.lua ;;
