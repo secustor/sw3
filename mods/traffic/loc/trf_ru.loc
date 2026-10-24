@@ -1,7 +1,7 @@
 LOCALE_FILE
 FILETYPE STANDART
 
-; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) and the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text), cp1251.
+; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text) and the wanted captains keys (#TRF_cap*, trf_captain TRF_Cap_Text), cp1251.
 ; Same keys and fixed texts as loc/trf_en.loc (no $n placeholders); used with cfg loc_mode 1 in a Russian install.
 ; Other #TRF_ keys have no RU line yet (design/station-voices-spec.md 13.5).
 
@@ -193,3 +193,77 @@ FILETYPE STANDART
 #TRF_scararrivet0 = Маяк Торгового союза: здесь погиб грузовик.
 #TRF_scarnav = Место крушения
 #TRF_scarold = Обломки в этой системе уже обобраны дочиста.
+#TRF_capback = Помните меня, Волки? Я вернулся, и пушек у меня больше.
+#TRF_capbrd = Капитан пиратского клана в розыске.
+#TRF_capchase = Ты пошёл за мной? Смело. Глупо, но смело.
+#TRF_capclaim = Патруль: уничтожение капитана засчитано. Награду можно получить на любой станции патруля.
+#TRF_capesc = Уже уходил от погони.
+#TRF_capexp = Патруль: срок заявки на награду истёк.
+#TRF_capflee = Хватит. Мы ещё встретимся, Волк!
+#TRF_capgrudge = Опять Волки? Отлично. За прошлый раз я вам должен.
+#TRF_caphead = РАЗЫСКИВАЕТСЯ ПАТРУЛЁМ
+#TRF_capintel = Осведомитель патруля: сведения о следующем рейде капитана. Купить?
+#TRF_capintelok = Осведомитель даст знать, где появится капитан.
+#TRF_capintelpoor = Не хватает кредитов на осведомителя.
+#TRF_capintro = Эти трассы платят дань моему клану.
+#TRF_capleave = Здесь нечего ловить. Уходим.
+#TRF_capnm1 = Хаск 'Красная Рука'
+#TRF_capnm10 = Брокк Тави
+#TRF_capnm11 = Лайл 'Жернов'
+#TRF_capnm12 = Ода Маррин
+#TRF_capnm13 = Руск 'Полумесяц'
+#TRF_capnm14 = Ильзе Корд
+#TRF_capnm15 = Фенн 'Огарок'
+#TRF_capnm16 = Зора Пайк
+#TRF_capnm17 = Марек 'Канава'
+#TRF_capnm18 = Нев Саллоу
+#TRF_capnm19 = Корран 'Мёртвая Хватка'
+#TRF_capnm2 = Мира Велл
+#TRF_capnm20 = Петра Даск
+#TRF_capnm21 = Иво 'Уголь'
+#TRF_capnm22 = Халла Рук
+#TRF_capnm23 = Теодор 'Воробей'
+#TRF_capnm24 = Ярра Венн
+#TRF_capnm3 = Дорн 'Солёный'
+#TRF_capnm4 = Кетти Браск
+#TRF_capnm5 = Ульф 'Девятипалый'
+#TRF_capnm6 = Сабра Квист
+#TRF_capnm7 = Тома 'Заклёпка'
+#TRF_capnm8 = Гаррен Холт
+#TRF_capnm9 = Весна 'Пепел'
+#TRF_capnone = Клан остался без главаря. Награда не назначена.
+#TRF_cappaid = Патруль: награда за капитана подтверждена и переведена. Чистого космоса!
+#TRF_cappatrol = Рассредоточиться, следить за трассами.
+#TRF_capq1 = Разыскивается: Хаск 'Красная Рука'
+#TRF_capq10 = Разыскивается: Брокк Тави
+#TRF_capq11 = Разыскивается: Лайл 'Жернов'
+#TRF_capq12 = Разыскивается: Ода Маррин
+#TRF_capq13 = Разыскивается: Руск 'Полумесяц'
+#TRF_capq14 = Разыскивается: Ильзе Корд
+#TRF_capq15 = Разыскивается: Фенн 'Огарок'
+#TRF_capq16 = Разыскивается: Зора Пайк
+#TRF_capq17 = Разыскивается: Марек 'Канава'
+#TRF_capq18 = Разыскивается: Нев Саллоу
+#TRF_capq19 = Разыскивается: Корран 'Мёртвая Хватка'
+#TRF_capq2 = Разыскивается: Мира Велл
+#TRF_capq20 = Разыскивается: Петра Даск
+#TRF_capq21 = Разыскивается: Иво 'Уголь'
+#TRF_capq22 = Разыскивается: Халла Рук
+#TRF_capq23 = Разыскивается: Теодор 'Воробей'
+#TRF_capq24 = Разыскивается: Ярра Венн
+#TRF_capq3 = Разыскивается: Дорн 'Солёный'
+#TRF_capq4 = Разыскивается: Кетти Браск
+#TRF_capq5 = Разыскивается: Ульф 'Девятипалый'
+#TRF_capq6 = Разыскивается: Сабра Квист
+#TRF_capq7 = Разыскивается: Тома 'Заклёпка'
+#TRF_capq8 = Разыскивается: Гаррен Холт
+#TRF_capq9 = Разыскивается: Весна 'Пепел'
+#TRF_capqd = Пиратский капитан, за голову которого патруль назначил награду. Уничтожьте его и получите награду на любой станции патруля.
+#TRF_capquiet = Капитан клана затаился.
+#TRF_capraid = Берите грузовоз. Охрану оставьте мне.
+#TRF_capseen = Живым или мёртвым: награда назначена.
+#TRF_capsucc = Прежний главарь мёртв. Теперь клан веду я, и я знаю, кто это сделал.
+#TRF_capvend = Волки! Вам передают привет.
+#TRF_capwait = Патруль: заявка на награду принята. Оплата пройдёт при следующей стыковке.
+#TRF_capwin = Груз наш. Забирайте!
+#TRF_capwing = Капитан сбит! Отходим, отходим!

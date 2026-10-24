@@ -937,6 +937,8 @@ function TRF_RgSweepOut(slot, L, won, k, how, p100)
 	end;
 	-- Battle scars source 3 (design/scar-spec.md 5.2): the off-screen attempt leaves a wreck field in its target.
 	if how == "off" then TRF_P("TRF_Sc_Sweep", slot, L, won, f); end;
+	-- Wanted captains (design/captain-spec.md 5.6): a sweep success kills or drives off the region's captain.
+	TRF_P("TRF_Cap_Sweep", slot, L, won, how);
 end;
 
 -- Resolve attempt k = sn + 1 off-screen (region tick counterforce). An attempt playing on-screen now
@@ -1160,6 +1162,8 @@ function TRF_RegionTick(L)
 	for slot = 1, m.n do TRF_P("TRF_Ch_RegionTick", slot, L); end;
 	-- Battle scars (design/scar-spec.md): expiry outside the current system.
 	TRF_P("TRF_Sc_RegionTick", L);
+	-- Wanted captains (design/captain-spec.md 5.6): the off-screen life cycle after the phase changes of this tick.
+	TRF_P("TRF_Cap_RegionTick", L);
 end;
 
 -- Forced Bust (v1 8.3): every slot with ct bit 4 clears it; in Quiet, Boom or Build-up with sc < 75 and a

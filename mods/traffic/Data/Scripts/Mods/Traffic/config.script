@@ -22,6 +22,9 @@
 -- Battle scars (design/scar-spec.md 6): enable_scars (default 1) = 0 turns trf_scar off; enable_scar_loot (step 1)
 -- and enable_scavengers, enable_scar_recorder, enable_salvage_licence (step 2, read nowhere yet) are the toggles; the
 -- tune keys (scar_max, scar_ttl, scar_cd, vcap_lw, ...) read the module TuneDef.
+-- Wanted captains (design/captain-spec.md 6): cap_enable (default 1) = 0 turns trf_captain off; cap_board, cap_intel,
+-- cap_chase (step 1) and cap_capture, cap_force_eject, cap_vendetta (step 2, read nowhere yet, off) are the toggles;
+-- cap_regions_off, cap_at and the tune keys (cap_flee_hp, cap_gap_j, cap_k0, ...) read the module defaults.
 function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
 	enabled=1, cycle=1, prosperity=1, tier_cap=4, cap_traders=5, cap_ships=20, spawn_scale=1.0, band_half=0,
 	parked=1, esc_flight=1, seed=1, queue=1, raids=1, staged=1, contracts=1, esc_speed=0, meet=2, hail_start=2, board=1,
@@ -31,4 +34,5 @@ function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
 	wreck=0, lang="en", loc_mode=0, hail_xml=0, enable_survivors=1,
 	lad_enabled=1, lad_rankline=1, lad_permit=1, lad_settle=1, lad_handin=1, lad_gibdd=1, lad_reset_sync=1,
 	lad_escort=1, lad_depot=1, lad_warrant=1, charter=1,
-	enable_scars=1, enable_scar_loot=1, enable_scavengers=1, enable_scar_recorder=1, enable_salvage_licence=1} end
+	enable_scars=1, enable_scar_loot=1, enable_scavengers=1, enable_scar_recorder=1, enable_salvage_licence=1,
+	cap_enable=1, cap_board=1, cap_intel=1, cap_chase=1, cap_capture=0, cap_force_eject=0, cap_vendetta=0} end

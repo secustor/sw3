@@ -775,9 +775,10 @@ end;
 
 -- One pirate flight of tier 1..4 at power pw (5.3; row as TRF_Rd_PirRow, kind nil = 75 % fighters), at most
 -- maxn ships; pilots from Pir_Pilots by tier, so CostOfHead pays by tier. group: global name of the group,
--- as NewAllFlight takes it. Returns the flight or nil.
-function TRF_PirFlight(tier, pw, group, sign, pos, dir, kind, maxn)
-	local row, pilots, form, p = TRF_Rd_PirRow(tier, pw, kind, nil);
+-- as NewAllFlight takes it. ns: entries of the row (nil: the tier's ns; a captain's wing takes more,
+-- design/captain-spec.md 5.3). Returns the flight or nil.
+function TRF_PirFlight(tier, pw, group, sign, pos, dir, kind, maxn, ns)
+	local row, pilots, form, p = TRF_Rd_PirRow(tier, pw, kind, ns);
 	if not row then return nil; end;
 	if type(maxn) == "number" then
 		while getn(row) > max(1, floor(maxn)) do tremove(row); end;
@@ -833,13 +834,18 @@ function TRF_Rd_ClanAlive(skip)
 	end;
 	local v = TRF_N("TRF_CarrierAlive");
 	if type(v) == "number" then c = c + v; end;
+	-- A wanted captain and his own wing (trf_captain, design/captain-spec.md 5.3).
+	v = TRF_N("TRF_Cap_Alive");
+	if type(v) == "number" then c = c + v; end;
 	return c;
 end;
 
 -- Composition of raid n (5.3, v1 6.1): T1/T2 one flight; T3 fighters plus bombers (75 %) or a gunboat
 -- (25 %); T4 fighters plus bombers and Butcher_pir1 at clan score >= 90. The first flight carries salvaged
 -- gear when the clan has salvage (TRF_SalvFlight; rd.sv, rd.n1). At most raid_live_cap minus the clan ships
--- alive. Clan ace perks with cfg clan_ace 1 (CHECK [PP] X3). Returns the list of flights or nil.
+-- alive. Clan ace perks with cfg clan_ace 1 (CHECK [PP] X3). A captain's raid (trf_captain TRF_StagedCap): rd.n1x
+-- ships in the first flight (he replaces its leader, + 1 per escape), no salvaged flight (rd.nosv: his ship is the
+-- raid's one salvaged flight). Returns the list of flights or nil.
 function TRF_Rd_Comp(n, rd, gname, sign, pos, dir, pw, cur)
 	local T = TRF_Rd_Clamp(floor(tonumber(rd.tier) or 1), 1, 4);
 	local b = TRF_Rd_TierRows()[T];
@@ -849,7 +855,9 @@ function TRF_Rd_Comp(n, rd, gname, sign, pos, dir, pw, cur)
 	local kind = nil;
 	if T >= 3 then kind = 1; end;
 	local fl, st = nil, nil;
-	if slot and type(TRF_SalvFlight) == "function" then
+	local n1, ns1 = cap, nil;
+	if type(rd.n1x) == "number" and rd.n1x >= 1 then n1 = min(cap, floor(rd.n1x)); ns1 = n1; end;
+	if slot and type(TRF_SalvFlight) == "function" and rd.nosv ~= 1 then
 		fl, st = TRF_Rd_P(TRF_SalvFlight, {slot, gname, sign, pos, dir, pw, T, kind, min(b.ns, cap)});
 		if TRF_Rd_Obj(fl) then
 			rd.sv = 1;
@@ -858,7 +866,7 @@ function TRF_Rd_Comp(n, rd, gname, sign, pos, dir, pw, cur)
 			fl = nil;
 		end;
 	end;
-	if not fl then fl = TRF_PirFlight(T, pw, gname, sign, pos, dir, kind, cap); end;
+	if not fl then fl = TRF_PirFlight(T, pw, gname, sign, pos, dir, kind, n1, ns1); end;
 	if not TRF_Rd_Obj(fl) then return nil; end;
 	local fls = {fl};
 	rd.n1 = TRF_Rd_FlN(fl);
@@ -1618,6 +1626,8 @@ function TRF_Rd_End(n, how)
 	end;
 	if was ~= "armed" then TRF_Rd_Pay(n, rd); end;
 	if how == "killed" and rd.hit == 1 then TRF_N("TRF_Ch_Note", 4, TRF_Rd_Cur(), 0); end;
+	-- Wanted captains (design/captain-spec.md 5.3): the end of a captain's raid (his notoriety, his departure).
+	if rd.cap ~= nil then TRF_P("TRF_Cap_RaidEnd", n, how, rd.tk); end;
 	-- Battle scars source 7: the raid or staged raid ended on-screen after a fight (a scar when one of its deaths is in
 	-- the cluster).
 	if fought and was ~= "armed" and how ~= "build" and how ~= "cancel" and how ~= "jump" then
@@ -2166,10 +2176,24 @@ end;
 
 function TRF_Rd_StSpawnBody()
 	local L = TRF_Rd_Live();
-	local H = TRF_Rd_H();
-	if not L or not H or type(L.stg) ~= "table" then return; end;
+	if not L or type(L.stg) ~= "table" then return; end;
 	local e = L.stg;
 	L.stg = nil;
+	TRF_Rd_StSpawnAt(e, nil);
+end;
+
+-- Staged raid of a wanted captain (trf_captain, design/captain-spec.md 5.3): the staged trader and the raid flight at
+-- placement e (TRF_Rd_StPlace) now, the captain's ship beside it is trf_captain's; opt = {cap = slot, n1 = ships of the
+-- first flight}. Returns the raid id or nil.
+function TRF_StagedCap(e, opt)
+	return call(TRF_Rd_StSpawnAt, {e, opt}, "x", TRF_PErr);
+end;
+
+-- Staged spawn at placement e (opt nil: traffic's staged raid). Returns the raid id or nil.
+function TRF_Rd_StSpawnAt(e, opt)
+	local L = TRF_Rd_Live();
+	local H = TRF_Rd_H();
+	if not L or not H or type(e) ~= "table" then return nil; end;
 	local cur = TRF_Rd_Cur();
 	local ok, no = TRF_Rd_Gate(cur, "staged");
 	if not ok then
@@ -2208,6 +2232,7 @@ function TRF_Rd_StSpawnBody()
 	if not n then return; end;
 	local rd = {n=n, id=id, st="fight", tier=TRF_Rd_Tier(cur), t=TRF_Rd_Gt(), sg=1, dc="staged", why="staged",
 		rx=e.x, ry=e.y, rz=e.z};
+	if type(opt) == "table" then rd.cap = opt.cap; rd.n1x = opt.n1; rd.nosv = 1; end;
 	L.rd[n] = rd;
 	r.rdn = n;
 	local pos = Vector3(e.x, e.y + 40, e.z + 150);
@@ -2222,7 +2247,8 @@ function TRF_Rd_StSpawnBody()
 	if not TRF_Rd_Due(10 + TRF_Rd_Rand(11), "TRF_StagedDistress", n) then TRF_StagedDistress(n); end;
 	TRF_Rd_Stat("staged");
 	TRF_RdE("staged_spawn", "raid_id", n, "trader_id", id, "path", p.path, "tier", rd.tier, "ship_count", rd.ns,
-		"hull_start", TRF_F(r.hp0));
+		"hull_start", TRF_F(r.hp0), "captain", rd.cap);
+	return n;
 end;
 
 -- Due call: distress line with marker; the staged window (staged_win) starts here.

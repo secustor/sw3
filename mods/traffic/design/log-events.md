@@ -393,6 +393,7 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `marker` | `module=plumb event=marker owner=pcl deleted_count=1 result=cleared` / `reason=jump deleted_count=3 result=cleared` (or `reason=load`, `reason=quest`: a mission started) | 1 |
 | `cap_trim` | `module=plumb event=cap_trim over_count=3 group_count=2 freed_count=3` (a spawn over `cap_ships`: the planned groups' trim calls) | 1 |
 | `orphan` | `module=plumb event=orphan deleted_count=2 global_count=1` (load: ships `trf_<prefix>_<n>_<j>`, globals `TRF_G<prefix>_*`) | 1 |
+| `prize` | `module=plumb event=prize owner=captain real_seconds=3600 gap=1800` (a combat prize paid: the shared gap of 00 B1 starts, `TRF.clock.pz`) | 1 |
 | `dump` | `module=plumb event=dump box_holder=nil event_slot=staged escort=nil arrival_count=1 job=nil marker_count=0 jumps=12 real_seconds=3600.500 visit_tick_legs=2 line_count=4 box_count=3 cap_count=0 cost_of_head_wrapped=true` | 1 |
 
 ## survive (`trf_survive.script`; `TRF_SvE`, `TRF_SvDE`)
@@ -487,6 +488,50 @@ Battle scars, step 1 (`design/scar-spec.md` 7).
 | `dump` | `module=scar event=dump record_count=1 fight_count=0 records=420:gaoba:trader:1/12:1:2:1 recorders=nil payouts=nil licence_leg=nil` (`records=<sid>:<sys>:<kind>:<age>/<ttl>:<st>:<lv>:<scv>`) | 1 |
 | `dump_rec` | `module=scar event=dump_rec sid=420 system=gaoba kind=trader faction=0 on_screen=0 mine=0 age=1 ttl=12 state=1 hidden=0 cap_row=2 decorations=3 cargo=Cargo_10x2/Uraniumx1/Cargo_08x1 value=5450 cap=8000 scavenger=1 recorder=1 name=1 x=-77 z=152` (one per record) | 1 |
 | `dump_probe` | `module=scar event=dump_probe system=gaoba sid=420 expected=4 found=4` (label probe of the current system) | 1 |
+
+## captain (`trf_captain.script`; `TRF_CapE`, `TRF_CapDE`)
+
+Wanted captains, step 1 (`design/captain-spec.md` 7). `slot` is the clan region slot, `generation` the record's lineage counter.
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=captain event=error message=<m>` | 1 |
+| `init` | `module=captain event=init record_count=8` (records created with the clans) | 1 |
+| `plan` | `module=captain event=plan slot=4 generation=1 system=xb13 chance=100 roll=6 via=debug delay=82 result=planned` (via seen, tip, neighbour, debug); `... holder=sweep result=none reason=slot` (or `reason=due`) | 1 |
+| `plan` | `module=captain event=plan slot=4 system=xt05 chance=30 roll=87 via=neighbour result=none reason=roll`; `... state=1 result=none reason=<chapter, region_off, tier, state_<n>, low, gap, deny, strict:<why>, mode, hold:<why>, escort, sweep, cap:<why>>` | 2 |
+| `spawn` | `module=captain event=spawn slot=4 generation=1 name=4 system=xb13 mode=raid raid_id=1 tier=3 pilot=PirateSuperAce hull=EvilEye_pir2 wing_count=0 escapes=0 notoriety=0 grudge=0 via=debug` (mode raid, patrol); `module=captain event=spawn slot=4 generation=1 result=skipped reason=<record, placement, no_raid_module, build, portal, wind, a gate reason>` | 1 |
+| `hp` | `module=captain event=hp slot=4 hp_start=1000 threshold=350` (arming; `threshold=nil` for a chase arrival; EW4.1) | 1 |
+| `met` | `module=captain event=met slot=4 generation=1 system=xb13` (the first player hit) | 1 |
+| `help` | `module=captain event=help slot=4 reason=deliberate result=counted` (the 8.5 proxy on the captain) | 1 |
+| `flee` | `module=captain event=flee slot=4 hp=300 threshold=350 portal=PORTAL_U destination=xb15 reason=trigger` (or `reason=poll`) | 1 |
+| `escaped` | `module=captain event=escaped slot=4 generation=1 to=xb15 seen=xb15 escapes=1 grudge=1 due=5 lie_low=0 counted=true chain=false reason=portal` (reason portal, watchdog, jump, vanished; EW4.2) | 1 |
+| `leave` | `module=captain event=leave slot=4 portal=PORTAL_U reason=window` (or `raid_end`, `wind`) | 1 |
+| `left` | `module=captain event=left slot=4 portal=PORTAL_U reason=portal` (a departure; the record unchanged) | 1 |
+| `chase` | `module=captain event=chase slot=4 destination=xb15 hp_band=3 wing_count=0 result=written` / `... system=xb15 hp_band=3 wing_count=0 delay=8 result=planned` / `... hp_band=3 hp=300 wing_count=0 portal=PORTAL_R result=arrived` (EW4.6) / `... system=<s> result=dropped reason=<disabled, other_system, record, busy, slot, due, no_plan, a gate reason>` | 1 |
+| `death` | `module=captain event=death slot=4 generation=1 player=true claim=22275 sweep=false reason=died` (reason died, poll, jump; EW4.3) | 1 |
+| `claim` | `module=captain event=claim slot=4 generation=1 amount=22275 kind=1 result=written` / `... amount=777 age=41 result=expired` / `... result=dropped reason=cap` | 1 |
+| `raid_help` | `module=captain event=raid_help slot=4 raid_id=1 credits=9281 result=held` / `result=cancelled reason=claim` / `result=paid` (the 8.5 resolver) | 1 |
+| `paid` | `module=captain event=paid slot=4 generation=1 amount=12345 paid=12345 faction=4 system=xb13 result=paid` / `... amount=5000 wait=1800 result=wait` (the prize gap) | 1 |
+| `board` | `module=captain event=board system=xb13 line_count=3 result=lines` (EW4.4) | 1 |
+| `board` | `module=captain event=board result=none reason=<disabled, board_disabled, chapter, quiet, nosys, mode, strict>` | 2 |
+| `intel` | `module=captain event=intel slot=4 price=5500 result=offered` / `... seen=xb13 result=bought` / `result=declined` / `... credits=100 result=poor` / `result=stale` | 1 |
+| `intel` | `module=captain event=intel slot=4 result=expired` (a tip older than 4 legs) | 2 |
+| `quest` | `module=captain event=quest id=trf_cap_4 state=2` (QUEST_* state; EW4.5) / `... result=removed reason=<legs, successor>` | 1 |
+| `reconcile` | `module=captain event=reconcile id=trf_cap_4 quest=1 reason=enter` (or `reason=load`: the entry added again) | 1 |
+| `orphan` | `module=captain event=orphan label=TRF_CAP_4 action=portal` (or `action=delete`; EW4.7) | 1 |
+| `notoriety` | `module=captain event=notoriety slot=4 notoriety=1 reason=trader_killed` | 1 |
+| `notoriety` | `module=captain event=notoriety slot=4 notoriety=2 reason=raids` | 2 |
+| `hide` | `module=captain event=hide slot=4 tier=1 result=hiding` (or `tier=2 result=active`) | 1 |
+| `move` | `module=captain event=move slot=6 from=moscowia to=egleon` | 2 |
+| `retire` | `module=captain event=retire slot=1 generation=1 age=201 life=90` (cap_life) | 1 |
+| `successor` | `module=captain event=successor slot=4 generation=2 name=9 previous=4 template=3 grudge=2 reason=boom` | 1 |
+| `sweep` | `module=captain event=sweep slot=4 generation=4 via=off result=dead` / `... escapes=1 result=escaped` | 1 |
+| `tick` | `module=captain event=tick leg=4 jumps=3 record_count=8 claim_count=0` | 2 |
+| `enter` | `module=captain event=enter system=xb13 arrival_portal=PORTAL_R plan=wait slot=4` | 2 |
+| `wind_down` | `module=captain event=wind_down slot=4 state=leave` | 1 |
+| `dump` | `module=captain event=dump record_count=8 claim_count=1 jumps=212 last_claim=197 vendettas=0 chase=nil visit=nil visit_slot=nil` | 1 |
+| `dump_rec` | `module=captain event=dump_rec slot=5 name=7 generation=1 state=1 template=4 escapes=1 notoriety=2 grudge=2 seen=xb13 due=0 lie_low=0 died=0 born=640 met=1 last=91 tip=nil quest=1` (one per record) | 1 |
+| `dump_claim` | `module=captain event=dump_claim index=1 slot=5 generation=1 amount=26700 kind=1 leg=812` (one per claim) | 1 |
 
 ## supply (`trf_supply.script`; `TRF_SpE`)
 

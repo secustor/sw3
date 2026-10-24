@@ -2100,6 +2100,18 @@ function T_V1_N()
 		TRF.sys[k].sk = 9;
 		if k <= 12 then TRF.sys[k].scd = skl + 4; end;
 	end;
+	-- Wanted captains worst case (design/captain-spec.md 3.3): 11 records with every field at its widest, 3 claims, the
+	-- chase record, capg and the prize stamp.
+	TRF.cap = {};
+	for k = 1, 11 do
+		TRF.cap[k] = {nm=24, gen=999, st=6, tp=5, esc=3, noto=3, gr=9, gr_t=-99999, seen=113, due=99999, lj=99999, dj=99999, born=-99999,
+			met=1, last=113, ti=-99999, pv=24, q=3, ql=-99999};
+	end;
+	TRF.claim = {};
+	for k = 1, 3 do tinsert(TRF.claim, {slot=11, gen=999, nm=24, amt=30000, kind=2, leg=-99999}); end;
+	TRF.capch = {slot=11, to=113, hpb=10, leg=-99999, wn=6, cg=999};
+	TRF.capg = {lc=99999, vn=11};
+	TRF.clock.pz = 99999;
 	-- Raids, due and stat at their bounds.
 	for k = 1, 10 do
 		local id = ids[1 + mod(k, getn(ids))];
@@ -2122,7 +2134,8 @@ function T_V1_N()
 	HOST_Check(getn(TRF.tp) <= 16 and getn(TRF.lr) <= 2 and getn(TRF.base) <= 4 and getn(L.pg) <= 8 and V_N(L.dc) <= 1
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");
 	local size = 8 + 3 + HOST_SaveSize(TRF);
-	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "ch", "scar", "live"};
+	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "ch", "scar",
+		"cap", "claim", "capch", "capg", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	local lp, ll = "", {"tr", "stat", "rd", "cvs", "tq", "sw", "fq", "cr", "dc", "bs", "pg"};
 	for i = 1, getn(ll) do lp = lp.." "..ll[i].."="..HOST_SaveSize(L[ll[i]]); end;
@@ -2143,7 +2156,8 @@ function T_V1_N()
 	end;
 	HOST_Check(tg == "", "no TRF_G* or flight_trf_* globals"..tg);
 	TRF_DumpState("test");
-	local dl = {"module=state event=dump_v4 ", "module=track event=dump", "module=faction event=dump", "module=clan event=dump", "module=convoy event=dump", "module=danger event=dump", "module=supply event=dump", "module=base event=dump", "module=loc event=dump", "module=scar event=dump "};
+	local dl = {"module=state event=dump_v4 ", "module=track event=dump", "module=faction event=dump", "module=clan event=dump", "module=convoy event=dump", "module=danger event=dump", "module=supply event=dump", "module=base event=dump", "module=loc event=dump", "module=scar event=dump ",
+		"module=captain event=dump "};
 	local md = "";
 	for i = 1, getn(dl) do if V_Logs(dl[i]) == 0 then md = md.." "..dl[i]; end; end;
 	HOST_Check(md == "", "TRF_DumpState calls every v1 dump"..md);

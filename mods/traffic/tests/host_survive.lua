@@ -127,15 +127,17 @@ function T_SV_A()
 	SV_Begin("gaoba", "9_1");
 	local idx = TRF_CurIdx();
 	local slot = TRF_RgOf(idx);
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=6") >= 1, "trf_survive loads after trf_station (extra_count=6 with trf_ladder, trf_charter and trf_scar)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=7") >= 1, "trf_survive loads after trf_station (extra_count=7 with trf_ladder, trf_charter, trf_scar and trf_captain)");
 	local P = TRF_PlReg();
 	local ord = "";
 	for i = 1, getn(P.dock.trade.line) do ord = ord..P.dock.trade.line[i].o..","; end;
-	HOST_Check(ord == "10,30,70,90," and getn(TRF_SeedList()) == 9, "trade dock lines 10 (shortage), 30 (pods), 70 (charter), 90 (dockmaster); seed provider registered ("..ord..")");
+	HOST_Check(ord == "10,30,70,90," and getn(TRF_SeedList()) == 11, "trade dock lines 10 (shortage), 30 (pods), 70 (charter), 90 (dockmaster); seed provider registered ("..ord..")");
 	local sl = TRF_SeedList();
 	local at = 0;
 	for i = 1, getn(sl) do if sl[i] == "TRF_Sv_SeedH" then at = i; end; end;
-	HOST_Check(sl[at - 1] == "TRF_GnSeedFeq" and sl[at + 1] == "TRF_GnSeedStaged", "seed provider after the equipment convoy, before the staged raid");
+	-- Wanted captains (design/captain-spec.md 4): the captain's decision (540) follows the slaver, before the staged raid.
+	HOST_Check(sl[at - 1] == "TRF_GnSeedFeq" and sl[at + 1] == "TRF_Cap_Seed" and sl[at + 2] == "TRF_GnSeedStaged",
+		"seed provider after the equipment convoy, before the captain and the staged raid");
 	-- Player kill: counted fire, no beacon (5.4 item 2).
 	local n0 = S_Mark();
 	local id = SV_Trader();

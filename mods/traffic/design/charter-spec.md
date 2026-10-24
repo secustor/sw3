@@ -258,7 +258,7 @@ Changed scenarios: `pl-a` (7 lines, 5 boxes, 2 payers), `sv-a` and `lad-a` (`ext
 - V18 The dockmaster deed (03) is `TRF_Stn_Deed(idx, 1, "charter", nil, 3)` at the paying trade station when it is in region r.
 - V19 `ch_deny` is a cfg key (a name list, as `sv_deny`), not a tune key.
 - V20 Size: 2,396 bytes worst case in the host grammar against the design's "under 2 KB"; field names and the 33 region stamps cost the difference. Hard bounds: 3 postings, 3 slot stamps, 3 x region slots stamps, 3 `lh` entries.
-- V21 The #4 query `TRF_N("TRF_Cap_Open", slot)` returns nil until feature 4 is built, so Break is never blocked by a captain entry yet.
+- V21 The #4 query `TRF_N("TRF_Cap_Open", slot)` returned nil until feature 4 was built; since wanted captains step 1 (2026-10-24, `captain-spec.md` 5.8) it returns 1 while the captain entry `trf_cap_<slot>` is open, so no Break is posted for that clan.
 - V22 The call sites use `TRF_N` as named in the task; `TRF_Ch_Note` runs its body protected, so the unprotected call cannot break a pay point.
 - V23 A Break whose world test was met before its last deed completes with that deed; a Break never closes on a phase change, only at its deadline.
 - V24 The logbook uses loc keys in every `loc_mode` (V3); the screen lines follow `loc_mode`.

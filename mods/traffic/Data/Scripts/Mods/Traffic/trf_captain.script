@@ -1,0 +1,2084 @@
+-- sw3-traffic wanted captains (Lua 4.0.1). Spec: design/captain-spec.md (design worldbuilding/04-wanted-captains.md,
+-- step 1). Prefix Cap (TRF_Cap_* public, TRF_Cap<X> internal), log module=captain. The plumbing's ship-cap names
+-- TRF_CapReg, TRF_CapShips, TRF_CapRank and TRF_CapTrim* belong to trf_plumb, not to this module.
+-- Step 1: one named captain per clan region (TRF.cap[slot]) with an off-screen life cycle in the region tick (hide at
+-- T1, move, notoriety in Raids, grudge decay, cap_life, the successor at a Boom entry, the sweep outcome), one
+-- captain-led raid per visit (a seed provider at the staged-raid rank decides at entry, the spawn follows 30-90 s
+-- later: the staged raid of trf_raid with the captain beside its flight when a staged trader can spawn, else the
+-- captain and his own wing patrol the lane for cap_window), the HP trigger (flee to a portal), f_object_inside (escape
+-- bookkeeping: esc, grudge, due, seen, the lie-low after the third escape), the chase (TRF.capch written before the
+-- jump, the arrival through the seed provider of the chased record), the death with the kill claim (TRF.claim; half
+-- inside a sweep window; the 8.5 credits of his raid cancelled through the raid-help resolver), the claim paid by the
+-- patrol dock's owed payer under the shared prize gap, the board lines and the informant offer (patrol box 100), the
+-- logbook entry trf_cap_<slot>, radio lines, the orphan rule on load, the dump and the repair.
+-- Step 2 (forced eject and capture through Case_Eject and CostOfHead, pod destruction, the hold window, vendetta
+-- flights, the #7 and #8 feeds) is not built: st 5 and 6, cfg cap_capture, cap_force_eject, cap_vendetta and the tune
+-- keys cap_hold_legs, vend_* are kept by the repair and read nowhere; the hook points say "Step 2 hook".
+-- Hooks: traffic.script (activate, load before trf_plumb, jump after trf_raid, the 1 s step, CBH TRF_CapHit), trf_region
+-- (TRF_RegionTick, TRF_RgSweepOut), trf_raid (TRF_StagedCap, TRF_Rd_Comp n1x/nosv, TRF_Rd_ClanAlive, TRF_Rd_End),
+-- trf_gen (TRF_WindDown), trf_plumb (seed providers, event slot, patrol line 35, owed payer, box 100, raid-help resolver,
+-- ship cap, marker with an attached object, prize gap), trf_state (TRF_ModList, TRF_Repair).
+-- Saved fields: TRF.cap[slot] = {nm, gen, st, tp, esc, noto, gr, gr_t, seen, due, lj, dj, born, met, last[, ti, pv, q,
+-- ql]}, TRF.claim[i] = {slot, gen, nm, amt, kind, leg} (at most 3), TRF.capch = {slot, to, hpb, leg, wn, cg} or nil,
+-- TRF.capg = {lc, vn}. Jump stamps (due, lj, dj, lc) are TRF.clock.j values (TRF_Jumps).
+-- Visit state lives in the chunk local CP (never saved; rebuilt by every MapInitialization), the handles in CP.h.
+-- Layout as trf_scar: helpers, accessors, static tables, pure functions (*Of), state, gates, spawn, fight, dock,
+-- region tick, contract functions. Top level: functions and CP only.
+
+local CP = {dec={}, orph={}};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_CapCP() return %CP; end;
+
+-- logfmt event line, module=captain (design/log-format.md).
+function TRF_CapE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "captain"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_CapErr(m)
+	TRF_CapE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler (handles that may be stale): nil is the answer.
+function TRF_CapNoErr(m) end;
+
+function TRF_CapLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_CapDE(event, ...)
+	if TRF_CapLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_CapE, arg);
+end;
+
+function TRF_CapStat(k)
+	TRF_N("TRF_Stat", k);
+end;
+
+function TRF_CapCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- x mod m for x >= 0 (Lua 4 has no % operator).
+function TRF_CapM(x, m)
+	return x - floor(x / m) * m;
+end;
+
+-- Fixed hash 0..10008 of three integers (no RAND draw: the shared RAND stream of the other modules is unchanged and
+-- a reload before the same roll gives the same answer).
+function TRF_CapHash(a, b, c)
+	local x = TRF_CapM(floor((a or 0) * 101 + (b or 0) * 137 + (c or 0) * 19 + 5381), 10000);
+	x = TRF_CapM(x * 41 + 13, 10007);
+	return TRF_CapM(x * 59 + 31, 10009);
+end;
+
+-- Roll 0..99 of the hash.
+function TRF_CapRoll(a, b, c)
+	return TRF_CapM(TRF_CapHash(a, b, c), 100);
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Cap_OptDef), else the raw config, else the default; a wrong type or a number
+-- outside 0..1 reads as the default.
+function TRF_CapOpt(key)
+	local d = TRF_Cap_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	if type(v) == "number" and v ~= 0 and v ~= 1 then return d; end;
+	return v;
+end;
+
+-- Tune values of this module, clamped (TRF_CapClampT; fractions not floored). Cached in CP while TRF_Tune returns the
+-- same table; callers must not write into it.
+function TRF_CapTune()
+	local cp = %CP;
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_CapErr); end;
+	if type(cp.tc) == "table" and cp.tc.s == t then return cp.tc.t; end;
+	local d, cl, o = TRF_Cap_TuneDef(), TRF_CapClampT(), {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if type(x) ~= "number" then x = v; end;
+		local r = cl[k];
+		if r then
+			if r[3] == 1 then x = TRF_CapCl(x, r[1], r[2]); else x = TRF_CapCl(floor(x), r[1], r[2]); end;
+		end;
+		o[k] = x;
+	end;
+	cp.tc = {s=t, t=o};
+	return o;
+end;
+
+function TRF_CapT(key)
+	return TRF_CapTune()[key];
+end;
+
+-- A traffic tune value (T_chase, ovd, T_del, T_win, raid_live_cap), else def.
+function TRF_CapTv(key, def)
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_CapErr); end;
+	if type(t) == "table" and type(t[key]) == "number" then return t[key]; end;
+	return def;
+end;
+
+function TRF_CapLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+-- Player jumps (00 section 6: the shared TRF.clock.j replaces the design's TRF.capg.j).
+function TRF_CapJ()
+	local j = TRF_N("TRF_Jumps");
+	if type(j) == "number" then return j; end;
+	return 0;
+end;
+
+function TRF_CapGt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+function TRF_CapGen()
+	if type(TRF) == "table" and type(TRF.gen) == "number" then return TRF.gen; end;
+	return 0;
+end;
+
+-- Lowercase map name of system idx (log values), or the index.
+function TRF_CapName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+-- Display name of system idx (board and radio lines).
+function TRF_CapSysTxt(idx)
+	local s = TRF_N("TRF_UI_SysName", idx);
+	if type(s) == "string" then return s; end;
+	return TRF_CapName(idx);
+end;
+
+function TRF_CapTxt(key, a, b, c)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c); end;
+	return tostring(key);
+end;
+
+-- Screen line (pilot nil) or radio line of pilot (cfg ui_out 2), through trf_ui's TRF_Say.
+function TRF_CapSay(text, secs, pilot)
+	if type(text) ~= "string" or text == "" then return nil; end;
+	return TRF_N("TRF_Say", text, secs or TRF_CapK().secs, pilot);
+end;
+
+function TRF_CapMap()
+	local m = TRF_N("TRF_Map");
+	if type(m) == "table" and type(m.sys) == "table" and type(m.by) == "table" then return m; end;
+	return nil;
+end;
+
+-- Region table of trf_region (TRF_RgMap), or nil.
+function TRF_CapRg()
+	local r = TRF_N("TRF_RgMap");
+	if type(r) == "table" and type(r.n) == "number" then return r; end;
+	return nil;
+end;
+
+function TRF_CapCur()
+	local i = TRF_N("TRF_CurIdx");
+	if type(i) == "number" then return i; end;
+	return nil;
+end;
+
+function TRF_CapSlotOf(idx)
+	local s = TRF_N("TRF_RgOf", idx);
+	if type(s) == "number" then return s; end;
+	return nil;
+end;
+
+-- Home system of region slot, or nil.
+function TRF_CapHome(slot)
+	local r = TRF_CapRg();
+	if r and type(slot) == "number" and type(r[slot]) == "table" and type(r[slot].home) == "number" then return r[slot].home; end;
+	return nil;
+end;
+
+function TRF_CapClan(slot)
+	local n = TRF_N("TRF_ClanName", slot);
+	if type(n) == "string" then return n; end;
+	return "pirates";
+end;
+
+-- Region tier of slot: the real clan tier within tier_cap (the successor's template, the hide rule at the home).
+function TRF_CapRgTier(slot)
+	local h = TRF_CapHome(slot);
+	local t = nil;
+	if h then t = TRF_N("TRF_EffTier", h); end;
+	if type(t) ~= "number" then t = TRF_N("TRF_ClanTier", slot); end;
+	if type(t) ~= "number" then return 1; end;
+	return TRF_CapCl(floor(t), 1, 4);
+end;
+
+-- Effective tier of system idx (1 without trf_region).
+function TRF_CapTier(idx)
+	local t = TRF_N("TRF_EffTier", idx);
+	if type(t) == "number" then return TRF_CapCl(floor(t), 1, 4); end;
+	return 1;
+end;
+
+-- Engine objects (one native each, protected) ---------------------------------------------
+
+function TRF_CapObj(o)
+	if o == nil or type(o) == "number" or type(o) == "string" or type(o) == "function" then return nil; end;
+	return 1;
+end;
+
+function TRF_CapAliveRaw(o)
+	if o:IsAlive() then return 1; end;
+	return nil;
+end;
+
+function TRF_CapAlive(o)
+	if not TRF_CapObj(o) then return nil; end;
+	return call(TRF_CapAliveRaw, {o}, "x", TRF_CapNoErr);
+end;
+
+function TRF_CapPosRaw(o)
+	local p = o:GetPosition();
+	return {x=p.x, y=p.y, z=p.z};
+end;
+
+function TRF_CapPos(o)
+	if not TRF_CapObj(o) then return nil; end;
+	return call(TRF_CapPosRaw, {o}, "x", TRF_CapNoErr);
+end;
+
+function TRF_CapDist(a, b)
+	if type(a) ~= "table" or type(b) ~= "table" or type(a.x) ~= "number" or type(b.x) ~= "number" then return nil; end;
+	local dx, dy, dz = a.x - b.x, (a.y or 0) - (b.y or 0), (a.z or 0) - (b.z or 0);
+	return sqrt(dx * dx + dy * dy + dz * dz);
+end;
+
+function TRF_CapDelRaw(o)
+	o:Delete();
+	return 1;
+end;
+
+function TRF_CapDel(o)
+	if not TRF_CapObj(o) then return nil; end;
+	return call(TRF_CapDelRaw, {o}, "x", TRF_CapNoErr);
+end;
+
+function TRF_CapMsPos()
+	local m = TRF_N("TRF_Ms");
+	return TRF_CapPos(m);
+end;
+
+function TRF_CapHpRaw(o)
+	return GetCurHP(o);
+end;
+
+function TRF_CapHp(o)
+	if not TRF_CapObj(o) or type(GetCurHP) ~= "function" then return nil; end;
+	local v = call(TRF_CapHpRaw, {o}, "x", TRF_CapNoErr);
+	if type(v) == "number" then return v; end;
+	return nil;
+end;
+
+function TRF_CapTrig(kind, cb, a, b, c)
+	if type(NewTrigger) ~= "function" then return nil; end;
+	return call(NewTrigger, {kind, nil, cb, a, b, c}, "x", TRF_CapErr);
+end;
+
+-- Callback string with the record generation and the current TRF.gen last (traffic's rule, T_BadCallbacks):
+-- TRF_CapCb("TRF_CapDied", 5, 1) -> "TRF_CapDied(5,1,<gen>)--".
+function TRF_CapCb(name, slot, cg)
+	return name.."("..slot..","..cg..","..TRF_CapGen()..")--";
+end;
+
+function TRF_CapOrderRaw(o, how, a)
+	if how == "attack" then o:Attack(a);
+	elseif how == "escort" then o:Escort(a);
+	elseif how == "portal" then o:ComeToPortal(a);
+	elseif how == "patrol" then o:Patrol(a, TRUE); end;
+	return 1;
+end;
+
+function TRF_CapOrder(o, how, a)
+	if not TRF_CapObj(o) or (not TRF_CapObj(a) and how ~= "patrol") then return nil; end;
+	return call(TRF_CapOrderRaw, {o, how, a}, "x", TRF_CapErr);
+end;
+
+function TRF_CapRelRaw(a, b, rel)
+	SetGroupRelation(a, b, rel);
+	return 1;
+end;
+
+function TRF_CapRel(a, b, rel)
+	if type(SetGroupRelation) ~= "function" or rel == nil then return nil; end;
+	return call(TRF_CapRelRaw, {a, b, rel}, "x", TRF_CapErr);
+end;
+
+function TRF_CapQRaw(id)
+	return GetQuestState(id);
+end;
+
+function TRF_CapQs(id)
+	if type(GetQuestState) ~= "function" then return nil; end;
+	return call(TRF_CapQRaw, {id}, "x", TRF_CapNoErr);
+end;
+
+function TRF_CapAddQRaw(id, t, d)
+	AddQuest(id, t, d, QUEST_PROCESS);
+	return 1;
+end;
+
+function TRF_CapSetQRaw(id, s)
+	SetQuestState(id, s);
+	return 1;
+end;
+
+function TRF_CapRemQRaw(id)
+	RemoveQuest(id);
+	return 1;
+end;
+
+function TRF_CapCreditsRaw()
+	return GetPlayerCredits();
+end;
+
+function TRF_CapSubRaw(n)
+	SubPlayerCredits(n);
+	return 1;
+end;
+
+-- Static tables --------------------------------------------------------------------
+
+-- Constants without a cfg key: unlock chapter, board lines, records, names, claims, line seconds, the kill window
+-- after a hit, attack re-arms, portal radius, escapes before the lie-low, the return window after an escape (jumps),
+-- the successor template step, logbook removal legs, grudge decay legs, the tip window (legs), the chase arrival and
+-- spawn delays (s), the recent-hit window (s), the wing ships at most, the HP band, the T4 flee fraction.
+function TRF_CapK()
+	return {chapter=5, board_n=3, rec_n=11, nm_n=24, claim_n=3, secs=8, hit_win=10, arm_max=200, portal_r=25, low_n=3,
+		due_a=2, due_b=3, succ_down=1, q_legs=10, gr_legs=8, tip_legs=4, chase_a=5, chase_b=15, spawn_a=30, spawn_b=90,
+		hit_recent=20, wing_max=6, score=-4, flee_t4=0.30};
+end;
+
+-- Permanent captain exclusion (design 3), for seen and spawn: Earth, Precursors, DisonSphere, New Kyoto, Fronn and the
+-- Border systems.
+function TRF_CapDenyP()
+	return {earth=1, precursors=1, disonsphere=1, nk=1, fronn=1, x297=1, x203=1, x213=1, x220=1};
+end;
+
+-- Clamps of the tune keys {lo, hi[, 1 = fraction]}.
+function TRF_CapClampT()
+	return {cap_flee_hp={0.05, 0.95, 1}, cap_flee_s={10, 600}, cap_spawn_seen={0, 100}, cap_spawn_nb={0, 100},
+		cap_window={30, 1800}, cap_life={10, 999}, cap_k0={0, 5, 1}, cap_k_esc={0, 5, 1}, cap_k_noto={0, 5, 1},
+		cap_k_max={0, 10, 1}, cap_sweep_k={0, 1, 1}, cap_intel_k={0, 10000}, cap_claim_legs={1, 200}, cap_hold_legs={1, 100},
+		cap_gap_j={0, 200}, cap_succ_j={0, 200}, cap_low_j={0, 200}, vend_grudge={1, 9}, vend_cd={1, 100}, vend_max={0, 11}};
+end;
+
+-- Pure functions -------------------------------------------------------------------
+
+-- k_cap (design 5) = min(cap_k0 + cap_k_esc x esc + cap_k_noto x noto, cap_k_max).
+function TRF_CapKOf(esc, noto, T)
+	return min(T.cap_k0 + T.cap_k_esc * (esc or 0) + T.cap_k_noto * (noto or 0), T.cap_k_max);
+end;
+
+-- Claim (design 5, 00 section 0 TRF_Pay): min(k_cap x 900 x L_w x lk x tier_k x (1 + 0.05 pro) x d_k, pay_cap), then
+-- x cap_sweep_k inside an on-screen sweep window. Whole credits.
+function TRF_CapClaimOf(k, Lw, lk, tk, pro, dk, cap, sweep, sk)
+	local v = min(k * 900 * Lw * lk * tk * (1 + 0.05 * pro) * dk, cap);
+	if sweep then v = v * sk; end;
+	return floor(v);
+end;
+
+-- Pir_Pilots index (design 4): the record's template tp (3..5) + 1 per escape, at most 5, then the difficulty shift
+-- (EASY -1, HARD +1), within 1..5.
+function TRF_CapTplOf(tp, esc, shift)
+	return TRF_CapCl(min(5, (tp or 3) + (esc or 0)) + (shift or 0), 1, 5);
+end;
+
+-- Captain hull row (design 4): the tier's row band one row up, power clamp(sys_base + offset + 1, plo, phi + 1),
+-- row clamp(__tablevel[power], lo, hi + 1). b = TRF_Rd_TierRows()[T], lv = TRF_Rd_LvTab(). Returns the row index.
+function TRF_CapHullOf(b, sb, lv)
+	local pw = TRF_CapCl(floor((sb or 5) + b.off + 1), b.plo, b.phi + 1);
+	pw = TRF_CapCl(pw, 1, getn(lv));
+	return TRF_CapCl(lv[pw], b.lo, b.hi + 1), pw;
+end;
+
+-- Ships of the captain's first flight beside him (design 5: he replaces its leader, +1 ship per escape): ns - 1 + esc.
+function TRF_CapN1Of(b, esc)
+	return max(1, b.ns - 1 + (esc or 0));
+end;
+
+-- Wing of his own flight (patrol, chase): n1 within the tier's ships per raid less the captain, the raid_live_cap
+-- room and wing_max.
+function TRF_CapWingOf(b, esc, alive, livecap, wmax)
+	local n = TRF_CapN1Of(b, esc);
+	n = min(n, b.ns + (b.ns2 or 0) - 1, livecap - 1 - (alive or 0), wmax);
+	return max(0, n);
+end;
+
+-- Weighted pick from l = {{idx, w}, ...} with h 0..10008; nil when all weights are 0.
+function TRF_CapPickOf(l, h)
+	local s = 0;
+	for i = 1, getn(l) do s = s + l[i][2]; end;
+	if s <= 0 then return nil; end;
+	local x = TRF_CapM(h, s);
+	for i = 1, getn(l) do
+		x = x - l[i][2];
+		if x < 0 then return l[i][1]; end;
+	end;
+	return l[getn(l)][1];
+end;
+
+-- Next free name index after cur (1..n) not in used (set), or cur + 1 wrapped when every name is used.
+function TRF_CapNextNmOf(used, cur, n)
+	for i = 1, n do
+		local k = TRF_CapM((cur or 0) + i - 1, n) + 1;
+		if not used[k] then return k; end;
+	end;
+	return TRF_CapM(cur or 0, n) + 1;
+end;
+
+-- Flee fraction of tier T (design 4: cap_flee_hp, 30 % at T4).
+function TRF_CapFleeOf(T, fhp, t4)
+	if T >= 4 then return min(fhp, t4); end;
+	return fhp;
+end;
+
+-- HP band 1..10 (tenths of the hull at spawn) of hp against hp0.
+function TRF_CapBandOf(hp, hp0)
+	if type(hp) ~= "number" or type(hp0) ~= "number" or hp0 <= 0 then return 5; end;
+	return TRF_CapCl(floor(10 * hp / hp0 + 0.5), 1, 10);
+end;
+
+-- State ------------------------------------------------------------------------------
+
+function TRF_CapRecs()
+	if type(TRF) == "table" and type(TRF.cap) == "table" then return TRF.cap; end;
+	return nil;
+end;
+
+function TRF_CapRec(slot)
+	local l = TRF_CapRecs();
+	if l and type(slot) == "number" and type(l[slot]) == "table" then return l[slot]; end;
+	return nil;
+end;
+
+-- TRF.capg = {lc, vn}: jump stamp of the last claim written (cap_gap_j), vendettas alive (step 2).
+function TRF_CapG()
+	if type(TRF) ~= "table" then return {}; end;
+	if type(TRF.capg) ~= "table" then TRF.capg = {vn=0}; end;
+	return TRF.capg;
+end;
+
+-- Number of region slots with a record: min(regions, 11).
+function TRF_CapN()
+	local r = TRF_CapRg();
+	if not r then return 0; end;
+	return min(r.n, TRF_CapK().rec_n);
+end;
+
+-- A new captain of slot with name nm and generation gen at leg legs (template from the region tier, + d).
+function TRF_CapNew(slot, nm, gen, legs, d)
+	local T = TRF_CapRgTier(slot);
+	local h = TRF_CapHome(slot) or 0;
+	return {nm=nm, gen=gen, st=1, tp=TRF_CapCl(T + 1 - (d or 0), 3, 5), esc=0, noto=0, gr=0, gr_t=legs, seen=h, due=0, lj=0, dj=0,
+		born=legs, met=0, last=0};
+end;
+
+-- Records of every region slot (design 6: initialised with the clans), created once; names 1..n in slot order.
+function TRF_CapEnsure()
+	if type(TRF) ~= "table" or type(TRF.cap) == "table" then return; end;
+	local n = TRF_CapN();
+	if n <= 0 then return; end;
+	TRF.cap = {};
+	local legs = TRF_CapLegs();
+	for s = 1, n do TRF.cap[s] = TRF_CapNew(s, s, 1, legs, 0); end;
+	TRF_CapE("init", "record_count", n);
+end;
+
+-- 1 when system idx is never a captain system: the permanent exclusion and traffic's authored deny entries for good
+-- (TRF_DenyList m = 1 without tq: elio, x297, gefest; cfg sys_deny).
+function TRF_CapExcl(idx)
+	if type(idx) ~= "number" then return 1; end;
+	local nm = TRF_CapName(idx);
+	if TRF_CapDenyP()[nm] then return 1; end;
+	local e = TRF_N("TRF_DenyEntry", nm);
+	if type(e) == "table" and e.m == 1 and e.tq ~= 1 then return 1; end;
+	return nil;
+end;
+
+-- Recovering record back to active once the return jump stamp passed.
+function TRF_CapWake(r)
+	if r.st == 2 and TRF_CapJ() >= r.due then r.st = 1; return 1; end;
+	return nil;
+end;
+
+-- Why record r is lying low now: "low" (after the third escape, lj), "gap" (cap_gap_j after a claim), else nil.
+function TRF_CapLow(r)
+	local J = TRF_CapJ();
+	if J < (r.lj or 0) then return "low"; end;
+	local g = TRF_CapG();
+	if type(g.lc) == "number" and J < g.lc + TRF_CapT("cap_gap_j") then return "gap"; end;
+	return nil;
+end;
+
+-- Display name of record r.
+function TRF_CapNm(r)
+	if type(r) ~= "table" then return TRF_CapTxt("capnm1"); end;
+	return TRF_CapTxt("capnm"..TRF_CapCl(r.nm or 1, 1, TRF_CapK().nm_n));
+end;
+
+-- Claim list (TRF.claim, at most 3), or {}.
+function TRF_CapClaims()
+	if type(TRF) == "table" and type(TRF.claim) == "table" then return TRF.claim; end;
+	return {};
+end;
+
+-- Claim of slot and generation, or nil.
+function TRF_CapClaimAt(slot, gen)
+	local l = TRF_CapClaims();
+	for i = 1, getn(l) do
+		if l[i].slot == slot and l[i].gen == gen then return i, l[i]; end;
+	end;
+	return nil;
+end;
+
+-- Writes a claim; the oldest one goes when three are open (claim_n). Returns the record.
+function TRF_CapClaimAdd(slot, r, amt, kind)
+	if type(TRF.claim) ~= "table" then TRF.claim = {}; end;
+	while getn(TRF.claim) >= TRF_CapK().claim_n do
+		local o = tremove(TRF.claim, 1);
+		TRF_CapE("claim", "slot", o.slot, "generation", o.gen, "amount", o.amt, "result", "dropped", "reason", "cap");
+	end;
+	local c = {slot=slot, gen=r.gen, nm=r.nm, amt=amt, kind=kind, leg=TRF_CapLegs()};
+	tinsert(TRF.claim, c);
+	return c;
+end;
+
+-- Gates -------------------------------------------------------------------------------
+
+function TRF_CapOn()
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return nil; end;
+	return TRF_CapOpt("cap_enable") == 1;
+end;
+
+function TRF_CapChapter()
+	local c = TRF_N("TRF_Chapter");
+	if type(c) == "number" then return c; end;
+	return 0;
+end;
+
+-- 1 when cfg cap_regions_off names the home system of slot (comma or space separated lowercase names).
+function TRF_CapRegOff(slot)
+	local s = TRF_CapOpt("cap_regions_off");
+	local h = TRF_CapHome(slot);
+	if type(s) ~= "string" or s == "" or not h then return nil; end;
+	local l = ","..gsub(gsub(strlower(s), "%s+", ","), ",,+", ",")..",";
+	if strfind(l, ","..TRF_CapName(h)..",", 1, 1) then return 1; end;
+	return nil;
+end;
+
+-- S2 and S3 (9.8): __disableAction, __sys_SOS, trf_safety's suppression. Returns the reason or nil.
+function TRF_CapHold()
+	if __disableAction == TRUE then return "disable_action"; end;
+	if __sys_SOS == TRUE then return "sys_sos"; end;
+	local sp = TRF_N("TRF_Supp");
+	if type(sp) == "number" and sp ~= 0 then return "suppressed"; end;
+	return nil;
+end;
+
+-- 1 while an on-screen sweep window plays in this system (trf_faction live.sw waiting or on).
+function TRF_CapSweepWin()
+	if type(TRF) ~= "table" or type(TRF.live) ~= "table" or type(TRF.live.sw) ~= "table" then return nil; end;
+	local s = TRF.live.sw.st;
+	if s == "wait" or s == "on" then return 1; end;
+	return nil;
+end;
+
+-- System gate of a captain in system idx (design 6 spawn rules): the exclusion list, the strict gate S4 (feature
+-- "staged": the 9.9 deny rule and deny raid = 0), the system mode, S2/S3, the escort mission (S9), a sweep window.
+function TRF_CapSysGate(idx)
+	if TRF_CapExcl(idx) then return "deny"; end;
+	if type(TRF_StrictOk) == "function" then
+		local ok, w = TRF_StrictOk(idx, "staged");
+		if not ok then return "strict:"..tostring(w); end;
+	end;
+	local mode = TRF_N("TRF_SysModeQuiet");
+	if mode ~= nil and mode ~= "mod" then return "mode"; end;
+	local hw = TRF_CapHold();
+	if hw then return "hold:"..hw; end;
+	local e = TRF_N("GetQuestLabel", "OutMissionEscort");
+	if type(e) == "string" and e ~= "" then return "escort"; end;
+	if TRF_CapSweepWin() then return "sweep"; end;
+	return nil;
+end;
+
+-- Spawn gate of the captain of slot in system idx: feature, chapter, region off, T_eff, state, lie-low, map-wide gap,
+-- the system gate. Returns nil or the reason.
+function TRF_CapGate(idx, slot, r)
+	if TRF_CapChapter() < TRF_CapK().chapter then return "chapter"; end;
+	if TRF_CapRegOff(slot) then return "region_off"; end;
+	if TRF_CapTier(idx) < 2 then return "tier"; end;
+	if r.st ~= 1 then return "state_"..tostring(r.st); end;
+	local lw = TRF_CapLow(r);
+	if lw then return lw; end;
+	return TRF_CapSysGate(idx);
+end;
+
+-- Spawn chance in system idx (design 6): 100 for the debug system cfg cap_at, seen: cap_spawn_seen (100 with a valid
+-- informant tip), a region system one jump from seen: cap_spawn_nb, else 0. Returns chance, via.
+function TRF_CapChance(idx, slot, r)
+	local dbg = TRF_CapOpt("cap_at");
+	if type(dbg) == "string" and dbg ~= "" and strlower(dbg) == TRF_CapName(idx) then return 100, "debug"; end;
+	if r.seen == idx then
+		if type(r.ti) == "number" and TRF_CapLegs() - r.ti <= TRF_CapK().tip_legs then return 100, "tip"; end;
+		return TRF_CapT("cap_spawn_seen"), "seen";
+	end;
+	local nb = TRF_N("TRF_RgNear", r.seen, 1);
+	if type(nb) == "table" then
+		for i = 1, getn(nb) do
+			if nb[i].idx == idx and TRF_CapSlotOf(idx) == slot then return TRF_CapT("cap_spawn_nb"), "neighbour"; end;
+		end;
+	end;
+	return 0, "far";
+end;
+
+-- Spawn: plan, build, arm ----------------------------------------------------------------
+
+-- Visit record of slot and generation cg, or nil.
+function TRF_CapV(slot, cg)
+	local v = %CP.v;
+	if type(v) == "table" and v.slot == slot and v.cg == cg then return v; end;
+	return nil;
+end;
+
+-- Seed provider at the staged-raid rank (trf_plumb TRF_SeedReg 540: after the equipment convoy and the #6 slaver,
+-- before traffic's staged raid; 00 section 6: a #4 captain raid takes the staged-raid slot). Decides once per jump
+-- entry (never on load: TRF_EntryPlan runs from TRF_Gen_OnActivate only), takes the scripted-event slot and the seed's
+-- place.
+function TRF_Cap_Seed(c)
+	if c.nost then return; end;
+	if TRF_CapPlan() then
+		c.nost = 1;
+		c.noseed = "captain";
+	end;
+end;
+
+-- Spawn decision of this entry. Returns the slot or nil.
+function TRF_CapPlan()
+	local cp = %CP;
+	if not TRF_CapOn() or cp.v then return nil; end;
+	local cur = TRF_CapCur();
+	local slot = TRF_CapSlotOf(cur);
+	local r = TRF_CapRec(slot);
+	if not r then return nil; end;
+	local nm = TRF_CapName(cur);
+	TRF_CapWake(r);
+	-- Debug (cfg cap_at, CHECK EW4.1-EW4.7): the captain of this region is seen here.
+	local dbg = TRF_CapOpt("cap_at");
+	if type(dbg) == "string" and dbg ~= "" and strlower(dbg) == nm and r.st == 1 and not TRF_CapExcl(cur) then r.seen = cur; end;
+	local why = TRF_CapGate(cur, slot, r);
+	if not why and type(TRF_CanSpawn) == "function" then
+		local ok, no = TRF_CanSpawn(1, "raid");
+		if not ok then why = "cap:"..tostring(no); end;
+	end;
+	if why then
+		TRF_CapDE("plan", "slot", slot, "system", nm, "state", r.st, "result", "none", "reason", why);
+		return nil;
+	end;
+	local ch, via = TRF_CapChance(cur, slot, r);
+	local J = TRF_CapJ();
+	local roll = TRF_CapRoll(cur, J, slot * 1000 + r.gen);
+	if not (roll < ch) then
+		TRF_CapDE("plan", "slot", slot, "system", nm, "chance", ch, "roll", roll, "via", via, "result", "none", "reason", "roll");
+		return nil;
+	end;
+	-- The staged-raid slot must be free (TRF_EventSlotTake answers 1 to a second taker of the same kind).
+	local ev = TRF_N("TRF_EventSlot");
+	if ev ~= nil or (type(TRF_EventSlotTake) == "function" and not TRF_EventSlotTake("staged")) then
+		TRF_CapE("plan", "slot", slot, "system", nm, "holder", ev, "result", "none", "reason", "slot");
+		return nil;
+	end;
+	local K = TRF_CapK();
+	local dt = K.spawn_a + TRF_CapM(TRF_CapHash(cur, J, slot), K.spawn_b - K.spawn_a + 1);
+	if not TRF_N("TRF_Due", dt, "TRF_CapSpawnDue", slot, r.gen) then
+		TRF_N("TRF_EventSlotFree", "staged");
+		TRF_CapE("plan", "slot", slot, "system", nm, "result", "none", "reason", "due");
+		return nil;
+	end;
+	cp.v = {slot=slot, cg=r.gen, st="wait", idx=cur, via=via};
+	if via == "tip" then r.ti = nil; end;
+	TRF_CapStat("cap_plan");
+	TRF_CapE("plan", "slot", slot, "generation", r.gen, "system", nm, "chance", ch, "roll", roll, "via", via, "delay", dt,
+		"result", "planned");
+	return slot;
+end;
+
+-- The visit's captain event could not start or ended: the slot is freed when nothing spawned, the displaced seed
+-- resumes (trf_gen TRF_SeedResume, as after a staged raid).
+function TRF_CapVoid(v, why)
+	v.st = "void";
+	TRF_N("TRF_EventSlotFree", "staged");
+	TRF_CapE("spawn", "slot", v.slot, "generation", v.cg, "result", "skipped", "reason", why);
+	TRF_N("TRF_SeedResume");
+end;
+
+-- Due call 30-90 s after the entry: the captain's raid (or patrol).
+function TRF_CapSpawnDue(slot, cg)
+	call(TRF_CapSpawnBody, {slot, cg}, "x", TRF_CapErr);
+end;
+
+function TRF_CapSpawnBody(slot, cg)
+	local v = TRF_CapV(slot, cg);
+	if not v or v.st ~= "wait" then return; end;
+	local r = TRF_CapRec(slot);
+	local cur = TRF_CapCur();
+	if not r or r.gen ~= cg or cur ~= v.idx then TRF_CapVoid(v, "record"); return; end;
+	local why = TRF_CapGate(cur, slot, r);
+	if why then TRF_CapVoid(v, why); return; end;
+	local e = TRF_N("TRF_Rd_StPlace", cur);
+	if type(e) ~= "table" then TRF_CapVoid(v, "placement"); return; end;
+	local T = TRF_CapCl(TRF_CapTier(cur), 2, 4);
+	local rows = TRF_N("TRF_Rd_TierRows");
+	if type(rows) ~= "table" then TRF_CapVoid(v, "no_raid_module"); return; end;
+	local b = rows[T];
+	v.T = T;
+	-- The captain first, so raid_live_cap counts him (trf_raid TRF_Rd_ClanAlive asks TRF_Cap_Alive).
+	local pos = {x=e.x, y=e.y + 40, z=e.z + 190};
+	if not TRF_CapBuild(v, r, pos, b, cur) then TRF_CapVoid(v, "build"); return; end;
+	local h = %CP.h;
+	local rn = TRF_N("TRF_StagedCap", e, {cap=slot, n1=TRF_CapN1Of(b, r.esc)});
+	if type(rn) == "number" and type(TRF.live.rd[rn]) == "table" then
+		v.rn = rn;
+		v.st = "raid";
+		local rd = TRF.live.rd[rn];
+		local tr = TRF_N("TRF_Rec", rd.id);
+		if type(tr) == "table" and type(tr.k) == "number" and RELATION_WAR ~= nil then
+			TRF_CapRel("TRF_Cap_"..slot, "TRF_Trade_"..tr.k, RELATION_WAR);
+			TRF_CapRel("TRF_Trade_"..tr.k, "TRF_Cap_"..slot, RELATION_WAR);
+		end;
+		local lead = TRF_N("TRF_Rd_Lead", rd.id);
+		if lead then TRF_CapOrder(h.fl, "attack", lead); end;
+	else
+		v.st = "patrol";
+		local nw = TRF_CapWingOf(b, r.esc, TRF_Cap_Alive(), TRF_CapTv("raid_live_cap", 8), TRF_CapK().wing_max);
+		if type(TRF_CanSpawn) == "function" and nw > 0 then
+			local ok, spare = TRF_CanSpawn(nw, "raid");
+			if not ok then nw = 0; elseif type(spare) == "number" then nw = min(nw, max(0, spare)); end;
+		end;
+		if nw > 0 then TRF_CapWing(v, nw, {x=pos.x + 25, y=pos.y, z=pos.z}, T, cur); end;
+		local pts = {Vector3(e.x, e.y + 40, e.z + 190), Vector3(e.x + 300, e.y + 40, e.z - 150), Vector3(e.x - 300, e.y + 40, e.z - 150)};
+		TRF_CapOrder(h.fl, "patrol", pts);
+		if TRF_CapObj(h.wfl) then TRF_CapOrder(h.wfl, "escort", h.ship); end;
+	end;
+	v.t0 = TRF_CapGt();
+	TRF_CapArm(v, r, nil);
+	TRF_CapIntro(v, r);
+	TRF_CapStat("cap_spawn");
+	TRF_CapE("spawn", "slot", slot, "generation", r.gen, "name", r.nm, "system", TRF_CapName(cur), "mode", v.st, "raid_id", rn,
+		"tier", T, "pilot", v.tpl, "hull", v.hull, "wing_count", v.wn0, "escapes", r.esc, "notoriety", r.noto, "grudge", r.gr,
+		"via", v.via);
+end;
+
+-- The captain's group, flight and ship at pos (design 6 arming: label TRF_CAP_<slot>), pilot from Pir_Pilots by the
+-- template and the difficulty shift. Relations toward the player as raids (7.6, S15). Returns 1 or nil.
+function TRF_CapBuild(v, r, pos, b, cur)
+	local ok = call(TRF_CapBuildRaw, {v, r, pos, b, cur}, "x", TRF_CapErr);
+	if ok then return 1; end;
+	local cp = %CP;
+	local h = cp.h;
+	if type(h) == "table" and TRF_CapObj(h.fl) then TRF_CapDel(h.fl); end;
+	cp.h = nil;
+	return nil;
+end;
+
+function TRF_CapBuildRaw(v, r, pos, b, cur)
+	if type(Pir_Pilots) ~= "table" or type(Pir_Fighters) ~= "table" or type(CreateCarcass) ~= "function" then return nil; end;
+	local lv = TRF_N("TRF_Rd_LvTab");
+	if type(lv) ~= "table" then return nil; end;
+	local tm = TRF_N("CreateTeam", "Pirates");
+	if not TRF_CapObj(tm) then return nil; end;
+	local gn = "TRF_Cap_"..v.slot;
+	local grp = tm:CreateGroup(gn);
+	if not TRF_CapObj(grp) then return nil; end;
+	local ri = TRF_CapHullOf(b, TRF_N("TRF_SysBase", cur), lv);
+	local row = Pir_Fighters[ri];
+	if type(row) ~= "table" or type(row[1]) ~= "table" then return nil; end;
+	local hull = row[1][1];
+	local d = TRF_N("GetLevelDifficult");
+	local sh = 0;
+	if d ~= nil and d == EASY then sh = -1; elseif d ~= nil and d == HARD then sh = 1; end;
+	local tpl = Pir_Pilots[TRF_CapTplOf(r.tp, r.esc, sh)];
+	local fl = grp:CreateFlight("flight_trf_cap_"..v.slot);
+	if not TRF_CapObj(fl) then return nil; end;
+	local cp = %CP;
+	cp.h = {grp=grp, fl=fl};
+	local s = CreateCarcass(hull, Vector3(pos.x, pos.y, pos.z), Vector3(0, 0, 1));
+	if not TRF_CapObj(s) then fl:Delete(); return nil; end;
+	local p = CreatePilot(tpl);
+	s:AssignPilot(p);
+	fl:AddShip(s);
+	fl:SetFormation("shipFormation");
+	fl:SetOrientation(Vector3(0, 0, 1));
+	if type(SetObjectLabel) == "function" then SetObjectLabel(s, "TRF_CAP_"..v.slot); end;
+	local h = cp.h;
+	h.ship = s; h.pilot = p;
+	v.tpl = tpl; v.hull = hull; v.wn0 = 0;
+	local pr = TRF_N("GetTeamRelation", "Pirates", PLAYER_TEAM);
+	if pr == RELATION_WAR and RELATION_NEUTRAL ~= nil then
+		TRF_CapRel(gn, PLAYER_GROUP, RELATION_NEUTRAL);
+		v.neu = 1;
+	elseif pr ~= nil then
+		TRF_CapRel(gn, PLAYER_GROUP, pr);
+	end;
+	return 1;
+end;
+
+-- His own wing of n ships (patrol and chase) at pos in his group, ordered Escort(captain); labels trf_cap_<slot>_<j>.
+function TRF_CapWing(v, n, pos, T, cur)
+	call(TRF_CapWingRaw, {v, n, pos, T, cur}, "x", TRF_CapErr);
+end;
+
+function TRF_CapWingRaw(v, n, pos, T, cur)
+	local h = %CP.h;
+	if type(h) ~= "table" or not TRF_CapObj(h.grp) or type(TRF_PirFlight) ~= "function" then return; end;
+	local gn, sign = "TRF_GCap_"..v.slot, "trf_capw_"..v.slot;
+	local pw = TRF_N("TRF_Rd_Power", T, cur, nil) or 5;
+	setglobal(gn, h.grp);
+	local fl = TRF_PirFlight(T, pw, gn, sign, Vector3(pos.x, pos.y, pos.z), Vector3(0, 0, 1), 1, n, n);
+	setglobal(gn, nil);
+	TRF_N("TRF_Rd_ClearSign", sign);
+	if not TRF_CapObj(fl) then return; end;
+	h.wfl = fl;
+	h.wsh = {};
+	local sh = TRF_N("TRF_Rd_FlShips", fl);
+	if type(sh) == "table" then
+		for j = 1, min(getn(sh), TRF_CapK().wing_max) do
+			tinsert(h.wsh, sh[j]);
+			TRF_N("SetObjectLabel", sh[j], "trf_cap_"..v.slot.."_"..j);
+		end;
+	end;
+	v.wn0 = getn(h.wsh);
+end;
+
+-- Live ships of his own wing.
+function TRF_CapWingN()
+	local h = %CP.h;
+	local n = 0;
+	if type(h) == "table" and type(h.wsh) == "table" then
+		for j = 1, getn(h.wsh) do if TRF_CapAlive(h.wsh[j]) then n = n + 1; end; end;
+	end;
+	return n;
+end;
+
+-- Position of the first live ship of his own wing, or nil.
+function TRF_CapWingPos()
+	local h = %CP.h;
+	if type(h) ~= "table" or type(h.wsh) ~= "table" then return nil; end;
+	for j = 1, getn(h.wsh) do if TRF_CapAlive(h.wsh[j]) then return TRF_CapPos(h.wsh[j]); end; end;
+	return nil;
+end;
+
+-- Every live ship of his own wing to portal o.
+function TRF_CapWingTo(o)
+	local h = %CP.h;
+	if type(h) ~= "table" or type(h.wsh) ~= "table" then return; end;
+	for j = 1, getn(h.wsh) do if TRF_CapAlive(h.wsh[j]) then TRF_CapOrder(h.wsh[j], "portal", o); end; end;
+end;
+
+-- Arming (design 6): died, HP at floor(GetCurHP x cap_flee_hp) read now (none for a chase arrival, which flees at
+-- once), the attack proxy (8.5 T_deliberate rule), the nav marker attached to the ship (trf_plumb, owner cap).
+function TRF_CapArm(v, r, chase)
+	local h = %CP.h;
+	local s = h.ship;
+	local hp = TRF_CapHp(s);
+	v.hp0 = hp;
+	v.hpl = hp;
+	if not chase and type(hp) == "number" and hp > 0 then
+		v.thr = floor(hp * TRF_CapFleeOf(v.T or 2, TRF_CapT("cap_flee_hp"), TRF_CapK().flee_t4));
+		TRF_CapTrig("HP", TRF_CapCb("TRF_CapHP", v.slot, v.cg), s, v.thr);
+	end;
+	TRF_CapTrig("died", TRF_CapCb("TRF_CapDied", v.slot, v.cg), s);
+	TRF_CapTrig("attack", TRF_CapCb("TRF_CapHit", v.slot, v.cg), PLAYER_GROUP, s);
+	local p = TRF_CapPos(s);
+	if p then TRF_N("TRF_MarkerAdd", "cap", "TRF_CAP_"..v.slot.."_NP", p.x, p.y, p.z, "#L_nav_kill_target", "nav_target.dds", s); end;
+	TRF_CapE("hp", "slot", v.slot, "hp_start", hp, "threshold", v.thr);
+end;
+
+-- Radio lines at the spawn (design 2 step 2): the successor's claim, else the grudge taunt (fought before, grudge),
+-- else the return line (escaped before), else the introduction; then the raid or patrol order.
+function TRF_CapIntro(v, r)
+	local h = %CP.h;
+	local nm, cl = TRF_CapNm(r), TRF_CapClan(v.slot);
+	local t = nil;
+	if type(r.pv) == "number" and r.pv > 0 then
+		t = TRF_CapTxt("capsucc", TRF_CapTxt("capnm"..r.pv), cl);
+		r.pv = nil;
+	elseif r.met == 1 and (r.gr or 0) > 0 and (r.last or 0) > 0 then
+		t = TRF_CapTxt("capgrudge", TRF_CapSysTxt(r.last));
+	elseif (r.esc or 0) > 0 then
+		t = TRF_CapTxt("capback");
+	else
+		t = TRF_CapTxt("capintro", nm, cl);
+	end;
+	TRF_CapSay(t, 10, h.pilot);
+	if v.st == "raid" then TRF_CapSay(TRF_CapTxt("capraid"), 8, h.pilot); else TRF_CapSay(TRF_CapTxt("cappatrol", nm), 8, h.pilot); end;
+end;
+
+-- Fight: hits, flee, escape, death --------------------------------------------------------
+
+function TRF_CapHit(slot, cg, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_CapHit", TRF_CapHitBody, {slot, cg, g}); else TRF_CapHitBody(slot, cg, g); end;
+end;
+
+-- Attack of PLAYER_GROUP on the captain: the first hit opens the fight (relation WAR if seeded neutral, met, last,
+-- the logbook entry); help counts as the 8.5 proxy (T_del distinct seconds within T_win), or a kill within hit_win of
+-- a hit. The trigger is armed again (at most arm_max times).
+function TRF_CapHitBody(slot, cg, g)
+	if g ~= TRF_CapGen() then return; end;
+	local v = TRF_CapV(slot, cg);
+	if not v or v.st == "dead" or v.st == "gone" or v.st == "end" then return; end;
+	local r = TRF_CapRec(slot);
+	local gt = TRF_CapGt();
+	v.lh = gt;
+	if v.ph ~= 1 then
+		v.ph = 1;
+		if v.neu == 1 and RELATION_WAR ~= nil then TRF_CapRel("TRF_Cap_"..slot, PLAYER_GROUP, RELATION_WAR); v.neu = 2; end;
+		if r and r.gen == cg then
+			r.met = 1;
+			r.last = TRF_CapCur() or 0;
+			if r.q ~= 1 then TRF_CapQOpen(slot, r); end;
+		end;
+		TRF_CapE("met", "slot", slot, "generation", cg, "system", TRF_CapName(TRF_CapCur()));
+	end;
+	if v.hit ~= 1 then
+		local need, win = TRF_CapTv("T_del", 5), TRF_CapTv("T_win", 20);
+		local s = floor(gt);
+		local keep, have = {}, nil;
+		local old = v.fs or {};
+		for i = 1, getn(old) do
+			if s - old[i] < win then
+				tinsert(keep, old[i]);
+				if old[i] == s then have = 1; end;
+			end;
+		end;
+		if not have then tinsert(keep, s); end;
+		while getn(keep) > need do tremove(keep, 1); end;
+		v.fs = keep;
+		if getn(keep) >= need then
+			v.hit = 1;
+			v.fs = nil;
+			TRF_CapE("help", "slot", slot, "reason", "deliberate", "result", "counted");
+		end;
+	end;
+	local h = %CP.h;
+	v.arm = (v.arm or 0) + 1;
+	if v.arm <= TRF_CapK().arm_max and type(h) == "table" and TRF_CapAlive(h.ship) then
+		TRF_CapTrig("attack", TRF_CapCb("TRF_CapHit", slot, cg), PLAYER_GROUP, h.ship);
+	end;
+end;
+
+function TRF_CapHP(slot, cg, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_CapHP", TRF_CapHPBody, {slot, cg, g}); else TRF_CapHPBody(slot, cg, g); end;
+end;
+
+function TRF_CapHPBody(slot, cg, g)
+	if g ~= TRF_CapGen() then return; end;
+	local v = TRF_CapV(slot, cg);
+	if v then TRF_CapFlee(v, "trigger"); end;
+end;
+
+-- Map portal entries of the current system: list of {name, to (idx), x, y, z}.
+function TRF_CapPortals()
+	local m = TRF_CapMap();
+	local cur = TRF_CapCur();
+	local o = {};
+	if not m or not cur or type(m.sys[cur]) ~= "table" or type(m.sys[cur].portals) ~= "table" then return o; end;
+	local ps = m.sys[cur].portals;
+	for i = 1, getn(ps) do
+		local p = ps[i];
+		if type(p) == "table" and type(p.name) == "string" and type(p.x) == "number" then
+			local to = nil;
+			if type(p.to) == "string" then to = m.by[strlower(p.to)]; end;
+			tinsert(o, {name=p.name, to=to, x=p.x, y=p.y or 0, z=p.z or 0});
+		end;
+	end;
+	return o;
+end;
+
+-- Portal toward which the captain goes: far nil -> the nearest to pos that is not the player's arrival portal (any
+-- when only one), far 1 -> the farthest from pos (chase arrival). Returns the entry and its object, or nil.
+function TRF_CapPortalFor(pos, far)
+	local l = TRF_CapPortals();
+	local ap = %CP.ap;
+	local best, bd = nil, nil;
+	for i = 1, getn(l) do
+		local e = l[i];
+		local d = TRF_CapDist(pos, e) or 0;
+		local skip = getn(l) > 1 and not far and e.name == ap;
+		if not skip and (not bd or (far and d > bd) or (not far and d < bd)) then best = e; bd = d; end;
+	end;
+	if not best then return nil; end;
+	return best, TRF_N("TRF_GnPortalObj", best.name);
+end;
+
+-- Sends the captain (and his own wing) to a portal and arms the exit trigger (f_object_inside at portal_r). mode flee,
+-- leave or chase. The raid wing leaves on its own (TRF_RaidLeave) after a flee and a death.
+function TRF_CapToPortal(v, mode, far)
+	local h = %CP.h;
+	if type(h) ~= "table" then return nil; end;
+	local p = TRF_CapPos(h.ship);
+	local e, o = TRF_CapPortalFor(p, far);
+	v.st = mode;
+	v.tf = TRF_CapGt();
+	if e then v.to = e.to; v.pn = e.name; end;
+	if not TRF_CapObj(o) then return nil; end;
+	TRF_CapOrder(h.ship, "portal", o);
+	if TRF_CapObj(h.wfl) then TRF_CapOrder(h.wfl, "escort", h.ship); end;
+	h.prt = o;
+	TRF_CapTrig("f_object_inside", TRF_CapCb("TRF_CapGone", v.slot, v.cg), h.fl, o, TRF_CapK().portal_r);
+	return 1;
+end;
+
+-- Flee (design 6): HP trigger or the HP poll; line, the nearest portal other than the arrival portal, the raid wing
+-- leaves. why trigger or poll.
+function TRF_CapFlee(v, why)
+	if v.st ~= "raid" and v.st ~= "patrol" then return; end;
+	local h = %CP.h;
+	local hp = TRF_CapHp(h.ship);
+	v.hpl = hp or v.hpl;
+	v.fled = 1;
+	TRF_CapToPortal(v, "flee", nil);
+	TRF_CapSay(TRF_CapTxt("capflee"), 8, h.pilot);
+	if type(v.rn) == "number" then TRF_N("TRF_RaidLeave", v.rn, "captain"); end;
+	TRF_CapStat("cap_flee");
+	TRF_CapE("flee", "slot", v.slot, "hp", hp, "threshold", v.thr, "portal", v.pn, "destination", v.to and TRF_CapName(v.to), "reason", why);
+end;
+
+-- Departure without a flee (window over, raid ended, wind-down): the record is unchanged.
+function TRF_CapLeave(v, why)
+	if v.st ~= "raid" and v.st ~= "patrol" then return; end;
+	TRF_CapToPortal(v, "leave", nil);
+	local h = %CP.h;
+	if why ~= "wind" then TRF_CapSay(TRF_CapTxt("capleave"), 8, h.pilot); end;
+	TRF_CapE("leave", "slot", v.slot, "portal", v.pn, "reason", why);
+end;
+
+-- Deletes the captain, his own wing and the marker (rd-style: v.del makes a died event fired by Delete do nothing).
+function TRF_CapDelAll(v)
+	local h = %CP.h;
+	v.del = 1;
+	if type(h) == "table" then
+		if TRF_CapObj(h.wfl) then TRF_CapDel(h.wfl); end;
+		if type(h.wsh) == "table" then for j = 1, getn(h.wsh) do if TRF_CapAlive(h.wsh[j]) then TRF_CapDel(h.wsh[j]); end; end; end;
+		if TRF_CapObj(h.fl) then TRF_CapDel(h.fl); end;
+		if TRF_CapAlive(h.ship) then TRF_CapDel(h.ship); end;
+	end;
+	TRF_N("TRF_MarkerClear", "cap");
+end;
+
+function TRF_CapGone(slot, cg, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_CapGone", TRF_CapGoneBody, {slot, cg, g}); else TRF_CapGoneBody(slot, cg, g); end;
+end;
+
+-- Exit trigger at the portal: portal effect, ships deleted; a flee or a chase is an escape, a leave a departure.
+function TRF_CapGoneBody(slot, cg, g)
+	if g ~= TRF_CapGen() then return; end;
+	local v = TRF_CapV(slot, cg);
+	if not v or (v.st ~= "flee" and v.st ~= "leave" and v.st ~= "chase") then return; end;
+	local h = %CP.h;
+	if type(h) == "table" and TRF_CapObj(h.prt) then call(function(o) o:Start(5, 0); end, {h.prt}, "x", TRF_CapNoErr); end;
+	TRF_CapEnd(v, "portal");
+end;
+
+-- End of the captain on screen without a death: escape bookkeeping for a flee or a chase, departure for a leave
+-- (or a wind-down: the record is unchanged); ships deleted; the held 8.5 credits paid; the seed resumes.
+function TRF_CapEnd(v, why)
+	local was = v.st;
+	if was == "flee" or was == "chase" then
+		v.wn = TRF_CapWingN();
+		if type(v.rn) == "number" and type(TRF_Rd_H) == "function" then
+			local H = TRF_Rd_H();
+			if H and type(H.rd[v.rn]) == "table" then v.wn = v.wn + (TRF_N("TRF_Rd_AliveN", H.rd[v.rn]) or 0); end;
+		end;
+		if v.wd ~= 1 then TRF_CapEscaped(v, why); end;
+	else
+		TRF_CapE("left", "slot", v.slot, "portal", v.pn, "reason", why);
+	end;
+	TRF_CapDelAll(v);
+	v.st = "gone";
+	v.tesc = TRF_CapGt();
+	TRF_CapOwe85(v);
+	if why ~= "jump" then TRF_N("TRF_SeedResume"); end;
+end;
+
+-- Escape bookkeeping (design 6 flee): st 2, due 2-3 jumps, seen = the portal's destination (home when it is excluded
+-- or outside the region); esc + 1 and grudge + 1 once per visit when the player damaged him (not in a chase chain);
+-- the third escape sets the lie-low stamp lj.
+function TRF_CapEscaped(v, why)
+	local r = TRF_CapRec(v.slot);
+	if not r or r.gen ~= v.cg then return; end;
+	local J = TRF_CapJ();
+	local K = TRF_CapK();
+	r.st = 2;
+	r.due = J + K.due_a + TRF_CapM(TRF_CapHash(v.slot, J, r.gen), K.due_b - K.due_a + 1);
+	local d = v.to;
+	if not d or TRF_CapExcl(d) or TRF_CapSlotOf(d) ~= v.slot then d = TRF_CapHome(v.slot) or r.seen; end;
+	r.seen = d;
+	local counted = 0;
+	if (v.hit == 1 or v.ph == 1) and v.ec ~= 1 and v.chain ~= 1 then
+		r.esc = min(3, (r.esc or 0) + 1);
+		if (r.gr or 0) == 0 then r.gr_t = TRF_CapLegs(); end;
+		r.gr = min(9, (r.gr or 0) + 1);
+		v.ec = 1;
+		counted = 1;
+		if r.esc >= K.low_n then r.lj = J + TRF_CapT("cap_low_j"); end;
+	end;
+	TRF_CapStat("cap_escape");
+	TRF_CapE("escaped", "slot", v.slot, "generation", r.gen, "to", TRF_CapName(v.to), "seen", TRF_CapName(r.seen), "escapes", r.esc,
+		"grudge", r.gr, "due", r.due, "lie_low", r.lj, "counted", TRF_KvB(counted), "chain", TRF_KvB(v.chain), "reason", why);
+end;
+
+function TRF_CapDied(slot, cg, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_CapDied", TRF_CapDiedBody, {slot, cg, g}); else TRF_CapDiedBody(slot, cg, g); end;
+end;
+
+function TRF_CapDiedBody(slot, cg, g)
+	if g ~= TRF_CapGen() then return; end;
+	local v = TRF_CapV(slot, cg);
+	if v then TRF_CapDeath(v, "died"); end;
+end;
+
+-- Death (design 6): a kill claim when the player damaged him (the 8.5 proxy; x cap_sweep_k inside a sweep window),
+-- capg.lc; st 4, dj; clan score -4; marker gone; logbook open until paid (failed without a claim); the wing breaks
+-- off; the raid's held 8.5 credits are cancelled by the claim or paid. why died, poll or jump.
+function TRF_CapDeath(v, why)
+	if v.st == "dead" or v.st == "gone" or v.st == "end" or v.st == "wait" or v.st == "void" or v.del == 1 then return; end;
+	local h = %CP.h or {};
+	local gt = TRF_CapGt();
+	local hit = v.hit == 1 or (type(v.lh) == "number" and gt - v.lh <= TRF_CapK().hit_win);
+	v.st = "dead";
+	local r = TRF_CapRec(v.slot);
+	local amt, sweep = 0, TRF_CapSweepWin();
+	if r and r.gen == v.cg then
+		local cur = TRF_CapCur();
+		if hit then
+			local T = TRF_CapTune();
+			amt = TRF_CapClaimOf(TRF_CapKOf(r.esc, r.noto, T), TRF_N("TRF_LPay", cur) or 8, TRF_N("TRF_LK", cur) or 1,
+				TRF_N("TRF_TierK", cur) or 1, TRF_N("TRF_Pro", cur) or 0, TRF_N("TRF_DK") or 1, TRF_CapPayCap(), sweep, T.cap_sweep_k);
+			TRF_CapClaimAdd(v.slot, r, amt, 1);
+			TRF_CapG().lc = TRF_CapJ();
+			v.claim = 1;
+			TRF_CapSay(TRF_CapTxt("capclaim", TRF_CapNm(r)), 8);
+			if r.q ~= 1 then TRF_CapQOpen(v.slot, r); end;
+		elseif r.q == 1 then
+			TRF_CapQEnd(v.slot, r, QUEST_FAILED);
+		end;
+		r.st = 4;
+		r.dj = TRF_CapJ();
+		r.ti = nil;
+		TRF_N("TRF_ClanAdd", v.slot, TRF_CapK().score, "captain");
+	end;
+	TRF_N("TRF_MarkerClear", "cap");
+	-- Battle scars source 7 (design/scar-spec.md 5.3): the captain's ship died here.
+	if TRF_CapObj(h.ship) then TRF_P("TRF_Sc_Dead", 3, 0, h.ship, hit and 1); end;
+	-- The wing breaks off: a raid wing leaves (trf_raid), his own wing goes to the nearest portal.
+	local wp = nil;
+	if type(v.rn) == "number" then
+		local H = TRF_N("TRF_Rd_H");
+		if type(H) == "table" and type(H.rd[v.rn]) == "table" then wp = TRF_N("TRF_Rd_FlLeader", H.rd[v.rn].fl); end;
+		TRF_N("TRF_RaidLeave", v.rn, "captain");
+	end;
+	if TRF_CapWingN() > 0 then
+		if not wp then wp = TRF_N("TRF_Rd_FlLeader", h.wfl); end;
+		local e, o = TRF_CapPortalFor(TRF_CapWingPos(), nil);
+		if TRF_CapObj(o) then TRF_CapWingTo(o); end;
+		v.wl = TRF_CapGt();
+	end;
+	if wp then TRF_CapSay(TRF_CapTxt("capwing"), 6, wp); end;
+	TRF_CapOwe85(v);
+	TRF_CapStat("cap_death");
+	TRF_CapE("death", "slot", v.slot, "generation", v.cg, "player", TRF_KvB(hit and 1), "claim", amt, "sweep", TRF_KvB(sweep), "reason", why);
+	if hit then TRF_CapE("claim", "slot", v.slot, "generation", v.cg, "amount", amt, "kind", 1, "result", "written"); end;
+	if why ~= "jump" then TRF_N("TRF_SeedResume"); end;
+end;
+
+function TRF_CapPayCap()
+	local T = TRF_N("TRF_RgTune");
+	if type(T) == "table" and type(T.pay_cap) == "number" and T.pay_cap >= 0 then return T.pay_cap; end;
+	return 30000;
+end;
+
+-- trf_raid TRF_Rd_End hook of a captain's raid n: the end is noted (the step lets the captain leave); a killed trader
+-- raises his notoriety once (design 6, raids he led that killed a trader).
+function TRF_Cap_RaidEnd(n, how, tk)
+	local v = %CP.v;
+	if type(v) ~= "table" or v.rn ~= n then return; end;
+	v.rend = tostring(how);
+	if tk == 1 and v.nt ~= 1 then
+		v.nt = 1;
+		local r = TRF_CapRec(v.slot);
+		if r and r.gen == v.cg then r.noto = min(3, (r.noto or 0) + 1); end;
+		local h = %CP.h;
+		if type(h) == "table" and TRF_CapAlive(h.ship) then TRF_CapSay(TRF_CapTxt("capwin"), 6, h.pilot); end;
+		TRF_CapE("notoriety", "slot", v.slot, "notoriety", r and r.noto, "reason", "trader_killed");
+	end;
+end;
+
+-- 8.5 raid-help resolver (trf_plumb TRF_RaidHelpReg, 00 section 6): the captain's raid pays no 8.5 credits when a claim
+-- was written for its captain ("cancel"). While his fight is still open the credits are held (cancel now) and paid
+-- by TRF_CapOwe85 when it ends without a claim (design 5 exploit 5: if he escapes, 8.5 pays as usual).
+function TRF_Cap_RaidHelp(n, rd, amt)
+	local v = %CP.v;
+	if type(rd) ~= "table" or rd.cap == nil or type(v) ~= "table" or v.rn ~= n then return nil; end;
+	if v.claim == 1 then
+		TRF_CapE("raid_help", "slot", v.slot, "raid_id", n, "credits", amt, "result", "cancelled", "reason", "claim");
+		return "cancel";
+	end;
+	if v.st == "raid" or v.st == "patrol" or v.st == "flee" or v.st == "leave" or v.st == "chase" then
+		v.owe = (v.owe or 0) + (amt or 0);
+		TRF_CapE("raid_help", "slot", v.slot, "raid_id", n, "credits", amt, "result", "held");
+		return "cancel";
+	end;
+	return nil;
+end;
+
+-- Held 8.5 credits: dropped after a claim, else paid now.
+function TRF_CapOwe85(v)
+	local a = v.owe;
+	v.owe = nil;
+	if type(a) ~= "number" or a <= 0 then return; end;
+	if v.claim == 1 then
+		TRF_CapE("raid_help", "slot", v.slot, "raid_id", v.rn, "credits", a, "result", "cancelled", "reason", "claim");
+		return;
+	end;
+	TRF_N("AddPlayerCredits", a);
+	TRF_CapE("raid_help", "slot", v.slot, "raid_id", v.rn, "credits", a, "result", "paid");
+end;
+
+-- Chase (design 6, S14 pattern) ------------------------------------------------------------
+
+-- Seed provider of the chased record (TRF_SeedReg 810, before traffic's chased trader: 00 arrival-seed order). The
+-- record TRF.capch written at the jump is consumed here; a match (this system, same generation, still recovering,
+-- the system gate) takes the event slot and schedules the arrival 5-15 s later.
+function TRF_Cap_SeedChase(c)
+	if type(TRF) ~= "table" or type(TRF.capch) ~= "table" then return; end;
+	local ch = TRF.capch;
+	TRF.capch = nil;
+	local cp = %CP;
+	local cur = TRF_CapCur();
+	local r = TRF_CapRec(ch.slot);
+	local why = nil;
+	if not TRF_CapOn() or TRF_CapOpt("cap_chase") ~= 1 then why = "disabled";
+	elseif cur ~= ch.to then why = "other_system";
+	elseif not r or r.gen ~= ch.cg or r.st ~= 2 then why = "record";
+	elseif cp.v then why = "busy";
+	else why = TRF_CapSysGate(cur); end;
+	if not why and (TRF_N("TRF_EventSlot") ~= nil or (type(TRF_EventSlotTake) == "function" and not TRF_EventSlotTake("staged"))) then
+		why = "slot";
+	end;
+	local K = TRF_CapK();
+	local dt = K.chase_a + TRF_CapM(TRF_CapHash(ch.slot, TRF_CapJ(), ch.cg), K.chase_b - K.chase_a + 1);
+	if not why and not TRF_N("TRF_Due", dt, "TRF_CapChaseDue", ch.slot, ch.cg) then
+		TRF_N("TRF_EventSlotFree", "staged");
+		why = "due";
+	end;
+	if why then
+		TRF_CapE("chase", "slot", ch.slot, "system", TRF_CapName(cur), "result", "dropped", "reason", why);
+		return;
+	end;
+	cp.v = {slot=ch.slot, cg=ch.cg, st="cwait", idx=cur, chain=1, hpb=ch.hpb, wn=ch.wn, via="chase"};
+	c.nost = 1;
+	TRF_CapE("chase", "slot", ch.slot, "system", TRF_CapName(cur), "hp_band", ch.hpb, "wing_count", ch.wn, "delay", dt, "result", "planned");
+end;
+
+function TRF_CapChaseDue(slot, cg)
+	call(TRF_CapChaseBody, {slot, cg}, "x", TRF_CapErr);
+end;
+
+-- Chase arrival: captain and surviving wing at the arrival portal, HP from the band (SetHP, CHECK EW4.6, E0.20),
+-- fleeing toward the farthest portal at once (no HP trigger, no second escape count in the chain).
+function TRF_CapChaseBody(slot, cg)
+	local v = TRF_CapV(slot, cg);
+	if not v or v.st ~= "cwait" then return; end;
+	local r = TRF_CapRec(slot);
+	local cur = TRF_CapCur();
+	local why = nil;
+	if not r or r.gen ~= cg then why = "record"; else why = TRF_CapSysGate(cur); end;
+	local rows = TRF_N("TRF_Rd_TierRows");
+	if not why and type(rows) ~= "table" then why = "no_raid_module"; end;
+	local e, o = TRF_CapPortalFor(TRF_CapMsPos() or {x=0, y=0, z=0}, nil);
+	local ap = %CP.ap;
+	if ap then
+		local l = TRF_CapPortals();
+		for i = 1, getn(l) do if l[i].name == ap then e = l[i]; o = TRF_N("TRF_GnPortalObj", ap); end; end;
+	end;
+	if not why and not TRF_CapObj(o) then why = "portal"; end;
+	if why then TRF_CapVoid(v, why); return; end;
+	local p = call(function(x) local q = x:GetEntryPoint(30); return {x=q.x, y=q.y, z=q.z}; end, {o}, "x", TRF_CapErr);
+	if type(p) ~= "table" then p = {x=e.x, y=e.y, z=e.z + 30}; end;
+	local T = TRF_CapCl(TRF_CapTier(cur), 2, 4);
+	v.T = T;
+	if not TRF_CapBuild(v, r, p, rows[T], cur) then TRF_CapVoid(v, "build"); return; end;
+	local h = %CP.h;
+	call(function(x) x:Start(8, 0); end, {o}, "x", TRF_CapNoErr);
+	local hp0 = TRF_CapHp(h.ship);
+	local hp = nil;
+	if type(hp0) == "number" then
+		hp = floor(hp0 * (v.hpb or 5) / 10);
+		call(function(s, x) s:SetHP(x); end, {h.ship, hp}, "x", TRF_CapErr);
+	end;
+	local nw = min(v.wn or 0, TRF_CapK().wing_max);
+	if nw > 0 then TRF_CapWing(v, nw, {x=p.x + 25, y=p.y, z=p.z}, T, cur); end;
+	v.st = "patrol";
+	TRF_CapArm(v, r, 1);
+	v.hp0 = hp0;
+	TRF_CapToPortal(v, "chase", 1);
+	TRF_CapSay(TRF_CapTxt("capchase"), 8, h.pilot);
+	TRF_CapStat("cap_chase");
+	TRF_CapE("chase", "slot", slot, "hp_band", v.hpb, "hp", hp, "wing_count", v.wn0, "portal", v.pn, "result", "arrived");
+end;
+
+-- Dock: board, claims, informant ---------------------------------------------------------------
+
+-- Board estimate of record r (design 5: the claim formula in seen).
+function TRF_CapPrice(r)
+	local s = r.seen;
+	local T = TRF_CapTune();
+	return TRF_CapClaimOf(TRF_CapKOf(r.esc, r.noto, T), TRF_N("TRF_LPay", s) or 8, TRF_N("TRF_LK", s) or 1, TRF_N("TRF_TierK", s) or 1,
+		TRF_N("TRF_Pro", s) or 0, TRF_N("TRF_DK") or 1, TRF_CapPayCap(), nil, 1);
+end;
+
+-- Board gate at the docked system idx: module, cfg cap_board, chapter, no visible scene, system mode, strict "board".
+function TRF_CapBoardGate(idx)
+	if not TRF_CapOn() then return "disabled"; end;
+	if TRF_CapOpt("cap_board") ~= 1 then return "board_disabled"; end;
+	if TRF_CapChapter() < TRF_CapK().chapter then return "chapter"; end;
+	if TRF_N("TRF_Quiet") then return "quiet"; end;
+	if type(idx) ~= "number" then return "nosys"; end;
+	local mode = TRF_N("TRF_SysModeQuiet");
+	if mode ~= nil and mode ~= "mod" then return "mode"; end;
+	if type(TRF_StrictOk) == "function" and not TRF_StrictOk(idx, "board") then return "strict"; end;
+	return nil;
+end;
+
+-- Board entries in board order: records not hiding (st 0..2, 4), by jump distance of seen from idx, then slot; at
+-- most board_n. Each {slot, r, kind (wanted, low, none)}.
+function TRF_CapBoardList(idx)
+	local l = TRF_CapRecs();
+	local o = {};
+	if not l then return o; end;
+	local dist = {};
+	dist[idx] = 0;
+	local nb = TRF_N("TRF_RgNear", idx, 8);
+	if type(nb) == "table" then for i = 1, getn(nb) do dist[nb[i].idx] = nb[i].j; end; end;
+	for s = 1, TRF_CapK().rec_n do
+		local r = l[s];
+		if type(r) == "table" and not TRF_CapRegOff(s) then
+			TRF_CapWake(r);
+			local k = nil;
+			if r.st == 0 or r.st == 4 then k = "none";
+			elseif r.st == 1 or r.st == 2 then
+				k = "wanted";
+				if TRF_CapLow(r) then k = "low"; end;
+			end;
+			if k then tinsert(o, {slot=s, r=r, kind=k, d=dist[r.seen] or 99}); end;
+		end;
+	end;
+	sort(o, function(a, b) if a.d ~= b.d then return a.d < b.d; end; return a.slot < b.slot; end);
+	while getn(o) > TRF_CapK().board_n do tremove(o); end;
+	return o;
+end;
+
+-- Board line of entry e.
+function TRF_CapBoardText(e)
+	local r, cl = e.r, TRF_CapClan(e.slot);
+	if e.kind == "none" then return TRF_CapTxt("capnone", cl); end;
+	if e.kind == "low" then return TRF_CapTxt("capquiet", TRF_CapNm(r), cl); end;
+	local t = TRF_CapTxt("capbrd", TRF_CapNm(r), cl, TRF_CapTxt("sev"..TRF_CapCl(TRF_CapTier(r.seen), 1, 4)));
+	if (r.esc or 0) > 0 then t = t.." "..TRF_CapTxt("capesc", r.esc); end;
+	return t.." "..TRF_CapTxt("capseen", TRF_CapSysTxt(r.seen), format("%d", TRF_CapPrice(r)));
+end;
+
+-- Patrol dock line 35 (after the owed payers at 30, so a paid claim shows before the board): head and up to board_n
+-- captain lines (design 2).
+function TRF_Cap_DockLine(kind, param)
+	if kind ~= "patrol" or not TRF_CapOn() then return nil; end;
+	local idx = TRF_CapCur();
+	local why = TRF_CapBoardGate(idx);
+	if why then TRF_CapDE("board", "result", "none", "reason", why); return nil; end;
+	local l = TRF_CapBoardList(idx);
+	if getn(l) == 0 then return nil; end;
+	local out = {TRF_CapTxt("caphead")};
+	for i = 1, getn(l) do tinsert(out, TRF_CapBoardText(l[i])); end;
+	TRF_CapStat("cap_board");
+	TRF_CapE("board", "system", TRF_CapName(idx), "line_count", getn(l), "result", "lines");
+	return out;
+end;
+
+-- Owed payer (trf_plumb TRF_OweReg; 00 section 6: #4 claims paid before any box), patrol docks only: the oldest claim
+-- pays when the shared prize gap allows (00 section 8 B1, trf_plumb TRF_PrizeWait), with help +1, heat -1 and fst +1
+-- of the station owner (GetLocationTeam of the docked system); the logbook entry turns done.
+function TRF_Cap_Owe(kind)
+	if kind ~= "patrol" or not TRF_CapOn() or type(TRF.claim) ~= "table" or getn(TRF.claim) == 0 then return nil; end;
+	if TRF_N("TRF_Quiet") then return nil; end;
+	local out = {};
+	while getn(TRF.claim) > 0 do
+		local c = TRF.claim[1];
+		local w = TRF_N("TRF_PrizeWait");
+		if type(w) == "number" and w > 0 then
+			tinsert(out, TRF_CapTxt("capwait", TRF_CapTxt("capnm"..c.nm)));
+			TRF_CapE("paid", "slot", c.slot, "generation", c.gen, "amount", c.amt, "wait", floor(w), "result", "wait");
+			break;
+		end;
+		tremove(TRF.claim, 1);
+		local paid = TRF_N("TRF_Pay", c.amt, "cap_claim") or 0;
+		TRF_N("TRF_AddHelp", 1, "captain claim");
+		TRF_N("TRF_AddHeat", -1, "captain claim");
+		local cur = TRF_CapCur();
+		local f = TRF_N("TRF_FacIdx", TRF_N("TRF_FcTeamOf", cur));
+		if type(f) == "number" then TRF_N("TRF_FstAdd", f, 1, "captain claim"); end;
+		TRF_N("TRF_PrizeMark", "captain");
+		local r = TRF_CapRec(c.slot);
+		if r and r.gen == c.gen and r.q == 1 then TRF_CapQEnd(c.slot, r, QUEST_DONE); end;
+		tinsert(out, TRF_CapTxt("cappaid", TRF_CapTxt("capnm"..c.nm), format("%d", paid)));
+		TRF_CapStat("cap_paid");
+		TRF_CapE("paid", "slot", c.slot, "generation", c.gen, "amount", c.amt, "paid", paid, "faction", f, "system", TRF_CapName(cur),
+			"result", "paid");
+	end;
+	if getn(TRF.claim) == 0 then TRF.claim = nil; end;
+	return out;
+end;
+
+-- Informant candidate: the first wanted board entry that is active (st 1), not lying low, without a valid tip, in a
+-- system off the deny list, not declined in this visit. Returns the entry or nil.
+function TRF_CapIntelPick(idx)
+	local l = TRF_CapBoardList(idx);
+	local legs = TRF_CapLegs();
+	for i = 1, getn(l) do
+		local e = l[i];
+		local r = e.r;
+		if e.kind == "wanted" and r.st == 1 and not %CP.dec[e.slot] and not (type(r.ti) == "number" and legs - r.ti <= TRF_CapK().tip_legs)
+			and not TRF_CapExcl(r.seen) then
+			return e;
+		end;
+	end;
+	return nil;
+end;
+
+-- Informant price (design 5): cap_intel_k x L_w(seen) x d_k (00 A2 on mod prices).
+function TRF_CapIntelPrice(r)
+	return floor(TRF_CapT("cap_intel_k") * (TRF_N("TRF_LPay", r.seen) or 8) * (TRF_N("TRF_DK") or 1));
+end;
+
+-- Patrol box candidate at prio 100 (00 section 6: 8.10 contracts > #9 offer > #2 licence > #4 informant): the offer
+-- of design 2, never while a story mission runs (GetPlayerQuestState() == TRUE).
+function TRF_Cap_DockBox(kind, param)
+	if kind ~= "patrol" or TRF_CapOpt("cap_intel") ~= 1 then return nil; end;
+	local idx = TRF_CapCur();
+	if TRF_CapBoardGate(idx) then return nil; end;
+	if TRF_N("GetPlayerQuestState") == TRUE then return nil; end;
+	local e = TRF_CapIntelPick(idx);
+	if not e then return nil; end;
+	local price = TRF_CapIntelPrice(e.r);
+	local cp = %CP;
+	cp.offer = {slot=e.slot, gen=e.r.gen, price=price, g=TRF_CapGen()};
+	TRF_CapE("intel", "slot", e.slot, "price", price, "result", "offered");
+	return {text=TRF_CapTxt("capintel", TRF_CapNm(e.r), format("%d", price)), ok="TRF_Cap_IntelOk", no="TRF_Cap_IntelNo", a=e.slot,
+		own="cap_intel"};
+end;
+
+-- Informant OK: the fee is the sink; the tip (r.ti, the leg of the sale) makes the next entry to seen within tip_legs
+-- a certain spawn. Returns the reply line.
+function TRF_Cap_IntelOk(slot)
+	local cp = %CP;
+	local o = cp.offer;
+	cp.offer = nil;
+	local r = TRF_CapRec(slot);
+	if type(o) ~= "table" or o.slot ~= slot or o.g ~= TRF_CapGen() or not r or r.gen ~= o.gen or r.st ~= 1 then
+		TRF_CapE("intel", "slot", slot, "result", "stale");
+		return nil;
+	end;
+	local cr = nil;
+	if type(GetPlayerCredits) == "function" then cr = call(TRF_CapCreditsRaw, {}, "x", TRF_CapErr); end;
+	if type(cr) ~= "number" or cr < o.price or type(SubPlayerCredits) ~= "function" then
+		TRF_CapE("intel", "slot", slot, "price", o.price, "credits", cr, "result", "poor");
+		return TRF_CapTxt("capintelpoor");
+	end;
+	call(TRF_CapSubRaw, {o.price}, "x", TRF_CapErr);
+	r.ti = TRF_CapLegs();
+	TRF_CapStat("cap_intel");
+	TRF_CapE("intel", "slot", slot, "price", o.price, "seen", TRF_CapName(r.seen), "result", "bought");
+	return TRF_CapTxt("capintelok", TRF_CapNm(r), TRF_CapSysTxt(r.seen));
+end;
+
+function TRF_Cap_IntelNo(slot)
+	local cp = %CP;
+	cp.offer = nil;
+	if type(slot) == "number" then cp.dec[slot] = 1; end;
+	TRF_CapE("intel", "slot", slot, "result", "declined");
+	return nil;
+end;
+
+-- Logbook (trf_cap_<slot>, design 6 arming) ------------------------------------------------------
+
+function TRF_CapQId(slot) return "trf_cap_"..slot; end;
+
+-- Opens the entry of record r (state process, q 1).
+function TRF_CapQOpen(slot, r)
+	r.q = 1;
+	r.ql = nil;
+	if type(AddQuest) ~= "function" or QUEST_PROCESS == nil then return nil; end;
+	local ok = call(TRF_CapAddQRaw, {TRF_CapQId(slot), "#TRF_capq"..r.nm, "#TRF_capqd"}, "x", TRF_CapErr);
+	TRF_CapE("quest", "id", TRF_CapQId(slot), "state", QUEST_PROCESS);
+	return ok;
+end;
+
+-- Closes the entry with state s (QUEST_DONE: q 2, QUEST_FAILED: q 3); removed q_legs later (region tick).
+function TRF_CapQEnd(slot, r, s)
+	if s == QUEST_DONE then r.q = 2; else r.q = 3; end;
+	r.ql = TRF_CapLegs();
+	if type(SetQuestState) == "function" and s ~= nil then call(TRF_CapSetQRaw, {TRF_CapQId(slot), s}, "x", TRF_CapErr); end;
+	TRF_CapE("quest", "id", TRF_CapQId(slot), "state", s);
+end;
+
+-- Removes the entry (q 0).
+function TRF_CapQRem(slot, r, why)
+	if r then r.q = nil; r.ql = nil; end;
+	if type(RemoveQuest) == "function" then call(TRF_CapRemQRaw, {TRF_CapQId(slot)}, "x", TRF_CapErr); end;
+	TRF_CapE("quest", "id", TRF_CapQId(slot), "result", "removed", "reason", why);
+end;
+
+-- Reconcile (save, load, re-entry, ClearQuests at a mission start): an open or closed record whose entry reads
+-- QUEST_NOINIT is added again with its state outside a story mission.
+function TRF_CapReconcile(why)
+	local l = TRF_CapRecs();
+	if not l or type(GetQuestState) ~= "function" or QUEST_NOINIT == nil then return; end;
+	if TRF_N("TRF_Safe_QState") then return; end;
+	for s = 1, TRF_CapK().rec_n do
+		local r = l[s];
+		if type(r) == "table" and type(r.q) == "number" and r.q >= 1 and TRF_CapQs(TRF_CapQId(s)) == QUEST_NOINIT then
+			local q, ql = r.q, r.ql;
+			TRF_CapQOpen(s, r);
+			if q == 2 then TRF_CapQEnd(s, r, QUEST_DONE); elseif q == 3 then TRF_CapQEnd(s, r, QUEST_FAILED); end;
+			r.ql = ql;
+			TRF_CapE("reconcile", "id", TRF_CapQId(s), "quest", q, "reason", why);
+		end;
+	end;
+end;
+
+-- #14 query (charter-spec V21): 1 while the captain entry of slot is open (no Break posting for that clan).
+function TRF_Cap_Open(slot)
+	local r = TRF_CapRec(slot);
+	if r and r.q == 1 then return 1; end;
+	return nil;
+end;
+
+-- Region tick (design 6, W1: counters only) ---------------------------------------------------------
+
+-- Off-screen move: seen goes to a region system weighted (1 + pro) x trader (pc > 0), x3 for the never-named systems
+-- while a story mission runs, never an excluded system.
+function TRF_CapMove(slot, r, L)
+	local R = TRF_CapRg();
+	if not R or type(R[slot]) ~= "table" then return; end;
+	local ss = R[slot].sys;
+	local free = TRF_N("TRF_StrictFree") or {};
+	local q = TRF_N("GetPlayerQuestState") == TRUE;
+	local l = {};
+	for i = 1, getn(ss) do
+		local k = ss[i];
+		local w = 0;
+		if (R.pc[k] or 0) > 0 and not TRF_CapExcl(k) then
+			w = 1 + (TRF_N("TRF_Pro", k) or 0);
+			if q and free[TRF_CapName(k)] then w = w * 3; end;
+		end;
+		tinsert(l, {k, w});
+	end;
+	local to = TRF_CapPickOf(l, TRF_CapHash(slot, L, r.gen + 7));
+	if to and to ~= r.seen then
+		TRF_CapDE("move", "slot", slot, "from", TRF_CapName(r.seen), "to", TRF_CapName(to));
+		r.seen = to;
+	end;
+end;
+
+-- Successor of slot (design 6): gen + 1, the next free name, template one below the tier's, esc and noto 0, half the
+-- grudge, born now, seen the home; the old logbook entry goes; pv keeps the dead captain's name for his first line.
+function TRF_CapSucc(slot, r, L, why)
+	local used = {};
+	local l = TRF_CapRecs();
+	for s = 1, TRF_CapK().rec_n do if type(l[s]) == "table" and s ~= slot then used[l[s].nm] = 1; end; end;
+	local nm = TRF_CapNextNmOf(used, r.nm, TRF_CapK().nm_n);
+	local n = TRF_CapNew(slot, nm, TRF_CapM((r.gen or 0) + 1, 1000), L, TRF_CapK().succ_down);
+	n.gr = floor((r.gr or 0) / 2);
+	if r.st == 4 then n.pv = r.nm; end;
+	if type(r.q) == "number" and r.q >= 1 then TRF_CapQRem(slot, r, "successor"); end;
+	l[slot] = n;
+	TRF_CapStat("cap_successor");
+	TRF_CapE("successor", "slot", slot, "generation", n.gen, "name", nm, "previous", r.nm, "template", n.tp, "grudge", n.gr, "reason", why);
+	return n;
+end;
+
+-- One region tick at leg L for every record (after trf_region's phase changes, so a Boom entry this tick has pt = L).
+function TRF_Cap_RegionTick(L)
+	if not TRF_CapOn() then return; end;
+	TRF_CapEnsure();
+	local l = TRF_CapRecs();
+	if not l or type(L) ~= "number" then return; end;
+	local T = TRF_CapTune();
+	local K = TRF_CapK();
+	local J = TRF_CapJ();
+	local cur = TRF_CapCur();
+	local cv = %CP.v;
+	for s = 1, K.rec_n do
+		local r = l[s];
+		local rg = TRF_N("TRF_RgRec", s);
+		if type(r) == "table" and type(rg) == "table" then
+			-- The record of a captain on screen now is left alone until the jump (W1).
+			local live = type(cv) == "table" and cv.slot == s and (cv.st == "raid" or cv.st == "patrol" or cv.st == "flee"
+				or cv.st == "leave" or cv.st == "chase" or cv.st == "wait" or cv.st == "cwait");
+			if not live then
+				local tier = TRF_CapRgTier(s);
+				TRF_CapWake(r);
+				if r.st == 1 and tier <= 1 then
+					r.st = 3;
+					TRF_CapE("hide", "slot", s, "tier", tier, "result", "hiding");
+				elseif r.st == 3 and tier >= 2 then
+					r.st = 1;
+					r.seen = TRF_CapHome(s) or r.seen;
+					TRF_CapE("hide", "slot", s, "tier", tier, "result", "active");
+				elseif r.st == 1 and not (type(r.ti) == "number" and L - r.ti <= K.tip_legs) and TRF_CapRoll(s, L, r.gen) < 50 then
+					-- A sold tip pins seen until it expires (the informant names the system of his next run).
+					TRF_CapMove(s, r, L);
+				end;
+				if rg.ph == 3 and (r.st == 1 or r.st == 2) and (r.noto or 0) < 3 then
+					r.noto = r.noto + 1;
+					TRF_CapDE("notoriety", "slot", s, "notoriety", r.noto, "reason", "raids");
+				end;
+				if (r.st == 1 or r.st == 2 or r.st == 3) and L - (r.born or L) > T.cap_life then
+					r.st = 0;
+					if r.q == 1 then TRF_CapQEnd(s, r, QUEST_FAILED); end;
+					TRF_CapE("retire", "slot", s, "generation", r.gen, "age", L - r.born, "life", T.cap_life);
+				end;
+				-- Step 2 hook: pods adrift (st 5) and the hold window of a captain aboard (st 6, cap_hold_legs) resolve here.
+				if rg.ph == 1 and rg.pt == L and (r.st == 0 or (r.st == 4 and J >= (r.dj or 0) + T.cap_succ_j)) then
+					r = TRF_CapSucc(s, r, L, "boom");
+					if tier <= 1 then r.st = 3; end;
+				end;
+			end;
+			if (r.gr or 0) > 0 and L - (r.gr_t or L) >= K.gr_legs then r.gr = r.gr - 1; r.gr_t = L; end;
+			if type(r.ti) == "number" and L - r.ti > K.tip_legs then r.ti = nil; TRF_CapDE("intel", "slot", s, "result", "expired"); end;
+			if (r.q == 2 or r.q == 3) and type(r.ql) == "number" and L - r.ql >= K.q_legs then TRF_CapQRem(s, r, "legs"); end;
+		end;
+	end;
+	-- Claims older than cap_claim_legs expire (no pay; the logbook entry fails).
+	if type(TRF.claim) == "table" then
+		local keep = {};
+		for i = 1, getn(TRF.claim) do
+			local c = TRF.claim[i];
+			if L - c.leg > T.cap_claim_legs then
+				local r = TRF_CapRec(c.slot);
+				if r and r.gen == c.gen and r.q == 1 then TRF_CapQEnd(c.slot, r, QUEST_FAILED); end;
+				TRF_CapSay(TRF_CapTxt("capexp", TRF_CapTxt("capnm"..c.nm)), 8);
+				TRF_CapE("claim", "slot", c.slot, "generation", c.gen, "amount", c.amt, "age", L - c.leg, "result", "expired");
+			else
+				tinsert(keep, c);
+			end;
+		end;
+		if getn(keep) == 0 then TRF.claim = nil; else TRF.claim = keep; end;
+	end;
+	TRF_CapDE("tick", "leg", L, "jumps", J, "record_count", getn(l), "claim_count", getn(TRF_CapClaims()));
+end;
+
+-- trf_region TRF_RgSweepOut hook (design 4 table: sweep success in the region): 50 % dead (no claim; news open,
+-- design 10 q10), 50 % escaped (st 2, esc + 1, seen the home). A captain on screen now is left alone.
+function TRF_Cap_Sweep(slot, L, won, how)
+	if not won or not TRF_CapOn() then return; end;
+	local r = TRF_CapRec(slot);
+	if not r or (r.st ~= 1 and r.st ~= 2 and r.st ~= 3) then return; end;
+	local cv = %CP.v;
+	if type(cv) == "table" and cv.slot == slot and cv.st ~= "gone" and cv.st ~= "dead" and cv.st ~= "void" then return; end;
+	local J = TRF_CapJ();
+	if TRF_CapRoll(slot, L, r.gen + 31) < 50 then
+		r.st = 4;
+		r.dj = J;
+		r.ti = nil;
+		if r.q == 1 then TRF_CapQEnd(slot, r, QUEST_FAILED); end;
+		TRF_CapE("sweep", "slot", slot, "generation", r.gen, "via", how, "result", "dead");
+	else
+		local K = TRF_CapK();
+		r.st = 2;
+		r.esc = min(3, (r.esc or 0) + 1);
+		r.due = J + K.due_a;
+		r.seen = TRF_CapHome(slot) or r.seen;
+		if r.esc >= K.low_n then r.lj = J + TRF_CapT("cap_low_j"); end;
+		TRF_CapE("sweep", "slot", slot, "generation", r.gen, "via", how, "escapes", r.esc, "result", "escaped");
+	end;
+end;
+
+-- Contract: loader callbacks -------------------------------------------------------------------
+
+-- After the entry plan (the seed providers ran in TRF_Gen_OnActivate): the arrival portal (the player's, for the
+-- flee rule), a chase record that no provider consumed is dropped, the logbook reconcile.
+function TRF_Cap_OnActivate()
+	local cp = %CP;
+	if not TRF_CapOn() then return; end;
+	TRF_CapEnsure();
+	local mp = TRF_CapMsPos();
+	if mp then
+		local l = TRF_CapPortals();
+		local bd = TRF_CapTv("ovd", 600);
+		for i = 1, getn(l) do
+			local d = TRF_CapDist(mp, l[i]);
+			if d and d < bd then cp.ap = l[i].name; bd = d; end;
+		end;
+	end;
+	if type(TRF.capch) == "table" then
+		TRF_CapE("chase", "slot", TRF.capch.slot, "system", TRF_CapName(TRF_CapCur()), "result", "dropped", "reason", "no_plan");
+		TRF.capch = nil;
+	end;
+	TRF_CapReconcile("enter");
+	local v = cp.v;
+	TRF_CapDE("enter", "system", TRF_CapName(TRF_CapCur()), "arrival_portal", cp.ap, "plan", v and v.st, "slot", v and v.slot);
+end;
+
+-- Load in a system (design 6 save/load): no spawn; the orphan rule sends every live TRF_CAP_<slot> ship and its wing
+-- (trf_cap_<slot>_<j>) to a portal (in view) or deletes it (out of view); the record is unchanged; logbook reconcile.
+-- Runs before trf_plumb's orphan scan, which deletes trf_cap_<1..4>_<j> outright.
+function TRF_Cap_OnLoad()
+	local cp = %CP;
+	cp.v = nil;
+	cp.orph = {};
+	if not TRF_CapOn() then return; end;
+	local mp = TRF_CapMsPos();
+	local ovd = TRF_CapTv("ovd", 600);
+	for s = 1, TRF_CapK().rec_n do
+		setglobal("TRF_GCap_"..s, nil);
+		local ls = {"TRF_CAP_"..s};
+		for j = 1, TRF_CapK().wing_max do tinsert(ls, "trf_cap_"..s.."_"..j); end;
+		for i = 1, getn(ls) do
+			local o = TRF_N("GetObjectByLabel", ls[i]);
+			if TRF_CapAlive(o) then
+				local d = TRF_CapDist(TRF_CapPos(o), mp);
+				local act = "delete";
+				if d and d <= ovd then
+					local e, po = TRF_CapPortalFor(TRF_CapPos(o), nil);
+					if TRF_CapObj(po) and TRF_CapOrder(o, "portal", po) then act = "portal"; tinsert(cp.orph, {o=o, t=TRF_CapGt()}); end;
+				end;
+				if act == "delete" then TRF_CapDel(o); end;
+				TRF_CapE("orphan", "label", ls[i], "action", act);
+			end;
+		end;
+	end;
+	TRF_CapReconcile("load");
+end;
+
+-- Before every jump (after trf_raid's jump pass): a captain still fleeing escaped (bookkeeping), a dead one not yet
+-- seen dead dies now (claim rule), the chase record is written when the player follows within T_chase through the
+-- portal he took; ships, marker and group globals go (M3).
+function TRF_Cap_BeforeJump(dest, how)
+	local cp = %CP;
+	local v = cp.v;
+	if type(v) == "table" and TRF_CapOn() then call(TRF_CapJumpBody, {v, dest}, "x", TRF_CapErr); end;
+	for i = 1, getn(cp.orph or {}) do TRF_CapDel(cp.orph[i].o); end;
+	cp.orph = {};
+	for s = 1, TRF_CapK().rec_n do setglobal("TRF_GCap_"..s, nil); end;
+	cp.v = nil;
+	cp.h = nil;
+end;
+
+function TRF_CapJumpBody(v, dest)
+	local h = %CP.h;
+	if (v.st == "raid" or v.st == "patrol") and type(h) == "table" and v.del ~= 1 and not TRF_CapAlive(h.ship) then
+		TRF_CapDeath(v, "jump");
+	end;
+	-- Still on screen: a flee or a chase escaped, a fight or a departure ends as a departure (TRF_CapEnd tells them apart).
+	if v.st == "flee" or v.st == "chase" or v.st == "raid" or v.st == "patrol" or v.st == "leave" then TRF_CapEnd(v, "jump"); end;
+	local di = nil;
+	local m = TRF_CapMap();
+	if m and type(dest) == "string" then di = m.by[strlower(dest)]; end;
+	if v.st == "gone" and v.fled == 1 and v.chain ~= 1 and v.wd ~= 1 and TRF_CapOpt("cap_chase") == 1 and di and di == v.to
+		and TRF_CapGt() - (v.tesc or 0) <= TRF_CapTv("T_chase", 60) then
+		TRF.capch = {slot=v.slot, to=di, hpb=TRF_CapBandOf(v.hpl, v.hp0), leg=TRF_CapLegs(), wn=min(v.wn or 0, TRF_CapK().wing_max), cg=v.cg};
+		TRF_CapE("chase", "slot", v.slot, "destination", TRF_CapName(di), "hp_band", TRF.capch.hpb, "wing_count", TRF.capch.wn, "result", "written");
+	end;
+	TRF_CapDelAll(v);
+	v.st = "end";
+end;
+
+-- Every 1 s (traffic.script): wind-down when the system gate fails, the death poll, the HP poll (fallback of the HP
+-- trigger), the window (cap_window, or his raid ended) without a recent hit -> leave, the watchdog of a flight to a
+-- portal (cap_flee_s, then deleted beyond ovd), the leaving wing, the orphans of a load.
+function TRF_Cap_Step()
+	local cp = %CP;
+	if type(TRF) ~= "table" or not TRF.active or not TRF_CapOn() then return; end;
+	call(TRF_CapStepBody, {}, "x", TRF_CapErr);
+end;
+
+function TRF_CapStepBody()
+	local cp = %CP;
+	local gt = TRF_CapGt();
+	local mp = TRF_CapMsPos();
+	local ovd = TRF_CapTv("ovd", 600);
+	local fs = TRF_CapT("cap_flee_s");
+	if getn(cp.orph) > 0 then
+		local keep = {};
+		for i = 1, getn(cp.orph) do
+			local e = cp.orph[i];
+			if TRF_CapAlive(e.o) then
+				local d = TRF_CapDist(TRF_CapPos(e.o), mp);
+				if (d and d > ovd) or gt - e.t >= fs then TRF_CapDel(e.o); else tinsert(keep, e); end;
+			end;
+		end;
+		cp.orph = keep;
+	end;
+	local v, h = cp.v, cp.h;
+	if type(v) ~= "table" or type(h) ~= "table" then return; end;
+	if v.wl and TRF_CapWingN() > 0 then
+		local d = TRF_CapDist(TRF_CapWingPos(), mp);
+		if (d and d > ovd) or gt - v.wl >= fs then
+			TRF_CapDel(h.wfl);
+			for j = 1, getn(h.wsh or {}) do if TRF_CapAlive(h.wsh[j]) then TRF_CapDel(h.wsh[j]); end; end;
+			v.wl = nil;
+		end;
+	end;
+	local st = v.st;
+	if st ~= "raid" and st ~= "patrol" and st ~= "flee" and st ~= "leave" and st ~= "chase" then return; end;
+	-- A ship gone without its died event: in a fight a death (poll), on the way to a portal the engine removed it at
+	-- the portal (CHECK E0.3: ComeToPortal may delete the ship itself), so it left.
+	if v.del ~= 1 and not TRF_CapAlive(h.ship) then
+		if st == "raid" or st == "patrol" then TRF_CapDeath(v, "poll"); else TRF_CapEnd(v, "vanished"); end;
+		return;
+	end;
+	if v.wd ~= 1 then
+		local why = TRF_CapSysGate(TRF_CapCur());
+		if why and why ~= "sweep" then TRF_Cap_WindDown(); return; end;
+	end;
+	local hp = TRF_CapHp(h.ship);
+	if type(hp) == "number" then v.hpl = hp; end;
+	if st == "raid" or st == "patrol" then
+		if type(hp) == "number" and type(v.thr) == "number" and hp <= v.thr then TRF_CapFlee(v, "poll"); return; end;
+		local quiet = not (type(v.lh) == "number" and gt - v.lh < TRF_CapK().hit_recent);
+		local rend = type(v.rend) == "string" and v.rend ~= "killed";
+		if quiet and (rend or gt - (v.t0 or gt) >= TRF_CapT("cap_window")) then
+			local why = "window";
+			if rend then why = "raid_end"; end;
+			TRF_CapLeave(v, why);
+		end;
+		return;
+	end;
+	if gt - (v.tf or gt) >= fs then
+		local d = TRF_CapDist(TRF_CapPos(h.ship), mp);
+		if not d or d > ovd then TRF_CapEnd(v, "watchdog"); end;
+	end;
+end;
+
+-- Wind-down (trf_gen TRF_WindDown, design 9.10; or the system gate failing during the visit): the captain and his
+-- wing go to the nearest portal and are deleted there; the record is unchanged.
+function TRF_Cap_WindDown()
+	local v = %CP.v;
+	if type(v) ~= "table" or v.wd == 1 then return; end;
+	v.wd = 1;
+	if v.st == "wait" or v.st == "cwait" then TRF_CapVoid(v, "wind"); return; end;
+	if v.st == "raid" or v.st == "patrol" then TRF_CapLeave(v, "wind"); end;
+	TRF_CapE("wind_down", "slot", v.slot, "state", v.st);
+end;
+
+-- trf_plumb TRF_InstallPlumb: seed providers (540 the spawn decision at the staged-raid rank, 810 the chased record
+-- first), patrol line 35, the owed payer, patrol box 100, the 8.5 resolver, the ship-cap group (never trimmed: it
+-- skips). Step 2 hook: the Case_Eject handler (TRF_EjectReg) and the CostOfHead handler (TRF_CostOfHeadReg).
+function TRF_Cap_Plumb()
+	TRF_SeedReg(810, "TRF_Cap_SeedChase");
+	TRF_SeedReg(540, "TRF_Cap_Seed");
+	TRF_DockLine("patrol", 35, "TRF_Cap_DockLine");
+	TRF_OweReg("TRF_Cap_Owe");
+	TRF_DockBox("patrol", 100, "TRF_Cap_DockBox");
+	TRF_RaidHelpReg("TRF_Cap_RaidHelp");
+	TRF_CapReg("captain", "TRF_Cap_Ships");
+end;
+
+-- Live ships of the captain's group (captain and his own wing): raid_live_cap (trf_raid TRF_Rd_ClanAlive) and
+-- cap_ships (trf_plumb TRF_CapShips).
+function TRF_Cap_Alive()
+	local h = %CP.h;
+	if type(h) ~= "table" then return 0; end;
+	local n = 0;
+	if TRF_CapAlive(h.ship) then n = 1; end;
+	return n + TRF_CapWingN();
+end;
+
+function TRF_Cap_Ships(g)
+	return TRF_Cap_Alive();
+end;
+
+-- Repair, defaults, dump, text -----------------------------------------------------------
+
+function TRF_CapNum(x, lo, hi)
+	return type(x) == "number" and x >= lo and x <= hi;
+end;
+
+function TRF_CapFld(e, k, lo, hi, d)
+	if TRF_CapNum(e[k], lo, hi) then return floor(e[k]); end;
+	return d;
+end;
+
+-- Repair (TRF_Repair, every entry and load): the records of every region slot (created when missing), fields within
+-- their ranges (a wrong value reads the default; seen never an excluded system), at most 11; TRF.claim at most 3;
+-- TRF.capch and TRF.capg shapes. Records are replaced by repaired copies (tests re-read them).
+function TRF_Cap_Fix()
+	if type(TRF) ~= "table" then return; end;
+	if TRF.cap ~= nil and type(TRF.cap) ~= "table" then TRF.cap = nil; end;
+	-- New records only while the module is on (an existing TRF.cap is repaired either way).
+	if TRF_CapOn() then TRF_CapEnsure(); end;
+	local legs, J = TRF_CapLegs(), TRF_CapJ();
+	local m = TRF_CapMap();
+	local ns = 999;
+	if m then ns = getn(m.sys); end;
+	local K = TRF_CapK();
+	if type(TRF.cap) == "table" then
+		local n = TRF_CapN();
+		if n <= 0 then n = K.rec_n; end;
+		local out = {};
+		for s = 1, n do
+			local e = TRF.cap[s];
+			if type(e) ~= "table" then e = TRF_CapNew(s, s, 1, legs, 0); end;
+			local r = {nm=TRF_CapFld(e, "nm", 1, K.nm_n, TRF_CapCl(s, 1, K.nm_n)), gen=TRF_CapFld(e, "gen", 0, 999, 1),
+				st=TRF_CapFld(e, "st", 0, 6, 1), tp=TRF_CapFld(e, "tp", 3, 5, 3), esc=TRF_CapFld(e, "esc", 0, 3, 0),
+				noto=TRF_CapFld(e, "noto", 0, 3, 0), gr=TRF_CapFld(e, "gr", 0, 9, 0), gr_t=TRF_CapFld(e, "gr_t", -99999, legs, legs),
+				seen=TRF_CapFld(e, "seen", 1, ns, 0), due=TRF_CapFld(e, "due", 0, J + 1000, 0), lj=TRF_CapFld(e, "lj", 0, J + 1000, 0),
+				dj=TRF_CapFld(e, "dj", 0, J, 0), born=TRF_CapFld(e, "born", -99999, legs, legs), met=TRF_CapFld(e, "met", 0, 1, 0),
+				last=TRF_CapFld(e, "last", 0, ns, 0)};
+			if r.seen == 0 or TRF_CapExcl(r.seen) then r.seen = TRF_CapHome(s) or 0; end;
+			if TRF_CapNum(e.ti, -99999, legs) then r.ti = floor(e.ti); end;
+			if TRF_CapNum(e.pv, 1, K.nm_n) then r.pv = floor(e.pv); end;
+			if TRF_CapNum(e.q, 1, 3) then r.q = floor(e.q); end;
+			if r.q and r.q >= 2 then r.ql = TRF_CapFld(e, "ql", -99999, legs, legs); end;
+			out[s] = r;
+		end;
+		TRF.cap = out;
+	end;
+	if TRF.claim ~= nil then
+		local l = {};
+		if type(TRF.claim) == "table" then
+			for i = 1, getn(TRF.claim) do
+				local c = TRF.claim[i];
+				if type(c) == "table" and TRF_CapNum(c.slot, 1, K.rec_n) and TRF_CapNum(c.gen, 0, 999) and TRF_CapNum(c.amt, 0, 1000000)
+					and TRF_CapNum(c.leg, -99999, legs) and getn(l) < K.claim_n then
+					tinsert(l, {slot=floor(c.slot), gen=floor(c.gen), nm=TRF_CapFld(c, "nm", 1, K.nm_n, 1), amt=floor(c.amt),
+						kind=TRF_CapFld(c, "kind", 1, 2, 1), leg=floor(c.leg)});
+				end;
+			end;
+		end;
+		if getn(l) == 0 then TRF.claim = nil; else TRF.claim = l; end;
+	end;
+	local ch = TRF.capch;
+	if ch ~= nil and not (type(ch) == "table" and TRF_CapNum(ch.slot, 1, K.rec_n) and TRF_CapNum(ch.to, 1, ns) and TRF_CapNum(ch.hpb, 1, 10)
+		and TRF_CapNum(ch.leg, -99999, legs) and TRF_CapNum(ch.wn, 0, K.wing_max) and TRF_CapNum(ch.cg, 0, 999)) then
+		TRF.capch = nil;
+	end;
+	if TRF.capg ~= nil then
+		local g = TRF.capg;
+		if type(g) ~= "table" then g = {}; end;
+		local o = {vn=TRF_CapFld(g, "vn", 0, K.rec_n, 0)};
+		if TRF_CapNum(g.lc, 0, J) then o.lc = floor(g.lc); end;
+		TRF.capg = o;
+	end;
+end;
+
+-- Config keys (design 6 config). cap_capture, cap_force_eject and cap_vendetta are step 2 and read nowhere yet.
+-- cap_regions_off: home system names of regions without a captain; cap_at (debug, CHECK EW4.1-EW4.7): a system name
+-- where the region's captain is seen and spawns for certain.
+function TRF_Cap_OptDef()
+	return {cap_enable=1, cap_board=1, cap_intel=1, cap_chase=1, cap_capture=0, cap_force_eject=0, cap_vendetta=0,
+		cap_regions_off="", cap_at=""};
+end;
+
+-- Tune keys (design 6 config). cap_hold_legs and vend_* are step 2 and read nowhere yet.
+function TRF_Cap_TuneDef()
+	return {cap_flee_hp=0.35, cap_flee_s=120, cap_spawn_seen=80, cap_spawn_nb=30, cap_window=240, cap_life=90, cap_k0=1.2,
+		cap_k_esc=0.5, cap_k_noto=0.25, cap_k_max=3.0, cap_sweep_k=0.5, cap_intel_k=500, cap_claim_legs=40, cap_hold_legs=10,
+		cap_gap_j=20, cap_succ_j=10, cap_low_j=10, vend_grudge=4, vend_cd=8, vend_max=2};
+end;
+
+-- Debug dump (design 6): one dump_rec line per record, one dump_claim line per claim, the capg line (jumps, last
+-- claim, vendettas; the claims per hour of the rate check come from the event=claim lines of a session).
+function TRF_Cap_Dump()
+	if type(TRF) ~= "table" then return; end;
+	local l = TRF_CapRecs() or {};
+	local n = 0;
+	for s = 1, TRF_CapK().rec_n do
+		local r = l[s];
+		if type(r) == "table" then
+			n = n + 1;
+			TRF_CapE("dump_rec", "slot", s, "name", r.nm, "generation", r.gen, "state", r.st, "template", r.tp, "escapes", r.esc,
+				"notoriety", r.noto, "grudge", r.gr, "seen", TRF_CapName(r.seen), "due", r.due, "lie_low", r.lj, "died", r.dj, "born", r.born,
+				"met", r.met, "last", r.last, "tip", r.ti, "quest", r.q);
+		end;
+	end;
+	local cl = TRF_CapClaims();
+	for i = 1, getn(cl) do
+		local c = cl[i];
+		TRF_CapE("dump_claim", "index", i, "slot", c.slot, "generation", c.gen, "amount", c.amt, "kind", c.kind, "leg", c.leg);
+	end;
+	local g = TRF.capg or {};
+	local ch = TRF.capch;
+	local v = %CP.v;
+	TRF_CapE("dump", "record_count", n, "claim_count", getn(cl), "jumps", TRF_CapJ(), "last_claim", g.lc, "vendettas", g.vn or 0,
+		"chase", ch and ch.slot, "visit", v and v.st, "visit_slot", v and v.slot);
+end;
+
+-- Texts (design 2, 6 text keys), EN; keys in TRF_UI_Key form (#TRF_cap<name> in loc/trf_en.loc). Names capnm1..24,
+-- logbook titles capq1..24 and the description capqd; board, informant, radio and claim lines. capvend is the step 2
+-- vendetta line (not used yet).
+function TRF_Cap_Text()
+	return {
+		capnm1 = "Hask 'Red Hand'", capnm2 = "Mira Vell", capnm3 = "Dorn 'Saltjaw'", capnm4 = "Ketti Brask",
+		capnm5 = "Ulf 'Ninefingers'", capnm6 = "Sabra Quist", capnm7 = "Toma 'Rivet'", capnm8 = "Garren Holt",
+		capnm9 = "Vesna 'Ash'", capnm10 = "Brokk Tavi", capnm11 = "Lyle 'Grinder'", capnm12 = "Oda Marrin",
+		capnm13 = "Rusk 'Halfmoon'", capnm14 = "Ilse Kord", capnm15 = "Fenn 'Tallow'", capnm16 = "Zora Pike",
+		capnm17 = "Marek 'Gutter'", capnm18 = "Neve Sallow", capnm19 = "Corran 'Lockjaw'", capnm20 = "Petra Dusk",
+		capnm21 = "Ivo 'Cinder'", capnm22 = "Halla Rook", capnm23 = "Teodor 'Sparrow'", capnm24 = "Yarra Venn",
+		capq1 = "Wanted: Hask 'Red Hand'", capq2 = "Wanted: Mira Vell", capq3 = "Wanted: Dorn 'Saltjaw'", capq4 = "Wanted: Ketti Brask",
+		capq5 = "Wanted: Ulf 'Ninefingers'", capq6 = "Wanted: Sabra Quist", capq7 = "Wanted: Toma 'Rivet'", capq8 = "Wanted: Garren Holt",
+		capq9 = "Wanted: Vesna 'Ash'", capq10 = "Wanted: Brokk Tavi", capq11 = "Wanted: Lyle 'Grinder'", capq12 = "Wanted: Oda Marrin",
+		capq13 = "Wanted: Rusk 'Halfmoon'", capq14 = "Wanted: Ilse Kord", capq15 = "Wanted: Fenn 'Tallow'", capq16 = "Wanted: Zora Pike",
+		capq17 = "Wanted: Marek 'Gutter'", capq18 = "Wanted: Neve Sallow", capq19 = "Wanted: Corran 'Lockjaw'", capq20 = "Wanted: Petra Dusk",
+		capq21 = "Wanted: Ivo 'Cinder'", capq22 = "Wanted: Halla Rook", capq23 = "Wanted: Teodor 'Sparrow'", capq24 = "Wanted: Yarra Venn",
+		capqd = "A pirate captain with a patrol price on his head. Kill him and collect the bounty at any patrol station.",
+		caphead = "WANTED BY THE PATROL",
+		capbrd = "$1, captain of the $2 ($3).",                                       -- name, clan, tier word
+		capesc = "Escaped $1 times.",                                                  -- escapes
+		capseen = "Last seen: $1. Dead or alive: $2 cr.",                              -- system, price
+		capnone = "The $1 are leaderless. No price posted.",                           -- clan
+		capquiet = "$1 of the $2 is lying low.",                                       -- name, clan
+		capintel = "Patrol informant: $1's next run, for $2 cr?",                      -- name, price
+		capintelok = "The informant will send word. $1 is expected in $2.",            -- name, system
+		capintelpoor = "Not enough credits for the informant.",
+		capintro = "This is $1 of the $2. These lanes pay toll to me.",                -- name, clan
+		capgrudge = "The Wolves again? Good. I owe you for $1.",                       -- system of the last fight
+		capback = "Remember me, Wolves? I came back with more guns.",
+		capsucc = "$1 is dead. I lead the $2 now, and I know who did it.",             -- dead captain, clan
+		cappatrol = "$1 here. Spread out and watch the lanes.",                        -- name
+		capraid = "Take the freighter. Leave the escorts to me.",
+		capwin = "The cargo is ours. Pull it in!",
+		capflee = "That's enough. You'll see me again, Wolf!",
+		capwing = "The captain's down! Break off, break off!",
+		capchase = "You followed me? Brave. Stupid, but brave.",
+		capleave = "Nothing here worth the fuel. We are leaving.",
+		capvend = "Wolves! $1 sends his regards.",                                     -- name (step 2)
+		capclaim = "Patrol: kill of $1 logged. Collect the bounty at any patrol station.",  -- name
+		cappaid = "Patrol: bounty for $1 confirmed. $2 cr transferred. Clear space to you!", -- name, amount
+		capexp = "Patrol: the claim on $1 has expired.",                               -- name
+		capwait = "Patrol: the claim on $1 is logged. Payment clears at a later docking.", -- name
+	};
+end;

@@ -159,7 +159,7 @@ end;
 
 -- Modules whose TRF_<M>_Plumb() registers handlers (TRF_InstallPlumb).
 function TRF_PlMods()
-	return {"Shop", "Hail", "Faction", "Events", "Gen", "Stn", "Sv", "Lad", "Ch"};
+	return {"Shop", "Hail", "Faction", "Events", "Gen", "Stn", "Sv", "Lad", "Ch", "Cap"};
 end;
 
 -- Group and allocator prefixes of the worldbuilding features (00 section 6, "Group and allocator names"):
@@ -893,8 +893,10 @@ end;
 -- Nav marker of owner at x, y, z labelled label (TRF_*, at most mk_len characters, no "=" or ";"). Refused while
 -- a story mission runs (GetPlayerQuestState() == TRUE) and above mk_max markers. text (a loc key, default "") and
 -- icon (default nav_target.dds) are the first and third CreateNavPoint arguments (battle scars: the wreckage key and
--- nav_Crash_site.dds). Returns 1, or nil, reason.
-function TRF_MarkerAdd(owner, label, x, y, z, text, icon)
+-- nav_Crash_site.dds). obj (optional, 2026-10-24, wanted captains): the object the marker is attached to, the fifth
+-- CreateNavPoint argument (vanilla OutOfMission.script:494; the marker follows it, CHECK EW4.2). Returns 1, or nil,
+-- reason.
+function TRF_MarkerAdd(owner, label, x, y, z, text, icon, obj)
 	local K = TRF_PlK();
 	if type(owner) ~= "string" or owner == "" or strlen(owner) > K.mk_own or strfind(owner, "[=;]") then return nil, "owner"; end;
 	if type(label) ~= "string" or strsub(label, 1, 4) ~= "TRF_" or strlen(label) > K.mk_len or strfind(label, "[=;]") then
@@ -921,6 +923,7 @@ function TRF_MarkerAdd(owner, label, x, y, z, text, icon)
 	if type(icon) ~= "string" or icon == "" then icon = "nav_target.dds"; end;
 	local a = {text, Vector3(x, y, z), icon};
 	if col ~= nil then a[4] = col; end;
+	if obj ~= nil and type(obj) ~= "number" and type(obj) ~= "string" then a[4] = col; a[5] = obj; a.n = 5; end;
 	local nav = call(CreateNavPoint, a, "x", TRF_PlErr);
 	if nav == nil or type(nav) == "number" then
 		TRF_PlE("marker", "owner", owner, "label", label, "result", "failed", "reason", "create_nav_point_nil");
@@ -1066,6 +1069,9 @@ function TRF_Pl_Fix()
 		if big or n > K.job_max then TRF.job = nil; end;
 	end;
 	if TRF.mk ~= nil and (type(TRF.mk) ~= "string" or strlen(TRF.mk) > K.mk_max * (K.mk_len + K.mk_own + 2)) then TRF.mk = nil; end;
+	-- The prize stamp (B1) is a real-seconds value not after TRF.clock.rs.
+	local c = TRF.clock;
+	if type(c) == "table" and c.pz ~= nil and not (type(c.pz) == "number" and type(c.rs) == "number" and c.pz <= c.rs) then c.pz = nil; end;
 end;
 
 -- wb_box_after_fee: 1 allows an offer box at the trade dock after a #3 fee box (set once E0.6 passes).
@@ -1073,8 +1079,35 @@ function TRF_Pl_OptDef()
 	return {wb_box_after_fee=0};
 end;
 
+-- prize_rs: the shared real-time gap between combat prize payouts (00 section 8 B1).
 function TRF_Pl_TuneDef()
-	return {};
+	return {prize_rs=1800};
+end;
+
+-- Combat prize gap (00 section 8 B1, the recommended default; design/captain-spec.md 2): the prizes of #4 claims
+-- (and of #9 warrants, #10 asylum, #11 push pay when they are built) share one map-wide gap of prize_rs unpaused real
+-- seconds (TRF.clock.rs) between payouts; a prize earned inside the gap waits in its feature's record. Gap in seconds.
+function TRF_PrizeGap()
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_PlErr); end;
+	if type(t) == "table" and type(t.prize_rs) == "number" then return TRF_PlCl(floor(t.prize_rs), 0, 100000); end;
+	return TRF_Pl_TuneDef().prize_rs;
+end;
+
+-- Seconds still to wait before the next prize may pay; 0 when it may pay now.
+function TRF_PrizeWait()
+	if type(TRF) ~= "table" or type(TRF.clock) ~= "table" or type(TRF.clock.pz) ~= "number" then return 0; end;
+	return max(0, TRF.clock.pz + TRF_PrizeGap() - (TRF.clock.rs or 0));
+end;
+
+-- A prize of owner was paid now: TRF.clock.pz = TRF.clock.rs.
+function TRF_PrizeMark(owner)
+	if type(TRF) ~= "table" or type(TRF.clock) ~= "table" then return nil; end;
+	local rs = TRF.clock.rs;
+	if type(rs) ~= "number" then rs = 0; end;
+	TRF.clock.pz = rs;
+	TRF_PlE("prize", "owner", tostring(owner), "real_seconds", floor(rs), "gap", TRF_PrizeGap());
+	return 1;
 end;
 
 function TRF_Pl_Dump()

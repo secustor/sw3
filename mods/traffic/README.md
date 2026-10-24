@@ -21,6 +21,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_ladder.script` | Faction service ladder step 1 ([design/ladder-spec.md](design/ladder-spec.md)): the rank line of the five factions at patrol stations, the war rule, Vks/Kfni regional transit permits, settlement, hand-in standing and prisoners of war, the portal-fine waiver, the paid relation-reset sync. Loads after `trf_survive`. |
 | `trf_charter.script` | Charter goals step 1 ([design/charter-spec.md](design/charter-spec.md)): two or three FTU charter postings in the logbook (Lanes, Relief, Break, Convoy, Sweep, Base) generated at trade docks from the live region state, deeds from traffic's pay points, owed pay with a 30-minute real-time gap, ranks 0-3 with dues, the heat-3 contract perk and the third slot. Loads after `trf_ladder`. |
 | `trf_scar.script` | Battle scars step 1 ([design/scar-spec.md](design/scar-spec.md)): labelled wreck fields (a lootable hulk with a fixed cargo from the seed and 1-4 decoration hulls) left by Bust shortages, Raids ticks, off-screen sweep attempts and on-screen fights, one per system, 8-30 legs with shrinking, the reconcile at entry, the FTU nav marker and scar line while fresh, the deny list, the strict gate and the chapter rules. Loads after `trf_charter`. |
+| `trf_captain.script` | Wanted captains step 1 ([design/captain-spec.md](design/captain-spec.md)): one named pirate captain per clan region with an off-screen life cycle in the region tick, one captain-led raid per visit (the staged raid with a trader target, else a lane patrol with his own wing), flee at low hull, escape through a portal, the chase, the kill claim paid at patrol docks, board lines and the informant fee, the logbook entry. Loads after `trf_scar`. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -637,6 +638,42 @@ Battle scars (proposal 2 step 1, spec [design/scar-spec.md](design/scar-spec.md)
 
 Experiments EW2.1-EW2.5 and EW2.7 of the design, with the confirming lines in the spec section 10: `SCAR_AT=gaoba`, then enter Gaoba, leave and return twice (`result=reuse`, `dump_probe ... expected=4 found=4`, the label path); destroy the wreck, leave, return (`lookup=dead` or `none`); count the dropped cargo; return without refill; `SCAR_GATE_FAIL=gaoba` (`event=hide ... reason=gate:debug` before the first frame); save in Gaoba and load (`event=load ... hulk=true decorations=3`, the handle-global path); the wreckage marker text and icon; a `died` trigger on the hulk.
 
+## Wanted captains (`EXP=0 TRAFFIC=1`)
+
+Wanted captains (proposal 4 step 1, spec [design/captain-spec.md](design/captain-spec.md), design `design/worldbuilding/04-wanted-captains.md`) is one module, `trf_captain`, loaded after `trf_scar` (`module=core event=loaded ... extra_count=7`). Records `TRF.cap[slot]` (one per clan region), unpaid claims `TRF.claim` (at most 3), the chase record `TRF.capch` and `TRF.capg` (last claim, vendettas); rate limits count the shared jump counter `TRF.clock.j`. It uses the plumbing: two seed providers (810 the chased captain, 540 the spawn decision at the staged-raid rank), the scripted-event slot, patrol line 35, an owed payer, patrol box 100, the 8.5 raid-help resolver, the ship-cap registry, an attached nav marker (`TRF_MarkerAdd` gained an `obj` argument) and the new shared prize gap (`TRF_PrizeWait`, tune `prize_rs`). trf_raid builds the captain's staged raid (`TRF_StagedCap`), trf_region calls the region tick and the sweep outcome. Step 2 (capture, vendetta) is not built. Implemented and host-tested (`cap-a`..`cap-h`), not run in the game.
+
+### What the player sees
+
+- From chapter 5, the patrol dock lists up to three captains after the patrol report: `WANTED BY THE PATROL`, `Ketti Brask, captain of the Grey Ravens (heavy). Escaped 1 times. Last seen: XB-13. Dead or alive: 22275 cr.`, `The Red Knives are leaderless. No price posted.`, `Mira Vell of the Black Comets is lying low.` A box may offer `Patrol informant: Ketti Brask's next run, for 5500 cr?`; buying it makes his appearance certain on the next entry to that system within 4 legs.
+- In his region (clan at tier 2 or more, free of story missions and the deny list), entering the system where he was last seen brings him at 80 % (30 % one jump away), 30-90 s after the entry: he leads the staged raid on a lone freighter, or patrols the lane with his wing for 4 minutes. Radio: `This is Ketti Brask of the Grey Ravens. These lanes pay toll to me.` (later the grudge taunt, the return line, or the successor's claim). A target marker sits on his ship; the logbook opens `Wanted: Ketti Brask` at the first hit.
+- At 35 % hull (30 % at T4) he runs for a portal other than the one you came through: `That's enough. You'll see me again, Wolf!`. If he gets through, he returns 2-3 jumps later with one more escape on his record (more ships, a better pilot, a higher price); after the third escape he lies low for 10 jumps. Jump after him within 60 s and he arrives 5-15 s later, hurt, and runs again.
+- Kill him after deliberate fire: `Patrol: kill of Ketti Brask logged. Collect the bounty at any patrol station.` His wing breaks off. The next patrol docking pays the claim (help +1, heat -1, the station owner's standing +1), at most one combat prize per 30 real minutes; a claim expires after 40 legs. Every captain lies low for 20 jumps after a claim. His raid's 8.5 help pay is not paid on top; a claim inside a sweep window is half.
+- The clan stays leaderless until its region's next Boom, at least 10 jumps after the death; the successor starts one pilot rank lower with half the grudge. A captain nobody hunts retires after 90 legs; a sweep success kills or drives off the captain.
+
+### Config keys (captains)
+
+`config.script` lists the seven toggles of design 6; `cap_regions_off`, `cap_at` and the tune keys read the module defaults. `install-test.sh` writes `CAPTAINS` (`cap_enable`; `LEVEL=v01` and `v02` write 0 unless `CAPTAINS` is set) and `CAP_AT` (debug); tune keys go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `cap_enable` | 1 | 0 turns the module off |
+| `cap_board`, `cap_intel`, `cap_chase` | 1 | board lines, informant offer, chase |
+| `cap_capture`, `cap_force_eject`, `cap_vendetta` | 0 | step 2, read nowhere |
+| `cap_regions_off` | `""` | home system names of regions without captains |
+| `cap_at` | `""` | debug: the region's captain is seen in the named system and spawns there for certain (EW4.1-EW4.7) |
+| tune `cap_flee_hp`, `cap_flee_s`, `cap_spawn_seen`, `cap_spawn_nb`, `cap_window`, `cap_life` | 0.35, 120, 80, 30, 240, 90 | flee fraction, portal watchdog, spawn chances, lane presence, lifetime |
+| tune `cap_k0`, `cap_k_esc`, `cap_k_noto`, `cap_k_max`, `cap_sweep_k`, `cap_intel_k`, `cap_claim_legs` | 1.2, 0.5, 0.25, 3.0, 0.5, 500, 40 | claim and informant |
+| tune `cap_gap_j`, `cap_succ_j`, `cap_low_j` | 20, 10, 10 | jumps: map-wide gap, successor delay, lie-low |
+| tune `prize_rs` (trf_plumb) | 1800 | shared gap between combat prize payouts (00 B1) |
+
+### Log lines (captains)
+
+`module=captain event=plan ... result=<planned|none>`, `event=spawn ... mode=<raid|patrol>`, `event=hp`, `event=met`, `event=help`, `event=flee`, `event=escaped ... reason=<portal|watchdog|jump|vanished>`, `event=leave`, `event=left`, `event=chase ... result=<written|planned|arrived|dropped>`, `event=death ... player=<true|false> claim=<n>`, `event=claim`, `event=raid_help ... result=<held|cancelled|paid>`, `event=paid ... result=<paid|wait>`, `event=board`, `event=intel`, `event=quest`, `event=reconcile`, `event=orphan`, the region tick lines (`hide`, `move`, `notoriety`, `retire`, `successor`, `sweep`, `tick`), `event=wind_down`, `event=dump`, `event=dump_rec`, `event=dump_claim`; full list in `design/log-events.md` (captain).
+
+### In-game checks (captains)
+
+Experiments EW4.1-EW4.7 of the design, with the confirming lines in the spec section 10, all with `CAP_AT=xb13` in chapter 5 or later: the HP trigger at an absolute value (`event=hp`, then `event=flee ... reason=trigger`), the attached marker and the portal exit (`event=escaped ... reason=portal`), the string callbacks (`event=death ... reason=died`), the board and the informant box before the patrol dialog (`box=cap_intel priority=100 result=box`), the logbook entry with `LOC=1` (`event=quest id=trf_cap_<s>`), the chase arrival's hull (`event=chase ... result=arrived`), a load in his system (`event=orphan ... action=portal`).
+
 ## Installing into the game
 
 The release zip `sw3-traffic-<v>.zip` (built by `release.sh`) or this folder:
@@ -719,9 +756,9 @@ Movie and UI natives (`pe/traffic.c`, [design/mod-research/movie-state.md](desig
 ## Host checks (no game)
 
     mods/traffic/tools/get-lua4.sh                       # builds .work/lua4/bin/lua once
-    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment + v0.1 scenarios a..g (tests/host_traffic.lua) + v0.2 scenarios v02-a..n (tests/host_v02.lua) + v1 scenarios v1-a..n (tests/host_v1.lua) + station voices stn-a..h (tests/host_station.lua) + plumbing pl-a..e (tests/host_plumb.lua) + survivors sv-a..g (tests/host_survive.lua) + faction ladder lad-a..g (tests/host_ladder.lua) + charter ch-a..h (tests/host_charter.lua)
+    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment + v0.1 scenarios a..g (tests/host_traffic.lua) + v0.2 scenarios v02-a..n (tests/host_v02.lua) + v1 scenarios v1-a..n (tests/host_v1.lua) + station voices stn-a..h (tests/host_station.lua) + plumbing pl-a..e (tests/host_plumb.lua) + survivors sv-a..g (tests/host_survive.lua) + faction ladder lad-a..g (tests/host_ladder.lua) + charter ch-a..h (tests/host_charter.lua) + battle scars sc-a..g (tests/host_scar.lua) + wanted captains cap-a..h (tests/host_captain.lua)
     python3 -I mods/traffic/tools/lint_lua.py --allow TeleportToLocation,CustomTeleportate mods/traffic/Data/Scripts/Mods/Traffic/*.script
 
-The run prints one `== <scenario>: exit 0, <n> traffic lines, 0 fails` line per run (71 runs); any other line names the failed check. `v1-n` prints the worst-case save size by part (`HOST info TRF save size ...`).
+The run prints one `== <scenario>: exit 0, <n> traffic lines, 0 fails` line per run (94 runs); any other line names the failed check. `v1-n` prints the worst-case save size by part (`HOST info TRF save size ...`).
 
 `tests/host_stubs.lua` stubs the natives and emulates ClearGlobals with the T3 carry, the save writer's skip rule and string trigger actions (`s.."();"`). Its stubs check argument shapes against the game's usage (`NewTrigger` per kind, `CreateCarcass`, `GetCarcassCountInSphere`). With `TRF_AUTOSAVE=1` (runs `exp0-saves`, `exp2-saves`) it also stubs `AutoSave` and `GetQuestLabel` and checks the save kit: no save in the first system or during mission 1, one `AutoSave` per new system, none for a system already saved, stale timers after a jump or a load, and the cap of 6. It then runs entry, ticks (clock sum), the experiment dispatch, the E0.3 trigger chain, two wrapped jumps, a save/load with a reserved-key scan of `TRF`, a load without `TRF` and a load with a foreign `TRF` layout, and dumps `TRF`. It exits 1 on any script error or failed check. Set `LUA4` to use another interpreter.
