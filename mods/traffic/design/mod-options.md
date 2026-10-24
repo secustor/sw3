@@ -171,7 +171,7 @@ Calling Lua from the DLL follows `CallLoadLevel` 0x5cf990, but saves and restore
   - `TRF_Version()` returns the module version. Lua uses it to detect the DLL and to choose between the option (i) and option (ii) code paths.
   - `TRF_GameTime()` returns the seconds of scaled game time accumulated by T4 since process start. Lua stores clock offsets in `TRF`, so the value carries over saves.
   - `TRF_RealTime()` returns QPC seconds.
-  - `TRF_Log(s)` writes to `sw3tp.log` (or `traffic.log`) without the user path.
+  - `TRF_Log(s)` writes to `sw3tp.log` (or `traffic.log`) without the user path. At most 485 characters of `s` per line (log-format.md 1).
 - Phase 2, each behind an ini flag and only when the design needs it: `TRF_GetCargo(ship)`, `TRF_ShipsInSphere(pos, r)` (reuses 0x49b330), `TRF_OrderDone(ship)` (`ship+0x4c4`), `TRF_MarketGet(shop, good)`. Object arguments follow the stock natives: the `id` field (helper 0x5c7820), then the registry lookup 0x51f880 (`esi` = &uid, called through an asm thunk), then `IsKindOf`.
 - Rules: cdecl `int f(lua_State*)`. Read arguments with `lua_type`/`lua_tonumber`/`lua_tostring`. On bad input push nil and log; never call `lua_error`. Return the result count.
 

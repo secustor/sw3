@@ -193,7 +193,7 @@ end;
 -- Group globals of the worldbuilding group prefixes (00 section 6, trf_plumb TRF_PlGroups; the lint list is
 -- GROUP_PREFIXES in tools/lint_lua.py): TRF_G<name>_<n> is set only around a build.
 function T_GroupPfx()
-	return {"Cust", "Scv", "Cap", "Esc", "Def", "Pick", "Push", "Merc", "Rival", "Fw"};
+	return {"Cust", "Scv", "Cap", "Esc", "Def", "Pick", "Push", "Merc", "Rival", "Fw", "Drop"};
 end;
 
 -- Globals the spawn and the response must not leave behind: group globals, and handle globals of a closed

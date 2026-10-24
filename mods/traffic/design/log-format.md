@@ -14,6 +14,12 @@ traffic: lua: exp=v1 module=hail event=contract_offer trader_id=4 danger_eff=1 d
 
 - `traffic: lua: ` is the frame the DLL native `TRF_Log` prepends (the engine-log fallback writes the same
   text). `run-test.sh` and the tail filters key on `^traffic: `. It stays.
+- Line length: `TRF_Log` copies at most 485 characters of the Lua string after the frame (the DLL line
+  buffer `struct tb` is 500 bytes, 499 usable, minus the 14-character frame; `sw3tp_log` writes up to 510).
+  Longer lines are cut at that point; CR and LF inside the string become spaces. Before 2026-10-24 the cut was
+  at 200 characters (about 230 with the frame and `exp=`). The Lua side (`TRF_L`, `TRF_Lf`) does not split or
+  cap lines; `TRF_Dump` limits table values by depth and entry count only. The engine-log fallback (`LOG`)
+  has its own limit, not measured.
 - Everything after the frame is logfmt: `key=value` pairs separated by one space, in a fixed order per
   line. No free text outside a value. No `->`, no `(...)`, no `:`-separated fragments.
 - `exp` (experiment id, `v1` or `E0.<n>`) is first, `module` second, `event` third. Then identity keys,

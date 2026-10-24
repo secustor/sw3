@@ -131,7 +131,7 @@ The RAND draws and the `entry_plan` log lines are the same as before the convers
 
 ## 9. Group prefixes and the orphan scan
 
-Feature groups: `TRF_<name>_<n>` for name in Cust, Scv, Cap, Esc, Def, Pick, Push, Merc, Rival, Fw (`TRF_PlGroups`); group global `TRF_G<name>_<n>` set only around a build; ship labels `trf_<lowercase name>_<n>_<j>`. `TRF_Pl_OnLoad` runs `TRF_PlOrphans`: clears every `TRF_G<name>_*` global restored with the save and deletes the live ships labelled `trf_<name>_<n>_<j>` for n 1..`scan_n`, j 1..`scan_j` (`event=orphan`). Traffic's own prefixes keep their module scans. Lint: `GROUP_PREFIXES` in `tools/lint_lua.py` (traffic's and the new names); a `"TRF_<Name>_"` or `"TRF_G<Name>_"` literal joined with `..` outside the list is a finding (all-capital names are labels). Host: `T_LeftGlobals` reports any `TRF_G<name>_` global of the new names.
+Feature groups: `TRF_<name>_<n>` for name in Cust, Scv, Cap, Esc, Def, Pick, Push, Merc, Rival, Fw, Drop (`TRF_PlGroups`; Drop has labels only: trf_supply's `demand_drop` containers `trf_drop_<a>_<j>`, demand-page-spec.md 5.7); group global `TRF_G<name>_<n>` set only around a build; ship labels `trf_<lowercase name>_<n>_<j>`. `TRF_Pl_OnLoad` runs `TRF_PlOrphans`: clears every `TRF_G<name>_*` global restored with the save and deletes the live ships labelled `trf_<name>_<n>_<j>` for n 1..`scan_n`, j 1..`scan_j` (`event=orphan`). Traffic's own prefixes keep their module scans. Lint: `GROUP_PREFIXES` in `tools/lint_lua.py` (traffic's and the new names); a `"TRF_<Name>_"` or `"TRF_G<Name>_"` literal joined with `..` outside the list is a finding (all-capital names are labels). Host: `T_LeftGlobals` reports any `TRF_G<name>_` global of the new names.
 
 ## 10. Clocks, C1, D1
 

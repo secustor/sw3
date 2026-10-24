@@ -1,6 +1,6 @@
 # Demand result page and No witnesses: implementation spec
 
-Status: implemented and host-tested 2026-10-24 (`tests/host_demand.lua`, runs `dm-a`..`dm-e`), not run in the game. Builds on the demand cargo of `D/v1-spec.md` 5.2 (`S/trf_supply.script` `TRF_DemandDo`, `TRF_SpComply`, `TRF_SpRefuse`) and the hail dialog stage A of `D/mod-research/hail-dialog.md` 9 (`S/trf_hail.script` `TRF_HlDlgOpen`, `TRF_HlDlgInit`, `TRF_HlDlgPick`, `TRF_HlDlgCheck`).
+Status: implemented and host-tested 2026-10-24 (`tests/host_demand.lua`, runs `dm-a`..`dm-g`; `dm-g` the drop container of 5.7), not run in the game. Builds on the demand cargo of `D/v1-spec.md` 5.2 (`S/trf_supply.script` `TRF_DemandDo`, `TRF_SpComply`, `TRF_SpRefuse`) and the hail dialog stage A of `D/mod-research/hail-dialog.md` 9 (`S/trf_hail.script` `TRF_HlDlgOpen`, `TRF_HlDlgInit`, `TRF_HlDlgPick`, `TRF_HlDlgCheck`).
 Paths: `D` = `mods/traffic/design`, `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `T` = `mods/traffic/tests`, `G` = the game's `Data`.
 No new module: trf_supply owns the demand, the mark and the witness rule (`module=supply`), trf_hail owns the page (`module=hail`), trf_events calls two hooks.
 
@@ -13,6 +13,7 @@ No new module: trf_supply owns the demand, the mark and the witness rule (`modul
 | 3 | `items=` on `event=demand_comply`; tune `demand_k` for the container roll | built |
 | 4 | EN and RU text, tune keys, cfg `demand_page`, `install-test.sh` `DEMAND_PAGE` | built |
 | 5 | Host scenarios, this spec, log rows, README, PROGRESS | built |
+| 6 | Cfg `demand_drop` (default 0): the robbed stacks in one container beside the trader instead of the mothership (5.7), `install-test.sh` `DEMAND_DROP` | built |
 
 ## 2. Flow
 
@@ -51,7 +52,7 @@ Size: one mark is 106 bytes in the save writer's count (`HOST_SaveSize`, key and
 
 ### 5.1 Items
 
-`TRF_SpRob` returns the removed stacks sorted by item id. The page and the log list the stacks that reached the mothership (`AddModuleToInventory` answered). Page item: `format("%d x %s", n, name)`, name = `CombineStr("#M_Name_<id>", "")` with trailing spaces cut (the `short_name` key of `G/Game/Modules.xml`, e.g. `#M_Name_Cargo_01`), the id when the native is missing or the result starts with `#` (CHECK DP3). Empty list: `dmpnone`. Log value `items=<id>:<n>,...` (nil when nothing moved).
+`TRF_SpRob` returns the removed stacks sorted by item id. The page and the log list the stacks that reached the mothership (`AddModuleToInventory` answered), or with cfg `demand_drop` 1 every stack placed in the drop container (5.7). Page item: `format("%d x %s", n, name)`, name = `CombineStr("#M_Name_<id>", "")` with trailing spaces cut (the `short_name` key of `G/Game/Modules.xml`, e.g. `#M_Name_Cargo_01`), the id when the native is missing or the result starts with `#` (CHECK DP3). Empty list: `dmpnone`. Log value `items=<id>:<n>,...` (nil when nothing moved).
 
 Containers: `k = 1 + RAND(demand_k)`; `demand_k` 0 or 1 (or less) gives 1 without a roll.
 
@@ -89,11 +90,28 @@ Each supply step clears `dw` when `gt - dw.t > witness_t` (the flight still aliv
 
 The lines are FTU radio lines (`TRF_SpSay`, nil speaker, as `sesclost`): `dmplost` ("contact lost with freighter <name>") for a retraction, `dmpseen` ("witnesses report that the Wolves robbed and destroyed freighter <name>") when seen and the kill was the player's; a seen kill without player fire has no line. The demand never set the tracked-pool bit 4 (that bit is a raid comply, `TRF_TkRobbed`), and a killed trader's pool record is dropped (`TRF_TrackGone` `kill`), so nothing is cleared there.
 
+### 5.7 Drop container (cfg `demand_drop`)
+
+`TRF_SpComply` hands the robbed stacks over through `TRF_SpHandOver(id, got)`. With `demand_drop` 0, or nothing robbed, it is the mothership path of 5.1. With 1, `TRF_SpDrop(id, got)`:
+
+1. Needs trf_scar's object helpers `TRF_Sc_Make` and `TRF_Sc_Inv` (else `no_helper`) and the leader position (`TRF_SpLead`, `GetPosition`; else `no_position`).
+2. Takes the next label slot (`TRF_H().dp.n + 1`, 1..24, back to 1 after 24 drops in a visit; an object still under that label is deleted first). Label `trf_drop_<a>_<j>`, a 1..4, j 1..6: the range trf_plumb's orphan scan probes (`scan_n` 4, `scan_j` 6).
+3. Up to 3 tries: a spot 40 + `RAND(41)` units from the leader at heading `RAND(360)` degrees, same height; `TRF_Sc_Make("cargo01_destroyed_inv", spot, label)` (CreateCarcass of the `<Station>` model of `G/Game/Carcasses.xml`, then `SetObjectLabel`). CreateCarcass answers nil when it finds no free space; after 3 nils `create_failed`.
+4. `TRF_Sc_Inv(o, got)`: `ClearInventory`, then `AddModuleToInventory(id, n)` per stack. An error deletes the container (`inventory_failed`).
+5. The handle goes to `TRF_H().dp.o[slot]` (handle table, never saved).
+
+On a failure the stacks go to the mothership as in 5.1 and `event=demand_comply` carries `reason=drop_failed drop_cause=<why>`. The page text is the same (`FTU <name> jettisons: ...`), listing the stacks in the container.
+
+Cleanup. Nothing is written to `TRF`. `TRF_Supply_BeforeJump` deletes every live container of the visit (`TRF_SpDropClear`, `event=demand_drop_clear`). After a load the handle table is empty and the containers restored with the save are deleted by trf_plumb's orphan scan: group prefix `Drop` in `TRF_PlGroups` and in the lint list `GROUP_PREFIXES` (labels only, no group and no group global). A container the player did not loot before a save is therefore gone after loading it.
+
+Witnesses. The container exists before the No witnesses mark (the page follows the comply), so within `witness_r` of the leader it is part of the background `b` (5.2). A kill more than `witness_r` from it then reads one carcass fewer than the background expects, which can only hide a witness, not add one.
+
 ## 6. Config and tune
 
 | Key | Default | Where | Meaning |
 |---|---|---|---|
 | `demand_page` | 1 | cfg, `TRF_Supply_OptDef`, `config.script`, `install-test.sh` `DEMAND_PAGE` | 0: the answer as a line (no page, no No witnesses) |
+| `demand_drop` | 0 | cfg, `TRF_Supply_OptDef`, `config.script`, `install-test.sh` `DEMAND_DROP` | 1: the robbed stacks in one `cargo01_destroyed_inv` container 40-80 from the leader (5.7); off until E0.4 confirms the drop in the game |
 | `demand_k` | 3 | `TRF_Supply_TuneDef` | containers `1 + RAND(demand_k)` |
 | `witness_t` | 180 | `TRF_Supply_TuneDef` | seconds of game time from the mark |
 | `witness_r` | 1500 | `TRF_Supply_TuneDef` | witness radius around a kill |
@@ -106,7 +124,8 @@ With `witness_r` 1500 every kill within 1500 of a station is seen; in most syste
 
 | Line | When |
 |---|---|
-| `module=supply event=demand_comply trader_id=6 container_count=3 moved_count=3 heat=5 items=Cargo_01:2,Cargo_04:1` | comply (field `items` added) |
+| `module=supply event=demand_comply trader_id=6 container_count=3 moved_count=3 heat=5 items=Cargo_01:2,Cargo_04:1 drop=false container_name=nil` | comply (fields `items`, `drop`, `container_name` added); `drop=true container_name=trf_drop_1_1` with `demand_drop` 1; `drop=false container_name=nil reason=drop_failed drop_cause=create_failed` on a failed drop |
+| `module=supply event=demand_drop_clear deleted_count=1 reason=jump` | drop containers deleted before a jump |
 | `module=hail event=page trader_id=6 via=dialog\|box no_witness_offered=true` | page shown; `reason=busy\|no_box result=skipped` |
 | `module=hail event=dialog_answers trader_id=6 dialog=page answers=leave,nowit` | level 2, page init |
 | `module=hail event=close trader_id=6 reason=leave\|nowit\|"dialog closed"` | page closed |
@@ -116,7 +135,7 @@ With `witness_r` 1500 every kill within 1500 of a station is seen; in most syste
 | `module=supply event=demand_retract trader_id=6 by=player age=10.000 heat=2` | retracted |
 | `module=supply event=demand_witnessed trader_id=6 reason=witness ship_count=0 age=0.000 result=witnessed` | seen, or `reason=survivor` (an escort alive) |
 | `module=supply event=demand_witness_timeout trader_id=6 age=38.000 witnessed=false reason=time` | step time-out; `age=31.000 reason=late_kill` at a late kill |
-| `module=supply event=dump ... demand_page_option=1 prey_count=1 ...` | dump |
+| `module=supply event=dump ... demand_page_option=1 prey_count=1 heat_offer_option=1 demand_drop_option=0 ...` | dump |
 
 `items` is a plain logfmt value: `TRF_KvV` quotes a value only when it holds a space, `=` or `"`, which an item list never does.
 
@@ -126,7 +145,7 @@ trf_supply `TRF_Supply_Text`: `dmpgot` (`FTU $1 jettisons: $2`, name, item list)
 
 Dialog file `Data/Scripts/Trade/TRF_HailPg.xml` (ASCII, CRLF): start `msg10`, message `FTU #who#: #m1#`, pilot `Trader`, answers `a_leave` (`- #lleave#`, `TRF_HlDlgA_leave`) and `a_nowit` (`- #lnowit#`, `TRF_HlDlgA_nowit`), no `go_message_name`. Installed by `install.sh` (manifest, removed by `uninstall.sh`) and `install-test.sh` (removed by `uninstall-test.sh`) beside `TRF_Hail.xml`; cfg `hail_xml` 1 covers both files.
 
-## 9. Host scenarios (`T/host_demand.lua`, `TRF_DM=a..f`; run_host.sh item `dm`)
+## 9. Host scenarios (`T/host_demand.lua`, `TRF_DM=a..g`; run_host.sh item `dm`)
 
 Entry as `host_captain.lua`: `host_station.lua` up to its first scenario. `GetCarcassCountInSphere` counts live ships, `cc_ships` and `cc_static`; stubs for 5.3 (`T/host_stubs.lua`): `GetPilot(name)` from `HOST().crew`, the mothership pilot's `GetSide` (`Player`) and flight (`GetPilotCount`, `GetPilotByNumber` over `HOST().pwing`), `HOST_PlayerShip` for a fighter. Flights are placed at a point with no map station or portal within `witness_r` (`DM_Far`).
 
@@ -138,6 +157,9 @@ Entry as `host_captain.lua`: `host_station.lua` up to its first scenario. `GetCa
 | `dm-d` | with `witness_slack` 0: a ship 300 from the kill (witnessed, heat 4 + 1, the witness line); a ship 1600 away (retracted); a station 600 away (`reason=station`); an escort alive after the transports (`reason=survivor`); no count native (`reason=no_count`); `witness_dead` 1 masks one carcass; a raid ship within range at the mark and at the kill (witnessed); a seen kill without player fire (no witness line) |
 | `dm-e` | step time-out (`witness_t` 30), the kill after it (kill heat); a late kill before the step (`reason=late_kill`); refused marks (not demanded, marked twice, no record); dump; the save size of the mark; no reserved key |
 | `dm-f` | two player fighters 200 from the kill, launched after the mark (one in the mothership's flight, one in the flight of crew pilot `Hero`), no other ship: not seen, retracted; the fighters at the mark and the kill with one vanilla ship more: `b` 0, within `witness_slack` 1, retracted; with two ships more: `witness_count=2`, witnessed; `witness_slack` 0, two transports: the first dies unseen (`dw.d` 1), its wreck is in the count at the second death: not seen, retracted |
+| `dm-g` | `demand_drop` default 0 (the mothership, `drop=false container_name=nil`); 1: the container `cargo01_destroyed_inv` labelled `trf_drop_1_1` 40-80 from the leader, ClearInventory then the stacks, the mothership inventory untouched, the page item list, the handle in `TRF_H().dp`; the second drop in slot 2; creation blocked everywhere (`block_r` 100000: the mothership, `reason=drop_failed drop_cause=create_failed`); `TRF_Sc_Inv` failing (container deleted, `inventory_failed`); `TRF_Sc_Make` missing (`no_helper`); the slot wrap after 24 (old container deleted); the labels of slots 6, 7 and 24; trf_plumb's orphan scan at load deletes both live containers; `TRF_Supply_OnLoad` clears the handles; `TRF_Supply_BeforeJump` deletes the visit's container (`event=demand_drop_clear`); the dump key |
+
+Stubs: none new; `CreateCarcass`, `SetObjectLabel`, `GetObjectByLabel` and the carcass `ClearInventory`/`AddModuleToInventory` of `T/host_stubs.lua` cover the drop. `T/host_traffic.lua` `T_GroupPfx` has the new prefix `Drop`.
 
 Changed scenarios: `v1-c` (the demand checks run with `demand_page` 0, as lines), `v1-m` (the generated `trf_en.loc` has the 7 `#TRF_dmp*` lines), `stn-g` (the RU key set includes the `dmp*` keys).
 
@@ -152,6 +174,9 @@ Changed scenarios: `v1-c` (the demand checks run with `demand_page` 0, as lines)
 | W1 | Whether `GetCarcassCountInSphere` still counts the transport at its `died` trigger (the native has no HP test, carcass-count.md 1.2) | with nothing else near: `event=demand_kill ... witness_count=0 reason=none`; `witness_count=1 reason=ship` on every unseen kill means it does: set `TUNE=witness_dead=1` |
 | W2 | The background of the mark holds at the kill position: a flight killed 1-2 km from where it was marked reads no witness without other ships, also with the player's fighters launched after the mark and firing rockets near the kill. The fighters are found through the crew flights (5.3): `GetPilot(name)` returns nil for a pilot not in the game without a script error, `Pilot:GetSide()` of the crew pilots equals the mothership pilot's, a docked fighter is not alive or not within `witness_r`, and a hired wing without a crew pilot shows as a witness per ship. More rockets than `witness_slack` near the kill read as a witness | `event=demand_prey ... background_count=B`, `event=demand_kill ... witness_count=0`; no `module=supply event=error` at the kill; `reason=ship` with only the player's ships near means a missed wing or more rockets than the slack: raise `TUNE=witness_slack` |
 | W3 | A vanilla patrol or pirate flight within 1500 of the kill is counted when it came after the mark; one already within `witness_r` of the trader at the mark is in `b` (no script list of vanilla ships) and is not counted, the mod's own flights are (5.2). The wreck of a transport that died earlier in the mark is counted at the next kill and taken off with `dw.d` | `event=demand_kill ... reason=ship witnessed=true`, `event=demand_witnessed ... reason=witness`; a flight killed one transport at a time with nothing else near: `ship=2 witness_count=0 reason=none` |
+| DD1 | `CreateCarcass("cargo01_destroyed_inv", spot, dir)` 40-80 from a live transport leader answers an object (free space found) and its label is found again; the container shows as a destroyed ship | `event=demand_comply ... drop=true container_name=trf_drop_1_1`; `drop_cause=create_failed` on every comply means the band is too close: use `CreateStation` (the vanilla pattern, `G/Scripts/include/RandomObjects.script` 417) or a larger band |
+| DD2 | The stacks placed with `ClearInventory` and `AddModuleToInventory` can be looted from the container (E0.4, E0.19) | the player's inventory after looting; no `module=scar event=error` at the comply |
+| DD3 | The container is gone after the next jump and after a load in the same system | `event=demand_drop_clear deleted_count=1 reason=jump`; after a load `module=plumb event=orphan deleted_count=1` |
 | W4 | Box path (`HAIL_BOX=1`): answer box, then `No witnesses?` | `event=page ... via=box`, then `event=close ... reason=leave\|nowit` |
 
 ## 11. Deviations
@@ -167,6 +192,10 @@ Changed scenarios: `v1-c` (the demand checks run with `demand_page` 0, as lines)
 - DV9 Tune `witness_dead` (default 0) added for CHECK W1.
 - DV11 Player ships come from the flights of the mothership's pilot and of named crew pilots (5.3), not from the player group, which no native lists. Rockets are covered by tune `witness_slack` (default 1), which also hides one vanilla ship at a kill.
 - DV12 Wrecks of the flight are counted by unseen deaths since the mark (`dw.d`), not by position: the handle table's dead mask `h.dk` also holds deaths before the mark, whose wrecks are in `b`.
+- DV13 The drop flag is logged `drop=true|false` (`TRF_KvB`, log-format.md 3: flags print true/false), not `drop=1|0`.
+- DV14 A failed drop logs its cause in a second key `drop_cause` beside `reason=drop_failed`, so the CHECK DD1 outcome can be read from the line.
+- DV15 The container is created through trf_scar's `TRF_Sc_Make` (CreateCarcass, the path of the scar hulks of the same `_inv` kind, CHECK EW2.1), not `CreateStation` as in `RandomObjects.script`. No other trf_scar part is used, so cfg `enable_scars` 0 does not turn the drop off.
+- DV16 The drop has no saved record: the handles live in `TRF_H().dp` and the cleanup is the jump delete plus the load orphan scan (group `Drop`, labels only). A save does not keep an unlooted container across a load. The cost is 0 bytes of `TRF`; the save budget is unchanged (`v1-n` 78,425 bytes).
 - DV10 The retraction does not depend on who made the kill (`by`); without player fire there is no kill heat to skip, only the demand heat comes back. The witness line `dmpseen` needs a player kill.
 
 ## 12. Left out

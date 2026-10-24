@@ -26,7 +26,9 @@
 -- cap_chase (step 1) and cap_capture, cap_force_eject, cap_vendetta (step 2, read nowhere yet, off) are the toggles;
 -- cap_regions_off, cap_at and the tune keys (cap_flee_hp, cap_gap_j, cap_k0, ...) read the module defaults.
 -- Demand result page (design/demand-page-spec.md): demand_page (default 1) = 0 says the demand answer as a line (no
--- page, no No witnesses); tune demand_k, witness_t, witness_r, witness_dead read the trf_supply TuneDef.
+-- page, no No witnesses); tune demand_k, witness_t, witness_r, witness_dead read the trf_supply TuneDef. demand_drop
+-- (default 0, until E0.4 confirms drops) = 1 leaves the robbed stacks in a cargo01_destroyed_inv container beside the
+-- trader instead of the mothership.
 function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
 	enabled=1, cycle=1, prosperity=1, tier_cap=4, cap_traders=5, cap_ships=20, spawn_scale=1.0, band_half=0,
 	parked=1, esc_flight=1, seed=1, queue=1, raids=1, staged=1, contracts=1, esc_speed=0, meet=2, hail_start=2, board=1,
@@ -38,4 +40,4 @@ function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
 	lad_escort=1, lad_depot=1, lad_warrant=1, charter=1,
 	enable_scars=1, enable_scar_loot=1, enable_scavengers=1, enable_scar_recorder=1, enable_salvage_licence=1,
 	cap_enable=1, cap_board=1, cap_intel=1, cap_chase=1, cap_capture=0, cap_force_eject=0, cap_vendetta=0,
-	demand_page=1} end
+	demand_page=1, demand_drop=0} end

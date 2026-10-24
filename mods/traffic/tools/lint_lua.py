@@ -39,7 +39,7 @@ OLD_LOG = re.compile(r"TRF_(L|[A-Za-z]*(L|Dbg))$")  # pre-logfmt string helpers:
 # names"; design/wb-plumbing-spec.md 9): a "TRF_<Name>_" literal joined with '..' (a group name built at run time)
 # or its group global "TRF_G<Name>_" must use a listed name. All-capital names are labels, not groups.
 GROUP_PREFIXES = set("Raid Pir Resp Trade Feq Conv Sweep SwP PBase Car "
-                     "Cust Scv Cap Esc Def Pick Push Merc Rival Fw".split())
+                     "Cust Scv Cap Esc Def Pick Push Merc Rival Fw Drop".split())
 GROUP_LIT = re.compile(r'"TRF_(G?)([A-Z][A-Za-z]*)_"$')
 
 TOKEN = re.compile(r"""

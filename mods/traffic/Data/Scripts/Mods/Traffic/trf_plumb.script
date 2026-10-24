@@ -166,9 +166,9 @@ end;
 -- group TRF_<name>_<n>, group global TRF_G<name>_<n>, ship labels trf_<lowercase name>_<n>_<j>; each has the
 -- orphan scan at load. Traffic's own prefixes (TRF_Raid_, TRF_Pir_, TRF_Resp_, ...) keep the scans of their
 -- modules. The lint list is GROUP_PREFIXES in tools/lint_lua.py. Names only (a "TRF_..." literal reads as a
--- function reference to the --calls lint).
+-- function reference to the --calls lint). Drop: trf_supply's demand_drop containers (labels trf_drop_<a>_<j>, no group).
 function TRF_PlGroups()
-	return {"Cust", "Scv", "Cap", "Esc", "Def", "Pick", "Push", "Merc", "Rival", "Fw"};
+	return {"Cust", "Scv", "Cap", "Esc", "Def", "Pick", "Push", "Merc", "Rival", "Fw", "Drop"};
 end;
 
 -- Scripted-event slot order (00 section 6): rank 1 first. Kinds outside the table rank as optional.

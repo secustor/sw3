@@ -299,6 +299,7 @@ Defaults are in each module's `OptDef`; `config.script` lists them all. `install
 | `track` | 1 | tracked pool, chase and meeting again |
 | `conv`, `demand`, `heat_offer` | 1, 1, 1 | supply convoys, `Demand cargo` hail option, heat-reset box at FTU relation stations |
 | `demand_page` (env `DEMAND_PAGE`) | 1 | demand result page with Leave and No witnesses (0: the answer as a line, as before); tune `demand_k` 3 (containers `1 + RAND(demand_k)`, 0 or 1 = one), `witness_t` 180 s, `witness_r` 1500, `witness_dead` 0 (carcasses taken off each kill count, CHECK W1 in `design/demand-page-spec.md`) |
+| `demand_drop` (env `DEMAND_DROP`) | 0 | 1: a comply leaves the robbed stacks in one `cargo01_destroyed_inv` container 40-80 from the trader's leader instead of on the mothership (falls back to the mothership when it cannot be created); the container is deleted before the next jump and by the load orphan scan; off until E0.4 confirms drops (`design/demand-page-spec.md` 5.7) |
 | `carriers`, `salvage`, `salv_addmod`, `clan_ace` | 1, 1, 0, 0 | T4 carrier raids; salvage; salvaged flights also get military modules (CHECK [PP] X1); ace perks on clan leaders (CHECK [PP] X3) |
 | `sweeps`, `sweep_ct`, `po` | 1, 1, 1 | on-screen sweeps (0: off-screen roll only, as v0.2); join/bounty contracts on the patrol board; pirate-station offers |
 | `tt4`, `tt4_split` | 1, 0 | TT4 convoys at `pro` 8–9; 1: two escort flights of 3 instead of one |

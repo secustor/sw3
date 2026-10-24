@@ -553,7 +553,8 @@ Wanted captains, step 1 (`design/captain-spec.md` 7). `slot` is the clan region 
 | `contract` | `module=supply event=contract trader_id=1 distance=300.000 pay=900 result=paid` | 1 |
 | `contract` | `module=supply event=contract trader_id=1 reason=kill fled=false distance=... result=void` / `reason=jump result=void` | 1 |
 | `demand_fail` | `module=supply event=demand_fail trader_id=6 reason=clear_inventory_failed result=no_cargo_moved` | 1 |
-| `demand_comply` | `module=supply event=demand_comply trader_id=6 container_count=3 moved_count=3 heat=5 items=Cargo_01:2,Cargo_04:1` (`items` = moved stacks `id:n`, nil when none; `demand-page-spec.md`) | 1 |
+| `demand_comply` | `module=supply event=demand_comply trader_id=6 container_count=3 moved_count=3 heat=5 items=Cargo_01:2,Cargo_04:1 drop=true container_name=trf_drop_1_1` (`items` = moved stacks `id:n`, nil when none; `drop` true when cfg `demand_drop` 1 placed them in the container `container_name`, else `drop=false container_name=nil`; a failed drop adds `reason=drop_failed drop_cause=no_helper\|no_position\|no_handles\|create_failed\|inventory_failed` and the stacks went to the mothership; `demand-page-spec.md` 5.1, 5.7) | 1 |
+| `demand_drop_clear` | `module=supply event=demand_drop_clear deleted_count=2 reason=jump` (live drop containers of the visit deleted before a jump; only when one was deleted) | 1 |
 | `demand_prey` | `module=supply event=demand_prey trader_id=6 background_count=0 ship_count=5 window=180 result=marked` (No witnesses) / `trader_id=6 reason=not_demanded\|marked\|st\|norec result=refused` | 1 |
 | `demand_kill` | `module=supply event=demand_kill trader_id=6 ship=1 witness_count=0 reason=none\|ship\|station\|no_count\|no_position witnessed=false` (a transport of a marked flight died) | 1 |
 | `demand_retract` | `module=supply event=demand_retract trader_id=6 by=player age=10.000 heat=3` (every ship dead unseen within `witness_t`: heat -2, kill heat skipped) | 1 |
@@ -569,7 +570,7 @@ Wanted captains, step 1 (`design/captain-spec.md` 7). `slot` is the clan region 
 | `heat_reset` | `module=supply event=heat_reset reason=paid heat_before=4 heat_after=0` | 1 |
 | `temp_change` | `module=supply event=temp_change name=Trade credits_before=a credits_after=b accepted=true` | 1 |
 | `load` | `module=supply event=load reldock_wrapped=true` | 1 |
-| `dump` | `module=supply event=dump convoy_count=1 convoys=1:1:live:nil border=nil convoy_option=1 demand_option=1 demand_page_option=1 prey_count=0 heat_offer_option=1 reldock_wrapped=true temp_change_wrapped=true` | 1 |
+| `dump` | `module=supply event=dump convoy_count=1 convoys=1:1:live:nil border=nil convoy_option=1 demand_option=1 demand_page_option=1 prey_count=0 heat_offer_option=1 demand_drop_option=0 reldock_wrapped=true temp_change_wrapped=true` | 1 |
 
 ## faction (`trf_faction.script`; `TRF_FcE`, `TRF_FcDE`)
 

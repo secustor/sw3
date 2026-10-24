@@ -1,7 +1,7 @@
 /* traffic: hook module of the sw3-traffic mod, linked into the sw3tp zlib1.dll proxy
  * (mods/traffic/design/mod-options.md 5.1-5.5, 5.8 item 2). Seven E8 rel32 call-site patches,
  * six natives, Lua callbacks, the TRF carry across the location-entry ClearGlobals, a C _ERRORMESSAGE that
- * logs a traceback (T1) and a Lua stack leak guard (T4).
+ * logs a traceback (T1) and a Lua stack leak guard (T4). TRF_Log lines carry at most 485 chars of the Lua string.
  * Target: sw3cw.exe GOG v1.12, ImageBase 0x400000, no ASLR. No CRT.
  * Callbacks from the stubs are __stdcall (callee pops); natives are __cdecl int f(lua_State *).
  * clang emits SSE2 for double math here, so the game's x87 precision setting does not apply. */
@@ -169,7 +169,8 @@ static int __cdecl n_log(lua_State *L)
     }
     if (g_log_on) {
         tb_begin(&b, "lua: ");
-        for (i = 0; s[i] && i < 200; i++) b.s[b.n++] = (s[i] == '\r' || s[i] == '\n') ? ' ' : s[i];
+        /* fill the buffer like tb_s: up to 499 - strlen("traffic: lua: ") = 485 chars of the Lua string */
+        for (i = 0; s[i] && b.n < (int)sizeof(b.s) - 1; i++) b.s[b.n++] = (s[i] == '\r' || s[i] == '\n') ? ' ' : s[i];
         tb_end(&b);
     }
     lua_pushnumber(L, 1.0);

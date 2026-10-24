@@ -1,11 +1,12 @@
--- Demand result page and No witnesses scenarios (design/demand-page-spec.md 9) under stock Lua 4.0.1: TRF_DM=a..f,
+-- Demand result page and No witnesses scenarios (design/demand-page-spec.md 9) under stock Lua 4.0.1: TRF_DM=a..g,
 -- run by run_host.sh as its own entry point. a the page as boxes through the hail menu (comply: answer, items, the
 -- question box, Leave; refusal: one box), the item names, demand_k, the items log value, cfg demand_page 0; b the
 -- page as the dialog TRF_HailPg (hail_box 2: answers, tokens, Leave, Esc, No witnesses, the refusal page, the
 -- fallback to the boxes); c No witnesses and every ship killed unseen: retracted (heat back, kill heat skipped, pro
 -- and dis as a kill, the lost line); d witnessed: a ship in range, a station in range, an escort left alive, no
 -- count native (witness_slack 0); e the time-out (step and late kill), the refused marks, the dump and the save size;
--- f the subtractions of the witness count: the player's fighters, witness_slack, the flight's earlier wrecks.
+-- f the subtractions of the witness count: the player's fighters, witness_slack, the flight's earlier wrecks; g cfg
+-- demand_drop (the robbed stacks in one container beside the trader, the fallbacks, the jump and load cleanup).
 -- Loads host_station.lua up to its first scenario, as host_captain.lua does. Natives from host_stubs.lua:
 -- GetCarcassCountInSphere (HOST().cc_ships, cc_static), GetPilot (HOST().crew), the mothership pilot's flight
 -- (HOST().pwing, HOST_PlayerShip), StartTradeDialog/SetReplaceValue/ShowAnswer/HideAnswer, ShowMsgBox, CombineStr
@@ -626,6 +627,130 @@ function T_DM_E()
 	local sz = 8 * one;
 	print("HOST demand dw worst case bytes "..sz.." ("..one.." per record)");
 	HOST_Check(one == 106 and sz <= 850, "dw: 106 bytes per record, "..sz.." bytes on 8 live records <= 850 (spec 3)");
+	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF");
+	V_ClearTr();
+end;
+
+-- g: cfg demand_drop ------------------------------------------------------------------------------------
+
+-- Live drop container of label lb, or nil.
+function DM_Drop(lb)
+	local o = HOST().objs[lb];
+	if type(o) == "table" and o.alive then return o; end;
+	return nil;
+end;
+
+-- Stacks of an object inventory as "<id>:<n>,..." in insertion order.
+function DM_Inv(o)
+	local s = "";
+	for i = 1, getn(o.inv) do
+		if i > 1 then s = s..","; end;
+		s = s..o.inv[i][1]..":"..o.inv[i][2];
+	end;
+	return s;
+end;
+
+function T_DM_G()
+	local h = HOST();
+	DM_Begin();
+	HOST_Check(TRF_SpOpt("demand_drop", 0) == 0 and TRF_Supply_OptDef().demand_drop == 0, "cfg demand_drop default 0");
+	-- demand_drop 0: the stacks on the mothership, drop=false.
+	local id0 = DM_Trader(nil, 0);
+	local n0 = S_Mark();
+	DM_Demand(id0, 1);
+	HOST_Check(DM_Got() == 3 and DM_Drop("trf_drop_1_1") == nil
+		and S_Logs(n0, "event=demand_comply trader_id="..id0.." container_count=3 moved_count=3 heat=2 items=Cargo_01:2,Cargo_04:1 drop=false container_name=nil") == 1,
+		"demand_drop 0: the mothership, drop=false container_name=nil");
+	DM_End();
+	-- demand_drop 1: one container 40-80 from the leader with the stacks; the mothership untouched.
+	h.cfg.demand_drop = 1;
+	local id, r = DM_Trader(nil, 0);
+	local lp = TRF_SpPos(TRF_SpLead(id));
+	n0 = S_Mark();
+	local s1 = getn(h.screen);
+	DM_Demand(id, 1);
+	local o = DM_Drop("trf_drop_1_1");
+	local d = o and TRF_SpDist(o.pos, lp);
+	HOST_Check(o and o.tpl == "cargo01_destroyed_inv" and o.cleared == 1 and DM_Inv(o) == "Cargo_01:2,Cargo_04:1",
+		"container cargo01_destroyed_inv, ClearInventory, then the stacks: "..TRF_Dump(o and o.inv));
+	HOST_Check(d and d >= 39.99 and d <= 80.01, "container 40-80 from the leader: "..tostring(d));
+	HOST_Check(DM_Got() == 0 and getn(h.ms.inv) == 0, "mothership inventory untouched");
+	HOST_Check(S_Logs(n0, "event=demand_comply trader_id="..id.." container_count=3 moved_count=3 heat=2 items=Cargo_01:2,Cargo_04:1 drop=true container_name=trf_drop_1_1") == 1
+		and S_Logs(n0, "reason=drop_failed") == 0, "log drop=true container_name=trf_drop_1_1");
+	local bx = HOST_Box();
+	HOST_Check(bx and strfind(bx.text, "2 x Cargo_01, 1 x Cargo_04", 1, 1) and TRF_H().dp.n == 1 and TRF_H().dp.o[1] == o,
+		"page lists the dropped stacks, handle in TRF_H().dp");
+	DM_End();
+	HOST_Check(getn(r.hold) == 1 and r.hold[1].i == "Cargo_04" and r.hold[1].n == 1, "the hold lost the robbed stacks");
+	-- Second drop: next slot.
+	local id2 = DM_Trader(nil, 0);
+	n0 = S_Mark();
+	DM_Demand(id2, 1, 0);
+	local o2 = DM_Drop("trf_drop_1_2");
+	HOST_Check(o2 and DM_Inv(o2) == "Cargo_01:1" and DM_Drop("trf_drop_1_1") == o and S_Logs(n0, "drop=true container_name=trf_drop_1_2") == 1,
+		"second drop: slot 2, the first container stays");
+	DM_End();
+	-- Creation fails (every spot blocked): fallback to the mothership, reason=drop_failed.
+	local id3 = DM_Trader(nil, 0);
+	h.block_r = 100000;
+	n0 = S_Mark();
+	DM_Demand(id3, 1);
+	h.block_r = 3;
+	HOST_Check(DM_Got() == 3 and DM_Drop("trf_drop_1_3") == nil and TRF_H().dp.n == 2
+		and S_Logs(n0, "items=Cargo_01:2,Cargo_04:1 drop=false container_name=nil reason=drop_failed drop_cause=create_failed") == 1,
+		"creation failed: the mothership, reason=drop_failed drop_cause=create_failed");
+	DM_End();
+	-- Inventory fails: the container is deleted, the mothership gets the stacks.
+	local inv = TRF_Sc_Inv;
+	TRF_Sc_Inv = function(o, l) return nil; end;
+	local id4 = DM_Trader(nil, 0);
+	n0 = S_Mark();
+	DM_Demand(id4, 1);
+	TRF_Sc_Inv = inv;
+	local o4 = h.objs["trf_drop_1_3"];
+	HOST_Check(DM_Got() == 3 and o4 and not o4.alive and S_Logs(n0, "reason=drop_failed drop_cause=inventory_failed") == 1,
+		"inventory failed: container deleted, the mothership");
+	DM_End();
+	-- trf_scar helpers missing: fallback.
+	local mk = TRF_Sc_Make;
+	TRF_Sc_Make = nil;
+	local id5 = DM_Trader(nil, 0);
+	n0 = S_Mark();
+	DM_Demand(id5, 1);
+	TRF_Sc_Make = mk;
+	HOST_Check(DM_Got() == 3 and S_Logs(n0, "drop_cause=no_helper") == 1, "no trf_scar helper: the mothership");
+	DM_End();
+	-- Slot wrap after 24 drops: slot 1 again, its old container deleted first.
+	TRF_H().dp.n = 24;
+	local id6 = DM_Trader(nil, 0);
+	n0 = S_Mark();
+	DM_Demand(id6, 1);
+	local o6 = DM_Drop("trf_drop_1_1");
+	HOST_Check(o6 and o6 ~= o and not o.alive and TRF_H().dp.n == 1 and S_Logs(n0, "container_name=trf_drop_1_1") == 1,
+		"slot wrap: trf_drop_1_1 reused, the old container deleted");
+	DM_End();
+	HOST_Check(TRF_SpDropLbl(6) == "trf_drop_1_6" and TRF_SpDropLbl(7) == "trf_drop_2_1" and TRF_SpDropLbl(24) == "trf_drop_4_6",
+		"labels trf_drop_<1..4>_<1..6>");
+	-- Load: trf_plumb's orphan scan deletes a container restored with the save (group Drop).
+	n0 = S_Mark();
+	local pn, pg = TRF_PlOrphans();
+	HOST_Check(pn == 2 and not o2.alive and not o6.alive and S_Logs(n0, "module=plumb event=orphan deleted_count=2") == 1,
+		"orphan scan at load: both live containers deleted ("..tostring(pn)..")");
+	TRF_Supply_OnLoad();
+	HOST_Check(TRF_H().dp == nil, "load: drop handles cleared");
+	-- Before a jump: every live container of the visit deleted.
+	local id7 = DM_Trader(nil, 0);
+	DM_Demand(id7, 1);
+	local o7 = DM_Drop("trf_drop_1_1");
+	DM_End();
+	n0 = S_Mark();
+	TRF_Supply_BeforeJump();
+	HOST_Check(o7 and not o7.alive and TRF_H().dp == nil and S_Logs(n0, "module=supply event=demand_drop_clear deleted_count=1 reason=jump") == 1,
+		"jump: container deleted, demand_drop_clear");
+	n0 = S_Mark();
+	TRF_Supply_Dump();
+	HOST_Check(S_Logs(n0, "demand_drop_option=1") == 1, "dump: demand_drop_option");
+	h.cfg.demand_drop = nil;
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF");
 	V_ClearTr();
 end;

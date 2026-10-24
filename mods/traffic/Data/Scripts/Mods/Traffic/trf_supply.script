@@ -6,7 +6,8 @@
 -- lv (gt of the end), go (gt of the portal order)}; spn (group serial); bd = {i, v} (border cache); hp = {p, k, g, c} (heat offer box); spc =
 -- {id, n, g, c} (contract box). Trader record fields written here: own (1..5, supply convoys only), dq (1 once
 -- demanded), dw (No witnesses mark {t (gt of the mark), w (1 once a kill was seen), b (background count)},
--- design/demand-page-spec.md). Handles: TRF_H().sp[id] = {ef (escort flight), es (escort ships)}. Log module=supply.
+-- design/demand-page-spec.md). Handles: TRF_H().sp[id] = {ef (escort flight), es (escort ships)}; TRF_H().dp = {n
+-- (last drop slot), o[slot] (cfg demand_drop containers, labels trf_drop_<a>_<j>)}. Log module=supply.
 -- Kill outcomes of supply convoys (5.1: no heat, dis, pro, fst, salvage) are trf_events' (records with own);
 -- this module releases the convoy slot, settles the contract and moves the escorts.
 -- Box callbacks are TRF_Cb shims with a generation check; every other module is called by name
@@ -42,8 +43,9 @@ function TRF_SpX(name, ...)
 end;
 
 -- demand_page: 1 = the result page after a demand (design/demand-page-spec.md), 0 = the answer as a line.
+-- demand_drop: 1 = a comply leaves the robbed stacks in one container beside the trader, 0 = on the mothership.
 function TRF_Supply_OptDef()
-	return {conv=1, demand=1, heat_offer=1, demand_page=1};
+	return {conv=1, demand=1, heat_offer=1, demand_page=1, demand_drop=0};
 end;
 
 -- sp_leave: seconds escorts of a killed convoy keep fighting before they leave. demand_k: containers of a
@@ -65,8 +67,8 @@ function TRF_SpOpt(key, def)
 	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
 	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
 	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
-	if (key == "conv" or key == "demand" or key == "heat_offer" or key == "contracts" or key == "sweep_ct" or key == "demand_page")
-		and v ~= 0 and v ~= 1 then
+	if (key == "conv" or key == "demand" or key == "heat_offer" or key == "contracts" or key == "sweep_ct" or key == "demand_page"
+		or key == "demand_drop") and v ~= 0 and v ~= 1 then
 		return d;
 	end;
 	return v;
@@ -1134,16 +1136,120 @@ function TRF_SpAnswer(id, line, page, nw)
 	return "line";
 end;
 
-function TRF_SpComply(id, r, h, cur)
-	local got, cnt = TRF_SpRob(r, h, TRF_SpDemandK());
-	local ms = TRF_SpMs();
+-- Drop container (cfg demand_drop, design/demand-page-spec.md 5.7) ---------------------------------------------
+
+-- Template, distance band from the leader, placement tries, label slots (trf_plumb's orphan scan probes group Drop
+-- labels trf_drop_<a>_<j> for a 1..scan_n 4, j 1..scan_j 6: 24 slots).
+function TRF_SpDropK()
+	return {tpl="cargo01_destroyed_inv", r_lo=40, r_hi=80, tries=3, slots=24, per=6};
+end;
+
+-- Label of slot s (1..24): trf_drop_<a>_<j>.
+function TRF_SpDropLbl(s)
+	local K = TRF_SpDropK();
+	local a = floor((s - 1) / K.per);
+	return "trf_drop_"..(a + 1).."_"..(s - a * K.per);
+end;
+
+-- Handle store TRF_H().dp = {n, o}, or nil without the handle table.
+function TRF_SpDropH()
+	local H = TRF_SpH();
+	if not H then return nil; end;
+	if type(H.dp) ~= "table" then H.dp = {n=0, o={}}; end;
+	return H.dp;
+end;
+
+-- Spot r_lo..r_hi from p at a random heading in the plane of p.
+function TRF_SpDropAt(p, K)
+	local d = K.r_lo + TRF_SpRand(K.r_hi - K.r_lo + 1);
+	local a = TRF_SpRand(360);
+	return {x=p.x + d * cos(a), y=p.y, z=p.z + d * sin(a)};
+end;
+
+-- Deletes the container of slot s (the handle, else any object the label lookup answers, a destroyed one too);
+-- 1 when it was alive.
+function TRF_SpDropDel(D, s)
+	local o = D.o[s];
+	D.o[s] = nil;
+	if not TRF_SpX("TRF_Sc_Alive", o) then o = TRF_SpX("TRF_Sc_FindAny", TRF_SpDropLbl(s)); end;
+	if not o then return nil; end;
+	local live = TRF_SpX("TRF_Sc_Alive", o);
+	TRF_SpX("TRF_Sc_Del", o);
+	return live;
+end;
+
+-- One container 40-80 from the leader of trader id holding the stacks l ({i, n}) through trf_scar's generic object
+-- helpers: TRF_Sc_Make (CreateCarcass of a <Station> model, label) and TRF_Sc_Inv (ClearInventory, then
+-- AddModuleToInventory per stack). The next slot is used, its old container deleted after 24 drops in one visit.
+-- Returns the label, or nil and why (no_helper, no_position, no_handles, create_failed, inventory_failed).
+function TRF_SpDrop(id, l)
+	local K = TRF_SpDropK();
+	if type(TRF_Sc_Make) ~= "function" or type(TRF_Sc_Inv) ~= "function" then return nil, "no_helper"; end;
+	local p = TRF_SpPos(TRF_SpLead(id));
+	if p == nil or type(p.x) ~= "number" then return nil, "no_position"; end;
+	local D = TRF_SpDropH();
+	if not D then return nil, "no_handles"; end;
+	local s = D.n + 1;
+	if s > K.slots then s = 1; end;
+	local lb = TRF_SpDropLbl(s);
+	TRF_SpDropDel(D, s);
+	local o = nil;
+	local t = 0;
+	while not o and t < K.tries do
+		o = TRF_SpX("TRF_Sc_Make", K.tpl, TRF_SpDropAt(p, K), lb);
+		t = t + 1;
+	end;
+	if not o then return nil, "create_failed"; end;
+	if not TRF_SpX("TRF_Sc_Inv", o, l) then
+		TRF_SpX("TRF_Sc_Del", o);
+		return nil, "inventory_failed";
+	end;
+	D.n = s;
+	D.o[s] = o;
+	return lb;
+end;
+
+-- Deletes every drop container of the visit (before a jump); event=demand_drop_clear when one was deleted.
+function TRF_SpDropClear(why)
+	local H = TRF_SpH();
+	if not H or type(H.dp) ~= "table" then return 0; end;
+	local K = TRF_SpDropK();
+	local n = 0;
+	for s = 1, K.slots do
+		if H.dp.o[s] and TRF_SpDropDel(H.dp, s) then n = n + 1; end;
+	end;
+	H.dp = nil;
+	if n > 0 then TRF_SpE("demand_drop_clear", "deleted_count", n, "reason", why); end;
+	return n;
+end;
+
+-- Robbed stacks got: with cfg demand_drop 1 into one container beside the trader (TRF_SpDrop), else, or when that
+-- fails, onto the mothership (AddModuleToInventory per stack). Returns moved count, moved stacks, container label,
+-- the drop failure (nil or why).
+function TRF_SpHandOver(id, got)
 	local moved, mv = 0, {};
+	local why = nil;
+	if TRF_SpOpt("demand_drop", 0) == 1 and getn(got) > 0 then
+		local lb;
+		lb, why = TRF_SpDrop(id, got);
+		if lb then
+			for i = 1, getn(got) do moved = moved + got[i].n; end;
+			return moved, got, lb, nil;
+		end;
+	end;
+	local ms = TRF_SpMs();
 	for i = 1, getn(got) do
 		if ms and TRF_SpP(function(m, it, c) m:AddModuleToInventory(it, c); return 1; end, {ms, got[i].i, got[i].n}) then
 			moved = moved + got[i].n;
 			tinsert(mv, got[i]);
 		end;
 	end;
+	return moved, mv, nil, why;
+end;
+
+function TRF_SpComply(id, r, h, cur)
+	local got, cnt = TRF_SpRob(r, h, TRF_SpDemandK());
+	local moved, mv, dn, dwhy = TRF_SpHandOver(id, got);
 	TRF_SpX("TRF_AddHeat", 2, "demand "..id);
 	if type(cur) == "number" then
 		TRF_SpX("TRF_AddDis", cur, 1, "demand "..id);
@@ -1161,8 +1267,15 @@ function TRF_SpComply(id, r, h, cur)
 	TRF_SpAnswer(id, line, line.."\n"..jet, 1);
 	TRF_SpX("TRF_Flee", id, "demand");
 	TRF_SpStat("dm_comply");
-	TRF_SpE("demand_comply", "trader_id", id, "container_count", cnt, "moved_count", moved, "heat", TRF_SpHeat(),
-		"items", TRF_SpItemsKv(mv));
+	if dwhy then
+		TRF_SpE("demand_comply", "trader_id", id, "container_count", cnt, "moved_count", moved, "heat", TRF_SpHeat(),
+			"items", TRF_SpItemsKv(mv), "drop", TRF_KvB(0), "container_name", nil, "reason", "drop_failed", "drop_cause", dwhy);
+	else
+		local d = 0;
+		if dn then d = 1; end;
+		TRF_SpE("demand_comply", "trader_id", id, "container_count", cnt, "moved_count", moved, "heat", TRF_SpHeat(),
+			"items", TRF_SpItemsKv(mv), "drop", TRF_KvB(d), "container_name", dn);
+	end;
 end;
 
 function TRF_SpRefuse(id, r)
@@ -1667,6 +1780,7 @@ function TRF_Supply_BeforeJump()
 		end;
 		H.sp = {};
 	end;
+	TRF_SpDropClear("jump");
 	if L then
 		if type(L.sp) == "table" then
 			for id, s in L.sp do
@@ -1683,7 +1797,8 @@ end;
 function TRF_Supply_OnLoad()
 	local L = TRF_SpLive();
 	local H = TRF_SpH();
-	if H then H.sp = {}; end;
+	-- Drop containers restored with the save are deleted by trf_plumb's orphan scan (group Drop).
+	if H then H.sp = {}; H.dp = nil; end;
 	if L then L.sp = nil; L.hp = nil; L.spc = nil; L.bd = nil; end;
 	TRF_SpE("load", "reldock_wrapped", TRF_KvB(TRF_SpIsMine(CStation_Action, TRF_RelThunk)));
 end;
@@ -1729,7 +1844,7 @@ function TRF_Supply_Dump()
 	end;
 	TRF_SpE("dump", "convoy_count", n, "convoys", s, "border", TRF_Border(), "convoy_option", TRF_SpOpt("conv", 1),
 		"demand_option", TRF_SpOpt("demand", 1), "demand_page_option", TRF_SpOpt("demand_page", 1), "prey_count", np,
-		"heat_offer_option", TRF_SpOpt("heat_offer", 1),
+		"heat_offer_option", TRF_SpOpt("heat_offer", 1), "demand_drop_option", TRF_SpOpt("demand_drop", 0),
 		"reldock_wrapped", TRF_KvB(TRF_SpIsMine(CStation_Action, TRF_RelThunk)),
 		"temp_change_wrapped", TRF_KvB(TRF_SpIsMine(_temp_change, TRF_TmpThunk)));
 end;
