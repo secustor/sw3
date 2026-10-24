@@ -148,8 +148,9 @@ class Visit:
 
 
 class Log:
-    def __init__(self, path, errors_path=None, errors=None):
+    def __init__(self, path, errors_path=None, errors=None, errors_implicit=False):
         self.path, self.recs, self.visits = path, [], []
+        self.errors_implicit = errors_implicit      # ScriptErrors.log found beside a bare log: it may predate the run
         with open(path, "rb") as f:
             lines = f.read().decode("cp1251", "replace").splitlines()
         self.lua = 0
@@ -218,7 +219,8 @@ def script_errors(ctx, res):
         if lg.errors is None:
             res.notes.append("ScriptErrors.log not found for %s: check it by hand" % lg.path)
         elif lg.errors:
-            res.fails.append("ScriptErrors.log has %d lines (%s)" % (len(lg.errors), lg.errors_src))
+            res.fails.append("ScriptErrors.log has %d lines (%s)%s" % (len(lg.errors), lg.errors_src,
+                             "; found beside the log, it may predate the run: run-test.sh deletes it at start" if lg.errors_implicit else ""))
             res.ev("ScriptErrors.log", lg.errors)
 
 
@@ -249,10 +251,15 @@ def c_err(ctx):
     return res
 
 
+def nest1(ctx):
+    """Visits planned with nest_mode 1 (mode 2 records every listed call instead of substituting it)."""
+    return [v for v in ctx.visits if v.plan and v.plan.int("mode") == 1]
+
+
 def c_e16_1(ctx):
     res = Res()
     res.logpart = True
-    nv = [v for v in ctx.visits if v.plan and v.plan.int("mode") == 1]
+    nv = nest1(ctx)
     if not nv:
         res.missing.append("no nest-mode entry with nest_mode 1 (NESTS=1, chapter 5+, free roam, a system with data)")
     subs_all = []
@@ -318,7 +325,7 @@ def c_e16_2(ctx):
 def c_e16_3(ctx):
     res = Res()
     res.logpart = True
-    pv = [v for v in ctx.visits if v.plan and v.mode and v.mode.int("pins", 0) > 0]
+    pv = [v for v in nest1(ctx) if v.mode and v.mode.int("pins", 0) > 0]
     pins, bounty = [], []
     for v in pv:
         ps = [c for c in v.calls if c.get("result") == "substituted" and c.get("pinned") == "true"]
@@ -362,10 +369,10 @@ def c_e16_4(ctx):
 
 
 def next_activation(ctx, v):
+    """The next activation of the same system (relations are per system), or None."""
     vs = ctx.visits
-    later = [w for w in vs[vs.index(v) + 1:] if w.activate]
-    same = [w for w in later if w.name() == v.name()]
-    return (same or later or [None])[0]
+    same = [w for w in vs[vs.index(v) + 1:] if w.activate and w.name() == v.name()]
+    return (same or [None])[0]
 
 
 def c_e16_5(ctx):
@@ -393,7 +400,7 @@ def c_e16_5(ctx):
     if not neutral:
         res.missing.append("no neutral nest visit with a hit (pirates neutral to the player, e.g. Golkonda with Triada friendly; fire at a nest ship, jump out and back)")
     elif not ok and not res.fails:
-        res.missing.append("no nest entry after the neutral visit")
+        res.missing.append("no later entry of the neutral system (%s): jump out and back in" % ", ".join(sorted(set(v.name() for v in neutral))))
     res.ev("neutral activations with hits", [v.activate for v in neutral])
     res.ev("later activations", ok)
     res.ev("relation mirror lines", [r for v in ctx.visits for r in v.relations])
@@ -613,6 +620,9 @@ def c_pcl3(ctx):
             if ans.get("result") == "stale":
                 res.notes.append("%s: answered after a load (stale)" % ans.short())
                 continue
+            if ans.get("result") == "dropped":
+                res.fails.append("%s: parcel box dropped at the next docking, never answered" % ans.short())
+                continue
             if ans.int("answer") == 1:
                 oks.append(ans)
                 if not [h for h in hand if h.ev == "accept"]:
@@ -635,18 +645,19 @@ def c_pcl4(ctx):
     res = Res()
     res.logpart = True
     add = ctx.find("parcel", "quest", result="added")
+    st, rm = ctx.find("parcel", "quest", result="set"), ctx.find("parcel", "quest", result="removed")
     for r in add:
         if r.get("quest_state_after") == "1" and r.get("quest_state_before") != "1":
             res.fails.append("the logbook entry made GetPlayerQuestState() TRUE: set pcl_logbook=0")
     if not add:
         res.missing.append("accept a parcel (adds the logbook entry)")
-    if not ctx.find("parcel", "quest", result="set"):
+    if not st:
         res.missing.append("end a parcel (deliver it or let it expire)")
-    if not ctx.find("parcel", "quest", result="removed"):
+    if not rm:
         res.missing.append("dock at a trade station after the end (the entry is removed there)")
     res.ev("quest added", add)
-    res.ev("quest set", ctx.find("parcel", "quest", result="set"))
-    res.ev("quest removed", ctx.find("parcel", "quest", result="removed"))
+    res.ev("quest set", st)
+    res.ev("quest removed", rm)
     res.ev("reconcile", ctx.find("parcel", "reconcile"))
     return res
 
@@ -836,8 +847,10 @@ def open_logs(paths, errors):
                 ep, ev = errors, None
             if os.path.isfile(lp):
                 logs.append(Log(lp, ep, ev))
+            else:
+                sys.stderr.write("check_ingame: no sw3tp.log in run dir %s\n" % p)
         elif os.path.isfile(p):
-            logs.append(Log(p, errors or os.path.join(os.path.dirname(p), "ScriptErrors.log")))
+            logs.append(Log(p, errors or os.path.join(os.path.dirname(p), "ScriptErrors.log"), None, not errors))
         else:
             sys.stderr.write("check_ingame: no log at %s\n" % p)
     return logs
