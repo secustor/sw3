@@ -1053,7 +1053,7 @@ function TRF_ShOpen(i, why)
 	if hit == 1 then
 		x.opp = (x.opp or 0) + 1;
 		if r.src == 1 and r.sf >= 1 then TRF_N("TRF_Cl_Score", r.sf, TRF_ShK().seller, "stash intel sold"); end;
-		if r.src == 2 and r.sf >= 1 then x.pt = r.sf; x.ps = r.sys; end;
+		if r.src == 2 and r.sf >= 1 then TRF_ShOwe(x, r.sf, r.sys); end;
 		TRF_ShSay(TRF_ShTxt("stashopen"));
 		TRF_N("TRF_PrizeMark", "stash");
 		if q or why == "jump" or TRF_ShOpt("enable_stash_retrieval") ~= 1 then r.rf = 2; else r.rf = 1; TRF_ShRetArm(i, r, "open"); end;
@@ -1293,14 +1293,15 @@ function TRF_ShRetDied(i, j, g)
 end;
 
 -- A treasurer ship died: a flight with every ship dead is a normal clan kill (trf_events TRF_Ev_Recover: score -2 inside
--- the visit cap, dis -1, design 4 feeds); battle scars source 7 gets the death.
+-- the visit cap, dis -1, design 4 feeds); battle scars source 7 gets the death with mine 1: the flight came because the
+-- player opened the cache and is at war with the player (trf_captain passes its hit flag the same way).
 function TRF_ShRetDiedBody(i, j, g)
 	if g ~= TRF_ShGen() then return; end;
 	local R = %SH.r;
 	if type(R) ~= "table" or R.i ~= i or R.dead[j] or R.del == 1 then return; end;
 	R.dead[j] = 1;
 	R.kills = R.kills + 1;
-	TRF_P("TRF_Sc_Dead", 3, 0, R.sh[j], nil);
+	TRF_P("TRF_Sc_Dead", 3, 0, R.sh[j], 1);
 	for f = 1, getn(R.fls) do
 		local fe = R.fls[f];
 		if fe.dn ~= 1 then
@@ -1488,8 +1489,9 @@ function TRF_Sh_PirLine(kind, param)
 end;
 
 -- Patrol dock line 40 (after the owed payers at 30, before the #9 rank line at 50), all under G2 with strict "board"
--- (while it fails, stx.pt and stx.ms wait for a later docking): the thanks with fst +1 at the first docking of the
--- faction owed (stx.pt), the moved notice of a known cache that expired, and the tip: one roll a record a
+-- (while it fails, stx.pt and stx.ms wait for a later docking): the thanks with fst +1 and one line for every entry of
+-- stx.pt owed to the docked faction (the entries are removed, the others kept), the moved notice of a known cache that
+-- expired, and the tip: one roll a record a
 -- visit (stash_board_pct) for an unknown cache (st 0) within 3 jumps; the tip sets st 1, src 2, sf = the station's
 -- faction.
 function TRF_Sh_PatrolLine(kind, param)
@@ -1500,11 +1502,19 @@ function TRF_Sh_PatrolLine(kind, param)
 	local x = TRF_ShStx();
 	local out = {};
 	local f = TRF_N("TRF_FacIdx", TRF_N("TRF_FcTeamOf", cur));
-	if type(x.pt) == "number" and x.pt >= 1 and f == x.pt then
-		local got = TRF_N("TRF_FstAdd", x.pt, 1, "stash tip");
-		tinsert(out, TRF_ShTxt("stashthanks"..TRF_ShKey(x.ps or cur)));
-		TRF_ShE("thanks", "faction", x.pt, "system", TRF_ShName(x.ps), "standing", got);
-		x.pt = nil; x.ps = nil;
+	if type(x.pt) == "table" and type(f) == "number" then
+		local keep = {};
+		for k = 1, getn(x.pt) do
+			local e = x.pt[k];
+			if type(e) == "table" and e.f == f then
+				local got = TRF_N("TRF_FstAdd", f, 1, "stash tip");
+				tinsert(out, TRF_ShTxt("stashthanks"..TRF_ShKey(e.s or cur)));
+				TRF_ShE("thanks", "faction", f, "system", TRF_ShName(e.s), "standing", got);
+			elseif type(e) == "table" then
+				keep[getn(keep) + 1] = e;
+			end;
+		end;
+		x.pt = TRF_ShPtCap(keep);
 	end;
 	if type(x.ms) == "number" then
 		tinsert(out, TRF_ShTxt("stashmoved"..TRF_ShKey(x.ms), TRF_ShClanName(x.mc)));
@@ -1575,6 +1585,41 @@ function TRF_ShFld(e, k, lo, hi, d)
 	return d;
 end;
 
+-- The newest max(1, stash_live) entries of list v, oldest first; nil when v is empty. Built by index: Lua 4's tinsert
+-- writes an n field, which the save would keep.
+function TRF_ShPtCap(v)
+	local n = getn(v);
+	if n == 0 then return nil; end;
+	local p = {};
+	for k = max(1, n - max(1, TRF_ShT("stash_live")) + 1), n do p[getn(p) + 1] = v[k]; end;
+	return p;
+end;
+
+-- Owed patrol thanks (stx.pt, oldest first): faction f for the cache of system s; past max(1, stash_live) entries the
+-- oldest is dropped (level 2 event=thanks result=dropped).
+function TRF_ShOwe(x, f, s)
+	local v = {};
+	if type(x.pt) == "table" then for k = 1, getn(x.pt) do v[k] = x.pt[k]; end; end;
+	v[getn(v) + 1] = {f=f, s=s};
+	local p = TRF_ShPtCap(v);
+	for k = 1, getn(v) - getn(p) do TRF_ShDE("thanks", "faction", v[k].f, "system", TRF_ShName(v[k].s), "result", "dropped", "reason", "cap"); end;
+	x.pt = p;
+end;
+
+-- Repair of stx.pt: entries {f 1..5, s 1..ns or nil}, the newest max(1, stash_live) kept; the old single-slot shape
+-- (pt = faction, ps = system) becomes a one-entry list.
+function TRF_ShPtFix(x, ns)
+	local src = x.pt;
+	if TRF_ShNum(src, 1, 5) then src = {{f=src, s=x.ps}}; end;
+	if type(src) ~= "table" then return nil; end;
+	local v = {};
+	for k = 1, min(getn(src), 99) do
+		local e = src[k];
+		if type(e) == "table" and TRF_ShNum(e.f, 1, 5) then v[getn(v) + 1] = {f=floor(e.f), s=TRF_ShFld(e, "s", 1, ns, nil)}; end;
+	end;
+	return TRF_ShPtCap(v);
+end;
+
 -- Repair (TRF_Repair, every entry and load): records with a known slot system and slot, one per system and per clan,
 -- indices 1..rec_max; every field within its range (a wrong value reads its default, stamps after now are clamped);
 -- TRF.stx and the clan fields so (1 or nil) and sk. Records are replaced by repaired copies (tests re-read them).
@@ -1614,7 +1659,7 @@ function TRF_Sh_Fix()
 		if TRF_ShNum(x.jc, 0, J) then o.jc = floor(x.jc); end;
 		if TRF_ShNum(x.lo, -99999, legs) then o.lo = floor(x.lo); end;
 		if TRF_ShNum(x.jo, 0, J) then o.jo = floor(x.jo); end;
-		if TRF_ShNum(x.pt, 1, 5) then o.pt = floor(x.pt); o.ps = TRF_ShFld(x, "ps", 1, ns, nil); end;
+		o.pt = TRF_ShPtFix(x, ns);
 		if TRF_ShNum(x.ms, 1, ns) then o.ms = floor(x.ms); o.mc = TRF_ShFld(x, "mc", 1, 11, 1); end;
 		TRF.stx = o;
 	end;
@@ -1644,8 +1689,9 @@ function TRF_Sh_TuneDef()
 		stash_area_r=150, stash_find_r=200, stash_ret_delay={60, 150}, stash_ret_window=180};
 end;
 
--- Debug dump (design 6): one dump_rec line per record, the so digits of the 11 region slots, the stx counters and the
--- gate state (gap and open gap left in legs/jumps, the mission flag).
+-- Debug dump (design 6): one dump_rec line per record, the so digits of the 11 region slots, the stx counters, the owed
+-- thanks (patrol_owed=<faction>:<system>,... oldest first, nil when none) and the gate state (gap and open gap left in
+-- legs/jumps, the mission flag).
 function TRF_Sh_Dump()
 	if type(TRF) ~= "table" then return; end;
 	local sh = %SH;
@@ -1676,8 +1722,18 @@ function TRF_Sh_Dump()
 	if type(x.jo) == "number" then oj = max(0, T.stash_open_gap[2] - (J - x.jo)); end;
 	local q = 0;
 	if TRF_ShQuest() then q = 1; end;
+	local pt = nil;
+	if type(x.pt) == "table" then
+		for k = 1, getn(x.pt) do
+			local e = x.pt[k];
+			if type(e) == "table" then
+				local s = tostring(e.f)..":"..TRF_ShName(e.s);
+				if pt then pt = pt..","..s; else pt = s; end;
+			end;
+		end;
+	end;
 	TRF_ShE("dump", "record_count", n, "so", so, "created", x.n or 0, "opened", x.op or 0, "opened_player", x.opp or 0, "last_create", x.lc,
-		"last_open", x.lo, "patrol_owed", x.pt, "gap", gl.."/"..gj, "open_gap", ol.."/"..oj, "quest", q);
+		"last_open", x.lo, "patrol_owed", pt, "gap", gl.."/"..gj, "open_gap", ol.."/"..oj, "quest", q);
 end;
 
 -- Texts (design 2, 6 text keys), EN; keys in TRF_UI_Key form (#TRF_stash<name> in loc/trf_en.loc). The lines that name

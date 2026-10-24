@@ -673,8 +673,8 @@ function T_SH_D()
 	SH_Kill(1, 1);
 	h.qs = FALSE;
 	r = SH_R(1);
-	HOST_Check(r.rf == 2 and TRF.stx.pt == 5 and TRF.stx.ps == V_Idx("gaoba") and S_Logs(n0, "treasurer=2 quest=true") == 1,
-		"patrol tip source: pt = faction 5, ps; during a mission rf 2 at once (E7.10)");
+	HOST_Check(r.rf == 2 and getn(TRF.stx.pt) == 1 and TRF.stx.pt[1].f == 5 and TRF.stx.pt[1].s == V_Idx("gaoba") and TRF.stx.ps == nil
+		and S_Logs(n0, "treasurer=2 quest=true") == 1, "patrol tip source: pt = {{f=5, s=gaoba}}; during a mission rf 2 at once (E7.10)");
 	-- Stale generation (E7.5): an old trigger after a load.
 	TRF.stash = nil; TRF.stx = nil; TRF.clan[kadi].so = nil;
 	SH_Rec(1, "gaoba", {st=0});
@@ -840,21 +840,56 @@ function T_SH_F()
 	h.qs = FALSE;
 	HOST_Check(SH_R(1).st == 0, "mission in progress: no tip");
 	-- Thanks: fst +1 at the first patrol docking of the faction owed, after the opening.
-	TRF.stx = {n=1, op=1, opp=1, pt=1, ps=V_Idx("egleon")};
+	TRF.stx = {n=1, op=1, opp=1, pt={{f=1, s=V_Idx("egleon")}}};
 	local f0 = TRF_Fst(1);
 	TRF.stash = nil;
 	SH_Jump("gaoba");
 	d = SH_PatDock();
-	HOST_Check(TRF.stx.pt == 1 and TRF_Fst(1) == f0, "a patrol station of another faction (Inoco): no thanks");
+	HOST_Check(TRF.stx.pt and TRF.stx.pt[1].f == 1 and TRF_Fst(1) == f0, "a patrol station of another faction (Inoco): no thanks");
 	SH_Jump("fort_russ"); SH_Jump("moscowia");
 	h.qs = TRUE;
 	d = SH_PatDock();
 	h.qs = FALSE;
-	HOST_Check(not SH_Has(d.scr, "Report on the Egleon cache") and TRF.stx.pt == 1 and TRF_Fst(1) == f0, "mission in progress: no thanks, pt kept");
+	HOST_Check(not SH_Has(d.scr, "Report on the Egleon cache") and TRF.stx.pt and TRF.stx.pt[1].f == 1 and TRF_Fst(1) == f0, "mission in progress: no thanks, pt kept");
 	n0 = S_Mark();
 	d = SH_PatDock();
-	HOST_Check(SH_Has(d.scr, "Report on the Egleon cache received") and TRF_Fst(1) == min(9, f0 + 1) and TRF.stx.pt == nil and TRF.stx.ps == nil
+	HOST_Check(SH_Has(d.scr, "Report on the Egleon cache received") and TRF_Fst(1) == min(9, f0 + 1) and TRF.stx.pt == nil
 		and S_Logs(n0, "event=thanks faction=1 system=egleon") == 1, "Vks patrol dock: thanks, fst +1, pt cleared");
+	-- Two tipped caches opened before a docking: both thanks owed (oldest first); a dock pays only its faction's entry.
+	local fi = TRF_FacIdx(TRF_FcTeamOf(V_Idx("gaoba")));
+	TRF.stash = nil; TRF.stx = nil;
+	SH_Rec(1, "egleon", {st=1, src=2, sf=1});
+	SH_Rec(2, "gaoba", {st=1, src=2, sf=fi});
+	SH_Jump("egleon"); SH_Kill(1, 1);
+	SH_Jump("gaoba"); SH_Kill(2, 1);
+	local pt = TRF.stx.pt;
+	HOST_Check(fi and fi ~= 1 and pt and getn(pt) == 2 and pt[1].f == 1 and pt[1].s == V_Idx("egleon") and pt[2].f == fi and pt[2].s == V_Idx("gaoba"),
+		"two tipped caches opened before docking: two owed thanks, oldest first (faction "..tostring(fi)..")");
+	local g0, v0 = TRF_Fst(fi), TRF_Fst(1);
+	n0 = S_Mark();
+	d = SH_PatDock();
+	pt = TRF.stx.pt;
+	HOST_Check(SH_Has(d.scr, "Report on the Gaoba cache received") and not SH_Has(d.scr, "Egleon cache") and TRF_Fst(fi) == min(9, g0 + 1)
+		and TRF_Fst(1) == v0 and pt and getn(pt) == 1 and pt[1].f == 1 and pt[1].s == V_Idx("egleon")
+		and S_Logs(n0, "event=thanks faction="..fi.." system=gaoba") == 1, "the Gaoba patrol dock pays its faction and leaves the Vks entry");
+	SH_Jump("fort_russ"); SH_Jump("moscowia");
+	n0 = S_Mark();
+	d = SH_PatDock();
+	HOST_Check(SH_Has(d.scr, "Report on the Egleon cache received") and TRF_Fst(1) == min(9, v0 + 1) and TRF_Fst(fi) == min(9, g0 + 1)
+		and TRF.stx.pt == nil and S_Logs(n0, "event=thanks faction=1 system=egleon") == 1, "the Vks patrol dock pays the other entry: both factions paid");
+	-- The same faction twice: two lines, fst +2; past stash_live (2) entries the oldest is dropped.
+	TRF.stash = nil;
+	TRF.stx.pt = {{f=1, s=V_Idx("egleon")}, {f=1, s=V_Idx("lasad")}};
+	v0 = TRF_Fst(1);
+	d = SH_PatDock();
+	HOST_Check(SH_Has(d.scr, "Report on the Egleon cache received") and SH_Has(d.scr, "Report on the Lasad cache received") and TRF_Fst(1) == min(9, v0 + 2)
+		and TRF.stx.pt == nil, "two entries of one faction: two thanks lines, fst +2");
+	n0 = S_Mark();
+	TRF_ShOwe(TRF.stx, 1, V_Idx("egleon")); TRF_ShOwe(TRF.stx, 2, V_Idx("lasad")); TRF_ShOwe(TRF.stx, 3, V_Idx("gaoba"));
+	pt = TRF.stx.pt;
+	HOST_Check(getn(pt) == 2 and pt.n == nil and pt[1].f == 2 and pt[2].f == 3 and S_Logs(n0, "event=thanks faction=1 system=egleon result=dropped reason=cap") == 1,
+		"a third owed entry drops the oldest (stash_live 2), logged");
+	TRF.stx.pt = nil;
 	-- Moved notice: one line at the next patrol board.
 	TRF.stx.ms = V_Idx("gaoba"); TRF.stx.mc = SH_Slot("gaoba");
 	h.qs = TRUE;
@@ -909,12 +944,15 @@ function T_SH_G()
 	-- Kills: a flight with every ship dead is a clan kill (TRF_Ev_Recover: score -2).
 	local sc0 = TRF.clan[kadi].sc;
 	n0 = S_Mark();
+	local nk = 0;
 	for j = 1, 6 do
 		local o = h.objs["trf_sh_1_"..j];
-		if o and o.alive then o.alive = nil; HOST_Fire("died", "TRF_ShRetDied(1,"..j..","); end;
+		if o and o.alive then o.alive = nil; nk = nk + 1; HOST_Fire("died", "TRF_ShRetDied(1,"..j..","); end;
 	end;
 	HOST_Check(S_Logs(n0, "event=ret index=1 flight=1 result=killed") == 1 and TRF.clan[kadi].sc == max(0, sc0 - 2) and S_Logs(n0, "result=dead") == 1,
 		"flight killed: clan score -2 (normal clan kill)");
+	HOST_Check(nk > 0 and S_Logs(n0, "module=scar event=dead class=3 faction=0 mine=1") == nk and S_Logs(n0, "module=scar event=dead class=3 faction=0 mine=0") == 0,
+		"every treasurer death feeds battle scars with mine 1 ("..nk.." ships)");
 	T_Tick(4, 0.5);
 	HOST_Check(TRF_Sh_Alive() == 0, "no live treasurer");
 	-- Window: leave after stash_ret_window, deleted out of view.
@@ -1064,14 +1102,14 @@ function T_SH_H()
 	SH_Begin("aurora", "9_1");
 	SH_Rec(1, "gaoba", {st=1, src=1, sf=6, rf=0});
 	SH_Rec(2, "areko", {st=0});
-	TRF.stx = {n=7, op=2, opp=1, lc=TRF.clock.legs - 3, jc=TRF.clock.j, lo=TRF.clock.legs - 40, jo=TRF.clock.j - 10, pt=3, ps=V_Idx("gaoba")};
+	TRF.stx = {n=7, op=2, opp=1, lc=TRF.clock.legs - 3, jc=TRF.clock.j, lo=TRF.clock.legs - 40, jo=TRF.clock.j - 10, pt={{f=3, s=V_Idx("gaoba")}, {f=1, s=V_Idx("egleon")}}};
 	TRF.clan[SH_Slot("areko")].so = 1;
 	local n0 = S_Mark();
 	TRF_Sh_Dump();
 	local dl = SH_Line(n0, "module=stash event=dump ");
 	HOST_Check(S_Logs(n0, "module=stash event=dump_rec index=1 system=gaoba slot=1") == 1 and S_Logs(n0, "event=dump_rec index=2 system=areko") == 1
 		and dl and SH_Kv(dl, "record_count") == "2" and strlen(SH_Kv(dl, "so")) == 11 and SH_Kv(dl, "gap") == "12/6" and SH_Kv(dl, "open_gap") == "0/0"
-		and SH_Kv(dl, "quest") == "0", "dump lines: records, so digits, stx and the gate state ("..tostring(dl)..")");
+		and SH_Kv(dl, "quest") == "0" and SH_Kv(dl, "patrol_owed") == "3:gaoba,1:egleon", "dump lines: records, so digits, stx, owed thanks and the gate state ("..tostring(dl)..")");
 	TRF_DumpState("test");
 	HOST_Check(S_Logs(n0, "module=stash event=dump ") >= 2, "TRF_DumpState calls the stash dump");
 	-- Repair: wrong fields read their defaults, duplicates and unknown systems dropped, stx and so cleaned.
@@ -1087,6 +1125,24 @@ function T_SH_H()
 	HOST_Check(a == nil and TRF.stash[2] and TRF.stash[2].sys == V_Idx("gaoba") and TRF.stash[3] == nil and b and b.cls == 3 and b.sv == 5
 		and TRF.stx.n == 0 and TRF.stx.op == 0 and TRF.stx.lc == nil and TRF.stx.pt == nil and TRF.stx.ms == V_Idx("gaoba") and TRF.stx.mc
 		and TRF.clan[1].so == nil and TRF.clan[2].sk == nil, "repair: a bad slot drops the record, one per system, fields and stx within their ranges");
+	-- Repair of the owed thanks: the old single-slot shape becomes a one-entry list; bad entries dropped, the newest 2 kept.
+	TRF.stx = {pt=3, ps=V_Idx("gaoba")};
+	TRF_Sh_Fix();
+	local pt = TRF.stx.pt;
+	HOST_Check(pt and getn(pt) == 1 and pt[1].f == 3 and pt[1].s == V_Idx("gaoba") and TRF.stx.ps == nil, "repair: old pt/ps slot becomes {{f=3, s=gaoba}}");
+	TRF.stx = {pt=4, ps=9999};
+	TRF_Sh_Fix();
+	pt = TRF.stx.pt;
+	HOST_Check(pt and getn(pt) == 1 and pt[1].f == 4 and pt[1].s == nil, "repair: old slot with a bad system keeps the faction");
+	TRF.stx = {pt={{f=8}, "x", {f=2, s=9999}, {f=1, s=V_Idx("gaoba")}, {f=4.5, s=V_Idx("areko")}}};
+	TRF.stx.pt.n = 5;
+	TRF_Sh_Fix();
+	pt = TRF.stx.pt;
+	HOST_Check(pt and getn(pt) == 2 and pt.n == nil and pt[1].f == 1 and pt[1].s == V_Idx("gaoba") and pt[2].f == 4 and pt[2].s == V_Idx("areko"),
+		"repair: owed list entries within range, the newest 2 kept");
+	TRF.stx = {pt={"x"}};
+	TRF_Sh_Fix();
+	HOST_Check(TRF.stx.pt == nil, "repair: an owed list with no valid entry is dropped");
 	TRF.stash = 5; TRF.stx = 3;
 	TRF_Sh_Fix();
 	HOST_Check(TRF.stash == nil and type(TRF.stx) == "table" and TRF.stx.n == 0, "repair: non-table stash and stx");
@@ -1116,11 +1172,11 @@ function T_SH_H()
 	for k = 1, 4 do
 		TRF.stash[k] = {sys=113, slot=4, clan=11, cls=3, v=450, seed=9999, leg=-99999, st=2, src=4, sf=11, sv=5, rf=2, pl=1};
 	end;
-	TRF.stx = {n=9999, op=9999, opp=9999, lc=-99999, jc=99999, lo=-99999, jo=99999, pt=5, ps=113, ms=113, mc=11};
+	TRF.stx = {n=9999, op=9999, opp=9999, lc=-99999, jc=99999, lo=-99999, jo=99999, pt={{f=5, s=113}, {f=5, s=113}}, ms=113, mc=11};
 	local sz = HOST_SaveSize(TRF.stash) + 8 + strlen("stash") + HOST_SaveSize(TRF.stx) + 8 + strlen("stx");
 	local cz = 11 * (2 * 8 + strlen("so") + strlen("sk") + 2 * 12);
 	print("HOST info stash save size "..sz.." + clan fields "..cz);
-	HOST_Check(sz <= 1600 and sz + cz <= 2200, "worst case: TRF.stash and TRF.stx "..sz.." bytes <= 1600, with the clan fields "..(sz + cz).." <= 2200");
+	HOST_Check(sz <= 1700 and sz + cz <= 2200, "worst case: TRF.stash and TRF.stx "..sz.." bytes <= 1700, with the clan fields "..(sz + cz).." <= 2200");
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key");
 end;
 

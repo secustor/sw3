@@ -568,11 +568,12 @@ Clan stashes, step 1 (`design/stash-spec.md` 7). `index` is the record index i (
 | `grudge` | `module=stash event=grudge index=1 system=egleon` | 1 |
 | `tip` | `module=stash event=tip index=1 system=egleon faction=1 roll=12 chance=30 result=tip` | 1 |
 | `tip` | `module=stash event=tip index=1 roll=77 chance=30 result=none reason=roll` / `module=stash event=tip result=none reason=<gate>` | 2 |
-| `thanks` | `module=stash event=thanks faction=1 system=egleon standing=6` | 1 |
+| `thanks` | `module=stash event=thanks faction=1 system=egleon standing=6` (one per owed entry of the docked faction) | 1 |
+| `thanks` | `module=stash event=thanks faction=1 system=egleon result=dropped reason=cap` (an owed entry dropped past `stash_live`) | 2 |
 | `moved` | `module=stash event=moved system=gaoba clan=5` | 1 |
 | `debug` | `module=stash event=debug index=1 system=egleon result=created` (cfg `stash_at`) | 1 |
 | `enter` | `module=stash event=enter system=gaoba index=1 state=1 arrival=stasharrive pirates_relation=1` (E7.9 after a jump out) | 2 |
-| `dump` | `module=stash event=dump record_count=2 so=00000100000 created=7 opened=2 opened_player=1 last_create=37 last_open=0 patrol_owed=3 gap=12/6 open_gap=0/0 quest=0` | 1 |
+| `dump` | `module=stash event=dump record_count=2 so=00000100000 created=7 opened=2 opened_player=1 last_create=37 last_open=0 patrol_owed=3:gaoba,1:egleon gap=12/6 open_gap=0/0 quest=0` (`patrol_owed=<faction>:<system>,...` oldest first, nil when none) | 1 |
 | `dump_rec` | `module=stash event=dump_rec index=1 system=gaoba slot=2 clan=5 class=2 value=200 seed=4711 state=1 source=1 source_from=6 salvage_banked=0 treasurer=0 age=7 object=alive` (one per record) | 1 |
 
 ## supply (`trf_supply.script`; `TRF_SpE`)

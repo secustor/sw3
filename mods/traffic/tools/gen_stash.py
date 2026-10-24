@@ -13,7 +13,10 @@ asteroid of the cluster (nearest the centroid first) at 8 bearings (y = the aste
   in write-back systems (WB) >= PIR_R from every NewPirateFlight position of activate.script and pirate station,
   >= SEP from the slots already chosen.
 Clusters are taken largest first, one slot each round, at most MAX_SLOTS per system. A system with no slot is
-printed and left out of the table (the runtime allow-list is the table's systems).
+printed with the tally of the rules its distinct candidates break (Golkonda: "no slot: portal+pirate 481,
+ast+portal+pirate 274, pirate 207, ...") and left out of the table (the runtime allow-list is the table's systems).
+Golkonda, XT-17 and XT-27 have none under the 600-unit pirate rule; the user kept the rule on 2026-10-24 (stash-spec.md
+2, 5.2).
 --write replaces the block between the BEGIN/END markers of trf_stash.script (CRLF kept); --check exits 1 when it
 differs.
 """
@@ -131,20 +134,37 @@ def clusters(ast):
     return out
 
 
-def ok(c, S, wb, chosen):
+def fails(c, S, wb, chosen):
+    """Names of the rules candidate c breaks (empty: c is a slot)."""
+    f = []
     if any(dist(c, a) < AST_R for a in S["ast"]):
-        return False
+        f.append("ast")
     if sum(1 for a in S["ast"] if dist(c, a) <= IN_R) < IN_N:
-        return False
+        f.append("belt")
     if any(dist(c, p) < ST_R for p in S["st"]):
-        return False
+        f.append("station")
     if any(dist(c, p) < PORTAL_R for p in S["portals"]):
-        return False
+        f.append("portal")
     if any(dist(c, p) < NYCH_R for p in S["nych"]):
-        return False
+        f.append("nych")
     if wb and any(dist(c, p) < PIR_R for p in S["pir"]):
-        return False
-    return all(dist(c, p) >= SEP for p in chosen)
+        f.append("pirate")
+    if any(dist(c, p) < SEP for p in chosen):
+        f.append("sep")
+    return f
+
+
+def ok(c, S, wb, chosen):
+    return not fails(c, S, wb, chosen)
+
+
+def tally(cand, S, wb):
+    """Failing-rule combinations over the distinct candidates of a system with no slot, most frequent first."""
+    n = {}
+    for c in {tuple(c) for pts in cand for c in pts}:
+        k = "+".join(fails(list(c), S, wb, []))
+        n[k] = n.get(k, 0) + 1
+    return ", ".join("%s %d" % (k, v) for k, v in sorted(n.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
 def slots(S, wb):
@@ -176,7 +196,7 @@ def slots(S, wb):
                     break
         if not added:
             break
-    return chosen, len(cl)
+    return chosen, len(cl), cand
 
 
 def block(game):
@@ -187,8 +207,9 @@ def block(game):
     lines.append("\treturn {")
     for name in ALLOW:
         S = collect(game, name)
-        ch, nc = slots(S, name in WB)
-        report.append("%-11s asteroids=%3d clusters=%d slots=%d%s" % (name, len(S["ast"]), nc, len(ch), " (write-back)" if name in WB else ""))
+        ch, nc, cand = slots(S, name in WB)
+        why = "" if ch else " no slot: " + (tally(cand, S, name in WB) or "no candidate")
+        report.append("%-11s asteroids=%3d clusters=%d slots=%d%s%s" % (name, len(S["ast"]), nc, len(ch), " (write-back)" if name in WB else "", why))
         if not ch:
             continue
         lines.append("\t\t%s = {%s}," % (name, ", ".join("{%d, %d, %d}" % tuple(c) for c in ch)))
