@@ -645,8 +645,11 @@ function TRF_FcBaseA(slot)
 	return nil;
 end;
 
--- Target system of the slot's attempts: the active base system, else the home.
+-- Target system of the slot's attempts: the active base system, else the home. A live attempt (wait, on) keeps the
+-- base it was planned for: on screen the base may be dead when the outcome is read (TRF_SweepEnd, trf_nest's swept mark).
 function TRF_SweepTarget(slot)
+	local L = TRF_FcLive();
+	if L and type(L.sw) == "table" and L.sw.s == slot and L.sw.st ~= "out" and type(L.sw.b) == "number" then return L.sw.b; end;
 	local b = TRF_FcBaseA(slot);
 	if b then return b; end;
 	local e = TRF_FcRg()[slot];

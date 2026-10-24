@@ -53,10 +53,6 @@ function TRF_NeDE(event, ...)
 	tinsert(arg, 1, event); call(TRF_NeE, arg);
 end;
 
-function TRF_NeStat(k)
-	TRF_N("TRF_Stat", k);
-end;
-
 function TRF_NeCl(x, lo, hi)
 	if x < lo then return lo; end;
 	if x > hi then return hi; end;
@@ -234,7 +230,9 @@ function TRF_NeShipsRaw(fl, jmax)
 	return out;
 end;
 
--- Ships of flight fl (at most K.j_max), index j as the builder numbered them; the ship_<sign>_<j> globals fill gaps.
+-- Ships of flight fl (at most K.j_max), index j as the builder numbered them; the ship_<sign>_<j> globals fill gaps,
+-- never with a ship already listed (after a load the pilot list is compacted, so a global can name a listed ship; a
+-- second entry would give it two labels, two died triggers and two scar entries).
 function TRF_NeShips(fl, sign)
 	local K = TRF_NeK();
 	local out = call(TRF_NeShipsRaw, {fl, K.j_max}, "x", TRF_NeNoErr);
@@ -242,7 +240,9 @@ function TRF_NeShips(fl, sign)
 	for j = 1, K.j_max do
 		if not TRF_NeObj(out[j]) and type(sign) == "string" then
 			local s = getglobal("ship_"..sign.."_"..j);
-			if TRF_NeObj(s) then out[j] = s; end;
+			local dup = nil;
+			for k = 1, K.j_max do if out[k] ~= nil and out[k] == s then dup = 1; end; end;
+			if TRF_NeObj(s) and not dup then out[j] = s; end;
 		end;
 	end;
 	return out;
@@ -282,15 +282,10 @@ end;
 
 -- Constants without a cfg key: flights per system at most (the TRF.nv bit string), ships per flight (labels
 -- trf_nest_<i>_<j>), the nest group and its build global, line seconds, clan score per destroyed flight, counter and
--- nk bounds, the phase line keys (index phase + 1), the vanilla group spellings (appendix A).
+-- nk bounds, the phase line keys (index phase + 1).
 function TRF_NeK()
 	return {f_max=31, j_max=6, grp="TRF_Nest_".."1", gg="TRF_GNest_".."1", secs=8, hit_secs=6, score=-2, cnt_max=99999, nk_max=99,
 		lines={"nestquiet", nil, "nestfull", "nestraid", "nestbust", nil}, swept_nl=7};
-end;
-
--- The five vanilla pirate group spellings of the nest systems (appendix A; gen_nest.py GROUPS).
-function TRF_Nest_VanGroups()
-	return {"PiratesGroup_1", "Pirate_Group_1", "Pirates_Group_1", "PirateGroup_1", "Pirate_Group_1_1"};
 end;
 
 -- Entry of system name nm in TRF_NestData (cached per MapInitialization), or nil.
@@ -991,12 +986,13 @@ function TRF_NeFOf(ph, swept, F, fs)
 end;
 
 -- Kill memory refill (design 6 entry step 2): t whole steps of rl legs since stamp l; each takes ceil(pct x nv / 100)
--- killed flights back. Returns k', l', t.
+-- killed flights back; a refill amount of 0 (pct 0) is no step (the stamp and c stay). Returns k', l', t.
 function TRF_NeRefillOf(k, l, legs, nv, pct, rl)
 	if rl < 1 then rl = 1; end;
 	local t = floor((legs - l) / rl);
 	if t <= 0 then return k, l, 0; end;
 	local dk = ceil(pct * nv / 100);
+	if dk <= 0 then return k, l, 0; end;
 	return max(0, k - t * dk), l + t * rl, t;
 end;
 
@@ -1132,7 +1128,10 @@ function TRF_NeMode(cur, nm, d)
 	if not d then return "vanilla", "no_data"; end;
 	if TRF_NeExcluded(nm) then return "vanilla", "excluded"; end;
 	if type(TRF_RgGuardOn) ~= "function" or TRF_RgGuardOn() then return "vanilla", "guard"; end;
-	if type(TRF_SysMode) == "function" and TRF_SysMode() ~= "mod" then return "vanilla", "sysmode"; end;
+	-- TRF_SysModeQuiet: trf_gen's entry decision already counts van_<reason> and logs the change (TRF_SysMode).
+	local sm = nil;
+	if type(TRF_SysModeQuiet) == "function" then sm = TRF_SysModeQuiet(); elseif type(TRF_SysMode) == "function" then sm = TRF_SysMode(); end;
+	if sm ~= nil and sm ~= "mod" then return "vanilla", "sysmode"; end;
 	if type(TRF_StrictOk) == "function" then
 		local ok, w = TRF_StrictOk(cur, "nest");
 		if not ok then return "vanilla", "gate_"..tostring(w); end;
@@ -1469,15 +1468,12 @@ function TRF_NeReplace(a)
 	return nd, ns;
 end;
 
--- Clears the stubs and the build global of visit a (every entry, also when the body failed). Returns the stubs left.
+-- Clears the stubs and the build global of visit a (every entry, also when the body failed).
 function TRF_NeClear(a)
-	local left = 0;
 	for s, sb in a.sb do
 		if getglobal("flight_"..s) == sb then setglobal("flight_"..s, nil); end;
-		if getglobal("flight_"..s) == sb then left = left + 1; end;
 	end;
 	setglobal(TRF_NeK().gg, nil);
-	return left;
 end;
 
 function TRF_Nest_OnActivate()
@@ -1490,9 +1486,9 @@ function TRF_Nest_OnActivate()
 	end;
 	a.on = nil;
 	call(TRF_NeActBody, {a}, "x", TRF_NeErr);
-	local left = TRF_NeClear(a);
+	TRF_NeClear(a);
 	TRF_NeE("activate", "system", a.nm, "fielded", ne.v.nf or 0, "stub", ne.v.ns or 0, "gone", ne.v.ng or 0, "unknown", a.unk,
-		"missing", ne.v.nmis or 0, "failed", a.fail, "relation", TRF_NeRelName(ne.v.rel), "stub_left", left, "mode", a.mode);
+		"missing", ne.v.nmis or 0, "failed", a.fail, "relation", TRF_NeRelName(ne.v.rel), "mode", a.mode);
 	TRF_NeProbe("activate");
 	ne.a = nil;
 end;
@@ -1501,7 +1497,7 @@ end;
 function TRF_NeActBody(a)
 	local v = %NE.v;
 	if a.mode == 2 then TRF_NeReplace(a); end;
-	v.idx = a.idx; v.nm = a.nm; v.d = a.d; v.slot = a.slot; v.grp = a.grp;
+	v.idx = a.idx; v.nm = a.nm; v.d = a.d; v.slot = a.slot; v.grp = a.grp; v.mir = TRF_NeOpt("nest_mirror");
 	local nv = getn(a.d.f);
 	local nf, ng, nmiss, ns = 0, 0, 0, 0;
 	local bits = {};
@@ -1648,11 +1644,12 @@ end;
 
 -- 1 s step, jump, load --------------------------------------------------------------------------
 
--- Every 1 s (traffic.script): the relation mirror (nest_mirror 1): a change of the vanilla group's relation to the
--- player is copied to the nest group, one way; nothing while __disableAction is set.
+-- Every 1 s (traffic.script): the relation mirror (cfg nest_mirror 1, read once at activation and load, v.mir): a
+-- change of the vanilla group's relation to the player is copied to the nest group, one way; nothing while
+-- __disableAction is set.
 function TRF_Nest_Step()
 	local v = %NE.v;
-	if type(v.d) ~= "table" or v.del == 1 or __disableAction == TRUE or TRF_NeOpt("nest_mirror") ~= 1 then return; end;
+	if type(v.d) ~= "table" or v.del == 1 or __disableAction == TRUE or v.mir ~= 1 then return; end;
 	call(TRF_NeStepBody, {v}, "x", TRF_NeErr);
 end;
 
@@ -1706,7 +1703,7 @@ function TRF_NeLoadBody()
 	local d = TRF_NeData(nm);
 	if not d then TRF.nv = nil; return; end;
 	local slot = TRF_NeRegion(cur);
-	v.idx = cur; v.nm = nm; v.d = d; v.slot = slot;
+	v.idx = cur; v.nm = nm; v.d = d; v.slot = slot; v.mir = TRF_NeOpt("nest_mirror");
 	local n = 0;
 	local bits = {};
 	for i = 1, min(strlen(nv.b), getn(d.f)) do
@@ -1890,7 +1887,10 @@ function TRF_Nest_Dump()
 	if type(TRF.nv) == "table" then vs = tostring(TRF.nv.i)..":"..tostring(TRF.nv.b); end;
 	local cs = "";
 	if type(TRF.clan) == "table" then
-		for s = 1, 11 do
+		local m = TRF_N("TRF_RgMap");
+		local ns = 11;
+		if type(m) == "table" and type(m.n) == "number" then ns = m.n; end;
+		for s = 1, ns do
 			local c = TRF.clan[s];
 			if type(c) == "table" then
 				if cs ~= "" then cs = cs..","; end;

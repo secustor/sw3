@@ -258,6 +258,19 @@ function T_NE_A()
 	HOST_Check(k == 7 and l == 100 and t == 0, "less than a step: unchanged");
 	k = TRF_NeRefillOf(10, 0, 14, 10, 15, 2);
 	HOST_Check(k == 0, "a cleared nest of 10 refills in 5 steps (10 legs, design 4)");
+	k, l, t = TRF_NeRefillOf(7, 100, 110, 10, 0, 2);
+	HOST_Check(k == 7 and l == 100 and t == 0, "regen pct 0: no step, the stamp stays");
+	-- Ship list of a flight: the pilot list (compacted after a load), the ship_<sign>_<j> globals fill gaps, never a
+	-- ship already listed.
+	local sA, sB = {__obj=1, alive=1}, {__obj=1, alive=1};
+	local pA = {GetShip=function(self) return %sA; end};
+	local fl2 = {GetPilotCount=function(self) return 1; end, GetPilotByNumber=function(self, j) return %pA; end};
+	setglobal("ship_zz_1", sA); setglobal("ship_zz_2", sA); setglobal("ship_zz_3", sB);
+	local sh2 = TRF_NeShips(fl2, "zz");
+	local nsh2 = 0;
+	for j = 1, 6 do if sh2[j] then nsh2 = nsh2 + 1; end; end;
+	HOST_Check(sh2[1] == sA and sh2[3] == sB and nsh2 == 2, "ships: a global naming a listed ship is skipped, another fills its gap ("..nsh2..")");
+	setglobal("ship_zz_1", nil); setglobal("ship_zz_2", nil); setglobal("ship_zz_3", nil);
 	-- Lines.
 	local K = TRF_NeK();
 	local a1 = TRF_NeLineOf({k=3}, 4, 2, nil, nil, K);
@@ -319,7 +332,7 @@ function T_NE_B()
 		and T_BadCallbacks() == "", "triggers: f_died per flight, died and attack per ship, with the gen ("..nsh.." ships)");
 	local al = NE_Line(n0, "module=nest event=activate ");
 	HOST_Check(NE_Kv(al, "fielded") == "10" and NE_Kv(al, "stub") == "0" and NE_Kv(al, "gone") == "0" and NE_Kv(al, "unknown") == "1"
-		and NE_Kv(al, "missing") == "0" and NE_Kv(al, "relation") == "war" and NE_Kv(al, "stub_left") == "0", "activate line "..tostring(al));
+		and NE_Kv(al, "missing") == "0" and NE_Kv(al, "relation") == "war", "activate line "..tostring(al));
 	HOST_Check(TRF.nv and TRF.nv.i == V_Idx("golkonda") and TRF.nv.b == "1111111111" and TRF.nst.n == 10, "TRF.nv bits, counter n");
 	HOST_Check(NE_Rel("TRF_Nest_1", PLAYER_GROUP) == RELATION_WAR and NE_Rel(PLAYER_GROUP, "TRF_Nest_1") == RELATION_WAR, "nest group copies the vanilla relation both ways");
 	HOST_Check(getglobal("TRF_GNest_1") == nil and TRF_NeNE().a == nil, "build global cleared, wrapper disarmed");
@@ -345,7 +358,7 @@ function T_NE_B()
 	n0 = S_Mark();
 	NE_Jump("golkonda");
 	al = NE_Line(n0, "module=nest event=activate ");
-	HOST_Check(NE_Kv(al, "fielded") == "7" and NE_Kv(al, "stub") == "3" and NE_Kv(al, "stub_left") == "0" and h.npf_stub == 3,
+	HOST_Check(NE_Kv(al, "fielded") == "7" and NE_Kv(al, "stub") == "3" and h.npf_stub == 3,
 		"Quiet T1: 7 fielded, 3 stubs took the Patrol line, none left "..tostring(al));
 	HOST_Check(flight_Pirate02 == nil and flight_pir04 == nil and flight_pir05 == nil and TRF.nv.b == "1010011111", "stub globals nil after TRF_OnActivate; bits");
 	HOST_Check(S_Logs(n0, "event=call sign=pir04 result=stub reason=count") == 1, "stub logged with the reason");

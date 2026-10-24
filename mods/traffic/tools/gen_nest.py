@@ -15,7 +15,7 @@ activate.script outside its NewPirateFlight and Patrol lines other than through 
 the system names it: its file name ends in the system name, optionally followed by _<n>). A system whose quests name
 every sign is class V (always vanilla; the runtime excludes it through its deny entry, nest = 0).
 Checks (exit 1, also without --check): a non-pinned sign used in activate.script with a method outside the stub set
-(STUB), a sign named in functions.script, the pinned signs differ from PINS_EXPECT, the class V systems differ from
+(STUB), a group argument that is not a string literal, a sign named in functions.script, the pinned signs differ from PINS_EXPECT, the class V systems differ from
 VANILLA_EXPECT, the system or flight count differs from SYS_EXPECT / FLIGHTS_EXPECT, a group name outside GROUPS.
 --write replaces the block between the BEGIN/END markers of trf_nest.script (CRLF kept); --check exits 1 when it
 differs.
@@ -177,7 +177,11 @@ def collect(game, d):
         if sign is None:
             ambush += 1
             continue
-        g = literal(args[0]) or args[0].strip()
+        g = literal(args[0])
+        if g is None:
+            # The wrapper compares the runtime group argument (a string) with g: a non-literal would always pass.
+            problems.append("%s:%d %s group argument not a literal: %s" % (name, ln, sign, args[0].strip()))
+            g = args[0].strip()
         groups.add(g)
         pos = gen_map.eval_vec(args[2], env) if len(args) > 2 else None
         t, p = (num(args[3]) if len(args) > 3 else None), (num(args[4]) if len(args) > 4 else None)
