@@ -12,7 +12,7 @@
 -- the hooks of features 4, 6, 12 and 14, the chapter-13 alarm line) is not built: the saved fields hull, ships[2..3]
 -- and fw_weights are kept, the hook points say "Step 2 hook".
 -- Hooks: trf_plumb (trade line 60, trade box 300, seed provider 400, 8.5 resolver, ship cap, marker, prize gap),
--- trf_gen (TRF_GnSafeArrive -> TRF_Fr_Arrive), trf_events (TRF_Ev_Kill -> TRF_Fr_Killed), trf_raid (comply ->
+-- trf_gen (TRF_GnSafeArrive -> TRF_Fr_Arrive; a fleeing ship earns nothing), trf_events (TRF_Ev_Kill -> TRF_Fr_Killed), trf_raid (comply ->
 -- TRF_Fr_Robbed, attr + 2 in the lane roll), trf_hail (status line only, no 8.4 offer), trf_supply (no 8.6 demand),
 -- trf_track (never tracked), trf_survive (no pods), trf_ui (the "Wolves Freight" name), traffic.script (enter,
 -- activate, load, jump, 1 s step).
@@ -618,11 +618,12 @@ function TRF_FrShipTick(co, i, s, susp)
 	if susp then
 		if s.st ~= 2 then
 			s.st = 2;
+			-- The ship goes home, unless it is on-screen (its appearance decides where it is; the exit moves it).
 			local hp = TRF_FrStopOf(lp, s.home);
-			if hp then s.p = hp; s.w = 0; end;
+			if hp and not TRF_FrLive(s) then s.p = hp; s.w = 0; end;
 			local kk = 3;
 			if susp == "full" then kk = 4; end;
-			TRF_FrNote(co, kk, s, s.home);
+			TRF_FrNote(co, kk, s, lp.s[s.p]);
 			TRF_FrE("layup", "ship_id", s.id, "tick", s.k, "state", 2, "reason", susp);
 		end;
 		return;
@@ -667,7 +668,7 @@ function TRF_FrShipTick(co, i, s, susp)
 end;
 
 -- Move of a running ship: at a stop the first tick there dwells and credits run (w 0 -> 1), else p + 1 (w 0). A ship
--- that reaches its home stop with dmg >= 2 lies up dmg ticks; at home dmg is repaired.
+-- that reaches its home stop with dmg >= 2 lies up dmg ticks; at home dmg is repaired (TRF_FrAtHome).
 function TRF_FrMove(co, s, lp)
 	if lp.t[s.p] == 1 and s.w ~= 1 then
 		s.w = 1;
@@ -676,14 +677,19 @@ function TRF_FrMove(co, s, lp)
 	end;
 	s.w = 0;
 	s.p = TRF_FrNextOf(s.p, lp.n);
-	if lp.t[s.p] == 1 and lp.s[s.p] == s.home and s.dmg > 0 then
-		if s.dmg >= 2 then
-			s.st = 1; s.till = s.k + s.dmg;
-			TRF_FrE("layup", "ship_id", s.id, "tick", s.k, "state", 1, "till", s.till, "reason", "damage");
-		end;
-		s.dmg = 0;
-	end;
+	TRF_FrAtHome(s, lp);
 	return "move";
+end;
+
+-- Arrival at the home stop (a tick move, or a portal exit in TRF_Fr_Arrive): dmg >= 2 lies up dmg ticks (a longer
+-- lay-up already running is kept); at home dmg is repaired.
+function TRF_FrAtHome(s, lp)
+	if lp.t[s.p] ~= 1 or lp.s[s.p] ~= s.home or s.dmg <= 0 then return; end;
+	if s.dmg >= 2 then
+		s.st = 1; s.till = max(s.till, s.k + s.dmg);
+		TRF_FrE("layup", "ship_id", s.id, "tick", s.k, "state", 1, "till", s.till, "reason", "damage");
+	end;
+	s.dmg = 0;
 end;
 
 -- Stop credit (08 section 5): run x (1 - fw_premium) x the fleet weight to bal (at most pay_cap), run 0.
@@ -810,11 +816,16 @@ function TRF_Fr_DockLine(kind, param)
 	if type(co.log) == "table" then
 		for j = 1, getn(co.log) do
 			local e = co.log[j];
-			if type(e) == "table" and logs < 2 and getn(out) < cap then
-				local t, x = TRF_FrLogText(e);
-				if t then out[getn(out) + 1] = t; logs = logs + 1; end;
-				if x and getn(out) < cap then out[getn(out) + 1] = x; end;
-			elseif type(e) == "table" then
+			-- An entry is consumed only when its line and its clerk line both fit; else it waits for the next visit.
+			local t, x = nil, nil;
+			if type(e) == "table" then t, x = TRF_FrLogText(e); end;
+			local need = 0;
+			if t then need = 1; end;
+			if x then need = need + 1; end;
+			if t and logs < 2 and getn(out) + need <= cap then
+				out[getn(out) + 1] = t; logs = logs + 1;
+				if x then out[getn(out) + 1] = x; end;
+			elseif t then
 				keep[getn(keep) + 1] = e;
 			end;
 		end;
@@ -1135,8 +1146,15 @@ function TRF_FrSpawnBody(ap)
 		local si = TRF_FrPortalTo(cv, lp.s[TRF_FrPrevOf(s.p, lp.n)]);
 		if si and type(c[3]) == "table" and c[3][si] then
 			local po = c[3][si];
-			plan.ent = po; plan.entn = cv.pn[si]; plan.from = cv.pt[si];
-			plan.pos = po:GetEntryPoint(10); plan.dir = po:GetOrientation();
+			local pos = po:GetEntryPoint(10);
+			-- The plan's space test (TRF_GnFree) for this portal too; a crowded entry point keeps the plan's portal.
+			local T = TRF_N("TRF_GnT");
+			if plan.ent == po or type(TRF_GnFree) ~= "function" or type(T) ~= "table" or TRF_GnFree(cv.pn[si], pos, T) then
+				plan.ent = po; plan.entn = cv.pn[si]; plan.from = cv.pt[si];
+				plan.pos = pos; plan.dir = po:GetOrientation();
+			else
+				TRF_FrDE("spawn", "ship_id", s.id, "result", "portal_kept", "reason", "space", "portal", cv.pn[si]);
+			end;
 		end;
 	else
 		local si = TRF_FrPortalTo(cv, lp.s[TRF_FrNextOf(s.p, lp.n)]);
@@ -1154,9 +1172,13 @@ function TRF_FrSpawnBody(ap)
 	ap.st = "live";
 	local lead = TRF_N("TRF_GnLead", tid);
 	local hp0 = rec.hp0;
-	-- Damage band (CHECK E0.20: SetHP right after the spawn).
+	-- Damage band (CHECK E0.20: SetHP right after the spawn), kept above trf_raid's low-HP flee threshold (low_hp x hp0,
+	-- armed by TRF_Spawn): a ship set below it would flee on appearance.
 	if s.dmg > 0 and type(hp0) == "number" and lead then
-		call(function(o, v) o:SetHP(v); end, {lead, floor(hp0 * (1 - 0.25 * s.dmg))}, "x", TRF_FrNoErr);
+		local v = floor(hp0 * (1 - 0.25 * s.dmg));
+		local rk = TRF_N("TRF_Rd_K");
+		if type(rk) == "table" and type(rk.low_hp) == "number" then v = max(v, floor(rk.low_hp * hp0) + 1); end;
+		call(function(o, h) o:SetHP(h); end, {lead, v}, "x", TRF_FrNoErr);
 	end;
 	local rd = nil;
 	if ap.path == "A" then rd = TRF_N("TRF_RaidRoll", tid, "lane"); end;
@@ -1225,7 +1247,8 @@ function TRF_Fr_Arrive(id, how)
 	local lead = TRF_N("TRF_GnLead", id);
 	local d = TRF_FrDist(TRF_N("TRF_PlPos", TRF_N("TRF_Ms")), TRF_N("TRF_PlPos", lead));
 	local safe = 1;
-	local hp = TRF_N("GetCurHP", lead);
+	local hp = nil;
+	if lead then hp = TRF_N("GetCurHP", lead); end;
 	if type(r.hp0) == "number" and r.hp0 > 0 then
 		if type(hp) == "number" and hp < TRF_FrK().hp_safe * r.hp0 then safe = nil; end;
 	end;
@@ -1235,10 +1258,12 @@ function TRF_Fr_Arrive(id, how)
 	if how == "exit" and lp then
 		s.w = 0;
 		s.p = TRF_FrNextOf(s.p, lp.n);
+		TRF_FrAtHome(s, lp);
 	end;
+	-- A fleeing ship (r.fl: low hull or heat) earns no visit credit and no deed, as in traffic's TRF_GnSafeArrive.
 	local esc, cr = 0, 0;
 	if s.ek ~= s.k then
-		if safe then
+		if safe and not r.fl then
 			cr = 1;
 			if how == "dock" and r.path == "A" then cr = 3; end;
 			TRF_N("TRF_ProCredit", cr, "freight");
@@ -1250,7 +1275,7 @@ function TRF_Fr_Arrive(id, how)
 		end;
 		s.ek = s.k;
 	end;
-	if how == "dock" and r.path == "A" then TRF_N("TRF_Stn_Deed", TRF_FrCur(), 1, "freight", nil, 1); end;
+	if how == "dock" and r.path == "A" and not r.fl then TRF_N("TRF_Stn_Deed", TRF_FrCur(), 1, "freight", nil, 1); end;
 	if type(ap) == "table" and ap.tid == id then TRF_FrApEnd(ap, how); end;
 	TRF_FrE("dock", "ship_id", s.id, "trader_id", id, "how", how, "esc", esc, "d", d and floor(d), "ek", s.ek, "cov", s.cov,
 		"credits", cr, "p", s.p);
@@ -1338,7 +1363,9 @@ function TRF_Fr_BeforeJump()
 	local i, s = TRF_FrById(ap.id);
 	local r = TRF_N("TRF_Rec", ap.tid);
 	if s and type(r) == "table" and r.st ~= "gone" then
-		local hp = TRF_N("GetCurHP", TRF_N("TRF_GnLead", ap.tid));
+		local lead = TRF_N("TRF_GnLead", ap.tid);
+		local hp = nil;
+		if lead then hp = TRF_N("GetCurHP", lead); end;
 		s.dmg = max(s.dmg, TRF_FrDmgOf(hp, r.hp0));
 		TRF_FrE("jump", "ship_id", s.id, "trader_id", ap.tid, "hp", hp, "damage", s.dmg);
 	end;
@@ -1405,7 +1432,7 @@ function TRF_FrShipFix(e, ns, legs)
 	if not home or not TRF_FrStopOf(lp, home) then return nil; end;
 	local k = TRF_FrFld(e, "k", 0, 99999999, 0);
 	local s = {id=floor(e.id), nm=TRF_FrFld(e, "nm", 1, K.nm_max, 1), hull=TRF_FrFld(e, "hull", 1, 3, 1), rg=floor(e.rg), home=home,
-		p=TRF_FrFld(e, "p", 1, lp.n, TRF_FrStopOf(lp, home)), w=TRF_FrFld(e, "w", 0, 1, 0), k=k, run=TRF_FrFld(e, "run", 0, TRF_FrPayCap(), 0),
+		p=TRF_FrFld(e, "p", 1, lp.n, TRF_FrStopOf(lp, home)), w=TRF_FrFld(e, "w", 0, 1, 0), k=k, run=TRF_FrCl(TRF_FrFld(e, "run", 0, 99999999, 0), 0, TRF_FrPayCap()),
 		st=TRF_FrFld(e, "st", 0, 2, 0), till=TRF_FrFld(e, "till", 0, k + 50, 0), cov=TRF_FrFld(e, "cov", 0, k + 50, 0),
 		dmg=TRF_FrFld(e, "dmg", 0, 3, 0), rs=TRF_FrFld(e, "rs", 1, 2147483646, TRF_FrSeedOf(floor(e.id), legs)),
 		price=TRF_FrFld(e, "price", 0, 99999999, 0), earned=TRF_FrFld(e, "earned", 0, 99999999, 0), sk=TRF_FrFld(e, "sk", -1, k, -1),
@@ -1426,8 +1453,9 @@ function TRF_Fr_Fix()
 	if type(m) == "table" and type(m.sys) == "table" then ns = getn(m.sys); end;
 	local K = TRF_FrK();
 	local cap = TRF_FrPayCap();
-	local o = {seq=TRF_FrFld(x, "seq", 0, K.id_max, 0), bal=TRF_FrFld(x, "bal", 0, cap, 0), vn=TRF_FrFld(x, "vn", 0, 99999999, 0),
-		pg=TRF_FrFld(x, "pg", -1, 99999999, 0), rt=rs, lk=legs, vch=TRF_FrFld(x, "vch", 0, K.vch_max, 0), owe=TRF_FrFld(x, "owe", 0, cap, 0),
+	-- bal and owe above pay_cap (a lowered tune) are clamped, not reset.
+	local o = {seq=TRF_FrFld(x, "seq", 0, K.id_max, 0), bal=TRF_FrCl(TRF_FrFld(x, "bal", 0, 99999999, 0), 0, cap), vn=TRF_FrFld(x, "vn", 0, 99999999, 0),
+		pg=TRF_FrFld(x, "pg", -1, 99999999, 0), rt=rs, lk=legs, vch=TRF_FrFld(x, "vch", 0, K.vch_max, 0), owe=TRF_FrCl(TRF_FrFld(x, "owe", 0, 99999999, 0), 0, cap),
 		lost=TRF_FrFld(x, "lost", 0, 99, 0), ships={}};
 	if TRF_FrNumOk(x.rt, rs - 100000000, rs) then o.rt = x.rt; end;
 	if TRF_FrNumOk(x.lk, -99999, legs) then o.lk = floor(x.lk); end;
