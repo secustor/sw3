@@ -43,6 +43,8 @@
 # unless PARCELS is set); PCL_PROBE=0|1 (cfg pcl_probe, the E-PCL.1/E-PCL.2 probe lines); written only when set.
 # NESTS=0|1 (cfg nest, dynamic nests, design/nest-spec.md, CHECK E16.1-E16.11); NEST_MODE=1|2 (cfg nest_mode, 2 the
 # delete-and-replace fallback, E16.11); written only when set.
+# MERCS=0|1 (cfg merc, mercenary clans, design/merc-spec.md; default 0 until CHECK E0.13 passes; step 1 runs the clan
+# record at the region tick, no flights); written only when set.
 # NEWS=1: the trf_* records of news/trf_news.xml (tools/gen_news.py) merged into the clone's Data/Game/News.xml
 # (the vanilla file is kept as News.xml.trf-orig), loc/trf_en.loc copied as with LOC=1, and news_mode=2 unless
 # NEWS_MODE is set; unset restores News.xml from News.xml.trf-orig.
@@ -140,6 +142,7 @@ case "${PARCELS:-}" in "") ;; 0|1) opt="$opt, enable_parcels=$PARCELS" ;; *) ech
 case "${PCL_PROBE:-}" in "") ;; 0|1) opt="$opt, pcl_probe=$PCL_PROBE" ;; *) echo "PCL_PROBE must be 0 or 1" >&2; exit 1;; esac
 case "${NESTS:-}" in "") ;; 0|1) opt="$opt, nest=$NESTS" ;; *) echo "NESTS must be 0 or 1" >&2; exit 1;; esac
 case "${NEST_MODE:-}" in "") ;; 1|2) opt="$opt, nest_mode=$NEST_MODE" ;; *) echo "NEST_MODE must be 1 or 2" >&2; exit 1;; esac
+case "${MERCS:-}" in "") ;; 0|1) opt="$opt, merc=$MERCS" ;; *) echo "MERCS must be 0 or 1" >&2; exit 1;; esac
 if [ -n "${PRO_SET:-}" ]; then
     ps=""
     for e in $(printf '%s' "$PRO_SET" | tr ',' ' '); do

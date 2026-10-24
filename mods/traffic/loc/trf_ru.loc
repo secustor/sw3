@@ -1,7 +1,7 @@
 LOCALE_FILE
 FILETYPE STANDART
 
-; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text) the wanted captains keys (#TRF_cap*, trf_captain TRF_Cap_Text), the clan stash keys (#TRF_stash*, trf_stash TRF_Sh_Text), the Wolves Freight keys (#TRF_fw*, trf_freight TRF_Fr_Text), the dynamic nest keys (#TRF_nest*, trf_nest TRF_Nest_Text), the sealed parcel keys (#TRF_pcl*, trf_parcel TRF_Pc_Text) and the demand page keys (#TRF_dmp*, trf_supply TRF_Supply_Text and trf_hail TRF_Hail_Text, with the answers #TRF_dmok and #TRF_dmno), cp1251.
+; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text) the wanted captains keys (#TRF_cap*, trf_captain TRF_Cap_Text), the clan stash keys (#TRF_stash*, trf_stash TRF_Sh_Text), the Wolves Freight keys (#TRF_fw*, trf_freight TRF_Fr_Text), the dynamic nest keys (#TRF_nest*, trf_nest TRF_Nest_Text), the sealed parcel keys (#TRF_pcl*, trf_parcel TRF_Pc_Text), the mercenary clan keys (#TRF_mc*, trf_merc TRF_Mc_Text) and the demand page keys (#TRF_dmp*, trf_supply TRF_Supply_Text and trf_hail TRF_Hail_Text, with the answers #TRF_dmok and #TRF_dmno), cp1251.
 ; Same keys and fixed texts as loc/trf_en.loc (no $n placeholders); used with cfg loc_mode 1 in a Russian install.
 ; Other #TRF_ keys have no RU line yet (design/station-voices-spec.md 13.5).
 
@@ -417,3 +417,15 @@ FILETYPE STANDART
 #TRF_pclthx2 = Ящики Волков накормили станцию.
 #TRF_pclq = Опечатанная посылка
 #TRF_pclqd = Доставьте опечатанные ящики на торговую станцию, отмеченную на карте. Залог хранится у ФТС.
+#TRF_mcname1 = Моргенштерн
+#TRF_mcname2 = Ангелы мести
+#TRF_mcname3 = Огненные секиры
+#TRF_mcname4 = Звездные драгуны
+#TRF_mcname5 = Киммерийцы
+#TRF_mcname6 = Баловни судьбы
+#TRF_mcname7 = Кочевники
+#TRF_mcname8 = Черный легион
+#TRF_mcname9 = Сияющие гарды
+#TRF_mcname10 = Звездная пыль
+#TRF_mcname11 = Всадники апокалипсиса
+#TRF_mcname12 = Золотые грифоны

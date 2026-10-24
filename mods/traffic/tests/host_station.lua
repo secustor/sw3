@@ -1472,6 +1472,7 @@ function T_STN_G()
 	if type(TRF_Fr_Text) == "function" then for kx, v in TRF_Fr_Text() do want[TRF_LocKey(kx)] = 1; end; end;
 	if type(TRF_Nest_Text) == "function" then for kx, v in TRF_Nest_Text() do want[TRF_LocKey(kx)] = 1; end; end;
 	if type(TRF_Pc_Text) == "function" then for kx, v in TRF_Pc_Text() do want[TRF_LocKey(kx)] = 1; end; end;
+	if type(TRF_Mc_Text) == "function" then for kx, v in TRF_Mc_Text() do want[TRF_LocKey(kx)] = 1; end; end;
 	-- Demand page keys (design/demand-page-spec.md 8): the dmp* keys of the supply and hail tables and the answers dmok, dmno.
 	for i, fn in {"TRF_Supply_Text", "TRF_Hail_Text"} do
 		local tf = getglobal(fn);
@@ -1487,7 +1488,7 @@ function T_STN_G()
 	end;
 	for kx, v in want do if not got[kx] then bad = bad.." missing:"..kx; end; end;
 	for kx, v in got do if not want[kx] then bad = bad.." extra:"..kx; end; end;
-	HOST_Check(ru and strsub(ru, 1, 13) == "LOCALE_FILE\r\n" and bad == "" and nl == ncr and not b2, "loc/trf_ru.loc: every station, survivors, ladder, charter, scar, captain, stash, freight, nest, parcel and demand page key, cp1251, CRLF"..bad);
+	HOST_Check(ru and strsub(ru, 1, 13) == "LOCALE_FILE\r\n" and bad == "" and nl == ncr and not b2, "loc/trf_ru.loc: every station, survivors, ladder, charter, scar, captain, stash, freight, nest, parcel, merc and demand page key, cp1251, CRLF"..bad);
 	for id, rr in TRF.live.tr do if type(rr) == "table" and rr.st ~= "gone" then TRF_Remove(id, "test"); end; end;
 end;
 

@@ -115,7 +115,7 @@ function L_BoxOk(a) return nil; end;
 function T_LAD_A()
 	local h = HOST();
 	L_Begin("fort_russ");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=11") >= 1, "trf_ladder loads after trf_survive (extra_count=11 with trf_charter, trf_scar, trf_captain, trf_stash, trf_freight, trf_nest and trf_parcel)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=12") >= 1, "trf_ladder loads after trf_survive (extra_count=12 with trf_charter, trf_scar, trf_captain, trf_stash, trf_freight, trf_nest, trf_parcel and trf_merc)");
 	HOST_Check(S_Logs(0, "module=ladder event=install gibdd_installed=true gibdd_wrapped=true temp_change_wrapped=true") >= 1,
 		"install: _PatrolGIBDD_shtraf wrapped, _temp_change keeps trf_supply's wrapper");
 	local src = function(fn) local i = getinfo(fn, "S"); return tostring(i and i.source); end;

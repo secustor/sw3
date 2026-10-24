@@ -145,9 +145,9 @@ end;
 function T_CAP_A()
 	local h = HOST();
 	CP_Begin("xb13", "9_1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=11") >= 1, "trf_captain loads after trf_scar (extra_count=11 with trf_stash, trf_freight, trf_nest and trf_parcel)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=12") >= 1, "trf_captain loads after trf_scar (extra_count=12 with trf_stash, trf_freight, trf_nest, trf_parcel and trf_merc)");
 	local ml = TRF_ModList();
-	HOST_Check(ml[getn(ml) - 4] == "Cap" and TRF_Opt("cap_enable") == 1 and TRF_Opt("cap_board") == 1 and TRF_Opt("cap_intel") == 1
+	HOST_Check(ml[getn(ml) - 5] == "Cap" and TRF_Opt("cap_enable") == 1 and TRF_Opt("cap_board") == 1 and TRF_Opt("cap_intel") == 1
 		and TRF_Opt("cap_chase") == 1 and TRF_Opt("cap_capture") == 0 and TRF_Opt("cap_force_eject") == 0 and TRF_Opt("cap_vendetta") == 0,
 		"TRF_ModList has Cap; toggles of design 6: board, intel, chase on; capture, force eject, vendetta off");
 	local T = TRF_CapTune();

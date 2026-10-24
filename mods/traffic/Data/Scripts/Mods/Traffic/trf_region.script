@@ -1205,6 +1205,8 @@ function TRF_RegionTick(L)
 	TRF_P("TRF_Cap_RegionTick", L);
 	-- Clan stashes (design/stash-spec.md 5.3): so cleared in Quiet, expiry, at most one new cache.
 	TRF_P("TRF_Sh_RegionTick", L);
+	-- Mercenary clans (design/merc-spec.md 6): presence, fortune, stages, roles and decays after the phase changes.
+	TRF_P("TRF_Mc_RegionTick", L);
 end;
 
 -- Forced Bust (v1 8.3): every slot with ct bit 4 clears it; in Quiet, Boom or Build-up with sc < 75 and a

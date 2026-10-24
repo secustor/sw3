@@ -26,6 +26,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_freight.script` | Wolves Freight step 1 ([design/freight-spec.md](design/freight-spec.md)): one chartered bulk freighter (`Btransport`) bought from the FTU charter box at a trade dock, running the loop of its region (loops from `tools/gen_map.py`) on real-time-gated freight ticks with a seeded robbery and loss roll, paying at any trade dock once per visit, carrier liability and the cover voucher on a loss, on-screen at its stops as a trader with the flag `fw` (escort cover, no traffic pay or help). Loads after `trf_stash`. |
 | `trf_nest.script` | Dynamic nests step 1 ([design/nest-spec.md](design/nest-spec.md)): the scripted pirate flights of 58 systems become the nest of the region's clan. A wrapper of `NewPirateFlight`, armed only while `activate.script` runs, builds each listed flight in group `TRF_Nest_1` at the clan tier's power or answers with a stub; the count follows the region phase and a kill memory that refills per region tick (table from `tools/gen_nest.py`). Off by default (cfg `nest`). Loads after `trf_freight`. |
 | `trf_parcel.script` | Sealed parcels step 1 ([design/parcel-spec.md](design/parcel-spec.md)): the FTU courier desk at trade docks offers sealed crates (`Cargo_crate`, `Cargo_002`) for a trade dock 2-4 jumps away, usually one with a real shortage (relief x1.25), deterministic per station and region-tick window, against a deposit; the job slot, logbook entry `trf_pcl`, nav marker, delivery with pay, help, visit credits and #3 standing, expiry with help -1 and a 6-leg ban, void with a refund, the chapter 4 guard docks and the chapter deny sets from `tools/gen_parcel.py`. Step 2 (contraband, customs, prototypes) not built. Loads after `trf_nest`. |
+| `trf_merc.script` | Mercenary clans, build step 1 ([design/merc-spec.md](design/merc-spec.md)): the record of the twelve dormant clans (`TRF.mc`: standing, condition, fortune, stage, role, the fields of the later steps), updated at every region tick (presence by region demand, income and upkeep, off-screen losses, stages with the two-tick rule and two stage 4 slots, the Black Legion floor, break and re-form, decays); no flights, boxes or lines yet. Off by default (`merc` 0). Loads after `trf_parcel`. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -829,6 +830,38 @@ Sealed parcels (proposal 1 step 1, spec [design/parcel-spec.md](design/parcel-sp
 ### In-game checks (parcels)
 
 Experiments E-PCL.1-E-PCL.6 with the confirming lines in the spec section 10 (`PCL_PROBE=1 LOG=2`): the inventory hand-over and delete loop, sale prices of the crates, the box from the dock OK, the logbook entry and the mission signal, the dock identity at Kadenoa.
+
+## Mercenary clans (`EXP=0 TRAFFIC=1`)
+
+Mercenary clans (specs 12 and 13 merged, spec [design/merc-spec.md](design/merc-spec.md), designs `design/worldbuilding/12-mercenary-packs.md` and `13-rival-packs.md`) is one module, `trf_merc`, loaded after `trf_parcel` (`module=core event=loaded ... extra_count=12`). State: build step 1 (the clan record) and the shared helpers of step 2 implemented and host-tested (`mc-a`..`mc-f`), not run in the game; the hire role and everything on screen come with step 3. Off by default (`merc` 0) until CHECK E0.13 passes.
+
+### What the player sees
+
+Nothing yet. With `merc` 1, from chapter 5 the twelve clans of the vanilla recruit office (Morgenstern, Avenging Angels, Fire Poleaxes, Star Dragoons, Cimmerians, Fortune Favorites, Nomads, Black Legion, Shining Guards, Stardust, Horsemen of the Apocalypse, Golden Griffins) live off screen: at every region tick a clan works its home region or a region within 6 jumps where pirates are active, earns or loses fortune by that region's phase, pays upkeep by its stage (crew, squadron, flagship, mothership), loses ships in Raids, breaks at condition 0 and re-forms later elsewhere. The Black Legion never falls below stage 3 from chapter 5 and reaches stage 4 from chapter 7; at most two clans are at stage 4, one slot is the Legion's. The record and the log lines show this; flights follow in step 3.
+
+### Config keys (mercenary clans)
+
+`config.script` lists the toggles; the tune keys read the module defaults. `install-test.sh` writes `MERCS` (`merc`).
+
+| key | default | meaning |
+|---|---|---|
+| `merc` (env `MERCS`) | 0 | 1 runs the clan record |
+| `merc_board`, `merc_book`, `merc_report`, `merc_marker`, `merc_calls`, `merc_transfer`, `mc_launch` | 1, 0, 0, 0, 0, 0, 0 | later steps, read nowhere yet |
+| `rv_enabled` | 0 | 1 lets the tick choose up to 3 rival clans (no rival behaviour before step 4) |
+| `mc_el_c` | 8 | the elite clan (Black Legion; 0 turns its rules off) |
+| `merc_war`, `merc_hunt`, `merc_hostile`, `merc_legion` | 0 | group war against the player (betrayal fight-back, hunters, rival HOSTILE meetings, the Legion), off until E0.13 |
+| tune `mc_inc`, `mc_up` | {0, 3, 2, 2, -2, 0}, {0, 0.5, 1, 2} | fortune per tick by phase, upkeep by stage |
+| tune `mc_st_up`, `mc_st_dn`, `mc_ms_max`, `mc_bs_j` | {30, 55, 78}, {22, 47, 70}, 2, {20, 40} | stage thresholds, stage 4 slots, big-ship closure in jumps |
+| tune `mc_el_fo`, `mc_el_hp` | {55, 78}, 2 | the Legion's fortune floor (chapter 5, chapter 7) and its off-screen loss floor |
+| tune `merc_reach`, `merc_rel_decay`, `merc_rel_j`, `merc_bk_j`, `merc_owe_j`, `merc_black` | 6, 20, 20, 60, 60, 30 | presence reach in jumps; decays (legs, jumps); debt write-off; blacklist per betrayal |
+
+### Log lines (mercenary clans)
+
+`module=merc event=create`, `event=tick ... fortunes=<12> stages=<12> roles=<12>`, `event=stage`, `event=role ... reason=<off|standing|stage|home>`, `event=break`, `event=reform`, `event=owe ... result=written_off`, `event=fix`, `event=static`, `event=dump`, `event=dump_clan`; level 2 `event=presence`, `event=income`, `event=loss`, `event=recover`, `event=decay`; full list in `design/log-events.md` (merc).
+
+### In-game checks (mercenary clans)
+
+MC.1-MC.4 of the spec section 11 (`MERCS=1 LOG=2`, a chapter 5 or later save): the record is created once and ticks every region tick, it survives a save and a load (the save grows by less than 4 KB), 8x idling clears no jump timer. E0.13 is the release gate.
 
 ## Installing into the game
 

@@ -215,9 +215,9 @@ end;
 function T_SH_A()
 	local h = HOST();
 	SH_Begin("gaoba", "9_1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=11") >= 1, "trf_stash loads after trf_captain (extra_count=11 with trf_freight, trf_nest and trf_parcel)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=12") >= 1, "trf_stash loads after trf_captain (extra_count=12 with trf_freight, trf_nest, trf_parcel and trf_merc)");
 	local ml = TRF_ModList();
-	HOST_Check(ml[getn(ml) - 3] == "Sh" and TRF_Opt("enable_stashes") == 1 and TRF_Opt("enable_stash_retrieval") == 1 and TRF_Opt("enable_stash_decoys") == 0
+	HOST_Check(ml[getn(ml) - 4] == "Sh" and TRF_Opt("enable_stashes") == 1 and TRF_Opt("enable_stash_retrieval") == 1 and TRF_Opt("enable_stash_decoys") == 0
 		and TRF_Opt("stash_ret_war") == 0 and TRF_Opt("stash_at") == "", "TRF_ModList has Sh; toggles: stashes and retrieval on, decoys and ret_war off");
 	SH_Tune("stash_chance", nil);
 	h.cfg.tune = {};

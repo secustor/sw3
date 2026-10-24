@@ -765,6 +765,8 @@ end;
 function AddPlayerCredits(n) HOST_Want(type(n) == "number", "AddPlayerCredits(n)"); HOST().credits = HOST().credits + n; end;
 function GetPlayerCredits() return HOST().credits; end;
 function SubPlayerCredits(n) HOST().credits = HOST().credits - n; end;
+-- Office unit of the player (LN line 206; mercenary clans, TR F.17): HOST().recruit, else "" (no unit).
+function GetRecruitGroupName() return HOST().recruit or ""; end;
 function GetPlayerLevel() return HOST().level; end;
 function AddPlayerExperience(x) HOST().xp = (HOST().xp or 0) + x; end;
 -- News: (mailId) strings; recorded as "+id" / "-id".

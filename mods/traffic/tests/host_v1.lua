@@ -2214,6 +2214,24 @@ function T_V1_N()
 		ll=skl, lit=4, xl={}, cfl={skl, skl, skl, skl, skl}};
 	for k = 1, 11 do TRF.pcl.xl[k] = skl; end;
 	for k = 1, getn(TRF.short) do TRF.short[k].job = 1; end;
+	-- Mercenary clans worst case (design/merc-spec.md 3.3): every clan with every packed field at its widest bound, a hire
+	-- record with 8 band digits, the call, the blacklist, the note, the elite record, the Wolves ratings and their stamp.
+	TRF.mc = {s=TRF_McDefS(), t={}};
+	local mtb = TRF_McTB();
+	for c = 1, 12 do
+		local r = {};
+		for k, b in mtb do if b[1] < 0 then r[k] = b[1]; else r[k] = b[2]; end; end;
+		TRF_McPutT(c, r);
+	end;
+	TRF.mc.h = TRF_TpPackK({c=12, sys=113, ty=2, pw=20, n=7, tr=660, fee=30000, sh=999999, bm=999999, k=99, lo=7, g=99999}, TRF_McHKeys());
+	TRF.mc.hb = "99999991";
+	TRF.mc.r = TRF_TpPackK({c=12, ej=-9999999, lj=-9999999}, TRF_McRKeys());
+	TRF.mc.n = TRF_TpPackK({c=12, a=9999999}, TRF_McNKeys());
+	TRF.mc.e = TRF_TpPackK({el=8, dj1=9999999, dc1=20, djl=9999999, dn=1}, TRF_McEKeys());
+	TRF.mc.x = 9999999; TRF.mc.w = strrep("9", 11); TRF.mc.wt = -9999999;
+	local mcz = HOST_SaveSize(TRF.mc);
+	TRF_Mc_Fix();
+	HOST_Check(HOST_SaveSize(TRF.mc) == mcz and mcz <= 6000, "merc worst case kept by the repair: "..mcz.." bytes <= 6000");
 	-- Raids, due and stat at their bounds.
 	for k = 1, 10 do
 		local id = ids[1 + mod(k, getn(ids))];
@@ -2237,7 +2255,7 @@ function T_V1_N()
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");
 	local size = 8 + 3 + HOST_SaveSize(TRF);
 	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "ch", "scar",
-		"cap", "claim", "capch", "capg", "stash", "stx", "co", "nest", "nv", "nst", "pcl", "live"};
+		"cap", "claim", "capch", "capg", "stash", "stx", "co", "nest", "nv", "nst", "pcl", "mc", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	local lp, ll = "", {"tr", "stat", "rd", "cvs", "tq", "sw", "fq", "cr", "dc", "bs", "pg"};
 	for i = 1, getn(ll) do lp = lp.." "..ll[i].."="..HOST_SaveSize(L[ll[i]]); end;
@@ -2259,7 +2277,7 @@ function T_V1_N()
 	HOST_Check(tg == "", "no TRF_G* or flight_trf_* globals"..tg);
 	TRF_DumpState("test");
 	local dl = {"module=state event=dump_v4 ", "module=track event=dump", "module=faction event=dump", "module=clan event=dump", "module=convoy event=dump", "module=danger event=dump", "module=supply event=dump", "module=base event=dump", "module=loc event=dump", "module=scar event=dump ",
-		"module=captain event=dump ", "module=stash event=dump ", "module=freight event=dump ", "module=nest event=dump ", "module=parcel event=dump "};
+		"module=captain event=dump ", "module=stash event=dump ", "module=freight event=dump ", "module=nest event=dump ", "module=parcel event=dump ", "module=merc event=dump "};
 	local md = "";
 	for i = 1, getn(dl) do if V_Logs(dl[i]) == 0 then md = md.." "..dl[i]; end; end;
 	HOST_Check(md == "", "TRF_DumpState calls every v1 dump"..md);

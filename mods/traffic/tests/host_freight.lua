@@ -190,9 +190,9 @@ end;
 function T_FR_A()
 	local h = HOST();
 	FR_Begin("debris6", "9_1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=11") >= 1, "trf_freight loads after trf_stash (extra_count=11 with trf_nest and trf_parcel)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=12") >= 1, "trf_freight loads after trf_stash (extra_count=12 with trf_nest, trf_parcel and trf_merc)");
 	local ml = TRF_ModList();
-	HOST_Check(ml[getn(ml) - 2] == "Fr" and TRF_Opt("enable_freight") == 1 and TRF_Opt("fw_onscreen") == 1 and TRF_Opt("fw_losses") == 1
+	HOST_Check(ml[getn(ml) - 3] == "Fr" and TRF_Opt("enable_freight") == 1 and TRF_Opt("fw_onscreen") == 1 and TRF_Opt("fw_losses") == 1
 		and TRF_Opt("fw_max_ships") == 1 and TRF_Fr_OptDef().fw_prize_gap == 1 and TRF_Fr_OptDef().fw_marker == 1,
 		"TRF_ModList has Fr; toggles: freight, on-screen, losses on, one ship, prize gap and marker on by default");
 	h.cfg.fw_max_ships = 3;

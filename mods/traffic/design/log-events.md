@@ -681,6 +681,34 @@ the lowercase system names, `item` the item index (1 `Cargo_crate`, 2 `Cargo_002
 | `repair` | `module=parcel event=repair job_kind=2 result=dropped reason=<kind, field, system, range, class>` | 1 |
 | `dump` | `module=parcel event=dump kind=2 item=1 units=3 source=altair destination=taira dock=taira jumps=3 accept_leg=412 deadline=11 mission_legs=0 left=7 pay=14400 deposit=4320 class=1 customs_system=0 customs_met=0 hot=0 jumps_since=nil ban=nil ok_count=14 fail_count=2 owed=nil customs_flags=0,0,0,0,0` / `module=parcel event=dump result=none jumps_since=3 ban=nil ok_count=14 fail_count=2 owed=nil pending=nil customs_flags=0,0,0,0,0` | 1 |
 
+## merc (`trf_merc.script`; `TRF_McE`, `TRF_McDE`)
+
+Mercenary clans, build step 1 (`design/merc-spec.md` 8). `clan` is the clan index 1..12 (`_Fmerc_names` order), `region` a region slot, `fortunes`, `stages`, `roles` the 12 values in clan order.
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=merc event=error message=<m>` | 1 |
+| `create` | `module=merc event=create legs=41 jumps=12 chapter=5 elite=8` (the record, at the first region tick in chapter >= 5) | 1 |
+| `tick` | `module=merc event=tick legs=43 tick=21 jumps=12 fortunes=26,44,31,49,35,25,40,55,41,31,20,39 stages=1,2,1,2,2,1,2,3,2,2,1,2 roles=0,0,0,0,0,0,0,0,0,0,0,0` | 1 |
+| `stage` | `module=merc event=stage clan=7 stage_before=1 stage=2 fortune=30` | 1 |
+| `role` | `module=merc event=role clan=3 role=1 role_before=0 standing=-1 fortune=52 office_bloc=nil` / `role=0 role_before=1 reason=<off, standing, stage, home>` | 1 |
+| `break` | `module=merc event=break clan=4 region=5 fortune=19 reform_leg=67 reform_jump=20 reason=<raids, lost, big_ship>` | 1 |
+| `reform` | `module=merc event=reform clan=4 region=1 region_before=5 fortune=19 stage=1` | 1 |
+| `owe` | `module=merc event=owe clan=5 amount=5000 jumps=60 result=written_off` | 1 |
+| `fortune` | `module=merc event=fortune clan=7 change=3 applied=3 fortune=43 reason=hire` (`TRF_Mc_Fortune`, later steps) | 1 |
+| `lost` | `module=merc event=lost clan=7 ships=1 condition=1 fortune=17 role=0 reason=<why>` (`TRF_Mc_Lost`, later steps) | 1 |
+| `big_loss` | `module=merc event=big_loss clan=8 stage_lost=4 fortune=62 stage=3 condition=3 closed_until=52` (`TRF_Mc_BigLoss`, steps 6-7) | 1 |
+| `black` | `module=merc event=black clan=6 betrayals=2 until_jump=72` (`TRF_Mc_Black`, step 3) | 1 |
+| `presence` | `module=merc event=presence clan=2 region=5 region_before=1 demand=5` | 2 |
+| `income` | `module=merc event=income clan=2 fortune_before=43 fortune=44 phase=3 stage=2` | 2 |
+| `loss` | `module=merc event=loss clan=4 region=5 condition=3 tier=4` (off-screen, Raids) | 2 |
+| `recover` | `module=merc event=recover clan=9 condition=3` | 2 |
+| `decay` | `module=merc event=decay clan=3 field=<rel, g, bk> value=-1` | 2 |
+| `fix` | `module=merc event=fix field=<mc, s, t, h, r, n, e> clan=<c> result=<reset, dropped>` | 1 |
+| `static` | `module=merc event=static vanilla=differs result=own_table` (`_Fmerc_names`/`_Fmerc_groups` differ from the module's table) | 1 |
+| `dump` | `module=merc event=dump on=true clan_count=12 packed_count=5 elite=8 deed_jump=0 deed_chapter=0 deed_last=0 blacklist_until=nil wolves_rating=nil hire=nil bands=nil call=nil note=nil static=match` / `module=merc event=dump on=false result=none` | 1 |
+| `dump_clan` | `module=merc event=dump_clan clan=4 key=stardragoon name="Star Dragoons" bloc=2 home=5 rel=1 at=5 jobs=3 condition=4 fortune=41 stage=2 fielded=2 role=0 met=812 betrayals=0 grudge=0 owe=0 streak=0 closed=0` | 1 |
+
 ## supply (`trf_supply.script`; `TRF_SpE`)
 
 | Event | Example line | Level |

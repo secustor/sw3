@@ -127,7 +127,7 @@ function T_SV_A()
 	SV_Begin("gaoba", "9_1");
 	local idx = TRF_CurIdx();
 	local slot = TRF_RgOf(idx);
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=11") >= 1, "trf_survive loads after trf_station (extra_count=11 with trf_ladder, trf_charter, trf_scar, trf_captain, trf_stash, trf_freight, trf_nest and trf_parcel)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=12") >= 1, "trf_survive loads after trf_station (extra_count=12 with trf_ladder, trf_charter, trf_scar, trf_captain, trf_stash, trf_freight, trf_nest, trf_parcel and trf_merc)");
 	local P = TRF_PlReg();
 	local ord = "";
 	for i = 1, getn(P.dock.trade.line) do ord = ord..P.dock.trade.line[i].o..","; end;

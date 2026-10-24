@@ -44,6 +44,8 @@
 -- the activate hook (right after trf_safety's) disarms it, clears the stubs and arms the triggers, its arrival line
 -- follows trf_freight's activate hook (the last mod line), the load hook adopts the saved flights, the jump hook deletes
 -- them, the 1 s step mirrors the vanilla group's relation.
+-- Mercenary clans (design/merc-spec.md): trf_merc loads after trf_parcel (extra=); step 1 is the pure clan record: the
+-- region tick (trf_region TRF_RegionTick -> TRF_Mc_RegionTick), the repair (TRF_Repair) and the dump; no other hook.
 
 function TRF_Path(name)
 	return "DATA/Scripts/Mods/Traffic/"..name;
@@ -496,7 +498,7 @@ function TRF_Main()
 			for i = 1, getn(v2) do if TRF_LoadFile(v2[i]) then nm = nm + 1; end; end;
 			local v1 = {"loc", "track", "faction", "clan", "convoy", "danger", "supply", "base"};
 			for i = 1, getn(v1) do if TRF_LoadFile("trf_"..v1[i]..".script") then nm = nm + 1; end; end;
-			local ex = {"plumb", "station", "survive", "ladder", "charter", "scar", "captain", "stash", "freight", "nest", "parcel"};
+			local ex = {"plumb", "station", "survive", "ladder", "charter", "scar", "captain", "stash", "freight", "nest", "parcel", "merc"};
 			for i = 1, getn(ex) do if TRF_LoadFile("trf_"..ex[i]..".script") then ne = ne + 1; end; end;
 			TRF_P("TRF_InstallPlumb");
 			TRF_P("TRF_InstallNest");
