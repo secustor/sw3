@@ -71,7 +71,7 @@ Labels: cache `TRF_STASH_<i>`, markers `TRF_STASH_AR_<i>` (area) and `TRF_STASH_
 
 ### 3.3 Size
 
-Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case measured in `sh-h`: `TRF.stash` with 4 records at their widest (with `pl`) plus `TRF.stx` with every field 1,566 bytes (checked <= 1,600); with `so` and `sk` in 11 clan records 2,050 (checked <= 2,200). Full-state `v1-n` with everything on: 80,261 bytes (budget 100,000): `stash` 1,200, `stx` 254, plus the clan fields. Typical: 1-2 records, about 300-700 bytes.
+Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case measured in `sh-h`: `TRF.stash` with 4 records at their widest (with `pl`) plus `TRF.stx` with every field 1,566 bytes (checked <= 1,600); with `so` and `sk` in 11 clan records 2,050 (checked <= 2,200). Full-state `v1-n` with everything on: 80,349 bytes (budget 100,000): `stash` 1,288, `stx` 254, plus the clan fields. Typical: 1-2 records, about 300-700 bytes.
 
 ## 4. Hooks and registration
 
@@ -140,7 +140,7 @@ Debug cfg `stash_at`: at the entry of that system, a known record (`st 1`) is cr
 
 ### 5.6 Opening (`TRF_ShOpen`, from `died`, the 1 s poll or the jump poll)
 
-`st` 2, `leg` now, clan score -2 x cls through trf_clan's `TRF_Cl_Score` (outside the per-visit cap, 07 4), `so` 1, `stx.lo`/`jo`, `stx.op` + 1, markers cleared. With `hit[i]`: `stx.opp` + 1; src 1: the seller clan +2 (`TRF_Cl_Score`); src 2: `stx.pt` = the faction, `stx.ps` = the system; the line `stashopen`; `TRF_PrizeMark("stash")`; `rf` 1 and the treasurer timer, or `rf` 2 during a mission or with `enable_stash_retrieval` 0. A second `died` does nothing; a `died` of an older generation logs `event=stale`.
+`st` 2, `leg` now, clan score -2 x cls through trf_clan's `TRF_Cl_Score` (outside the per-visit cap, 07 4), `so` 1, `stx.lo`/`jo`, `stx.op` + 1, markers cleared. With `hit[i]`: `stx.opp` + 1; src 1: the seller clan +2 (`TRF_Cl_Score`); src 2: `stx.pt` = the faction, `stx.ps` = the system; the line `stashopen`; `TRF_PrizeMark("stash")`; `rf` 1 and the treasurer timer, or `rf` 2 at once during a mission, at the jump poll (the jump would void the timer, 5.9) or with `enable_stash_retrieval` 0. A second `died` does nothing; a `died` of an older generation logs `event=stale`.
 
 ### 5.7 Treasurer
 

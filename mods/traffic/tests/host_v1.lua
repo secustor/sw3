@@ -2145,7 +2145,7 @@ function T_V1_N()
 	-- Clan stashes worst case (design/stash-spec.md 3.3): 4 records with every field at its widest, stx with every
 	-- field, so and sk in every clan record.
 	TRF.stash = {};
-	for k = 1, 4 do TRF.stash[k] = {sys=113, slot=4, clan=11, cls=3, v=450, seed=9999, leg=-99999, st=2, src=4, sf=11, sv=5, rf=2}; end;
+	for k = 1, 4 do TRF.stash[k] = {sys=113, slot=4, clan=11, cls=3, v=450, seed=9999, leg=-99999, st=2, src=4, sf=11, sv=5, rf=2, pl=1}; end;
 	TRF.stx = {n=9999, op=9999, opp=9999, lc=-99999, jc=99999, lo=-99999, jo=99999, pt=5, ps=113, ms=113, mc=11};
 	for k, cc in TRF.clan do if type(cc) == "table" then cc.so = 1; cc.sk = -99999; end; end;
 	-- Raids, due and stat at their bounds.

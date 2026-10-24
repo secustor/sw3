@@ -16,7 +16,7 @@
 -- arrival line, prize gap), trf_gen (TRF_WindDown), trf_raid (TRF_Rd_ClanAlive counts the treasurer), trf_scar
 -- (object helpers, the site rule keeps 150 from a cache), trf_clan (score outside the visit cap, salvage), trf_faction
 -- (fst), traffic.script (activate, load, jump, 1 s step).
--- Saved fields: TRF.stash[i] = {sys, slot, clan, cls, v, seed, leg, st, src, sf, sv, rf}; TRF.stx = {n, op, opp, lc, jc,
+-- Saved fields: TRF.stash[i] = {sys, slot, clan, cls, v, seed, leg, st, src, sf, sv, rf, pl}; TRF.stx = {n, op, opp, lc, jc,
 -- lo, jo, pt, ps, ms, mc}; TRF.clan[slot].so and .sk. Visit state lives in the chunk local SH (never saved; rebuilt by
 -- every MapInitialization), handles in SH.o and SH.r.
 -- Layout as trf_scar: helpers, accessors, static tables, pure functions (*Of), state, gates, region tick, objects,
@@ -755,14 +755,16 @@ function TRF_ShCreate(L)
 	local rm = TRF_N("TRF_RgMap");
 	if type(rm) ~= "table" or type(rm.n) ~= "number" then return nil; end;
 	local cur = TRF_ShCur();
-	local best, bk = nil, nil;
+	local best, bk, bc = nil, nil, nil;
 	for slot = 1, rm.n do
 		local ph = TRF_N("TRF_Phase", slot);
 		local c = TRF_ShClan(slot);
-		if c and (ph == 2 or ph == 3) and c.so ~= 1 and not TRF_ShOfClan(slot) and not TRF_N("TRF_SweepOpen", slot)
-			and getn(TRF_ShCands(slot, cur)) > 0 then
-			local k = c.sk or -99999;
-			if not bk or k < bk then best = slot; bk = k; end;
+		if c and (ph == 2 or ph == 3) and c.so ~= 1 and not TRF_ShOfClan(slot) and not TRF_N("TRF_SweepOpen", slot) then
+			local cs = TRF_ShCands(slot, cur);
+			if getn(cs) > 0 then
+				local k = c.sk or -99999;
+				if not bk or k < bk then best = slot; bk = k; bc = cs; end;
+			end;
 		end;
 	end;
 	if not best then TRF_ShDE("create", "leg", L, "result", "none", "reason", "no_region"); return nil; end;
@@ -775,8 +777,7 @@ function TRF_ShCreate(L)
 		TRF_ShDE("create", "leg", L, "region", best, "chance", ch, "roll", roll, "result", "none", "reason", "roll");
 		return nil;
 	end;
-	local cs = TRF_ShCands(best, cur);
-	local s = cs[1 + TRF_ShM(TRF_ShHash(x.n or 0, L, best), getn(cs))];
+	local s = bc[1 + TRF_ShM(TRF_ShHash(x.n or 0, L, best), getn(bc))];
 	local i = TRF_ShFree();
 	local r = TRF_ShNew(i, best, s, L);
 	return i, r;
@@ -928,13 +929,18 @@ end;
 
 -- Loader callbacks -------------------------------------------------------------------
 
+-- Visit state reset (entry, load, jump): handles, the treasurer and the wind-down flag; v = 1 also the visit flags.
+function TRF_ShReset(v)
+	local sh = %SH;
+	sh.o = {}; sh.r = nil; sh.wd = nil;
+	if v == 1 then sh.v = {hit={}, fnd={}, roll={}, dec={}}; end;
+end;
+
 -- Activation (entry only, after trf_captain): visit reset; module off: every TRF_STASH_<i> object deleted (TDR 10.4);
 -- else the debug record, the reconcile of every index (orphans, create, reuse, lost, delete), the arrival line of a
 -- known cache.
 function TRF_Sh_OnActivate()
-	local sh = %SH;
-	sh.o = {}; sh.r = nil; sh.wd = nil;
-	sh.v = {hit={}, fnd={}, roll={}, dec={}};
+	TRF_ShReset(1);
 	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return; end;
 	local cur = TRF_ShCur();
 	if type(cur) ~= "number" then return; end;
@@ -967,9 +973,7 @@ end;
 -- Load inside a system (design 6 save/load): visit reset, the reconcile without creation, triggers and nav points again
 -- (trf_plumb deleted the saved visit's markers), a due treasurer (rf 1) re-armed with a fresh delay (exploit 4).
 function TRF_Sh_OnLoad()
-	local sh = %SH;
-	sh.o = {}; sh.r = nil; sh.wd = nil;
-	sh.v = {hit={}, fnd={}, roll={}, dec={}};
+	TRF_ShReset(1);
 	for i = 1, TRF_ShK().rec_max do setglobal("TRF_GSh_"..i, nil); end;
 	if not TRF_ShOn() then return; end;
 	local cur = TRF_ShCur();
@@ -986,10 +990,9 @@ end;
 -- Before every jump: a cache seen dead now is opened (the poll), a treasurer not yet spawned is void (rf 2), a live one
 -- is deleted (M3); handles and group globals go. trf_plumb deletes the markers.
 function TRF_Sh_BeforeJump()
-	local sh = %SH;
 	if TRF_ShOn() then call(TRF_ShJumpBody, {}, "x", TRF_ShErr); end;
 	for i = 1, TRF_ShK().rec_max do setglobal("TRF_GSh_"..i, nil); end;
-	sh.o = {}; sh.r = nil; sh.wd = nil;
+	TRF_ShReset();
 end;
 
 function TRF_ShJumpBody()
@@ -1028,7 +1031,8 @@ end;
 
 -- Opening (design 6 TRF_StashDied): st 2 at once, leg, clan score -2 x cls outside the visit cap, so, the open gap
 -- stamps and stx.op; with a player hit this visit: stx.opp, the source reward (seller clan +2, or the patrol faction
--- owed fst +1), the open line, the prize stamp, and the treasurer due (rf 1) unless a mission runs (rf 2).
+-- owed fst +1), the open line, the prize stamp, and the treasurer due (rf 1); rf 2 at once while a mission runs or at
+-- the jump poll (the jump would void the timer, 5.9).
 function TRF_ShOpen(i, why)
 	local r = TRF_ShRec(i);
 	if not r or r.st == 2 or r.sys ~= TRF_ShCur() then return; end;
@@ -1052,7 +1056,7 @@ function TRF_ShOpen(i, why)
 		if r.src == 2 and r.sf >= 1 then x.pt = r.sf; x.ps = r.sys; end;
 		TRF_ShSay(TRF_ShTxt("stashopen"));
 		TRF_N("TRF_PrizeMark", "stash");
-		if q or TRF_ShOpt("enable_stash_retrieval") ~= 1 then r.rf = 2; else r.rf = 1; TRF_ShRetArm(i, r, "open"); end;
+		if q or why == "jump" or TRF_ShOpt("enable_stash_retrieval") ~= 1 then r.rf = 2; else r.rf = 1; TRF_ShRetArm(i, r, "open"); end;
 		-- Step 2 hook: the clan's captain grudge +1 (04) and the Hunting-channel news post run here.
 	end;
 	TRF_ShStat("stash_open");
@@ -1224,16 +1228,17 @@ end;
 
 -- Builds the treasurer of record i (design 6): group TRF_Sh_<i> of team Pirates, nf flights of the tier at raid power
 -- (TRF_PirFlight, labels trf_sh_<i>_<j>) at the portal's entry point, group-level war with PLAYER_GROUP both ways, the
--- leader's radio line, Move to the slot, a died trigger per ship. Returns 1 or nil.
+-- leader's radio line, Move to the slot, a died trigger per ship. Returns 1, or nil (a build without a ship is
+-- deleted again).
 function TRF_ShRetSpawn(i, r, cur, T, nf, ns, prt, pn)
+	local e = call(TRF_ShEntryRaw, {prt, 10}, "x", TRF_ShNoErr);
+	if type(e) ~= "table" then return nil; end;
 	local tm = TRF_N("CreateTeam", "Pirates");
 	if not TRF_ShObj(tm) then return nil; end;
 	local gn = "TRF_Sh_"..i;
 	local grp = call(function(t, n) return t:CreateGroup(n); end, {tm, gn}, "x", TRF_ShErr);
 	if not TRF_ShObj(grp) then return nil; end;
 	TRF_ShOrder(prt, "start");
-	local e = call(TRF_ShEntryRaw, {prt, 10}, "x", TRF_ShNoErr);
-	if type(e) ~= "table" then return nil; end;
 	local sp = TRF_ShSlotPos(r) or e;
 	local pw = TRF_N("TRF_Rd_Power", T, cur, nil) or 5;
 	local R = {i=i, st="come", fls={}, sh={}, dead={}, prt=prt, pn=pn, t0=TRF_ShGt(), T=T, kills=0};
@@ -1262,7 +1267,10 @@ function TRF_ShRetSpawn(i, r, cur, T, nf, ns, prt, pn)
 		end;
 	end;
 	setglobal(gg, nil);
-	if getn(R.sh) == 0 then return nil; end;
+	if getn(R.sh) == 0 then
+		for f = 1, getn(R.fls) do TRF_ShDel(R.fls[f].fl); end;
+		return nil;
+	end;
 	%SH.r = R;
 	if RELATION_WAR ~= nil then
 		TRF_ShRel(gn, PLAYER_GROUP, RELATION_WAR);
