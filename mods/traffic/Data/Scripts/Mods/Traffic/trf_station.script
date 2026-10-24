@@ -1276,6 +1276,8 @@ function TRF_StnEvPlan(idx, nm)
 	local ch = TRF_N("TRF_Chapter");
 	if type(ch) ~= "number" or ch < T.ev_ch then return TRF_StnEvSkip("chapter", nm); end;
 	local kinds = TRF_StnEvKindsOf(__system_Dock_array);
+	-- The barge pays through the 8.5 raid-help resolver (TRF_Stn_EvHelp), registered with trf_plumb only.
+	if type(TRF_RaidHelpReg) ~= "function" and kinds[1] == "barge" then tremove(kinds, 1); end;
 	if getn(kinds) == 0 then return TRF_StnEvSkip("class", nm); end;
 	local st = TRF_N("TRF_GnStation");
 	local cis = TRF_N("TRF_GnSeedContacts");
@@ -1341,6 +1343,7 @@ function TRF_StnEvSpawnBody(ev)
 		-- Held like a forming convoy member (no watchdog re-route) until the mothership comes within ev_meet.
 		r.st = "form";
 		ev.st = "wait";
+		ev.meet = T.ev_meet;
 	else
 		ev.st = "run";
 	end;
@@ -1372,10 +1375,9 @@ function TRF_StnEvDist(id)
 end;
 
 -- Resolver (17.5): results defended and delivered pay k x N and give the deed (ceiling 4); the others pay
--- nothing. A void event before its spawn frees the scripted-event slot.
+-- nothing. A void event frees the scripted-event slot (no event took place; a ship it spawned is ordinary traffic).
 function TRF_StnEvEnd(ev, res, why, d)
 	if type(ev) ~= "table" or ev.st == "end" then return; end;
-	local was = ev.st;
 	ev.st = "end";
 	ev.res = res;
 	local pay, line = 0, nil;
@@ -1391,7 +1393,7 @@ function TRF_StnEvEnd(ev, res, why, d)
 		line = TRF_StnTxt("stnevfar");
 	end;
 	if line then TRF_Stn_Say(line, 8); end;
-	if was == "plan" then TRF_N("TRF_EventSlotFree", "station"); end;
+	if res == "void" then TRF_N("TRF_EventSlotFree", "station"); end;
 	TRF_StnE("ev_end", "kind", ev.kind, "station_key", ev.k, "trader_id", ev.id, "raid_id", ev.rn, "result", res,
 		"reason", tostring(why), "pay", pay, "distance", TRF_StnF(d));
 end;
@@ -1414,13 +1416,13 @@ end;
 
 -- The barge docked or escaped to its refuge (17.5): while its raid is open the raid's end decides (TRF_Stn_EvHelp
 -- defended, else the step ends it no_help), state "raid"; with the raid ended the help was not counted: no_help.
-function TRF_StnEvBargeOut(ev, why, d)
+function TRF_StnEvBargeOut(ev, why)
 	if TRF_StnEvRaidOpen(ev) then
 		ev.st = "raid";
 		ev.gw = why;
 		return;
 	end;
-	TRF_StnEvEnd(ev, "no_help", why, d);
+	TRF_StnEvEnd(ev, "no_help", why);
 end;
 
 function TRF_StnEvStep(ev)
@@ -1443,9 +1445,10 @@ function TRF_StnEvStep(ev)
 		TRF_StnEvEnd(ev, res, why);
 		return;
 	end;
-	if ev.st == "wait" then
+	-- Pickup only while the launch is still held: one that fled (trf_raid's heat reaction, 8.1) is ordinary traffic.
+	if ev.st == "wait" and r.st == "form" then
 		local d = TRF_StnEvDist(ev.id);
-		if d and d <= TRF_StnT("ev_meet") then
+		if d and d <= (ev.meet or TRF_StnT("ev_meet")) then
 			r.st = "in";
 			TRF_N("TRF_Orders", ev.id);
 			ev.st = "run";

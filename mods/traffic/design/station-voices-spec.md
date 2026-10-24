@@ -417,7 +417,7 @@ Ambient (decision 5; `stnamb*`): ch 0-5 `stnamb1`; ch 6 none; ch 7-9 `stnamb2`; 
 | `heat_c2` | 7 | 0..10 | rung cap to -2 |
 | `stn_radio` | 8 | 1..30 | radio line seconds |
 | `stn_gap` | 6 | 0..30 | radio spacing |
-| `ev_cd`, `ev_p`, `ev_k`, `ev_ch`, `ev_r`, `ev_meet`, `ev_tier`, `ev_dt` | 24, 25, 40, 5, 800, 300, 1, 20 | 17.8 | station events |
+| `ev_cd`, `ev_p`, `ev_k`, `ev_ch`, `ev_r`, `ev_meet`, `ev_tier`, `ev_dt` | 24, 25, 40, 5, 400, 300, 1, 20 | 17.8 | station events |
 
 `config.script` is not changed: a missing key reads the module default (as v0.2/v1 keys).
 
@@ -634,7 +634,7 @@ The class is read from `__system_Dock_array` at `TRF_Stn_OnActivate` (the rows a
 2. E2 the dock gate G1-G9 (`TRF_StnGate("dock")`: deny lists, flags, quiet, trade war, the strict gate `TRF_StrictOk(idx, "voice")`, mode with the start-system guard), else its reason (`deny`, `gate:quest`, `mode:guard`, ...).
 3. E3 free roam: no visit latch and no story mission (`TRF_Safe_QState()` nil), else `latch`.
 4. E4 `TRF_Chapter() >= ev_ch` (5), else `chapter`.
-5. E5 a kind of 17.1, else `class`.
+5. E5 a kind of 17.1 (the barge only with trf_plumb's `TRF_RaidHelpReg`, since it pays through the 8.5 resolver), else `class`.
 6. E6 trf_gen's usable trade station (`TRF_GnStation`) and a trader contact with an approach point (`TRF_GnSeedContacts`), else `station`. Station key `k` of the trade station nearest the station object (the deed rule of 3.3).
 7. E7 per-station cooldown: `TRF.stn[k].ec` set and `legs - ec < ev_cd` (24), else `cooldown`.
 8. E8 chance `RAND(100) < ev_p` (25), else `chance`.
@@ -642,7 +642,7 @@ The class is read from `__system_Dock_array` at `TRF_Stn_OnActivate` (the rows a
 10. E10 scripted-event slot `TRF_EventSlotTake("station")` (an own kind, so no other optional event shares or frees it; ranks as `optional` 8, last; traffic's claimants sweep, feq and staged asked earlier in the same entry), else `slot`.
 11. E11 due call `TRF_Stn_EvSpawn` after `ev_dt + RAND(ev_dt)` s (20-39 s), else `due` and the slot is freed.
 
-The visit record is `SV.ev = {kind, k, idx, st = "plan", g = TRF.gen}` (chunk local, never saved; later `id`, `rn`, `res`, `gw`, `st` = `wait` / `run` / `raid` / `end`).
+The visit record is `SV.ev = {kind, k, idx, st = "plan", g = TRF.gen}` (chunk local, never saved; later `id`, `rn`, `meet` (the launch's `ev_meet`, read once), `res`, `gw`, `st` = `wait` / `run` / `raid` / `end`).
 
 ### 17.3 Spawn (`TRF_Stn_EvSpawn`)
 
@@ -654,7 +654,7 @@ The visit record is `SV.ev = {kind, k, idx, st = "plan", g = TRF.gen}` (chunk lo
 6. S6 cooldown stamp `TRF.stn[k].ec = legs` (only here: a plan that never spawns burns no cooldown).
 7. S7 dockmaster line `stnev<kind>` as a radio line through the owner's speaker (8.7), spaced as the greeting (`stn_gap`); when spaced out, the screen log.
 
-A failure in S1-S3 ends the event (`result=void reason=<why>`) and frees the slot.
+A failure in S1-S3 or S5 ends the event (`result=void reason=<why>`) and frees the slot: no event took place (the S5 barge flies on as ordinary traffic).
 
 ### 17.4 Pay and standing
 
@@ -671,7 +671,7 @@ A failure in S1-S3 ends the event (`result=void reason=<why>`) and frees the slo
 | `delivered` | shuttle, launch: `TRF_Stn_EvArrive(id, "dock")` with the mothership within `ev_r` | yes | `stnevok` |
 | `far` | shuttle, launch: docked with the mothership farther away | no | `stnevfar` |
 | `no_help` | barge docked or escaped to its refuge (`TRF_Rd_SafeBody`, why `escaped`) and its raid ended without counted help. While the raid is open the event waits in state `raid` for `TRF_Stn_EvHelp` (then `defended`) or the raid's end (then `no_help`, reason the barge's why) | no | `stnevfar` |
-| `lost` | the event ship killed or removed (the shuttle and launch also out through a portal) | no | `stnevlost` |
+| `lost` | the event ship killed or removed (the shuttle and launch also out through a portal; a launch that fled the player's heat, trf_raid 8.1, is not picked up and ends here when it escapes) | no | `stnevlost` |
 | `expired` | the launch removed by trf_gen's lifetime rule (720 s, out of view) | no | `stnevlost` |
 | `void` | spawn failed (`reason=<why>`), the raid could not start (`raid`), a jump before the end (`jump`) | no | none |
 

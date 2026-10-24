@@ -1370,10 +1370,10 @@ function T_STN_G()
 	TRF_RaidOn = ro;
 	ev = S_Ev();
 	r = ev and ev.id and TRF_Rec(ev.id);
-	HOST_Check(ev and ev.res == "void" and r and r.sev == nil and (TRF.stn[k] == nil or TRF.stn[k].ec ~= TRF.clock.legs)
+	HOST_Check(ev and ev.res == "void" and r and r.sev == nil and TRF.live.ev == nil and (TRF.stn[k] == nil or TRF.stn[k].ec ~= TRF.clock.legs)
 		and getn(h.msgs) == nm0 and S_Logs(n0, "module=station event=ev_spawn ") == 0
 		and S_Logs(n0, "module=station event=ev_end kind=barge station_key=42 trader_id="..tostring(ev and ev.id).." raid_id=nil result=void reason=raid ") == 1,
-		"barge raid refused: void, no line, no cooldown stamp, sev cleared");
+		"barge raid refused: void, no line, no cooldown stamp, sev cleared, slot freed");
 	if ev and ev.id then TRF_Remove(ev.id, "test"); end;
 	-- Slot: a sweep that claimed the scripted-event slot at entry wins; the event is refused (log 1 line).
 	S_EvCool();
@@ -1435,6 +1435,20 @@ function T_STN_G()
 	n0 = S_Mark();
 	TRF_DumpState("test");
 	HOST_Check(S_Logs(n0, "module=station event=dump ") == 1 and S_Logs(n0, " event_legs=251:"..L.." ") == 1, "dump: event_legs");
+	-- Launch that fled (trf_raid's heat reaction, r.st flee): no pickup while not held; its escape ends the event lost.
+	S_EvCool();
+	S_EvEnter("gaoba", S_EvLaunch());
+	S_EvRun();
+	ev = S_Ev();
+	r = TRF_Rec(ev.id);
+	r.st = "flee";
+	S_MsTo(ev.id);
+	n0 = S_Mark();
+	T_Tick(4, 0.5);
+	HOST_Check(ev.st == "wait" and r.st == "flee" and S_Logs(n0, "event=ev_pickup") == 0, "launch fled: no pickup while not held");
+	TRF_Remove(ev.id, "escaped");
+	T_Tick(4, 0.5);
+	HOST_Check(ev.res == "lost" and S_Logs(n0, "result=lost reason=escaped pay=0 ") == 1, "launch fled and escaped: lost, no pay");
 	-- Pure parts.
 	local kk = TRF_StnEvKindsOf({{"__TradeStation_Action"}, {"_NoneStation_Action", 0, "4ino"}, {"_NoneStation_Action", 0, "3adm"}, {"_NoneStation_Action", 0, "pirate"}});
 	HOST_Check(getn(kk) == 3 and kk[1] == "barge" and kk[2] == "launch" and kk[3] == "shuttle" and getn(TRF_StnEvKindsOf({{"_NoneStation_Action", 0, "5"}, {"_PirDock_Action"}})) == 0,
