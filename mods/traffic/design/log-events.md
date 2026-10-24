@@ -499,7 +499,7 @@ Wanted captains, step 1 (`design/captain-spec.md` 7). `slot` is the clan region 
 | `init` | `module=captain event=init record_count=8` (records created with the clans) | 1 |
 | `plan` | `module=captain event=plan slot=4 generation=1 system=xb13 chance=100 roll=6 via=debug delay=82 result=planned` (via seen, tip, neighbour, debug); `... holder=sweep result=none reason=slot` (or `reason=due`) | 1 |
 | `plan` | `module=captain event=plan slot=4 system=xt05 chance=30 roll=87 via=neighbour result=none reason=roll`; `... state=1 result=none reason=<chapter, region_off, tier, state_<n>, low, gap, deny, strict:<why>, mode, hold:<why>, escort, sweep, cap:<why>>` | 2 |
-| `spawn` | `module=captain event=spawn slot=4 generation=1 name=4 system=xb13 mode=raid raid_id=1 tier=3 pilot=PirateSuperAce hull=EvilEye_pir2 wing_count=0 escapes=0 notoriety=0 grudge=0 via=debug` (mode raid, patrol); `module=captain event=spawn slot=4 generation=1 result=skipped reason=<record, placement, no_raid_module, build, portal, wind, a gate reason>` | 1 |
+| `spawn` | `module=captain event=spawn slot=4 generation=1 name=4 system=xb13 mode=raid raid_id=1 tier=3 pilot=PirateSuperAce hull=EvilEye_pir2 wing_count=0 escapes=0 notoriety=0 grudge=0 via=debug` (mode raid, patrol); `module=captain event=spawn slot=4 generation=1 result=skipped reason=<record, placement, no_raid_module, build, portal, wind, error (a due body failed), a gate reason>` | 1 |
 | `hp` | `module=captain event=hp slot=4 hp_start=1000 threshold=350` (arming; `threshold=nil` for a chase arrival; EW4.1) | 1 |
 | `met` | `module=captain event=met slot=4 generation=1 system=xb13` (the first player hit on him or his own wing) | 1 |
 | `help` | `module=captain event=help slot=4 reason=deliberate result=counted` (the 8.5 proxy on the captain) | 1 |
@@ -511,7 +511,7 @@ Wanted captains, step 1 (`design/captain-spec.md` 7). `slot` is the clan region 
 | `death` | `module=captain event=death slot=4 generation=1 player=true claim=22275 sweep=false reason=died` (reason died, poll, jump; EW4.3) | 1 |
 | `claim` | `module=captain event=claim slot=4 generation=1 amount=22275 kind=1 result=written` / `... amount=777 age=41 result=expired` / `... result=dropped reason=cap` | 1 |
 | `raid_help` | `module=captain event=raid_help slot=4 raid_id=1 credits=9281 help=1 result=held` / `result=cancelled reason=claim` / `help=1 result=paid` (the 8.5 resolver; on a load `slot=nil raid_id=nil ... result=paid`) | 1 |
-| `paid` | `module=captain event=paid slot=4 generation=1 amount=12345 paid=12345 faction=4 system=xb13 result=paid` / `... amount=5000 wait=1800 result=wait` (the prize gap) | 1 |
+| `paid` | `module=captain event=paid slot=4 generation=1 amount=12345 paid=12345 faction=4 system=xb13 result=paid` / `... amount=5000 wait=1800 result=wait` (the prize gap) / `... result=failed` (TRF_Pay paid nothing; the claim stays) | 1 |
 | `board` | `module=captain event=board system=xb13 line_count=3 result=lines` (EW4.4) | 1 |
 | `board` | `module=captain event=board result=none reason=<disabled, board_disabled, chapter, quiet, nosys, mode, strict>` | 2 |
 | `intel` | `module=captain event=intel slot=4 price=5500 result=offered` / `... seen=xb13 result=bought` / `result=declined` / `... credits=100 result=poor` / `result=stale` | 1 |

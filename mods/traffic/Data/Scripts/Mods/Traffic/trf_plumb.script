@@ -932,7 +932,7 @@ function TRF_MarkerAdd(owner, label, x, y, z, text, icon, obj)
 	if type(icon) ~= "string" or icon == "" then icon = "nav_target.dds"; end;
 	local a = {text, Vector3(x, y, z), icon};
 	if col ~= nil then a[4] = col; end;
-	if obj ~= nil and type(obj) ~= "number" and type(obj) ~= "string" then a[4] = col; a[5] = obj; a.n = 5; end;
+	if obj ~= nil and type(obj) ~= "number" and type(obj) ~= "string" then a[5] = obj; a.n = 5; end;
 	local nav = call(CreateNavPoint, a, "x", TRF_PlErr);
 	if nav == nil or type(nav) == "number" then
 		TRF_PlE("marker", "owner", owner, "label", label, "result", "failed", "reason", "create_nav_point_nil");

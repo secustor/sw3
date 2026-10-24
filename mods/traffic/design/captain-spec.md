@@ -192,7 +192,7 @@ Constants without a key (`TRF_CapK`): chapter 5, 3 board lines, 11 records, 24 n
 |---|---|
 | `module=captain event=init record_count=8` | records created |
 | `module=captain event=plan slot=4 generation=1 system=xb13 chance=100 roll=6 via=debug delay=82 result=planned` | the entry decision; level 2 `result=none reason=<chapter, tier, state_<n>, low, gap, deny, strict:<why>, mode, hold:<why>, escort, sweep, region_off, cap:<why>, roll>`; level 1 `reason=slot` (with `holder=`) and `due` |
-| `module=captain event=spawn slot=4 generation=1 name=4 system=xb13 mode=raid raid_id=1 tier=3 pilot=PirateSuperAce hull=EvilEye_pir2 wing_count=0 escapes=0 notoriety=0 grudge=0 via=debug` | spawn (mode raid or patrol); `result=skipped reason=<record, placement, no_raid_module, build, portal, wind, gate reasons>` |
+| `module=captain event=spawn slot=4 generation=1 name=4 system=xb13 mode=raid raid_id=1 tier=3 pilot=PirateSuperAce hull=EvilEye_pir2 wing_count=0 escapes=0 notoriety=0 grudge=0 via=debug` | spawn (mode raid or patrol); `result=skipped reason=<record, placement, no_raid_module, build, portal, wind, error (a due body failed), gate reasons>` |
 | `module=captain event=hp slot=4 hp_start=1000 threshold=350` | arming (EW4.1) |
 | `module=captain event=met slot=4 generation=1 system=xb13`, `event=help slot=4 reason=deliberate result=counted` | first hit, the 8.5 proxy |
 | `module=captain event=flee slot=4 hp=300 threshold=350 portal=PORTAL_U destination=xb15 reason=trigger` | flee (`reason=poll`) |
@@ -202,7 +202,7 @@ Constants without a key (`TRF_CapK`): chapter 5, 3 board lines, 11 records, 24 n
 | `module=captain event=death slot=4 generation=1 player=true claim=22275 sweep=false reason=died` | death (`reason=poll, jump`) (EW4.3) |
 | `module=captain event=claim slot=4 generation=1 amount=22275 kind=1 result=written` / `... age=41 result=expired` / `result=dropped reason=cap` | claims |
 | `module=captain event=raid_help slot=4 raid_id=1 credits=9281 help=1 result=held` (`cancelled reason=claim`, `paid`) | 8.5 resolver |
-| `module=captain event=paid slot=4 generation=1 amount=12345 paid=12345 faction=4 system=xb13 result=paid` / `... wait=1800 result=wait` | claim payment |
+| `module=captain event=paid slot=4 generation=1 amount=12345 paid=12345 faction=4 system=xb13 result=paid` / `... wait=1800 result=wait` / `... result=failed` (TRF_Pay paid nothing; the claim stays) | claim payment |
 | `module=captain event=board system=xb13 line_count=3 result=lines` | board (EW4.4); level 2 `result=none reason=<disabled, board_disabled, chapter, quiet, nosys, mode, strict>` |
 | `module=captain event=intel slot=4 price=5500 result=offered` (`bought`, `declined`, `poor`, `stale`, `expired`) | informant |
 | `module=captain event=quest id=trf_cap_4 state=2` / `result=removed reason=<legs, successor>`, `event=reconcile id=trf_cap_4 quest=1 reason=enter` | logbook (EW4.5) |

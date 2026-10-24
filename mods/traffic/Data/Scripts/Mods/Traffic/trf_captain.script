@@ -561,6 +561,9 @@ function TRF_CapClaimAdd(slot, r, amt, kind)
 	if type(TRF.claim) ~= "table" then TRF.claim = {}; end;
 	while getn(TRF.claim) >= TRF_CapK().claim_n do
 		local o = tremove(TRF.claim, 1);
+		-- Its logbook entry can no longer pay: failed, as an expired claim's (TRF_Cap_RegionTick).
+		local ro = TRF_CapRec(o.slot);
+		if ro and ro.gen == o.gen and ro.q == 1 then TRF_CapQEnd(o.slot, ro, QUEST_FAILED); end;
 		TRF_CapE("claim", "slot", o.slot, "generation", o.gen, "amount", o.amt, "result", "dropped", "reason", "cap");
 	end;
 	local c = {slot=slot, gen=r.gen, nm=r.nm, amt=amt, kind=kind, leg=TRF_CapLegs()};
@@ -738,7 +741,16 @@ end;
 
 -- Due call 30-90 s after the entry: the captain's raid (or patrol).
 function TRF_CapSpawnDue(slot, cg)
-	call(TRF_CapSpawnBody, {slot, cg}, "x", TRF_CapErr);
+	if not call(TRF_CapSpawnBody, {slot, cg}, "x", TRF_CapErr) then TRF_CapDueFail(slot, cg); end;
+end;
+
+-- An error inside a due body (logged by TRF_CapErr) left the visit waiting: the half-built captain goes, the event
+-- slot and the displaced seed are freed. Both bodies return 1 when they ran through.
+function TRF_CapDueFail(slot, cg)
+	local v = TRF_CapV(slot, cg);
+	if not v or (v.st ~= "wait" and v.st ~= "cwait") then return; end;
+	TRF_CapDelAll(v);
+	TRF_CapVoid(v, "error");
 end;
 
 function TRF_CapSpawnBody(slot, cg)
@@ -791,6 +803,7 @@ function TRF_CapSpawnBody(slot, cg)
 	TRF_CapE("spawn", "slot", slot, "generation", r.gen, "name", r.nm, "system", TRF_CapName(cur), "mode", v.st, "raid_id", rn,
 		"tier", T, "pilot", v.tpl, "hull", v.hull, "wing_count", v.wn0, "escapes", r.esc, "notoriety", r.noto, "grudge", r.gr,
 		"via", v.via);
+	return 1;
 end;
 
 -- The captain's group, flight and ship at pos (design 6 arming: label TRF_CAP_<slot>), pilot from Pir_Pilots by the
@@ -1344,7 +1357,7 @@ function TRF_Cap_SeedChase(c)
 end;
 
 function TRF_CapChaseDue(slot, cg)
-	call(TRF_CapChaseBody, {slot, cg}, "x", TRF_CapErr);
+	if not call(TRF_CapChaseBody, {slot, cg}, "x", TRF_CapErr) then TRF_CapDueFail(slot, cg); end;
 end;
 
 -- Chase arrival: captain and surviving wing at the arrival portal, HP from the band (SetHP, CHECK EW4.6, E0.20),
@@ -1393,6 +1406,7 @@ function TRF_CapChaseBody(slot, cg)
 	TRF_CapSay(TRF_CapTxt("capchase"), 8, h.pilot);
 	TRF_CapStat("cap_chase");
 	TRF_CapE("chase", "slot", slot, "hp_band", v.hpb, "hp", hp, "wing_count", v.wn0, "portal", v.pn, "result", "arrived");
+	return 1;
 end;
 
 -- Dock: board, claims, informant ---------------------------------------------------------------
@@ -1488,8 +1502,13 @@ function TRF_Cap_Owe(kind)
 			TRF_CapE("paid", "slot", c.slot, "generation", c.gen, "amount", c.amt, "wait", floor(w), "result", "wait");
 			break;
 		end;
-		tremove(TRF.claim, 1);
 		local paid = TRF_N("TRF_Pay", c.amt, "cap_claim") or 0;
+		-- Nothing paid for a priced claim (TRF_Pay failed): it stays at the head for the next docking.
+		if c.amt > 0 and paid <= 0 then
+			TRF_CapE("paid", "slot", c.slot, "generation", c.gen, "amount", c.amt, "result", "failed");
+			break;
+		end;
+		tremove(TRF.claim, 1);
 		TRF_N("TRF_AddHelp", 1, "captain claim");
 		TRF_N("TRF_AddHeat", -1, "captain claim");
 		local cur = TRF_CapCur();
@@ -1868,7 +1887,8 @@ end;
 
 -- Every 1 s (traffic.script): wind-down when the system gate fails, the death poll, the HP poll (fallback of the HP
 -- trigger), the window (cap_window, or his raid ended) without a recent hit -> leave, the watchdog of a flight to a
--- portal (cap_flee_s, then deleted beyond ovd), the leaving wing, the orphans of a load.
+-- portal (cap_flee_s, then deleted beyond ovd, or at once when no portal object resolved), the leaving wing, the
+-- orphans of a load.
 function TRF_Cap_Step()
 	local cp = %CP;
 	if type(TRF) ~= "table" or not TRF.active or not TRF_CapOn() then return; end;
@@ -1929,7 +1949,7 @@ function TRF_CapStepBody()
 	end;
 	if gt - (v.tf or gt) >= fs then
 		local d = TRF_CapDist(TRF_CapPos(h.ship), mp);
-		if not d or d > ovd then TRF_CapEnd(v, "watchdog"); end;
+		if not d or d > ovd or not TRF_CapObj(h.prt) then TRF_CapEnd(v, "watchdog"); end;
 	end;
 end;
 
