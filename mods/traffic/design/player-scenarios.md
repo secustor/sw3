@@ -355,7 +355,7 @@ Session 3 (decay and the cycle):
 | 0:02 | Approaches the trade station | Rung 3: hub fee waived, harbour news (station-voices-spec 8.4) | "No surcharge for you, captain. Harbour news follows." then "Harbour news: $1 $2" | W04, W05 | [BUILT] |
 | 0:05 | Hails the TT4 lead, picks "Trade" | Hold 8-10 expensive containers per transport plus 2-4 equipment items for sale (v1-spec 8.2) | Trade window with equipment | T25, T16 | [BUILT] |
 | 0:05 | | Wolves Freight: payout lines at the trade dock for his chartered freighters (balance paid `min(bal, pay_cap)`), robbery or loss lines (WB08 2, 6) | Up to 3 freight lines | W21 | [IDEA] |
-| 0:20 | Asks "Where is trade booming" | Equipment convoy record within 3 jumps (50 % per question) | "Trade is good in: $1" plus "$1 equipment convoy due in $2" | T14, T26 | [BUILT] |
+| 0:20 | Asks "Where is trade booming" | Equipment convoy record within 3 jumps (50 % per question) | "Trade is good in: $1" plus "$1 is moving equipment through $2. Pirates will want it." (`cvrfeq` from trf_convoy; without it trf_hail's `rfeq` "$1 equipment convoy due in $2 soon.") | T14, T26 | [BUILT] |
 | 0:40 | Enters the convoy's system; hails it | Defence contract when the faction is not at war and `fst` 4+ (v1-spec 8.4) | "Escort us to $1 for $2 cr?" then "Contract accepted. Stay close, captain." | T26 | [BUILT] |
 | 0:41-0:42 | | T4 region: clan raid 50 %, 40-90 s after the convoy appears, no demand step | "Convoy under attack! Requesting support!" | T26, T21 | [BUILT] |
 | 0:43 | Fights the raid with his wing | Wave 1 of faction fighters 20-30 s after the attack, 150-250 units from the lead with portal glow; `cap_feq` 14 event ships | | T26 | [BUILT] |

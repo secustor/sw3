@@ -1063,7 +1063,7 @@ function TRF_FeqDue(idx)
 	local j = TRF_CvJumps(idx, 3)[f.s];
 	if type(j) ~= "number" then return nil; end;
 	if mod(f.t * 7 + f.s * 13 + idx * 31, 100) >= TRF_CvT("feq_announce_chance") then return nil; end;
-	return {s=f.s, f=f.f, j=j, txt=TRF_CvTxt("rfeq", TRF_CvFacName(f.f), TRF_CvSysName(f.s))};
+	return {s=f.s, f=f.f, j=j, txt=TRF_CvTxt("cvrfeq", TRF_CvFacName(f.f), TRF_CvSysName(f.s))};
 end;
 
 -- Pirates took the convoy of faction f in system s (v1 8.4): salvage +3, clan score +5 (once per record, so

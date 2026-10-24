@@ -250,10 +250,20 @@ def str_kind(callee, k):
     return "str"
 
 
+_TOKENS = {}
+
+
+def file_tokens(path):
+    """Tokens of path, read once per run (scan_calls and text_keys share them)."""
+    if path not in _TOKENS:
+        with open(path, "r", encoding="latin-1", newline="") as f:
+            _TOKENS[path] = tokenize(f.read())
+    return _TOKENS[path]
+
+
 def scan_calls(path):
     """Definitions, global assignments and TRF_ references of one file."""
-    with open(path, "r", encoding="latin-1", newline="") as f:
-        toks = tokenize(f.read())
+    toks = file_tokens(path)
     v = [t[1] for t in toks]
     kinds = [t[0] for t in toks]
     n = len(toks)
@@ -365,8 +375,7 @@ TEXT_FN = re.compile(r"TRF_\w+_Text$")
 
 def text_keys(path):
     """Literal (key, text, line, table) pairs of the TRF_<M>_Text() functions of one file ("return {k = "s", ...}")."""
-    with open(path, "r", encoding="latin-1", newline="") as f:
-        toks = tokenize(f.read())
+    toks = file_tokens(path)
     v = [t[1] for t in toks]
     out = []
     for i in range(len(toks) - 5):
@@ -378,8 +387,8 @@ def text_keys(path):
                 depth += 1
             elif v[j] in "})":
                 depth -= 1
-            elif (depth == 1 and toks[j][0] == "name" and v[j + 1] == "=" and toks[j + 2][0] == "str"
-                  and v[j + 3] in (",", ";", "}")):
+            elif (depth == 1 and j + 3 < len(toks) and toks[j][0] == "name" and v[j + 1] == "="
+                  and toks[j + 2][0] == "str" and v[j + 3] in (",", ";", "}")):
                 out.append((re.sub(r"[^a-z0-9]", "", v[j].lower()), v[j + 2][1:-1], toks[j][2], v[i + 1]))
             j += 1
     return out
@@ -421,10 +430,12 @@ def lint_calls(paths, verbose=False, quiet=False):
         tol |= set(t)
     texts = {}
     for p in paths:
+        if base(p) in KITS:
+            continue        # exp kits never load with trf_loc, so their tables are never merged
         for k, txt, ln, fn in text_keys(p):
             o = texts.setdefault(k, (txt, p, ln, fn))
-            if o[0] != txt and not exclusive(o[1], p):
-                add(p, ln, "error", "text key %s of %s differs from %s (%s:%d); trf_loc keeps the first in TRF_Loc_TextFns order"
+            if o[0] != txt:
+                add(p, ln, "error", "text key %s of %s differs from %s (%s:%d); trf_loc keeps only the one TRF_Loc_TextFns lists first"
                     % (k, fn, o[3], o[1], o[2]))
 
     def target(name, p):

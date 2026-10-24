@@ -1778,7 +1778,7 @@ function T_V1_M()
 	HOST_Check(ddiff == "", "no text key defined with two different texts"..ddiff);
 	HOST_Check(dsame == "" and nsame == 19, nsame.." keys defined twice with the same text, all accepted"..dsame);
 	HOST_Check(TRF_FcCtOk and TRF_Txt("ctok") == "Stay close, Wolves." and TRF_LocTxt("fctok") == "$1 command: noted, Wolves."
-		and TRF_LocTxt("cvfeqkill") and TRF_LocTxt("fcoptsweep") == "Sweep contracts", "renamed keys: fctok, fcoptsweep, cvfeqkill");
+		and TRF_LocTxt("cvfeqkill") and TRF_LocTxt("fcoptsweep") == "Sweep contracts" and TRF_CvTxt("cvrfeq", "USS", "Gredos") == "USS is moving equipment through Gredos. Pirates will want it.", "renamed keys: fctok, fcoptsweep, cvfeqkill, cvrfeq");
 	local ctl = TRF_FcCtOk(1);
 	HOST_Check(type(ctl) == "string" and strfind(ctl, "^%u[%w ]+ command: noted, Wolves%.$"), "sweep accept line names the faction: "..tostring(ctl));
 	-- lang ru: per-key fallback to EN; loc_mode 1: #TRF_ keys.
