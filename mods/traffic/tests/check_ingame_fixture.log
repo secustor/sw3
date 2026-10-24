@@ -1,0 +1,226 @@
+sw3tp 0.1.0
+traffic: config tick_ms=250 log=2 sites=T1:1,T2a:1,T2b:1,T2c:1,T2d:1,T3:1,T4:1
+traffic: natives registered n=6 L=0x1ba9130
+traffic: lua: exp=v1 module=nest event=install installed=true wrapped=true
+traffic: lua: exp=v1 module=core event=loaded map=true module_count=18 extra_count=11 teleport_wrapped=true custom_teleportate_wrapped=true
+HOST check_ingame fixture, part A: NESTS=0 PARCELS=1 PCL_PROBE=1 (synthetic, from the ne-* and pcl-* host logs)
+traffic: lua: exp=v1 module=core event=load load_count=1 fresh=true
+traffic: lua: exp=v1 module=state event=load generation=50 fresh=false legs=90
+traffic: lua: exp=v1 module=state event=dump source=load version=4 generation=50 system=kadi system_index=52 legs=90 heat=0 help=0
+traffic: lua: exp=v1 module=parcel event=dock system=kadi param=Kadi dock_current=1
+traffic: lua: exp=v1 module=parcel event=signal at=dock quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=credits credits=250000
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=inventory added=3 deleted=3 left=false
+traffic: lua: exp=v1 module=parcel event=offer kind=1 source=kadi destination=nj3 jumps=2 deadline=8 item=2 units=2 class=6 level=13 tier=4 prosperity=3 pay=4800 deposit=850 waived=false candidate_count=6 route=prien,nj3 result=shown
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 box=parcel priority=400 result=box
+traffic: lua: exp=v1 module=plumb event=job kind=1 field_count=6 result=taken
+traffic: lua: exp=v1 module=parcel event=quest id=trf_pcl state=2 quest_state_before=0 quest_state_after=0 result=added
+traffic: lua: exp=v1 module=parcel event=accept kind=1 source=kadi destination=nj3 dock=nj3 item=Cargo_002 units=2 pay=4800 deposit=850 deadline=8 credits_before=250000 result=ok
+traffic: lua: exp=v1 module=ui event=say output=1 seconds=8 message="Crates are in your hold. Don't open them, don't sell them, don't be late."
+traffic: lua: exp=v1 module=plumb event=box_answer kind=trade box=parcel answer=1 result=done
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=91
+traffic: lua: exp=v1 module=state event=enter generation=51 fresh=false system=hanoi legs=91
+traffic: lua: exp=v1 module=nest event=mode system=hanoi mode=vanilla reason=off phase=3 tier=4 f=100 dp=1 vanilla_count=12 memory=0 pins=0
+traffic: lua: exp=v1 module=nest event=probe at=enter pirates=0
+traffic: lua: exp=v1 module=safety event=activate system=hanoi mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=nest event=probe at=activate pirates=24
+traffic: lua: exp=v1 module=parcel event=signal at=enter quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=dock system=hanoi param=Hanoi dock_current=1
+traffic: lua: exp=v1 module=parcel event=signal at=dock quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=credits credits=249150
+traffic: lua: exp=v1 module=parcel event=offer system=hanoi result=none reason=job
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 result=vanilla
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=92
+traffic: lua: exp=v1 module=state event=enter generation=52 fresh=false system=kadi legs=92
+traffic: lua: exp=v1 module=nest event=mode system=kadi mode=vanilla reason=off phase=3 tier=4 f=100 dp=1 vanilla_count=13 memory=0 pins=0
+traffic: lua: exp=v1 module=nest event=probe at=enter pirates=0
+traffic: lua: exp=v1 module=safety event=activate system=kadi mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=nest event=probe at=activate pirates=26
+traffic: lua: exp=v1 module=parcel event=signal at=enter quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=93
+traffic: lua: exp=v1 module=state event=enter generation=53 fresh=false system=prien legs=93
+traffic: lua: exp=v1 module=nest event=mode system=prien mode=vanilla reason=off phase=3 tier=4 f=100 dp=1 vanilla_count=4 memory=0 pins=0
+traffic: lua: exp=v1 module=nest event=probe at=enter pirates=0
+traffic: lua: exp=v1 module=safety event=activate system=prien mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=nest event=probe at=activate pirates=8
+traffic: lua: exp=v1 module=parcel event=signal at=enter quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=94
+traffic: lua: exp=v1 module=state event=enter generation=54 fresh=false system=nj3 legs=94
+traffic: lua: exp=v1 module=nest event=mode system=nj3 mode=vanilla reason=no_data
+traffic: lua: exp=v1 module=safety event=activate system=nj3 mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=parcel event=signal at=enter quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=parcel line_index=1 delay=8.000 result=queued
+traffic: lua: exp=v1 module=plumb event=marker owner=parcel label=TRF_PCL_NP result=added
+traffic: lua: exp=v1 module=parcel event=arrive system=nj3 marker=true reason=nil
+traffic: lua: exp=v1 module=parcel event=dock system=nj3 param=NJ3 dock_current=1
+traffic: lua: exp=v1 module=parcel event=signal at=dock quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=quest id=trf_pcl state=3 result=set
+traffic: lua: exp=v1 module=plumb event=marker owner=parcel deleted_count=1 result=cleared
+traffic: lua: exp=v1 module=plumb event=job kind=1 result=cleared
+traffic: lua: exp=v1 module=parcel event=deliver kind=1 source=kadi destination=nj3 units=2 units_found=2 pay=4800 paid=4800 held=0 deposit_back=850 help_change=1 visit_credit=2 shortage_ended=false ok_count=1
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=credits credits=254800
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=inventory added=3 deleted=3 left=false
+traffic: lua: exp=v1 module=parcel event=offer system=nj3 result=none reason=gap
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=1 result=vanilla
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=95
+traffic: lua: exp=v1 module=state event=enter generation=55 fresh=false system=nj1 legs=95
+traffic: lua: exp=v1 module=nest event=mode system=nj1 mode=vanilla reason=no_data
+traffic: lua: exp=v1 module=safety event=activate system=nj1 mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=parcel event=signal at=enter quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=dock system=nj1 param=NJ1 dock_current=1
+traffic: lua: exp=v1 module=parcel event=signal at=dock quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=quest id=trf_pcl result=removed
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=credits credits=254800
+traffic: lua: exp=v1 module=parcel event=offer system=nj1 result=none reason=gap
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 result=vanilla
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=96
+traffic: lua: exp=v1 module=state event=enter generation=56 fresh=false system=taira legs=96
+traffic: lua: exp=v1 module=nest event=mode system=taira mode=vanilla reason=off phase=1 tier=3 f=100 dp=1 vanilla_count=6 memory=0 pins=0
+traffic: lua: exp=v1 module=nest event=probe at=enter pirates=0
+traffic: lua: exp=v1 module=safety event=activate system=taira mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=nest event=probe at=activate pirates=12
+traffic: lua: exp=v1 module=parcel event=signal at=enter quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=dock system=taira param=Taira dock_current=1
+traffic: lua: exp=v1 module=parcel event=signal at=dock quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=credits credits=254800
+traffic: lua: exp=v1 module=parcel event=offer kind=1 source=taira destination=nj3 jumps=2 deadline=8 item=2 units=2 class=6 level=11 tier=3 prosperity=6 pay=3900 deposit=850 waived=false candidate_count=7 route=nj1,nj3 result=shown
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 box=parcel priority=400 result=box
+traffic: lua: exp=v1 module=parcel event=offer destination=nj3 result=declined
+traffic: lua: exp=v1 module=plumb event=box_answer kind=trade box=parcel answer=0 result=done
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=97
+traffic: lua: exp=v1 module=state event=enter generation=57 fresh=false system=corrino legs=97
+traffic: lua: exp=v1 module=nest event=mode system=corrino mode=vanilla reason=off phase=3 tier=4 f=100 dp=1 vanilla_count=3 memory=0 pins=0
+traffic: lua: exp=v1 module=nest event=probe at=enter pirates=0
+traffic: lua: exp=v1 module=safety event=activate system=corrino mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=nest event=probe at=activate pirates=6
+traffic: lua: exp=v1 module=parcel event=signal at=enter quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=dock system=corrino param=nil dock_current=nil
+traffic: lua: exp=v1 module=parcel event=signal at=dock quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=credits credits=254800
+traffic: lua: exp=v1 module=parcel event=offer kind=1 source=corrino destination=nj1 jumps=2 deadline=8 item=2 units=2 class=6 level=11 tier=4 prosperity=7 pay=4200 deposit=850 waived=false candidate_count=5 route=taira,nj1 result=shown
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 box=parcel priority=400 result=box
+traffic: lua: exp=v1 module=plumb event=job kind=1 field_count=6 result=taken
+traffic: lua: exp=v1 module=parcel event=quest id=trf_pcl state=2 quest_state_before=0 quest_state_after=0 result=added
+traffic: lua: exp=v1 module=parcel event=accept kind=1 source=corrino destination=nj1 dock=nj1 item=Cargo_002 units=2 pay=4200 deposit=850 deadline=8 credits_before=254800 result=ok
+traffic: lua: exp=v1 module=plumb event=box_answer kind=trade box=parcel answer=1 result=done
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=98
+traffic: lua: exp=v1 module=state event=enter generation=58 fresh=false system=aurora legs=98
+traffic: lua: exp=v1 module=nest event=mode system=aurora mode=vanilla reason=off phase=0 tier=1 f=70 dp=-1 vanilla_count=7 memory=0 pins=1
+traffic: lua: exp=v1 module=nest event=probe at=enter pirates=0
+traffic: lua: exp=v1 module=safety event=activate system=aurora mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=nest event=probe at=activate pirates=14
+traffic: lua: exp=v1 module=parcel event=signal at=enter quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=99
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=100
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=101
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=102
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=103
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=104
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=105
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=106
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=107
+traffic: lua: exp=v1 module=parcel event=dock system=aurora param=Aurora dock_current=1
+traffic: lua: exp=v1 module=parcel event=signal at=dock quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=quest id=trf_pcl state=4 result=set
+traffic: lua: exp=v1 module=plumb event=job kind=1 result=cleared
+traffic: lua: exp=v1 module=parcel event=fail kind=1 source=corrino destination=nj1 units_found=1 deposit=850 help_change=-1 ban_until=113 fail_count=1 reason=late
+traffic: lua: exp=v1 module=parcel event=pending kind=1 system=nj1 refund=nil
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=credits credits=255370
+traffic: lua: exp=v1 module=parcel event=offer system=aurora result=none reason=ban
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=2 result=vanilla
+sw3tp 0.1.0
+HOST check_ingame fixture, part B: NESTS=1 NEST_MODE=1 (synthetic)
+traffic: lua: exp=v1 module=nest event=install installed=true wrapped=true
+traffic: lua: exp=v1 module=core event=loaded map=true module_count=18 extra_count=11 teleport_wrapped=true custom_teleportate_wrapped=true
+traffic: lua: exp=v1 module=core event=load load_count=1 fresh=true
+traffic: lua: exp=v1 module=state event=load generation=60 fresh=false legs=120
+traffic: lua: exp=v1 module=state event=dump source=load version=4 generation=60 system=kadi system_index=52 legs=120 heat=0 help=0
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=121
+traffic: lua: exp=v1 module=state event=enter generation=61 fresh=false system=hanoi legs=121
+traffic: lua: exp=v1 module=nest event=mode system=hanoi mode=nest reason=ok phase=3 tier=4 f=100 dp=1 vanilla_count=12 memory=0 pins=0
+traffic: lua: exp=v1 module=nest event=probe at=enter pirates=0
+traffic: lua: exp=v1 module=nest event=plan system=hanoi target=12 fielded=12 skipped=0 pins=0 mode=1 plan=111111111111
+traffic: lua: exp=v1 module=nest event=call sign=Pir01 result=substituted power=14 vanilla_power=13 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir08 result=substituted power=15 vanilla_power=14 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir09 result=substituted power=11 vanilla_power=10 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir10 result=substituted power=12 vanilla_power=11 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir11 result=substituted power=14 vanilla_power=13 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir13 result=substituted power=12 vanilla_power=11 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir17 result=substituted power=9 vanilla_power=8 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir19 result=substituted power=14 vanilla_power=13 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir14 result=substituted power=14 vanilla_power=13 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir15 result=substituted power=15 vanilla_power=14 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir16 result=substituted power=18 vanilla_power=17 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir12 result=substituted power=11 vanilla_power=10 pinned=false
+traffic: lua: exp=v1 module=safety event=activate system=hanoi mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=nest event=activate system=hanoi fielded=12 stub=0 gone=0 unknown=0 missing=0 failed=0 relation=war mode=1
+traffic: lua: exp=v1 module=nest event=probe at=activate pirates=36
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=nest line_index=1 delay=8.000 result=queued
+traffic: lua: exp=v1 module=nest event=arrival system=hanoi line=nestraid result=queued
+traffic: lua: exp=v1 module=nest event=hit index=3
+traffic: lua: exp=v1 module=nest event=died index=3 sign=Pir09 mine=true memory=1 left=11 clan_score=93 generation=61 reason=died
+traffic: lua: exp=v1 module=nest event=hit index=5
+traffic: lua: exp=v1 module=nest event=died index=5 sign=Pir11 mine=true memory=2 left=10 clan_score=91 generation=61 reason=died
+traffic: lua: exp=v1 module=nest event=hit index=7
+traffic: lua: exp=v1 module=nest event=died index=7 sign=Pir17 mine=true memory=3 left=9 clan_score=89 generation=61 reason=ships
+traffic: lua: exp=v1 module=nest event=jump system=hanoi deleted=9
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=122
+traffic: lua: exp=v1 module=state event=enter generation=62 fresh=false system=el_ariash legs=122
+traffic: lua: exp=v1 module=nest event=mode system=el_ariash mode=vanilla reason=excluded phase=3 tier=4 f=100 dp=1 vanilla_count=6 memory=0 pins=6
+traffic: lua: exp=v1 module=nest event=probe at=enter pirates=0
+traffic: lua: exp=v1 module=safety event=activate system=el_ariash mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=nest event=probe at=activate pirates=18
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=123
+traffic: lua: exp=v1 module=state event=enter generation=63 fresh=false system=hanoi legs=123
+traffic: lua: exp=v1 module=nest event=regen system=hanoi memory_before=3 memory_after=1 ticks=1
+traffic: lua: exp=v1 module=nest event=mode system=hanoi mode=nest reason=ok phase=3 tier=4 f=100 dp=1 vanilla_count=12 memory=1 pins=0
+traffic: lua: exp=v1 module=nest event=plan system=hanoi target=11 fielded=11 skipped=1 pins=0 mode=1 plan=111111111101
+traffic: lua: exp=v1 module=nest event=call sign=Pir01 result=substituted power=14 vanilla_power=13 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir08 result=substituted power=15 vanilla_power=14 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir09 result=substituted power=11 vanilla_power=10 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir10 result=substituted power=12 vanilla_power=11 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir11 result=substituted power=14 vanilla_power=13 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir13 result=substituted power=12 vanilla_power=11 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir17 result=substituted power=9 vanilla_power=8 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir19 result=substituted power=14 vanilla_power=13 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir14 result=substituted power=14 vanilla_power=13 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir15 result=substituted power=15 vanilla_power=14 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir16 result=stub reason=count
+traffic: lua: exp=v1 module=nest event=call sign=Pir12 result=substituted power=11 vanilla_power=10 pinned=false
+traffic: lua: exp=v1 module=safety event=activate system=hanoi mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=nest event=activate system=hanoi fielded=11 stub=1 gone=0 unknown=0 missing=0 failed=0 relation=war mode=1
+traffic: lua: exp=v1 module=nest event=arrival system=hanoi line=nesthurt result=queued
+HOST quicksave here, then load it
+traffic: lua: exp=v1 module=core event=load load_count=2 fresh=false
+traffic: lua: exp=v1 module=state event=load generation=64 fresh=false legs=123
+traffic: lua: exp=v1 module=state event=dump source=load version=4 generation=64 system=hanoi system_index=40 legs=123 heat=0 help=0
+traffic: lua: exp=v1 module=nest event=load system=hanoi rearmed=11
+traffic: lua: exp=v1 module=nest event=hit index=4
+traffic: lua: exp=v1 module=nest event=stale index=4 generation=63 current=64
+traffic: lua: exp=v1 module=nest event=died index=4 sign=Pir10 mine=true memory=2 left=10 clan_score=87 generation=64 reason=died
+traffic: lua: exp=v1 module=nest event=stale index=2 generation=63 current=64
+traffic: lua: exp=v1 module=nest event=jump system=hanoi deleted=10
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=124
+traffic: lua: exp=v1 module=state event=enter generation=65 fresh=false system=corrino legs=124
+traffic: lua: exp=v1 module=nest event=mode system=corrino mode=nest reason=ok phase=3 tier=4 f=100 dp=1 vanilla_count=3 memory=0 pins=0
+traffic: lua: exp=v1 module=nest event=plan system=corrino target=3 fielded=3 skipped=0 pins=0 mode=1 plan=111
+traffic: lua: exp=v1 module=nest event=call sign=PirPatrol01 result=substituted power=2 vanilla_power=1 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=PirPatrol02 result=substituted power=4 vanilla_power=3 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=PirPatrol03 result=substituted power=3 vanilla_power=2 pinned=false
+traffic: lua: exp=v1 module=safety event=activate system=corrino mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=nest event=activate system=corrino fielded=3 stub=0 gone=0 unknown=0 missing=0 failed=0 relation=war mode=1
+traffic: lua: exp=v1 module=nest event=jump system=corrino deleted=3
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=125
+traffic: lua: exp=v1 module=state event=enter generation=66 fresh=false system=aurora legs=125
+traffic: lua: exp=v1 module=nest event=mode system=aurora mode=nest reason=ok phase=0 tier=1 f=70 dp=-1 vanilla_count=7 memory=0 pins=1
+traffic: lua: exp=v1 module=nest event=plan system=aurora target=5 fielded=5 skipped=2 pins=1 mode=1 plan=1111010
+traffic: lua: exp=v1 module=nest event=call sign=pir_1 result=substituted power=3 vanilla_power=4 pinned=true
+traffic: lua: exp=v1 module=nest event=call sign=pir_2 result=substituted power=4 vanilla_power=5 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir03 result=substituted power=4 vanilla_power=5 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir04 result=substituted power=6 vanilla_power=7 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir05 result=stub reason=count
+traffic: lua: exp=v1 module=nest event=call sign=Pir06 result=substituted power=4 vanilla_power=5 pinned=false
+traffic: lua: exp=v1 module=nest event=call sign=Pir07 result=stub reason=count
+traffic: lua: exp=v1 module=safety event=activate system=aurora mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=nest event=activate system=aurora fielded=5 stub=2 gone=0 unknown=0 missing=0 failed=0 relation=war mode=1
+traffic: lua: exp=v1 module=nest event=arrival system=aurora line=nestquiet result=queued
