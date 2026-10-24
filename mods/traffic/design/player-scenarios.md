@@ -1,6 +1,6 @@
 # sw3-traffic: player scenarios and user stories
 
-This document describes how the traffic mod and its worldbuilding features look from the player's seat. It has five personas, a catalogue of every feature, ten scenarios with timelines, 87 user stories with acceptance criteria, a traceability matrix and the open decisions that change what the player experiences. It decides nothing. Rules, numbers and text come from the specs and the code (as of 2026-10-24) and cite them by section. Where the specs and the code disagree, the code value is used and the disagreement is listed in section 8.
+This document describes how the traffic mod and its worldbuilding features look from the player's seat. It has five personas, a catalogue of every feature, ten scenarios with timelines, 95 user stories with acceptance criteria, a traceability matrix and the open decisions that change what the player experiences. It decides nothing. Rules, numbers and text come from the specs and the code (as of 2026-10-24) and cite them by section. Where the specs and the code disagree, the code value is used and the disagreement is listed in section 8.
 
 How to read it:
 
@@ -104,8 +104,10 @@ Ids: `T` = traffic core and v1 war traffic, `W` = worldbuilding features, `X` = 
 | W21 | Wolves Freight | Up to three chartered FTU freighters running regional loops, payout at trade docks, losses | [IDEA] | WB08 |
 | W22 | Deserters | Vks/Kfni pilots asking to be taken across the border, hunters, asylum or sell-back | [IDEA] | WB10 |
 | W23 | Front pressure | Vks-Kfni border checkpoints with tolls and inspections, on-screen pushes to defend or break | [IDEA] | WB11 |
-| W24 | Mercenary packs | Hire one of the 12 vanilla mercenary units for one visit; prize share, blood money, blacklist | [IDEA] | WB12 |
-| W25 | Rival wolf packs | Three named crews snipe contracts, answer raids, keep an FTU escort rating, may turn hostile | [IDEA] [HOOK] optional (kill with killer, exe-hook-survey row 1) | WB13 |
+| W24 | Mercenary clans: hire role (12 and 13 merged 2026-10-24) | One record per clan for the 12 vanilla mercenary units, roles free / rival / broken; in the free role hire a clan for one visit; prize share, blood money, blacklist | [SPEC] | WB12 1-6; proposals/merc-unified-clans |
+| W25 | Mercenary clans: rival role | Three of the twelve clans in the rival role (chosen by standing and fortune) snipe contracts, answer raids, keep an FTU escort rating, may turn hostile | [SPEC] [HOOK] optional (kill with killer, exe-hook-survey row 1) | WB13; WB12 6 |
+| W26 | Mercenary clans: options beyond the visit | Bookings by captains and clans (M2), revenge flights (M1), warnings, outbid and lane reports (M3), announced hunts (M14), debt markers (M15), calls paid in standing (M4), ace transfer (M7) | [SPEC] | WB12 6; proposals/merc-packs-beyond-flavour D |
+| W27 | Mercenary clans: fortune and mothership stages | Fortune from regional work sets stages Crew, Squadron, Flagship (Cavalier corvette), Mothership (`Base_mercenary_1`) with a fighter wing; losses drop a stage | [SPEC] | WB12 4, 6; proposals/merc-unified-clans C, D |
 | X01 | After-v1 candidates C1-C21 | Cross-system escorts, station deliveries, hunters, faction clashes and others | [IDEA] | TDR 3 (COULD table), 12; PROGRESS *After v1* |
 | X02 | Trader nav marker | A blinking nav icon on hailable traders | [IDEA] decision deferred | PROGRESS *Decisions pending* 2026-10-21 |
 
@@ -368,8 +370,9 @@ Session 3 (decay and the cycle):
 | 1:50 | Jumps into Fort_russ | Base radio once after the arrival line | "Pirate base: Wolves on scope. Burn them!" (or "Pirate base: trade or move on, Wolves." if Pirates are not at war) | T28 | [BUILT] |
 | 1:52 | Attacks the base | Garrison goes to war; 2 flights appear 50-150 units from the base with portal glow; one more wave at 50 % HP; base 100,000 HP (v1-spec 9.3) | | T28 | [BUILT] |
 | 2:05 | Destroys it | `dis` 0 in the system, neighbours -2, help +2, heat -1; the faction pays 1.5x the FTU base pay, capped 30,000, `fs` +1, `fst` +1; clan score -25, salvage cleared (v1-spec 9.6) | Bulletin "Lanes around $1 are safe again" | T28, T22, T17 | [BUILT] |
-| 2:30 | In a Raids region a mercenary pack waits 150 units off a portal | Hire for one visit (600 game s); fee example late XT27 28,000; prize share per kill, blood money per lost pack ship; MSF systems x0.5 in chapters 16-20 (WB12 3, 5) | Nav marker *Mercenaries*, vanilla `#UI_Fmerc_confirm` box | W24 | [IDEA] |
-| 2:50 | Leaves an escort offer open | Rival pack snipes the contract 60 s after the trader's announce; answers raids he ignores after 90 s; rating line at docks (WB13 2, 4) | Rating line (key `#TRF_Rv_Rate_W`) | W25 | [IDEA] |
+| 2:30 | In a Raids region a mercenary pack waits 150 units off a portal | Free-role clan of the merged record; hire for one visit (600 game s); fee example late XT27 28,000 times `mc_size_k` by stage (x1.4 at stage 4, capped at 30,000); prize share per kill, blood money per lost pack ship; MSF systems x0.5 in chapters 16-20 (WB12 3, 5) | Nav marker *Mercenaries*, box from the module text table | W24 | [SPEC] |
+| 2:50 | Leaves an escort offer open | A rival-role clan snipes the contract 60 s after the trader's announce; answers raids he ignores after 90 s; rating line at docks (WB13 2, 4, 6) | Rating line (key `#TRF_Rv_Rate_W`) | W25 | [SPEC] |
+| 2:55 | Later enters that clan's home region far from any trade station | HOSTILE at grudge 6 or more; the clan is at stage 4: its mothership holds at least 1,500 units from Oleg's mothership at its portal and the wing of up to 5 attacks; all leave at half the fighters or below 50 % mothership HP; a killed mothership drops the clan to stage 3 and closes stage 4 for 40 jumps (WB13 6; WB12 4, 6) | Nav marker *Mercenary mothership* | W25, W27 | [SPEC] |
 | 3:10 | Crosses a Vks-Kfni border lane | Checkpoint picket: hail at 200 units, hold within 150 for 20 s (2.5 s at 8x), toll `250 x L_w x s_k x d_k`, waived with that owner's permit or standing 7 at low strictness (WB11 2, 5) | Picket nav marker | W23, W09 | [IDEA] |
 | 3:20 | A push comes through the portal | Defend: pay at the owner's next dock within 30 legs, shares the 1,800 s prize gap (WB11 5; WB00 B1) | | W23, W01 | [IDEA] |
 | 3:40 | Parks at 8x in a quiet system for 20 minutes | Leg cap: at most 3 time legs per visit; freight ticks need 120 s of unpaused real time each (WB08 4) | | T05, W21 | [BUILT] / [IDEA] |
@@ -702,10 +705,36 @@ Format: id, feature id, status, priority. Priority: Must = built core traffic, s
   - Chapter 7+, Vks/Kfni border systems with a strength gap of 2+; 30 % chance, 24-leg map-wide and 3,600 s real cooldown; asylum `1.67` x base (WB10 4-6).
 - **US-75** (W23, [IDEA], Could) As Oleg, I want border checkpoints and pushes so that the front line exists on the map.
   - Checkpoints from chapter 5, pushes from chapter 7; toll `250 x L_w x s_k x d_k`; defence pay `1.0` x base, break `0.75` (WB11 4, 5).
-- **US-76** (W24, [IDEA], Could) As Oleg, I want to hire a mercenary pack for one visit so that my wing can be reinforced.
-  - Chapter 5+, presence by phase; fee `700 x L_w x ...` capped; hire 600 game s; prize share `25 x L_w^2 x d_k` per kill; release gate E12.2 (WB12 3-6).
-- **US-77** (W25, [IDEA], Could) As Marek, I want rival crews competing for escort work so that leaving work open has a cost.
+- **US-76** (W24, [SPEC], Could) As Oleg, I want to hire a mercenary pack for one visit so that my wing can be reinforced.
+  - Chapter 5+, presence by phase for clans in the free role; fee `700 x L_w x ...` times `mc_size_k` by stage, capped; hire 600 game s; prize share `25 x L_w^2 x d_k` per kill; release gate E12.2, merged into E0.13 (WB12 3-6).
+  - A clan in the rival role is never offered for hire; a big ship of a stage 3 or 4 clan is never hired and never escorts the Wolves (WB12 6).
+- **US-77** (W25, [SPEC], Could) As Marek, I want rival crews competing for escort work so that leaving work open has a cost.
   - Snipes and answers from chapter 5, hostility from chapter 7 at grudge 6; ambushes only more than 2,500 from every trade station (WB13 3, 4).
+  - Rivals are three of the twelve clans of the merged record, chosen by standing (`rel <= 0`) and fortune; a clan the Wolves keep at `rel >= 1` never becomes a rival; a broken rival re-forms under its own name (WB12 6, WB13 6).
+- **US-88** (W26, [SPEC], Could) As Vasco, I want mercenaries I wronged to fly against me in a captain's next fight so that abandoning or shooting a pack has a cost (M1).
+  - A captain or clan books a unit with `rel <= -2`, `owe > 0` or `bk > 0`; its ships (`merc_rev_n` 3 fighters, never a big ship) fly inside the captain's group in place of part of his wing and speak a reason line naming the anchor (WB12 6).
+  - No team relation and no new group war is written; the booked ships go to war with the player when the captain's group does; a fought-out booking moves the unit's `rel` one step toward -1 (WB12 4, 6).
+- **US-89** (W26, [SPEC], Could) As Marek, I want to see where clans are hiring guns and pay to keep a unit off the book so that I can decide whether to face stronger raids (M2).
+  - The first eligible region tick of a phase posts only a board notice ("hiring guns" or "want the Wolves' hide" after a stash theft); bookings roll on a fixed hash, so a reload does not change them (WB12 6).
+  - The retainer costs 0.5 x fee, is credited against a hire of that unit in that region in the same phase, and lapses at the phase end; no refund (WB12 5, 6).
+- **US-90** (W26, [SPEC], Could) As Marek, I want units I treated well to warn me and offer a lane report so that standing buys information (M3).
+  - A loyal unit (`rel >= 2` or holding a marker) refuses a booking against the Wolves and warns at the next contact; the warning sets the captain's tip; one outbid box per booking at the retainer price, only at a dock or meeting the player flew to (WB12 6).
+  - Lane report at `rel >= 1`: cache, captain position or phase forecast at the existing intel prices times the standing discount, one per unit per 28 legs (WB12 5, 6).
+- **US-91** (W26, [SPEC], Could) As Ines, I want hunters sent after me to be announced and escapable so that cracking a cache has a planned consequence (M14).
+  - A hunt follows only a stash grudge or `bk > 0`; a scout arrives one entry before and warns; the hunt brings at most 4 ships in `TRF_Hunt_<n>`, possibly a stage 3 corvette, never a mothership (WB12 6).
+  - Three exits: pay off at any dock of the region (1.0 x fee, capped), leave the region until the phase ends, or fight until half the hunters are down; the hunt and the grudge then end (WB12 6).
+- **US-92** (W26, [SPEC], Could) As Ines, I want a clan to owe me a favour when I pick up its downed pilot so that rescues matter in pack fights (M15).
+  - A pod with a nav marker at a dead pack ship; picked up and the contract paid in full sets one marker per unit, expiring after 60 jumps (WB12 6).
+  - The marker is spent automatically on the first refusal, leak or call; it pays no credits (WB12 4, 6).
+- **US-93** (W26, [SPEC], Could) As Oleg, I want to call a clan I trust into a fight so that help comes without a credit price (M4).
+  - At `rel >= 2` a box puts the unit on call for 30 jumps; each call costs `rel` -1 (or a marker), no fee; share and blood money as a hire; one call per visit, 8 jumps apart, within 6 jumps of the unit's region (WB12 4, 6).
+  - The call brings the clan's wing only, never its big ship; it replaces the former step 2 standing pack (WB12 6, 9).
+- **US-94** (W26, [SPEC], Could) As Oleg, I want to take a clan ace into my wing after several good contracts so that hiring has a lasting result (M7).
+  - After 3 completed hires with `rel >= 2`, once per clan, a box offers the ace with his hull at 1.5 x the office cost (at least resale + 10 %), capped at `pay_cap`; charged only after `AddPilotToPlayer` succeeds (WB12 5, 6).
+  - Gated by EM.3; the clan then flies one ship short for 20 legs (WB12 6).
+- **US-95** (W27, [SPEC], Could) As Oleg, I want mercenary clans to grow from fighters to a mothership and lose it again so that the clans have a history I can see.
+  - Fortune from regional work sets the stage: Crew, Squadron, Flagship (Cavalier corvette with a wing) from `fo` 55, Mothership (`Base_mercenary_1` with a wing of up to 5) from `fo` 78; at most 2 clans at stage 4 map-wide; no big ship before chapter 7 (WB12 4, 6).
+  - The stage shows only through lines, nav markers and board lines; a lost corvette or mothership drops the stage at once and closes it for 20 or 40 jumps; a clan is never removed and keeps its name (WB12 6).
 
 ### 5.10 Safety, configuration, saves, performance and text
 
@@ -800,8 +829,10 @@ Generated from the "Ids" column of the scenario timelines (x = the feature appea
 | W21 | Wolves Freight |  |  |  |  |  |  |  | x |  |  | 1 |
 | W22 | Deserters |  |  |  |  | x |  |  |  |  |  | 1 |
 | W23 | Front pressure |  |  |  |  |  |  |  | x |  |  | 1 |
-| W24 | Mercenary packs |  |  |  |  |  |  |  | x |  |  | 1 |
-| W25 | Rival wolf packs |  |  |  |  |  |  |  | x |  |  | 1 |
+| W24 | Mercenary clans: hire role |  |  |  |  |  |  |  | x |  |  | 1 |
+| W25 | Mercenary clans: rival role |  |  |  |  |  |  |  | x |  |  | 1 |
+| W26 | Mercenary clans: options beyond the visit |  |  |  |  |  |  |  |  |  |  | 0 |
+| W27 | Mercenary clans: fortune and mothership stages |  |  |  |  |  |  |  | x |  |  | 1 |
 | X01 | After-v1 candidates C1-C21 |  |  |  |  |  |  |  |  |  |  | 0 |
 | X02 | Trader nav marker |  |  |  |  |  |  |  |  |  |  | 0 |
 
@@ -809,6 +840,7 @@ Features not covered by a scenario:
 
 - X01 (after-v1 candidates C1-C21): a list of ideas without player-facing designs (TDR 3 COULD table, 12). A timeline would have to invent their behaviour.
 - X02 (trader nav marker): a pending user decision with no chosen behaviour (PROGRESS *Decisions pending*, 2026-10-21).
+- W26 (mercenary clan options beyond the visit): stories US-88 to US-94; full timelines are in `proposals/merc-packs-beyond-flavour.md` section E and `proposals/merc-unified-clans.md` section H, not repeated here.
 
 ## 7. Open questions and pending user decisions
 
@@ -830,6 +862,7 @@ Listed, not decided. Each changes what the player sees.
    - H1 accept mid-stage optional sinks at about 28 % of the farm; H2 freight repair charge as step 2 only; H3 accept late wallet growth.
 4. Active wreck scan: O1 the scan key (default N, `scan_key` 49 in the Lua config; GRAVE is taken by the exe) and O3 the pulse cost (default none, the sensor module price is the cost). Related: O2 live-ship echoes (default off), O12 a *no returns* line (default silence), O6 `loc_mode` 1 drops the bearing and band.
 5. Defaults taken for the code but still owned by the user (PROGRESS *Decisions pending*): tracking on focus alone, base founding rule and cap 2, Triada sweeps, equipment-convoy frequency, danger convoys forming at the station, the escort flight form, the hail start.
+6. Mercenary clans (W24-W27, 12 and 13 merged 2026-10-24): the recommended answers of `proposals/merc-unified-clans.md` section I (Q1-Q11: merge, rival choice by standing and fortune, stage hulls, big ships never hired, `mc_launch` off, loss rule, no big ship before chapter 7, at most 2 motherships, clans keep their names, stage never shown as a number, build order) and `proposals/merc-packs-beyond-flavour.md` section G (Q1-Q13) are applied in WB12 and WB13 as working defaults, pending user confirmation (WB12 10).
 
 ## 8. Inconsistencies noticed while writing
 
@@ -850,3 +883,6 @@ Listed, not decided. Each changes what the player sees.
 - Captains: WB04 1 says 11 clans; the map has 8 regions. WB04 expects a captain-led flight in on-screen sweeps; step 1 spawns no captain during a sweep window.
 - Scars: WB02 and WB15 give a TTL range of 8-20 legs; scar-spec and code clamp to 8-30. The scan spec reuses the module prefix `Sc` and host-run names `sc-a..` that the built scar module already uses, and expects scar functions (`TRF_ScarEchoes` and others) that do not exist.
 - Proposals: WB12 and PROPOSALS count different numbers of dormant `RegisterNaemnik` calls (100 in 94 files vs 20 in 19); WB12 and WB13 count different Merc-team story scripts (18 vs 52 files).
+- Jump clock: WB12 named its penalty clock `TRF.mj` and WB13 `TRF.rv.j`, while WB00 6 and the code use `TRF.clock.j` (`TRF_Jumps`). Resolved 2026-10-24: WB12 and WB13 use `TRF.clock.j`; the old names remain only as historical mentions.
+- Mercenary office: proposals/worldbuilding-after-traffic said the office list is generated once per location; it regenerates at the first office opening after every location entry (`mod-research/hooks/runtime-limits.md` 7). Resolved 2026-10-24: the proposal text is corrected; the rejected row "Mercenary office follows the cycle" stays deferred unless patch P4 is built.
+- Status tags W24-W27: the merged mercenary clan design lives in `worldbuilding/12-mercenary-packs.md` and `13-rival-packs.md`, not in a `*-spec.md` file, but it is a full detailed design with experiments and build order, so its rows and stories are tagged [SPEC] (2026-10-24).

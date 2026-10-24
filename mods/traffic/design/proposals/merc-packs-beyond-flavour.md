@@ -1,5 +1,7 @@
 # Mercenary packs beyond flavour: options, prior art and a recommended bundle
 
+**Status 2026-10-24:** followed by `merc-trader-reuse.md` (what built state and code the packs reuse) and `merc-unified-clans.md` (UC: specs 12 and 13 merged into one clan record with fortune and mothership stages). UC section G.3 is applied below as dated update notes (M1, M2, M3, M4, M7, M14, M15, M17, D.3, D.4); the rest of this document is unchanged. Line citations of the form `12:NNN`, `13:NNN`, `spec 12:NNN` and `12-mercenary-packs.md:NNN` refer to specs 12 and 13 as of commit 02f9ea6, before this write-back; citations of `00` lines were updated to the new line numbers. The bundle is written back into `../worldbuilding/12-mercenary-packs.md` (sections 4-10) and `../worldbuilding/13-rival-packs.md`.
+
 Proposal for `worldbuilding/12-mercenary-packs.md` (spec 12). Written 2026-10-24 from two work notes: a design analysis made from the repo specs and a web search of other games (copied to `mod-research/merc-prior-art.md`, PA below). No code, no game run, no existing file edited.
 
 Paths: `G` = `/Users/secustor/Games/Heroic/Star Wolves 3 - Civil War/Data`; `D` = `mods/traffic/design`; `S` = `mods/traffic/Data/Scripts/Mods/Traffic`; WB = `D/proposals/worldbuilding-after-traffic.md`; feature specs by number (`00`, `04`, `07`, ...) live in `D/worldbuilding/`.
@@ -127,6 +129,8 @@ Each option ends with a status: **bundle**, **optional**, **deferred** or **reje
 
 **Rules.** R1-R9 hold (bookings end with the phase; no payment; R7 radio lines only). **Status: bundle.**
 
+**Update 2026-10-24 (UC G.3).** Booked ships never include a big ship: a stage 3 or 4 clan lends `merc_rev_n` 3 fighters only (UC D.4). The #13 step 2 bomber flight is no longer a booked unit: in the merged design it comes from stage 2 (UC D.4).
+
 ---
 
 ### M2. The Exchange keeps one book: employers, grudges and the counter-hire
@@ -144,7 +148,7 @@ Lore: the Hunting channel reports teams short of work ("not enough pirates for a
 **Integration.** 04 (captain employer), 07 (stash grudge, M14), 13 step 2 (rival employer), traffic S21 staged raids (clan employer), S19 patrol board line (patrol line 70, `D/wb-plumbing-spec.md:81`) [V], 03 rumour, M1, M3, M12, M14.
 
 **Mechanics.**
-- Per clan in `TRF.merc[c]` [new]: `ek` 0..4 (0 free, 1 Wolves, 2 captain, 3 clan, 4 rival), `es` 0..11 (region slot or rival index), `ee` leg the booking ends (phase end or `merc_book_legs` 12 legs [new], whichever first), `ec` retainer credit. Absent = free.
+- Per clan in `TRF.merc[c]` [new]: `ek` 0..4 (0 free, 1 Wolves, 2 captain, 3 clan, 4 rival), `es` 0..11 (region slot or rival index). Update 2026-10-24 (UC G.3): value 4 "a #13 rival" is removed, since a rival is a clan state (role), not an employer; `ek` is 0..3, booking may target a free or a rival-role clan, booked ships never include a big ship, and the fields live in `TRF.mc` (UC C.2). Former text continues: `ee` leg the booking ends (phase end or `merc_book_legs` 12 legs [new], whichever first), `ec` retainer credit. Absent = free.
 - A unit is booked at most once per region phase: after a meeting (M1) or a hunt (M14) `ek` returns to 0 but `ee` stays.
 - `TRF.mbk[slot]` [new]: `n` leg of the notice, `g` leg of the stash grudge (M14), sparse, at most 11 entries.
 - Retainer: `SubPlayerCredits(ret)`, `ek` := 1, `es` := slot, `ec` := ret.
@@ -190,7 +194,7 @@ Lore: the Hunting channel reports teams short of work ("not enough pirates for a
 
 **Hooks and natives.** Existing only: stash intel path, captain tip, arrival line queue, dock box, box lock. No exe hook. **In-game checks.** E0.6 (a second box in the same meeting; spec 12:153 allows two per visit); stash E7.x; EM.2 (outbid box at a dock). **Effort.** S. **Risk.** Low.
 
-**Rules.** R7: the outbid box opens only at a dock or a meeting the player flew to. R5: the price is capped. **Status: bundle.**
+**Rules.** R7: the outbid box opens only at a dock or a meeting the player flew to. R5: the price is capped. **Status: bundle.** Update 2026-10-24 (UC G.3): unchanged except that the fields move to `TRF.mc` (UC C.2).
 
 ---
 
@@ -216,7 +220,7 @@ Lore: the Hunting channel reports teams short of work ("not enough pirates for a
 
 **Hooks and natives.** Specified in spec 12 (spawn, hire, end, jump); trigger points are functions that exist (staged raid start, captain spawn). No exe hook. **In-game checks.** E12.1, E12.4 path without a box, E0.29 (8x headroom with a call during a raid). **Effort.** M, less than spec 12 step 2. **Risk.** Medium: arrival timing in a fight that may already be over.
 
-**Rules.** R7: the box that arms the call opens at a meeting; the call itself is a radio line. R2: standing spent is standing lost. **Status: bundle.** The credit version of the options note (3 calls prepaid at 2.5 x fee) is replaced by this one.
+**Rules.** R7: the box that arms the call opens at a meeting; the call itself is a radio line. R2: standing spent is standing lost. **Status: bundle.** The credit version of the options note (3 calls prepaid at 2.5 x fee) is replaced by this one. Update 2026-10-24 (UC G.3): fields move to `TRF.mc` (`mc.r`); a call brings the clan's wing only, never its big ship.
 
 ---
 ### M5. Freight cover for Wolves Freight (08)
@@ -287,7 +291,7 @@ Variant B, rejected for now: a discount at the vanilla office for units with `re
 
 **Hooks and natives.** Vanilla natives only. **In-game checks.** EM.3 (merged into E0.25). **Effort.** M. **Risk.** Medium: roster behaviour unknown; the pilot shows the generic callsign `#M_pilot_Name_RecruitAce` (`Pilots.xml:4480`) [V].
 
-**Status: bundle**, gated by EM.3.
+**Status: bundle**, gated by EM.3. Update 2026-10-24 (UC G.3): unchanged except that `rc` and `rs` move to `TRF.mc` (UC C.2).
 
 ---
 
@@ -410,6 +414,8 @@ Variant B, rejected for now: a discount at the vanilla office for units with `re
 
 **Rules.** R1 and R2: grudges and hunts end with the phase. R5: pay-off is a capped price. R7: lines, one marker, one dock box. **Status: bundle.**
 
+**Update 2026-10-24 (UC G.3, TR F.7).** Hunts may include a stage 3 corvette as one of the 4 ships; the mothership never hunts (UC D.4). The hunter group is `TRF_Hunt_<n>` (labels `trf_hunt_<n>_<j>`), not `TRF_Pir_<n>`, which `trf_clan` owns. The stash grudge sits on `TRF.clan[slot].mg` (TR E.2).
+
 ---
 
 ### M15. Debt markers: one single-use favour per unit [new, from prior art]
@@ -437,7 +443,7 @@ Variant B, rejected for now: a discount at the vanilla office for units with `re
 
 **Hooks and natives.** 06 pod path (built), nav marker. No exe hook. **In-game checks.** EM.6. **Effort.** S. **Risk.** Low.
 
-**Rules.** R5: nothing is paid. R9: 264 B worst case. **Status: bundle.**
+**Rules.** R5: nothing is paid. R9: 264 B worst case. **Status: bundle.** Update 2026-10-24 (UC G.3): unchanged except that `dj` moves to `TRF.mc` (UC C.2).
 
 ---
 
@@ -467,7 +473,7 @@ Variant B, rejected for now: a discount at the vanilla office for units with `re
 
 **Evaluation.** It needs two merc-style flights in one entry, against the 00 cap rule (section F.5); shooting the other unit's ships is betrayal under spec 12 (`bk`, blacklist) unless carved out; and it duplicates #13 rival packs.
 
-**Status: rejected** (00 section 6 cap, spec 12 betrayal rules, overlap with #13).
+**Status: rejected** (00 section 6 cap, spec 12 betrayal rules, overlap with #13). Update 2026-10-24 (UC G.3): stays rejected; the rival role of the merged clan record covers the feud.
 
 ---
 
@@ -591,7 +597,7 @@ Economy effect: no new credit payment anywhere. New sinks, each at a price from 
 | 6 Meeting and hire | Retainer clause in the box text when the unit is a candidate; second box order at the end of a completed hire: transfer (M7) > call arming (M4) > report (M3); at most two boxes per visit as now. |
 | 6 Whom the pack fights (:157) | Same-bloc stand-aside (already for #13) extended to booked flights and hunts; same-bloc talk-out at `rel >= 2` vs `rel <= -2`; office-bloc rule for bookings. |
 | 6 End of a hire (:159) | A lost pack ship places a pod (M15); the pack's exit portal and line feed M16 (a) if built. |
-| 6 Saved state (:163-174) | `TRF.merc[c]` gains `ek`, `es`, `ee`, `ec`, `eh`, `wn`, `ir`, `rc`, `rs`, `dj` (all optional, absent = default). New `TRF.mbk[slot]` `{n, g, o}` (sparse) and `TRF.mr {c, ej, lj}`. Delete `TRF.pack` and `TRF.mj`; all jump stamps on `TRF.clock.j` (`00-economy-and-progression.md:274`) [V]. |
+| 6 Saved state (:163-174) | `TRF.merc[c]` gains `ek`, `es`, `ee`, `ec`, `eh`, `wn`, `ir`, `rc`, `rs`, `dj` (all optional, absent = default). New `TRF.mbk[slot]` `{n, g, o}` (sparse) and `TRF.mr {c, ej, lj}`. Delete `TRF.pack` and `TRF.mj`; all jump stamps on `TRF.clock.j` (`00-economy-and-progression.md:276`) [V]. |
 | 6 Config | Add `merc_book`, `merc_report`, `merc_hunt`, `merc_marker`, `merc_calls`, `merc_transfer` (each 1) and the tuning keys of section C; delete `merc_persist`, `c_wage`, `sign_k`, `merc_wait_legs`, `merc_ships2`. |
 | 6 Text keys | Add 42 keys (list below). |
 | 7 Dependencies | Gives #4 the wing pilot table hook and the warning tip; gives #7 `src` 5 and takes the stash grudge from #7's open hook; takes the pod path from #6; gives #13 the booked bomber flight (step 2). Conflicts (:201): booked, revenge and hunter ships are employer flights and do not count as a merc-style flight (section F.5); #8 exclusion unchanged. |
@@ -613,6 +619,8 @@ The unit name is spoken as the signature line first and the rest follows through
 
 ### D.3 Save budget
 
+**Replaced 2026-10-24 by the unified save budget of UC C.5:** the merged packed record (`TRF.mc`, with this bundle's fields, 13's fields, fortune and stages) costs about 2.9 KB worst case and about 1.0 KB typical, against about 3.9 KB for 12 and 13 kept apart; the host full state of 80,349 B (`D/PROGRESS.md`) becomes about 83.2 KB worst case. The keyed table below (and TR section D's correction of it) is kept for reference only.
+
 | Item | Worst case | Typical | Basis |
 |---|---|---|---|
 | `TRF.merc[c]` new fields (10 per clan x 22 B) | 2,640 B | about 500 B (3 bookings, 1 hunt, 2 warnings, 4 report stamps, 2 markers, 1 transfer) | host grammar, `D/survivors-spec.md:77` [V] |
@@ -633,6 +641,7 @@ Host full state is 80,261 B with stashes (`D/PROGRESS.md:153`) [V] against a bud
 - #13: optional; its step 2 bomber flight becomes a booked unit when #13 is built.
 - Plumbing (built): `TRF_BoxTake`, `TRF_EscortTake`, `TRF_ArrivalLine`, `TRF_DockLine`/`TRF_DockBox`, `TRF_CapReg`; the 00 section 6 merc-style flight rule (not implemented, `D/wb-plumbing-spec.md:202`) with the carve-out of F.5.
 - Engine checks: E0.6, E0.25 / EM.3, E0.26, EM.0-EM.2, EM.4-EM.6.
+- Added 2026-10-24 (UC G.3, G.4): `TRF_CanSpawn` kind `merc` (with the big ship counted and the governor test) and kind `hunt` for hunters, since an unknown kind counts against `cap_traders` and skips the governor (TR F.6); the orphan adoption rule (the module registers `Merc=1` with `TRF_PlAdopt()` and deletes its own unhired ships at load, so a hired `trf_merc_*` wing is not deleted, TR F.2); the in-game checks EMS.1-EMS.6 (UC G.6) for stages 3-4.
 
 ## E. Timeline scenario (recommended bundle)
 
@@ -676,9 +685,9 @@ Chapter 8-9, NORMAL, free time. Kadi region (slot 6) in Raids at T3, its clan "B
 
 1. Office generation: WB:18 and WB:303 say the office list is generated once per location; `runtime-limits.md:134-135` says it is regenerated at the first opening after every location entry. Settled in H (a).
 2. Office charge: `recruits.script:17-31`, `read-natives.md:408` and `ui_windows.loc:48-49`, `:258` show a signing charge and a pay request run from location processing. Not settled statically: H (b), EM.0.
-3. Jump clock: spec 12 keeps `TRF.mj` (spec 12:81, :168); 00 (`00-economy-and-progression.md:274`) and the code use `TRF.clock.j`. Settled in H (c): use `TRF.clock.j`.
+3. Jump clock: spec 12 keeps `TRF.mj` (spec 12:81, :168); 00 (`00-economy-and-progression.md:276`) and the code use `TRF.clock.j`. Settled in H (c): use `TRF.clock.j`.
 4. Spec 12:124 excludes packs as #8 freighter guards; M5 would reverse it (deferred).
-5. Merc-style flight cap. 00 section 6 allows at most one merc-style flight per entry (`00-economy-and-progression.md:268`, spec 12:201) [V] (quoted in H (d)). Booked flights (M1, M2), hunts and scouts (M14) and a hired or called pack can meet in one entry only with a carve-out. Proposed text for the 00 ship caps row and spec 12:201 [new]: "Merc ships built inside an employer's pirate-team group (a captain's `TRF_Cap_<slot>`, a staged raid `TRF_Raid_<n>`, a hunter `TRF_Pir_<n>` or a scout group) are part of that employer's flight and are not a merc-style flight. They count in `cap_ships` and the governor like the employer's other ships, and the trimming order trims them with their employer." The hired pack or the answered call remains the one merc-style flight of the entry.
+5. Merc-style flight cap. 00 section 6 allows at most one merc-style flight per entry (`00-economy-and-progression.md:270`, spec 12:201) [V] (quoted in H (d)). Booked flights (M1, M2), hunts and scouts (M14) and a hired or called pack can meet in one entry only with a carve-out. Proposed text for the 00 ship caps row and spec 12:201 [new]: "Merc ships built inside an employer's pirate-team group (a captain's `TRF_Cap_<slot>`, a staged raid `TRF_Raid_<n>`, a hunter `TRF_Pir_<n>` or a scout group) are part of that employer's flight and are not a merc-style flight. They count in `cap_ships` and the governor like the employer's other ships, and the trimming order trims them with their employer." The hired pack or the answered call remains the one merc-style flight of the entry.
 6. Spec 12:81 says off-screen presence has no effect; M10 would contradict it (rejected); bookings, grudges and hunt states are counters that move no world value, so they are consistent.
 7. Spec 12's one-visit hire: M16 (b) would break it (rejected); M4 calls and M14 hunts are fresh per-visit spawns and keep it.
 8. 07 open hook (`S/trf_stash.script:1056`): the planned captain grudge +1 (04) and the M14 stash grudge run at the same point; both are counters and do not conflict.
@@ -705,8 +714,8 @@ Chapter 8-9, NORMAL, free time. Kadi region (slot 6) in Raids at T3, its clan "B
 
 **(b) "Pay mercenaries" box.** From the files [V]: `recruits.script:30-31` arms `Recruits_ShowConfirmationDlg` 8 s after the engine calls `Recruits_ProcessLocation` (engine caller 0x4f0e8a, "runs on location processing", `script-runtime.md:109`); `:18-27` shows "Request from mercenaries / Pay mercenaries %s?" (`ui_windows.loc:48-49`) when `RecruitsCanProcessLocation()` and `RecruitsPayTest()` are TRUE, the no-cash box when the test fails, and re-arms every 8 s while `RecruitsCanProcessLocation()` is FALSE; OK calls `RecruitsPayRequest(TRUE)`, Cancel and no-cash call `RecruitsPayRequest(FALSE)` (`:2-7`, `:23`). `read-natives.md:408`: `RecruitsPayRequest(1)` subtracts the selected group's summed cost from the credits and does not clear the selection. Separately, signing at the office is charged by the recruit commit at 0x58b417 (`engine-events.md:185`) after "Sign contract costing %i?" (`ui_windows.loc:258`). `Recruits.xml` and `Recruits.xsd` have only `cost` per `FightUnits` row and no wage or period field. Reading [I]: a signing charge plus a recurring request for the summed listed cost at processed locations, because the request is run from per-location processing, keeps the selection after payment, and is separate from the signing charge. What cannot be settled statically: whether the engine calls `Recruits_ProcessLocation` on every location load or only on some, what `RecruitsCanProcessLocation` tests, whether `%s` equals the signing amount, and what `RecruitsPayRequest(FALSE)` does to the unit. EM.0 settles these.
 
-**(c) Jump clock name.** `TRF.clock.j` exists: `S/trf_state.script:1013-1021` increments it in `TRF_State_BeforeJump` and reads it in `TRF_Jumps()`; 8 lines under `S` mention `clock.j` [V]. `TRF.mj` has 0 hits under `S` [V]. Spec 12:81 and :168 use `TRF.mj`; `00-economy-and-progression.md:274` already says to implement one counter `TRF.clock.j` and turn feature fields into stamps. D.2 applies that.
+**(c) Jump clock name.** `TRF.clock.j` exists: `S/trf_state.script:1013-1021` increments it in `TRF_State_BeforeJump` and reads it in `TRF_Jumps()`; 8 lines under `S` mention `clock.j` [V]. `TRF.mj` has 0 hits under `S` [V]. Spec 12:81 and :168 use `TRF.mj`; `00-economy-and-progression.md:276` already says to implement one counter `TRF.clock.j` and turn feature fields into stamps. D.2 applies that.
 
-**(d) One merc-style flight per entry.** `00-economy-and-progression.md:268` [V]: "All count in `cap_ships` and the governor; trimming order: rival, pack, scavenger, then skip. At most one merc-style flight (pack or rival) per entry (`12-mercenary-packs.md:201`)." Spec 12:201 [V]: "Caps: pack ships count in `cap_ships` with #10 hunters, #13 rivals and traffic convoys; at most one merc-style flight (pack or rival action) starts per entry." `wb-plumbing-spec.md:202` [V] notes the rule is not implemented. The carve-out the bundle needs is F.5: merc ships inside an employer's pirate-team group are part of the employer's flight, not a merc-style flight, and still count in `cap_ships`.
+**(d) One merc-style flight per entry.** `00-economy-and-progression.md:270` [V]: "All count in `cap_ships` and the governor; trimming order: rival, pack, scavenger, then skip. At most one merc-style flight (pack or rival) per entry (`12-mercenary-packs.md:201`)." Spec 12:201 [V]: "Caps: pack ships count in `cap_ships` with #10 hunters, #13 rivals and traffic convoys; at most one merc-style flight (pack or rival action) starts per entry." `wb-plumbing-spec.md:202` [V] notes the rule is not implemented. The carve-out the bundle needs is F.5: merc ships inside an employer's pirate-team group are part of the employer's flight, not a merc-style flight, and still count in `cap_ships`.
 
 **Other checks made for this merge [V].** `pay_cap` 30,000 and `TRF_Pay` capping (`S/trf_region.script:72`, `:720-725`); off-mission XP x0.1 (`G/Scripts/include/LevelUp.script:32-33`); function locations cited in M1-M4 (`TRF_CapWing` `S/trf_captain.script:864`, `TRF_StagedCap` `S/trf_raid.script:2195`, `TRF_BuildFlight` `S/trf_tier.script:367`, `TRF_RegionTick` `S/trf_region.script:1138`, `TRF_Sh_IntelOk` `S/trf_stash.script:1438`, `TRF_FstAdd` `S/trf_faction.script:416`, `TRF_HlRumourText` `S/trf_hail.script:1554`, `TRF_CapReg` `S/trf_plumb.script:365`, `TRF_DockLine`/`TRF_DockBox` `:300`/`:306`, `TRF_BoxTake` `:660`, `TRF_EscortTake` `:721`, `TRF_ArrivalLine` `:744`); `tip_legs` 4 and the 100 % tip spawn (`S/trf_captain.script:370`, `:650`); stash open marks the clan (`S/trf_stash.script:1041-1042`) and carries the step 2 grudge hook comment (`:1056`); the 07 treasurer test expects group war on `TRF_Pir_3` without a team change (`07-clan-stashes.md:262`); survivors pods and swept-segment pickup are built (`D/PROGRESS.md:101`); traffic M10 forbids unprompted boxes (`D/traffic-design-research.md:236`). The [S] tags and URLs are taken from `mod-research/merc-prior-art.md`; the pages were not reopened.

@@ -149,7 +149,7 @@ Exploits and the rule that closes each:
 5. Feed a lane (break, repeat). Closed by: pushes never move `fs`; `raw` is clamped to 6 and fatigue reaches 6, so three pushes cool any lane.
 6. Picket hunting. Closed by: respawn after 8 legs as one flight for 30 legs, no picket at `fst[D]` 2 or less, `fr_pk_cap` 2 per 30 legs map-wide, power clamped to the site's `sys_base`.
 7. Team war or mission time as a free target. Closed by the war and mission rule (section 4): no picket of a side at team war, nothing while a mission runs, so no picket or push is fought at mission XP.
-8. Double pay through other features. Closed by: push and picket ships are faction groups, never raid ships, so 8.5 raid help, `CostOfHead` pirate rates and 8.10 sweep parts never count them; a push scar for feature 2 carries no cargo, as feature 2 already rules for own-freighter wrecks (`02-battle-scars.md:122`); feature 14 counts only paid pushes, so its goal shares the same gap; feature 12 packs never engage faction groups (`12-mercenary-packs.md:185`); feature 10 never shares a visit (`10-deserters.md:192`).
+8. Double pay through other features. Closed by: push and picket ships are faction groups, never raid ships, so 8.5 raid help, `CostOfHead` pirate rates and 8.10 sweep parts never count them; a push scar for feature 2 carries no cargo, as feature 2 already rules for own-freighter wrecks (`02-battle-scars.md:122`); feature 14 counts only paid pushes, so its goal shares the same gap; feature 12 packs never engage faction groups (`12-mercenary-packs.md:360`); feature 10 never shares a visit (`10-deserters.md:192`).
 Also: toll dodging by turning away is allowed (the player uses another portal); a held player who jumps is a run; paying twice at the same checkpoint within 10 legs is waived; waiting for a push to slip through without a toll is allowed, since the push comes at most once per 24 legs.
 
 ## 6. Mechanics
@@ -215,7 +215,7 @@ Gives:
 - 10 Deserters: `q >= 3` toward the deserter's side may replace the `fs` gap trigger, and an O picket stands at the crossing portal (`10-deserters.md:192`).
 - 2 Battle scars: an on-screen push with 3 or more deaths within 300 units is already a scar source through feature 2's source 7 (3 or more mod-ship deaths within `scar_radius`, `02-battle-scars.md:143`); such a scar carries no cargo (section 5, exploit 8).
 - 14 Charter goals: tallies `n[f]` of paid pushes and lane `p` ("hold the Elinor line through a push"; `14-charter-goals.md:81` lists "a checkpoint push joined").
-- 12 Mercenary packs: a hired pack never engages picket or push flights (`12-mercenary-packs.md:185`), so pack kills never decide a push.
+- 12 Mercenary packs: a hired pack never engages picket or push flights (`12-mercenary-packs.md:360`), so pack kills never decide a push.
 
 Conflicts:
 - One scripted event per visit (order from `10-deserters.md:199`): on-screen sweep, equipment convoy, staged raid, checkpoint push, deserter, then optional events of 3 and 6. The picket itself is ambient and coexists with all of them, but stands down (no hail) during a sweep or equipment convoy in its system.

@@ -1,5 +1,7 @@
 # Unified mercenary clans: one record for hire, rivalry and bookings, with growth to a mothership
 
+**Status 2026-10-24: written back into specs 12 and 13.** G.1 is applied to `../worldbuilding/12-mercenary-packs.md` (status line; sections 1, 2, 3, 4 Scaling and What feeds what, 5 Economy and exploits 22-33, 6 Clan data, Presence, Roles, Fortune and stage, Appearance, Spawn with stages 3-4, Saved state, Save/load, Config, Text keys, 7, 8 EMS.1-EMS.6, 9 build order of G.5, 10 questions and the rejected or deferred list); G.2 to `../worldbuilding/13-rival-packs.md` (status line; sections 1, 2, 3, 4 Clan choice, Difficulty, Feeds, Why nothing settles, 5 exploits note, 6 Saved state, Off-screen tick, On-screen actions with stage 3-4 variants, Relations, Caps, Cleanup, Config, 7, 8, 9, 10); G.3 to `merc-packs-beyond-flavour.md` as dated update notes. The answers of section I are applied as working defaults, marked "Default, pending user confirmation" in the specs. Line citations of the form `12:NNN`, `13:NNN`, `spec 12:NNN` and `12-mercenary-packs.md:NNN` refer to specs 12 and 13 as of commit 02f9ea6, before this write-back; citations of `00` lines were updated to the new line numbers.
+
 Evaluation for `worldbuilding/12-mercenary-packs.md` (spec 12), `worldbuilding/13-rival-packs.md` (spec 13), `proposals/merc-packs-beyond-flavour.md` (P, options M1..M18) and `proposals/merc-trader-reuse.md` (TR). Written 2026-10-24 from the design files, the working-tree scripts and the game data. No code, no game run, no other file edited.
 
 Paths: `G` = `/Users/secustor/Games/Heroic/Star Wolves 3 - Civil War/Data`; `D` = `mods/traffic/design`; `S` = `mods/traffic/Data/Scripts/Mods/Traffic`; `NC` = `D/research/npc-carriers.md`; `NP` = `D/mod-research/npc-primitives.md`; `00` = `D/worldbuilding/00-economy-and-progression.md`; `CF2` = `G/Scripts/include/Create_flight_2.script`; `CX` = `G/Game/Carcasses.xml`; `SD` = `G/Game/ShipDescriptions.xml`.
@@ -60,12 +62,12 @@ Alternative reading in one line: "combined" could mean only that spec 13 draws i
 6. Kills between the two. 12 seeds a hired pack at war with a HOSTILE rival of the other bloc and refuses its own bloc (12:157); 13 counts those kills as the player's (13:82, :128) [V].
 7. Loot. 12 treats killing a pack as betrayal with at most half a pack's loot (12:34, :113); 13 makes rival fight loot "the main value" late (13:89) and has a crime variant (13:122) [V]. The same ships are protected in one role and farmed in the other.
 8. Board and dock lines. 12 board line "Mercenaries for hire: ..." (12:33, :185) and 13 rating lines at patrol and trade docks (13:24-26) both sit in the patrol dispatcher (00:255) [V].
-9. Escort slot and one merc-style flight per entry. 12 takes `live.esc` (12:199); 00 allows one merc-style flight (pack or rival) per entry (00:268, 12:201) [V]; not implemented (TR:279) [V].
+9. Escort slot and one merc-style flight per entry. 12 takes `live.esc` (12:199); 00 allows one merc-style flight (pack or rival) per entry (00:270, 12:201) [V]; not implemented (TR:279) [V].
 10. Signature keys twice: `#TRF_MC_Sig_<c>` (12:185) and `#TRF_Rv_Sig_<clan>` (13:34) [V], 24 keys for 12 names.
 11. Cooldowns twice: 12 `met + merc_cd` 4 legs (12:149), 13 `rv_act_cd` 4 legs and `rv_sys_cd` per system (13:175) [V].
 12. Group prefixes twice: plumbing scans both `Merc` and `Rival` (`S/trf_plumb.script:277-278`) [V].
 13. Type 3 is not a pack. 12 gives Black Legion type 3 (12:139) and calls it a design choice (12:145). Type 3 builds from `Rec_BigShips` (`RandomFmerc.script:109-110`) [V], and every row of that table holds one ship, a Cavalier (`CF2:750-773`) [V]. A type 3 "pack" is a lone corvette. In the merged design the big ship comes from the stage (D), and every clan is type 1 or 2.
-14. Same engine gate twice: E12.2 and R3 are both merged into E0.13 (00:293) [V].
+14. Same engine gate twice: E12.2 and R3 are both merged into E0.13 (00:295) [V].
 
 ## C. Unified clan record
 
@@ -320,7 +322,7 @@ Text keys: 12 signatures instead of 24 (B.3 item 10); new stage and mothership l
 | Big ship follows `Move`, `Stop`, `ComeToPortal` | [V] code, [I] engine | trf_clan orders its carrier flight with `Move` and `Stop` (`S/trf_clan.script:901`, :935); AI.ini `bigShipPositioningAccuracy` (NP:123) | EMS.1 |
 | Big ship fights fighters | [I] | tactic "Destroy anything with big ship" exists (NP:116); `Base_mercenary` has 4 turrets and no guns (`CX:847-851`) | EMS.1: does it fire at the Wolves' fighters at group war |
 | Big ship escorting the player | unknown; not used | big hulls are as slow as the player's carriers (D.4) | not needed: excluded by design |
-| Hostile/neutral relations for team Merc | unknown, release gate | 18 story scripts use team Merc, two scripts repair a Merc war (12:55); E12.2 and R3 merged into E0.13 (00:293) | E0.13; fallback a mod-only team `TRF_Merc` (12:55); the big ship shares its group's relation [I] |
+| Hostile/neutral relations for team Merc | unknown, release gate | 18 story scripts use team Merc, two scripts repair a Merc war (12:55); E12.2 and R3 merged into E0.13 (00:295) | E0.13; fallback a mod-only team `TRF_Merc` (12:55); the big ship shares its group's relation [I] |
 | Per-flight and per-visit caps | [V] limits exist | `cap_ships` 20, `cap_traders` 5 (`S/config.script:45`); kind caps `raid_live_cap` 8 for carrier and clan (`S/trf_safety.script:1151-1154`); an unknown kind falls to the trader count and skips the governor (TR F.6) | G.4 adds kind `merc` |
 | Performance of 1 big ship + 6 fighters + a raid of 4 at 8x | unknown | E0.7, E0.29, E12.7, R10 all open (00:226; 13:229); the v1 carrier raid test with 10 ships at 8x is planned, not run (`D/PROGRESS.md` v1 long checks) | EMS.4 |
 | Player can kill a big ship | [V] in principle, [I] in time | `Base_mercenary` 2,000 base HP (`CX:828`), Cavalier 2,500 (`CX:22870`), less than the pirate `Butcher_pir` corvette (5,000, `CX:23048`); story mission 9c sets the player against `Mothership_pirate2` (`NewPirateFlight` type 3 power 17, NORMAL row 14, `CF2:91`, :658); traffic already pays a bounty for killed pirate carriers (`S/trf_clan.script:968-1000`) | EMS.2: time for a chapter 7 and a chapter 12 wing to kill each hull, with fitted modules |

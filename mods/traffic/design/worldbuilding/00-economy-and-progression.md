@@ -12,7 +12,7 @@ This file is the model the 14 feature designs must agree with. Part 1 (sections 
 | Mid | 7-12 | 8-12 | T2-T3 | 120k/h | 60k / 85k / 120k / 12k |
 | Late | 13-20 | 13-16 | T3-T4 | 450k/h (380-850k) | 225k / 300k / 450k / 45k |
 
-Chapters 1-3 are not a stage: the `__crash_Freedom` leash (`G/Scripts/include/OutOfMission.script:21`) forbids every detour, so no feature pays there. Feature 13 uses the brief's affordability stages (mid = ch 5-9, `13-rival-packs.md:110`); its mid row corresponds to this file's early-to-mid boundary.
+Chapters 1-3 are not a stage: the `__crash_Freedom` leash (`G/Scripts/include/OutOfMission.script:21`) forbids every detour, so no feature pays there. Feature 13 uses the brief's affordability stages (mid = ch 5-9, `13-rival-packs.md:112`); its mid row corresponds to this file's early-to-mid boundary.
 
 Shared pay function. Every credit payment of the 14 features has the form of the brief's section 4:
 
@@ -63,7 +63,7 @@ One structural fact drives most of section 1. The farm rate grows faster than `L
 | 9 Ladder warrants (step 2) | medium | 1.7-2.8k (+ about 4k loot) | 8.4k (+ 28k) | 18.7k (+ 120k) | 0 after the real-time floor; was 3.4-5.6k / 17k / 37k when parked | parked case fixed (`09-faction-ladder.md:128`) |
 | 10 Deserters | medium | none (ch 7+) | credits 2-18k; 10-75k with fights | 7-25k; 19-170k | 0 | was 50-100k mid at 1.33/h; fixed (`10-deserters.md:114, 118`) |
 | 11 Front pressure | high | toll sink 1.5-5k | credits 9-19k; 46-96k with loot | 25-37k; 170-390k | 0 | OK, late 87 % with standing cost |
-| 12 Mercenary packs | sink | -2.5k | -19k | -84k when hired | 0 | sink only; worst case 70 % net (`12-mercenary-packs.md:108`) |
+| 12 Mercenary packs | sink | -2.5k | -19k | -84k when hired | 0 | sink only; worst case 70 % net (`12-mercenary-packs.md:149`) |
 | 13 Rival packs | medium | 0 | -2k to +49k (loot) | +15k to +110k | 0 | OK alone |
 | 14 Charter goals | overlay | 1.2k (max 3.5k) | 5.9k (13.5k) | 13.0k (28.0k) | 0 | OK |
 
@@ -121,7 +121,7 @@ Reading the table:
 | #4 grudge, `esc` | escapes; #2 player scars; #7 opening a cache | decay 1 per 8 legs; vendetta -2; successor halves | lineage resets at Boom | no |
 | #5 `fav` -3..3 | rescues, escorts, trades, favours, compensation | robbery, attack, failure, killing a captain (region -1) | positive per 15 legs, negative per 30 jumps | no |
 | #12 `rel` -3..3 | completed hires | abandonment, shooting, debt | 1 step per 20 legs or jumps | no |
-| #13 `rp`, `w`, `g` | phase target, jobs, rival success | Raids losses, breaks, decay | `rp` follows the home phase target | no |
+| #13 `rp`, `w`, `g` | phase target, jobs, rival success | Raids losses, breaks, decay | `rp` follows the home phase target; since the 12/13 merge (2026-10-24) `rp` is replaced by the clan fortune `fo`, which follows phase income minus upkeep by stage (`12-mercenary-packs.md` section 6) | no |
 | #14 rank 0..5 | postings | heat 7, forced Bust kill, unpaid dues | no decay while dues are paid | settles at 5 for a player who pays dues; dues are the drain. Accepted: rank buys perks only |
 | #10 crackdown `rc` 0..3 | crossings and sales | -1 per 8 legs | | no |
 | #11 lane `p` -9..9, `fat` | `fs` gap, pushes won | fatigue, drift | `raw` clamped to 6 | no |
@@ -142,8 +142,8 @@ Reading the table:
 | 9 | `TRF.lad`, `fst`, `fs` (warrant) | 1 (customs odds), 10 (chance), 11 (toll waiver), 12 (escort slot), 14 (rank goals) |
 | 10 | `TRF.def`, `fst` | 3 (martial law via provider), 5 (rumour), 14 (`def.n`) |
 | 11 | `TRF.front`, `TRF.frx`, `fst`, `dis` | 3 (provider), 10 (trigger), 2 (scar source 7), 14 (`frx.n`) |
-| 12 | `TRF.merc`, `TRF.mh`, clan score (pack kills) | 3 (rumour), 13 (clan table, exclusion), 14 (optional) |
-| 13 | `TRF.rv`, heat, 8.5 split factor, 8.4 offer rule | 4 (claim), 12 (exclusion, seeding), 14 (`w` vs `rp`) |
+| 12 | `TRF.mc` (unified clan record since 2026-10-24; formerly `TRF.merc`, `TRF.mh`), clan score (pack kills) | 3 (rumour), 4 (booked wing units, warning tip), 7 (`src` 5, stash grudge), 13 (same record, role field), 14 (optional) |
+| 13 | rival role fields of `TRF.mc` (formerly `TRF.rv`), heat, 8.5 split factor, 8.4 offer rule | 4 (claim), 12 (same record, seeding), 14 (`w` vs `rp`) |
 | 14 | `TRF.ch`, help, `pro`, clan score, `st` | 8 (slot gates rank 3/5), 13 (no snipe at rank 5), traffic 7.8 (heat-3 contracts at rank 2), 7.15 (rumour at rank 4) |
 
 No cycle in this graph feeds itself: every feature-to-feature edge either reads a counter with its own decay, or is bounded by a once-per-record or once-per-cycle rule. The two loops that were found in the feature reviews are closed in the files: #11 pushes do not move `fs` (`11-front-pressure.md:105`) and #10 desertions do not move `fs` (`10-deserters.md:81`).
@@ -161,7 +161,7 @@ No cycle in this graph feeds itself: every feature-to-feature edge either reads 
 | 8 | hull, slot x1 / 1.5 / 2.25; premium 5 %; liability 25 ticks; replacement 25 % | 19k hull | 120k hull | 270k hull, 1.28M fleet | one-off and loss |
 | 9 | permit `1200 x L_rg` per 24 legs; escort `800 x L_w x tier_k`; settlement; depot chips (vanilla 32-450k) | about 9k/h permit | 19k/h permit, 18k/h escort | 31k/h permit, 38k/h escort | optional recurring; one-off |
 | 11 | toll `250 x L_w x s_k` | 1.5-5k/h | 2.5-15k/h | 6.5-32k/h | recurring near the front |
-| 12 | fee, prize share, blood money; step 2 signing and wages | 2.5k/h | 19k/h | 84k/h; step 2 420k signing, 35-43k/h wages | optional recurring |
+| 12 | pack fees (fee x `mc_size_k` by stage, capped at `pay_cap`), prize share, blood money; retainer and outbid, lane reports, hunt pay-off, ace transfer (`12-mercenary-packs.md` section 5); the step 2 signing and wages are removed (calls cost standing, not credits) | 2.5k/h | 19k/h | 84k/h | optional recurring |
 | 13 | arbitration `1500 x L_w x (g - 5)` | 4.5-18k | 15-60k | 24-90k | optional |
 | 14 | dues `100 x L_h x rank` per 24 legs | 0 | 3.8k/h | 9.4k/h | recurring from rank 2 |
 
@@ -172,7 +172,7 @@ Is it enough to keep late credits meaningful? No, and no world-scaled sink can b
 Missing sinks that fit a listed feature (proposals, not applied):
 - #8 step 2: a repair charge for a freighter that reaches home with `dmg >= 2`, `dmg x e` instead of free lay-up ticks (`08-wolves-freight.md:237`). Small, but it makes on-screen escort worth more.
 - #9 step 2 depots already sell gen-3 chips (up to 450k) where the region allows (`09-faction-ladder.md:81, 86`). This is the largest late sink in the set and needs no new rule.
-- No other new sink is proposed. #12 step 2 wages and #8 slot pricing already supply late one-off sinks of 0.4-1.3M.
+- No other new sink is proposed. #8 slot pricing already supplies late one-off sinks (row 8, up to 1.28M for a fleet). The #12 step 2 signing and wages named here before 2026-10-24 are removed (`12-mercenary-packs.md` section 9; calls by standing replace them); the #12 bundle sinks (retainer, outbid, reports, hunt pay-off, ace transfer) are priced from existing formulas and capped at `pay_cap`.
 
 ## 4. Progression ladder
 
@@ -206,7 +206,7 @@ What a player who never touches a feature misses: nothing story-relevant. Every 
 | 6 | Pirates act like raiders | 4 (lane raids, flee), 6 (slavers), 7 (treasurers), 2 (scavengers) | none |
 | 7 | An outlaw path | 1 contraband, 6 pirate sale, 10 sell-back, 11 picket break and hunting, 13 crime variant; 3 penalty fee is its running cost | none; each costs standing |
 | 8 | Faction war visible | 9, 10, 11, 3 (martial law), 1 (customs) | none |
-| 9 | Safety near stations | 13 HOSTILE only beyond 2,500 units (`13-rival-packs.md:179`); 2, 6, 7 sites at least 400 from stations; 4 captain raids at least 400 | 11 pickets sit at portals, not stations: fine |
+| 9 | Safety near stations | 13 HOSTILE only beyond 2,500 units (`13-rival-packs.md:181`); 2, 6, 7 sites at least 400 from stations; 4 captain raids at least 400 | 11 pickets sit at portals, not stations: fine |
 | 10 | Specific information | 3 news and tips, 4 board, 5 rumours, 7 intel, 14 board, 2 and 6 beacons | none |
 | 11 | Trade with ships in space | 5 friend's prices | 8 (own ships cannot be traded with, on purpose) |
 | 12 | Something to watch | 11 pushes, 2 scavengers, 12 packs, 13 rival answers, 10 hunters | none |
@@ -259,19 +259,21 @@ What a player who never touches a feature misses: nothing story-relevant. Every 
 | `Case_Eject` dispatcher | traffic, 4 step 2 | One handler list; vanilla return passed through; returns vanilla whenever `__NoEject` is set. |
 | `_PatrolGIBDD_shtraf`, `_temp_change` | 9 | Only 9 wraps them; 11 defers its hail while `flight_pat_gibdd_1` is alive. |
 | 8.5 raid-help resolver | 4, 9, 12, 13 | A captain claim written for the raid cancels 8.5 credits; ships counted for a #9 warrant are excluded; otherwise one factor: the lowest of #12 hire (0.5) and #13 rival-first split (0.5) applies, factors never multiply. |
-| Scripted-event slot, one per visit | traffic 7.13, 7.15, S21; 4, 6, 10, 11, 13 | Order: on-screen sweep > equipment convoy > staged raid (a #4 captain raid and a #6 slaver take this slot) > #11 push > #10 deserter > #4 vendetta > #13 HOSTILE > optional events of 3 and 6 (`10-deserters.md:199`, `13-rival-packs.md:209`). #2 scavengers and #7 treasurers wait or are skipped, never queued. |
+| Scripted-event slot, one per visit | traffic 7.13, 7.15, S21; 4, 6, 10, 11, 13 | Order: on-screen sweep > equipment convoy > staged raid (a #4 captain raid and a #6 slaver take this slot) > #11 push > #10 deserter > #4 vendetta > #13 HOSTILE > optional events of 3 and 6 (`10-deserters.md:199`, `13-rival-packs.md:214`). #2 scavengers and #7 treasurers wait or are skipped, never queued. |
 | Arrival seed (6.5) | traffic, 5, 8 | chased record > sweep > equipment convoy > staged raid > #8 freighter > #5 captain > tracked docked record > plain seed (`05-veterans.md:215`). |
-| Escort slot, one per visit | 9, 12 | First hire wins; `live.esc`. |
+| Escort slot, one per visit | 9, 12 | First hire wins; `live.esc`. The slot is cleared on every load; a hired #12 wing takes it again after `TRF_Pl_OnLoad` (`12-mercenary-packs.md` section 6). |
+| `TRF.mc` clan record (12, 13 merged 2026-10-24) | 12 (hire role, bookings, calls), 13 (rival role) | One record per clan: digit string `s`, packed `t[c]`, region fields `mn`, `mg`, `mo` on `TRF.clan[slot]`; jump stamps on `TRF.clock.j`; repaired by `TRF_Mc_Fix` from `TRF_Repair` (`12-mercenary-packs.md` section 6, Saved state). Replaces `TRF.merc`, `TRF.mh`, `TRF.rv`, `TRF.pack`. |
+| Merc dispatcher (merged 12/13 module) | 12, 13 | The module itself decides the one merc-style flight per entry across a hire offer, a rival action and an answered call (the plumbing has no API for it, `../wb-plumbing-spec.md:202`); its region-tick step is one line `TRF_P("TRF_Mc_RegionTick", L)` in `TRF_RegionTick`; its board notice, retainer, outbid and hunt pay-off lines and boxes go through `TRF_DockLine`/`TRF_DockBox`, boxes below the #4 informant (`merc-packs-beyond-flavour.md` EM.2); its load path registers with the orphan adoption list so a hired `trf_merc_*` wing is not deleted (`12-mercenary-packs.md` section 6, Save/load). |
 | Message box lock | 8.2 hail, 12 meeting, all dock boxes | One mod box at a time (`live.box`); one box per docking until E0.6. |
 | Job slot `TRF.job` | 1, 5 | One open job; #5 carry is kind 5 and pays the #1 rate. |
 | Owed payments | 4 `TRF.claim`, 10 `TRF.def.owe`, 11 `TRF.frx.owe`, 14 owed postings | Each feature keeps its own record and line; all are paid before any box. Proposed shared gap for combat prizes in decision B1. |
-| Ship caps | raids, 2 scavengers, 4 wing, 6 slavers, 7 treasurers, 9 escort, 10 hunters, 11 `cap_front`, 12 packs, 13 rivals | All count in `cap_ships` and the governor; trimming order: rival, pack, scavenger, then skip. At most one merc-style flight (pack or rival) per entry (`12-mercenary-packs.md:201`). |
+| Ship caps | raids, 2 scavengers, 4 wing, 6 slavers, 7 treasurers, 9 escort, 10 hunters, 11 `cap_front`, 12 packs, 13 rivals | All count in `cap_ships` and the governor; trimming order: rival, pack, scavenger, then skip. At most one merc-style flight (pack, rival action or answered call) per entry (`12-mercenary-packs.md` section 7, enforced by the merged merc module). Carve-outs (2026-10-24, `merc-packs-beyond-flavour.md` F.5, `merc-unified-clans.md` D.3): clan units booked into an employer's pirate-team group (a hired unit flying inside a captain's `TRF_Cap_<slot>`, a staged raid `TRF_Raid_<n>`, a hunter `TRF_Hunt_<n>` or a scout group) are part of that employer's flight, not a merc-style flight, and are trimmed with their employer; the clan's wing escorting its own big ship (stages 3-4) is part of the same merc-style flight, not a second one. Both still count in `cap_ships` and the governor. |
 | Arrival lines | traffic 8.1, 2, 6, 7, 10, 11 | traffic line at 5 s, then one mod line each at 3 s spacing: #6 beacon, #2 scar, #11 front, #10 crackdown, #7 stash; at most three mod lines per entry, the rest drop. |
 | Nav markers | 1, 2, 4, 5, 6, 7, 10, 11, 12 | Labels `TRF_*`; none while `GetPlayerQuestState() == TRUE` (`01-sealed-parcels.md:67`); deleted before every jump. |
 | Logbook ids | `trf_pcl` (1), `trf_cap_<slot>` (4), `trf_ch_1..3` (14) | Distinct ids; #14 posts no Break for a clan whose #4 entry is open (`14-charter-goals.md:255`). |
 | Loc key prefixes | `#TRF_Pcl_`, `#TRF_Scar_`/`#TRF_Scv_`/`#TRF_Lic_`, `#TRF_Cap_`, `#TRF_SV_`, `#TRF_Stash*`, `#TRF_Lad_`, `#TRF_FP_`, `#TRF_MC_`, `#TRF_Rv_`, `#TRF_Ch_` | No collisions found. News records: one topic per post (8.9). |
-| Group and allocator names | `TRF_Raid_`, `TRF_Pir_`, `TRF_Resp_` (traffic, 10), `TRF_Cust_`, `TRF_Scv_`, `TRF_Cap_`, `TRF_Esc_`, `TRF_Def_`, `TRF_Pick_`, `TRF_Push_`, `TRF_Merc_`, `TRF_Rival_`, `TRF_Fw_`; `TRF_Drop_` (traffic demand drop containers, labels only) | One allocator; all prefixes in the orphan scan and the lint list. |
-| Jump counters | 4 `TRF.capg.j`, 5 `TRF.vetg.j`, 7 `TRF.clock.j`, 12 `TRF.mj`, 13 `TRF.rv.j` | Implement one counter `TRF.clock.j` (+1 in `TRF_BeforeJump`, never on load); the feature fields become stamps against it. |
+| Group and allocator names | `TRF_Raid_`, `TRF_Pir_`, `TRF_Resp_` (traffic, 10), `TRF_Cust_`, `TRF_Scv_`, `TRF_Cap_`, `TRF_Esc_`, `TRF_Def_`, `TRF_Pick_`, `TRF_Push_`, `TRF_Merc_` (every role of the merged clan module), `TRF_Rival_` (unused since the 12/13 merge, still in the code list), `TRF_Hunt_` (P M14 hunters, to be added), `TRF_Fw_`; `TRF_Drop_` (traffic demand drop containers, labels only) | One allocator; all prefixes in the orphan scan and the lint list. |
+| Jump counters | 4 `TRF.capg.j`, 5 `TRF.vetg.j`, 7 `TRF.clock.j`, 12 and 13 `TRF.clock.j` (merged record; the former spec names `TRF.mj` and `TRF.rv.j` are historical, never implemented) | Implement one counter `TRF.clock.j` (+1 in `TRF_BeforeJump`, never on load); the feature fields become stamps against it. |
 | Real-time counters | 8 `TRF.co.rt`, 9 `warrant_rs`, 10 `TRF.def.rs`, 11 `TRF.frx.ors`, 14 `TRF.ch.rt` | Implement one counter `TRF.clock.rs` (unpaused `dt_real`, carried across loads); features store stamps. E0.21 defines "unpaused". |
 | `TRF.short` fields | traffic, 1 (`job`), 1 and 8 (`pk`) | `pk` = 1 for player-caused and own-freighter shortages; never a relief target. |
 | `TRF.std.fst` writers | traffic, 1, 2, 4, 6, 7, 9, 10, 11 | Clamp once after each event (`10-deserters.md:202`); frozen while the faction's team relation is W (#9 rule). |
@@ -401,5 +403,5 @@ All edits replace text inside existing lines; no line was added or removed, so t
 | `09-faction-ladder.md` | 209 | Customs catch: -1, or -2 and permit void when caught with a permit (matches `01-sealed-parcels.md:303`). |
 | `10-deserters.md` | 9, 87, 108, 110, 113-116, 118, 126, 182 | `def_cd_rt` 3,600 s; at most 1.0 event per real hour; mid rung 1 at most 75k (was 100k). |
 | `11-front-pressure.md` | 216 | On-screen pushes are already a #2 scar source (source 7). |
-| `13-rival-packs.md` | 176 | Snipe chance 0 while charter rank `TRF.ch.rk >= 5` (the #14 perk). |
+| `13-rival-packs.md` | 178 | Snipe chance 0 while charter rank `TRF.ch.rk >= 5` (the #14 perk). |
 | `14-charter-goals.md` | 15, 26, 37 | Lore clan "Outcasts" replaced by the placeholder "Rustmen" used by #4. |

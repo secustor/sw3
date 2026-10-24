@@ -1,5 +1,7 @@
 # Mercenary packs: what can reuse the built trader state and logic
 
+**Status 2026-10-24: written back into specs 12 and 13.** Section E.1 is applied to `../worldbuilding/12-mercenary-packs.md` sections 3 (names), 6 (Appearance, Spawn, Meeting and hire, Whom the pack fights, End, Jump, Saved state, Save/load, Text keys), 7 and 8 (E12.6), with the record of section D extended to the unified clan record of `merc-unified-clans.md` C.2; F.1-F.6 and F.15 are in 12 section 6 (handle-global lookup, orphan carve-out, escort slot re-take, no resume after load, `TRF_CanSpawn` kind `merc`, one merc-style flight per entry). Section E.2 is applied to `merc-packs-beyond-flavour.md` only where UC G.3 asks (M14 group `TRF_Hunt_<n>`, D.3 replaced, D.4); the other E.2 rows are taken over in spec 12 section 6 (Options beyond the visit). Section G is build step 2 of 12 section 9. Line citations of specs 12 and 13 (`line NN`, `12:NNN`, `13-rival-packs.md:NNN`) refer to the specs as of commit 02f9ea6, before this write-back.
+
 Reuse analysis for `worldbuilding/12-mercenary-packs.md` (spec 12) and `proposals/merc-packs-beyond-flavour.md` (the proposal, options M1..M18, bundle in its section D). Written 2026-10-24 from the scripts as they stand in the working tree. No code, no game run, no other file edited.
 
 Paths: `S` = `mods/traffic/Data/Scripts/Mods/Traffic`; `D` = `mods/traffic/design`; `T` = `mods/traffic/tests`; `P` = the proposal; `12` = spec 12. Tags: **[V]** verified in the file and line given; **[I]** inference; **[new]** new design element proposed here.

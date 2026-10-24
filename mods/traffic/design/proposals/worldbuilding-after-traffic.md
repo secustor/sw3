@@ -15,7 +15,7 @@ Merged (one proposal each):
 - Mercenary packs: people "Wolf packs for hire" and prior art "Mercenary companies". Per-visit hire first (vanilla `RegisterNaemnik`), cross-jump persistence second.
 - Aftermath: factions "Refugee runs" and prior art "Aftermath: refugees and relief". Merged and deferred (see table): mostly a re-skin of S44/S45 danger convoys, and the relief fund cannot move a Bust-phase target.
 
-Dropped outright (break a rule or a refuted premise): clan minefields (unrequested persistent hull damage, persistent hazard that mission gating cannot remove cleanly), the epilogue half of charter goals (undoes finale script state), mercenary office pool (the natives set fighters per unit, not units listed; the list is generated once per location), shares and dividends (the Stocks item is never handed out and the hook fires only on the inter-mission finance screen), price tides (W2 relaxation with no proven restore and no market read).
+Dropped outright (break a rule or a refuted premise): clan minefields (unrequested persistent hull damage, persistent hazard that mission gating cannot remove cleanly), the epilogue half of charter goals (undoes finale script state), mercenary office pool (the natives set fighters per unit, not units listed; corrected 2026-10-24: the list is not generated once per location but regenerated at the first office opening after every location entry, because 0x4a8110 sets the flag 0x7acd08 on each location load, `../mod-research/hooks/runtime-limits.md` section 7, `../mod-research/hooks/read-natives.md` section 8), shares and dividends (the Stocks item is never handed out and the hook fires only on the inter-mission finance screen), price tides (W2 relaxation with no proven restore and no market read).
 
 ## Ranked proposals
 
@@ -222,6 +222,8 @@ Effort: L. Player value: 4. Lenses: factions, prior art. Evidence: include/OutOf
 
 ### 12. Mercenary packs for hire: the twelve dormant clans
 
+Note 2026-10-24: proposals 12 and 13 are merged into one clan module with one record per clan (roles free, rival, broken; fortune and mothership stages). See `merc-unified-clans.md` and the specs `../worldbuilding/12-mercenary-packs.md` and `../worldbuilding/13-rival-packs.md`; the step 2 persistent pack below is replaced by calls paid in standing (`merc-packs-beyond-flavour.md` M4).
+
 Pitch: the game ships twelve named mercenary clans (Morgenstern, Black Legion, Kismet and nine more) with pilot templates, radio lines, a hire box and two rival blocs, and no location calls it. Turn it on from the mod's spawner so packs appear where the cycle sends them, remember who hired, fought beside or abandoned them, and then (step 2) stay with the mothership across jumps for pay per leg.
 
 Player loop: in a Raids or sweep-scheduled system a pack jumps in and hails at 70 units with a price scaled by the region; paying makes it Escort the mothership for the visit; the ledger records losses and whether the player jumped out mid-fight. Next meeting the greeting differs ("Black Legion remembers Gredos, 20 % off" or "we do not fly for you"). Step 2: the pack re-forms at the arrival portal with the same survivors, asks for pay every N legs, and walks out if unpaid.
@@ -239,6 +241,8 @@ Blocking unknowns: does an `Escort(mothership)` wing engage attackers of its esc
 Effort: M (per-visit) + M (persistent). Player value: 3. Lenses: people, prior art. Evidence: include/RandomFmerc.script (whole file; 20 RegisterNaemnik lines in 19 activate.scripts, all commented out), Game/Pilots.xml (36 Recruit*_<clan> templates), LocData/English/ui_windows.loc 54-60, Scripts/InitTeamScript.script 13, research/prior-art.md 264 (SW3EXP buyable escorts).
 
 ### 13. Rival wolf packs: freelance crews competing for the same contracts
+
+Note 2026-10-24: merged with proposal 12 into one clan module; the rivals are three of the twelve clans in the rival role, chosen by standing and fortune. See `merc-unified-clans.md` and `../worldbuilding/13-rival-packs.md`, which keeps the rival role behaviour.
 
 Pitch: two or three named mercenary crews work the same regions as the player: they take the escort the player dawdled on, answer the distress call the player ignored, and build their own FTU standing. They remember who sniped whose run, taunt or thank by name, and at a high enough grudge shoot first where nobody is watching. The galaxy gets peers.
 
@@ -300,7 +304,7 @@ Wave 3, peers, fronts and purpose. Needs the mission-to-quest-id map (9.9 option
 |---|---|
 | Clan minefields (space) | Unrequested persistent hull damage (feel target 8) and a persistent hazard that mission gating cannot remove without deleting it in front of the player. |
 | Portal storms (space) | Player value 2 (travel friction), closed-portal state persists in the PortalManager stream, allow-list of closable edges likely tiny after story paths are removed. |
-| Mercenary office follows the cycle (stations) | Premise refuted: RecruitsSetMin/MaxCount set fighters per unit (0x7acd0c/10); unit count is loader-only (0x7acd14/18) and the list is generated once per location. Needs a DLL native plus a regeneration trigger. |
+| Mercenary office follows the cycle (stations) | Premise refuted: RecruitsSetMin/MaxCount set fighters per unit (0x7acd0c/10); unit count is loader-only (0x7acd14/18). Corrected 2026-10-24: the list is regenerated at the first office opening after every location entry (0x4a8110 sets the flag 0x7acd08 on each location load; `../mod-research/hooks/runtime-limits.md` section 7, `../mod-research/hooks/read-natives.md` section 8), so no regeneration trigger is needed, but the counts still need the E8 detour of patch P4. Re-evaluated 2026-10-24: stays deferred (`merc-packs-beyond-flavour.md` M11) unless the count patch P4 is built. |
 | Shares and dividends (stations) | The Stocks item is never stocked or handed out; CostOfStocks runs only on the inter-mission finance screen. Value 1. |
 | Price tides (economy) | Relaxes W2; DefaultGoodsPrice/CommonGoodsPrice semantics and a restore are unproven; writes land in the engine-saved TradeSystem stream. Revisit only after a TRF_MarketGet native and a restore experiment. The docking fee at pro >= 8 hubs is independent and can ride on proposal 3. |
 | Charter epilogue (player) | Finale scripts make the last system a dead end (Teleporter replaced by a game-over timer, portals closed); undoing that is a behavioural edit of story missions. Goals half kept as proposal 14. |
