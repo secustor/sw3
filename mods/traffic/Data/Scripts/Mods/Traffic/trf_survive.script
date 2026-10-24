@@ -62,11 +62,6 @@ function TRF_SvCl(x, lo, hi)
 	return x;
 end;
 
--- x mod m for x >= 0 (Lua 4 has no % operator; the vanilla scripts use floor).
-function TRF_SvM(x, m)
-	return x - floor(x / m) * m;
-end;
-
 -- cfg value: TRF_Opt (merges TRF_Sv_OptDef), else the raw config, else the default; a wrong type or a number
 -- outside its range (TRF_SvClampO) reads as the default.
 function TRF_SvOpt(key)
@@ -81,11 +76,14 @@ function TRF_SvOpt(key)
 end;
 
 -- Tune values of this module, clamped (TRF_SvClampT); tables (sv_slave_on) are copied with each entry clamped
--- 0..100. TRF_Tune gives cfg tune overrides.
+-- 0..100. TRF_Tune gives cfg tune overrides. Cached in SV while TRF_Tune returns the same table (as TRF_RgTune;
+-- the tick reads it every 250 ms); callers must not write into it.
 function TRF_SvTune()
-	local d = TRF_Sv_TuneDef();
+	local sv = %SV;
 	local t = nil;
 	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_SvErr); end;
+	if type(sv.tc) == "table" and sv.tc.s == t then return sv.tc.t; end;
+	local d = TRF_Sv_TuneDef();
 	local cl = TRF_SvClampT();
 	local o = {};
 	for k, v in d do
@@ -105,6 +103,7 @@ function TRF_SvTune()
 		end;
 		o[k] = x;
 	end;
+	sv.tc = {s=t, t=o};
 	return o;
 end;
 
@@ -135,7 +134,7 @@ function TRF_SvRec()
 	if type(S.sd) ~= "number" then
 		local g = 0;
 		if type(TRF.gen) == "number" then g = TRF.gen; end;
-		S.sd = TRF_SvM(floor(TRF_SvLegs() * 7919 + g * 13 + 4271), 10000);
+		S.sd = mod(floor(TRF_SvLegs() * 7919 + g * 13 + 4271), 10000);
 	end;
 	return S;
 end;
@@ -149,11 +148,6 @@ end;
 function TRF_SvTxt(key, a, b)
 	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b); end;
 	return tostring(key);
-end;
-
-function TRF_SvS(v)
-	if v == nil then return "-"; end;
-	return tostring(v);
 end;
 
 -- Distance of two tables with x, y, z, or nil.
@@ -335,9 +329,9 @@ end;
 -- Fixed roll 0..99 of system idx at leg legs with seed sd (design 5.4 item 4): the same inputs give the same
 -- roll, so a reload followed by the same jump cannot repeat it.
 function TRF_SvRollOf(idx, legs, sd)
-	local a = TRF_SvM(floor(sd + idx * 97 + legs * 131), 10000);
-	a = TRF_SvM(a * 37 + 11, 10007);
-	return TRF_SvM(a, 100);
+	local a = mod(floor(sd + idx * 97 + legs * 131), 10000);
+	a = mod(a * 37 + 11, 10007);
+	return mod(a, 100);
 end;
 
 -- Distance from point p to the segment a-b (the mothership's previous and current position).
@@ -542,9 +536,9 @@ function TRF_SvChMode()
 	return nil, "chapter";
 end;
 
--- Placement gate of system idx (S4, S5, 6.7): deny list, strict gate (feature "sv"), system mode. Returns nil or
--- the reason.
-function TRF_SvGate(idx)
+-- Placement gate of system idx (S4, S5, 6.7): deny list, strict gate (feature "sv"), system mode (skipped with
+-- nomode 1: the dock gate of 5.6 asks the first two only). Returns nil or the reason.
+function TRF_SvGate(idx, nomode)
 	if type(idx) ~= "number" then return "nomap"; end;
 	local ch = TRF_N("TRF_Chapter");
 	local dw = TRF_SvDenyOf(TRF_SvName(idx), ch, TRF_SvOpt("sv_deny"));
@@ -552,6 +546,7 @@ function TRF_SvGate(idx)
 	if type(TRF_StrictOk) ~= "function" then return "gate:nosafety"; end;
 	local ok, gw = TRF_StrictOk(idx, "sv");
 	if not ok then return "gate:"..tostring(gw); end;
+	if nomode == 1 then return nil; end;
 	local mode, mw = TRF_N("TRF_SysModeQuiet");
 	if mode ~= "mod" then return "mode:"..tostring(mw); end;
 	return nil;
@@ -614,7 +609,13 @@ function TRF_SvClear(s, why)
 		TRF_SvUnset(s, j);
 	end;
 	local H = TRF_SvH();
-	if H and H.s == s then H.s = nil; H.o = {}; end;
+	if H and H.s == s then
+		H.s = nil; H.o = {};
+		-- The pickup's segment start goes with the handles: a record placed later in this visit must not be
+		-- swept from where the mothership was when this one went.
+		local sv = %SV;
+		sv.mp = nil;
+	end;
 	TRF_N("TRF_MarkerClear", "sv");
 	if n > 0 then TRF_SvDE("clear", "system", TRF_SvName(s), "deleted_count", n, "reason", why); end;
 	return n;
@@ -742,9 +743,7 @@ function TRF_Sv_OnLoss(id, rec, h, by, idx)
 		if TRF_N("TRF_Ev_Own", rec) or rec.feq == 1 then why = "owner";
 		elseif rec.sev then why = "station_event";
 		elseif fire then why = "fire";
-		elseif TRF_Sv_Flags() then why = TRF_Sv_Flags();
-		elseif (TRF_N("TRF_Supp") or 0) ~= 0 then why = "suppressed";
-		else why = TRF_SvGate(idx); end;
+		else why = TRF_SvHold() or TRF_SvGate(idx); end;
 		if not why and TRF_SvAt(idx) then why = "record"; end;
 		if not why and TRF_SvCdOn(idx, T) then why = "cooldown"; end;
 		if not why and TRF_N("TRF_GovActive") then why = "governor"; end;
@@ -766,7 +765,8 @@ function TRF_Sv_OnLoss(id, rec, h, by, idx)
 		nm=rec.nm or 0, lg=TRF_SvLegs(), src=1, sl=0, pf=0, pp=0};
 	local i = TRF_SvAdd(b, T);
 	TRF_SvCdSet(idx, T);
-	TRF_N("TRF_Due", K.loss_dt, "TRF_Sv_LossDue", idx);
+	-- The due list (32 entries) can be full in a busy system: the 1 s step then places it as a held record.
+	if not TRF_N("TRF_Due", K.loss_dt, "TRF_Sv_LossDue", idx) then TRF_SvHoldSet(idx, "svloss"); end;
 	TRF_SvE("loss", "trader_id", id, "fire", "false", "help", TRF_KvB(help), "system", nm, "pods", pods, "position_source", ps,
 		"mode", mode, "result", "beacon", "beacon", i);
 	return i;
@@ -874,7 +874,7 @@ function TRF_SvSeedPlan(idx, nm, mode)
 			"result", "none", "reason", why);
 		return nil, why;
 	end;
-	local p = pts[1 + TRF_SvM(s.roll, getn(pts))];
+	local p = pts[1 + mod(s.roll, getn(pts))];
 	local N = TRF_SvBaseN(idx);
 	local cap = 30000;
 	local rt = TRF_N("TRF_RgTune");
@@ -1084,8 +1084,7 @@ function TRF_Sv_Tick(dt)
 	if not p then return; end;
 	local a = sv.mp or p;
 	sv.mp = p;
-	local sp = TRF_N("TRF_Supp");
-	if TRF_Sv_Flags() or (type(sp) == "number" and sp ~= 0) then return; end;
+	if TRF_SvHold() then return; end;
 	local T = TRF_SvTune();
 	if b.bx ~= 1 and type(H.o[0]) ~= "nil" and not TRF_Sv_Alive(H.o[0]) then
 		b.bx = 1;
@@ -1211,11 +1210,7 @@ function TRF_SvHand()
 	local nm = TRF_SvName(idx);
 	local T = TRF_SvTune();
 	local legs = TRF_SvLegs();
-	local gate = TRF_SvDenyOf(nm, TRF_N("TRF_Chapter"), TRF_SvOpt("sv_deny"));
-	if not gate and type(TRF_StrictOk) == "function" then
-		local ok, gw = TRF_StrictOk(idx, "sv");
-		if not ok then gate = "gate:"..tostring(gw); end;
-	end;
+	local gate = TRF_SvGate(idx, 1);
 	if gate and c.cr <= 0 then
 		TRF_SvE("hand", "kind", "ftu", "system", nm, "carried", c.n, "result", "skipped", "reason", gate);
 		return nil;

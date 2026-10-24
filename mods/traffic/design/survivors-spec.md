@@ -68,6 +68,7 @@ Rules:
 | `nr` | 1 once the near line was shown this visit |
 | `ful` | 1 once the full line was shown this visit |
 | `pc[id]` | last position of trader id's first live ship (1 s step), the loss-point fallback |
+| `tc` | the clamped tune table of this visit and the `TRF_Tune` table it was built from (`TRF_SvTune`) |
 
 Handles: `TRF_H().sv = {s = system of the placed record, o[0] = beacon, o[1..3] = pods}`, and the handle globals `TRF_SVH_<idx>_<j>` (j 0 beacon, 1..3 pods) set at placement and cleared at deletion, so a save made in the system keeps the handles (v01-spec 3.3: after a load the label lookup answers the label string for mod objects). Labels: beacon `TRF_SVB_<idx>`, pod `TRF_SVP_<idx>_<j>`, nav marker `TRF_SV_<idx>` (owner `sv`, trf_plumb `TRF_MarkerAdd`).
 
@@ -108,7 +109,7 @@ In this order, the first failing rule is the `reason=`: G1; G2; owner (`rec.own`
 - Site rule (`TRF_SvSiteOf`): at least 300 from every map portal and 400 from every map station of the system.
 - Pods (`TRF_SvPodsOf`): `min(3, transports at spawn + 1 for TT3+)`, at least 1.
 - The record: `src` 1, `pf = pp = 0`, `nm` = the trader's name index, `cd[idx] = legs`. At `sv_max` records the oldest with `n = 0` is dropped first, else the oldest overall (`event=expire ... reason=cap`).
-- 5 s later (`TRF_Due`, `TRF_Sv_LossDue`): if the player is still in the system and G3 passes, the loss line `svloss` and the placement. Under G4 the placement is held (`event=place ... result=skipped reason=<disable_action, sys_sos, suppressed>`) and made in the 1 s step once G4 clears in this visit (`reason=hold`, with the loss line), else at the next entry or load.
+- 5 s later (`TRF_Due`, `TRF_Sv_LossDue`; a refused `TRF_Due` holds the record for the 1 s step instead): if the player is still in the system and G3 passes, the loss line `svloss` and the placement. Under G4 the placement is held (`event=place ... result=skipped reason=<disable_action, sys_sos, suppressed>`) and made in the 1 s step once G4 clears in this visit (`reason=hold`, with the loss line), else at the next entry or load.
 - The raid help of the dead trader's raid (`rd.hit`) is logged as `help=`; it changes nothing (witnessed losses pay standing only either way).
 
 ### 5.3 Seeded beacon (`TRF_SvSeedPlan`, from `TRF_Sv_OnActivate`, 06 6.4)
