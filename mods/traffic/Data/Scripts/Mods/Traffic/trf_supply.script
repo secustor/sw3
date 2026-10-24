@@ -258,9 +258,14 @@ function TRF_SpWar(team)
 	return nil;
 end;
 
--- Text: trf_loc's TRF_LocTxt, then this module's table, then TRF_Txt; $1..$3 replaced.
+-- Text: trf_loc's TRF_LocTxt, then this module's table, then TRF_Txt; $1..$3 replaced. cfg loc_mode 1: the
+-- scaffold key "#TRF_<key>" as TRF_Txt gives it (arguments dropped), so the RU .loc text can show.
 function TRF_SpTxt(key, a, b, c)
 	local s = nil;
+	if type(TRF_Loc_Mode) == "function" and type(TRF_LocKeyOf) == "function" and TRF_SpP(TRF_Loc_Mode, {}) == 1 then
+		s = TRF_SpP(TRF_LocKeyOf, {key});
+		if type(s) == "string" then return s; end;
+	end;
 	if type(TRF_LocTxt) == "function" then s = TRF_SpP(TRF_LocTxt, {key}); end;
 	if type(s) ~= "string" then s = TRF_Supply_Text()[key]; end;
 	if type(s) ~= "string" then
@@ -1147,7 +1152,11 @@ function TRF_SpComply(id, r, h, cur)
 	TRF_SpX("TRF_PoDone", id, "rob");
 	local nm = TRF_SpName(r);
 	local line = TRF_SpTxt("dmok", nm);
-	TRF_SpAnswer(id, line, line.."\n"..TRF_SpTxt("dmpgot", nm, TRF_SpItems(mv)), 1);
+	local its = TRF_SpItems(mv);
+	local got = TRF_SpTxt("dmpgot", nm, its);
+	-- loc_mode 1 drops $2: the item list follows the key.
+	if not strfind(got, its, 1, 1) then got = got..": "..its; end;
+	TRF_SpAnswer(id, line, line.."\n"..got, 1);
 	TRF_SpX("TRF_Flee", id, "demand");
 	TRF_SpStat("dm_comply");
 	TRF_SpE("demand_comply", "trader_id", id, "container_count", cnt, "moved_count", moved, "heat", TRF_SpHeat(),
@@ -1238,6 +1247,26 @@ function TRF_SpStatic(p, r)
 	return c[1], c[2];
 end;
 
+-- Live ships of the mod's other flights within r of p: other traders (H.tr[*].sh, not id) and raids (H.rd[*].sh).
+function TRF_SpOthersNear(id, p, r)
+	local H = TRF_SpH();
+	local n, ls = 0, {};
+	if type(H) ~= "table" or type(p) ~= "table" then return 0; end;
+	if type(H.tr) == "table" then
+		for k, x in H.tr do if k ~= id and type(x) == "table" and type(x.sh) == "table" then tinsert(ls, x.sh); end; end;
+	end;
+	if type(H.rd) == "table" then
+		for k, x in H.rd do if type(x) == "table" and type(x.sh) == "table" then tinsert(ls, x.sh); end; end;
+	end;
+	for j = 1, getn(ls) do
+		for i = 1, getn(ls[j]) do
+			local d = TRF_SpDist(TRF_SpPos(ls[j][i]), p);
+			if d and d <= r then n = n + 1; end;
+		end;
+	end;
+	return n;
+end;
+
 -- The player's mothership and the flight's live ships (handles h.sh) within r of p.
 function TRF_SpOwnNear(h, p, r)
 	local n = 0;
@@ -1253,13 +1282,14 @@ function TRF_SpOwnNear(h, p, r)
 end;
 
 -- Background at the mark: the count within witness_r of the leader less the map stations and portals, the
--- mothership and the flight's live ships (scenery, wrecks and the player's fighters remain); nil without a count.
-function TRF_SpBack(p, h)
+-- mothership, the flight's live ships and the mod's other live ships (TRF_SpOthersNear, so they count as witnesses
+-- at a kill); scenery, wrecks, the player's fighters and vanilla ships remain (CHECK W3); nil without a count.
+function TRF_SpBack(p, h, id)
 	local R = TRF_SpT("witness_r", 1500);
 	local n = TRF_SpCount(p, R);
 	if not n then return nil; end;
 	local ns, np = TRF_SpStatic(p, R);
-	return max(0, n - ns - np - TRF_SpOwnNear(h, p, R));
+	return max(0, n - ns - np - TRF_SpOwnNear(h, p, R) - TRF_SpOthersNear(id, p, R));
 end;
 
 -- Witnesses of a kill at p: the map stations within witness_r, else the count less the background b, the map
@@ -1292,7 +1322,7 @@ function TRF_DemandNoWit(id)
 	end;
 	local b = nil;
 	local p = TRF_SpPos(TRF_SpLead(id));
-	if p then b = TRF_SpBack({x=p.x, y=p.y, z=p.z}, TRF_SpHTr(id)); end;
+	if p then b = TRF_SpBack({x=p.x, y=p.y, z=p.z}, TRF_SpHTr(id), id); end;
 	r.dw = {t=TRF_SpGt(), w=0, b=b};
 	TRF_SpStat("dm_nowit");
 	TRF_SpE("demand_prey", "trader_id", id, "background_count", b, "ship_count", r.np, "window", TRF_SpT("witness_t", 180),
@@ -1317,7 +1347,8 @@ end;
 
 -- trf_events TRF_Ev_Kill, before the kill heat: the mark ends. Within witness_t, no kill seen and no ship of the
 -- flight left (rec.np): the demand is retracted (heat -2, the lost line) and 1 is returned, so the kill heat is
--- skipped; pro and dis stay the kill's. Otherwise the witnessed line (or a late kill: timeout) and nil.
+-- skipped; pro and dis stay the kill's. Otherwise witnessed, with the witness line only for a player kill (or a
+-- late kill: timeout) and nil.
 function TRF_DemandKill(id, rec, h, by, idx)
 	local pw = TRF_SpPw(rec);
 	if not pw then return nil; end;
@@ -1338,7 +1369,7 @@ function TRF_DemandKill(id, rec, h, by, idx)
 	end;
 	local why = "witness";
 	if pw.w ~= 1 then why = "survivor"; end;
-	TRF_SpSay(TRF_SpTxt("dmpseen", nm), nil);
+	if by == "player" then TRF_SpSay(TRF_SpTxt("dmpseen", nm), nil); end;
 	TRF_SpStat("dm_witnessed");
 	TRF_SpE("demand_witnessed", "trader_id", id, "reason", why, "ship_count", left, "age", TRF_F(age), "result", "witnessed");
 	return nil;

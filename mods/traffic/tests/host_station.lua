@@ -1467,10 +1467,10 @@ function T_STN_G()
 	if type(TRF_Ch_Text) == "function" then for kx, v in TRF_Ch_Text() do want[TRF_LocKey(kx)] = 1; end; end;
 	if type(TRF_Sc_Text) == "function" then for kx, v in TRF_Sc_Text() do want[TRF_LocKey(kx)] = 1; end; end;
 	if type(TRF_Cap_Text) == "function" then for kx, v in TRF_Cap_Text() do want[TRF_LocKey(kx)] = 1; end; end;
-	-- Demand page keys (design/demand-page-spec.md 7): the dmp* keys of the supply and hail tables.
+	-- Demand page keys (design/demand-page-spec.md 8): the dmp* keys of the supply and hail tables and the answers dmok, dmno.
 	for i, fn in {"TRF_Supply_Text", "TRF_Hail_Text"} do
 		local tf = getglobal(fn);
-		if type(tf) == "function" then for kx, v in tf() do if strsub(kx, 1, 3) == "dmp" then want[TRF_LocKey(kx)] = 1; end; end; end;
+		if type(tf) == "function" then for kx, v in tf() do if strsub(kx, 1, 3) == "dmp" or kx == "dmok" or kx == "dmno" then want[TRF_LocKey(kx)] = 1; end; end; end;
 	end;
 	local nl, ncr, b2 = S_Count(ru, "\n"), S_Count(ru, "\r\n"), strfind(ru or "", "[\128-\167\169-\183\185-\191]");
 	local i = 1;

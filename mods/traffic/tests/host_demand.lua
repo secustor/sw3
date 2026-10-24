@@ -107,11 +107,13 @@ function DM_Said(s0, m0, text)
 	return nil;
 end;
 
--- Kill trader id with counted player fire: every ship dead (all = 1) or the transports only, then the died triggers.
-function DM_Kill(id, all)
+-- Kill trader id with counted player fire (other: without it): every ship dead (all = 1) or the transports only,
+-- then the died triggers.
+function DM_Kill(id, all, other)
 	local x = TRF_H().tr[id];
 	local r = TRF.live.tr[id];
 	r.pa = TRF_SpGt();
+	if other then r.pa = nil; end;
 	local l = x.tp;
 	if all then l = x.sh; end;
 	for k = 1, getn(l) do l[k].alive = nil; end;
@@ -229,6 +231,15 @@ function T_DM_A()
 	DM_Demand(id5, nil);
 	HOST_Check(getn(h.boxes) == nb and DM_Said(s0, m0, TRF_SpTxt("dmno", TRF_SpName(r5))), "hail_box 0: the refusal as a line");
 	h.cfg.tune = nil;
+	-- cfg loc_mode 1: the scaffold keys (the RU .loc text), the item list after #TRF_dmpgot.
+	TRF_H().loc = nil; h.cfg.loc_mode = 1;
+	local id6 = DM_Trader(nil, 0);
+	DM_Demand(id6, 1);
+	bx = HOST_Box();
+	HOST_Check(bx.text == "#TRF_dmok\n#TRF_dmpgot: 2 x Cargo_01, 1 x Cargo_04" and TRF_SpTxt("dmplost", "x") == "#TRF_dmplost"
+		and TRF_SpTxt("dmno", "x") == "#TRF_dmno", "loc_mode 1: the page as keys and the items: "..tostring(bx.text));
+	DM_End();
+	TRF_H().loc = nil; h.cfg.loc_mode = nil;
 	V_ClearTr();
 end;
 
@@ -299,6 +310,36 @@ function T_DM_B()
 	h.ui = 0;
 	HOST_Check(getn(h.tdlgs) == nd and getn(h.boxes) == nb + 1 and TRF.live.hl.w == "pg", "UI not idle: the page as boxes");
 	DM_End();
+	-- Through the hail menu dialog: a_demand, then the page dialog on the menu's chain while the menu's dialog check
+	-- is still due; Leave, No witnesses and Esc on it.
+	local sr = TRF_SpRand;
+	for i, act in {"leave", "nowit", "esc"} do
+		local id7, r7 = DM_Trader(nil, 0);
+		n0 = S_Mark();
+		nd = getn(h.tdlgs);
+		TRF_HailOpen(id7, "focus");
+		local t1 = h.tdlgs[nd + 1] or {};
+		HOST_Check(t1.d == "TRF_Hail" and h.dlg and h.dlg.open and strfind(HOST_DlgVis(), "a_demand", 1, 1), act..": the menu dialog with a_demand: "..HOST_DlgVis());
+		TRF_SpRand = function(n) if n == 100 then return 0; end; if n == 3 then return 2; end; return %sr(n); end;
+		HOST_DlgPick("a_demand");
+		T_Tick(1, 0.5);
+		TRF_SpRand = sr;
+		local t2 = h.tdlgs[nd + 2] or {};
+		HOST_Check(t2.d == "TRF_HailPg" and h.dlg and h.dlg.open and TRF.live.hl and TRF.live.hl.id == id7 and TRF.live.hl.w == "dlg"
+			and HOST_DlgVis() == "a_leave a_nowit" and S_Logs(n0, "event=close trader_id="..id7) == 0
+			and S_Logs(n0, "event=page trader_id="..id7.." via=dialog no_witness_offered=true") == 1, act..": the page dialog on the menu chain, no close");
+		T_Tick(3, 0.5);
+		HOST_Check(h.dlg.open and TRF.live.hl and TRF.live.hl.w == "dlg" and S_Logs(n0, "event=close trader_id="..id7) == 0,
+			act..": the menu's pending check leaves the page open");
+		if act == "leave" then HOST_DlgPick("a_leave");
+		elseif act == "nowit" then HOST_DlgPick("a_nowit");
+		else HOST_DlgEsc(); end;
+		T_Tick(3, 0.5);
+		local want = "reason=leave";
+		if act == "nowit" then want = "reason=nowit"; elseif act == "esc" then want = "reason=\"dialog closed\""; end;
+		HOST_Check(TRF.live.hl == nil and S_Logs(n0, "event=close trader_id="..id7.." "..want) == 1 and S_Logs(n0, "event=close trader_id="..id7) == 1
+			and ((act == "nowit" and type(r7.dw) == "table") or (act ~= "nowit" and r7.dw == nil)), act..": one close ("..want.."), mark "..TRF_Dump(r7.dw));
+	end;
 	h.cfg.tune = nil; h.cfg.hail_xml = nil;
 	TRF_UiState = us; h.ui = nil;
 	V_ClearTr();
@@ -390,6 +431,8 @@ function T_DM_D()
 	T_Tick(2, 0.5);
 	HOST_Check(S_Logs(n0, "event=demand_witnessed trader_id="..id4.." reason=survivor ship_count=") == 1 and S_Logs(n0, "event=demand_retract") == 0,
 		"an escort alive at the last transport's death: witnessed (survivor)");
+	-- The escorts left alive would be witnesses of the next runs at the same point.
+	for k = 1, getn(x4.sh) do x4.sh[k].alive = nil; end;
 	-- No count native: a retraction needs a count.
 	local gc = GetCarcassCountInSphere;
 	local id5 = DM_Trader(nil, 2);
@@ -413,6 +456,34 @@ function T_DM_D()
 	h.cc_ships = {};
 	h.cfg.tune = nil;
 	HOST_Check(S_Logs(n0, "event=demand_retract trader_id="..id6) == 1, "witness_dead 1: one carcass less per count");
+	-- A mod ship (here a raid ship) within witness_r at the mark and still there at the kill: not in the
+	-- background, so a witness.
+	local id7, r7, x7 = DM_Trader(nil, 2);
+	p = x7.tp[1].pos;
+	local rs = HOST_Obj("dm_raid", p.x + 400, p.y, p.z);
+	rs.kind = "ship";
+	TRF_H().rd[999] = {sh={rs}, dk={}};
+	h.cc_ships = {Vector3(p.x + 400, p.y, p.z)};
+	local pw7 = DM_Mark(id7);
+	n0 = S_Mark();
+	DM_Kill(id7, 1);
+	T_Tick(2, 0.5);
+	h.cc_ships = {};
+	TRF_H().rd[999] = nil;
+	HOST_Check(type(pw7) == "table" and pw7.b == 0 and S_Logs(n0, "event=demand_kill trader_id="..id7.." ship=1 witness_count=1 reason=ship witnessed=true") == 1
+		and S_Logs(n0, "event=demand_witnessed trader_id="..id7.." reason=witness") == 1, "a raid ship there at the mark and at the kill: witnessed ("..TRF_Dump(pw7)..")");
+	-- A witnessed kill without player fire: logged, no witness line (the Wolves did not destroy it).
+	local id8, r8, x8 = DM_Trader(nil, 2);
+	DM_Mark(id8);
+	p = x8.tp[1].pos;
+	h.cc_ships = {Vector3(p.x + 300, p.y, p.z)};
+	s0, m0 = getn(h.screen), getn(h.msgs);
+	n0 = S_Mark();
+	DM_Kill(id8, 1, 1);
+	T_Tick(2, 0.5);
+	h.cc_ships = {};
+	HOST_Check(S_Logs(n0, "event=kill trader_id="..id8.." system_index="..cur.." by=other") == 1 and S_Logs(n0, "event=demand_witnessed trader_id="..id8) == 1
+		and not DM_Said(s0, m0, TRF_SpTxt("dmpseen", TRF_SpName({nm=r8.nm}))), "witnessed kill by others: no witness line");
 	V_ClearTr();
 end;
 

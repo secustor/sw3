@@ -56,7 +56,7 @@ Containers: `k = 1 + RAND(demand_k)`; `demand_k` 0 or 1 (or less) gives 1 withou
 
 ### 5.2 Mark (`TRF_DemandNoWit`)
 
-Refused (`event=demand_prey ... result=refused`) without a record (`norec`), when the trader was not demanded (`not_demanded`), is gone (`st`) or is marked already (`marked`). Otherwise the background `b` is taken around the leader's position P0: `count(P0, witness_r)` less the map stations and portals of the system within `witness_r` (`TRF_Map().sys[cur].st`, `.portals`), the mothership and the flight's live ships (handles `h.sh`) within `witness_r`, at least 0. What stays in `b`: scenery, wrecks, the player's fighters (no script API lists them, v1 5.2) and any ship already there. Then `rec.dw = {t, w = 0, b}`.
+Refused (`event=demand_prey ... result=refused`) without a record (`norec`), when the trader was not demanded (`not_demanded`), is gone (`st`) or is marked already (`marked`). Otherwise the background `b` is taken around the leader's position P0: `count(P0, witness_r)` less the map stations and portals of the system within `witness_r` (`TRF_Map().sys[cur].st`, `.portals`), the mothership, the flight's live ships (handles `h.sh`) and the mod's other live ships (`TRF_SpOthersNear`: other traders' `H.tr[*].sh`, raid ships `H.rd[*].sh`) within `witness_r`, at least 0. What stays in `b`: scenery, wrecks, the player's fighters (no script API lists them, v1 5.2) and vanilla ships already there (CHECK W3). A mod ship near at the mark is not in `b`, so it is a witness at the kill when it is still within `witness_r`. Then `rec.dw = {t, w = 0, b}`.
 
 ### 5.3 Witnesses at a kill (`TRF_DemandSeen`, `TRF_SpWitness`)
 
@@ -70,7 +70,7 @@ The first witnessed kill sets `dw.w = 1`; later kills are not counted.
 
 ### 5.4 Outcome at the record's kill (`TRF_DemandKill`)
 
-The mark ends (`rec.dw = nil`). Older than `witness_t`: `event=demand_witness_timeout reason=late_kill`, a normal kill. Else, with `dw.w` 0 and no ship of the flight left (`rec.np` 0): retracted, `TRF_AddHeat(-2, "demand retract <id>")`, the line `dmplost`, stat `dm_retract`, `event=demand_retract`, return 1 (kill heat skipped). Otherwise the line `dmpseen`, stat `dm_witnessed`, `event=demand_witnessed reason=witness|survivor result=witnessed`, a normal kill. pro -3 (`TRF_Ev_KillV2`, player kill) and dis +2 (`kill_dis`) come from the kill in both cases and are not doubled. The heat of a counted attack on the trader (`TRF_Ev_Deliberate`, +1) is not part of the demand and stays.
+The mark ends (`rec.dw = nil`). Older than `witness_t`: `event=demand_witness_timeout reason=late_kill`, a normal kill. Else, with `dw.w` 0 and no ship of the flight left (`rec.np` 0): retracted, `TRF_AddHeat(-2, "demand retract <id>")`, the line `dmplost`, stat `dm_retract`, `event=demand_retract`, return 1 (kill heat skipped). Otherwise the line `dmpseen` (only for a player kill, `by` = `player`), stat `dm_witnessed`, `event=demand_witnessed reason=witness|survivor result=witnessed`, a normal kill. pro -3 (`TRF_Ev_KillV2`, player kill) and dis +2 (`kill_dis`) come from the kill in both cases and are not doubled. The heat of a counted attack on the trader (`TRF_Ev_Deliberate`, +1) is not part of the demand and stays.
 
 The demand's own heat +2 came with a trf_station deed (`TRF_Stn_OnHeat`, reason `demand <id>`); the -2 is not a deed (negative heat changes are ignored there), and the skipped kill heat also skips the kill deed.
 
@@ -80,7 +80,7 @@ Each supply step clears `dw` when `gt - dw.t > witness_t` (the flight still aliv
 
 ### 5.6 News
 
-The lines are FTU radio lines (`TRF_SpSay`, nil speaker, as `sesclost`): `dmplost` ("contact lost with freighter <name>") for a retraction, `dmpseen` ("witnesses report that the Wolves robbed and destroyed freighter <name>") when seen. The demand never set the tracked-pool bit 4 (that bit is a raid comply, `TRF_TkRobbed`), and a killed trader's pool record is dropped (`TRF_TrackGone` `kill`), so nothing is cleared there.
+The lines are FTU radio lines (`TRF_SpSay`, nil speaker, as `sesclost`): `dmplost` ("contact lost with freighter <name>") for a retraction, `dmpseen` ("witnesses report that the Wolves robbed and destroyed freighter <name>") when seen and the kill was the player's; a seen kill without player fire has no line. The demand never set the tracked-pool bit 4 (that bit is a raid comply, `TRF_TkRobbed`), and a killed trader's pool record is dropped (`TRF_TrackGone` `kill`), so nothing is cleared there.
 
 ## 6. Config and tune
 
@@ -114,7 +114,7 @@ With `witness_r` 1500 every kill within 1500 of a station is seen; in most syste
 
 ## 8. Texts (`#TRF_dmp<name>` in `loc/trf_en.loc` and `loc/trf_ru.loc`)
 
-trf_supply `TRF_Supply_Text`: `dmpgot` (`FTU $1 jettisons: $2`, name, item list), `dmpnone` (`nothing`), `dmplost` ($1 name), `dmpseen` ($1 name). trf_hail `TRF_Hail_Text`: `dmpleave` (`Leave`), `dmpnowit` (`No witnesses`), `dmpq` (`No witnesses? OK: no witnesses. Cancel: leave.`). The answer lines stay `dmok` / `dmno`. RU: the seven keys in `loc/trf_ru.loc` (cp1251, fixed texts without `$n`, as the other RU keys); `stn-g` checks that every `dmp*` key of the two tables is there.
+trf_supply `TRF_Supply_Text`: `dmpgot` (`FTU $1 jettisons: $2`, name, item list), `dmpnone` (`nothing`), `dmplost` ($1 name), `dmpseen` ($1 name). trf_hail `TRF_Hail_Text`: `dmpleave` (`Leave`), `dmpnowit` (`No witnesses`), `dmpq` (`No witnesses? OK: no witnesses. Cancel: leave.`). The answer lines stay `dmok` / `dmno`. RU: the seven keys and `dmok`, `dmno` in `loc/trf_ru.loc` (cp1251, fixed texts without `$n`, as the other RU keys); `stn-g` checks that every `dmp*` key of the two tables and the two answers are there. They show with cfg `loc_mode` 1: `TRF_SpTxt` then returns `#TRF_<key>` as `TRF_Txt` does (arguments dropped), and the comply page appends `: <items>` to `#TRF_dmpgot`.
 
 Dialog file `Data/Scripts/Trade/TRF_HailPg.xml` (ASCII, CRLF): start `msg10`, message `FTU #who#: #m1#`, pilot `Trader`, answers `a_leave` (`- #lleave#`, `TRF_HlDlgA_leave`) and `a_nowit` (`- #lnowit#`, `TRF_HlDlgA_nowit`), no `go_message_name`. Installed by `install.sh` (manifest, removed by `uninstall.sh`) and `install-test.sh` (removed by `uninstall-test.sh`) beside `TRF_Hail.xml`; cfg `hail_xml` 1 covers both files.
 
@@ -124,10 +124,10 @@ Entry as `host_captain.lua`: `host_station.lua` up to its first scenario. No new
 
 | Run | Covers |
 |---|---|
-| `dm-a` | tune and cfg defaults; the hail menu box chain to the demand option, OK, nothing inside the callback, the page box after the due call (answer and `2 x Cargo_01, 1 x Cargo_04`), no separate line, the `items` log value, `event=page`; the question box from the due call, Cancel = Leave (lock free, no mark); the refusal page (one box, no question); `demand_k` 1 (one container, no roll) and 0; item names through `CombineStr`, the id fallback, `dmpnone`; `demand_page` 0 and `hail_box` 0 (lines) |
-| `dm-b` | `hail_box` 2: `StartTradeDialog("TRF_HailPg", "TRF_HlPgInit")`, answers `a_leave a_nowit`, `FTU <name>: <answer>\n<items>`, labels, the level 2 answers line; Leave; Esc; No witnesses (recorded in the pick, the mark from the due call, `dw = {t, 0, 0}`); the refusal page (Leave only); a `nowit` pick on it; the box fallback with the UI not idle |
+| `dm-a` | tune and cfg defaults; the hail menu box chain to the demand option, OK, nothing inside the callback, the page box after the due call (answer and `2 x Cargo_01, 1 x Cargo_04`), no separate line, the `items` log value, `event=page`; the question box from the due call, Cancel = Leave (lock free, no mark); the refusal page (one box, no question); `demand_k` 1 (one container, no roll) and 0; item names through `CombineStr`, the id fallback, `dmpnone`; `demand_page` 0 and `hail_box` 0 (lines); `loc_mode` 1 (the page as keys with the item list) |
+| `dm-b` | `hail_box` 2: `StartTradeDialog("TRF_HailPg", "TRF_HlPgInit")`, answers `a_leave a_nowit`, `FTU <name>: <answer>\n<items>`, labels, the level 2 answers line; Leave; Esc; No witnesses (recorded in the pick, the mark from the due call, `dw = {t, 0, 0}`); the refusal page (Leave only); a `nowit` pick on it; the box fallback with the UI not idle; the hail menu dialog, `a_demand`, the page dialog on the menu's chain (its pending dialog check leaves the page open), then Leave, No witnesses or Esc with one close |
 | `dm-c` | mark, every ship killed unseen 10 s later: `demand_kill ... reason=none`, retracted, heat 4 -> 2 without kill heat, pro -3, dis +2, the lost line, the mark gone; an unmarked kill gives the kill heat |
-| `dm-d` | a ship 300 from the kill (witnessed, heat 4 + 1, the witness line); a ship 1600 away (retracted); a station 600 away (`reason=station`); an escort alive after the transports (`reason=survivor`); no count native (`reason=no_count`); `witness_dead` 1 masks one carcass |
+| `dm-d` | a ship 300 from the kill (witnessed, heat 4 + 1, the witness line); a ship 1600 away (retracted); a station 600 away (`reason=station`); an escort alive after the transports (`reason=survivor`); no count native (`reason=no_count`); `witness_dead` 1 masks one carcass; a raid ship within range at the mark and at the kill (witnessed); a seen kill without player fire (no witness line) |
 | `dm-e` | step time-out (`witness_t` 30), the kill after it (kill heat); a late kill before the step (`reason=late_kill`); refused marks (not demanded, marked twice, no record); dump; the save size of the mark; no reserved key |
 
 Changed scenarios: `v1-c` (the demand checks run with `demand_page` 0, as lines), `v1-m` (the generated `trf_en.loc` has the 7 `#TRF_dmp*` lines), `stn-g` (the RU key set includes the `dmp*` keys).
@@ -142,7 +142,7 @@ Changed scenarios: `v1-c` (the demand checks run with `demand_page` 0, as lines)
 | DP3 | `CombineStr("#M_Name_Cargo_01", "")` returns the item's name (no placeholder in the text); otherwise the page shows the ids | the page text; `items=` in the log always has ids |
 | W1 | Whether `GetCarcassCountInSphere` still counts the transport at its `died` trigger (the native has no HP test, carcass-count.md 1.2) | with nothing else near: `event=demand_kill ... witness_count=0 reason=none`; `witness_count=1 reason=ship` on every unseen kill means it does: set `TUNE=witness_dead=1` |
 | W2 | The background of the mark holds at the kill position: a flight killed 1-2 km from where it was marked reads no witness without other ships | `event=demand_prey ... background_count=B`, `event=demand_kill ... witness_count=0` |
-| W3 | A vanilla patrol or pirate flight within 1500 of the kill is counted | `event=demand_kill ... reason=ship witnessed=true`, `event=demand_witnessed ... reason=witness` |
+| W3 | A vanilla patrol or pirate flight within 1500 of the kill is counted when it came after the mark; one already within `witness_r` of the trader at the mark is in `b` (no script list of vanilla ships) and is not counted, the mod's own flights are (5.2) | `event=demand_kill ... reason=ship witnessed=true`, `event=demand_witnessed ... reason=witness` |
 | W4 | Box path (`HAIL_BOX=1`): answer box, then `No witnesses?` | `event=page ... via=box`, then `event=close ... reason=leave\|nowit` |
 
 ## 11. Deviations
@@ -156,7 +156,7 @@ Changed scenarios: `v1-c` (the demand checks run with `demand_page` 0, as lines)
 - DV7 The news line is an FTU radio line, not a `News.xml` record: the news topics (`TRF_NewsPost`) carry no per-trader items, and the demand never set a tracked-pool "robbed" bit (5.6).
 - DV8 No position or no count at a kill counts as a witness, so the demand is never retracted without a count.
 - DV9 Tune `witness_dead` (default 0) added for CHECK W1.
-- DV10 The retraction does not depend on who made the kill (`by`); without player fire there is no kill heat to skip, only the demand heat comes back.
+- DV10 The retraction does not depend on who made the kill (`by`); without player fire there is no kill heat to skip, only the demand heat comes back. The witness line `dmpseen` needs a player kill.
 
 ## 12. Left out
 
