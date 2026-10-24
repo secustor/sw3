@@ -643,7 +643,7 @@ function T_DM_E()
 	local pw = {t=99999999.5, w=1, b=999, d=8, v="count"};
 	local tw = {t=99999999.5, w=1, v="typed", wc=9, wt=strrep("x", 63)};
 	local tu = {t=99999999.5, w=0, d=8, v="typed"};
-	local one = max(max(HOST_SaveSize(pw), HOST_SaveSize(tw)), HOST_SaveSize(tu)) + 8 + strlen("dw");
+	local one = max(HOST_SaveSize(pw), HOST_SaveSize(tw), HOST_SaveSize(tu)) + 8 + strlen("dw");
 	local sz = 8 * one;
 	print("HOST demand dw worst case bytes "..sz.." ("..one.." per record; count "..HOST_SaveSize(pw)..", typed "..HOST_SaveSize(tw)
 		..", typed unseen "..HOST_SaveSize(tu)..")");
