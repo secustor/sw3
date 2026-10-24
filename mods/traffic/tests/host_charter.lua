@@ -175,7 +175,7 @@ function C_BoxOk(a) return nil; end;
 function T_CH_A()
 	local h = HOST();
 	C_Begin("golkonda", "4_1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=7") >= 1, "trf_charter loads after trf_ladder (extra_count=7 with trf_scar and trf_captain)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=8") >= 1, "trf_charter loads after trf_ladder (extra_count=8 with trf_scar, trf_captain and trf_stash)");
 	local P = TRF_PlReg();
 	local lo, bo, ow = "", "", "";
 	for i = 1, getn(P.dock.trade.line) do lo = lo..P.dock.trade.line[i].o..","; end;

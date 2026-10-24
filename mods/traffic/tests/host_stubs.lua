@@ -706,7 +706,8 @@ function ClearQuests(...)
 	HOST().qlog = {};
 end;
 -- CreateStation(model, pos, dir[, flag]) -> station object: HP 100000, SetHP, Blow (wreck flag), Delete, IsAlive,
--- docking position; counted by GetCarcassCountInSphere like a carcass.
+-- docking position; counted by GetCarcassCountInSphere like a carcass. ClearInventory and AddModuleToInventory as on a
+-- carcass (the clan stash cache, Asteroid_inv_Val, design/stash-spec.md 5.4).
 function CreateStation(model, pos, dir, fl)
 	HOST_Want(type(model) == "string" and HOST_IsVec(pos) and HOST_IsVec(dir), "CreateStation(model, Vector3, Vector3[, flag])");
 	local s = HOST_Obj("station", pos.x, pos.y, pos.z);
@@ -715,6 +716,12 @@ function CreateStation(model, pos, dir, fl)
 	s.Blow = function(self) self.alive = nil; self.blown = 1; end;
 	s.Delete = function(self) self.alive = nil; self.deleted = 1; end;
 	s.GetName = function(self) return self.model; end;
+	s.inv = {};
+	s.ClearInventory = function(self) self.inv = {}; self.cleared = (self.cleared or 0) + 1; end;
+	s.AddModuleToInventory = function(self, it, n)
+		HOST_Want(type(it) == "string" and type(n) == "number", "Station:AddModuleToInventory(item, count)");
+		tinsert(self.inv, {it, n});
+	end;
 	tinsert(HOST().stations, s);
 	tinsert(HOST().ships, s);
 	print("HOST CreateStation "..model);
@@ -1139,12 +1146,13 @@ end;
 -- include/NewTriggers.script NewTrigger, reduced to recording the trigger. The argument shapes per kind
 -- follow its Set* calls and the game's callers: timer (seconds), f_inside (flight, Vector3, r),
 -- f_object_inside (flight, object, r), died (object), f_died (flight), focus (object), attack (group name or
--- Group table, object; the object may be the mothership).
+-- Group table, object; the object may be the mothership), inside (object, Vector3, r: the clan stash find trigger).
 -- Conditions and actions must be named global functions or strings (AttachCondition/AttachAction, fact 1.14).
 function NewTrigger(t, cond, func, v1, v2, v3, v4)
 	local shape = {
 		timer = function(a, b, c) return type(a) == "number"; end,
 		f_inside = function(a, b, c) return HOST_IsFlight(a) and HOST_IsVec(b) and type(c) == "number"; end,
+		inside = function(a, b, c) return HOST_IsObj(a) and HOST_IsVec(b) and type(c) == "number"; end,
 		f_object_inside = function(a, b, c) return HOST_IsFlight(a) and HOST_IsObj(b) and type(c) == "number"; end,
 		died = function(a, b, c) return HOST_IsObj(a); end,
 		f_died = function(a, b, c) return HOST_IsFlight(a); end,

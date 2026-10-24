@@ -5,11 +5,11 @@
 # station voices scenarios stn-a..h of host_station.lua, the worldbuilding plumbing scenarios pl-a..f of
 # host_plumb.lua, the survivors scenarios sv-a..g of host_survive.lua, the faction ladder scenarios lad-a..g of
 # host_ladder.lua, the charter scenarios ch-a..h of host_charter.lua, the battle scars scenarios sc-a..g of
-# host_scar.lua, the wanted captains scenarios cap-a..h of host_captain.lua and the demand page scenarios dm-a..h of
-# host_demand.lua (each its own entry point).
-# Env: LUA4 (interpreter), LUAC4, EXPS (default "default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm"), SCENS (default a..g),
+# host_scar.lua, the wanted captains scenarios cap-a..h of host_captain.lua, the demand page scenarios dm-a..h of
+# host_demand.lua and the clan stashes scenarios sh-a..h of host_stash.lua (each its own entry point).
+# Env: LUA4 (interpreter), LUAC4, EXPS (default "default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh"), SCENS (default a..g),
 # V02 (default a..n), V1 (default a..n), STN (default a..h), PL (default a..f), SV (default a..g), LAD (default a..g), CH
-# (default a..h), SC (default a..g), CAP (default a..h), DM (default a..h).
+# (default a..h), SC (default a..g), CAP (default a..h), DM (default a..h), SH (default a..h).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
@@ -24,18 +24,18 @@ for f in "$src"/*.script; do
     [ "$lines" = "$crs" ] || { echo "not CRLF: $f ($crs CR, $lines lines)"; rc=1; }
     if [ -x "$LUAC4" ]; then "$LUAC4" -p "$f" || { echo "luac -p failed: $f"; rc=1; }; fi
 done
-for t in host_stubs.lua host_traffic.lua host_v02.lua host_v1.lua host_v1_tables.lua host_station.lua host_plumb.lua host_survive.lua host_ladder.lua host_charter.lua host_scar.lua host_captain.lua host_demand.lua; do
+for t in host_stubs.lua host_traffic.lua host_v02.lua host_v1.lua host_v1_tables.lua host_station.lua host_plumb.lua host_survive.lua host_ladder.lua host_charter.lua host_scar.lua host_captain.lua host_demand.lua host_stash.lua; do
     if [ -x "$LUAC4" ]; then "$LUAC4" -p "$here/$t" || { echo "luac -p failed: $t"; rc=1; }; fi
 done
 rm -f luac.out
 lint="$here/../tools/lint_lua.py"
 if command -v python3 >/dev/null; then
     python3 -I "$lint" --allow TeleportToLocation,CustomTeleportate "$src"/*.script || rc=1
-    python3 -I "$lint" --host "$here/host_stubs.lua" "$here/host_traffic.lua" "$here/host_v02.lua" "$here/host_v1.lua" "$here/host_station.lua" "$here/host_plumb.lua" "$here/host_survive.lua" "$here/host_ladder.lua" "$here/host_charter.lua" "$here/host_scar.lua" "$here/host_captain.lua" "$here/host_demand.lua" || rc=1
+    python3 -I "$lint" --host "$here/host_stubs.lua" "$here/host_traffic.lua" "$here/host_v02.lua" "$here/host_v1.lua" "$here/host_station.lua" "$here/host_plumb.lua" "$here/host_survive.lua" "$here/host_ladder.lua" "$here/host_charter.lua" "$here/host_scar.lua" "$here/host_captain.lua" "$here/host_demand.lua" "$here/host_stash.lua" || rc=1
 fi
 
 entry=host_stubs.lua
-run() { # $1 label, then env assignments; $entry is the entry file (host_station.lua, host_plumb.lua, host_survive.lua, host_ladder.lua, host_charter.lua, host_scar.lua, host_captain.lua, host_demand.lua for stn, pl, sv, lad, ch, sc, cap, dm)
+run() { # $1 label, then env assignments; $entry is the entry file (host_station.lua, host_plumb.lua, host_survive.lua, host_ladder.lua, host_charter.lua, host_scar.lua, host_captain.lua, host_demand.lua, host_stash.lua for stn, pl, sv, lad, ch, sc, cap, dm, sh)
     label=$1; shift
     out=$(env TRF_DIR="$src/" TRF_TESTS="$here/" "$@" "$LUA4" "$here/$entry" 2>&1) && st=0 || st=$?
     printf '%s\n' "$out" > "${TMPDIR:-/tmp}/trf-host-$label.log"
@@ -43,7 +43,7 @@ run() { # $1 label, then env assignments; $entry is the entry file (host_station
     printf '%s\n' "$out" | grep -E '^HOST (FAIL|SCRIPT ERROR)' || true
     [ "$st" = 0 ] || rc=1
 }
-for e in ${EXPS:-default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm}; do
+for e in ${EXPS:-default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh}; do
     case $e in
         default) run default ;;
         2) run exp2 TRF_EXP=2; run exp2-big TRF_EXP=2 TRF_BIG=1; run exp2-saves TRF_EXP=2 TRF_AUTOSAVE=1 ;;
@@ -60,6 +60,7 @@ for e in ${EXPS:-default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm}; do
         sc) entry=host_scar.lua; for s in ${SC:-a b c d e f g}; do run "sc-$s" TRF_SC="$s"; done; entry=host_stubs.lua ;;
         cap) entry=host_captain.lua; for s in ${CAP:-a b c d e f g h}; do run "cap-$s" TRF_CAP="$s"; done; entry=host_stubs.lua ;;
         dm) entry=host_demand.lua; for s in ${DM:-a b c d e f g h}; do run "dm-$s" TRF_DM="$s"; done; entry=host_stubs.lua ;;
+        sh) entry=host_stash.lua; for s in ${SH:-a b c d e f g h}; do run "sh-$s" TRF_SH="$s"; done; entry=host_stubs.lua ;;
         *) run "exp$e" TRF_EXP="$e" ;;
     esac
 done

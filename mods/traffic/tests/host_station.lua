@@ -1457,7 +1457,7 @@ function T_STN_G()
 	HOST_Check(TRF_StnEvPayOf(10000, 40) == 4000 and TRF_StnEvPayOf(nil, 40) == 0 and TRF_StnEvPayOf(10000, 0) == 0, "pay: k percent of N_eff");
 	-- RU text: every station key, every survivors key (design/survivors-spec.md 9), every faction ladder key
 	-- (design/ladder-spec.md 8), every charter key (design/charter-spec.md 8) and every battle scars key
-	-- (design/scar-spec.md 8) and every wanted captains key (design/captain-spec.md 8) of the EN tables, cp1251 (no byte
+	-- (design/scar-spec.md 8), every wanted captains key (design/captain-spec.md 8) and every clan stash key (design/stash-spec.md 8) of the EN tables, cp1251 (no byte
 	-- outside ASCII and 0xA8, 0xB8, 0xC0-0xFF), CRLF.
 	local ru = S_ReadFile(h.dir.."../../../../loc/trf_ru.loc");
 	local want, got, bad = {}, {}, "";
@@ -1467,6 +1467,7 @@ function T_STN_G()
 	if type(TRF_Ch_Text) == "function" then for kx, v in TRF_Ch_Text() do want[TRF_LocKey(kx)] = 1; end; end;
 	if type(TRF_Sc_Text) == "function" then for kx, v in TRF_Sc_Text() do want[TRF_LocKey(kx)] = 1; end; end;
 	if type(TRF_Cap_Text) == "function" then for kx, v in TRF_Cap_Text() do want[TRF_LocKey(kx)] = 1; end; end;
+	if type(TRF_Sh_Text) == "function" then for kx, v in TRF_Sh_Text() do want[TRF_LocKey(kx)] = 1; end; end;
 	-- Demand page keys (design/demand-page-spec.md 8): the dmp* keys of the supply and hail tables and the answers dmok, dmno.
 	for i, fn in {"TRF_Supply_Text", "TRF_Hail_Text"} do
 		local tf = getglobal(fn);
@@ -1482,7 +1483,7 @@ function T_STN_G()
 	end;
 	for kx, v in want do if not got[kx] then bad = bad.." missing:"..kx; end; end;
 	for kx, v in got do if not want[kx] then bad = bad.." extra:"..kx; end; end;
-	HOST_Check(ru and strsub(ru, 1, 13) == "LOCALE_FILE\r\n" and bad == "" and nl == ncr and not b2, "loc/trf_ru.loc: every station, survivors, ladder, charter, scar, captain and demand page key, cp1251, CRLF"..bad);
+	HOST_Check(ru and strsub(ru, 1, 13) == "LOCALE_FILE\r\n" and bad == "" and nl == ncr and not b2, "loc/trf_ru.loc: every station, survivors, ladder, charter, scar, captain, stash and demand page key, cp1251, CRLF"..bad);
 	for id, rr in TRF.live.tr do if type(rr) == "table" and rr.st ~= "gone" then TRF_Remove(id, "test"); end; end;
 end;
 

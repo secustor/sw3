@@ -1164,6 +1164,8 @@ function TRF_RegionTick(L)
 	TRF_P("TRF_Sc_RegionTick", L);
 	-- Wanted captains (design/captain-spec.md 5.6): the off-screen life cycle after the phase changes of this tick.
 	TRF_P("TRF_Cap_RegionTick", L);
+	-- Clan stashes (design/stash-spec.md 5.3): so cleared in Quiet, expiry, at most one new cache.
+	TRF_P("TRF_Sh_RegionTick", L);
 end;
 
 -- Forced Bust (v1 8.3): every slot with ct bit 4 clears it; in Quiet, Boom or Build-up with sc < 75 and a

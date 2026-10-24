@@ -81,7 +81,7 @@ Box spec: `{title (default per kind), text, ok, no, a, own (log name), fee = 1 (
 | line 40, 50, 60, 70, 80 | #7 tip or thanks, #9 rank, #13 ratings, #12 board line, #6 faction crews | features |
 | box 400, 300, 200, 100 | 8.10 contracts (`TRF_BoardOfBox`), #9 offer, #2 licence, #4 informant | traffic, features |
 
-`__PirStationDock_Ok` (kind `pir`): owed payers at 50 (traffic's paid raid `TRF_FcPoOwe`); box 400 S35 offer (`TRF_FcPoBox`), 300 #6 survivor sale, 200 #1 contraband, 100 #7 intel.
+`__PirStationDock_Ok` (kind `pir`): line 20 #7 grudge (`TRF_Sh_PirLine`, 2026-10-24); owed payers at 50 (traffic's paid raid `TRF_FcPoOwe`); box 400 S35 offer (`TRF_FcPoBox`), 300 #6 survivor sale, 200 #1 contraband, 100 #7 intel (`TRF_Sh_PirBox`, clan stashes `D/stash-spec.md` 5.8).
 
 `__TradeStation_Action` (kind `req`): line 10 the #3 dockmaster (`TRF_Stn_ReqLine`, always: greeting, news, tips; the station's gates log the flags); box 400 the #3 fee box (`TRF_Stn_FeeBox`, `fee = 1`), 300 the #8 fallback.
 
@@ -131,7 +131,7 @@ The RAND draws and the `entry_plan` log lines are the same as before the convers
 
 ## 9. Group prefixes and the orphan scan
 
-Feature groups: `TRF_<name>_<n>` for name in Cust, Scv, Cap, Esc, Def, Pick, Push, Merc, Rival, Fw, Drop (`TRF_PlGroups`; Drop has labels only: trf_supply's `demand_drop` containers `trf_drop_<a>_<j>`, demand-page-spec.md 5.7); group global `TRF_G<name>_<n>` set only around a build; ship labels `trf_<lowercase name>_<n>_<j>`. `TRF_Pl_OnLoad` runs `TRF_PlOrphans`: clears every `TRF_G<name>_*` global restored with the save and deletes the live ships labelled `trf_<name>_<n>_<j>` for n 1..`scan_n`, j 1..`scan_j` (`event=orphan`). Traffic's own prefixes keep their module scans. Lint: `GROUP_PREFIXES` in `tools/lint_lua.py` (traffic's and the new names); a `"TRF_<Name>_"` or `"TRF_G<Name>_"` literal joined with `..` outside the list is a finding (all-capital names are labels). Host: `T_LeftGlobals` reports any `TRF_G<name>_` global of the new names.
+Feature groups: `TRF_<name>_<n>` for name in Cust, Scv, Cap, Esc, Def, Pick, Push, Merc, Rival, Fw, Drop, Sh (`TRF_PlGroups`; Sh is the clan stash treasurer, `D/stash-spec.md` 3.2, 2026-10-24; Drop has labels only: trf_supply's `demand_drop` containers `trf_drop_<a>_<j>`, demand-page-spec.md 5.7); group global `TRF_G<name>_<n>` set only around a build; ship labels `trf_<lowercase name>_<n>_<j>`. `TRF_Pl_OnLoad` runs `TRF_PlOrphans`: clears every `TRF_G<name>_*` global restored with the save and deletes the live ships labelled `trf_<name>_<n>_<j>` for n 1..`scan_n`, j 1..`scan_j` (`event=orphan`). Traffic's own prefixes keep their module scans. Lint: `GROUP_PREFIXES` in `tools/lint_lua.py` (traffic's and the new names); a `"TRF_<Name>_"` or `"TRF_G<Name>_"` literal joined with `..` outside the list is a finding (all-capital names are labels). Host: `T_LeftGlobals` reports any `TRF_G<name>_` global of the new names.
 
 ## 10. Clocks, C1, D1
 

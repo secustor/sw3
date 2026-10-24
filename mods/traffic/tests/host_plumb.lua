@@ -95,9 +95,10 @@ function T_PL_A()
 	-- Survivors (design/survivors-spec.md 4): the trade dock line at order 30 and the seed provider at 550; faction ladder
 	-- (design/ladder-spec.md 4): patrol line 50, patrol box 300, one CostOfHead handler; charter goals
 	-- (design/charter-spec.md 4): trade line 70, trade box 200, one owed payer; wanted captains (design/captain-spec.md 4):
-	-- patrol line 35, patrol box 100, one owed payer, seed providers 810 and 540.
-	HOST_Check(c2.line == 8 and c2.box == 6 and c2.none == 1 and c2.ej == 1 and c2.owe == 3 and c2.seed == 11 and c2.coh == 1,
-		"traffic registrations: 8 lines, 6 boxes, 1 none handler, 1 eject handler, 3 payers, 11 seed providers, 1 CostOfHead handler");
+	-- patrol line 35, patrol box 100, one owed payer, seed providers 810 and 540; clan stashes (design/stash-spec.md 4):
+	-- pirate line 20, patrol line 40, pirate box 100.
+	HOST_Check(c2.line == 10 and c2.box == 7 and c2.none == 1 and c2.ej == 1 and c2.owe == 3 and c2.seed == 11 and c2.coh == 1,
+		"traffic registrations: 10 lines, 7 boxes, 1 none handler, 1 eject handler, 3 payers, 11 seed providers, 1 CostOfHead handler");
 	local o1 = TRF_orig_CostOfHead;
 	T_Jump("aurora");
 	T_Jump("gredos");

@@ -25,6 +25,10 @@
 -- Wanted captains (design/captain-spec.md 6): cap_enable (default 1) = 0 turns trf_captain off; cap_board, cap_intel,
 -- cap_chase (step 1) and cap_capture, cap_force_eject, cap_vendetta (step 2, read nowhere yet, off) are the toggles;
 -- cap_regions_off, cap_at and the tune keys (cap_flee_hp, cap_gap_j, cap_k0, ...) read the module defaults.
+-- Clan stashes (design/stash-spec.md 6): enable_stashes (default 1) = 0 turns trf_stash off (cache objects deleted at
+-- entry); enable_stash_retrieval (treasurer flights) is the step 1 toggle; enable_stash_decoys (dropped, 00 section 8
+-- E3) and stash_ret_war (group war while Pirates are not at war with the player, 00 E2) stay 0; stash_at and the tune
+-- keys (stash_gap, stash_ttl, stash_intel_k, ...) read the module defaults.
 -- Demand result page (design/demand-page-spec.md): demand_page (default 1) = 0 says the demand answer as a line (no
 -- page, no No witnesses); tune demand_k, witness_t, witness_r, witness_dead read the trf_supply TuneDef. demand_drop
 -- (default 0, until E0.4 confirms drops) = 1 leaves the robbed stacks in a cargo01_destroyed_inv container beside the
@@ -40,4 +44,5 @@ function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
 	lad_escort=1, lad_depot=1, lad_warrant=1, charter=1,
 	enable_scars=1, enable_scar_loot=1, enable_scavengers=1, enable_scar_recorder=1, enable_salvage_licence=1,
 	cap_enable=1, cap_board=1, cap_intel=1, cap_chase=1, cap_capture=0, cap_force_eject=0, cap_vendetta=0,
+	enable_stashes=1, enable_stash_retrieval=1, enable_stash_decoys=0, stash_ret_war=0,
 	demand_page=1, demand_drop=0} end

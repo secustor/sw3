@@ -539,6 +539,42 @@ Wanted captains, step 1 (`design/captain-spec.md` 7). `slot` is the clan region 
 | `dump_rec` | `module=captain event=dump_rec slot=5 name=7 generation=1 state=1 template=4 escapes=1 notoriety=2 grudge=2 seen=xb13 due=0 lie_low=0 died=0 born=640 met=1 last=91 tip=nil quest=1` (one per record) | 1 |
 | `dump_claim` | `module=captain event=dump_claim index=1 slot=5 generation=1 amount=26700 kind=1 leg=812` (one per claim) | 1 |
 
+## stash (`trf_stash.script`; `TRF_ShE`, `TRF_ShDE`)
+
+Clan stashes, step 1 (`design/stash-spec.md` 7). `index` is the record index i (label `TRF_STASH_<i>`), `clan` and
+`region` the clan region slot.
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=stash event=error message=<m>` | 1 |
+| `create` | `module=stash event=create index=1 system=gaoba slot=2 clan=5 tier=3 class=2 value=200 budget=20000 seed=4711 salvage_banked=0 record_count=1` | 1 |
+| `create` | `module=stash event=create leg=40 result=none reason=<guard, quest, live, gap, open_gap, prize, max, no_region>` / `... leg=40 region=5 chance=25 roll=61 result=none reason=roll` | 2 |
+| `expire` | `module=stash event=expire index=1 system=gaoba clan=5 state=1 age=20 salvage_back=0 reason=ttl` (or `open_gap`, `dead`, `slot`, `model`) | 1 |
+| `so` | `module=stash event=so region=6 result=cleared` (the region is in Quiet) | 1 |
+| `reconcile` | `module=stash event=reconcile index=1 system=gaoba label=TRF_STASH_1 state=0 object=missing hp=nil result=create` (object missing, alive, dead, string; result create, reuse, lost, delete, failed, none; E7.1, E7.3) | 1 |
+| `fill` | `module=stash event=fill index=1 seed=4711 items=HC3x1,EngAmp2x1,ECM2x2 sum=17400 value=200` (E7.4) | 1 |
+| `place` | `module=stash event=place index=1 system=gaoba model=Asteroid_inv_Val result=failed reason=model` (or `reason=slot`) | 1 |
+| `orphan_delete` | `module=stash event=orphan_delete index=2 system=gaoba` (a label of a record elsewhere) | 1 |
+| `disabled` | `module=stash event=disabled system=gaoba deleted=1` (`enable_stashes 0`) | 1 |
+| `open` | `module=stash event=open index=1 system=gaoba player=false clan_score_change=-4 reason=entry` (dead at entry) | 1 |
+| `died` | `module=stash event=died index=1 generation=12 system=gaoba hit=true class=2 clan_score_change=-4 source=1 treasurer=1 quest=false reason=died` (reason died, poll, jump; E7.2, E7.10) | 1 |
+| `stale` | `module=stash event=stale index=1 generation=11 current=12` (E7.5) | 1 |
+| `hit` | `module=stash event=hit index=1` | 2 |
+| `found` | `module=stash event=found index=1 system=gaoba reason=trigger` (or `reason=poll`) | 1 |
+| `slot` | `module=stash event=slot system=gaoba slot=1 hp=1000 moved=0` (60 s after the entry; E7.6) | 1 |
+| `ret` | `module=stash event=ret index=1 delay=96 result=open` (or `result=rearm`; E7.11) / `... group=TRF_Sh_1 tier=3 power=15 flight_count=1 ship_count=4 portal=PORTAL_D relation=war vanilla_relation=1 result=spawn` (E7.7) / `... result=skipped reason=<writeback, no_war, caps, portal, sweep, carrier, quest, guard, strict:<w>, hold:<w>, quiet, disabled, build, no_raid_module>` (E7.9) / `... result=void reason=<jump, wind, due, system>` / `... flight=1 result=killed` / `... kill_count=4 result=dead` / `... portal=PORTAL_D result=leave reason=<hp, window, wind>` / `... deleted=3 result=gone reason=<portal, out_of_view, watchdog, jump, dead>` | 1 |
+| `intel` | `module=stash event=intel index=1 system=gaoba price=1500 jumps=3 result=offered` / `... price=1500 credits_before=100000 credits_after=98500 seller=6 result=ok` (E7.8) / `... price=1500 credits=100 result=poor` / `result=declined` / `result=stale` | 1 |
+| `intel` | `module=stash event=intel result=none reason=<gate>` | 2 |
+| `grudge` | `module=stash event=grudge index=1 system=egleon` | 1 |
+| `tip` | `module=stash event=tip index=1 system=egleon faction=1 roll=12 chance=30 result=tip` | 1 |
+| `tip` | `module=stash event=tip index=1 roll=77 chance=30 result=none reason=roll` / `module=stash event=tip result=none reason=<gate>` | 2 |
+| `thanks` | `module=stash event=thanks faction=1 system=egleon standing=6` | 1 |
+| `moved` | `module=stash event=moved system=gaoba clan=5` | 1 |
+| `debug` | `module=stash event=debug index=1 system=egleon result=created` (cfg `stash_at`) | 1 |
+| `enter` | `module=stash event=enter system=gaoba index=1 state=1 arrival=stasharrive pirates_relation=1` (E7.9 after a jump out) | 2 |
+| `dump` | `module=stash event=dump record_count=2 so=00000100000 created=7 opened=2 opened_player=1 last_create=37 last_open=0 patrol_owed=3 gap=12/6 open_gap=0/0 quest=0` | 1 |
+| `dump_rec` | `module=stash event=dump_rec index=1 system=gaoba slot=2 clan=5 class=2 value=200 seed=4711 state=1 source=1 source_from=6 salvage_banked=0 treasurer=0 age=7 object=alive` (one per record) | 1 |
+
 ## supply (`trf_supply.script`; `TRF_SpE`)
 
 | Event | Example line | Level |

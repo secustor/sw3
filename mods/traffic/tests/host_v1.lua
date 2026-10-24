@@ -2142,6 +2142,12 @@ function T_V1_N()
 	TRF.capch = {slot=11, to=113, hpb=10, leg=-99999, wn=6, cg=999};
 	TRF.capg = {lc=99999, vn=11};
 	TRF.clock.pz = 99999;
+	-- Clan stashes worst case (design/stash-spec.md 3.3): 4 records with every field at its widest, stx with every
+	-- field, so and sk in every clan record.
+	TRF.stash = {};
+	for k = 1, 4 do TRF.stash[k] = {sys=113, slot=4, clan=11, cls=3, v=450, seed=9999, leg=-99999, st=2, src=4, sf=11, sv=5, rf=2}; end;
+	TRF.stx = {n=9999, op=9999, opp=9999, lc=-99999, jc=99999, lo=-99999, jo=99999, pt=5, ps=113, ms=113, mc=11};
+	for k, cc in TRF.clan do if type(cc) == "table" then cc.so = 1; cc.sk = -99999; end; end;
 	-- Raids, due and stat at their bounds.
 	for k = 1, 10 do
 		local id = ids[1 + mod(k, getn(ids))];
@@ -2165,7 +2171,7 @@ function T_V1_N()
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");
 	local size = 8 + 3 + HOST_SaveSize(TRF);
 	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "ch", "scar",
-		"cap", "claim", "capch", "capg", "live"};
+		"cap", "claim", "capch", "capg", "stash", "stx", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	local lp, ll = "", {"tr", "stat", "rd", "cvs", "tq", "sw", "fq", "cr", "dc", "bs", "pg"};
 	for i = 1, getn(ll) do lp = lp.." "..ll[i].."="..HOST_SaveSize(L[ll[i]]); end;
@@ -2187,7 +2193,7 @@ function T_V1_N()
 	HOST_Check(tg == "", "no TRF_G* or flight_trf_* globals"..tg);
 	TRF_DumpState("test");
 	local dl = {"module=state event=dump_v4 ", "module=track event=dump", "module=faction event=dump", "module=clan event=dump", "module=convoy event=dump", "module=danger event=dump", "module=supply event=dump", "module=base event=dump", "module=loc event=dump", "module=scar event=dump ",
-		"module=captain event=dump "};
+		"module=captain event=dump ", "module=stash event=dump "};
 	local md = "";
 	for i = 1, getn(dl) do if V_Logs(dl[i]) == 0 then md = md.." "..dl[i]; end; end;
 	HOST_Check(md == "", "TRF_DumpState calls every v1 dump"..md);

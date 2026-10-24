@@ -208,17 +208,22 @@ function TRF_Sc_Del(o)
 end;
 
 -- Carcass tpl at p labelled label: CreateCarcass searches for free space and answers nil when it finds none
--- (lua-natives.md 183, PB 2.1; CHECK EW2.1).
-function TRF_Sc_MakeRaw(tpl, p, label)
-	local o = CreateCarcass(tpl, Vector3(p.x, p.y, p.z), Vector3(0, 0, 1));
+-- (lua-natives.md 183, PB 2.1; CHECK EW2.1). stn = 1: CreateStation instead (no free-space search, nil only for an
+-- unknown model; clan stashes, design/stash-spec.md 5.4).
+function TRF_Sc_MakeRaw(tpl, p, label, stn)
+	local o = nil;
+	if stn == 1 then o = CreateStation(tpl, Vector3(p.x, p.y, p.z), Vector3(0, 0, 1));
+	else o = CreateCarcass(tpl, Vector3(p.x, p.y, p.z), Vector3(0, 0, 1)); end;
 	if o == nil or type(o) == "number" then return nil; end;
 	SetObjectLabel(o, label);
 	return o;
 end;
 
-function TRF_Sc_Make(tpl, p, label)
-	if type(CreateCarcass) ~= "function" or type(Vector3) ~= "function" or type(SetObjectLabel) ~= "function" then return nil; end;
-	return call(TRF_Sc_MakeRaw, {tpl, p, label}, "x", TRF_ScErr);
+function TRF_Sc_Make(tpl, p, label, stn)
+	local mk = CreateCarcass;
+	if stn == 1 then mk = CreateStation; end;
+	if type(mk) ~= "function" or type(Vector3) ~= "function" or type(SetObjectLabel) ~= "function" then return nil; end;
+	return call(TRF_Sc_MakeRaw, {tpl, p, label, stn}, "x", TRF_ScErr);
 end;
 
 function TRF_Sc_LabelRaw(o)
@@ -908,8 +913,8 @@ function TRF_Sc_Fight(what, mine)
 	TRF_ScDE("fight_end", "fight", e.w, "mine", e.m, "fight_count", getn(sc.ev));
 end;
 
--- Other mod objects of system idx for the site rule (6.5): survivors' beacons (except the one linked to sid) and
--- base sites. List of {x, y, z}.
+-- Other mod objects of system idx for the site rule (6.5): survivors' beacons (except the one linked to sid), base
+-- sites and clan stash slots (trf_stash TRF_Sh_Objs, 07 section 7: 150 units from a cache). List of {x, y, z}.
 function TRF_ScObjs(idx, sid)
 	local o = {};
 	if type(TRF.sv) == "table" and type(TRF.sv.b) == "table" then
@@ -928,6 +933,8 @@ function TRF_ScObjs(idx, sid)
 			end;
 		end;
 	end;
+	local st = TRF_N("TRF_Sh_Objs", idx);
+	if type(st) == "table" then for i = 1, getn(st) do tinsert(o, st[i]); end; end;
 	return o;
 end;
 

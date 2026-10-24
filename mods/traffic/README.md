@@ -22,6 +22,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_charter.script` | Charter goals step 1 ([design/charter-spec.md](design/charter-spec.md)): two or three FTU charter postings in the logbook (Lanes, Relief, Break, Convoy, Sweep, Base) generated at trade docks from the live region state, deeds from traffic's pay points, owed pay with a 30-minute real-time gap, ranks 0-3 with dues, the heat-3 contract perk and the third slot. Loads after `trf_ladder`. |
 | `trf_scar.script` | Battle scars step 1 ([design/scar-spec.md](design/scar-spec.md)): labelled wreck fields (a lootable hulk with a fixed cargo from the seed and 1-4 decoration hulls) left by Bust shortages, Raids ticks, off-screen sweep attempts and on-screen fights, one per system, 8-30 legs with shrinking, the reconcile at entry, the FTU nav marker and scar line while fresh, the deny list, the strict gate and the chapter rules. Loads after `trf_charter`. |
 | `trf_captain.script` | Wanted captains step 1 ([design/captain-spec.md](design/captain-spec.md)): one named pirate captain per clan region with an off-screen life cycle in the region tick, one captain-led raid per visit (the staged raid with a trader target, else a lane patrol with his own wing), flee at low hull, escape through a portal, the chase, the kill claim paid at patrol docks, board lines and the informant fee, the logbook entry. Loads after `trf_scar`. |
+| `trf_stash.script` | Clan stashes step 1 ([design/stash-spec.md](design/stash-spec.md)): at most one hidden cache per clan region, a hollow radio-asteroid at an authored slot of an allow-list system (slots from `tools/gen_stash.py`), created and expired at the region tick in Build-up and Raids, filled from its seed, opened by shooting it (clan score, the open gap, a treasurer flight), sold as intel at rival pirate docks and tipped by patrol boards (`fst` +1 at the next docking). Loads after `trf_captain`. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -288,7 +289,7 @@ v1 ("identity across jumps and war traffic", design §12, spec [design/v1-spec.m
 - Equipment convoys: one at a time map-wide, from a faction with strength ≥ 2 in a `pro` ≥ 6 system, about once per 30–35 legs: military transports with faction warship escorts and holds of 85,000–400,000 cr. Wave 1 of faction reinforcements comes 20–30 s after the first counted attack, wave 2 at 50 % transport HP one rung higher. Killing it gives heat +3, faction standing −1, strength −1 and a forced Bust; pirates taking it give the clan salvage +3. The owner may offer a defence contract (4x escort pay, ≤ 30,000 cr).
 - Danger convoys: at disruption ≥ 4 or in a Raids-phase region, 2–3 traders gather at the trade station (up to 120 s) and leave together with 3–5 escorts; 20 % still fly alone.
 - Pirate bases: a clan founds a base (at most 2 map-wide) in an allow-list system that has stayed at disruption ≥ 6, never while the player is there. It holds a garrison, raises disruption around it, sends raids and survives leave, revisit, save and load. Destroying it resets the system's disruption and pays a bounty. Not active in-game yet: `map.script` has no allow-list (`ba`) until `gen_map.py` emits it (Status).
-- Text: all lines are English plain text (`lang` `ru` falls back to English per key until the RU table exists). `loc/trf_ru.loc` (cp1251) has 272 Russian keys for `loc_mode 1` in a Russian install (station voices, survivors, ladder, charter, scars, captains, demand page; the core and v1 lines have none; unconfirmed in game) (`install-test.sh` `LOC=1` copies it to the clone's `Data/LocData/Russian/` when that folder exists).
+- Text: all lines are English plain text (`lang` `ru` falls back to English per key until the RU table exists). `loc/trf_ru.loc` (cp1251) has 337 Russian keys for `loc_mode 1` in a Russian install (station voices, survivors, ladder, charter, scars, captains, stashes, demand page; the core and v1 lines have none; unconfirmed in game) (`install-test.sh` `LOC=1` copies it to the clone's `Data/LocData/Russian/` when that folder exists).
 
 ### Config keys (v1)
 
@@ -680,6 +681,44 @@ Wanted captains (proposal 4 step 1, spec [design/captain-spec.md](design/captain
 
 Experiments EW4.1-EW4.7 of the design, with the confirming lines in the spec section 10, all with `CAP_AT=xb13` in chapter 5 or later: the HP trigger at an absolute value (`event=hp`, then `event=flee ... reason=trigger`), the attached marker and the portal exit (`event=escaped ... reason=portal`), the string callbacks (`event=death ... reason=died`), the board and the informant box before the patrol dialog (`box=cap_intel priority=100 result=box`), the logbook entry with `LOC=1` (`event=quest id=trf_cap_<s>`), the chase arrival's hull (`event=chase ... result=arrived`), a load in his system (`event=orphan ... action=portal`).
 
+## Clan stashes (`EXP=0 TRAFFIC=1`)
+
+Clan stashes (proposal 7 step 1, spec [design/stash-spec.md](design/stash-spec.md), design `design/worldbuilding/07-clan-stashes.md`) is one module, `trf_stash`, loaded after `trf_captain` (`module=core event=loaded ... extra_count=8`). Records `TRF.stash[i]` (at most 4, at most 2 unopened), counters and stamps `TRF.stx`, the clan fields `so` (opened this cycle) and `sk` (last cache); every gap counts legs and the shared jump counter `TRF.clock.j`. Slots are static data generated from the game's location scripts by `tools/gen_stash.py` (11 systems, 25 slots). It uses the plumbing: pirate box 100 and line 20, patrol line 40, the ship-cap registry, nav markers with an attached object, the arrival-line queue and the shared prize gap. trf_region calls the region tick, trf_scar provides the object helpers (`TRF_Sc_Make` with `CreateStation`), trf_clan the score and salvage helpers, trf_faction the standing helper. Step 2 (rumours, news, captain intel, rivals, charter hooks) is not built; decoys are dropped. Implemented and host-tested (`sh-a`..`sh-h`), not run in the game.
+
+### What the player sees
+
+- From chapter 5, while a clan region is in Build-up or Raids, its clan may hide one cache in an asteroid belt of its region (Gaoba, Beta Lethera 3, Altair, Areco, Lasad, Egleon, Fort Russ, XB-13, Fiasar, Llanowar 1, Escaflowne). It reads as an ordinary asteroid and holds items only: trader gear early, rare modules mid, the salvage faction's military gear late, worth at most 6,000 / 10,000 / 20,000 / 45,000 base cost by tier.
+- A rival clan's pirate dock within 4 jumps offers the location: `Psst. Pirates (Red Knives) stuffed a hollow rock in the Gaoba belt with other people's goods. For a fee (1500 cr) I'll tell you which belt.` (150 x the system's world level). A patrol board within 3 jumps may tip it for free: `Patrol note: smugglers keep pinging a beacon in the Gaoba asteroid belt. ...`.
+- Entering the system with a known cache: `Beacon ping detected in this system's belt. Faint, intermittent.` and an area nav point within 150 units of the rock; within 200 units a second nav point attaches to it: `This rock is hollow. Somebody welded a hatch on it.`
+- Shoot it open (1,000 HP): `Cache cracked. Cargo drifting free.` 60-150 s later a treasurer flight of the clan comes through the portal toward its home and attacks (`That cargo belongs to our clan (Red Knives). Drop it and you might live.`); it leaves at low hull or after 3 minutes. Only while Pirates are at war with you (cfg `stash_ret_war` 1 seeds group war otherwise); never during a mission.
+- The clan loses score (2 per content class), hides nothing new until its region passes Quiet, and no new cache appears anywhere for 30 legs and 10 jumps. A patrol tip pays standing +1 with that faction at its next patrol docking (`Report on the Gaoba cache received. ...`); intel bought from a rival raises the seller's score.
+- Unopened caches move after 20 legs, or at once when another cache was opened; a known one leaves `Pirates (Red Knives) moved their cache. The old ping in Gaoba is dead.` on the next patrol board.
+
+### Config keys (stashes)
+
+`config.script` lists the four toggles; `stash_at` and the tune keys read the module defaults. `install-test.sh` writes `STASHES` (`enable_stashes`; `LEVEL=v01` and `v02` write 0 unless `STASHES` is set) and `STASH_AT` (debug); tune keys go through `TUNE=key=value,...` (number keys only; the list keys `stash_gap`, `stash_open_gap`, `stash_chance`, `stash_cap`, `stash_ret_delay` keep their defaults there).
+
+| key | default | meaning |
+|---|---|---|
+| `enable_stashes` | 1 | 0 turns the module off (cache objects are deleted at entry) |
+| `enable_stash_retrieval` | 1 | treasurer flights |
+| `enable_stash_decoys` | 0 | dropped (00 E3), read nowhere |
+| `stash_ret_war` | 0 | 1: the treasurer seeds group war while Pirates are not at war with the player (never in write-back systems) |
+| `stash_at` | `""` | debug: a known cache record in the named system, placed at its entry (E7.1-E7.11) |
+| tune `stash_max`, `stash_live`, `stash_ttl`, `stash_dead_legs` | 4, 2, 20, 10 | records, unopened records, lifetime and kept legs |
+| tune `stash_gap`, `stash_open_gap` | {15, 6}, {30, 10} | legs and jumps between creations, after an opening |
+| tune `stash_chance`, `stash_k`, `stash_cap` | {25, 35}, 3, {6000, 10000, 20000, 45000} | creation chance in Build-up and Raids, value budget |
+| tune `stash_intel_k`, `stash_intel_range`, `stash_board_pct` | 150, 4, 30 | intel price and range, patrol tip chance |
+| tune `stash_area_r`, `stash_find_r`, `stash_ret_delay`, `stash_ret_window` | 150, 200, {60, 150}, 180 | nav radii, treasurer delay and presence |
+
+### Log lines (stashes)
+
+`module=stash event=create`, `event=expire ... reason=<ttl|open_gap|dead>`, `event=so`, `event=reconcile ... object=<missing|alive|dead> result=<create|reuse|lost|delete|none>`, `event=fill`, `event=orphan_delete`, `event=disabled`, `event=open`, `event=died ... hit=<true|false>`, `event=stale`, `event=found`, `event=slot`, `event=ret ... result=<open|rearm|spawn|skipped|void|killed|dead|leave|gone>`, `event=intel`, `event=grudge`, `event=tip`, `event=thanks`, `event=moved`, `event=debug`, `event=dump`, `event=dump_rec`; full list in `design/log-events.md` (stash).
+
+### In-game checks (stashes)
+
+Experiments E7.1-E7.11 of the design, with the confirming lines in the spec section 10, with `STASH_AT=gaoba` (E7.9 `STASH_AT=xb13`) in chapter 5 or later: the cache persists with its label (`event=reconcile ... object=alive hp=1000 result=reuse`), drops its inventory on death (`event=died ... hit=true`), returns dead or missing after leave and return, refills identically, survives save and load (`event=died ... generation=<g+1>`), holds its slot (`event=slot ... moved=0`), the treasurer's group war (`relation=war vanilla_relation=<r>`), the intel box before the shop, the write-back skip, the mission gate and the load re-arm (`event=ret ... result=rearm`).
+
 ## Installing into the game
 
 The release zip `sw3-traffic-<v>.zip` (built by `release.sh`) or this folder:
@@ -763,9 +802,9 @@ Movie and UI natives (`pe/traffic.c`, [design/mod-research/movie-state.md](desig
 ## Host checks (no game)
 
     mods/traffic/tools/get-lua4.sh                       # builds .work/lua4/bin/lua once
-    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment + v0.1 scenarios a..g (tests/host_traffic.lua) + v0.2 scenarios v02-a..n (tests/host_v02.lua) + v1 scenarios v1-a..n (tests/host_v1.lua) + station voices stn-a..h (tests/host_station.lua) + plumbing pl-a..e (tests/host_plumb.lua) + survivors sv-a..g (tests/host_survive.lua) + faction ladder lad-a..g (tests/host_ladder.lua) + charter ch-a..h (tests/host_charter.lua) + battle scars sc-a..g (tests/host_scar.lua) + wanted captains cap-a..h (tests/host_captain.lua)
+    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment + v0.1 scenarios a..g (tests/host_traffic.lua) + v0.2 scenarios v02-a..n (tests/host_v02.lua) + v1 scenarios v1-a..n (tests/host_v1.lua) + station voices stn-a..h (tests/host_station.lua) + plumbing pl-a..e (tests/host_plumb.lua) + survivors sv-a..g (tests/host_survive.lua) + faction ladder lad-a..g (tests/host_ladder.lua) + charter ch-a..h (tests/host_charter.lua) + battle scars sc-a..g (tests/host_scar.lua) + wanted captains cap-a..h (tests/host_captain.lua) + demand page dm-a..h (tests/host_demand.lua) + clan stashes sh-a..h (tests/host_stash.lua)
     python3 -I mods/traffic/tools/lint_lua.py --allow TeleportToLocation,CustomTeleportate mods/traffic/Data/Scripts/Mods/Traffic/*.script
 
-The run prints one `== <scenario>: exit 0, <n> traffic lines, 0 fails` line per run (94 runs); any other line names the failed check. `v1-n` prints the worst-case save size by part (`HOST info TRF save size ...`).
+The run prints one `== <scenario>: exit 0, <n> traffic lines, 0 fails` line per run (111 runs); any other line names the failed check. `v1-n` prints the worst-case save size by part (`HOST info TRF save size ...`).
 
 `tests/host_stubs.lua` stubs the natives and emulates ClearGlobals with the T3 carry, the save writer's skip rule and string trigger actions (`s.."();"`). Its stubs check argument shapes against the game's usage (`NewTrigger` per kind, `CreateCarcass`, `GetCarcassCountInSphere`). With `TRF_AUTOSAVE=1` (runs `exp0-saves`, `exp2-saves`) it also stubs `AutoSave` and `GetQuestLabel` and checks the save kit: no save in the first system or during mission 1, one `AutoSave` per new system, none for a system already saved, stale timers after a jump or a load, and the cap of 6. It then runs entry, ticks (clock sum), the experiment dispatch, the E0.3 trigger chain, two wrapped jumps, a save/load with a reserved-key scan of `TRF`, a load without `TRF` and a load with a foreign `TRF` layout, and dumps `TRF`. It exits 1 on any script error or failed check. Set `LUA4` to use another interpreter.

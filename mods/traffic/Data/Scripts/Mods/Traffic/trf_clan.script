@@ -341,7 +341,7 @@ function TRF_Cl_SalvAddBody(slot, d, f, why)
 			TRF_ClDE("salvage", "slot", slot, "source", why, "amount", d, "result", "skipped", "reason", "no_faction");
 			return 0;
 		end;
-		local ev = {sweep=1, feqt=1, feqk=1, feq=1};
+		local ev = {sweep=1, feqt=1, feqk=1, feq=1, stash=1};
 		local L = TRF_Cl_Live();
 		if not ev[tostring(why)] and L then
 			if type(L.fsv) ~= "number" then L.fsv = 0; end;

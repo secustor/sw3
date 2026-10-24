@@ -837,6 +837,9 @@ function TRF_Rd_ClanAlive(skip)
 	-- A wanted captain and his own wing (trf_captain, design/captain-spec.md 5.3).
 	v = TRF_N("TRF_Cap_Alive");
 	if type(v) == "number" then c = c + v; end;
+	-- A clan stash treasurer (trf_stash, design/stash-spec.md 5.7).
+	v = TRF_N("TRF_Sh_Alive");
+	if type(v) == "number" then c = c + v; end;
 	return c;
 end;
 
