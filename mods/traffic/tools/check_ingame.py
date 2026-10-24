@@ -721,7 +721,7 @@ def c_dock(ctx):
         if len(ap) >= 3:
             res.fails.append("%d approach lines with dock_mode=2 and no docked arrival_kind=2 (removals by the dock_to timeout only)" % len(ap))
         else:
-            res.missing.append("%d approach lines with dock_mode=2 (need a docked arrival_kind=2, or 3+ approaches); install with DOCK_MODE=2 LOG=3 and watch traders at a trade station" % len(ap))
+            res.missing.append("%d approach lines with dock_mode=2 (need a docked arrival_kind=2, or 3+ approaches); install with DOCK_MODE=2 and watch traders at a trade station" % len(ap))
     res.ev("approach dock_mode=2", ap)
     res.ev("docked arrival_kind=2 for an approached trader", ok)
     return res
