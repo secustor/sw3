@@ -4,8 +4,9 @@
 # by the sw3-trackpad or sw3-performance mod of the same release; exits without changes if it is missing.
 # Copies Data/Scripts/Mods/Traffic/ (CRLF scripts), writes its config.script (exp=0 traffic=1 autosave=0) and sets
 # [traffic] enabled=1 in sw3tp.ini; every other section and key of sw3tp.ini stays as it is.
-# Copies the hail dialog Data/Scripts/Trade/TRF_Hail.xml into the game's Data/Scripts/Trade/ and writes hail_xml=1
-# into config.script (the hail uses it with tune hail_box 2; without hail_xml=1 it keeps the box chain).
+# Copies the hail dialogs Data/Scripts/Trade/TRF_Hail.xml and TRF_HailPg.xml (the demand result page) into the game's
+# Data/Scripts/Trade/ and writes hail_xml=1 into config.script (the hail uses them with tune hail_box 2; without
+# hail_xml=1 it keeps the box chain).
 # Re-running upgrades in place and keeps an edited config.script (--reset-config overwrites it).
 # --restore-only writes config.script with enabled=2: the mod then only restores changed station prices and
 # removes its pirate bases (README, Removal); run the game once that way before uninstall.sh.
@@ -54,10 +55,12 @@ for f in $files; do
     n=$(LC_ALL=C tr -cd '\n' < "$src/$f" | wc -c | tr -d ' '); c=$(LC_ALL=C grep -c "$(printf '\r')\$" "$src/$f" || true)
     [ "$n" -gt 0 ] && [ "$n" = "$c" ] || die "package file $f is not CRLF ($c of $n lines)"
 done
-xml=Data/Scripts/Trade/TRF_Hail.xml
-[ -f "$here/$xml" ] || die "package file $xml missing"
-n=$(LC_ALL=C tr -cd '\n' < "$here/$xml" | wc -c | tr -d ' '); c=$(LC_ALL=C grep -c "$(printf '\r')\$" "$here/$xml" || true)
-[ "$n" -gt 0 ] && [ "$n" = "$c" ] || die "package file $xml is not CRLF ($c of $n lines)"
+xml=Data/Scripts/Trade/TRF_Hail.xml; xml2=Data/Scripts/Trade/TRF_HailPg.xml
+for f in "$xml" "$xml2"; do
+    [ -f "$here/$f" ] || die "package file $f missing"
+    n=$(LC_ALL=C tr -cd '\n' < "$here/$f" | wc -c | tr -d ' '); c=$(LC_ALL=C grep -c "$(printf '\r')\$" "$here/$f" || true)
+    [ "$n" -gt 0 ] && [ "$n" = "$c" ] || die "package file $f is not CRLF ($c of $n lines)"
+done
 if [ "$news" = 1 ]; then
     for f in news/trf_news.xml news/merge.awk loc/trf_en.loc; do [ -f "$here/$f" ] || die "--news: package file $f missing"; done
     for f in news/trf_news.xml loc/trf_en.loc; do
@@ -98,7 +101,7 @@ modsrel=${modsd#"$game"/}; dst=${trfd#"$game"/}
 # Hail dialog: Data/Scripts/Trade/ of the game (vanilla trade dialogs live there; created if missing).
 trd=$(find "$scr" -mindepth 1 -maxdepth 1 -type d -iname trade | head -1)
 [ -n "$trd" ] || trd=$scr/Trade
-trdrel=${trd#"$game"/}; xmlrel=$trdrel/TRF_Hail.xml
+trdrel=${trd#"$game"/}; xmlrel=$trdrel/TRF_Hail.xml; xmlrel2=$trdrel/TRF_HailPg.xml
 ini=$game/sw3tp.ini
 [ -f "$ini" ] || die "no sw3tp.ini in $game; $need. Nothing changed."
 # News records (--news): the engine reads only DATA\GAME\News.xml and every *.loc of DATA\LocData\<folder>\
@@ -157,6 +160,7 @@ done
 say "scripts: $nnew installed or updated, $nsame unchanged in $dst/"
 if [ ! -d "$trd" ]; then mkdir "$trd"; rec "dir $trdrel"; fi
 if put "$here/$xml" "$xmlrel"; then say "hail dialog: wrote $xmlrel"; else say "unchanged $xmlrel (hail dialog)"; fi
+if put "$here/$xml2" "$xmlrel2"; then say "demand page dialog: wrote $xmlrel2"; else say "unchanged $xmlrel2 (demand page dialog)"; fi
 # Scripts of an earlier release that this one no longer ships.
 for rel in $(sed -n "s|^created \($dst/[^/]*\.script\)\$|\1|p" "$man"); do
     b=${rel##*/}
@@ -243,7 +247,7 @@ else cp "$new" "$ini.sw3trf-new"; mv -f "$ini.sw3trf-new" "$ini"; say "sw3tp.ini
 rm -f "$new"
 
 q=0
-for f in "$ini" "$game/$dst"/*.script "$game/$xmlrel" ${newsrel:+"$game/$newsrel"} ${locrel:+"$game/$locrel"}; do
+for f in "$ini" "$game/$dst"/*.script "$game/$xmlrel" "$game/$xmlrel2" ${newsrel:+"$game/$newsrel"} ${locrel:+"$game/$locrel"}; do
     if xattr -p com.apple.quarantine "$f" >/dev/null 2>&1; then xattr -d com.apple.quarantine "$f"; q=$((q + 1)); fi
 done
 sed -i '' "s/^version .*/version $version/" "$man"
@@ -257,7 +261,7 @@ echo "summary:"
 say "scripts: $(echo $files | wc -w | tr -d ' ') files in $dst/ (CRLF checked), quarantine removed from $q file(s)"
 say "config: $(tr -d '\r' < "$cur" | sed -n 's/^function TRF_Config() return {\([^,]*, [^,]*, [^,]*, [^,]*\),.*/\1/p')$(grep -q 'enabled=2' "$cur" && echo ', enabled=2 (restore-and-stop)')"
 say "sw3tp.ini [traffic]: $(sect "$ini" | tr -d '\r' | grep -v '^\[\|^;' | tr '\n' ' ')"
-say "hail dialog: $xmlrel, hail_xml $(tr -d '\r' < "$cur" | sed -n 's/.*hail_xml=\([0-9]*\).*/\1/p' | head -1) (used with tune hail_box 2)"
+say "hail dialog: $xmlrel, $xmlrel2, hail_xml $(tr -d '\r' < "$cur" | sed -n 's/.*hail_xml=\([0-9]*\).*/\1/p' | head -1) (used with tune hail_box 2)"
 [ "$news" = 0 ] || say "news: $(grep -c '<name>trf_' "$game/$newsrel") trf_ records in $newsrel, loc $locrel, news_mode $(tr -d '\r' < "$cur" | sed -n 's/.*news_mode=\([0-9]*\).*/\1/p' | head -1)"
 say "backups and manifest: sw3-traffic-backup/"
 echo "done."

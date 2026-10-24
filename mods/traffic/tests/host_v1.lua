@@ -455,7 +455,9 @@ function T_V1_C()
 	TRF.live.cvs = nil;
 	h.teams = {};
 	TRF.live.bd = nil;
-	-- Demand cargo on a plain trader: comply moves containers to the mothership, heat +2.
+	-- Demand cargo on a plain trader: comply moves containers to the mothership, heat +2. The answer as a line
+	-- (cfg demand_page 0); host_demand.lua runs the result page.
+	h.cfg.demand_page = 0;
 	local tid = T_Spawn("A") or T_Spawn("B");
 	local tr = TRF.live.tr[tid];
 	tr.hold = {{i="Cargo_01", n=4, s=1}, {i="Cargo_04", n=2, s=1}};
@@ -498,6 +500,7 @@ function T_V1_C()
 	local nr = h.rand;
 	HOST_Check(tr2.br == 1 and TRF_Rd_Brave(tr2) == 1 and h.rand == nr, "braveness from the demand kept as r.br and read by trf_raid without a roll");
 	h.ms.model = nil;
+	h.cfg.demand_page = nil;
 	-- Heat offer at a relation station (CStation_Action wrapped at load): cost, credits, original once.
 	HOST_Check(TRF_InstallRelDock() == 0 and CStation_Action ~= TRF_orig_CStation, "relation dock wrapped at load, not twice");
 	TRF.std.heat = 4;

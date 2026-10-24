@@ -217,6 +217,13 @@ FILETYPE STANDART
 #TRF_dlgrefuse = We have nothing to say to the Wolves. Keep your distance.
 #TRF_dmno = FTU: Never! Mayday, the Wolves are threatening us!
 #TRF_dmok = FTU: Fine, take it! Just let us go.
+#TRF_dmpgot = FTU jettisons
+#TRF_dmpleave = Leave
+#TRF_dmplost = FTU: contact lost with freighter.
+#TRF_dmpnone = nothing
+#TRF_dmpnowit = No witnesses
+#TRF_dmpq = No witnesses? OK: no witnesses. Cancel: leave.
+#TRF_dmpseen = FTU: witnesses report that the Wolves robbed and destroyed freighter.
 #TRF_facftu = FTU mercenaries
 #TRF_facinoco = InoCo
 #TRF_fackfni = New Empire

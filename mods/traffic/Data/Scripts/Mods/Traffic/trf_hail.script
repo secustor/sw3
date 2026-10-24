@@ -31,6 +31,9 @@
 -- (Data/Scripts/Trade/TRF_Hail.xml, TRF_HlDlgOpen) whose answers record the pick as a box OK would; every
 -- follow-up (answer, offer and contract boxes) is the box chain's. cfg hail_xml 1 (set by the installers when
 -- they copied the file) is required; otherwise, and when the native or an idle UI is missing, the boxes run.
+-- Demand result page (design/demand-page-spec.md): TRF_HlPage, called by trf_supply after a demand from the hail due
+-- call, shows the answer on the open chain (hl.w "dlg" with the dialog TRF_HailPg, else "pg" and "pgq" boxes; hl.pn
+-- = 1 offers No witnesses, whose pick calls TRF_DemandNoWit(id) from a due call).
 
 -- Helpers --------------------------------------------------------------------------
 
@@ -624,6 +627,9 @@ function TRF_HlDlgA_sweep() TRF_HlDlgPick("sweep"); end;
 function TRF_HlDlgA_trouble() TRF_HlDlgPick("trouble"); end;
 function TRF_HlDlgA_boom() TRF_HlDlgPick("boom"); end;
 function TRF_HlDlgA_close() TRF_HlDlgPick("close"); end;
+-- Answers of the result page Data/Scripts/Trade/TRF_HailPg.xml (msg10).
+function TRF_HlDlgA_leave() TRF_HlDlgPick("leave"); end;
+function TRF_HlDlgA_nowit() TRF_HlDlgPick("nowit"); end;
 
 -- Why the dialog cannot open now, or nil: "xml" (cfg hail_xml not 1: file not installed), "native" (no
 -- StartTradeDialog), "uistate" (no TRF_UiState), "ui=<v>" (a movie, modal window or dialog is up, or -1
@@ -765,6 +771,17 @@ function TRF_HlDlgPick_Body(key)
 	TRF_HlE("dialog_pick", "trader_id", id, "key", key);
 	if TRF_HlGt() - (hl.t or 0) >= TRF_HlT("hail_stale") then TRF_HlClose("stale"); return; end;
 	if key == "close" then TRF_HlClose("close"); return; end;
+	-- Result page: No witnesses runs from the due call; any other answer is Leave.
+	if d.pg == 1 then
+		if key == "nowit" and d.on.nowit then
+			hl.c = "pnw";
+			hl.w = "wait";
+			if not TRF_Due(0.1, "TRF_HailStep") then TRF_HlClose("due refused"); end;
+			return;
+		end;
+		TRF_HlClose("leave");
+		return;
+	end;
 	local ok = d.dk[key] or key;
 	local k = nil;
 	for i = 1, getn(hl.o) do if hl.o[i] == ok then k = i; end; end;
@@ -799,9 +816,12 @@ function TRF_HailClose() TRF_Cb("TRF_HailClose", TRF_HailCb, {"close"}); end;
 function TRF_CtAccept() TRF_Cb("TRF_CtAccept", TRF_HailCb, {"acc"}); end;
 function TRF_HlOfOk() TRF_Cb("TRF_HlOfOk", TRF_HailCb, {"oacc"}); end;
 function TRF_HlOfNo() TRF_Cb("TRF_HlOfNo", TRF_HailCb, {"onext"}); end;
+function TRF_HlPgOk() TRF_Cb("TRF_HlPgOk", TRF_HailCb, {"pok"}); end;
+function TRF_HlPgNw() TRF_Cb("TRF_HlPgNw", TRF_HailCb, {"pnw"}); end;
+function TRF_HlPgLv() TRF_Cb("TRF_HlPgLv", TRF_HailCb, {"plv"}); end;
 
 -- c: "ok", "next" (menu box), "close" (answer OK, contract Cancel), "acc" (contract OK), "oacc", "onext"
--- (v1 offer box OK, Cancel).
+-- (v1 offer box OK, Cancel), "pok" (result page answer OK), "pnw", "plv" (No witnesses box OK, Cancel).
 function TRF_HailCb(c)
 	local L = TRF_HlLive();
 	if not L then return; end;
@@ -815,6 +835,8 @@ function TRF_HailCb(c)
 	local want = "menu";
 	if c == "acc" then want = "ct"; end;
 	if c == "oacc" or c == "onext" then want = "of"; end;
+	if c == "pok" then want = "pg"; end;
+	if c == "pnw" or c == "plv" then want = "pgq"; end;
 	if hl.w ~= want then TRF_HlClose("unexpected "..tostring(c).." in "..tostring(hl.w)); return; end;
 	hl.c = c;
 	hl.w = "wait";
@@ -840,6 +862,12 @@ function TRF_HailStep()
 		TRF_HlOfStep(1);
 	elseif c == "onext" then
 		TRF_HlOfStep(nil);
+	elseif c == "pok" then
+		TRF_HlPgNext();
+	elseif c == "pnw" then
+		TRF_HlPgNoWit();
+	elseif c == "plv" then
+		TRF_HlClose("leave");
 	else
 		TRF_HlClose("no choice");
 	end;
@@ -909,6 +937,114 @@ function TRF_HailDoV1(id, r, key)
 		TRF_HlE("option_result", "trader_id", id, "key", key, "result", v);
 		if type(v) == "string" then TRF_HlSay(v, id, nil, 1); end;
 	end;
+end;
+
+-- Demand result page (design/demand-page-spec.md) ------------------------------------------------
+
+-- Page of trader id after a demand (trf_supply TRF_SpAnswer, from the hail due call, never inside a callback):
+-- text = the trader's answer (and the moved items), nw 1 offers No witnesses. Tune hail_box 2 with a usable
+-- dialog (TRF_HlDlgWhy): the dialog TRF_HailPg, node msg10 ("FTU #who#: #m1#", m1 = text without its "FTU
+-- <name>: " prefix, set in the init: D6 is unchecked, and a message starting with # is D10);
+-- otherwise the boxes, the answer (OK), then with nw "No witnesses?" (OK = No witnesses, Cancel = Leave). The
+-- open chain of id carries the page (hl.pn = 1 with nw); without a chain one of its own starts. Returns
+-- "dialog", "box" or nil (no page: hail_box 0, another trader's chain, no box).
+function TRF_HlPage(id, text, nw)
+	local L = TRF_HlLive();
+	if not L or type(TRF) ~= "table" or type(text) ~= "string" or TRF_HlT("hail_box") == 0 then return nil; end;
+	local hl = L.hl;
+	if not TRF_HlValid(hl) or hl.id ~= id then
+		if TRF_HlValid(hl) then TRF_HlE("page", "trader_id", id, "reason", "busy", "result", "skipped"); return nil; end;
+		hl = {id=id, g=TRF.gen, o={}, k=1, t=TRF_HlGt()};
+		L.hl = hl;
+	end;
+	local pn = nil;
+	if nw == 1 then pn = 1; end;
+	hl.pn = pn;
+	hl.t = TRF_HlGt();
+	local how = nil;
+	if TRF_HlT("hail_box") == 2 and TRF_HlPgDlg(hl, text) then
+		how = "dialog";
+	else
+		hl.w = "pg";
+		if TRF_HlBox("#UI_FTrader_confirm", text, TRF_HlPgOk) then how = "box"; else TRF_HlClose("nobox"); end;
+	end;
+	if not how then
+		TRF_HlE("page", "trader_id", id, "reason", "no_box", "result", "skipped");
+		return nil;
+	end;
+	TRF_HlStat("hl_page");
+	TRF_HlE("page", "trader_id", id, "via", how, "no_witness_offered", TRF_KvB(pn));
+	return how;
+end;
+
+function TRF_HlPgCall()
+	StartTradeDialog("TRF_HailPg", "TRF_HlPgInit");
+	return 1;
+end;
+
+-- The page as the dialog: 1 when StartTradeDialog ran, nil after a fallback (the caller shows the boxes).
+-- Record st.dlg = {id, g, on (leave, nowit with hl.pn), dk = {}, pg = 1, who, m1}; pick and Esc as the menu
+-- dialog (TRF_HlDlgPick, TRF_HlDlgCheck).
+function TRF_HlPgDlg(hl, text)
+	local why = TRF_HlDlgWhy();
+	if why then TRF_HlDlgFb(why); return nil; end;
+	local st = TRF_HlStore();
+	local on = {leave=1};
+	if hl.pn == 1 then on.nowit = 1; end;
+	local who = TRF_HlName(TRF_HlRec(hl.id));
+	local pre = "FTU "..who..": ";
+	local m1 = text;
+	if strsub(text, 1, strlen(pre)) == pre then m1 = strsub(text, strlen(pre) + 1); end;
+	st.dlg = {id=hl.id, g=hl.g, on=on, dk={}, pg=1, who=who, m1=m1};
+	hl.w = "dlg";
+	if TRF_HlP(TRF_HlPgCall, {}) ~= 1 then
+		st.dlg = nil;
+		TRF_HlDlgFb("error");
+		return nil;
+	end;
+	TRF_HlStat("hl_dlg");
+	TRF_Due(1, "TRF_HlDlgCheck");
+	return 1;
+end;
+
+-- Init of the page dialog (shim): #who#, #m1#, the two labels, a_nowit shown only with No witnesses. A stale
+-- record leaves Leave only and an empty message.
+function TRF_HlPgInit() TRF_Cb("TRF_HlPgInit", TRF_HlPgInit_Body, {}); end;
+
+function TRF_HlPgInit_Body()
+	local d = TRF_HlDlgCur();
+	local who, m1, nw, id = TRF_Txt("hull1"), "", nil, nil;
+	if d and d.pg == 1 then
+		who = d.who or who; m1 = d.m1 or ""; nw = d.on.nowit; id = d.id;
+	else
+		TRF_HlE("dialog_init", "dialog", "page", "result", "stale");
+	end;
+	TRF_N("ShowAnswer", "a_leave");
+	local vis = "leave";
+	if nw then TRF_N("ShowAnswer", "a_nowit"); vis = vis..",nowit"; else TRF_N("HideAnswer", "a_nowit"); end;
+	TRF_N("SetReplaceValue", "who", who);
+	TRF_N("SetReplaceValue", "m1", m1);
+	TRF_N("SetReplaceValue", "lleave", TRF_Txt("dmpleave"));
+	TRF_N("SetReplaceValue", "lnowit", TRF_Txt("dmpnowit"));
+	TRF_HlDE("dialog_answers", "trader_id", id, "dialog", "page", "answers", vis);
+end;
+
+-- Due step after the page answer box: with No witnesses the question box, else Leave.
+function TRF_HlPgNext()
+	local hl = TRF_HlLive().hl;
+	if hl.pn ~= 1 then TRF_HlClose("leave"); return; end;
+	hl.w = "pgq";
+	hl.t = TRF_HlGt();
+	if not TRF_HlBox("#UI_FTrader_confirm", TRF_Txt("dmpq"), TRF_HlPgNw, TRF_HlPgLv) then TRF_HlClose("nobox"); end;
+end;
+
+-- Due step of No witnesses: the chain closes, then trf_supply marks the flight.
+function TRF_HlPgNoWit()
+	local hl = TRF_HlLive().hl;
+	local id = hl.id;
+	TRF_HlClose("nowit");
+	local v = TRF_HlCall("TRF_DemandNoWit", {id});
+	TRF_HlE("option_result", "trader_id", id, "key", "nowit", "result", v);
 end;
 
 -- Offer chain (v1): list l of {q or t, ok, a}; hid = trader id for a hail item offer (ok(hid, a)), nil for
@@ -1743,5 +1879,9 @@ function TRF_Hail_Text()
 		-- hail dialog (hail_box 2): text after "FTU <name>: "
 		dlghead = "What do you need, Wolves?",
 		dlgrefuse = "We have nothing to say to the Wolves. Keep your distance.",
+		-- demand result page (design/demand-page-spec.md)
+		dmpleave = "Leave",
+		dmpnowit = "No witnesses",
+		dmpq = "No witnesses? OK: no witnesses. Cancel: leave.",
 	};
 end;

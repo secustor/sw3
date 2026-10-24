@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Dialog xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="D:\_Work\SW3\Data\XMLSchema\Dialogs.xsd">
+    <start_message_name>msg10</start_message_name>
+    <DialogMessage name="msg10">
+        <message>FTU #who#: #m1#</message>
+        <pilot_name>Trader</pilot_name>
+        <sound_name />
+        <DialogAnswer name="a_leave">
+            <answer>- #lleave#</answer>
+            <lua_function>TRF_HlDlgA_leave</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_nowit">
+            <answer>- #lnowit#</answer>
+            <lua_function>TRF_HlDlgA_nowit</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+    </DialogMessage>
+</Dialog>

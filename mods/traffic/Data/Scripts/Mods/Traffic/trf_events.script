@@ -544,12 +544,16 @@ function TRF_Ev_Kill(id, rec, h)
 	local kd = TRF_Ev_K().kill_dis;
 	if own and by ~= "player" then kd = 1; end;
 	TRF_Ev_AddDis(idx, kd, "kill "..id);
+	-- Demand No witnesses (design/demand-page-spec.md): 1 = retracted, the kill heat is skipped (pro and dis stay).
+	local rt = TRF_P("TRF_DemandKill", id, rec, h, by, idx);
 	if by == "player" then
 		L.kills = (L.kills or 0) + 1;
 		if not own then
-			TRF_Ev_AddHeat(TRF_Ev_K().heat_d, "kill "..id);
-			-- Equipment convoy heat top-up (v1 8.4, TRF_FeqEnd) counts this kill heat.
-			TRF_N("TRF_FeqKillMark", id);
+			if rt ~= 1 then
+				TRF_Ev_AddHeat(TRF_Ev_K().heat_d, "kill "..id);
+				-- Equipment convoy heat top-up (v1 8.4, TRF_FeqEnd) counts this kill heat.
+				TRF_N("TRF_FeqKillMark", id);
+			end;
 			TRF_N("TRF_Ch_Note", 7, idx, 0);
 		end;
 	end;
@@ -620,6 +624,8 @@ function TRF_OnShipDied_Body(id, k, g)
 	end;
 	rec.nt = nt;
 	TRF_EvDE("died", "trader_id", id, "ship", k, "transport_count", nt, "ship_count", rec.np);
+	-- Demand No witnesses (design/demand-page-spec.md): witnesses at this kill of a marked flight.
+	TRF_P("TRF_DemandSeen", id, k, rec, h);
 	-- Battle scars source 7 (design/scar-spec.md 5.3): a trader transport (a convoy member: class 2) died here;
 	-- position from the handle, else the watchdog position; counted player fire is the 8.5 proxy.
 	local scl, sow = 1, TRF_Ev_Own(rec);

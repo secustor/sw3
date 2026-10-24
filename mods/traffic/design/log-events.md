@@ -162,6 +162,11 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `dialog_answers` | `module=hail event=dialog_answers trader_id=4 answers=demand,close labels=p1_x` | 2 |
 | `dialog_pick` | `module=hail event=dialog_pick trader_id=4 key=trade` | 1 |
 | `dialog_pick` | `module=hail event=dialog_pick trader_id=nil key=trade result=ignored reason=stale` | 1 |
+| `page` | `module=hail event=page trader_id=4 via=dialog\|box no_witness_offered=true` (demand result page, `demand-page-spec.md`) / `trader_id=4 reason=busy\|no_box result=skipped` | 1 |
+| `dialog_init` | `module=hail event=dialog_init dialog=page result=stale` | 1 |
+| `dialog_answers` | `module=hail event=dialog_answers trader_id=4 dialog=page answers=leave,nowit` | 2 |
+| `close` | `module=hail event=close trader_id=4 reason=leave\|nowit` (result page) | 1 |
+| `option_result` | `module=hail event=option_result trader_id=4 key=nowit result=prey` | 1 |
 | `box` | `module=hail event=box button=ok result=stale` | 1 |
 | `option` | `module=hail event=option trader_id=4 key=trade` | 1 |
 | `option_result` | `module=hail event=option_result trader_id=4 key=xtest handler=TRF_X result=1` | 1 |
@@ -548,7 +553,12 @@ Wanted captains, step 1 (`design/captain-spec.md` 7). `slot` is the clan region 
 | `contract` | `module=supply event=contract trader_id=1 distance=300.000 pay=900 result=paid` | 1 |
 | `contract` | `module=supply event=contract trader_id=1 reason=kill fled=false distance=... result=void` / `reason=jump result=void` | 1 |
 | `demand_fail` | `module=supply event=demand_fail trader_id=6 reason=clear_inventory_failed result=no_cargo_moved` | 1 |
-| `demand_comply` | `module=supply event=demand_comply trader_id=6 container_count=2 moved_count=2 heat=5` | 1 |
+| `demand_comply` | `module=supply event=demand_comply trader_id=6 container_count=3 moved_count=3 heat=5 items=Cargo_01:2,Cargo_04:1` (`items` = moved stacks `id:n`, nil when none; `demand-page-spec.md`) | 1 |
+| `demand_prey` | `module=supply event=demand_prey trader_id=6 background_count=0 ship_count=5 window=180 result=marked` (No witnesses) / `trader_id=6 reason=not_demanded\|marked\|st\|norec result=refused` | 1 |
+| `demand_kill` | `module=supply event=demand_kill trader_id=6 ship=1 witness_count=0 reason=none\|ship\|station\|no_count\|no_position witnessed=false` (a transport of a marked flight died) | 1 |
+| `demand_retract` | `module=supply event=demand_retract trader_id=6 by=player age=10.000 heat=3` (every ship dead unseen within `witness_t`: heat -2, kill heat skipped) | 1 |
+| `demand_witnessed` | `module=supply event=demand_witnessed trader_id=6 reason=witness\|survivor ship_count=0 age=12.000 result=witnessed` | 1 |
+| `demand_witness_timeout` | `module=supply event=demand_witness_timeout trader_id=6 age=188.000 witnessed=false reason=time` / `trader_id=6 age=31.000 reason=late_kill` | 1 |
 | `demand_refuse` | `module=supply event=demand_refuse trader_id=7` | 1 |
 | `demand_skip` | `module=supply event=demand_skip trader_id=7 reason=heat` | 1 |
 | `demand` | `module=supply event=demand trader_id=6 trader_strength=4.000 player_strength=24.000 player_level=4 strength_ratio=0.167 braveness=0.200 chance=95.000 roll=94 result=comply` | 1 |
@@ -559,7 +569,7 @@ Wanted captains, step 1 (`design/captain-spec.md` 7). `slot` is the clan region 
 | `heat_reset` | `module=supply event=heat_reset reason=paid heat_before=4 heat_after=0` | 1 |
 | `temp_change` | `module=supply event=temp_change name=Trade credits_before=a credits_after=b accepted=true` | 1 |
 | `load` | `module=supply event=load reldock_wrapped=true` | 1 |
-| `dump` | `module=supply event=dump convoy_count=1 convoys=1:1:live:nil border=nil convoy_option=1 demand_option=1 heat_offer_option=1 reldock_wrapped=true temp_change_wrapped=true` | 1 |
+| `dump` | `module=supply event=dump convoy_count=1 convoys=1:1:live:nil border=nil convoy_option=1 demand_option=1 demand_page_option=1 prey_count=0 heat_offer_option=1 reldock_wrapped=true temp_change_wrapped=true` | 1 |
 
 ## faction (`trf_faction.script`; `TRF_FcE`, `TRF_FcDE`)
 
