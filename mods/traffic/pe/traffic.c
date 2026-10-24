@@ -384,10 +384,11 @@ static int __cdecl n_carcasses(lua_State *L)
 {
     unsigned R, lm, list, node, me;
     double q[4] = { 0, 0, 0, 0 }, pos[3];
-    int sph = 0, n = 0, guard = 0, i, t = lua_type(L, 1);
+    int sph = 0, n = 0, guard = 0, i, top = lua_gettop(L);
     if (!g_cs_on) return cs_fail(L, "off");
     if (!g_cs_ok) return cs_fail(L, "sig");
-    if (t != -1 && t != 1) {                      /* LUA_TNONE, LUA_TNIL: no sphere */
+    if (top) {                                    /* no argument: no sphere; else exactly 4 numbers */
+        if (top != 4) return cs_fail(L, "arg");
         for (i = 0; i < 4; i++) {
             if (lua_type(L, i + 1) != T_NUMBER) return cs_fail(L, "arg");
             q[i] = lua_tonumber(L, i + 1);

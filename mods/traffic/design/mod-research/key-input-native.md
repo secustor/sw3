@@ -341,7 +341,7 @@ static void key_init(int t4)
 |---|---|
 | `traffic.c:1-6` header | "six natives" becomes "seven natives"; add "key edge sampler in T4". |
 | `traffic.c:49-52` | Add `static double (__cdecl *const lua_tonumber)(lua_State *, int) = API(0x65e0c0);` and `0x65e0c0` to `g_used_api`. The prologue is already in `TRF_APIS` (`trf_sites.h:13`), so `verify()` (`traffic.c:373-380`) covers it with no change to `check_sites.py`. |
-| `traffic.c:222-224` `trf_register` | Add `{ "TRF_KeyEdge", n_keyedge }`. The init line becomes `natives registered n=7`. |
+| `traffic.c:222-224` `trf_register` | Add `{ "TRF_KeyEdge", n_keyedge }`. The init line becomes `natives registered n=8`. |
 | `traffic.c:195-211` `rdp`, `ui_state` | Add `top_state(root)` after `rdp` (block below); `ui_state` uses `top_state(root) == 20` instead of its own copy of the chain (`:206-207`), so the chain exists once. `key_sample` uses the same function. |
 | Placement of 5.1 | After `n_uistate` (`traffic.c:217`), before `trf_register`, which needs `n_keyedge`, and `trf_tick`, which needs `key_sample`. `committed_rw` is defined later (`traffic.c:351-357`), so the block starts with the forward declaration `static int committed_rw(unsigned a);`. Without it the build fails (implicit declaration, then a conflicting static definition; `-Wall -Wextra`, `mods/trackpad/build.sh:41-44`). |
 | `traffic.c:333-337` `trf_tick` | Call `key_sample();` after the `if (tm) { ... }` block and before `if (!L || g_cb[CB_TICK].off) return;`. |
@@ -389,7 +389,7 @@ All through `sw3tp_log` with the `traffic: ` prefix (`traffic.c:82-84`); per-pre
 |---|---|---|
 | init | `traffic: key gate=flight max_age_ms=1000` | After the `attach` lines. `gate=log_only` when the movie signatures failed (`movie: sig mismatch` line earlier). `sampler=off why=t4` (`site_t4=0` or T4 attach failed), `why=log_flag` (0x7ba568 not committed) or `why=sig at 0x... (<what>)` (`g_ksig` mismatch) replaces the gate field. No `key` line at all when `trf_init` stopped earlier (`disabled, ...`) |
 | init, no sampler | `traffic: key sampler=off why=t4 max_age_ms=1000` | every `TRF_KeyEdge` call returns -1 (K15) |
-| T1 | `traffic: natives registered n=7 L=0x...` | was `n=6`; `n=8` once `TRF_MsSensor` is registered (`sensor-module-read.md` 4.5) |
+| T1 | `traffic: natives registered n=8 L=0x...` | was `n=7` (with `TRF_Carcasses`); `n=9` once `TRF_MsSensor` is registered (`sensor-module-read.md` 4.5) |
 | first poll | `traffic: key armed dik=0x31 n=1` | once per process and key; the first poll is the drain call of `TRF_Sc_OnActivate` (scan-spec 4.4) |
 | press in flight | `traffic: key edge dik=0x31 v=-1 top=3 n=<count>` | `v=1`: a tap inside one frame (K5); `v=-2`: down seen one frame late |
 | press elsewhere | `traffic: key drop dik=0x31 why=state top=17 n=<drops>` / `why=log top=3 n=<drops>` | |
@@ -471,7 +471,7 @@ Install on the test clone (`~/Games/Heroic/sw3-tp-test`) with the follow-up env 
 
 | Step | Player action | Expected lines | Pass |
 |---|---|---|---|
-| 0 | Start the game | `traffic: movie: sig ok ...`, `traffic: attach ok hook=T4 ...`, `traffic: key gate=flight max_age_ms=1000`, `traffic: natives registered n=7 L=0x...` | all present, no `sampler=off` |
+| 0 | Start the game | `traffic: movie: sig ok ...`, `traffic: attach ok hook=T4 ...`, `traffic: key gate=flight max_age_ms=1000`, `traffic: natives registered n=8 L=0x...` | all present, no `sampler=off` |
 | 1 | Load a save in flight with the mothership | `traffic: key armed dik=0x31 n=1` (once per process), `traffic: lua: E0.1 kp polling key=49` (once per entry or load: `KP` is rebuilt on every MapInitialization) | as stated |
 | 2 | Press N once | `traffic: key edge dik=0x31 v=-1 top=3 n=1`, then `traffic: lua: E0.1 kp press key=49 ui=0 mov=0 dg=0.2.. dr=0.2.. gate=ok` | one pair, nothing happens in the game |
 | 3 | Hold N for 3 s | one `key edge` and one `kp press` | exactly one pair |

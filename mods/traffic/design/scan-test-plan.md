@@ -1043,7 +1043,7 @@ HOST_Check(SC_Echoes(m) == "000 strong|" and HOST().errors == e0, "sc-i i3: trf_
 | X2 | `S/traffic.script:33-37` | `TRF_ExpId` maps `exp` 4 to `"E0.30"` (the plain rule gives `"E0.4"`, which is PROGRESS's loot experiment, O15) |
 | X3 | `M/install-test.sh:4, 31-32` | `EXP` accepts 0..4 |
 | X4 | `M/install-test.sh:50-53` | optional keys `SC_AUTO`, `SC_SND`, `SC_ADD` written as `sc_auto`, `sc_snd`, `sc_add` (`sc_add`: `mod-research/sensor-module-read.md` 5.1); the key is the shared cfg key `SCAN_KEY` / `scan_key` (`scan-tooling-spec.md` 8.3 IT2) |
-| X5 | `P/traffic.c` | native `TRF_KeyEdge(dik)` as `D/mod-research/key-input-native.md` 5 specifies it (sampler in T4, edge latch, `dik` from Lua, results 1, 0, -1); init line `natives registered n=7` (`key-input-native.md` 7) |
+| X5 | `P/traffic.c` | native `TRF_KeyEdge(dik)` as `D/mod-research/key-input-native.md` 5 specifies it (sampler in T4, edge latch, `dik` from Lua, results 1, 0, -1); init line `natives registered n=8` (`key-input-native.md` 7) |
 | X6 | `S/config.script:1-9` comment | `exp` 4 = E0.30 scan, kit keys `sc_auto` (0), `sc_snd` (0), `sc_add` (0); the kit polls cfg `scan_key` (default 49 = 0x31 N, spec 6) |
 
 Experiment kits run without the traffic modules (`S/traffic.script:39-44`), so `exp_scan.script` uses only loader functions: `TRF_L`, `TRF_N`, `TRF_Cb`, `TRF_Is`, `TRF_F`, `TRF_Dump`, `TRF_Cfg` (`S/traffic.script:25-152`), and the generated `TRF_MapData()` (`S/map.script:15`), which `TRF_Main` executes in every mode (`S/traffic.script:352-353`). Handles live in a chunk local as in `S/exp_trader.script:9-17`; `TRF.exp.scan` holds plain numbers and strings only. The key is passed explicitly as the module does it: `TRF_KeyEdge(TRF_Cfg().scan_key or 49)` (`key-input-native.md` 4.1 K9). The kit and the key probe of `key-input-native.md` 9.2 never load together (that probe loads only with `exp` 1..3), so they never share the latch.
@@ -1150,7 +1150,7 @@ Save: `.work/saves/Base.sav` (the Aurora kit autosave, `D/PROGRESS.md:105`, `M/R
 
 Procedure (about 30 min): load Base.sav; fly 20 s; SC1 presses (in flight, 8x, pause, galaxy map, dock box, held key); press in flight for SC2, wait 65 s and look at the nav points (screenshot with the system map); press for SC3 (screenshot); press for SC4, press for SC5 (skipped without `SC_SND=1`), press for SC6/SC7, press for the SC4 cleanup (in Aurora at chapter <= 4 these log `skipped why=guard`). On a qualifying save: press through to SC4, jump out, jump back twice, save as `ScanSC4`, quit, relaunch, load `ScanSC4`; press for SC6/SC7; press for the cleanup. Optionally reinstall with `SC_SND=1` after a manual save and press through to SC5. Without the native (`SC1 native=missing`), reinstall with `SC_AUTO=1`: steps then run every 30 game s.
 
-Pass, every run: no new `ScriptErrors.log` line, no `E0.30 ... ERROR` line, `natives registered n=7`, after the cleanup step no `TRF_SC4_*` object left (`SC4 cleanup d1=deleted d2=deleted`).
+Pass, every run: no new `ScriptErrors.log` line, no `E0.30 ... ERROR` line, `natives registered n=8`, after the cleanup step no `TRF_SC4_*` object left (`SC4 cleanup d1=deleted d2=deleted`).
 
 ### 5.5 In-game check table (README format)
 
