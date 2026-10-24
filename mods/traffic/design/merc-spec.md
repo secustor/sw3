@@ -42,7 +42,7 @@ Other decisions of this step:
 - Decay stamps are written by the writer of the value (`TRF_Mc_Mark`); the tick never starts a count by itself (a 0 stamp counts from jump or leg 0).
 - Rivals: at most one per home region (13 section 4: distinct homes); the elite clan is never a ranked candidate (11.4 gives it its own entry, step 8); with `rv_enabled` 0 a saved rival is released at the next tick; a rival released at a tick is no candidate before the next tick, so the `rel <= 1` fallback cannot take it back at once (V9).
 - Break and the elite clan (11.1): a broken clan's stage is at most 3, so it holds no stage 4 slot while absent; the elite clan's fortune stays at its floor at the break and the re-form, and it re-forms at the stage its fortune supports up to the closure cap (other clans re-form at stage 1 or 2).
-- Clan index: every writer (`TRF_McPut`, `TRF_Mc_Fortune`, `_Lost`, `_BigLoss`, `_Black`, `_Mark`) refuses an index outside 1..12 or not whole, so a wrong caller cannot change the length of `s`.
+- Clan index: every writer (`TRF_McPut`, `TRF_McSetDig`, `TRF_McPutT`, `TRF_Mc_Fortune`, `_Lost`, `_BigLoss`, `_Black`, `_Mark`) and the reader `TRF_McDig` refuse an index outside 1..12 or not whole (`TRF_McCOk`), so a wrong caller cannot change the length of `s` or read across two blocks.
 
 ## 3. Data model
 
@@ -123,7 +123,7 @@ Full state (`v1-n`): 92,649 B of 100,000 (89,276 before; the 12 section 6 estima
 
 ## 4. Shared helpers (build step 2)
 
-**Packing (`S/trf_track.script`).** `TRF_TpPackK(r, ks)`: one integer per key of `ks`, comma separated, missing or non-number fields 0, `floor`. `TRF_TpUnpackK(s, ks, len)`: nil unless `s` holds exactly `getn(ks)` integers with single commas and at most `len` characters (default 11 per key). Bound: `format("%d")` converts through a C int, which is 32 bits in the game's Lua 4.0.1, so every packed value must lie in -(2^31 - 1) .. 2^31 - 1 (`TRF_TpMax()` = 2,147,483,647). The game (x86) wraps a value above it, the host (arm64) saturates it, so a host run cannot show an overflow; `TRF_TpPackK` therefore clamps to the bound itself and both give the same string. Every bound of section 3.1 is below it. Host: `v1-h` (28 integers at the bound round-trip, 167 characters; the 80-character and 14-key limits refuse them; `1e12` packs as the bound; malformed strings refused; the 14-key pool string unchanged), `mc-a` (the 29 clan keys at their bounds).
+**Packing (`S/trf_track.script`).** `TRF_TpPackK(r, ks)`: one integer per key of `ks`, comma separated, missing or non-number fields 0, `floor`. `TRF_TpUnpackK(s, ks, len)`: nil unless `s` holds exactly `getn(ks)` integers with single commas and at most `len` characters (default 12 per key: `-2147483647` and its comma). Bound: `format("%d")` converts through a C int, which is 32 bits in the game's Lua 4.0.1, so every packed value must lie in -(2^31 - 1) .. 2^31 - 1 (`TRF_TpMax()` = 2,147,483,647). The game (x86) wraps a value above it, the host (arm64) saturates it, so a host run cannot show an overflow; `TRF_TpPackK` therefore clamps to the bound itself and both give the same string. Every bound of section 3.1 is below it. Host: `v1-h` (28 integers at the bound round-trip, 167 characters; the 80-character and 14-key limits refuse them; `1e12` packs as the bound; malformed strings refused; the 14-key pool string unchanged), `mc-a` (the 29 clan keys at their bounds).
 
 **Charges (`S/trf_region.script`).** `TRF_Charge(n, why, reserve)` beside `TRF_Pay`: `n = min(floor(n), charge_cap)` (tune, default 250,000: above the worst settlement of a late hire, 7 counted kills x 6,400 share plus 7 lost ships x 25,600 blood money = 224,000; a larger charge is cut and the caller keeps the rest as debt); refused with `0, "short"` while the wallet is below `reserve` (default `n`, so a fee is all or nothing; `reserve` 0 takes what the wallet holds, at most `n`, for a settlement); `SubPlayerCredits(min(n, wallet))`, never more than the wallet and never negative; stat `charge_<why>`; `module=region event=charge`. Returns the amount taken (and nil), or 0 and the reason (`none`, `no_native`, `short`, `error`). The fee check of 12 section 5 (`wallet >= 2 x (fee + owe)`) is `TRF_Charge(fee, "merc_fee", 2 * (fee + owe))`. Host: `v1-h`.
 
@@ -171,7 +171,7 @@ Functions for the later steps (host-tested, called by nothing in step 1): `TRF_M
 | `merc` (env `MERCS`) | 0 | 1 runs the clan record (0 until E0.13, the release gate, passes) |
 | `merc_board`, `merc_book`, `merc_report`, `merc_marker`, `merc_calls`, `merc_transfer`, `mc_launch` | 1, 0, 0, 0, 0, 0, 0 | toggles of steps 3-7, read nowhere yet |
 | `rv_enabled` | 0 | 1 lets the tick fill rival slots (no rival behaviour exists before step 4) |
-| `mc_el_c` | 8 | the elite clan (0..12; 0 turns the 11.1 rules off) |
+| `mc_el_c` | 8 | the elite clan (0..12), fixed in `e.el` when the record is created; afterwards only 0 is read (it turns the 11.1 rules off) |
 | `rv_deny` | `{}` | extra systems for the rival role (step 4) |
 | `merc_war`, `merc_hunt`, `merc_hostile`, `merc_legion` | 0 | group war against the player (section 4; `TRF_Pl_OptDef`) |
 

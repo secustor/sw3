@@ -198,10 +198,11 @@ function TRF_TpPackK(r, ks)
 end;
 
 -- Packed string -> record table over the key list ks, or nil unless s holds exactly getn(ks) integers separated by
--- single commas and is at most len characters (default 11 per key: the widest value plus its comma).
+-- single commas and is at most len characters (default 12 per key: the widest value "-2147483647" is 11 characters,
+-- plus its comma, so every string TRF_TpPackK makes fits).
 function TRF_TpUnpackK(s, ks, len)
 	if type(ks) ~= "table" then return nil; end;
-	if type(len) ~= "number" then len = 11 * getn(ks); end;
+	if type(len) ~= "number" then len = 12 * getn(ks); end;
 	if type(s) ~= "string" or strlen(s) > len or strfind(s, "[^%d,%-]") then return nil; end;
 	local t = {};
 	gsub(s, "(%-?%d+)", function(x) tinsert(%t, tonumber(x)); end);

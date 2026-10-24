@@ -1160,6 +1160,12 @@ function T_V1_H()
 	for i = 1, 28 do if not r1 or r1["k"..i] ~= r0["k"..i] then same = nil; end; end;
 	HOST_Check(same and strlen(ps) > 80 and strsub(ps, 1, 22) == "2147483647,-2147483647" and TRF_TpUnpackK(ps, ks, 80) == nil and TRF_TpUnpack(ps) == nil,
 		"TRF_TpPackK/TRF_TpUnpackK: 28 integers round-trip at the 2^31-1 bound ("..strlen(ps).." chars); the 80-char and 14-key limits refuse it");
+	local rn = {};
+	for i = 1, 28 do rn["k"..i] = -2147483647; end;
+	local pn = TRF_TpPackK(rn, ks);
+	local un = TRF_TpUnpackK(pn, ks);
+	HOST_Check(strlen(pn) == 12 * 28 - 1 and un and un.k1 == -2147483647 and un.k28 == -2147483647,
+		"the default length admits every key at the negative bound ("..strlen(pn).." chars)");
 	HOST_Check(TRF_TpPackK({a=1e12, b=-1e12, c=2.7}, {"a", "b", "c"}) == "2147483647,-2147483647,2" and TRF_TpPackK(nil, ks) == nil and TRF_TpPackK({}, nil) == nil,
 		"the pack clamps to the bound itself (the game would wrap, the host saturates)");
 	HOST_Check(TRF_TpUnpackK("1,2", {"a", "b", "c"}) == nil and TRF_TpUnpackK("1,,2", {"a", "b", "c"}) == nil and TRF_TpUnpackK("1,x,2", {"a", "b", "c"}) == nil

@@ -200,10 +200,15 @@ end;
 
 -- Constants without a cfg key: clan count, digit block width, field bounds of the packed values, the big-ship loss
 -- values (12 section 6, UC D.5), the first chapter, the demand per phase (12 section 6 Presence), units per region.
+-- Built once per MapInitialization (MC.k); callers must not write into it.
 function TRF_McK()
-	return {nc=12, sw=20, first_ch=5, stamp=9999999, money=9999999, ue_k=100, bs_fo={42, 62}, bs_sg={2, 3},
-		demand={0, 1, 2, 3, 1, 0}, sweep_d=2, region_max=2, demand_min=2, raids=3, hp_max=4, fo_max=99, nreg=11,
-		lead_min=2, lead_fo=2};
+	local mc = %MC;
+	if type(mc.k) ~= "table" then
+		mc.k = {nc=12, sw=20, first_ch=5, stamp=9999999, money=9999999, ue_k=100, bs_fo={42, 62}, bs_sg={2, 3},
+			demand={0, 1, 2, 3, 1, 0}, sweep_d=2, region_max=2, demand_min=2, raids=3, hp_max=4, fo_max=99, nreg=11,
+			lead_min=2, lead_fo=2};
+	end;
+	return mc.k;
 end;
 
 -- Clans in the vanilla order of _Fmerc_names / _Fmerc_groups (G/Scripts/include/RandomFmerc.script:9-11): key k, bloc
@@ -248,14 +253,19 @@ function TRF_McPilots(c)
 end;
 
 -- Digit fields of a clan block in s: offset o (1-based in the 20-digit block), width w, bounds lo..hi, stored as
--- value + a (rel: -3..3 stored 0..6). 12 section 6 Saved state, plus the named-pilot slots p0..p4.
+-- value + a (rel: -3..3 stored 0..6). 12 section 6 Saved state, plus the named-pilot slots p0..p4. Built once per
+-- MapInitialization (MC.dk); callers must not write into it.
 function TRF_McDigK()
-	return {rel={o=1, w=1, lo=-3, hi=3, a=3}, hp={o=2, w=1, lo=0, hi=4, a=0}, bk={o=3, w=1, lo=0, hi=9, a=0},
-		ek={o=4, w=1, lo=0, hi=3, a=0}, eh={o=5, w=1, lo=0, hi=3, a=0}, rc={o=6, w=1, lo=0, hi=1, a=0},
-		at={o=7, w=2, lo=0, hi=11, a=0}, es={o=9, w=2, lo=0, hi=11, a=0}, fo={o=11, w=2, lo=0, hi=99, a=0},
-		sg={o=13, w=1, lo=1, hi=4, a=0}, g={o=14, w=1, lo=0, hi=9, a=0}, rl={o=15, w=1, lo=0, hi=2, a=0},
-		p0={o=16, w=1, lo=0, hi=9, a=0}, p1={o=17, w=1, lo=0, hi=9, a=0}, p2={o=18, w=1, lo=0, hi=9, a=0},
-		p3={o=19, w=1, lo=0, hi=9, a=0}, p4={o=20, w=1, lo=0, hi=9, a=0}};
+	local mc = %MC;
+	if type(mc.dk) ~= "table" then
+		mc.dk = {rel={o=1, w=1, lo=-3, hi=3, a=3}, hp={o=2, w=1, lo=0, hi=4, a=0}, bk={o=3, w=1, lo=0, hi=9, a=0},
+			ek={o=4, w=1, lo=0, hi=3, a=0}, eh={o=5, w=1, lo=0, hi=3, a=0}, rc={o=6, w=1, lo=0, hi=1, a=0},
+			at={o=7, w=2, lo=0, hi=11, a=0}, es={o=9, w=2, lo=0, hi=11, a=0}, fo={o=11, w=2, lo=0, hi=99, a=0},
+			sg={o=13, w=1, lo=1, hi=4, a=0}, g={o=14, w=1, lo=0, hi=9, a=0}, rl={o=15, w=1, lo=0, hi=2, a=0},
+			p0={o=16, w=1, lo=0, hi=9, a=0}, p1={o=17, w=1, lo=0, hi=9, a=0}, p2={o=18, w=1, lo=0, hi=9, a=0},
+			p3={o=19, w=1, lo=0, hi=9, a=0}, p4={o=20, w=1, lo=0, hi=9, a=0}};
+	end;
+	return mc.dk;
 end;
 
 -- Keys of the packed clan string t[c], in order (12, P, 13, UC, names, and the stamps the spec lacked: su stage-up
@@ -414,7 +424,8 @@ end;
 
 -- Record accessors ------------------------------------------------------------------
 
--- The elite clan: cfg mc_el_c (0 turns the elite rules off), else the saved e.el.
+-- The elite clan: the saved e.el (fixed from cfg mc_el_c when the record is created, so the Wolves' deeds stay with one
+-- clan), else cfg mc_el_c; cfg mc_el_c 0 turns the elite rules off whatever is saved.
 function TRF_McElite()
 	local c = TRF_McOpt("mc_el_c");
 	if type(c) ~= "number" or c == 0 then return 0; end;
@@ -519,10 +530,11 @@ function TRF_McDefS()
 	return s;
 end;
 
--- Digit field k of clan c (its value; rel -3..3). Without the record: the creation value. nil for a bad key or clan.
+-- Digit field k of clan c (its value; rel -3..3). Without the record: the creation value. nil for a bad key or clan
+-- (TRF_McCOk: a fraction would read across two blocks).
 function TRF_McDig(c, k)
 	local f = TRF_McDigK()[k];
-	if not f or type(c) ~= "number" or c < 1 or c > TRF_McK().nc then return nil; end;
+	if not f or not TRF_McCOk(c) then return nil; end;
 	local R = TRF_McRec();
 	if not R or type(R.s) ~= "string" then return TRF_McDefOf(c)[k]; end;
 	local p = (c - 1) * TRF_McK().sw + f.o;
@@ -532,11 +544,12 @@ function TRF_McDig(c, k)
 end;
 
 -- Sets digit field k of clan c to v, clamped to the field's bounds (a value never spills into the next field). Needs
--- the record; returns the value written or nil.
+-- the record and a whole clan index (TRF_McCOk: a fraction would write across two blocks); returns the value written or
+-- nil.
 function TRF_McSetDig(c, k, v)
 	local f = TRF_McDigK()[k];
 	local R = TRF_McRec();
-	if not f or not R or type(R.s) ~= "string" or type(c) ~= "number" or c < 1 or c > TRF_McK().nc or type(v) ~= "number" then return nil; end;
+	if not f or not R or type(R.s) ~= "string" or not TRF_McCOk(c) or type(v) ~= "number" then return nil; end;
 	v = TRF_McCl(floor(v), f.lo, f.hi);
 	local p = (c - 1) * TRF_McK().sw + f.o;
 	R.s = strsub(R.s, 1, p - 1)..format("%0"..f.w.."d", v + f.a)..strsub(R.s, p + f.w);
@@ -564,7 +577,7 @@ end;
 -- Writes clan c's packed fields (each clamped to TRF_McTB); a record of zeros is removed. Needs the record.
 function TRF_McPutT(c, r)
 	local R = TRF_McRec();
-	if not R or type(r) ~= "table" or type(c) ~= "number" or c < 1 or c > TRF_McK().nc then return nil; end;
+	if not R or type(r) ~= "table" or not TRF_McCOk(c) then return nil; end;
 	if type(R.t) ~= "table" then R.t = {}; end;
 	local ks, B = TRF_McTKeys(), TRF_McTB();
 	local nz = nil;
@@ -587,7 +600,7 @@ function TRF_McGet(c)
 	return v;
 end;
 
--- 1 when c is a clan index 1..12.
+-- 1 when c is a whole clan index 1..12 (every reader and writer of a clan's fields checks it).
 function TRF_McCOk(c)
 	if type(c) == "number" and c >= 1 and c <= TRF_McK().nc and c == floor(c) then return 1; end;
 	return nil;
@@ -668,12 +681,10 @@ function TRF_Mc_Blacked()
 	return nil;
 end;
 
--- Fielded stage of clan c in this step: min(sg, 2) (no big ship before build steps 6-7, gap 6), and at most 2 before
--- chapter mc_st_ch (12 section 4).
+-- Fielded stage of clan c in this step: min(sg, 2), no big ship before build steps 6-7 (gap 6). Step 6 adds the chapter
+-- rule (at most 2 before chapter mc_st_ch, 12 section 4) when stages 3-4 can be fielded.
 function TRF_Mc_Fielded(c)
-	local sg = TRF_McDig(c, "sg") or 1;
-	if TRF_McChapter() < TRF_McTn("mc_st_ch") then sg = min(sg, 2); end;
-	return min(sg, 2);
+	return min(TRF_McDig(c, "sg") or 1, 2);
 end;
 
 -- Region tick ----------------------------------------------------------------------
@@ -682,16 +693,16 @@ end;
 function TRF_McDemand(s)
 	local K = TRF_McK();
 	if type(TRF.rg) ~= "table" or type(TRF.rg[s]) ~= "table" then return 0; end;
-	local r = TRF.rg[s];
-	local d = K.demand[TRF_McCl(floor(r.ph or 0), 0, 5) + 1];
-	if type(r.sl) == "number" and r.sl > 0 then d = d + K.sweep_d; end;
+	local d = K.demand[TRF_McPh(s) + 1];
+	local sl = TRF.rg[s].sl;
+	if type(sl) == "number" and sl > 0 then d = d + K.sweep_d; end;
 	return d;
 end;
 
--- Phase 0..5 of slot s (0 without a record).
+-- Phase 0..5 of slot s (trf_region TRF_Phase; 0 without a record), clamped so a bad saved value never indexes past
+-- mc_inc or demand.
 function TRF_McPh(s)
-	if type(TRF.rg) == "table" and type(TRF.rg[s]) == "table" and type(TRF.rg[s].ph) == "number" then return TRF.rg[s].ph; end;
-	return 0;
+	return TRF_McCl(floor(TRF_N("TRF_Phase", s) or 0), 0, 5);
 end;
 
 -- Effective tier of region slot s: the real clan tier within the cfg tier cap (trf_region).
@@ -1027,7 +1038,7 @@ function TRF_Mc_Fix()
 	if type(R.t) == "table" then
 		for c, x in R.t do
 			local r = nil;
-			if type(c) == "number" and c >= 1 and c <= K.nc and type(x) == "string" then r = TRF_TpUnpackK(x, TRF_McTKeys()); end;
+			if TRF_McCOk(c) and type(x) == "string" then r = TRF_TpUnpackK(x, TRF_McTKeys()); end;
 			if r then TRF_McPutT(c, r); else TRF_McE("fix", "field", "t", "clan", c, "result", "dropped"); end;
 		end;
 	end;

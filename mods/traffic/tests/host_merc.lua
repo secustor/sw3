@@ -325,9 +325,9 @@ function T_MC_B()
 	-- A bad clan index is refused and changes nothing.
 	local s0, x0 = TRF.mc.s, TRF.mc.x;
 	local ok = TRF_Mc_Mark(13, "g", 1) == nil and TRF_Mc_Mark(0, "rel", 1) == nil and TRF_Mc_Fortune(0, 3, "x") == 0 and TRF_Mc_Black(13) == nil
-		and TRF_McPut(2.5, MC_V(2)) == nil;
+		and TRF_McPut(2.5, MC_V(2)) == nil and TRF_McSetDig(2.5, "fo", 1) == nil and TRF_McPutT(2.5, {jobs=1}) == nil and TRF_McDig(2.5, "fo") == nil;
 	TRF_Mc_Lost(13, 1, "test"); TRF_Mc_BigLoss(0, 3);
-	HOST_Check(ok and TRF.mc.s == s0 and TRF.mc.x == x0, "clan 0, 13 or 2.5: refused, s unchanged");
+	HOST_Check(ok and TRF.mc.s == s0 and TRF.mc.x == x0 and TRF.mc.t[2.5] == nil, "clan 0, 13 or 2.5: refused by every reader and writer, s and t unchanged");
 end;
 
 -- c: presence, losses, break and re-form, hp recovery -----------------------------------------------------------
@@ -633,13 +633,13 @@ function T_MC_F()
 	MC_Put(4, {jobs=3, owe=700});
 	local t4 = TRF.mc.t[4];
 	TRF.mc.s = strsub(TRF.mc.s, 1, 60).."9"..strsub(TRF.mc.s, 62);
-	TRF.mc.t[3] = "x"; TRF.mc.t[99] = "1"; TRF.mc.t.z = "1";
+	TRF.mc.t[3] = "x"; TRF.mc.t[99] = "1"; TRF.mc.t.z = "1"; TRF.mc.t[2.5] = t4;
 	TRF.mc.h = TRF_TpPackK({c=4, sys=10, n=3, tr=300}, TRF_McHKeys()); TRF.mc.hb = "999";
 	TRF.mc.r = "1,2"; TRF.mc.n = TRF_TpPackK({c=2, a=500}, TRF_McNKeys()); TRF.mc.x = -4; TRF.mc.w = "123"; TRF.mc.zz = 1;
 	n0 = S_Mark();
 	TRF_Mc_Fix();
 	local R = TRF.mc;
-	HOST_Check(TRF_McRel(4) == 3 and R.t[4] == t4 and R.t[3] == nil and R.t[99] == nil and R.t.z == nil and R.h ~= nil and R.hb == "999"
+	HOST_Check(TRF_McRel(4) == 3 and R.t[4] == t4 and R.t[3] == nil and R.t[99] == nil and R.t.z == nil and R.t[2.5] == nil and R.h ~= nil and R.hb == "999"
 		and R.r == nil and R.n ~= nil and R.x == nil and R.w == nil and R.zz == nil and S_Logs(n0, "module=merc event=fix field=r result=dropped") == 1,
 		"repair: rel digit 9 clamped to 3, bad t entries and r dropped, unknown keys gone, the rest kept");
 	TRF.mc.h = "1,2"; TRF.mc.hb = "123";
