@@ -5,6 +5,7 @@ FILETYPE STANDART
 ; Same keys and fixed texts as loc/trf_en.loc (no $n placeholders); used with cfg loc_mode 1 in a Russian install.
 ; Other #TRF_ keys have no RU line yet (design/station-voices-spec.md 13.5).
 
+#TRF_chboard = Регион: ход заказа.
 #TRF_chclose = Бюро чартеров Торгового союза: заказ закрыт.
 #TRF_chcollect = Оплата в любом доке Торгового союза.
 #TRF_chd11 = Торговля в этом регионе процветает, и каждому капитану нужен конвой. Проведите три конвоя Торгового союза или отбейте три налёта здесь, пока клан не начал набеги. Ход заказа и оплата в любом торговом доке союза.

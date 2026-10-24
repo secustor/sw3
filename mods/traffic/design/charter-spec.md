@@ -23,7 +23,7 @@ Module: new `S/trf_charter.script`, prefix `Ch` (`TRF_Ch_*` public, `TRF_Ch<X>` 
 | Q6 | Chapters | as designed: suspension from chapter `ch_last_ch + 1` (19); no headquarters line or rank post exists in step 1, so the chapter 13-14 rule holds | `ch_last_ch` |
 | Q7 | Heat 7 and S41 | one rank each | - |
 | Q8 / G4 | Wave | shipped now as step 1 (00 G4: end of wave 1) | cfg `charter` |
-| A2 | Difficulty | `d_k` (`TRF_DK`) in the posting pay; not on the dues (design 5 has no `d_k` there) | - |
+| A2 | Difficulty | `d_k` (`TRF_DK`) in the posting pay and on the dues (00 A2: on pay and mod prices) | - |
 
 ## 3. Data model
 
@@ -39,7 +39,7 @@ Module: new `S/trf_charter.script`, prefix `Ch` (`TRF_Ch_*` public, `TRF_Ch<X>` 
 | `vd`, `vb` | 0..9, 0..1 | deeds and Break deeds counted this visit; reset at entry (kept by a load) |
 | `sd` | 1..2147483646 | generator seed, `legs + 7` at the unlock |
 | `cnt` | 0..9999 | postings issued |
-| `g[1..3]` | record or absent | postings: `t` 1..6 type, `r` region slot, `f` 0..5 faction (Sweep), `d` 0..5 description variant, `k` 1..3 deeds needed, `p` deeds done, `w` 0/1 world test met (Break), `a` posted leg, `e` deadline leg, `st` 0 open / 1 done (pay owed) / 2 failed / 3 withdrawn, `pay` 0..30000, `rq` 1..3 rank points, `l` 3..16 `L_r`, `c` close reason (st 2, 3) |
+| `g[1..3]` | record or absent | postings: `t` 1..6 type, `r` region slot, `f` 0..5 faction (Sweep), `d` 0..5 description variant, `k` 1..3 deeds needed, `p` deeds done, `w` 0/1 world test met (Break), `a` posted leg, `e` deadline leg, `st` 0 open / 1 done (pay owed) / 2 failed / 3 withdrawn, `pay` 0..`pay_cap`, `rq` 1..3 rank points, `l` 3..16 `L_r`, `c` close reason (st 2, 3) |
 | `cd[1..3]` | leg | slot free again (`ch_slot_cd` legs after a close) |
 | `rs[r]`, `rb[r]`, `pk[r]` | leg | last posting in region r, last pirate-family posting, last player trader kill or forced Bust (cleared in Quiet, below) |
 | `tot` | `{d, f, w}` 0..9999 | done, failed, withdrawn |
@@ -48,7 +48,7 @@ Module: new `S/trf_charter.script`, prefix `Ch` (`TRF_Ch_*` public, `TRF_Ch<X>` 
 
 Rules:
 - R1 `TRF.ch` is absent until the unlock; a game without the charter has no field.
-- R2 `TRF_Ch_Fix` (from `TRF_Repair`): a non-table `TRF.ch` becomes absent; every field within its bounds (leg stamps after the current leg become the current leg, `cd` at most legs + 100, `du` at most legs + 500); a posting with a field out of bounds is dropped, `p` is clamped to `k`, a closed posting keeps a reason (default `deadline`); rank 2 or 3 without `du` falls due now; any other key is dropped. `TRF_Repair` runs at every entry and load, so the record table is replaced by a repaired copy each time.
+- R2 `TRF_Ch_Fix` (from `TRF_Repair`): a non-table `TRF.ch` becomes absent; every field within its bounds (leg stamps after the current leg become the current leg, `cd` at most legs + 100, `du` at most legs + 500); a posting with a field out of bounds is dropped, `p` is clamped to `k`, `pay` is clamped to the live `pay_cap` (`TRF_ChPayCap`, 30,000 without trf_region), a closed posting keeps a reason (default `deadline`); rank 2 or 3 without `du` falls due now; any other key is dropped. `TRF_Repair` runs at every entry and load, so the record table is replaced by a repaired copy each time.
 - R3 Postings are removed at payment (st 1) and at the first trade dock after a close (st 2, 3, with the close line); the logbook entry goes with the record.
 
 ### 3.2 Visit state (chunk local `CV`, never saved; rebuilt by every MapInitialization)
@@ -98,7 +98,7 @@ Dispatcher orders (00 section 6, WB 4.2): trade lines 10 shortage restore, 20-40
 
 - G1 Module: `TRF`, the traffic modules, cfg `charter` 1.
 - G2 Unlock: `TRF_Chapter() >= ch_unlock_ch` (5) and `TRF.std.help >= ch_unlock_help` (3), checked at entry and at each trade dock; once unlocked the record stays (help may decay later).
-- G3 Deny list (`TRF_ChDeny`, 14 section 3): earth, precursors, disonsphere, fronn, nk, x297, x203, x213, x220, traffic's `TRF_Deny()` names (elio, x297, gefest), cfg `ch_deny`. No posting needs a denied system, no deed counts there, no dock line, pay or box there. Regions never posted: home xt24, xk16.
+- G3 Deny list (`TRF_ChDeny`, 14 section 3): earth, precursors, disonsphere, fronn, nk, x297, x203, x213, x220, traffic's `TRF_Deny()` names (elio, x297, gefest), cfg `ch_deny`. No posting needs a denied system, no deed counts there, no dock line, pay or box there. Regions never posted: home xt24 or xk16, and any region with xt23 or xt24 as a member (`TRF_ChNeverM`; on the generated map the xt27 region, slot 8).
 - G4 Dock: G1, G2, G3, no visible scene (`TRF_Quiet`), the strict gate (`TRF_StrictOk(idx, "charter")`); the dispatcher skips the line, the payer and the box under `__disableAction` / `__sys_SOS` (S2), so owed pay waits for the next docking.
 - G5 Free roam (generation, logbook re-add): `TRF_Safe_QState()` nil, or `quest_Help` in process.
 - G6 Suspension (no generation): chapter > `ch_last_ch`, the vanilla Trade relation W, heat >= 5.
@@ -147,9 +147,9 @@ Thresholds `ch_rank_pts` 2, 6, 12, 20, 30: 0 Unlisted, 1 Listed carrier, 2 Contr
 
 ### 5.7 Dock lines and the dues box
 
-Line handler (trade 70): close lines; the office line `FTU charter office: Wolves, Contracted carrier. Dues are paid up.` (rank 2+: or `Dues of 2000 cr are due.`) when the rank is 1+ or a board or new-posting line follows; the board lines `Golkonda region: escorts and raid answers 2 of 3. Pays 7000 cr.`; the new postings.
+Line handler (trade 70): close lines; the office line `FTU charter office: Wolves, Contracted carrier. Dues are paid up.` (rank 2+: or `Dues of 2000 cr are due.`) in chapters up to `ch_last_ch` when the rank is 1+ or a board or new-posting line follows; the board lines `Golkonda region: escorts and raid answers 2 of 3. Pays 7000 cr.`; the new postings.
 
-Box (trade 200): rank >= 2, `du > 0`, `legs >= du`, chapter <= `ch_last_ch`, no mission, not declined this visit: `FTU charter office: dues for the Wolves, Contracted carrier: 2000 cr. Pay now?`. Amount `TRF_ChDuesOf(ch_dues_k, lh, rk)` = `100 x L_h x rk`. OK: credits checked (`Not enough credits for the dues.`), `SubPlayerCredits`, `du = legs + ch_dues_legs`, `Dues paid. The charter is in good standing.`; a record of another generation or another `du` pays nothing (`result=stale`). Cancel: no second dues box this visit. A higher candidate (#1 400, #8 300) wins the docking; the dues wait for the next docking.
+Box (trade 200): rank >= 2, `du > 0`, `legs >= du`, chapter <= `ch_last_ch`, no mission, not declined this visit: `FTU charter office: dues for the Wolves, Contracted carrier: 2000 cr. Pay now?`. Amount `TRF_ChDuesOf(ch_dues_k, lh, rk, d_k)` = `100 x L_h x rk x d_k`, rounded. OK: credits checked (`Not enough credits for the dues.`), `SubPlayerCredits`, `du = legs + ch_dues_legs`, `Dues paid. The charter is in good standing.`; a record of another generation or another `du` pays nothing (`result=stale`). Cancel: no second dues box this visit. A higher candidate (#1 400, #8 300) wins the docking; the dues wait for the next docking.
 
 ### 5.8 Rank 2 perk (`TRF_Ch_Heat3`)
 
@@ -202,7 +202,7 @@ Mapping to the design's lines (14 6): `ch post slot=3 t=2 r=3 k=2 e=262 pay=3400
 
 ## 8. Texts (`TRF_Ch_Text`; `#TRF_ch<name>` in `loc/trf_en.loc` and `loc/trf_ru.loc`)
 
-Logbook titles `cht<home>` for the 11 region homes (`FTU charter: Golkonda region`), descriptions `chd<t><d>` (13: `chd11`, `chd12`, `chd21`, `chd22`, `chd31`, `chd32`, `chd40`, `chd51`..`chd55`, `chd60`), rank titles `chrk0..5`, and the lines `chhead` ($1 title), `chduesok`, `chduesdue` ($1 amount), `chdeed1..6` ($1 done, $2 needed), `chpays` ($1 pay), `chheld`, `chprog` ($1 region, $2 done, $3 needed), `chcollect`, `chpaid` ($1 region, $2 amount), `chwait` ($1 region), `chnext` ($1 points, $2 threshold, $3 next title), `chstand` ($1 title), `chslot3`, `chrankdown` ($1 title), `chnew` ($1 region, $2 description, $3 pays line), `chclose` ($1 region, $2 reason line), `chmission` ($1 region), `chwhy1`, `chwhy2`, `chwhy4`, `chwhy5`, `chwhybase`, `chwhyheat`, `chwhykill`, `chwhys41`, `chwhydeadline`, `chwhychapter`, `chdues` ($1 title, $2 amount), `chduespaid`, `chduespoor`, `chheat3`. 66 keys. RU: written by hand, cp1251, CRLF, fixed texts without the placeholders; checked by `stn-g`. The logbook uses the keys in every `loc_mode` (`AddQuest` takes loc keys), so the titles read only when `loc/trf_en.loc` is installed (`LOC=1`, CHECK EC.1); the screen lines follow `loc_mode` as every other line.
+Logbook titles `cht<home>` for the 11 region homes (`FTU charter: Golkonda region`), descriptions `chd<t><d>` (13: `chd11`, `chd12`, `chd21`, `chd22`, `chd31`, `chd32`, `chd40`, `chd51`..`chd55`, `chd60`), rank titles `chrk0..5`, and the lines `chhead` ($1 title), `chduesok`, `chduesdue` ($1 amount), `chdeed1..6` ($1 done, $2 needed), `chboard` ($1 region, $2 deed line), `chpays` ($1 pay), `chheld`, `chprog` ($1 region, $2 done, $3 needed), `chcollect`, `chpaid` ($1 region, $2 amount), `chwait` ($1 region), `chnext` ($1 points, $2 threshold, $3 next title), `chstand` ($1 title), `chslot3`, `chrankdown` ($1 title), `chnew` ($1 region, $2 description, $3 pays line), `chclose` ($1 region, $2 reason line), `chmission` ($1 region), `chwhy1`, `chwhy2`, `chwhy4`, `chwhy5`, `chwhybase`, `chwhyheat`, `chwhykill`, `chwhys41`, `chwhydeadline`, `chwhychapter`, `chdues` ($1 title, $2 amount), `chduespaid`, `chduespoor`, `chheat3`. 67 keys. RU: written by hand, cp1251, CRLF, fixed texts without the placeholders; checked by `stn-g`. The logbook uses the keys in every `loc_mode` (`AddQuest` takes loc keys), so the titles read only when `loc/trf_en.loc` is installed (`LOC=1`, CHECK EC.1); the screen lines follow `loc_mode` as every other line.
 
 ## 9. Host scenarios (`T/host_charter.lua`, `TRF_CH=a..h`; run_host.sh item `ch`)
 
@@ -211,7 +211,7 @@ Entry as `host_ladder.lua`: `host_station.lua` up to its first scenario. New stu
 | Run | Covers |
 |---|---|
 | `ch-a` | `extra_count=5`; trade line 70, box 200, the owed payer; unlock (chapter 4 locked, chapter 5 help 2 locked, help 3 unlocked with seed legs + 7); `charter 0`; pay examples of 14 2 and 5 (7,000, 4,500, 1,400, 14,000, HARD, cap); rank thresholds; Park-Miller steps; dues; tune defaults and clamps; 11 titles, 13 descriptions |
-| `ch-b` | 24 eligibility rows of `TRF_ChCandOf` (each type, R, heat, pk, tier, #4, `rb`, `fst`, sweep owner, attempt, base deny, `rs`, deny list, deadline 11 / 12 legs); pay, K, rp, weights of a candidate; `TRF_ChGenOf` (one family per slot, one pirate family, distinct regions, determinism, weights about 3:1 over 400 seeds); live dock: two postings, logbook entries and keys, lines; a simulated reload before the dock gives the same postings; no posting in a mission, at heat 5, at Trade W, in chapter 19; a Free time window; denied dock; close line and slot cooldown; region cooldown; region info (`L_r`, T4, base, `rb`) |
+| `ch-b` | 24 eligibility rows of `TRF_ChCandOf` (each type, R, heat, pk, tier, #4, `rb`, `fst`, sweep owner, attempt, base deny, `rs`, deny list, deadline 11 / 12 legs); the xt23 / xt24 region (slot 8) never posted, Kadi posted; pay, K, rp, weights of a candidate; `TRF_ChGenOf` (one family per slot, one pirate family, distinct regions, determinism, weights about 3:1 over 400 seeds); live dock: two postings, logbook entries and keys, lines; the board line `Golkonda region: escorts and raid answers 0 of 3. Pays 7200 cr.`; a simulated reload before the dock gives the same postings; no posting in a mission, at heat 5, at Trade W, in chapter 19; a Free time window; denied dock; close line and slot cooldown; region cooldown; region info (`L_r`, T4, base, `rb`) |
 | `ch-c` | oldest match, the Break deed cap, the visit cap, entry reset, escort and clan-flight kinds, completion (st 1, logbook done, line), Break without its world test, full postings, deny list, step 2 kind, no posting in the region, the Break world test at the region tick and before the last deed; real pay points: `TRF_Rd_End` of a raid the player shot down (kinds 2 and 4), `TRF_BaseDestroyed` by the player (kind 6) |
 | `ch-d` | phase closes through `TRF_RegionTick`, Relief, Convoy, Base and Sweep closes, close lines and removal at the next dock; heat 5 and heat 7 (rank -1 once per blacklisting); player trader kill through `TRF_Ev_Kill` (Lanes fails, pk, no Lanes) and the pk clear rule (Quiet before the stamp, 27 legs, 28 legs); `TRF_ForcedBust` (S41); deadline in free roam and during a mission with its line; chapter 19 (withdrawn, owed pay paid, no dues, perks on) |
 | `ch-e` | owed payer: oldest first, wait line, `pay`/`pay_wait`/`module=region event=pay reason=charter`, help, lh; real seconds at 8x and while paused; 1799 s wait, 1800 s pay with help +2 in Recovery; Break pay with clan score -3 and rank 3 with the third slot; no points with dues unpaid; rank 0 -> 1 -> 2 and the dues start; no pay under `__sys_SOS` or at a denied dock; the rank 2 perk through `TRF_CtOffer`, `TRF_HlCh3Opts` and `TRF_HailOpen` (heat 3 with and without dues, rank 1, heat 4, heat 2) |
@@ -244,8 +244,8 @@ Changed scenarios: `pl-a` (7 lines, 5 boxes, 2 payers), `sv-a` and `lad-a` (`ext
 - V5 Step 1 ranks stop at 3 (`rk_max`); `rp` accrues to 99, so step 2 can lift the cap without a migration.
 - V6 Pay is rounded to 100 cr at posting; the design's lines quote rounded values (7,020 -> "7,000", dump `pay=7000`).
 - V7 A paid posting frees its slot at once (14 2: the paying dock posts the next one); `ch_slot_cd` applies to closes.
-- V8 Dues: the first period is included when rank 2 is reached (`du = legs + 24`); `du` is the first unpaid leg (perks while `legs < du`); a rank loss for dues advances `du` by one period; paying sets `du = legs + 24` without charging arrears; no `d_k` on dues.
-- V9 Board lines: rank 0 shows the postings of the dock's region only (rank 1 perk "board lines at every trade dock"); the office line shows from rank 1 or with any line.
+- V8 Dues: the first period is included when rank 2 is reached (`du = legs + 24`); `du` is the first unpaid leg (perks while `legs < du`); a rank loss for dues advances `du` by one period; paying sets `du = legs + 24` without charging arrears; `d_k` on dues (00 A2).
+- V9 Board lines: rank 0 shows the postings of the dock's region only (rank 1 perk "board lines at every trade dock"); the office line shows from rank 1 or with any line, and not after `ch_last_ch` (design 3: no FTU employer line in 19-20).
 - V10 Heat-3 perk: trf_hail refuses the whole hail from heat 3, so the perk opens the hail at heat 3 with the contract options only (escort, danger convoy) and the papers line; faction-owned traders and Trade W refuse as before.
 - V11 Order: the charter pay runs as an owed payer at the trade owe order 50 (WB), before the #8 freight line 60; the board lines are at 70 as 00 orders them.
 - V12 Feeds (help, pro, clan score, rank points, dockmaster deed) apply at payment, not at completion.

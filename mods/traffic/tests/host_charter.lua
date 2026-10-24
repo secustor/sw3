@@ -215,6 +215,8 @@ function T_CH_A()
 		and TRF_ChStepOf(1622650073) == 984943658 and TRF_ChStepOf(2147483646) == 2147466840, "Park-Miller steps exact in doubles");
 	HOST_Check(TRF_ChDuesOf(100, {10, 8, 6}, 2) == 2000 and TRF_ChDuesOf(100, {10, 8, 6}, 3) == 3000 and TRF_ChDuesOf(100, {}, 2) == 600
 		and TRF_ChDuesOf(100, {16}, 1) == 0, "dues: 100 x L_h x rank, L_h 3 without paid postings, none below rank 2");
+	HOST_Check(TRF_ChDuesOf(100, {10, 8, 6}, 2, 0.7) == 1400 and TRF_ChDuesOf(100, {10, 8, 6}, 2, 1.25) == 2500 and TRF_ChDuesOf(100, {}, 3, 0.7) == 630,
+		"dues: d_k on the dues (00 A2), HARD 1400, EASY 2500");
 	local T = TRF_ChTune();
 	HOST_Check(T.ch_pay_gap_rs == 1800 and T.ch_slots[1] == 2 and T.ch_slots[2] == 3 and T.ch_k[2] == 0.3 and T.ch_rank_pts[5] == 30 and T.ch_dues_legs == 24,
 		"tune defaults (design 6)");
@@ -313,6 +315,9 @@ function T_CH_B()
 	h.quests = {};
 	C_Dock();
 	HOST_Check(C_Board() == b1, "simulated reload before the dock: the same postings ("..C_Board()..")");
+	r = C_Dock();
+	HOST_Check(C_Has(r.scr, "|Golkonda region: ") and C_Has(r.scr, " of ") and not C_Has(r.scr, "Moscowia region: "),
+		"board line: '<home> region: <deeds> n of k.' for the dock's region at rank 0 ("..r.scr..")");
 	-- Gates of the generation: mission (quest_Help not in process), heat 5, Trade W, chapter 19; deny list.
 	local gate = "";
 	local tries = {{"mission", "qs"}, {"heat", "heat"}, {"trade", "trade"}, {"chapter", "ch"}};
@@ -382,6 +387,9 @@ function T_CH_B()
 	ty = C_Ts(TRF_ChCandOf(ri, T, TRF.clock.legs, 0));
 	HOST_Check(ri.base == 1 and ri.bok and C_Has(ty, "base:0:"), "active base of the clan: Base candidate ("..ty..")");
 	TRF.base = {};
+	-- Never posted: the region holding xt23 / xt24 (xt27 on the generated map); Kadi (xk16 a member) is posted.
+	HOST_Check(TRF_ChInfo(TRF.ch, C_Slot("xt24"), {}) == nil and C_Slot("xt24") == C_Slot("xt27") and TRF_ChInfo(TRF.ch, C_Slot("kadi"), {}) ~= nil,
+		"region of xt23 / xt24 never posted, Kadi with xk16 posted");
 	-- The posting text of each type in the dock line comes from its logbook description.
 	HOST_Check(TRF_ChTxt("chd60") == TRF_Ch_Text().chd60 and TRF_ChTitleKey({r=gs}) == "#TRF_chtgolkonda", "description and title keys");
 end;
@@ -613,8 +621,8 @@ function T_CH_D()
 		"chapter 19: open posting withdrawn, owed pay kept, no dues rank loss, perks on");
 	local c0 = h.credits;
 	r = C_Dock();
-	HOST_Check(h.credits == c0 + 3400 and r.nb == 0 and C_Open() == 0 and C_Has(r.scr, "The office closed the board."),
-		"chapter 19 dock: owed pay paid, no dues box, no new posting ("..r.scr..")");
+	HOST_Check(h.credits == c0 + 3400 and r.nb == 0 and C_Open() == 0 and C_Has(r.scr, "The office closed the board.") and not C_Has(r.scr, "FTU charter office: Wolves"),
+		"chapter 19 dock: owed pay paid, no dues box, no new posting, no office line ("..r.scr..")");
 	h.labels.CurrentQuest = "9_1";
 end;
 
@@ -854,6 +862,13 @@ function T_CH_G()
 	TRF.ch = {rk=2, du=0};
 	TRF_Repair();
 	HOST_Check(TRF.ch.rk == 2 and TRF.ch.du == TRF.clock.legs, "repair: rank 2 without a dues leg is due now");
+	local hp = {t=1, r=4, f=0, d=1, k=3, p=0, w=0, a=TRF.clock.legs, e=TRF.clock.legs + 30, st=1, pay=40000, rq=2, l=10};
+	local tune0 = TRF_RgTune;
+	TRF_RgTune = function() return {pay_cap=50000}; end;
+	local q1 = TRF_ChFixG(hp, 11, TRF.clock.legs);
+	TRF_RgTune = tune0;
+	local q2 = TRF_ChFixG(hp, 11, TRF.clock.legs);
+	HOST_Check(q1 and q1.pay == 40000 and q2 and q2.pay == 30000, "repair: pay bounded by the live pay_cap (50000 kept, 30000 clamps), posting kept");
 	TRF.ch = 7;
 	TRF_Repair();
 	HOST_Check(TRF.ch == nil, "repair: a non-table TRF.ch becomes absent");
