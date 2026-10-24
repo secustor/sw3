@@ -603,7 +603,7 @@ Review findings:
 
 Where the code differs from the text above:
 - Loader: `trf_station` loads from its own list after the v1 files and is counted as `extra_count=` in the `event=loaded` line, so `module_count=18` (checked by host_v1 `v1-a`) keeps its meaning.
-- Size (3.4, 13 `stn-f`): on the `HOST_SaveSize` grammar a full record (with `pv`) costs about 200 bytes, so 76 full records are 15.2 KB, not 5.3 KB; the host checks `TRF.stn <= 16000` and TRF (24 KB) `< 40000`. A plain `{st, lg}` record is 68 bytes.
+- Size (3.4, 13 `stn-f`): on the `HOST_SaveSize` grammar a full record (with `pv`) costs about 200 bytes, so 76 full records are 15.2 KB, not 5.3 KB; the host checks `TRF.stn <= 17700` and TRF `< 100000`. A plain `{st, lg}` record is 68 bytes.
 - `TRF_Stn_Fix` (D4) keeps absent `TRF.stn`, `TRF.vo` and `TRF.ve` absent (lazy creation); present non-table values become `{}`.
 - Log additions: `module=station event=dock ... no_fee_reason=<paid_visit|latch|strict_0|chapter>` (`paid_visit`: already paid or docked on credit in this visit, also after a load), `module=station event=deed ... cap=far` (raid help beyond `stn_near`), `module=station event=pass reason=tip` (closed-station key of class other).
 - The tip ban `nt` is cleared on read when `TRF_Phase(slot) == 0`, which includes systems without a region (slot nil).
