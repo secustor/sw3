@@ -404,7 +404,7 @@ Survivors and beacons, step 1 (`design/survivors-spec.md` 7).
 | `error` | `module=survive event=error message=<m>` | 1 |
 | `loss` | `module=survive event=loss trader_id=17 fire=false help=true system=gaoba pods=2 position_source=ship mode=full result=beacon beacon=1` (no beacon: `result=none reason=<chapter, owner, station_event, fire, disable_action, sys_sos, suppressed, deny, deny_story, gate:<why>, mode:<why>, record, cooldown, governor, position, portal, station>`) | 1 |
 | `seed` | `module=survive event=seed system=gaoba roll=5 chance=25 region=5 budget_used=1 budget=2 pods=1 pay=2970 pay_pirate=4950 result=beacon beacon=1` (none: `result=none reason=<budget, roll, point>` at level 1; `off, chapter, plan, chase, sweep, carrier, feq, deny, gate:<why>, record, cooldown, region, quiet` at level 2) | 1 |
-| `place` | `module=survive event=place system=gaoba beacon=1 found=0 made=3 deleted=0 failed=0 pods_before=2 pods=2 reason=enter` (reason loss, enter, load); `... beacon=1 result=skipped reason=gate:quest` | 1 |
+| `place` | `module=survive event=place system=gaoba beacon=1 found=0 made=3 deleted=0 failed=0 pods_before=2 pods=2 reason=enter` (reason loss, enter, load, hold); `... beacon=1 result=skipped reason=gate:quest` (also `disable_action`, `sys_sos`, `suppressed`: held until the flags clear) | 1 |
 | `pick` | `module=survive event=pick system=gaoba beacon=1 pod=2 distance=23.1 left=1 carried=1 credits=0` | 1 |
 | `full` | `module=survive event=full system=gaoba beacon=1 carried=6 carry_max=6` | 1 |
 | `pod_lost` | `module=survive event=pod_lost system=gaoba beacon=1 pod=2 left=1` | 1 |
@@ -414,7 +414,7 @@ Survivors and beacons, step 1 (`design/survivors-spec.md` 7).
 | `slaver_roll` | `module=survive event=slaver_roll system=gaoba beacon=1 tier=2 roll=12 chance=35 leg=40 result=taken` (`result=kept` at level 2) | 1 |
 | `budget_reset` | `module=survive event=budget_reset region=5 leg=40 budget_used=2` | 1 |
 | `enter` | `module=survive event=enter system=gaoba mode=full seed_plan=ok beacon=1 seeded=true pods=2 lines=svseed beacon_count=1` | 1 |
-| `load` | `module=survive event=load system=gaoba beacon=1 pods=2` (gated: `result=skipped reason=gate:quest`) | 1 |
+| `load` | `module=survive event=load system=gaoba beacon=1 pods=2` (gated: `result=skipped reason=gate:quest`; held: `reason=sys_sos` etc.) | 1 |
 | `dump` | `module=survive event=dump beacon_count=1 beacons=gaoba:2/2/0/40/2/0/2430 carried=1 credits=2430 pirate_credits=0 rescued=7 sold=0 lost=2 cooldowns=gaoba:40 region_budget=5:1/2 heat_leg=31 silent=nil rumour=nil seed=1234` | 1 |
 | `near` | `module=survive event=near system=gaoba beacon=1 distance=380.2` | 2 |
 | `clear` | `module=survive event=clear system=gaoba deleted_count=3 reason=jump` | 2 |

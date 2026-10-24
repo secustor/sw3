@@ -85,7 +85,7 @@ Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case m
 | traffic.script `TRF_OnTick` | `TRF_Sv_Tick(dt_game)` every tick, `TRF_Sv_Step()` in the 1 s block | pickup, near line, dead pods; position cache, expiry in the current system |
 | trf_events `TRF_Ev_Kill` | `TRF_P("TRF_Sv_OnLoss", id, rec, h, by, idx)` after the v1 kill effects, before `TRF_Ev_Close` | witnessed loss |
 | trf_region `TRF_RegionTick` | `TRF_P("TRF_Sv_RegionTick", L)` at the end | budget reset, off-screen roll, expiry |
-| trf_hail `TRF_HlRumourText` | `TRF_N("TRF_Sv_Rumour", idx)` after the v1 rumours | rumour line |
+| trf_hail `TRF_HlRumourText` | `TRF_N("TRF_Sv_Rumour", idx, "rec")` after the v1 rumours (the `rm` rumour); `TRF_N("TRF_Sv_Rumour", idx)` after the sweep rumour, before `rnone` (the pre-chapter-5 line) | rumour line |
 | trf_plumb `TRF_PlMods` | `"Sv"` | `TRF_Sv_Plumb`: trade dock line order 30 (`TRF_Sv_DockLine`), seed provider prio 550 (`TRF_Sv_SeedH`) |
 | trf_state `TRF_ModList`, `TRF_Repair` | `"Sv"`; `TRF_P("TRF_Sv_Fix")` | OptDef, TuneDef, Dump; repair |
 | trf_loc `TRF_Loc_TextFns`, trf_ui `TRF_UI_TextFns` | `"TRF_Sv_Text"` | text keys |
@@ -99,7 +99,7 @@ Step 2 hook points: `TRF_Sv_DockPir` on the `pir` dispatcher at box prio 300 (00
 - G1 Module: `TRF`, the traffic modules, cfg `enable_survivors` 1.
 - G2 Chapter (`TRF_SvChMode`): `"full"` at `TRF_Chapter() >= 5`; `"ch4"` in chapter 4 with `sv_ch4` 1 while `GetQuestState("quest_Help") == QUEST_PROCESS` (witnessed only, standing only); else none (`reason=chapter`).
 - G3 Placement gate (`TRF_SvGate(idx)`): deny list (`TRF_SvDenyOf`: permanent `earth`, `precursors`, `disonsphere`, `fronn`, `nk`, `x297`, `x203`, `x213`, `x220`; cfg `sv_deny` names; story pod chapters `b_leftera1` 6, `nj1` 6, `dionis` 9, `lidau` 14 -> `deny_story`), then the strict gate `TRF_StrictOk(idx, "sv")` (`gate:<why>`), then the system mode `TRF_SysModeQuiet() == "mod"` (`mode:<why>`, e.g. the start-system guard).
-- G4 Flags (S2): no loss record, pickup or hand-in while `__disableAction` or `__sys_SOS` is set; no loss record under trf_safety's suppression; pickups also pause during a mission (`TRF_Safe_QState`). The hand-in line is not registered `always`, so the dispatcher skips it under the flags.
+- G4 Flags (S2): no loss record, pickup or hand-in while `__disableAction` or `__sys_SOS` is set; no loss record, placement or pickup under trf_safety's suppression (`TRF_Supp`: the extortion debounce S3, a scene, the wind-down). `GetPlayerQuestState` is not read (unreliable, the deny list only): a beacon the strict gate placed stays collectable. The hand-in line is not registered `always`, so the dispatcher skips it under the flags.
 
 ### 5.2 Witnessed loss (`TRF_Sv_OnLoss`, 06 6.4)
 
@@ -108,7 +108,7 @@ In this order, the first failing rule is the `reason=`: G1; G2; owner (`rec.own`
 - Site rule (`TRF_SvSiteOf`): at least 300 from every map portal and 400 from every map station of the system.
 - Pods (`TRF_SvPodsOf`): `min(3, transports at spawn + 1 for TT3+)`, at least 1.
 - The record: `src` 1, `pf = pp = 0`, `nm` = the trader's name index, `cd[idx] = legs`. At `sv_max` records the oldest with `n = 0` is dropped first, else the oldest overall (`event=expire ... reason=cap`).
-- 5 s later (`TRF_Due`, `TRF_Sv_LossDue`): if the player is still in the system and G3 passes, the loss line `svloss` and the placement.
+- 5 s later (`TRF_Due`, `TRF_Sv_LossDue`): if the player is still in the system and G3 passes, the loss line `svloss` and the placement. Under G4 the placement is held (`event=place ... result=skipped reason=<disable_action, sys_sos, suppressed>`) and made in the 1 s step once G4 clears in this visit (`reason=hold`, with the loss line), else at the next entry or load.
 - The raid help of the dead trader's raid (`rd.hit`) is logged as `help=`; it changes nothing (witnessed losses pay standing only either way).
 
 ### 5.3 Seeded beacon (`TRF_SvSeedPlan`, from `TRF_Sv_OnActivate`, 06 6.4)
@@ -118,12 +118,12 @@ In this order, the first failing rule is the `reason=`: G1; G2; owner (`rec.own`
 - Fixed roll: `a = M(sd + 97 idx + 131 legs, 10000)`, `a = M(37 a + 11, 10007)`, roll `= M(a, 100)` with `M(x, m) = x - floor(x / m) m`. The same system, leg and seed give the same roll, so a reload followed by the same jump (same leg) gets the same answer (5.4 item 5); `sd` is saved and never rerolled.
 - Point: the registered nav points of the system's trader contacts (S6) that pass the site rule and are more than 600 from the mothership; candidate `1 + M(roll, count)`.
 - Pods: 3 when the band's highest trader tier (`TRF_BandCaps(idx).tmax`) is 3+, else 1 or 2 by `TRF_SvRollOf(idx, legs + 3, sd)`.
-- Pay fixed at creation: `pf = floor(min(k_pod / 100 x TRF_PayN(idx), pay_cap / 3))`, `pp` the same with `k_pod_pir`; `TRF_PayN = min(900 L_w lk tier_k (1 + 0.05 pro) d_k, pay_cap)` of the loss system now; `sv_dk 0` divides `d_k` out.
+- Pay fixed at creation: `pf = floor(min(k_pod / 100 x N, pay_cap / 3))`, `pp` the same with `k_pod_pir`; `N = floor(900 L_w lk tier_k (1 + 0.05 pro) d_k)` of the loss system now (`TRF_SvBaseN`, trf_region's `TRF_LPayK`, `TRF_TierK`, `TRF_Pro`; not capped at `pay_cap` before `k`, as 06 5.1); `sv_dk 0` divides `d_k` out. Late T4 (L 16, pro 2, NORMAL): N 31,680, 4,752 per survivor.
 - On creation `r[slot] + 1`, `cd[idx] = legs`.
 
 ### 5.4 Placement and reconcile (`TRF_SvPlace`)
 
-Every entry (after the seed plan), every load and 5 s after a witnessed loss, when G3 passes; otherwise the found objects are deleted and the record ticks on unplaced (`event=place ... result=skipped`). For j = 0 (beacon, wanted while `bx` unset and `n > 0`) and j = 1..3 (pods, wanted while `j <= n`): the object is looked up by this visit's handle, the handle global, then the label (`GetObjectByLabel`, accepted only when it answers an object that is alive); wanted and found: kept; wanted and missing: `CreateCarcass("radiopod" | "Escape_Pod_R", point + offset, Vector3(0, 0, 1))` and `SetObjectLabel`; not wanted and found: deleted. Pod offsets `(25 cos(120 j), 8 j - 8, 25 sin(120 j))`. A pod `CreateCarcass` cannot place (nil) is dropped: the pods are packed to the lowest indices (labels and globals move with them) and `n` falls. Nav marker `TRF_SV_<idx>` while `n > 0` and the beacon stands. An entry into a system without a record deletes found `TRF_SVB_`/`TRF_SVP_` objects of that system (a quest or galaxy-map jump may bypass `TRF_BeforeJump`).
+Every entry (after the seed plan), every load and 5 s after a witnessed loss, when G3 passes; otherwise the found objects are deleted and the record ticks on unplaced (`event=place ... result=skipped`). Under G4 (S2, S3) nothing is placed or deleted; the placement follows in the 1 s step once G4 clears in this visit (`reason=hold`; the entry line `svseed` or the loss line then), else at the next entry or load. For j = 0 (beacon, wanted while `bx` unset and `n > 0`) and j = 1..3 (pods, wanted while `j <= n`): the object is looked up by this visit's handle, the handle global (dropped and cleared when `GetObjectLabel` answers another label: a reused id), then the label (`GetObjectByLabel`, accepted only when it answers an object that is alive); an entry clears the handle globals of the other systems' records; wanted and found: kept; wanted and missing: `CreateCarcass("radiopod" | "Escape_Pod_R", point + offset, Vector3(0, 0, 1))` and `SetObjectLabel`; not wanted and found: deleted. Pod offsets `(25 cos(120 j), 8 j - 8, 25 sin(120 j))`. A pod `CreateCarcass` cannot place (nil) is dropped: the pods are packed to the lowest indices (labels and globals move with them) and `n` falls. Nav marker `TRF_SV_<idx>` while `n > 0` and the beacon stands. An entry into a system without a record deletes found `TRF_SVB_`/`TRF_SVP_` objects of that system (a quest or galaxy-map jump may bypass `TRF_BeforeJump`).
 
 ### 5.5 Pickup (`TRF_Sv_Tick`, every tick)
 
@@ -140,7 +140,7 @@ The segment from the mothership's previous to its current position (`TRF_Ms`, no
 
 - Records older than `sv_ttl` legs are removed at entry, at every region tick and (current system) in the 1 s step; a record that ends with pods left or taken by slavers adds its system to `x`; the next entry there shows `svsilent` once. Pods that expire count as rescued by a patrol: no effect.
 - Region tick (`TRF_Sv_RegionTick(L)`): every slot with `ph == 3` and `pt == L` (entered Raids at this tick) gets `r[slot]` reset; every credited record (`src >= 2`, `sl 0`, `n > 0`) outside the current system in a region with effective tier `TRF_EffTier(s) >= 2` rolls `TRF_SvRollOf(s, L + 13, sd) < sv_slave_off` (35): `n = 0`, `sl = 1`, `st.lost + n`, `TRF_ClanAdd(slot, 1, "sv slavers")` (inside the clan's +3 per visit cap), `rm = {s, 1, legs}`. No flight exists in step 1. Then the expiry.
-- Rumour (`TRF_Sv_Rumour(idx)`, the "Where are you headed?" answer after traffic's raided-neighbour and v1 rumours): before chapter 5 `svrumlost` for the first system within 2 jumps with `dis >= 3` (creates nothing); from chapter 5 `svrumtaken` / `svrumsaved` for `rm` while it is at most 8 legs old and within 3 jumps.
+- Rumour (`TRF_Sv_Rumour(idx)`, the "Where are you headed?" answer): before chapter 5 `svrumlost` for the first system within 2 jumps with `dis >= 3` (creates nothing), asked after the rest of traffic's pool (shortage, equipment convoy, boom, sweep) and before `rnone`; from chapter 5, after traffic's raided-neighbour and v1 rumours, `svrumtaken` / `svrumsaved` for `rm` while it is at most 8 legs old and within 3 jumps.
 
 ### 5.8 Entry lines (trf_plumb arrival queue, 00 order: #6 beacon first)
 
@@ -150,7 +150,7 @@ The segment from the mothership's previous to its current position (`TRF_Ms`, no
 
 | Config key | Default | Range | Meaning |
 |---|---|---|---|
-| `enable_survivors` | 1 | 0..1 | module on (`config.script`, `install-test.sh` `SURVIVORS`) |
+| `enable_survivors` | 1 | 0..1 | module on (`config.script`, `install-test.sh` `SURVIVORS`; `LEVEL=v01`/`v02` write 0 unless `SURVIVORS` is set) |
 | `sv_seeded` | 1 | 0..1 | seeded beacons (`SV_SEEDED`) |
 | `sv_slavers` | 1 | 0..1 | off-screen slaver roll (`SV_SLAVERS`); step 2 also on-screen |
 | `sv_pirate_sale`, `sv_factions` | 1, 1 | 0..1 | step 2, read nowhere yet |
@@ -184,8 +184,8 @@ Constants without a key (`TRF_SvK`): portal 300, station 400, mothership 600 (se
 | `module=survive event=loss trader_id=18 fire=true help=false system=gaoba pods=1 result=none reason=fire` | loss without one (reasons 5.2) |
 | `module=survive event=seed system=gaoba roll=5 chance=25 region=5 budget_used=1 budget=2 pods=1 pay=2970 pay_pirate=4950 result=beacon beacon=1` | seeded beacon |
 | `module=survive event=seed system=gaoba roll=71 chance=25 region=5 budget_used=0 budget=2 result=none reason=roll` | level 1 for `budget`, `roll`, `point`; level 2 for the other reasons |
-| `module=survive event=place system=gaoba beacon=1 found=0 made=3 deleted=0 failed=0 pods_before=2 pods=2 reason=enter` | placement (reason loss, enter, load) |
-| `module=survive event=place system=kadenoa beacon=1 result=skipped reason=gate:quest` | gate failed |
+| `module=survive event=place system=gaoba beacon=1 found=0 made=3 deleted=0 failed=0 pods_before=2 pods=2 reason=enter` | placement (reason loss, enter, load, hold) |
+| `module=survive event=place system=kadenoa beacon=1 result=skipped reason=gate:quest` | gate failed; `reason=disable_action`, `sys_sos`, `suppressed`: held by G4 |
 | `module=survive event=pick system=gaoba beacon=1 pod=2 distance=23.1 left=1 carried=1 credits=0` | pickup |
 | `module=survive event=full system=gaoba beacon=1 carried=6 carry_max=6` | no room, once per visit |
 | `module=survive event=pod_lost system=gaoba beacon=1 pod=2 left=1`, `event=beacon_lost system=gaoba beacon=1 pods=2` | destroyed objects |
@@ -217,7 +217,7 @@ Entry as `host_plumb.lua`: `host_station.lua` up to its first scenario, so the s
 | `sv-c` | jump keeps the record and removes objects and globals; re-entry rebuilds; expiry while away and the silent line once; expiry during the visit; carried survivors lost at entry and at the dock; off-screen roll at T2 (pods 0, `sl` 1, clan +1, rumour), T1 keeps, witnessed never rolled; rumour text and the hail rumour; rumour age; budget reset at the Raids entry tick only; expiry at the region tick |
 | `sv-d` | `sv_cd` refusal, 8 legs later a beacon, `sv_cd 0`; `sv_heat_cd` (applied, cooldown, 10 legs later, heat 0); Recovery help +2; `pro` at the phase target |
 | `sv-e` | chapter 4 without and with `quest_Help` (witnessed `mode=ch4`, no pay), no seed in chapter 4, `sv_ch4 0`, chapter 3, the pre-chapter-5 rumour, `enable_survivors 0` |
-| `sv-f` | strict gate (quest in process): no beacon, a load does not place; `sv_deny`; the deny list function (permanent, story chapters, cfg names); denied dock: standing-only survivors kept, credits paid with one line only; `__disableAction` (no hand-in, no beacon), `__sys_SOS` (pickup paused, then picked); portal and station site rule |
+| `sv-f` | strict gate (quest in process): no beacon, a load does not place; `sv_deny`; the deny list function (permanent, story chapters, cfg names); denied dock: standing-only survivors kept, credits paid with one line only; `__disableAction` (no hand-in, no beacon), `__sys_SOS` (pickup paused, then picked); `__sys_SOS` set in the 5 s before the placement (nothing placed, then `reason=hold` with the loss line); a handle global naming a foreign object (skipped, cleared); pickup while `GetPlayerQuestState` is TRUE in an unnamed system; portal and station site rule |
 | `sv-g` | `sv_max` (oldest with `n = 0`, else oldest overall); `sv_carry_max` (full line once); two loss systems; load reconcile (found 4; a pod the save lost made again; `n = 1` deletes two); blocked spots lower `n`; stray pod deleted on entry; dump line; repair; `TRF.sv` worst case 2,664 bytes <= 2,700; no reserved key |
 
 Changed scenarios: `pl-a` (5 trade lines and 9 seed providers), `stn-g` (the RU key set includes the survivors keys), `v1-m` (the generated `trf_en.loc` scaffold has the 16 `#TRF_sv*` lines), `v1-n` (survivors worst case in the full-state save). All 64 host runs pass.
@@ -241,8 +241,8 @@ Changed scenarios: `pl-a` (5 trade lines and 9 seed providers), `stn-g` (the RU 
 
 - V1 Cooldown stamps in `TRF.sv.cd[idx]` instead of `TRF.sys[idx].sb`: trf_state's `TRF_SysSet` removes a `TRF.sys` entry without `dis`, `pro` and `bh`, which would drop the stamp. Stamps older than `sv_cd` are dropped; at most 16.
 - V2 Size: "under 1 KB" (06 6.1) counts values; with the host grammar the worst case is 2,654 bytes (field names cost 9-11 bytes each). The bound is hard (4 records, 16 stamps, 4 silent systems) and far below the 100,000 budget.
-- V3 Roll seed: `sd` comes from the game clock, the leg count and the generation once, not from `RAND(10000)`, so creating `TRF.sv` draws nothing from the RAND stream the other modules' rolls (and the host scenarios) depend on. It is saved and never rerolled, so 5.4 items 4-5 hold.
-- V4 Handle globals `TRF_SVH_<idx>_<j>` beside the labels: after a load `GetObjectByLabel` answers the label string for mod objects (v01-spec 3.3), so a label-only reconcile would make every pod again next to the restored ones. The label is still asked when no global answers (an entry after a jump that bypassed `TRF_BeforeJump`).
+- V3 Roll seed: `sd` comes from the leg count and the generation once (no game time: it moves between a load and the first entry, so a save made before `TRF.sv` existed would get a new seed on each reload), not from `RAND(10000)`, so creating `TRF.sv` draws nothing from the RAND stream the other modules' rolls (and the host scenarios) depend on. It is saved and never rerolled, so 5.4 items 4-5 hold.
+- V4 Handle globals `TRF_SVH_<idx>_<j>` beside the labels: after a load `GetObjectByLabel` answers the label string for mod objects (v01-spec 3.3), so a label-only reconcile would make every pod again next to the restored ones. The label is still asked when no global answers (an entry after a jump that bypassed `TRF_BeforeJump`). A global whose object answers another label (`GetObjectLabel`, a reused id) is cleared and not used, as trf_tier's `TRF_TrPkFind`.
 - V5 Nav marker through trf_plumb's `TRF_MarkerAdd` (00 "Nav markers"): a separate nav point at the loss point with the plumbing's icon, not attached to the beacon and without the `#TRF_SV_Nav` text (the API has no text argument). Deleted at `n = 0`, when the beacon dies, before every jump and when a mission starts (trf_plumb).
 - V6 Loc keys: `#TRF_SV_Loss` etc. of 06 2 are `#TRF_svloss` etc.: trf_loc normalises keys to lowercase letters and digits and generates the scaffold from the text tables (`TRF_Loc_LocLines`, checked by `v1-m`).
 - V7 Log wrapper name: `TRF_SvE` was the save kit's wrapper in `exp_saves.script` (`module=exp kit=saves`); it is renamed `TRF_SavesE` there, so the task's `TRF_SvE`/`TRF_SvDE` belong to this module. The kit's log lines are unchanged.

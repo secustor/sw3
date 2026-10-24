@@ -513,14 +513,14 @@ Survivors and beacons (proposal 6 step 1, spec [design/survivors-spec.md](design
 ### What the player sees
 
 - From chapter 5 (in chapter 4 free time only the first case): when pirates kill an FTU freighter in the player's system and the player did not fire on it, 5 s later `Distress beacon: FTU freighter lost. Escape pods transmitting.`, and a radio buoy with one to three escape pods and a nav marker sit at the loss point for 4 legs. These survivors pay no credits, only standing.
-- Entering a system with `dis` 4+ or a region in Raids or Bust can show `FTU relay: a freighter went silent here. Its distress beacon is still transmitting.` (25 %, at most 2 per region and cycle, the same answer after a reload and the same jump). These survivors pay `0.15 x TRF_PayN` of that system each (about 230 cr early to 4,800 cr late), fixed when the beacon appears.
+- Entering a system with `dis` 4+ or a region in Raids or Bust can show `FTU relay: a freighter went silent here. Its distress beacon is still transmitting.` (25 %, at most 2 per region and cycle, the same answer after a reload and the same jump). These survivors pay `min(0.15 x N, pay_cap / 3)` each, N the uncapped pay base of that system (about 230 cr early to 4,800 cr late), fixed when the beacon appears.
 - Fly the mothership within 60 units of a pod to take it aboard (`Survivor aboard.`); at most 6 aboard and from at most two systems (`No room for more survivors.`). Survivors kept more than 8 legs are handed to a passing patrol (no pay).
 - Dock at any FTU trade station: credits for the seeded survivors (`Survivors handed over to FTU. <n> credits transferred.`), help +1 (+2 in Recovery), heat -1 at most once per 10 legs, `pro` +1 in the loss systems (up to the phase target), dockmaster standing +1. In a denied system (New Kyoto, Earth, the Berserk X-systems, ...) or during a mission there only the credits are paid.
 - A beacon not visited in time goes silent (`The beacon in this system has gone silent.` on the next entry); in a T2+ region pirates may take the pods off-screen, and traders then say `Pirates picked up a freighter crew near <system>. Nobody will see them again.`
 
 ### Config keys (survivors)
 
-`config.script` lists `enable_survivors=1`; the other keys read the module defaults. `install-test.sh` writes `SURVIVORS` (`enable_survivors`), `SV_SEEDED`, `SV_SLAVERS`, `SV_CH4` and `SV_DK` when set; tune keys go through `TUNE=key=value,...`.
+`config.script` lists `enable_survivors=1`; the other keys read the module defaults. `install-test.sh` writes `SURVIVORS` (`enable_survivors`; `LEVEL=v01` and `v02` write 0 unless `SURVIVORS` is set), `SV_SEEDED`, `SV_SLAVERS`, `SV_CH4` and `SV_DK` when set; tune keys go through `TUNE=key=value,...`.
 
 | key | default | meaning |
 |---|---|---|

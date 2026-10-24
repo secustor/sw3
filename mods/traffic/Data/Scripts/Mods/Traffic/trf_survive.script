@@ -122,8 +122,9 @@ function TRF_SvGt()
 	return 0;
 end;
 
--- TRF.sv, created on first use. The seed comes from the game clock and the generation once (no RAND draw, so
--- the shared RAND stream of the other modules is unchanged); it is saved and never rerolled.
+-- TRF.sv, created on first use. The seed comes from the leg count and the generation once (no RAND draw, so
+-- the shared RAND stream of the other modules is unchanged; no game time, which moves between a load and the
+-- first entry, so a save made before TRF.sv existed gives the same seed on every reload); saved, never rerolled.
 function TRF_SvRec()
 	if type(TRF.sv) ~= "table" then TRF.sv = {}; end;
 	local S = TRF.sv;
@@ -134,7 +135,7 @@ function TRF_SvRec()
 	if type(S.sd) ~= "number" then
 		local g = 0;
 		if type(TRF.gen) == "number" then g = TRF.gen; end;
-		S.sd = TRF_SvM(floor(TRF_SvGt() * 1000 + TRF_SvLegs() * 7 + g * 13), 10000);
+		S.sd = TRF_SvM(floor(TRF_SvLegs() * 7919 + g * 13 + 4271), 10000);
 	end;
 	return S;
 end;
@@ -261,6 +262,27 @@ function TRF_Sv_Flags()
 	return nil;
 end;
 
+-- S2 and S3 at a spawn (6.6): the flag name, "suppressed" under trf_safety's suppression (the extortion
+-- debounce, a scene, the wind-down), else nil.
+function TRF_SvHold()
+	local f = TRF_Sv_Flags();
+	if f then return f; end;
+	local sp = TRF_N("TRF_Supp");
+	if type(sp) == "number" and sp ~= 0 then return "suppressed"; end;
+	return nil;
+end;
+
+-- Placement of system s held by S2/S3: placed (with line key ln) by TRF_SvRetry once the hold ends in this visit,
+-- else on the next entry or load.
+function TRF_SvHoldSet(s, ln)
+	local sv = %SV;
+	sv.hp = {s=s, ln=ln};
+end;
+
+function TRF_Sv_LabelRaw(o)
+	return GetObjectLabel(o, o);
+end;
+
 function TRF_Sv_QuestRaw(id)
 	return GetQuestState(id);
 end;
@@ -350,11 +372,27 @@ function TRF_SvSiteOf(p, ports, sts, ms, K)
 	return nil;
 end;
 
--- Pay per survivor (5.1): min(k / 100 x N, cap / 3), N = TRF_PayN of the loss system (900 L_w lk tier_k (1 +
--- 0.05 pro) d_k, capped at pay_cap). 0 for k 0 or an unknown N.
+-- Pay per survivor (5.1): min(k / 100 x N, cap / 3), N = TRF_SvBaseN of the loss system (900 L_w lk tier_k (1 +
+-- 0.05 pro) d_k, not capped before k). 0 for k 0 or an unknown N.
 function TRF_SvPayOf(N, k, cap)
 	if type(N) ~= "number" or type(k) ~= "number" or type(cap) ~= "number" or N <= 0 or k <= 0 then return 0; end;
 	return floor(min(N * k / 100, cap / 3));
+end;
+
+-- Pay base of system idx (5.1, 00 section 0): floor(900 L_w lk tier_k (1 + 0.05 pro) d_k) from trf_region's terms,
+-- without TRF_PayN's pay_cap (the cap pay_cap / 3 applies after k); d_k divided out for sv_dk 0. Falls back to
+-- TRF_PayN when a term is missing.
+function TRF_SvBaseN(idx)
+	local lp, tk, pr = TRF_N("TRF_LPayK", idx), TRF_N("TRF_TierK", idx), TRF_N("TRF_Pro", idx);
+	local N = 0;
+	if type(lp) == "number" and type(tk) == "number" and type(pr) == "number" then
+		N = floor(900 * lp * tk * (1 + 0.05 * pr));
+	else
+		N = TRF_N("TRF_PayN", idx) or 0;
+	end;
+	local dk = TRF_N("TRF_DK") or 1;
+	if TRF_SvOpt("sv_dk") == 0 and dk > 0 then N = N / dk; end;
+	return N;
 end;
 
 -- Pods of a witnessed loss (6.4): min(3, transports at spawn + 1 for TT3+), at least 1.
@@ -536,7 +574,14 @@ function TRF_SvGet(s, j)
 	local H = TRF_SvH();
 	if H and H.s == s and TRF_Sv_Alive(H.o[j]) then return H.o[j]; end;
 	local g = getglobal(TRF_SvGlb(s, j));
-	if TRF_Sv_Alive(g) then return g; end;
+	if TRF_Sv_Alive(g) then
+		-- A saved handle can name another object after a load or a jump that skipped TRF_BeforeJump (as trf_tier
+		-- TRF_TrPkFind): kept only when its label is unknown or ours.
+		local lb = nil;
+		if type(GetObjectLabel) == "function" then lb = call(TRF_Sv_LabelRaw, {g}, "x", TRF_SvNoErr); end;
+		if type(lb) ~= "string" or strlower(lb) == strlower(TRF_SvLbl(s, j)) then return g; end;
+		setglobal(TRF_SvGlb(s, j), nil);
+	end;
 	return TRF_Sv_Find(TRF_SvLbl(s, j));
 end;
 
@@ -734,8 +779,30 @@ function TRF_Sv_LossDue(idx)
 	if not i then return; end;
 	local why = TRF_SvGate(idx);
 	if why then TRF_SvE("place", "system", TRF_SvName(idx), "beacon", i, "result", "skipped", "reason", why); return; end;
+	why = TRF_SvHold();
+	if why then
+		TRF_SvHoldSet(idx, "svloss");
+		TRF_SvE("place", "system", TRF_SvName(idx), "beacon", i, "result", "skipped", "reason", why);
+		return;
+	end;
 	TRF_Sv_Say(TRF_SvTxt("svloss"), 8);
 	TRF_SvPlace(i, "loss");
+end;
+
+-- Every 1 s: the placement held by S2/S3 in this visit (TRF_SvHoldSet), once the hold ends and the gate passes.
+function TRF_SvRetry()
+	local sv = %SV;
+	local p = sv.hp;
+	if type(p) ~= "table" then return; end;
+	if not TRF_SvOn() or TRF_N("TRF_CurIdx") ~= p.s then sv.hp = nil; return; end;
+	if TRF_SvHold() then return; end;
+	sv.hp = nil;
+	local i, b = TRF_SvAt(p.s);
+	if not b then return; end;
+	local why = TRF_SvGate(p.s);
+	if why then TRF_SvE("place", "system", TRF_SvName(p.s), "beacon", i, "result", "skipped", "reason", why); return; end;
+	if p.ln and b.n > 0 then TRF_Sv_Say(TRF_SvTxt(p.ln), 8); end;
+	TRF_SvPlace(i, "hold");
 end;
 
 -- Seeded beacon on entry (src 2) ----------------------------------------------------------
@@ -808,9 +875,7 @@ function TRF_SvSeedPlan(idx, nm, mode)
 		return nil, why;
 	end;
 	local p = pts[1 + TRF_SvM(s.roll, getn(pts))];
-	local N = TRF_N("TRF_PayN", idx) or 0;
-	local dk = TRF_N("TRF_DK") or 1;
-	if TRF_SvOpt("sv_dk") == 0 and dk > 0 then N = N / dk; end;
+	local N = TRF_SvBaseN(idx);
 	local cap = 30000;
 	local rt = TRF_N("TRF_RgTune");
 	if type(rt) == "table" and type(rt.pay_cap) == "number" then cap = rt.pay_cap; end;
@@ -872,15 +937,25 @@ function TRF_Sv_OnActivate()
 	if type(idx) ~= "number" then return; end;
 	local S = TRF_SvRec();
 	local nm = TRF_SvName(idx);
+	sv.hp = nil;
+	-- Handle globals of other systems are left over from a jump that skipped TRF_BeforeJump.
+	for k = 1, getn(S.b) do
+		local o = S.b[k];
+		if type(o) == "table" and o.s ~= idx then for j = 0, 3 do setglobal(TRF_SvGlb(o.s, j), nil); end; end;
+	end;
 	local lost = TRF_SvExpire(1);
 	local mode, mw = TRF_SvChMode();
 	local si = call(TRF_SvSeedPlan, {idx, nm, mode}, "x", TRF_SvErr);
 	local i, b = TRF_SvAt(idx);
 	local gate = nil;
 	if b then gate = TRF_SvGate(idx); end;
-	local placed = nil;
-	if b and not gate then
+	local placed, hold = nil, nil;
+	if b and not gate then hold = TRF_SvHold(); end;
+	if b and not gate and not hold then
 		placed = TRF_SvPlace(i, "enter");
+	elseif b and hold then
+		TRF_SvHoldSet(idx, "svseed");
+		TRF_SvE("place", "system", nm, "beacon", i, "result", "skipped", "reason", hold);
 	elseif b then
 		TRF_SvClear(idx, "gate");
 		TRF_SvE("place", "system", nm, "beacon", i, "result", "skipped", "reason", gate);
@@ -924,12 +999,20 @@ function TRF_Sv_OnLoad()
 		TRF_SvE("load", "system", nm, "beacon", i, "result", "skipped", "reason", gate);
 		return;
 	end;
+	local hold = TRF_SvHold();
+	if hold then
+		TRF_SvHoldSet(idx, nil);
+		TRF_SvE("load", "system", nm, "beacon", i, "result", "skipped", "reason", hold);
+		return;
+	end;
 	TRF_SvPlace(i, "load");
 	TRF_SvE("load", "system", nm, "beacon", i, "pods", b.n);
 end;
 
 -- Before every jump: beacon, pods and marker deleted; the record stays (6.5).
 function TRF_Sv_BeforeJump()
+	local sv = %SV;
+	sv.hp = nil;
 	local H = TRF_SvH();
 	if H and type(H.s) == "number" then
 		local s = H.s;
@@ -988,7 +1071,8 @@ end;
 
 -- Every TRF_OnTick (250 ms real): the near line at sv_near_r, the swept-segment pickup at sv_pick_r (the segment
 -- between the mothership's previous and current position, so 8x cannot skip a pod), dead pods and beacon.
--- Paused while __disableAction or __sys_SOS is set, under trf_safety's suppression and during a mission.
+-- Paused while __disableAction or __sys_SOS is set and under trf_safety's suppression (the wind-down); not by
+-- GetPlayerQuestState (unreliable, deny list only), so a beacon the strict gate placed stays collectable.
 function TRF_Sv_Tick(dt)
 	local sv = %SV;
 	if type(TRF) ~= "table" or type(TRF.sv) ~= "table" then return; end;
@@ -1001,7 +1085,7 @@ function TRF_Sv_Tick(dt)
 	local a = sv.mp or p;
 	sv.mp = p;
 	local sp = TRF_N("TRF_Supp");
-	if TRF_Sv_Flags() or (type(sp) == "number" and sp ~= 0) or TRF_N("TRF_Safe_QState") then return; end;
+	if TRF_Sv_Flags() or (type(sp) == "number" and sp ~= 0) then return; end;
 	local T = TRF_SvTune();
 	if b.bx ~= 1 and type(H.o[0]) ~= "nil" and not TRF_Sv_Alive(H.o[0]) then
 		b.bx = 1;
@@ -1043,6 +1127,7 @@ end;
 -- system's record while the player is in it.
 function TRF_Sv_Step()
 	local sv = %SV;
+	TRF_SvRetry();
 	if type(TRF) ~= "table" or type(TRF.live) ~= "table" or type(TRF.live.tr) ~= "table" then return; end;
 	local Ht = TRF_N("TRF_H");
 	if type(Ht) == "table" and type(Ht.tr) == "table" then
@@ -1195,11 +1280,13 @@ end;
 -- Rumour (trf_hail "Where are you headed?", 8.2) ------------------------------------------
 
 -- A true rumour for system idx, or nil: before chapter 5 a lost transport near a system with dis >= 3 (creates
--- nothing); then, within sv_rum legs and 3 jumps, crews taken by slavers or rescued by the Wolves.
-function TRF_Sv_Rumour(idx)
+-- nothing; skipped for only "rec", so trf_hail asks it after the rest of its pool); then, within sv_rum legs and
+-- 3 jumps, crews taken by slavers or rescued by the Wolves.
+function TRF_Sv_Rumour(idx, only)
 	if not TRF_SvOn() or type(idx) ~= "number" then return nil; end;
 	local ch = TRF_N("TRF_Chapter");
 	if type(ch) == "number" and ch < 5 then
+		if only == "rec" then return nil; end;
 		local near = TRF_N("TRF_HlNear", idx, 2);
 		if type(near) ~= "table" then near = {}; near[idx] = 0; end;
 		local ks = {};

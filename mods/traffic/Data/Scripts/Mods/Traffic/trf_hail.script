@@ -1401,8 +1401,8 @@ function TRF_HlRumourText(idx)
 	if getn(n1) > 0 then return TRF_Txt("rdis", TRF_HlSysName(n1[1].i)); end;
 	local v1 = TRF_HlRumourV1(idx);
 	if v1 then return v1; end;
-	-- Survivors (design/survivors-spec.md): a crew taken by slavers or rescued nearby; before chapter 5 a lost crew.
-	local sr = TRF_N("TRF_Sv_Rumour", idx);
+	-- Survivors (design/survivors-spec.md): a crew taken by slavers or rescued nearby (chapter 5 on).
+	local sr = TRF_N("TRF_Sv_Rumour", idx, "rec");
 	if type(sr) == "string" then return sr; end;
 	if type(TRF) == "table" and type(TRF.short) == "table" and type(TRF.clock) == "table" then
 		local near = {};
@@ -1442,6 +1442,9 @@ function TRF_HlRumourText(idx)
 			end;
 		end;
 	end;
+	-- Survivors before chapter 5: a transport lost near a disrupted system, after the rest of the pool.
+	local sl = TRF_N("TRF_Sv_Rumour", idx);
+	if type(sl) == "string" then return sl; end;
 	return TRF_Txt("rnone");
 end;
 

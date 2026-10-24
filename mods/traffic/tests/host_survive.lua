@@ -215,8 +215,8 @@ function T_SV_A()
 	HOST_Check(TRF_SvPodsOf(1, 1) == 1 and TRF_SvPodsOf(2, 3) == 3 and TRF_SvPodsOf(4, 4) == 3 and TRF_SvPodsOf(nil, nil) == 1 and TRF_SvPodsOf(0, 1) == 1, "pods per loss");
 	HOST_Check(TRF_SvFireOf("player", nil, nil, 0, 60) == 1 and TRF_SvFireOf("other", 1, nil, 0, 60) == 1 and TRF_SvFireOf("other", nil, 10, 70, 60) == 1
 		and TRF_SvFireOf("other", nil, 10, 71, 60) == nil, "fire rule");
-	HOST_Check(TRF_SvPayOf(10000, 15, 30000) == 1500 and TRF_SvPayOf(90000, 15, 30000) == 10000 and TRF_SvPayOf(nil, 15, 30000) == 0 and TRF_SvPayOf(5000, 0, 30000) == 0,
-		"pay per survivor: k x N, at most pay_cap / 3");
+	HOST_Check(TRF_SvPayOf(10000, 15, 30000) == 1500 and TRF_SvPayOf(90000, 15, 30000) == 10000 and TRF_SvPayOf(nil, 15, 30000) == 0 and TRF_SvPayOf(5000, 0, 30000) == 0
+		and TRF_SvPayOf(31680, 15, 30000) == 4752, "pay per survivor: k x N, at most pay_cap / 3 (k applied before the cap)");
 	local K = TRF_SvK();
 	HOST_Check(TRF_SvSiteOf({x=0, y=0, z=0}, {{x=299, y=0, z=0}}, {}, nil, K) == "portal" and TRF_SvSiteOf({x=0, y=0, z=0}, {{x=300, y=0, z=0}}, {{x=0, y=399, z=0}}, nil, K) == "station"
 		and TRF_SvSiteOf({x=0, y=0, z=0}, {}, {}, {x=600, y=0, z=0}, K) == "mothership" and TRF_SvSiteOf({x=0, y=0, z=0}, {}, {}, {x=601, y=0, z=0}, K) == nil, "site rule");
@@ -278,6 +278,7 @@ function T_SV_B()
 	local b = SV_B();
 	local want = TRF_SvPayOf(TRF_PayN(g), 15, 30000);
 	HOST_Check(b.src == 2 and b.nm == 0 and b.pf == want and want > 0 and b.pp == TRF_SvPayOf(TRF_PayN(g), 25, 30000), "seeded record pays "..want.." per survivor (0.15 TRF_PayN)");
+	HOST_Check(TRF_SvBaseN(g) == floor(900 * TRF_LPayK(g) * TRF_TierK(g) * (1 + 0.05 * TRF_Pro(g))), "pay base: 900 L_w lk tier_k (1 + 0.05 pro) d_k, not capped before k");
 	h.snap.sv.sd = bad;
 	h.loc = "heos";
 	T_SaveLoad(SV_Restore);
@@ -542,6 +543,7 @@ function T_SV_E()
 	HOST_Check(TRF_Sv_Rumour(g) == nil, "no dis >= 3 nearby: no rumour");
 	TRF_SetDis(V_Idx("heos"), 3);
 	HOST_Check(TRF_Sv_Rumour(g) == TRF_Txt("svrumlost", "heos"), "before chapter 5: a transport lost near Heos");
+	HOST_Check(TRF_Sv_Rumour(g, "rec") == nil, "before chapter 5: not asked ahead of the rest of the hail pool");
 	-- enable_survivors 0: the module does nothing.
 	h.labels.CurrentQuest = "9_1";
 	h.cfg.enable_survivors = 0;
@@ -633,6 +635,38 @@ function T_SV_F()
 	SV_Kill(id, 300, 0, 0);
 	__disableAction = FALSE;
 	HOST_Check(S_Logs(n0, "result=none reason=disable_action") == 1, "__disableAction: no beacon");
+	-- __sys_SOS set in the 5 s before the objects appear: the record waits, placed once the flag clears (S2).
+	id = SV_Trader();
+	n0 = S_Mark();
+	local s1 = getn(h.screen);
+	SV_Kill(id, 300, 0, 0);
+	__sys_SOS = TRUE;
+	T_Tick(12, 0.5);
+	HOST_Check(getn(TRF.sv.b) == 1 and SV_Objs("TRF_SVP_") == 0 and SV_Objs("TRF_SVB_") == 0
+		and S_Logs(n0, "module=survive event=place system=gaoba beacon=1 result=skipped reason=sys_sos") == 1, "__sys_SOS during the delay: record kept, nothing placed");
+	__sys_SOS = FALSE;
+	T_Tick(4, 0.5);
+	b = SV_B();
+	HOST_Check(b and SV_Objs("TRF_SVP_") == b.n and SV_Objs("TRF_SVB_") == 1 and S_Logs(n0, "reason=hold") == 1 and S_Screen(s1, TRF_Txt("svloss")),
+		"flag cleared: placed with the loss line");
+	-- A saved handle global naming another object (a reused id) is not taken for a pod.
+	local Hs = TRF_SvH();
+	local own = Hs.o[1];
+	local fo = CreateCarcass("radiopod", Vector3(0, 0, 0), Vector3(0, 0, 1));
+	SetObjectLabel(fo, "story_pod");
+	Hs.o[1] = nil;
+	setglobal("TRF_SVH_"..g.."_1", fo);
+	HOST_Check(own ~= nil and TRF_SvGet(g, 1) == own and getglobal("TRF_SVH_"..g.."_1") == nil and fo.alive, "foreign object behind a handle global: skipped, global cleared");
+	TRF_SvSet(g, 1, own);
+	-- A story mission elsewhere (GetPlayerQuestState TRUE, this system not named): pickups go on.
+	TRF.sv.c = nil;
+	h.qs = TRUE;
+	SV_MsTo(-600, 0, 5, 1);
+	SV_MsTo(900, 0, 5, 1);
+	h.qs = FALSE;
+	HOST_Check(b.n == 0 and TRF.sv.c and TRF.sv.c.n == b.n0, "mission active elsewhere: pickups go on");
+	TRF.sv.b = {}; TRF.sv.cd = {}; TRF.sv.c = nil;
+	TRF_Sv_BeforeJump();
 	-- A loss near a portal or a station: no beacon (site rule).
 	id = SV_Trader();
 	n0 = S_Mark();
