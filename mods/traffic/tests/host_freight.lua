@@ -585,6 +585,8 @@ function T_FR_F()
 	local lp = TRF_FrLoop(slot);
 	local s = FR_Ship("debris6", {home=FR_Idx("debris6"), p=TRF_FrStopOf(lp, cal), w=0, k=20});
 	h.cfg.fw_marker = 1;
+	-- dock_mode 0 (removal at the approach point): the dock arrivals below predate the default 2 of 2026-10-25.
+	h.cfg.dock_mode = 0;
 	-- Path A: the first tick at the stop; the jump into Callipso.
 	local n0 = S_Mark();
 	s = FR_Jump("debris1");

@@ -34,6 +34,17 @@
 -- Demand result page (design/demand-page-spec.md): TRF_HlPage, called by trf_supply after a demand from the hail due
 -- call, shows the answer on the open chain (hl.w "dlg" with the dialog TRF_HailPg, else "pg" and "pgq" boxes; hl.pn
 -- = 1 offers No witnesses, whose pick calls TRF_DemandNoWit(id) from a due call).
+-- Stage B (design/hail-spec.md 2, tune hail_box 2): every follow-up of a dialog menu is a page of the dialog TRF_HailPg
+-- opened from the due call TRF_HailStep with its text set in the init (TRF_HlPgShow, the TRF_HlPage pattern): an
+-- answer with Back (the menu dialog again, the used option hidden: TRF_HlBack) and Close; an offer (escort contract,
+-- sweep and provider offers) with Accept and Decline (Decline: back to the menu). hl.bx = 1 once the chain fell back to
+-- the boxes (TRF_HlDlgWhy, the box lock); then the box chain runs as with hail_box 1.
+-- Combat hail (hail-spec 3, cfg hail_fight 1): a trader in a fight (TRF_HlFight: a raid record past armed, hostile
+-- ships within hail_fight_r of its lead through trf_plumb's TRF_Near, its escort flight fighting) answers with one
+-- page and no menu: while the fight goes against it the help offer (Accept/Decline, pay help_k x N_eff, once per
+-- trader: r.hlp 1 offered, 2 accepted, 3 settled), else "busy". An accepted offer on a raid is paid by trf_raid's raid
+-- help (TRF_Rd_Pay, any player fire on the raid counts, then TRF_HlHelpEnd); any other fight by the watch H.hlw[id]
+-- (TRF_HlHelpStep) through TRF_Pay when no hostile is left near the trader.
 
 -- Helpers --------------------------------------------------------------------------
 
@@ -62,17 +73,26 @@ end;
 
 -- Defaults of the cfg keys this module owns (10.4).
 function TRF_Hail_OptDef()
-	return {contracts=1, esc_speed=0, hail_start=2, board=1, hail_xml=0};
+	return {contracts=1, esc_speed=0, hail_start=2, board=1, hail_xml=0, hail_fight=1};
 end;
 
 -- Tune keys read here (10.4). hail_rearm, hail_stale and hail_box are not in the spec table: focus re-arms
 -- per trader, age of an open box chain that counts as stale (6.1 "older than 120 s"), hail_box 0 = answers
 -- as lines, 1 = the ShowMsgBox chain, 2 = the menu as the trade dialog TRF_Hail (needs cfg hail_xml 1).
--- ct_off_* shape the escort offer chance of TRF_CtOfferP.
+-- ct_off_* shape the escort offer chance of TRF_CtOfferP. Combat hail (hail-spec 6): hail_fight_r radius around the
+-- trader lead for hostile ships (and around a hostile for the player's ships of the help watch), hail_help_ratio the
+-- strength ratio (trader side / raid side) below which a raided trader asks for help, help_k the help pay factor of
+-- N_eff (also trf_raid's raid-help pay, v02 5.5 0.5).
 function TRF_Hail_TuneDef()
 	return {hail_r=150, hail_arm=60, hail_cd=60, hail_max=2, hail_rearm=20, hail_stale=120, hail_box=1,
 		trouble_range=3, boom_min_pro=6, ct_dist=400, pay_cap=30000,
-		ct_off_dis=0.5, ct_off_br=1.3, ct_off_min=5, ct_off_max=95};
+		ct_off_dis=0.5, ct_off_br=1.3, ct_off_min=5, ct_off_max=95,
+		hail_fight_r=600, hail_help_ratio=1, help_k=0.5};
+end;
+
+-- Constants without a tune key: help watch step and its time-out (game s, hail-spec 5.4).
+function TRF_HlK()
+	return {hstep=2, hmax=300};
 end;
 
 -- cfg value: TRF_Opt, raw config, this module's default; enumerations outside their range read as default.
@@ -87,6 +107,7 @@ function TRF_HlOpt(key, def)
 	if key == "hail_start" and v ~= 1 and v ~= 2 then return d; end;
 	if key == "board" and v ~= 0 and v ~= 1 and v ~= 2 then return d; end;
 	if key == "hail_xml" and v ~= 0 and v ~= 1 then return d; end;
+	if key == "hail_fight" and v ~= 0 and v ~= 1 then return d; end;
 	if key == "esc_speed" and v < 0 then return 0; end;
 	return v;
 end;
@@ -292,6 +313,312 @@ function TRF_HlRaided(r)
 	return nil;
 end;
 
+-- Combat hail (design/hail-spec.md 3) ----------------------------------------------------------------------
+
+-- 1 when team name t fights FTU traders: the Pirates team (nest, raid and vanilla pirate groups) or a team at war
+-- with Trade.
+function TRF_HlFoe(t)
+	if type(t) ~= "string" or t == "" or t == "Trade" then return nil; end;
+	if t == "Pirates" or t == "Pirate" then return 1; end;
+	if type(GetTeamRelation) ~= "function" or RELATION_WAR == nil then return nil; end;
+	local v = TRF_HlP(GetTeamRelation, {t, "Trade"});
+	if v ~= nil and v == RELATION_WAR then return 1; end;
+	return nil;
+end;
+
+function TRF_HlPosOf(s)
+	local p = s:GetPosition();
+	return {x=p.x, y=p.y, z=p.z};
+end;
+
+-- Distance of two records or positions with x, y, z; 1e9 without a position.
+function TRF_HlD3(a, b)
+	if type(a.x) ~= "number" or type(a.y) ~= "number" or type(a.z) ~= "number" or type(b.x) ~= "number"
+		or type(b.y) ~= "number" or type(b.z) ~= "number" then return 1e9; end;
+	local dx, dy, dz = a.x - b.x, a.y - b.y, a.z - b.z;
+	return sqrt(dx * dx + dy * dy + dz * dz);
+end;
+
+-- Ships near the lead of trader id through trf_plumb's TRF_Near (cls 3..7, alive, within 2 x hail_fight_r): the
+-- hostile records (TRF_HlFoe team) within hail_fight_r of the lead and the player-team records. nil, nil, why
+-- without a lead ("lead") or a typed list ("count": no DLL list, no trf_plumb).
+function TRF_HlNearShips(id)
+	local lead = TRF_HlLead(id);
+	if not lead then return nil, nil, "lead"; end;
+	local p = TRF_HlP(TRF_HlPosOf, {lead});
+	if type(p) ~= "table" then return nil, nil, "lead"; end;
+	local R = TRF_HlT("hail_fight_r");
+	local l = nil;
+	if type(TRF_Near) == "function" then l = TRF_HlP(TRF_Near, {p, 2 * R, {cls={3, 4, 5, 6, 7}, alive=1}}); end;
+	if type(l) ~= "table" then return nil, nil, "count"; end;
+	local fo, pl = {}, {};
+	for i = 1, getn(l) do
+		local c = l[i];
+		if c.pl == 1 then tinsert(pl, c);
+		elseif TRF_HlFoe(c.team) and TRF_HlD3(c, p) <= R then tinsert(fo, c); end;
+	end;
+	return fo, pl;
+end;
+
+-- Handle record of trader id (trf_state handle table), or nil.
+function TRF_HlHnd(id)
+	if type(TRF_H) ~= "function" then return nil; end;
+	local H = TRF_H();
+	if type(H) == "table" and type(H.tr) == "table" and type(H.tr[id]) == "table" then return H.tr[id]; end;
+	return nil;
+end;
+
+-- 1 when the escort flight of handle record h fights (h.ef alive, the Escort order taken by a fight: h.eo not 1).
+function TRF_HlEscFight(h)
+	if type(h) ~= "table" or not h.ef or h.eo == 1 then return nil; end;
+	if TRF_N("TRF_GnAlive", h.ef) then return 1; end;
+	return nil;
+end;
+
+-- Fight of trader id (record r), or nil when it is in none (also cfg hail_fight 0, and Trade at war with the player:
+-- the refusal stays). {n = raid id (a record past armed, not ended), nh = hostiles near (nil without a typed list),
+-- ne = live escorts, eo = 1 the escort flight fights, st, sr = trader and raid side (raid, TRF_Rd_HailRatio), lose =
+-- 1 when the fight goes against the trader, why = "comply", "flee", "ratio" (st / sr below hail_help_ratio) or
+-- "outnumbered" (no raid record: more hostiles than escorts)}.
+function TRF_HlFight(id, r)
+	if TRF_HlOpt("hail_fight") ~= 1 or TRF_HlTradeWar() then return nil; end;
+	local f = {};
+	local L = TRF_HlLive();
+	local rd = nil;
+	if type(r.rdn) == "number" and L and type(L.rd) == "table" then rd = L.rd[r.rdn]; end;
+	-- An armed raid has not spawned: no fight yet (the hail stays skipped with reason raid).
+	if type(rd) == "table" and rd.st ~= "end" and rd.st ~= "armed" then f.n = r.rdn; end;
+	local fo = TRF_HlNearShips(id);
+	if type(fo) == "table" then f.nh = getn(fo); end;
+	local h = TRF_HlHnd(id);
+	f.ne = TRF_N("TRF_Rd_EscAlive", r, h);
+	if type(f.ne) ~= "number" then f.ne = max(0, (r.np or 0) - (r.nt or 0)); end;
+	f.eo = TRF_HlEscFight(h);
+	if not f.n and (f.nh or 0) == 0 and not f.eo then return nil; end;
+	if f.n then
+		if rd.dc == "comply" then f.why = "comply";
+		elseif r.st == "flee" or r.fl then f.why = "flee";
+		else
+			local st, sr = TRF_N("TRF_Rd_HailRatio", f.n);
+			if type(st) == "number" and type(sr) == "number" then
+				f.st = st;
+				f.sr = sr;
+				if sr > 0 and st / sr < TRF_HlT("hail_help_ratio") then f.why = "ratio"; end;
+			end;
+		end;
+	elseif type(f.nh) == "number" and f.nh > f.ne then
+		f.why = "outnumbered";
+	end;
+	if f.why then f.lose = 1; end;
+	return f;
+end;
+
+-- Help pay: floor(help_k x N_eff) of the current system (TRF_HlPayN), capped by pay_cap.
+function TRF_HlHelpPay()
+	return floor(min(TRF_HlT("help_k") * TRF_HlPayN(TRF_HlCur()), TRF_HlT("pay_cap")));
+end;
+
+-- Pay of the help offer for trader record r in fight f, or nil, reason: offered before in this visit ("once"), heat
+-- 3 and up ("heat"), the player's freighter or a station event ship ("own"), the strict gate ("strict"), the shared
+-- combat prize gap open ("gap", only without a raid record: a raid pays through trf_raid's raid help), no pay
+-- ("pay").
+function TRF_HlHelpWhy(r, f)
+	if r.hlp then return nil, "once"; end;
+	if TRF_HlHeat() >= 3 then return nil, "heat"; end;
+	if r.fw or r.sev then return nil, "own"; end;
+	local idx = TRF_HlCur();
+	if type(idx) == "number" and not TRF_HlStrict(idx, "contract") then return nil, "strict"; end;
+	if not f.n then
+		local w = TRF_N("TRF_PrizeWait");
+		if type(w) == "number" and w > 0 then return nil, "gap"; end;
+	end;
+	local p = TRF_HlHelpPay();
+	if p <= 0 then return nil, "pay"; end;
+	return p;
+end;
+
+-- The combat hail of trader id in fight f (TRF_HlFight): the help offer when the fight goes against it and
+-- TRF_HlHelpWhy allows it, else the busy answer; one page of a chain of its own (no menu), the boxes as fallback, a
+-- line with hail_box 0. Returns "fight".
+function TRF_HlFightOpen(id, r, f, via)
+	local L = TRF_HlLive();
+	local p, no = nil, nil;
+	local box = TRF_HlT("hail_box") ~= 0 and type(ShowMsgBox) == "function";
+	if f.lose and not box then no = "no_box"; elseif f.lose then p, no = TRF_HlHelpWhy(r, f); end;
+	local ans = "busy";
+	if p then ans = "help"; end;
+	TRF_HlStat("hl_fight_"..ans);
+	TRF_HlE("fight", "trader_id", id, "via", via, "raid_id", f.n, "hostile_count", f.nh, "escort_count", f.ne,
+		"escort_fight", TRF_KvB(f.eo), "trader_strength", TRF_F(f.st), "raid_strength", TRF_F(f.sr), "losing", TRF_KvB(f.lose),
+		"lose_reason", f.why, "answer", ans, "reason", no);
+	local nm = TRF_HlName(r);
+	if not box then
+		TRF_HlSay(TRF_Txt("hlpbusy", nm), id, nil, 1);
+		return "fight";
+	end;
+	L.hl = {id=id, g=TRF.gen, o={}, k=1, t=TRF_HlGt()};
+	if p then
+		r.hlp = 1;
+		L.hl.hp = p;
+		L.hl.hrd = f.n;
+		local how = TRF_HlOffer(TRF_Txt("hlpoffer", nm, format("%d", p)), "hacc", "hdec", "help", "hp", TRF_HlHpOk, TRF_HlHpNo, nil);
+		TRF_HlE("help", "trader_id", id, "raid_id", f.n, "pay", p, "via", how, "result", "offered");
+	else
+		TRF_HlAnswer(TRF_Txt("hlpbusy", nm), "busy");
+	end;
+	return "fight";
+end;
+
+-- Handle-table store of the help watches: trader id -> {p = pay, t0 = gt of the accept, s = uid -> 1 seen, 2 seen
+-- with a player ship within hail_fight_r, k = counted kills}; nil without trf_state.
+function TRF_HlHw()
+	if type(TRF_H) ~= "function" then return nil; end;
+	local h = TRF_H();
+	if type(h) ~= "table" then return nil; end;
+	if type(h.hlw) ~= "table" then h.hlw = {}; end;
+	return h.hlw;
+end;
+
+-- Marks the hostiles fo of watch w as seen (2: a player ship of pl within hail_fight_r of it).
+function TRF_HlHelpMark(w, fo, pl)
+	local R = TRF_HlT("hail_fight_r");
+	for i = 1, getn(fo) do
+		local c = fo[i];
+		if c.id ~= nil then
+			local v = 1;
+			for j = 1, getn(pl) do if TRF_HlD3(c, pl[j]) <= R then v = 2; end; end;
+			w.s[c.id] = max(w.s[c.id] or 0, v);
+		end;
+	end;
+end;
+
+-- Due step after Accept of the help offer: the chain closes, r.hlp = 2. A raid pays through trf_raid (TRF_Rd_Pay,
+-- settled by TRF_HlHelpEnd); any other fight through the watch TRF_HlHelpStep.
+function TRF_HlHelpAcc()
+	local L = TRF_HlLive();
+	local hl = L.hl;
+	local id, p, n = hl.id, hl.hp, hl.hrd;
+	TRF_HlClose("help accept");
+	local r = TRF_HlRec(id);
+	if not r or type(p) ~= "number" then return; end;
+	r.hlp = 2;
+	local via = "raid";
+	if n and (type(L.rd) ~= "table" or type(L.rd[n]) ~= "table" or L.rd[n].st == "end") then n = nil; end;
+	if not n then
+		via = "watch";
+		local W = TRF_HlHw();
+		if W then
+			W[id] = {p=p, t0=TRF_HlGt(), s={}, k=0};
+			local fo, pl = TRF_HlNearShips(id);
+			if type(fo) == "table" then TRF_HlHelpMark(W[id], fo, pl); end;
+		end;
+	end;
+	TRF_HlSay(TRF_Txt("hlpok", TRF_HlName(r)), id, nil, 1);
+	TRF_HlStat("hl_help_acc");
+	TRF_HlE("help", "trader_id", id, "raid_id", n, "pay", p, "via", via, "result", "accepted");
+	if via == "watch" and (not TRF_HlHw() or not TRF_Due(TRF_HlK().hstep, "TRF_HlHelpStep", id)) then
+		TRF_HlHelpSettle(id, nil, "due");
+	end;
+end;
+
+-- Due step after Decline: the answer "Then stay out of the line of fire." (page or box).
+function TRF_HlHelpDec()
+	local hl = TRF_HlLive().hl;
+	TRF_HlStat("hl_help_dec");
+	TRF_HlE("help", "trader_id", hl.id, "raid_id", hl.hrd, "pay", hl.hp, "result", "declined");
+	TRF_HlAnswer(TRF_Txt("hlpno", TRF_HlName(TRF_HlRec(hl.id))), "decline");
+end;
+
+-- Due step of the help watch of trader id, every hstep s: a hostile counts as killed with the player's fire when it
+-- was seen with a player ship within hail_fight_r and is later gone from the location's live records (no killer
+-- identity: hail-spec DV5). The fight ends when no hostile is within hail_fight_r of the lead: paid with a counted
+-- kill. Trader gone, hmax s, no typed list: settled unpaid.
+function TRF_HlHelpStep(id)
+	local W = TRF_HlHw();
+	local w = nil;
+	if W and type(id) == "number" then w = W[id]; end;
+	if type(w) ~= "table" then return; end;
+	local r = TRF_HlRec(id);
+	if not r or r.st == "gone" or r.hlp ~= 2 then TRF_HlHelpSettle(id, nil, "gone"); return; end;
+	if TRF_HlGt() - (w.t0 or 0) > TRF_HlK().hmax then TRF_HlHelpSettle(id, nil, "time"); return; end;
+	local fo, pl, why = TRF_HlNearShips(id);
+	if type(fo) ~= "table" then TRF_HlHelpSettle(id, nil, why); return; end;
+	local now = {};
+	for i = 1, getn(fo) do if fo[i].id ~= nil then now[fo[i].id] = 1; end; end;
+	TRF_HlHelpMark(w, fo, pl);
+	local gone = nil;
+	for u, v in w.s do if not now[u] then gone = 1; end; end;
+	if gone then
+		local all = TRF_HlP(TRF_Near, {nil, nil, {alive=1}});
+		if type(all) == "table" then
+			local live, drop = {}, {};
+			for i = 1, getn(all) do if all[i].id ~= nil then live[all[i].id] = 1; end; end;
+			for u, v in w.s do
+				if not now[u] and not live[u] then
+					if v == 2 then w.k = w.k + 1; end;
+					tinsert(drop, u);
+				end;
+			end;
+			for i = 1, getn(drop) do w.s[drop[i]] = nil; end;
+		end;
+	end;
+	if getn(fo) == 0 then
+		if w.k > 0 then TRF_HlHelpSettle(id, 1, "end"); else TRF_HlHelpSettle(id, nil, "no_fire"); end;
+		return;
+	end;
+	if not TRF_Due(TRF_HlK().hstep, "TRF_HlHelpStep", id) then TRF_HlHelpSettle(id, nil, "due"); end;
+end;
+
+-- Ends the help watch of trader id (r.hlp 3): paid (pay 1) through TRF_Pay with the raid-help effects of v02 5.5
+-- (help +1, +2 in Recovery, heat -1, credits +4, r.res, the paid line, the combat prize gap marked), else unpaid.
+function TRF_HlHelpSettle(id, pay, why)
+	local W = TRF_HlHw();
+	local w = nil;
+	if W then w = W[id]; W[id] = nil; end;
+	local r = TRF_HlRec(id);
+	if r and r.hlp == 2 then r.hlp = 3; end;
+	local p, k = nil, nil;
+	if type(w) == "table" then p = w.p; k = w.k; end;
+	if not pay or not r or type(p) ~= "number" then
+		TRF_HlE("help", "trader_id", id, "pay", p, "kill_count", k, "via", "watch", "result", "unpaid", "reason", why);
+		return nil;
+	end;
+	local n = 0;
+	if type(TRF_Pay) == "function" then
+		n = TRF_HlP(TRF_Pay, {p, "hail_help"}) or 0;
+	elseif type(AddPlayerCredits) == "function" then
+		n = floor(p);
+		TRF_N("AddPlayerCredits", n);
+	end;
+	if n > 0 then TRF_N("TRF_PrizeMark", "hail"); end;
+	local d = 1;
+	if TRF_HlRecovery() then d = 2; end;
+	if type(TRF_AddHelp) == "function" then TRF_HlP(TRF_AddHelp, {d, "hail help"}); end;
+	if type(TRF_AddHeat) == "function" then TRF_HlP(TRF_AddHeat, {-1, "hail help"}); end;
+	TRF_N("TRF_ProCredit", 4, "hail help");
+	TRF_N("TRF_Ch_Note", 2, TRF_HlCur(), n);
+	if r.st ~= "gone" then r.res = 1; end;
+	TRF_HlSay(TRF_Txt("hlppaid", TRF_HlName(r), format("%d", n)), id);
+	TRF_HlStat("hl_help_paid");
+	TRF_HlE("help", "trader_id", id, "pay", p, "credits", n, "kill_count", k, "help", d, "via", "watch", "result", "paid");
+	return 1;
+end;
+
+-- Raid n on trader id ended (trf_raid TRF_Rd_End, after its raid-help pay): an accepted help offer (r.hlp 2) is
+-- settled; paid = the credits of TRF_Rd_Pay (nil: not paid), how = the raid end. 1 when settled.
+function TRF_HlHelpEnd(id, n, paid, how)
+	local r = TRF_HlRec(id);
+	if not r or r.hlp ~= 2 then return nil; end;
+	r.hlp = 3;
+	if type(paid) == "number" then
+		TRF_HlStat("hl_help_paid");
+		TRF_HlE("help", "trader_id", id, "raid_id", n, "credits", paid, "via", "raid", "result", "paid");
+	else
+		TRF_HlE("help", "trader_id", id, "raid_id", n, "via", "raid", "result", "unpaid", "reason", how);
+	end;
+	return 1;
+end;
+
 function TRF_HlTradeWar()
 	if type(GetTeamRelation) ~= "function" or RELATION_WAR == nil then return nil; end;
 	local v = TRF_HlP(GetTeamRelation, {"Trade", PLAYER_TEAM});
@@ -454,12 +781,20 @@ function TRF_HailOpen(id, via)
 	local gt = TRF_HlGt();
 	local why = nil;
 	local sq = TRF_HlSupp();
+	local fg = nil;
 	if (r.hn or 0) >= TRF_HlT("hail_max") then why = "max";
 	elseif gt - (r.hlt or -1000) < TRF_HlT("hail_cd") then why = "cd";
 	elseif type(L.hl) == "table" and gt - (L.hl.t or 0) < TRF_HlT("hail_stale") then why = "busy";
-	elseif sq then why = sq;
-	elseif TRF_HlRaided(r) then why = "raid";
-	elseif r.st == "wind" or r.st == "gone" then why = "st"; end;
+	elseif sq and sq ~= "combat" then why = sq;
+	else
+		-- Combat hail (hail-spec 3): a trader in a fight answers with one page, also while TRF_Combat holds (the
+		-- player's combat is mostly that fight).
+		if r.st ~= "wind" and r.st ~= "gone" then fg = TRF_HlFight(id, r); end;
+		if fg then why = nil;
+		elseif sq then why = sq;
+		elseif TRF_HlRaided(r) then why = "raid";
+		elseif r.st == "wind" or r.st == "gone" then why = "st"; end;
+	end;
 	if why then
 		TRF_HlE("hail", "trader_id", id, "via", via, "result", "skipped", "reason", why);
 		TRF_HlStat("hl_skip_"..why);
@@ -470,6 +805,7 @@ function TRF_HailOpen(id, via)
 	r.hlt = gt;
 	-- v1-spec 4.2: a hail tracks the trader.
 	TRF_P("TRF_TrackMark", id, "hail");
+	if fg then return TRF_HlFightOpen(id, r, fg, via); end;
 	local heat = TRF_HlHeat();
 	local war = TRF_HlTradeWar();
 	-- Charter rank 2 perk (design/charter-spec.md 5.8): at heat 3 an FTU trader still offers its escort contracts.
@@ -564,10 +900,11 @@ function TRF_HailShow()
 	local key = hl.o[hl.k];
 	hl.w = "menu";
 	hl.t = TRF_HlGt();
-	-- hail_box 2: the whole menu as one dialog, tried once per chain; after a fallback the boxes follow.
+	-- hail_box 2: the whole menu as one dialog, tried once per chain; after a fallback the boxes follow (hl.bx).
 	if hl.k == 1 and not hl.dt and TRF_HlT("hail_box") == 2 then
 		hl.dt = 1;
 		if TRF_HlDlgOpen(hl, r) then return; end;
+		hl.bx = 1;
 	end;
 	local text = TRF_Txt("hailq", TRF_HlWho(r, hl.id), TRF_HlLabel(hl.id, key));
 	if hl.rf == 1 then text = TRF_Txt("refuse", TRF_HlName(r)).."\n"..text; end;
@@ -583,17 +920,153 @@ function TRF_HailShow()
 	end;
 end;
 
--- One-button answer box; OK closes the chain. Without a box the text is a line.
-function TRF_HlAnswer(text)
+-- Answer of the open chain (kind "answer"; "busy" and "decline" of the combat hail): in page mode (TRF_HlPgMode) the
+-- page with Close and, while the menu has another option, Back; else the one-button box (OK closes the chain);
+-- without a box the text is a line.
+function TRF_HlAnswer(text, kind)
 	local L = TRF_HlLive();
 	local hl = L.hl;
-	hl.w = "ans";
 	hl.t = TRF_HlGt();
+	-- A second result of the text function (TRF_Boom, TRF_Trouble) is no kind.
+	if type(kind) ~= "string" then kind = "answer"; end;
+	local key = hl.o[hl.k];
+	if TRF_HlPgMode(hl) then
+		local on = {close=1};
+		if getn(hl.o) > 1 then on.back = 1; end;
+		if TRF_HlPgShow(hl, kind, text, on, nil, nil, key) then return; end;
+	end;
+	hl.w = "ans";
 	if not TRF_HlBox("#UI_FTrader_confirm", text, TRF_HailClose) then
 		local id = hl.id;
 		TRF_HlClose("nobox");
 		TRF_HlSay(text, id, nil, 1);
+	elseif TRF_HlT("hail_box") == 2 then
+		TRF_HlPgLog(hl, kind, "box", key, nil);
 	end;
+end;
+
+-- Offer of the open chain: in page mode the page with Accept (choice ac) and Decline (choice dc), else the OK/Cancel
+-- box with the callbacks okf and nof (hl.w = w). key: the menu option (log). Returns "dialog", "box" or nil (no box:
+-- the chain is closed).
+function TRF_HlOffer(text, ac, dc, kind, w, okf, nof, key)
+	local hl = TRF_HlLive().hl;
+	hl.t = TRF_HlGt();
+	if TRF_HlPgMode(hl) and TRF_HlPgShow(hl, kind, text, {acc=1, dec=1}, ac, dc, key) then return "dialog"; end;
+	hl.w = w;
+	if TRF_HlBox("#UI_FTrader_confirm", text, okf, nof) then
+		if TRF_HlT("hail_box") == 2 then TRF_HlPgLog(hl, kind, "box", key, nil); end;
+		return "box";
+	end;
+	TRF_HlClose("nobox");
+	return nil;
+end;
+
+-- Stage B (hail-spec 2) ------------------------------------------------------------------------------------
+
+-- 1 while the follow-ups of chain hl are dialog pages: tune hail_box 2 and no box fallback on this chain (hl.bx).
+function TRF_HlPgMode(hl)
+	if TRF_HlT("hail_box") == 2 and hl.bx ~= 1 then return 1; end;
+	return nil;
+end;
+
+-- Log line of a stage B page (kind answer, offer, help, busy, decline) and stat hl_page.
+function TRF_HlPgLog(hl, kind, via, key, back)
+	TRF_HlStat("hl_page");
+	TRF_HlE("page", "trader_id", hl.id, "via", via, "kind", kind, "key", key, "back", TRF_KvB(back));
+end;
+
+-- Answer keys of the page dialog TRF_HailPg (msg10) in file order and the text keys of their #l<key># labels.
+function TRF_HlPgKeys() return {"acc", "dec", "back", "leave", "nowit", "close"}; end;
+function TRF_HlPgLabels()
+	return {acc="hlpacc", dec="hlpdec", back="hlpback", leave="dmpleave", nowit="dmpnowit", close="hlpclose"};
+end;
+
+-- Due check of the dialog just opened for chain hl: hl.dn numbers the dialogs of the chain, so the check of an
+-- earlier dialog (the menu before its page) ends without closing.
+function TRF_HlDlgDue(hl)
+	hl.dn = (hl.dn or 0) + 1;
+	TRF_Due(1, "TRF_HlDlgCheck", hl.dn);
+end;
+
+-- Page of chain hl as the dialog TRF_HailPg (from a due call): kind (log), text (its "FTU <name>: " prefix cut, the
+-- message is "FTU #who#: #m1#"), on = visible answers (answer key -> 1), ac, dc = the choice of Accept and Decline
+-- (TRF_HailStep), key = the menu option. Record st.dlg = {id, g, on, dk = {}, pg = 1, who, m1, ac, dc, kd}; pick
+-- and Esc as the menu dialog (TRF_HlDlgPick, TRF_HlDlgCheck). 1 when StartTradeDialog ran; nil after a fallback
+-- (TRF_HlDlgWhy, the box lock, an error: hl.bx = 1, the caller shows a box).
+function TRF_HlPgShow(hl, kind, text, on, ac, dc, key)
+	local why = TRF_HlDlgWhy();
+	if not why and type(TRF_BoxTake) == "function" and not TRF_BoxTake("hail") then why = "lock"; end;
+	if why then TRF_HlDlgFb(why); hl.bx = 1; return nil; end;
+	local st = TRF_HlStore();
+	-- The prefix is cut by pattern: trf_supply names the trader with its own fallback (TRF_SpName), not TRF_HlName.
+	local m1 = text;
+	local s0, e0 = strfind(text, "^FTU [^:\n]*: ");
+	if e0 then m1 = strsub(text, e0 + 1); end;
+	st.dlg = {id=hl.id, g=hl.g, on=on, dk={}, pg=1, who=TRF_HlName(TRF_HlRec(hl.id)), m1=m1, ac=ac, dc=dc, kd=kind};
+	hl.w = "dlg";
+	hl.t = TRF_HlGt();
+	if TRF_HlP(TRF_HlPgCall, {}) ~= 1 then
+		st.dlg = nil;
+		hl.bx = 1;
+		TRF_HlDlgFb("error");
+		return nil;
+	end;
+	TRF_HlStat("hl_dlg");
+	TRF_HlDlgDue(hl);
+	if kind ~= "demand" then TRF_HlPgLog(hl, kind, "dialog", key, on.back); end;
+	return 1;
+end;
+
+-- Offer page of a provider HailDo (trf_danger "dc", trf_supply "sesc") on the open chain in page mode: Accept runs the
+-- global function accf() from the due call TRF_HailStep (the provider reads L.hl and closes the chain), Decline goes
+-- back to the menu. "dialog" when the page opened, else nil: the provider shows its own box as with hail_box 1.
+function TRF_HlProvPage(text, accf, key)
+	local L = TRF_HlLive();
+	if not L or not TRF_HlValid(L.hl) or type(text) ~= "string" or type(accf) ~= "string" then return nil; end;
+	local hl = L.hl;
+	if not TRF_HlPgMode(hl) then return nil; end;
+	hl.xf = accf;
+	if TRF_HlPgShow(hl, "offer", text, {acc=1, dec=1}, "xacc", "xdec", key or hl.o[hl.k]) then return "dialog"; end;
+	hl.xf = nil;
+	return nil;
+end;
+
+-- Due step of Accept on a provider page: the provider's accept function; a chain it leaves open is closed.
+function TRF_HlProvAcc()
+	local L = TRF_HlLive();
+	local hl = L.hl;
+	local f, key = hl.xf, hl.o[hl.k];
+	hl.xf = nil;
+	TRF_HlStat("hl_offer_acc");
+	TRF_HlE("offer", "trader_id", hl.id, "key", key, "handler", f, "result", "accepted");
+	TRF_HlCall(f, {});
+	if L.hl == hl then TRF_HlClose("accept"); end;
+end;
+
+-- Due step of Back: the used option leaves the menu (hl.o), the menu dialog opens again with the rest (the hidden
+-- answers stay hidden, CHECK D11); none left: the chain closes; a dialog that cannot open: the box chain.
+function TRF_HlBack()
+	local L = TRF_HlLive();
+	local hl = L.hl;
+	local key = hl.o[hl.k];
+	if key then tremove(hl.o, hl.k); end;
+	hl.k = 1;
+	hl.oq = nil;
+	TRF_HlStat("hl_back");
+	if getn(hl.o) == 0 then
+		TRF_HlE("back", "trader_id", hl.id, "key", key, "answer_count", 0, "result", "closed");
+		TRF_HlClose("last");
+		return;
+	end;
+	hl.w = "menu";
+	hl.t = TRF_HlGt();
+	if TRF_HlDlgOpen(hl, TRF_HlRec(hl.id)) then
+		TRF_HlE("back", "trader_id", hl.id, "key", key, "answer_count", getn(hl.o), "via", "dialog", "result", "menu");
+		return;
+	end;
+	hl.bx = 1;
+	TRF_HlE("back", "trader_id", hl.id, "key", key, "answer_count", getn(hl.o), "via", "box", "result", "menu");
+	TRF_HailShow();
 end;
 
 -- Hail dialog (tune hail_box 2, design/mod-research/hail-dialog.md 5 stage A) -------------------------------
@@ -633,6 +1106,10 @@ function TRF_HlDlgA_sweep() TRF_HlDlgPick("sweep"); end;
 function TRF_HlDlgA_trouble() TRF_HlDlgPick("trouble"); end;
 function TRF_HlDlgA_boom() TRF_HlDlgPick("boom"); end;
 function TRF_HlDlgA_close() TRF_HlDlgPick("close"); end;
+-- Answers of the stage B pages (TRF_HailPg; a_close there is TRF_HlDlgA_close).
+function TRF_HlDlgA_back() TRF_HlDlgPick("back"); end;
+function TRF_HlDlgA_acc() TRF_HlDlgPick("acc"); end;
+function TRF_HlDlgA_dec() TRF_HlDlgPick("dec"); end;
 -- Answers of the result page Data/Scripts/Trade/TRF_HailPg.xml (msg10).
 function TRF_HlDlgA_leave() TRF_HlDlgPick("leave"); end;
 function TRF_HlDlgA_nowit() TRF_HlDlgPick("nowit"); end;
@@ -697,6 +1174,8 @@ function TRF_HlDlgOpen(hl, r)
 		if not on then why = "slots"; end;
 	end;
 	if why then TRF_HlDlgFb(why); return nil; end;
+	-- Message box lock (00 section 6): owner "hail" for the whole conversation, dialogs included.
+	if type(TRF_BoxTake) == "function" and not TRF_BoxTake("hail") then TRF_HlDlgFb("lock"); return nil; end;
 	local head = TRF_Txt("dlghead");
 	if hl.rf == 1 then head = TRF_Txt("dlgrefuse"); end;
 	local st = TRF_HlStore();
@@ -709,7 +1188,7 @@ function TRF_HlDlgOpen(hl, r)
 		return nil;
 	end;
 	TRF_HlStat("hl_dlg");
-	TRF_Due(1, "TRF_HlDlgCheck");
+	TRF_HlDlgDue(hl);
 	return 1;
 end;
 
@@ -777,10 +1256,15 @@ function TRF_HlDlgPick_Body(key)
 	TRF_HlE("dialog_pick", "trader_id", id, "key", key);
 	if TRF_HlGt() - (hl.t or 0) >= TRF_HlT("hail_stale") then TRF_HlClose("stale"); return; end;
 	if key == "close" then TRF_HlClose("close"); return; end;
-	-- Result page: No witnesses runs from the due call; any other answer is Leave.
+	-- Pages: No witnesses, Back, Accept and Decline run from the due call; any other answer is Leave.
 	if d.pg == 1 then
-		if key == "nowit" and d.on.nowit then
-			hl.c = "pnw";
+		local c = nil;
+		if key == "nowit" and d.on.nowit then c = "pnw";
+		elseif key == "back" and d.on.back then c = "back";
+		elseif key == "acc" and d.on.acc then c = d.ac;
+		elseif key == "dec" and d.on.dec then c = d.dc; end;
+		if c then
+			hl.c = c;
 			hl.w = "wait";
 			if not TRF_Due(0.1, "TRF_HailStep") then TRF_HlClose("due refused"); end;
 			return;
@@ -800,16 +1284,18 @@ end;
 
 -- Due call after the dialog opened (the game clock stands while it is up): a chain still waiting for the
 -- dialog while TRF_UiState has no dialog flag (4) was closed without an answer (Esc) or never shown, and is
--- closed. Unknown state (-1) re-checks until the chain is hail_stale old.
-function TRF_HlDlgCheck()
+-- closed (the box lock freed). Unknown state (-1) re-checks until the chain is hail_stale old. dn: the dialog
+-- number of TRF_HlDlgDue; the check of an earlier dialog of the chain ends here.
+function TRF_HlDlgCheck(dn)
 	local L = TRF_HlLive();
 	if not L or type(L.hl) ~= "table" or L.hl.w ~= "dlg" then return; end;
 	local hl = L.hl;
 	if not TRF_HlValid(hl) then L.hl = nil; TRF_N("TRF_BoxFree", "hail"); return; end;
+	if type(dn) == "number" and type(hl.dn) == "number" and dn ~= hl.dn then return; end;
 	local u = TRF_HlP(TRF_UiState, {});
 	local up = nil;
 	if type(u) ~= "number" or u < 0 or floor(u / 4) - floor(u / 8) * 2 == 1 then up = 1; end;
-	if up and TRF_HlGt() - (hl.t or 0) < TRF_HlT("hail_stale") and TRF_Due(1, "TRF_HlDlgCheck") then return; end;
+	if up and TRF_HlGt() - (hl.t or 0) < TRF_HlT("hail_stale") and TRF_Due(1, "TRF_HlDlgCheck", dn) then return; end;
 	local st = TRF_HlStore();
 	if st then st.dlg = nil; end;
 	TRF_HlClose("dialog closed");
@@ -825,9 +1311,13 @@ function TRF_HlOfNo() TRF_Cb("TRF_HlOfNo", TRF_HailCb, {"onext"}); end;
 function TRF_HlPgOk() TRF_Cb("TRF_HlPgOk", TRF_HailCb, {"pok"}); end;
 function TRF_HlPgNw() TRF_Cb("TRF_HlPgNw", TRF_HailCb, {"pnw"}); end;
 function TRF_HlPgLv() TRF_Cb("TRF_HlPgLv", TRF_HailCb, {"plv"}); end;
+function TRF_HlHpOk() TRF_Cb("TRF_HlHpOk", TRF_HailCb, {"hacc"}); end;
+function TRF_HlHpNo() TRF_Cb("TRF_HlHpNo", TRF_HailCb, {"hdec"}); end;
 
 -- c: "ok", "next" (menu box), "close" (answer OK, contract Cancel), "acc" (contract OK), "oacc", "onext"
--- (v1 offer box OK, Cancel), "pok" (result page answer OK), "pnw", "plv" (No witnesses box OK, Cancel).
+-- (v1 offer box OK, Cancel), "pok" (result page answer OK), "pnw", "plv" (No witnesses box OK, Cancel), "hacc",
+-- "hdec" (help offer box OK, Cancel). Page picks (TRF_HlDlgPick) also give "back", "cdec" (contract Decline), "xacc",
+-- "xdec" (provider offer page, TRF_HlProvPage).
 function TRF_HailCb(c)
 	local L = TRF_HlLive();
 	if not L then return; end;
@@ -843,6 +1333,7 @@ function TRF_HailCb(c)
 	if c == "oacc" or c == "onext" then want = "of"; end;
 	if c == "pok" then want = "pg"; end;
 	if c == "pnw" or c == "plv" then want = "pgq"; end;
+	if c == "hacc" or c == "hdec" then want = "hp"; end;
 	if hl.w ~= want then TRF_HlClose("unexpected "..tostring(c).." in "..tostring(hl.w)); return; end;
 	hl.c = c;
 	hl.w = "wait";
@@ -874,6 +1365,21 @@ function TRF_HailStep()
 		TRF_HlPgNoWit();
 	elseif c == "plv" then
 		TRF_HlClose("leave");
+	elseif c == "back" then
+		TRF_HlBack();
+	elseif c == "cdec" then
+		TRF_HlE("contract", "trader_id", hl.id, "result", "declined");
+		TRF_HlBack();
+	elseif c == "xacc" then
+		TRF_HlProvAcc();
+	elseif c == "xdec" then
+		TRF_HlE("offer", "trader_id", hl.id, "key", hl.o[hl.k], "result", "declined");
+		hl.xf = nil;
+		TRF_HlBack();
+	elseif c == "hacc" then
+		TRF_HlHelpAcc();
+	elseif c == "hdec" then
+		TRF_HlHelpDec();
 	else
 		TRF_HlClose("no choice");
 	end;
@@ -903,9 +1409,7 @@ function TRF_HailDo(key)
 		local text, n = TRF_CtOffer(id);
 		if not text then TRF_HlClose("offer gone"); return; end;
 		hl.n = n;
-		hl.w = "ct";
-		hl.t = TRF_HlGt();
-		if not TRF_HlBox("#UI_FTrader_confirm", text, TRF_CtAccept, TRF_HailClose) then TRF_HlClose("nobox"); end;
+		TRF_HlOffer(text, "acc", "cdec", "offer", "ct", TRF_CtAccept, TRF_HailClose, key);
 	elseif key == "trouble" then
 		r.tu = 1;
 		TRF_HlAnswer(TRF_Trouble(TRF_HlCur()));
@@ -988,52 +1492,40 @@ function TRF_HlPgCall()
 	return 1;
 end;
 
--- The page as the dialog: 1 when StartTradeDialog ran, nil after a fallback (the caller shows the boxes).
--- Record st.dlg = {id, g, on (leave, nowit with hl.pn), dk = {}, pg = 1, who, m1}; pick and Esc as the menu
--- dialog (TRF_HlDlgPick, TRF_HlDlgCheck).
+-- The demand page as the dialog (TRF_HlPgShow kind "demand", answers Leave and, with hl.pn, No witnesses): 1 when
+-- StartTradeDialog ran, nil after a fallback (the caller shows the boxes).
 function TRF_HlPgDlg(hl, text)
-	local why = TRF_HlDlgWhy();
-	if why then TRF_HlDlgFb(why); return nil; end;
-	local st = TRF_HlStore();
 	local on = {leave=1};
 	if hl.pn == 1 then on.nowit = 1; end;
-	local who = TRF_HlName(TRF_HlRec(hl.id));
-	-- The prefix is cut by pattern: trf_supply names the trader with its own fallback (TRF_SpName), not TRF_HlName.
-	local m1 = text;
-	local s0, e0 = strfind(text, "^FTU [^:\n]*: ");
-	if e0 then m1 = strsub(text, e0 + 1); end;
-	st.dlg = {id=hl.id, g=hl.g, on=on, dk={}, pg=1, who=who, m1=m1};
-	hl.w = "dlg";
-	if TRF_HlP(TRF_HlPgCall, {}) ~= 1 then
-		st.dlg = nil;
-		TRF_HlDlgFb("error");
-		return nil;
-	end;
-	TRF_HlStat("hl_dlg");
-	TRF_Due(1, "TRF_HlDlgCheck");
-	return 1;
+	return TRF_HlPgShow(hl, "demand", text, on);
 end;
 
--- Init of the page dialog (shim): #who#, #m1#, the two labels, a_nowit shown only with No witnesses. A stale
--- record leaves Leave only and an empty message.
+-- Init of the page dialog (shim): #who#, #m1#, the labels of TRF_HlPgLabels, the answers of the record's on
+-- shown, the rest hidden. A stale record leaves Leave only and an empty message.
 function TRF_HlPgInit() TRF_Cb("TRF_HlPgInit", TRF_HlPgInit_Body, {}); end;
 
 function TRF_HlPgInit_Body()
 	local d = TRF_HlDlgCur();
-	local who, m1, nw, id = TRF_Txt("hull1"), "", nil, nil;
+	local who, m1, on, id, kd = TRF_Txt("hull1"), "", {leave=1}, nil, nil;
 	if d and d.pg == 1 then
-		who = d.who or who; m1 = d.m1 or ""; nw = d.on.nowit; id = d.id;
+		who = d.who or who; m1 = d.m1 or ""; on = d.on; id = d.id; kd = d.kd;
 	else
 		TRF_HlE("dialog_init", "dialog", "page", "result", "stale");
 	end;
-	TRF_N("ShowAnswer", "a_leave");
-	local vis = "leave";
-	if nw then TRF_N("ShowAnswer", "a_nowit"); vis = vis..",nowit"; else TRF_N("HideAnswer", "a_nowit"); end;
+	local ks = TRF_HlPgKeys();
+	local vis = "";
+	for i = 1, getn(ks) do
+		if on[ks[i]] then
+			TRF_N("ShowAnswer", "a_"..ks[i]);
+			vis = vis..","..ks[i];
+		else
+			TRF_N("HideAnswer", "a_"..ks[i]);
+		end;
+	end;
 	TRF_N("SetReplaceValue", "who", who);
 	TRF_N("SetReplaceValue", "m1", m1);
-	TRF_N("SetReplaceValue", "lleave", TRF_Txt("dmpleave"));
-	TRF_N("SetReplaceValue", "lnowit", TRF_Txt("dmpnowit"));
-	TRF_HlDE("dialog_answers", "trader_id", id, "dialog", "page", "answers", vis);
+	for k, v in TRF_HlPgLabels() do TRF_N("SetReplaceValue", "l"..k, TRF_Txt(v)); end;
+	TRF_HlDE("dialog_answers", "trader_id", id, "dialog", "page", "answers", strsub(vis, 2), "kind", kd);
 end;
 
 -- Due step after the page answer box: with No witnesses the question box, else Leave.
@@ -1089,9 +1581,7 @@ function TRF_HlOfShow()
 		hl.oq = hl.oq + 1;
 	end;
 	if not text then TRF_HlClose("offers done"); return; end;
-	hl.w = "of";
-	hl.t = TRF_HlGt();
-	if not TRF_HlBox("#UI_FTrader_confirm", text, TRF_HlOfOk, TRF_HlOfNo) then TRF_HlClose("nobox"); end;
+	TRF_HlOffer(text, "oacc", "onext", "offer", "of", TRF_HlOfOk, TRF_HlOfNo, hl.o[hl.k]);
 end;
 
 -- Due step after an offer box: accept (acc = 1) calls ok, then the next offer.
@@ -1114,9 +1604,15 @@ function TRF_HlOfStep(acc)
 		elseif e.no then
 			TRF_HlCall(e.no, args);
 		end;
+		if not acc and TRF_HlPgMode(hl) then TRF_HlE("offer", "offer_index", hl.oq, "result", "declined"); end;
 	end;
 	hl.oq = hl.oq + 1;
-	if hl.oq > getn(l) then TRF_HlClose("offers done"); return; end;
+	if hl.oq > getn(l) then
+		-- Stage B: Decline of the last offer on a page goes back to the menu.
+		if not acc and TRF_HlPgMode(hl) then TRF_HlBack(); return; end;
+		TRF_HlClose("offers done");
+		return;
+	end;
 	TRF_HlOfShow();
 end;
 
@@ -1801,16 +2297,39 @@ end;
 
 -- Loader callbacks and dump ----------------------------------------------------------
 
+-- Open help watches end unpaid (the trader stays behind; the handle table is cleared with the jump or load).
+function TRF_HlHelpDrop(why)
+	local W = TRF_HlHw();
+	if not W then return; end;
+	local ids = {};
+	for id, w in W do tinsert(ids, id); end;
+	for i = 1, getn(ids) do TRF_HlHelpSettle(ids[i], nil, why); end;
+end;
+
 function TRF_Hail_BeforeJump()
 	TRF_CtVoid("jump");
+	TRF_HlHelpDrop("jump");
 	local L = TRF_HlLive();
 	if L then L.hl = nil; L.bkd = nil; end;
 end;
 
+-- After a load the help watches are gone (handle table): an accepted offer without a live raid record is settled
+-- unpaid (r.hlp 3); one on a live raid stays with trf_raid's raid end.
 function TRF_Hail_OnLoad()
 	TRF_CtVoid("load");
 	local L = TRF_HlLive();
 	if L then L.hl = nil; L.bkd = nil; end;
+	if not L or type(L.tr) ~= "table" then return; end;
+	for id, r in L.tr do
+		if type(r) == "table" and r.hlp == 2 then
+			local rd = nil;
+			if type(r.rdn) == "number" and type(L.rd) == "table" then rd = L.rd[r.rdn]; end;
+			if type(rd) ~= "table" or rd.st == "end" then
+				r.hlp = 3;
+				TRF_HlE("help", "trader_id", id, "via", "watch", "result", "unpaid", "reason", "load");
+			end;
+		end;
+	end;
 end;
 
 function TRF_Hail_Dump()
@@ -1821,14 +2340,17 @@ function TRF_Hail_Dump()
 	local b = 0;
 	if type(L.board) == "string" then b = 1; end;
 	local st = TRF_HlStore();
-	local nx, nb = 0, 0;
+	local nx, nb, nw = 0, 0, 0;
 	if st then
 		if type(st.x) == "table" then for k, v in st.x do nx = nx + 1; end; end;
 		if type(st.bof) == "table" then nb = getn(st.bof); end;
 	end;
+	local W = TRF_HlHw();
+	if W then for k, v in W do nw = nw + 1; end; end;
 	TRF_HlE("dump", "hail_trader_id", hl.id, "hail_step", hl.k, "hail_option_count", nopt, "hail_wait", hl.w,
 		"contract_trader_id", ct.id, "contract_pay", ct.n, "board", TRF_KvB(b), "v1_option_count", nx,
-		"board_offer_count", nb, "board_declined", L.bkd, "wrapped", TRF_KvB(TRF_HailIsMine(__PatrolStationDock_Ok)));
+		"board_offer_count", nb, "board_declined", L.bkd, "help_watch_count", nw,
+		"wrapped", TRF_KvB(TRF_HailIsMine(__PatrolStationDock_Ok)));
 end;
 
 -- Strings (6.2). Looked up by TRF_Txt after TRF_UI_Text; keys in TRF_UI_Key form (lowercase, letters and
@@ -1892,5 +2414,15 @@ function TRF_Hail_Text()
 		dmpleave = "Leave",
 		dmpnowit = "No witnesses",
 		dmpq = "No witnesses? OK: no witnesses. Cancel: leave.",
+		-- stage B page labels and the combat hail (design/hail-spec.md 7)
+		hlpback = "Back",
+		hlpclose = "Close",
+		hlpacc = "Accept",
+		hlpdec = "Decline",
+		hlpbusy = "FTU $1: Not now, we're busy.",                                          -- name
+		hlpoffer = "FTU $1: We're outgunned. Clear them off and there's $2 cr in it for you.", -- name, pay
+		hlpno = "FTU $1: Then stay out of the line of fire.",                              -- name
+		hlpok = "FTU $1: Deal. Make it quick, Wolves.",                                     -- name
+		hlppaid = "FTU $1: They're gone. $2 cr transferred.",                              -- name, credits
 	};
 end;

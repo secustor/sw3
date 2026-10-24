@@ -26,6 +26,7 @@
 # loc/trf_ru.loc, the station voices keys in Russian, goes to Data/LocData/Russian/ the same way when the clone has that folder).
 # VOICE_EVENTS=0|1 (station events, design/station-voices-spec.md 17).
 # DOCK_MODE=0|1|2 (cfg dock_mode, trader docking: 0 removal at the approach point, 1 ComeToTradeStation, 2 flight to the docking position; default 2).
+# HAIL_FIGHT=0|1 (cfg hail_fight, the combat hail of design/hail-spec.md 3: a trader in a fight answers busy or offers help pay; default 1).
 # SURVIVORS=0|1 (cfg enable_survivors, survivors and beacons, design/survivors-spec.md); SV_SEEDED=0|1 (credited
 # beacons seeded on entry), SV_SLAVERS=0|1 (off-screen slaver roll), SV_CH4=0|1 (witnessed beacons in chapter 4 free
 # time), SV_DK=0|1 (difficulty factor in the pay); written only when set.
@@ -110,7 +111,7 @@ for k in OVERRIDE DUMP GUARD ENABLED CYCLE PROSPERITY TIER_CAP BAND_HALF PARKED 
          TRACK CONV DEMAND HEAT_OFFER CARRIERS SALVAGE SALV_ADDMOD CLAN_ACE SWEEPS SWEEP_CT PO TT4 TT4_SPLIT FEQ \
          FORCED_BUST DCONV DC_SPEED BASES BASE_GLOW WRECK ESC_FLIGHT VOICE VOICE_MOODS VOICE_DOCK VOICE_NEWS VOICE_FEE VOICE_GATE \
          WB_BOX_AFTER_FEE VOICE_EVENTS SV_SEEDED SV_SLAVERS SV_CH4 SV_DK \
-         LAD_RANKLINE LAD_PERMIT LAD_SETTLE LAD_HANDIN LAD_GIBDD LAD_RESET_SYNC DEMAND_PAGE DEMAND_DROP DOCK_MODE; do
+         LAD_RANKLINE LAD_PERMIT LAD_SETTLE LAD_HANDIN LAD_GIBDD LAD_RESET_SYNC DEMAND_PAGE DEMAND_DROP DOCK_MODE HAIL_FIGHT; do
     eval v=\${$k:-}
     [ -z "$v" ] && continue
     case "$v" in *[!0-9]*) echo "$k must be a non-negative integer" >&2; exit 1;; esac

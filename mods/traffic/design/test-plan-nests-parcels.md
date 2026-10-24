@@ -82,6 +82,20 @@ Distances from Kadi (portal graph, `map.script`): Hanoi 1, Prien 1, XK16 2 (via 
 - E16.10: three hours each with the run A and run B installs on the same route.
 - Pandora after mission 8a (section 3).
 
+### 4.5 Hail pages and combat hail (run B or any session with `HAIL_BOX=2`, the clone default; about 15 min)
+
+`D/hail-spec.md` 10 (D11-D16); `check_ingame.py` items D-HAIL.page, .back, .offer, .esc, .fight. Install as run B (`LOG=2`; `HAIL_FIGHT=1` is the default). One line per check: do, then see.
+
+1. Meet a trader (70 units): window "FTU <name>: What do you need, Wolves?". Pick "Where are you headed?": a new window "FTU <name>: <direction>. <rumour>" with "- Back" and "- Close", no `#` (D12).
+2. Back: the menu window again, "Where are you headed?" gone, the rest shown (D11).
+3. "Where is traffic in trouble?": answer window; press Esc: the window closes, no other window follows; dock at a station: its box opens as usual (D13).
+4. Next trader with "Need an escort?": window "FTU <name>: Escort us to <dest> for <n> cr?" with "- Accept" and "- Decline". Decline: the menu again without the escort option. Close.
+5. Next trader with the escort option: Accept: the windows close, line "Stay close, Wolves." (contract accepted).
+6. Hail a trader under pirate attack that holds its own (escorts alive): one window "FTU <name>: Not now, we're busy." with "- Close" only, no menu (D14).
+7. Hail a trader that is losing (lone transport, or a refused raid with the trader fleeing): "FTU <name>: We're outgunned. Clear them off and there's <p> cr in it for you." with Accept/Decline. Decline: "FTU <name>: Then stay out of the line of fire." Hail it again later: "Not now, we're busy." (once per visit).
+8. Another losing trader: Accept: line "FTU <name>: Deal. Make it quick, Wolves."; destroy the attackers: "FTU <name>: They're gone. <p> cr transferred." and the credits (or, on a mod raid, "Thank you, Wolves. We owe you."); note how many attackers you killed against `kill_count=` (D15, D16).
+9. `HAIL_BOX=1` reinstall (optional): steps 1 and 6 give boxes as before.
+
 ## 5. Check items
 
 "Game" says whether the item needs one play-through, a reload inside the session, or a second install. The log lines are those of `D/log-events.md`; `check_ingame.py` applies exactly these rules.
@@ -168,12 +182,19 @@ Distances from Kadi (portal graph, `map.script`): Hanoi 1, Prien 1, XK16 2 (via 
 - PASS: `module=generator event=approach ... dock_mode=2` followed by `event=docked ... arrival_kind=2` for the same `trader_id`.
 - FAIL: 3 or more `approach` lines with `dock_mode=2` and no `docked` with `arrival_kind=2` for any trader (traders were only removed by the `dock_to` timeout): set `DOCK_MODE=1` or `0`, report the distance the traders stopped at.
 
+### D-HAIL Hail pages and combat hail (4.5; game: once)
+- D-HAIL.page: `module=hail event=page ... via=dialog kind=answer|busy|decline`. Eyes: the answer window as in 4.5 step 1. FAIL: pages only as boxes (`via=box`) with `event=dialog_fallback` lines (report the reasons).
+- D-HAIL.back (D11): every `event=back via=dialog result=menu` follows a menu `event=dialog_answers` line without the used key. FAIL: the key is shown again.
+- D-HAIL.offer: an offer page (`event=page kind=offer via=dialog`), an accept after it (`event=contract result=accepted` or `event=offer result=accepted`) and a decline (`event=contract result=declined` followed by `event=back`). FAIL: a decline not followed by Back.
+- D-HAIL.esc (D13): `event=close reason="dialog closed"` right after `event=page via=dialog` for that trader; FAIL: `module=plumb event=box_lock holder=hail result=stale`.
+- D-HAIL.fight (D14-D16): `event=fight answer=busy` and `answer=help` (each help with `event=help result=offered`); paid watch lines with `credits` equal to `pay`. Eyes: the two windows of 4.5 steps 6-8.
+
 ## 6. Scoring
 
 ```sh
 python3 -I mods/traffic/tools/check_ingame.py --log ~/Games/Heroic/sw3-tp-test/traffic-runs/0-<run A> \
     --log ~/Games/Heroic/sw3-tp-test/traffic-runs/0-<run B> [--log .../0-<run C>]
-python3 -I mods/traffic/tools/check_ingame.py --eyes E16.3=pass,E-PCL.2=pass,E-PCL.3=pass,E-PCL.4=pass,E-PCL.6=pass --log ...
+python3 -I mods/traffic/tools/check_ingame.py --eyes E16.3=pass,E-PCL.2=pass,E-PCL.3=pass,E-PCL.4=pass,E-PCL.6=pass,D-HAIL.page=pass,D-HAIL.fight=pass --log ...
 ```
 
 Without `--log` it reads `COPY/sw3tp.log`. Per item it prints the verdict, the matching lines (count, first, last), the reasons of a FAIL or NO DATA and, for items with an eye part, what to look at; then a summary table. `--eyes ID=pass|fail` folds the player's observation into the items with an eye part (column `eyes` of the summary): MANUAL becomes PASS or FAIL; a log FAIL or NO DATA stays. Exit status 1 when any item is FAIL. Send the output (or the run directories) for scoring. Self test: `python3 -I mods/traffic/tools/check_ingame.py --selftest` (fixture `M/tests/check_ingame_fixture.log`).

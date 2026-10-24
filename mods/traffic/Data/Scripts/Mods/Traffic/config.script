@@ -9,7 +9,9 @@
 -- pro_set is for the test clone. v1 keys (design/v1-spec.md 10.5), defaults of the v1 modules; tier_cap 4.
 -- hail_xml: 1 = Data/Scripts/Trade/TRF_Hail.xml is installed (written by install.sh / install-test.sh when they
 -- copied it). Tune hail_box (tune={hail_box=N}): 0 = hail answers as radio lines, 1 = ShowMsgBox chain (default),
--- 2 = the hail menu as the trade dialog TRF_Hail (needs hail_xml=1; otherwise the box chain runs).
+-- 2 = the hail menu as the trade dialog TRF_Hail (needs hail_xml=1; otherwise the box chain runs), every follow-up as a
+-- page of TRF_HailPg (design/hail-spec.md 2). hail_fight (default 1) = 0 turns the combat hail off (hail-spec 3: a
+-- trader in a fight answers "busy" or offers help pay); tune hail_fight_r, hail_help_ratio, help_k (trf_hail TuneDef).
 -- Worldbuilding plumbing (design/wb-plumbing-spec.md): wb_box_after_fee (default 0) = 1 allows an offer box at the
 -- trade dock after a station fee box (set once E0.6 passes); tune help_floor/help_decay (C1) and leg_cap (D1).
 -- Survivors and beacons (design/survivors-spec.md 6): enable_survivors (default 1) = 0 turns trf_survive off; the
@@ -63,7 +65,7 @@ function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
 	shop_mode=1, short_price=1, restore=1, news_mode=1, heat_war=0, strict=1, pro_set={},
 	track=1, conv=1, demand=1, heat_offer=1, carriers=1, salvage=1, salv_addmod=0, clan_ace=0, sweeps=1,
 	sweep_ct=1, po=1, tt4=1, tt4_split=0, feq=1, forced_bust=1, dconv=1, dc_speed=1, bases=1, base_glow=0,
-	wreck=0, lang="en", loc_mode=0, hail_xml=0, enable_survivors=1,
+	wreck=0, lang="en", loc_mode=0, hail_xml=0, hail_fight=1, enable_survivors=1,
 	lad_enabled=1, lad_rankline=1, lad_permit=1, lad_settle=1, lad_handin=1, lad_gibdd=1, lad_reset_sync=1,
 	lad_escort=1, lad_depot=1, lad_warrant=1, charter=1,
 	enable_scars=1, enable_scar_loot=1, enable_scavengers=1, enable_scar_recorder=1, enable_salvage_licence=1,

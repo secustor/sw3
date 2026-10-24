@@ -1192,6 +1192,9 @@ function TRF_Dc_HailDo(key, id)
 	local text, nf = TRF_DcOffer(id);
 	if not text then TRF_DgX("TRF_HlClose", "dc offer gone"); return nil; end;
 	hl.n = nf;
+	-- Stage B (design/hail-spec.md 2): on a hail dialog chain the offer is a page of the hail; Accept runs TRF_DcCtDo
+	-- from the hail due call, Decline goes back to the menu.
+	if TRF_DgX("TRF_HlProvPage", text, "TRF_DcCtDo", key) then return 1; end;
 	hl.w = "dcct";
 	hl.t = TRF_DgGt();
 	if not TRF_DgX("TRF_HlBox", "#UI_FTrader_confirm", text, TRF_DcCtOk, TRF_HailClose) then TRF_DgX("TRF_HlClose", "nobox"); end;

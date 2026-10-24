@@ -1294,6 +1294,26 @@ function TRF_Rd_PlayerSide(rd, r, h)
 	return ps;
 end;
 
+-- Trader side and raid side of raid n now (the rule of TRF_Rd_DecideBody with the live raid ships instead of ns), for
+-- trf_hail's combat hail (design/hail-spec.md 3); nil when the record or its trader is gone.
+function TRF_Rd_HailRatio(n)
+	local L = TRF_Rd_Live();
+	if not L or type(L.rd[n]) ~= "table" then return nil; end;
+	local rd = L.rd[n];
+	local r = TRF_Rd_Rec(rd.id);
+	if not r then return nil; end;
+	local h = TRF_Rd_HTr(rd.id);
+	local H = TRF_Rd_H();
+	local hr = nil;
+	if H then hr = H.rd[n]; end;
+	local pw, tw, ns = rd.pw, r.pw, rd.ns;
+	if type(pw) ~= "number" or pw <= 0 then pw = 5; end;
+	if type(tw) ~= "number" or tw <= 0 then tw = pw; end;
+	if type(hr) == "table" then ns = TRF_Rd_AliveN(hr); end;
+	if type(ns) ~= "number" or ns < 0 then ns = 1; end;
+	return tw * (TRF_Rd_EscAlive(r, h) + 0.5) + TRF_Rd_PlayerSide(rd, r, h), pw * ns;
+end;
+
 -- Due call 8 s after the demand: refuse when the player fired on the raiders, else comply when RAND(100)
 -- is below the comply chance of TRF_Rd_ComplyOf. Raid side = power x ships (nil: 5, 1 ship); trader side =
 -- build power r.pw (nil: the raid's) x (live escorts + 0.5), plus the player side (TRF_Rd_PlayerSide) under
@@ -1528,15 +1548,18 @@ function TRF_Rd_GoneBody(n, g)
 	TRF_Rd_End(n, "left");
 end;
 
--- Raid-help pay (5.5): the trader was not killed, help counted, not paid yet.
+-- Raid-help pay (5.5): the trader was not killed, help counted, not paid yet. After an accepted help offer of the
+-- combat hail (trf_hail, r.hlp 2, design/hail-spec.md 5.3) any player fire on the raid (ph) counts. Pay help_k (tune
+-- of trf_hail, default 0.5) x N_eff.
 function TRF_Rd_Pay(n, rd)
-	if rd.hit ~= 1 or rd.paid or rd.tk == 1 then return; end;
+	if rd.paid or rd.tk == 1 then return; end;
 	local L = TRF_Rd_Live();
 	local r = nil;
 	if L and rd.id ~= nil then r = L.tr[rd.id]; end;
 	if type(r) ~= "table" or r.why == "kill" then return; end;
+	if rd.hit ~= 1 and not (r.hlp == 2 and rd.ph == 1) then return; end;
 	local cur = TRF_Rd_Cur();
-	local amt = floor(0.5 * TRF_Rd_PayN(cur));
+	local amt = floor(TRF_Rd_T("help_k", 0.5) * TRF_Rd_PayN(cur));
 	-- 8.5 raid-help resolvers (trf_plumb TRF_RaidHelp, 00 section 6): a captain claim cancels the credits,
 	-- warrant ships are excluded, otherwise the lowest factor applies once.
 	local rule, noh = nil, nil;
@@ -1636,6 +1659,8 @@ function TRF_Rd_End(n, how)
 		TRF_Rd_P(TRF_Ev_Recover, {k});
 	end;
 	if was ~= "armed" then TRF_Rd_Pay(n, rd); end;
+	-- Combat hail: an accepted help offer on this trader is settled (trf_hail TRF_HlHelpEnd).
+	TRF_P("TRF_HlHelpEnd", rd.id, n, rd.paid, how);
 	if how == "killed" and rd.hit == 1 then TRF_N("TRF_Ch_Note", 4, TRF_Rd_Cur(), 0); end;
 	-- Wanted captains (design/captain-spec.md 5.3): the end of a captain's raid (his notoriety, his departure).
 	if rd.cap ~= nil then TRF_P("TRF_Cap_RaidEnd", n, how, rd.tk); end;

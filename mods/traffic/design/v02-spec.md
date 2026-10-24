@@ -281,6 +281,8 @@ Table: fighters with 75 %, bombers 25 %. Power is `pw` = the tier's power; row =
 
 Every box callback checks `live.hl`, its `g` and the record; a mismatch closes without action. Jump and load clear `live.hl`. CHECK: plain text in the `ShowMsgBox` text argument (precedent: `CombineStr` results); the titles are vanilla keys. M10 holds: boxes open only after the player focused a trader within 150. The hail is player-initiated: `TRF_HlSupp`, the focus line and the meeting's hail arming read `TRF_QuietHail` (trf_safety: a visible scene only; with cfg `hail_quiet` 1 also `__sys_SOS`, the `TRF_Quiet` rule), so under `__sys_SOS` alone (mission 6 holds it for whole visits) only the announce line is muted (`module=ui event=meet trader_id=N hail_armed=true result=line_muted reason=quiet`); hail answers go through `TRF_HlSay(..., hq 1)`, contract outcomes and the board stay on `TRF_Quiet`.
 
+Stage B (2026-10-25): with tune `hail_box` 2 every follow-up of the dialog menu is a dialog page (answers with Back and Close, offers with Accept and Decline), and a trader in a fight answers with one page (busy, or a help offer) instead of the menu: [hail-spec.md](hail-spec.md).
+
 ### 6.2 Text templates (`TRF_Hail_Text()` and, for the rows marked R, `TRF_Raid_Text()`; looked up by `TRF_Txt` after `TRF_UI_Text`, so a raid line works without `trf_hail`)
 
 | Key | Text |

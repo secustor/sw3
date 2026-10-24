@@ -138,3 +138,16 @@ In-game checks (clone, `EXP=0 TRAFFIC=1 LOG=2`, `HAIL_BOX` 2 is the clone defaul
 | D10 | `HAIL_BOX=1` reinstall | the box chain as before |
 
 D6 (answer text set inside a callback) belongs to stage B.
+
+### Stage B (implemented 2026-10-25, `D/hail-spec.md` 2)
+
+Every follow-up of the dialog menu is a page of `Data/Scripts/Trade/TRF_HailPg.xml` (the demand result page's file, now with the answers `a_acc`, `a_dec`, `a_back`, `a_leave`, `a_nowit`, `a_close`), opened by `TRF_HlPgShow` from the due call `TRF_HailStep` with its text set in the init, the pattern of the demand page. D6 is not needed: no text is set inside an answer callback and no `go_message_name` is used. An answer has Back (the menu dialog again from a due call, the used option hidden by its init) and Close; an offer (escort contract, sweep and faction offers, provider offers, the `dc` and `sesc` contracts) has Accept and Decline (back to the menu). The box lock stays with owner `hail` from the menu dialog to the last page. The box chain stays the fallback for `hail_box` 1 and for a page that cannot open (`TRF_HlDlgWhy`, the lock). The combat hail (spec 3) uses the same pages. Host runs `hl-a`..`hl-e`.
+
+Remaining in-game checks (test plan `D/test-plan-nests-parcels.md` 4.5, `check_ingame.py` D-HAIL.*):
+
+| # | Check | Expected |
+|---|---|---|
+| D11 | Back on an answer page | the menu window again without the used option, the others shown; `module=hail event=back trader_id=N key=<k> answer_count=K via=dialog result=menu`, the menu `event=dialog_answers` line (level 2) without `<k>` |
+| D12 | page text set in the init | `FTU <name>: <answer>` with `- Back` and `- Close`, no `#` left; `module=hail event=page trader_id=N via=dialog kind=answer key=<k> back=true` |
+| D13 | Esc on a page | the chain closes and the lock is free (the next dock box opens): `module=hail event=close trader_id=N reason="dialog closed"` right after the page line |
+| D10 | still open | not needed: no node text starts with `#` |

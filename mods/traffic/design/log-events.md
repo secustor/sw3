@@ -167,6 +167,16 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `dialog_answers` | `module=hail event=dialog_answers trader_id=4 dialog=page answers=leave,nowit` | 2 |
 | `close` | `module=hail event=close trader_id=4 reason=leave\|nowit` (result page) | 1 |
 | `option_result` | `module=hail event=option_result trader_id=4 key=nowit result=prey` | 1 |
+| `page` | `module=hail event=page trader_id=4 via=dialog\|box kind=answer\|offer\|help\|busy\|decline key=head back=true` (stage B page, `hail-spec.md` 8; `via=box`: the fallback box with `hail_box` 2) | 1 |
+| `dialog_answers` | `module=hail event=dialog_answers trader_id=4 dialog=page answers=back,close kind=answer` (stage B page init) | 2 |
+| `back` | `module=hail event=back trader_id=4 key=head answer_count=4 via=dialog\|box result=menu` / `answer_count=0 result=closed` | 1 |
+| `contract` | `module=hail event=contract trader_id=4 result=declined` (escort page Decline) | 1 |
+| `offer` | `module=hail event=offer offer_index=1 result=declined` (offer page Decline) / `trader_id=4 key=dc handler=TRF_DcCtDo result=accepted` / `trader_id=4 key=dc result=declined` (provider page) | 1 |
+| `fight` | `module=hail event=fight trader_id=4 via=focus raid_id=nil hostile_count=2 escort_count=0 escort_fight=false trader_strength=nil raid_strength=nil losing=true lose_reason=outnumbered answer=help reason=nil` (combat hail; `answer=busy reason=once\|heat\|own\|strict\|gap\|pay\|no_box`) | 1 |
+| `help` | `module=hail event=help trader_id=4 raid_id=nil pay=1063 via=dialog\|box result=offered` / `result=declined` / `via=watch\|raid result=accepted` | 1 |
+| `help` | `module=hail event=help trader_id=4 pay=1063 credits=1063 kill_count=1 help=1 via=watch result=paid` / `raid_id=3 credits=1063 via=raid result=paid` | 1 |
+| `help` | `module=hail event=help trader_id=4 pay=1063 kill_count=0 via=watch result=unpaid reason=no_fire\|gone\|time\|count\|lead\|due\|jump\|load` / `raid_id=3 via=raid result=unpaid reason=killed` | 1 |
+| `dialog_fallback` | `module=hail event=dialog_fallback reason=lock` (the box lock held by another owner) | 1 |
 | `box` | `module=hail event=box button=ok result=stale` | 1 |
 | `option` | `module=hail event=option trader_id=4 key=trade` | 1 |
 | `option_result` | `module=hail event=option_result trader_id=4 key=xtest handler=TRF_X result=1` | 1 |
@@ -186,7 +196,7 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `board` | `module=hail event=board system_index=46 line_count=3 result=lines` (S19 dock lines, trf_plumb kind patrol) | 1 |
 | `board_offer` | `module=hail event=board_offer offer_index=1 offer_count=2` (the 8.10 box of this docking) | 1 |
 | `board_offer` | `module=hail event=board_offer offer_index=1 result=accepted reply=text` / `result=declined` | 1 |
-| `dump` | `module=hail event=dump hail_trader_id=4 hail_step=1 hail_option_count=5 hail_wait=dlg contract_trader_id=4 contract_pay=1417 board=true v1_option_count=0 board_offer_count=0 board_declined=,join, wrapped=true` | 1 |
+| `dump` | `module=hail event=dump hail_trader_id=4 hail_step=1 hail_option_count=5 hail_wait=dlg contract_trader_id=4 contract_pay=1417 board=true v1_option_count=0 board_offer_count=0 board_declined=,join, help_watch_count=0 wrapped=true` | 1 |
 | `error` | `module=hail event=error message=msg` | 1 |
 
 ## raid (`trf_raid.script`; `TRF_RdE`, `TRF_RdDE`)

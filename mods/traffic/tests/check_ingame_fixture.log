@@ -226,3 +226,41 @@ traffic: lua: exp=v1 module=nest event=activate system=aurora fielded=5 stub=2 g
 traffic: lua: exp=v1 module=nest event=arrival system=aurora line=nestquiet result=queued
 traffic: lua: exp=v1 module=generator event=approach trader_id=9 dock_mode=2
 traffic: lua: exp=v1 module=generator event=docked trader_id=9 arrival_kind=2
+traffic: lua: exp=v1 module=hail event=dialog_answers trader_id=21 answers=trade,head,esc,trouble,boom,close labels=""
+traffic: lua: exp=v1 module=hail event=hail trader_id=21 via=meet answer_count=5 hail_count=1 dialog=true
+traffic: lua: exp=v1 module=hail event=dialog_pick trader_id=21 key=head
+traffic: lua: exp=v1 module=hail event=option trader_id=21 key=head
+traffic: lua: exp=v1 module=hail event=dialog_answers trader_id=21 dialog=page answers=back,close kind=answer
+traffic: lua: exp=v1 module=hail event=page trader_id=21 via=dialog kind=answer key=head back=true
+traffic: lua: exp=v1 module=hail event=dialog_pick trader_id=21 key=back
+traffic: lua: exp=v1 module=hail event=dialog_answers trader_id=21 answers=trade,esc,trouble,boom,close labels=""
+traffic: lua: exp=v1 module=hail event=back trader_id=21 key=head answer_count=4 via=dialog result=menu
+traffic: lua: exp=v1 module=hail event=dialog_pick trader_id=21 key=esc
+traffic: lua: exp=v1 module=hail event=option trader_id=21 key=esc
+traffic: lua: exp=v1 module=hail event=dialog_answers trader_id=21 dialog=page answers=acc,dec kind=offer
+traffic: lua: exp=v1 module=hail event=page trader_id=21 via=dialog kind=offer key=esc back=false
+traffic: lua: exp=v1 module=hail event=dialog_pick trader_id=21 key=dec
+traffic: lua: exp=v1 module=hail event=contract trader_id=21 result=declined
+traffic: lua: exp=v1 module=hail event=dialog_answers trader_id=21 answers=trade,trouble,boom,close labels=""
+traffic: lua: exp=v1 module=hail event=back trader_id=21 key=esc answer_count=3 via=dialog result=menu
+traffic: lua: exp=v1 module=hail event=dialog_pick trader_id=21 key=trouble
+traffic: lua: exp=v1 module=hail event=option trader_id=21 key=trouble
+traffic: lua: exp=v1 module=hail event=page trader_id=21 via=dialog kind=answer key=trouble back=true
+traffic: lua: exp=v1 module=hail event=close trader_id=21 reason="dialog closed"
+traffic: lua: exp=v1 module=hail event=hail trader_id=22 via=meet answer_count=5 hail_count=1 dialog=true
+traffic: lua: exp=v1 module=hail event=dialog_pick trader_id=22 key=esc
+traffic: lua: exp=v1 module=hail event=option trader_id=22 key=esc
+traffic: lua: exp=v1 module=hail event=page trader_id=22 via=dialog kind=offer key=esc back=false
+traffic: lua: exp=v1 module=hail event=dialog_pick trader_id=22 key=acc
+traffic: lua: exp=v1 module=hail event=close trader_id=22 reason=accept
+traffic: lua: exp=v1 module=hail event=contract trader_id=22 pay=1417 result=accepted
+traffic: lua: exp=v1 module=hail event=fight trader_id=23 via=focus raid_id=nil hostile_count=2 escort_count=3 escort_fight=false trader_strength=nil raid_strength=nil losing=false lose_reason=nil answer=busy reason=nil
+traffic: lua: exp=v1 module=hail event=page trader_id=23 via=dialog kind=busy key=nil back=false
+traffic: lua: exp=v1 module=hail event=close trader_id=23 reason=close
+traffic: lua: exp=v1 module=hail event=fight trader_id=24 via=meet raid_id=nil hostile_count=3 escort_count=0 escort_fight=false trader_strength=nil raid_strength=nil losing=true lose_reason=outnumbered answer=help reason=nil
+traffic: lua: exp=v1 module=hail event=page trader_id=24 via=dialog kind=help key=nil back=false
+traffic: lua: exp=v1 module=hail event=help trader_id=24 raid_id=nil pay=1063 via=dialog result=offered
+traffic: lua: exp=v1 module=hail event=close trader_id=24 reason="help accept"
+traffic: lua: exp=v1 module=hail event=help trader_id=24 raid_id=nil pay=1063 via=watch result=accepted
+traffic: lua: exp=v1 module=region event=pay reason=hail_help amount=1063
+traffic: lua: exp=v1 module=hail event=help trader_id=24 pay=1063 credits=1063 kill_count=2 help=1 via=watch result=paid

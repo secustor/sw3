@@ -760,7 +760,8 @@ end;
 function T_V02_G()
 	local h = HOST();
 	h.labels.CurrentQuest = "5_1"; h.st_label = "TRADE STATION";
-	V_Begin("gredos", {raids=0, staged=0, seed=0, parked=0});
+	-- dock_mode 0 (removal at the approach point): the queue checks below predate the default 2 of 2026-10-25.
+	V_Begin("gredos", {raids=0, staged=0, seed=0, parked=0, dock_mode=0});
 	local idx = TRF_CurIdx();
 	TRF_SetDis(idx, 0);
 	V_Pro(9);
@@ -1671,11 +1672,12 @@ function V_HailDlg()
 		"provider item in slot p1: "..HOST_DlgVis().." / "..tostring(HOST_DlgText("a_p1")));
 	HOST_DlgPick("a_p1");
 	T_Tick(1, 0.5);
-	local bx = HOST_Box();
-	HOST_Check(getn(h.boxes) == nb + 1 and bx.text == "Test answer" and bx.cancel == nil and TRF.live.hl.w == "ans",
-		"pick p1: the item's answer box after the due call");
-	HOST_Press("ok");
-	HOST_Check(TRF.live.hl == nil, "answer OK closes the chain");
+	-- Stage B (design/hail-spec.md 2): the answer is a page of TRF_HailPg with Back and Close, no box.
+	HOST_Check(getn(h.boxes) == nb and h.dlg and h.dlg.open and h.dlg.name == "TRF_HailPg" and TRF.live.hl.w == "dlg"
+		and HOST_DlgText() == "FTU "..TRF_HlName(rb)..": Test answer" and HOST_DlgVis() == "a_back a_close",
+		"pick p1: the item's answer as a page with Back and Close after the due call: "..tostring(HOST_DlgText()).." / "..HOST_DlgVis());
+	HOST_DlgPick("a_close");
+	HOST_Check(TRF.live.hl == nil, "page Close closes the chain");
 	TRF_Dc_HailOpts = dco;
 	local c, rc = V_DlgTrader();
 	TRF_HailOpen(c, "focus");

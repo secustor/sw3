@@ -860,6 +860,9 @@ function TRF_SupplyCtDo(id)
 	local L = TRF_SpLive();
 	local text, n = TRF_SpCtOffer(id);
 	if not L or not text then TRF_SpE("contract", "trader_id", id, "reason", tostring(n), "result", "no_offer"); return nil; end;
+	-- Stage B (design/hail-spec.md 2): on a hail dialog chain the offer is a page of the hail; Accept runs TRF_SpCtPgOk
+	-- from the hail due call, Decline goes back to the menu.
+	if TRF_N("TRF_HlProvPage", text, "TRF_SpCtPgOk", "sesc") then return 1; end;
 	-- The box lock (trf_plumb live.box): the hail menu that called this closes after it (TRF_HailDoV1), so its
 	-- lock passes to this box and is freed at the answer.
 	if TRF_N("TRF_BoxHolder") == "hail" then TRF_N("TRF_BoxFree", "hail"); end;
@@ -874,6 +877,18 @@ function TRF_SupplyCtDo(id)
 		return nil;
 	end;
 	return 1;
+end;
+
+-- Accept on the hail page (trf_hail TRF_HlProvPage, from the hail due call): the chain closes, then the box OK path.
+function TRF_SpCtPgOk()
+	local L = TRF_SpLive();
+	if not L or type(L.hl) ~= "table" then return; end;
+	local id = L.hl.id;
+	TRF_N("TRF_HlClose", "sesc accept");
+	local text, n = TRF_SpCtOffer(id);
+	if not text then TRF_SpE("contract", "trader_id", id, "reason", tostring(n), "result", "no_offer"); return; end;
+	L.spc = {id=id, n=n, g=TRF.gen, c="ok"};
+	TRF_SpCtGo();
 end;
 
 function TRF_SpCtOk() TRF_Cb("TRF_SpCtOk", TRF_SpCtCb, {"ok"}); end;

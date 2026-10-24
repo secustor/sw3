@@ -1200,7 +1200,8 @@ end;
 function T_STN_G()
 	local h = HOST();
 	h.labels.CurrentQuest = "9_01";
-	S_Begin("gaoba", {log=2, staged=0, seed=0, parked=0, queue=0, feq=0, sweeps=0, tune={ev_p=100, ev_dt=5}});
+	-- dock_mode 0 (removal at the approach point): the shuttle and launch docks below predate the default 2 of 2026-10-25.
+	S_Begin("gaoba", {log=2, staged=0, seed=0, parked=0, queue=0, feq=0, sweeps=0, dock_mode=0, tune={ev_p=100, ev_dt=5}});
 	local idx = TRF_CurIdx();
 	local k = S_Key(1);
 	HOST_Check(S_Ev() == nil, "no dock rows at the first entry: no event");
@@ -1473,10 +1474,11 @@ function T_STN_G()
 	if type(TRF_Nest_Text) == "function" then for kx, v in TRF_Nest_Text() do want[TRF_LocKey(kx)] = 1; end; end;
 	if type(TRF_Pc_Text) == "function" then for kx, v in TRF_Pc_Text() do want[TRF_LocKey(kx)] = 1; end; end;
 	if type(TRF_Mc_Text) == "function" then for kx, v in TRF_Mc_Text() do want[TRF_LocKey(kx)] = 1; end; end;
-	-- Demand page keys (design/demand-page-spec.md 8): the dmp* keys of the supply and hail tables and the answers dmok, dmno.
+	-- Demand page keys (design/demand-page-spec.md 8): the dmp* keys of the supply and hail tables and the answers dmok, dmno;
+	-- the hail page and combat hail keys hlp* (design/hail-spec.md 7).
 	for i, fn in {"TRF_Supply_Text", "TRF_Hail_Text"} do
 		local tf = getglobal(fn);
-		if type(tf) == "function" then for kx, v in tf() do if strsub(kx, 1, 3) == "dmp" or kx == "dmok" or kx == "dmno" then want[TRF_LocKey(kx)] = 1; end; end; end;
+		if type(tf) == "function" then for kx, v in tf() do if strsub(kx, 1, 3) == "dmp" or strsub(kx, 1, 3) == "hlp" or kx == "dmok" or kx == "dmno" then want[TRF_LocKey(kx)] = 1; end; end; end;
 	end;
 	local nl, ncr, b2 = S_Count(ru, "\n"), S_Count(ru, "\r\n"), strfind(ru or "", "[\128-\167\169-\183\185-\191]");
 	local i = 1;
@@ -1488,7 +1490,7 @@ function T_STN_G()
 	end;
 	for kx, v in want do if not got[kx] then bad = bad.." missing:"..kx; end; end;
 	for kx, v in got do if not want[kx] then bad = bad.." extra:"..kx; end; end;
-	HOST_Check(ru and strsub(ru, 1, 13) == "LOCALE_FILE\r\n" and bad == "" and nl == ncr and not b2, "loc/trf_ru.loc: every station, survivors, ladder, charter, scar, captain, stash, freight, nest, parcel, merc and demand page key, cp1251, CRLF"..bad);
+	HOST_Check(ru and strsub(ru, 1, 13) == "LOCALE_FILE\r\n" and bad == "" and nl == ncr and not b2, "loc/trf_ru.loc: every station, survivors, ladder, charter, scar, captain, stash, freight, nest, parcel, merc, demand page and hail page key, cp1251, CRLF"..bad);
 	for id, rr in TRF.live.tr do if type(rr) == "table" and rr.st ~= "gone" then TRF_Remove(id, "test"); end; end;
 end;
 

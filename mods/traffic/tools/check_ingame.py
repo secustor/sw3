@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Score the in-game checks of dynamic nests (E16.1-E16.11) and sealed parcels (E-PCL.1-E-PCL.6) from traffic logs.
+"""Score the in-game checks of dynamic nests (E16.1-E16.11), sealed parcels (E-PCL.1-E-PCL.6), trader docking (D-DOCK)
+and the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -238,7 +239,7 @@ def c_err(ctx):
     res.logpart = True
     if not any(r.mod in ("nest", "parcel") for r in ctx.recs):
         res.missing.append("no module=nest or module=parcel line: the mod did not load or LOG=0")
-    for mod in ("nest", "parcel", "core", "plumb"):
+    for mod in ("nest", "parcel", "core", "plumb", "hail"):
         e = ctx.find(mod, "error")
         if e:
             res.fails.append("%d module=%s event=error lines" % (len(e), mod))
@@ -753,6 +754,131 @@ def c_pcl_flow(ctx):
     return res
 
 
+# ---- hail pages and combat hail (design/hail-spec.md 10) --------------------------------------------------------
+
+def hail_recs(ctx, b, before=True):
+    """module=hail records of b's log and trader before (or after) b, in file order."""
+    t = b.get("trader_id")
+    if before:
+        return [r for r in ctx.recs if r.src == b.src and r.n < b.n and r.mod == "hail" and r.get("trader_id") == t]
+    return [r for r in ctx.recs if r.src == b.src and r.n > b.n and r.mod == "hail" and r.get("trader_id") == t]
+
+
+def c_hail_page(ctx):
+    res = Res()
+    res.logpart = True
+    pg = [r for r in ctx.find("hail", "page", via="dialog") if r.get("kind") in ("answer", "busy", "decline")]
+    bx = [r for r in ctx.find("hail", "page", via="box") if r.get("kind")]
+    fb = ctx.find("hail", "dialog_fallback")
+    if not pg:
+        if bx:
+            res.fails.append("%d stage B pages fell back to boxes and none opened as a dialog (fallback reasons: %s)" % (
+                len(bx), ",".join(sorted(set(r.get("reason") or "?" for r in fb))) or "none logged"))
+        else:
+            res.missing.append("no answer page: install with HAIL_BOX=2, hail a trader and pick Where are you headed "
+                               "(event=page via=dialog kind=answer)")
+    res.ev("answer pages (via=dialog)", pg)
+    res.ev("pages as boxes (fallback)", bx)
+    res.ev("dialog fallbacks", fb)
+    return res
+
+
+def c_hail_back(ctx):
+    res = Res()
+    res.logpart = True
+    bk = ctx.find("hail", "back", via="dialog", result="menu")
+    ok, bad = [], []
+    for b in bk:
+        # The menu init runs before the back line is written: the last menu answers line before it.
+        prev = [r for r in hail_recs(ctx, b) if r.ev == "dialog_answers" and r.get("dialog") is None]
+        if not prev:
+            continue
+        ans = (prev[-1].get("answers") or "").split(",")
+        (bad if b.get("key") in ans else ok).append(prev[-1])
+    for r in bad:
+        res.fails.append("%s: the used option is shown again after Back" % r.short())
+    if not bk:
+        res.missing.append("pick Back on an answer page (event=back via=dialog result=menu)")
+    elif not ok and not bad:
+        res.missing.append("no menu dialog_answers line before the Back line: install with LOG=2")
+    res.ev("Back to the menu", bk)
+    res.ev("menu answers after Back without the used option", ok)
+    return res
+
+
+def c_hail_offer(ctx):
+    res = Res()
+    res.logpart = True
+    pg = ctx.find("hail", "page", via="dialog", kind="offer")
+    first = min((r.n for r in pg), default=None)
+    acc = [r for r in ctx.find("hail", "contract", result="accepted") + ctx.find("hail", "offer", result="accepted")
+           if first is not None and r.n > first]
+    dec = ctx.find("hail", "contract", result="declined") + ctx.find("hail", "offer", result="declined")
+    for d in ctx.find("hail", "contract", result="declined"):
+        nxt = [r for r in hail_recs(ctx, d, before=False) if r.ev in ("back", "close", "hail")]
+        if not nxt or nxt[0].ev != "back":
+            res.fails.append("%s: Decline did not return to the menu" % d.short())
+    if not pg:
+        res.missing.append("open an escort or provider offer on a page (event=page kind=offer via=dialog)")
+    else:
+        if not acc:
+            res.missing.append("Accept one offer page (event=contract result=accepted or event=offer result=accepted)")
+        if not dec:
+            res.missing.append("Decline one offer page (event=contract result=declined, then event=back)")
+    res.ev("offer pages", pg)
+    res.ev("accepted after an offer page", acc)
+    res.ev("declined", dec)
+    return res
+
+
+def c_hail_esc(ctx):
+    res = Res()
+    res.logpart = True
+    esc = []
+    for c in ctx.find("hail", "close", reason="dialog closed"):
+        prev = [r for r in hail_recs(ctx, c) if r.ev in ("page", "hail", "back", "dialog_pick")]
+        if prev and prev[-1].ev == "page" and prev[-1].get("via") == "dialog":
+            esc.append(c)
+    stale = ctx.find("plumb", "box_lock", holder="hail", result="stale")
+    if stale:
+        res.fails.append("%d box_lock lines with a stale hail lock (a hail dialog closed without freeing it)" % len(stale))
+    if not esc:
+        res.missing.append("press Esc on a hail page (event=close reason=\"dialog closed\" right after event=page via=dialog)")
+    res.ev("Esc on a page", esc)
+    res.ev("stale hail locks", stale)
+    return res
+
+
+def c_hail_fight(ctx):
+    res = Res()
+    res.logpart = True
+    fg = ctx.find("hail", "fight")
+    busy = [r for r in fg if r.get("answer") == "busy"]
+    help_ = [r for r in fg if r.get("answer") == "help"]
+    for r in help_:
+        if not [x for x in hail_recs(ctx, r, before=False) if x.is_("hail", "help", result="offered")]:
+            res.fails.append("%s: answer=help without a help offer line" % r.short())
+    for r in fg:
+        if r.get("losing") == "true" and r.get("answer") == "busy" and not r.get("reason"):
+            res.fails.append("%s: losing and busy without a reason" % r.short())
+    acc = ctx.find("hail", "help", result="accepted")
+    for a in acc:
+        if not [x for x in hail_recs(ctx, a, before=False) if x.ev == "help" and x.get("result") in ("paid", "unpaid")]:
+            res.notes.append("%s: accepted, never settled (the log ends in the fight?)" % a.short())
+    for p in ctx.find("hail", "help", result="paid", via="watch"):
+        if p.int("credits", 0) != p.int("pay", -1):
+            res.fails.append("%s: paid credits differ from the offered pay" % p.short())
+    if not busy:
+        res.missing.append("hail a trader in a fight that is not losing (event=fight answer=busy)")
+    if not help_:
+        res.missing.append("hail a trader that is losing its fight (event=fight answer=help)")
+    res.ev("busy answers", busy)
+    res.ev("help offers", help_)
+    res.ev("help accepted", acc)
+    res.ev("help settled", ctx.find("hail", "help", result="paid") + ctx.find("hail", "help", result="unpaid"))
+    return res
+
+
 # id, title, check, eyes (None: the log decides)
 ITEMS = [
     ("ERR", "no error lines (nest, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
@@ -790,6 +916,14 @@ ITEMS = [
     ("PCL.flow", "parcel flow: full delivery, expiry (pass criteria)", c_pcl_flow, None),
     ("D-DOCK", "trader docking mode 2", c_dock,
      "a trader bound for the trade station flies to its docking position and vanishes there (not 300 units out)"),
+    ("D-HAIL.page", "hail follow-ups as dialog pages (text set in the init)", c_hail_page,
+     "the answer shows in a dialog window as 'FTU <name>: <answer>' with '- Back' and '- Close', no # left"),
+    ("D-HAIL.back", "D11: Back reopens the menu with the used option hidden", c_hail_back, None),
+    ("D-HAIL.offer", "offer page Accept and Decline (Decline back to the menu)", c_hail_offer, None),
+    ("D-HAIL.esc", "Esc on a page closes the chain and frees the box lock", c_hail_esc, None),
+    ("D-HAIL.fight", "combat hail: busy page, help offer, help pay", c_hail_fight,
+     "a trader under attack answers 'Not now, we're busy.' with Close only, or 'We're outgunned. Clear them off and "
+     "there's <p> cr in it for you.' with Accept/Decline; after Accept and the fight the paid line and the credits"),
 ]
 
 
@@ -849,9 +983,9 @@ def report(ctx, results, summary_only=False, w=sys.stdout):
                 w.write("  note: %s\n" % m)
             if look:
                 w.write("  eyes%s: %s\n" % (" (%s)" % e if e else "", look))
-    w.write("\n%-9s %-8s %-5s %s\n" % ("item", "verdict", "eyes", "check"))
+    w.write("\n%-12s %-8s %-5s %s\n" % ("item", "verdict", "eyes", "check"))
     for iid, title, v, look, res, e in results:
-        w.write("%-9s %-8s %-5s %s\n" % (iid, v, "yes" if look else "-", title))
+        w.write("%-12s %-8s %-5s %s\n" % (iid, v, "yes" if look else "-", title))
 
 
 def open_logs(paths, errors):
@@ -890,7 +1024,8 @@ def parse_eyes(vals):
 SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", "E16.4": "PASS", "E16.5": "NO DATA",
             "E16.6": "FAIL", "E16.7": "PASS", "E16.8": "MANUAL", "E16.9": "MANUAL", "E16.10": "MANUAL",
             "E16.11": "NO DATA", "E-PCL.1": "PASS", "E-PCL.2": "MANUAL", "E-PCL.3": "MANUAL", "E-PCL.4": "MANUAL",
-            "E-PCL.5": "FAIL", "E-PCL.6": "NO DATA", "PCL.flow": "PASS", "D-DOCK": "MANUAL"}
+            "E-PCL.5": "FAIL", "E-PCL.6": "NO DATA", "PCL.flow": "PASS", "D-DOCK": "MANUAL", "D-HAIL.page": "MANUAL",
+            "D-HAIL.back": "PASS", "D-HAIL.offer": "PASS", "D-HAIL.esc": "PASS", "D-HAIL.fight": "MANUAL"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 
 
