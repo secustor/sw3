@@ -201,9 +201,9 @@ end;
 function TRF_Convoy_Text()
 	return {optfeq="Escort us to $1 for $2 cr?", feqid="$1 supply run: equipment, $2 -> $3.",
 		feqok="Contract accepted. Stay close, captain.", feqatk="Convoy under attack! Requesting support!",
-		feqthx="Convoy delivered. Payment sent: $1 cr.", rfeq="$1 is moving equipment through $2. Pirates will want it.",
-		nfeqkill="A $1 equipment convoy was destroyed in $2. The navy blames independent captains.",
-		nfeqlost="Pirates took a $1 equipment convoy near $2.", feqdest="the trade station"};
+		feqthx="Convoy delivered. Payment sent: $1 cr.", cvrfeq="$1 is moving equipment through $2. Pirates will want it.",
+		cvfeqkill="A $1 equipment convoy was destroyed in $2. The navy blames independent captains.",
+		cvfeqlost="Pirates took a $1 equipment convoy near $2.", feqdest="the trade station"};
 end;
 
 function TRF_CvTxt(key, a, b, c)

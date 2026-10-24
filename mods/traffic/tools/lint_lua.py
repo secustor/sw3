@@ -5,7 +5,9 @@ Usage: python3 -I lint_lua.py [--host] [--allow NAME[,NAME]] [--bool NAME[,NAME]
        python3 -I lint_lua.py --calls [-v] [-q] FILE...
 Exit status 1 when any finding is reported. Token-based heuristics, not a parser.
 --host: Lua 4 syntax checks only, for host harness files that define engine natives and constants.
---calls: cross-file check of TRF_ definitions and references; exit status 1 only on errors.
+--calls: cross-file check of TRF_ definitions and references; exit status 1 only on errors. It also compares the
+literal "key = text" pairs of the TRF_<M>_Text() tables: one key (normalised like trf_loc TRF_LocKey) with two
+different texts is an error, because trf_loc's merge keeps only the first.
 Log keys (mod scripts, not --host; design/log-format.md): TRF_Lf(module, event, k1, v1, ...) needs literal
 snake_case module and event ([a-z][a-z0-9_]*), a module wrapper TRF_<Mod>E(event, k1, v1, ...) a literal
 snake_case event; every key that is a string literal (Lf: 3rd, 5th, ...; *E: 2nd, 4th, ...) must be snake_case.
@@ -358,6 +360,31 @@ KITS = ("exp_hooks.script", "exp_state.script", "exp_trader.script")
 LOADER = "traffic.script"
 
 
+TEXT_FN = re.compile(r"TRF_\w+_Text$")
+
+
+def text_keys(path):
+    """Literal (key, text, line, table) pairs of the TRF_<M>_Text() functions of one file ("return {k = "s", ...}")."""
+    with open(path, "r", encoding="latin-1", newline="") as f:
+        toks = tokenize(f.read())
+    v = [t[1] for t in toks]
+    out = []
+    for i in range(len(toks) - 5):
+        if not (v[i] == "function" and TEXT_FN.match(v[i + 1]) and v[i + 2:i + 6] == ["(", ")", "return", "{"]):
+            continue
+        depth, j = 1, i + 6
+        while j < len(toks) and depth > 0:
+            if v[j] in "{(":
+                depth += 1
+            elif v[j] in "})":
+                depth -= 1
+            elif (depth == 1 and toks[j][0] == "name" and v[j + 1] == "=" and toks[j + 2][0] == "str"
+                  and v[j + 3] in (",", ";", "}")):
+                out.append((re.sub(r"[^a-z0-9]", "", v[j].lower()), v[j + 2][1:-1], toks[j][2], v[i + 1]))
+            j += 1
+    return out
+
+
 def base(p):
     return p.replace("\\", "/").rsplit("/", 1)[-1]
 
@@ -392,6 +419,13 @@ def lint_calls(paths, verbose=False, quiet=False):
         refs += [(p,) + x for x in r]
         guards |= {(p, s, nm) for s, nm in g}
         tol |= set(t)
+    texts = {}
+    for p in paths:
+        for k, txt, ln, fn in text_keys(p):
+            o = texts.setdefault(k, (txt, p, ln, fn))
+            if o[0] != txt and not exclusive(o[1], p):
+                add(p, ln, "error", "text key %s of %s differs from %s (%s:%d); trf_loc keeps the first in TRF_Loc_TextFns order"
+                    % (k, fn, o[3], o[1], o[2]))
 
     def target(name, p):
         """Definition a call from file p reaches: same file, else a later-loaded module, else the loader."""

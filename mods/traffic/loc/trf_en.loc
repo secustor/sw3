@@ -201,6 +201,9 @@ FILETYPE STANDART
 #TRF_ctoffer = Escort us to for cr?
 #TRF_ctok = Stay close, Wolves.
 #TRF_ctpaid = Safe arrival. cr transferred.
+#TRF_cvfeqkill = A equipment convoy was destroyed in. The navy blames independent captains.
+#TRF_cvfeqlost = Pirates took a equipment convoy near.
+#TRF_cvrfeq = is moving equipment through. Pirates will want it.
 #TRF_dcfar = Convoy through, but you were not with us. No pay.
 #TRF_dcgo = FTU convoy: all ships, move out.
 #TRF_dclost = Convoy lost. Contract void.
@@ -232,6 +235,8 @@ FILETYPE STANDART
 #TRF_factriada = Triada
 #TRF_facuss = USS
 #TRF_facvks = MSF
+#TRF_fcoptsweep = Sweep contracts
+#TRF_fctok = command: noted, Wolves.
 #TRF_feqatk = Convoy under attack! Requesting support!
 #TRF_feqdest = the trade station
 #TRF_feqid = supply run: equipment, ->.
@@ -412,6 +417,7 @@ FILETYPE STANDART
 #TRF_sev5 = carrier
 #TRF_sevbase = pirate base
 #TRF_sos = FTU: pirates on us, any ship assist!
+#TRF_spoptdemand = Drop part of your cargo, or we open fire
 #TRF_station = trade station
 #TRF_stnamb1 = Another freighter overdue on the Debris lanes. FTU says nothing.
 #TRF_stnamb2 = Half our berths are military charters since the war opened.

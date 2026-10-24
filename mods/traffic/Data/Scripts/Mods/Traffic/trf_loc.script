@@ -212,28 +212,17 @@ function TRF_Loc_LocLines()
 	return o;
 end;
 
--- v1 EN texts of keys emitted by other modules (10.4 key list); a module's own TRF_<M>_Text wins.
+-- v1 EN texts of keys emitted by other modules (10.4 key list). A key here that a module table also defines
+-- must have the same text (host v1-m: no key with two different texts in TRF_Loc_TextFns).
 -- Placeholders follow the spec's argument order where it names one; $n are TRF_Txt arguments a, b, c.
 function TRF_Loc_Text()
 	return {
 		-- track (4.3)
 		chased = "They followed us!",
-		-- supply, demand, heat reset (5.2, 5.3)
-		dmok = "All right, take it. Let us go!",
-		dmno = "We will not be robbed. Calling for help!",
-		heatoffer = "FTU will clear the Wolves' record for $1 cr. Pay?",   -- cost
-		heatpaid = "FTU record cleared. Traders will talk to you again.",
-		heatpoor = "Not enough credits to clear the FTU record.",
-		-- faction contracts and pirate-side offers (7.4, 7.5)
-		ctjoin = "$1 sweep against the pirates in $2. Join it for $3 cr?",  -- faction, system, pay
-		ctbounty = "$1 bounty on the pirate base in $2: $3 cr. Accept?",    -- faction, system, pay
-		ctdone = "Contract complete. $1 cr transferred.",                   -- pay
-		pooffer1 = "A fat trader is due in $1. Hit it and we pay you well. Deal?",          -- system
-		pooffer2 = "For 2000 cr we tell you when a rich convoy runs in $1. Deal?",          -- system
+		-- faction pirate-side offers (7.5)
 		popaid = "Your share for the job: $1 cr.",                          -- pay
 		-- convoys (8.4, 8.5)
 		optfeq = "Escort us to $1 for $2 cr?",                              -- destination, pay
-		feqid = "$1 supply run: equipment, $2 -> $3",                       -- faction, origin, destination
 		optdc = "Escort our convoy",                                        -- hail option label (trf_danger)
 	};
 end;

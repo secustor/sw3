@@ -1828,7 +1828,7 @@ end;
 
 function TRF_Supply_Text()
 	return {
-		optdemand = "Drop part of your cargo, or we open fire",
+		spoptdemand = "Drop part of your cargo, or we open fire",   -- no caller: the hail label is trf_hail optdemand
 		dmok = "FTU $1: Fine, take it! Just let us go.",                 -- name
 		dmno = "FTU $1: Never! Mayday, the Wolves are threatening us!", -- name
 		heatoffer = "FTU liaison: for $1 cr the guild forgets your record with its captains. Pay?", -- cost

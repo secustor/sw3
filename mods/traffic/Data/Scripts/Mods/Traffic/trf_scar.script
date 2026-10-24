@@ -1327,10 +1327,9 @@ function TRF_ScLineOf(r, mode, ch, nm, fresh)
 	if r.st >= 2 then return "scarold"; end;
 	if r.st ~= 1 or fresh ~= 1 then return nil; end;
 	if (r.kind == 1 or r.kind == 2) and TRF_ScCh5Of(nm, ch, 1) then return nil; end;
-	if r.kind == 1 then
-		if r.rec == 1 then return "scararrivet"; end;
-		return "scararrivet0";
-	end;
+	-- Step 2 hook: return "scararrivet" (recorder still transmitting) when r.rec == 1 once the finder's fee
+	-- exists (scar-spec 12); until then every trader record gets "scararrivet0".
+	if r.kind == 1 then return "scararrivet0"; end;
 	if r.kind == 2 then return "scararrivec"; end;
 	if r.kind == 3 then
 		if r.fac == 0 then return "scararrivep"; end;

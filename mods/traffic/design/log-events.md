@@ -487,7 +487,7 @@ Battle scars, step 1 (`design/scar-spec.md` 7).
 | `expire` | `module=scar event=expire sid=140 system=callipso kind=trader on_screen=0 state=2 age=13 ttl=12 deleted=0 reason=ttl` (reason ttl, cap, fight_cap, site) | 1 |
 | `shrink` | `module=scar event=shrink sid=420 system=gaoba state=2 age=8 ttl=12 decorations=2` | 1 |
 | `orphan` | `module=scar event=orphan sid=425 system=gaoba deleted=1` | 1 |
-| `enter` | `module=scar event=enter system=gaoba mode=full sid=420 state=1 result=reuse line=scararrivet record_count=1` (mode full, ch4, visual) | 1 |
+| `enter` | `module=scar event=enter system=gaoba mode=full sid=420 state=1 result=reuse line=scararrivet0 record_count=1` (mode full, ch4, visual) | 1 |
 | `load` | `module=scar event=load sid=422 system=gaoba state=1 hulk=true decorations=3 reason=nil` (reason: a failing gate) | 1 |
 | `wind_down` | `module=scar event=wind_down sid=424 system=gaoba reason=gate:mission_q` | 1 |
 | `dump` | `module=scar event=dump record_count=1 fight_count=0 records=420:gaoba:trader:1/12:1:2:1 recorders=nil payouts=nil licence_leg=nil` (`records=<sid>:<sys>:<kind>:<age>/<ttl>:<st>:<lv>:<scv>`) | 1 |

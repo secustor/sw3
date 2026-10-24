@@ -162,7 +162,7 @@ Objects are looked up by this visit's handle, the handle global (kept only when 
 ### 5.8 Marker, lines, wind-down
 
 - Marker (`TRF_ScNav`): only an off-screen record with `st` 1, age <= `scar_fresh_legs` (4), outside the visual mode and the wind-down; `TRF_MarkerAdd("scar", "TRF_SCAR_<sid>_NP", x, y, z, text, "nav_Crash_site.dds")` with `text` the vanilla key `#M_Name_Crash_site` (`G/LocData/English/s_carcasses.loc:236`), or `#TRF_scarnav` with `loc_mode` 1. trf_plumb refuses it during a mission, deletes it when a mission starts, before every jump and on load (the module re-adds it on load).
-- Scar line (`TRF_ScLineOf`, queued with `TRF_ArrivalLine("scar", text)`, 00: after the #6 beacon line): a fresh placed off-screen wreck: trader `scararrivet` (with the recorder) or `scararrivet0` ($1 the trader name), convoy `scararrivec` (not in the chapter 5 systems), sweep `scararrives` (navy) or `scararrivep` (pirates), base `scararriveb`; an opened or stripped wreck: `scarold`. None for on-screen records, hidden records and the visual mode; no trader or convoy line and no trader marker in Corrino and Debris1/2/4/6 while the chapter is 5, also for a record written earlier.
+- Scar line (`TRF_ScLineOf`, queued with `TRF_ArrivalLine("scar", text)`, 00: after the #6 beacon line): a fresh placed off-screen wreck: trader `scararrivet0` ($1 the trader name; `scararrivet`, "Recorder still transmitting", is defined but returned only from step 2, V28), convoy `scararrivec` (not in the chapter 5 systems), sweep `scararrives` (navy) or `scararrivep` (pirates), base `scararriveb`; an opened or stripped wreck: `scarold`. None for on-screen records, hidden records and the visual mode; no trader or convoy line and no trader marker in Corrino and Debris1/2/4/6 while the chapter is 5, also for a record written earlier.
 - Wind-down (`TRF_Sc_Step`): the gate failing during the visit (a mission began) deletes the marker once (`event=wind_down`); the objects stay until the jump (M3) and are hidden at the next gated entry.
 
 ### 5.9 Save, load, snapshot
@@ -211,7 +211,7 @@ Constants without a key (`TRF_ScK`): holds, `kv`, portal 300, nav point 150, obj
 | `module=scar event=expire sid=140 system=callipso kind=trader on_screen=0 state=2 age=13 ttl=12 deleted=0 reason=ttl` | dropped (`cap`, `fight_cap`, `site`) |
 | `module=scar event=shrink sid=420 system=gaoba state=2 age=8 ttl=12 decorations=2` | one decoration fewer |
 | `module=scar event=orphan sid=425 system=gaoba deleted=1` | orphan probe |
-| `module=scar event=enter system=gaoba mode=full sid=420 state=1 result=reuse line=scararrivet record_count=1`, `event=load sid=422 system=gaoba state=1 hulk=true decorations=3 reason=nil`, `event=wind_down sid=424 system=gaoba reason=gate:mission_q` | entry, load, wind-down |
+| `module=scar event=enter system=gaoba mode=full sid=420 state=1 result=reuse line=scararrivet0 record_count=1`, `event=load sid=422 system=gaoba state=1 hulk=true decorations=3 reason=nil`, `event=wind_down sid=424 system=gaoba reason=gate:mission_q` | entry, load, wind-down |
 | `module=scar event=dump record_count=1 fight_count=0 records=420:gaoba:trader:1/12:1:2:1 recorders=nil payouts=nil licence_leg=nil`, `event=dump_rec sid=420 ... cargo=... value=5450 cap=8000 ...`, `event=dump_probe system=gaoba sid=420 expected=4 found=4` | `TRF_DumpState` (`records=<sid>:<sys>:<kind>:<age>/<ttl>:<st>:<lv>:<scv>`) |
 | `module=scar event=error message=<m>` | protected call failed |
 
@@ -280,6 +280,7 @@ Changed scenarios: `sv-a`, `lad-a`, `ch-a` (`extra_count=6`), `stn-g` (the RU ke
 - V25 `TRF.sys[idx].sk` and `.scd` needed trf_state's `TRF_SysSet` and `TRF_SysFix` to keep an entry holding only these fields.
 - V26 Size: 5,721 bytes for `TRF.scar` at its bound (02 6.2 estimated "about 12 x 20 values"); hard bounds: 12 records, 3 recorders, 2 payout stamps, `sk` per system, at most 12 live `scd` stamps (ttl >= 8 > `scar_cd`).
 - V27 `enable_scars` 0 leaves existing records and objects as they are (the module is inert).
+- V28 Every trader record gets `scararrivet0`, also with `rec` 1: the line `scararrivet` names a recorder the player cannot claim until the finder's fee of step 2 (12) exists. Both keys stay; `TRF_ScLineOf` carries a "Step 2 hook" comment (2026-10-24, player-scenarios 8).
 
 ## 12. Left out (step 2 and later)
 

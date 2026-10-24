@@ -402,7 +402,7 @@ function T_SC_C()
 		"nav marker TRF_SCAR_<sid>_NP (owner scar), text #M_Name_Crash_site");
 	-- Arrival line through the plumbing queue (the first mod line here, 8 s after the entry).
 	T_Tick(20, 0.5);
-	local line = TRF_Txt("scararrivet", TRF_Names()[r.nm]);
+	local line = TRF_Txt("scararrivet0", TRF_Names()[r.nm]);
 	HOST_Check(S_Screen(s0, line) and strfind(line, "Kestrel", 1, 1) and S_Logs(n0, "module=plumb event=arrival_line owner=scar") >= 1, "scar line queued: "..line);
 	-- Site pick of a sweep wreck: the nav point farthest from the stations (plus the 150-250 offset).
 	local rs = {sys=g, k=1, kind=3, seed=4321};
@@ -699,7 +699,7 @@ function T_SC_F()
 	HOST_Check(TRF_ScLineOf({on=0, st=1, hid=0, kind=2, rec=0, fac=0}, "full", 5, "corrino", 1) == nil
 		and TRF_ScLineOf({on=0, st=1, hid=0, kind=2, rec=0, fac=0}, "full", 6, "corrino", 1) == "scararrivec", "chapter 5: no convoy line in Corrino");
 	HOST_Check(TRF_ScLineOf({on=0, st=1, hid=0, kind=1, rec=1, fac=0}, "full", 5, "corrino", 1) == nil
-		and TRF_ScLineOf({on=0, st=1, hid=0, kind=1, rec=1, fac=0}, "full", 6, "corrino", 1) == "scararrivet"
+		and TRF_ScLineOf({on=0, st=1, hid=0, kind=1, rec=1, fac=0}, "full", 6, "corrino", 1) == "scararrivet0"
 		and TRF_ScNav({sys=co, k=0, on=0, st=1, kind=1, leg=TRF.clock.legs, x=0, y=0, z=0}, "full") == nil,
 		"chapter 5: no recorder line and no marker for a trader record written before");
 	-- Chapter modes: 3 visual (hulk without cargo, no marker, no line), 4 free time (TT1 row, marker), 4 without.

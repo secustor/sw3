@@ -23,10 +23,10 @@ end;
 -- EN texts (v1 10.4). $n placeholders as TRF_Txt.
 function TRF_Faction_Text()
 	return {
-		optsweep = "Sweep contracts",
+		fcoptsweep = "Sweep contracts",                                           -- no caller: the hail label is trf_hail optsweep
 		ctjoin = "$1 command: we move against the $2 in $3. Join the sweep for $4 cr?",  -- faction, clan, system, pay
 		ctbounty = "$1 command: bounty on the pirate base in $2, $3 cr. Accept?",      -- faction, system, pay
-		ctok = "$1 command: noted, Wolves.",
+		fctok = "$1 command: noted, Wolves.",                                     -- faction (trf_hail owns ctok)
 		ctdone = "$1 command: sweep contract done. $2 cr transferred.",
 		pooffer1 = "A fat freighter will pass $1 soon. Take it and the clan pays you a share. Interested?",
 		pooffer2 = "A rich convoy is due in $1. The tip costs $2 cr. Buy it?",
@@ -1343,7 +1343,7 @@ function TRF_FcCtOk(a)
 	local f = TRF_SweepOwner(slot);
 	TRF_FcStat("ct_acc_"..a);
 	TRF_FcE("contract", "slot", slot, "faction", f, "contract_bit", a, "result", "accepted");
-	return TRF_FcTxt("ctok", TRF_FcFacName(f));
+	return TRF_FcTxt("fctok", TRF_FcFacName(f));
 end;
 
 -- Pirate-dock offers (v1 7.5) --------------------------------------------------------------------------

@@ -1754,6 +1754,33 @@ function T_V1_M()
 	miss = "";
 	for i = 1, getn(v1k) do if not TRF_LocTxt(v1k[i]) then miss = miss.." "..v1k[i]; end; end;
 	HOST_Check(miss == "", "EN text for the 10.4 v1 keys"..miss);
+	-- No key with two different texts in the TRF_Loc_TextFns tables (the merge keeps the first one); keys
+	-- defined twice with the same text are the accepted list below.
+	local acc = {demand=1, flee=1, clan0=1, comply=1, noname=1, fleegate=1, sos=1, thanks=1, factriada=1, fackfni=1,
+		facuss=1, facvks=1, facinoco=1, seenin=1, metagain=1, chased=1, popaid=1, optdc=1, optfeq=1};
+	local dt, ddiff, dsame, nsame = {}, "", "", 0;
+	local tf = TRF_Loc_TextFns();
+	for i = 1, getn(tf) do
+		local f = getglobal(tf[i]);
+		if type(f) == "function" then
+			for k, v in f() do
+				local nk = TRF_LocKey(k);
+				local p = dt[nk];
+				if not p then dt[nk] = {f=tf[i], v=v};
+				elseif p.v ~= v then ddiff = ddiff.." "..nk.."("..p.f.."/"..tf[i]..")";
+				else
+					nsame = nsame + 1;
+					if not acc[nk] then dsame = dsame.." "..nk; end;
+				end;
+			end;
+		end;
+	end;
+	HOST_Check(ddiff == "", "no text key defined with two different texts"..ddiff);
+	HOST_Check(dsame == "" and nsame == 19, nsame.." keys defined twice with the same text, all accepted"..dsame);
+	HOST_Check(TRF_FcCtOk and TRF_Txt("ctok") == "Stay close, Wolves." and TRF_LocTxt("fctok") == "$1 command: noted, Wolves."
+		and TRF_LocTxt("cvfeqkill") and TRF_LocTxt("fcoptsweep") == "Sweep contracts", "renamed keys: fctok, fcoptsweep, cvfeqkill");
+	local ctl = TRF_FcCtOk(1);
+	HOST_Check(type(ctl) == "string" and strfind(ctl, "^%u[%w ]+ command: noted, Wolves%.$"), "sweep accept line names the faction: "..tostring(ctl));
 	-- lang ru: per-key fallback to EN; loc_mode 1: #TRF_ keys.
 	TRF_H().loc = nil; h.cfg.lang = "ru";
 	local ru0 = TRF_Loc_RU;
