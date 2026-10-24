@@ -606,10 +606,11 @@ function TRF_FrTick(co)
 	end;
 end;
 
--- One tick of ship s (slot i): k + 1; lay-up (st 2 while susp, st 1 until till); a running ship earns e, moves one
--- system (a stop takes two ticks: the dwell tick credits run), draws its generator and rolls loss and robbery in the
--- system it is in. On-screen (live appearance) it holds its position (its own exit moves it) and the outcome is void;
--- escort cover (k < cov) voids it too. A laid-up or suspended ship rolls nothing and earns nothing.
+-- One tick of ship s (slot i): k + 1; lay-up (st 2 while susp, st 1 through till, also after a suspension); a running
+-- ship earns e, moves one system (a stop takes two ticks: the dwell tick credits run), draws its generator and rolls
+-- loss and robbery in the system it is in. On-screen (live appearance) it holds its position (its own exit moves it) and the outcome is void;
+-- escort cover (k <= cov) voids it too. A laid-up or suspended ship rolls nothing and earns nothing, nor does a ship
+-- whose move began a damage lay-up.
 function TRF_FrShipTick(co, i, s, susp)
 	local lp = TRF_FrLoop(s.rg);
 	s.k = s.k + 1;
@@ -627,11 +628,11 @@ function TRF_FrShipTick(co, i, s, susp)
 		return;
 	end;
 	if s.st == 2 then
-		s.st = 0;
+		if s.till >= s.k then s.st = 1; else s.st = 0; s.till = 0; end;
 		TRF_FrE("resume", "ship_id", s.id, "tick", s.k);
 	end;
 	if s.st == 1 then
-		if s.k < s.till then return; end;
+		if s.k <= s.till then return; end;
 		s.st = 0; s.till = 0;
 		TRF_FrE("resume", "ship_id", s.id, "tick", s.k, "reason", "layup");
 	end;
@@ -640,6 +641,7 @@ function TRF_FrShipTick(co, i, s, susp)
 	local live = TRF_FrLive(s);
 	if not live then TRF_FrMove(co, s, lp); end;
 	s.rs = TRF_FrRngOf(s.rs);
+	if s.st ~= 0 then return; end;
 	local r = s.rs / TRF_FrK().pm;
 	local sys = lp.s[s.p];
 	local slot = TRF_N("TRF_RgOf", sys);
@@ -654,7 +656,7 @@ function TRF_FrShipTick(co, i, s, susp)
 	if TRF_FrOpt("fw_losses") == 1 then pl = TRF_FrLossOf(TRF_FrT("fw_loss_base"), tf, dis, ph, T); end;
 	local out = TRF_FrOutOf(r, pl, pr);
 	local why = nil;
-	if out ~= "none" and live then why = "onscreen"; elseif out ~= "none" and s.k < s.cov then why = "cover"; end;
+	if out ~= "none" and live then why = "onscreen"; elseif out ~= "none" and s.k <= s.cov then why = "cover"; end;
 	local fr = %FR;
 	fr.roll = {id=s.id, k=s.k, r=r, pr=pr, pl=pl, out=out, why=why};
 	TRF_FrDE("roll", "ship_id", s.id, "tick", s.k, "r", format("%.4f", r), "p_rob", format("%.4f", pr), "p_loss", format("%.4f", pl),
@@ -715,8 +717,9 @@ function TRF_FrRob(co, s, sys, via)
 	TRF_FrE("rob", "ship_id", s.id, "tick", s.k, "system", TRF_FrName(sys), "till", s.till, "clan_score_change", d, "via", via);
 end;
 
--- Loss (08 section 6): record removed, the voucher (none with counted player fire pf), liability owed, a pk shortage
--- at the next stop, clan score +2 (not for pf), log entry (f 1 first loss, 2 own fire). cls: hold class (nil: from rs).
+-- Loss (08 section 6): record removed, log entry (f 1 first loss, 2 own fire); without counted player fire (pf) also
+-- the voucher, liability owed, a pk shortage at the next stop and clan score +2 (with pf traffic's normal kill effects
+-- apply instead). cls: hold class (nil: from rs).
 -- Step 2 hook: survivors (pods halve the liability), captain names, news.
 function TRF_FrLose(co, i, s, sys, via, pf, cls)
 	local lp = TRF_FrLoop(s.rg);
@@ -730,10 +733,11 @@ function TRF_FrLose(co, i, s, sys, via, pf, cls)
 		v = min(floor(TRF_FrT("fw_cover") * s.price), K.vch_max);
 		if v > co.vch then co.vch = v; end;
 	end;
-	local add = floor(TRF_FrT("fw_liab_ticks") * e);
+	local add = 0;
+	if not pf then add = floor(TRF_FrT("fw_liab_ticks") * e); end;
 	co.owe = min(co.owe + add, TRF_FrPayCap());
 	local nx = nil;
-	if lp then nx = lp.s[TRF_FrNextStopOf(lp, s.p)]; end;
+	if lp and not pf then nx = lp.s[TRF_FrNextStopOf(lp, s.p)]; end;
 	if type(cls) ~= "number" or cls < 1 or cls > 6 then cls = TRF_FrM(s.rs, 6) + 1; end;
 	if nx and type(TRF_ShortAdd) == "function" then
 		call(TRF_ShortAdd, {nx, cls, TRF_FrLegs() + TRF_FrTv("L_short", 6), 1}, "x", TRF_FrErr);
@@ -758,7 +762,7 @@ end;
 -- Trade dock line 60 (after the owed payers at 50, before the charter at 70), once per visit (pg = vn), at any trade
 -- station but New Kyoto: the tick catch-up, the liability charge (bal first, then the wallet, the rest stays owed),
 -- the payout min(bal, pay_cap) through TRF_Pay (shared prize gap with cfg fw_prize_gap 1), then at most 3 lines:
--- payout, log lines (oldest first, at most 2), whereabouts, liability.
+-- payout, log lines (oldest first, at most 2), whereabouts, liability (a charged liability always keeps its line).
 function TRF_Fr_DockLine(kind, param)
 	if kind ~= "trade" or not TRF_FrOn() then return nil; end;
 	local co = TRF_FrCo();
@@ -801,13 +805,15 @@ function TRF_Fr_DockLine(kind, param)
 	TRF_FrE("pay", "visit", co.vn, "paid_visit", co.pg, "balance", co.bal, "paid", paid, "held", held, "mode", mode, "system", TRF_FrName(cur));
 	local logs = 0;
 	local keep = {};
+	local cap = TRF_FrK().lines;
+	if liab then cap = cap - 1; end;
 	if type(co.log) == "table" then
 		for j = 1, getn(co.log) do
 			local e = co.log[j];
-			if type(e) == "table" and logs < 2 and getn(out) < TRF_FrK().lines then
+			if type(e) == "table" and logs < 2 and getn(out) < cap then
 				local t, x = TRF_FrLogText(e);
 				if t then out[getn(out) + 1] = t; logs = logs + 1; end;
-				if x and getn(out) < TRF_FrK().lines then out[getn(out) + 1] = x; end;
+				if x and getn(out) < cap then out[getn(out) + 1] = x; end;
 			elseif type(e) == "table" then
 				keep[getn(keep) + 1] = e;
 			end;
@@ -816,12 +822,12 @@ function TRF_Fr_DockLine(kind, param)
 	if getn(keep) > 0 then co.log = keep; else co.log = nil; end;
 	for i = 1, TRF_FrK().ship_max do
 		local s = TRF_FrShip(i);
-		if s and getn(out) < TRF_FrK().lines then
+		if s and getn(out) < cap then
 			local w = TRF_FrWhere(s);
 			if w then out[getn(out) + 1] = w; end;
 		end;
 	end;
-	if liab and getn(out) < TRF_FrK().lines then out[getn(out) + 1] = liab; end;
+	if liab then out[getn(out) + 1] = liab; end;
 	-- Step 2 hook: the chapter-13 FTU alarm line ("FTU: HQ on alert. Charters run as usual.") and the news records.
 	TRF_FrDE("lines", "line_count", getn(out), "log_shown", logs, "log_left", getn(keep));
 	if getn(out) == 0 then return nil; end;
@@ -1219,10 +1225,12 @@ function TRF_Fr_Arrive(id, how)
 	local lead = TRF_N("TRF_GnLead", id);
 	local d = TRF_FrDist(TRF_N("TRF_PlPos", TRF_N("TRF_Ms")), TRF_N("TRF_PlPos", lead));
 	local safe = 1;
+	local hp = TRF_N("GetCurHP", lead);
 	if type(r.hp0) == "number" and r.hp0 > 0 then
-		local hp = TRF_N("GetCurHP", lead);
 		if type(hp) == "number" and hp < TRF_FrK().hp_safe * r.hp0 then safe = nil; end;
 	end;
+	-- The damage band while the flight still exists (a dock or exit removes the record before any jump).
+	if type(hp) == "number" then s.dmg = max(s.dmg, TRF_FrDmgOf(hp, r.hp0)); end;
 	-- Step 2 hook: portal follow (a player following within T_chase sees it arrive 5-15 s later).
 	if how == "exit" and lp then
 		s.w = 0;
@@ -1238,7 +1246,7 @@ function TRF_Fr_Arrive(id, how)
 		if d and d <= TRF_FrK().esc_r then
 			esc = 1;
 			s.cov = max(s.cov, s.k + TRF_FrK().cover);
-			TRF_FrSay(TRF_FrTxt("fwdocked", TRF_FrShipName(s.nm)), 8, TRF_N("TRF_Ev_Leader", id));
+			if how == "dock" then TRF_FrSay(TRF_FrTxt("fwdocked", TRF_FrShipName(s.nm)), 8, TRF_N("TRF_Ev_Leader", id)); end;
 		end;
 		s.ek = s.k;
 	end;
@@ -1250,7 +1258,7 @@ function TRF_Fr_Arrive(id, how)
 end;
 
 -- trf_events hook in TRF_Ev_Kill, before the record is closed: the on-screen loss (counted player fire: no voucher,
--- the normal kill effects stay traffic's).
+-- liability, next-stop shortage or clan +2; the normal kill effects stay traffic's, the path A shortage among them).
 function TRF_Fr_Killed(id, rec, by, idx)
 	if type(rec) ~= "table" or not rec.fw then return; end;
 	local co = TRF_FrCo();

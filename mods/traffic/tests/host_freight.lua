@@ -500,6 +500,8 @@ function T_FR_D()
 	FR_Ticks(1);
 	HOST_Check(s.st == 1 and s.k == k3 + 1, "laid up: counts down");
 	FR_Ticks(1);
+	HOST_Check(s.st == 1 and s.k == k3 + 2, "laid up: the second idle tick");
+	FR_Ticks(1);
 	HOST_Check(s.st == 0, "lay-up over after fw_layup ticks");
 	FR_Visit();
 	r = FR_Dock();
@@ -611,6 +613,7 @@ function T_FR_F()
 	-- Docking with the mothership within 400: escort cover and the visit credit once.
 	local lead = TRF_GnLead(id);
 	h.ms.pos = Vector3(lead.pos.x + 150, lead.pos.y, lead.pos.z);
+	lead.hp = 0.6 * (r.hp0 or 1000);
 	local pc0 = TRF_Pro(cal);
 	TRF.live.pv = 0; TRF.live.pc = 0;
 	n0 = S_Mark();
@@ -618,6 +621,7 @@ function T_FR_F()
 	FR_Wait(25);
 	HOST_Check(not TRF_FrRecOpen(id) and s.cov == 27 and s.ek == 21 and s.p == TRF_FrStopOf(lp, cal) and S_Logs(n0, "event=dock ship_id=1 trader_id="..id.." how=dock esc=1") == 1,
 		"docked escorted: cover k + 6, ek = k, p unchanged (path A arrival)");
+	HOST_Check(s.dmg == 1, "dock at 60 % hull: damage band 1 recorded at the arrival");
 	HOST_Check(S_Logs(n0, "event=pro_credit") >= 1 or TRF_Pro(cal) >= pc0, "visit credit counted");
 	-- Covered: the next ticks void a robbery.
 	FR_Tune("fw_tick_real", 120);
@@ -742,11 +746,11 @@ function T_FR_G()
 	FR_Tune("fw_tick_real", 3600);
 	FR_Tune("fw_rob_base", {0, 0, 0, 0, 0, 0});
 	s, id, r = FR_Live();
-	local h0 = TRF.std.heat;
+	local h0, o0 = TRF.std.heat, TRF.co.owe;
 	n0 = S_Mark();
 	V_PlayerKill(id);
-	HOST_Check(TRF_FrShip(1) == nil and TRF.co.vch == 0 and TRF.std.heat == h0 + 1 and S_Logs(n0, "cause=player vch=0") == 1 and TRF.co.log[1].f == 2,
-		"own kill: no voucher, heat +1 (EW8.8)");
+	HOST_Check(TRF_FrShip(1) == nil and TRF.co.vch == 0 and TRF.std.heat == h0 + 1 and S_Logs(n0, "cause=player vch=0 voucher=0 owe_added=0") == 1 and TRF.co.log[1].f == 2
+		and TRF.co.owe == o0, "own kill: no voucher, no liability, heat +1 (EW8.8)");
 	FR_Visit();
 	local dr = FR_Dock();
 	HOST_Check(FR_Has(dr.scr, "FTU pays no cover for a hull your own wing shot down."), "own-kill line at the dock: "..dr.scr);

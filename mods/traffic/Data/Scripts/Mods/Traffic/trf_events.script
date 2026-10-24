@@ -522,7 +522,8 @@ function TRF_Ev_KillV2(id, rec, by, idx)
 			if type(slot) == "number" then TRF_N("TRF_ClanAdd", slot, 1, "raid kill "..id); end;
 		end;
 	end;
-	if rec.path == "A" and not rec.fw then
+	-- The freighter's own loss feeds its next stop instead; with counted player fire the normal shortage stays.
+	if rec.path == "A" and (not rec.fw or by == "player" or rec.cnt == 1) then
 		local pk = nil;
 		if type(rec.pa) == "number" then pk = 1; end;
 		TRF_Ev_Short(idx, rec.cls, pk);
