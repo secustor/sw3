@@ -401,8 +401,10 @@ function TRF_ScCargoOf(seed, list, fm, vcap, Lw, costs, K)
 	if type(fm) == "table" and getn(fm) > 0 then
 		s = TRF_ScRng(s);
 		local it = fm[1 + TRF_ScM(s, getn(fm))];
-		local c = TRF_ScCostOf(costs, it, K);
-		if not TRF_ScQuestOf(it) and c <= vcap then TRF_ScAddItem(out, at, it); tot = tot + c; nit = 1; end;
+		if not TRF_ScQuestOf(it) then
+			local c = TRF_ScCostOf(costs, it, K);
+			if c <= vcap then TRF_ScAddItem(out, at, it); tot = tot + c; nit = 1; end;
+		end;
 	end;
 	local n = getn(list);
 	local P = floor((Lw or 8) / 4);
@@ -412,11 +414,13 @@ function TRF_ScCargoOf(seed, list, fm, vcap, Lw, costs, K)
 		s = TRF_ScRng(s);
 		local k = TRF_ScCl(TRF_ScM(s, max(1, n - 5)) + P + 1, 1, n);
 		local it = list[k];
-		local c = TRF_ScCostOf(costs, it, K);
-		if type(it) == "string" and not TRF_ScQuestOf(it) and tot + c <= vcap then
-			TRF_ScAddItem(out, at, it);
-			tot = tot + c;
-			nit = nit + 1;
+		if not TRF_ScQuestOf(it) then
+			local c = TRF_ScCostOf(costs, it, K);
+			if tot + c <= vcap then
+				TRF_ScAddItem(out, at, it);
+				tot = tot + c;
+				nit = nit + 1;
+			end;
 		end;
 	end;
 	return out, tot;
@@ -620,7 +624,7 @@ function TRF_ScCdOn(idx)
 	return type(v) == "number" and TRF_ScLegs() < v;
 end;
 
--- Next slot k of idx (TRF.sys[idx].sk) and its advance; a k still used by a record of idx is skipped.
+-- Next slot k of idx (TRF.sys[idx].sk) and its advance (one record per system, so no live record of idx holds it).
 function TRF_ScNextK(idx)
 	local k = TRF_ScSys(idx, "sk");
 	if type(k) ~= "number" then k = 0; end;
@@ -855,7 +859,8 @@ function TRF_Sc_Source(src, idx, slot, L, forced)
 	local ch = TRF_N("TRF_Chapter");
 	if TRF_ScCh5Of(TRF_ScName(idx), ch, 1) and type(slot) == "number" then
 		local alt = TRF_ScAlt(slot, idx);
-		TRF_ScE("source", "source", src, "system", TRF_ScName(idx), "alternative", alt and TRF_ScName(alt), "result", "moved", "reason", "chapter5");
+		TRF_ScE("source", "source", src, "system", TRF_ScName(idx), "alternative", alt and TRF_ScName(alt), "result", (alt and "moved") or "none",
+			"reason", "chapter5");
 		if not alt then return nil; end;
 		idx = alt;
 	end;
@@ -972,7 +977,10 @@ function TRF_ScFightWrite(idx)
 	if not c then why = "position";
 	elseif getn(m) < T.scar_min_dead and getn(ev) == 0 then why = "few"; end;
 	local link = nil;
-	if not why and sv and TRF_ScDist(sv, c) and TRF_ScDist(sv, c) <= T.scar_radius then link = 1; end;
+	if not why and sv then
+		local dl = TRF_ScDist(sv, c);
+		if dl and dl <= T.scar_radius then link = 1; end;
+	end;
 	local p, mv = nil, nil;
 	if not why then
 		local S = TRF_ScSiteIn(idx, -1);
@@ -1214,6 +1222,12 @@ function TRF_ScPlace(i, idx, mode, why)
 		local tpl = hu.d[1 + TRF_ScM(r.seed + j - 1, getn(hu.d))];
 		local o = TRF_Sc_Make(tpl, TRF_ScRingOf(c, r.seed, j, K), TRF_ScLbl(sid, made + 1));
 		if o then made = made + 1; TRF_ScSet(sid, made, o); end;
+	end;
+	-- No hulk (on-screen, opened) and no decoration placed: nothing stands, so the record is not marked placed and
+	-- the next entry tries again (as a blocked hulk spot).
+	if not hulk and made == 0 then
+		TRF_ScE("place", "sid", sid, "system", nm, "result", "failed", "reason", "blocked");
+		return nil;
 	end;
 	if made < nd and made >= 1 then r.nd = made; end;
 	local cl, cv, cap = {}, 0, 0;
@@ -1534,8 +1548,8 @@ function TRF_Sc_Fix()
 			for i = 1, getn(TRF.scar) do
 				local e = TRF.scar[i];
 				if type(e) == "table" and TRF_ScNum(e.sys, 1, ns) and type(e.x) == "number" and type(e.y) == "number" and type(e.z) == "number"
-					and not have[e.sys] and getn(out) < TRF_ScK().rec_max then
-					have[e.sys] = 1;
+					and not have[floor(e.sys)] and getn(out) < TRF_ScK().rec_max then
+					have[floor(e.sys)] = 1;
 					local r = {sys=floor(e.sys), k=TRF_ScFld(e, "k", 0, 9, 0), kind=TRF_ScFld(e, "kind", 1, 5, 1), fac=TRF_ScFld(e, "fac", 0, 5, 0),
 						x=floor(e.x), y=floor(e.y), z=floor(e.z), on=TRF_ScFld(e, "on", 0, 1, 0), mine=TRF_ScFld(e, "mine", 0, 1, 0),
 						lv=TRF_ScFld(e, "lv", 0, 4, 0), seed=TRF_ScFld(e, "seed", 1, 9999, 1), nd=TRF_ScFld(e, "nd", 1, 4, 1),
@@ -1655,7 +1669,7 @@ function TRF_Sc_Dump()
 			for j = 0, 4 do if TRF_Sc_Find(TRF_ScLbl(sid, j)) then fd = fd + 1; end; end;
 		end;
 		if r then
-			if r.on ~= 1 and r.st ~= 2 and r.st >= 1 then ex = 1; end;
+			if r.on ~= 1 and r.st ~= 2 and r.st >= 1 and r.hid ~= 1 then ex = 1; end;
 			if r.st >= 1 and r.hid ~= 1 then ex = ex + r.nd; end;
 		end;
 		TRF_ScE("dump_probe", "system", TRF_ScName(cur), "sid", r and TRF_ScSid(r), "expected", ex, "found", fd);

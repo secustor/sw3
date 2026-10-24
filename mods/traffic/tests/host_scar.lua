@@ -694,7 +694,8 @@ function T_SC_F()
 	TRF_Sc_Source(1, co, cg, TRF.clock.legs);
 	local moved = 0;
 	for i = 1, getn(TRF.scar or {}) do if TRF.scar[i].sys ~= co and TRF_RgOf(TRF.scar[i].sys) == cg then moved = moved + 1; end; end;
-	HOST_Check(S_Logs(n0, "result=moved reason=chapter5") == 1 and (moved == 1 or S_Logs(n0, "alternative=nil") == 1), "chapter 5: source 1 moves to another region system or none");
+	HOST_Check((moved == 1 and S_Logs(n0, "result=moved reason=chapter5") == 1) or (moved == 0 and S_Logs(n0, "alternative=nil result=none reason=chapter5") == 1),
+		"chapter 5: source 1 moves to another region system or none");
 	HOST_Check(TRF_ScLineOf({on=0, st=1, hid=0, kind=2, rec=0, fac=0}, "full", 5, "corrino", 1) == nil
 		and TRF_ScLineOf({on=0, st=1, hid=0, kind=2, rec=0, fac=0}, "full", 6, "corrino", 1) == "scararrivec", "chapter 5: no convoy line in Corrino");
 	HOST_Check(TRF_ScLineOf({on=0, st=1, hid=0, kind=1, rec=1, fac=0}, "full", 5, "corrino", 1) == nil

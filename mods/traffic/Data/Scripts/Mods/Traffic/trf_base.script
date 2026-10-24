@@ -1150,10 +1150,15 @@ function TRF_Ba_DiedBody(idx, g)
 	if L and type(L.bs) == "table" and L.bs.s == idx and L.bs.atk then by = "player"; end;
 	TRF_Ba_NavDel(idx);
 	local hb = TRF_Ba_H();
-	-- Battle scars source 7 (design/scar-spec.md 5.3): the base died in view.
+	-- Battle scars source 7 (design/scar-spec.md 5.3): the base died in view; the map's base site is the fallback
+	-- position when the destroyed station no longer answers GetPosition.
 	local smine = nil;
 	if by == "player" then smine = 1; end;
-	if hb then TRF_P("TRF_Sc_Dead", 4, 0, hb.b, smine); end;
+	local site, bsy = nil, TRF_Ba_Sys(idx);
+	if bsy and type(bsy.bs) == "table" then site = bsy.bs; end;
+	local bo = nil;
+	if hb then bo = hb.b; end;
+	TRF_P("TRF_Sc_Dead", 4, 0, bo, smine, site and site.x, site and site.y, site and site.z);
 	TRF_P("TRF_Sc_Fight", "base", smine);
 	if hb then hb.b = nil; end;
 	TRF_BaseDestroyed(idx, by);
