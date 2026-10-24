@@ -48,7 +48,7 @@ Module: new `S/trf_charter.script`, prefix `Ch` (`TRF_Ch_*` public, `TRF_Ch<X>` 
 
 Rules:
 - R1 `TRF.ch` is absent until the unlock; a game without the charter has no field.
-- R2 `TRF_Ch_Fix` (from `TRF_Repair`): a non-table `TRF.ch` becomes absent; every field within its bounds (leg stamps after the current leg become the current leg, `cd` at most legs + 100, `du` at most legs + 500); a posting with a field out of bounds is dropped, `p` is clamped to `k`, `pay` is clamped to the live `pay_cap` (`TRF_ChPayCap`, 30,000 without trf_region), a closed posting keeps a reason (default `deadline`); rank 2 or 3 without `du` falls due now; any other key is dropped. `TRF_Repair` runs at every entry and load, so the record table is replaced by a repaired copy each time.
+- R2 `TRF_Ch_Fix` (from `TRF_Repair`): a non-table `TRF.ch` becomes absent; every field within its bounds (leg stamps after the current leg become the current leg, `cd` at most legs + 100, `du` at most legs + 500); a posting with a field out of bounds is dropped, `p` is clamped to `k`, `pay` is clamped to the live `pay_cap` (`TRF_ChPayCap`, 30,000 without trf_region), a closed posting keeps a known close reason (default `deadline`); rank 2 or 3 without `du` falls due now; any other key is dropped. `TRF_Repair` runs at every entry and load, so the record table is replaced by a repaired copy each time.
 - R3 Postings are removed at payment (st 1) and at the first trade dock after a close (st 2, 3, with the close line); the logbook entry goes with the record.
 
 ### 3.2 Visit state (chunk local `CV`, never saved; rebuilt by every MapInitialization)
@@ -58,6 +58,7 @@ Rules:
 | `dk` | trade dockings this visit (dump) |
 | `dec.dues` | 1 after Cancel on the dues box; no second box this visit |
 | `tc` | the clamped tune table and the `TRF_Tune` table it was built from |
+| `dn` | the charter deny set (`TRF_ChDenySet`) and the `TRF_Map` table it was built from |
 
 Handles: none. The charter spawns nothing, so the snapshot, caps, orphan scan and jump need nothing.
 
@@ -98,7 +99,7 @@ Dispatcher orders (00 section 6, WB 4.2): trade lines 10 shortage restore, 20-40
 
 - G1 Module: `TRF`, the traffic modules, cfg `charter` 1.
 - G2 Unlock: `TRF_Chapter() >= ch_unlock_ch` (5) and `TRF.std.help >= ch_unlock_help` (3), checked at entry and at each trade dock; once unlocked the record stays (help may decay later).
-- G3 Deny list (`TRF_ChDeny`, 14 section 3): earth, precursors, disonsphere, fronn, nk, x297, x203, x213, x220, traffic's `TRF_Deny()` names (elio, x297, gefest), cfg `ch_deny`. No posting needs a denied system, no deed counts there, no dock line, pay or box there. Regions never posted: home xt24 or xk16, and any region with xt23 or xt24 as a member (`TRF_ChNeverM`; on the generated map the xt27 region, slot 8).
+- G3 Deny list (`TRF_ChDeny`, 14 section 3): earth, precursors, disonsphere, fronn, nk, x297, x203, x213, x220, traffic's authored deny names (`TRF_DenyList` entries with `m = 1` and no `tq`: elio, x297, gefest; the campaign teleport targets of the transit rule stay open), cfg `ch_deny`. No posting needs a denied system, no deed counts there, no dock line, pay or box there. Regions never posted: home xt24 or xk16, and any region with xt23 or xt24 as a member (`TRF_ChNeverM`; on the generated map the xt27 region, slot 8).
 - G4 Dock: G1, G2, G3, no visible scene (`TRF_Quiet`), the strict gate (`TRF_StrictOk(idx, "charter")`); the dispatcher skips the line, the payer and the box under `__disableAction` / `__sys_SOS` (S2), so owed pay waits for the next docking.
 - G5 Free roam (generation, logbook re-add): `TRF_Safe_QState()` nil, or `quest_Help` in process.
 - G6 Suspension (no generation): chapter > `ch_last_ch`, the vanilla Trade relation W, heat >= 5.
@@ -170,7 +171,7 @@ For each slot: a record whose entry reads `QUEST_NOINIT` (e.g. after `ClearQuest
 |---|---|---|---|
 | `ch_unlock_ch`, `ch_last_ch` | 5, 18 | 1..20 | first chapter, last chapter before the suspension |
 | `ch_unlock_help` | 3 | 0..99 | help needed for the unlock |
-| `ch_slots` | {2, 3} | 1..3 each | slots at rank 0-2, from rank 3 |
+| `ch_slots` | {2, 3} | 1..3 each, the second not below the first (else the default) | slots at rank 0-2, from rank 3 |
 | `ch_k` | {0.4, 0.3, 0.4, 0.4, 0.4, 0.4} | 0..5 | `k_t` per type |
 | `ch_low_L` | 8 | 1..16 | knee of the `L_r / 8` term |
 | `ch_pay_gap_rs` | 1800 | 0..100000 | real seconds between paid completions |
@@ -219,7 +220,7 @@ Entry as `host_ladder.lua`: `host_station.lua` up to its first scenario. New stu
 | `ch-g` | reconcile after `ClearQuests()` at entry (done state kept), during a mission (`readd=0`) and at the next entry, at load with a stale entry removed and no generation; dump lines; repair (bounds, bad posting, stamps, rank 2 without dues, non-table, absent); `TRF.ch` worst case 2,396 bytes <= 2,400; no reserved key; `charter 0` at the dock |
 | `ch-h` | EC.6: 200 legs of `TRF_AddLeg` with a dock every 4 legs, 480 real seconds per 4 legs and one deed per open posting per 4 legs, a forced Bust at leg 60: 15 postings, none with a deadline shorter than `K x 4` legs, no Relief in the Bust region while `pk` holds (7 docks with the region in its trough under `pk`), 12 payments, at most one per 1,800 s |
 
-Changed scenarios: `pl-a` (7 lines, 5 boxes, 2 payers), `sv-a` and `lad-a` (`extra_count=5`, trade lines `10,30,70,90`), `stn-g` (the RU key set includes the charter keys), `v1-m` (the generated `trf_en.loc` scaffold has the 66 `#TRF_ch*` lines), `v1-n` (charter worst case in the full-state save). All 79 host runs pass.
+Changed scenarios: `pl-a` (7 lines, 5 boxes, 2 payers), `sv-a` and `lad-a` (`extra_count=5`, trade lines `10,30,70,90`), `stn-g` (the RU key set includes the charter keys), `v1-m` (the generated `trf_en.loc` scaffold has the 67 `#TRF_ch*` lines), `v1-n` (charter worst case in the full-state save). All 79 host runs pass.
 
 ## 10. CHECK: game-only facts (test clone, `log 2`; 14 section 8)
 

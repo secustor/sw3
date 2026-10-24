@@ -106,10 +106,12 @@ function TRF_ChTune()
 			o[k] = x;
 		end;
 	end;
-	-- Rank thresholds ascending (a lower entry would make a rank unreachable).
+	-- Rank thresholds ascending (a lower entry would make a rank unreachable); the rank 3 slot count not below the
+	-- rank 0-2 one.
 	for i = 2, 5 do
 		if o.ch_rank_pts[i] < o.ch_rank_pts[i - 1] then o.ch_rank_pts = d.ch_rank_pts; break; end;
 	end;
+	if o.ch_slots[2] < o.ch_slots[1] then o.ch_slots = d.ch_slots; end;
 	cv.tc = {s=t, t=o};
 	return o;
 end;
@@ -302,6 +304,11 @@ function TRF_ChKinds()
 	return {"escort", "raid", "dconv", "clan", "sweep", "base", "kill", "s41"};
 end;
 
+-- Close reasons (TRF_ChClose why; the dock line key chwhy<why>, phase by type) as a set: the repair keeps no other.
+function TRF_ChCloseWhy()
+	return {phase=1, base=1, heat=1, kill=1, s41=1, deadline=1, mission=1, chapter=1};
+end;
+
 -- Trade-family types (Lanes, Relief, Convoy) as a set: closed at heat 5 (design 4).
 function TRF_ChTrade()
 	return {1, 1, nil, 1};
@@ -312,8 +319,8 @@ function TRF_ChDeeds()
 	return {{1, 1, 1, 0, 0, 0}, {1, 1, 1, 0, 0, 0}, {0, 1, 0, 1, 0, 0}, {0, 0, 1, 0, 0, 0}, {0, 0, 0, 0, 1, 0}, {0, 0, 0, 0, 0, 1}};
 end;
 
--- Permanent charter deny list (design 3): no posting, no deed, no dock line. Traffic's TRF_Deny() names and cfg
--- ch_deny are added by TRF_ChDeny.
+-- Permanent charter deny list (design 3): no posting, no deed, no dock line. Traffic's authored deny names and cfg
+-- ch_deny are added by TRF_ChDenySet.
 function TRF_ChDenyP()
 	return {earth=1, precursors=1, disonsphere=1, fronn=1, nk=1, x297=1, x203=1, x213=1, x220=1};
 end;
@@ -327,11 +334,6 @@ end;
 -- 13a-e and 14a-d; on the generated map they belong to the xt27 region.
 function TRF_ChNeverM()
 	return {xt23=1, xt24=1};
-end;
-
--- The 11 region homes with a logbook title key (#TRF_cht<home>).
-function TRF_ChHomes()
-	return {"dionis", "dosis", "elinor", "gefest", "golkonda", "kadi", "moscowia", "torr", "xk16", "xt24", "xt27"};
 end;
 
 function TRF_ChClampT()
@@ -538,20 +540,34 @@ function TRF_ChOn()
 	return TRF_ChOpt("charter") == 1;
 end;
 
--- 1 when system idx is on the charter deny list (design 3 list, traffic's TRF_Deny() names, cfg ch_deny).
-function TRF_ChDeny(idx)
-	if type(idx) ~= "number" then return 1; end;
-	local n = TRF_ChName(idx);
-	if TRF_ChDenyP()[n] then return 1; end;
-	local l = TRF_N("TRF_Deny");
+-- Charter deny set (lowercase name -> 1): the design 3 list, traffic's authored deny entries (TRF_DenyList m = 1
+-- without tq: elio, x297, gefest; the campaign teleport targets of the transit rule stay open) and cfg ch_deny.
+-- Cached in CV while TRF_Map returns the same table (map and cfg are static per MapInitialization); TRF_ChInfo asks
+-- for every region system at each dock.
+function TRF_ChDenySet()
+	local cv = %CV;
+	local m = TRF_N("TRF_Map");
+	if type(cv.dn) == "table" and cv.dn.m == m then return cv.dn.s; end;
+	local s = {};
+	for k, v in TRF_ChDenyP() do s[k] = 1; end;
+	local l = TRF_N("TRF_DenyList");
 	if type(l) == "table" then
-		for i = 1, getn(l) do if l[i] == n then return 1; end; end;
+		for k, e in l do
+			if type(k) == "string" and type(e) == "table" and e.m == 1 and e.tq ~= 1 then s[strlower(k)] = 1; end;
+		end;
 	end;
 	local x = TRF_ChOpt("ch_deny");
 	if type(x) == "table" then
-		for i = 1, getn(x) do if type(x[i]) == "string" and strlower(x[i]) == n then return 1; end; end;
+		for i = 1, getn(x) do if type(x[i]) == "string" then s[strlower(x[i])] = 1; end; end;
 	end;
-	return nil;
+	cv.dn = {m=m, s=s};
+	return s;
+end;
+
+-- 1 when system idx is on the charter deny set.
+function TRF_ChDeny(idx)
+	if type(idx) ~= "number" then return 1; end;
+	return TRF_ChDenySet()[TRF_ChName(idx)];
 end;
 
 -- Suspension reason of the board (design 3, 4): chapter after ch_last_ch, Trade relation W, heat; else nil.
@@ -793,8 +809,9 @@ end;
 -- Region tick (TRF_Ch_RegionTick) ------------------------------------------------------------
 
 -- trf_region TRF_RegionTick, once per slot after the phase work at leg L. Slot 1 also runs the board-wide checks.
+-- The record test comes first: the cfg read behind TRF_ChOn scans every module's OptDef, once per slot otherwise.
 function TRF_Ch_RegionTick(slot, L)
-	if not TRF_ChOn() or not TRF_ChRec() then return; end;
+	if not TRF_ChRec() or not TRF_ChOn() then return; end;
 	call(TRF_ChTickBody, {slot, L}, "x", TRF_ChErr);
 end;
 
@@ -1082,7 +1099,6 @@ end;
 
 function TRF_ChDockBody(C, idx)
 	local out = {};
-	local ty = TRF_ChTypes();
 	for i = 1, TRF_ChK().slots do
 		local p = C.g[i];
 		if type(p) == "table" and (p.st == 2 or p.st == 3) then
@@ -1160,7 +1176,11 @@ function TRF_Ch_DuesOk(a)
 		return nil;
 	end;
 	local c = TRF_ChCredits();
-	if type(c) ~= "number" or c < a.n then
+	if type(c) ~= "number" then
+		TRF_ChE("dues", "amount", a.n, "result", "error", "reason", "credits");
+		return nil;
+	end;
+	if c < a.n then
 		TRF_ChE("dues", "amount", a.n, "credits", c, "result", "poor");
 		return TRF_ChTxt("chduespoor");
 	end;
@@ -1246,7 +1266,7 @@ function TRF_ChFixG(p, nr, legs)
 		a=min(floor(p.a), legs), e=floor(p.e), st=floor(p.st), pay=min(floor(p.pay), TRF_ChPayCap()), rq=floor(p.rq), l=floor(p.l)};
 	if o.st >= 2 then
 		o.c = "deadline";
-		if type(p.c) == "string" and strlen(p.c) <= 8 then o.c = p.c; end;
+		if type(p.c) == "string" and TRF_ChCloseWhy()[p.c] then o.c = p.c; end;
 	end;
 	return o;
 end;
