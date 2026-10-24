@@ -25,6 +25,8 @@
 -- cache every 1 s.
 -- Faction service ladder (design/ladder-spec.md): trf_ladder loads after trf_survive (extra=); TRF_InstallLadder
 -- wraps _PatrolGIBDD_shtraf after the other installs; its activate and load hooks strip expired permits.
+-- Charter goals (design/charter-spec.md): trf_charter loads after trf_ladder (extra=); its activate hook (unlock,
+-- visit counters, deadlines, logbook reconcile) runs after trf_ladder's, the load hook reconciles the logbook.
 
 function TRF_Path(name)
 	return "DATA/Scripts/Mods/Traffic/"..name;
@@ -285,6 +287,7 @@ function TRF_OnActivate()
 		TRF_P("TRF_UI_OnActivate");
 		TRF_P("TRF_Sv_OnActivate");
 		TRF_P("TRF_Lad_OnActivate");
+		TRF_P("TRF_Ch_OnActivate");
 		TRF_P("TRF_Stn_OnActivate");
 		TRF_P("TRF_DumpState", "enter");
 	end;
@@ -304,7 +307,7 @@ function TRF_OnLoad()
 		TRF_P("TRF_Tier_OnLoad");
 		TRF_P("TRF_Raid_OnLoad");
 		TRF_P("TRF_Hail_OnLoad");
-		local v1 = {"Base", "Track", "Clan", "Faction", "Convoy", "Danger", "Supply", "Pl", "Stn", "Sv", "Lad"};
+		local v1 = {"Base", "Track", "Clan", "Faction", "Convoy", "Danger", "Supply", "Pl", "Stn", "Sv", "Lad", "Ch"};
 		for i = 1, getn(v1) do TRF_P("TRF_"..v1[i].."_OnLoad"); end;
 		TRF.active = 1;
 		TRF_P("TRF_DumpState", "load");
@@ -459,7 +462,7 @@ function TRF_Main()
 			for i = 1, getn(v2) do if TRF_LoadFile(v2[i]) then nm = nm + 1; end; end;
 			local v1 = {"loc", "track", "faction", "clan", "convoy", "danger", "supply", "base"};
 			for i = 1, getn(v1) do if TRF_LoadFile("trf_"..v1[i]..".script") then nm = nm + 1; end; end;
-			local ex = {"plumb", "station", "survive", "ladder"};
+			local ex = {"plumb", "station", "survive", "ladder", "charter"};
 			for i = 1, getn(ex) do if TRF_LoadFile("trf_"..ex[i]..".script") then ne = ne + 1; end; end;
 			TRF_P("TRF_InstallPlumb");
 			TRF_P("TRF_InstallGen");

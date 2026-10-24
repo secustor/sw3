@@ -1544,6 +1544,7 @@ function TRF_Rd_Pay(n, rd)
 	TRF_Rd_Say(TRF_Rd_Txt("thanks", TRF_Rd_Name(r)), 6, TRF_Rd_LeadPilot(rd.id));
 	TRF_Rd_Stat("raid_paid");
 	TRF_RdE("paid", "raid_id", n, "trader_id", rd.id, "credits", amt, "help", d, "help_rule", rule);
+	TRF_N("TRF_Ch_Note", 2, cur, amt);
 end;
 
 -- Ended record keeps n, id, st, how, paid (3.2).
@@ -1610,6 +1611,7 @@ function TRF_Rd_End(n, how)
 		TRF_Rd_P(TRF_Ev_Recover, {k});
 	end;
 	if was ~= "armed" then TRF_Rd_Pay(n, rd); end;
+	if how == "killed" and rd.hit == 1 then TRF_N("TRF_Ch_Note", 4, TRF_Rd_Cur(), 0); end;
 	TRF_Rd_Stat("raid_end_"..tostring(how));
 	TRF_RdE("end", "raid_id", n, "trader_id", rd.id, "previous_state", was, "decision", rd.dc, "help_counted", TRF_KvB(rd.hit),
 		"paid", rd.paid, "result", how);

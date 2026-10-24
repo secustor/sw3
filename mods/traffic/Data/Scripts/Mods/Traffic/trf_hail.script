@@ -463,7 +463,10 @@ function TRF_HailOpen(id, via)
 	TRF_P("TRF_TrackMark", id, "hail");
 	local heat = TRF_HlHeat();
 	local war = TRF_HlTradeWar();
-	if heat >= 3 or war then
+	-- Charter rank 2 perk (design/charter-spec.md 5.8): at heat 3 an FTU trader still offers its escort contracts.
+	local c3 = nil;
+	if heat == 3 and not war then c3 = TRF_HlCh3Opts(id, r); end;
+	if (heat >= 3 and not c3) or war then
 		if heat >= 5 and heat <= 6 and not r.hds and type(TRF_Distress) == "function" then
 			r.hds = 1;
 			TRF_HlP(TRF_Distress, {id, "heat"});
@@ -487,7 +490,8 @@ function TRF_HailOpen(id, via)
 		TRF_HlE("hail", "trader_id", id, "heat", heat, "result", "refused");
 		return "refuse";
 	end;
-	local o = TRF_HailOpts(id, r);
+	local o = c3 or TRF_HailOpts(id, r);
+	if c3 then TRF_HlSay(TRF_Txt("chheat3"), id, nil, 1); end;
 	if getn(o) == 0 then
 		TRF_HlE("hail", "trader_id", id, "answer_count", 0, "result", "no_options");
 		return nil, "none";
@@ -505,6 +509,19 @@ function TRF_HailOpen(id, via)
 	if type(L.hl) == "table" and L.hl.w == "dlg" then dl = 1; end;
 	TRF_HlE("hail", "trader_id", id, "via", via, "answer_count", getn(o), "hail_count", r.hn, "dialog", TRF_KvB(dl));
 	return "menu";
+end;
+
+-- Charter rank 2 perk (design/charter-spec.md 5.8): at heat 3 an FTU trader (not a faction-owned one) offers only its
+-- escort contracts (8.4 "esc", the danger convoy "dc"). The options, or nil without the perk or without a contract.
+function TRF_HlCh3Opts(id, r)
+	if r.own or not TRF_N("TRF_Ch_Heat3") then return nil; end;
+	local o = {};
+	local all = TRF_HailOpts(id, r);
+	for i = 1, getn(all) do
+		if all[i] == "esc" or all[i] == "dc" then tinsert(o, all[i]); end;
+	end;
+	if getn(o) == 0 then return nil; end;
+	return o;
 end;
 
 -- Open chain of this gen whose trader is still there.
@@ -1083,7 +1100,7 @@ function TRF_CtOffer(id)
 	if type(idx) ~= "number" or type(m) ~= "table" or type(m.sys[idx]) ~= "table" then return nil, "nomap"; end;
 	-- One roll per trader on effective danger (clan floor included, as the raid roll), disruption, braveness.
 	if not TRF_CtOfferRoll(id, r, idx, m.sys[idx]) then return nil, "roll"; end;
-	if TRF_HlHeat() > 2 then return nil, "heat"; end;
+	if TRF_HlHeat() > 2 and not (TRF_HlHeat() == 3 and TRF_N("TRF_Ch_Heat3")) then return nil, "heat"; end;
 	if TRF_CtLive() then return nil, "busy"; end;
 	if not TRF_HlStrict(idx, "contract") then return nil, "strict"; end;
 	local n = TRF_HlPayN(idx);
@@ -1156,6 +1173,7 @@ function TRF_CtArrive(id, how)
 	if type(TRF_AddHeat) == "function" then TRF_HlP(TRF_AddHeat, {-1, "contract"}); end;
 	if type(TRF_ProCredit) == "function" then TRF_HlP(TRF_ProCredit, {4, "contract"}); end;
 	TRF_HlSay(TRF_Txt("ctpaid", format("%d", n)), id);
+	TRF_N("TRF_Ch_Note", 1, TRF_HlCur(), n);
 	TRF_HlStat("ct_paid");
 	TRF_HlE("contract", "trader_id", id, "via", how, "pay", n, "distance", TRF_F(d), "help", h, "result", "paid");
 	return 1;

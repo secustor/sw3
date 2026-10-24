@@ -17,6 +17,8 @@
 -- Faction service ladder (design/ladder-spec.md 6): lad_enabled (default 1) = 0 turns trf_ladder off; lad_rankline,
 -- lad_permit, lad_settle, lad_handin, lad_gibdd, lad_reset_sync (step 1) and lad_escort, lad_depot, lad_warrant
 -- (step 2, read nowhere yet) are the toggles; the tune keys (c_p, permit_legs, ...) read the module TuneDef.
+-- Charter goals (design/charter-spec.md 6): charter (default 1) = 0 turns trf_charter off; ch_deny = extra lowercase
+-- system names; the tune keys (ch_unlock_ch, ch_pay_gap_rs, ch_dues_k, ...) read the module TuneDef.
 function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
 	enabled=1, cycle=1, prosperity=1, tier_cap=4, cap_traders=5, cap_ships=20, spawn_scale=1.0, band_half=0,
 	parked=1, esc_flight=1, seed=1, queue=1, raids=1, staged=1, contracts=1, esc_speed=0, meet=2, hail_start=2, board=1,
@@ -25,4 +27,4 @@ function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
 	sweep_ct=1, po=1, tt4=1, tt4_split=0, feq=1, forced_bust=1, dconv=1, dc_speed=1, bases=1, base_glow=0,
 	wreck=0, lang="en", loc_mode=0, hail_xml=0, enable_survivors=1,
 	lad_enabled=1, lad_rankline=1, lad_permit=1, lad_settle=1, lad_handin=1, lad_gibdd=1, lad_reset_sync=1,
-	lad_escort=1, lad_depot=1, lad_warrant=1} end
+	lad_escort=1, lad_depot=1, lad_warrant=1, charter=1} end

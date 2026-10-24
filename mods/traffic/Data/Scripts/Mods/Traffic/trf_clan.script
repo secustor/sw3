@@ -986,6 +986,7 @@ function TRF_Cl_Died(cr)
 			paid = amt;
 		end;
 		if paid > 0 then TRF_Cl_Say(TRF_Cl_Txt("carbounty", paid), 6); end;
+		TRF_N("TRF_Ch_Note", 4, cur, paid);
 	end;
 	if H and H.cr.lq then
 		local q = H.cr.lq;

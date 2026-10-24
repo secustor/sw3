@@ -440,6 +440,28 @@ Faction service ladder, step 1 (`design/ladder-spec.md` 7).
 | `dump` | `module=ladder event=dump faction=Vks standing=7 band=5 war=false permits=6:29 permit_gain_leg=5 handin_leg=5 settle_leg=nil` (one per faction) | 1 |
 | `dump_state` | `module=ladder event=dump_state escort_ban_leg=nil warrant=nil warrant_next_leg=nil warrant_real_seconds=nil patron=nil docking_count=1 credited=nil declined=nil` | 1 |
 
+## charter (`trf_charter.script`; `TRF_ChE`, `TRF_ChDE`)
+
+Charter goals, step 1 (`design/charter-spec.md` 7).
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=charter event=error message=<m>` | 1 |
+| `unlock` | `module=charter event=unlock chapter=5 help=3 seed=9 result=unlocked reason=enter` (reason enter, dock); `... chapter=4 help=0 result=locked reason=enter` | 1 / 2 |
+| `post` | `module=charter event=post slot=1 type=lanes region=4 system=golkonda needed=3 deadline=13 pay=7200 rank_points=2 faction=0 candidate_count=3 seed=112318345` (type lanes, relief, break, convoy, sweep, base); `module=charter event=post candidate_count=0 free_slots=1 result=none` | 1 / 2 |
+| `note` | `module=charter event=note kind=raid system=golkonda region=4 slot=1 done=1 needed=3 visit_deeds=1 amount=500` (kind escort, raid, dconv, clan, sweep, base); completion `module=charter event=note slot=1 type=lanes region=4 done=3 needed=3 world=0 result=complete reason=deeds` (reason deeds, world); kill and S41 `module=charter event=note kind=kill system=golkonda region=4 player_kill_leg=12 closed_count=1 result=marked` (kind kill, s41); level 2 `... result=none reason=<deny, region, visit_cap, break_cap, full, nomatch, step2>` | 1 / 2 |
+| `world` | `module=charter event=world slot=1 region=4 clan_score=40 done=3 needed=3` (Break world test met at a region tick) | 1 |
+| `close` | `module=charter event=close slot=1 type=lanes region=4 done=0 needed=3 state=3 reason=phase` (state 2 failed, 3 withdrawn; reason phase, base, heat, kill, s41, deadline, mission, chapter) | 1 |
+| `pay` | `module=charter event=pay slot=1 type=lanes region=4 amount=7000 rank=2 rank_points=9 help=1 real_seconds=0` (with `module=region event=pay reason=charter amount=7000`) | 1 |
+| `pay_wait` | `module=charter event=pay_wait slot=2 real_seconds=14000 paid_real_seconds=13100 gap=1800` | 1 |
+| `rank` | `module=charter event=rank rank_before=2 rank=3 rank_points=14 dues_leg=40 result=up`; `... result=down reason=<heat, s41, dues>`; `module=charter event=rank rank=2 rank_points=14 gain=0 result=dues_unpaid`; `... rank=0 ... result=none reason=<r>` | 1 |
+| `dues` | `module=charter event=dues rank=2 dues_leg=1 leg=1 amount=2000 result=offered`; `... amount=2000 credits=1000000 dues_leg=25 result=paid` (also `declined`, `poor`, `error`, `stale`); `module=charter event=dues rank=3 dues_leg=25 leg=25 result=overdue`; level 2 `... result=none reason=<rank, chapter, paid, mission, declined>` | 1 / 2 |
+| `reconcile` | `module=charter event=reconcile id=trf_ch_1 quest_state=3 readd=1 reason=enter` (reason enter, load; readd 0 outside free roam); `module=charter event=reconcile id=trf_ch_3 quest_state=2 removed=1 reason=load` | 1 |
+| `player_kill_clear` | `module=charter event=player_kill_clear region=4 player_kill_leg=1 leg=29` | 1 |
+| `dock` | `module=charter event=dock system=golkonda line_count=3 board_count=1 new_count=1 suspended=nil` (suspended chapter, trade_war, heat); `module=charter event=dock result=none reason=<off, locked, nomap, deny, quiet, strict>` | 2 |
+| `dump` | `module=charter event=dump on=1 rank=2 rank_points=9 dues_leg=248 real_seconds=15320 paid_real_seconds=13100 lh=10/8/6 visit_deeds=1 visit_break=0 count=14 seed=1622650073 slots=2 done=9 failed=2 withdrawn=1 player_kill=5:180 region_posted=4:196 pirate_posted=nil slot_free=nil hunting_rank=nil blacklisted=false docking_count=1`; `module=charter event=dump on=0 result=locked` | 1 |
+| `dump_post` | `module=charter event=dump_post slot=1 type=lanes region=5 faction=0 needed=3 done=3 world=0 posted=196 deadline=226 state=1 pay=7000 rank_points=2 level=10 reason=nil` (one per posting) | 1 |
+
 ## supply (`trf_supply.script`; `TRF_SpE`)
 
 | Event | Example line | Level |

@@ -638,6 +638,30 @@ function GetQuestState(id)
 	HOST_Want(type(id) == "string", "GetQuestState(questId)");
 	return HOST().quests[id] or QUEST_NOINIT;
 end;
+-- Logbook (lua-natives.md 134-137, 147; charter goals): AddQuest(id, title, desc, state) -> HOST().quests[id] = state,
+-- HOST().qlog[id] = {t, d}; SetQuestState(id, state); RemoveQuest(id); ClearQuests() empties both (CHECK EC.3).
+function AddQuest(id, t, d, s)
+	HOST_Want(type(id) == "string" and type(t) == "string" and type(d) == "string" and type(s) == "number", "AddQuest(id, title, desc, state)");
+	local h = HOST();
+	if type(h.qlog) ~= "table" then h.qlog = {}; end;
+	h.quests[id] = s;
+	h.qlog[id] = {t=t, d=d};
+end;
+function SetQuestState(id, s)
+	HOST_Want(type(id) == "string" and type(s) == "number", "SetQuestState(id, state)");
+	HOST().quests[id] = s;
+end;
+function RemoveQuest(id)
+	HOST_Want(type(id) == "string", "RemoveQuest(id)");
+	local h = HOST();
+	h.quests[id] = nil;
+	if type(h.qlog) == "table" then h.qlog[id] = nil; end;
+end;
+function ClearQuests(...)
+	HOST_Want(arg.n == 0, "ClearQuests()");
+	HOST().quests = {};
+	HOST().qlog = {};
+end;
 -- CreateStation(model, pos, dir[, flag]) -> station object: HP 100000, SetHP, Blow (wreck flag), Delete, IsAlive,
 -- docking position; counted by GetCarcassCountInSphere like a carcass.
 function CreateStation(model, pos, dir, fl)

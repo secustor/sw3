@@ -945,6 +945,7 @@ function TRF_ForcedBust(idx, why)
 	end;
 	TRF_CvStat("forced_bust");
 	TRF_CvE("forced_bust", "region", slot, "system", TRF_CvSysName(idx), "reason", why);
+	TRF_N("TRF_Ch_Note", 8, idx, 0);
 	return 1;
 end;
 

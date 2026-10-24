@@ -637,6 +637,7 @@ function TRF_BaseDestroyed(idx, by)
 	if (by == "sweep" or by == "abandon") and cur ~= idx then r.w = 1; end;
 	TRF_Ba_DisFx(idx);
 	if by == "player" then TRF_Ba_P(TRF_Ba_PlayerFx, {idx, slot, tk}); end;
+	if by == "player" then TRF_N("TRF_Ch_Note", 6, idx, 0); end;
 	if slot and by ~= "abandon" then
 		local c = TRF_N("TRF_ClanRec", slot);
 		if type(c) == "table" then

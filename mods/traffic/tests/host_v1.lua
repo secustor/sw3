@@ -2075,6 +2075,13 @@ function T_V1_N()
 	TRF.lad = {lic={{}, {}}, pg={skl, skl}, hc={skl, skl, skl, skl, skl}, sc={skl, skl, skl, skl, skl}, eb=skl,
 		w={f=5, sys=113, till=skl, n=4}, wc=skl, wr=999999.5, pat=5};
 	for k = 1, 11 do TRF.lad.lic[1][k] = skl; TRF.lad.lic[2][k] = skl; end;
+	-- Charter goals worst case (design/charter-spec.md 3.3): 3 postings with every field, 11 stamps each in rs, rb and pk.
+	TRF.ch = {on=1, rk=3, rp=99, du=skl, pt=999999999, lh={16, 16, 16}, vd=9, vb=1, sd=2147483646, cnt=9999, g={}, cd={skl, skl, skl},
+		rs={}, rb={}, pk={}, tot={d=9999, f=9999, w=9999}, nw=5, hx=1};
+	for k = 1, 3 do
+		TRF.ch.g[k] = {t=6, r=11, f=5, d=5, k=3, p=3, w=1, a=skl, e=skl, st=3, pay=30000, rq=3, l=16, c="deadline"};
+	end;
+	for k = 1, 11 do TRF.ch.rs[k] = skl; TRF.ch.rb[k] = skl; TRF.ch.pk[k] = skl; end;
 	-- Raids, due and stat at their bounds.
 	for k = 1, 10 do
 		local id = ids[1 + mod(k, getn(ids))];
@@ -2097,7 +2104,7 @@ function T_V1_N()
 	HOST_Check(getn(TRF.tp) <= 16 and getn(TRF.lr) <= 2 and getn(TRF.base) <= 4 and getn(L.pg) <= 8 and V_N(L.dc) <= 1
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");
 	local size = 8 + 3 + HOST_SaveSize(TRF);
-	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "live"};
+	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "ch", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	local lp, ll = "", {"tr", "stat", "rd", "cvs", "tq", "sw", "fq", "cr", "dc", "bs", "pg"};
 	for i = 1, getn(ll) do lp = lp.." "..ll[i].."="..HOST_SaveSize(L[ll[i]]); end;

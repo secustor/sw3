@@ -19,6 +19,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_plumb.script` | Worldbuilding plumbing ([design/wb-plumbing-spec.md](design/wb-plumbing-spec.md)): the dock dispatcher behind the trade, patrol, pirate and request wrappers, the `_NoneStation_Action` chain, the `CostOfHead` wrapper and the `Case_Eject` handler list, the visit slots (box lock, scripted event, escort, arrival lines), the job slot, owed payers, ship caps, nav markers, 8.5 raid-help resolvers and the group-prefix orphan scan. Loads after the v1 files, before `trf_station`. |
 | `trf_survive.script` | Survivors and beacons step 1 ([design/survivors-spec.md](design/survivors-spec.md)): escape pods and a radio beacon after an FTU freighter loss (witnessed: standing only) or seeded on entry into a raided system (credits, region budget, fixed roll), pickup by the mothership, hand-in at FTU trade docks, expiry, the off-screen slaver roll, rumours. Loads after `trf_station`. |
 | `trf_ladder.script` | Faction service ladder step 1 ([design/ladder-spec.md](design/ladder-spec.md)): the rank line of the five factions at patrol stations, the war rule, Vks/Kfni regional transit permits, settlement, hand-in standing and prisoners of war, the portal-fine waiver, the paid relation-reset sync. Loads after `trf_survive`. |
+| `trf_charter.script` | Charter goals step 1 ([design/charter-spec.md](design/charter-spec.md)): two or three FTU charter postings in the logbook (Lanes, Relief, Break, Convoy, Sweep, Base) generated at trade docks from the live region state, deeds from traffic's pay points, owed pay with a 30-minute real-time gap, ranks 0-3 with dues, the heat-3 contract perk and the third slot. Loads after `trf_ladder`. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -570,6 +571,37 @@ Faction service ladder (proposal 9 step 1, spec [design/ladder-spec.md](design/l
 
 Experiments E9.1-E9.3, E9.6, E9.7 and E9.9 of the design and E0.24, with the confirming lines in the spec section 10: the ladder box after the S19 lines and the patrol dialog after OK and Cancel (`module=plumb event=dock kind=patrol ... box=lad_permit priority=300 result=box`), the price readable in the box, the hand-in call pattern (`event=handin ... pilot=PirateTough count=2 ... result=credited`), the waiver (`event=gibdd_waive ... result=waived`, credits unchanged, the patrol leaves), the reset sync (`event=reset_sync ... paid=650000 ... result=synced`, Debris 1 `paid=0 ... result=free`), the war rule (`event=rank_line ... war=true`), and the install line after every entry and load.
 
+## Charter goals (`EXP=0 TRAFFIC=1`)
+
+Charter goals (proposal 14 step 1, spec [design/charter-spec.md](design/charter-spec.md), design `design/worldbuilding/14-charter-goals.md`) is one module, `trf_charter`, loaded after `trf_ladder` (`module=core event=loaded ... extra_count=5`). It reads traffic's region, clan, prosperity, heat and help state and uses the plumbing: a trade dock line at order 70, an owed payer and a trade box at prio 200 (below the #1 parcel offer and the #8 purchase). Traffic's pay and event points report deeds with one `TRF_N("TRF_Ch_Note", kind, idx, amt)` line each; trf_region calls `TRF_Ch_RegionTick(slot, L)` at every region tick. Implemented and host-tested (`ch-a`..`ch-h`), not run in the game.
+
+### What the player sees
+
+- From chapter 5 with three traders helped, outside missions: at an FTU trade dock the charter office posts up to two jobs (three from rank 3), each for one region, in the logbook (`FTU charter: Golkonda region`) and as a line (`New posting: Golkonda region. Pirates are massing on these lanes. ... Pays 7000 cr.`). Lanes (escorts or raid answers while a region booms or builds up), Relief (the same in Bust or Recovery), Break (down clan flights or answer raids of a T3+ clan; pays once the clan score falls below 50), Convoy (danger convoys in Raids), Sweep (a scheduled sweep of a faction with standing 4+), Base (destroy the clan's base).
+- Deeds count where traffic already pays them, in the posted region, at most two per system visit (one Break deed): `Charter, Golkonda region: 2 of 3.`, then `... 3 of 3. Collect at any FTU dock.`
+- At the next FTU trade dock: `FTU charter office: Golkonda posting complete. 7000 cr to the Wolves.` and `Charter standing: 9 of 12 to Bonded carrier.`. At most one payment per 30 minutes of real play; a second completion waits (`Payment is being processed.`).
+- Ranks: Unlisted, Listed carrier (board lines at every trade dock), Contracted carrier (dues `100 x L_h x rank` per 24 legs by a dock box; FTU traders offer escort contracts at heat 3: `Your charter papers check out. Fine.`), Bonded carrier (the third posting). Heat 7, a TT4 or equipment convoy kill and dues unpaid for 24 legs cost one rank each; heat 5 closes the trade postings; a player trader kill in a region closes its trade postings and blocks new ones there for a cycle.
+- Postings close when their window ends (`FTU charter office: Kadi posting closed. The clan is raiding now.`); a deadline that passes during a mission withdraws without a failure. From chapter 19 the board is suspended (owed pay is still paid, no dues).
+
+### Config keys (charter)
+
+`config.script` lists `charter=1`; `ch_deny` (extra system names) and the tune keys read the module defaults. `install-test.sh` writes `CHARTER` (`charter`; `LEVEL=v01` and `v02` write 0 unless `CHARTER` is set); tune keys go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `charter` | 1 | 0 turns the module off |
+| `ch_deny` | `{}` | extra lowercase system names on the charter deny list |
+| tune `ch_unlock_ch`, `ch_last_ch`, `ch_unlock_help`, `ch_pay_gap_rs`, `ch_visit_deeds`, `ch_dues_k`, `ch_dues_legs`, `ch_region_cd`, `ch_big_cd`, `ch_slot_cd`, `ch_pk_legs`, `ch_leg_per_deed`, `ch_low_L` | 5, 18, 3, 1800, 2, 100, 24, 20, 28, 4, 28, 4, 8 | unlock, suspension, real-time gap, visit cap, dues, cooldowns, deadline test, pay knee |
+| tune `ch_slots`, `ch_k`, `ch_rank_pts` | {2, 3}, {0.4, 0.3, 0.4, 0.4, 0.4, 0.4}, {2, 6, 12, 20, 30} | slots, `k_t` per type, rank thresholds (full list in the spec, section 6) |
+
+### Log lines (charter)
+
+`module=charter event=post ... type=<lanes|relief|break|convoy|sweep|base> ... pay=<n>`, `event=note kind=<escort|raid|dconv|clan|sweep|base|kill|s41> ... done=<p> needed=<k>` (completion `result=complete`), `event=world`, `event=close ... state=<2|3> reason=<phase|base|heat|kill|s41|deadline|mission|chapter>`, `event=pay ... amount=<n>`, `event=pay_wait ... gap=1800`, `event=rank ... result=<up|down>`, `event=dues ... result=<offered|paid|declined|poor|stale|overdue>`, `event=reconcile id=trf_ch_<i> ... readd=<0|1>`, `event=dump` and `event=dump_post`; full list in `design/log-events.md` (charter).
+
+### In-game checks (charter)
+
+Experiments EC.1, EC.3-EC.5, EC.7, EC.8 of the design and E0.12, with the confirming lines in the spec section 10: the logbook entry with `LOC=1` across jumps and a load, `ClearQuests()` in mission 6c_1 (`event=reconcile id=trf_ch_1 ... readd=`), done and failed display and removal, the dues box after the dock lines (`module=plumb event=dock kind=trade ... box=ch_dues priority=200 result=box`), one raid answer counted once across a reload, the 30-minute gate at 8x (`event=pay_wait ... gap=1800`).
+
 ## Installing into the game
 
 The release zip `sw3-traffic-<v>.zip` (built by `release.sh`) or this folder:
@@ -632,7 +664,7 @@ Movie and UI natives (`pe/traffic.c`, [design/mod-research/movie-state.md](desig
 ## Host checks (no game)
 
     mods/traffic/tools/get-lua4.sh                       # builds .work/lua4/bin/lua once
-    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment + v0.1 scenarios a..g (tests/host_traffic.lua) + v0.2 scenarios v02-a..n (tests/host_v02.lua) + v1 scenarios v1-a..n (tests/host_v1.lua) + station voices stn-a..h (tests/host_station.lua) + plumbing pl-a..e (tests/host_plumb.lua) + survivors sv-a..g (tests/host_survive.lua) + faction ladder lad-a..g (tests/host_ladder.lua)
+    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment + v0.1 scenarios a..g (tests/host_traffic.lua) + v0.2 scenarios v02-a..n (tests/host_v02.lua) + v1 scenarios v1-a..n (tests/host_v1.lua) + station voices stn-a..h (tests/host_station.lua) + plumbing pl-a..e (tests/host_plumb.lua) + survivors sv-a..g (tests/host_survive.lua) + faction ladder lad-a..g (tests/host_ladder.lua) + charter ch-a..h (tests/host_charter.lua)
     python3 -I mods/traffic/tools/lint_lua.py --allow TeleportToLocation,CustomTeleportate mods/traffic/Data/Scripts/Mods/Traffic/*.script
 
 The run prints one `== <scenario>: exit 0, <n> traffic lines, 0 fails` line per run (71 runs); any other line names the failed check. `v1-n` prints the worst-case save size by part (`HOST info TRF save size ...`).

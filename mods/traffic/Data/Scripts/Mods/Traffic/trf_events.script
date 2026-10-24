@@ -550,6 +550,7 @@ function TRF_Ev_Kill(id, rec, h)
 			TRF_Ev_AddHeat(TRF_Ev_K().heat_d, "kill "..id);
 			-- Equipment convoy heat top-up (v1 8.4, TRF_FeqEnd) counts this kill heat.
 			TRF_N("TRF_FeqKillMark", id);
+			TRF_N("TRF_Ch_Note", 7, idx, 0);
 		end;
 	end;
 	if h then

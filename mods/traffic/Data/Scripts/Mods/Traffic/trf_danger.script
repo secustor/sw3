@@ -955,6 +955,7 @@ function TRF_DcEnd(n)
 			TRF_DgX("TRF_Say", TRF_DgTxt("dcpaid", format("%d", pay)), 8);
 			TRF_DgStat("dc_paid");
 			TRF_DgE("contract", "convoy_id", n, "arrived_count", dc.ok, "amount", pay, "help", hp, "result", "paid");
+			TRF_N("TRF_Ch_Note", 3, TRF_DgCur(), pay);
 		elseif dc.far == 1 then
 			TRF_DgX("TRF_Say", TRF_DgTxt("dcfar"), 8);
 			TRF_DgStat("dc_ct_far");
@@ -1129,7 +1130,8 @@ function TRF_DcOffer(id)
 	if dc.ct > 0 then return nil, "used"; end;
 	if TRF_DgOpt("contracts", 1) ~= 1 then return nil, "off"; end;
 	if L.wind == 1 then return nil, "wind"; end;
-	if TRF_DgHeat() > 2 then return nil, "heat"; end;
+	-- Charter rank 2 perk (design/charter-spec.md 5.8): heat 3 still gets the offer.
+	if TRF_DgHeat() > 2 and not (TRF_DgHeat() == 3 and TRF_N("TRF_Ch_Heat3")) then return nil, "heat"; end;
 	if type(TRF_CtLive) == "function" and TRF_DgX("TRF_CtLive") then return nil, "busy"; end;
 	if type(TRF_Supp) == "function" and TRF_Supp() ~= 0 then return nil, "flag"; end;
 	local cur = TRF_DgCur();
