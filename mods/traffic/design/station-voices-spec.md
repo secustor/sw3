@@ -89,11 +89,11 @@ Deeds (7.2) choose the station without the dock array: the only trade station of
 | Item | Bytes (save grammar, `HOST_SaveSize`) |
 |---|---|
 | one entry `51={st=2,lg=310,gv=318}` | about 35; with `bv`, `tf`, `ts`, `nt` about 70 |
-| `TRF.stn` worst case (76 full entries) | about 5,300 |
+| `TRF.stn` worst case (76 full entries, with `ec`) | about 16,900 (17.7; host bound 17,700) |
 | `TRF.stn` typical (10-20 stations visited, pruned) | 400-1,400 |
 | `TRF.vo` (9 entries) + `TRF.ve` | about 130 |
 | `.ec` (17.7) | 22 per entry, at most 76: 1,672 |
-| TRF today (43 legs, 5.6 KB) + worst case | about 11 KB, budget 100,000 (40,000 until 2026-10-24) |
+| TRF today (43 legs, 5.6 KB) + worst case | about 23 KB, budget 100,000 (40,000 until 2026-10-24) |
 
 ## 4. Gates and pass-through
 
@@ -513,9 +513,9 @@ Stubs (defined in host_station.lua, since they must load before the scenario; `h
 | `stn-c` gates | elio, nk (`tq`, no quest: `vdeny`), taira (`tq`: moods and dock line with no taira quest; `deny_tq` with quest 6c_01 in process; during a mission at chapter 9: mood, greeting `stnr1`, `mood=1 no_fee_reason=latch` and `reason=latch at=dock` only, the latch still stops the fee after the mission ends in the visit, the next entry shows the fee box); gaoba during a mission: latch set, mood and dock lines; `voice_gate 2`: moods stay open after the dock latch, `__disableAction`, trade war, `strict 0`, quest id in process (`qi` fixture), `h.qs = TRUE` in a never-named system, `voice_gate 2` with `mission_q`, latch then mission end in the same visit, then T_Jump | each G rule gives its `module=station event=pass reason=` line and the vanilla call; `voice_gate 2` changes moods but not the dock; latch holds until the next entry |
 | `stn-d` standing | gaoba ch 9: `TRF_AddHelp(1, "contract")`, `TRF_AddHelp(1, "raid 3")` with the mothership 1,000 and 4,000 from the station; second gain in a visit; T_SaveLoad then a gain; T_Jump out and back then a gain; ceilings via `TRF_Stn_Deed(..., ceil)`; losses (`kill`, `attack`, `demand`) three in a visit; 24 legs of T_Tick; heat 5 and 7; greetings for `st` -3..5; ch 3 vs 4 news; ambient by chapter; tip feq then `TRF_AddHeat(1, "feq kill")`; region to Quiet | deltas, caps and `cap=` tags as 7.3; decay -2 rungs after 24 legs; `e` capped by heat; greeting key and speaker `InocoDispetcher`; news only at `e >= 2`, ch >= 4, once per visit; `rob` sets -3 and `nt`, no tip until Quiet |
 | `stn-e` fees | kadenoa (`USS_TRADE`, `pro` 8) ch 4 and 5; OK; Cancel; second approach; credits below the fee; `st` -2 and -3 with buy-back twice in one visit; rung 3; EASY; `fee_cap`; `h.qs = TRUE` (`no_fee_reason=latch`); `strict 0` | ch 4 no box; fee equals the 8.5 formula (computed in the test from `TRF_LPay`, `TRF_Pro`, `TRF_DK`); OK: credits `- fee`, `HOST().trade_ok + 1`, trf_shop's wrapper ran; Cancel: credits unchanged, no dock; second approach vanilla box; on credit: no charge, docks, `st - 1`; buy-back once, never above -1; rung 3 no hub fee; no fee under F2/F3 |
-| `stn-f` identity and save | kadenoa both stations (param `""` and `"kadenoa_tri"`); a quest dock with param `""` 800 units from any map station; station handle whose `GetPosition` errors; T_SaveLoad; corrupted `TRF.stn`/`TRF.vo`/`TRF.ve` then `TRF_Repair`; all 76 keys filled with full records | keys 51 and 251 (`id=prm+pos`); quest dock `reason=table`; error -> `id=prm`; records survive the load; Fix clamps and drops as D4; `HOST_SaveSize(TRF.stn) <= 6000` and `8 + 3 + HOST_SaveSize(TRF) < 40000`; dump line present; `lint_lua.py --calls` clean |
+| `stn-f` identity and save | kadenoa both stations (param `""` and `"kadenoa_tri"`); a quest dock with param `""` 800 units from any map station; station handle whose `GetPosition` errors; T_SaveLoad; corrupted `TRF.stn`/`TRF.vo`/`TRF.ve` then `TRF_Repair`; all 76 keys filled with full records | keys 51 and 251 (`id=prm+pos`); quest dock `reason=table`; error -> `id=prm`; records survive the load; Fix clamps and drops as D4; `HOST_SaveSize(TRF.stn) <= 17700` and `8 + 3 + HOST_SaveSize(TRF) < 100000`; dump line present; `lint_lua.py --calls` clean |
 
-| `stn-g` events (17) | gaoba ch 9 with the dock rows of one class set before activation (scene hook), `staged`/`feq`/`sweeps` 0, tune `ev_p=100 ev_dt=5`: barge planned, spawned (path A, `sev`, raid T1 kind `stn`, 2 ships, `ec`), no contract offer, defended (a hit, both raid ships killed); cooldown; shuttle delivered and far; launch waiting 70 s, pickup, delivered; launch expired (lifetime removal); barge lost (killed); a sweep holding the slot; kadenoa with `quest_7a` in process; a story mission; chapter 4; `voice_events 0`; a jump before the spawn; a load; prune and Fix of `ec`; dump; the pure kinds and pay; `loc/trf_ru.loc` keys | pay `floor(0.4 TRF_PayN)` through `TRF_Pay` and `module=raid event=paid ... credits=0` for the barge; deed `+1` `reason="event <kind>"` once; far, lost, expired, void pay nothing; `reason=cooldown|slot|gate:quest|latch|chapter|off`; `result=void reason=jump`; no visit record after a load, `ec` kept; RU file has exactly the 34 station keys, CRLF, cp1251 |
+| `stn-g` events (17) | gaoba ch 9 with the dock rows of one class set before activation (scene hook), `staged`/`feq`/`sweeps` 0, tune `ev_p=100 ev_dt=5`: barge planned, spawned (path A, `sev`, raid T1 kind `stn`, 2 ships, `ec`), no contract offer, defended (a hit, both raid ships killed); cooldown; shuttle delivered and far; launch waiting 70 s, pickup, delivered; launch expired (lifetime removal); barge lost (killed); barge escaped to its portal before its raid ends, with counted help (defended at the raid's end) and without (no_help); barge whose `TRF_RaidOn` refuses (void, no line, no `ec`, `sev` cleared); a sweep holding the slot; kadenoa with `quest_7a` in process; a story mission; chapter 4; `voice_events 0`; a jump before the spawn; a load; prune and Fix of `ec`; dump; the pure kinds and pay; `loc/trf_ru.loc` keys | pay `floor(0.4 TRF_PayN)` through `TRF_Pay` and `module=raid event=paid ... credits=0` for the barge; deed `+1` `reason="event <kind>"` once; far, lost, expired, void pay nothing; `reason=cooldown|slot|gate:quest|latch|chapter|off`; slot kind `station`; `result=void reason=jump`; no visit record after a load, `ec` kept; RU file has exactly the 34 station keys, CRLF, cp1251 |
 | `stn-h` providers and carry-overs | providers `S_ProvNil`, `S_ProvOne`, `S_ProvErr` on closed stations `0` (Boom, row 7) and `5`; kadenoa fee box with `ShowMsgBox` failing once, then opened; `TRF_PlShow` of a pirate offer spec with the box lock held, then free; gaoba OK on the vanilla box under `__disableAction` after a gain; tune `T_leg=5` 60 s in one visit, a load, an entry; repair of `clock.vc` | provider key `rule=1` over row 7, silent kept, error skipped, registry empty after an entry; `event=fee ... box=false` then the vanilla box, `box=true` only after the show; offer `box=false` without stat `po_box`, `box=true` with it; `event=docked` and `nd` under the flag; stat `leg_cap` and the `result=dropped` debug line once per visit |
 
 All 44 existing runs stay green except a failure that exists before this change (13.1). Since 2026-10-24 all 57 runs pass.
@@ -583,7 +583,7 @@ Coverage: station voices only. The other modules' `#TRF_` keys have no RU line (
 27. [ ] Host scenarios `stn-a`..`stn-f` pass; previously green runs stay green; run_host.sh runs 50.
 28. [ ] Size: `TRF.stn` worst case <= 6,000 bytes, TRF < 100,000 bytes on the host.
 29. [ ] CHECK items C1-C13 listed in `D/PROGRESS.md` "Next in-game test plan" with their log lines.
-30. [x] Station events (17): three kinds by the dock-row class, one visit record and one resolver; slot `optional`; strict gate, free roam, chapter 5; per-station cooldown `ec`; pay `TRF_Pay(k N)`; deed ceiling 4; no new native, ship behaviour or group prefix.
+30. [x] Station events (17): three kinds by the dock-row class, one visit record and one resolver; slot `station` (ranks as optional); strict gate, free roam, chapter 5; per-station cooldown `ec`; pay `TRF_Pay(k N)`; deed ceiling 4; no new native, ship behaviour or group prefix.
 31. [x] `loc/trf_ru.loc` with every `#TRF_stn*` key of `loc/trf_en.loc`, cp1251, CRLF; installed by `install-test.sh` into a Russian folder when present.
 32. [x] Mood providers read from trf_plumb's registry only (5.5); host check of the precedence.
 33. [x] Host scenarios `stn-g` and `stn-h` pass; all 57 runs pass.
@@ -622,8 +622,8 @@ Design 03 section 9 deferred one local event per station class (ore barge in tro
 
 | Kind | Station class (dock rows of activate.script) | Ship | Player task | Success | Primitive |
 |---|---|---|---|---|---|
-| `barge` (ore barge in trouble) | a `_NoneStation_Action` row of class restricted (`5other`) or private (`4`, `4uss`, `4tri`, `4ino`, `4rebel`): depots and company yards | traffic trader, path A (portal to the trade station), no added escorts | defend it against a small pirate flight (tier `ev_tier` 1: 2 ships) | the raid ends with counted player help and the barge not killed (trf_raid's 8.5 pay rule) | `TRF_RaidOn({id}, ev_tier, "stn")`, resolver `TRF_Stn_EvHelp` |
-| `shuttle` (tanker shuttle) | a `__TradeStation_Action` row | traffic trader, path A | escort it to the station | it docks with the mothership within `ev_r` (800) of its lead | trf_gen arrival hook (`TRF_Stn_EvArrive`), the 8.4 contract test |
+| `barge` (ore barge in trouble) | a `_NoneStation_Action` row of class restricted (`5other`) or private (`4`, `4uss`, `4tri`, `4ino`, `4rebel`): depots and company yards | traffic trader, path A (portal to the trade station), no added escorts | defend it against a small pirate flight (tier `ev_tier` 1: 2 ships) | the raid ends with counted player help and the barge not killed (trf_raid's 8.5 pay rule); a barge that docks or escapes to its refuge before its raid ends waits for that end (17.5) | `TRF_RaidOn({id}, ev_tier, "stn")`, resolver `TRF_Stn_EvHelp` |
+| `shuttle` (tanker shuttle) | a `__TradeStation_Action` row | traffic trader, path A | escort it to the station | it docks with the mothership within `ev_r` (400, the 8.4 `ct_dist`) of its lead | trf_gen arrival hook (`TRF_Stn_EvArrive`), the 8.4 contract test |
 | `launch` (refugee launch) | a `_NoneStation_Action` row of class civil (`0`, `1`, `3adm`) | traffic trader, path A, built without orders and held at its entry gate | fly to it (mothership within `ev_meet`, 300), then bring it to the station | picked up, then docks with the mothership within `ev_r` | `TRF_Orders` at the pickup, arrival hook |
 
 The class is read from `__system_Dock_array` at `TRF_Stn_OnActivate` (the rows activate.script placed, the data the wrappers read at the approach; `TRF_StnEvKindsOf`). The kinds a system allows are listed in the order barge, launch, shuttle and one is drawn with `RAND`. Pirate and silent closed stations allow none.
@@ -639,10 +639,10 @@ The class is read from `__system_Dock_array` at `TRF_Stn_OnActivate` (the rows a
 7. E7 per-station cooldown: `TRF.stn[k].ec` set and `legs - ec < ev_cd` (24), else `cooldown`.
 8. E8 chance `RAND(100) < ev_p` (25), else `chance`.
 9. E9 kind drawn.
-10. E10 scripted-event slot `TRF_EventSlotTake("optional")` (rank 8, last; traffic's claimants sweep, feq and staged asked earlier in the same entry), else `slot`.
+10. E10 scripted-event slot `TRF_EventSlotTake("station")` (an own kind, so no other optional event shares or frees it; ranks as `optional` 8, last; traffic's claimants sweep, feq and staged asked earlier in the same entry), else `slot`.
 11. E11 due call `TRF_Stn_EvSpawn` after `ev_dt + RAND(ev_dt)` s (20-39 s), else `due` and the slot is freed.
 
-The visit record is `SV.ev = {kind, k, idx, st = "plan", g = TRF.gen}` (chunk local, never saved; later `id`, `rn`, `res`, `st` = `wait` / `run` / `end`).
+The visit record is `SV.ev = {kind, k, idx, st = "plan", g = TRF.gen}` (chunk local, never saved; later `id`, `rn`, `res`, `gw`, `st` = `wait` / `run` / `raid` / `end`).
 
 ### 17.3 Spawn (`TRF_Stn_EvSpawn`)
 
@@ -650,7 +650,7 @@ The visit record is `SV.ev = {kind, k, idx, st = "plan", g = TRF.gen}` (chunk lo
 2. S2 contact `ci` drawn from `TRF_GnSeedContacts`; `TRF_CanSpawn(0, "voice")`; `plan = TRF_Plan(c, ci, "A", free)` (the tier comes from trf_tier as for any trader); `plan.esc = 0`; the launch gets `plan.noord = 1`; `TRF_CanSpawn(plan.n, "voice")` (cap_ships with the trim of 00 section 6, kill cap, suppression, the strict gate as the spawn kind).
 3. S3 `TRF_Spawn(plan)`: group `TRF_Trade_<k>`, labels `trf_<id>_<j>` (no new group prefix, so no lint or orphan-scan entry); the record gets `sev = 1` (trf_hail offers no escort contract on it, `TRF_CtOffer` reason `used`; trf_gen calls the arrival hook for it). trf_gen's lane raid roll is not made for event ships.
 4. S4 launch: `r.st = "form"` (trf_gen's watchdog and arrival leave it alone, as a forming danger convoy member), `SV.ev.st = "wait"`; barge and shuttle `"run"`.
-5. S5 barge: `rn = TRF_RaidOn({id}, ev_tier, "stn")`: armed at the trader's lane raid point, else at once through the registered portal nearest it; no demand step; the raid gate of every raid. nil: `ev_end result=void reason=raid` (the barge flies on as ordinary traffic).
+5. S5 barge: `rn = TRF_RaidOn({id}, ev_tier, "stn")`: armed at the trader's lane raid point, else at once through the registered portal nearest it; no demand step; the raid gate of every raid. nil: `ev_end result=void reason=raid` before S6 and S7 (no cooldown stamp, no line; the record loses `sev` and the barge flies on as ordinary traffic).
 6. S6 cooldown stamp `TRF.stn[k].ec = legs` (only here: a plan that never spawns burns no cooldown).
 7. S7 dockmaster line `stnev<kind>` as a radio line through the owner's speaker (8.7), spaced as the greeting (`stn_gap`); when spaced out, the screen log.
 
@@ -670,8 +670,8 @@ A failure in S1-S3 ends the event (`result=void reason=<why>`) and frees the slo
 | `defended` | barge: `TRF_Stn_EvHelp(n)` asked by trf_raid's `TRF_Rd_Pay` for the event raid (counted player help, barge not killed) | yes | `stnevok` |
 | `delivered` | shuttle, launch: `TRF_Stn_EvArrive(id, "dock")` with the mothership within `ev_r` | yes | `stnevok` |
 | `far` | shuttle, launch: docked with the mothership farther away | no | `stnevfar` |
-| `no_help` | barge docked without the help rule | no | `stnevfar` |
-| `lost` | the event ship killed, removed, or out through a portal | no | `stnevlost` |
+| `no_help` | barge docked or escaped to its refuge (`TRF_Rd_SafeBody`, why `escaped`) and its raid ended without counted help. While the raid is open the event waits in state `raid` for `TRF_Stn_EvHelp` (then `defended`) or the raid's end (then `no_help`, reason the barge's why) | no | `stnevfar` |
+| `lost` | the event ship killed or removed (the shuttle and launch also out through a portal) | no | `stnevlost` |
 | `expired` | the launch removed by trf_gen's lifetime rule (720 s, out of view) | no | `stnevlost` |
 | `void` | spawn failed (`reason=<why>`), the raid could not start (`raid`), a jump before the end (`jump`) | no | none |
 
@@ -706,7 +706,7 @@ Detection: the arrival hook in `TRF_GnSafeArrive` (before the flight is deleted,
 | `ev_p` | 25 | 0..100 | chance per eligible entry, percent |
 | `ev_k` | 40 | 0..200 | pay constant k in percent of `N` (40 = 0.4) |
 | `ev_ch` | 5 | 1..20 | first chapter |
-| `ev_r` | 800 | 0..5000 | escort distance at the docking (shuttle, launch) |
+| `ev_r` | 400 | 0..5000 | escort distance at the docking (shuttle, launch); the 8.4 contract `ct_dist` |
 | `ev_meet` | 300 | 50..2000 | launch pickup distance |
 | `ev_tier` | 1 | 1..2 | barge raid tier |
 | `ev_dt` | 20 | 5..120 | spawn delay base, s (delay `ev_dt + RAND(ev_dt)`) |
@@ -723,7 +723,7 @@ Tune values are integers (`TRF_StnTune` floors them), so `k` is given in percent
 | `module=station event=ev_pickup kind=launch trader_id=<id> distance=<d>` | 1 |
 | `module=station event=ev_end kind=<kind> station_key=<k> trader_id=<id> raid_id=<n> result=<defended/delivered/far/no_help/lost/expired/void> reason=<why> pay=<cr> distance=<d>` | 1 |
 
-The slot, raid and spawn lines of trf_plumb (`event=event_slot kind=optional ...`), trf_clan (`event=raid_on ... source=stn`), trf_raid (`event=paid ... credits=0 ... help_rule=cancel`) and trf_gen (`event=spawn ... path=A`) follow as for any slot, raid and trader.
+The slot, raid and spawn lines of trf_plumb (`event=event_slot kind=station rank=8 ...`), trf_clan (`event=raid_on ... source=stn`), trf_raid (`event=paid ... credits=0 ... help_rule=cancel`) and trf_gen (`event=spawn ... path=A`) follow as for any slot, raid and trader.
 
 ### 17.10 Edits outside trf_station
 
@@ -744,7 +744,7 @@ The slot, raid and spawn lines of trf_plumb (`event=event_slot kind=optional ...
 - D-E3 Raid size: `TRF_RaidOn` raises every raid to at least T3; why `stn` keeps the asked tier (one line in trf_clan), so the barge meets a small flight. The raid builder, gate and record are otherwise unchanged.
 - D-E4 Launch: no new ship behaviour. It is a path A trader built without orders (`TRF_Spawn` `noord`) and held in the existing `form` state, which trf_gen's watchdog and arrival skip; `TRF_Orders` gives its route at the pickup. It waits at its entry gate (the spawn point of path A), not in open space.
 - D-E5 Shuttle: no threat of its own (no raid, no lane raid roll); the task is flying with it to the station, tested as the 8.4 contract (distance at the docking).
-- D-E6 Barge: result `no_help` when it docks without counted help; the proposal names no outcome for that.
+- D-E6 Barge: result `no_help` when it docks or escapes and its raid ends without counted help; the proposal names no outcome for that.
 - D-E7 Events end at a load (no saved visit record), as traffic's traders are wound down at a load.
 - D-E8 The station class comes from the dock array at activation, not from map.script, which lists trade and patrol stations only.
 - D-E9 The event ship is an ordinary traffic trader for every other rule (kills, heat, shortages, robbery, docking queue) except the escort contract offer; its hulls follow the system's tier (TT1-TT3). "Barge", "tanker" and "launch" are names in the lines only.

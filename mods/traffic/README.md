@@ -440,7 +440,7 @@ Defaults are in `TRF_Stn_OptDef`/`TRF_Stn_TuneDef`; `config.script` does not lis
 | tune `stn_radio`, `stn_gap` | 8, 6 | greeting seconds; spacing to the last TRF radio or focus line |
 | `voice_events` | 1 | 0: no station events |
 | tune `ev_cd`, `ev_p`, `ev_k`, `ev_ch` | 24, 25, 40, 5 | event cooldown per station (legs), chance per entry (%), pay k in % of `N_eff`, first chapter |
-| tune `ev_r`, `ev_meet`, `ev_tier`, `ev_dt` | 800, 300, 1, 20 | escort distance at the docking, launch pickup distance, barge raid tier, spawn delay base (s) |
+| tune `ev_r`, `ev_meet`, `ev_tier`, `ev_dt` | 400, 300, 1, 20 | escort distance at the docking, launch pickup distance, barge raid tier, spawn delay base (s) |
 
 ### Log lines (station voices)
 

@@ -41,7 +41,7 @@ Config: `wb_box_after_fee` (default 0, enum 0..1, `install-test.sh` `WB_BOX_AFTE
 
 `TRF.live` is rebuilt on entry (`TRF_LiveReset`) and by the load pass, and `TRF_Pl_OnEnter`/`TRF_Pl_OnLoad` clear the slot fields again, so every slot starts empty on entry and on load.
 
-Scripted-event order (`TRF_EventRank`): sweep 1, feq 2, staged 3, push 4, deserter 5, vendetta 6, hostile 7, optional 8. Traffic's users: `TRF_SweepEntry` (sweep), `TRF_FeqEntry` (feq, before its convoy slot), `TRF_Rd_StRollBody` (staged, after the placement, so the RAND draws stay as before); trf_station's local events take `optional` in `TRF_Stn_OnActivate`, after the entry plan (station-voices-spec 17). They run in that order inside `TRF_EntryPlan`, so the first claim is the highest rank at entry.
+Scripted-event order (`TRF_EventRank`): sweep 1, feq 2, staged 3, push 4, deserter 5, vendetta 6, hostile 7, optional 8. Traffic's users: `TRF_SweepEntry` (sweep), `TRF_FeqEntry` (feq, before its convoy slot), `TRF_Rd_StRollBody` (staged, after the placement, so the RAND draws stay as before); trf_station's local events take `station` (an unlisted kind, so it ranks as `optional`) in `TRF_Stn_OnActivate`, after the entry plan (station-voices-spec 17). They run in that order inside `TRF_EntryPlan`, so the first claim is the highest rank at entry.
 
 ## 4. Dock dispatcher
 

@@ -12,7 +12,7 @@
 -- the old bodies run.
 -- Station events (spec 17): one optional event per visit (ore barge, tanker shuttle, refugee launch) by the
 -- classes of the dock rows activate.script placed; a traffic trader spawned through trf_gen (TRF_Plan, TRF_Spawn;
--- record flag sev), the barge with a small raid (trf_clan TRF_RaidOn, why "stn"); scripted-event slot "optional";
+-- record flag sev), the barge with a small raid (trf_clan TRF_RaidOn, why "stn"); scripted-event slot "station";
 -- pay through TRF_PayN/TRF_Pay; result through trf_gen's arrival hook (TRF_Stn_EvArrive), the 8.5 raid-help
 -- resolver (TRF_Stn_EvHelp) and the 1 s step (TRF_Stn_Step). The visit record is SV.ev (never saved).
 -- Saved fields (version 4, created lazily, repaired by TRF_Stn_Fix):
@@ -1263,7 +1263,8 @@ end;
 
 -- Entry plan (17.2), from TRF_Stn_OnActivate after the entry plan of trf_gen (traffic's slot claimants asked first):
 -- free roam, the dock gate, chapter, a kind the dock rows allow, the usable trade station, the per-station
--- cooldown, the chance, then the scripted-event slot "optional" (ranks last). The spawn is a due call.
+-- cooldown, the chance, then the scripted-event slot "station" (an own kind, ranks as optional: last). The spawn
+-- is a due call.
 function TRF_StnEvPlan(idx, nm)
 	local sv = %SV;
 	sv.ev = nil;
@@ -1287,10 +1288,10 @@ function TRF_StnEvPlan(idx, nm)
 	local roll = TRF_StnRand(100);
 	if roll >= T.ev_p then return TRF_StnEvSkip("chance", nm, k, roll); end;
 	local kind = kinds[TRF_StnRand(getn(kinds)) + 1];
-	if type(TRF_EventSlotTake) == "function" and not TRF_EventSlotTake("optional") then return TRF_StnEvSkip("slot", nm, k, roll); end;
+	if type(TRF_EventSlotTake) == "function" and not TRF_EventSlotTake("station") then return TRF_StnEvSkip("slot", nm, k, roll); end;
 	local dt = T.ev_dt + TRF_StnRand(T.ev_dt);
 	if not TRF_N("TRF_Due", dt, "TRF_Stn_EvSpawn") then
-		TRF_N("TRF_EventSlotFree", "optional");
+		TRF_N("TRF_EventSlotFree", "station");
 		return TRF_StnEvSkip("due", nm, k, roll);
 	end;
 	sv.ev = {kind=kind, k=k, idx=idx, st="plan", g=TRF.gen};
@@ -1343,13 +1344,16 @@ function TRF_StnEvSpawnBody(ev)
 	else
 		ev.st = "run";
 	end;
-	if ev.kind == "barge" then ev.rn = TRF_N("TRF_RaidOn", {id}, T.ev_tier, "stn"); end;
+	if ev.kind == "barge" then
+		-- S5 before the stamp and the line: a refused raid is void, the barge flies on as ordinary traffic.
+		ev.rn = TRF_N("TRF_RaidOn", {id}, T.ev_tier, "stn");
+		if type(ev.rn) ~= "number" then r.sev = nil; return "raid"; end;
+	end;
 	local e = TRF_StnGet(ev.k, 1, T);
 	e.ec = TRF_StnLegs();
 	TRF_StnEvLine("stnev"..ev.kind, T);
 	TRF_StnE("ev_spawn", "kind", ev.kind, "station_key", ev.k, "trader_id", id, "raid_id", ev.rn, "tier", r.tier,
 		"ship_count", r.np, "cooldown_leg", e.ec);
-	if ev.kind == "barge" and type(ev.rn) ~= "number" then TRF_StnEvEnd(ev, "void", "raid"); end;
 	return 1;
 end;
 
@@ -1387,7 +1391,7 @@ function TRF_StnEvEnd(ev, res, why, d)
 		line = TRF_StnTxt("stnevfar");
 	end;
 	if line then TRF_Stn_Say(line, 8); end;
-	if was == "plan" then TRF_N("TRF_EventSlotFree", "optional"); end;
+	if was == "plan" then TRF_N("TRF_EventSlotFree", "station"); end;
 	TRF_StnE("ev_end", "kind", ev.kind, "station_key", ev.k, "trader_id", ev.id, "raid_id", ev.rn, "result", res,
 		"reason", tostring(why), "pay", pay, "distance", TRF_StnF(d));
 end;
@@ -1396,22 +1400,45 @@ end;
 function TRF_Stn_Step()
 	local sv = %SV;
 	local ev = sv.ev;
-	if type(ev) ~= "table" or (ev.st ~= "wait" and ev.st ~= "run") then return; end;
+	if type(ev) ~= "table" or (ev.st ~= "wait" and ev.st ~= "run" and ev.st ~= "raid") then return; end;
 	call(TRF_StnEvStep, {ev}, "x", TRF_StnErr);
+end;
+
+-- 1 while raid ev.rn of the barge event is open (not ended, not pruned).
+function TRF_StnEvRaidOpen(ev)
+	if type(ev.rn) ~= "number" or type(TRF) ~= "table" or type(TRF.live) ~= "table" or type(TRF.live.rd) ~= "table" then return nil; end;
+	local rd = TRF.live.rd[ev.rn];
+	if type(rd) == "table" and rd.st ~= "end" then return 1; end;
+	return nil;
+end;
+
+-- The barge docked or escaped to its refuge (17.5): while its raid is open the raid's end decides (TRF_Stn_EvHelp
+-- defended, else the step ends it no_help), state "raid"; with the raid ended the help was not counted: no_help.
+function TRF_StnEvBargeOut(ev, why, d)
+	if TRF_StnEvRaidOpen(ev) then
+		ev.st = "raid";
+		ev.gw = why;
+		return;
+	end;
+	TRF_StnEvEnd(ev, "no_help", why, d);
 end;
 
 function TRF_StnEvStep(ev)
 	if type(TRF) ~= "table" or ev.g ~= TRF.gen then return; end;
+	if ev.st == "raid" then
+		if not TRF_StnEvRaidOpen(ev) then TRF_StnEvEnd(ev, "no_help", ev.gw); end;
+		return;
+	end;
 	local r = TRF_N("TRF_Rec", ev.id);
 	if type(r) ~= "table" then
 		local g = nil;
 		if type(TRF.live) == "table" and type(TRF.live.tr) == "table" then g = TRF.live.tr[ev.id]; end;
 		local why = "gone";
 		if type(g) == "table" and g.why ~= nil then why = tostring(g.why); end;
+		if ev.kind == "barge" and (why == "dock" or why == "escaped") then TRF_StnEvBargeOut(ev, why); return; end;
 		local res = "lost";
 		if why == "life" then res = "expired";
-		elseif why == "dock" then
-			if ev.kind == "barge" then res = "no_help"; else res = "far"; end;
+		elseif why == "dock" then res = "far";
 		end;
 		TRF_StnEvEnd(ev, res, why);
 		return;
@@ -1429,13 +1456,13 @@ function TRF_StnEvStep(ev)
 end;
 
 -- trf_gen hook in TRF_GnSafeArrive (record flag sev), before the flight is deleted: the shuttle and the
--- launch are delivered when they dock with the mothership within ev_r; the barge docking unhelped ends no_help.
+-- launch are delivered when they dock with the mothership within ev_r; a docked barge waits for its raid's end.
 function TRF_Stn_EvArrive(id, how)
 	local sv = %SV;
 	local ev = sv.ev;
 	if type(ev) ~= "table" or ev.id ~= id or (ev.st ~= "run" and ev.st ~= "wait") then return; end;
 	if how ~= "dock" then TRF_StnEvEnd(ev, "lost", how); return; end;
-	if ev.kind == "barge" then TRF_StnEvEnd(ev, "no_help", how); return; end;
+	if ev.kind == "barge" then TRF_StnEvBargeOut(ev, how); return; end;
 	local d = TRF_StnEvDist(id);
 	if d and d <= TRF_StnT("ev_r") then TRF_StnEvEnd(ev, "delivered", how, d); else TRF_StnEvEnd(ev, "far", how, d); end;
 end;
@@ -1446,7 +1473,7 @@ end;
 function TRF_Stn_EvHelp(n, rd, amt)
 	local sv = %SV;
 	local ev = sv.ev;
-	if type(ev) ~= "table" or ev.kind ~= "barge" or ev.rn ~= n or ev.st ~= "run" then return nil; end;
+	if type(ev) ~= "table" or ev.kind ~= "barge" or ev.rn ~= n or (ev.st ~= "run" and ev.st ~= "raid") then return nil; end;
 	TRF_StnEvEnd(ev, "defended", "raid_help");
 	return "cancel";
 end;
@@ -1579,7 +1606,7 @@ end;
 function TRF_Stn_TuneDef()
 	return {stn_decay=12, stn_near=2500, stn_pos=60, fee_k=200, fee_pro=8, fee_cap=10000, fee_ch=5, news_ch=4,
 		own_legs=20, mood_dis=7, mood_rdis=5, pir_heat=5, heat_c1=5, heat_c2=7, stn_radio=8, stn_gap=6,
-		ev_cd=24, ev_p=25, ev_k=40, ev_ch=5, ev_r=800, ev_meet=300, ev_tier=1, ev_dt=20};
+		ev_cd=24, ev_p=25, ev_k=40, ev_ch=5, ev_r=400, ev_meet=300, ev_tier=1, ev_dt=20};
 end;
 
 -- "module=station event=dump visit=<ve> record_count=<n> records=<k>:<st>/<lg>/<gv>/<bv>/<tf>[!],...

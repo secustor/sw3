@@ -1206,9 +1206,9 @@ function T_STN_G()
 	local n0 = S_Mark();
 	S_EvEnter("gaoba", S_EvBarge());
 	local ev = S_Ev();
-	HOST_Check(ev and ev.kind == "barge" and ev.st == "plan" and TRF.live.ev == "optional"
+	HOST_Check(ev and ev.kind == "barge" and ev.st == "plan" and TRF.live.ev == "station"
 		and S_Logs(n0, "module=station event=ev_plan kind=barge system=gaoba station_key=42 kind_count=1 chance=100 ") == 1,
-		"barge: planned at entry, slot optional taken");
+		"barge: planned at entry, slot station taken");
 	local c0 = h.credits;
 	S_EvRun();
 	ev = S_Ev();
@@ -1315,6 +1315,66 @@ function T_STN_G()
 	T_Tick(4, 0.5);
 	HOST_Check(ev.res == "lost" and h.credits == c0 and S_Logs(n0, "module=station event=ev_end kind=barge ") == 1, "barge lost: no pay ("..tostring(ev.res)..")");
 	for q, e in TRF.live.rd do if type(e) == "table" and e.st ~= "end" then TRF_Rd_End(q, "cancel"); end; end;
+	-- Barge escaped to its portal refuge with counted help before its raid ends: the event waits (state raid);
+	-- the raid's end pays the event (defended), not the 8.5 credits.
+	S_EvCool();
+	S_EvEnter("gaoba", S_EvBarge());
+	S_EvRun();
+	ev = S_Ev();
+	n = ev.rn;
+	if V_Rd(n).st == "armed" then HOST_Fire("f_inside", "TRF_RaidGo("..n..","); end;
+	hr = TRF_H().rd[n];
+	HOST_Fire("attack", "TRF_OnRaidHit("..n..",1,");
+	hr.sh[1].alive = nil;
+	HOST_Fire("died", "TRF_OnRaidDied("..n..",1,");
+	c0 = h.credits;
+	want = floor(TRF_PayN(idx) * 40 / 100);
+	if TRF_Rec(ev.id).st ~= "flee" then TRF_Flee(ev.id, "raid"); end;
+	HOST_Fire("f_object_inside", "TRF_Rd_Safe("..ev.id..",1,");
+	T_Tick(4, 0.5);
+	HOST_Check(ev.st == "raid" and TRF_Rec(ev.id) == nil and V_Rd(n).hit == 1 and V_Rd(n).st ~= "end",
+		"barge escaped with help: event waits for its raid ("..tostring(ev.st)..")");
+	n0 = S_Mark();
+	TRF_Rd_End(n, "left");
+	HOST_Check(ev.res == "defended" and h.credits - c0 == want and want > 0
+		and S_Logs(n0, "module=raid event=paid raid_id="..n.." trader_id="..ev.id.." credits=0 ") == 1
+		and S_Logs(n0, "module=station event=ev_end kind=barge station_key=42 trader_id="..ev.id.." raid_id="..n.." result=defended reason=raid_help pay="..want.." ") == 1,
+		"barge escaped with help: defended at the raid's end, event pay "..want.." (paid "..(h.credits - c0)..")");
+	-- Barge escaped without help: the raid's end leaves it no_help, no pay.
+	S_EvCool();
+	S_EvEnter("gaoba", S_EvBarge());
+	S_EvRun();
+	ev = S_Ev();
+	n = ev.rn;
+	if V_Rd(n).st == "armed" then HOST_Fire("f_inside", "TRF_RaidGo("..n..","); end;
+	c0 = h.credits;
+	if TRF_Rec(ev.id).st ~= "flee" then TRF_Flee(ev.id, "raid"); end;
+	n0 = S_Mark();
+	HOST_Fire("f_object_inside", "TRF_Rd_Safe("..ev.id..",1,");
+	TRF_Stn_Step();
+	HOST_Check(ev.st == "raid" and V_Rd(n).st ~= "end", "barge escaped without help: event waits for its raid ("..tostring(ev.st)..")");
+	T_Tick(4, 0.5);
+	TRF_Rd_End(n, "left");
+	T_Tick(4, 0.5);
+	HOST_Check(ev.res == "no_help" and h.credits == c0 and S_Logs(n0, "result=no_help reason=escaped pay=0 ") == 1
+		and S_Logs(n0, "module=raid event=end raid_id="..n.." trader_id="..ev.id.." ") == 1
+		and S_Screen(0, "Dockmaster: they made it, but not with your help. No pay."), "barge escaped without help: no_help at the raid's end, no pay");
+	-- Barge whose raid TRF_RaidOn refuses: void before the cooldown stamp and the line; an ordinary trader.
+	S_EvCool();
+	S_EvEnter("gaoba", S_EvBarge());
+	local ro = TRF_RaidOn;
+	TRF_RaidOn = function() return nil; end;
+	local nm0 = getn(h.msgs);
+	n0 = S_Mark();
+	S_EvRun();
+	TRF_RaidOn = ro;
+	ev = S_Ev();
+	r = ev and ev.id and TRF_Rec(ev.id);
+	HOST_Check(ev and ev.res == "void" and r and r.sev == nil and (TRF.stn[k] == nil or TRF.stn[k].ec ~= TRF.clock.legs)
+		and getn(h.msgs) == nm0 and S_Logs(n0, "module=station event=ev_spawn ") == 0
+		and S_Logs(n0, "module=station event=ev_end kind=barge station_key=42 trader_id="..tostring(ev and ev.id).." raid_id=nil result=void reason=raid ") == 1,
+		"barge raid refused: void, no line, no cooldown stamp, sev cleared");
+	if ev and ev.id then TRF_Remove(ev.id, "test"); end;
 	-- Slot: a sweep that claimed the scripted-event slot at entry wins; the event is refused (log 1 line).
 	S_EvCool();
 	h.evhook = function() TRF_SweepEntry = function() TRF_EventSlotTake("sweep"); return nil; end; end;
@@ -1322,7 +1382,7 @@ function T_STN_G()
 	S_EvEnter("gaoba", S_EvShuttle());
 	h.evhook = nil;
 	HOST_Check(S_Ev() == nil and TRF.live.ev == "sweep" and S_Logs(n0, "result=skipped reason=slot") == 1
-		and S_Logs(n0, "module=plumb event=event_slot kind=optional rank=8 holder=sweep result=refused") == 1, "slot held by a sweep: event refused");
+		and S_Logs(n0, "module=plumb event=event_slot kind=station rank=8 holder=sweep result=refused") == 1, "slot held by a sweep: event refused");
 	-- Gates: a quest id of the system in process (strict gate), a story mission (free roam), chapter, voice_events 0.
 	h.quests["quest_7a"] = QUEST_PROCESS;
 	n0 = S_Mark();
