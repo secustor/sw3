@@ -154,7 +154,8 @@ function TRF_McTune()
 	return o;
 end;
 
-function TRF_McT(key)
+-- Tune value of key (TRF_McTune).
+function TRF_McTn(key)
 	return TRF_McTune()[key];
 end;
 
@@ -201,7 +202,8 @@ end;
 -- values (12 section 6, UC D.5), the first chapter, the demand per phase (12 section 6 Presence), units per region.
 function TRF_McK()
 	return {nc=12, sw=20, first_ch=5, stamp=9999999, money=9999999, ue_k=100, bs_fo={42, 62}, bs_sg={2, 3},
-		demand={0, 1, 2, 3, 1, 0}, sweep_d=2, region_max=2, demand_min=2, raids=3, hp_max=4, fo_max=99, nreg=11};
+		demand={0, 1, 2, 3, 1, 0}, sweep_d=2, region_max=2, demand_min=2, raids=3, hp_max=4, fo_max=99, nreg=11,
+		lead_min=2, lead_fo=2};
 end;
 
 -- Clans in the vanilla order of _Fmerc_names / _Fmerc_groups (G/Scripts/include/RandomFmerc.script:9-11): key k, bloc
@@ -328,12 +330,12 @@ function TRF_McUpOf(u, tk)
 end;
 
 -- Big-ship loss values (12 section 6, UC D.5): mk 3 (corvette) fo <= 42, stage 2; mk 4 (mothership) fo <= 62,
--- stage 3; both hp -1. Returns fo, sg, hp.
-function TRF_McBigLossOf(fo, hp, mk)
+-- stage 3 (a lower stage stays); both hp -1. Returns fo, sg, hp.
+function TRF_McBigLossOf(fo, sg, hp, mk)
 	local K = TRF_McK();
 	local i = 1;
 	if mk == 4 then i = 2; end;
-	return min(fo, K.bs_fo[i]), K.bs_sg[i], max(0, hp - 1);
+	return min(fo, K.bs_fo[i]), min(sg, K.bs_sg[i]), max(0, hp - 1);
 end;
 
 -- Blacklist length (12 section 4): merc_black x bk jumps, at most merc_black_max.
@@ -547,7 +549,7 @@ function TRF_McRel(c)
 end;
 
 -- Clan c's packed fields as a table (every key of TRF_McTKeys; absent or unreadable: zeros).
-function TRF_McTOf(c)
+function TRF_McT(c)
 	local R = TRF_McRec();
 	local ks = TRF_McTKeys();
 	local r = nil;
@@ -580,14 +582,20 @@ end;
 
 -- The clan's values for the tick: digit fields and packed fields in one table (written back by TRF_McPut).
 function TRF_McGet(c)
-	local v = TRF_McTOf(c);
+	local v = TRF_McT(c);
 	for k, f in TRF_McDigK() do v[k] = TRF_McDig(c, k); end;
 	return v;
 end;
 
+-- 1 when c is a clan index 1..12.
+function TRF_McCOk(c)
+	if type(c) == "number" and c >= 1 and c <= TRF_McK().nc and c == floor(c) then return 1; end;
+	return nil;
+end;
+
 function TRF_McPut(c, v)
 	local R = TRF_McRec();
-	if not R then return nil; end;
+	if not R or not TRF_McCOk(c) then return nil; end;
 	local p = (c - 1) * TRF_McK().sw;
 	R.s = strsub(R.s, 1, p)..TRF_McBlockOf(v)..strsub(R.s, p + TRF_McK().sw + 1);
 	return TRF_McPutT(c, v);
@@ -605,10 +613,10 @@ end;
 -- Positive fortune event of clan c (completed hire +3, SNIPE +2, ...; later steps), capped at mc_fo_ev per phase of its
 -- at region (ue); a negative d is applied in full. Returns the change applied.
 function TRF_Mc_Fortune(c, d, why)
-	if not TRF_McRec() or type(d) ~= "number" then return 0; end;
+	if not TRF_McRec() or not TRF_McCOk(c) or type(d) ~= "number" then return 0; end;
 	local v = TRF_McGet(c);
 	local a = d;
-	if d > 0 then a, v.ue = TRF_McGainOf(d, v.ue, TRF_McPhaseKey(v.at), TRF_McT("mc_fo_ev"), TRF_McK().ue_k); end;
+	if d > 0 then a, v.ue = TRF_McGainOf(d, v.ue, TRF_McPhaseKey(v.at), TRF_McTn("mc_fo_ev"), TRF_McK().ue_k); end;
 	local fo0 = v.fo;
 	v.fo = TRF_McCl(v.fo + a, 0, TRF_McK().fo_max);
 	TRF_McPut(c, v);
@@ -619,7 +627,7 @@ end;
 -- Ships of clan c lost on screen (later steps, written at the died event): hp -1 and fo -mc_loss_fo per ship; hp 0
 -- breaks the clan with bh := its home.
 function TRF_Mc_Lost(c, n, why)
-	if not TRF_McRec() or type(n) ~= "number" or n <= 0 then return; end;
+	if not TRF_McRec() or not TRF_McCOk(c) or type(n) ~= "number" or n <= 0 then return; end;
 	local v = TRF_McGet(c);
 	local T = TRF_McTune();
 	v.hp = max(0, v.hp - n);
@@ -632,20 +640,20 @@ end;
 
 -- A big ship of clan c killed (mk 3 corvette, 4 mothership; steps 6-7): the loss values and the closure stamp.
 function TRF_Mc_BigLoss(c, mk)
-	if not TRF_McRec() or (mk ~= 3 and mk ~= 4) then return; end;
+	if not TRF_McRec() or not TRF_McCOk(c) or (mk ~= 3 and mk ~= 4) then return; end;
 	local v = TRF_McGet(c);
-	v.fo, v.sg, v.hp = TRF_McBigLossOf(v.fo, v.hp, mk);
+	v.fo, v.sg, v.hp = TRF_McBigLossOf(v.fo, v.sg, v.hp, mk);
 	v.ml = TRF_McJumps(); v.mk = mk; v.su = 0;
 	v.hl = TRF_McLegs(); v.hj = v.ml;
 	if v.hp == 0 and v.rl ~= 2 then TRF_McBreak(c, v, TRF_McHome(c) or v.at, "big_ship"); end;
 	TRF_McPut(c, v);
-	TRF_McE("big_loss", "clan", c, "stage_lost", mk, "fortune", v.fo, "stage", v.sg, "condition", v.hp, "closed_until", v.ml + TRF_McT("mc_bs_j")[mk - 2]);
+	TRF_McE("big_loss", "clan", c, "stage_lost", mk, "fortune", v.fo, "stage", v.sg, "condition", v.hp, "closed_until", v.ml + TRF_McTn("mc_bs_j")[mk - 2]);
 end;
 
 -- Betrayal blacklist (12 section 4; step 3 calls it): x := max(x, jumps + merc_black x bk, at most merc_black_max).
 function TRF_Mc_Black(c)
 	local R = TRF_McRec();
-	if not R then return nil; end;
+	if not R or not TRF_McCOk(c) then return nil; end;
 	local T = TRF_McTune();
 	local u = TRF_McJumps() + TRF_McBlackOf(TRF_McDig(c, "bk"), T.merc_black, T.merc_black_max);
 	if type(R.x) ~= "number" or R.x < u then R.x = u; end;
@@ -664,7 +672,7 @@ end;
 -- chapter mc_st_ch (12 section 4).
 function TRF_Mc_Fielded(c)
 	local sg = TRF_McDig(c, "sg") or 1;
-	if TRF_McChapter() < TRF_McT("mc_st_ch") then sg = min(sg, 2); end;
+	if TRF_McChapter() < TRF_McTn("mc_st_ch") then sg = min(sg, 2); end;
 	return min(sg, 2);
 end;
 
@@ -720,16 +728,19 @@ function TRF_McOfficeBloc()
 end;
 
 -- Break (hp 0, 13 section 6): rl 2, fo := max(mc_break_min, fo - mc_break_fo), re-form not before cd legs and cj jumps,
--- bh the region it broke in, absent (at 0).
+-- bh the region it broke in, absent (at 0); the stage at most 3 (a broken clan holds no stage 4 slot), the elite clan's
+-- fortune not below its floor (11.1).
 function TRF_McBreak(c, v, bh, why)
 	local T = TRF_McTune();
 	v.rl = 2; v.hp = 0;
 	v.fo = max(T.mc_break_min, v.fo - T.mc_break_fo);
+	if c == TRF_McElite() then v.fo = max(v.fo, TRF_McFloorOf(TRF_McChapter(), T)); end;
+	v.sg = min(v.sg, 3);
 	v.cd = TRF_McLegs() + T.rv_cd_legs;
 	v.cj = TRF_McJumps() + T.rv_cd_jumps;
 	v.bh = bh or 0;
 	v.at = 0; v.su = 0;
-	TRF_McE("break", "clan", c, "region", bh, "fortune", v.fo, "reform_leg", v.cd, "reform_jump", v.cj, "reason", why);
+	TRF_McE("break", "clan", c, "region", bh, "fortune", v.fo, "stage", v.sg, "reform_leg", v.cd, "reform_jump", v.cj, "reason", why);
 end;
 
 -- Re-form region (13 section 6): home unless it is bh, else the region nearest the home system other than bh (ties: the
@@ -745,6 +756,12 @@ function TRF_McReformAt(c, bh, m)
 	return b or h or 0;
 end;
 
+-- Wolves lead in region slot s (12 section 4, 13 section 4): the w digit of s minus rp_eq = floor(fo / 10); 0 without w.
+function TRF_McLeadOf(w, s, fo)
+	if type(w) ~= "string" or type(s) ~= "number" or s < 1 or s > strlen(w) then return 0; end;
+	return (tonumber(strsub(w, s, s)) or 0) - floor(fo / 10);
+end;
+
 -- One region tick at leg L (12 section 6): creation, presence, fortune, losses, stage, rivals, re-form, hp recovery and
 -- the decays, in this order for every clan; one summary line.
 function TRF_Mc_RegionTick(L)
@@ -754,7 +771,7 @@ function TRF_Mc_RegionTick(L)
 	if ch < K.first_ch then return; end;
 	local m = TRF_McMap();
 	if not m then return; end;
-	TRF_McRec(1);
+	local R = TRF_McRec(1);
 	local T = TRF_McTune();
 	local J = TRF_McJumps();
 	local tk = floor(L / TRF_McRgTick());
@@ -780,13 +797,15 @@ function TRF_Mc_RegionTick(L)
 			v.at = h;
 		end;
 	end;
-	-- Fortune: income by the at region's phase, upkeep by stage, off-screen losses in Raids; the elite floor.
+	-- Fortune: income by the at region's phase, upkeep by stage, a rival's -2 while the Wolves lead in its home by 2,
+	-- off-screen losses in Raids; the elite floor.
 	for c = 1, K.nc do
 		local v = V[c];
 		if v.rl ~= 2 and v.at >= 1 then
 			local ph = TRF_McPh(v.at);
 			local fo0 = v.fo;
 			v.fo = v.fo + T.mc_inc[ph + 1] - TRF_McUpOf(T.mc_up[v.sg], tk);
+			if v.rl == 1 and TRF_McLeadOf(R.w, TRF_McHome(c), fo0) >= K.lead_min then v.fo = v.fo - K.lead_fo; end;
 			local hpmin = 0;
 			if c == el then hpmin = T.mc_el_hp; end;
 			if ph == K.raids and v.hp > hpmin and TRF_McRoll(c, tk, 7) < T.mc_loss_p * TRF_McTier(v.at) then
@@ -861,12 +880,14 @@ function TRF_Mc_RegionTick(L)
 end;
 
 -- Roles at the tick (12 section 6 Roles): with cfg rv_enabled 1 rivals leave at rel >= 1, stage 1 or an ineligible
--- home and empty slots (rv_count) take the best candidate (TRF_McRivalOf); with 0 no clan is a rival. Broken clans
--- re-form at legs >= cd and jumps >= cj: hp 4, stage by fortune (1 or 2), g at most 3, free, in a region other than bh.
+-- home and empty slots (rv_count) take the best candidate (TRF_McRivalOf; a clan released at this tick waits for the
+-- next); with 0 no clan is a rival. Broken clans re-form at legs >= cd and jumps >= cj: hp 4, stage by fortune (1 or 2;
+-- the elite clan at its floor, up to the closure cap, 11.1), g at most 3, free, in a region other than bh.
 function TRF_McRoles(V, m, ch, T, L, J, el)
 	local K = TRF_McK();
 	local on = TRF_McOpt("rv_enabled") == 1;
 	local nr = 0;
+	local out = {};
 	for c = 1, K.nc do
 		local v = V[c];
 		if v.rl == 1 then
@@ -877,7 +898,7 @@ function TRF_McRoles(V, m, ch, T, L, J, el)
 			elseif v.sg <= 1 then why = "stage";
 			elseif not h or not TRF_McHomeOk(h, m, ch, T) then why = "home"; end;
 			if why then
-				v.rl = 0;
+				v.rl = 0; out[c] = 1;
 				TRF_McE("role", "clan", c, "role", 0, "role_before", 1, "reason", why);
 			else
 				nr = nr + 1;
@@ -893,11 +914,12 @@ function TRF_McRoles(V, m, ch, T, L, J, el)
 			for c = 1, K.nc do
 				local v = V[c];
 				local h = TRF_McHome(c);
-				local ok, tkn, e = 0, 0, 0;
+				local ok, tkn, e, rl = 0, 0, 0, v.rl;
 				if h and TRF_McHomeOk(h, m, ch, T) then ok = 1; end;
 				if h and taken[h] then tkn = 1; end;
 				if c == el then e = 1; end;
-				tinsert(l, {c=c, rl=v.rl, rel=v.rel, sg=v.sg, ek=v.ek, ok=ok, b=TRF_McClan(c).b, fo=v.fo, hz=TRF_McHash(c, L, 13), el=e, tk=tkn});
+				if out[c] then rl = -1; end;
+				tinsert(l, {c=c, rl=rl, rel=v.rel, sg=v.sg, ek=v.ek, ok=ok, b=TRF_McClan(c).b, fo=v.fo, hz=TRF_McHash(c, L, 13), el=e, tk=tkn});
 			end;
 			local c = TRF_McRivalOf(l, ob);
 			if not c then break; end;
@@ -910,7 +932,13 @@ function TRF_McRoles(V, m, ch, T, L, J, el)
 		local v = V[c];
 		if v.rl == 2 and L >= v.cd and J >= v.cj then
 			v.rl = 0; v.hp = K.hp_max;
-			v.sg = TRF_McStageOfFo(v.fo, T.mc_st_up, 2);
+			local mx = 2;
+			if c == el then
+				v.fo = max(v.fo, TRF_McFloorOf(ch, T));
+				mx = TRF_McCapOf(v.ml, v.mk, J, T.mc_bs_j);
+				if T.mc_ms_max < 1 then mx = min(mx, 3); end;
+			end;
+			v.sg = TRF_McStageOfFo(v.fo, T.mc_st_up, mx);
 			v.g = min(v.g, 3);
 			v.at = TRF_McReformAt(c, v.bh, m);
 			v.su = 0; v.hl = L; v.hj = J;
@@ -940,7 +968,7 @@ end;
 -- Writes rel, g, bk or owe of clan c (the later steps' events) with the stamp its decay counts from: rd/rj for rel (legs
 -- for a positive, jumps for a negative value), gt for g, bj for bk, oj when an owe starts. Returns the value written.
 function TRF_Mc_Mark(c, k, x)
-	if not TRF_McRec() or type(x) ~= "number" then return nil; end;
+	if not TRF_McRec() or not TRF_McCOk(c) or type(x) ~= "number" then return nil; end;
 	local v = TRF_McGet(c);
 	local L, J = TRF_McLegs(), TRF_McJumps();
 	if k == "rel" then

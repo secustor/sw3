@@ -692,7 +692,7 @@ Mercenary clans, build step 1 (`design/merc-spec.md` 8). `clan` is the clan inde
 | `tick` | `module=merc event=tick legs=43 tick=21 jumps=12 fortunes=26,44,31,49,35,25,40,55,41,31,20,39 stages=1,2,1,2,2,1,2,3,2,2,1,2 roles=0,0,0,0,0,0,0,0,0,0,0,0` | 1 |
 | `stage` | `module=merc event=stage clan=7 stage_before=1 stage=2 fortune=30` | 1 |
 | `role` | `module=merc event=role clan=3 role=1 role_before=0 standing=-1 fortune=52 office_bloc=nil` / `role=0 role_before=1 reason=<off, standing, stage, home>` | 1 |
-| `break` | `module=merc event=break clan=4 region=5 fortune=19 reform_leg=67 reform_jump=20 reason=<raids, lost, big_ship>` | 1 |
+| `break` | `module=merc event=break clan=4 region=5 fortune=19 stage=3 reform_leg=67 reform_jump=20 reason=<raids, lost, big_ship>` | 1 |
 | `reform` | `module=merc event=reform clan=4 region=1 region_before=5 fortune=19 stage=1` | 1 |
 | `owe` | `module=merc event=owe clan=5 amount=5000 jumps=60 result=written_off` | 1 |
 | `fortune` | `module=merc event=fortune clan=7 change=3 applied=3 fortune=43 reason=hire` (`TRF_Mc_Fortune`, later steps) | 1 |

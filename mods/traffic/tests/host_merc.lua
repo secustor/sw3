@@ -182,15 +182,15 @@ function T_MC_A()
 	local r = {};
 	for k, b in B do if b[1] < 0 then r[k] = b[1]; else r[k] = b[2]; end; end;
 	TRF_McPutT(4, r);
-	local r2 = TRF_McTOf(4);
+	local r2 = TRF_McT(4);
 	local diff = "";
 	for k, b in B do if r2[k] ~= r[k] then diff = diff.." "..k; end; end;
 	HOST_Check(diff == "" and getn(TRF_McTKeys()) == 29 and strlen(TRF.mc.t[4]) <= 11 * 29, "t[c]: 29 keys round-trip at their bounds ("..strlen(TRF.mc.t[4]).." chars)"..diff);
 	TRF_McPutT(4, {jobs=5000, owe=-5, met=1e12, su=7});
-	r2 = TRF_McTOf(4);
+	r2 = TRF_McT(4);
 	HOST_Check(r2.jobs == 999 and r2.owe == 0 and r2.met == 9999999 and r2.su == 1 and r2.cd == 0, "t[c]: values clamped, missing keys 0");
 	TRF_McPutT(4, {});
-	HOST_Check(TRF.mc.t[4] == nil and TRF_McTOf(4).jobs == 0, "t[c] of zeros removed");
+	HOST_Check(TRF.mc.t[4] == nil and TRF_McT(4).jobs == 0, "t[c] of zeros removed");
 	HOST_Check(TRF_TpMax() == 2147483647 and B.ue[2] < TRF_TpMax() and B.px[2] < TRF_TpMax() and TRF_McPhaseKey(1) < 2000000, "every bound below 2^31-1; the phase key stays small");
 end;
 
@@ -216,10 +216,12 @@ function T_MC_B()
 		"stage rule: up after two ticks in a row, a blip resets the streak, down at the first tick below, as far as the fortune goes, the closure caps");
 	HOST_Check(TRF_McCapOf(10, 4, 49, {20, 40}) == 3 and TRF_McCapOf(10, 4, 50, {20, 40}) == 4 and TRF_McCapOf(10, 3, 29, {20, 40}) == 2
 		and TRF_McCapOf(10, 3, 30, {20, 40}) == 4 and TRF_McCapOf(0, 0, 0, {20, 40}) == 4, "closure: stage mk and above closed for mc_bs_j jumps");
-	local f1, g1, p1 = TRF_McBigLossOf(80, 4, 4);
-	local f2, g2, p2 = TRF_McBigLossOf(50, 2, 3);
-	local f3, g3, p3 = TRF_McBigLossOf(30, 0, 3);
-	HOST_Check(f1 == 62 and g1 == 3 and p1 == 3 and f2 == 42 and g2 == 2 and p2 == 1 and f3 == 30 and p3 == 0, "big-ship loss values: fo 62 / 42, stage 3 / 2, hp -1");
+	local f1, g1, p1 = TRF_McBigLossOf(80, 4, 4, 4);
+	local f2, g2, p2 = TRF_McBigLossOf(50, 3, 2, 3);
+	local f3, g3, p3 = TRF_McBigLossOf(30, 2, 0, 3);
+	local f4, g4 = TRF_McBigLossOf(10, 1, 4, 3);
+	HOST_Check(f1 == 62 and g1 == 3 and p1 == 3 and f2 == 42 and g2 == 2 and p2 == 1 and f3 == 30 and p3 == 0 and f4 == 10 and g4 == 1,
+		"big-ship loss values: fo 62 / 42, stage 3 / 2 (a lower stage stays), hp -1");
 	local ga, ue = TRF_McGainOf(3, 0, 5, 12, 100);
 	local gs = ga;
 	for i = 1, 4 do ga, ue = TRF_McGainOf(3, ue, 5, 12, 100); gs = gs..","..ga; end;
@@ -261,7 +263,7 @@ function T_MC_B()
 	n0 = S_Mark();
 	MC_Tick(1);
 	local w4 = 0;
-	for i, c in {1, 4, 7} do if TRF_McDig(c, "sg") == 4 then w4 = w4 + 1; elseif TRF_McDig(c, "sg") ~= 3 or TRF_McTOf(c).su ~= 1 then w4 = 99; end; end;
+	for i, c in {1, 4, 7} do if TRF_McDig(c, "sg") == 4 then w4 = w4 + 1; elseif TRF_McDig(c, "sg") ~= 3 or TRF_McT(c).su ~= 1 then w4 = 99; end; end;
 	HOST_Check(TRF_McDig(8, "sg") == 4 and w4 == 1 and MC_Count("sg", 4) == 2, "stage 4: the elite clan in slot 1, one of three others in slot 2, the rest wait at 3 with the streak");
 	local first = nil;
 	for i, c in {1, 4, 7} do if TRF_McDig(c, "sg") == 4 then first = c; end; end;
@@ -295,7 +297,7 @@ function T_MC_B()
 	HOST_Check(TRF_McDig(8, "fo") == 78 and TRF_McDig(8, "sg") == 3, "floor 78 again, but stage 4 closed for 40 jumps");
 	MC_Jump(40);
 	MC_Tick(1);
-	HOST_Check(TRF_McDig(8, "sg") == 3 and TRF_McTOf(8).su == 1, "closure over: the streak starts");
+	HOST_Check(TRF_McDig(8, "sg") == 3 and TRF_McT(8).su == 1, "closure over: the streak starts");
 	MC_Tick(1);
 	HOST_Check(TRF_McDig(8, "sg") == 4 and TRF_Mc_Fielded(8) == 2, "two ticks later stage 4; fielded stage 2 in this step");
 	-- Fortune events: the per-phase cap; losses on screen.
@@ -307,7 +309,25 @@ function T_MC_B()
 	TRF_Mc_Lost(7, 1, "test");
 	HOST_Check(TRF_McDig(7, "hp") == 1 and TRF_McDig(7, "fo") == 17, "ship lost on screen: hp -1, fo -3");
 	TRF_Mc_Lost(7, 1, "test");
-	HOST_Check(TRF_McDig(7, "rl") == 2 and TRF_McTOf(7).bh == TRF_McHome(7), "hp 0: broken, bh its home");
+	HOST_Check(TRF_McDig(7, "rl") == 2 and TRF_McT(7).bh == TRF_McHome(7), "hp 0: broken, bh its home");
+	MC_Put(5, {rl=0, hp=1, sg=4, fo=80});
+	TRF_Mc_Lost(5, 1, "test");
+	HOST_Check(TRF_McDig(5, "rl") == 2 and TRF_McDig(5, "sg") == 3, "a stage 4 clan that breaks drops to stage 3 (no stage 4 slot while broken)");
+	-- The elite floor holds at the break and the re-form (chapter 7: 78; the closure is over, so stage 4).
+	MC_Put(8, {rl=0, hp=1, fo=80});
+	TRF_Mc_Lost(8, 1, "test");
+	v = MC_V(8);
+	HOST_Check(v.rl == 2 and v.fo == 78 and v.sg == 3, "elite break: fortune stays at the floor 78, stage 3");
+	MC_Put(8, {cd=0, cj=0});
+	MC_Tick(1);
+	v = MC_V(8);
+	HOST_Check(v.rl == 0 and v.fo >= 78 and v.sg == 4, "elite re-form: at its floor, stage 4 ("..v.fo..", "..v.sg..")");
+	-- A bad clan index is refused and changes nothing.
+	local s0, x0 = TRF.mc.s, TRF.mc.x;
+	local ok = TRF_Mc_Mark(13, "g", 1) == nil and TRF_Mc_Mark(0, "rel", 1) == nil and TRF_Mc_Fortune(0, 3, "x") == 0 and TRF_Mc_Black(13) == nil
+		and TRF_McPut(2.5, MC_V(2)) == nil;
+	TRF_Mc_Lost(13, 1, "test"); TRF_Mc_BigLoss(0, 3);
+	HOST_Check(ok and TRF.mc.s == s0 and TRF.mc.x == x0, "clan 0, 13 or 2.5: refused, s unchanged");
 end;
 
 -- c: presence, losses, break and re-form, hp recovery -----------------------------------------------------------
@@ -535,6 +555,61 @@ function T_MC_E()
 	for c = 1, 12 do if TRF_McDig(c, "rl") == 1 and TRF_McClan(c).b == 2 then b2 = b2 + 1; end; end;
 	HOST_Check(TRF_McOfficeBloc() == 2 and b2 == 0 and MC_Count("rl", 1) >= 1, "office unit Star Dragoons (bloc 2): only bloc 1 rivals");
 	h.recruit = nil;
+	-- A rival released at rel 1 with no other candidate is not picked again in the same tick; the fallback takes it at
+	-- the next one (V9).
+	for c = 1, 12 do MC_Put(c, {rl=0, sg=2, fo=40}); TRF_Mc_Mark(c, "rel", 2); end;
+	MC_Put(12, {rl=1});
+	TRF_Mc_Mark(12, "rel", 1);
+	n0 = S_Mark();
+	MC_Tick(1);
+	HOST_Check(MC_Count("rl", 1) == 0 and S_Logs(n0, "clan=12 role=0 role_before=1 reason=standing") == 1 and S_Logs(n0, "clan=12 role=1 role_before=0") == 0,
+		"rel 1 and no other candidate: the rival leaves and stays out this tick");
+	MC_Tick(1);
+	HOST_Check(TRF_McDig(12, "rl") == 1 and MC_Count("rl", 1) == 1, "next tick: the fallback picks it at rel 1");
+	-- Ineligible homes: too few trader systems, Vks systems in chapters 13-15, a guard region while the guard holds.
+	for c = 1, 12 do MC_Put(c, {rl=0, sg=2, fo=30 + c}); TRF_Mc_Mark(c, "rel", -1); end;
+	MC_Tick(1);
+	local n3 = MC_Count("rl", 1);
+	MC_Tune("rv_home_n", 20);
+	n0 = S_Mark();
+	MC_Tick(1);
+	HOST_Check(n3 == 3 and MC_Count("rl", 1) == 0 and S_Logs(n0, "reason=home") == 3, "rv_home_n 20: every rival leaves (reason=home), none enters");
+	MC_Tune("rv_home_n", nil);
+	MC_Tick(1);
+	rv = nil;
+	for c = 1, 12 do if TRF_McDig(c, "rl") == 1 then rv = c; end; end;
+	local m = TRF_RgMap();
+	local hs = TRF_McHome(rv);
+	for i = 1, getn(m[hs].sys) do h.teams[TRF_SysName(m[hs].sys[i])] = "Vks"; end;
+	local T = TRF_McTune();
+	HOST_Check(TRF_McHomeOk(hs, m, 12, T) and not TRF_McHomeOk(hs, m, 13, T), "Vks systems count in chapter 12, not in 13");
+	h.labels.CurrentQuest = "13_1";
+	n0 = S_Mark();
+	MC_Tick(1);
+	HOST_Check(TRF_McDig(rv, "rl") == 0 and S_Logs(n0, "clan="..rv.." role=0 role_before=1 reason=home") == 1, "chapter 13: a home of Vks systems is not eligible");
+	h.teams = {};
+	h.labels.CurrentQuest = "6_1";
+	local gs = nil;
+	for s = 1, m.n do if m[s].guard == 1 then gs = s; end; end;
+	local T0 = {};
+	for k, x in T do T0[k] = x; end;
+	T0.rv_home_n = 0;
+	local g6 = TRF_McHomeOk(gs, m, 6, T0);
+	h.labels.CurrentQuest = "4_1";
+	HOST_Check(gs and g6 and not TRF_McHomeOk(gs, m, 4, T0), "guard region: no rival home while the guard holds (chapter 4)");
+	h.labels.CurrentQuest = "6_1";
+	-- A rival's fortune -2 while the Wolves lead in its home region by 2 (w digit - floor(fo / 10)).
+	for c = 1, 12 do MC_Put(c, {rl=0, sg=2, fo=40}); TRF_Mc_Mark(c, "rel", -1); end;
+	MC_Tick(1);
+	local ra, rb = nil, nil;
+	for c = 1, 12 do if TRF_McDig(c, "rl") == 1 then if not ra then ra = c; elseif not rb then rb = c; end; end; end;
+	MC_Put(ra, {fo=40}); MC_Put(rb, {fo=40});
+	local ha = TRF_McHome(ra);
+	TRF.mc.w = strrep("0", ha - 1).."6"..strrep("0", 11 - ha);
+	TRF.mc.wt = TRF.clock.legs;
+	MC_Tick(1);
+	HOST_Check(rb and TRF_McDig(rb, "fo") - TRF_McDig(ra, "fo") == 2 and TRF_McLeadOf("06", 2, 49) == 2 and TRF_McLeadOf(nil, 1, 0) == 0,
+		"Wolves lead 2 in a rival's home: fortune -2");
 	MC_Set("rv_enabled", nil);
 end;
 
