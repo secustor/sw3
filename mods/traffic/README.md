@@ -713,7 +713,7 @@ Clan stashes (proposal 7 step 1, spec [design/stash-spec.md](design/stash-spec.m
 
 ### Log lines (stashes)
 
-`module=stash event=create`, `event=expire ... reason=<ttl|open_gap|dead>`, `event=so`, `event=reconcile ... object=<missing|alive|dead> result=<create|reuse|lost|delete|none>`, `event=fill`, `event=orphan_delete`, `event=disabled`, `event=open`, `event=died ... hit=<true|false>`, `event=stale`, `event=found`, `event=slot`, `event=ret ... result=<open|rearm|spawn|skipped|void|killed|dead|leave|gone>`, `event=intel`, `event=grudge`, `event=tip`, `event=thanks`, `event=moved`, `event=debug`, `event=dump`, `event=dump_rec`; full list in `design/log-events.md` (stash).
+`module=stash event=create`, `event=expire ... reason=<ttl|open_gap|dead>`, `event=so`, `event=reconcile ... object=<missing|alive|dead> result=<create|reuse|lost|delete|orphan|failed|none>`, `event=fill`, `event=orphan_delete ... reason=index`, `event=disabled`, `event=open`, `event=died ... hit=<true|false>`, `event=stale`, `event=found`, `event=slot`, `event=ret ... result=<open|rearm|spawn|skipped|void|killed|dead|leave|gone>`, `event=intel`, `event=grudge`, `event=tip`, `event=thanks`, `event=moved`, `event=debug`, `event=dump`, `event=dump_rec`; full list in `design/log-events.md` (stash).
 
 ### In-game checks (stashes)
 

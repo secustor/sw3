@@ -860,6 +860,7 @@ function TRF_ShPlace(i, r)
 		TRF_ShDrop(i, "model");
 		return nil;
 	end;
+	r.pl = 1;
 	return o;
 end;
 
@@ -887,13 +888,19 @@ function TRF_ShRecon(i, cur, mode)
 		if res ~= "none" then TRF_ShE("reconcile", "index", i, "system", TRF_ShName(cur), "object", st, "result", res); end;
 		return res;
 	end;
+	-- A record never placed (pl ~= 1) owns no object: one under its label is a former record's of the same index.
+	local old = nil;
+	if r.st ~= 2 and r.pl ~= 1 and o then
+		TRF_ShDel(o); o = nil; old = 1;
+		TRF_ShE("orphan_delete", "index", i, "system", TRF_ShName(cur), "object", st, "reason", "index");
+	end;
 	if r.st == 2 then
 		if st == "alive" then TRF_ShDel(o); res = "delete"; end;
-	elseif st == "alive" then
+	elseif st == "alive" and not old then
 		res = "reuse";
 		TRF_ShFill(i, r, o);
 		TRF_ShArm(i, r, o);
-	elseif st == "dead" then
+	elseif st == "dead" and not old then
 		res = "lost";
 		TRF_ShLost(i, r, "entry");
 	elseif mode == "enter" then
@@ -1120,14 +1127,16 @@ function TRF_ShRetDue(i, g)
 end;
 
 -- Spawn gates (design 6 treasurer): rf 1, the cache system, module and retrieval toggles, the visible gate (mission,
--- strict "raid", S2/S3), no sweep window or carrier, the write-back rule (and cfg stash_ret_war 0: Pirates at war with
+-- strict "raid", S2/S3), no sweep window, no open sweep attempt against the clan (design 3), no carrier that is due or
+-- live (st other than skip and done), the write-back rule (and cfg stash_ret_war 0: Pirates at war with
 -- the player at team level everywhere), the caps. Returns nil or the reason.
 function TRF_ShRetGate(r, cur, n)
 	if TRF_ShOpt("enable_stash_retrieval") ~= 1 then return "disabled"; end;
 	local vw = TRF_ShVis(cur, "raid");
 	if vw then return vw; end;
-	if TRF_ShSweepWin() then return "sweep"; end;
-	if TRF_N("TRF_Cl_Cr") then return "carrier"; end;
+	if TRF_ShSweepWin() or TRF_N("TRF_SweepOpen", r.clan) then return "sweep"; end;
+	local cr = TRF_N("TRF_Cl_Cr");
+	if type(cr) == "table" and cr.st ~= "skip" and cr.st ~= "done" then return "carrier"; end;
 	local pr = TRF_N("GetTeamRelation", "Pirates", PLAYER_TEAM);
 	local war = RELATION_WAR ~= nil and pr == RELATION_WAR;
 	if TRF_ShWB()[TRF_ShName(cur)] and not war then return "writeback"; end;
@@ -1136,7 +1145,7 @@ function TRF_ShRetGate(r, cur, n)
 	return nil;
 end;
 
--- Room for n treasurer ships: cap_ships (traffic's live ships plus every TRF_CapReg group; the treasurer is not trimmed
+-- Room for n treasurer ships: cap_ships (traffic's live and parked ships plus every TRF_CapReg group, as TRF_CanSpawn; the treasurer is not trimmed
 -- and does not trim others, 00 section 6) and raid_live_cap (the clan ships alive, trf_raid's TRF_Rd_ClanAlive).
 function TRF_ShCaps(n)
 	local alive = TRF_N("TRF_Rd_ClanAlive") or 0;
@@ -1145,7 +1154,9 @@ function TRF_ShCaps(n)
 		local nt, ns = 0, 0;
 		if type(TRF_SafeCountOf) == "function" then nt, ns = TRF_SafeCountOf(TRF.live.tr); end;
 		local ex = TRF_N("TRF_CapShips") or 0;
-		if (ns or 0) + ex + n > TRF.live.caps then return nil; end;
+		local pk = 0;
+		if type(TRF_SafeParkedOf) == "function" then pk = TRF_SafeParkedOf(TRF.live.pk); end;
+		if (ns or 0) + pk + ex + n > TRF.live.caps then return nil; end;
 	end;
 	return 1;
 end;
@@ -1178,10 +1189,10 @@ function TRF_ShRetPortal(cur, home)
 	return nil;
 end;
 
--- Skip (design 6): the leader line as a screen line (not during a mission), rf 2.
+-- Skip (design 6): the leader line as a screen line (only while the visible gate G2 with strict "raid" passes), rf 2.
 function TRF_ShRetSkip(i, r, why)
 	r.rf = 2;
-	if why ~= "quest" and why ~= "guard" then
+	if not TRF_ShVis(r.sys, "raid") then
 		local T = TRF_ShCl(floor(TRF_N("TRF_EffTier", r.sys) or 1), 1, 4);
 		TRF_ShSay(TRF_ShTxt(TRF_ShRetKeyOf(T), TRF_ShClanName(r.clan)));
 	end;
@@ -1468,13 +1479,16 @@ function TRF_Sh_PirLine(kind, param)
 	return TRF_ShTxt("stashgrudge"..TRF_ShKey(r.sys));
 end;
 
--- Patrol dock line 40 (after the owed payers at 30, before the #9 rank line at 50): the thanks with fst +1 at the first
--- docking of the faction owed (stx.pt), the moved notice of a known cache that expired, and the tip: one roll a record a
+-- Patrol dock line 40 (after the owed payers at 30, before the #9 rank line at 50), all under G2 with strict "board"
+-- (while it fails, stx.pt and stx.ms wait for a later docking): the thanks with fst +1 at the first docking of the
+-- faction owed (stx.pt), the moved notice of a known cache that expired, and the tip: one roll a record a
 -- visit (stash_board_pct) for an unknown cache (st 0) within 3 jumps; the tip sets st 1, src 2, sf = the station's
 -- faction.
 function TRF_Sh_PatrolLine(kind, param)
-	if kind ~= "patrol" or not TRF_ShOn() or TRF_N("TRF_Quiet") then return nil; end;
+	if kind ~= "patrol" or not TRF_ShOn() then return nil; end;
 	local cur = TRF_ShCur();
+	local why = TRF_ShVis(cur, "board");
+	if why then TRF_ShDE("tip", "result", "none", "reason", why); return nil; end;
 	local x = TRF_ShStx();
 	local out = {};
 	local f = TRF_N("TRF_FacIdx", TRF_N("TRF_FcTeamOf", cur));
@@ -1489,12 +1503,9 @@ function TRF_Sh_PatrolLine(kind, param)
 		TRF_ShE("moved", "system", TRF_ShName(x.ms), "clan", x.mc);
 		x.ms = nil; x.mc = nil;
 	end;
-	local why = TRF_ShVis(cur, "board");
-	if not why and type(f) == "number" then
+	if type(f) == "number" then
 		local tip = TRF_ShTip(cur, f);
 		if tip then tinsert(out, tip); end;
-	elseif why then
-		TRF_ShDE("tip", "result", "none", "reason", why);
 	end;
 	if getn(out) == 0 then return nil; end;
 	return out;
@@ -1577,6 +1588,7 @@ function TRF_Sh_Fix()
 						v=TRF_ShFld(e, "v", 10, 450, 10), seed=TRF_ShFld(e, "seed", 0, 9999, 1), leg=TRF_ShFld(e, "leg", -99999, legs, legs),
 						st=TRF_ShFld(e, "st", 0, 2, 0), src=TRF_ShFld(e, "src", 0, 4, 0), sf=TRF_ShFld(e, "sf", 0, 11, 0), sv=TRF_ShFld(e, "sv", 0, 5, 0),
 						rf=TRF_ShFld(e, "rf", 0, 2, 0)};
+					if e.pl == 1 then r.pl = 1; end;
 					if sl and r.slot >= 1 and r.slot <= getn(sl) then
 						hs[r.sys] = 1; hc[r.clan] = 1;
 						out[i] = r;

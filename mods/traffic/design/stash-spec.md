@@ -50,6 +50,7 @@ Module: new `S/trf_stash.script`, prefix `Sh` (`TRF_Sh_*` public, `TRF_Sh<X>` in
 | `sf` | 0..11 | seller clan (src 1) or faction 1..5 (src 2) |
 | `sv` | 0..5 | salvage banked: 0 none, else the salvage faction (V3) |
 | `rf` | 0..2 | treasurer: none, due, done or void |
+| `pl` | 1 or nil | the cache object was placed for this record (V23) |
 
 `TRF.stx` = `{n, op, opp}` (caches created, opened on screen, opened by the player), `lc`, `jc` (last creation: leg, jump count), `lo`, `jo` (last on-screen opening), `pt`, `ps` (faction owed the patrol `fst` +1 and the cache system, V4), `ms`, `mc` (moved notice: system and clan, V4). `TRF.clan[slot].so` (1 or nil: opened this cycle) and `.sk` (leg of the clan's last cache, V4).
 
@@ -70,7 +71,7 @@ Labels: cache `TRF_STASH_<i>`, markers `TRF_STASH_AR_<i>` (area) and `TRF_STASH_
 
 ### 3.3 Size
 
-Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case measured in `sh-h`: `TRF.stash` with 4 records at their widest plus `TRF.stx` with every field 1,478 bytes (checked <= 1,600); with `so` and `sk` in 11 clan records 1,962 (checked <= 2,200). Full-state `v1-n` with everything on: 80,261 bytes (budget 100,000): `stash` 1,200, `stx` 254, plus the clan fields. Typical: 1-2 records, about 300-700 bytes.
+Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case measured in `sh-h`: `TRF.stash` with 4 records at their widest (with `pl`) plus `TRF.stx` with every field 1,566 bytes (checked <= 1,600); with `so` and `sk` in 11 clan records 2,050 (checked <= 2,200). Full-state `v1-n` with everything on: 80,261 bytes (budget 100,000): `stash` 1,200, `stx` 254, plus the clan fields. Typical: 1-2 records, about 300-700 bytes.
 
 ## 4. Hooks and registration
 
@@ -119,6 +120,7 @@ Reconcile of every index i (`TRF_ShRecon`) by `GetObjectByLabel("TRF_STASH_<i>")
 
 | Record | Object | Action |
 |---|---|---|
+| here, `st` 0/1, `pl` nil | alive or dead | a former record's object of the same index: Delete (`orphan_delete ... reason=index`), then as missing |
 | here, `st` 0/1 | missing | entry: `TRF_Sc_Make("Asteroid_inv_Val", slot, label, 1)` (CreateStation; nil only for an unknown model: the record is dropped), fill, arm; load: nothing |
 | here, `st` 0/1 | alive | ClearInventory and the same fill, arm |
 | here, `st` 0/1 | dead | opened without the player: `st` 2, clan score -2 x cls, no `so`, no treasurer |
@@ -143,7 +145,7 @@ Debug cfg `stash_at`: at the entry of that system, a known record (`st 1`) is cr
 ### 5.7 Treasurer
 
 - Timer (`TRF_ShRetArm`): `TRF_Due` after `stash_ret_delay` (60..150 s from a hash of seed + `TRF.gen` and the jump count; a load re-arms with a fresh delay).
-- Gate (`TRF_ShRetGate`): `rf` 1 in the cache system, `enable_stash_retrieval`, G2 with strict `raid`, no sweep window, no live carrier (`TRF_Cl_Cr`), the write-back rule (write-back system: Pirates already at war with the player at team level), cfg `stash_ret_war` 0: the same everywhere (V8), the caps (`TRF_ShCaps`: `TRF_Rd_ClanAlive() + n <= raid_live_cap`, traffic's ships + `TRF_CapShips() + n <= live.caps`; no trim). Fail: `rf` 2 and the leader line as a screen line (none for `quest`, `guard`), `event=ret ... result=skipped reason=<...>`.
+- Gate (`TRF_ShRetGate`): `rf` 1 in the cache system, `enable_stash_retrieval`, G2 with strict `raid`, no sweep window and no open sweep attempt against the clan (`TRF_SweepOpen(clan)`, design 3), no due or live carrier (`TRF_Cl_Cr` with `st` other than `skip` and `done`), the write-back rule (write-back system: Pirates already at war with the player at team level), cfg `stash_ret_war` 0: the same everywhere (V8), the caps (`TRF_ShCaps`: `TRF_Rd_ClanAlive() + n <= raid_live_cap`, traffic's live and parked ships + `TRF_CapShips() + n <= live.caps`, as `TRF_CanSpawn`; no trim). Fail: `rf` 2 and the leader line as a screen line (only while G2 with strict `raid` passes), `event=ret ... result=skipped reason=<...>`.
 - Spawn (`TRF_ShRetSpawn`): the portal on the shortest jump path to the clan home (`TRF_RgNear(home, 12)`, ties by idx) whose `IsEnabled()` answers true, else the next (none: `reason=portal`); `portal:Start(8, 0)`, `GetEntryPoint(10)`; group `TRF_Sh_<i>` of team Pirates; one flight at T1-T3, two at T4 (`TRF_PirFlight` at `TRF_Rd_Power(T, cur)`, fighters, 30 units apart), at most 6 ships labelled `trf_sh_<i>_<j>`; `SetGroupRelation` war with `PLAYER_GROUP` both ways; the leader's radio line (`stashret1` T1, `stashret3` T2, `stashret2` T3+; `TRF_Say` with the pilot); `Move` to the slot; a `died` trigger per ship (`TRF_ShRetDied(i,j,<gen>)--`). `rf` 2 at the spawn.
 - Fight: a flight with every ship dead calls `TRF_Ev_Recover("raid", 0)` (clan score -2 inside the visit cap, `dis` -1, 07 4); each death feeds battle scars source 7 (`TRF_Sc_Dead`).
 - Leave: at the leader's death or hull below 0.5 (T1) / 0.4 (T2+) of its spawn HP (trf_raid's leave fractions), or after `stash_ret_window`: `ComeToPortal` to the entry portal; deleted within 60 units of it, out of view (`ovd`) or 120 s after the order.
@@ -153,7 +155,7 @@ Debug cfg `stash_at`: at the entry of that system, a known record (`st 1`) is cr
 
 - Pirate dock box (prio 100; G2 with strict `offer`): the nearest unknown cache (`st` 0) within `stash_intel_range` jumps (`TRF_RgNear`, never the dock's system) whose clan is not the dock region's clan, not declined in this visit. Text `stashintel<sys>` (clan, `"<price> cr"`); price `floor(stash_intel_k x L_w(sys) x d_k)`. OK: credits checked, `SubPlayerCredits`, `st` 1, `src` 1, `sf` = the dock's clan, reply `stashbought` (else `stashpoor`); Cancel: not offered again in this visit. The vanilla shop opens after the answer (WB 4.1).
 - Pirate dock line (order 20): at a clan's own dock while its opened record is kept and was opened by the player (`st` 2, `rf` > 0): `stashgrudge<sys>`, once a visit (07 2: a screen line, no box).
-- Patrol dock line (order 40; not under `TRF_Quiet`): thanks when `stx.pt` is the docked system's faction (`TRF_FacIdx(TRF_FcTeamOf(cur))`): `TRF_FstAdd(pt, 1, "stash tip")` (the war freeze and clamp of trf_faction), `stashthanks<ps>`, cleared; the moved notice `stashmoved<ms>` (clan), cleared; under G2 (strict `board`) the tip: one roll per record per visit (`stash_board_pct`, hash of seed, jumps and index) for an unknown cache within 3 jumps (not the current system): `st` 1, `src` 2, `sf` = the station's faction, `stashtip<sys>`.
+- Patrol dock line (order 40; all of it under G2 with strict `board`, design 6 "common gates"; while G2 fails, `stx.pt` and `stx.ms` wait for a later docking): thanks when `stx.pt` is the docked system's faction (`TRF_FacIdx(TRF_FcTeamOf(cur))`): `TRF_FstAdd(pt, 1, "stash tip")` (the war freeze and clamp of trf_faction), `stashthanks<ps>`, cleared; the moved notice `stashmoved<ms>` (clan), cleared; the tip: one roll per record per visit (`stash_board_pct`, hash of seed, jumps and index) for an unknown cache within 3 jumps (not the current system): `st` 1, `src` 2, `sf` = the station's faction, `stashtip<sys>`.
 
 ### 5.9 Save, load, wind-down
 
@@ -192,9 +194,9 @@ Constants without a key (`TRF_ShK`): 4 records, 4 slots, tip range 3 jumps, 12 d
 | `module=stash event=create index=1 system=gaoba slot=2 clan=5 tier=3 class=2 value=200 budget=20000 seed=4711 salvage_banked=0 record_count=1` | creation; level 2 `event=create leg=<L> result=none reason=<guard, quest, live, gap, open_gap, prize, max, no_region, roll>` |
 | `module=stash event=expire index=1 system=gaoba clan=5 state=1 age=20 salvage_back=0 reason=ttl` | expiry (`open_gap`, `dead`, `slot`, `model`) |
 | `module=stash event=so region=6 result=cleared` | Quiet |
-| `module=stash event=reconcile index=1 system=gaoba label=TRF_STASH_1 state=0 object=missing hp=nil result=create` | entry and load (object missing, alive, dead, string; result create, reuse, lost, delete, failed, none) |
+| `module=stash event=reconcile index=1 system=gaoba label=TRF_STASH_1 state=0 object=missing hp=nil result=create`, `module=stash event=reconcile index=2 system=gaoba object=alive result=orphan` | entry and load (object missing, alive, dead, string; result create, reuse, lost, delete, failed, none; orphan without label, state and hp) |
 | `module=stash event=fill index=1 seed=4711 items=HC3x1,EngAmp2x1,ECM2x2 sum=17400 value=200` | fill (E7.4) |
-| `module=stash event=orphan_delete index=2 system=gaoba`, `event=disabled system=gaoba deleted=1` | orphan, module off |
+| `module=stash event=orphan_delete index=2 system=gaoba`, `... index=1 system=gaoba object=alive reason=index` (`object=dead` too), `event=disabled system=gaoba deleted=1` | orphan, a former record's object under the index of a record not yet placed, module off |
 | `module=stash event=open index=1 system=gaoba player=false clan_score_change=-4 reason=entry` | opened without the player |
 | `module=stash event=died index=1 generation=<g> system=gaoba hit=true class=2 clan_score_change=-4 source=1 treasurer=1 quest=false reason=died` | opening (`poll`, `jump`; E7.2, E7.10) |
 | `module=stash event=stale index=1 generation=<g> current=<g+1>` | old-generation trigger (E7.5) |
@@ -223,11 +225,11 @@ Entry as `host_captain.lua`: `host_station.lua` up to its first scenario. Base c
 |---|---|
 | `sh-a` | `extra_count=8`, `TRF_ModList`, toggles, tune defaults and clamps; registrations (pirate box 100 below S35 400, pirate line 20, patrol line 40, the ship-cap group never trimmed); the slot table (11 systems in 6 regions, never named in Quests.xml, the exclusions); 65 text keys and the worked example's offer; pure value (early 4,860 with `lk`, mid and late caps), class, fill (same seed same list, cls 3 with at most one rare2 item and no ship, budget), price (1500, 600, 2250, HARD), gaps, area offset, delay, treasurer lines |
 | `sh-b` | phases (Quiet, Boom none; Build-up), guard, mission, one record in the region never in the current system, stamps, `stash_gap` legs and jumps, `stash_live`, the oldest region first, `so` and an open sweep block, `so` cleared in Quiet, chances 25/35 % over 200 ticks, determinism, the prize gap, `stash_open_gap`, cls 3 banking and the return at the ttl expiry, the moved notice, the open-gap expiry, dead records after 10 legs, the current system's record kept, at most 4 indices |
-| `sh-c` | creation at entry (CreateStation `Asteroid_inv_Val` at the slot, label, fill, triggers with the generation), the slot check after 60 s, reuse with the identical fill on two re-entries, dead at entry (lost), `st 2` alive deleted, orphan, `enable_stashes 0` (objects deleted, no creation), a mission entry (object, no nav, no line), a load without creation |
+| `sh-c` | creation at entry (CreateStation `Asteroid_inv_Val` at the slot, label, fill, triggers with the generation), the slot check after 60 s, reuse with the identical fill on two re-entries, dead at entry (lost), `st 2` alive deleted, orphan, `enable_stashes 0` (objects deleted, no creation), a mission entry (object, no nav, no line), a load without creation; index reuse (a new record of the same index in the same system: the old rock deleted, the old hulk not taken as lost, the new cache placed) |
 | `sh-d` | area marker within 150 with the vanilla icon, inside trigger, arrival line through the plumbing, attached marker and found line once; died without a hit (so, clan -4, stamps, no treasurer, markers gone), a second died; died after a hit with pirate intel (opp, seller +2, open line, prize stamp, treasurer due); patrol source (`pt`, `ps`) and the mission gate (`rf 2`); stale generation after a load and the re-armed trigger; poll; jump poll; markers and the inside trigger after a load; the find poll |
 | `sh-e` | Moscowia dock, Gaoba 3 jumps: offer 1500, OK (credits, st 1, src 1, seller, reply, the shop after), no second offer, Cancel and no re-offer in the visit, next visit, poor, own clan, beyond range, mission, guard, one box with S35 on; the grudge line once a visit and not for an opening without the player |
-| `sh-f` | tip at 100 % (st 1, src 2, sf Vks), no second tip, 0 %, one roll per visit, range, mission; thanks only at the owed faction's patrol dock (fst +1, pt cleared); moved line once; patrol order 40 |
-| `sh-g` | delay 60..150, spawn after it (group `TRF_Sh_1`, labels, war both ways, the T3 leader line), counted in `cap_ships` and `raid_live_cap`; a killed flight (clan -2); window leave and deletion; jump before the timer (void); load re-arm and one spawn; the jump deletes it; skips: write-back with Pirates neutral (screen line), `stash_ret_war 0`, `stash_ret_war 1` spawns, `raid_live_cap` full, every portal closed, the next portal when the first is closed, `enable_stash_retrieval 0`; wind-down |
+| `sh-f` | tip at 100 % (st 1, src 2, sf Vks), no second tip, 0 %, one roll per visit, range, mission; thanks only at the owed faction's patrol dock (fst +1, pt cleared), not during a mission (pt kept); moved line once, waiting during a mission; patrol order 40 |
+| `sh-g` | delay 60..150, spawn after it (group `TRF_Sh_1`, labels, war both ways, the T3 leader line), counted in `cap_ships` and `raid_live_cap`; a killed flight (clan -2); window leave and deletion; jump before the timer (void); load re-arm and one spawn; the jump deletes it; skips: write-back with Pirates neutral (screen line), `stash_ret_war 0`, `stash_ret_war 1` spawns, `raid_live_cap` full, every portal closed, the next portal when the first is closed, `enable_stash_retrieval 0`; the gate: an open sweep attempt against the clan, a skipped or finished carrier (open) and a live one (blocked), a parked ship in `cap_ships`, no leader line for a skip during a mission; wind-down |
 | `sh-h` | dump lines (so digits, gaps), `TRF_DumpState`; repair (bad slot, duplicates, ranges, stx, so, sk, non-table values); the moved cache deleted at the entry; `stash_at`; no group global left; worst case 1,478 bytes <= 1,600 (1,962 with the clan fields), no reserved key |
 
 Changed scenarios: `pl-a` (10 lines, 7 boxes), `sv-a`, `lad-a` (patrol lines 10/35/40/50), `ch-a`, `sc-a` (`Sc` third to last), `cap-a` (`Cap` second to last) (`extra_count=8`), `stn-g` (the RU key set includes the stash keys), `v1-m` (the generated `trf_en.loc` scaffold has the 65 `#TRF_stash*` lines), `v1-n` (the stash worst case in the full-state save, the stash dump line); `host_traffic.lua` `T_GroupPfx` has `Sh`. All 111 host runs pass.
@@ -260,7 +262,7 @@ Changed scenarios: `pl-a` (10 lines, 7 boxes), `sv-a`, `lad-a` (patrol lines 10/
 - V6 Regions come from the generated map: Escaflowne is in the Elinor region (07: Dionis, merged into Elinor by gen_map), Fiasar in Dosis, Llanowar 1 in Torr; six regions have slots.
 - V7 The treasurer group is `TRF_Sh_<i>` (ships `trf_sh_<i>_<j>`) instead of `TRF_Pir_<n>`: trf_clan's carrier allocator owns `TRF_Pir_<n>`, and the plumbing's orphan scan and the lint list cover the new name. At most 6 ships (the scan's j range), so a T4 pair of flights is cut to 6.
 - V8 With cfg `stash_ret_war` 0 (default, 00 E2) the treasurer spawns only while the Pirates team is at war with the player, everywhere; then the group-level war matches the team relation. With 1 it seeds group-level war as designed, the write-back systems still need team war.
-- V9 The treasurer's caps are checked directly (`raid_live_cap` through `TRF_Rd_ClanAlive`, `cap_ships` through traffic's live ships plus `TRF_CapShips`) because `TRF_CanSpawn` trims other groups when over `cap_ships`; the treasurer is skipped instead (00: "wait or skipped, never queued").
+- V9 The treasurer's caps are checked directly (`raid_live_cap` through `TRF_Rd_ClanAlive`, `cap_ships` through traffic's live and parked ships plus `TRF_CapShips`) because `TRF_CanSpawn` trims other groups when over `cap_ships`; the treasurer is skipped instead (00: "wait or skipped, never queued").
 - V10 The value budget includes `lk` (00 A3), so the early value is lower than the design table (4,860 at `L_w` 4, T1, R 4; 07 5 shows 6-10k).
 - V11 The intel price includes `d_k` (00 A2); NORMAL prices are the design's.
 - V12 Markers use trf_plumb's colour; the area marker has no text in `loc_mode 0` (the vanilla mission precedent `CreateNavPoint("", ...)`), the attached one the vanilla `#M_Name_Asteroid_inv_Val`.
@@ -274,6 +276,7 @@ Changed scenarios: `pl-a` (10 lines, 7 boxes), `sv-a`, `lad-a` (patrol lines 10/
 - V20 The cls 1 list is the trader modules plus `Cargo_01..10`; the remainder takes up to 8 cargo units; a cls 3 record without a salvage faction draws from the rare list.
 - V21 `TRF_Sc_Make` gained an optional 4th argument (CreateStation), and trf_scar's site rule keeps 150 units from cache slots (07 7).
 - V22 Arrival: the treasurer flights appear 30 units apart at `GetEntryPoint(10)`; the S12 portal spacing check is not run.
+- V23 Saved field `pl` on the record: set when the cache object is placed. A label alone cannot tell a new record from an expired one of the same index in the same system (the old object stays in that system's snapshot), so the entry reconcile deletes an object found for a record never placed and creates the new cache.
 
 ## 12. Left out (step 2 and later)
 

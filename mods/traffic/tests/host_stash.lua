@@ -580,6 +580,35 @@ function T_SH_C()
 	T_SaveLoad();
 	HOST_Check(not SH_Obj(1) and SH_R(1).st == 0 and S_Logs(n0, "result=create") == 0 and S_Logs(n0, "event=reconcile index=1 system=gaoba label=TRF_STASH_1 state=0 object=missing hp=nil result=none") == 1,
 		"load: the missing object is not created");
+	-- Index reuse: a new record with the index of an expired one in the same system takes over neither its rock
+	-- (alive: deleted, the new cache placed at its own slot) nor its hulk (dead: not lost, placed).
+	TRF.stash = nil; TRF.stx = nil;
+	SH_Rec(1, "gaoba", {st=0, slot=1});
+	SH_Jump("heos", nil);
+	SH_Jump("gaoba", nil);
+	local old = SH_Obj(1);
+	SH_Jump("heos", nil);
+	TRF.stash = nil;
+	r = SH_Rec(1, "gaoba", {st=0, slot=3});
+	n0 = S_Mark();
+	SH_Jump("gaoba", 1);
+	r = SH_R(1);
+	p = SH_Pos(r);
+	local nw = SH_Obj(1);
+	HOST_Check(old and not old.alive and nw and nw ~= old and nw.pos.x == p.x and nw.pos.z == p.z and r.pl == 1
+		and S_Logs(n0, "event=orphan_delete index=1 system=gaoba object=alive reason=index") == 1 and S_Logs(n0, "result=create") == 1,
+		"index reuse, old rock alive: deleted, the new record's cache created at its slot");
+	SH_Jump("heos", nil);
+	nw.alive = nil;
+	TRF.stash = nil;
+	r = SH_Rec(1, "gaoba", {st=0, slot=1});
+	h.keep_dead = 1;
+	n0 = S_Mark();
+	SH_Jump("gaoba", 1);
+	h.keep_dead = nil;
+	r = SH_R(1);
+	HOST_Check(r.st == 0 and SH_Obj(1) and S_Logs(n0, "event=open index=1") == 0 and S_Logs(n0, "result=lost") == 0 and S_Logs(n0, "object=dead reason=index") == 1,
+		"index reuse, old hulk dead: not lost, the cache created");
 	SH_Jump("heos");
 end;
 
@@ -818,12 +847,20 @@ function T_SH_F()
 	d = SH_PatDock();
 	HOST_Check(TRF.stx.pt == 1 and TRF_Fst(1) == f0, "a patrol station of another faction (Inoco): no thanks");
 	SH_Jump("fort_russ"); SH_Jump("moscowia");
+	h.qs = TRUE;
+	d = SH_PatDock();
+	h.qs = FALSE;
+	HOST_Check(not SH_Has(d.scr, "Report on the Egleon cache") and TRF.stx.pt == 1 and TRF_Fst(1) == f0, "mission in progress: no thanks, pt kept");
 	n0 = S_Mark();
 	d = SH_PatDock();
 	HOST_Check(SH_Has(d.scr, "Report on the Egleon cache received") and TRF_Fst(1) == min(9, f0 + 1) and TRF.stx.pt == nil and TRF.stx.ps == nil
 		and S_Logs(n0, "event=thanks faction=1 system=egleon") == 1, "Vks patrol dock: thanks, fst +1, pt cleared");
 	-- Moved notice: one line at the next patrol board.
 	TRF.stx.ms = V_Idx("gaoba"); TRF.stx.mc = SH_Slot("gaoba");
+	h.qs = TRUE;
+	d = SH_PatDock();
+	h.qs = FALSE;
+	HOST_Check(not SH_Has(d.scr, "moved their cache") and TRF.stx.ms == V_Idx("gaoba"), "mission in progress: the moved line waits");
 	d = SH_PatDock();
 	HOST_Check(SH_Has(d.scr, "Pirates ("..TRF_ClanName(SH_Slot("gaoba"))..") moved their cache. The old ping in Gaoba is dead.") and TRF.stx.ms == nil, "moved line once");
 	d = SH_PatDock();
@@ -977,6 +1014,38 @@ function T_SH_G()
 	SH_Kill(1, 1);
 	HOST_Check(SH_R(1).rf == 2, "enable_stash_retrieval 0: rf 2 at the opening");
 	h.cfg.enable_stash_retrieval = 1;
+	-- Gates: an open sweep attempt against the clan, a due or live carrier (not a skipped or finished one), parked
+	-- ships in cap_ships; a skip while the visible gate fails says no leader line.
+	TRF.stash = nil; TRF.stx = nil;
+	SH_Rec(1, "gaoba", {st=2, rf=1});
+	SH_Jump("heos"); SH_Jump("gaoba");
+	local r = SH_R(1);
+	local gi = V_Idx("gaoba");
+	HOST_Check(TRF_ShRetGate(r, gi, 1) == nil, "gate open in Gaoba");
+	TRF.rg[kadi].sl = TRF.clock.legs + 1;
+	HOST_Check(TRF_ShRetGate(r, gi, 1) == "sweep", "open sweep attempt against the clan: sweep");
+	TRF.rg[kadi].sl = 0;
+	TRF.live.cr = {i=1, n=9, st="skip"};
+	HOST_Check(TRF_ShRetGate(r, gi, 1) == nil, "a skipped carrier does not block");
+	TRF.live.cr.st = "done";
+	HOST_Check(TRF_ShRetGate(r, gi, 1) == nil, "a finished carrier does not block");
+	TRF.live.cr.st = "hold";
+	HOST_Check(TRF_ShRetGate(r, gi, 1) == "carrier", "a live carrier blocks");
+	TRF.live.cr = nil;
+	local ca, pk0 = TRF.live.caps, TRF.live.pk;
+	local nt, ns = TRF_SafeCountOf(TRF.live.tr);
+	TRF.live.caps = ns + TRF_CapShips() + 2;
+	TRF.live.pk = {};
+	HOST_Check(TRF_ShCaps(2), "room for 2 without parked ships");
+	TRF.live.pk = {1};
+	HOST_Check(not TRF_ShCaps(2), "a parked ship counts in cap_ships");
+	TRF.live.caps = ca; TRF.live.pk = pk0;
+	s0 = getn(h.screen);
+	h.qs = TRUE;
+	TRF_ShRetSkip(1, r, "disabled");
+	h.qs = FALSE;
+	HOST_Check(getn(h.screen) == s0 and r.rf == 2, "skip during a mission: no leader line");
+	SH_Jump("heos");
 	-- Wind-down: a live treasurer leaves.
 	TRF.stash = nil; TRF.stx = nil;
 	SH_Rec(1, "gaoba", {st=1, src=1, sf=6});
@@ -1045,7 +1114,7 @@ function T_SH_H()
 	-- Save size at the record bound (spec 3.3): 4 records at their widest, stx with every field, so and sk in 11 slots.
 	TRF.stash = {};
 	for k = 1, 4 do
-		TRF.stash[k] = {sys=113, slot=4, clan=11, cls=3, v=450, seed=9999, leg=-99999, st=2, src=4, sf=11, sv=5, rf=2};
+		TRF.stash[k] = {sys=113, slot=4, clan=11, cls=3, v=450, seed=9999, leg=-99999, st=2, src=4, sf=11, sv=5, rf=2, pl=1};
 	end;
 	TRF.stx = {n=9999, op=9999, opp=9999, lc=-99999, jc=99999, lo=-99999, jo=99999, pt=5, ps=113, ms=113, mc=11};
 	local sz = HOST_SaveSize(TRF.stash) + 8 + strlen("stash") + HOST_SaveSize(TRF.stx) + 8 + strlen("stx");

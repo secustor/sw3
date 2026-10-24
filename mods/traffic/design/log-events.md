@@ -551,10 +551,10 @@ Clan stashes, step 1 (`design/stash-spec.md` 7). `index` is the record index i (
 | `create` | `module=stash event=create leg=40 result=none reason=<guard, quest, live, gap, open_gap, prize, max, no_region>` / `... leg=40 region=5 chance=25 roll=61 result=none reason=roll` | 2 |
 | `expire` | `module=stash event=expire index=1 system=gaoba clan=5 state=1 age=20 salvage_back=0 reason=ttl` (or `open_gap`, `dead`, `slot`, `model`) | 1 |
 | `so` | `module=stash event=so region=6 result=cleared` (the region is in Quiet) | 1 |
-| `reconcile` | `module=stash event=reconcile index=1 system=gaoba label=TRF_STASH_1 state=0 object=missing hp=nil result=create` (object missing, alive, dead, string; result create, reuse, lost, delete, failed, none; E7.1, E7.3) | 1 |
+| `reconcile` | `module=stash event=reconcile index=1 system=gaoba label=TRF_STASH_1 state=0 object=missing hp=nil result=create` (object missing, alive, dead, string; result create, reuse, lost, delete, failed, none; E7.1, E7.3) / `module=stash event=reconcile index=2 system=gaoba object=alive result=orphan` (a label of a record elsewhere) | 1 |
 | `fill` | `module=stash event=fill index=1 seed=4711 items=HC3x1,EngAmp2x1,ECM2x2 sum=17400 value=200` (E7.4) | 1 |
 | `place` | `module=stash event=place index=1 system=gaoba model=Asteroid_inv_Val result=failed reason=model` (or `reason=slot`) | 1 |
-| `orphan_delete` | `module=stash event=orphan_delete index=2 system=gaoba` (a label of a record elsewhere) | 1 |
+| `orphan_delete` | `module=stash event=orphan_delete index=2 system=gaoba` (a label of a record elsewhere) / `... index=1 system=gaoba object=alive reason=index` (or `object=dead`: a former record's object under the index of a record not yet placed) | 1 |
 | `disabled` | `module=stash event=disabled system=gaoba deleted=1` (`enable_stashes 0`) | 1 |
 | `open` | `module=stash event=open index=1 system=gaoba player=false clan_score_change=-4 reason=entry` (dead at entry) | 1 |
 | `died` | `module=stash event=died index=1 generation=12 system=gaoba hit=true class=2 clan_score_change=-4 source=1 treasurer=1 quest=false reason=died` (reason died, poll, jump; E7.2, E7.10) | 1 |
