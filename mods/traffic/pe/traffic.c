@@ -266,8 +266,9 @@ static int __cdecl n_uistate(lua_State *L) { lua_pushnumber(L, g_movie_ok ? (dou
  * carcass-count.md 1.2; API.md) ----
  * TRF_Carcasses([cx, cy, cz, r]) -> { {id=, cls=, tpl=, team=, hp=, hpmax=, x=, y=, z=, pl=}, ... } or nil, why.
  * Walks the carcass list of the LayerManager, LM = [[0x7ba610]+0x18], list [LM+0x24], node = [list+8],
- * data = [node], next = [node+8], obj = data-8, and skips what GetCarcassCountInSphere's collector 0x49b380
- * skips ([obj+0x20] set, [obj+0x804] == 0, [obj+0x83c] == 0), at most CS_WALK_MAX nodes.
+ * data = [node], next = [node+8], obj = data-8, stops at a node with data 0 as GetCarcassCountInSphere's collector
+ * 0x49b380 does (0x49b395) and skips what it skips ([obj+0x20] set, [obj+0x804] == 0, [obj+0x83c] == 0), at most
+ * CS_WALK_MAX nodes.
  *   id     uid [o+0x94] (the `id` of the Lua handle)       cls  class id from (o+4)->vtbl[0] = `b8 imm32 c3`,
  *   tpl    template name [[o+0x9c]+0x1c]                         *(int *)imm32: 2 Base .. 13 Portal, -1 unknown
  *   hp     *(float *)(o+0xd4), hpmax *(float *)(o+0x3dc)
@@ -411,7 +412,8 @@ static int __cdecl n_carcasses(lua_State *L)
         int c, havep = 0;
         guard++;
         node = grd(node, 8);
-        if (!o || !galive(o) || !grd(o, 0x804) || !grd(o, 0x83c)) continue;
+        if (!o) break;                            /* data 0: end of the list (collector 0x49b395) */
+        if (!galive(o) || !grd(o, 0x804) || !grd(o, 0x83c)) continue;
         m = grd(o, 0x540);
         if (m && rd_ok(m + 0x158, 4)) {
             unsigned off = (*(const unsigned *)(m + 0x158) & 2) ? 0x7c : !grd(m, 0x170) ? 0x50 : 0;
@@ -872,7 +874,8 @@ void trf_init(const char *ini)
             tb_begin(&b, "tick guard: sig ok loc=[[R]+0x19c] sigs="); tb_u(&b, (unsigned)LSIG_N); tb_end(&b);
         }
         if ((bad = sig_verify(g_csig, CSIG_N, &e))) {
-            tb_begin(&b, "carcasses sig mismatch what="); tb_q(&b, g_csig[e].what, 400, 0); tb_s(&b, " at "); tb_x(&b, bad);
+            tb_begin(&b, "carcasses sig mismatch what=\""); tb_q(&b, g_csig[e].what, 400, 0); tb_s(&b, "\" at ");
+            tb_x(&b, bad);
             tb_end(&b);
         } else {
             for (i = 0; i < (int)(sizeof(g_ccls) / sizeof(g_ccls[0])); i++)

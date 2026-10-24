@@ -148,23 +148,18 @@ end;
 --   pl     1 when the team is the player's team, else 0
 -- nil, "count": no native (no DLL or an older one), ini carcasses=0, a signature mismatch at init, an engine
 -- read that failed or an error; the caller keeps its GetCarcassCountInSphere path. nil, "pos": pos or r unusable.
-function TRF_PlXyzRaw(p)
-	local x, y, z = p.x, p.y, p.z;
-	if type(x) == "number" and type(y) == "number" and type(z) == "number" then return {x=x, y=y, z=z}; end;
-	return nil;
-end;
-
+-- {x, y, z} of o: its number fields x, y, z (table or Vector3), else its GetPosition (raises on anything else).
 function TRF_PlPosRaw(o)
+	local x, y, z = o.x, o.y, o.z;
+	if type(x) == "number" and type(y) == "number" and type(z) == "number" then return {x=x, y=y, z=z}; end;
 	local p = o:GetPosition();
 	return {x=p.x, y=p.y, z=p.z};
 end;
 
--- Position of pos as {x, y, z}: number fields x, y, z (table or Vector3), else an object's GetPosition; else nil.
+-- Position of pos as {x, y, z} through a protected TRF_PlPosRaw, else nil.
 function TRF_PlPos(pos)
 	if type(pos) ~= "table" and type(pos) ~= "userdata" then return nil; end;
-	local p = call(TRF_PlXyzRaw, {pos}, "x", TRF_PlNoErr);
-	if type(p) == "table" then return p; end;
-	p = call(TRF_PlPosRaw, {pos}, "x", TRF_PlNoErr);
+	local p = call(TRF_PlPosRaw, {pos}, "x", TRF_PlNoErr);
 	if type(p) == "table" and type(p.x) == "number" and type(p.y) == "number" and type(p.z) == "number" then return p; end;
 	return nil;
 end;
