@@ -117,8 +117,9 @@ function TRF_PcTv(key, def)
 	return def;
 end;
 
+-- The traffic pay_cap, at most 30,000 (the bound of the packed pay and of the repair).
 function TRF_PcPayCap()
-	return TRF_PcTv("pay_cap", 30000);
+	return min(30000, TRF_PcTv("pay_cap", 30000));
 end;
 
 -- Region tick in legs (the offer window, 01 section 6), at least 1.
@@ -438,11 +439,11 @@ function TRF_PcLJobOf(adj, src, dst, hmax, lw, ex)
 end;
 
 -- Packed job record of the plumbing slot (at most 6 fields, wb-plumbing-spec 3): r = src x 1000 + dst, t0, ml,
--- pd = pay x 100000 + dep, m = it + 10 n + 100 j + 1000 dl + 100000 cls + 1000000 sj + 10000000 fac,
+-- pd = pay x 100000 + dep, m = it + 10 n + 100 j + 1000 dl + 100000 cls + 1000000 sj + 10000000 fac + 100000000 ssj,
 -- c = cu x 100 + cs x 10 + hot (step 2, 0).
 function TRF_PcPackOf(t)
 	return {r=t.src * 1000 + t.dst, t0=t.t0, ml=t.ml, pd=t.pay * 100000 + t.dep,
-		m=t.it + 10 * t.n + 100 * t.j + 1000 * t.dl + 100000 * t.cls + 1000000 * t.sj + 10000000 * t.fac,
+		m=t.it + 10 * t.n + 100 * t.j + 1000 * t.dl + 100000 * t.cls + 1000000 * t.sj + 10000000 * t.fac + 100000000 * (t.ssj or 0),
 		c=t.cu * 100 + t.cs * 10 + t.hot};
 end;
 
@@ -450,18 +451,18 @@ function TRF_PcNumOk(x, lo, hi)
 	return type(x) == "number" and x >= lo and x <= hi and x == floor(x);
 end;
 
--- Unpacks job e (TRF.job of kind 1..4) into {k, src, dst, t0, ml, pay, dep, it, n, j, dl, cls, sj, fac, cu, cs, hot};
+-- Unpacks job e (TRF.job of kind 1..4) into {k, src, dst, t0, ml, pay, dep, it, n, j, dl, cls, sj, fac, ssj, cu, cs, hot};
 -- nil, reason when a field is missing or out of range (ns = map system count, legs = now).
 function TRF_PcUnpackOf(e, ns, legs)
 	if type(e) ~= "table" or not TRF_PcNumOk(e.k, 1, 4) then return nil, "kind"; end;
 	if not TRF_PcNumOk(e.r, 1001, ns * 1000 + ns) or not TRF_PcNumOk(e.t0, -999999, legs) or not TRF_PcNumOk(e.ml, 0, 999)
-		or not TRF_PcNumOk(e.pd, 0, 30000 * 100000 + 60000) or not TRF_PcNumOk(e.m, 0, 99999999) or not TRF_PcNumOk(e.c, 0, 99999) then
+		or not TRF_PcNumOk(e.pd, 0, 30000 * 100000 + 60000) or not TRF_PcNumOk(e.m, 0, 999999999) or not TRF_PcNumOk(e.c, 0, 99999) then
 		return nil, "field";
 	end;
 	local t = {k=e.k, src=floor(e.r / 1000), dst=TRF_PcM(e.r, 1000), t0=e.t0, ml=e.ml, pay=floor(e.pd / 100000), dep=TRF_PcM(e.pd, 100000)};
 	local m = e.m;
 	t.it = TRF_PcM(m, 10); t.n = TRF_PcM(floor(m / 10), 10); t.j = TRF_PcM(floor(m / 100), 10); t.dl = TRF_PcM(floor(m / 1000), 100);
-	t.cls = TRF_PcM(floor(m / 100000), 10); t.sj = TRF_PcM(floor(m / 1000000), 10); t.fac = TRF_PcM(floor(m / 10000000), 10);
+	t.cls = TRF_PcM(floor(m / 100000), 10); t.sj = TRF_PcM(floor(m / 1000000), 10); t.fac = TRF_PcM(floor(m / 10000000), 10); t.ssj = floor(m / 100000000);
 	t.cu = floor(e.c / 100); t.cs = TRF_PcM(floor(e.c / 10), 10); t.hot = TRF_PcM(e.c, 10);
 	if t.src < 1 or t.src > ns or t.dst < 1 or t.dst > ns or t.src == t.dst then return nil, "system"; end;
 	if t.it < 1 or t.it > 4 or t.n < 1 or t.n > 3 or t.j < 1 or t.j > 6 or t.dl < 5 or t.dl > 20 or t.cls > 6 or t.sj < 1 or t.fac > 5
@@ -914,7 +915,7 @@ end;
 function TRF_PcEnd(J, how)
 	local R = TRF_PcRec(1);
 	R.je = TRF_PcJumps();
-	R.lsys = J.dst; R.lleg = TRF_PcLegs(); R.lg = TRF_PcGen(); R.lt = nil;
+	R.lsys = J.dst; R.lleg = TRF_PcLegs(); R.lit = J.it; R.lt = nil;
 	if how == "done" then R.lok = 1; else R.lok = 0; end;
 	if J.k == 2 and how ~= "done" then TRF_N("TRF_ShortJob", J.dst, J.cls, nil); end;
 	if TRF_PcOpt("pcl_logbook") == 1 and type(SetQuestState) == "function" then
@@ -935,7 +936,10 @@ function TRF_PcFail(J, why)
 	if J.dep == 0 then d = 3; end;
 	TRF_N("TRF_AddHelp", -d, "parcel_fail");
 	R.ban = TRF_PcLegs() + TRF_PcT("pcl_ban");
-	TRF_N("TRF_Stn_Deed", J.src, -1, "parcel_fail");
+	local s = TRF_PcTradeSt(J.src)[J.ssj];
+	local pos = nil;
+	if type(s) == "table" and type(s.x) == "number" then pos = {x=s.x, y=s.y or 0, z=s.z or 0}; end;
+	TRF_N("TRF_Stn_Deed", J.src, -1, "parcel_fail", pos);
 	R.fail = min(999, (R.fail or 0) + 1);
 	TRF_PcEnd(J, "failed");
 	if why == "empty" then R.pm = 3; else R.pm = 1; end;
@@ -1025,7 +1029,7 @@ function TRF_PcDeliver(J)
 	if TRF_PcOpt("pcl_prize_gap") == 1 then gap = TRF_N("TRF_PrizeWait") or 0; end;
 	if gap > 0 then
 		held = pay;
-		R.ow = min(TRF_PcPayCap(), (R.ow or 0) + pay);
+		R.ow = min(999999, (R.ow or 0) + pay);
 	else
 		paid = TRF_N("TRF_Pay", pay, "parcel") or 0;
 		if paid > 0 and TRF_PcOpt("pcl_prize_gap") == 1 then TRF_N("TRF_PrizeMark", "parcel"); end;
@@ -1039,7 +1043,9 @@ function TRF_PcDeliver(J)
 	if J.k == 2 then vc = 4; end;
 	TRF_N("TRF_ProCredit", vc, "parcel");
 	TRF_N("TRF_Stn_Deed", J.dst, 1, "parcel");
-	if k < J.n then
+	if k < J.n and held > 0 then
+		tinsert(out, TRF_PcTxt("pclparth", k, J.n, TRF_PcNum(pay)));
+	elseif k < J.n then
 		tinsert(out, TRF_PcTxt("pclpart", k, J.n, TRF_PcNum(pay + dep)));
 	elseif held > 0 then
 		tinsert(out, TRF_PcTxt("pcldoneh", TRF_PcNum(pay)));
@@ -1081,15 +1087,16 @@ function TRF_PcPending(R)
 end;
 
 -- Probe lines of cfg pcl_probe 1 (CHECK E-PCL.1, E-PCL.2): once per visit the inventory probe (three Cargo_crate added,
--- the counting delete loop), at every trade dock the wallet.
+-- the counting delete loop over the same 3; not while a job holds the slot, so no job's units are touched), at every
+-- trade dock the wallet.
 function TRF_PcProbe()
 	local pc = %PC;
 	TRF_PcE("probe", "probe_kind", "credits", "credits", TRF_PcCredits());
-	if pc.v.probe == 1 then return; end;
+	if pc.v.probe == 1 or (type(TRF) == "table" and type(TRF.job) == "table") then return; end;
 	pc.v.probe = 1;
 	local g = TRF_PcGive(1, 3);
 	local k = 0;
-	if g then k = TRF_PcTake(1, 99); end;
+	if g then k = TRF_PcTake(1, 3); end;
 	local left = nil;
 	if type(GetInventory) == "function" then
 		left = call(function(nm) return GetInventory():IsExist(nm); end, {TRF_PcK().items[1]}, "x", TRF_PcNoErr);
@@ -1132,7 +1139,7 @@ function TRF_Pc_DockLine(kind, param)
 		if t then tinsert(out, t); end;
 	end;
 	if R and R.lok == 1 and R.lt ~= 1 and R.lsys == cur and type(R.lleg) == "number" and TRF_PcLegs() - R.lleg <= K.thx_legs
-		and R.lg ~= TRF_PcGen() then
+		and type(R.je) == "number" and TRF_PcJumps() > R.je then
 		R.lt = 1;
 		local key = "pclthx2";
 		if type(R.lit) == "number" and R.lit == 1 then key = "pclthx1"; end;
@@ -1148,7 +1155,8 @@ function TRF_Pc_DockLine(kind, param)
 	return out;
 end;
 
--- Owed payer (trade kind, before any box): parcel pay held by the shared prize gap pays once the gap allows.
+-- Owed payer (trade kind, before any box): parcel pay held by the shared prize gap pays once the gap allows, at most
+-- pay_cap per payout; the rest waits for the next gap.
 function TRF_Pc_Owe(kind)
 	if kind ~= "trade" or not TRF_PcOn() then return nil; end;
 	local R = TRF_PcRec();
@@ -1156,11 +1164,13 @@ function TRF_Pc_Owe(kind)
 	local w = 0;
 	if TRF_PcOpt("pcl_prize_gap") == 1 then w = TRF_N("TRF_PrizeWait") or 0; end;
 	if w > 0 then TRF_PcDE("owe", "amount", R.ow, "wait", floor(w), "result", "wait"); return nil; end;
-	local paid = TRF_N("TRF_Pay", R.ow, "parcel") or 0;
-	if paid <= 0 then TRF_PcE("owe", "amount", R.ow, "result", "failed"); return nil; end;
+	local a = R.ow;
+	local paid = TRF_N("TRF_Pay", min(a, TRF_PcPayCap()), "parcel") or 0;
+	if paid <= 0 then TRF_PcE("owe", "amount", a, "result", "failed"); return nil; end;
 	if TRF_PcOpt("pcl_prize_gap") == 1 then TRF_N("TRF_PrizeMark", "parcel"); end;
-	TRF_PcE("owe", "amount", R.ow, "paid", paid, "result", "paid");
-	R.ow = nil;
+	R.ow = a - paid;
+	if R.ow <= 0 then R.ow = nil; end;
+	TRF_PcE("owe", "amount", a, "paid", paid, "owed", R.ow or 0, "result", "paid");
 	return TRF_PcTxt("pclowe", TRF_PcNum(paid));
 end;
 
@@ -1259,7 +1269,6 @@ function TRF_Pc_BoxOk(a)
 	if o.k == 2 then TRF_N("TRF_ShortJob", o.dst, o.cls, 1); end;
 	local R = TRF_PcRec(1);
 	R.ll = o.t0;
-	R.lit = o.it;
 	TRF_PcQAdd();
 	TRF_PcStat("pcl_accept");
 	TRF_PcE("accept", "kind", o.k, "source", TRF_PcName(o.src), "destination", TRF_PcName(o.dst), "dock", TRF_PcDockOf(o.dst, o.sj),
@@ -1361,8 +1370,8 @@ function TRF_Pc_Fix()
 	if type(x) == "table" then
 		local o = {ok=TRF_PcFld(x, "ok", 0, 999) or 0, fail=TRF_PcFld(x, "fail", 0, 999) or 0, je=TRF_PcFld(x, "je", 0, jumps),
 			ban=TRF_PcFld(x, "ban", 0, legs + 200), lsys=TRF_PcFld(x, "lsys", 1, ns), lleg=TRF_PcFld(x, "lleg", -999999, legs),
-			lok=TRF_PcFld(x, "lok", 0, 1), lg=TRF_PcFld(x, "lg", 0, 99999999), lt=TRF_PcFld(x, "lt", 1, 1), pm=TRF_PcFld(x, "pm", 1, 4),
-			pr=TRF_PcFld(x, "pr", 0, 60000), ow=TRF_PcFld(x, "ow", 1, TRF_PcPayCap()), pq=TRF_PcFld(x, "pq", 1, 1), ll=TRF_PcFld(x, "ll", 0, legs),
+			lok=TRF_PcFld(x, "lok", 0, 1), lt=TRF_PcFld(x, "lt", 1, 1), pm=TRF_PcFld(x, "pm", 1, 4),
+			pr=TRF_PcFld(x, "pr", 0, 60000), ow=TRF_PcFld(x, "ow", 1, 999999), pq=TRF_PcFld(x, "pq", 1, 1), ll=TRF_PcFld(x, "ll", 0, legs),
 			lit=TRF_PcFld(x, "lit", 1, 4)};
 		if o.pm and not o.lsys then o.pm = nil; end;
 		if o.ban and o.ban <= legs then o.ban = nil; end;
@@ -1470,6 +1479,7 @@ function TRF_Pc_Text()
 		pcldonew = "Parcel received, seals intact. $1 cr paid.",
 		pcldoneh = "Parcel received, seals intact. Deposit returned. The desk pays your $1 cr at a later docking.",
 		pclpart = "Parcel received with $1 of $2 units. Pay and deposit for those: $3 cr.",
+		pclparth = "Parcel received with $1 of $2 units. Deposit for those returned. The desk pays your $3 cr at a later docking.",
 		pclempty = "Courier desk: the crates are gone. The deposit stays with the FTU.",
 		pclshort = "$1 dock: the $2 shortage is over once your hold is empty.",
 		pclowe = "FTU courier desk: $1 cr parcel pay.",

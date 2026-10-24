@@ -26,7 +26,7 @@ Module: new `S/trf_parcel.script`, prefix `Pc` (`TRF_Pc_*` public, `TRF_Pc<X>` i
 | Q8 | Bribes | step 2; MSF and USS only (proposed) | - |
 | Q9 | Deposit waiver | kept: help >= 10 waives the deposit on `Cargo_002` only | `pcl_waive_help` |
 | Q10 | Patrol stations | trade stations only (proposed) | - |
-| B1 | Shared prize gap | the brief asks for it on parcel pay: a pay earned inside the gap waits in `TRF.pcl.ow` and the owed payer pays it at a later trade dock; the deposit refund is never held | `pcl_prize_gap` 1 |
+| B1 | Shared prize gap | the brief asks for it on parcel pay: a pay earned inside the gap waits in `TRF.pcl.ow` (held pays add up) and the owed payer pays it at a later trade dock, at most `pay_cap` per payout; the rest waits for the next gap; the deposit refund is never held | `pcl_prize_gap` 1 |
 | C1, D1 | Help decay, leg cap | traffic's (WB 10); every jump limit here counts `TRF.clock.j` | - |
 
 ## 3. Data model
@@ -41,10 +41,10 @@ Module: new `S/trf_parcel.script`, prefix `Pc` (`TRF_Pc_*` public, `TRF_Pc<X>` i
 | `t0` | accept leg | `t0` |
 | `ml` | 0..999 | `ml` (legs spent in missions) |
 | `pd` | `pay x 100000 + dep` | `pay` 0..30000, `dep` 0..60000 |
-| `m` | `it + 10 n + 100 j + 1000 dl + 100000 cls + 1000000 sj + 10000000 fac` | `it` 1..4, `n` 1..3, `j` 1..6, `dl` 5..20 (`3J + 2`), `cls` 0..6, `sj` the destination's trade station (1..2, replaces `dp`), `fac` 0..5 |
+| `m` | `it + 10 n + 100 j + 1000 dl + 100000 cls + 1000000 sj + 10000000 fac + 100000000 ssj` | `it` 1..4, `n` 1..3, `j` 1..6, `dl` 5..20 (`3J + 2`), `cls` 0..6, `sj` the destination's trade station (1..2, replaces `dp`), `fac` 0..5, `ssj` the source's trade station (1..2; 0 in a job packed without it: the failure deed then picks the station by position) |
 | `c` | `cu x 100 + cs x 10 + hot` | `cu`, `cs`, `hot` (step 2, 0) |
 
-`TRF.pcl` (created at the first accept): `ok`, `fail` (0..999 lifetime counters, #14 reads them), `je` (jump stamp of the last job's end; `jn` of the design is `TRF_Jumps() - je`), `ban` (offers refused until this leg), `lsys`, `lleg`, `lok`, `lg` (last finished job: destination, leg, 1 delivered, `TRF.gen` of that visit), `lt` (1: its thank-you line was shown), `lit` (item of the last accepted job, for the thank-you wording), `pm`, `pr` (pending line at the next trade dock: 1 late, 2 void, 3 empty, 4 void without units; the refund), `ow` (pay held by the prize gap), `pq` (1: the logbook entry is done or failed and is removed at the next trade dock), `ll` (last leg the mission-leg counter saw); step 2: `xl[rg]`, `cfl[f]`.
+`TRF.pcl` (created at the first accept): `ok`, `fail` (0..999 lifetime counters, #14 reads them), `je` (jump stamp of the last job's end; `jn` of the design is `TRF_Jumps() - je`), `ban` (offers refused until this leg), `lsys`, `lleg`, `lok`, `lit` (last finished job: destination, leg, 1 delivered, item for the thank-you wording), `lt` (1: its thank-you line was shown), `pm`, `pr` (pending line at the next trade dock: 1 late, 2 void, 3 empty, 4 void without units; the refund), `ow` (pay held by the prize gap, 1..999,999), `pq` (1: the logbook entry is done or failed and is removed at the next trade dock), `ll` (last leg the mission-leg counter saw); step 2: `xl[rg]`, `cfl[f]`.
 
 `TRF.short[i].job` (00 section 6): 1 while a relief parcel targets the entry (`TRF_ShortJob` in trf_shop); `TRF_ShortRelief` already skipped `pk = 1` and `job = 1` (WB 11).
 
@@ -63,7 +63,7 @@ Marker label `TRF_PCL_NP`, owner `parcel`; logbook id `trf_pcl`.
 
 ### 3.3 Size
 
-Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case measured in `pcl-h` and `v1-n`: `TRF.pcl` with every field at its widest and the step 2 fields (`xl` in 11 slots, `cfl`) 791 bytes with its key (checked <= 800); the packed job at its widest 173 bytes (inside the plumbing's 6-field worst case of 296, WB 12); the `job` flag on 8 shortage entries 8 x 23 = 184. Typical open job: about 170 + 200 bytes. Full-state `v1-n` with everything on: 89,298 bytes (budget 100,000; 88,323 before). The design's "under 1 KB" holds.
+Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case measured in `pcl-h` and `v1-n`: `TRF.pcl` with every field at its widest and the step 2 fields (`xl` in 11 slots, `cfl`) 769 bytes with its key (checked <= 800); the packed job at its widest 173 bytes (inside the plumbing's 6-field worst case of 296, WB 12); the `job` flag on 8 shortage entries 8 x 23 = 184. Typical open job: about 170 + 200 bytes. Full-state `v1-n` with everything on: 89,298 bytes (budget 100,000; 88,323 before). The design's "under 1 KB" holds.
 
 ## 4. Hooks and registration
 
@@ -118,17 +118,17 @@ In this order, the first that fails is the debug reason of `event=offer ... resu
 
 ### 5.6 Delivery (trade line 20, `TRF_PcDeliver`)
 
-At a trade dock of the destination whose param equals the job's dock: the counting delete loop (`while k < n and IsExist(item) do DeleteModule(item)`); `k = 0` is a failure (`empty`, 5.7); else `pay x k / n` and `dep x k / n`: the deposit part back (`AddPlayerCredits`), the pay through `TRF_Pay(.., "parcel")` with `TRF_PrizeMark`, or held in `TRF.pcl.ow` while `TRF_PrizeWait() > 0` (cfg `pcl_prize_gap` 1; the owed payer pays it later, `pclowe`); help +1 (+2 when the destination's region is in Recovery); `TRF_ProCredit(2 plain / 4 relief)` (doubled in Recovery there); `TRF_Stn_Deed(dst, 1)`; a relief entry still active ends at the next cleanup (`TRF_ShortEnd`, line `pclshort`; the station paid the shortage price at line 10 of this docking). Lines `pcldone`, `pcldonew` (waived), `pcldoneh` (held), `pclpart` (k < n). Then the end (5.8). Delivery runs during a mission too (no spawn; the strict gate is not asked).
+At a trade dock of the destination whose param equals the job's dock: the counting delete loop (`while k < n and IsExist(item) do DeleteModule(item)`); `k = 0` is a failure (`empty`, 5.7); else `pay x k / n` and `dep x k / n`: the deposit part back (`AddPlayerCredits`), the pay through `TRF_Pay(.., "parcel")` with `TRF_PrizeMark`, or held in `TRF.pcl.ow` while `TRF_PrizeWait() > 0` (cfg `pcl_prize_gap` 1; the owed payer pays it later, `pclowe`); help +1 (+2 when the destination's region is in Recovery); `TRF_ProCredit(2 plain / 4 relief)` (doubled in Recovery there); `TRF_Stn_Deed(dst, 1)`; a relief entry still active ends at the next cleanup (`TRF_ShortEnd`, line `pclshort`; the station paid the shortage price at line 10 of this docking). Lines `pcldone`, `pcldonew` (waived), `pcldoneh` (held), `pclpart` (k < n), `pclparth` (k < n, the pay part held). Then the end (5.8). Delivery runs during a mission too (no spawn; the strict gate is not asked).
 
 ### 5.7 Expiry, failure, void (`TRF_PcCheck` at arrival and at each trade dock, expiry first)
 
 - Expiry: `legs - t0 - ml > dl` -> failure `late`.
-- Failure (`TRF_PcFail`): the units found removed (V10), help -1 (-3 with `dep = 0`), the deposit kept, `ban = legs + pcl_ban`, `TRF_Stn_Deed(src, -1)`, `fail + 1`, the relief flag cleared; line `pcllate` (or `pclempty`) at the next trade dock (`pm`). During the ban every trade dock shows `pclcold` once per visit and offers nothing.
+- Failure (`TRF_PcFail`): the units found removed (V10), help -1 (-3 with `dep = 0`), the deposit kept, `ban = legs + pcl_ban`, `TRF_Stn_Deed(src, -1)` on the source station `ssj` (its position passed, so the deed does not depend on where the mothership is), `fail + 1`, the relief flag cleared; line `pcllate` (or `pclempty`) at the next trade dock (`pm`). During the ban every trade dock shows `pclcold` once per visit and offers nothing.
 - Void (`TRF_PcVoid`): the destination now fails the end rules (static, cfg or chapter deny, owner at war, InoCo shut), or at arrival its station is found by label and not alive: the units found removed, `dep x k / n` refunded at the next trade dock (`pclvoid`; `pclvoid0` with no unit), no penalty.
 
 ### 5.8 End and logbook
 
-Every end (`TRF_PcEnd`): `je = TRF_Jumps()`, `lsys`, `lleg`, `lok`, `lg`; the logbook entry `QUEST_DONE` or `QUEST_FAILED` with `pq = 1`, removed at the next trade dock; `TRF_MarkerClear("parcel")`; `TRF_JobClear`. The thank-you line (`pclthx1` crates, `pclthx2` containers) shows once at the first docking in the destination within 10 legs of a delivery, in a later visit. Logbook (`trf_pcl`, `AddQuest(id, "#TRF_pclq", "#TRF_pclqd", QUEST_PROCESS)`; cfg `pcl_logbook` 0 drops it): reconcile at entry and load outside a mission: an open job whose entry reads `QUEST_NOINIT` is added again; an entry without a job and without a pending removal is removed.
+Every end (`TRF_PcEnd`): `je = TRF_Jumps()`, `lsys`, `lleg`, `lok`, `lit`; the logbook entry `QUEST_DONE` or `QUEST_FAILED` with `pq = 1`, removed at the next trade dock; `TRF_MarkerClear("parcel")`; `TRF_JobClear`. The thank-you line (`pclthx1` crates, `pclthx2` containers) shows once at the first docking in the destination within 10 legs of a delivery, in a later visit (`TRF_Jumps() > je`, so a load in the delivery visit does not count). Logbook (`trf_pcl`, `AddQuest(id, "#TRF_pclq", "#TRF_pclqd", QUEST_PROCESS)`; cfg `pcl_logbook` 0 drops it): reconcile at entry and load outside a mission: an open job whose entry reads `QUEST_NOINIT` is added again; an entry without a job and without a pending removal is removed.
 
 ### 5.9 Toggles off
 
@@ -154,7 +154,7 @@ With `enable_parcels` 0 nothing runs (no box, no line, no check, no step); an op
 | `pcl_dep_k`, `pcl_dep_k2`, `pcl_waive_help` | 1.2, 0.5, 10 | 0..5, 0..5, 0..99 | deposit factors (sellable, `Cargo_002`), waiver help |
 | `pcl_x_k`, `pcl_proto_k`, `pcl_x_score_legs`, `pcl_hot_k`, `cust_hostile_max`, `cust_base`, `cust_wait`, `cust_radius`, `cust_fine_k`, `cust_flag_legs` | 0.5, 0.5, 10, 0.5, 1, {20, 15, 0, 10, 25, 5}, 30, 40, 2, 10 | | step 2 |
 
-Constants without a key (`TRF_PcK`): chapter 4, the guard docks, the static deny list, the InoCo core, item names and fallback costs, 3 units, source `pro` 3, heat 2, thank-you window 10 legs, logbook id, marker label and owner, Recovery phase 5. Traffic tune values read: `pay_cap`, `rg_tick`, `prize_rs` (through trf_plumb).
+Constants without a key (`TRF_PcK`): chapter 4, the guard docks, the static deny list, the InoCo core, item names and fallback costs, 3 units, source `pro` 3, heat 2, thank-you window 10 legs, logbook id, marker label and owner, Recovery phase 5. Traffic tune values read: `pay_cap` (at most 30,000, the bound of the packed pay), `rg_tick`, `prize_rs` (through trf_plumb).
 
 ## 7. Log lines (`TRF_PcE`, `TRF_PcDE`; rows in `D/log-events.md`, section parcel)
 
@@ -164,7 +164,7 @@ Mapping to the design's experiment lines (01 section 8): `TRF PCL E1 add=3 del=3
 
 ## 8. Texts (`TRF_Pc_Text`; `#TRF_pcl<name>` in `loc/trf_en.loc` and `loc/trf_ru.loc`)
 
-35 keys: box `pcltitle`, `pclneed1`..`pclneed6` ($1 system), `pclbox` ($1 units, $2 system, $3 route), `pclit1`, `pclit1s`, `pclit2`, `pclit2s`, `pcljumps` ($1 jumps, $2 legs), `pcljump` ($1 legs), `pcldep` ($1 deposit, $2 pay), `pclnodep` ($1 pay); replies `pclhand`, `pclpoor`, `pclfail`; arrival `pclmark`; delivery `pcldone`, `pcldonew`, `pcldoneh` ($1 pay), `pclpart` ($1 units found, $2 units, $3 credits), `pclshort` ($1 system, $2 class); `pclowe`; ends `pcllate`, `pclvoid`, `pclvoid0` ($1 system), `pclempty`, `pclcold`; `pclthx1`, `pclthx2` ($1 system); logbook `pclq`, `pclqd`. The design's `#TRF_Pcl_Offer` is `#TRF_pclbox` and the keys around it (trf_loc normalises keys to lowercase letters and digits). RU written by hand, cp1251, CRLF, fixed texts (checked by `stn-g`).
+36 keys: box `pcltitle`, `pclneed1`..`pclneed6` ($1 system), `pclbox` ($1 units, $2 system, $3 route), `pclit1`, `pclit1s`, `pclit2`, `pclit2s`, `pcljumps` ($1 jumps, $2 legs), `pcljump` ($1 legs), `pcldep` ($1 deposit, $2 pay), `pclnodep` ($1 pay); replies `pclhand`, `pclpoor`, `pclfail`; arrival `pclmark`; delivery `pcldone`, `pcldonew`, `pcldoneh` ($1 pay), `pclpart` ($1 units found, $2 units, $3 credits), `pclparth` ($1 units found, $2 units, $3 held pay), `pclshort` ($1 system, $2 class); `pclowe`; ends `pcllate`, `pclvoid`, `pclvoid0` ($1 system), `pclempty`, `pclcold`; `pclthx1`, `pclthx2` ($1 system); logbook `pclq`, `pclqd`. The design's `#TRF_Pcl_Offer` is `#TRF_pclbox` and the keys around it (trf_loc normalises keys to lowercase letters and digits). RU written by hand, cp1251, CRLF, fixed texts (checked by `stn-g`).
 
 ## 9. Host scenarios (`T/host_parcel.lua`, `TRF_PCL=a..h`; run_host.sh item `pcl`)
 
@@ -179,7 +179,7 @@ Entry as `host_freight.lua`: `host_station.lua` up to its first scenario. Base c
 | `pcl-e` | merge keeps the job flag; a trader-cleared shortage still pays x1.25 without the shortage line; plain delivery (Cargo_002, visit credits 2); Recovery (help +2, credits 8); relief against plain pay |
 | `pcl-f` | overdue (line, deposit kept, help -1, ban, logbook failed and removed, items removed, flag cleared, standing -1, the cold line per visit and the ban's end); mission legs; waived failure (help -3); empty hold; void on arrival (owner at war) with the refund at the next dock; void by a chapter change; void by a dead station without units |
 | `pcl-g` | chapter 3 off; chapter 4 guard (relief to Corrino in Cargo_002 with no `pro` gate, plain to Pegas); outside the guard docks; the chapter 5 `pro` gate; chapter, cfg and cfg chapter deny; dump with and without a job; `enable_parcels` 0 and back; probes (E-PCL.1, .2, .5, .6) and the stack-delete case |
-| `pcl-h` | load in the destination (marker once); a box answered after a load; logbook reconcile (re-added, orphan removed); repair (shortage flag, job kept, broken job, `TRF.pcl` fields, non-table); worst case 791 / 173 bytes, no reserved key |
+| `pcl-h` | load in the destination (marker once); a box answered after a load; logbook reconcile (re-added, orphan removed); repair (shortage flag, job kept, broken job, `TRF.pcl` fields, non-table); worst case 769 / 173 bytes, no reserved key |
 
 Changed scenarios: `pl-a` (12 lines, 9 boxes, 4 payers), `pl-d` (the generic job uses kind 9, which no feature repairs), `sv-a`, `ch-a`, `fr-a` (trade line 20 and box 400 in the order lists; with `lad-a`, `ch-a`, `sc-a`, `cap-a`, `sh-a`, `fr-a`, `ne-a` also `extra_count=11` and Pc last in `TRF_ModList` and `TRF_PlMods`), `stn-g` (the RU key set includes the parcel keys), `v1-m` (the generated `trf_en.loc` has the 35 `#TRF_pcl*` lines), `v1-n` (the parcel worst case in the full-state save, the parcel dump line). `host_traffic.lua` `T_V1Off` and `host_station.lua` `S_Cfg` set `enable_parcels=0`; the v1 scenarios run with parcels on. All 133 host runs pass.
 
@@ -187,7 +187,7 @@ Changed scenarios: `pl-a` (12 lines, 9 boxes, 4 payers), `pl-d` (the generic job
 
 | # | Fact | Confirming log line |
 |---|---|---|
-| E-PCL.1 | `AddModuleToInventory("Cargo_crate", 3)` and the counting delete loop remove one unit per `DeleteModule` | `module=parcel event=probe probe_kind=inventory added=3 deleted=3 left=false` (a `deleted=1` means the call removes the stack; the design's fallback, one unit per job, then needs `TRF_PcUnitsOf` changed: no key for it) |
+| E-PCL.1 | `AddModuleToInventory("Cargo_crate", 3)` and the counting delete loop remove one unit per `DeleteModule` | `module=parcel event=probe probe_kind=inventory added=3 deleted=3 left=false` (the probe runs only while the job slot is free and deletes at most its own 3 units, so `left=true` means the hold had crates before; a `deleted=1` means the call removes the stack; the design's fallback, one unit per job, then needs `TRF_PcUnitsOf` changed: no key for it) |
 | E-PCL.2 | no sale of `Cargo_crate`, `Cargo_002` above 1.2 x cost (station, shortage station, trader shop at help >= 5) | two `event=probe probe_kind=credits credits=<n>` lines around a sale at each shop kind; an unsellable item lowers its `pcl_dep_k` to 0.5 |
 | E-PCL.3 | the box from the dock callback opens after the vanilla dock OK, `TradeStationDlg` follows after OK and after Cancel | `module=plumb event=dock kind=trade ... box=parcel priority=400 result=box`, `module=parcel event=accept ... result=ok` or `event=offer ... result=declined`, `module=plumb event=box_answer kind=trade box=parcel ...`, then the trade window |
 | E-PCL.4 | `AddQuest("trf_pcl", ...)` off-mission shows, `QUEST_DONE`, `RemoveQuest`; `GetPlayerQuestState()` stays not TRUE with the entry open | `module=parcel event=quest id=trf_pcl state=2 quest_state_before=0 quest_state_after=0 result=added`; with `quest_state_after=1` set `pcl_logbook=0` |

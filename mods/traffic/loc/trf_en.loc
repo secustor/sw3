@@ -423,6 +423,7 @@ FILETYPE STANDART
 #TRF_pclnodep = No deposit for you, the desk knows your work. Pay cr. Take it?
 #TRF_pclowe = FTU courier desk: cr parcel pay.
 #TRF_pclpart = Parcel received with of units. Pay and deposit for those: cr.
+#TRF_pclparth = Parcel received with of units. Deposit for those returned. The desk pays your cr at a later docking.
 #TRF_pclpoor = Courier desk: the deposit is cr. Come back with the money.
 #TRF_pclq = Sealed parcel
 #TRF_pclqd = Deliver the sealed crates to the trade station marked on your map. The FTU holds your deposit.

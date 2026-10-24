@@ -181,9 +181,9 @@ function T_PCL_A()
 		"trade line 20 right after the shortage restore, trade box 400 first, one owed payer ("..lo.." "..bo..")");
 	-- Texts.
 	local nt = PC_SetN(TRF_Pc_Text());
-	HOST_Check(nt == 35 and TRF_Txt("pcldone", "15,400") == "Parcel received, seals intact. Deposit returned, 15,400 cr paid."
+	HOST_Check(nt == 36 and TRF_Txt("pcldone", "15,400") == "Parcel received, seals intact. Deposit returned, 15,400 cr paid."
 		and TRF_Txt("pcllate", "Taira") == "Courier desk: the Taira parcel is overdue. Deposit forfeited."
-		and TRF_Txt("pclneed1", "Taira") == "Taira station is out of machinery and the refinery is idle.", "35 texts; the design's lines");
+		and TRF_Txt("pclneed1", "Taira") == "Taira station is out of machinery and the refinery is idle.", "36 texts; the design's lines");
 	-- Pure rules.
 	HOST_Check(TRF_PcPayOf(0.35, 3, 10, 1.0, 6, 1.0, 1.25, 30000) == 15400, "pay: the design example 0.35 x 3 x 900 x 10 x 1.0 x 1.3 x 1.25 = 15,400");
 	HOST_Check(TRF_PcPayOf(0.35, 2, 3, 0.75, 2, 1.0, 1.0, 30000) == 600 and TRF_PcPayOf(0.35, 4, 16, 2.0, 9, 1.25, 1.25, 30000) == 30000
@@ -445,6 +445,9 @@ function T_PCL_D()
 	HOST_Check(PC_ShortE("taira", 1) == nil, "the relieved entry is gone at the next cleanup");
 	r = PC_Dock();
 	HOST_Check(h.quests.trf_pcl == nil and not PC_Has(r.scr, "kept the refinery"), "the next docking removes the logbook entry; no thank-you line in the delivery visit");
+	T_SaveLoad();
+	r = PC_Dock();
+	HOST_Check(not PC_Has(r.scr, "kept the refinery"), "a load in the delivery visit (gen + 1, no jump): still no thank-you line");
 	T_Jump("nj1");
 	n0 = S_Mark();
 	r = PC_Dock();
@@ -473,6 +476,27 @@ function T_PCL_D()
 	r = PC_Dock();
 	HOST_Check(PC_Has(r.scr, "FTU courier desk: 14,400 cr parcel pay.") and h.credits == c0 + 4320 + 14400 and TRF.pcl.ow == nil
 		and S_Logs(n0, "module=plumb event=prize owner=parcel") == 1, "after the gap: the owed payer pays and stamps the prize gap");
+	TRF.pcl.ow = 50000;
+	TRF.clock.rs = TRF.clock.rs + 1801;
+	c0 = h.credits;
+	r = PC_Dock();
+	HOST_Check(h.credits == c0 + 30000 and TRF.pcl.ow == 20000, "held pay above pay_cap: 30,000 now, 20,000 kept");
+	r = PC_Dock();
+	HOST_Check(h.credits == c0 + 30000 and TRF.pcl.ow == 20000, "the rest waits for the next gap");
+	TRF.clock.rs = TRF.clock.rs + 1801;
+	r = PC_Dock();
+	HOST_Check(h.credits == c0 + 50000 and TRF.pcl.ow == nil, "after the next gap: the rest paid, nothing lost");
+	-- Partial delivery inside the prize gap: the deposit part now, the pay part held.
+	PC_Begin("altair", "9_1", {pcl_prize_gap=1});
+	PC_Short("taira", 1);
+	J = PC_Take();
+	h.ms.inv[1][2] = 2;
+	TRF.clock.pz = TRF.clock.rs;
+	T_Jump("taira");
+	c0 = h.credits;
+	r = PC_Dock();
+	HOST_Check(PC_Has(r.scr, "Parcel received with 2 of 3 units. Deposit for those returned. The desk pays your 9,600 cr at a later docking.")
+		and h.credits == c0 + 2880 and TRF.pcl.ow == 9600, "partial delivery inside the gap: 2/3 of the deposit now, 2/3 of the pay held");
 	-- Partial delivery during a mission at the destination (no marker, mission legs counted).
 	PC_Begin("altair", "9_1");
 	PC_Short("taira", 1);
@@ -537,6 +561,14 @@ end;
 
 function T_PCL_F()
 	local h = HOST();
+	-- The failure's #3 -1 lands on the source station of the job (Kadenoa's second dock), seen from another system.
+	PC_Begin("altair", "9_1");
+	local ka = PC_Idx("kadenoa");
+	local pp = TRF_PcPackOf({src=ka, dst=PC_Idx("taira"), t0=0, ml=0, pay=100, dep=10, it=1, n=3, j=2, dl=8, cls=0, sj=1, fac=0, ssj=2, cu=0, cs=0, hot=0});
+	pp.k = 1;
+	local pj = TRF_PcUnpackOf(pp, 113, 500);
+	TRF_PcFail(pj, "late");
+	HOST_Check(pj.ssj == 2 and TRF_Stn_Rung(ka, 2) == -1 and TRF_Stn_Rung(ka, 1) == 0, "failure: the source station index packed, -1 on kadenoa_tri, not on the first dock");
 	PC_Begin("altair", "9_1");
 	local cur = TRF_CurIdx();
 	TRF.std.help = 5;
@@ -710,6 +742,20 @@ function T_PCL_G()
 	r = PC_Dock();
 	HOST_Check(PC_Logs(n0, "event=probe probe_kind=inventory added=3 deleted=1 left=false") == 1, "a DeleteModule that removes the stack shows as deleted=1 (E-PCL.1 fallback case)");
 	h.inv_del_stack = nil;
+	PC_Begin("altair", "9_1", {pcl_probe=1});
+	TRF_PcGive(1, 2);
+	n0 = S_Mark();
+	r = PC_Dock();
+	HOST_Check(PC_Logs(n0, "event=probe probe_kind=inventory added=3 deleted=3 left=true") == 1 and HOST_InvCount("Cargo_crate") == 2,
+		"the probe deletes only its own 3 units: the player's 2 crates stay");
+	h.ms.inv = {};
+	PC_Short("taira", 1);
+	J = PC_Take();
+	PC_Visit();
+	n0 = S_Mark();
+	r = PC_Dock();
+	HOST_Check(J and J.it == 1 and HOST_InvCount("Cargo_crate") == 3 and PC_Logs(n0, "probe_kind=inventory") == 0 and PC_Logs(n0, "probe_kind=credits") == 1,
+		"no inventory probe while a job holds the slot: the parcel crates stay");
 end;
 
 -- h: load, logbook reconcile, repair, save bound ---------------------------------------------------
@@ -772,10 +818,10 @@ function T_PCL_H()
 	HOST_Check(TRF.pcl == nil, "repair: a non-table TRF.pcl dropped");
 	-- Worst case bytes (spec 3.3).
 	local skl = TRF.clock.legs;
-	TRF.pcl = {ok=999, fail=999, je=99999, ban=skl + 200, lsys=113, lleg=-99999, lok=1, lg=99999999, lt=1, pm=4, pr=60000, ow=30000, pq=1,
+	TRF.pcl = {ok=999, fail=999, je=99999, ban=skl + 200, lsys=113, lleg=-99999, lok=1, lt=1, pm=4, pr=60000, ow=999999, pq=1,
 		ll=skl, lit=4, xl={}, cfl={skl, skl, skl, skl, skl}};
 	for k = 1, 11 do TRF.pcl.xl[k] = skl; end;
-	TRF.job = TRF_PcPackOf({src=113, dst=112, t0=-999999, ml=999, pay=30000, dep=60000, it=4, n=3, j=6, dl=20, cls=6, sj=2, fac=5, cu=113, cs=2, hot=1});
+	TRF.job = TRF_PcPackOf({src=113, dst=112, t0=-999999, ml=999, pay=30000, dep=60000, it=4, n=3, j=6, dl=20, cls=6, sj=2, fac=5, ssj=2, cu=113, cs=2, hot=1});
 	TRF.job.k = 2;
 	local bp, bj = 8 + 3 + HOST_SaveSize(TRF.pcl), 8 + 3 + HOST_SaveSize(TRF.job);
 	print("HOST info parcel worst case: pcl "..bp.." bytes, job "..bj.." bytes, short job flags 8 x 23");

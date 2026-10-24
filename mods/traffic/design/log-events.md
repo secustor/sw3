@@ -671,12 +671,12 @@ the lowercase system names, `item` the item index (1 `Cargo_crate`, 2 `Cargo_002
 | `fail` | `module=parcel event=fail kind=2 source=altair destination=taira units_found=3 deposit=4320 help_change=-1 ban_until=418 fail_count=1 reason=<late, empty>` | 1 |
 | `void` | `module=parcel event=void kind=2 source=altair destination=taira units_found=3 refund=4320 reason=<static, cfg, chapter, deny_entry, hostile, inoco, dead>` | 1 |
 | `pending` | `module=parcel event=pending kind=<1 late, 2 void, 3 empty, 4 void without units> system=taira refund=4320` (the line shown at the next trade dock) | 1 |
-| `owe` | `module=parcel event=owe amount=14400 paid=14400 result=paid` / `result=failed` (held pay, shared prize gap) | 1 |
+| `owe` | `module=parcel event=owe amount=14400 paid=14400 owed=0 result=paid` / `result=failed` (held pay, shared prize gap; at most pay_cap per payout, `owed` the rest that waits for the next gap) | 1 |
 | `owe` | `module=parcel event=owe amount=14400 wait=1734 result=wait` | 2 |
 | `thanks` | `module=parcel event=thanks system=taira legs_since=2` | 1 |
 | `dock` | `module=parcel event=dock system=kadenoa param=kadenoa_tri dock_current=2` (every trade dock, E-PCL.5) | 2 |
 | `signal` | `module=parcel event=signal at=<enter, dock> quest_state=0 quest_help=3 count_pause_quest=nil current_quest=9_1` (E-PCL.6) | 2 |
-| `probe` | `module=parcel event=probe probe_kind=credits credits=1000000` (every trade dock) / `probe_kind=inventory added=3 deleted=3 left=false` (once per visit; cfg `pcl_probe` 1, E-PCL.1, E-PCL.2) | 1 |
+| `probe` | `module=parcel event=probe probe_kind=credits credits=1000000` (every trade dock) / `probe_kind=inventory added=3 deleted=3 left=false` (once per visit while the job slot is free; cfg `pcl_probe` 1, E-PCL.1, E-PCL.2) | 1 |
 | `repair` | `module=parcel event=repair job_kind=2 result=dropped reason=<kind, field, system, range, class>` | 1 |
 | `dump` | `module=parcel event=dump kind=2 item=1 units=3 source=altair destination=taira dock=taira jumps=3 accept_leg=412 deadline=11 mission_legs=0 left=7 pay=14400 deposit=4320 class=1 customs_system=0 customs_met=0 hot=0 jumps_since=nil ban=nil ok_count=14 fail_count=2 owed=nil customs_flags=0,0,0,0,0` / `module=parcel event=dump result=none jumps_since=3 ban=nil ok_count=14 fail_count=2 owed=nil pending=nil customs_flags=0,0,0,0,0` | 1 |
 

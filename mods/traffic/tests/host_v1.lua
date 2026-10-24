@@ -2170,7 +2170,7 @@ function T_V1_N()
 	-- Sealed parcels worst case (design/parcel-spec.md 3.3): TRF.pcl with every field at its widest and the step 2 fields
 	-- (xl in every region slot, cfl), the job flag on every shortage entry; the packed job is within the plumbing's
 	-- 6-field job above.
-	TRF.pcl = {ok=999, fail=999, je=99999, ban=skl + 200, lsys=113, lleg=-99999, lok=1, lg=99999999, lt=1, pm=4, pr=60000, ow=30000, pq=1,
+	TRF.pcl = {ok=999, fail=999, je=99999, ban=skl + 200, lsys=113, lleg=-99999, lok=1, lt=1, pm=4, pr=60000, ow=999999, pq=1,
 		ll=skl, lit=4, xl={}, cfl={skl, skl, skl, skl, skl}};
 	for k = 1, 11 do TRF.pcl.xl[k] = skl; end;
 	for k = 1, getn(TRF.short) do TRF.short[k].job = 1; end;
