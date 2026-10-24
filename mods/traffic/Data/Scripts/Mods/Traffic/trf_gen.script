@@ -1232,6 +1232,8 @@ end;
 -- first, while its flight still exists (distance to the mothership).
 function TRF_GnSafeArrive(id, r, how)
 	if r.sev == 1 then TRF_GnX("TRF_Stn_EvArrive", id, how); end;
+	-- The player's freighter (trf_freight, r.fw): escort cover and its own visit credit rule replace the rest.
+	if r.fw and TRF_GnX("TRF_Fr_Arrive", id, how) == 0 then return; end;
 	TRF_GnX("TRF_CtArrive", id, how);
 	if how == "dock" and r.path == "A" then TRF_GnX("TRF_ShortClear", TRF_CurIdx(), r.cls); end;
 	if r.fl or r.st == "wind" then return; end;

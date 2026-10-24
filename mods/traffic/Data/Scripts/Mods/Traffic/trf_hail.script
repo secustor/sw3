@@ -369,6 +369,12 @@ function TRF_HlV1Opts(id, r)
 		local t = TRF_HlP(TRF_FeqId, {id});
 		if type(t) == "string" then l0 = {{k="feqinfo", s=t}}; only = 1; end;
 	end;
+	-- The player's freighter (trf_freight, r.fw): its status line only (no 8.3 trade, 8.4 contract, 8.6 demand or
+	-- paid rumour, 08 exploit rule 4).
+	if r.fw and type(TRF_Fr_HailId) == "function" then
+		local t = TRF_HlP(TRF_Fr_HailId, {id});
+		if type(t) == "string" then l0 = {{k="fwinfo", s=t}}; only = 1; end;
+	end;
 	for i = 0, getn(ps) do
 		local l = l0;
 		if i > 0 then
@@ -1232,6 +1238,8 @@ function TRF_CtOffer(id)
 	if r.st ~= "in" and r.st ~= "out" then return nil, "st"; end;
 	-- r.sev: a station event ship (trf_station) pays through its event, never a contract.
 	if r.ct or r.sev or type(r.rdn) == "number" then return nil, "used"; end;
+	-- r.fw: the player's own freighter (trf_freight) is never an 8.4 contract.
+	if r.fw then return nil, "freight"; end;
 	local idx = TRF_HlCur();
 	local m = TRF_HlMap();
 	if type(idx) ~= "number" or type(m) ~= "table" or type(m.sys[idx]) ~= "table" then return nil, "nomap"; end;

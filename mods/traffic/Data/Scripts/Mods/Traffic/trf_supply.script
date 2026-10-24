@@ -1038,6 +1038,7 @@ function TRF_DemandOk(id)
 	local r = TRF_SpRec(id);
 	if not r then return nil, "norec"; end;
 	if r.own then return nil, "own"; end;
+	if r.fw then return nil, "freight"; end;
 	if r.dq == 1 then return nil, "used"; end;
 	if r.st == "wind" then return nil, "st"; end;
 	if TRF_SpHeat() >= 7 then return nil, "heat"; end;

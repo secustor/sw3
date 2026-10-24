@@ -67,9 +67,9 @@ Box spec: `{title (default per kind), text, ok, no, a, own (log name), fee = 1 (
 | line 10 | 7.3 shortage restore (`TRF_ShopDockLine`, always) | traffic |
 | line 20, 30, 40 | #1/#5 deliveries and hand-ins, #6 pods, #2 recorder | features |
 | 50 | owed payers (#10, #11, #4 ...) | features |
-| line 60, 70, 80 | #8 freight payout (at most 3 lines), #14 charter, #13 rival rating | features |
+| line 60, 70, 80 | #8 freight payout (at most 3 lines; `TRF_Fr_DockLine`, [freight-spec.md](freight-spec.md)), #14 charter, #13 rival rating | features |
 | line 90 | #3 dockmaster result (`TRF_Stn_DockedLine`) | traffic |
-| box 400, 300, 200, 100 | #1 parcel offer, #8 purchase, #14 dues, #13 arbitration | features |
+| box 400, 300, 200, 100 | #1 parcel offer, #8 purchase (`TRF_Fr_DockBox`), #14 dues, #13 arbitration | features |
 
 `__PatrolStationDock_Ok` (kind `patrol`):
 
@@ -113,7 +113,7 @@ trf_gen's thunk calls trf_events' `TRF_CaseEject`, which calls `TRF_PlEject(pilo
 | 600 | `TRF_GnSeedFeq` | equipment convoy when no sweep plays: no staged raid, no seed |
 | 500 | `TRF_GnSeedStaged` | staged raid: takes the seed's place |
 | 450 | `TRF_GnSeedHold` | an event took the seed's place: the identity seed waits (`TRF_SeedResume`); stops the list, so no #8 or #5 seed follows |
-| 400, 300 | #8 freighter, #5 captain | features |
+| 400, 300 | #8 freighter (`TRF_Fr_Seed`, freight-spec.md 5.5), #5 captain | features |
 | 200 | `TRF_GnSeedPo` | pirate tip-off seed |
 | 100 | `TRF_GnSeedPlain` | tracked docked record, else the plain seed |
 
@@ -201,7 +201,7 @@ Existing scenarios changed: `v02-l` (the S19 board is now lines, no board box; s
 
 - "At most one merc-style flight (pack or rival) per entry" (ship caps row of 00 section 6) is a rule of #12 and #13; no traffic code needs it yet and no API was asked for.
 - In-game checks: E0.6 (box from each dock callback, a second box from an OK: the patrol 8.10 box and the pirate offer open inside the dock OK as before; `wb_box_after_fee` stays 0 until it passes), E0.8 (runtime nav points with 4 arguments and their persistence), E0.17 (`CostOfHead` call pattern), E0.21 (`dt_real` while paused), E0.24 (wrappers alive).
-- 8.5 raid-help resolvers of #4, #9, #12, #13, owed payers of #4, #10, #11, #14, seed providers of #5, #8 and the other registrations come with their features.
+- 8.5 raid-help resolvers of #4, #9, #12, #13, owed payers of #4, #10, #11, #14, seed providers of #5 and the other registrations come with their features (#8: trf_freight, 2026-10-24).
 
 ## 16. Typed object query (`TRF_Near`, `TRF_NearCount`)
 

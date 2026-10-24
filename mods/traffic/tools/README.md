@@ -15,6 +15,8 @@ Generates `Data/Scripts/Mods/Traffic/map.script` (`TRF_MapData()`, CRLF) from `D
 
     python3 -I mods/traffic/tools/gen_map.py [--check] [--loc]
 
+Wolves Freight loops (`TRF_FwLoopData()`, a second function in `map.script`; design `08-wolves-freight.md` section 6, `design/freight-spec.md` 5.2): per region slot except Torr, the stops are the region's trade-station systems with a trader registration (top-level docking), in BFS order from the home over systems outside `FW_DENY` (`nk`, `x297`, `earth`, `precursors`, `disonsphere`, `fronn`, `xt23`, `xt24`; ties by `idx`); `s` is the cyclic system list along shortest portal paths between consecutive stops (avoiding `FW_DENY`), `t` the stop flags, `L` the median `L_w` (`clamp(round(0.8 sb), 3, 16)`) of the distinct loop systems. A region with fewer than two stops gets no loop. The run prints `fw loops: <home> <n> stops <m> systems L<l>, ...`.
+
 Per system: `name`, `idx`, `dir`, `mx`/`my`, `start`, `trader`, `rg`, `dg`, `pc`, `sb`, `q`, `tq`, `ba`, `bs`, `qi`, `portals`, `inner`, `broken`, and `st`, the docking stations:
 
 - Source: every uncommented `CreateTradeStationDocking(VAR, ...)` (kind `"trade"`) and `CreatePatrolStationDocking(VAR, ship, r, ...)` (kind `"patrol"`) in the system's scripts. `label` is `SetObjectLabel(VAR, ...)`, else `functions.script`'s `VAR = GetObjectByLabel(...)`. Stations without a docking call (Debris1 `TRADE2`, xb13 `STOCK0*`) are not emitted.

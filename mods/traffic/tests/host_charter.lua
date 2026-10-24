@@ -175,14 +175,14 @@ function C_BoxOk(a) return nil; end;
 function T_CH_A()
 	local h = HOST();
 	C_Begin("golkonda", "4_1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=8") >= 1, "trf_charter loads after trf_ladder (extra_count=8 with trf_scar, trf_captain and trf_stash)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=9") >= 1, "trf_charter loads after trf_ladder (extra_count=9 with trf_scar, trf_captain, trf_stash and trf_freight)");
 	local P = TRF_PlReg();
 	local lo, bo, ow = "", "", "";
 	for i = 1, getn(P.dock.trade.line) do lo = lo..P.dock.trade.line[i].o..","; end;
 	for i = 1, getn(P.dock.trade.box) do bo = bo..P.dock.trade.box[i].o..":"..tostring(P.dock.trade.box[i].f)..","; end;
 	for i = 1, getn(P.owe) do ow = ow..tostring(P.owe[i].f)..","; end;
-	HOST_Check(lo == "10,30,70,90," and bo == "200:TRF_Ch_DockBox," and C_Has(ow, "TRF_Ch_Owe,"),
-		"trade line 70 (between the freight 60 and the rating 80 places), box 200, one owed payer ("..lo.." "..bo.." "..ow..")");
+	HOST_Check(lo == "10,30,60,70,90," and bo == "300:TRF_Fr_DockBox,200:TRF_Ch_DockBox," and C_Has(ow, "TRF_Ch_Owe,"),
+		"trade line 70 (between the freight 60 and the rating 80 places), box 200 (after the freight 300), one owed payer ("..lo.." "..bo.." "..ow..")");
 	-- Unlock: chapter 5 and help 3 (design 4).
 	TRF.std.help = 9;
 	local n0 = S_Mark();

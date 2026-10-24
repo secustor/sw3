@@ -761,6 +761,7 @@ function TRF_Sv_OnLoss(id, rec, h, by, idx)
 	if mode then
 		if TRF_N("TRF_Ev_Own", rec) or rec.feq == 1 then why = "owner";
 		elseif rec.sev then why = "station_event";
+		elseif rec.fw then why = "freight";
 		elseif fire then why = "fire";
 		else why = TRF_SvHold() or TRF_SvGate(idx); end;
 		if not why and TRF_SvAt(idx) then why = "record"; end;

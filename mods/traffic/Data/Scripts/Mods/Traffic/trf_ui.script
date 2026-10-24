@@ -130,7 +130,7 @@ end;
 function TRF_UI_TextFns()
 	return {"TRF_Hail_Text", "TRF_Raid_Text", "TRF_Rg_Text", "TRF_Tier_Text", "TRF_Shop_Text", "TRF_Track_Text",
 		"TRF_Supply_Text", "TRF_Clan_Text", "TRF_Faction_Text", "TRF_Convoy_Text", "TRF_Danger_Text", "TRF_Base_Text",
-		"TRF_Stn_Text", "TRF_Sv_Text", "TRF_Lad_Text", "TRF_Ch_Text", "TRF_Sc_Text", "TRF_Cap_Text", "TRF_Sh_Text"};
+		"TRF_Stn_Text", "TRF_Sv_Text", "TRF_Lad_Text", "TRF_Ch_Text", "TRF_Sc_Text", "TRF_Cap_Text", "TRF_Sh_Text", "TRF_Fr_Text"};
 end;
 
 -- One logfmt event line of module ui (design/log-format.md 5).
@@ -317,8 +317,9 @@ function TRF_UI_Transports(r, id)
 end;
 
 -- "FTU freighter Kestrel" (8.2 who part; also the hail box, v02-spec 6.1). A supply convoy (r.own = f,
--- v1-spec 5.1) is "<faction> supply transport Kestrel".
+-- v1-spec 5.1) is "<faction> supply transport Kestrel"; the player's freighter (r.fw, trf_freight) "Wolves Freight Kestrel".
 function TRF_UI_Who(r, id)
+	if r.fw then return TRF_Txt("fwwho", TRF_UI_Name(r.nm) or ""); end;
 	local hull = TRF_Txt("hull1");
 	if TRF_UI_Transports(r, id) >= 2 then hull = TRF_Txt("hull2"); end;
 	local own = TRF_Txt("owner");

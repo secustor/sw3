@@ -1,7 +1,7 @@
 LOCALE_FILE
 FILETYPE STANDART
 
-; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text) the wanted captains keys (#TRF_cap*, trf_captain TRF_Cap_Text), the clan stash keys (#TRF_stash*, trf_stash TRF_Sh_Text) and the demand page keys (#TRF_dmp*, trf_supply TRF_Supply_Text and trf_hail TRF_Hail_Text, with the answers #TRF_dmok and #TRF_dmno), cp1251.
+; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text) the wanted captains keys (#TRF_cap*, trf_captain TRF_Cap_Text), the clan stash keys (#TRF_stash*, trf_stash TRF_Sh_Text), the Wolves Freight keys (#TRF_fw*, trf_freight TRF_Fr_Text) and the demand page keys (#TRF_dmp*, trf_supply TRF_Supply_Text and trf_hail TRF_Hail_Text, with the answers #TRF_dmok and #TRF_dmno), cp1251.
 ; Same keys and fixed texts as loc/trf_en.loc (no $n placeholders); used with cfg loc_mode 1 in a Russian install.
 ; Other #TRF_ keys have no RU line yet (design/station-voices-spec.md 13.5).
 
@@ -342,3 +342,33 @@ FILETYPE STANDART
 #TRF_stashthanksescaflon = Отчёт о тайнике в системе Эскафлон получен. Распишитесь здесь. Чистого космоса!
 #TRF_stashmovedescaflon = Пираты перенесли свой тайник. Старый сигнал в системе Эскафлон пропал.
 #TRF_stashgrudgeescaflon = Кто-то вскрыл наш камень в системе Эскафлон. Узнаю, что это вы, и следующим камнем будете вы.
+#TRF_fwboxtitle = Чартерная контора ФТС
+#TRF_fwbox = Сдаётся в чартер грузовой транспорт. Он будет ходить по линиям региона под именем Волков, страховка ФТС включена. Подписываете бумаги?
+#TRF_fwboxv = Сдаётся в чартер грузовой транспорт, цена с учётом вашей страховки ФТС. Он будет ходить по линиям региона под именем Волков. Подписываете бумаги?
+#TRF_fwrumour = Чартерная контора ФТС: в Козероге продолжают пропадать транспорты. Страховые взносы растут.
+#TRF_fwbought = Грузоперевозки Волков: корабль зарегистрирован. Первый рейс начнётся на следующем перелёте.
+#TRF_fwpoor = Чартерная контора ФТС: приходите, когда наберёте нужную сумму.
+#TRF_fwpaid = Грузоперевозки Волков перевели вам выручку с прошлого визита.
+#TRF_fwrob = Грузоперевозки Волков: ваш транспорт ограбили. Груз потерян, два перелёта в ремонте.
+#TRF_fwrobt = Грузоперевозки Волков: ваш транспорт ограбили в пути. Груз потерян, два перелёта в ремонте.
+#TRF_fwlost = Грузоперевозки Волков: ваш транспорт потерян. Страховка ФТС: следующий корпус за 25 % цены.
+#TRF_fwlostt = Грузоперевозки Волков: ваш транспорт потерян в пути. Страховка ФТС: следующий корпус за 25 % цены.
+#TRF_fwlostp = Грузоперевозки Волков: ваш транспорт потерян. ФТС не платит страховку за корпус, сбитый вашим же крылом.
+#TRF_fwlostpt = Грузоперевозки Волков: ваш транспорт потерян в пути. ФТС не платит страховку за корпус, сбитый вашим же крылом.
+#TRF_fwclerk = Клерк ФТС: "Перевозчик возмещает Груз." Вам эта оговорка знакома.
+#TRF_fwliab = Грузоперевозки Волков: списана ответственность перевозчика.
+#TRF_fwowe = Грузоперевозки Волков: списана ответственность перевозчика. Остаток долга ещё не погашен.
+#TRF_fwwhere = Грузоперевозки Волков: где сейчас ваш транспорт и куда он идёт.
+#TRF_fwtransit = Грузоперевозки Волков: ваш транспорт в пути.
+#TRF_fwunknown = следующая остановка
+#TRF_fwrepair = Грузоперевозки Волков: ваш транспорт в ремонте.
+#TRF_fwrepairt = Грузоперевозки Волков: ваш транспорт в ремонте.
+#TRF_fwfull = Грузоперевозки Волков: счёт полон. Транспорт ждёт ваших распоряжений.
+#TRF_fwfullt = Грузоперевозки Волков: счёт полон. Транспорт ждёт ваших распоряжений.
+#TRF_fwsusp = ФТС: чартер Волков приостановлен, пока торговцы от вас шарахаются.
+#TRF_fwhello = На связи, босс. Груз для этой станции. Рад видеть Волков здесь.
+#TRF_fwhellob = Отстыковываюсь, босс. Следующая остановка по маршруту.
+#TRF_fwdocked = Пристыковались. Они видели, кто с нами летит. Какое-то время будет тихо.
+#TRF_fwwho = Грузоперевозки Волков
+#TRF_fwhail = Грузоперевозки Волков. Идём по маршруту, всё в порядке.
+#TRF_optfwinfo = Доклад о рейсе

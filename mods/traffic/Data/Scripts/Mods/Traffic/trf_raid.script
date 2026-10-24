@@ -1123,6 +1123,8 @@ function TRF_Rd_RollBody(id, why)
 		if T <= 1 then tf = 0.5; end;
 		local attr = TRF_N("TRF_Attr", cur);
 		if type(attr) ~= "number" then attr = 0; end;
+		-- The player's freighter draws raids with attr + 2 (trf_freight, 08 section 6).
+		if r.fw then attr = attr + 2; end;
 		p = rc[dE + 1] * tf * (1 + 0.08 * attr);
 	end;
 	local roll = TRF_Rd_Rand(10000);
@@ -1387,12 +1389,14 @@ function TRF_Rd_Comply(n, rd, r, h)
 	local lost = TRF_Rd_Rob(r, h, 1 + TRF_Rd_Rand(3));
 	rd.dc = "comply";
 	rd.lost = lost;
+	-- The player's freighter (trf_freight): run pay lost and the lay-up; no shortage (only a loss gives one).
+	if r.fw then TRF_N("TRF_Fr_Robbed", rd.id, r); end;
 	TRF_Rd_Say(TRF_Rd_Txt("comply", TRF_Rd_Name(r)), 6, TRF_Rd_LeadPilot(rd.id));
 	local cur = TRF_Rd_Cur();
 	if cur and type(TRF_AddDis) == "function" then TRF_AddDis(cur, 1, "raid comply"); end;
 	local slot = TRF_Rd_Slot(cur);
 	if slot then TRF_N("TRF_ClanAdd", slot, 1, "rob"); end;
-	if r.path == "A" and type(TRF_Ev_Short) == "function" then
+	if r.path == "A" and not r.fw and type(TRF_Ev_Short) == "function" then
 		local pk = nil;
 		if type(r.pa) == "number" then pk = 1; end;
 		TRF_Ev_Short(cur, r.cls, pk);

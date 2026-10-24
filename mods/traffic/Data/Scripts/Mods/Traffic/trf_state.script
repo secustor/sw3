@@ -67,7 +67,7 @@ end;
 -- v0.2 and v1 modules with TRF_<M>_OptDef, TRF_<M>_TuneDef and TRF_<M>_Dump (v0.2 spec 10.2, 10.4; v1 10.1).
 function TRF_ModList()
 	return {"Rg", "Tier", "Raid", "Hail", "Shop", "Loc", "Track", "Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Pl", "Stn",
-		"Sv", "Lad", "Ch", "Sc", "Cap", "Sh"};
+		"Sv", "Lad", "Ch", "Sc", "Cap", "Sh", "Fr"};
 end;
 
 -- Value of key in the first module table getglobal("TRF_"..M..suffix)() that has it, else nil.
@@ -646,6 +646,7 @@ function TRF_Repair()
 	TRF_P("TRF_Sc_Fix");
 	TRF_P("TRF_Cap_Fix");
 	TRF_P("TRF_Sh_Fix");
+	TRF_P("TRF_Fr_Fix");
 end;
 
 -- Create, migrate and repair TRF. Returns 1 when it created a new table.
@@ -706,9 +707,10 @@ function TRF_LiveReset(keep)
 		step=0, dmp=0, stat={}};
 end;
 
--- Fields a gone trader record keeps (v0.2 3.2; v1 3.2 adds tb, pi, cv, xt).
+-- Fields a gone trader record keeps (v0.2 3.2; v1 3.2 adds tb, pi, cv, xt; fw: the player's freighter, trf_freight's
+-- 8.5 resolver reads it after the ship docked).
 function TRF_GoneKeep()
-	return {id=1, nm=1, cls=1, st=1, why=1, gg=1, tb=1, pi=1, cv=1, xt=1};
+	return {id=1, nm=1, cls=1, st=1, why=1, gg=1, tb=1, pi=1, cv=1, xt=1, fw=1};
 end;
 
 -- Gone trader records: stripped to TRF_GoneKeep, the 8 newest by gg kept (v0.2 spec 3.2), called by the

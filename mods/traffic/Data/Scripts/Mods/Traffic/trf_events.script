@@ -516,12 +516,13 @@ function TRF_Ev_KillV2(id, rec, by, idx)
 	if type(rec.rdn) == "number" and type(L.rd) == "table" then rd = L.rd[rec.rdn]; end;
 	if type(rd) == "table" then
 		rd.tk = 1;
-		if rd.st ~= "end" and by ~= "player" and type(idx) == "number" then
+		-- The player's freighter (r.fw): trf_freight gives the clan +2 and its own shortage (TRF_Fr_Killed).
+		if rd.st ~= "end" and by ~= "player" and type(idx) == "number" and not rec.fw then
 			local slot = TRF_N("TRF_RgOf", idx);
 			if type(slot) == "number" then TRF_N("TRF_ClanAdd", slot, 1, "raid kill "..id); end;
 		end;
 	end;
-	if rec.path == "A" then
+	if rec.path == "A" and not rec.fw then
 		local pk = nil;
 		if type(rec.pa) == "number" then pk = 1; end;
 		TRF_Ev_Short(idx, rec.cls, pk);
@@ -566,6 +567,8 @@ function TRF_Ev_Kill(id, rec, h)
 	end;
 	TRF_EvE("kill", "trader_id", id, "system_index", idx, "by", by, "last_attack_time", TRF_F(rec.pa), "game_time", TRF_F(gt),
 		"kill_count", L.kills, "ship_count", rec.np);
+	-- Wolves Freight (trf_freight): the on-screen loss of the player's freighter, before the record is stripped.
+	if rec.fw then TRF_P("TRF_Fr_Killed", id, rec, by, idx); end;
 	call(TRF_Ev_KillV2, {id, rec, by, idx}, "x", TRF_PErr);
 	call(TRF_Ev_KillV1, {id, rec, by, idx}, "x", TRF_PErr);
 	-- Survivors (design/survivors-spec.md): the witnessed loss and its beacon, before the record is stripped.

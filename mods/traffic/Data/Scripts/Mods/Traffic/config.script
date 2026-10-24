@@ -29,6 +29,10 @@
 -- entry); enable_stash_retrieval (treasurer flights) is the step 1 toggle; enable_stash_decoys (dropped, 00 section 8
 -- E3) and stash_ret_war (group war while Pirates are not at war with the player, 00 E2) stay 0; stash_at and the tune
 -- keys (stash_gap, stash_ttl, stash_intel_k, ...) read the module defaults.
+-- Wolves Freight (design/freight-spec.md 6): enable_freight (default 1) = 0 turns trf_freight off (no box, no lines, no
+-- ticks, no on-screen ship); fw_onscreen and fw_losses are the step 1 toggles; fw_max_ships stays 1 (slots 2 and 3 are
+-- step 2); fw_prize_gap 1 holds a payout in the shared prize gap, fw_marker 1 marks the on-screen ship; the tune keys
+-- (fw_k, fw_price_k, fw_tick_real, fw_bank, ...) read the module defaults.
 -- Demand result page (design/demand-page-spec.md): demand_page (default 1) = 0 says the demand answer as a line (no
 -- page, no No witnesses); tune demand_k, witness_t, witness_r, witness_dead read the trf_supply TuneDef. demand_drop
 -- (default 0, until E0.4 confirms drops) = 1 leaves the robbed stacks in a cargo01_destroyed_inv container beside the
@@ -45,4 +49,5 @@ function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
 	enable_scars=1, enable_scar_loot=1, enable_scavengers=1, enable_scar_recorder=1, enable_salvage_licence=1,
 	cap_enable=1, cap_board=1, cap_intel=1, cap_chase=1, cap_capture=0, cap_force_eject=0, cap_vendetta=0,
 	enable_stashes=1, enable_stash_retrieval=1, enable_stash_decoys=0, stash_ret_war=0,
+	enable_freight=1, fw_max_ships=1, fw_onscreen=1, fw_losses=1, fw_prize_gap=1, fw_marker=1,
 	demand_page=1, demand_drop=0} end

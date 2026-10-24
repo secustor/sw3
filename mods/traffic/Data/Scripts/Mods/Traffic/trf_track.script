@@ -283,9 +283,9 @@ end;
 
 -- 1 when the live record counts as tracked (4.2): tb bit 1, or the v0.2 fields of the same events (focus
 -- line met, contract, counted attack, rescue, heat flee, comply), so a module that does not call
--- TRF_TrackMark still tracks. Supply convoys (own) never.
+-- TRF_TrackMark still tracks. Supply convoys (own) and the player's freighter (fw, trf_freight) never.
 function TRF_TkTracked(r)
-	if type(r) ~= "table" or r.own then return nil; end;
+	if type(r) ~= "table" or r.own or r.fw then return nil; end;
 	if TRF_Bit(r.tb, 1) == 1 or r.met or r.ct or r.cnt or r.res or r.fl == "heat" then return 1; end;
 	if TRF_TkRobbed(r) then return 1; end;
 	return nil;
@@ -377,7 +377,7 @@ end;
 function TRF_TrackMark(id, why)
 	if not TRF_TkOn() then return nil; end;
 	local r = TRF_Rec(id);
-	if type(r) ~= "table" or r.own then return nil; end;
+	if type(r) ~= "table" or r.own or r.fw then return nil; end;
 	if TRF_Bit(r.tb, 1) == 0 then
 		r.tb = TRF_BitSet(r.tb, 1);
 		TRF_TkStat("tk_mark");
@@ -393,7 +393,7 @@ function TRF_TrackWrite(id, sys, d, fr)
 	local ok, why = TRF_TkWriteOk();
 	if not ok then return nil, why; end;
 	local r = TRF_TkRaw(id);
-	if type(r) ~= "table" or r.own then return nil, "rec"; end;
+	if type(r) ~= "table" or r.own or r.fw then return nil, "rec"; end;
 	sys = TRF_TkIdx(sys);
 	if type(sys) ~= "number" or sys < 1 then return nil, "sys"; end;
 	local cur = TRF_CurIdx();
