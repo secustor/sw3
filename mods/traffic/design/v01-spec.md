@@ -346,7 +346,7 @@ OnActivate schedules `TRF_ArrivalLine` at `gt + 5`. It shows the band text when 
 | `ui`, `ui_out`, `ui_focus`, `ui_keys`, `arrival_line`, `meet` | 1, 1, 3, 0, 1, 1 | text toggles (8.1, 8.3) |
 | `heat`, `dis` | 1, 1 | 0: counters frozen; `dis = 0` also sets `f_dis = 1` and no added escorts |
 | `response` | 1 | own vanilla-equivalent attack response (10.3) |
-| `dock_mode` | 0 | 4.6: 0 removal at the approach point, 1 `ComeToTradeStation`, 2 `Move` |
+| `dock_mode` | 2 | 4.6: 0 removal at the approach point, 1 `ComeToTradeStation`, 2 `Move` to the docking position (default since 2026-10-25, change row 31) |
 | `sys_off` | `{}` | lowercase system names left vanilla |
 | `sys_deny` | `{}` | lowercase system names added to `TRF_Deny()` (vanilla while a mission is active) |
 | `dump` | 0 | periodic dump interval in game seconds (0 off) |

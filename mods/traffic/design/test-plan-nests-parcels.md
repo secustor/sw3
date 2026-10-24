@@ -15,12 +15,12 @@ Plan for the game-only checks of the two newest modules: E16.1-E16.11 of `nest-s
 
 ## 2. Installs and runs
 
-Game closed for every install. Keys: `EXP=0` (v1 mode; the script's default `EXP=1` is the hook experiment), `LOG=2` (run B: `LOG=3`, so the `approach` and `docked` debug lines of D-DOCK are recorded; `DOCK_MODE=2` is the default and is given in run B to make the mode explicit), `AUTOSAVE=0`, `VOICE_FEE=0` (the station hub-surcharge box at `pro` >= 8 would take the docking and block the parcel box, `trf_plumb` `after_fee`), offers at every docking (`pcl_offer_pct`, `pcl_offer_rpct`, `pcl_plain_pct` 100; the E-PCL facts do not depend on the rates). No `PROFILE=lab`: its `T_leg=5` makes deadlines and refills run 60 times faster.
+Game closed for every install. Keys: `EXP=0` (v1 mode; the script's default `EXP=1` is the hook experiment), `LOG=2` (the `approach` and `docked` lines of D-DOCK are level 2 too, so run B needs no higher level; they are recorded; `DOCK_MODE=2` is the default and is given in run B to make the mode explicit), `AUTOSAVE=0`, `VOICE_FEE=0` (the station hub-surcharge box at `pro` >= 8 would take the docking and block the parcel box, `trf_plumb` `after_fee`), offers at every docking (`pcl_offer_pct`, `pcl_offer_rpct`, `pcl_plain_pct` 100; the E-PCL facts do not depend on the rates). No `PROFILE=lab`: its `T_leg=5` makes deadlines and refills run 60 times faster.
 
 | Run | Command | For |
 |---|---|---|
 | A | `EXP=0 TRAFFIC=1 LOG=2 AUTOSAVE=0 VOICE_FEE=0 NESTS=0 PARCELS=1 PCL_PROBE=1 TUNE=pcl_offer_pct=100,pcl_offer_rpct=100,pcl_plain_pct=100 sh mods/traffic/install-test.sh` | E-PCL.1-6, parcel flow; nest baseline: E16.2, the vanilla half of E16.1, E16.8 |
-| B | `EXP=0 TRAFFIC=1 LOG=3 DOCK_MODE=2 AUTOSAVE=0 VOICE_FEE=0 NESTS=1 NEST_MODE=1 PARCELS=1 PCL_PROBE=1 TUNE=pcl_offer_pct=100,pcl_offer_rpct=100,pcl_plain_pct=100,pcl_waive_help=0 sh mods/traffic/install-test.sh` | E16.1, E16.3-E16.9, D-DOCK; the `Cargo_002` waiver case (`pcl_waive_help` 0: every container parcel is waived) |
+| B | `EXP=0 TRAFFIC=1 LOG=2 DOCK_MODE=2 AUTOSAVE=0 VOICE_FEE=0 NESTS=1 NEST_MODE=1 PARCELS=1 PCL_PROBE=1 TUNE=pcl_offer_pct=100,pcl_offer_rpct=100,pcl_plain_pct=100,pcl_waive_help=0 sh mods/traffic/install-test.sh` | E16.1, E16.3-E16.9, D-DOCK; the `Cargo_002` waiver case (`pcl_waive_help` 0: every container parcel is waived) |
 | C | as B with `NEST_MODE=2` and without `pcl_waive_help=0` | E16.11; only when B fails E16.1, E16.3 or E16.4 |
 
 Each run: `SECS=0 sh mods/traffic/run-test.sh` (waits until you quit the game), then score it (section 6). Watch the lines live with `tail -F ~/Games/Heroic/sw3-tp-test/sw3tp.log | /usr/bin/grep -a --line-buffered -E 'module=(nest|parcel) |box=parcel|event=shortage'`.
@@ -163,7 +163,7 @@ Distances from Kadi (portal graph, `map.script`): Hanoi 1, Prien 1, XK16 2 (via 
 ### PCL.flow (not a CHECK item; the pass criteria need it)
 - PASS: one `event=deliver ... units_found=<units>` with `paid + held = pay`, one `event=fail ... reason=late`. Listed for information: partial deliveries, voids, pending lines, waived accepts (`deposit=0`), relief deliveries (`kind=2`), shortages a relief parcel can target.
 
-### D-DOCK Trader docking mode 2 (run B, `DOCK_MODE=2 LOG=3`; game: once)
+### D-DOCK Trader docking mode 2 (run B, `DOCK_MODE=2`; game: once)
 - Eyes: a trader bound for the trade station flies to its docking position and vanishes there (not 300 units out).
 - PASS: `module=generator event=approach ... dock_mode=2` followed by `event=docked ... arrival_kind=2` for the same `trader_id`.
 - FAIL: 3 or more `approach` lines with `dock_mode=2` and no `docked` with `arrival_kind=2` for any trader (traders were only removed by the `dock_to` timeout): set `DOCK_MODE=1` or `0`, report the distance the traders stopped at.
