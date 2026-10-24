@@ -638,12 +638,15 @@ function T_DM_E()
 	n0 = S_Mark();
 	TRF_Supply_Dump();
 	HOST_Check(S_Logs(n0, "demand_page_option=1 prey_count=1") == 1, "dump: demand_page_option, prey_count");
-	-- Worst cases: the count path {t, w, b, d, v}; the typed path {t, w, v, wc, wt} with a 63 character template.
+	-- Worst cases: the count path {t, w, b, d, v}; the typed path unseen {t, w, d, v} and seen {t, w, v, wc, wt} with a
+	-- 63 character template (a typed witness clears d).
 	local pw = {t=99999999.5, w=1, b=999, d=8, v="count"};
 	local tw = {t=99999999.5, w=1, v="typed", wc=9, wt=strrep("x", 63)};
-	local one = max(HOST_SaveSize(pw), HOST_SaveSize(tw)) + 8 + strlen("dw");
+	local tu = {t=99999999.5, w=0, d=8, v="typed"};
+	local one = max(max(HOST_SaveSize(pw), HOST_SaveSize(tw)), HOST_SaveSize(tu)) + 8 + strlen("dw");
 	local sz = 8 * one;
-	print("HOST demand dw worst case bytes "..sz.." ("..one.." per record; count "..HOST_SaveSize(pw)..", typed "..HOST_SaveSize(tw)..")");
+	print("HOST demand dw worst case bytes "..sz.." ("..one.." per record; count "..HOST_SaveSize(pw)..", typed "..HOST_SaveSize(tw)
+		..", typed unseen "..HOST_SaveSize(tu)..")");
 	HOST_Check(one == 189 and sz <= 1512, "dw: 189 bytes per record, "..sz.." bytes on 8 live records <= 1512 (spec 3)");
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF");
 	V_ClearTr();
@@ -835,15 +838,15 @@ function T_DM_H()
 	local h = HOST();
 	DM_Begin();
 	TRF_Carcasses = HOST_Carcasses;
-	-- Rocket (cls 12) and wreck (cls 10) beside the kill: no witness; the mark has no background, the kill no wreck
-	-- counter, the retraction logs via=typed.
+	-- Rocket (cls 12) and wreck (cls 10) beside the kill: no witness; the mark has no background, the unseen kill
+	-- counts dw.d (for a later count kill), the retraction logs via=typed.
 	h.carc_n = 0;
 	local nm = S_Mark();
 	local id, r, pw, n0 = DM_TypedKill({{id=901, cls=12, tpl="rocket_x", hp=10, hpmax=10, pl=0, dx=50},
 		{id=902, cls=10, tpl="wreck_hull", hp=50, hpmax=100, pl=0, dx=120}}, 7000);
 	HOST_Check(type(pw) == "table" and pw.b == nil and pw.v == "typed" and h.carc_n >= 2, "mark on the typed path: no background, dw.v typed ("..TRF_Dump(pw)..")");
 	HOST_Check(S_Logs(n0, "event=demand_kill trader_id="..id.." ship=1 witness_count=0 reason=none witnessed=false via=typed") >= 1
-		and S_Logs(n0, "witnessed=true") == 0 and pw.d == nil, "rocket and wreck at the kill: not seen, no dw.d");
+		and S_Logs(n0, "witnessed=true") == 0 and type(pw.d) == "number" and pw.d >= 1, "rocket and wreck at the kill: not seen, dw.d counted");
 	HOST_Check(S_Logs(n0, "event=demand_retract trader_id="..id.." by=player age=") == 1 and S_Logs(n0, "heat=2 via=typed") == 1
 		and TRF.std.heat == 2, "retracted, via=typed (heat "..TRF.std.heat..")");
 	HOST_Check(S_Logs(nm, "module=supply event=witness_probe trader_id="..id.." radius=3000 typed_count=") == 1
@@ -959,6 +962,47 @@ function T_DM_H()
 	T_Tick(2, 0.5);
 	HOST_Check(S_Logs(n0, "event=demand_witnessed trader_id="..id11.." reason=witness") == 1
 		and S_Logs(n0, "via=typed witness_cls=8 witness_tpl=station_ftu") >= 2, "the mixed mark ends witnessed with the typed witness");
+	-- A map station 600 from the kill and no cls 8 or 9 record in the list (the DLL's position cache missed it): the
+	-- map test runs on the typed path as well, seen with reason=station, witness_cls=8 and the station's label.
+	local st = TRF_Map().sys[TRF_CurIdx()].st[1];
+	local id12, r12, x12 = DM_Trader({x=st.x + 600, y=st.y, z=st.z}, 2);
+	h.carc = DM_OwnRecs(x12, DM_Uids(x12, 7700));
+	local pw12 = DM_Mark(id12);
+	n0 = S_Mark();
+	DM_Kill(id12, 1);
+	T_Tick(2, 0.5);
+	HOST_Check(type(pw12) == "table" and pw12.v == "typed" and pw12.w == 1 and pw12.wc == 8 and pw12.wt == strsub(st.label, 1, 63)
+		and S_Logs(n0, "event=demand_kill trader_id="..id12.." ship=1 witness_count=") == 1
+		and S_Logs(n0, "reason=station witnessed=true via=typed witness_cls=8 witness_tpl=") == 1
+		and S_Logs(n0, "event=demand_witnessed trader_id="..id12.." reason=witness") == 1
+		and S_Logs(n0, "result=witnessed via=typed witness_cls=8 witness_tpl=") == 1 and S_Logs(n0, "event=demand_retract") == 0,
+		"typed mark, a map station and no station record: seen, reason=station, the map label ("..TRF_Dump(pw12)..")");
+	-- A typed mark, the first transport unseen on the typed path (dw.d 1), TRF_Near nil at the second death with the
+	-- first one's wreck in the count (witness_slack 0, so one carcass would be a witness): dw.d takes the wreck off,
+	-- not seen, retracted via=count.
+	h.cfg.tune = {witness_slack=0};
+	local id13, r13, x13 = DM_Trader(nil, 2);
+	DM_Tp2(x13);
+	h.carc = DM_OwnRecs(x13, DM_Uids(x13, 7800));
+	local pw13 = DM_Mark(id13);
+	n0 = S_Mark();
+	x13.tp[1].alive = nil;
+	TRF_OnShipDied(id13, 1, TRF.gen);
+	HOST_Check(type(pw13) == "table" and pw13.v == "typed" and pw13.b == nil and pw13.d == 1 and pw13.w == 0
+		and S_Logs(n0, "event=demand_kill trader_id="..id13.." ship=1 witness_count=0 reason=none witnessed=false via=typed") == 1,
+		"typed mark, first transport unseen on the typed path: dw.d 1 ("..TRF_Dump(pw13)..")");
+	local p13 = x13.tp[1].pos;
+	h.carc_why = "off";
+	h.cc_ships = {Vector3(p13.x, p13.y, p13.z)};
+	for k = 1, getn(x13.sh) do x13.sh[k].alive = nil; end;
+	for k = 2, getn(x13.tp) do TRF_OnShipDied(id13, k, TRF.gen); end;
+	T_Tick(2, 0.5);
+	h.carc_why = nil;
+	h.cc_ships = {};
+	h.cfg.tune = nil;
+	HOST_Check(pw13.d == 2 and S_Logs(n0, "event=demand_kill trader_id="..id13.." ship=2 witness_count=0 reason=none witnessed=false via=count") == 1
+		and S_Logs(n0, "event=demand_retract trader_id="..id13) == 1 and S_Logs(n0, "heat=2 via=count") == 1,
+		"typed mark, TRF_Near nil at the second death: the first wreck taken off by dw.d, retracted via=count ("..TRF_Dump(pw13)..")");
 	TRF_Carcasses = nil;
 	h.carc = nil;
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF");
