@@ -137,6 +137,21 @@ function DM_Escorts(x)
 	return n;
 end;
 
+-- A second transport in flight x when the spawn plan gave one: a CreateCarcass ship (ClearInventory for the
+-- comply, hp, IsAlive) 30..90 from the first (the first spot free of HOST().block_r), in tp and sh.
+function DM_Tp2(x)
+	if getn(x.tp) >= 2 then return; end;
+	local p = x.tp[1].pos;
+	local e = nil;
+	for d = 30, 90, 30 do
+		if not e then e = CreateCarcass(x.tp[1].tpl, Vector3(p.x + d, p.y, p.z)); end;
+	end;
+	HOST_Check(e ~= nil, "DM_Tp2: a second transport could be made");
+	if not e then return; end;
+	tinsert(x.tp, e);
+	tinsert(x.sh, e);
+end;
+
 -- Mark trader id as prey through the page boxes (comply page OK, question OK) from a fresh demand.
 function DM_Mark(id)
 	DM_Demand(id, 1);
@@ -564,12 +579,7 @@ function T_DM_F()
 	-- carcass would be a witness): not seen. A second transport is added when the flight has one.
 	h.cfg.tune = {witness_slack=0};
 	local id4, r4, x4 = DM_Trader(nil, 2);
-	if getn(x4.tp) < 2 then
-		local e = HOST_Obj("tp2", x4.tp[1].pos.x + 30, 0, x4.tp[1].pos.z);
-		e.kind = "ship";
-		tinsert(x4.tp, e);
-		tinsert(x4.sh, e);
-	end;
+	DM_Tp2(x4);
 	local pw4 = DM_Mark(id4);
 	p = x4.tp[1].pos;
 	n0 = S_Mark();
@@ -850,6 +860,12 @@ function T_DM_H()
 	id3, r2, pw2, n0 = DM_TypedKill({{id=904, cls=3, tpl="pirate_ship", team="Pirates", hp=300, hpmax=300, pl=0, dx=300}}, 7200);
 	HOST_Check(TRF_SpT("witness_slack", 1) == 1 and S_Logs(n0, "event=demand_witnessed trader_id="..id3) == 1
 		and S_Logs(n0, "witness_cls=3 witness_tpl=pirate_ship") == 2, "one vanilla ship: seen at slack 1");
+	-- A ship listed before a station: the station is the witness of record (reason=station, witness_cls=9).
+	local id3b;
+	id3b, r2, pw2, n0 = DM_TypedKill({{id=908, cls=3, tpl="pirate_ship", team="Pirates", hp=300, hpmax=300, pl=0, dx=300},
+		{id=909, cls=9, tpl="station_trade", team="FTU", hp=9000, hpmax=9000, pl=0, dx=700}}, 7250);
+	HOST_Check(S_Logs(n0, "event=demand_kill trader_id="..id3b.." ship=1 witness_count=2 reason=station witnessed=true via=typed witness_cls=9 witness_tpl=station_trade") == 1
+		and S_Logs(n0, "result=witnessed via=typed witness_cls=9 witness_tpl=station_trade") == 1, "a ship before a station in the list: reason=station, the station logged");
 	-- The player's fighter (pl=1) 200 away: not seen, no player-fighter search needed.
 	local id4;
 	id4, r2, pw2, n0 = DM_TypedKill({{id=905, cls=6, tpl="Interceptor_X", team="PlayerTeam", hp=400, hpmax=600, pl=1, dx=200}}, 7300);
@@ -923,12 +939,7 @@ function T_DM_H()
 	-- station: dw.b and dw.d cleared, so the mark keeps the size of spec 3.
 	h.carc_why = "off";
 	local id11, r11, x11 = DM_Trader(nil, 2);
-	if getn(x11.tp) < 2 then
-		local e = HOST_Obj("tp2", x11.tp[1].pos.x + 30, 0, x11.tp[1].pos.z);
-		e.kind = "ship";
-		tinsert(x11.tp, e);
-		tinsert(x11.sh, e);
-	end;
+	DM_Tp2(x11);
 	local pw11 = DM_Mark(id11);
 	n0 = S_Mark();
 	x11.tp[1].alive = nil;

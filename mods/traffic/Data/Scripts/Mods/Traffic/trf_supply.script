@@ -1509,11 +1509,11 @@ function TRF_SpUid(o)
 end;
 
 -- TRF_Near filter of a witness: a ship or station (cls 3..9) with hp > 0 outside the player's team (pl ~= 1), not
--- one of the flight's own ships (uids of h.sh and h.tp) and not a drop container (its template, and the uids of
--- the live containers in TRF_H().dp).
+-- one of the flight's own ships (uids of h.sh, which holds the transports h.tp as well) and not a drop container
+-- (its template, and the uids of the live containers in TRF_H().dp).
 function TRF_SpWitF(h)
 	local ids, ls = {}, {};
-	if type(h) == "table" then ls = {h.sh or {}, h.tp or {}}; end;
+	if type(h) == "table" and type(h.sh) == "table" then tinsert(ls, h.sh); end;
 	local H = TRF_SpH();
 	if type(H) == "table" and type(H.dp) == "table" and type(H.dp.o) == "table" then
 		local q = {};
@@ -1537,12 +1537,12 @@ function TRF_SpNear(p, f)
 	return nil;
 end;
 
--- CHECK W5 (spec 10), level 2, at a typed mark: the records of cls 2..13 within 3000 of p against
+-- CHECK W5 (spec 10), level 2, at a typed mark: every record (no filter, cls -1 included) within 3000 of p against
 -- GetCarcassCountInSphere there, and the record of the leader o (uid) with its team and hp against GetCurHP.
 function TRF_SpProbe(id, p, o)
 	if TRF_SpLog() < 2 then return; end;
 	local R = 3000;
-	local l = TRF_SpX("TRF_Near", p, R, {cls={2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}});
+	local l = TRF_SpX("TRF_Near", p, R);
 	if type(l) ~= "table" then return; end;
 	local u = TRF_SpUid(o);
 	local c = nil;
@@ -1567,8 +1567,9 @@ function TRF_SpBack(p, h, id)
 	return max(0, n - ns - np - TRF_SpOwnNear(h, p, R) - TRF_SpPlayerNear(p, R) - TRF_SpDropNear(p, R) - TRF_SpOthersNear(id, p, R)), "count";
 end;
 
--- Witnesses of a kill at p: count, reason, via, first witness record. Typed (spec 5.8): the TRF_SpWitF records
--- within witness_r (reason station for cls 8 or 9, else ship), b and nd unused. Count path: the map stations
+-- Witnesses of a kill at p: count, reason, via, witness record. Typed (spec 5.8): the TRF_SpWitF records within
+-- witness_r; the record is the first station among them (cls 8 or 9, reason station, as the count path puts stations
+-- first), else the first record (reason ship); b and nd unused. Count path: the map stations
 -- within witness_r, else the count less the background b, the map portals, the mothership, the player's other
 -- ships, the flight's live ships, the live drop containers, the nd transports of the flight that died earlier in
 -- the mark (their wrecks, CHECK W3) and tune witness_dead; seen when that excess is more than tune witness_slack
@@ -1577,10 +1578,9 @@ function TRF_SpWitness(p, h, b, nd)
 	if type(p) ~= "table" then return 1, "no_position", nil, nil; end;
 	local l = TRF_SpNear(p, TRF_SpWitF(h));
 	if l then
-		local c = l[1];
-		if not c then return 0, "none", "typed", nil; end;
-		if c.cls == 8 or c.cls == 9 then return getn(l), "station", "typed", c; end;
-		return getn(l), "ship", "typed", c;
+		if not l[1] then return 0, "none", "typed", nil; end;
+		for i = 1, getn(l) do if l[i].cls == 8 or l[i].cls == 9 then return getn(l), "station", "typed", l[i]; end; end;
+		return getn(l), "ship", "typed", l[1];
 	end;
 	local R = TRF_SpT("witness_r", 1500);
 	local ns, np = TRF_SpStatic(p, R);
@@ -1609,12 +1609,12 @@ function TRF_DemandNoWit(id)
 	local b, via = nil, nil;
 	local lead = TRF_SpLead(id);
 	local p = TRF_SpPos(lead);
-	if p then b, via = TRF_SpBack({x=p.x, y=p.y, z=p.z}, TRF_SpHTr(id), id); end;
+	if p then p = {x=p.x, y=p.y, z=p.z}; b, via = TRF_SpBack(p, TRF_SpHTr(id), id); end;
 	r.dw = {t=TRF_SpGt(), w=0, b=b, v=via};
 	TRF_SpStat("dm_nowit");
 	TRF_SpE("demand_prey", "trader_id", id, "background_count", b, "ship_count", r.np, "window", TRF_SpT("witness_t", 180),
 		"result", "marked", "via", via);
-	if via == "typed" then TRF_SpProbe(id, {x=p.x, y=p.y, z=p.z}, lead); end;
+	if via == "typed" then TRF_SpProbe(id, p, lead); end;
 	return "prey";
 end;
 
