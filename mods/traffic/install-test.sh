@@ -39,6 +39,8 @@
 # STASHES=0|1 (cfg enable_stashes, clan stashes, design/stash-spec.md); STASH_AT=<system> (debug: a known cache record
 # there, placed at its entry, CHECK E7.1-E7.11); written only when set.
 # FREIGHT=0|1 (cfg enable_freight, Wolves Freight, design/freight-spec.md, CHECK EW8.1-EW8.8); written only when set.
+# PARCELS=0|1 (cfg enable_parcels, sealed parcels, design/parcel-spec.md, CHECK E-PCL.1-E-PCL.6; LEVEL=v01/v02 write 0
+# unless PARCELS is set); PCL_PROBE=0|1 (cfg pcl_probe, the E-PCL.1/E-PCL.2 probe lines); written only when set.
 # NESTS=0|1 (cfg nest, dynamic nests, design/nest-spec.md, CHECK E16.1-E16.11); NEST_MODE=1|2 (cfg nest_mode, 2 the
 # delete-and-replace fallback, E16.11); written only when set.
 # NEWS=1: the trf_* records of news/trf_news.xml (tools/gen_news.py) merged into the clone's Data/Game/News.xml
@@ -76,8 +78,8 @@ case "${NEWS:-0}" in 0) ;; 1) NEWS_MODE=${NEWS_MODE:-2} ;; *) echo "NEWS must be
 LEVEL=${LEVEL:-v1}
 case "$LEVEL" in
 v1) pre= ;;
-v02) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0" ;;
-v01) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 prosperity=0 seed=0 parked=0 queue=0 raids=0 staged=0 contracts=0 meet=1 board=0 shop_mode=0 short_price=0 news_mode=0 esc_flight=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0" ;;
+v02) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0" ;;
+v01) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 prosperity=0 seed=0 parked=0 queue=0 raids=0 staged=0 contracts=0 meet=1 board=0 shop_mode=0 short_price=0 news_mode=0 esc_flight=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0" ;;
 *) echo "LEVEL must be v01, v02 or v1" >&2; exit 1 ;;
 esac
 for e in $pre; do
@@ -95,6 +97,8 @@ for e in $pre; do
     [ "${e%%=*}" = enable_stashes ] && [ -n "${STASHES:-}" ] && continue
     # enable_freight is set by FREIGHT (below), which overrides the preset.
     [ "${e%%=*}" = enable_freight ] && [ -n "${FREIGHT:-}" ] && continue
+    # enable_parcels is set by PARCELS (below), which overrides the preset.
+    [ "${e%%=*}" = enable_parcels ] && [ -n "${PARCELS:-}" ] && continue
     eval v=\${$(printf '%s' "${e%%=*}" | tr 'a-z' 'A-Z'):-}
     [ -n "$v" ] || opt="$opt, $e"
 done
@@ -132,6 +136,8 @@ case "${SCAR_LOOT:-}" in "") ;; 0|1) opt="$opt, enable_scar_loot=$SCAR_LOOT" ;; 
 case "${CAPTAINS:-}" in "") ;; 0|1) opt="$opt, cap_enable=$CAPTAINS" ;; *) echo "CAPTAINS must be 0 or 1" >&2; exit 1;; esac
 case "${STASHES:-}" in "") ;; 0|1) opt="$opt, enable_stashes=$STASHES" ;; *) echo "STASHES must be 0 or 1" >&2; exit 1;; esac
 case "${FREIGHT:-}" in "") ;; 0|1) opt="$opt, enable_freight=$FREIGHT" ;; *) echo "FREIGHT must be 0 or 1" >&2; exit 1;; esac
+case "${PARCELS:-}" in "") ;; 0|1) opt="$opt, enable_parcels=$PARCELS" ;; *) echo "PARCELS must be 0 or 1" >&2; exit 1;; esac
+case "${PCL_PROBE:-}" in "") ;; 0|1) opt="$opt, pcl_probe=$PCL_PROBE" ;; *) echo "PCL_PROBE must be 0 or 1" >&2; exit 1;; esac
 case "${NESTS:-}" in "") ;; 0|1) opt="$opt, nest=$NESTS" ;; *) echo "NESTS must be 0 or 1" >&2; exit 1;; esac
 case "${NEST_MODE:-}" in "") ;; 1|2) opt="$opt, nest_mode=$NEST_MODE" ;; *) echo "NEST_MODE must be 1 or 2" >&2; exit 1;; esac
 if [ -n "${PRO_SET:-}" ]; then

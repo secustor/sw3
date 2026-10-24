@@ -173,13 +173,13 @@ function NE_Rel(a, b) return GetGroupRelation(a, b); end;
 function T_NE_A()
 	local h = HOST();
 	NE_Begin("gaoba");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=10") >= 1, "trf_nest loads last (extra_count=10)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=11") >= 1, "trf_nest loads before trf_parcel (extra_count=11)");
 	local ml = TRF_ModList();
-	HOST_Check(ml[getn(ml)] == "Nest" and TRF_Opt("nest") == 1 and TRF_Nest_OptDef().nest == 0 and TRF_NeOpt("nest_mode") == 1
+	HOST_Check(ml[getn(ml) - 1] == "Nest" and TRF_Opt("nest") == 1 and TRF_Nest_OptDef().nest == 0 and TRF_NeOpt("nest_mode") == 1
 		and TRF_NeOpt("nest_trig") == 2 and TRF_NeOpt("nest_lines") == 1 and TRF_NeOpt("nest_mirror") == 1 and TRF_NeOpt("nest_grudge_war") == 0,
 		"TRF_ModList has Nest; nest off by default (on in these runs), mode 1, per-ship triggers, lines and mirror on, grudge war off");
 	local pm, pg = TRF_PlMods(), TRF_PlGroups();
-	HOST_Check(pm[getn(pm)] == "Nest" and pg[getn(pg)] == "Nest" and TRF_PlAdopt().Nest == 1, "trf_plumb: Nest registers, its group prefix is scanned, its ships adopted at load");
+	HOST_Check(pm[getn(pm) - 1] == "Nest" and pm[getn(pm)] == "Pc" and pg[getn(pg)] == "Nest" and TRF_PlAdopt().Nest == 1, "trf_plumb: Nest registers (before Pc), its group prefix is scanned, its ships adopted at load");
 	HOST_Check(NewPirateFlight ~= TRF_orig_NewPirateFlight and TRF_NeIsMine(NewPirateFlight) and type(TRF_orig_NewPirateFlight) == "function"
 		and not TRF_NeIsMine(TRF_orig_NewPirateFlight), "NewPirateFlight wrapped once over this run's vanilla function");
 	local w0 = NewPirateFlight;

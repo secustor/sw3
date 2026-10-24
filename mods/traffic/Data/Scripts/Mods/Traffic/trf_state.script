@@ -67,7 +67,7 @@ end;
 -- v0.2 and v1 modules with TRF_<M>_OptDef, TRF_<M>_TuneDef and TRF_<M>_Dump (v0.2 spec 10.2, 10.4; v1 10.1).
 function TRF_ModList()
 	return {"Rg", "Tier", "Raid", "Hail", "Shop", "Loc", "Track", "Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Pl", "Stn",
-		"Sv", "Lad", "Ch", "Sc", "Cap", "Sh", "Fr", "Nest"};
+		"Sv", "Lad", "Ch", "Sc", "Cap", "Sh", "Fr", "Nest", "Pc"};
 end;
 
 -- Value of key in the first module table getglobal("TRF_"..M..suffix)() that has it, else nil.
@@ -648,6 +648,7 @@ function TRF_Repair()
 	TRF_P("TRF_Sh_Fix");
 	TRF_P("TRF_Fr_Fix");
 	TRF_P("TRF_Nest_Fix");
+	TRF_P("TRF_Pc_Fix");
 	-- cfg enabled 2 (restore-and-stop, trf_nest not loaded): the dynamic nest fields go (design 16 section 6, Removal).
 	if type(TRF_Cfg) == "function" and TRF_Cfg().enabled == 2 then
 		TRF.nest = nil; TRF.nv = nil; TRF.nst = nil;

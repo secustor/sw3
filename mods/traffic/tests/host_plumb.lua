@@ -97,9 +97,9 @@ function T_PL_A()
 	-- (design/charter-spec.md 4): trade line 70, trade box 200, one owed payer; wanted captains (design/captain-spec.md 4):
 	-- patrol line 35, patrol box 100, one owed payer, seed providers 810 and 540; clan stashes (design/stash-spec.md 4):
 	-- pirate line 20, patrol line 40, pirate box 100; Wolves Freight (design/freight-spec.md 4): trade line 60, trade box
-	-- 300, seed provider 400.
-	HOST_Check(c2.line == 11 and c2.box == 8 and c2.none == 1 and c2.ej == 1 and c2.owe == 3 and c2.seed == 12 and c2.coh == 1,
-		"traffic registrations: 11 lines, 8 boxes, 1 none handler, 1 eject handler, 3 payers, 12 seed providers, 1 CostOfHead handler");
+	-- 300, seed provider 400; sealed parcels (design/parcel-spec.md 4): trade line 20, trade box 400, one owed payer.
+	HOST_Check(c2.line == 12 and c2.box == 9 and c2.none == 1 and c2.ej == 1 and c2.owe == 4 and c2.seed == 12 and c2.coh == 1,
+		"traffic registrations: 12 lines, 9 boxes, 1 none handler, 1 eject handler, 4 payers, 12 seed providers, 1 CostOfHead handler");
 	local o1 = TRF_orig_CostOfHead;
 	T_Jump("aurora");
 	T_Jump("gredos");
@@ -434,8 +434,8 @@ function T_PL_D()
 	HOST_Check(getn(at) == 2 and at[1] < 1 and at[2] >= 3 and at[2] < 4, "late lines: the first at once, the second 3 s after it is due ("..tostring(at[1])..", "..tostring(at[2])..")");
 	T_SaveLoad();
 	HOST_Check(TRF_ArrivalLine("p5", "P arr 5") == nil, "after a load: no arrival line (no entry)");
-	-- Job slot.
-	HOST_Check(TRF_JobTake(1, {s=3, pay=500}) == 1 and TRF_JobTake(5, {}) == nil and TRF_JobGet().k == 1 and TRF_JobGet().s == 3, "job slot: one open job");
+	-- Job slot (kind 9: no feature uses it, so the parcel repair of kinds 1..4 leaves the record alone).
+	HOST_Check(TRF_JobTake(9, {s=3, pay=500}) == 1 and TRF_JobTake(5, {}) == nil and TRF_JobGet().k == 9 and TRF_JobGet().s == 3, "job slot: one open job");
 	T_SaveLoad();
 	HOST_Check(TRF_JobGet() and TRF_JobGet().pay == 500, "job slot: saved");
 	HOST_Check(TRF_JobClear() == 1 and TRF_JobGet() == nil and TRF_JobTake(5, {t={}}) == nil
@@ -444,7 +444,7 @@ function T_PL_D()
 	TRF_Pl_Fix();
 	HOST_Check(TRF.job == nil, "repair: a broken job is dropped");
 	HOST_Check(TRF_JobTake(strrep("k", 25), {}) == nil and TRF.job == nil, "job kind longer than 24 refused");
-	TRF.job = {k=1, s=strrep("x", 30)};
+	TRF.job = {k=9, s=strrep("x", 30)};
 	TRF.mk = strrep("x", 300);
 	TRF_Pl_Fix();
 	HOST_Check(TRF.job == nil and TRF.mk == nil, "repair: a job string over 24 and a TRF.mk over 272 characters dropped");

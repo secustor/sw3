@@ -341,6 +341,36 @@ HOST().ms.AddModuleToInventory = function(self, it, n)
 	print("HOST ms inventory +"..n.." "..it);
 	tinsert(self.inv, {it, n});
 end;
+-- Player inventory (lua-natives.md 264, 507, 510; sealed parcels, CHECK E-PCL.1): GetInventory() over HOST().ms.inv
+-- ({item, count} stacks). IsExist(name) pushes 1 while a stack of name holds a unit, else nil; DeleteModule(name) removes
+-- one unit (the 01 section 6 inference), the whole stack with HOST().inv_del_stack = 1 (the E-PCL.1 failure case).
+function GetInventory(...)
+	HOST_Want(arg.n == 0, "GetInventory()");
+	local inv = {__obj=1};
+	inv.IsExist = function(self, it)
+		HOST_Want(type(it) == "string", "Inventory:IsExist(module)");
+		local l = HOST().ms.inv;
+		for i = 1, getn(l) do if l[i][1] == it and l[i][2] > 0 then return 1; end; end;
+		return nil;
+	end;
+	inv.DeleteModule = function(self, it)
+		HOST_Want(type(it) == "string", "Inventory:DeleteModule(module)");
+		local l = HOST().ms.inv;
+		for i = 1, getn(l) do
+			if l[i][1] == it and l[i][2] > 0 then
+				if HOST().inv_del_stack == 1 then l[i][2] = 0; else l[i][2] = l[i][2] - 1; end;
+				return;
+			end;
+		end;
+	end;
+	return inv;
+end;
+-- Units of item it in the mothership inventory (scenario helper).
+function HOST_InvCount(it)
+	local l, n = HOST().ms.inv, 0;
+	for i = 1, getn(l) do if l[i][1] == it then n = n + l[i][2]; end; end;
+	return n;
+end;
 -- The mothership's pilot (side "Player") and flight: pwing lists the pilots of that flight after the mothership's
 -- (fighters, HOST_PlayerShip); crew maps a pilot name to a pilot for GetPilot (vanilla GetPilot("Hero")).
 HOST().pwing = {}; HOST().crew = {};

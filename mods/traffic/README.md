@@ -25,6 +25,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_stash.script` | Clan stashes step 1 ([design/stash-spec.md](design/stash-spec.md)): at most one hidden cache per clan region, a hollow radio-asteroid at an authored slot of an allow-list system (slots from `tools/gen_stash.py`), created and expired at the region tick in Build-up and Raids, filled from its seed, opened by shooting it (clan score, the open gap, a treasurer flight), sold as intel at rival pirate docks and tipped by patrol boards (`fst` +1 at the next docking). Loads after `trf_captain`. |
 | `trf_freight.script` | Wolves Freight step 1 ([design/freight-spec.md](design/freight-spec.md)): one chartered bulk freighter (`Btransport`) bought from the FTU charter box at a trade dock, running the loop of its region (loops from `tools/gen_map.py`) on real-time-gated freight ticks with a seeded robbery and loss roll, paying at any trade dock once per visit, carrier liability and the cover voucher on a loss, on-screen at its stops as a trader with the flag `fw` (escort cover, no traffic pay or help). Loads after `trf_stash`. |
 | `trf_nest.script` | Dynamic nests step 1 ([design/nest-spec.md](design/nest-spec.md)): the scripted pirate flights of 58 systems become the nest of the region's clan. A wrapper of `NewPirateFlight`, armed only while `activate.script` runs, builds each listed flight in group `TRF_Nest_1` at the clan tier's power or answers with a stub; the count follows the region phase and a kill memory that refills per region tick (table from `tools/gen_nest.py`). Off by default (cfg `nest`). Loads after `trf_freight`. |
+| `trf_parcel.script` | Sealed parcels step 1 ([design/parcel-spec.md](design/parcel-spec.md)): the FTU courier desk at trade docks offers sealed crates (`Cargo_crate`, `Cargo_002`) for a trade dock 2-4 jumps away, usually one with a real shortage (relief x1.25), deterministic per station and region-tick window, against a deposit; the job slot, logbook entry `trf_pcl`, nav marker, delivery with pay, help, visit credits and #3 standing, expiry with help -1 and a 6-leg ban, void with a refund, the chapter 4 guard docks and the chapter deny sets from `tools/gen_parcel.py`. Step 2 (contraband, customs, prototypes) not built. Loads after `trf_nest`. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -291,7 +292,7 @@ v1 ("identity across jumps and war traffic", design §12, spec [design/v1-spec.m
 - Equipment convoys: one at a time map-wide, from a faction with strength ≥ 2 in a `pro` ≥ 6 system, about once per 30–35 legs: military transports with faction warship escorts and holds of 85,000–400,000 cr. Wave 1 of faction reinforcements comes 20–30 s after the first counted attack, wave 2 at 50 % transport HP one rung higher. Killing it gives heat +3, faction standing −1, strength −1 and a forced Bust; pirates taking it give the clan salvage +3. The owner may offer a defence contract (4x escort pay, ≤ 30,000 cr).
 - Danger convoys: at disruption ≥ 4 or in a Raids-phase region, 2–3 traders gather at the trade station (up to 120 s) and leave together with 3–5 escorts; 20 % still fly alone.
 - Pirate bases: a clan founds a base (at most 2 map-wide) in an allow-list system that has stayed at disruption ≥ 6, never while the player is there. It holds a garrison, raises disruption around it, sends raids and survives leave, revisit, save and load. Destroying it resets the system's disruption and pays a bounty. Not active in-game yet: `map.script` has no allow-list (`ba`) until `gen_map.py` emits it (Status).
-- Text: all lines are English plain text (`lang` `ru` falls back to English per key until the RU table exists). `loc/trf_ru.loc` (cp1251) has 376 Russian keys for `loc_mode 1` in a Russian install (station voices, survivors, ladder, charter, scars, captains, stashes, Wolves Freight, dynamic nests, demand page; the core and v1 lines have none; unconfirmed in game) (`install-test.sh` `LOC=1` copies it to the clone's `Data/LocData/Russian/` when that folder exists).
+- Text: all lines are English plain text (`lang` `ru` falls back to English per key until the RU table exists). `loc/trf_ru.loc` (cp1251) has 411 Russian keys for `loc_mode 1` in a Russian install (station voices, survivors, ladder, charter, scars, captains, stashes, Wolves Freight, dynamic nests, sealed parcels, demand page; the core and v1 lines have none; unconfirmed in game) (`install-test.sh` `LOC=1` copies it to the clone's `Data/LocData/Russian/` when that folder exists).
 
 ### Config keys (v1)
 
@@ -790,6 +791,42 @@ Dynamic nests (proposal 16 step 1, spec [design/nest-spec.md](design/nest-spec.m
 ### In-game checks (nests)
 
 Experiments E16.1-E16.11 with the confirming lines in the spec section 10: the hook window (`event=activate ... unknown=0 missing=0`, ten substituted calls, no `ScriptErrors.log` line), the snapshot probe, pinned bounty flights, stubs and Pandora's gone flights, relations and the write-back, the load re-arm, the kill memory, cost at 8x, a quest started in a nest visit, the rate session and the fallback mode.
+
+## Sealed parcels (`EXP=0 TRAFFIC=1`)
+
+Sealed parcels (proposal 1 step 1, spec [design/parcel-spec.md](design/parcel-spec.md), design `design/worldbuilding/01-sealed-parcels.md`) is one module, `trf_parcel`, loaded after `trf_nest` (`module=core event=loaded ... extra_count=11`). State: the plumbing job slot `TRF.job` (kind 1 plain, 2 relief; the fields packed into six), `TRF.pcl` (counters, the last job, the ban, pending lines, held pay), `TRF.short[i].job`. It uses the plumbing: trade line 20 and box 400, an owed payer, the job slot, the nav marker, an arrival line, the shared prize gap; trf_shop's `TRF_ShortJob` and `TRF_ShortEnd`. The chapter deny sets are generated by `tools/gen_parcel.py` from `Game/Quests.xml`. Step 2 (contraband at pirate docks, customs, prototype parcels) is not built; its toggles are off. Implemented and host-tested (`pcl-a`..`pcl-h`), not run in the game.
+
+### What the player sees
+
+- From chapter 5, in free roam at a trade station with `pro` 3 or more, heat 2 or less, dockmaster standing 0 or more and no open job, in 60 % of region-tick windows (80 % with a real shortage in range; a plain parcel in half of the windows without one): the box "FTU courier desk" / `Taira station is out of machinery and the refinery is idle. Sealed parcel: 3 crates for the trade station at Taira, 3 jumps, 11 legs. Deposit 4,320 cr now, back on delivery. Pay 14,400 cr. Take it?`. A plain parcel (no shortage) goes to the poorest trade station in range. Cancel: not offered again in that visit.
+- Chapter 4 (guard): only between Aurora, Corrino and Pegas, 1-3 jumps, food containers (`Cargo_002`), no `pro` gate. Chapters 1-3: none. Systems a chapter's missions name are never source or destination in that chapter; New Kyoto, Fronn, Earth, the X sector and the InoCo core (without the permit) never are.
+- OK: the deposit is taken, the crates are in the hold, a logbook entry "Sealed parcel" opens. In the destination an arrival line and a nav marker on the station (none during a mission). Docking there: `Parcel received, seals intact. Deposit returned, 14,400 cr paid.` and, for a shortage, `Taira dock: the machinery shortage is over once your hold is empty.`; help +1, visit credits, dockmaster standing +1. A later visit within 10 legs: `Taira dock: the Wolves' crates kept the refinery running.` Crates missing: pay and deposit for the units aboard. At help 10 no deposit on food containers. Inside the 30-minute prize gap the pay waits for a later docking.
+- Late (deadline `3J + 2` legs, mission legs do not count): `Courier desk: the Taira parcel is overdue. Deposit forfeited.`, help -1 (-3 without a deposit), and for 6 legs `Courier desk: a parcel went missing with you. Come back in a while.` at every trade desk. The destination closed by the story or at war with you: `Courier desk: Taira station is not answering. Deposit refunded.`
+
+### Config keys (parcels)
+
+`config.script` lists `enable_parcels` and the three step 2 toggles; the other keys read the module defaults. `install-test.sh` writes `PARCELS` (`enable_parcels`; `LEVEL=v01` and `v02` write 0 unless `PARCELS` is set) and `PCL_PROBE` (`pcl_probe`); tune keys go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `enable_parcels` | 1 | 0 turns the module off (no box, lines or checks; an open job waits) |
+| `enable_contraband`, `enable_customs`, `enable_intercept` | 0 | step 2, read nowhere |
+| `pcl_prize_gap` | 1 | the pay waits inside the shared prize gap |
+| `pcl_logbook` | 1 | 0: no logbook entry (if E-PCL.4 shows the entry turns `GetPlayerQuestState` TRUE) |
+| `pcl_probe` | 0 | 1: the E-PCL.1/E-PCL.2 probe lines |
+| `pcl_deny`, `pcl_deny_ch` | `{}` | extra system names; extra chapter deny names `{[c] = {...}}` |
+| tune `pcl_k`, `pcl_relief_k` | 0.35, 1.25 | pay per jump, relief factor |
+| tune `pcl_offer_pct`, `pcl_offer_rpct`, `pcl_plain_pct` | 60, 80, 50 | offer windows |
+| tune `pcl_jmax`, `pcl_jmax_g`, `pcl_gap`, `pcl_ban` | 4, 3, 2, 6 | jumps, under the guard, jumps between jobs, ban legs |
+| tune `pcl_dep_k`, `pcl_dep_k2`, `pcl_waive_help` | 1.2, 0.5, 10 | deposit factors, waiver help |
+
+### Log lines (parcels)
+
+`module=parcel event=offer ... result=<shown|none|declined|failed>`, `event=accept ... result=<ok|poor|stale|error>`, `event=quest`, `event=reconcile`, `event=arrive`, `event=load`, `event=deliver`, `event=fail ... reason=<late|empty>`, `event=void`, `event=pending`, `event=owe`, `event=thanks`, `event=dock`, `event=signal`, `event=probe`, `event=repair`, `event=dump`; full list in `design/log-events.md` (parcel).
+
+### In-game checks (parcels)
+
+Experiments E-PCL.1-E-PCL.6 with the confirming lines in the spec section 10 (`PCL_PROBE=1 LOG=2`): the inventory hand-over and delete loop, sale prices of the crates, the box from the dock OK, the logbook entry and the mission signal, the dock identity at Kadenoa.
 
 ## Installing into the game
 

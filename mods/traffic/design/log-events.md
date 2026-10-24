@@ -271,6 +271,8 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `shortage` | `module=shop event=shortage system=callipso system_index=14 cargo_class=3 until_legs=16 shortage_count=1 dropped_system=x dropped_class=2 dropped_until_legs=9 result=new` (dropped keys only when one was dropped; otherwise `player_caused=<bool>` before `result`, the `pk` flag) | 1 |
 | `shortage` | `module=shop event=shortage system=callipso system_index=14 cargo_class=3 removed_count=1 result=cleared` | 1 |
 | `shortage` | `module=shop event=shortage removed_count=1 left_count=0 legs=16 result=expired` | 1 |
+| `shortage` | `module=shop event=shortage system=taira cargo_class=1 job=<true, false> result=job` (`TRF_ShortJob`: a #1 relief parcel attached or released, `D/parcel-spec.md` 5.3) | 1 |
+| `shortage` | `module=shop event=shortage system=taira cargo_class=1 until_legs=412 result=relieved` (`TRF_ShortEnd`: a relief delivery ends the entry at the next cleanup) | 1 |
 | `apply` | `module=shop event=apply shop=gredos result=skipped reason=no_vanilla_list` / `reason=no_market` | 1 |
 | `apply` | `module=shop event=apply shop=gredos cargo_class=2 sell_coef=1.35 buy_coef=0.90 item_count=2 until_legs=7` | 1 |
 | `apply` | `module=shop event=apply shop=gredos cargo_class=2 result=skipped reason=restore_list_full` | 1 |
@@ -645,6 +647,38 @@ Dynamic nests, step 1 (`design/nest-spec.md` 7). `index` is the row of the syste
 | `probe` | `module=nest event=probe at=<enter, activate> pirates=33` (TRF_Near, team Pirates, cls 3..7, alive; E16.2) | 2 |
 | `sweep` | `module=nest event=sweep region=4 target=golkonda` (a won sweep marks the Bust target) | 2 |
 | `dump` | `module=nest event=dump record_count=2 records=45:7/1234,91:2/1230 visit=45:1111111111 clans=nk:0,0,3,7,0,0,0,0 counters=n:120,k:34,p:30 mode=nest reason=ok alive=38` | 1 |
+
+## parcel (`trf_parcel.script`; `TRF_PcE`, `TRF_PcDE`)
+
+Sealed parcels, step 1 (`design/parcel-spec.md` 7). `kind` is the job kind (1 plain, 2 relief), `source` and `destination`
+the lowercase system names, `item` the item index (1 `Cargo_crate`, 2 `Cargo_002`) or name.
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=parcel event=error message=<m>` | 1 |
+| `offer` | `module=parcel event=offer kind=2 source=altair destination=taira jumps=3 deadline=11 item=1 units=3 class=1 level=13 tier=1 prosperity=5 pay=14400 deposit=4320 waived=false candidate_count=8 route=altrabon,nj1,taira result=shown` (the box opened, E-PCL.3) | 1 |
+| `offer` | `module=parcel event=offer system=altair result=none reason=<off, nomap, chapter, mission, quiet, strict:<why>, job, ban, gap, heat, declined, station, guard, deny:<static, cfg, chapter, deny_entry, hostile, inoco>, pro, dockmaster, no_candidate, roll, plain_roll>` | 2 |
+| `offer` | `module=parcel event=offer destination=taira result=declined` / `module=parcel event=offer result=failed reason=box` | 1 |
+| `accept` | `module=parcel event=accept kind=2 source=altair destination=taira dock=taira item=Cargo_crate units=3 pay=14400 deposit=4320 deadline=11 credits_before=1000000 result=ok` | 1 |
+| `accept` | `module=parcel event=accept deposit=4320 credits=100 result=poor` / `system=altair result=stale` / `result=error reason=<credits, job_<why>, items>` | 1 |
+| `quest` | `module=parcel event=quest id=trf_pcl state=2 quest_state_before=0 quest_state_after=0 result=added` (E-PCL.4) / `id=trf_pcl state=0 result=set` / `id=trf_pcl result=removed` | 1 |
+| `reconcile` | `module=parcel event=reconcile id=trf_pcl quest_state=3 result=<readded, removed> reason=<enter, load>` | 1 |
+| `arrive` | `module=parcel event=arrive system=taira marker=<true, false> reason=<nil, quest, cap, ...>` (arrival in the destination; the line itself is `module=plumb event=arrival_line owner=parcel ...`) | 1 |
+| `load` | `module=parcel event=load system=taira marker=true reason=nil` (a load in the destination) | 1 |
+| `mission_legs` | `module=parcel event=mission_legs mission_legs=3 legs=415` | 2 |
+| `deliver` | `module=parcel event=deliver kind=2 source=altair destination=taira units=3 units_found=3 pay=14400 paid=14400 held=0 deposit_back=4320 help_change=1 visit_credit=4 shortage_ended=true ok_count=1` (E-PCL.1 for the delete loop) | 1 |
+| `deliver` | `module=parcel event=deliver system=kadenoa param=kadenoa want=kadenoa_tri result=none reason=dock` (the other dock of the system) | 2 |
+| `fail` | `module=parcel event=fail kind=2 source=altair destination=taira units_found=3 deposit=4320 help_change=-1 ban_until=418 fail_count=1 reason=<late, empty>` | 1 |
+| `void` | `module=parcel event=void kind=2 source=altair destination=taira units_found=3 refund=4320 reason=<static, cfg, chapter, deny_entry, hostile, inoco, dead>` | 1 |
+| `pending` | `module=parcel event=pending kind=<1 late, 2 void, 3 empty, 4 void without units> system=taira refund=4320` (the line shown at the next trade dock) | 1 |
+| `owe` | `module=parcel event=owe amount=14400 paid=14400 result=paid` / `result=failed` (held pay, shared prize gap) | 1 |
+| `owe` | `module=parcel event=owe amount=14400 wait=1734 result=wait` | 2 |
+| `thanks` | `module=parcel event=thanks system=taira legs_since=2` | 1 |
+| `dock` | `module=parcel event=dock system=kadenoa param=kadenoa_tri dock_current=2` (every trade dock, E-PCL.5) | 2 |
+| `signal` | `module=parcel event=signal at=<enter, dock> quest_state=0 quest_help=3 count_pause_quest=nil current_quest=9_1` (E-PCL.6) | 2 |
+| `probe` | `module=parcel event=probe probe_kind=credits credits=1000000` (every trade dock) / `probe_kind=inventory added=3 deleted=3 left=false` (once per visit; cfg `pcl_probe` 1, E-PCL.1, E-PCL.2) | 1 |
+| `repair` | `module=parcel event=repair job_kind=2 result=dropped reason=<kind, field, system, range, class>` | 1 |
+| `dump` | `module=parcel event=dump kind=2 item=1 units=3 source=altair destination=taira dock=taira jumps=3 accept_leg=412 deadline=11 mission_legs=0 left=7 pay=14400 deposit=4320 class=1 customs_system=0 customs_met=0 hot=0 jumps_since=nil ban=nil ok_count=14 fail_count=2 owed=nil customs_flags=0,0,0,0,0` / `module=parcel event=dump result=none jumps_since=3 ban=nil ok_count=14 fail_count=2 owed=nil pending=nil customs_flags=0,0,0,0,0` | 1 |
 
 ## supply (`trf_supply.script`; `TRF_SpE`)
 

@@ -190,9 +190,9 @@ end;
 function T_FR_A()
 	local h = HOST();
 	FR_Begin("debris6", "9_1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=10") >= 1, "trf_freight loads after trf_stash (extra_count=10 with trf_nest)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=11") >= 1, "trf_freight loads after trf_stash (extra_count=11 with trf_nest and trf_parcel)");
 	local ml = TRF_ModList();
-	HOST_Check(ml[getn(ml) - 1] == "Fr" and TRF_Opt("enable_freight") == 1 and TRF_Opt("fw_onscreen") == 1 and TRF_Opt("fw_losses") == 1
+	HOST_Check(ml[getn(ml) - 2] == "Fr" and TRF_Opt("enable_freight") == 1 and TRF_Opt("fw_onscreen") == 1 and TRF_Opt("fw_losses") == 1
 		and TRF_Opt("fw_max_ships") == 1 and TRF_Fr_OptDef().fw_prize_gap == 1 and TRF_Fr_OptDef().fw_marker == 1,
 		"TRF_ModList has Fr; toggles: freight, on-screen, losses on, one ship, prize gap and marker on by default");
 	h.cfg.fw_max_ships = 3;
@@ -216,9 +216,9 @@ function T_FR_A()
 	for i = 1, getn(sl) do sd = sd..TRF_PlName(sl[i])..","; end;
 	for i = 1, getn(P.rh) do if TRF_PlName(P.rh[i].f) == "TRF_Fr_RaidHelp" then rh = rh + 1; end; end;
 	for i = 1, getn(P.cap) do if P.cap[i].g == "freight" and P.cap[i].t == 0 then cg = cg + 1; end; end;
-	HOST_Check(FR_Has(lo, "50:") == nil and FR_Has(lo, "60:TRF_Fr_DockLine,70:") and FR_Has(bo, "400:") == nil and FR_Has(bo, "300:TRF_Fr_DockBox,200:TRF_Ch_DockBox,")
+	HOST_Check(FR_Has(lo, "50:") == nil and FR_Has(lo, "60:TRF_Fr_DockLine,70:") and FR_Has(bo, "400:TRF_Pc_DockBox,300:TRF_Fr_DockBox,200:TRF_Ch_DockBox,")
 		and FR_Has(sd, "TRF_GnSeedHold,TRF_Fr_Seed,") and rh == 1 and cg == 1,
-		"trade line 60 before the charter 70, trade box 300 above the dues 200, seed provider 400 after the hold 450, the 8.5 resolver, the ship-cap group ("..lo.." "..bo.." "..sd..")");
+		"trade line 60 before the charter 70, trade box 300 between the parcel offer 400 and the dues 200, seed provider 400 after the hold 450, the 8.5 resolver, the ship-cap group ("..lo.." "..bo.." "..sd..")");
 	-- Loops (gen_map.py): every eligible region but Torr, stops are trade-station systems of the region, consecutive
 	-- systems are portal neighbours, no deny system, L = median L_w of the distinct systems.
 	local L = TRF_FrLoops();

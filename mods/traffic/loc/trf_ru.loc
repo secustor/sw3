@@ -1,7 +1,7 @@
 LOCALE_FILE
 FILETYPE STANDART
 
-; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text) the wanted captains keys (#TRF_cap*, trf_captain TRF_Cap_Text), the clan stash keys (#TRF_stash*, trf_stash TRF_Sh_Text), the Wolves Freight keys (#TRF_fw*, trf_freight TRF_Fr_Text), the dynamic nest keys (#TRF_nest*, trf_nest TRF_Nest_Text) and the demand page keys (#TRF_dmp*, trf_supply TRF_Supply_Text and trf_hail TRF_Hail_Text, with the answers #TRF_dmok and #TRF_dmno), cp1251.
+; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text) the wanted captains keys (#TRF_cap*, trf_captain TRF_Cap_Text), the clan stash keys (#TRF_stash*, trf_stash TRF_Sh_Text), the Wolves Freight keys (#TRF_fw*, trf_freight TRF_Fr_Text), the dynamic nest keys (#TRF_nest*, trf_nest TRF_Nest_Text), the sealed parcel keys (#TRF_pcl*, trf_parcel TRF_Pc_Text) and the demand page keys (#TRF_dmp*, trf_supply TRF_Supply_Text and trf_hail TRF_Hail_Text, with the answers #TRF_dmok and #TRF_dmno), cp1251.
 ; Same keys and fixed texts as loc/trf_en.loc (no $n placeholders); used with cfg loc_mode 1 in a Russian install.
 ; Other #TRF_ keys have no RU line yet (design/station-voices-spec.md 13.5).
 
@@ -381,3 +381,38 @@ FILETYPE STANDART
 #TRF_nestquiet = У здешнего гнезда всего несколько пиратских кораблей.
 #TRF_nesthit = Мы не забываем лиц, Волк.
 #TRF_nestlast = Пиратское гнездо здесь разбито. Они ещё вернутся.
+#TRF_pcltitle = Курьерская служба ФТС
+#TRF_pclneed1 = Станция осталась без техники, завод стоит.
+#TRF_pclneed2 = Станция осталась без запчастей, ремонтные доки стоят.
+#TRF_pclneed3 = Станция осталась без руды, плавильни остыли.
+#TRF_pclneed4 = Станция осталась без топлива, танкеры стоят.
+#TRF_pclneed5 = Станция осталась без еды и медикаментов.
+#TRF_pclneed6 = На станции не хватает грузов, склады пусты.
+#TRF_pclbox = Опечатанная посылка для торговой станции.
+#TRF_pclit1 = ящики
+#TRF_pclit1s = 1 ящик
+#TRF_pclit2 = контейнеры
+#TRF_pclit2s = 1 контейнер
+#TRF_pcljumps = прыжки, переходы
+#TRF_pcljump = 1 прыжок
+#TRF_pcldep = Залог сейчас, вернём при доставке. Плата при доставке. Берёте?
+#TRF_pclnodep = Без залога, мы знаем вашу работу. Плата при доставке. Берёте?
+#TRF_pclhand = Ящики в вашем трюме. Не вскрывать, не продавать, не опаздывать.
+#TRF_pclpoor = Курьерская служба: на залог не хватает денег. Возвращайтесь с деньгами.
+#TRF_pclfail = Курьерская служба: груз не удалось погрузить. Сделка отменена.
+#TRF_pclmark = Курьерская служба ФТС: место доставки отмечено у торговой станции.
+#TRF_pcldone = Посылка принята, пломбы целы. Залог возвращён, плата выдана.
+#TRF_pcldonew = Посылка принята, пломбы целы. Плата выдана.
+#TRF_pcldoneh = Посылка принята, пломбы целы. Залог возвращён. Плату выдадут при следующей стыковке.
+#TRF_pclpart = Посылка принята не полностью. Плата и залог только за доставленное.
+#TRF_pclempty = Курьерская служба: ящиков нет. Залог остаётся у ФТС.
+#TRF_pclshort = Дефицит на станции закончится, как только трюм опустеет.
+#TRF_pclowe = Курьерская служба ФТС: плата за посылку.
+#TRF_pcllate = Курьерская служба: посылка просрочена. Залог удержан.
+#TRF_pclvoid = Курьерская служба: станция не отвечает. Залог возвращён.
+#TRF_pclvoid0 = Курьерская служба: станция не отвечает. Посылка аннулирована.
+#TRF_pclcold = Курьерская служба: с вами пропала посылка. Зайдите попозже.
+#TRF_pclthx1 = Ящики Волков не дали заводу встать.
+#TRF_pclthx2 = Ящики Волков накормили станцию.
+#TRF_pclq = Опечатанная посылка
+#TRF_pclqd = Доставьте опечатанные ящики на торговую станцию, отмеченную на карте. Залог хранится у ФТС.

@@ -12,7 +12,7 @@
 -- behaviour with the v1 files loaded; host_v1.lua starts from the v1 defaults.
 function T_V1Off()
 	return {tier_cap=2, track=0, conv=0, demand=0, heat_offer=0, carriers=0, salvage=0, sweeps=0, sweep_ct=0,
-		po=0, tt4=0, feq=0, forced_bust=0, dconv=0, bases=0, cap_enable=0};
+		po=0, tt4=0, feq=0, forced_bust=0, dconv=0, bases=0, cap_enable=0, enable_parcels=0};
 end;
 function T_V01()
 	return {prosperity=0, seed=0, parked=0, queue=0, raids=0, staged=0, contracts=0, meet=1, board=0,

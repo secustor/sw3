@@ -37,6 +37,10 @@
 -- the scripted pirate flights; nest_mode 1 the substituting NewPirateFlight wrapper, 2 the fallback (vanilla builds,
 -- the mod deletes and replaces); nest_off, nest_trig, nest_lines, nest_mirror, nest_grudge_war (step 2, 0) and the tune
 -- keys (nest_f, nest_dp, nest_regen_pct, nest_regen_legs, nest_cache_r, ...) read the module defaults.
+-- Sealed parcels (design/parcel-spec.md 6): enable_parcels (default 1) = 0 turns trf_parcel off (no offer, no lines;
+-- an open job waits); enable_contraband, enable_customs, enable_intercept (step 2, read nowhere yet, off); pcl_prize_gap,
+-- pcl_logbook, pcl_probe, pcl_deny, pcl_deny_ch and the tune keys (pcl_k, pcl_gap, pcl_ban, pcl_dep_k, ...) read the
+-- module defaults.
 -- Demand result page (design/demand-page-spec.md): demand_page (default 1) = 0 says the demand answer as a line (no
 -- page, no No witnesses); tune demand_k, witness_t, witness_r, witness_dead read the trf_supply TuneDef. demand_drop
 -- (default 0, until E0.4 confirms drops) = 1 leaves the robbed stacks in a cargo01_destroyed_inv container beside the
@@ -55,4 +59,5 @@ function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
 	enable_stashes=1, enable_stash_retrieval=1, enable_stash_decoys=0, stash_ret_war=0,
 	enable_freight=1, fw_max_ships=1, fw_onscreen=1, fw_losses=1, fw_prize_gap=1, fw_marker=1,
 	nest=0, nest_mode=1,
+	enable_parcels=1, enable_contraband=0, enable_customs=0, enable_intercept=0,
 	demand_page=1, demand_drop=0} end
