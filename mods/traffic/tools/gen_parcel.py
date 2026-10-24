@@ -54,8 +54,10 @@ def check(C, names):
         bad += ["chapter %d: %s is not a map system" % (c, n) for n in sorted(s) if n not in names]
     if C.get(4) != CH4_EXPECT:
         bad.append("chapter 4 is %s (expected %s)" % (sorted(C.get(4, ())), sorted(CH4_EXPECT)))
+    if not C:
+        return bad + ["no mission_<c> entries in Quests.xml"]
     big = max(C, key=lambda c: (len(C[c]), -c))
-    if big != 8 or len(C[8]) != 31:
+    if big != 8 or len(C[big]) != 31:
         bad.append("largest set is chapter %d with %d systems (expected chapter 8 with 31)" % (big, len(C[big])))
     if C.get(20) != {"nk"}:
         bad.append("chapter 20 is %s (expected nk)" % sorted(C.get(20, ())))
