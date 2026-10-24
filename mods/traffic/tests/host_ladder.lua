@@ -273,8 +273,10 @@ function T_LAD_B()
 	h.lb200 = nil;
 	r = L_Dock();
 	HOST_Check(r.nb == 1 and L_Has(r.box.text, "Transit permit") and h.lb200 == nil, "one box per docking: the ladder box, the prio 200 box not asked");
+	local nb0, np0 = getn(h.boxes), getn(h.pdlgs);
 	L_Press(r, "cancel");
-	HOST_Check(h.pdlgs[getn(h.pdlgs)] == "" and getn(h.boxes) == getn(h.boxes), "vanilla once after the answer");
+	HOST_Check(getn(h.pdlgs) == np0 + 1 and h.pdlgs[getn(h.pdlgs)] == "" and getn(h.boxes) == nb0 and h.lb200 == nil,
+		"vanilla once after the answer, no further box");
 	-- Flags: no line, no box, vanilla at once.
 	T_Enter("fort_russ");
 	__sys_SOS = TRUE;

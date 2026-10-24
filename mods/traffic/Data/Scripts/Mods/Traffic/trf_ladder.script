@@ -184,16 +184,11 @@ function TRF_LadFstAdd(f, d, why)
 	return TRF_LadFst(f);
 end;
 
-function TRF_LadRelRaw(a, b)
-	return GetTeamRelation(a, b);
-end;
-
--- War rule (09 section 3): 1 while the team relation of f toward the player is W.
+-- War rule (09 section 3): 1 while the team relation of f toward the player is W (trf_faction's TRF_FcWar, the
+-- read behind the freeze in TRF_FstClamp).
 function TRF_LadWar(f)
 	local t = TRF_LadTeamOf(f);
-	if not t or type(GetTeamRelation) ~= "function" or RELATION_WAR == nil then return nil; end;
-	local v = call(TRF_LadRelRaw, {t, PLAYER_TEAM}, "x", TRF_LadNoErr);
-	if v ~= nil and v == RELATION_WAR then return 1; end;
+	if t and TRF_N("TRF_FcWar", t, PLAYER_TEAM) then return 1; end;
 	return nil;
 end;
 
@@ -240,9 +235,9 @@ end;
 
 -- Static tables --------------------------------------------------------------------
 
--- Constants without a cfg key: permit discount in percent at rank 8 and 9 (09 5), line seconds, the box owner name.
+-- Constants without a cfg key: permit discount in percent at rank 8 and 9 (09 5), line seconds.
 function TRF_LadK()
-	return {disc8=75, disc9=75, secs=8, lic_f=2};
+	return {disc=75, secs=8};
 end;
 
 -- Always denied for every ladder action (09 section 3, TDR 9.9): no line, no box, no credit, no waiver.
@@ -269,7 +264,7 @@ end;
 -- Permit price (09 5): c_p x L_rg x (1 + 0.05 R) x d_k x disc(rank); disc 0.75 at fst 8 and 9.
 function TRF_LadPriceOf(cp, L, R, dk, fst)
 	local disc = 1;
-	if fst == 8 then disc = TRF_LadK().disc8 / 100; elseif fst >= 9 then disc = TRF_LadK().disc9 / 100; end;
+	if type(fst) == "number" and fst >= 8 then disc = TRF_LadK().disc / 100; end;
 	return floor(cp * L * (1 + 0.05 * R) * dk * disc + 0.5);
 end;
 
@@ -419,8 +414,8 @@ function TRF_LadDockOwner()
 	return TRF_LadFacOf(TRF_LadTeam(loc)), loc;
 end;
 
--- L_rg (09 4, 00 A4): the highest L_w among the systems of f in region slot (trf_region's TRF_LPay), at least
--- L_w of system idx (the station's own system).
+-- L_rg (09 4, 00 A4): the highest L_w among the systems of f in region slot (owner by trf_region's TRF_RgTeam,
+-- level by TRF_LPay), at least L_w of system idx (the station's own system).
 function TRF_LadLrg(f, slot, idx)
 	local L = 0;
 	if type(idx) == "number" then L = TRF_N("TRF_LPay", idx) or 0; end;
@@ -429,7 +424,7 @@ function TRF_LadLrg(f, slot, idx)
 	if type(r) == "table" and type(slot) == "number" and type(r[slot]) == "table" and type(r[slot].sys) == "table" and t then
 		local ss = r[slot].sys;
 		for i = 1, getn(ss) do
-			local tm = TRF_LadTeam(TRF_LadName(ss[i]));
+			local tm = TRF_N("TRF_RgTeam", ss[i]);
 			if type(tm) == "string" and strlower(tm) == strlower(t) then
 				local l = TRF_N("TRF_LPay", ss[i]);
 				if type(l) == "number" and l > L then L = l; end;
@@ -519,7 +514,7 @@ function TRF_Lad_DockLine(kind, param)
 	if not f then return nil; end;
 	local idx = TRF_N("TRF_CurIdx");
 	if TRF_LadDeny(idx, loc) then
-		TRF_LadDE("rank_line", "system", tostring(loc), "faction", TRF_LadTeamOf(f), "result", "none", "reason", "deny");
+		TRF_LadDE("rank_line", "system", strlower(loc), "faction", TRF_LadTeamOf(f), "result", "none", "reason", "deny");
 		return nil;
 	end;
 	TRF_LadStrip("dock");
@@ -570,21 +565,22 @@ function TRF_Lad_DockBox(kind, param)
 		return nil;
 	end;
 	local v = TRF_LadFst(f);
+	local L = TRF_LadLrg(f, slot, idx);
 	if v <= 3 then
-		local sp = TRF_LadSettleSpec(f, slot, idx, v);
+		local sp = TRF_LadSettleSpec(f, slot, v, L);
 		if sp then return sp; end;
 	end;
-	return TRF_LadPermitSpec(f, slot, idx, v);
+	return TRF_LadPermitSpec(f, slot, v, L);
 end;
 
--- Settlement box spec or nil (09 4: at fst <= 3, once per settle_cd legs; every faction).
-function TRF_LadSettleSpec(f, slot, idx, v)
+-- Settlement box spec or nil (09 4: at fst <= 3, once per settle_cd legs; every faction). L = L_rg of the docking
+-- (TRF_LadLrg, read once by TRF_Lad_DockBox for both specs).
+function TRF_LadSettleSpec(f, slot, v, L)
 	local lv = %LV;
 	local why = nil;
 	if TRF_LadOpt("lad_settle") ~= 1 then why = "off";
 	elseif not TRF_LadCdOf(TRF_LadGet("sc", f), TRF_LadLegs(), TRF_LadT("settle_cd")) then why = "cooldown";
 	elseif lv.dec["settle"..f] == 1 then why = "declined"; end;
-	local L = TRF_LadLrg(f, slot, idx);
 	local price = TRF_LadSettleOf(TRF_LadT("c_s"), L, v, TRF_LadDk());
 	if why then
 		TRF_LadDE("settle", "faction", TRF_LadTeamOf(f), "standing", v, "region", slot, "price", price, "result", "none", "reason", why);
@@ -597,8 +593,8 @@ function TRF_LadSettleSpec(f, slot, idx, v)
 end;
 
 -- Permit box spec or nil (09 4, 5, 6): Vks and Kfni only (at fst <= 3 after the settlement), no valid
--- permit of f for this region (the rival gate is in TRF_Lad_DockBox).
-function TRF_LadPermitSpec(f, slot, idx, v)
+-- permit of f for this region (the rival gate is in TRF_Lad_DockBox). L as in TRF_LadSettleSpec.
+function TRF_LadPermitSpec(f, slot, v, L)
 	local lv = %LV;
 	local why = nil;
 	if not TRF_LadRival(f) then why = "corporation";
@@ -609,7 +605,6 @@ function TRF_LadPermitSpec(f, slot, idx, v)
 		TRF_LadDE("permit_offer", "faction", TRF_LadTeamOf(f), "standing", v, "region", slot, "result", "none", "reason", why);
 		return nil;
 	end;
-	local L = TRF_LadLrg(f, slot, idx);
 	local R = TRF_N("TRF_RgR", slot) or 0;
 	local price = TRF_LadPriceOf(TRF_LadT("c_p"), L, R, TRF_LadDk(), v);
 	local legs = TRF_LadT("permit_legs");
@@ -815,7 +810,7 @@ function TRF_InstallLadder()
 		r.gibdd = 1;
 	end;
 	TRF_LadE("install", "gibdd_installed", TRF_KvB(r.gibdd), "gibdd_wrapped", TRF_KvB(TRF_LadIsMine(_PatrolGIBDD_shtraf)),
-		"temp_change_wrapped", TRF_KvB(TRF_LadIsMine(_temp_change)));
+		"temp_change_wrapped", TRF_KvB(TRF_N("TRF_SpIsMine", _temp_change, TRF_TmpThunk)));
 	return r;
 end;
 
