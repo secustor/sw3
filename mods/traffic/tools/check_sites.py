@@ -40,8 +40,11 @@ APIS = [
     ("lua_setglobal", 0x65e5a0), ("lua_settable", 0x65e5d0),
     ("lua_rawset", 0x65e610), ("lua_rawseti", 0x65e670),
     ("lua_rawcall", 0x65e7a0), ("lua_next", 0x65e860),
-    ("lua_getn", 0x65e8f0), ("lua_call", 0x65f530),
-    ("lua_dobuffer", 0x65f7b0), ("lua_dostring", 0x65f7e0),
+    ("lua_getn", 0x65e8f0), ("lua_concat", 0x65e970),
+    ("lua_call", 0x65f530), ("lua_dobuffer", 0x65f7b0),
+    ("lua_dostring", 0x65f7e0),
+    # debug API for the _ERRORMESSAGE traceback (hooks/hook-mechanisms.md 1.1, 2.2 E-b)
+    ("lua_getstack", 0x65f9b0), ("lua_getinfo", 0x660180),
 ]
 
 # sw3tp (trackpad) patch sites, 5 bytes each; traffic sites must not overlap

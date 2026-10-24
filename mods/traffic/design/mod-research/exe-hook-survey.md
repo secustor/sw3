@@ -49,7 +49,7 @@ Not needed from the DLL: XP gain (`ModifyGainedExperience`), message box results
 ## 3. What to build, in order
 
 1. **Shared layer** `mods/sw3hook/` (hook-mechanisms §7): move the log, ini, signature check, stub arena and patch writers out of `traffic.c`/`sw3tp.c` with no behaviour change; one generated site table with owner and overlap checks (SW3SE detours `ExecuteScriptFile` 0x5c91f0 too); patch primitives for call-site, entry, vtable slot, IAT and byte signature; one native table at T1; a name-based event bus `SW3_On(event, fname)` whose handlers live in C and survive `ClearGlobals`.
-2. **Cheap wins with no new patch:** traceback handler (12), stack guard and tick telemetry (11), `TRF_Time()` (6), credits poll (7).
+2. **Cheap wins with no new patch:** traceback handler (12; built, untested in game), stack guard (11; built, untested in game) and tick telemetry (11), `TRF_Time()` (6), credits poll (7).
 3. **`TRF_Carcasses()`** (3), then `TRF_InvList` (8): plain reads, biggest gap in the Lua API, and the helper base for every other native.
 4. **Kill with killer** (1) and **dock/undock** (2): one logging run of K2 + D1 + DM1 + S1 + S2 settles the open attribution questions, then the 8.5 proxy and the Lua dock wrappers can go.
 5. **Overlay directory** (4): changes the installer model for every mod; test with an overlay-only `trf_en.loc` and `traffic.script`, then merged `News.xml` and `Carcasses.xml` with vanilla files untouched. Fragments still need a merge step (installer awk or DLL) into `Mods/.merged/`; splicing the TinyXML tree after `LoadFile` 0x45ece0 is possible but about a day more work.

@@ -1,6 +1,7 @@
 /* traffic: hook module of the sw3-traffic mod, linked into the sw3tp zlib1.dll proxy
  * (mods/traffic/design/mod-options.md 5.1-5.5, 5.8 item 2). Seven E8 rel32 call-site patches,
- * six natives, Lua callbacks, and the TRF carry across the location-entry ClearGlobals.
+ * six natives, Lua callbacks, the TRF carry across the location-entry ClearGlobals, a C _ERRORMESSAGE that
+ * logs a traceback (T1) and a Lua stack leak guard (T4).
  * Target: sw3cw.exe GOG v1.12, ImageBase 0x400000, no ASLR. No CRT.
  * Callbacks from the stubs are __stdcall (callee pops); natives are __cdecl int f(lua_State *).
  * clang emits SSE2 for double math here, so the game's x87 precision setting does not apply. */
@@ -47,22 +48,32 @@ static void (__cdecl *const lua_setglobal)(lua_State *, const char *) = API(0x65
 static void (__cdecl *const lua_rawset)(lua_State *, int) = API(0x65e610);
 static void (__cdecl *const lua_rawseti)(lua_State *, int, int) = API(0x65e670);
 static int  (__cdecl *const lua_getn)(lua_State *, int) = API(0x65e8f0);
+static void (__cdecl *const lua_rawcall)(lua_State *, int, int) = API(0x65e7a0);   /* unprotected */
+static void (__cdecl *const lua_concat)(lua_State *, int) = API(0x65e970);
 static int  (__cdecl *const lua_call)(lua_State *, int, int) = API(0x65f530);   /* protected, returns status */
+/* lua_Debug 4.0.1, 0x60 bytes; offsets as used by luaB__ERRORMESSAGE 0x65ade0 (currentline +4, source +0x1c,
+ * short_src +0x20), errorfb 0x65d380 (namewhat +0xc, what 'm'/'C') and lua_getstack (_func +0x5c) */
+typedef struct { const char *event; int currentline; const char *name, *namewhat; int nups, linedefined;
+    const char *what, *source; char short_src[60]; void *func; } lua_Debug;
+_Static_assert(sizeof(lua_Debug) == 0x60, "lua_Debug is 0x60 bytes");
+static int  (__cdecl *const lua_getstack)(lua_State *, int, lua_Debug *) = API(0x65f9b0);
+static int  (__cdecl *const lua_getinfo)(lua_State *, const char *, lua_Debug *) = API(0x660180);
 static const unsigned g_used_api[] = { 0x65de50, 0x65de60, 0x65df50, 0x65dfa0, 0x65e100, 0x65e1d0, 0x65e200,
-    0x65e280, 0x65e2c0, 0x65e340, 0x65e3f0, 0x65e5a0, 0x65e610, 0x65e670, 0x65e8f0, 0x65f530 };
+    0x65e280, 0x65e2c0, 0x65e340, 0x65e3f0, 0x65e5a0, 0x65e610, 0x65e670, 0x65e8f0, 0x65e7a0, 0x65e970,
+    0x65f530, 0x65f9b0, 0x660180 };
 
 static lua_State *lstate(void) { return *(lua_State **)L_SLOT; }
 
 /* ---- state ---- */
 static int g_site_on[S_N];
-static int g_tick_ms = 250, g_log_on = 1;
+static int g_tick_ms = 250, g_log_on = 1, g_tb_on = 1, g_guard_on = 1;
 static BYTE *g_page;
 static LARGE_INTEGER g_qpf, g_qpc0, g_tick_qpc;
 static double g_game_time, g_tick_game;
 static unsigned g_inc_n, g_carry_n, g_carry_lost, g_tick_n;
 
 /* ---- log: "traffic: ..." lines through sw3tp_log ---- */
-struct tb { char s[320]; int n; };
+struct tb { char s[500]; int n; };   /* sw3tp_log writes up to 510 chars */
 static void tb_s(struct tb *b, const char *s) { while (*s && b->n < (int)sizeof(b->s) - 1) b->s[b->n++] = *s++; }
 static void tb_u(struct tb *b, unsigned v)
 {
@@ -78,6 +89,20 @@ static void tb_x(struct tb *b, unsigned v)
     tb_s(b, "0x");
     do { t[i++] = hx[v & 15]; v >>= 4; } while (v);
     while (i && b->n < (int)sizeof(b->s) - 1) b->s[b->n++] = t[--i];
+}
+/* logfmt quoted-value body: s up to buffer index lim; " -> \", \ -> /, control chars -> space;
+ * with sep, | and ; (trace separators) -> / and , */
+static void tb_q(struct tb *b, const char *s, int lim, int sep)
+{
+    if (lim > (int)sizeof(b->s) - 3) lim = (int)sizeof(b->s) - 3;
+    for (; s && *s && b->n < lim; s++) {
+        char c = *s;
+        if ((unsigned char)c < 0x20) c = ' ';
+        else if (c == '\\' || (sep && c == '|')) c = '/';
+        else if (sep && c == ';') c = ',';
+        if (c == '"') b->s[b->n++] = '\\';
+        b->s[b->n++] = c;
+    }
 }
 static void tb_begin(struct tb *b, const char *s) { b->n = 0; tb_s(b, "traffic: "); tb_s(b, s); }
 static void tb_end(struct tb *b) { b->s[b->n] = 0; sw3tp_log(b->s); }
@@ -235,6 +260,131 @@ static int __cdecl n_inmovie(lua_State *L)
 }
 static int __cdecl n_uistate(lua_State *L) { lua_pushnumber(L, g_movie_ok ? (double)ui_state() : -1.0); return 1; }
 
+/* ---- Lua error traceback (exe-hook-survey row 12, hooks/hook-mechanisms.md 2.2 E-b) ----
+ * lua_error -> message 0x65f810 calls the global _ERRORMESSAGE with the message, unprotected, then longjmps.
+ * n_errmsg replaces baselib's luaB__ERRORMESSAGE 0x65ade0 (set before T1; no shipped script assigns it):
+ * it logs the stack (levels 1..12, level 0 is n_errmsg) to sw3tp.log, then writes baselib's text
+ * "error: <msg>\n  <<short_src>: line <n>>\n" to _ALERT, so ScriptErrors.log keeps its line. Baselib's handler
+ * is not called: from inside n_errmsg its level 1 would be n_errmsg (no location), and it raises on a
+ * non-string argument. Nothing here may raise: the _ALERT part runs as a protected call, a nested error
+ * (from _ALERT) returns at once through g_err_busy, which the tick also clears (top level, no handler active).
+ * Dedupe: an error with the same message and top frame within 5 s of the logged one only counts; the count
+ * is logged when the window closes (next other error, same error after 5 s, or the tick). */
+#define ERR_WINDOW 5.0
+static int g_err_busy, g_err_have;
+static unsigned g_err_n, g_err_dup, g_err_key, g_err_alert_bad;
+static double g_err_t0;
+static struct tb g_err_tail;                      /* trace="..." message="..." of the last logged error */
+
+static unsigned fnv(unsigned h, const char *s) { for (; s && *s; s++) h = (h ^ (unsigned char)*s) * 16777619u; return h; }
+
+static void err_flush(void)
+{
+    struct tb b;
+    if (!g_err_dup) return;
+    tb_begin(&b, "module=dll event=lua_error_repeat repeat_count="); tb_u(&b, g_err_dup);
+    tb_s(&b, " "); tb_s(&b, g_err_tail.s);
+    tb_end(&b);
+    g_err_dup = 0;
+}
+
+static int __cdecl n_erralert(lua_State *L)       /* (msg, location) -> _ALERT("error: " .. msg .. location) */
+{
+    lua_getglobal(L, "_ALERT");
+    if (lua_type(L, -1) != T_FUNC) return 0;
+    lua_pushstring(L, "error: ");
+    lua_pushvalue(L, 1);
+    lua_pushvalue(L, 2);
+    lua_concat(L, 3);
+    lua_rawcall(L, 1, 0);
+    return 0;
+}
+
+static int __cdecl n_errmsg(lua_State *L)
+{
+    lua_Debug ar;
+    struct tb b, loc;
+    const char *msg;
+    unsigned key;
+    double now;
+    int t, lv, st;
+    if (g_err_busy) return 0;
+    g_err_busy = 1;
+    g_err_n++;
+    t = lua_type(L, 1);
+    msg = (t == T_STRING || t == T_NUMBER) ? lua_tostring(L, 1) : 0;
+    key = fnv(2166136261u, msg ? msg : "");
+    loc.n = 0;
+    b.n = 0; tb_s(&b, "trace=\"");
+    for (lv = 1; lua_getstack(L, lv, &ar); lv++) {
+        const char *nm;
+        if (lv > 12 || b.n > 220) { tb_s(&b, ";..."); break; }
+        ar.name = ar.namewhat = ar.what = ar.source = 0; ar.short_src[0] = 0; ar.currentline = -1;
+        if (!lua_getinfo(L, "Snl", &ar)) continue;
+        ar.short_src[sizeof(ar.short_src) - 1] = 0;
+        if (lv == 1) {
+            key = fnv(fnv(key, "|"), ar.short_src);
+            key = (key ^ (unsigned)ar.currentline) * 16777619u;
+            if (ar.source && ar.currentline > 0) {   /* baselib: "\n  <%.70s: line %d>" */
+                tb_s(&loc, "\n  <"); tb_s(&loc, ar.short_src); tb_s(&loc, ": line "); tb_i(&loc, ar.currentline);
+                tb_s(&loc, ">");
+            }
+        } else tb_s(&b, ";");
+        nm = ar.namewhat && *ar.namewhat && ar.name ? ar.name :
+             ar.what && *ar.what == 'm' ? "main" : ar.what && *ar.what == 'C' ? "C" : "?";
+        tb_i(&b, lv); tb_s(&b, "|"); tb_q(&b, ar.short_src, b.n + 48, 1); tb_s(&b, ":");
+        if (ar.currentline > 0) tb_i(&b, ar.currentline); else tb_s(&b, "?");
+        tb_s(&b, "|"); tb_q(&b, nm, b.n + 32, 1);
+        if (nm[0] == '?' && !nm[1] && ar.linedefined > 0) { tb_s(&b, "@"); tb_i(&b, ar.linedefined); }
+    }
+    tb_s(&b, "\" message=\""); tb_q(&b, msg ? msg : "(no message)", 415, 0); tb_s(&b, "\"");
+    b.s[b.n] = 0;
+    tb_s(&loc, "\n"); loc.s[loc.n] = 0;
+    now = real_sec();
+    if (g_err_have && key == g_err_key && now - g_err_t0 < ERR_WINDOW) g_err_dup++;
+    else {
+        struct tb lb;
+        err_flush();
+        g_err_tail = b; g_err_key = key; g_err_t0 = now; g_err_have = 1;
+        tb_begin(&lb, "module=dll event=lua_error total="); tb_u(&lb, g_err_n); tb_s(&lb, " "); tb_s(&lb, b.s);
+        tb_end(&lb);
+    }
+    lua_pushcclosure(L, n_erralert, 0);
+    if (msg) lua_pushvalue(L, 1); else lua_pushstring(L, "(no message)");
+    lua_pushstring(L, loc.s);
+    st = lua_call(L, 2, 0);
+    if (st && !g_err_alert_bad++) {
+        tb_begin(&loc, "module=dll event=lua_error_alert status="); tb_i(&loc, st); tb_end(&loc);
+    }
+    g_err_busy = 0;
+    return 0;
+}
+
+/* ---- Lua stack leak guard (exe-hook-survey row 11, hooks/runtime-limits.md 1.4, P1) ----
+ * Trigger conditions run through ExecuteString leave their result on the fixed 1024-slot stack; only the
+ * ScriptParam ctor and CallLoadLevel reset it. T4 runs in the frame loop at the top level, so every slot
+ * left is a leak: drop them. Cleared only when Cbase == stack base (L+0x10 == L+4, lua_gettop 0x65de50 and
+ * lua_getstack's helper 0x65f973), i.e. no C function frame is active. */
+static unsigned g_leak_n, g_leak_nested;
+static void stack_guard(lua_State *L)
+{
+    const unsigned *ls = (const unsigned *)L;
+    struct tb b;
+    int n = lua_gettop(L);
+    if (n <= 0) return;
+    if (ls[4] != ls[1]) {
+        if (!g_leak_nested++) {
+            tb_begin(&b, "module=dll event=stack_leak_skipped reason=c_frame_active slots="); tb_i(&b, n); tb_end(&b);
+        }
+        return;
+    }
+    if (++g_leak_n % 100 == 1) {
+        tb_begin(&b, "module=dll event=stack_leak slots="); tb_i(&b, n); tb_s(&b, " total="); tb_u(&b, g_leak_n);
+        tb_end(&b);
+    }
+    lua_settop(L, 0);
+}
+
 /* ---- C side of the stubs, all __stdcall ---- */
 static void __stdcall trf_register(void)          /* T1, after 0x5c7e80 */
 {
@@ -250,6 +400,15 @@ static void __stdcall trf_register(void)          /* T1, after 0x5c7e80 */
     for (i = 0; i < nn; i++) { lua_pushcclosure(L, nat[i].f, 0); lua_setglobal(L, nat[i].name); }
     lua_settop(L, top);
     tb_begin(&b, "natives registered n="); tb_i(&b, nn); tb_s(&b, " L="); tb_x(&b, (unsigned)L); tb_end(&b);
+    if (g_tb_on) {
+        int t;
+        lua_getglobal(L, "_ERRORMESSAGE");
+        t = lua_type(L, -1);
+        lua_pushcclosure(L, n_errmsg, 0);
+        lua_setglobal(L, "_ERRORMESSAGE");
+        lua_settop(L, top);
+        tb_begin(&b, "module=dll event=traceback_install previous_type="); tb_i(&b, t); tb_end(&b);
+    }
 }
 
 static int ends_ci(const char *s, const char *suf)
@@ -353,7 +512,11 @@ static void __stdcall trf_tick(void)              /* T4, after 0x49d4a0, once pe
         float dt = *(float *)(tm + 0x28);
         if (dt > 0.0f && dt < 60.0f) g_game_time += dt;
     }
-    if (!L || g_cb[CB_TICK].off) return;
+    if (!L) return;
+    g_err_busy = 0;                               /* top level: no _ERRORMESSAGE call is active */
+    if (g_guard_on) stack_guard(L);
+    if (g_err_dup && real_sec() - g_err_t0 >= ERR_WINDOW) err_flush();
+    if (g_cb[CB_TICK].off) return;
     QueryPerformanceCounter(&now);
     if (!g_tick_qpc.QuadPart) { g_tick_qpc = now; g_tick_game = g_game_time; return; }
     dt_real = (double)(now.QuadPart - g_tick_qpc.QuadPart) / (double)g_qpf.QuadPart;
@@ -498,9 +661,12 @@ void trf_init(const char *ini)
     g_tick_ms = (int)GetPrivateProfileIntA("traffic", "tick_ms", 250, ini);
     if (g_tick_ms < 50) g_tick_ms = 50; else if (g_tick_ms > 5000) g_tick_ms = 5000;   /* clamp: 0 would call Lua every frame */
     g_log_on = (int)GetPrivateProfileIntA("traffic", "log", 1, ini);
+    g_tb_on = (int)GetPrivateProfileIntA("traffic", "traceback", 1, ini);
+    g_guard_on = (int)GetPrivateProfileIntA("traffic", "stack_guard", 1, ini);
     QueryPerformanceFrequency(&g_qpf);
     QueryPerformanceCounter(&g_qpc0);
     tb_begin(&b, "config tick_ms="); tb_i(&b, g_tick_ms); tb_s(&b, " log="); tb_i(&b, g_log_on);
+    tb_s(&b, " traceback="); tb_i(&b, g_tb_on); tb_s(&b, " stack_guard="); tb_i(&b, g_guard_on);
     tb_s(&b, " sites=");
     for (i = 0; i < S_N; i++) { if (i) tb_s(&b, ","); tb_s(&b, g_site_name[i]); tb_s(&b, g_site_on[i] ? ":1" : ":0"); }
     tb_end(&b);

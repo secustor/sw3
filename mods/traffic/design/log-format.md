@@ -147,7 +147,13 @@ module=raid event=roll ... result=skipped reason=governor
 ## 7. Not in this step
 
 - DLL lines (`traffic: loaded ...`, `traffic: tick ...`, stability `render skipped (batch freed)`): same
-  convention later, with `module=dll` / `module=stability`; needs a DLL rebuild.
+  convention later, with `module=dll` / `module=stability`; needs a DLL rebuild. Lines added to
+  `traffic.c` since 2026-10-24 are logfmt already, with no `exp` key and the existing ones unchanged:
+  `traffic: module=dll event=traceback_install previous_type=5`,
+  `traffic: module=dll event=lua_error total=<n> trace="<level>|<short_src>:<line>|<name>;..." message="..."`,
+  `event=lua_error_repeat repeat_count=<n> trace="..." message="..."`, `event=lua_error_alert status=<s>`,
+  `traffic: module=dll event=stack_leak slots=<n> total=<count>` and
+  `event=stack_leak_skipped reason=c_frame_active slots=<n>` (README, "DLL keys and log lines").
 - A `level=` key: the cfg `log` setting already selects what is written.
 
 ## 8. Tail filter
