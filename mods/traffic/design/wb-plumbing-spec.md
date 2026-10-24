@@ -220,7 +220,7 @@ Records (fields in the API.md table): `id` (uid, the handle's `id`), `cls` (2 Ba
 
 ### 16.2 Rules
 
-- No caller uses it yet; every existing count path is unchanged. The host stub `TRF_Carcasses` is undefined by default, so every other host run stays on the count path.
+- Callers: trf_supply's No witnesses rule ([demand-page-spec.md](demand-page-spec.md) 5.8, `TRF_SpNear`); every other count path is unchanged. The host stub `TRF_Carcasses` is undefined by default, so every other host run stays on the count path.
 - Cost: the native builds one table per object of the location (a few hundred). Call it per event or per step (spawn decision, witness check), not from every `TRF_OnTick`.
 - Errors: the native call is protected (`TRF_PlNoErr`); no error reaches `ScriptErrors.log`.
 
@@ -234,12 +234,12 @@ Nothing saved: `TRF` is unchanged (`pl-f` checks `HOST_SaveSize(TRF)` before and
 
 ### 16.5 Follow-ups (not in this step)
 
-- The witness rule of trf_supply's No witnesses window (`witness_r`, the background count `dw.b` and `witness_slack` of [demand-page-spec.md](demand-page-spec.md)): count live non-player ships near the demand through `TRF_Near(pos, witness_r, {cls={3,4,5,6,7}, alive=1, player=0, not_ids=<the target's ships>})` instead of a carcass count against a baseline, count fallback as now.
+- Done 2026-10-24: the witness rule of trf_supply's No witnesses window ([demand-page-spec.md](demand-page-spec.md) 5.8): `TRF_Near(pos, witness_r, {cls={3..9}, alive=1, player=0, not_ids=<the flight's and the drop containers' uids>, not_names={"cargo01_destroyed_inv"}})` instead of a carcass count against a background, count fallback as before.
 - The ship-cap governor (trf_safety `GetCarcassCountInSphere(Vector3(0,0,0), r)` with a scenery baseline): count ships only (`cls` 3..7) and drop the baseline on the typed path.
 - Spawn-spot checks (trf_gen, radius 20, and exp_trader): a spot is free when no ship (`cls` 3..9) is within the radius, so a portal or station at the spot no longer counts.
 - Finding traders the mod did not create (team and template), and load adoption (`load_none`) by uid.
 
 ### 16.6 In-game check
 
-With `CARCASSES=1` (the `install-test.sh` default): `traffic: carcasses on=1 sig=ok sigs=22` at start; in a system with a known convoy, the first caller's records (logged at `log=2` by that follow-up) show the trader rows with `team=` their CreateTeam name, `hp == GetCurHP(handle)` and `hpmax` equal to `<hit_points>` of the template; the player's fighters have `pl=1`.
+With `CARCASSES=1` (the `install-test.sh` default): `traffic: carcasses on=1 sig=ok sigs=22` at start; in a system with a known convoy, the first caller's records (trf_supply's level 2 `event=witness_probe` at a typed No witnesses mark, demand-page-spec CHECK W5) show the trader rows with `team=` their CreateTeam name, `hp == GetCurHP(handle)` and `hpmax` equal to `<hit_points>` of the template; the player's fighters have `pl=1`.
 

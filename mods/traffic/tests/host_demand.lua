@@ -6,7 +6,10 @@
 -- and dis as a kill, the lost line); d witnessed: a ship in range, a station in range, an escort left alive, no
 -- count native (witness_slack 0); e the time-out (step and late kill), the refused marks, the dump and the save size;
 -- f the subtractions of the witness count: the player's fighters, witness_slack, the flight's earlier wrecks; g cfg
--- demand_drop (the robbed stacks in one container beside the trader, the fallbacks, the jump and load cleanup).
+-- demand_drop (the robbed stacks in one container beside the trader, the fallbacks, the jump and load cleanup); h the
+-- typed witness rule through TRF_Near (spec 5.8: the HOST_Carcasses stub with a rocket, a wreck, a station, a player
+-- fighter, the flight's own ships, a drop container, and the native answering nil: the count path).
+-- Every run but h leaves TRF_Carcasses undefined, so a..g stay on the count path.
 -- Loads host_station.lua up to its first scenario, as host_captain.lua does. Natives from host_stubs.lua:
 -- GetCarcassCountInSphere (HOST().cc_ships, cc_static), GetPilot (HOST().crew), the mothership pilot's flight
 -- (HOST().pwing, HOST_PlayerShip), StartTradeDialog/SetReplaceValue/ShowAnswer/HideAnswer, ShowMsgBox, CombineStr
@@ -372,6 +375,9 @@ function T_DM_C()
 	HOST_Check(TRF_Pro(cur) == pro0 - 3 and TRF_Dis(cur) == dis0 + 2, "pro -3 and dis +2 as a kill (pro "..pro0.."->"..TRF_Pro(cur)..", dis "..dis0.."->"..TRF_Dis(cur)..")");
 	HOST_Check(DM_Said(s0, m0, TRF_SpTxt("dmplost", TRF_SpName({nm=r.nm}))) and not DM_Said(s0, m0, "robbed"), "the lost line, not robbed");
 	HOST_Check(TRF.live.tr[id].dw == nil and TRF.live.stat.dm_retract == 1, "mark gone with the record, stat dm_retract");
+	HOST_Check(TRF_Carcasses == nil and S_Logs(n0, "event=demand_retract trader_id="..id) == 1 and S_Logs(n0, " heat=2 via=count") == 1
+		and S_Logs(n0, "event=demand_kill trader_id="..id) == S_Logs(n0, "witnessed=false via=count") and S_Logs(n0, "via=typed") == 0,
+		"no TRF_Carcasses: the count path (via=count)");
 	-- Without the mark the same kill gives the kill heat.
 	local id2 = DM_Trader(nil, 2);
 	n0 = S_Mark();
@@ -622,11 +628,13 @@ function T_DM_E()
 	n0 = S_Mark();
 	TRF_Supply_Dump();
 	HOST_Check(S_Logs(n0, "demand_page_option=1 prey_count=1") == 1, "dump: demand_page_option, prey_count");
-	local pw = {t=99999999.5, w=1, b=999, d=8};
-	local one = HOST_SaveSize(pw) + 8 + strlen("dw");
+	-- Worst cases: the count path {t, w, b, d, v}; the typed path {t, w, v, wc, wt} with a 63 character template.
+	local pw = {t=99999999.5, w=1, b=999, d=8, v="count"};
+	local tw = {t=99999999.5, w=1, v="typed", wc=9, wt=strrep("x", 63)};
+	local one = max(HOST_SaveSize(pw), HOST_SaveSize(tw)) + 8 + strlen("dw");
 	local sz = 8 * one;
-	print("HOST demand dw worst case bytes "..sz.." ("..one.." per record)");
-	HOST_Check(one == 106 and sz <= 850, "dw: 106 bytes per record, "..sz.." bytes on 8 live records <= 850 (spec 3)");
+	print("HOST demand dw worst case bytes "..sz.." ("..one.." per record; count "..HOST_SaveSize(pw)..", typed "..HOST_SaveSize(tw)..")");
+	HOST_Check(one == 189 and sz <= 1512, "dw: 189 bytes per record, "..sz.." bytes on 8 live records <= 1512 (spec 3)");
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF");
 	V_ClearTr();
 end;
@@ -768,6 +776,125 @@ function T_DM_G()
 	TRF_Supply_Dump();
 	HOST_Check(S_Logs(n0, "demand_drop_option=1") == 1, "dump: demand_drop_option");
 	h.cfg.demand_drop = nil;
+	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF");
+	V_ClearTr();
+end;
+
+-- h: the typed witness rule (spec 5.8) -------------------------------------------------------------
+
+-- uids on the flight's handles (the id field TRF_Carcasses records carry), from base; the list of uids.
+function DM_Uids(x, base)
+	local ids = {};
+	for i = 1, getn(x.sh) do x.sh[i].id = base + i; tinsert(ids, base + i); end;
+	for i = 1, getn(x.tp) do if type(x.tp[i].id) ~= "number" then x.tp[i].id = base + 50 + i; tinsert(ids, base + 50 + i); end; end;
+	return ids;
+end;
+
+-- Records of the flight's ships as TRF_Carcasses would list them at the kill (still alive in the list: the
+-- worst case of a stale entry), each with uid ids[i].
+function DM_OwnRecs(x, ids)
+	local out = {};
+	for i = 1, getn(ids) do
+		local p = x.tp[1].pos;
+		tinsert(out, {id=ids[i], cls=3, tpl="trader_ship", team="TRF_Trade", hp=500, hpmax=800, x=p.x + 10 * i, y=p.y, z=p.z, pl=0});
+	end;
+	return out;
+end;
+
+-- A trader of heat 2 with uids, marked; HOST().carc = the flight's own records plus recs (records placed relative
+-- to the first transport: field dx). Kill every ship with player fire. Returns id, record, mark, log mark.
+function DM_TypedKill(recs, base)
+	local h = HOST();
+	local id, r, x = DM_Trader(nil, 2);
+	local ids = DM_Uids(x, base);
+	h.carc = DM_OwnRecs(x, ids);
+	local pw = DM_Mark(id);
+	local p = x.tp[1].pos;
+	for i = 1, getn(recs) do
+		local c = recs[i];
+		c.x, c.y, c.z = p.x + c.dx, p.y, p.z;
+		tinsert(h.carc, c);
+	end;
+	local n0 = S_Mark();
+	DM_Kill(id, 1);
+	T_Tick(2, 0.5);
+	return id, r, pw, n0;
+end;
+
+function T_DM_H()
+	local h = HOST();
+	DM_Begin();
+	TRF_Carcasses = HOST_Carcasses;
+	-- Rocket (cls 12) and wreck (cls 10) beside the kill: no witness; the mark has no background, the kill no wreck
+	-- counter, the retraction logs via=typed.
+	h.carc_n = 0;
+	local nm = S_Mark();
+	local id, r, pw, n0 = DM_TypedKill({{id=901, cls=12, tpl="rocket_x", hp=10, hpmax=10, pl=0, dx=50},
+		{id=902, cls=10, tpl="wreck_hull", hp=50, hpmax=100, pl=0, dx=120}}, 7000);
+	HOST_Check(type(pw) == "table" and pw.b == nil and pw.v == "typed" and h.carc_n >= 2, "mark on the typed path: no background, dw.v typed ("..TRF_Dump(pw)..")");
+	HOST_Check(S_Logs(n0, "event=demand_kill trader_id="..id.." ship=1 witness_count=0 reason=none witnessed=false via=typed") >= 1
+		and S_Logs(n0, "witnessed=true") == 0 and pw.d == nil, "rocket and wreck at the kill: not seen, no dw.d");
+	HOST_Check(S_Logs(n0, "event=demand_retract trader_id="..id.." by=player age=") == 1 and S_Logs(n0, "heat=2 via=typed") == 1
+		and TRF.std.heat == 2, "retracted, via=typed (heat "..TRF.std.heat..")");
+	HOST_Check(S_Logs(nm, "module=supply event=witness_probe trader_id="..id.." radius=3000 typed_count=") == 1
+		and S_Logs(nm, "leader_cls=3 leader_team=TRF_Trade leader_hp=500 leader_cur_hp=") == 1, "level 2 witness_probe at the typed mark (CHECK W5)");
+	-- A station (cls 8) 600 from the kill: seen, witness_cls=8 and its template on the kill and the outcome.
+	local id2, r2, pw2;
+	id2, r2, pw2, n0 = DM_TypedKill({{id=903, cls=8, tpl="station_ftu", team="FTU", hp=9000, hpmax=9000, pl=0, dx=600}}, 7100);
+	HOST_Check(S_Logs(n0, "event=demand_kill trader_id="..id2.." ship=1 witness_count=1 reason=station witnessed=true via=typed witness_cls=8 witness_tpl=station_ftu") == 1
+		and S_Logs(n0, "event=demand_witnessed trader_id="..id2.." reason=witness ship_count=0 age=") == 1
+		and S_Logs(n0, "result=witnessed via=typed witness_cls=8 witness_tpl=station_ftu") == 1
+		and S_Logs(n0, "event=demand_retract") == 0 and TRF.std.heat == 5, "a station 600 away: seen, witness_cls=8 (heat "..TRF.std.heat..")");
+	-- A vanilla ship (cls 3) 300 away is a witness (no witness_slack on this path, default slack 1).
+	local id3;
+	id3, r2, pw2, n0 = DM_TypedKill({{id=904, cls=3, tpl="pirate_ship", team="Pirates", hp=300, hpmax=300, pl=0, dx=300}}, 7200);
+	HOST_Check(TRF_SpT("witness_slack", 1) == 1 and S_Logs(n0, "event=demand_witnessed trader_id="..id3) == 1
+		and S_Logs(n0, "witness_cls=3 witness_tpl=pirate_ship") == 2, "one vanilla ship: seen at slack 1");
+	-- The player's fighter (pl=1) 200 away: not seen, no player-fighter search needed.
+	local id4;
+	id4, r2, pw2, n0 = DM_TypedKill({{id=905, cls=6, tpl="Interceptor_X", team="PlayerTeam", hp=400, hpmax=600, pl=1, dx=200}}, 7300);
+	HOST_Check(S_Logs(n0, "event=demand_retract trader_id="..id4) == 1 and S_Logs(n0, "witnessed=true") == 0, "player fighter (pl=1): not seen");
+	-- The flight's own ships still listed alive (their uids): not seen; the same records under other uids: seen.
+	local id5;
+	id5, r2, pw2, n0 = DM_TypedKill({}, 7400);
+	HOST_Check(S_Logs(n0, "event=demand_retract trader_id="..id5) == 1 and S_Logs(n0, "witnessed=true") == 0, "own ships by uid: not seen");
+	local id6, r6, x6 = DM_Trader(nil, 2);
+	local ids6 = DM_Uids(x6, 7500);
+	DM_Mark(id6);
+	h.carc = DM_OwnRecs(x6, {8001});
+	n0 = S_Mark();
+	DM_Kill(id6, 1);
+	T_Tick(2, 0.5);
+	HOST_Check(S_Logs(n0, "event=demand_witnessed trader_id="..id6) == 1 and S_Logs(n0, "witness_tpl=trader_ship") >= 1,
+		"control: a trader record with another uid is a witness");
+	-- A drop container (its template, cls 8 as a <Station>) 60 away: not seen.
+	local id7;
+	id7, r2, pw2, n0 = DM_TypedKill({{id=906, cls=8, tpl=TRF_SpDropK().tpl, hp=100, hpmax=100, pl=0, dx=60}}, 7600);
+	HOST_Check(TRF_SpDropK().tpl == "cargo01_destroyed_inv" and S_Logs(n0, "event=demand_retract trader_id="..id7) == 1
+		and S_Logs(n0, "witnessed=true") == 0, "drop container (cargo01_destroyed_inv): not seen");
+	-- A live drop container handle's uid is left out as well, whatever its template.
+	local dp = TRF_SpDropH();
+	local co = HOST_Obj("trf_drop_1_1", 0, 0, 0);
+	co.id = 907;
+	dp.o[1] = co;
+	local f = TRF_SpWitF(nil);
+	dp.o[1] = nil;
+	HOST_Check(TRF_PlIn(f.not_ids, 907) and f.alive == 1 and f.player == 0 and getn(f.cls) == 7 and f.cls[1] == 3 and f.cls[7] == 9,
+		"filter: cls 3..9, alive, not the player's team, the drop handle's uid");
+	-- The native answers nil (ini carcasses=0): the count path, via=count, background from the count.
+	h.carc_why = "off";
+	local id8, r8, x8 = DM_Trader(nil, 2);
+	nm = S_Mark();
+	local pw8 = DM_Mark(id8);
+	n0 = S_Mark();
+	DM_Kill(id8, 1);
+	T_Tick(2, 0.5);
+	h.carc_why = nil;
+	HOST_Check(type(pw8) == "table" and type(pw8.b) == "number" and S_Logs(n0, "event=demand_kill trader_id="..id8) >= 1
+		and S_Logs(n0, "reason=none witnessed=false via=count") >= 1 and S_Logs(n0, "heat=2 via=count") == 1
+		and S_Logs(n0, "via=typed") == 0 and S_Logs(nm, "event=witness_probe") == 0, "native nil: the count path (via=count, background "..tostring(pw8 and pw8.b)..")");
+	TRF_Carcasses = nil;
+	h.carc = nil;
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF");
 	V_ClearTr();
 end;

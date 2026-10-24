@@ -5,11 +5,11 @@
 # station voices scenarios stn-a..h of host_station.lua, the worldbuilding plumbing scenarios pl-a..f of
 # host_plumb.lua, the survivors scenarios sv-a..g of host_survive.lua, the faction ladder scenarios lad-a..g of
 # host_ladder.lua, the charter scenarios ch-a..h of host_charter.lua, the battle scars scenarios sc-a..g of
-# host_scar.lua, the wanted captains scenarios cap-a..h of host_captain.lua and the demand page scenarios dm-a..g of
+# host_scar.lua, the wanted captains scenarios cap-a..h of host_captain.lua and the demand page scenarios dm-a..h of
 # host_demand.lua (each its own entry point).
 # Env: LUA4 (interpreter), LUAC4, EXPS (default "default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm"), SCENS (default a..g),
 # V02 (default a..n), V1 (default a..n), STN (default a..h), PL (default a..f), SV (default a..g), LAD (default a..g), CH
-# (default a..h), SC (default a..g), CAP (default a..h), DM (default a..g).
+# (default a..h), SC (default a..g), CAP (default a..h), DM (default a..h).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
@@ -59,7 +59,7 @@ for e in ${EXPS:-default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm}; do
         ch) entry=host_charter.lua; for s in ${CH:-a b c d e f g h}; do run "ch-$s" TRF_CH="$s"; done; entry=host_stubs.lua ;;
         sc) entry=host_scar.lua; for s in ${SC:-a b c d e f g}; do run "sc-$s" TRF_SC="$s"; done; entry=host_stubs.lua ;;
         cap) entry=host_captain.lua; for s in ${CAP:-a b c d e f g h}; do run "cap-$s" TRF_CAP="$s"; done; entry=host_stubs.lua ;;
-        dm) entry=host_demand.lua; for s in ${DM:-a b c d e f g}; do run "dm-$s" TRF_DM="$s"; done; entry=host_stubs.lua ;;
+        dm) entry=host_demand.lua; for s in ${DM:-a b c d e f g h}; do run "dm-$s" TRF_DM="$s"; done; entry=host_stubs.lua ;;
         *) run "exp$e" TRF_EXP="$e" ;;
     esac
 done
