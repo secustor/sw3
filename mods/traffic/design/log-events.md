@@ -421,6 +421,25 @@ Survivors and beacons, step 1 (`design/survivors-spec.md` 7).
 | `jump` | `module=survive event=jump system=gaoba deleted_count=3` | 2 |
 | `rumour` | `module=survive event=rumour system=heos rumour_system=gaoba kind=svrumtaken` | 2 |
 
+## ladder (`trf_ladder.script`; `TRF_LadE`, `TRF_LadDE`)
+
+Faction service ladder, step 1 (`design/ladder-spec.md` 7).
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=ladder event=error message=<m>` | 1 |
+| `install` | `module=ladder event=install gibdd_installed=true gibdd_wrapped=true temp_change_wrapped=true` | 1 |
+| `rank_line` | `module=ladder event=rank_line system=fort_russ faction=Vks standing=6 band=4 war=false region=6 status=permit permit_legs_left=4` (`status` permit, none, rival, void, corp, war); `... result=none reason=deny` at level 2 | 1 |
+| `permit_offer` | `module=ladder event=permit_offer faction=Vks standing=4 region=6 level=15 prosperity=1 difficulty_k=1.000 price=18900 legs=24 result=offered` (none: `result=none reason=<owner, deny, war, chapter, nomap, gate:<why>, region, rival, corporation, off, valid, declined>` at level 2) | 1 |
+| `permit_buy` | `module=ladder event=permit_buy faction=Vks region=6 price=18900 credits=100000 till=29 standing_before=5 standing_after=6 gain=gained rival=Kfni rival_before=5 rival_after=4 voided_count=0 result=bought` (`gain` gained, cooldown, cap); `... result=declined`, `poor`, `no_credits`, `error`; `module=ladder event=permit_buy result=stale` | 1 |
+| `settle` | `module=ladder event=settle faction=Vks standing=2 region=6 level=15 price=120000 result=offered`; `... price=120000 credits=200000 standing_before=2 standing_after=4 result=paid` (also `declined`, `poor`, `stale`, `none reason=standing`); `result=none reason=<off, cooldown, declined>` at level 2 | 1 |
+| `handin` | `module=ladder event=handin system=fort_russ faction=Vks pilot=PirateTough count=2 price=800 kind=pirate standing_before=5 standing_after=6 rival=nil rival_before=nil rival_after=nil result=credited` (`kind=pow` with the rival change); `... result=none reason=<deny, war, cooldown, cap>`; `reason=template`, `docking` at level 2 | 1 |
+| `gibdd_waive` | `module=ladder event=gibdd_waive system=altair faction=Vks region=5 credits=100000 credits_after=100000 till=34 result=waived`; `... credits=100000 result=fined reason=<owner, deny, war, none, region, exit>` | 1 |
+| `reset_sync` | `module=ladder event=reset_sync faction=Vks name=Vks paid=650000 standing_before=1 standing_after=4 result=synced` (also `kept`, `free`, `war`, `off`) | 1 |
+| `permit_expire` | `module=ladder event=permit_expire faction=Vks region=6 till=29 leg=29 reason=dock` (reason enter, load, dock) | 1 |
+| `dump` | `module=ladder event=dump faction=Vks standing=7 band=5 war=false permits=6:29 permit_gain_leg=5 handin_leg=5 settle_leg=nil` (one per faction) | 1 |
+| `dump_state` | `module=ladder event=dump_state escort_ban_leg=nil warrant=nil warrant_next_leg=nil warrant_real_seconds=nil patron=nil docking_count=1 credited=nil declined=nil` | 1 |
+
 ## supply (`trf_supply.script`; `TRF_SpE`)
 
 | Event | Example line | Level |
@@ -458,6 +477,7 @@ Survivors and beacons, step 1 (`design/survivors-spec.md` 7).
 | `region_standing` | `module=faction event=region_standing slot=5 faction=Vks reason="sweep won" standing_before=3 standing_after=5` | 1 |
 | `faction_standing` | `module=faction event=faction_standing faction=Vks reason=why standing_before=5 standing_after=4` | 1 |
 | `faction_standing` | `module=faction event=faction_standing faction=Vks reason=why standing_before=5 standing_after=5 result=frozen` (team at war with the player, `TRF_FstClamp`) | 1 |
+| `faction_standing` | `module=faction event=faction_standing faction=Kfni reason=why standing_before=4 standing_after=4 result=capped` (the faction ladder's rival cap, `TRF_Lad_Cap` in `TRF_FstClamp`; `standing_after` is the capped value) | 1 |
 | `region_standing_drift` | `module=faction event=region_standing_drift slot=5 standing_before=88881 standing_after=77772` | 2 |
 | `faction_standing_drift` | `module=faction event=faction_standing_drift standing_before=18555 standing_after=27555` | 2 |
 | `flight` | `module=faction event=flight faction=1 result=no_tables` | 1 |

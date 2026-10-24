@@ -92,9 +92,10 @@ function T_PL_A()
 	for k, v in c1 do if c2[k] ~= v then same = nil; end; end;
 	HOST_Check(r.coh == 0 and same and TRF_InstallTradeDock() == 0 and TRF_InstallBoard() == 0 and TRF_InstallPirDock() == 0
 		and TRF_InstallStation().trade == 0 and TRF_InstallGen().ce == 0, "second install: no double wrap, registrations replaced in place ("..c2.line.." lines)");
-	-- Survivors (design/survivors-spec.md 4): the trade dock line at order 30 and the seed provider at 550.
-	HOST_Check(c2.line == 5 and c2.box == 3 and c2.none == 1 and c2.ej == 1 and c2.owe == 1 and c2.seed == 9,
-		"traffic registrations: 5 lines, 3 boxes, 1 none handler, 1 eject handler, 1 payer, 9 seed providers");
+	-- Survivors (design/survivors-spec.md 4): the trade dock line at order 30 and the seed provider at 550; faction ladder
+	-- (design/ladder-spec.md 4): patrol line 50, patrol box 300, one CostOfHead handler.
+	HOST_Check(c2.line == 6 and c2.box == 4 and c2.none == 1 and c2.ej == 1 and c2.owe == 1 and c2.seed == 9 and c2.coh == 1,
+		"traffic registrations: 6 lines, 4 boxes, 1 none handler, 1 eject handler, 1 payer, 9 seed providers, 1 CostOfHead handler");
 	local o1 = TRF_orig_CostOfHead;
 	T_Jump("aurora");
 	T_Jump("gredos");

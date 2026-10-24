@@ -1,0 +1,1057 @@
+-- sw3-traffic faction service ladder (Lua 4.0.1). Spec: design/ladder-spec.md (design
+-- worldbuilding/09-faction-ladder.md, step 1). Prefix Lad (TRF_Lad_* public, TRF_Lad<X> internal), log
+-- module=ladder.
+-- Step 1: traffic's standing TRF.std.fst (digit f = 1..5: Vks, Kfni, Triada, Uss, Inoco) as a rank line at the
+-- patrol dock (dispatcher line 50, after the owed pay and the #7 line), the war rule (team relation W: band 1
+-- title, no offer, no fst change), regional transit permits of Vks and Kfni (dispatcher box 300, below the 8.10
+-- contracts) with the rival cap and the rank-6 hold, settlement of an open file (fst <= 3), hand-in standing and
+-- prisoners of war through the CostOfHead chain (the price is passed through unchanged), the portal-fine waiver
+-- (wrapper over _PatrolGIBDD_shtraf, exit through the vanilla _PatrolGIBDD_prava) and the relation-reset sync
+-- (trf_supply's _temp_change wrapper asks TRF_Lad_ResetSync). trf_faction asks TRF_Lad_Hold (decay stops at
+-- rank_hold under a permit) and TRF_Lad_Cap (rival cap inside TRF_FstClamp).
+-- Step 2 (patrol escort, military depots, warrants, the shared escort slot, the patron read) is not built; the
+-- saved fields eb, w, wc, wr, pat are kept by the repair and shown in the dump, and the hook points are named
+-- in the spec (section 4).
+-- Saved fields (TRF.lad, created on first write, repaired by TRF_Lad_Fix): lic[f][rg] = leg until which the
+-- permit of f (1..2) for region slot rg is valid (absent = none), pg[f] = leg of the last fst gain from a permit
+-- (f 1..2), hc[f] = leg of the last hand-in gain (f 1..5), sc[f] = leg of the last settlement (f 1..5); step 2:
+-- eb, w = {f, sys, till, n}, wc, wr, pat.
+-- Visit state lives in the chunk local LV (never saved; rebuilt by every MapInitialization, so entry and load
+-- reset it): dk docking count, hand[f] = 1 when f was credited this docking, dec[key] = 1 for an offer declined
+-- this visit, tc the tune cache.
+-- Layout as trf_survive: helpers, static tables, pure functions (*Of), state, gates, contract functions.
+-- Top level: functions and LV only.
+
+local LV = {dk=0, hand={}, dec={}};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_LadLV() return %LV; end;
+
+-- logfmt event line, module=ladder (design/log-format.md).
+function TRF_LadE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "ladder"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_LadErr(m)
+	TRF_LadE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler (natives that may be missing or error on unknown input): nil is the answer.
+function TRF_LadNoErr(m) end;
+
+function TRF_LadLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_LadDE(event, ...)
+	if TRF_LadLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_LadE, arg);
+end;
+
+function TRF_LadCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Lad_OptDef), else the raw config, else the default; a wrong type or a number
+-- outside 0..1 reads as the default.
+function TRF_LadOpt(key)
+	local d = TRF_Lad_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	if type(v) == "number" and (v ~= floor(v) or v < 0 or v > 1) then return d; end;
+	return v;
+end;
+
+-- Tune values of this module, clamped (TRF_LadClampT; k_w keeps its fraction, the rest are floored). Cached in
+-- LV while TRF_Tune returns the same table; callers must not write into it.
+function TRF_LadTune()
+	local lv = %LV;
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_LadErr); end;
+	if type(lv.tc) == "table" and lv.tc.s == t then return lv.tc.t; end;
+	local d = TRF_Lad_TuneDef();
+	local cl = TRF_LadClampT();
+	local o = {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if type(x) ~= "number" then x = v; end;
+		if k ~= "k_w" then x = floor(x); end;
+		if cl[k] then x = TRF_LadCl(x, cl[k][1], cl[k][2]); end;
+		o[k] = x;
+	end;
+	lv.tc = {s=t, t=o};
+	return o;
+end;
+
+function TRF_LadT(key)
+	return TRF_LadTune()[key];
+end;
+
+function TRF_LadLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+function TRF_LadGen()
+	if type(TRF) == "table" and type(TRF.gen) == "number" then return TRF.gen; end;
+	return 0;
+end;
+
+function TRF_LadTxt(key, a, b, c)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c); end;
+	return tostring(key);
+end;
+
+function TRF_LadSay(text, secs)
+	return TRF_N("TRF_Say", text, secs or 8);
+end;
+
+function TRF_LadMap()
+	local m = TRF_N("TRF_Map");
+	if type(m) == "table" and type(m.sys) == "table" and type(m.by) == "table" then return m; end;
+	return nil;
+end;
+
+-- Lowercase map name of system idx (log values), or the index.
+function TRF_LadName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+-- Map index of a location name (lowercase lookup), or nil.
+function TRF_LadIdxOf(loc)
+	local m = TRF_LadMap();
+	if not m or type(loc) ~= "string" then return nil; end;
+	return m.by[strlower(loc)];
+end;
+
+-- S2: __disableAction or __sys_SOS.
+function TRF_LadFlags()
+	if __disableAction == TRUE then return "disable_action"; end;
+	if __sys_SOS == TRUE then return "sys_sos"; end;
+	return nil;
+end;
+
+function TRF_LadTeamRaw(loc)
+	return GetLocationTeam(loc);
+end;
+
+-- Owner team of location loc (GetLocationTeam, FloodTradeStations.script 256-262), or nil.
+function TRF_LadTeam(loc)
+	if type(GetLocationTeam) ~= "function" or type(loc) ~= "string" then return nil; end;
+	local t = call(TRF_LadTeamRaw, {loc}, "x", TRF_LadNoErr);
+	if type(t) == "string" then return t; end;
+	return nil;
+end;
+
+-- Faction index 1..5 of a team name (trf_faction's TRF_FacIdx), or nil.
+function TRF_LadFacOf(team)
+	local f = TRF_N("TRF_FacIdx", team);
+	if type(f) == "number" and f >= 1 and f <= 5 then return f; end;
+	return nil;
+end;
+
+-- Team name of f (trf_faction's TRF_FacTeam), or nil.
+function TRF_LadTeamOf(f)
+	local t = TRF_N("TRF_FacTeam", f);
+	if type(t) == "string" then return t; end;
+	return nil;
+end;
+
+-- Standing digit of f (trf_faction's TRF_Fst), 5 without it.
+function TRF_LadFst(f)
+	local v = TRF_N("TRF_Fst", f);
+	if type(v) == "number" then return v; end;
+	return 5;
+end;
+
+-- fst + d of f through trf_faction's TRF_FstAdd (clamp, war freeze and rival cap in TRF_FstClamp); the new value.
+function TRF_LadFstAdd(f, d, why)
+	if d == 0 or type(TRF_FstAdd) ~= "function" then return TRF_LadFst(f); end;
+	call(TRF_FstAdd, {f, d, why}, "x", TRF_LadErr);
+	return TRF_LadFst(f);
+end;
+
+function TRF_LadRelRaw(a, b)
+	return GetTeamRelation(a, b);
+end;
+
+-- War rule (09 section 3): 1 while the team relation of f toward the player is W.
+function TRF_LadWar(f)
+	local t = TRF_LadTeamOf(f);
+	if not t or type(GetTeamRelation) ~= "function" or RELATION_WAR == nil then return nil; end;
+	local v = call(TRF_LadRelRaw, {t, PLAYER_TEAM}, "x", TRF_LadNoErr);
+	if v ~= nil and v == RELATION_WAR then return 1; end;
+	return nil;
+end;
+
+function TRF_LadCreditsRaw()
+	return GetPlayerCredits();
+end;
+
+function TRF_LadCredits()
+	if type(GetPlayerCredits) ~= "function" then return nil; end;
+	local c = call(TRF_LadCreditsRaw, {}, "x", TRF_LadErr);
+	if type(c) == "number" then return c; end;
+	return nil;
+end;
+
+function TRF_LadSubRaw(n)
+	SubPlayerCredits(n);
+	return 1;
+end;
+
+-- Region display name of slot: "<home system>" (the sector name of the texts).
+function TRF_LadRgName(slot)
+	local r = TRF_N("TRF_RgMap");
+	local h = nil;
+	if type(r) == "table" and type(slot) == "number" and type(r[slot]) == "table" then h = r[slot].home; end;
+	if type(h) == "number" then
+		local s = TRF_N("TRF_UI_SysName", h);
+		if type(s) == "string" then return s; end;
+		return TRF_LadName(h);
+	end;
+	return tostring(slot);
+end;
+
+-- Region slot count (TRF_RgMap().n), 11 without the region table.
+function TRF_LadRgN()
+	local r = TRF_N("TRF_RgMap");
+	if type(r) == "table" and type(r.n) == "number" and r.n > 0 then return r.n; end;
+	return 11;
+end;
+
+-- Display name of f for the texts (ladfac1..5).
+function TRF_LadFacName(f)
+	return TRF_LadTxt("ladfac"..tostring(f));
+end;
+
+-- Static tables --------------------------------------------------------------------
+
+-- Constants without a cfg key: permit discount in percent at rank 8 and 9 (09 5), line seconds, the box owner name.
+function TRF_LadK()
+	return {disc8=75, disc9=75, secs=8, lic_f=2};
+end;
+
+-- Always denied for every ladder action (09 section 3, TDR 9.9): no line, no box, no credit, no waiver.
+function TRF_LadDenyP()
+	return {x297=1, fronn=1, earth=1, precursors=1, disonsphere=1};
+end;
+
+function TRF_LadClampT()
+	return {c_p={0, 100000}, permit_legs={1, 200}, rank_hold={4, 9}, c_e={0, 100000}, esc_legs={1, 10}, esc_cd={0, 100},
+		c_s={0, 100000}, k_w={0, 2}, warrant_cd={0, 500}, warrant_rs={0, 100000}, lad_hand_cd={0, 100}, hand_cap={0, 9},
+		settle_cd={0, 200}, esc_ban_legs={0, 200}, rival_cap={0, 9}, reset_min_paid={0, 10000000}};
+end;
+
+-- Pure functions (explicit inputs, host-testable) ------------------------------------
+
+-- Rank band 1..7 of fst v (09 section 2): 0-2, 3, 4-5, 6, 7, 8, 9.
+function TRF_LadBandOf(v)
+	if type(v) ~= "number" or v <= 2 then return 1; end;
+	if v == 3 then return 2; end;
+	if v <= 5 then return 3; end;
+	return v - 2;
+end;
+
+-- Permit price (09 5): c_p x L_rg x (1 + 0.05 R) x d_k x disc(rank); disc 0.75 at fst 8 and 9.
+function TRF_LadPriceOf(cp, L, R, dk, fst)
+	local disc = 1;
+	if fst == 8 then disc = TRF_LadK().disc8 / 100; elseif fst >= 9 then disc = TRF_LadK().disc9 / 100; end;
+	return floor(cp * L * (1 + 0.05 * R) * dk * disc + 0.5);
+end;
+
+-- Settlement price (09 5): c_s x L_rg x (4 - fst) x d_k at fst <= 3, else 0.
+function TRF_LadSettleOf(cs, L, fst, dk)
+	if type(fst) ~= "number" or fst > 3 then return 0; end;
+	return floor(cs * L * (4 - fst) * dk + 0.5);
+end;
+
+-- Gain of +1 that never lifts above cap: 1 or 0.
+function TRF_LadGainOf(cur, cap)
+	if type(cur) ~= "number" or type(cap) ~= "number" or cur >= cap then return 0; end;
+	return 1;
+end;
+
+-- The other empire of f (1 <-> 2), nil for the corporations.
+function TRF_LadRival(f)
+	if f == 1 then return 2; end;
+	if f == 2 then return 1; end;
+	return nil;
+end;
+
+-- 1 while a permit stamp till is valid at leg legs ("valid until that leg", 24 legs after purchase: legs < till).
+function TRF_LadValidOf(till, legs)
+	return type(till) == "number" and type(legs) == "number" and legs < till;
+end;
+
+-- 1 when name is an entry of list l.
+function TRF_LadInOf(name, l)
+	if type(l) ~= "table" or type(name) ~= "string" then return nil; end;
+	for i, pn in l do
+		if pn == name then return 1; end;
+	end;
+	return nil;
+end;
+
+-- Hand-in kind (09 4): "pirate" for a Pir_Pilots template at any faction's station, "pow" for the other empire's
+-- template at an empire station (Kfni_Pilots at Vks, Vks_Pilots at Kfni), else nil.
+function TRF_LadHandKindOf(name, f, pir, vks, kfni)
+	if TRF_LadInOf(name, pir) then return "pirate"; end;
+	if f == 1 and TRF_LadInOf(name, kfni) then return "pow"; end;
+	if f == 2 and TRF_LadInOf(name, vks) then return "pow"; end;
+	return nil;
+end;
+
+-- Cooldown test of a leg stamp: 1 when the stamp is absent or at least cd legs old.
+function TRF_LadCdOf(st, legs, cd)
+	if type(st) ~= "number" then return 1; end;
+	return legs - st >= cd;
+end;
+
+-- State -------------------------------------------------------------------------------
+
+-- TRF.lad, created on first write.
+function TRF_LadRec()
+	if type(TRF.lad) ~= "table" then TRF.lad = {}; end;
+	return TRF.lad;
+end;
+
+-- Sub-table k of TRF.lad, created on first write.
+function TRF_LadSub(k)
+	local L = TRF_LadRec();
+	if type(L[k]) ~= "table" then L[k] = {}; end;
+	return L[k];
+end;
+
+-- Field k[f] of TRF.lad, or nil (never creates).
+function TRF_LadGet(k, f)
+	if type(TRF) ~= "table" or type(TRF.lad) ~= "table" or type(TRF.lad[k]) ~= "table" then return nil; end;
+	return TRF.lad[k][f];
+end;
+
+-- Valid till of the permit of f for slot, or nil.
+function TRF_LadLic(f, slot)
+	local l = TRF_LadGet("lic", f);
+	if type(l) ~= "table" or type(slot) ~= "number" then return nil; end;
+	if TRF_LadValidOf(l[slot], TRF_LadLegs()) then return l[slot]; end;
+	return nil;
+end;
+
+-- Lowest slot with a valid permit of f and its till, or nil.
+function TRF_LadAnyLic(f)
+	local l = TRF_LadGet("lic", f);
+	if type(l) ~= "table" then return nil; end;
+	local legs = TRF_LadLegs();
+	local best = nil;
+	for rg, till in l do
+		if type(rg) == "number" and TRF_LadValidOf(till, legs) and (best == nil or rg < best) then best = rg; end;
+	end;
+	if best then return best, l[best]; end;
+	return nil;
+end;
+
+-- 1 when table t has no entry.
+function TRF_LadEmpty(t)
+	for k, v in t do return nil; end;
+	return 1;
+end;
+
+-- Removes expired permits (strip gone records); empty tables are dropped. Returns the number removed.
+function TRF_LadStrip(why)
+	if type(TRF) ~= "table" or type(TRF.lad) ~= "table" or type(TRF.lad.lic) ~= "table" then return 0; end;
+	local legs = TRF_LadLegs();
+	local n = 0;
+	for f = 1, 2 do
+		local l = TRF.lad.lic[f];
+		if type(l) == "table" then
+			local gone = {};
+			for rg, till in l do
+				if not TRF_LadValidOf(till, legs) then tinsert(gone, rg); end;
+			end;
+			sort(gone);
+			for i = 1, getn(gone) do
+				TRF_LadE("permit_expire", "faction", TRF_LadTeamOf(f), "region", gone[i], "till", l[gone[i]], "leg", legs, "reason", why);
+				l[gone[i]] = nil;
+				n = n + 1;
+			end;
+			if TRF_LadEmpty(l) then TRF.lad.lic[f] = nil; end;
+		end;
+	end;
+	if TRF_LadEmpty(TRF.lad.lic) then TRF.lad.lic = nil; end;
+	return n;
+end;
+
+-- Gates ------------------------------------------------------------------------------
+
+-- 1 when the module runs: TRF, the traffic modules, cfg lad_enabled.
+function TRF_LadOn()
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return nil; end;
+	return TRF_LadOpt("lad_enabled") == 1;
+end;
+
+-- 1 when system idx (or location name loc) is on the permanent deny list.
+function TRF_LadDeny(idx, loc)
+	local n = loc;
+	if type(idx) == "number" then n = TRF_LadName(idx); end;
+	if type(n) ~= "string" then return nil; end;
+	return TRF_LadDenyP()[strlower(n)];
+end;
+
+-- Owner of the docked patrol station: f 1..5 and the location name (_param of __PSDock_Action, else the
+-- current location), or nil.
+function TRF_LadDockOwner()
+	local loc = _param;
+	if type(loc) ~= "string" or loc == "" then loc = TRF_N("GetCurrentLocation"); end;
+	if type(loc) ~= "string" then return nil; end;
+	return TRF_LadFacOf(TRF_LadTeam(loc)), loc;
+end;
+
+-- L_rg (09 4, 00 A4): the highest L_w among the systems of f in region slot (trf_region's TRF_LPay), at least
+-- L_w of system idx (the station's own system).
+function TRF_LadLrg(f, slot, idx)
+	local L = 0;
+	if type(idx) == "number" then L = TRF_N("TRF_LPay", idx) or 0; end;
+	local r = TRF_N("TRF_RgMap");
+	local t = TRF_LadTeamOf(f);
+	if type(r) == "table" and type(slot) == "number" and type(r[slot]) == "table" and type(r[slot].sys) == "table" and t then
+		local ss = r[slot].sys;
+		for i = 1, getn(ss) do
+			local tm = TRF_LadTeam(TRF_LadName(ss[i]));
+			if type(tm) == "string" and strlower(tm) == strlower(t) then
+				local l = TRF_N("TRF_LPay", ss[i]);
+				if type(l) == "number" and l > L then L = l; end;
+			end;
+		end;
+	end;
+	if L <= 0 then L = 8; end;
+	return L;
+end;
+
+-- d_k (00 A2): trf_region's TRF_DK, 1 without it.
+function TRF_LadDk()
+	local d = TRF_N("TRF_DK");
+	if type(d) == "number" then return d; end;
+	return 1;
+end;
+
+-- Contract: decay hold and rival cap (trf_faction) ---------------------------------------------
+
+-- 09 4, 00 C2: rank_hold while a permit of f is valid (trf_faction's drift keeps a digit at or above it from
+-- falling below), else nil.
+function TRF_Lad_Hold(f)
+	if not TRF_LadOn() or (f ~= 1 and f ~= 2) then return nil; end;
+	if TRF_LadAnyLic(f) then return TRF_LadT("rank_hold"); end;
+	return nil;
+end;
+
+-- 09 4: rival_cap while any permit of the other empire is valid (TRF_FstClamp caps the digit of f), else nil.
+function TRF_Lad_Cap(f)
+	if not TRF_LadOn() then return nil; end;
+	local o = TRF_LadRival(f);
+	if o and TRF_LadAnyLic(o) then return TRF_LadT("rival_cap"); end;
+	return nil;
+end;
+
+-- Rank line (09 2) -------------------------------------------------------------------
+
+-- Rank title of f at fst v (band 1 at war).
+function TRF_LadTitle(f, v, war)
+	local b = TRF_LadBandOf(v);
+	if war then b = 1; end;
+	return TRF_LadTxt("ladrank"..f..b), b;
+end;
+
+-- "<faction> standing: <title> (<fst>)."
+function TRF_LadRankText(f, war)
+	local v = TRF_LadFst(f);
+	local t, b = TRF_LadTitle(f, v, war);
+	return TRF_LadTxt("ladline", TRF_LadFacName(f), t, v), b, v;
+end;
+
+-- Status of the empire f in slot (09 2): "void" (a valid permit of the other empire for this region: its
+-- papers do not apply here), "rival" (a valid permit of the other empire elsewhere), "permit" (own valid
+-- permit for this region), else "none". Returns the status, its text and the legs left.
+function TRF_LadStatus(f, slot)
+	local o = TRF_LadRival(f);
+	if not o then return "corp", nil, nil; end;
+	if TRF_LadLic(o, slot) then return "void", TRF_LadTxt("ladvoid"..f), nil; end;
+	if TRF_LadAnyLic(o) then return "rival", TRF_LadTxt("ladrival", TRF_LadFacName(o), TRF_LadFacName(f)), nil; end;
+	local till = TRF_LadLic(f, slot);
+	if till then
+		local left = till - TRF_LadLegs();
+		return "permit", TRF_LadTxt("ladperm", left), left;
+	end;
+	return "none", TRF_LadTxt("ladnoperm"), nil;
+end;
+
+-- Patrol dock line, order 50 (00 order row: S19 10, #4 20, owed pay 30, #7 40, #9 50), registered always = 1
+-- so a new docking always clears the per-docking hand-in flag; under the flags it shows nothing.
+function TRF_Lad_DockLine(kind, param)
+	local lv = %LV;
+	lv.dk = lv.dk + 1;
+	lv.hand = {};
+	if not TRF_LadOn() or TRF_LadOpt("lad_rankline") ~= 1 then return nil; end;
+	if TRF_LadFlags() or TRF_N("TRF_Quiet") then return nil; end;
+	local f, loc = TRF_LadDockOwner();
+	if not f then return nil; end;
+	local idx = TRF_N("TRF_CurIdx");
+	if TRF_LadDeny(idx, loc) then
+		TRF_LadDE("rank_line", "system", tostring(loc), "faction", TRF_LadTeamOf(f), "result", "none", "reason", "deny");
+		return nil;
+	end;
+	TRF_LadStrip("dock");
+	local slot = TRF_N("TRF_RgOf", idx);
+	local war = TRF_LadWar(f);
+	local text, b, v = TRF_LadRankText(f, war);
+	local st, stx, left = "war", nil, nil;
+	if not war then st, stx, left = TRF_LadStatus(f, slot); end;
+	if stx then text = text.." "..stx; end;
+	TRF_LadE("rank_line", "system", strlower(loc), "faction", TRF_LadTeamOf(f), "standing", v, "band", b, "war", TRF_KvB(war),
+		"region", slot, "status", st, "permit_legs_left", left);
+	return text;
+end;
+
+-- Offer box (09 6, 00 order: 8.10 contracts 400 > #9 300) ---------------------------------------
+
+-- Why no ladder box opens for f at this docking, or nil (purchases: chapter >= 5, the strict gate, the war rule).
+function TRF_LadBoxWhy(f, loc, idx)
+	if not f then return "owner"; end;
+	if TRF_LadDeny(idx, loc) then return "deny"; end;
+	if TRF_LadWar(f) then return "war"; end;
+	local ch = TRF_N("TRF_Chapter");
+	if type(ch) ~= "number" or ch < 5 then return "chapter"; end;
+	if type(idx) ~= "number" then return "nomap"; end;
+	if type(TRF_StrictOk) ~= "function" then return "gate:nosafety"; end;
+	local ok, gw = TRF_StrictOk(idx, "lad");
+	if not ok then return "gate:"..tostring(gw); end;
+	return nil;
+end;
+
+-- Box candidate of kind patrol, prio 300: settlement at fst <= 3, else the permit of an empire; nothing from an
+-- empire while a permit of the other empire is valid; one ladder box per docking (the dispatcher opens the first
+-- spec); an offer declined in this visit is not shown again.
+function TRF_Lad_DockBox(kind, param)
+	if not TRF_LadOn() or TRF_LadFlags() or TRF_N("TRF_Quiet") then return nil; end;
+	local f, loc = TRF_LadDockOwner();
+	if not f then return nil; end;
+	local idx = TRF_N("TRF_CurIdx");
+	local why = TRF_LadBoxWhy(f, loc, idx);
+	local slot = TRF_N("TRF_RgOf", idx);
+	if not why and type(slot) ~= "number" then why = "region"; end;
+	-- 09 2 (Llanovar 1): while the other empire's papers are valid, this empire has nothing for the player.
+	local o = TRF_LadRival(f);
+	if not why and o and TRF_LadAnyLic(o) then why = "rival"; end;
+	if why then
+		TRF_LadDE("permit_offer", "system", strlower(loc), "faction", TRF_LadTeamOf(f), "result", "none", "reason", why);
+		return nil;
+	end;
+	local v = TRF_LadFst(f);
+	if v <= 3 then return TRF_LadSettleSpec(f, slot, idx, v); end;
+	return TRF_LadPermitSpec(f, slot, idx, v);
+end;
+
+-- Settlement box spec or nil (09 4: at fst <= 3, once per settle_cd legs; every faction).
+function TRF_LadSettleSpec(f, slot, idx, v)
+	local lv = %LV;
+	local why = nil;
+	if TRF_LadOpt("lad_settle") ~= 1 then why = "off";
+	elseif not TRF_LadCdOf(TRF_LadGet("sc", f), TRF_LadLegs(), TRF_LadT("settle_cd")) then why = "cooldown";
+	elseif lv.dec["settle"..f] == 1 then why = "declined"; end;
+	local L = TRF_LadLrg(f, slot, idx);
+	local price = TRF_LadSettleOf(TRF_LadT("c_s"), L, v, TRF_LadDk());
+	if why then
+		TRF_LadDE("settle", "faction", TRF_LadTeamOf(f), "standing", v, "region", slot, "price", price, "result", "none", "reason", why);
+		return nil;
+	end;
+	local a = {f=f, s=slot, p=price, v=v, g=TRF_LadGen()};
+	local text = TRF_LadTxt("ladhead", TRF_LadFacName(f), TRF_LadRgName(slot)).."\n"..TRF_LadTxt("ladsettle", price);
+	TRF_LadE("settle", "faction", TRF_LadTeamOf(f), "standing", v, "region", slot, "level", L, "price", price, "result", "offered");
+	return {text=text, ok="TRF_Lad_SettleOk", no="TRF_Lad_SettleNo", a=a, own="lad_settle"};
+end;
+
+-- Permit box spec or nil (09 4, 5, 6): Vks and Kfni only, fst >= 4 (an open file settles first), no valid
+-- permit of f for this region (the rival gate is in TRF_Lad_DockBox).
+function TRF_LadPermitSpec(f, slot, idx, v)
+	local lv = %LV;
+	local why = nil;
+	if not TRF_LadRival(f) then why = "corporation";
+	elseif TRF_LadOpt("lad_permit") ~= 1 then why = "off";
+	elseif TRF_LadLic(f, slot) then why = "valid";
+	elseif lv.dec["permit"..f] == 1 then why = "declined"; end;
+	if why then
+		TRF_LadDE("permit_offer", "faction", TRF_LadTeamOf(f), "standing", v, "region", slot, "result", "none", "reason", why);
+		return nil;
+	end;
+	local L = TRF_LadLrg(f, slot, idx);
+	local R = TRF_N("TRF_RgR", slot) or 0;
+	local price = TRF_LadPriceOf(TRF_LadT("c_p"), L, R, TRF_LadDk(), v);
+	local legs = TRF_LadT("permit_legs");
+	local a = {f=f, s=slot, p=price, g=TRF_LadGen()};
+	local text = TRF_LadTxt("ladhead", TRF_LadFacName(f), TRF_LadRgName(slot)).."\n"..TRF_LadTxt("ladpermit", TRF_LadFacName(f), legs, price)
+		.." "..TRF_LadTxt("ladwarn"..f);
+	TRF_LadE("permit_offer", "faction", TRF_LadTeamOf(f), "standing", v, "region", slot, "level", L, "prosperity", R, "difficulty_k", TRF_F(TRF_LadDk()),
+		"price", price, "legs", legs, "result", "offered");
+	return {text=text, ok="TRF_Lad_PermitOk", no="TRF_Lad_PermitNo", a=a, own="lad_permit"};
+end;
+
+-- Box answers (a = the spec's record; a record of another generation buys nothing).
+function TRF_Lad_PermitOk(a) return TRF_LadBuy(a); end;
+function TRF_Lad_SettleOk(a) return TRF_LadSettle(a); end;
+
+function TRF_Lad_PermitNo(a)
+	if type(a) ~= "table" then return nil; end;
+	local lv = %LV;
+	lv.dec["permit"..a.f] = 1;
+	TRF_LadE("permit_buy", "faction", TRF_LadTeamOf(a.f), "region", a.s, "price", a.p, "result", "declined");
+	return nil;
+end;
+
+function TRF_Lad_SettleNo(a)
+	if type(a) ~= "table" then return nil; end;
+	local lv = %LV;
+	lv.dec["settle"..a.f] = 1;
+	TRF_LadE("settle", "faction", TRF_LadTeamOf(a.f), "region", a.s, "price", a.p, "result", "declined");
+	return nil;
+end;
+
+-- Pays n credits: 1 when paid, else nil and the reason (poor, no_credits, error).
+function TRF_LadCharge(n)
+	local c = TRF_LadCredits();
+	if type(c) ~= "number" then return nil, "no_credits"; end;
+	if c < n then return nil, "poor"; end;
+	if n <= 0 then return 1; end;
+	if type(SubPlayerCredits) ~= "function" or not call(TRF_LadSubRaw, {n}, "x", TRF_LadErr) then return nil, "error"; end;
+	return 1;
+end;
+
+-- Permit purchase (09 4): the other empire's permits void (no refund), the other empire -1, lic[f][slot] = legs +
+-- permit_legs, f +1 at most once per permit_legs and never above rank_hold, then TRF_FstClamp once, which caps the
+-- other empire at rival_cap (TRF_Lad_Cap; a faction at war keeps its digit). Returns the reply line.
+function TRF_LadBuy(a)
+	if type(a) ~= "table" or a.g ~= TRF_LadGen() or not TRF_LadOn() then
+		TRF_LadE("permit_buy", "result", "stale");
+		return nil;
+	end;
+	local f, slot, price = a.f, a.s, a.p;
+	local c0 = TRF_LadCredits();
+	local ok, why = TRF_LadCharge(price);
+	if not ok then
+		TRF_LadE("permit_buy", "faction", TRF_LadTeamOf(f), "region", slot, "price", price, "credits", c0, "result", why);
+		return TRF_LadTxt("ladpoor");
+	end;
+	TRF_N("TRF_Stat", "lad_permit");
+	local legs = TRF_LadLegs();
+	local o = TRF_LadRival(f);
+	local L = TRF_LadRec();
+	local voided = 0;
+	if type(L.lic) == "table" and type(L.lic[o]) == "table" then
+		for rg, till in L.lic[o] do voided = voided + 1; end;
+		L.lic[o] = nil;
+	end;
+	local r0 = TRF_LadFst(o);
+	TRF_LadFstAdd(o, -1, "lad rival permit");
+	local lic = TRF_LadSub("lic");
+	if type(lic[f]) ~= "table" then lic[f] = {}; end;
+	lic[f][slot] = legs + TRF_LadT("permit_legs");
+	local v0 = TRF_LadFst(f);
+	local v1 = v0;
+	local gain = "cap";
+	if not TRF_LadCdOf(TRF_LadGet("pg", f), legs, TRF_LadT("permit_legs")) then
+		gain = "cooldown";
+	elseif TRF_LadGainOf(v0, TRF_LadT("rank_hold")) == 1 then
+		v1 = TRF_LadFstAdd(f, 1, "lad permit");
+		TRF_LadSub("pg")[f] = legs;
+		gain = "gained";
+	end;
+	if type(TRF.std) == "table" then TRF_N("TRF_FstClamp", TRF.std.fst); end;
+	local r1 = TRF_LadFst(o);
+	TRF_LadE("permit_buy", "faction", TRF_LadTeamOf(f), "region", slot, "price", price, "credits", c0, "till", lic[f][slot],
+		"standing_before", v0, "standing_after", v1, "gain", gain, "rival", TRF_LadTeamOf(o), "rival_before", r0, "rival_after", r1,
+		"voided_count", voided, "result", "bought");
+	local out = TRF_LadTxt("ladissued", TRF_LadRgName(slot), TRF_LadT("permit_legs"));
+	TRF_LadSay(TRF_LadTxt("ladcapped", TRF_LadFacName(o), TRF_LadT("rival_cap"), TRF_LadFacName(f)), TRF_LadK().secs);
+	return out;
+end;
+
+-- Settlement (09 4): fst := 4, sc[f] = legs. Returns the reply line.
+function TRF_LadSettle(a)
+	if type(a) ~= "table" or a.g ~= TRF_LadGen() or not TRF_LadOn() then
+		TRF_LadE("settle", "result", "stale");
+		return nil;
+	end;
+	local f = a.f;
+	local v0 = TRF_LadFst(f);
+	if v0 > 3 then
+		TRF_LadE("settle", "faction", TRF_LadTeamOf(f), "standing", v0, "result", "none", "reason", "standing");
+		return nil;
+	end;
+	local c0 = TRF_LadCredits();
+	local ok, why = TRF_LadCharge(a.p);
+	if not ok then
+		TRF_LadE("settle", "faction", TRF_LadTeamOf(f), "region", a.s, "price", a.p, "credits", c0, "result", why);
+		return TRF_LadTxt("ladpoor");
+	end;
+	TRF_N("TRF_Stat", "lad_settle");
+	local v1 = TRF_LadFstAdd(f, 4 - v0, "lad settle");
+	TRF_LadSub("sc")[f] = TRF_LadLegs();
+	TRF_LadE("settle", "faction", TRF_LadTeamOf(f), "region", a.s, "price", a.p, "credits", c0, "standing_before", v0, "standing_after", v1,
+		"result", "paid");
+	return TRF_LadTxt("ladsettled");
+end;
+
+-- Hand-in standing and prisoners of war (09 4, 6), CostOfHead chain ---------------------------------
+
+-- CostOfHead handler (trf_plumb TRF_CostOfHeadReg): the previous price is returned unchanged; a pirate pilot
+-- (Pir_Pilots) handed in at f's patrol station gives f +1 (never above hand_cap, once per lad_hand_cd legs and
+-- once per docking); the other empire's pilot at an empire station (prisoner of war) also costs that empire 1.
+function TRF_Lad_CoH(name, count, price)
+	call(TRF_LadHand, {name, count, price}, "x", TRF_LadErr);
+	return price;
+end;
+
+function TRF_LadHand(name, count, price)
+	if not TRF_LadOn() or TRF_LadOpt("lad_handin") ~= 1 then return; end;
+	if type(price) ~= "number" or price <= 0 then return; end;
+	local loc = _current_location_COP;
+	if type(loc) ~= "string" or loc == "" then return; end;
+	local f = TRF_LadFacOf(TRF_LadTeam(loc));
+	if not f then return; end;
+	local kind = TRF_LadHandKindOf(name, f, Pir_Pilots, Vks_Pilots, Kfni_Pilots);
+	local why = nil;
+	local lv = %LV;
+	local legs = TRF_LadLegs();
+	local v0 = TRF_LadFst(f);
+	if not kind then why = "template";
+	elseif TRF_LadDeny(TRF_LadIdxOf(loc), loc) then why = "deny";
+	elseif TRF_LadWar(f) then why = "war";
+	elseif lv.hand[f] == 1 then why = "docking";
+	elseif not TRF_LadCdOf(TRF_LadGet("hc", f), legs, TRF_LadT("lad_hand_cd")) then why = "cooldown";
+	elseif TRF_LadGainOf(v0, TRF_LadT("hand_cap")) ~= 1 then why = "cap"; end;
+	if why == "template" or why == "docking" then
+		TRF_LadDE("handin", "system", strlower(loc), "faction", TRF_LadTeamOf(f), "pilot", tostring(name), "count", count, "price", price,
+			"standing", v0, "result", "none", "reason", why);
+		return;
+	elseif why then
+		TRF_LadE("handin", "system", strlower(loc), "faction", TRF_LadTeamOf(f), "pilot", tostring(name), "count", count, "price", price,
+			"kind", kind, "standing", v0, "result", "none", "reason", why);
+		return;
+	end;
+	lv.hand[f] = 1;
+	local v1 = TRF_LadFstAdd(f, 1, "lad handin");
+	TRF_LadSub("hc")[f] = legs;
+	TRF_N("TRF_Stat", "lad_handin");
+	local o, r0, r1 = nil, nil, nil;
+	if kind == "pow" then
+		o = TRF_LadRival(f);
+		r0 = TRF_LadFst(o);
+		r1 = TRF_LadFstAdd(o, -1, "lad prisoners");
+	end;
+	TRF_LadE("handin", "system", strlower(loc), "faction", TRF_LadTeamOf(f), "pilot", tostring(name), "count", count, "price", price,
+		"kind", kind, "standing_before", v0, "standing_after", v1, "rival", TRF_LadTeamOf(o), "rival_before", r0, "rival_after", r1,
+		"result", "credited");
+	local line = TRF_LadRankText(f, nil);
+	TRF_LadSay(TRF_LadTxt("ladhand", TRF_LadFacName(f), line), TRF_LadK().secs);
+end;
+
+-- Portal-fine waiver (09 6, 00 E4): wrapper over _PatrolGIBDD_shtraf ------------------------------------
+
+-- 1 when f is this module's wrapper (thunk identity of an earlier run, or a Mods/Traffic chunk name).
+function TRF_LadIsMine(f)
+	if type(f) ~= "function" then return nil; end;
+	if type(TRF_LadGibddThunk) == "function" and f == TRF_LadGibddThunk() then return 1; end;
+	if type(TRF_IsMine) == "function" and TRF_IsMine(f) then return 1; end;
+	return nil;
+end;
+
+-- Called from TRF_Main on every MapInitialization after the vanilla includes (OutOfMission.script) redefined
+-- _PatrolGIBDD_shtraf: wraps it once. _PatrolGIBDD_replica passes the global's value to Timer_Seq when it runs,
+-- so the wrapper is the one called. TRF_orig_GibddShtraf and the thunk are function globals (survive
+-- ClearGlobals, never saved). _temp_change keeps trf_supply's single wrapper (TRF_InstallRelDock), which asks
+-- TRF_Lad_ResetSync. Returns {gibdd = 1 when wrapped now}.
+function TRF_InstallLadder()
+	local r = {gibdd=0};
+	if type(_PatrolGIBDD_shtraf) == "function" and not TRF_LadIsMine(_PatrolGIBDD_shtraf) then
+		TRF_orig_GibddShtraf = _PatrolGIBDD_shtraf;
+		local w = function()
+			if type(TRF_Lad_Shtraf) == "function" then return TRF_Lad_Shtraf(); end;
+			if type(TRF_orig_GibddShtraf) == "function" then return TRF_orig_GibddShtraf(); end;
+		end;
+		_PatrolGIBDD_shtraf = w;
+		TRF_LadGibddThunk = function() return %w; end;
+		r.gibdd = 1;
+	end;
+	TRF_LadE("install", "gibdd_installed", TRF_KvB(r.gibdd), "gibdd_wrapped", TRF_KvB(TRF_LadIsMine(_PatrolGIBDD_shtraf)),
+		"temp_change_wrapped", TRF_KvB(TRF_LadIsMine(_temp_change)));
+	return r;
+end;
+
+-- Installed over _PatrolGIBDD_shtraf: a valid permit of the system's empire for its region waives the fine (the
+-- patrol leader's line, then the vanilla exit _PatrolGIBDD_prava, the path the original takes under __sys_SOS);
+-- otherwise the original runs unprotected and its results are passed through.
+function TRF_Lad_Shtraf()
+	if call(TRF_LadGibddBody, {}, "x", TRF_LadErr) == "waived" then return; end;
+	local f = TRF_orig_GibddShtraf;
+	if type(f) == "function" then return f(); end;
+end;
+
+function TRF_LadPravaRaw()
+	_PatrolGIBDD_prava();
+	return 1;
+end;
+
+function TRF_LadLeaderRaw(text)
+	local p = flight_pat_gibdd_1:GetLeader();
+	p:Message(text, 14);
+	return 1;
+end;
+
+-- "waived" when the fine is waived here, else nil (the original runs).
+function TRF_LadGibddBody()
+	if not TRF_LadOn() or TRF_LadOpt("lad_gibdd") ~= 1 then return nil; end;
+	-- Only the fine path of the original (OutOfMission.script 352-358): the player stayed and no SOS runs.
+	if _f_PatrolGIBDD ~= 0 or __sys_SOS ~= FALSE then return nil; end;
+	local idx = TRF_N("TRF_CurIdx");
+	local loc = TRF_N("GetCurrentLocation");
+	local f = TRF_LadFacOf(TRF_LadTeam(loc));
+	local c = TRF_LadCredits();
+	local slot = TRF_N("TRF_RgOf", idx);
+	local why = nil;
+	if f ~= 1 and f ~= 2 then why = "owner";
+	elseif TRF_LadDeny(idx, loc) then why = "deny";
+	elseif TRF_LadWar(f) then why = "war";
+	elseif not TRF_LadLic(f, slot) then
+		why = "none";
+		local rg = TRF_LadAnyLic(f);
+		if rg then
+			why = "region";
+			TRF_LadSay(TRF_LadTxt("ladgibddrg", TRF_LadRgName(rg)), TRF_LadK().secs);
+		end;
+	end;
+	if why then
+		TRF_LadE("gibdd_waive", "system", tostring(loc), "faction", TRF_LadTeamOf(f), "region", slot, "credits", c, "result", "fined", "reason", why);
+		return nil;
+	end;
+	if type(_PatrolGIBDD_prava) ~= "function" or not call(TRF_LadPravaRaw, {}, "x", TRF_LadErr) then
+		TRF_LadE("gibdd_waive", "system", tostring(loc), "faction", TRF_LadTeamOf(f), "region", slot, "credits", c, "result", "fined", "reason", "exit");
+		return nil;
+	end;
+	call(TRF_LadLeaderRaw, {TRF_LadTxt("ladgibdd")}, "x", TRF_LadNoErr);
+	TRF_N("TRF_Stat", "lad_gibdd");
+	TRF_LadE("gibdd_waive", "system", tostring(loc), "faction", TRF_LadTeamOf(f), "region", slot, "credits", c, "credits_after", TRF_LadCredits(),
+		"till", TRF_LadLic(f, slot), "result", "waived");
+	return "waived";
+end;
+
+-- Relation-reset sync (09 4, 5 item 4), asked by trf_supply's _temp_change wrapper ------------------------
+
+-- After the vanilla reset of nameAI (faction f): when the call took at least reset_min_paid credits and the team
+-- relation is no longer W, fst of f := max(fst, 4); the free resets at tips 1 and 5 leave it. Returns 1 when the
+-- ladder owns the sync (module on; trf_supply then skips its v1 rule), nil when the module is off.
+function TRF_Lad_ResetSync(f, nameAI, c0, c1)
+	if not TRF_LadOn() then return nil; end;
+	local paid = 0;
+	if type(c0) == "number" and type(c1) == "number" then paid = c0 - c1; end;
+	local v0 = TRF_LadFst(f);
+	local v1 = v0;
+	local res = "synced";
+	if TRF_LadOpt("lad_reset_sync") ~= 1 then res = "off";
+	elseif TRF_LadWar(f) then res = "war";
+	elseif paid < TRF_LadT("reset_min_paid") then res = "free";
+	elseif v0 < 4 then v1 = TRF_LadFstAdd(f, 4 - v0, "lad reset");
+	else res = "kept"; end;
+	TRF_LadE("reset_sync", "faction", TRF_LadTeamOf(f), "name", tostring(nameAI), "paid", paid, "standing_before", v0, "standing_after", v1,
+		"result", res);
+	return 1;
+end;
+
+-- Loader callbacks, registrations -------------------------------------------------------------
+
+function TRF_Lad_OnActivate()
+	if not TRF_LadOn() then return; end;
+	TRF_LadStrip("enter");
+end;
+
+function TRF_Lad_OnLoad()
+	if not TRF_LadOn() then return; end;
+	TRF_LadStrip("load");
+end;
+
+-- trf_plumb TRF_InstallPlumb: patrol dock line 50 (always, see TRF_Lad_DockLine), box 300, CostOfHead handler.
+-- Step 2 registers the depot at _NoneStation_Action prio 300 (TRF_NoneStationReg) and the escort slot
+-- (TRF_EscortTake) here; neither is registered in step 1.
+function TRF_Lad_Plumb()
+	TRF_DockLine("patrol", 50, "TRF_Lad_DockLine", 1);
+	TRF_DockBox("patrol", 300, "TRF_Lad_DockBox");
+	TRF_CostOfHeadReg("TRF_Lad_CoH");
+end;
+
+-- Repair, defaults, dump, text -----------------------------------------------------------
+
+function TRF_LadNum(x, lo, hi)
+	return type(x) == "number" and x >= lo and x <= hi;
+end;
+
+-- Leg stamps of t for f = 1..nf: numbers kept (a stamp after the current leg becomes the current leg), the rest
+-- dropped; nil when none is left.
+function TRF_LadFixSt(t, nf, legs)
+	if type(t) ~= "table" then return nil; end;
+	local o, n = {}, 0;
+	for f = 1, nf do
+		if type(t[f]) == "number" then o[f] = min(floor(t[f]), legs); n = n + 1; end;
+	end;
+	if n == 0 then return nil; end;
+	return o;
+end;
+
+-- Repair of TRF.lad (TRF_Repair): lic f 1..2 x region slots with a till of at most legs + permit_legs, stamps
+-- pg (f 1..2), hc and sc (f 1..5); step 2 fields eb, w = {f 1..5, sys, till, n 0..4}, wc, wr, pat 0..5 kept when
+-- valid; every other key dropped. An absent TRF.lad stays absent.
+function TRF_Lad_Fix()
+	if type(TRF) ~= "table" or TRF.lad == nil then return; end;
+	if type(TRF.lad) ~= "table" then TRF.lad = nil; return; end;
+	local S = TRF.lad;
+	local legs = TRF_LadLegs();
+	local nr = TRF_LadRgN();
+	local m = TRF_LadMap();
+	local ns = 999;
+	if m then ns = getn(m.sys); end;
+	local o = {};
+	if type(S.lic) == "table" then
+		local lic, nl = {}, 0;
+		for f = 1, 2 do
+			local l = S.lic[f];
+			if type(l) == "table" then
+				local e, ne = {}, 0;
+				for rg, till in l do
+					if TRF_LadNum(rg, 1, nr) and rg == floor(rg) and type(till) == "number" then
+						e[rg] = min(floor(till), legs + TRF_LadT("permit_legs"));
+						ne = ne + 1;
+					end;
+				end;
+				if ne > 0 then lic[f] = e; nl = nl + 1; end;
+			end;
+		end;
+		if nl > 0 then o.lic = lic; end;
+	end;
+	o.pg = TRF_LadFixSt(S.pg, 2, legs);
+	o.hc = TRF_LadFixSt(S.hc, 5, legs);
+	o.sc = TRF_LadFixSt(S.sc, 5, legs);
+	if type(S.eb) == "number" then o.eb = floor(S.eb); end;
+	local w = S.w;
+	if type(w) == "table" and TRF_LadNum(w.f, 1, 5) and TRF_LadNum(w.sys, 1, ns) and type(w.till) == "number" and TRF_LadNum(w.n, 0, 4) then
+		o.w = {f=floor(w.f), sys=floor(w.sys), till=floor(w.till), n=floor(w.n)};
+	end;
+	if type(S.wc) == "number" then o.wc = floor(S.wc); end;
+	if TRF_LadNum(S.wr, 0, 999999999) then o.wr = S.wr; end;
+	if TRF_LadNum(S.pat, 0, 5) then o.pat = floor(S.pat); end;
+	TRF.lad = o;
+end;
+
+-- Config keys (09 6). lad_escort, lad_depot and lad_warrant are step 2 and read nowhere yet.
+function TRF_Lad_OptDef()
+	return {lad_enabled=1, lad_rankline=1, lad_permit=1, lad_settle=1, lad_handin=1, lad_gibdd=1, lad_reset_sync=1,
+		lad_escort=1, lad_depot=1, lad_warrant=1};
+end;
+
+-- Tune keys (09 6); c_e, esc_legs, esc_cd, k_w, warrant_cd, warrant_rs and esc_ban_legs are step 2.
+function TRF_Lad_TuneDef()
+	return {c_p=1200, permit_legs=24, rank_hold=6, c_e=800, esc_legs=1, esc_cd=4, c_s=4000, k_w=0.5, warrant_cd=30,
+		warrant_rs=3600, lad_hand_cd=10, hand_cap=7, settle_cd=20, esc_ban_legs=20, rival_cap=4, reset_min_paid=100000};
+end;
+
+-- Permits of f as "<slot>:<till>,...", or nil.
+function TRF_LadLicStr(f)
+	local l = TRF_LadGet("lic", f);
+	if type(l) ~= "table" then return nil; end;
+	local ks = {};
+	for rg, till in l do tinsert(ks, rg); end;
+	sort(ks);
+	local s = nil;
+	for i = 1, getn(ks) do
+		local e = ks[i]..":"..tostring(l[ks[i]]);
+		if s then s = s..","..e; else s = e; end;
+	end;
+	return s;
+end;
+
+-- 09 6 debug dump: one line per faction ("module=ladder event=dump faction=Vks standing=7 band=5 war=false
+-- permits=6:812 permit_gain_leg=788 handin_leg=805 settle_leg=nil"), then the step 2 fields and the visit flags
+-- ("event=dump_state escort_ban_leg=nil warrant=nil warrant_next_leg=nil warrant_real_seconds=nil patron=nil
+-- docking_count=2 credited=Vks declined=permit1").
+function TRF_Lad_Dump()
+	if type(TRF) ~= "table" then return; end;
+	for f = 1, 5 do
+		local v = TRF_LadFst(f);
+		local war = TRF_LadWar(f);
+		local b = TRF_LadBandOf(v);
+		if war then b = 1; end;
+		TRF_LadE("dump", "faction", TRF_LadTeamOf(f), "standing", v, "band", b, "war", TRF_KvB(war), "permits", TRF_LadLicStr(f),
+			"permit_gain_leg", TRF_LadGet("pg", f), "handin_leg", TRF_LadGet("hc", f), "settle_leg", TRF_LadGet("sc", f));
+	end;
+	local S = TRF.lad or {};
+	local ws = nil;
+	if type(S.w) == "table" then ws = tostring(S.w.f).."/"..TRF_LadName(S.w.sys).."/"..tostring(S.w.till).."/"..tostring(S.w.n); end;
+	local lv = %LV;
+	local cr, dc = nil, nil;
+	for f, x in lv.hand do
+		if x == 1 then if cr then cr = cr..","..tostring(TRF_LadTeamOf(f)); else cr = tostring(TRF_LadTeamOf(f)); end; end;
+	end;
+	local ks = {};
+	for k, x in lv.dec do if x == 1 then tinsert(ks, k); end; end;
+	sort(ks);
+	for i = 1, getn(ks) do if dc then dc = dc..","..ks[i]; else dc = ks[i]; end; end;
+	TRF_LadE("dump_state", "escort_ban_leg", S.eb, "warrant", ws, "warrant_next_leg", S.wc, "warrant_real_seconds", S.wr, "patron", S.pat,
+		"docking_count", lv.dk, "credited", cr, "declined", dc);
+end;
+
+-- Texts (09 2), EN; keys in TRF_UI_Key form (#TRF_lad<name> in loc/trf_en.loc). Rank titles ladrank<f><band>
+-- (f 1..5 Vks, Kfni, Triada, Uss, Inoco; band 1..7). Step 2 keys (escort, depot, warrant, escort kill) are not
+-- defined until step 2.
+function TRF_Lad_Text()
+	return {
+		ladrank11 = "Wanted by Imperial Security", ladrank12 = "Under watch", ladrank13 = "Civilian, no file",
+		ladrank14 = "Licensed carrier", ladrank15 = "Trusted contractor", ladrank16 = "Auxiliary of the Fleet",
+		ladrank17 = "Friend of the Throne",
+		ladrank21 = "Violator, to be detained", ladrank22 = "Flagged", ladrank23 = "Unregistered",
+		ladrank24 = "Registered contractor", ladrank25 = "Trusted contractor", ladrank26 = "Volunteer auxiliary",
+		ladrank27 = "Commended by the Empress",
+		ladrank31 = "Marked by the families", ladrank32 = "Unwelcome", ladrank33 = "Outsider", ladrank34 = "Known face",
+		ladrank35 = "Trusted associate", ladrank36 = "Friend of the family", ladrank37 = "Under the Triumvirate's protection",
+		ladrank41 = "Blacklisted shipper", ladrank42 = "Under review", ladrank43 = "Freelancer", ladrank44 = "Listed escort",
+		ladrank45 = "Preferred escort", ladrank46 = "Convoy partner", ladrank47 = "Honorary director",
+		ladrank51 = "Barred from InoCo space", ladrank52 = "Under review", ladrank53 = "Visitor", ladrank54 = "Listed vendor",
+		ladrank55 = "Approved vendor", ladrank56 = "Partner", ladrank57 = "Board guest",
+		ladfac1 = "MSF", ladfac2 = "NESF", ladfac3 = "Triada", ladfac4 = "USS", ladfac5 = "InoCo",
+		ladline = "$1 standing: $2 ($3).",                                                 -- faction, title, fst
+		ladnoperm = "No permit on file.",
+		ladperm = "Permit valid $1 more legs.",                                            -- legs left
+		ladrival = "You fly under $1 papers. The $2 has nothing for you.",                 -- other empire, faction
+		ladvoid1 = "NESF papers? This is MSF space now.",
+		ladvoid2 = "MSF papers? This is New Empire space now.",
+		ladhead = "$1 Sector Command, $2:",                                                -- faction, sector
+		ladpermit = "Transit permit for $1 space in this sector, $2 legs: $3 cr.",         -- faction, legs, price
+		ladwarn1 = "The New Empire keeps lists of who carries our papers.",
+		ladwarn2 = "Imperial Security keeps lists of who carries our papers.",
+		ladissued = "Permit issued. $1 sector, valid $2 legs.",                            -- sector, legs
+		ladcapped = "$1 standing capped at $2 while you carry $3 papers.",                 -- other empire, cap, faction
+		ladpoor = "Not enough credits. Come back when you can pay.",
+		ladsettle = "Your file shows open violations. Settle for $1 cr and we close it.",  -- price
+		ladsettled = "File closed. Do not make us open it again.",
+		ladhand = "$1 notes your service. $2",                                             -- faction, rank line
+		ladgibdd = "Permit on file. Move along, and keep the portal clear.",
+		ladgibddrg = "Permit for the $1 sector only. Pay up.",                             -- sector
+	};
+end;

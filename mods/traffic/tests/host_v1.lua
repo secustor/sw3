@@ -523,7 +523,8 @@ function T_V1_C()
 	CStation_Action("4");
 	HOST_Check(getn(h.boxes) == nb + 1 and getn(h.cst) == 4 and HOST_Box().title == "#UI_StationC_confirm" and TRF.live.box == "hail", "heat offer: lock held, the original at once");
 	TRF_BoxFree("hail");
-	-- Vanilla reset through _temp_change: Trade -> heat 0; a faction -> fst at least 5.
+	-- Vanilla reset through _temp_change: Trade -> heat 0; a faction: with the faction ladder on its sync rule
+	-- (design/ladder-spec.md 5.7: a free reset changes nothing), with lad_enabled 0 the v1 rule (fst at least 5).
 	TRF.std.heat = 5;
 	h.credits = 1000000;
 	_param = "3";
@@ -532,7 +533,11 @@ function T_V1_C()
 	TRF.std.fst = "22222";
 	_param = "1";
 	_temp_change("Kfni");
-	HOST_Check(TRF_Fst(2) >= 5 and TRF_Fst(1) == 2, "free Kfni reset: New Empire fst "..TRF_Fst(2));
+	HOST_Check(TRF_Fst(2) == 2 and TRF_Fst(1) == 2, "free Kfni reset with the ladder: New Empire fst unchanged "..TRF_Fst(2));
+	h.cfg.lad_enabled = 0;
+	_temp_change("Kfni");
+	h.cfg.lad_enabled = nil;
+	HOST_Check(TRF_Fst(2) >= 5 and TRF_Fst(1) == 2, "free Kfni reset, ladder off (v1 rule): New Empire fst "..TRF_Fst(2));
 	_param = nil;
 	-- Strict gate option 1 with quest ids.
 	local s0 = {mode=1, qs=1, q=1, qa=0, f="seed"};
@@ -2066,6 +2071,10 @@ function T_V1_N()
 	end;
 	for k = 1, 11 do TRF.sv.r[k] = 9; end;
 	for k = 1, 16 do TRF.sv.cd[97 + k] = skl; end;
+	-- Faction ladder worst case (design/ladder-spec.md 3.3): 2 x 11 permits, every stamp, the step 2 fields.
+	TRF.lad = {lic={{}, {}}, pg={skl, skl}, hc={skl, skl, skl, skl, skl}, sc={skl, skl, skl, skl, skl}, eb=skl,
+		w={f=5, sys=113, till=skl, n=4}, wc=skl, wr=999999.5, pat=5};
+	for k = 1, 11 do TRF.lad.lic[1][k] = skl; TRF.lad.lic[2][k] = skl; end;
 	-- Raids, due and stat at their bounds.
 	for k = 1, 10 do
 		local id = ids[1 + mod(k, getn(ids))];
@@ -2088,7 +2097,7 @@ function T_V1_N()
 	HOST_Check(getn(TRF.tp) <= 16 and getn(TRF.lr) <= 2 and getn(TRF.base) <= 4 and getn(L.pg) <= 8 and V_N(L.dc) <= 1
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");
 	local size = 8 + 3 + HOST_SaveSize(TRF);
-	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "live"};
+	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	local lp, ll = "", {"tr", "stat", "rd", "cvs", "tq", "sw", "fq", "cr", "dc", "bs", "pg"};
 	for i = 1, getn(ll) do lp = lp.." "..ll[i].."="..HOST_SaveSize(L[ll[i]]); end;

@@ -1295,7 +1295,9 @@ function TRF_TempChange(nameAI)
 	call(TRF_SpTempAfter, {nameAI, c0}, "x", TRF_SpErr);
 end;
 
--- After a vanilla reset: Trade -> heat 0; a faction -> fst at least 5 (decision 11.1 #9).
+-- After a vanilla reset: Trade -> heat 0; a faction -> fst at least 5 (decision 11.1 #9). With the faction
+-- ladder on, its sync replaces the faction rule (TRF_Lad_ResetSync: a paid reset of at least reset_min_paid
+-- lifts fst to 4; the free resets at tips 1 and 5 change nothing, 09-faction-ladder.md 5 item 4).
 function TRF_SpTempAfter(nameAI, c0)
 	local c1 = TRF_SpCredits();
 	local tip = tonumber(_param);
@@ -1309,6 +1311,7 @@ function TRF_SpTempAfter(nameAI, c0)
 		return;
 	end;
 	local fi = TRF_SpFacIdx(nameAI);
+	if fi and TRF_SpX("TRF_Lad_ResetSync", fi, nameAI, c0, c1) then return; end;
 	if fi then
 		local v = TRF_SpFst(fi);
 		if v < 5 then TRF_SpFstAdd(fi, 5 - v, "relation reset"); end;

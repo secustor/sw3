@@ -18,6 +18,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_station.script` | Station voices ([design/station-voices-spec.md](design/station-voices-spec.md)): closed-station moods, dockmaster standing, greetings, news, tips, fees and the local station events (ore barge, tanker shuttle, refugee launch). Loads after `trf_plumb`. |
 | `trf_plumb.script` | Worldbuilding plumbing ([design/wb-plumbing-spec.md](design/wb-plumbing-spec.md)): the dock dispatcher behind the trade, patrol, pirate and request wrappers, the `_NoneStation_Action` chain, the `CostOfHead` wrapper and the `Case_Eject` handler list, the visit slots (box lock, scripted event, escort, arrival lines), the job slot, owed payers, ship caps, nav markers, 8.5 raid-help resolvers and the group-prefix orphan scan. Loads after the v1 files, before `trf_station`. |
 | `trf_survive.script` | Survivors and beacons step 1 ([design/survivors-spec.md](design/survivors-spec.md)): escape pods and a radio beacon after an FTU freighter loss (witnessed: standing only) or seeded on entry into a raided system (credits, region budget, fixed roll), pickup by the mothership, hand-in at FTU trade docks, expiry, the off-screen slaver roll, rumours. Loads after `trf_station`. |
+| `trf_ladder.script` | Faction service ladder step 1 ([design/ladder-spec.md](design/ladder-spec.md)): the rank line of the five factions at patrol stations, the war rule, Vks/Kfni regional transit permits, settlement, hand-in standing and prisoners of war, the portal-fine waiver, the paid relation-reset sync. Loads after `trf_survive`. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -537,6 +538,38 @@ Survivors and beacons (proposal 6 step 1, spec [design/survivors-spec.md](design
 
 Experiments E-SV1 to E-SV5, E-SV8 and E-SV9 of the design, with the confirming lines in the spec section 10: placement (`event=place ... made=4 failed=0`), pickup at 8x (`event=pick ... distance=<= 60` for each pod, no `ScriptErrors.log` line), save and load in the system (`event=place ... found=3 made=0 ... reason=load`), hand-in once per docking (`event=hand ... result=paid` and `module=region event=pay reason=sv`), loss detection (`event=loss ... position_source=ship`), the marker (`module=plumb event=marker owner=sv ... result=added`), the roll across a reload (the same `event=seed ... roll=<r>`).
 
+## Faction service ladder (`EXP=0 TRAFFIC=1`)
+
+Faction service ladder (proposal 9 step 1, spec [design/ladder-spec.md](design/ladder-spec.md), design `design/worldbuilding/09-faction-ladder.md`) is one module, `trf_ladder`, loaded after `trf_survive` (`module=core event=loaded ... extra_count=4`). It reads and writes traffic's faction standing `fst` and uses the plumbing: a patrol dock line at order 50, a patrol box at prio 300 (below the 8.10 contract box) and a `CostOfHead` handler. It wraps `_PatrolGIBDD_shtraf` once; the `_temp_change` reset keeps trf_supply's wrapper, which asks the ladder. Implemented and host-tested (`lad-a`..`lad-g`), not run in the game.
+
+### What the player sees
+
+- At every patrol station of a faction: `MSF standing: Licensed carrier (6). Permit valid 4 more legs.` (titles from "Wanted by Imperial Security" to "Friend of the Throne" per faction; the empires add the permit status). While the story has the faction at war with the player, the band 1 title and nothing else.
+- From chapter 5, outside missions: an MSF or NESF station offers a transit permit for its region for 24 legs (`1200 x L_rg x (1 + 0.05 R) x d_k`, about 19,000 cr in the Moscowia region); buying it lifts that empire's standing by 1 (at most once per 24 legs, never above 6), costs the other empire 1, caps the other empire at 4 while the permit is valid and stops decay at 6. While you carry one empire's papers the other empire offers nothing.
+- At standing 3 or below the station offers to settle the file (`4000 x L_rg x (4 - fst) x d_k`, standing becomes 4, once per 20 legs), at every faction's station.
+- Handing in pirate pilots at a faction's patrol station raises that faction's standing by 1 (once per 10 legs, never above 7); the other empire's pilots at an empire station count as prisoners of war (+1, and the other empire -1). The bounty is the vanilla one.
+- With a valid permit for the system's region, the portal patrol says `Permit on file. Move along, and keep the portal clear.` and takes no fine; a permit for another region shows `Permit for the Moscowia sector only. Pay up.`
+- A paid vanilla relation reset (at least 100,000 cr) lifts that faction's standing to at least 4; the free resets at Debris 1 and Pandora change nothing.
+
+### Config keys (ladder)
+
+`config.script` lists `lad_enabled=1` and the toggles; tune keys read the module defaults. `install-test.sh` writes `LADDER` (`lad_enabled`; `LEVEL=v01` and `v02` write 0 unless `LADDER` is set) and `LAD_RANKLINE`, `LAD_PERMIT`, `LAD_SETTLE`, `LAD_HANDIN`, `LAD_GIBDD`, `LAD_RESET_SYNC` when set; tune keys go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `lad_enabled` | 1 | 0 turns the module off (trf_supply's v1 reset rule then applies) |
+| `lad_rankline`, `lad_permit`, `lad_settle`, `lad_handin`, `lad_gibdd`, `lad_reset_sync` | 1 | the step 1 parts |
+| `lad_escort`, `lad_depot`, `lad_warrant` | 1 | step 2, read nowhere yet |
+| tune `c_p`, `permit_legs`, `rank_hold`, `c_s`, `lad_hand_cd`, `hand_cap`, `settle_cd`, `rival_cap`, `reset_min_paid` | 1200, 24, 6, 4000, 10, 7, 20, 4, 100000 | prices, permit length, decay hold, cooldowns, caps, the paid-reset threshold (full list in the spec, section 6) |
+
+### Log lines (ladder)
+
+`module=ladder event=rank_line ... standing=<n> band=<b> war=<bool> status=<permit|none|rival|void|corp|war>` per docking, `event=permit_offer ... price=<n> result=offered` (reasons at level 2), `event=permit_buy ... gain=<gained|cooldown|cap> ... result=bought`, `event=settle ... result=<offered|paid|...>`, `event=handin ... kind=<pirate|pow> ... result=credited|none`, `event=gibdd_waive ... result=waived|fined reason=<r>`, `event=reset_sync ... paid=<n> ... result=<synced|free|war|kept|off>`, `event=permit_expire`, `event=dump` (one per faction) and `event=dump_state`; full list in `design/log-events.md` (ladder).
+
+### In-game checks (ladder)
+
+Experiments E9.1-E9.3, E9.6, E9.7 and E9.9 of the design and E0.24, with the confirming lines in the spec section 10: the ladder box after the S19 lines and the patrol dialog after OK and Cancel (`module=plumb event=dock kind=patrol ... box=lad_permit priority=300 result=box`), the price readable in the box, the hand-in call pattern (`event=handin ... pilot=PirateTough count=2 ... result=credited`), the waiver (`event=gibdd_waive ... result=waived`, credits unchanged, the patrol leaves), the reset sync (`event=reset_sync ... paid=650000 ... result=synced`, Debris 1 `paid=0 ... result=free`), the war rule (`event=rank_line ... war=true`), and the install line after every entry and load.
+
 ## Installing into the game
 
 The release zip `sw3-traffic-<v>.zip` (built by `release.sh`) or this folder:
@@ -599,7 +632,7 @@ Movie and UI natives (`pe/traffic.c`, [design/mod-research/movie-state.md](desig
 ## Host checks (no game)
 
     mods/traffic/tools/get-lua4.sh                       # builds .work/lua4/bin/lua once
-    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment + v0.1 scenarios a..g (tests/host_traffic.lua) + v0.2 scenarios v02-a..n (tests/host_v02.lua) + v1 scenarios v1-a..n (tests/host_v1.lua) + station voices stn-a..h (tests/host_station.lua) + plumbing pl-a..e (tests/host_plumb.lua) + survivors sv-a..g (tests/host_survive.lua)
+    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment + v0.1 scenarios a..g (tests/host_traffic.lua) + v0.2 scenarios v02-a..n (tests/host_v02.lua) + v1 scenarios v1-a..n (tests/host_v1.lua) + station voices stn-a..h (tests/host_station.lua) + plumbing pl-a..e (tests/host_plumb.lua) + survivors sv-a..g (tests/host_survive.lua) + faction ladder lad-a..g (tests/host_ladder.lua)
     python3 -I mods/traffic/tools/lint_lua.py --allow TeleportToLocation,CustomTeleportate mods/traffic/Data/Scripts/Mods/Traffic/*.script
 
 The run prints one `== <scenario>: exit 0, <n> traffic lines, 0 fails` line per run (64 runs); any other line names the failed check. `v1-n` prints the worst-case save size by part (`HOST info TRF save size ...`).

@@ -323,6 +323,19 @@ function TRF_FcSetDig(s, f, v)
 	return strsub(s, 1, f - 1)..tostring(v)..strsub(s, f + 1);
 end;
 
+-- 09-faction-ladder.md 4, 00 C2: a digit of drift s that was at or above the ladder's hold in s0 (TRF_Lad_Hold(f):
+-- rank_hold while a permit of f is valid) does not fall below the hold; 7-9 still decay to it.
+function TRF_FcHoldOf(s0, s)
+	local o = "";
+	for f = 1, 5 do
+		local v = TRF_FcDig(s, f, 5);
+		local h = TRF_N("TRF_Lad_Hold", f);
+		if type(h) == "number" and TRF_FcDig(s0, f, 5) >= h and v < h then v = h; end;
+		o = o..v;
+	end;
+	return o;
+end;
+
 -- Every digit one step toward t.
 function TRF_FcDrift(s, t)
 	local o = "";
@@ -410,10 +423,14 @@ function TRF_FstAdd(f, d, why)
 		local s0 = TRF.std.fst;
 		TRF.std.fst = TRF_FcSetDig(TRF.std.fst, f, new);
 		TRF_FstClamp(s0);
-		if TRF_Fst(f) == old then
+		local got = TRF_Fst(f);
+		if got ~= new then
+			-- War freeze keeps the old digit; the rival cap of the faction ladder (TRF_Lad_Cap) lowers it.
+			local res = "capped";
+			if got == old and TRF_FcWar(TRF_FacTeam(f), PLAYER_TEAM) then res = "frozen"; end;
 			TRF_FcE("faction_standing", "faction", TRF_FacTeam(f), "reason", tostring(why), "standing_before", old,
-				"standing_after", old, "result", "frozen");
-			return old;
+				"standing_after", got, "result", res);
+			return got;
 		end;
 		TRF_FcE("faction_standing", "faction", TRF_FacTeam(f), "reason", tostring(why), "standing_before", old,
 			"standing_after", new);
@@ -423,7 +440,8 @@ end;
 
 -- Once after each event that writes TRF.std.fst (00 section 6, 10-deserters.md:202): every digit clamped 0..9,
 -- and a faction whose team is at war with the player (relation W) keeps its digit of old (the string before
--- the event; nil: clamp only). Returns the new string.
+-- the event; nil: clamp only). Otherwise the faction ladder's rival cap (TRF_Lad_Cap(f): rival_cap while a permit
+-- of the other empire is valid, 09-faction-ladder.md 4) lowers the digit. Returns the new string.
 function TRF_FstClamp(old)
 	if type(TRF) ~= "table" or type(TRF.std) ~= "table" then return nil; end;
 	local cur = TRF.std.fst;
@@ -432,7 +450,12 @@ function TRF_FstClamp(old)
 	local s = "";
 	for f = 1, 5 do
 		local v = TRF_FcClamp(TRF_FcDig(cur, f, 5), 0, 9);
-		if old and TRF_FcWar(TRF_FacTeam(f), PLAYER_TEAM) then v = TRF_FcDig(old, f, 5); end;
+		if old and TRF_FcWar(TRF_FacTeam(f), PLAYER_TEAM) then
+			v = TRF_FcDig(old, f, 5);
+		else
+			local cap = TRF_N("TRF_Lad_Cap", f);
+			if type(cap) == "number" and v > cap then v = cap; end;
+		end;
 		s = s..v;
 	end;
 	TRF.std.fst = s;
@@ -691,7 +714,7 @@ function TRF_Faction_Tick(L)
 	end;
 	if TRF_FcCross(L, rt, TRF_FcT("fst_decay_legs")) and type(TRF.std) == "table" and TRF_FcDigOk(TRF.std.fst) then
 		local s0 = TRF.std.fst;
-		local s = TRF_FcDrift(s0, 5);
+		local s = TRF_FcHoldOf(s0, TRF_FcDrift(s0, 5));
 		if s ~= s0 then
 			TRF.std.fst = s;
 			s = TRF_FstClamp(s0);

@@ -666,6 +666,24 @@ function AddPlayerExperience(x) HOST().xp = (HOST().xp or 0) + x; end;
 -- News: (mailId) strings; recorded as "+id" / "-id".
 function AddPost(id) HOST_Want(type(id) == "string", "AddPost(mailId)"); tinsert(HOST().posts, "+"..id); end;
 function RemovePost(id) HOST_Want(type(id) == "string", "RemovePost(mailId)"); tinsert(HOST().posts, "-"..id); end;
+-- CombineStr(key, value) (lua-natives.md 115): the loc text of key with the value; the host joins them.
+function CombineStr(k, v) HOST_Want(type(k) == "string", "CombineStr(key, value)"); return k.." "..tostring(v); end;
+-- SetInitTeamRelation(teamA, teamB, RELATION_*) (DockStation.script 464): both directions in HOST().rel_team, which
+-- GetTeamRelation reads.
+function SetInitTeamRelation(a, b, rel)
+	HOST_Want(type(a) == "string" and type(b) == "string" and type(rel) == "number", "SetInitTeamRelation(team, team, relation)");
+	local h = HOST();
+	if type(h.rel_team) ~= "table" then h.rel_team = {}; end;
+	h.rel_team[a.."|"..b] = rel;
+	h.rel_team[b.."|"..a] = rel;
+end;
+-- Timer_Seq(seconds, function) (vanilla timer helper): recorded in HOST().tseq as {t, f}; HOST_TimerRun runs them.
+function Timer_Seq(t, f)
+	HOST_Want(type(t) == "number" and type(f) == "function", "Timer_Seq(seconds, function)");
+	local h = HOST();
+	if type(h.tseq) ~= "table" then h.tseq = {}; end;
+	tinsert(h.tseq, {t=t, f=f});
+end;
 
 -- Create_flight_2.script CreateChoiceFlight(team, group global name, sign, pos, type, power, orient):
 -- a flight in getglobal(group) with flight_/ship_/pilot_<sign> globals; FALSE without the group.
@@ -918,6 +936,7 @@ function _temp_change(nameAI)
 	local tip = tonumber(_param);
 	if (tip == 1) or (tip == 5) then moneyAI = 0; end;
 	if N >= moneyAI then
+		SetInitTeamRelation(PLAYER_TEAM, nameAI, RELATION_NEUTRAL);
 		SetGroupRelation(nameAI.."Group_1", PLAYER_GROUP, RELATION_NEUTRAL);
 		SubPlayerCredits(moneyAI);
 		OutputToScreenLog("#UI_CStationOk", 7);
@@ -971,6 +990,66 @@ function NewRobotFlight(group, sign, location, type, power, orient)
 	return FALSE;
 end;
 ]], "DATA/Scripts/include/Create_flight_2.script");
+	-- OutOfMission.script 352-378 (the portal patrol fine and its exit), reduced to records: HOST().prava counts the
+	-- vanilla exit, the fine box is the ShowMsgBox stub.
+	dostring([[
+function _PatrolGIBDD_shtraf()
+	if (_f_PatrolGIBDD == 0) then
+		if (__sys_SOS == FALSE) then
+			local cost = floor(GetPlayerCredits() / 10);
+			local str1 = CombineStr("#UI_PatrolGIBDD_cost", cost);
+			SubPlayerCredits(cost);
+			ShowMsgBox("#UI_PatrolGIBDD_confirm", str1, On_PatrolGIBDD_shtraf_Start);
+		else
+			Timer_Seq(10, _PatrolGIBDD_prava);
+		end;
+	else
+		Timer_Seq(6, _PatrolGIBDD_prava);
+	end;
+end;
+function On_PatrolGIBDD_shtraf_Start() Timer_Seq(1, _PatrolGIBDD_prava); end;
+function _PatrolGIBDD_prava()
+	HOST().prava = (HOST().prava or 0) + 1;
+	local mship = GetPlayerMotherShip();
+	local xyz_mship = mship:GetPosition();
+	flight_pat_gibdd_1:Move(xyz_mship + Vector3(-100, 300, 100));
+	Timer_Seq(10, _PatrolGIBDD_out);
+end;
+function _PatrolGIBDD_out() end;
+]], "DATA/Scripts/include/OutOfMission.script");
+	-- CostOfPirates.script 29-70 (CostOfHead with the station owner's own pilots at 0), unconditional and
+	-- conditional enemy lists reduced to Pir_Pilots and the faction lists of host_v1_tables.lua.
+	dostring([[
+function _tempCost(_tab, _name)
+	local ce = 0;
+	for i, pn in _tab do
+		if (pn == _name) then ce = (i * i) * 200; end;
+	end;
+	return ce;
+end;
+function CostOfHead(pilot_name, count)
+	local price = 0;
+	local curloc = GetLocationTeam(_current_location_COP);
+	if (price == 0) then price = _tempCost(Pir_Pilots, pilot_name); end;
+	if (price == 0) then price = _tempCost(USS_Pilots, pilot_name); end;
+	if (price == 0) then price = _tempCost(Tri_Pilots, pilot_name); end;
+	if (price == 0) then price = _tempCost(Ino_Pilots, pilot_name); end;
+	if (price == 0) then price = _tempCost(Vks_Pilots, pilot_name); end;
+	if (price == 0) then price = _tempCost(Kfni_Pilots, pilot_name); end;
+	if (curloc == "Kfni") then
+		if (_tempCost(Kfni_Pilots, pilot_name) > 0) then price = 0; end;
+	elseif (curloc == "Vks") then
+		if (_tempCost(Vks_Pilots, pilot_name) > 0) then price = 0; end;
+	elseif (curloc == "Triada") then
+		if (_tempCost(Tri_Pilots, pilot_name) > 0) then price = 0; end;
+	elseif (curloc == "Uss") then
+		if (_tempCost(USS_Pilots, pilot_name) > 0) then price = 0; end;
+	elseif (curloc == "Inoco") then
+		if (_tempCost(Ino_Pilots, pilot_name) > 0) then price = 0; end;
+	end;
+	return price;
+end;
+]], "DATA/Scripts/include/CostOfPirates.script");
 end;
 
 -- Trigger context of the action being run (GetTriggerContext); the generator's timer has SetTime/Activate.
