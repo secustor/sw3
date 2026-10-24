@@ -9,7 +9,7 @@
 # host_demand.lua (each its own entry point).
 # Env: LUA4 (interpreter), LUAC4, EXPS (default "default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm"), SCENS (default a..g),
 # V02 (default a..n), V1 (default a..n), STN (default a..h), PL (default a..e), SV (default a..g), LAD (default a..g), CH
-# (default a..h), SC (default a..g), CAP (default a..h), DM (default a..f).
+# (default a..h), SC (default a..g), CAP (default a..h), DM (default a..g).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)

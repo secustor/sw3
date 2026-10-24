@@ -1138,10 +1138,14 @@ end;
 
 -- Drop container (cfg demand_drop, design/demand-page-spec.md 5.7) ---------------------------------------------
 
--- Template, distance band from the leader, placement tries, label slots (trf_plumb's orphan scan probes group Drop
--- labels trf_drop_<a>_<j> for a 1..scan_n 4, j 1..scan_j 6: 24 slots).
+-- Template, distance band from the leader, placement tries, label slots: the range trf_plumb's orphan scan probes
+-- (group Drop labels trf_drop_<a>_<j>, a 1..scan_n, j 1..scan_j of TRF_PlK: 4 x 6 = 24 slots; the same numbers
+-- without trf_plumb).
 function TRF_SpDropK()
-	return {tpl="cargo01_destroyed_inv", r_lo=40, r_hi=80, tries=3, slots=24, per=6};
+	local n, j = 4, 6;
+	local P = TRF_SpX("TRF_PlK");
+	if type(P) == "table" and type(P.scan_n) == "number" and type(P.scan_j) == "number" then n, j = P.scan_n, P.scan_j; end;
+	return {tpl="cargo01_destroyed_inv", r_lo=40, r_hi=80, tries=3, slots=n * j, per=j};
 end;
 
 -- Label of slot s (1..24): trf_drop_<a>_<j>.
@@ -1171,9 +1175,12 @@ end;
 function TRF_SpDropDel(D, s)
 	local o = D.o[s];
 	D.o[s] = nil;
-	if not TRF_SpX("TRF_Sc_Alive", o) then o = TRF_SpX("TRF_Sc_FindAny", TRF_SpDropLbl(s)); end;
-	if not o then return nil; end;
 	local live = TRF_SpX("TRF_Sc_Alive", o);
+	if not live then
+		o = TRF_SpX("TRF_Sc_FindAny", TRF_SpDropLbl(s));
+		if not o then return nil; end;
+		live = TRF_SpX("TRF_Sc_Alive", o);
+	end;
 	TRF_SpX("TRF_Sc_Del", o);
 	return live;
 end;
@@ -1267,12 +1274,12 @@ function TRF_SpComply(id, r, h, cur)
 	TRF_SpAnswer(id, line, line.."\n"..jet, 1);
 	TRF_SpX("TRF_Flee", id, "demand");
 	TRF_SpStat("dm_comply");
+	local d = 0;
+	if dn then d = 1; end;
 	if dwhy then
 		TRF_SpE("demand_comply", "trader_id", id, "container_count", cnt, "moved_count", moved, "heat", TRF_SpHeat(),
-			"items", TRF_SpItemsKv(mv), "drop", TRF_KvB(0), "container_name", nil, "reason", "drop_failed", "drop_cause", dwhy);
+			"items", TRF_SpItemsKv(mv), "drop", TRF_KvB(d), "container_name", dn, "reason", "drop_failed", "drop_cause", dwhy);
 	else
-		local d = 0;
-		if dn then d = 1; end;
 		TRF_SpE("demand_comply", "trader_id", id, "container_count", cnt, "moved_count", moved, "heat", TRF_SpHeat(),
 			"items", TRF_SpItemsKv(mv), "drop", TRF_KvB(d), "container_name", dn);
 	end;

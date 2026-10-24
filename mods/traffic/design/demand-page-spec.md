@@ -95,7 +95,7 @@ The lines are FTU radio lines (`TRF_SpSay`, nil speaker, as `sesclost`): `dmplos
 `TRF_SpComply` hands the robbed stacks over through `TRF_SpHandOver(id, got)`. With `demand_drop` 0, or nothing robbed, it is the mothership path of 5.1. With 1, `TRF_SpDrop(id, got)`:
 
 1. Needs trf_scar's object helpers `TRF_Sc_Make` and `TRF_Sc_Inv` (else `no_helper`) and the leader position (`TRF_SpLead`, `GetPosition`; else `no_position`).
-2. Takes the next label slot (`TRF_H().dp.n + 1`, 1..24, back to 1 after 24 drops in a visit; an object still under that label is deleted first). Label `trf_drop_<a>_<j>`, a 1..4, j 1..6: the range trf_plumb's orphan scan probes (`scan_n` 4, `scan_j` 6).
+2. Takes the next label slot (`TRF_H().dp.n + 1`, 1..24, back to 1 after 24 drops in a visit; an object still under that label is deleted first). Label `trf_drop_<a>_<j>`, a 1..4, j 1..6: the range trf_plumb's orphan scan probes (`scan_n` 4, `scan_j` 6, read from `TRF_PlK` by `TRF_SpDropK`; the same numbers without trf_plumb).
 3. Up to 3 tries: a spot 40 + `RAND(41)` units from the leader at heading `RAND(360)` degrees, same height; `TRF_Sc_Make("cargo01_destroyed_inv", spot, label)` (CreateCarcass of the `<Station>` model of `G/Game/Carcasses.xml`, then `SetObjectLabel`). CreateCarcass answers nil when it finds no free space; after 3 nils `create_failed`.
 4. `TRF_Sc_Inv(o, got)`: `ClearInventory`, then `AddModuleToInventory(id, n)` per stack. An error deletes the container (`inventory_failed`).
 5. The handle goes to `TRF_H().dp.o[slot]` (handle table, never saved).
