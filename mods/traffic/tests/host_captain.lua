@@ -665,6 +665,9 @@ end;
 
 -- f: death, claims, the 8.5 resolver, the map-wide gap ---------------------------------------------
 
+-- Death bus handler of the test module Hc (records kind|group|ship|pfire in HOST().dead).
+function TRF_Hc_OnDeath(kind, rec, ship, pf) tinsert(HOST().dead, kind.."|"..tostring(rec.g).."|"..tostring(rec.j).."|"..tostring(pf)); end;
+
 -- Kill the captain of slot (the ship dies, its died trigger fires).
 function CP_Kill(slot)
 	local sh = CP_Ship(slot);
@@ -698,7 +701,10 @@ function T_CAP_F()
 	local n0, s0 = S_Mark(), getn(h.screen);
 	local J = TRF_Jumps();
 	local n = CP_Raid();
+	h.dead = {};
+	TRF_DeathReg("Hc");
 	CP_Kill(s);
+	HOST_Check(getn(h.dead) == 1 and h.dead[1] == "cap|TRF_Cap_"..s.."|1|1", "death bus: the captain's death with player fire ("..tostring(h.dead[1])..")");
 	r = CP_R(s);
 	local c = TRF.claim and TRF.claim[1];
 	HOST_Check(c and c.slot == s and c.gen == 1 and c.amt == want and c.kind == 1 and c.nm == r.nm and TRF.capg.lc == J,
@@ -735,7 +741,10 @@ function T_CAP_F()
 	CP_Fire("attack", "TRF_CapHit", s);
 	T_Tick(30, 0.5);
 	n0 = S_Mark();
+	h.dead = {};
+	TRF_DeathReg("Hc");
 	CP_Kill(s);
+	HOST_Check(getn(h.dead) == 1 and h.dead[1] == "cap|TRF_Cap_"..s.."|1|nil", "death bus: a kill long after the last hit has no player fire");
 	r = CP_R(s);
 	HOST_Check(TRF.claim == nil and r.st == 4 and r.q == 3 and h.quests["trf_cap_"..s] == QUEST_FAILED and S_Logs(n0, "player=false claim=0") == 1,
 		"killed by others (one hit 15 s before): no claim, logbook failed");

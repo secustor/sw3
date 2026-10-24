@@ -359,10 +359,20 @@ end;
 -- gate, then v0.1. Event kinds (s.ecap set: sweep, feq 14, carrier, clan 8 alive, base 16): gate, no
 -- governor (base: allowed, the governor counts its ships anyway), ev + n <= ecap (ev = live ships of that
 -- event); they are outside the traffic caps and return 1, spare event ships.
+-- merc (mercenary clan visits, design/merc-spec.md; s.mcap = tune mc_ships): gate, no governor, ev + n <= mcap (ev =
+-- live ships of the clan visit, a big ship included), then the ship cap without the trader count; returns 1, spare
+-- ships (the lower of the two rooms).
 function TRF_CanSpawnKindOf(s)
 	local k = s.kind;
 	if s.supp ~= 0 then return nil, "supp"; end;
 	if k ~= "trader" and not s.gate then return nil, "gate"; end;
+	if k == "merc" then
+		if s.gov then return nil, "gov"; end;
+		local ev, mc = TRF_SafeNum(s.ev, 0), TRF_SafeNum(s.mcap, 0);
+		if ev + s.n > mc then return nil, "merc_cap"; end;
+		if s.nsh + s.n > s.caps then return nil, "ships"; end;
+		return 1, min(s.caps - s.nsh - s.n, mc - ev - s.n);
+	end;
 	if type(s.ecap) == "number" then
 		if k ~= "base" and s.gov then return nil, "gov"; end;
 		local ev = TRF_SafeNum(s.ev, 0);
@@ -1157,7 +1167,8 @@ end;
 
 -- 1, spare ships or nil, reason (5.1, v02 10.2). nships = ships of the planned base row (raid: raid ships);
 -- kind trader (default), seed, staged, raid, parked; v1: track, conv, dconv, tt4 and the event kinds sweep,
--- feq, carrier, clan, base (TRF_CanSpawnKindOf). ev: live ships of that event (event kinds; default for
+-- feq, carrier, clan, base (TRF_CanSpawnKindOf); merc (the mercenary clan module: its own cap tune mc_ships 7, ev =
+-- the live ships of the clan visit). ev: live ships of that event (event kinds; default for
 -- carrier and clan: the ships of the open raid records). Caps are recomputed per decision (band read
 -- live); if the visit has no governor count yet (live reset after OnActivate/OnLoad) the governor runs
 -- now. Parked ships count against cap_ships. Gate feature: the kind, "raid" for clan.
@@ -1174,6 +1185,8 @@ function TRF_CanSpawn(nships, kind, ev)
 	local gate = 1;
 	if kind == "clan" then gate = TRF_StrictOk(nil, "raid"); elseif kind ~= "trader" then gate = TRF_StrictOk(nil, kind); end;
 	local ecap = TRF_SafeEvCap(kind);
+	local mcap = nil;
+	if kind == "merc" then mcap = TRF_SafeTune("mc_ships", 7); end;
 	if type(ev) ~= "number" then
 		ev = 0;
 		if kind == "carrier" or kind == "clan" then ev = nrs; end;
@@ -1183,7 +1196,7 @@ function TRF_CanSpawn(nships, kind, ev)
 		capt = TRF_SafeNum(L.capt, 0), caps = TRF_SafeNum(L.caps, 0), cp = TRF_SafeNum(L.capp, 0),
 		kills = TRF_SafeNum(L.kills, 0), kcap = TRF_SafeTune("kill_cap", 3),
 		gate = gate, gov = TRF_GovActive(), nrf = nrf, nrs = nrs, npk = npk,
-		rf = TRF_SafeTune("raid_fl", 1), rs = TRF_SafeTune("raid_sh", 8), ecap = ecap, ev = ev
+		rf = TRF_SafeTune("raid_fl", 1), rs = TRF_SafeTune("raid_sh", 8), ecap = ecap, ev = ev, mcap = mcap
 	};
 	local ok, r = TRF_CanSpawnKindOf(s);
 	-- Over cap_ships: the registered groups give up ships first (rival, pack, scavenger; trf_plumb
@@ -1198,7 +1211,7 @@ function TRF_CanSpawn(nships, kind, ev)
 	if not ok then
 		TRF_SafeDE("no_spawn", "kind", kind, "reason", r, "trader_count", ntr, "trader_cap", s.capt, "ship_count", s.nsh,
 			"new_ship_count", s.n, "ship_cap", s.caps, "raid_flight_count", nrf, "raid_ship_count", nrs, "parked_count", npk,
-			"parked_cap", s.cp, "kill_count", s.kills, "suppression", s.supp, "event_count", ev, "event_cap", ecap);
+			"parked_cap", s.cp, "kill_count", s.kills, "suppression", s.supp, "event_count", ev, "event_cap", ecap or mcap);
 	end;
 	return ok, r;
 end;

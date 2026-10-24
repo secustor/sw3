@@ -167,24 +167,44 @@ function TRF_TpKeys() return {"id", "nm", "o", "c", "tt", "pw", "n", "e", "s", "
 
 -- Record table -> "id,nm,...,t" (missing fields 0, integers).
 function TRF_TpPack(r)
-	if type(r) ~= "table" then return nil; end;
-	local ks = TRF_TpKeys();
-	local s = "";
-	for i = 1, getn(ks) do
-		local v = r[ks[i]];
-		if type(v) ~= "number" then v = 0; end;
-		if i > 1 then s = s..","; end;
-		s = s..format("%d", floor(v));
-	end;
-	return s;
+	return TRF_TpPackK(r, TRF_TpKeys());
 end;
 
 -- Packed string -> record table, or nil unless it holds exactly 14 integers.
 function TRF_TpUnpack(s)
-	if type(s) ~= "string" or strlen(s) > 80 or strfind(s, "[^%d,%-]") then return nil; end;
+	return TRF_TpUnpackK(s, TRF_TpKeys(), 80);
+end;
+
+-- Packing bound: format("%d") converts to a C int, 32 bits in the game's Lua 4.0.1, so every packed value must lie in
+-- -(2^31 - 1) .. 2^31 - 1. The game (x86) wraps a larger value and the host (arm64) saturates it, so the host cannot
+-- show an overflow; TRF_TpPackK clamps to the bound itself, so both give the same string.
+function TRF_TpMax() return 2147483647; end;
+
+-- Record table r -> "v1,v2,..." over the key list ks (missing or non-number fields 0, floor, clamped to the
+-- TRF_TpMax bound). nil unless r and ks are tables.
+function TRF_TpPackK(r, ks)
+	if type(r) ~= "table" or type(ks) ~= "table" then return nil; end;
+	local mx = TRF_TpMax();
+	local s = "";
+	for i = 1, getn(ks) do
+		local v = r[ks[i]];
+		if type(v) ~= "number" then v = 0; end;
+		v = floor(v);
+		if v > mx then v = mx; elseif v < -mx then v = -mx; end;
+		if i > 1 then s = s..","; end;
+		s = s..format("%d", v);
+	end;
+	return s;
+end;
+
+-- Packed string -> record table over the key list ks, or nil unless s holds exactly getn(ks) integers separated by
+-- single commas and is at most len characters (default 11 per key: the widest value plus its comma).
+function TRF_TpUnpackK(s, ks, len)
+	if type(ks) ~= "table" then return nil; end;
+	if type(len) ~= "number" then len = 11 * getn(ks); end;
+	if type(s) ~= "string" or strlen(s) > len or strfind(s, "[^%d,%-]") then return nil; end;
 	local t = {};
 	gsub(s, "(%-?%d+)", function(x) tinsert(%t, tonumber(x)); end);
-	local ks = TRF_TpKeys();
 	if getn(t) ~= getn(ks) then return nil; end;
 	local _, nc = gsub(s, ",", ",");
 	if nc ~= getn(ks) - 1 then return nil; end;

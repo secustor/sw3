@@ -1233,6 +1233,8 @@ function TRF_CapDeath(v, why)
 	TRF_N("TRF_MarkerClear", "cap");
 	-- Battle scars source 7 (design/scar-spec.md 5.3): the captain's ship died here.
 	if TRF_CapObj(h.ship) then TRF_P("TRF_Sc_Dead", 3, 0, h.ship, hit and 1); end;
+	-- Death bus (wb-plumbing-spec 2): the captain's ship, hit = the 8.5 proxy above; not for a jump (no fight).
+	if why ~= "jump" then TRF_P("TRF_Dead", "cap", {g="TRF_Cap_"..v.slot, n=v.slot, j=1}, h.ship, hit and 1); end;
 	-- The wing breaks off: a raid wing leaves (trf_raid), his own wing goes to the nearest portal.
 	local wp = nil;
 	if type(v.rn) == "number" then

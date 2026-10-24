@@ -69,7 +69,7 @@ end;
 -- Tune keys read here (spec 10.4).
 function TRF_Rg_TuneDef()
 	return {rg_tick=2, rg_catchup=30, pp_step=5, pro_hi=7, pro_step=6, pro_visit_max=2, sweep_gap=6,
-		sweep_wait=2, pay_cap=30000, rg_hold=6, rg_sep=6};
+		sweep_wait=2, pay_cap=30000, rg_hold=6, rg_sep=6, charge_cap=250000};
 end;
 
 -- Texts: clan names by slot (spares 9..15), phase names, sweep factions by GetLocationTeam (lowercase).
@@ -112,6 +112,7 @@ function TRF_RgTune()
 	t.pro_step = max(1, t.pro_step);
 	t.sweep_gap = max(1, floor(t.sweep_gap));
 	t.rg_hold = max(0, floor(t.rg_hold));
+	t.charge_cap = max(0, floor(t.charge_cap));
 	t.rg_sep = max(0, floor(t.rg_sep));
 	if type(h) == "table" then h.rgt = {s=s, t=t}; end;
 	return t;
@@ -704,6 +705,12 @@ function TRF_LPayK(idx)
 	return TRF_LPay(idx) * TRF_LK(idx) * TRF_DK();
 end;
 
+-- Level term of a charge (credits the player pays a feature, TRF_Charge) for system idx (default current): L_w * d_k,
+-- without lk (00 A1-A2 basis; lk damps pay to the player only, merc-spec Decisions, TR F.12).
+function TRF_LChargeK(idx)
+	return TRF_LPay(idx) * TRF_DK();
+end;
+
 -- N_eff = min(900 L_w lk tier_k[T] (1 + 0.05 pro) d_k, pay_cap) for system idx (default current).
 function TRF_PayN(idx)
 	if type(idx) ~= "number" then idx = TRF_CurIdx(); end;
@@ -729,6 +736,33 @@ function TRF_Pay(n, why)
 	if type(TRF_Stat) == "function" then TRF_Stat("pay_"..tostring(why), n); end;
 	TRF_RgE("pay", "reason", why, "amount", n);
 	return n;
+end;
+
+-- Every charge (credits taken from the player: fees, shares, debts; wb-plumbing-spec 2). n = min(floor(n), charge_cap);
+-- refused (0, "short") while the wallet holds less than reserve (default n; 0 takes what the wallet holds, at most n);
+-- SubPlayerCredits of min(n, wallet), never more than the wallet and never negative; stat charge_<why>, log. Returns the
+-- amount taken and nil, or 0 and the reason (none, no_native, short, error).
+function TRF_Charge(n, why, reserve)
+	if type(n) ~= "number" then return 0, "none"; end;
+	n = min(floor(n), TRF_RgTune().charge_cap);
+	if n <= 0 then return 0, "none"; end;
+	if type(GetPlayerCredits) ~= "function" or type(SubPlayerCredits) ~= "function" then
+		TRF_RgE("charge", "reason", why, "amount", n, "result", "no_native");
+		return 0, "no_native";
+	end;
+	local w = call(GetPlayerCredits, {}, "x", TRF_RgNoErr);
+	if type(w) ~= "number" then w = 0; end;
+	w = floor(w);
+	if type(reserve) ~= "number" then reserve = n; end;
+	if w < reserve or w <= 0 then
+		TRF_RgE("charge", "reason", why, "amount", n, "credits", w, "reserve", reserve, "result", "short");
+		return 0, "short";
+	end;
+	local take = min(n, w);
+	if not call(function(v) SubPlayerCredits(v); return 1; end, {take}, "x", TRF_PErr) then return 0, "error"; end;
+	if type(TRF_Stat) == "function" then TRF_Stat("charge_"..tostring(why), take); end;
+	TRF_RgE("charge", "reason", why, "amount", n, "taken", take, "credits", w);
+	return take, nil;
 end;
 
 -- Derived region values -------------------------------------------------------------------

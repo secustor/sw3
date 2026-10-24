@@ -1149,6 +1149,46 @@ function T_V1_H()
 	-- Pay sources: each payment <= 30000.
 	TRF_Pay(99999, "test");
 	HOST_Check(W_PayMax() <= 30000 and W_PayMax() > 0, "every payment <= 30000 (max "..W_PayMax()..")");
+	-- Shared helpers of the mercenary clans (design/merc-spec.md 4): packing over a key list of 28 integers at the
+	-- 32-bit bound, the old 14-key wrappers unchanged, charges.
+	local ks, r0 = {}, {};
+	for i = 1, 28 do ks[i] = "k"..i; r0["k"..i] = i * 1000 - 14000; end;
+	r0.k1 = 2147483647; r0.k2 = -2147483647; r0.k3 = 0; r0.k28 = 2147483647;
+	local ps = TRF_TpPackK(r0, ks);
+	local r1 = TRF_TpUnpackK(ps, ks);
+	local same = r1 ~= nil;
+	for i = 1, 28 do if not r1 or r1["k"..i] ~= r0["k"..i] then same = nil; end; end;
+	HOST_Check(same and strlen(ps) > 80 and strsub(ps, 1, 22) == "2147483647,-2147483647" and TRF_TpUnpackK(ps, ks, 80) == nil and TRF_TpUnpack(ps) == nil,
+		"TRF_TpPackK/TRF_TpUnpackK: 28 integers round-trip at the 2^31-1 bound ("..strlen(ps).." chars); the 80-char and 14-key limits refuse it");
+	HOST_Check(TRF_TpPackK({a=1e12, b=-1e12, c=2.7}, {"a", "b", "c"}) == "2147483647,-2147483647,2" and TRF_TpPackK(nil, ks) == nil and TRF_TpPackK({}, nil) == nil,
+		"the pack clamps to the bound itself (the game would wrap, the host saturates)");
+	HOST_Check(TRF_TpUnpackK("1,2", {"a", "b", "c"}) == nil and TRF_TpUnpackK("1,,2", {"a", "b", "c"}) == nil and TRF_TpUnpackK("1,x,2", {"a", "b", "c"}) == nil
+		and TRF_TpUnpackK(nil, ks) == nil and TRF_TpUnpackK("1,2,3", nil) == nil and TRF_TpUnpackK("1,-2,3", {"a", "b", "c"}).b == -2, "unpack refuses a wrong count, an empty field, a letter, no key list");
+	local tr0 = {id=7, nm=3, o=12, c=1, tt=2, pw=14, n=3, e=0, s=99, fr=5, d=2, dm=1, fl=0, t=-12};
+	local tp0 = TRF_TpPack(tr0);
+	local tr1 = TRF_TpUnpack(tp0);
+	HOST_Check(tp0 == "7,3,12,1,2,14,3,0,99,5,2,1,0,-12" and tr1 and tr1.t == -12 and tr1.pw == 14 and TRF_TpOk(tp0) == 1 and TRF_TpUnpack(tp0..",1") == nil,
+		"TRF_TpPack/TRF_TpUnpack (14 pool keys, 80 chars) give the same strings as before");
+	h.credits = 10000;
+	local tk, why = TRF_Charge(4000.7, "test");
+	HOST_Check(tk == 4000 and why == nil and h.credits == 6000 and T_Stat("charge_test") == 4000, "TRF_Charge: floor, SubPlayerCredits, stat charge_<why>");
+	tk, why = TRF_Charge(7000, "test");
+	HOST_Check(tk == 0 and why == "short" and h.credits == 6000, "refused while the wallet is below the amount (default reserve)");
+	tk, why = TRF_Charge(7000, "test", 0);
+	HOST_Check(tk == 6000 and h.credits == 0, "reserve 0: what the wallet holds, never negative");
+	tk, why = TRF_Charge(100, "test", 0);
+	HOST_Check(tk == 0 and why == "short" and h.credits == 0, "empty wallet: nothing taken");
+	h.credits = 50000;
+	local tk1 = TRF_Charge(1000, "test", 20000);
+	local tk2, why2 = TRF_Charge(1000, "test", 60000);
+	HOST_Check(tk1 == 1000 and tk2 == 0 and why2 == "short" and h.credits == 49000, "reserve 2 x (fee + owe): refused below it");
+	HOST_Check(TRF_Charge(-5, "test") == 0 and TRF_Charge(nil, "test") == 0 and h.credits == 49000, "a negative or missing amount charges nothing");
+	h.credits = 400000;
+	tk = TRF_Charge(300000, "test", 0);
+	HOST_Check(tk == 250000 and h.credits == 150000 and TRF_RgTune().charge_cap == 250000, "capped at tune charge_cap 250,000");
+	HOST_Check(V_Logs("module=region event=charge reason=test amount=4000 taken=4000 credits=10000") == 1
+		and V_Logs("module=region event=charge reason=test amount=7000 credits=6000 reserve=7000 result=short") == 1, "charge log lines");
+	HOST_Check(abs(TRF_LChargeK(TRF_CurIdx()) - TRF_LPay(TRF_CurIdx()) * TRF_DK()) < 0.001, "charge level term L_w x d_k, no lk");
 end;
 
 -- i: TT4 convoys and bands 8-9 (spec 8.1-8.3) ---------------------------------------------------------

@@ -495,6 +495,9 @@ function P_CapA(g) return 3; end;
 function P_CapB(g) return 2; end;
 function P_CapC(g) return 4; end;
 function P_CapD(g) return 1; end;
+-- Death bus handlers of test modules Pq (records) and Pr (raises).
+function TRF_Pq_OnDeath(kind, rec, ship, pf) tinsert(HOST().dead, kind.."|"..tostring(rec.g).."|"..tostring(rec.j).."|"..tostring(pf)); end;
+function TRF_Pr_OnDeath(kind, rec, ship, pf) error("injected death handler error"); end;
 
 function T_PL_E()
 	local h = HOST();
@@ -559,6 +562,19 @@ function T_PL_E()
 	HOST_Check(not ok2 and why2 == "ships" and h.trim == "TRF_Rival_1:1,", "over by 3: rival 1, the pack has no trim, skipped");
 	TRF_CapReg("TRF_Rival_1", "P_CapD", "rival");
 	h.trim = nil;
+	-- Spawn kind merc (design/merc-spec.md 4): the registered ships count, its own cap mc_ships 7 (ev = live ships of
+	-- the clan visit), no governor, the strict gate, no trader count.
+	local okm, spm = TRF_CanSpawn(4, "merc", 0);
+	local okm2, whym2 = TRF_CanSpawn(4, "merc", 4);
+	HOST_Check(okm and spm == min(caps - 8 - 4, 3) and not okm2 and whym2 == "merc_cap", "merc: 4 ships fit (spare "..tostring(spm).."), 4 more over mc_ships 7");
+	local sm = {kind="merc", supp=0, gate=1, gov=nil, n=5, ev=0, mcap=7, nsh=10, caps=12, ntr=9, capt=1};
+	local o1, w1 = TRF_CanSpawnKindOf(sm);
+	sm.nsh = 6; local o2, x2 = TRF_CanSpawnKindOf(sm);
+	sm.gov = 1; local o3, w3 = TRF_CanSpawnKindOf(sm);
+	sm.gov = nil; sm.gate = nil; local o4, w4 = TRF_CanSpawnKindOf(sm);
+	sm.gate = 1; sm.supp = 1; local o5, w5 = TRF_CanSpawnKindOf(sm);
+	HOST_Check(not o1 and w1 == "ships" and o2 and x2 == 1 and not o3 and w3 == "gov" and not o4 and w4 == "gate" and not o5 and w5 == "supp",
+		"merc pure gate: ship cap (traders over their cap do not matter), governor, strict gate, suppression");
 	-- S35: the owed payment is that docking's offer; the mark is gone at the next pirate docking.
 	local of0 = TRF.offer;
 	TRF.offer = {k=3, s=3, t=TRF.clock.legs + 8, p=100};
@@ -623,6 +639,26 @@ function T_PL_E()
 	TRF_GScv_2 = 1;
 	HOST_Check(strfind(T_LeftGlobals(), "TRF_GScv_2", 1, 1), "host lint: a left TRF_GScv_ global is reported");
 	TRF_GScv_2 = nil;
+	-- Adoption registration: a registered prefix keeps its labelled ships at the scan of this MapInitialization; the
+	-- load runs the next MapInitialization, whose registrations start empty, so an unregistered Merc is scanned again.
+	HOST_Check(TRF_PlAdoptReg("Merc") == 1 and TRF_PlAdoptReg("Zzz") == nil and TRF_PlAdopt().Merc == 1 and TRF_PlAdopt().Nest == 1 and TRF_PlAdopt().Zzz == nil,
+		"TRF_PlAdoptReg: a TRF_PlGroups name registers, another name does not, Nest stays fixed");
+	local m1 = T_LabelShip("trf_merc_1_2", 820, 800, "TRF_Merc_1");
+	local c1 = T_LabelShip("trf_cust_2_1", 840, 800, "TRF_Cust_2");
+	local hu = T_LabelShip("trf_hunt_1_1", 860, 800, "TRF_Hunt_1");
+	TRF_PlOrphans();
+	HOST_Check(m1.alive and not c1.alive and not hu.alive, "registered Merc kept by the scan, Cust and the new Hunt prefix deleted");
+	T_SaveLoad();
+	HOST_Check(not m1.alive and TRF_PlAdopt().Merc == nil, "after the load (no module registered Merc): the merc ship is an orphan");
+	-- Death bus: registered modules in order, a raising handler caught, a second registration ignored.
+	h.dead = {};
+	HOST_Check(TRF_DeathReg("Pr") == 1 and TRF_DeathReg("Pq") == 1 and TRF_DeathReg("Pq") == 1 and TRF_DeathReg(nil) == nil, "TRF_DeathReg");
+	n0 = S_Mark();
+	local nd = nil;
+	local ne = S_Expect(function() HOST().nd = TRF_Dead("raid", {g="TRF_Raid_5", n=5, j=2}, nil, 1); end);
+	nd = h.nd;
+	HOST_Check(nd == 2 and ne == 1 and getn(h.dead) == 1 and h.dead[1] == "raid|TRF_Raid_5|2|1" and S_Logs(n0, "module=plumb event=error message=") == 1,
+		"TRF_Dead: both handlers called once, the error logged");
 	-- Dump line.
 	n0 = S_Mark();
 	TRF_DumpState("test");

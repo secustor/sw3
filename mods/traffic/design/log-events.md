@@ -400,6 +400,7 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `marker` | `module=plumb event=marker owner=pcl deleted_count=1 result=cleared` / `reason=jump deleted_count=3 result=cleared` (or `reason=load`, `reason=quest`: a mission started) | 1 |
 | `cap_trim` | `module=plumb event=cap_trim over_count=3 group_count=2 freed_count=3` (a spawn over `cap_ships`: the planned groups' trim calls) | 1 |
 | `orphan` | `module=plumb event=orphan deleted_count=2 global_count=1` (load: ships `trf_<prefix>_<n>_<j>`, globals `TRF_G<prefix>_*`) | 1 |
+| `death` | `module=plumb event=death kind=raid group=TRF_Raid_3 player=true handler_count=1` (death bus `TRF_Dead`, only with a registered handler; `kind` raid or cap) | 2 |
 | `prize` | `module=plumb event=prize owner=captain real_seconds=3600 gap=1800` (a combat prize paid: the shared gap of 00 B1 starts, `TRF.clock.pz`) | 1 |
 | `near` | `module=plumb event=near via=typed record_count=12 kept_count=3` / `via=count reason=no_native` (or `reason=off`, `sig`, `arg`, `noroot`, `nolm`: the `TRF_Carcasses` why; `error`: it raised) / `result=failed reason=pos` (`TRF_Near`, spec 16) | 2 |
 | `dump` | `module=plumb event=dump box_holder=nil event_slot=staged escort=nil arrival_count=1 job=nil marker_count=0 jumps=12 real_seconds=3600.500 visit_tick_legs=2 line_count=4 box_count=3 cap_count=0 cost_of_head_wrapped=true` | 1 |
@@ -909,6 +910,8 @@ All lines are `module=exp event=<e> kit=<trader|saves|hooks|state> ...`; rows th
 | `prosperity_set` | `module=region event=prosperity_set system=gredos prosperity=7` | 1 |
 | `pay` | `module=region event=pay reason=car amount=1125` | 1 |
 | `pay` | `module=region event=pay reason=car amount=1125 result=no_add_player_credits` | 1 |
+| `charge` | `module=region event=charge reason=merc_fee amount=12600 taken=12600 credits=80000` (`TRF_Charge`, credits taken from the player; `amount` after `charge_cap`, `credits` the wallet before) | 1 |
+| `charge` | `module=region event=charge reason=merc_fee amount=12600 credits=20000 reserve=25200 result=short` (or `result=no_native`) | 1 |
 | `sweep_plan` | `module=region event=sweep_plan region=4 leg=8` | 1 |
 | `sweep` | `module=region event=sweep region=5 faction=0 via=off clan_score=85 next_leg=12 chance=10 attempt=1 result=failed` | 1 |
 | `sweep` | `module=region event=sweep region=4 faction=0 via=off clan_score=35 chance=10 attempt=1 result=won` | 1 |

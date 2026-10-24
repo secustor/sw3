@@ -21,6 +21,9 @@ function V_Begin(sys, t)
 end;
 
 -- Mod log lines containing pat (plain find) since the scenario start.
+-- Death bus handler of the test module Hv (records kind|group|ship|pfire in HOST().dead).
+function TRF_Hv_OnDeath(kind, rec, ship, pf) tinsert(HOST().dead, kind.."|"..tostring(rec.g).."|"..tostring(rec.j).."|"..tostring(pf)); end;
+
 function V_Logs(pat)
 	local n, q = 0, HOST().logs or {};
 	for i = 1, getn(q) do if strfind(q[i], pat, 1, 1) then n = n + 1; end; end;
@@ -1136,6 +1139,9 @@ function T_V02_I()
 	HOST_Check(T_Stat("pirate_kill") == 1, "killed raid counts once as a pirate kill");
 	TRF_Remove(id, "test");
 	-- A raid ship killed within 10 s of one player hit counts too; the trader killed -> no pay.
+	-- Death bus (wb-plumbing-spec 2): every raid ship death reaches the registered module, pfire from the same rule.
+	h.dead = {};
+	TRF_DeathReg("Hv");
 	local id3 = T_Spawn("C");
 	local x3 = TRF_H().tr[id3];
 	local n3 = V_Raid(id3);
@@ -1162,6 +1168,10 @@ function T_V02_I()
 	local c4 = h.credits;
 	for j = 1, getn(hr4.sh) do hr4.sh[j].alive = nil; HOST_Fire("died", "TRF_OnRaidDied("..n4..","..j..","); end;
 	HOST_Check(V_Rd(n4).hit == nil and h.credits == c4, "proximity only: no help, no pay");
+	local dd = "";
+	for i = 1, getn(h.dead) do dd = dd..h.dead[i]..";"; end;
+	HOST_Check(getn(h.dead) == getn(hr3.sh) + getn(hr4.sh) and h.dead[1] == "raid|TRF_Raid_"..n3.."|1|1" and h.dead[2] == "raid|TRF_Raid_"..n3.."|2|nil"
+		and h.dead[getn(h.dead)] == "raid|TRF_Raid_"..n4.."|"..getn(hr4.sh).."|nil", "death bus: one call per raid ship, player fire only for the hit ship ("..dd..")");
 end;
 
 -- j: staged raid (spec 5.4) ------------------------------------------------------------------------

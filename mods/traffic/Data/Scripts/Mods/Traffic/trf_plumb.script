@@ -15,7 +15,7 @@
 -- box/bt/ev/esc/arq/ag (visit slots; TRF.live is rebuilt on entry and load). Handles: TRF_H().mk.
 -- Top level: functions and P only.
 
-local P = {dock={}, none={}, coh={}, ej={}, owe={}, seed={}, rh={}, cap={}, vp={}, run={}};
+local P = {dock={}, none={}, coh={}, ej={}, owe={}, seed={}, rh={}, cap={}, vp={}, run={}, ad={}, dh={}};
 
 -- Helpers --------------------------------------------------------------------------
 
@@ -274,13 +274,29 @@ end;
 -- function reference to the --calls lint). Drop: trf_supply's demand_drop containers (labels trf_drop_<a>_<j>, no group).
 -- Nest: trf_nest's group TRF_Nest_1 (global TRF_GNest_1 only during activate.script, ships trf_nest_<i>_<j>); its ships
 -- are adopted at load (TRF_Nest_OnLoad), so the orphan scan clears only its build global (TRF_PlAdopt).
+-- Merc: every role of the mercenary clan module (trf_merc, TRF_Merc_<n>, ships trf_merc_<n>_<j>); Hunt: the announced
+-- hunters of its step 5 (TRF_Hunt_<n>, not built yet). Rival is unused since the 12/13 merge.
 function TRF_PlGroups()
-	return {"Cust", "Scv", "Cap", "Esc", "Def", "Pick", "Push", "Merc", "Rival", "Fw", "Drop", "Sh", "Nest"};
+	return {"Cust", "Scv", "Cap", "Esc", "Def", "Pick", "Push", "Merc", "Rival", "Hunt", "Fw", "Drop", "Sh", "Nest"};
 end;
 
--- Groups whose ships their module adopts after a load (no label scan in TRF_PlOrphans).
+-- Groups whose ships their module adopts after a load (no label scan in TRF_PlOrphans): Nest always (trf_nest), and
+-- every group registered in this MapInitialization with TRF_PlAdoptReg, so a module that is off or not loaded leaves its
+-- labels to the scan.
 function TRF_PlAdopt()
-	return {Nest=1};
+	local r = {Nest=1};
+	for k, v in %P.ad do r[k] = 1; end;
+	return r;
+end;
+
+-- Adoption registration (from a module's TRF_<M>_Plumb): the orphan scan keeps the ships of group prefix name (one of
+-- TRF_PlGroups) after a load, because the module adopts or deletes them itself. 1 when registered.
+function TRF_PlAdoptReg(name)
+	local gs = TRF_PlGroups();
+	for i = 1, getn(gs) do
+		if gs[i] == name then %P.ad[name] = 1; return 1; end;
+	end;
+	return nil;
 end;
 
 -- Scripted-event slot order (00 section 6): rank 1 first. Kinds outside the table rank as optional.
@@ -364,6 +380,38 @@ end;
 -- 8.5 raid-help resolver fn(n, rd, credits) -> nil, "cancel", {cancel=1, nohelp=1}, {ex=ships} or a factor 0..1.
 function TRF_RaidHelpReg(fn)
 	return TRF_PlIns(%P.rh, getn(%P.rh) + 1, fn, nil, 1);
+end;
+
+-- Death bus (wb-plumbing-spec 2): module name m (TRF_<m>_OnDeath(kind, rec, ship, pfire) is called for every death the
+-- bus reports); a second registration of m is ignored. 1 when registered.
+function TRF_DeathReg(m)
+	if type(m) ~= "string" or m == "" then return nil; end;
+	local l = %P.dh;
+	for i = 1, getn(l) do if l[i] == m then return 1; end; end;
+	tinsert(l, m);
+	return 1;
+end;
+
+-- A death of a mod ship from its died trigger: kind "raid" (trf_raid) or "cap" (trf_captain), rec = {g = group name,
+-- n = raid id or captain slot, j = ship index}, ship the handle, pfire 1 when the player group hit that ship within
+-- hit_win (the 8.5 kill-after-hit rule of the site), else nil. Every registered handler runs protected, in
+-- registration order; they must not change the site's records. Returns the number of handlers called.
+function TRF_Dead(kind, rec, ship, pfire)
+	local l = %P.dh;
+	local n = 0;
+	for i = 1, getn(l) do
+		local f = getglobal("TRF_"..l[i].."_OnDeath");
+		if type(f) == "function" then
+			call(f, {kind, rec, ship, pfire}, "x", TRF_PlErr);
+			n = n + 1;
+		end;
+	end;
+	if n > 0 then
+		local g = nil;
+		if type(rec) == "table" then g = rec.g; end;
+		TRF_PlDE("death", "kind", kind, "group", g, "player", TRF_KvB(pfire), "handler_count", n);
+	end;
+	return n;
 end;
 
 -- Ship-cap group: countfn(group) -> live ships; trim = rank (1 rival, 2 pack, 3 scavenger, or the name;
@@ -1098,7 +1146,8 @@ end;
 -- After a load: build-time group globals TRF_G<prefix><n> restored with the save are cleared, and ships
 -- labelled trf_<prefix lowercase><n>_<j> (n 1..scan_n, j 1..scan_j) are deleted. Group Drop (trf_supply's
 -- containers, destructible) also deletes an object the label lookup answers dead, as trf_scar's probe does (EW2.2).
--- Groups of TRF_PlAdopt (Nest) keep their ships: their module adopts them. Returns ships, globals.
+-- Groups of TRF_PlAdopt (Nest, and the TRF_PlAdoptReg names) keep their ships: their module adopts them. Returns
+-- ships, globals.
 function TRF_PlOrphans()
 	local K = TRF_PlK();
 	local gs = TRF_PlGroups();
@@ -1201,8 +1250,13 @@ function TRF_Pl_Fix()
 end;
 
 -- wb_box_after_fee: 1 allows an offer box at the trade dock after a #3 fee box (set once E0.6 passes).
+-- Group war against the player by the mercenary clans (00 section 8 E2, design/merc-spec.md 4), each 0 until E0.13
+-- passes and kept here so the keys exist without trf_merc: merc_war (a betrayed pack fights back; 0: it leaves through
+-- its portal), merc_hunt (P M14 hunters at war at spawn), merc_hostile (rival HOSTILE meetings, 13 section 6; replaces
+-- rv_hostile), merc_legion (the Black Legion's rival entry and HOSTILE variant, 12 section 11.4). Read only by the
+-- module's own gates; no behaviour reads them yet.
 function TRF_Pl_OptDef()
-	return {wb_box_after_fee=0};
+	return {wb_box_after_fee=0, merc_war=0, merc_hunt=0, merc_hostile=0, merc_legion=0};
 end;
 
 -- prize_rs: the shared real-time gap between combat prize payouts (00 section 8 B1).

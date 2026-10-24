@@ -1741,7 +1741,9 @@ function TRF_Rd_DiedBody(n, j, g)
 	local H0 = TRF_Rd_H();
 	if H0 and type(H0.rd[n]) == "table" and type(H0.rd[n].dl) == "table" and H0.rd[n].dl[j] then return; end;
 	local gt = TRF_Rd_Gt();
-	if type(rd.lh) == "table" and type(rd.lh[j]) == "number" and gt - rd.lh[j] <= TRF_Rd_K().hit_win and rd.hit ~= 1 then
+	local pf = nil;
+	if type(rd.lh) == "table" and type(rd.lh[j]) == "number" and gt - rd.lh[j] <= TRF_Rd_K().hit_win then pf = 1; end;
+	if pf and rd.hit ~= 1 then
 		rd.hit = 1;
 		TRF_Rd_Stat("raid_help");
 		TRF_RdE("help", "raid_id", n, "ship", j, "reason", "kill_after_hit", "result", "counted");
@@ -1752,6 +1754,10 @@ function TRF_Rd_DiedBody(n, j, g)
 	if hr then hr.dk[j] = 1; end;
 	-- Battle scars source 7 (design/scar-spec.md 5.3): a raid ship (pirate hulls) died here.
 	if hr and type(hr.sh) == "table" then TRF_P("TRF_Sc_Dead", 3, 0, hr.sh[j], rd.hit); end;
+	-- Death bus (wb-plumbing-spec 2): pf = the player group hit this ship within hit_win.
+	local ds = nil;
+	if hr and type(hr.sh) == "table" then ds = hr.sh[j]; end;
+	TRF_P("TRF_Dead", "raid", {g="TRF_Raid_"..n, n=n, j=j}, ds, pf);
 	TRF_Rd_SalvDead(n, rd, hr);
 	if TRF_Rd_AliveN(hr) == 0 then TRF_Rd_End(n, "killed"); end;
 end;
