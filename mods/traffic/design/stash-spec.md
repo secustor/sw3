@@ -72,7 +72,7 @@ Labels: cache `TRF_STASH_<i>`, markers `TRF_STASH_AR_<i>` (area) and `TRF_STASH_
 
 ### 3.3 Size
 
-Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case measured in `sh-h`: `TRF.stash` with 4 records at their widest (with `pl`) plus `TRF.stx` with every field and two owed thanks 1,676 bytes (checked <= 1,700); with `so` and `sk` in 11 clan records 2,160 (checked <= 2,200). Full-state `v1-n` with everything on: 80,459 bytes (budget 100,000): `stash` 1,288, `stx` 364, plus the clan fields. Typical: 1-2 records, about 300-700 bytes.
+Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case measured in `sh-h`: `TRF.stash` with 4 records at their widest (with `pl`) plus `TRF.stx` with every field and two owed thanks 1,676 bytes (checked <= 1,700; default `stash_live` 2, each further entry up to the tune cap 4 adds about 72 bytes); with `so` and `sk` in 11 clan records 2,160 (checked <= 2,200). Full-state `v1-n` with everything on: 80,459 bytes (budget 100,000): `stash` 1,288, `stx` 364, plus the clan fields. Typical: 1-2 records, about 300-700 bytes.
 
 ## 4. Hooks and registration
 

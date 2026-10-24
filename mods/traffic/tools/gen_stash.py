@@ -134,28 +134,25 @@ def clusters(ast):
     return out
 
 
-def fails(c, S, wb, chosen):
-    """Names of the rules candidate c breaks (empty: c is a slot)."""
+def fails(c, S, wb, chosen, first=False):
+    """Names of the rules candidate c breaks (empty: c is a slot); first: stop at the first broken rule."""
     f = []
-    if any(dist(c, a) < AST_R for a in S["ast"]):
-        f.append("ast")
-    if sum(1 for a in S["ast"] if dist(c, a) <= IN_R) < IN_N:
-        f.append("belt")
-    if any(dist(c, p) < ST_R for p in S["st"]):
-        f.append("station")
-    if any(dist(c, p) < PORTAL_R for p in S["portals"]):
-        f.append("portal")
-    if any(dist(c, p) < NYCH_R for p in S["nych"]):
-        f.append("nych")
-    if wb and any(dist(c, p) < PIR_R for p in S["pir"]):
-        f.append("pirate")
-    if any(dist(c, p) < SEP for p in chosen):
-        f.append("sep")
+    for name, bad in (("ast", lambda: any(dist(c, a) < AST_R for a in S["ast"])),
+                      ("belt", lambda: sum(1 for a in S["ast"] if dist(c, a) <= IN_R) < IN_N),
+                      ("station", lambda: any(dist(c, p) < ST_R for p in S["st"])),
+                      ("portal", lambda: any(dist(c, p) < PORTAL_R for p in S["portals"])),
+                      ("nych", lambda: any(dist(c, p) < NYCH_R for p in S["nych"])),
+                      ("pirate", lambda: wb and any(dist(c, p) < PIR_R for p in S["pir"])),
+                      ("sep", lambda: any(dist(c, p) < SEP for p in chosen))):
+        if bad():
+            f.append(name)
+            if first:
+                break
     return f
 
 
 def ok(c, S, wb, chosen):
-    return not fails(c, S, wb, chosen)
+    return not fails(c, S, wb, chosen, True)
 
 
 def tally(cand, S, wb):
