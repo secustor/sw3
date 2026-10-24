@@ -420,6 +420,7 @@ Survivors and beacons, step 1 (`design/survivors-spec.md` 7).
 | `clear` | `module=survive event=clear system=gaoba deleted_count=3 reason=jump` | 2 |
 | `jump` | `module=survive event=jump system=gaoba deleted_count=3` | 2 |
 | `rumour` | `module=survive event=rumour system=heos rumour_system=gaoba kind=svrumtaken` | 2 |
+| `site_link` | `module=survive event=site_link system=gaoba beacon=1 sid=423` (trf_scar linked the beacon to an on-screen scar, `design/scar-spec.md` 5.3) | 2 |
 
 ## ladder (`trf_ladder.script`; `TRF_LadE`, `TRF_LadDE`)
 
@@ -461,6 +462,31 @@ Charter goals, step 1 (`design/charter-spec.md` 7).
 | `dock` | `module=charter event=dock system=golkonda line_count=3 board_count=1 new_count=1 suspended=nil` (suspended chapter, trade_war, heat); `module=charter event=dock result=none reason=<off, locked, nomap, deny, quiet, strict>` | 2 |
 | `dump` | `module=charter event=dump on=1 rank=2 rank_points=9 dues_leg=248 real_seconds=15320 paid_real_seconds=13100 lh=10/8/6 visit_deeds=1 visit_break=0 count=14 seed=1622650073 slots=2 done=9 failed=2 withdrawn=1 player_kill=5:180 region_posted=4:196 pirate_posted=nil slot_free=nil hunting_rank=nil blacklisted=false docking_count=1`; `module=charter event=dump on=0 result=locked` | 1 |
 | `dump_post` | `module=charter event=dump_post slot=1 type=lanes region=5 faction=0 needed=3 done=3 world=0 posted=196 deadline=226 state=1 pay=7000 rank_points=2 level=10 reason=nil` (one per posting) | 1 |
+
+## scar (`trf_scar.script`; `TRF_ScE`, `TRF_ScDE`)
+
+Battle scars, step 1 (`design/scar-spec.md` 7).
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=scar event=error message=<m>` | 1 |
+| `source` | `module=scar event=source source=1 system=callipso sid=140 kind=trader faction=0 cap_row=2 seed=1348 ttl=12 decorations=3 scavenger=0 recorder=1 mine=0 on_screen=0 result=new record_count=1` (source 1 Bust shortage, 2 Raids tick, 3 off-screen sweep, 7 on-screen fight, 9 debug `scar_at`); `module=scar event=source source=2 system=callipso sid=140 kind=trader state=0 leg=4 result=refresh` (`kept`); `module=scar event=source source=1 system=corrino alternative=ahilles result=moved reason=chapter5`; `... kind=trader result=none reason=<cooldown, chapter5>`; level 2 `... result=none reason=<current, deny, roll, step2>` (the roll line has `roll=` and `chance=`) | 1 / 2 |
+| `fight` | `module=scar event=fight system=gaoba death_count=1 cluster=1 fights=raid kind=trader faction=0 mine=1 x=210 z=-174 moved=200 linked=true result=scar`; `module=scar event=fight system=gaoba death_count=2 cluster=2 fights=nil result=none reason=few` (reason few, position, site) | 1 |
+| `dead` | `module=scar event=dead class=3 faction=0 mine=0 position=true death_count=1` | 2 |
+| `fight_end` | `module=scar event=fight_end fight=raid mine=1 fight_count=1` (fight raid, staged, sweep, convoy, carrier, base) | 2 |
+| `place` | `module=scar event=place sid=420 system=gaoba kind=trader hulk=made decorations=3 decorations_wanted=3 cargo=Cargo_10x2/Uraniumx1/Cargo_08x1 value=5450 cap=8000 mode=full state=1 reason=enter` (hulk made, none); `module=scar event=place sid=423 system=gaoba result=failed reason=blocked` (reason blocked, site) | 1 |
+| `reconcile` | `module=scar event=reconcile sid=420 system=gaoba state=1 hidden=0 hulk=alive lookup=alive mode=full result=reuse` (hulk alive, nil; lookup alive, dead, none, string; result create, failed, reuse, opened, leave, shrink, hide) | 1 |
+| `hide` | `module=scar event=hide sid=504 system=heos state=1 deleted=3 reason=gate:quest` | 1 |
+| `open` | `module=scar event=open sid=420 system=gaoba reason=died` (reason died, poll, jump, entry) | 1 |
+| `expire` | `module=scar event=expire sid=140 system=callipso kind=trader on_screen=0 state=2 age=13 ttl=12 deleted=0 reason=ttl` (reason ttl, cap, fight_cap, site) | 1 |
+| `shrink` | `module=scar event=shrink sid=420 system=gaoba state=2 age=8 ttl=12 decorations=2` | 1 |
+| `orphan` | `module=scar event=orphan sid=425 system=gaoba deleted=1` | 1 |
+| `enter` | `module=scar event=enter system=gaoba mode=full sid=420 state=1 result=reuse line=scararrivet record_count=1` (mode full, ch4, visual) | 1 |
+| `load` | `module=scar event=load sid=422 system=gaoba state=1 hulk=true decorations=3 reason=nil` (reason: a failing gate) | 1 |
+| `wind_down` | `module=scar event=wind_down sid=424 system=gaoba reason=gate:mission_q` | 1 |
+| `dump` | `module=scar event=dump record_count=1 fight_count=0 records=420:gaoba:trader:1/12:1:2:1 recorders=nil payouts=nil licence_leg=nil` (`records=<sid>:<sys>:<kind>:<age>/<ttl>:<st>:<lv>:<scv>`) | 1 |
+| `dump_rec` | `module=scar event=dump_rec sid=420 system=gaoba kind=trader faction=0 on_screen=0 mine=0 age=1 ttl=12 state=1 hidden=0 cap_row=2 decorations=3 cargo=Cargo_10x2/Uraniumx1/Cargo_08x1 value=5450 cap=8000 scavenger=1 recorder=1 name=1 x=-77 z=152` (one per record) | 1 |
+| `dump_probe` | `module=scar event=dump_probe system=gaoba sid=420 expected=4 found=4` (label probe of the current system) | 1 |
 
 ## supply (`trf_supply.script`; `TRF_SpE`)
 

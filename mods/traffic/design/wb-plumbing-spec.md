@@ -37,7 +37,7 @@ Config: `wb_box_after_fee` (default 0, enum 0..1, `install-test.sh` `WB_BOX_AFTE
 | `TRF_EscortTake(owner)`, `TRF_EscortFree(owner)` | `live.esc` | one escort hire per visit, first wins |
 | `TRF_ArrivalLine(owner, text)` | `live.arq`, `live.ag`, `live.aqt` | see 5 |
 | `TRF_JobTake(kind, rec)`, `TRF_JobGet()`, `TRF_JobClear()` | `TRF.job` | one open job `{k = kind, flat fields}`; at most `job_max` number or string fields, field names and strings up to `job_len`; refused when one is open |
-| `TRF_MarkerAdd(owner, label, x, y, z)`, `TRF_MarkerClear(owner)` | `TRF.mk`, `TRF_H().mk` | see 8 |
+| `TRF_MarkerAdd(owner, label, x, y, z[, text, icon])`, `TRF_MarkerClear(owner)` | `TRF.mk`, `TRF_H().mk` | see 8 |
 
 `TRF.live` is rebuilt on entry (`TRF_LiveReset`) and by the load pass, and `TRF_Pl_OnEnter`/`TRF_Pl_OnLoad` clear the slot fields again, so every slot starts empty on entry and on load.
 
@@ -126,7 +126,7 @@ The RAND draws and the `entry_plan` log lines are the same as before the convers
 
 ## 8. Nav markers
 
-`TRF_MarkerAdd(owner, label, x, y, z)`: label `TRF_*`, at most `mk_len` characters, no `=` or `;`; refused while `GetPlayerQuestState() == TRUE` (`reason=quest`) and above `mk_max` markers (`reason=cap`). `CreateNavPoint("", Vector3(x, y, z), "nav_target.dds", RGB(80, 200, 255))` (the 4-argument form; the host stub's native, CHECK E0.8 in the game), `SetNavPointLabel`. Handles in `TRF_H().mk`, labels in `TRF.mk = "label=owner;..."`. `TRF_MarkerClear(owner)` (nil: all). Owner at most `mk_own` (8) characters. The RGB value is passed through unchanged (a Vector3 in the game, mod-research/trader-marker.md); without `RGB` the 3-argument form is used. `TRF_Pl_Step` (every 1 s) deletes every marker once `GetPlayerQuestState() == TRUE` (`reason=quest`), so markers added before a mission do not stay through it. `TRF_Pl_BeforeJump` deletes every marker; `TRF_Pl_OnLoad` deletes the markers of the saved visit by label (`GetNavPointByLabel`), since a feature re-adds its markers after a load. A marker with a handle is deleted through it and never looked up by label again (the lookup returns the first match even when dead), so each marker is deleted once.
+`TRF_MarkerAdd(owner, label, x, y, z)`: label `TRF_*`, at most `mk_len` characters, no `=` or `;`; refused while `GetPlayerQuestState() == TRUE` (`reason=quest`) and above `mk_max` markers (`reason=cap`). `CreateNavPoint(text, Vector3(x, y, z), icon, RGB(80, 200, 255))` (the 4-argument form; the host stub's native, CHECK E0.8 in the game), `SetNavPointLabel`; `text` (a loc key, default `""`) and `icon` (default `nav_target.dds`) are optional arguments since 2026-10-24 (battle scars: `#M_Name_Crash_site` and `nav_Crash_site.dds`, `D/scar-spec.md` 5.8). Handles in `TRF_H().mk`, labels in `TRF.mk = "label=owner;..."`. `TRF_MarkerClear(owner)` (nil: all). Owner at most `mk_own` (8) characters. The RGB value is passed through unchanged (a Vector3 in the game, mod-research/trader-marker.md); without `RGB` the 3-argument form is used. `TRF_Pl_Step` (every 1 s) deletes every marker once `GetPlayerQuestState() == TRUE` (`reason=quest`), so markers added before a mission do not stay through it. `TRF_Pl_BeforeJump` deletes every marker; `TRF_Pl_OnLoad` deletes the markers of the saved visit by label (`GetNavPointByLabel`), since a feature re-adds its markers after a load. A marker with a handle is deleted through it and never looked up by label again (the lookup returns the first match even when dead), so each marker is deleted once.
 
 ## 9. Group prefixes and the orphan scan
 

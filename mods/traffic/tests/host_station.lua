@@ -1454,15 +1454,16 @@ function T_STN_G()
 	HOST_Check(getn(kk) == 3 and kk[1] == "barge" and kk[2] == "launch" and kk[3] == "shuttle" and getn(TRF_StnEvKindsOf({{"_NoneStation_Action", 0, "5"}, {"_PirDock_Action"}})) == 0,
 		"kinds: barge (private/restricted), launch (civil), shuttle (trade); silent and pirate none");
 	HOST_Check(TRF_StnEvPayOf(10000, 40) == 4000 and TRF_StnEvPayOf(nil, 40) == 0 and TRF_StnEvPayOf(10000, 0) == 0, "pay: k percent of N_eff");
-	-- RU text: every station key, every survivors key (design/survivors-spec.md 9) and every faction ladder key
-	-- (design/ladder-spec.md 8) and every charter key (design/charter-spec.md 8) of the EN tables, cp1251 (no byte
-	-- outside ASCII and 0xA8, 0xB8, 0xC0-0xFF), CRLF.
+	-- RU text: every station key, every survivors key (design/survivors-spec.md 9), every faction ladder key
+	-- (design/ladder-spec.md 8), every charter key (design/charter-spec.md 8) and every battle scars key
+	-- (design/scar-spec.md 8) of the EN tables, cp1251 (no byte outside ASCII and 0xA8, 0xB8, 0xC0-0xFF), CRLF.
 	local ru = S_ReadFile(h.dir.."../../../../loc/trf_ru.loc");
 	local want, got, bad = {}, {}, "";
 	for kx, v in TRF_Stn_Text() do want[TRF_LocKey(kx)] = 1; end;
 	if type(TRF_Sv_Text) == "function" then for kx, v in TRF_Sv_Text() do want[TRF_LocKey(kx)] = 1; end; end;
 	if type(TRF_Lad_Text) == "function" then for kx, v in TRF_Lad_Text() do want[TRF_LocKey(kx)] = 1; end; end;
 	if type(TRF_Ch_Text) == "function" then for kx, v in TRF_Ch_Text() do want[TRF_LocKey(kx)] = 1; end; end;
+	if type(TRF_Sc_Text) == "function" then for kx, v in TRF_Sc_Text() do want[TRF_LocKey(kx)] = 1; end; end;
 	local nl, ncr, b2 = S_Count(ru, "\n"), S_Count(ru, "\r\n"), strfind(ru or "", "[\128-\167\169-\183\185-\191]");
 	local i = 1;
 	while ru do
@@ -1473,7 +1474,7 @@ function T_STN_G()
 	end;
 	for kx, v in want do if not got[kx] then bad = bad.." missing:"..kx; end; end;
 	for kx, v in got do if not want[kx] then bad = bad.." extra:"..kx; end; end;
-	HOST_Check(ru and strsub(ru, 1, 13) == "LOCALE_FILE\r\n" and bad == "" and nl == ncr and not b2, "loc/trf_ru.loc: every station, survivors, ladder and charter key, cp1251, CRLF"..bad);
+	HOST_Check(ru and strsub(ru, 1, 13) == "LOCALE_FILE\r\n" and bad == "" and nl == ncr and not b2, "loc/trf_ru.loc: every station, survivors, ladder, charter and scar key, cp1251, CRLF"..bad);
 	for id, rr in TRF.live.tr do if type(rr) == "table" and rr.st ~= "gone" then TRF_Remove(id, "test"); end; end;
 end;
 

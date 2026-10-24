@@ -20,6 +20,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_survive.script` | Survivors and beacons step 1 ([design/survivors-spec.md](design/survivors-spec.md)): escape pods and a radio beacon after an FTU freighter loss (witnessed: standing only) or seeded on entry into a raided system (credits, region budget, fixed roll), pickup by the mothership, hand-in at FTU trade docks, expiry, the off-screen slaver roll, rumours. Loads after `trf_station`. |
 | `trf_ladder.script` | Faction service ladder step 1 ([design/ladder-spec.md](design/ladder-spec.md)): the rank line of the five factions at patrol stations, the war rule, Vks/Kfni regional transit permits, settlement, hand-in standing and prisoners of war, the portal-fine waiver, the paid relation-reset sync. Loads after `trf_survive`. |
 | `trf_charter.script` | Charter goals step 1 ([design/charter-spec.md](design/charter-spec.md)): two or three FTU charter postings in the logbook (Lanes, Relief, Break, Convoy, Sweep, Base) generated at trade docks from the live region state, deeds from traffic's pay points, owed pay with a 30-minute real-time gap, ranks 0-3 with dues, the heat-3 contract perk and the third slot. Loads after `trf_ladder`. |
+| `trf_scar.script` | Battle scars step 1 ([design/scar-spec.md](design/scar-spec.md)): labelled wreck fields (a lootable hulk with a fixed cargo from the seed and 1-4 decoration hulls) left by Bust shortages, Raids ticks, off-screen sweep attempts and on-screen fights, one per system, 8-30 legs with shrinking, the reconcile at entry, the FTU nav marker and scar line while fresh, the deny list, the strict gate and the chapter rules. Loads after `trf_charter`. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -601,6 +602,40 @@ Charter goals (proposal 14 step 1, spec [design/charter-spec.md](design/charter-
 ### In-game checks (charter)
 
 Experiments EC.1, EC.3-EC.5, EC.7, EC.8 of the design and E0.12, with the confirming lines in the spec section 10: the logbook entry with `LOC=1` across jumps and a load, `ClearQuests()` in mission 6c_1 (`event=reconcile id=trf_ch_1 ... readd=`), done and failed display and removal, the dues box after the dock lines (`module=plumb event=dock kind=trade ... box=ch_dues priority=200 result=box`), one raid answer counted once across a reload, the 30-minute gate at 8x (`event=pay_wait ... gap=1800`).
+
+## Battle scars (`EXP=0 TRAFFIC=1`)
+
+Battle scars (proposal 2 step 1, spec [design/scar-spec.md](design/scar-spec.md), design `design/worldbuilding/02-battle-scars.md`) is one module, `trf_scar`, loaded after `trf_charter` (`module=core event=loaded ... extra_count=6`). Traffic's region tick reports sources 1-3 with one `TRF_P` line each (Bust entry shortage, Raids tick, off-screen sweep attempt), its death and fight-end points report source 7, and trf_survive shares the witnessed loss site (`TRF_Sv_Site`, `TRF_Sv_SiteLink`). It uses the plumbing's arrival line queue and nav markers (`TRF_MarkerAdd` gained optional text and icon arguments). No dock box, no standing, no spawn in step 1. Implemented and host-tested (`sc-a`..`sc-g`), not run in the game.
+
+### What the player sees
+
+- A system whose region entered Bust, was raided or saw an off-screen sweep attempt holds a wreck field for 12-16 legs (up to twice that when a later source refreshes it): a targetable wreck (`Ship hull`) 150-250 units off a lane nav point and 2-4 broken hulls around it. While the field is at most 4 legs old the arrival lines carry `FTU beacon: freighter Kestrel lost here. Recorder still transmitting.` (convoy, sweep and base wrecks have their own line) and the nav list has a wreckage marker.
+- Shooting the wreck drops its hold: at most one trader hold of the system's prosperity tier (0.6 for a sweep wreck), lower below `L_w` 6, never a quest item. The hold is fixed when the field is written; a reload does not change it and a field never refills.
+- A fight the player watched (a raid, a staged raid, a sweep, a convoy or carrier kill, a base, or three or more mod-ship deaths within 300 units) leaves 2-3 broken hulls at its centre for 8 legs (12 when the Wolves fired): no cargo, no beacon.
+- Later visits: a looted or old field shows `The wreck field here has been picked clean.` and loses one hull per visit after half its life; expired fields are gone. One field per system; four legs pass after one expires before the next.
+- Chapters 1-3 and chapter 4 outside free time: hulls only. Chapter 4 free time: the TT1 hold. No field in Earth, Precursors, DisonSphere, Fronn, B_leftera1, NK, the Border systems and traffic's authored deny names; during a mission naming the system the field is removed before the first frame and comes back on a later free visit.
+
+### Config keys (scars)
+
+`config.script` lists the five toggles of design 6.8; the debug keys and the tune keys read the module defaults. `install-test.sh` writes `SCARS` (`enable_scars`; `LEVEL=v01` and `v02` write 0 unless `SCARS` is set), `SCAR_LOOT` (`enable_scar_loot`), `SCAR_AT` and `SCAR_GATE_FAIL` (debug); tune keys go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `enable_scars` | 1 | 0 turns the module off |
+| `enable_scar_loot` | 1 | 0: wrecks without cargo |
+| `enable_scavengers`, `enable_scar_recorder`, `enable_salvage_licence` | 1 | step 2, read nowhere yet |
+| `scar_at`, `scar_gate_fail` | `""` | debug: a trader wreck in the named system; the scar gate fails there (EW2.5) |
+| tune `scar_max`, `scar_fresh_legs`, `scar_radius`, `scar_min_dead`, `scar_raid_pct`, `scar_cd`, `scar_fight_max`, `vcap_lw` | 12, 4, 300, 3, 25, 4, 4, 6 | records, beacon age, source 7 cluster, Raids roll, cooldown, on-screen cap, `V_cap` knee |
+| tune `scar_ttl` | {12, 16, 16, 20, 8} | lifetime of trader, convoy, sweep, base, fight wrecks (x 1.5 with player fire) |
+| tune `scv_off`, `rec_legs`, `rec_pay_max`, `rec_pay_legs`, `rec_heat_max`, `lic_k`, `lic_legs`, `rec_fee_k`, `site_k` | see the spec, section 6 | step 2 |
+
+### Log lines (scars)
+
+`module=scar event=source source=<1|2|3|7|9> ... result=<new|refresh|kept|moved|none>`, `event=fight ... result=<scar|none>`, `event=place ... hulk=<made|none> ... cargo=<list> value=<v> cap=<V_cap>`, `event=reconcile ... lookup=<alive|dead|none|string> ... result=<create|failed|reuse|opened|leave|shrink|hide>`, `event=hide`, `event=open reason=<died|poll|jump|entry>`, `event=expire reason=<ttl|cap|fight_cap|site>`, `event=shrink`, `event=orphan`, `event=enter`, `event=load`, `event=wind_down`, `event=dump`, `event=dump_rec` and `event=dump_probe`; full list in `design/log-events.md` (scar).
+
+### In-game checks (scars)
+
+Experiments EW2.1-EW2.5 and EW2.7 of the design, with the confirming lines in the spec section 10: `SCAR_AT=gaoba`, then enter Gaoba, leave and return twice (`result=reuse`, `dump_probe ... expected=4 found=4`, the label path); destroy the wreck, leave, return (`lookup=dead` or `none`); count the dropped cargo; return without refill; `SCAR_GATE_FAIL=gaoba` (`event=hide ... reason=gate:debug` before the first frame); save in Gaoba and load (`event=load ... hulk=true decorations=3`, the handle-global path); the wreckage marker text and icon; a `died` trigger on the hulk.
 
 ## Installing into the game
 

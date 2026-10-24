@@ -15,7 +15,8 @@
 -- traffic.script (activate, load, jump, tick, 1 s step).
 -- Saved fields (TRF.sv, created lazily, repaired by TRF_Sv_Fix):
 --   b[i] = {s, si, x, y, z, n, n0, f, nm, lg, src, sl, pf, pp[, bx]} (at most 4; the loss site s, x, y, z, lg, src
---   is the shape feature 2 reuses), c = {n, cr, pc, s1[, s2], f, lg} (absent when empty), st = {res, sold, lost},
+--   is the shape feature 2 reuses: TRF_Sv_Site reads it, trf_scar's TRF_Sv_SiteLink writes si), c = {n, cr, pc,
+--   s1[, s2], f, lg} (absent when empty), st = {res, sold, lost},
 --   r[slot] = credited beacons this cycle (absent = 0), sd = roll seed, hl = leg of the last heat -1, cd[idx] =
 --   leg of the last beacon in idx (at most 16, older than sv_cd dropped), x = {idx, ...} systems whose beacon
 --   went silent (at most 4), rm = {s, k, lg} rumour (k 1 taken by slavers, 2 rescued).
@@ -447,6 +448,24 @@ function TRF_SvAt(idx)
 		if type(l[i]) == "table" and l[i].s == idx then return i, l[i]; end;
 	end;
 	return nil;
+end;
+
+-- Shared loss site (spec 3.1 R2, design/scar-spec.md 5.3): a copy {s, x, y, z, lg, src, si} of the record of system
+-- idx, or nil. Battle scars read it for a witnessed trader loss instead of keeping a second position.
+function TRF_Sv_Site(idx)
+	local i, b = TRF_SvAt(idx);
+	if not b then return nil; end;
+	return {s=b.s, x=b.x, y=b.y, z=b.z, lg=b.lg, src=b.src, si=b.si};
+end;
+
+-- Battle scars link: the record of system idx shares the site of scar sid (0..1139); si is kept by TRF_Sv_Fix.
+-- Returns 1 when set.
+function TRF_Sv_SiteLink(idx, sid)
+	local i, b = TRF_SvAt(idx);
+	if not b or type(sid) ~= "number" or sid < 0 or sid > 1139 then return nil; end;
+	b.si = floor(sid);
+	TRF_SvDE("site_link", "system", TRF_SvName(idx), "beacon", i, "sid", b.si);
+	return 1;
 end;
 
 -- 1 when the system cooldown sv_cd still runs for idx (cd stamp younger than sv_cd legs).

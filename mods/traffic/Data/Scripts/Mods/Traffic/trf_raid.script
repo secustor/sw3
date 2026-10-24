@@ -1612,6 +1612,12 @@ function TRF_Rd_End(n, how)
 	end;
 	if was ~= "armed" then TRF_Rd_Pay(n, rd); end;
 	if how == "killed" and rd.hit == 1 then TRF_N("TRF_Ch_Note", 4, TRF_Rd_Cur(), 0); end;
+	-- Battle scars source 7: the raid or staged raid ended on-screen (a scar when one of its deaths is in the cluster).
+	if was ~= "armed" and how ~= "build" and how ~= "cancel" and how ~= "jump" then
+		local sw = "raid";
+		if rd.sg == 1 then sw = "staged"; end;
+		TRF_P("TRF_Sc_Fight", sw, rd.hit);
+	end;
 	TRF_Rd_Stat("raid_end_"..tostring(how));
 	TRF_RdE("end", "raid_id", n, "trader_id", rd.id, "previous_state", was, "decision", rd.dc, "help_counted", TRF_KvB(rd.hit),
 		"paid", rd.paid, "result", how);
@@ -1716,6 +1722,8 @@ function TRF_Rd_DiedBody(n, j, g)
 	local hr = nil;
 	if H then hr = H.rd[n]; end;
 	if hr then hr.dk[j] = 1; end;
+	-- Battle scars source 7 (design/scar-spec.md 5.3): a raid ship (pirate hulls) died here.
+	if hr and type(hr.sh) == "table" then TRF_P("TRF_Sc_Dead", 3, 0, hr.sh[j], rd.hit); end;
 	TRF_Rd_SalvDead(n, rd, hr);
 	if TRF_Rd_AliveN(hr) == 0 then TRF_Rd_End(n, "killed"); end;
 end;

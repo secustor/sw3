@@ -891,8 +891,10 @@ function TRF_PlMkDel(label, look)
 end;
 
 -- Nav marker of owner at x, y, z labelled label (TRF_*, at most mk_len characters, no "=" or ";"). Refused while
--- a story mission runs (GetPlayerQuestState() == TRUE) and above mk_max markers. Returns 1, or nil, reason.
-function TRF_MarkerAdd(owner, label, x, y, z)
+-- a story mission runs (GetPlayerQuestState() == TRUE) and above mk_max markers. text (a loc key, default "") and
+-- icon (default nav_target.dds) are the first and third CreateNavPoint arguments (battle scars: the wreckage key and
+-- nav_Crash_site.dds). Returns 1, or nil, reason.
+function TRF_MarkerAdd(owner, label, x, y, z, text, icon)
 	local K = TRF_PlK();
 	if type(owner) ~= "string" or owner == "" or strlen(owner) > K.mk_own or strfind(owner, "[=;]") then return nil, "owner"; end;
 	if type(label) ~= "string" or strsub(label, 1, 4) ~= "TRF_" or strlen(label) > K.mk_len or strfind(label, "[=;]") then
@@ -915,7 +917,9 @@ function TRF_MarkerAdd(owner, label, x, y, z)
 	-- The engine's RGB() value is passed through (a Vector3 in the game, trader-marker.md); without RGB the
 	-- 3-argument form takes the default colour.
 	local col = TRF_N("RGB", 80, 200, 255);
-	local a = {"", Vector3(x, y, z), "nav_target.dds"};
+	if type(text) ~= "string" then text = ""; end;
+	if type(icon) ~= "string" or icon == "" then icon = "nav_target.dds"; end;
+	local a = {text, Vector3(x, y, z), icon};
 	if col ~= nil then a[4] = col; end;
 	local nav = call(CreateNavPoint, a, "x", TRF_PlErr);
 	if nav == nil or type(nav) == "number" then

@@ -1150,6 +1150,11 @@ function TRF_Ba_DiedBody(idx, g)
 	if L and type(L.bs) == "table" and L.bs.s == idx and L.bs.atk then by = "player"; end;
 	TRF_Ba_NavDel(idx);
 	local hb = TRF_Ba_H();
+	-- Battle scars source 7 (design/scar-spec.md 5.3): the base died in view.
+	local smine = nil;
+	if by == "player" then smine = 1; end;
+	if hb then TRF_P("TRF_Sc_Dead", 4, 0, hb.b, smine); end;
+	TRF_P("TRF_Sc_Fight", "base", smine);
 	if hb then hb.b = nil; end;
 	TRF_BaseDestroyed(idx, by);
 end;

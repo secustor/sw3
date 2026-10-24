@@ -1659,9 +1659,13 @@ function TRF_FeqEnd(how, why)
 		TRF_CvX("TRF_FsAdd", slot, f, -1, "feq kill");
 		TRF_CvX("TRF_SalvAdd", slot, 1, f, "feqk");
 		TRF_ForcedBust(cur, "feq");
+		-- Battle scars source 7: the equipment convoy was killed by the player group.
+		TRF_P("TRF_Sc_Fight", "convoy", 1);
 		TRF_CvX("TRF_NewsPost", "feq", "kill_"..f);
 		TRF_CvStat("feq_kill");
 	elseif how == "taken" or how == "taken_jump" then
+		-- Battle scars source 7 (design/scar-spec.md 5.3): the equipment convoy was taken in view.
+		if how == "taken" then TRF_P("TRF_Sc_Fight", "convoy", fq.pc); end;
 		local d = 0;
 		if how == "taken_jump" then d = 1; end;
 		TRF_CvFeqTaken(f, cur, slot, d, how);

@@ -964,6 +964,8 @@ function TRF_DcEnd(n)
 			TRF_DgStat("dc_ct_lost");
 		end;
 	end;
+	-- Battle scars source 7 (design/scar-spec.md 5.3): a danger convoy that lost members in view.
+	if type(dc.ns) == "number" and type(dc.ok) == "number" and dc.ok < dc.ns and dc.st ~= "wind" then TRF_P("TRF_Sc_Fight", "convoy", nil); end;
 	TRF_DgFree(n);
 	local e = H and H.dc[n];
 	if H then H.dc[n] = nil; end;

@@ -9,7 +9,7 @@ Module: new `S/trf_survive.script`, prefix `Sv` (`TRF_Sv_*` public, `TRF_Sv<X>` 
 | Step | Content | State |
 |---|---|---|
 | 1 | FTU crews only. Witnessed beacons (a traffic FTU trader lost in the player's current system, `src` 1, standing only) and seeded beacons (on entry into a raided system, `src` 2, credits) with the region budget `sv_seed_cyc` and the fixed roll; beacon, pods and nav marker; swept-segment pickup; FTU trade-dock hand-in with pay, help, heat, `pro` and the dockmaster deed; expiry of records and carried survivors; the off-screen slaver roll as counters only (pods 0, `sl` 1, clan +1, rumour); rumour lines; dump; config; repair | implemented 2026-10-24 |
-| 2 | on-screen slaver flights (`TRF_PirFlight`, raid slot, `sl` 2, `sv_slave_on`); pirate-dock sale box (S35 dispatcher prio 300, `pp`, `st.sold`); faction crews from supply and equipment convoys handed in at their patrol station (`f` 1..5, `fl`, `sv_fst_cd`, patrol dock line 80); C8 off-screen losses (`src` 3); the shared site record with feature 2 (`si`); the feature 5 veteran record; news posts at `st.res` 5 and 15; experiments E-SV6, E-SV7 | not built; the record fields, keys and hook points below are in place |
+| 2 | on-screen slaver flights (`TRF_PirFlight`, raid slot, `sl` 2, `sv_slave_on`); pirate-dock sale box (S35 dispatcher prio 300, `pp`, `st.sold`); faction crews from supply and equipment convoys handed in at their patrol station (`f` 1..5, `fl`, `sv_fst_cd`, patrol dock line 80); C8 off-screen losses (`src` 3); the feature 5 veteran record; news posts at `st.res` 5 and 15; experiments E-SV6, E-SV7 | not built; the record fields, keys and hook points below are in place |
 
 ## 2. Decisions (06 section 10, 00 section 8)
 
@@ -35,7 +35,7 @@ Module: new `S/trf_survive.script`, prefix `Sv` (`TRF_Sv_*` public, `TRF_Sv<X>` 
 |---|---|---|
 | `b[i]` | list, at most `sv_max` (4, hard cap 4) | beacon records, one per system |
 | `.s` | 1..113 | system index of the loss (site field) |
-| `.si` | 0..1139 | feature 2 scar `sid` when the beacon shares a scar site; always 0 in step 1 |
+| `.si` | 0..1139 | feature 2 scar `sid` when the beacon shares a scar site; set by trf_scar (`TRF_Sv_SiteLink`), else 0 |
 | `.x`, `.y`, `.z` | integers | loss point, rounded (site field) |
 | `.n`, `.n0` | 0..3 | pods left, pods at creation; pod `j` exists while `j <= n` |
 | `.f` | 0..5 | owner; 0 FTU (step 1 writes 0 only) |
@@ -56,7 +56,7 @@ Module: new `S/trf_survive.script`, prefix `Sv` (`TRF_Sv_*` public, `TRF_Sv<X>` 
 
 Rules:
 - R1 Optional fields (`c`, `hl`, `x`, `rm`, `bx`, `c.s2`) are stored only when set.
-- R2 The loss site (`s`, `x`, `y`, `z`, `lg`, `src`, plus `si`) is the shape feature 2 reuses: a battle-scar record can take these fields unchanged, and a beacon at a scar site sets `si` to the scar's `sid` (06 7, 00 edits table).
+- R2 The loss site (`s`, `x`, `y`, `z`, `lg`, `src`, plus `si`) is the shape feature 2 reuses (06 7, 00 edits table): `TRF_Sv_Site(idx)` answers a copy of it, and trf_scar reads it for a witnessed trader loss instead of keeping a second position; when an on-screen scar (source 7) forms within `scar_radius` of a witnessed loss of the same leg, `TRF_Sv_SiteLink(idx, sid)` sets `si` to the scar's `sid` and the beacon is exempt from the scar's 150-unit object rule (`D/scar-spec.md` 3.1 R2, 5.3, V20).
 - R3 `TRF_Sv_Fix` (from `TRF_Repair`): a non-table `TRF.sv` becomes absent; records need a map system index and numeric `x`, `y`, `z`, one per system, at most 4; `n0` 0..3, `n` 0..`n0`, `f` 0..5, `nm` 0..99, `src` 1..3, `sl` 0..2, `pf`/`pp` 0..30000 and 0 for `src` 1, `bx` 1 or absent, `si` 0..1139; leg stamps after the current leg become the current leg (stamps before leg 0 are kept); `c` with `n` outside 1..6 or no valid `s1` is dropped, `s2` equal to `s1` dropped; `st` entries outside 0..9999 read 0; `r` keys outside 1..11 or values outside 1..9 dropped; `cd` at most 16; `x` at most 4 valid indices; `rm` with a bad field dropped; `fl` (step 2) removed; a missing `sd` is set again.
 
 ### 3.2 Visit state (chunk local `SV`, never saved; rebuilt by every MapInitialization)
@@ -88,10 +88,11 @@ Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case m
 | trf_region `TRF_RegionTick` | `TRF_P("TRF_Sv_RegionTick", L)` at the end | budget reset, off-screen roll, expiry |
 | trf_hail `TRF_HlRumourText` | `TRF_N("TRF_Sv_Rumour", idx, "rec")` after the v1 rumours (the `rm` rumour); `TRF_N("TRF_Sv_Rumour", idx)` after the sweep rumour, before `rnone` (the pre-chapter-5 line) | rumour line |
 | trf_plumb `TRF_PlMods` | `"Sv"` | `TRF_Sv_Plumb`: trade dock line order 30 (`TRF_Sv_DockLine`), seed provider prio 550 (`TRF_Sv_SeedH`) |
+| trf_scar (`D/scar-spec.md` 5.3) | `TRF_Sv_Site(idx)`, `TRF_Sv_SiteLink(idx, sid)` | the shared loss site read by a source 7 scar and its `si` link (3.1 R2) |
 | trf_state `TRF_ModList`, `TRF_Repair` | `"Sv"`; `TRF_P("TRF_Sv_Fix")` | OptDef, TuneDef, Dump; repair |
 | trf_loc `TRF_Loc_TextFns`, trf_ui `TRF_UI_TextFns` | `"TRF_Sv_Text"` | text keys |
 
-Step 2 hook points: `TRF_Sv_DockPir` on the `pir` dispatcher at box prio 300 (00 S35 > #6 > #1 > #7), `TRF_Sv_DockPatrol` on the `patrol` dispatcher at line 80, the on-screen slaver in `TRF_Sv_OnActivate` after the placement (the visit's raid slot, `TRF_EventSlotTake("staged")` rank), the feature 5 and 14 readers at the end of `TRF_SvHand` (comment there), `si` from feature 2.
+Step 2 hook points: `TRF_Sv_DockPir` on the `pir` dispatcher at box prio 300 (00 S35 > #6 > #1 > #7), `TRF_Sv_DockPatrol` on the `patrol` dispatcher at line 80, the on-screen slaver in `TRF_Sv_OnActivate` after the placement (the visit's raid slot, `TRF_EventSlotTake("staged")` rank), the feature 5 and 14 readers at the end of `TRF_SvHand` (comment there); `si` is set by feature 2 for on-screen scars since 2026-10-24, the off-screen scar sites (pods at a source 1/2 scar) are feature 2 step 2.
 
 ## 5. Mechanics
 
@@ -256,4 +257,4 @@ Changed scenarios: `pl-a` (5 trade lines and 9 seed providers), `stn-g` (the RU 
 
 ## 12. Left out (step 2 and later)
 
-On-screen slaver flights (and `sv_slave_on`, the raid slot, `sl = 2`), the pirate-dock sale box, faction crews and `fst` (`f` 1..5, `fl`, `sv_fst_cd`, patrol line), C8 off-screen losses (`src` 3), the feature 2 site sharing (`si`), the feature 5 veteran record (`res`, `fav`) and the feature 14 goal count, news posts at `st.res` 5 and 15, the step 2 text keys. Experiments E-SV6 and E-SV7.
+On-screen slaver flights (and `sv_slave_on`, the raid slot, `sl = 2`), the pirate-dock sale box, faction crews and `fst` (`f` 1..5, `fl`, `sv_fst_cd`, patrol line), C8 off-screen losses (`src` 3), the off-screen scar sites of feature 2 (pods at a source 1/2 scar, the shared `site_k` budget), the feature 5 veteran record (`res`, `fav`) and the feature 14 goal count, news posts at `st.res` 5 and 15, the step 2 text keys. Experiments E-SV6 and E-SV7.

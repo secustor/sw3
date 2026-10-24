@@ -974,6 +974,9 @@ function TRF_Cl_Died(cr)
 		TRF_Cl_Score(slot, -8, "carrier killed");
 		if TRF_Cl_WarV(slot) == "car" then TRF_P("TRF_NewsPost", "war", nil, slot); end;
 	end;
+	-- Battle scars source 7 (design/scar-spec.md 5.3): the carrier died here.
+	if H and type(H.cr) == "table" then TRF_P("TRF_Sc_Dead", 3, 0, H.cr.car, cr.hit); end;
+	TRF_P("TRF_Sc_Fight", "carrier", cr.hit);
 	local paid = 0;
 	if cr.hit == 1 then
 		local lp = TRF_N("TRF_LPayK", cur);

@@ -1151,6 +1151,10 @@ function TRF_SweepEnd(how)
 			if not TRF_FcP(function(o) o:Delete(); return 1; end, {H.base}) then TRF_FcBaseW(sw.b); end;
 		end;
 	end;
+	-- Battle scars source 7: the on-screen sweep window ended.
+	local smine = nil;
+	if (sw.pk or 0) > 0 or (sw.hit or 0) > 0 then smine = 1; end;
+	TRF_P("TRF_Sc_Fight", "sweep", smine);
 	sw.st = "out"; sw.te = TRF_FcGt(); sw.won = 0;
 	if won then sw.won = 1; end;
 	-- 8.6 item 5: an identity seed the sweep displaced undocks now (trf_gen, due call).
@@ -1266,9 +1270,14 @@ function TRF_FcDiedBody(n, j, g)
 	if not sw then return; end;
 	if j >= 100 then
 		TRF_FcDE("sweep_faction_died", "ship", j - 100);
+		-- Battle scars source 7 (design/scar-spec.md 5.3): a faction ship of the sweep died here.
+		TRF_P("TRF_Sc_Dead", 3, sw.f, H.fs[j - 100], nil);
 		return;
 	end;
 	if type(H.hc[j]) == "table" and H.hc[j].h == 1 then sw.pk = (sw.pk or 0) + 1; end;
+	local smine = nil;
+	if type(H.hc[j]) == "table" and H.hc[j].h == 1 then smine = 1; end;
+	TRF_P("TRF_Sc_Dead", 3, 0, H.cs[j], smine);
 	-- Salvaged first flight gone: one salvage point consumed (v1 6.3).
 	if sw.svf == 1 and H.cfl[j] == 1 then
 		local left = 0;

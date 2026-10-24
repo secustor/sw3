@@ -1,7 +1,7 @@
 LOCALE_FILE
 FILETYPE STANDART
 
-; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) and the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text), cp1251.
+; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) and the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text), cp1251.
 ; Same keys and fixed texts as loc/trf_en.loc (no $n placeholders); used with cfg loc_mode 1 in a Russian install.
 ; Other #TRF_ keys have no RU line yet (design/station-voices-spec.md 13.5).
 
@@ -185,3 +185,11 @@ FILETYPE STANDART
 #TRF_svthanks2 = Торговый союз забирает экипаж. Медики уже ждут.
 #TRF_svthanks3 = Ещё один экипаж вернулся живым. Трассы у вас в долгу, Волки.
 #TRF_svthanksw = Торговый союз записал спасение. Экипаж запомнит, кто за ним прилетел.
+#TRF_scararriveb = Здесь дрейфуют остатки пиратской базы. Вокруг кружат мусорщики.
+#TRF_scararrivec = Обломки конвоя в этой системе. Пираты успели первыми, но забрали не всё.
+#TRF_scararrivep = В системе обломки после боя. Среди них пиратские корабли.
+#TRF_scararrives = В системе обломки после боя. Среди них корабли флота.
+#TRF_scararrivet = Маяк Торгового союза: здесь погиб грузовик. Бортовой самописец ещё передаёт.
+#TRF_scararrivet0 = Маяк Торгового союза: здесь погиб грузовик.
+#TRF_scarnav = Место крушения
+#TRF_scarold = Обломки в этой системе уже обобраны дочиста.

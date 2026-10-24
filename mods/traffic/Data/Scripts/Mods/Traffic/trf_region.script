@@ -935,6 +935,8 @@ function TRF_RgSweepOut(slot, L, won, k, how, p100)
 		end;
 		TRF_P("TRF_NewsPost", "sweep", "fail", slot);
 	end;
+	-- Battle scars source 3 (design/scar-spec.md 5.2): the off-screen attempt leaves a wreck field in its target.
+	if how == "off" then TRF_P("TRF_Sc_Sweep", slot, L, won, f); end;
 end;
 
 -- Resolve attempt k = sn + 1 off-screen (region tick counterforce). An attempt playing on-screen now
@@ -959,8 +961,9 @@ end;
 
 -- Phase machine (spec 4.2, 4.3) -------------------------------------------------------------
 
--- Shortages at Bust entry: the <= 2 region trade-station systems with the highest pro; class by owner.
-function TRF_RgBustShort(slot, L, m, T)
+-- Shortages at Bust entry: the <= 2 region trade-station systems with the highest pro; class by owner. Each is a
+-- battle scars source 1 (design/scar-spec.md 5.2; forced 1 after a forced Bust: TT1 row, no recorder).
+function TRF_RgBustShort(slot, L, m, T, forced)
 	local ss = m[slot].sys;
 	local l = {};
 	for i = 1, getn(ss) do
@@ -974,6 +977,7 @@ function TRF_RgBustShort(slot, L, m, T)
 		elseif o == "Neutral" then cls = 3;
 		else cls = TRF_Rand(6) + 1; end;
 		TRF_P("TRF_ShortAdd", l[i], cls, L + T.L_short);
+		TRF_P("TRF_Sc_Source", 1, l[i], slot, L, forced);
 	end;
 end;
 
@@ -1013,7 +1017,9 @@ function TRF_RgEnter(slot, L, r, c, gon, m, T, ph)
 	if r.ph == 3 and r.sl == 0 then TRF_RgSweepPlan(slot, L, r, T); end;
 	if r.ph == 2 then TRF_P("TRF_NewsPost", "pir", "mass", slot); end;
 	if r.ph == 4 then
-		TRF_RgBustShort(slot, L, m, T);
+		local forced = nil;
+		if old ~= 3 then forced = 1; end;
+		TRF_RgBustShort(slot, L, m, T, forced);
 		TRF_P("TRF_NewsPost", "pir", "back", slot);
 	end;
 end;
@@ -1044,7 +1050,8 @@ function TRF_RgTickSlot(slot, L, r, c, m, T, PH)
 		local l = {};
 		for i = 1, getn(ss) do tinsert(l, ss[i]); end;
 		sort(l, TRF_RgCmpPro);
-		for i = 1, min(2, getn(l)) do TRF_RgDis(l[i], 1); end;
+		-- Battle scars source 2 (design/scar-spec.md 5.2): each dis +1 rolls scar_raid_pct for a trader wreck.
+		for i = 1, min(2, getn(l)) do TRF_RgDis(l[i], 1); TRF_P("TRF_Sc_Source", 2, l[i], slot, L); end;
 	elseif r.ph == 5 then
 		for i = 1, getn(ss) do
 			if TRF_Dis(ss[i]) > 0 then TRF_RgDis(ss[i], -1); end;
@@ -1151,6 +1158,8 @@ function TRF_RegionTick(L)
 	TRF_P("TRF_Sv_RegionTick", L);
 	-- Charter goals (design/charter-spec.md): phase closes, Break world test, pk clear; slot 1 also the board checks.
 	for slot = 1, m.n do TRF_P("TRF_Ch_RegionTick", slot, L); end;
+	-- Battle scars (design/scar-spec.md): expiry outside the current system.
+	TRF_P("TRF_Sc_RegionTick", L);
 end;
 
 -- Forced Bust (v1 8.3): every slot with ct bit 4 clears it; in Quiet, Boom or Build-up with sc < 75 and a

@@ -308,6 +308,14 @@ FILETYPE STANDART
 #TRF_salvcorvette = corvette
 #TRF_salvfighter = fighter
 #TRF_salvgear = Pirate fighter with gear
+#TRF_scararriveb = What is left of the pirate base is drifting here. Scavengers are circling.
+#TRF_scararrivec = Convoy wreckage in this system. The pirates got there first, but not to everything.
+#TRF_scararrivep = Battle debris in this system. Pirate hulls among the wrecks.
+#TRF_scararrives = Battle debris in this system. Navy hulls among the wrecks.
+#TRF_scararrivet = FTU beacon: freighter lost here. Recorder still transmitting.
+#TRF_scararrivet0 = FTU beacon: freighter lost here.
+#TRF_scarnav = Wreckage site
+#TRF_scarold = The wreck field here has been picked clean.
 #TRF_seenin = seen in
 #TRF_seenline = FTU
 #TRF_sescfar = We made it, but you were not with us. No pay.

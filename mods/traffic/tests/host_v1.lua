@@ -2082,6 +2082,24 @@ function T_V1_N()
 		TRF.ch.g[k] = {t=6, r=11, f=5, d=5, k=3, p=3, w=1, a=skl, e=skl, st=3, pay=30000, rq=3, l=16, c="deadline"};
 	end;
 	for k = 1, 11 do TRF.ch.rs[k] = skl; TRF.ch.rb[k] = skl; TRF.ch.pk[k] = skl; end;
+	-- Battle scars worst case (design/scar-spec.md 3.3): 12 records with every field at its widest, the step 2 fields
+	-- (3 carried recorders, 2 payout stamps, the licence leg, bsc and bsh in every region), sk in every system, 12 scd stamps.
+	TRF.scar = {};
+	for k = 1, 12 do
+		tinsert(TRF.scar, {sys=100 + k, k=9, kind=5, fac=5, x=-99999, y=-99999, z=-99999, leg=skl, ttl=30, on=1, mine=1, lv=4, seed=9999, nd=4,
+			st=3, hid=1, scv=4, rec=1, nm=40, rf=1});
+	end;
+	TRF.std.slog = {};
+	for k = 1, 3 do tinsert(TRF.std.slog, {sid=1139, sys=113, leg=skl, pay=30000}); end;
+	TRF.std.rpay = {skl, skl};
+	TRF.std.lic = skl;
+	for k, rr in TRF.rg do if type(rr) == "table" then rr.bsc = skl; rr.bsh = skl; end; end;
+	if type(TRF.sys) ~= "table" then TRF.sys = {}; end;
+	for k = 1, getn(TRF_Map().sys) do
+		if type(TRF.sys[k]) ~= "table" then TRF.sys[k] = {}; end;
+		TRF.sys[k].sk = 9;
+		if k <= 12 then TRF.sys[k].scd = skl + 4; end;
+	end;
 	-- Raids, due and stat at their bounds.
 	for k = 1, 10 do
 		local id = ids[1 + mod(k, getn(ids))];
@@ -2104,7 +2122,7 @@ function T_V1_N()
 	HOST_Check(getn(TRF.tp) <= 16 and getn(TRF.lr) <= 2 and getn(TRF.base) <= 4 and getn(L.pg) <= 8 and V_N(L.dc) <= 1
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");
 	local size = 8 + 3 + HOST_SaveSize(TRF);
-	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "ch", "live"};
+	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "ch", "scar", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	local lp, ll = "", {"tr", "stat", "rd", "cvs", "tq", "sw", "fq", "cr", "dc", "bs", "pg"};
 	for i = 1, getn(ll) do lp = lp.." "..ll[i].."="..HOST_SaveSize(L[ll[i]]); end;
@@ -2125,7 +2143,7 @@ function T_V1_N()
 	end;
 	HOST_Check(tg == "", "no TRF_G* or flight_trf_* globals"..tg);
 	TRF_DumpState("test");
-	local dl = {"module=state event=dump_v4 ", "module=track event=dump", "module=faction event=dump", "module=clan event=dump", "module=convoy event=dump", "module=danger event=dump", "module=supply event=dump", "module=base event=dump", "module=loc event=dump"};
+	local dl = {"module=state event=dump_v4 ", "module=track event=dump", "module=faction event=dump", "module=clan event=dump", "module=convoy event=dump", "module=danger event=dump", "module=supply event=dump", "module=base event=dump", "module=loc event=dump", "module=scar event=dump "};
 	local md = "";
 	for i = 1, getn(dl) do if V_Logs(dl[i]) == 0 then md = md.." "..dl[i]; end; end;
 	HOST_Check(md == "", "TRF_DumpState calls every v1 dump"..md);
