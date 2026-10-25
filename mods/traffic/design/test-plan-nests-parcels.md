@@ -47,7 +47,7 @@ Distances from Kadi (portal graph, `map.script`): Hanoi 1, Prien 1, XK16 2 (via 
 1. Load `TRF lab pro9`. Dock at the Kadi trade station: no courier box (Kadi is denied in chapter 6), the trade window opens as usual. The probe added and removed 3 crates (E-PCL.1, nothing on screen).
 2. Jump to Hanoi, dock (E-PCL.5). Jump back to Kadi (E16.2 revisit, nest 0). Jump to Hanoi again.
 3. From Hanoi jump to XK16. Stopwatch from the jump click until you control the ship; then 60 s at 8x, note the frame rate (E16.8 baseline). Back to Hanoi, on to El Ariash and Dalled.
-4. Dock at Dalled. Box "FTU courier desk": "Sealed parcel: <n> containers (or crates) for the trade station at <system>, <J> jumps, <L> legs. Deposit <d> cr now, back on delivery. Pay <p> cr. Take it?" (a relief parcel starts with "<System> station is out of ..."). Write down destination, J and L. Press OK: "Crates are in your hold. Don't open them, don't sell them, don't be late." Then the trade window must open (E-PCL.3). In it read the sell price of the parcel item, do not sell (E-PCL.2). Open the logbook: entry "Sealed parcel" (E-PCL.4).
+4. Dock at Dalled. Box "FTU courier desk": "Sealed parcel: <n> containers (or crates) for the trade station at <system>, <J> jumps, <L> legs. Deposit <d> cr now, back on delivery. Pay <p> cr. Take it?" (a relief parcel starts with "<System> station is out of ..."). Write down destination, J and L. Press OK: "Crates are in your hold. Don't open them, don't sell them, don't be late." Then the trade window must open (E-PCL.3). In it read the sell price of the parcel item, do not sell (E-PCL.2). Open the logbook: entry "Sealed parcel: <destination>", its text names the destination system (E-PCL.4).
 5. Fly to the destination. On arrival: "FTU courier desk: parcel drop marked at the trade station." and a nav marker. Dock there: "Parcel received, seals intact. Deposit returned, <p> cr paid." The logbook entry shows done (E-PCL.4). If the destination is Kadenoa, dock at both trade stations (the main one and the Triada `TRI_TRADE`); only the marked one delivers (E-PCL.5).
 6. Dock at the next trade station you pass: the logbook entry is gone (E-PCL.4).
 7. Two jumps after the delivery, at a trade dock outside the deny list: box; press Cancel. The trade window must open (E-PCL.3).
@@ -163,9 +163,10 @@ Distances from Kadi (portal graph, `map.script`): Hanoi 1, Prien 1, XK16 2 (via 
 - FAIL: a box line without its `box_answer`, `box=parcel result=vanilla reason=box_failed`, or no trade window after OK or Cancel (the docking is lost: set `enable_parcels=0`).
 
 ### E-PCL.4 Logbook (run A steps 4-8; game: once)
-- PASS: `module=parcel event=quest id=trf_pcl state=2 quest_state_before=<0|nil> quest_state_after=<0|nil> result=added`, later `result=set` and `result=removed`. Eyes: the entry shows, then done or failed, then gone.
+- PASS: `module=parcel event=quest id=trf_pcl state=2 quest_state_before=<0|nil> quest_state_after=<0|nil> result=added`, later `result=set` and `result=removed`. Eyes: the entry shows as "Sealed parcel: <destination>" with a text naming that system, then done or failed, then gone.
 - FAIL: `quest_state_after=1` (the entry makes the game think a mission runs): set `pcl_logbook=0`.
 - Note 2026-10-25: the run A build before the loc fix installed no `loc/trf_en.loc` without `LOC=1`, so the title read `Not found string: #TRF_PCLQ`; a reinstall fixes it, and the entry in an existing save shows the right title after the restart (the key is resolved at display time).
+- Note 2026-10-25: the title and text name the destination (`#TRF_pclq<idx>`, `#TRF_pclqd<idx>`); an entry added by an older build in an existing save keeps the generic "Sealed parcel" until its job ends.
 
 ### E-PCL.5 Dock identity (run A steps 1-2, 5, 9; game: once)
 - PASS: `module=parcel event=dock system=kadenoa param=kadenoa_tri dock_current=<n>` and `param=Kadenoa`, plus three other systems with `param` equal to the system name (Kadi, Hanoi, Dalled, ...). At the wrong Kadenoa dock `event=deliver ... result=none reason=dock` is correct.

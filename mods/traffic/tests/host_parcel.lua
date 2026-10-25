@@ -181,9 +181,21 @@ function T_PCL_A()
 		"trade line 20 right after the shortage restore, trade box 400 first, one owed payer ("..lo.." "..bo..")");
 	-- Texts.
 	local nt = PC_SetN(TRF_Pc_Text());
-	HOST_Check(nt == 36 and TRF_Txt("pcldone", "15,400") == "Parcel received, seals intact. Deposit returned, 15,400 cr paid."
+	HOST_Check(nt == 186 and TRF_Txt("pcldone", "15,400") == "Parcel received, seals intact. Deposit returned, 15,400 cr paid."
 		and TRF_Txt("pcllate", "Taira") == "Courier desk: the Taira parcel is overdue. Deposit forfeited."
-		and TRF_Txt("pclneed1", "Taira") == "Taira station is out of machinery and the refinery is idle.", "36 texts; the design's lines");
+		and TRF_Txt("pclneed1", "Taira") == "Taira station is out of machinery and the refinery is idle.", "186 texts (36 and 75 destinations x 2); the design's lines");
+	-- Logbook keys per destination: every map system with a trade station has pclq<idx> and pclqd<idx>, no other system.
+	local mp, miss, nd = TRF_Map(), "", 0;
+	for i = 1, getn(mp.sys) do
+		local has = getn(TRF_PcTradeSt(i)) > 0;
+		if has then nd = nd + 1; end;
+		if has ~= (TRF_PcDstOf(i) ~= nil) or has ~= (TRF_Pc_Text()["pclqd"..i] ~= nil) then miss = miss.." "..mp.sys[i].name; end;
+	end;
+	local dq, kq = PC_Idx("dalled"), PC_Idx("kadenoa");
+	HOST_Check(nd == 75 and miss == "" and TRF_Txt("pclq"..dq) == "Sealed parcel: Dalled"
+		and TRF_Txt("pclqd"..dq) == "Deliver the sealed parcel to the trade station at Dalled, marked on your map on arrival. The FTU holds your deposit until delivery. A late delivery forfeits it, a short one the share of the missing units."
+		and TRF_Txt("pclq"..kq) == "Sealed parcel: Kadenoa" and PC_Has(TRF_Txt("pclqd"..kq), "to the marked trade station at Kadenoa.")
+		and TRF_PcDstOf(0) == nil and TRF_PcDstOf(nil) == nil, "logbook keys for the 75 trade station systems (Kadenoa: the marked station)"..miss);
 	-- Pure rules.
 	HOST_Check(TRF_PcPayOf(0.35, 3, 10, 1.0, 6, 1.0, 1.25, 30000) == 15400, "pay: the design example 0.35 x 3 x 900 x 10 x 1.0 x 1.3 x 1.25 = 15,400");
 	HOST_Check(TRF_PcPayOf(0.35, 2, 3, 0.75, 2, 1.0, 1.0, 30000) == 600 and TRF_PcPayOf(0.35, 4, 16, 2.0, 9, 1.25, 1.25, 30000) == 30000
@@ -376,8 +388,9 @@ function T_PCL_C()
 	HOST_Check(J and J.k == 2 and J.src == cur and J.dst == PC_Idx("taira") and J.it == 1 and J.n == 3 and J.j == 3 and J.dl == 11 and J.pay == 14400
 		and J.dep == 4320 and J.cls == 1 and J.t0 == TRF.clock.legs and J.ml == 0 and J.sj == 1 and J.fac == 1 and PC_SetN(TRF.job) == 7,
 		"the job slot TRF.job: kind 2 and 6 packed fields");
-	HOST_Check(HOST_InvCount("Cargo_crate") == 3 and h.quests.trf_pcl == QUEST_PROCESS and h.qlog.trf_pcl.t == "#TRF_pclq" and h.qlog.trf_pcl.d == "#TRF_pclqd"
-		and PC_ShortE("taira", 1).job == 1, "3 crates in the hold, the logbook entry trf_pcl, the shortage's job flag");
+	local tq = PC_Idx("taira");
+	HOST_Check(HOST_InvCount("Cargo_crate") == 3 and h.quests.trf_pcl == QUEST_PROCESS and h.qlog.trf_pcl.t == "#TRF_pclq"..tq and h.qlog.trf_pcl.d == "#TRF_pclqd"..tq
+		and PC_ShortE("taira", 1).job == 1, "3 crates in the hold, the logbook entry trf_pcl with the destination's keys, the shortage's job flag");
 	HOST_Check(PC_Logs(n0, "event=quest id=trf_pcl state=2 quest_state_before=0 quest_state_after=0 result=added") == 1
 		and PC_Logs(n0, "event=accept kind=2 source=altair destination=taira dock=taira item=Cargo_crate units=3 pay=14400 deposit=4320 deadline=11") == 1
 		and S_Logs(n0, "module=plumb event=job kind=2 field_count=6 result=taken") == 1, "accept and logbook lines (E-PCL.4), the plumbing job line");
@@ -386,6 +399,13 @@ function T_PCL_C()
 	HOST_Check(r.nb == 0 and PC_Logs(n0, "reason=job") == 1, "a second docking with the job open: no offer");
 	local rl = TRF_ShortRelief();
 	HOST_Check(getn(rl) == 0, "TRF_ShortRelief skips the entry with the job");
+	-- A destination without keys of its own: the generic pclq, pclqd.
+	local dd = TRF_PcDstData;
+	TRF_PcDstData = function() return {} end;
+	h.quests = {}; h.qlog = {};
+	TRF_PcQAdd();
+	TRF_PcDstData = dd;
+	HOST_Check(h.quests.trf_pcl == QUEST_PROCESS and h.qlog.trf_pcl.t == "#TRF_pclq" and h.qlog.trf_pcl.d == "#TRF_pclqd", "no destination keys: the generic logbook keys");
 	-- Too poor for the deposit.
 	PC_Begin("altair", "9_1");
 	PC_Short("taira", 1);
@@ -790,7 +810,8 @@ function T_PCL_H()
 	ClearQuests();
 	n0 = S_Mark();
 	T_Jump("altrabon");
-	HOST_Check(h.quests.trf_pcl == QUEST_PROCESS and PC_Logs(n0, "event=reconcile id=trf_pcl quest_state=3 result=readded reason=enter") == 1, "reconcile: re-added after ClearQuests");
+	HOST_Check(h.quests.trf_pcl == QUEST_PROCESS and h.qlog.trf_pcl.t == "#TRF_pclq"..PC_Idx("taira") and h.qlog.trf_pcl.d == "#TRF_pclqd"..PC_Idx("taira")
+		and PC_Logs(n0, "event=reconcile id=trf_pcl quest_state=3 result=readded reason=enter") == 1, "reconcile: re-added after ClearQuests with the destination's keys");
 	TRF.job = nil;
 	n0 = S_Mark();
 	T_Jump("nj1");

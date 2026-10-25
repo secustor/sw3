@@ -911,7 +911,7 @@ ITEMS = [
     ("E-PCL.3", "box after the dock OK, trade window after OK and Cancel", c_pcl3,
      "the trade window opens after OK and after Cancel of the courier box"),
     ("E-PCL.4", "logbook entry off-mission", c_pcl4,
-     "'Sealed parcel' shows in the logbook after OK, shows done or failed after the end, is gone after the next trade "
+     "'Sealed parcel: <destination>' shows in the logbook after OK, shows done or failed after the end, is gone after the next trade "
      "docking"),
     ("E-PCL.5", "dock identity (both Kadenoa docks and three others)", c_pcl5, None),
     ("E-PCL.6", "the mission signal", c_pcl6,

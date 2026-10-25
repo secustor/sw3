@@ -374,14 +374,21 @@ TEXT_FN = re.compile(r"TRF_\w+_Text$")
 
 
 def text_keys(path):
-    """Literal (key, text, line, table) pairs of the TRF_<M>_Text() functions of one file ("return {k = "s", ...}")."""
+    """Literal (key, text, line, table) pairs of the TRF_<M>_Text() functions of one file ("return {k = "s", ...}", or
+    "return TRF_F({k = "s", ...})" when a helper adds generated keys to the literal table)."""
     toks = file_tokens(path)
     v = [t[1] for t in toks]
     out = []
     for i in range(len(toks) - 5):
-        if not (v[i] == "function" and TEXT_FN.match(v[i + 1]) and v[i + 2:i + 6] == ["(", ")", "return", "{"]):
+        if not (v[i] == "function" and TEXT_FN.match(v[i + 1]) and v[i + 2:i + 5] == ["(", ")", "return"]):
             continue
-        depth, j = 1, i + 6
+        if v[i + 5] == "{":
+            j = i + 6
+        elif i + 7 < len(toks) and toks[i + 5][0] == "name" and v[i + 6:i + 8] == ["(", "{"]:
+            j = i + 8
+        else:
+            continue
+        depth = 1
         while j < len(toks) and depth > 0:
             if v[j] in "{(":
                 depth += 1

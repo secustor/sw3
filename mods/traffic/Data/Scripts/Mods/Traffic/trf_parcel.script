@@ -320,6 +320,87 @@ function TRF_PcDenyChData()
 		[20] = "nk",
 	};
 end;
+-- Parcel destinations (logbook keys pclq<idx>, pclqd<idx>, design/parcel-spec.md 8): every map.script system
+-- with a trade station, by idx: {location folder, trade station count}.
+function TRF_PcDstData()
+	return {
+		[1] = {"Ahilles", 1},
+		[2] = {"Altair", 1},
+		[3] = {"Altrabon", 1},
+		[4] = {"Alzed", 1},
+		[5] = {"Angarsk", 1},
+		[7] = {"Argon", 1},
+		[9] = {"Aurora", 1},
+		[10] = {"Avalon", 1},
+		[12] = {"B_leftera2", 1},
+		[14] = {"Callipso", 1},
+		[15] = {"Corrino", 1},
+		[16] = {"Dalled", 1},
+		[17] = {"Danstag", 1},
+		[18] = {"Debris1", 1},
+		[21] = {"Debris4", 1},
+		[22] = {"Debris6", 1},
+		[28] = {"Egleon", 1},
+		[29] = {"El_ariash", 1},
+		[31] = {"Elio", 1},
+		[32] = {"Endoria1", 1},
+		[33] = {"Endoria2", 1},
+		[34] = {"Ergelan", 1},
+		[35] = {"Eridan", 1},
+		[37] = {"Farles", 1},
+		[38] = {"Fiasar", 1},
+		[39] = {"Fort_russ", 1},
+		[41] = {"Gaeon", 1},
+		[42] = {"Gaoba", 1},
+		[45] = {"Golkonda", 1},
+		[46] = {"Gredos", 1},
+		[47] = {"Hafa", 1},
+		[48] = {"Hanoi", 1},
+		[49] = {"Haron", 1},
+		[51] = {"Kadenoa", 2},
+		[52] = {"Kadi", 1},
+		[53] = {"Kassilia", 1},
+		[54] = {"Kitaro", 1},
+		[55] = {"Kondel", 1},
+		[57] = {"Kruger", 1},
+		[58] = {"Lasad", 1},
+		[59] = {"Lidau", 1},
+		[62] = {"Moscowia", 1},
+		[63] = {"ND", 1},
+		[64] = {"NJ1", 1},
+		[65] = {"NJ2", 1},
+		[66] = {"NJ3", 1},
+		[67] = {"NK", 1},
+		[68] = {"Pandora", 1},
+		[69] = {"Pegas", 1},
+		[72] = {"Prien", 1},
+		[73] = {"Proserpina", 1},
+		[74] = {"Shula", 1},
+		[75] = {"Simeiz", 1},
+		[76] = {"Solncevka", 1},
+		[77] = {"Solpuga", 1},
+		[79] = {"Taira", 1},
+		[81] = {"Torr", 1},
+		[82] = {"Ule", 1},
+		[83] = {"Valensia", 1},
+		[85] = {"Vulcan", 1},
+		[90] = {"x297", 1},
+		[93] = {"xb17", 1},
+		[95] = {"xk10", 1},
+		[96] = {"xk16", 1},
+		[98] = {"xt11", 1},
+		[100] = {"xt20", 1},
+		[101] = {"xt23", 1},
+		[102] = {"xt24", 1},
+		[103] = {"xt26", 1},
+		[106] = {"xt41", 1},
+		[107] = {"xt45", 1},
+		[108] = {"xt52", 1},
+		[109] = {"xt54", 1},
+		[112] = {"xt93", 1},
+		[113] = {"Zebos", 1},
+	};
+end;
 -- END gen_parcel.py
 
 -- Pure rules (host-testable) --------------------------------------------------------
@@ -811,11 +892,20 @@ function TRF_PcQRemRaw(id)
 	return 1;
 end;
 
+-- Logbook keys of the open job: pclq<dst>, pclqd<dst> when the destination has keys (TRF_PcDstData), else pclq, pclqd.
+function TRF_PcQKeys()
+	local J = TRF_PcJob();
+	local t, d = "#TRF_pclq", "#TRF_pclqd";
+	if J and TRF_PcDstOf(J.dst) then t = t..J.dst; d = d..J.dst; end;
+	return t, d;
+end;
+
 function TRF_PcQAdd()
 	if TRF_PcOpt("pcl_logbook") ~= 1 or type(AddQuest) ~= "function" or QUEST_PROCESS == nil then return nil; end;
 	local b = nil;
 	if type(GetPlayerQuestState) == "function" then b = GetPlayerQuestState(); end;
-	local ok = call(TRF_PcQAddRaw, {TRF_PcK().qid, "#TRF_pclq", "#TRF_pclqd"}, "x", TRF_PcErr);
+	local t, d = TRF_PcQKeys();
+	local ok = call(TRF_PcQAddRaw, {TRF_PcK().qid, t, d}, "x", TRF_PcErr);
 	local a = nil;
 	if type(GetPlayerQuestState) == "function" then a = GetPlayerQuestState(); end;
 	TRF_PcE("quest", "id", TRF_PcK().qid, "state", QUEST_PROCESS, "quest_state_before", b, "quest_state_after", a, "result", "added");
@@ -1462,10 +1552,34 @@ function TRF_Pc_Dump()
 		"ban", R.ban, "ok_count", R.ok, "fail_count", R.fail, "owed", R.ow, "customs_flags", cf);
 end;
 
+-- Destination entry {location folder, trade station count} of system idx (TRF_PcDstData), or nil.
+function TRF_PcDstOf(idx)
+	if type(idx) ~= "number" or type(TRF_PcDstData) ~= "function" then return nil; end;
+	local e = TRF_PcDstData()[idx];
+	if type(e) == "table" and type(e[1]) == "string" and type(e[2]) == "number" then return e; end;
+	return nil;
+end;
+
+-- Logbook keys per destination (AddQuest takes engine keys, no argument): pclq<idx> title, pclqd<idx> description for every
+-- TRF_PcDstData system; with several trade stations (Kadenoa) the marked one receives the parcel.
+function TRF_PcDstText(t)
+	local d = {};
+	if type(TRF_PcDstData) == "function" then d = TRF_PcDstData(); end;
+	for i, x in d do
+		if type(i) == "number" and type(x) == "table" and type(x[1]) == "string" and type(x[2]) == "number" then
+			t["pclq"..i] = "Sealed parcel: "..x[1];
+			local w = "Deliver the sealed parcel to the trade station at "..x[1]..", marked on your map on arrival.";
+			if x[2] > 1 then w = "Deliver the sealed parcel to the marked trade station at "..x[1]..". Your map marks it on arrival."; end;
+			t["pclqd"..i] = w.." The FTU holds your deposit until delivery. A late delivery forfeits it, a short one the share of the missing units.";
+		end;
+	end;
+	return t;
+end;
+
 -- Texts (01 section 2), EN; keys in TRF_UI_Key form (#TRF_pcl<name> in loc/trf_en.loc). pclq and pclqd are the logbook
--- title and description (AddQuest keys).
+-- title and description (AddQuest keys) for a destination without keys of its own; TRF_PcDstText adds pclq<idx>, pclqd<idx>.
 function TRF_Pc_Text()
-	return {
+	return TRF_PcDstText({
 		pcltitle = "FTU courier desk",
 		pclneed1 = "$1 station is out of machinery and the refinery is idle.",
 		pclneed2 = "$1 station is out of spare parts and the repair bays are idle.",
@@ -1502,5 +1616,5 @@ function TRF_Pc_Text()
 		pclthx2 = "$1 dock: the Wolves' crates kept the station fed.",
 		pclq = "Sealed parcel",
 		pclqd = "Deliver the sealed crates to the trade station marked on your map. The FTU holds your deposit.",
-	};
+	});
 end;
