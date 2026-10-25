@@ -23,6 +23,11 @@ SITES = [
     ("T2d", 0x4a4f21, 0x5c91f0),
     ("T3", 0x4dd207, 0x5d1ce0),
     ("T4", 0x4a074e, 0x49d4a0),
+    # trigger-fire sampler, trig_log=1 (hooks/runtime-limits.md 1.5): Trigger::OnEvent condition and action
+    # ExecuteString calls, and the lua_settop(L, 0) call of the ScriptParam ctor
+    ("T5a", 0x5e8e03, 0x5c9350),
+    ("T5b", 0x5e8e27, 0x5c9350),
+    ("T6", 0x5e8442, 0x65de60),
 ]
 
 # mod-options.md section 1, Lua C API list

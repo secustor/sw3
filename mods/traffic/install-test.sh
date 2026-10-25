@@ -58,7 +58,8 @@
 # LEVEL=v01|v02|v1 (default v1): v01 and v02 turn the later features off with the presets the host tests use
 # (tests/host_traffic.lua T_V01, T_V1Off); keys set in the environment win over the preset.
 # TRAFFIC_ENABLED=0|1, SITE_T1..SITE_T4 (0|1, default 1), TICK_MS (default 250), CARCASSES=0|1 (default 1 with
-# TRAFFIC=1, else 0: the TRF_Carcasses native, pe/API.md) (sw3tp.ini [traffic]).
+# TRAFFIC=1, else 0: the TRF_Carcasses native, pe/API.md), TRIG_LOG=0|1 (default 1 with LOG=2, else 0: the
+# trigger-fire sampler, README "DLL keys and log lines") (sw3tp.ini [traffic]).
 # STABILITY=0|1, RENDER_LOST_GUARD=0|1 (default 1) (sw3tp.ini [stability], mods/performance).
 # The trackpad install-test.sh rewrites sw3tp.ini; run this script again after it.
 set -eu
@@ -200,11 +201,12 @@ printf 'function TRF_Config() return {exp=%s, log=%s, big=%s, del_on_jump=%s, au
     "$EXP" "${LOG:-1}" "${BIG:-0}" "${DEL_ON_JUMP:-0}" "$AUTOSAVE" "$TRAFFIC" "$opt" > "$SCRIPTS_DST/config.script"
 
 ini="$COPY/sw3tp.ini"; [ -f "$ini" ] || : > "$ini"
+trig_log=0; [ "${LOG:-1}" != 2 ] || trig_log=1
 tmp="$ini.new"
 awk '{l=$0; sub(/\r$/,"",l)} l=="[traffic]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$ini" > "$tmp"
-printf '[traffic]\r\nenabled=%s\r\nsite_t1=%s\r\nsite_t2a=%s\r\nsite_t2b=%s\r\nsite_t2c=%s\r\nsite_t2d=%s\r\nsite_t3=%s\r\nsite_t4=%s\r\ntick_ms=%s\r\nlog=%s\r\ncarcasses=%s\r\n' \
+printf '[traffic]\r\nenabled=%s\r\nsite_t1=%s\r\nsite_t2a=%s\r\nsite_t2b=%s\r\nsite_t2c=%s\r\nsite_t2d=%s\r\nsite_t3=%s\r\nsite_t4=%s\r\ntick_ms=%s\r\nlog=%s\r\ncarcasses=%s\r\ntrig_log=%s\r\n' \
     "${TRAFFIC_ENABLED:-1}" "${SITE_T1:-1}" "${SITE_T2A:-1}" "${SITE_T2B:-1}" "${SITE_T2C:-1}" "${SITE_T2D:-1}" \
-    "${SITE_T3:-1}" "${SITE_T4:-1}" "${TICK_MS:-250}" "${LOG:-1}" "${CARCASSES:-$TRAFFIC}" >> "$tmp"
+    "${SITE_T3:-1}" "${SITE_T4:-1}" "${TICK_MS:-250}" "${LOG:-1}" "${CARCASSES:-$TRAFFIC}" "${TRIG_LOG:-$trig_log}" >> "$tmp"
 mv -f "$tmp" "$ini"
 # [stability] (mods/performance/pe/stability.c, in the same zlib1.dll): STABILITY=0|1, RENDER_LOST_GUARD=0|1 (default 1).
 awk '{l=$0; sub(/\r$/,"",l)} l=="[stability]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$ini" > "$tmp"

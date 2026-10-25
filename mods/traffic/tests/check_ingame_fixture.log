@@ -292,3 +292,8 @@ traffic: lua: exp=v1 module=merc event=refuse flight=1 clan=5 kind=settle amount
 traffic: lua: exp=v1 module=merc event=betray clan=5 betrayals=1 standing=-3 reason=fire
 traffic: lua: exp=v1 module=merc event=betray flight=1 clan=5 result=leave reason=fire
 traffic: lua: exp=v1 module=merc event=leave flight=1 clan=5 portal=PORTAL_D reason=betray
+traffic: module=dll event=stack_leak slots=1 total=1 v1=number:1
+traffic: module=dll event=trig_frame slots=1 fires=1 sp_n=0 c1="return Trig_Cond();" a1="TRF_RdHit(3,1,7)--"
+traffic: module=dll event=stack_leak slots=2 total=101 v1=number:0.85 v2=nil
+traffic: module=dll event=trig_frame slots=2 fires=0 sp_n=4 sp="UpgradeDamageToCriticalHit" sp_res=2
+traffic: module=dll event=trig_fires frames=1680 fires=150 true=40 distinct=6 other=0 top="return Timer1_Cond();" top_act="Work_with_Quests();" top_n=60 second="return Trig_Cond();" second_act="TRF_RdHit(3,1,7)--" second_n=30 sp_calls=2400 sp_top="CalculateRateOfFire" sp_top_n=1500

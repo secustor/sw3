@@ -259,6 +259,7 @@ Run B carries every change since run A started (nests, parcels, dock mode 2, hai
 | D-HAIL.fight | hail a trader under attack: once holding its own, once losing | "Not now, we're busy." with Close; "We're outgunned. Clear them off and there's <p> cr in it for you." with Accept/Decline, pay after the fight |
 | E16.1-E16.7 | section 4.3 steps (nest systems in chapter 5+, a load inside one, kills then return after two jumps) | section 5 lines |
 | E16.8 | stopwatch the entry into XK16 (15 flights) | within +10 % of run A |
+| D-DLL.1 | install with `LOG=2` (writes `trig_log=1`); fight a pirate raid, then fly two minutes in a quiet system | after a pirate fight: `event=trig_fires` names the condition (`top="return <name>();"`, `top_act` for a true one) and the most frequent ScriptParam callback (`sp_top=`); `event=stack_leak` carries `v1=`; a `trig_frame` line of a fight leak frame shows either `fires=0` with `sp="<callback>"` (ScriptParam results, `hooks/runtime-limits.md` 1.5 rank 1) or `c1="return Trig_Cond();"` with a `TRF_` action in `a1` (a mod trigger). `check_ingame.py` D-DLL.1 counts both kinds |
 
 Saves to make on the way: a quicksave inside a nest system after the flights spawned (E16.6); a save with pirates neutral (E16.5); Pandora after mission 8a (E16.4 note).
 

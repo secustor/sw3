@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Score the in-game checks of dynamic nests (E16.1-E16.11), sealed parcels (E-PCL.1-E-PCL.6), trader docking (D-DOCK),
-the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10) and the mercenary hire (D-MERC.*, design/merc-spec.md
-11, test plan section 11) from traffic logs.
+the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10), the mercenary hire (D-MERC.*, design/merc-spec.md
+11, test plan section 11) and the stack leak diagnostic (D-DLL.1) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -1068,6 +1068,34 @@ def c_merc_betray(ctx):
     return res
 
 
+# ---- DLL diagnostics (design/mod-research/hooks/runtime-limits.md 1.5) ----------------------------------------------
+
+def c_dll1(ctx):
+    res = Res()
+    res.logpart = True
+    tf = ctx.find("dll", "trig_fires")
+    sl = [r for r in ctx.find("dll", "stack_leak") if r.get("v1")]
+    fr = ctx.find("dll", "trig_frame")
+    if not tf:
+        res.missing.append("no event=trig_fires line: install with LOG=2 (trig_log=1) and play 60 s or more")
+    if not sl:
+        res.missing.append("no event=stack_leak line with v1= (DLL built before 2026-10-25, or no leak)")
+    sp = [r for r in fr if r.int("fires", 0) == 0 and r.int("sp_n", 0) > 0]
+    tg = [r for r in fr if r.int("fires", 0) > 0]
+    mod = [r for r in tg if any((r.get(k) or "").startswith("TRF_") for k in ("a1", "a2", "a3"))]
+    if fr:
+        res.notes.append("leak frames: %d ScriptParam only (fires=0), %d with trigger fires (%d with a TRF_ action)"
+                         % (len(sp), len(tg), len(mod)))
+    for r in tf[-1:]:
+        res.notes.append("last window: top=%s n=%s, sp_top=%s n=%s" % (r.get("top"), r.get("top_n"), r.get("sp_top"),
+                                                                      r.get("sp_top_n")))
+    res.ev("trig_fires", tf)
+    res.ev("stack_leak with v1", sl)
+    res.ev("leak frames with ScriptParam residue only", sp)
+    res.ev("leak frames with a mod trigger action", mod)
+    return res
+
+
 # id, title, check, eyes (None: the log decides)
 ITEMS = [
     ("ERR", "no error lines (nest, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
@@ -1131,6 +1159,7 @@ ITEMS = [
     ("D-MERC.betray", "betrayal and the blacklist (E0.13 by hand)", c_merc_betray,
      "'Turncoat!' and the pack leaves; GetTeamRelation(\"Merc\", PLAYER_TEAM) stays neutral after the attack, a jump "
      "and a load"),
+    ("D-DLL.1", "stack leak source: trig_fires names the condition, stack_leak carries v1=", c_dll1, None),
 ]
 
 
@@ -1236,7 +1265,8 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "D-HAIL.back": "PASS", "D-HAIL.offer": "PASS", "D-HAIL.esc": "PASS", "D-HAIL.fight": "MANUAL",
             "D-MERC.spawn": "MANUAL", "D-MERC.offer": "MANUAL", "D-MERC.hire": "MANUAL", "D-MERC.follow": "MANUAL",
             "D-MERC.ext": "PASS", "D-MERC.settle": "FAIL", "D-MERC.premission": "NO DATA", "D-MERC.collect": "NO DATA",
-            "D-MERC.load": "NO DATA", "D-MERC.betray": "MANUAL"}
+            "D-MERC.load": "NO DATA", "D-MERC.betray": "MANUAL",
+            "D-DLL.1": "PASS"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 
 

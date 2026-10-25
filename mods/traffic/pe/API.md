@@ -63,21 +63,25 @@ that fails 10 times is not called again in that process (`traffic: callback disa
 
 Other DLL actions on the Lua state: T2a 0x5d19e4 appends `Mods/Traffic/traffic.script` to `sys_IncludeFileList`
 after `system.lst` loads; T3 0x4dd207 stores `TRF` as `_CLASS.__trf_carry` before the location-entry
-ClearGlobals and restores it after; T4 drops leaked top-level stack slots (`stack_guard=1`).
+ClearGlobals and restores it after; T4 drops leaked top-level stack slots (`stack_guard=1`). With `trig_log=1`,
+T5a 0x5e8e03 / T5b 0x5e8e27 (condition and action `ExecuteString` 0x5c9350 of `Trigger::OnEvent`) and T6 0x5e8442
+(`lua_settop` 0x65de60 in the ScriptParam ctor) record the strings and callback names and call the original
+(`event=trig_frame`, `event=trig_fires`, README "DLL keys and log lines"; built 2026-10-25, unverified).
 
 ## Ini keys (`sw3tp.ini [traffic]`)
 
 | Key | Default in code | Meaning | Read at |
 |---|---|---|---|
 | `enabled` | 0 | 0: the module does nothing (`traffic: disabled enabled=0`) | init |
-| `site_t1`, `site_t2a`, `site_t2b`, `site_t2c`, `site_t2d`, `site_t3`, `site_t4` | 1 | 0 skips that hook (tests only) | init |
+| `site_t1`, `site_t2a`, `site_t2b`, `site_t2c`, `site_t2d`, `site_t3`, `site_t4`, `site_t5a`, `site_t5b`, `site_t6` | 1 | 0 skips that hook (tests only); T5a, T5b and T6 are patched only with `trig_log=1` | init |
 | `tick_ms` | 250 | real-time interval of `TRF_OnTick`, clamped to 50..5000 | init |
 | `log` | 1 | 0 drops `TRF_Log` and the per-hook lines | init |
 | `traceback` | 1 | the C `_ERRORMESSAGE` above | init (T1) |
 | `stack_guard` | 1 | T4 drops leaked Lua stack slots | init |
+| `trig_log` | 0 | 1 patches T5a/T5b/T6, the trigger-fire sampler ([hooks/runtime-limits.md](../design/mod-research/hooks/runtime-limits.md) 1.5; `install-test.sh` writes 1 with `LOG=2`) | init |
 | `carcasses` | 0 | 1 lets `TRF_Carcasses` answer; 0 keeps it registered, returning `nil, "off"` (`install-test.sh` writes 1, `CARCASSES=0` to turn it off) | init |
 
-The init line `traffic: config tick_ms=... log=... traceback=... stack_guard=... sites=...` shows the values;
+The init line `traffic: config tick_ms=... log=... traceback=... stack_guard=... trig_log=... sites=...` shows the values;
 `traffic: carcasses on=<0/1> sig=<ok/bad>` follows the signature checks.
 
 ## Adding a native

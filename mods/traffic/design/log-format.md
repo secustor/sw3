@@ -158,8 +158,11 @@ module=raid event=roll ... result=skipped reason=governor
   `traffic: module=dll event=traceback_install previous_type=5`,
   `traffic: module=dll event=lua_error total=<n> trace="<level>|<short_src>:<line>|<name>;..." message="..."`,
   `event=lua_error_repeat repeat_count=<n> trace="..." message="..."`, `event=lua_error_alert status=<s>`,
-  `traffic: module=dll event=stack_leak slots=<n> total=<count>` and
-  `event=stack_leak_skipped reason=c_frame_active slots=<n>` (README, "DLL keys and log lines").
+  `traffic: module=dll event=stack_leak slots=<n> total=<count> v1=<type[:value]> ...`,
+  `event=stack_leak_skipped reason=c_frame_active slots=<n>`, and with `trig_log=1`
+  `event=trig_frame slots=<n> fires=<n> sp_n=<n> sp="<name>" c1="<cond>" a1="<action>" ...` and
+  `event=trig_fires frames=<n> fires=<n> ... top="<cond>" top_n=<n> ... sp_top="<name>" sp_top_n=<n>`
+  (README, "DLL keys and log lines").
 - A `level=` key: the cfg `log` setting already selects what is written.
 
 ## 8. Tail filter

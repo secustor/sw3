@@ -1,7 +1,8 @@
 /* traffic: hook module of the sw3-traffic mod, linked into the sw3tp zlib1.dll proxy
- * (mods/traffic/design/mod-options.md 5.1-5.5, 5.8 item 2). Seven E8 rel32 call-site patches,
- * seven natives (API.md), Lua callbacks, the TRF carry across the location-entry ClearGlobals, a C _ERRORMESSAGE that
- * logs a traceback (T1) and a Lua stack leak guard (T4). TRF_Log lines carry at most 485 chars of the Lua string.
+ * (mods/traffic/design/mod-options.md 5.1-5.5, 5.8 item 2). Ten E8 rel32 call-site patches (T5a, T5b, T6 only with
+ * trig_log=1), seven natives (API.md), Lua callbacks, the TRF carry across the location-entry ClearGlobals, a C
+ * _ERRORMESSAGE that logs a traceback (T1), a Lua stack leak guard (T4) and a trigger-fire sampler (T5a/T5b/T6).
+ * TRF_Log lines carry at most 485 chars of the Lua string.
  * Target: sw3cw.exe GOG v1.12, ImageBase 0x400000, no ASLR. No CRT.
  * Callbacks from the stubs are __stdcall (callee pops); natives are __cdecl int f(lua_State *).
  * clang emits SSE2 for double math here, so the game's x87 precision setting does not apply. */
@@ -15,15 +16,19 @@ static const struct trf_site g_sites[TRF_SITE_COUNT] = TRF_SITES;
 static const struct trf_api g_apis[TRF_API_COUNT] = TRF_APIS;
 
 /* stub layout and semantics depend on the site; the header order must be this */
-enum { S_T1, S_T2A, S_T2B, S_T2C, S_T2D, S_T3, S_T4, S_N };
-static const char *const g_site_name[S_N] = { "T1", "T2a", "T2b", "T2c", "T2d", "T3", "T4" };
-static const char *const g_site_key[S_N] = { "site_t1", "site_t2a", "site_t2b", "site_t2c", "site_t2d", "site_t3", "site_t4" };
-static const unsigned g_site_orig[S_N] = { 0x5c7e80, 0x5c91f0, 0x5c91f0, 0x5c91f0, 0x5c91f0, 0x5d1ce0, 0x49d4a0 };
+enum { S_T1, S_T2A, S_T2B, S_T2C, S_T2D, S_T3, S_T4, S_T5A, S_T5B, S_T6, S_N };
+static const char *const g_site_name[S_N] = { "T1", "T2a", "T2b", "T2c", "T2d", "T3", "T4", "T5a", "T5b", "T6" };
+static const char *const g_site_key[S_N] = { "site_t1", "site_t2a", "site_t2b", "site_t2c", "site_t2d", "site_t3", "site_t4",
+    "site_t5a", "site_t5b", "site_t6" };
+static const unsigned g_site_orig[S_N] = { 0x5c7e80, 0x5c91f0, 0x5c91f0, 0x5c91f0, 0x5c91f0, 0x5d1ce0, 0x49d4a0,
+    0x5c9350, 0x5c9350, 0x65de60 };
 
 #define L_SLOT    0x7ba5f4u   /* lua_State * (1.1), NULL until ScriptInit */
 #define ROOT_SLOT 0x7ba610u   /* Root *; Root+0x44 = TM; TM+0x28 = float scaled dt (flds 0x28(%esi) at 0x4a0742) */
 #define CARRY_KEY "__trf_carry"
 #define INCLUDE   "Mods/Traffic/traffic.script"
+#define T_USERDATA 0
+#define T_NIL    1
 #define T_STRING 3
 #define T_NUMBER 2
 #define T_TABLE  4
@@ -67,7 +72,7 @@ static lua_State *lstate(void) { return *(lua_State **)L_SLOT; }
 
 /* ---- state ---- */
 static int g_site_on[S_N];
-static int g_tick_ms = 250, g_log_on = 1, g_tb_on = 1, g_guard_on = 1;
+static int g_tick_ms = 250, g_log_on = 1, g_tb_on = 1, g_guard_on = 1, g_trig_on;
 static BYTE *g_page;
 static LARGE_INTEGER g_qpf, g_qpc0, g_tick_qpc;
 static double g_game_time, g_tick_game;
@@ -549,12 +554,126 @@ static int __cdecl n_errmsg(lua_State *L)
  * ScriptParam ctor and CallLoadLevel reset it. T4 runs in the frame loop at the top level, so every slot
  * left is a leak: drop them. Cleared only when Cbase == stack base (L+0x10 == L+4, lua_gettop 0x65de50 and
  * lua_getstack's helper 0x65f973), i.e. no C function frame is active. */
-static unsigned g_leak_n, g_leak_nested;
+/* ---- trigger-fire sampler (trig_log=1; hooks/runtime-limits.md 1.5) ----
+ * T5a/T5b: the two ExecuteString 0x5c9350 calls of Trigger::OnEvent 0x5e8dc0 (condition [+0x30] at 0x5e8e03,
+ * action [+0x54] at 0x5e8e27; eax = the string, no stack args, eax = result, plain ret). T6: the lua_settop(L, 0)
+ * call 0x5e8442 of the ScriptParam ctor 0x5e8380 (edi = function name, esi = this, [this+0xc] = nresults): the
+ * ScriptParam results stay on the stack until the next ctor, so the name of the last one is the other suspect.
+ * A fire is one evaluated condition; a true condition and the action that follows it form one key "c" / "a".
+ * Per-frame state is reset at T4; the window counts are logged and reset every 60 s of real time. */
+#define TS_LEN 48
+#define TS_N 16
+struct ts_ent { char c[TS_LEN], a[TS_LEN]; unsigned n; };
+static struct ts_ent g_ts[TS_N], g_sp[TS_N];
+static unsigned g_ts_k, g_sp_k, g_ts_other, g_sp_other, g_ts_frames, g_ts_fires, g_ts_true, g_sp_calls;
+static double g_ts_t0;
+static char g_pend[TS_LEN];
+static int g_pend_on, g_pend_fi = -1;
+static unsigned g_tf_fires, g_tf_sp, g_tf_spres;  /* this frame: fires, ScriptParam calls, nresults of the last */
+static char g_tf_c[3][TS_LEN], g_tf_a[3][TS_LEN], g_tf_spn[TS_LEN];
+
+static void ts_cpy(char *d, const char *s) { int i = 0; if (s) for (; s[i] && i < TS_LEN - 1; i++) d[i] = s[i]; d[i] = 0; }
+static int ts_same(const char *a, const char *b) { while (*a && *a == *b) { a++; b++; } return *a == *b; }
+static void ts_add(struct ts_ent *t, unsigned *k, unsigned *other, const char *c, const char *a)
+{
+    unsigned i;
+    for (i = 0; i < *k; i++) if (ts_same(t[i].c, c) && ts_same(t[i].a, a)) { t[i].n++; return; }
+    if (*k < TS_N) { ts_cpy(t[*k].c, c); ts_cpy(t[*k].a, a); t[*k].n = 1; (*k)++; } else (*other)++;
+}
+static void ts_flush(void) { if (g_pend_on) { ts_add(g_ts, &g_ts_k, &g_ts_other, g_pend, ""); g_pend_on = 0; } g_pend_fi = -1; }
+
+static void __stdcall trf_trig_post(int which, int res, const char *s)   /* T5a (which 0) / T5b (1), after 0x5c9350 */
+{
+    char t[TS_LEN];
+    ts_cpy(t, s);
+    if (!which) {
+        ts_flush();
+        g_ts_fires++;
+        if (g_tf_fires < 3) { ts_cpy(g_tf_c[g_tf_fires], t); g_tf_a[g_tf_fires][0] = 0; }
+        if (res) { g_ts_true++; ts_cpy(g_pend, t); g_pend_on = 1; g_pend_fi = g_tf_fires < 3 ? (int)g_tf_fires : -1; }
+        else ts_add(g_ts, &g_ts_k, &g_ts_other, t, "");
+        g_tf_fires++;
+    } else if (g_pend_on) {
+        if (g_pend_fi >= 0) ts_cpy(g_tf_a[g_pend_fi], t);
+        ts_add(g_ts, &g_ts_k, &g_ts_other, g_pend, t);
+        g_pend_on = 0; g_pend_fi = -1;
+    } else ts_add(g_ts, &g_ts_k, &g_ts_other, "?", t);
+}
+
+static void __stdcall trf_sp_pre(const char *name, const unsigned *self)   /* T6, before lua_settop 0x65de60 */
+{
+    ts_cpy(g_tf_spn, name ? name : "?");
+    g_tf_spres = self ? self[3] : 0;
+    g_tf_sp++; g_sp_calls++;
+    ts_add(g_sp, &g_sp_k, &g_sp_other, g_tf_spn, "");
+}
+
+static void ts_top2(const struct ts_ent *t, unsigned k, int *i1, int *i2)
+{
+    unsigned i;
+    *i1 = *i2 = -1;
+    for (i = 0; i < k; i++) {
+        if (*i1 < 0 || t[i].n > t[*i1].n) { *i2 = *i1; *i1 = (int)i; }
+        else if (*i2 < 0 || t[i].n > t[*i2].n) *i2 = (int)i;
+    }
+}
+static void ts_kq(struct tb *b, const char *k, const char *v)   /* " k=\"v\"", value cut at 40 chars */
+{
+    tb_s(b, " "); tb_s(b, k); tb_s(b, "=\""); tb_q(b, v, b->n + 40, 0); tb_s(b, "\"");
+}
+
+/* the strings fired since the last T4; called by stack_guard before it drops the slots */
+static void ts_frame_log(int slots)
+{
+    struct tb b;
+    unsigned i;
+    static const char *const ck[3] = { "c1", "c2", "c3" }, *const ak[3] = { "a1", "a2", "a3" };
+    tb_begin(&b, "module=dll event=trig_frame slots="); tb_i(&b, slots); tb_s(&b, " fires="); tb_u(&b, g_tf_fires);
+    tb_s(&b, " sp_n="); tb_u(&b, g_tf_sp);
+    if (g_tf_sp) { ts_kq(&b, "sp", g_tf_spn); tb_s(&b, " sp_res="); tb_u(&b, g_tf_spres); }
+    for (i = 0; i < g_tf_fires && i < 3; i++) { ts_kq(&b, ck[i], g_tf_c[i]); if (g_tf_a[i][0]) ts_kq(&b, ak[i], g_tf_a[i]); }
+    tb_end(&b);
+}
+
+/* T4, after the guard: close the frame; every 60 s log and reset the window */
+static void ts_frame_end(void)
+{
+    struct tb b;
+    int i1, i2;
+    ts_flush();
+    g_ts_frames++;
+    g_tf_fires = g_tf_sp = g_tf_spres = 0;
+    g_tf_spn[0] = 0;
+    if (real_sec() - g_ts_t0 < 60.0) return;
+    g_ts_t0 = real_sec();
+    tb_begin(&b, "module=dll event=trig_fires frames="); tb_u(&b, g_ts_frames); tb_s(&b, " fires="); tb_u(&b, g_ts_fires);
+    tb_s(&b, " true="); tb_u(&b, g_ts_true); tb_s(&b, " distinct="); tb_u(&b, g_ts_k); tb_s(&b, " other="); tb_u(&b, g_ts_other);
+    ts_top2(g_ts, g_ts_k, &i1, &i2);
+    if (i1 >= 0) { ts_kq(&b, "top", g_ts[i1].c); if (g_ts[i1].a[0]) ts_kq(&b, "top_act", g_ts[i1].a); tb_s(&b, " top_n="); tb_u(&b, g_ts[i1].n); }
+    if (i2 >= 0) { ts_kq(&b, "second", g_ts[i2].c); if (g_ts[i2].a[0]) ts_kq(&b, "second_act", g_ts[i2].a); tb_s(&b, " second_n="); tb_u(&b, g_ts[i2].n); }
+    tb_s(&b, " sp_calls="); tb_u(&b, g_sp_calls);
+    ts_top2(g_sp, g_sp_k, &i1, &i2);
+    if (i1 >= 0) { ts_kq(&b, "sp_top", g_sp[i1].c); tb_s(&b, " sp_top_n="); tb_u(&b, g_sp[i1].n); }
+    tb_end(&b);
+    g_ts_k = g_sp_k = g_ts_other = g_sp_other = g_ts_frames = g_ts_fires = g_ts_true = g_sp_calls = 0;
+}
+
+static unsigned g_leak_n, g_leak_nested, g_leak_multi;
+static void leak_val(struct tb *b, lua_State *L, int i)   /* " v<i>=<type>[:<value>]"; tostring converts a number slot */
+{
+    static const char *const vk[3] = { " v1=", " v2=", " v3=" };
+    int t = lua_type(L, i);
+    const char *s;
+    tb_s(b, vk[i - 1]);
+    if (t == T_NUMBER) { s = lua_tostring(L, i); tb_s(b, "number:"); tb_s(b, s ? s : "?"); }
+    else if (t == T_STRING) { tb_s(b, "string:\""); tb_q(b, lua_tostring(L, i), b->n + 60, 0); tb_s(b, "\""); }
+    else tb_s(b, t == T_NIL ? "nil" : t == T_TABLE ? "table" : t == T_FUNC ? "function" : t == T_USERDATA ? "userdata" : "none");
+}
 static void stack_guard(lua_State *L)
 {
     const unsigned *ls = (const unsigned *)L;
     struct tb b;
-    int n = lua_gettop(L);
+    int n = lua_gettop(L), i, lg;
     if (n <= 0) return;
     if (ls[4] != ls[1]) {
         if (!g_leak_nested++) {
@@ -562,10 +681,13 @@ static void stack_guard(lua_State *L)
         }
         return;
     }
-    if (++g_leak_n % 100 == 1) {
+    lg = ++g_leak_n % 100 == 1 || (n > 1 && g_leak_multi < 20 && ++g_leak_multi);
+    if (lg) {
         tb_begin(&b, "module=dll event=stack_leak slots="); tb_i(&b, n); tb_s(&b, " total="); tb_u(&b, g_leak_n);
+        for (i = 1; i <= n && i <= 3; i++) leak_val(&b, L, i);
         tb_end(&b);
     }
+    if (g_trig_on && (lg || g_leak_n <= 3)) ts_frame_log(n);
     lua_settop(L, 0);
 }
 
@@ -699,6 +821,7 @@ static void __stdcall trf_tick(void)              /* T4, after 0x49d4a0, once pe
     if (!L) return;
     g_err_busy = 0;                               /* top level: no _ERRORMESSAGE call is active */
     if (g_guard_on) stack_guard(L);
+    if (g_trig_on) ts_frame_end();
     if (g_err_dup && real_sec() - g_err_t0 >= ERR_WINDOW) err_flush();
     if (g_cb[CB_TICK].off) return;
     QueryPerformanceCounter(&now);
@@ -762,6 +885,12 @@ static void emit_call(BYTE **p, unsigned target)  /* E8 rel32 */
     *p += 4;
 }
 static void emit_4(BYTE **p, BYTE a, BYTE b, BYTE c, BYTE d) { emit1(p, a); emit1(p, b); emit1(p, c); emit1(p, d); }
+static void emit_jmp(BYTE **p, unsigned target)   /* E9 rel32 */
+{
+    emit1(p, 0xE9);
+    *(LONG *)*p = (LONG)(target - ((unsigned)*p + 4));
+    *p += 4;
+}
 
 /* One stub per site at page + 0x20 * site index. Register rules: the original sees every register
  * as the game set it (nothing is changed before its call, except T2a's push of ecx, which leaves ecx
@@ -820,6 +949,30 @@ static BYTE *build_page(void)
     emit_call(&p, (unsigned)trf_tick);                /* E8 rel32      call trf_tick          */
     emit1(&p, 0x61);                                  /* 61            popad (eax = result)   */
     emit1(&p, 0xC3);                                  /* C3            ret                    */
+    /* T5a/T5b: ExecuteString 0x5c9350 (eax = string, no stack args, eax = result, plain ret); the string is kept
+     * in a stack slot as in T2a, so nested trigger fires stay correct */
+    for (i = 0; i < 2; i++) {
+        p = g + 0x20 * (S_T5A + i);
+        emit1(&p, 0x50);                              /* 50            push eax (string)      */
+        emit_call(&p, g_site_orig[S_T5A + i]);        /* E8 rel32      call 0x5c9350          */
+        emit1(&p, 0x60);                              /* 60            pushad                 */
+        emit_4(&p, 0xFF, 0x74, 0x24, 0x20);           /* FF 74 24 20   push [esp+0x20] (string) */
+        emit1(&p, 0x50);                              /* 50            push eax (result)      */
+        emit1(&p, 0x6A); emit1(&p, (BYTE)i);          /* 6A ii         push 0 cond / 1 action */
+        emit_call(&p, (unsigned)trf_trig_post);       /* E8 rel32      call trf_trig_post, pops 12 */
+        emit1(&p, 0x61);                              /* 61            popad (eax = result)   */
+        emit_4(&p, 0x8D, 0x64, 0x24, 0x04);           /* 8D 64 24 04   lea esp,[esp+4] (flags kept) */
+        emit1(&p, 0xC3);                              /* C3            ret                    */
+    }
+    /* T6: lua_settop 0x65de60 (cdecl, L and 0 on the stack); record edi (name) and esi (this), then jump to the
+     * original so it sees its arguments and returns to the ctor */
+    p = g + 0x20 * S_T6;
+    emit1(&p, 0x60);                                  /* 60            pushad                 */
+    emit1(&p, 0x56);                                  /* 56            push esi (this)        */
+    emit1(&p, 0x57);                                  /* 57            push edi (name)        */
+    emit_call(&p, (unsigned)trf_sp_pre);              /* E8 rel32      call trf_sp_pre, pops 8 */
+    emit1(&p, 0x61);                                  /* 61            popad                  */
+    emit_jmp(&p, g_site_orig[S_T6]);                  /* E9 rel32      jmp 0x65de60           */
     if (!VirtualProtect(g, 4096, PAGE_EXECUTE_READ, &old)) return 0;
     FlushInstructionCache(GetCurrentProcess(), g, 4096);
     return g;
@@ -848,10 +1001,12 @@ void trf_init(const char *ini)
     g_tb_on = (int)GetPrivateProfileIntA("traffic", "traceback", 1, ini);
     g_guard_on = (int)GetPrivateProfileIntA("traffic", "stack_guard", 1, ini);
     g_cs_on = (int)GetPrivateProfileIntA("traffic", "carcasses", 0, ini) != 0;
+    g_trig_on = (int)GetPrivateProfileIntA("traffic", "trig_log", 0, ini) != 0;
     QueryPerformanceFrequency(&g_qpf);
     QueryPerformanceCounter(&g_qpc0);
     tb_begin(&b, "config tick_ms="); tb_i(&b, g_tick_ms); tb_s(&b, " log="); tb_i(&b, g_log_on);
     tb_s(&b, " traceback="); tb_i(&b, g_tb_on); tb_s(&b, " stack_guard="); tb_i(&b, g_guard_on);
+    tb_s(&b, " trig_log="); tb_i(&b, g_trig_on);
     tb_s(&b, " sites=");
     for (i = 0; i < S_N; i++) { if (i) tb_s(&b, ","); tb_s(&b, g_site_name[i]); tb_s(&b, g_site_on[i] ? ":1" : ":0"); }
     tb_end(&b);
@@ -893,6 +1048,8 @@ void trf_init(const char *ini)
         tb_begin(&b, "attach ");
         if (!g_site_on[i]) {
             tb_s(&b, "skipped hook="); tb_s(&b, g_site_name[i]); tb_s(&b, " "); tb_s(&b, g_site_key[i]); tb_s(&b, "=0");
+        } else if (i >= S_T5A && !g_trig_on) {
+            tb_s(&b, "skipped hook="); tb_s(&b, g_site_name[i]); tb_s(&b, " trig_log=0");
         } else if (patch_call(g_sites[i].site, stub)) {
             tb_s(&b, "ok hook="); tb_s(&b, g_site_name[i]);
             tb_s(&b, " patch="); tb_x(&b, g_sites[i].site);
