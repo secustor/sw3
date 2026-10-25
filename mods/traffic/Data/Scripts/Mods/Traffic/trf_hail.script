@@ -613,12 +613,17 @@ end;
 
 -- Raid n on trader id ended (trf_raid TRF_Rd_End, after its raid-help pay): an accepted help offer (r.hlp 2) is
 -- settled; paid = the credits of TRF_Rd_Pay (nil: not paid), how = the raid end. 1 when settled. An offer owned by
--- the help watch (accepted without a spawned raid) stays with the watch.
+-- the help watch (accepted without a spawned raid) stays with the watch unless the raid paid it.
 function TRF_HlHelpEnd(id, n, paid, how)
 	local r = TRF_HlRec(id);
 	if not r or r.hlp ~= 2 then return nil; end;
 	local W = TRF_HlHw();
-	if W and type(W[id]) == "table" then return nil; end;
+	if W and type(W[id]) == "table" then
+		-- A watch owns the offer (accepted while the raid was armed): it stays with the watch unless the raid paid
+		-- (TRF_Rd_Pay counts the player's fire while r.hlp is 2); then the watch ends here, or it would pay again.
+		if type(paid) ~= "number" then return nil; end;
+		W[id] = nil;
+	end;
 	r.hlp = 3;
 	if type(paid) == "number" then
 		TRF_HlStat("hl_help_paid");
@@ -800,10 +805,11 @@ function TRF_HailOpen(id, via)
 		-- Combat hail (hail-spec 3): a trader in a fight answers with one page, also while TRF_Combat holds (the
 		-- player's combat is mostly that fight).
 		if r.st ~= "wind" and r.st ~= "gone" then fg = TRF_HlFight(id, r); end;
-		if fg then why = nil;
-		elseif sq then why = sq;
-		elseif TRF_HlRaided(r) then why = "raid";
-		elseif r.st == "wind" or r.st == "gone" then why = "st"; end;
+		if not fg then
+			if sq then why = sq;
+			elseif TRF_HlRaided(r) then why = "raid";
+			elseif r.st == "wind" or r.st == "gone" then why = "st"; end;
+		end;
 	end;
 	if why then
 		TRF_HlE("hail", "trader_id", id, "via", via, "result", "skipped", "reason", why);
@@ -1008,15 +1014,18 @@ function TRF_HlPgShow(hl, kind, text, on, ac, dc, key)
 	if not why and type(TRF_BoxTake) == "function" and not TRF_BoxTake("hail") then why = "lock"; end;
 	if why then TRF_HlDlgFb(why); hl.bx = 1; return nil; end;
 	local st = TRF_HlStore();
-	-- The prefix is cut by pattern: trf_supply names the trader with its own fallback (TRF_SpName), not TRF_HlName.
+	-- The prefix is cut by pattern: trf_supply names the trader with its own fallback (TRF_SpName), not TRF_HlName;
+	-- loc_mode 1 texts carry "FTU: " (loc/trf_en.loc has no $n placeholders).
 	local m1 = text;
-	local s0, e0 = strfind(text, "^FTU [^:\n]*: ");
+	local s0, e0 = strfind(text, "^FTU[^:\n]*: ");
 	if e0 then m1 = strsub(text, e0 + 1); end;
 	st.dlg = {id=hl.id, g=hl.g, on=on, dk={}, pg=1, who=TRF_HlName(TRF_HlRec(hl.id)), m1=m1, ac=ac, dc=dc, kd=kind};
+	local w0 = hl.w;
 	hl.w = "dlg";
 	hl.t = TRF_HlGt();
 	if TRF_HlP(TRF_HlPgCall, {}) ~= 1 then
 		st.dlg = nil;
+		hl.w = w0;
 		hl.bx = 1;
 		TRF_HlDlgFb("error");
 		return nil;

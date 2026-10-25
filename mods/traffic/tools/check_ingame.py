@@ -810,9 +810,12 @@ def c_hail_offer(ctx):
     res = Res()
     res.logpart = True
     pg = ctx.find("hail", "page", via="dialog", kind="offer")
-    first = min((r.n for r in pg), default=None)
+    # Accepted after an offer page of the same log (line numbers are per file).
+    first = {}
+    for r in pg:
+        first[r.src] = min(first.get(r.src, r.n), r.n)
     acc = [r for r in ctx.find("hail", "contract", result="accepted") + ctx.find("hail", "offer", result="accepted")
-           if first is not None and r.n > first]
+           if r.src in first and r.n > first[r.src]]
     dec = ctx.find("hail", "contract", result="declined") + ctx.find("hail", "offer", result="declined")
     for d in ctx.find("hail", "contract", result="declined"):
         nxt = [r for r in hail_recs(ctx, d, before=False) if r.ev in ("back", "close", "hail")]

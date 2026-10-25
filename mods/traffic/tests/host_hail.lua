@@ -731,6 +731,39 @@ function T_HL_D()
 	HOST_Check(r4c.hlp == 2 and type(TRF_H().hlw[id4c]) == "table" and S_Logs(n0, "event=help trader_id="..id4c.." raid_id="..n4c) == 0,
 		"armed raid ended: the watch keeps the offer");
 	TRF_HlHelpDrop("test");
+	-- A watch-owned offer whose armed raid spawns: one player hit and the raid killed pay through trf_raid once; the
+	-- raid end drops the watch (hlp 3), so the pirates it saw with a player ship near pay nothing more.
+	local id4d, r4d, x4d = HL_Trader("C");
+	HL_NoEscorts(x4d);
+	local n4d = V_Raid(id4d);
+	local l4d = HL_Pirates(id4d, 2, 300);
+	TRF.std.heat = 0;
+	local c4d = h.credits;
+	n0 = S_Mark();
+	HL_Hail(id4d);
+	HOST_DlgPick("a_acc");
+	T_Tick(1, 0.5);
+	tinsert(h.carc, HL_PlNear(l4d[1]));
+	T_Tick(5, 0.5);
+	local w4d = TRF_H().hlw[id4d];
+	HOST_Check(r4d.hlp == 2 and type(w4d) == "table" and w4d.s[9001] == 2, "armed raid and pirates: the watch, pirate 1 seen with a player ship");
+	HOST_Fire("f_inside", "TRF_RaidGo("..n4d..",");
+	local hr4d = TRF_H().rd[n4d];
+	HOST_Check(V_Rd(n4d).st == "come" and type(hr4d) == "table", "the raid spawned under the watch");
+	HOST_Fire("attack", "TRF_OnRaidHit("..n4d..",1,");
+	for j = 1, getn(hr4d.sh) do
+		hr4d.sh[j].alive = nil;
+		HOST_Fire("died", "TRF_OnRaidDied("..n4d..","..j..",");
+	end;
+	local want4d = floor(0.5 * TRF_PayN(idx));
+	HOST_Check(V_Rd(n4d).st == "end" and h.credits - c4d == want4d and r4d.hlp == 3 and TRF_H().hlw[id4d] == nil
+		and S_Logs(n0, "event=help trader_id="..id4d.." raid_id="..n4d.." credits="..want4d.." via=raid result=paid") == 1,
+		"raid paid under a watch: the watch dropped, hlp 3 ("..(h.credits - c4d)..")");
+	HL_Kill(9001);
+	HL_Kill(8001);
+	HL_Kill(9002);
+	T_Tick(5, 0.5);
+	HOST_Check(h.credits - c4d == want4d and S_Logs(n0, "via=watch result=paid") == 0, "no second pay by the watch");
 	HOST().carc = {};
 	-- Accept on a raid, one player hit (ph, not deliberate fire), the raid killed: trf_raid pays help_k x N_eff.
 	local id5, r5, x5, n5 = HL_Raided();
