@@ -13,7 +13,7 @@ No new module: trf_hail owns both parts (`module=hail`); trf_raid, trf_danger an
 | 2 | Back reopens the menu dialog with the used option hidden; the box lock stays with owner `hail` for the whole conversation; every dialog opens from a due call | built |
 | 3 | Box fallback: hail_box 1, and a page that cannot open (`TRF_HlDlgWhy`, the box lock): the `ShowMsgBox` chain as before; hail_box 0 and 1 unchanged | built |
 | 4 | Combat hail: a trader in a fight (raid record, hostile ships near its lead, its escort flight fighting) answers with one page and no menu: the help offer while the fight goes against it, else "Not now, we're busy." | built |
-| 5 | Help pay: `help_k` x N_eff, once per trader per visit; on a raid through trf_raid's raid help (any player fire on the raid counts after the accept), otherwise through the help watch and `TRF_Pay` with the shared prize gap | built |
+| 5 | Help pay: `help_k` x N_eff, once per trader per visit; on a raid through trf_raid's raid help (after the accept any player fire on the raid counts, also fire from before the accept), otherwise through the help watch and `TRF_Pay` with the shared prize gap | built |
 | 6 | Text EN and RU, tune keys, cfg `hail_fight`, `install-test.sh` `HAIL_FIGHT`, log rows, the hail block of the test plan, `check_ingame.py` items D-HAIL.* | built |
 
 ## 2. Stage B flow
@@ -31,8 +31,8 @@ No new module: trf_hail owns both parts (`module=hail`); trf_raid, trf_danger an
 
 1. `TRF_HailOpen` checks max, cooldown, an open chain, the flag and quiet suppression; then, unless the trader winds down or is gone, `TRF_HlFight(id, r)`. A fight is answered even while `TRF_Combat` holds (the player's combat is mostly that fight); without a fight the old order holds (`combat`, `raid`, `st`).
 2. Fight (`TRF_HlFight`, nil with cfg `hail_fight` 0 or Trade at war with the player): a raid record of the trader past `armed` and not ended (`f.n`); hostile ships within `hail_fight_r` of the lead (`TRF_HlNearShips`: `TRF_Near(lead position, 2 x hail_fight_r, {cls = 3..7, alive = 1})`, hostile = team `Pirates`/`Pirate` or a team at war with `Trade`, player-team records apart); the escort flight fighting (`h.ef` alive and `h.eo ~= 1`).
-3. Losing: with a raid record `dc` comply, the trader fleeing (`r.st == "flee"` or `r.fl`), or `st / sr < hail_help_ratio` (`TRF_Rd_HailRatio(n)`: the decide rule with the live raid ships); without one more hostiles than live escorts.
-4. Answer (`TRF_HlFightOpen`): the hail counts (`hn + 1`, `hlt`), a chain of its own `{id, g, o = {}, k = 1, t}` (no menu). Losing and `TRF_HlHelpWhy` gives a pay: `r.hlp = 1`, the help offer `hlpoffer` through `TRF_HlOffer` (page or OK/Cancel box, `hl.w = "hp"`); else the busy answer `hlpbusy` (page with Close, or the one-button box). hail_box 0 or no `ShowMsgBox`: the busy line.
+3. Losing: with a raid record `dc` comply, the trader fleeing for a reason other than the raid decision (`r.st == "flee"` or `r.fl`, but not `r.fl` `raid` or `staged`), or `st / sr < hail_help_ratio` (`TRF_Rd_HailRatio(n)`: the decide rule with the live raid ships); without one more hostiles than live escorts.
+4. Answer (`TRF_HlFightOpen`): the hail counts (`hn + 1`, `hlt`), a chain of its own `{id, g, o = {}, k = 1, t}` (no menu). Losing and `TRF_HlHelpWhy` gives a pay: the help offer `hlpoffer` through `TRF_HlOffer` (page or OK/Cancel box, `hl.w = "hp"`), `r.hlp = 1` once it is shown (neither page nor box: `result=not_shown reason=no_box`, the busy line, `hlp` unset); else the busy answer `hlpbusy` (page with Close, or the one-button box). hail_box 0 or no `ShowMsgBox`: the busy line.
 5. Decline (`TRF_HlHelpDec`): the answer `hlpno` (page or box). Accept (`TRF_HlHelpAcc`): the chain closes, `r.hlp = 2`, the line `hlpok`; a live raid record: settled at the raid end; otherwise the help watch.
 
 ## 4. Data model
@@ -60,7 +60,7 @@ No offer (busy, logged `reason=`): offered before in this visit (`once`), heat 3
 
 ### 5.3 Raid record
 
-After the accept trf_raid pays at the raid end through `TRF_Rd_Pay` as for v02 5.5 (help +1, +2 in Recovery, heat -1, credits +4, `thanks`, the 8.5 resolvers), with one change: while `r.hlp == 2` any player fire on the raid (`rd.ph`) counts, besides deliberate fire and a kill after a hit (`rd.hit`). `TRF_Rd_End` then calls `TRF_HlHelpEnd(id, n, rd.paid, how)`: `hlp = 3`, `event=help ... via=raid result=paid|unpaid`.
+After the accept trf_raid pays at the raid end through `TRF_Rd_Pay` as for v02 5.5 (help +1, +2 in Recovery, heat -1, credits +4, `thanks`, the 8.5 resolvers), with one change: while `r.hlp == 2` any player fire on the raid (`rd.ph`, set at the first player hit on the raid, also one before the accept) counts, besides deliberate fire and a kill after a hit (`rd.hit`). `TRF_Rd_End` then calls `TRF_HlHelpEnd(id, n, rd.paid, how)`: `hlp = 3`, `event=help ... via=raid result=paid|unpaid`; an offer owned by a help watch (accepted while the raid was armed) is left to the watch.
 
 ### 5.4 Help watch (no raid record)
 
@@ -106,10 +106,10 @@ Entry as `host_demand.lua`: `host_station.lua` up to its first scenario. Runs b.
 
 | Run | Covers |
 |---|---|
-| `hl-a` | hail_box 2: the menu dialog takes the lock; head: nothing in the callback, the answer page from the due call (text, Back, Close, labels, page log, level 2 answers), the menu's pending check leaves it open; Back: the menu again with head hidden (D11), `event=back`; trouble page, Close frees the lock; Esc on a page frees the lock; escort page: Decline back to the menu without escort (`contract result=declined`), Accept takes the contract; provider `q` offer page Decline and Accept; a provider HailDo page (`TRF_HlProvPage`) Decline and Accept; trf_supply `sesc` as a page (`TRF_SpCtPgOk`); the last option without Back; the page fallback (UI not idle: the answer box, `hl.bx`); hail_box 1 unchanged (no dialog, no page line) |
+| `hl-a` | hail_box 2: the menu dialog takes the lock; head: nothing in the callback, the answer page from the due call (text, Back, Close, labels, page log, level 2 answers), the menu's pending check leaves it open; Back: the menu again with head hidden (D11), `event=back`; trouble page, Close frees the lock; Esc on a page frees the lock; escort page: Decline back to the menu without escort (`contract result=declined`), Accept takes the contract; provider `q` offer page Decline and Accept; a provider HailDo page (`TRF_HlProvPage`) Decline and Accept; trf_supply `sesc` as a page (`TRF_SpCtPgOk`); the last option without Back; the page fallback (UI not idle: the answer box, `hl.bx`); hail_box 1 unchanged (no dialog, no page line); the real `dc` HailDo page (Accept: `dc.ct`) and `sesc` on a sweep record (Accept: `s.ct`, `r.ct`) |
 | `hl-b` | defaults; hostile filter (Trade, neutral team, 900 away, wreck, dead: no hostiles); busy page with as many pirates as escorts (fight log, `r.hn`, no offer); the escort flight fighting without a DLL list; `TRF_Combat` with a fight (answered) and without one (`combat`); hail_box 1 busy box; hail_box 0 busy line; cfg `hail_fight` 0 (the menu); an armed raid (skipped `raid`) |
-| `hl-c` | outnumbered without escorts: help page and pay `0.5 x N_eff`, logs; Decline page; once per visit (`reason=once`); Accept, the watch, a player fighter near pirate 1, pirate 1 gone (kill 1), the rest gone: paid through `TRF_Pay` (help +1, heat -1, `res`, line, prize gap marked); the gap open: busy (`gap`); Accept without player fire (`no_fire`); trader gone (`gone`); 300 s (`time`); hail_box 1: the offer box, Cancel -> the decline box (from a due call), OK -> accepted; heat 3 (`heat`) |
-| `hl-d` | raid spawned: ratio below 1 -> help; a strong trader -> busy; comply and flee -> help; Accept, one player hit (`ph`, no `hit`), the raid killed: trf_raid pays `0.5 x N_eff`, `via=raid result=paid`, `hlp` 3; Accept without fire: unpaid; without an offer one hit and the raid leaving: no pay (5.5 unchanged) |
+| `hl-c` | outnumbered without escorts: help page and pay `0.5 x N_eff`, logs; Decline page; once per visit (`reason=once`); Accept, the watch, a player fighter near pirate 1, pirate 1 gone (kill 1), the rest gone: paid through `TRF_Pay` (help +1, heat -1, `res`, line, prize gap marked); the gap open: busy (`gap`); Accept without player fire (`no_fire`); trader gone (`gone`); 300 s (`time`); hail_box 1: the offer box, Cancel -> the decline box (from a due call), OK -> accepted; heat 3 (`heat`); the lock held by another owner: `result=not_shown`, `hlp` unset, the busy line |
+| `hl-d` | raid spawned: ratio below 1 -> help; a strong trader -> busy; comply and flee -> help; Accept, one player hit (`ph`, no `hit`), the raid killed: trf_raid pays `0.5 x N_eff`, `via=raid result=paid`, `hlp` 3; Accept without fire: unpaid; without an offer one hit and the raid leaving: no pay (5.5 unchanged); a refused raid with `r.fl` raid: ratio above 1 busy, below 1 help; an armed raid ended while a watch holds the offer: the watch keeps it |
 | `hl-e` | `hlp` 23 bytes; dump `help_watch_count`; jump and load settle; no reserved key |
 
 Changed scenarios: `v02-k` (the provider answer after a dialog pick is now a page), `stn-g` (the RU key set includes `hlp*`; `dock_mode` 0 pinned), `v02-g` and `fr-f` (`dock_mode` 0 pinned, DV15).
@@ -130,7 +130,7 @@ Changed scenarios: `v02-k` (the provider answer after a dialog pick is now a pag
 - DV1 The pages are one dialog file, `TRF_HailPg.xml` (the demand page's), with six answers shown or hidden by the init, not the nodes `msg10`/`msg20` of `TRF_Hail.xml` of hail-dialog 5 and not a second file `TRF_HailOf.xml`: `StartTradeDialog` starts at the start node and the text is set in the init, so one file carries the answer, offer, help and demand pages without D6.
 - DV2 Back reopens the menu with `StartTradeDialog` from the due call (the pattern of the pages), not `go_message_name msg00` with `HideAnswer` inside the callback (hail-dialog 5, which needs D6).
 - DV3 An armed raid (not spawned) is no fight: the hail stays skipped with `reason=raid` as before; a busy answer while no attacker is present would be wrong.
-- DV4 Fleeing is `r.st == "flee"` or `r.fl` (the raid record has no decision `flee`). The strength ratio is computed at the hail with the live raid ships (`TRF_Rd_HailRatio`); the raid record does not store st/sr.
+- DV4 Fleeing is `r.st == "flee"` or `r.fl` (the raid record has no decision `flee`). A flight the raid decision itself ordered (`r.fl` `raid` after a refuse or a retarget, `staged` at a staged window end) is not a loss: a refused raid follows the ratio, so a trader that refused and holds its own answers busy. The strength ratio is computed at the hail with the live raid ships (`TRF_Rd_HailRatio`); the raid record does not store st/sr.
 - DV5 Player fire in a fight without a raid record has no source: the engine reports no killer (exe-hook-survey row 1 is not built) and vanilla ships carry no mod triggers (no handle from a uid). A hostile that disappears from the location's live records after a step at which a player-team ship was within `hail_fight_r` of it counts as a player kill; a hostile that jumps out beside a player ship counts too (CHECK D16).
 - DV6 The prize gap is checked at the offer of a fight without a raid record; an accepted offer pays at the fight end and marks the gap. A raid pays through trf_raid's raid help, which has no prize gap (v02 5.5 unchanged).
 - DV7 `hlp` 3 means settled (paid or unpaid), not only paid; the log tells which.
@@ -144,6 +144,22 @@ Changed scenarios: `v02-k` (the provider answer after a dialog pick is now a pag
 - DV15 `v02-g`, `stn-g` and `fr-f` failed since the `dock_mode` default 2 (commit 8535fc9, "host runs unchanged" in PROGRESS was not true): they pin `dock_mode` 0, the mode their checks were written for.
 - DV16 Box mode keeps Cancel = close for the escort and the offers (hail_box 1 unchanged); only pages go back to the menu.
 - DV17 The combat hail counts as a hail (`hn + 1`, cooldown) like the menu.
+
+## 11a. Decisions and hooks
+
+The decisions are the DV items above. Cross-module hooks:
+
+| Caller | Callee | When |
+|---|---|---|
+| trf_raid `TRF_Rd_End` | trf_hail `TRF_HlHelpEnd(id, n, rd.paid, how)` | every raid end, after `TRF_Rd_Pay` |
+| trf_raid `TRF_Rd_Pay` | reads `r.hlp` (2: `rd.ph` counts), tune `help_k` | raid end of a spawned raid |
+| trf_hail `TRF_HlFight` | trf_raid `TRF_Rd_HailRatio(n)`, `TRF_Rd_EscAlive(r, h)` | each hail of a trader with a raid record |
+| trf_hail `TRF_HlNearShips` | trf_plumb `TRF_Near` | each hail, each watch step |
+| trf_danger `TRF_Dc_HailDo` | trf_hail `TRF_HlProvPage(text, "TRF_DcCtDo", key)` | the `dc` option on a page chain |
+| trf_supply `TRF_SupplyCtDo` | trf_hail `TRF_HlProvPage(text, "TRF_SpCtPgOk", "sesc")` | the `sesc` option on a page chain |
+| trf_hail `TRF_HlProvAcc` | `TRF_DcCtDo`, `TRF_SpCtPgOk` | Accept on a provider page (due call) |
+| trf_hail `TRF_Hail_BeforeJump` | `TRF_HlHelpDrop("jump")`: `TRF_HlHelpSettle` of every watch | jump |
+| trf_hail `TRF_Hail_OnLoad` | `hlp = 3`, `reason=load` | load, `hlp == 2` without a live raid record |
 
 ## 12. Left out
 

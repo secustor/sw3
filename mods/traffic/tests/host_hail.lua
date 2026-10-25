@@ -286,6 +286,29 @@ function T_HL_A()
 		and S_Logs(n0, "event=offer trader_id="..idq.." key=xprov handler=HL_PvAcc result=accepted") == 1
 		and S_Logs(n0, "event=close trader_id="..idq.." reason=accept") == 1, "provider page Accept: the function ran, the chain closed");
 	TRF_Dc_HailDo = dcd;
+	-- The real TRF_Dc_HailDo on a danger convoy member: the page, Accept runs TRF_DcCtDo.
+	TRF_Dc_HailOpts = dco;
+	local idd, rd0 = HL_Trader();
+	TRF.live.dc = {};
+	TRF.live.dc[77] = {id={idd}, a={1}, st="go", n=1, ns=1, ok=0, ct=0, e=3, m=1, k=1, ld=idd};
+	rd0.cv = 77;
+	n0 = S_Mark();
+	TRF_HailOpen(idd, "focus");
+	local pk, np, fx = nil, 0, TRF_HlDlgFixed();
+	for i = 1, getn(TRF.live.hl.o) do
+		if not fx[TRF.live.hl.o[i]] then np = np + 1; if TRF.live.hl.o[i] == "dc" then pk = "a_p"..np; end; end;
+	end;
+	HOST_DlgPick(pk or "a_p1");
+	T_Tick(1, 0.5);
+	HOST_Check(pk and h.dlg.open and HOST_DlgVis() == "a_acc a_dec" and S_Logs(n0, "event=page trader_id="..idd.." via=dialog kind=offer key=dc") == 1,
+		"dc: the offer page ("..tostring(pk)..")");
+	HOST_DlgPick("a_acc");
+	T_Tick(1, 0.5);
+	HOST_Check(TRF.live.dc[77].ct > 0 and TRF.live.hl == nil and TRF_BoxHolder() == nil
+		and S_Logs(n0, "module=danger event=contract convoy_id=77 pay_per_member="..TRF.live.dc[77].ct) == 1
+		and S_Logs(n0, "result=accepted") >= 1, "dc page Accept: TRF_DcCtDo took the contract, chain closed");
+	TRF.live.dc = {};
+	rd0.cv = nil;
 	-- trf_supply sesc on a page: TRF_SupplyCtDo opens the hail page; Accept runs TRF_SpCtPgOk (closes the chain, then the
 	-- box OK path; this trader is no sweep convoy, so the contract is not accepted).
 	local sco = TRF_SpCtOffer;
@@ -305,6 +328,22 @@ function T_HL_A()
 	T_Tick(1, 0.5);
 	HOST_Check(TRF.live.hl == nil and TRF.live.spc == nil and S_Logs(n0, "event=close trader_id="..ids.." reason=\"sesc accept\"") == 1
 		and S_Logs(n0, "module=supply event=contract trader_id="..ids.." result=not_accepted") == 1, "sesc page Accept: TRF_SpCtPgOk, chain closed");
+	-- A sweep convoy record (sc 1): Accept takes the contract.
+	local ids2, rs2 = HL_Trader();
+	TRF.live.sp = TRF.live.sp or {};
+	TRF.live.sp[ids2] = {sc=1, f=1};
+	n0 = S_Mark();
+	TRF_HailOpen(ids2, "focus");
+	hlx = TRF.live.hl;
+	HOST_DlgEsc();
+	hlx.w = "wait";
+	HOST_Check(TRF_SupplyCtDo(ids2) == 1 and h.dlg.open and h.dlg.name == "TRF_HailPg", "sesc on a sweep record: the offer page");
+	HOST_DlgPick("a_acc");
+	T_Tick(1, 0.5);
+	HOST_Check(TRF.live.hl == nil and TRF.live.sp[ids2].ct == 900 and rs2.ct == 1
+		and S_Logs(n0, "module=supply event=contract trader_id="..ids2.." pay=900 result=accepted") == 1, "sesc page Accept: contract taken (s.ct, r.ct)");
+	TRF.live.sp[ids2] = nil;
+	rs2.ct = nil;
 	TRF_SpCtOffer = sco;
 	TRF_Dc_HailOpts = dco;
 	-- The last option: no Back on its page.
@@ -582,6 +621,19 @@ function T_HL_C()
 	T_Tick(1, 0.5);
 	HOST_Check(r8.hlp == 2 and type(TRF_H().hlw[id8]) == "table" and TRF.live.hl == nil, "hail_box 1: OK accepts, the watch runs");
 	TRF_HlHelpDrop("test");
+	-- The lock held by another owner: no box, no offer made (hlp unset), the busy line.
+	local id8b, r8b, x8b = HL_Trader();
+	HL_NoEscorts(x8b);
+	HL_Pirates(id8b, 2, 300);
+	TRF_BoxTake("test");
+	nb = getn(h.boxes);
+	n0 = S_Mark();
+	s0, m0 = getn(h.screen), getn(h.msgs);
+	HL_Hail(id8b);
+	HOST_Check(getn(h.boxes) == nb and r8b.hlp == nil and TRF.live.hl == nil and HL_Said(s0, m0, "Not now, we're busy.")
+		and S_Logs(n0, "event=help trader_id="..id8b.." raid_id=nil pay="..p.." result=not_shown reason=no_box") == 1
+		and S_Logs(n0, "result=offered") == 0, "lock held elsewhere: not shown, hlp unset, the busy line");
+	TRF_BoxFree("test");
 	-- Heat 3: no offer (busy, heat).
 	HL_Dlg(1);
 	local id9, r9, x9 = HL_Trader();
@@ -648,6 +700,38 @@ function T_HL_D()
 	HOST_Check(HL_Hail(id4) == "fight" and HOST_DlgVis() == "a_acc a_dec" and S_Logs(n0, "lose_reason=flee answer=help") == 1, "trader fleeing: help page");
 	HL_End();
 	TRF_Rd_End(n4, "cancel");
+	-- A refused raid (the trader flees by the decision, r.fl raid): the ratio decides, a strong trader is busy.
+	local id4b, r4b, x4b, n4b = HL_Raided();
+	r4b.pw = 1000;
+	V_Rd(n4b).dc = "refuse";
+	r4b.st = "flee";
+	r4b.fl = "raid";
+	n0 = S_Mark();
+	HOST_Check(HL_Hail(id4b) == "fight" and HOST_DlgVis() == "a_close" and S_Logs(n0, "losing=false lose_reason=nil answer=busy") == 1,
+		"refused raid, trader fleeing by the decision, ratio above 1: busy");
+	HL_End();
+	r4b.pw = 1;
+	r4b.hlt = nil;
+	n0 = S_Mark();
+	HOST_Check(HL_Hail(id4b) == "fight" and HOST_DlgVis() == "a_acc a_dec" and S_Logs(n0, "lose_reason=ratio answer=help") == 1,
+		"refused raid, ratio below 1: help page");
+	HL_End();
+	TRF_Rd_End(n4b, "cancel");
+	-- An accepted offer with a watch (armed raid, pirates near): the raid end leaves the watch alone.
+	local id4c, r4c, x4c = HL_Trader("C");
+	HL_NoEscorts(x4c);
+	local n4c = V_Raid(id4c);
+	HL_Pirates(id4c, 2, 300);
+	n0 = S_Mark();
+	HL_Hail(id4c);
+	HOST_DlgPick("a_acc");
+	T_Tick(1, 0.5);
+	HOST_Check(V_Rd(n4c).st == "armed" and r4c.hlp == 2 and type(TRF_H().hlw[id4c]) == "table", "armed raid and pirates: Accept starts the watch");
+	TRF_Rd_End(n4c, "cancel");
+	HOST_Check(r4c.hlp == 2 and type(TRF_H().hlw[id4c]) == "table" and S_Logs(n0, "event=help trader_id="..id4c.." raid_id="..n4c) == 0,
+		"armed raid ended: the watch keeps the offer");
+	TRF_HlHelpDrop("test");
+	HOST().carc = {};
 	-- Accept on a raid, one player hit (ph, not deliberate fire), the raid killed: trf_raid pays help_k x N_eff.
 	local id5, r5, x5, n5 = HL_Raided();
 	local hr5 = TRF_H().rd[n5];

@@ -173,7 +173,7 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `contract` | `module=hail event=contract trader_id=4 result=declined` (escort page Decline) | 1 |
 | `offer` | `module=hail event=offer offer_index=1 result=declined` (offer page Decline) / `trader_id=4 key=dc handler=TRF_DcCtDo result=accepted` / `trader_id=4 key=dc result=declined` (provider page) | 1 |
 | `fight` | `module=hail event=fight trader_id=4 via=focus raid_id=nil hostile_count=2 escort_count=0 escort_fight=false trader_strength=nil raid_strength=nil losing=true lose_reason=outnumbered answer=help reason=nil` (combat hail; `answer=busy reason=once\|heat\|own\|strict\|gap\|pay\|no_box`) | 1 |
-| `help` | `module=hail event=help trader_id=4 raid_id=nil pay=1063 via=dialog\|box result=offered` / `result=declined` / `via=watch\|raid result=accepted` | 1 |
+| `help` | `module=hail event=help trader_id=4 raid_id=nil pay=1063 via=dialog\|box result=offered` / `result=not_shown reason=no_box` / `result=declined` / `via=watch\|raid result=accepted` | 1 |
 | `help` | `module=hail event=help trader_id=4 pay=1063 credits=1063 kill_count=1 help=1 via=watch result=paid` / `raid_id=3 credits=1063 via=raid result=paid` | 1 |
 | `help` | `module=hail event=help trader_id=4 pay=1063 kill_count=0 via=watch result=unpaid reason=no_fire\|gone\|time\|count\|lead\|due\|jump\|load` / `raid_id=3 via=raid result=unpaid reason=killed` | 1 |
 | `dialog_fallback` | `module=hail event=dialog_fallback reason=lock` (the box lock held by another owner) | 1 |

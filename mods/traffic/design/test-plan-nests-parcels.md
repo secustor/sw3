@@ -92,7 +92,7 @@ Distances from Kadi (portal graph, `map.script`): Hanoi 1, Prien 1, XK16 2 (via 
 4. Next trader with "Need an escort?": window "FTU <name>: Escort us to <dest> for <n> cr?" with "- Accept" and "- Decline". Decline: the menu again without the escort option. Close.
 5. Next trader with the escort option: Accept: the windows close, line "Stay close, Wolves." (contract accepted).
 6. Hail a trader under pirate attack that holds its own (escorts alive): one window "FTU <name>: Not now, we're busy." with "- Close" only, no menu (D14).
-7. Hail a trader that is losing (lone transport, or a refused raid with the trader fleeing): "FTU <name>: We're outgunned. Clear them off and there's <p> cr in it for you." with Accept/Decline. Decline: "FTU <name>: Then stay out of the line of fire." Hail it again later: "Not now, we're busy." (once per visit).
+7. Hail a trader that is losing (lone transport against the raid, or a raid the trader complied with): "FTU <name>: We're outgunned. Clear them off and there's <p> cr in it for you." with Accept/Decline. Decline: "FTU <name>: Then stay out of the line of fire." Hail it again later: "Not now, we're busy." (once per visit).
 8. Another losing trader: Accept: line "FTU <name>: Deal. Make it quick, Wolves."; destroy the attackers: "FTU <name>: They're gone. <p> cr transferred." and the credits (or, on a mod raid, "Thank you, Wolves. We owe you."); note how many attackers you killed against `kill_count=` (D15, D16).
 9. `HAIL_BOX=1` reinstall (optional): steps 1 and 6 give boxes as before.
 

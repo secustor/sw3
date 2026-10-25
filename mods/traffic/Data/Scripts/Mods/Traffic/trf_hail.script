@@ -379,7 +379,8 @@ end;
 -- the refusal stays). {n = raid id (a record past armed, not ended), nh = hostiles near (nil without a typed list),
 -- ne = live escorts, eo = 1 the escort flight fights, st, sr = trader and raid side (raid, TRF_Rd_HailRatio), lose =
 -- 1 when the fight goes against the trader, why = "comply", "flee", "ratio" (st / sr below hail_help_ratio) or
--- "outnumbered" (no raid record: more hostiles than escorts)}.
+-- "outnumbered" (no raid record: more hostiles than escorts)}. A flight ordered by the raid decision itself (r.fl
+-- "raid" after a refuse, "staged") is no loss: the ratio decides.
 function TRF_HlFight(id, r)
 	if TRF_HlOpt("hail_fight") ~= 1 or TRF_HlTradeWar() then return nil; end;
 	local f = {};
@@ -397,7 +398,7 @@ function TRF_HlFight(id, r)
 	if not f.n and (f.nh or 0) == 0 and not f.eo then return nil; end;
 	if f.n then
 		if rd.dc == "comply" then f.why = "comply";
-		elseif r.st == "flee" or r.fl then f.why = "flee";
+		elseif (r.st == "flee" or r.fl) and r.fl ~= "raid" and r.fl ~= "staged" then f.why = "flee";
 		else
 			local st, sr = TRF_N("TRF_Rd_HailRatio", f.n);
 			if type(st) == "number" and type(sr) == "number" then
@@ -458,11 +459,17 @@ function TRF_HlFightOpen(id, r, f, via)
 	end;
 	L.hl = {id=id, g=TRF.gen, o={}, k=1, t=TRF_HlGt()};
 	if p then
-		r.hlp = 1;
 		L.hl.hp = p;
 		L.hl.hrd = f.n;
 		local how = TRF_HlOffer(TRF_Txt("hlpoffer", nm, format("%d", p)), "hacc", "hdec", "help", "hp", TRF_HlHpOk, TRF_HlHpNo, nil);
-		TRF_HlE("help", "trader_id", id, "raid_id", f.n, "pay", p, "via", how, "result", "offered");
+		-- No page and no box (the chain is closed): no offer made, the busy line.
+		if how then
+			r.hlp = 1;
+			TRF_HlE("help", "trader_id", id, "raid_id", f.n, "pay", p, "via", how, "result", "offered");
+		else
+			TRF_HlE("help", "trader_id", id, "raid_id", f.n, "pay", p, "result", "not_shown", "reason", "no_box");
+			TRF_HlSay(TRF_Txt("hlpbusy", nm), id, nil, 1);
+		end;
 	else
 		TRF_HlAnswer(TRF_Txt("hlpbusy", nm), "busy");
 	end;
@@ -605,10 +612,13 @@ function TRF_HlHelpSettle(id, pay, why)
 end;
 
 -- Raid n on trader id ended (trf_raid TRF_Rd_End, after its raid-help pay): an accepted help offer (r.hlp 2) is
--- settled; paid = the credits of TRF_Rd_Pay (nil: not paid), how = the raid end. 1 when settled.
+-- settled; paid = the credits of TRF_Rd_Pay (nil: not paid), how = the raid end. 1 when settled. An offer owned by
+-- the help watch (accepted without a spawned raid) stays with the watch.
 function TRF_HlHelpEnd(id, n, paid, how)
 	local r = TRF_HlRec(id);
 	if not r or r.hlp ~= 2 then return nil; end;
+	local W = TRF_HlHw();
+	if W and type(W[id]) == "table" then return nil; end;
 	r.hlp = 3;
 	if type(paid) == "number" then
 		TRF_HlStat("hl_help_paid");
