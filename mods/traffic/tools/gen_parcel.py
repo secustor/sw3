@@ -64,9 +64,11 @@ def destinations(lua):
     if p.returncode != 0 or p.stderr:
         raise SystemExit("gen_parcel: lua failed (%d): %s" % (p.returncode, p.stderr.decode("latin1")[:400]))
     out = []
-    for line in p.stdout.decode("ascii").split("\n"):
+    for line in p.stdout.decode("latin1").split("\n"):
         if line:
-            i, d, k = line.split(" ")
+            # idx, folder, count; a folder with a space or non-ASCII byte stays whole for check_dst to report.
+            i, rest = line.split(" ", 1)
+            d, k = rest.rsplit(" ", 1)
             out.append((int(i), d, int(k)))
     return sorted(out)
 

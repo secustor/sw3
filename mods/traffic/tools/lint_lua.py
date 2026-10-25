@@ -375,10 +375,11 @@ TEXT_FN = re.compile(r"TRF_\w+_Text$")
 
 def text_keys(path):
     """Literal (key, text, line, table) pairs of the TRF_<M>_Text() functions of one file ("return {k = "s", ...}", or
-    "return TRF_F({k = "s", ...})" when a helper adds generated keys to the literal table)."""
+    "return TRF_F({k = "s", ...})" when a helper adds generated keys to the literal table), and the (name, line) of every
+    TRF_<M>_Text whose body has another form (its keys escape the duplicate-text check)."""
     toks = file_tokens(path)
     v = [t[1] for t in toks]
-    out = []
+    out, skipped = [], []
     for i in range(len(toks) - 5):
         if not (v[i] == "function" and TEXT_FN.match(v[i + 1]) and v[i + 2:i + 5] == ["(", ")", "return"]):
             continue
@@ -387,6 +388,7 @@ def text_keys(path):
         elif i + 7 < len(toks) and toks[i + 5][0] == "name" and v[i + 6:i + 8] == ["(", "{"]:
             j = i + 8
         else:
+            skipped.append((v[i + 1], toks[i + 1][2]))
             continue
         depth = 1
         while j < len(toks) and depth > 0:
@@ -398,7 +400,7 @@ def text_keys(path):
                   and toks[j + 2][0] == "str" and v[j + 3] in (",", ";", "}")):
                 out.append((re.sub(r"[^a-z0-9]", "", v[j].lower()), v[j + 2][1:-1], toks[j][2], v[i + 1]))
             j += 1
-    return out
+    return out, skipped
 
 
 def base(p):
@@ -439,7 +441,10 @@ def lint_calls(paths, verbose=False, quiet=False):
     for p in paths:
         if base(p) in KITS:
             continue        # exp kits never load with trf_loc, so their tables are never merged
-        for k, txt, ln, fn in text_keys(p):
+        pairs, skipped = text_keys(p)
+        for fn, ln in skipped:
+            add(p, ln, "warn", "%s: text table not read (expected return {...} or return TRF_F({...})); its keys escape the duplicate check" % fn)
+        for k, txt, ln, fn in pairs:
             o = texts.setdefault(k, (txt, p, ln, fn))
             if o[0] != txt:
                 add(p, ln, "error", "text key %s of %s differs from %s (%s:%d); trf_loc keeps only the one TRF_Loc_TextFns lists first"

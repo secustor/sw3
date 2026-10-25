@@ -1552,11 +1552,16 @@ function TRF_Pc_Dump()
 		"ban", R.ban, "ok_count", R.ok, "fail_count", R.fail, "owed", R.ow, "customs_flags", cf);
 end;
 
+-- A destination entry has the shape {location folder, trade station count}.
+function TRF_PcDstOk(e)
+	return type(e) == "table" and type(e[1]) == "string" and type(e[2]) == "number";
+end;
+
 -- Destination entry {location folder, trade station count} of system idx (TRF_PcDstData), or nil.
 function TRF_PcDstOf(idx)
 	if type(idx) ~= "number" or type(TRF_PcDstData) ~= "function" then return nil; end;
 	local e = TRF_PcDstData()[idx];
-	if type(e) == "table" and type(e[1]) == "string" and type(e[2]) == "number" then return e; end;
+	if TRF_PcDstOk(e) then return e; end;
 	return nil;
 end;
 
@@ -1566,7 +1571,7 @@ function TRF_PcDstText(t)
 	local d = {};
 	if type(TRF_PcDstData) == "function" then d = TRF_PcDstData(); end;
 	for i, x in d do
-		if type(i) == "number" and type(x) == "table" and type(x[1]) == "string" and type(x[2]) == "number" then
+		if type(i) == "number" and TRF_PcDstOk(x) then
 			t["pclq"..i] = "Sealed parcel: "..x[1];
 			local w = "Deliver the sealed parcel to the trade station at "..x[1]..", marked on your map on arrival.";
 			if x[2] > 1 then w = "Deliver the sealed parcel to the marked trade station at "..x[1]..". Your map marks it on arrival."; end;

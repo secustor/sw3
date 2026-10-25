@@ -185,11 +185,11 @@ function T_PCL_A()
 		and TRF_Txt("pcllate", "Taira") == "Courier desk: the Taira parcel is overdue. Deposit forfeited."
 		and TRF_Txt("pclneed1", "Taira") == "Taira station is out of machinery and the refinery is idle.", "186 texts (36 and 75 destinations x 2); the design's lines");
 	-- Logbook keys per destination: every map system with a trade station has pclq<idx> and pclqd<idx>, no other system.
-	local mp, miss, nd = TRF_Map(), "", 0;
+	local mp, miss, nd, tx = TRF_Map(), "", 0, TRF_Pc_Text();
 	for i = 1, getn(mp.sys) do
 		local has = getn(TRF_PcTradeSt(i)) > 0;
 		if has then nd = nd + 1; end;
-		if has ~= (TRF_PcDstOf(i) ~= nil) or has ~= (TRF_Pc_Text()["pclqd"..i] ~= nil) then miss = miss.." "..mp.sys[i].name; end;
+		if has ~= (TRF_PcDstOf(i) ~= nil) or has ~= (tx["pclqd"..i] ~= nil) then miss = miss.." "..mp.sys[i].name; end;
 	end;
 	local dq, kq = PC_Idx("dalled"), PC_Idx("kadenoa");
 	HOST_Check(nd == 75 and miss == "" and TRF_Txt("pclq"..dq) == "Sealed parcel: Dalled"
