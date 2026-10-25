@@ -9,7 +9,7 @@ Tags: **[V]** read in the code, bytes or a file, or measured on the host; **[I]*
 | # | Item | Finding | Cost | DLL helps? |
 |---|---|---|---|---|
 | 1 | Trigger stepping | One 0.5 s step per frame at most; the remainder is dropped; every fire compiles `"return NAME();"` | about 0.8 µs per compile on the host; timers run 3 to 40 % slow (9.3) | Not worth it for the compile; a small patch for the remainder |
-| 1b | Lua C stack leak | Each fired condition leaves its result on the 1024-slot Lua stack. Only ScriptParam and LoadLevel reset it | none until the stack is full; then an unprotected error exits the process | yes, `settop(L,0)` in T4 (P1) |
+| 1b | Lua C stack leak | Each fired condition, and the results of the last ScriptParam callback, stay on the 1024-slot Lua stack. Only ScriptParam and LoadLevel reset it; run A names the likely source (1.5) | none until the stack is full; then an unprotected error exits the process | yes, `settop(L,0)` in T4 (P1) |
 | 2 | Lua GC | Stock Lua 4 stop-the-world GC; threshold `2 × live`; ClearGlobals forces one full GC per location entry | host 0.5 ms per GC at 5.8 MB live with the mod | not needed; `collectgarbage()` works in game |
 | 3 | Save | No size cap on the Script chunk. TRF is 9 KB of a 444 KB global table in a real save. One hard limit: 32,766 bytes per String on load | about 1 µs per entry; TRF adds < 2 % to the save body | the 40 KB budget is self-imposed only |
 | 4 | ClearGlobals + reload | Deletes every data global and every trigger, forces a GC, then recompiles 481 KB of vanilla includes and 1.14 MB of mod source | host 21 ms; in game 0.1 to 0.2 s, hidden by the load screen | carry (T3) is the right design; no further hook |
@@ -51,6 +51,32 @@ A detour of the two `ExecuteString` calls at 0x5e8e03/0x5e8e27 could cut the str
 - The DLL's `call_lua` saves `lua_gettop` and restores it, so it preserves any leak and never clears it.
 - If about 1,000 conditions are evaluated with no ScriptParam call in between, the next push fails with "stack overflow". At top level (no `errorJmp`) Lua 4's `luaD_breakrun` prints "unable to recover; exiting" and calls `exit()` [I, stock 4.0.1 behaviour]. One way to get there is a mod volume trigger whose condition keeps returning false every 0.5 s in a quiet system (2 slots/s, about 8 minutes).
 - Fix P1 (section 10).
+
+### 1.5 Which triggers leak (run A evidence)
+Run A (`traffic-runs/0-20261025-002947`, 40,800 frames, `total=2101` leak frames; `0-20261025-112459` 701, `0-20261025-113535` 601) with the P1 guard. The guard counts frames with slots left at T4, not slots. Rates: 0 while `tick held (no location)`; about 1 per 40 frames in quiet flight (t=19100..23000: 100 leak frames in 3,900 frames, frame dt about 0.036 s, so one leak every 1.4 s); exactly 1 per frame during pirate fights (t=28300..28600: 400 in 400, between the `pirate kill` credits and the raid `flee`, while the raid was still on, before the dock); one logged frame with `slots=6` (total=1001) in a 7-flight fight; all other logged frames `slots=1`. Camera at the bursts `cm_mode=1 camtype=2`.
+
+Leak sources in the exe (scripts: `.work/stackleak/`):
+
+| Source | Slots per call | When | Evidence |
+|---|---|---|---|
+| `ScriptParam` 0x5e8380 / `Execute` 0x5e8600 | `nresults` (1 at 72 of 94 sites); 1 nil when the function is missing | every engine formula callback, until the next ScriptParam ctor | [V] |
+| `Trigger::OnEvent` condition, `ExecuteString` at 0x5e8e03 | 1 (`return NAME();`) | only inside a 0.5 s trigger step (1.1) | [V] |
+| `ExecuteScriptFunction` 0x5c93a0 | 2 (the `getglobal` value and the result); 1 when the name is not a function | `ACTION_INIT`, `ACTION_FINI`, `ACTION_LEAVELOCATION`, `OnStartGame`, `SD+0x34` (callers 0x4c785c, 0x4c7caf, 0x4c7e25, 0x4e2787, 0x4e3b27, 0x5cf8c3) | [V] |
+| other `ExecuteString` / `lua_dostring` callers (console 0x4a3287, dialog 0x4da5d2/0x4da8b7, `OnStartGame` stub 0x4dea78/0x4debc7, RestoreTeam 0x5bf244) | 0 for statement code | rare, event driven | [V] sites, [I] results |
+
+- **ScriptParam** [V]: the ctor does `settop(L, 0)` (0x5e8442) and `getglobal(name)` (0x5e844c); a missing function returns at 0x5e848a with the nil left. `Execute` runs `lua_call(L, [+8], [+0xc])` (0x5e8623). The getters (0x5e86f0 and others) pop only what they push (`settop(L, -2)` after each `gettable`); the dtor 0x5e84f0 does not touch the stack. So after a callback its `nresults` values stay until the next ScriptParam ctor or T4. Of the 94 sites, 72 ask for 1 result, 12 for none, 6 take the count from a register; 0x5af1bd `CalculateExpPoints`, 0x62290c `UpgradeDamageToCriticalHit` and 0x634bdb ask for 2, and **0x5042c4 asks for 6**: an AI `Task` method 0x504270 (vtable slot 0x726e0c, function name at `task+0x20`, 2 arguments) that calls only when its float or int argument changed. Several combat callbacks re-run when their input changes (`ModifyShipMaxSpeed` 0x627310 compares the cached arguments first), so in a fight at least one runs every frame [I].
+- **Trigger conditions** [V]: all 25 event sends (`0x4bc1b0`, the only caller of `DispatchEvent` 0x5ca5d0) sit in the `vtbl+0x2c` update methods of the engine trigger classes (timer 0x4c3ab0, attack 0x4bca40, HP 0x4c31b0, focus 0x4c2da0, died 0x4c2420, f_died 0x4bd8b0, ...), which `TriggerTick` calls once per 0.5 s step. So a condition runs only in a step frame: at 1x and 28 fps one frame in 14 [I that nothing else calls `vtbl+0x2c`]. Only at 8x, where an updated frame carries 0.5 s or more of game time (9.1, 9.3), can a step run every frame [I].
+- Every mod trigger is `NewTrigger(kind, nil, "<cb>(...)--", ...)`, so its condition is `return Trig_Cond();` (always `TRUE`, leaves `number:1`) and its action string names it; vanilla `NewTrigger` users mostly pass named conditions (`Timer1_Cond`, `AllDied_1_Cond`).
+- A ScriptParam call in the frame also clears the condition slots left before it (its `settop(0)`), so the guard undercounts trigger fires in combat [V].
+- Side effect [V]: `ExecuteString` tests `tonumber(-1)` whenever `gettop >= 1` (0x5c9364-0x5c9393), also when the chunk returned nothing, so a leftover value decides the result of a condition whose function returns nothing.
+
+Ranking:
+1. **ScriptParam results** [V mechanism, I which callback]: the only source that fits all three observations: one leak every frame in combat (formula callbacks for weapons, speed, shields), `slots=1` (most sites ask for 1 result) and the single `slots=6` frame (0x5042c4 is the only 6-result site). The next callback clears them, so they never grow past `nresults`; the growth of 1.4 needs trigger conditions with no ScriptParam call in between.
+2. **Trigger conditions** [V mechanism, I share]: cannot give one leak per frame at 1x (step every 14 frames). They can explain part of the quiet rate (one fire every third step) and the bursts only if the fights ran at 8x. The mod's own triggers are among them (attack, died, HP, focus, f_inside, f_object_inside).
+3. **ExecuteScriptFunction** [V]: 2 slots per call, quest and location events only.
+4. Other dostring sites [I]: rare, no results.
+
+The DLL sampler (`trig_log=1`, README "DLL keys and log lines") settles 1 against 2 in one session: `event=trig_frame` for a leak frame gives `fires=0` and `sp="<callback>"` for ScriptParam residue, or `c1="return Trig_Cond();" a1="TRF_...(...)--"` for a mod trigger; `event=stack_leak ... v1=number:<x>` shows the value.
 
 ## 2. Lua GC
 
@@ -195,5 +221,5 @@ Vanilla `NewTrigger("timer", …, 10)` periods and the mod's `TRF_Every` (summed
 2. Object count in `LM+0x20` per system (the same walk as P3), to put a number on the lookup cost.
 3. Whether every GameObject load path raises 0x7ad394 (5.3, case 2). P3 makes this moot.
 4. The meaning of `[0x7ba4d0]` (8), which skips T4 when it is set.
-5. The owner of the trigger list `[LM+0x2c]` and the event types that fire repeatedly while their condition is false (1.1, 1.4).
+5. The owner of the trigger list `[LM+0x2c]` and the event types that fire repeatedly while their condition is false (1.1, 1.4). Which source leaks in combat: `trig_log=1` session (1.5).
 6. x87 check: already measured at 53-bit under Wine (E0.1); repeat `TRF_Log(16777217 + 0)` only on a different host (9.2).
