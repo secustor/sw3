@@ -1250,13 +1250,13 @@ function TRF_Pl_Fix()
 end;
 
 -- wb_box_after_fee: 1 allows an offer box at the trade dock after a #3 fee box (set once E0.6 passes).
--- Group war against the player by the mercenary clans (00 section 8 E2, design/merc-spec.md 4), each 0 until E0.13
--- passes and kept here so the keys exist without trf_merc: merc_war (a betrayed pack fights back; 0: it leaves through
+-- Group war against the player by the mercenary clans (00 section 8 E2, design/merc-spec.md 4), merc_war 1 (user decision
+-- 2026-10-25), the other three 0 until E0.13 passes, kept here so the keys exist without trf_merc: merc_war (a betrayed pack fights back, default 1; 0: it leaves through
 -- its portal), merc_hunt (P M14 hunters at war at spawn), merc_hostile (rival HOSTILE meetings, 13 section 6; replaces
 -- rv_hostile), merc_legion (the Black Legion's rival entry and HOSTILE variant, 12 section 11.4). Read only by the
 -- module's own gates; no behaviour reads them yet.
 function TRF_Pl_OptDef()
-	return {wb_box_after_fee=0, merc_war=0, merc_hunt=0, merc_hostile=0, merc_legion=0};
+	return {wb_box_after_fee=0, merc_war=1, merc_hunt=0, merc_hostile=0, merc_legion=0};
 end;
 
 -- prize_rs: the shared real-time gap between combat prize payouts (00 section 8 B1).

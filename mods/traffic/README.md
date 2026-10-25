@@ -862,7 +862,8 @@ On screen (step 3; the fielded stage is at most 2, so no corvette or mothership 
 | `hail_xml` (install sets 1), tune `hail_box` (`HAIL_BOX`, 2 on the clone) | 0, 1 | both needed for the dialog pages; else the box chain |
 | `rv_enabled` | 0 | 1 lets the tick choose up to 3 rival clans (no rival behaviour before step 4) |
 | `mc_el_c` | 8 | the elite clan (Black Legion; 0 turns its rules off) |
-| `merc_war`, `merc_hunt`, `merc_hostile`, `merc_legion` | 0 | group war against the player (betrayal fight-back and a refused payment answered with an attack, hunters, rival HOSTILE meetings, the Legion), off until E0.13 |
+| `merc_war` | 1 | a betrayed pack fights back and a refused payment can be answered with an attack (0: the pack leaves through its portal) |
+| `merc_hunt`, `merc_hostile`, `merc_legion` | 0 | group war against the player (hunters, rival HOSTILE meetings, the Legion), off until E0.13 |
 | tune `c_hire`, `c_share`, `c_blood`, `merc_reserve_k` | 700, 25, 4, 2 | fee base, share per kill (x L_w^2 x d_k), blood money per loss (x share), the wallet reserve at a hire (x price) |
 | tune `merc_hire_s`, `merc_ext_k`, `merc_wait_s`, `merc_cd` | 600, 0.75, 240, 4 | hire seconds, extension price (x fee), wait of an unhired pack, legs between two meetings of a clan |
 | tune `merc_p`, `merc_sweep_p`, `merc_p_max`, `mc_ships` | {5, 10, 35, 55, 15, 5}, 25, 80, 14 | offer chance by phase, sweep bonus, chance cap, live clan ships per visit |

@@ -99,12 +99,13 @@ function T_MC_A()
 	HOST_Check(ml[getn(ml)] == "Mc" and MC_Has(tfs, "TRF_Pc_Text,TRF_Mc_Text,TRF_Loc_Text,") and MC_Has(ufs, "TRF_Pc_Text,TRF_Mc_Text,"),
 		"TRF_ModList ends with Mc; TRF_Mc_Text after the parcel table in both text lists");
 	HOST_Check(TRF_Mc_OptDef().merc == 0 and TRF_McOpt("merc") == 1 and TRF_McOpt("rv_enabled") == 0 and TRF_McOpt("mc_el_c") == 8
-		and TRF_McOpt("merc_war") == 0 and TRF_McOpt("merc_hostile") == 0 and TRF_McOpt("merc_board") == 1 and TRF_McOpt("mc_launch") == 0,
-		"merc off by default (on in these runs), rivals off, elite clan 8, group war off, board on, launches off");
+		and TRF_McOpt("merc_war") == 1 and TRF_McOpt("merc_hostile") == 0 and TRF_McOpt("merc_hunt") == 0 and TRF_McOpt("merc_board") == 1 and TRF_McOpt("mc_launch") == 0,
+		"merc off by default (on in these runs), rivals off, elite clan 8, merc_war on and the other group-war keys off, board on, launches off");
 	MC_Set("mc_el_c", 13); HOST_Check(TRF_McOpt("mc_el_c") == 8, "mc_el_c outside 0..12 reads 8");
 	MC_Set("mc_el_c", 0); HOST_Check(TRF_McOpt("mc_el_c") == 0 and TRF_McElite() == 0, "mc_el_c 0: no elite clan");
 	MC_Set("mc_el_c", nil);
-	MC_Set("merc_war", 5); HOST_Check(TRF_McOpt("merc_war") == 0, "merc_war other than 1 reads 0");
+	MC_Set("merc_war", 5); HOST_Check(TRF_McOpt("merc_war") == 1, "merc_war other than 0/1 reads the default 1");
+	MC_Set("merc_war", 0); HOST_Check(TRF_McOpt("merc_war") == 0, "merc_war 0 reads 0");
 	MC_Set("merc_war", nil);
 	local T = TRF_McTune();
 	HOST_Check(T.c_hire == 700 and T.merc_p[4] == 55 and T.mc_up[2] == 0.5 and T.mc_st_up[3] == 78 and T.mc_st_dn[1] == 22 and T.mc_ships == 14 and T.merc_ext_k == 0.75
@@ -1182,6 +1183,7 @@ function T_MC_I()
 	HOST_Check(v.st == "leave" and TRF.mc.h == nil and S_Logs(n0, "event=settle flight=1 clan="..c.." share="..s0.." blood="..b0.." total="..t0.." taken="..t0.." result=paid reason=half") == 1
 		and h.credits == 1000000 - t0 and TRF_McT(c).jobs == 1, "half the pack lost: settled directly (share 4 x sh + blood 2 x bm), completed, leaves");
 	-- Betrayal by counted fire (merc_war 0): rel -3, bk 1, bloc-mates -2, grudge 2, heat +1, blacklist, the pack leaves.
+	MC_Set("merc_war", 0);
 	MC_Enter("heos", 0);
 	MC_Put(4, {met=0, rel=1}); MC_Put(5, {met=0, rel=1});
 	v = MC_Hire();
@@ -1200,9 +1202,9 @@ function T_MC_I()
 	n0 = S_Mark();
 	MC_Enter("gaoba", 0);
 	HOST_Check(S_Logs(n0, "reason=black") == 1, "blacklisted: no roll");
-	-- merc_war 1: betrayal by a kill after a hit: grudge +3, war, attack, break-off at half.
+	-- merc_war 1 (the default): betrayal by a kill after a hit: grudge +3, war, attack, break-off at half.
 	TRF.mc.x = nil;
-	MC_Set("merc_war", 1);
+	MC_Set("merc_war", nil);
 	MC_Enter("heos", 0);
 	MC_Put(4, {met=0, rel=0, bk=0, g=0}); MC_Put(5, {met=0, rel=0, bk=0, g=0});
 	v = MC_Hire();
@@ -1338,6 +1340,7 @@ function T_MC_J()
 	HOST_Check(h.credits == 0 and TRF_McT(c).owe == t2 - 1000 and TRF_McRel(c) == 0, "Pay short: the wallet emptied, the rest owe, rel +1 - 1");
 	h.credits = 1000000;
 	-- Refuse with merc_war 0: the roll's attack degrades to leave; owe, rel -1.
+	MC_Set("merc_war", 0);
 	TRF_Mc_Mark(c, "owe", 0);
 	MC_Enter("heos", 0);
 	MC_Put(4, {met=0, rel=0}); MC_Put(5, {met=0, rel=0});
@@ -1355,7 +1358,7 @@ function T_MC_J()
 		and TRF_McRel(c) == -1 and (v.st == "leave" or v.st == "gone"), "Refuse (merc_war 0): attack degrades to leave, the total owe, rel -1");
 	-- Refuse with merc_war 1 and the roll's attack: betrayal consequences, group war.
 	TRF_Mc_Mark(c, "owe", 0); TRF_Mc_Mark(c, "rel", 0);
-	MC_Set("merc_war", 1);
+	MC_Set("merc_war", nil);
 	MC_Enter("heos", 0);
 	MC_Put(4, {met=0, rel=0, bk=0}); MC_Put(5, {met=0, rel=0, bk=0});
 	v = MC_Hire(); c = v.c;

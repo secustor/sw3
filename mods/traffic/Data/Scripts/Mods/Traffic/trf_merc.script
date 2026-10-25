@@ -94,9 +94,12 @@ function TRF_McOpt(key)
 	local v = nil;
 	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
 	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
-	if d == nil and type(v) == "number" then
-		if v ~= 1 then return 0; end;
-		return 1;
+	if d == nil and (v == nil or type(v) == "number") then
+		if v == 1 or v == 0 then return v; end;
+		local gd = nil;
+		if type(TRF_Pl_OptDef) == "function" then gd = TRF_Pl_OptDef()[key]; end;
+		if gd == nil then return 0; end;
+		return gd;
 	end;
 	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
 	if type(v) == "number" then
@@ -3199,8 +3202,8 @@ end;
 -- Config keys (design 6 config; merc-spec 7). merc 0 until E0.13 (the release gate) passes; merc_board, the options of
 -- P D.2 (merc_book, merc_report, merc_marker, merc_calls, merc_transfer), rv_enabled (the rival role; 0 in this step, so
 -- no clan becomes a rival without rival behaviour) and mc_launch are read by the later steps; mc_el_c the elite clan
--- (0 off); rv_deny extra lowercase system names for the rival role. The group-war keys merc_war, merc_hunt,
--- merc_hostile, merc_legion are in TRF_Pl_OptDef.
+-- (0 off); rv_deny extra lowercase system names for the rival role. The group-war keys merc_war (default 1), merc_hunt,
+-- merc_hostile, merc_legion (default 0) are in TRF_Pl_OptDef.
 function TRF_Mc_OptDef()
 	return {merc=0, merc_board=1, merc_book=0, merc_report=0, merc_marker=0, merc_calls=0, merc_transfer=0, rv_enabled=0,
 		mc_launch=0, mc_el_c=8, rv_deny={}};
