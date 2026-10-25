@@ -2251,7 +2251,7 @@ end;
 -- per slot in per mille of hp0 (0: lost or not rebuilt; a live ship whose HP cannot be read counts as full, never as 1).
 -- hpm (optional): the HP by slot the caller read this step, so the step does not read every ship twice.
 function TRF_McWriteH(v, hpm)
-	local p = {};
+	local p, full = {}, TRF_McHK().pm;
 	for j = 1, v.nj or 0 do
 		local s = v.sh[j];
 		p[j] = 0;
@@ -2260,7 +2260,7 @@ function TRF_McWriteH(v, hpm)
 			if type(hpm) == "table" then hp = hpm[j]; end;
 			if hp == nil then hp = TRF_McHp(s); end;
 			p[j] = TRF_McPmOf(hp, v.hp0[j]);
-			if p[j] == 0 then p[j] = TRF_McHK().pm; end;
+			if p[j] == 0 then p[j] = full; end;
 		end;
 	end;
 	TRF_McPutH({c=v.c, sys=v.idx, ty=v.cp, pw=v.pw, n=v.nj, tr=floor(max(0, v.tr)), fee=v.fee, sh=v.sh1, bm=v.bm, k=v.k, lo=v.lo,
@@ -2950,7 +2950,6 @@ function TRF_McFollow(cur, via)
 	mc.v = v;
 	TRF_McHiredSetup(v);
 	TRF_McArm(v);
-	TRF_McWriteH(v);
 	if via == "arrival" then TRF_N("TRF_ArrivalLine", "merc", TRF_McTxt("mcresume", TRF_McClanName(c))); end;
 	TRF_McStat("merc_follow");
 	TRF_McE("follow", "flight", n, "clan", c, "system", TRF_McSysName(cur), "ship_count", v.n0, "sit_out", sit, "time", v.tr,
@@ -3029,9 +3028,9 @@ function TRF_McAdopt(n, sh, ix)
 		if p <= 0 then p = HK.pm; end;
 		local hp = TRF_McHp(sh[i]);
 		if hp then v.hp0[j] = hp * HK.pm / p; end;
-		local p = TRF_McPilot(sh[i]);
+		local pl = TRF_McPilot(sh[i]);
 		local fl = nil;
-		if p then fl = call(function(x) return x:GetFlight(); end, {p}, "x", TRF_McNoErr); end;
+		if pl then fl = call(function(x) return x:GetFlight(); end, {pl}, "x", TRF_McNoErr); end;
 		if TRF_McObj(fl) then
 			local dup = nil;
 			for k = 1, getn(v.fl) do if v.fl[k] == fl then dup = 1; end; end;
