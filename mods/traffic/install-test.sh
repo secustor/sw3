@@ -22,8 +22,9 @@
 # WB_BOX_AFTER_FEE=0|1 (worldbuilding plumbing, design/wb-plumbing-spec.md 4.2: 1 allows an offer box at the
 # trade dock after a station fee box, set once E0.6 passes); FEQ_AT=<system> (debug: the next leg schedules an equipment convoy there, skipping the pro/strength
 # tests); BASE_AT=<system> (debug: the next leg founds a pirate base there, skipping the disruption hold, open sweep,
-# neighbour and chance tests; the system must be on the map allow-list with a site); LOC=1 (loc_mode 1 and loc/trf_en.loc copied to Data/LocData/English/, CHECK E0.6; unset removes the copy;
-# loc/trf_ru.loc, the station voices keys in Russian, goes to Data/LocData/Russian/ the same way when the clone has that folder).
+# neighbour and chance tests; the system must be on the map allow-list with a site); LOC=1 (loc_mode 1: the screen lines as #TRF_<key> keys, CHECK E0.6;
+# loc/trf_en.loc goes to Data/LocData/English/ on every run, the logbook titles need it in every loc_mode, and
+# loc/trf_ru.loc, the station voices keys in Russian, to Data/LocData/Russian/ when the clone has that folder).
 # VOICE_EVENTS=0|1 (station events, design/station-voices-spec.md 17).
 # DOCK_MODE=0|1|2 (cfg dock_mode, trader docking: 0 removal at the approach point, 1 ComeToTradeStation, 2 flight to the docking position; default 2).
 # HAIL_FIGHT=0|1 (cfg hail_fight, the combat hail of design/hail-spec.md 3: a trader in a fight answers busy or offers help pay; default 1).
@@ -48,7 +49,7 @@
 # MERCS=0|1 (cfg merc, mercenary clans, design/merc-spec.md; default 0 until CHECK E0.13 passes; step 1 runs the clan
 # record at the region tick, no flights); written only when set.
 # NEWS=1: the trf_* records of news/trf_news.xml (tools/gen_news.py) merged into the clone's Data/Game/News.xml
-# (the vanilla file is kept as News.xml.trf-orig), loc/trf_en.loc copied as with LOC=1, and news_mode=2 unless
+# (the vanilla file is kept as News.xml.trf-orig; loc/trf_en.loc is copied on every run), and news_mode=2 unless
 # NEWS_MODE is set; unset restores News.xml from News.xml.trf-orig.
 # HAIL_BOX=0|1|2 (default 2 here; the shipped default is 1): tune hail_box (0 hail answers as lines, 1 ShowMsgBox
 # chain, 2 the hail menu as the trade dialog). Data/Scripts/Trade/TRF_Hail.xml and TRF_HailPg.xml (the demand result
@@ -180,11 +181,9 @@ cp -R "$SCRIPTS_SRC/." "$SCRIPTS_DST/"
 cp "$here/Data/Scripts/Trade/TRF_Hail.xml" "$COPY/Data/Scripts/Trade/TRF_Hail.xml"
 cp "$here/Data/Scripts/Trade/TRF_HailPg.xml" "$COPY/Data/Scripts/Trade/TRF_HailPg.xml"
 locd=$COPY/Data/LocData/English
-if [ "${LOC:-0}" = 1 ] || [ "${NEWS:-0}" = 1 ]; then cp "$here/loc/trf_en.loc" "$locd/trf_en.loc"; else rm -f "$locd/trf_en.loc"; fi
+cp "$here/loc/trf_en.loc" "$locd/trf_en.loc"
 locr=$COPY/Data/LocData/Russian
-if [ -d "$locr" ]; then
-    if [ "${LOC:-0}" = 1 ] || [ "${NEWS:-0}" = 1 ]; then cp "$here/loc/trf_ru.loc" "$locr/trf_ru.loc"; else rm -f "$locr/trf_ru.loc"; fi
-fi
+[ ! -d "$locr" ] || cp "$here/loc/trf_ru.loc" "$locr/trf_ru.loc"
 newsx=$COPY/Data/Game/News.xml
 if [ "${NEWS:-0}" = 1 ]; then
     [ -f "$newsx.trf-orig" ] || cp -p "$newsx" "$newsx.trf-orig"
@@ -216,7 +215,7 @@ echo "installed zlib1.dll (sha1 $(shasum "$COPY/zlib1.dll" | cut -d' ' -f1))"
 echo "scripts in $SCRIPTS_DST:"; ls "$SCRIPTS_DST" | sed 's/^/  /'
 echo "config.script: $(tr -d '\r' < "$SCRIPTS_DST/config.script")"
 echo "hail dialog: $COPY/Data/Scripts/Trade/TRF_Hail.xml, TRF_HailPg.xml"
-[ ! -f "$locd/trf_en.loc" ] || echo "loc: $locd/trf_en.loc$([ "${LOC:-0}" = 1 ] && echo ' (loc_mode 1)')"
+echo "loc: $locd/trf_en.loc (loc_mode $([ "${LOC:-0}" = 1 ] && echo 1 || echo 0))"
 [ ! -f "$locr/trf_ru.loc" ] || echo "loc: $locr/trf_ru.loc"
 [ ! -f "$newsx.trf-orig" ] || echo "news: $(grep -c '<name>trf_' "$newsx") trf_ records in $newsx (vanilla in News.xml.trf-orig)"
 echo "sw3tp.ini [traffic]: $(awk '{sub(/\r$/,"")} /^\[/{p=($0=="[traffic]")} p&&!/^\[/{printf "%s ",$0}' "$ini")"

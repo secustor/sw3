@@ -3,7 +3,8 @@
 # Reverts what install.sh did, from <game dir>/sw3-traffic-backup/manifest.txt: removes the installed scripts
 # and the directories it created, restores backed-up files, puts the [traffic] section of sw3tp.ini back as it
 # was before the first install (or removes it), and removes sw3-traffic-backup/. Other sections stay.
-# After install.sh --news this restores Data/Game/News.xml from its backup and removes Data/LocData/<language>/trf_en.loc.
+# After install.sh --news this restores Data/Game/News.xml from its backup. Data/LocData/<language>/trf_en.loc, written by
+# every install, is a created file in the manifest (a backup if one was there) and is reverted with the scripts.
 # After install.sh --pilots this restores Data/Game/Pilots.xml from its backup (the TRF_McP_ templates go with it; a
 # saved pilot hired from one keeps the name stored in the save, design/proposals/merc-pilot-names.md 4.5, check EN.4).
 # The hail dialogs Data/Scripts/Trade/TRF_Hail.xml and TRF_HailPg.xml are created files in the manifest and are removed

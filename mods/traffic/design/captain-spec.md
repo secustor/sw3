@@ -244,7 +244,7 @@ Changed scenarios: `pl-a` (8 lines, 6 boxes, 3 payers, 11 seed providers), `sv-a
 | EW4.2 | the attached marker follows the ship; `ComeToPortal` with an escorting wing reaches the portal; `f_object_inside` at 25 fires; ships and marker delete without a script error | `event=escaped slot=<s> ... to=<dest> ... reason=portal` (not `watchdog` or `vanished`), an empty `ScriptErrors.log` |
 | EW4.3 | string callbacks with parameters (slot, generation, TRF.gen) | `event=death slot=<s> generation=<g> ... reason=died` from `TRF_CapDied(<s>,<g>,<gen>)--` |
 | EW4.4 | board text before `PatrolStationDlg` and the informant box (E0.6) | `module=captain event=board ... line_count=<n> result=lines`, `module=plumb event=dock kind=patrol ... box=cap_intel priority=100 result=box`; screenshot with the names |
-| EW4.5 | `AddQuest`/`SetQuestState`/`RemoveQuest` with new keys off-mission (E0.11) | `event=quest id=trf_cap_<s> state=<n>`; the entry in the logbook with `LOC=1` |
+| EW4.5 | `AddQuest`/`SetQuestState`/`RemoveQuest` with new keys off-mission (E0.11) | `event=quest id=trf_cap_<s> state=<n>`; the entry in the logbook (any `loc_mode`; `loc/trf_en.loc` is installed by every install since 2026-10-25) |
 | EW4.6 | chase arrival with `SetHP` from the band (E0.20) | `event=chase slot=<s> hp_band=<b> hp=<n> ... result=arrived`; the hull bar at about b x 10 % |
 | EW4.7 | load in the captain's system: the orphan rule removes the old flight once | `event=orphan label=TRF_CAP_<s> action=portal` (or `delete`), no second captain |
 | C1 | `ComeToPortal` deletes the ship itself or not (E0.3) | `event=escaped ... reason=vanished` (the engine removed it) or `reason=portal` |
