@@ -149,6 +149,12 @@ function TRF_Ms()
 	return TRF_N("GetPlayerMotherShip");
 end;
 
+-- Line break for player-visible text built in a module (box, dialog page, answer): trf_ui's TRF_UI_Br (tune ui_br,
+-- "|" or a space), a space without trf_ui. Never join "\n": the engine draws the font atlas for it (D-UI.1).
+function TRF_Br()
+	return TRF_N("TRF_UI_Br") or " ";
+end;
+
 -- Error handler of TRF_P: a mod log line (event=error) instead of a ScriptErrors.log entry.
 function TRF_Err(m)
 	TRF_Lf("core", "error", "message", tostring(m));

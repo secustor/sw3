@@ -2258,7 +2258,7 @@ function T_V1_N()
 	for i = 1, 140 do TRF_Stat("k"..i); end;
 	TRF.live.hl = {id=one, g=TRF.gen, o={"trade", "head", "news", "esc", "trouble", "boom"}, k=3, t=10, w="menu"};
 	TRF.live.ct = {id=one, n=30000, t=10};
-	TRF.live.board = TRF_Trouble(cur).."\n"..TRF_Boom(cur);
+	TRF.live.board = TRF_Trouble(cur)..TRF_UI_Br()..TRF_Boom(cur);
 	-- Bounds of 3.4.
 	HOST_Check(getn(TRF.tp) <= 16 and getn(TRF.lr) <= 2 and getn(TRF.base) <= 4 and getn(L.pg) <= 8 and V_N(L.dc) <= 1
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");

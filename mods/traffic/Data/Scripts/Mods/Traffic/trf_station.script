@@ -1092,7 +1092,7 @@ function TRF_StnTradeBody(param, stage)
 	else
 		text = TRF_StnTxt("stncredit");
 	end;
-	text = text..(TRF_N("TRF_UI_Br") or " ")..TRF_StnTxt("stnfeereq");
+	text = text..TRF_Br()..TRF_StnTxt("stnfeereq");
 	if stage == 1 then
 		sv.fb = {text=text, k=k, idx=idx, fee=fee, m=m, cr=cr, prm=prm, loc=loc, pro=pro};
 		return "staged";

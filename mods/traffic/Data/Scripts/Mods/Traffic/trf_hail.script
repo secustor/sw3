@@ -257,7 +257,7 @@ function TRF_HlBoxCall(title, text, ok, cancel)
 end;
 
 -- ShowMsgBox protected; 1 when it was called without an error. tune hail_box 0 or no native -> nil.
--- CHECK (O1, E0.6): plain text in the text argument (precedent: CombineStr results); "\n" breaks lines.
+-- CHECK (O1, E0.6): plain text in the text argument (precedent: CombineStr results); line breaks through TRF_Br() ("\n" draws the font atlas, D-UI.1).
 function TRF_HlBox(title, text, ok, cancel)
 	if TRF_HlT("hail_box") == 0 or type(ShowMsgBox) ~= "function" then return nil; end;
 	-- Message box lock (trf_plumb, 00 section 6): one mod box at a time.
@@ -923,7 +923,7 @@ function TRF_HailShow()
 		hl.bx = 1;
 	end;
 	local text = TRF_Txt("hailq", TRF_HlWho(r, hl.id), TRF_HlLabel(hl.id, key));
-	if hl.rf == 1 then text = TRF_Txt("refuse", TRF_HlName(r))..(TRF_N("TRF_UI_Br") or " ")..text; end;
+	if hl.rf == 1 then text = TRF_Txt("refuse", TRF_HlName(r))..TRF_Br()..text; end;
 	if not TRF_HlBox("#UI_FTrader_confirm", text, TRF_HailOk, TRF_HailNext) then
 		local id, rf = hl.id, hl.rf;
 		TRF_HlClose("nobox");
@@ -2197,7 +2197,7 @@ end;
 function TRF_BoardText(idx)
 	local t = TRF_Trouble(idx);
 	local b = TRF_Boom(idx);
-	return t..(TRF_N("TRF_UI_Br") or " ")..b, TRF_Txt("brdline", TRF_Txt("brdhead"), t), b;
+	return t..TRF_Br()..b, TRF_Txt("brdline", TRF_Txt("brdhead"), t), b;
 end;
 
 -- 1 when the board may show its full report and offers here: cfg board 1, system mode "mod", strict gate.

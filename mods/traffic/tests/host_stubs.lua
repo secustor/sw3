@@ -521,6 +521,8 @@ function ShowMsgBox(...)
 	local h = HOST();
 	HOST_Want((arg.n == 3 or arg.n == 4) and type(arg[1]) == "string" and type(arg[2]) == "string" and type(arg[3]) == "function"
 		and (arg[4] == nil or type(arg[4]) == "function"), "ShowMsgBox(title, text, ok[, cancel])");
+	-- The engine draws the font atlas for a "\n" byte (D-UI.1): text joins TRF_Br().
+	HOST_Want(type(arg[2]) ~= "string" or not strfind(arg[2], "\n", 1, 1), "ShowMsgBox: no newline byte in the text (TRF_Br)");
 	if h.in_box then h.box_nested = h.box_nested + 1; end;
 	print("HOST box "..tostring(arg[1]).." | "..tostring(arg[2]));
 	tinsert(h.boxes, {title=arg[1], text=arg[2], ok=arg[3], cancel=arg[4], gt=h.gt});
@@ -631,6 +633,7 @@ function ShowAnswer(n) HOST_DlgAns(n, nil, "ShowAnswer"); end;
 function SetReplaceValue(k, v)
 	local d = HOST().dlg;
 	HOST_Want(type(k) == "string" and type(v) == "string", "SetReplaceValue(key, value)");
+	HOST_Want(type(v) ~= "string" or not strfind(v, "\n", 1, 1), "SetReplaceValue: no newline byte in the value (TRF_Br)");
 	HOST_Want(d, "SetReplaceValue: a dialog is loaded");
 	if d then d.rv[k] = v; end;
 end;

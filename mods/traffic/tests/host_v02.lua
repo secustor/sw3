@@ -2100,7 +2100,7 @@ function T_V02_N()
 	HOST_Check(V_N(TRF.live.stat) <= 97 and TRF.live.stat.other ~= nil, "stat: keys beyond 96 counted in 'other' ("..V_N(TRF.live.stat)..")");
 	TRF.live.hl = {id=one, g=TRF.gen, o={"trade", "head", "news", "esc", "trouble", "boom"}, k=3, t=10, w="menu"};
 	TRF.live.ct = {id=one, n=30000, t=10};
-	TRF.live.board = TRF_Trouble(cur).."\n"..TRF_Boom(cur);
+	TRF.live.board = TRF_Trouble(cur)..TRF_UI_Br()..TRF_Boom(cur);
 	-- Serialised size with the save grammar (the global key "TRF" included).
 	local size = 8 + 3 + HOST_SaveSize(TRF);
 	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "live"};

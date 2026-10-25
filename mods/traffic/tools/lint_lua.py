@@ -13,6 +13,8 @@ snake_case module and event ([a-z][a-z0-9_]*), a module wrapper TRF_<Mod>E(event
 snake_case event; every key that is a string literal (Lf: 3rd, 5th, ...; *E: 2nd, 4th, ...) must be snake_case.
 The pre-logfmt string helpers (TRF_<Mod>L, TRF_<Mod>Dbg) are findings, as is TRF_L outside traffic.script.
 Group names: a "TRF_<Name>_" or "TRF_G<Name>_" literal joined with '..' must use a name of GROUP_PREFIXES.
+Line breaks: a string literal containing \n joined with '..' is a finding (also with --host): player-visible text joins
+TRF_Br() (tests TRF_UI_Br()); patterns passed as arguments are not joined and stay allowed.
 """
 import argparse
 import os
@@ -89,8 +91,8 @@ def lint(path, allow, bools, host=False):
         prev = v[i - 1] if i else ""
         nxt = v[i + 1] if i + 1 < n else ""
         in_func = "f" in stack
-        if kind == "str" and val[1:-1] == "\\n" and (prev == ".." or nxt == ".."):
-            add(ln, "newline in text: use TRF_UI_Br()")
+        if kind == "str" and "\\n" in val[1:-1] and (prev == ".." or nxt == ".."):
+            add(ln, "newline joined into text (the engine draws the font atlas): use TRF_Br() (tests: TRF_UI_Br())")
         if kind == "name":
             if val in ("true", "false"):
                 add(ln, "'%s' is not a Lua 4 literal; use TRUE/FALSE or nil" % val)
