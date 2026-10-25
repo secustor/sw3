@@ -9,7 +9,8 @@
 # gen_pilots.py --check. Installer: sh -n, then on a fake game tree (copies of sw3cw.exe, zlib1_orig.dll, the two
 # checked game scripts, default.cfg, News.xml and Pilots.xml; a text zlib1.dll with the strings install.sh greps for):
 # --pilots, re-run, --pilots with --news (independent flags), a re-run without --pilots (revert, mc_names=0, also in a
-# kept edited config.script), --restore-only --pilots, uninstall.sh. Exit 1 on any failed check; skips (exit 0) when the
+# kept edited config.script), --restore-only --pilots, uninstall.sh; loc/trf_en.loc installed by the first run, kept on a
+# re-run and removed by uninstall.sh. Exit 1 on any failed check; skips (exit 0) when the
 # vanilla Pilots.xml is missing.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
@@ -102,6 +103,7 @@ if [ "$miss" = 0 ]; then
     check "install --pilots: mc_names=2 in config.script ($(mcn))" [ "$(mcn)" = 2 ]
     check "install --pilots: News.xml untouched (flags independent)" cmp -s "$fn" "$ORIG/Data/Game/News.xml"
     check "install --pilots: manifest has 'pilots Data/Game/Pilots.xml'" grep -qxF "pilots Data/Game/Pilots.xml" "$fake/sw3-traffic-backup/manifest.txt"
+    check "install --pilots: loc/trf_en.loc installed, 'created' in the manifest" sh -c "cmp -s \"$fake/Data/LocData/English/trf_en.loc\" \"$mod/loc/trf_en.loc\" && grep -qxF 'created Data/LocData/English/trf_en.loc' \"$fake/sw3-traffic-backup/manifest.txt\""
     check "re-run --pilots: exit 0" inst 2 sh "$mod/install.sh" --pilots "$fake"
     check "re-run --pilots: Pilots.xml unchanged" sh -c "cmp -s \"$fp\" \"$work/m1.xml\" && grep -q 'unchanged Data/Game/Pilots.xml' \"$work/install-2.log\""
     check "PILOTS=1 --news: exit 0" inst 3 PILOTS=1 sh "$mod/install.sh" --news "$fake"
@@ -110,6 +112,7 @@ if [ "$miss" = 0 ]; then
     check "--news without --pilots: Pilots.xml is vanilla again" cmp -s "$fp" "$van"
     check "--news without --pilots: mc_names=0 ($(mcn)), news kept" sh -c "[ \"$(mcn)\" = 0 ] && grep -q '<name>trf_' \"$fn\""
     check "--news without --pilots: no pilots line, no Pilots.xml backup" sh -c "! grep -q '^pilots ' \"$fake/sw3-traffic-backup/manifest.txt\" && [ ! -f \"$fake/sw3-traffic-backup/files/Data/Game/Pilots.xml\" ]"
+    check "--news without --pilots: loc/trf_en.loc kept" cmp -s "$fake/Data/LocData/English/trf_en.loc" "$mod/loc/trf_en.loc"
     check "--pilots without --news: exit 0" inst 5 sh "$mod/install.sh" --pilots "$fake"
     check "--pilots without --news: News.xml vanilla, Pilots.xml merged" sh -c "cmp -s \"$fn\" \"$ORIG/Data/Game/News.xml\" && cmp -s \"$fp\" \"$work/m1.xml\""
     printf -- '-- edited by test_pilots.sh\r\n' >> "$cfg"
@@ -121,6 +124,7 @@ if [ "$miss" = 0 ]; then
     check "uninstall: Pilots.xml and News.xml vanilla" sh -c "cmp -s \"$fp\" \"$van\" && cmp -s \"$fn\" \"$ORIG/Data/Game/News.xml\""
     check "uninstall: no sw3-traffic-backup/, no Mods/Traffic/" sh -c "[ ! -d \"$fake/sw3-traffic-backup\" ] && [ ! -d \"$fake/Data/Scripts/Mods/Traffic\" ]"
     check "uninstall: sw3tp.ini without [traffic]" sh -c "! grep -q '^\[traffic\]' \"$fake/sw3tp.ini\""
+    check "uninstall: loc/trf_en.loc removed" [ ! -f "$fake/Data/LocData/English/trf_en.loc" ]
     check "install aborts on a TRF_ template outside the block, Pilots.xml unchanged" sh -c "cp \"$work/clash.xml\" \"$fp\" && ! sh \"$mod/install.sh\" --pilots \"$fake\" && cmp -s \"$fp\" \"$work/clash.xml\" && [ ! -d \"$fake/sw3-traffic-backup\" ]"
     cp "$van" "$fp"
 fi

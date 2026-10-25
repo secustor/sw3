@@ -123,7 +123,7 @@ Case: the VFS rewrites `\` to `/`, and the DIR archiver maps back to Win32 calls
 `PHYSFS_enumerateFiles` 0x670b80 [V]: for each search-path entry, it runs `verifySecurity` (0x670610), then the archiver's `enumerateFiles` (vtbl+0xc), then 0x670b60 → 0x670ac0, which inserts into a sorted list and drops exact (`strcmp`) duplicates. The result is converted to `char**` (0x670a40). The engine wrapper 0x652ad0 trims trailing `\`/`/`, rewrites `\`→`/`, calls 0x670b80 and filters by extension [V].
 
 Consequences:
-- An overlay `Data/LocData/English/trf_en.loc` is listed together with the vanilla files and loaded through `openRead`, first match [V]. This replaces the copy into the game's `LocData` that `install.sh --news` and `install-test.sh LOC=1` do today.
+- An overlay `Data/LocData/English/trf_en.loc` is listed together with the vanilla files and loaded through `openRead`, first match [V]. This replaces the copy into the game's `LocData` that every `install.sh` and `install-test.sh` run does today.
 - An overlay `x_news.loc` would shadow the vanilla file completely. New mod files therefore need unique names.
 - The duplicate check is case-sensitive [V], but the lookup ignores case [I]. If an overlay `X_News.loc` sits next to a vanilla `x_news.loc`, both names are listed, both resolve to the overlay file, and it loads twice. Use unique `trf_*` names.
 - `*.DAT` is scanned with Win32 in the base `DATA\` only [V]. An overlay cannot contribute archives that way. The DLL can call `addToSearchPath(zip, 0)` directly instead.

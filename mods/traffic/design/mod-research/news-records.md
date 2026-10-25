@@ -50,4 +50,4 @@ Target `sw3cw.exe` GOG v1.12 (SHA-1 57420a056f63a869148556dd978e5e2478e7ba2d). S
 - Which field 1.10 compares; whether `AddPost` of a missing name is silent (1.11).
 - A save holding posted `trf_*` items loaded after the records are removed (uninstall): skipped, blank entry or error? Not traced; test before shipping `--news` to players.
 - When News.xml is re-read (1.8): new game and load only (then a running game needs a reload after `NEWS=1`), or at startup.
-- RU: no `trf_ru.loc`; a Russian install (`__localization_folder "Russian\"`) gets the EN file copied into its folder by `install.sh --news`.
+- RU: no `trf_ru.loc`; a Russian install (`__localization_folder "Russian\"`) gets the EN file copied into its folder by every `install.sh` run (before 2026-10-25 only by `--news`).

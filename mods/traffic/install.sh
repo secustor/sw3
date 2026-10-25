@@ -57,28 +57,25 @@ src=$here/Data/Scripts/Mods/Traffic
 [ -f "$src/traffic.script" ] && [ -f "$src/config.script" ] && [ -f "$src/map.script" ] || die "package files missing in $src"
 version=$(tr -d ' \r\n' < "$here/VERSION" 2>/dev/null || echo unknown)
 files=$(cd "$src" && find . -maxdepth 1 -type f -name '*.script' | sed 's|^\./||' | LC_ALL=C sort)
-for f in $files; do
-    # Every line of a game script ends in CRLF (the game's own files do; the mod was tested that way).
-    n=$(LC_ALL=C tr -cd '\n' < "$src/$f" | wc -c | tr -d ' '); c=$(LC_ALL=C grep -c "$(printf '\r')\$" "$src/$f" || true)
-    [ "$n" -gt 0 ] && [ "$n" = "$c" ] || die "package file $f is not CRLF ($c of $n lines)"
-done
+# crlf <path> <name>: every line ends in CRLF (the game's own files do; the mod was tested that way). grep -a: BSD
+# grep treats a file with cp1251 bytes (the .loc format) as binary and prints no count without it.
+crlf() {
+    n=$(LC_ALL=C tr -cd '\n' < "$1" | wc -c | tr -d ' '); c=$(LC_ALL=C grep -a -c "$(printf '\r')\$" "$1" || true)
+    [ "$n" -gt 0 ] && [ "$n" = "$c" ] || die "package file $2 is not CRLF ($c of $n lines)"
+}
+for f in $files; do crlf "$src/$f" "$f"; done
 xml=Data/Scripts/Trade/TRF_Hail.xml; xml2=Data/Scripts/Trade/TRF_HailPg.xml
 for f in "$xml" "$xml2" loc/trf_en.loc; do
     [ -f "$here/$f" ] || die "package file $f missing"
-    n=$(LC_ALL=C tr -cd '\n' < "$here/$f" | wc -c | tr -d ' '); c=$(LC_ALL=C grep -c "$(printf '\r')\$" "$here/$f" || true)
-    [ "$n" -gt 0 ] && [ "$n" = "$c" ] || die "package file $f is not CRLF ($c of $n lines)"
+    crlf "$here/$f" "$f"
 done
 if [ "$news" = 1 ]; then
     for f in news/trf_news.xml news/merge.awk; do [ -f "$here/$f" ] || die "--news: package file $f missing"; done
-    f=news/trf_news.xml
-    n=$(LC_ALL=C tr -cd '\n' < "$here/$f" | wc -c | tr -d ' '); c=$(LC_ALL=C grep -c "$(printf '\r')\$" "$here/$f" || true)
-    [ "$n" -gt 0 ] && [ "$n" = "$c" ] || die "package file $f is not CRLF ($c of $n lines)"
+    crlf "$here/news/trf_news.xml" news/trf_news.xml
 fi
 if [ "$pilots" = 1 ]; then
     for f in merge/Pilots.xml merge/pilots_merge.awk; do [ -f "$here/$f" ] || die "--pilots: package file $f missing"; done
-    f=merge/Pilots.xml
-    n=$(LC_ALL=C tr -cd '\n' < "$here/$f" | wc -c | tr -d ' '); c=$(LC_ALL=C grep -c "$(printf '\r')\$" "$here/$f" || true)
-    [ "$n" -gt 0 ] && [ "$n" = "$c" ] || die "package file $f is not CRLF ($c of $n lines)"
+    crlf "$here/merge/Pilots.xml" merge/Pilots.xml
 fi
 
 # Checks before any write.
@@ -300,7 +297,7 @@ done
 sed -i '' "s/^version .*/version $version/" "$man"
 bad=0
 for f in $files; do
-    n=$(LC_ALL=C tr -cd '\n' < "$game/$dst/$f" | wc -c | tr -d ' '); c=$(LC_ALL=C grep -c "$(printf '\r')\$" "$game/$dst/$f" || true)
+    n=$(LC_ALL=C tr -cd '\n' < "$game/$dst/$f" | wc -c | tr -d ' '); c=$(LC_ALL=C grep -a -c "$(printf '\r')\$" "$game/$dst/$f" || true)
     [ "$n" = "$c" ] || bad=$((bad + 1))
 done
 [ "$bad" = 0 ] || die "$bad installed script(s) are not CRLF"

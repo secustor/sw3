@@ -207,7 +207,8 @@ function TRF_Loc_LocLines()
 	sort(ks);
 	local o = {"LOCALE_FILE", "FILETYPE STANDART", "",
 		"; sw3-traffic EN text scaffold, generated from the TRF_<M>_Text tables (trf_loc TRF_Loc_LocLines).",
-		"; Used with cfg loc_mode 1 only; templates lose their $n names (design 13.5 CombineStr fallback).", ""};
+		"; Every install copies it: the logbook titles (AddQuest keys) need it in every loc_mode.",
+		"; loc_mode 1 passes every screen line as a key; templates lose their $n names (design 13.5 CombineStr fallback).", ""};
 	for i = 1, getn(ks) do tinsert(o, "#TRF_"..ks[i].." = "..TRF_Loc_Plain(en[ks[i]])); end;
 	return o;
 end;
