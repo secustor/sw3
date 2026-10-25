@@ -562,9 +562,10 @@ static int __cdecl n_errmsg(lua_State *L)
  * A fire is one evaluated condition; a true condition and the action that follows it form one key "c" / "a".
  * Per-frame state is reset at T4; the window counts are logged and reset every 60 s of real time. */
 #define TS_LEN 48
-#define TS_N 16
+#define TS_N 16   /* condition/action pairs kept per window */
+#define SP_N 48   /* ScriptParam callback names kept per window (94 sites in the exe) */
 struct ts_ent { char c[TS_LEN], a[TS_LEN]; unsigned n; };
-static struct ts_ent g_ts[TS_N], g_sp[TS_N];
+static struct ts_ent g_ts[TS_N], g_sp[SP_N];
 static unsigned g_ts_k, g_sp_k, g_ts_other, g_sp_other, g_ts_frames, g_ts_fires, g_ts_true, g_sp_calls;
 static double g_ts_t0;
 static char g_pend[TS_LEN];
@@ -574,13 +575,13 @@ static char g_tf_c[3][TS_LEN], g_tf_a[3][TS_LEN], g_tf_spn[TS_LEN];
 
 static void ts_cpy(char *d, const char *s) { int i = 0; if (s) for (; s[i] && i < TS_LEN - 1; i++) d[i] = s[i]; d[i] = 0; }
 static int ts_same(const char *a, const char *b) { while (*a && *a == *b) { a++; b++; } return *a == *b; }
-static void ts_add(struct ts_ent *t, unsigned *k, unsigned *other, const char *c, const char *a)
+static void ts_add(struct ts_ent *t, unsigned cap, unsigned *k, unsigned *other, const char *c, const char *a)
 {
     unsigned i;
     for (i = 0; i < *k; i++) if (ts_same(t[i].c, c) && ts_same(t[i].a, a)) { t[i].n++; return; }
-    if (*k < TS_N) { ts_cpy(t[*k].c, c); ts_cpy(t[*k].a, a); t[*k].n = 1; (*k)++; } else (*other)++;
+    if (*k < cap) { ts_cpy(t[*k].c, c); ts_cpy(t[*k].a, a); t[*k].n = 1; (*k)++; } else (*other)++;
 }
-static void ts_flush(void) { if (g_pend_on) { ts_add(g_ts, &g_ts_k, &g_ts_other, g_pend, ""); g_pend_on = 0; } g_pend_fi = -1; }
+static void ts_flush(void) { if (g_pend_on) { ts_add(g_ts, TS_N, &g_ts_k, &g_ts_other, g_pend, ""); g_pend_on = 0; } g_pend_fi = -1; }
 
 static void __stdcall trf_trig_post(int which, int res, const char *s)   /* T5a (which 0) / T5b (1), after 0x5c9350 */
 {
@@ -591,13 +592,13 @@ static void __stdcall trf_trig_post(int which, int res, const char *s)   /* T5a 
         g_ts_fires++;
         if (g_tf_fires < 3) { ts_cpy(g_tf_c[g_tf_fires], t); g_tf_a[g_tf_fires][0] = 0; }
         if (res) { g_ts_true++; ts_cpy(g_pend, t); g_pend_on = 1; g_pend_fi = g_tf_fires < 3 ? (int)g_tf_fires : -1; }
-        else ts_add(g_ts, &g_ts_k, &g_ts_other, t, "");
+        else ts_add(g_ts, TS_N, &g_ts_k, &g_ts_other, t, "");
         g_tf_fires++;
     } else if (g_pend_on) {
         if (g_pend_fi >= 0) ts_cpy(g_tf_a[g_pend_fi], t);
-        ts_add(g_ts, &g_ts_k, &g_ts_other, g_pend, t);
+        ts_add(g_ts, TS_N, &g_ts_k, &g_ts_other, g_pend, t);
         g_pend_on = 0; g_pend_fi = -1;
-    } else ts_add(g_ts, &g_ts_k, &g_ts_other, "?", t);
+    } else ts_add(g_ts, TS_N, &g_ts_k, &g_ts_other, "?", t);
 }
 
 static void __stdcall trf_sp_pre(const char *name, const unsigned *self)   /* T6, before lua_settop 0x65de60 */
@@ -605,7 +606,7 @@ static void __stdcall trf_sp_pre(const char *name, const unsigned *self)   /* T6
     ts_cpy(g_tf_spn, name ? name : "?");
     g_tf_spres = self ? self[3] : 0;
     g_tf_sp++; g_sp_calls++;
-    ts_add(g_sp, &g_sp_k, &g_sp_other, g_tf_spn, "");
+    ts_add(g_sp, SP_N, &g_sp_k, &g_sp_other, g_tf_spn, "");
 }
 
 static void ts_top2(const struct ts_ent *t, unsigned k, int *i1, int *i2)
@@ -640,18 +641,20 @@ static void ts_frame_end(void)
 {
     struct tb b;
     int i1, i2;
+    double now;
     ts_flush();
     g_ts_frames++;
     g_tf_fires = g_tf_sp = g_tf_spres = 0;
     g_tf_spn[0] = 0;
-    if (real_sec() - g_ts_t0 < 60.0) return;
-    g_ts_t0 = real_sec();
+    now = real_sec();
+    if (now - g_ts_t0 < 60.0) return;
+    g_ts_t0 = now;
     tb_begin(&b, "module=dll event=trig_fires frames="); tb_u(&b, g_ts_frames); tb_s(&b, " fires="); tb_u(&b, g_ts_fires);
     tb_s(&b, " true="); tb_u(&b, g_ts_true); tb_s(&b, " distinct="); tb_u(&b, g_ts_k); tb_s(&b, " other="); tb_u(&b, g_ts_other);
     ts_top2(g_ts, g_ts_k, &i1, &i2);
     if (i1 >= 0) { ts_kq(&b, "top", g_ts[i1].c); if (g_ts[i1].a[0]) ts_kq(&b, "top_act", g_ts[i1].a); tb_s(&b, " top_n="); tb_u(&b, g_ts[i1].n); }
     if (i2 >= 0) { ts_kq(&b, "second", g_ts[i2].c); if (g_ts[i2].a[0]) ts_kq(&b, "second_act", g_ts[i2].a); tb_s(&b, " second_n="); tb_u(&b, g_ts[i2].n); }
-    tb_s(&b, " sp_calls="); tb_u(&b, g_sp_calls);
+    tb_s(&b, " sp_calls="); tb_u(&b, g_sp_calls); tb_s(&b, " sp_distinct="); tb_u(&b, g_sp_k); tb_s(&b, " sp_other="); tb_u(&b, g_sp_other);
     ts_top2(g_sp, g_sp_k, &i1, &i2);
     if (i1 >= 0) { ts_kq(&b, "sp_top", g_sp[i1].c); tb_s(&b, " sp_top_n="); tb_u(&b, g_sp[i1].n); }
     tb_end(&b);
@@ -659,14 +662,14 @@ static void ts_frame_end(void)
 }
 
 static unsigned g_leak_n, g_leak_nested, g_leak_multi;
-static void leak_val(struct tb *b, lua_State *L, int i)   /* " v<i>=<type>[:<value>]"; tostring converts a number slot */
+static void leak_val(struct tb *b, lua_State *L, int i)   /* " v<i>=<type>[:<value>]", a string as one quoted value; tostring converts a number slot */
 {
     static const char *const vk[3] = { " v1=", " v2=", " v3=" };
     int t = lua_type(L, i);
     const char *s;
     tb_s(b, vk[i - 1]);
     if (t == T_NUMBER) { s = lua_tostring(L, i); tb_s(b, "number:"); tb_s(b, s ? s : "?"); }
-    else if (t == T_STRING) { tb_s(b, "string:\""); tb_q(b, lua_tostring(L, i), b->n + 60, 0); tb_s(b, "\""); }
+    else if (t == T_STRING) { tb_s(b, "\"string:"); tb_q(b, lua_tostring(L, i), b->n + 60, 0); tb_s(b, "\""); }
     else tb_s(b, t == T_NIL ? "nil" : t == T_TABLE ? "table" : t == T_FUNC ? "function" : t == T_USERDATA ? "userdata" : "none");
 }
 static void stack_guard(lua_State *L)
@@ -878,19 +881,15 @@ static unsigned verify(void)
 }
 
 static void emit1(BYTE **p, BYTE v) { *(*p)++ = v; }
-static void emit_call(BYTE **p, unsigned target)  /* E8 rel32 */
+static void emit_rel32(BYTE **p, BYTE op, unsigned target)   /* op rel32: E8 call, E9 jmp */
 {
-    emit1(p, 0xE8);
+    emit1(p, op);
     *(LONG *)*p = (LONG)(target - ((unsigned)*p + 4));
     *p += 4;
 }
+static void emit_call(BYTE **p, unsigned target) { emit_rel32(p, 0xE8, target); }
+static void emit_jmp(BYTE **p, unsigned target) { emit_rel32(p, 0xE9, target); }
 static void emit_4(BYTE **p, BYTE a, BYTE b, BYTE c, BYTE d) { emit1(p, a); emit1(p, b); emit1(p, c); emit1(p, d); }
-static void emit_jmp(BYTE **p, unsigned target)   /* E9 rel32 */
-{
-    emit1(p, 0xE9);
-    *(LONG *)*p = (LONG)(target - ((unsigned)*p + 4));
-    *p += 4;
-}
 
 /* One stub per site at page + 0x20 * site index. Register rules: the original sees every register
  * as the game set it (nothing is changed before its call, except T2a's push of ecx, which leaves ecx
@@ -950,7 +949,8 @@ static BYTE *build_page(void)
     emit1(&p, 0x61);                                  /* 61            popad (eax = result)   */
     emit1(&p, 0xC3);                                  /* C3            ret                    */
     /* T5a/T5b: ExecuteString 0x5c9350 (eax = string, no stack args, eax = result, plain ret); the string is kept
-     * in a stack slot as in T2a, so nested trigger fires stay correct */
+     * in a stack slot as in T2a, so the pointer stays right in a nested fire (the pend/frame bookkeeping in
+     * trf_trig_post is not re-entrant: a nested fire is recorded with action "?") */
     for (i = 0; i < 2; i++) {
         p = g + 0x20 * (S_T5A + i);
         emit1(&p, 0x50);                              /* 50            push eax (string)      */

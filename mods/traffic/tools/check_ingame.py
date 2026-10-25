@@ -1074,7 +1074,7 @@ def c_dll1(ctx):
     res = Res()
     res.logpart = True
     tf = ctx.find("dll", "trig_fires")
-    sl = [r for r in ctx.find("dll", "stack_leak") if r.get("v1")]
+    sl = [r for r in ctx.find("dll", "stack_leak") if "v1" in r.kv]   # kv, not get(): v1=nil is a value here
     fr = ctx.find("dll", "trig_frame")
     if not tf:
         res.missing.append("no event=trig_fires line: install with LOG=2 (trig_log=1) and play 60 s or more")
