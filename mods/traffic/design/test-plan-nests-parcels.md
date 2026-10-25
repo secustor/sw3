@@ -240,3 +240,24 @@ Run A, 2026-10-25 (builds a56efec to e6ed73e; logs `traffic-runs/0-20261025-0029
 - E-PCL.3 PASS (eyes): Cancel on the courier box, the trade window opened.
 - E-PCL.4: the entry showed `Not found string: #TRF_PCLQ` on the build before 60a6469 (no loc file installed); open with the destination title since 71a4386.
 - Open: E-PCL.5 (the main Kadenoa trade station), E-PCL.6, PCL.flow (expiry), D-DOCK, D-HAIL.*; the nest items wait for run B.
+
+## 10. Open checks, to run together (one session, run B)
+
+Run B carries every change since run A started (nests, parcels, dock mode 2, hail pages, combat hail, the loc file, the destination titles), so the remaining items can be covered in one session. Install with the game closed (section 4.1 row B), launch with `MTL_HUD_ENABLED=1 SECS=0 sh mods/traffic/run-test.sh`, score at the end with the logs of the session and the eyes verdicts below.
+
+| item | what to do | expected |
+|---|---|---|
+| E-PCL.4 | accept a parcel, open the logbook | "Sealed parcel: <system>", the description names the system; done after delivery; gone after the next trade dock |
+| E-PCL.5 | dock at both Kadenoa trade stations (main and Triada) with a Kadenoa parcel | only the marked one delivers (`param` differs per dock) |
+| E-PCL.6 | start a campaign mission, jump once and dock once inside it | `event=signal ... quest_state=1` only inside the mission |
+| PCL.flow | let one parcel run past its legs (8x), then dock anywhere | "Courier desk: the <system> parcel is overdue. Deposit forfeited.", entry shows failed |
+| D-DOCK | watch a trader bound for a trade station | it flies to the docking position and vanishes there, not 300 units out |
+| D-HAIL.page | hail a trader, pick "Where are you headed" | the answer as a dialog page "FTU <name>: ..." with Back and Close, no `#` |
+| D-HAIL.back | press Back on that page | the menu again, the used option hidden |
+| D-HAIL.offer | open an escort or provider offer, Decline | offer page with Accept and Decline, Decline returns to the menu |
+| D-HAIL.esc | press Esc on a page | the chain closes, the next hail works (lock freed) |
+| D-HAIL.fight | hail a trader under attack: once holding its own, once losing | "Not now, we're busy." with Close; "We're outgunned. Clear them off and there's <p> cr in it for you." with Accept/Decline, pay after the fight |
+| E16.1-E16.7 | section 4.3 steps (nest systems in chapter 5+, a load inside one, kills then return after two jumps) | section 5 lines |
+| E16.8 | stopwatch the entry into XK16 (15 flights) | within +10 % of run A |
+
+Saves to make on the way: a quicksave inside a nest system after the flights spawned (E16.6); a save with pirates neutral (E16.5); Pandora after mission 8a (E16.4 note).
