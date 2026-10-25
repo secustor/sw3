@@ -741,15 +741,15 @@ Mercenary clans, build steps 1 and 3 (`design/merc-spec.md` 8). `clan` is the cl
 | `end` | `module=merc event=end flight=1 clan=4 completed=true standing=1 jobs=3` / `completed=false` / `result=robbery reason=<attack, heat>` | 1 |
 | `refund` | `module=merc event=refund flight=1 clan=4 amount=6300` (wind-down) | 1 |
 | `refuse` | `module=merc event=refuse flight=1 clan=4 kind=<settle, collect> amount=7500 pack_strength=56.000 player_strength=39.000 braveness=0.810 chance=12.000 roll=40 result=<leave, attack> war=<true, false>` | 1 |
-| `owe` | `module=merc event=owe clan=4 amount=1500 owe=1500 standing=-1 result=added reason=<short, refused, unanswered, jump, broken>` / `amount=2000 result=<paid, part> reason=hire` (part: the capped charge covered only part of the owe) | 1 |
+| `owe` | `module=merc event=owe clan=4 amount=1500 owe=1500 standing=-1 result=added reason=<short, refused, unanswered, jump, broken, ships>` / `amount=2000 result=<paid, part> reason=hire` (part: the capped charge covered only part of the owe) | 1 |
 | `collect` | `module=merc event=collect flight=1 clan=4 owe=7500 taken=7500 result=<paid, short>` / `module=merc event=collect flight=1 result=unanswered answer=<esc, none>` | 1 |
 | `betray` | `module=merc event=betray clan=4 betrayals=1 standing=-3 reason=<fire, kill, refuse>`; `module=merc event=betray flight=1 clan=4 result=<war, leave> reason=<r>` | 1 |
 | `jump` | `module=merc event=jump clan=4 destination=heos time=420 result=follow` / `destination=kassilia total=7500 result=owe` | 1 |
-| `follow` | `module=merc event=follow flight=1 clan=4 system=heos ship_count=4 sit_out=0 time=420 bands=9999 result=rebuilt via=<arrival, load>` / `module=merc event=follow clan=4 total=7500 result=ended reason=broken` | 1 |
-| `suspend` | `module=merc event=suspend clan=4 system=heos time=420 reason=<excluded, strict:<w>, supp, escort_mission, ships, cap:<no>, escort_slot, flight, mothership, build>` | 1 |
+| `follow` | `module=merc event=follow flight=1 clan=4 system=heos ship_count=4 sit_out=0 time=420 bands=9999 result=rebuilt via=<arrival, load>` / `module=merc event=follow clan=4 total=7500 result=ended reason=<broken, ships>` (ships: no live band in the record) | 1 |
+| `suspend` | `module=merc event=suspend clan=4 system=heos time=420 reason=<excluded, strict:<w>, supp, escort_mission, cap:<no>, escort_slot, flight, mothership, build, sit_out>` | 1 |
 | `load` | `module=merc event=load flight=1 clan=4 ship_count=4 time=420 result=adopt`; `module=merc event=load result=<rebuilt, suspended> try_count=1 reason=<no_handle, not_alive>`; `module=merc event=load clan=4 result=<rebuilt, suspended> reason=other_system` (a load in another system than the wing's: the rebuild there), `module=merc event=load clan=4 result=suspended` (no system); `module=merc event=load deleted_count=4 result=delete` | 1 |
 | `leave` | `module=merc event=leave flight=1 clan=4 portal=PORTAL_L reason=<wait, half, settled, refused, collect, betray, attack, heat, wind>` | 1 |
-| `gone` | `module=merc event=gone flight=1 clan=4 deleted_count=4 reason=<portal, out_of_view, watchdog, dead, jump, build, error, test>` | 1 |
+| `gone` | `module=merc event=gone flight=1 clan=4 deleted_count=4 reason=<portal, out_of_view, watchdog, dead, jump, build, sit_out, error, test>` | 1 |
 | `trim` | `module=merc event=trim flight=1 clan=4 trimmed=1` (ship-cap trim of an unhired pack) | 1 |
 | `note` | `module=merc event=note clan=4 kind=<1, 2>` (next-entry note: 1 blacklist, 2 debt) | 1 |
 | `board` | `module=merc event=board clan=4 region=2 jumps=1` (patrol board line) | 1 |

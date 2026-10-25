@@ -1485,6 +1485,32 @@ function T_MC_J()
 	TRF_McMC().rh[7] = 1;
 	TRF_Dead("raid", {g="TRF_Raid_7", n=7, j=1}, s2, 1);
 	HOST_Check(TRF_McMC().rk[7] == 1 and TRF_Mc_RaidHelp(7, {}, 8000) == 0.5, "raid kill by the player without a hire: the raid marked, the factor 0.5");
+	-- A record without a live band at an arrival (every ship lost before the jump): the hire ends as owe, no suspension.
+	MC_Reset("heos");
+	v = MC_Hire(); c = v.c;
+	v.k = 1;
+	for j = 1, v.nj do if v.sh[j] then v.sh[j].alive = nil; end; end;
+	TRF_McWriteH(v);
+	local ow2 = TRF_McT(c).owe;
+	n0 = S_Mark();
+	T_Jump("heos");
+	HOST_Check(TRF.mc.h == nil and TRF_McV() == nil and TRF_McT(c).owe == ow2 + v.sh1
+		and S_Logs(n0, "event=follow clan="..c.." total="..v.sh1.." result=ended reason=ships") == 1 and S_Logs(n0, "event=suspend") == 0,
+		"arrival with no live band: the hire ends with the total as owe, nothing suspended");
+	MC_Put(c, {owe=0});
+	-- Every pack ship lost on screen: the flight ends and the escort slot is free again.
+	MC_Reset("heos");
+	v = MC_Hire(); c = v.c;
+	for j = 1, v.nj do if v.sh[j] then MC_Kill(j); end; end;
+	T_Tick(2, 0.5);
+	HOST_Check(v.st == "gone" and TRF.mc.h == nil and TRF.live.esc == nil, "every ship lost: the flight gone, the hire settled, the escort slot freed");
+	-- A zero price (c_hire 0) is not a short wallet: the hire proceeds without a charge.
+	MC_Reset("heos");
+	MC_Tune("c_hire", 0);
+	local cr0 = h.credits;
+	v = MC_Hire(); c = v.c;
+	HOST_Check(v.st == "hired" and v.fee == 0 and h.credits == cr0, "c_hire 0: hired at no charge");
+	MC_Tune("c_hire", 700);
 	MC_Enter("heos", 0);
 end;
 
