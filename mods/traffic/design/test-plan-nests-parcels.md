@@ -1,6 +1,6 @@
 # Dynamic nests and sealed parcels: in-game test plan
 
-Plan for the game-only checks of the two newest modules: E16.1-E16.11 of `nest-spec.md` 10 and E-PCL.1-E-PCL.6 of `parcel-spec.md` 10. The player runs it on the test clone; `tools/check_ingame.py` scores the logs (section 6). Both modules are host-tested only (`ne-a`..`ne-f`, `pcl-a`..`pcl-h`, 133 host runs). The clone still has build 747ce14 with the lab profile, so every session starts with a fresh `install-test.sh`. Paths: `M` = `mods/traffic`, `D` = `M/design`, `COPY` = `~/Games/Heroic/sw3-tp-test`. Status 2026-10-24: written, not run.
+Plan for the game-only checks of the two newest modules: E16.1-E16.11 of `nest-spec.md` 10 and E-PCL.1-E-PCL.6 of `parcel-spec.md` 10. The player runs it on the test clone; `tools/check_ingame.py` scores the logs (section 6). Both modules are host-tested only (`ne-a`..`ne-f`, `pcl-a`..`pcl-h`, 133 host runs). The clone still has build 747ce14 with the lab profile, so every session starts with a fresh `install-test.sh`. Paths: `M` = `mods/traffic`, `D` = `M/design`, `COPY` = `~/Games/Heroic/sw3-tp-test`. Status 2026-10-25: run A in progress, results in section 9.
 
 ## 1. Inputs
 
@@ -230,3 +230,13 @@ Set `enable_parcels=0` on a FAIL of E-PCL.1 (until `TRF_PcUnitsOf` changes), E-P
 - E-PCL.3: the trade window after the box is not logged.
 - E-PCL.4: the logbook display.
 - E-PCL.6: whether a `quest_state=1` line falls inside a mission is the player's knowledge.
+
+## 9. Results
+
+Run A, 2026-10-25 (builds a56efec to e6ed73e; logs `traffic-runs/0-20261025-002947`, `-112459`, `-113535`; scored with `--eyes E-PCL.2=pass,E-PCL.3=pass`):
+- ERR PASS (three logs, 0 `ScriptErrors.log` lines). E16.2 PASS.
+- E-PCL.1 PASS: a relief parcel XK16 to Dalled, 3 of 3 units removed, pay 16,300 cr, deposit 4,320 cr back.
+- E-PCL.2 PASS (eyes): the trade window shows no price for the parcel item, so it cannot be sold.
+- E-PCL.3 PASS (eyes): Cancel on the courier box, the trade window opened.
+- E-PCL.4: the entry showed `Not found string: #TRF_PCLQ` on the build before 60a6469 (no loc file installed); open with the destination title since 71a4386.
+- Open: E-PCL.5 (the main Kadenoa trade station), E-PCL.6, PCL.flow (expiry), D-DOCK, D-HAIL.*; the nest items wait for run B.
