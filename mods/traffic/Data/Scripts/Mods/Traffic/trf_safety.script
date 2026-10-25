@@ -1167,7 +1167,7 @@ end;
 
 -- 1, spare ships or nil, reason (5.1, v02 10.2). nships = ships of the planned base row (raid: raid ships);
 -- kind trader (default), seed, staged, raid, parked; v1: track, conv, dconv, tt4 and the event kinds sweep,
--- feq, carrier, clan, base (TRF_CanSpawnKindOf); merc (the mercenary clan module: its own cap tune mc_ships 7, ev =
+-- feq, carrier, clan, base (TRF_CanSpawnKindOf); merc (the mercenary clan module: its own cap tune mc_ships 14, ev =
 -- the live ships of the clan visit). ev: live ships of that event (event kinds; default for
 -- carrier and clan: the ships of the open raid records). Caps are recomputed per decision (band read
 -- live); if the visit has no governor count yet (live reset after OnActivate/OnLoad) the governor runs
@@ -1186,7 +1186,7 @@ function TRF_CanSpawn(nships, kind, ev)
 	if kind == "clan" then gate = TRF_StrictOk(nil, "raid"); elseif kind ~= "trader" then gate = TRF_StrictOk(nil, kind); end;
 	local ecap = TRF_SafeEvCap(kind);
 	local mcap = nil;
-	if kind == "merc" then mcap = TRF_SafeTune("mc_ships", 7); end;
+	if kind == "merc" then mcap = TRF_SafeTune("mc_ships", 14); end;
 	if type(ev) ~= "number" then
 		ev = 0;
 		if kind == "carrier" or kind == "clan" then ev = nrs; end;

@@ -2221,7 +2221,8 @@ function T_V1_N()
 	for k = 1, 11 do TRF.pcl.xl[k] = skl; end;
 	for k = 1, getn(TRF.short) do TRF.short[k].job = 1; end;
 	-- Mercenary clans worst case (design/merc-spec.md 3.3): every clan with every packed field at its widest bound, a hire
-	-- record with 8 band digits, the call, the blacklist, the note, the elite record, the Wolves ratings and their stamp.
+	-- record with 8 band digits, the call, the blacklist, the note, the elite record, the Wolves ratings and their stamp,
+	-- the collection flag (step 3).
 	TRF.mc = {s=TRF_McDefS(), t={}};
 	local mtb = TRF_McTB();
 	for c = 1, 12 do
@@ -2235,6 +2236,7 @@ function T_V1_N()
 	TRF.mc.n = TRF_TpPackK({c=12, a=9999999}, TRF_McNKeys());
 	TRF.mc.e = TRF_TpPackK({el=8, dj1=9999999, dc1=20, djl=9999999, dn=1}, TRF_McEKeys());
 	TRF.mc.x = 9999999; TRF.mc.w = strrep("9", 11); TRF.mc.wt = -9999999;
+	TRF.mc.o = TRF_TpPackK({c=12, s=113}, TRF_McOKeys());
 	local mcz = HOST_SaveSize(TRF.mc);
 	TRF_Mc_Fix();
 	HOST_Check(HOST_SaveSize(TRF.mc) == mcz and mcz <= 6000, "merc worst case kept by the repair: "..mcz.." bytes <= 6000");

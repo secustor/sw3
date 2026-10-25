@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Score the in-game checks of dynamic nests (E16.1-E16.11), sealed parcels (E-PCL.1-E-PCL.6), trader docking (D-DOCK)
-and the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10) from traffic logs.
+"""Score the in-game checks of dynamic nests (E16.1-E16.11), sealed parcels (E-PCL.1-E-PCL.6), trader docking (D-DOCK),
+the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10) and the mercenary hire (D-MERC.*, design/merc-spec.md
+11, test plan section 11) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -239,7 +240,7 @@ def c_err(ctx):
     res.logpart = True
     if not any(r.mod in ("nest", "parcel") for r in ctx.recs):
         res.missing.append("no module=nest or module=parcel line: the mod did not load or LOG=0")
-    for mod in ("nest", "parcel", "core", "plumb", "hail"):
+    for mod in ("nest", "parcel", "core", "plumb", "hail", "merc"):
         e = ctx.find(mod, "error")
         if e:
             res.fails.append("%d module=%s event=error lines" % (len(e), mod))
@@ -882,6 +883,191 @@ def c_hail_fight(ctx):
     return res
 
 
+# ---- mercenary hire (design/merc-spec.md 6a, 11; test plan section 11) -------------------------------------------
+
+def merc_after(ctx, r, ev, **kw):
+    """module=merc records of event ev after r in the same log."""
+    return [x for x in ctx.recs if x.src == r.src and x.n > r.n and x.is_("merc", ev, **kw)]
+
+
+def c_merc_spawn(ctx):
+    res = Res()
+    res.logpart = True
+    pl = ctx.find("merc", "roll", result="planned")
+    sp = ctx.find("merc", "spawn", result="spawn")
+    sk = ctx.find("merc", "spawn", result="skipped")
+    for r in sp:
+        if r.int("ship_count", 0) < 1:
+            res.fails.append("%s: a spawn without ships" % r.short())
+    if not sp:
+        res.missing.append("enter systems of a region a clan works until a pack spawns (MERCS=1, chapter 5+: "
+                           "event=roll result=planned, then event=spawn result=spawn)")
+    res.ev("rolls planned", pl)
+    res.ev("spawns", sp)
+    res.ev("spawns skipped", sk)
+    return res
+
+
+def c_merc_offer(ctx):
+    res = Res()
+    res.logpart = True
+    meet = ctx.find("merc", "meet")
+    off = ctx.find("merc", "offer", result="line")
+    pg = [r for r in ctx.find("merc", "talk", kind="offer", result="shown")]
+    for r in off:
+        if not [x for x in merc_after(ctx, r, "talk", kind="offer") if x.get("flight") == r.get("flight")]:
+            res.notes.append("%s: offer line without a page or box after it (left before 12 s?)" % r.short())
+    dg = [r for r in pg if r.get("via") == "dialog"]
+    fb = ctx.find("merc", "dialog_fallback")
+    if pg and not dg:
+        res.notes.append("offers only as boxes (fallback reasons: %s)" % (",".join(sorted(set(r.get("reason") or "?" for r in fb))) or "none"))
+    if not off:
+        res.missing.append("fly within 70 units of a pack (event=meet, event=offer result=line, event=talk kind=offer)")
+    res.ev("meetings", meet)
+    res.ev("offer lines", off)
+    res.ev("offer pages or boxes", pg)
+    res.ev("page fallbacks", fb)
+    return res
+
+
+def c_merc_hire(ctx):
+    res = Res()
+    res.logpart = True
+    hi = ctx.find("merc", "hire", result="hired")
+    for r in hi:
+        c = [x for x in ctx.recs if x.src == r.src and x.n < r.n and x.is_("region", "charge", reason="merc_fee")]
+        if not c or c[-1].int("taken", -1) != r.int("fee", 0) + r.int("owe", 0):
+            res.fails.append("%s: no charge of fee + owe before the hire" % r.short())
+    dec = ctx.find("merc", "hire", result="declined")
+    if not hi:
+        res.missing.append("hire a pack (Hire them: event=hire result=hired)")
+    if not dec:
+        res.notes.append("no decline seen (Not now: event=hire result=declined rearm=true)")
+    res.ev("hires", hi)
+    res.ev("declines", dec)
+    res.ev("short wallet", ctx.find("merc", "hire", result="short"))
+    res.ev("seeds", ctx.find("merc", "seed"))
+    return res
+
+
+def c_merc_follow(ctx):
+    res = Res()
+    res.logpart = True
+    fo = ctx.find("merc", "jump", result="follow")
+    rb = ctx.find("merc", "follow", result="rebuilt", via="arrival")
+    for j in fo:
+        nx = [x for x in ctx.recs if x.n > j.n and x.src == j.src and x.mod == "merc" and x.ev in ("follow", "suspend")]
+        if not nx:
+            res.fails.append("%s: the wing followed the jump but no rebuild or suspension came after it" % j.short())
+    if not fo:
+        res.missing.append("jump with a hired pack (event=jump result=follow, then event=follow result=rebuilt via=arrival)")
+    res.ev("jumps followed", fo)
+    res.ev("rebuilt at the arrival", rb)
+    res.ev("suspended", ctx.find("merc", "suspend"))
+    return res
+
+
+def c_merc_ext(ctx):
+    res = Res()
+    res.logpart = True
+    to = ctx.find("merc", "timeout")
+    ex = ctx.find("merc", "extend", result="extended")
+    for r in ex:
+        c = [x for x in ctx.recs if x.src == r.src and x.n < r.n and x.is_("region", "charge", reason="merc_ext")]
+        if not c or c[-1].int("taken", -1) != r.int("fee", 0):
+            res.fails.append("%s: the extension fee was not charged" % r.short())
+    if not to:
+        res.missing.append("let a hire time out (event=timeout, the extension page)")
+    elif not ex:
+        res.missing.append("Extend once at a time out (event=extend result=extended)")
+    res.ev("time outs", to)
+    res.ev("graces", ctx.find("merc", "grace"))
+    res.ev("extensions", ex)
+    return res
+
+
+def c_merc_settle(ctx):
+    res = Res()
+    res.logpart = True
+    st = ctx.find("merc", "settle")
+    pay = [r for r in st if r.get("result") in ("paid", "short")]
+    for r in pay:
+        if r.int("total", 0) != r.int("share", 0) + r.int("blood", 0):
+            res.fails.append("%s: total is not share + blood" % r.short())
+    rf = ctx.find("merc", "refuse")
+    for r in rf:
+        if r.get("result") == "attack" and r.get("war") == "false":
+            if not merc_after(ctx, r, "leave", reason="refused"):
+                res.fails.append("%s: an attack roll with merc_war 0 did not leave" % r.short())
+    if not pay:
+        res.missing.append("settle a hire (Settle up, Pay: event=settle result=paid)")
+    if not rf:
+        res.notes.append("no Refuse seen (event=refuse)")
+    res.ev("settlements", st)
+    res.ev("refusals", rf)
+    res.ev("completions", ctx.find("merc", "end", completed="true"))
+    return res
+
+
+def c_merc_premission(ctx):
+    res = Res()
+    res.logpart = True
+    pm = ctx.find("merc", "premission")
+    for r in pm:
+        if not [x for x in merc_after(ctx, r, "talk", kind="settle")] and not [x for x in merc_after(ctx, r, "settle")]:
+            res.fails.append("%s: no settlement after the pre-mission line" % r.short())
+    if not pm:
+        res.missing.append("start a mission or fly near a gate into a mission or excluded system with a hire (event=premission)")
+    res.ev("pre-mission settlements", pm)
+    return res
+
+
+def c_merc_collect(ctx):
+    res = Res()
+    res.logpart = True
+    jo = ctx.find("merc", "jump", result="owe")
+    co = ctx.find("merc", "talk", kind="collect")
+    for j in jo:
+        if not [x for x in ctx.recs if x.src == j.src and x.n > j.n and x.is_("merc", "note", kind="2")]:
+            res.notes.append("%s: no debt note after the jump (another arrival line may have taken the slot)" % j.short())
+    if not jo:
+        res.missing.append("jump without settling (a story teleport or a jump into Kassilia with a hire: event=jump result=owe)")
+    elif not co:
+        res.missing.append("meet the next pack after the unsettled jump (event=talk kind=collect)")
+    res.ev("unsettled jumps", jo)
+    res.ev("collection pages", co)
+    res.ev("collections", ctx.find("merc", "collect"))
+    return res
+
+
+def c_merc_load(ctx):
+    res = Res()
+    res.logpart = True
+    ld = [r for r in ctx.find("merc", "load") if r.get("result") in ("adopt", "rebuilt")]
+    rr = [r for r in ctx.recs if r.is_("merc", "roll", result="planned") and r.visit and r.visit.kind == "load"]
+    if rr:
+        res.fails.append("%d hire offers rolled in a loaded visit (a load must not re-roll)" % len(rr))
+    if not ld:
+        res.missing.append("save and load during a hire in the same system (event=load result=adopt or rebuilt)")
+    res.ev("loads with a hire", ld)
+    res.ev("unhired ships deleted at a load", ctx.find("merc", "load", result="delete"))
+    return res
+
+
+def c_merc_betray(ctx):
+    res = Res()
+    res.logpart = True
+    bt = [r for r in ctx.find("merc", "betray") if r.get("flight")]
+    for r in bt:
+        if r.get("result") == "leave" and not merc_after(ctx, r, "leave"):
+            res.fails.append("%s: betrayed pack did not leave" % r.short())
+    if not bt:
+        res.missing.append("shoot a pack ship for five seconds (event=betray ... result=leave)")
+    res.ev("betrayals", bt)
+    res.ev("blacklist", ctx.find("merc", "black"))
+    return res
+
+
 # id, title, check, eyes (None: the log decides)
 ITEMS = [
     ("ERR", "no error lines (nest, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
@@ -927,6 +1113,24 @@ ITEMS = [
     ("D-HAIL.fight", "combat hail: busy page, help offer, help pay", c_hail_fight,
      "a trader under attack answers 'Not now, we're busy.' with Close only, or 'We're outgunned. Clear them off and "
      "there's <p> cr in it for you.' with Accept/Decline; after Accept and the fight the paid line and the credits"),
+    ("D-MERC.spawn", "mercenary pack spawns at a gate (E12.3)", c_merc_spawn,
+     "the pack comes through a gate with the clan icon, a 'Mercenaries' marker and the signature line"),
+    ("D-MERC.offer", "meeting, offer line and the offer page (E12.4, E0.6)", c_merc_offer,
+     "the window '<clan>: <clan> will fly with you for <fee> cr, plus <share> cr per pirate downed. Hire them?' with "
+     "'- Hire them' and '- Not now', no #"),
+    ("D-MERC.hire", "hire: fee charged, escort, seeding (E12.1, E0.15)", c_merc_hire,
+     "the pack escorts the mothership and attacks a raid only after the 'break and engage' line"),
+    ("D-MERC.follow", "the hired wing follows a jump", c_merc_follow,
+     "the pack comes out with the mothership at the arrival, damaged ships still damaged (E0.20)"),
+    ("D-MERC.ext", "time out and the extension", c_merc_ext, None),
+    ("D-MERC.settle", "settlement Pay and Refuse", c_merc_settle, None),
+    ("D-MERC.premission", "settlement before a mission", c_merc_premission, None),
+    ("D-MERC.collect", "a jump without settling and the collection page", c_merc_collect, None),
+    ("D-MERC.load", "save and load during a hire (E12.6, E12.11)", c_merc_load,
+     "after the load the pack is there once and escorts; no offer window opens"),
+    ("D-MERC.betray", "betrayal and the blacklist (E0.13 by hand)", c_merc_betray,
+     "'Turncoat!' and the pack leaves; GetTeamRelation(\"Merc\", PLAYER_TEAM) stays neutral after the attack, a jump "
+     "and a load"),
 ]
 
 
@@ -1023,12 +1227,16 @@ def parse_eyes(vals):
     return eyes
 
 
-# Expected verdicts of tests/check_ingame_fixture.log (no ScriptErrors lines), then with --eyes folded in.
+# Expected verdicts of tests/check_ingame_fixture.log (no ScriptErrors lines), then with --eyes folded in. The merc block:
+# a hire with an extension and a settlement, and a Refuse whose attack roll (merc_war 0) has no leave after it (FAIL).
 SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", "E16.4": "PASS", "E16.5": "NO DATA",
             "E16.6": "FAIL", "E16.7": "PASS", "E16.8": "MANUAL", "E16.9": "MANUAL", "E16.10": "MANUAL",
             "E16.11": "NO DATA", "E-PCL.1": "PASS", "E-PCL.2": "MANUAL", "E-PCL.3": "MANUAL", "E-PCL.4": "MANUAL",
             "E-PCL.5": "FAIL", "E-PCL.6": "NO DATA", "PCL.flow": "PASS", "D-DOCK": "MANUAL", "D-HAIL.page": "MANUAL",
-            "D-HAIL.back": "PASS", "D-HAIL.offer": "PASS", "D-HAIL.esc": "PASS", "D-HAIL.fight": "MANUAL"}
+            "D-HAIL.back": "PASS", "D-HAIL.offer": "PASS", "D-HAIL.esc": "PASS", "D-HAIL.fight": "MANUAL",
+            "D-MERC.spawn": "MANUAL", "D-MERC.offer": "MANUAL", "D-MERC.hire": "MANUAL", "D-MERC.follow": "MANUAL",
+            "D-MERC.ext": "PASS", "D-MERC.settle": "FAIL", "D-MERC.premission": "NO DATA", "D-MERC.collect": "NO DATA",
+            "D-MERC.load": "NO DATA", "D-MERC.betray": "MANUAL"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 
 

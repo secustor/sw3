@@ -46,14 +46,15 @@
 # unless PARCELS is set); PCL_PROBE=0|1 (cfg pcl_probe, the E-PCL.1/E-PCL.2 probe lines); written only when set.
 # NESTS=0|1 (cfg nest, dynamic nests, design/nest-spec.md, CHECK E16.1-E16.11); NEST_MODE=1|2 (cfg nest_mode, 2 the
 # delete-and-replace fallback, E16.11); written only when set.
-# MERCS=0|1 (cfg merc, mercenary clans, design/merc-spec.md; default 0 until CHECK E0.13 passes; step 1 runs the clan
-# record at the region tick, no flights); written only when set.
+# MERCS=0|1 (cfg merc, mercenary clans, design/merc-spec.md; default 0 until CHECK E0.13 passes; the clan record at the
+# region tick and the hire role of step 3, test plan section 11, run C, chapter 5+); written only when set.
 # NEWS=1: the trf_* records of news/trf_news.xml (tools/gen_news.py) merged into the clone's Data/Game/News.xml
 # (the vanilla file is kept as News.xml.trf-orig; loc/trf_en.loc is copied on every run), and news_mode=2 unless
 # NEWS_MODE is set; unset restores News.xml from News.xml.trf-orig.
 # HAIL_BOX=0|1|2 (default 2 here; the shipped default is 1): tune hail_box (0 hail answers as lines, 1 ShowMsgBox
-# chain, 2 the hail menu as the trade dialog). Data/Scripts/Trade/TRF_Hail.xml and TRF_HailPg.xml (the demand result
-# page) are always copied and hail_xml=1 written; a hail_box key in TUNE wins.
+# chain, 2 the hail menu as the trade dialog). Data/Scripts/Trade/TRF_Hail.xml, TRF_HailPg.xml (the demand result
+# page) and TRF_MercPg.xml (the mercenary pages, design/merc-spec.md 6a) are always copied and hail_xml=1 written; a
+# hail_box key in TUNE wins.
 # LEVEL=v01|v02|v1 (default v1): v01 and v02 turn the later features off with the presets the host tests use
 # (tests/host_traffic.lua T_V01, T_V1Off); keys set in the environment win over the preset.
 # TRAFFIC_ENABLED=0|1, SITE_T1..SITE_T4 (0|1, default 1), TICK_MS (default 250), CARCASSES=0|1 (default 1 with
@@ -181,6 +182,7 @@ rm -rf "$SCRIPTS_DST"; mkdir -p "$SCRIPTS_DST"
 cp -R "$SCRIPTS_SRC/." "$SCRIPTS_DST/"
 cp "$here/Data/Scripts/Trade/TRF_Hail.xml" "$COPY/Data/Scripts/Trade/TRF_Hail.xml"
 cp "$here/Data/Scripts/Trade/TRF_HailPg.xml" "$COPY/Data/Scripts/Trade/TRF_HailPg.xml"
+cp "$here/Data/Scripts/Trade/TRF_MercPg.xml" "$COPY/Data/Scripts/Trade/TRF_MercPg.xml"
 locd=$COPY/Data/LocData/English
 cp "$here/loc/trf_en.loc" "$locd/trf_en.loc"
 locr=$COPY/Data/LocData/Russian
@@ -211,12 +213,13 @@ mv -f "$tmp" "$ini"
 
 xattr -c "$COPY/zlib1.dll" "$ini" 2>/dev/null || true
 find "$SCRIPTS_DST" -type f -exec xattr -c {} \; 2>/dev/null || true
-xattr -c "$COPY/Data/Scripts/Trade/TRF_Hail.xml" "$COPY/Data/Scripts/Trade/TRF_HailPg.xml" "$locd/trf_en.loc" 2>/dev/null || true
+xattr -c "$COPY/Data/Scripts/Trade/TRF_Hail.xml" "$COPY/Data/Scripts/Trade/TRF_HailPg.xml" "$COPY/Data/Scripts/Trade/TRF_MercPg.xml" \
+    "$locd/trf_en.loc" 2>/dev/null || true
 [ ! -f "$locr/trf_ru.loc" ] || xattr -c "$locr/trf_ru.loc" 2>/dev/null || true
 echo "installed zlib1.dll (sha1 $(shasum "$COPY/zlib1.dll" | cut -d' ' -f1))"
 echo "scripts in $SCRIPTS_DST:"; ls "$SCRIPTS_DST" | sed 's/^/  /'
 echo "config.script: $(tr -d '\r' < "$SCRIPTS_DST/config.script")"
-echo "hail dialog: $COPY/Data/Scripts/Trade/TRF_Hail.xml, TRF_HailPg.xml"
+echo "hail dialog: $COPY/Data/Scripts/Trade/TRF_Hail.xml, TRF_HailPg.xml, TRF_MercPg.xml"
 echo "loc: $locd/trf_en.loc (loc_mode $([ "${LOC:-0}" = 1 ] && echo 1 || echo 0))"
 [ ! -f "$locr/trf_ru.loc" ] || echo "loc: $locr/trf_ru.loc"
 [ ! -f "$newsx.trf-orig" ] || echo "news: $(grep -c '<name>trf_' "$newsx") trf_ records in $newsx (vanilla in News.xml.trf-orig)"

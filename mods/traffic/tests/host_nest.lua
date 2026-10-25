@@ -179,7 +179,7 @@ function T_NE_A()
 		and TRF_NeOpt("nest_trig") == 2 and TRF_NeOpt("nest_lines") == 1 and TRF_NeOpt("nest_mirror") == 1 and TRF_NeOpt("nest_grudge_war") == 0,
 		"TRF_ModList has Nest; nest off by default (on in these runs), mode 1, per-ship triggers, lines and mirror on, grudge war off");
 	local pm, pg = TRF_PlMods(), TRF_PlGroups();
-	HOST_Check(pm[getn(pm) - 1] == "Nest" and pm[getn(pm)] == "Pc" and pg[getn(pg)] == "Nest" and TRF_PlAdopt().Nest == 1, "trf_plumb: Nest registers (before Pc), its group prefix is scanned, its ships adopted at load");
+	HOST_Check(pm[getn(pm) - 2] == "Nest" and pm[getn(pm) - 1] == "Pc" and pg[getn(pg)] == "Nest" and TRF_PlAdopt().Nest == 1, "trf_plumb: Nest registers (before Pc), its group prefix is scanned, its ships adopted at load");
 	HOST_Check(NewPirateFlight ~= TRF_orig_NewPirateFlight and TRF_NeIsMine(NewPirateFlight) and type(TRF_orig_NewPirateFlight) == "function"
 		and not TRF_NeIsMine(TRF_orig_NewPirateFlight), "NewPirateFlight wrapped once over this run's vanilla function");
 	local w0 = NewPirateFlight;

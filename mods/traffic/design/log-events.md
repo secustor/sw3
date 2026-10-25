@@ -693,7 +693,7 @@ the lowercase system names, `item` the item index (1 `Cargo_crate`, 2 `Cargo_002
 
 ## merc (`trf_merc.script`; `TRF_McE`, `TRF_McDE`)
 
-Mercenary clans, build step 1 (`design/merc-spec.md` 8). `clan` is the clan index 1..12 (`_Fmerc_names` order), `region` a region slot, `fortunes`, `stages`, `roles` the 12 values in clan order.
+Mercenary clans, build steps 1 and 3 (`design/merc-spec.md` 8). `clan` is the clan index 1..12 (`_Fmerc_names` order), `region` a region slot, `fortunes`, `stages`, `roles` the 12 values in clan order.
 
 | Event | Example line | Level |
 |---|---|---|
@@ -714,10 +714,47 @@ Mercenary clans, build step 1 (`design/merc-spec.md` 8). `clan` is the clan inde
 | `loss` | `module=merc event=loss clan=4 region=5 condition=3 tier=4` (off-screen, Raids) | 2 |
 | `recover` | `module=merc event=recover clan=9 condition=3` | 2 |
 | `decay` | `module=merc event=decay clan=3 field=<rel, g, bk> value=-1` | 2 |
-| `fix` | `module=merc event=fix field=<mc, s, t, h, r, n, e> clan=<c> result=<reset, dropped>` | 1 |
+| `fix` | `module=merc event=fix field=<mc, s, t, h, r, n, e, o> clan=<c> result=<reset, dropped>` | 1 |
 | `static` | `module=merc event=static vanilla=differs result=own_table` (`_Fmerc_names`/`_Fmerc_groups` differ from the module's table) | 1 |
-| `dump` | `module=merc event=dump on=true clan_count=12 packed_count=5 elite=8 deed_jump=0 deed_chapter=0 deed_last=0 blacklist_until=nil wolves_rating=nil hire=nil bands=nil call=nil note=nil static=match` / `module=merc event=dump on=false result=none` | 1 |
+| `dump` | `module=merc event=dump on=true clan_count=12 packed_count=5 elite=8 deed_jump=0 deed_chapter=0 deed_last=0 blacklist_until=nil wolves_rating=nil hire=nil bands=nil call=nil note=nil collect=nil static=match` / `module=merc event=dump on=false result=none` | 1 |
 | `dump_clan` | `module=merc event=dump_clan clan=4 key=stardragoon name="Star Dragoons" bloc=2 home=5 rel=1 at=5 jobs=3 condition=4 fortune=41 stage=2 fielded=2 role=0 met=812 betrayals=0 grudge=0 owe=0 streak=0 closed=0` | 1 |
+| `roll` | `module=merc event=roll system=gaoba chance=55.000 roll=23 clan=4 candidate_count=2 stage=1 power=14 ship_count=4 delay=47 result=planned`; `result=none reason=<rows, cap:<no>, due>` | 1 |
+| `roll` | `module=merc event=roll system=gaoba result=none reason=<excluded, strict:<w>, supp, region, black, escort_mission, escort_slot, event, roll, no_clan>` | 2 |
+| `spawn` | `module=merc event=spawn flight=1 clan=4 group=TRF_Merc_1 stage=1 composition=1 power=14 ship_count=4 portal=PORTAL_D result=spawn` / `result=skipped reason=<system, black, cap:<no>, portal, escort_slot, build, error, wind>` | 1 |
+| `meet` | `module=merc event=meet flight=1 clan=4 collection=false` / `result=refused reason=<heat, standing, bloc, legion>` | 1 |
+| `offer` | `module=merc event=offer flight=1 clan=4 fee=12600 share=2500 blood=10000 owe=0 discount=1.000 heat_k=1.000 condition=4 standing=0 result=line` | 1 |
+| `talk` | `module=merc event=talk kind=<offer, ext, settle, collect> flight=1 clan=4 via=<dialog, box> result=shown` | 1 |
+| `talk` | `module=merc event=talk kind=settle flight=1 try_count=2 result=wait reason=<lock, quiet>` | 2 |
+| `answer` | `module=merc event=answer kind=offer answer=<acc, dec, esc> via=<dialog, box>` / `answer=acc via=box result=ignored` | 1 |
+| `dialog_fallback` | `module=merc event=dialog_fallback reason=<xml, box, native, uistate, ui=<v>, movie, error>` (the page cannot open, the box follows) | 1 |
+| `dialog_answers` | `module=merc event=dialog_answers answers=acc,dec` (page init) | 2 |
+| `dialog_init` | `module=merc event=dialog_init result=stale` | 1 |
+| `hire` | `module=merc event=hire flight=1 clan=4 fee=12600 owe=0 share=2500 blood=10000 time=600 ship_count=4 result=hired` / `result=short reason=short` / `result=declined reason=<dec, esc, none, short> rearm=<true, false>` | 1 |
+| `seed` | `module=merc event=seed flight=1 clan=4 group=TRF_Raid_2 reason=<raid, captain, vanilla>` | 1 |
+| `kill` | `module=merc event=kill flight=1 clan=4 ship=TRF_Raid_2:1 via=<bus, died> kill_count=1` (a counted share death) | 1 |
+| `loss` | `module=merc event=loss flight=1 clan=4 ship=2 player=false hired=true loss_count=1 reason=<died, poll>` | 1 |
+| `help_factor` | `module=merc event=help_factor raid_id=2 credits=8000 factor=0.5 result=half` / `result=cancelled reason=no_player_kill` (8.5 resolver) | 1 |
+| `timeout`, `grace` | `module=merc event=timeout flight=1 clan=4 kill_count=3 loss_count=0`, `module=merc event=grace flight=1 clan=4 time=60` | 1 |
+| `extend` | `module=merc event=extend flight=1 clan=4 fee=9500 time=600 result=<extended, short>` | 1 |
+| `premission` | `module=merc event=premission flight=1 clan=4 reason=<signal, portal>` | 1 |
+| `settle` | `module=merc event=settle flight=1 clan=4 share=7500 blood=0 total=7500 taken=7500 result=<paid, short> reason=<acc, none, zero, half, attack, heat, wind, lost>` / `total=7500 result=unanswered` | 1 |
+| `end` | `module=merc event=end flight=1 clan=4 completed=true standing=1 jobs=3` / `completed=false` / `result=robbery reason=<attack, heat>` | 1 |
+| `refund` | `module=merc event=refund flight=1 clan=4 amount=6300` (wind-down) | 1 |
+| `refuse` | `module=merc event=refuse flight=1 clan=4 kind=<settle, collect> amount=7500 pack_strength=56.000 player_strength=39.000 braveness=0.810 chance=12.000 roll=40 result=<leave, attack> war=<true, false>` | 1 |
+| `owe` | `module=merc event=owe clan=4 amount=1500 owe=1500 standing=-1 result=added reason=<short, refused, unanswered, jump, broken>` / `amount=2000 result=paid reason=hire` | 1 |
+| `collect` | `module=merc event=collect flight=1 clan=4 owe=7500 taken=7500 result=<paid, short>` / `module=merc event=collect flight=1 result=unanswered answer=<esc, none>` | 1 |
+| `betray` | `module=merc event=betray clan=4 betrayals=1 standing=-3 reason=<fire, kill, refuse>`; `module=merc event=betray flight=1 clan=4 result=<war, leave> reason=<r>` | 1 |
+| `jump` | `module=merc event=jump clan=4 destination=heos time=420 result=follow` / `destination=kassilia total=7500 result=owe` | 1 |
+| `follow` | `module=merc event=follow flight=1 clan=4 system=heos ship_count=4 sit_out=0 time=420 bands=9999 result=rebuilt via=<arrival, load>` / `module=merc event=follow clan=4 total=7500 result=ended reason=broken` | 1 |
+| `suspend` | `module=merc event=suspend clan=4 system=heos time=420 reason=<excluded, strict:<w>, supp, ships, cap:<no>, escort_slot, flight, mothership, build>` | 1 |
+| `load` | `module=merc event=load flight=1 clan=4 ship_count=4 time=420 result=adopt`; `module=merc event=load result=<rebuilt, suspended> try_count=1 reason=<no_handle, not_alive>`; `module=merc event=load clan=4 result=suspended`; `module=merc event=load deleted_count=4 result=delete` | 1 |
+| `leave` | `module=merc event=leave flight=1 clan=4 portal=PORTAL_L reason=<wait, half, settled, refused, collect, betray, attack, heat, wind>` | 1 |
+| `gone` | `module=merc event=gone flight=1 clan=4 deleted_count=4 reason=<portal, out_of_view, watchdog, dead, jump, build, error, test>` | 1 |
+| `trim` | `module=merc event=trim flight=1 clan=4 trimmed=1` (ship-cap trim of an unhired pack) | 1 |
+| `note` | `module=merc event=note clan=4 kind=<1, 2>` (next-entry note: 1 blacklist, 2 debt) | 1 |
+| `board` | `module=merc event=board clan=4 region=2 jumps=1` (patrol board line) | 1 |
+| `legend` | `module=merc event=legend channel=<board, station> chapter=3` (Black Legion legend line) | 1 |
+| `dump_hire` | `module=merc event=dump_hire clan=4 system=gaoba composition=1 power=14 ship_count=4 time=420 fee=12600 share=2500 blood=10000 kill_count=3 loss_count=0 flown=180 bands=9999 visit=hired flight=1` / `result=none visit=<st> flight=<n>` | 1 |
 
 ## supply (`trf_supply.script`; `TRF_SpE`)
 

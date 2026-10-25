@@ -311,6 +311,9 @@ function CreateCarcass(tpl, pos, dir)
 	s.ClearInventory = function(self) self.inv = {}; self.cleared = (self.cleared or 0) + 1; end;
 	s.SetHP = function(self, v) HOST_Want(type(v) == "number", "Carcass:SetHP(hp)"); self.hp = v; end;
 	s.GetName = function(self) return self.tpl; end;
+	-- GetGroupName (0x5e3610, lua-natives.md: () -> string): the group of the ship's flight (the clan module's vanilla
+	-- died triggers, design/merc-spec.md 6a).
+	s.GetGroupName = function(self) if self.flight and self.flight.group then return self.flight.group.name; end; return nil; end;
 	s.SetMaxSpeed = function(self, v) HOST_Want(type(v) == "number", "Carcass:SetMaxSpeed(v)"); self.vmax = v; end;
 	-- v1: heading (the spawn direction, or s.ori set by a scenario), teleport, move order, module fit (never
 	-- used in vanilla), destruction, effect, speed (never used in vanilla; 100 or vmax).
@@ -939,6 +942,55 @@ Trad_merc_Ships = {
 	{{"Arba_tr4",1,"A"},{"Puma_merc1",3,"A"},{"Puma_merc1",3,"A"},{"Trident_merc1",3,"M"}},
 	{{"Arba_tr5",1,"A"},{"Gunslinger_merc1",3,"A"},{"Puma_merc1",3,"A"},{"Trident_merc1",3,"M"}},
 	{{"Btransport2",1,"A"},{"Btransport",1,"A"},{"Gunslinger_merc1",3,"A"},{"Puma_merc1",3,"A"},{"Tiger_merc1",3,"D"},{"Trident_merc1",3,"M"}}};
+-- Rec_Fighters / Rec_Bombers (Create_flight_2.script 696-746, the mercenary rows; TR F.17, design/merc-spec.md 10).
+Rec_Fighters = {
+	{{"Yari_merc2",1,"A"}},
+	{{"Yari_merc1",1,"A"},{"Brigand_merc2",1,"D"}},
+	{{"Excalibur_merc2",1,"A"},{"Yari_merc1",1,"D"}},
+	{{"Excalibur_merc2",1,"A"},{"Yari_merc1",1,"A"},{"Brigand_merc1",1,"D"}},
+
+	{{"Cleaner_merc1",2,"A"},{"Excalibur_merc1",2,"A"}},
+	{{"Cleaner_merc1",2,"A"},{"Excalibur_merc1",2,"A"},{"Yari_merc1",2,"D"}},
+	{{"Stormcrow_merc1",2,"A"},{"Cleaner_merc1",2,"A"},{"Hatchet_merc4",2,"R"}},
+	{{"Stormcrow_merc1",2,"A"},{"Cleaner_merc1",2,"A"},{"TieFly_merc1",1,"D"},{"Hatchet_merc2",2,"C"}},
+	{{"Stormcrow_merc1",2,"A"},{"Cleaner_merc1",2,"A"},{"Cleaner_merc1",2,"D"},{"Raptor_merc4",2,"R"}},
+
+	{{"Tiger_merc1",3,"A"},{"Stormcrow_merc2",3,"A"},{"Cleaner_merc1",2,"D"}},
+	{{"EvilEye_merc1",3,"A"},{"Cleaner_merc1",3,"A"},{"Stormcrow_merc2",2,"D"},{"Raptor_merc2",2,"C"}},
+	{{"Stormcrow_merc3",3,"A"},{"Cleaner_merc1",3,"A"},{"EvilEye_merc1",3,"D"},{"Raptor_merc4",3,"R"}},
+	{{"Stormcrow_merc3",3,"A"},{"Cleaner_merc2",3,"A"},{"Raptor_merc2",3,"C"},{"Raptor_merc4",3,"R"}},
+	{{"Stormcrow_merc3",3,"A"},{"Cleaner_merc2",3,"A"},{"Cleaner_merc2",3,"A"},{"EvilEye_merc1",2,"D"},{"Raptor_merc4",3,"R"}},
+
+	{{"Panthera_merc1",4,"A"},{"Panthera_merc1",4,"A"},{"Cleaner_merc2",3,"D"}},
+	{{"Panthera_merc1",4,"A"},{"Panthera_merc1",4,"A"},{"Stormcrow_merc3",3,"D"},{"Raptor_merc4",3,"R"}},
+	{{"Puma_merc1",4,"A"},{"Panthera_merc1",4,"A"},{"Raptor_merc4",4,"R"},{"Raptor_merc4",3,"R"}},
+	{{"Puma_merc1",4,"A"},{"Panthera_merc1",4,"A"},{"Stormcrow_merc3",4,"D"},{"Trident_merc4",3,"R"},{"Trident_merc2",3,"C"}},
+	{{"Gunslinger_merc1",4,"A"},{"Puma_merc1",4,"A"},{"Panthera_merc1",4,"A"},{"Trident_merc4",3,"R"},{"Trident_merc4",4,"R"}},
+	{{"Gunslinger_merc1",5,"A"},{"Gunslinger_merc1",4,"A"},{"Puma_merc1",4,"A"},{"Puma_merc1",3,"D"},{"Trident_merc4",4,"R"},{"Trident_merc4",4,"R"}}};
+Rec_Bombers = {
+	{{"Naginata_merc1",1,"A"}},
+	{{"Naginata_merc2",1,"A"},{"Brigand_merc1",1,"D"}},
+	{{"Excalibur_merc2",1,"A"},{"Brigand_merc1",1,"D"}},
+	{{"Excalibur_merc2",1,"A"},{"Naginata_merc1",1,"A"},{"Brigand_merc1",1,"D"}},
+
+	{{"Excalibur_merc1",2,"A"},{"Excalibur_merc1",1,"D"},{"Hatchet_merc1",1,"M"}},
+	{{"Hammerhead_merc1",2,"A"},{"Excalibur_merc1",2,"A"},{"Hatchet_merc1",1,"M"}},
+	{{"Hammerhead_merc1",2,"A"},{"Hammerhead_merc1",2,"A"},{"Hatchet_merc4",2,"R"}},
+	{{"Hammerhead_merc1",2,"A"},{"Hammerhead_merc1",2,"A"},{"Hatchet_merc3",2,"D"},{"Hatchet_merc2",1,"C"}},
+	{{"Hammerhead_merc1",2,"A"},{"Hammerhead_merc1",2,"A"},{"Raptor_merc3",2,"D"},{"Hatchet_merc4",2,"R"}},
+
+	{{"Bident_merc1",3,"A"},{"EvilEye_merc1",3,"A"},{"Raptor_merc3",2,"D"}},
+	{{"Bident_merc1",3,"A"},{"Bident_merc1",3,"A"},{"Raptor_merc3",2,"D"},{"Hatchet_merc2",2,"C"}},
+	{{"Bident_merc1",3,"A"},{"Bident_merc1",3,"A"},{"Raptor_merc3",2,"D"},{"Hatchet_merc4",2,"R"}},
+	{{"Bident_merc2",3,"A"},{"Bident_merc2",3,"A"},{"Raptor_merc2",3,"C"},{"Raptor_merc4",3,"R"}},
+	{{"Stormcrow_merc3",3,"A"},{"Bident_merc2",3,"A"},{"Bident_merc2",3,"A"},{"Raptor_merc3",2,"D"},{"Raptor_merc4",2,"R"}},
+
+	{{"Hrimturs_merc1",4,"A"},{"Hrimturs_merc1",4,"A"},{"Trident_merc3",3,"D"}},
+	{{"Hrimturs_merc1",4,"A"},{"Hrimturs_merc1",4,"A"},{"Puma_merc1",3,"D"},{"Trident_merc4",3,"R"}},
+	{{"Hrimturs_merc2",4,"A"},{"Hrimturs_merc2",4,"A"},{"Trident_merc4",3,"R"},{"Raptor_merc4",3,"R"}},
+	{{"Hrimturs_merc2",4,"A"},{"Hrimturs_merc2",4,"A"},{"Puma_merc1",3,"D"},{"Trident_merc2",3,"C"},{"Trident_merc4",3,"R"}},
+	{{"Hrimturs_merc2",4,"A"},{"Hrimturs_merc2",4,"A"},{"Hrimturs_merc2",4,"A"},{"Trident_merc4",4,"R"},{"Trident_merc4",3,"R"}},
+	{{"Hrimturs_merc3",5,"A"},{"Hrimturs_merc3",4,"A"},{"Hrimturs_merc2",4,"A"},{"Trident_merc3",3,"D"},{"Trident_merc4",4,"R"},{"Trident_merc4",4,"R"}}};
 Trad_CargoType = {"Cargo_01", "Cargo_02", "Cargo_03", "Cargo_04", "Cargo_05", "Cargo_06", "Cargo_07", "Cargo_08", "Cargo_09", "Cargo_10",
 	"Barrel_02", "Uranium", "Cargo_06", "Cargo_07", "Cargo_08", "Cargo_09", "Cargo_10"};
 function trigger_generator_Action(...) return HOST_VanGen(arg); end;

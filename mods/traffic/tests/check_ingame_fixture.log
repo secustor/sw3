@@ -264,3 +264,31 @@ traffic: lua: exp=v1 module=hail event=close trader_id=24 reason="help accept"
 traffic: lua: exp=v1 module=hail event=help trader_id=24 raid_id=nil pay=1063 via=watch result=accepted
 traffic: lua: exp=v1 module=region event=pay reason=hail_help amount=1063
 traffic: lua: exp=v1 module=hail event=help trader_id=24 pay=1063 credits=1063 kill_count=2 help=1 via=watch result=paid
+traffic: lua: exp=v1 module=merc event=roll system=gaoba chance=55.000 roll=23 clan=4 candidate_count=2 stage=1 power=14 ship_count=4 delay=47 result=planned
+traffic: lua: exp=v1 module=merc event=spawn flight=1 clan=4 group=TRF_Merc_1 stage=1 composition=1 power=14 ship_count=4 portal=PORTAL_D result=spawn
+traffic: lua: exp=v1 module=merc event=meet flight=1 clan=4 collection=false
+traffic: lua: exp=v1 module=merc event=offer flight=1 clan=4 fee=12600 share=2500 blood=10000 owe=0 discount=1.000 heat_k=1.000 condition=4 standing=0 result=line
+traffic: lua: exp=v1 module=merc event=talk kind=offer flight=1 clan=4 via=dialog result=shown
+traffic: lua: exp=v1 module=merc event=answer kind=offer answer=dec via=dialog
+traffic: lua: exp=v1 module=merc event=hire flight=1 clan=4 result=declined reason=dec rearm=true
+traffic: lua: exp=v1 module=merc event=talk kind=offer flight=1 clan=4 via=dialog result=shown
+traffic: lua: exp=v1 module=merc event=answer kind=offer answer=acc via=dialog
+traffic: lua: exp=v1 module=region event=charge reason=merc_fee amount=12600 taken=12600 credits=80000
+traffic: lua: exp=v1 module=merc event=hire flight=1 clan=4 fee=12600 owe=0 share=2500 blood=10000 time=600 ship_count=4 result=hired
+traffic: lua: exp=v1 module=merc event=seed flight=1 clan=4 group=TRF_Raid_2 reason=raid
+traffic: lua: exp=v1 module=merc event=kill flight=1 clan=4 ship=TRF_Raid_2:1 via=bus kill_count=1
+traffic: lua: exp=v1 module=merc event=jump clan=4 destination=heos time=420 result=follow
+traffic: lua: exp=v1 module=merc event=follow flight=1 clan=4 system=heos ship_count=4 sit_out=0 time=420 bands=9999 result=rebuilt via=arrival
+traffic: lua: exp=v1 module=merc event=timeout flight=1 clan=4 kill_count=1 loss_count=0
+traffic: lua: exp=v1 module=merc event=talk kind=ext flight=1 clan=4 via=dialog result=shown
+traffic: lua: exp=v1 module=region event=charge reason=merc_ext amount=9500 taken=9500 credits=67400
+traffic: lua: exp=v1 module=merc event=extend flight=1 clan=4 fee=9500 time=600 result=extended
+traffic: lua: exp=v1 module=merc event=timeout flight=1 clan=4 kill_count=1 loss_count=0
+traffic: lua: exp=v1 module=merc event=talk kind=settle flight=1 clan=4 via=dialog result=shown
+traffic: lua: exp=v1 module=merc event=settle flight=1 clan=4 share=2500 blood=0 total=2500 taken=2500 result=paid reason=acc
+traffic: lua: exp=v1 module=merc event=end flight=1 clan=4 completed=true standing=1 jobs=1
+traffic: lua: exp=v1 module=merc event=leave flight=1 clan=4 portal=PORTAL_L reason=settled
+traffic: lua: exp=v1 module=merc event=refuse flight=1 clan=5 kind=settle amount=2500 pack_strength=52.000 player_strength=39.000 braveness=0.810 chance=0.000 roll=17 result=attack war=false
+traffic: lua: exp=v1 module=merc event=betray clan=5 betrayals=1 standing=-3 reason=fire
+traffic: lua: exp=v1 module=merc event=betray flight=1 clan=5 result=leave reason=fire
+traffic: lua: exp=v1 module=merc event=leave flight=1 clan=5 portal=PORTAL_D reason=betray

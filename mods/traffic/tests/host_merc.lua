@@ -107,7 +107,7 @@ function T_MC_A()
 	MC_Set("merc_war", 5); HOST_Check(TRF_McOpt("merc_war") == 0, "merc_war other than 1 reads 0");
 	MC_Set("merc_war", nil);
 	local T = TRF_McTune();
-	HOST_Check(T.c_hire == 700 and T.merc_p[4] == 55 and T.mc_up[2] == 0.5 and T.mc_st_up[3] == 78 and T.mc_st_dn[1] == 22 and T.mc_ships == 7
+	HOST_Check(T.c_hire == 700 and T.merc_p[4] == 55 and T.mc_up[2] == 0.5 and T.mc_st_up[3] == 78 and T.mc_st_dn[1] == 22 and T.mc_ships == 14 and T.merc_ext_k == 0.75
 		and T.mc_ms_max == 2 and T.mc_bs_j[2] == 40 and T.mc_el_fo[2] == 78 and T.rv_cd_legs == 24 and T.merc_owe_j == 60 and T.mc_size_k[3] == 1.25,
 		"tune defaults of 12 section 6 and 11.1");
 	MC_Tune("mc_ms_max", 99); MC_Tune("mc_st_up", {-5, 200, 78}); MC_Tune("mc_up", {0, 0.5, 1, 2.5});
@@ -696,12 +696,837 @@ function T_MC_F()
 	TRF.mc.n = TRF_TpPackK({c=12, a=9999999}, TRF_McNKeys());
 	TRF.mc.e = TRF_TpPackK({el=8, dj1=9999999, dc1=20, djl=9999999, dn=1}, TRF_McEKeys());
 	TRF.mc.x = 9999999; TRF.mc.w = strrep("9", 11); TRF.mc.wt = -9999999;
+	TRF.mc.o = TRF_TpPackK({c=12, s=113}, TRF_McOKeys());
 	local wz = HOST_SaveSize(TRF.mc);
 	print("HOST info merc save size: typical "..typ.." worst "..wz.." (s "..HOST_SaveSize(TRF.mc.s).." t "..ts.." h "..HOST_SaveSize(TRF.mc.h).." hb "..HOST_SaveSize(TRF.mc.hb)
-		.." r "..HOST_SaveSize(TRF.mc.r).." n "..HOST_SaveSize(TRF.mc.n).." e "..HOST_SaveSize(TRF.mc.e).." w "..HOST_SaveSize(TRF.mc.w)..")");
-	HOST_Check(typ <= 1000 and wz <= 3400 and HOST_Reserved(TRF, "TRF") == "", "save bound: typical "..typ.." <= 1000, worst "..wz.." <= 3400 bytes, no reserved key");
+		.." r "..HOST_SaveSize(TRF.mc.r).." n "..HOST_SaveSize(TRF.mc.n).." e "..HOST_SaveSize(TRF.mc.e).." w "..HOST_SaveSize(TRF.mc.w).." o "..HOST_SaveSize(TRF.mc.o)..")");
+	HOST_Check(typ <= 1000 and wz <= 3420 and HOST_Reserved(TRF, "TRF") == "", "save bound: typical "..typ.." <= 1000, worst "..wz.." <= 3420 bytes, no reserved key");
 	T_SaveLoad();
 	HOST_Check(HOST_SaveSize(TRF.mc) == wz, "worst case survives a load and the repair");
+end;
+
+-- Hire role helpers (build step 3, merc-spec 10) -----------------------------------------------------------------
+
+-- Handle globals of the visit's clan flight are expected while its ship lives (the load finds the wing through them).
+MC_HandleOk0 = T_HandleOk;
+function T_HandleOk(k)
+	local a, b, n, j = strfind(k, "^TRF_ship_trf_merc_(%d+)_(%d+)$");
+	if n then
+		local v = TRF_McV();
+		local o = getglobal(k);
+		return type(v) == "table" and v.n == tonumber(n) and o and o.alive and v.del ~= 1;
+	end;
+	return MC_HandleOk0(k);
+end;
+
+-- Hire runs: chapter ch (6_1), no region tick (cfg cycle 0: the clans stay where a run puts them), every clan at home,
+-- gaoba's region (Kadi, the home of clans 4 and 5) in Raids, merc_p 100 %, clans 4 and 5 at stage sg (default 1), wallet
+-- 1,000,000, heat and help 0.
+function MC_HBegin(ch, sg, t)
+	local h = HOST();
+	t = t or {};
+	if t.cycle == nil then t.cycle = 0; end;
+	MC_Begin(ch or "6_1", t);
+	h.credits = 1000000;
+	h.labels.OutMissionEscort = nil;
+	h.qs = FALSE;
+	MC_Tune("merc_reach", 0);
+	MC_Tune("merc_p", {100, 100, 100, 100, 100, 100});
+	MC_Tune("merc_p_max", 100);
+	TRF_McRec(1);
+	MC_Phase(MC_Slot("gaoba"), 3);
+	MC_Put(4, {sg=sg or 1, met=0, rel=0, hp=4});
+	MC_Put(5, {sg=sg or 1, met=0, rel=0, hp=4});
+	TRF.std.heat = 0; TRF.std.help = 0;
+end;
+
+-- Dialog pages on (tune hail_box 2, cfg hail_xml 1, an idle UI) or off.
+function MC_Dlg(on)
+	local h = HOST();
+	if on then
+		MC_Tune("hail_box", 2);
+		h.cfg.hail_xml = 1;
+		TRF_UiState = HOST_UiState;
+		h.ui = 0;
+	else
+		MC_Tune("hail_box", 1);
+		h.cfg.hail_xml = nil;
+		TRF_UiState = nil;
+		h.ui = nil;
+	end;
+end;
+
+-- Entry into sys by a jump, then the spawn delay (up to 96 s).
+function MC_Enter(sys, wait)
+	T_Jump(sys or "gaoba");
+	if wait ~= 0 then T_Tick(wait or 192, 0.5); end;
+end;
+
+-- Live ships labelled trf_merc_<n>_<j> in the scene.
+function MC_Ships(n)
+	local l = {};
+	for j = 1, 6 do
+		local o = HOST().objs["trf_merc_"..(n or 1).."_"..j];
+		if o and o.alive then tinsert(l, o); end;
+	end;
+	return l;
+end;
+
+-- The mothership next to the pack leader; the meeting poll, the offer line and the page or box 12 s later.
+function MC_Meet()
+	local s = TRF_McLead(TRF_McV());
+	local p = s:GetPosition();
+	HOST().ms.pos = Vector3(p.x + 20, p.y, p.z);
+	T_Tick(32, 0.5);
+end;
+
+-- Spawn, meet, OK: a hired pack in gaoba (box mode). Returns the visit record.
+function MC_Hire()
+	MC_Enter("gaoba");
+	MC_Meet();
+	HOST_Press("ok");
+	T_Tick(2, 0.5);
+	return TRF_McV();
+end;
+
+-- Ends the visit's flight and any hire record (test reset), then jumps to sys (default heos) without waiting.
+function MC_Reset(sys)
+	local v = TRF_McV();
+	if type(v) == "table" and v.st ~= "gone" then TRF_McDelAll(v, "test"); end;
+	TRF.mc.h = nil; TRF.mc.hb = nil; TRF.mc.o = nil;
+	TRF_McMC().v = nil; TRF_McMC().cv = nil;
+	TRF_N("TRF_EscortFree", "merc");
+	TRF_N("TRF_BoxFree", "merc");
+	MC_Enter(sys or "heos", 0);
+	MC_Put(4, {met=0}); MC_Put(5, {met=0});
+end;
+
+-- Kills pack ship j of the visit (its died trigger fires).
+function MC_Kill(j)
+	local v = TRF_McV();
+	v.sh[j].alive = nil;
+	HOST_Fire("died", "TRF_McDied("..v.n..","..j..",");
+end;
+
+-- n player hits on pack ship j, one game second apart.
+function MC_Hits(j, n)
+	local v = TRF_McV();
+	for i = 1, n or 5 do
+		HOST_Fire("attack", "TRF_McHit("..v.n..","..j..",");
+		T_Tick(2, 0.5);
+	end;
+end;
+
+-- The patrol dock of the scene through the dispatcher: screen lines since s0 joined by "|".
+function MC_Dock()
+	local h = HOST();
+	local s0 = getn(h.screen);
+	_param = GetCurrentLocation();
+	__PatrolStationDock_Ok();
+	local r = "";
+	for i = s0 + 1, getn(h.screen) do r = r..h.screen[i].t.."|"; end;
+	return r;
+end;
+
+-- Radio and screen texts since index m0 / s0, joined.
+function MC_Txt(m0, s0)
+	local r, h = "", HOST();
+	for i = (m0 or 0) + 1, getn(h.msgs) do r = r..h.msgs[i].t.."|"; end;
+	for i = (s0 or 0) + 1, getn(h.screen) do r = r..h.screen[i].t.."|"; end;
+	return r;
+end;
+
+-- Last relation set for the pair a, b (HOST().rel), or nil.
+function MC_Rel(a, b)
+	local q, r = HOST().rel, nil;
+	for i = 1, getn(q) do if q[i][1] == a and q[i][2] == b then r = q[i][3]; end; end;
+	return r;
+end;
+
+-- g: pure rules, the roll and its gates, the spawn, caps ---------------------------------------------------------
+
+function T_MC_G()
+	local h = HOST();
+	MC_HBegin("6_1", 1);
+	-- Pure parts.
+	HOST_Check(TRF_McPwOf(12, 3, 0, 4) == 14 and TRF_McPwOf(13, 4, 1, 4) == 17 and TRF_McPwOf(5, 1, -2, 2) == 1 and TRF_McPwOf(20, 4, 1, 4) == 20,
+		"strength: sys_base + off(T) + stage offset - (4 - hp), clamped 1..20");
+	HOST_Check(TRF_McOwnerKOf("Vks", 6) == 1 and TRF_McOwnerKOf("Vks", 7) == 0.5 and TRF_McOwnerKOf("Vks", 13) == 0 and TRF_McOwnerKOf("Vks", 17) == 0.5
+		and TRF_McOwnerKOf("Kfni", 8) == 1.25 and TRF_McOwnerKOf("Kfni", 12) == 1 and TRF_McOwnerKOf("Neutral", 13) == 1, "owner factor by chapter");
+	HOST_Check(TRF_McPOf(55, 25, 80, 1) == 80 and TRF_McPOf(35, 0, 80, 0.5) == 17.5 and TRF_McPOf(5, 25, 80, 0) == 0, "chance: phase + sweep, max 80, x owner");
+	HOST_Check(TRF_McPickOf({{c=4, w=4}, {c=5, w=1}}, 3) == 4 and TRF_McPickOf({{c=4, w=4}, {c=5, w=1}}, 4) == 5, "weighted pick (rel + 4)");
+	HOST_Check(TRF_McCompOf(1, 1) == 1 and TRF_McCompOf(2, 1) == 2 and TRF_McCompOf(1, 2) == 3 and TRF_McCompOf(2, 2) == 3, "composition by unit type and fielded stage");
+	local r1, r3 = TRF_McRows(1, 14), TRF_McRows(3, 14);
+	HOST_Check(getn(r1) == 1 and r1[1].m == 4 and r1[1].t == Rec_Fighters[12] and getn(r3) == 2 and r3[1].m == 3 and r3[2].t == Rec_Bombers[10] and r3[2].p == 12
+		and TRF_McRowsN(r1) == 4 and TRF_McRowsN(r3) == 6, "rows: Rec_Fighters at most 4; fighters 3 plus bombers at pw - 2 (NORMAL __tablevel)");
+	HOST_Check(TRF_McBandOf(1000, 1000) == 9 and TRF_McBandOf(500, 1000) == 5 and TRF_McBandOf(1, 1000) == 1 and TRF_McBandOf(0, 1000) == 0, "HP bands 1..9");
+	-- Gates (TRF_McAppear on the current system; the visit record cleared between tries).
+	local cur = V_Idx("gaoba");
+	local mc = TRF_McMC();
+	TRF.mc.x = TRF_Jumps() + 10;
+	local n0 = S_Mark();
+	mc.v = nil; TRF_McAppear(cur);
+	HOST_Check(not mc.v and S_Logs(n0, "event=roll system=gaoba result=none reason=black") == 1, "blacklist: no roll");
+	TRF.mc.x = nil;
+	h.labels.OutMissionEscort = "m18c_escort";
+	n0 = S_Mark(); mc.v = nil; TRF_McAppear(cur);
+	HOST_Check(not mc.v and S_Logs(n0, "reason=escort_mission") == 1, "OutMissionEscort running: no roll");
+	h.labels.OutMissionEscort = nil;
+	TRF.live.esc = "lad";
+	n0 = S_Mark(); mc.v = nil; TRF_McAppear(cur);
+	HOST_Check(not mc.v and S_Logs(n0, "reason=escort_slot") == 1, "escort slot held by #9: no roll");
+	TRF.live.esc = nil;
+	TRF.live.ev = "sweep";
+	n0 = S_Mark(); mc.v = nil; TRF_McAppear(cur);
+	HOST_Check(not mc.v and S_Logs(n0, "reason=event") == 1, "on-screen sweep event: no roll");
+	TRF.live.ev = nil;
+	MC_Tune("merc_p", {0, 0, 0, 0, 0, 0});
+	n0 = S_Mark(); mc.v = nil; TRF_McAppear(cur);
+	HOST_Check(not mc.v and S_Logs(n0, "reason=roll") == 1, "chance 0: the roll fails");
+	MC_Tune("merc_p", {100, 100, 100, 100, 100, 100});
+	MC_Put(4, {at=1}); MC_Put(5, {at=1});
+	n0 = S_Mark(); mc.v = nil; TRF_McAppear(cur);
+	HOST_Check(not mc.v and S_Logs(n0, "reason=no_clan") == 1, "no clan works the region: no roll");
+	TRF.clock.legs = 20;
+	MC_Put(4, {at=MC_Slot("gaoba"), met=18}); MC_Put(5, {at=MC_Slot("gaoba"), met=17});
+	n0 = S_Mark(); mc.v = nil; TRF_McAppear(cur);
+	HOST_Check(not mc.v and S_Logs(n0, "reason=no_clan") == 1, "met within merc_cd 4 legs: no candidate");
+	MC_Put(4, {met=0}); MC_Put(5, {met=0});
+	MC_Tune("mc_ships", 2);
+	n0 = S_Mark(); mc.v = nil; TRF_McAppear(cur);
+	HOST_Check(not mc.v and S_Logs(n0, "reason=cap:merc_cap") == 1, "mc_ships below the pack: no roll");
+	MC_Tune("mc_ships", 14);
+	HOST_Check(TRF_McSysWhy(V_Idx("kassilia")) == "excluded" and TRF_McSysWhy(V_Idx("nk")) == "excluded" and TRF_McSysWhy(cur) == nil,
+		"permanent exclusions (Kassilia, NK)");
+	-- The roll: deterministic per (system, leg); the same clan twice.
+	n0 = S_Mark(); mc.v = nil; mc.nx = 0; local a1 = TRF_McAppear(cur); local c1 = mc.v.c;
+	mc.v = nil; mc.nx = 0; local a2 = TRF_McAppear(cur);
+	HOST_Check(a1 == 1 and a2 == 1 and mc.v.c == c1 and (c1 == 4 or c1 == 5) and S_Logs(n0, "result=planned") == 2, "fixed-hash roll: same clan twice ("..tostring(c1)..")");
+	mc.v = nil; mc.nx = 0;
+	-- Chapter 4 and merc 0: nothing at entry.
+	h.labels.CurrentQuest = "4_1";
+	n0 = S_Mark(); MC_Enter("gaoba", 0);
+	HOST_Check(S_Logs(n0, "module=merc event=roll") == 0 and not TRF_McV(), "chapter 4: no roll");
+	h.labels.CurrentQuest = "6_1";
+	MC_Set("merc", 0);
+	n0 = S_Mark(); MC_Enter("gaoba", 0);
+	HOST_Check(S_Logs(n0, "module=merc event=roll") == 0 and TRF_PlAdopt().Merc == nil, "merc 0: no roll, no adoption registration");
+	MC_Set("merc", 1);
+	-- Through the entry: planned, spawned 30-90 s later at the portal toward Kadi (PORTAL D -> xk10).
+	MC_Put(4, {met=0}); MC_Put(5, {met=0});
+	n0 = S_Mark();
+	MC_Enter("gaoba", 0);
+	local v = TRF_McV();
+	HOST_Check(v and v.st == "due" and v.n == 1 and S_Logs(n0, "module=merc event=roll system=gaoba chance=100.000 roll=") == 1 and TRF_PlAdopt().Merc == 1,
+		"entry: planned (merc_p 100, merc_p_max 100), flight 1, Merc adopted at load");
+	T_Tick(192, 0.5);
+	local sh = MC_Ships(1);
+	HOST_Check(v.st == "wait" and getn(sh) == v.ns and v.ns == TRF_McRowsN(TRF_McRows(1, v.pw)) and v.ns >= 1
+		and S_Logs(n0, "module=merc event=spawn flight=1 clan="..v.c.." group=TRF_Merc_1 stage=1 composition=1 power="..v.pw) == 1
+		and S_Logs(n0, "portal=PORTAL_D result=spawn") == 1, "spawn: the Rec_Fighters row at the pack's power ("..v.ns.." ships) of TRF_Merc_1 at the portal toward the home");
+	HOST_Check(MC_Rel("TRF_Merc_1", PLAYER_GROUP) == RELATION_NEUTRAL and MC_Rel(PLAYER_GROUP, "TRF_Merc_1") == RELATION_NEUTRAL and TRF.live.esc == "merc",
+		"relations neutral both ways; the escort slot taken");
+	HOST_Check(HOST_Count("died", "TRF_McDied(1,") == v.ns and HOST_Count("attack", "TRF_McHit(1,") == v.ns and HOST_Count("f_object_inside", "TRF_McMeet(1,") == 1,
+		"died and attack triggers per ship, the meeting trigger");
+	HOST_Check(getglobal("TRF_ship_trf_merc_1_1") == sh[1] and getglobal("TRF_GMerc_1") == nil and HOST_Navs() >= 1 and TRF_McT(v.c).met == TRF.clock.legs,
+		"handle globals by slot, no group global left, nav marker, met stamped");
+	HOST_Check(MC_Has(MC_Txt(), TRF_McClanName(v.c)..", working these lanes."), "signature line");
+	HOST_Check(sh[1].pilot.tpl == "RecruitPilot_"..TRF_McClan(v.c).k or sh[1].pilot.tpl == "RecruitOfficer_"..TRF_McClan(v.c).k, "clan pilot list");
+	-- A second flight of the visit would fit beside the first within mc_ships 14 (not within 7).
+	local nl = TRF_McLive();
+	local ok14 = TRF_CanSpawn(8 - nl, "merc", nl);
+	MC_Tune("mc_ships", 7);
+	local ok7, w7 = TRF_CanSpawn(8 - nl, "merc", nl);
+	MC_Tune("mc_ships", 14);
+	HOST_Check(ok14 and not ok7 and w7 == "merc_cap" and TRF_Mc_Ships("merc") == v.ns and TRF_McAlloc() == 2, "a second flight fits with mc_ships 14 (not 7); flight number 2 next");
+	-- Ship-cap trim takes unhired ships.
+	HOST_Check(TRF_Mc_Trim("merc", 1) == 1 and TRF_McLive() == nl - 1, "trim: an unhired pack gives a ship");
+	-- Stage 2: two flights, labels 1..6.
+	MC_Put(4, {sg=2, met=0}); MC_Put(5, {sg=2, met=0});
+	MC_Enter("gaoba");
+	v = TRF_McV();
+	HOST_Check(v and v.cp == 3 and getn(v.fl) == 2 and getn(MC_Ships(1)) == 6 and HOST().objs["trf_merc_1_6"] ~= nil, "stage 2: fighters and bombers, two flights, slots 1..6");
+	-- Unhired: leaves after merc_wait_s 240 with the line.
+	local m0 = getn(h.msgs);
+	n0 = S_Mark();
+	T_Tick(500, 0.5);
+	HOST_Check(S_Logs(n0, "event=leave flight=1 clan="..v.c.." portal=") == 1 and S_Logs(n0, "reason=wait") >= 1 and MC_Has(MC_Txt(m0), "No contract, no reason to stay.")
+		and TRF.live.esc == nil, "unhired: leaves after 240 s, escort slot freed");
+	T_Tick(4, 0.5);
+	HOST_Check(v.st == "gone" and getn(MC_Ships(1)) == 0 and getglobal("TRF_ship_trf_merc_1_1") == nil, "deleted at the portal, handle globals cleared");
+	MC_Enter("heos", 0);
+end;
+
+-- h: meeting and offer: fee terms, box and page, decline and re-arm, short wallet, refusals, Legion gate, owe ---------
+
+function T_MC_H()
+	local h = HOST();
+	MC_HBegin("6_1", 1);
+	-- Fee terms (12 section 5; the mid example 12,600 and friends' 11,300).
+	local f = {ch=700, lk=10, tk=1.5, pro=4, sk=1, rel=0, help=0, heat=0, hp=4, ek=1, cap=30000};
+	local a = TRF_McFeeOf(f);
+	f.rel = 1; local b = TRF_McFeeOf(f);
+	f.rel = -3; local c = TRF_McFeeOf(f);
+	f.rel = 0; f.help = 15; local d = TRF_McFeeOf(f);
+	f.help = 0; f.heat = 5; local e = TRF_McFeeOf(f);
+	f.heat = 7; local e7 = TRF_McFeeOf(f);
+	f.heat = 0; f.hp = 2; local g = TRF_McFeeOf(f);
+	f.hp = 4; f.ek = 1.5; local l = TRF_McFeeOf(f);
+	f.ek = 1; f.ch = 5000; local cp = TRF_McFeeOf(f);
+	f.ch = 700; f.sk = 1.25; local s3 = TRF_McFeeOf(f);
+	local sh, bm = TRF_McShareOf(25, 10, 1, 4);
+	HOST_Check(a == 12600 and b == 11300 and c == 13900 and d == 11300 and e == 18900 and e7 == 12600 and g == 15100 and l == 18900 and cp == 30000
+		and s3 == 15800 and sh == 2500 and bm == 10000,
+		"fee: base 12600, rel 1 -10 %, rel -3 counts as -1, FTU help -10 %, heat 5-6 x1.5, grief +20 % at hp 2, Legion x1.5, pay_cap, mc_size_k; share 2500, blood 10000");
+	-- Box mode: meet, the offer line, the box 12 s later; Cancel, the re-arm after 60 s, OK.
+	MC_Enter("gaoba");
+	local v = TRF_McV();
+	local m0, n0, b0 = getn(h.msgs), S_Mark(), getn(h.boxes);
+	MC_Meet();
+	HOST_Check(S_Logs(n0, "module=merc event=meet flight=1 clan="..v.c) == 1 and S_Logs(n0, "event=offer flight=1") == 1 and MC_Has(MC_Txt(m0), "guns, one price: "..v.fee)
+		and getn(h.boxes) == b0 + 1 and HOST_Box().title == "#UI_Fmerc_confirm" and MC_Has(HOST_Box().text, TRF_McClanName(v.c).." will fly with you for "..v.fee.." cr"),
+		"meeting at 70 units: the offer line, the box 12 s later (caption #UI_Fmerc_confirm, fee in the text)");
+	HOST_Check(TRF_BoxHolder() == "merc" and h.box_nested == 0, "box lock merc held; no box inside a callback");
+	HOST_Press("cancel");
+	T_Tick(2, 0.5);
+	HOST_Check(v.st == "wait" and TRF_BoxHolder() == nil and S_Logs(n0, "event=hire flight=1 clan="..v.c.." result=declined reason=dec rearm=true") == 1,
+		"Cancel: declined, the lock freed, one re-arm");
+	T_Tick(40, 0.5);
+	HOST_Check(getn(h.boxes) == b0 + 1, "no second box before the 60 s re-arm");
+	T_Tick(120, 0.5);
+	HOST_Check(getn(h.boxes) == b0 + 2, "the second box after the re-arm (mothership still near)");
+	local cr = h.credits;
+	HOST_Press("ok");
+	T_Tick(2, 0.5);
+	HOST_Check(v.st == "hired" and h.credits == cr - v.fee and type(TRF.mc.h) == "string" and MC_Rel("TRF_Merc_1", PLAYER_GROUP) == RELATION_FRIEND
+		and MC_Rel(PLAYER_GROUP, "TRF_Merc_1") == RELATION_FRIEND and v.fl[1].esc == h.ms and S_Screen(0, "#UI_Fmerc_joined"),
+		"OK: the fee charged, the hire record, relations friend both ways, escort, #UI_Fmerc_joined");
+	local hr = TRF_McH();
+	HOST_Check(hr.c == v.c and hr.sys == V_Idx("gaoba") and hr.tr >= 598 and hr.fee == v.fee and hr.n == 4 and TRF.mc.hb == "9999", "hire record and bands");
+	-- Short wallet; two offers per visit at most.
+	MC_Reset();
+	MC_Enter("gaoba");
+	v = TRF_McV();
+	h.credits = 100;
+	MC_Meet();
+	n0 = S_Mark();
+	HOST_Press("ok");
+	T_Tick(2, 0.5);
+	HOST_Check(v.st == "wait" and S_Screen(0, "#UI_Fmerc_nojoined3") and S_Logs(n0, "result=short") >= 1 and h.credits == 100, "short wallet: #UI_Fmerc_nojoined3, nothing charged, re-armed");
+	T_Tick(170, 0.5);
+	HOST_Press("cancel");
+	T_Tick(2, 0.5);
+	HOST_Check(v.st == "noh" and S_Logs(n0, "rearm=false") == 1, "second Cancel: no third offer");
+	-- Page mode: the offer as a dialog page (Accept, Decline), Esc is a decline.
+	h.credits = 1000000;
+	MC_Reset();
+	MC_Dlg(1);
+	MC_Enter("gaoba");
+	v = TRF_McV();
+	n0 = S_Mark();
+	b0 = getn(h.boxes);
+	MC_Meet();
+	HOST_Check(h.dlg and h.dlg.name == "TRF_MercPg" and h.dlg.open and HOST_DlgVis() == "a_acc a_dec" and getn(h.boxes) == b0
+		and HOST_DlgText() == TRF_McClanName(v.c)..": "..TRF_McClanName(v.c).." will fly with you for "..v.fee.." cr, plus "..v.sh1.." cr per pirate downed. Hire them?"
+		and HOST_DlgText("a_acc") == "- Hire them" and HOST_DlgText("a_dec") == "- Not now",
+		"page: TRF_MercPg with the text set in the init, Accept and Decline shown, Close hidden");
+	HOST_DlgEsc();
+	T_Tick(4, 0.5);
+	HOST_Check(v.st == "wait" and S_Logs(n0, "event=answer kind=offer answer=esc via=dialog") == 1 and TRF_BoxHolder() == nil, "Esc on the page: a decline, lock freed");
+	T_Tick(170, 0.5);
+	cr = h.credits;
+	HOST_DlgPick("a_acc");
+	T_Tick(2, 0.5);
+	HOST_Check(v.st == "hired" and h.credits == cr - v.fee and S_Logs(n0, "event=talk kind=offer flight=1 clan="..v.c.." via=dialog result=shown") == 2, "Accept on the page: hired");
+	MC_Dlg(nil);
+	-- Refusals at the meeting: standing -2, heat 7, the office bloc, the Legion gate.
+	MC_Reset();
+	MC_Put(4, {met=0, rel=-2}); MC_Put(5, {at=1});
+	MC_Enter("gaoba");
+	m0, b0 = getn(h.msgs), getn(h.boxes);
+	MC_Meet();
+	HOST_Check(getn(h.boxes) == b0 and MC_Has(MC_Txt(m0), "We don't fly for the Wolves. Try the ") and TRF_McV().st == "noh", "rel -2: the refusal line, no box");
+	MC_Reset();
+	MC_Put(4, {rel=0}); MC_Put(5, {at=1});
+	MC_Enter("gaoba");
+	TRF.std.heat = 7;
+	m0, b0 = getn(h.msgs), getn(h.boxes);
+	MC_Meet();
+	HOST_Check(getn(h.boxes) == b0 and MC_Has(MC_Txt(m0), "Not for any price."), "heat 7: every unit refuses");
+	TRF.std.heat = 0;
+	MC_Reset();
+	MC_Put(5, {at=1});
+	h.recruit = "morgenstern";
+	MC_Enter("gaoba");
+	m0, b0 = getn(h.msgs), getn(h.boxes);
+	v = TRF_McV();
+	MC_Meet();
+	local blocref = TRF_McClan(v.c).b ~= 1;
+	HOST_Check(blocref and getn(h.boxes) == b0 and MC_Has(MC_Txt(m0), "You fly with the Morgenstern."), "office unit of the other bloc: refusal");
+	h.recruit = nil;
+	-- Legion (clan 8): chapter 6 refusal; chapter 7 with six completed hires: the box with x1.5.
+	MC_Reset();
+	for i = 1, 12 do MC_Put(i, {met=0}); end;
+	MC_Put(4, {at=1}); MC_Put(5, {at=1}); MC_Put(8, {at=MC_Slot("gaoba"), sg=1, rel=0});
+	MC_Enter("gaoba");
+	m0, b0 = getn(h.msgs), getn(h.boxes);
+	v = TRF_McV();
+	MC_Meet();
+	HOST_Check(v.c == 8 and getn(h.boxes) == b0 and MC_Has(MC_Txt(m0), "Black Legion. We are parked by the gate.") and MC_Has(MC_Txt(m0), "Come back with a record, Wolves."),
+		"Legion in chapter 6: elite signature and the refusal line, no box");
+	h.labels.CurrentQuest = "7_1";
+	MC_Put(1, {jobs=6});
+	MC_Reset();
+	MC_Put(4, {at=1}); MC_Put(5, {at=1});
+	MC_Put(8, {met=0, at=MC_Slot("gaoba")});
+	MC_Enter("gaoba");
+	b0 = getn(h.boxes);
+	v = TRF_McV();
+	MC_Meet();
+	local base = TRF_McPrice(4, V_Idx("gaoba"), TRF_Mc_Fielded(8)).fee;
+	HOST_Check(v.c == 8 and getn(h.boxes) == b0 + 1 and v.fee > base, "Legion in chapter 7 with 6 hires: the box, fee x1.5 ("..v.fee.." > "..base..")");
+	HOST_Press("cancel");
+	T_Tick(2, 0.5);
+	MC_Put(1, {owe=500});
+	HOST_Check(TRF_McRefuseWhy(8) == "legion" and TRF_McRefuseWhy(4) == nil, "Legion gate: no owe anywhere");
+	MC_Put(1, {owe=0});
+	-- Owe added to the price; the hire pays it and clears every clan's debt.
+	h.labels.CurrentQuest = "6_1";
+	MC_Reset();
+	MC_Put(8, {at=7}); MC_Put(4, {at=MC_Slot("gaoba"), met=0}); MC_Put(5, {at=MC_Slot("gaoba"), met=0});
+	TRF_Mc_Mark(3, "owe", 2000);
+	MC_Enter("gaoba");
+	v = TRF_McV();
+	m0 = getn(h.msgs);
+	MC_Meet();
+	cr = h.credits;
+	HOST_Check(MC_Has(MC_Txt(m0), "The Exchange keeps one book: 2000 cr") and MC_Has(HOST_Box().text, "for "..(v.fee + 2000).." cr"), "owe: the debt goes on the price");
+	HOST_Press("ok");
+	T_Tick(2, 0.5);
+	HOST_Check(v.st == "hired" and h.credits == cr - v.fee - 2000 and TRF_McOweAll() == 0, "the hire pays the fee and the debt");
+	MC_Reset();
+end;
+
+-- i: seeding, share deaths (bus, vanilla died triggers), losses, the 8.5 factor, betrayal, robbery and heat ends -----
+
+function T_MC_I()
+	local h = HOST();
+	MC_HBegin("6_1", 1);
+	local v = MC_Hire();
+	HOST_Check(v.st == "hired", "hired");
+	local n0, m0 = S_Mark(), getn(h.msgs);
+	-- A raid whose fight opened (rd.ph): seeded at the step; unopened raids not.
+	TRF.live.rd[5] = {id=9998, st="fight", ph=1, ns=4, pw=12};
+	TRF.live.rd[6] = {id=9999, st="come", ns=3, pw=12};
+	TRF_McStepBody();
+	HOST_Check(v.seed["TRF_Raid_5"] == "raid" and not v.seed["TRF_Raid_6"] and MC_Rel("TRF_Merc_1", "TRF_Raid_5") == RELATION_WAR and MC_Rel("TRF_Raid_5", "TRF_Merc_1") == RELATION_WAR
+		and S_Logs(n0, "module=merc event=seed flight=1 clan="..v.c.." group=TRF_Raid_5 reason=raid") == 1 and MC_Has(MC_Txt(m0), "break and engage!"),
+		"raid with an open fight: seeded at war both ways, the engage line");
+	-- Death bus: share deaths of seeded groups once per ship; the player-fire flag marks the raid.
+	local s = CreateCarcass("Yari_pir1", Vector3(5000, 0, 5000), Vector3(0, 0, 1));
+	TRF_Dead("raid", {g="TRF_Raid_5", n=5, j=1}, s, 1);
+	TRF_Dead("raid", {g="TRF_Raid_5", n=5, j=1}, s, 1);
+	TRF_Dead("raid", {g="TRF_Raid_5", n=5, j=2}, s, nil);
+	TRF_Dead("raid", {g="TRF_Raid_6", n=6, j=1}, s, nil);
+	HOST_Check(v.k == 2 and TRF_McMC().rk[5] == 1 and not TRF_McMC().rk[6], "death bus: two counted kills (one per ship, seeded groups only); raid 5 marked by player fire");
+	-- 8.5 factor: 0.5 with a player kill, nothing without; rd.pk wins when trf_raid keeps it; no hire, no factor.
+	TRF.live.rd[6].ph = 1;
+	TRF_McStepBody();
+	HOST_Check(TRF_Mc_RaidHelp(5, TRF.live.rd[5], 8000) == 0.5 and TRF_Mc_RaidHelp(6, TRF.live.rd[6], 8000) == "cancel"
+		and TRF_Mc_RaidHelp(5, {pk=0}, 8000) == "cancel" and TRF_Mc_RaidHelp(6, {pk=1}, 8000) == 0.5 and TRF_Mc_RaidHelp(77, {}, 8000) == nil,
+		"8.5 resolver: 0.5 after a player kill, cancel without, rd.pk first, nil for a raid without a hire");
+	n0 = S_Mark();
+	local got = TRF_RaidHelp(5, TRF.live.rd[5], 8000);
+	HOST_Check(got == 4000 and S_Logs(n0, "module=merc event=help_factor raid_id=5 credits=8000 factor=0.5 result=half") == 1, "through trf_plumb TRF_RaidHelp: 8000 -> 4000");
+	TRF.live.rd[5] = nil; TRF.live.rd[6] = nil;
+	-- The captain's fight opened (trf_captain visit op): seeded.
+	local cp = TRF_CapCP();
+	cp.v = {slot=3, cg=1, op=1, st="raid"};
+	T_Tick(2, 0.5);
+	HOST_Check(v.seed["TRF_Cap_3"] == "captain" and MC_Rel("TRF_Merc_1", "TRF_Cap_3") == RELATION_WAR, "captain's open fight: seeded");
+	TRF_Dead("cap", {g="TRF_Cap_3", n=3, j=1}, s, nil);
+	HOST_Check(v.k == 3, "the captain's death counts");
+	cp.v = nil;
+	-- Vanilla pirates at war with the player: seeded, their ships get died triggers (dedup), group_Pirate_money only at war.
+	local fl = PiratesGroup_1:CreateFlight("flight_pir_a");
+	local p1 = CreateCarcass("Yari_pir1", Vector3(6000, 0, 6000), Vector3(0, 0, 1));
+	p1:AssignPilot(CreatePilot("Pirate")); fl:AddShip(p1);
+	ship_pir_a_1 = p1;
+	group_Pirate_money = HOST_Group("group_Pirate_money", "Pirates");
+	SetGroupRelation("PiratesGroup_1", PLAYER_GROUP, RELATION_WAR);
+	T_Tick(2, 0.5);
+	HOST_Check(v.seed["PiratesGroup_1"] == "vanilla" and not v.seed["group_Pirate_money"] and HOST_Count("died", "TRF_McVDied(1,1,") == 1, "vanilla group at war: seeded, its ship armed once");
+	T_Tick(24, 0.5);
+	HOST_Check(HOST_Count("died", "TRF_McVDied(") == 1, "the rescan arms no ship twice");
+	p1.alive = nil;
+	HOST_Fire("died", "TRF_McVDied(1,1,");
+	HOST_Check(v.k == 4, "vanilla ship died: counted");
+	SetGroupRelation("group_Pirate_money", PLAYER_GROUP, RELATION_WAR);
+	T_Tick(2, 0.5);
+	HOST_Check(v.seed["group_Pirate_money"] == "vanilla", "extortion group seeded once it is at war");
+	ship_pir_a_1 = nil; group_Pirate_money = nil;
+	-- A pack ship lost: hp -1, fo -3, blood money; the hire record keeps k and lo.
+	local hp0, fo0 = TRF_McDig(v.c, "hp"), TRF_McDig(v.c, "fo");
+	MC_Kill(2);
+	local hr = TRF_McH();
+	HOST_Check(v.lo == 1 and TRF_McDig(v.c, "hp") == hp0 - 1 and TRF_McDig(v.c, "fo") == fo0 - 3 and hr.k == 4 and hr.lo == 1 and strsub(TRF.mc.hb, 2, 2) == "0",
+		"pack ship lost: hp -1, fo -3, lo 1 in the record, band 0");
+	-- Half the pack lost: settled at once, leaves.
+	h.credits = 1000000;
+	local c = v.c;
+	MC_Kill(3);
+	n0 = S_Mark();
+	T_Tick(2, 0.5);
+	local s0, b0, t0 = TRF_McSettleOf(4, v.sh1, 2, v.bm);
+	HOST_Check(v.st == "leave" and TRF.mc.h == nil and S_Logs(n0, "event=settle flight=1 clan="..c.." share="..s0.." blood="..b0.." total="..t0.." taken="..t0.." result=paid reason=half") == 1
+		and h.credits == 1000000 - t0 and TRF_McT(c).jobs == 1, "half the pack lost: settled directly (share 4 x sh + blood 2 x bm), completed, leaves");
+	-- Betrayal by counted fire (merc_war 0): rel -3, bk 1, bloc-mates -2, grudge 2, heat +1, blacklist, the pack leaves.
+	MC_Enter("heos", 0);
+	MC_Put(4, {met=0, rel=1}); MC_Put(5, {met=0, rel=1});
+	v = MC_Hire();
+	c = v.c;
+	local mate = 4;
+	if c == 4 then mate = 2; end;
+	local rm, heat0, J = TRF_McRel(mate), TRF.std.heat, TRF_Jumps();
+	n0 = S_Mark();
+	MC_Hits(1, 5);
+	HOST_Check(v.bt == 1 and TRF_McRel(c) == -3 and TRF_McDig(c, "bk") == 1 and TRF_McDig(c, "g") == 2 and TRF_McRel(mate) == max(-3, rm - 2) and TRF.std.heat == heat0 + 1
+		and TRF.mc.x == J + 30 and TRF.mc.h == nil and (v.st == "leave" or v.st == "gone") and S_Logs(n0, "event=betray flight=1 clan="..c.." result=leave reason=fire") == 1,
+		"counted fire: betrayal standing, blacklist 30 jumps, hire over, the pack leaves (merc_war 0)");
+	HOST_Check(MC_Rel("TRF_Merc_1", PLAYER_GROUP) ~= RELATION_WAR, "merc_war 0: no group war");
+	MC_Enter("heos", 0);
+	HOST_Check(MC_Has(MC_Txt(), "struck the Wolves off its books") or S_Logs(n0, "event=arrival_line owner=merc") >= 1, "next entry: the blacklist note");
+	n0 = S_Mark();
+	MC_Enter("gaoba", 0);
+	HOST_Check(S_Logs(n0, "reason=black") == 1, "blacklisted: no roll");
+	-- merc_war 1: betrayal by a kill after a hit: grudge +3, war, attack, break-off at half.
+	TRF.mc.x = nil;
+	MC_Set("merc_war", 1);
+	MC_Enter("heos", 0);
+	MC_Put(4, {met=0, rel=0, bk=0, g=0}); MC_Put(5, {met=0, rel=0, bk=0, g=0});
+	v = MC_Hire();
+	c = v.c;
+	HOST_Fire("attack", "TRF_McHit(1,1,");
+	n0 = S_Mark();
+	MC_Kill(1);
+	HOST_Check(v.bt == 1 and TRF_McDig(c, "g") == 5 and v.st == "war" and MC_Rel("TRF_Merc_1", PLAYER_GROUP) == RELATION_WAR and v.fl[1].att == h.ms
+		and S_Logs(n0, "result=war reason=kill") == 1, "kill after a hit (merc_war 1): grudge 3 + 2, group war, attack on the mothership");
+	MC_Kill(2);
+	T_Tick(2, 0.5);
+	HOST_Check(v.st == "leave", "half down: the pack breaks off");
+	MC_Set("merc_war", nil);
+	-- A counted attack on a trader ends the hire (rel -1, no refund); heat 7 too.
+	TRF.mc.x = nil;
+	MC_Enter("heos", 0);
+	MC_Put(4, {met=0, rel=0}); MC_Put(5, {met=0, rel=0});
+	v = MC_Hire();
+	c = v.c;
+	TRF.live.stat.attack_counted = (TRF.live.stat.attack_counted or 0) + 1;
+	n0, m0 = S_Mark(), getn(h.msgs);
+	T_Tick(2, 0.5);
+	HOST_Check(v.st == "leave" and TRF_McRel(c) == -1 and TRF.mc.h == nil and S_Logs(n0, "result=robbery reason=attack") == 1 and MC_Has(MC_Txt(m0), "we don't rob them. Contract's off."),
+		"counted attack on a trader: rel -1, settled, no completion, leaves");
+	MC_Enter("heos", 0);
+	MC_Put(4, {met=0, rel=0}); MC_Put(5, {met=0, rel=0});
+	v = MC_Hire();
+	TRF.std.heat = 7;
+	n0 = S_Mark();
+	T_Tick(2, 0.5);
+	HOST_Check(v.st == "leave" and S_Logs(n0, "result=robbery reason=heat") == 1, "heat 7: the hire ends");
+	TRF.std.heat = 0;
+	MC_Enter("heos", 0);
+end;
+
+-- j: time out, grace, extension, settlement (pay, short, refuse), across jumps, suspension, pre-mission, collection -----
+
+function T_MC_J()
+	local h = HOST();
+	MC_HBegin("6_1", 1);
+	-- Pure: settlement, completion, the refusal roll.
+	local s, b, t = TRF_McSettleOf(3, 2500, 1, 10000);
+	HOST_Check(s == 7500 and b == 10000 and t == 17500 and TRF_McDoneOf(300, 600, 0) and TRF_McDoneOf(10, 600, 1) and not TRF_McDoneOf(299, 600, 0),
+		"settlement k x sh + lo x bm; completion after half the time or a kill");
+	local r1 = TRF_McRollOf(10, 100, 0.5, 50);
+	local r2 = TRF_McRollOf(100, 10, 1, 50);
+	HOST_Check(r1 == "leave" and r2 == "attack", "refusal roll: a weak pack leaves, a strong one attacks");
+	-- Across a jump: the wing is deleted before the jump and rebuilt at the arrival with its bands.
+	local v = MC_Hire();
+	local c = v.c;
+	v.sh[2].hp = 500;
+	MC_Kill(4);
+	local n0 = S_Mark();
+	T_Jump("heos");
+	local v2 = TRF_McV();
+	local sh = MC_Ships(1);
+	HOST_Check(S_Logs(n0, "module=merc event=jump clan="..c.." destination=heos") == 1 and S_Logs(n0, "result=follow") == 1 and v2 and v2.st == "hired" and v2.c == c
+		and getn(sh) == 3 and TRF_McH().sys == V_Idx("heos") and h.objs["trf_merc_1_4"] == nil,
+		"jump: the wing follows, rebuilt at the arrival from the record (3 of 4, the lost one not)");
+	HOST_Check(v2.sh[2].hp == floor(1000 * 5 / 9) or abs(v2.sh[2].hp - 1000 * 5 / 9) < 1, "band 5 rebuilt with SetHP (HP "..tostring(v2.sh[2].hp)..")");
+	HOST_Check(v2.fl[1].esc == h.ms and MC_Rel("TRF_Merc_1", PLAYER_GROUP) == RELATION_FRIEND and TRF.live.esc == "merc" and S_Logs(n0, "event=follow flight=1 clan="..c) == 1
+		and S_Logs(n0, "event=arrival_line owner=merc") >= 1, "rebuilt wing escorts the mothership, friend, escort slot, the arrival line");
+	HOST_Check(S_Logs(n0, "module=merc event=roll") == 0, "no hire offer rolled while the wing travels");
+	-- Suspension: the ship cap denies the rebuild; the time stands, the next arrival resumes.
+	local tr0 = TRF_McH().tr;
+	MC_Tune("mc_ships", 1);
+	n0 = S_Mark();
+	T_Jump("gaoba");
+	HOST_Check(TRF_McV().st == "susp" and getn(MC_Ships(1)) == 0 and S_Logs(n0, "event=suspend clan="..c.." system=gaoba") == 1 and S_Logs(n0, "reason=cap:merc_cap") == 1,
+		"suspended: no wing here, the note");
+	T_Tick(40, 0.5);
+	HOST_Check(TRF_McH().tr == tr0 and TRF.live.esc == nil, "suspended: tr frozen, escort slot free");
+	MC_Tune("mc_ships", 14);
+	T_Jump("heos");
+	HOST_Check(TRF_McV().st == "hired" and getn(MC_Ships(1)) == 3, "resumed at the next arrival");
+	-- SetHP fallback: a ship below band 5 sits out when SetHP fails.
+	v2 = TRF_McV();
+	v2.sh[1].hp = 300;
+	local cc = CreateCarcass;
+	CreateCarcass = function(a, b, d) local x = %cc(a, b, d); if x then x.SetHP = nil; end; return x; end;
+	n0 = S_Mark();
+	T_Jump("gaoba");
+	CreateCarcass = cc;
+	HOST_Check(getn(MC_Ships(1)) == 2 and S_Logs(n0, "sit_out=1") == 1, "without SetHP a ship of band 3 is not rebuilt");
+	-- Time out: no HP fall -> the extension (box mode); Extend charges 0.75 x fee and adds 600 s.
+	v = TRF_McV();
+	v.tr = 1;
+	local b0, cr = getn(h.boxes), h.credits;
+	T_Tick(6, 0.5);
+	local fx = TRF_McR100(0.75 * v.fee);
+	HOST_Check(v.st == "ask" and getn(h.boxes) == b0 + 1 and HOST_Box().text == "Time's up, Wolves. Another ten minutes for "..fx.." cr?", "time out: the extension question");
+	HOST_Press("ok");
+	T_Tick(2, 0.5);
+	HOST_Check(v.st == "hired" and h.credits == cr - fx and v.tr > 590, "Extend: charged at once, tr + 600");
+	-- Grace: HP fell in the last 30 s.
+	v.tr = 3;
+	v.sh[2].hp = v.sh[2].hp - 100;
+	n0 = S_Mark();
+	T_Tick(8, 0.5);
+	HOST_Check(S_Logs(n0, "event=grace flight=1") == 1 and v.st == "hired" and v.tr > 50, "HP fell in the last 30 s: 60 s grace");
+	v.tr = 1;
+	T_Tick(70, 0.5);
+	HOST_Check(v.st == "ask", "after the grace: the question");
+	-- Extension with a short wallet -> the settlement; Pay: charged, completed, the share line, the pack leaves.
+	v.k = 2;
+	h.credits = 10;
+	HOST_Press("ok");
+	T_Tick(2, 0.5);
+	local s1, b1, t1 = TRF_McSettleOf(2, v.sh1, v.lo, v.bm);
+	HOST_Check(getn(h.boxes) == b0 + 3 and HOST_Box().text == "Share for 2 kills "..s1.." cr, blood money for "..v.lo.." of ours "..b1.." cr: "..t1.." cr.", "short at Extend: the settlement page");
+	h.credits = 1000000;
+	local rel0, jobs0, fo0 = TRF_McRel(c), TRF_McT(c).jobs, TRF_McDig(c, "fo");
+	n0 = S_Mark();
+	HOST_Press("ok");
+	T_Tick(2, 0.5);
+	HOST_Check(h.credits == 1000000 - t1 and TRF.mc.h == nil and (v.st == "leave" or v.st == "gone") and TRF_McRel(c) == min(3, rel0 + 1) and TRF_McT(c).jobs == jobs0 + 1
+		and S_Logs(n0, "event=fortune clan="..c.." change=3") == 1 and S_Screen(0, TRF_McClanName(c)..": prize share for 2 pirates, "..t1.." credits."),
+		"Pay: charged, rel +1, jobs +1, fortune +3, the share line, leave");
+	T_Tick(4, 0.5);
+	HOST_Check(v.st == "gone" and getn(MC_Ships(1)) == 0, "deleted at the portal");
+	-- Pay short: the rest to owe with rel -1.
+	MC_Enter("heos", 0);
+	MC_Put(4, {met=0, rel=0}); MC_Put(5, {met=0, rel=0});
+	v = MC_Hire(); c = v.c;
+	v.k = 1; v.tr = 1;
+	T_Tick(4, 0.5);
+	HOST_Press("cancel");
+	T_Tick(2, 0.5);
+	local s2, b2, t2 = TRF_McSettleOf(1, v.sh1, 0, v.bm);
+	h.credits = 1000;
+	HOST_Press("ok");
+	T_Tick(2, 0.5);
+	HOST_Check(h.credits == 0 and TRF_McT(c).owe == t2 - 1000 and TRF_McRel(c) == 0, "Pay short: the wallet emptied, the rest owe, rel +1 - 1");
+	h.credits = 1000000;
+	-- Refuse with merc_war 0: the roll's attack degrades to leave; owe, rel -1.
+	TRF_Mc_Mark(c, "owe", 0);
+	MC_Enter("heos", 0);
+	MC_Put(4, {met=0, rel=0}); MC_Put(5, {met=0, rel=0});
+	v = MC_Hire(); c = v.c;
+	v.k = 1; v.tr = 1;
+	T_Tick(4, 0.5);
+	HOST_Press("cancel");
+	T_Tick(2, 0.5);
+	local co = TRF_Rd_ComplyOf;
+	TRF_Rd_ComplyOf = function(st, sr, br) return 0; end;
+	n0 = S_Mark();
+	HOST_Press("cancel");
+	T_Tick(2, 0.5);
+	HOST_Check(S_Logs(n0, "event=refuse flight=1 clan="..c.." kind=settle") == 1 and S_Logs(n0, "result=attack war=false") == 1 and TRF_McT(c).owe == v.sh1
+		and TRF_McRel(c) == -1 and (v.st == "leave" or v.st == "gone"), "Refuse (merc_war 0): attack degrades to leave, the total owe, rel -1");
+	-- Refuse with merc_war 1 and the roll's attack: betrayal consequences, group war.
+	TRF_Mc_Mark(c, "owe", 0); TRF_Mc_Mark(c, "rel", 0);
+	MC_Set("merc_war", 1);
+	MC_Enter("heos", 0);
+	MC_Put(4, {met=0, rel=0, bk=0}); MC_Put(5, {met=0, rel=0, bk=0});
+	v = MC_Hire(); c = v.c;
+	v.k = 1; v.tr = 1;
+	T_Tick(4, 0.5);
+	HOST_Press("cancel");
+	T_Tick(2, 0.5);
+	HOST_Press("cancel");
+	T_Tick(2, 0.5);
+	HOST_Check(v.st == "war" and TRF_McRel(c) == -3 and TRF_McDig(c, "bk") == 1 and MC_Rel("TRF_Merc_1", PLAYER_GROUP) == RELATION_WAR, "Refuse (merc_war 1) and attack: betrayal standing, group war");
+	TRF_Rd_ComplyOf = co;
+	MC_Set("merc_war", nil);
+	TRF.mc.x = nil;
+	-- Pre-mission: the mission signal turns on -> the line and the settlement page; the hire ends.
+	MC_Enter("heos", 0);
+	MC_Put(4, {met=0, rel=0, bk=0}); MC_Put(5, {met=0, rel=0, bk=0});
+	v = MC_Hire(); c = v.c;
+	v.k = 1;
+	local m0 = getn(h.msgs);
+	n0 = S_Mark();
+	h.qs = TRUE;
+	T_Tick(4, 0.5);
+	HOST_Check(S_Logs(n0, "event=premission flight=1 clan="..c.." reason=signal") == 1 and MC_Has(MC_Txt(m0), "We don't fly into that, Wolves. Settle up first.")
+		and MC_Has(HOST_Box().text, "Share for 1 kills"), "mission signal on: the line, the settlement page");
+	HOST_Press("ok");
+	T_Tick(2, 0.5);
+	HOST_Check(TRF.mc.h == nil and (v.st == "leave" or v.st == "gone"), "settled before the mission: the hire ends");
+	h.qs = FALSE;
+	-- Pre-mission by a portal: avalon's portal to Kassilia (excluded) within 300 units.
+	MC_Enter("heos", 0);
+	MC_Put(4, {met=0}); MC_Put(5, {met=0});
+	v = MC_Hire(); c = v.c;
+	v.k = 1;
+	T_Jump("avalon");
+	v = TRF_McV();
+	local m = TRF_Map();
+	local ps = m.sys[V_Idx("avalon")].portals;
+	local pk = nil;
+	for i = 1, getn(ps) do if strlower(ps[i].to) == "kassilia" then pk = ps[i]; end; end;
+	h.ms.pos = Vector3(pk.x + 100, pk.y or 0, pk.z or 0);
+	n0 = S_Mark();
+	T_Tick(4, 0.5);
+	HOST_Check(v.st == "ask" and S_Logs(n0, "reason=portal") == 1, "near a portal into an excluded system: the settlement page");
+	HOST_Press("ok");
+	T_Tick(2, 0.5);
+	-- A jump without settling (the jump into Kassilia while the hire runs): the total owe without rel loss, the collection
+	-- flag, the note at the next entry, the collection page at the next meeting before the offer.
+	MC_Enter("heos", 0);
+	MC_Put(4, {met=0}); MC_Put(5, {met=0});
+	v = MC_Hire(); c = v.c;
+	v.k = 2;
+	T_Tick(2, 0.5);
+	local sk, bk2, tk = TRF_McSettleOf(2, v.sh1, 0, v.bm);
+	local relj, ow0 = TRF_McRel(c), TRF_McT(c).owe;
+	n0 = S_Mark();
+	T_Jump("kassilia");
+	local o = TRF_McO();
+	HOST_Check(TRF.mc.h == nil and o and o.c == c and o.s == V_Idx("gaoba") and TRF_McT(c).owe == ow0 + tk and TRF_McRel(c) == relj + 1
+		and S_Logs(n0, "event=jump clan="..c.." destination=kassilia total="..tk.." result=owe") == 1, "jump the wing cannot follow: owe, collection flag, completion, no rel loss");
+	HOST_Check(S_Logs(n0, "event=note clan="..c.." kind=2") == 1 and getn(MC_Ships(1)) == 0, "the debt note at the next entry");
+	MC_Enter("heos", 0);
+	MC_Put(4, {met=0}); MC_Put(5, {met=0});
+	MC_Enter("gaoba");
+	v = TRF_McV();
+	b0 = getn(h.boxes);
+	MC_Meet();
+	HOST_Check(getn(h.boxes) == b0 + 1 and HOST_Box().text == "You left Gaoba owing the "..TRF_McClanName(c).." "..TRF_McT(c).owe.." cr.", "collection page before any offer");
+	cr = h.credits;
+	local owe1 = TRF_McT(c).owe;
+	HOST_Press("ok");
+	T_Tick(30, 0.5);
+	HOST_Check(h.credits == cr - owe1 and TRF_McT(c).owe == 0 and TRF_McO() == nil and getn(h.boxes) == b0 + 2 and MC_Has(HOST_Box().text, "will fly with you for"),
+		"Pay: the debt charged, the flag cleared, the offer follows");
+	HOST_Press("cancel");
+	T_Tick(2, 0.5);
+	MC_Enter("heos", 0);
+end;
+
+-- k: load (adopt, rebuild, wait, unhired), wind-down refund, board line, legend, dump, save bound ----------------------
+
+function T_MC_K()
+	local h = HOST();
+	MC_HBegin("6_1", 1);
+	local v = MC_Hire();
+	local c = v.c;
+	-- Load in the same system: the ships found through the handle globals and re-adopted.
+	TRF.live.esc = "merc";
+	local n0 = S_Mark();
+	T_SaveLoad();
+	local v2 = TRF_McV();
+	HOST_Check(v2 and v2.st == "hired" and v2.c == c and S_Logs(n0, "module=merc event=load flight=1 clan="..c.." ship_count=4") == 1 and S_Logs(n0, "result=adopt") == 1
+		and TRF.live.esc == "merc" and HOST_Count("died", "TRF_McDied(1,1,"..TRF.gen..")--") == 1, "load: re-adopted through the handle globals, triggers with the new gen, escort slot again");
+	HOST_Check(S_Logs(n0, "module=merc event=roll") == 0 and S_Logs(n0, "module=plumb event=orphan") == 0, "load: no re-roll; the orphan scan keeps the Merc labels");
+	-- tr clamped to merc_hire_s + 60.
+	local hr = TRF_McH(); hr.tr = 5000; TRF.mc.h = TRF_TpPackK(hr, TRF_McHKeys());
+	T_SaveLoad();
+	HOST_Check(TRF_McH().tr == 660, "load: tr clamped to 660");
+	-- No handle globals (NPC flights not in the save): rebuilt from the record; the old labelled ships deleted.
+	n0 = S_Mark();
+	T_SaveLoad(function() for j = 1, 6 do setglobal("TRF_ship_trf_merc_1_"..j, nil); end; end);
+	HOST_Check(S_Logs(n0, "module=merc event=load result=rebuilt") == 1 and getn(MC_Ships(1)) == 4 and TRF_McV().st == "hired", "load without handles: rebuilt");
+	-- Handles of dead objects: the wait, then the rebuild.
+	n0 = S_Mark();
+	T_SaveLoad(function() for j = 1, 6 do local o = getglobal("TRF_ship_trf_merc_1_"..j); if o then o.alive = nil; end; end; end);
+	HOST_Check(S_Logs(n0, "event=load result=") == 0, "load: handles not alive yet: waiting");
+	T_Tick(24, 0.5);
+	HOST_Check(S_Logs(n0, "module=merc event=load result=rebuilt try_count=") == 1 and getn(MC_Ships(1)) == 4, "after load_wait: rebuilt");
+	-- Wind-down before half the time and no kill: 50 % refund, direct settlement, leave.
+	v = TRF_McV();
+	local cr = h.credits;
+	n0 = S_Mark();
+	TRF_Mc_WindDown();
+	HOST_Check(h.credits == cr + floor(v.fee / 2) and S_Logs(n0, "event=refund flight=1 clan="..c.." amount="..floor(v.fee / 2)) == 1 and v.st == "leave" and TRF.mc.h == nil,
+		"wind-down: half the fee back, settled, leaves");
+	-- An unhired pack at a load is deleted (no box again).
+	T_Jump("heos");
+	MC_Put(4, {met=0}); MC_Put(5, {met=0});
+	MC_Enter("gaoba");
+	local sh = MC_Ships(1);
+	n0 = S_Mark();
+	T_SaveLoad();
+	HOST_Check(not sh[1].alive and S_Logs(n0, "module=merc event=load deleted_count=4 result=delete") == 1 and TRF_McV() == nil and getglobal("TRF_ship_trf_merc_1_1") == nil,
+		"load: the unhired pack deleted, its handle globals cleared");
+	-- Board line at the patrol dock (once per visit): a free clan working a region; chapter 3: a Legion legend line.
+	T_Jump("heos");
+	local d1 = MC_Dock();
+	local d2 = MC_Dock();
+	HOST_Check(MC_Has(d1, "Mercenaries for hire: ") and MC_Has(d1, " lanes.") and not MC_Has(d2, "Mercenaries for hire"), "patrol board line, once per visit");
+	MC_Set("merc_board", 0);
+	T_Jump("gaoba");
+	HOST_Check(not MC_Has(MC_Dock(), "Mercenaries for hire"), "merc_board 0: no line");
+	MC_Set("merc_board", nil);
+	h.labels.CurrentQuest = "3_1";
+	local got, bad = 0, nil;
+	for L = 1, 30 do
+		TRF.clock.legs = 100 + L;
+		local t = TRF_McLegend(V_Idx("heos"), 3, 17);
+		if t then got = got + 1; if MC_Has(t, "Torr") then bad = 1; end; end;
+	end;
+	local t4 = nil;
+	for L = 1, 30 do if not t4 then TRF.clock.legs = 200 + L; t4 = TRF_McLegend(V_Idx("heos"), 4, 17); end; end;
+	MC_Set("mc_el_c", 0);
+	local t0 = TRF_McLegend(V_Idx("heos"), 3, 17);
+	MC_Set("mc_el_c", nil);
+	HOST_Check(got > 0 and got < 30 and not bad and t4 == "Black Legion winters in the Torr lanes. They don't take cheap contracts." and t0 == nil
+		and TRF_McLegend(V_Idx("heos"), 5, 17) == nil, "legend: chapters 1-3 without a name, chapter 4 Torr, none with mc_el_c 0 or from chapter 5");
+	local pv = TRF_Voice_Prov();
+	local reg = nil;
+	for i = 1, getn(pv) do if pv[i] == "TRF_Mc_VoiceProv" then reg = 1; end; end;
+	HOST_Check(reg, "legend station lines registered as a mood provider");
+	h.labels.CurrentQuest = "6_1";
+	-- Dump with a hire, repair of the collection flag.
+	MC_Put(4, {met=0}); MC_Put(5, {met=0});
+	TRF.mc.x = nil;
+	v = MC_Hire();
+	n0 = S_Mark();
+	TRF_Mc_Dump();
+	HOST_Check(S_Logs(n0, "module=merc event=dump_hire clan="..v.c.." system=gaoba composition=1 power=") == 1 and S_Logs(n0, " visit=hired flight=1") == 1, "dump: the hire line");
+	TRF.mc.o = "x";
+	n0 = S_Mark();
+	TRF_Mc_Fix();
+	HOST_Check(TRF.mc.o == nil and S_Logs(n0, "event=fix field=o result=dropped") == 1, "repair: unreadable collection flag dropped");
+	TRF_McPutO(12, 113);
+	TRF_Mc_Fix();
+	HOST_Check(TRF_McO().c == 12, "repair keeps a readable flag");
+	-- Save bound: the hire record, bands and the collection flag at their bounds.
+	TRF.mc.h = TRF_TpPackK({c=12, sys=113, ty=3, pw=20, n=6, tr=660, fee=30000, sh=6400, bm=25600, k=999, lo=6, g=9999999}, TRF_McHKeys());
+	TRF.mc.hb = "999999";
+	local hz, bz, oz = HOST_SaveSize(TRF.mc.h) + 9, HOST_SaveSize(TRF.mc.hb) + 10, HOST_SaveSize(TRF.mc.o) + 9;
+	print("HOST info merc hire record bytes: h "..hz.." hb "..bz.." o "..oz);
+	HOST_Check(hz <= 70 and bz <= 24 and oz <= 25, "save: h "..hz.." <= 70, hb "..bz.." <= 24, o "..oz.." <= 25 bytes (with keys)");
+	MC_Enter("heos", 0);
 end;
 
 -- Dispatch ---------------------------------------------------------------------------------

@@ -8,13 +8,13 @@
 # host_scar.lua, the wanted captains scenarios cap-a..h of host_captain.lua, the demand page scenarios dm-a..h of
 # host_demand.lua, the clan stashes scenarios sh-a..h of host_stash.lua, the Wolves Freight scenarios fr-a..h of
 # host_freight.lua, the dynamic nests scenarios ne-a..f of host_nest.lua and the sealed parcels scenarios pcl-a..h of
-# host_parcel.lua, the mercenary clans scenarios mc-a..f of host_merc.lua (each its own entry point), the named mercenary pilots scenarios mcp-a..c of host_pilots.lua (own entry
+# host_parcel.lua, the mercenary clans scenarios mc-a..k of host_merc.lua (each its own entry point), the named mercenary pilots scenarios mcp-a..c of host_pilots.lua (own entry
 # point), the hail stage B and combat hail scenarios hl-a..e of host_hail.lua (own entry point), then tests/test_pilots.sh (Pilots.xml merge and installer dry run on copies under .work/pilots/; it skips
 # when the vanilla Pilots.xml is not found, PILOTS_TEST=0 skips it).
 # Env: LUA4 (interpreter), LUAC4, EXPS (default "default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr ne pcl mc mcp hl"), SCENS (default a..g),
 # V02 (default a..n), V1 (default a..n), STN (default a..h), PL (default a..f), SV (default a..g), LAD (default a..g), CH
 # (default a..h), SC (default a..g), CAP (default a..h), DM (default a..h), SH (default a..h), FR (default a..h), NE (default a..f),
-# PCL (default a..h), MC (default a..f), MCP (default a..c), HL (default a..e).
+# PCL (default a..h), MC (default a..k), MCP (default a..c), HL (default a..e).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
@@ -69,7 +69,7 @@ for e in ${EXPS:-default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr
         fr) entry=host_freight.lua; for s in ${FR:-a b c d e f g h}; do run "fr-$s" TRF_FR="$s"; done; entry=host_stubs.lua ;;
         ne) entry=host_nest.lua; for s in ${NE:-a b c d e f}; do run "ne-$s" TRF_NE="$s"; done; entry=host_stubs.lua ;;
         pcl) entry=host_parcel.lua; for s in ${PCL:-a b c d e f g h}; do run "pcl-$s" TRF_PCL="$s"; done; entry=host_stubs.lua ;;
-        mc) entry=host_merc.lua; for s in ${MC:-a b c d e f}; do run "mc-$s" TRF_MC="$s"; done; entry=host_stubs.lua ;;
+        mc) entry=host_merc.lua; for s in ${MC:-a b c d e f g h i j k}; do run "mc-$s" TRF_MC="$s"; done; entry=host_stubs.lua ;;
         mcp) entry=host_pilots.lua; for s in ${MCP:-a b c}; do run "mcp-$s" TRF_MCP="$s"; done; entry=host_stubs.lua ;;
         hl) entry=host_hail.lua; for s in ${HL:-a b c d e}; do run "hl-$s" TRF_HL="$s"; done; entry=host_stubs.lua ;;
         *) run "exp$e" TRF_EXP="$e" ;;

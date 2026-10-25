@@ -1346,7 +1346,8 @@ function TRF_WindDown()
 	TRF_GnX("TRF_Parked_Clear", "wind");
 	-- v1 wind-downs (spec 10.2): their flights and convoy members first, so the loop below skips members
 	-- they already sent to dock ("dock") or to a portal ("wind").
-	local v1 = {"TRF_Danger_WindDown", "TRF_Convoy_WindDown", "TRF_Clan_WindDown", "TRF_Faction_WindDown", "TRF_Cap_WindDown", "TRF_Sh_WindDown"};
+	local v1 = {"TRF_Danger_WindDown", "TRF_Convoy_WindDown", "TRF_Clan_WindDown", "TRF_Faction_WindDown", "TRF_Cap_WindDown", "TRF_Sh_WindDown",
+		"TRF_Mc_WindDown"};
 	for i = 1, getn(v1) do TRF_GnX(v1[i]); end;
 	local T = TRF_GnT();
 	local mp = TRF_GnPos(TRF_GnMs());

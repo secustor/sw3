@@ -562,11 +562,13 @@ function T_PL_E()
 	HOST_Check(not ok2 and why2 == "ships" and h.trim == "TRF_Rival_1:1,", "over by 3: rival 1, the pack has no trim, skipped");
 	TRF_CapReg("TRF_Rival_1", "P_CapD", "rival");
 	h.trim = nil;
-	-- Spawn kind merc (design/merc-spec.md 4): the registered ships count, its own cap mc_ships 7 (ev = live ships of
-	-- the clan visit), no governor, the strict gate, no trader count.
+	-- Spawn kind merc (design/merc-spec.md 4): the registered ships count, its own cap mc_ships 14 (two flights per entry,
+	-- 12 section 6 Appearance; ev = live ships of the clan visit), no governor, the strict gate, no trader count.
 	local okm, spm = TRF_CanSpawn(4, "merc", 0);
-	local okm2, whym2 = TRF_CanSpawn(4, "merc", 4);
-	HOST_Check(okm and spm == min(caps - 8 - 4, 3) and not okm2 and whym2 == "merc_cap", "merc: 4 ships fit (spare "..tostring(spm).."), 4 more over mc_ships 7");
+	local okm2, whym2 = TRF_CanSpawn(4, "merc", 11);
+	local okm3 = TRF_CanSpawn(4, "merc", 7);
+	HOST_Check(okm and spm == min(caps - 8 - 4, 10) and not okm2 and whym2 == "merc_cap" and okm3,
+		"merc: 4 ships fit (spare "..tostring(spm).."), a second flight beside 7 live ships within mc_ships 14, 4 more beside 11 over it");
 	local sm = {kind="merc", supp=0, gate=1, gov=nil, n=5, ev=0, mcap=7, nsh=10, caps=12, ntr=9, capt=1};
 	local o1, w1 = TRF_CanSpawnKindOf(sm);
 	sm.nsh = 6; local o2, x2 = TRF_CanSpawnKindOf(sm);

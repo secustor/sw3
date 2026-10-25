@@ -49,16 +49,18 @@
 -- trader instead of the mothership.
 -- Named mercenary pilots (design/proposals/merc-pilot-names.md, option B): mc_names (default 0) = 2 means the
 -- TRF_McP_ templates are merged into Data/Game/Pilots.xml (written by install.sh --pilots, 0 again when a re-run
--- without --pilots reverts the merge); read nowhere yet (the clan module trf_merc is not built).
+-- without --pilots reverts the merge); trf_merc then passes the TRF_McP_ templates to its flights.
 -- Mercenary clans, group war against the player (design/merc-spec.md 4, 00 section 8 E2; defaults in TRF_Pl_OptDef):
 -- merc_war (betrayal fight-back; 0: a betrayed pack leaves through its portal), merc_hunt (announced hunters),
 -- merc_hostile (rival HOSTILE meetings), merc_legion (the Black Legion's rival entry and HOSTILE variant); each 0 until
 -- CHECK E0.13 passes.
 -- Mercenary clans (design/merc-spec.md 7): merc (default 0 until CHECK E0.13, the release gate, passes; install-test.sh
--- MERCS=1) = 1 runs the clan record (step 1: fortune, stages and roles at the region tick, no flights yet); merc_board,
--- merc_book, merc_report, merc_marker, merc_calls, merc_transfer, rv_enabled (rival role, 0: no clan becomes a rival)
--- and mc_launch are the toggles of the later steps; mc_el_c the elite clan (8 Black Legion, 0 off); rv_deny and the
--- tune keys (c_hire, merc_*, mc_*, mc_el_*, rv_*) read the module defaults.
+-- MERCS=1) = 1 runs the clan record (fortune, stages and roles at the region tick) and the hire role (step 3: hire offers
+-- from chapter 5, the hired wing across jumps, pages TRF_MercPg with hail_xml 1 and tune hail_box 2); merc_board (the
+-- patrol board line and, in chapters 1-4, the Black Legion legend line); merc_book, merc_report, merc_marker,
+-- merc_calls, merc_transfer, rv_enabled (rival role, 0: no clan becomes a rival) and mc_launch are the toggles of the
+-- later steps; mc_el_c the elite clan (8 Black Legion, 0 off); rv_deny and the tune keys (c_hire, merc_*, mc_*,
+-- mc_el_*, rv_*) read the module defaults.
 function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
 	enabled=1, cycle=1, prosperity=1, tier_cap=4, cap_traders=5, cap_ships=20, spawn_scale=1.0, band_half=0,
 	parked=1, esc_flight=1, seed=1, queue=1, raids=1, staged=1, contracts=1, esc_speed=0, meet=2, hail_start=2, board=1,

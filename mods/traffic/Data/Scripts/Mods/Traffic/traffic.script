@@ -44,8 +44,12 @@
 -- the activate hook (right after trf_safety's) disarms it, clears the stubs and arms the triggers, its arrival line
 -- follows trf_freight's activate hook (the last mod line), the load hook adopts the saved flights, the jump hook deletes
 -- them, the 1 s step mirrors the vanilla group's relation.
--- Mercenary clans (design/merc-spec.md): trf_merc loads after trf_parcel (extra=); step 1 is the pure clan record: the
--- region tick (trf_region TRF_RegionTick -> TRF_Mc_RegionTick), the repair (TRF_Repair) and the dump; no other hook.
+-- Mercenary clans (design/merc-spec.md): trf_merc loads after trf_parcel (extra=); the region tick (trf_region
+-- TRF_RegionTick -> TRF_Mc_RegionTick), the repair (TRF_Repair) and the dump (step 1); the hire role (step 3): the enter
+-- hook (after trf_parcel's) clears the visit, the activate hook (after trf_parcel's) rebuilds a travelling hired wing or
+-- rolls the hire offer, the 1 s step runs the flight, the load hook (v1 list, after trf_plumb's) re-adopts or rebuilds
+-- the wing and deletes unhired ships, the jump hook (before trf_raid's, with the destination) deletes the ships and keeps
+-- or settles the hire, CBH TRF_McHit marks combat.
 
 function TRF_Path(name)
 	return "DATA/Scripts/Mods/Traffic/"..name;
@@ -160,7 +164,7 @@ end;
 
 -- Callback names of the hit shims (TRF_Cb) -> position of the gen argument in args, chunk local.
 local CBH = {TRF_OnAttack=3, TRF_OnRaidHit=3, TRF_OnRespHit=3, TRF_OnBaseHit=2, TRF_CvEscHit=3,
-	TRF_FeqAttack=3, TRF_SwHit=3, TRF_CtJoinPart=3, TRF_OnCarrierHit=2, TRF_CapHit=3, TRF_CapWHit=3};
+	TRF_FeqAttack=3, TRF_SwHit=3, TRF_CtJoinPart=3, TRF_OnCarrierHit=2, TRF_CapHit=3, TRF_CapWHit=3, TRF_McHit=3};
 
 -- Protected trigger callback (review O1): the string action calls a thin shim, the shim calls
 -- TRF_Cb(name, body, {args}). An error in the body stops there (call "x" returns nil) instead of
@@ -281,6 +285,7 @@ function TRF_OnEnter()
 		TRF_P("TRF_Stn_OnEnter");
 		TRF_P("TRF_Fr_OnEnter");
 		TRF_P("TRF_Pc_OnEnter");
+		TRF_P("TRF_Mc_OnEnter");
 		TRF.active = 1;
 	else
 		TRF.active = 1;
@@ -317,6 +322,7 @@ function TRF_OnActivate()
 		TRF_P("TRF_Fr_OnActivate");
 		TRF_P("TRF_Nest_Arrival");
 		TRF_P("TRF_Pc_OnActivate");
+		TRF_P("TRF_Mc_OnActivate");
 		TRF_P("TRF_Stn_OnActivate");
 		TRF_P("TRF_DumpState", "enter");
 	end;
@@ -336,7 +342,7 @@ function TRF_OnLoad()
 		TRF_P("TRF_Tier_OnLoad");
 		TRF_P("TRF_Raid_OnLoad");
 		TRF_P("TRF_Hail_OnLoad");
-		local v1 = {"Base", "Track", "Clan", "Faction", "Convoy", "Danger", "Supply", "Cap", "Pl", "Pc", "Stn", "Sv", "Lad", "Ch", "Sc", "Sh", "Fr", "Nest"};
+		local v1 = {"Base", "Track", "Clan", "Faction", "Convoy", "Danger", "Supply", "Cap", "Pl", "Pc", "Stn", "Sv", "Lad", "Ch", "Sc", "Sh", "Fr", "Nest", "Mc"};
 		for i = 1, getn(v1) do TRF_P("TRF_"..v1[i].."_OnLoad"); end;
 		TRF.active = 1;
 		TRF_P("TRF_DumpState", "load");
@@ -378,6 +384,7 @@ function TRF_OnTick(dt_game, dt_real)
 			TRF_P("TRF_Fr_Step");
 			TRF_P("TRF_Nest_Step");
 			TRF_P("TRF_Pc_Step");
+			TRF_P("TRF_Mc_Step");
 		end;
 		if TRF_Every("s2", dt_game, 2) then TRF_P("TRF_Sweep_Step"); end;
 		if TRF_P("TRF_StepDue", dt_game) then
@@ -416,6 +423,9 @@ function TRF_BeforeJump(dest, how)
 		TRF_P("TRF_Track_BeforeJump", dest, how);
 		local v1 = {"Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Pl", "Stn", "Sv", "Sc", "Sh", "Fr", "Nest", "Pc"};
 		for i = 1, getn(v1) do TRF_P("TRF_"..v1[i].."_BeforeJump"); end;
+		-- Mercenary clans: the destination decides whether a hired wing follows (design/merc-spec.md 6a); the hire record
+		-- and the visit's raid marks stay for trf_raid's 8.5 pay below.
+		TRF_P("TRF_Mc_BeforeJump", dest, how);
 		TRF_P("TRF_Raid_BeforeJump");
 		TRF_P("TRF_Cap_BeforeJump", dest, how);
 		TRF_P("TRF_Gen_BeforeJump", dest);
