@@ -278,7 +278,7 @@ traffic: lua: exp=v1 module=merc event=hire flight=1 clan=4 fee=12600 owe=0 shar
 traffic: lua: exp=v1 module=merc event=seed flight=1 clan=4 group=TRF_Raid_2 reason=raid
 traffic: lua: exp=v1 module=merc event=kill flight=1 clan=4 ship=TRF_Raid_2:1 via=bus kill_count=1
 traffic: lua: exp=v1 module=merc event=jump clan=4 destination=heos time=420 result=follow
-traffic: lua: exp=v1 module=merc event=follow flight=1 clan=4 system=heos ship_count=4 sit_out=0 time=420 bands=9999 result=rebuilt via=arrival
+traffic: lua: exp=v1 module=merc event=follow flight=1 clan=4 system=heos ship_count=4 sit_out=0 time=420 heal=150 hull=1000100010001000 result=rebuilt via=arrival
 traffic: lua: exp=v1 module=merc event=timeout flight=1 clan=4 kill_count=1 loss_count=0
 traffic: lua: exp=v1 module=merc event=talk kind=ext flight=1 clan=4 via=dialog result=shown
 traffic: lua: exp=v1 module=region event=charge reason=merc_ext amount=9500 taken=9500 credits=67400

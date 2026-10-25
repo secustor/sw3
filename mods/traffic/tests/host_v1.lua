@@ -2230,8 +2230,9 @@ function T_V1_N()
 		for k, b in mtb do if b[1] < 0 then r[k] = b[1]; else r[k] = b[2]; end; end;
 		TRF_McPutT(c, r);
 	end;
-	TRF.mc.h = TRF_TpPackK({c=12, sys=113, ty=2, pw=20, n=7, tr=660, fee=30000, sh=999999, bm=999999, k=99, lo=7, g=99999}, TRF_McHKeys());
-	TRF.mc.hb = "99999991";
+	TRF.mc.h = TRF_TpPackK({c=12, sys=113, ty=3, pw=20, n=6, tr=660, fee=30000, sh=999999, bm=999999, k=99, lo=6, g=99999, hj=99,
+		hg=9999999}, TRF_McHKeys());
+	TRF.mc.hb = strrep("1000", 6);
 	TRF.mc.r = TRF_TpPackK({c=12, ej=-9999999, lj=-9999999}, TRF_McRKeys());
 	TRF.mc.n = TRF_TpPackK({c=12, a=9999999}, TRF_McNKeys());
 	TRF.mc.e = TRF_TpPackK({el=8, dj1=9999999, dc1=20, djl=9999999, dn=1}, TRF_McEKeys());

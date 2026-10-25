@@ -635,20 +635,30 @@ function T_MC_F()
 	local t4 = TRF.mc.t[4];
 	TRF.mc.s = strsub(TRF.mc.s, 1, 60).."9"..strsub(TRF.mc.s, 62);
 	TRF.mc.t[3] = "x"; TRF.mc.t[99] = "1"; TRF.mc.t.z = "1"; TRF.mc.t[2.5] = t4;
-	TRF.mc.h = TRF_TpPackK({c=4, sys=10, n=3, tr=300}, TRF_McHKeys()); TRF.mc.hb = "999";
+	TRF.mc.h = TRF_TpPackK({c=4, sys=10, n=3, tr=300}, TRF_McHKeys()); TRF.mc.hb = "100005501000";
 	TRF.mc.r = "1,2"; TRF.mc.n = TRF_TpPackK({c=2, a=500}, TRF_McNKeys()); TRF.mc.x = -4; TRF.mc.w = "123"; TRF.mc.zz = 1;
 	n0 = S_Mark();
 	TRF_Mc_Fix();
 	local R = TRF.mc;
-	HOST_Check(TRF_McRel(4) == 3 and R.t[4] == t4 and R.t[3] == nil and R.t[99] == nil and R.t.z == nil and R.t[2.5] == nil and R.h ~= nil and R.hb == "999"
+	HOST_Check(TRF_McRel(4) == 3 and R.t[4] == t4 and R.t[3] == nil and R.t[99] == nil and R.t.z == nil and R.t[2.5] == nil and R.h ~= nil and R.hb == "100005501000"
 		and R.r == nil and R.n ~= nil and R.x == nil and R.w == nil and R.zz == nil and S_Logs(n0, "module=merc event=fix field=r result=dropped") == 1,
 		"repair: rel digit 9 clamped to 3, bad t entries and r dropped, unknown keys gone, the rest kept");
 	TRF.mc.h = "1,2"; TRF.mc.hb = "123";
 	TRF_Mc_Fix();
-	HOST_Check(TRF.mc.h == nil and TRF.mc.hb == nil, "an unreadable hire record goes with its bands");
+	HOST_Check(TRF.mc.h == nil and TRF.mc.hb == nil, "an unreadable hire record goes with its hull");
+	TRF.mc.h = TRF_TpPackK({c=4, sys=10, n=3, tr=300, fee=900, sh=10, bm=40, k=1, lo=1, g=30}, TRF_McHKeys());
+	TRF.mc.hb = "1000";
+	local h12 = "4,10,0,0,3,300,900,10,40,1,1,30";
+	HOST_Check(TRF_TpUnpackK(TRF.mc.h, TRF_McHKeys()).hj == 0 and TRF_TpUnpackK(h12, TRF_McHKeys()) == nil, "hire record of 14 values; a 12-value one is unreadable");
+	TRF.mc.h = h12;
+	TRF_Mc_Fix();
+	HOST_Check(TRF.mc.h == nil and TRF.mc.hb == nil, "a hire record without hj and hg (before 2026-10-25) is dropped with its hull");
 	TRF.mc.h = TRF_TpPackK({c=4}, TRF_McHKeys()); TRF.mc.hb = "12a";
 	TRF_Mc_Fix();
-	HOST_Check(TRF.mc.h ~= nil and TRF.mc.hb == nil, "bad bands dropped alone");
+	HOST_Check(TRF.mc.h ~= nil and TRF.mc.hb == nil, "bad hull dropped alone");
+	TRF.mc.hb = "99999";
+	TRF_Mc_Fix();
+	HOST_Check(TRF.mc.h ~= nil and TRF.mc.hb == nil, "band digits of the old form dropped");
 	TRF.mc.s = "123";
 	n0 = S_Mark();
 	TRF_Mc_Fix();
@@ -691,8 +701,9 @@ function T_MC_F()
 		TRF_McPutT(c, r);
 	end;
 	local ts = HOST_SaveSize(TRF.mc.t);
-	TRF.mc.h = TRF_TpPackK({c=12, sys=113, ty=2, pw=20, n=7, tr=660, fee=30000, sh=999999, bm=999999, k=99, lo=7, g=99999}, TRF_McHKeys());
-	TRF.mc.hb = "99999991";
+	TRF.mc.h = TRF_TpPackK({c=12, sys=113, ty=3, pw=20, n=6, tr=660, fee=30000, sh=999999, bm=999999, k=99, lo=6, g=99999, hj=99,
+		hg=9999999}, TRF_McHKeys());
+	TRF.mc.hb = strrep("1000", 6);
 	TRF.mc.r = TRF_TpPackK({c=12, ej=-9999999, lj=-9999999}, TRF_McRKeys());
 	TRF.mc.n = TRF_TpPackK({c=12, a=9999999}, TRF_McNKeys());
 	TRF.mc.e = TRF_TpPackK({el=8, dj1=9999999, dc1=20, djl=9999999, dn=1}, TRF_McEKeys());
@@ -861,7 +872,17 @@ function T_MC_G()
 	local r1, r3 = TRF_McRows(1, 14), TRF_McRows(3, 14);
 	HOST_Check(getn(r1) == 1 and r1[1].m == 4 and r1[1].t == Rec_Fighters[12] and getn(r3) == 2 and r3[1].m == 3 and r3[2].t == Rec_Bombers[10] and r3[2].p == 12
 		and TRF_McRowsN(r1) == 4 and TRF_McRowsN(r3) == 6, "rows: Rec_Fighters at most 4; fighters 3 plus bombers at pw - 2 (NORMAL __tablevel)");
-	HOST_Check(TRF_McBandOf(1000, 1000) == 9 and TRF_McBandOf(500, 1000) == 5 and TRF_McBandOf(1, 1000) == 1 and TRF_McBandOf(0, 1000) == 0, "HP bands 1..9");
+	HOST_Check(TRF_McPmOf(1000, 1000) == 1000 and TRF_McPmOf(500, 1000) == 500 and TRF_McPmOf(1, 3000) == 1 and TRF_McPmOf(2, 3) == 667
+		and TRF_McPmOf(0, 1000) == 0 and TRF_McPmOf(nil, 1000) == 0 and TRF_McPmOf(1200, 1000) == 1000, "hull per mille 1..1000, rounded up");
+	HOST_Check(TRF_McHealOf(1, 0, 150, 1) == 150 and TRF_McHealOf(2, 20, 150, 1) == 320 and TRF_McHealOf(1, -5, 150, 1) == 150
+		and TRF_McHealOf(0, 7, 0, 0.5) == 3 and TRF_McHealOf(nil, nil, 150, 1) == 0, "off-screen repair: mc_heal_j per jump plus mc_heal_s per suspended second");
+	HOST_Check(TRF_McHullStr({1000, 0, 55}, 3) == "100000000055" and TRF_McHullStr({}, 0) == nil and TRF_McHullOk("1000") and TRF_McHullOk("0000")
+		and TRF_McHullOk(strrep("1000", 6)) and not TRF_McHullOk(strrep("1000", 7)) and not TRF_McHullOk("1001") and not TRF_McHullOk("100")
+		and not TRF_McHullOk("") and not TRF_McHullOk("10a0") and not TRF_McHullOk(1000), "hull string: 4 digits per slot, 1..6 slots, each at most 1000");
+	MC_Tune("mc_heal_j", 5000); MC_Tune("mc_heal_s", -2);
+	HOST_Check(TRF_McTn("mc_heal_j") == 1000 and TRF_McTn("mc_heal_s") == 0, "mc_heal_j and mc_heal_s clamped to 0..1000");
+	MC_Tune("mc_heal_j", nil); MC_Tune("mc_heal_s", nil);
+	HOST_Check(TRF_McTn("mc_heal_j") == 150 and TRF_McTn("mc_heal_s") == 1, "repair tune defaults 150 and 1 per mille");
 	-- Gates (TRF_McAppear on the current system; the visit record cleared between tries).
 	local cur = V_Idx("gaoba");
 	local mc = TRF_McMC();
@@ -1004,7 +1025,8 @@ function T_MC_H()
 		and MC_Rel(PLAYER_GROUP, "TRF_Merc_1") == RELATION_FRIEND and v.fl[1].esc == h.ms and S_Screen(0, "#UI_Fmerc_joined"),
 		"OK: the fee charged, the hire record, relations friend both ways, escort, #UI_Fmerc_joined");
 	local hr = TRF_McH();
-	HOST_Check(hr.c == v.c and hr.sys == V_Idx("gaoba") and hr.tr >= 598 and hr.fee == v.fee and hr.n == 4 and TRF.mc.hb == "9999", "hire record and bands");
+	HOST_Check(hr.c == v.c and hr.sys == V_Idx("gaoba") and hr.tr >= 598 and hr.fee == v.fee and hr.n == 4 and TRF.mc.hb == "1000100010001000" and hr.hj == 0 and hr.hg == floor(TRF.clock.gt),
+		"hire record: full hull per mille, no jump counted, hg the game clock of the write");
 	-- Short wallet; two offers per visit at most.
 	MC_Reset();
 	MC_Enter("gaoba");
@@ -1171,8 +1193,8 @@ function T_MC_I()
 	local hp0, fo0 = TRF_McDig(v.c, "hp"), TRF_McDig(v.c, "fo");
 	MC_Kill(2);
 	local hr = TRF_McH();
-	HOST_Check(v.lo == 1 and TRF_McDig(v.c, "hp") == hp0 - 1 and TRF_McDig(v.c, "fo") == fo0 - 3 and hr.k == 4 and hr.lo == 1 and strsub(TRF.mc.hb, 2, 2) == "0",
-		"pack ship lost: hp -1, fo -3, lo 1 in the record, band 0");
+	HOST_Check(v.lo == 1 and TRF_McDig(v.c, "hp") == hp0 - 1 and TRF_McDig(v.c, "fo") == fo0 - 3 and hr.k == 4 and hr.lo == 1 and strsub(TRF.mc.hb, 5, 8) == "0000",
+		"pack ship lost: hp -1, fo -3, lo 1 in the record, hull 0");
 	-- Half the pack lost: settled at once, leaves.
 	h.credits = 1000000;
 	local c = v.c;
@@ -1252,7 +1274,7 @@ function T_MC_J()
 	local r1 = TRF_McRollOf(10, 100, 0.5, 50);
 	local r2 = TRF_McRollOf(100, 10, 1, 50);
 	HOST_Check(r1 == "leave" and r2 == "attack", "refusal roll: a weak pack leaves, a strong one attacks");
-	-- Across a jump: the wing is deleted before the jump and rebuilt at the arrival with its bands.
+	-- Across a jump: the wing is deleted before the jump and rebuilt at the arrival with its hull after the repair.
 	local v = MC_Hire();
 	local c = v.c;
 	v.sh[2].hp = 500;
@@ -1264,7 +1286,9 @@ function T_MC_J()
 	HOST_Check(S_Logs(n0, "module=merc event=jump clan="..c.." destination=heos") == 1 and S_Logs(n0, "result=follow") == 1 and v2 and v2.st == "hired" and v2.c == c
 		and getn(sh) == 3 and TRF_McH().sys == V_Idx("heos") and h.objs["trf_merc_1_4"] == nil,
 		"jump: the wing follows, rebuilt at the arrival from the record (3 of 4, the lost one not)");
-	HOST_Check(v2.sh[2].hp == floor(1000 * 5 / 9) or abs(v2.sh[2].hp - 1000 * 5 / 9) < 1, "band 5 rebuilt with SetHP (HP "..tostring(v2.sh[2].hp)..")");
+	HOST_Check(v2.sh[2].hp == 650 and v2.sh[1].hp == 1000 and S_Logs(n0, "heal=150 hull=1000065010000000 result=rebuilt via=arrival") == 1,
+		"one jump with an immediate rebuild: 500 + mc_heal_j 150 per mille, SetHP 650 (HP "..tostring(v2.sh[2].hp)..")");
+	HOST_Check(TRF.mc.hb == "1000065010000000" and TRF_McH().hj == 0 and TRF_McH().hg == floor(TRF.clock.gt), "the record written at the rebuild: hull, hj 0, hg now");
 	HOST_Check(v2.fl[1].esc == h.ms and MC_Rel("TRF_Merc_1", PLAYER_GROUP) == RELATION_FRIEND and TRF.live.esc == "merc" and S_Logs(n0, "event=follow flight=1 clan="..c) == 1
 		and S_Logs(n0, "event=arrival_line owner=merc") >= 1, "rebuilt wing escorts the mothership, friend, escort slot, the arrival line");
 	HOST_Check(S_Logs(n0, "module=merc event=roll") == 0, "no hire offer rolled while the wing travels");
@@ -1276,19 +1300,29 @@ function T_MC_J()
 	HOST_Check(TRF_McV().st == "susp" and getn(MC_Ships(1)) == 0 and S_Logs(n0, "event=suspend clan="..c.." system=gaoba") == 1 and S_Logs(n0, "reason=cap:merc_cap") == 1,
 		"suspended: no wing here, the note");
 	T_Tick(40, 0.5);
-	HOST_Check(TRF_McH().tr == tr0 and TRF.live.esc == nil, "suspended: tr frozen, escort slot free");
+	HOST_Check(TRF_McH().tr == tr0 and TRF.live.esc == nil and TRF_McH().hj == 1 and TRF.mc.hb == "1000065010000000",
+		"suspended: tr frozen, escort slot free, the hull and the jump count kept");
 	MC_Tune("mc_ships", 14);
+	local sg = floor(TRF.clock.gt) - TRF_McH().hg;
+	n0 = S_Mark();
 	T_Jump("heos");
-	HOST_Check(TRF_McV().st == "hired" and getn(MC_Ships(1)) == 3, "resumed at the next arrival");
-	-- SetHP fallback: a ship below band 5 sits out when SetHP fails.
 	v2 = TRF_McV();
+	HOST_Check(v2.st == "hired" and getn(MC_Ships(1)) == 3, "resumed at the next arrival");
+	HOST_Check(sg >= 19 and sg <= 21 and S_Logs(n0, "heal="..(300 + sg).." hull=1000"..format("%04d", 950 + sg).."10000000 result=rebuilt") == 1 and v2.sh[2].hp == 950 + sg,
+		"repair after a suspended visit: 2 jumps x 150 plus "..sg.." suspended s x 1 per mille; the lost slot stays 0");
+	-- SetHP fallback: a ship below 550 per mille after the repair sits out when SetHP fails (300 + 150); 400 + 150 flies
+	-- at full HP; 950 + sg + 150 is capped at 1000.
 	v2.sh[1].hp = 300;
+	v2.sh[3].hp = 400;
 	local cc = CreateCarcass;
 	CreateCarcass = function(a, b, d) local x = %cc(a, b, d); if x then x.SetHP = nil; end; return x; end;
 	n0 = S_Mark();
 	T_Jump("gaoba");
 	CreateCarcass = cc;
-	HOST_Check(getn(MC_Ships(1)) == 2 and S_Logs(n0, "sit_out=1") == 1, "without SetHP a ship of band 3 is not rebuilt");
+	v2 = TRF_McV();
+	HOST_Check(getn(MC_Ships(1)) == 2 and S_Logs(n0, "sit_out=1") == 1 and S_Logs(n0, "heal=150 hull=0450100005500000 result=rebuilt") == 1
+		and v2.gone[1] == 1 and v2.sh[2].hp == 1000 and v2.sh[3].hp == 1000 and TRF.mc.hb == "0000100010000000",
+		"without SetHP: 450 per mille sits out, 550 flies at full HP, the cap at 1000, the lost slot 0");
 	-- Time out: no HP fall -> the extension (box mode); Extend charges 0.75 x fee and adds 600 s.
 	v = TRF_McV();
 	v.tr = 1;
@@ -1488,7 +1522,7 @@ function T_MC_J()
 	TRF_McMC().rh[7] = 1;
 	TRF_Dead("raid", {g="TRF_Raid_7", n=7, j=1}, s2, 1);
 	HOST_Check(TRF_McMC().rk[7] == 1 and TRF_Mc_RaidHelp(7, {}, 8000) == 0.5, "raid kill by the player without a hire: the raid marked, the factor 0.5");
-	-- A record without a live band at an arrival (every ship lost before the jump): the hire ends as owe, no suspension.
+	-- A record without a live hull at an arrival (every ship lost before the jump): the hire ends as owe, no suspension.
 	MC_Reset("heos");
 	v = MC_Hire(); c = v.c;
 	v.k = 1;
@@ -1499,7 +1533,8 @@ function T_MC_J()
 	T_Jump("heos");
 	HOST_Check(TRF.mc.h == nil and TRF_McV() == nil and TRF_McT(c).owe == ow2 + v.sh1
 		and S_Logs(n0, "event=follow clan="..c.." total="..v.sh1.." result=ended reason=ships") == 1 and S_Logs(n0, "event=suspend") == 0,
-		"arrival with no live band: the hire ends with the total as owe, nothing suspended");
+		"arrival with no live hull: the hire ends with the total as owe, nothing suspended");
+	HOST_Check(S_Logs(n0, "event=follow flight=") == 0, "no rebuild and no repair without a live hull");
 	MC_Put(c, {owe=0});
 	-- Every pack ship lost on screen: the flight ends and the escort slot is free again.
 	MC_Reset("heos");
@@ -1532,20 +1567,33 @@ function T_MC_K()
 	HOST_Check(v2 and v2.st == "hired" and v2.c == c and S_Logs(n0, "module=merc event=load flight=1 clan="..c.." ship_count=4") == 1 and S_Logs(n0, "result=adopt") == 1
 		and TRF.live.esc == "merc" and HOST_Count("died", "TRF_McDied(1,1,"..TRF.gen..")--") == 1, "load: re-adopted through the handle globals, triggers with the new gen, escort slot again");
 	HOST_Check(S_Logs(n0, "module=merc event=roll") == 0 and S_Logs(n0, "module=plumb event=orphan") == 0, "load: no re-roll; the orphan scan keeps the Merc labels");
+	-- A damaged ship re-adopted after a load: hp0 from the saved per mille.
+	v2.sh[2].hp = 600;
+	T_Tick(3, 0.5);
+	HOST_Check(strsub(TRF.mc.hb, 5, 8) == "0600", "the 1 s step writes the hull per mille");
+	T_SaveLoad();
+	v2 = TRF_McV();
+	HOST_Check(v2 and v2.st == "hired" and v2.hp0[2] == 1000 and v2.sh[2].hp == 600, "load: re-adopted, hp0 1000 from HP 600 at 600 per mille");
 	-- tr clamped to merc_hire_s + 60.
 	local hr = TRF_McH(); hr.tr = 5000; TRF.mc.h = TRF_TpPackK(hr, TRF_McHKeys());
 	T_SaveLoad();
 	HOST_Check(TRF_McH().tr == 660, "load: tr clamped to 660");
 	-- A load in another system than the wing's (a save made during a suspended visit): the rebuild there.
-	hr = TRF_McH(); hr.sys = V_Idx("heos"); TRF.mc.h = TRF_TpPackK(hr, TRF_McHKeys());
+	-- The save was made 100 s into the suspended visit: those seconds repair the hull at the rebuild.
+	hr = TRF_McH(); hr.sys = V_Idx("heos"); hr.hg = floor(TRF.clock.gt) - 100; TRF.mc.h = TRF_TpPackK(hr, TRF_McHKeys());
+	TRF.mc.hb = "1000080010001000";
 	n0 = S_Mark();
 	T_SaveLoad();
 	HOST_Check(S_Logs(n0, "module=merc event=load clan="..c.." result=rebuilt reason=other_system") == 1 and S_Logs(n0, "result=rebuilt via=load") == 1
 		and TRF_McV().st == "hired" and getn(MC_Ships(1)) == 4 and TRF_McH().sys == V_Idx("gaoba"), "load in another system: the wing rebuilt here");
+	HOST_Check(S_Logs(n0, "heal=100 hull=1000090010001000 result=rebuilt via=load") == 1 and TRF_McV().sh[2].hp == 900,
+		"load in another system: 100 suspended s repair 100 per mille");
 	-- No handle globals (NPC flights not in the save): rebuilt from the record; the old labelled ships deleted.
 	n0 = S_Mark();
 	T_SaveLoad(function() for j = 1, 6 do setglobal("TRF_ship_trf_merc_1_"..j, nil); end; end);
 	HOST_Check(S_Logs(n0, "module=merc event=load result=rebuilt") == 1 and getn(MC_Ships(1)) == 4 and TRF_McV().st == "hired", "load without handles: rebuilt");
+	HOST_Check(S_Logs(n0, "heal=0 hull=1000090010001000 result=rebuilt via=load") == 1 and TRF_McV().sh[2].hp == 900,
+		"load in the hire's own system: no jump, no suspended second, no repair");
 	-- Handles of dead objects: the wait, then the rebuild.
 	n0 = S_Mark();
 	T_SaveLoad(function() for j = 1, 6 do local o = getglobal("TRF_ship_trf_merc_1_"..j); if o then o.alive = nil; end; end; end);
@@ -1610,12 +1658,13 @@ function T_MC_K()
 	TRF_McPutO(12, 113);
 	TRF_Mc_Fix();
 	HOST_Check(TRF_McO().c == 12, "repair keeps a readable flag");
-	-- Save bound: the hire record, bands and the collection flag at their bounds.
-	TRF.mc.h = TRF_TpPackK({c=12, sys=113, ty=3, pw=20, n=6, tr=660, fee=30000, sh=6400, bm=25600, k=999, lo=6, g=9999999}, TRF_McHKeys());
-	TRF.mc.hb = "999999";
+	-- Save bound: the hire record, the hull (6 ships at 1000 per mille) and the collection flag at their bounds.
+	TRF.mc.h = TRF_TpPackK({c=12, sys=113, ty=3, pw=20, n=6, tr=660, fee=30000, sh=6400, bm=25600, k=999, lo=6, g=9999999, hj=99, hg=9999999},
+		TRF_McHKeys());
+	TRF.mc.hb = strrep("1000", 6);
 	local hz, bz, oz = HOST_SaveSize(TRF.mc.h) + 9, HOST_SaveSize(TRF.mc.hb) + 10, HOST_SaveSize(TRF.mc.o) + 9;
 	print("HOST info merc hire record bytes: h "..hz.." hb "..bz.." o "..oz);
-	HOST_Check(hz <= 70 and bz <= 24 and oz <= 25, "save: h "..hz.." <= 70, hb "..bz.." <= 24, o "..oz.." <= 25 bytes (with keys)");
+	HOST_Check(hz <= 80 and bz <= 42 and oz <= 25, "save: h "..hz.." <= 80, hb "..bz.." <= 42, o "..oz.." <= 25 bytes (with keys)");
 	MC_Enter("heos", 0);
 end;
 

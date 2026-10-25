@@ -716,7 +716,7 @@ Mercenary clans, build steps 1 and 3 (`design/merc-spec.md` 8). `clan` is the cl
 | `decay` | `module=merc event=decay clan=3 field=<rel, g, bk> value=-1` | 2 |
 | `fix` | `module=merc event=fix field=<mc, s, t, h, r, n, e, o> clan=<c> result=<reset, dropped>` | 1 |
 | `static` | `module=merc event=static vanilla=differs result=own_table` (`_Fmerc_names`/`_Fmerc_groups` differ from the module's table) | 1 |
-| `dump` | `module=merc event=dump on=true clan_count=12 packed_count=5 elite=8 deed_jump=0 deed_chapter=0 deed_last=0 blacklist_until=nil wolves_rating=nil hire=nil bands=nil call=nil note=nil collect=nil static=match` / `module=merc event=dump on=false result=none` | 1 |
+| `dump` | `module=merc event=dump on=true clan_count=12 packed_count=5 elite=8 deed_jump=0 deed_chapter=0 deed_last=0 blacklist_until=nil wolves_rating=nil hire=nil hull=nil call=nil note=nil collect=nil static=match` / `module=merc event=dump on=false result=none` | 1 |
 | `dump_clan` | `module=merc event=dump_clan clan=4 key=stardragoon name="Star Dragoons" bloc=2 home=5 rel=1 at=5 jobs=3 condition=4 fortune=41 stage=2 fielded=2 role=0 met=812 betrayals=0 grudge=0 owe=0 streak=0 closed=0` | 1 |
 | `roll` | `module=merc event=roll system=gaoba chance=55.000 roll=23 clan=4 candidate_count=2 stage=1 power=14 ship_count=4 delay=47 result=planned`; `result=none reason=<rows, cap:<no>, due>` | 1 |
 | `roll` | `module=merc event=roll system=gaoba result=none reason=<excluded, strict:<w>, supp, region, black, escort_mission, escort_slot, event, roll, no_clan>` | 2 |
@@ -745,7 +745,7 @@ Mercenary clans, build steps 1 and 3 (`design/merc-spec.md` 8). `clan` is the cl
 | `collect` | `module=merc event=collect flight=1 clan=4 owe=7500 taken=7500 result=<paid, short>` / `module=merc event=collect flight=1 result=unanswered answer=<esc, none>` | 1 |
 | `betray` | `module=merc event=betray clan=4 betrayals=1 standing=-3 reason=<fire, kill, refuse>`; `module=merc event=betray flight=1 clan=4 result=<war, leave> reason=<r>` | 1 |
 | `jump` | `module=merc event=jump clan=4 destination=heos time=420 result=follow` / `destination=kassilia total=7500 result=owe` | 1 |
-| `follow` | `module=merc event=follow flight=1 clan=4 system=heos ship_count=4 sit_out=0 time=420 bands=9999 result=rebuilt via=<arrival, load>` / `module=merc event=follow clan=4 total=7500 result=ended reason=<broken, ships>` (ships: no live band in the record) | 1 |
+| `follow` | `module=merc event=follow flight=1 clan=4 system=heos ship_count=4 sit_out=0 time=420 heal=150 hull=1000065010000000 result=rebuilt via=<arrival, load>` / `module=merc event=follow clan=4 total=7500 result=ended reason=<broken, ships>` (`heal`: the off-screen repair in per mille added to each live slot, `mc_heal_j` x jumps + `mc_heal_s` x suspended game seconds; `hull`: 4 digits per slot after the repair, capped at 1000; ships: no live hull in the record) | 1 |
 | `suspend` | `module=merc event=suspend clan=4 system=heos time=420 reason=<excluded, strict:<w>, supp, escort_mission, cap:<no>, escort_slot, flight, mothership, build, sit_out>` | 1 |
 | `load` | `module=merc event=load flight=1 clan=4 ship_count=4 time=420 result=adopt`; `module=merc event=load result=<rebuilt, suspended> try_count=1 reason=<no_handle, not_alive>`; `module=merc event=load clan=4 result=<rebuilt, suspended> reason=other_system` (a load in another system than the wing's: the rebuild there), `module=merc event=load clan=4 result=suspended` (no system); `module=merc event=load deleted_count=4 result=delete` | 1 |
 | `leave` | `module=merc event=leave flight=1 clan=4 portal=PORTAL_L reason=<wait, half, settled, refused, collect, betray, attack, heat, wind>` | 1 |
@@ -754,7 +754,7 @@ Mercenary clans, build steps 1 and 3 (`design/merc-spec.md` 8). `clan` is the cl
 | `note` | `module=merc event=note clan=4 kind=<1, 2>` (next-entry note: 1 blacklist, 2 debt) | 1 |
 | `board` | `module=merc event=board clan=4 region=2 jumps=1` (patrol board line) | 1 |
 | `legend` | `module=merc event=legend channel=<board, station> chapter=3` (Black Legion legend line) | 1 |
-| `dump_hire` | `module=merc event=dump_hire clan=4 system=gaoba composition=1 power=14 ship_count=4 time=420 fee=12600 share=2500 blood=10000 kill_count=3 loss_count=0 flown=180 bands=9999 visit=hired flight=1` / `result=none visit=<st> flight=<n>` | 1 |
+| `dump_hire` | `module=merc event=dump_hire clan=4 system=gaoba composition=1 power=14 ship_count=4 time=420 fee=12600 share=2500 blood=10000 kill_count=3 loss_count=0 flown=180 hull=1000100010001000 visit=hired flight=1` / `result=none visit=<st> flight=<n>` | 1 |
 
 ## supply (`trf_supply.script`; `TRF_SpE`)
 

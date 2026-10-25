@@ -1121,7 +1121,7 @@ ITEMS = [
     ("D-MERC.hire", "hire: fee charged, escort, seeding (E12.1, E0.15)", c_merc_hire,
      "the pack escorts the mothership and attacks a raid only after the 'break and engage' line"),
     ("D-MERC.follow", "the hired wing follows a jump", c_merc_follow,
-     "the pack comes out with the mothership at the arrival, damaged ships still damaged (E0.20)"),
+     "the pack comes out with the mothership at the arrival, damaged ships still damaged less 15 % per jump (E0.20)"),
     ("D-MERC.ext", "time out and the extension", c_merc_ext, None),
     ("D-MERC.settle", "settlement Pay and Refuse", c_merc_settle, None),
     ("D-MERC.premission", "settlement before a mission", c_merc_premission, None),
