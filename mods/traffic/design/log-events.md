@@ -705,8 +705,8 @@ Mercenary clans, build steps 1 and 3 (`design/merc-spec.md` 8). `clan` is the cl
 | `break` | `module=merc event=break clan=4 region=5 fortune=19 stage=3 reform_leg=67 reform_jump=20 reason=<raids, lost, big_ship>` | 1 |
 | `reform` | `module=merc event=reform clan=4 region=1 region_before=5 fortune=19 stage=1` | 1 |
 | `owe` | `module=merc event=owe clan=5 amount=5000 jumps=60 result=written_off` | 1 |
-| `fortune` | `module=merc event=fortune clan=7 change=3 applied=3 fortune=43 reason=hire` (`TRF_Mc_Fortune`, later steps) | 1 |
-| `lost` | `module=merc event=lost clan=7 ships=1 condition=1 fortune=17 role=0 reason=<why>` (`TRF_Mc_Lost`, later steps) | 1 |
+| `fortune` | `module=merc event=fortune clan=7 change=3 applied=3 fortune=43 reason=hire` (`TRF_Mc_Fortune`; step 3: reason=hire at a completed hire) | 1 |
+| `lost` | `module=merc event=lost clan=7 ships=1 condition=1 fortune=17 role=0 reason=<why>` (`TRF_Mc_Lost`; step 3: reason=on_screen for a pack ship death in the hire role) | 1 |
 | `big_loss` | `module=merc event=big_loss clan=8 stage_lost=4 fortune=62 stage=3 condition=3 closed_until=52` (`TRF_Mc_BigLoss`, steps 6-7) | 1 |
 | `black` | `module=merc event=black clan=6 betrayals=2 until_jump=72` (`TRF_Mc_Black`, step 3) | 1 |
 | `presence` | `module=merc event=presence clan=2 region=5 region_before=1 demand=5` | 2 |
@@ -741,13 +741,13 @@ Mercenary clans, build steps 1 and 3 (`design/merc-spec.md` 8). `clan` is the cl
 | `end` | `module=merc event=end flight=1 clan=4 completed=true standing=1 jobs=3` / `completed=false` / `result=robbery reason=<attack, heat>` | 1 |
 | `refund` | `module=merc event=refund flight=1 clan=4 amount=6300` (wind-down) | 1 |
 | `refuse` | `module=merc event=refuse flight=1 clan=4 kind=<settle, collect> amount=7500 pack_strength=56.000 player_strength=39.000 braveness=0.810 chance=12.000 roll=40 result=<leave, attack> war=<true, false>` | 1 |
-| `owe` | `module=merc event=owe clan=4 amount=1500 owe=1500 standing=-1 result=added reason=<short, refused, unanswered, jump, broken>` / `amount=2000 result=paid reason=hire` | 1 |
+| `owe` | `module=merc event=owe clan=4 amount=1500 owe=1500 standing=-1 result=added reason=<short, refused, unanswered, jump, broken>` / `amount=2000 result=<paid, part> reason=hire` (part: the capped charge covered only part of the owe) | 1 |
 | `collect` | `module=merc event=collect flight=1 clan=4 owe=7500 taken=7500 result=<paid, short>` / `module=merc event=collect flight=1 result=unanswered answer=<esc, none>` | 1 |
 | `betray` | `module=merc event=betray clan=4 betrayals=1 standing=-3 reason=<fire, kill, refuse>`; `module=merc event=betray flight=1 clan=4 result=<war, leave> reason=<r>` | 1 |
 | `jump` | `module=merc event=jump clan=4 destination=heos time=420 result=follow` / `destination=kassilia total=7500 result=owe` | 1 |
 | `follow` | `module=merc event=follow flight=1 clan=4 system=heos ship_count=4 sit_out=0 time=420 bands=9999 result=rebuilt via=<arrival, load>` / `module=merc event=follow clan=4 total=7500 result=ended reason=broken` | 1 |
-| `suspend` | `module=merc event=suspend clan=4 system=heos time=420 reason=<excluded, strict:<w>, supp, ships, cap:<no>, escort_slot, flight, mothership, build>` | 1 |
-| `load` | `module=merc event=load flight=1 clan=4 ship_count=4 time=420 result=adopt`; `module=merc event=load result=<rebuilt, suspended> try_count=1 reason=<no_handle, not_alive>`; `module=merc event=load clan=4 result=suspended`; `module=merc event=load deleted_count=4 result=delete` | 1 |
+| `suspend` | `module=merc event=suspend clan=4 system=heos time=420 reason=<excluded, strict:<w>, supp, escort_mission, ships, cap:<no>, escort_slot, flight, mothership, build>` | 1 |
+| `load` | `module=merc event=load flight=1 clan=4 ship_count=4 time=420 result=adopt`; `module=merc event=load result=<rebuilt, suspended> try_count=1 reason=<no_handle, not_alive>`; `module=merc event=load clan=4 result=<rebuilt, suspended> reason=other_system` (a load in another system than the wing's: the rebuild there), `module=merc event=load clan=4 result=suspended` (no system); `module=merc event=load deleted_count=4 result=delete` | 1 |
 | `leave` | `module=merc event=leave flight=1 clan=4 portal=PORTAL_L reason=<wait, half, settled, refused, collect, betray, attack, heat, wind>` | 1 |
 | `gone` | `module=merc event=gone flight=1 clan=4 deleted_count=4 reason=<portal, out_of_view, watchdog, dead, jump, build, error, test>` | 1 |
 | `trim` | `module=merc event=trim flight=1 clan=4 trimmed=1` (ship-cap trim of an unhired pack) | 1 |

@@ -702,7 +702,8 @@ function T_MC_F()
 		.." r "..HOST_SaveSize(TRF.mc.r).." n "..HOST_SaveSize(TRF.mc.n).." e "..HOST_SaveSize(TRF.mc.e).." w "..HOST_SaveSize(TRF.mc.w).." o "..HOST_SaveSize(TRF.mc.o)..")");
 	HOST_Check(typ <= 1000 and wz <= 3420 and HOST_Reserved(TRF, "TRF") == "", "save bound: typical "..typ.." <= 1000, worst "..wz.." <= 3420 bytes, no reserved key");
 	T_SaveLoad();
-	HOST_Check(HOST_SaveSize(TRF.mc) == wz, "worst case survives a load and the repair");
+	HOST_Check(HOST_SaveSize(TRF.mc.t) == ts and TRF.mc.h ~= nil and HOST_SaveSize(TRF.mc) <= wz,
+		"worst case survives a load and the repair (the rebuild in this system rewrites the hire record)");
 end;
 
 -- Hire role helpers (build step 3, merc-spec 10) -----------------------------------------------------------------
@@ -1428,8 +1429,62 @@ function T_MC_J()
 	T_Tick(30, 0.5);
 	HOST_Check(h.credits == cr - owe1 and TRF_McT(c).owe == 0 and TRF_McO() == nil and getn(h.boxes) == b0 + 2 and MC_Has(HOST_Box().text, "will fly with you for"),
 		"Pay: the debt charged, the flag cleared, the offer follows");
-	HOST_Press("cancel");
+	-- The offer page of a flight deleted while it is open: the conversation dropped, the answer charges nothing.
+	cr = h.credits;
+	HOST_Check(type(TRF_McMC().cv) == "table", "offer page open");
+	TRF_McDelAll(v, "test");
+	HOST_Press("ok");
 	T_Tick(2, 0.5);
+	HOST_Check(TRF_McMC().cv == nil and h.credits == cr and v.st == "gone" and TRF.mc.h == nil, "flight deleted with its page open: Accept charges nothing");
+	-- A leaving ship the engine removed at the portal (no died event): left, no loss; the last one: gone at the portal.
+	MC_Reset("heos");
+	v = MC_Hire(); c = v.c;
+	local hp0 = TRF_McDig(c, "hp");
+	TRF_McLeave(v, "test", nil);
+	v.sh[1].alive = nil;
+	n0 = S_Mark();
+	T_Tick(2, 0.5);
+	HOST_Check(v.gone[1] == 1 and not v.dead[1] and TRF_McDig(c, "hp") == hp0 and S_Logs(n0, "module=merc event=loss ") == 0,
+		"leaving ship gone without its died event: left, no loss");
+	for j = 2, v.nj do if v.sh[j] then v.sh[j].alive = nil; end; end;
+	T_Tick(2, 0.5);
+	HOST_Check(v.st == "gone" and S_Logs(n0, "event=gone flight="..v.n.." clan="..c) == 1 and S_Logs(n0, "reason=portal") == 1, "the last leaving ship gone: the flight ends at the portal");
+	-- A jump after the pre-mission line, unsettled, into a system the wing could follow: owe and the flag, no follow.
+	MC_Reset("heos");
+	v = MC_Hire(); c = v.c;
+	v.k = 1;
+	T_Jump("avalon");
+	v = TRF_McV();
+	h.ms.pos = Vector3(pk.x + 100, pk.y or 0, pk.z or 0);
+	T_Tick(4, 0.5);
+	HOST_Check(v.st == "ask" and v.pm == 1, "pre-mission line by the portal");
+	local ow1 = TRF_McT(c).owe;
+	n0 = S_Mark();
+	T_Jump("heos");
+	o = TRF_McO();
+	HOST_Check(TRF.mc.h == nil and o and o.c == c and TRF_McT(c).owe > ow1 and S_Logs(n0, "event=jump clan="..c.." destination=heos total=") == 1
+		and S_Logs(n0, "event=follow ") == 0, "a jump after the pre-mission line: owe and the collection flag, the wing does not follow");
+	HOST_Press("ok");
+	T_Tick(2, 0.5);
+	HOST_Check(TRF.mc.h == nil and TRF_McMC().cv == nil, "the stale settlement box after the jump: ignored");
+	MC_Put(c, {owe=0}); TRF.mc.o = nil;
+	-- OutMissionEscort running at an arrival: the hire suspended (S9), resumed at the next arrival without it.
+	MC_Reset("heos");
+	v = MC_Hire(); c = v.c;
+	h.labels.OutMissionEscort = "m18c_escort";
+	n0 = S_Mark();
+	T_Jump("heos");
+	HOST_Check(TRF_McV().st == "susp" and S_Logs(n0, "event=suspend clan="..c.." system=heos") == 1 and S_Logs(n0, "reason=escort_mission") == 1, "escort mission at the arrival: suspended");
+	h.labels.OutMissionEscort = nil;
+	T_Jump("gaoba");
+	HOST_Check(TRF_McV().st == "hired" and getn(MC_Ships(1)) > 0, "resumed without the escort mission");
+	-- 8.5: a raid ship the player killed without a hire open still marks the raid.
+	MC_Reset("heos");
+	local s2 = CreateCarcass("Yari_pir1", Vector3(5000, 0, 5000), Vector3(0, 0, 1));
+	TRF_McMC().rh = {}; TRF_McMC().rk = {};
+	TRF_McMC().rh[7] = 1;
+	TRF_Dead("raid", {g="TRF_Raid_7", n=7, j=1}, s2, 1);
+	HOST_Check(TRF_McMC().rk[7] == 1 and TRF_Mc_RaidHelp(7, {}, 8000) == 0.5, "raid kill by the player without a hire: the raid marked, the factor 0.5");
 	MC_Enter("heos", 0);
 end;
 
@@ -1452,6 +1507,12 @@ function T_MC_K()
 	local hr = TRF_McH(); hr.tr = 5000; TRF.mc.h = TRF_TpPackK(hr, TRF_McHKeys());
 	T_SaveLoad();
 	HOST_Check(TRF_McH().tr == 660, "load: tr clamped to 660");
+	-- A load in another system than the wing's (a save made during a suspended visit): the rebuild there.
+	hr = TRF_McH(); hr.sys = V_Idx("heos"); TRF.mc.h = TRF_TpPackK(hr, TRF_McHKeys());
+	n0 = S_Mark();
+	T_SaveLoad();
+	HOST_Check(S_Logs(n0, "module=merc event=load clan="..c.." result=rebuilt reason=other_system") == 1 and S_Logs(n0, "result=rebuilt via=load") == 1
+		and TRF_McV().st == "hired" and getn(MC_Ships(1)) == 4 and TRF_McH().sys == V_Idx("gaoba"), "load in another system: the wing rebuilt here");
 	-- No handle globals (NPC flights not in the save): rebuilt from the record; the old labelled ships deleted.
 	n0 = S_Mark();
 	T_SaveLoad(function() for j = 1, 6 do setglobal("TRF_ship_trf_merc_1_"..j, nil); end; end);

@@ -1986,7 +1986,7 @@ function TRF_McTalkDo()
 	local cv = mc.cv;
 	if type(cv) ~= "table" or cv.via then return; end;
 	local v = TRF_McV();
-	if not v or v.n ~= cv.n then mc.cv = nil; TRF_N("TRF_BoxFree", "merc"); return; end;
+	if not TRF_McCvOk(v, cv) then mc.cv = nil; mc.dlg = nil; TRF_N("TRF_BoxFree", "merc"); return; end;
 	local HK = TRF_McHK();
 	local held = type(TRF_BoxTake) == "function" and not TRF_BoxTake("merc");
 	if held or TRF_N("TRF_Quiet") then
@@ -2001,6 +2001,20 @@ function TRF_McTalkDo()
 	cv.via = via;
 	TRF_McStat("merc_talk_"..via);
 	TRF_McE("talk", "kind", cv.k, "flight", v.n, "clan", v.c, "via", via, "result", "shown");
+end;
+
+-- 1 when conversation cv still belongs to flight v: same flight, not deleted, still offering (offer, collect) or asking
+-- (ext, settle).
+function TRF_McCvOk(v, cv)
+	if type(v) ~= "table" or type(cv) ~= "table" or v.n ~= cv.n or v.del == 1 then return nil; end;
+	if cv.k == "offer" or cv.k == "collect" then return v.st == "offer" or nil; end;
+	return v.st == "ask" or nil;
+end;
+
+-- Drops the open conversation of flight v (deleted, leaving, betraying): the page record and the box lock go.
+function TRF_McCvDrop(v)
+	local mc = %MC;
+	if type(mc.cv) == "table" and type(v) == "table" and mc.cv.n == v.n then mc.cv = nil; mc.dlg = nil; TRF_N("TRF_BoxFree", "merc"); end;
 end;
 
 -- Text and answer labels of conversation kind for v.
@@ -2113,7 +2127,7 @@ function TRF_McAnswerOf(cv, a)
 	local mc = %MC;
 	mc.cv = nil;
 	local v = TRF_McV();
-	if not v or v.n ~= cv.n then TRF_N("TRF_BoxFree", "merc"); return; end;
+	if not TRF_McCvOk(v, cv) then TRF_N("TRF_BoxFree", "merc"); return; end;
 	local k = cv.k;
 	if k == "offer" then
 		if a == "acc" then TRF_McHire(v); else TRF_McDecline(v, a); end;
@@ -2157,11 +2171,19 @@ function TRF_McHire(v)
 		return;
 	end;
 	if owe > 0 then
+		-- TRF_Charge caps the amount (charge_cap): the owes are cleared only up to what it took beyond the fee.
+		local rem = max(0, got - v.fee);
 		for i = 1, TRF_McK().nc do
 			local w = TRF_McT(i).owe;
-			if w > 0 then TRF_Mc_Mark(i, "owe", 0); TRF_McE("owe", "clan", i, "amount", w, "result", "paid", "reason", "hire"); end;
+			local p = min(w, rem);
+			if p > 0 then
+				rem = rem - p;
+				TRF_Mc_Mark(i, "owe", w - p);
+				TRF_McE("owe", "clan", i, "amount", p, "result", p < w and "part" or "paid", "reason", "hire");
+			end;
 		end;
-		TRF_McPutO(nil);
+		local o = TRF_McO();
+		if not o or TRF_McT(o.c).owe <= 0 then TRF_McPutO(nil); end;
 	end;
 	v.st = "hired"; v.tr = T.merc_hire_s; v.el = 0; v.k = 0; v.lo = 0; v.hn = v.nj;
 	TRF_McHiredSetup(v);
@@ -2285,13 +2307,17 @@ function TRF_McKill(v, key, via)
 	TRF_McE("kill", "flight", v.n, "clan", v.c, "ship", key, "via", via, "kill_count", v.k);
 end;
 
--- Death bus (trf_plumb TRF_Dead; wb-plumbing-spec 2): a raid or captain ship of a seeded group died while the hire ran;
--- a raid ship the player group hit marks the raid for the 8.5 factor.
+-- Death bus (trf_plumb TRF_Dead; wb-plumbing-spec 2): a raid ship the player group hit marks the raid for the 8.5 factor
+-- (hired or not: the kill counts for the whole visit); a raid or captain ship of a seeded group died while the hire ran.
 function TRF_Mc_OnDeath(kind, rec, ship, pfire)
 	local mc = %MC;
 	local v = mc.v;
-	if type(rec) ~= "table" or not TRF_McHired(v) then return; end;
-	if kind == "raid" and pfire == 1 and type(rec.n) == "number" and type(mc.rk) == "table" then mc.rk[rec.n] = 1; end;
+	if type(rec) ~= "table" then return; end;
+	if kind == "raid" and pfire == 1 and type(rec.n) == "number" then
+		if type(mc.rk) ~= "table" then mc.rk = {}; end;
+		mc.rk[rec.n] = 1;
+	end;
+	if not TRF_McHired(v) then return; end;
 	if type(rec.g) == "string" and v.seed[rec.g] then TRF_McKill(v, rec.g..":"..tostring(rec.j), "bus"); end;
 end;
 
@@ -2400,7 +2426,7 @@ function TRF_McBetray(v, why, rc)
 	local mc = %MC;
 	TRF_McBetrayRec(rc or v.c, why);
 	if TRF_McHired(v) then TRF_McPutH(nil); end;
-	if type(mc.cv) == "table" and mc.cv.n == v.n then mc.cv = nil; mc.dlg = nil; TRF_N("TRF_BoxFree", "merc"); end;
+	TRF_McCvDrop(v);
 	TRF_N("TRF_EscortFree", "merc");
 	TRF_N("TRF_MarkerClear", "merc");
 	local lead = TRF_McPilot(TRF_McLead(v));
@@ -2564,6 +2590,7 @@ function TRF_McLeave(v, why, key)
 	if v.st == "leave" or v.st == "gone" then return; end;
 	v.st = "leave";
 	v.tl = TRF_McGt();
+	TRF_McCvDrop(v);
 	local o, pn = TRF_McNearPortal(TRF_McCur(), TRF_McPos(TRF_McLead(v)));
 	if not o then o = v.prt; pn = v.pn; end;
 	v.lp = o;
@@ -2581,6 +2608,7 @@ end;
 function TRF_McDelAll(v, why)
 	local n = 0;
 	v.del = 1;
+	TRF_McCvDrop(v);
 	for j = 1, v.nj or 0 do
 		local s = v.sh and v.sh[j];
 		if s and TRF_McAlive(s) and TRF_McDel(s) then n = n + 1; end;
@@ -2635,7 +2663,10 @@ function TRF_McStepBody()
 	v.lt = gt;
 	for j = 1, v.nj or 0 do
 		local s = v.sh[j];
-		if s and not v.dead[j] and not v.gone[j] and v.del ~= 1 and not TRF_McAlive(s) then TRF_McDeath(v, j, "poll"); end;
+		if s and not v.dead[j] and not v.gone[j] and v.del ~= 1 and not TRF_McAlive(s) then
+			-- On the way to a portal the engine may remove the ship there itself (ComeToPortal, CHECK E0.3): it left.
+			if v.st == "leave" then v.gone[j] = 1; v.pg = 1; else TRF_McDeath(v, j, "poll"); end;
+		end;
 	end;
 	if v.st == "gone" then return; end;
 	local na = TRF_McAliveN(v);
@@ -2730,7 +2761,7 @@ end;
 -- Leaving flight: deleted at the portal, out of view, or after the watchdog.
 function TRF_McLeaveStep(v, na, gt)
 	local HK = TRF_McHK();
-	if na == 0 then TRF_McDelAll(v, "dead"); return; end;
+	if na == 0 then TRF_McDelAll(v, v.pg == 1 and "portal" or "dead"); return; end;
 	local pp = TRF_McPos(v.lp);
 	local mp = TRF_McPos(TRF_McMs());
 	local near, far = nil, 1;
@@ -2766,6 +2797,7 @@ function TRF_Mc_BeforeJump(dest, how)
 		local di = nil;
 		if type(m) == "table" and type(dest) == "string" then di = m.by[strlower(dest)]; end;
 		local go = di and TRF_McCanGo(di) and TRF_N("GetPlayerQuestState") ~= TRUE;
+		if TRF_McHired(v) and v.pm == 1 then go = nil; end;
 		if go then
 			TRF_McE("jump", "clan", h.c, "destination", tostring(dest), "time", h.tr, "result", "follow");
 		else
@@ -2806,6 +2838,10 @@ function TRF_McFollow(cur, via)
 	local na = 0;
 	for j = 1, h.n do if (bands[j] or 0) > 0 then na = na + 1; end; end;
 	local why = TRF_McSysWhy(cur);
+	if not why then
+		local e = TRF_N("GetQuestLabel", "OutMissionEscort");
+		if type(e) == "string" and e ~= "" then why = "escort_mission"; end;
+	end;
 	if not why and na == 0 then why = "ships"; end;
 	if not why and type(TRF_CanSpawn) == "function" then
 		local ok, no = TRF_CanSpawn(na, "merc", 0);
@@ -2876,7 +2912,10 @@ function TRF_Mc_OnLoad()
 		return;
 	end;
 	TRF_McLoadDel(nil);
-	if h then
+	if h and cur then
+		local ok = TRF_McFollow(cur, "load");
+		TRF_McE("load", "clan", h.c, "result", ok and "rebuilt" or "suspended", "reason", "other_system");
+	elseif h then
 		mc.v = {st="susp", c=h.c, n=0};
 		TRF_McE("load", "clan", h.c, "result", "suspended");
 	end;
