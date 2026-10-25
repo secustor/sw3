@@ -1302,7 +1302,7 @@ function TRF_SpComply(id, r, h, cur)
 	local jet = TRF_SpTxt("dmpgot", nm, its);
 	-- loc_mode 1 drops $2: the item list follows the key.
 	if not strfind(jet, its, 1, 1) then jet = jet..": "..its; end;
-	TRF_SpAnswer(id, line, line.."\n"..jet, 1);
+	TRF_SpAnswer(id, line, line..(TRF_N("TRF_UI_Br") or " ")..jet, 1);
 	TRF_SpX("TRF_Flee", id, "demand");
 	TRF_SpStat("dm_comply");
 	local d = 0;

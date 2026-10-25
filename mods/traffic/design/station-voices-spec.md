@@ -329,7 +329,7 @@ Ambient (decision 5; `stnamb*`): ch 0-5 `stnamb1`; ch 6 none; ch 7-9 `stnamb2`; 
 
 1. `m`: hub `m = 1` when `TRF_Pro(idx) >= fee_pro` and `e <= 2`; penalty `m = 2` at `e == -2`, `3` at `e == -3`; the larger applies; `m = 0` -> no fee.
 2. `fee = min(round100(fee_k x L_w x (1 + 0.1 x pro) x m x d_k), fee_cap)`; `L_w = TRF_LPay(idx)`; `d_k = TRF_DK()` (EASY 1.25, NORMAL 1.0, HARD 0.7; economy A2); `round100(x) = floor(x / 100 + 0.5) x 100`. Example: `L_w` 10, `pro` 8, `m` 1, NORMAL -> 3,600.
-3. Box text: `cr = GetPlayerCredits()`; `cr >= fee` -> `TRF_Txt("stnfeehub", fee)` or `stnfeepen` (m >= 2), `"\n"`, `stnfeereq`; else `stncredit`, `"\n"`, `stnfeereq`. Numbers with `format("%d", fee)`. `SV.box = {k, fee, m, cr, g=TRF.gen}`.
+3. Box text: `cr = GetPlayerCredits()`; `cr >= fee` -> `TRF_Txt("stnfeehub", fee)` or `stnfeepen` (m >= 2), `TRF_UI_Br()`, `stnfeereq`; else `stncredit`, `TRF_UI_Br()`, `stnfeereq`. Numbers with `format("%d", fee)`. `SV.box = {k, fee, m, cr, g=TRF.gen}`.
 4. Cancel: nothing paid, `SV.p[k]` stays nil (next approach shows the box again, without a new greeting).
 5. OK (W7): `cr = GetPlayerCredits()`; `cr >= fee` -> `SubPlayerCredits(fee)` (precedent `_PatrolGIBDD_shtraf`, OutOfMission.script 352-359), `SV.p[k] = 1`, `TRF_Say(TRF_Txt("stnpaid", fee), 8)`, `pv = TRF.ve`, and if `st <= -2` and `bv ~= TRF.ve`: `st = min(st + 1, -1)`, `bv = TRF.ve` (`buyback`). Else (on credit): no charge, `SV.p[k] = 1`, `SV.c[k] = 1`, `pv = TRF.ve`, `TRF_Stn_Deed(idx, -1, "credit")` once per visit. Then `__TradeStationDock_Ok` (6.3).
 
@@ -538,7 +538,7 @@ Coverage (2026-10-24): `loc/trf_ru.loc` (cp1251) holds 272 RU keys, all from the
 | C2 | Re-install after every include (entry, load), no double wrap | `module=station event=install none_installed=true trade_installed=true none_wrapped=true trade_wrapped=true` after each `OnEnter`/`OnLoad` line; one Message per approach |
 | C3 | Station identity: `[N][5]:GetPosition()` equals the map creation position, before and after a load (fact 14) | `module=station event=dock station_key=51 ... via=prm+pos distance=<small>` and `station_key=251 ... via=prm+pos` before and after load; `via=prm` after load means tagged handles do not answer (then tune `stn_pos 0`) |
 | C4 | Plain strings in `Pilot:Message` (greetings, mod variants) | screenshot plus `module=station event=mood ... mood=2 speaker=DispetcherKFNI` / `module=station event=dock ... greeting=stnr2` |
-| C5 | `ShowMsgBox` from the approach with a plain text and `"\n"`; OK reaches trf_shop's wrapper (fact 3) | `module=station event=fee ... box=true`, then `event=fee_ok ...`, `event=docked station_key=..` and trf_shop's `module=shop` line in the same second |
+| C5 | `ShowMsgBox` from the approach with a plain text and `TRF_UI_Br()`; the `"\n"` check failed (atlas rendered, 2026-10-25), replaced by `TRF_UI_Br()`; OK reaches trf_shop's wrapper (fact 3) | `module=station event=fee ... box=true`, then `event=fee_ok ...`, `event=docked station_key=..` and trf_shop's `module=shop` line in the same second |
 | C6 | Radio and screen-log lines readable while the box is open (03 EV.4) | screenshot; `module=station event=dock ... news=true`; fallback: move news to `TRF_Stn_Docked` |
 | C7 | New `.loc` keys load (`loc_mode 1`, fact 4) | box shows `Heavy traffic surcharge` text instead of `#TRF_stnfeehub` |
 | C8 | `SubPlayerCredits` inside the OK callback | `module=station event=fee_ok station_key=.. credits_before=a credits_after=b` with `b = a - fee` and the trade window's credit display |

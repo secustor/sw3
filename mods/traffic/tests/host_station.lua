@@ -871,7 +871,7 @@ function T_STN_E()
 	local n0 = S_Mark();
 	local cr0, ok0 = h.credits, h.trade_ok;
 	r = S_Trade(D.trade[1]);
-	HOST_Check(r.nb == 1 and r.box.text == TRF_Txt("stnfeehub", format("%d", want)).."\n"..TRF_Txt("stnfeereq")
+	HOST_Check(r.nb == 1 and r.box.text == TRF_Txt("stnfeehub", format("%d", want))..TRF_UI_Br()..TRF_Txt("stnfeereq")
 		and want == floor(200 * TRF_LPay(idx) * 1.8 / 100 + 0.5) * 100, "chapter 5, pro 8: hub fee box ("..want..")");
 	HOST_Press("ok");
 	HOST_Check(h.credits == cr0 - want and h.trade_ok == ok0 + 1 and S_Logs(n0, "module=station event=docked station_key=51") == 1
@@ -924,7 +924,7 @@ function T_STN_E()
 	D = S_Setup({});
 	ok0 = h.trade_ok;
 	r = S_Trade(D.trade[1]);
-	HOST_Check(r.box.text == TRF_Txt("stncredit").."\n"..TRF_Txt("stnfeereq"), "credits below the fee: credit box");
+	HOST_Check(r.box.text == TRF_Txt("stncredit")..TRF_UI_Br()..TRF_Txt("stnfeereq"), "credits below the fee: credit box");
 	HOST_Press("ok");
 	HOST_Check(h.credits == 100 and h.trade_ok == ok0 + 1 and TRF.stn[k].st == -1 and TRF_StnSV().c[k] == 1, "on credit: no charge, docks, st -1");
 	T_SaveLoad();
@@ -940,7 +940,7 @@ function T_STN_E()
 	D = S_Setup({});
 	cr0 = h.credits;
 	r = S_Trade(D.trade[1]);
-	HOST_Check(r.box.text == TRF_Txt("stnfeepen", format("%d", fee(2))).."\n"..TRF_Txt("stnfeereq"), "st -2: penalty box x2");
+	HOST_Check(r.box.text == TRF_Txt("stnfeepen", format("%d", fee(2)))..TRF_UI_Br()..TRF_Txt("stnfeereq"), "st -2: penalty box x2");
 	HOST_Press("ok");
 	HOST_Check(h.credits == cr0 - fee(2) and TRF.stn[k].st == -1 and TRF.stn[k].bv == TRF.ve, "buy-back: -2 -> -1");
 	TRF.stn[k].st = -3;
@@ -969,7 +969,7 @@ function T_STN_E()
 	S_Visit("kadenoa", "5_01", 8);
 	D = S_Setup({});
 	r = S_Trade(D.trade[1]);
-	HOST_Check(r.nb == 1 and r.box.text == TRF_Txt("stnfeehub", format("%d", fee(1))).."\n"..TRF_Txt("stnfeereq") and TRF_DK() == 1.25,
+	HOST_Check(r.nb == 1 and r.box.text == TRF_Txt("stnfeehub", format("%d", fee(1)))..TRF_UI_Br()..TRF_Txt("stnfeereq") and TRF_DK() == 1.25,
 		"EASY: fee with d_k 1.25 ("..fee(1)..")");
 	HOST_Press("cancel");
 	h.diff = NORMAL;
@@ -978,7 +978,7 @@ function T_STN_E()
 	S_Visit("kadenoa", "5_01", 8);
 	D = S_Setup({});
 	r = S_Trade(D.trade[1]);
-	HOST_Check(r.box.text == TRF_Txt("stnfeehub", "1000").."\n"..TRF_Txt("stnfeereq"), "fee_cap 1000");
+	HOST_Check(r.box.text == TRF_Txt("stnfeehub", "1000")..TRF_UI_Br()..TRF_Txt("stnfeereq"), "fee_cap 1000");
 	HOST_Press("cancel");
 	h.cfg.tune = nil;
 	-- F2: a story mission active: no fee (latch, G6), the dock line still runs.

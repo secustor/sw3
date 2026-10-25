@@ -188,7 +188,7 @@ function T_DM_A()
 	T_Tick(1, 0.5);
 	TRF_SpRand = sr;
 	local nm = TRF_SpName(r);
-	local want = TRF_SpTxt("dmok", nm).."\n"..TRF_SpTxt("dmpgot", nm, "2 x Cargo_01, 1 x Cargo_04");
+	local want = TRF_SpTxt("dmok", nm)..TRF_UI_Br()..TRF_SpTxt("dmpgot", nm, "2 x Cargo_01, 1 x Cargo_04");
 	local bx = HOST_Box();
 	HOST_Check(bx.text == want and bx.cancel == nil and TRF.live.hl and TRF.live.hl.w == "pg" and TRF.live.hl.pn == 1 and h.box_nested == 0,
 		"comply page: the answer and the moved items in one OK box: "..tostring(bx.text));
@@ -257,7 +257,7 @@ function T_DM_A()
 	local id6 = DM_Trader(nil, 0);
 	DM_Demand(id6, 1);
 	bx = HOST_Box();
-	HOST_Check(bx.text == "#TRF_dmok\n#TRF_dmpgot: 2 x Cargo_01, 1 x Cargo_04" and TRF_SpTxt("dmplost", "x") == "#TRF_dmplost"
+	HOST_Check(bx.text == "#TRF_dmok"..TRF_UI_Br().."#TRF_dmpgot: 2 x Cargo_01, 1 x Cargo_04" and TRF_SpTxt("dmplost", "x") == "#TRF_dmplost"
 		and TRF_SpTxt("dmno", "x") == "#TRF_dmno", "loc_mode 1: the page as keys and the items: "..tostring(bx.text));
 	DM_End();
 	TRF_H().loc = nil; h.cfg.loc_mode = nil;
@@ -281,7 +281,7 @@ function T_DM_B()
 	local td = h.tdlgs[nd + 1] or {};
 	local nm = TRF_HlName(r);
 	local body = TRF_SpTxt("dmok", nm);
-	body = strsub(body, strlen("FTU "..nm..": ") + 1).."\n"..TRF_SpTxt("dmpgot", nm, "2 x Cargo_01, 1 x Cargo_04");
+	body = strsub(body, strlen("FTU "..nm..": ") + 1)..TRF_UI_Br()..TRF_SpTxt("dmpgot", nm, "2 x Cargo_01, 1 x Cargo_04");
 	HOST_Check(td.d == "TRF_HailPg" and td.init == "TRF_HlPgInit" and h.dlg and h.dlg.open and getn(h.boxes) == nb and TRF.live.hl.w == "dlg",
 		"comply: StartTradeDialog(TRF_HailPg, TRF_HlPgInit), no box");
 	HOST_Check(HOST_DlgVis() == "a_leave a_nowit" and HOST_DlgText() == "FTU "..nm..": "..body and HOST_DlgText("a_leave") == "- Leave"

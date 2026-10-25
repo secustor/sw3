@@ -587,7 +587,7 @@ function TRF_LadSettleSpec(f, slot, v, L)
 		return nil;
 	end;
 	local a = {f=f, s=slot, p=price, v=v, g=TRF_LadGen()};
-	local text = TRF_LadTxt("ladhead", TRF_LadFacName(f), TRF_LadRgName(slot)).."\n"..TRF_LadTxt("ladsettle", price);
+	local text = TRF_LadTxt("ladhead", TRF_LadFacName(f), TRF_LadRgName(slot))..(TRF_N("TRF_UI_Br") or " ")..TRF_LadTxt("ladsettle", price);
 	TRF_LadE("settle", "faction", TRF_LadTeamOf(f), "standing", v, "region", slot, "level", L, "price", price, "result", "offered");
 	return {text=text, ok="TRF_Lad_SettleOk", no="TRF_Lad_SettleNo", a=a, own="lad_settle"};
 end;
@@ -609,7 +609,7 @@ function TRF_LadPermitSpec(f, slot, v, L)
 	local price = TRF_LadPriceOf(TRF_LadT("c_p"), L, R, TRF_LadDk(), v);
 	local legs = TRF_LadT("permit_legs");
 	local a = {f=f, s=slot, p=price, g=TRF_LadGen()};
-	local text = TRF_LadTxt("ladhead", TRF_LadFacName(f), TRF_LadRgName(slot)).."\n"..TRF_LadTxt("ladpermit", TRF_LadFacName(f), legs, price)
+	local text = TRF_LadTxt("ladhead", TRF_LadFacName(f), TRF_LadRgName(slot))..(TRF_N("TRF_UI_Br") or " ")..TRF_LadTxt("ladpermit", TRF_LadFacName(f), legs, price)
 		.." "..TRF_LadTxt("ladwarn"..f);
 	TRF_LadE("permit_offer", "faction", TRF_LadTeamOf(f), "standing", v, "region", slot, "level", L, "prosperity", R, "difficulty_k", TRF_F(TRF_LadDk()),
 		"price", price, "legs", legs, "result", "offered");

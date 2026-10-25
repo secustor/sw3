@@ -298,6 +298,8 @@ end;
 -- attempt 1..4, band 3..4, pro 8..9); a vector is <key>_x/_y/_z.
 function TRF_V1_TuneDef()
 	return {
+		-- text: line break in boxes, 1 = "|", 0 = " " (TRF_UI_Br)
+		ui_br=1,
 		-- pool (4)
 		pool_size=16, record_ttl=8, T_chase=60, handoff_max=2, track_chase_min=5, track_chase_max=15,
 		track_port_min=60, track_port_max=120,

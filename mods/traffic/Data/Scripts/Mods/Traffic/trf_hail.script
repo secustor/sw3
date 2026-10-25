@@ -923,7 +923,7 @@ function TRF_HailShow()
 		hl.bx = 1;
 	end;
 	local text = TRF_Txt("hailq", TRF_HlWho(r, hl.id), TRF_HlLabel(hl.id, key));
-	if hl.rf == 1 then text = TRF_Txt("refuse", TRF_HlName(r)).."\n"..text; end;
+	if hl.rf == 1 then text = TRF_Txt("refuse", TRF_HlName(r))..(TRF_N("TRF_UI_Br") or " ")..text; end;
 	if not TRF_HlBox("#UI_FTrader_confirm", text, TRF_HailOk, TRF_HailNext) then
 		local id, rf = hl.id, hl.rf;
 		TRF_HlClose("nobox");
@@ -1017,7 +1017,7 @@ function TRF_HlPgShow(hl, kind, text, on, ac, dc, key)
 	-- The prefix is cut by pattern: trf_supply names the trader with its own fallback (TRF_SpName), not TRF_HlName;
 	-- loc_mode 1 texts carry "FTU: " (loc/trf_en.loc has no $n placeholders).
 	local m1 = text;
-	local s0, e0 = strfind(text, "^FTU[^:\n]*: ");
+	local s0, e0 = strfind(text, "^FTU[^:\n|]*: ");
 	if e0 then m1 = strsub(text, e0 + 1); end;
 	st.dlg = {id=hl.id, g=hl.g, on=on, dk={}, pg=1, who=TRF_HlName(TRF_HlRec(hl.id)), m1=m1, ac=ac, dc=dc, kd=kind};
 	local w0 = hl.w;
@@ -2197,7 +2197,7 @@ end;
 function TRF_BoardText(idx)
 	local t = TRF_Trouble(idx);
 	local b = TRF_Boom(idx);
-	return t.."\n"..b, TRF_Txt("brdline", TRF_Txt("brdhead"), t), b;
+	return t..(TRF_N("TRF_UI_Br") or " ")..b, TRF_Txt("brdline", TRF_Txt("brdhead"), t), b;
 end;
 
 -- 1 when the board may show its full report and offers here: cfg board 1, system mode "mod", strict gate.

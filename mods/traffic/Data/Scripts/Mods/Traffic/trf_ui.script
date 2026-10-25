@@ -210,6 +210,16 @@ function TRF_UI_Tune(key, def)
 	return def;
 end;
 
+-- Line break for text shown in a message box or dialog. The engine's ShowMsgBox has no glyph for the byte
+-- "\n": the renderer draws the whole font atlas in its place (playtest 2026-10-25, ladder permit box). Vanilla
+-- texts use "|", which the exe turns into a line break in the widgets that split lines and into a space elsewhere
+-- (ship-asset-pipeline.md 4.5). Never join "\n" into player-visible text; join TRF_UI_Br(). Tune ui_br (number,
+-- trf_loc TRF_V1_TuneDef): 1 = "|" (default), 0 = " " (safe fallback when "|" shows up literally).
+function TRF_UI_Br()
+	if TRF_UI_Tune("ui_br", 1) == 0 then return " "; end;
+	return "|";
+end;
+
 function TRF_UI_Live()
 	if type(TRF) == "table" and type(TRF.live) == "table" then return TRF.live; end;
 	return nil;

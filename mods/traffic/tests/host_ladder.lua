@@ -211,13 +211,13 @@ function T_LAD_B()
 	-- Rank: fst 3 has an open file (settlement), fst 4 the permit.
 	L_Fst(1, 3);
 	r = L_Dock();
-	HOST_Check(r.nb == 1 and L_Has(r.box.text, "MSF Sector Command, Moscowia:\nYour file shows open violations. Settle for 60000 cr"), "fst 3: settlement box ("..tostring(r.box and r.box.text)..")");
+	HOST_Check(r.nb == 1 and L_Has(r.box.text, "MSF Sector Command, Moscowia:"..TRF_UI_Br().."Your file shows open violations. Settle for 60000 cr"), "fst 3: settlement box ("..tostring(r.box and r.box.text)..")");
 	L_Press(r, "cancel");
 	HOST_Check(h.pdlgs[getn(h.pdlgs)] == "" and r.nd == 0, "vanilla dialog after the answer");
 	L_Fst(1, 4);
 	n0 = S_Mark();
 	r = L_Dock();
-	HOST_Check(r.nb == 1 and r.box.text == "MSF Sector Command, Moscowia:\nTransit permit for MSF space in this sector, 24 legs: 18900 cr. The New Empire keeps lists of who carries our papers."
+	HOST_Check(r.nb == 1 and r.box.text == "MSF Sector Command, Moscowia:"..TRF_UI_Br().."Transit permit for MSF space in this sector, 24 legs: 18900 cr. The New Empire keeps lists of who carries our papers."
 		and S_Logs(n0, "event=permit_offer faction=Vks standing=4 region="..slot.." level=15 prosperity=1 difficulty_k=1.000 price=18900 legs=24 result=offered") == 1,
 		"fst 4: permit box, c_p x L_rg 15 x (1 + 0.05 R 1) x d_k ("..tostring(r.box and r.box.text)..")");
 	L_Press(r, "cancel");
@@ -422,7 +422,7 @@ function T_LAD_D()
 	h.credits = 500000;
 	L_Fst(3, 1);
 	r = L_Dock();
-	HOST_Check(r.nb == 1 and L_Has(r.box.text, "Triada Sector Command, Golkonda:\nYour file shows open violations. Settle for 132000 cr"), "Triada settlement (4000 x 11 x 3)");
+	HOST_Check(r.nb == 1 and L_Has(r.box.text, "Triada Sector Command, Golkonda:"..TRF_UI_Br().."Your file shows open violations. Settle for 132000 cr"), "Triada settlement (4000 x 11 x 3)");
 	L_Press(r, "ok");
 	HOST_Check(TRF_Fst(3) == 4 and h.credits == 368000, "Triada settled");
 	-- War: nothing.

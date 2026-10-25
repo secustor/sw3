@@ -89,6 +89,8 @@ def lint(path, allow, bools, host=False):
         prev = v[i - 1] if i else ""
         nxt = v[i + 1] if i + 1 < n else ""
         in_func = "f" in stack
+        if kind == "str" and val[1:-1] == "\\n" and (prev == ".." or nxt == ".."):
+            add(ln, "newline in text: use TRF_UI_Br()")
         if kind == "name":
             if val in ("true", "false"):
                 add(ln, "'%s' is not a Lua 4 literal; use TRUE/FALSE or nil" % val)

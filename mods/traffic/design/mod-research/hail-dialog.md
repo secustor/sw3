@@ -42,7 +42,7 @@ Feasible. Call `StartTradeDialog("TRF_Hail", "TRF_HlDlgInit")`: it loads `DATA\S
 | 3.4 | `SetReplaceValue(key, value)` 0x5e54d0 inserts into that map (0x4cbf90, `dialog+0xb0`) of `[MD+0x28]` or else `[MD+0x2c]`; without a dialog it logs "SetReplaceValue:: NameValue '%s', Value '%s' - Not found Dialog!". Never used by vanilla | exe | V |
 | 3.5 | Hence: XML text `FTU #who#: #m0#` plus `SetReplaceValue("who", "Whimbrel")` and `SetReplaceValue("m0", "...")` in the init shows fully dynamic text; a value may itself be a loc key | 3.1-3.4 | I (not run) |
 | 3.6 | A text that starts with `#` but is not a key (e.g. an answer `#a_feq#`): what `GetString` returns for an unknown key is not traced (assumed: the key itself, as the C7 and news checks expect) | `README.md:339`, `news-records.md` 4 | U |
-| 3.7 | Token case and whether `$` or `\n` survive in values | — | U |
+| 3.7 | Token case and whether `$` or a line break survive in values (`\n` renders the font atlas in ShowMsgBox, 2026-10-25; use `TRF_UI_Br()`) | — | U |
 
 ## 4. Loc files and the header question
 

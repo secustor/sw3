@@ -418,6 +418,7 @@ Production:
 - header lines `LOCALE_FILE` and `FILETYPE STANDART`; `;` comments; entries `#KEY = text`; CRLF, no BOM, 8-bit cp1251. Keep English text ASCII.
 - Keys per hull: `#M_Name_<X>` (max 19 in `m_`), `#M_Hint_<X>` (fighters: `Name|Role|of the Nth generation`; motherships: `Class|Name`), `#M_SDesc_<X>`, `#M_LDesc_<X>` (one paragraph).
 - `|` is a line break where the widget splits lines and a space elsewhere (six replace loops in the exe; inferred from code; which widget does which is UNVERIFIED, N/gui-assets.md:179).
+- [V] `ShowMsgBox`: the byte `\n` has no glyph and the renderer draws the whole font atlas in its place (playtest 2026-10-25, ladder permit box). Vanilla scripts use `|` in box text; the mod joins `TRF_UI_Br()` (tune `ui_br`, `|` or a space). Whether `|` breaks the line in `ShowMsgBox` is open (D-UI.1).
 - Every `*.loc` in the language folder is enumerated (0x59c3a0). Whether a new file loads in practice is `A/` O1. Key collisions with vanilla are UNVERIFIED.
 - 310 non-ship `<long_desc>` values in `Carcasses.xml` are literal text. Whether literal text works for ships is P23.
 
