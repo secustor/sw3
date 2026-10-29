@@ -1188,6 +1188,7 @@ function TRF_McOrderRaw(o, how, a)
 	elseif how == "portal" then o:ComeToPortal(a);
 	elseif how == "move" then o:Move(a);
 	elseif how == "patrol" then o:Patrol(a, TRUE);
+	elseif how == "stop" then o:Stop();
 	elseif how == "attack" then o:Attack(a);
 	elseif how == "start" then o:Start(8, 0); end;
 	return 1;
@@ -1820,9 +1821,10 @@ function TRF_McArmMeet(v)
 	if TRF_McObj(v.fl[1]) and TRF_McObj(ms) then TRF_McTrig("f_object_inside", TRF_McCb("TRF_McMeet", v.n), v.fl[1], ms, TRF_McHK().meet_r); end;
 end;
 
--- Every flight of v gets order how (escort the mothership, attack it, ...).
+-- Every live flight of v gets order how (escort the mothership, attack it, stop, ...); a flight whose ships are all
+-- dead is skipped (the vanilla "if flight:IsAlive() then flight:Patrol" idiom), so a renewed order logs no error for it.
 function TRF_McOrderAll(v, how, a)
-	for i = 1, getn(v.fl or {}) do TRF_McOrder(v.fl[i], how, a); end;
+	for i = 1, getn(v.fl or {}) do if TRF_McAlive(v.fl[i]) then TRF_McOrder(v.fl[i], how, a); end; end;
 end;
 
 function TRF_McSpawnDue(n, c)
@@ -1943,15 +1945,26 @@ function TRF_McPatrol(v, why)
 	local r = why;
 	if getn(pp) >= 2 then
 		for i = 1, getn(v.fl or {}) do
-			local pts = {};
-			for k = 1, getn(pp) do tinsert(pts, Vector3(pp[k].x, pp[k].y, pp[k].z)); end;
-			TRF_McOrder(v.fl[i], "patrol", pts);
+			if TRF_McAlive(v.fl[i]) then
+				local pts = {};
+				for k = 1, getn(pp) do tinsert(pts, Vector3(pp[k].x, pp[k].y, pp[k].z)); end;
+				TRF_McOrder(v.fl[i], "patrol", pts);
+			end;
 		end;
 	else
 		r = "fallback";
 		if pp[1] then TRF_McOrderAll(v, "move", Vector3(pp[1].x, pp[1].y, pp[1].z)); end;
 	end;
 	TRF_McE("patrol", "flight", v.n, "clan", v.c, "points", getn(pp), "result", r);
+end;
+
+-- An approaching pack (v.ap 1) goes back to its patrol: a scene, a decline with the re-arm, state noh, the mothership
+-- past 2 x merc_app_r. Returns 1 when it did, nil when the pack was not approaching.
+function TRF_McResume(v)
+	if v.ap ~= 1 then return nil; end;
+	v.ap = nil; v.am = nil;
+	TRF_McPatrol(v, "resume");
+	return 1;
 end;
 
 -- Approach rule of the waiting pack (user decision 2026-10-29): with the mothership mp within r (merc_app_r) of the
@@ -1962,9 +1975,8 @@ function TRF_McApproach(v, d, lp, mp, r)
 	local HK = TRF_McHK();
 	if v.ap == 1 then
 		if d > 2 * r then
-			v.ap = nil; v.am = nil;
 			TRF_McE("approach", "flight", v.n, "clan", v.c, "distance", floor(d), "result", "resume");
-			TRF_McPatrol(v, "resume");
+			TRF_McResume(v);
 			return;
 		end;
 		local dm = TRF_McD3(v.am, mp);
@@ -1984,7 +1996,8 @@ end;
 
 -- Due call 30-90 s after the entry (12 section 6 Spawn): the gates again, the portal toward the clan's home, the build,
 -- relations neutral both ways, the escort slot, the marker, the triggers, met, the signature line, then the patrol loop
--- (TRF_McPtsOf by the hash of system, flight number and leg; user decision 2026-10-29). Returns 1 when it ran through.
+-- (TRF_McPtsOf by the hash of system, flight number and leg, computed before the build so an error there still voids the
+-- flight; user decision 2026-10-29). Returns 1 when it ran through.
 function TRF_McSpawnBody(n, c)
 	local v = TRF_McV();
 	if not v or v.n ~= n or v.st ~= "due" then return 1; end;
@@ -2002,6 +2015,7 @@ function TRF_McSpawnBody(n, c)
 	if TRF_N("TRF_EscortTake", "merc") == nil and type(TRF_EscortTake) == "function" then TRF_McVoid(v, "escort_slot"); return 1; end;
 	local e = call(TRF_McEntryRaw, {prt, 10}, "x", TRF_McNoErr);
 	if type(e) ~= "table" then TRF_McVoid(v, "portal"); return 1; end;
+	v.pp = TRF_McPtsOf(TRF_McPtsCand(cur, prt, pn), TRF_McHash(cur, n, TRF_McLegs()));
 	TRF_McOrder(prt, "start");
 	if not TRF_McBuild(v, e, Vector3(0, 0, 1), nil) then TRF_McVoid(v, "build"); return 1; end;
 	v.prt = prt; v.pn = pn; v.st = "wait"; v.t0 = TRF_McGt(); v.lt = v.t0; v.nb = 0; v.n0 = TRF_McAliveN(v);
@@ -2020,7 +2034,6 @@ function TRF_McSpawnBody(n, c)
 	TRF_McStat("merc_spawn");
 	TRF_McE("spawn", "flight", n, "clan", c, "group", v.gn, "stage", v.fs, "composition", v.cp, "power", v.pw, "ship_count", v.n0,
 		"portal", pn, "result", "spawn");
-	v.pp = TRF_McPtsOf(TRF_McPtsCand(cur, prt, pn), TRF_McHash(cur, n, TRF_McLegs()));
 	TRF_McPatrol(v, "start");
 	return 1;
 end;
@@ -2129,7 +2142,7 @@ function TRF_McDecline(v, why)
 		v.st = "wait";
 		v.ra = TRF_McGt() + TRF_McHK().rearm;
 		TRF_McArmMeet(v);
-		if v.ap == 1 then v.ap = nil; v.am = nil; TRF_McPatrol(v, "resume"); end;
+		TRF_McResume(v);
 		TRF_McE("hire", "flight", v.n, "clan", v.c, "result", "declined", "reason", why, "rearm", "true");
 	else
 		v.st = "noh";
@@ -2792,6 +2805,10 @@ function TRF_McLeave(v, why, key)
 	-- No enabled portal (a rebuilt wing has no spawn portal to fall back on): the ships keep their orders and the
 	-- out-of-view rule or the watchdog deletes them.
 	if o then
+		-- The flight order (the Patrol loop, Escort) off first (Stop, as trf_raid does before re-ordering a patrolling
+		-- flight; CHECK in-game: whether a flight-level Patrol otherwise overrides the ships' ComeToPortal), then every
+		-- live ship to the portal.
+		TRF_McOrderAll(v, "stop");
 		for j = 1, v.nj or 0 do
 			local s = v.sh[j];
 			if s and not v.dead[j] and not v.gone[j] and TRF_McAlive(s) then TRF_McOrder(s, "portal", o); end;
@@ -2888,13 +2905,11 @@ function TRF_McStepBody()
 			local d = TRF_McD3(lp, mp);
 			if d and d <= HK.meet_r then TRF_McMeetBody(v.n, TRF_McGen()); end;
 			-- No approach during a scene (TRF_Quiet): an approaching pack goes back to its patrol.
-			if v.st == "wait" and TRF_N("TRF_Quiet") then
-				if v.ap == 1 then v.ap = nil; v.am = nil; TRF_McPatrol(v, "resume"); end;
-			elseif v.st == "wait" then
-				TRF_McApproach(v, d, lp, mp, T.merc_app_r);
+			if v.st == "wait" then
+				if TRF_N("TRF_Quiet") then TRF_McResume(v); else TRF_McApproach(v, d, lp, mp, T.merc_app_r); end;
 			end;
 		end;
-		if v.st == "noh" and v.ap == 1 then v.ap = nil; v.am = nil; TRF_McPatrol(v, "resume"); end;
+		if v.st == "noh" then TRF_McResume(v); end;
 		if na * 2 <= (v.n0 or na) then TRF_McLeave(v, "half", "mchalf"); return; end;
 		if gt - (v.t0 or gt) >= T.merc_wait_s and not mc.cv and v.st ~= "meet" and v.st ~= "offer" then TRF_McLeave(v, "wait", "mcleave"); end;
 		return;
