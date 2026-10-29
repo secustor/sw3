@@ -721,6 +721,8 @@ Mercenary clans, build steps 1 and 3 (`design/merc-spec.md` 8). `clan` is the cl
 | `roll` | `module=merc event=roll system=gaoba chance=55.000 roll=23 clan=4 candidate_count=2 stage=1 power=14 ship_count=4 delay=47 result=planned`; `result=none reason=<rows, cap:<no>, due>` | 1 |
 | `roll` | `module=merc event=roll system=gaoba result=none reason=<excluded, strict:<w>, supp, region, black, escort_mission, escort_slot, event, roll, no_clan>` | 2 |
 | `spawn` | `module=merc event=spawn flight=1 clan=4 group=TRF_Merc_1 stage=1 composition=1 power=14 ship_count=4 portal=PORTAL_D result=spawn` / `result=skipped reason=<system, black, cap:<no>, portal, escort_slot, build, error, wind>` | 1 |
+| `patrol` | `module=merc event=patrol flight=1 clan=4 points=4 result=<start, resume, fallback>` (the unhired pack's loop after the spawn, again after an approach, a decline with the re-arm or state `noh`; `fallback`: fewer than 2 points, one Move off the portal mouth) | 1 |
+| `approach` | `module=merc event=approach flight=1 clan=4 distance=500 result=<start, resume>` (the waiting pack flies to the mothership within `merc_app_r`; `resume` past 2 x `merc_app_r`; `distance`: leader to mothership, units) | 1 |
 | `meet` | `module=merc event=meet flight=1 clan=4 collection=false` / `result=refused reason=<heat, standing, bloc, legion>` | 1 |
 | `offer` | `module=merc event=offer flight=1 clan=4 fee=12600 share=2500 blood=10000 owe=0 discount=1.000 heat_k=1.000 condition=4 standing=0 result=line` | 1 |
 | `talk` | `module=merc event=talk kind=<offer, ext, settle, collect> flight=1 clan=4 via=<dialog, box> result=shown` | 1 |

@@ -856,6 +856,36 @@ function MC_Rel(a, b)
 	return r;
 end;
 
+-- 1 when the point lists a and b ({x, y, z}) are equal.
+function MC_PtsEq(a, b)
+	if getn(a) ~= getn(b) then return nil; end;
+	for i = 1, getn(a) do if a[i].x ~= b[i].x or a[i].y ~= b[i].y or a[i].z ~= b[i].z then return nil; end; end;
+	return 1;
+end;
+
+-- 1 when every flight of v patrols the points of v.pp in order (Vector3s), nil otherwise.
+function MC_Patrols(v)
+	if getn(v.fl) == 0 then return nil; end;
+	for i = 1, getn(v.fl) do
+		local p = v.fl[i].patrol;
+		if type(p) ~= "table" or getn(p) ~= getn(v.pp) then return nil; end;
+		for k = 1, getn(p) do if not HOST_IsVec(p[k]) or HOST_Dist(p[k], v.pp[k]) > 0.01 then return nil; end; end;
+	end;
+	return 1;
+end;
+
+-- Clears the recorded Patrol and Move orders of v's flights.
+function MC_ClrOrd(v)
+	for i = 1, getn(v.fl) do v.fl[i].patrol = nil; v.fl[i].mv = nil; end;
+end;
+
+-- The mothership at distance d from the pack leader along +x; returns the leader position.
+function MC_MsAt(d)
+	local p = TRF_McLead(TRF_McV()):GetPosition();
+	HOST().ms.pos = Vector3(p.x + d, p.y, p.z);
+	return p;
+end;
+
 -- g: pure rules, the roll and its gates, the spawn, caps ---------------------------------------------------------
 
 function T_MC_G()
@@ -966,18 +996,155 @@ function T_MC_G()
 	HOST_Check(TRF_Mc_Trim("merc", 1) == 1 and TRF_McLive() == nl - 1, "trim: an unhired pack gives a ship");
 	-- Stage 2: two flights, labels 1..6.
 	MC_Put(4, {sg=2, met=0}); MC_Put(5, {sg=2, met=0});
+	n0 = S_Mark();
 	MC_Enter("gaoba");
 	v = TRF_McV();
 	HOST_Check(v and v.cp == 3 and getn(v.fl) == 2 and getn(MC_Ships(1)) == 6 and HOST().objs["trf_merc_1_6"] ~= nil, "stage 2: fighters and bombers, two flights, slots 1..6");
-	-- Unhired: leaves after merc_wait_s 240 with the line.
+	-- The patrol loop (user decision 2026-10-29): gaoba has the mouth of PORTAL D, two stations, PORTAL L and R, 4 belt slots.
+	local pd = TRF_GnPortalObj("PORTAL_D");
+	local mo = TRF_McMouth(pd);
+	local gap, s300 = 1, 0;
+	for i = 1, getn(v.pp) do
+		for k = i + 1, getn(v.pp) do if TRF_McD3(v.pp[i], v.pp[k]) < 200 then gap = nil; end; end;
+		if abs(TRF_McD3(v.pp[i], {x=-304, y=0, z=1104}) - 300) < 0.01 or abs(TRF_McD3(v.pp[i], {x=600, y=0, z=600}) - 300) < 0.01 then s300 = s300 + 1; end;
+	end;
+	HOST_Check(getn(v.pp) == 5 and mo.x == 10 and mo.z == -1150 and MC_PtsEq({v.pp[1]}, {mo}) and s300 == 2 and gap
+		and (MC_PtsEq({v.pp[4]}, {{x=-840, y=0, z=250}}) or MC_PtsEq({v.pp[4]}, {{x=860, y=0, z=1550}})) and MC_PtsEq({v.pp[5]}, {{x=102, y=-18, z=58}})
+		and MC_Patrols(v) and S_Logs(n0, "event=patrol flight=1 clan="..v.c.." points=5 result=start") == 1,
+		"patrol: both flights loop 5 points (the PORTAL D mouth, 300 off each station, the PORTAL L or R mouth, a belt slot), 200 apart, logged");
+	local cg = TRF_McPtsCand(cur, pd, "PORTAL_D");
+	local hh = TRF_McHash(cur, 1, 20);
+	HOST_Check(getn(cg.st) == 2 and getn(cg.op) == 2 and getn(cg.ex) == 4 and MC_PtsEq(TRF_McPtsOf(cg, hh), TRF_McPtsOf(cg, hh))
+		and MC_PtsEq(TRF_McPtsOf(TRF_McPtsCand(cur, pd, "PORTAL_D"), hh), TRF_McPtsOf(cg, hh)), "patrol points: candidates of gaoba, same hash same points");
+	-- Pure: order, the standoff, dedupe within 200, at most two stations from h mod n, picks by floor(h / 7) and floor(h / 11), cap 5, no mouth.
+	local O = {x=0, y=0, z=0};
+	local q = TRF_McPtsOf({m=O, st={{x=1000, y=0, z=0}}, op={{x=0, y=0, z=1000}}, ex={{x=-1000, y=0, z=0}}}, 0);
+	HOST_Check(MC_PtsEq(q, {O, {x=700, y=0, z=0}, {x=0, y=0, z=1000}, {x=-1000, y=0, z=0}}), "pure: mouth, standoff 300 toward the mouth, portal, extra");
+	q = TRF_McPtsOf({m=O, st={{x=1000, y=0, z=0}}, op={{x=150, y=0, z=0}}, ex={{x=700, y=0, z=150}}}, 0);
+	HOST_Check(MC_PtsEq(q, {O, {x=700, y=0, z=0}}), "pure: points within 200 of a kept point dropped");
+	local S3 = {{x=1000, y=0, z=0}, {x=0, y=0, z=-1000}, {x=-1000, y=0, z=0}};
+	local P3 = {{x=0, y=500, z=0}, {x=0, y=1000, z=0}, {x=0, y=1500, z=0}};
+	local E2 = {{x=0, y=-500, z=0}, {x=0, y=-1000, z=0}};
+	q = TRF_McPtsOf({m=O, st=S3, op=P3, ex=E2}, 1);
+	HOST_Check(MC_PtsEq(q, {O, {x=0, y=0, z=-700}, {x=-700, y=0, z=0}, P3[1], E2[1]}), "pure: stations 2 and 3 for h 1, portal 1, extra 1, five points");
+	q = TRF_McPtsOf({m=O, st=S3, op=P3, ex=E2}, 14);
+	HOST_Check(MC_PtsEq(q, {O, {x=-700, y=0, z=0}, {x=700, y=0, z=0}, P3[3], E2[2]}), "pure: h 14 picks stations 3 and 1, portal floor(14/7) mod 3 = 2, extra floor(14/11) mod 2 = 1");
+	HOST_Check(getn(TRF_McPtsOf({m=O}, 5)) == 1 and getn(TRF_McPtsOf({st=S3, op=P3}, 5)) == 0 and getn(TRF_McPtsOf(nil, 5)) == 0, "pure: the mouth alone; no mouth no points");
+	-- The stay: not gone after 250 s; merc_wait_s 3600 (clamp 30..10800), merc_app_r 700.
 	local m0 = getn(h.msgs);
 	n0 = S_Mark();
 	T_Tick(500, 0.5);
+	HOST_Check(v.st == "wait" and S_Logs(n0, "event=leave") == 0 and TRF_McTn("merc_wait_s") == 3600 and TRF_McTn("merc_app_r") == 700,
+		"unhired: still in the system after 250 s (merc_wait_s 3600, merc_app_r 700)");
+	MC_Tune("merc_wait_s", 20000);
+	local w1 = TRF_McTn("merc_wait_s");
+	MC_Tune("merc_wait_s", 10);
+	HOST_Check(w1 == 10800 and TRF_McTn("merc_wait_s") == 30, "merc_wait_s clamped to 30..10800");
+	MC_Tune("merc_wait_s", nil);
+	T_Tick(3300, 1);
+	HOST_Check(v.st == "wait" and S_Logs(n0, "event=leave") == 0, "unhired: still waiting at 3550 s");
+	T_Tick(120, 0.5);
 	HOST_Check(S_Logs(n0, "event=leave flight=1 clan="..v.c.." portal=") == 1 and S_Logs(n0, "reason=wait") >= 1 and MC_Has(MC_Txt(m0), "No contract, no reason to stay.")
-		and TRF.live.esc == nil, "unhired: leaves after 240 s, escort slot freed");
+		and TRF.live.esc == nil, "unhired: leaves after 3600 game s, escort slot freed");
 	T_Tick(4, 0.5);
 	HOST_Check(v.st == "gone" and getn(MC_Ships(1)) == 0 and getglobal("TRF_ship_trf_merc_1_1") == nil, "deleted at the portal, handle globals cleared");
+	-- Fallback: no station, no other portal, no belt slot: one Move off the portal mouth.
+	MC_Reset();
+	MC_Put(4, {sg=1, met=0}); MC_Put(5, {sg=1, met=0});
+	n0 = S_Mark();
+	MC_Enter("gaoba", 0);
+	local gs = TRF_Map().sys[cur];
+	local st0, ps0, sl0 = gs.st, gs.portals, TRF_ShSlots;
+	gs.st = nil; gs.portals = {gs.pby.PORTAL_D};
+	TRF_ShSlots = function(nm) return nil; end;
+	T_Tick(192, 0.5);
+	gs.st = st0; gs.portals = ps0; TRF_ShSlots = sl0;
+	v = TRF_McV();
+	HOST_Check(v and v.st == "wait" and getn(v.pp) == 1 and v.fl[1].patrol == nil and v.fl[1].mv and HOST_Dist(v.fl[1].mv, mo) < 0.01
+		and S_Logs(n0, "event=patrol flight=1 clan="..v.c.." points=1 result=fallback") == 1, "fallback: one point, Move off the portal mouth, no Patrol");
+	MC_Approach();
 	MC_Enter("heos", 0);
+end;
+
+-- The approach rule (user decision 2026-10-29), part of mc-g: within merc_app_r 700 the pack moves to 60 units short of
+-- the mothership, past 1400 it patrols again; the meeting at 70 still fires; a declined offer and state noh resume the
+-- patrol; a hired pack gets neither.
+function MC_Approach()
+	local h = HOST();
+	MC_Reset();
+	MC_Put(4, {sg=2, met=0}); MC_Put(5, {sg=2, met=0});
+	MC_Enter("gaoba");
+	local v = TRF_McV();
+	HOST_Check(v and v.st == "wait" and getn(v.fl) == 2 and MC_Patrols(v) and v.ap == nil, "approach: a fresh pack of two flights on patrol");
+	local n0 = S_Mark();
+	MC_ClrOrd(v);
+	local lp = MC_MsAt(500);
+	T_Tick(2, 0.5);
+	local want = Vector3(lp.x + 440, lp.y, lp.z);
+	HOST_Check(v.ap == 1 and v.fl[1].mv and v.fl[2].mv and HOST_Dist(v.fl[1].mv, want) < 0.01 and HOST_Dist(v.fl[2].mv, want) < 0.01 and v.fl[1].patrol == nil
+		and S_Logs(n0, "event=approach flight=1 clan="..v.c.." distance=500 result=start") == 1, "within 700: every flight moves to 60 units short of the mothership, logged");
+	MC_ClrOrd(v);
+	h.ms.pos = Vector3(lp.x + 550, lp.y, lp.z);
+	T_Tick(2, 0.5);
+	local m1 = v.fl[1].mv;
+	h.ms.pos = Vector3(lp.x + 700, lp.y, lp.z);
+	T_Tick(2, 0.5);
+	HOST_Check(m1 == nil and v.fl[1].mv and HOST_Dist(v.fl[1].mv, Vector3(lp.x + 640, lp.y, lp.z)) < 0.01 and S_Logs(n0, "result=start") == 1,
+		"the point renewed only after the mothership moved more than 100 units");
+	MC_ClrOrd(v);
+	MC_MsAt(1300);
+	T_Tick(2, 0.5);
+	HOST_Check(v.ap == 1 and v.fl[1].patrol == nil, "at 1300: still approaching (resume past 2 x 700)");
+	MC_MsAt(1500);
+	T_Tick(2, 0.5);
+	HOST_Check(v.ap == nil and MC_Patrols(v) and S_Logs(n0, "event=approach flight=1 clan="..v.c.." distance=1500 result=resume") == 1
+		and S_Logs(n0, "event=patrol flight=1 clan="..v.c.." points=5 result=resume") == 1, "past 1400: the patrol again, logged");
+	-- Approach, then the meeting at 70 (the poll), the box, Cancel: the patrol resumes with the re-arm.
+	MC_MsAt(600);
+	T_Tick(2, 0.5);
+	HOST_Check(v.ap == 1, "within 700 again: approaching");
+	MC_ClrOrd(v);
+	n0 = S_Mark();
+	local b0 = getn(h.boxes);
+	MC_MsAt(65);
+	T_Tick(32, 0.5);
+	HOST_Check(S_Logs(n0, "event=meet flight=1 clan="..v.c) == 1 and getn(h.boxes) == b0 + 1 and v.st == "offer", "the meeting at 70 fires after the approach; the box");
+	HOST_Press("cancel");
+	T_Tick(2, 0.5);
+	HOST_Check(v.st == "wait" and v.ap == nil and MC_Patrols(v) and S_Logs(n0, "rearm=true") == 1 and S_Logs(n0, "event=patrol flight=1 clan="..v.c.." points=5 result=resume") == 1,
+		"declined with the re-arm: the patrol resumes");
+	MC_ClrOrd(v);
+	MC_MsAt(400);
+	T_Tick(40, 0.5);
+	HOST_Check(v.ap == nil and v.fl[1].mv == nil, "no approach before the 60 s re-arm");
+	T_Tick(84, 0.5);
+	HOST_Check(v.ap == 1 and v.fl[1].mv, "after the re-arm: approaching again");
+	MC_ClrOrd(v);
+	n0 = S_Mark();
+	MC_MsAt(20);
+	T_Tick(32, 0.5);
+	HOST_Press("cancel");
+	T_Tick(2, 0.5);
+	HOST_Check(v.st == "noh" and S_Logs(n0, "rearm=false") == 1 and v.ap == nil and MC_Patrols(v) and S_Logs(n0, "result=resume") == 1,
+		"second Cancel: state noh, the patrol resumes");
+	MC_ClrOrd(v);
+	MC_MsAt(300);
+	T_Tick(6, 0.5);
+	HOST_Check(v.ap == nil and v.fl[1].mv == nil and v.fl[1].patrol == nil, "state noh: no approach");
+	-- A hired pack escorts: no patrol, no approach.
+	MC_Reset();
+	MC_Put(4, {sg=1, met=0}); MC_Put(5, {sg=1, met=0});
+	v = MC_Hire();
+	HOST_Check(v.st == "hired" and v.fl[1].esc == h.ms, "hired: escort");
+	MC_ClrOrd(v);
+	n0 = S_Mark();
+	MC_MsAt(500);
+	T_Tick(6, 0.5);
+	MC_MsAt(1500);
+	T_Tick(6, 0.5);
+	HOST_Check(v.st == "hired" and v.fl[1].patrol == nil and v.fl[1].mv == nil and v.fl[1].esc == h.ms and S_Logs(n0, "event=approach") == 0 and S_Logs(n0, "event=patrol") == 0,
+		"hired: no patrol or approach orders");
+	MC_Reset();
 end;
 
 -- h: meeting and offer: fee terms, box and page, decline and re-arm, short wallet, refusals, Legion gate, owe ---------

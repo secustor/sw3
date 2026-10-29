@@ -11,6 +11,8 @@
 -- functions for the later steps; repair TRF_Mc_Fix (TRF_Repair); debug dump.
 -- Step 3 (merc-spec 6a): the hire role at fielded stages 1-2: the appearance roll at entry (TRF_Mc_OnActivate), the
 -- spawn 30-90 s later at the portal toward the clan's home (group TRF_Merc_<n>, n the flight number of the visit), the
+-- patrol loop of the unhired pack through the system and its approach to the mothership within merc_app_r, the stay of
+-- merc_wait_s 3600 game seconds (user decision 2026-10-29), the
 -- meeting at 70 units, the conversations (offer, extension, settlement, collection) as dialog pages TRF_MercPg with the
 -- box chain as the fallback, the hire (fee, owe, escort, seeding of the groups at war, share deaths through the death bus
 -- and died triggers), the time-based hire carried across jumps (the wing rebuilt at every arrival from TRF.mc.h, the
@@ -113,7 +115,8 @@ end;
 function TRF_McClampT()
 	return {c_hire={0, 5000, 1}, c_share={0, 500, 1}, c_blood={0, 20, 1}, merc_reserve_k={0, 10, 1}, merc_owe_j={1, 999, 1},
 		merc_ext_k={0, 5, 0}, mc_heal_j={0, 1000, 1}, mc_heal_s={0, 1000, 0},
-		merc_hire_s={60, 3600, 1}, merc_wait_s={30, 1800, 1}, merc_cd={0, 99, 1}, merc_reach={0, 20, 1}, merc_p={0, 100, 1},
+		merc_hire_s={60, 3600, 1}, merc_wait_s={30, 10800, 1}, merc_app_r={0, 5000, 1}, merc_cd={0, 99, 1}, merc_reach={0, 20, 1},
+		merc_p={0, 100, 1},
 		merc_sweep_p={0, 100, 1}, merc_p_max={0, 100, 1}, merc_rel_decay={1, 999, 1}, merc_rel_j={1, 999, 1},
 		merc_bk_j={1, 999, 1}, merc_black={0, 999, 1}, merc_black_max={0, 9999, 1}, merc_rev_n={1, 6, 1},
 		merc_book_p={0, 100, 1}, merc_book_legs={1, 99, 1}, merc_ret_k={0, 5, 0}, merc_rep_cd={1, 999, 1},
@@ -1029,14 +1032,16 @@ end;
 -- hit, the vanilla ship rescan, conversation retries and their delay, the load wait, the arrival delay, the 7.12 power
 -- offsets by tier, the full hull per mille, the SetHP fallback hull and the jump counter cap, the FTU help threshold,
 -- heat bands, the refusal standing, the escort offset at a rebuild, the vanilla pirate groups (my grep of CreateGroup in
--- Locations, 12 section 6), the extortion group, the permanent exclusions (12 section 3). Built once per
--- MapInitialization (MC.hk).
+-- Locations, 12 section 6), the extortion group, the permanent exclusions (12 section 3); the patrol loop (user decision
+-- 2026-10-29): stations per loop, points per loop, the least gap between two points, the station standoff, the approach
+-- point short of the mothership and the drift of the mothership that renews it. Built once per MapInitialization (MC.hk).
 function TRF_McHK()
 	local mc = %MC;
 	if type(mc.hk) ~= "table" then
 		mc.hk = {meet_r=70, box_dt=12, rearm=60, box_max=2, grace=60, hp_win=30, pm_r=300, portal_r=25, ovd=600,
 			leave_s=120, nmax=4, jmax=6, arm_max=200, hit_win=10, rescan=10, tries=12, try_dt=5, load_wait=10, due_a=30,
 			due_b=90, off={-3, 0, 2, 3}, pm=1000, pm_min=550, hj_max=99, help=15, heat_lo=5, heat_max=7, rel_no=-2, ms_off=60,
+			pt_st=2, pt_max=5, pt_min=200, pt_off=300, ap_off=60, ap_re=100,
 			pir={"PiratesGroup_1", "Pirate_Group_1", "Pirate_Group_1_1", "Pirates_Group_1", "PirateGroup_1"},
 			money="group_Pirate_money",
 			excl={earth=1, precursors=1, disonsphere=1, fronn=1, nk=1, x297=1, x203=1, x213=1, x220=1, kassilia=1}};
@@ -1182,6 +1187,7 @@ function TRF_McOrderRaw(o, how, a)
 	if how == "escort" then o:Escort(a);
 	elseif how == "portal" then o:ComeToPortal(a);
 	elseif how == "move" then o:Move(a);
+	elseif how == "patrol" then o:Patrol(a, TRUE);
 	elseif how == "attack" then o:Attack(a);
 	elseif how == "start" then o:Start(8, 0); end;
 	return 1;
@@ -1420,8 +1426,8 @@ end;
 -- Visit state ------------------------------------------------------------------------------
 
 -- The visit's clan flight (MC.v, never saved): {n, c, st, idx, cp (composition), pw, sh = {j -> ship}, fl, dead, gone,
--- hp0, lh, nj, n0, fee, sh1 (share), bm, k, lo, tr, el, ...}; st due, wait, meet, offer, noh, hired, ask, leave, war,
--- susp, void, gone.
+-- hp0, lh, nj, n0, fee, sh1 (share), bm, k, lo, tr, el, pp (patrol points {x, y, z}), ap (1 while approaching), am (the
+-- mothership at the last approach order), ...}; st due, wait, meet, offer, noh, hired, ask, leave, war, susp, void, gone.
 function TRF_McV() return %MC.v; end;
 
 -- Next flight number of the visit (1..nmax), nil when used up.
@@ -1833,9 +1839,152 @@ function TRF_McVoid(v, why)
 	TRF_McE("spawn", "flight", v.n, "clan", v.c, "result", "skipped", "reason", why);
 end;
 
+-- Mouth of portal o: GetEntryPoint(150) plus 60 off-axis (the spawn's old move point), or nil.
+function TRF_McMouth(o)
+	if not TRF_McObj(o) then return nil; end;
+	local e = call(TRF_McEntryRaw, {o, 150}, "x", TRF_McNoErr);
+	if type(e) ~= "table" then return nil; end;
+	return {x=e.x + 60, y=e.y, z=e.z};
+end;
+
+-- Point dist units from station s toward point m (both {x, y, z}); +x when they coincide.
+function TRF_McStandOf(s, m, dist)
+	local dx, dy, dz = m.x - s.x, (m.y or 0) - (s.y or 0), (m.z or 0) - (s.z or 0);
+	local d = sqrt(dx * dx + dy * dy + dz * dz);
+	if d < 1 then return {x=s.x + dist, y=s.y or 0, z=s.z or 0}; end;
+	return {x=s.x + dx * dist / d, y=(s.y or 0) + dy * dist / d, z=(s.z or 0) + dz * dist / d};
+end;
+
+-- Patrol loop of the unhired pack (user decision 2026-10-29; merc-spec 6a Patrol), pure. c = {m the spawn mouth, st
+-- station positions, op other portal mouths, ex extra points (stash belt slots or nest route points)}, h the fixed hash
+-- 0..10008. Points in order: the mouth, the standoffs 300 units from at most two stations (toward the mouth; from station
+-- h mod n on), one other portal mouth (floor(h / 7) mod n), one extra point (floor(h / 11) mod n); a point closer than
+-- 200 units to a point kept before it is dropped; at most 5. No mouth: no points.
+function TRF_McPtsOf(c, h)
+	local HK = TRF_McHK();
+	local l = {};
+	if type(c) ~= "table" or type(c.m) ~= "table" then return l; end;
+	local m = c.m;
+	local cand = {m};
+	local st, op, ex = c.st or {}, c.op or {}, c.ex or {};
+	local ns = getn(st);
+	for i = 1, min(ns, HK.pt_st) do tinsert(cand, TRF_McStandOf(st[TRF_McM(h + i - 1, ns) + 1], m, HK.pt_off)); end;
+	if getn(op) > 0 then tinsert(cand, op[TRF_McM(floor(h / 7), getn(op)) + 1]); end;
+	if getn(ex) > 0 then tinsert(cand, ex[TRF_McM(floor(h / 11), getn(ex)) + 1]); end;
+	for i = 1, getn(cand) do
+		local p = cand[i];
+		local ok = type(p) == "table" and type(p.x) == "number" and getn(l) < HK.pt_max;
+		for k = 1, getn(l) do
+			if ok then
+				local d = TRF_McD3(p, l[k]);
+				if not d or d < HK.pt_min then ok = nil; end;
+			end;
+		end;
+		if ok then tinsert(l, {x=p.x, y=p.y or 0, z=p.z or 0}); end;
+	end;
+	return l;
+end;
+
+-- Candidates of the patrol loop in system cur (TRF_McPtsOf): the mouth of the spawn portal prt (name pn), the map
+-- stations (sys[cur].st), the mouths of the other enabled managed portals, the stash belt slots of the system
+-- (trf_stash TRF_ShSlots), else the route points of its nest flights (trf_nest TRF_NeData).
+function TRF_McPtsCand(cur, prt, pn)
+	local c = {m=TRF_McMouth(prt), st={}, op={}, ex={}};
+	local m = TRF_N("TRF_Map");
+	local s = nil;
+	if type(m) == "table" and type(m.sys) == "table" then s = m.sys[cur]; end;
+	if type(s) ~= "table" then return c; end;
+	if type(s.st) == "table" then
+		for i = 1, getn(s.st) do
+			local q = s.st[i];
+			if type(q) == "table" and type(q.x) == "number" then tinsert(c.st, {x=q.x, y=q.y or 0, z=q.z or 0}); end;
+		end;
+	end;
+	if type(s.portals) == "table" then
+		for i = 1, getn(s.portals) do
+			local q = s.portals[i];
+			if type(q) == "table" and type(q.name) == "string" and q.name ~= pn then
+				local o = TRF_N("TRF_GnPortalObj", q.name);
+				local e = nil;
+				if TRF_McEnabled(o) then e = TRF_McMouth(o); end;
+				if e then tinsert(c.op, e); end;
+			end;
+		end;
+	end;
+	local nm = TRF_McSysName(cur);
+	local sl = TRF_N("TRF_ShSlots", nm);
+	if type(sl) == "table" then
+		for i = 1, getn(sl) do
+			local q = sl[i];
+			if type(q) == "table" and type(q[1]) == "number" then tinsert(c.ex, {x=q[1], y=q[2] or 0, z=q[3] or 0}); end;
+		end;
+	end;
+	local nd = nil;
+	if getn(c.ex) == 0 then nd = TRF_N("TRF_NeData", nm); end;
+	if type(nd) == "table" and type(nd.f) == "table" then
+		for i = 1, getn(nd.f) do
+			local r = nd.f[i];
+			if type(r) == "table" and type(r.r) == "table" then
+				for k = 1, getn(r.r) do
+					local q = r.r[k];
+					if type(q) == "table" and type(q[1]) == "number" then tinsert(c.ex, {x=q[1], y=q[2] or 0, z=q[3] or 0}); end;
+				end;
+			end;
+		end;
+	end;
+	return c;
+end;
+
+-- Patrol of the unhired pack: every flight loops the points v.pp (Patrol(points, TRUE), fresh Vector3s per flight);
+-- fewer than 2 points: one Move to the first, the spawn rule before the patrol. why start or resume (logged as the
+-- result, or fallback).
+function TRF_McPatrol(v, why)
+	local pp = v.pp or {};
+	local r = why;
+	if getn(pp) >= 2 then
+		for i = 1, getn(v.fl or {}) do
+			local pts = {};
+			for k = 1, getn(pp) do tinsert(pts, Vector3(pp[k].x, pp[k].y, pp[k].z)); end;
+			TRF_McOrder(v.fl[i], "patrol", pts);
+		end;
+	else
+		r = "fallback";
+		if pp[1] then TRF_McOrderAll(v, "move", Vector3(pp[1].x, pp[1].y, pp[1].z)); end;
+	end;
+	TRF_McE("patrol", "flight", v.n, "clan", v.c, "points", getn(pp), "result", r);
+end;
+
+-- Approach rule of the waiting pack (user decision 2026-10-29): with the mothership mp within r (merc_app_r) of the
+-- leader lp (distance d), every flight moves to ap_off units short of the mothership on the line from the leader; the
+-- point is renewed when the mothership moved more than ap_re units from the last order; past 2 r the patrol resumes.
+function TRF_McApproach(v, d, lp, mp, r)
+	if not d or not lp or not mp then return; end;
+	local HK = TRF_McHK();
+	if v.ap == 1 then
+		if d > 2 * r then
+			v.ap = nil; v.am = nil;
+			TRF_McE("approach", "flight", v.n, "clan", v.c, "distance", floor(d), "result", "resume");
+			TRF_McPatrol(v, "resume");
+			return;
+		end;
+		local dm = TRF_McD3(v.am, mp);
+		if dm and dm <= HK.ap_re then return; end;
+	elseif d > r then
+		return;
+	end;
+	local k = 0;
+	if d > HK.ap_off then k = HK.ap_off / d; else k = 1; end;
+	TRF_McOrderAll(v, "move", Vector3(mp.x + (lp.x - mp.x) * k, mp.y + (lp.y - mp.y) * k, mp.z + (lp.z - mp.z) * k));
+	v.am = {x=mp.x, y=mp.y, z=mp.z};
+	if v.ap ~= 1 then
+		v.ap = 1;
+		TRF_McE("approach", "flight", v.n, "clan", v.c, "distance", floor(d), "result", "start");
+	end;
+end;
+
 -- Due call 30-90 s after the entry (12 section 6 Spawn): the gates again, the portal toward the clan's home, the build,
--- relations neutral both ways, the move off the portal mouth, the escort slot, the marker, the triggers, met, the
--- signature line. Returns 1 when it ran through.
+-- relations neutral both ways, the escort slot, the marker, the triggers, met, the signature line, then the patrol loop
+-- (TRF_McPtsOf by the hash of system, flight number and leg; user decision 2026-10-29). Returns 1 when it ran through.
 function TRF_McSpawnBody(n, c)
 	local v = TRF_McV();
 	if not v or v.n ~= n or v.st ~= "due" then return 1; end;
@@ -1856,8 +2005,6 @@ function TRF_McSpawnBody(n, c)
 	TRF_McOrder(prt, "start");
 	if not TRF_McBuild(v, e, Vector3(0, 0, 1), nil) then TRF_McVoid(v, "build"); return 1; end;
 	v.prt = prt; v.pn = pn; v.st = "wait"; v.t0 = TRF_McGt(); v.lt = v.t0; v.nb = 0; v.n0 = TRF_McAliveN(v);
-	local m = call(TRF_McEntryRaw, {prt, 150}, "x", TRF_McNoErr);
-	if type(m) == "table" then TRF_McOrderAll(v, "move", Vector3(m.x + 60, m.y, m.z)); end;
 	if RELATION_NEUTRAL ~= nil then TRF_McRel2(v.gn, PLAYER_GROUP, RELATION_NEUTRAL); end;
 	local lead = TRF_McLead(v);
 	local lp = TRF_McPos(lead);
@@ -1873,6 +2020,8 @@ function TRF_McSpawnBody(n, c)
 	TRF_McStat("merc_spawn");
 	TRF_McE("spawn", "flight", n, "clan", c, "group", v.gn, "stage", v.fs, "composition", v.cp, "power", v.pw, "ship_count", v.n0,
 		"portal", pn, "result", "spawn");
+	v.pp = TRF_McPtsOf(TRF_McPtsCand(cur, prt, pn), TRF_McHash(cur, n, TRF_McLegs()));
+	TRF_McPatrol(v, "start");
 	return 1;
 end;
 
@@ -1973,12 +2122,14 @@ function TRF_McOfferDue(n)
 	TRF_McTalk(v, "offer");
 end;
 
--- Decline (or a short wallet, or Esc): one re-arm after 60 s while fewer than two offers were shown this visit.
+-- Decline (or a short wallet, or Esc): one re-arm after 60 s while fewer than two offers were shown this visit; an
+-- approaching pack resumes its patrol (state noh: the 1 s step).
 function TRF_McDecline(v, why)
 	if (v.nb or 0) < TRF_McHK().box_max then
 		v.st = "wait";
 		v.ra = TRF_McGt() + TRF_McHK().rearm;
 		TRF_McArmMeet(v);
+		if v.ap == 1 then v.ap = nil; v.am = nil; TRF_McPatrol(v, "resume"); end;
 		TRF_McE("hire", "flight", v.n, "clan", v.c, "result", "declined", "reason", why, "rearm", "true");
 	else
 		v.st = "noh";
@@ -2700,7 +2851,8 @@ function TRF_Mc_Step()
 	call(TRF_McStepBody, {}, "x", TRF_McErr);
 end;
 
--- The visit flight: deaths missed by a trigger, the meeting poll, the wait, half losses, the leave; while hired the
+-- The visit flight: deaths missed by a trigger, the meeting poll, the approach rule (TRF_McApproach; the patrol again in
+-- state noh), the wait, half losses, the leave; while hired the
 -- clock (tr, seconds flown), the HP window, the raids that ran during the hire, seeding, the vanilla rescan, the end on a
 -- counted attack or heat 7, the pre-mission check, time out (grace, extension page), the hire record.
 function TRF_McStepBody()
@@ -2732,9 +2884,12 @@ function TRF_McStepBody()
 	end;
 	if not TRF_McHired(v) then
 		if v.st == "wait" and gt >= (v.ra or 0) then
-			local d = TRF_McD3(TRF_McPos(TRF_McLead(v)), TRF_McPos(TRF_McMs()));
+			local lp, mp = TRF_McPos(TRF_McLead(v)), TRF_McPos(TRF_McMs());
+			local d = TRF_McD3(lp, mp);
 			if d and d <= HK.meet_r then TRF_McMeetBody(v.n, TRF_McGen()); end;
+			if v.st == "wait" then TRF_McApproach(v, d, lp, mp, T.merc_app_r); end;
 		end;
+		if v.st == "noh" and v.ap == 1 then v.ap = nil; v.am = nil; TRF_McPatrol(v, "resume"); end;
 		if na * 2 <= (v.n0 or na) then TRF_McLeave(v, "half", "mchalf"); return; end;
 		if gt - (v.t0 or gt) >= T.merc_wait_s and not mc.cv and v.st ~= "meet" and v.st ~= "offer" then TRF_McLeave(v, "wait", "mcleave"); end;
 		return;
@@ -3244,11 +3399,12 @@ end;
 
 -- Tune keys (12 section 6 Config, 13 section 6, 11.7; merc-spec 7). The fortune, stage, presence, decay and elite floor
 -- keys (step 1) and the hire keys (step 3: c_hire, c_share, c_blood, merc_reserve_k, merc_hire_s, merc_ext_k,
--- merc_wait_s, merc_cd, merc_p, merc_sweep_p, merc_p_max, mc_st_off, mc_size_k, mc_el_jobs, mc_el_fee_k, mc_heal_j,
--- mc_heal_s; mc_ships 14 is read by trf_safety) are read; the others are kept for steps 4-9.
+-- merc_wait_s (3600 game seconds, user decision 2026-10-29), merc_app_r, merc_cd, merc_p, merc_sweep_p, merc_p_max,
+-- mc_st_off, mc_size_k, mc_el_jobs, mc_el_fee_k, mc_heal_j, mc_heal_s; mc_ships 14 is read by trf_safety) are read; the
+-- others are kept for steps 4-9.
 function TRF_Mc_TuneDef()
 	return {c_hire=700, c_share=25, c_blood=4, merc_reserve_k=2, merc_owe_j=60, merc_hire_s=600, merc_ext_k=0.75, mc_heal_j=150, mc_heal_s=1,
-		merc_wait_s=240, merc_cd=4,
+		merc_wait_s=3600, merc_app_r=700, merc_cd=4,
 		merc_reach=6, merc_p={5, 10, 35, 55, 15, 5}, merc_sweep_p=25, merc_p_max=80, merc_rel_decay=20, merc_rel_j=20,
 		merc_bk_j=60, merc_black=30, merc_black_max=90, merc_rev_n=3, merc_book_p={20, 40}, merc_book_legs=12,
 		merc_ret_k=0.5, merc_rep_cd=28, merc_call_j=30, merc_call_rel=1, merc_call_gap=8, merc_rc_jobs=3, merc_rc_k=1.5,
