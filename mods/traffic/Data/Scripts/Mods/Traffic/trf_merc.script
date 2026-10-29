@@ -2851,8 +2851,8 @@ function TRF_Mc_Step()
 	call(TRF_McStepBody, {}, "x", TRF_McErr);
 end;
 
--- The visit flight: deaths missed by a trigger, the meeting poll, the approach rule (TRF_McApproach; the patrol again in
--- state noh), the wait, half losses, the leave; while hired the
+-- The visit flight: deaths missed by a trigger, the meeting poll, the approach rule (TRF_McApproach, none during a
+-- scene; the patrol again in state noh), the wait, half losses, the leave; while hired the
 -- clock (tr, seconds flown), the HP window, the raids that ran during the hire, seeding, the vanilla rescan, the end on a
 -- counted attack or heat 7, the pre-mission check, time out (grace, extension page), the hire record.
 function TRF_McStepBody()
@@ -2887,7 +2887,12 @@ function TRF_McStepBody()
 			local lp, mp = TRF_McPos(TRF_McLead(v)), TRF_McPos(TRF_McMs());
 			local d = TRF_McD3(lp, mp);
 			if d and d <= HK.meet_r then TRF_McMeetBody(v.n, TRF_McGen()); end;
-			if v.st == "wait" then TRF_McApproach(v, d, lp, mp, T.merc_app_r); end;
+			-- No approach during a scene (TRF_Quiet): an approaching pack goes back to its patrol.
+			if v.st == "wait" and TRF_N("TRF_Quiet") then
+				if v.ap == 1 then v.ap = nil; v.am = nil; TRF_McPatrol(v, "resume"); end;
+			elseif v.st == "wait" then
+				TRF_McApproach(v, d, lp, mp, T.merc_app_r);
+			end;
 		end;
 		if v.st == "noh" and v.ap == 1 then v.ap = nil; v.am = nil; TRF_McPatrol(v, "resume"); end;
 		if na * 2 <= (v.n0 or na) then TRF_McLeave(v, "half", "mchalf"); return; end;
@@ -3471,8 +3476,8 @@ function TRF_Mc_Text()
 		mcname5 = "Cimmerians", mcname6 = "Fortune Favorites", mcname7 = "Nomads", mcname8 = "Black Legion",
 		mcname9 = "Shining Guards", mcname10 = "Stardust", mcname11 = "Horsemen of the Apocalypse", mcname12 = "Golden Griffins",
 		mcnav = "Mercenaries",
-		mcsig = "$1, working these lanes. Raiders giving you grief, Wolves? We're parked by the gate.",
-		mcsigel = "Black Legion. We are parked by the gate. Mind your manners, Wolves.",
+		mcsig = "$1, working these lanes. Raiders giving you grief, Wolves? We're out on patrol, come find us.",
+		mcsigel = "Black Legion. We are out on patrol. Mind your manners, Wolves.",
 		mcoffer0 = "$1 guns, one price: $2. Pirates we shoot. Navy we don't. Plus $3 a head for every pirate that falls while we fly, and blood money for any of ours that falls.",
 		mcoffer1 = "The Wolves! That was clean work last time. Friends' rate: $1, and $2 a head.",
 		mcofferm = "Price went up, Wolves: $1. And $2 a head.",

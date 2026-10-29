@@ -1016,6 +1016,15 @@ function T_MC_G()
 	local hh = TRF_McHash(cur, 1, 20);
 	HOST_Check(getn(cg.st) == 2 and getn(cg.op) == 2 and getn(cg.ex) == 4 and MC_PtsEq(TRF_McPtsOf(cg, hh), TRF_McPtsOf(cg, hh))
 		and MC_PtsEq(TRF_McPtsOf(TRF_McPtsCand(cur, pd, "PORTAL_D"), hh), TRF_McPtsOf(cg, hh)), "patrol points: candidates of gaoba, same hash same points");
+	-- Without belt slots a nest route point is the extra candidate (TRF_NeData rows f[i].r[k]).
+	local sl1, nd1 = TRF_ShSlots, TRF_NeData;
+	TRF_ShSlots = function(nm) return nil; end;
+	TRF_NeData = function(nm) return {f={{r={{100, 0, 900}}}}}; end;
+	local cn = TRF_McPtsCand(cur, pd, "PORTAL_D");
+	local qn = TRF_McPtsOf(cn, hh);
+	TRF_ShSlots = sl1; TRF_NeData = nd1;
+	HOST_Check(getn(cn.ex) == 1 and MC_PtsEq(cn.ex, {{x=100, y=0, z=900}}) and getn(qn) == 5 and MC_PtsEq({qn[5]}, {{x=100, y=0, z=900}}),
+		"patrol points: no belt slot, the nest route point is the extra point");
 	-- Pure: order, the standoff, dedupe within 200, at most two stations from h mod n, picks by floor(h / 7) and floor(h / 11), cap 5, no mouth.
 	local O = {x=0, y=0, z=0};
 	local q = TRF_McPtsOf({m=O, st={{x=1000, y=0, z=0}}, op={{x=0, y=0, z=1000}}, ex={{x=-1000, y=0, z=0}}}, 0);
@@ -1103,6 +1112,16 @@ function MC_Approach()
 	MC_MsAt(600);
 	T_Tick(2, 0.5);
 	HOST_Check(v.ap == 1, "within 700 again: approaching");
+	-- A scene (TRF_Quiet, __sys_SOS): no approach, the patrol again; after it the approach again.
+	MC_ClrOrd(v);
+	n0 = S_Mark();
+	__sys_SOS = TRUE;
+	T_Tick(4, 0.5);
+	HOST_Check(v.ap == nil and MC_Patrols(v) and v.fl[1].mv == nil and S_Logs(n0, "event=approach") == 0
+		and S_Logs(n0, "event=patrol flight=1 clan="..v.c.." points=5 result=resume") == 1, "scene: no approach, the patrol resumes once");
+	__sys_SOS = FALSE;
+	T_Tick(2, 0.5);
+	HOST_Check(v.ap == 1 and v.fl[1].mv and S_Logs(n0, "event=approach flight=1 clan="..v.c.." distance=600 result=start") == 1, "scene over: approaching again");
 	MC_ClrOrd(v);
 	n0 = S_Mark();
 	local b0 = getn(h.boxes);
@@ -1263,7 +1282,7 @@ function T_MC_H()
 	m0, b0 = getn(h.msgs), getn(h.boxes);
 	v = TRF_McV();
 	MC_Meet();
-	HOST_Check(v.c == 8 and getn(h.boxes) == b0 and MC_Has(MC_Txt(m0), "Black Legion. We are parked by the gate.") and MC_Has(MC_Txt(m0), "Come back with a record, Wolves."),
+	HOST_Check(v.c == 8 and getn(h.boxes) == b0 and MC_Has(MC_Txt(m0), "Black Legion. We are out on patrol.") and MC_Has(MC_Txt(m0), "Come back with a record, Wolves."),
 		"Legion in chapter 6: elite signature and the refusal line, no box");
 	h.labels.CurrentQuest = "7_1";
 	MC_Put(1, {jobs=6});
