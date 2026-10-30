@@ -436,15 +436,26 @@ function TRF_FtDress(sign, dress, sys, flight, ships)
 end;
 
 -- trf_raid TRF_PirFlight (spec 14.5, raids and garrisons): the captured ship of a flight built by TRF_BuildFlight, with
--- sh / made its ships and their row indices and n the row length after the maxn trim (a trimmed index is not dressed).
-function TRF_Ft_Dress(gr, sign, dress, sh, made, n)
+-- sh / made its ships and their row indices, n the row length after the maxn trim and built 1 when the flight exists. A
+-- trimmed index is not dressed (event=skip reason=trim, level 2), nor any without the flight (reason=build).
+function TRF_Ft_Dress(gr, sign, dress, sh, made, n, built)
 	if type(gr) ~= "table" or type(dress) ~= "table" then return; end;
 	local ships, d, any = {}, {}, nil;
 	if type(sh) == "table" and type(made) == "table" then
 		for k = 1, getn(sh) do if type(made[k]) == "number" then ships[made[k]] = sh[k]; end; end;
 	end;
 	for j, nm in dress do
-		if type(n) ~= "number" or (type(j) == "number" and j <= n) then d[j] = nm; any = 1; end;
+		local why = nil;
+		if not built then
+			why = "build";
+		elseif type(n) == "number" and (type(j) ~= "number" or j > n) then
+			why = "trim";
+		end;
+		if why then
+			TRF_FtDE("skip", "system", gr.sys, "flight", tostring(gr.fl), "ship", j, "fit", tostring(nm), "reason", why);
+		else
+			d[j] = nm; any = 1;
+		end;
 	end;
 	if any then TRF_FtDress(sign, d, gr.sys, gr.fl, ships); end;
 end;
@@ -496,7 +507,11 @@ function TRF_Ft_Haunt(gg, sign, loc, ty, pw, orient, idx, i, pin)
 	local row, cj, dr = TRF_Ft_RowOf(tab[ri], R, 1, sys, sign);
 	if R.g == 0 and not cj then return nil; end;
 	local fl = TRF_FtBuild(tab, ri, row, gg, sign, loc, pw, orient, form);
-	if fl and dr then TRF_FtDress(sign, dr, R.sys, R.fl); end;
+	if fl and dr then
+		TRF_FtDress(sign, dr, R.sys, R.fl);
+	elseif dr and cj then
+		TRF_FtDE("skip", "system", R.sys, "flight", R.fl, "ship", cj, "fit", tostring(dr[cj]), "reason", "build");
+	end;
 	return {fl=fl, d=TRF_FtDigit(R.g, cj)};
 end;
 

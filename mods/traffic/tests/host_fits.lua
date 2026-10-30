@@ -1057,7 +1057,7 @@ function T_FT_H()
 		and S_Logs(n0, "ship=2 fit=Nope_pir9 carcass=? hull=false modules=0 ok=0 failed=no_data") == 1 and S_Logs(n0, "event=error") == 0,
 		"dress: FALSE and an error count as failed (no retry), a missing ship no_ship, an unknown fit no_data");
 	-- The raid path: a captured new fit in a T4 raid row, built by TRF_PirFlight and dressed there; a maxn trim that drops
-	-- the captured ship dresses nothing; the local builder (no TRF_BuildFlight) dresses by its ship list too.
+	-- the captured ship dresses nothing (skip reason=trim), nor a failed build (reason=build); the local builder (no TRF_BuildFlight) dresses by its ship list too.
 	local tm = CreateTeam("Pirates");
 	TRF_GRaid_7 = tm:CreateGroup("TRF_Raid_7");
 	local row0 = TRF_Rd_PirRow(4, 14, 1, nil, nil);
@@ -1083,8 +1083,18 @@ function T_FT_H()
 		if rf then rf:Delete(); end;
 		n0 = S_Mark();
 		local rt = TRF_PirFlight(4, 14, "TRF_GRaid_7", "trf_rd_h", Vector3(100, 0, 100), Vector3(0, 0, 1), 1, rj - 1, nil, gr);
-		HOST_Check(rt and getn(rt.ships) == rj - 1 and S_Logs(n0, "module=fits event=dress ") == 0, "raid maxn trim below the captured ship: no dress");
+		HOST_Check(rt and getn(rt.ships) == rj - 1 and S_Logs(n0, "module=fits event=dress ") == 0
+			and S_Logs(n0, "module=fits event=skip system=golkonda flight=raid_"..rn.."_1 ship="..rj.." fit="..rnm.." reason=trim") == 1,
+			"raid maxn trim below the captured ship: no dress, a skip line reason=trim");
 		if rt then rt:Delete(); end;
+		local obd = TRF_Rd_Build;
+		TRF_Rd_Build = function() return nil; end;
+		n0 = S_Mark();
+		local rb = TRF_PirFlight(4, 14, "TRF_GRaid_7", "trf_rd_h", Vector3(100, 0, 100), Vector3(0, 0, 1), 1, nil, nil, gr);
+		TRF_Rd_Build = obd;
+		HOST_Check(rb == nil and S_Logs(n0, "module=fits event=dress ") == 0
+			and S_Logs(n0, "module=fits event=skip system=golkonda flight=raid_"..rn.."_1 ship="..rj.." fit="..rnm.." reason=build") == 1,
+			"raid build failure: no dress, a skip line reason=build");
 		local ob = TRF_BuildFlight;
 		TRF_BuildFlight = nil;
 		n0 = S_Mark();

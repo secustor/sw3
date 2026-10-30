@@ -110,6 +110,7 @@ also the unused hulls).
 | `dress` | `module=fits event=dress system=golkonda flight=Pirate03 ship=3 fit=Stormcrow_pir3 carcass=Stormcrow_pir0 hull=false modules=4 ok=4 failed=none` (a captured new fit dressed by AddModule right after the build; `hull=true` an unused hull; `failed` the first module whose AddModule returned nil or FALSE or raised an error, `no_ship`, `no_data`) | 2; 1 when `failed` is not none |
 | `skip` | `module=fits event=skip system=golkonda flight=Pirate01 reason=off` (`pinned`, `type3`, `data`, `cap`: a captured roll on a row without a pool) | 2 |
 | `skip` | `module=fits event=skip system=kadi reason=gate via=fits_gate` (`via=scan`: the quest scan's deny list) | 2 |
+| `skip` | `module=fits event=skip system=golkonda flight=raid_3_1 ship=4 fit=EvilEye_pir4 reason=trim` (a captured new fit not dressed: `trim` the maxn trim dropped its ship, `build` the flight was not built) | 2 |
 | `kill` | `module=fits event=kill system=golkonda index=2 flight=Pirate02 grade=1 score_cost=3 mine=true` (an elite haunt flight destroyed) | 1 |
 | `gate` | `module=fits event=gate system=kadi built=2` (end of a quest-gated visit's calls: captured flights built) | 1 |
 | `test` | `module=fits event=test name=Panthera_pir0 step=create result=ok x=-550 z=150` (debug `fits_test`) | 1 |

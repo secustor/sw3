@@ -802,7 +802,7 @@ function TRF_PirFlight(tier, pw, group, sign, pos, dir, kind, maxn, ns, gr)
 		while getn(row) > max(1, floor(maxn)) do tremove(row); end;
 	end;
 	local fl, sh, made = TRF_Rd_Build(pilots, row, group, sign, pos, p, dir, form);
-	if dress and TRF_Rd_Obj(fl) then TRF_P("TRF_Ft_Dress", gr, sign, dress, sh, made, getn(row)); end;
+	if dress then TRF_P("TRF_Ft_Dress", gr, sign, dress, sh, made, getn(row), TRF_Rd_Obj(fl)); end;
 	return fl, sh, made;
 end;
 

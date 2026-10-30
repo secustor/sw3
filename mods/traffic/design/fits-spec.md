@@ -295,7 +295,7 @@ Pools after step 2 (cap lists the existing entries first, then the new fits by n
 | Site | Call | Ship handle |
 |---|---|---|
 | haunt (`haunt_mode` 1 and 2) | `TRF_Ft_Haunt` after `TRF_FtBuild` | `ship_<sign>_<j>` of `NewAllFlight` |
-| raid, garrison | `TRF_PirFlight` after `TRF_Rd_Build`: `TRF_P("TRF_Ft_Dress", gr, sign, dress, sh, made, getn(row))` | the ship list and row indices of `TRF_BuildFlight` (`TRF_Rd_BuildFlight` returns them too); an index beyond the `maxn` trim is not dressed |
+| raid, garrison | `TRF_PirFlight` after `TRF_Rd_Build`: `TRF_P("TRF_Ft_Dress", gr, sign, dress, sh, made, getn(row), TRF_Rd_Obj(fl))` | the ship list and row indices of `TRF_BuildFlight` (`TRF_Rd_BuildFlight` returns them too); an index beyond the `maxn` trim is not dressed (`event=skip reason=trim`), nor any index of a flight that was not built (`reason=build`, also in `TRF_Ft_Haunt`) |
 | gate (`TRF_Ft_Gate`) | none (`nw` 0) | |
 
 `TRF_Rd_PirRow` returns the dress table as its seventh value. The grade digits of `TRF.nv.e` keep their scheme (captured = +3). Save: no new saved field (the full state stays 93,194 bytes, `v1-n`).

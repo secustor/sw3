@@ -1306,10 +1306,18 @@ def c_fit_dress(ctx):
     for r in dl:
         if r.get("failed") != "none" or r.int("ok", -1) != r.int("modules", -2) or r.int("modules", 0) < 1:
             res.fails.append("%s: a module of the captured new fit was not fitted (failed=%s)" % (r.short(), r.get("failed")))
-    for r in ctx.find("fits", "row"):
-        if r.get("new_fit") not in (None, "none") and not any(
-                d.get("system") == r.get("system") and d.get("fit") == r.get("new_fit") for d in dl):
-            res.fails.append("%s: a captured new fit without a dress line" % r.short())
+    # A row line with new_fit pairs with the next dress line of its system, flight and fit, or with a skip line
+    # reason=trim (the maxn trim dropped the ship) or reason=build (the flight was not built). Both are level 2.
+    for lg in ctx.logs:
+        if not lg.level2:
+            continue
+        for i, r in enumerate(lg.recs):
+            if not r.is_("fits", "row") or r.get("new_fit") in (None, "none"):
+                continue
+            key = (r.get("system"), r.get("flight"), r.get("new_fit"))
+            if not any((q.is_("fits", "dress") or (q.is_("fits", "skip") and q.get("reason") in ("trim", "build")))
+                       and (q.get("system"), q.get("flight"), q.get("fit")) == key for q in lg.recs[i + 1:]):
+                res.fails.append("%s: a captured new fit without a dress line" % r.short())
     if not dl:
         res.missing.append("enter haunt systems with FITS=1 LOG=2 until a row line has new_fit=<name> (about 5 % of flights "
                            "in rows with a Stormcrow, Raptor, Tiger or EvilEye fit): module=fits event=dress")
