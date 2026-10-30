@@ -32,7 +32,7 @@ Every pirate flight that the mod builds from the vanilla `Pir_Fighters` / `Pir_B
 | U4 | Quest-gated visits | user 2026-10-30 (decision 1, D5): fits act in gate_quest visits by default, no elites, captured fits value-neutral, the quest scan first; `fits_gate` 1 restores the gate |
 | U5 | The loot rule of design 16 | user 2026-10-30 (D1/D2): "peak cap 1.5x per flight everywhere (replaces the 1.4 line for pirate loot; value model stays the 16:102 slope until E0.4/E0.19 measure the drops)"; cycle mean 0.95-1.05 per system and region |
 | U6 | Scrap | D6: "scrap only at tier 2 below score 35 (tier 1 keeps the power trough)" |
-| U7 | Data path | D7: "test the bare carcass plus AddModule path in game first (user runs it)"; the unused hulls wait for that test (E-BB1) |
+| U7 | Data path | D7: "test the bare carcass plus AddModule path in game first (user runs it)"; E-BB1 passed 2026-10-30 (Panthera_pir0 in XT41: AddModule returned the module name for PC2, VC3, ShAmp3, HP 600/600, the hull renders, modules fitted, it fights): step 2 carries its fits in the script table, no ShipDescriptions merge |
 | U8 | Raids and garrisons | D8: "the raid hook is included"; D4: "base garrisons are normal flights (same fits, same roll as every other pirate flight)" |
 | U9 | Elite kill | D9: "an elite kill costs the clan 3 score" (inside the -6 per-visit cap) |
 | U10 | Panthera / Puma | D3: reserved for the base boss (step 3); not used here |
@@ -140,7 +140,7 @@ Quest scan (`tools/scan_quests.py`, 2026-10-30, 308 quest scripts of the clone, 
 
 At every entry (`TRF_Ft_OnActivate`, after the haunt arrival line) with `fits_test` a name: team Pirates, group `TRF_FtTest` (neutral to the player both ways), flight `flight_trf_ft_test`, `CreateCarcass(name, mothership + 200 x heading)`, pilot `Pir_Pilots[1]`. Lines: `step=create result=ok|failed`, `step=hull bare= hp=`; a name of the bare list (every `*_pir0` interceptor carcass) then gets `AddModule` of each `fits_test_mods` entry ({PC2, VC3, ShAmp3}), each logged with its return value and the HP after it. 2 s later (`TRF_Ft_Step`, 1 s step) `TRF_Carcasses()` is searched for the ship's `id`: `step=read result=ok tpl= cls= hp= hpmax= alive=` (`not_found`, `no_native` otherwise). The jump deletes the flight. Not during a scene (`__disableAction`). A save made with the test ship on screen keeps it as an engine object after a load (debug only; the next jump does not delete it).
 
-Procedure for E-BB1 (user): `FITS_TEST=Panthera_pir0 LOG=2 sh mods/traffic/install-test.sh`, start the game, enter any system, look at the ship ahead (hull, target it: modules), stay 3 s, attack it once; repeat with `Puma_pir0`, `TieFly_pir0`; then `python3 -I tools/check_ingame.py --log <run dir>` (E-BB1 lists the lines). Questions answered: does AddModule on a bare pirate hull work, what does a failure return, does the hull render.
+Procedure for E-BB1 (user): `FITS_TEST=Panthera_pir0 LOG=2 sh mods/traffic/install-test.sh`, start the game, enter any system, look at the ship ahead (hull, target it: modules), stay 3 s, attack it once; repeat with `Puma_pir0`, `TieFly_pir0`; then `python3 -I tools/check_ingame.py --log <run dir>` (E-BB1 lists the lines). Questions answered: does AddModule on a bare pirate hull work, what does a failure return, does the hull render. Result 2026-10-30: works; a success returns the module name; the hull renders (Puma_pir0 and TieFly_pir0 not yet run).
 
 ## 6. Config and tune (`TRF_Ft_OptDef`, `TRF_Ft_TuneDef`; clamps in `TRF_FtTune`)
 
