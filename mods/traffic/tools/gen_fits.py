@@ -77,12 +77,12 @@ DN = {
     "Gunslinger_pir1": "Tiger_pir1", "Gunslinger_pir2": "Tiger_pir2", "Gunslinger_pir3": "Tiger_pir2",
     "Hrimturs_pir1": "Bident_pir1", "Hrimturs_pir2": "Bident_pir1", "Trident_pir1": "Bident_pir1",
 }
-# Unused pirate hulls: not used in step 1 (spec 2); the generator checks that no map or pool names them.
-UNUSED = {"TieFly_pir0", "Stormcrow_mk2_pir0", "Cleaner_mk2_pir0", "Panthera_pir0", "Puma_pir0"}
-# Step 2 (spec 14): of the unused hulls, these enter as rare captured ships (h=1, rule R2); the boss hulls only carry
-# boss fits (b=1, rule R3, decision D3).
+# Unused pirate hulls (not used in step 1, spec 2). Step 2 (spec 14): HULL enter as rare captured ships (h=1, rule R2);
+# BOSS only carry boss fits (b=1, rule R3, decision D3). The generator checks that no map or pool names an unused hull
+# outside these rules.
 HULL = {"TieFly_pir0", "Stormcrow_mk2_pir0", "Cleaner_mk2_pir0"}
 BOSS = {"Panthera_pir0", "Puma_pir0"}
+UNUSED = HULL | BOSS
 
 # New fits (step 2, spec 14.2): name -> (bare carcass, modules in AddModule order). The user's examples of 2026-10-30
 # with the value fixes of spec 14.8 (guns kept; one system or rocket changed so that the fit lands within +-TOL of a

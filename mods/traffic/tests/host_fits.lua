@@ -962,11 +962,8 @@ end;
 
 -- Modules fitted on ship s (the stub's list) joined with ",".
 function FT_Mods(s)
-	local x = "";
-	if type(s) == "table" and type(s.modl) == "table" then
-		for k = 1, getn(s.modl) do if k > 1 then x = x..","; end; x = x..s.modl[k]; end;
-	end;
-	return x;
+	if type(s) == "table" and type(s.modl) == "table" then return FT_Join(s.modl); end;
+	return "";
 end;
 
 function FT_Join(l)

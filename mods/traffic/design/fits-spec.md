@@ -290,7 +290,7 @@ Pools after step 2 (cap lists the existing entries first, then the new fits by n
 
 ### 14.5 Dressing (`TRF_FtDress`, `TRF_Ft_Dress`)
 
-`TRF_FtDress(sign, dress, sys, flight, ships)`: for each `j` of `dress` the ship `ships[j]`, else `getglobal("ship_"..sign.."_"..j)`, is checked (`TRF_FtObj`) and gets each module of `new[name].m` in order by `call(TRF_FtAdd, {s, m}, "x", TRF_FtNoErr)`. A nil or FALSE return or an error is a failed module; the next modules are still fitted, nothing is retried or deleted. Synchronous, right after the build, before any order.
+`TRF_FtDress(sign, dress, sys, flight, ships)`: for each `j` of `dress` the ship `ships[j]` of the ship list when one is given (a missing index is `no_ship`), else `getglobal("ship_"..sign.."_"..j)`, is checked (`TRF_FtObj`) and gets each module of `new[name].m` in order by `call(TRF_FtAdd, {s, m}, "x", TRF_FtNoErr)`. A nil or FALSE return or an error is a failed module; the next modules are still fitted, nothing is retried or deleted. Synchronous, right after the build, before any order.
 
 | Site | Call | Ship handle |
 |---|---|---|
@@ -315,6 +315,7 @@ Pools after step 2 (cap lists the existing entries first, then the new fits by n
 | `roll` | `... grade=0 captured_roll=true pool=hull` (`pool` old, new, hull: the level `nw`) | as section 8 |
 | `row` | `... after=EvilEye_pir2,Tiger_pir2,Stormcrow_pir0,EvilEye_pir1 new_fit=Stormcrow_pir3` (`none` without a new fit) | as section 8 |
 | `dump` | `... cap_pct=5 new=1 hull_pct=50 grades=...` | 1 |
+| `skip` | `module=fits event=skip system=golkonda flight=raid_3_1 ship=4 fit=EvilEye_pir4 reason=trim` (a captured new fit not dressed: `trim` the maxn trim dropped its ship, `build` the flight was not built) | 2 |
 
 ### 14.8 Deviations (step 2)
 

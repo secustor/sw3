@@ -794,7 +794,8 @@ end;
 -- maxn ships; pilots from Pir_Pilots by tier, so CostOfHead pays by tier. group: global name of the group,
 -- as NewAllFlight takes it. ns: entries of the row (nil: the tier's ns; a captain's wing takes more,
 -- design/captain-spec.md 5.3). gr: a grade record of trf_fits (raids, base garrisons; nil: the vanilla row); a
--- captured new fit is dressed right after the build (TRF_Ft_Dress, fits-spec 14.5). Returns the flight or nil.
+-- captured new fit is dressed right after the build (TRF_Ft_Dress, fits-spec 14.5). Returns the flight, its ships and
+-- their row indices (as TRF_Rd_Build), or nil.
 function TRF_PirFlight(tier, pw, group, sign, pos, dir, kind, maxn, ns, gr)
 	local row, pilots, form, p, lead, wing, dress = TRF_Rd_PirRow(tier, pw, kind, ns, gr);
 	if not row then return nil; end;

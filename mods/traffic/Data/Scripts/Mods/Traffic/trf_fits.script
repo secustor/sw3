@@ -394,8 +394,9 @@ function TRF_FtAdd(s, m)
 	return 1, s:AddModule(m);
 end;
 
--- Fits the new fit of each captured ship of a built flight: dress {[j] = new fit name} (TRF_FtRow), the ship ships[j]
--- (nil: the global ship_<sign>_<j> that NewAllFlight sets), each module of TRF_FtData new[name].m in order by AddModule
+-- Fits the new fit of each captured ship of a built flight: dress {[j] = new fit name} (TRF_FtRow), the ship ships[j] of
+-- the ship list when one is given (a missing index is no_ship, never a global), else the global ship_<sign>_<j> that
+-- NewAllFlight sets; each module of TRF_FtData new[name].m in order by AddModule
 -- under call(..., TRF_FtNoErr). A nil (or FALSE) return or an error is a failed module; the ship stays as it is (no
 -- retry, no delete). Synchronous, right after the build and before any order. Logs event=dress per ship (level 1 when
 -- a module failed or the ship is missing, else 2). Returns the number of ships with a failure.
@@ -407,8 +408,11 @@ function TRF_FtDress(sign, dress, sys, flight, ships)
 	for j, nm in dress do
 		local e = N[nm];
 		local s = nil;
-		if type(ships) == "table" then s = ships[j]; end;
-		if s == nil and type(sign) == "string" and type(j) == "number" then s = getglobal("ship_"..sign.."_"..j); end;
+		if ships ~= nil then
+			if type(ships) == "table" then s = ships[j]; end;
+		elseif type(sign) == "string" and type(j) == "number" then
+			s = getglobal("ship_"..sign.."_"..j);
+		end;
 		local n, ok, bad, c, h = 0, 0, "none", "?", nil;
 		if type(e) ~= "table" or type(e.m) ~= "table" then
 			bad = "no_data";
