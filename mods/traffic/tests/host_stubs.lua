@@ -1075,7 +1075,7 @@ function ExpForSaved() if saved_expirience > 0.05 then AddPlayerExperience(saved
 		dostring(src, "DATA/Scripts/include/Create_flight_2.script");
 	end;
 	-- Create_flight_2.script NewPiratesFlight / NewPirateFlight (671-689), as in the game: redefined by every
-	-- MapInitialization (system.lst), so trf_nest's TRF_InstallNest wraps this run's function (design/nest-spec.md 9).
+	-- MapInitialization (system.lst), so trf_haunt's TRF_InstallHaunt wraps this run's function (design/haunt-spec.md 9).
 	-- HOST().npf counts the calls that reached the builder.
 	dostring([[
 function NewPiratesFlight(group, sign, location, type, power, orient)

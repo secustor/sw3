@@ -1,7 +1,7 @@
 LOCALE_FILE
 FILETYPE STANDART
 
-; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text) the wanted captains keys (#TRF_cap*, trf_captain TRF_Cap_Text), the clan stash keys (#TRF_stash*, trf_stash TRF_Sh_Text), the Wolves Freight keys (#TRF_fw*, trf_freight TRF_Fr_Text), the dynamic nest keys (#TRF_nest*, trf_nest TRF_Nest_Text), the sealed parcel keys (#TRF_pcl*, trf_parcel TRF_Pc_Text), the mercenary clan keys (#TRF_mc*, trf_merc TRF_Mc_Text) and the demand page keys (#TRF_dmp*, trf_supply TRF_Supply_Text and trf_hail TRF_Hail_Text, with the answers #TRF_dmok and #TRF_dmno) and the hail page and combat hail keys (#TRF_hlp*, trf_hail TRF_Hail_Text), cp1251.
+; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text) the wanted captains keys (#TRF_cap*, trf_captain TRF_Cap_Text), the clan stash keys (#TRF_stash*, trf_stash TRF_Sh_Text), the Wolves Freight keys (#TRF_fw*, trf_freight TRF_Fr_Text), the pirate haunt keys (#TRF_haunt*, trf_haunt TRF_Haunt_Text), the sealed parcel keys (#TRF_pcl*, trf_parcel TRF_Pc_Text), the mercenary clan keys (#TRF_mc*, trf_merc TRF_Mc_Text) and the demand page keys (#TRF_dmp*, trf_supply TRF_Supply_Text and trf_hail TRF_Hail_Text, with the answers #TRF_dmok and #TRF_dmno) and the hail page and combat hail keys (#TRF_hlp*, trf_hail TRF_Hail_Text), cp1251.
 ; Same keys and fixed texts as loc/trf_en.loc (no $n placeholders); used with cfg loc_mode 1 in a Russian install.
 ; Other #TRF_ keys have no RU line yet (design/station-voices-spec.md 13.5).
 
@@ -381,15 +381,15 @@ FILETYPE STANDART
 #TRF_fwwho = Грузоперевозки Волков
 #TRF_fwhail = Грузоперевозки Волков. Идём по маршруту, всё в порядке.
 #TRF_optfwinfo = Доклад о рейсе
-#TRF_nestfull = Пиратское гнездо здесь забито. Корабли собираются.
-#TRF_nestraid = Пиратское гнездо здесь вооружено и неспокойно.
-#TRF_nesthurt = Пиратское гнездо здесь всё ещё зализывает раны.
-#TRF_nestclear = Пиратское гнездо здесь пусто. Кто-то его вычистил.
-#TRF_nestbust = На сканере обломки пиратов. Гнездо здесь сильно потрепали.
-#TRF_nestswept = Патруль начисто вымел здешнее пиратское гнездо.
-#TRF_nestquiet = У здешнего гнезда всего несколько пиратских кораблей.
-#TRF_nesthit = Мы не забываем лиц, Волк.
-#TRF_nestlast = Пиратское гнездо здесь разбито. Они ещё вернутся.
+#TRF_hauntfull = Пиратский притон здесь забит. Корабли собираются.
+#TRF_hauntraid = Пиратский притон здесь вооружён и неспокоен.
+#TRF_haunthurt = Пиратский притон здесь всё ещё зализывает раны.
+#TRF_hauntclear = Пиратский притон здесь пуст. Кто-то его вычистил.
+#TRF_hauntbust = На сканере обломки пиратов. Притон здесь сильно потрепали.
+#TRF_hauntswept = Патруль начисто вымел здешний пиратский притон.
+#TRF_hauntquiet = У здешнего притона всего несколько пиратских кораблей.
+#TRF_haunthit = Мы не забываем лиц, Волк.
+#TRF_hauntlast = Пиратский притон здесь разбит. Они ещё вернутся.
 #TRF_pcltitle = Курьерская служба ФТС
 #TRF_pclneed1 = Станция осталась без техники, завод стоит.
 #TRF_pclneed2 = Станция осталась без запчастей, ремонтные доки стоят.

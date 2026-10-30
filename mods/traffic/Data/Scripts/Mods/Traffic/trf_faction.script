@@ -646,7 +646,7 @@ function TRF_FcBaseA(slot)
 end;
 
 -- Target system of the slot's attempts: the active base system, else the home. A live attempt (wait, on) keeps the
--- base it was planned for: on screen the base may be dead when the outcome is read (TRF_SweepEnd, trf_nest's swept mark).
+-- base it was planned for: on screen the base may be dead when the outcome is read (TRF_SweepEnd, trf_haunt's swept mark).
 function TRF_SweepTarget(slot)
 	local L = TRF_FcLive();
 	if L and type(L.sw) == "table" and L.sw.s == slot and L.sw.st ~= "out" and type(L.sw.b) == "number" then return L.sw.b; end;
@@ -804,8 +804,8 @@ function TRF_FcAliveN(l)
 end;
 
 -- Sweep owner relations on group g toward the clan side: own clan group, base garrison, vanilla pirate groups
--- (the five spellings of the nest systems, design/nest-spec.md 5.6; names tried, skipped when GetGroupRelation answers
--- nil), the nest group of trf_nest, open raid groups; both directions. Toward the player: TRF_FstRel. Returns 1 when
+-- (the five spellings of the haunt systems, design/haunt-spec.md 5.6; names tried, skipped when GetGroupRelation answers
+-- nil), the haunt group of trf_haunt, open raid groups; both directions. Toward the player: TRF_FstRel. Returns 1 when
 -- the player relation is WAR (hostile seed).
 function TRF_FcSweepRel(g, sw)
 	if type(SetGroupRelation) ~= "function" or RELATION_WAR == nil then return nil; end;
@@ -818,7 +818,7 @@ function TRF_FcSweepRel(g, sw)
 			tinsert(foes, van[i]);
 		end;
 	end;
-	local ng = TRF_N("TRF_Nest_Grp");
+	local ng = TRF_N("TRF_Haunt_Grp");
 	if ng then tinsert(foes, ng); end;
 	local L = TRF_FcLive();
 	if L and type(L.rd) == "table" then

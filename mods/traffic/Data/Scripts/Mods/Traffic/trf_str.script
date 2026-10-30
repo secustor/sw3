@@ -1,6 +1,6 @@
 -- sw3-traffic strength scale (design/strength-spec.md). Lua 4.0.1.
 -- One score 0..99 per side (clan score, trade prosperity x 11, mercenary fortune), the tier 1..4 of a score with
--- hysteresis, the one tier table (raid rows, nest power step, captain row, stash class) and the one chance curve for a
+-- hysteresis, the one tier table (raid rows, haunt power step, captain row, stash class) and the one chance curve for a
 -- level step. Pure helpers: the callers supply the roll (trf_tier TRF_TrRand(100) for traders; a fixed hash later for
 -- pirates). The only saved field is the clan tier digit TRF.clan[slot].tr: trf_region creates and repairs it and reads it
 -- in TRF_ClanTier, TRF_Str_RegionTick and TRF_StrClanSet write it. Loads after trf_region and before trf_tier
@@ -150,8 +150,8 @@ end;
 
 -- One row per tier 1..4. Raid (v02 5.3, v1 6.1; trf_raid TRF_Rd_TierRows returns these rows): row band lo..hi in
 -- Pir_Fighters / Pir_Bombers, power band plo..phi and offset off to sys_base, Pir_Pilots index of lead and wings
--- (NORMAL), ships ns and the second flight ns2 (T3, T4). dp: nest power step (nest-spec 5.3; an explicit cfg tune
--- nest_dp wins). cap: rows a wanted captain's hull sits above the band (captain-spec 5.3). cls: stash class
+-- (NORMAL), ships ns and the second flight ns2 (T3, T4). dp: haunt power step (haunt-spec 5.3; an explicit cfg tune
+-- haunt_dp wins). cap: rows a wanted captain's hull sits above the band (captain-spec 5.3). cls: stash class
 -- (stash-spec 5.3; trf_stash adds the salvage step).
 function TRF_StrRows()
 	return {

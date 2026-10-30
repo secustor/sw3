@@ -102,7 +102,7 @@ function TRF_Loc_TextFns()
 	return {"TRF_UI_Text", "TRF_Hail_Text", "TRF_Raid_Text", "TRF_Rg_Text", "TRF_Tier_Text", "TRF_Shop_Text",
 		"TRF_Track_Text", "TRF_Supply_Text", "TRF_Clan_Text", "TRF_Faction_Text", "TRF_Convoy_Text",
 		"TRF_Danger_Text", "TRF_Base_Text", "TRF_Stn_Text", "TRF_Sv_Text", "TRF_Lad_Text", "TRF_Ch_Text", "TRF_Sc_Text", "TRF_Cap_Text",
-		"TRF_Sh_Text", "TRF_Fr_Text", "TRF_Nest_Text", "TRF_Pc_Text", "TRF_Mc_Text", "TRF_Loc_Text"};
+		"TRF_Sh_Text", "TRF_Fr_Text", "TRF_Haunt_Text", "TRF_Pc_Text", "TRF_Mc_Text", "TRF_Loc_Text"};
 end;
 
 -- Number of text-table functions defined now (a module loaded after the cache was built rebuilds it).
@@ -235,11 +235,11 @@ end;
 function TRF_Loc_Deny()
 	local t = {
 		elio   = {m=1, why="Elio rescue"},
-		x297   = {m=1, nest=0, why="X297 ambush"},
+		x297   = {m=1, haunt=0, why="X297 ambush"},
 		gefest = {m=1, why="Grid/Hephaestus escape"},
 		fronn  = {seed=0, raid=0, feq=0, dconv=0, base=0, why="Triada warehouse exploit"},
-		-- Dynamic nests (design/nest-spec.md 5.1): every flight is deleted by name in quests 17b and 19b; a teleport target.
-		el_ariash = {nest=0, tq=1, why="El Ariash quest flights"},
+		-- Pirate haunts (design/haunt-spec.md 5.1): every flight is deleted by name in quests 17b and 19b; a teleport target.
+		el_ariash = {haunt=0, tq=1, why="El Ariash quest flights"},
 	};
 	local m = TRF_LocMap();
 	if m then

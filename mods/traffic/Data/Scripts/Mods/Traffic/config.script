@@ -35,15 +35,15 @@
 -- ticks, no on-screen ship); fw_onscreen and fw_losses are the step 1 toggles; fw_max_ships stays 1 (slots 2 and 3 are
 -- step 2); fw_prize_gap 1 holds a payout in the shared prize gap, fw_marker 1 marks the on-screen ship; the tune keys
 -- (fw_k, fw_price_k, fw_tick_real, fw_bank, ...) read the module defaults.
--- Dynamic nests (design/nest-spec.md 6): nest (default 0 until CHECK E16.1-E16.5 pass) = 1 lets the regional clans field
--- the scripted pirate flights; nest_mode 1 the substituting NewPirateFlight wrapper, 2 the fallback (vanilla builds,
--- the mod deletes and replaces); nest_off, nest_trig, nest_lines, nest_mirror, nest_grudge_war (step 2, 0) and the tune
--- keys (nest_f, nest_regen_pct, nest_regen_legs, nest_cache_r, ...) read the module defaults; nest_dp only when set in
+-- Pirate haunts (design/haunt-spec.md 6): haunt (default 0 until CHECK E16.1-E16.5 pass) = 1 lets the regional clans field
+-- the scripted pirate flights; haunt_mode 1 the substituting NewPirateFlight wrapper, 2 the fallback (vanilla builds,
+-- the mod deletes and replaces); haunt_off, haunt_trig, haunt_lines, haunt_mirror, haunt_grudge_war (step 2, 0) and the tune
+-- keys (haunt_f, haunt_regen_pct, haunt_regen_legs, haunt_cache_r, ...) read the module defaults; haunt_dp only when set in
 -- the cfg tune, else the dp column of the strength table.
 -- Strength scale (design/strength-spec.md 6): no toggle (trf_str is always on); tune str_up (60), str_dn (20) and the
 -- threshold lists str_up_t ({25, 50, 75}) and str_dn_t ({20, 45, 70}) read the TRF_Str_TuneDef defaults.
 -- Pirate fit variety (design/fits-spec.md 6): fits (default 0 until CHECK D-FIT.1-4 pass; install-test.sh FITS=1) = 1 gives
--- every pirate nest, raid and garrison flight one grade roll (elite, scrap, a captured fit); fits_gate 1 keeps quest-gated
+-- every pirate haunt, raid and garrison flight one grade roll (elite, scrap, a captured fit); fits_gate 1 keeps quest-gated
 -- visits fully vanilla (0: captured fits only there); fits_test (debug, install-test.sh FITS_TEST) a ShipDescription or
 -- carcass name spawned as one neutral test ship at every entry (CHECK E-BB1); the tune keys (fits_elite_max, fits_base_a,
 -- fits_base_p, fits_cap_pct, fits_scrap_sc, fits_test_mods) read the TRF_Ft_TuneDef defaults.
@@ -82,7 +82,7 @@ function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
 	cap_enable=1, cap_board=1, cap_intel=1, cap_chase=1, cap_capture=0, cap_force_eject=0, cap_vendetta=0,
 	enable_stashes=1, enable_stash_retrieval=1, enable_stash_decoys=0, stash_ret_war=0,
 	enable_freight=1, fw_max_ships=1, fw_onscreen=1, fw_losses=1, fw_prize_gap=1, fw_marker=1,
-	nest=0, nest_mode=1, fits=0, fits_gate=0, fits_test="",
+	haunt=0, haunt_mode=1, fits=0, fits_gate=0, fits_test="",
 	enable_parcels=1, enable_contraband=0, enable_customs=0, enable_intercept=0,
 	demand_page=1, demand_drop=0, mc_names=0,
 	merc_war=1, merc_hunt=0, merc_hostile=0, merc_legion=0,

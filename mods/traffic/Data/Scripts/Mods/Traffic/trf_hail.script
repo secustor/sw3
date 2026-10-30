@@ -315,7 +315,7 @@ end;
 
 -- Combat hail (design/hail-spec.md 3) ----------------------------------------------------------------------
 
--- 1 when team name t fights FTU traders: the Pirates team (nest, raid and vanilla pirate groups) or a team at war
+-- 1 when team name t fights FTU traders: the Pirates team (haunt, raid and vanilla pirate groups) or a team at war
 -- with Trade.
 function TRF_HlFoe(t)
 	if type(t) ~= "string" or t == "" or t == "Trade" then return nil; end;

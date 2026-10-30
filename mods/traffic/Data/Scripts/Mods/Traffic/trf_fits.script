@@ -7,11 +7,11 @@
 -- base fits_base_p; cap 15 %); -1 scrap (one level down through the dn map) only at tier 2 below fits_scrap_sc. A second
 -- hash gives the captured fit (fits_cap_pct % of flights, one ship at most: another row's fit of the same gear value
 -- within +-5 %). The row is copied by explicit index (never tinsert), so ship count, ranks (but the elite step), roles
--- and order stay. Pinned signs and type 3 rows stay vanilla. Callers: trf_nest (both build sites, TRF_Ft_Nest; quest-
+-- and order stay. Pinned signs and type 3 rows stay vanilla. Callers: trf_haunt (both build sites, TRF_Ft_Haunt; quest-
 -- gated visits TRF_Ft_Gate: captured only), trf_raid (TRF_Rd_PirRow grade argument, one roll per raid flight),
--- trf_base (garrisons through TRF_PirFlight). Saved: only the grade digits TRF.nv.e of trf_nest. Debug cfg fits_test
+-- trf_base (garrisons through TRF_PirFlight). Saved: only the grade digits TRF.nv.e of trf_haunt. Debug cfg fits_test
 -- spawns one neutral test ship (E-BB1). Data: TRF_FtData (tools/gen_fits.py), TRF_FtGateDeny (tools/scan_quests.py).
--- Loads after trf_str and before trf_nest (counted as extra=). Top level only defines functions.
+-- Loads after trf_str and before trf_haunt (counted as extra=). Top level only defines functions.
 
 -- Helpers --------------------------------------------------------------------------
 
@@ -72,7 +72,7 @@ end;
 -- Constants: the elite chance cap in % (spec 3.2, base factor included), the test ship distance and wait, the salts
 -- per source, the captured hash offset.
 function TRF_FtK()
-	return {elite_cap=15, test_d=200, test_wait=2, salt_nest=1, salt_raid=21, salt_base=31, salt_gate=41, cap_off=64};
+	return {elite_cap=15, test_d=200, test_wait=2, salt_haunt=1, salt_raid=21, salt_base=31, salt_gate=41, cap_off=64};
 end;
 
 -- cfg value: TRF_Opt (merges TRF_Ft_OptDef), else the raw config, else the default; a wrong type or a number other
@@ -189,7 +189,7 @@ end;
 function TRF_FtRoll(idx, i, pt, slot, salt, tier, gate)
 	local T = TRF_FtTune();
 	local K = TRF_FtK();
-	salt = salt or K.salt_nest;
+	salt = salt or K.salt_haunt;
 	pt = pt or 0;
 	local sc = TRF_N("TRF_StrScore", "clan", slot) or 0;
 	local t = tier;
@@ -312,14 +312,14 @@ function TRF_FtName(idx)
 	return tostring(idx);
 end;
 
--- Rolls flight i of system idx for source src ("nest", "raid", "base", "gate"; salt from TRF_FtK) and logs
+-- Rolls flight i of system idx for source src ("haunt", "raid", "base", "gate"; salt from TRF_FtK) and logs
 -- event=roll (level 1 for an elite or scrap flight, else level 2; captured_roll: the captured hash hit, the ship itself
 -- is placed by TRF_Ft_RowOf only in a row with a pool). tier: override (nil: TRF_EffTier).
 -- Returns the roll record (plus sys and fl, the log values), nil while the module is off.
 function TRF_Ft_Grade(idx, i, src, flight, tier, gate)
 	if not TRF_FtOn() then return nil; end;
 	local K = TRF_FtK();
-	local salt = K["salt_"..tostring(src)] or K.salt_nest;
+	local salt = K["salt_"..tostring(src)] or K.salt_haunt;
 	local slot = TRF_N("TRF_RgOf", idx);
 	local R = TRF_FtRoll(idx, i, TRF_FtPt(slot), slot, salt, tier, gate);
 	R.sys = TRF_FtName(idx);
@@ -346,7 +346,7 @@ function TRF_Ft_RowOf(row, R, rk, sys, flight)
 	return out, cj;
 end;
 
--- Nest and gate builds ------------------------------------------------------------------
+-- Haunt and gate builds ------------------------------------------------------------------
 
 -- Table, formation and row index of a NewPirateFlight type 1 / 2 call at power pw (NewAllFlight's __tablevel of the
 -- difficulty, trf_raid TRF_Rd_LvTab); nil for type 3 or without the tables. No guess without TRF_Rd_LvTab: a wrong
@@ -374,10 +374,10 @@ function TRF_FtBuild(tab, ri, row, group, sign, loc, pw, orient, form)
 	return nil;
 end;
 
--- trf_nest TRF_NeDecide / TRF_NeReplace (spec 5.2): flight i (sign) of system idx built in group gg at power pw. nil:
+-- trf_haunt TRF_HaDecide / TRF_HaReplace (spec 5.2): flight i (sign) of system idx built in group gg at power pw. nil:
 -- not handled (fits off, pinned, type 3, no table, a normal flight without a captured ship), the caller builds as
 -- before; else {fl = the flight or nil (a failed build), d = the saved grade digit}.
-function TRF_Ft_Nest(gg, sign, loc, ty, pw, orient, idx, i, pin)
+function TRF_Ft_Haunt(gg, sign, loc, ty, pw, orient, idx, i, pin)
 	if not TRF_FtOn() then
 		TRF_FtDE("skip", "system", TRF_FtName(idx), "flight", sign, "reason", "off");
 		return nil;
@@ -387,7 +387,7 @@ function TRF_Ft_Nest(gg, sign, loc, ty, pw, orient, idx, i, pin)
 	if ty == 3 then TRF_FtDE("skip", "system", sys, "flight", sign, "reason", "type3"); return nil; end;
 	local tab, form, ri = TRF_FtTab(ty, pw);
 	if not tab then TRF_FtDE("skip", "system", sys, "flight", sign, "reason", "data"); return nil; end;
-	local R = TRF_Ft_Grade(idx, i, "nest", sign);
+	local R = TRF_Ft_Grade(idx, i, "haunt", sign);
 	if not R then return nil; end;
 	if R.g == 0 and not R.c then return nil; end;
 	local row, cj = TRF_Ft_RowOf(tab[ri], R, 1, sys, sign);
@@ -409,7 +409,7 @@ function TRF_Ft_GateOn(nm)
 	return 1;
 end;
 
--- trf_nest's quest-gated visit (spec 5.4): flight i (sign) of the vanilla call built in the caller's group at the
+-- trf_haunt's quest-gated visit (spec 5.4): flight i (sign) of the vanilla call built in the caller's group at the
 -- vanilla power with grade 0 and the captured roll only (value-neutral). nil: not handled (pinned, type 3, no table,
 -- no captured ship): the vanilla call. Else {fl = the flight or nil}.
 function TRF_Ft_Gate(group, sign, loc, ty, pw, orient, idx, i, pin)
@@ -426,12 +426,12 @@ function TRF_Ft_Gate(group, sign, loc, ty, pw, orient, idx, i, pin)
 	return {fl=TRF_FtBuild(tab, ri, row, group, sign, loc, pw, orient, form)};
 end;
 
--- End of a quest-gated visit's calls (trf_nest TRF_Nest_OnActivate): event=gate with the captured flights built.
+-- End of a quest-gated visit's calls (trf_haunt TRF_Haunt_OnActivate): event=gate with the captured flights built.
 function TRF_Ft_GateDone(nm, n)
 	TRF_FtE("gate", "system", nm, "built", n or 0);
 end;
 
--- An elite nest flight destroyed (trf_nest TRF_NeFlightDead): the clan pays 3 score instead of 2 (spec 5.3).
+-- An elite haunt flight destroyed (trf_haunt TRF_HaFlightDead): the clan pays 3 score instead of 2 (spec 5.3).
 function TRF_Ft_Kill(nm, i, sign, mine)
 	TRF_FtE("kill", "system", nm, "index", i, "flight", sign, "grade", 1, "score_cost", 3, "mine", TRF_KvB(mine));
 end;

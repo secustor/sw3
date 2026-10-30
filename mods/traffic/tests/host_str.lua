@@ -1,11 +1,11 @@
 -- Strength scale scenarios (design/strength-spec.md 8) under stock Lua 4.0.1: TRF_STR=a..e, run by run_host.sh as its own
 -- entry point. a registration, tune keys and clamps, the score of the three kinds, b the tier with hysteresis (plain
 -- band, up and down across the thresholds, prev nil, tuned thresholds), c the tier table (raid rows identical to the old
--- literal table, the dp, cap and cls columns and their readers in trf_nest, trf_captain and trf_stash), d the chance
+-- literal table, the dp, cap and cls columns and their readers in trf_haunt, trf_captain and trf_stash), d the chance
 -- curve (every score, a 10,000-roll frequency check, a fixed roll, the trader distribution per prosperity, pro 0-2 without
 -- RAND, the TRF_TierPick caps after the roll, the log lines), e the clan tier digit (init, region tick, TRF_ClanAdd,
 -- repair, save and load, the TRF_EffTier overrides, the save bytes).
--- Loads host_station.lua up to its first scenario, as host_nest.lua does. No new stub.
+-- Loads host_station.lua up to its first scenario, as host_haunt.lua does. No new stub.
 
 local f = openfile((getenv("TRF_TESTS") or "./").."host_station.lua", "r");
 if not f then print("HOST FAIL host_str.lua: cannot open host_station.lua"); exit(1); end;
@@ -176,13 +176,13 @@ function T_ST_C()
 	HOST_Check(okh, "captain hull row: cap 1 = the old one row up (3 difficulty tables, T1..T4, sys_base 1..20)");
 	local b2 = {lo=5, hi=9, plo=4, phi=11, off=0, ns=4, cap=2};
 	HOST_Check(TRF_CapHullOf(b2, 9, {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}) == 11, "cap 2: two rows up (row 11 at power 11)");
-	-- Nest power step from dp; an explicit cfg tune nest_dp wins.
-	local tn = TRF_NeTune();
-	HOST_Check(TRF_NeDpOf(1, tn) == -1 and TRF_NeDpOf(2, tn) == 0 and TRF_NeDpOf(3, tn) == 1 and TRF_NeDpOf(4, tn) == 1 and TRF_NeDpOf(nil, tn) == -1,
-		"nest dp from the dp column");
-	ST_Tune({nest_dp={-2, 1, 2, 3}});
-	tn = TRF_NeTune();
-	HOST_Check(TRF_NeDpOf(1, tn) == -2 and TRF_NeDpOf(2, tn) == 1 and TRF_NeDpOf(4, tn) == 3, "an explicit cfg tune nest_dp overrides the table");
+	-- Haunt power step from dp; an explicit cfg tune haunt_dp wins.
+	local tn = TRF_HaTune();
+	HOST_Check(TRF_HaDpOf(1, tn) == -1 and TRF_HaDpOf(2, tn) == 0 and TRF_HaDpOf(3, tn) == 1 and TRF_HaDpOf(4, tn) == 1 and TRF_HaDpOf(nil, tn) == -1,
+		"haunt dp from the dp column");
+	ST_Tune({haunt_dp={-2, 1, 2, 3}});
+	tn = TRF_HaTune();
+	HOST_Check(TRF_HaDpOf(1, tn) == -2 and TRF_HaDpOf(2, tn) == 1 and TRF_HaDpOf(4, tn) == 3, "an explicit cfg tune haunt_dp overrides the table");
 	ST_Tune({});
 end;
 

@@ -906,8 +906,8 @@ function TRF_Ev_PirEject(pilot)
 	if side ~= "Pirates" and side ~= "Pirate" then return; end;
 	local fl = pilot:GetFlight();
 	if not fl then return; end;
-	-- Dynamic nests (design/nest-spec.md 5.4): a nest flight counts once through trf_nest's died callback.
-	if TRF_N("TRF_Nest_Owns", fl) then return; end;
+	-- Pirate haunts (design/haunt-spec.md 5.4): a haunt flight counts once through trf_haunt's died callback.
+	if TRF_N("TRF_Haunt_Owns", fl) then return; end;
 	-- v0.2: raid flights count once through their raid record (trf_raid TRF_Rd_End).
 	if type(H.rd) == "table" then
 		for n, hr in H.rd do
@@ -972,7 +972,7 @@ function TRF_Events_Plumb()
 end;
 
 -- One killed pirate flight: dis - 1 in the current system, at most rec_max per visit. kind: "pirate"
--- (watched vanilla flight), "butcher" (one with a Butcher_* hull), "raid" (from trf_raid), "nest" / "nest_elite" (trf_nest;
+-- (watched vanilla flight), "butcher" (one with a Butcher_* hull), "raid" (from trf_raid), "haunt" / "haunt_elite" (trf_haunt;
 -- an elite flight of trf_fits costs 3, design/fits-spec.md 5.3).
 -- v0.2 (4.5, 9.1, 9.6): clan score -2 (-4 for a Butcher; the visit cap is TRF_ClanAdd's); +1 visit credit
 -- when the system's dis is 0. v1 (6.3): sv 1 = the flight carried salvaged gear -> TRF_SalvUse.
@@ -985,7 +985,7 @@ function TRF_Ev_Recover(kind, sv)
 	if sv == 1 and type(slot) == "number" then TRF_N("TRF_SalvUse", slot, "kill"); end;
 	if type(slot) == "number" then
 		local d = -2;
-		if kind == "butcher" then d = -4; elseif kind == "nest_elite" then d = -3; end;
+		if kind == "butcher" then d = -4; elseif kind == "haunt_elite" then d = -3; end;
 		TRF_N("TRF_ClanAdd", slot, d, "pirate kill "..tostring(kind or "pirate"));
 	end;
 	if TRF_Ev_DisOf(idx) <= 0 then TRF_N("TRF_ProCredit", 1, "pirate kill"); end;

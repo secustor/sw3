@@ -6,7 +6,7 @@ Module: new `S/trf_str.script`, prefix `Str` (`TRF_Str_*` public hooks, `TRF_Str
 
 ## 1. Scope
 
-One strength logic for traders and pirates: a score 0..99 per side goes in, a tier 1..4 (with hysteresis) and a level step (one chance curve) come out, and one tier table holds the per-tier values that raids, nests, captains and stashes read.
+One strength logic for traders and pirates: a score 0..99 per side goes in, a tier 1..4 (with hysteresis) and a level step (one chance curve) come out, and one tier table holds the per-tier values that raids, haunts, captains and stashes read.
 
 | Part | Content | State |
 |---|---|---|
@@ -75,7 +75,7 @@ Every score is floored and clamped 0..99 (`TRF_StrSc`).
 | 4 | 15..18 | 11..18 | 3 | 4 | 3 | 4 | 4 | 1 | 1 | 3 |
 
 - Raid columns (v02 5.3, v1 6.1): row band in `Pir_Fighters` / `Pir_Bombers`, power band and offset to `sys_base`, `Pir_Pilots` index of lead and wings (NORMAL), ships of the first and second flight. Values unchanged.
-- `dp`: the nest power step (nest-spec 5.3, was the tune `nest_dp` alone).
+- `dp`: the haunt power step (haunt-spec 5.3, was the tune `haunt_dp` alone).
 - `cap`: rows a wanted captain's hull sits above the band (captain-spec 5.3, was the literal "one row up").
 - `cls`: the stash class (stash-spec 5.3, was the literal in `TRF_ShClsOf`); the salvage step (+1 at salvage >= 4, at most 3) stays in trf_stash.
 
@@ -121,9 +121,9 @@ The caps then lower it as before: a failed TT4 condition (cfg `tt4` 0, trf_convo
 
 `TRF_Rd_TierRows()` returns `TRF_StrRows()` (nil without trf_str); every reader (`TRF_Rd_TierPilots`, `TRF_Rd_PirRow`, `TRF_Rd_Comp`, `TRF_Rd_Power`, trf_faction, trf_captain, trf_stash) sees the same raid values plus the three new columns.
 
-### 5.4 trf_nest
+### 5.4 trf_haunt
 
-`TRF_NeDpOf(T, tn)`: the `dp` column of `TRF_StrRow(T)`; a cfg tune `nest_dp` set explicitly (a list in the cfg `tune` table) wins; without trf_str the tune value (default {-1, 0, 1, 1}). The `event=mode` line keeps `dp=`.
+`TRF_HaDpOf(T, tn)`: the `dp` column of `TRF_StrRow(T)`; a cfg tune `haunt_dp` set explicitly (a list in the cfg `tune` table) wins; without trf_str the tune value (default {-1, 0, 1, 1}). The `event=mode` line keeps `dp=`.
 
 ### 5.5 trf_captain and trf_stash
 
@@ -159,7 +159,7 @@ The two lists must rise strictly and `str_dn_t[i] <= str_up_t[i]`; otherwise bot
 |---|---|
 | `str-a` | `extra_count=13`, `Str` after `Rg` in `TRF_ModList`, tune defaults and the merge into `TRF_Tune`, clamps, bad threshold lists, tuned thresholds, list entry clamps; score of `clan`, `trade` (pro x 11), `merc` (with and without the record, nothing written), unknown kinds |
 | `str-b` | plain band for 0..99; up at 25/50/75, down below 20/45/70; the gaps hold; several steps in one call; prev and score clamps; a walk over 16 scores |
-| `str-c` | `TRF_Rd_TierRows` = `TRF_StrRows` with the old literal raid rows and only `dp`, `cap`, `cls` added; the columns; `TRF_StrRow` clamps; `TRF_Rd_TierPilots`; `TRF_ShClsOf` with salvage; `TRF_CapHullOf` against the old formula (3 difficulty tables, T1..T4, sys_base 1..20) and `cap` 2; `TRF_NeDpOf` from the table and the explicit `nest_dp` override |
+| `str-c` | `TRF_Rd_TierRows` = `TRF_StrRows` with the old literal raid rows and only `dp`, `cap`, `cls` added; the columns; `TRF_StrRow` clamps; `TRF_Rd_TierPilots`; `TRF_ShClsOf` with salvage; `TRF_CapHullOf` against the old formula (3 difficulty tables, T1..T4, sys_base 1..20) and `cap` 2; `TRF_HaDpOf` from the table and the explicit `haunt_dp` override |
 | `str-d` | chances for every score; the roll partition; clamps; a fixed roll; `TRF_StrRollUseful`; 10,000 RAND rolls per score within 2 pp (worst 1.32 pp); the distribution of 4.5 exactly; `TRF_TierPick`: pro 0-2 no RAND, pro 3 one draw, `str_up`/`str_dn` 0 no draw, TT4 roll then the TT4 cap then heat 5, counted attack, free ships, cfg `tt4` 0 (`tt4_cfg`), cfg `prosperity` 0; the roll and plan lines |
 | `str-e` | init digit; commit at the tick (level 1 change line, level 2 kept line), hysteresis at 72 after tier 4, down at 69, no up at 74; `TRF_ClanAdd` commit; `TRF_RegionTick` calls the hook for every slot; repair of `"x"`, 7, nil, 2.6; save and load; `TRF_EffTier` carrier and guard overrides; 22 bytes per slot |
 
@@ -171,13 +171,13 @@ Changed expectations elsewhere (each with a comment naming the section): `extra_
 |---|---|---|---|
 | D-STR.1 | enter systems at pro 3 or more until traders spawn | `module=str event=roll kind=trade` with a roll, `module=tier event=plan ... score= roll= step=`; `rolled_tier` = band + step, tier <= rolled_tier, pro 0-2 `roll=none` and TT1 | `check_ingame.py` D-STR.1 |
 | D-STR.2 | play region ticks until a clan score falls into 70-74, 45-49 or 20-24 after the higher tier | `module=str event=tier ... result=kept` with the tier above the plain band; every tier line is the hysteresis tier of score and prev | `check_ingame.py` D-STR.2 |
-| D-STR.3 | visit nest systems, see a raid or a created stash | `event=mode ... tier= dp=` with dp {-1, 0, 1, 1}[tier] (a note otherwise: an explicit `nest_dp`), raid `event=go` power inside plo..phi of its tier and at most 8 ships, stash `event=create` class = cls or one up | `check_ingame.py` D-STR.3 |
+| D-STR.3 | visit haunt systems, see a raid or a created stash | `event=mode ... tier= dp=` with dp {-1, 0, 1, 1}[tier] (a note otherwise: an explicit `haunt_dp`), raid `event=go` power inside plo..phi of its tier and at most 8 ships, stash `event=create` class = cls or one up | `check_ingame.py` D-STR.3 |
 
 ## 10. Deviations
 
 1. v02 9.2 and v1 8.1: the literal trader chances are replaced by the curve (4.5, U2). pro 4 draws one roll now (it drew none). Tune `tt4_p8` / `tt4_p9` are read nowhere.
 2. v02 9.6: the clan tier is the hysteresis tier of the score and the saved digit, not `floor(sc / 25) + 1`. `TRF_ClanTier` evaluates `TRF_StrTier(sc, tr)` on every call instead of returning the digit alone: six modules write the score directly (base, sweep, convoy, faction, clan, ClanAdd) and their callers read the tier right after, so a pure digit read would lag up to one region tick. The digit is the hysteresis memory and is committed at every tick and after `TRF_ClanAdd`.
-3. 16 / nest-spec 5.3: the nest power step comes from the `dp` column; the tune `nest_dp` is an override only when the cfg tune table sets it (its TuneDef default stays for the clamps and for a load without trf_str).
+3. 16 / haunt-spec 5.3: the haunt power step comes from the `dp` column; the tune `haunt_dp` is an override only when the cfg tune table sets it (its TuneDef default stays for the clamps and for a load without trf_str).
 4. `TRF_ShClsOf` and `TRF_CapHullOf` keep no literal copy of the table: without trf_str stashes read class 1 and captains one row up. `TRF_Rd_TierRows` keeps the four raid rows (raid columns only) as its fallback without trf_str, so the raid readers never index nil. trf_str loads with trf_region in every configuration that loads those modules.
 5. The brief's "lint prefixes registered": `tools/lint_lua.py` has a registry only for group-name prefixes; trf_str creates no group, so nothing was added there.
 6. `TRF_StrRoll` returns the raw step (+1 at T4 or -1 at T1 although the tier is clamped), so a later pirate caller can see that the roll hit.
@@ -188,5 +188,5 @@ Changed expectations elsewhere (each with a comment naming the section): `extra_
 
 - Pirate fits (option D), the elite flight roll (option C per flight) and the pirate-base factor: they will call `TRF_StrRoll(score, roll)` with a fixed hash roll; nothing here reads them.
 - Mercenary readers of `TRF_StrScore("merc", c)` (B6).
-- The nest plan does not log the score; `event=mode` keeps `tier=` and `dp=`.
+- The haunt plan does not log the score; `event=mode` keeps `tier=` and `dp=`.
 - trf_scar `TRF_ScTTOf(pro)` (scar-spec 4, design 02 section 4: TT2 at `pro` 4, TT3 at 6, TT4 at 8) stays the wreck-site level rule of the scar design and does not read the trader roll.

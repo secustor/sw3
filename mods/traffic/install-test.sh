@@ -44,7 +44,7 @@
 # FREIGHT=0|1 (cfg enable_freight, Wolves Freight, design/freight-spec.md, CHECK EW8.1-EW8.8); written only when set.
 # PARCELS=0|1 (cfg enable_parcels, sealed parcels, design/parcel-spec.md, CHECK E-PCL.1-E-PCL.6; LEVEL=v01/v02 write 0
 # unless PARCELS is set); PCL_PROBE=0|1 (cfg pcl_probe, the E-PCL.1/E-PCL.2 probe lines); written only when set.
-# NESTS=0|1 (cfg nest, dynamic nests, design/nest-spec.md, CHECK E16.1-E16.11); NEST_MODE=1|2 (cfg nest_mode, 2 the
+# HAUNTS=0|1 (cfg haunt, pirate haunts, design/haunt-spec.md, CHECK E16.1-E16.11); HAUNT_MODE=1|2 (cfg haunt_mode, 2 the
 # delete-and-replace fallback, E16.11); written only when set.
 # FITS=0|1 (cfg fits, pirate fit variety, design/fits-spec.md, CHECK D-FIT.1-4); FITS_GATE=0|1 (cfg fits_gate, 1 keeps
 # quest-gated visits vanilla); FITS_TEST=<ShipDescription or carcass name> (debug: one neutral test ship at every entry,
@@ -149,8 +149,8 @@ case "${STASHES:-}" in "") ;; 0|1) opt="$opt, enable_stashes=$STASHES" ;; *) ech
 case "${FREIGHT:-}" in "") ;; 0|1) opt="$opt, enable_freight=$FREIGHT" ;; *) echo "FREIGHT must be 0 or 1" >&2; exit 1;; esac
 case "${PARCELS:-}" in "") ;; 0|1) opt="$opt, enable_parcels=$PARCELS" ;; *) echo "PARCELS must be 0 or 1" >&2; exit 1;; esac
 case "${PCL_PROBE:-}" in "") ;; 0|1) opt="$opt, pcl_probe=$PCL_PROBE" ;; *) echo "PCL_PROBE must be 0 or 1" >&2; exit 1;; esac
-case "${NESTS:-}" in "") ;; 0|1) opt="$opt, nest=$NESTS" ;; *) echo "NESTS must be 0 or 1" >&2; exit 1;; esac
-case "${NEST_MODE:-}" in "") ;; 1|2) opt="$opt, nest_mode=$NEST_MODE" ;; *) echo "NEST_MODE must be 1 or 2" >&2; exit 1;; esac
+case "${HAUNTS:-}" in "") ;; 0|1) opt="$opt, haunt=$HAUNTS" ;; *) echo "HAUNTS must be 0 or 1" >&2; exit 1;; esac
+case "${HAUNT_MODE:-}" in "") ;; 1|2) opt="$opt, haunt_mode=$HAUNT_MODE" ;; *) echo "HAUNT_MODE must be 1 or 2" >&2; exit 1;; esac
 case "${MERCS:-}" in "") ;; 0|1) opt="$opt, merc=$MERCS" ;; *) echo "MERCS must be 0 or 1" >&2; exit 1;; esac
 case "${FITS:-}" in "") ;; 0|1) opt="$opt, fits=$FITS" ;; *) echo "FITS must be 0 or 1" >&2; exit 1;; esac
 case "${FITS_GATE:-}" in "") ;; 0|1) opt="$opt, fits_gate=$FITS_GATE" ;; *) echo "FITS_GATE must be 0 or 1" >&2; exit 1;; esac

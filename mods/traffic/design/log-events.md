@@ -98,17 +98,17 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 
 ## fits (`trf_fits.script`; `TRF_FtE`, `TRF_FtDE`)
 
-Pirate fit variety, step 1 (`design/fits-spec.md` 8). `flight` is the nest sign, `raid_<n>_<f>` or the garrison sign
-`trf_pb_<idx>_<j>`; `source` nest, raid, base or gate; `up` / `down` the elite and scrap chances in %; `grade` 1 elite, -1
+Pirate fit variety, step 1 (`design/fits-spec.md` 8). `flight` is the haunt sign, `raid_<n>_<f>` or the garrison sign
+`trf_pb_<idx>_<j>`; `source` haunt, raid, base or gate; `up` / `down` the elite and scrap chances in %; `grade` 1 elite, -1
 scrap, 0 normal.
 
 | Event | Example line | Level |
 |---|---|---|
-| `roll` | `module=fits event=roll system=golkonda flight=Pirate01 source=nest score=62 tier=3 up=1 down=0 roll=94 grade=0 captured_roll=false` (`captured_roll`: the captured hash hit; a ship is placed only in a row with a pool, see `row`) | 2; 1 for an elite or scrap flight |
+| `roll` | `module=fits event=roll system=golkonda flight=Pirate01 source=haunt score=62 tier=3 up=1 down=0 roll=94 grade=0 captured_roll=false` (`captured_roll`: the captured hash hit; a ship is placed only in a row with a pool, see `row`) | 2; 1 for an elite or scrap flight |
 | `row` | `module=fits event=row system=xb13 flight=pir07 grade=1 captured_ship=0 before=EvilEye_pir2,Tiger_pir1,Cleaner_pir1,EvilEye_pir1 after=Gunslinger_pir1,Gunslinger_pir1,Tiger_pir1,Gunslinger_pir1` (the graded copy; `captured_ship` its index or 0) | 2; 1 with a captured ship |
 | `skip` | `module=fits event=skip system=golkonda flight=Pirate01 reason=off` (`pinned`, `type3`, `data`, `cap`: a captured roll on a row without a pool) | 2 |
 | `skip` | `module=fits event=skip system=kadi reason=gate via=fits_gate` (`via=scan`: the quest scan's deny list) | 2 |
-| `kill` | `module=fits event=kill system=golkonda index=2 flight=Pirate02 grade=1 score_cost=3 mine=true` (an elite nest flight destroyed) | 1 |
+| `kill` | `module=fits event=kill system=golkonda index=2 flight=Pirate02 grade=1 score_cost=3 mine=true` (an elite haunt flight destroyed) | 1 |
 | `gate` | `module=fits event=gate system=kadi built=2` (end of a quest-gated visit's calls: captured flights built) | 1 |
 | `test` | `module=fits event=test name=Panthera_pir0 step=create result=ok x=-550 z=150` (debug `fits_test`) | 1 |
 | `test` | `module=fits event=test name=Panthera_pir0 step=hull bare=true hp=1000` | 1 |
@@ -659,34 +659,34 @@ record of its on-screen appearance, `tick` the ship tick `k`.
 | `dump_roll` | `module=freight event=dump_roll id=1 k=231 r=0.4123 p_rob=0.0840 p_loss=0.0040 out=none void=nil` | 1 |
 | `fwsim` | `module=freight event=fwsim rg=4 ticks=2000 gross=224000 net=158866 rob=69 lost=3 net_share=0.709` (host run `fr-h` only, EW8.6) | 1 |
 
-## nest (`trf_nest.script`; `TRF_NeE`, `TRF_NeDE`)
+## haunt (`trf_haunt.script`; `TRF_HaE`, `TRF_HaDE`)
 
-Dynamic nests, step 1 (`design/nest-spec.md` 7). `index` is the row of the system's flight in `TRF_NestData` (ships
-`trf_nest_<index>_<j>`), `sign` its vanilla sign, `memory` the kill memory `k` of the system.
+Pirate haunts, step 1 (`design/haunt-spec.md` 7). `index` is the row of the system's flight in `TRF_HauntData` (ships
+`trf_haunt_<index>_<j>`), `sign` its vanilla sign, `memory` the kill memory `k` of the system.
 
 | Event | Example line | Level |
 |---|---|---|
-| `error` | `module=nest event=error message=<m>` | 1 |
-| `install` | `module=nest event=install installed=true wrapped=true` (every MapInitialization) | 2 |
-| `mode` | `module=nest event=mode system=golkonda mode=nest reason=ok phase=2 tier=3 f=100 dp=1 vanilla_count=10 memory=0 pins=0` / `mode=vanilla reason=<excluded, guard, sysmode, gate_<strict reason>, no_region, supp>` (E16.1) | 1 |
-| `mode` | `module=nest event=mode system=gaoba mode=vanilla reason=no_data` / `system=golkonda mode=vanilla reason=off ...` (cfg `nest` 0) | 2 |
-| `plan` | `module=nest event=plan system=golkonda target=7 fielded=7 skipped=3 pins=0 mode=1 plan=1010011111` | 1 |
-| `call` | `module=nest event=call sign=pir07 result=substituted power=15 vanilla_power=14 pinned=false` / `result=stub reason=<count, cache>` / `result=recorded` (nest_mode 2) / `result=pass reason=<unarmed, unlisted, group, repeat>` (only while a visit record exists: no line in a vanilla-mode visit or after activation, E16.1, E16.3) | 2 |
-| `call` | `module=nest event=call sign=pir07 result=failed reason=build` (the vanilla flight is built instead) | 1 |
-| `activate` | `module=nest event=activate system=golkonda fielded=10 stub=0 gone=0 unknown=0 missing=0 failed=0 relation=war mode=1` (E16.1, E16.4) | 1 |
-| `replace` | `module=nest event=replace system=golkonda deleted=10 spawned=5` (nest_mode 2, E16.11) | 1 |
-| `arrival` | `module=nest event=arrival system=golkonda line=<nestfull, nestraid, nestbust, nestswept, nestquiet, nesthurt, nestclear> result=<queued, dropped>` | 2 |
-| `hit` | `module=nest event=hit index=7` (first player-group hit on the flight) | 2 |
-| `died` | `module=nest event=died index=7 sign=pir07 mine=true memory=1 left=9 clan_score=60 generation=12 reason=<died, ships>` (E16.6, E16.7) | 1 |
-| `stale` | `module=nest event=stale index=1 generation=11 current=12` (an f_died trigger of an older generation, E16.6) | 1 |
-| `regen` | `module=nest event=regen system=golkonda memory_before=7 memory_after=5 ticks=1` (E16.7) | 1 |
-| `relation` | `module=nest event=relation system=golkonda from=neutral to=war` (the 1 s mirror, E16.5) | 1 |
-| `jump` | `module=nest event=jump system=golkonda deleted=3` | 1 |
-| `load` | `module=nest event=load system=golkonda rearmed=5` (E16.6) | 1 |
-| `orphan` | `module=nest event=orphan label=trf_nest_2_1` (a nest ship found at an entry, E16.2) | 1 |
-| `probe` | `module=nest event=probe at=<enter, activate> pirates=33` (TRF_Near, team Pirates, cls 3..7, alive; E16.2) | 2 |
-| `sweep` | `module=nest event=sweep region=4 target=golkonda` (a won sweep marks the Bust target) | 2 |
-| `dump` | `module=nest event=dump record_count=2 records=45:7/1234,91:2/1230 visit=45:1111111111 clans=nk:0,0,3,7,0,0,0,0 counters=n:120,k:34,p:30 mode=nest reason=ok alive=38` | 1 |
+| `error` | `module=haunt event=error message=<m>` | 1 |
+| `install` | `module=haunt event=install installed=true wrapped=true` (every MapInitialization) | 2 |
+| `mode` | `module=haunt event=mode system=golkonda mode=haunt reason=ok phase=2 tier=3 f=100 dp=1 vanilla_count=10 memory=0 pins=0` / `mode=vanilla reason=<excluded, guard, sysmode, gate_<strict reason>, no_region, supp>` (E16.1) | 1 |
+| `mode` | `module=haunt event=mode system=gaoba mode=vanilla reason=no_data` / `system=golkonda mode=vanilla reason=off ...` (cfg `haunt` 0) | 2 |
+| `plan` | `module=haunt event=plan system=golkonda target=7 fielded=7 skipped=3 pins=0 mode=1 plan=1010011111` | 1 |
+| `call` | `module=haunt event=call sign=pir07 result=substituted power=15 vanilla_power=14 pinned=false` / `result=stub reason=<count, cache>` / `result=recorded` (haunt_mode 2) / `result=pass reason=<unarmed, unlisted, group, repeat>` (only while a visit record exists: no line in a vanilla-mode visit or after activation, E16.1, E16.3) | 2 |
+| `call` | `module=haunt event=call sign=pir07 result=failed reason=build` (the vanilla flight is built instead) | 1 |
+| `activate` | `module=haunt event=activate system=golkonda fielded=10 stub=0 gone=0 unknown=0 missing=0 failed=0 relation=war mode=1` (E16.1, E16.4) | 1 |
+| `replace` | `module=haunt event=replace system=golkonda deleted=10 spawned=5` (haunt_mode 2, E16.11) | 1 |
+| `arrival` | `module=haunt event=arrival system=golkonda line=<hauntfull, hauntraid, hauntbust, hauntswept, hauntquiet, haunthurt, hauntclear> result=<queued, dropped>` | 2 |
+| `hit` | `module=haunt event=hit index=7` (first player-group hit on the flight) | 2 |
+| `died` | `module=haunt event=died index=7 sign=pir07 mine=true memory=1 left=9 clan_score=60 generation=12 reason=<died, ships>` (E16.6, E16.7) | 1 |
+| `stale` | `module=haunt event=stale index=1 generation=11 current=12` (an f_died trigger of an older generation, E16.6) | 1 |
+| `regen` | `module=haunt event=regen system=golkonda memory_before=7 memory_after=5 ticks=1` (E16.7) | 1 |
+| `relation` | `module=haunt event=relation system=golkonda from=neutral to=war` (the 1 s mirror, E16.5) | 1 |
+| `jump` | `module=haunt event=jump system=golkonda deleted=3` | 1 |
+| `load` | `module=haunt event=load system=golkonda rearmed=5` (E16.6) | 1 |
+| `orphan` | `module=haunt event=orphan label=trf_haunt_2_1` (a haunt ship found at an entry, E16.2) | 1 |
+| `probe` | `module=haunt event=probe at=<enter, activate> pirates=33` (TRF_Near, team Pirates, cls 3..7, alive; E16.2) | 2 |
+| `sweep` | `module=haunt event=sweep region=4 target=golkonda` (a won sweep marks the Bust target) | 2 |
+| `dump` | `module=haunt event=dump record_count=2 records=45:7/1234,91:2/1230 visit=45:1111111111 clans=nk:0,0,3,7,0,0,0,0 counters=n:120,k:34,p:30 mode=haunt reason=ok alive=38` | 1 |
 
 ## parcel (`trf_parcel.script`; `TRF_PcE`, `TRF_PcDE`)
 

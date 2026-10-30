@@ -20,7 +20,7 @@
 -- a jump, betrayal, the robbery and heat 7 ends, the 8.5 factor, the wind-down refund, the load re-adopt or rebuild, the
 -- patrol board line and the Black Legion legend and hire gate. Steps 4-9 (rival actions, bookings, corvette,
 -- mothership, Legion actions) are not built; their saved fields are kept by the repair and read nowhere.
--- Layout as trf_nest: helpers, static tables, pure functions (*Of), record accessors, region tick, the hire role,
+-- Layout as trf_haunt: helpers, static tables, pure functions (*Of), record accessors, region tick, the hire role,
 -- contract functions (repair, defaults, dump, text). Top level: functions and MC only.
 
 local MC = {};
@@ -1858,7 +1858,7 @@ function TRF_McStandOf(s, m, dist)
 end;
 
 -- Patrol loop of the unhired pack (user decision 2026-10-29; merc-spec 6a Patrol), pure. c = {m the spawn mouth, st
--- station positions, op other portal mouths, ex extra points (stash belt slots or nest route points)}, h the fixed hash
+-- station positions, op other portal mouths, ex extra points (stash belt slots or haunt route points)}, h the fixed hash
 -- 0..10008. Points in order: the mouth, the standoffs 300 units from at most two stations (toward the mouth; from station
 -- h mod n on), one other portal mouth (floor(h / 7) mod n), one extra point (floor(h / 11) mod n); a point closer than
 -- 200 units to a point kept before it is dropped; at most 5. No mouth: no points.
@@ -1889,7 +1889,7 @@ end;
 
 -- Candidates of the patrol loop in system cur (TRF_McPtsOf): the mouth of the spawn portal prt (name pn), the map
 -- stations (sys[cur].st), the mouths of the other enabled managed portals, the stash belt slots of the system
--- (trf_stash TRF_ShSlots), else the route points of its nest flights (trf_nest TRF_NeData).
+-- (trf_stash TRF_ShSlots), else the route points of its haunt flights (trf_haunt TRF_HaData).
 function TRF_McPtsCand(cur, prt, pn)
 	local c = {m=TRF_McMouth(prt), st={}, op={}, ex={}};
 	local m = TRF_N("TRF_Map");
@@ -1922,7 +1922,7 @@ function TRF_McPtsCand(cur, prt, pn)
 		end;
 	end;
 	local nd = nil;
-	if getn(c.ex) == 0 then nd = TRF_N("TRF_NeData", nm); end;
+	if getn(c.ex) == 0 then nd = TRF_N("TRF_HaData", nm); end;
 	if type(nd) == "table" and type(nd.f) == "table" then
 		for i = 1, getn(nd.f) do
 			local r = nd.f[i];

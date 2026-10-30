@@ -39,7 +39,7 @@
 -- Wolves Freight (design/freight-spec.md): trf_freight loads after trf_stash (extra=); its enter hook counts the
 -- visit, the activate hook runs the tick catch-up after trf_stash's, the load hook (after trf_gen's load pass) removes
 -- the on-screen ship, the jump hook (v1 list, before trf_gen's) reads its damage band, the 1 s step runs the ticks.
--- Dynamic nests (design/nest-spec.md): trf_nest loads after trf_freight (extra=); TRF_InstallNest wraps NewPirateFlight
+-- Pirate haunts (design/haunt-spec.md): trf_haunt loads after trf_freight (extra=); TRF_InstallHaunt wraps NewPirateFlight
 -- after TRF_InstallPlumb; its enter hook (after trf_safety's) plans the visit and arms the wrapper for activate.script,
 -- the activate hook (right after trf_safety's) disarms it, clears the stubs and arms the triggers, its arrival line
 -- follows trf_freight's activate hook (the last mod line), the load hook adopts the saved flights, the jump hook deletes
@@ -52,8 +52,8 @@
 -- or settles the hire, CBH TRF_McHit marks combat.
 -- Strength scale (design/strength-spec.md): trf_str loads after trf_region and before trf_tier (counted as extra=); pure
 -- helpers (score, tier with hysteresis, tier table, chance curve), the region tick commits the clan tier digit.
--- Pirate fit variety (design/fits-spec.md): trf_fits loads after trf_freight and before trf_nest (extra=); trf_nest, trf_raid
--- and trf_base call its grade and row helpers; the activate hook (after the nest arrival line) spawns the debug test ship
+-- Pirate fit variety (design/fits-spec.md): trf_fits loads after trf_freight and before trf_haunt (extra=); trf_haunt, trf_raid
+-- and trf_base call its grade and row helpers; the activate hook (after the haunt arrival line) spawns the debug test ship
 -- of cfg fits_test, the 1 s step reads it back, the jump hook deletes it.
 
 function TRF_Path(name)
@@ -291,7 +291,7 @@ function TRF_OnEnter()
 	if TRF_Traffic() then
 		TRF_P("TRF_State_OnEnter", fresh);
 		TRF_P("TRF_Safety_OnEnter");
-		TRF_P("TRF_Nest_OnEnter");
+		TRF_P("TRF_Haunt_OnEnter");
 		TRF_P("TRF_Pl_OnEnter");
 		TRF_P("TRF_Stn_OnEnter");
 		TRF_P("TRF_Fr_OnEnter");
@@ -318,7 +318,7 @@ function TRF_OnActivate()
 		-- (TRF_Gen_OnActivate) may queue a line.
 		TRF_P("TRF_Pl_OnActivate");
 		TRF_P("TRF_Safety_OnActivate");
-		TRF_P("TRF_Nest_OnActivate");
+		TRF_P("TRF_Haunt_OnActivate");
 		TRF_P("TRF_Base_OnActivate");
 		TRF_P("TRF_Tier_OnActivate");
 		TRF_P("TRF_Track_OnActivate");
@@ -331,7 +331,7 @@ function TRF_OnActivate()
 		TRF_P("TRF_Cap_OnActivate");
 		TRF_P("TRF_Sh_OnActivate");
 		TRF_P("TRF_Fr_OnActivate");
-		TRF_P("TRF_Nest_Arrival");
+		TRF_P("TRF_Haunt_Arrival");
 		TRF_P("TRF_Ft_OnActivate");
 		TRF_P("TRF_Pc_OnActivate");
 		TRF_P("TRF_Mc_OnActivate");
@@ -354,7 +354,7 @@ function TRF_OnLoad()
 		TRF_P("TRF_Tier_OnLoad");
 		TRF_P("TRF_Raid_OnLoad");
 		TRF_P("TRF_Hail_OnLoad");
-		local v1 = {"Base", "Track", "Clan", "Faction", "Convoy", "Danger", "Supply", "Cap", "Pl", "Pc", "Stn", "Sv", "Lad", "Ch", "Sc", "Sh", "Fr", "Nest", "Mc"};
+		local v1 = {"Base", "Track", "Clan", "Faction", "Convoy", "Danger", "Supply", "Cap", "Pl", "Pc", "Stn", "Sv", "Lad", "Ch", "Sc", "Sh", "Fr", "Haunt", "Mc"};
 		for i = 1, getn(v1) do TRF_P("TRF_"..v1[i].."_OnLoad"); end;
 		TRF.active = 1;
 		TRF_P("TRF_DumpState", "load");
@@ -394,7 +394,7 @@ function TRF_OnTick(dt_game, dt_real)
 			TRF_P("TRF_Cap_Step");
 			TRF_P("TRF_Sh_Step");
 			TRF_P("TRF_Fr_Step");
-			TRF_P("TRF_Nest_Step");
+			TRF_P("TRF_Haunt_Step");
 			TRF_P("TRF_Ft_Step");
 			TRF_P("TRF_Pc_Step");
 			TRF_P("TRF_Mc_Step");
@@ -434,7 +434,7 @@ function TRF_BeforeJump(dest, how)
 		TRF_P("TRF_State_BeforeJump");
 		TRF_P("TRF_Hail_BeforeJump");
 		TRF_P("TRF_Track_BeforeJump", dest, how);
-		local v1 = {"Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Pl", "Stn", "Sv", "Sc", "Sh", "Fr", "Nest", "Ft", "Pc"};
+		local v1 = {"Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Pl", "Stn", "Sv", "Sc", "Sh", "Fr", "Haunt", "Ft", "Pc"};
 		for i = 1, getn(v1) do TRF_P("TRF_"..v1[i].."_BeforeJump"); end;
 		-- Mercenary clans: the destination decides whether a hired wing follows (design/merc-spec.md 6a); the hire record
 		-- and the visit's raid marks stay for trf_raid's 8.5 pay below.
@@ -524,10 +524,10 @@ function TRF_Main()
 			for i = 1, getn(v2) do if TRF_LoadFile(v2[i]) then nm = nm + 1; end; end;
 			local v1 = {"loc", "track", "faction", "clan", "convoy", "danger", "supply", "base"};
 			for i = 1, getn(v1) do if TRF_LoadFile("trf_"..v1[i]..".script") then nm = nm + 1; end; end;
-			local ex = {"plumb", "station", "survive", "ladder", "charter", "scar", "captain", "stash", "freight", "fits", "nest", "parcel", "merc"};
+			local ex = {"plumb", "station", "survive", "ladder", "charter", "scar", "captain", "stash", "freight", "fits", "haunt", "parcel", "merc"};
 			for i = 1, getn(ex) do if TRF_LoadFile("trf_"..ex[i]..".script") then ne = ne + 1; end; end;
 			TRF_P("TRF_InstallPlumb");
-			TRF_P("TRF_InstallNest");
+			TRF_P("TRF_InstallHaunt");
 			TRF_P("TRF_InstallGen");
 			TRF_P("TRF_InstallTradeDock");
 			TRF_P("TRF_InstallStation");

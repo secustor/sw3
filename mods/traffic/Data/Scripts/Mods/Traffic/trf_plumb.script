@@ -264,7 +264,7 @@ end;
 
 -- Modules whose TRF_<M>_Plumb() registers handlers (TRF_InstallPlumb).
 function TRF_PlMods()
-	return {"Shop", "Hail", "Faction", "Events", "Gen", "Stn", "Sv", "Lad", "Ch", "Cap", "Sh", "Fr", "Nest", "Pc", "Mc"};
+	return {"Shop", "Hail", "Faction", "Events", "Gen", "Stn", "Sv", "Lad", "Ch", "Cap", "Sh", "Fr", "Haunt", "Pc", "Mc"};
 end;
 
 -- Group and allocator prefixes of the worldbuilding features (00 section 6, "Group and allocator names"):
@@ -272,19 +272,19 @@ end;
 -- orphan scan at load. Traffic's own prefixes (TRF_Raid_, TRF_Pir_, TRF_Resp_, ...) keep the scans of their
 -- modules. The lint list is GROUP_PREFIXES in tools/lint_lua.py. Names only (a "TRF_..." literal reads as a
 -- function reference to the --calls lint). Drop: trf_supply's demand_drop containers (labels trf_drop_<a>_<j>, no group).
--- Nest: trf_nest's group TRF_Nest_1 (global TRF_GNest_1 only during activate.script, ships trf_nest_<i>_<j>); its ships
--- are adopted at load (TRF_Nest_OnLoad), so the orphan scan clears only its build global (TRF_PlAdopt).
+-- Haunt: trf_haunt's group TRF_Haunt_1 (global TRF_GHaunt_1 only during activate.script, ships trf_haunt_<i>_<j>); its ships
+-- are adopted at load (TRF_Haunt_OnLoad), so the orphan scan clears only its build global (TRF_PlAdopt).
 -- Merc: every role of the mercenary clan module (trf_merc, TRF_Merc_<n>, ships trf_merc_<n>_<j>); Hunt: the announced
 -- hunters of its step 5 (TRF_Hunt_<n>, not built yet). Rival is unused since the 12/13 merge.
 function TRF_PlGroups()
-	return {"Cust", "Scv", "Cap", "Esc", "Def", "Pick", "Push", "Merc", "Rival", "Hunt", "Fw", "Drop", "Sh", "Nest"};
+	return {"Cust", "Scv", "Cap", "Esc", "Def", "Pick", "Push", "Merc", "Rival", "Hunt", "Fw", "Drop", "Sh", "Haunt"};
 end;
 
--- Groups whose ships their module adopts after a load (no label scan in TRF_PlOrphans): Nest always (trf_nest), and
+-- Groups whose ships their module adopts after a load (no label scan in TRF_PlOrphans): Haunt always (trf_haunt), and
 -- every group registered in this MapInitialization with TRF_PlAdoptReg, so a module that is off or not loaded leaves its
 -- labels to the scan.
 function TRF_PlAdopt()
-	local r = {Nest=1};
+	local r = {Haunt=1};
 	for k, v in %P.ad do r[k] = 1; end;
 	return r;
 end;
@@ -1146,7 +1146,7 @@ end;
 -- After a load: build-time group globals TRF_G<prefix><n> restored with the save are cleared, and ships
 -- labelled trf_<prefix lowercase><n>_<j> (n 1..scan_n, j 1..scan_j) are deleted. Group Drop (trf_supply's
 -- containers, destructible) also deletes an object the label lookup answers dead, as trf_scar's probe does (EW2.2).
--- Groups of TRF_PlAdopt (Nest, and the TRF_PlAdoptReg names) keep their ships: their module adopts them. Returns
+-- Groups of TRF_PlAdopt (Haunt, and the TRF_PlAdoptReg names) keep their ships: their module adopts them. Returns
 -- ships, globals.
 function TRF_PlOrphans()
 	local K = TRF_PlK();

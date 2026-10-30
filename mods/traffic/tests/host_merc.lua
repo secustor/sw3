@@ -5,7 +5,7 @@
 -- losses, the elite hp floor, break and re-form, hp recovery by ticks and jumps, d the decays (rel, g, bk, owe, w) and the
 -- blacklist, e the rival candidate rule and its rv_enabled gate, f repair, enabled 2, config off, the region tick hook,
 -- save and load, dump, the save bound.
--- Loads host_station.lua up to its first scenario, as host_nest.lua does. Stub added in host_stubs.lua:
+-- Loads host_station.lua up to its first scenario, as host_haunt.lua does. Stub added in host_stubs.lua:
 -- GetRecruitGroupName (HOST().recruit, else "").
 
 local f = openfile((getenv("TRF_TESTS") or "./").."host_station.lua", "r");
@@ -1018,15 +1018,15 @@ function T_MC_G()
 	local hh = TRF_McHash(cur, 1, 20);
 	HOST_Check(getn(cg.st) == 2 and getn(cg.op) == 2 and getn(cg.ex) == 4 and MC_PtsEq(TRF_McPtsOf(cg, hh), TRF_McPtsOf(cg, hh))
 		and MC_PtsEq(TRF_McPtsOf(TRF_McPtsCand(cur, pd, "PORTAL_D"), hh), TRF_McPtsOf(cg, hh)), "patrol points: candidates of gaoba, same hash same points");
-	-- Without belt slots a nest route point is the extra candidate (TRF_NeData rows f[i].r[k]).
-	local sl1, nd1 = TRF_ShSlots, TRF_NeData;
+	-- Without belt slots a haunt route point is the extra candidate (TRF_HaData rows f[i].r[k]).
+	local sl1, nd1 = TRF_ShSlots, TRF_HaData;
 	TRF_ShSlots = function(nm) return nil; end;
-	TRF_NeData = function(nm) return {f={{r={{100, 0, 900}}}}}; end;
+	TRF_HaData = function(nm) return {f={{r={{100, 0, 900}}}}}; end;
 	local cn = TRF_McPtsCand(cur, pd, "PORTAL_D");
 	local qn = TRF_McPtsOf(cn, hh);
-	TRF_ShSlots = sl1; TRF_NeData = nd1;
+	TRF_ShSlots = sl1; TRF_HaData = nd1;
 	HOST_Check(getn(cn.ex) == 1 and MC_PtsEq(cn.ex, {{x=100, y=0, z=900}}) and getn(qn) == 5 and MC_PtsEq({qn[5]}, {{x=100, y=0, z=900}}),
-		"patrol points: no belt slot, the nest route point is the extra point");
+		"patrol points: no belt slot, the haunt route point is the extra point");
 	-- Pure: order, the standoff, dedupe within 200, at most two stations from h mod n, picks by floor(h / 7) and floor(h / 11), cap 5, no mouth.
 	local O = {x=0, y=0, z=0};
 	local q = TRF_McPtsOf({m=O, st={{x=1000, y=0, z=0}}, op={{x=0, y=0, z=1000}}, ex={{x=-1000, y=0, z=0}}}, 0);

@@ -643,8 +643,8 @@ function T_PL_E()
 	TRF_GScv_2 = nil;
 	-- Adoption registration: a registered prefix keeps its labelled ships at the scan of this MapInitialization; the
 	-- load runs the next MapInitialization, whose registrations start empty, so an unregistered Merc is scanned again.
-	HOST_Check(TRF_PlAdoptReg("Merc") == 1 and TRF_PlAdoptReg("Zzz") == nil and TRF_PlAdopt().Merc == 1 and TRF_PlAdopt().Nest == 1 and TRF_PlAdopt().Zzz == nil,
-		"TRF_PlAdoptReg: a TRF_PlGroups name registers, another name does not, Nest stays fixed");
+	HOST_Check(TRF_PlAdoptReg("Merc") == 1 and TRF_PlAdoptReg("Zzz") == nil and TRF_PlAdopt().Merc == 1 and TRF_PlAdopt().Haunt == 1 and TRF_PlAdopt().Zzz == nil,
+		"TRF_PlAdoptReg: a TRF_PlGroups name registers, another name does not, Haunt stays fixed");
 	local m1 = T_LabelShip("trf_merc_1_2", 820, 800, "TRF_Merc_1");
 	local c1 = T_LabelShip("trf_cust_2_1", 840, 800, "TRF_Cust_2");
 	local hu = T_LabelShip("trf_hunt_1_1", 860, 800, "TRF_Hunt_1");

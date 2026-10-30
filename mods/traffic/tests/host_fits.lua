@@ -1,12 +1,12 @@
 -- Pirate fit variety scenarios (design/fits-spec.md 10) under stock Lua 4.0.1: TRF_FT=a..f, run by run_host.sh as its own
 -- entry point. a registration, toggles, tune clamps, hash quality, the roll (determinism, bounds per score and tier, the
 -- base factor, scrap only at tier 2 below 35, elites only at tiers 3-4), b the row copy (count, roles, order, explicit
--- indices, the maps, the rank clamp, captured within tolerance, one captured ship, the input unchanged), c the nest build
+-- indices, the maps, the rank clamp, captured within tolerance, one captured ship, the input unchanged), c the haunt build
 -- with the graded row (both build sites, the global tables unchanged, the saved grade across a load, -3 on an elite kill
 -- inside the -6 cap), d the raid roll once per flight (pilots one rank up, RAND draws unchanged) and the garrison roll,
 -- e the quest-gated visit (captured only, value-neutral, vanilla group and power, fits_gate 1, the scan deny list),
--- f fits 0 gives byte-identical nest call lines, the debug test ship with mocks, the save bytes.
--- Loads host_station.lua up to its first scenario and the helpers of host_nest.lua (its dispatch cut off). Stub change:
+-- f fits 0 gives byte-identical haunt call lines, the debug test ship with mocks, the save bytes.
+-- Loads host_station.lua up to its first scenario and the helpers of host_haunt.lua (its dispatch cut off). Stub change:
 -- NewAllFlight in host_stubs.lua checks the row keys as vanilla's next() loop needs them and records the rows by sign.
 
 local f = openfile((getenv("TRF_TESTS") or "./").."host_station.lua", "r");
@@ -16,22 +16,22 @@ closefile(f);
 local cut = strfind(src, "\n-- a: install (12.1, 6.1)", 1, 1);
 if not cut then print("HOST FAIL host_fits.lua: marker '-- a: install (12.1, 6.1)' missing in host_station.lua"); exit(1); end;
 dostring(strsub(src, 1, cut), "host_station.lua");
-f = openfile((getenv("TRF_TESTS") or "./").."host_nest.lua", "r");
-if not f then print("HOST FAIL host_fits.lua: cannot open host_nest.lua"); exit(1); end;
+f = openfile((getenv("TRF_TESTS") or "./").."host_haunt.lua", "r");
+if not f then print("HOST FAIL host_fits.lua: cannot open host_haunt.lua"); exit(1); end;
 src = read(f, "*a");
 closefile(f);
 local a0 = strfind(src, "\n-- Helpers ---", 1, 1);
 local a1 = strfind(src, "\n-- a: registration, toggles, tune, static table, pure rules", 1, 1);
-if not a0 or not a1 then print("HOST FAIL host_fits.lua: helper markers missing in host_nest.lua"); exit(1); end;
-dostring(strsub(src, a0, a1), "host_nest.lua");
+if not a0 or not a1 then print("HOST FAIL host_fits.lua: helper markers missing in host_haunt.lua"); exit(1); end;
+dostring(strsub(src, a0, a1), "host_haunt.lua");
 
 -- Helpers ----------------------------------------------------------------------------------
 
--- The nest configuration with fits on and region ticks off (cycle 0: the score, phase and pt stay as set), plus t.
+-- The haunt configuration with fits on and region ticks off (cycle 0: the score, phase and pt stay as set), plus t.
 function FT_Begin(sys, t)
 	local c = {fits=1, cycle=0};
 	if t then for k, v in t do c[k] = v; end; end;
-	NE_Begin(sys or "xb13", nil, c);
+	HA_Begin(sys or "xb13", nil, c);
 	-- Phase start legs up to 4000 must survive the repair (pt <= legs).
 	TRF.clock.legs = 5000;
 	HOST().nafs = {};
@@ -39,23 +39,23 @@ end;
 
 -- Region slot of system nm in phase ph with score sc and the tier digit of that score.
 function FT_Clan(nm, ph, sc)
-	local s = NE_Slot(nm);
-	NE_Phase(s, ph, sc);
+	local s = HA_Slot(nm);
+	HA_Phase(s, ph, sc);
 	TRF.clan[s].tr = TRF_StrTier(sc);
 	return s, V_Idx(nm);
 end;
 
 -- Grades of the graded rows of system nm (unpinned, type 1 / 2) at phase start pt: list g[i] (nil for the others), the
 -- number of elite flights and of flights whose captured roll hits a row with a pool (gate 1: the gate salt and the
--- vanilla power, else the nest power p + dp of the tier).
+-- vanilla power, else the haunt power p + dp of the tier).
 function FT_Grades(nm, pt, gate)
-	local d = NE_Data(nm);
-	local idx, slot = V_Idx(nm), NE_Slot(nm);
+	local d = HA_Data(nm);
+	local idx, slot = V_Idx(nm), HA_Slot(nm);
 	local g, ne, nc = {}, 0, 0;
 	for i = 1, getn(d.f) do
 		local r = d.f[i];
 		if r.pin ~= 1 and r.t ~= 3 then
-			local salt, dp = TRF_FtK().salt_nest, TRF_StrRow(TRF_EffTier(idx)).dp;
+			local salt, dp = TRF_FtK().salt_haunt, TRF_StrRow(TRF_EffTier(idx)).dp;
 			if gate == 1 then salt = TRF_FtK().salt_gate; dp = 0; end;
 			local R = TRF_FtRoll(idx, i, pt, slot, salt, nil, gate);
 			g[i] = R;
@@ -79,10 +79,10 @@ function FT_FindPt(nm, ne, nc, gate)
 	return nil;
 end;
 
--- First phase start leg 1..4000 and flight index of system nm whose graded row (nest power) is of kind w: "cap" a
+-- First phase start leg 1..4000 and flight index of system nm whose graded row (haunt power) is of kind w: "cap" a
 -- normal flight with a captured ship, "scrap" a scrap flight. Returns pt, i and the roll record, or nil.
 function FT_Find(nm, w)
-	local d = NE_Data(nm);
+	local d = HA_Data(nm);
 	local dp = TRF_StrRow(TRF_EffTier(V_Idx(nm))).dp;
 	for pt = 1, 4000 do
 		local G = FT_Grades(nm, pt);
@@ -135,13 +135,13 @@ function T_FT_A()
 	local d = TRF_Ft_OptDef();
 	HOST_Check(d.fits == 0 and d.fits_gate == 0 and d.fits_test == "" and TRF_FtOpt("fits") == 1 and TRF_FtOn() == 1,
 		"cfg defaults fits 0, fits_gate 0, fits_test empty; on in these runs");
-	NE_Set("fits", 2);
+	HA_Set("fits", 2);
 	HOST_Check(TRF_FtOpt("fits") == 0 and not TRF_FtOn(), "fits 2 reads as the default 0");
-	NE_Set("fits", 1);
+	HA_Set("fits", 1);
 	local T = TRF_FtTune();
 	HOST_Check(T.fits_elite_max == 5 and T.fits_base_a == 10 and T.fits_base_p == 3 and T.fits_cap_pct == 5 and T.fits_scrap_sc == 35
 		and getn(T.fits_test_mods) == 3 and T.fits_test_mods[1] == "PC2" and TRF_Tune().fits_cap_pct == 5, "tune defaults, merged into TRF_Tune");
-	NE_Tune("fits_cap_pct", 50); NE_Tune("fits_elite_max", -3); NE_Tune("fits_test_mods", {"VC2", 3, ""});
+	HA_Tune("fits_cap_pct", 50); HA_Tune("fits_elite_max", -3); HA_Tune("fits_test_mods", {"VC2", 3, ""});
 	T = TRF_FtTune();
 	HOST_Check(T.fits_cap_pct == 10 and T.fits_elite_max == 0 and getn(T.fits_test_mods) == 1 and T.fits_test_mods[1] == "VC2",
 		"clamps: fits_cap_pct 50 -> 10, fits_elite_max -3 -> 0, only string modules");
@@ -219,7 +219,7 @@ function T_FT_A()
 	local ud = TRF_FtRoll(gi, 1, 300, gs, 1, 4).up;
 	TRF.base[1].k = 2;
 	local u2 = TRF_FtRoll(gi, 1, 300, gs, 1, 2).up;
-	NE_Tune("fits_base_a", 15);
+	HA_Tune("fits_base_a", 15);
 	local uc = TRF_FtRoll(gi, 1, 300, gs, 1, 4).up;
 	HOST().cfg.tune = {};
 	HOST_Check(ua == 15 and up_ == 8 and ud == 5 and u2 == 0 and uc == 15, "base factor: A 5 + 10 = 15, P 5 + 3, D 0, none at tier 2, cap 15 (A 15: "..uc..")");
@@ -327,7 +327,7 @@ function T_FT_B()
 	HOST_Check(okv and D.bare.Panthera_pir0 == 1, "values for every row fit; no unused hull in the maps; bare list has the pir0 hulls");
 end;
 
--- c: nest build, saved grade, kill cost ------------------------------------------------------------------------
+-- c: haunt build, saved grade, kill cost ------------------------------------------------------------------------
 
 function T_FT_C()
 	local h = HOST();
@@ -339,8 +339,8 @@ function T_FT_C()
 	TRF.rg[gs].pt = pt;
 	local snap = FT_PirSnap();
 	local n0 = S_Mark();
-	NE_Jump("golkonda");
-	local d = NE_Data("golkonda");
+	HA_Jump("golkonda");
+	local d = HA_Data("golkonda");
 	local e = TRF.nv and TRF.nv.e;
 	local ok, el, bad = 1, {}, "";
 	for i = 1, getn(d.f) do
@@ -350,18 +350,18 @@ function T_FT_C()
 			tinsert(el, i);
 			local tab, form, ri = TRF_FtTab(d.f[i].t, d.f[i].p + 1);
 			local want = TRF_FtRow(tab[ri], 1, R.c and R.sel, 1);
-			if not nf or FT_Names(nf.row) ~= FT_Names(want) or nf.group ~= "TRF_GNest_1" or nf.power ~= d.f[i].p + 1 then ok = nil; bad = bad.." "..i; end;
+			if not nf or FT_Names(nf.row) ~= FT_Names(want) or nf.group ~= "TRF_GHaunt_1" or nf.power ~= d.f[i].p + 1 then ok = nil; bad = bad.." "..i; end;
 			if strsub(e or "", i, i) ~= "1" and strsub(e or "", i, i) ~= "4" then ok = nil; bad = bad.." e"..i; end;
 		elseif R then
 			if not R.c and strsub(e or "", i, i) ~= "0" then ok = nil; bad = bad.." z"..i; end;
 		end;
 	end;
-	HOST_Check(ok and getn(el) >= 2, "elite flights built through NewAllFlight with the graded row at the nest power in TRF_GNest_1, digits in TRF.nv.e "..tostring(e)..bad);
+	HOST_Check(ok and getn(el) >= 2, "elite flights built through NewAllFlight with the graded row at the haunt power in TRF_GHaunt_1, digits in TRF.nv.e "..tostring(e)..bad);
 	HOST_Check(S_Logs(n0, "module=fits event=roll system=golkonda") == 10 and S_Logs(n0, "grade=1 captured_roll=") == getn(el)
 		and S_Logs(n0, "module=fits event=row system=golkonda") >= getn(el), "one roll line per flight, a row line per graded flight");
 	HOST_Check(FT_PirSnap() == snap, "the global Pir_Fighters / Pir_Bombers rows unchanged");
-	HOST_Check(S_Logs(n0, "result=substituted") == 10 and NE_Kv(NE_Line(n0, "module=nest event=activate "), "fielded") == "10", "ten flights fielded");
-	local v = NE_V();
+	HOST_Check(S_Logs(n0, "result=substituted") == 10 and HA_Kv(HA_Line(n0, "module=haunt event=activate "), "fielded") == "10", "ten flights fielded");
+	local v = HA_V();
 	local s0 = getglobal("ship_"..d.f[el[1]].s.."_1");
 	HOST_Check(v.fl[el[1]] and s0 and v.fl[el[1]].ships[1] == s0 and s0.tpl == h.nafs[d.f[el[1]].s].row[1][1], "elite flight's globals and fits real");
 	-- Kill cost: elite -3 (player fire), normal -2, the second elite only -1 (cap 6 per visit).
@@ -369,60 +369,60 @@ function T_FT_C()
 	local ni = nil;
 	for i = 1, getn(d.f) do if G[i] and G[i].g == 0 and not ni then ni = i; end; end;
 	local n1 = S_Mark();
-	NE_Kill(el[1], 1);
+	HA_Kill(el[1], 1);
 	local s1 = TRF.clan[gs].sc;
-	NE_Kill(ni, 1);
+	HA_Kill(ni, 1);
 	local s2 = TRF.clan[gs].sc;
-	NE_Kill(el[2], 1);
+	HA_Kill(el[2], 1);
 	local s3 = TRF.clan[gs].sc;
 	HOST_Check(sc0 - s1 == 3 and s1 - s2 == 2 and s2 - s3 == 1, "kills: elite -3, normal -2, the second elite -1 inside the -6 cap ("..sc0..","..s1..","..s2..","..s3..")");
-	HOST_Check(S_Logs(n1, "module=fits event=kill system=golkonda") == 2 and S_Logs(n1, "reason=\"pirate kill nest_elite\"") == 2,
+	HOST_Check(S_Logs(n1, "module=fits event=kill system=golkonda") == 2 and S_Logs(n1, "reason=\"pirate kill haunt_elite\"") == 2,
 		"event=kill per elite flight, the elite reason on the clan score line");
 	-- Save and load: the digits stay (the dead flights' bits are 0, their digits kept).
 	T_SaveLoad();
-	HOST_Check(TRF.nv.e == e and NE_Kv(S_Line(n1, "module=nest event=load "), "rearmed") == "7", "grade digits survive save and load");
+	HOST_Check(TRF.nv.e == e and HA_Kv(S_Line(n1, "module=haunt event=load "), "rearmed") == "7", "grade digits survive save and load");
 	-- Without player fire: TRF_ClanAdd -3 in a new visit.
-	NE_Jump("xb13");
-	TRF.nest = nil;
+	HA_Jump("xb13");
+	TRF.haunt = nil;
 	TRF.clan[gs].sc = 99;
-	NE_Jump("golkonda");
+	HA_Jump("golkonda");
 	local s4 = TRF.clan[gs].sc;
-	NE_Kill(el[1], 0);
+	HA_Kill(el[1], 0);
 	HOST_Check(s4 - TRF.clan[gs].sc == 3, "elite kill without player fire: -3 ("..s4.." -> "..TRF.clan[gs].sc..")");
-	-- nest_mode 2: the replace site builds the graded rows too.
-	NE_Jump("xb13");
-	TRF.nest = nil;
+	-- haunt_mode 2: the replace site builds the graded rows too.
+	HA_Jump("xb13");
+	TRF.haunt = nil;
 	TRF.clan[gs].sc = 99;
-	NE_Set("nest_mode", 2);
+	HA_Set("haunt_mode", 2);
 	h.nafs = {};
 	n0 = S_Mark();
-	NE_Jump("golkonda");
+	HA_Jump("golkonda");
 	local ok2 = 1;
 	for q = 1, getn(el) do
 		local i = el[q];
 		local nf = h.nafs[d.f[i].s];
 		local tab, form, ri = TRF_FtTab(d.f[i].t, d.f[i].p + 1);
-		if not nf or FT_Names(nf.row) ~= FT_Names(TRF_FtRow(tab[ri], 1, G[i].c and G[i].sel, 1)) or nf.group ~= "TRF_GNest_1" then ok2 = nil; end;
+		if not nf or FT_Names(nf.row) ~= FT_Names(TRF_FtRow(tab[ri], 1, G[i].c and G[i].sel, 1)) or nf.group ~= "TRF_GHaunt_1" then ok2 = nil; end;
 	end;
-	HOST_Check(ok2 and NE_Kv(NE_Line(n0, "module=nest event=replace "), "spawned") == "10" and TRF.nv.e == e, "nest_mode 2: the rebuilt flights take the graded rows, same digits");
-	NE_Set("nest_mode", 1);
+	HOST_Check(ok2 and HA_Kv(HA_Line(n0, "module=haunt event=replace "), "spawned") == "10" and TRF.nv.e == e, "haunt_mode 2: the rebuilt flights take the graded rows, same digits");
+	HA_Set("haunt_mode", 1);
 	-- A repair drops bad digits.
 	TRF.nv.e = "9x";
-	TRF_Nest_Fix();
+	TRF_Haunt_Fix();
 	HOST_Check(TRF.nv and TRF.nv.e == nil and TRF.nv.b ~= nil, "repair: bad digits dropped, the visit record kept");
 	-- A captured-only flight (Raids, score 99) and a scrap flight (Boom, tier 2, score 30): the graded row through
-	-- NewAllFlight in TRF_GNest_1, digit 3 (captured) or 2 / 5 (scrap) in TRF.nv.e, a kill costs -2.
+	-- NewAllFlight in TRF_GHaunt_1, digit 3 (captured) or 2 / 5 (scrap) in TRF.nv.e, a kill costs -2.
 	local cs = {{3, 99, "cap"}, {1, 30, "scrap"}};
 	for q = 1, 2 do
-		NE_Jump("xb13");
-		TRF.nest = nil;
+		HA_Jump("xb13");
+		TRF.haunt = nil;
 		FT_Clan("golkonda", cs[q][1], cs[q][2]);
 		local cp, ci, CR = FT_Find("golkonda", cs[q][3]);
 		HOST_Check(cp ~= nil, "a phase start with a "..cs[q][3].." flight in Golkonda");
 		if cp then
 			TRF.rg[gs].pt = cp;
 			h.nafs = {};
-			NE_Jump("golkonda");
+			HA_Jump("golkonda");
 			local fq = d.f[ci];
 			local tab, form, ri = TRF_FtTab(fq.t, fq.p + TRF_StrRow(TRF_EffTier(gi)).dp);
 			local sel = nil;
@@ -431,14 +431,14 @@ function T_FT_C()
 			local nf = h.nafs[fq.s];
 			local ch = strsub(TRF.nv.e or "", ci, ci);
 			local okd = (q == 1 and ch == "3" and cj) or (q == 2 and (ch == "2" or (ch == "5" and cj)));
-			HOST_Check(nf and FT_Names(nf.row) == FT_Names(want) and FT_Names(want) ~= FT_Names(tab[ri]) and nf.group == "TRF_GNest_1" and okd,
+			HOST_Check(nf and FT_Names(nf.row) == FT_Names(want) and FT_Names(want) ~= FT_Names(tab[ri]) and nf.group == "TRF_GHaunt_1" and okd,
 				cs[q][3].." flight "..ci.." built with the graded row, digit "..ch..": "..FT_Names(want));
 			local k0 = TRF.clan[gs].sc;
-			NE_Kill(ci, 1);
+			HA_Kill(ci, 1);
 			HOST_Check(k0 - TRF.clan[gs].sc == 2, cs[q][3].." flight kill: -2 ("..k0.." -> "..TRF.clan[gs].sc..")");
 		end;
 	end;
-	NE_Jump("xb13");
+	HA_Jump("xb13");
 end;
 
 -- d: raids and garrisons -------------------------------------------------------------------------------------------
@@ -446,7 +446,7 @@ end;
 function T_FT_D()
 	local h = HOST();
 	FT_Begin("xb13");
-	NE_Jump("golkonda");
+	HA_Jump("golkonda");
 	local gs, gi = FT_Clan("golkonda", 3, 80);
 	local pt = TRF.rg[gs].pt;
 	local tm = CreateTeam("Pirates");
@@ -461,7 +461,7 @@ function T_FT_D()
 		and S_Logs(n0, "flight=raid_7_2 source=raid") == 1 and S_Logs(n0, "module=fits event=roll ") == 2, "T4 raid: one roll per flight (2)");
 	for i = 1, getn(fls) do fls[i]:Delete(); end;
 	-- RAND draws with fits 0 are the same.
-	NE_Set("fits", 0);
+	HA_Set("fits", 0);
 	h.seed = 4242;
 	r0 = h.rand;
 	n0 = S_Mark();
@@ -472,7 +472,7 @@ function T_FT_D()
 	TRF.clan[gs].sc = 30;
 	local dr = {};
 	for q = 0, 1 do
-		NE_Set("fits", q);
+		HA_Set("fits", q);
 		h.seed = 777;
 		r0 = h.rand;
 		n0 = S_Mark();
@@ -482,7 +482,7 @@ function T_FT_D()
 	end;
 	HOST_Check(dr[0][1] == dr[1][1] and dr[0][1] >= 1 and dr[1][2] == 1 and dr[0][2] == 0, "T2 raid: one roll (scrap chance 16 %), RAND draws "..dr[1][1].." with fits 1 = "..dr[0][1].." with fits 0");
 	TRF.clan[gs].sc = 80;
-	NE_Set("fits", 1);
+	HA_Set("fits", 1);
 	-- A captain's raid: no roll on any of its flights.
 	n0 = S_Mark();
 	fls = TRF_Rd_Comp(8, {tier=4, n1x=2, nosv=1}, "TRF_GRaid_7", "trf_rd_8", Vector3(100, 0, 100), Vector3(0, 0, 1), 14, gi);
@@ -543,7 +543,7 @@ function T_FT_D()
 	local R1, R2 = TRF_FtRoll(gi, 2, pt, gs, TRF_FtK().salt_base, 4), TRF_FtRoll(gi, 2, pt, gs, TRF_FtK().salt_base, 4);
 	HOST_Check(R1.r == R2.r and R1.g == R2.g, "garrison slot roll fixed for the phase");
 	TRF_GRaid_7 = nil;
-	NE_Jump("xb13");
+	HA_Jump("xb13");
 end;
 
 -- e: quest-gated visit -------------------------------------------------------------------------------------------------
@@ -561,9 +561,9 @@ function T_FT_E()
 	h.quests[qi[1]] = QUEST_PROCESS;
 	local n0 = S_Mark();
 	h.nafs = {};
-	NE_Jump("kadi");
-	local d = NE_Data("kadi");
-	HOST_Check(NE_Kv(NE_Line(n0, "module=nest event=mode "), "reason") == "gate_quest", "Kadi with a quest in process: gate_quest");
+	HA_Jump("kadi");
+	local d = HA_Data("kadi");
+	HOST_Check(HA_Kv(HA_Line(n0, "module=haunt event=mode "), "reason") == "gate_quest", "Kadi with a quest in process: gate_quest");
 	local ok, nb, bad = 1, 0, "";
 	for i = 1, getn(d.f) do
 		local R = G[i];
@@ -583,29 +583,29 @@ function T_FT_E()
 	HOST_Check(ok and nb >= 2, "gate visit: captured rows in the vanilla group at the vanilla power, value within 5 % ("..nb.." flights)"..bad);
 	HOST_Check(S_Logs(n0, "module=fits event=roll system=kadi") == 13 and S_Logs(n0, "source=gate") == 13 and S_Logs(n0, " up=0 down=0 ") == 13
 		and S_Logs(n0, "grade=1") == 0 and S_Logs(n0, "grade=-1") == 0, "gate rolls: no elite, no scrap");
-	HOST_Check(NE_Kv(S_Line(n0, "module=fits event=gate "), "built") == tostring(nb) and S_Logs(n0, "module=nest event=call") == 0
-		and S_Logs(n0, "module=nest event=activate") == 0, "gate line built="..nb.."; no nest call or activate line");
-	HOST_Check(TRF.nv == nil and NE_Trigs("f_died", "TRF_Nest_Died(") == 0 and TRF_NeNE().a == nil and NE_V().fl[1] == nil, "no TRF.nv, no triggers, the record disarmed");
+	HOST_Check(HA_Kv(S_Line(n0, "module=fits event=gate "), "built") == tostring(nb) and S_Logs(n0, "module=haunt event=call") == 0
+		and S_Logs(n0, "module=haunt event=activate") == 0, "gate line built="..nb.."; no haunt call or activate line");
+	HOST_Check(TRF.nv == nil and HA_Trigs("f_died", "TRF_Haunt_Died(") == 0 and TRF_HaHA().a == nil and HA_V().fl[1] == nil, "no TRF.nv, no triggers, the record disarmed");
 	-- fits_gate 1: vanilla rows.
-	NE_Jump("hanoi");
-	NE_Set("fits_gate", 1);
+	HA_Jump("hanoi");
+	HA_Set("fits_gate", 1);
 	n0 = S_Mark();
-	NE_Jump("kadi");
+	HA_Jump("kadi");
 	HOST_Check(S_Logs(n0, "module=fits event=roll") == 0 and S_Logs(n0, "module=fits event=skip system=kadi reason=gate via=fits_gate") == 1,
 		"fits_gate 1: no roll, skip reason=gate");
-	NE_Set("fits_gate", 0);
+	HA_Set("fits_gate", 0);
 	-- The scan's deny list.
-	NE_Jump("hanoi");
+	HA_Jump("hanoi");
 	local od = TRF_FtGateDeny;
 	n0 = S_Mark();
-	NE_Jump("kadi", {pre=function() TRF_FtGateDeny = function() return {kadi=1}; end; end});
+	HA_Jump("kadi", {pre=function() TRF_FtGateDeny = function() return {kadi=1}; end; end});
 	TRF_FtGateDeny = od;
 	HOST_Check(S_Logs(n0, "module=fits event=roll") == 0 and S_Logs(n0, "reason=gate via=scan") == 1, "a deny-listed system keeps vanilla rows");
 	-- A quest scene at entry (__disableAction): gate_quest, but no fits record and no captured flight.
-	NE_Jump("hanoi");
+	HA_Jump("hanoi");
 	h.nafs = {};
 	n0 = S_Mark();
-	NE_Jump("kadi", {pre=function() __disableAction = TRUE; end});
+	HA_Jump("kadi", {pre=function() __disableAction = TRUE; end});
 	__disableAction = nil;
 	local nn = 0;
 	for i = 1, getn(d.f) do
@@ -613,10 +613,10 @@ function T_FT_E()
 		local tab, form, ri = TRF_FtTab(d.f[i].t, d.f[i].p);
 		if nf and tab and FT_Names(nf.row) ~= FT_Names(tab[ri]) then nn = nn + 1; end;
 	end;
-	HOST_Check(NE_Kv(NE_Line(n0, "module=nest event=mode "), "reason") == "gate_quest" and S_Logs(n0, "module=fits event=roll") == 0
+	HOST_Check(HA_Kv(HA_Line(n0, "module=haunt event=mode "), "reason") == "gate_quest" and S_Logs(n0, "module=fits event=roll") == 0
 		and S_Logs(n0, "module=fits event=gate") == 0 and nn == 0, "quest scene at a gate_quest entry: no roll, no captured flight");
 	h.quests[qi[1]] = QUEST_DONE;
-	NE_Jump("hanoi");
+	HA_Jump("hanoi");
 end;
 
 -- f: fits 0 identical, debug test ship, save bytes -------------------------------------------------------------------
@@ -628,24 +628,24 @@ function T_FT_F()
 	TRF.rg[gs].pt = 5;
 	local n0 = S_Mark();
 	h.seed = 99; local r0 = h.rand;
-	NE_Jump("golkonda");
-	local L0, d0 = FT_Lines(n0, "module=nest event=call "), h.rand - r0;
-	HOST_Check(S_Logs(n0, "module=fits event=skip system=golkonda") == 10 and NE_Has(S_Line(n0, "module=fits event=skip "), "reason=off")
+	HA_Jump("golkonda");
+	local L0, d0 = FT_Lines(n0, "module=haunt event=call "), h.rand - r0;
+	HOST_Check(S_Logs(n0, "module=fits event=skip system=golkonda") == 10 and HA_Has(S_Line(n0, "module=fits event=skip "), "reason=off")
 		and S_Logs(n0, "module=fits event=roll") == 0 and TRF.nv.e == nil, "fits 0: skip reason=off per flight, no roll, no digits");
-	NE_Jump("xb13");
-	TRF.nest = nil;
-	local ofn = TRF_Ft_Nest;
-	TRF_Ft_Nest = nil;
+	HA_Jump("xb13");
+	TRF.haunt = nil;
+	local ofn = TRF_Ft_Haunt;
+	TRF_Ft_Haunt = nil;
 	n0 = S_Mark();
 	h.seed = 99; r0 = h.rand;
-	NE_Jump("golkonda", {pre=function() TRF_Ft_Nest = nil; end});
-	local L1, d1 = FT_Lines(n0, "module=nest event=call "), h.rand - r0;
-	TRF_Ft_Nest = ofn;
-	HOST_Check(L0 == L1 and L0 ~= "" and d0 == d1, "fits 0: the nest call lines byte-identical to a run without trf_fits, same RAND draws");
+	HA_Jump("golkonda", {pre=function() TRF_Ft_Haunt = nil; end});
+	local L1, d1 = FT_Lines(n0, "module=haunt event=call "), h.rand - r0;
+	TRF_Ft_Haunt = ofn;
+	HOST_Check(L0 == L1 and L0 ~= "" and d0 == d1, "fits 0: the haunt call lines byte-identical to a run without trf_fits, same RAND draws");
 	-- fits 1 at a phase start where no flight is graded or captured: the same lines again.
-	NE_Jump("xb13");
-	TRF.nest = nil;
-	NE_Set("fits", 1);
+	HA_Jump("xb13");
+	TRF.haunt = nil;
+	HA_Set("fits", 1);
 	local qp = nil;
 	for pt = 1, 4000 do
 		local G, e, c = FT_Grades("golkonda", pt);
@@ -656,8 +656,8 @@ function T_FT_F()
 	TRF.rg[gs].pt = qp;
 	h.nafs = {};
 	n0 = S_Mark();
-	NE_Jump("golkonda");
-	local L2 = FT_Lines(n0, "module=nest event=call ");
+	HA_Jump("golkonda");
+	local L2 = FT_Lines(n0, "module=haunt event=call ");
 	HOST_Check(qp and L2 == L0 and TRF.nv.e == nil and S_Logs(n0, "module=fits event=row") == 0, "fits 1 with every grade 0: identical call lines, the vanilla builder, no digits");
 	-- Save bytes: the worst-case digit string.
 	local z0 = HOST_SaveSize(TRF.nv);
@@ -667,13 +667,13 @@ function T_FT_F()
 	HOST_Check(z1 - z0 <= 50, "31 grade digits add "..(z1 - z0).." bytes (<= 50)");
 	TRF.nv.e = nil;
 	-- Debug test ship: a bare carcass gets the modules, the HP is logged, 2 s later the TRF_Carcasses record.
-	NE_Jump("xb13");
-	NE_Set("fits_test", "Panthera_pir0");
+	HA_Jump("xb13");
+	HA_Set("fits_test", "Panthera_pir0");
 	TRF_Carcasses = HOST_Carcasses;
 	h.carc = {};
 	n0 = S_Mark();
 	local m0 = getn(h.mods);
-	NE_Jump("golkonda");
+	HA_Jump("golkonda");
 	local tf = TRF_H().ft;
 	HOST_Check(tf and tf.s and tf.s.tpl == "Panthera_pir0" and S_Logs(n0, "module=fits event=test name=Panthera_pir0 step=create result=ok") == 1
 		and S_Logs(n0, "step=hull bare=true hp=1000") == 1 and S_Logs(n0, "step=add_module module=PC2 ret=nil hp=1000") == 1
@@ -692,18 +692,18 @@ function T_FT_F()
 	HOST_Check(S_Logs(n0, "module=fits event=test name=Panthera_pir0 step=read result=ok tpl=Panthera_pir0 cls=6 hp=588 hpmax=600") == 1
 		and S_Logs(n0, "step=read") == 1, "2 s later: the TRF_Carcasses record (tpl, hp) once");
 	-- Jump deletes it; a ShipDescription name has no AddModule; without the native: no_native.
-	NE_Jump("xb13");
+	HA_Jump("xb13");
 	HOST_Check(not tf.s.alive and TRF_H().ft ~= tf, "jump: the test flight deleted");
 	TRF_Carcasses = nil;
-	NE_Set("fits_test", "Gunslinger_pir1");
+	HA_Set("fits_test", "Gunslinger_pir1");
 	n0 = S_Mark();
 	m0 = getn(h.mods);
-	NE_Jump("golkonda");
+	HA_Jump("golkonda");
 	T_Tick(6, 0.5);
 	HOST_Check(S_Logs(n0, "step=hull bare=false") == 1 and getn(h.mods) == m0 and S_Logs(n0, "step=read result=no_native") == 1,
 		"a ShipDescription: no AddModule; no native: result=no_native");
-	NE_Set("fits_test", "");
-	NE_Jump("xb13");
+	HA_Set("fits_test", "");
+	HA_Jump("xb13");
 	h.carc = nil;
 end;
 

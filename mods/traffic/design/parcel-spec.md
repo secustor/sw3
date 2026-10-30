@@ -69,9 +69,9 @@ Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case m
 
 | Place | Call | Does |
 |---|---|---|
-| traffic.script `TRF_Main` | `ex = {..., "nest", "parcel"}` | loads `trf_parcel.script` last (`extra_count=11`) |
+| traffic.script `TRF_Main` | `ex = {..., "haunt", "parcel"}` | loads `trf_parcel.script` last (`extra_count=11`) |
 | traffic.script `TRF_OnEnter` | `TRF_Pc_OnEnter()` after `TRF_Fr_OnEnter` | new visit state |
-| traffic.script `TRF_OnActivate` | `TRF_Pc_OnActivate()` after `TRF_Nest_Arrival` | mission legs, expiry and void on arrival, the arrival line and marker in the destination, logbook reconcile |
+| traffic.script `TRF_OnActivate` | `TRF_Pc_OnActivate()` after `TRF_Haunt_Arrival` | mission legs, expiry and void on arrival, the arrival line and marker in the destination, logbook reconcile |
 | traffic.script `TRF_OnLoad` v1 list | `"Pc"` after `"Pl"` | the marker again after trf_plumb deleted the saved ones; reconcile |
 | traffic.script `TRF_BeforeJump` v1 list | `"Pc"` last | the offer dropped (the jump counter is trf_state's, the marker trf_plumb's) |
 | traffic.script 1 s step | `TRF_Pc_Step()` | mission legs |
@@ -182,7 +182,7 @@ Entry as `host_freight.lua`: `host_station.lua` up to its first scenario. Base c
 | `pcl-g` | chapter 3 off; chapter 4 guard (relief to Corrino in Cargo_002 with no `pro` gate, plain to Pegas); outside the guard docks; the chapter 5 `pro` gate; chapter, cfg and cfg chapter deny; dump with and without a job; `enable_parcels` 0 and back; probes (E-PCL.1, .2, .5, .6) and the stack-delete case |
 | `pcl-h` | load in the destination (marker once); a box answered after a load; logbook reconcile (re-added with the destination's keys, orphan removed); repair (shortage flag, job kept, broken job, `TRF.pcl` fields, non-table); worst case 769 / 173 bytes, no reserved key |
 
-Changed scenarios: `pl-a` (12 lines, 9 boxes, 4 payers), `pl-d` (the generic job uses kind 9, which no feature repairs), `sv-a`, `ch-a`, `fr-a` (trade line 20 and box 400 in the order lists; with `lad-a`, `ch-a`, `sc-a`, `cap-a`, `sh-a`, `fr-a`, `ne-a` also `extra_count=11` and Pc last in `TRF_ModList` and `TRF_PlMods`), `stn-g` (the RU key set includes the parcel keys), `v1-m` (the generated `trf_en.loc` has the 186 `#TRF_pcl*` lines), `v1-n` (the parcel worst case in the full-state save, the parcel dump line). `host_traffic.lua` `T_V1Off` and `host_station.lua` `S_Cfg` set `enable_parcels=0`; the v1 scenarios run with parcels on. All 133 host runs pass.
+Changed scenarios: `pl-a` (12 lines, 9 boxes, 4 payers), `pl-d` (the generic job uses kind 9, which no feature repairs), `sv-a`, `ch-a`, `fr-a` (trade line 20 and box 400 in the order lists; with `lad-a`, `ch-a`, `sc-a`, `cap-a`, `sh-a`, `fr-a`, `ha-a` also `extra_count=11` and Pc last in `TRF_ModList` and `TRF_PlMods`), `stn-g` (the RU key set includes the parcel keys), `v1-m` (the generated `trf_en.loc` has the 186 `#TRF_pcl*` lines), `v1-n` (the parcel worst case in the full-state save, the parcel dump line). `host_traffic.lua` `T_V1Off` and `host_station.lua` `S_Cfg` set `enable_parcels=0`; the v1 scenarios run with parcels on. All 133 host runs pass.
 
 ## 10. CHECK: game-only facts (test clone, `log 2`, `PCL_PROBE=1`; 01 section 8, 00 E0.4, E0.6, E0.10, E0.11, E0.12, E0.16)
 

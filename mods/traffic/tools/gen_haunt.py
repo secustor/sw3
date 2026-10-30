@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generate the dynamic nest table (TRF_NestData in trf_nest.script) from the game's location scripts.
+"""Generate the pirate haunt table (TRF_HauntData in trf_haunt.script) from the game's location scripts.
 
-Read-only on the game dir. Run with: python3 -I gen_nest.py [--game P] [--write | --check]
-Design: design/worldbuilding/16-dynamic-nests.md section 6 (static data) and appendix A; spec: design/nest-spec.md 5.2.
+Read-only on the game dir. Run with: python3 -I gen_haunt.py [--game P] [--write | --check]
+Design: design/worldbuilding/16-pirate-haunts.md section 6 (static data) and appendix A; spec: design/haunt-spec.md 5.2.
 Systems: every Locations/<Sys>/activate.script with an uncommented NewPirateFlight call (58). Per call with a literal
 sign (the random-portal ambush "pirRand"..i of Pegas, X244 and XT-54 is left out and counted): the group global name
 (first argument), the sign, the spawn point (the third argument resolved through the top-level Vector3 names of
@@ -13,11 +13,11 @@ route and rr 9999), rr (the largest distance from the spawn point to a route poi
 CreateNoneStationDocking(..., "pirate"), else the system centre; ties in file order) and pin (the sign is used in
 activate.script outside its NewPirateFlight and Patrol lines other than through a stub method, or a quest script of
 the system names it: its file name ends in the system name, optionally followed by _<n>). A system whose quests name
-every sign is class V (always vanilla; the runtime excludes it through its deny entry, nest = 0).
+every sign is class V (always vanilla; the runtime excludes it through its deny entry, haunt = 0).
 Checks (exit 1, also without --check): a non-pinned sign used in activate.script with a method outside the stub set
 (STUB), a group argument that is not a string literal, a sign named in functions.script, the pinned signs differ from PINS_EXPECT, the class V systems differ from
 VANILLA_EXPECT, the system or flight count differs from SYS_EXPECT / FLIGHTS_EXPECT, a group name outside GROUPS.
---write replaces the block between the BEGIN/END markers of trf_nest.script (CRLF kept); --check exits 1 when it
+--write replaces the block between the BEGIN/END markers of trf_haunt.script (CRLF kept); --check exits 1 when it
 differs.
 """
 import argparse
@@ -29,10 +29,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gen_map  # noqa: E402
 
-BEGIN = "-- BEGIN gen_nest.py (do not edit by hand)"
-END = "-- END gen_nest.py"
+BEGIN = "-- BEGIN gen_haunt.py (do not edit by hand)"
+END = "-- END gen_haunt.py"
 MODULE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Data", "Scripts", "Mods", "Traffic",
-                      "trf_nest.script")
+                      "trf_haunt.script")
 STUB = {"Patrol", "Move", "Escort", "Attack", "Delete", "SetFormation", "SetOrientation", "IsAlive"}
 GROUPS = {"PiratesGroup_1", "Pirate_Group_1", "Pirates_Group_1", "PirateGroup_1", "Pirate_Group_1_1"}
 PINS_EXPECT = {
@@ -272,8 +272,8 @@ def block(S):
     lines = [BEGIN,
              "-- Per system (lowercase map name): g the vanilla group global, a {x, z} the rank anchor, f the listed flights",
              "-- {s sign, x, y, z spawn, t type, p power, rk rank, rr route radius, pin, c conditional, r route} in file order",
-             "-- (design 6 static data; tools/gen_nest.py, design/nest-spec.md 5.2).",
-             "function TRF_NestData()",
+             "-- (design 6 static data; tools/gen_haunt.py, design/haunt-spec.md 5.2).",
+             "function TRF_HauntData()",
              "\treturn {"]
     for s in S:
         key = s["name"] if ident(s["name"]) else '["%s"]' % s["name"]
@@ -321,29 +321,29 @@ def main():
             sum(1 for r in rows if r["c"]), unres, s["ambush"], " class=V" if s["vanilla"] else ""))
         for x in s["notes"]:
             print("  note:", x)
-    print("gen_nest: %d systems, %d flights, %d pinned signs, %d conditional, %d ambush calls" % (
+    print("gen_haunt: %d systems, %d flights, %d pinned signs, %d conditional, %d ambush calls" % (
         len(S), sum(len(s["rows"]) for s in S), sum(len(s["pins"]) for s in S if not s["vanilla"]),
         sum(1 for s in S for r in s["rows"] if r["c"]), sum(s["ambush"] for s in S)))
     bad = check(S)
     for b in bad:
-        print("gen_nest: FAIL", b)
+        print("gen_haunt: FAIL", b)
     lines = block(S)
     with open(MODULE, "rb") as f:
         old = f.read().decode("ascii")
     i, j = old.find(BEGIN), old.find(END)
     if i < 0 or j < 0:
-        print("gen_nest: no BEGIN/END markers in", MODULE)
+        print("gen_haunt: no BEGIN/END markers in", MODULE)
         return 1
     new = old[:i] + "\r\n".join(lines) + old[j + len(END):]
     if a.check:
         if new != old:
-            print("gen_nest: trf_nest.script table differs")
+            print("gen_haunt: trf_haunt.script table differs")
             return 1
         return 1 if bad else 0
     if a.write:
         with open(MODULE, "wb") as f:
             f.write(new.encode("ascii"))
-        print("gen_nest: wrote", MODULE)
+        print("gen_haunt: wrote", MODULE)
     return 1 if bad else 0
 
 

@@ -4,8 +4,8 @@
 Read-only on the game dir (default: the test clone). Run with: python3 -I gen_fits.py [--game P] [--write | --check] [-v]
 Spec: design/fits-spec.md (data model, maps, value check). Inputs: Data/Game/ShipDescriptions.xml (every *_pir fit),
 Carcasses.xml (level, hit points and holders of every *_pir0 hull), Modules.xml and Rockets.xml (cost per module),
-Data/Scripts/include/Create_flight_2.script (Pir_Fighters, Pir_Bombers), and from the repo trf_nest.script
-(TRF_NestData: type, power, pin per flight) and map.script (region slot rg, base allow-list ba).
+Data/Scripts/include/Create_flight_2.script (Pir_Fighters, Pir_Bombers), and from the repo trf_haunt.script
+(TRF_HauntData: type, power, pin per flight) and map.script (region slot rg, base allow-list ba).
 
 Data written between the BEGIN/END markers of trf_fits.script (CRLF kept):
 - up / dn: the elite and scrap maps (hand data UP, DN below). Checked: both names are ShipDescriptions of a *_pir0
@@ -17,7 +17,7 @@ Data written between the BEGIN/END markers of trf_fits.script (CRLF kept):
 
 Checks (exit 1 on any, also without --check): a name missing in ShipDescriptions.xml or Carcasses.xml, a map whose
 level or family is wrong, a captured pool outside the tolerance, a fit of a row without an up or dn entry where a level
-exists (warning only), and the value budget: for every nest system x region phase sample x base state (none, and P / A
+exists (warning only), and the value budget: for every haunt system x region phase sample x base state (none, and P / A
 in base allow-list systems) the expected loot value of the plan with the grade chances against the vanilla plan on the
 16:102 slope (one level step x1.37, captured fits 1.0): cycle mean 0.95-1.05 per system and per region, peak per
 flight <= 1.5. --check also fails when the block in trf_fits.script differs from the generated one.
@@ -31,7 +31,7 @@ GAME = os.path.expanduser("~/Games/Heroic/sw3-tp-test")
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "..", "Data", "Scripts", "Mods", "Traffic")
 MODULE = os.path.join(SRC, "trf_fits.script")
-NEST = os.path.join(SRC, "trf_nest.script")
+HAUNT = os.path.join(SRC, "trf_haunt.script")
 MAP = os.path.join(SRC, "map.script")
 BEGIN = "-- BEGIN gen_fits.py (do not edit by hand)"
 END = "-- END gen_fits.py"
@@ -67,7 +67,7 @@ UNUSED = {"TieFly_pir0", "Stormcrow_mk2_pir0", "Cleaner_mk2_pir0", "Panthera_pir
 STR_UP, STR_DN, STR_UP_T = 60, 20, (25, 50, 75)
 FT = {"fits_elite_max": 5, "fits_base_a": 10, "fits_base_p": 3, "fits_cap_pct": 5, "fits_scrap_sc": 35}
 ELITE_CAP = 15
-DP = {1: -1, 2: 0, 3: 1, 4: 1}   # trf_str tier table dp column (nest power step)
+DP = {1: -1, 2: 0, 3: 1, 4: 1}   # trf_str tier table dp column (haunt power step)
 
 # Region cycle of design 16 section 5 (cycle table, 56 legs): phase, count factor f, list of (legs, score, tier).
 # Scores rise 5 per region tick (2 legs) toward the phase target; the tiers are the ones of the design table.
@@ -138,9 +138,9 @@ def family(fit, sd, mcls):
     return None
 
 
-def nest_data():
-    t = rd(NEST)
-    i, j = t.find("-- BEGIN gen_nest.py"), t.find("-- END gen_nest.py")
+def haunt_data():
+    t = rd(HAUNT)
+    i, j = t.find("-- BEGIN gen_haunt.py"), t.find("-- END gen_haunt.py")
     S = {}
     cur = None
     for line in t[i:j].split("\n"):
@@ -292,7 +292,7 @@ def lua_block(D):
 
 
 def budget(verbose):
-    S, M = nest_data(), map_data()
+    S, M = haunt_data(), map_data()
     bad, rows = [], []
     reg = {}
     peak = (0, "")

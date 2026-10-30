@@ -1542,7 +1542,7 @@ function TRF_CvFeqBig(fq, h, rung, lead, ms)
 end;
 
 -- Triada waves fight the clan raid groups, the vanilla pirate groups present (v1 8.4, 7.3 names; the five spellings
--- of the nest systems, design/nest-spec.md 5.6) and the nest group of trf_nest.
+-- of the haunt systems, design/haunt-spec.md 5.6) and the haunt group of trf_haunt.
 function TRF_CvFeqTriada(fq, g)
 	if fq.f ~= 3 or RELATION_WAR == nil then return; end;
 	local L = TRF_CvLive();
@@ -1558,7 +1558,7 @@ function TRF_CvFeqTriada(fq, g)
 			TRF_CvP(function(a, b) SetGroupRelation(a, b, RELATION_WAR); SetGroupRelation(b, a, RELATION_WAR); end, {g, o});
 		end;
 	end;
-	local ng = TRF_N("TRF_Nest_Grp");
+	local ng = TRF_N("TRF_Haunt_Grp");
 	if ng then TRF_CvP(function(a, b) SetGroupRelation(a, b, RELATION_WAR); SetGroupRelation(b, a, RELATION_WAR); end, {g, ng}); end;
 end;
 

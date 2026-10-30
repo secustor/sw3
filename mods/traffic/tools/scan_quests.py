@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Quest scan for the fits-only pass of quest-gated nest visits (design/fits-spec.md 5.4).
+"""Quest scan for the fits-only pass of quest-gated haunt visits (design/fits-spec.md 5.4).
 
 Read-only on the game dir (default: the test clone). Run with: python3 -I scan_quests.py [--game P] [--write | --check] [-v]
-Question: does a quest script of a nest system (TRF_NestData in trf_nest.script) check a pirate carcass, fit or module
+Question: does a quest script of a haunt system (TRF_HauntData in trf_haunt.script) check a pirate carcass, fit or module
 name by string? trf_fits swaps fits (never the ship count, so ship_<sign>_<n> and pilot_<sign>_<n> stay), so only a
 name check can tell the difference.
-Scanned: every Data/Scripts/Quests/**/*.script. A file belongs to a nest system when the system name is a token of its
+Scanned: every Data/Scripts/Quests/**/*.script. A file belongs to a haunt system when the system name is a token of its
 file name or a string literal of the file (case-insensitive). Checks counted per file:
 - cmp: a pirate fit, carcass or pirate-fit module name compared by == or ~= with a string literal;
 - inv: IsExist / DeleteModule of such a name (an inventory check; AddModuleToInventory only writes loot and is not one);
 - rd: a name reader (GetName, GetShipName, GetTreeName) on anything but the player's mothership.
 A system with any check in one of its files is flagged; flagged systems form TRF_FtGateDeny in trf_fits.script (block
-between the BEGIN/END markers; --write replaces it, --check exits 1 when it differs). Prints the table of every nest
+between the BEGIN/END markers; --write replaces it, --check exits 1 when it differs). Prints the table of every haunt
 system: quest files, checks, verdict.
 """
 import argparse
@@ -23,7 +23,7 @@ GAME = os.path.expanduser("~/Games/Heroic/sw3-tp-test")
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "..", "Data", "Scripts", "Mods", "Traffic")
 MODULE = os.path.join(SRC, "trf_fits.script")
-NEST = os.path.join(SRC, "trf_nest.script")
+HAUNT = os.path.join(SRC, "trf_haunt.script")
 BEGIN = "-- BEGIN scan_quests.py (do not edit by hand)"
 END = "-- END scan_quests.py"
 READERS = re.compile(r"(\b[A-Za-z_][A-Za-z_0-9]*)?\s*:\s*(GetName|GetTreeName)\s*\(|\bGetShipName\s*\(\s*([A-Za-z_][A-Za-z_0-9.]*)?")
@@ -37,9 +37,9 @@ def rd(path):
         return f.read().replace("\r\n", "\n").replace("\r", "\n")
 
 
-def nest_systems():
-    t = rd(NEST)
-    i, j = t.find("-- BEGIN gen_nest.py"), t.find("-- END gen_nest.py")
+def haunt_systems():
+    t = rd(HAUNT)
+    i, j = t.find("-- BEGIN gen_haunt.py"), t.find("-- END gen_haunt.py")
     return sorted(set(re.findall(r"^\t\t([a-z0-9_]+) = \{g=", t[i:j], re.M)))
 
 
@@ -56,7 +56,7 @@ def pirate_names(game):
 
 
 def scan(game, verbose):
-    systems = nest_systems()
+    systems = haunt_systems()
     fits, car, mods = pirate_names(game)
     names = fits | car
     qdir = os.path.join(game, "Data", "Scripts", "Quests")
@@ -98,7 +98,7 @@ def scan(game, verbose):
             per[s]["files"].append(rel)
             per[s]["checks"].extend(checks)
     flagged = sorted(s for s in systems if per[s]["checks"])
-    print("scan_quests: %d nest systems, %d quest scripts, %d pirate fits, %d pirate carcasses, %d fit modules" % (
+    print("scan_quests: %d haunt systems, %d quest scripts, %d pirate fits, %d pirate carcasses, %d fit modules" % (
         len(systems), len(files), len(fits), len(car), len(mods)))
     print("  %-12s %5s %6s  %s" % ("system", "files", "checks", "verdict"))
     for s in systems:

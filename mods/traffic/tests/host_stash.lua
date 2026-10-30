@@ -217,7 +217,7 @@ function T_SH_A()
 	SH_Begin("gaoba", "9_1");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=14") >= 1, "trf_stash loads after trf_captain (extra_count=14 with trf_freight, trf_nest, trf_parcel and trf_merc)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=14") >= 1, "trf_stash loads after trf_captain (extra_count=14 with trf_freight, trf_haunt, trf_parcel and trf_merc)");
 	local ml = TRF_ModList();
 	HOST_Check(ml[getn(ml) - 4] == "Sh" and TRF_Opt("enable_stashes") == 1 and TRF_Opt("enable_stash_retrieval") == 1 and TRF_Opt("enable_stash_decoys") == 0
 		and TRF_Opt("stash_ret_war") == 0 and TRF_Opt("stash_at") == "", "TRF_ModList has Sh; toggles: stashes and retrieval on, decoys and ret_war off");

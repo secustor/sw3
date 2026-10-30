@@ -954,9 +954,9 @@ function TRF_RgSweepOut(slot, L, won, k, how, p100)
 	local f = 0;
 	if type(TRF_SweepOwner) == "function" then f = call(TRF_SweepOwner, {slot}, "x", TRF_PErr) or 0; end;
 	r.sr = nil;
-	-- Dynamic nests (design/nest-spec.md 5.3): a success marks the target system for the Bust count nest_f_swept; read
+	-- Pirate haunts (design/haunt-spec.md 5.3): a success marks the target system for the Bust count haunt_f_swept; read
 	-- before the outcome, since a won sweep destroys the active base that is the target (TRF_SweepTarget).
-	TRF_P("TRF_Nest_Sweep", slot, L, won);
+	TRF_P("TRF_Haunt_Sweep", slot, L, won);
 	if won then
 		c.sc = min(c.sc, 35);
 		r.sw = 1; r.sl = 0; r.sn = 0;
@@ -1073,8 +1073,8 @@ function TRF_RgEnter(slot, L, r, c, gon, m, T, ph)
 		TRF_RgBustShort(slot, L, m, T, forced);
 		TRF_P("TRF_NewsPost", "pir", "back", slot);
 	end;
-	-- Dynamic nests (design/nest-spec.md 5.3): nk cleared at Quiet, the swept target cleared after Bust.
-	TRF_P("TRF_Nest_Phase", slot, r.ph);
+	-- Pirate haunts (design/haunt-spec.md 5.3): nk cleared at Quiet, the swept target cleared after Bust.
+	TRF_P("TRF_Haunt_Phase", slot, r.ph);
 end;
 
 -- One slot of a region tick: drift and counterforce (spec 4.2). Returns the exit wish and mn: 2 must leave

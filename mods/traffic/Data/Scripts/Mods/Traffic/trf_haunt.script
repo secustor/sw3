@@ -1,50 +1,50 @@
--- sw3-traffic dynamic nests (Lua 4.0.1). Spec: design/nest-spec.md (design worldbuilding/16-dynamic-nests.md, step 1).
--- Public TRF_Nest_* (module name Nest in the loader lists), internal TRF_Ne<X>, log module=nest through TRF_NeE / TRF_NeDE.
--- Step 1: the scripted pirate flights of the 58 systems in TRF_NestData (tools/gen_nest.py) become the nest of the
--- region's clan. A wrapper of the global NewPirateFlight (installed once per MapInitialization, TRF_InstallNest) is armed
--- only between TRF_OnEnter and TRF_OnActivate (nest_mode 1): a listed sign that the plan fields is built by the vanilla
--- builder in group TRF_Nest_1 of team Pirates at the nest power (flight_/ship_/pilot_<sign> are real objects, the
+-- sw3-traffic pirate haunts (Lua 4.0.1). Spec: design/haunt-spec.md (design worldbuilding/16-pirate-haunts.md, step 1).
+-- Public TRF_Haunt_* (module name Haunt in the loader lists), internal TRF_Ha<X>, log module=haunt through TRF_HaE / TRF_HaDE.
+-- Step 1: the scripted pirate flights of the 58 systems in TRF_HauntData (tools/gen_haunt.py) become the haunt of the
+-- region's clan. A wrapper of the global NewPirateFlight (installed once per MapInitialization, TRF_InstallHaunt) is armed
+-- only between TRF_OnEnter and TRF_OnActivate (haunt_mode 1): a listed sign that the plan fields is built by the vanilla
+-- builder in group TRF_Haunt_1 of team Pirates at the haunt power (flight_/ship_/pilot_<sign> are real objects, the
 -- following Patrol line runs unchanged); a listed sign the plan skips gets a stub object until TRF_OnActivate. Pinned
--- signs are always fielded. nest_mode 2: vanilla builds every flight, TRF_OnActivate deletes the unpinned ones and builds
--- the plan with the static routes. The plan is a pure function of saved state: phase count factor nest_f (nest_f_swept
--- in the sweep target during Bust), tier power delta nest_dp, kill memory TRF.nest[idx] (refilled nest_regen_pct of the
--- vanilla count per nest_regen_legs legs, applied at entry), never more flights than vanilla, no flight near an unopened
--- clan stash cache. Replacement only in a non-excluded system (deny entries nest = 0: X297, El Ariash; cfg nest_off),
--- from chapter 5, in mod mode (trf_safety TRF_SysMode) and through the strict gate (TRF_StrictOk feature nest).
+-- signs are always fielded. haunt_mode 2: vanilla builds every flight, TRF_OnActivate deletes the unpinned ones and builds
+-- the plan with the static routes. The plan is a pure function of saved state: phase count factor haunt_f (haunt_f_swept
+-- in the sweep target during Bust), tier power delta haunt_dp, kill memory TRF.haunt[idx] (refilled haunt_regen_pct of the
+-- vanilla count per haunt_regen_legs legs, applied at entry), never more flights than vanilla, no flight near an unopened
+-- clan stash cache. Replacement only in a non-excluded system (deny entries haunt = 0: X297, El Ariash; cfg haunt_off),
+-- from chapter 5, in mod mode (trf_safety TRF_SysMode) and through the strict gate (TRF_StrictOk feature haunt).
 -- Feeds: a destroyed flight writes the kill memory and costs the clan 2 score (with player fire through trf_events'
 -- TRF_Ev_Recover: dis -1 inside its visit cap, clan nk + 1); every destroyed ship feeds battle scars source 7.
--- Pirate fits (design/fits-spec.md 5.2-5.4): with trf_fits on, both build sites take a graded row through TRF_Ft_Nest
+-- Pirate fits (design/fits-spec.md 5.2-5.4): with trf_fits on, both build sites take a graded row through TRF_Ft_Haunt
 -- (the vanilla builder with a row copy), the grade digits of the fielded flights are saved in TRF.nv.e and an elite
 -- kill costs the clan 3 score; a quest-gated visit (gate_quest) arms a fits-only record (mode 3): listed unpinned
 -- signs of the vanilla group get the captured roll only through TRF_Ft_Gate, in the caller's group at vanilla power.
--- Relations: the nest group copies the vanilla group's relation to the player after activate.script and mirrors later
--- changes one way (nest_mirror). Jump: every live nest flight is deleted. Load: the saved flights are adopted by their
--- globals (TRF.nv) and re-armed. Saved: TRF.nest[idx] = {k, l, c}, TRF.nv = {i, b, e}, TRF.nst = {n, k, p},
--- TRF.clan[slot].nk, .nl, .ns. Visit state lives in the chunk local NE (never saved; rebuilt by every MapInitialization).
+-- Relations: the haunt group copies the vanilla group's relation to the player after activate.script and mirrors later
+-- changes one way (haunt_mirror). Jump: every live haunt flight is deleted. Load: the saved flights are adopted by their
+-- globals (TRF.nv) and re-armed. Saved: TRF.haunt[idx] = {k, l, c}, TRF.nv = {i, b, e}, TRF.nst = {n, k, p},
+-- TRF.clan[slot].nk, .nl, .ns. Visit state lives in the chunk local HA (never saved; rebuilt by every MapInitialization).
 -- Layout as trf_stash: helpers, static tables, pure functions (*Of), state, gates, install and wrapper, entry,
--- activation, callbacks, step, jump, load, contract functions. Top level: functions and NE only.
+-- activation, callbacks, step, jump, load, contract functions. Top level: functions and HA only.
 
-local NE = {v={}};
+local HA = {v={}};
 
 -- Helpers --------------------------------------------------------------------------
 
-function TRF_NeNE() return %NE; end;
+function TRF_HaHA() return %HA; end;
 
--- logfmt event line, module=nest (design/log-format.md).
-function TRF_NeE(event, ...)
-	tinsert(arg, 1, event); tinsert(arg, 1, "nest"); call(TRF_Lf, arg);
+-- logfmt event line, module=haunt (design/log-format.md).
+function TRF_HaE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "haunt"); call(TRF_Lf, arg);
 end;
 
 -- Error handler for protected calls: an event=error line, counted in stat err.
-function TRF_NeErr(m)
-	TRF_NeE("error", "message", tostring(m));
+function TRF_HaErr(m)
+	TRF_HaE("error", "message", tostring(m));
 	TRF_N("TRF_Stat", "err");
 end;
 
 -- Silent handler (handles that may be stale, a builder that may fail): nil is the answer.
-function TRF_NeNoErr(m) end;
+function TRF_HaNoErr(m) end;
 
-function TRF_NeLog()
+function TRF_HaLog()
 	local v = TRF_N("TRF_Opt", "log");
 	if type(v) ~= "number" and type(TRF_Cfg) == "function" then v = TRF_Cfg().log; end;
 	if type(v) ~= "number" then v = 1; end;
@@ -52,64 +52,64 @@ function TRF_NeLog()
 end;
 
 -- Debug event line (log 2).
-function TRF_NeDE(event, ...)
-	if TRF_NeLog() < 2 then return; end;
-	tinsert(arg, 1, event); call(TRF_NeE, arg);
+function TRF_HaDE(event, ...)
+	if TRF_HaLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_HaE, arg);
 end;
 
-function TRF_NeCl(x, lo, hi)
+function TRF_HaCl(x, lo, hi)
 	if x < lo then return lo; end;
 	if x > hi then return hi; end;
 	return x;
 end;
 
-function TRF_NeNum(x, lo, hi)
+function TRF_HaNum(x, lo, hi)
 	return type(x) == "number" and x >= lo and x <= hi;
 end;
 
 -- Enumerated cfg keys of this module: {lo, hi}; other number keys are 0..1.
-function TRF_NeEnum()
-	return {nest_mode={1, 2}, nest_trig={1, 2}};
+function TRF_HaEnum()
+	return {haunt_mode={1, 2}, haunt_trig={1, 2}};
 end;
 
--- cfg value: TRF_Opt (merges TRF_Nest_OptDef), else the raw config, else the default; a wrong type or a number
+-- cfg value: TRF_Opt (merges TRF_Haunt_OptDef), else the raw config, else the default; a wrong type or a number
 -- outside its range reads as the default.
-function TRF_NeOpt(key)
-	local d = TRF_Nest_OptDef()[key];
+function TRF_HaOpt(key)
+	local d = TRF_Haunt_OptDef()[key];
 	local v = nil;
 	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
 	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
 	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
 	if type(v) == "number" then
-		local e = TRF_NeEnum()[key] or {0, 1};
+		local e = TRF_HaEnum()[key] or {0, 1};
 		if v ~= floor(v) or v < e[1] or v > e[2] then return d; end;
 	end;
 	return v;
 end;
 
 -- Clamp ranges of the tune keys (lists: every entry).
-function TRF_NeClampT()
-	return {nest_f={0, 100}, nest_f_swept={0, 100}, nest_dp={-5, 5}, nest_regen_pct={0, 100}, nest_regen_legs={1, 100},
-		nest_cache_r={0, 5000}, nest_grudge_nk={1, 99}, nest_cap={0, 1}};
+function TRF_HaClampT()
+	return {haunt_f={0, 100}, haunt_f_swept={0, 100}, haunt_dp={-5, 5}, haunt_regen_pct={0, 100}, haunt_regen_legs={1, 100},
+		haunt_cache_r={0, 5000}, haunt_grudge_nk={1, 99}, haunt_cap={0, 1}};
 end;
 
--- Power step of tier T (design/strength-spec.md 4.3): the dp column of trf_str's tier table; a cfg tune nest_dp set
+-- Power step of tier T (design/strength-spec.md 4.3): the dp column of trf_str's tier table; a cfg tune haunt_dp set
 -- explicitly (a list in the cfg tune table) wins, and without trf_str the tune value (default {-1, 0, 1, 1}) is used.
-function TRF_NeDpOf(T, tn)
+function TRF_HaDpOf(T, tn)
 	local o = TRF_N("TRF_CfgGet", "tune", nil);
 	local R = TRF_N("TRF_StrRow", T or 1);
-	if (type(o) ~= "table" or type(o.nest_dp) ~= "table") and type(R) == "table" and type(R.dp) == "number" then return R.dp; end;
-	return tn.nest_dp[T or 1] or 0;
+	if (type(o) ~= "table" or type(o.haunt_dp) ~= "table") and type(R) == "table" and type(R.dp) == "number" then return R.dp; end;
+	return tn.haunt_dp[T or 1] or 0;
 end;
 
--- Tune values of this module, clamped; list keys copied with each entry clamped. Cached in NE while TRF_Tune returns
+-- Tune values of this module, clamped; list keys copied with each entry clamped. Cached in HA while TRF_Tune returns
 -- the same table; callers must not write into it.
-function TRF_NeTune()
-	local ne = %NE;
+function TRF_HaTune()
+	local ha = %HA;
 	local t = nil;
-	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_NeErr); end;
-	if type(ne.tc) == "table" and ne.tc.s == t then return ne.tc.t; end;
-	local d, cl, o = TRF_Nest_TuneDef(), TRF_NeClampT(), {};
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_HaErr); end;
+	if type(ha.tc) == "table" and ha.tc.s == t then return ha.tc.t; end;
+	local d, cl, o = TRF_Haunt_TuneDef(), TRF_HaClampT(), {};
 	for k, v in d do
 		local x = nil;
 		if type(t) == "table" then x = t[k]; end;
@@ -120,70 +120,70 @@ function TRF_NeTune()
 			for i = 1, getn(v) do
 				local e = x[i];
 				if type(e) ~= "number" then e = v[i]; end;
-				w[i] = TRF_NeCl(floor(e), r[1], r[2]);
+				w[i] = TRF_HaCl(floor(e), r[1], r[2]);
 			end;
 			x = w;
 		elseif r then
-			x = TRF_NeCl(floor(x), r[1], r[2]);
+			x = TRF_HaCl(floor(x), r[1], r[2]);
 		end;
 		o[k] = x;
 	end;
-	ne.tc = {s=t, t=o};
+	ha.tc = {s=t, t=o};
 	return o;
 end;
 
-function TRF_NeT(key)
-	return TRF_NeTune()[key];
+function TRF_HaT(key)
+	return TRF_HaTune()[key];
 end;
 
-function TRF_NeLegs()
+function TRF_HaLegs()
 	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
 	return 0;
 end;
 
-function TRF_NeGen()
+function TRF_HaGen()
 	if type(TRF) == "table" and type(TRF.gen) == "number" then return TRF.gen; end;
 	return 0;
 end;
 
 -- Lowercase map name of system idx (data key, log values), or the index.
-function TRF_NeName(idx)
+function TRF_HaName(idx)
 	local n = TRF_N("TRF_SysName", idx);
 	if type(n) == "string" and n ~= "?" then return strlower(n); end;
 	return tostring(idx);
 end;
 
-function TRF_NeCur()
+function TRF_HaCur()
 	local i = TRF_N("TRF_CurIdx");
 	if type(i) == "number" then return i; end;
 	return nil;
 end;
 
-function TRF_NeTxt(key, a)
+function TRF_HaTxt(key, a)
 	if type(TRF_Txt) == "function" then return TRF_Txt(key, a); end;
 	return tostring(key);
 end;
 
 -- Screen line (pilot nil) or radio line of pilot (cfg ui_out 2), through trf_ui's TRF_Say.
-function TRF_NeSay(text, secs, pilot)
+function TRF_HaSay(text, secs, pilot)
 	if type(text) ~= "string" or text == "" then return nil; end;
-	return TRF_N("TRF_Say", text, secs or TRF_NeK().secs, pilot);
+	return TRF_N("TRF_Say", text, secs or TRF_HaK().secs, pilot);
 end;
 
 -- 1 while a story mission runs (GetPlayerQuestState() == TRUE).
-function TRF_NeQuest()
+function TRF_HaQuest()
 	if type(GetPlayerQuestState) ~= "function" then return nil; end;
 	if GetPlayerQuestState() == TRUE then return 1; end;
 	return nil;
 end;
 
-function TRF_NeClanName(slot)
+function TRF_HaClanName(slot)
 	local n = TRF_N("TRF_ClanName", slot);
 	if type(n) == "string" then return n; end;
 	return "pirates";
 end;
 
-function TRF_NeDist(a, b)
+function TRF_HaDist(a, b)
 	if type(a) ~= "table" or type(b) ~= "table" or type(a.x) ~= "number" or type(b.x) ~= "number" then return nil; end;
 	local dx, dy, dz = a.x - b.x, (a.y or 0) - (b.y or 0), (a.z or 0) - (b.z or 0);
 	return sqrt(dx * dx + dy * dy + dz * dz);
@@ -191,46 +191,46 @@ end;
 
 -- Accessors (one native each, protected) -----------------------------------------------
 
-function TRF_NeObj(o)
+function TRF_HaObj(o)
 	if o == nil or type(o) == "number" or type(o) == "string" or type(o) == "function" then return nil; end;
 	return 1;
 end;
 
-function TRF_NeAliveRaw(o)
+function TRF_HaAliveRaw(o)
 	return o:IsAlive();
 end;
 
 -- 1 when o is a live engine object (IsAlive answers true; the stub answers nil).
-function TRF_NeAlive(o)
-	if not TRF_NeObj(o) then return nil; end;
-	local v = call(TRF_NeAliveRaw, {o}, "x", TRF_NeNoErr);
+function TRF_HaAlive(o)
+	if not TRF_HaObj(o) then return nil; end;
+	local v = call(TRF_HaAliveRaw, {o}, "x", TRF_HaNoErr);
 	if v == nil or v == 0 or (FALSE ~= nil and v == FALSE) then return nil; end;
 	return 1;
 end;
 
-function TRF_NeDelRaw(o)
+function TRF_HaDelRaw(o)
 	o:Delete();
 	return 1;
 end;
 
-function TRF_NeDel(o)
-	if not TRF_NeObj(o) then return nil; end;
-	return call(TRF_NeDelRaw, {o}, "x", TRF_NeNoErr);
+function TRF_HaDel(o)
+	if not TRF_HaObj(o) then return nil; end;
+	return call(TRF_HaDelRaw, {o}, "x", TRF_HaNoErr);
 end;
 
-function TRF_NeTrig(kind, cb, a, b)
+function TRF_HaTrig(kind, cb, a, b)
 	if type(NewTrigger) ~= "function" then return nil; end;
-	return call(NewTrigger, {kind, nil, cb, a, b}, "x", TRF_NeErr);
+	return call(NewTrigger, {kind, nil, cb, a, b}, "x", TRF_HaErr);
 end;
 
 -- Callback string with the table index and the current TRF.gen last (traffic's rule, T_BadCallbacks):
--- TRF_NeCb("TRF_Nest_Died", 3) -> "TRF_Nest_Died(3,<gen>)--"; with j: "TRF_NeShipDied(3,2,<gen>)--".
-function TRF_NeCb(name, i, j)
-	if j then return name.."("..i..","..j..","..TRF_NeGen()..")--"; end;
-	return name.."("..i..","..TRF_NeGen()..")--";
+-- TRF_HaCb("TRF_Haunt_Died", 3) -> "TRF_Haunt_Died(3,<gen>)--"; with j: "TRF_HaShipDied(3,2,<gen>)--".
+function TRF_HaCb(name, i, j)
+	if j then return name.."("..i..","..j..","..TRF_HaGen()..")--"; end;
+	return name.."("..i..","..TRF_HaGen()..")--";
 end;
 
-function TRF_NeShipsRaw(fl, jmax)
+function TRF_HaShipsRaw(fl, jmax)
 	local out = {};
 	local n = fl:GetPilotCount();
 	if type(n) ~= "number" then return out; end;
@@ -246,45 +246,45 @@ end;
 -- Ships of flight fl (at most K.j_max), index j as the builder numbered them; the ship_<sign>_<j> globals fill gaps,
 -- never with a ship already listed (after a load the pilot list is compacted, so a global can name a listed ship; a
 -- second entry would give it two labels, two died triggers and two scar entries).
-function TRF_NeShips(fl, sign)
-	local K = TRF_NeK();
-	local out = call(TRF_NeShipsRaw, {fl, K.j_max}, "x", TRF_NeNoErr);
+function TRF_HaShips(fl, sign)
+	local K = TRF_HaK();
+	local out = call(TRF_HaShipsRaw, {fl, K.j_max}, "x", TRF_HaNoErr);
 	if type(out) ~= "table" then out = {}; end;
 	for j = 1, K.j_max do
-		if not TRF_NeObj(out[j]) and type(sign) == "string" then
+		if not TRF_HaObj(out[j]) and type(sign) == "string" then
 			local s = getglobal("ship_"..sign.."_"..j);
 			local dup = nil;
 			for k = 1, K.j_max do if out[k] ~= nil and out[k] == s then dup = 1; end; end;
-			if TRF_NeObj(s) and not dup then out[j] = s; end;
+			if TRF_HaObj(s) and not dup then out[j] = s; end;
 		end;
 	end;
 	return out;
 end;
 
-function TRF_NeLeaderRaw(fl)
+function TRF_HaLeaderRaw(fl)
 	return fl:GetLeader();
 end;
 
 -- Group relation a -> b (objects or names), or nil.
-function TRF_NeGetRel(a, b)
+function TRF_HaGetRel(a, b)
 	if type(GetGroupRelation) ~= "function" or a == nil or b == nil then return nil; end;
-	local v = call(GetGroupRelation, {a, b}, "x", TRF_NeNoErr);
+	local v = call(GetGroupRelation, {a, b}, "x", TRF_HaNoErr);
 	if type(v) == "number" then return v; end;
 	return nil;
 end;
 
-function TRF_NeSetRelRaw(a, b, r)
+function TRF_HaSetRelRaw(a, b, r)
 	SetGroupRelation(a, b, r);
 	return 1;
 end;
 
-function TRF_NeSetRel(a, b, r)
+function TRF_HaSetRel(a, b, r)
 	if type(SetGroupRelation) ~= "function" or type(r) ~= "number" then return nil; end;
-	return call(TRF_NeSetRelRaw, {a, b, r}, "x", TRF_NeErr);
+	return call(TRF_HaSetRelRaw, {a, b, r}, "x", TRF_HaErr);
 end;
 
 -- Relation name for the log.
-function TRF_NeRelName(r)
+function TRF_HaRelName(r)
 	if RELATION_WAR ~= nil and r == RELATION_WAR then return "war"; end;
 	if RELATION_FRIEND ~= nil and r == RELATION_FRIEND then return "friend"; end;
 	if RELATION_NEUTRAL ~= nil and r == RELATION_NEUTRAL then return "neutral"; end;
@@ -294,33 +294,33 @@ end;
 -- Static tables --------------------------------------------------------------------
 
 -- Constants without a cfg key: flights per system at most (the TRF.nv bit string), ships per flight (labels
--- trf_nest_<i>_<j>), the nest group and its build global, line seconds, clan score per destroyed flight, counter and
+-- trf_haunt_<i>_<j>), the haunt group and its build global, line seconds, clan score per destroyed flight, counter and
 -- nk bounds, the phase line keys (index phase + 1).
-function TRF_NeK()
-	return {f_max=31, j_max=6, grp="TRF_Nest_".."1", gg="TRF_GNest_".."1", secs=8, hit_secs=6, score=-2, score_el=-3, cnt_max=99999, nk_max=99,
-		lines={"nestquiet", nil, "nestfull", "nestraid", "nestbust", nil}, swept_nl=7};
+function TRF_HaK()
+	return {f_max=31, j_max=6, grp="TRF_Haunt_".."1", gg="TRF_GHaunt_".."1", secs=8, hit_secs=6, score=-2, score_el=-3, cnt_max=99999, nk_max=99,
+		lines={"hauntquiet", nil, "hauntfull", "hauntraid", "hauntbust", nil}, swept_nl=7};
 end;
 
--- Entry of system name nm in TRF_NestData (cached per MapInitialization), or nil.
-function TRF_NeData(nm)
-	local ne = %NE;
-	if type(ne.data) ~= "table" then
-		ne.data = {};
-		if type(TRF_NestData) == "function" then
-			local d = call(TRF_NestData, {}, "x", TRF_NeErr);
-			if type(d) == "table" then ne.data = d; end;
+-- Entry of system name nm in TRF_HauntData (cached per MapInitialization), or nil.
+function TRF_HaData(nm)
+	local ha = %HA;
+	if type(ha.data) ~= "table" then
+		ha.data = {};
+		if type(TRF_HauntData) == "function" then
+			local d = call(TRF_HauntData, {}, "x", TRF_HaErr);
+			if type(d) == "table" then ha.data = d; end;
 		end;
 	end;
-	local e = ne.data[nm];
+	local e = ha.data[nm];
 	if type(e) == "table" and type(e.f) == "table" and getn(e.f) > 0 then return e; end;
 	return nil;
 end;
 
--- BEGIN gen_nest.py (do not edit by hand)
+-- BEGIN gen_haunt.py (do not edit by hand)
 -- Per system (lowercase map name): g the vanilla group global, a {x, z} the rank anchor, f the listed flights
 -- {s sign, x, y, z spawn, t type, p power, rk rank, rr route radius, pin, c conditional, r route} in file order
--- (design 6 static data; tools/gen_nest.py, design/nest-spec.md 5.2).
-function TRF_NestData()
+-- (design 6 static data; tools/gen_haunt.py, design/haunt-spec.md 5.2).
+function TRF_HauntData()
 	return {
 		ahilles = {g="Pirate_Group_1_1", a={0, 0}, f={
 			{s="Pirate01", x=782, y=-100, z=-758, t=1, p=10, rk=2, rr=1408, r={{300, 420, 100}, {-400, 0, 0}, {800, -120, -800}}},
@@ -987,20 +987,20 @@ function TRF_NestData()
 		}},
 	};
 end;
--- END gen_nest.py
+-- END gen_haunt.py
 
 -- Pure functions (*Of) ----------------------------------------------------------------
 
--- Count factor in percent of phase ph (0 Quiet .. 5 Recovery): nest_f[ph + 1]; the swept factor fs in Bust (ph 4)
+-- Count factor in percent of phase ph (0 Quiet .. 5 Recovery): haunt_f[ph + 1]; the swept factor fs in Bust (ph 4)
 -- when the system is the target of the region's won sweep.
-function TRF_NeFOf(ph, swept, F, fs)
+function TRF_HaFOf(ph, swept, F, fs)
 	if ph == 4 and swept then return fs; end;
 	return F[ph + 1] or 100;
 end;
 
 -- Kill memory refill (design 6 entry step 2): t whole steps of rl legs since stamp l; each takes ceil(pct x nv / 100)
 -- killed flights back; a refill amount of 0 (pct 0) is no step (the stamp and c stay). Returns k', l', t.
-function TRF_NeRefillOf(k, l, legs, nv, pct, rl)
+function TRF_HaRefillOf(k, l, legs, nv, pct, rl)
 	if rl < 1 then rl = 1; end;
 	local t = floor((legs - l) / rl);
 	if t <= 0 then return k, l, 0; end;
@@ -1010,18 +1010,18 @@ function TRF_NeRefillOf(k, l, legs, nv, pct, rl)
 end;
 
 -- Plan of one entry (design 4 scaling, 6 entry step 3), pure. rows: the system's static flights; f: count factor %;
--- k: kill memory; dp: power delta; caches: list of {x, y, z} of unopened cache slots; cr: nest_cache_r.
+-- k: kill memory; dp: power delta; caches: list of {x, y, z} of unopened cache slots; cr: haunt_cache_r.
 -- n = clamp(round(f x nv / 100) - k, pins, nv); pinned signs first, then the ranks ascending; a sign within cr + rr of a
 -- cache is not fielded unless pinned. Returns {n (target), nv, pins, fl[i] = 1 fielded, sk[i] = "count" | "cache",
 -- pw[i] = power of the static row}, never more fielded flights than nv.
-function TRF_NestPlanOf(rows, f, k, dp, caches, cr)
+function TRF_HauntPlanOf(rows, f, k, dp, caches, cr)
 	local nv = getn(rows);
 	local P = {nv=nv, pins=0, fl={}, sk={}, pw={}, nf=0};
 	for i = 1, nv do
 		if rows[i].pin == 1 then P.pins = P.pins + 1; end;
-		P.pw[i] = TRF_NeCl(floor((rows[i].p or 1) + dp), 1, 20);
+		P.pw[i] = TRF_HaCl(floor((rows[i].p or 1) + dp), 1, 20);
 	end;
-	P.n = TRF_NeCl(floor(f * nv / 100 + 0.5) - (k or 0), P.pins, nv);
+	P.n = TRF_HaCl(floor(f * nv / 100 + 0.5) - (k or 0), P.pins, nv);
 	local cand = {};
 	for i = 1, nv do
 		local r = rows[i];
@@ -1030,7 +1030,7 @@ function TRF_NestPlanOf(rows, f, k, dp, caches, cr)
 		else
 			local near = nil;
 			for c = 1, getn(caches or {}) do
-				local d = TRF_NeDist({x=r.x, y=r.y, z=r.z}, caches[c]);
+				local d = TRF_HaDist({x=r.x, y=r.y, z=r.z}, caches[c]);
 				if d and d <= cr + (r.rr or 0) then near = 1; end;
 			end;
 			if near then P.sk[i] = "cache"; else tinsert(cand, i); end;
@@ -1044,17 +1044,17 @@ function TRF_NestPlanOf(rows, f, k, dp, caches, cr)
 	return P;
 end;
 
--- Arrival line of an entry (design 6 activation): with a memory record "nesthurt" ("nestclear" when the last fielded
+-- Arrival line of an entry (design 6 activation): with a memory record "haunthurt" ("hauntclear" when the last fielded
 -- flight died with player fire and nothing is fielded); else the phase line once per phase (nl = phase + 1; the swept
 -- target's line uses K.swept_nl). Returns key or nil, and the nl value to store (nil: unchanged).
-function TRF_NeLineOf(rec, nf, ph, nl, swept, K)
+function TRF_HaLineOf(rec, nf, ph, nl, swept, K)
 	if type(rec) == "table" then
-		if rec.c == 1 and nf == 0 then return "nestclear", nil; end;
-		return "nesthurt", nil;
+		if rec.c == 1 and nf == 0 then return "hauntclear", nil; end;
+		return "haunthurt", nil;
 	end;
 	if ph == 4 and swept then
 		if nl == K.swept_nl then return nil, nil; end;
-		return "nestswept", K.swept_nl;
+		return "hauntswept", K.swept_nl;
 	end;
 	local key = K.lines[ph + 1];
 	if not key or nl == ph + 1 or (ph == 4 and nl == K.swept_nl) then return nil, nil; end;
@@ -1062,7 +1062,7 @@ function TRF_NeLineOf(rec, nf, ph, nl, swept, K)
 end;
 
 -- Bit string of n flags (1 or nil) as "1"/"0" characters.
-function TRF_NeBitsOf(t, n)
+function TRF_HaBitsOf(t, n)
 	local s = "";
 	for i = 1, n do if t[i] then s = s.."1"; else s = s.."0"; end; end;
 	return s;
@@ -1070,40 +1070,40 @@ end;
 
 -- State --------------------------------------------------------------------------------
 
-function TRF_NeRec(idx)
-	if type(TRF) ~= "table" or type(TRF.nest) ~= "table" or type(idx) ~= "number" then return nil; end;
-	local r = TRF.nest[idx];
+function TRF_HaRec(idx)
+	if type(TRF) ~= "table" or type(TRF.haunt) ~= "table" or type(idx) ~= "number" then return nil; end;
+	local r = TRF.haunt[idx];
 	if type(r) == "table" then return r; end;
 	return nil;
 end;
 
 -- Counters TRF.nst {n fielded, k killed, p killed with player fire}.
-function TRF_NeCount(k)
+function TRF_HaCount(k)
 	if type(TRF) ~= "table" then return; end;
 	if type(TRF.nst) ~= "table" then TRF.nst = {n=0, k=0, p=0}; end;
-	TRF.nst[k] = min(TRF_NeK().cnt_max, (TRF.nst[k] or 0) + 1);
+	TRF.nst[k] = min(TRF_HaK().cnt_max, (TRF.nst[k] or 0) + 1);
 end;
 
-function TRF_NeClan(slot)
+function TRF_HaClan(slot)
 	local c = TRF_N("TRF_ClanRec", slot);
 	if type(c) == "table" then return c; end;
 	return nil;
 end;
 
 -- Region slot of idx, its phase and the effective tier, and 1 when idx is the region's won-sweep target (clan ns).
-function TRF_NeRegion(idx)
+function TRF_HaRegion(idx)
 	local slot = TRF_N("TRF_RgOf", idx);
 	if type(slot) ~= "number" then return nil; end;
 	local ph = TRF_N("TRF_Phase", slot) or 0;
 	local T = TRF_N("TRF_EffTier", idx) or 1;
-	local c = TRF_NeClan(slot);
+	local c = TRF_HaClan(slot);
 	local sw = nil;
 	if c and c.ns == idx then sw = 1; end;
 	return slot, ph, T, sw;
 end;
 
 -- Unopened cache slots of system idx (trf_stash records with st 0 or 1): list of {x, y, z}.
-function TRF_NeCaches(idx)
+function TRF_HaCaches(idx)
 	local out = {};
 	if type(TRF) ~= "table" or type(TRF.stash) ~= "table" then return out; end;
 	for i, r in TRF.stash do
@@ -1117,49 +1117,49 @@ end;
 
 -- Gates --------------------------------------------------------------------------------
 
--- 1 when the module runs: TRF, the traffic modules, cfg nest 1.
-function TRF_NeOn()
+-- 1 when the module runs: TRF, the traffic modules, cfg haunt 1.
+function TRF_HaOn()
 	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return nil; end;
-	return TRF_NeOpt("nest") == 1;
+	return TRF_HaOpt("haunt") == 1;
 end;
 
--- 1 when system name nm is excluded: a deny entry with nest = 0 (X297, El Ariash) or a cfg nest_off name.
-function TRF_NeExcluded(nm)
+-- 1 when system name nm is excluded: a deny entry with haunt = 0 (X297, El Ariash) or a cfg haunt_off name.
+function TRF_HaExcluded(nm)
 	local e = TRF_N("TRF_DenyEntry", nm);
-	if type(e) == "table" and e.nest == 0 then return 1; end;
-	local off = TRF_NeOpt("nest_off");
+	if type(e) == "table" and e.haunt == 0 then return 1; end;
+	local off = TRF_HaOpt("haunt_off");
 	if type(off) == "table" then
 		for k, v in off do if type(v) == "string" and strlower(v) == nm then return 1; end; end;
 	end;
 	return nil;
 end;
 
--- Visit mode (design 6 entry step 1): "nest", nil or "vanilla", reason (off, no_data, excluded, guard, sysmode,
+-- Visit mode (design 6 entry step 1): "haunt", nil or "vanilla", reason (off, no_data, excluded, guard, sysmode,
 -- gate_<strict reason>, no_region, supp).
-function TRF_NeMode(cur, nm, d)
-	if not TRF_NeOn() then return "vanilla", "off"; end;
+function TRF_HaMode(cur, nm, d)
+	if not TRF_HaOn() then return "vanilla", "off"; end;
 	if not d then return "vanilla", "no_data"; end;
-	if TRF_NeExcluded(nm) then return "vanilla", "excluded"; end;
+	if TRF_HaExcluded(nm) then return "vanilla", "excluded"; end;
 	if type(TRF_RgGuardOn) ~= "function" or TRF_RgGuardOn() then return "vanilla", "guard"; end;
 	-- TRF_SysModeQuiet: trf_gen's entry decision already counts van_<reason> and logs the change (TRF_SysMode).
 	local sm = nil;
 	if type(TRF_SysModeQuiet) == "function" then sm = TRF_SysModeQuiet(); elseif type(TRF_SysMode) == "function" then sm = TRF_SysMode(); end;
 	if sm ~= nil and sm ~= "mod" then return "vanilla", "sysmode"; end;
 	if type(TRF_StrictOk) == "function" then
-		local ok, w = TRF_StrictOk(cur, "nest");
+		local ok, w = TRF_StrictOk(cur, "haunt");
 		if not ok then return "vanilla", "gate_"..tostring(w); end;
 	end;
 	if not TRF_N("TRF_RgOf", cur) then return "vanilla", "no_region"; end;
-	if not TRF_NeGateOk() then return "vanilla", "supp"; end;
-	return "nest", nil;
+	if not TRF_HaGateOk() then return "vanilla", "supp"; end;
+	return "haunt", nil;
 end;
 
 -- Install and wrapper ------------------------------------------------------------------------
 
 -- 1 when f is this module's NewPirateFlight wrapper (thunk identity of an earlier run, or a Mods/Traffic chunk).
-function TRF_NeIsMine(f)
+function TRF_HaIsMine(f)
 	if type(f) ~= "function" then return nil; end;
-	if type(TRF_NeThunk) == "function" and f == TRF_NeThunk() then return 1; end;
+	if type(TRF_HaThunk) == "function" and f == TRF_HaThunk() then return 1; end;
 	if type(TRF_IsMine) == "function" and TRF_IsMine(f) then return 1; end;
 	return nil;
 end;
@@ -1168,98 +1168,98 @@ end;
 -- NewPirateFlight (system.lst, Create_flight_2.script), so the original saved here is this run's. TRF_orig_NewPirateFlight
 -- and the thunk are function globals: they survive ClearGlobals and are never saved. NewPiratesFlight and the "Pirate"
 -- branch of the side dispatcher look NewPirateFlight up at call time and need no wrap. Returns 1 when wrapped now.
-function TRF_InstallNest()
+function TRF_InstallHaunt()
 	local w = 0;
-	if type(NewPirateFlight) == "function" and not TRF_NeIsMine(NewPirateFlight) then
+	if type(NewPirateFlight) == "function" and not TRF_HaIsMine(NewPirateFlight) then
 		TRF_orig_NewPirateFlight = NewPirateFlight;
 		local t = function(g, s, l, ty, p, o)
-			if type(TRF_Nest_NPF) == "function" then return TRF_Nest_NPF(g, s, l, ty, p, o); end;
+			if type(TRF_Haunt_NPF) == "function" then return TRF_Haunt_NPF(g, s, l, ty, p, o); end;
 			if type(TRF_orig_NewPirateFlight) == "function" then return TRF_orig_NewPirateFlight(g, s, l, ty, p, o); end;
 			return FALSE;
 		end;
 		NewPirateFlight = t;
-		TRF_NeThunk = function() return %t; end;
+		TRF_HaThunk = function() return %t; end;
 		w = 1;
 	end;
-	TRF_NeDE("install", "installed", TRF_KvB(w), "wrapped", TRF_KvB(TRF_NeIsMine(NewPirateFlight)));
+	TRF_HaDE("install", "installed", TRF_KvB(w), "wrapped", TRF_KvB(TRF_HaIsMine(NewPirateFlight)));
 	return w;
 end;
 
-function TRF_NeNoop() end;
-function TRF_NeNil() return nil; end;
+function TRF_HaNoop() end;
+function TRF_HaNil() return nil; end;
 
 -- Stub flight of a skipped sign (design 6): the methods activate.script uses on placed flights as no-ops, IsAlive nil.
 -- Only between the wrapper call and TRF_OnActivate (cleared there), so no table with functions reaches a save.
-function TRF_NeStub(sign)
-	return {trf_nest_stub=sign, Patrol=TRF_NeNoop, Move=TRF_NeNoop, Escort=TRF_NeNoop, Attack=TRF_NeNoop, Delete=TRF_NeNoop,
-		SetFormation=TRF_NeNoop, SetOrientation=TRF_NeNoop, IsAlive=TRF_NeNil};
+function TRF_HaStub(sign)
+	return {trf_haunt_stub=sign, Patrol=TRF_HaNoop, Move=TRF_HaNoop, Escort=TRF_HaNoop, Attack=TRF_HaNoop, Delete=TRF_HaNoop,
+		SetFormation=TRF_HaNoop, SetOrientation=TRF_HaNoop, IsAlive=TRF_HaNil};
 end;
 
 -- The vanilla call with the caller's arguments (unprotected: its errors are vanilla's).
-function TRF_NeOrig(g, s, l, ty, p, o)
+function TRF_HaOrig(g, s, l, ty, p, o)
 	if type(TRF_orig_NewPirateFlight) ~= "function" then return FALSE; end;
 	return TRF_orig_NewPirateFlight(g, s, l, ty, p, o);
 end;
 
 -- A pass of an armed visit's call, logged at level 2 (no visit record: no line, so a vanilla-mode visit has none, E16.1).
-function TRF_NePass(why, sign)
-	TRF_NeDE("call", "sign", tostring(sign), "result", "pass", "reason", why);
+function TRF_HaPass(why, sign)
+	TRF_HaDE("call", "sign", tostring(sign), "result", "pass", "reason", why);
 	return {};
 end;
 
-function TRF_NeGroupRaw(gn)
+function TRF_HaGroupRaw(gn)
 	return CreateTeam("Pirates"):CreateGroup(gn);
 end;
 
--- The nest group of armed visit a (created on the first fielded call; its build global set), or nil.
-function TRF_NeGroup(a)
-	if TRF_NeObj(a.grp) then return a.grp; end;
+-- The haunt group of armed visit a (created on the first fielded call; its build global set), or nil.
+function TRF_HaGroup(a)
+	if TRF_HaObj(a.grp) then return a.grp; end;
 	if type(CreateTeam) ~= "function" then return nil; end;
-	local K = TRF_NeK();
-	local g = call(TRF_NeGroupRaw, {K.grp}, "x", TRF_NeErr);
-	if not TRF_NeObj(g) then return nil; end;
+	local K = TRF_HaK();
+	local g = call(TRF_HaGroupRaw, {K.grp}, "x", TRF_HaErr);
+	if not TRF_HaObj(g) then return nil; end;
 	a.grp = g;
 	setglobal(K.gg, g);
 	return g;
 end;
 
--- NewPirateFlight while installed (design 6). The decision runs protected (TRF_NeDecide): an error there gives the
+-- NewPirateFlight while installed (design 6). The decision runs protected (TRF_HaDecide): an error there gives the
 -- vanilla call. A substituted flight or a stub is returned as decided; every other case is the vanilla call with the
--- caller's arguments, unprotected (its errors are vanilla's, and a partial build is never repeated); nest_mode 2
+-- caller's arguments, unprotected (its errors are vanilla's, and a partial build is never repeated); haunt_mode 2
 -- records its flight.
-function TRF_Nest_NPF(group, sign, location, ty, power, orient)
-	local r = call(TRF_NeDecide, {group, sign, location, ty, power, orient}, "x", TRF_NeErr);
+function TRF_Haunt_NPF(group, sign, location, ty, power, orient)
+	local r = call(TRF_HaDecide, {group, sign, location, ty, power, orient}, "x", TRF_HaErr);
 	if type(r) == "table" and r.ret then return r.ret; end;
-	local fl = TRF_NeOrig(group, sign, location, ty, power, orient);
-	if type(r) == "table" and r.rec then call(TRF_NeRecord, {r.rec, sign, fl}, "x", TRF_NeErr); end;
+	local fl = TRF_HaOrig(group, sign, location, ty, power, orient);
+	if type(r) == "table" and r.rec then call(TRF_HaRecord, {r.rec, sign, fl}, "x", TRF_HaErr); end;
 	return fl;
 end;
 
--- nest_mode 2: the vanilla flight of row i recorded.
-function TRF_NeRecord(i, sign, fl)
-	local a = %NE.a;
+-- haunt_mode 2: the vanilla flight of row i recorded.
+function TRF_HaRecord(i, sign, fl)
+	local a = %HA.a;
 	if type(a) ~= "table" then return; end;
-	if TRF_NeObj(fl) then a.van[i] = fl; end;
-	TRF_NeDE("call", "sign", sign, "result", "recorded");
+	if TRF_HaObj(fl) then a.van[i] = fl; end;
+	TRF_HaDE("call", "sign", sign, "result", "recorded");
 end;
 
--- Decision of one call: {ret = flight or stub} when decided, {rec = i} for nest_mode 2, else {} (the vanilla call).
+-- Decision of one call: {ret = flight or stub} when decided, {rec = i} for haunt_mode 2, else {} (the vanilla call).
 -- No visit record: the vanilla call, no line. Not armed or another generation, a sign not in the system's table, a
 -- group other than the system's vanilla group or a second call of a sign: a pass. Planned and fielded: the vanilla
--- builder with group TRF_GNest_1 and the nest power, protected; any error or a non-object result: the vanilla call
+-- builder with group TRF_GHaunt_1 and the haunt power, protected; any error or a non-object result: the vanilla call
 -- (result=failed reason=build). Planned and skipped: the stub.
-function TRF_NeDecide(group, sign, location, ty, power, orient)
-	local a = %NE.a;
+function TRF_HaDecide(group, sign, location, ty, power, orient)
+	local a = %HA.a;
 	if type(a) ~= "table" then return {}; end;
-	if a.on ~= 1 or a.gen ~= TRF_NeGen() then return TRF_NePass("unarmed", sign); end;
-	if a.mode == 3 then return TRF_NeGateCall(a, group, sign, location, ty, power, orient); end;
+	if a.on ~= 1 or a.gen ~= TRF_HaGen() then return TRF_HaPass("unarmed", sign); end;
+	if a.mode == 3 then return TRF_HaGateCall(a, group, sign, location, ty, power, orient); end;
 	local i = a.by[sign];
-	if not i then return TRF_NePass("unlisted", sign); end;
+	if not i then return TRF_HaPass("unlisted", sign); end;
 	if group ~= a.d.g then
 		a.unk = a.unk + 1;
-		return TRF_NePass("group", sign);
+		return TRF_HaPass("group", sign);
 	end;
-	if a.st[i] then return TRF_NePass("repeat", sign); end;
+	if a.st[i] then return TRF_HaPass("repeat", sign); end;
 	if a.mode == 2 then
 		a.st[i] = "rec";
 		return {rec=i};
@@ -1267,52 +1267,52 @@ function TRF_NeDecide(group, sign, location, ty, power, orient)
 	local pin = nil;
 	if a.d.f[i].pin == 1 then pin = 1; end;
 	if a.plan.fl[i] then
-		local g = TRF_NeGroup(a);
+		local g = TRF_HaGroup(a);
 		local pw = nil;
-		if type(power) == "number" then pw = TRF_NeCl(floor(power + a.dp), 1, 20); end;
+		if type(power) == "number" then pw = TRF_HaCl(floor(power + a.dp), 1, 20); end;
 		local fl = nil;
-		if g and pw then fl = TRF_NeBuild(TRF_NeK().gg, sign, location, ty, pw, orient, a, i, pin); end;
-		if TRF_NeObj(fl) then
+		if g and pw then fl = TRF_HaBuild(TRF_HaK().gg, sign, location, ty, pw, orient, a, i, pin); end;
+		if TRF_HaObj(fl) then
 			a.st[i] = "sub";
 			a.fl[i] = fl;
-			TRF_NeDE("call", "sign", sign, "result", "substituted", "power", pw, "vanilla_power", power, "pinned", TRF_KvB(pin));
+			TRF_HaDE("call", "sign", sign, "result", "substituted", "power", pw, "vanilla_power", power, "pinned", TRF_KvB(pin));
 			return {ret=fl};
 		end;
 		a.st[i] = "van";
 		a.fail = a.fail + 1;
-		TRF_NeE("call", "sign", sign, "result", "failed", "reason", "build");
+		TRF_HaE("call", "sign", sign, "result", "failed", "reason", "build");
 		return {};
 	end;
-	local sb = TRF_NeStub(sign);
+	local sb = TRF_HaStub(sign);
 	setglobal("flight_"..sign, sb);
 	a.st[i] = "stub";
 	a.sb[sign] = sb;
-	TRF_NeDE("call", "sign", sign, "result", "stub", "reason", a.plan.sk[i] or "count");
+	TRF_HaDE("call", "sign", sign, "result", "stub", "reason", a.plan.sk[i] or "count");
 	return {ret=sb};
 end;
 
 -- trf_fits' graded build of flight i (design/fits-spec.md 5.2), protected: nil when not handled (fits off, pinned,
 -- type 3, a normal flight), else {fl}; the grade digit goes to a.ge[i].
-function TRF_NeFits(gg, sign, location, ty, pw, orient, a, i, pin)
-	if type(TRF_Ft_Nest) ~= "function" then return nil; end;
-	local ft = call(TRF_Ft_Nest, {gg, sign, location, ty, pw, orient, a.idx, i, pin}, "x", TRF_NeErr);
+function TRF_HaFits(gg, sign, location, ty, pw, orient, a, i, pin)
+	if type(TRF_Ft_Haunt) ~= "function" then return nil; end;
+	local ft = call(TRF_Ft_Haunt, {gg, sign, location, ty, pw, orient, a.idx, i, pin}, "x", TRF_HaErr);
 	if type(ft) ~= "table" then return nil; end;
 	if type(a.ge) ~= "table" then a.ge = {}; end;
 	a.ge[i] = ft.d;
 	return ft;
 end;
 
--- Build of flight i at both sites (TRF_NeDecide, TRF_NeReplace): trf_fits' graded build when it handles the flight
--- (TRF_NeFits), else the vanilla builder in the nest group, protected. Returns the flight, or nil / FALSE on a failure.
-function TRF_NeBuild(gg, sign, location, ty, pw, orient, a, i, pin)
-	local ft = TRF_NeFits(gg, sign, location, ty, pw, orient, a, i, pin);
+-- Build of flight i at both sites (TRF_HaDecide, TRF_HaReplace): trf_fits' graded build when it handles the flight
+-- (TRF_HaFits), else the vanilla builder in the haunt group, protected. Returns the flight, or nil / FALSE on a failure.
+function TRF_HaBuild(gg, sign, location, ty, pw, orient, a, i, pin)
+	local ft = TRF_HaFits(gg, sign, location, ty, pw, orient, a, i, pin);
 	if ft then return ft.fl; end;
-	return call(TRF_orig_NewPirateFlight, {gg, sign, location, ty, pw, orient}, "x", TRF_NeNoErr);
+	return call(TRF_orig_NewPirateFlight, {gg, sign, location, ty, pw, orient}, "x", TRF_HaNoErr);
 end;
 
--- 1 when no quest scene runs (__disableAction) and suppression is below 2: the last tests of TRF_NeMode, repeated by
+-- 1 when no quest scene runs (__disableAction) and suppression is below 2: the last tests of TRF_HaMode, repeated by
 -- the quest-gated record at its entry and at every call.
-function TRF_NeGateOk()
+function TRF_HaGateOk()
 	if __disableAction == TRUE then return nil; end;
 	local sp = TRF_N("TRF_Supp");
 	if type(sp) == "number" and sp >= 2 then return nil; end;
@@ -1321,14 +1321,14 @@ end;
 
 -- A call of a quest-gated visit's fits-only record (mode 3, design/fits-spec.md 5.4): a listed sign of the vanilla
 -- group, first call, a number power: trf_fits' captured row in the caller's group at the vanilla power, else (and for
--- every other call) the vanilla call. No stub, no nest group, no triggers, no TRF.nv.
-function TRF_NeGateCall(a, group, sign, location, ty, power, orient)
+-- every other call) the vanilla call. No stub, no haunt group, no triggers, no TRF.nv.
+function TRF_HaGateCall(a, group, sign, location, ty, power, orient)
 	local i = a.by[sign];
-	if not i or group ~= a.d.g or a.st[i] or type(power) ~= "number" or not TRF_NeGateOk() then return {}; end;
+	if not i or group ~= a.d.g or a.st[i] or type(power) ~= "number" or not TRF_HaGateOk() then return {}; end;
 	a.st[i] = "van";
 	local ft = nil;
-	if type(TRF_Ft_Gate) == "function" then ft = call(TRF_Ft_Gate, {group, sign, location, ty, power, orient, a.idx, i, a.d.f[i].pin}, "x", TRF_NeErr); end;
-	if type(ft) == "table" and TRF_NeObj(ft.fl) then
+	if type(TRF_Ft_Gate) == "function" then ft = call(TRF_Ft_Gate, {group, sign, location, ty, power, orient, a.idx, i, a.d.f[i].pin}, "x", TRF_HaErr); end;
+	if type(ft) == "table" and TRF_HaObj(ft.fl) then
 		a.st[i] = "fit";
 		a.nb = a.nb + 1;
 		return {ret=ft.fl};
@@ -1339,24 +1339,24 @@ end;
 -- Entry (TRF_OnEnter, after trf_safety) --------------------------------------------------------------
 
 -- Visit state reset (entry, load, jump).
-function TRF_NeReset()
-	local ne = %NE;
-	ne.a = nil;
-	ne.v = {fl={}, sh={}, hit={}, dead={}, sd={}, gone={}};
+function TRF_HaReset()
+	local ha = %HA;
+	ha.a = nil;
+	ha.v = {fl={}, sh={}, hit={}, dead={}, sd={}, gone={}};
 end;
 
--- Orphan delete (design 6 jumps, E16.2): live ships labelled trf_nest_<i>_<j> found at an entry (a location snapshot
+-- Orphan delete (design 6 jumps, E16.2): live ships labelled trf_haunt_<i>_<j> found at an entry (a location snapshot
 -- that kept the mod's ships) are deleted before activate.script runs. Returns the count.
-function TRF_NeOrphans(nv)
-	local K = TRF_NeK();
+function TRF_HaOrphans(nv)
+	local K = TRF_HaK();
 	local n = 0;
 	for i = 1, min(nv, K.f_max) do
 		for j = 1, K.j_max do
-			local lb = "trf_nest_"..i.."_"..j;
+			local lb = "trf_haunt_"..i.."_"..j;
 			local o = TRF_N("GetObjectByLabel", lb);
-			if TRF_NeAlive(o) and TRF_NeDel(o) then
+			if TRF_HaAlive(o) and TRF_HaDel(o) then
 				n = n + 1;
-				TRF_NeE("orphan", "label", lb);
+				TRF_HaE("orphan", "label", lb);
 			end;
 		end;
 	end;
@@ -1365,81 +1365,81 @@ end;
 
 -- Refill of the memory record of system idx at entry (applied only here, never during a visit): the record goes when
 -- k reaches 0; c is cleared once a step refilled.
-function TRF_NeRefill(idx, nv)
-	local r = TRF_NeRec(idx);
+function TRF_HaRefill(idx, nv)
+	local r = TRF_HaRec(idx);
 	if not r then return; end;
-	local k, l, t = TRF_NeRefillOf(r.k, r.l, TRF_NeLegs(), nv, TRF_NeT("nest_regen_pct"), TRF_NeT("nest_regen_legs"));
+	local k, l, t = TRF_HaRefillOf(r.k, r.l, TRF_HaLegs(), nv, TRF_HaT("haunt_regen_pct"), TRF_HaT("haunt_regen_legs"));
 	if t <= 0 then return; end;
-	TRF_NeE("regen", "system", TRF_NeName(idx), "memory_before", r.k, "memory_after", k, "ticks", t);
-	if k <= 0 then TRF.nest[idx] = nil; return; end;
+	TRF_HaE("regen", "system", TRF_HaName(idx), "memory_before", r.k, "memory_after", k, "ticks", t);
+	if k <= 0 then TRF.haunt[idx] = nil; return; end;
 	r.k = k; r.l = l; r.c = nil;
 end;
 
 -- E16.2 probe: live ships of team Pirates in the location (TRF_Near, cls 3..7), level 2; nothing without the native.
-function TRF_NeProbe(at)
-	if TRF_NeLog() < 2 or type(TRF_Near) ~= "function" then return; end;
+function TRF_HaProbe(at)
+	if TRF_HaLog() < 2 or type(TRF_Near) ~= "function" then return; end;
 	local l, via = TRF_Near(nil, nil, {cls={3, 4, 5, 6, 7}, alive=1});
 	if type(l) ~= "table" then return; end;
 	local n = 0;
 	for i = 1, getn(l) do if l[i].team == "Pirates" then n = n + 1; end; end;
-	TRF_NeDE("probe", "at", at, "pirates", n);
+	TRF_HaDE("probe", "at", at, "pirates", n);
 end;
 
-function TRF_Nest_OnEnter()
-	TRF_NeReset();
+function TRF_Haunt_OnEnter()
+	TRF_HaReset();
 	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return; end;
-	call(TRF_NeEnterBody, {}, "x", TRF_NeErr);
+	call(TRF_HaEnterBody, {}, "x", TRF_HaErr);
 end;
 
--- Mode, refill, plan, arm (design 6 TRF_Nest_OnEnter). TRF.nv is rewritten at every entry (nil outside a nest visit).
-function TRF_NeEnterBody()
-	local ne = %NE;
+-- Mode, refill, plan, arm (design 6 TRF_Haunt_OnEnter). TRF.nv is rewritten at every entry (nil outside a haunt visit).
+function TRF_HaEnterBody()
+	local ha = %HA;
 	TRF.nv = nil;
-	local cur = TRF_NeCur();
+	local cur = TRF_HaCur();
 	if type(cur) ~= "number" then return; end;
-	local nm = TRF_NeName(cur);
-	local d = TRF_NeData(nm);
+	local nm = TRF_HaName(cur);
+	local d = TRF_HaData(nm);
 	if not d then
-		TRF_NeDE("mode", "system", nm, "mode", "vanilla", "reason", "no_data");
+		TRF_HaDE("mode", "system", nm, "mode", "vanilla", "reason", "no_data");
 		return;
 	end;
 	local nv = getn(d.f);
-	TRF_NeOrphans(nv);
-	TRF_NeRefill(cur, nv);
-	local mode, why = TRF_NeMode(cur, nm, d);
-	local slot, ph, T, sw = TRF_NeRegion(cur);
-	local tn = TRF_NeTune();
-	local f = TRF_NeFOf(ph or 0, sw, tn.nest_f, tn.nest_f_swept);
-	local dp = TRF_NeDpOf(T, tn);
-	local r = TRF_NeRec(cur);
+	TRF_HaOrphans(nv);
+	TRF_HaRefill(cur, nv);
+	local mode, why = TRF_HaMode(cur, nm, d);
+	local slot, ph, T, sw = TRF_HaRegion(cur);
+	local tn = TRF_HaTune();
+	local f = TRF_HaFOf(ph or 0, sw, tn.haunt_f, tn.haunt_f_swept);
+	local dp = TRF_HaDpOf(T, tn);
+	local r = TRF_HaRec(cur);
 	local k = 0;
 	if r then k = r.k; end;
 	local pins = 0;
 	for i = 1, nv do if d.f[i].pin == 1 then pins = pins + 1; end; end;
-	ne.v.info = {mode=mode, why=why or "ok", f=f, dp=dp, nv=nv, k=k};
-	local lf = TRF_NeE;
-	if why == "off" then lf = TRF_NeDE; end;
+	ha.v.info = {mode=mode, why=why or "ok", f=f, dp=dp, nv=nv, k=k};
+	local lf = TRF_HaE;
+	if why == "off" then lf = TRF_HaDE; end;
 	lf("mode", "system", nm, "mode", mode, "reason", why or "ok", "phase", ph, "tier", T, "f", f, "dp", dp, "vanilla_count", nv,
 		"memory", k, "pins", pins);
-	-- E16.2 probe in every system with data (also with nest 0); pr asks TRF_Nest_OnActivate for the second probe.
-	TRF_NeProbe("enter");
-	ne.v.pr = 1;
+	-- E16.2 probe in every system with data (also with haunt 0); pr asks TRF_Haunt_OnActivate for the second probe.
+	TRF_HaProbe("enter");
+	ha.v.pr = 1;
 	local by = {};
 	for i = 1, nv do by[d.f[i].s] = i; end;
-	if mode ~= "nest" then
+	if mode ~= "haunt" then
 		-- design/fits-spec.md 5.4: a quest-gated visit gets trf_fits' captured rows (fits on, fits_gate 0, not deny-listed),
-		-- never while a quest scene runs or suppression is on (TRF_NeGateOk).
-		if why == "gate_quest" and TRF_NeGateOk() and type(TRF_Ft_GateOn) == "function" and TRF_Ft_GateOn(nm) then
-			ne.a = {on=1, gen=TRF_NeGen(), idx=cur, nm=nm, d=d, by=by, mode=3, st={}, nb=0};
+		-- never while a quest scene runs or suppression is on (TRF_HaGateOk).
+		if why == "gate_quest" and TRF_HaGateOk() and type(TRF_Ft_GateOn) == "function" and TRF_Ft_GateOn(nm) then
+			ha.a = {on=1, gen=TRF_HaGen(), idx=cur, nm=nm, d=d, by=by, mode=3, st={}, nb=0};
 		end;
 		return;
 	end;
-	local P = TRF_NestPlanOf(d.f, f, k, dp, TRF_NeCaches(cur), tn.nest_cache_r);
-	ne.a = {on=1, gen=TRF_NeGen(), idx=cur, nm=nm, d=d, plan=P, by=by, dp=dp, st={}, fl={}, sb={}, van={}, unk=0, fail=0,
-		mode=TRF_NeOpt("nest_mode"), slot=slot, ph=ph, sw=sw};
+	local P = TRF_HauntPlanOf(d.f, f, k, dp, TRF_HaCaches(cur), tn.haunt_cache_r);
+	ha.a = {on=1, gen=TRF_HaGen(), idx=cur, nm=nm, d=d, plan=P, by=by, dp=dp, st={}, fl={}, sb={}, van={}, unk=0, fail=0,
+		mode=TRF_HaOpt("haunt_mode"), slot=slot, ph=ph, sw=sw};
 	TRF.nv = {i=cur, b=""};
-	TRF_NeE("plan", "system", nm, "target", P.n, "fielded", P.nf, "skipped", nv - P.nf, "pins", P.pins, "mode", ne.a.mode,
-		"plan", TRF_NeBitsOf(P.fl, nv));
+	TRF_HaE("plan", "system", nm, "target", P.n, "fielded", P.nf, "skipped", nv - P.nf, "pins", P.pins, "mode", ha.a.mode,
+		"plan", TRF_HaBitsOf(P.fl, nv));
 end;
 
 -- Activation (TRF_OnActivate, after trf_safety) -------------------------------------------------------
@@ -1447,49 +1447,49 @@ end;
 -- Vanilla group of the visit (its global, else its name) and the relation toward the player both ways (after
 -- activate.script, so system rules such as Golkonda's neutral-with-Triada carry over); the Pirates team relation
 -- when the group has none.
-function TRF_NeVanRel(g)
+function TRF_HaVanRel(g)
 	local vg = getglobal(g);
-	if not TRF_NeObj(vg) then vg = g; end;
-	local to = TRF_NeGetRel(vg, PLAYER_GROUP);
-	local from = TRF_NeGetRel(PLAYER_GROUP, vg);
+	if not TRF_HaObj(vg) then vg = g; end;
+	local to = TRF_HaGetRel(vg, PLAYER_GROUP);
+	local from = TRF_HaGetRel(PLAYER_GROUP, vg);
 	local tr = nil;
-	if type(GetTeamRelation) == "function" then tr = call(GetTeamRelation, {"Pirates", PLAYER_TEAM}, "x", TRF_NeNoErr); end;
+	if type(GetTeamRelation) == "function" then tr = call(GetTeamRelation, {"Pirates", PLAYER_TEAM}, "x", TRF_HaNoErr); end;
 	if to == nil then to = tr; end;
 	if from == nil then from = to; end;
 	return to, from;
 end;
 
--- Writes relations to and from to the nest group toward the player (the group handle of this visit, else its name);
--- recorded only while no nest group exists (every flight stubbed or the builds failed).
-function TRF_NeRelSet(v, to, from)
+-- Writes relations to and from to the haunt group toward the player (the group handle of this visit, else its name);
+-- recorded only while no haunt group exists (every flight stubbed or the builds failed).
+function TRF_HaRelSet(v, to, from)
 	v.rel = to; v.relf = from;
-	if (v.nf or 0) == 0 and not TRF_NeObj(v.grp) then return; end;
-	local g = v.grp or TRF_NeK().grp;
-	TRF_NeSetRel(g, PLAYER_GROUP, to);
-	TRF_NeSetRel(PLAYER_GROUP, g, from);
+	if (v.nf or 0) == 0 and not TRF_HaObj(v.grp) then return; end;
+	local g = v.grp or TRF_HaK().grp;
+	TRF_HaSetRel(g, PLAYER_GROUP, to);
+	TRF_HaSetRel(PLAYER_GROUP, g, from);
 end;
 
--- Labels, triggers (design 6): per flight one f_died; with nest_trig 2 per ship one died (scars, the flight-level
--- fallback) and one attack with PLAYER_GROUP (the mine flag). Ships labelled trf_nest_<i>_<j>.
-function TRF_NeArm(v, i, fl, sign)
-	local sh = TRF_NeShips(fl, sign);
+-- Labels, triggers (design 6): per flight one f_died; with haunt_trig 2 per ship one died (scars, the flight-level
+-- fallback) and one attack with PLAYER_GROUP (the mine flag). Ships labelled trf_haunt_<i>_<j>.
+function TRF_HaArm(v, i, fl, sign)
+	local sh = TRF_HaShips(fl, sign);
 	v.fl[i] = fl; v.sh[i] = sh; v.sd[i] = {};
-	for j = 1, TRF_NeK().j_max do
-		if TRF_NeObj(sh[j]) then TRF_N("SetObjectLabel", sh[j], "trf_nest_"..i.."_"..j); end;
+	for j = 1, TRF_HaK().j_max do
+		if TRF_HaObj(sh[j]) then TRF_N("SetObjectLabel", sh[j], "trf_haunt_"..i.."_"..j); end;
 	end;
-	TRF_NeTrig("f_died", TRF_NeCb("TRF_Nest_Died", i), fl);
-	if TRF_NeOpt("nest_trig") == 2 then
-		for j = 1, TRF_NeK().j_max do
-			if TRF_NeAlive(sh[j]) then
-				TRF_NeTrig("died", TRF_NeCb("TRF_NeShipDied", i, j), sh[j]);
-				TRF_NeTrig("attack", TRF_NeCb("TRF_NeHit", i), PLAYER_GROUP, sh[j]);
+	TRF_HaTrig("f_died", TRF_HaCb("TRF_Haunt_Died", i), fl);
+	if TRF_HaOpt("haunt_trig") == 2 then
+		for j = 1, TRF_HaK().j_max do
+			if TRF_HaAlive(sh[j]) then
+				TRF_HaTrig("died", TRF_HaCb("TRF_HaShipDied", i, j), sh[j]);
+				TRF_HaTrig("attack", TRF_HaCb("TRF_HaHit", i), PLAYER_GROUP, sh[j]);
 			end;
 		end;
 	end;
 end;
 
 -- Route of row r for Patrol: its static points, else the spawn point.
-function TRF_NeRoute(r)
+function TRF_HaRoute(r)
 	local pts = {};
 	if type(r.r) == "table" then
 		for k = 1, getn(r.r) do local q = r.r[k]; tinsert(pts, Vector3(q[1], q[2], q[3])); end;
@@ -1498,29 +1498,29 @@ function TRF_NeRoute(r)
 	return pts;
 end;
 
-function TRF_NePatrolRaw(fl, pts)
+function TRF_HaPatrolRaw(fl, pts)
 	fl:Patrol(pts, TRUE);
 	return 1;
 end;
 
--- nest_mode 2 (design 6 mechanism b): every recorded vanilla flight of an unpinned sign is deleted; the plan's
--- fielded unpinned signs are built again with the same sign in the nest group at the nest power from the static row
+-- haunt_mode 2 (design 6 mechanism b): every recorded vanilla flight of an unpinned sign is deleted; the plan's
+-- fielded unpinned signs are built again with the same sign in the haunt group at the haunt power from the static row
 -- and patrol its static route. A recorded flight no longer alive was removed by the location script (Pandora after
 -- mission 8a): gone, not built again. Pinned signs stay vanilla flights. Returns deleted, spawned.
-function TRF_NeReplace(a)
+function TRF_HaReplace(a)
 	local nd, ns = 0, 0;
-	local K = TRF_NeK();
+	local K = TRF_HaK();
 	for i = 1, getn(a.d.f) do
 		local r = a.d.f[i];
 		if r.pin ~= 1 and a.van[i] then
-			local alive = TRF_NeAlive(a.van[i]);
-			if alive and TRF_NeDel(a.van[i]) then nd = nd + 1; end;
+			local alive = TRF_HaAlive(a.van[i]);
+			if alive and TRF_HaDel(a.van[i]) then nd = nd + 1; end;
 			if not alive then
 				a.st[i] = "gone";
-			elseif a.plan.fl[i] and TRF_NeGroup(a) then
-				local fl = TRF_NeBuild(K.gg, r.s, Vector3(r.x, r.y, r.z), r.t, a.plan.pw[i], Vector3(0, 0, 1), a, i, nil);
-				if TRF_NeObj(fl) then
-					call(TRF_NePatrolRaw, {fl, TRF_NeRoute(r)}, "x", TRF_NeNoErr);
+			elseif a.plan.fl[i] and TRF_HaGroup(a) then
+				local fl = TRF_HaBuild(K.gg, r.s, Vector3(r.x, r.y, r.z), r.t, a.plan.pw[i], Vector3(0, 0, 1), a, i, nil);
+				if TRF_HaObj(fl) then
+					call(TRF_HaPatrolRaw, {fl, TRF_HaRoute(r)}, "x", TRF_HaNoErr);
 					a.fl[i] = fl; a.st[i] = "sub"; ns = ns + 1;
 				else
 					a.fail = a.fail + 1;
@@ -1528,45 +1528,45 @@ function TRF_NeReplace(a)
 			end;
 		end;
 	end;
-	TRF_NeE("replace", "system", a.nm, "deleted", nd, "spawned", ns);
+	TRF_HaE("replace", "system", a.nm, "deleted", nd, "spawned", ns);
 	return nd, ns;
 end;
 
 -- Clears the stubs and the build global of visit a (every entry, also when the body failed).
-function TRF_NeClear(a)
+function TRF_HaClear(a)
 	for s, sb in a.sb do
 		if getglobal("flight_"..s) == sb then setglobal("flight_"..s, nil); end;
 	end;
-	setglobal(TRF_NeK().gg, nil);
+	setglobal(TRF_HaK().gg, nil);
 end;
 
-function TRF_Nest_OnActivate()
-	local ne = %NE;
-	local a = ne.a;
+function TRF_Haunt_OnActivate()
+	local ha = %HA;
+	local a = ha.a;
 	if type(a) ~= "table" or a.mode == 3 then
 		if type(a) == "table" then
 			a.on = nil;
-			ne.a = nil;
+			ha.a = nil;
 			TRF_P("TRF_Ft_GateDone", a.nm, a.nb);
 		end;
-		setglobal(TRF_NeK().gg, nil);
-		if ne.v.pr == 1 then TRF_NeProbe("activate"); end;
+		setglobal(TRF_HaK().gg, nil);
+		if ha.v.pr == 1 then TRF_HaProbe("activate"); end;
 		return;
 	end;
 	a.on = nil;
-	call(TRF_NeActBody, {a}, "x", TRF_NeErr);
-	TRF_NeClear(a);
-	TRF_NeE("activate", "system", a.nm, "fielded", ne.v.nf or 0, "stub", ne.v.ns or 0, "gone", ne.v.ng or 0, "unknown", a.unk,
-		"missing", ne.v.nmis or 0, "failed", a.fail, "relation", TRF_NeRelName(ne.v.rel), "mode", a.mode);
-	TRF_NeProbe("activate");
-	ne.a = nil;
+	call(TRF_HaActBody, {a}, "x", TRF_HaErr);
+	TRF_HaClear(a);
+	TRF_HaE("activate", "system", a.nm, "fielded", ha.v.nf or 0, "stub", ha.v.ns or 0, "gone", ha.v.ng or 0, "unknown", a.unk,
+		"missing", ha.v.nmis or 0, "failed", a.fail, "relation", TRF_HaRelName(ha.v.rel), "mode", a.mode);
+	TRF_HaProbe("activate");
+	ha.a = nil;
 end;
 
 -- Disarm, replace (mode 2), gone flights, labels and triggers, relations, TRF.nv, counters, the arrival line.
-function TRF_NeActBody(a)
-	local v = %NE.v;
-	if a.mode == 2 then TRF_NeReplace(a); end;
-	v.idx = a.idx; v.nm = a.nm; v.d = a.d; v.slot = a.slot; v.grp = a.grp; v.mir = TRF_NeOpt("nest_mirror");
+function TRF_HaActBody(a)
+	local v = %HA.v;
+	if a.mode == 2 then TRF_HaReplace(a); end;
+	v.idx = a.idx; v.nm = a.nm; v.d = a.d; v.slot = a.slot; v.grp = a.grp; v.mir = TRF_HaOpt("haunt_mirror");
 	local nv = getn(a.d.f);
 	local nf, ng, nmiss, ns = 0, 0, 0, 0;
 	local bits = {};
@@ -1576,11 +1576,11 @@ function TRF_NeActBody(a)
 		if a.plan.fl[i] and not a.st[i] and a.mode ~= 2 then nmiss = nmiss + 1; end;
 		local fl = a.fl[i];
 		if fl then
-			if TRF_NeAlive(fl) then
-				TRF_NeArm(v, i, fl, a.d.f[i].s);
+			if TRF_HaAlive(fl) then
+				TRF_HaArm(v, i, fl, a.d.f[i].s);
 				bits[i] = 1;
 				nf = nf + 1;
-				TRF_NeCount("n");
+				TRF_HaCount("n");
 			else
 				-- Removed by the location script (Pandora after mission 8a): gone, no kill.
 				v.gone[i] = 1;
@@ -1589,7 +1589,7 @@ function TRF_NeActBody(a)
 		end;
 	end;
 	v.nf = nf; v.ns = ns; v.ng = ng; v.nmis = nmiss;
-	TRF.nv = {i=a.idx, b=TRF_NeBitsOf(bits, nv)};
+	TRF.nv = {i=a.idx, b=TRF_HaBitsOf(bits, nv)};
 	-- design/fits-spec.md 4: the grade digits of the fielded flights, only when one is not 0.
 	local e, ne0 = "", nil;
 	for i = 1, nv do
@@ -1599,119 +1599,119 @@ function TRF_NeActBody(a)
 		e = e..dg;
 	end;
 	if ne0 then TRF.nv.e = e; end;
-	local to, from = TRF_NeVanRel(a.d.g);
-	TRF_NeRelSet(v, to, from);
+	local to, from = TRF_HaVanRel(a.d.g);
+	TRF_HaRelSet(v, to, from);
 	v.arr = {idx=a.idx, nm=a.nm, slot=a.slot, ph=a.ph, sw=a.sw, nf=nf};
 end;
 
--- Arrival line of this entry (traffic.script, after trf_freight's activate hook: the nest line is the last mod line of
+-- Arrival line of this entry (traffic.script, after trf_freight's activate hook: the haunt line is the last mod line of
 -- the 00 order, wb-plumbing-spec 5), once.
-function TRF_Nest_Arrival()
-	local v = %NE.v;
+function TRF_Haunt_Arrival()
+	local v = %HA.v;
 	local a = v.arr;
 	v.arr = nil;
-	if type(a) == "table" then call(TRF_NeArrival, {a, a.nf}, "x", TRF_NeErr); end;
+	if type(a) == "table" then call(TRF_HaArrival, {a, a.nf}, "x", TRF_HaErr); end;
 end;
 
 -- At most one arrival line (design 6): the memory line, else the phase line once per phase; never during a mission,
--- cfg nest_lines 0 none.
-function TRF_NeArrival(a, nf)
-	if TRF_NeOpt("nest_lines") ~= 1 or TRF_NeQuest() then return; end;
-	local c = TRF_NeClan(a.slot);
+-- cfg haunt_lines 0 none.
+function TRF_HaArrival(a, nf)
+	if TRF_HaOpt("haunt_lines") ~= 1 or TRF_HaQuest() then return; end;
+	local c = TRF_HaClan(a.slot);
 	local nl = nil;
 	if c then nl = c.nl; end;
-	local key, set = TRF_NeLineOf(TRF_NeRec(a.idx), nf, a.ph or 0, nl, a.sw, TRF_NeK());
+	local key, set = TRF_HaLineOf(TRF_HaRec(a.idx), nf, a.ph or 0, nl, a.sw, TRF_HaK());
 	if not key then return; end;
-	local text = TRF_NeTxt(key, TRF_NeClanName(a.slot));
+	local text = TRF_HaTxt(key, TRF_HaClanName(a.slot));
 	local ok = nil;
-	if type(TRF_ArrivalLine) == "function" then ok = TRF_ArrivalLine("nest", text); else ok = TRF_NeSay(text); end;
+	if type(TRF_ArrivalLine) == "function" then ok = TRF_ArrivalLine("haunt", text); else ok = TRF_HaSay(text); end;
 	if ok and set and c then c.nl = set; end;
-	TRF_NeDE("arrival", "system", a.nm, "line", key, "result", ok and "queued" or "dropped");
+	TRF_HaDE("arrival", "system", a.nm, "line", key, "result", ok and "queued" or "dropped");
 end;
 
 -- Callbacks ------------------------------------------------------------------------------------
 
-function TRF_Nest_Died(i, g)
-	if type(TRF_Cb) == "function" then TRF_Cb("TRF_Nest_Died", TRF_NeDiedBody, {i, g}); else TRF_NeDiedBody(i, g); end;
+function TRF_Haunt_Died(i, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_Haunt_Died", TRF_HaDiedBody, {i, g}); else TRF_HaDiedBody(i, g); end;
 end;
 
-function TRF_NeDiedBody(i, g)
-	if g ~= TRF_NeGen() then TRF_NeE("stale", "index", i, "generation", g, "current", TRF_NeGen()); return; end;
-	TRF_NeFlightDead(i, "died");
+function TRF_HaDiedBody(i, g)
+	if g ~= TRF_HaGen() then TRF_HaE("stale", "index", i, "generation", g, "current", TRF_HaGen()); return; end;
+	TRF_HaFlightDead(i, "died");
 end;
 
-function TRF_NeShipDied(i, j, g)
-	if type(TRF_Cb) == "function" then TRF_Cb("TRF_NeShipDied", TRF_NeShipDiedBody, {i, j, g}); else TRF_NeShipDiedBody(i, j, g); end;
+function TRF_HaShipDied(i, j, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_HaShipDied", TRF_HaShipDiedBody, {i, j, g}); else TRF_HaShipDiedBody(i, j, g); end;
 end;
 
--- A nest ship died: battle scars source 7 with the mine flag of its flight; the last ship of a flight whose f_died
+-- A haunt ship died: battle scars source 7 with the mine flag of its flight; the last ship of a flight whose f_died
 -- did not fire yet ends the flight (flight-level fallback).
-function TRF_NeShipDiedBody(i, j, g)
-	if g ~= TRF_NeGen() then return; end;
-	local v = %NE.v;
+function TRF_HaShipDiedBody(i, j, g)
+	if g ~= TRF_HaGen() then return; end;
+	local v = %HA.v;
 	if v.del == 1 or type(v.sd[i]) ~= "table" or v.sd[i][j] then return; end;
 	v.sd[i][j] = 1;
 	local mine = nil;
 	if v.hit[i] then mine = 1; end;
 	TRF_P("TRF_Sc_Dead", 3, 0, v.sh[i][j], mine);
 	local all = 1;
-	for k = 1, TRF_NeK().j_max do
-		if TRF_NeObj(v.sh[i][k]) and not v.sd[i][k] and TRF_NeAlive(v.sh[i][k]) then all = nil; end;
+	for k = 1, TRF_HaK().j_max do
+		if TRF_HaObj(v.sh[i][k]) and not v.sd[i][k] and TRF_HaAlive(v.sh[i][k]) then all = nil; end;
 	end;
-	if all then TRF_NeFlightDead(i, "ships"); end;
+	if all then TRF_HaFlightDead(i, "ships"); end;
 end;
 
-function TRF_NeHit(i, g)
-	if type(TRF_Cb) == "function" then TRF_Cb("TRF_NeHit", TRF_NeHitBody, {i, g}); else TRF_NeHitBody(i, g); end;
+function TRF_HaHit(i, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_HaHit", TRF_HaHitBody, {i, g}); else TRF_HaHitBody(i, g); end;
 end;
 
 -- Player-group fire on a ship of flight i (the attack trigger): the mine flag; the first hit of the visit gives the
--- leader's radio line (#TRF_Nest_Hit).
-function TRF_NeHitBody(i, g)
-	if g ~= TRF_NeGen() then return; end;
-	local v = %NE.v;
+-- leader's radio line (#TRF_Haunt_Hit).
+function TRF_HaHitBody(i, g)
+	if g ~= TRF_HaGen() then return; end;
+	local v = %HA.v;
 	if not v.fl[i] or v.hit[i] then return; end;
 	v.hit[i] = 1;
-	TRF_NeDE("hit", "index", i);
-	if v.said == 1 or TRF_NeOpt("nest_lines") ~= 1 or TRF_NeQuest() then return; end;
+	TRF_HaDE("hit", "index", i);
+	if v.said == 1 or TRF_HaOpt("haunt_lines") ~= 1 or TRF_HaQuest() then return; end;
 	v.said = 1;
-	local p = call(TRF_NeLeaderRaw, {v.fl[i]}, "x", TRF_NeNoErr);
-	if not TRF_NeObj(p) then p = nil; end;
-	TRF_NeSay(TRF_NeTxt("nesthit", TRF_NeClanName(v.slot)), TRF_NeK().hit_secs, p);
+	local p = call(TRF_HaLeaderRaw, {v.fl[i]}, "x", TRF_HaNoErr);
+	if not TRF_HaObj(p) then p = nil; end;
+	TRF_HaSay(TRF_HaTxt("haunthit", TRF_HaClanName(v.slot)), TRF_HaK().hit_secs, p);
 end;
 
 -- Flight i destroyed (f_died, or every ship dead): kill memory + 1 (at most the vanilla count), clan score -2 inside the
 -- visit cap (with player fire through trf_events' TRF_Ev_Recover: also dis -1 inside its visit cap and clan nk + 1),
 -- the counters, TRF.nv bit cleared; the last fielded flight gives the screen line and c (player fire). Ignored after the
 -- jump delete and for a flight already counted.
-function TRF_NeFlightDead(i, why)
-	local v = %NE.v;
+function TRF_HaFlightDead(i, why)
+	local v = %HA.v;
 	if v.del == 1 or not v.fl[i] or v.dead[i] or type(v.d) ~= "table" then return; end;
 	v.dead[i] = 1;
 	local idx, nv = v.idx, getn(v.d.f);
-	if type(TRF.nest) ~= "table" then TRF.nest = {}; end;
-	local r = TRF_NeRec(idx);
-	if not r then r = {k=0, l=TRF_NeLegs()}; TRF.nest[idx] = r; end;
+	if type(TRF.haunt) ~= "table" then TRF.haunt = {}; end;
+	local r = TRF_HaRec(idx);
+	if not r then r = {k=0, l=TRF_HaLegs()}; TRF.haunt[idx] = r; end;
 	r.k = min(nv, r.k + 1);
 	local mine = v.hit[i];
-	local K = TRF_NeK();
+	local K = TRF_HaK();
 	-- design/fits-spec.md 5.3: an elite flight (saved digit 1 or 4) costs the clan 3 score.
 	local el = nil;
 	if type(TRF.nv) == "table" and TRF.nv.i == idx and type(TRF.nv.e) == "string" and type(TRF_Ft_Elite) == "function" then
 		el = TRF_Ft_Elite(strsub(TRF.nv.e, i, i));
 	end;
 	if mine and type(TRF_Ev_Recover) == "function" then
-		if el then TRF_Ev_Recover("nest_elite", 0); else TRF_Ev_Recover("nest", 0); end;
+		if el then TRF_Ev_Recover("haunt_elite", 0); else TRF_Ev_Recover("haunt", 0); end;
 	elseif type(v.slot) == "number" then
-		if el then TRF_N("TRF_ClanAdd", v.slot, K.score_el, "nest kill elite"); else TRF_N("TRF_ClanAdd", v.slot, K.score, "nest kill"); end;
+		if el then TRF_N("TRF_ClanAdd", v.slot, K.score_el, "haunt kill elite"); else TRF_N("TRF_ClanAdd", v.slot, K.score, "haunt kill"); end;
 	end;
 	if el then TRF_P("TRF_Ft_Kill", v.nm, i, v.d.f[i].s, mine); end;
 	if mine then
-		local c = TRF_NeClan(v.slot);
+		local c = TRF_HaClan(v.slot);
 		if c then c.nk = min(K.nk_max, (c.nk or 0) + 1); end;
-		TRF_NeCount("p");
+		TRF_HaCount("p");
 	end;
-	TRF_NeCount("k");
+	TRF_HaCount("k");
 	if type(TRF.nv) == "table" and TRF.nv.i == idx and type(TRF.nv.b) == "string" and strlen(TRF.nv.b) >= i then
 		TRF.nv.b = strsub(TRF.nv.b, 1, i - 1).."0"..strsub(TRF.nv.b, i + 1);
 	end;
@@ -1719,98 +1719,98 @@ function TRF_NeFlightDead(i, why)
 	for k, f in v.fl do if type(k) == "number" and not v.dead[k] and not v.gone[k] then left = left + 1; end; end;
 	if left == 0 then
 		if mine then r.c = 1; else r.c = nil; end;
-		if mine and TRF_NeOpt("nest_lines") == 1 and not TRF_NeQuest() then TRF_NeSay(TRF_NeTxt("nestlast", TRF_NeClanName(v.slot))); end;
+		if mine and TRF_HaOpt("haunt_lines") == 1 and not TRF_HaQuest() then TRF_HaSay(TRF_HaTxt("hauntlast", TRF_HaClanName(v.slot))); end;
 	end;
-	local c = TRF_NeClan(v.slot);
-	TRF_NeE("died", "index", i, "sign", v.d.f[i].s, "mine", TRF_KvB(mine), "memory", r.k, "left", left, "clan_score", c and c.sc,
-		"generation", TRF_NeGen(), "reason", why);
+	local c = TRF_HaClan(v.slot);
+	TRF_HaE("died", "index", i, "sign", v.d.f[i].s, "mine", TRF_KvB(mine), "memory", r.k, "left", left, "clan_score", c and c.sc,
+		"generation", TRF_HaGen(), "reason", why);
 end;
 
 -- 1 s step, jump, load --------------------------------------------------------------------------
 
--- Every 1 s (traffic.script): the relation mirror (cfg nest_mirror 1, read once at activation and load, v.mir): a
--- change of the vanilla group's relation to the player is copied to the nest group, one way; nothing while
+-- Every 1 s (traffic.script): the relation mirror (cfg haunt_mirror 1, read once at activation and load, v.mir): a
+-- change of the vanilla group's relation to the player is copied to the haunt group, one way; nothing while
 -- __disableAction is set.
-function TRF_Nest_Step()
-	local v = %NE.v;
+function TRF_Haunt_Step()
+	local v = %HA.v;
 	if type(v.d) ~= "table" or v.del == 1 or __disableAction == TRUE or v.mir ~= 1 then return; end;
-	call(TRF_NeStepBody, {v}, "x", TRF_NeErr);
+	call(TRF_HaStepBody, {v}, "x", TRF_HaErr);
 end;
 
-function TRF_NeStepBody(v)
-	if (v.nf or 0) == 0 and not TRF_NeObj(v.grp) then return; end;
-	local to, from = TRF_NeVanRel(v.d.g);
+function TRF_HaStepBody(v)
+	if (v.nf or 0) == 0 and not TRF_HaObj(v.grp) then return; end;
+	local to, from = TRF_HaVanRel(v.d.g);
 	if to == v.vto and from == v.vfrom then return; end;
 	local first = v.vto == nil;
 	v.vto = to; v.vfrom = from;
 	if first and to == v.rel and from == v.relf then return; end;
 	local old = v.rel;
-	TRF_NeRelSet(v, to, from);
-	TRF_NeE("relation", "system", v.nm, "from", TRF_NeRelName(old), "to", TRF_NeRelName(to));
+	TRF_HaRelSet(v, to, from);
+	TRF_HaE("relation", "system", v.nm, "from", TRF_HaRelName(old), "to", TRF_HaRelName(to));
 end;
 
--- Before every jump: every live nest flight is deleted (no death event, the del flag), the visit state and TRF.nv go
--- (debug cfg nest_keep_on_jump 1 keeps the ships, E16.2).
-function TRF_Nest_BeforeJump()
-	local v = %NE.v;
+-- Before every jump: every live haunt flight is deleted (no death event, the del flag), the visit state and TRF.nv go
+-- (debug cfg haunt_keep_on_jump 1 keeps the ships, E16.2).
+function TRF_Haunt_BeforeJump()
+	local v = %HA.v;
 	if type(v.d) == "table" then
 		v.del = 1;
 		local n = 0;
-		if TRF_NeOpt("nest_keep_on_jump") ~= 1 then
+		if TRF_HaOpt("haunt_keep_on_jump") ~= 1 then
 			for i, fl in v.fl do
-				if type(i) == "number" and not v.dead[i] and TRF_NeAlive(fl) and TRF_NeDel(fl) then n = n + 1; end;
+				if type(i) == "number" and not v.dead[i] and TRF_HaAlive(fl) and TRF_HaDel(fl) then n = n + 1; end;
 			end;
 		end;
-		TRF_NeE("jump", "system", v.nm, "deleted", n);
+		TRF_HaE("jump", "system", v.nm, "deleted", n);
 	end;
-	setglobal(TRF_NeK().gg, nil);
+	setglobal(TRF_HaK().gg, nil);
 	if type(TRF) == "table" then TRF.nv = nil; end;
-	TRF_NeReset();
+	TRF_HaReset();
 end;
 
 -- Load inside a system (activate.script does not run): the flights of TRF.nv are adopted by their saved globals
 -- (flight_<sign>, ship_<sign>_<j>), labels and triggers re-armed with the new gen, the relation mirror resumed;
 -- nothing is spawned or refilled.
-function TRF_Nest_OnLoad()
-	TRF_NeReset();
-	setglobal(TRF_NeK().gg, nil);
-	if not TRF_NeOn() or type(TRF.nv) ~= "table" then return; end;
-	call(TRF_NeLoadBody, {}, "x", TRF_NeErr);
+function TRF_Haunt_OnLoad()
+	TRF_HaReset();
+	setglobal(TRF_HaK().gg, nil);
+	if not TRF_HaOn() or type(TRF.nv) ~= "table" then return; end;
+	call(TRF_HaLoadBody, {}, "x", TRF_HaErr);
 end;
 
-function TRF_NeLoadBody()
-	local v = %NE.v;
+function TRF_HaLoadBody()
+	local v = %HA.v;
 	local nv = TRF.nv;
-	local cur = TRF_NeCur();
+	local cur = TRF_HaCur();
 	if nv.i ~= cur or type(nv.b) ~= "string" then TRF.nv = nil; return; end;
-	local nm = TRF_NeName(cur);
-	local d = TRF_NeData(nm);
+	local nm = TRF_HaName(cur);
+	local d = TRF_HaData(nm);
 	if not d then TRF.nv = nil; return; end;
-	local slot = TRF_NeRegion(cur);
-	v.idx = cur; v.nm = nm; v.d = d; v.slot = slot; v.mir = TRF_NeOpt("nest_mirror");
+	local slot = TRF_HaRegion(cur);
+	v.idx = cur; v.nm = nm; v.d = d; v.slot = slot; v.mir = TRF_HaOpt("haunt_mirror");
 	local n = 0;
 	local bits = {};
 	for i = 1, min(strlen(nv.b), getn(d.f)) do
 		if strsub(nv.b, i, i) == "1" then
 			local fl = getglobal("flight_"..d.f[i].s);
-			if TRF_NeAlive(fl) then
-				TRF_NeArm(v, i, fl, d.f[i].s);
+			if TRF_HaAlive(fl) then
+				TRF_HaArm(v, i, fl, d.f[i].s);
 				bits[i] = 1;
 				n = n + 1;
 			end;
 		end;
 	end;
-	nv.b = TRF_NeBitsOf(bits, getn(d.f));
+	nv.b = TRF_HaBitsOf(bits, getn(d.f));
 	v.nf = n;
-	v.rel, v.relf = TRF_NeVanRel(d.g);
+	v.rel, v.relf = TRF_HaVanRel(d.g);
 	v.vto = v.rel; v.vfrom = v.relf;
-	TRF_NeE("load", "system", nm, "rearmed", n);
+	TRF_HaE("load", "system", nm, "rearmed", n);
 end;
 
 -- Phase entry of region slot (trf_region TRF_RgEnter): nk cleared at Quiet, the won-sweep target cleared once the
 -- region leaves Bust (Recovery and later).
-function TRF_Nest_Phase(slot, ph)
-	local c = TRF_NeClan(slot);
+function TRF_Haunt_Phase(slot, ph)
+	local c = TRF_HaClan(slot);
 	if not c then return; end;
 	if ph == 0 then c.nk = nil; end;
 	if ph ~= 3 and ph ~= 4 then c.ns = nil; end;
@@ -1820,89 +1820,89 @@ function TRF_Nest_Phase(slot, ph)
 end;
 
 -- Sweep outcome of slot (trf_region TRF_RgSweepOut): a success marks the sweep target (trf_faction TRF_SweepTarget)
--- for the Bust count nest_f_swept.
-function TRF_Nest_Sweep(slot, L, won)
+-- for the Bust count haunt_f_swept.
+function TRF_Haunt_Sweep(slot, L, won)
 	if not won then return; end;
-	local c = TRF_NeClan(slot);
+	local c = TRF_HaClan(slot);
 	local t = TRF_N("TRF_SweepTarget", slot);
 	if c and type(t) == "number" then
 		c.ns = t;
-		TRF_NeDE("sweep", "region", slot, "target", TRF_NeName(t));
+		TRF_HaDE("sweep", "region", slot, "target", TRF_HaName(t));
 	end;
 end;
 
 -- Contract: plumbing, other modules, repair, defaults, dump, text -----------------------------------------
 
--- trf_plumb TRF_InstallPlumb: the ship-cap group (never trimmed; counted only with tune nest_cap 1, V3).
-function TRF_Nest_Plumb()
-	TRF_CapReg("nest", "TRF_Nest_Ships");
+-- trf_plumb TRF_InstallPlumb: the ship-cap group (never trimmed; counted only with tune haunt_cap 1, V3).
+function TRF_Haunt_Plumb()
+	TRF_CapReg("haunt", "TRF_Haunt_Ships");
 end;
 
 -- Live fielded ships of this visit.
-function TRF_Nest_Alive()
-	local v = %NE.v;
+function TRF_Haunt_Alive()
+	local v = %HA.v;
 	if type(v.d) ~= "table" or v.del == 1 then return 0; end;
 	local n = 0;
 	for i, sh in v.sh do
 		if type(i) == "number" and not v.dead[i] then
-			for j = 1, TRF_NeK().j_max do if TRF_NeAlive(sh[j]) then n = n + 1; end; end;
+			for j = 1, TRF_HaK().j_max do if TRF_HaAlive(sh[j]) then n = n + 1; end; end;
 		end;
 	end;
 	return n;
 end;
 
--- Ship-cap count (trf_plumb TRF_CapShips): 0 with tune nest_cap 0 (default; nest ships replace vanilla ships, which
--- never counted, design 6 spawn rules), else the live nest ships.
-function TRF_Nest_Ships(g)
-	if TRF_NeT("nest_cap") ~= 1 then return 0; end;
-	return TRF_Nest_Alive();
+-- Ship-cap count (trf_plumb TRF_CapShips): 0 with tune haunt_cap 0 (default; haunt ships replace vanilla ships, which
+-- never counted, design 6 spawn rules), else the live haunt ships.
+function TRF_Haunt_Ships(g)
+	if TRF_HaT("haunt_cap") ~= 1 then return 0; end;
+	return TRF_Haunt_Alive();
 end;
 
--- 1 when fl is a fielded flight of this visit (trf_events' pirate watch leaves it out: the nest counts its kills).
-function TRF_Nest_Owns(fl)
-	local v = %NE.v;
+-- 1 when fl is a fielded flight of this visit (trf_events' pirate watch leaves it out: the haunt counts its kills).
+function TRF_Haunt_Owns(fl)
+	local v = %HA.v;
 	if fl == nil or type(v.fl) ~= "table" then return nil; end;
 	for i, f in v.fl do if f == fl then return 1; end; end;
 	return nil;
 end;
 
--- The nest group of this visit for the sweep and Triada wave relations (trf_faction, trf_convoy): the handle while
+-- The haunt group of this visit for the sweep and Triada wave relations (trf_faction, trf_convoy): the handle while
 -- held, else the name; nil without fielded flights.
-function TRF_Nest_Grp()
-	local v = %NE.v;
+function TRF_Haunt_Grp()
+	local v = %HA.v;
 	if type(v.d) ~= "table" or v.del == 1 or (v.nf or 0) == 0 then return nil; end;
-	if TRF_NeObj(v.grp) then return v.grp; end;
-	return TRF_NeK().grp;
+	if TRF_HaObj(v.grp) then return v.grp; end;
+	return TRF_HaK().grp;
 end;
 
--- Repair (TRF_Repair, every entry and load): TRF.nest a table of records {k 1..nv, l <= now, c 1 or nil} keyed by the
+-- Repair (TRF_Repair, every entry and load): TRF.haunt a table of records {k 1..nv, l <= now, c 1 or nil} keyed by the
 -- index of a system with static data; TRF.nv {i, b} with a 0/1 string of at most nv characters; TRF.nst {n, k, p}
 -- 0..99999; clan nk 0..99, nl 0..7, ns a system index.
-function TRF_Nest_Fix()
+function TRF_Haunt_Fix()
 	if type(TRF) ~= "table" then return; end;
-	local legs = TRF_NeLegs();
-	local K = TRF_NeK();
-	-- Without map data the system names are unknown: TRF.nest and TRF.nv are only type-checked (trf_region's rule).
+	local legs = TRF_HaLegs();
+	local K = TRF_HaK();
+	-- Without map data the system names are unknown: TRF.haunt and TRF.nv are only type-checked (trf_region's rule).
 	local map = nil;
 	if type(TRF_Map) == "function" and TRF_Map() then map = 1; end;
-	if TRF.nest ~= nil and not map then
-		if type(TRF.nest) ~= "table" then TRF.nest = {}; end;
-	elseif TRF.nest ~= nil then
+	if TRF.haunt ~= nil and not map then
+		if type(TRF.haunt) ~= "table" then TRF.haunt = {}; end;
+	elseif TRF.haunt ~= nil then
 		local out = {};
-		if type(TRF.nest) == "table" then
-			for idx, e in TRF.nest do
+		if type(TRF.haunt) == "table" then
+			for idx, e in TRF.haunt do
 				if type(idx) == "number" and type(e) == "table" then
-					local d = TRF_NeData(TRF_NeName(idx));
-					if d and TRF_NeNum(e.k, 1, getn(d.f)) then
+					local d = TRF_HaData(TRF_HaName(idx));
+					if d and TRF_HaNum(e.k, 1, getn(d.f)) then
 						local r = {k=floor(e.k), l=legs};
-						if TRF_NeNum(e.l, -99999, legs) then r.l = floor(e.l); end;
+						if TRF_HaNum(e.l, -99999, legs) then r.l = floor(e.l); end;
 						if e.c == 1 then r.c = 1; end;
 						out[idx] = r;
 					end;
 				end;
 			end;
 		end;
-		TRF.nest = out;
+		TRF.haunt = out;
 	end;
 	if TRF.nv ~= nil and not map then
 		if type(TRF.nv) ~= "table" then TRF.nv = nil; end;
@@ -1910,7 +1910,7 @@ function TRF_Nest_Fix()
 		local x = TRF.nv;
 		local ok = nil;
 		if type(x) == "table" and type(x.i) == "number" and type(x.b) == "string" then
-			local d = TRF_NeData(TRF_NeName(x.i));
+			local d = TRF_HaData(TRF_HaName(x.i));
 			if d and strlen(x.b) <= getn(d.f) and not strfind(x.b, "[^01]") then ok = 1; end;
 			-- design/fits-spec.md 4: grade digits 0..5, at most nv of them; anything else is dropped.
 			if ok and x.e ~= nil and (type(x.e) ~= "string" or strlen(x.e) > getn(d.f) or strfind(x.e, "[^0-5]")) then x.e = nil; end;
@@ -1922,49 +1922,49 @@ function TRF_Nest_Fix()
 		if type(x) ~= "table" then x = {}; end;
 		local o = {};
 		for i, k in {"n", "k", "p"} do
-			if TRF_NeNum(x[k], 0, K.cnt_max) then o[k] = floor(x[k]); else o[k] = 0; end;
+			if TRF_HaNum(x[k], 0, K.cnt_max) then o[k] = floor(x[k]); else o[k] = 0; end;
 		end;
 		TRF.nst = o;
 	end;
 	if type(TRF.clan) == "table" then
 		for k, c in TRF.clan do
 			if type(c) == "table" then
-				if c.nk ~= nil and not TRF_NeNum(c.nk, 0, K.nk_max) then c.nk = nil; end;
-				if c.nl ~= nil and not TRF_NeNum(c.nl, 0, K.swept_nl) then c.nl = nil; end;
-				if c.ns ~= nil and not TRF_NeNum(c.ns, 1, 999) then c.ns = nil; end;
+				if c.nk ~= nil and not TRF_HaNum(c.nk, 0, K.nk_max) then c.nk = nil; end;
+				if c.nl ~= nil and not TRF_HaNum(c.nl, 0, K.swept_nl) then c.nl = nil; end;
+				if c.ns ~= nil and not TRF_HaNum(c.ns, 1, 999) then c.ns = nil; end;
 			end;
 		end;
 	end;
 end;
 
--- Config keys (design 6 config). nest 0 until E16.1-E16.5 pass; nest_mode 1 the substituting wrapper, 2 the fallback;
--- nest_off system names kept vanilla; nest_trig 2 per ship died and attack triggers, 1 the flight-level f_died only
--- (E16.8); nest_lines the arrival, radio and screen lines; nest_mirror the 1 s relation mirror; nest_grudge_war step 2
--- (00 E2) and read nowhere; nest_keep_on_jump debug (E16.2).
-function TRF_Nest_OptDef()
-	return {nest=0, nest_mode=1, nest_off={}, nest_trig=2, nest_lines=1, nest_mirror=1, nest_grudge_war=0, nest_keep_on_jump=0};
+-- Config keys (design 6 config). haunt 0 until E16.1-E16.5 pass; haunt_mode 1 the substituting wrapper, 2 the fallback;
+-- haunt_off system names kept vanilla; haunt_trig 2 per ship died and attack triggers, 1 the flight-level f_died only
+-- (E16.8); haunt_lines the arrival, radio and screen lines; haunt_mirror the 1 s relation mirror; haunt_grudge_war step 2
+-- (00 E2) and read nowhere; haunt_keep_on_jump debug (E16.2).
+function TRF_Haunt_OptDef()
+	return {haunt=0, haunt_mode=1, haunt_off={}, haunt_trig=2, haunt_lines=1, haunt_mirror=1, haunt_grudge_war=0, haunt_keep_on_jump=0};
 end;
 
--- Tune keys (design 6 config): nest_f % per phase (Quiet, Boom, Build-up, Raids, Bust, Recovery), nest_f_swept % in the
--- sweep target during Bust, nest_dp power per tier T1..T4 (read only when the cfg tune sets it, else trf_str's dp
--- column: TRF_NeDpOf), nest_regen_pct % of the vanilla count back per
--- nest_regen_legs legs, nest_cache_r (plus the route radius) from an unopened cache, nest_grudge_nk step 2 (read nowhere),
--- nest_cap 1 counts the nest ships in cap_ships (V3).
-function TRF_Nest_TuneDef()
-	return {nest_f={70, 100, 100, 100, 50, 70}, nest_f_swept=0, nest_dp={-1, 0, 1, 1}, nest_regen_pct=15, nest_regen_legs=2,
-		nest_cache_r=600, nest_grudge_nk=5, nest_cap=0};
+-- Tune keys (design 6 config): haunt_f % per phase (Quiet, Boom, Build-up, Raids, Bust, Recovery), haunt_f_swept % in the
+-- sweep target during Bust, haunt_dp power per tier T1..T4 (read only when the cfg tune sets it, else trf_str's dp
+-- column: TRF_HaDpOf), haunt_regen_pct % of the vanilla count back per
+-- haunt_regen_legs legs, haunt_cache_r (plus the route radius) from an unopened cache, haunt_grudge_nk step 2 (read nowhere),
+-- haunt_cap 1 counts the haunt ships in cap_ships (V3).
+function TRF_Haunt_TuneDef()
+	return {haunt_f={70, 100, 100, 100, 50, 70}, haunt_f_swept=0, haunt_dp={-1, 0, 1, 1}, haunt_regen_pct=15, haunt_regen_legs=2,
+		haunt_cache_r=600, haunt_grudge_nk=5, haunt_cap=0};
 end;
 
 -- Debug dump (design 6): records idx:k/l, the visit idx:bits, nk per clan slot, the counters, this visit's mode.
-function TRF_Nest_Dump()
+function TRF_Haunt_Dump()
 	if type(TRF) ~= "table" then return; end;
 	local rs, n = nil, 0;
-	if type(TRF.nest) == "table" then
+	if type(TRF.haunt) == "table" then
 		local ks = {};
-		for idx, r in TRF.nest do if type(idx) == "number" then tinsert(ks, idx); end; end;
+		for idx, r in TRF.haunt do if type(idx) == "number" then tinsert(ks, idx); end; end;
 		sort(ks);
 		for q = 1, getn(ks) do
-			local r = TRF.nest[ks[q]];
+			local r = TRF.haunt[ks[q]];
 			n = n + 1;
 			local s = ks[q]..":"..tostring(r.k).."/"..tostring(r.l);
 			if rs then rs = rs..","..s; else rs = s; end;
@@ -1986,25 +1986,25 @@ function TRF_Nest_Dump()
 		end;
 	end;
 	local x = TRF.nst or {};
-	local info = %NE.v.info or {};
-	TRF_NeE("dump", "record_count", n, "records", rs, "visit", vs, "clans", "nk:"..cs, "counters",
-		"n:"..(x.n or 0)..",k:"..(x.k or 0)..",p:"..(x.p or 0), "mode", info.mode, "reason", info.why, "alive", TRF_Nest_Alive());
+	local info = %HA.v.info or {};
+	TRF_HaE("dump", "record_count", n, "records", rs, "visit", vs, "clans", "nk:"..cs, "counters",
+		"n:"..(x.n or 0)..",k:"..(x.k or 0)..",p:"..(x.p or 0), "mode", info.mode, "reason", info.why, "alive", TRF_Haunt_Alive());
 end;
 
--- Texts (design 2, 6 text keys), EN; keys in TRF_UI_Key form (#TRF_nest<name> in loc/trf_en.loc). $1 the clan name, in
+-- Texts (design 2, 6 text keys), EN; keys in TRF_UI_Key form (#TRF_haunt<name> in loc/trf_en.loc). $1 the clan name, in
 -- parentheses so the loc_mode 1 scaffold reads without it (TDR 13.5 CombineStr fallback). Step 2 keys (Board, Cap) are
 -- not defined yet.
-function TRF_Nest_Text()
+function TRF_Haunt_Text()
 	return {
-		nestfull = "The pirate nest here ($1) is crowded. Ships are gathering.",
-		nestraid = "The pirate nest here ($1) is armed and restless.",
-		nesthurt = "The pirate nest here ($1) is still licking its wounds.",
-		nestclear = "The pirate nest here is empty. Someone cleared it out.",
-		nestbust = "Pirate wrecks on the scanner. The nest here ($1) took a beating.",
-		nestswept = "The patrol swept the pirate nest here ($1) clean.",
-		nestquiet = "Only a few pirate ships ($1) at the nest here.",
-		nesthit = "We ($1) don't forget a face, Wolf.",
-		nestlast = "The pirate nest here ($1) is broken. They will be back.",
+		hauntfull = "The pirate haunt here ($1) is crowded. Ships are gathering.",
+		hauntraid = "The pirate haunt here ($1) is armed and restless.",
+		haunthurt = "The pirate haunt here ($1) is still licking its wounds.",
+		hauntclear = "The pirate haunt here is empty. Someone cleared it out.",
+		hauntbust = "Pirate wrecks on the scanner. The haunt here ($1) took a beating.",
+		hauntswept = "The patrol swept the pirate haunt here ($1) clean.",
+		hauntquiet = "Only a few pirate ships ($1) at the haunt here.",
+		haunthit = "We ($1) don't forget a face, Wolf.",
+		hauntlast = "The pirate haunt here ($1) is broken. They will be back.",
 	};
 end;
 

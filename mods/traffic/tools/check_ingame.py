@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Score the in-game checks of dynamic nests (E16.1-E16.11), sealed parcels (E-PCL.1-E-PCL.6), trader docking (D-DOCK),
+"""Score the in-game checks of pirate haunts (E16.1-E16.11), sealed parcels (E-PCL.1-E-PCL.6), trader docking (D-DOCK),
 the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10), the mercenary hire (D-MERC.*, design/merc-spec.md
 11, test plan section 11), the strength scale (D-STR.*, design/strength-spec.md 9), the pirate fits (D-FIT.*, E-BB1,
 design/fits-spec.md 11) and the stack leak diagnostic (D-DLL.1) from traffic logs.
@@ -8,11 +8,11 @@ Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pas
        python3 -I check_ingame.py --selftest
 Read-only. PATH is a sw3tp.log or a run directory of run-test.sh ($COPY/traffic-runs/<exp>-<time>/, holding
 sw3tp.log and, only when it was new, ScriptErrors.log). Default: $COPY/sw3tp.log (COPY defaults to
-~/Games/Heroic/sw3-tp-test, as in trackpad/env.sh). Several --log options are scored together (the NESTS=0, NESTS=1
-and NEST_MODE=2 runs). Lines follow design/log-format.md: "traffic: lua: exp=<id> module=<m> event=<e> k=v ...".
+~/Games/Heroic/sw3-tp-test, as in trackpad/env.sh). Several --log options are scored together (the HAUNTS=0, HAUNTS=1
+and HAUNT_MODE=2 runs). Lines follow design/log-format.md: "traffic: lua: exp=<id> module=<m> event=<e> k=v ...".
 Verdicts: PASS, FAIL, NO DATA (the log lacks the case; the item says what to play), MANUAL (needs the player's eyes;
 the item says what to look at). --eyes folds the player's observation in: a MANUAL item becomes PASS or FAIL.
-Exit status 1 when any item is FAIL, 2 when no log was found. Test plan: design/test-plan-nests-parcels.md.
+Exit status 1 when any item is FAIL, 2 when no log was found. Test plan: design/test-plan-haunts-parcels.md.
 """
 import argparse
 import math
@@ -23,10 +23,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURE = os.path.join(HERE, "..", "tests", "check_ingame_fixture.log")
 REL = ("war", "neutral", "friend")
 PHASES = ("Quiet", "Boom", "Build-up", "Raids", "Bust", "Recovery")
-# vanilla bounty flights (OutMission_kill_pirate), nest-spec appendix A class P
+# vanilla bounty flights (OutMission_kill_pirate), haunt-spec appendix A class P
 BOUNTY = {"aurora": "pir_1", "argon": "pir03", "ahilles": "pirate02", "kassilia": "pir07"}
-COND = {"solncevka": 5}          # conditional rows that may stay uncalled (nest-spec 5.2)
-REGEN_PCT = 15                   # tune nest_regen_pct default
+COND = {"solncevka": 5}          # conditional rows that may stay uncalled (haunt-spec 5.2)
+REGEN_PCT = 15                   # tune haunt_regen_pct default
 CRATE_MAX = {"Cargo_crate": 1440, "Cargo_002": 1020}   # 1.2 x the map cost (parcel-spec 5.3, E-PCL.2)
 STR_UP, STR_DN = (25, 50, 75), (20, 45, 70)            # tune str_up_t / str_dn_t defaults (strength-spec 4.2)
 STR_DP, STR_CLS = (-1, 0, 1, 1), (1, 1, 2, 3)          # tier table dp and cls columns (strength-spec 4.3)
@@ -126,12 +126,12 @@ class Visit:
     def derive(self):
         for r in self.recs:
             if self.system is None and r.get("system") and (
-                    r.is_("state", "dump", source="load") or (r.mod == "nest" and r.ev == "load")
+                    r.is_("state", "dump", source="load") or (r.mod == "haunt" and r.ev == "load")
                     or (r.mod == "safety" and r.ev in ("activate", "mode"))):
                 self.system = r.get("system")
             if r.mod == "safety" and r.ev in ("activate", "mode") and r.get("chapter"):
                 self.chapter = r.int("chapter")
-            if r.mod != "nest":
+            if r.mod != "haunt":
                 continue
             e = r.ev
             if e == "mode" and self.mode is None:
@@ -185,7 +185,7 @@ class Log:
             v.revisit = v.kind == "enter" and v.system in seen
             if v.system:
                 seen.add(v.system)
-        self.level2 = any(r.is_("state", "leg") or (r.mod == "nest" and r.ev in ("call", "probe"))
+        self.level2 = any(r.is_("state", "leg") or (r.mod == "haunt" and r.ev in ("call", "probe"))
                           or (r.mod == "parcel" and r.ev in ("dock", "signal")) for r in self.recs)
         self.errors, self.errors_src = errors, errors_path
         if errors is None and errors_path and os.path.isfile(errors_path):
@@ -230,11 +230,11 @@ def script_errors(ctx, res):
             res.ev("ScriptErrors.log", lg.errors)
 
 
-def nest_errors(ctx, res):
-    e = ctx.find("nest", "error")
+def haunt_errors(ctx, res):
+    e = ctx.find("haunt", "error")
     if e:
-        res.fails.append("%d module=nest event=error lines" % len(e))
-        res.ev("nest errors", e)
+        res.fails.append("%d module=haunt event=error lines" % len(e))
+        res.ev("haunt errors", e)
 
 
 # ---- checks -----------------------------------------------------------------------------------------------------
@@ -242,9 +242,9 @@ def nest_errors(ctx, res):
 def c_err(ctx):
     res = Res()
     res.logpart = True
-    if not any(r.mod in ("nest", "parcel") for r in ctx.recs):
-        res.missing.append("no module=nest or module=parcel line: the mod did not load or LOG=0")
-    for mod in ("nest", "parcel", "core", "plumb", "hail", "merc"):
+    if not any(r.mod in ("haunt", "parcel") for r in ctx.recs):
+        res.missing.append("no module=haunt or module=parcel line: the mod did not load or LOG=0")
+    for mod in ("haunt", "parcel", "core", "plumb", "hail", "merc"):
         e = ctx.find(mod, "error")
         if e:
             res.fails.append("%d module=%s event=error lines" % (len(e), mod))
@@ -257,17 +257,17 @@ def c_err(ctx):
     return res
 
 
-def nest1(ctx):
-    """Visits planned with nest_mode 1 (mode 2 records every listed call instead of substituting it)."""
+def haunt1(ctx):
+    """Visits planned with haunt_mode 1 (mode 2 records every listed call instead of substituting it)."""
     return [v for v in ctx.visits if v.plan and v.plan.int("mode") == 1]
 
 
 def c_e16_1(ctx):
     res = Res()
     res.logpart = True
-    nv = nest1(ctx)
+    nv = haunt1(ctx)
     if not nv:
-        res.missing.append("no nest-mode entry with nest_mode 1 (NESTS=1, chapter 5+, free roam, a system with data)")
+        res.missing.append("no haunt-mode entry with haunt_mode 1 (HAUNTS=1, chapter 5+, free roam, a system with data)")
     subs_all = []
     for v in nv:
         subs = [c for c in v.calls if c.get("result") == "substituted"]
@@ -280,7 +280,7 @@ def c_e16_1(ctx):
         if a.int("unknown", 0) > 0:
             res.fails.append("%s: unknown=%d (listed signs called with another group)" % (nm, a.int("unknown")))
         if a.int("failed", 0) > 0 or bad:
-            res.fails.append("%s: failed=%d, %d result=failed calls (the nest build failed)" % (nm, a.int("failed", 0), len(bad)))
+            res.fails.append("%s: failed=%d, %d result=failed calls (the haunt build failed)" % (nm, a.int("failed", 0), len(bad)))
         if a.int("missing", 0) > COND.get(nm, 0):
             res.fails.append("%s: missing=%d (planned signs never reached the wrapper: hook window)" % (nm, a.int("missing")))
         want = (v.plan.int("fielded", 0)) - a.int("missing", 0)
@@ -288,7 +288,7 @@ def c_e16_1(ctx):
             res.fails.append("%s: %d substituted calls, the plan fields %d" % (nm, len(subs) + len(bad), want))
         if a.int("fielded", 0) + a.int("gone", 0) != len(subs):
             res.fails.append("%s: activate fielded+gone=%d, %d substituted calls" % (nm, a.int("fielded", 0) + a.int("gone", 0), len(subs)))
-    res.ev("nest-mode activations (nest_mode 1)", [v.activate for v in nv if v.activate])
+    res.ev("haunt-mode activations (haunt_mode 1)", [v.activate for v in nv if v.activate])
     res.ev("substituted calls", subs_all)
     van = [v for v in ctx.visits if v.mode and v.mode.get("mode") == "vanilla" and v.mode.get("reason") != "no_data"]
     for v in van:
@@ -296,9 +296,9 @@ def c_e16_1(ctx):
             res.fails.append("%s: vanilla-mode entry (reason=%s) with %d call lines" % (v.name(), v.mode.get("reason"), len(v.calls)))
             res.ev("calls in a vanilla-mode entry", v.calls)
     if not van:
-        res.missing.append("no vanilla-mode entry of a nest system (El Ariash or X297, a NESTS=0 run, a quest-gated system)")
-    res.ev("vanilla-mode entries of nest systems", [v.mode for v in van])
-    nest_errors(ctx, res)
+        res.missing.append("no vanilla-mode entry of a haunt system (El Ariash or X297, a HAUNTS=0 run, a quest-gated system)")
+    res.ev("vanilla-mode entries of haunt systems", [v.mode for v in van])
+    haunt_errors(ctx, res)
     script_errors(ctx, res)
     return res
 
@@ -309,29 +309,29 @@ def c_e16_2(ctx):
     off = [v for v in ctx.visits if v.revisit and v.mode and v.mode.get("reason") == "off" and "enter" in v.probes]
     bad = [v for v in off if v.probes["enter"].int("pirates", 0) > 0]
     if bad:
-        res.fails.append("pirates present at the entry of a revisited system with nest 0: the location snapshot keeps ships")
-        res.ev("enter probes with pirates > 0 (nest 0 revisits)", [v.probes["enter"] for v in bad])
+        res.fails.append("pirates present at the entry of a revisited system with haunt 0: the location snapshot keeps ships")
+        res.ev("enter probes with pirates > 0 (haunt 0 revisits)", [v.probes["enter"] for v in bad])
     orph = [r for v in ctx.visits for r in v.orphans]
     if orph:
-        res.fails.append("%d nest ships found at an entry (event=orphan): ships survived a jump; the entry delete removed them" % len(orph))
+        res.fails.append("%d haunt ships found at an entry (event=orphan): ships survived a jump; the entry delete removed them" % len(orph))
         res.ev("orphan lines", orph)
     if not off:
-        res.missing.append("no revisit of a nest system with nest 0 and probe lines (NESTS=0 run, LOG=2, ini carcasses=1)")
+        res.missing.append("no revisit of a haunt system with haunt 0 and probe lines (HAUNTS=0 run, LOG=2, ini carcasses=1)")
     elif not any(v.probes.get("activate") and v.probes["activate"].int("pirates", 0) > 0 for v in off):
         res.missing.append("the activate probe never counted a pirate: TRF_Near does not see them, so pirates=0 at entry proves nothing")
-    res.ev("enter probes, nest 0 revisits", [v.probes["enter"] for v in off])
-    res.ev("activate probes, nest 0 revisits", [v.probes["activate"] for v in off if "activate" in v.probes])
+    res.ev("enter probes, haunt 0 revisits", [v.probes["enter"] for v in off])
+    res.ev("activate probes, haunt 0 revisits", [v.probes["activate"] for v in off if "activate" in v.probes])
     on = [v.probes["enter"] for v in ctx.visits if v.revisit and v.plan and "enter" in v.probes
           and v.probes["enter"].int("pirates", 0) > 0]
     if on:
-        res.notes.append("%d nest-mode revisits with pirates at entry (other pirates, not nest ships)" % len(on))
+        res.notes.append("%d haunt-mode revisits with pirates at entry (other pirates, not haunt ships)" % len(on))
     return res
 
 
 def c_e16_3(ctx):
     res = Res()
     res.logpart = True
-    pv = [v for v in nest1(ctx) if v.mode and v.mode.int("pins", 0) > 0]
+    pv = [v for v in haunt1(ctx) if v.mode and v.mode.int("pins", 0) > 0]
     pins, bounty = [], []
     for v in pv:
         ps = [c for c in v.calls if c.get("result") == "substituted" and c.get("pinned") == "true"]
@@ -340,7 +340,7 @@ def c_e16_3(ctx):
             res.fails.append("%s: %d of %d pinned flights substituted" % (v.name(), len(ps), v.mode.int("pins")))
         bounty += [c for c in ps if BOUNTY.get(v.name()) == (c.get("sign") or "").lower()]
     if not pv:
-        res.missing.append("no nest-mode entry of a system with pinned flights (Aurora, Argon, Ahilles, Kassilia carry the vanilla bounties)")
+        res.missing.append("no haunt-mode entry of a system with pinned flights (Aurora, Argon, Ahilles, Kassilia carry the vanilla bounties)")
     elif not bounty:
         res.missing.append("no substituted bounty flight (Aurora pir_1, Argon Pir03, Ahilles Pirate02, Kassilia pir07)")
     res.ev("substituted pinned flights", pins)
@@ -357,9 +357,9 @@ def c_e16_4(ctx):
         if n != v.activate.int("stub"):
             res.fails.append("%s: %d stub calls, activate stub=%d" % (v.name(), n, v.activate.int("stub")))
         if v.errors:
-            res.fails.append("%s: nest error lines in the stub visit" % v.name())
+            res.fails.append("%s: haunt error lines in the stub visit" % v.name())
     if not sv:
-        res.missing.append("no activation with stubs: a nest entry in Quiet, Bust or Recovery, or with kill memory (kill, leave, return)")
+        res.missing.append("no activation with stubs: a haunt entry in Quiet, Bust or Recovery, or with kill memory (kill, leave, return)")
     res.ev("activations with stubs", [v.activate for v in sv])
     pd = [v for v in ctx.visits if v.name() == "pandora" and v.activate and v.activate.int("gone", 0) > 0]
     for v in pd:
@@ -369,7 +369,7 @@ def c_e16_4(ctx):
         res.ev("Pandora deleted-flight activations", [v.activate for v in pd])
     else:
         res.notes.append("Pandora after mission 8a (fielded=0 gone=15, no died) not covered")
-    nest_errors(ctx, res)
+    haunt_errors(ctx, res)
     script_errors(ctx, res)
     return res
 
@@ -397,14 +397,14 @@ def c_e16_5(ctx):
     ok = []
     for v in neutral:
         if [r for r in v.relations if r.get("to") == "war"]:
-            res.fails.append("%s: the vanilla group turned war after the player hit the nest" % v.name())
+            res.fails.append("%s: the vanilla group turned war after the player hit the haunt" % v.name())
         w = next_activation(ctx, v)
         if w and w.activate.get("relation") == "war":
             res.fails.append("%s neutral, the next activation (%s) war: the fight reached the team relation" % (v.name(), w.name()))
         elif w:
             ok.append(w.activate)
     if not neutral:
-        res.missing.append("no neutral nest visit with a hit (pirates neutral to the player, e.g. Golkonda with Triada friendly; fire at a nest ship, jump out and back)")
+        res.missing.append("no neutral haunt visit with a hit (pirates neutral to the player, e.g. Golkonda with Triada friendly; fire at a haunt ship, jump out and back)")
     elif not ok and not res.fails:
         res.missing.append("no later entry of the neutral system (%s): jump out and back in" % ", ".join(sorted(set(v.name() for v in neutral))))
     res.ev("neutral activations with hits", [v.activate for v in neutral])
@@ -435,9 +435,9 @@ def c_e16_6(ctx):
         if v.nload.int("rearmed", 0) > 0 and v.died:
             ok += v.died
     if not lv:
-        res.missing.append("no load inside a nest visit (quicksave in a nest system after the flights spawned, load it)")
+        res.missing.append("no load inside a haunt visit (quicksave in a haunt system after the flights spawned, load it)")
     elif not ok and not res.fails:
-        res.missing.append("no nest flight destroyed after the load")
+        res.missing.append("no haunt flight destroyed after the load")
     res.ev("load lines", [v.nload for v in lv])
     res.ev("died after a load", ok)
     res.ev("stale lines", [s for v in lv for s in v.stale])
@@ -461,7 +461,7 @@ def c_e16_7(ctx):
                 if nvc:
                     exp = max(0, b - t * int(math.ceil(REGEN_PCT * nvc / 100.0)))
                     if a != exp:
-                        res.fails.append("%s: regen %d -> %d in %d ticks, expected %d (nest_regen_pct %d)" % (nm, b, a, t, exp, REGEN_PCT))
+                        res.fails.append("%s: regen %d -> %d in %d ticks, expected %d (haunt_regen_pct %d)" % (nm, b, a, t, exp, REGEN_PCT))
                 if r.get("system") in last and last[r.get("system")] != b:
                     res.fails.append("%s: memory_before=%d, the last known memory is %d" % (nm, b, last[r.get("system")]))
                 if v.mode and v.mode.int("memory") != a:
@@ -482,7 +482,7 @@ def c_e16_7(ctx):
                     res.fails.append("%s: died memory=%d after %d (memory + 1 per flight)" % (nm, m, prev))
                 prev = last[nm] = m
     if not regen:
-        res.missing.append("no refill line: destroy nest flights, leave, come back after at least 2 legs (two jumps)")
+        res.missing.append("no refill line: destroy haunt flights, leave, come back after at least 2 legs (two jumps)")
     res.ev("regen lines", regen)
     res.ev("died lines", [d for v in ctx.visits for d in v.died])
     res.ev("plans after a refill", [v.plan for v in ctx.visits if v.regen and v.plan])
@@ -493,16 +493,16 @@ def c_e16_8(ctx):
     res = Res()
     big = [v.mode for v in ctx.visits if v.mode and v.mode.int("vanilla_count", 0) >= 15]
     res.ev("entries of systems with 15+ flights", big)
-    res.notes.append("the log has no timestamps: time the entry (jump to control) by stopwatch, NESTS=0 against NESTS=1")
+    res.notes.append("the log has no timestamps: time the entry (jump to control) by stopwatch, HAUNTS=0 against HAUNTS=1")
     return res
 
 
 def c_e16_9(ctx):
     res = Res()
-    nest_errors(ctx, res)
+    haunt_errors(ctx, res)
     script_errors(ctx, res)
     res.logpart = False
-    res.ev("nest-mode entries", [v.mode for v in ctx.visits if v.plan])
+    res.ev("haunt-mode entries", [v.mode for v in ctx.visits if v.plan])
     return res
 
 
@@ -518,7 +518,7 @@ def c_e16_10(ctx):
             for d in v.died:
                 per[ph] = per.get(ph, 0) + 1
         nd = sum(per.values())
-        res.notes.append("%s: %d legs, vanilla pirate kills %d, nest kills %d (%s)%s" % (
+        res.notes.append("%s: %d legs, vanilla pirate kills %d, haunt kills %d (%s)%s" % (
             os.path.basename(lg.path), span, len(van), nd, ", ".join("%s %d" % kv for kv in sorted(per.items())) or "none",
             ", per 10 legs %.1f / %.1f" % (10.0 * len(van) / span, 10.0 * nd / span) if span else ""))
     return res
@@ -531,7 +531,7 @@ def c_e16_11(ctx):
     for v in mv:
         nm, r, a = v.name(), v.replace, v.activate
         if not r:
-            res.fails.append("%s: nest_mode 2 entry without a replace line" % nm)
+            res.fails.append("%s: haunt_mode 2 entry without a replace line" % nm)
         else:
             unp = v.plan.int("fielded", 0) - v.plan.int("pins", 0)
             # gone: removed by activate.script before the replace (Pandora after 8a), not built again
@@ -544,10 +544,10 @@ def c_e16_11(ctx):
         elif a.int("failed", 0) > 0 or a.int("unknown", 0) > 0:
             res.fails.append("%s: activate failed=%s unknown=%s" % (nm, a.get("failed"), a.get("unknown")))
     if not mv:
-        res.missing.append("no nest_mode 2 entry (needed only when nest_mode 1 fails E16.1, E16.3 or E16.4: NEST_MODE=2)")
+        res.missing.append("no haunt_mode 2 entry (needed only when haunt_mode 1 fails E16.1, E16.3 or E16.4: HAUNT_MODE=2)")
     res.ev("replace lines", [v.replace for v in mv if v.replace])
-    res.ev("activations (nest_mode 2)", [v.activate for v in mv if v.activate])
-    nest_errors(ctx, res)
+    res.ev("activations (haunt_mode 2)", [v.activate for v in mv if v.activate])
+    haunt_errors(ctx, res)
     script_errors(ctx, res)
     return res
 
@@ -1171,13 +1171,13 @@ def c_str_tier(ctx):
 def c_str_table(ctx):
     res = Res()
     res.logpart = True
-    nm = [r for r in ctx.find("nest", "mode") if r.get("tier") and r.get("dp")]
+    nm = [r for r in ctx.find("haunt", "mode") if r.get("tier") and r.get("dp")]
     rg = [r for r in ctx.find("raid", "go") if r.get("tier") and r.get("power")]
     shc = [r for r in ctx.find("stash", "create") if r.get("tier") and r.get("class")]
     for r in nm:
         t = r.int("tier", 0)
         if 1 <= t <= 4 and r.int("dp") != STR_DP[t - 1]:
-            res.notes.append("%s: dp is not the table's %d (an explicit cfg tune nest_dp?)" % (r.short(), STR_DP[t - 1]))
+            res.notes.append("%s: dp is not the table's %d (an explicit cfg tune haunt_dp?)" % (r.short(), STR_DP[t - 1]))
     for r in rg:
         t = r.int("tier", 0)
         if 1 <= t <= 4:
@@ -1189,9 +1189,9 @@ def c_str_table(ctx):
         if 1 <= t <= 4 and r.int("class", 0) not in (STR_CLS[t - 1], min(3, STR_CLS[t - 1] + 1)):
             res.fails.append("%s: class is not the table's %d (or one up by salvage)" % (r.short(), STR_CLS[t - 1]))
     if not (nm or rg or shc):
-        res.missing.append("visit nest systems and see a raid or a stash created (module=nest event=mode, module=raid "
+        res.missing.append("visit haunt systems and see a raid or a stash created (module=haunt event=mode, module=raid "
                            "event=go, module=stash event=create)")
-    res.ev("nest modes", nm)
+    res.ev("haunt modes", nm)
     res.ev("raids", rg)
     res.ev("stashes created", shc)
     return res
@@ -1223,14 +1223,14 @@ def c_fit_roll(ctx):
             res.fails.append("%s: grade does not match the roll" % r.short())
     seen = {}
     for r in rl:
-        if r.get("source") == "nest":
+        if r.get("source") == "haunt":
             k = (r.get("system"), r.get("flight"), r.visit)
             seen[k] = seen.get(k, 0) + 1
     for k, n in seen.items():
         if n > 1:
             res.fails.append("%s flight %s rolled %d times in one visit" % (k[0], k[1], n))
     if not rl:
-        res.missing.append("install with FITS=1 LOG=2 and enter a nest system (chapter 5+): module=fits event=roll lines")
+        res.missing.append("install with FITS=1 LOG=2 and enter a haunt system (chapter 5+): module=fits event=roll lines")
     res.ev("graded rolls (elite or scrap)", [r for r in rl if r.get("grade") != "0"])
     res.ev("captured hits (a ship only in a row with a pool: event=row captured_ship)", [r for r in rl if r.get("captured_roll") == "true"])
     res.ev("other rolls", [r for r in rl if r.get("grade") == "0" and r.get("captured_roll") != "true"])
@@ -1255,7 +1255,7 @@ def c_fit_build(ctx):
         res.fails.append("%d module=fits event=error lines" % len(err))
         res.ev("fits errors", err)
     if not rows:
-        res.missing.append("enter a Build-up or Raids nest system with FITS=1 LOG=2 until a graded flight is built "
+        res.missing.append("enter a Build-up or Raids haunt system with FITS=1 LOG=2 until a graded flight is built "
                            "(module=fits event=row)")
     res.ev("graded rows", rows)
     res.ev("activate lines of those visits", act)
@@ -1274,7 +1274,7 @@ def c_fit_kill(ctx):
     if kl and not cs:
         res.notes.append("elite kills without a clan_score line: the -6 visit cap was already reached")
     if not kl:
-        res.missing.append("destroy an elite nest flight (module=fits event=roll ... grade=1, then module=fits event=kill)")
+        res.missing.append("destroy an elite haunt flight (module=fits event=roll ... grade=1, then module=fits event=kill)")
     res.ev("elite kills", kl)
     res.ev("clan score lines of elite kills", cs)
     return res
@@ -1290,9 +1290,9 @@ def c_fit_gate(ctx):
             res.fails.append("%s: a graded flight in a quest-gated visit" % r.short())
     for v in ctx.visits:
         if v.mode is not None and v.mode.get("reason") == "gate_quest" and v.activate is not None:
-            res.fails.append("%s: a quest-gated visit with a nest activate line" % v.activate.short())
+            res.fails.append("%s: a quest-gated visit with a haunt activate line" % v.activate.short())
     if not gl:
-        res.missing.append("enter a nest system named by an active quest (mode=vanilla reason=gate_quest) with FITS=1: "
+        res.missing.append("enter a haunt system named by an active quest (mode=vanilla reason=gate_quest) with FITS=1: "
                            "module=fits event=gate")
     res.ev("gate lines", gl)
     res.ev("gate rolls", gr)
@@ -1321,26 +1321,26 @@ def c_bb1(ctx):
 
 
 ITEMS = [
-    ("ERR", "no error lines (nest, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
+    ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
     ("E16.2", "snapshot: no ship survives a jump", c_e16_2, None),
     ("E16.3", "substituted flights behave as vanilla (bounty, pay, routes)", c_e16_3,
      "the vanilla bounty box (OutMission_kill_pirate) names the substituted flight, the kill pays the vanilla sum "
-     "(Aurora 6,000 cr), nest flights fly their patrol routes"),
+     "(Aurora 6,000 cr), haunt flights fly their patrol routes"),
     ("E16.4", "stubs answer the vanilla calls", c_e16_4, None),
-    ("E16.5", "relations: nest copies the vanilla group, fights never reach the team", c_e16_5, None),
-    ("E16.6", "load inside a nest system", c_e16_6, None),
+    ("E16.5", "relations: haunt copies the vanilla group, fights never reach the team", c_e16_5, None),
+    ("E16.6", "load inside a haunt system", c_e16_6, None),
     ("E16.7", "kill memory and its refill", c_e16_7, None),
     ("E16.8", "entry cost and 8x", c_e16_8,
-     "entry time within +10 % of the NESTS=0 run and 8x no slower than vanilla in XB-19 at Raids (or XK16 with 15 "
-     "flights); else nest_trig 1"),
-    ("E16.9", "quest start during a nest visit", c_e16_9,
-     "accept a class Q quest inside its system during a nest visit: the quest runs, its Delete lines remove pinned "
-     "flights; else a nest_off entry"),
+     "entry time within +10 % of the HAUNTS=0 run and 8x no slower than vanilla in XB-19 at Raids (or XK16 with 15 "
+     "flights); else haunt_trig 1"),
+    ("E16.9", "quest start during a haunt visit", c_e16_9,
+     "accept a class Q quest inside its system during a haunt visit: the quest runs, its Delete lines remove pinned "
+     "flights; else a haunt_off entry"),
     ("E16.10", "rate session", c_e16_10,
-     "three hours each with NESTS=1 and NESTS=0 in the same regions: kills and loot prices per hour within 10 % of "
+     "three hours each with HAUNTS=1 and HAUNTS=0 in the same regions: kills and loot prices per hour within 10 % of "
      "vanilla, Build-up/Raids at most 1.4x"),
-    ("E16.11", "fallback nest_mode 2", c_e16_11, "no pop-in at the spawn points, the rebuilt flights follow their routes"),
+    ("E16.11", "fallback haunt_mode 2", c_e16_11, "no pop-in at the spawn points, the rebuilt flights follow their routes"),
     ("E-PCL.1", "one unit per DeleteModule", c_pcl1, None),
     ("E-PCL.2", "no crate sells above 1.2 x cost", c_pcl2,
      "trade window sell price of Cargo_crate <= 1,440 cr and of Cargo_002 <= 1,020 cr at a trade station, at a "
@@ -1384,12 +1384,12 @@ ITEMS = [
      "and a load"),
     ("D-STR.1", "trader tier line: score, roll and step of the strength roll", c_str_roll, None),
     ("D-STR.2", "clan tier hysteresis holds across a region tick at a boundary", c_str_tier, None),
-    ("D-STR.3", "tier table: raid rows, nest dp and stash class unchanged", c_str_table, None),
-    ("D-FIT.1", "fit rolls: chances within the bounds, grade matches the roll, one roll per nest flight", c_fit_roll, None),
+    ("D-STR.3", "tier table: raid rows, haunt dp and stash class unchanged", c_str_table, None),
+    ("D-FIT.1", "fit rolls: chances within the bounds, grade matches the roll, one roll per haunt flight", c_fit_roll, None),
     ("D-FIT.2", "graded rows keep the ship count; their visits have no failed, missing or unknown flight", c_fit_build,
      "the graded flights fly other pirate hulls (elite: one level up, e.g. EvilEye for Stormcrow) and fight normally"),
     ("D-FIT.3", "an elite kill costs the clan at most 3 score", c_fit_kill, None),
-    ("D-FIT.4", "quest-gated visit: captured fits only, no nest activation", c_fit_gate,
+    ("D-FIT.4", "quest-gated visit: captured fits only, no haunt activation", c_fit_gate,
      "the quest of the system still runs its steps (its pirates appear, die and count as before)"),
     ("E-BB1", "AddModule on a bare pirate hull: return values, HP, the TRF_Carcasses read", c_bb1,
      "the test ship renders as the pirate hull, carries the guns (target it: modules listed), and fights when attacked"),
@@ -1424,8 +1424,8 @@ def report(ctx, results, summary_only=False, w=sys.stdout):
             path = []
             for v in lg.visits[1:]:
                 tag = v.mode.get("reason") if v.mode else ""
-                if v.mode and v.mode.get("mode") == "nest":
-                    tag = "nest"
+                if v.mode and v.mode.get("mode") == "haunt":
+                    tag = "haunt"
                 path.append("%s%s%s" % (v.name(), "(load)" if v.kind == "load" else "", "[%s]" % tag if tag else ""))
             w.write("  route: %s\n" % " ".join(path))
             ch = sorted(set(v.chapter for v in lg.visits if v.chapter is not None))
