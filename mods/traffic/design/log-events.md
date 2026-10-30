@@ -113,7 +113,7 @@ scrap, 0 normal.
 | `test` | `module=fits event=test name=Panthera_pir0 step=create result=ok x=-550 z=150` (debug `fits_test`) | 1 |
 | `test` | `module=fits event=test name=Panthera_pir0 step=hull bare=true hp=1000` | 1 |
 | `test` | `module=fits event=test name=Panthera_pir0 step=add_module module=PC2 ret=nil hp=1000` (`ret=error` when the call failed) | 1 |
-| `test` | `module=fits event=test name=Panthera_pir0 step=read result=ok tpl=Panthera_pir0 cls=6 hp=588 hpmax=600 alive=true` (2 s later; `result=not_found why=`, `no_native`; `step=position result=failed`; `step=create result=skipped reason=scene`) | 1 |
+| `test` | `module=fits event=test name=Panthera_pir0 step=read result=ok tpl=Panthera_pir0 cls=6 hp=588 hpmax=600 alive=true` (2 s later; `result=not_found why=`, `no_native`; `step=position result=failed`; `step=create result=skipped reason=scene|no_pilots`) | 1 |
 | `dump` | `module=fits event=dump on=true gate=0 elite_max=5 cap_pct=5 grades=0100000100` (`grades` the saved `TRF.nv.e` or none) | 1 |
 | `error` | `module=fits event=error message=<m>` | 1 |
 

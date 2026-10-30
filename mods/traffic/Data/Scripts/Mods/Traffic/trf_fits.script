@@ -349,13 +349,14 @@ end;
 -- Nest and gate builds ------------------------------------------------------------------
 
 -- Table, formation and row index of a NewPirateFlight type 1 / 2 call at power pw (NewAllFlight's __tablevel of the
--- difficulty, trf_raid TRF_Rd_LvTab); nil for type 3 or without the tables.
+-- difficulty, trf_raid TRF_Rd_LvTab); nil for type 3 or without the tables. No guess without TRF_Rd_LvTab: a wrong
+-- index would grade a row the builder never reads while the digit says graded.
 function TRF_FtTab(ty, pw)
 	local tab, form = nil, nil;
 	if ty == 1 then tab = Pir_Fighters; form = "shipFormation"; elseif ty == 2 then tab = Pir_Bombers; form = "shipFormationClaw"; end;
 	if type(tab) ~= "table" or type(Pir_Pilots) ~= "table" or type(pw) ~= "number" then return nil; end;
 	local lv = TRF_N("TRF_Rd_LvTab");
-	if type(lv) ~= "table" then lv = {1,1,2,3,4,5,6,6,7,8,9,10,11,12,12,13,14,15,16,17}; end;
+	if type(lv) ~= "table" then return nil; end;
 	local ri = lv[TRF_FtCl(floor(pw), 1, 20)];
 	if type(tab[ri]) ~= "table" then return nil; end;
 	return tab, form, ri;
@@ -454,6 +455,8 @@ end;
 function TRF_FtTestRaw(nm)
 	local pos, dir = TRF_FtTestPos();
 	if not pos then TRF_FtE("test", "name", nm, "step", "position", "result", "failed"); return; end;
+	-- The pilot table before the carcass: a ship without a pilot or flight could not be deleted at the jump.
+	if type(Pir_Pilots) ~= "table" then TRF_FtE("test", "name", nm, "step", "create", "result", "skipped", "reason", "no_pilots"); return; end;
 	local tm = CreateTeam("Pirates");
 	local grp = tm:CreateGroup("TRF_FtTest");
 	local fl = grp:CreateFlight("flight_trf_ft_test");

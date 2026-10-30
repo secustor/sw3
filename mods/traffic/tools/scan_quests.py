@@ -77,21 +77,23 @@ def scan(game, verbose):
         checks = []
         for ln, line in enumerate(t.split("\n"), 1):
             code = line.split("--", 1)[0]
+            hits = []      # (kind, what); the kind is counted here, never parsed back out of the text (paths may hold spaces)
             for m in CMP.finditer(code):
                 x = m.group(1) or m.group(2)
                 if x in names or x in mods:
-                    checks.append("%s:%d cmp %s" % (rel, ln, x))
+                    hits.append(("cmp", x))
             for m in INV.finditer(code):
                 if m.group(2) in names or m.group(2) in mods:
-                    checks.append("%s:%d inv %s(%s)" % (rel, ln, m.group(1), m.group(2)))
+                    hits.append(("inv", "%s(%s)" % (m.group(1), m.group(2))))
             for m in READERS.finditer(code):
                 obj = m.group(1) or m.group(3) or ""
                 if obj in MOTHER or obj.endswith("mothership"):
                     total["rd_ms"] += 1
                 else:
-                    checks.append("%s:%d rd %s" % (rel, ln, (obj + " " + (m.group(2) or "GetShipName")).strip()))
-        for c in checks:
-            total[c.split(" ")[1]] += 1
+                    hits.append(("rd", (obj + " " + (m.group(2) or "GetShipName")).strip()))
+            for kind, what in hits:
+                total[kind] += 1
+                checks.append("%s:%d %s %s" % (rel, ln, kind, what))
         for s in mine:
             per[s]["files"].append(rel)
             per[s]["checks"].extend(checks)

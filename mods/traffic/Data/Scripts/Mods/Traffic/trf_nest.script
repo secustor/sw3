@@ -1150,9 +1150,7 @@ function TRF_NeMode(cur, nm, d)
 		if not ok then return "vanilla", "gate_"..tostring(w); end;
 	end;
 	if not TRF_N("TRF_RgOf", cur) then return "vanilla", "no_region"; end;
-	if __disableAction == TRUE then return "vanilla", "supp"; end;
-	local sp = TRF_N("TRF_Supp");
-	if type(sp) == "number" and sp >= 2 then return "vanilla", "supp"; end;
+	if not TRF_NeGateOk() then return "vanilla", "supp"; end;
 	return "nest", nil;
 end;
 
@@ -1273,10 +1271,7 @@ function TRF_NeDecide(group, sign, location, ty, power, orient)
 		local pw = nil;
 		if type(power) == "number" then pw = TRF_NeCl(floor(power + a.dp), 1, 20); end;
 		local fl = nil;
-		if g and pw then
-			local ft = TRF_NeFits(TRF_NeK().gg, sign, location, ty, pw, orient, a, i, pin);
-			if ft then fl = ft.fl; else fl = call(TRF_orig_NewPirateFlight, {TRF_NeK().gg, sign, location, ty, pw, orient}, "x", TRF_NeNoErr); end;
-		end;
+		if g and pw then fl = TRF_NeBuild(TRF_NeK().gg, sign, location, ty, pw, orient, a, i, pin); end;
 		if TRF_NeObj(fl) then
 			a.st[i] = "sub";
 			a.fl[i] = fl;
@@ -1307,7 +1302,16 @@ function TRF_NeFits(gg, sign, location, ty, pw, orient, a, i, pin)
 	return ft;
 end;
 
--- 1 when no quest scene runs (__disableAction) and suppression is below 2 (TRF_NeMode's scene tests after the gate).
+-- Build of flight i at both sites (TRF_NeDecide, TRF_NeReplace): trf_fits' graded build when it handles the flight
+-- (TRF_NeFits), else the vanilla builder in the nest group, protected. Returns the flight, or nil / FALSE on a failure.
+function TRF_NeBuild(gg, sign, location, ty, pw, orient, a, i, pin)
+	local ft = TRF_NeFits(gg, sign, location, ty, pw, orient, a, i, pin);
+	if ft then return ft.fl; end;
+	return call(TRF_orig_NewPirateFlight, {gg, sign, location, ty, pw, orient}, "x", TRF_NeNoErr);
+end;
+
+-- 1 when no quest scene runs (__disableAction) and suppression is below 2: the last tests of TRF_NeMode, repeated by
+-- the quest-gated record at its entry and at every call.
 function TRF_NeGateOk()
 	if __disableAction == TRUE then return nil; end;
 	local sp = TRF_N("TRF_Supp");
@@ -1420,19 +1424,17 @@ function TRF_NeEnterBody()
 	-- E16.2 probe in every system with data (also with nest 0); pr asks TRF_Nest_OnActivate for the second probe.
 	TRF_NeProbe("enter");
 	ne.v.pr = 1;
+	local by = {};
+	for i = 1, nv do by[d.f[i].s] = i; end;
 	if mode ~= "nest" then
 		-- design/fits-spec.md 5.4: a quest-gated visit gets trf_fits' captured rows (fits on, fits_gate 0, not deny-listed),
 		-- never while a quest scene runs or suppression is on (TRF_NeGateOk).
 		if why == "gate_quest" and TRF_NeGateOk() and type(TRF_Ft_GateOn) == "function" and TRF_Ft_GateOn(nm) then
-			local gb = {};
-			for i = 1, nv do gb[d.f[i].s] = i; end;
-			ne.a = {on=1, gen=TRF_NeGen(), idx=cur, nm=nm, d=d, by=gb, mode=3, st={}, nb=0};
+			ne.a = {on=1, gen=TRF_NeGen(), idx=cur, nm=nm, d=d, by=by, mode=3, st={}, nb=0};
 		end;
 		return;
 	end;
 	local P = TRF_NestPlanOf(d.f, f, k, dp, TRF_NeCaches(cur), tn.nest_cache_r);
-	local by = {};
-	for i = 1, nv do by[d.f[i].s] = i; end;
 	ne.a = {on=1, gen=TRF_NeGen(), idx=cur, nm=nm, d=d, plan=P, by=by, dp=dp, st={}, fl={}, sb={}, van={}, unk=0, fail=0,
 		mode=TRF_NeOpt("nest_mode"), slot=slot, ph=ph, sw=sw};
 	TRF.nv = {i=cur, b=""};
@@ -1516,9 +1518,7 @@ function TRF_NeReplace(a)
 			if not alive then
 				a.st[i] = "gone";
 			elseif a.plan.fl[i] and TRF_NeGroup(a) then
-				local fl = nil;
-				local ft = TRF_NeFits(K.gg, r.s, Vector3(r.x, r.y, r.z), r.t, a.plan.pw[i], Vector3(0, 0, 1), a, i, nil);
-				if ft then fl = ft.fl; else fl = call(TRF_orig_NewPirateFlight, {K.gg, r.s, Vector3(r.x, r.y, r.z), r.t, a.plan.pw[i], Vector3(0, 0, 1)}, "x", TRF_NeNoErr); end;
+				local fl = TRF_NeBuild(K.gg, r.s, Vector3(r.x, r.y, r.z), r.t, a.plan.pw[i], Vector3(0, 0, 1), a, i, nil);
 				if TRF_NeObj(fl) then
 					call(TRF_NePatrolRaw, {fl, TRF_NeRoute(r)}, "x", TRF_NeNoErr);
 					a.fl[i] = fl; a.st[i] = "sub"; ns = ns + 1;
