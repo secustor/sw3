@@ -297,3 +297,11 @@ traffic: module=dll event=trig_frame slots=1 fires=1 sp_n=0 c1="return Trig_Cond
 traffic: module=dll event=stack_leak slots=2 total=101 v1=number:0.85 v2=nil
 traffic: module=dll event=trig_frame slots=2 fires=0 sp_n=4 sp="UpgradeDamageToCriticalHit" sp_res=2
 traffic: module=dll event=trig_fires frames=1680 fires=150 true=40 distinct=6 other=0 top="return Timer1_Cond();" top_act="Work_with_Quests();" top_n=60 second="return Trig_Cond();" second_act="TRF_RdHit(3,1,7)--" second_n=30 sp_calls=2400 sp_distinct=3 sp_other=0 sp_top="CalculateRateOfFire" sp_top_n=1500
+traffic: lua: exp=v1 module=str event=roll kind=trade id=46 score=77 roll=47 step=0 rolled_tier=4 tier=3 reason=tt4_slot
+traffic: lua: exp=v1 module=tier event=plan tier=3 reason=tt4_slot strength=8 ship_count=6 escorts_added=0 score=77 roll=47 step=0
+traffic: lua: exp=v1 module=str event=roll kind=trade id=12 score=22 roll=none step=0 rolled_tier=1 tier=1 reason=pro
+traffic: lua: exp=v1 module=tier event=plan tier=1 reason=pro strength=5 ship_count=nil escorts_added=0 score=22 roll=none step=0
+traffic: lua: exp=v1 module=str event=tier slot=1 score=76 tier=4 prev=3 via=tick result=changed
+traffic: lua: exp=v1 module=str event=tier slot=1 score=72 tier=4 prev=4 via=tick result=kept
+traffic: lua: exp=v1 module=str event=tier slot=2 score=44 tier=2 prev=3 via=event result=changed
+traffic: lua: exp=v1 module=raid event=go raid_id=2 trader_id=3 via=lane tier=2 power=14 ship_count=4 distance=874.871

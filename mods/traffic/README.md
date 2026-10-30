@@ -14,6 +14,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `config.script` | `TRF_Config()` returns `{exp=0..3, log=0/1, big=0/1, del_on_jump=0/1, autosave=0..2, traffic=0/1}` plus the optional v0.1 keys (`v01-spec.md` 9), v0.2 keys (`v02-spec.md` 10.4) and v1 keys (`v1-spec.md` 10.5). The repo default is `exp=0, autosave=0, traffic=1`; `install-test.sh` rewrites the file. |
 | `trf_state.script`, `trf_safety.script`, `trf_ui.script`, `trf_events.script`, `trf_gen.script` | v0.1 traffic (`design/v01-spec.md` 10.2), extended by v0.2: saved table (v3 since v0.2) and visit state; safety rules, caps, governor and strict gate; player-facing lines and news; attack, heat tiers, kills and response; generator wrap, spawn, routes, queue and seed, manager step, load pass. |
 | `trf_region.script`, `trf_tier.script`, `trf_raid.script`, `trf_shop.script`, `trf_hail.script` | v0.2 (`design/v02-spec.md` 10.1): regional cycle, prosperity and clans; bands, tiers, holds, parked ships; raids and help pay; trader shops, shortages and restore; hail menu, contracts and work board. Each loads on its own. |
+| `trf_str.script` | Strength scale ([design/strength-spec.md](design/strength-spec.md)): one score 0..99 per side (clan score, prosperity x 11, merc fortune), the tier 1..4 with hysteresis (saved clan tier digit `TRF.clan[slot].tr`), the one tier table (raid rows, nest `dp`, captain `cap`, stash `cls`) and the chance curve of the trader tier roll. Loads after `trf_region`, before `trf_tier` (counted as `extra=`). |
 | `trf_loc.script`, `trf_track.script`, `trf_faction.script`, `trf_clan.script`, `trf_convoy.script`, `trf_danger.script`, `trf_supply.script`, `trf_base.script` | v1 (`design/v1-spec.md` 10.1, load order 10.3): text tables and deny list; tracked pool; faction strength, sweeps and offers; clans T3–T4, carriers, salvage; TT4 and equipment convoys; danger convoys; supply convoys, demand cargo, heat reset; pirate bases. Each loads on its own. |
 | `trf_station.script` | Station voices ([design/station-voices-spec.md](design/station-voices-spec.md)): closed-station moods, dockmaster standing, greetings, news, tips, fees and the local station events (ore barge, tanker shuttle, refugee launch). Loads after `trf_plumb`. |
 | `trf_plumb.script` | Worldbuilding plumbing ([design/wb-plumbing-spec.md](design/wb-plumbing-spec.md)): the dock dispatcher behind the trade, patrol, pirate and request wrappers, the `_NoneStation_Action` chain, the `CostOfHead` wrapper and the `Case_Eject` handler list, the visit slots (box lock, scripted event, escort, arrival lines), the job slot, owed payers, ship caps, nav markers, 8.5 raid-help resolvers and the group-prefix orphan scan. Loads after the v1 files, before `trf_station`. |
@@ -883,6 +884,28 @@ On screen (step 3; the fielded stage is at most 2, so no corvette or mothership 
 
 MC.1-MC.4 of the spec section 11 (`MERCS=1 LOG=2`, a chapter 5 or later save): the record is created once and ticks every region tick, it survives a save and a load (the save grows by less than 4 KB), 8x idling clears no jump timer. The hire role: E12.1-E12.7, E12.10, E12.11, E0.15, E0.20, EL.5, R11 and the D-MERC.* items (spec section 11; `design/test-plan-nests-parcels.md` section 11, run C; `tools/check_ingame.py`). E0.13 is the release gate.
 
+## Strength scale (`EXP=0 TRAFFIC=1`)
+
+One strength logic for traders and pirates (spec [design/strength-spec.md](design/strength-spec.md)): module `trf_str`, loaded after `trf_region` (`module=core event=loaded ... extra_count=13`), always on, no cfg key.
+
+### What the player sees
+
+- Trader tiers follow the system's prosperity on one curve: pro 0-2 TT1 as before; pro 3 mostly TT2 (TT1 13 %, TT3 19 %); pro 4 TT2 or TT3 (45 %); pro 5-6 mostly TT3 with TT4 convoys at 12 / 38 %; pro 7-9 TT4 convoys at 82-100 % of the rolls, limited to one convoy per system by the convoy slot, the rest TT3 (spec 4.5, next to the old chances).
+- A clan's tier changes at 25 / 50 / 75 clan score going up and below 20 / 45 / 70 going down, so a score drifting around a threshold no longer flips raids, nest power, captain hulls and cache classes back and forth.
+- Raid rows, nest power steps, captain hulls and cache classes per tier are unchanged.
+
+### Config keys (strength scale)
+
+Tune only (`TUNE=`): `str_up` 60 and `str_dn` 20 (most % of a step up / down at the far end of a band), `str_up_t` {25, 50, 75} and `str_dn_t` {20, 45, 70} (tier thresholds; both lists must rise and each down value stay at or below its up value). The tier rows are code (`TRF_StrRows`); the tune `nest_dp` still overrides the nest step when set.
+
+### Log lines (strength scale)
+
+`module=str event=tier slot= score= tier= prev= via=tick|event result=changed` (level 1; `result=kept` at level 2 every tick), level 2 `event=roll kind=trade id= score= roll= step= rolled_tier= tier= reason=`; the tier `event=plan` line gains `score= roll= step=`. Rows in [design/log-events.md](design/log-events.md).
+
+### In-game checks (strength scale)
+
+D-STR.1-3 of the spec section 9 (`LOG=2`): the trader tier line shows score, roll and step; the clan tier holds across a tick at a boundary; raid, nest, captain and stash values per tier unchanged. `python3 -I mods/traffic/tools/check_ingame.py` scores them.
+
 ## Installing into the game
 
 The release zip `sw3-traffic-<v>.zip` (built by `release.sh`) or this folder:
@@ -978,10 +1001,10 @@ Movie and UI natives (`pe/traffic.c`, [design/mod-research/movie-state.md](desig
 ## Host checks (no game)
 
     mods/traffic/tools/get-lua4.sh                       # builds .work/lua4/bin/lua once
-    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment + v0.1 scenarios a..g (tests/host_traffic.lua) + v0.2 scenarios v02-a..n (tests/host_v02.lua) + v1 scenarios v1-a..n (tests/host_v1.lua) + station voices stn-a..h (tests/host_station.lua) + plumbing pl-a..e (tests/host_plumb.lua) + survivors sv-a..g (tests/host_survive.lua) + faction ladder lad-a..g (tests/host_ladder.lua) + charter ch-a..h (tests/host_charter.lua) + battle scars sc-a..g (tests/host_scar.lua) + wanted captains cap-a..h (tests/host_captain.lua) + demand page dm-a..h (tests/host_demand.lua) + clan stashes sh-a..h (tests/host_stash.lua) + Wolves Freight fr-a..h (tests/host_freight.lua) + dynamic nests ne-a..f (tests/host_nest.lua) + sealed parcels pcl-a..h (tests/host_parcel.lua) + mercenary clans mc-a..k (tests/host_merc.lua) + named mercenary pilots mcp-a..c (tests/host_pilots.lua)
+    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment + v0.1 scenarios a..g (tests/host_traffic.lua) + v0.2 scenarios v02-a..n (tests/host_v02.lua) + v1 scenarios v1-a..n (tests/host_v1.lua) + station voices stn-a..h (tests/host_station.lua) + plumbing pl-a..e (tests/host_plumb.lua) + survivors sv-a..g (tests/host_survive.lua) + faction ladder lad-a..g (tests/host_ladder.lua) + charter ch-a..h (tests/host_charter.lua) + battle scars sc-a..g (tests/host_scar.lua) + wanted captains cap-a..h (tests/host_captain.lua) + demand page dm-a..h (tests/host_demand.lua) + clan stashes sh-a..h (tests/host_stash.lua) + Wolves Freight fr-a..h (tests/host_freight.lua) + dynamic nests ne-a..f (tests/host_nest.lua) + sealed parcels pcl-a..h (tests/host_parcel.lua) + mercenary clans mc-a..k (tests/host_merc.lua) + named mercenary pilots mcp-a..c (tests/host_pilots.lua) + hail hl-a..e (tests/host_hail.lua) + strength scale str-a..e (tests/host_str.lua)
     python3 -I mods/traffic/tools/lint_lua.py --allow TeleportToLocation,CustomTeleportate mods/traffic/Data/Scripts/Mods/Traffic/*.script
     sh mods/traffic/tests/test_pilots.sh                 # named mercenary pilots: Pilots.xml merge and install.sh --pilots on copies under .work/pilots/ (run_host.sh runs it last, with the scenarios mcp-a..c of tests/host_pilots.lua)
 
-The run prints one `== <scenario>: exit 0, <n> traffic lines, 0 fails` line per run (136 runs, then one `== pilots` line from `test_pilots.sh`); any other line names the failed check. `v1-n` prints the worst-case save size by part (`HOST info TRF save size ...`).
+The run prints one `== <scenario>: exit 0, <n> traffic lines, 0 fails` line per run (157 runs, then one `== pilots` line from `test_pilots.sh`); any other line names the failed check. `v1-n` prints the worst-case save size by part (`HOST info TRF save size ...`).
 
 `tests/host_stubs.lua` stubs the natives and emulates ClearGlobals with the T3 carry, the save writer's skip rule and string trigger actions (`s.."();"`). Its stubs check argument shapes against the game's usage (`NewTrigger` per kind, `CreateCarcass`, `GetCarcassCountInSphere`). With `TRF_AUTOSAVE=1` (runs `exp0-saves`, `exp2-saves`) it also stubs `AutoSave` and `GetQuestLabel` and checks the save kit: no save in the first system or during mission 1, one `AutoSave` per new system, none for a system already saved, stale timers after a jump or a load, and the cap of 6. It then runs entry, ticks (clock sum), the experiment dispatch, the E0.3 trigger chain, two wrapped jumps, a save/load with a reserved-key scan of `TRF`, a load without `TRF` and a load with a foreign `TRF` layout, and dumps `TRF`. It exits 1 on any script error or failed check. Set `LUA4` to use another interpreter.

@@ -400,6 +400,8 @@ end;
 
 ### 9.2 Tier choice (`TRF_TierPick(idx, strength, free)`, trf_tier)
 
+Tier table and chances: see [strength-spec.md](strength-spec.md) (since 2026-10-30 the roll below is replaced by the strength curve, 4.4-4.5; the caps stay).
+
 Roll by `pro`: 3 → TT2 at 50 %; 4 → TT2; 5 → TT3 at 40 % else TT2; 6 → TT3 at 60 %; 7–9 → TT3 at 80 %; failed roll → next lower tier. Then capped: heat 3–4 → ≤ TT3; heat ≥ 5 → ≤ TT2; strict gate fails (`tt3`) → ≤ TT2; governor → ≤ TT2; `live.patk` → ≤ TT2; then the highest tier whose flight fits the free ships; TT1 too large → `skip_ships` (v01).
 
 ### 9.3 Compositions and holds (S24, S40)
@@ -433,7 +435,7 @@ Band 2, station usable, `TRF_StrictOk(cur, "parked")`, `cap_parked` 1, ships fre
 
 ### 9.6 Clans (S27, S28, S29; trf_region state, trf_raid composition)
 
-- One clan per region slot, `clan[slot].sc` 0..99; real tier `floor(sc / 25) + 1`; effective tier `TRF_EffTier(idx) = min(real, tier_cap)` (`tier_cap` 2 in v0.2), 1 in guard systems while the guard is active and in systems without a region. Composition, severity words, arrival-line words and `tier_k` all use the effective tier, so the player is told what he will meet (decision 11.4).
+- One clan per region slot, `clan[slot].sc` 0..99; real tier `floor(sc / 25) + 1` (with hysteresis since 2026-10-30: [strength-spec.md](strength-spec.md) 4.2); effective tier `TRF_EffTier(idx) = min(real, tier_cap)` (`tier_cap` 2 in v0.2), 1 in guard systems while the guard is active and in systems without a region. Composition, severity words, arrival-line words and `tier_k` all use the effective tier, so the player is told what he will meet (decision 11.4).
 - Score events between ticks: trader killed or robbed by a raid of the clan +1 (≤ +3 per visit, `live.cl`); clan, raid or vanilla pirate flight killed in the region −2, a `Butcher_*` hull −4 (≤ −6 per visit); sweeps 4.4; drift 4.2.
 - Names (`TRF_Rg_Text`, index = slot): Rust Jackals, Black Comets, Ash Vipers, Grey Ravens, Red Knives, Cold Suns, Bone Hounds, Night Kites (spares: Salt Eels, Dead Stars, Copper Teeth, Void Hyenas, Scrap Barons, Ember Wasps, Silent Hooks). Grep `LocData/*/` before release (as v01 decision 23).
 - Signals: raid leader's demand names the clan; trouble answer `sev1/sev2`; arrival line at `dis ≥ 3`: `FTU reports scavengers on the lanes in this system` (T1) / `pirate gangs` (T2) (`packs`, `raiders` kept for v1); with an open sweep in the home system, `$1 fleet expected; pirates dug in here` follows. Prosperity line when `dis < 3`: `pro` 6–7 `FTU: busy lanes in this system`, 8–9 `FTU: trade hub, convoys run here`. One line per entry, disruption first. News `pir`, `sweep`; dump line per clan.

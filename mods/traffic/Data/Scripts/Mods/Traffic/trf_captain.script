@@ -406,12 +406,14 @@ function TRF_CapTplOf(tp, esc, shift)
 	return TRF_CapCl(min(5, (tp or 3) + (esc or 0)) + (shift or 0), 1, 5);
 end;
 
--- Captain hull row (design 4): the tier's row band one row up, power clamp(sys_base + offset + 1, plo, phi + 1),
--- row clamp(__tablevel[power], lo, hi + 1). b = TRF_Rd_TierRows()[T], lv = TRF_Rd_LvTab(). Returns the row index.
+-- Captain hull row (design 4): the tier's row band b.cap rows up (the cap column of trf_str's tier table,
+-- design/strength-spec.md 4.3; 1 without it), power clamp(sys_base + offset + cap, plo, phi + cap), row
+-- clamp(__tablevel[power], lo, hi + cap). b = TRF_Rd_TierRows()[T], lv = TRF_Rd_LvTab(). Returns the row index.
 function TRF_CapHullOf(b, sb, lv)
-	local pw = TRF_CapCl(floor((sb or 5) + b.off + 1), b.plo, b.phi + 1);
+	local up = b.cap or 1;
+	local pw = TRF_CapCl(floor((sb or 5) + b.off + up), b.plo, b.phi + up);
 	pw = TRF_CapCl(pw, 1, getn(lv));
-	return TRF_CapCl(lv[pw], b.lo, b.hi + 1), pw;
+	return TRF_CapCl(lv[pw], b.lo, b.hi + up), pw;
 end;
 
 -- Ships of the captain's first flight beside him (design 5: he replaces its leader, +1 ship per escape): ns - 1 + esc.

@@ -411,8 +411,10 @@ end;
 
 -- Content class (design 4): T1-T2 1, T3 2, T4 3; salvage >= 4 raises it by one (at most 3).
 function TRF_ShClsOf(T, salv)
+	-- design/strength-spec.md 4.3: the cls column of trf_str's tier table (class 1 without it).
+	local R = TRF_N("TRF_StrRow", T);
 	local c = 1;
-	if T >= 4 then c = 3; elseif T == 3 then c = 2; end;
+	if type(R) == "table" and type(R.cls) == "number" then c = R.cls; end;
 	if type(salv) == "number" and salv >= 4 then c = min(3, c + 1); end;
 	return c;
 end;

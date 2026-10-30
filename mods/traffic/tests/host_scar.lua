@@ -158,7 +158,8 @@ end;
 function T_SC_A()
 	local h = HOST();
 	SC_Begin("gaoba", "9_1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=12") >= 1, "trf_scar loads after trf_charter (extra_count=12 with trf_captain, trf_stash, trf_freight, trf_nest, trf_parcel and trf_merc)");
+	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=13") >= 1, "trf_scar loads after trf_charter (extra_count=13 with trf_captain, trf_stash, trf_freight, trf_nest, trf_parcel and trf_merc)");
 	local ml = TRF_ModList();
 	HOST_Check(ml[getn(ml) - 6] == "Sc" and type(TRF_Sc_TuneDef) == "function" and TRF_Opt("enable_scars") == 1 and TRF_Opt("enable_scar_loot") == 1
 		and TRF_Opt("enable_scavengers") == 1 and TRF_Opt("enable_scar_recorder") == 1 and TRF_Opt("enable_salvage_licence") == 1,

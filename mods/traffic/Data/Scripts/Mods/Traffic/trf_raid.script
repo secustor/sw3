@@ -54,14 +54,10 @@ end;
 
 -- Raid tiers (5.3, design 7.12): row band in Pir_Fighters/Pir_Bombers, power band and offset to sys_base,
 -- Pir_Pilots index of lead and wings (NORMAL), ships. T3/T4 (v1 6.1): a second flight of ns2 ships
--- (T3 <= 7 ships, T4 <= 8 alive with Butcher_pir1).
+-- (T3 <= 7 ships, T4 <= 8 alive with Butcher_pir1). The rows are the one tier table of trf_str (TRF_StrRows,
+-- design/strength-spec.md 4.3; with its dp, cap and cls columns); nil without trf_str.
 function TRF_Rd_TierRows()
-	return {
-		{lo=1, hi=4, plo=1, phi=6, off=-3, lead=1, wing=1, ns=2},
-		{lo=5, hi=9, plo=4, phi=11, off=0, lead=2, wing=1, ns=4},
-		{lo=10, hi=14, plo=8, phi=15, off=2, lead=3, wing=2, ns=4, ns2=3},
-		{lo=15, hi=18, plo=11, phi=18, off=3, lead=4, wing=3, ns=4, ns2=4}
-	};
+	return TRF_N("TRF_StrRows");
 end;
 
 -- __tablevel of NewAllFlight (Create_flight_2.script 87-96): EASY, NORMAL, else HARD.

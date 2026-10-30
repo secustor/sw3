@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Score the in-game checks of dynamic nests (E16.1-E16.11), sealed parcels (E-PCL.1-E-PCL.6), trader docking (D-DOCK),
 the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10), the mercenary hire (D-MERC.*, design/merc-spec.md
-11, test plan section 11) and the stack leak diagnostic (D-DLL.1) from traffic logs.
+11, test plan section 11), the strength scale (D-STR.*, design/strength-spec.md 9) and the stack leak diagnostic
+(D-DLL.1) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -27,6 +28,9 @@ BOUNTY = {"aurora": "pir_1", "argon": "pir03", "ahilles": "pirate02", "kassilia"
 COND = {"solncevka": 5}          # conditional rows that may stay uncalled (nest-spec 5.2)
 REGEN_PCT = 15                   # tune nest_regen_pct default
 CRATE_MAX = {"Cargo_crate": 1440, "Cargo_002": 1020}   # 1.2 x the map cost (parcel-spec 5.3, E-PCL.2)
+STR_UP, STR_DN = (25, 50, 75), (20, 45, 70)            # tune str_up_t / str_dn_t defaults (strength-spec 4.2)
+STR_DP, STR_CLS = (-1, 0, 1, 1), (1, 1, 2, 3)          # tier table dp and cls columns (strength-spec 4.3)
+STR_RAID = ((1, 6), (4, 11), (8, 15), (11, 18))        # raid power band plo..phi per tier (strength-spec 4.3)
 
 
 def default_copy():
@@ -1096,6 +1100,103 @@ def c_dll1(ctx):
     return res
 
 
+# ---- strength scale (design/strength-spec.md 9) -----------------------------------------------------------------
+
+def str_band(sc):
+    return 1 + sum(1 for u in STR_UP if sc >= u)
+
+
+def str_tier(sc, prev):
+    """TRF_StrTier with the default thresholds."""
+    if prev is None:
+        return str_band(sc)
+    t = min(4, max(1, prev))
+    while t < 4 and sc >= STR_UP[t - 1]:
+        t += 1
+    while t > 1 and sc < STR_DN[t - 2]:
+        t -= 1
+    return t
+
+
+def c_str_roll(ctx):
+    res = Res()
+    res.logpart = True
+    rl = ctx.find("str", "roll", kind="trade")
+    pl = ctx.find("tier", "plan")
+    for r in rl:
+        sc, st, rt, t = r.int("score", -1), r.int("step", 9), r.int("rolled_tier", 0), r.int("tier", 0)
+        if sc < 0 or sc > 99 or sc % 11 or st not in (-1, 0, 1):
+            res.fails.append("%s: score not pro x 11 or step not -1..1" % r.short())
+        elif rt != min(4, max(1, str_band(sc) + st)):
+            res.fails.append("%s: rolled_tier is not the band of the score plus the step" % r.short())
+        elif t < 1 or t > rt:
+            res.fails.append("%s: tier above the rolled tier (the caps only lower it)" % r.short())
+        elif sc < 33 and (r.get("roll") != "none" or t != 1):
+            res.fails.append("%s: pro 0-2 drew a roll or gave a tier above TT1" % r.short())
+    old = [r for r in pl if "score" not in r.kv]
+    if old and rl:
+        res.fails.append("%d plan lines without score/roll/step next to str roll lines (an old trf_tier?)" % len(old))
+    drawn = [r for r in rl if r.get("roll") not in (None, "none")]
+    if not drawn:
+        res.missing.append("enter a system at pro 3 or more with LOG=2 until traders spawn (module=str event=roll kind=trade "
+                           "with a roll, module=tier event=plan with score= roll= step=)")
+    res.ev("trade rolls with a draw", drawn)
+    res.ev("trade rolls without a draw", [r for r in rl if r not in drawn])
+    res.ev("plan lines with score/roll/step", [r for r in pl if "score" in r.kv])
+    return res
+
+
+def c_str_tier(ctx):
+    res = Res()
+    res.logpart = True
+    tl = ctx.find("str", "tier")
+    held = []
+    for r in tl:
+        sc, t = r.int("score", -1), r.int("tier", 0)
+        pv = r.int("prev") if r.get("prev") not in (None, "none") else None
+        if sc < 0 or sc > 99 or t != str_tier(sc, pv):
+            res.fails.append("%s: tier is not the hysteresis tier of score and prev (default thresholds)" % r.short())
+        elif (r.get("result") == "changed") != (pv != t):
+            res.fails.append("%s: result does not match prev and tier" % r.short())
+        elif pv is not None and t == pv and t > str_band(sc):
+            held.append(r)
+    if not held:
+        res.missing.append("play region ticks until a clan score falls just below a threshold (70-74, 45-49 or 20-24) "
+                           "after the higher tier: module=str event=tier result=kept with the tier above the plain band")
+    res.ev("tier changes", [r for r in tl if r.get("result") == "changed"])
+    res.ev("tier held across a tick in the gap", held)
+    return res
+
+
+def c_str_table(ctx):
+    res = Res()
+    res.logpart = True
+    nm = [r for r in ctx.find("nest", "mode") if r.get("tier") and r.get("dp")]
+    rg = [r for r in ctx.find("raid", "go") if r.get("tier") and r.get("power")]
+    shc = [r for r in ctx.find("stash", "create") if r.get("tier") and r.get("class")]
+    for r in nm:
+        t = r.int("tier", 0)
+        if 1 <= t <= 4 and r.int("dp") != STR_DP[t - 1]:
+            res.notes.append("%s: dp is not the table's %d (an explicit cfg tune nest_dp?)" % (r.short(), STR_DP[t - 1]))
+    for r in rg:
+        t = r.int("tier", 0)
+        if 1 <= t <= 4:
+            lo, hi = STR_RAID[t - 1]
+            if not lo <= r.int("power", 0) <= hi or r.int("ship_count", 0) > 8:
+                res.fails.append("%s: power outside %d..%d for T%d or more than 8 ships" % (r.short(), lo, hi, t))
+    for r in shc:
+        t = r.int("tier", 0)
+        if 1 <= t <= 4 and r.int("class", 0) not in (STR_CLS[t - 1], min(3, STR_CLS[t - 1] + 1)):
+            res.fails.append("%s: class is not the table's %d (or one up by salvage)" % (r.short(), STR_CLS[t - 1]))
+    if not (nm or rg or shc):
+        res.missing.append("visit nest systems and see a raid or a stash created (module=nest event=mode, module=raid "
+                           "event=go, module=stash event=create)")
+    res.ev("nest modes", nm)
+    res.ev("raids", rg)
+    res.ev("stashes created", shc)
+    return res
+
+
 # id, title, check, eyes (None: the log decides)
 ITEMS = [
     ("ERR", "no error lines (nest, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
@@ -1159,6 +1260,9 @@ ITEMS = [
     ("D-MERC.betray", "betrayal and the blacklist (E0.13 by hand)", c_merc_betray,
      "'Turncoat!' and the pack leaves; GetTeamRelation(\"Merc\", PLAYER_TEAM) stays neutral after the attack, a jump "
      "and a load"),
+    ("D-STR.1", "trader tier line: score, roll and step of the strength roll", c_str_roll, None),
+    ("D-STR.2", "clan tier hysteresis holds across a region tick at a boundary", c_str_tier, None),
+    ("D-STR.3", "tier table: raid rows, nest dp and stash class unchanged", c_str_table, None),
     ("D-DLL.1", "stack leak source: trig_fires names the condition, stack_leak carries v1=", c_dll1, None),
 ]
 
@@ -1266,6 +1370,7 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "D-MERC.spawn": "MANUAL", "D-MERC.offer": "MANUAL", "D-MERC.hire": "MANUAL", "D-MERC.follow": "MANUAL",
             "D-MERC.ext": "PASS", "D-MERC.settle": "FAIL", "D-MERC.premission": "NO DATA", "D-MERC.collect": "NO DATA",
             "D-MERC.load": "NO DATA", "D-MERC.betray": "MANUAL",
+            "D-STR.1": "PASS", "D-STR.2": "PASS", "D-STR.3": "FAIL",
             "D-DLL.1": "PASS"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 

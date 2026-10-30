@@ -173,7 +173,8 @@ function NE_Rel(a, b) return GetGroupRelation(a, b); end;
 function T_NE_A()
 	local h = HOST();
 	NE_Begin("gaoba");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=12") >= 1, "trf_nest loads before trf_parcel (extra_count=12 with trf_merc)");
+	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=13") >= 1, "trf_nest loads before trf_parcel (extra_count=13 with trf_merc)");
 	local ml = TRF_ModList();
 	HOST_Check(ml[getn(ml) - 2] == "Nest" and TRF_Opt("nest") == 1 and TRF_Nest_OptDef().nest == 0 and TRF_NeOpt("nest_mode") == 1
 		and TRF_NeOpt("nest_trig") == 2 and TRF_NeOpt("nest_lines") == 1 and TRF_NeOpt("nest_mirror") == 1 and TRF_NeOpt("nest_grudge_war") == 0,

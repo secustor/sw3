@@ -50,6 +50,8 @@
 -- rolls the hire offer, the 1 s step runs the flight, the load hook (v1 list, after trf_plumb's) re-adopts or rebuilds
 -- the wing and deletes unhired ships, the jump hook (before trf_raid's, with the destination) deletes the ships and keeps
 -- or settles the hire, CBH TRF_McHit marks combat.
+-- Strength scale (design/strength-spec.md): trf_str loads after trf_region and before trf_tier (counted as extra=); pure
+-- helpers (score, tier with hysteresis, tier table, chance curve), the region tick commits the clan tier digit.
 
 function TRF_Path(name)
 	return "DATA/Scripts/Mods/Traffic/"..name;
@@ -510,8 +512,12 @@ function TRF_Main()
 			if ok then ok = TRF_LoadFile(mods[i]); if ok then nm = nm + 1; end; end;
 		end;
 		if ok then
-			local v2 = {"trf_region.script", "trf_tier.script", "trf_raid.script", "trf_shop.script", "trf_hail.script"};
-			for i = 1, getn(v2) do if TRF_LoadFile(v2[i]) then nm = nm + 1; end; end;
+			local v2 = {"trf_region.script", "trf_str.script", "trf_tier.script", "trf_raid.script", "trf_shop.script", "trf_hail.script"};
+			for i = 1, getn(v2) do
+				if TRF_LoadFile(v2[i]) then
+					if v2[i] == "trf_str.script" then ne = ne + 1; else nm = nm + 1; end;
+				end;
+			end;
 			local v1 = {"loc", "track", "faction", "clan", "convoy", "danger", "supply", "base"};
 			for i = 1, getn(v1) do if TRF_LoadFile("trf_"..v1[i]..".script") then nm = nm + 1; end; end;
 			local ex = {"plumb", "station", "survive", "ladder", "charter", "scar", "captain", "stash", "freight", "nest", "parcel", "merc"};

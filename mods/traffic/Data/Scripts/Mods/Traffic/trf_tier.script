@@ -49,7 +49,8 @@ function TRF_Tier_OptDef()
 end;
 
 -- Tune keys of trf_tier and of the trf_gen queue and seed (spec 9.4, 9.5, 10.4), TT4 chances and sizes
--- (v1 10.5). Hold-point and parked offsets are unmeasured (open O9), so they are tune keys too.
+-- (v1 10.5). Hold-point and parked offsets are unmeasured (open O9), so they are tune keys too. tt4_p8 / tt4_p9 are
+-- read nowhere since the strength scale (design/strength-spec.md 4.4: the TT4 chance comes from TRF_StrRoll).
 function TRF_Tier_TuneDef()
 	return {q_wait=180, q_prio=30, q_r=150, q_hp1=180, q_hp2=220, q_hpw=60, seed_min=15, seed_max=30,
 		pk_back=250, pk_side=150, pk_far=600,
@@ -299,34 +300,33 @@ function TRF_TrTt4Why(idx, strength, free, p)
 	return nil;
 end;
 
--- Tier for a spawn in system idx (spec 9.2): roll by pro, then the caps (heat >= 5, strict gate tt3,
--- governor, counted player attack this visit -> TT2), then the highest tier that fits free ships (nil: no
--- fit test). TT1 too large is left to the v0.1 cap check (skip_ships). pro 0-2 draws no RAND.
--- v1 8.1: pro 8 / 9 roll TT4 first (25 / 40 %); a failed TT4 condition gives TT3, then the TT3 caps.
--- Returns tier, reason.
+-- Tier for a spawn in system idx (design/strength-spec.md 4.4, 5.1; replaces the literal chances of spec 9.2 and
+-- v1 8.1): trade score pro x 11 (TRF_StrScore), one TRF_StrRoll step with TRF_TrRand(100), drawn only when the roll can
+-- change the tier (TRF_StrRollUseful); pro 0-2 is TT1 without a draw (band 0, the v0.1 path). Then the caps in the old
+-- order: a failed TT4 condition gives TT3 (cfg tt4 0 too), then the TT3 caps (heat >= 5, strict gate tt3, governor,
+-- counted player attack this visit -> TT2), then the highest tier that fits free ships (nil: no fit test). TT1 too
+-- large is left to the v0.1 cap check (skip_ships). Without trf_str: TT1, reason "str".
+-- Returns tier, reason, score, roll (nil: not drawn), step.
 function TRF_TierPick(idx, strength, free)
 	if TRF_TrOpt("prosperity", 1) == 0 then return 1, "off"; end;
+	if type(TRF_StrScore) ~= "function" or type(TRF_StrRoll) ~= "function" or type(TRF_StrRollUseful) ~= "function" then
+		return 1, "str";
+	end;
 	local p = TRF_TrPro(idx);
-	local t, why = 1, "pro";
-	if p == 3 then
-		if TRF_TrRand(100) < 50 then t = 2; else why = "roll"; end;
-	elseif p == 4 then
-		t = 2;
-	elseif p >= 5 then
-		-- cfg tt4 0: no TT4 draw, so the v0.2 roll sequence stays.
-		if p >= 8 and TRF_TrOpt("tt4", 1) ~= 0 then
-			local c4 = TRF_TrT("tt4_p8", 25);
-			if p >= 9 then c4 = TRF_TrT("tt4_p9", 40); end;
-			if TRF_TrRand(100) < c4 then t = 4; end;
+	local sc = TRF_StrScore("trade", idx);
+	local t, why, roll, step = 1, "pro", nil, 0;
+	if p >= 3 then
+		t = TRF_StrRoll(sc, nil);
+		if TRF_StrRollUseful(sc) then
+			roll = TRF_TrRand(100);
+			t, step = TRF_StrRoll(sc, roll);
+			if step ~= 0 then why = "roll"; end;
 		end;
-		if t == 4 then
-			local w = TRF_TrTt4Why(idx, strength, free, p);
-			if w then t = 3; why = "tt4_"..w; end;
-		else
-			local c = 80;
-			if p == 5 then c = 40; elseif p == 6 then c = 60; end;
-			if TRF_TrRand(100) < c then t = 3; else t = 2; why = "roll"; end;
-		end;
+	end;
+	local t0 = t;
+	if t == 4 then
+		local w = TRF_TrTt4Why(idx, strength, free, p);
+		if w then t = 3; why = "tt4_"..w; end;
 	end;
 	if t == 3 then
 		local L = TRF_TrLive();
@@ -339,7 +339,11 @@ function TRF_TierPick(idx, strength, free)
 	if type(free) == "number" then
 		while t > 1 and TRF_TierShips(t, strength, p) > free do t = t - 1; why = "ships"; end;
 	end;
-	return t, why;
+	if type(TRF_StrDE) == "function" then
+		TRF_StrDE("roll", "kind", "trade", "id", idx, "score", sc, "roll", roll or "none", "step", step, "rolled_tier", t0, "tier", t,
+			"reason", why);
+	end;
+	return t, why, sc, roll, step;
 end;
 
 -- Tier fields of a trf_gen plan (spec 9.2, 9.3): tier, twhy and, from TT2, pw (build power), row, n (base
@@ -347,7 +351,7 @@ end;
 -- maximum; for TT1 that is the v0.1 rule (4 - row escorts). plan.free: free ships. Returns the tier.
 function TRF_TierPlan(plan)
 	local idx = TRF_TrCur();
-	local t, why = TRF_TierPick(idx, plan.strength, plan.free);
+	local t, why, sc, roll, step = TRF_TierPick(idx, plan.strength, plan.free);
 	local c = TRF_TierComp(t, plan.strength, TRF_TrPro(idx));
 	if t > 1 then
 		plan.pw = c.pw; plan.row = c.row; plan.n = c.n; plan.tpn = c.tp; plan.tesc = c.tesc; plan.ne = c.ne;
@@ -355,7 +359,8 @@ function TRF_TierPlan(plan)
 	plan.tier = t;
 	plan.twhy = why;
 	if type(plan.esc) == "number" then plan.esc = max(0, min(plan.esc, c.tmax - c.ne)); end;
-	TRF_TrDE("plan", "tier", t, "reason", why, "strength", plan.strength, "ship_count", plan.n, "escorts_added", plan.esc);
+	TRF_TrDE("plan", "tier", t, "reason", why, "strength", plan.strength, "ship_count", plan.n, "escorts_added", plan.esc,
+		"score", sc or "none", "roll", roll or "none", "step", step or 0);
 	return t;
 end;
 

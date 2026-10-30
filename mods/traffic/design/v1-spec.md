@@ -212,6 +212,8 @@ Equipment convoys, supply convoys, the TT4 escort flight, raid and clan flights 
 
 ### 6.1 Compositions (`TRF_Rd_TierRows` rows 3 and 4 become live with `tier_cap` 4)
 
+Tier table and chances: see [strength-spec.md](strength-spec.md) (the rows below live in `TRF_StrRows`, 4.3; the TT4 chances of 8.1 are replaced, 4.5).
+
 | Tier | Flights | Rows (`Pir_Fighters`/`Pir_Bombers`, `Create_flight_2.script` 588–638) | Power | Pilots (NORMAL; EASY −1, HARD +1, 1..5) | Ships |
 |---|---|---|---|---|---|
 | T3 Packs | 2: fighters rows 10–14, plus bombers rows 10–14 (75 %) or one `Walrus_pir3`/`Walrus_pir4` gunboat (25 %, `Pir_BigShips` style, `FillCargoFlight(fl, Pir_CargoType, pw, 30, 3)`; it fills big ships only) | 10–14 (3–5 ships per row: EvilEye, Tiger, Raptor, Bident, Hatchet, Cleaner, Hammerhead `_pir`) | `clamp(sb + 2, 8, 15)` | lead Captain (3), wings Tough (2) | ≤ 7 |

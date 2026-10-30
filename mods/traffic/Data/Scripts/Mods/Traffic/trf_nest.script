@@ -89,6 +89,15 @@ function TRF_NeClampT()
 		nest_cache_r={0, 5000}, nest_grudge_nk={1, 99}, nest_cap={0, 1}};
 end;
 
+-- Power step of tier T (design/strength-spec.md 4.3): the dp column of trf_str's tier table; a cfg tune nest_dp set
+-- explicitly (a list in the cfg tune table) wins, and without trf_str the tune value (default {-1, 0, 1, 1}) is used.
+function TRF_NeDpOf(T, tn)
+	local o = TRF_N("TRF_CfgGet", "tune", nil);
+	local R = TRF_N("TRF_StrRow", T or 1);
+	if (type(o) ~= "table" or type(o.nest_dp) ~= "table") and type(R) == "table" and type(R.dp) == "number" then return R.dp; end;
+	return tn.nest_dp[T or 1] or 0;
+end;
+
 -- Tune values of this module, clamped; list keys copied with each entry clamped. Cached in NE while TRF_Tune returns
 -- the same table; callers must not write into it.
 function TRF_NeTune()
@@ -1353,7 +1362,7 @@ function TRF_NeEnterBody()
 	local slot, ph, T, sw = TRF_NeRegion(cur);
 	local tn = TRF_NeTune();
 	local f = TRF_NeFOf(ph or 0, sw, tn.nest_f, tn.nest_f_swept);
-	local dp = tn.nest_dp[T or 1] or 0;
+	local dp = TRF_NeDpOf(T, tn);
 	local r = TRF_NeRec(cur);
 	local k = 0;
 	if r then k = r.k; end;
@@ -1860,7 +1869,8 @@ function TRF_Nest_OptDef()
 end;
 
 -- Tune keys (design 6 config): nest_f % per phase (Quiet, Boom, Build-up, Raids, Bust, Recovery), nest_f_swept % in the
--- sweep target during Bust, nest_dp power per tier T1..T4, nest_regen_pct % of the vanilla count back per
+-- sweep target during Bust, nest_dp power per tier T1..T4 (read only when the cfg tune sets it, else trf_str's dp
+-- column: TRF_NeDpOf), nest_regen_pct % of the vanilla count back per
 -- nest_regen_legs legs, nest_cache_r (plus the route radius) from an unopened cache, nest_grudge_nk step 2 (read nowhere),
 -- nest_cap 1 counts the nest ships in cap_ships (V3).
 function TRF_Nest_TuneDef()

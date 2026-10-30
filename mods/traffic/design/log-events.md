@@ -74,7 +74,7 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | Event | Example line | Level |
 |---|---|---|
 | `error` | `module=tier event=error message=<m>` | 1 |
-| `plan` | `module=tier event=plan tier=2 reason=pick strength=8 ship_count=3 escorts_added=1` | 2 |
+| `plan` | `module=tier event=plan tier=2 reason=pro strength=8 ship_count=3 escorts_added=1 score=44 roll=50 step=0` (`roll=none` without a draw; strength-spec 5.1) | 2 |
 | `parked_spawn` | `module=tier event=parked_spawn reason=band result=none` | 2 |
 | `parked_spawn` | `module=tier event=parked_spawn template=HMQueen_tr1 reason=build result=failed` | 1 |
 | `parked_spawn` | `module=tier event=parked_spawn slot=1 template=HMQueen_tr1 position=290,-180,-300 family=2 result=spawned` | 1 |
@@ -87,6 +87,14 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `parked_clear` | `module=tier event=parked_clear reason=jump removed_count=1` | 1 |
 | `entry` | `module=tier event=entry system=gredos prosperity=4 band=1 spawn_factor=1.250 trader_cap=3 ship_cap=12 parked_cap=0 governor=false` | 1 |
 | `dump` | `module=tier event=dump prosperity=4 band=1 spawn_factor=1.250 trader_cap=3 ship_cap=12 parked_cap=0 governor=false tier_counts=0,0,0,0 parked_count=0 docking_id=none hold_points=none entry_plan=none` | 1 |
+
+## str (`trf_str.script`; `TRF_StrE`, `TRF_StrDE`)
+
+| Event | Example line | Level |
+|---|---|---|
+| `tier` | `module=str event=tier slot=1 score=76 tier=4 prev=3 via=tick result=changed` (clan tier digit committed at the region tick; `via=event` after `TRF_ClanAdd`; `prev=none` without a digit) | 1 |
+| `tier` | `module=str event=tier slot=1 score=72 tier=4 prev=4 via=tick result=kept` | 2 |
+| `roll` | `module=str event=roll kind=trade id=46 score=77 roll=47 step=0 rolled_tier=4 tier=3 reason=tt4_slot` (`TRF_TierPick`; `roll=none` without a draw, `rolled_tier` before the caps) | 2 |
 
 ## state (`trf_state.script`; `TRF_StE`, `TRF_StDE`)
 

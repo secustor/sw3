@@ -1225,7 +1225,8 @@ function T_V1_I()
 	V_Pro(9);
 	c = TRF_BandCaps(idx);
 	HOST_Check(c.sf == 2.00 and c.ct == 5 and c.cs == 20 and c.cp == 2 and c.band == 4, "pro 9: band 4, sf 2.00, caps 5/20, parked 2");
-	-- TT4 roll rates over 2000 picks: 25 % at pro 8, 40 % at pro 9 (RAND draws, no forced roll).
+	-- TT4 roll rates over 2000 picks (RAND draws, no forced roll). design/strength-spec.md 4.4 (replaces v1 8.1 25 / 40 %):
+	-- pro 8 = score 88, TT4 band, down 9 % -> 91 %; pro 9 = score 99, no down chance -> 100 % without a draw.
 	local rate = function(p)
 		V_Pro(p);
 		local n4 = 0;
@@ -1234,7 +1235,7 @@ function T_V1_I()
 	end;
 	local r8, r9 = rate(8), rate(9);
 	print("HOST info TT4 rate pro 8 "..r8.." pro 9 "..r9);
-	HOST_Check(abs(r8 - 0.25) <= 0.03 and abs(r9 - 0.40) <= 0.03, "TT4 rolls 25 / 40 % (+- 3): "..r8.." / "..r9);
+	HOST_Check(abs(r8 - 0.91) <= 0.03 and r9 == 1, "TT4 rolls 91 / 100 % (+- 3): "..r8.." / "..r9);
 	local t, why = nil, nil;
 	TRF.std.heat = 3; h.rq = {0};
 	t, why = TRF_TierPick(idx, 8, 20);
@@ -1673,7 +1674,12 @@ function T_V1_L()
 	HOST_Check(ng >= 3 and TRF_Ba_NShips() <= 16, "garrison "..ng.." flights, "..TRF_Ba_NShips().." ships <= 16 (tier "..TRF_EffTier(kit)..")");
 	-- Raids from the base: danger 3, raid flights spawn at the base and return to it.
 	HOST_Check(TRF_Rd_BaseDanger(kit, 1) == 3 and TRF_Rd_BaseDanger(V_Idx("kondel"), 0) == 2, "raid danger 3 at the base, >= 2 next to it");
+	-- design/strength-spec.md 5.1: pro 3 (the base cap) rolls TT2 at 68 % now; this check keeps the TT1 trader of the
+	-- old roll sequence (a TT2 escort flight would exceed the ship cap next to the 16-ship garrison).
+	local tpb = TRF_TierPick;
+	TRF_TierPick = function() return 1, "test"; end;
 	local id = T_Spawn("C") or T_Spawn("A");
+	TRF_TierPick = tpb;
 	local rn = nil;
 	if id then
 		h.rq = {0, 0, 0, 0};

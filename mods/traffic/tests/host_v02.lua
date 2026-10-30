@@ -550,20 +550,32 @@ function T_V02_E()
 	h.cfg.prosperity = 0;
 	HOST_Check(TRF_Band(idx) == 0 and TRF_TierPick(idx, 8, 20) == 1, "prosperity 0: band 0, TT1");
 	h.cfg.prosperity = nil;
-	-- Tier rolls: pro 0-2 and 4 draw nothing.
+	-- Tier rolls: pro 0-2 draw nothing.
 	for p = 0, 2 do
 		V_Pro(p);
 		local r0 = h.rand;
 		HOST_Check(TRF_TierPick(idx, 8, 20) == 1 and h.rand == r0, "pro "..p.." -> TT1 without a draw");
 	end;
+	-- design/strength-spec.md 4.4, 5.1 (replaces the 9.2 chances): pro 4 = score 44, TT2 band, up 45 %, down 4 %, one draw.
 	V_Pro(4);
 	local r0 = h.rand;
-	HOST_Check(TRF_TierPick(idx, 8, 20) == 2 and h.rand == r0, "pro 4 -> TT2 without a draw");
-	V_Pro(9);
 	h.rq = {0};
-	HOST_Check(TRF_TierPick(idx, 8, 20) == 3, "pro 9, roll 0 -> TT3");
+	local t4, w4, s4, ro4, st4 = TRF_TierPick(idx, 8, 20);
+	HOST_Check(t4 == 3 and w4 == "roll" and s4 == 44 and ro4 == 0 and st4 == 1 and h.rand == r0 + 1, "pro 4, roll 0 -> TT3 (score 44, step +1, one draw)");
+	h.rq = {50};
+	HOST_Check(TRF_TierPick(idx, 8, 20) == 2, "pro 4, roll 50 -> TT2");
 	h.rq = {99};
-	HOST_Check(TRF_TierPick(idx, 8, 20) == 2, "pro 9, roll 99 -> TT2");
+	HOST_Check(TRF_TierPick(idx, 8, 20) == 1, "pro 4, roll 99 -> TT1");
+	-- design/strength-spec.md 4.4: pro 9 = score 99, TT4 band, no down chance: no draw; without trf_convoy TT4 gives TT3.
+	V_Pro(9);
+	r0 = h.rand;
+	local t9, w9 = TRF_TierPick(idx, 8, 20);
+	HOST_Check(t9 == 3 and strsub(w9, 1, 4) == "tt4_" and h.rand == r0, "pro 9 -> TT4 band without a draw, TT4 condition -> TT3 ("..tostring(w9)..")");
+	V_Pro(5);
+	h.rq = {99};
+	HOST_Check(TRF_TierPick(idx, 8, 20) == 2, "pro 5, roll 99 -> TT2 (down 16 %)");
+	V_Pro(9);
+	-- design/strength-spec.md 5.1: the cap checks below run at pro 9 (no draw; the forced rolls stay unused).
 	TRF.std.heat = 3; h.rq = {0};
 	HOST_Check(TRF_TierPick(idx, 8, 20) == 3, "heat 3 keeps TT3 (the v0.2 maximum)");
 	TRF.std.heat = 5; h.rq = {0};
@@ -1390,6 +1402,8 @@ function T_V02_K()
 	HOST_Fire("f_object_inside", "TRF_OnExit("..f..","..TRF.gen..")--");
 	HOST_Check(ct and h.credits == c0 + ct.n and TRF.live.ct == nil, "wind-down: paid at the exit");
 	__disableAction = FALSE;
+	-- design/strength-spec.md 4.5: pro 7 rolls TT4/TT3 traders now, so the live ones fill the ship cap; clear them first.
+	for id, rr in TRF.live.tr do if type(rr) == "table" and rr.st ~= "gone" then TRF_Remove(id, "test"); end; end;
 	local g = T_Spawn("B") or T_Spawn("A");
 	V_Contract(g);
 	T_Jump("aurora");
@@ -1934,8 +1948,21 @@ function T_V02_M()
 	for i = 1, getn(rc.hold or {}) do totc[rc.hold[i].i] = (totc[rc.hold[i].i] or 0) + rc.hold[i].n; end;
 	local okw = c2 and h.shops_made[name] == 1 and h.dlgs[getn(h.dlgs)] == name;
 	if okw and (mk.goods["Cargo_01"].n ~= (totc["Cargo_01"] or 0)) then okw = nil; end;
+	-- design/strength-spec.md 5.1: the trader roll draws in another order, so the next trader can stock one of a's
+	-- equipment items itself; its own equipment (the shop items line) is not a leftover.
+	local eqc = {};
+	for i = 1, getn(h.logs) do
+		local x, y, q = strfind(h.logs[i], "module=shop event=items .* equip=([%w_,]*)");
+		local p = 1;
+		while q do
+			local a, b, w = strfind(q, "([%w_]+)", p);
+			if not a then break; end;
+			eqc[w] = 1;
+			p = b + 1;
+		end;
+	end;
 	for it, v in eqa do
-		if okw and not totc[it] and mk.goods[it].n > 1 then okw = nil; end;
+		if okw and not totc[it] and not eqc[it] and mk.goods[it].n > 1 then okw = nil; end;
 	end;
 	HOST_Check(okw and mk.goods["Trf_NotListed"].n == 3, "same slot, next trader: shop reused, previous stock and sales of listed items wiped, unlisted item kept");
 	HOST_Check(V_Logs("module=shop event=items trader_id="..tostring(c2).." shop="..name.." hold=") == 1, "log 2: item names of the fill logged");

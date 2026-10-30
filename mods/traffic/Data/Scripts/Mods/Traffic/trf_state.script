@@ -66,7 +66,7 @@ end;
 
 -- v0.2 and v1 modules with TRF_<M>_OptDef, TRF_<M>_TuneDef and TRF_<M>_Dump (v0.2 spec 10.2, 10.4; v1 10.1).
 function TRF_ModList()
-	return {"Rg", "Tier", "Raid", "Hail", "Shop", "Loc", "Track", "Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Pl", "Stn",
+	return {"Rg", "Str", "Tier", "Raid", "Hail", "Shop", "Loc", "Track", "Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Pl", "Stn",
 		"Sv", "Lad", "Ch", "Sc", "Cap", "Sh", "Fr", "Nest", "Pc", "Mc"};
 end;
 

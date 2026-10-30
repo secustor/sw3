@@ -288,3 +288,11 @@ Install: `EXP=0 TRAFFIC=1 LOG=2 AUTOSAVE=0 HAIL_BOX=2 MERCS=1 TUNE=merc_cd=0,mer
 16. Shoot a hired pack ship for five seconds: "Turncoat! <clan>, we're done here.", the pack leaves; next entry "The Mercenary Exchange has struck the Wolves off its books."; no pack for 30 jumps (`event=betray ... result=leave`, `event=roll ... reason=black` at level 2). E0.13: read the Merc team relation now, after a jump and after a load (must stay neutral). With the Black Legion hired (chapter 7+ with six completed hires) this is EL.5.
 17. Patrol dock: "Mercenaries for hire: <clan> in the <region> lanes." once per visit (`event=board`).
 18. E12.7, E12.10: 8x with a hired pack and a raid (no 4x fallback); the loot of a dead pack ship against the blood money of the offer line.
+
+## 12. Strength scale (any run with `LOG=2`)
+
+`D/strength-spec.md` 9 (D-STR.1-3); `check_ingame.py` items D-STR.1, .2, .3. No own install: any run of this plan with `LOG=2` (run B is the best fit, it has nests and raids). One line per check: do, then see.
+
+1. Enter systems at prosperity 3 or more and wait for trader spawns: `module=str event=roll kind=trade ... roll=<0..99>` and `module=tier event=plan ... score=<pro x 11> roll= step=`; at pro 0-2 `roll=none` and tier 1 (D-STR.1). Compare the tiers you see with strength-spec 4.5 (TT4 convoys from pro 5, one at a time).
+2. Play region ticks (legs) until a clan score drops into 70-74, 45-49 or 20-24 after the higher tier: the next tick logs `module=str event=tier ... result=kept` with the higher tier; below 70 / 45 / 20 it logs `result=changed` (D-STR.2).
+3. Visit nest systems, meet a raid or see a stash created: `event=mode ... tier=<T> dp=<-1,0,1,1>`, raid `event=go ... tier= power=` inside the tier's band, stash `event=create ... tier= class=` (D-STR.3).

@@ -90,7 +90,7 @@ Every `G/Scripts/Locations/<Sys>/activate.script` with an uncommented `NewPirate
 1. `TRF.nv` cleared; orphan delete: every live `trf_nest_<i>_<j>` (i up to the system's row count) is deleted (`event=orphan`), so ships a location snapshot kept never meet a new plan.
 2. Refill of the system's record (`TRF_NeRefillOf`): `t = floor((legs - l) / nest_regen_legs)`; `k = max(0, k - t x ceil(nest_regen_pct x nv / 100))`; `l = l + t x nest_regen_legs`; `c` cleared; `k = 0` removes the record (`event=regen`); a refill amount of 0 (`nest_regen_pct` 0) is no step. Applied only here, never during a visit or at a load.
 3. Mode (5.1); the E16.2 probe `event=probe at=enter` in every system with data, also with `nest` 0 (the second probe `at=activate` follows `activate.script`). Phase `ph` (`TRF_Phase`), tier `T` (`TRF_EffTier`, T4 in a carrier-raid target), swept (`clan.ns == idx` in Bust).
-4. Plan (pure `TRF_NestPlanOf(rows, f, k, dp, caches, cr)`): `f = nest_f[ph + 1]` (`nest_f_swept` in the swept target in Bust), `dp = nest_dp[T]`; `n = clamp(round(f x nv / 100) - k, pins, nv)`; pins first, then the ranks ascending; a non-pinned sign within `nest_cache_r + rr` of an unopened cache slot of this system (trf_stash records with `st` 0 or 1, `TRF_ShSlotPos`) is skipped (`sk = "cache"`). `event=plan` with the bit string.
+4. Plan (pure `TRF_NestPlanOf(rows, f, k, dp, caches, cr)`): `f = nest_f[ph + 1]` (`nest_f_swept` in the swept target in Bust), `dp` = the tier table's `dp` column (tier table and chances: see [strength-spec.md](strength-spec.md) 4.3; an explicit cfg tune `nest_dp` wins); `n = clamp(round(f x nv / 100) - k, pins, nv)`; pins first, then the ranks ascending; a non-pinned sign within `nest_cache_r + rr` of an unopened cache slot of this system (trf_stash records with `st` 0 or 1, `TRF_ShSlotPos`) is skipped (`sk = "cache"`). `event=plan` with the bit string.
 5. Arm: `NE.a` with `gen = TRF.gen`; `TRF.nv = {i, b = ""}`.
 
 ### 5.4 The wrapper (`TRF_Nest_NPF`, nest_mode 1)
@@ -139,7 +139,7 @@ Nest flights are team Pirates, group `TRF_Nest_1`. At activation the nest group 
 |---|---|---|---|
 | `nest_f` | {70, 100, 100, 100, 50, 70} | 0..100 | count % per phase (Quiet .. Recovery) |
 | `nest_f_swept` | 0 | 0..100 | count % in the swept target during Bust |
-| `nest_dp` | {-1, 0, 1, 1} | -5..5 | power per tier T1..T4 |
+| `nest_dp` | {-1, 0, 1, 1} | -5..5 | power per tier T1..T4, read only when the cfg tune sets it (else the `dp` column of [strength-spec.md](strength-spec.md) 4.3) |
 | `nest_regen_pct`, `nest_regen_legs` | 15, 2 | 0..100, 1..100 | refill per step, step length |
 | `nest_cache_r` | 600 | 0..5000 | distance (plus `rr`) from an unopened cache |
 | `nest_grudge_nk` | 5 | 1..99 | step 2, read nowhere |
