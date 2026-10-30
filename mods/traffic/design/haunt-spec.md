@@ -1,6 +1,6 @@
 # Pirate haunts: implementation spec (proposal 16, step 1)
 
-Renamed from 'nests' on 2026-10-30; saved-state keys keep their historic names.
+Renamed from 'nests' on 2026-10-30; saved-state keys keep their historic names (`nv`, `nst`, `nk`, `nl`, `ns`), except `TRF.nest`, now `TRF.haunt` (section 3).
 
 Status: step 1 implemented and host-tested 2026-10-24 (`tests/host_haunt.lua`, runs `ha-a`..`ha-f`), not run in the game; cfg `haunt` defaults to 0 until CHECK E16.1-E16.5 pass. Design: `D/worldbuilding/16-pirate-haunts.md` (cited as "16 n"); shared rules: `D/worldbuilding/00-economy-and-progression.md` sections 6 and 8 ("00"); plumbing: `D/wb-plumbing-spec.md` ("WB").
 Paths: `D` = `mods/traffic/design`, `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `T` = `mods/traffic/tests`, `G` = the game's `Data`.

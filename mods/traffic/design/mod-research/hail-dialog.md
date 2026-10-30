@@ -143,7 +143,7 @@ D6 (answer text set inside a callback) belongs to stage B.
 
 Every follow-up of the dialog menu is a page of `Data/Scripts/Trade/TRF_HailPg.xml` (the demand result page's file, now with the answers `a_acc`, `a_dec`, `a_back`, `a_leave`, `a_nowit`, `a_close`), opened by `TRF_HlPgShow` from the due call `TRF_HailStep` with its text set in the init, the pattern of the demand page. D6 is not needed: no text is set inside an answer callback and no `go_message_name` is used. An answer has Back (the menu dialog again from a due call, the used option hidden by its init) and Close; an offer (escort contract, sweep and faction offers, provider offers, the `dc` and `sesc` contracts) has Accept and Decline (back to the menu). The box lock stays with owner `hail` from the menu dialog to the last page. The box chain stays the fallback for `hail_box` 1 and for a page that cannot open (`TRF_HlDlgWhy`, the lock). The combat hail (spec 3) uses the same pages. Host runs `hl-a`..`hl-e`.
 
-Remaining in-game checks (test plan `D/test-plan-nests-parcels.md` 4.5, `check_ingame.py` D-HAIL.*):
+Remaining in-game checks (test plan `D/test-plan-haunts-parcels.md` 4.5, `check_ingame.py` D-HAIL.*):
 
 | # | Check | Expected |
 |---|---|---|
