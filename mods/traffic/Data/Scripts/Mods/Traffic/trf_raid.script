@@ -884,7 +884,7 @@ function TRF_Rd_Comp(n, rd, gname, sign, pos, dir, pw, cur)
 			fl = nil;
 		end;
 	end;
-	-- design/fits-spec.md 5.5: one trf_fits roll per raid flight (not the salvaged flight, not a captain's raid).
+	-- design/fits-spec.md 5.5: one trf_fits roll per raid flight (not the salvaged flight, no flight of a captain's raid).
 	local gr = nil;
 	if not fl and rd.n1x == nil then gr = TRF_P("TRF_Ft_Grade", cur, 2 * n + 1, "raid", "raid_"..n.."_1", T); end;
 	if not fl then fl = TRF_PirFlight(T, pw, gname, sign, pos, dir, kind, n1, ns1, gr); end;
@@ -907,7 +907,9 @@ function TRF_Rd_Comp(n, rd, gname, sign, pos, dir, pw, cur)
 		local f2 = nil;
 		if T == 3 and TRF_Rd_Rand(100) < 25 then f2 = TRF_Rd_Gunboat(T, pw, gname, sign.."b", p2, dir); end;
 		if not TRF_Rd_Obj(f2) then
-			f2 = TRF_PirFlight(T, pw, gname, sign.."b", p2, dir, 2, n2, nil, TRF_P("TRF_Ft_Grade", cur, 2 * n + 2, "raid", "raid_"..n.."_2", T));
+			local g2 = nil;
+			if rd.n1x == nil then g2 = TRF_P("TRF_Ft_Grade", cur, 2 * n + 2, "raid", "raid_"..n.."_2", T); end;
+			f2 = TRF_PirFlight(T, pw, gname, sign.."b", p2, dir, 2, n2, nil, g2);
 		end;
 		if TRF_Rd_Obj(f2) then tinsert(fls, f2); cap = cap - TRF_Rd_FlN(f2); end;
 	end;

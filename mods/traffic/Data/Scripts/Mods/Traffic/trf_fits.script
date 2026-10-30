@@ -221,9 +221,9 @@ end;
 
 -- Copy of row (a Pir_* row {{fit, rank, role}, ...} or a raid row) for grade g (spec 3.3), built by explicit index:
 -- g 1 the up map and (rk 1) rank + 1 within 1..5, g -1 the dn map; sel (0..99, nil: no captured ship) replaces the
--- first ship from index mod(sel, n) + 1 on whose (graded) fit has a captured pool with pool entry
--- mod(floor(sel / n), #pool) + 1. Entries that are not tables are copied unchanged. Returns the copy and the index of
--- the captured ship or nil.
+-- first ship from index mod(sel, n) + 1 on whose (graded) fit has a captured pool with an entry the graded row does not
+-- carry: entry mod(floor(sel / n), #left) + 1 of those (TRF_FtLeft). Entries that are not tables are copied unchanged.
+-- Returns the copy and the index of the captured ship or nil.
 function TRF_FtRow(row, g, sel, rk)
 	local D = TRF_FtD();
 	local out = {};
@@ -249,7 +249,7 @@ function TRF_FtRow(row, g, sel, rk)
 			local j = mod(sel + k, n) + 1;
 			local e = out[j];
 			local p = nil;
-			if not cj and type(e) == "table" then p = D.cap[e[1]]; end;
+			if not cj and type(e) == "table" then p = TRF_FtLeft(D.cap[e[1]], out); end;
 			if type(p) == "table" and getn(p) > 0 then
 				out[j] = {p[mod(floor(sel / n), getn(p)) + 1], e[2], e[3]};
 				cj = j;
@@ -257,6 +257,23 @@ function TRF_FtRow(row, g, sel, rk)
 		end;
 	end;
 	return out, cj;
+end;
+
+-- Entries of pool p (nil: none) that no ship of row carries, built by explicit index; nil without a pool.
+function TRF_FtLeft(p, row)
+	if type(p) ~= "table" then return nil; end;
+	local q, m = {}, 0;
+	for k = 1, getn(p) do
+		local has = nil;
+		for j = 1, getn(row) do
+			if type(row[j]) == "table" and row[j][1] == p[k] then has = 1; end;
+		end;
+		if not has then
+			m = m + 1;
+			q[m] = p[k];
+		end;
+	end;
+	return q;
 end;
 
 -- Fit names of row joined with "," (log values).
@@ -296,7 +313,8 @@ function TRF_FtName(idx)
 end;
 
 -- Rolls flight i of system idx for source src ("nest", "raid", "base", "gate"; salt from TRF_FtK) and logs
--- event=roll (level 1 for an elite, scrap or captured flight, else level 2). tier: override (nil: TRF_EffTier).
+-- event=roll (level 1 for an elite or scrap flight, else level 2; captured_roll: the captured hash hit, the ship itself
+-- is placed by TRF_Ft_RowOf only in a row with a pool). tier: override (nil: TRF_EffTier).
 -- Returns the roll record (plus sys and fl, the log values), nil while the module is off.
 function TRF_Ft_Grade(idx, i, src, flight, tier, gate)
 	if not TRF_FtOn() then return nil; end;
@@ -307,21 +325,23 @@ function TRF_Ft_Grade(idx, i, src, flight, tier, gate)
 	R.sys = TRF_FtName(idx);
 	R.fl = tostring(flight or i);
 	local lf = TRF_FtDE;
-	if R.g ~= 0 or R.c then lf = TRF_FtE; end;
+	if R.g ~= 0 then lf = TRF_FtE; end;
 	lf("roll", "system", R.sys, "flight", R.fl, "source", src, "score", R.sc, "tier", R.t, "up", R.up,
-		"down", R.dn, "roll", R.r, "grade", R.g, "captured", TRF_KvB(R.c));
+		"down", R.dn, "roll", R.r, "grade", R.g, "captured_roll", TRF_KvB(R.c));
 	return R;
 end;
 
 -- Row of record R: the graded copy of row (rk 1: the rank step of an elite), the captured ship index, event=row (level
--- 2) with the fit names before and after, event=skip reason=cap (level 2) when the captured roll hit a row without a
+-- 1 with a captured ship, else 2) with the fit names before and after, event=skip reason=cap (level 2) when the captured roll hit a row without a
 -- pool. Returns the copy, the captured index or nil.
 function TRF_Ft_RowOf(row, R, rk, sys, flight)
 	local sel = nil;
 	if R.c then sel = R.sel; end;
 	local out, cj = TRF_FtRow(row, R.g, sel, rk);
 	if R.c and not cj then TRF_FtDE("skip", "system", sys, "flight", tostring(flight), "reason", "cap"); end;
-	TRF_FtDE("row", "system", sys, "flight", tostring(flight), "grade", R.g, "captured_ship", cj or 0, "before", TRF_FtNames(row),
+	local lf = TRF_FtDE;
+	if cj then lf = TRF_FtE; end;
+	lf("row", "system", sys, "flight", tostring(flight), "grade", R.g, "captured_ship", cj or 0, "before", TRF_FtNames(row),
 		"after", TRF_FtNames(out));
 	return out, cj;
 end;

@@ -1231,8 +1231,9 @@ def c_fit_roll(ctx):
             res.fails.append("%s flight %s rolled %d times in one visit" % (k[0], k[1], n))
     if not rl:
         res.missing.append("install with FITS=1 LOG=2 and enter a nest system (chapter 5+): module=fits event=roll lines")
-    res.ev("graded rolls (elite, scrap or captured)", [r for r in rl if r.get("grade") != "0" or r.get("captured") == "true"])
-    res.ev("other rolls", [r for r in rl if r.get("grade") == "0" and r.get("captured") != "true"])
+    res.ev("graded rolls (elite or scrap)", [r for r in rl if r.get("grade") != "0"])
+    res.ev("captured hits (a ship only in a row with a pool: event=row captured_ship)", [r for r in rl if r.get("captured_roll") == "true"])
+    res.ev("other rolls", [r for r in rl if r.get("grade") == "0" and r.get("captured_roll") != "true"])
     return res
 
 

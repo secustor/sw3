@@ -79,6 +79,27 @@ function FT_FindPt(nm, ne, nc, gate)
 	return nil;
 end;
 
+-- First phase start leg 1..4000 and flight index of system nm whose graded row (nest power) is of kind w: "cap" a
+-- normal flight with a captured ship, "scrap" a scrap flight. Returns pt, i and the roll record, or nil.
+function FT_Find(nm, w)
+	local d = NE_Data(nm);
+	local dp = TRF_StrRow(TRF_EffTier(V_Idx(nm))).dp;
+	for pt = 1, 4000 do
+		local G = FT_Grades(nm, pt);
+		for i = 1, getn(d.f) do
+			local R = G[i];
+			if R then
+				local tab, form, ri = TRF_FtTab(d.f[i].t, d.f[i].p + dp);
+				local sel = nil;
+				if R.c then sel = R.sel; end;
+				local row, cj = TRF_FtRow(tab[ri], R.g, sel, 1);
+				if (w == "cap" and R.g == 0 and cj) or (w == "scrap" and R.g == -1) then return pt, i, R; end;
+			end;
+		end;
+	end;
+	return nil;
+end;
+
 -- Fit names of a row.
 function FT_Names(row) return TRF_FtNames(row); end;
 
@@ -249,7 +270,7 @@ function T_FT_B()
 	local sc1 = TRF_FtRow(Pir_Fighters[1], -1, nil, 1);
 	HOST_Check(sc1[1][1] == "Brigand_pir1", "scrap of an L1 fit: unchanged");
 	-- Captured: one ship at most, from the selector; value within 5 %.
-	local b10 = Pir_Bombers[10];
+	local b10 = Pir_Bombers[11];
 	local okc, n1 = 1, 0;
 	for sel = 0, 99 do
 		local c, j = TRF_FtRow(b10, 0, sel, 1);
@@ -261,6 +282,22 @@ function T_FT_B()
 		if j == 1 then n1 = n1 + 1; end;
 	end;
 	HOST_Check(okc and n1 > 0, "captured: exactly one ship swapped for every selector, within +-5 % of its value");
+	-- The captured fit is never one the row already carries (fighter row 4 has Yari and Brigand, bomber row 10 Bident and
+	-- Hatchet: no captured ship).
+	local okn = 1;
+	for sel = 0, 99 do
+		local c4, j4 = TRF_FtRow(Pir_Fighters[4], 0, sel, 1);
+		local c10, j10 = TRF_FtRow(Pir_Bombers[10], 0, sel, 1);
+		if j4 or j10 or FT_Names(c4) ~= FT_Names(Pir_Fighters[4]) then okn = nil; end;
+		for r = 1, 20 do
+			local tb = {Pir_Fighters[r], Pir_Bombers[r]};
+			for q = 1, 2 do
+				local cr, jr = TRF_FtRow(tb[q], 0, sel, 1);
+				if jr then for k = 1, getn(tb[q]) do if tb[q][k][1] == cr[jr][1] then okn = nil; end; end; end;
+			end;
+		end;
+	end;
+	HOST_Check(okn, "captured: never a fit the row carries; rows with both fits of a pool get no captured ship");
 	local np = TRF_FtRow(Pir_Fighters[12], 0, 37, 1);
 	local same = FT_Names(np) == FT_Names(Pir_Fighters[12]);
 	HOST_Check(same, "captured hit on a row without a pool: unchanged");
@@ -320,7 +357,7 @@ function T_FT_C()
 		end;
 	end;
 	HOST_Check(ok and getn(el) >= 2, "elite flights built through NewAllFlight with the graded row at the nest power in TRF_GNest_1, digits in TRF.nv.e "..tostring(e)..bad);
-	HOST_Check(S_Logs(n0, "module=fits event=roll system=golkonda") == 10 and S_Logs(n0, "grade=1 captured=") == getn(el)
+	HOST_Check(S_Logs(n0, "module=fits event=roll system=golkonda") == 10 and S_Logs(n0, "grade=1 captured_roll=") == getn(el)
 		and S_Logs(n0, "module=fits event=row system=golkonda") >= getn(el), "one roll line per flight, a row line per graded flight");
 	HOST_Check(FT_PirSnap() == snap, "the global Pir_Fighters / Pir_Bombers rows unchanged");
 	HOST_Check(S_Logs(n0, "result=substituted") == 10 and NE_Kv(NE_Line(n0, "module=nest event=activate "), "fielded") == "10", "ten flights fielded");
@@ -373,6 +410,34 @@ function T_FT_C()
 	TRF.nv.e = "9x";
 	TRF_Nest_Fix();
 	HOST_Check(TRF.nv and TRF.nv.e == nil and TRF.nv.b ~= nil, "repair: bad digits dropped, the visit record kept");
+	-- A captured-only flight (Raids, score 99) and a scrap flight (Boom, tier 2, score 30): the graded row through
+	-- NewAllFlight in TRF_GNest_1, digit 3 (captured) or 2 / 5 (scrap) in TRF.nv.e, a kill costs -2.
+	local cs = {{3, 99, "cap"}, {1, 30, "scrap"}};
+	for q = 1, 2 do
+		NE_Jump("xb13");
+		TRF.nest = nil;
+		FT_Clan("golkonda", cs[q][1], cs[q][2]);
+		local cp, ci, CR = FT_Find("golkonda", cs[q][3]);
+		HOST_Check(cp ~= nil, "a phase start with a "..cs[q][3].." flight in Golkonda");
+		if cp then
+			TRF.rg[gs].pt = cp;
+			h.nafs = {};
+			NE_Jump("golkonda");
+			local fq = d.f[ci];
+			local tab, form, ri = TRF_FtTab(fq.t, fq.p + TRF_StrRow(TRF_EffTier(gi)).dp);
+			local sel = nil;
+			if CR.c then sel = CR.sel; end;
+			local want, cj = TRF_FtRow(tab[ri], CR.g, sel, 1);
+			local nf = h.nafs[fq.s];
+			local ch = strsub(TRF.nv.e or "", ci, ci);
+			local okd = (q == 1 and ch == "3" and cj) or (q == 2 and (ch == "2" or (ch == "5" and cj)));
+			HOST_Check(nf and FT_Names(nf.row) == FT_Names(want) and FT_Names(want) ~= FT_Names(tab[ri]) and nf.group == "TRF_GNest_1" and okd,
+				cs[q][3].." flight "..ci.." built with the graded row, digit "..ch..": "..FT_Names(want));
+			local k0 = TRF.clan[gs].sc;
+			NE_Kill(ci, 1);
+			HOST_Check(k0 - TRF.clan[gs].sc == 2, cs[q][3].." flight kill: -2 ("..k0.." -> "..TRF.clan[gs].sc..")");
+		end;
+	end;
 	NE_Jump("xb13");
 end;
 
@@ -418,10 +483,10 @@ function T_FT_D()
 	HOST_Check(dr[0][1] == dr[1][1] and dr[0][1] >= 1 and dr[1][2] == 1 and dr[0][2] == 0, "T2 raid: one roll (scrap chance 16 %), RAND draws "..dr[1][1].." with fits 1 = "..dr[0][1].." with fits 0");
 	TRF.clan[gs].sc = 80;
 	NE_Set("fits", 1);
-	-- A captain's raid: no roll on the first flight.
+	-- A captain's raid: no roll on any of its flights.
 	n0 = S_Mark();
 	fls = TRF_Rd_Comp(8, {tier=4, n1x=2, nosv=1}, "TRF_GRaid_7", "trf_rd_8", Vector3(100, 0, 100), Vector3(0, 0, 1), 14, gi);
-	HOST_Check(S_Logs(n0, "flight=raid_8_1 ") == 0 and S_Logs(n0, "flight=raid_8_2 source=raid") == 1, "captain's raid: the first flight not rolled");
+	HOST_Check(type(fls) == "table" and getn(fls) == 2 and S_Logs(n0, "module=fits event=roll ") == 0, "captain's raid: no flight rolled");
 	if type(fls) == "table" then for i = 1, getn(fls) do fls[i]:Delete(); end; end;
 	-- An elite raid flight: graded row and pilots one rank up (lead, wing).
 	TRF.clan[gs].sc = 99;
@@ -436,6 +501,12 @@ function T_FT_D()
 	HOST_Check(gr.g == 1 and lead == Pir_Pilots[min(5, b.lead + 1)] and wing == Pir_Pilots[min(5, b.wing + 1)] and lead0 == Pir_Pilots[b.lead]
 		and getn(row) == getn(row0) and row[1][1] == (TRF_FtD().up[row0[1][1]] or row0[1][1]) and row[1][2] == 5 and row[2][2] == 1,
 		"elite raid flight: graded row (ranks 5 / 1 kept), lead and wing pilots one rank up: "..FT_Names(row));
+	-- TRF_PirFlight with the elite grade and maxn 2: the trimmed flight keeps the graded fits and the lead one rank up.
+	local tf = TRF_PirFlight(4, 14, "TRF_GRaid_7", "trf_rd_t", Vector3(100, 0, 100), Vector3(0, 0, 1), 1, 2, nil, gr);
+	local okt = tf and getn(tf.ships) == 2;
+	for k = 1, 2 do if not okt or tf.ships[k].tpl ~= row[k][1] then okt = nil; end; end;
+	HOST_Check(okt and tf.ships[1].pilot.tpl == lead and row[2][1] ~= row0[2][1], "TRF_PirFlight maxn 2: the graded fits kept after the trim, lead one rank up");
+	if tf then tf:Delete(); end;
 	-- Garrison through TRF_PirFlight: TRF_Ba_ClanFlight rolls the slot, a salvaged flight is not rolled.
 	local oh = TRF_Ba_H;
 	TRF_Ba_H = function() return {grp=HOST_Group("TRF_PBase_9", "Pirates")}; end;
@@ -444,6 +515,30 @@ function T_FT_D()
 	TRF_Ba_H = oh;
 	HOST_Check(fl and S_Logs(n0, "module=fits event=roll system=golkonda flight=trf_pb_"..gi.."_2 source=base") == 1, "garrison: one roll for its slot");
 	if fl then fl:Delete(); end;
+	-- An elite garrison slot: the built flight carries the up-mapped fits and the lead one rank up.
+	local gj = nil;
+	for j = 1, 400 do
+		if not gj and TRF_FtRoll(gi, j, pt, gs, TRF_FtK().salt_base, 4).g == 1 then gj = j; end;
+	end;
+	HOST_Check(gj ~= nil, "an elite garrison slot at score 99");
+	if gj then
+		TRF_Ba_H = function() return {grp=HOST_Group("TRF_PBase_9", "Pirates")}; end;
+		h.seed = 515;
+		local gf = TRF_Ba_ClanFlight(gi, 4, 14, gj, Vector3(0, 0, 0), Vector3(0, 0, 1), nil);
+		TRF_Ba_H = oh;
+		h.seed = 515;
+		local g2 = TRF_Ft_Grade(gi, gj, "base", "trf_pb_"..gi.."_"..gj, 4);
+		local wr, wp, wf, wq, wl = TRF_Rd_PirRow(4, 14, nil, nil, g2);
+		h.seed = 515;
+		local w0 = TRF_Rd_PirRow(4, 14, nil, nil, nil);
+		local okg = gf and g2.g == 1 and getn(gf.ships) == getn(wr) and FT_Names(wr) ~= FT_Names(w0);
+		for k = 1, getn(wr) do
+			if not okg or gf.ships[k].tpl ~= wr[k][1] then okg = nil; end;
+		end;
+		HOST_Check(okg and gf.ships[1].pilot.tpl == wl and wl == Pir_Pilots[min(5, b.lead + 1)],
+			"elite garrison: the graded fits "..FT_Names(wr).." (vanilla "..FT_Names(w0).."), lead one rank up");
+		if gf then gf:Delete(); end;
+	end;
 	-- Determinism of the garrison slot: the same grade again.
 	local R1, R2 = TRF_FtRoll(gi, 2, pt, gs, TRF_FtK().salt_base, 4), TRF_FtRoll(gi, 2, pt, gs, TRF_FtK().salt_base, 4);
 	HOST_Check(R1.r == R2.r and R1.g == R2.g, "garrison slot roll fixed for the phase");
@@ -506,6 +601,20 @@ function T_FT_E()
 	NE_Jump("kadi", {pre=function() TRF_FtGateDeny = function() return {kadi=1}; end; end});
 	TRF_FtGateDeny = od;
 	HOST_Check(S_Logs(n0, "module=fits event=roll") == 0 and S_Logs(n0, "reason=gate via=scan") == 1, "a deny-listed system keeps vanilla rows");
+	-- A quest scene at entry (__disableAction): gate_quest, but no fits record and no captured flight.
+	NE_Jump("hanoi");
+	h.nafs = {};
+	n0 = S_Mark();
+	NE_Jump("kadi", {pre=function() __disableAction = TRUE; end});
+	__disableAction = nil;
+	local nn = 0;
+	for i = 1, getn(d.f) do
+		local nf = h.nafs[d.f[i].s];
+		local tab, form, ri = TRF_FtTab(d.f[i].t, d.f[i].p);
+		if nf and tab and FT_Names(nf.row) ~= FT_Names(tab[ri]) then nn = nn + 1; end;
+	end;
+	HOST_Check(NE_Kv(NE_Line(n0, "module=nest event=mode "), "reason") == "gate_quest" and S_Logs(n0, "module=fits event=roll") == 0
+		and S_Logs(n0, "module=fits event=gate") == 0 and nn == 0, "quest scene at a gate_quest entry: no roll, no captured flight");
 	h.quests[qi[1]] = QUEST_DONE;
 	NE_Jump("hanoi");
 end;

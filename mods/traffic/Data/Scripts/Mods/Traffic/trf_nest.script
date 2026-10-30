@@ -1307,12 +1307,20 @@ function TRF_NeFits(gg, sign, location, ty, pw, orient, a, i, pin)
 	return ft;
 end;
 
+-- 1 when no quest scene runs (__disableAction) and suppression is below 2 (TRF_NeMode's scene tests after the gate).
+function TRF_NeGateOk()
+	if __disableAction == TRUE then return nil; end;
+	local sp = TRF_N("TRF_Supp");
+	if type(sp) == "number" and sp >= 2 then return nil; end;
+	return 1;
+end;
+
 -- A call of a quest-gated visit's fits-only record (mode 3, design/fits-spec.md 5.4): a listed sign of the vanilla
 -- group, first call, a number power: trf_fits' captured row in the caller's group at the vanilla power, else (and for
 -- every other call) the vanilla call. No stub, no nest group, no triggers, no TRF.nv.
 function TRF_NeGateCall(a, group, sign, location, ty, power, orient)
 	local i = a.by[sign];
-	if not i or group ~= a.d.g or a.st[i] or type(power) ~= "number" then return {}; end;
+	if not i or group ~= a.d.g or a.st[i] or type(power) ~= "number" or not TRF_NeGateOk() then return {}; end;
 	a.st[i] = "van";
 	local ft = nil;
 	if type(TRF_Ft_Gate) == "function" then ft = call(TRF_Ft_Gate, {group, sign, location, ty, power, orient, a.idx, i, a.d.f[i].pin}, "x", TRF_NeErr); end;
@@ -1413,8 +1421,9 @@ function TRF_NeEnterBody()
 	TRF_NeProbe("enter");
 	ne.v.pr = 1;
 	if mode ~= "nest" then
-		-- design/fits-spec.md 5.4: a quest-gated visit gets trf_fits' captured rows (fits on, fits_gate 0, not deny-listed).
-		if why == "gate_quest" and type(TRF_Ft_GateOn) == "function" and TRF_Ft_GateOn(nm) then
+		-- design/fits-spec.md 5.4: a quest-gated visit gets trf_fits' captured rows (fits on, fits_gate 0, not deny-listed),
+		-- never while a quest scene runs or suppression is on (TRF_NeGateOk).
+		if why == "gate_quest" and TRF_NeGateOk() and type(TRF_Ft_GateOn) == "function" and TRF_Ft_GateOn(nm) then
 			local gb = {};
 			for i = 1, nv do gb[d.f[i].s] = i; end;
 			ne.a = {on=1, gen=TRF_NeGen(), idx=cur, nm=nm, d=d, by=gb, mode=3, st={}, nb=0};

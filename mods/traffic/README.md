@@ -924,7 +924,7 @@ Pirate fit variety, step 1 (spec [design/fits-spec.md](design/fits-spec.md); use
 
 ### Log lines (fits)
 
-`module=fits event=roll system= flight= source=nest|raid|base|gate score= tier= up= down= roll= grade= captured=` (level 1 for an elite, scrap or captured flight, else 2), level 2 `event=row ... before= after=` and `event=skip reason=off|pinned|type3|data|cap|gate`, `event=kill` (elite kill), `event=gate system= built=`, `event=test step=create|hull|add_module|read`, `event=dump`. Rows in [design/log-events.md](design/log-events.md).
+`module=fits event=roll system= flight= source=nest|raid|base|gate score= tier= up= down= roll= grade= captured_roll=` (level 1 for an elite or scrap flight, else 2), `event=row ... captured_ship= before= after=` (level 1 with a captured ship, else 2) and `event=skip reason=off|pinned|type3|data|cap|gate`, `event=kill` (elite kill), `event=gate system= built=`, `event=test step=create|hull|add_module|read`, `event=dump`. Rows in [design/log-events.md](design/log-events.md).
 
 ### In-game checks (fits)
 

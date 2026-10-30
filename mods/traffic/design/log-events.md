@@ -104,8 +104,8 @@ scrap, 0 normal.
 
 | Event | Example line | Level |
 |---|---|---|
-| `roll` | `module=fits event=roll system=golkonda flight=Pirate01 source=nest score=62 tier=3 up=1 down=0 roll=94 grade=0 captured=false` | 2; 1 for an elite, scrap or captured flight |
-| `row` | `module=fits event=row system=xb13 flight=pir07 grade=1 captured_ship=0 before=EvilEye_pir2,Tiger_pir1,Cleaner_pir1,EvilEye_pir1 after=Gunslinger_pir1,Gunslinger_pir1,Tiger_pir1,Gunslinger_pir1` (the graded copy; `captured_ship` its index or 0) | 2 |
+| `roll` | `module=fits event=roll system=golkonda flight=Pirate01 source=nest score=62 tier=3 up=1 down=0 roll=94 grade=0 captured_roll=false` (`captured_roll`: the captured hash hit; a ship is placed only in a row with a pool, see `row`) | 2; 1 for an elite or scrap flight |
+| `row` | `module=fits event=row system=xb13 flight=pir07 grade=1 captured_ship=0 before=EvilEye_pir2,Tiger_pir1,Cleaner_pir1,EvilEye_pir1 after=Gunslinger_pir1,Gunslinger_pir1,Tiger_pir1,Gunslinger_pir1` (the graded copy; `captured_ship` its index or 0) | 2; 1 with a captured ship |
 | `skip` | `module=fits event=skip system=golkonda flight=Pirate01 reason=off` (`pinned`, `type3`, `data`, `cap`: a captured roll on a row without a pool) | 2 |
 | `skip` | `module=fits event=skip system=kadi reason=gate via=fits_gate` (`via=scan`: the quest scan's deny list) | 2 |
 | `kill` | `module=fits event=kill system=golkonda index=2 flight=Pirate02 grade=1 score_cost=3 mine=true` (an elite nest flight destroyed) | 1 |

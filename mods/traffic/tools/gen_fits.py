@@ -345,7 +345,8 @@ def budget(verbose):
 
 
 def value_table(D, rows, sd, cost):
-    print("gen_fits: gear value per row and grade (Modules.xml cost sums; captured: the best pool swap of one ship)")
+    print("gen_fits: gear value per row and grade (Modules.xml cost sums; captured: the first pool swap of one ship to a fit"
+          " the row does not carry, as TRF_FtRow)")
     print("  %-12s %3s %8s %8s %8s %8s" % ("table", "row", "vanilla", "elite", "scrap", "captured"))
     for tab in ("Pir_Fighters", "Pir_Bombers"):
         for i, r in enumerate(rows[tab]):
@@ -353,10 +354,11 @@ def value_table(D, rows, sd, cost):
             el = sum(D["val"].get(D["up"].get(e[0], e[0]), 0) for e in r)
             sc = sum(D["val"].get(D["dn"].get(e[0], e[0]), 0) for e in r)
             cp = "-"
+            have = set(x[0] for x in r)
             for e in r:
-                if e[0] in D["cap"]:
-                    alt = D["cap"][e[0]][0]
-                    cp = "%d" % (van - D["val"][e[0]] + D["val"][alt])
+                left = [g for g in D["cap"].get(e[0], []) if g not in have]
+                if left:
+                    cp = "%d" % (van - D["val"][e[0]] + D["val"][left[0]])
                     break
             print("  %-12s %3d %8d %8d %8d %8s" % (tab, i + 1, van, el, sc, cp))
     print("gen_fits: captured pools (+-%d %%):" % (TOL * 100))
