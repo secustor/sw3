@@ -1392,7 +1392,7 @@ def c_ext1(ctx):
             res.fails.append("%s: no event=extort line after the detection" % r.short())
             continue
         x = nxt[0]
-        if x.get("result") == "skip" and x.get("reason") not in ("off", "not_war"):
+        if x.get("result") == "skip" and x.get("reason") not in ("off", "not_war", "restore"):
             res.fails.append("%s: the fix did not apply (reason=%s)" % (x.short(), x.get("reason")))
         elif x.get("result") == "neutral" and x.int("trigger_count", 0) < 1:
             res.fails.append("%s: no attack trigger armed on the flight" % x.short())

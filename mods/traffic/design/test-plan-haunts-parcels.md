@@ -318,9 +318,9 @@ Install: `EXP=0 TRAFFIC=1 LOG=2 AUTOSAVE=0 HAIL_BOX=2 MERCS=1 TUNE=merc_cd=0,mer
 | item | what to do | expected |
 |---|---|---|
 | E-EXT.1 | wait in xt45 (or another such system) off-mission until a pirate flight parks by the mothership and its leader names a sum; do nothing until the box | no turret or wing fire at the flight before the box, the HUD shows it neutral; log `module=safety event=extortion_seen ... via=change money=<sum>` then `event=extort group=group_Pirate_money result=neutral trigger_count=<n>` (n >= 1) |
-| | pay (OK, enough credits) | the flight stays neutral and flies off; `event=extort ... result=end reason=gone` about 6 s later |
+| | pay (OK, enough credits) | the flight stays neutral and flies off; `event=extort ... result=end reason=gone` about 6 s later, no `event=error` line after it (`IsAlive` on the deleted flight) |
 | | next contact: Cancel | it turns hostile and attacks, the turrets fire; `event=extort ... result=war reason=refused` |
 | | next contact: fire at the flight before the box | it fights back at once; `event=extort ... result=war reason=attacked` |
 | | jump out after any of them | `GetTeamRelation("Pirates", PLAYER_TEAM)` unchanged (pirates of the next system as before) |
 
-Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes E-EXT.1=pass` (FAIL: an `extortion_seen` without a following `extort` line, a `result=skip` with a reason other than `off` or `not_war`, or `trigger_count=0`).
+Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes E-EXT.1=pass` (FAIL: an `extortion_seen` without a following `extort` line, a `result=skip` with a reason other than `off`, `not_war` or `restore`, or `trigger_count=0`).

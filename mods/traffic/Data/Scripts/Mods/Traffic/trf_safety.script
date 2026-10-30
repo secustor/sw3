@@ -190,7 +190,8 @@ function TRF_Safe_Scene()
 end;
 
 -- Extortion flight alive. flight_pir_mon_1 is userdata that survives ClearGlobals and may come from an
--- earlier scene: callers touch it only after ext_seen (spec 6).
+-- earlier scene: callers touch it only after ext_seen, or on the edge path once group_Pirate_money exists in this
+-- scene and is neutral toward the player (spec 6, extort-fix-spec 3).
 function TRF_Safe_ExtAlive()
 	local fl = flight_pir_mon_1;
 	if fl == nil or type(fl) == "number" or type(fl) == "string" or type(fl) == "function" then return nil; end;
@@ -1128,8 +1129,18 @@ end;
 -- by this name (407, 437, 450).
 function TRF_SafeExtG() return "group_Pirate_money"; end;
 
--- 1 when the fix is on: tune ext_fix (install-test.sh TUNE=ext_fix=0) when 0 or 1, else cfg ext_fix (default 1).
+-- 1 when group_Pirate_money exists in this scene (GetOwnerTeamOfGroup is nil for an unknown group), so a handle of an
+-- earlier scene is not touched on the edge path; 1 when the native is absent.
+function TRF_SafeExtGrp()
+	if type(GetOwnerTeamOfGroup) ~= "function" then return 1; end;
+	if call(GetOwnerTeamOfGroup, {TRF_SafeExtG()}, "x", TRF_SafeNoErr) then return 1; end;
+	return nil;
+end;
+
+-- 1 when the fix is on: tune ext_fix (install-test.sh TUNE=ext_fix=0) when 0 or 1, else cfg ext_fix (default 1);
+-- 0 under cfg enabled 2 (restore-and-stop writes no relation and arms no trigger).
 function TRF_SafeExtOn()
+	if TRF_SafeOpt("enabled", 1) == 2 then return 0; end;
 	local t = TRF_SafeTune("ext_fix", -1);
 	if t == 0 or t == 1 then return t; end;
 	if TRF_SafeOpt("ext_fix", 1) == 0 then return 0; end;
@@ -1186,7 +1197,7 @@ end;
 -- Fresh extortion since the last tick (updates L.pmv): "change" when __sys_Pirate_Money turned into a new non-zero
 -- number (vanilla sets 0 when the include loads, OutOfMission.script 13, and the demand at 408); "edge" on the first
 -- tick of the visit or a rising __sys_SOS edge when the vanilla marks of a live contact hold (a non-zero demand,
--- group_Pirate_money neutral toward PLAYER_GROUP, flight_pir_mon_1 alive): a repeat of the same sum, a load during the
+-- group_Pirate_money in this scene and neutral toward PLAYER_GROUP, flight_pir_mon_1 alive): a repeat of the same sum, a load during the
 -- contact. Else nil. The marks are read only on an armed visit (TRF_SafeArmed).
 function TRF_SafeExtFresh(L, f)
 	local m = 0;
@@ -1197,7 +1208,7 @@ function TRF_SafeExtFresh(L, f)
 	if type(p) == "number" and m ~= p then return "change"; end;
 	if type(p) == "number" and not (f.sos and L.ss ~= 1) then return nil; end;
 	if L.ext == 1 or RELATION_NEUTRAL == nil or not TRF_SafeArmed() then return nil; end;
-	if TRF_SafeRel(TRF_SafeExtG(), PLAYER_GROUP) ~= RELATION_NEUTRAL then return nil; end;
+	if TRF_SafeRel(TRF_SafeExtG(), PLAYER_GROUP) ~= RELATION_NEUTRAL or not TRF_SafeExtGrp() then return nil; end;
 	if not TRF_Safe_Alive(flight_pir_mon_1) then return nil; end;
 	return "edge";
 end;
@@ -1207,7 +1218,8 @@ function TRF_SafeExtFix(L)
 	L.ext = nil;
 	local g = TRF_SafeExtG();
 	local why = nil;
-	if TRF_SafeExtOn() ~= 1 then why = "off";
+	if TRF_SafeOpt("enabled", 1) == 2 then why = "restore";
+	elseif TRF_SafeExtOn() ~= 1 then why = "off";
 	elseif not TRF_SafeArmed() then why = "unarmed";
 	elseif type(SetGroupRelation) ~= "function" or RELATION_NEUTRAL == nil or RELATION_WAR == nil then why = "native";
 	elseif TRF_N("GetTeamRelation", "Pirates", PLAYER_TEAM) ~= RELATION_WAR then why = "not_war";

@@ -505,6 +505,13 @@ function SetGroupRelation(g, pg, rel)
 end;
 -- (name) -> group created under that name, else nil (lua-natives.md, never used in vanilla).
 function GetGroupByName(n) HOST_Want(type(n) == "string", "GetGroupByName(name)"); return HOST().groups[n]; end;
+-- (groupName|Group) -> team name of a group created under that name, else nil (lua-natives.md).
+function GetOwnerTeamOfGroup(g)
+	HOST_Want(HOST_IsGroup(g) or type(g) == "string", "GetOwnerTeamOfGroup(group)");
+	if type(g) == "string" then g = HOST().groups[g]; end;
+	if type(g) == "table" then return g.team; end;
+	return nil;
+end;
 -- (groupA, groupB) -> the last SetGroupRelation of the pair, else nil when the stub has no record.
 function GetGroupRelation(a, b)
 	HOST_Want((HOST_IsGroup(a) or type(a) == "string") and (HOST_IsGroup(b) or type(b) == "string"), "GetGroupRelation(group, group)");

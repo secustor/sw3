@@ -1504,6 +1504,14 @@ function T_H()
 	__sys_SOS = TRUE;
 	T_Tick(2, 0.5);
 	HOST_Check(TRF.live.exn == 3 and T_ExtPw() == pw, "stale flight at war on a __sys_SOS edge: no detection, no write");
+	-- 5b. Neutral marks of an earlier scene: the group is gone from this scene, so the handle is not read.
+	__sys_SOS = FALSE;
+	T_Tick(1, 0.5);
+	SetGroupRelation(G, PLAYER_GROUP, RELATION_NEUTRAL);
+	h.groups[G] = nil;
+	__sys_SOS = TRUE;
+	T_Tick(2, 0.5);
+	HOST_Check(TRF.live.exn == 3 and T_ExtPw() == pw and TRF_SafeExtGrp() == nil, "group of an earlier scene on a __sys_SOS edge: no detection, no write");
 	__sys_SOS = FALSE;
 	T_ExtKill();
 	-- 6. Load during the contact: the first tick after the load finds the live contact (via=edge).
@@ -1543,6 +1551,14 @@ function T_H()
 	HOST_Check(TRF_SafeExtOn() == 0, "tune ext_fix 0 turns the fix off");
 	h.cfg.tune = nil;
 	HOST_Check(TRF_SafeExtOn() == 1, "default: ext_fix on");
+	-- enabled 2 (restore-and-stop): no write, no trigger.
+	h.cfg.enabled = 2;
+	na = HOST_Count("attack", "TRF_OnExtHit(");
+	SetGroupRelation(G, PLAYER_GROUP, RELATION_NEUTRAL);
+	TRF_SafeExtFix(TRF.live);
+	HOST_Check(TRF_SafeExtOn() == 0 and TRF.live.ext == nil and T_ExtPw() == pw and HOST_Count("attack", "TRF_OnExtHit(") == na
+		and T_LogN("result=skip reason=restore") == 1, "enabled 2: skip reason=restore, no write, no trigger");
+	h.cfg.enabled = nil;
 	__sys_SOS = FALSE;
 	T_ExtKill();
 	-- 9. Mod raids: neutral both ways while Pirates are at war with the player, war both ways on the first hit.
