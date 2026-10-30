@@ -195,7 +195,7 @@ Changed scenarios: `sv-a`, `lad-a`, `ch-a`, `sc-a`, `cap-a`, `sh-a`, `fr-a` (`ex
 | E16.7 | kill memory | `event=regen system=golkonda memory_before=10 memory_after=8 ticks=1`, then `event=activate ... fielded=2` at Build-up |
 | E16.8 | cost and 8x | XB-19 at Raids: entry time from `TRF_OnEnter` to `TRF_OnActivate` (the DLL timestamps of `event=mode` and `event=activate`) within +10 % of `nest` 0, frame time at 8x no worse than vanilla; else `nest_trig` 1 |
 | E16.9 | quest start during a nest visit | a class Q quest accepted inside its system: no `ScriptErrors.log` line, its `Delete` lines hit pinned flights; else a `nest_off` entry |
-| E16.10 | rate session | three hours with `nest` 1 and with 0 in the same regions: touring rate within 10 % of vanilla, Build-up/Raids at most 1.4x (`event=died` counts per hour, the sale prices) |
+| E16.10 | rate session | three hours with `nest` 1 and with 0 in the same regions: touring rate within 10 % of vanilla, Build-up/Raids at most 1.4x (`event=died` counts per hour, the sale prices); note 2026-10-30: the per-flight peak line is 1.5x (`fits-spec.md` 9) |
 | E16.11 | fallback | `NEST_MODE=2` in Golkonda: `event=replace deleted=10 spawned=<n>`, no pop-in, routes followed, no `ScriptErrors.log` line |
 
 ## 11. Deviations

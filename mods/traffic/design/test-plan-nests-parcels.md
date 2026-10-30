@@ -145,6 +145,7 @@ Distances from Kadi (portal graph, `map.script`): Hanoi 1, Prien 1, XK16 2 (via 
 
 ### E16.10 Rate session (4.4; game: two installs)
 - Eyes and the checker's counts: kills per 10 legs with nests (`event=died`) against vanilla pirate kills in run A (`module=region event=clan_score reason="pirate kill ..."`), loot sale prices per hour. Within 10 % touring, at most 1.4x in Build-up and Raids.
+- Note 2026-10-30 (user decisions D1/D2, `D/fits-spec.md` 9): the per-flight peak line for pirate loot is 1.5x; it replaces the 1.4x above. With `FITS=1` add the elite and scrap flights of the period (`module=fits event=roll ... grade=`).
 
 ### E16.11 Fallback (run C; game: second install)
 - PASS: `event=call ... result=recorded` lines, `event=replace system=hanoi deleted=<n> spawned=<m>` with m > 0, `event=activate ... failed=0 unknown=0 mode=2`, no `ScriptErrors.log` line. Eyes: no pop-in, routes followed.
@@ -296,3 +297,14 @@ Install: `EXP=0 TRAFFIC=1 LOG=2 AUTOSAVE=0 HAIL_BOX=2 MERCS=1 TUNE=merc_cd=0,mer
 1. Enter systems at prosperity 3 or more and wait for trader spawns: `module=str event=roll kind=trade ... roll=<0..99>` and `module=tier event=plan ... score=<pro x 11> roll= step=`; at pro 0-2 `roll=none` and tier 1 (D-STR.1). Compare the tiers you see with strength-spec 4.5 (TT4 convoys from pro 5, one at a time).
 2. Play region ticks (legs) until a clan score drops into 70-74, 45-49 or 20-24 after the higher tier: the next tick logs `module=str event=tier ... result=kept` with the higher tier; below 70 / 45 / 20 it logs `result=changed` (D-STR.2).
 3. Visit nest systems, meet a raid or see a stash created: `event=mode ... tier=<T> dp=<-1,0,1,1>`, raid `event=go ... tier= power=` inside the tier's band, stash `event=create ... tier= class=` (D-STR.3).
+
+## 13. Pirate fit variety (run D: `FITS=1 NESTS=1 LOG=2`, chapter 5+; E-BB1 with `FITS_TEST`)
+
+`D/fits-spec.md` 11 (D-FIT.1-4, E-BB1); `check_ingame.py` items D-FIT.1-4, E-BB1. Install: `FITS=1 NESTS=1 LOG=2 sh mods/traffic/install-test.sh` (the game closed). Before the first run: `python3 -I mods/traffic/tools/scan_quests.py --check` and `gen_fits.py --check` pass (both read the clone). One line per check: do, then see.
+
+1. Enter a nest system of a region in Build-up or Raids (clan score 60+), then one in Boom at a score of 25-34: one `module=fits event=roll ... source=nest` per fielded flight, `up=` only at tiers 3-4, `down=` only at tier 2 below 35 (D-FIT.1). Leave and enter again: the same `roll=` and `grade=` per flight.
+2. When a roll says `grade=1` (or -1, or `captured=true`): the `event=row ... before= after=` line names the new hulls; target the ships of that sign and see the hulls of `after=`; the visit's `module=nest event=activate` has `failed=0 missing=0 unknown=0` (D-FIT.2).
+3. Destroy the elite flight: `module=fits event=kill ... score_cost=3` and `module=region event=clan_score reason="pirate kill nest_elite"` with at most 3 points (D-FIT.3). Save inside the system, load: `module=fits event=dump ... grades=` keeps the digit string.
+4. Enter a nest system named by an active quest (`module=nest event=mode ... reason=gate_quest`): `module=fits event=gate system= built=`, every gate roll `grade=0`, no `module=nest event=activate`; the quest steps run as usual (D-FIT.4).
+5. E-BB1 (the user, any system, game closed between installs): `FITS_TEST=Panthera_pir0 LOG=2 sh mods/traffic/install-test.sh`; enter a system, look at the ship 200 units ahead: `module=fits event=test ... step=create result=ok`, `step=hull bare=true hp=`, three `step=add_module module= ret= hp=` and after 2 s `step=read result=ok tpl=Panthera_pir0 hp=`. Eyes: the hull renders as the pirate Panthera, targeting lists the modules, it fights back when attacked. Repeat with `FITS_TEST=Puma_pir0` and `TieFly_pir0`. Record the `ret=` values and whether the guns fire; a `result=failed` or a hull without guns sends step 2 to the ShipDescriptions merge.
+- Record: systems, phases and scores of the graded flights, the hulls seen, the E-BB1 lines.

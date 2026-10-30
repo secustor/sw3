@@ -152,7 +152,8 @@ function T_PCL_A()
 	local h = HOST();
 	PC_Begin("altair", "9_1");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=13") >= 1, "trf_parcel loads before trf_merc (extra_count=13)");
+	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=14") >= 1, "trf_parcel loads before trf_merc (extra_count=14)");
 	local ml, pm = TRF_ModList(), TRF_PlMods();
 	HOST_Check(ml[getn(ml) - 1] == "Pc" and ml[getn(ml)] == "Mc" and pm[getn(pm) - 1] == "Pc" and pm[getn(pm)] == "Mc", "TRF_ModList has Pc before Mc, TRF_PlMods ends with Pc, Mc");
 	local d = TRF_Pc_OptDef();

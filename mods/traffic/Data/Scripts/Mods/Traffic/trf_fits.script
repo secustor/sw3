@@ -1,0 +1,564 @@
+-- sw3-traffic pirate fit variety, step 1 (design/fits-spec.md). Lua 4.0.1.
+-- Public TRF_Ft_* (module name Ft in TRF_ModList), internal TRF_Ft<X>, log module=fits through TRF_FtE / TRF_FtDE.
+-- One grade per pirate FLIGHT from a fixed hash of saved state (system index, flight index, the region's phase start
+-- leg TRF.rg[slot].pt, a salt per source; never RAND or TRF.gen) against the clan score of the strength scale
+-- (trf_str TRF_StrChance): +1 elite (every ship one carcass level up through the up map, pilots one rank up) only at
+-- tiers 3-4, chance at most tune fits_elite_max plus the pirate-base factor of the system (an A base fits_base_a, a P
+-- base fits_base_p; cap 15 %); -1 scrap (one level down through the dn map) only at tier 2 below fits_scrap_sc. A second
+-- hash gives the captured fit (fits_cap_pct % of flights, one ship at most: another row's fit of the same gear value
+-- within +-5 %). The row is copied by explicit index (never tinsert), so ship count, ranks (but the elite step), roles
+-- and order stay. Pinned signs and type 3 rows stay vanilla. Callers: trf_nest (both build sites, TRF_Ft_Nest; quest-
+-- gated visits TRF_Ft_Gate: captured only), trf_raid (TRF_Rd_PirRow grade argument, one roll per raid flight),
+-- trf_base (garrisons through TRF_PirFlight). Saved: only the grade digits TRF.nv.e of trf_nest. Debug cfg fits_test
+-- spawns one neutral test ship (E-BB1). Data: TRF_FtData (tools/gen_fits.py), TRF_FtGateDeny (tools/scan_quests.py).
+-- Loads after trf_str and before trf_nest (counted as extra=). Top level only defines functions.
+
+-- Helpers --------------------------------------------------------------------------
+
+-- Event line, module=fits (design/log-format.md): TRF_FtE(event, k1, v1, ...); TRF_FtDE only at log 2.
+function TRF_FtE(event, ...) tinsert(arg, 1, event); tinsert(arg, 1, "fits"); call(TRF_Lf, arg); end;
+
+function TRF_FtDE(event, ...)
+	if TRF_FtLog() >= 2 then tinsert(arg, 1, event); call(TRF_FtE, arg); end;
+end;
+
+function TRF_FtLog()
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt("log"); end;
+	if type(v) ~= "number" and type(TRF_Cfg) == "function" then v = TRF_Cfg().log; end;
+	if type(v) ~= "number" then v = 1; end;
+	return v;
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_FtErr(m)
+	TRF_FtE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler (a builder that may fail, a native that may be missing): nil is the answer.
+function TRF_FtNoErr(m) end;
+
+function TRF_FtCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- Game time (TRF.clock.gt), 0 when unknown.
+function TRF_FtGt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+function TRF_FtObj(o)
+	return o ~= nil and o ~= FALSE and (type(o) == "table" or type(o) == "userdata");
+end;
+
+-- Config keys (spec 6): fits 0 until CHECK D-FIT.1-4 pass; fits_gate 1 keeps quest-gated visits fully vanilla;
+-- fits_test the debug test ship (a ShipDescription or carcass name, "" off).
+function TRF_Ft_OptDef()
+	return {fits=0, fits_gate=0, fits_test=""};
+end;
+
+-- Tune keys (spec 6): fits_elite_max % of elite flights at the tier-4 top, fits_base_a / fits_base_p the base factor,
+-- fits_cap_pct % of captured flights, fits_scrap_sc the score below which a tier-2 clan flies scrap, fits_test_mods
+-- the modules AddModule fits on a bare test carcass.
+function TRF_Ft_TuneDef()
+	return {fits_elite_max=5, fits_base_a=10, fits_base_p=3, fits_cap_pct=5, fits_scrap_sc=35,
+		fits_test_mods={"PC2", "VC3", "ShAmp3"}};
+end;
+
+-- Constants: the elite chance cap in % (spec 3.2, base factor included), the test ship distance and wait, the salts
+-- per source, the captured hash offset.
+function TRF_FtK()
+	return {elite_cap=15, test_d=200, test_wait=2, salt_nest=1, salt_raid=21, salt_base=31, salt_gate=41, cap_off=64};
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Ft_OptDef), else the raw config, else the default; a wrong type or a number other
+-- than 0 / 1 reads as the default.
+function TRF_FtOpt(key)
+	local d = TRF_Ft_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	if type(v) == "number" and v ~= 0 and v ~= 1 then return d; end;
+	return v;
+end;
+
+-- Number key k of tune table s, else d; floor, within lo..hi.
+function TRF_FtNum(s, k, d, lo, hi)
+	local x = nil;
+	if type(s) == "table" then x = s[k]; end;
+	if type(x) ~= "number" then x = d; end;
+	return TRF_FtCl(floor(x), lo, hi);
+end;
+
+-- Tune values of this module, clamped (fits_cap_pct never above 10 %); fits_test_mods: the string entries (the default
+-- when none). Cached in the handle table (ftt) while TRF_Tune returns the same table; callers must not write into it.
+function TRF_FtTune()
+	local s, h = nil, nil;
+	if type(TRF_Tune) == "function" then s = TRF_Tune(); end;
+	if type(s) ~= "table" then s = nil; end;
+	if s and type(TRF_H) == "function" then h = TRF_H(); end;
+	if type(h) == "table" and type(h.ftt) == "table" and h.ftt.s == s then return h.ftt.t; end;
+	local d = TRF_Ft_TuneDef();
+	local t = {fits_elite_max=TRF_FtNum(s, "fits_elite_max", d.fits_elite_max, 0, 15),
+		fits_base_a=TRF_FtNum(s, "fits_base_a", d.fits_base_a, 0, 15), fits_base_p=TRF_FtNum(s, "fits_base_p", d.fits_base_p, 0, 15),
+		fits_cap_pct=TRF_FtNum(s, "fits_cap_pct", d.fits_cap_pct, 0, 10), fits_scrap_sc=TRF_FtNum(s, "fits_scrap_sc", d.fits_scrap_sc, 0, 49)};
+	local m, l = {}, nil;
+	if type(s) == "table" then l = s.fits_test_mods; end;
+	if type(l) == "table" then
+		for i = 1, getn(l) do if type(l[i]) == "string" and l[i] ~= "" then m[getn(m) + 1] = l[i]; end; end;
+	end;
+	if getn(m) == 0 then m = d.fits_test_mods; end;
+	t.fits_test_mods = m;
+	if type(h) == "table" then h.ftt = {s=s, t=t}; end;
+	return t;
+end;
+
+-- 1 when the module acts: TRF, the traffic modules, cfg fits 1.
+function TRF_FtOn()
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return nil; end;
+	if TRF_FtOpt("fits") == 1 then return 1; end;
+	return nil;
+end;
+
+-- Data (cached per MapInitialization in the handle table, else built per call).
+function TRF_FtD()
+	local h = nil;
+	if type(TRF_H) == "function" then h = TRF_H(); end;
+	if type(h) == "table" and type(h.ftd) == "table" then return h.ftd; end;
+	local d = TRF_FtData();
+	if type(h) == "table" then h.ftd = d; end;
+	return d;
+end;
+
+-- Pure functions -------------------------------------------------------------------
+
+-- Hash 0..99 of four integers (spec 3.1): per input an affine step, a quadratic step and a shift fold modulo the prime
+-- 46337, then an affine step and a fold. Not affine in any input, every intermediate below 2^31 (46336^2 + 7 <
+-- 2147483648), so exact in the engine's doubles. Negative or fractional inputs read as floor(|x|).
+function TRF_FtHash(a, b, c, d)
+	local P = 46337;
+	local h = 17;
+	local v = {a, b, c, d};
+	for k = 1, 4 do
+		local x = v[k];
+		if type(x) ~= "number" then x = 0; end;
+		if x < 0 then x = -x; end;
+		x = mod(floor(x), P);
+		h = mod(h * 211 + x + 1, P);
+		h = mod(h * h + 7, P);
+		h = mod(h + floor(h / 64) * 13, P);
+	end;
+	h = mod(h * 7919 + 13, P);
+	h = mod(h + floor(h / 256), P);
+	return mod(h, 100);
+end;
+
+-- Base factor of system idx in % (spec 3.2): an A record (k 2) fits_base_a, a P record (k 1) fits_base_p, else 0; read
+-- from the saved TRF.base list.
+function TRF_FtBase(idx, T)
+	if type(TRF) ~= "table" or type(TRF.base) ~= "table" or type(idx) ~= "number" then return 0; end;
+	for i = 1, getn(TRF.base) do
+		local r = TRF.base[i];
+		if type(r) == "table" and r.s == idx then
+			if r.k == 2 then return T.fits_base_a; end;
+			if r.k == 1 then return T.fits_base_p; end;
+		end;
+	end;
+	return 0;
+end;
+
+-- Phase start leg of region slot (TRF.rg[slot].pt), 0 when unknown.
+function TRF_FtPt(slot)
+	local r = TRF_N("TRF_RgRec", slot);
+	if type(r) == "table" and type(r.pt) == "number" then return r.pt; end;
+	return 0;
+end;
+
+-- Grade of one flight (spec 3.2), pure: score sc = TRF_StrScore("clan", slot), tier t = TRF_EffTier(idx) (tier
+-- override: the caller's tier, e.g. a raid's), up = 0 below tier 3, else the strength curve's chance_up rescaled over
+-- tiers 3-4 (floor((cu + (b - 3) x cu99) x fits_elite_max / (2 x cu99)), b the plain band, cu99 the chance at score 99;
+-- within 0..fits_elite_max) plus the base factor, at most 15; down = chance_down of the curve at tier 2 below
+-- fits_scrap_sc, else 0; gate 1: up = down = 0 (quest-gated visit). roll = TRF_FtHash(idx, i, pt, salt): grade 1 when
+-- roll < up, -1 when roll >= 100 - down, else 0. Captured: TRF_FtHash(idx, i + 64, pt, salt + 1) < fits_cap_pct; its
+-- selector TRF_FtHash(idx, i + 128, pt, salt + 2). Returns {g, c (1 or nil), sel, sc, t, up, dn, r, r2, pt}.
+function TRF_FtRoll(idx, i, pt, slot, salt, tier, gate)
+	local T = TRF_FtTune();
+	local K = TRF_FtK();
+	salt = salt or K.salt_nest;
+	pt = pt or 0;
+	local sc = TRF_N("TRF_StrScore", "clan", slot) or 0;
+	local t = tier;
+	if type(t) ~= "number" then t = TRF_N("TRF_EffTier", idx); end;
+	if type(t) ~= "number" then t = TRF_N("TRF_StrTier", sc) or 1; end;
+	local b, cu, cd = 1, 0, 0;
+	if type(TRF_StrChance) == "function" then b, cu, cd = TRF_StrChance(sc); end;
+	local up, dn = 0, 0;
+	if gate ~= 1 then
+		if t >= 3 then
+			local top = 0;
+			if type(TRF_StrChance) == "function" then
+				local b9 = nil;
+				b9, top = TRF_StrChance(99);
+			end;
+			if top > 0 then up = floor((cu + (b - 3) * top) * T.fits_elite_max / (2 * top)); end;
+			up = min(TRF_FtCl(up, 0, T.fits_elite_max) + TRF_FtBase(idx, T), K.elite_cap);
+		end;
+		if t == 2 and sc < T.fits_scrap_sc then dn = cd; end;
+	end;
+	local r = TRF_FtHash(idx, i, pt, salt);
+	local g = 0;
+	if r < up then g = 1; elseif r >= 100 - dn then g = -1; end;
+	local r2 = TRF_FtHash(idx, i + K.cap_off, pt, salt + 1);
+	local c = nil;
+	if r2 < T.fits_cap_pct then c = 1; end;
+	return {g=g, c=c, sel=TRF_FtHash(idx, i + 2 * K.cap_off, pt, salt + 2), sc=sc, t=t, up=up, dn=dn, r=r, r2=r2, pt=pt};
+end;
+
+-- Copy of row (a Pir_* row {{fit, rank, role}, ...} or a raid row) for grade g (spec 3.3), built by explicit index:
+-- g 1 the up map and (rk 1) rank + 1 within 1..5, g -1 the dn map; sel (0..99, nil: no captured ship) replaces the
+-- first ship from index mod(sel, n) + 1 on whose (graded) fit has a captured pool with pool entry
+-- mod(floor(sel / n), #pool) + 1. Entries that are not tables are copied unchanged. Returns the copy and the index of
+-- the captured ship or nil.
+function TRF_FtRow(row, g, sel, rk)
+	local D = TRF_FtD();
+	local out = {};
+	local n = getn(row);
+	for j = 1, n do
+		local e = row[j];
+		if type(e) == "table" then
+			local fit, r = e[1], e[2];
+			if g == 1 then
+				fit = D.up[fit] or fit;
+				if rk == 1 and type(r) == "number" then r = TRF_FtCl(r + 1, 1, 5); end;
+			elseif g == -1 then
+				fit = D.dn[fit] or fit;
+			end;
+			out[j] = {fit, r, e[3]};
+		else
+			out[j] = e;
+		end;
+	end;
+	local cj = nil;
+	if type(sel) == "number" and n > 0 then
+		for k = 0, n - 1 do
+			local j = mod(sel + k, n) + 1;
+			local e = out[j];
+			local p = nil;
+			if not cj and type(e) == "table" then p = D.cap[e[1]]; end;
+			if type(p) == "table" and getn(p) > 0 then
+				out[j] = {p[mod(floor(sel / n), getn(p)) + 1], e[2], e[3]};
+				cj = j;
+			end;
+		end;
+	end;
+	return out, cj;
+end;
+
+-- Fit names of row joined with "," (log values).
+function TRF_FtNames(row)
+	local s = "";
+	for j = 1, getn(row) do
+		local e = row[j];
+		local x = "?";
+		if type(e) == "table" then x = tostring(e[1]); end;
+		if j > 1 then s = s..","; end;
+		s = s..x;
+	end;
+	return s;
+end;
+
+-- Saved grade digit (spec 4): grade 0 normal, 1 elite, 2 scrap, plus 3 with a captured ship (0..5).
+function TRF_FtDigit(g, cj)
+	local d = 0;
+	if g == 1 then d = 1; elseif g == -1 then d = 2; end;
+	if cj then d = d + 3; end;
+	return d;
+end;
+
+-- 1 when digit character ch ("0".."5") marks an elite flight.
+function TRF_Ft_Elite(ch)
+	if ch == "1" or ch == "4" then return 1; end;
+	return nil;
+end;
+
+-- Grade -------------------------------------------------------------------------------
+
+-- Lowercase system name for log values.
+function TRF_FtName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" and n ~= "?" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+-- Rolls flight i of system idx for source src ("nest", "raid", "base", "gate"; salt from TRF_FtK) and logs
+-- event=roll (level 1 for an elite, scrap or captured flight, else level 2). tier: override (nil: TRF_EffTier).
+-- Returns the roll record (plus sys and fl, the log values), nil while the module is off.
+function TRF_Ft_Grade(idx, i, src, flight, tier, gate)
+	if not TRF_FtOn() then return nil; end;
+	local K = TRF_FtK();
+	local salt = K["salt_"..tostring(src)] or K.salt_nest;
+	local slot = TRF_N("TRF_RgOf", idx);
+	local R = TRF_FtRoll(idx, i, TRF_FtPt(slot), slot, salt, tier, gate);
+	R.sys = TRF_FtName(idx);
+	R.fl = tostring(flight or i);
+	local lf = TRF_FtDE;
+	if R.g ~= 0 or R.c then lf = TRF_FtE; end;
+	lf("roll", "system", R.sys, "flight", R.fl, "source", src, "score", R.sc, "tier", R.t, "up", R.up,
+		"down", R.dn, "roll", R.r, "grade", R.g, "captured", TRF_KvB(R.c));
+	return R;
+end;
+
+-- Row of record R: the graded copy of row (rk 1: the rank step of an elite), the captured ship index, event=row (level
+-- 2) with the fit names before and after, event=skip reason=cap (level 2) when the captured roll hit a row without a
+-- pool. Returns the copy, the captured index or nil.
+function TRF_Ft_RowOf(row, R, rk, sys, flight)
+	local sel = nil;
+	if R.c then sel = R.sel; end;
+	local out, cj = TRF_FtRow(row, R.g, sel, rk);
+	if R.c and not cj then TRF_FtDE("skip", "system", sys, "flight", tostring(flight), "reason", "cap"); end;
+	TRF_FtDE("row", "system", sys, "flight", tostring(flight), "grade", R.g, "captured_ship", cj or 0, "before", TRF_FtNames(row),
+		"after", TRF_FtNames(out));
+	return out, cj;
+end;
+
+-- Nest and gate builds ------------------------------------------------------------------
+
+-- Table, formation and row index of a NewPirateFlight type 1 / 2 call at power pw (NewAllFlight's __tablevel of the
+-- difficulty, trf_raid TRF_Rd_LvTab); nil for type 3 or without the tables.
+function TRF_FtTab(ty, pw)
+	local tab, form = nil, nil;
+	if ty == 1 then tab = Pir_Fighters; form = "shipFormation"; elseif ty == 2 then tab = Pir_Bombers; form = "shipFormationClaw"; end;
+	if type(tab) ~= "table" or type(Pir_Pilots) ~= "table" or type(pw) ~= "number" then return nil; end;
+	local lv = TRF_N("TRF_Rd_LvTab");
+	if type(lv) ~= "table" then lv = {1,1,2,3,4,5,6,6,7,8,9,10,11,12,12,13,14,15,16,17}; end;
+	local ri = lv[TRF_FtCl(floor(pw), 1, 20)];
+	if type(tab[ri]) ~= "table" then return nil; end;
+	return tab, form, ri;
+end;
+
+-- Builds the flight of sign through the vanilla NewAllFlight with a view of tab whose row ri is the graded copy
+-- (protected; the global Pir_* tables are never written). Returns the flight or nil.
+function TRF_FtBuild(tab, ri, row, group, sign, loc, pw, orient, form)
+	local view = {};
+	for k, v in tab do view[k] = v; end;
+	view[ri] = row;
+	if type(NewAllFlight) ~= "function" then return nil; end;
+	local fl = call(NewAllFlight, {Pir_Pilots, view, group, sign, loc, pw, orient, form}, "x", TRF_FtNoErr);
+	if TRF_FtObj(fl) then return fl; end;
+	return nil;
+end;
+
+-- trf_nest TRF_NeDecide / TRF_NeReplace (spec 5.2): flight i (sign) of system idx built in group gg at power pw. nil:
+-- not handled (fits off, pinned, type 3, no table, a normal flight without a captured ship), the caller builds as
+-- before; else {fl = the flight or nil (a failed build), d = the saved grade digit}.
+function TRF_Ft_Nest(gg, sign, loc, ty, pw, orient, idx, i, pin)
+	if not TRF_FtOn() then
+		TRF_FtDE("skip", "system", TRF_FtName(idx), "flight", sign, "reason", "off");
+		return nil;
+	end;
+	local sys = TRF_FtName(idx);
+	if pin == 1 then TRF_FtDE("skip", "system", sys, "flight", sign, "reason", "pinned"); return nil; end;
+	if ty == 3 then TRF_FtDE("skip", "system", sys, "flight", sign, "reason", "type3"); return nil; end;
+	local tab, form, ri = TRF_FtTab(ty, pw);
+	if not tab then TRF_FtDE("skip", "system", sys, "flight", sign, "reason", "data"); return nil; end;
+	local R = TRF_Ft_Grade(idx, i, "nest", sign);
+	if not R then return nil; end;
+	if R.g == 0 and not R.c then return nil; end;
+	local row, cj = TRF_Ft_RowOf(tab[ri], R, 1, sys, sign);
+	if R.g == 0 and not cj then return nil; end;
+	return {fl=TRF_FtBuild(tab, ri, row, gg, sign, loc, pw, orient, form), d=TRF_FtDigit(R.g, cj)};
+end;
+
+-- 1 when a quest-gated visit of system nm gets captured fits (spec 5.4): fits on, fits_gate 0, nm not in the scan's
+-- deny list. A refusal logs event=skip reason=gate (level 2).
+function TRF_Ft_GateOn(nm)
+	if not TRF_FtOn() then return nil; end;
+	local deny = TRF_FtGateDeny();
+	local why = nil;
+	if TRF_FtOpt("fits_gate") == 1 then why = "fits_gate"; elseif deny[nm] then why = "scan"; end;
+	if why then
+		TRF_FtDE("skip", "system", nm, "reason", "gate", "via", why);
+		return nil;
+	end;
+	return 1;
+end;
+
+-- trf_nest's quest-gated visit (spec 5.4): flight i (sign) of the vanilla call built in the caller's group at the
+-- vanilla power with grade 0 and the captured roll only (value-neutral). nil: not handled (pinned, type 3, no table,
+-- no captured ship): the vanilla call. Else {fl = the flight or nil}.
+function TRF_Ft_Gate(group, sign, loc, ty, pw, orient, idx, i, pin)
+	if not TRF_FtOn() then return nil; end;
+	local sys = TRF_FtName(idx);
+	if pin == 1 then TRF_FtDE("skip", "system", sys, "flight", sign, "reason", "pinned"); return nil; end;
+	if ty == 3 then TRF_FtDE("skip", "system", sys, "flight", sign, "reason", "type3"); return nil; end;
+	local tab, form, ri = TRF_FtTab(ty, pw);
+	if not tab then return nil; end;
+	local R = TRF_Ft_Grade(idx, i, "gate", sign, nil, 1);
+	if not R or not R.c then return nil; end;
+	local row, cj = TRF_Ft_RowOf(tab[ri], R, nil, sys, sign);
+	if not cj then return nil; end;
+	return {fl=TRF_FtBuild(tab, ri, row, group, sign, loc, pw, orient, form)};
+end;
+
+-- End of a quest-gated visit's calls (trf_nest TRF_Nest_OnActivate): event=gate with the captured flights built.
+function TRF_Ft_GateDone(nm, n)
+	TRF_FtE("gate", "system", nm, "built", n or 0);
+end;
+
+-- An elite nest flight destroyed (trf_nest TRF_NeFlightDead): the clan pays 3 score instead of 2 (spec 5.3).
+function TRF_Ft_Kill(nm, i, sign, mine)
+	TRF_FtE("kill", "system", nm, "index", i, "flight", sign, "grade", 1, "score_cost", 3, "mine", TRF_KvB(mine));
+end;
+
+-- Debug test ship (cfg fits_test, spec 5.7, CHECK E-BB1) ---------------------------------------
+
+function TRF_FtTestPos()
+	local ms = TRF_N("TRF_Ms");
+	if not TRF_FtObj(ms) then return nil; end;
+	local p = call(function(m) return m:GetPosition(); end, {ms}, "x", TRF_FtNoErr);
+	local d = call(function(m) return m:GetOrientation(); end, {ms}, "x", TRF_FtNoErr);
+	if type(p) ~= "table" and type(p) ~= "userdata" then return nil; end;
+	if (type(d) ~= "table" and type(d) ~= "userdata") or type(d.x) ~= "number" then d = Vector3(0, 0, 1); end;
+	local k = TRF_FtK().test_d;
+	return Vector3(p.x + d.x * k, p.y + d.y * k, p.z + d.z * k), d;
+end;
+
+-- One ship nm in group TRF_FtTest (team Pirates, neutral to the player both ways) 200 units ahead of the mothership; a
+-- name of the bare carcass list gets the fits_test_mods by AddModule. Logs every step (event=test) with the return
+-- values and the HP; 2 s later TRF_Ft_Step logs the TRF_Carcasses record of the ship.
+function TRF_FtTestRaw(nm)
+	local pos, dir = TRF_FtTestPos();
+	if not pos then TRF_FtE("test", "name", nm, "step", "position", "result", "failed"); return; end;
+	local tm = CreateTeam("Pirates");
+	local grp = tm:CreateGroup("TRF_FtTest");
+	local fl = grp:CreateFlight("flight_trf_ft_test");
+	local s = CreateCarcass(nm, pos, dir);
+	TRF_FtE("test", "name", nm, "step", "create", "result", TRF_FtObj(s) and "ok" or "failed", "x", floor(pos.x), "z", floor(pos.z));
+	if not TRF_FtObj(s) then fl:Delete(); return; end;
+	local p = CreatePilot(Pir_Pilots[1]);
+	s:AssignPilot(p);
+	fl:AddShip(s);
+	if type(SetGroupRelation) == "function" and RELATION_NEUTRAL ~= nil then
+		SetGroupRelation("TRF_FtTest", PLAYER_GROUP, RELATION_NEUTRAL);
+		SetGroupRelation(PLAYER_GROUP, "TRF_FtTest", RELATION_NEUTRAL);
+	end;
+	local h = TRF_N("TRF_H");
+	if type(h) == "table" then h.ft = {s=s, fl=fl, nm=nm, t=(TRF_FtGt()) + TRF_FtK().test_wait}; end;
+	local bare = TRF_FtD().bare[nm] == 1;
+	local hp = call(GetCurHP, {s}, "x", TRF_FtNoErr);
+	TRF_FtE("test", "name", nm, "step", "hull", "bare", TRF_KvB(bare and 1), "hp", hp);
+	if not bare then return; end;
+	local ms = TRF_FtTune().fits_test_mods;
+	for i = 1, getn(ms) do
+		local ok, ret = call(function(x, m) return 1, x:AddModule(m); end, {s, ms[i]}, "x", TRF_FtNoErr);
+		local rv = "error";
+		if ok then rv = tostring(ret); end;
+		TRF_FtE("test", "name", nm, "step", "add_module", "module", ms[i], "ret", rv, "hp", call(GetCurHP, {s}, "x", TRF_FtNoErr));
+	end;
+end;
+
+-- Activation hook (traffic.script TRF_OnActivate): the test ship of cfg fits_test once per entry.
+function TRF_Ft_OnActivate()
+	local h = TRF_N("TRF_H");
+	if type(h) == "table" then h.ft = nil; end;
+	local nm = TRF_FtOpt("fits_test");
+	if type(nm) ~= "string" or nm == "" or type(TRF) ~= "table" then return; end;
+	if __disableAction == TRUE then TRF_FtE("test", "name", nm, "step", "create", "result", "skipped", "reason", "scene"); return; end;
+	call(TRF_FtTestRaw, {nm}, "x", TRF_FtErr);
+end;
+
+-- 1 s step (traffic.script): 2 s after the test spawn the TRF_Carcasses read of the test ship (tpl, hp, hpmax, cls).
+function TRF_Ft_Step()
+	local h = TRF_N("TRF_H");
+	if type(h) ~= "table" or type(h.ft) ~= "table" or type(h.ft.t) ~= "number" then return; end;
+	if (TRF_FtGt()) < h.ft.t then return; end;
+	h.ft.t = nil;
+	call(TRF_FtTestRead, {h.ft}, "x", TRF_FtErr);
+end;
+
+function TRF_FtTestRead(v)
+	local alive = call(function(x) return x:IsAlive(); end, {v.s}, "x", TRF_FtNoErr);
+	local hp = call(GetCurHP, {v.s}, "x", TRF_FtNoErr);
+	if type(TRF_Carcasses) ~= "function" then
+		TRF_FtE("test", "name", v.nm, "step", "read", "result", "no_native", "alive", TRF_KvB(alive), "hp", hp);
+		return;
+	end;
+	local l, why = TRF_Carcasses();
+	local rec = nil;
+	if type(l) == "table" then
+		for i = 1, getn(l) do
+			local r = l[i];
+			if type(r) == "table" and r.id ~= nil and r.id == v.s.id then rec = r; end;
+		end;
+	end;
+	if not rec then
+		TRF_FtE("test", "name", v.nm, "step", "read", "result", "not_found", "why", why, "alive", TRF_KvB(alive), "hp", hp);
+		return;
+	end;
+	TRF_FtE("test", "name", v.nm, "step", "read", "result", "ok", "tpl", rec.tpl, "cls", rec.cls, "hp", rec.hp, "hpmax", rec.hpmax,
+		"alive", TRF_KvB(alive));
+end;
+
+-- Before every jump: the test flight is deleted.
+function TRF_Ft_BeforeJump()
+	local h = TRF_N("TRF_H");
+	if type(h) ~= "table" or type(h.ft) ~= "table" then return; end;
+	if TRF_FtObj(h.ft.fl) then call(function(f) f:Delete(); end, {h.ft.fl}, "x", TRF_FtNoErr); end;
+	h.ft = nil;
+end;
+
+-- Dump (TRF_DumpState): the module state of this map.
+function TRF_Ft_Dump()
+	if type(TRF) ~= "table" then return; end;
+	local T = TRF_FtTune();
+	local e = nil;
+	if type(TRF.nv) == "table" then e = TRF.nv.e; end;
+	TRF_FtE("dump", "on", TRF_KvB(TRF_FtOn()), "gate", TRF_FtOpt("fits_gate"), "elite_max", T.fits_elite_max, "cap_pct", T.fits_cap_pct,
+		"grades", e or "none");
+end;
+
+-- BEGIN scan_quests.py (do not edit by hand)
+-- Systems whose quest scripts check a pirate carcass, fit or module name by string (tools/scan_quests.py, design/
+-- fits-spec.md 5.4): quest-gated visits there keep vanilla rows.
+function TRF_FtGateDeny()
+	return {};
+end;
+-- END scan_quests.py
+
+-- BEGIN gen_fits.py (do not edit by hand)
+-- Pirate fit data (tools/gen_fits.py from the clone's ShipDescriptions.xml, Carcasses.xml, Modules.xml; design/
+-- fits-spec.md 3.3): up / dn the elite and scrap maps (one carcass level, same gun family), cap the captured
+-- alternatives per fit (another row's fit, gear value within +-5 %), val the gear value (sum of module costs), bare
+-- the pirate interceptor carcasses (debug cfg fits_test builds these bare with AddModule).
+function TRF_FtData()
+	return {
+		up={Bident_pir1="Hrimturs_pir1", Brigand_pir1="Stormcrow_pir1", Cleaner_pir1="Tiger_pir1",
+			EvilEye_pir1="Gunslinger_pir1", EvilEye_pir2="Gunslinger_pir1", EvilEye_pir3="Gunslinger_pir1",
+			Excalibur_pir1="Cleaner_pir1", Excalibur_pir2="Stormcrow_pir1", Hammerhead_pir1="Bident_pir1",
+			Hatchet_pir1="Raptor_pir1", Naginata_pir1="Hammerhead_pir1", Raptor_pir1="Bident_pir1",
+			Stormcrow_pir1="EvilEye_pir1", Tiger_pir1="Gunslinger_pir1", Tiger_pir2="Gunslinger_pir3",
+			Yari_pir1="Stormcrow_pir1", Yari_pir2="Cleaner_pir1"},
+		dn={Bident_pir1="Hammerhead_pir1", Cleaner_pir1="Excalibur_pir1", EvilEye_pir1="Stormcrow_pir1",
+			EvilEye_pir2="Stormcrow_pir1", EvilEye_pir3="Stormcrow_pir1", Gunslinger_pir1="Tiger_pir1",
+			Gunslinger_pir2="Tiger_pir2", Gunslinger_pir3="Tiger_pir2", Hammerhead_pir1="Naginata_pir1",
+			Hrimturs_pir1="Bident_pir1", Hrimturs_pir2="Bident_pir1", Raptor_pir1="Hatchet_pir1",
+			Stormcrow_pir1="Yari_pir2", Tiger_pir1="Cleaner_pir1", Tiger_pir2="Cleaner_pir1", Trident_pir1="Bident_pir1"},
+		cap={Bident_pir1={"Hatchet_pir1"}, Brigand_pir1={"Yari_pir1"}, Hatchet_pir1={"Bident_pir1"},
+			Yari_pir1={"Brigand_pir1"}},
+		val={Bident_pir1=2770, Brigand_pir1=300, Cleaner_pir1=12300, EvilEye_pir1=16510, EvilEye_pir2=42750,
+			EvilEye_pir3=52850, Excalibur_pir1=1230, Excalibur_pir2=670, Gunslinger_pir1=26100, Gunslinger_pir2=154000,
+			Gunslinger_pir3=137500, Hammerhead_pir1=2540, Hatchet_pir1=2850, Hrimturs_pir1=20100, Hrimturs_pir2=31150,
+			Naginata_pir1=355, Raptor_pir1=4500, Stormcrow_pir1=11240, Tiger_pir1=7900, Tiger_pir2=69800,
+			Trident_pir1=62450, Yari_pir1=300, Yari_pir2=1500},
+		bare={Bident_pir0=1, Brigand_pir0=1, Cleaner_mk2_pir0=1, Cleaner_pir0=1, EvilEye_pir0=1, Excalibur_pir0=1,
+			Gunslinger_pir0=1, Hammerhead_pir0=1, Hatchet_pir0=1, Hrimturs_pir0=1, Naginata_pir0=1, Panthera_pir0=1,
+			Puma_pir0=1, Raptor_pir0=1, Stormcrow_mk2_pir0=1, Stormcrow_pir0=1, TieFly_pir0=1, Tiger_pir0=1, Trident_pir0=1,
+			Yari_pir0=1}
+	};
+end;
+-- END gen_fits.py

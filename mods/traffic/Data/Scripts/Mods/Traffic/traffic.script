@@ -52,6 +52,9 @@
 -- or settles the hire, CBH TRF_McHit marks combat.
 -- Strength scale (design/strength-spec.md): trf_str loads after trf_region and before trf_tier (counted as extra=); pure
 -- helpers (score, tier with hysteresis, tier table, chance curve), the region tick commits the clan tier digit.
+-- Pirate fit variety (design/fits-spec.md): trf_fits loads after trf_freight and before trf_nest (extra=); trf_nest, trf_raid
+-- and trf_base call its grade and row helpers; the activate hook (after the nest arrival line) spawns the debug test ship
+-- of cfg fits_test, the 1 s step reads it back, the jump hook deletes it.
 
 function TRF_Path(name)
 	return "DATA/Scripts/Mods/Traffic/"..name;
@@ -329,6 +332,7 @@ function TRF_OnActivate()
 		TRF_P("TRF_Sh_OnActivate");
 		TRF_P("TRF_Fr_OnActivate");
 		TRF_P("TRF_Nest_Arrival");
+		TRF_P("TRF_Ft_OnActivate");
 		TRF_P("TRF_Pc_OnActivate");
 		TRF_P("TRF_Mc_OnActivate");
 		TRF_P("TRF_Stn_OnActivate");
@@ -391,6 +395,7 @@ function TRF_OnTick(dt_game, dt_real)
 			TRF_P("TRF_Sh_Step");
 			TRF_P("TRF_Fr_Step");
 			TRF_P("TRF_Nest_Step");
+			TRF_P("TRF_Ft_Step");
 			TRF_P("TRF_Pc_Step");
 			TRF_P("TRF_Mc_Step");
 		end;
@@ -429,7 +434,7 @@ function TRF_BeforeJump(dest, how)
 		TRF_P("TRF_State_BeforeJump");
 		TRF_P("TRF_Hail_BeforeJump");
 		TRF_P("TRF_Track_BeforeJump", dest, how);
-		local v1 = {"Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Pl", "Stn", "Sv", "Sc", "Sh", "Fr", "Nest", "Pc"};
+		local v1 = {"Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Pl", "Stn", "Sv", "Sc", "Sh", "Fr", "Nest", "Ft", "Pc"};
 		for i = 1, getn(v1) do TRF_P("TRF_"..v1[i].."_BeforeJump"); end;
 		-- Mercenary clans: the destination decides whether a hired wing follows (design/merc-spec.md 6a); the hire record
 		-- and the visit's raid marks stay for trf_raid's 8.5 pay below.
@@ -519,7 +524,7 @@ function TRF_Main()
 			for i = 1, getn(v2) do if TRF_LoadFile(v2[i]) then nm = nm + 1; end; end;
 			local v1 = {"loc", "track", "faction", "clan", "convoy", "danger", "supply", "base"};
 			for i = 1, getn(v1) do if TRF_LoadFile("trf_"..v1[i]..".script") then nm = nm + 1; end; end;
-			local ex = {"plumb", "station", "survive", "ladder", "charter", "scar", "captain", "stash", "freight", "nest", "parcel", "merc"};
+			local ex = {"plumb", "station", "survive", "ladder", "charter", "scar", "captain", "stash", "freight", "fits", "nest", "parcel", "merc"};
 			for i = 1, getn(ex) do if TRF_LoadFile("trf_"..ex[i]..".script") then ne = ne + 1; end; end;
 			TRF_P("TRF_InstallPlumb");
 			TRF_P("TRF_InstallNest");

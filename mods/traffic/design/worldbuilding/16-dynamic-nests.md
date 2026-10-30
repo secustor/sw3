@@ -10,6 +10,7 @@ Scope (user decision 2026-10-24): every system whose `G/Scripts/Locations/<Sys>/
 - How: a wrapper of the global `NewPirateFlight`, armed only between `TRF_OnEnter` (after `functions.script`) and `TRF_OnActivate` (after `activate.script`), builds each listed flight as a real mod flight with the same sign, so `flight_<sign>`, `ship_<sign>_<n>` and `pilot_<sign>_<n>` are real objects and the following `Patrol` line runs unchanged. A flight the nest does not field gets a stub object for the rest of `activate.script` only. Fallback (cfg `nest_mode` 2): vanilla builds everything and the mod deletes and replaces the flights in `TRF_OnActivate`.
 - Unlock: chapter 5 or later, cfg `nest` 1 (default 0 until E16.1-E16.5 pass). A system named by a quest that is in process keeps vanilla flights for that visit (strict gate, v02 8.3). El Ariash and X297 always keep vanilla flights.
 - Pay: nothing new. Loot, `CostOfHead` pod prices and kill XP are vanilla, because the flights are built by the vanilla builder from `Pir_Pilots` and the `Pir_*` tables. The design holds the cycle mean of the nest loot at the vanilla level (section 5), so 00's farm baseline and every feature budget stay valid.
+- Pay, deviation 2026-10-30 (user decisions D1/D2, `D/fits-spec.md`): the "loot is vanilla" rule of the line above is replaced by a value budget. The tier step `nest_dp` stays; on top of it every fielded flight gets one fit grade (trf_fits, cfg `fits`): elite (one carcass level up, pilots one rank up, tiers 3-4, at most 5 % plus the pirate-base factor, cap 15 %), scrap (one level down, tier 2 below score 35) or a captured fit (another pirate fit of the same gear value, +-5 %). Over a region cycle the loot value per system and per region stays at 0.95-1.05x of the vanilla farm on the 16:102 slope; no flight's expected value exceeds 1.5x. Ship count, ranks of normal flights, positions and mod credits stay vanilla; `tools/gen_fits.py --check` verifies the budget.
 - Throttle: never more flights than vanilla places in that system; kill memory refills 15 % of the system's vanilla flights per region tick (2 legs).
 - Needs: traffic v1 regions, clans, phases, tiers, strict gate and sweeps; trf_plumb arrival lines and orphan scan; string callbacks (E0.3) and group relations (E0.13). Feeds scars (2), clan stashes (7), and in step 2 wanted captains (4) and bases (traffic 7.14).
 
@@ -93,6 +94,8 @@ Lines (section 6, "arrival line") go through `TRF_ArrivalLine` after the other f
 
 **Why it cannot be farmed beyond vanilla.** The plan is a pure function of saved state (phase, tier, `k`, the static table), so re-entering does not reroll it. The count never exceeds vanilla. Kill memory removes the vanilla two-system bounce (kill, jump out, jump back, full refill). Pods and loot are vanilla; no mod credits. Section 5 has the numbers.
 
+*Deviation 2026-10-30 (`D/fits-spec.md`):* "Pods and loot are vanilla" now reads: pods vanilla, loot inside the value budget of the fit grades (cycle mean 0.95-1.05x, peak 1.5x per flight). The grade is a fixed hash of saved state (system, flight, phase start leg), so re-entry, reload and a two-system bounce cannot reroll it.
+
 **Why nothing settles.** The phase drives the count and the tier drives the power; both cycle (TDR 6.9). Kill memory decays to 0. Kills only lengthen Boom or Build-up within their minima and maxima, as any pirate kill does (TDR 6.9 player effects).
 
 ## 5. Economy
@@ -122,6 +125,7 @@ Lines (section 6, "arrival line") go through `TRF_ArrivalLine` after the other f
 | Flow | Amount | Note |
 |---|---|---|
 | Loot | vanilla engine drop of the fielded flights | x0.51-1.37 per flight by phase and tier |
+| Loot with fit grades (deviation 2026-10-30, `D/fits-spec.md` 9) | elite x1.37, scrap /1.37, captured x1.0 of the flight | cycle mean 0.98-0.99 (1.004 with an A base); peak 1.446 per flight (limit 1.5) |
 | Pod prices | vanilla `CostOfHead` (`G/Scripts/include/CostOfPirates.script:14-70`) | pilots from `Pir_Pilots` by row, unchanged |
 | Kill XP | vanilla, x0.1 off-mission (`G/Scripts/include/LevelUp.script:32`) | unchanged |
 | Mod credits | none | no `TRF_Pay`, no `pay_cap`, no `d_k` |
@@ -254,6 +258,7 @@ Style of `D/PROGRESS.md` Phase 0; all on the test clone, `LOG=2`, cfg `nest` 1 u
 - [ ] E16.8 Cost and 8x (extends E0.29). XB-19 (31 flights) at Raids: entry time from `TRF_OnEnter` to `TRF_OnActivate` (`dt_real`) within +10 % of `nest` 0, frame time at 8x no worse than vanilla; trigger count logged. Else `nest_trig` 1.
 - [ ] E16.9 Quest start during a nest visit. Find, from the campaign pass (v1 1.5), a quest of a class-Q system that is accepted inside that system; accept it during a nest visit. Pass: no `ScriptErrors.log` line from the quest script; its `flight_<sign>:Delete()` lines hit pinned flights. Failure: that system gets `nest=0`.
 - [ ] E16.10 Rate session (extends E0.28). Three hours of pirate farming with `nest` 1 and three with `nest` 0 in the same regions. Pass: touring farm rate across the phases met within ±10 % of the vanilla rate; the Build-up/Raids rate at most 1.4x; the two-system bounce rate logged.
+  - Note 2026-10-30 (user decisions D1/D2): the per-flight peak line for pirate loot is 1.5x (it replaces the 1.4x above, `D/fits-spec.md` 9); the touring band stays +-10 %.
 - [ ] E16.11 Fallback (b). `nest_mode` 2 in Golkonda. Pass: `event=replace deleted=10 spawned=<n>`, no visible pop-in in the first frame, routes followed, no `ScriptErrors.log` line.
 
 ## 9. Phasing

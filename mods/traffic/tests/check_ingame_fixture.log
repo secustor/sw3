@@ -305,3 +305,17 @@ traffic: lua: exp=v1 module=str event=tier slot=1 score=76 tier=4 prev=3 via=tic
 traffic: lua: exp=v1 module=str event=tier slot=1 score=72 tier=4 prev=4 via=tick result=kept
 traffic: lua: exp=v1 module=str event=tier slot=2 score=44 tier=2 prev=3 via=event result=changed
 traffic: lua: exp=v1 module=raid event=go raid_id=2 trader_id=3 via=lane tier=2 power=14 ship_count=4 distance=874.871
+traffic: lua: exp=v1 module=fits event=roll system=golkonda flight=pir07 source=nest score=88 tier=4 up=3 down=0 roll=1 grade=1 captured=false
+traffic: lua: exp=v1 module=fits event=row system=golkonda flight=pir07 grade=1 captured_ship=0 before=Stormcrow_pir1,Raptor_pir1 after=EvilEye_pir1,Bident_pir1
+traffic: lua: exp=v1 module=fits event=roll system=golkonda flight=pir08 source=nest score=88 tier=4 up=3 down=0 roll=57 grade=0 captured=false
+traffic: lua: exp=v1 module=fits event=roll system=xt45 flight=Pir02 source=nest score=40 tier=2 up=3 down=0 roll=50 grade=0 captured=false
+traffic: lua: exp=v1 module=fits event=kill system=golkonda index=7 flight=pir07 grade=1 score_cost=3 mine=true
+traffic: lua: exp=v1 module=region event=clan_score region=4 reason="pirate kill nest_elite" old_clan_score=88 clan_score=85
+traffic: lua: exp=v1 module=fits event=roll system=kadi flight=Pir05 source=gate score=95 tier=4 up=0 down=0 roll=40 grade=0 captured=true
+traffic: lua: exp=v1 module=fits event=gate system=kadi built=1
+traffic: lua: exp=v1 module=fits event=test name=Panthera_pir0 step=create result=ok x=-950 z=850
+traffic: lua: exp=v1 module=fits event=test name=Panthera_pir0 step=hull bare=true hp=600
+traffic: lua: exp=v1 module=fits event=test name=Panthera_pir0 step=add_module module=PC2 ret=nil hp=600
+traffic: lua: exp=v1 module=fits event=test name=Panthera_pir0 step=add_module module=VC3 ret=nil hp=600
+traffic: lua: exp=v1 module=fits event=test name=Panthera_pir0 step=add_module module=ShAmp3 ret=nil hp=600
+traffic: lua: exp=v1 module=fits event=test name=Panthera_pir0 step=read result=ok tpl=Panthera_pir0 cls=6 hp=600 hpmax=600 alive=true

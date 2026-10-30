@@ -13,9 +13,13 @@
 -- from chapter 5, in mod mode (trf_safety TRF_SysMode) and through the strict gate (TRF_StrictOk feature nest).
 -- Feeds: a destroyed flight writes the kill memory and costs the clan 2 score (with player fire through trf_events'
 -- TRF_Ev_Recover: dis -1 inside its visit cap, clan nk + 1); every destroyed ship feeds battle scars source 7.
+-- Pirate fits (design/fits-spec.md 5.2-5.4): with trf_fits on, both build sites take a graded row through TRF_Ft_Nest
+-- (the vanilla builder with a row copy), the grade digits of the fielded flights are saved in TRF.nv.e and an elite
+-- kill costs the clan 3 score; a quest-gated visit (gate_quest) arms a fits-only record (mode 3): listed unpinned
+-- signs of the vanilla group get the captured roll only through TRF_Ft_Gate, in the caller's group at vanilla power.
 -- Relations: the nest group copies the vanilla group's relation to the player after activate.script and mirrors later
 -- changes one way (nest_mirror). Jump: every live nest flight is deleted. Load: the saved flights are adopted by their
--- globals (TRF.nv) and re-armed. Saved: TRF.nest[idx] = {k, l, c}, TRF.nv = {i, b}, TRF.nst = {n, k, p},
+-- globals (TRF.nv) and re-armed. Saved: TRF.nest[idx] = {k, l, c}, TRF.nv = {i, b, e}, TRF.nst = {n, k, p},
 -- TRF.clan[slot].nk, .nl, .ns. Visit state lives in the chunk local NE (never saved; rebuilt by every MapInitialization).
 -- Layout as trf_stash: helpers, static tables, pure functions (*Of), state, gates, install and wrapper, entry,
 -- activation, callbacks, step, jump, load, contract functions. Top level: functions and NE only.
@@ -293,7 +297,7 @@ end;
 -- trf_nest_<i>_<j>), the nest group and its build global, line seconds, clan score per destroyed flight, counter and
 -- nk bounds, the phase line keys (index phase + 1).
 function TRF_NeK()
-	return {f_max=31, j_max=6, grp="TRF_Nest_".."1", gg="TRF_GNest_".."1", secs=8, hit_secs=6, score=-2, cnt_max=99999, nk_max=99,
+	return {f_max=31, j_max=6, grp="TRF_Nest_".."1", gg="TRF_GNest_".."1", secs=8, hit_secs=6, score=-2, score_el=-3, cnt_max=99999, nk_max=99,
 		lines={"nestquiet", nil, "nestfull", "nestraid", "nestbust", nil}, swept_nl=7};
 end;
 
@@ -1250,6 +1254,7 @@ function TRF_NeDecide(group, sign, location, ty, power, orient)
 	local a = %NE.a;
 	if type(a) ~= "table" then return {}; end;
 	if a.on ~= 1 or a.gen ~= TRF_NeGen() then return TRF_NePass("unarmed", sign); end;
+	if a.mode == 3 then return TRF_NeGateCall(a, group, sign, location, ty, power, orient); end;
 	local i = a.by[sign];
 	if not i then return TRF_NePass("unlisted", sign); end;
 	if group ~= a.d.g then
@@ -1268,7 +1273,10 @@ function TRF_NeDecide(group, sign, location, ty, power, orient)
 		local pw = nil;
 		if type(power) == "number" then pw = TRF_NeCl(floor(power + a.dp), 1, 20); end;
 		local fl = nil;
-		if g and pw then fl = call(TRF_orig_NewPirateFlight, {TRF_NeK().gg, sign, location, ty, pw, orient}, "x", TRF_NeNoErr); end;
+		if g and pw then
+			local ft = TRF_NeFits(TRF_NeK().gg, sign, location, ty, pw, orient, a, i, pin);
+			if ft then fl = ft.fl; else fl = call(TRF_orig_NewPirateFlight, {TRF_NeK().gg, sign, location, ty, pw, orient}, "x", TRF_NeNoErr); end;
+		end;
 		if TRF_NeObj(fl) then
 			a.st[i] = "sub";
 			a.fl[i] = fl;
@@ -1286,6 +1294,34 @@ function TRF_NeDecide(group, sign, location, ty, power, orient)
 	a.sb[sign] = sb;
 	TRF_NeDE("call", "sign", sign, "result", "stub", "reason", a.plan.sk[i] or "count");
 	return {ret=sb};
+end;
+
+-- trf_fits' graded build of flight i (design/fits-spec.md 5.2), protected: nil when not handled (fits off, pinned,
+-- type 3, a normal flight), else {fl}; the grade digit goes to a.ge[i].
+function TRF_NeFits(gg, sign, location, ty, pw, orient, a, i, pin)
+	if type(TRF_Ft_Nest) ~= "function" then return nil; end;
+	local ft = call(TRF_Ft_Nest, {gg, sign, location, ty, pw, orient, a.idx, i, pin}, "x", TRF_NeErr);
+	if type(ft) ~= "table" then return nil; end;
+	if type(a.ge) ~= "table" then a.ge = {}; end;
+	a.ge[i] = ft.d;
+	return ft;
+end;
+
+-- A call of a quest-gated visit's fits-only record (mode 3, design/fits-spec.md 5.4): a listed sign of the vanilla
+-- group, first call, a number power: trf_fits' captured row in the caller's group at the vanilla power, else (and for
+-- every other call) the vanilla call. No stub, no nest group, no triggers, no TRF.nv.
+function TRF_NeGateCall(a, group, sign, location, ty, power, orient)
+	local i = a.by[sign];
+	if not i or group ~= a.d.g or a.st[i] or type(power) ~= "number" then return {}; end;
+	a.st[i] = "van";
+	local ft = nil;
+	if type(TRF_Ft_Gate) == "function" then ft = call(TRF_Ft_Gate, {group, sign, location, ty, power, orient, a.idx, i, a.d.f[i].pin}, "x", TRF_NeErr); end;
+	if type(ft) == "table" and TRF_NeObj(ft.fl) then
+		a.st[i] = "fit";
+		a.nb = a.nb + 1;
+		return {ret=ft.fl};
+	end;
+	return {};
 end;
 
 -- Entry (TRF_OnEnter, after trf_safety) --------------------------------------------------------------
@@ -1376,7 +1412,15 @@ function TRF_NeEnterBody()
 	-- E16.2 probe in every system with data (also with nest 0); pr asks TRF_Nest_OnActivate for the second probe.
 	TRF_NeProbe("enter");
 	ne.v.pr = 1;
-	if mode ~= "nest" then return; end;
+	if mode ~= "nest" then
+		-- design/fits-spec.md 5.4: a quest-gated visit gets trf_fits' captured rows (fits on, fits_gate 0, not deny-listed).
+		if why == "gate_quest" and type(TRF_Ft_GateOn) == "function" and TRF_Ft_GateOn(nm) then
+			local gb = {};
+			for i = 1, nv do gb[d.f[i].s] = i; end;
+			ne.a = {on=1, gen=TRF_NeGen(), idx=cur, nm=nm, d=d, by=gb, mode=3, st={}, nb=0};
+		end;
+		return;
+	end;
 	local P = TRF_NestPlanOf(d.f, f, k, dp, TRF_NeCaches(cur), tn.nest_cache_r);
 	local by = {};
 	for i = 1, nv do by[d.f[i].s] = i; end;
@@ -1463,7 +1507,9 @@ function TRF_NeReplace(a)
 			if not alive then
 				a.st[i] = "gone";
 			elseif a.plan.fl[i] and TRF_NeGroup(a) then
-				local fl = call(TRF_orig_NewPirateFlight, {K.gg, r.s, Vector3(r.x, r.y, r.z), r.t, a.plan.pw[i], Vector3(0, 0, 1)}, "x", TRF_NeNoErr);
+				local fl = nil;
+				local ft = TRF_NeFits(K.gg, r.s, Vector3(r.x, r.y, r.z), r.t, a.plan.pw[i], Vector3(0, 0, 1), a, i, nil);
+				if ft then fl = ft.fl; else fl = call(TRF_orig_NewPirateFlight, {K.gg, r.s, Vector3(r.x, r.y, r.z), r.t, a.plan.pw[i], Vector3(0, 0, 1)}, "x", TRF_NeNoErr); end;
 				if TRF_NeObj(fl) then
 					call(TRF_NePatrolRaw, {fl, TRF_NeRoute(r)}, "x", TRF_NeNoErr);
 					a.fl[i] = fl; a.st[i] = "sub"; ns = ns + 1;
@@ -1488,7 +1534,12 @@ end;
 function TRF_Nest_OnActivate()
 	local ne = %NE;
 	local a = ne.a;
-	if type(a) ~= "table" then
+	if type(a) ~= "table" or a.mode == 3 then
+		if type(a) == "table" then
+			a.on = nil;
+			ne.a = nil;
+			TRF_P("TRF_Ft_GateDone", a.nm, a.nb);
+		end;
 		setglobal(TRF_NeK().gg, nil);
 		if ne.v.pr == 1 then TRF_NeProbe("activate"); end;
 		return;
@@ -1530,6 +1581,15 @@ function TRF_NeActBody(a)
 	end;
 	v.nf = nf; v.ns = ns; v.ng = ng; v.nmis = nmiss;
 	TRF.nv = {i=a.idx, b=TRF_NeBitsOf(bits, nv)};
+	-- design/fits-spec.md 4: the grade digits of the fielded flights, only when one is not 0.
+	local e, ne0 = "", nil;
+	for i = 1, nv do
+		local dg = 0;
+		if bits[i] and type(a.ge) == "table" and type(a.ge[i]) == "number" then dg = a.ge[i]; end;
+		if dg ~= 0 then ne0 = 1; end;
+		e = e..dg;
+	end;
+	if ne0 then TRF.nv.e = e; end;
 	local to, from = TRF_NeVanRel(a.d.g);
 	TRF_NeRelSet(v, to, from);
 	v.arr = {idx=a.idx, nm=a.nm, slot=a.slot, ph=a.ph, sw=a.sw, nf=nf};
@@ -1626,11 +1686,17 @@ function TRF_NeFlightDead(i, why)
 	r.k = min(nv, r.k + 1);
 	local mine = v.hit[i];
 	local K = TRF_NeK();
-	if mine and type(TRF_Ev_Recover) == "function" then
-		TRF_Ev_Recover("nest", 0);
-	elseif type(v.slot) == "number" then
-		TRF_N("TRF_ClanAdd", v.slot, K.score, "nest kill");
+	-- design/fits-spec.md 5.3: an elite flight (saved digit 1 or 4) costs the clan 3 score.
+	local el = nil;
+	if type(TRF.nv) == "table" and TRF.nv.i == idx and type(TRF.nv.e) == "string" and type(TRF_Ft_Elite) == "function" then
+		el = TRF_Ft_Elite(strsub(TRF.nv.e, i, i));
 	end;
+	if mine and type(TRF_Ev_Recover) == "function" then
+		if el then TRF_Ev_Recover("nest_elite", 0); else TRF_Ev_Recover("nest", 0); end;
+	elseif type(v.slot) == "number" then
+		if el then TRF_N("TRF_ClanAdd", v.slot, K.score_el, "nest kill elite"); else TRF_N("TRF_ClanAdd", v.slot, K.score, "nest kill"); end;
+	end;
+	if el then TRF_P("TRF_Ft_Kill", v.nm, i, v.d.f[i].s, mine); end;
 	if mine then
 		local c = TRF_NeClan(v.slot);
 		if c then c.nk = min(K.nk_max, (c.nk or 0) + 1); end;
@@ -1837,6 +1903,8 @@ function TRF_Nest_Fix()
 		if type(x) == "table" and type(x.i) == "number" and type(x.b) == "string" then
 			local d = TRF_NeData(TRF_NeName(x.i));
 			if d and strlen(x.b) <= getn(d.f) and not strfind(x.b, "[^01]") then ok = 1; end;
+			-- design/fits-spec.md 4: grade digits 0..5, at most nv of them; anything else is dropped.
+			if ok and x.e ~= nil and (type(x.e) ~= "string" or strlen(x.e) > getn(d.f) or strfind(x.e, "[^0-5]")) then x.e = nil; end;
 		end;
 		if not ok then TRF.nv = nil; end;
 	end;

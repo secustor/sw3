@@ -46,6 +46,9 @@
 # unless PARCELS is set); PCL_PROBE=0|1 (cfg pcl_probe, the E-PCL.1/E-PCL.2 probe lines); written only when set.
 # NESTS=0|1 (cfg nest, dynamic nests, design/nest-spec.md, CHECK E16.1-E16.11); NEST_MODE=1|2 (cfg nest_mode, 2 the
 # delete-and-replace fallback, E16.11); written only when set.
+# FITS=0|1 (cfg fits, pirate fit variety, design/fits-spec.md, CHECK D-FIT.1-4); FITS_GATE=0|1 (cfg fits_gate, 1 keeps
+# quest-gated visits vanilla); FITS_TEST=<ShipDescription or carcass name> (debug: one neutral test ship at every entry,
+# CHECK E-BB1); written only when set.
 # MERCS=0|1 (cfg merc, mercenary clans, design/merc-spec.md; default 0 until CHECK E0.13 passes; the clan record at the
 # region tick and the hire role of step 3, test plan section 11, run C, chapter 5+); written only when set.
 # NEWS=1: the trf_* records of news/trf_news.xml (tools/gen_news.py) merged into the clone's Data/Game/News.xml
@@ -149,6 +152,12 @@ case "${PCL_PROBE:-}" in "") ;; 0|1) opt="$opt, pcl_probe=$PCL_PROBE" ;; *) echo
 case "${NESTS:-}" in "") ;; 0|1) opt="$opt, nest=$NESTS" ;; *) echo "NESTS must be 0 or 1" >&2; exit 1;; esac
 case "${NEST_MODE:-}" in "") ;; 1|2) opt="$opt, nest_mode=$NEST_MODE" ;; *) echo "NEST_MODE must be 1 or 2" >&2; exit 1;; esac
 case "${MERCS:-}" in "") ;; 0|1) opt="$opt, merc=$MERCS" ;; *) echo "MERCS must be 0 or 1" >&2; exit 1;; esac
+case "${FITS:-}" in "") ;; 0|1) opt="$opt, fits=$FITS" ;; *) echo "FITS must be 0 or 1" >&2; exit 1;; esac
+case "${FITS_GATE:-}" in "") ;; 0|1) opt="$opt, fits_gate=$FITS_GATE" ;; *) echo "FITS_GATE must be 0 or 1" >&2; exit 1;; esac
+if [ -n "${FITS_TEST:-}" ]; then
+    case "$FITS_TEST" in *[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_]*) echo "FITS_TEST: bad name" >&2; exit 1;; esac
+    opt="$opt, fits_test=\"$FITS_TEST\""
+fi
 if [ -n "${PRO_SET:-}" ]; then
     ps=""
     for e in $(printf '%s' "$PRO_SET" | tr ',' ' '); do

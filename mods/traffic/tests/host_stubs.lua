@@ -839,6 +839,11 @@ function NewAllFlight(tab_pilot, tab_flight, group, sign, location, power, orien
 	local flight = grp:CreateFlight("flight_"..sign);
 	setglobal("flight_"..sign, flight);
 	local row = tab_flight[tl[level]];
+	-- design/fits-spec.md 10: vanilla iterates the row with next() (for i1, sh in row), so a key other than 1..n (the
+	-- field n of a row built with tinsert) breaks the build after the real ships; the last row is kept for the checks.
+	for k, v in row do HOST_Want(type(k) == "number" and k == floor(k) and k >= 1 and k <= getn(row) and type(v) == "table", "NewAllFlight row: only entries 1..n, no field n (tinsert)"); end;
+	HOST().naf = {row=row, group=group, sign=sign, power=power, form=formation};
+	if type(HOST().nafs) == "table" then HOST().nafs[sign] = HOST().naf; end;
 	for i1 = 1, getn(row) do
 		local sh = row[i1];
 		local ship = CreateCarcass(sh[1], Vector3(0, 0, (i1 - 1) * 5) + location);

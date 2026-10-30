@@ -14,6 +14,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `config.script` | `TRF_Config()` returns `{exp=0..3, log=0/1, big=0/1, del_on_jump=0/1, autosave=0..2, traffic=0/1}` plus the optional v0.1 keys (`v01-spec.md` 9), v0.2 keys (`v02-spec.md` 10.4) and v1 keys (`v1-spec.md` 10.5). The repo default is `exp=0, autosave=0, traffic=1`; `install-test.sh` rewrites the file. |
 | `trf_state.script`, `trf_safety.script`, `trf_ui.script`, `trf_events.script`, `trf_gen.script` | v0.1 traffic (`design/v01-spec.md` 10.2), extended by v0.2: saved table (v3 since v0.2) and visit state; safety rules, caps, governor and strict gate; player-facing lines and news; attack, heat tiers, kills and response; generator wrap, spawn, routes, queue and seed, manager step, load pass. |
 | `trf_region.script`, `trf_tier.script`, `trf_raid.script`, `trf_shop.script`, `trf_hail.script` | v0.2 (`design/v02-spec.md` 10.1): regional cycle, prosperity and clans; bands, tiers, holds, parked ships; raids and help pay; trader shops, shortages and restore; hail menu, contracts and work board. Each loads on its own. |
+| `trf_fits.script` | Pirate fit variety, step 1 ([design/fits-spec.md](design/fits-spec.md)): one grade per pirate flight from a fixed hash against the clan score (elite one hull level up at tiers 3-4 with the pirate-base factor, scrap one level down at tier 2 below 35, a value-matched captured fit), the graded row copy by explicit index, the hooks of trf_nest (both build sites, the saved grade digits `TRF.nv.e`, -3 for an elite kill, captured fits in quest-gated visits), trf_raid (`TRF_Rd_PirRow` grade argument) and trf_base (garrisons), the debug test ship (`fits_test`). Off by default (`fits` 0). Loads after `trf_str`, before `trf_nest` (counted as `extra=`). |
 | `trf_str.script` | Strength scale ([design/strength-spec.md](design/strength-spec.md)): one score 0..99 per side (clan score, prosperity x 11, merc fortune), the tier 1..4 with hysteresis (saved clan tier digit `TRF.clan[slot].tr`), the one tier table (raid rows, nest `dp`, captain `cap`, stash `cls`) and the chance curve of the trader tier roll. Loads after `trf_region`, before `trf_tier` (counted as `extra=`). |
 | `trf_loc.script`, `trf_track.script`, `trf_faction.script`, `trf_clan.script`, `trf_convoy.script`, `trf_danger.script`, `trf_supply.script`, `trf_base.script` | v1 (`design/v1-spec.md` 10.1, load order 10.3): text tables and deny list; tracked pool; faction strength, sweeps and offers; clans T3–T4, carriers, salvage; TT4 and equipment convoys; danger convoys; supply convoys, demand cargo, heat reset; pirate bases. Each loads on its own. |
 | `trf_station.script` | Station voices ([design/station-voices-spec.md](design/station-voices-spec.md)): closed-station moods, dockmaster standing, greetings, news, tips, fees and the local station events (ore barge, tanker shuttle, refugee launch). Loads after `trf_plumb`. |
@@ -838,7 +839,7 @@ Experiments E-PCL.1-E-PCL.6 with the confirming lines in the spec section 10 (`P
 
 ## Mercenary clans (`EXP=0 TRAFFIC=1`)
 
-Mercenary clans (specs 12 and 13 merged, spec [design/merc-spec.md](design/merc-spec.md), designs `design/worldbuilding/12-mercenary-packs.md` and `13-rival-packs.md`) is one module, `trf_merc`, loaded after `trf_parcel` (`module=core event=loaded ... extra_count=13` with `trf_str`). State: build step 1 (the clan record), the shared helpers of step 2 and the hire role of step 3 implemented and host-tested (`mc-a`..`mc-k`), not run in the game; rival actions, bookings, calls, corvettes and motherships are later steps. Off by default (`merc` 0) until CHECK E0.13 passes.
+Mercenary clans (specs 12 and 13 merged, spec [design/merc-spec.md](design/merc-spec.md), designs `design/worldbuilding/12-mercenary-packs.md` and `13-rival-packs.md`) is one module, `trf_merc`, loaded after `trf_parcel` (`module=core event=loaded ... extra_count=14` with `trf_str` and `trf_fits`). State: build step 1 (the clan record), the shared helpers of step 2 and the hire role of step 3 implemented and host-tested (`mc-a`..`mc-k`), not run in the game; rival actions, bookings, calls, corvettes and motherships are later steps. Off by default (`merc` 0) until CHECK E0.13 passes.
 
 ### What the player sees
 
@@ -886,7 +887,7 @@ MC.1-MC.4 of the spec section 11 (`MERCS=1 LOG=2`, a chapter 5 or later save): t
 
 ## Strength scale (`EXP=0 TRAFFIC=1`)
 
-One strength logic for traders and pirates (spec [design/strength-spec.md](design/strength-spec.md)): module `trf_str`, loaded after `trf_region` (`module=core event=loaded ... extra_count=13`), always on, no cfg key.
+One strength logic for traders and pirates (spec [design/strength-spec.md](design/strength-spec.md)): module `trf_str`, loaded after `trf_region` (`module=core event=loaded ... extra_count=14` with `trf_fits`), always on, no cfg key.
 
 ### What the player sees
 
@@ -905,6 +906,29 @@ Tune only (`TUNE=`): `str_up` 60 and `str_dn` 20 (most % of a step up / down at 
 ### In-game checks (strength scale)
 
 D-STR.1-3 of the spec section 9 (`LOG=2`): the trader tier line shows score, roll and step; the clan tier holds across a tick at a boundary; raid, nest, captain and stash values per tier unchanged. `python3 -I mods/traffic/tools/check_ingame.py` scores them.
+
+## Pirate fit variety (`EXP=0 TRAFFIC=1`)
+
+Pirate fit variety, step 1 (spec [design/fits-spec.md](design/fits-spec.md); user decisions 2026-10-30): module `trf_fits`, loaded after `trf_str` and before `trf_nest` (`extra_count=14`). Off by default (`fits` 0) until D-FIT.1-4 pass. Uses only the existing `*_pir` fits; the unused pirate hulls (step 2) and the base boss (step 3) are not built.
+
+### What the player sees
+
+- With `fits` 1, every nest, raid and garrison flight of a clan rolls one grade from a fixed hash of saved state (no reroll by re-entry, reload or a two-system bounce). Elite flights (tiers 3-4, at most 5 % at the top score, plus 10 % in a system with an active pirate base, 3 % with a planted one; cap 15 %): every ship one hull level up (Stormcrow -> EvilEye, Cleaner -> Tiger, Raptor -> Bident, EvilEye -> Gunslinger, ...), pilots one rank up. Scrap flights (tier 2 below clan score 35): one level down. About 5 % of flights carry one captured ship (another pirate fit of the same gear value, today only Brigand / Yari and Bident / Hatchet).
+- Destroying an elite nest flight costs the clan 3 score instead of 2 (inside the -6 per visit cap).
+- In a nest system named by an active quest the nest stays vanilla, but captured fits still appear (value-neutral, same count, the quest's ship globals unchanged); `fits_gate` 1 turns that off.
+- Ship count, roles, pinned signs, big ships (type 3) and the nest power step stay as before. Loot follows the value budget of design 16 (deviation 2026-10-30): cycle mean 0.95-1.05x of the vanilla farm, at most 1.5x per flight (`tools/gen_fits.py --check`: 0.98-1.00, peak 1.446).
+
+### Config keys (fits)
+
+`fits` (0; install-test.sh `FITS`), `fits_gate` (0; `FITS_GATE`), debug `fits_test` (`FITS_TEST=<ShipDescription or carcass name>`: one neutral test ship 200 units ahead of the mothership at every entry; a bare `*_pir0` carcass gets the `fits_test_mods` by AddModule, every return value and the HP logged, then the `TRF_Carcasses` record after 2 s, CHECK E-BB1). Tune: `fits_elite_max` 5, `fits_base_a` 10, `fits_base_p` 3, `fits_cap_pct` 5 (at most 10), `fits_scrap_sc` 35, `fits_test_mods` {"PC2", "VC3", "ShAmp3"}. Data: `tools/gen_fits.py --write` (maps, pools, values from the clone's XML; `--check` also runs the value budget), `tools/scan_quests.py --write` (the quest scan's deny list for quest-gated visits; empty on 2026-10-30).
+
+### Log lines (fits)
+
+`module=fits event=roll system= flight= source=nest|raid|base|gate score= tier= up= down= roll= grade= captured=` (level 1 for an elite, scrap or captured flight, else 2), level 2 `event=row ... before= after=` and `event=skip reason=off|pinned|type3|data|cap|gate`, `event=kill` (elite kill), `event=gate system= built=`, `event=test step=create|hull|add_module|read`, `event=dump`. Rows in [design/log-events.md](design/log-events.md).
+
+### In-game checks (fits)
+
+D-FIT.1-4 and E-BB1 of the spec section 11 (`FITS=1 NESTS=1 LOG=2`, test plan section 13): the rolls stay within their bounds, graded visits build every flight, an elite kill costs at most 3, quest-gated visits get captured fits only; E-BB1 (`FITS_TEST=Panthera_pir0`): AddModule on a bare pirate hull. `python3 -I mods/traffic/tools/check_ingame.py` scores them.
 
 ## Installing into the game
 

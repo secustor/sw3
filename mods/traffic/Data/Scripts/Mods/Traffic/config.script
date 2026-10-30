@@ -42,6 +42,11 @@
 -- the cfg tune, else the dp column of the strength table.
 -- Strength scale (design/strength-spec.md 6): no toggle (trf_str is always on); tune str_up (60), str_dn (20) and the
 -- threshold lists str_up_t ({25, 50, 75}) and str_dn_t ({20, 45, 70}) read the TRF_Str_TuneDef defaults.
+-- Pirate fit variety (design/fits-spec.md 6): fits (default 0 until CHECK D-FIT.1-4 pass; install-test.sh FITS=1) = 1 gives
+-- every pirate nest, raid and garrison flight one grade roll (elite, scrap, a captured fit); fits_gate 1 keeps quest-gated
+-- visits fully vanilla (0: captured fits only there); fits_test (debug, install-test.sh FITS_TEST) a ShipDescription or
+-- carcass name spawned as one neutral test ship at every entry (CHECK E-BB1); the tune keys (fits_elite_max, fits_base_a,
+-- fits_base_p, fits_cap_pct, fits_scrap_sc, fits_test_mods) read the TRF_Ft_TuneDef defaults.
 -- Sealed parcels (design/parcel-spec.md 6): enable_parcels (default 1) = 0 turns trf_parcel off (no offer, no lines;
 -- an open job waits); enable_contraband, enable_customs, enable_intercept (step 2, read nowhere yet, off); pcl_prize_gap,
 -- pcl_logbook, pcl_probe, pcl_deny, pcl_deny_ch and the tune keys (pcl_k, pcl_gap, pcl_ban, pcl_dep_k, ...) read the
@@ -77,7 +82,7 @@ function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
 	cap_enable=1, cap_board=1, cap_intel=1, cap_chase=1, cap_capture=0, cap_force_eject=0, cap_vendetta=0,
 	enable_stashes=1, enable_stash_retrieval=1, enable_stash_decoys=0, stash_ret_war=0,
 	enable_freight=1, fw_max_ships=1, fw_onscreen=1, fw_losses=1, fw_prize_gap=1, fw_marker=1,
-	nest=0, nest_mode=1,
+	nest=0, nest_mode=1, fits=0, fits_gate=0, fits_test="",
 	enable_parcels=1, enable_contraband=0, enable_customs=0, enable_intercept=0,
 	demand_page=1, demand_drop=0, mc_names=0,
 	merc_war=1, merc_hunt=0, merc_hostile=0, merc_legion=0,

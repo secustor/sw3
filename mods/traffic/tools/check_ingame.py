@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Score the in-game checks of dynamic nests (E16.1-E16.11), sealed parcels (E-PCL.1-E-PCL.6), trader docking (D-DOCK),
 the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10), the mercenary hire (D-MERC.*, design/merc-spec.md
-11, test plan section 11), the strength scale (D-STR.*, design/strength-spec.md 9) and the stack leak diagnostic
-(D-DLL.1) from traffic logs.
+11, test plan section 11), the strength scale (D-STR.*, design/strength-spec.md 9), the pirate fits (D-FIT.*, E-BB1,
+design/fits-spec.md 11) and the stack leak diagnostic (D-DLL.1) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -1198,6 +1198,127 @@ def c_str_table(ctx):
 
 
 # id, title, check, eyes (None: the log decides)
+
+# ---- pirate fits (design/fits-spec.md 11) -------------------------------------------------------------------------------
+
+FT_CAP = 15                      # elite chance cap in % (base factor included)
+
+
+def c_fit_roll(ctx):
+    res = Res()
+    res.logpart = True
+    rl = ctx.find("fits", "roll")
+    for r in rl:
+        t, sc, up, dn, ro, g = (r.int("tier", 0), r.int("score", -1), r.int("up", -1), r.int("down", -1), r.int("roll", -1),
+                                r.int("grade", 9))
+        if not (0 <= up <= FT_CAP) or dn < 0 or not (0 <= ro <= 99) or g not in (-1, 0, 1):
+            res.fails.append("%s: up, down, roll or grade out of range" % r.short())
+        elif t < 3 and up != 0:
+            res.fails.append("%s: elite chance below tier 3" % r.short())
+        elif dn != 0 and (t != 2 or sc >= 35):
+            res.fails.append("%s: scrap chance outside tier 2 below score 35" % r.short())
+        elif r.get("source") == "gate" and (up != 0 or dn != 0):
+            res.fails.append("%s: a quest-gated visit with an elite or scrap chance" % r.short())
+        elif g != (1 if ro < up else (-1 if ro >= 100 - dn else 0)):
+            res.fails.append("%s: grade does not match the roll" % r.short())
+    seen = {}
+    for r in rl:
+        if r.get("source") == "nest":
+            k = (r.get("system"), r.get("flight"), r.visit)
+            seen[k] = seen.get(k, 0) + 1
+    for k, n in seen.items():
+        if n > 1:
+            res.fails.append("%s flight %s rolled %d times in one visit" % (k[0], k[1], n))
+    if not rl:
+        res.missing.append("install with FITS=1 LOG=2 and enter a nest system (chapter 5+): module=fits event=roll lines")
+    res.ev("graded rolls (elite, scrap or captured)", [r for r in rl if r.get("grade") != "0" or r.get("captured") == "true"])
+    res.ev("other rolls", [r for r in rl if r.get("grade") == "0" and r.get("captured") != "true"])
+    return res
+
+
+def c_fit_build(ctx):
+    res = Res()
+    res.logpart = True
+    rows = ctx.find("fits", "row")
+    for r in rows:
+        b, a = (r.get("before") or "").split(","), (r.get("after") or "").split(",")
+        if len(b) != len(a) or not b[0]:
+            res.fails.append("%s: the graded row changed the ship count" % r.short())
+    vis = set(r.visit for r in rows if r.visit is not None)
+    act = [v.activate for v in ctx.visits if v in vis and v.activate is not None]
+    for a in act:
+        if a.int("failed", 0) or a.int("missing", 0) or a.int("unknown", 0):
+            res.fails.append("%s: a visit with graded rows has failed / missing / unknown flights" % a.short())
+    err = ctx.find("fits", "error")
+    if err:
+        res.fails.append("%d module=fits event=error lines" % len(err))
+        res.ev("fits errors", err)
+    if not rows:
+        res.missing.append("enter a Build-up or Raids nest system with FITS=1 LOG=2 until a graded flight is built "
+                           "(module=fits event=row)")
+    res.ev("graded rows", rows)
+    res.ev("activate lines of those visits", act)
+    return res
+
+
+def c_fit_kill(ctx):
+    res = Res()
+    res.logpart = True
+    kl = ctx.find("fits", "kill")
+    cs = [r for r in ctx.find("region", "clan_score") if "elite" in (r.get("reason") or "")]
+    for r in cs:
+        d = r.int("old_clan_score", 0) - r.int("clan_score", 0)
+        if d < 0 or d > 3:
+            res.fails.append("%s: an elite kill moved the score by %d (at most 3, inside the -6 cap)" % (r.short(), -d))
+    if kl and not cs:
+        res.notes.append("elite kills without a clan_score line: the -6 visit cap was already reached")
+    if not kl:
+        res.missing.append("destroy an elite nest flight (module=fits event=roll ... grade=1, then module=fits event=kill)")
+    res.ev("elite kills", kl)
+    res.ev("clan score lines of elite kills", cs)
+    return res
+
+
+def c_fit_gate(ctx):
+    res = Res()
+    res.logpart = True
+    gl = ctx.find("fits", "gate")
+    gr = [r for r in ctx.find("fits", "roll") if r.get("source") == "gate"]
+    for r in gr:
+        if r.get("grade") != "0":
+            res.fails.append("%s: a graded flight in a quest-gated visit" % r.short())
+    for v in ctx.visits:
+        if v.mode is not None and v.mode.get("reason") == "gate_quest" and v.activate is not None:
+            res.fails.append("%s: a quest-gated visit with a nest activate line" % v.activate.short())
+    if not gl:
+        res.missing.append("enter a nest system named by an active quest (mode=vanilla reason=gate_quest) with FITS=1: "
+                           "module=fits event=gate")
+    res.ev("gate lines", gl)
+    res.ev("gate rolls", gr)
+    return res
+
+
+def c_bb1(ctx):
+    res = Res()
+    res.logpart = True
+    tl = ctx.find("fits", "test")
+    cr = [r for r in tl if r.get("step") == "create"]
+    am = [r for r in tl if r.get("step") == "add_module"]
+    rd_ = [r for r in tl if r.get("step") == "read"]
+    for r in cr:
+        if r.get("result") == "failed":
+            res.notes.append("%s: CreateCarcass failed for this name" % r.short())
+    if not am:
+        res.missing.append("install with FITS_TEST=<a bare *_pir0 carcass, e.g. Panthera_pir0> and enter any system: "
+                           "module=fits event=test step=add_module lines")
+    if am and not rd_:
+        res.missing.append("stay 2 s after the entry: module=fits event=test step=read")
+    res.ev("test ship", cr + [r for r in tl if r.get("step") == "hull"])
+    res.ev("AddModule calls (ret, hp)", am)
+    res.ev("TRF_Carcasses read (tpl, hp)", rd_)
+    return res
+
+
 ITEMS = [
     ("ERR", "no error lines (nest, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
@@ -1263,6 +1384,14 @@ ITEMS = [
     ("D-STR.1", "trader tier line: score, roll and step of the strength roll", c_str_roll, None),
     ("D-STR.2", "clan tier hysteresis holds across a region tick at a boundary", c_str_tier, None),
     ("D-STR.3", "tier table: raid rows, nest dp and stash class unchanged", c_str_table, None),
+    ("D-FIT.1", "fit rolls: chances within the bounds, grade matches the roll, one roll per nest flight", c_fit_roll, None),
+    ("D-FIT.2", "graded rows keep the ship count; their visits have no failed, missing or unknown flight", c_fit_build,
+     "the graded flights fly other pirate hulls (elite: one level up, e.g. EvilEye for Stormcrow) and fight normally"),
+    ("D-FIT.3", "an elite kill costs the clan at most 3 score", c_fit_kill, None),
+    ("D-FIT.4", "quest-gated visit: captured fits only, no nest activation", c_fit_gate,
+     "the quest of the system still runs its steps (its pirates appear, die and count as before)"),
+    ("E-BB1", "AddModule on a bare pirate hull: return values, HP, the TRF_Carcasses read", c_bb1,
+     "the test ship renders as the pirate hull, carries the guns (target it: modules listed), and fights when attacked"),
     ("D-DLL.1", "stack leak source: trig_fires names the condition, stack_leak carries v1=", c_dll1, None),
 ]
 
@@ -1371,6 +1500,7 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "D-MERC.ext": "PASS", "D-MERC.settle": "FAIL", "D-MERC.premission": "NO DATA", "D-MERC.collect": "NO DATA",
             "D-MERC.load": "NO DATA", "D-MERC.betray": "MANUAL",
             "D-STR.1": "PASS", "D-STR.2": "PASS", "D-STR.3": "FAIL",
+            "D-FIT.1": "FAIL", "D-FIT.2": "MANUAL", "D-FIT.3": "PASS", "D-FIT.4": "MANUAL", "E-BB1": "MANUAL",
             "D-DLL.1": "PASS"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 

@@ -726,19 +726,23 @@ function TRF_Rd_BuildFlight(pilots, row, group, sign, pos, dir, form)
 	return fl;
 end;
 
--- Lead and wing pilot names of tier 1..4 (Pir_Pilots by tier, EASY -1, HARD +1, clamped 1..5).
-function TRF_Rd_TierPilots(tier)
+-- Lead and wing pilot names of tier 1..4 (Pir_Pilots by tier, EASY -1, HARD +1, up more (an elite flight of
+-- trf_fits, design/fits-spec.md 5.5: 1), clamped 1..5).
+function TRF_Rd_TierPilots(tier, up)
 	local b = TRF_Rd_TierRows()[TRF_Rd_Clamp(floor(tonumber(tier) or 1), 1, 4)];
 	local adj = 0;
 	local d = TRF_N("GetLevelDifficult");
 	if d ~= nil and d == EASY then adj = -1; elseif d ~= nil and d == HARD then adj = 1; end;
+	if type(up) == "number" then adj = adj + up; end;
 	return Pir_Pilots[TRF_Rd_Clamp(b.lead + adj, 1, 5)], Pir_Pilots[TRF_Rd_Clamp(b.wing + adj, 1, 5)];
 end;
 
 -- Row of one pirate flight of tier 1..4 at power pw (5.3): kind 1 fighters, 2 bombers, nil 75 / 25 %; row =
 -- clamp(__tablevel[pw], lo, hi) with the difficulty table of NewAllFlight; the first ns entries (nil: the
--- tier's ns). Returns row {{fit, rank, role}}, pilots, formation, power, lead, wing or nil.
-function TRF_Rd_PirRow(tier, pw, kind, ns)
+-- tier's ns). gr: the flight's grade record of trf_fits (TRF_Ft_Grade, design/fits-spec.md 5.5) or nil: the row
+-- becomes its graded copy and an elite flight's pilots step one rank up. Returns row {{fit, rank, role}}, pilots,
+-- formation, power, lead, wing or nil.
+function TRF_Rd_PirRow(tier, pw, kind, ns, gr)
 	if type(Pir_Fighters) ~= "table" or type(Pir_Bombers) ~= "table" or type(Pir_Pilots) ~= "table" then
 		TRF_RdE("pirflight", "result", "failed", "reason", "no_pir_tables");
 		return nil;
@@ -753,7 +757,9 @@ function TRF_Rd_PirRow(tier, pw, kind, ns)
 	local p = TRF_Rd_Clamp(floor(tonumber(pw) or 1), 1, 20);
 	local src = tab[TRF_Rd_Clamp(TRF_Rd_LvTab()[p], b.lo, b.hi)];
 	if type(src) ~= "table" then return nil; end;
-	local lead, wing = TRF_Rd_TierPilots(tier);
+	local up = nil;
+	if type(gr) == "table" and gr.g == 1 then up = 1; end;
+	local lead, wing = TRF_Rd_TierPilots(tier, up);
 	-- Row ranks: 5 lead, 1 wings. The pilot list resolves to the same names under a direct index and under
 	-- NewAllFlight's __tabpilot lookup (EASY {1,1,2,2,3}, NORMAL {1,2,2,3,4}, HARD {1,2,3,4,5}).
 	local pilots = {wing, wing, lead, lead, lead};
@@ -765,6 +771,10 @@ function TRF_Rd_PirRow(tier, pw, kind, ns)
 		if type(e) == "table" then tinsert(row, {e[1], rk, e[3]}); end;
 	end;
 	if getn(row) == 0 then return nil; end;
+	if type(gr) == "table" and (gr.g ~= 0 or gr.c) then
+		local gw = TRF_Rd_P(TRF_Ft_RowOf, {row, gr, nil, gr.sys, gr.fl});
+		if type(gw) == "table" and getn(gw) == getn(row) then row = gw; end;
+	end;
 	return row, pilots, form, p, lead, wing;
 end;
 
@@ -779,9 +789,10 @@ end;
 -- One pirate flight of tier 1..4 at power pw (5.3; row as TRF_Rd_PirRow, kind nil = 75 % fighters), at most
 -- maxn ships; pilots from Pir_Pilots by tier, so CostOfHead pays by tier. group: global name of the group,
 -- as NewAllFlight takes it. ns: entries of the row (nil: the tier's ns; a captain's wing takes more,
--- design/captain-spec.md 5.3). Returns the flight or nil.
-function TRF_PirFlight(tier, pw, group, sign, pos, dir, kind, maxn, ns)
-	local row, pilots, form, p = TRF_Rd_PirRow(tier, pw, kind, ns);
+-- design/captain-spec.md 5.3). gr: a grade record of trf_fits (raids, base garrisons; nil: the vanilla row).
+-- Returns the flight or nil.
+function TRF_PirFlight(tier, pw, group, sign, pos, dir, kind, maxn, ns, gr)
+	local row, pilots, form, p = TRF_Rd_PirRow(tier, pw, kind, ns, gr);
 	if not row then return nil; end;
 	if type(maxn) == "number" then
 		while getn(row) > max(1, floor(maxn)) do tremove(row); end;
@@ -873,7 +884,10 @@ function TRF_Rd_Comp(n, rd, gname, sign, pos, dir, pw, cur)
 			fl = nil;
 		end;
 	end;
-	if not fl then fl = TRF_PirFlight(T, pw, gname, sign, pos, dir, kind, n1, ns1); end;
+	-- design/fits-spec.md 5.5: one trf_fits roll per raid flight (not the salvaged flight, not a captain's raid).
+	local gr = nil;
+	if not fl and rd.n1x == nil then gr = TRF_P("TRF_Ft_Grade", cur, 2 * n + 1, "raid", "raid_"..n.."_1", T); end;
+	if not fl then fl = TRF_PirFlight(T, pw, gname, sign, pos, dir, kind, n1, ns1, gr); end;
 	if not TRF_Rd_Obj(fl) then return nil; end;
 	local fls = {fl};
 	rd.n1 = TRF_Rd_FlN(fl);
@@ -892,7 +906,9 @@ function TRF_Rd_Comp(n, rd, gname, sign, pos, dir, pw, cur)
 		local p2 = Vector3(pos.x + 25, pos.y, pos.z);
 		local f2 = nil;
 		if T == 3 and TRF_Rd_Rand(100) < 25 then f2 = TRF_Rd_Gunboat(T, pw, gname, sign.."b", p2, dir); end;
-		if not TRF_Rd_Obj(f2) then f2 = TRF_PirFlight(T, pw, gname, sign.."b", p2, dir, 2, n2); end;
+		if not TRF_Rd_Obj(f2) then
+			f2 = TRF_PirFlight(T, pw, gname, sign.."b", p2, dir, 2, n2, nil, TRF_P("TRF_Ft_Grade", cur, 2 * n + 2, "raid", "raid_"..n.."_2", T));
+		end;
 		if TRF_Rd_Obj(f2) then tinsert(fls, f2); cap = cap - TRF_Rd_FlN(f2); end;
 	end;
 	if but and cap >= 1 then

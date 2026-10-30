@@ -96,6 +96,27 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 | `tier` | `module=str event=tier slot=1 score=72 tier=4 prev=4 via=tick result=kept` | 2 |
 | `roll` | `module=str event=roll kind=trade id=46 score=77 roll=47 step=0 rolled_tier=4 tier=3 reason=tt4_slot` (`TRF_TierPick`; `roll=none` without a draw, `rolled_tier` before the caps) | 2 |
 
+## fits (`trf_fits.script`; `TRF_FtE`, `TRF_FtDE`)
+
+Pirate fit variety, step 1 (`design/fits-spec.md` 8). `flight` is the nest sign, `raid_<n>_<f>` or the garrison sign
+`trf_pb_<idx>_<j>`; `source` nest, raid, base or gate; `up` / `down` the elite and scrap chances in %; `grade` 1 elite, -1
+scrap, 0 normal.
+
+| Event | Example line | Level |
+|---|---|---|
+| `roll` | `module=fits event=roll system=golkonda flight=Pirate01 source=nest score=62 tier=3 up=1 down=0 roll=94 grade=0 captured=false` | 2; 1 for an elite, scrap or captured flight |
+| `row` | `module=fits event=row system=xb13 flight=pir07 grade=1 captured_ship=0 before=EvilEye_pir2,Tiger_pir1,Cleaner_pir1,EvilEye_pir1 after=Gunslinger_pir1,Gunslinger_pir1,Tiger_pir1,Gunslinger_pir1` (the graded copy; `captured_ship` its index or 0) | 2 |
+| `skip` | `module=fits event=skip system=golkonda flight=Pirate01 reason=off` (`pinned`, `type3`, `data`, `cap`: a captured roll on a row without a pool) | 2 |
+| `skip` | `module=fits event=skip system=kadi reason=gate via=fits_gate` (`via=scan`: the quest scan's deny list) | 2 |
+| `kill` | `module=fits event=kill system=golkonda index=2 flight=Pirate02 grade=1 score_cost=3 mine=true` (an elite nest flight destroyed) | 1 |
+| `gate` | `module=fits event=gate system=kadi built=2` (end of a quest-gated visit's calls: captured flights built) | 1 |
+| `test` | `module=fits event=test name=Panthera_pir0 step=create result=ok x=-550 z=150` (debug `fits_test`) | 1 |
+| `test` | `module=fits event=test name=Panthera_pir0 step=hull bare=true hp=1000` | 1 |
+| `test` | `module=fits event=test name=Panthera_pir0 step=add_module module=PC2 ret=nil hp=1000` (`ret=error` when the call failed) | 1 |
+| `test` | `module=fits event=test name=Panthera_pir0 step=read result=ok tpl=Panthera_pir0 cls=6 hp=588 hpmax=600 alive=true` (2 s later; `result=not_found why=`, `no_native`; `step=position result=failed`; `step=create result=skipped reason=scene`) | 1 |
+| `dump` | `module=fits event=dump on=true gate=0 elite_max=5 cap_pct=5 grades=0100000100` (`grades` the saved `TRF.nv.e` or none) | 1 |
+| `error` | `module=fits event=error message=<m>` | 1 |
+
 ## state (`trf_state.script`; `TRF_StE`, `TRF_StDE`)
 
 | Event | Example line | Level |

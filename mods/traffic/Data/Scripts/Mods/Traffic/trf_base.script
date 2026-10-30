@@ -873,7 +873,8 @@ function TRF_Ba_Pg(idx, j, kd, sv)
 end;
 
 -- One clan flight at the clan's tier: TRF_SalvFlight when salvaged gear is wanted (sv >= 1), else
--- TRF_PirFlight. Returns flight, salvaged flag.
+-- TRF_PirFlight with the garrison slot's trf_fits grade (design/fits-spec.md 5.6, decision D4: a normal flight with
+-- the same roll). Returns flight, salvaged flag.
 function TRF_Ba_ClanFlight(idx, tier, pw, j, pos, dir, salv)
 	local gname = "TRF_GPBase_"..idx;
 	local sign = "trf_pb_"..idx.."_"..j;
@@ -888,7 +889,8 @@ function TRF_Ba_ClanFlight(idx, tier, pw, j, pos, dir, salv)
 		if TRF_Ba_Obj(fl) then sv = 1; end;
 	end;
 	if not TRF_Ba_Obj(fl) and type(TRF_PirFlight) == "function" then
-		fl = TRF_Ba_P(TRF_PirFlight, {tier, pw, gname, sign, pos, dir});
+		local gr = TRF_P("TRF_Ft_Grade", idx, j, "base", sign, tier);
+		fl = TRF_Ba_P(TRF_PirFlight, {tier, pw, gname, sign, pos, dir, nil, nil, nil, gr});
 	end;
 	setglobal(gname, nil);
 	TRF_Ba_ClearSign(sign);

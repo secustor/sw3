@@ -92,7 +92,8 @@ function T_MC_A()
 	local h = HOST();
 	MC_Begin("5_1");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=13") >= 1, "trf_merc loads last (extra_count=13)");
+	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=14") >= 1, "trf_merc loads last (extra_count=14)");
 	local ml, tf, uf = TRF_ModList(), TRF_Loc_TextFns(), TRF_UI_TextFns();
 	local tfs, ufs = "", "";
 	for i = 1, getn(tf) do tfs = tfs..tf[i]..","; end;
