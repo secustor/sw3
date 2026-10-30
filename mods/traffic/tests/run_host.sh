@@ -35,6 +35,10 @@ for t in host_stubs.lua host_traffic.lua host_v02.lua host_v1.lua host_v1_tables
 done
 rm -f luac.out
 lint="$here/../tools/lint_lua.py"
+# A dialog message that starts with # is looked up as one text key (hail-dialog.md 3.6): "Not found string: #WHO#: #M1#".
+for x in "$here"/../Data/Scripts/Trade/*.xml; do
+    if grep -q '<message>#' "$x"; then echo "FAIL $x: a <message> starts with #" >&2; rc=1; fi
+done
 if command -v python3 >/dev/null; then
     python3 -I "$lint" --allow TeleportToLocation,CustomTeleportate "$src"/*.script || rc=1
     python3 -I "$lint" --host "$here/host_stubs.lua" "$here/host_traffic.lua" "$here/host_v02.lua" "$here/host_v1.lua" "$here/host_station.lua" "$here/host_plumb.lua" "$here/host_survive.lua" "$here/host_ladder.lua" "$here/host_charter.lua" "$here/host_scar.lua" "$here/host_captain.lua" "$here/host_demand.lua" "$here/host_stash.lua" "$here/host_freight.lua" "$here/host_haunt.lua" "$here/host_parcel.lua" "$here/host_merc.lua" "$here/host_pilots.lua" "$here/host_hail.lua" "$here/host_str.lua" "$here/host_fits.lua" || rc=1

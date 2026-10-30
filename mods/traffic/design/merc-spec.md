@@ -196,7 +196,7 @@ Full state (`v1-n`): 92,699 B of 100,000 (92,672 before gap 12c, 92,649 before s
 | `S/trf_plumb.script` (step 3) | `"Mc"` after `"Pc"` in `TRF_PlMods`; `TRF_Mc_Plumb` (cfg `merc` 1 only): `TRF_PlAdoptReg("Merc")`, `TRF_CapReg("merc", "TRF_Mc_Ships", "pack", "TRF_Mc_Trim")`, `TRF_DockLine("patrol", 70, "TRF_Mc_BoardLine")`, `TRF_VoiceProvReg("TRF_Mc_VoiceProv")`, `TRF_RaidHelpReg("TRF_Mc_RaidHelp")`, `TRF_DeathReg("Mc")` |
 | `S/trf_gen.script` (step 3) | `TRF_Mc_WindDown` last in the `TRF_WindDown` v1 list |
 | `S/trf_safety.script` (step 3) | the `mc_ships` fallback 7 -> 14 |
-| `X/TRF_MercPg.xml`, `install-test.sh`, `install.sh`, `uninstall*.sh` (step 3) | the page dialog (message `#who#: #m1#`, speaker `RecruitPilot`, answers `a_acc`, `a_dec`, `a_close` -> `TRF_McDlgA_acc`, `_dec`, `_close`), copied and removed like `TRF_HailPg.xml` |
+| `X/TRF_MercPg.xml`, `install-test.sh`, `install.sh`, `uninstall*.sh` (step 3) | the page dialog (message `Mercenaries #who#: #m1#`; it must not start with `#`, hail-dialog 3.6: in game the bare `#who#: #m1#` showed "Not found string: #WHO#: #M1#", fixed 2026-10-31, speaker `RecruitPilot`, answers `a_acc`, `a_dec`, `a_close` -> `TRF_McDlgA_acc`, `_dec`, `_close`), copied and removed like `TRF_HailPg.xml` |
 
 ## 6. Mechanics (`TRF_Mc_RegionTick(L)`, counters only, W1)
 

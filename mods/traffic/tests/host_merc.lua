@@ -1239,7 +1239,7 @@ function T_MC_H()
 	b0 = getn(h.boxes);
 	MC_Meet();
 	HOST_Check(h.dlg and h.dlg.name == "TRF_MercPg" and h.dlg.open and HOST_DlgVis() == "a_acc a_dec" and getn(h.boxes) == b0
-		and HOST_DlgText() == TRF_McClanName(v.c)..": "..TRF_McClanName(v.c).." will fly with you for "..v.fee.." cr, plus "..v.sh1.." cr per pirate downed. Hire them?"
+		and HOST_DlgText() == "Mercenaries "..TRF_McClanName(v.c)..": "..TRF_McClanName(v.c).." will fly with you for "..v.fee.." cr, plus "..v.sh1.." cr per pirate downed. Hire them?"
 		and HOST_DlgText("a_acc") == "- Hire them" and HOST_DlgText("a_dec") == "- Not now",
 		"page: TRF_MercPg with the text set in the init, Accept and Decline shown, Close hidden");
 	HOST_DlgEsc();

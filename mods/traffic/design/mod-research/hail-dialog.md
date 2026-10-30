@@ -41,7 +41,7 @@ Feasible. Call `StartTradeDialog("TRF_Hail", "TRF_HlDlgInit")`: it loads `DATA\S
 | 3.3 | 0x4cc1d0 scans the result for `#token#` pairs (0x4cc24d, 0x4cc445), looks the token up in the dialog's map at `+0xb0` (0x4cc4fe-0x4cc517), and splices in `GetString(value)` (0x4cc5ff); an unknown token is put back as `#token#` (0x4cc672) | exe | V |
 | 3.4 | `SetReplaceValue(key, value)` 0x5e54d0 inserts into that map (0x4cbf90, `dialog+0xb0`) of `[MD+0x28]` or else `[MD+0x2c]`; without a dialog it logs "SetReplaceValue:: NameValue '%s', Value '%s' - Not found Dialog!". Never used by vanilla | exe | V |
 | 3.5 | Hence: XML text `FTU #who#: #m0#` plus `SetReplaceValue("who", "Whimbrel")` and `SetReplaceValue("m0", "...")` in the init shows fully dynamic text; a value may itself be a loc key | 3.1-3.4 | I (not run) |
-| 3.6 | A text that starts with `#` but is not a key (e.g. an answer `#a_feq#`): what `GetString` returns for an unknown key is not traced (assumed: the key itself, as the C7 and news checks expect) | `README.md:339`, `news-records.md` 4 | U |
+| 3.6 | A message that starts with `#` is looked up as one key, upper-cased, and an unknown key shows `Not found string: <KEY>` (seen 2026-10-31: the merc page `#who#: #m1#` showed `Not found string: #WHO#: #M1#`). Every dialog message must start with plain text (`FTU #who#: ...`, `Mercenaries #who#: ...`); `tests/run_host.sh` fails on a `<message>#`. An answer label starting with `#` was not seen to fail (`- #lacc#` has a leading dash) | in game 2026-10-31, `README.md:339`, `news-records.md` 4 | V |
 | 3.7 | Token case and whether `$` or a line break survive in values (`\n` renders the font atlas in ShowMsgBox, 2026-10-25; use `TRF_UI_Br()`) | — | U |
 
 ## 4. Loc files and the header question

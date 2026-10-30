@@ -1461,7 +1461,7 @@ ITEMS = [
     ("D-MERC.spawn", "mercenary pack spawns at a gate (E12.3)", c_merc_spawn,
      "the pack comes through a gate with the clan icon, a 'Mercenaries' marker and the signature line"),
     ("D-MERC.offer", "meeting, offer line and the offer page (E12.4, E0.6)", c_merc_offer,
-     "the window '<clan>: <clan> will fly with you for <fee> cr, plus <share> cr per pirate downed. Hire them?' with "
+     "the window 'Mercenaries <clan>: <clan> will fly with you for <fee> cr, plus <share> cr per pirate downed. Hire them?' with "
      "'- Hire them' and '- Not now', no #"),
     ("D-MERC.hire", "hire: fee charged, escort, seeding (E12.1, E0.15)", c_merc_hire,
      "the pack escorts the mothership and attacks a raid only after the 'break and engage' line"),
