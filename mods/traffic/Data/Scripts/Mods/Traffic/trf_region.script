@@ -1223,9 +1223,9 @@ function TRF_RegionTick(L)
 	TRF_P("TRF_Mc_RegionTick", L);
 end;
 
--- Forced Bust (v1 8.3): every slot with ct bit 4 clears it; in Quiet, Boom or Build-up with sc < 75 and a
--- real tier below 4 (cfg forced_bust 1) it goes straight to Bust and leaves this tick's coordination
--- (w[slot] = nil). Returns the set of forced slots.
+-- Forced Bust (v1 8.3): every slot with ct bit 4 clears it; in Quiet, Boom or Build-up with sc < 75 (the old
+-- "real tier below 4"; the hysteresis tier is not read, design/strength-spec.md 10) (cfg forced_bust 1) it goes
+-- straight to Bust and leaves this tick's coordination (w[slot] = nil). Returns the set of forced slots.
 function TRF_RgForcedBust(L, w, m)
 	local fz = {};
 	local on = 1;
@@ -1234,7 +1234,7 @@ function TRF_RgForcedBust(L, w, m)
 		if w[slot] and TRF_RgCt(slot, 4) == 1 then
 			TRF_RgCtClr(slot, 4);
 			local r = TRF.rg[slot];
-			if on and r.ph <= 2 and TRF.clan[slot].sc < 75 and TRF_ClanTier(slot) < 4 then
+			if on and r.ph <= 2 and TRF.clan[slot].sc < 75 then
 				TRF_RgForce(slot, L, 4);
 				w[slot] = nil;
 				fz[slot] = 1;

@@ -838,7 +838,7 @@ Experiments E-PCL.1-E-PCL.6 with the confirming lines in the spec section 10 (`P
 
 ## Mercenary clans (`EXP=0 TRAFFIC=1`)
 
-Mercenary clans (specs 12 and 13 merged, spec [design/merc-spec.md](design/merc-spec.md), designs `design/worldbuilding/12-mercenary-packs.md` and `13-rival-packs.md`) is one module, `trf_merc`, loaded after `trf_parcel` (`module=core event=loaded ... extra_count=12`). State: build step 1 (the clan record), the shared helpers of step 2 and the hire role of step 3 implemented and host-tested (`mc-a`..`mc-k`), not run in the game; rival actions, bookings, calls, corvettes and motherships are later steps. Off by default (`merc` 0) until CHECK E0.13 passes.
+Mercenary clans (specs 12 and 13 merged, spec [design/merc-spec.md](design/merc-spec.md), designs `design/worldbuilding/12-mercenary-packs.md` and `13-rival-packs.md`) is one module, `trf_merc`, loaded after `trf_parcel` (`module=core event=loaded ... extra_count=13` with `trf_str`). State: build step 1 (the clan record), the shared helpers of step 2 and the hire role of step 3 implemented and host-tested (`mc-a`..`mc-k`), not run in the game; rival actions, bookings, calls, corvettes and motherships are later steps. Off by default (`merc` 0) until CHECK E0.13 passes.
 
 ### What the player sees
 

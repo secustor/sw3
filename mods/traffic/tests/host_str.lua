@@ -308,6 +308,10 @@ function T_ST_D()
 	TRF_TierPlan(plan);
 	HOST_Check(S_Logs(m0, "escorts_added=0 score=11 roll=none step=0") == 1, "plan line without a draw: roll=none");
 	h.rq = {};
+	-- Band maximum (spec 10 item 7): TRF_BandCaps.tmax is the highest tier the roll can give.
+	local tm, okm = {1, 1, 1, 3, 3, 4, 4, 4, 4, 4}, 1;
+	for p = 0, 9 do ST_Pro(p); if TRF_BandCaps(cur).tmax ~= tm[p + 1] then okm = nil; end; end;
+	HOST_Check(okm, "tmax by pro: TT1 at 0-2, TT3 at 3-4, TT4 from 5");
 end;
 
 -- e: the clan tier digit ------------------------------------------------------------------------------------------
@@ -333,6 +337,14 @@ function T_ST_E()
 	TRF_Str_RegionTick(TRF.clock.legs);
 	HOST_Check(TRF_ClanTier(1) == 4 and c.tr == 4 and S_Logs(m0, "module=str event=tier slot=1 score=72 tier=4 prev=4 via=tick result=kept") == 1,
 		"score 72 after tier 4: kept across the tick (hysteresis), level 2 line");
+	-- Forced Bust (spec 10 item 8): sc < 75 forces it although the hysteresis tier is 4.
+	local r1 = TRF.rg[1];
+	local ph0, pt0 = r1.ph, r1.pt;
+	r1.ph = 1;
+	TRF_RgCtSet(1, 4);
+	local fz = TRF_RgForcedBust(TRF.clock.legs, {1}, {n=1});
+	HOST_Check(fz[1] == 1 and r1.ph == 4 and TRF_ClanTier(1) == 4, "score 72 at tier 4: the kill still forces Bust");
+	r1.ph = ph0; r1.pt = pt0;
 	c.sc = 69;
 	TRF_Str_RegionTick(TRF.clock.legs);
 	HOST_Check(c.tr == 3 and TRF_ClanTier(1) == 3, "score 69: tier 3");

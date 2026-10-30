@@ -229,6 +229,8 @@ end;
 
 -- Band row before strict gate and governor: {ct (flights), cs (ships), cp (parked), sf (spawn factor),
 -- tmax (highest tier), sb (seed bonus, points), band, pro}. cfg band_half 1: halved increments (design 6.7).
+-- tmax (design/strength-spec.md 10): band 0 TT1, else the highest tier the TRF_TierPick roll can give before the
+-- caps (base of the trade score, + 1 with a chance up): TT3 at pro 3-4, TT4 from pro 5; without trf_str band + 1.
 function TRF_BandCaps(idx)
 	local b = TRF_Band(idx);
 	local p = TRF_TrPro(idx);
@@ -236,6 +238,11 @@ function TRF_BandCaps(idx)
 	if TRF_TrOpt("band_half", 0) == 1 then sf = {1.00, 1.13, 1.25, 1.38, 1.50}; ct = {2, 2, 3, 3, 3}; cs = {10, 11, 13, 15, 15}; end;
 	local cp, sb = {0, 0, 1, 2, 2}, {0, 10, 15, 20, 20};
 	local c = {ct=ct[b + 1], cs=cs[b + 1], cp=cp[b + 1], sf=sf[b + 1], tmax=min(b + 1, 4), sb=sb[b + 1], band=b, pro=p};
+	if b > 0 and type(TRF_StrChance) == "function" and type(TRF_StrScore) == "function" then
+		local tb, cu = TRF_StrChance(TRF_StrScore("trade", idx));
+		if cu > 0 then tb = tb + 1; end;
+		c.tmax = min(tb, 4);
+	end;
 	if b == 2 and p >= 7 then c.sb = 20; end;
 	return c;
 end;
@@ -247,6 +254,7 @@ end;
 -- TT2: row at strength + 2 plus one cheap escort; TT3: two transports, row escorts + cheap + mid
 -- (+ cheap at pro >= 7), at most 5 escorts.
 -- TT4 (v1 8.1): convoy of 3 / 4 transports (pro 8 / 9) and an escort flight of 4 / 6 ships; no added escorts.
+-- pro 5-7 (TT4 by the strength roll, design/strength-spec.md 10) use the pro 8 sizes.
 function TRF_TierComp(t, s, pro)
 	s = TRF_TrClamp(floor(s or 1), 1, 20);
 	if t == 4 then

@@ -38,7 +38,10 @@
 -- Dynamic nests (design/nest-spec.md 6): nest (default 0 until CHECK E16.1-E16.5 pass) = 1 lets the regional clans field
 -- the scripted pirate flights; nest_mode 1 the substituting NewPirateFlight wrapper, 2 the fallback (vanilla builds,
 -- the mod deletes and replaces); nest_off, nest_trig, nest_lines, nest_mirror, nest_grudge_war (step 2, 0) and the tune
--- keys (nest_f, nest_dp, nest_regen_pct, nest_regen_legs, nest_cache_r, ...) read the module defaults.
+-- keys (nest_f, nest_regen_pct, nest_regen_legs, nest_cache_r, ...) read the module defaults; nest_dp only when set in
+-- the cfg tune, else the dp column of the strength table.
+-- Strength scale (design/strength-spec.md 6): no toggle (trf_str is always on); tune str_up (60), str_dn (20) and the
+-- threshold lists str_up_t ({25, 50, 75}) and str_dn_t ({20, 45, 70}) read the TRF_Str_TuneDef defaults.
 -- Sealed parcels (design/parcel-spec.md 6): enable_parcels (default 1) = 0 turns trf_parcel off (no offer, no lines;
 -- an open job waits); enable_contraband, enable_customs, enable_intercept (step 2, read nowhere yet, off); pcl_prize_gap,
 -- pcl_logbook, pcl_probe, pcl_deny, pcl_deny_ch and the tune keys (pcl_k, pcl_gap, pcl_ban, pcl_dep_k, ...) read the

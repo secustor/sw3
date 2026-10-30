@@ -177,12 +177,15 @@ Changed expectations elsewhere (each with a comment naming the section): `extra_
 1. v02 9.2 and v1 8.1: the literal trader chances are replaced by the curve (4.5, U2). pro 4 draws one roll now (it drew none). Tune `tt4_p8` / `tt4_p9` are read nowhere.
 2. v02 9.6: the clan tier is the hysteresis tier of the score and the saved digit, not `floor(sc / 25) + 1`. `TRF_ClanTier` evaluates `TRF_StrTier(sc, tr)` on every call instead of returning the digit alone: six modules write the score directly (base, sweep, convoy, faction, clan, ClanAdd) and their callers read the tier right after, so a pure digit read would lag up to one region tick. The digit is the hysteresis memory and is committed at every tick and after `TRF_ClanAdd`.
 3. 16 / nest-spec 5.3: the nest power step comes from the `dp` column; the tune `nest_dp` is an override only when the cfg tune table sets it (its TuneDef default stays for the clamps and for a load without trf_str).
-4. `TRF_Rd_TierRows`, `TRF_ShClsOf` and `TRF_CapHullOf` keep no literal copy of the table: without trf_str raids have no rows (`nil`), stashes read class 1 and captains one row up. trf_str loads with trf_region in every configuration that loads those modules.
+4. `TRF_ShClsOf` and `TRF_CapHullOf` keep no literal copy of the table: without trf_str stashes read class 1 and captains one row up. `TRF_Rd_TierRows` keeps the four raid rows (raid columns only) as its fallback without trf_str, so the raid readers never index nil. trf_str loads with trf_region in every configuration that loads those modules.
 5. The brief's "lint prefixes registered": `tools/lint_lua.py` has a registry only for group-name prefixes; trf_str creates no group, so nothing was added there.
 6. `TRF_StrRoll` returns the raw step (+1 at T4 or -1 at T1 although the tier is clamped), so a later pirate caller can see that the roll hit.
+7. v02 9.1 and v1 8.1 "Highest tier" per band: the roll of 4.5 goes one tier above the old band maximum (TT3 at `pro` 3-4, band 1; TT4 at `pro` 5-7, band 2). `TRF_BandCaps(idx).tmax` reports the new maximum (band 0: TT1; else the base tier of the trade score, + 1 when the chance up is above 0; without trf_str band + 1), so trf_survive seeds 3 pods at `pro` 3-4 (survivors-spec "highest trader tier 3+"). A TT4 at `pro` 5-7 uses the `pro` 8 sizes (`tt4_tp8` 3 transports, `tt4_e8` 4 escorts) and keeps every TT4 condition of v1 8.1.
+8. v1 8.3 forced Bust: the gate is `sc < 75` alone (the old real tier `floor(sc / 25) + 1 < 4` was the same test); the hysteresis tier is not read, so a clan held at tier 4 with a score of 70-74 is still forced into Bust.
 
 ## 11. Left out (later tasks)
 
 - Pirate fits (option D), the elite flight roll (option C per flight) and the pirate-base factor: they will call `TRF_StrRoll(score, roll)` with a fixed hash roll; nothing here reads them.
 - Mercenary readers of `TRF_StrScore("merc", c)` (B6).
 - The nest plan does not log the score; `event=mode` keeps `tier=` and `dp=`.
+- trf_scar `TRF_ScTTOf(pro)` (scar-spec 4, design 02 section 4: TT2 at `pro` 4, TT3 at 6, TT4 at 8) stays the wreck-site level rule of the scar design and does not read the trader roll.

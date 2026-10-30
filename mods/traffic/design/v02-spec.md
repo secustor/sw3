@@ -387,6 +387,8 @@ end;
 
 ### 9.1 `pro`, bands and credits (S23; `TRF_Pro`, `TRF_ProAdd`, `TRF_ProCredit` in trf_region)
 
+Highest tier since 2026-10-30: TT3 at `pro` 3–4, TT4 from `pro` 5 ([strength-spec.md](strength-spec.md) 4.5, 10).
+
 | Band | `pro` | Highest tier | Spawn factor `sf` | `cap_traders` | `cap_ships` | `cap_parked` | Seed bonus |
 |---|---|---|---|---|---|---|---|
 | 0 | 0–2 | TT1 | 1.00 | 2 | 10 | 0 | 0 |
