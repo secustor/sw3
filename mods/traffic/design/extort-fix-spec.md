@@ -9,7 +9,7 @@ Vanilla `RandomPiratGetMoney` (`G/include/OutOfMission.script` 385-455, the "Pir
 
 `SetGroupRelation` is one direction. Nothing sets `PLAYER_GROUP -> group_Pirate_money`, so the player side keeps the Pirates team war: the HUD shows the flight as an enemy, the mothership turrets and unordered wingmen fire at it for the 16 s before the box (log of 2026-10-31, system xt45).
 
-Two side bugs: `ext_seen` never fired, because vanilla sets `__sys_Pirate_Money = 0` when the include loads (13, 587) and the old rule waited for nil -> number; `TRF_McSeedStep` looked up the global `group_Pirate_money`, while vanilla keeps the group in `P_Group`.
+Two side bugs: `ext_seen` never fired, because vanilla sets `__sys_Pirate_Money = 0` when the include loads (13, 587) and the old rule waited for nil -> number; `TRF_McSeedStep` looked up the global `group_Pirate_money`, while vanilla keeps the group in `P_Group` (a global the escort miniquest reuses for `group_escort`, 241, so the lookup now probes the name with `GetOwnerTeamOfGroup`).
 
 ## 2. Rules kept
 
@@ -26,7 +26,7 @@ Two side bugs: `ext_seen` never fired, because vanilla sets `__sys_Pirate_Money 
 | `change` | the demand is a non-zero number different from `pmv` (vanilla wrote 408 since the last tick) |
 | `edge` | first tick of the visit (`pmv` nil, also after a load) or a rising `__sys_SOS` edge, and the vanilla marks hold: a non-zero demand, `GetGroupRelation("group_Pirate_money", PLAYER_GROUP) == RELATION_NEUTRAL`, the group exists in this scene (`GetOwnerTeamOfGroup` not nil; checked before the handle is read), `flight_pir_mon_1` alive (IsAlive protected), the visit armed (`TRF_SafeArmed`), no contact tracked (`ext` not 1) |
 
-`edge` covers a second demand of the same sum (the formula `(RAND(l)+1)*l*300` repeats often) and a load during the contact. A stale `flight_pir_mon_1` at war, a handle of an earlier scene (the group is gone), or a paid flight still leaving, is not taken again. This path reads the handle before `ext_seen` (v01-spec 6 allows it under these marks); after a payment the vanilla relation stays neutral, so a later `__sys_SOS` edge in the same scene calls `IsAlive` on the deleted flight, as `TRF_SafeExtPoll` does (CHECK in 7). A fresh extortion sets `ext_seen = 1` (the R3 debounce of `sos_mode` 2 now works), counts `exn` and logs `event=extortion_seen ... via= money= count=`.
+`edge` covers a second demand of the same sum (the formula `(RAND(l)+1)*l*300` repeats often) and a load during the contact. A stale `flight_pir_mon_1` at war, a handle of an earlier scene (the group is gone), or a paid flight still leaving, is not taken again. The group probe runs before the relation by name and the handle. This path reads the handle before `ext_seen` (v01-spec 6 allows it under these marks); after a payment the vanilla relation stays neutral, so a later `__sys_SOS` edge in the same scene calls `IsAlive` on the deleted flight, as `TRF_SafeExtPoll` and `TRF_Safe_ExtAlive` (the `sos_mode` 2 debounce, protected since the review) do (CHECK in 7). A fresh extortion sets `ext_seen = 1` (the R3 debounce of `sos_mode` 2 now works), counts `exn` and logs `event=extortion_seen ... via= money= count=`.
 
 ## 4. Relation fix (cfg `ext_fix` 1)
 

@@ -189,13 +189,12 @@ function TRF_Safe_Scene()
 	return nil;
 end;
 
--- Extortion flight alive. flight_pir_mon_1 is userdata that survives ClearGlobals and may come from an
--- earlier scene: callers touch it only after ext_seen, or on the edge path once group_Pirate_money exists in this
--- scene and is neutral toward the player (spec 6, extort-fix-spec 3).
+-- Extortion flight alive (IsAlive protected: after a payment vanilla deletes the flight and the handle stays).
+-- flight_pir_mon_1 is userdata that survives ClearGlobals and may come from an earlier scene: callers touch it only
+-- after ext_seen, or on the edge path once group_Pirate_money exists in this scene and is neutral toward the player
+-- (spec 6, extort-fix-spec 3).
 function TRF_Safe_ExtAlive()
-	local fl = flight_pir_mon_1;
-	if fl == nil or type(fl) == "number" or type(fl) == "string" or type(fl) == "function" then return nil; end;
-	return TRF_Is(fl:IsAlive());
+	return TRF_Safe_Alive(flight_pir_mon_1);
 end;
 
 -- Carcasses in a sphere at the origin (governor, 5.2): every carcass, scenery included
@@ -1129,8 +1128,9 @@ end;
 -- by this name (407, 437, 450).
 function TRF_SafeExtG() return "group_Pirate_money"; end;
 
--- 1 when group_Pirate_money exists in this scene (GetOwnerTeamOfGroup is nil for an unknown group), so a handle of an
--- earlier scene is not touched on the edge path; 1 when the native is absent.
+-- 1 when group_Pirate_money exists in this scene (GetOwnerTeamOfGroup is nil for an unknown group: vanilla's own probe,
+-- DefStation.script 38), read on the edge path before the relation by name and the flight handle, so neither is
+-- touched for a group of an earlier scene; 1 when the native is absent.
 function TRF_SafeExtGrp()
 	if type(GetOwnerTeamOfGroup) ~= "function" then return 1; end;
 	if call(GetOwnerTeamOfGroup, {TRF_SafeExtG()}, "x", TRF_SafeNoErr) then return 1; end;
@@ -1208,7 +1208,7 @@ function TRF_SafeExtFresh(L, f)
 	if type(p) == "number" and m ~= p then return "change"; end;
 	if type(p) == "number" and not (f.sos and L.ss ~= 1) then return nil; end;
 	if L.ext == 1 or RELATION_NEUTRAL == nil or not TRF_SafeArmed() then return nil; end;
-	if TRF_SafeRel(TRF_SafeExtG(), PLAYER_GROUP) ~= RELATION_NEUTRAL or not TRF_SafeExtGrp() then return nil; end;
+	if not TRF_SafeExtGrp() or TRF_SafeRel(TRF_SafeExtG(), PLAYER_GROUP) ~= RELATION_NEUTRAL then return nil; end;
 	if not TRF_Safe_Alive(flight_pir_mon_1) then return nil; end;
 	return "edge";
 end;
