@@ -1,6 +1,6 @@
 #!/bin/sh
 # Check the mod scripts on the host: CRLF line endings, luac -p, lint_lua.py, then the loader scenario of
-# host_stubs.lua for each experiment and the v0.1 traffic scenarios a..g of host_traffic.lua under stock
+# host_stubs.lua for each experiment and the v0.1 traffic scenarios a..h of host_traffic.lua under stock
 # Lua 4.0.1, then the v0.2 scenarios v02-a..n of host_v02.lua, the v1 scenarios v1-a..n of host_v1.lua and the
 # station voices scenarios stn-a..h of host_station.lua, the worldbuilding plumbing scenarios pl-a..f of
 # host_plumb.lua, the survivors scenarios sv-a..g of host_survive.lua, the faction ladder scenarios lad-a..g of
@@ -12,7 +12,7 @@
 # point), the hail stage B and combat hail scenarios hl-a..e of host_hail.lua (own entry point), the strength scale
 # scenarios str-a..e of host_str.lua (own entry point), the pirate fits scenarios ft-a..h of host_fits.lua (own entry point), then tests/test_pilots.sh (Pilots.xml merge and installer dry run on copies under .work/pilots/; it skips
 # when the vanilla Pilots.xml is not found, PILOTS_TEST=0 skips it).
-# Env: LUA4 (interpreter), LUAC4, EXPS (default "default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr ha pcl mc mcp hl str ft"), SCENS (default a..g),
+# Env: LUA4 (interpreter), LUAC4, EXPS (default "default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr ha pcl mc mcp hl str ft"), SCENS (default a..h),
 # V02 (default a..n), V1 (default a..n), STN (default a..h), PL (default a..f), SV (default a..g), LAD (default a..g), CH
 # (default a..h), SC (default a..g), CAP (default a..h), DM (default a..h), SH (default a..h), FR (default a..h), HA (default a..f),
 # PCL (default a..h), MC (default a..k), MCP (default a..c), HL (default a..e), STR (default a..e), FT (default a..f).
@@ -55,7 +55,7 @@ for e in ${EXPS:-default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr
         2) run exp2 TRF_EXP=2; run exp2-big TRF_EXP=2 TRF_BIG=1; run exp2-saves TRF_EXP=2 TRF_AUTOSAVE=1 ;;
         3) run exp3 TRF_EXP=3; run exp3-del TRF_EXP=3 TRF_DEL=1 ;;
         0) run exp0 TRF_EXP=0; run exp0-saves TRF_EXP=0 TRF_AUTOSAVE=1 ;;
-        traffic) for s in ${SCENS:-a b c d e f g}; do run "traffic-$s" TRF_SCEN="$s"; done ;;
+        traffic) for s in ${SCENS:-a b c d e f g h}; do run "traffic-$s" TRF_SCEN="$s"; done ;;
         v02) for s in ${V02:-a b c d e f g h i j k l m n}; do run "v02-$s" TRF_SCEN="v02-$s"; done ;;
         v1) for s in ${V1:-a b c d e f g h i j k l m n}; do run "v1-$s" TRF_SCEN="v1-$s"; done ;;
         stn) entry=host_station.lua; for s in ${STN:-a b c d e f g h}; do run "stn-$s" TRF_STN="$s"; done; entry=host_stubs.lua ;;

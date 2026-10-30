@@ -167,7 +167,8 @@ also the unused hulls).
 | `armed` | `module=safety event=armed via=activate mothership_id=1` | 1 |
 | `wind_down_onset` | `module=safety event=wind_down_onset game_time=49.000` | 1 |
 | `sos_on`, `sos_off` | `module=safety event=sos_on game_time=..` / `event=sos_off` | 2 |
-| `extortion_seen` | `module=safety event=extortion_seen game_time=3.500` | 1 |
+| `extortion_seen` | `module=safety event=extortion_seen game_time=3.500 via=change money=4500 count=1` (a fresh vanilla extortion: `via=change` the demand turned into a new non-zero number, `via=edge` the first tick of the visit or a `__sys_SOS` edge with the vanilla marks; `count` per visit; extort-fix-spec 3) | 1 |
+| `extort` | `module=safety event=extort group=group_Pirate_money result=neutral trigger_count=2` (player side neutral, attack triggers armed); `result=war reason=refused` (vanilla war copied to the player side) or `reason=attacked` (player hit: war both ways); `result=end reason=gone` (flight paid and deleted or destroyed); `result=skip reason=off\|unarmed\|native\|not_war\|vanilla_rel\|no_flight` (nothing written; extort-fix-spec 4) | 1 |
 | `suppression` | `module=safety event=suppression old=0 new=1 disable_action=false sos=false scene=true sos_mode=1 extortion_seen=false` | 1 |
 | `no_spawn` | `module=safety event=no_spawn kind=trader reason=cap trader_count=3 trader_cap=3 ship_count=12 new_ship_count=4 ship_cap=12 raid_flight_count=0 raid_ship_count=0 parked_count=0 parked_cap=0 kill_count=0 suppression=0 event_count=0 event_cap=nil` | 2 |
 | `governor_base` | `module=safety event=governor_base carcass_count=1 radius=3000` | 1 |

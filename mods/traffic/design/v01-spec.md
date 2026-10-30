@@ -123,7 +123,7 @@ Rules: numbers, strings and nested plain tables only, no shared sub-tables, no r
 | `port[label]` | gt of the last arrival at that portal (player arrival included); key `"station"` for path B |
 | `kills`, `rec` | player kills and pirate-kill recoveries in this visit |
 | `rn` | response counter (group `TRF_Resp_<rn>`) |
-| `sos_t`, `ext_seen` | gt when `__sys_SOS` was first seen TRUE; 1 when `__sys_Pirate_Money` went from nil to a number during this visit |
+| `sos_t`, `ext_seen` | gt when `__sys_SOS` was first seen TRUE; 1 when `__sys_Pirate_Money` went from nil to a number during this visit (2026-10-31: vanilla sets 0 at load, so a fresh extortion is detected as in `extort-fix-spec.md` 3) |
 | `wind` | 1 while wind-down has run for the current suppression onset |
 | `capt`, `caps` | effective caps after the governor (5.2) |
 | `stok` | 1 station usable, 0 lost or absent this visit |
@@ -267,7 +267,7 @@ Performance fallback (design 6.7 8x rule): if 8x drops to 4x in a system with tr
 | R12 spacing | 20 s per portal and spawn spot free | 4.4; watchdog 5.3 |
 | M10 | no `ShowMsgBox`, `Pause`, `StartTradeDialog` from mod code | lint; the vanilla meeting trigger (8.3) opens its box only when the player flies within 70 |
 
-Extortion tracking (`TRF_SafetySample`, every `TRF_OnTick`): `sos_t` = gt at the first tick seeing `__sys_SOS == TRUE`, nil when FALSE (also clears `wind`). `ext_seen = 1` when `__sys_Pirate_Money` is a number now and was nil at an earlier tick of this visit. The extortion flight counts as alive only if `ext_seen` and `flight_pir_mon_1` and `TRF_Is(flight_pir_mon_1:IsAlive())`: the global is userdata, survives ClearGlobals and may point into an earlier scene, so it is never touched without `ext_seen`. After a load `sos_t` restarts at the load time and `ext_seen` is nil.
+Extortion tracking (`TRF_SafetySample`, every `TRF_OnTick`): `sos_t` = gt at the first tick seeing `__sys_SOS == TRUE`, nil when FALSE (also clears `wind`). `ext_seen = 1` when `__sys_Pirate_Money` is a number now and was nil at an earlier tick of this visit. Corrected 2026-10-31 (`extort-fix-spec.md` 3): vanilla sets `__sys_Pirate_Money = 0` when the include loads, so that edge never happened; `ext_seen` is now set by a demand that turns into a new non-zero number, or on the first tick or a `__sys_SOS` edge while the vanilla marks of a live contact hold. The extortion flight counts as alive only if `ext_seen` and `flight_pir_mon_1` and `TRF_Is(flight_pir_mon_1:IsAlive())`: the global is userdata, survives ClearGlobals and may point into an earlier scene, so it is never touched without `ext_seen`. After a load `sos_t` restarts at the load time and `ext_seen` is nil.
 
 ## 7. Disruption, heat, leg clock (S3, S4, S13, M8, M19 clamps)
 
@@ -526,7 +526,7 @@ Remaining open (confidence):
 - Every CHECK above depends on E0.3/E0.5/E0.6 runs (medium).
 - Whether `GetPlayerQuestState()` means "story mission active" decides the deny list (medium; the guard no longer depends on it since 2026-10-21, see PROGRESS.md; vanilla uses it that way in `RandomPiratGetMoney` and `LevelUp`).
 - The deny list holds the three systems design 9.8 S5 names; other scripted areas are added from testing (high that more exist).
-- After a load during an extortion, `ext_seen` stays nil because `__sys_Pirate_Money` comes back from the save already set: the debounce then runs only 30 s from the load before a wind-down (low impact).
+- After a load during an extortion, `ext_seen` stays nil because `__sys_Pirate_Money` comes back from the save already set: the debounce then runs only 30 s from the load before a wind-down (low impact). (2026-10-31: the first tick after the load now finds a live contact, `extort-fix-spec.md` 3.)
 
 ## 13. Review log (2026-10-21, spec conformance and vanilla safety)
 

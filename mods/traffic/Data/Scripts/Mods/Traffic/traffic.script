@@ -175,7 +175,8 @@ end;
 
 -- Callback names of the hit shims (TRF_Cb) -> position of the gen argument in args, chunk local.
 local CBH = {TRF_OnAttack=3, TRF_OnRaidHit=3, TRF_OnRespHit=3, TRF_OnBaseHit=2, TRF_CvEscHit=3,
-	TRF_FeqAttack=3, TRF_SwHit=3, TRF_CtJoinPart=3, TRF_OnCarrierHit=2, TRF_CapHit=3, TRF_CapWHit=3, TRF_McHit=3};
+	TRF_FeqAttack=3, TRF_SwHit=3, TRF_CtJoinPart=3, TRF_OnCarrierHit=2, TRF_CapHit=3, TRF_CapWHit=3, TRF_McHit=3,
+	TRF_OnExtHit=2};
 
 -- Protected trigger callback (review O1): the string action calls a thin shim, the shim calls
 -- TRF_Cb(name, body, {args}). An error in the body stops there (call "x" returns nil) instead of

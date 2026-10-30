@@ -945,8 +945,10 @@ function TRF_Rd_Power(tier, idx, ci)
 end;
 
 -- Relations (5.2): raid group at war with the trader's group both ways (group names, as OutOfMission.script
--- 407). Toward the player: neutral one way if Pirates are at war with the player (the extortion pattern),
--- else the Pirates team relation. CHECK (O5): relations by name on these runtime groups.
+-- 407). Toward the player: neutral if Pirates are at war with the player (the extortion pattern), both ways
+-- under cfg ext_fix 1 (the vanilla fix of trf_safety: one way leaves the player side at war, so the turrets and
+-- the wing open fire; TRF_Rd_War1 sets war both ways on the first player hit), else the Pirates team relation.
+-- CHECK (O5): relations by name on these runtime groups.
 function TRF_Rd_Rel(n, rd, r)
 	if type(SetGroupRelation) ~= "function" or RELATION_WAR == nil then return; end;
 	local g = "TRF_Raid_"..n;
@@ -958,6 +960,7 @@ function TRF_Rd_Rel(n, rd, r)
 	local pr = TRF_N("GetTeamRelation", "Pirates", PLAYER_TEAM);
 	if pr == RELATION_WAR and RELATION_NEUTRAL ~= nil then
 		SetGroupRelation(g, PLAYER_GROUP, RELATION_NEUTRAL);
+		if TRF_N("TRF_SafeExtOn") ~= 0 then SetGroupRelation(PLAYER_GROUP, g, RELATION_NEUTRAL); end;
 		rd.neu = 1;
 	elseif pr ~= nil then
 		SetGroupRelation(g, PLAYER_GROUP, pr);
@@ -1708,11 +1711,12 @@ end;
 
 -- Player help detection (5.5) ------------------------------------------------------------------
 
--- First player hit on a raid seeded neutral toward the player: the raid fights back (vanilla extortion
--- turns to war on refusal). CHECK (O5).
+-- First player hit on a raid seeded neutral toward the player: war both ways, the raid fights back (vanilla
+-- extortion turns to war on refusal). CHECK (O5).
 function TRF_Rd_War1(n, rd)
 	if rd.neu ~= 1 or type(SetGroupRelation) ~= "function" or RELATION_WAR == nil then return; end;
 	SetGroupRelation("TRF_Raid_"..n, PLAYER_GROUP, RELATION_WAR);
+	SetGroupRelation(PLAYER_GROUP, "TRF_Raid_"..n, RELATION_WAR);
 	rd.neu = 2;
 end;
 

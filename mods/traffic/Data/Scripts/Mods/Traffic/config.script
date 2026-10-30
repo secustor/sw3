@@ -69,7 +69,10 @@
 -- merc_calls, merc_transfer, rv_enabled (rival role, 0: no clan becomes a rival) and mc_launch are the toggles of the
 -- later steps; mc_el_c the elite clan (8 Black Legion, 0 off); rv_deny and the tune keys (c_hire, merc_*, mc_*,
 -- mc_el_*, rv_*) read the module defaults.
-function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1,
+-- Vanilla fixes (README "Vanilla fixes"): ext_fix (default 1) = 0 leaves the vanilla extortion contact one-way neutral
+-- (the player side stays at war with the flight before the box) and mod raids one-way as before; tune ext_fix
+-- (install-test.sh TUNE=ext_fix=0) wins.
+function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1, ext_fix=1,
 	enabled=1, cycle=1, prosperity=1, tier_cap=4, cap_traders=5, cap_ships=20, spawn_scale=1.0, band_half=0,
 	parked=1, esc_flight=1, seed=1, queue=1, raids=1, staged=1, contracts=1, esc_speed=0, meet=2, hail_start=2, board=1,
 	shop_mode=1, short_price=1, restore=1, news_mode=1, heat_war=0, strict=1, pro_set={},

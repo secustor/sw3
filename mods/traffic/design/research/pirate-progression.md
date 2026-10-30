@@ -340,7 +340,7 @@ Founded clans' homes are stored by pirate-bases.md; `TR_pp` slots 12..15 are emp
 - Every progression spawn (raids, carrier groups, launched waves) is a strict-gate feature (9.8 S4) and obeys `__disableAction` and `__sys_SOS` with the extortion debounce (S3). Carrier raid records never target deny-list systems; if the player is in a denied system the record continues off-screen only.
 - Groups `TRF_Raid_<n>` and `TRF_Pir_<n>`, flights `trf_pir_*`. Vanilla `PiratesGroup_1` and the other vanilla pirate groups are touched only by the optional C12 override, which leaves their relation handling to vanilla.
 - The mod never writes the Pirates team relation; story missions set it in about 20 places and 58 systems write it back on exit. Raid groups are seeded neutral to `PLAYER_GROUP` as in 7.6.
-- Vanilla placed pirate flights, story pirates and `RandomPiratGetMoney` are left alone. Kills of vanilla pirate flights only lower clan score; they are never replaced or reinforced.
+- Vanilla placed pirate flights, story pirates and `RandomPiratGetMoney` are left alone. (2026-10-31: the mod corrects the one-way neutral of `RandomPiratGetMoney` at runtime, without editing or wrapping it: `../extort-fix-spec.md`, README "Vanilla fixes".) Kills of vanilla pirate flights only lower clan score; they are never replaced or reinforced.
 - No `Timer_Seq`: carrier arrival, launches and recovery use the manager's own `_EVENT_TIMER` triggers.
 - Carriers spawn only at portal entry points with retries and the 20 s portal spacing (S12). A failed `CreateCarcass` cancels the on-screen part of the record and logs it.
 - Wind-down (9.10): carrier groups and launched waves fly to the nearest portal; the record continues off-screen.

@@ -1043,7 +1043,7 @@ function TRF_McHK()
 			due_b=90, off={-3, 0, 2, 3}, pm=1000, pm_min=550, hj_max=99, help=15, heat_lo=5, heat_max=7, rel_no=-2, ms_off=60,
 			pt_st=2, pt_max=5, pt_min=200, pt_off=300, ap_off=60, ap_re=100,
 			pir={"PiratesGroup_1", "Pirate_Group_1", "Pirate_Group_1_1", "Pirates_Group_1", "PirateGroup_1"},
-			money="group_Pirate_money",
+			money="group_Pirate_money", mong="P_Group",
 			excl={earth=1, precursors=1, disonsphere=1, fronn=1, nk=1, x297=1, x203=1, x213=1, x220=1, kassilia=1}};
 	end;
 	return mc.hk;
@@ -2433,7 +2433,8 @@ end;
 
 -- Seeding (12 section 6 Whom the pack fights, gap 1): raid groups whose fight opened (rd.ph, TRF.live.rd, read only),
 -- the captain's group after his fight opened (trf_captain visit op), the vanilla pirate groups at war with
--- PLAYER_GROUP (group_Pirate_money only then), each at war with the pack both ways once. Faction, trader, FTU and convoy
+-- PLAYER_GROUP (group_Pirate_money only then; vanilla holds it in the global P_Group, OutOfMission.script 388), each
+-- at war with the pack both ways once. Faction, trader, FTU and convoy
 -- groups never.
 function TRF_McSeedStep(v, why)
 	if not TRF_McHired(v) or v.del == 1 then return; end;
@@ -2448,12 +2449,14 @@ function TRF_McSeedStep(v, why)
 		if s ~= "dead" and s ~= "gone" and s ~= "end" and s ~= "void" and s ~= "wait" then TRF_McSeed(v, "TRF_Cap_"..cp.v.slot, "captain"); end;
 	end;
 	local HK = TRF_McHK();
+	-- {global holding the group, group name}
 	local l = {};
-	for i = 1, getn(HK.pir) do tinsert(l, HK.pir[i]); end;
-	tinsert(l, HK.money);
+	for i = 1, getn(HK.pir) do tinsert(l, {HK.pir[i], HK.pir[i]}); end;
+	tinsert(l, {HK.mong, HK.money});
 	for i = 1, getn(l) do
-		local g = getglobal(l[i]);
-		if TRF_McObj(g) and RELATION_WAR ~= nil and TRF_McGrpRel(l[i], PLAYER_GROUP) == RELATION_WAR then TRF_McSeed(v, l[i], "vanilla"); end;
+		local g = getglobal(l[i][1]);
+		local gn = l[i][2];
+		if TRF_McObj(g) and RELATION_WAR ~= nil and TRF_McGrpRel(gn, PLAYER_GROUP) == RELATION_WAR then TRF_McSeed(v, gn, "vanilla"); end;
 	end;
 end;
 

@@ -1,7 +1,7 @@
--- Traffic scenarios (v0.1 modules) for host_stubs.lua: TRF_SCEN=a..g, run by run_host.sh.
+-- Traffic scenarios (v0.1 modules) for host_stubs.lua: TRF_SCEN=a..h, run by run_host.sh.
 -- a vanilla parity of declines, b caps over many generator calls, c lifetime and watchdog, d attack, heat,
 -- response, kills, pirate recovery and the leg clock, e focus and arrival lines, f save/load round trip,
--- g safety predicates. Uses the stubs and engine emulation of host_stubs.lua; state in HOST().
+-- g safety predicates, h the vanilla fix of the extortion contact (design/extort-fix-spec.md). Uses the stubs and engine emulation of host_stubs.lua; state in HOST().
 
 -- Helpers ---------------------------------------------------------------------------
 
@@ -1403,6 +1403,165 @@ function T_LoadHandles()
 	HOST_Check(T_SignGlobals(a) == "", "record closed: its handle globals cleared"..T_SignGlobals(a));
 	GetObjectByLabel = h.gobl;
 	h.gobl = nil; h.lgp = nil; h.lgn = nil; h.logs = nil;
+end;
+
+-- h: vanilla fix of the extortion contact (design/extort-fix-spec.md 6) ------------------------------------
+
+-- Vanilla RandomPiratGetMoney (OutOfMission.script 386-412) reduced to what the mod reads: the group in the global
+-- P_Group, the one-way neutral (407), the demand (408), flight_pir_mon_1 with n ships escorting the mothership,
+-- _FTrader_exclude (__sys_SOS).
+function T_ExtSpawn(sum, n)
+	local team = CreateTeam("Pirates");
+	P_Group = team:CreateGroup("group_Pirate_money");
+	SetGroupRelation("group_Pirate_money", PLAYER_GROUP, RELATION_NEUTRAL);
+	__sys_Pirate_Money = sum;
+	flight_pir_mon_1 = P_Group:CreateFlight("flight_pir_mon_1");
+	for i = 1, (n or 2) do
+		local s = CreateCarcass("Yari_pir1", Vector3(-30 + 10 * i, 100, 20), Vector3(1, 0, 0));
+		s:AssignPilot(CreatePilot("Pirate"));
+		flight_pir_mon_1:AddShip(s);
+	end;
+	flight_pir_mon_1:Escort(HOST().ms);
+	__sys_SOS = TRUE;
+end;
+
+function T_ExtKill()
+	if type(flight_pir_mon_1) == "table" then flight_pir_mon_1:Delete(); end;
+end;
+
+-- Player-side writes PLAYER_GROUP -> group_Pirate_money recorded by the stub.
+function T_ExtPw()
+	local n, q = 0, HOST().rel;
+	for i = 1, getn(q) do if q[i][1] == PLAYER_GROUP and q[i][2] == "group_Pirate_money" then n = n + 1; end; end;
+	return n;
+end;
+
+function T_H()
+	local h = HOST();
+	local G = "group_Pirate_money";
+	T_Cfg({guard=1});
+	T_Begin("gredos");
+	h.logs = {};
+	-- The include sets __sys_Pirate_Money = 0 at load (OutOfMission.script 13): no extortion, no write.
+	__sys_Pirate_Money = 0;
+	T_Tick(4, 0.5);
+	HOST_Check(TRF.live.ext_seen == nil and TRF.live.pmv == 0 and T_ExtPw() == 0, "demand 0 from the include: no extortion seen, no relation write");
+	-- 1. Fresh extortion: the player side is neutral after one tick, attack triggers on both ships.
+	T_ExtSpawn(4500, 2);
+	HOST_Check(GetGroupRelation(PLAYER_GROUP, G) == nil, "vanilla alone: no player-side relation (the team war applies)");
+	T_Tick(1, 0.5);
+	HOST_Check(TRF.live.ext_seen == 1 and TRF.live.ext == 1 and GetGroupRelation(PLAYER_GROUP, G) == RELATION_NEUTRAL
+		and GetGroupRelation(G, PLAYER_GROUP) == RELATION_NEUTRAL and HOST_Count("attack", "TRF_OnExtHit(1,") == 2
+		and T_LogN("module=safety event=extortion_seen ") == 1 and T_LogN(" via=change money=4500 count=1") == 1
+		and T_LogN("module=safety event=extort group=group_Pirate_money result=neutral trigger_count=2") == 1,
+		"fresh extortion (0 -> 4500): extortion_seen, player side neutral within one tick, 2 attack triggers");
+	HOST_Check(T_BadCallbacks() == "", "extortion triggers carry the gen"..T_BadCallbacks());
+	-- The 16 s to the box: no second detection, no further write.
+	local pw = T_ExtPw();
+	T_Tick(32, 0.5);
+	HOST_Check(T_ExtPw() == pw and T_LogN("event=extortion_seen") == 1 and T_LogN("event=extort ") == 1, "16 s to the box: nothing new");
+	-- 2. Cancel (On_PiratMoney_Cancel 437): vanilla war toward the player, copied back within one tick.
+	__sys_SOS = FALSE;
+	SetGroupRelation(G, PLAYER_GROUP, RELATION_WAR);
+	T_Tick(1, 0.5);
+	HOST_Check(GetGroupRelation(PLAYER_GROUP, G) == RELATION_WAR and TRF.live.ext == 2
+		and T_LogN("event=extort group=group_Pirate_money result=war reason=refused") == 1, "refusal: war copied to the player side within one tick");
+	HOST_Fire("attack", "TRF_OnExtHit(1,");
+	HOST_Check(T_LogN("reason=attacked") == 0 and T_ExtPw() == pw + 1, "a hit after the refusal: no second write");
+	T_ExtKill();
+	T_Tick(2, 0.5);
+	-- 3. A second demand of the same sum (the __sys_SOS edge path), then paid (On_PiratMoney_Start): the player side
+	-- stays neutral, the flight leaves and is deleted 6 s later.
+	T_ExtSpawn(4500, 1);
+	T_Tick(1, 0.5);
+	HOST_Check(TRF.live.ext == 1 and TRF.live.exn == 2 and GetGroupRelation(PLAYER_GROUP, G) == RELATION_NEUTRAL
+		and T_LogN(" via=edge money=4500 count=2") == 1 and HOST_Count("attack", "TRF_OnExtHit(2,") == 1,
+		"same sum again: detected on the __sys_SOS edge, player side neutral");
+	T_Tick(32, 0.5);
+	__sys_SOS = FALSE;
+	flight_pir_mon_1:Move(Vector3(-30, 200, 20));
+	T_Tick(12, 0.5);
+	HOST_Check(GetGroupRelation(PLAYER_GROUP, G) == RELATION_NEUTRAL and TRF.live.ext == 1, "paid: stays neutral while it leaves");
+	T_ExtKill();
+	T_Tick(1, 0.5);
+	HOST_Check(TRF.live.ext == nil and GetGroupRelation(PLAYER_GROUP, G) == RELATION_NEUTRAL and T_LogN("result=end reason=gone") == 1,
+		"paid flight deleted: tracking ends, no war");
+	-- 4. Fire first: a player attack before the box sets war both ways; a stale trigger of contact 2 does nothing.
+	T_ExtSpawn(6000, 2);
+	T_Tick(1, 0.5);
+	HOST_Check(TRF.live.ext == 1 and TRF.live.exn == 3, "third demand: neutral");
+	HOST_Fire("attack", "TRF_OnExtHit(2,");
+	HOST_Check(TRF.live.ext == 1 and T_LogN("reason=attacked") == 0, "trigger of the earlier contact: ignored");
+	HOST_Fire("attack", "TRF_OnExtHit(3,");
+	HOST_Check(TRF.live.ext == 2 and GetGroupRelation(PLAYER_GROUP, G) == RELATION_WAR and GetGroupRelation(G, PLAYER_GROUP) == RELATION_WAR
+		and T_LogN("event=extort group=group_Pirate_money result=war reason=attacked") == 1, "player fires first: war both ways");
+	HOST_Fire("attack", "TRF_OnExtHit(3,");
+	HOST_Check(T_LogN("reason=attacked") == 1, "second hit: one war line");
+	-- 5. Stale flight: alive and at war, the same sum, a new __sys_SOS edge (another vanilla scene): untouched.
+	__sys_SOS = FALSE;
+	T_Tick(1, 0.5);
+	pw = T_ExtPw();
+	__sys_SOS = TRUE;
+	T_Tick(2, 0.5);
+	HOST_Check(TRF.live.exn == 3 and T_ExtPw() == pw, "stale flight at war on a __sys_SOS edge: no detection, no write");
+	__sys_SOS = FALSE;
+	T_ExtKill();
+	-- 6. Load during the contact: the first tick after the load finds the live contact (via=edge).
+	T_ExtSpawn(3000, 1);
+	T_Tick(1, 0.5);
+	T_SaveLoad();
+	h.logs = {};
+	T_Tick(1, 0.5);
+	HOST_Check(TRF.live.ext == 1 and TRF.live.exn == 1 and T_LogN(" via=edge money=3000 count=1") == 1
+		and T_LogN("result=neutral trigger_count=1") == 1, "load during the contact: found on the first tick, neutral again");
+	__sys_SOS = FALSE;
+	T_ExtKill();
+	T_Tick(1, 0.5);
+	-- 7. Pirates not at war with the player: seen, nothing written.
+	h.rel_team = {["Pirates|"..PLAYER_TEAM] = RELATION_NEUTRAL};
+	pw = T_ExtPw();
+	T_ExtSpawn(7500, 1);
+	T_Tick(1, 0.5);
+	HOST_Check(TRF.live.exn == 2 and TRF.live.ext == nil and T_ExtPw() == pw and T_LogN("result=skip reason=not_war") == 1,
+		"Pirates not at war: seen, no player-side write");
+	h.rel_team = nil;
+	__sys_SOS = FALSE;
+	T_ExtKill();
+	T_Tick(1, 0.5);
+	-- 8. ext_fix 0 (cfg, and tune ext_fix 0 over cfg 1): seen, nothing written, no trigger.
+	h.cfg.ext_fix = 0;
+	local na = HOST_Count("attack", "TRF_OnExtHit(");
+	T_ExtSpawn(9000, 2);
+	T_Tick(1, 0.5);
+	HOST_Check(TRF.live.exn == 3 and TRF.live.ext == nil and T_ExtPw() == pw and HOST_Count("attack", "TRF_OnExtHit(") == na
+		and T_LogN("result=skip reason=off") == 1 and TRF_SafeExtOn() == 0, "cfg ext_fix 0: seen, no write, no trigger");
+	SetGroupRelation(G, PLAYER_GROUP, RELATION_WAR);
+	T_Tick(1, 0.5);
+	HOST_Check(T_ExtPw() == pw and T_LogN("reason=refused") == 0, "cfg ext_fix 0: a refusal is not copied");
+	h.cfg.ext_fix = nil;
+	h.cfg.tune = {ext_fix=0};
+	HOST_Check(TRF_SafeExtOn() == 0, "tune ext_fix 0 turns the fix off");
+	h.cfg.tune = nil;
+	HOST_Check(TRF_SafeExtOn() == 1, "default: ext_fix on");
+	__sys_SOS = FALSE;
+	T_ExtKill();
+	-- 9. Mod raids: neutral both ways while Pirates are at war with the player, war both ways on the first hit.
+	HOST_Check(type(TRF_Rd_Rel) == "function" and type(TRF_Rd_War1) == "function", "trf_raid loaded");
+	local rd = {};
+	TRF_Rd_Rel(97, rd, nil);
+	HOST_Check(rd.neu == 1 and GetGroupRelation("TRF_Raid_97", PLAYER_GROUP) == RELATION_NEUTRAL
+		and GetGroupRelation(PLAYER_GROUP, "TRF_Raid_97") == RELATION_NEUTRAL, "raid seeded neutral both ways");
+	TRF_Rd_War1(97, rd);
+	HOST_Check(rd.neu == 2 and GetGroupRelation("TRF_Raid_97", PLAYER_GROUP) == RELATION_WAR
+		and GetGroupRelation(PLAYER_GROUP, "TRF_Raid_97") == RELATION_WAR, "first player hit on the raid: war both ways");
+	h.cfg.ext_fix = 0;
+	rd = {};
+	TRF_Rd_Rel(98, rd, nil);
+	HOST_Check(rd.neu == 1 and GetGroupRelation("TRF_Raid_98", PLAYER_GROUP) == RELATION_NEUTRAL
+		and GetGroupRelation(PLAYER_GROUP, "TRF_Raid_98") == nil, "ext_fix 0: raid neutral one way (as before)");
+	h.cfg.ext_fix = nil;
+	flight_pir_mon_1 = nil; P_Group = nil; __sys_Pirate_Money = nil; __sys_SOS = FALSE;
+	h.logs = nil;
 end;
 
 local fn = getglobal("T_"..strupper(HOST().scen));

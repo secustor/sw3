@@ -2,7 +2,8 @@
 """Score the in-game checks of pirate haunts (E16.1-E16.11), sealed parcels (E-PCL.1-E-PCL.6), trader docking (D-DOCK),
 the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10), the mercenary hire (D-MERC.*, design/merc-spec.md
 11, test plan section 11), the strength scale (D-STR.*, design/strength-spec.md 9), the pirate fits (D-FIT.1-6, E-BB1,
-design/fits-spec.md 11) and the stack leak diagnostic (D-DLL.1) from traffic logs.
+design/fits-spec.md 11), the vanilla extortion fix (E-EXT.1, design/extort-fix-spec.md 7) and the stack leak diagnostic
+(D-DLL.1) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -1380,6 +1381,39 @@ def c_bb1(ctx):
     return res
 
 
+def c_ext1(ctx):
+    res = Res()
+    res.logpart = True
+    seen = ctx.find("safety", "extortion_seen")
+    ex = ctx.find("safety", "extort")
+    for r in seen:
+        nxt = [x for x in ex if x.src == r.src and x.n > r.n]
+        if not nxt:
+            res.fails.append("%s: no event=extort line after the detection" % r.short())
+            continue
+        x = nxt[0]
+        if x.get("result") == "skip" and x.get("reason") not in ("off", "not_war"):
+            res.fails.append("%s: the fix did not apply (reason=%s)" % (x.short(), x.get("reason")))
+        elif x.get("result") == "neutral" and x.int("trigger_count", 0) < 1:
+            res.fails.append("%s: no attack trigger armed on the flight" % x.short())
+    neu = [x for x in ex if x.get("result") == "neutral"]
+    war = [x for x in ex if x.get("result") == "war"]
+    if not seen:
+        res.missing.append("fly off-mission in a system where Pirates are at war with you (xt45 and the other systems "
+                           "with OutMissionActivity(\"RandomPiratGetMoney\")) until the \"Pirate demands\" box opens")
+    elif not neu:
+        res.missing.append("an extortion with cfg ext_fix 1 (no event=extort result=neutral line)")
+    for k, how in (("refused", "press Cancel at the box"), ("attacked", "fire at the flight before the box")):
+        if neu and not any(x.get("reason") == k for x in war):
+            res.notes.append("no result=war reason=%s line yet: %s" % (k, how))
+    res.ev("extortions seen", seen)
+    res.ev("player side neutral", neu)
+    res.ev("war both ways (refused, attacked)", war)
+    res.ev("tracking ended (paid and deleted, destroyed)", [x for x in ex if x.get("result") == "end"])
+    res.ev("skipped", [x for x in ex if x.get("result") == "skip"])
+    return res
+
+
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
@@ -1457,6 +1491,9 @@ ITEMS = [
     ("D-FIT.6", "unused hulls only at tiers 3-4: every dress hull=true has a roll line tier>=3 pool=hull", c_fit_hull, None),
     ("E-BB1", "AddModule on a bare pirate hull: return values, HP, the TRF_Carcasses read", c_bb1,
      "the test ship renders as the pirate hull, carries the guns (target it: modules listed), and fights when attacked"),
+    ("E-EXT.1", "extortion contact: player side neutral until the answer, war both ways on refusal or attack", c_ext1,
+     "no shot at the flight before the box (no turret or wing fire, HUD neutral); pay: it stays neutral and leaves; "
+     "Cancel: it attacks and the turrets fire; fire first: it fights back"),
     ("D-DLL.1", "stack leak source: trig_fires names the condition, stack_leak carries v1=", c_dll1, None),
 ]
 
@@ -1566,9 +1603,11 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "D-MERC.load": "NO DATA", "D-MERC.betray": "MANUAL",
             "D-STR.1": "PASS", "D-STR.2": "PASS", "D-STR.3": "FAIL",
             "D-FIT.1": "FAIL", "D-FIT.2": "MANUAL", "D-FIT.3": "PASS", "D-FIT.4": "MANUAL", "D-FIT.5": "MANUAL",
-            "D-FIT.6": "PASS", "E-BB1": "MANUAL",
+            "D-FIT.6": "PASS", "E-BB1": "MANUAL", "E-EXT.1": "FAIL",
             "D-DLL.1": "PASS"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
+# E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
+# FAIL); extortion_seen lines at level 1.
 
 
 def selftest():

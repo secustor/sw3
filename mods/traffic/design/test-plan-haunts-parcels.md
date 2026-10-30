@@ -310,3 +310,17 @@ Install: `EXP=0 TRAFFIC=1 LOG=2 AUTOSAVE=0 HAIL_BOX=2 MERCS=1 TUNE=merc_cd=0,mer
 6. Step 2: play haunt visits until a row line has `new_fit=<name>` (a captured new fit, about 4 % of flights): the next `module=fits event=dress ... fit=<name> carcass=<bare hull> modules=<n> ok=<n> failed=none` (D-FIT.5). Eyes: target the ship of that sign and index (`ship=`): the pirate hull of `carcass=` with the modules of the fit listed (e.g. Stormcrow_pir3: LC1, SRM2, ECM3, ShAmp2), it fires the new guns; save inside the system and load: the ship still lists those modules (the engine's save of a dressed carcass is not known yet); destroy it: it drops loot like any pirate. A `failed=<module>` line: note the module and whether the ship still fights.
 7. Step 2: in Build-up / Raids visits (tier 3-4) look for `event=dress ... hull=true` (TieFly_pir0, Stormcrow_mk2_pir0 or Cleaner_mk2_pir0; about 0.7 % of those flights): its flight's roll line has `tier=3` or `4` and `pool=hull`; Boom visits (tier 1-2) never show `hull=true` or `pool=hull` (D-FIT.6). A/B: `TUNE=fits_new=0` gives `pool=old` on every roll and no dress line.
 - Record: systems, phases and scores of the graded flights, the hulls seen, the E-BB1 lines, the dress lines and what the dressed ships carried.
+
+## 14. Vanilla extortion fix (E-EXT.1; any run, off-mission, a pirate system at war)
+
+`D/extort-fix-spec.md` 7; `check_ingame.py` item E-EXT.1. No own install: any run of this plan (cfg `ext_fix` 1 is the default; `TUNE=ext_fix=0` gives the vanilla behaviour for an A/B). The contact is vanilla `RandomPiratGetMoney` ("Pirate demands" box), rolled by `OutMissionActivity` in systems such as xt45 (120 s timer, 20 %), only off-mission and while Pirates are at war with the player. Fit turrets on the mothership. One line per check: do, then see.
+
+| item | what to do | expected |
+|---|---|---|
+| E-EXT.1 | wait in xt45 (or another such system) off-mission until a pirate flight parks by the mothership and its leader names a sum; do nothing until the box | no turret or wing fire at the flight before the box, the HUD shows it neutral; log `module=safety event=extortion_seen ... via=change money=<sum>` then `event=extort group=group_Pirate_money result=neutral trigger_count=<n>` (n >= 1) |
+| | pay (OK, enough credits) | the flight stays neutral and flies off; `event=extort ... result=end reason=gone` about 6 s later |
+| | next contact: Cancel | it turns hostile and attacks, the turrets fire; `event=extort ... result=war reason=refused` |
+| | next contact: fire at the flight before the box | it fights back at once; `event=extort ... result=war reason=attacked` |
+| | jump out after any of them | `GetTeamRelation("Pirates", PLAYER_TEAM)` unchanged (pirates of the next system as before) |
+
+Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes E-EXT.1=pass` (FAIL: an `extortion_seen` without a following `extort` line, a `result=skip` with a reason other than `off` or `not_war`, or `trigger_count=0`).

@@ -1364,7 +1364,8 @@ function T_MC_I()
 	local p1 = CreateCarcass("Yari_pir1", Vector3(6000, 0, 6000), Vector3(0, 0, 1));
 	p1:AssignPilot(CreatePilot("Pirate")); fl:AddShip(p1);
 	ship_pir_a_1 = p1;
-	group_Pirate_money = HOST_Group("group_Pirate_money", "Pirates");
+	-- As vanilla (OutOfMission.script 388): the global P_Group holds the group named group_Pirate_money.
+	P_Group = HOST_Group("group_Pirate_money", "Pirates");
 	SetGroupRelation("PiratesGroup_1", PLAYER_GROUP, RELATION_WAR);
 	T_Tick(2, 0.5);
 	HOST_Check(v.seed["PiratesGroup_1"] == "vanilla" and not v.seed["group_Pirate_money"] and HOST_Count("died", "TRF_McVDied(1,1,") == 1, "vanilla group at war: seeded, its ship armed once");
@@ -1376,7 +1377,7 @@ function T_MC_I()
 	SetGroupRelation("group_Pirate_money", PLAYER_GROUP, RELATION_WAR);
 	T_Tick(2, 0.5);
 	HOST_Check(v.seed["group_Pirate_money"] == "vanilla", "extortion group seeded once it is at war");
-	ship_pir_a_1 = nil; group_Pirate_money = nil;
+	ship_pir_a_1 = nil; P_Group = nil;
 	-- A pack ship lost: hp -1, fo -3, blood money; the hire record keeps k and lo.
 	local hp0, fo0 = TRF_McDig(v.c, "hp"), TRF_McDig(v.c, "fo");
 	MC_Kill(2);
