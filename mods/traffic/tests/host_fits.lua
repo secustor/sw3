@@ -5,7 +5,10 @@
 -- with the graded row (both build sites, the global tables unchanged, the saved grade across a load, -3 on an elite kill
 -- inside the -6 cap), d the raid roll once per flight (pilots one rank up, RAND draws unchanged) and the garrison roll,
 -- e the quest-gated visit (captured only, value-neutral, vanilla group and power, fits_gate 1, the scan deny list),
--- f fits 0 gives byte-identical haunt call lines, the debug test ship with mocks, the save bytes.
+-- f fits 0 gives byte-identical haunt call lines, the debug test ship with mocks, the save bytes; step 2 (fits-spec 14):
+-- g the new-fit data (holders, pools, flags), the R2 filter by tier and fits_hull_pct, the gate, fits_new 0 = step 1,
+-- h the build of a captured new fit (bare carcass, AddModule right after NewAllFlight, a nil return, an unused hull,
+-- the raid path, fits 0 identical). Stub change: AddModule returns the module name (E-BB1), HOST().am_nil[m] nil.
 -- Loads host_station.lua up to its first scenario and the helpers of host_haunt.lua (its dispatch cut off). Stub change:
 -- NewAllFlight in host_stubs.lua checks the row keys as vanilla's next() loop needs them and records the rows by sign.
 
@@ -62,7 +65,7 @@ function FT_Grades(nm, pt, gate)
 			if R.g == 1 then ne = ne + 1; end;
 			if R.c then
 				local tab, form, ri = TRF_FtTab(r.t, r.p + dp);
-				local row, cj = TRF_FtRow(tab[ri], R.g, R.sel, nil);
+				local row, cj = TRF_FtRow(tab[ri], R.g, R.sel, nil, R.nw);
 				if cj then nc = nc + 1; end;
 			end;
 		end;
@@ -92,7 +95,7 @@ function FT_Find(nm, w)
 				local tab, form, ri = TRF_FtTab(d.f[i].t, d.f[i].p + dp);
 				local sel = nil;
 				if R.c then sel = R.sel; end;
-				local row, cj = TRF_FtRow(tab[ri], R.g, sel, 1);
+				local row, cj = TRF_FtRow(tab[ri], R.g, sel, 1, R.nw);
 				if (w == "cap" and R.g == 0 and cj) or (w == "scrap" and R.g == -1) then return pt, i, R; end;
 			end;
 		end;
@@ -349,7 +352,7 @@ function T_FT_C()
 		if R and R.g == 1 then
 			tinsert(el, i);
 			local tab, form, ri = TRF_FtTab(d.f[i].t, d.f[i].p + 1);
-			local want = TRF_FtRow(tab[ri], 1, R.c and R.sel, 1);
+			local want = TRF_FtRow(tab[ri], 1, R.c and R.sel, 1, R.nw);
 			if not nf or FT_Names(nf.row) ~= FT_Names(want) or nf.group ~= "TRF_GHaunt_1" or nf.power ~= d.f[i].p + 1 then ok = nil; bad = bad.." "..i; end;
 			if strsub(e or "", i, i) ~= "1" and strsub(e or "", i, i) ~= "4" then ok = nil; bad = bad.." e"..i; end;
 		elseif R then
@@ -402,7 +405,7 @@ function T_FT_C()
 		local i = el[q];
 		local nf = h.nafs[d.f[i].s];
 		local tab, form, ri = TRF_FtTab(d.f[i].t, d.f[i].p + 1);
-		if not nf or FT_Names(nf.row) ~= FT_Names(TRF_FtRow(tab[ri], 1, G[i].c and G[i].sel, 1)) or nf.group ~= "TRF_GHaunt_1" then ok2 = nil; end;
+		if not nf or FT_Names(nf.row) ~= FT_Names(TRF_FtRow(tab[ri], 1, G[i].c and G[i].sel, 1, G[i].nw)) or nf.group ~= "TRF_GHaunt_1" then ok2 = nil; end;
 	end;
 	HOST_Check(ok2 and HA_Kv(HA_Line(n0, "module=haunt event=replace "), "spawned") == "10" and TRF.nv.e == e, "haunt_mode 2: the rebuilt flights take the graded rows, same digits");
 	HA_Set("haunt_mode", 1);
@@ -427,7 +430,7 @@ function T_FT_C()
 			local tab, form, ri = TRF_FtTab(fq.t, fq.p + TRF_StrRow(TRF_EffTier(gi)).dp);
 			local sel = nil;
 			if CR.c then sel = CR.sel; end;
-			local want, cj = TRF_FtRow(tab[ri], CR.g, sel, 1);
+			local want, cj = TRF_FtRow(tab[ri], CR.g, sel, 1, CR.nw);
 			local nf = h.nafs[fq.s];
 			local ch = strsub(TRF.nv.e or "", ci, ci);
 			local okd = (q == 1 and ch == "3" and cj) or (q == 2 and (ch == "2" or (ch == "5" and cj)));
@@ -572,7 +575,7 @@ function T_FT_E()
 		if not fl or fl.group.name ~= d.g then ok = nil; bad = bad.." g"..i; end;
 		if R and R.c then
 			local tab, form, ri = TRF_FtTab(d.f[i].t, d.f[i].p);
-			local want, cj = TRF_FtRow(tab[ri], 0, R.sel, nil);
+			local want, cj = TRF_FtRow(tab[ri], 0, R.sel, nil, R.nw);
 			if cj then
 				nb = nb + 1;
 				if not nf or FT_Names(nf.row) ~= FT_Names(want) or nf.power ~= d.f[i].p or nf.group ~= d.g then ok = nil; bad = bad.." r"..i; end;
@@ -676,7 +679,7 @@ function T_FT_F()
 	HA_Jump("golkonda");
 	local tf = TRF_H().ft;
 	HOST_Check(tf and tf.s and tf.s.tpl == "Panthera_pir0" and S_Logs(n0, "module=fits event=test name=Panthera_pir0 step=create result=ok") == 1
-		and S_Logs(n0, "step=hull bare=true hp=1000") == 1 and S_Logs(n0, "step=add_module module=PC2 ret=nil hp=1000") == 1
+		and S_Logs(n0, "step=hull bare=true hp=1000") == 1 and S_Logs(n0, "step=add_module module=PC2 ret=PC2 hp=1000") == 1
 		and S_Logs(n0, "step=add_module module=ShAmp3 ") == 1 and getn(h.mods) - m0 == 3, "test ship: created, three AddModule calls logged with return value and HP");
 	local ms = TRF_Ms():GetPosition();
 	HOST_Check(abs(tf.s.pos.z - (ms.z + 200)) < 1 and abs(tf.s.pos.x - ms.x) < 1, "200 units ahead of the mothership");
@@ -705,6 +708,417 @@ function T_FT_F()
 	HA_Set("fits_test", "");
 	HA_Jump("xb13");
 	h.carc = nil;
+end;
+
+-- g: step 2 data, the R2 filter, the gate, fits_new 0 ----------------------------------------------------------------
+
+-- Holders of the new fits' carcasses (clone Data/Game/Carcasses.xml HolderProperties: b big guns, s small guns, r rockets,
+-- y systems) and the holder kind of each module the new fits use (Modules.xml class), a second source beside gen_fits.py.
+function FT_S2()
+	return {hold={Stormcrow_pir0={b=1, s=0, r=1, y=2}, Cleaner_pir0={b=2, s=0, r=0, y=2}, Raptor_pir0={b=0, s=4, r=0, y=3},
+	Hammerhead_pir0={b=0, s=2, r=2, y=1}, TieFly_pir0={b=0, s=2, r=1, y=2}, Stormcrow_mk2_pir0={b=2, s=0, r=1, y=2},
+	EvilEye_pir0={b=1, s=0, r=1, y=3}, Tiger_pir0={b=2, s=0, r=0, y=3}, Bident_pir0={b=0, s=2, r=4, y=2},
+	Cleaner_mk2_pir0={b=2, s=0, r=1, y=3}, Panthera_pir0={b=2, s=0, r=0, y=3}, Puma_pir0={b=2, s=0, r=1, y=3}},
+	kind={HC2="b", LC1="b", LC2="b", PC1="b", PC2="b", VC1="b", VC2="b", VC3="b", AC1="s", CG1="s", SRM1="r", SRM2="r",
+	SRM3="r", LRM1="r", LRM2="r", MM="r", SM3="r", ECM1="y", ECM2="y", ECM3="y", AMS1="y", AMS2="y", ShAmp1="y", ShAmp2="y",
+	EngAmp1="y", EngAmp2="y"},
+	unused={TieFly_pir0=1, Stormcrow_mk2_pir0=1, Cleaner_mk2_pir0=1}, boss={Panthera_pir0=1, Puma_pir0=1},
+	-- The captured pools of step 1 (fits-spec 3.3), the reference for fits_new 0.
+	cap1={Bident_pir1={"Hatchet_pir1"}, Brigand_pir1={"Yari_pir1"}, Hatchet_pir1={"Bident_pir1"}, Yari_pir1={"Brigand_pir1"}}};
+end;
+
+-- Captured ship of row r (rk 1) for selector sel at pool level nw: the copy, its index and the new fit name or nil.
+function FT_Cap(r, sel, nw)
+	local out, cj, dr = TRF_FtRow(r, 0, sel, 1, nw);
+	local nm = nil;
+	if dr and cj then nm = dr[cj]; end;
+	return out, cj, nm;
+end;
+
+-- First phase start leg 1..4000 and flight index of system nm (haunt power) whose captured ship is a new fit (hull 1: on
+-- an unused hull, else on an existing hull). Returns pt, i, the roll record, the graded row, the new fit name, its index.
+function FT_FindNew(nm, hull)
+	local d = HA_Data(nm);
+	local dp = TRF_StrRow(TRF_EffTier(V_Idx(nm))).dp;
+	local N = TRF_FtD().new;
+	for pt = 1, 4000 do
+		local G = FT_Grades(nm, pt);
+		for i = 1, getn(d.f) do
+			local R = G[i];
+			if R and R.c then
+				local tab, form, ri = TRF_FtTab(d.f[i].t, d.f[i].p + dp);
+				local row, cj, dr = TRF_FtRow(tab[ri], R.g, R.sel, 1, R.nw);
+				if dr and cj and ((hull == 1) == (N[dr[cj]].h == 1)) then return pt, i, R, row, dr[cj], cj; end;
+			end;
+		end;
+	end;
+	return nil;
+end;
+
+function T_FT_G()
+	FT_Begin("xb13");
+	local D = TRF_FtD();
+	local S2 = FT_S2();
+	-- Every new fit: a bare pirate carcass, known modules, at most the holders of each kind, the h / b flags.
+	local okh, nn, bad = 1, 0, "";
+	for nm, e in D.new do
+		nn = nn + 1;
+		local H = S2.hold[e.c];
+		local cnt = {b=0, s=0, r=0, y=0};
+		if not H or D.bare[e.c] ~= 1 or type(e.m) ~= "table" or getn(e.m) == 0 or not D.val[nm] then
+			okh = nil; bad = bad.." "..nm;
+		else
+			for k = 1, getn(e.m) do
+				local q = S2.kind[e.m[k]];
+				if not q then okh = nil; bad = bad.." "..nm..":"..e.m[k]; else cnt[q] = cnt[q] + 1; end;
+			end;
+			for q, v in cnt do if v > H[q] then okh = nil; bad = bad.." "..nm..":"..q; end; end;
+		end;
+		if (e.h == 1) ~= (S2.unused[e.c] == 1) or (e.b == 1) ~= (S2.boss[e.c] == 1) then okh = nil; bad = bad.." flag:"..nm; end;
+	end;
+	HOST_Check(okh and nn == 14, "14 new fits, each on a bare pirate carcass within its holders, unused hulls h=1, boss hulls b=1"..bad);
+	-- Pools: every entry within 5 %; every new fit but the boss fits in a pool, the boss fits in none; no new fit is a pool
+	-- key or in the up / dn maps (R1, R3).
+	local inp, okp = {}, 1;
+	for k, alt in D.cap do
+		if D.new[k] then okp = nil; end;
+		for q = 1, getn(alt) do
+			if abs(D.val[alt[q]] - D.val[k]) > 0.05 * D.val[k] then okp = nil; end;
+			inp[alt[q]] = 1;
+		end;
+	end;
+	for nm, e in D.new do
+		if (e.b == 1 and inp[nm]) or (e.b ~= 1 and not inp[nm]) then okp = nil; bad = bad.." pool:"..nm; end;
+	end;
+	for k, v in D.up do if D.new[k] or D.new[v] then okp = nil; end; end;
+	for k, v in D.dn do if D.new[k] or D.new[v] then okp = nil; end; end;
+	HOST_Check(okp and D.new.Panthera_pir1.b == 1 and D.new.Puma_pir1.b == 1, "pools within 5 %; new fits only as pool entries, boss fits in no pool or map"..bad);
+	-- The XT band (NORMAL powers 7-16, rows 6-13): every fighter row and the bomber rows with an EvilEye_pir1 (11-13; rows
+	-- 6-10 carry Hammerhead, Hatchet, Excalibur and Bident) get a captured new fit for some selector; step 1 had pools in
+	-- fighter rows 7, 8 only.
+	local fr, br = 0, 0;
+	for r = 6, 13 do
+		local hf, hb = nil, nil;
+		for sel = 0, 99 do
+			local a, j, nm = FT_Cap(Pir_Fighters[r], sel, 1);
+			if nm then hf = 1; end;
+			a, j, nm = FT_Cap(Pir_Bombers[r], sel, 1);
+			if nm then hb = 1; end;
+		end;
+		if hf then fr = fr + 1; end;
+		if hb then br = br + 1; end;
+	end;
+	HOST_Check(fr == 8 and br == 3, "XT band: "..fr.." of 8 fighter rows and "..br.." of 8 bomber rows (6-13) can carry a captured new fit");
+	-- R2: the pool selector. nw 0 no new fit, nw 1 no unused hull, nw 2 both; a captured ship is one ship, never a fit
+	-- the row carries, and a new fit enters as its bare carcass.
+	local l0, l1, l2 = TRF_FtLeft(D.cap.Raptor_pir1, {}, 0), TRF_FtLeft(D.cap.Raptor_pir1, {}, 1), TRF_FtLeft(D.cap.Raptor_pir1, {}, 2);
+	local hasT = nil;
+	for q = 1, getn(l2) do if l2[q] == "TieFly_pir1" then hasT = 1; end; end;
+	local noT = 1;
+	for q = 1, getn(l1) do if l1[q] == "TieFly_pir1" then noT = nil; end; end;
+	HOST_Check(getn(l0) == 0 and getn(l1) == 3 and noT and getn(l2) == 4 and hasT, "pool filter: nw 0 none, nw 1 no unused hull, nw 2 with TieFly_pir1");
+	local okr, nh1, nh2, nbare = 1, 0, 0, 1;
+	for r = 1, 20 do
+		local tb = {Pir_Fighters[r], Pir_Bombers[r]};
+		for q = 1, 2 do
+			for sel = 0, 99 do
+				local o1, j1, m1 = FT_Cap(tb[q], sel, 1);
+				local o2, j2, m2 = FT_Cap(tb[q], sel, 2);
+				if m1 and D.new[m1].h == 1 then okr = nil; end;
+				if m1 then nh1 = nh1 + 1; end;
+				if m2 and D.new[m2].h == 1 then nh2 = nh2 + 1; end;
+				if m2 and o2[j2][1] ~= D.new[m2].c then nbare = nil; end;
+				local diff = 0;
+				for k = 1, getn(tb[q]) do if o2[k][1] ~= tb[q][k][1] then diff = diff + 1; end; end;
+				if (j2 and diff ~= 1) or (not j2 and diff ~= 0) then okr = nil; end;
+			end;
+		end;
+	end;
+	HOST_Check(okr and nbare and nh1 > 0 and nh2 > 0, "nw 1 never an unused hull ("..nh1.." new-fit picks), nw 2 picks one ("..nh2..
+		"); one ship at most, the bare carcass in the row");
+	-- The roll: pool 1 at tiers 1-2, 2 at tiers 3-4 exactly when r3 < fits_hull_pct (50); r3 is the hash at i + 192, salt + 3.
+	local gs, gi = FT_Clan("golkonda", 3, 99);
+	local pt = 77;
+	local okn, n34, h34 = 1, 0, 0;
+	for t = 1, 4 do
+		for i = 1, 1000 do
+			local R = TRF_FtRoll(gi, i, pt, gs, 1, t);
+			if R.r3 ~= TRF_FtHash(gi, i + 192, pt, 4) then okn = nil; end;
+			if t <= 2 and R.nw ~= 1 then okn = nil; end;
+			if t >= 3 then
+				n34 = n34 + 1;
+				if (R.nw == 2) ~= (R.r3 < 50) then okn = nil; end;
+				if R.nw == 2 then h34 = h34 + 1; end;
+			end;
+		end;
+	end;
+	HOST_Check(okn and h34 >= 0.45 * n34 and h34 <= 0.55 * n34, "pool level: 1 at tiers 1-2, 2 at tiers 3-4 iff r3 < 50 ("..h34.." of "..n34..")");
+	-- A Boom clan (tier 2): no phase start of Golkonda places an unused hull; a Raids clan (tier 4): one does.
+	FT_Clan("golkonda", 1, 30);
+	local b2 = FT_FindNew("golkonda", 1);
+	local n2 = FT_FindNew("golkonda", 0);
+	FT_Clan("golkonda", 3, 99);
+	local b4 = FT_FindNew("golkonda", 1);
+	HOST_Check(b2 == nil and n2 ~= nil and b4 ~= nil, "tier 2: new fits on existing hulls only, never an unused hull; tier 4: unused hulls appear");
+	-- Tune: fits_hull_pct 0 / 100 and the clamps; fits_new 0 gives pool level 0.
+	HA_Tune("fits_hull_pct", 0);
+	local z0 = 1;
+	for i = 1, 300 do if TRF_FtRoll(gi, i, pt, gs, 1, 4).nw ~= 1 then z0 = nil; end; end;
+	HA_Tune("fits_hull_pct", 100);
+	local z1 = 1;
+	for i = 1, 300 do if TRF_FtRoll(gi, i, pt, gs, 1, 4).nw ~= 2 then z1 = nil; end; end;
+	HA_Tune("fits_hull_pct", 150); HA_Tune("fits_new", 7);
+	local T1 = TRF_FtTune();
+	HA_Tune("fits_hull_pct", -5); HA_Tune("fits_new", -1);
+	local T2 = TRF_FtTune();
+	HOST().cfg.tune = {};
+	local T0 = TRF_FtTune();
+	HOST_Check(z0 and z1 and T1.fits_hull_pct == 100 and T1.fits_new == 1 and T2.fits_hull_pct == 0 and T2.fits_new == 0
+		and T0.fits_hull_pct == 50 and T0.fits_new == 1 and TRF_Tune().fits_hull_pct == 50, "fits_hull_pct 0 / 100, clamps 0..100 and 0..1, defaults 50 and 1");
+	-- The gate (quest-gated visit): pool level 0, so no new fit and no dress for any row and selector.
+	local okg = 1;
+	for i = 1, 200 do if TRF_FtRoll(gi, i, pt, gs, 41, 4, 1).nw ~= 0 then okg = nil; end; end;
+	for r = 1, 20 do
+		for sel = 0, 99 do
+			local a, j, nm = FT_Cap(Pir_Fighters[r], sel, 0);
+			local b, k, nb = FT_Cap(Pir_Bombers[r], sel, 0);
+			if nm or nb then okg = nil; end;
+		end;
+	end;
+	HOST_Check(okg, "gate rolls: pool level 0, existing fits only, no dress");
+	-- fits_new 0: the step 1 rows for every row and selector (data with the step 1 pools as the reference).
+	HA_Tune("fits_new", 0);
+	local okz = 1;
+	for i = 1, 100 do if TRF_FtRoll(gi, i, pt, gs, 1, 4).nw ~= 0 then okz = nil; end; end;
+	local cur = {};
+	for r = 1, 20 do
+		for sel = 0, 99 do
+			local a, j, nm = FT_Cap(Pir_Fighters[r], sel, 0);
+			local b, k, nb = FT_Cap(Pir_Bombers[r], sel, 0);
+			cur[r * 100 + sel] = FT_Names(a).."/"..tostring(j).."|"..FT_Names(b).."/"..tostring(k);
+			if nm or nb then okz = nil; end;
+		end;
+	end;
+	local h = TRF_H();
+	local D1 = {up=D.up, dn=D.dn, cap=S2.cap1, val=D.val, bare=D.bare};
+	h.ftd = D1;
+	for r = 1, 20 do
+		for sel = 0, 99 do
+			local a, j = TRF_FtRow(Pir_Fighters[r], 0, sel, 1);
+			local b, k = TRF_FtRow(Pir_Bombers[r], 0, sel, 1);
+			if cur[r * 100 + sel] ~= FT_Names(a).."/"..tostring(j).."|"..FT_Names(b).."/"..tostring(k) then okz = nil; end;
+		end;
+	end;
+	h.ftd = nil;
+	HOST().cfg.tune = {};
+	HOST_Check(okz, "fits_new 0: pool level 0 and the captured rows of the step 1 pools for every row and selector");
+	-- Shares (info for spec 14.4): over phase starts 1..400 of four haunt systems at Raids score 99 (tier 4) and Boom score
+	-- 30 (tier 2), the flights whose captured ship is a new fit on an existing hull and those with an unused hull.
+	local sy = {"golkonda", "xb13", "escaflon", "xt54"};
+	for q = 1, 2 do
+		local nf, nn, nu = 0, 0, 0;
+		for k = 1, getn(sy) do
+			if q == 1 then FT_Clan(sy[k], 3, 99); else FT_Clan(sy[k], 1, 30); end;
+			local dk = HA_Data(sy[k]);
+			local dp = TRF_StrRow(TRF_EffTier(V_Idx(sy[k]))).dp;
+			for p2 = 1, 400 do
+				local G = FT_Grades(sy[k], p2);
+				for i = 1, getn(dk.f) do
+					local R = G[i];
+					if R then
+						nf = nf + 1;
+						if R.c then
+							local tab, form, ri = TRF_FtTab(dk.f[i].t, dk.f[i].p + dp);
+							local o, j, dr = TRF_FtRow(tab[ri], R.g, R.sel, 1, R.nw);
+							if dr and j then
+								if D.new[dr[j]].h == 1 then nu = nu + 1; else nn = nn + 1; end;
+							end;
+						end;
+					end;
+				end;
+			end;
+		end;
+		print(format("HOST info fits step 2 shares (%s): %d graded flights, new fit on an existing hull %.2f %%, unused hull %.2f %%",
+			q == 1 and "tier 4" or "tier 2", nf, 100 * nn / nf, 100 * nu / nf));
+		if q == 2 then HOST_Check(nu == 0, "tier 2 share: no unused hull in "..nf.." flights"); end;
+	end;
+	FT_Clan("golkonda", 3, 99);
+	-- The roll line carries pool= (old, new, hull).
+	local n0 = S_Mark();
+	TRF_Ft_Grade(gi, 1, "haunt", "x1", 2);
+	TRF_Ft_Grade(gi, 1, "gate", "x2", 4, 1);
+	HOST_Check(S_Logs(n0, "flight=x1 source=haunt") == 1 and HA_Kv(S_Line(n0, "flight=x1 "), "pool") == "new"
+		and HA_Kv(S_Line(n0, "flight=x2 "), "pool") == "old" and TRF_FtPool(2) == "hull", "event=roll pool=new at tier 2, old in a gate roll, hull for level 2");
+end;
+
+-- h: build and dress -------------------------------------------------------------------------------------------------
+
+-- Index of the first log line after n0 with pat, or nil.
+function FT_At(n0, pat)
+	local q = HOST().logs;
+	for i = n0 + 1, getn(q) do if strfind(q[i], pat, 1, 1) then return i; end; end;
+	return nil;
+end;
+
+-- Modules fitted on ship s (the stub's list) joined with ",".
+function FT_Mods(s)
+	local x = "";
+	if type(s) == "table" and type(s.modl) == "table" then
+		for k = 1, getn(s.modl) do if k > 1 then x = x..","; end; x = x..s.modl[k]; end;
+	end;
+	return x;
+end;
+
+function FT_Join(l)
+	local x = "";
+	for k = 1, getn(l) do if k > 1 then x = x..","; end; x = x..l[k]; end;
+	return x;
+end;
+
+function T_FT_H()
+	local h = HOST();
+	FT_Begin("xb13");
+	local D = TRF_FtD();
+	local gs, gi = FT_Clan("golkonda", 3, 99);
+	local d = HA_Data("golkonda");
+	-- A captured new fit on an existing hull through the haunt build (NewAllFlight with the bare carcass name), dressed by
+	-- AddModule right after the build and before the flight's call line.
+	local pt, i, R, row, nm, cj = FT_FindNew("golkonda", 0);
+	HOST_Check(pt ~= nil, "a phase start with a captured new fit in Golkonda (Raids, score 99)");
+	if not pt then return; end;
+	local e = D.new[nm];
+	local sign = d.f[i].s;
+	TRF.rg[gs].pt = pt;
+	local n0 = S_Mark();
+	local m0 = getn(h.mods);
+	HA_Jump("golkonda");
+	local nf = h.nafs[sign];
+	local s = getglobal("ship_"..sign.."_"..cj);
+	local want = "module=fits event=dress system=golkonda flight="..sign.." ship="..cj.." fit="..nm.." carcass="..e.c.." hull=false modules="..getn(e.m)
+		.." ok="..getn(e.m).." failed=none";
+	HOST_Check(nf and nf.row[cj][1] == e.c and FT_Names(nf.row) == FT_Names(row) and s and s.tpl == e.c and FT_Mods(s) == FT_Join(e.m),
+		"captured "..nm.." built as the bare "..e.c.." in NewAllFlight, its modules fitted in order: "..FT_Mods(s));
+	local ad, ac = FT_At(n0, want), FT_At(n0, "module=haunt event=call sign="..sign.." ");
+	HOST_Check(S_Logs(n0, want) == 1 and ad and ac and ad < ac and getn(h.mods) - m0 == getn(e.m)
+		and S_Logs(n0, "new_fit="..nm) == 1, "event=dress ok="..getn(e.m).." failed=none before the flight's call line; one AddModule per module");
+	local ch = strsub(TRF.nv.e or "", i, i);
+	HOST_Check((ch == "3" or ch == "4" or ch == "5") and HA_Kv(HA_Line(n0, "module=haunt event=activate "), "fielded") == "10"
+		and HA_Kv(HA_Line(n0, "module=haunt event=activate "), "failed") == "0", "grade digit "..ch.." (captured +3), ten flights fielded, none failed");
+	-- A nil AddModule return: logged at level 1 with the first failing module, the rest still fitted, no retry, the ship kept.
+	HA_Jump("xb13");
+	TRF.haunt = nil;
+	TRF.clan[gs].sc = 99;
+	HA_Set("log", 1);
+	h.am_nil = {};
+	h.am_nil[e.m[2]] = 1;
+	n0 = S_Mark();
+	m0 = getn(h.mods);
+	HA_Jump("golkonda");
+	s = getglobal("ship_"..sign.."_"..cj);
+	local fl = "module=fits event=dress system=golkonda flight="..sign.." ship="..cj.." fit="..nm.." carcass="..e.c.." hull=false modules="..getn(e.m)
+		.." ok="..(getn(e.m) - 1).." failed="..e.m[2];
+	HOST_Check(S_Logs(n0, fl) == 1 and getn(h.mods) - m0 == getn(e.m) and s and s.alive and s.tpl == e.c and getn(s.modl or {}) == getn(e.m) - 1
+		and HA_Kv(HA_Line(n0, "module=haunt event=activate "), "fielded") == "10", "AddModule nil for "..e.m[2]..": failed= logged at log 1, no retry, the ship flies partly dressed");
+	h.am_nil = nil;
+	HA_Jump("xb13");
+	TRF.haunt = nil;
+	TRF.clan[gs].sc = 99;
+	n0 = S_Mark();
+	HA_Jump("golkonda");
+	HOST_Check(S_Logs(n0, "module=fits event=dress ") == 0 and getn(getglobal("ship_"..sign.."_"..cj).modl or {}) == getn(e.m), "a clean dress is level 2 (no line at log 1)");
+	HA_Set("log", 2);
+	-- An unused hull at tier 4: hull=true on the dress line, the flight's roll line has tier=4 pool=hull.
+	HA_Jump("xb13");
+	TRF.haunt = nil;
+	TRF.clan[gs].sc = 99;
+	local hp, hi, HR, hrow, hnm, hj = FT_FindNew("golkonda", 1);
+	HOST_Check(hp ~= nil, "a phase start with an unused hull in Golkonda");
+	if hp then
+		TRF.rg[gs].pt = hp;
+		n0 = S_Mark();
+		HA_Jump("golkonda");
+		local hs = d.f[hi].s;
+		local he = D.new[hnm];
+		local sh = getglobal("ship_"..hs.."_"..hj);
+		HOST_Check(S_Logs(n0, "module=fits event=dress system=golkonda flight="..hs.." ship="..hj.." fit="..hnm.." carcass="..he.c.." hull=true ") == 1
+			and S_Logs(n0, "module=fits event=roll system=golkonda flight="..hs.." source=haunt score=99 tier=4 ") == 1
+			and HA_Kv(S_Line(n0, "event=roll system=golkonda flight="..hs.." "), "pool") == "hull" and sh and sh.tpl == he.c and FT_Mods(sh) == FT_Join(he.m),
+			"unused hull "..hnm.." ("..he.c..") at tier 4: hull=true, roll line tier=4 pool=hull");
+	end;
+	-- TRF_FtDress directly: a mocked ship global, a missing ship, an unknown fit, a FALSE return and an AddModule error.
+	local mk = {n=0, AddModule=function(self, m) self.n = self.n + 1; if m == "ECM1" then return FALSE; end; if m == "EngAmp1" then error("x"); end; return m; end};
+	setglobal("ship_ftx_2", mk);
+	n0 = S_Mark();
+	local nb = TRF_FtDress("ftx", {[2]="Tiger_pir3"}, "golkonda", "ftx");
+	local nb2 = TRF_FtDress("ftx", {[3]="Tiger_pir3", [2]="Nope_pir9"}, "golkonda", "ftx");
+	setglobal("ship_ftx_2", nil);
+	HOST_Check(nb == 1 and mk.n == 4 and S_Logs(n0, "event=dress system=golkonda flight=ftx ship=2 fit=Tiger_pir3 carcass=Tiger_pir0 hull=false modules=4 ok=2 failed=ECM1") == 1
+		and nb2 == 2 and S_Logs(n0, "ship=3 fit=Tiger_pir3 carcass=Tiger_pir0 hull=false modules=4 ok=0 failed=no_ship") == 1
+		and S_Logs(n0, "ship=2 fit=Nope_pir9 carcass=? hull=false modules=0 ok=0 failed=no_data") == 1 and S_Logs(n0, "event=error") == 0,
+		"dress: FALSE and an error count as failed (no retry), a missing ship no_ship, an unknown fit no_data");
+	-- The raid path: a captured new fit in a T4 raid row, built by TRF_PirFlight and dressed there; a maxn trim that drops
+	-- the captured ship dresses nothing; the local builder (no TRF_BuildFlight) dresses by its ship list too.
+	local tm = CreateTeam("Pirates");
+	TRF_GRaid_7 = tm:CreateGroup("TRF_Raid_7");
+	local row0 = TRF_Rd_PirRow(4, 14, 1, nil, nil);
+	local rn, rR, rj, rnm = nil, nil, nil, nil;
+	for n = 1, 3000 do
+		if not rn then
+			local Q = TRF_FtRoll(gi, 2 * n + 1, TRF.rg[gs].pt, gs, TRF_FtK().salt_raid, 4);
+			if Q.c then
+				local o, j, dr = TRF_FtRow(row0, Q.g, Q.sel, nil, Q.nw);
+				if dr and j and j > 1 then rn = n; rj = j; rnm = dr[j]; end;
+			end;
+		end;
+	end;
+	HOST_Check(rn ~= nil, "a T4 raid flight number with a captured new fit (not the lead)");
+	if rn then
+		local gr = TRF_Ft_Grade(gi, 2 * rn + 1, "raid", "raid_"..rn.."_1", 4);
+		local re = D.new[rnm];
+		n0 = S_Mark();
+		local rf = TRF_PirFlight(4, 14, "TRF_GRaid_7", "trf_rd_h", Vector3(100, 0, 100), Vector3(0, 0, 1), 1, nil, nil, gr);
+		HOST_Check(rf and rf.ships[rj].tpl == re.c and FT_Mods(rf.ships[rj]) == FT_Join(re.m)
+			and S_Logs(n0, "module=fits event=dress system=golkonda flight=raid_"..rn.."_1 ship="..rj.." fit="..rnm.." ") == 1,
+			"raid: "..rnm.." built bare in the raid row, dressed by TRF_PirFlight, the dress line names the raid flight");
+		if rf then rf:Delete(); end;
+		n0 = S_Mark();
+		local rt = TRF_PirFlight(4, 14, "TRF_GRaid_7", "trf_rd_h", Vector3(100, 0, 100), Vector3(0, 0, 1), 1, rj - 1, nil, gr);
+		HOST_Check(rt and getn(rt.ships) == rj - 1 and S_Logs(n0, "module=fits event=dress ") == 0, "raid maxn trim below the captured ship: no dress");
+		if rt then rt:Delete(); end;
+		local ob = TRF_BuildFlight;
+		TRF_BuildFlight = nil;
+		n0 = S_Mark();
+		local rl = TRF_PirFlight(4, 14, "TRF_GRaid_7", "trf_rd_h", Vector3(100, 0, 100), Vector3(0, 0, 1), 1, nil, nil, gr);
+		TRF_BuildFlight = ob;
+		HOST_Check(rl and FT_Mods(rl.ships[rj]) == FT_Join(re.m) and S_Logs(n0, "ok="..getn(re.m).." failed=none") == 1, "raid fallback builder: dressed by its ship list");
+		if rl then rl:Delete(); end;
+	end;
+	TRF_GRaid_7 = nil;
+	-- fits 0 at the same phase start: no roll or dress line, no AddModule, the haunt call lines byte-identical to a run
+	-- without trf_fits and the same RAND draws.
+	HA_Jump("xb13");
+	TRF.haunt = nil;
+	TRF.clan[gs].sc = 99;
+	TRF.rg[gs].pt = pt;
+	HA_Set("fits", 0);
+	n0 = S_Mark();
+	m0 = getn(h.mods);
+	h.seed = 99; local r0 = h.rand;
+	HA_Jump("golkonda");
+	local L0, d0 = FT_Lines(n0, "module=haunt event=call "), h.rand - r0;
+	local z = S_Logs(n0, "module=fits event=dress") + S_Logs(n0, "module=fits event=roll") + getn(h.mods) - m0;
+	HA_Jump("xb13");
+	TRF.haunt = nil;
+	TRF.clan[gs].sc = 99;
+	local ofn = TRF_Ft_Haunt;
+	n0 = S_Mark();
+	h.seed = 99; r0 = h.rand;
+	HA_Jump("golkonda", {pre=function() TRF_Ft_Haunt = nil; end});
+	local L1, d1 = FT_Lines(n0, "module=haunt event=call "), h.rand - r0;
+	TRF_Ft_Haunt = ofn;
+	HOST_Check(z == 0 and L0 == L1 and L0 ~= "" and d0 == d1, "fits 0: no roll, dress or AddModule; the call lines byte-identical to a run without trf_fits");
+	HA_Set("fits", 1);
+	HA_Jump("xb13");
 end;
 
 -- Dispatch ---------------------------------------------------------------------------------

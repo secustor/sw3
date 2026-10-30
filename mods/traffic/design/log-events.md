@@ -98,23 +98,25 @@ The scripts (`Data/Scripts/Mods/Traffic/*.script`) are the source of truth.
 
 ## fits (`trf_fits.script`; `TRF_FtE`, `TRF_FtDE`)
 
-Pirate fit variety, step 1 (`design/fits-spec.md` 8). `flight` is the haunt sign, `raid_<n>_<f>` or the garrison sign
-`trf_pb_<idx>_<j>`; `source` haunt, raid, base or gate; `up` / `down` the elite and scrap chances in %; `grade` 1 elite, -1
-scrap, 0 normal.
+Pirate fit variety, steps 1 and 2 (`design/fits-spec.md` 8, 14.7). `flight` is the haunt sign, `raid_<n>_<f>` or the
+garrison sign `trf_pb_<idx>_<j>`; `source` haunt, raid, base or gate; `up` / `down` the elite and scrap chances in %;
+`grade` 1 elite, -1 scrap, 0 normal; `pool` the captured pool level (old: existing fits only, new: new fits too, hull:
+also the unused hulls).
 
 | Event | Example line | Level |
 |---|---|---|
-| `roll` | `module=fits event=roll system=golkonda flight=Pirate01 source=haunt score=62 tier=3 up=1 down=0 roll=94 grade=0 captured_roll=false` (`captured_roll`: the captured hash hit; a ship is placed only in a row with a pool, see `row`) | 2; 1 for an elite or scrap flight |
-| `row` | `module=fits event=row system=xb13 flight=pir07 grade=1 captured_ship=0 before=EvilEye_pir2,Tiger_pir1,Cleaner_pir1,EvilEye_pir1 after=Gunslinger_pir1,Gunslinger_pir1,Tiger_pir1,Gunslinger_pir1` (the graded copy; `captured_ship` its index or 0) | 2; 1 with a captured ship |
+| `roll` | `module=fits event=roll system=golkonda flight=Pirate01 source=haunt score=62 tier=3 up=1 down=0 roll=94 grade=0 captured_roll=false pool=new` (`captured_roll`: the captured hash hit; a ship is placed only in a row with a pool, see `row`; `pool=old` in a gate roll or with tune `fits_new` 0, `hull` at tiers 3-4 when the sub-roll passes) | 2; 1 for an elite or scrap flight |
+| `row` | `module=fits event=row system=xb13 flight=pir07 grade=1 captured_ship=0 before=EvilEye_pir2,Tiger_pir1,Cleaner_pir1,EvilEye_pir1 after=Gunslinger_pir1,Gunslinger_pir1,Tiger_pir1,Gunslinger_pir1 new_fit=none` (the graded copy; `captured_ship` its index or 0; a captured new fit shows its bare carcass in `after` and its name in `new_fit`) | 2; 1 with a captured ship |
+| `dress` | `module=fits event=dress system=golkonda flight=Pirate03 ship=3 fit=Stormcrow_pir3 carcass=Stormcrow_pir0 hull=false modules=4 ok=4 failed=none` (a captured new fit dressed by AddModule right after the build; `hull=true` an unused hull; `failed` the first module whose AddModule returned nil or FALSE or raised an error, `no_ship`, `no_data`) | 2; 1 when `failed` is not none |
 | `skip` | `module=fits event=skip system=golkonda flight=Pirate01 reason=off` (`pinned`, `type3`, `data`, `cap`: a captured roll on a row without a pool) | 2 |
 | `skip` | `module=fits event=skip system=kadi reason=gate via=fits_gate` (`via=scan`: the quest scan's deny list) | 2 |
 | `kill` | `module=fits event=kill system=golkonda index=2 flight=Pirate02 grade=1 score_cost=3 mine=true` (an elite haunt flight destroyed) | 1 |
 | `gate` | `module=fits event=gate system=kadi built=2` (end of a quest-gated visit's calls: captured flights built) | 1 |
 | `test` | `module=fits event=test name=Panthera_pir0 step=create result=ok x=-550 z=150` (debug `fits_test`) | 1 |
 | `test` | `module=fits event=test name=Panthera_pir0 step=hull bare=true hp=1000` | 1 |
-| `test` | `module=fits event=test name=Panthera_pir0 step=add_module module=PC2 ret=nil hp=1000` (`ret=error` when the call failed) | 1 |
+| `test` | `module=fits event=test name=Panthera_pir0 step=add_module module=PC2 ret=PC2 hp=1000` (`ret` the return value, the module name on success (E-BB1); `ret=error` when the call failed) | 1 |
 | `test` | `module=fits event=test name=Panthera_pir0 step=read result=ok tpl=Panthera_pir0 cls=6 hp=588 hpmax=600 alive=true` (2 s later; `result=not_found why=`, `no_native`; `step=position result=failed`; `step=create result=skipped reason=scene|no_pilots`) | 1 |
-| `dump` | `module=fits event=dump on=true gate=0 elite_max=5 cap_pct=5 grades=0100000100` (`grades` the saved `TRF.nv.e` or none) | 1 |
+| `dump` | `module=fits event=dump on=true gate=0 elite_max=5 cap_pct=5 new=1 hull_pct=50 grades=0100000100` (`grades` the saved `TRF.nv.e` or none; `new`, `hull_pct` the tune keys `fits_new`, `fits_hull_pct`) | 1 |
 | `error` | `module=fits event=error message=<m>` | 1 |
 
 ## state (`trf_state.script`; `TRF_StE`, `TRF_StDE`)

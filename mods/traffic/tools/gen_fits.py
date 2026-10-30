@@ -13,9 +13,26 @@ Data written between the BEGIN/END markers of trf_fits.script (CRLF kept):
   hulls to small-gun hulls, by the holder class of the fit's guns).
 - cap: per fit the captured alternatives: every other fit of a Pir_Fighters/Pir_Bombers row whose gear value (sum of
   module costs) is within +-TOL of the fit's value.
-- val: the gear value per fit; bare: the *_pir0 carcasses (debug cfg fits_test builds these with AddModule).
+- val: the gear value per fit (new fits included); bare: the *_pir0 carcasses (debug cfg fits_test builds these with
+  AddModule).
+- new (step 2, spec 14): the new pirate fits of the hand table NEW, name -> {c = bare *_pir0 carcass, m = module list in
+  AddModule order, h = 1 on an unused hull (TieFly_pir0, Stormcrow_mk2_pir0, Cleaner_mk2_pir0), b = 1 for a boss fit
+  (Panthera_pir0, Puma_pir0; in no pool, map or roll)}. cap is widened: every new fit that is not a boss fit joins the
+  pool of each row fit whose value it matches within +-TOL (after the existing entries, sorted by name). New fits get
+  no pool of their own (they are never replaced) and are in no up or dn map (rule R1).
 
-Checks (exit 1 on any, also without --check): a name missing in ShipDescriptions.xml or Carcasses.xml, a map whose
+Holder rule (derived from the clone's vanilla fits: every one of the 363 ShipDescriptions on an Interceptor carcass
+satisfies it, and the tool fails when one does not): Carcasses.xml HolderProperties gives a count per holder kind and
+no size. A module takes the holder kind of its Modules.xml class: SimpleBigGun and LaserGun (LC, PLC, RG, PrecC) big_guns,
+SmallGun small_guns, HomingRocket, SimpleRocket, MultiRocket and MIRVModule rockets, TurretModule turrets, TurretGK
+gk_turrets, CommonGK and LaserGK gk_guns, every other class systems. A fit is valid when, per kind, it carries at most
+as many modules as the carcass has holders of that kind. "Size" is the kind: a big gun never sits in a small-gun holder
+(LaserGun as small_guns would break 63 vanilla fits); module grade is not bound to the hull level (Excalibur_Lastochka1,
+L1, carries ShAmp5).
+
+Checks (exit 1 on any, also without --check): a new fit whose name exists in ShipDescriptions.xml, whose carcass is
+not a *_pir0 Interceptor, whose module is unknown or that breaks the holder rule, a new fit in a map, a boss fit in a pool,
+a vanilla fit that breaks the holder rule, a name missing in ShipDescriptions.xml or Carcasses.xml, a map whose
 level or family is wrong, a captured pool outside the tolerance, a fit of a row without an up or dn entry where a level
 exists (warning only), and the value budget: for every haunt system x region phase sample x base state (none, and P / A
 in base allow-list systems) the expected loot value of the plan with the grade chances against the vanilla plan on the
@@ -62,6 +79,34 @@ DN = {
 }
 # Unused pirate hulls: not used in step 1 (spec 2); the generator checks that no map or pool names them.
 UNUSED = {"TieFly_pir0", "Stormcrow_mk2_pir0", "Cleaner_mk2_pir0", "Panthera_pir0", "Puma_pir0"}
+# Step 2 (spec 14): of the unused hulls, these enter as rare captured ships (h=1, rule R2); the boss hulls only carry
+# boss fits (b=1, rule R3, decision D3).
+HULL = {"TieFly_pir0", "Stormcrow_mk2_pir0", "Cleaner_mk2_pir0"}
+BOSS = {"Panthera_pir0", "Puma_pir0"}
+
+# New fits (step 2, spec 14.2): name -> (bare carcass, modules in AddModule order). The user's examples of 2026-10-30
+# with the value fixes of spec 14.8 (guns kept; one system or rocket changed so that the fit lands within +-TOL of a
+# row fit), plus Cleaner_mk2_pir1 in the same style. Panthera_pir1 / Puma_pir1 are the boss fits of step 3.
+NEW = {
+    "Stormcrow_pir2": ("Stormcrow_pir0", ["HC2", "SRM2", "AMS2", "ShAmp2"]),
+    "Stormcrow_pir3": ("Stormcrow_pir0", ["LC1", "SRM2", "ECM3", "ShAmp2"]),
+    "Cleaner_pir2": ("Cleaner_pir0", ["HC2", "HC2", "ECM2", "ShAmp2"]),
+    "Cleaner_pir3": ("Cleaner_pir0", ["PC1", "VC1", "ECM3", "EngAmp2"]),
+    "Raptor_pir2": ("Raptor_pir0", ["AC1", "AC1", "CG1", "CG1", "ECM2"]),
+    "Hammerhead_pir2": ("Hammerhead_pir0", ["AC1", "AC1", "LRM1", "MM", "ShAmp1"]),
+    "TieFly_pir1": ("TieFly_pir0", ["AC1", "AC1", "SRM1", "ShAmp1"]),
+    "Stormcrow_mk2_pir1": ("Stormcrow_mk2_pir0", ["VC2", "HC2", "SRM2", "ECM2"]),
+    "EvilEye_pir4": ("EvilEye_pir0", ["LC2", "SRM2", "ECM2", "ShAmp2"]),
+    "Tiger_pir3": ("Tiger_pir0", ["PC1", "PC1", "ECM1", "EngAmp1"]),
+    "Bident_pir2": ("Bident_pir0", ["AC1", "AC1", "SRM3", "SRM2", "LRM2", "SM3", "ECM1"]),
+    "Cleaner_mk2_pir1": ("Cleaner_mk2_pir0", ["VC2", "PC1", "SRM2", "ECM2", "AMS1", "ShAmp2"]),
+    "Panthera_pir1": ("Panthera_pir0", ["PC2", "VC3", "ECM3", "ShAmp2"]),
+    "Puma_pir1": ("Puma_pir0", ["VC3", "PC1", "LRM2", "ECM3", "ShAmp2"]),
+}
+# Holder kind per Modules.xml class (docstring); every other class takes a system holder.
+KIND = {"SimpleBigGun": "big_guns", "LaserGun": "big_guns", "SmallGun": "small_guns", "HomingRocket": "rockets",
+        "SimpleRocket": "rockets", "MultiRocket": "rockets", "MIRVModule": "rockets", "TurretModule": "turrets",
+        "TurretGK": "gk_turrets", "CommonGK": "gk_guns", "LaserGK": "gk_guns"}
 
 # Strength scale defaults (trf_str TRF_Str_TuneDef) and the fits tune defaults (TRF_Ft_TuneDef).
 STR_UP, STR_DN, STR_UP_T = 60, 20, (25, 50, 75)
@@ -113,7 +158,12 @@ def load(game):
     for cls, name, body in xml_items(rd(os.path.join(g, "Carcasses.xml"))):
         lv = re.search(r"<level>(\d+)</level>", body)
         hp = re.search(r"<hit_points>(\d+)</hit_points>", body)
-        car[name] = {"cls": cls, "lv": int(lv.group(1)) if lv else None, "hp": int(hp.group(1)) if hp else None}
+        hd = {}
+        hm = re.search(r"<HolderProperties>(.*?)</HolderProperties>", body, re.S)
+        if hm:
+            for k, v in re.findall(r"<(\w+)>(\d+)</\1>", hm.group(1)):
+                hd[k] = int(v)
+        car[name] = {"cls": cls, "lv": int(lv.group(1)) if lv else None, "hp": int(hp.group(1)) if hp else None, "h": hd}
     cf = rd(os.path.join(game, "Data", "Scripts", "include", "Create_flight_2.script"))
     rows = {}
     for tab in ("Pir_Fighters", "Pir_Bombers"):
@@ -213,7 +263,61 @@ def flight_value(tier, sc, base, graded):
 
 
 def gear(fit, sd, cost):
+    if fit in NEW:
+        return sum(cost.get(x, 0) for x in NEW[fit][1])
     return sum(cost.get(x, 0) for x in sd.get(fit, (None, []))[1])
+
+
+def holder_bad(mods, carcass, car, mcls):
+    """Holder rule (docstring): the kinds whose module count exceeds the carcass's holders, as text; [] when valid."""
+    h = car.get(carcass, {}).get("h", {})
+    n = {}
+    for x in mods:
+        k = KIND.get(mcls.get(x), "systems")
+        n[k] = n.get(k, 0) + 1
+    return ["%s %d > %d" % (k, n[k], h.get(k, 0)) for k in sorted(n) if n[k] > h.get(k, 0)]
+
+
+def new_fits(cost, mcls, sd, car, fits):
+    """Checks of the NEW table (docstring); returns the new data, the widened pool additions and the problems."""
+    bad, new, add = [], {}, {}
+    for nm, (c, mods) in sorted(NEW.items()):
+        if nm in sd:
+            bad.append("new fit %s: the name exists in ShipDescriptions.xml" % nm)
+        if c not in car or car[c]["cls"] != "Interceptor" or not c.endswith("_pir0"):
+            bad.append("new fit %s: carcass %s is not a *_pir0 Interceptor" % (nm, c))
+            continue
+        for x in mods:
+            if x not in cost:
+                bad.append("new fit %s: module %s not in Modules.xml" % (nm, x))
+        hb = holder_bad(mods, c, car, mcls)
+        if hb:
+            bad.append("new fit %s on %s: holders %s" % (nm, c, ", ".join(hb)))
+        new[nm] = {"c": c, "m": list(mods), "h": 1 if c in HULL else 0, "b": 1 if c in BOSS else 0}
+    for nm in new:
+        if nm in UP or nm in DN or nm in UP.values() or nm in DN.values():
+            bad.append("new fit %s in an up or dn map (rule R1)" % nm)
+    for f in fits:
+        v = gear(f, sd, cost)
+        for nm in sorted(new):
+            if new[nm]["b"] or v <= 0:
+                continue
+            if abs(gear(nm, sd, cost) - v) <= TOL * v:
+                add.setdefault(f, []).append(nm)
+    return new, add, bad
+
+
+def vanilla_holders(sd, car, mcls):
+    """The holder rule holds for every vanilla fit on an Interceptor carcass; returns (count, problems)."""
+    n, bad = 0, []
+    for nm, (c, mods) in sorted(sd.items()):
+        if not c or c not in car or car[c]["cls"] != "Interceptor":
+            continue
+        n += 1
+        hb = holder_bad(mods, c, car, mcls)
+        if hb:
+            bad.append("vanilla fit %s on %s breaks the holder rule: %s" % (nm, c, ", ".join(hb)))
+    return n, bad
 
 
 def build(cost, mcls, sd, car, rows):
@@ -247,16 +351,27 @@ def build(cost, mcls, sd, car, rows):
         alt = [g for g in fits if g != f and v > 0 and abs(gear(g, sd, cost) - v) <= TOL * v]
         if alt:
             pool[f] = alt
+    old = dict((f, list(alt)) for f, alt in pool.items())
+    nvh, vb = vanilla_holders(sd, car, mcls)
+    bad += vb
+    new, add, nb = new_fits(cost, mcls, sd, car, fits)
+    bad += nb
+    for f, alt in add.items():
+        pool[f] = pool.get(f, []) + alt
     for f, alt in pool.items():
         for g in alt:
-            if sd[g][0] in UNUSED:
+            hull = NEW[g][0] if g in NEW else sd[g][0]
+            if hull in UNUSED and not (g in new and new[g]["h"]):
                 bad.append("captured pool %s: unused hull %s" % (f, g))
+            if g in new and new[g]["b"]:
+                bad.append("captured pool %s: boss fit %s (rule R3)" % (f, g))
             if abs(gear(g, sd, cost) - gear(f, sd, cost)) > TOL * gear(f, sd, cost):
                 bad.append("captured pool %s: %s outside +-%d %%" % (f, g, TOL * 100))
-    names = set(fits) | set(UP.values()) | set(DN.values())
+    names = set(fits) | set(UP.values()) | set(DN.values()) | set(new)
     val = dict((f, gear(f, sd, cost)) for f in sorted(names))
     bare = sorted(c for c in car if c.endswith("_pir0") and car[c]["cls"] == "Interceptor")
-    return {"up": UP, "dn": DN, "cap": pool, "val": val, "bare": bare, "fits": fits}, bad, warn
+    return {"up": UP, "dn": DN, "cap": pool, "old": old, "val": val, "bare": bare, "fits": fits, "new": new,
+            "nvh": nvh}, bad, warn
 
 
 def lua_block(D):
@@ -264,7 +379,9 @@ def lua_block(D):
            "-- Pirate fit data (tools/gen_fits.py from the clone's ShipDescriptions.xml, Carcasses.xml, Modules.xml; design/",
            "-- fits-spec.md 3.3): up / dn the elite and scrap maps (one carcass level, same gun family), cap the captured",
            "-- alternatives per fit (another row's fit, gear value within +-5 %), val the gear value (sum of module costs), bare",
-           "-- the pirate interceptor carcasses (debug cfg fits_test builds these bare with AddModule).",
+           "-- the pirate interceptor carcasses (debug cfg fits_test builds these bare with AddModule); new (spec 14) the new fits:",
+           "-- c the bare carcass the row names, m the modules TRF_FtDress fits by AddModule, h 1 an unused hull (tiers 3-4 only),",
+           "-- b 1 a boss fit (in no pool). cap lists the existing fits first, then the new fits (fits_new 0 skips those).",
            "function TRF_FtData()",
            "\treturn {"]
 
@@ -274,7 +391,13 @@ def lua_block(D):
     out.append("\t\tdn={%s}," % kv(D["dn"]))
     out.append("\t\tcap={%s}," % ", ".join("%s={%s}" % (k, ", ".join("\"%s\"" % x for x in D["cap"][k])) for k in sorted(D["cap"])))
     out.append("\t\tval={%s}," % ", ".join("%s=%d" % (k, D["val"][k]) for k in sorted(D["val"])))
-    out.append("\t\tbare={%s}" % ", ".join("%s=1" % k for k in D["bare"]))
+    out.append("\t\tbare={%s}," % ", ".join("%s=1" % k for k in D["bare"]))
+
+    def nf(k):
+        e = D["new"][k]
+        fl = "".join(", %s=1" % x for x in ("h", "b") if e[x])
+        return "%s={c=\"%s\", m={%s}%s}" % (k, e["c"], ", ".join("\"%s\"" % x for x in e["m"]), fl)
+    out.append("\t\tnew={%s}" % ", ".join(nf(k) for k in sorted(D["new"])))
     out.append("\t};")
     out.append("end;")
     out.append(END)
@@ -366,6 +489,40 @@ def value_table(D, rows, sd, cost):
         print("  %-16s %6d -> %s" % (f, D["val"][f], ", ".join("%s %d" % (g, D["val"][g]) for g in D["cap"][f])))
 
 
+def new_table(D, rows, car):
+    """The new-fit table (name, carcass, level, HP, value, nearest row fit, pools joined) and the rows with a pool."""
+    val, new = D["val"], D["new"]
+    fits = D["fits"]
+    print("gen_fits: new fits (spec 14; h unused hull, b boss; holders checked on %d vanilla Interceptor fits)" % D["nvh"])
+    print("  %-19s %-19s %2s %4s %7s  %-24s %s" % ("fit", "carcass", "lv", "hp", "value", "nearest row fit", "pools"))
+    for nm in sorted(new):
+        e = new[nm]
+        c = car.get(e["c"], {})
+        v = val[nm]
+        near = min(fits, key=lambda f: (abs(val[f] - v), f))
+        pools = [f for f in sorted(D["cap"]) if nm in D["cap"][f]]
+        fl = "h" if e["h"] else ("b" if e["b"] else "")
+        print("  %-19s %-19s %2s %4s %7d  %-24s %s %s" % (nm, e["c"], c.get("lv"), c.get("hp"), v,
+              "%s %d (%+.1f%%)" % (near, val[near], 100.0 * (v - val[near]) / val[near]), ", ".join(pools) or "-", fl))
+        print("    modules %s" % " ".join(e["m"]))
+    for tab in ("Pir_Fighters", "Pir_Bombers"):
+        s1, s2 = [], []
+        for i, r in enumerate(rows[tab]):
+            have = set(x[0] for x in r)
+            for pool, out in ((D["old"], s1), (D["cap"], s2)):
+                if any(g not in have for e in r for g in pool.get(e[0], [])):
+                    out.append(i + 1)
+        print("  %s rows with a captured pool entry: step 1 %s; now %s" % (tab, ",".join(map(str, s1)) or "-",
+                                                                         ",".join(map(str, s2)) or "-"))
+    lv = [1, 1, 2, 3, 4, 5, 6, 6, 7, 8, 9, 10, 11, 12, 12, 13, 14, 15, 16, 17]   # NORMAL __tablevel
+    xt = sorted(set(lv[p - 1] for p in range(7, 17)))
+    for tab in ("Pir_Fighters", "Pir_Bombers"):
+        got = [ri for ri in xt if any(g not in set(x[0] for x in rows[tab][ri - 1]) for e in rows[tab][ri - 1]
+                                      for g in D["cap"].get(e[0], []))]
+        print("  %s XT band (NORMAL powers 7-16, rows %d-%d): %d of %d rows with a pool entry" % (
+            tab, xt[0], xt[-1], len(got), len(xt)))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--game", default=GAME)
@@ -379,6 +536,7 @@ def main():
         return 1
     D, bad, warn = build(cost, mcls, sd, car, rows)
     value_table(D, rows, sd, cost)
+    new_table(D, rows, car)
     for w in warn:
         print("gen_fits: note", w)
     bad += budget(a.v)
@@ -400,8 +558,8 @@ def main():
         with open(MODULE, "wb") as f:
             f.write(new.encode("ascii"))
         print("gen_fits: wrote", MODULE)
-    print("gen_fits: %d fits, %d up, %d dn, %d captured pools, %d bare hulls, %s" % (
-        len(D["fits"]), len(D["up"]), len(D["dn"]), len(D["cap"]), len(D["bare"]), "FAIL" if bad else "OK"))
+    print("gen_fits: %d fits, %d up, %d dn, %d captured pools, %d bare hulls, %d new fits, %s" % (
+        len(D["fits"]), len(D["up"]), len(D["dn"]), len(D["cap"]), len(D["bare"]), len(D["new"]), "FAIL" if bad else "OK"))
     return 1 if bad else 0
 
 

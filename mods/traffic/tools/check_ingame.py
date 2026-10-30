@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Score the in-game checks of pirate haunts (E16.1-E16.11), sealed parcels (E-PCL.1-E-PCL.6), trader docking (D-DOCK),
 the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10), the mercenary hire (D-MERC.*, design/merc-spec.md
-11, test plan section 11), the strength scale (D-STR.*, design/strength-spec.md 9), the pirate fits (D-FIT.*, E-BB1,
+11, test plan section 11), the strength scale (D-STR.*, design/strength-spec.md 9), the pirate fits (D-FIT.1-6, E-BB1,
 design/fits-spec.md 11) and the stack leak diagnostic (D-DLL.1) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
@@ -1299,6 +1299,58 @@ def c_fit_gate(ctx):
     return res
 
 
+def c_fit_dress(ctx):
+    res = Res()
+    res.logpart = True
+    dl = ctx.find("fits", "dress")
+    for r in dl:
+        if r.get("failed") != "none" or r.int("ok", -1) != r.int("modules", -2) or r.int("modules", 0) < 1:
+            res.fails.append("%s: a module of the captured new fit was not fitted (failed=%s)" % (r.short(), r.get("failed")))
+    for r in ctx.find("fits", "row"):
+        if r.get("new_fit") not in (None, "none") and not any(
+                d.get("system") == r.get("system") and d.get("fit") == r.get("new_fit") for d in dl):
+            res.fails.append("%s: a captured new fit without a dress line" % r.short())
+    if not dl:
+        res.missing.append("enter haunt systems with FITS=1 LOG=2 until a row line has new_fit=<name> (about 5 % of flights "
+                           "in rows with a Stormcrow, Raptor, Tiger or EvilEye fit): module=fits event=dress")
+    res.ev("dress lines", dl)
+    return res
+
+
+def c_fit_hull(ctx):
+    res = Res()
+    res.logpart = True
+    recs = ctx.recs
+    hd = [r for r in ctx.find("fits", "dress") if r.get("hull") == "true"]
+    pos = dict((id(q), k) for k, q in enumerate(recs))
+    for r in hd:
+        i = pos[id(r)]
+        roll = None
+        for q in reversed(recs[:i]):
+            if q.is_("fits", "roll") and q.get("system") == r.get("system") and q.get("flight") == r.get("flight"):
+                roll = q
+                break
+        if roll is None:
+            res.fails.append("%s: an unused hull without its roll line" % r.short())
+        elif roll.int("tier", 0) < 3 or roll.get("pool") != "hull":
+            res.fails.append("%s: an unused hull from a roll at tier %s pool=%s (R2: tiers 3-4, pool=hull)" % (
+                r.short(), roll.get("tier"), roll.get("pool")))
+    rl = ctx.find("fits", "roll")
+    for q in rl:
+        if q.get("pool") == "hull" and (q.int("tier", 0) < 3 or q.get("source") == "gate"):
+            res.fails.append("%s: pool=hull below tier 3 or in a gate roll" % q.short())
+    t34 = [q for q in rl if q.int("tier", 0) >= 3 and q.get("source") != "gate"]
+    if t34:
+        res.notes.append("R2 share: %d unused hulls in %d tier 3-4 rolls (%.1f %%; host figure 0.7 %% at fits_hull_pct 50)" % (
+            len(hd), len(t34), 100.0 * len(hd) / len(t34)))
+    if not hd:
+        res.missing.append("play Build-up / Raids haunt visits (tier 3-4) with FITS=1 LOG=2 until a dress line has "
+                           "hull=true (about 0.7 % of those flights)")
+    res.ev("unused hulls dressed", hd)
+    res.ev("tier 3-4 rolls", t34)
+    return res
+
+
 def c_bb1(ctx):
     res = Res()
     res.logpart = True
@@ -1391,6 +1443,10 @@ ITEMS = [
     ("D-FIT.3", "an elite kill costs the clan at most 3 score", c_fit_kill, None),
     ("D-FIT.4", "quest-gated visit: captured fits only, no haunt activation", c_fit_gate,
      "the quest of the system still runs its steps (its pirates appear, die and count as before)"),
+    ("D-FIT.5", "captured new fit: every module fitted by AddModule (event=dress ok=modules, failed=none)", c_fit_dress,
+     "the captured ship shows the new fit's guns (target it: the modules of the dress line), fires them and keeps them "
+     "after a save and load inside the system"),
+    ("D-FIT.6", "unused hulls only at tiers 3-4: every dress hull=true has a roll line tier>=3 pool=hull", c_fit_hull, None),
     ("E-BB1", "AddModule on a bare pirate hull: return values, HP, the TRF_Carcasses read", c_bb1,
      "the test ship renders as the pirate hull, carries the guns (target it: modules listed), and fights when attacked"),
     ("D-DLL.1", "stack leak source: trig_fires names the condition, stack_leak carries v1=", c_dll1, None),
@@ -1501,7 +1557,8 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "D-MERC.ext": "PASS", "D-MERC.settle": "FAIL", "D-MERC.premission": "NO DATA", "D-MERC.collect": "NO DATA",
             "D-MERC.load": "NO DATA", "D-MERC.betray": "MANUAL",
             "D-STR.1": "PASS", "D-STR.2": "PASS", "D-STR.3": "FAIL",
-            "D-FIT.1": "FAIL", "D-FIT.2": "MANUAL", "D-FIT.3": "PASS", "D-FIT.4": "MANUAL", "E-BB1": "MANUAL",
+            "D-FIT.1": "FAIL", "D-FIT.2": "MANUAL", "D-FIT.3": "PASS", "D-FIT.4": "MANUAL", "D-FIT.5": "MANUAL",
+            "D-FIT.6": "PASS", "E-BB1": "MANUAL",
             "D-DLL.1": "PASS"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 

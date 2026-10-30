@@ -1,4 +1,4 @@
--- sw3-traffic pirate fit variety, step 1 (design/fits-spec.md). Lua 4.0.1.
+-- sw3-traffic pirate fit variety, steps 1 and 2 (design/fits-spec.md). Lua 4.0.1.
 -- Public TRF_Ft_* (module name Ft in TRF_ModList), internal TRF_Ft<X>, log module=fits through TRF_FtE / TRF_FtDE.
 -- One grade per pirate FLIGHT from a fixed hash of saved state (system index, flight index, the region's phase start
 -- leg TRF.rg[slot].pt, a salt per source; never RAND or TRF.gen) against the clan score of the strength scale
@@ -11,6 +11,10 @@
 -- gated visits TRF_Ft_Gate: captured only), trf_raid (TRF_Rd_PirRow grade argument, one roll per raid flight),
 -- trf_base (garrisons through TRF_PirFlight). Saved: only the grade digits TRF.nv.e of trf_haunt. Debug cfg fits_test
 -- spawns one neutral test ship (E-BB1). Data: TRF_FtData (tools/gen_fits.py), TRF_FtGateDeny (tools/scan_quests.py).
+-- Step 2 (spec 14): new fits as script data (TRF_FtData new), only as the one captured ship of a flight: the row names the
+-- bare *_pir0 carcass, TRF_FtDress fits the modules by AddModule right after the build. The unused hulls (h 1) only at
+-- tiers 3-4 under a hash sub-roll (tune fits_hull_pct), boss fits (b 1) in no pool; quest-gated visits keep existing
+-- fits; tune fits_new 0 restores the step 1 pools.
 -- Loads after trf_str and before trf_haunt (counted as extra=). Top level only defines functions.
 
 -- Helpers --------------------------------------------------------------------------
@@ -55,7 +59,7 @@ function TRF_FtObj(o)
 	return o ~= nil and o ~= FALSE and (type(o) == "table" or type(o) == "userdata");
 end;
 
--- Config keys (spec 6): fits 0 until CHECK D-FIT.1-4 pass; fits_gate 1 keeps quest-gated visits fully vanilla;
+-- Config keys (spec 6): fits 0 until CHECK D-FIT.1-6 pass; fits_gate 1 keeps quest-gated visits fully vanilla;
 -- fits_test the debug test ship (a ShipDescription or carcass name, "" off).
 function TRF_Ft_OptDef()
 	return {fits=0, fits_gate=0, fits_test=""};
@@ -63,10 +67,11 @@ end;
 
 -- Tune keys (spec 6): fits_elite_max % of elite flights at the tier-4 top, fits_base_a / fits_base_p the base factor,
 -- fits_cap_pct % of captured flights, fits_scrap_sc the score below which a tier-2 clan flies scrap, fits_test_mods
--- the modules AddModule fits on a bare test carcass.
+-- the modules AddModule fits on a bare test carcass; fits_hull_pct % of tier 3-4 captured hits that may draw an unused
+-- hull, fits_new 0 drops the new fits from the pools (spec 14.6).
 function TRF_Ft_TuneDef()
 	return {fits_elite_max=5, fits_base_a=10, fits_base_p=3, fits_cap_pct=5, fits_scrap_sc=35,
-		fits_test_mods={"PC2", "VC3", "ShAmp3"}};
+		fits_test_mods={"PC2", "VC3", "ShAmp3"}, fits_hull_pct=50, fits_new=1};
 end;
 
 -- Constants: the elite chance cap in % (spec 3.2, base factor included), the test ship distance and wait, the salts
@@ -106,7 +111,8 @@ function TRF_FtTune()
 	local d = TRF_Ft_TuneDef();
 	local t = {fits_elite_max=TRF_FtNum(s, "fits_elite_max", d.fits_elite_max, 0, 15),
 		fits_base_a=TRF_FtNum(s, "fits_base_a", d.fits_base_a, 0, 15), fits_base_p=TRF_FtNum(s, "fits_base_p", d.fits_base_p, 0, 15),
-		fits_cap_pct=TRF_FtNum(s, "fits_cap_pct", d.fits_cap_pct, 0, 10), fits_scrap_sc=TRF_FtNum(s, "fits_scrap_sc", d.fits_scrap_sc, 0, 49)};
+		fits_cap_pct=TRF_FtNum(s, "fits_cap_pct", d.fits_cap_pct, 0, 10), fits_scrap_sc=TRF_FtNum(s, "fits_scrap_sc", d.fits_scrap_sc, 0, 49),
+		fits_hull_pct=TRF_FtNum(s, "fits_hull_pct", d.fits_hull_pct, 0, 100), fits_new=TRF_FtNum(s, "fits_new", d.fits_new, 0, 1)};
 	local m, l = {}, nil;
 	if type(s) == "table" then l = s.fits_test_mods; end;
 	if type(l) == "table" then
@@ -185,7 +191,9 @@ end;
 -- within 0..fits_elite_max) plus the base factor, at most 15; down = chance_down of the curve at tier 2 below
 -- fits_scrap_sc, else 0; gate 1: up = down = 0 (quest-gated visit). roll = TRF_FtHash(idx, i, pt, salt): grade 1 when
 -- roll < up, -1 when roll >= 100 - down, else 0. Captured: TRF_FtHash(idx, i + 64, pt, salt + 1) < fits_cap_pct; its
--- selector TRF_FtHash(idx, i + 128, pt, salt + 2). Returns {g, c (1 or nil), sel, sc, t, up, dn, r, r2, pt}.
+-- selector TRF_FtHash(idx, i + 128, pt, salt + 2). Pool (spec 14.4): nw 0 existing fits only (gate 1, fits_new 0), 1 the
+-- new fits too, 2 also the unused hulls (tier 3-4 and r3 = TRF_FtHash(idx, i + 192, pt, salt + 3) < fits_hull_pct).
+-- Returns {g, c (1 or nil), sel, sc, t, up, dn, r, r2, r3, nw, pt}.
 function TRF_FtRoll(idx, i, pt, slot, salt, tier, gate)
 	local T = TRF_FtTune();
 	local K = TRF_FtK();
@@ -216,15 +224,23 @@ function TRF_FtRoll(idx, i, pt, slot, salt, tier, gate)
 	local r2 = TRF_FtHash(idx, i + K.cap_off, pt, salt + 1);
 	local c = nil;
 	if r2 < T.fits_cap_pct then c = 1; end;
-	return {g=g, c=c, sel=TRF_FtHash(idx, i + 2 * K.cap_off, pt, salt + 2), sc=sc, t=t, up=up, dn=dn, r=r, r2=r2, pt=pt};
+	local r3 = TRF_FtHash(idx, i + 3 * K.cap_off, pt, salt + 3);
+	local nw = 0;
+	if gate ~= 1 and T.fits_new == 1 then
+		nw = 1;
+		if t >= 3 and r3 < T.fits_hull_pct then nw = 2; end;
+	end;
+	return {g=g, c=c, sel=TRF_FtHash(idx, i + 2 * K.cap_off, pt, salt + 2), sc=sc, t=t, up=up, dn=dn, r=r, r2=r2, r3=r3, nw=nw,
+		pt=pt};
 end;
 
 -- Copy of row (a Pir_* row {{fit, rank, role}, ...} or a raid row) for grade g (spec 3.3), built by explicit index:
 -- g 1 the up map and (rk 1) rank + 1 within 1..5, g -1 the dn map; sel (0..99, nil: no captured ship) replaces the
 -- first ship from index mod(sel, n) + 1 on whose (graded) fit has a captured pool with an entry the graded row does not
--- carry: entry mod(floor(sel / n), #left) + 1 of those (TRF_FtLeft). Entries that are not tables are copied unchanged.
--- Returns the copy and the index of the captured ship or nil.
-function TRF_FtRow(row, g, sel, rk)
+-- carry: entry mod(floor(sel / n), #left) + 1 of those (TRF_FtLeft, nw the pool level of TRF_FtRoll, nil 0). A new fit
+-- (spec 14.4) enters as its bare carcass name; dress {[j] = new fit name} tells the caller which ship TRF_FtDress fits.
+-- Entries that are not tables are copied unchanged. Returns the copy, the index of the captured ship or nil, dress or nil.
+function TRF_FtRow(row, g, sel, rk, nw)
 	local D = TRF_FtD();
 	local out = {};
 	local n = getn(row);
@@ -243,31 +259,46 @@ function TRF_FtRow(row, g, sel, rk)
 			out[j] = e;
 		end;
 	end;
-	local cj = nil;
+	local cj, dr = nil, nil;
 	if type(sel) == "number" and n > 0 then
 		for k = 0, n - 1 do
 			local j = mod(sel + k, n) + 1;
 			local e = out[j];
 			local p = nil;
-			if not cj and type(e) == "table" then p = TRF_FtLeft(D.cap[e[1]], out); end;
+			if not cj and type(e) == "table" then p = TRF_FtLeft(D.cap[e[1]], out, nw); end;
 			if type(p) == "table" and getn(p) > 0 then
-				out[j] = {p[mod(floor(sel / n), getn(p)) + 1], e[2], e[3]};
+				local nm = p[mod(floor(sel / n), getn(p)) + 1];
+				local nf = nil;
+				if type(D.new) == "table" then nf = D.new[nm]; end;
+				if type(nf) == "table" then
+					out[j] = {nf.c, e[2], e[3]};
+					dr = {};
+					dr[j] = nm;
+				else
+					out[j] = {nm, e[2], e[3]};
+				end;
 				cj = j;
 			end;
 		end;
 	end;
-	return out, cj;
+	return out, cj, dr;
 end;
 
--- Entries of pool p (nil: none) that no ship of row carries, built by explicit index; nil without a pool.
-function TRF_FtLeft(p, row)
+-- Entries of pool p (nil: none) that no ship of row carries, built by explicit index; nil without a pool. nw (nil 0):
+-- 0 skips every new fit, 1 skips the unused hulls (h 1), 2 keeps both; a boss fit (b 1) is always skipped.
+function TRF_FtLeft(p, row, nw)
 	if type(p) ~= "table" then return nil; end;
+	local N = TRF_FtD().new;
+	if type(N) ~= "table" then N = {}; end;
+	if type(nw) ~= "number" then nw = 0; end;
 	local q, m = {}, 0;
 	for k = 1, getn(p) do
 		local has = nil;
 		for j = 1, getn(row) do
 			if type(row[j]) == "table" and row[j][1] == p[k] then has = 1; end;
 		end;
+		local nf = N[p[k]];
+		if type(nf) == "table" and (nw < 1 or nf.b == 1 or (nf.h == 1 and nw < 2)) then has = 1; end;
 		if not has then
 			m = m + 1;
 			q[m] = p[k];
@@ -327,23 +358,95 @@ function TRF_Ft_Grade(idx, i, src, flight, tier, gate)
 	local lf = TRF_FtDE;
 	if R.g ~= 0 then lf = TRF_FtE; end;
 	lf("roll", "system", R.sys, "flight", R.fl, "source", src, "score", R.sc, "tier", R.t, "up", R.up,
-		"down", R.dn, "roll", R.r, "grade", R.g, "captured_roll", TRF_KvB(R.c));
+		"down", R.dn, "roll", R.r, "grade", R.g, "captured_roll", TRF_KvB(R.c), "pool", TRF_FtPool(R.nw));
 	return R;
 end;
 
--- Row of record R: the graded copy of row (rk 1: the rank step of an elite), the captured ship index, event=row (level
--- 1 with a captured ship, else 2) with the fit names before and after, event=skip reason=cap (level 2) when the captured roll hit a row without a
--- pool. Returns the copy, the captured index or nil.
+-- Log value of a pool level nw (TRF_FtRoll): old (existing fits only), new (new fits too), hull (and the unused hulls).
+function TRF_FtPool(nw)
+	if nw == 2 then return "hull"; end;
+	if nw == 1 then return "new"; end;
+	return "old";
+end;
+
+-- Row of record R: the graded copy of row (rk 1: the rank step of an elite; R.nw the pool level), the captured ship index,
+-- event=row (level 1 with a captured ship, else 2) with the fit names before and after and new_fit (the new fit of the
+-- captured ship, else none), event=skip reason=cap (level 2) when the captured roll hit a row without a pool. Returns
+-- the copy, the captured index or nil, the dress table of TRF_FtRow or nil.
 function TRF_Ft_RowOf(row, R, rk, sys, flight)
 	local sel = nil;
 	if R.c then sel = R.sel; end;
-	local out, cj = TRF_FtRow(row, R.g, sel, rk);
+	local out, cj, dr = TRF_FtRow(row, R.g, sel, rk, R.nw);
 	if R.c and not cj then TRF_FtDE("skip", "system", sys, "flight", tostring(flight), "reason", "cap"); end;
 	local lf = TRF_FtDE;
 	if cj then lf = TRF_FtE; end;
+	local nf = "none";
+	if dr and cj then nf = dr[cj]; end;
 	lf("row", "system", sys, "flight", tostring(flight), "grade", R.g, "captured_ship", cj or 0, "before", TRF_FtNames(row),
-		"after", TRF_FtNames(out));
-	return out, cj;
+		"after", TRF_FtNames(out), "new_fit", nf);
+	return out, cj, dr;
+end;
+
+-- Dressing (spec 14.5) ------------------------------------------------------------------------------
+
+-- One AddModule call (protected by the caller): 1 and the engine's return (the module name on success, E-BB1).
+function TRF_FtAdd(s, m)
+	return 1, s:AddModule(m);
+end;
+
+-- Fits the new fit of each captured ship of a built flight: dress {[j] = new fit name} (TRF_FtRow), the ship ships[j]
+-- (nil: the global ship_<sign>_<j> that NewAllFlight sets), each module of TRF_FtData new[name].m in order by AddModule
+-- under call(..., TRF_FtNoErr). A nil (or FALSE) return or an error is a failed module; the ship stays as it is (no
+-- retry, no delete). Synchronous, right after the build and before any order. Logs event=dress per ship (level 1 when
+-- a module failed or the ship is missing, else 2). Returns the number of ships with a failure.
+function TRF_FtDress(sign, dress, sys, flight, ships)
+	if type(dress) ~= "table" then return 0; end;
+	local N = TRF_FtD().new;
+	if type(N) ~= "table" then N = {}; end;
+	local nb = 0;
+	for j, nm in dress do
+		local e = N[nm];
+		local s = nil;
+		if type(ships) == "table" then s = ships[j]; end;
+		if s == nil and type(sign) == "string" and type(j) == "number" then s = getglobal("ship_"..sign.."_"..j); end;
+		local n, ok, bad, c, h = 0, 0, "none", "?", nil;
+		if type(e) ~= "table" or type(e.m) ~= "table" then
+			bad = "no_data";
+		else
+			n, c, h = getn(e.m), e.c, e.h == 1;
+			if not TRF_FtObj(s) then
+				bad = "no_ship";
+			else
+				for k = 1, n do
+					local a, ret = call(TRF_FtAdd, {s, e.m[k]}, "x", TRF_FtNoErr);
+					if a and ret ~= nil and ret ~= FALSE then
+						ok = ok + 1;
+					elseif bad == "none" then
+						bad = e.m[k];
+					end;
+				end;
+			end;
+		end;
+		local lf = TRF_FtDE;
+		if bad ~= "none" then lf = TRF_FtE; nb = nb + 1; end;
+		lf("dress", "system", sys, "flight", tostring(flight), "ship", j, "fit", tostring(nm), "carcass", c, "hull", TRF_KvB(h),
+			"modules", n, "ok", ok, "failed", bad);
+	end;
+	return nb;
+end;
+
+-- trf_raid TRF_PirFlight (spec 14.5, raids and garrisons): the captured ship of a flight built by TRF_BuildFlight, with
+-- sh / made its ships and their row indices and n the row length after the maxn trim (a trimmed index is not dressed).
+function TRF_Ft_Dress(gr, sign, dress, sh, made, n)
+	if type(gr) ~= "table" or type(dress) ~= "table" then return; end;
+	local ships, d, any = {}, {}, nil;
+	if type(sh) == "table" and type(made) == "table" then
+		for k = 1, getn(sh) do if type(made[k]) == "number" then ships[made[k]] = sh[k]; end; end;
+	end;
+	for j, nm in dress do
+		if type(n) ~= "number" or (type(j) == "number" and j <= n) then d[j] = nm; any = 1; end;
+	end;
+	if any then TRF_FtDress(sign, d, gr.sys, gr.fl, ships); end;
 end;
 
 -- Haunt and gate builds ------------------------------------------------------------------
@@ -390,9 +493,11 @@ function TRF_Ft_Haunt(gg, sign, loc, ty, pw, orient, idx, i, pin)
 	local R = TRF_Ft_Grade(idx, i, "haunt", sign);
 	if not R then return nil; end;
 	if R.g == 0 and not R.c then return nil; end;
-	local row, cj = TRF_Ft_RowOf(tab[ri], R, 1, sys, sign);
+	local row, cj, dr = TRF_Ft_RowOf(tab[ri], R, 1, sys, sign);
 	if R.g == 0 and not cj then return nil; end;
-	return {fl=TRF_FtBuild(tab, ri, row, gg, sign, loc, pw, orient, form), d=TRF_FtDigit(R.g, cj)};
+	local fl = TRF_FtBuild(tab, ri, row, gg, sign, loc, pw, orient, form);
+	if fl and dr then TRF_FtDress(sign, dr, R.sys, R.fl); end;
+	return {fl=fl, d=TRF_FtDigit(R.g, cj)};
 end;
 
 -- 1 when a quest-gated visit of system nm gets captured fits (spec 5.4): fits on, fits_gate 0, nm not in the scan's
@@ -542,7 +647,7 @@ function TRF_Ft_Dump()
 	local e = nil;
 	if type(TRF.nv) == "table" then e = TRF.nv.e; end;
 	TRF_FtE("dump", "on", TRF_KvB(TRF_FtOn()), "gate", TRF_FtOpt("fits_gate"), "elite_max", T.fits_elite_max, "cap_pct", T.fits_cap_pct,
-		"grades", e or "none");
+		"new", T.fits_new, "hull_pct", T.fits_hull_pct, "grades", e or "none");
 end;
 
 -- BEGIN scan_quests.py (do not edit by hand)
@@ -557,7 +662,9 @@ end;
 -- Pirate fit data (tools/gen_fits.py from the clone's ShipDescriptions.xml, Carcasses.xml, Modules.xml; design/
 -- fits-spec.md 3.3): up / dn the elite and scrap maps (one carcass level, same gun family), cap the captured
 -- alternatives per fit (another row's fit, gear value within +-5 %), val the gear value (sum of module costs), bare
--- the pirate interceptor carcasses (debug cfg fits_test builds these bare with AddModule).
+-- the pirate interceptor carcasses (debug cfg fits_test builds these bare with AddModule); new (spec 14) the new fits:
+-- c the bare carcass the row names, m the modules TRF_FtDress fits by AddModule, h 1 an unused hull (tiers 3-4 only),
+-- b 1 a boss fit (in no pool). cap lists the existing fits first, then the new fits (fits_new 0 skips those).
 function TRF_FtData()
 	return {
 		up={Bident_pir1="Hrimturs_pir1", Brigand_pir1="Stormcrow_pir1", Cleaner_pir1="Tiger_pir1",
@@ -571,17 +678,33 @@ function TRF_FtData()
 			Gunslinger_pir2="Tiger_pir2", Gunslinger_pir3="Tiger_pir2", Hammerhead_pir1="Naginata_pir1",
 			Hrimturs_pir1="Bident_pir1", Hrimturs_pir2="Bident_pir1", Raptor_pir1="Hatchet_pir1",
 			Stormcrow_pir1="Yari_pir2", Tiger_pir1="Cleaner_pir1", Tiger_pir2="Cleaner_pir1", Trident_pir1="Bident_pir1"},
-		cap={Bident_pir1={"Hatchet_pir1"}, Brigand_pir1={"Yari_pir1"}, Hatchet_pir1={"Bident_pir1"},
-			Yari_pir1={"Brigand_pir1"}},
-		val={Bident_pir1=2770, Brigand_pir1=300, Cleaner_pir1=12300, EvilEye_pir1=16510, EvilEye_pir2=42750,
-			EvilEye_pir3=52850, Excalibur_pir1=1230, Excalibur_pir2=670, Gunslinger_pir1=26100, Gunslinger_pir2=154000,
-			Gunslinger_pir3=137500, Hammerhead_pir1=2540, Hatchet_pir1=2850, Hrimturs_pir1=20100, Hrimturs_pir2=31150,
-			Naginata_pir1=355, Raptor_pir1=4500, Stormcrow_pir1=11240, Tiger_pir1=7900, Tiger_pir2=69800,
-			Trident_pir1=62450, Yari_pir1=300, Yari_pir2=1500},
+		cap={Bident_pir1={"Hatchet_pir1"}, Brigand_pir1={"Yari_pir1"}, EvilEye_pir1={"Cleaner_mk2_pir1", "EvilEye_pir4"},
+			Hatchet_pir1={"Bident_pir1"}, Raptor_pir1={"Bident_pir2", "Hammerhead_pir2", "Raptor_pir2", "TieFly_pir1"},
+			Stormcrow_pir1={"Cleaner_pir3", "Stormcrow_pir2", "Stormcrow_pir3"}, Tiger_pir1={"Cleaner_pir2",
+			"Stormcrow_mk2_pir1", "Tiger_pir3"}, Yari_pir1={"Brigand_pir1"}},
+		val={Bident_pir1=2770, Bident_pir2=4470, Brigand_pir1=300, Cleaner_mk2_pir1=16610, Cleaner_pir1=12300,
+			Cleaner_pir2=7800, Cleaner_pir3=11400, EvilEye_pir1=16510, EvilEye_pir2=42750, EvilEye_pir3=52850,
+			EvilEye_pir4=16910, Excalibur_pir1=1230, Excalibur_pir2=670, Gunslinger_pir1=26100, Gunslinger_pir2=154000,
+			Gunslinger_pir3=137500, Hammerhead_pir1=2540, Hammerhead_pir2=4550, Hatchet_pir1=2850, Hrimturs_pir1=20100,
+			Hrimturs_pir2=31150, Naginata_pir1=355, Panthera_pir1=100400, Puma_pir1=42950, Raptor_pir1=4500,
+			Raptor_pir2=4400, Stormcrow_mk2_pir1=8010, Stormcrow_pir1=11240, Stormcrow_pir2=11510, Stormcrow_pir3=11010,
+			TieFly_pir1=4440, Tiger_pir1=7900, Tiger_pir2=69800, Tiger_pir3=8100, Trident_pir1=62450, Yari_pir1=300,
+			Yari_pir2=1500},
 		bare={Bident_pir0=1, Brigand_pir0=1, Cleaner_mk2_pir0=1, Cleaner_pir0=1, EvilEye_pir0=1, Excalibur_pir0=1,
 			Gunslinger_pir0=1, Hammerhead_pir0=1, Hatchet_pir0=1, Hrimturs_pir0=1, Naginata_pir0=1, Panthera_pir0=1,
 			Puma_pir0=1, Raptor_pir0=1, Stormcrow_mk2_pir0=1, Stormcrow_pir0=1, TieFly_pir0=1, Tiger_pir0=1, Trident_pir0=1,
-			Yari_pir0=1}
+			Yari_pir0=1},
+		new={Bident_pir2={c="Bident_pir0", m={"AC1", "AC1", "SRM3", "SRM2", "LRM2", "SM3", "ECM1"}},
+			Cleaner_mk2_pir1={c="Cleaner_mk2_pir0", m={"VC2", "PC1", "SRM2", "ECM2", "AMS1", "ShAmp2"}, h=1},
+			Cleaner_pir2={c="Cleaner_pir0", m={"HC2", "HC2", "ECM2", "ShAmp2"}}, Cleaner_pir3={c="Cleaner_pir0", m={"PC1",
+			"VC1", "ECM3", "EngAmp2"}}, EvilEye_pir4={c="EvilEye_pir0", m={"LC2", "SRM2", "ECM2", "ShAmp2"}},
+			Hammerhead_pir2={c="Hammerhead_pir0", m={"AC1", "AC1", "LRM1", "MM", "ShAmp1"}},
+			Panthera_pir1={c="Panthera_pir0", m={"PC2", "VC3", "ECM3", "ShAmp2"}, b=1}, Puma_pir1={c="Puma_pir0", m={"VC3",
+			"PC1", "LRM2", "ECM3", "ShAmp2"}, b=1}, Raptor_pir2={c="Raptor_pir0", m={"AC1", "AC1", "CG1", "CG1", "ECM2"}},
+			Stormcrow_mk2_pir1={c="Stormcrow_mk2_pir0", m={"VC2", "HC2", "SRM2", "ECM2"}, h=1},
+			Stormcrow_pir2={c="Stormcrow_pir0", m={"HC2", "SRM2", "AMS2", "ShAmp2"}}, Stormcrow_pir3={c="Stormcrow_pir0",
+			m={"LC1", "SRM2", "ECM3", "ShAmp2"}}, TieFly_pir1={c="TieFly_pir0", m={"AC1", "AC1", "SRM1", "ShAmp1"}, h=1},
+			Tiger_pir3={c="Tiger_pir0", m={"PC1", "PC1", "ECM1", "EngAmp1"}}}
 	};
 end;
 -- END gen_fits.py

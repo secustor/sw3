@@ -46,7 +46,7 @@
 -- every pirate haunt, raid and garrison flight one grade roll (elite, scrap, a captured fit); fits_gate 1 keeps quest-gated
 -- visits fully vanilla (0: captured fits only there); fits_test (debug, install-test.sh FITS_TEST) a ShipDescription or
 -- carcass name spawned as one neutral test ship at every entry (CHECK E-BB1); the tune keys (fits_elite_max, fits_base_a,
--- fits_base_p, fits_cap_pct, fits_scrap_sc, fits_test_mods) read the TRF_Ft_TuneDef defaults.
+-- fits_base_p, fits_cap_pct, fits_scrap_sc, fits_test_mods, fits_hull_pct, fits_new) read the TRF_Ft_TuneDef defaults.
 -- Sealed parcels (design/parcel-spec.md 6): enable_parcels (default 1) = 0 turns trf_parcel off (no offer, no lines;
 -- an open job waits); enable_contraband, enable_customs, enable_intercept (step 2, read nowhere yet, off); pcl_prize_gap,
 -- pcl_logbook, pcl_probe, pcl_deny, pcl_deny_ch and the tune keys (pcl_k, pcl_gap, pcl_ban, pcl_dep_k, ...) read the

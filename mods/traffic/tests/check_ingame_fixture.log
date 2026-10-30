@@ -308,6 +308,9 @@ traffic: lua: exp=v1 module=raid event=go raid_id=2 trader_id=3 via=lane tier=2 
 traffic: lua: exp=v1 module=fits event=roll system=golkonda flight=pir07 source=haunt score=88 tier=4 up=3 down=0 roll=1 grade=1 captured_roll=false
 traffic: lua: exp=v1 module=fits event=row system=golkonda flight=pir07 grade=1 captured_ship=0 before=Stormcrow_pir1,Raptor_pir1 after=EvilEye_pir1,Bident_pir1
 traffic: lua: exp=v1 module=fits event=roll system=golkonda flight=pir08 source=haunt score=88 tier=4 up=3 down=0 roll=57 grade=0 captured_roll=false
+traffic: lua: exp=v1 module=fits event=roll system=golkonda flight=pir09 source=haunt score=88 tier=4 up=3 down=0 roll=60 grade=0 captured_roll=true pool=hull
+traffic: lua: exp=v1 module=fits event=row system=golkonda flight=pir09 grade=0 captured_ship=2 before=Stormcrow_pir1,Raptor_pir1 after=Stormcrow_pir1,TieFly_pir0 new_fit=TieFly_pir1
+traffic: lua: exp=v1 module=fits event=dress system=golkonda flight=pir09 ship=2 fit=TieFly_pir1 carcass=TieFly_pir0 hull=true modules=4 ok=4 failed=none
 traffic: lua: exp=v1 module=fits event=roll system=xt45 flight=Pir02 source=haunt score=40 tier=2 up=3 down=0 roll=50 grade=0 captured_roll=false
 traffic: lua: exp=v1 module=fits event=kill system=golkonda index=7 flight=pir07 grade=1 score_cost=3 mine=true
 traffic: lua: exp=v1 module=region event=clan_score region=4 reason="pirate kill haunt_elite" old_clan_score=88 clan_score=85

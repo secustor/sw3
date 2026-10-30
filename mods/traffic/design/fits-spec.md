@@ -1,6 +1,6 @@
-# Pirate fit variety: implementation spec (step 1 of 3)
+# Pirate fit variety: implementation spec (steps 1 and 2 of 3)
 
-Status: implemented and host-tested 2026-10-30 (`tests/host_fits.lua`, runs `ft-a`..`ft-f`), not run in the game; off by default (`fits` 0). Background: `.work/research/pirate-fits-options.md` (options C, D, E, F), `.work/research/loot-rule-removal.md` (sections 3-6), `.work/research/base-boss.md` (section 5, the hooks the boss needs later), `.work/research/pirate-fits-decisions.md` (the user decisions).
+Status: step 1 implemented and host-tested 2026-10-30 (`tests/host_fits.lua`, runs `ft-a`..`ft-f`); step 2 (section 14) implemented and host-tested 2026-10-30 (`ft-g`, `ft-h`); not run in the game; off by default (`fits` 0). Background: `.work/research/pirate-fits-options.md` (options C, D, E, F), `.work/research/loot-rule-removal.md` (sections 3-6), `.work/research/base-boss.md` (section 5, the hooks the boss needs later), `.work/research/pirate-fits-decisions.md` (the user decisions).
 Paths: `D` = `mods/traffic/design`, `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `T` = `mods/traffic/tests`, `G` = `~/Games/Heroic/sw3-tp-test/Data` (the read-only test clone).
 Module: new `S/trf_fits.script`, prefix `Ft` (`TRF_Ft_*` public hooks, `TRF_Ft<X>` helpers), module name `Ft` in `TRF_ModList`, log lines `module=fits` through `TRF_FtE` / `TRF_FtDE`. Loads after `trf_str` and before `trf_haunt` (in the `ex` list after `trf_freight`), counted as `extra=`.
 
@@ -19,8 +19,9 @@ Every pirate flight that the mod builds from the vanilla `Pir_Fighters` / `Pir_B
 | garrison | `TRF_Ba_ClanFlight` rolls the slot and builds through `TRF_PirFlight` | implemented |
 | gate | quest-gated visits: captured fits only (`TRF_Ft_Gate`), after the quest scan (`tools/scan_quests.py`) | implemented |
 | test | cfg `fits_test`: one neutral test ship, bare carcass plus AddModule (E-BB1) | implemented |
+| new fits | step 2: 14 fits as script data (`TRF_FtData().new`), captured ship only, built bare and dressed by AddModule (`TRF_FtDress`), unused hulls at tiers 3-4 only | implemented (section 14) |
 | value | `tools/gen_fits.py --check`: names, pools, the value budget | implemented |
-| later | the five unused pirate hulls (step 2), the base boss (step 3) | not built (section 13) |
+| later | the base boss (step 3; boss fits Panthera_pir1 / Puma_pir1 in the data) | not built (section 13) |
 
 ## 2. Decisions
 
@@ -87,7 +88,7 @@ Maps (`tools/gen_fits.py` checks: both names exist in `G/Game/ShipDescriptions.x
 | Gunslinger_pir2/3 (L4) | - | Tiger_pir2 |
 | Hrimturs_pir1/2, Trident_pir1 (L4, AC) | - | Bident_pir1 |
 
-Captured pools (gear value = sum of `G/Game/Modules.xml` costs, +-5 % of the replaced fit): Brigand_pir1 300 <-> Yari_pir1 300, Bident_pir1 2770 <-> Hatchet_pir1 2850. No other pair of existing pirate fits is within 5 % (the next closest: Stormcrow 11240 / Cleaner 12300, 9 %), so captured fits appear only in rows with these four fits and without both fits of a pool (at grade 0: fighter rows 1, 3, 5, 7, 8; bomber rows 7-9, 11-15, 19; fighter row 4 carries Yari and Brigand, bomber row 10 Bident and Hatchet). Step 2 widens the pools with the unused hulls.
+Captured pools (gear value = sum of `G/Game/Modules.xml` costs, +-5 % of the replaced fit): Brigand_pir1 300 <-> Yari_pir1 300, Bident_pir1 2770 <-> Hatchet_pir1 2850. No other pair of existing pirate fits is within 5 % (the next closest: Stormcrow 11240 / Cleaner 12300, 9 %), so captured fits appear only in rows with these four fits and without both fits of a pool (at grade 0: fighter rows 1, 3, 5, 7, 8; bomber rows 7-9, 11-15, 19; fighter row 4 carries Yari and Brigand, bomber row 10 Bident and Hatchet). Step 2 widens the pools with the new fits (section 14.2).
 
 ## 4. Data model
 
@@ -155,6 +156,8 @@ Procedure for E-BB1 (user): `FITS_TEST=Panthera_pir0 LOG=2 sh mods/traffic/insta
 | `fits_cap_pct` | 5 | 0..10 | % of flights with the captured roll (never above 10) |
 | `fits_scrap_sc` | 35 | 0..49 | tier-2 score below which scrap can roll |
 | `fits_test_mods` | {"PC2", "VC3", "ShAmp3"} | strings | modules AddModule fits on a bare test carcass |
+| `fits_hull_pct` | 50 | 0..100 | step 2: % of tier 3-4 captured hits that may draw an unused hull (14.6) |
+| `fits_new` | 1 | 0, 1 | step 2: 0 drops the new fits (step 1 pools) |
 
 The elite cap 15 % is a constant (`TRF_FtK().elite_cap`).
 
@@ -172,7 +175,8 @@ The elite cap 15 % is a constant (`TRF_FtK().elite_cap`).
 | `kill` | `module=fits event=kill system=golkonda index=2 flight=Pirate02 grade=1 score_cost=3 mine=true` | 1 |
 | `gate` | `module=fits event=gate system=kadi built=2` | 1 |
 | `test` | `module=fits event=test name=Panthera_pir0 step=add_module module=PC2 ret=nil hp=1000` (steps `create`, `hull`, `add_module`, `read`, `position`) | 1 |
-| `dump` | `module=fits event=dump on=true gate=0 elite_max=5 cap_pct=5 grades=0100000100` | 1 |
+| `dress` | `module=fits event=dress system=golkonda flight=Pirate03 ship=3 fit=Stormcrow_pir3 carcass=Stormcrow_pir0 hull=false modules=4 ok=4 failed=none` (step 2, 14.7) | 2; 1 when a module failed |
+| `dump` | `module=fits event=dump on=true gate=0 elite_max=5 cap_pct=5 new=1 hull_pct=50 grades=0100000100` | 1 |
 | `error` | `module=fits event=error message=...` | 1 |
 
 ## 9. Value check (`tools/gen_fits.py --check`)
@@ -189,7 +193,7 @@ Model: the 16:102 slope (a level step is x1.37 of the flight's loot value; captu
 
 Gear values per row and grade (printed by the tool, Modules.xml cost sums, not the loot model): e.g. fighter row 8 (power 10 NORMAL) 23,090 vanilla, 26,550 elite, 10,050 scrap; fighter row 13 140,300 / 206,210 / 36,280. The gear sums are not the drop value (E0.4, E0.19 open), so the budget uses the slope.
 
-## 10. Host scenarios (`T/host_fits.lua`, `TRF_FT=a..f`; run_host.sh item `ft`)
+## 10. Host scenarios (`T/host_fits.lua`, `TRF_FT=a..h`; run_host.sh item `ft`; `g`, `h`: section 14.9)
 
 | Run | Content |
 |---|---|
@@ -210,6 +214,7 @@ Stub change: `NewAllFlight` in `T/host_stubs.lua` checks that every row key is 1
 | D-FIT.2 | play a visit with a graded flight | `event=row` keeps the ship count; the visit's `event=activate` has `failed=0 missing=0 unknown=0`; eyes: other pirate hulls, normal fights | D-FIT.2 |
 | D-FIT.3 | destroy an elite flight | `event=kill` and a clan score line with at most -3 | D-FIT.3 |
 | D-FIT.4 | enter a haunt system named by an active quest | `mode=vanilla reason=gate_quest`, `module=fits event=gate`, gate rolls with grade 0, no haunt activate line; eyes: the quest steps run | D-FIT.4 |
+| D-FIT.5, D-FIT.6 | step 2 (14.9) | a captured new fit fully dressed; unused hulls only at tiers 3-4 | D-FIT.5, D-FIT.6 |
 | E-BB1 | `FITS_TEST=Panthera_pir0` (5.7) | `event=test` create, hull, three add_module with `ret=` and `hp=`, the read with `tpl=` and `hp=`; eyes: the hull renders, the modules are fitted, it fights | E-BB1 |
 
 ## 12. Deviations
@@ -230,8 +235,107 @@ Stub change: `NewAllFlight` in `T/host_stubs.lua` checks that every row key is 1
 
 ## 13. Left out (later steps)
 
-- The five unused pirate hulls (TieFly_pir0, Stormcrow_mk2_pir0, Cleaner_mk2_pir0, Panthera_pir0, Puma_pir0) and new fits on them: step 2, after E-BB1 (bare carcass plus AddModule) or the ShipDescriptions merge fallback.
-- The base boss (Panthera / Puma captains, `.work/research/base-boss.md`): step 3; it will reuse `TRF_Rd_PirRow`'s grade argument for the bodyguard wing (the base-boss "up" argument).
+- The unused hulls TieFly_pir0, Stormcrow_mk2_pir0, Cleaner_mk2_pir0 and the new fits: done in step 2 (section 14), as rare captured ships; Panthera_pir0 / Puma_pir0 carry only the boss fits Panthera_pir1 / Puma_pir1 (data only).
+- The base boss (Panthera / Puma captains, `.work/research/base-boss.md`): step 3, next, with the boss fits of 14.2; it will reuse `TRF_Rd_PirRow`'s grade argument for the bodyguard wing (the base-boss "up" argument).
 - Per-visit elite caps, the `e` flag after an elite kill and the hourly bound in A-base systems (loot-rule-removal 3.2, 5): not in the brief.
 - UI lines for elite or captured flights (elite label, captured focus line) and loc keys.
+- Whether a save keeps the modules of a dressed bare carcass (step 2): not known; D-FIT.5 eyes. A load inside the system with a bare captured ship would show it.
 - Traders on the hash roll (D10, pending), merc table coordination (proposals/merc-clan-gear.md).
+
+## 14. Step 2: new fits from bare carcasses, unused hulls as rare captured ships
+
+Status: implemented and host-tested 2026-10-30 (`ft-g`, `ft-h`), not run in the game; acts only with `fits` 1. Brief: `.work/wf/brief-fits2.md`.
+
+### 14.1 Data path
+
+E-BB1 (user, 2026-10-30): `CreateCarcass("Panthera_pir0")` builds the bare hull (600 HP), `AddModule("PC2" / "VC3" / "ShAmp3")` each returned the module name, the hull renders, the modules show in the target view, the ship fights and drops loot like any pirate on death. So the new fits are script data: no ShipDescriptions.xml merge, no game file edit. Vanilla `NewAllFlight` (`G/Scripts/include/Create_flight_2.script` 66-130) calls `CreateCarcass(sh[1], pos)` for each row entry and then `setglobal("ship_"..sign.."_"..i1, ship)`, so a bare carcass name in a row builds a bare hull whose handle is reachable right after the call.
+
+### 14.2 The new fits (`tools/gen_fits.py` NEW, `TRF_FtData().new`)
+
+| Fit | Carcass (level, HP) | Modules (AddModule order) | Value | Pool of (value, diff) | User example 2026-10-30 |
+|---|---|---|---|---|---|
+| Stormcrow_pir2 | Stormcrow_pir0 (2, 220) | HC2 SRM2 AMS2 ShAmp2 | 11,510 | Stormcrow_pir1 (11,240, +2.4 %) | HC2 SRM2 ECM2 ShAmp2 |
+| Stormcrow_pir3 | Stormcrow_pir0 (2, 220) | LC1 SRM2 ECM3 ShAmp2 | 11,010 | Stormcrow_pir1 (-2.0 %) | LC1 SRM2 AMS1 ShAmp2 |
+| Cleaner_pir2 | Cleaner_pir0 (2, 300) | HC2 HC2 ECM2 ShAmp2 | 7,800 | Tiger_pir1 (7,900, -1.3 %) | as given |
+| Cleaner_pir3 | Cleaner_pir0 (2, 300) | PC1 VC1 ECM3 EngAmp2 | 11,400 | Stormcrow_pir1 (+1.4 %) | PC1 VC1 ECM2 EngAmp2 |
+| Raptor_pir2 | Raptor_pir0 (2, 200) | AC1 AC1 CG1 CG1 ECM2 | 4,400 | Raptor_pir1 (4,500, -2.2 %) | AC1 AC1 CG1 CG1 ECM1 AMS1 |
+| Hammerhead_pir2 | Hammerhead_pir0 (2, 280) | AC1 AC1 LRM1 MM ShAmp1 | 4,550 | Raptor_pir1 (+1.1 %) | AC1 AC1 LRM1 MM ECM1 |
+| TieFly_pir1 (h) | TieFly_pir0 (2, 210) | AC1 AC1 SRM1 ShAmp1 | 4,440 | Raptor_pir1 (-1.3 %) | AC1 AC1 SRM1 ECM1 |
+| Stormcrow_mk2_pir1 (h) | Stormcrow_mk2_pir0 (3, 350) | VC2 HC2 SRM2 ECM2 | 8,010 | Tiger_pir1 (+1.4 %) | VC2 HC2 SRM2 ECM2 ShAmp1 |
+| EvilEye_pir4 | EvilEye_pir0 (3, 350) | LC2 SRM2 ECM2 ShAmp2 | 16,910 | EvilEye_pir1 (16,510, +2.4 %) | LC2 SRM2 ECM2 ShAmp1 |
+| Tiger_pir3 | Tiger_pir0 (3, 450) | PC1 PC1 ECM1 EngAmp1 | 8,100 | Tiger_pir1 (+2.5 %) | PC1 PC1 ECM2 EngAmp1 |
+| Bident_pir2 | Bident_pir0 (3, 450) | AC1 AC1 SRM3 SRM2 LRM2 SM3 ECM1 | 4,470 | Raptor_pir1 (-0.7 %) | AC1 AC1 SRM2 SRM2 LRM2 SM3 ECM1 |
+| Cleaner_mk2_pir1 (h) | Cleaner_mk2_pir0 (3, 400) | VC2 PC1 SRM2 ECM2 AMS1 ShAmp2 | 16,610 | EvilEye_pir1 (+0.6 %) | added in the same style (brief) |
+| Panthera_pir1 (b) | Panthera_pir0 (4, 600) | PC2 VC3 ECM3 ShAmp2 | 100,400 | none (boss) | as given |
+| Puma_pir1 (b) | Puma_pir0 (4, 500) | VC3 PC1 LRM2 ECM3 ShAmp2 | 42,950 | none (boss) | as given (BB-e) |
+
+`h` an unused hull (rule R2), `b` a boss fit (R3). Names: the next free `_pirN` of the hull; `gen_fits.py` fails on a name that exists in ShipDescriptions.xml. Holder rule (tool docstring): Carcasses.xml HolderProperties gives a count per holder kind and no size; a module takes the kind of its Modules.xml class (SimpleBigGun and LaserGun big_guns, SmallGun small_guns, HomingRocket / SimpleRocket / MultiRocket / MIRVModule rockets, turret and GK classes their own kinds, every other class systems); a fit carries at most as many modules of a kind as the hull has holders. All 363 vanilla ShipDescriptions on an Interceptor carcass satisfy it (the tool fails otherwise; LaserGun as small_guns would break 63 of them). Every new fit passes. Values: Modules.xml cost sums, as step 1.
+
+Pools after step 2 (cap lists the existing entries first, then the new fits by name): Stormcrow_pir1 {Cleaner_pir3, Stormcrow_pir2, Stormcrow_pir3}, Raptor_pir1 {Bident_pir2, Hammerhead_pir2, Raptor_pir2, TieFly_pir1}, Tiger_pir1 {Cleaner_pir2, Stormcrow_mk2_pir1, Tiger_pir3}, EvilEye_pir1 {Cleaner_mk2_pir1, EvilEye_pir4}, plus the step 1 pairs. New fits get no pool of their own (never replaced) and are in no up or dn map. Rows with a pool entry: fighter rows 1, 3, 5-16 (step 1: 1, 3, 5, 7, 8), bomber rows 7-9, 11-15, 19 (unchanged; new fits reach bomber rows 11-15 through EvilEye_pir1). The XT band (NORMAL powers 7-16, rows 6-13): 8 of 8 fighter rows and 6 of 8 bomber rows have a pool, new fits in all fighter rows and bomber rows 11-13. The value check of section 9 is unchanged (captured fits count 1.0): cycle mean 0.981-1.004, peak 1.446.
+
+### 14.3 Rules (user decisions 2026-10-30)
+
+| # | Rule | Source |
+|---|---|---|
+| R0 | new fits are pirate-skinned hulls with vanilla module patterns | decision 5: "Option D accepted in principle; the user wants believable example fits first (pirate-skinned hulls, vanilla module patterns)" |
+| R1 | a new fit on an existing hull enters only through the captured slot (one ship per flight, `fits_cap_pct` 5 % of flights, at most 10) as a pool entry within +-5 % of the replaced fit's value; never in the up or dn maps, never as a whole flight | decision 7: "the new fits and especially the unused pirate-skinned hulls (TieFly, Stormcrow mk2, Cleaner mk2, Panthera, Puma) must be rarer than the vanilla fits, since they represent captured equipment" |
+| R2 | an unused hull (TieFly_pir0, Stormcrow_mk2_pir0, Cleaner_mk2_pir0) enters only as the captured ship of a flight whose clan is tier 3 or 4 and only when the sub-roll `TRF_FtHash(idx, i + 192, pt, salt + 3) < fits_hull_pct` (50) passes; at tiers 1-2 the selector skips unused-hull entries | decision 7 |
+| R3 | Panthera_pir1, Puma_pir1 are boss fits: in the data (`b=1`, values listed), in no pool, map or roll; step 3 uses them | D3: "Panthera_pir0 and Puma_pir0 are reserved for pirate captains as the end boss of a pirate base assault"; BB-e: "the Puma fit takes a shield amplifier in its third system slot" |
+| R4 | quest-gated visits (`TRF_Ft_Gate`): existing fits only; no new fit, no bare carcass, no AddModule (quest scripts may read `ship_<sign>_<n>`) | D5 |
+| R5 | a failed AddModule (nil return) is logged, the ship stays partly dressed; no retry, no delete | brief |
+
+### 14.4 Selection (`TRF_FtRoll`, `TRF_FtRow`, `TRF_FtLeft`)
+
+`TRF_FtRoll` adds `r3 = TRF_FtHash(idx, i + 192, pt, salt + 3)` and the pool level `nw`: 0 with gate 1 or tune `fits_new` 0, else 1, and 2 when the tier is 3 or 4 and `r3 < fits_hull_pct`. `TRF_FtRow(row, g, sel, rk, nw)` passes `nw` to `TRF_FtLeft(p, row, nw)`, which drops every new fit at `nw` 0, the unused hulls (`h` 1) at `nw` 1 and the boss fits always; the rest of the captured step is as in 3.3 (at most one ship, never a fit the graded row carries, the same selector). A picked new fit enters as `{carcass, rank, role}` and `TRF_FtRow` returns a third value `dress = {[j] = fit name}`. `nw` nil (the old callers) reads as 0, and `fits_new` 0 gives exactly the step 1 rows for every row and selector (host `ft-g`). Shares (host `ft-g`, four haunt systems, phase starts 1..400): at tier 4 3.55 % of flights carry a new fit on an existing hull and 0.71 % an unused hull; at tier 2 4.09 % and 0.
+
+### 14.5 Dressing (`TRF_FtDress`, `TRF_Ft_Dress`)
+
+`TRF_FtDress(sign, dress, sys, flight, ships)`: for each `j` of `dress` the ship `ships[j]`, else `getglobal("ship_"..sign.."_"..j)`, is checked (`TRF_FtObj`) and gets each module of `new[name].m` in order by `call(TRF_FtAdd, {s, m}, "x", TRF_FtNoErr)`. A nil or FALSE return or an error is a failed module; the next modules are still fitted, nothing is retried or deleted. Synchronous, right after the build, before any order.
+
+| Site | Call | Ship handle |
+|---|---|---|
+| haunt (`haunt_mode` 1 and 2) | `TRF_Ft_Haunt` after `TRF_FtBuild` | `ship_<sign>_<j>` of `NewAllFlight` |
+| raid, garrison | `TRF_PirFlight` after `TRF_Rd_Build`: `TRF_P("TRF_Ft_Dress", gr, sign, dress, sh, made, getn(row))` | the ship list and row indices of `TRF_BuildFlight` (`TRF_Rd_BuildFlight` returns them too); an index beyond the `maxn` trim is not dressed |
+| gate (`TRF_Ft_Gate`) | none (`nw` 0) | |
+
+`TRF_Rd_PirRow` returns the dress table as its seventh value. The grade digits of `TRF.nv.e` keep their scheme (captured = +3). Save: no new saved field (the full state stays 93,194 bytes, `v1-n`).
+
+### 14.6 Tune (no new cfg key; clamps in `TRF_FtTune`)
+
+| Key | Default | Range | Meaning |
+|---|---|---|---|
+| `fits_hull_pct` | 50 | 0..100 | % of captured hits in tier 3-4 flights that may draw an unused hull (R2) |
+| `fits_new` | 1 | 0, 1 | 0 drops the new fits and the widened pools (step 1 rows; A/B run, `TUNE=fits_new=0`) |
+
+### 14.7 Log lines
+
+| Event | Example | Level |
+|---|---|---|
+| `dress` | `module=fits event=dress system=golkonda flight=Pirate03 ship=3 fit=Stormcrow_pir3 carcass=Stormcrow_pir0 hull=false modules=4 ok=4 failed=none` (`failed` the first failing module, `no_ship`, `no_data`) | 2; 1 when `failed` is not none |
+| `roll` | `... grade=0 captured_roll=true pool=hull` (`pool` old, new, hull: the level `nw`) | as section 8 |
+| `row` | `... after=EvilEye_pir2,Tiger_pir2,Stormcrow_pir0,EvilEye_pir1 new_fit=Stormcrow_pir3` (`none` without a new fit) | as section 8 |
+| `dump` | `... cap_pct=5 new=1 hull_pct=50 grades=...` | 1 |
+
+### 14.8 Deviations (step 2)
+
+1. Value fixes of the user's examples: as written only Cleaner_pir2 lies within +-5 % of a row fit (the others 8-54 % off), so R1 would have widened one pool. Each example keeps its hull and guns; one system or rocket module changed (Raptor_pir2: AMS1 dropped and ECM1 -> ECM2; Stormcrow_mk2_pir1: ShAmp1 dropped) so that it lands within 5 % of a row fit of the same or the next level (table 14.2, last column). No example had a holder problem.
+2. Cross-hull pools: the pool is chosen by value, so Hammerhead_pir2, Bident_pir2 and TieFly_pir1 replace a Raptor_pir1 (fighter rows), Cleaner_pir2 and Stormcrow_mk2_pir1 a Tiger_pir1, Cleaner_pir3 a Stormcrow_pir1, Cleaner_mk2_pir1 an EvilEye_pir1. Bident_pir2 (L3, 450 HP) for Raptor_pir1 (L2, 200 HP) and Cleaner_pir2 (L2, 300 HP) for Tiger_pir1 (L3, 450 HP) change the level by one (as deviation 3 of step 1).
+3. Puma_pir1 carries two system modules (ECM3, ShAmp2) on a three-system hull; BB-e's shield amplifier is the ShAmp2, the third system holder stays free for step 3.
+4. Raids and garrisons: `TRF_BuildFlight` sets no `ship_<sign>_<j>` globals, so `TRF_Ft_Dress` takes the ship list and row indices it returns; the `getglobal` path of the brief is the haunt path.
+5. R2 share: 0.71 % of tier 4 flights (host), below the brief's estimate of 1-2 %, because the unused hull is one of 2-4 entries of its pool; `fits_hull_pct` 100 doubles it.
+6. Keys: the dress line adds `hull=` (for D-FIT.6), the roll line `pool=`, the row line `new_fit=`; FALSE and an error count as a failed module like nil.
+7. Host stub: `AddModule` returns the module name (E-BB1; `HOST().am_nil[m]` returns nil), so `ft-f` expects `ret=PC2` instead of `ret=nil`.
+8. XT band bombers: rows 6 (Hammerhead_pir1 only, 2,540) and 10 (Bident and Hatchet) get no new-fit pool, and rows 7-9 keep the step 1 pool only: the AC1 pair alone costs 3,200, no new fit is within 5 % of 2,540-2,850.
+9. Checks: the suite grows from 163 to 165 runs.
+
+### 14.9 Host runs and CHECK
+
+| Run | Content |
+|---|---|
+| `ft-g` | 14 new fits on bare pirate carcasses within their holders (a second holder table in the test), `h` / `b` flags; pools within 5 %, every non-boss new fit in a pool, boss fits in none, no new fit in a map; every fighter row 6-13 and bomber rows 11-13 can carry a new fit; the pool filter for `nw` 0 / 1 / 2; one ship at most, the bare carcass in the row; `nw` 1 never an unused hull; the pool level 1 at tiers 1-2, 2 at tiers 3-4 iff `r3 < 50` (988 of 2,000); Golkonda at tier 2 never an unused hull, at tier 4 one; `fits_hull_pct` 0 / 100 and the clamps; gate rolls level 0, no dress for any row and selector; `fits_new` 0 equals the step 1 pools for every row and selector; the shares; `pool=` on the roll line |
+| `ft-h` | Golkonda Raids: a captured new fit built as its bare carcass through `NewAllFlight`, the modules fitted in order, `event=dress ok= failed=none` before the flight's call line, one AddModule per module, digit 3, ten flights fielded; a nil AddModule: `failed=<module>` at log 1, no retry, the ship flies; a clean dress is level 2; an unused hull at tier 4 (`hull=true`, roll `tier=4 pool=hull`); `TRF_FtDress` with a mocked `ship_ftx_2` (FALSE, an error, `no_ship`, `no_data`); a T4 raid flight dressed by `TRF_PirFlight`, the `maxn` trim, the fallback builder; `fits` 0: no roll, dress or AddModule, call lines byte-identical to a run without trf_fits |
+
+| Item | Do | See | Tool |
+|---|---|---|---|
+| D-FIT.5 | play haunt visits until a row line has `new_fit=` | `event=dress ... ok=<modules> failed=none` for it; eyes: the hull of `carcass=` carries the fit's guns (target it) and fires them, keeps them across a save and load inside the system (not known: whether the save stores the fitted modules of a bare carcass), it drops loot | `check_ingame.py` D-FIT.5 |
+| D-FIT.6 | Build-up / Raids and Boom visits | every `event=dress hull=true` has a roll line with `tier>=3 pool=hull`; no `pool=hull` below tier 3 or in a gate roll; the R2 share (note) | D-FIT.6 |

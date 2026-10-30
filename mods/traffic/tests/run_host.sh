@@ -10,7 +10,7 @@
 # host_freight.lua, the pirate haunts scenarios ha-a..f of host_haunt.lua and the sealed parcels scenarios pcl-a..h of
 # host_parcel.lua, the mercenary clans scenarios mc-a..k of host_merc.lua (each its own entry point), the named mercenary pilots scenarios mcp-a..c of host_pilots.lua (own entry
 # point), the hail stage B and combat hail scenarios hl-a..e of host_hail.lua (own entry point), the strength scale
-# scenarios str-a..e of host_str.lua (own entry point), the pirate fits scenarios ft-a..f of host_fits.lua (own entry point), then tests/test_pilots.sh (Pilots.xml merge and installer dry run on copies under .work/pilots/; it skips
+# scenarios str-a..e of host_str.lua (own entry point), the pirate fits scenarios ft-a..h of host_fits.lua (own entry point), then tests/test_pilots.sh (Pilots.xml merge and installer dry run on copies under .work/pilots/; it skips
 # when the vanilla Pilots.xml is not found, PILOTS_TEST=0 skips it).
 # Env: LUA4 (interpreter), LUAC4, EXPS (default "default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr ha pcl mc mcp hl str ft"), SCENS (default a..g),
 # V02 (default a..n), V1 (default a..n), STN (default a..h), PL (default a..f), SV (default a..g), LAD (default a..g), CH
@@ -74,7 +74,7 @@ for e in ${EXPS:-default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr
         mcp) entry=host_pilots.lua; for s in ${MCP:-a b c}; do run "mcp-$s" TRF_MCP="$s"; done; entry=host_stubs.lua ;;
         hl) entry=host_hail.lua; for s in ${HL:-a b c d e}; do run "hl-$s" TRF_HL="$s"; done; entry=host_stubs.lua ;;
         str) entry=host_str.lua; for s in ${STR:-a b c d e}; do run "str-$s" TRF_STR="$s"; done; entry=host_stubs.lua ;;
-        ft) entry=host_fits.lua; for s in ${FT:-a b c d e f}; do run "ft-$s" TRF_FT="$s"; done; entry=host_stubs.lua ;;
+        ft) entry=host_fits.lua; for s in ${FT:-a b c d e f g h}; do run "ft-$s" TRF_FT="$s"; done; entry=host_stubs.lua ;;
         *) run "exp$e" TRF_EXP="$e" ;;
     esac
 done

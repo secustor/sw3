@@ -320,9 +320,14 @@ function CreateCarcass(tpl, pos, dir)
 	s.GetVectorOrientation = function(self) local o = self.ori or Vector3(0, 0, 1); return Vector3(o.x, o.y, o.z); end;
 	s.SetPosition = function(self, v) HOST_Want(HOST_IsVec(v), "Carcass:SetPosition(Vector3)"); self.pos = Vector3(v.x, v.y, v.z); end;
 	s.Move = function(self, v) HOST_Want(HOST_IsVec(v), "Carcass:Move(Vector3)"); self.mv = v; end;
+	-- AddModule returns the module name (E-BB1, fits-spec 5.7); a name in HOST().am_nil returns nil (a failed fit).
 	s.AddModule = function(self, m)
 		HOST_Want(type(m) == "string", "Carcass:AddModule(module)");
 		tinsert(HOST().mods, m); self.mods = (self.mods or 0) + 1;
+		if type(HOST().am_nil) == "table" and HOST().am_nil[m] then return nil; end;
+		self.modl = self.modl or {};
+		tinsert(self.modl, m);
+		return m;
 	end;
 	s.Blow = function(self) self.alive = nil; self.blown = 1; end;
 	s.PlayFX = function(self, fx) HOST_Want(type(fx) == "string", "Carcass:PlayFX(effect)"); self.fx = fx; end;
