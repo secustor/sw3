@@ -230,7 +230,7 @@ end;
 -- Band row before strict gate and governor: {ct (flights), cs (ships), cp (parked), sf (spawn factor),
 -- tmax (highest tier), sb (seed bonus, points), band, pro}. cfg band_half 1: halved increments (design 6.7).
 -- tmax (design/strength-spec.md 10): band 0 TT1, else the highest tier the TRF_TierPick roll can give before the
--- caps (base of the trade score, + 1 with a chance up): TT3 at pro 3-4, TT4 from pro 5; without trf_str band + 1.
+-- caps (TRF_StrTierMax of the trade score): TT3 at pro 3-4, TT4 from pro 5; without trf_str band + 1.
 function TRF_BandCaps(idx)
 	local b = TRF_Band(idx);
 	local p = TRF_TrPro(idx);
@@ -238,10 +238,8 @@ function TRF_BandCaps(idx)
 	if TRF_TrOpt("band_half", 0) == 1 then sf = {1.00, 1.13, 1.25, 1.38, 1.50}; ct = {2, 2, 3, 3, 3}; cs = {10, 11, 13, 15, 15}; end;
 	local cp, sb = {0, 0, 1, 2, 2}, {0, 10, 15, 20, 20};
 	local c = {ct=ct[b + 1], cs=cs[b + 1], cp=cp[b + 1], sf=sf[b + 1], tmax=min(b + 1, 4), sb=sb[b + 1], band=b, pro=p};
-	if b > 0 and type(TRF_StrChance) == "function" and type(TRF_StrScore) == "function" then
-		local tb, cu = TRF_StrChance(TRF_StrScore("trade", idx));
-		if cu > 0 then tb = tb + 1; end;
-		c.tmax = min(tb, 4);
+	if b > 0 and type(TRF_StrTierMax) == "function" and type(TRF_StrScore) == "function" then
+		c.tmax = TRF_StrTierMax(TRF_StrScore("trade", idx));
 	end;
 	if b == 2 and p >= 7 then c.sb = 20; end;
 	return c;
@@ -324,12 +322,9 @@ function TRF_TierPick(idx, strength, free)
 	local sc = TRF_StrScore("trade", idx);
 	local t, why, roll, step = 1, "pro", nil, 0;
 	if p >= 3 then
-		t = TRF_StrRoll(sc, nil);
-		if TRF_StrRollUseful(sc) then
-			roll = TRF_TrRand(100);
-			t, step = TRF_StrRoll(sc, roll);
-			if step ~= 0 then why = "roll"; end;
-		end;
+		if TRF_StrRollUseful(sc) then roll = TRF_TrRand(100); end;
+		t, step = TRF_StrRoll(sc, roll);
+		if step ~= 0 then why = "roll"; end;
 	end;
 	local t0 = t;
 	if t == 4 then

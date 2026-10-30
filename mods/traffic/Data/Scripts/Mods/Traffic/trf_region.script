@@ -1372,8 +1372,7 @@ function TRF_Rg_Fix()
 			if r.sw ~= 1 then r.sw = 0; end;
 			c.sc = TRF_Clamp(floor(c.sc), 0, 99);
 			-- design/strength-spec.md 3: tier digit tr 1..4, else the plain band of the score.
-			if type(c.tr) == "number" then c.tr = TRF_Clamp(floor(c.tr), 1, 4); else c.tr = nil; end;
-			if c.tr == nil then c.tr = TRF_ClanTier(slot); end;
+			if type(c.tr) == "number" then c.tr = TRF_Clamp(floor(c.tr), 1, 4); else c.tr = TRF_ClanTier(slot); end;
 			-- v1 3.3: ct 0..7, sr 1..2 or absent.
 			if r.ct ~= nil and (type(r.ct) ~= "number" or r.ct < 0 or r.ct > 7) then r.ct = 0; end;
 			if r.ct ~= nil then r.ct = floor(r.ct); end;

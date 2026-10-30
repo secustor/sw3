@@ -1128,7 +1128,7 @@ def c_str_roll(ctx):
         if sc < 0 or sc > 99 or sc % 11 or st not in (-1, 0, 1):
             res.fails.append("%s: score not pro x 11 or step not -1..1" % r.short())
         elif rt != min(4, max(1, str_band(sc) + st)):
-            res.fails.append("%s: rolled_tier is not the band of the score plus the step" % r.short())
+            res.fails.append("%s: rolled_tier is not the band of the score plus the step (default thresholds)" % r.short())
         elif t < 1 or t > rt:
             res.fails.append("%s: tier above the rolled tier (the caps only lower it)" % r.short())
         elif sc < 33 and (r.get("roll") != "none" or t != 1):

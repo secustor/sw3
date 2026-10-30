@@ -83,12 +83,15 @@ function TRF_StrSc(v)
 end;
 
 -- Score 0..99 of one side (spec 4.1): kind "clan" the clan score of region slot id (TRF_ClanScore), "trade" the
--- prosperity 0..9 of system id times 11 (TRF_Pro), "merc" the fortune of mercenary clan id (TRF_McDig, read only).
--- Unknown kind or a missing module: 0.
+-- prosperity 0..9 of system id times 11 (TRF_Pro, else the saved TRF.sys[id].pro as trf_tier's TRF_TrPro reads it),
+-- "merc" the fortune of mercenary clan id (TRF_McDig, read only). Unknown kind or a missing module: 0.
 function TRF_StrScore(kind, id)
 	if kind == "clan" then return TRF_StrSc(TRF_N("TRF_ClanScore", id)); end;
 	if kind == "trade" then
 		local p = TRF_N("TRF_Pro", id);
+		if p == nil and type(TRF) == "table" and type(TRF.sys) == "table" and type(id) == "number" and type(TRF.sys[id]) == "table" then
+			p = TRF.sys[id].pro;
+		end;
 		if type(p) ~= "number" then return 0; end;
 		return TRF_StrSc(TRF_StrCl(floor(p), 0, 9) * 11);
 	end;
@@ -201,4 +204,12 @@ function TRF_StrRollUseful(score)
 	local b, cu, cd = TRF_StrChance(score);
 	if (cu > 0 and b < 4) or (cd > 0 and b > 1) then return 1; end;
 	return nil;
+end;
+
+-- Highest tier TRF_StrRoll can give for score (the base tier, one up when a step up has a chance), 1..4; trf_tier's
+-- TRF_BandCaps reports it as tmax.
+function TRF_StrTierMax(score)
+	local b, cu = TRF_StrChance(score);
+	if cu > 0 then b = b + 1; end;
+	return TRF_StrCl(b, 1, 4);
 end;

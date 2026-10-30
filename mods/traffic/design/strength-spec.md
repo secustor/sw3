@@ -52,7 +52,7 @@ One strength logic for traders and pirates: a score 0..99 per side goes in, a ti
 | kind | id | score |
 |---|---|---|
 | `clan` | region slot | `TRF_ClanScore(slot)` (0 without a record) |
-| `trade` | system idx | `TRF_Pro(idx)` 0..9 x 11 |
+| `trade` | system idx | `TRF_Pro(idx)` 0..9 x 11 (the saved `TRF.sys[idx].pro` without trf_region, as `TRF_TrPro` reads it) |
 | `merc` | clan 1..12 | `TRF_McDig(c, "fo")` (the creation fortune without a record; nothing is written) |
 | other | | 0 |
 
@@ -85,6 +85,7 @@ Every score is floored and clamped 0..99 (`TRF_StrSc`).
 - chance_up = `floor(x * str_up / w)` (defaults `floor(f x 60)`), chance_down = `min(floor((w - x) * str_dn / w), 100 - chance_up)` (defaults `floor((1 - f) x 20)`). Integer arithmetic, no rounding drift.
 - One roll 0..99 from the caller: step +1 when `roll < chance_up`, -1 when `roll >= 100 - chance_down`, else 0. Tier = clamp(b + step, 1, 4). Returns tier, step (raw), chance_up, chance_down, b. `roll` nil: step 0.
 - `TRF_StrRollUseful(score)`: 1 when a roll can change the tier (`chance_up > 0` below T4 or `chance_down > 0` above T1); callers draw no random number otherwise.
+- `TRF_StrTierMax(score)`: the highest tier a roll can give, b + 1 when `chance_up > 0`, clamped 1..4 (`TRF_BandCaps(idx).tmax`, section 10 item 7).
 
 ### 4.5 Trader tier distribution (accepted behaviour change)
 
@@ -180,7 +181,7 @@ Changed expectations elsewhere (each with a comment naming the section): `extra_
 4. `TRF_ShClsOf` and `TRF_CapHullOf` keep no literal copy of the table: without trf_str stashes read class 1 and captains one row up. `TRF_Rd_TierRows` keeps the four raid rows (raid columns only) as its fallback without trf_str, so the raid readers never index nil. trf_str loads with trf_region in every configuration that loads those modules.
 5. The brief's "lint prefixes registered": `tools/lint_lua.py` has a registry only for group-name prefixes; trf_str creates no group, so nothing was added there.
 6. `TRF_StrRoll` returns the raw step (+1 at T4 or -1 at T1 although the tier is clamped), so a later pirate caller can see that the roll hit.
-7. v02 9.1 and v1 8.1 "Highest tier" per band: the roll of 4.5 goes one tier above the old band maximum (TT3 at `pro` 3-4, band 1; TT4 at `pro` 5-7, band 2). `TRF_BandCaps(idx).tmax` reports the new maximum (band 0: TT1; else the base tier of the trade score, + 1 when the chance up is above 0; without trf_str band + 1), so trf_survive seeds 3 pods at `pro` 3-4 (survivors-spec "highest trader tier 3+"). A TT4 at `pro` 5-7 uses the `pro` 8 sizes (`tt4_tp8` 3 transports, `tt4_e8` 4 escorts) and keeps every TT4 condition of v1 8.1.
+7. v02 9.1 and v1 8.1 "Highest tier" per band: the roll of 4.5 goes one tier above the old band maximum (TT3 at `pro` 3-4, band 1; TT4 at `pro` 5-7, band 2). `TRF_BandCaps(idx).tmax` reports the new maximum (band 0: TT1; else `TRF_StrTierMax` of the trade score; without trf_str band + 1), so trf_survive seeds 3 pods at `pro` 3-4 (survivors-spec "highest trader tier 3+"). A TT4 at `pro` 5-7 uses the `pro` 8 sizes (`tt4_tp8` 3 transports, `tt4_e8` 4 escorts) and keeps every TT4 condition of v1 8.1.
 8. v1 8.3 forced Bust: the gate is `sc < 75` alone (the old real tier `floor(sc / 25) + 1 < 4` was the same test); the hysteresis tier is not read, so a clan held at tier 4 with a score of 70-74 is still forced into Bust.
 
 ## 11. Left out (later tasks)
