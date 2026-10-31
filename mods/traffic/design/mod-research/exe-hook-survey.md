@@ -65,3 +65,5 @@ Not needed from the DLL: XP gain (`ModifyGainedExperience`), message box results
 - `TRF_MarketGet` "current" block equals the trade window.
 - Stack leak: log `lua_gettop` at T4 over a quiet visit; confirm it grows without the guard.
 - Call hook overhead with the profiler on.
+
+- Maps, asteroid fields and the render far plane: `maps-and-view-distance.md` (location.script, snapshots, InitMap, field helpers, ZFarPlane, detection test).
