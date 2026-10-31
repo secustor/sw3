@@ -44,7 +44,11 @@ while [ $# -gt 0 ]; do
     --game-dir) [ $# -ge 2 ] || usage; game=$2; shift ;;
     --game-dir=*) game=${1#--game-dir=} ;;
     -h|--help) usage ;;
-    -*) case " $flags " in *" $(fkey "$1") "*) pass="$pass $1" ;; *) echo "unknown option $1" >&2; usage ;; esac ;;
+    -*) case " $flags " in
+        *" $(fkey "$1") "*) pass="$pass $1" ;;
+        *" $1= "*) echo "unknown option $1: pass its value as $1=<v>" >&2; usage ;;
+        *) echo "unknown option $1" >&2; usage ;;
+        esac ;;
     *) echo "unexpected argument $1 (use --game-dir)" >&2; usage ;;
     esac
     shift

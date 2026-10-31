@@ -15,7 +15,7 @@
 # sw3-infinite-view-backup/manifest.txt lists the values and the changed lines; uninstall.sh restores the originals.
 # Only the number on the ZFarPlane, FogStart and FogEnd lines changes; CRLF and every other byte stay.
 # Env (tests only): SW3_IV_FAKE_RUNNING=1 acts as if sw3cw.exe were running, SW3_IV_FAKE_RUNNING=0 skips that check.
-set -eu
+set -euf   # -f: file names are expanded unquoted below, no globbing
 here=$(cd "$(dirname "$0")" && pwd)
 usage() { echo "usage: $0 [--view N] [--fog keep|clear] [--dry-run] <game dir>" >&2; exit 2; }
 die() { echo "install.sh: $*" >&2; exit 1; }
@@ -58,7 +58,7 @@ irel=$(cd "$game" && find . -mindepth 1 -maxdepth 1 -type f -iname main.ini | he
 [ -d "$game/Data/Environment" ] || die "no Data/Environment in $game"
 envs=$(cd "$game" && find Data/Environment -mindepth 1 -maxdepth 1 -type f -iname '*.env' | LC_ALL=C sort)
 [ -n "$envs" ] || die "no .env files in $game/Data/Environment"
-case $envs in *" "*) die "an env file name has a space; not supported" ;; esac
+case $envs in *[[:blank:]]*) die "an env file name has a space or tab; not supported" ;; esac
 [ ! -d "$bk" ] || [ -f "$bk/$irel" ] || die "$bk has no $irel; the backup is incomplete. Nothing changed."
 
 # One awk program for both file kinds. Modes: scan-ini prints "<line> <value>" of the [GRAPH] ZFarPlane line (exit 3
@@ -110,8 +110,8 @@ gen() {   # <rel>: the target content of that file, built from its original
 
 r=$(LC_ALL=C awk -v mode=scan-ini "$AWK" "$(orig "$irel")") || die "$(orig "$irel") has no single numeric ZFarPlane line in [GRAPH]. Nothing changed."
 iln=${r%% *}; ofar=${r#* }
-awk -v a="$ofar" 'BEGIN { exit !(a + 0 > 0) }' || die "original ZFarPlane is $ofar. Nothing changed."
-k=$(awk -v a="$ofar" -v b="$view" 'BEGIN { printf "%.10g", a / b }')
+LC_ALL=C awk -v a="$ofar" 'BEGIN { exit !(a + 0 > 0) }' || die "original ZFarPlane is $ofar. Nothing changed."
+k=$(LC_ALL=C awk -v a="$ofar" -v b="$view" 'BEGIN { printf "%.10g", a / b }')   # C locale: "." as the decimal point
 
 # Plan: every file whose target differs from what is on disk now.
 chg=; nchg=0; nenv=0; nscaled=0; skips=; mlines=
@@ -166,7 +166,8 @@ else
         done
     fi
     for rel in $chg; do
-        gen "$rel" > "$game/$rel.sw3-new"; mv -f "$game/$rel.sw3-new" "$game/$rel"
+        gen "$rel" > "$game/$rel.sw3-new" || { rm -f "$game/$rel.sw3-new"; die "could not build $rel; $game/$rel is unchanged"; }
+        mv -f "$game/$rel.sw3-new" "$game/$rel"
     done
     printf '%s' "$manifest" > "$man.sw3-new"; mv -f "$man.sw3-new" "$man"
     say "wrote $nchg file(s); manifest: sw3-infinite-view-backup/manifest.txt"

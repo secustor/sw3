@@ -4,7 +4,7 @@
 # differ from their backup are written) and removes that folder with its manifest. Safe to run twice: without a backup
 # it says so and exits 0.
 # Env (tests only): SW3_IV_FAKE_RUNNING=1 acts as if sw3cw.exe were running, SW3_IV_FAKE_RUNNING=0 skips that check.
-set -eu
+set -euf   # -f: file names are expanded unquoted below, no globbing
 usage() { echo "usage: $0 <game dir>" >&2; exit 2; }
 die() { echo "uninstall.sh: $*" >&2; exit 1; }
 say() { echo "  $*"; }
@@ -32,8 +32,8 @@ if [ ! -d "$bk" ]; then
     echo "sw3-infinite-view: not installed in $game (no sw3-infinite-view-backup/); nothing to do"
     exit 0
 fi
-files=$(cd "$bk" && find . -type f ! -name manifest.txt ! -name '*.sw3-new' | sed 's|^\./||' | LC_ALL=C sort)
-case $files in *" "*) die "a file name in $bk has a space; not supported. Nothing changed." ;; esac
+files=$(cd "$bk" && find . -type f ! -name manifest.txt ! -name '*.sw3-new' ! -name '.*' | sed 's|^\./||' | LC_ALL=C sort)
+case $files in *[[:blank:]]*) die "a file name in $bk has a space or tab; not supported. Nothing changed." ;; esac
 printf '%s\n' "$files" | grep -qix 'main\.ini' || die "$bk has no Main.ini; restore by hand. Nothing changed."
 
 echo "sw3-infinite-view $(sed -n 's/^version //p' "$man" 2>/dev/null): uninstall from $game"

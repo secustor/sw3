@@ -6,7 +6,8 @@
 # Checks: sh -n; --dry-run writes nothing; install 6000 clear (only the ZFarPlane number changes, env untouched, backup =
 # originals, manifest); re-run changes nothing; 4000 keep (FogEnd 1.0 -> 0.2 from the originals, only that number per
 # file, FogStart -1 file untouched, CRLF and the missing last newline kept); 8000 keep after 4000 keep rescales from the
-# originals (0.1, not 0.02); back to clear restores the env files; the backup never changes; --view=N --fog=keep forms;
+# originals (0.1, not 0.02); 4000 keep under a comma-decimal locale (de_DE.UTF-8) still writes 0.2; back to clear restores
+# the env files; the backup never changes; --view=N --fog=keep forms;
 # the game-running guard (SW3_IV_FAKE_RUNNING=1) for install and uninstall; bad values rejected with nothing written;
 # uninstall gives the original tree back byte for byte, a second uninstall is a no-op; top-level install.sh pass-through
 # (--dry-run --view=N) and its --dry-run rule for mods without it. Exit 1 on any failed check; skips (exit 0) without $SRC.
@@ -44,6 +45,7 @@ same_tree() { diff -r "$1" "$2" >/dev/null 2>&1; }
 same_env() { diff -r "$1/Data/Environment" "$2/Data/Environment" >/dev/null 2>&1; }
 nenv=$(find "$o/Data/Environment" -name '*.env' | wc -l | tr -d ' ')
 off=$(cd "$o/Data/Environment" && grep -a -l '^FogStart = -1' ./*.env | sed 's|^\./||')
+iln=$(grep -a -n '^ZFarPlane' "$o/Main.ini" | cut -d: -f1)
 # expect <dir> <view> <fogend or ""> : Main.ini is the original with only the number changed; with a fog end value,
 # every env file with fog on is the original with only "FogEnd = 1.0" -> that value, the fog-off file is the original.
 expect() {
@@ -76,7 +78,7 @@ check "dry run writes nothing (tree = originals, no backup)" same_tree "$g" "$o"
 
 run "$inst" "$g"
 check "install 6000 clear exit 0 ($rc)" [ "$rc" = 0 ]
-check "install prints the resulting line" has "Main.ini line 15: ZFarPlane = 6000.0f"
+check "install prints the resulting line" has "Main.ini line $iln: ZFarPlane = 6000.0f"
 check "Main.ini: only ZFarPlane 800.0f -> 6000.0f, CRLF kept; env files untouched" expect "$g" 6000 ""
 check "backup: Main.ini and every env file, equal to the originals" same_tree "$bk/Data/Environment" "$o/Data/Environment"
 check "backup Main.ini = original" cmp -s "$bk/Main.ini" "$o/Main.ini"
@@ -104,6 +106,8 @@ check "re-run 4000 keep says nothing changed" has "nothing changed"
 
 run "$inst" --view 8000 --fog keep "$g"
 check "8000 keep after 4000 keep: rescaled from the originals (FogEnd 0.1, exit $rc)" expect "$g" 8000 0.1
+run env LC_ALL=de_DE.UTF-8 "$inst" --view 4000 --fog keep "$g"   # BSD awk prints "0,2" for k in this locale unless told not to
+check "4000 keep under a comma-decimal locale: FogEnd 0.2, not 0.0 (exit $rc)" expect "$g" 4000 0.2
 
 run "$inst" --view 6000 "$g"
 check "back to 6000 clear: env files restored to the originals" expect "$g" 6000 ""
