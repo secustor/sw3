@@ -7,7 +7,8 @@
 #   --view N       far plane in world units, an integer in 1000..20000 (default 6000: covers a 4000x4000 map from any point)
 #   --fade N       fade band in units, an integer in 100..5000 and at most view - 200 (default 500). Sets
 #                  ZTranspar = view - fade - 100 and zTransparLenght = fade, so meshes fade out just before the far plane.
-#   --fade keep    leaves ZTranspar and zTransparLenght as they are (meshes still vanish beyond 600 units in vanilla).
+#   --fade keep    leaves ZTranspar and zTransparLenght at their original values (a run after --fade N puts them back;
+#                  meshes still vanish beyond 600 units in vanilla).
 #   --fog clear    default. The Data/Environment/*.env files are not touched. Their FogStart/FogEnd are fractions of the
 #                  far plane, so the haze stretches out with it and fades out at the new far plane.
 #   --fog keep     multiplies FogStart/FogEnd in every env file by <original ZFarPlane>/N (800/N in vanilla), so the haze
@@ -85,27 +86,27 @@ AWK='
 function num(s) { return match(s, /^[-+]?([0-9]+[.]?[0-9]*|[.][0-9]+)/) ? substr(s, 1, RLENGTH) : "" }
 function fmt(x,  s) { s = sprintf("%.6f", x); sub(/0+$/, "", s); sub(/[.]$/, ".0", s); return s }
 function put(i, at, old, new) { line[i] = substr(line[i], 1, at) new substr(line[i], at + length(old) + 1) }
+function one(k) { return cnt[k] == 1 && val0[k] != "" }   # [GRAPH] key k seen exactly once, with a number
+function found(k) { return one(k) ? row[k] " " val0[k] " " spell[k] : "- - -" }
+function setkey(k, new) { put(row[k], col[k], val0[k], new) }
 {
     line[NR] = $0; l = $0; sub(/\r$/, "", l)
     if (l ~ /^[ \t]*\[/) { sec = tolower(l); gsub(/[ \t]/, "", sec); next }
     if (!match(l, /^[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*/)) next
     p = RLENGTH; k0 = l; sub(/^[ \t]*/, "", k0); sub(/[ \t]*=.*/, "", k0); key = tolower(k0)
     v = num(substr(l, p + 1))
-    if (mode ~ /ini$/ && sec == "[graph]" && key == "zfarplane") { n++; iln = NR; ip = p; iv = v }
-    if (mode ~ /ini$/ && sec == "[graph]" && key == "ztranspar") { tn++; tln = NR; tp = p; tv = v; tk = k0 }
-    if (mode ~ /ini$/ && sec == "[graph]" && key == "ztransparlenght") { ln++; lln = NR; lp = p; lv = v; lk = k0 }
+    if (mode ~ /ini$/ && sec == "[graph]" && key ~ /^(zfarplane|ztranspar|ztransparlenght)$/) {
+        cnt[key]++; row[key] = NR; col[key] = p; val0[key] = v; spell[key] = k0
+    }
     if (mode ~ /env$/ && key == "fogstart" && !fsl) { fsl = NR; fsp = p; fs = v }
     if (mode ~ /env$/ && key == "fogend" && !fel) { fel = NR; fep = p; fe = v }
 }
 END {
     if (mode ~ /ini$/) {
-        if (n != 1 || iv == "") exit 3
-        if (mode == "scan-ini") {
-            print iln, iv, (tn == 1 && tv != "" ? tln " " tv " " tk : "- - -"), (ln == 1 && lv != "" ? lln " " lv " " lk : "- - -")
-            exit
-        }
-        put(iln, ip, iv, val)
-        if (tval != "") { put(tln, tp, tv, tval); put(lln, lp, lv, lval) }
+        if (!one("zfarplane")) exit 3
+        if (mode == "scan-ini") { print row["zfarplane"], val0["zfarplane"], found("ztranspar"), found("ztransparlenght"); exit }
+        setkey("zfarplane", val)
+        if (tval != "") { setkey("ztranspar", tval); setkey("ztransparlenght", lval) }
     } else {
         if (!fsl || !fel || fs == "" || fe == "") why = "no numeric FogStart and FogEnd"
         else if (fs + 0 < 0) why = "FogStart = " fs ", fog off"
@@ -176,7 +177,7 @@ ${orig_fade}${mlines}"
 pfx=; [ "$dry" = 0 ] || pfx="dry run: "
 echo "${pfx}sw3-infinite-view $version: ZFarPlane $view, fade $fade, fog $fog for $game"
 say "Main.ini: ZFarPlane $ofar (original) -> $view.0"
-if [ "$fade" = keep ]; then say "Main.ini: ZTranspar and zTransparLenght kept (--fade keep)"
+if [ "$fade" = keep ]; then say "Main.ini: ZTranspar and zTransparLenght kept at the original values (--fade keep)"
 else say "Main.ini: $tkey $otr (original) -> $tval, $lkey $olen (original) -> $lval"; fi
 if [ "$fog" = keep ]; then
     say "env: $nscaled of $nenv files with FogStart/FogEnd x $k (fog ends at $ofar units as before)"
@@ -210,8 +211,6 @@ else
     say "wrote $nchg file(s); manifest: sw3-infinite-view-backup/manifest.txt"
 fi
 shown=$iln; [ "$fade" = keep ] || shown=$(printf '%s\n' "$iln" "$tln" "$lln" | sort -n)
-for n in $shown; do
-    if [ "$dry" = 1 ]; then say "$irel line $n would be: $(gen "$irel" | sed -n "${n}p" | tr -d '\r')"
-    else say "$irel line $n: $(sed -n "${n}p" "$game/$irel" | tr -d '\r')"; fi
-done
+if [ "$dry" = 1 ]; then cur=$(gen "$irel" | tr -d '\r'); what=" would be"; else cur=$(tr -d '\r' < "$game/$irel"); what=; fi
+for n in $shown; do say "$irel line $n$what: $(printf '%s\n' "$cur" | sed -n "${n}p")"; done
 [ "$dry" = 1 ] || echo "done. The game reads Main.ini at startup: restart it. To undo: ./uninstall.sh \"$game\""

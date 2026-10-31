@@ -9,7 +9,7 @@
 # file, FogStart -1 file untouched, CRLF and the missing last newline kept); 8000 keep after 4000 keep rescales from the
 # originals (0.1, not 0.02); 4000 keep under a comma-decimal locale (de_DE.UTF-8) still writes 0.2; back to clear restores
 # the env files; the backup never changes; --view=N --fog=keep forms;
-# the fade keys (default 5400/500 at view 6000, --fade keep leaves lines 16-17 byte-identical, --fade 1000, spelling kept,
+# the fade keys (default 5400/500 at view 6000, --fade keep puts the original keys back, --fade 1000, spelling kept,
 # a Main.ini without zTransparLenght refused, re-run idempotent, manifest lines, uninstall restores, dry-run output, bad
 # --fade values, top-level --fade=<v> and its hint for --fade <v>);
 # the game-running guard (SW3_IV_FAKE_RUNNING=1) for install and uninstall; bad values rejected with nothing written;
@@ -85,14 +85,13 @@ check "sh -n test_install.sh" sh -n "$0"
 if command -v shellcheck >/dev/null 2>&1; then check "shellcheck install.sh uninstall.sh" shellcheck "$inst" "$unin"; fi
 check "copies: $nenv env files, one with FogStart = -1 ($off)" [ "$nenv" -gt 1 ]
 check "copies: the fog-off file found" [ -n "$off" ]
-check "copies: zTransparLenght at line 16, ZTranspar at line 17 ($lln, $tln)" [ "$lln" = 16 ] && [ "$tln" = 17 ]
-lines1617() { sed -n '16,17p' "$1"; }
+check "copies: zTransparLenght at line 16, ZTranspar at line 17 ($lln, $tln)" [ "$lln:$tln" = 16:17 ]
 
 run "$inst" --dry-run "$g"
 check "dry run exit 0 ($rc)" [ "$rc" = 0 ]
 check "dry run prints the line it would write" has "would be: ZFarPlane = 6000.0f"
-check "dry run prints the ZTranspar line it would write" has "line 17 would be: ZTranspar = 5400.0f"
-check "dry run prints the zTransparLenght line it would write" has "line 16 would be: zTransparLenght = 500.0f"
+check "dry run prints the ZTranspar line it would write" has "line $tln would be: ZTranspar = 5400.0f"
+check "dry run prints the zTransparLenght line it would write" has "line $lln would be: zTransparLenght = 500.0f"
 check "dry run prints the fade values" has "ZTranspar 400.0 (original) -> 5400.0, zTransparLenght 200.0 (original) -> 500.0"
 check "dry run writes nothing (tree = originals, no backup)" same_tree "$g" "$o"
 
@@ -100,8 +99,8 @@ run "$inst" "$g"
 check "install 6000 clear exit 0 ($rc)" [ "$rc" = 0 ]
 check "install prints the resulting line" has "Main.ini line $iln: ZFarPlane = 6000.0f"
 check "Main.ini: only ZFarPlane 800.0f -> 6000.0f, ZTranspar -> 5400.0f, zTransparLenght -> 500.0f, CRLF kept; env files untouched" expect "$g" 6000 "" 5400 500
-check "install prints the ZTranspar line" has "Main.ini line 17: ZTranspar = 5400.0f"
-check "fade keys keep the file's spelling (zTransparLenght)" grep -aqx "$(printf 'zTransparLenght = 500.0f\r')" "$g/Main.ini"
+check "install prints the ZTranspar line" has "Main.ini line $tln: ZTranspar = 5400.0f"
+check "fade keys keep the file's spelling (zTransparLenght)" grep -aqxF "$(printf 'zTransparLenght = 500.0f\r')" "$g/Main.ini"
 check "backup: Main.ini and every env file, equal to the originals" same_tree "$bk/Data/Environment" "$o/Data/Environment"
 check "backup Main.ini = original" cmp -s "$bk/Main.ini" "$o/Main.ini"
 check "manifest: view 6000" grep -qx 'view 6000' "$bk/manifest.txt"
@@ -109,8 +108,8 @@ check "manifest: fog clear" grep -qx 'fog clear' "$bk/manifest.txt"
 check "manifest: fade 500" grep -qx 'fade 500' "$bk/manifest.txt"
 check "manifest: original_ztranspar 400.0" grep -qx 'original_ztranspar 400.0' "$bk/manifest.txt"
 check "manifest: original_ztransparlenght 200.0" grep -qx 'original_ztransparlenght 200.0' "$bk/manifest.txt"
-check "manifest: ZTranspar line" grep -qx 'ini Main.ini ZTranspar 400.0 -> 5400.0 (line 17)' "$bk/manifest.txt"
-check "manifest: zTransparLenght line" grep -qx 'ini Main.ini zTransparLenght 200.0 -> 500.0 (line 16)' "$bk/manifest.txt"
+check "manifest: ZTranspar line" grep -qx "ini Main.ini ZTranspar 400.0 -> 5400.0 (line $tln)" "$bk/manifest.txt"
+check "manifest: zTransparLenght line" grep -qx "ini Main.ini zTransparLenght 200.0 -> 500.0 (line $lln)" "$bk/manifest.txt"
 rm -rf "$work/snap"; cp -R "$g" "$work/snap"
 
 run "$inst" --view 6000 --fog clear "$g"
@@ -149,8 +148,7 @@ check "re-run --fade=1000 says nothing changed ($rc)" has "nothing changed"
 check "re-run --fade=1000 leaves the tree byte-identical" same_tree "$g" "$work/snap"
 run "$inst" --fade keep "$g"
 check "--fade keep: exit 0 ($rc)" [ "$rc" = 0 ]
-check "--fade keep: ZFarPlane 6000.0f, fade keys the originals" expect "$g" 6000 ""
-check "--fade keep: lines 16-17 byte-identical to the original" sh -c '[ "$(sed -n 16,17p "$1" | od -c)" = "$(sed -n 16,17p "$2" | od -c)" ]' sh "$g/Main.ini" "$o/Main.ini"
+check "--fade keep: ZFarPlane 6000.0f, fade keys back to the originals" expect "$g" 6000 ""
 check "--fade keep: manifest fade keep, no fade change lines" sh -c 'grep -qx "fade keep" "$1" && ! grep -q "ZTranspar.* -> " "$1"' sh "$bk/manifest.txt"
 check "--fade keep: says the keys are kept" has "ZTranspar and zTransparLenght kept"
 run "$inst" "$g"
@@ -212,7 +210,7 @@ fresh
 python3 -I -c 'import sys; p=sys.argv[1]; b=open(p,"rb").read(); open(p,"wb").write(b.replace(b"ZTranspar = 400.0f", b"ztranspar = 400.0f"))' "$g/Main.ini"
 rm -rf "$work/snap"; cp -R "$g" "$work/snap"
 run "$inst" "$g"
-check "lower-case ztranspar key matched, spelling kept (exit $rc)" grep -aqx "$(printf 'ztranspar = 5400.0f\r')" "$g/Main.ini"
+check "lower-case ztranspar key matched, spelling kept (exit $rc)" grep -aqxF "$(printf 'ztranspar = 5400.0f\r')" "$g/Main.ini"
 run "$unin" "$g"
 check "uninstall after the lower-case key run restores the tree ($rc)" same_tree "$g" "$work/snap"
 fresh

@@ -26,7 +26,7 @@ Frame rate: every mesh within the far plane is now drawn, where vanilla stopped 
 | Option | Default | Meaning |
 |---|---|---|
 | `--view N` | `6000` | Far plane in world units, an integer from 1000 to 20000. Written as `ZFarPlane = N.0f`. |
-| `--fade N` | `500` | Mesh fade band in units, an integer from 100 to 5000 and at most `--view` minus 200. Written as `ZTranspar = (view - N - 100).0f` and `zTransparLenght = N.0f`. `--fade keep` leaves both keys as they are. |
+| `--fade N` | `500` | Mesh fade band in units, an integer from 100 to 5000 and at most `--view` minus 200. Written as `ZTranspar = (view - N - 100).0f` and `zTransparLenght = N.0f`. `--fade keep` leaves both keys at their original values (a run after `--fade N` puts them back). |
 | `--fog clear` | yes | The env files are not touched. The haze stretches out with the far plane and fades out at it, so distant objects look clearer. |
 | `--fog keep` | | `FogStart` and `FogEnd` in every env file are multiplied by 800/N (the original `ZFarPlane` over the new one), so the haze still ends at 800 units as in vanilla. Files with `FogStart` below 0 (fog off) or `FogEnd` at or below 0 are left as they are. |
 | `--dry-run` | | Prints what would change and writes nothing. |
@@ -37,7 +37,7 @@ The fog choice: `clear` shows far objects with little haze but loses the depth c
 
 ## What install.sh changes
 
-- `Main.ini`: only the numbers on the `ZFarPlane`, `ZTranspar` and `zTransparLenght` lines (the last two not with `--fade keep`; a missing fade key is refused unless `--fade keep`). CRLF line endings, the keys' spelling and every other byte stay. It prints the resulting lines.
+- `Main.ini`: only the numbers on the `ZFarPlane`, `ZTranspar` and `zTransparLenght` lines (the last two not with `--fade keep`, which puts their original values back; a missing fade key is refused unless `--fade keep`). CRLF line endings, the keys' spelling and every other byte stay. It prints the resulting lines.
 - With `--fog keep`: only the numbers on the `FogStart` and `FogEnd` lines of each env file (a `FogStart` of 0 stays 0).
 - Before the first write, it copies `Main.ini` and every env file to `<game dir>/sw3-infinite-view-backup/`. An existing backup is never overwritten. `sw3-infinite-view-backup/manifest.txt` lists the version, the values and every changed line.
 - Every run builds the files from the backed-up originals and writes only the files that differ. A second run with the same values changes nothing and says so. A run with another `--view`, `--fade` or `--fog` updates the key and rescales the env files from the originals, not from an earlier rescale.
