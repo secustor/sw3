@@ -7,16 +7,21 @@ here=$(cd "$(dirname "$0")" && pwd)
 action=${SW3_ACTION:-install}
 GOG_ID=1426253436
 if [ -d "$here/mods" ]; then root=$here/mods; else root=$here; fi
-# Install order: performance and trackpad first (both can install the sw3tp proxy), traffic after them (it
-# needs the proxy); other mods follow in folder order. Uninstall runs in reverse.
-avail=; for m in performance trackpad traffic; do [ -f "$root/$m/install.sh" ] && avail="$avail $m"; done
+# Install order: performance and trackpad first (both can install the sw3tp proxy), infinite_view (needs nothing),
+# traffic after them (it needs the proxy); other mods follow in folder order. Uninstall runs in reverse.
+avail=; for m in performance trackpad infinite_view traffic; do [ -f "$root/$m/install.sh" ] && avail="$avail $m"; done
 for d in "$root"/*/; do
     m=$(basename "$d"); [ -f "$d/install.sh" ] || continue
     case " $avail " in *" $m "*) ;; *) avail="$avail $m" ;; esac
 done
 avail=${avail# }
-# Pass-through flags: the long options each mod's $action.sh accepts (its "--name)" case patterns).
-opts() { grep -E '^[[:space:]]*(-[a-z]+[|])?--[a-z][a-z-]*[)]' "$1" | sed -E 's/^[[:space:]]*(-[a-z]+[|])?(--[a-z][a-z-]*)[)].*/\2/'; }
+# Pass-through flags: the long options each mod's $action.sh accepts (its "--name)" case patterns, and "--name=*)"
+# for an option with a value, listed as "--name=" and passed as --name=<value>).
+opts() {
+    grep -E '^[[:space:]]*(-[a-z]+[|])?--[a-z][a-z-]*[)]' "$1" | sed -E 's/^[[:space:]]*(-[a-z]+[|])?(--[a-z][a-z-]*)[)].*/\2/'
+    grep -E '^[[:space:]]*--[a-z][a-z-]*=[*][)]' "$1" | sed -E 's/^[[:space:]]*(--[a-z][a-z-]*=)[*][)].*/\1/'
+}
+fkey() { case $1 in --*=*) echo "${1%%=*}=" ;; *) echo "$1" ;; esac; }   # --view=4000 -> --view=
 flags=; for m in $avail; do
     for f in $(opts "$root/$m/$action.sh"); do
         case " $flags " in *" $f "*) ;; *) [ "$f" = --help ] || flags="$flags $f" ;; esac
@@ -24,7 +29,7 @@ flags=; for m in $avail; do
 done
 flags=${flags# }
 usage() {
-    echo "usage: ./$action.sh --mod <name> [--mod <name> ...] [--game-dir <path>] [$(echo "$flags" | sed 's/ /] [/g')]" >&2
+    echo "usage: ./$action.sh --mod <name> [--mod <name> ...] [--game-dir <path>] [$(echo "$flags" | sed 's/=$/=<v>/; s/= /=<v> /g; s/ /] [/g')]" >&2
     echo "  mods: ${avail:-none found} | all" >&2
     echo "  --game-dir defaults to Heroic's install path for GOG $GOG_ID, else ~/Games/Heroic/Star Wolves 3 - Civil War" >&2
     exit 2
@@ -39,7 +44,7 @@ while [ $# -gt 0 ]; do
     --game-dir) [ $# -ge 2 ] || usage; game=$2; shift ;;
     --game-dir=*) game=${1#--game-dir=} ;;
     -h|--help) usage ;;
-    -*) case " $flags " in *" $1 "*) pass="$pass $1" ;; *) echo "unknown option $1" >&2; usage ;; esac ;;
+    -*) case " $flags " in *" $(fkey "$1") "*) pass="$pass $1" ;; *) echo "unknown option $1" >&2; usage ;; esac ;;
     *) echo "unexpected argument $1 (use --game-dir)" >&2; usage ;;
     esac
     shift
@@ -76,15 +81,17 @@ JS
 else echo "game dir: $game (--game-dir)"; fi
 [ -f "$game/sw3cw.exe" ] || die "no sw3cw.exe in $game; pass --game-dir <path>"
 
-# A pass-through flag must be accepted by at least one selected mod.
+# A pass-through flag must be accepted by at least one selected mod; --dry-run by every selected mod (a mod without it
+# would really install).
 for f in $pass; do
-    ok=0; for m in $mods; do opts "$root/$m/$action.sh" | grep -qxF -- "$f" && ok=1; done
+    ok=0; all=1; for m in $mods; do if opts "$root/$m/$action.sh" | grep -qxF -- "$(fkey "$f")"; then ok=1; else all=0; fi; done
     [ "$ok" = 1 ] || die "$f does not apply to: $mods"
+    [ "$f" != --dry-run ] || [ "$all" = 1 ] || die "--dry-run is not supported by every selected mod ($mods); select only mods that have it"
 done
 # install stops at the first failing mod; uninstall tries every mod and fails at the end.
 rc=0
 for m in $mods; do
-    args=; for f in $pass; do opts "$root/$m/$action.sh" | grep -qxF -- "$f" && args="$args $f"; done
+    args=; for f in $pass; do opts "$root/$m/$action.sh" | grep -qxF -- "$(fkey "$f")" && args="$args $f"; done
     echo "== $m"
     # shellcheck disable=SC2086
     if ! "$root/$m/$action.sh" $args "$game"; then

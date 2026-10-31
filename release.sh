@@ -2,6 +2,7 @@
 # Build and package:
 #   dist/sw3-trackpad-<v>.zip     mods/trackpad   (v = mods/trackpad/VERSION)
 #   dist/sw3-performance-<v>.zip  mods/performance (v = mods/performance/VERSION)
+#   dist/sw3-infinite-view-<v>.zip mods/infinite_view (v = mods/infinite_view/VERSION; not in the pack yet)
 #   dist/sw3-traffic-<v>.zip      mods/traffic scripts + installer (v = mods/traffic/VERSION; needs the sw3tp
 #                                 proxy of the trackpad or performance zip)
 #   dist/sw3-mods-pack-<v>.zip    both mods + top-level install.sh/uninstall.sh + README (v = VERSION)
@@ -13,7 +14,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 dist=$here/dist
 ver() { tr -d ' \r\n' < "$1"; }
 tpv=$(ver "$here/mods/trackpad/VERSION"); pfv=$(ver "$here/mods/performance/VERSION"); pkv=$(ver "$here/VERSION")
-tfv=$(ver "$here/mods/traffic/VERSION")
+tfv=$(ver "$here/mods/traffic/VERSION"); ivv=$(ver "$here/mods/infinite_view/VERSION")
 "$here/mods/trackpad/build.sh"
 
 stage_trackpad() {   # <dest dir>
@@ -32,6 +33,12 @@ stage_performance() {
     s=$here/mods/performance
     mkdir -p "$1"
     cp "$s/install.sh" "$s/uninstall.sh" "$s/README.md" "$s/LICENSE" "$s/VERSION" "$s/WINE_RELEASE" "$s/wine-release.sha256" "$1/"
+    chmod 755 "$1/install.sh" "$1/uninstall.sh"
+}
+stage_infinite_view() {
+    s=$here/mods/infinite_view
+    mkdir -p "$1"
+    cp "$s/install.sh" "$s/uninstall.sh" "$s/README.md" "$s/LICENSE" "$s/VERSION" "$1/"
     chmod 755 "$1/install.sh" "$1/uninstall.sh"
 }
 stage_traffic() {   # own files only: scripts (CRLF, as in the repo), hail dialog XMLs, news and pilot merge files, installer, README, VERSION
@@ -62,6 +69,7 @@ pack() {   # <name>: zip dist/<name>/ to dist/<name>.zip, write SHA-256 lists
 rm -rf "$dist"; mkdir -p "$dist"
 stage_trackpad "$dist/sw3-trackpad-$tpv"; pack "sw3-trackpad-$tpv"
 stage_performance "$dist/sw3-performance-$pfv"; pack "sw3-performance-$pfv"
+stage_infinite_view "$dist/sw3-infinite-view-$ivv"; pack "sw3-infinite-view-$ivv"
 stage_traffic "$dist/sw3-traffic-$tfv"; pack "sw3-traffic-$tfv"
 p=$dist/sw3-mods-pack-$pkv
 stage_trackpad "$p/trackpad"; stage_performance "$p/performance"
