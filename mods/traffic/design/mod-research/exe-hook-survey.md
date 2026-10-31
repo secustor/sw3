@@ -67,3 +67,4 @@ Not needed from the DLL: XP gain (`ModifyGainedExperience`), message box results
 - Call hook overhead with the profiler on.
 
 - Maps, asteroid fields and the render far plane: `maps-and-view-distance.md` (location.script, snapshots, InitMap, field helpers, ZFarPlane, detection test).
+- Why stations vanish at a raised far plane: `station-visibility.md` (mesh fade keys ZTranspar/zTransparLenght, slot-0x84 class table, detection gates).
