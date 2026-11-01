@@ -1716,7 +1716,8 @@ function TRF_CapMove(slot, r, L)
 end;
 
 -- Successor of slot (design 6): gen + 1, the next free name, template one below the tier's, esc and noto 0, half the
--- grudge, born now, seen the home; the old logbook entry goes; pv keeps the dead captain's name for his first line.
+-- grudge, born now, seen the home; the old logbook entry goes; pv keeps the dead captain's name for his first line;
+-- the bulletin cap/succ (5.2).
 function TRF_CapSucc(slot, r, L, why)
 	local used = {};
 	local l = TRF_CapRecs();
@@ -1729,6 +1730,7 @@ function TRF_CapSucc(slot, r, L, why)
 	l[slot] = n;
 	TRF_CapStat("cap_successor");
 	TRF_CapE("successor", "slot", slot, "generation", n.gen, "name", nm, "previous", r.nm, "template", n.tp, "grudge", n.gr, "reason", why);
+	TRF_CapNews(slot, "succ");
 	return n;
 end;
 
@@ -1780,7 +1782,6 @@ function TRF_Cap_RegionTick(L)
 				if rg.ph == 1 and rg.pt == L and (r.st == 0 or (r.st == 4 and J >= (r.dj or 0) + T.cap_succ_j and not TRF_CapClaimAt(s, r.gen))) then
 					r = TRF_CapSucc(s, r, L, "boom");
 					if tier <= 1 then r.st = 3; end;
-					TRF_CapNews(s, "succ");
 				end;
 			end;
 			if (r.gr or 0) > 0 and L - (r.gr_t or L) >= K.gr_legs then r.gr = r.gr - 1; r.gr_t = L; end;
