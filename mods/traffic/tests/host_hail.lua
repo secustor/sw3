@@ -229,6 +229,14 @@ function T_HL_A()
 	HOST_Check(type(TRF.live.ct) == "table" and TRF.live.ct.id == id4 and r4.ct == 1 and TRF.live.hl == nil and TRF_BoxHolder() == nil
 		and S_Logs(n0, "event=contract trader_id="..id4.." pay=") == 1, "Accept: contract taken, chain closed");
 	TRF_CtVoid("test");
+	-- Void reasons: escaped says ctesc once, jump says nothing.
+	local s0, m0 = getn(h.screen), getn(h.msgs);
+	TRF.live.ct = {id=id4, n=100, t=0};
+	TRF_CtVoid("jump");
+	HOST_Check(TRF.live.ct == nil and not HL_Said(s0, m0, "running for the portal"), "contract void jump: no line");
+	TRF.live.ct = {id=id4, n=100, t=0};
+	TRF_CtVoid("escaped");
+	HOST_Check(TRF.live.ct == nil and HL_Said(s0, m0, "We are running for the portal. Contract off, no pay."), "contract void escaped: line ctesc");
 	-- Provider offer item (q): Accept calls ok; Decline returns to the menu.
 	local dco = TRF_Dc_HailOpts;
 	HL_OkN = 0;
