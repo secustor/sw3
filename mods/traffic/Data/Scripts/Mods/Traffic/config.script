@@ -11,7 +11,8 @@
 -- copied it). Tune hail_box (tune={hail_box=N}): 0 = hail answers as radio lines, 1 = ShowMsgBox chain (default),
 -- 2 = the hail menu as the trade dialog TRF_Hail (needs hail_xml=1; otherwise the box chain runs), every follow-up as a
 -- page of TRF_HailPg (design/hail-spec.md 2). hail_fight (default 1) = 0 turns the combat hail off (hail-spec 3: a
--- trader in a fight answers "busy" or offers help pay); tune hail_fight_r, hail_help_ratio, help_k (trf_hail TuneDef).
+-- trader in a fight answers "busy" or offers help pay); tune hail_fight_r, hail_help_ratio, help_k, help_engage (1: help pays
+-- on engagement, 0: only with a kill; trf_hail TuneDef).
 -- Worldbuilding plumbing (design/wb-plumbing-spec.md): wb_box_after_fee (default 0) = 1 allows an offer box at the
 -- trade dock after a station fee box (set once E0.6 passes); tune help_floor/help_decay (C1) and leg_cap (D1).
 -- Survivors and beacons (design/survivors-spec.md 6): enable_survivors (default 1) = 0 turns trf_survive off; the

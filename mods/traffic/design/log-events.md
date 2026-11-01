@@ -207,8 +207,8 @@ also the unused hulls).
 | `offer` | `module=hail event=offer offer_index=1 result=declined` (offer page Decline) / `trader_id=4 key=dc handler=TRF_DcCtDo result=accepted` / `trader_id=4 key=dc result=declined` (provider page) | 1 |
 | `fight` | `module=hail event=fight trader_id=4 via=focus raid_id=nil hostile_count=2 escort_count=0 escort_fight=false trader_strength=nil raid_strength=nil losing=true lose_reason=outnumbered answer=help reason=nil` (combat hail; `answer=busy reason=once\|heat\|own\|strict\|gap\|pay\|no_box`) | 1 |
 | `help` | `module=hail event=help trader_id=4 raid_id=nil pay=1063 via=dialog\|box result=offered` / `result=not_shown reason=no_box` / `result=declined` / `via=watch\|raid result=accepted` | 1 |
-| `help` | `module=hail event=help trader_id=4 pay=1063 credits=1063 kill_count=1 help=1 via=watch result=paid` / `raid_id=3 credits=1063 via=raid result=paid` | 1 |
-| `help` | `module=hail event=help trader_id=4 pay=1063 kill_count=0 via=watch result=unpaid reason=no_fire\|gone\|time\|count\|lead\|due\|jump\|load` / `raid_id=3 via=raid result=unpaid reason=killed` | 1 |
+| `help` | `module=hail event=help trader_id=4 pay=1063 credits=1063 kill_count=1 engaged=true help=1 via=watch result=paid` / `raid_id=3 credits=1063 via=raid result=paid` | 1 |
+| `help` | `module=hail event=help trader_id=4 pay=1063 kill_count=0 engaged=false via=watch result=unpaid reason=far\|lost\|no_fire\|gone\|time\|count\|lead\|due\|jump\|load` (`engaged`: a player ship came within `hail_fight_r` of a hostile; `far`: never engaged; `lost`: the trader was killed; `no_fire` only with tune `help_engage` 0; `engaged=nil` without a watch) / `raid_id=3 via=raid result=unpaid reason=killed` | 1 |
 | `dialog_fallback` | `module=hail event=dialog_fallback reason=lock` (the box lock held by another owner) | 1 |
 | `box` | `module=hail event=box button=ok result=stale` | 1 |
 | `option` | `module=hail event=option trader_id=4 key=trade` | 1 |
@@ -218,8 +218,7 @@ also the unused hulls).
 | `contract_offer` | `module=hail event=contract_offer trader_id=4 danger_eff=1 disruption=0 braveness=0.62 chance=22.5 roll=5 result=offered` (or `result=declined`) | 1 |
 | `contract` | `module=hail event=contract trader_id=4 result=not_accepted reason=roll` | 1 |
 | `contract` | `module=hail event=contract trader_id=4 pay=1417 result=accepted` | 1 |
-| `contract` | `module=hail event=contract trader_id=4 via=dock fled=raid result=void reason=fled` | 1 |
-| `contract` | `module=hail event=contract trader_id=4 via=exit distance=900 result=void reason=far` | 1 |
+| `contract` | `module=hail event=contract trader_id=4 via=exit distance=900 result=void reason=far` (`via=dock\|exit\|escaped`; escaped: a fleeing trader reached its refuge, trf_raid `TRF_Rd_Safe`) | 1 |
 | `contract` | `module=hail event=contract trader_id=4 via=dock pay=1417 distance=120 help=1 result=paid` | 1 |
 | `contract` | `module=hail event=contract trader_id=4 result=lost` | 1 |
 | `contract` | `module=hail event=contract trader_id=4 result=void reason=jump` | 1 |

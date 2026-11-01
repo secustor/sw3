@@ -447,10 +447,11 @@ function TRF_Rd_Name(r)
 	return TRF_Rd_Txt("noname");
 end;
 
--- Contract of trader id voided (5.6 void rule), through trf_hail.
-function TRF_Rd_CtVoid(id, why)
+-- Contract of trader id that reached its refuge alive (v02 5.6): settled through trf_hail TRF_CtArrive (how escaped)
+-- while the flight still exists: paid with the mothership within ct_dist of its leader, else far.
+function TRF_Rd_CtArrive(id)
 	local L = TRF_Rd_Live();
-	if L and type(L.ct) == "table" and L.ct.id == id then TRF_N("TRF_CtVoid", why); end;
+	if L and type(L.ct) == "table" and L.ct.id == id then TRF_N("TRF_CtArrive", id, "escaped"); end;
 end;
 
 -- Raid helpers -----------------------------------------------------------------------------
@@ -1967,7 +1968,7 @@ end;
 function TRF_Rd_Safe(id, how, g) TRF_Rd_Cb2("TRF_Rd_Safe", TRF_Rd_SafeBody, {id, how, g}); end;
 
 -- A fleeing trader reached its refuge (how 0 station, 1 portal): removed as escaped (no dis, no queue);
--- a contract on it is void.
+-- a contract on it is settled as an arrival (TRF_Rd_CtArrive).
 function TRF_Rd_SafeBody(id, how, g)
 	if type(TRF) ~= "table" or g ~= TRF.gen then return; end;
 	local r = TRF_Rd_Rec(id);
@@ -1975,7 +1976,7 @@ function TRF_Rd_SafeBody(id, how, g)
 	local h = TRF_Rd_HTr(id);
 	local fx = nil;
 	if how == 1 and h then fx = h.ext; end;
-	TRF_Rd_CtVoid(id, "escaped");
+	TRF_Rd_CtArrive(id);
 	if type(TRF_Remove) == "function" then
 		TRF_Remove(id, "escaped", fx);
 	else

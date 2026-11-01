@@ -82,12 +82,20 @@ end;
 -- ct_off_* shape the escort offer chance of TRF_CtOfferP. Combat hail (hail-spec 6): hail_fight_r radius around the
 -- trader lead for hostile ships (and around a hostile for the player's ships of the help watch), hail_help_ratio the
 -- strength ratio (trader side / raid side) below which a raided trader asks for help, help_k the help pay factor of
--- N_eff (also trf_raid's raid-help pay, v02 5.5 0.5).
+-- N_eff (also trf_raid's raid-help pay, v02 5.5 0.5), help_engage 1: the help watch pays when the player engaged (a
+-- player ship within hail_fight_r of a hostile), 0: only with a counted kill (hail-spec 5.4).
 function TRF_Hail_TuneDef()
 	return {hail_r=150, hail_arm=60, hail_cd=60, hail_max=2, hail_rearm=20, hail_stale=120, hail_box=1,
 		trouble_range=3, boom_min_pro=6, ct_dist=400, pay_cap=30000,
 		ct_off_dis=0.5, ct_off_br=1.3, ct_off_min=5, ct_off_max=95,
-		hail_fight_r=600, hail_help_ratio=1, help_k=0.5};
+		hail_fight_r=600, hail_help_ratio=1, help_k=0.5, help_engage=1};
+end;
+
+-- Tune help_engage clamped to 0/1 (hail-spec 5.4): 1 = the watch pays on engagement, 0 = on a counted kill.
+function TRF_HlEngage()
+	local v = TRF_HlT("help_engage");
+	if type(v) == "number" and v < 0.5 then return 0; end;
+	return 1;
 end;
 
 -- Constants without a tune key: help watch step and its time-out (game s, hail-spec 5.4).
@@ -135,6 +143,13 @@ end;
 
 function TRF_HlRec(id)
 	if type(TRF_Rec) == "function" and type(id) == "number" then return TRF_Rec(id); end;
+	return nil;
+end;
+
+-- Trader record id, also a gone one (st gone, stripped to TRF_GoneKeep: nm and why stay), or nil.
+function TRF_HlRecAny(id)
+	local L = TRF_HlLive();
+	if L and type(L.tr) == "table" and type(id) == "number" and type(L.tr[id]) == "table" then return L.tr[id]; end;
 	return nil;
 end;
 
@@ -477,7 +492,7 @@ function TRF_HlFightOpen(id, r, f, via)
 end;
 
 -- Handle-table store of the help watches: trader id -> {p = pay, t0 = gt of the accept, s = uid -> 1 seen, 2 seen
--- with a player ship within hail_fight_r, k = counted kills}; nil without trf_state.
+-- with a player ship within hail_fight_r, k = counted kills, e = 1 once a hostile was marked 2}; nil without trf_state.
 function TRF_HlHw()
 	if type(TRF_H) ~= "function" then return nil; end;
 	local h = TRF_H();
@@ -486,7 +501,7 @@ function TRF_HlHw()
 	return h.hlw;
 end;
 
--- Marks the hostiles fo of watch w as seen (2: a player ship of pl within hail_fight_r of it).
+-- Marks the hostiles fo of watch w as seen (2: a player ship of pl within hail_fight_r of it; w.e = 1, engaged).
 function TRF_HlHelpMark(w, fo, pl)
 	local R = TRF_HlT("hail_fight_r");
 	for i = 1, getn(fo) do
@@ -495,6 +510,7 @@ function TRF_HlHelpMark(w, fo, pl)
 			local v = 1;
 			for j = 1, getn(pl) do if TRF_HlD3(c, pl[j]) <= R then v = 2; end; end;
 			w.s[c.id] = max(w.s[c.id] or 0, v);
+			if v == 2 then w.e = 1; end;
 		end;
 	end;
 end;
@@ -538,15 +554,24 @@ end;
 
 -- Due step of the help watch of trader id, every hstep s: a hostile counts as killed with the player's fire when it
 -- was seen with a player ship within hail_fight_r and is later gone from the location's live records (no killer
--- identity: hail-spec DV5). The fight ends when no hostile is within hail_fight_r of the lead: paid with a counted
--- kill. Trader gone, hmax s, no typed list: settled unpaid.
+-- identity: hail-spec DV5; kept as a diagnostic, D16). The fight ends when no hostile is within hail_fight_r of the
+-- lead, or when the trader docked, exited or escaped alive: TRF_HlHelpDone. A killed trader: unpaid lost; hmax s, no
+-- typed list, any other removal: settled unpaid.
 function TRF_HlHelpStep(id)
 	local W = TRF_HlHw();
 	local w = nil;
 	if W and type(id) == "number" then w = W[id]; end;
 	if type(w) ~= "table" then return; end;
-	local r = TRF_HlRec(id);
-	if not r or r.st == "gone" or r.hlp ~= 2 then TRF_HlHelpSettle(id, nil, "gone"); return; end;
+	local r = TRF_HlRecAny(id);
+	if not r or r.st == "gone" or r.hlp ~= 2 then
+		-- The gone record keeps why (TRF_Remove, trf_events TRF_Ev_Close): alive at dock, exit, escape; dead at kill, lost.
+		local y = nil;
+		if r and r.st == "gone" then y = r.why; end;
+		if y == "dock" or y == "exit" or y == "escaped" then TRF_HlHelpDone(id, w, "left");
+		elseif y == "kill" or y == "lost" then TRF_HlHelpSettle(id, nil, "lost");
+		else TRF_HlHelpSettle(id, nil, "gone"); end;
+		return;
+	end;
 	if TRF_HlGt() - (w.t0 or 0) > TRF_HlK().hmax then TRF_HlHelpSettle(id, nil, "time"); return; end;
 	local fo, pl, why = TRF_HlNearShips(id);
 	if type(fo) ~= "table" then TRF_HlHelpSettle(id, nil, why); return; end;
@@ -569,11 +594,20 @@ function TRF_HlHelpStep(id)
 			for i = 1, getn(drop) do w.s[drop[i]] = nil; end;
 		end;
 	end;
-	if getn(fo) == 0 then
-		if w.k > 0 then TRF_HlHelpSettle(id, 1, "end"); else TRF_HlHelpSettle(id, nil, "no_fire"); end;
-		return;
-	end;
+	if getn(fo) == 0 then TRF_HlHelpDone(id, w, "end"); return; end;
 	if not TRF_Due(TRF_HlK().hstep, "TRF_HlHelpStep", id) then TRF_HlHelpSettle(id, nil, "due"); end;
+end;
+
+-- The fight of watch w on trader id ended alive (how end: no hostile near the lead; left: docked, exited, escaped):
+-- paid when the player engaged (help_engage 1, w.e) or, with help_engage 0, scored a counted kill (w.k); else unpaid
+-- far (never engaged) or no_fire (help_engage 0, no kill).
+function TRF_HlHelpDone(id, w, how)
+	if TRF_HlEngage() == 1 then
+		if w.e == 1 then return TRF_HlHelpSettle(id, 1, how); end;
+		return TRF_HlHelpSettle(id, nil, "far");
+	end;
+	if (w.k or 0) > 0 then return TRF_HlHelpSettle(id, 1, how); end;
+	return TRF_HlHelpSettle(id, nil, "no_fire");
 end;
 
 -- Ends the help watch of trader id (r.hlp 3): paid (pay 1) through TRF_Pay with the raid-help effects of v02 5.5
@@ -582,15 +616,18 @@ function TRF_HlHelpSettle(id, pay, why)
 	local W = TRF_HlHw();
 	local w = nil;
 	if W then w = W[id]; W[id] = nil; end;
-	local r = TRF_HlRec(id);
+	-- A gone record too: a trader that docked, exited or escaped during the watch is paid by name.
+	local r = TRF_HlRecAny(id);
 	if r and r.hlp == 2 then r.hlp = 3; end;
-	local p, k = nil, nil;
-	if type(w) == "table" then p = w.p; k = w.k; end;
+	local p, k, e = nil, nil, nil;
+	if type(w) == "table" then p = w.p; k = w.k; e = TRF_KvB(w.e); end;
 	if not pay or not r or type(p) ~= "number" then
-		TRF_HlE("help", "trader_id", id, "pay", p, "kill_count", k, "via", "watch", "result", "unpaid", "reason", why);
-		-- The line: no_fire and time come from TRF_HlHelpStep only (watch and trader record present); the rest say nothing.
+		TRF_HlE("help", "trader_id", id, "pay", p, "kill_count", k, "engaged", e, "via", "watch", "result", "unpaid", "reason", why);
+		-- The line: far, no_fire, time and lost come from TRF_HlHelpStep only (watch and trader record present); the rest
+		-- (gone, due, jump, load, count, lead) say nothing.
 		local lk = nil;
-		if why == "no_fire" then lk = "hlpnofire"; elseif why == "time" then lk = "hlptime"; end;
+		if why == "far" then lk = "hlpfar"; elseif why == "no_fire" then lk = "hlpnofire";
+		elseif why == "time" then lk = "hlptime"; elseif why == "lost" then lk = "hlplost"; end;
 		if lk then TRF_HlSay(TRF_Txt(lk, TRF_HlName(r)), id); end;
 		return nil;
 	end;
@@ -611,7 +648,7 @@ function TRF_HlHelpSettle(id, pay, why)
 	if r.st ~= "gone" then r.res = 1; end;
 	TRF_HlSay(TRF_Txt("hlppaid", TRF_HlName(r), format("%d", n)), id);
 	TRF_HlStat("hl_help_paid");
-	TRF_HlE("help", "trader_id", id, "pay", p, "credits", n, "kill_count", k, "help", d, "via", "watch", "result", "paid");
+	TRF_HlE("help", "trader_id", id, "pay", p, "credits", n, "kill_count", k, "engaged", e, "help", d, "via", "watch", "result", "paid");
 	return 1;
 end;
 
@@ -1808,22 +1845,15 @@ function TRF_HlRecovery()
 	return nil;
 end;
 
--- Trader id docked or left by its exit (trf_gen, before TRF_Remove). Pays when the mothership is within
--- ct_dist of its leader, else voids. Returns 1 when paid.
+-- Trader id docked or left by its exit (trf_gen, before TRF_Remove), or fled and reached its refuge alive, a portal
+-- or a station (how escaped, trf_raid TRF_Rd_Safe, before TRF_Remove; v02 5.6, user decision 2026-11-01): a fleeing
+-- trader counts as any arrival, whichever trigger fires first. Pays when the mothership is within ct_dist of its
+-- leader, else voids (far). Returns 1 when paid.
 function TRF_CtArrive(id, how)
 	local L = TRF_HlLive();
 	if not L or type(L.ct) ~= "table" or L.ct.id ~= id then return nil; end;
 	local ct = L.ct;
 	L.ct = nil;
-	local r = TRF_HlRec(id);
-	-- A fleeing trader that reaches its exit escaped (5.6 void rule), whichever exit trigger fired first:
-	-- the same line as TRF_CtVoid escaped (trf_raid TRF_Rd_Safe), so the player hears it in either order.
-	if r and r.fl then
-		TRF_HlSay(TRF_Txt("ctesc", TRF_HlName(r)), id);
-		TRF_HlStat("ct_void");
-		TRF_HlE("contract", "trader_id", id, "via", how, "fled", r.fl, "result", "void", "reason", "fled");
-		return nil;
-	end;
 	local d = TRF_HlDistMs(id);
 	if not d or d > TRF_HlT("ct_dist") then
 		TRF_HlSay(TRF_Txt("ctfar"), id);
@@ -1860,16 +1890,14 @@ function TRF_CtLost(id)
 	return 1;
 end;
 
--- Jump, load, escape, any other removal: contract ends without pay or penalty. escaped (trf_raid TRF_Rd_Safe:
--- the fleeing trader reached its refuge, a portal or a station) says ctesc; the record is still there.
+-- Jump, load, any other removal: contract ends without pay or penalty, no line (an escape is an arrival,
+-- TRF_CtArrive).
 function TRF_CtVoid(why)
 	local L = TRF_HlLive();
 	if not L or type(L.ct) ~= "table" then return nil; end;
 	TRF_HlE("contract", "trader_id", L.ct.id, "result", "void", "reason", why);
 	TRF_HlStat("ct_void");
-	local cid = L.ct.id;
 	L.ct = nil;
-	if why == "escaped" then TRF_HlSay(TRF_Txt("ctesc", TRF_HlName(TRF_HlRec(cid))), cid); end;
 	return 1;
 end;
 
@@ -2420,7 +2448,6 @@ function TRF_Hail_Text()
 		ctpaid = "Safe arrival. $1 cr transferred.",
 		ctfar = "We made it, but you were not with us. No pay.",
 		ctlost = "Contract lost: FTU $1 destroyed.",
-		ctesc = "FTU $1: We are out of here. Contract off, no pay.",
 		brdhead = "Patrol report",
 		brdline = "$1: $2",
 		-- v1 (v1-spec 5.2, 6.2, 6.3, 7.4, 8.4, 9.2)
@@ -2455,5 +2482,7 @@ function TRF_Hail_Text()
 		hlppaid = "FTU $1: They're gone. $2 cr transferred.",                              -- name, credits
 		hlpnofire = "FTU $1: They broke off before we scored a kill. No pay.",                -- name
 		hlptime = "FTU $1: That took too long. The offer is off.",                        -- name
+		hlpfar = "FTU $1: You never closed with them. No pay.",                           -- name
+		hlplost = "FTU $1 is gone. No pay.",                                              -- name
 	};
 end;
