@@ -270,6 +270,24 @@ function TRF_WqOn()
 	return type(TRF) == "table" and TRF_WqOpt("enable_wq") == 1;
 end;
 
+-- The strict gate of system cur (trf_safety TRF_StrictOk, feature "wq"): nil or "strict:<why>".
+function TRF_WqStrict(cur)
+	if type(TRF_StrictOk) ~= "function" then return nil; end;
+	local ok, w = TRF_StrictOk(cur, "wq");
+	if ok then return nil; end;
+	return "strict:"..tostring(w);
+end;
+
+-- The common gate of step 2 (the report, the wreck, the clue): off, step (R.s other than s), nomap, mission; nil when
+-- they pass.
+function TRF_WqSGate(cur, R, s)
+	if not TRF_WqOn() then return "off"; end;
+	if not R or R.s ~= s then return "step"; end;
+	if type(cur) ~= "number" then return "nomap"; end;
+	if TRF_WqQuest() then return "mission"; end;
+	return nil;
+end;
+
 -- Offer gate at the trade dock of system cur (spec 4.1): nil when the offer may show, else the reason.
 function TRF_WqGate(cur)
 	if not TRF_WqOn() then return "off"; end;
@@ -299,11 +317,7 @@ function TRF_WqGate(cur)
 		if type(rm) == "table" and type(rm[slot]) == "table" then hn = TRF_WqName(rm[slot].home); end;
 		if type(early) ~= "table" or not early[hn or ""] then return "chapter_region"; end;
 	end;
-	if type(TRF_StrictOk) == "function" then
-		local ok, w = TRF_StrictOk(cur, "wq");
-		if not ok then return "strict:"..tostring(w); end;
-	end;
-	return nil;
+	return TRF_WqStrict(cur);
 end;
 
 -- 1 when system idx is a mayday system in chapter ch (spec 4.2).
@@ -326,11 +340,7 @@ function TRF_WqSeedGate(cur, R)
 	if TRF_WqQuest() then return "mission"; end;
 	if not TRF_WqSysOk(cur, ch) then return "system"; end;
 	if type(R.cd) == "number" and TRF_WqLegs() - R.cd < TRF_WqT("wq_cd") then return "cooldown"; end;
-	if type(TRF_StrictOk) == "function" then
-		local ok, w = TRF_StrictOk(cur, "wq");
-		if not ok then return "strict:"..tostring(w); end;
-	end;
-	return nil;
+	return TRF_WqStrict(cur);
 end;
 
 -- Logbook (spec 4.4) ---------------------------------------------------------------------
@@ -794,15 +804,16 @@ function TRF_WqIdx(nm)
 	return nil;
 end;
 
--- Wreck systems of chapter ch in pick order (K.wsys, then K.wsys6 from chapter ch_d6) as indices.
+-- Wreck systems of chapter ch in pick order (K.wsys, then K.wsys6 from chapter ch_d6) as indices, and 1 when a wsys6
+-- system is in the list.
 function TRF_WqWsList(ch)
 	local K = TRF_WqK();
-	local o = {};
+	local o, d6 = {}, nil;
 	for i = 1, getn(K.wsys) do local x = TRF_WqIdx(K.wsys[i]); if x then tinsert(o, x); end; end;
 	if ch >= K.ch_d6 then
-		for i = 1, getn(K.wsys6) do local x = TRF_WqIdx(K.wsys6[i]); if x then tinsert(o, x); end; end;
+		for i = 1, getn(K.wsys6) do local x = TRF_WqIdx(K.wsys6[i]); if x then tinsert(o, x); d6 = 1; end; end;
 	end;
-	return o;
+	return o, d6;
 end;
 
 -- 1 when idx is a wreck system of any chapter (or the map is not known: the saved value is kept).
@@ -817,26 +828,20 @@ end;
 -- k bit 4 when the list held debris6 (the logbook text wqd30d). Returns ws or nil (no map).
 function TRF_WqWsPick(R, ch)
 	local K = TRF_WqK();
-	local l = TRF_WqWsList(ch);
+	local l, d6 = TRF_WqWsList(ch);
 	if TRF_WqBit(R.k, 4) then R.k = R.k - 4; end;
 	if getn(l) == 0 then R.ws = nil; return nil; end;
 	R.ws = l[1 + TRF_WqM(TRF_WqHash(R.sd or 1, K.ws_h, 0), getn(l))];
-	if getn(l) > getn(K.wsys) then R.k = TRF_WqBitSet(R.k, 4); end;
+	if d6 then R.k = TRF_WqBitSet(R.k, 4); end;
 	return R.ws;
 end;
 
 -- The report gate at a trade dock of system cur (any region): nil or the reason.
 function TRF_WqRepGate(cur, R)
-	if not TRF_WqOn() then return "off"; end;
-	if not R or R.s ~= 20 then return "step"; end;
-	if type(cur) ~= "number" then return "nomap"; end;
-	if TRF_WqQuest() then return "mission"; end;
+	local why = TRF_WqSGate(cur, R, 20);
+	if why then return why; end;
 	if TRF_WqName(cur) == TRF_WqK().nk then return "nk"; end;
-	if type(TRF_StrictOk) == "function" then
-		local ok, w = TRF_StrictOk(cur, "wq");
-		if not ok then return "strict:"..tostring(w); end;
-	end;
-	return nil;
+	return TRF_WqStrict(cur);
 end;
 
 -- Trade dock line 40 (shop 10, parcels 20, survivors 30, freight 60, charter 70, dockmaster 90) at s 20: the report
@@ -863,21 +868,15 @@ function TRF_WqReportBody(R)
 	return TRF_WqTxt("wqrep"..r);
 end;
 
--- The wreck gate at the entry into cur: nil or the reason (record, carry: a quest record or a quest crew of survive
--- exists, so a second one is never made).
+-- The wreck gate at the entry into cur: nil or the reason (record, carry: a quest record with pods left or a quest crew
+-- of survive exists, so a second one is never made; an empty quest record, its pod destroyed, is replaced).
 function TRF_WqWreckGate(cur, R)
-	if not TRF_WqOn() then return "off"; end;
-	if not R or R.s ~= 30 then return "step"; end;
-	if type(cur) ~= "number" then return "nomap"; end;
-	if TRF_WqQuest() then return "mission"; end;
+	local why = TRF_WqSGate(cur, R, 30);
+	if why then return why; end;
 	if cur ~= R.ws then return "system"; end;
 	local h = TRF_N("TRF_Sv_QHas");
 	if h then return h; end;
-	if type(TRF_StrictOk) == "function" then
-		local ok, w = TRF_StrictOk(cur, "wq");
-		if not ok then return "strict:"..tostring(w); end;
-	end;
-	return nil;
+	return TRF_WqStrict(cur);
 end;
 
 -- Entry (TRF_Wq_OnActivate, after survive's activate): at s 30 in ws the Marlin wreck, a quest record of survive (src 2,
@@ -933,16 +932,10 @@ end;
 
 -- The clue gate (fence box, patrol line) at a dock of system cur: nil or the reason.
 function TRF_WqClueGate(cur, R)
-	if not TRF_WqOn() then return "off"; end;
-	if not R or R.s ~= 40 then return "step"; end;
-	if type(cur) ~= "number" then return "nomap"; end;
-	if TRF_WqQuest() then return "mission"; end;
+	local why = TRF_WqSGate(cur, R, 40);
+	if why then return why; end;
 	if not TRF_WqClueRg(cur) then return "region"; end;
-	if type(TRF_StrictOk) == "function" then
-		local ok, w = TRF_StrictOk(cur, "wq");
-		if not ok then return "strict:"..tostring(w); end;
-	end;
-	return nil;
+	return TRF_WqStrict(cur);
 end;
 
 -- Fence price at system cur: round(fence_k x TRF_PayN(cur)) (one pay unit N of trf_region).

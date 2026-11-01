@@ -763,12 +763,23 @@ function T_WQ_C()
 	b.lg = TRF.clock.legs - 10;
 	TRF_SvExpire(1);
 	nq = WQ_QRecs();
-	HOST_Check(nq == 0, "TRF_SvExpire: the quest beacon expires after sv_ttl");
+	HOST_Check(nq == 0 and TRF.sv.x == nil, "TRF_SvExpire: the quest beacon expires after sv_ttl, never on the silent list");
 	n0 = S_Mark();
 	T_Jump("debris6");
 	T_Jump("golkonda");
 	nq = WQ_QRecs();
 	HOST_Check(nq == 1 and WQ_Logs(n0, "event=wreck system=golkonda beacon=1 ") == 1, "the next entry into ws seeds it again");
+	-- A destroyed pod (n 0, no carry): the next entry replaces the empty quest record (no wait for sv_ttl).
+	nq, b = WQ_QRecs();
+	b.n = 0;
+	n0 = S_Mark();
+	T_Jump("debris6");
+	T_Jump("golkonda");
+	nq, b = WQ_QRecs();
+	HOST_Check(nq == 1 and b.n == 1 and WQ_Logs(n0, "event=wreck system=golkonda beacon=1 ") == 1
+		and S_Logs(n0, "event=expire system=golkonda beacon=1 pods=0 source=2 ") == 1 and S_Logs(n0, "reason=quest") >= 1
+		and S_Logs(n0, "module=plumb event=arrival_line owner=survive ") == 1,
+		"an empty quest record (the pod destroyed): replaced at the next entry, with the beacon line");
 	-- The fallback point: no contact point, K.q_off from the entry portal, outside the site rule.
 	TRF_Sv_BeforeJump();
 	TRF.sv.b = {};

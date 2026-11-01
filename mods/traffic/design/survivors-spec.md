@@ -45,7 +45,7 @@ Module: new `S/trf_survive.script`, prefix `Sv` (`TRF_Sv_*` public, `TRF_Sv<X>` 
 | `.sl` | 0..2 | 0 none, 1 taken by slavers, 2 slaver sent (step 2) |
 | `.pf`, `.pp` | 0..10000 | pay per survivor at an FTU dock and at a pirate dock, fixed at creation; 0 for `src` 1 |
 | `.bx` | 1 or absent | the beacon was destroyed: not rebuilt for this record |
-| `.q` | 1 or absent | a quest record of trf_wq (`TRF_Sv_QuestSeed`, `D/freight-quest-spec.md` 4.3): never dropped by `TRF_SvAdd` (nil when every record is one), skipped by the off-screen slaver roll, preferred by `TRF_Sv_Fix`; it expires after `sv_ttl` as any record |
+| `.q` | 1 or absent | a quest record of trf_wq (`TRF_Sv_QuestSeed`, `D/freight-quest-spec.md` 4.3): never dropped by `TRF_SvAdd` (nil when every record is one), skipped by the off-screen slaver roll, preferred by `TRF_Sv_Fix`; it expires after `sv_ttl` as any record but is never put on the silent list `x`; an empty one (its pod destroyed) is replaced by the next `TRF_Sv_QuestSeed` |
 | `c` | `{n 1..6, cr, pc, s1, s2?, f, lg, q?}` or absent | survivors aboard: count, credits owed by FTU and by pirates, up to two loss systems, owner, leg of the first pickup; `q` 1 once a quest pod is aboard (kept when ordinary crews merge in): never lost to `sv_carry`, kept aboard at a `credits_only` dock (credits paid and cleared), `TRF_Wq_OnHand` reads a full hand-in |
 | `st` | `{res, sold, lost}`, 0..9999 | survivors handed in to FTU, sold (step 2), lost (pods destroyed, carried past `sv_carry`, taken by slavers) |
 | `r[slot]` | 1..9 or absent (= 0), slots 1..11 | credited beacons created in the region this cycle |
