@@ -183,7 +183,7 @@ function T_CH_A()
 	for i = 1, getn(P.dock.trade.line) do lo = lo..P.dock.trade.line[i].o..","; end;
 	for i = 1, getn(P.dock.trade.box) do bo = bo..P.dock.trade.box[i].o..":"..tostring(P.dock.trade.box[i].f)..","; end;
 	for i = 1, getn(P.owe) do ow = ow..tostring(P.owe[i].f)..","; end;
-	HOST_Check(lo == "10,20,30,60,70,90," and bo == "450:TRF_Wq_DockBox,400:TRF_Pc_DockBox,300:TRF_Fr_DockBox,200:TRF_Ch_DockBox," and C_Has(ow, "TRF_Ch_Owe,"),
+	HOST_Check(lo == "10,20,30,40,60,70,90," and bo == "450:TRF_Wq_DockBox,400:TRF_Pc_DockBox,300:TRF_Fr_DockBox,200:TRF_Ch_DockBox," and C_Has(ow, "TRF_Ch_Owe,"),
 		"trade line 70 (between the freight 60 and the rating 80 places), box 200 (after the quest offer 450, the parcel offer 400 and the freight 300), one owed payer ("..lo.." "..bo.." "..ow..")");
 	-- Unlock: chapter 5 and help 3 (design 4).
 	TRF.std.help = 9;

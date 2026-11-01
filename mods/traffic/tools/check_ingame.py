@@ -4,7 +4,7 @@ the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10), the mercenary
 11, test plan section 11), the strength scale (D-STR.*, design/strength-spec.md 9), the pirate fits (D-FIT.1-6, E-BB1,
 design/fits-spec.md 11), the vanilla extortion fix (E-EXT.1, design/extort-fix-spec.md 7), the stack leak diagnostic
 (D-DLL.1), the station jobs mission card (K0-K7, design/station-jobs-spec.md 10, step 1), the Office jobs board (M1-M8,
-step 2), the quest log's Job log (L1-L5, step 3) and the freight unlock quest, commit 1 (Q-WQ.1-4,
+step 2), the quest log's Job log (L1-L5, step 3) and the freight unlock quest, commits 1-2 (Q-WQ.1-7,
 design/freight-quest-spec.md 10) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
@@ -1952,6 +1952,79 @@ def c_wq4(ctx):
     return res
 
 
+def c_wq5(ctx):
+    res = Res()
+    res.logpart = True
+    rep = ctx.find("wq", "report")
+    rep = [r for r in rep if r.get("result") != "none"]
+    steps = ctx.find("wq", "step", step_before="20", step_after="30")
+    for r in rep:
+        if r.get("result") not in ("saved", "lost", "limped"):
+            res.fails.append("%s: unknown report result" % r.short())
+        if r.get("wreck_system") not in ("golkonda", "callipso", "debris6"):
+            res.fails.append("%s: the wreck system is not golkonda, callipso or debris6" % r.short())
+        if not [s for s in steps if s.src == r.src and s.n > r.n]:
+            res.fails.append("%s: no step 20 -> 30 after the report" % r.short())
+    if not rep:
+        res.missing.append("at step 20 dock at a trade station (not New Kyoto): no report line")
+    res.ev("reports", rep)
+    res.ev("steps 20 -> 30", steps)
+    return res
+
+
+def c_wq6(ctx):
+    res = Res()
+    res.logpart = True
+    seed = ctx.find("wq", "wreck", result="seeded")
+    pick = ctx.find("wq", "wreck", result="picked")
+    hand = ctx.find("wq", "wreck", result="handed")
+    steps = ctx.find("wq", "step", step_before="30", step_after="40")
+    for r in pick:
+        if not [s for s in seed if s.src == r.src and s.n < r.n and s.get("system") == r.get("system")]:
+            res.fails.append("%s: a pickup without a seeded wreck before it" % r.short())
+    for r in hand:
+        if not [s for s in pick if s.src == r.src and s.n < r.n]:
+            res.fails.append("%s: a hand-in without a pickup before it" % r.short())
+        if not [s for s in steps if s.src == r.src and s.n > r.n]:
+            res.fails.append("%s: no step 30 -> 40 after the hand-in" % r.short())
+    if not seed:
+        res.missing.append("at step 30 enter the report's wreck_system: no wreck result=seeded line")
+    elif not pick:
+        res.missing.append("fly through the Marlin's pod: no wreck result=picked line")
+    elif not hand:
+        res.missing.append("dock at a trade station with the navigator aboard: no wreck result=handed line")
+    res.ev("wrecks seeded", seed)
+    res.ev("pickups", pick)
+    res.ev("hand-ins", hand)
+    return res
+
+
+def c_wq7(ctx):
+    res = Res()
+    res.logpart = True
+    shown = ctx.find("wq", "fence", result="shown")
+    ok = ctx.find("wq", "clue", result="ok")
+    for r in ok:
+        if r.get("via") == "fence":
+            prev = [s for s in shown if s.src == r.src and s.n < r.n]
+            if not prev:
+                res.fails.append("%s: a fence clue without a fence box before it" % r.short())
+            elif prev[-1].get("price") != r.get("cost"):
+                res.fails.append("%s: the cost differs from the box price %s" % (r.short(), prev[-1].get("price")))
+        elif r.get("via") == "patrol":
+            if r.int("rung", 0) < 1 or r.get("cost") != "0":
+                res.fails.append("%s: a patrol clue below rung 1 or not free" % r.short())
+        else:
+            res.fails.append("%s: unknown clue source" % r.short())
+    if not ok:
+        res.missing.append("at step 40 dock at a pirate station of the Golkonda region with the credits and pay the fence, or at a "
+                           "patrol station there at dockmaster rung 1: no clue result=ok line")
+    res.ev("fence boxes", shown)
+    res.ev("fence declined", ctx.find("wq", "clue", via="fence", result="declined"))
+    res.ev("clues", ok)
+    return res
+
+
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
@@ -2079,6 +2152,11 @@ ITEMS = [
     ("Q-WQ.4", "mothership variant of the clerk's and the Kestrel's lines", c_wq4,
      "with an Arba-class hull (arba_t, mothership_arba_pirate, mothership_arba) or hm_queen_pl variant=old shows "
      "'that Arba hauler' and 'a transport pilot who knows the clause', variant=new the plain lines"),
+    ("Q-WQ.5", "the Kestrel's report at a trade dock moves step 20 to 30 and names the wreck system", c_wq5, None),
+    ("Q-WQ.6", "the Marlin wreck: seeded in the wreck system, the pod picked up, the hand-in moves step 30 to 40", c_wq6,
+     "the beacon and one pod with a marker, reachable (not inside an asteroid field), 'Survivor aboard.' and the "
+     "navigator's line at the pickup"),
+    ("Q-WQ.7", "the clue: the fence box price paid, or the patrol board free at rung 1, moves step 40 to 50", c_wq7, None),
 ]
 
 
@@ -2194,7 +2272,8 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "M1": "MANUAL", "M2": "FAIL", "M3": "MANUAL", "M4": "MANUAL", "M5": "MANUAL", "M6": "MANUAL", "M7": "PASS",
             "M8": "NO DATA",
             "L1": "MANUAL", "L2": "MANUAL", "L3": "MANUAL", "L4": "FAIL", "L5": "NO DATA",
-            "Q-WQ.1": "PASS", "Q-WQ.2": "MANUAL", "Q-WQ.3": "PASS", "Q-WQ.4": "MANUAL"}
+            "Q-WQ.1": "PASS", "Q-WQ.2": "MANUAL", "Q-WQ.3": "PASS", "Q-WQ.4": "MANUAL",
+            "Q-WQ.5": "PASS", "Q-WQ.6": "MANUAL", "Q-WQ.7": "PASS"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -2205,7 +2284,9 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # mode 2 run (M8). Job log block: init log=1, a load, a parcel accepted into the Job log, the quest log opened with both
 # tab clicks, the entry done, a second load with two job entries (L4 FAIL); no JOBS_LOG=0 load (L5). Freight unlock quest
 # block (the end, Debris 6 and Golkonda): an offer declined, a second one accepted from the card into the Job log, a
-# mayday voided by a jump, the retry rolled with tries=1, a mayday defended (rescued, step 20); new ship lines only.
+# mayday voided by a jump, the retry rolled with tries=1, a mayday defended (rescued, step 20); new ship lines only; the
+# report (step 30, wreck system golkonda), the wreck seeded, picked and handed in (step 40), a fence box declined, then
+# paid at its price (step 50).
 
 
 def selftest():

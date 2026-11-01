@@ -8,14 +8,21 @@
 -- record flag wq under a trf_clan raid of why "wq" (tier min(2, cap)); saved through the 8.5 raid-help resolver flag, lost
 -- through the trf_events kill hook; no engagement, a refused raid or spawn, a jump or a load before the result void the
 -- event (a load or an unseen jump after the help was counted still gives saved), wq_tries voids end it with "The Kestrel
--- limped in alone."). Steps 2-6 (cold trail, the fence, the clan hold at
--- XB-13, the charter office unlock in TRF_FrBuyGate) are commits 2 and 3; the hook points say "Commit 2 hook".
+-- limped in alone.").
+-- Commit 2 of 3: step 2, the cold trail. The Kestrel's report (trade dock line 40 at any trade dock, s 20 -> 30, the line
+-- by the result r; the wreck system ws picked by the seed: golkonda or callipso, debris6 from chapter 6), the Marlin
+-- wreck (on entry into ws at s 30 trf_survive's TRF_Sv_QuestSeed makes a quest record q 1 with one pod; seeded again on
+-- each entry while no quest record or quest carry exists; the pickup gives the navigator's line, the hand-in at a trade
+-- dock s 40), the clue (s 40 -> 50: the fence, pirate dock box 300 in the region of XB-13, for round(0.4 x TRF_PayN)
+-- through TRF_Charge; or free on the patrol board, patrol line 45 in that region, at dockmaster rung >= 1). Steps 3-4
+-- (the clan hold at XB-13, the charter office unlock in TRF_FrBuyGate) are commit 3; the hook points say "Commit 3 hook".
 -- Dialog variants: the clerk's box and reply and the Kestrel's thanks read the "old hauler" key (<key>o) while the
 -- player flies one of the Arba haulers or the start hull (TRF_WqK().ms0), chosen at display time, never saved.
--- Saved fields: TRF.wq = {v=1, s (step 0 declined, 10 mayday due, 20 report owed, 30..90 commits 2-3), k (bits: 1 the
--- 8.5 help counted on the Kestrel's raid, 2 grandfathered), n (voids of step 1), dc (decline leg, s 0 only), cd (leg of
--- the last void), sd (seed 1..9999), lv (1 while the Kestrel is on-screen, s 10 only), r (step 1 result: 1 saved,
--- 2 lost, 3 limped in), p (1: the limped-in line is due at the next entry), ql (step of the logbook entry)}; nil until
+-- Saved fields: TRF.wq = {v=1, s (step 0 declined, 10 mayday due, 20 report owed, 30 find the wreck, 40 find the fence,
+-- 50 crew held, 60..90 commit 3), k (bits: 1 the 8.5 help counted on the Kestrel's raid, 2 grandfathered, 4 the wreck
+-- pick included debris6), n (voids of step 1), dc (decline leg, s 0 only), cd (leg of the last void), sd (seed
+-- 1..9999), lv (1 while the Kestrel is on-screen, s 10 only), r (step 1 result: 1 saved, 2 lost, 3 limped in), p (1:
+-- the limped-in line is due at the next entry), ql (step of the logbook entry), ws (wreck system idx, s 30..40)}; nil until
 -- the first offer is answered (always read through TRF_WqRec). Visit state lives in the chunk local WQ (never saved;
 -- rebuilt by every MapInitialization, so a jump or a load voids an on-screen event); the spawn timer is a TRF_Due entry
 -- in the handle table (dropped with the generation).
@@ -192,11 +199,14 @@ end;
 -- Arba haulers every vanilla run flies until the player buys another mothership: arba_t, mission 2 Arba_pl0;
 -- mothership_arba_pirate, the chapter 4 Ahilles swap Arba_pl1; mothership_arba, the chapter 4 Elio swap Arba_pl2, which
 -- mission_7g NewBase_XB17.script tests by this name), the seeded chance, the spawn delay, the marker label and owner, line
--- seconds.
+-- seconds; step 2: the wreck systems in pick order (wsys, wsys6 from chapter ch_d6; both q=0 and strict-free, debris6
+-- q=1 under the normal strict check), the hash salt of the pick, the clue system (the region of xb13), the fence price
+-- factor (of TRF_PayN).
 function TRF_WqK()
 	return {ch_min=5, ch_max=18, ch_early=6, ch_d6=6, heat_max=2, dc_legs=10, qid="trf_wq", jid="wq", nk="nk",
 		sys5={elio=1, gredos=1, valensia=1, kassilia=1, golkonda=1, xt11=1, callipso=1}, sys6={debris6=1},
-		ms0={hm_queen_pl=1, arba_t=1, mothership_arba_pirate=1, mothership_arba=1}, pct=50, d_min=30, d_max=60, tier=2, mk="TRF_".."WQ_NP", own="wq", secs=8};
+		ms0={hm_queen_pl=1, arba_t=1, mothership_arba_pirate=1, mothership_arba=1}, pct=50, d_min=30, d_max=60, tier=2, mk="TRF_".."WQ_NP", own="wq", secs=8,
+		wsys={"golkonda", "callipso"}, wsys6={"debris6"}, ws_h=11, xb="xb13", fence_k=0.4};
 end;
 
 -- Clamps of the tune keys {lo, hi, int}.
@@ -366,18 +376,20 @@ function TRF_WqQRemRaw(id)
 	return 1;
 end;
 
--- Steps with a logbook description in this commit (Commit 2 hook: 30 .. 70).
+-- Steps with a logbook description in this commit (Commit 3 hook: 60, 70).
 function TRF_WqQSteps()
-	return {[10]=1, [20]=1};
+	return {[10]=1, [20]=1, [30]=1, [40]=1, [50]=1};
 end;
 
--- Description key of step s: step 20 by the result (r 2 lost: wqd20l, r 3 limped in: wqd20a, else wqd20).
+-- Description key of step s: step 20 by the result (r 2 lost: wqd20l, r 3 limped in: wqd20a, else wqd20); step 30 by
+-- the wreck set (k bit 4, debris6 in it: wqd30d, else wqd30).
 function TRF_WqQKey(s)
 	local R = TRF_WqRec();
 	local x = "";
 	if s == 20 and R then
 		if R.r == 2 then x = "l"; elseif R.r == 3 then x = "a"; end;
 	end;
+	if s == 30 and R and TRF_WqBit(R.k, 4) then x = "d"; end;
 	return "#TRF_wqd"..s..x;
 end;
 
@@ -689,7 +701,6 @@ function TRF_WqResult(ev, r, why)
 	else
 		TRF_WqE("lost", "system", TRF_WqName(ev.sys), "trader_id", ev.id, "raid_id", ev.rn, "reason", why, "tries", R.n or 0);
 	end;
-	-- Commit 2 hook: step 20 -> 30, the Kestrel's report at an FTU trade dock (trade line 40).
 	TRF_WqStep(R, 20, evn);
 end;
 
@@ -774,6 +785,287 @@ function TRF_WqStepBody(ev)
 	if not TRF_WqRaidOpen(ev) then TRF_WqVoid(ev, "no_help"); end;
 end;
 
+-- Step 2: the cold trail (spec 4.3) ---------------------------------------------------------
+
+-- System index of map name nm, or nil.
+function TRF_WqIdx(nm)
+	local m = TRF_N("TRF_Map");
+	if type(m) == "table" and type(m.by) == "table" then return m.by[nm]; end;
+	return nil;
+end;
+
+-- Wreck systems of chapter ch in pick order (K.wsys, then K.wsys6 from chapter ch_d6) as indices.
+function TRF_WqWsList(ch)
+	local K = TRF_WqK();
+	local o = {};
+	for i = 1, getn(K.wsys) do local x = TRF_WqIdx(K.wsys[i]); if x then tinsert(o, x); end; end;
+	if ch >= K.ch_d6 then
+		for i = 1, getn(K.wsys6) do local x = TRF_WqIdx(K.wsys6[i]); if x then tinsert(o, x); end; end;
+	end;
+	return o;
+end;
+
+-- 1 when idx is a wreck system of any chapter (or the map is not known: the saved value is kept).
+function TRF_WqWsOk(idx)
+	if type(TRF_N("TRF_Map")) ~= "table" then return 1; end;
+	local l = TRF_WqWsList(99);
+	for i = 1, getn(l) do if l[i] == idx then return 1; end; end;
+	return nil;
+end;
+
+-- The seeded wreck pick: ws = list[1 + hash(sd, ws_h) mod n] of the systems of chapter ch, so a reload picks the same;
+-- k bit 4 when the list held debris6 (the logbook text wqd30d). Returns ws or nil (no map).
+function TRF_WqWsPick(R, ch)
+	local K = TRF_WqK();
+	local l = TRF_WqWsList(ch);
+	if TRF_WqBit(R.k, 4) then R.k = R.k - 4; end;
+	if getn(l) == 0 then R.ws = nil; return nil; end;
+	R.ws = l[1 + TRF_WqM(TRF_WqHash(R.sd or 1, K.ws_h, 0), getn(l))];
+	if getn(l) > getn(K.wsys) then R.k = TRF_WqBitSet(R.k, 4); end;
+	return R.ws;
+end;
+
+-- The report gate at a trade dock of system cur (any region): nil or the reason.
+function TRF_WqRepGate(cur, R)
+	if not TRF_WqOn() then return "off"; end;
+	if not R or R.s ~= 20 then return "step"; end;
+	if type(cur) ~= "number" then return "nomap"; end;
+	if TRF_WqQuest() then return "mission"; end;
+	if TRF_WqName(cur) == TRF_WqK().nk then return "nk"; end;
+	if type(TRF_StrictOk) == "function" then
+		local ok, w = TRF_StrictOk(cur, "wq");
+		if not ok then return "strict:"..tostring(w); end;
+	end;
+	return nil;
+end;
+
+-- Trade dock line 40 (shop 10, parcels 20, survivors 30, freight 60, charter 70, dockmaster 90) at s 20: the report
+-- line by the result r (wqrep1 saved: the Kestrel's captain; wqrep2 lost, wqrep3 limped in: the clerk), the wreck pick,
+-- step 30.
+function TRF_Wq_DockLine(kind, param)
+	if kind ~= "trade" or not TRF_WqOn() then return nil; end;
+	local R = TRF_WqRec();
+	if not R or R.s ~= 20 then return nil; end;
+	return call(TRF_WqReportBody, {R}, "x", TRF_WqErr);
+end;
+
+function TRF_WqReportBody(R)
+	local cur = TRF_WqCur();
+	local why = TRF_WqRepGate(cur, R);
+	if why then TRF_WqDE("report", "system", TRF_WqName(cur), "result", "none", "reason", why); return nil; end;
+	local r = R.r;
+	if r ~= 2 and r ~= 3 then r = 1; end;
+	local rn = {"saved", "lost", "limped"};
+	local ws = TRF_WqWsPick(R, TRF_WqChapter());
+	TRF_N("TRF_Stat", "wq_report");
+	TRF_WqE("report", "system", TRF_WqName(cur), "result", rn[r], "wreck_system", ws and TRF_WqName(ws), "flags", R.k);
+	TRF_WqStep(R, 30, "report");
+	return TRF_WqTxt("wqrep"..r);
+end;
+
+-- The wreck gate at the entry into cur: nil or the reason (record, carry: a quest record or a quest crew of survive
+-- exists, so a second one is never made).
+function TRF_WqWreckGate(cur, R)
+	if not TRF_WqOn() then return "off"; end;
+	if not R or R.s ~= 30 then return "step"; end;
+	if type(cur) ~= "number" then return "nomap"; end;
+	if TRF_WqQuest() then return "mission"; end;
+	if cur ~= R.ws then return "system"; end;
+	local h = TRF_N("TRF_Sv_QHas");
+	if h then return h; end;
+	if type(TRF_StrictOk) == "function" then
+		local ok, w = TRF_StrictOk(cur, "wq");
+		if not ok then return "strict:"..tostring(w); end;
+	end;
+	return nil;
+end;
+
+-- Entry (TRF_Wq_OnActivate, after survive's activate): at s 30 in ws the Marlin wreck, a quest record of survive (src 2,
+-- pay 0, one pod, q 1) placed at once with survive's beacon line and marker; no event slot.
+function TRF_WqWreck()
+	local R = TRF_WqRec();
+	if not R or R.s ~= 30 then return; end;
+	local cur = TRF_WqCur();
+	local nm = TRF_WqName(cur);
+	local why = TRF_WqWreckGate(cur, R);
+	if why then TRF_WqDE("wreck", "system", nm, "result", "none", "reason", why); return; end;
+	local i, w = TRF_N("TRF_Sv_QuestSeed", cur, 2, 0, 1);
+	if type(i) ~= "number" then
+		TRF_WqE("wreck", "system", nm, "result", "none", "reason", "survive:"..tostring(w));
+		return;
+	end;
+	TRF_N("TRF_Stat", "wq_wreck");
+	TRF_WqE("wreck", "system", nm, "beacon", i, "point", w, "result", "seeded");
+end;
+
+-- trf_survive TRF_SvPick of a quest pod (record b, q 1): the navigator's line at s 30 (the marker goes with the record).
+function TRF_Wq_OnPick(b)
+	local R = TRF_WqRec();
+	if not R or R.s ~= 30 or type(b) ~= "table" then return; end;
+	TRF_WqSay(TRF_WqTxt("wqnav"));
+	TRF_N("TRF_Stat", "wq_pick");
+	TRF_WqE("wreck", "system", TRF_WqName(b.s), "pods", b.n, "result", "picked");
+end;
+
+-- trf_survive TRF_SvHand, a full hand-in of carry c at the trade dock of idx before the carry goes: a quest crew (c.q 1)
+-- at s 30 gives step 40 (the normal survivor standing was paid; no quest credits). Commit 3 hook: the crew of XB-13 at
+-- s 60. Returns nil (no line of its own).
+function TRF_Wq_OnHand(idx, c)
+	local R = TRF_WqRec();
+	if not R or type(c) ~= "table" or c.q ~= 1 then return nil; end;
+	if R.s ~= 30 then
+		TRF_WqE("wreck", "system", TRF_WqName(idx), "carried", c.n, "step", R.s, "result", "none", "reason", "step");
+		return nil;
+	end;
+	TRF_N("TRF_Stat", "wq_hand");
+	TRF_WqE("wreck", "system", TRF_WqName(idx), "carried", c.n, "result", "handed");
+	TRF_WqStep(R, 40, "handed");
+	return nil;
+end;
+
+-- 1 when system cur is in the region of XB-13 (trf_region TRF_RgOf of both).
+function TRF_WqClueRg(cur)
+	local a = TRF_N("TRF_RgOf", cur);
+	local x = TRF_WqIdx(TRF_WqK().xb);
+	if type(a) == "number" and type(x) == "number" and a == TRF_N("TRF_RgOf", x) then return 1; end;
+	return nil;
+end;
+
+-- The clue gate (fence box, patrol line) at a dock of system cur: nil or the reason.
+function TRF_WqClueGate(cur, R)
+	if not TRF_WqOn() then return "off"; end;
+	if not R or R.s ~= 40 then return "step"; end;
+	if type(cur) ~= "number" then return "nomap"; end;
+	if TRF_WqQuest() then return "mission"; end;
+	if not TRF_WqClueRg(cur) then return "region"; end;
+	if type(TRF_StrictOk) == "function" then
+		local ok, w = TRF_StrictOk(cur, "wq");
+		if not ok then return "strict:"..tostring(w); end;
+	end;
+	return nil;
+end;
+
+-- Fence price at system cur: round(fence_k x TRF_PayN(cur)) (one pay unit N of trf_region).
+function TRF_WqPrice(cur)
+	return floor(TRF_WqK().fence_k * (TRF_N("TRF_PayN", cur) or 0) + 0.5);
+end;
+
+function TRF_WqCreditsRaw() return GetPlayerCredits(); end;
+
+-- Player credits, or nil.
+function TRF_WqWallet()
+	if type(GetPlayerCredits) ~= "function" then return nil; end;
+	local v = call(TRF_WqCreditsRaw, {}, "x", TRF_WqNoErr);
+	if type(v) == "number" then return v; end;
+	return nil;
+end;
+
+-- Pirate dock box 300 (faction 400 > wq 300 > parcel contraband 200, reserved > stash 100) at s 40 in the region of
+-- XB-13 while the player can pay the price: the fence sells the Marlin's papers. Cancel does nothing (the box shows at
+-- the next docking).
+function TRF_Wq_PirBox(kind, param)
+	if kind ~= "pir" or not TRF_WqOn() then return nil; end;
+	local R = TRF_WqRec();
+	if not R or R.s ~= 40 then return nil; end;
+	local wq = %WQ;
+	local cur = TRF_WqCur();
+	local why = TRF_WqClueGate(cur, R);
+	local price = 0;
+	if not why then
+		price = TRF_WqPrice(cur);
+		if price <= 0 then why = "price"; end;
+	end;
+	if not why then
+		local w = TRF_WqWallet();
+		if type(w) ~= "number" or w < price then why = "poor"; end;
+	end;
+	if why then TRF_WqDE("fence", "system", TRF_WqName(cur), "price", price, "result", "none", "reason", why); return nil; end;
+	wq.fence = {sys=cur, g=TRF_WqGen(), price=price};
+	return {text=TRF_WqTxt("wqfence", tostring(price)), ok="TRF_Wq_FenceOk", no="TRF_Wq_FenceNo", shown="TRF_Wq_FenceShown",
+		fail="TRF_Wq_FenceFail", a={g=TRF_WqGen(), src=cur}, own="wq_fence"};
+end;
+
+function TRF_Wq_FenceShown(a)
+	local o = %WQ.fence;
+	if type(o) ~= "table" then return; end;
+	TRF_WqE("fence", "system", TRF_WqName(o.sys), "price", o.price, "result", "shown");
+end;
+
+function TRF_Wq_FenceFail(a)
+	local wq = %WQ;
+	wq.fence = nil;
+	TRF_WqE("fence", "result", "failed", "reason", "box");
+end;
+
+-- Fence OK: the gate again (stale otherwise), the price through trf_region TRF_Charge (why "wq"; refused while the
+-- wallet holds less: the poor line), step 50. Returns the fence's reply.
+function TRF_Wq_FenceOk(a)
+	local wq = %WQ;
+	local o = wq.fence;
+	wq.fence = nil;
+	local R = TRF_WqRec();
+	local cur = TRF_WqCur();
+	if type(o) ~= "table" or type(a) ~= "table" or a.g ~= TRF_WqGen() or o.g ~= a.g or o.sys ~= cur or TRF_WqClueGate(cur, R) then
+		TRF_WqE("clue", "via", "fence", "system", TRF_WqName(cur), "result", "stale");
+		return nil;
+	end;
+	local got, no = TRF_N("TRF_Charge", o.price, "wq");
+	if type(got) ~= "number" or got <= 0 then
+		TRF_WqE("clue", "via", "fence", "system", TRF_WqName(cur), "cost", o.price, "result", "poor", "reason", tostring(no));
+		return TRF_WqTxt("wqfencepoor");
+	end;
+	TRF_N("TRF_Stat", "wq_clue");
+	TRF_WqE("clue", "via", "fence", "system", TRF_WqName(cur), "cost", got, "result", "ok");
+	TRF_WqStep(R, 50, "fence");
+	return TRF_WqTxt("wqfenceok");
+end;
+
+function TRF_Wq_FenceNo(a)
+	local wq = %WQ;
+	local o = wq.fence;
+	wq.fence = nil;
+	local s = nil;
+	if type(o) == "table" then s = TRF_WqName(o.sys); end;
+	TRF_WqE("clue", "via", "fence", "system", s, "result", "declined");
+	return nil;
+end;
+
+-- Dockmaster rung at a patrol dock of system idx: patrol stations keep no dockmaster record (TRF.stn keys trade stations
+-- only, station-voices-spec 3.3), so the highest effective rung of the system's trade stations (trf_station
+-- TRF_Stn_Rung(idx, j), j 1..2; 0 without a record).
+function TRF_WqRung(idx)
+	local b = nil;
+	for j = 1, 2 do
+		local st, e = TRF_N("TRF_Stn_Rung", idx, j);
+		if type(e) == "number" and (b == nil or e > b) then b = e; end;
+	end;
+	return b or 0;
+end;
+
+-- Patrol dock line 45 (hail 10, captain 35, stash 40, ladder 50, merc 70) at s 40 in the region of XB-13: the board gives
+-- the clue free at dockmaster rung >= 1 (TRF_WqRung), step 50; below it says nothing.
+function TRF_Wq_PatrolLine(kind, param)
+	if kind ~= "patrol" or not TRF_WqOn() then return nil; end;
+	local R = TRF_WqRec();
+	if not R or R.s ~= 40 then return nil; end;
+	return call(TRF_WqPatrolBody, {R}, "x", TRF_WqErr);
+end;
+
+function TRF_WqPatrolBody(R)
+	local cur = TRF_WqCur();
+	local why = TRF_WqClueGate(cur, R);
+	local e = nil;
+	if not why then
+		e = TRF_WqRung(cur);
+		if e < 1 then why = "rung"; end;
+	end;
+	if why then TRF_WqDE("clue", "via", "patrol", "system", TRF_WqName(cur), "rung", e, "result", "none", "reason", why); return nil; end;
+	TRF_N("TRF_Stat", "wq_clue");
+	TRF_WqE("clue", "via", "patrol", "system", TRF_WqName(cur), "cost", 0, "rung", e, "result", "ok");
+	TRF_WqStep(R, 50, "patrol");
+	return TRF_WqTxt("wqpatrol");
+end;
+
 -- Loader callbacks ---------------------------------------------------------------------------
 
 -- Every entry: a new visit state; a saved live flag without a jump hook (a jump the wrappers did not see) resolves the
@@ -782,15 +1074,17 @@ function TRF_Wq_OnEnter()
 	local wq = %WQ;
 	wq.v = {};
 	wq.offer = nil;
+	wq.fence = nil;
 	TRF_WqLvGone("entry");
 end;
 
--- After activate (entry only): the limped-in line of a void at a jump or a load (p stays until the queue takes it), the
--- logbook reconcile.
+-- After activate (entry only, after survive's): the limped-in line of a void at a jump or a load (p stays until the
+-- queue takes it), the Marlin wreck at s 30 (TRF_WqWreck), the logbook reconcile.
 function TRF_Wq_OnActivate()
 	if not TRF_WqOn() then return; end;
 	local R = TRF_WqRec();
 	if R and R.p == 1 and TRF_N("TRF_ArrivalLine", TRF_WqK().own, TRF_WqTxt("wqalone")) == 1 then R.p = nil; end;
+	call(TRF_WqWreck, {}, "x", TRF_WqErr);
 	call(TRF_WqReconcile, {"enter"}, "x", TRF_WqErr);
 end;
 
@@ -800,6 +1094,7 @@ function TRF_Wq_OnLoad()
 	local wq = %WQ;
 	wq.v = {};
 	wq.offer = nil;
+	wq.fence = nil;
 	if type(TRF) ~= "table" then return; end;
 	local L = TRF.live;
 	if type(L) == "table" and type(L.tr) == "table" then
@@ -835,12 +1130,16 @@ function TRF_Wq_BeforeJump()
 	TRF_WqVoid(ev, "jump", 1);
 end;
 
--- trf_plumb TRF_InstallPlumb: trade box 450, Office board row 450, seed provider 620, the 8.5 resolver.
+-- trf_plumb TRF_InstallPlumb: trade box 450, Office board row 450, seed provider 620, the 8.5 resolver; step 2: trade
+-- line 40 (the report), pirate box 300 (the fence), patrol line 45 (the board).
 function TRF_Wq_Plumb()
 	TRF_DockBox("trade", 450, "TRF_Wq_DockBox");
 	TRF_JobRow("trade", 450, "TRF_Wq_JobRow");
 	TRF_SeedReg(620, "TRF_Wq_Seed");
 	TRF_RaidHelpReg("TRF_Wq_Help");
+	TRF_DockLine("trade", 40, "TRF_Wq_DockLine");
+	TRF_DockBox("pir", 300, "TRF_Wq_PirBox");
+	TRF_DockLine("patrol", 45, "TRF_Wq_PatrolLine");
 end;
 
 -- Repair, defaults, dump, text -----------------------------------------------------------
@@ -851,8 +1150,9 @@ function TRF_WqFld(e, k, lo, hi)
 end;
 
 -- Repair (TRF_Repair after TRF_Fr_Fix, every entry and load): a non-table TRF.wq or one with an unknown step is dropped;
--- every field within its range (a wrong value is dropped; dc only at step 0, lv only at step 10, p only with r 3); the
--- grandfather rule: no record and a Wolves freighter in TRF.co (repaired just before) gives s 80 with bit 2 (no entry).
+-- every field within its range (a wrong value is dropped; dc only at step 0, lv only at step 10, p only with r 3, ws only
+-- at steps 30 and 40 and only a wreck system; a missing ws at step 30 is picked again); the grandfather rule: no record
+-- and a Wolves freighter in TRF.co (repaired just before) gives s 80 with bit 2 (no entry).
 function TRF_Wq_Fix()
 	if type(TRF) ~= "table" then return; end;
 	if TRF.wq ~= nil and type(TRF.wq) ~= "table" then TRF.wq = nil; TRF_WqE("fix", "result", "dropped", "reason", "type"); end;
@@ -864,12 +1164,20 @@ function TRF_Wq_Fix()
 			TRF.wq = nil;
 			TRF_WqE("fix", "step", tostring(x.s), "result", "dropped", "reason", "step");
 		else
-			local o = {v=1, s=s, k=TRF_WqFld(x, "k", 0, 3) or 0, n=TRF_WqFld(x, "n", 0, 9) or 0, cd=TRF_WqFld(x, "cd", -9999999, legs),
+			local o = {v=1, s=s, k=TRF_WqFld(x, "k", 0, 7) or 0, n=TRF_WqFld(x, "n", 0, 9) or 0, cd=TRF_WqFld(x, "cd", -9999999, legs),
 				sd=TRF_WqFld(x, "sd", 1, 9999), r=TRF_WqFld(x, "r", 1, 3), ql=TRF_WqFld(x, "ql", 10, 90)};
 			if s == 0 then o.dc = TRF_WqFld(x, "dc", -9999999, legs); end;
 			if s == 10 then o.lv = TRF_WqFld(x, "lv", 1, 1); end;
 			if o.r == 3 then o.p = TRF_WqFld(x, "p", 1, 1); end;
 			if not o.sd then o.sd = 1 + TRF_WqM(TRF_WqHash(legs, s, o.n), 9999); end;
+			if s == 30 or s == 40 then
+				local w = TRF_WqFld(x, "ws", 1, 999);
+				if w and TRF_WqWsOk(w) then o.ws = w; end;
+				if not o.ws and s == 30 then
+					TRF_WqWsPick(o, TRF_WqChapter());
+					TRF_WqE("fix", "step", s, "wreck_system", o.ws and TRF_WqName(o.ws), "result", "picked", "reason", "ws");
+				end;
+			end;
 			TRF.wq = o;
 		end;
 	end;
@@ -899,12 +1207,12 @@ function TRF_Wq_Dump()
 	if type(ev) == "table" then es = ev.st; end;
 	if not R then TRF_WqE("dump", "result", "none", "event_state", es, "grandfather", TRF_KvB(TRF_WqOwns())); return; end;
 	TRF_WqE("dump", "step", R.s, "flags", R.k, "tries", R.n, "decline_leg", R.dc, "void_leg", R.cd, "seed", R.sd, "live", R.lv,
-		"result_kind", R.r, "pending", R.p, "logbook_step", R.ql, "event_state", es);
+		"result_kind", R.r, "pending", R.p, "logbook_step", R.ql, "wreck_system", R.ws and TRF_WqName(R.ws), "event_state", es);
 end;
 
 -- Texts (spec 7), EN; keys in TRF_UI_Key form (#TRF_wq<name> in loc/trf_en.loc; RU falls back to EN). <key>o: the old
 -- hauler variant. wqt and wqd<s> are the logbook title and descriptions (AddQuest keys; step 20 also wqd20l and wqd20a,
--- TRF_WqQKey). The box title is freight's fwboxtitle.
+-- step 30 also wqd30d, TRF_WqQKey). The box title is freight's fwboxtitle; the fence box has the pirate dock's title.
 function TRF_Wq_Text()
 	return {
 		wqt = "Missing in Capricorn",
@@ -912,6 +1220,10 @@ function TRF_Wq_Text()
 		wqd20 = "The Kestrel's report on her sister ship Marlin is with the FTU charter office. The office will send word.",
 		wqd20l = "The Kestrel was lost. Her crew's pod-band account of the Marlin is with the FTU charter office. The office will send word.",
 		wqd20a = "The Kestrel made it in on her own. The FTU charter office will send word about her sister ship Marlin.",
+		wqd30 = "The charter office puts the Marlin's last call on the Golkonda side. Listen for her beacon in Golkonda and Callipso.",
+		wqd30d = "The charter office puts the Marlin's last call on the Golkonda side. Listen for her beacon in Golkonda, Callipso and Debris 6.",
+		wqd40 = "The Marlin's navigator is home. Pirates boarded her and took the crew alive. A fence at a pirate dock on the Golkonda side buys Capricorn cargo.",
+		wqd50 = "The Marlin's crew is held at XB-13 by the Golkonda clan. The FTU charter office wants them home.",
 		wqjobh = "The overdue transport",
 		wqjobs = "Capricorn lanes, no deadline",
 		wqbox = "FTU charter office: transports keep going missing in Capricorn. The Kestrel is three days overdue on the lanes. Cover pays whoever brings a crew home. Will you keep your scope open?",
@@ -926,5 +1238,13 @@ function TRF_Wq_Text()
 		wqalone = "The Kestrel limped in alone.",
 		wqname = "Kestrel",
 		wqwho = "FTU transport Kestrel",
+		wqrep1 = "Kestrel's captain: 'The Marlin flew this lane a week before us. Her last call came from the Golkonda side.'",
+		wqrep2 = "FTU clerk: 'The Kestrel's people came home in pods. Their mate says the Marlin went quiet on the Golkonda side a week before.'",
+		wqrep3 = "FTU clerk: 'The Kestrel made it in on her own. Her log says the Marlin went quiet on the Golkonda side a week before.'",
+		wqnav = "Navigator: 'They boarded us, took the crew alive and the manifests. A fence on the Golkonda side buys Capricorn cargo.'",
+		wqfence = "Fence: 'Marlin papers? Cost you $1 cr. Yes?'",                 -- price
+		wqfenceok = "Fence: 'They came from XB-13. The clan keeps guests there until somebody pays.'",
+		wqfencepoor = "Fence: 'No credits, no papers.'",
+		wqpatrol = "Patrol board: 'Marlin manifests turned up on a fence's table. The lot came from XB-13.'",
 	};
 end;

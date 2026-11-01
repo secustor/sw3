@@ -1,10 +1,15 @@
--- Freight unlock quest scenarios, commit 1 (design/freight-quest-spec.md 9) under stock Lua 4.0.1: TRF_WQ=a, b, run by
+-- Freight unlock quest scenarios, commits 1-2 (design/freight-quest-spec.md 9) under stock Lua 4.0.1: TRF_WQ=a..d, run by
 -- run_host.sh as its own entry point. a: registration, toggles, tune, texts, the offer gate reasons, the grandfather rule,
 -- the decline cooldown, the box and the card spec with both mothership variants, the Office board row, the logbook
 -- (AddQuest and the Job log, the move between them, ClearQuests), the save fields and TRF_Wq_Fix. b: the Kestrel mayday:
 -- the seeded roll, the scripted-event slot, the spawn with the flag wq, the raid of why "wq" and its tier (min(2, cap)),
 -- the 8.5 resolver flag, saved and lost (step 20, the lines, both thanks variants), the voids (no engagement, a refused
--- raid, a jump, a load) with the cooldown and wq_tries, the 8.4 contract exclusion, the names, the save size.
+-- raid, a jump, a load) with the cooldown and wq_tries, the 8.4 contract exclusion, the names, the save size. Commit 2:
+-- c: the report per result and its gates, the wreck pick (hash, debris6 from chapter 6), the Marlin wreck through
+-- trf_survive's quest records (the seed in ws only, q 1, the fallback point, no second seed while a quest record or
+-- carry exists, the full list, the pickup, the hand-in, the credits_only dock, TRF_Sv_Fix, TRF_SvExpire, TRF_SvRoom, the
+-- slaver roll, the dump). d: the fence box (region, price, OK, cannot pay, Cancel), the patrol board (rung 0 and 1), the
+-- logbook and the reconcile at steps 30-50, the repair of ws and k, the dump, the size.
 -- Loads host_parcel.lua up to its first scenario (helpers PC_*, which load host_station.lua). Stubs in host_stubs.lua:
 -- HOST_MissionCard, HOST_JobPress, HOST_JobTick (the card), HOST_JobLogOn (the Job log natives).
 
@@ -154,9 +159,9 @@ function T_WQ_A()
 	for k, v in tx do
 		if strlen(v) > 480 or strfind(v, "[%%#\n]") then bad = bad.." "..k; end;
 	end;
-	HOST_Check(WQ_N(tx) == 19 and bad == "" and TRF_Txt("wqt") == "Missing in Capricorn" and TRF_Txt("fwboxtitle") == "FTU charter office"
+	HOST_Check(WQ_N(tx) == 31 and bad == "" and TRF_Txt("wqt") == "Missing in Capricorn" and TRF_Txt("fwboxtitle") == "FTU charter office"
 		and TRF_Txt("wqalone") == "The Kestrel limped in alone." and TRF_Txt("wqname") == "Kestrel",
-		"19 texts, at most 480 characters, no %, # or newline; title fwboxtitle"..bad);
+		"31 texts, at most 480 characters, no %, # or newline; title fwboxtitle"..bad);
 	bad = "";
 	for k, v in {"wqboxo", "wqoko", "wqthxo"} do
 		if not WQ_Has(TRF_Txt(v), "Arba") or WQ_Has(TRF_Txt(v), "Alex") then bad = bad.." "..v; end;
@@ -502,6 +507,465 @@ function T_WQ_B()
 	n0 = S_Mark();
 	TRF_Wq_Dump();
 	HOST_Check(WQ_Logs(n0, "event=dump step=90 flags=3 tries=9") == 1, "dump line");
+	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key");
+end;
+
+-- c: the report, the Marlin wreck (survive quest records) ------------------------------------
+
+-- Live mod objects with label prefix p (TRF_SVB_, TRF_SVP_).
+function WQ_Objs(p)
+	local n, q = 0, HOST().ships;
+	for i = 1, getn(q) do
+		if q[i].alive and type(q[i].label) == "string" and strsub(q[i].label, 1, strlen(p)) == p then n = n + 1; end;
+	end;
+	return n;
+end;
+
+-- Quest records in TRF.sv.b: count, the first one.
+function WQ_QRecs()
+	local n, f = 0, nil;
+	if type(TRF.sv) ~= "table" or type(TRF.sv.b) ~= "table" then return 0, nil; end;
+	for i = 1, getn(TRF.sv.b) do if TRF.sv.b[i].q == 1 then n = n + 1; if not f then f = TRF.sv.b[i]; end; end; end;
+	return n, f;
+end;
+
+-- The mothership flown onto pod j of the placed record of system s (two ticks: the swept segment ends there).
+function WQ_ToPod(s, j)
+	local o = TRF_SvGet(s, j or 1);
+	if not o then return nil; end;
+	local p = o:GetPosition();
+	HOST().ms.pos = Vector3(p.x + 5, p.y, p.z);
+	T_Tick(2, 0.5);
+	return 1;
+end;
+
+-- Ordinary survivor record fixture of system idx (no objects).
+function WQ_SvRec(idx, n, lg, t)
+	local b = {s=idx, si=0, x=300, y=0, z=0, n=n, n0=max(n, 1), f=0, nm=0, lg=lg, src=2, sl=0, pf=0, pp=0};
+	if t then for k, v in t do b[k] = v; end; end;
+	return b;
+end;
+
+-- Pirate and patrol docking through the wrapper chains (as host_stash.lua SH_PirDock, SH_PatDock).
+function WQ_PirDock()
+	local h = HOST();
+	local s0, b0 = getn(h.screen), getn(h.boxes);
+	_param = "pirate1";
+	__PirStationDock_Ok();
+	local r = {scr="", nb=getn(h.boxes) - b0, s0=s0};
+	for i = s0 + 1, getn(h.screen) do r.scr = r.scr..h.screen[i].t.."|"; end;
+	if r.nb > 0 then r.box = h.boxes[getn(h.boxes)]; end;
+	return r;
+end;
+
+function WQ_PatDock()
+	local h = HOST();
+	local s0, b0 = getn(h.screen), getn(h.boxes);
+	_param = GetCurrentLocation();
+	__PatrolStationDock_Ok();
+	local r = {scr="", nb=getn(h.boxes) - b0, s0=s0};
+	for i = s0 + 1, getn(h.screen) do r.scr = r.scr..h.screen[i].t.."|"; end;
+	if r.nb > 0 then r.box = h.boxes[getn(h.boxes)]; end;
+	return r;
+end;
+
+-- The expected wreck pick of seed sd in chapter ch (spec 4.3: hash(sd, 11) mod n over golkonda, callipso, debris6 from 6).
+function WQ_WsOf(sd, ch)
+	local l = {V_Idx("golkonda"), V_Idx("callipso")};
+	if ch >= 6 then tinsert(l, V_Idx("debris6")); end;
+	return l[1 + TRF_WqM(TRF_WqHash(sd, 11, 0), getn(l))];
+end;
+
+function T_WQ_C()
+	local h = HOST();
+	WQ_Begin("debris6", "5_1", {enable_survivors=1, sv_seeded=0});
+	TRF.sv = nil;
+	local K = TRF_WqK();
+	local P = TRF_PlReg();
+	local lo = "";
+	for i = 1, getn(P.dock.trade.line) do lo = lo..P.dock.trade.line[i].o..":"..TRF_PlName(P.dock.trade.line[i].f)..","; end;
+	HOST_Check(WQ_Has(lo, "30:TRF_Sv_DockLine,40:TRF_Wq_DockLine,60:"), "trade line 40 between survivors 30 and freight 60 ("..lo..")");
+	-- The report per result r: the line, step 30, the wreck pick; the logbook at wqd30.
+	local res = {"saved", "lost", "limped"};
+	local bad = "";
+	for r = 1, 3 do
+		WQ_Visit();
+		local R = WQ_At(20, {r=r, ql=20});
+		local n0 = S_Mark();
+		local d = PC_Dock();
+		if R.s ~= 30 or not WQ_Has(d.scr, TRF_Txt("wqrep"..r)) or R.ws ~= WQ_WsOf(R.sd, 5) or TRF_WqBit(R.k, 4)
+			or WQ_Logs(n0, "event=report system=debris6 result="..res[r].." wreck_system="..TRF_WqName(R.ws)) ~= 1
+			or WQ_Logs(n0, "event=step step_before=20 step_after=30 reason=report") ~= 1 or h.qlog.trf_wq.d ~= "#TRF_wqd30" then
+			bad = bad.." r"..r;
+		end;
+	end;
+	HOST_Check(bad == "" and WQ_Has(TRF_Txt("wqrep1"), "Kestrel's captain") and WQ_Has(TRF_Txt("wqrep2"), "pods") and WQ_Has(TRF_Txt("wqrep3"), "on her own"),
+		"report per result: wqrep1 saved, wqrep2 lost, wqrep3 limped in; step 30, ws = hash(sd, 11) mod 2, logbook wqd30"..bad);
+	-- The same pick on a re-run (the seed decides); debris6 only from chapter 6 (k bit 4, wqd30d).
+	local R = WQ_At(20, {r=1, sd=77});
+	TRF_WqWsPick(R, 5);
+	local w1 = R.ws;
+	TRF_WqWsPick(R, 5);
+	local d5 = nil;
+	for sd = 1, 300 do R.sd = sd; TRF_WqWsPick(R, 5); if R.ws == V_Idx("debris6") or TRF_WqBit(R.k, 4) then d5 = sd; end; end;
+	local s6 = nil;
+	for sd = 1, 300 do if not s6 and WQ_WsOf(sd, 6) == V_Idx("debris6") then s6 = sd; end; end;
+	HOST_Check(w1 == R.ws or w1 == WQ_WsOf(77, 5), "the same seed picks the same system");
+	HOST_Check(d5 == nil and s6 ~= nil, "chapter 5 never picks debris6 (seeds 1..300); chapter 6 can (seed "..tostring(s6)..")");
+	h.labels.CurrentQuest = "6_1";
+	WQ_Visit();
+	R = WQ_At(20, {r=1, sd=s6, ql=20});
+	PC_Dock();
+	HOST_Check(R.s == 30 and R.ws == V_Idx("debris6") and TRF_WqBit(R.k, 4) and h.qlog.trf_wq.d == "#TRF_wqd30d" and WQ_Has(TRF_Txt("wqd30d"), "Debris 6")
+		and not WQ_Has(TRF_Txt("wqd30"), "Debris 6"), "chapter 6: debris6 picked, k bit 4, logbook wqd30d");
+	h.labels.CurrentQuest = "5_1";
+	-- Report gates: any region (gaoba, off every loop), not at New Kyoto, not during a mission, not with enable_wq 0.
+	T_Enter("gaoba");
+	WQ_Visit();
+	R = WQ_At(20, {r=2});
+	local n0 = S_Mark();
+	local d = PC_Dock();
+	HOST_Check(R.s == 30 and WQ_Has(d.scr, TRF_Txt("wqrep2")), "report at gaoba (no loop stop): step 30");
+	T_Enter("nk");
+	WQ_Visit();
+	R = WQ_At(20, {r=1});
+	n0 = S_Mark();
+	PC_Dock();
+	local gnk = R.s;
+	T_Enter("gaoba");
+	R = WQ_At(20, {r=1});
+	V_QuestOn();
+	n0 = S_Mark();
+	PC_Dock();
+	local gms = R.s;
+	V_QuestOff();
+	h.cfg.enable_wq = 0;
+	WQ_Visit();
+	PC_Dock();
+	local goff = R.s;
+	h.cfg.enable_wq = 1;
+	HOST_Check(gnk == 20 and gms == 20 and goff == 20 and TRF_WqRepGate(V_Idx("nk"), WQ_At(20)) == "nk", "no report at New Kyoto, during a mission, with enable_wq 0");
+	-- Trader contacts of the wreck systems (open question 14): golkonda and callipso give contact points.
+	local cg = "";
+	for k, nm in {"golkonda", "callipso"} do
+		T_Enter(nm);
+		local cs = TRF_GnContacts() or {};
+		local nt = 0;
+		for i = 1, getn(cs) do if TRF_GnIsTrader(cs[i]) then nt = nt + 1; end; end;
+		local np = getn(TRF_SvPoints(TRF_CurIdx(), TRF_SvK()));
+		cg = cg.." "..nm..":"..nt.."/"..np;
+		if nt == 0 then cg = cg.."!"; end;
+	end;
+	-- The host scene's contact points sit near the map stations, as the vanilla ones do (spec 12 question 14): the
+	-- portal fallback point is the normal case there.
+	HOST_Check(not WQ_Has(cg, "!"), "golkonda and callipso: trader contacts after TRF_GnContacts (contacts/points passing the site rule"..cg..")");
+	-- The wreck: on entry into ws only; a quest record q 1, pf 0, src 2, one pod, placed with the beacon line and the marker.
+	TRF.sv = nil;
+	T_Enter("debris6");
+	R = WQ_At(30, {r=1, ws=V_Idx("golkonda"), ql=30});
+	n0 = S_Mark();
+	T_Enter("callipso");
+	HOST_Check(WQ_QRecs() == 0 and WQ_Logs(n0, "event=wreck system=callipso result=none reason=system") == 1, "callipso with ws golkonda: no wreck");
+	n0 = S_Mark();
+	local m0, s0 = getn(h.msgs), getn(h.screen);
+	T_Enter("golkonda");
+	local nq, b = WQ_QRecs();
+	HOST_Check(nq == 1 and b.q == 1 and b.pf == 0 and b.src == 2 and b.n == 1 and b.s == V_Idx("golkonda") and WQ_Objs("TRF_SVP_") == 1 and WQ_Objs("TRF_SVB_") == 1
+		and WQ_Logs(n0, "event=wreck system=golkonda beacon=1 point=portal result=seeded") == 1
+		and S_Logs(n0, "module=survive event=seed system=golkonda kind=quest source=2 pods=1 pay=0 point=portal result=beacon beacon=1") == 1
+		and S_Logs(n0, "module=plumb event=marker owner=sv label=TRF_SV_"..b.s.." result=added") == 1
+		and S_Logs(n0, "module=plumb event=arrival_line owner=survive ") == 1 and TRF.live.ev == nil,
+		"golkonda (ws): quest record q 1, pf 0, src 2, one pod, beacon and pod placed, the marker and the beacon line; no event slot");
+	-- No second seed while the record exists.
+	n0 = S_Mark();
+	T_Jump("debris6");
+	T_Jump("golkonda");
+	HOST_Check(WQ_QRecs() == 1 and WQ_Logs(n0, "event=wreck system=golkonda result=none reason=record") == 1, "a quest record exists: no second seed");
+	-- Pickup: c.q, the navigator's line, the marker goes with the record.
+	m0, s0 = getn(h.msgs), getn(h.screen);
+	n0 = S_Mark();
+	WQ_ToPod(V_Idx("golkonda"), 1);
+	local c = TRF.sv.c;
+	HOST_Check(c and c.q == 1 and c.n == 1 and c.cr == 0 and WQ_Has(WQ_Said(m0, s0), TRF_Txt("wqnav")) and WQ_Logs(n0, "event=wreck system=golkonda pods=0 result=picked") == 1
+		and S_Logs(n0, "module=plumb event=marker owner=sv deleted_count=1 result=cleared") == 1 and TRF.wq.s == 30,
+		"pickup: c.q 1, the navigator's line, the marker cleared, still step 30");
+	-- The carry is q: no seed even without a record.
+	TRF.sv.b = {};
+	n0 = S_Mark();
+	T_Jump("debris6");
+	T_Jump("golkonda");
+	HOST_Check(WQ_QRecs() == 0 and WQ_Logs(n0, "event=wreck system=golkonda result=none reason=carry") == 1, "a quest crew aboard: no seed");
+	-- TRF_SvExpire: the q carry never expires; an ordinary one does.
+	TRF.sv.c.lg = TRF.clock.legs - 50;
+	HOST_Check(TRF_SvExpire(1) == nil and TRF.sv.c and TRF.sv.c.q == 1, "TRF_SvExpire: the quest crew is kept past sv_carry");
+	-- A credits_only dock (cfg sv_deny) keeps the q crew aboard: an ordinary crew's credits merged in are paid and cleared.
+	TRF.sv.c.lg = TRF.clock.legs;
+	TRF.sv.c.cr = 2500;
+	h.cfg.sv_deny = {"golkonda"};
+	local cr0, h0 = h.credits, TRF.std.help;
+	n0 = S_Mark();
+	WQ_Visit();
+	PC_Dock();
+	c = TRF.sv.c;
+	HOST_Check(c and c.q == 1 and c.n == 1 and c.cr == 0 and h.credits == cr0 + 2500 and TRF.std.help == h0 and TRF.wq.s == 30
+		and S_Logs(n0, "result=credits_only reason=deny quest_kept=true") == 1, "denied dock: the credits paid, the quest crew stays aboard (step 30)");
+	n0 = S_Mark();
+	WQ_Visit();
+	PC_Dock();
+	HOST_Check(TRF.sv.c and TRF.sv.c.q == 1 and S_Logs(n0, "result=skipped reason=deny") == 1, "denied dock without credits: kept aboard");
+	h.cfg.sv_deny = nil;
+	-- Hand-in: the normal survivor standing, no credits, step 40, logbook wqd40.
+	cr0, h0 = h.credits, TRF.std.help;
+	m0, s0 = getn(h.msgs), getn(h.screen);
+	n0 = S_Mark();
+	WQ_Visit();
+	d = PC_Dock();
+	HOST_Check(TRF.sv.c == nil and TRF.wq.s == 40 and h.credits == cr0 and TRF.std.help == h0 + 1 and WQ_Logs(n0, "event=wreck system=golkonda carried=1 result=handed") == 1
+		and WQ_Logs(n0, "event=step step_before=30 step_after=40 reason=handed") == 1 and h.qlog.trf_wq.d == "#TRF_wqd40"
+		and S_Logs(n0, "module=survive event=hand kind=ftu system=golkonda carried=1 pay=0 ") == 1, "hand-in: help +1, no credits, step 40, logbook wqd40");
+	-- A second hand-in of a q crew after step 30 does not move the step again.
+	TRF.sv.c = {n=1, cr=0, pc=0, s1=V_Idx("golkonda"), f=0, lg=TRF.clock.legs, q=1};
+	n0 = S_Mark();
+	WQ_Visit();
+	PC_Dock();
+	HOST_Check(TRF.wq.s == 40 and TRF.sv.c == nil and WQ_Logs(n0, "event=wreck system=golkonda carried=1 step=40 result=none reason=step") == 1, "a quest crew after step 30: no step");
+	-- The full list: four ordinary records; the seed drops the oldest empty one, never a q record.
+	T_Enter("debris6");
+	local L = TRF.clock.legs;
+	TRF.sv.b = {WQ_SvRec(V_Idx("heos"), 2, L - 3), WQ_SvRec(V_Idx("xk10"), 0, L - 1), WQ_SvRec(V_Idx("lidau"), 1, L - 2), WQ_SvRec(V_Idx("altair"), 0, L)};
+	TRF.sv.c = nil;
+	R = WQ_At(30, {r=1, ws=V_Idx("golkonda"), ql=30});
+	n0 = S_Mark();
+	T_Enter("golkonda");
+	nq, b = WQ_QRecs();
+	HOST_Check(getn(TRF.sv.b) == 4 and nq == 1 and S_Logs(n0, "module=survive event=expire system=xk10 ") == 1 and S_Logs(n0, "reason=cap") == 1,
+		"full list (4 ordinary records): the oldest empty one dropped for the quest record");
+	local T = TRF_SvTune();
+	n0 = S_Mark();
+	TRF_SvAdd(WQ_SvRec(V_Idx("kadi"), 1, L), T);
+	nq = WQ_QRecs();
+	HOST_Check(getn(TRF.sv.b) == 4 and nq == 1 and S_Logs(n0, "event=expire system=golkonda") == 0, "TRF_SvAdd at sv_max: an ordinary record goes, never the q record");
+	h.cfg.tune = {sv_max=1};
+	TRF.sv.b = {b};
+	local ai = TRF_SvAdd(WQ_SvRec(V_Idx("kadi"), 1, L), TRF_SvTune());
+	HOST_Check(ai == nil and getn(TRF.sv.b) == 1 and TRF.sv.b[1].q == 1, "sv_max 1 with the q record: TRF_SvAdd refuses (nil)");
+	h.cfg.tune = {};
+	-- An ordinary record in ws is replaced by the quest record (one record per system).
+	TRF_Sv_BeforeJump();
+	TRF.sv.b = {WQ_SvRec(V_Idx("golkonda"), 2, L, {pf=900})};
+	n0 = S_Mark();
+	T_Enter("golkonda");
+	nq, b = WQ_QRecs();
+	HOST_Check(nq == 1 and getn(TRF.sv.b) == 1 and b.n == 1 and S_Logs(n0, "event=expire system=golkonda beacon=1 pods=2 source=2 ") == 1
+		and S_Logs(n0, "event=clear system=golkonda deleted_count=3 reason=quest") == 1 and S_Logs(n0, "module=plumb event=arrival_line owner=survive ") == 1,
+		"an ordinary record in ws: dropped (reason quest) for the quest record, one beacon line");
+	-- The quest record expires as any (sv_ttl); the next entry seeds it again.
+	b.lg = TRF.clock.legs - 10;
+	TRF_SvExpire(1);
+	nq = WQ_QRecs();
+	HOST_Check(nq == 0, "TRF_SvExpire: the quest beacon expires after sv_ttl");
+	n0 = S_Mark();
+	T_Jump("debris6");
+	T_Jump("golkonda");
+	nq = WQ_QRecs();
+	HOST_Check(nq == 1 and WQ_Logs(n0, "event=wreck system=golkonda beacon=1 ") == 1, "the next entry into ws seeds it again");
+	-- The fallback point: no contact point, K.q_off from the entry portal, outside the site rule.
+	TRF_Sv_BeforeJump();
+	TRF.sv.b = {};
+	local sp = TRF_SvPoints;
+	TRF_SvPoints = function() return {}; end;
+	n0 = S_Mark();
+	TRF_WqWreck();
+	TRF_SvPoints = sp;
+	nq, b = WQ_QRecs();
+	local pl, sl = TRF_SvSites(V_Idx("golkonda"));
+	local ms = TRF_Sv_MsPos();
+	local ep, ed = nil, nil;
+	for i = 1, getn(pl) do local dd = TRF_SvDist(ms, pl[i]); if not ed or dd < ed then ep = pl[i]; ed = dd; end; end;
+	local dp = ep and TRF_SvDist(b, ep);
+	HOST_Check(nq == 1 and WQ_Logs(n0, "point=portal result=seeded") == 1 and dp and abs(dp - TRF_SvK().q_off) < 1.5 and TRF_SvSiteOf(b, pl, sl, ms, TRF_SvK()) == nil,
+		"no contact point: the record "..TRF_SvK().q_off.." from the entry portal ("..tostring(dp and floor(dp))..") outside the site rule");
+	-- A contact point that passes the site rule is taken first.
+	TRF_Sv_BeforeJump();
+	TRF.sv.b = {};
+	TRF_SvPoints = function() return {{x=-40.4, y=0, z=611.6}}; end;
+	n0 = S_Mark();
+	TRF_WqWreck();
+	TRF_SvPoints = sp;
+	nq, b = WQ_QRecs();
+	HOST_Check(nq == 1 and b.x == -40 and b.z == 612 and WQ_Logs(n0, "point=contact result=seeded") == 1, "a contact point: taken (rounded)");
+	L = TRF.clock.legs;
+	-- Each wreck system seeds when it is ws (debris6 from chapter 6), a candidate that is not ws does not.
+	bad = "";
+	h.labels.CurrentQuest = "6_1";
+	for k, e in {{"callipso", "debris6"}, {"debris6", "golkonda"}, {"golkonda", "callipso"}} do
+		TRF_Sv_BeforeJump();
+		TRF.sv.b = {}; TRF.sv.c = nil;
+		T_Enter("kron");
+		WQ_At(30, {r=1, ws=V_Idx(e[1]), ql=30});
+		T_Enter(e[2]);
+		local n1 = WQ_QRecs();
+		T_Enter(e[1]);
+		local n2, q2 = WQ_QRecs();
+		if n1 ~= 0 or n2 ~= 1 or q2.s ~= V_Idx(e[1]) then bad = bad.." "..e[1]; end;
+	end;
+	h.labels.CurrentQuest = "5_1";
+	HOST_Check(bad == "", "callipso, debris6 (chapter 6) and golkonda each seed as ws; another candidate does not"..bad);
+	L = TRF.clock.legs;
+	-- TRF_Sv_Fix keeps q on records and carry and prefers the q record at the per-system and b_max caps (order kept).
+	TRF.sv.b = {WQ_SvRec(V_Idx("golkonda"), 1, L), WQ_SvRec(V_Idx("heos"), 1, L), WQ_SvRec(V_Idx("xk10"), 1, L), WQ_SvRec(V_Idx("lidau"), 1, L),
+		WQ_SvRec(V_Idx("golkonda"), 1, L, {q=1}), WQ_SvRec(V_Idx("callipso"), 1, L, {q=1})};
+	TRF.sv.c = {n=2, cr=10, pc=0, s1=V_Idx("golkonda"), f=0, lg=L, q=1};
+	TRF_Sv_Fix();
+	local o = "";
+	for i = 1, getn(TRF.sv.b) do o = o..TRF_SvName(TRF.sv.b[i].s)..":"..tostring(TRF.sv.b[i].q).."," end;
+	HOST_Check(o == "heos:nil,xk10:nil,golkonda:1,callipso:1," and TRF.sv.c.q == 1, "Fix: q kept on records and carry, the q records win the per-system and b_max caps ("..o..")");
+	TRF.sv.b = {WQ_SvRec(V_Idx("heos"), 1, L, {q=7})};
+	TRF.sv.c.q = 2;
+	TRF_Sv_Fix();
+	HOST_Check(TRF.sv.b[1].q == nil and TRF.sv.c.q == nil, "Fix: q other than 1 dropped");
+	-- TRF_SvRoom: an ordinary crew merged into a quest carry keeps q (its pay adds).
+	TRF.sv.c = {n=1, cr=0, pc=0, s1=V_Idx("golkonda"), f=0, lg=L, q=1};
+	TRF.sv.b = {WQ_SvRec(V_Idx("heos"), 1, L, {pf=700})};
+	TRF_SvPick(1, TRF.sv.b[1], 1, 0, TRF_SvTune());
+	c = TRF.sv.c;
+	HOST_Check(c.q == 1 and c.n == 2 and c.cr == 700 and c.s2 == V_Idx("heos"), "an ordinary pod into a quest carry: q kept, its pay added");
+	-- The off-screen slaver roll skips a quest record.
+	TRF.sv.b = {WQ_SvRec(V_Idx("heos"), 1, L, {q=1}), WQ_SvRec(V_Idx("xk10"), 1, L)};
+	h.cfg.tune = {sv_slave_off=100};
+	local et = TRF_EffTier;
+	TRF_EffTier = function() return 3; end;
+	TRF_Sv_RegionTick(TRF.clock.legs);
+	TRF_EffTier = et;
+	h.cfg.tune = {};
+	HOST_Check(TRF.sv.b[1].n == 1 and TRF.sv.b[1].sl == 0 and TRF.sv.b[2].sl == 1, "slaver roll: the quest record kept, an ordinary one taken");
+	-- Dump: q marks.
+	TRF.sv.b = {WQ_SvRec(V_Idx("heos"), 1, L, {q=1})};
+	TRF.sv.c = {n=1, cr=0, pc=0, s1=V_Idx("heos"), f=0, lg=L, q=1};
+	n0 = S_Mark();
+	TRF_Sv_Dump();
+	HOST_Check(S_Logs(n0, "beacons=heos:1/1/0/"..L.."/2/0/0q carried=1 credits=0 pirate_credits=0 carried_quest=true") == 1, "survive dump: q record and carry marked");
+	TRF.sv = nil;
+	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key");
+end;
+
+-- d: the fence and the patrol board, the logbook, repair, size ------------------------------------
+
+function T_WQ_D()
+	local h = HOST();
+	WQ_Begin("golkonda", "5_1");
+	local g = V_Idx("golkonda");
+	local P = TRF_PlReg();
+	local lb, ll = "", "";
+	for i = 1, getn(P.dock.pir.box) do lb = lb..P.dock.pir.box[i].o..":"..TRF_PlName(P.dock.pir.box[i].f)..","; end;
+	for i = 1, getn(P.dock.patrol.line) do ll = ll..P.dock.patrol.line[i].o..":"..TRF_PlName(P.dock.patrol.line[i].f)..","; end;
+	HOST_Check(WQ_Has(lb, "300:TRF_Wq_PirBox,") and WQ_Has(ll, "40:TRF_Sh_PatrolLine,45:TRF_Wq_PatrolLine,50:"), "pirate box 300, patrol line 45 ("..lb.." "..ll..")");
+	-- The clue region: the slot of XB-13.
+	local bad = "";
+	for k, nm in {"golkonda", "callipso", "xb13", "debris6"} do if not TRF_WqClueRg(V_Idx(nm)) then bad = bad.." "..nm; end; end;
+	for k, nm in {"gaoba", "elio", "kadi"} do if TRF_WqClueRg(V_Idx(nm)) and TRF_RgOf(V_Idx(nm)) ~= TRF_RgOf(V_Idx("xb13")) then bad = bad.." "..nm; end; end;
+	HOST_Check(bad == "" and TRF_RgOf(g) == TRF_RgOf(V_Idx("xb13")), "clue region: golkonda, callipso, xb13, debris6 in the region of XB-13 (TRF_RgOf)"..bad);
+	-- Step 30: no fence box.
+	local R = WQ_At(30, {r=1, ws=g, ql=30});
+	WQ_Visit();
+	local d = WQ_PirDock();
+	HOST_Check(not (d.box and WQ_Has(d.box.text, "Marlin papers")), "step 30: no fence box");
+	-- Step 40: the fence box with the price round(0.4 x TRF_PayN).
+	R = WQ_At(40, {r=1, ws=g, ql=40});
+	local price = floor(0.4 * TRF_PayN(g) + 0.5);
+	WQ_Visit();
+	local n0 = S_Mark();
+	d = WQ_PirDock();
+	HOST_Check(d.nb == 1 and d.box.text == TRF_Txt("wqfence", tostring(price)) and WQ_Has(d.box.text, "Cost you "..price.." cr.") and price > 0
+		and WQ_Logs(n0, "event=fence system=golkonda price="..price.." result=shown") == 1, "step 40 at a Golkonda pirate dock: the fence box, price "..price);
+	-- Cancel: nothing; the box again at the next docking.
+	PC_Press(d, "cancel");
+	HOST_Check(R.s == 40 and WQ_Logs(n0, "event=clue via=fence system=golkonda result=declined") == 1, "Cancel: step 40");
+	WQ_Visit();
+	d = WQ_PirDock();
+	HOST_Check(d.nb == 1 and WQ_Has(d.box.text, "Marlin papers"), "the box again at the next docking");
+	-- OK with the wallet emptied after the box opened: the poor line, step 40.
+	h.credits = price - 1;
+	local s = PC_Press(d, "ok");
+	HOST_Check(R.s == 40 and h.credits == price - 1 and WQ_Has(s, TRF_Txt("wqfencepoor")) and WQ_Logs(n0, "event=clue via=fence system=golkonda cost="..price.." result=poor reason=short") == 1,
+		"OK without the credits: the poor line, nothing taken");
+	-- Cannot pay: no box.
+	WQ_Visit();
+	n0 = S_Mark();
+	d = WQ_PirDock();
+	HOST_Check(not (d.box and WQ_Has(d.box.text, "Marlin papers")) and WQ_Logs(n0, "event=fence system=golkonda price="..price.." result=none reason=poor") == 1, "wallet below the price: no box");
+	-- OK: the price through TRF_Charge, step 50, the reply, the logbook at wqd50.
+	h.credits = 1000000;
+	WQ_Visit();
+	n0 = S_Mark();
+	d = WQ_PirDock();
+	s = PC_Press(d, "ok");
+	HOST_Check(R.s == 50 and h.credits == 1000000 - price and WQ_Has(s, TRF_Txt("wqfenceok")) and WQ_Logs(n0, "event=clue via=fence system=golkonda cost="..price.." result=ok") == 1
+		and S_Logs(n0, "module=region event=charge reason=wq amount="..price) == 1 and h.qlog.trf_wq.d == "#TRF_wqd50" and WQ_Has(TRF_Txt("wqd50"), "XB-13"),
+		"OK: credits - "..price.." (TRF_Charge why wq), step 50, the reply, logbook wqd50");
+	WQ_Visit();
+	d = WQ_PirDock();
+	HOST_Check(not (d.box and WQ_Has(d.box.text, "Marlin papers")), "step 50: no fence box");
+	-- Outside the region of XB-13: no box.
+	T_Enter("gaoba");
+	R = WQ_At(40, {r=1, ws=g, ql=40});
+	n0 = S_Mark();
+	d = WQ_PirDock();
+	HOST_Check(not (d.box and WQ_Has(d.box.text, "Marlin papers")) and WQ_Logs(n0, "event=fence system=gaoba price=0 result=none reason=region") == 1, "gaoba: no fence box (region)");
+	-- The patrol board: silent at rung 0, the clue at rung 1 (the system's trade station), step 50.
+	T_Enter("golkonda");
+	R = WQ_At(40, {r=1, ws=g, ql=40});
+	TRF.stn = {};
+	WQ_Visit();
+	n0 = S_Mark();
+	local m0, s0 = getn(h.msgs), getn(h.screen);
+	d = WQ_PatDock();
+	HOST_Check(R.s == 40 and not WQ_Has(WQ_Said(m0, s0), "Patrol board") and WQ_Logs(n0, "event=clue via=patrol system=golkonda rung=0 result=none reason=rung") == 1,
+		"patrol board at rung 0: silent");
+	TRF.stn[TRF_Stn_Key(g, 1)] = {st=1, lg=TRF.clock.legs};
+	WQ_Visit();
+	n0 = S_Mark();
+	m0, s0 = getn(h.msgs), getn(h.screen);
+	d = WQ_PatDock();
+	HOST_Check(R.s == 50 and WQ_Has(WQ_Said(m0, s0), TRF_Txt("wqpatrol")) and WQ_Logs(n0, "event=clue via=patrol system=golkonda cost=0 rung=1 result=ok") == 1
+		and h.qlog.trf_wq.d == "#TRF_wqd50", "patrol board at rung 1: the clue, step 50, logbook wqd50");
+	TRF.std.heat = 5;
+	R = WQ_At(40, {r=1, ws=g, ql=40});
+	HOST_Check(TRF_WqRung(g) == 0, "heat 5 caps the effective rung to 0");
+	TRF.std.heat = 0;
+	-- The logbook and the reconcile at each step (ClearQuests at a mission start).
+	bad = "";
+	for k, st in {30, 40, 50} do
+		R = WQ_At(st, {r=1, ws=g});
+		ClearQuests();
+		TRF_Wq_OnActivate();
+		local want = "#TRF_wqd"..st;
+		if not h.qlog.trf_wq or h.qlog.trf_wq.d ~= want or R.ql ~= st then bad = bad.." "..st; end;
+	end;
+	HOST_Check(bad == "", "reconcile after ClearQuests at steps 30, 40, 50"..bad);
+	-- Repair: ws at steps 30 and 40 only, a wreck system only; a missing ws at 30 picked again; k 0..7.
+	local legs = TRF.clock.legs;
+	TRF.wq = {s=30, r=1, k=7, sd=77, ws=V_Idx("gaoba")};
+	TRF_Wq_Fix();
+	R = TRF.wq;
+	HOST_Check(R.ws == WQ_WsOf(77, 5) and R.k == 3, "s 30, ws not a wreck system: picked again (chapter 5, bit 4 cleared)");
+	TRF.wq = {s=40, r=1, k=5, sd=77, ws=V_Idx("gaoba")};
+	TRF_Wq_Fix();
+	HOST_Check(TRF.wq.ws == nil and TRF.wq.k == 5, "s 40, a bad ws: dropped; k 5 kept");
+	TRF.wq = {s=40, r=1, sd=77, ws=V_Idx("callipso")};
+	TRF_Wq_Fix();
+	local k40 = TRF.wq.ws;
+	TRF.wq = {s=50, r=1, sd=77, ws=V_Idx("callipso"), k=9};
+	TRF_Wq_Fix();
+	HOST_Check(k40 == V_Idx("callipso") and TRF.wq.ws == nil and TRF.wq.k == 0, "s 40 keeps a wreck system; s 50 drops ws; k 9 dropped");
+	-- Dump and size: the record at its widest with ws.
+	R = WQ_At(30, {r=1, ws=g, ql=30});
+	n0 = S_Mark();
+	TRF_Wq_Dump();
+	HOST_Check(WQ_Logs(n0, "event=dump step=30 ") == 1 and WQ_Logs(n0, "wreck_system=golkonda") == 1, "dump: the wreck system");
+	TRF.wq = {v=1, s=90, k=7, n=9, dc=-9999999, cd=-9999999, sd=9999, lv=1, r=3, p=1, ql=90, ws=999};
+	local z = HOST_SaveSize(TRF.wq);
+	HOST_Check(z <= 280, "TRF.wq at its widest with ws: "..z.." bytes <= 280");
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key");
 end;
 

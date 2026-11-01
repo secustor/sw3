@@ -133,7 +133,7 @@ function T_SV_A()
 	local P = TRF_PlReg();
 	local ord = "";
 	for i = 1, getn(P.dock.trade.line) do ord = ord..P.dock.trade.line[i].o..","; end;
-	HOST_Check(ord == "10,20,30,60,70,90," and getn(TRF_SeedList()) == 13, "trade dock lines 10 (shortage), 20 (parcels), 30 (pods), 60 (freight), 70 (charter), 90 (dockmaster); seed provider registered ("..ord..")");
+	HOST_Check(ord == "10,20,30,40,60,70,90," and getn(TRF_SeedList()) == 13, "trade dock lines 10 (shortage), 20 (parcels), 30 (pods), 40 (the quest report), 60 (freight), 70 (charter), 90 (dockmaster); seed provider registered ("..ord..")");
 	local sl = TRF_SeedList();
 	local at = 0;
 	for i = 1, getn(sl) do if sl[i] == "TRF_Sv_SeedH" then at = i; end; end;
@@ -775,18 +775,19 @@ function T_SV_G()
 	HOST_Check(getn(r.b) == 1 and r.b[1].s == g and r.b[1].x == 1 and r.b[1].n == 0 and r.b[1].src == 1 and r.b[1].sl == 0 and r.b[1].pf == 0
 		and r.b[1].lg == L and r.b[1].bx == nil and r.c == nil and r.st.res == 0 and r.st.sold == 0 and r.r[4] == 2 and r.r[3] == nil and r.r[0] == nil
 		and getn(r.x) == 1 and r.rm == nil and r.hl == nil and type(r.sd) == "number", "repair: bad records dropped, fields clamped, caps kept");
-	-- Save size at the bound (spec 3.4): 4 full records, c full, totals, 11 region entries, 16 cooldowns, 4 silent, rumour.
+	-- Save size at the bound (spec 3.4): 4 full records (with the quest flag q), c full, totals, 11 region entries, 16
+	-- cooldowns, 4 silent, rumour.
 	local big = 99999;
-	TRF.sv = {b={}, c={n=6, cr=180000, pc=180000, s1=113, s2=112, f=5, lg=big}, st={res=9999, sold=9999, lost=9999}, r={}, sd=9999, hl=big,
+	TRF.sv = {b={}, c={n=6, cr=180000, pc=180000, s1=113, s2=112, f=5, lg=big, q=1}, st={res=9999, sold=9999, lost=9999}, r={}, sd=9999, hl=big,
 		cd={}, x={110, 111, 112, 113}, rm={s=113, k=2, lg=big}};
 	for i = 1, 4 do
-		tinsert(TRF.sv.b, {s=109 + i, si=1139, x=-99999, y=-99999, z=-99999, n=3, n0=3, f=5, nm=99, lg=big, src=3, sl=2, pf=10000, pp=10000, bx=1});
+		tinsert(TRF.sv.b, {s=109 + i, si=1139, x=-99999, y=-99999, z=-99999, n=3, n0=3, f=5, nm=99, lg=big, src=3, sl=2, pf=10000, pp=10000, bx=1, q=1});
 	end;
 	for i = 1, 11 do TRF.sv.r[i] = 9; end;
 	for i = 1, 16 do TRF.sv.cd[97 + i] = big; end;
 	local sz = HOST_SaveSize(TRF.sv) + 8 + strlen("sv");
 	print("HOST info TRF.sv worst case "..sz.." bytes");
-	HOST_Check(sz <= 2700, "TRF.sv at its bound: "..sz.." bytes <= 2700 (spec 3.4)");
+	HOST_Check(sz <= 2800, "TRF.sv at its bound: "..sz.." bytes <= 2800 (spec 3.4)");
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF");
 	TRF.sv = nil;
 	TRF_Repair();

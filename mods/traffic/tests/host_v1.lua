@@ -2144,12 +2144,12 @@ function T_V1_N()
 	TRF.vo = {};
 	for sn, so in TRF_StnOwners() do if V_Idx(sn) then TRF.vo[V_Idx(sn)] = skl; end; end;
 	TRF.ve = skl;
-	-- Survivors worst case (design/survivors-spec.md 3.4): 4 full records, carried survivors, totals, every region
-	-- budget, 16 cooldown stamps, 4 silent systems, the rumour.
-	TRF.sv = {b={}, c={n=6, cr=180000, pc=180000, s1=113, s2=112, f=5, lg=skl}, st={res=9999, sold=9999, lost=9999}, r={}, sd=9999,
+	-- Survivors worst case (design/survivors-spec.md 3.4): 4 full records (the quest flag q too), carried survivors,
+	-- totals, every region budget, 16 cooldown stamps, 4 silent systems, the rumour.
+	TRF.sv = {b={}, c={n=6, cr=180000, pc=180000, s1=113, s2=112, f=5, lg=skl, q=1}, st={res=9999, sold=9999, lost=9999}, r={}, sd=9999,
 		hl=skl, cd={}, x={110, 111, 112, 113}, rm={s=113, k=2, lg=skl}};
 	for k = 1, 4 do
-		tinsert(TRF.sv.b, {s=109 + k, si=1139, x=-99999, y=-99999, z=-99999, n=3, n0=3, f=5, nm=99, lg=skl, src=3, sl=2, pf=10000, pp=10000, bx=1});
+		tinsert(TRF.sv.b, {s=109 + k, si=1139, x=-99999, y=-99999, z=-99999, n=3, n0=3, f=5, nm=99, lg=skl, src=3, sl=2, pf=10000, pp=10000, bx=1, q=1});
 	end;
 	for k = 1, 11 do TRF.sv.r[k] = 9; end;
 	for k = 1, 16 do TRF.sv.cd[97 + k] = skl; end;
@@ -2245,8 +2245,8 @@ function T_V1_N()
 	TRF.mc.x = 9999999; TRF.mc.w = strrep("9", 11); TRF.mc.wt = -9999999;
 	TRF.mc.o = TRF_TpPackK({c=12, s=113}, TRF_McOKeys());
 	-- Freight unlock quest worst case (design/freight-quest-spec.md 3.3): TRF.wq with every field at its widest (a bound:
-	-- the repair keeps dc, lv and p only at their steps).
-	TRF.wq = {v=1, s=90, k=3, n=9, dc=-9999999, cd=-9999999, sd=9999, lv=1, r=3, p=1, ql=90};
+	-- the repair keeps dc, lv, p and ws only at their steps).
+	TRF.wq = {v=1, s=90, k=7, n=9, dc=-9999999, cd=-9999999, sd=9999, lv=1, r=3, p=1, ql=90, ws=999};
 	local mcz = HOST_SaveSize(TRF.mc);
 	TRF_Mc_Fix();
 	HOST_Check(HOST_SaveSize(TRF.mc) == mcz and mcz <= 6000, "merc worst case kept by the repair: "..mcz.." bytes <= 6000");

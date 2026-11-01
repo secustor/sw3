@@ -240,7 +240,7 @@ function T_SH_A()
 	for i = 1, getn(P.dock.pir.line) do lp = lp..P.dock.pir.line[i].o..":"..TRF_PlName(P.dock.pir.line[i].f)..","; end;
 	for i = 1, getn(P.dock.patrol.line) do ll = ll..P.dock.patrol.line[i].o..","; end;
 	for i = 1, getn(P.cap) do if P.cap[i].g == "stash" and P.cap[i].t == 0 then cg = cg + 1; end; end;
-	HOST_Check(SH_Has(lb, "100:TRF_Sh_PirBox,") and SH_Has(lb, "400:TRF_FcPoBox,") and SH_Has(lp, "20:TRF_Sh_PirLine,") and SH_Has(ll, "35,40,50,")
+	HOST_Check(SH_Has(lb, "100:TRF_Sh_PirBox,") and SH_Has(lb, "400:TRF_FcPoBox,") and SH_Has(lp, "20:TRF_Sh_PirLine,") and SH_Has(ll, "35,40,45,50,")
 		and cg == 1, "pirate box 100 below S35 400, pirate line 20, patrol line 40 between 35 and 50, ship-cap group never trimmed ("..lb.." "..lp.." "..ll..")");
 	-- Slots: every slot system is an allow-list system of a region, 1..4 slots each; the excluded systems have none.
 	local sd = TRF_ShSlotData();

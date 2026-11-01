@@ -400,3 +400,14 @@ traffic: lua: exp=v1 module=wq event=spawn system=golkonda trader_id=36 raid_id=
 traffic: lua: exp=v1 module=wq event=help raid_id=5 trader_id=36 credits=4269 flags=1
 traffic: lua: exp=v1 module=wq event=rescued system=golkonda trader_id=36 raid_id=5 variant=new reason=raid_help tries=1
 traffic: lua: exp=v1 module=wq event=step step_before=10 step_after=20 reason=rescued
+traffic: lua: exp=v1 module=wq event=report system=debris6 result=saved wreck_system=golkonda flags=0
+traffic: lua: exp=v1 module=wq event=step step_before=20 step_after=30 reason=report
+traffic: lua: exp=v1 module=wq event=wreck system=golkonda beacon=1 point=portal result=seeded
+traffic: lua: exp=v1 module=wq event=wreck system=golkonda pods=0 result=picked
+traffic: lua: exp=v1 module=wq event=wreck system=golkonda carried=1 result=handed
+traffic: lua: exp=v1 module=wq event=step step_before=30 step_after=40 reason=handed
+traffic: lua: exp=v1 module=wq event=fence system=callipso price=3415 result=shown
+traffic: lua: exp=v1 module=wq event=clue via=fence system=callipso result=declined
+traffic: lua: exp=v1 module=wq event=fence system=callipso price=3415 result=shown
+traffic: lua: exp=v1 module=wq event=clue via=fence system=callipso cost=3415 result=ok
+traffic: lua: exp=v1 module=wq event=step step_before=40 step_after=50 reason=fence

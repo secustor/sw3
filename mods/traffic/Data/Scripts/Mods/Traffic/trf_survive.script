@@ -14,9 +14,10 @@
 -- trf_hail TRF_HlRumourText (rumour), trf_plumb (trade dock line, seed provider, arrival lines, nav markers),
 -- traffic.script (activate, load, jump, tick, 1 s step).
 -- Saved fields (TRF.sv, created lazily, repaired by TRF_Sv_Fix):
---   b[i] = {s, si, x, y, z, n, n0, f, nm, lg, src, sl, pf, pp[, bx]} (at most 4; the loss site s, x, y, z, lg, src
---   is the shape feature 2 reuses: TRF_Sv_Site reads it, trf_scar's TRF_Sv_SiteLink writes si), c = {n, cr, pc,
---   s1[, s2], f, lg} (absent when empty), st = {res, sold, lost},
+--   b[i] = {s, si, x, y, z, n, n0, f, nm, lg, src, sl, pf, pp[, bx][, q]} (at most 4; the loss site s, x, y, z, lg, src
+--   is the shape feature 2 reuses: TRF_Sv_Site reads it, trf_scar's TRF_Sv_SiteLink writes si; q = 1 a quest record
+--   of trf_wq, TRF_Sv_QuestSeed), c = {n, cr, pc, s1[, s2], f, lg[, q]} (absent when empty; q = 1 once a quest pod is
+--   aboard), st = {res, sold, lost},
 --   r[slot] = credited beacons this cycle (absent = 0), sd = roll seed, hl = leg of the last heat -1, cd[idx] =
 --   leg of the last beacon in idx (at most 16, older than sv_cd dropped), x = {idx, ...} systems whose beacon
 --   went silent (at most 4), rm = {s, k, lg} rumour (k 1 taken by slavers, 2 rescued).
@@ -296,7 +297,13 @@ end;
 -- player-fire window, the loss line delay, rumour lifetime in legs, caps of cd and x, model names.
 function TRF_SvK()
 	return {port_r=300, st_r=400, ms_r=600, fire_win=60, loss_dt=5, rum_legs=8, cd_max=16, x_max=4, b_max=4,
-		beacon="radiopod", pod="Escape_Pod_R"};
+		beacon="radiopod", pod="Escape_Pod_R", q_off=800};
+end;
+
+-- Directions of the quest fallback point (TRF_SvPortalPt): 8 unit vectors in the x-z plane at 45 degree steps, as
+-- {cos, sin} (no sin/cos call: Lua 4 takes degrees there).
+function TRF_SvQDir()
+	return {{1, 0}, {0.7071, 0.7071}, {0, 1}, {-0.7071, 0.7071}, {-1, 0}, {-0.7071, -0.7071}, {0, -1}, {0.7071, -0.7071}};
 end;
 
 -- Permanent deny list (design 6.7): never a beacon, a seed or a full hand-in there.
@@ -497,20 +504,23 @@ function TRF_SvCdSet(idx, T)
 	end;
 end;
 
--- Adds record b; at sv_max records the oldest with n = 0, else the oldest overall, is dropped first. Returns
--- the new index.
+-- Adds record b; at sv_max records the oldest with n = 0, else the oldest overall, is dropped first. A quest record
+-- (q 1, trf_wq) is never dropped: nil when every record is one. Returns the new index.
 function TRF_SvAdd(b, T)
 	local S = TRF_SvRec();
 	while getn(S.b) >= T.sv_max do
 		local w = nil;
 		for i = 1, getn(S.b) do
 			local e = S.b[i];
-			if e.n == 0 and (w == nil or e.lg < S.b[w].lg) then w = i; end;
+			if e.q ~= 1 and e.n == 0 and (w == nil or e.lg < S.b[w].lg) then w = i; end;
 		end;
 		if w == nil then
-			w = 1;
-			for i = 2, getn(S.b) do if S.b[i].lg < S.b[w].lg then w = i; end; end;
+			for i = 1, getn(S.b) do
+				local e = S.b[i];
+				if e.q ~= 1 and (w == nil or e.lg < S.b[w].lg) then w = i; end;
+			end;
 		end;
+		if w == nil then return nil; end;
 		TRF_SvDrop(w, "cap");
 	end;
 	tinsert(S.b, b);
@@ -784,6 +794,10 @@ function TRF_Sv_OnLoss(id, rec, h, by, idx)
 	local b = {s=idx, si=0, x=floor(pos.x + 0.5), y=floor(pos.y + 0.5), z=floor(pos.z + 0.5), n=pods, n0=pods, f=0,
 		nm=rec.nm or 0, lg=TRF_SvLegs(), src=1, sl=0, pf=0, pp=0};
 	local i = TRF_SvAdd(b, T);
+	if not i then
+		TRF_SvE("loss", "trader_id", id, "fire", "false", "help", TRF_KvB(help), "system", nm, "pods", pods, "result", "none", "reason", "quest_cap");
+		return nil;
+	end;
 	TRF_SvCdSet(idx, T);
 	-- The due list (32 entries) can be full in a busy system: the 1 s step then places it as a held record.
 	if not TRF_N("TRF_Due", K.loss_dt, "TRF_Sv_LossDue", idx) then TRF_SvHoldSet(idx, "svloss"); end;
@@ -907,6 +921,10 @@ function TRF_SvSeedPlan(idx, nm, mode)
 	local b = {s=idx, si=0, x=floor(p.x + 0.5), y=floor(p.y + 0.5), z=floor(p.z + 0.5), n=pods, n0=pods, f=0, nm=0, lg=legs,
 		src=2, sl=0, pf=TRF_SvPayOf(N, T.k_pod, cap), pp=TRF_SvPayOf(N, T.k_pod_pir, cap)};
 	local i = TRF_SvAdd(b, T);
+	if not i then
+		TRF_SvE("seed", "system", nm, "roll", s.roll, "chance", s.chance, "region", slot, "result", "none", "reason", "quest_cap");
+		return nil, "quest_cap";
+	end;
 	S.r[slot] = s.used + 1;
 	TRF_SvCdSet(idx, T);
 	TRF_SvE("seed", "system", nm, "roll", s.roll, "chance", s.chance, "region", slot, "budget_used", S.r[slot], "budget", s.cyc,
@@ -914,8 +932,115 @@ function TRF_SvSeedPlan(idx, nm, mode)
 	return i;
 end;
 
--- Expiry (6.4): records older than sv_ttl legs; carried survivors older than sv_carry legs (lost, no pay).
--- Returns 1 when carried survivors were lost.
+-- Quest records (trf_wq) ------------------------------------------------------------------
+
+-- "record" while a quest record (q 1) is in TRF.sv.b, "carry" while a quest crew is aboard (c.q 1), else nil.
+function TRF_Sv_QHas()
+	if type(TRF) ~= "table" or type(TRF.sv) ~= "table" then return nil; end;
+	local S = TRF.sv;
+	if type(S.b) == "table" then
+		for i = 1, getn(S.b) do if type(S.b[i]) == "table" and S.b[i].q == 1 then return "record"; end; end;
+	end;
+	if type(S.c) == "table" and S.c.q == 1 then return "carry"; end;
+	return nil;
+end;
+
+-- Fallback point of a quest record when no contact point passes the site rule: K.q_off from the entry portal (the
+-- map portal nearest the mothership, else the first) in one of 8 directions of the x-z plane at 45 degree steps from
+-- the direction toward the system centre, starting k0 (0..7) steps on (the fixed roll, so a record made again after an
+-- expiry can stand elsewhere); the first point that passes the site rule (portal, station, mothership), else the first
+-- point. Returns the point and its direction (0: none passed), or nil without a map portal.
+function TRF_SvPortalPt(idx, K, k0)
+	local pl, sl = TRF_SvSites(idx);
+	if getn(pl) == 0 then return nil; end;
+	local ms = TRF_Sv_MsPos();
+	local e, ed = pl[1], nil;
+	if ms then
+		for i = 1, getn(pl) do
+			local d = TRF_SvDist(ms, pl[i]);
+			if d and (ed == nil or d < ed) then e = pl[i]; ed = d; end;
+		end;
+	end;
+	local ux, uz = -e.x, -e.z;
+	local l = sqrt(ux * ux + uz * uz);
+	if l < 1 then ux = 1; uz = 0; else ux = ux / l; uz = uz / l; end;
+	local dl = TRF_SvQDir();
+	local first = nil;
+	for kk = 0, getn(dl) - 1 do
+		local k = 1 + mod(floor(k0 or 0) + kk, getn(dl));
+		local c, s = dl[k][1], dl[k][2];
+		local dx, dz = ux * c - uz * s, ux * s + uz * c;
+		local p = {x=e.x + K.q_off * dx, y=e.y, z=e.z + K.q_off * dz};
+		if not first then first = p; end;
+		if not TRF_SvSiteOf(p, pl, sl, ms, K) then return p, k; end;
+	end;
+	return first, 0;
+end;
+
+-- Public (trf_wq): a quest record in system idx: source src (1..3, default 2), pay per survivor pf (default 0), n pods
+-- (1..3, default 1), q = 1. No roll, region budget, cooldown or event slot. The point: a registered contact point that
+-- passes the site rule (TRF_SvPoints, picked by the fixed roll), else TRF_SvPortalPt. An ordinary record of idx is
+-- dropped first (one record per system); TRF_SvAdd drops the oldest ordinary record at sv_max. In the current system
+-- the record is placed at once with the seeded-beacon line (none when it replaced a record: that one had its line;
+-- held under S2/S3 as on entry). Returns the record index and the point source ("contact", "portal"), or nil and the
+-- reason.
+function TRF_Sv_QuestSeed(idx, src, pf, n)
+	if not TRF_SvOn() then return nil, "off"; end;
+	if type(idx) ~= "number" then return nil, "nomap"; end;
+	local S = TRF_SvRec();
+	local T, K = TRF_SvTune(), TRF_SvK();
+	local nm = TRF_SvName(idx);
+	local cur = TRF_N("TRF_CurIdx");
+	local nomode = nil;
+	if cur ~= idx then nomode = 1; end;
+	local why = TRF_SvGate(idx, nomode);
+	local i0, b0 = TRF_SvAt(idx);
+	if not why and b0 and b0.q == 1 then why = "record"; end;
+	local p, ps = nil, "contact";
+	if not why then
+		local pts = TRF_SvPoints(idx, K);
+		local roll = TRF_SvRollOf(idx, TRF_SvLegs(), S.sd);
+		if getn(pts) > 0 then
+			p = pts[1 + mod(roll, getn(pts))];
+		else
+			ps = "portal";
+			p = TRF_SvPortalPt(idx, K, mod(roll, 8));
+			if not p then why = "point"; end;
+		end;
+	end;
+	if why then
+		TRF_SvE("seed", "system", nm, "kind", "quest", "result", "none", "reason", why);
+		return nil, why;
+	end;
+	if b0 then TRF_SvDrop(i0, "quest"); end;
+	if type(src) ~= "number" or src < 1 or src > 3 then src = 2; end;
+	if type(pf) ~= "number" or pf < 0 then pf = 0; end;
+	if type(n) ~= "number" then n = 1; end;
+	n = TRF_SvCl(floor(n), 1, 3);
+	local b = {s=idx, si=0, x=floor(p.x + 0.5), y=floor(p.y + 0.5), z=floor(p.z + 0.5), n=n, n0=n, f=0, nm=0, lg=TRF_SvLegs(),
+		src=floor(src), sl=0, pf=floor(min(pf, 30000)), pp=0, q=1};
+	local i = TRF_SvAdd(b, T);
+	if not i then
+		TRF_SvE("seed", "system", nm, "kind", "quest", "result", "none", "reason", "quest_cap");
+		return nil, "quest_cap";
+	end;
+	TRF_SvE("seed", "system", nm, "kind", "quest", "source", b.src, "pods", n, "pay", b.pf, "point", ps, "result", "beacon", "beacon", i);
+	if cur == idx then
+		local hold = TRF_SvHold();
+		if hold then
+			TRF_SvHoldSet(idx, "svseed");
+			TRF_SvE("place", "system", nm, "beacon", i, "result", "skipped", "reason", hold);
+		else
+			TRF_SvPlace(i, "quest");
+			if not b0 then TRF_SvArr(TRF_SvTxt("svseed")); end;
+		end;
+	end;
+	return i, ps;
+end;
+
+-- Expiry (6.4): records older than sv_ttl legs; carried survivors older than sv_carry legs (lost, no pay), except a
+-- quest crew (c.q 1, trf_wq: its hand-in is a quest step). A quest record expires as any record (trf_wq seeds it
+-- again). Returns 1 when carried survivors were lost.
 function TRF_SvExpire(carried)
 	local S = TRF_SvRec();
 	local T = TRF_SvTune();
@@ -925,7 +1050,7 @@ function TRF_SvExpire(carried)
 		if type(b) == "table" and legs - b.lg > T.sv_ttl then TRF_SvDrop(i, "ttl"); end;
 	end;
 	local c = S.c;
-	if carried and type(c) == "table" and legs - c.lg > T.sv_carry then
+	if carried and type(c) == "table" and c.q ~= 1 and legs - c.lg > T.sv_carry then
 		S.st.lost = min(9999, S.st.lost + c.n);
 		TRF_SvE("expire", "kind", "carried", "carried", c.n, "credits", c.cr, "age", legs - c.lg, "reason", "carry");
 		S.c = nil;
@@ -1044,6 +1169,7 @@ end;
 -- Visit: pickup, losses, position cache -------------------------------------------------
 
 -- Carried survivors after picking one pod of record b: nil when there is no room (sv_carry_max, two loss systems).
+-- An ordinary crew merged into a quest carry leaves c.q set (its pay adds as usual).
 function TRF_SvRoom(S, b, T)
 	local c = S.c;
 	if type(c) ~= "table" then return 1; end;
@@ -1079,6 +1205,7 @@ function TRF_SvPick(i, b, j, d, T)
 	c.n = c.n + 1;
 	c.cr = c.cr + b.pf;
 	c.pc = c.pc + b.pp;
+	if b.q == 1 then c.q = 1; end;
 	TRF_Sv_Say(TRF_SvTxt("svpick"), 5);
 	TRF_SvE("pick", "system", TRF_SvName(b.s), "beacon", i, "pod", j, "distance", TRF_SvF(d), "left", b.n, "carried", c.n,
 		"credits", c.cr);
@@ -1086,6 +1213,7 @@ function TRF_SvPick(i, b, j, d, T)
 		TRF_Sv_Say(TRF_SvTxt("svpickall"), 6);
 		TRF_N("TRF_MarkerClear", "sv");
 	end;
+	if b.q == 1 then TRF_P("TRF_Wq_OnPick", b); end;
 	return 1;
 end;
 
@@ -1184,7 +1312,7 @@ function TRF_Sv_RegionTick(L)
 	local cur = TRF_N("TRF_CurIdx");
 	for i = 1, getn(S.b) do
 		local b = S.b[i];
-		if type(b) == "table" and b.s ~= cur and b.src >= 2 and b.sl == 0 and b.n > 0 and TRF_SvOpt("sv_slavers") == 1 then
+		if type(b) == "table" and b.s ~= cur and b.src >= 2 and b.sl == 0 and b.n > 0 and b.q ~= 1 and TRF_SvOpt("sv_slavers") == 1 then
 			local te = TRF_N("TRF_EffTier", b.s) or 1;
 			local roll = TRF_SvRollOf(b.s, L + 13, S.sd);
 			local res = "kept";
@@ -1219,7 +1347,8 @@ end;
 -- Hand-in at an FTU trade dock of the current system (5.1, 4 feed table). Credits for credited survivors (sum
 -- capped at pay_cap by TRF_Pay); help +1 (+2 in Recovery), heat -1 at most once per sv_heat_cd legs, pro +1 in
 -- each loss system (clamped to the phase target and pro_cap), dockmaster deed +1, st.res. A denied dock system
--- (6.7, strict gate) pays credits with one line and nothing else; witnessed survivors then stay aboard.
+-- (6.7, strict gate) pays credits with one line and nothing else; witnessed survivors then stay aboard, and so does a
+-- quest crew (c.q 1, its FTU credits paid and cleared). trf_wq's TRF_Wq_OnHand reads a full hand-in before the carry goes.
 function TRF_SvHand()
 	local S = TRF_SvRec();
 	local idx = TRF_N("TRF_CurIdx");
@@ -1241,8 +1370,9 @@ function TRF_SvHand()
 		if pay > 0 then tinsert(out, TRF_SvTxt("svpaid", pay)); end;
 	end;
 	if gate then
-		TRF_SvE("hand", "kind", "ftu", "system", nm, "carried", c.n, "pay", pay, "result", "credits_only", "reason", gate);
-		S.c = nil;
+		TRF_SvE("hand", "kind", "ftu", "system", nm, "carried", c.n, "pay", pay, "result", "credits_only", "reason", gate, "quest_kept",
+			TRF_KvB(c.q == 1));
+		if c.q == 1 then c.cr = 0; else S.c = nil; end;
 		return out;
 	end;
 	local std = TRF.std or {};
@@ -1288,6 +1418,8 @@ function TRF_SvHand()
 	-- Step 2 hook points: the feature 5 veteran record (witnessed, nm > 0) and the feature 14 goal count read
 	-- this hand-in; the pirate-dock sale (TRF_Sv_DockPir) and the faction patrol hand-in (TRF_Sv_DockPatrol)
 	-- register their own dispatcher entries.
+	local ql = TRF_P("TRF_Wq_OnHand", idx, c);
+	if type(ql) == "string" then tinsert(out, ql); end;
 	S.c = nil;
 	return out;
 end;
@@ -1343,7 +1475,8 @@ function TRF_SvLeg(x, legs)
 end;
 
 -- Repair of TRF.sv (TRF_Repair): records with valid fields (bad ones dropped), the caps of the spec, absent
--- optional fields stay absent.
+-- optional fields stay absent. Quest records (q 1) are taken first, so the per-system and b_max caps drop an
+-- ordinary record before them; the kept records stay in their saved order. q survives on records and on c.
 function TRF_Sv_Fix()
 	if type(TRF) ~= "table" or TRF.sv == nil then return; end;
 	if type(TRF.sv) ~= "table" then TRF.sv = nil; return; end;
@@ -1353,34 +1486,40 @@ function TRF_Sv_Fix()
 	local ns = 999;
 	if m then ns = getn(m.sys); end;
 	local K = TRF_SvK();
-	local b = {};
+	local b, kp, nk = {}, {}, 0;
 	if type(S.b) == "table" then
-		for i = 1, getn(S.b) do
-			local e = S.b[i];
-			if type(e) == "table" and TRF_SvNum(e.s, 1, ns) and type(e.x) == "number" and type(e.y) == "number" and type(e.z) == "number"
-				and getn(b) < K.b_max then
-				local have = nil;
-				for j = 1, getn(b) do if b[j].s == e.s then have = 1; end; end;
-				if not have then
-					local r = {s=e.s, si=0, x=floor(e.x), y=floor(e.y), z=floor(e.z), f=0, nm=0, src=1, sl=0, pf=0, pp=0};
-					if TRF_SvNum(e.si, 0, 1139) then r.si = floor(e.si); end;
-					r.n0 = 1;
-					if TRF_SvNum(e.n0, 0, 3) then r.n0 = floor(e.n0); end;
-					r.n = 0;
-					if TRF_SvNum(e.n, 0, r.n0) then r.n = floor(e.n); end;
-					if TRF_SvNum(e.f, 0, 5) then r.f = floor(e.f); end;
-					if TRF_SvNum(e.nm, 0, 99) then r.nm = floor(e.nm); end;
-					r.lg = legs;
-					if TRF_SvLeg(e.lg, legs) then r.lg = e.lg; end;
-					if TRF_SvNum(e.src, 1, 3) then r.src = floor(e.src); end;
-					if TRF_SvNum(e.sl, 0, 2) then r.sl = floor(e.sl); end;
-					if TRF_SvNum(e.pf, 0, 30000) and r.src ~= 1 then r.pf = floor(e.pf); end;
-					if TRF_SvNum(e.pp, 0, 30000) and r.src ~= 1 then r.pp = floor(e.pp); end;
-					if e.bx == 1 then r.bx = 1; end;
-					tinsert(b, r);
+		for pass = 1, 2 do
+			for i = 1, getn(S.b) do
+				local e = S.b[i];
+				local qe = type(e) == "table" and e.q == 1;
+				if type(e) == "table" and ((pass == 1 and qe) or (pass == 2 and not qe)) and TRF_SvNum(e.s, 1, ns) and type(e.x) == "number"
+					and type(e.y) == "number" and type(e.z) == "number" and nk < K.b_max then
+					local have = nil;
+					for j, v in kp do if v.s == e.s then have = 1; end; end;
+					if not have then
+						local r = {s=e.s, si=0, x=floor(e.x), y=floor(e.y), z=floor(e.z), f=0, nm=0, src=1, sl=0, pf=0, pp=0};
+						if TRF_SvNum(e.si, 0, 1139) then r.si = floor(e.si); end;
+						r.n0 = 1;
+						if TRF_SvNum(e.n0, 0, 3) then r.n0 = floor(e.n0); end;
+						r.n = 0;
+						if TRF_SvNum(e.n, 0, r.n0) then r.n = floor(e.n); end;
+						if TRF_SvNum(e.f, 0, 5) then r.f = floor(e.f); end;
+						if TRF_SvNum(e.nm, 0, 99) then r.nm = floor(e.nm); end;
+						r.lg = legs;
+						if TRF_SvLeg(e.lg, legs) then r.lg = e.lg; end;
+						if TRF_SvNum(e.src, 1, 3) then r.src = floor(e.src); end;
+						if TRF_SvNum(e.sl, 0, 2) then r.sl = floor(e.sl); end;
+						if TRF_SvNum(e.pf, 0, 30000) and r.src ~= 1 then r.pf = floor(e.pf); end;
+						if TRF_SvNum(e.pp, 0, 30000) and r.src ~= 1 then r.pp = floor(e.pp); end;
+						if e.bx == 1 then r.bx = 1; end;
+						if qe then r.q = 1; end;
+						kp[i] = r;
+						nk = nk + 1;
+					end;
 				end;
 			end;
 		end;
+		for i = 1, getn(S.b) do if kp[i] then tinsert(b, kp[i]); end; end;
 	end;
 	S.b = b;
 	local c = S.c;
@@ -1394,6 +1533,7 @@ function TRF_Sv_Fix()
 			if TRF_SvNum(c.s2, 1, ns) and c.s2 ~= c.s1 then r.s2 = c.s2; end;
 			if TRF_SvNum(c.f, 0, 5) then r.f = floor(c.f); end;
 			if TRF_SvLeg(c.lg, legs) then r.lg = c.lg; end;
+			if c.q == 1 then r.q = 1; end;
 			S.c = r;
 		end;
 	end;
@@ -1448,8 +1588,8 @@ function TRF_Sv_TuneDef()
 		sv_seed_cyc=2, sv_heat_cd=10, sv_fst_cd=10, sv_pick_r=60, sv_near_r=400, sv_slave_on={50, 60, 60}, sv_slave_off=35};
 end;
 
--- "module=survive event=dump beacon_count=<n> beacons=<sys>:<n>/<n0>/<f>/<lg>/<src>/<sl>/<pf>,... carried=<n>
--- credits=<cr> pirate_credits=<pc> rescued=<res> sold=<sold> lost=<lost> cooldowns=<sys>:<leg>,...
+-- "module=survive event=dump beacon_count=<n> beacons=<sys>:<n>/<n0>/<f>/<lg>/<src>/<sl>/<pf>[!][q],... carried=<n>
+-- credits=<cr> pirate_credits=<pc> carried_quest=<bool> rescued=<res> sold=<sold> lost=<lost> cooldowns=<sys>:<leg>,...
 -- region_budget=<slot>:<n>/<cyc>,... heat_leg=<hl> silent=<sys>,... rumour=<sys>:<k>/<lg> seed=<sd>".
 function TRF_Sv_Dump()
 	if type(TRF) ~= "table" or type(TRF.sv) ~= "table" then return; end;
@@ -1459,6 +1599,7 @@ function TRF_Sv_Dump()
 		local b = S.b[i];
 		local e = TRF_SvName(b.s)..":"..b.n.."/"..b.n0.."/"..b.f.."/"..b.lg.."/"..b.src.."/"..b.sl.."/"..b.pf;
 		if b.bx == 1 then e = e.."!"; end;
+		if b.q == 1 then e = e.."q"; end;
 		if bs then bs = bs..","..e; else bs = e; end;
 	end;
 	local cs = nil;
@@ -1487,8 +1628,8 @@ function TRF_Sv_Dump()
 	local c = S.c or {};
 	local st = S.st or {};
 	TRF_SvE("dump", "beacon_count", getn(S.b or {}), "beacons", bs, "carried", c.n or 0, "credits", c.cr or 0, "pirate_credits", c.pc or 0,
-		"rescued", st.res, "sold", st.sold, "lost", st.lost, "cooldowns", cs, "region_budget", rs, "heat_leg", S.hl, "silent", xs,
-		"rumour", rm, "seed", S.sd);
+		"carried_quest", TRF_KvB(c.q == 1), "rescued", st.res, "sold", st.sold, "lost", st.lost, "cooldowns", cs, "region_budget", rs,
+		"heat_leg", S.hl, "silent", xs, "rumour", rm, "seed", S.sd);
 end;
 
 -- Texts (design 2), EN; keys in TRF_UI_Key form (#TRF_sv<name> in loc/trf_en.loc). Step 2 keys (slavers, pirate

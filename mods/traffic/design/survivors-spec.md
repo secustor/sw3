@@ -45,7 +45,8 @@ Module: new `S/trf_survive.script`, prefix `Sv` (`TRF_Sv_*` public, `TRF_Sv<X>` 
 | `.sl` | 0..2 | 0 none, 1 taken by slavers, 2 slaver sent (step 2) |
 | `.pf`, `.pp` | 0..10000 | pay per survivor at an FTU dock and at a pirate dock, fixed at creation; 0 for `src` 1 |
 | `.bx` | 1 or absent | the beacon was destroyed: not rebuilt for this record |
-| `c` | `{n 1..6, cr, pc, s1, s2?, f, lg}` or absent | survivors aboard: count, credits owed by FTU and by pirates, up to two loss systems, owner, leg of the first pickup |
+| `.q` | 1 or absent | a quest record of trf_wq (`TRF_Sv_QuestSeed`, `D/freight-quest-spec.md` 4.3): never dropped by `TRF_SvAdd` (nil when every record is one), skipped by the off-screen slaver roll, preferred by `TRF_Sv_Fix`; it expires after `sv_ttl` as any record |
+| `c` | `{n 1..6, cr, pc, s1, s2?, f, lg, q?}` or absent | survivors aboard: count, credits owed by FTU and by pirates, up to two loss systems, owner, leg of the first pickup; `q` 1 once a quest pod is aboard (kept when ordinary crews merge in): never lost to `sv_carry`, kept aboard at a `credits_only` dock (credits paid and cleared), `TRF_Wq_OnHand` reads a full hand-in |
 | `st` | `{res, sold, lost}`, 0..9999 | survivors handed in to FTU, sold (step 2), lost (pods destroyed, carried past `sv_carry`, taken by slavers) |
 | `r[slot]` | 1..9 or absent (= 0), slots 1..11 | credited beacons created in the region this cycle |
 | `sd` | 0..9999 | roll seed, set once |
@@ -55,9 +56,9 @@ Module: new `S/trf_survive.script`, prefix `Sv` (`TRF_Sv_*` public, `TRF_Sv<X>` 
 | `rm` | `{s, k 1..2, lg}` or absent | rumour: 1 a crew taken by slavers near `s`, 2 a crew rescued; read for 8 legs |
 
 Rules:
-- R1 Optional fields (`c`, `hl`, `x`, `rm`, `bx`, `c.s2`) are stored only when set.
+- R1 Optional fields (`c`, `hl`, `x`, `rm`, `bx`, `q`, `c.s2`, `c.q`) are stored only when set.
 - R2 The loss site (`s`, `x`, `y`, `z`, `lg`, `src`, plus `si`) is the shape feature 2 reuses (06 7, 00 edits table): `TRF_Sv_Site(idx)` answers a copy of it, and trf_scar reads it for a witnessed trader loss instead of keeping a second position; when an on-screen scar (source 7) forms within `scar_radius` of a witnessed loss of the same leg, `TRF_Sv_SiteLink(idx, sid)` sets `si` to the scar's `sid` and the beacon is exempt from the scar's 150-unit object rule (`D/scar-spec.md` 3.1 R2, 5.3, V20).
-- R3 `TRF_Sv_Fix` (from `TRF_Repair`): a non-table `TRF.sv` becomes absent; records need a map system index and numeric `x`, `y`, `z`, one per system, at most 4; `n0` 0..3, `n` 0..`n0`, `f` 0..5, `nm` 0..99, `src` 1..3, `sl` 0..2, `pf`/`pp` 0..30000 and 0 for `src` 1, `bx` 1 or absent, `si` 0..1139; leg stamps after the current leg become the current leg (stamps before leg 0 are kept); `c` with `n` outside 1..6 or no valid `s1` is dropped, `s2` equal to `s1` dropped; `st` entries outside 0..9999 read 0; `r` keys outside 1..11 or values outside 1..9 dropped; `cd` at most 16; `x` at most 4 valid indices; `rm` with a bad field dropped; `fl` (step 2) removed; a missing `sd` is set again.
+- R3 `TRF_Sv_Fix` (from `TRF_Repair`): a non-table `TRF.sv` becomes absent; records need a map system index and numeric `x`, `y`, `z`, one per system, at most 4; `n0` 0..3, `n` 0..`n0`, `f` 0..5, `nm` 0..99, `src` 1..3, `sl` 0..2, `pf`/`pp` 0..30000 and 0 for `src` 1, `bx` 1 or absent, `si` 0..1139, `q` 1 or absent (quest records are taken first, so the per-system and count caps drop an ordinary record before a quest record; the kept records stay in their saved order); leg stamps after the current leg become the current leg (stamps before leg 0 are kept); `c` with `n` outside 1..6 or no valid `s1` is dropped, `s2` equal to `s1` dropped, `c.q` 1 or absent; `st` entries outside 0..9999 read 0; `r` keys outside 1..11 or values outside 1..9 dropped; `cd` at most 16; `x` at most 4 valid indices; `rm` with a bad field dropped; `fl` (step 2) removed; a missing `sd` is set again.
 
 ### 3.2 Visit state (chunk local `SV`, never saved; rebuilt by every MapInitialization)
 
@@ -74,7 +75,7 @@ Handles: `TRF_H().sv = {s = system of the placed record, o[0] = beacon, o[1..3] 
 
 ### 3.4 Size
 
-Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case measured in `sv-g` and in `v1-n`: 2,654 bytes for `TRF.sv` with 4 full records (15 fields each, `bx` set), `c` full, `st` at 9999, 11 region entries, 16 cooldown stamps, 4 silent systems and the rumour; 2,664 with the `sv` key. Typical: an empty `TRF.sv` is 201 bytes; one witnessed record with its cooldown stamp makes it 573. Full-state `v1-n` with everything on: 59,139 bytes (budget 100,000). The design's "under 1 KB" counts about 90 values; in host bytes the record keys dominate (see deviation V2).
+Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case measured in `sv-g` and in `v1-n`: 2,654 bytes for `TRF.sv` with 4 full records (15 fields each, `bx` set), `c` full, `st` at 9999, 11 region entries, 16 cooldown stamps, 4 silent systems and the rumour; 2,664 with the `sv` key; 2,769 with the quest flag `q` on every record and on `c` (2026-11-02, checked <= 2,800). Typical: an empty `TRF.sv` is 201 bytes; one witnessed record with its cooldown stamp makes it 573. Full-state `v1-n` with everything on: 59,139 bytes (budget 100,000). The design's "under 1 KB" counts about 90 values; in host bytes the record keys dominate (see deviation V2).
 
 ## 4. Hooks and registration
 
@@ -88,6 +89,7 @@ Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case m
 | trf_region `TRF_RegionTick` | `TRF_P("TRF_Sv_RegionTick", L)` at the end | budget reset, off-screen roll, expiry |
 | trf_hail `TRF_HlRumourText` | `TRF_N("TRF_Sv_Rumour", idx, "rec")` after the v1 rumours (the `rm` rumour); `TRF_N("TRF_Sv_Rumour", idx)` after the sweep rumour, before `rnone` (the pre-chapter-5 line) | rumour line |
 | trf_plumb `TRF_PlMods` | `"Sv"` | `TRF_Sv_Plumb`: trade dock line order 30 (`TRF_Sv_DockLine`), seed provider prio 550 (`TRF_Sv_SeedH`) |
+| trf_wq (`D/freight-quest-spec.md` 4.3, 5) | `TRF_Sv_QuestSeed(idx, src, pf, n)`, `TRF_Sv_QHas()`; `TRF_P("TRF_Wq_OnPick", b)` in `TRF_SvPick`, `TRF_P("TRF_Wq_OnHand", idx, c)` before `S.c = nil` in `TRF_SvHand` | quest records (`q`), the navigator's line, the quest step of a hand-in |
 | trf_scar (`D/scar-spec.md` 5.3) | `TRF_Sv_Site(idx)`, `TRF_Sv_SiteLink(idx, sid)` | the shared loss site read by a source 7 scar and its `si` link (3.1 R2) |
 | trf_state `TRF_ModList`, `TRF_Repair` | `"Sv"`; `TRF_P("TRF_Sv_Fix")` | OptDef, TuneDef, Dump; repair |
 | trf_loc `TRF_Loc_TextFns`, trf_ui `TRF_UI_TextFns` | `"TRF_Sv_Text"` | text keys |

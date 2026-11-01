@@ -325,9 +325,9 @@ Install: `EXP=0 TRAFFIC=1 LOG=2 AUTOSAVE=0 HAIL_BOX=2 MERCS=1 TUNE=merc_cd=0,mer
 
 Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes E-EXT.1=pass` (FAIL: an `extortion_seen` without a following `extort` line, a `result=skip` with a reason other than `off`, `not_war` or `restore`, or `trigger_count=0`).
 
-## 15. Freight unlock quest, commit 1 (Q-WQ.1-4; `FREIGHT=1 LOG=2`, chapter 5 or later, no freighter owned)
+## 15. Freight unlock quest, commits 1-2 (Q-WQ.1-7; `FREIGHT=1 LOG=2`, chapter 5 or later, no freighter owned)
 
-`D/freight-quest-spec.md` 10; `check_ingame.py` items Q-WQ.1-4. Install: `LOG=2 sh mods/traffic/install-test.sh` (the game closed; `WQ=0` turns the quest off for an A/B; `JOBS_UI=1` or `2` for the card and the Office row). A chapter 5-6 save with help 2 or more and no Wolves freighter. One line per check: do, then see.
+`D/freight-quest-spec.md` 10; `check_ingame.py` items Q-WQ.1-7. Install: `LOG=2 sh mods/traffic/install-test.sh` (the game closed; `WQ=0` turns the quest off for an A/B; `JOBS_UI=1` or `2` for the card and the Office row). A chapter 5-6 save with help 2 or more and no Wolves freighter. One line per check: do, then see.
 
 | item | what to do | expected |
 |---|---|---|
@@ -339,5 +339,12 @@ Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes E-E
 | Q-WQ.3 | on another save at step 10: jump out after the mayday line, or let the raid end without firing on it | `event=void ... reason=<jump,no_help> tries=1`; no mayday within 6 legs (`reason=cooldown` at log 2), then again; the second miss: "The Kestrel limped in alone." (`event=limped`; after a jump as an arrival line in the next system) |
 | | save during the mayday and load | the Kestrel is gone, `event=orphan` (or trf_gen's load pass), `event=void ... reason=load` |
 | Q-WQ.4 | play Q-WQ.1 and Q-WQ.2 once with an Arba-class hull (the chapter 4 Elio Arba `mothership_arba` of every vanilla run in chapters 5-6) and once after buying another mothership | `variant=old` lines show "that Arba hauler" and "a transport pilot who knows the clause"; `variant=new` the plain lines |
+| Q-WQ.5 | at step 20 dock at any trade station (also one off the loop, not New Kyoto) | the report line of the step-1 result (saved: "Kestrel's captain: ..."; lost or limped in: "FTU clerk: ..."), the logbook "... Listen for her beacon in Golkonda and Callipso."; `event=report ... result=<saved,lost,limped> wreck_system=<ws>`, `event=step step_before=20 step_after=30 reason=report` |
+| Q-WQ.6 | enter the system named by `wreck_system` (from Golkonda's or Callipso's other neighbour too) | survive's beacon line "FTU relay: ...", a beacon and one pod with a marker near the entry portal side (`event=wreck ... point=portal result=seeded`); note where the pod lies and whether it is reachable (spec open question 14) |
+| | fly through the pod | "Survivor aboard." and "Navigator: 'They boarded us, ...'"; the marker goes (`event=wreck ... result=picked`) |
+| | dock at a trade station | the survivor hand-in lines, help +1, no credits; the logbook "The Marlin's navigator is home ..." (`event=wreck ... carried=1 result=handed`, `event=step step_before=30 step_after=40 reason=handed`) |
+| | on another save at step 30: leave the pod 5 legs, then enter `wreck_system` again | the beacon expired (`event=expire ... reason=ttl`), a new one on the entry (`event=wreck ... result=seeded`) |
+| Q-WQ.7 | at step 40 dock at a pirate station in the Golkonda region (Callipso, Debris 6) with the credits | box "Fence: 'Marlin papers? Cost you <p> cr. Yes?'" (`event=fence ... price=<p> result=shown`); Cancel: nothing, the box again at the next docking; OK: credits down by p, "Fence: 'They came from XB-13. ...'", the logbook "... held at XB-13 ..." (`event=clue via=fence ... cost=<p> result=ok`) |
+| | on another save at step 40: dock at a patrol station of the region with the system's dockmaster at rung 0, then at rung 1 or more | rung 0: no board line (`reason=rung` at log 2); rung 1: "Patrol board: 'Marlin manifests ...'" (`event=clue via=patrol ... cost=0 rung=<e> result=ok`) |
 
-Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes Q-WQ.4=pass`.
+Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes Q-WQ.4=pass,Q-WQ.6=pass`.

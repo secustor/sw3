@@ -464,20 +464,21 @@ Survivors and beacons, step 1 (`design/survivors-spec.md` 7).
 | Event | Example line | Level |
 |---|---|---|
 | `error` | `module=survive event=error message=<m>` | 1 |
-| `loss` | `module=survive event=loss trader_id=17 fire=false help=true system=gaoba pods=2 position_source=ship mode=full result=beacon beacon=1` (no beacon: `result=none reason=<chapter, owner, station_event, fire, disable_action, sys_sos, suppressed, deny, deny_story, gate:<why>, mode:<why>, record, cooldown, governor, position, portal, station>`) | 1 |
-| `seed` | `module=survive event=seed system=gaoba roll=5 chance=25 region=5 budget_used=1 budget=2 pods=1 pay=2970 pay_pirate=4950 result=beacon beacon=1` (none: `result=none reason=<budget, roll, point>` at level 1; `off, chapter, plan, chase, sweep, carrier, feq, deny, gate:<why>, record, cooldown, region, quiet` at level 2) | 1 |
+| `loss` | `module=survive event=loss trader_id=17 fire=false help=true system=gaoba pods=2 position_source=ship mode=full result=beacon beacon=1` (no beacon: `result=none reason=<chapter, owner, station_event, fire, disable_action, sys_sos, suppressed, deny, deny_story, gate:<why>, mode:<why>, record, cooldown, governor, position, portal, station, quest_cap>`; `quest_cap`: every record is a quest record) | 1 |
+| `seed` | `module=survive event=seed system=gaoba roll=5 chance=25 region=5 budget_used=1 budget=2 pods=1 pay=2970 pay_pirate=4950 result=beacon beacon=1` (none: `result=none reason=<budget, roll, point>` at level 1; `off, chapter, plan, chase, sweep, carrier, feq, deny, gate:<why>, record, cooldown, region, quiet` at level 2; `quest_cap` at level 1) | 1 |
+| `seed` | `module=survive event=seed system=golkonda kind=quest source=2 pods=1 pay=0 point=portal result=beacon beacon=1` (trf_wq `TRF_Sv_QuestSeed`; `point=contact`; none: `kind=quest result=none reason=<off, nomap, deny, deny_story, gate:<why>, mode:<why>, record, point, quest_cap>`) | 1 |
 | `place` | `module=survive event=place system=gaoba beacon=1 found=0 made=3 deleted=0 failed=0 pods_before=2 pods=2 reason=enter` (reason loss, enter, load, hold); `... beacon=1 result=skipped reason=gate:quest` (also `disable_action`, `sys_sos`, `suppressed`: held until the flags clear) | 1 |
 | `pick` | `module=survive event=pick system=gaoba beacon=1 pod=2 distance=23.1 left=1 carried=1 credits=0` | 1 |
 | `full` | `module=survive event=full system=gaoba beacon=1 carried=6 carry_max=6` | 1 |
 | `pod_lost` | `module=survive event=pod_lost system=gaoba beacon=1 pod=2 left=1` | 1 |
 | `beacon_lost` | `module=survive event=beacon_lost system=gaoba beacon=1 pods=2` | 1 |
-| `hand` | `module=survive event=hand kind=ftu system=gaoba carried=3 pay=7290 help_before=4 help=5 heat_before=1 heat=0 heat_rule=applied prosperity=gaoba:4->5 result=paid` (`heat_rule` applied, cooldown, zero); `... carried=2 pay=3000 result=credits_only reason=deny`; `... carried=2 result=skipped reason=deny` | 1 |
-| `expire` | `module=survive event=expire system=gaoba beacon=1 pods=2 source=1 slaver=0 age=5 reason=ttl` (reason ttl, cap); `module=survive event=expire kind=carried carried=2 credits=900 age=9 reason=carry` | 1 |
+| `hand` | `module=survive event=hand kind=ftu system=gaoba carried=3 pay=7290 help_before=4 help=5 heat_before=1 heat=0 heat_rule=applied prosperity=gaoba:4->5 result=paid` (`heat_rule` applied, cooldown, zero); `... carried=2 pay=3000 result=credits_only reason=deny quest_kept=false` (`quest_kept=true`: a quest crew stays aboard, its credits paid); `... carried=2 result=skipped reason=deny` | 1 |
+| `expire` | `module=survive event=expire system=gaoba beacon=1 pods=2 source=1 slaver=0 age=5 reason=ttl` (reason ttl, cap, fix; `quest`: an ordinary record replaced by a quest record); `module=survive event=expire kind=carried carried=2 credits=900 age=9 reason=carry` | 1 |
 | `slaver_roll` | `module=survive event=slaver_roll system=gaoba beacon=1 tier=2 roll=12 chance=35 leg=40 result=taken` (`result=kept` at level 2) | 1 |
 | `budget_reset` | `module=survive event=budget_reset region=5 leg=40 budget_used=2` | 1 |
 | `enter` | `module=survive event=enter system=gaoba mode=full seed_plan=ok beacon=1 seeded=true pods=2 lines=svseed beacon_count=1` | 1 |
 | `load` | `module=survive event=load system=gaoba beacon=1 pods=2` (gated: `result=skipped reason=gate:quest`; held: `reason=sys_sos` etc.) | 1 |
-| `dump` | `module=survive event=dump beacon_count=1 beacons=gaoba:2/2/0/40/2/0/2430 carried=1 credits=2430 pirate_credits=0 rescued=7 sold=0 lost=2 cooldowns=gaoba:40 region_budget=5:1/2 heat_leg=31 silent=nil rumour=nil seed=1234` | 1 |
+| `dump` | `module=survive event=dump beacon_count=1 beacons=gaoba:2/2/0/40/2/0/2430 carried=1 credits=2430 pirate_credits=0 carried_quest=false rescued=7 sold=0 lost=2 cooldowns=gaoba:40 region_budget=5:1/2 heat_leg=31 silent=nil rumour=nil seed=1234` | 1 |
 | `near` | `module=survive event=near system=gaoba beacon=1 distance=380.2` | 2 |
 | `clear` | `module=survive event=clear system=gaoba deleted_count=3 reason=jump` | 2 |
 | `jump` | `module=survive event=jump system=gaoba deleted_count=3` | 2 |
@@ -807,7 +808,7 @@ Mercenary clans, build steps 1 and 3 (`design/merc-spec.md` 8). `clan` is the cl
 
 ## wq (`trf_wq.script`; `TRF_WqE`, `TRF_WqDE`)
 
-Freight unlock quest "Missing in Capricorn", commit 1 (`design/freight-quest-spec.md` 8). `step` is `TRF.wq.s`, `tries` the voids of step 1 (`n`), `trader_id` and `raid_id` the Kestrel's trader record and her raid, `variant` the mothership variant of the text (`old` hauler, `new` ship).
+Freight unlock quest "Missing in Capricorn", commits 1 and 2 (`design/freight-quest-spec.md` 8). `step` is `TRF.wq.s`, `tries` the voids of step 1 (`n`), `trader_id` and `raid_id` the Kestrel's trader record and her raid, `variant` the mothership variant of the text (`old` hauler, `new` ship).
 
 | Event | Example line | Level |
 |---|---|---|
@@ -824,12 +825,20 @@ Freight unlock quest "Missing in Capricorn", commit 1 (`design/freight-quest-spe
 | `lost` | `module=wq event=lost system=golkonda trader_id=3 raid_id=1 reason=killed_other tries=0` (`killed_player`) | 1 |
 | `void` | `module=wq event=void trader_id=4 reason=no_help tries=1 tries_max=2 leg=18` (`reason=raid, jump, load, entry, step, moved, generator, station, cap_<why>, plan_<why>, spawn, error`, a gate reason) | 1 |
 | `limped` | `module=wq event=limped tries=2 line=true` (`line=false`: the line waits for the next entry) | 1 |
-| `step` | `module=wq event=step step_before=10 step_after=20 reason=rescued` (`lost`, `limped`) | 1 |
+| `step` | `module=wq event=step step_before=10 step_after=20 reason=rescued` (`lost`, `limped`; `20 -> 30 reason=report`, `30 -> 40 handed`, `40 -> 50 fence`, `patrol`) | 1 |
+| `report` | `module=wq event=report system=debris6 result=saved wreck_system=callipso flags=0` (`result=lost`, `limped`; `flags=4`: the pick included debris6) | 1 |
+| `report` | `module=wq event=report system=nk result=none reason=nk` (`off, step, nomap, mission, nk, strict:<why>`) | 2 |
+| `wreck` | `module=wq event=wreck system=golkonda beacon=1 point=portal result=seeded` (`point=contact`); `... system=golkonda pods=0 result=picked`; `... system=golkonda carried=1 result=handed`; `... carried=1 step=40 result=none reason=step` (a quest crew handed in at another step); `... result=none reason=survive:<why>` (the survive seed refused) | 1 |
+| `wreck` | `module=wq event=wreck system=callipso result=none reason=system` (`off, step, nomap, mission, system, record, carry, strict:<why>`) | 2 |
+| `fence` | `module=wq event=fence system=golkonda price=3415 result=shown` (`result=failed reason=box`) | 1 |
+| `fence` | `module=wq event=fence system=golkonda price=3415 result=none reason=poor` (`off, step, nomap, mission, region, strict:<why>, price, poor`) | 2 |
+| `clue` | `module=wq event=clue via=fence system=golkonda cost=3415 result=ok` (`result=poor reason=<short,no_native,...>`, `result=declined`, `result=stale`); `module=wq event=clue via=patrol system=golkonda cost=0 rung=1 result=ok` | 1 |
+| `clue` | `module=wq event=clue via=patrol system=golkonda rung=0 result=none reason=rung` (the clue gate reasons, `rung`) | 2 |
 | `logbook` | `module=wq event=logbook list=mission id=trf_wq step=10 result=added` (`list=job`; `result=removed reason=<step,enter,load,moved>`, `none ... native=<why>`, `failed reason=<why>`) | 1 |
 | `reconcile` | `module=wq event=reconcile id=trf_wq list=mission step=10 result=added reason=accept` (`result=removed`, `failed` when the native refused the add; `reason=enter, load, step`) | 1 |
 | `orphan` | `module=wq event=orphan trader_id=7 result=removed` (load; `result=dropped` for a waiting record) | 1 |
-| `fix` | `module=wq event=fix step=15 result=dropped reason=step` (`reason=type`; `step=80 result=grandfather`) | 1 |
-| `dump` | `module=wq event=dump step=10 flags=0 tries=1 decline_leg=nil void_leg=18 seed=77 live=nil result_kind=nil pending=nil logbook_step=10 event_state=due` (`result=none event_state= grandfather=`) | 1 |
+| `fix` | `module=wq event=fix step=15 result=dropped reason=step` (`reason=type`; `step=80 result=grandfather`; `step=30 wreck_system=golkonda result=picked reason=ws`) | 1 |
+| `dump` | `module=wq event=dump step=10 flags=0 tries=1 decline_leg=nil void_leg=18 seed=77 live=nil result_kind=nil pending=nil logbook_step=10 wreck_system=nil event_state=due` (`result=none event_state= grandfather=`) | 1 |
 
 ## supply (`trf_supply.script`; `TRF_SpE`)
 
