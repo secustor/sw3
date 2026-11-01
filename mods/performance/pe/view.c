@@ -114,11 +114,12 @@ static int vw_build_stub(unsigned char *buf, unsigned va, unsigned fn)
 /* 0 keep, 1 frustum cull, 2 size cull. vis = mesh+0x200 from this frame's frustum test; m11 and h
  * from G (0 when unknown: no size cull). NaN, r = 0 (empty mesh), d <= 0 and r >= keep_r keep. */
 enum { VW_KEEP = 0, VW_FRUSTUM = 1, VW_SIZE = 2 };
+static float vw_px(float d, float r, float m11, int h) { return r * m11 * (float)h / d; }   /* projected diameter in pixels */
 static int vw_rule(int vis, float d, float r, float m11, int h, int frustum, int size, float min_px, float keep_r, float *px)
 {
     if (frustum && vis == 0) return VW_FRUSTUM;
     if (!size || !(r > 0.0f) || !(r < keep_r) || !(d > 0.0f) || h <= 0 || !(m11 > 0.0f)) return VW_KEEP;
-    *px = r * m11 * (float)h / d;
+    *px = vw_px(d, r, m11, h);
     return *px < min_px ? VW_SIZE : VW_KEEP;
 }
 
@@ -165,14 +166,16 @@ static const char *vw_gfx(void)
 static void vw_new_frame(unsigned f)
 {
     LARGE_INTEGER now;
+    int first;
     g_vframe = f;
     g_vln = g_vn; g_vlf = g_vnf; g_vls = g_vns;
     g_vn = g_vnf = g_vns = 0;
     if (g_vlog < 1) return;
     QueryPerformanceCounter(&now);
     if (now.QuadPart < g_vnext.QuadPart) return;
-    if (!g_vnext.QuadPart) { g_vnext.QuadPart = now.QuadPart + 5 * g_vqpf.QuadPart; return; }   /* first frame: no complete frame yet */
+    first = !g_vnext.QuadPart;
     g_vnext.QuadPart = now.QuadPart + 5 * g_vqpf.QuadPart;
+    if (first) return;   /* first frame: no complete frame yet */
     {
         struct vlb b;
         const char *g = vw_gfx();
@@ -195,13 +198,13 @@ static int __cdecl view_cull(const char *m, float d, float r)
     int h = 0, why;
     if (f != g_vframe) vw_new_frame(f);
     g_vn++;
-    if (g_vsz && (g = vw_gfx())) { m11 = *(const float *)(g + 0x1c); h = *(const int *)(g + 0xa4); }   /* live: G is rebuilt on a mode change */
+    if ((g_vsz || g_vlog >= 2) && (g = vw_gfx())) { m11 = *(const float *)(g + 0x1c); h = *(const int *)(g + 0xa4); }   /* live: G is rebuilt on a mode change */
     why = vw_rule(*(const int *)(m + 0x200), d, r, m11, h, g_vfr, g_vsz, g_vmin_px, g_vkeep, &px);
     if (why == VW_KEEP) return 0;
     if (why == VW_FRUSTUM) g_vnf++; else g_vns++;
     if (g_vlog >= 2 && g_vdump < 20) {
         struct vlb b;
-        if (why == VW_FRUSTUM && (g = vw_gfx()) && d > 0.0f) px = r * *(const float *)(g + 0x1c) * (float)*(const int *)(g + 0xa4) / d;
+        if (why == VW_FRUSTUM && m11 > 0.0f && h > 0 && d > 0.0f) px = vw_px(d, r, m11, h);
         v_begin(&b, "cull n="); v_d(&b, ++g_vdump); v_s(&b, why == VW_FRUSTUM ? " why=frustum" : " why=size");
         v_s(&b, " mesh="); v_x(&b, (unsigned)m); v_s(&b, " r="); v_f(&b, r); v_s(&b, " d="); v_f(&b, d);
         v_s(&b, " px="); v_f(&b, px); v_end(&b);
@@ -245,7 +248,7 @@ void view_init(const char *ini)
         v_s(&b, "), not installed"); v_end(&b);
         return;
     }
-    QueryPerformanceFrequency(&g_vqpf);
+    if (!QueryPerformanceFrequency(&g_vqpf) || g_vqpf.QuadPart <= 0) g_vqpf.QuadPart = 10000000;   /* Wine's QPC rate; never a line per frame */
     if (!vw_install(&stub)) { v_begin(&b, "attach failed hook=view error="); v_d(&b, GetLastError()); v_end(&b); return; }
     if (g_vlog) {
         v_begin(&b, "attach ok hook=view patch="); v_x(&b, VW_SITE); v_s(&b, " stub="); v_x(&b, stub);

@@ -16,7 +16,7 @@ Built 2026-11-01 as `[view]` in `mods/performance/pe/view.c` (README "View: frus
   1. **Frustum result discarded** [V]: the pass computes the sphere-vs-frustum test into `+0x200` (0x40c95e), but every in-range branch then overwrites it with 1. So meshes behind the camera are flagged for drawing. Honouring the test removes about 45 % of meshes in the estimate.
   2. **Dummy root meshes** [V data]: every asteroid IMD is a wrapper with a 3-vertex triangle (r = 0.054) that references the real model through `GREF Module:…`. About half of all meshes in a field are these dummies (ND: 500 of 1051). Size-culling them halves the count, if culling a dummy does not hide its child (open question 1).
 - **No data lever** [V]: IMD has no LOD chunk. `TextureDetail`, `minFPSforQ` (auto FSAA/anisotropy only) and the other `[GRAPH]` keys do not limit the mesh pass. DustFX clouds are particles outside `ALLMESHOBJECTS` and are not touched [I].
-- **Main risk**: a parent/child draw dependency or a frustum bug would make whole asteroids or stations disappear (dummy culling, `frustum_cull`). Both are behind ini keys, default off, and get an in-game A/B check.
+- **Main risk**: a parent/child draw dependency or a frustum bug would make whole asteroids or stations disappear (dummy culling, `frustum_cull`). Both are behind ini keys (`frustum_cull` on by default by user decision, `size_cull` off; see the note above) and get an in-game A/B check.
 
 ## 1. Evidence
 

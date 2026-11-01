@@ -88,7 +88,7 @@ The proxy checks the bytes at 14 addresses of `sw3cw.exe` (GOG v1.12) first. If 
 | `frustum_cull` | `1` | skip meshes outside the engine's own frustum test |
 | `size_cull` | `0` | skip meshes smaller than `min_pixels` on screen |
 | `min_pixels` | `2.0` | projected diameter in pixels below which `size_cull` skips a mesh (0.5..16) |
-| `keep_radius` | `10` | world radius from which a mesh is never size-culled |
+| `keep_radius` | `10` | world radius from which a mesh is never size-culled (`0`: no mesh is size-culled) |
 | `log` | `1` | `1`: attach line and one stats line every 5 s; `2`: also the first 20 culled meshes; `0`: only a mismatch or an install failure |
 
 With `frustum_cull=0` and `size_cull=0` the hook only counts meshes and writes the stats line (the A/B baseline); with `log=0` as well, nothing is installed. `install.sh` writes the section with these defaults; `uninstall.sh` removes it. The traffic test install (`mods/traffic/install-test.sh`) takes `VIEW`, `FRUSTUM_CULL`, `SIZE_CULL`, `MIN_PIXELS` and `KEEP_RADIUS` from the environment.
@@ -102,9 +102,9 @@ With `frustum_cull=0` and `size_cull=0` the hook only counts meshes and writes t
 **A/B check** (game closed between installs; same save, same spot, camera still or the game paused):
 1. Baseline: install with `FRUSTUM_CULL=0` (nothing is culled, the stats line still comes), start, load the save in x244, wait 10 s, note `fps=` and `meshes=` from the last `view:` line. Repeat in ND, then Proserpina. `VIEW=0` (no hook at all) is the stricter baseline; it writes no `view:` line, so read the FPS from the Metal HUD (`--hud`) or `gr_showfps`.
 2. Install with `VIEW=1` (the defaults: frustum cull) and repeat. Then `SIZE_CULL=1` (and `MIN_PIXELS=4` for the aggressive setting) and repeat. Compare `fps=` and the `frustum=`/`size=` counts.
-3. Look for meshes that disappear: stations and portals across the map, asteroid fields at their edge, objects at the screen edges while turning the camera.
+3. Look for meshes that disappear: stations and portals across the map, asteroid fields at their edge, objects at the screen edges while turning the camera. With `frustum_cull=1` also check what else reads the flag the cull clears (`+0x200` gates the camera ray tests and the lights loop, `size-cull.md` 1.12): mouse-over and click on near asteroids and ships, the sun glare hidden behind a near asteroid, the target HUD, ships beyond 1000 detected by allies.
 
-**Risk.** A mesh may depend on another mesh's flag to be drawn (a parent and its child). The asteroid models are a small wrapper mesh that references the real model. If an asteroid or a station part disappears or pops at the screen edge, set `size_cull=0` or `frustum_cull=0` and report the spot.
+**Risk.** Neither rule has run in the game yet. A mesh may depend on another mesh's flag to be drawn (a parent and its child). The asteroid models are a small wrapper mesh that references the real model. If an asteroid or a station part disappears or pops at the screen edge, set `size_cull=0` or `frustum_cull=0` and report the spot.
 
 ## Why
 

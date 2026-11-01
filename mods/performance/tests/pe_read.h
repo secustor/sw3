@@ -17,8 +17,8 @@ static const unsigned char *rd_file(unsigned a, unsigned n)
     unsigned i;
     for (i = 0; i < g_nsec; i++) {
         long s = g_sec + 40 * i;
-        unsigned vs = u32(s + 8), va = g_base + u32(s + 12), rs = u32(s + 16), ro = u32(s + 20);
-        if (a >= va && a + n <= va + (vs > rs ? vs : rs) && a + n <= va + rs && (long)(ro + a - va + n) <= g_len)
+        unsigned va = g_base + u32(s + 12), rs = u32(s + 16), ro = u32(s + 20);
+        if (a >= va && a + n <= va + rs && (long)(ro + a - va + n) <= g_len)
             return g_img + ro + (a - va);
     }
     return 0;
