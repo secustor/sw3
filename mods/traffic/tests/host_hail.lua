@@ -923,6 +923,9 @@ function T_HL_D()
 	HOST_Check(p4f > 0 and r4f.hlp == 3 and r4f.hpd == 1 and TRF_HlHelpPaid(id4f) == 1 and TRF_H().hlw[id4f] == nil
 		and S_Logs(n0, "event=help trader_id="..id4f.." pay="..p4f.." credits="..p4f.." ") == 1 and S_Logs(n0, "via=watch result=paid reason=end") == 1,
 		"watch first: paid "..p4f.." (reason end), the paid mark set");
+	-- The raid record's mark (rd.hp) cleared here, so the record mark (r.hpd) alone skips below.
+	HOST_Check(V_Rd(n4f).hp == 1, "the open raid marked too (rd.hp)");
+	V_Rd(n4f).hp = nil;
 	HOST_Fire("f_inside", "TRF_RaidGo("..n4f..",");
 	local hr4f = TRF_H().rd[n4f];
 	HOST_Check(V_Rd(n4f).st == "come" and type(hr4f) == "table", "the raid spawned after the watch paid");
@@ -936,6 +939,47 @@ function T_HL_D()
 		and r4f.res == 1 and S_Logs(n0, "module=raid event=paid raid_id="..n4f.." trader_id="..id4f.." credits=0 help=0 result=skipped reason=hail_paid") == 1
 		and S_Logs(n0, "raid_id="..n4f.." credits="..p4f) == 0 and S_Logs(n0, "event=help trader_id="..id4f.." raid_id="..n4f) == 0,
 		"raid ends with the help counted after the watch paid: skipped (hail_paid), no second pay ("..(h.credits - c4f - p4f)..")");
+	HOST().carc = {};
+	-- The raid mark outlives the prune: the watch pays, the trader docks, 9 more traders are removed (TRF_LivePrune
+	-- drops his gone record), then the raid ends with the help counted: still skipped (hail_paid), one pay.
+	TRF.clock.pz = nil;
+	local id4g, r4g, x4g = HL_Trader("C");
+	HL_NoEscorts(x4g);
+	local n4g = V_Raid(id4g);
+	local l4g = HL_Pirates(id4g, 2, 300);
+	local c4g = h.credits;
+	n0 = S_Mark();
+	HL_Hail(id4g);
+	HOST_DlgPick("a_acc");
+	T_Tick(1, 0.5);
+	tinsert(h.carc, HL_PlNear(l4g[1]));
+	T_Tick(5, 0.5);
+	HL_Kill(9001);
+	HL_Kill(9002);
+	T_Tick(4, 0.5);
+	local p4g = h.credits - c4g;
+	HOST_Check(p4g > 0 and V_Rd(n4g).hp == 1 and S_Logs(n0, "via=watch result=paid reason=end") == 1, "watch paid: the raid marked (rd.hp)");
+	HOST_Fire("f_inside", "TRF_RaidGo("..n4g..",");
+	local hr4g = TRF_H().rd[n4g];
+	TRF_Remove(id4g, "dock");
+	for k = 1, 9 do
+		h.gt = h.gt + 1;
+		local id = T_Spawn();
+		if id then TRF_Remove(id, "test"); end;
+		TRF.live.port = {};
+	end;
+	TRF_LivePrune();
+	HOST_Check(type(hr4g) == "table" and TRF.live.tr[id4g] == nil and TRF_HlHelpPaid(id4g) == nil, "his gone record pruned (9 newer removals)");
+	HOST_Fire("attack", "TRF_OnRaidHit("..n4g..",1,");
+	V_Rd(n4g).hit = 1;
+	for j = 1, getn(hr4g.sh) do
+		hr4g.sh[j].alive = nil;
+		HOST_Fire("died", "TRF_OnRaidDied("..n4g..","..j..",");
+	end;
+	HOST_Check(V_Rd(n4g).st == "end" and V_Rd(n4g).paid == 0 and h.credits - c4g == p4g
+		and S_Logs(n0, "module=raid event=paid raid_id="..n4g.." trader_id="..id4g.." credits=0 help=0 result=skipped reason=hail_paid") == 1
+		and S_Logs(n0, "raid_id="..n4g.." credits="..p4g) == 0,
+		"raid ends after the prune: skipped (hail_paid), no second pay ("..(h.credits - c4g - p4g)..")");
 	HOST().carc = {};
 	-- Accept on a raid, one player hit (ph, not deliberate fire), the raid killed: trf_raid pays help_k x N_eff.
 	local id5, r5, x5, n5 = HL_Raided();

@@ -1029,14 +1029,14 @@ function T_CAP_H()
 	local cap = {};
 	for k = 1, 11 do
 		cap[k] = {nm=24, gen=999, st=6, tp=5, esc=3, noto=3, gr=9, gr_t=-99999, seen=113, due=99999, lj=99999, dj=99999, born=-99999, met=1, last=113,
-			ti=-99999, pv=24, q=3, ql=-99999};
+			ti=-99999, pv=24, q=3, ql=-99999, nw=1};
 	end;
 	local cl = {};
 	for k = 1, 3 do tinsert(cl, {slot=11, gen=999, nm=24, amt=30000, kind=2, leg=-99999}); end;
 	local sz = HOST_SaveSize(cap) + HOST_SaveSize(cl) + HOST_SaveSize({slot=11, to=113, hpb=10, leg=-99999, wn=6, cg=999}) + HOST_SaveSize({lc=99999, vn=11, ow=10000000, oh=2})
 		+ 3 * 8 + strlen("cap") + strlen("claim") + strlen("capch") + strlen("capg") + 22;
 	print("HOST captain worst case bytes "..sz.." (cap "..HOST_SaveSize(cap)..", claim "..HOST_SaveSize(cl)..")");
-	HOST_Check(sz <= 5900, "TRF.cap at 11 records, 3 claims, capch, capg and the prize stamp: "..sz.." bytes <= 5900 (spec 3.3)");
+	HOST_Check(sz <= 6150, "TRF.cap at 11 records, 3 claims, capch, capg and the prize stamp: "..sz.." bytes <= 6150 (spec 3.3)");
 	TRF.cap = cap; TRF.claim = cl;
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF");
 	TRF.cap = nil; TRF.claim = nil;
@@ -1083,9 +1083,16 @@ function T_CAP_I()
 	local rn = TRF_CapName(TRF_RgMap()[s].home);
 	local L = TRF.clock.legs + 1;
 	TRF.news = {}; TRF.newsx = {};
+	-- Fresh records (TRF_CapEnsure, nw) in a chapter 5+ save: the first tick hides the tier-1 ones and posts nothing.
+	for i = 1, TRF_CapN() do TRF.clan[i].sc = 10; end;
+	local n0 = S_Mark();
+	TRF_Cap_RegionTick(L - 1);
+	HOST_Check(CP_R(s).st == 3 and CP_R(s).nw == nil and S_Logs(n0, "module=captain event=hide ") == TRF_CapN()
+		and S_Logs(n0, "event=news ") == 0 and CP_News(s) == nil, "fresh records: hidden at T1, no bulletin");
+	for i = 1, TRF_CapN() do TRF.clan[i].sc = 60; CP_R(i).st = 1; end;
 	-- Tier drop: hiding, cap/hide for this region only; the bulletin names the clan, the captain and the home.
 	TRF.clan[s].sc = 10;
-	local n0 = S_Mark();
+	n0 = S_Mark();
 	TRF_Cap_RegionTick(L);
 	local e = CP_News(s);
 	HOST_Check(CP_R(s).st == 3 and e and e.v == "hide" and e.n == 1 and S_Logs(n0, "module=captain event=news ") == 1
@@ -1121,6 +1128,28 @@ function T_CAP_I()
 	TRF_Cap_RegionTick(L + 4);
 	HOST_Check(CP_R(s).st == 1 and CP_News(s) and CP_News(s).v == "out" and S_Logs(n0, "variant=out region="..rn.." result=posted") == 1,
 		"recovering -> active at T2: cap/out");
+	-- A wake while lying low (lj, the third escape) posts nothing; the first tick past lj posts cap/out, once.
+	TRF.newsx[s].cap = nil;
+	CP_R(s).st = 2; CP_R(s).due = TRF_Jumps(); CP_R(s).lj = TRF_Jumps() + 1;
+	n0 = S_Mark();
+	TRF_Cap_RegionTick(L + 4);
+	HOST_Check(CP_R(s).st == 1 and CP_News(s) == nil and S_Logs(n0, "variant=out") == 0, "wake while lying low: no cap/out");
+	TRF.clock.j = TRF_Jumps() + 1;
+	n0 = S_Mark();
+	TRF_Cap_RegionTick(L + 4);
+	HOST_Check(CP_R(s).lj == 0 and CP_News(s) and CP_News(s).v == "out" and S_Logs(n0, "variant=out region="..rn.." result=posted") == 1,
+		"the first tick past the lie-low: cap/out");
+	n0 = S_Mark();
+	TRF_Cap_RegionTick(L + 4);
+	HOST_Check(S_Logs(n0, "variant=out") == 0, "lie-low end posted once");
+	-- A wake inside the map-wide claim gap posts nothing.
+	TRF.newsx[s].cap = nil;
+	CP_R(s).st = 2; CP_R(s).due = TRF_Jumps();
+	TRF_CapG().lc = TRF_Jumps();
+	n0 = S_Mark();
+	TRF_Cap_RegionTick(L + 4);
+	HOST_Check(CP_R(s).st == 1 and CP_News(s) == nil and S_Logs(n0, "variant=out") == 0, "wake inside the claim gap: no cap/out");
+	TRF.capg.lc = nil;
 	TRF.newsx[s].cap = nil;
 	CP_R(s).st = 2; CP_R(s).due = TRF_Jumps();
 	TRF.clan[s].sc = 10;

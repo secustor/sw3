@@ -639,8 +639,10 @@ function TRF_HlHelpSettle(id, pay, why)
 		TRF_N("AddPlayerCredits", n);
 	end;
 	if n > 0 then TRF_N("TRF_PrizeMark", "hail"); end;
-	-- Paid mark (also on a gone record, TRF_GoneKeep): a raid of this trader that ends later pays no second time.
+	-- Paid mark (also on a gone record, TRF_GoneKeep): a raid of this trader that ends later pays no second time. The
+	-- open raid record gets it too (rd.hp), since TRF_LivePrune can drop the gone record before the raid ends.
 	r.hpd = 1;
+	TRF_N("TRF_Rd_HailPaid", id);
 	local d = 1;
 	if TRF_HlRecovery() then d = 2; end;
 	if type(TRF_AddHelp) == "function" then TRF_HlP(TRF_AddHelp, {d, "hail help"}); end;

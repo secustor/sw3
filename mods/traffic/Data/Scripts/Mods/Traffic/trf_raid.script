@@ -1580,6 +1580,21 @@ function TRF_Rd_GoneBody(n, g)
 	TRF_Rd_End(n, "left");
 end;
 
+-- Combat hail (design/hail-spec.md 5.4): the help watch of trader id paid; every open raid on him is marked rd.hp, read
+-- by TRF_Rd_Pay even after TRF_LivePrune dropped his gone record. Returns the number marked.
+function TRF_Rd_HailPaid(id)
+	local L = TRF_Rd_Live();
+	if not L or id == nil then return 0; end;
+	local c = 0;
+	for n, rd in L.rd do
+		if type(rd) == "table" and rd.id == id and rd.st ~= "end" then
+			rd.hp = 1;
+			c = c + 1;
+		end;
+	end;
+	return c;
+end;
+
 -- Raid-help pay (5.5): the trader was not killed, help counted, not paid yet. After an accepted help offer of the
 -- combat hail (trf_hail, r.hlp 2, design/hail-spec.md 5.3) any player fire on the raid (ph) counts. Pay help_k (tune
 -- of trf_hail, default 0.5) x N_eff.
@@ -1588,13 +1603,15 @@ function TRF_Rd_Pay(n, rd)
 	local L = TRF_Rd_Live();
 	local r = nil;
 	if L and rd.id ~= nil then r = L.tr[rd.id]; end;
-	if type(r) ~= "table" or r.why == "kill" then return; end;
-	if rd.hit ~= 1 and not (r.hlp == 2 and rd.ph == 1) then return; end;
-	-- Combat hail (design/hail-spec.md 5.4): the help watch of this trader already paid; no second pay, no help, heat
-	-- or pro credit, no resolvers.
-	if TRF_N("TRF_HlHelpPaid", rd.id) == 1 then
+	if type(r) == "table" and r.why == "kill" then return; end;
+	-- Without the trader record only the hail-paid mark of the raid (rd.hp) leads on, to the skip below.
+	if type(r) ~= "table" and rd.hp ~= 1 then return; end;
+	if rd.hit ~= 1 and not (type(r) == "table" and r.hlp == 2 and rd.ph == 1) then return; end;
+	-- Combat hail (design/hail-spec.md 5.4): the help watch of this trader already paid (rd.hp first, then the record
+	-- mark); no second pay, no help, heat or pro credit, no resolvers.
+	if rd.hp == 1 or TRF_N("TRF_HlHelpPaid", rd.id) == 1 then
 		rd.paid = 0;
-		if r.st ~= "gone" then r.res = 1; end;
+		if type(r) == "table" and r.st ~= "gone" then r.res = 1; end;
 		TRF_RdE("paid", "raid_id", n, "trader_id", rd.id, "credits", 0, "help", 0, "result", "skipped", "reason", "hail_paid");
 		return;
 	end;

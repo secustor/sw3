@@ -499,14 +499,15 @@ function TRF_CapNew(slot, nm, gen, legs, d)
 		born=legs, met=0, last=0};
 end;
 
--- Records of every region slot (design 6: initialised with the clans), created once; names 1..n in slot order.
+-- Records of every region slot (design 6: initialised with the clans), created once; names 1..n in slot order. nw 1
+-- until the first region tick, which posts no cap/hide for them (captain-spec 5.2: no bulletin burst).
 function TRF_CapEnsure()
 	if type(TRF) ~= "table" or type(TRF.cap) == "table" then return; end;
 	local n = TRF_CapN();
 	if n <= 0 then return; end;
 	TRF.cap = {};
 	local legs = TRF_CapLegs();
-	for s = 1, n do TRF.cap[s] = TRF_CapNew(s, s, 1, legs, 0); end;
+	for s = 1, n do TRF.cap[s] = TRF_CapNew(s, s, 1, legs, 0); TRF.cap[s].nw = 1; end;
 	TRF_CapE("init", "record_count", n);
 end;
 
@@ -523,11 +524,16 @@ function TRF_CapExcl(idx)
 end;
 
 -- Recovering record back to active once the return jump stamp passed. With slot: the bulletin cap/out when the region
--- is at tier 2+ (at tier 1 the region tick hides him at once and posts cap/hide).
+-- is at tier 2+ (at tier 1 the region tick hides him at once and posts cap/hide) and he is not lying low (TRF_CapLow:
+-- the region tick posts it when lj ends; none after the claim gap). A post clears the passed lj, so the tick does not
+-- post again.
 function TRF_CapWake(r, slot)
 	if r.st == 2 and TRF_CapJ() >= r.due then
 		r.st = 1;
-		if slot and TRF_CapRgTier(slot) >= 2 then TRF_CapNews(slot, "out"); end;
+		if slot and TRF_CapRgTier(slot) >= 2 and not TRF_CapLow(r) then
+			r.lj = 0;
+			TRF_CapNews(slot, "out");
+		end;
 		return 1;
 	end;
 	return nil;
@@ -1754,16 +1760,25 @@ function TRF_Cap_RegionTick(L)
 				or cv.st == "leave" or cv.st == "chase" or cv.st == "wait" or cv.st == "cwait");
 			if not live then
 				local tier = TRF_CapRgTier(s);
+				-- A record of TRF_CapEnsure (nw) posts no cap/hide at its first tick.
+				local nw = r.nw;
+				r.nw = nil;
+				-- The first tick past the lie-low (lj, cleared here): cap/out for an active captain at tier 2+ outside
+				-- the claim gap (his wake during the lie-low posted nothing).
+				if (r.lj or 0) > 0 and J >= r.lj then
+					r.lj = 0;
+					if r.st == 1 and tier >= 2 and not TRF_CapLow(r) then TRF_CapNews(s, "out"); end;
+				end;
 				TRF_CapWake(r, s);
 				if r.st == 1 and tier <= 1 then
 					r.st = 3;
 					TRF_CapE("hide", "slot", s, "tier", tier, "result", "hiding");
-					TRF_CapNews(s, "hide");
+					if nw ~= 1 then TRF_CapNews(s, "hide"); end;
 				elseif r.st == 3 and tier >= 2 then
 					r.st = 1;
 					r.seen = TRF_CapHome(s) or r.seen;
 					TRF_CapE("hide", "slot", s, "tier", tier, "result", "active");
-					TRF_CapNews(s, "out");
+					if not TRF_CapLow(r) then TRF_CapNews(s, "out"); end;
 				elseif r.st == 1 and not (type(r.ti) == "number" and L - r.ti <= K.tip_legs) and TRF_CapRoll(s, L, r.gen) < 50 then
 					-- A sold tip pins seen until it expires (the informant names the system of his next run).
 					TRF_CapMove(s, r, L);
@@ -2073,6 +2088,7 @@ function TRF_Cap_Fix()
 			if TRF_CapNum(e.ti, -99999, legs) then r.ti = floor(e.ti); end;
 			if TRF_CapNum(e.pv, 1, K.nm_n) then r.pv = floor(e.pv); end;
 			if TRF_CapNum(e.q, 1, 3) then r.q = floor(e.q); end;
+			if e.nw == 1 then r.nw = 1; end;
 			if r.q and r.q >= 2 then r.ql = TRF_CapFld(e, "ql", -99999, legs, legs); end;
 			out[s] = r;
 		end;
