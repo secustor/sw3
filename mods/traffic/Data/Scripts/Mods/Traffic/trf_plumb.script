@@ -553,6 +553,14 @@ function TRF_PlDockBody(kind, oname, args)
 	return "go";
 end;
 
+-- Box title of dock kind: the spec's title, else the kind's window caption, else the generic confirm caption.
+function TRF_PlTitle(kind, title)
+	if type(title) == "string" then return title; end;
+	local ki = TRF_PlKinds()[kind];
+	if type(ki) == "table" and type(ki.t) == "string" then return ki.t; end;
+	return "#UI_StationC_confirm";
+end;
+
 function TRF_PlShowRaw(title, text)
 	ShowMsgBox(title, text, TRF_PlBoxOk, TRF_PlBoxNo);
 	return 1;
@@ -564,12 +572,7 @@ function TRF_PlShow(kind, oname, args, s)
 	local p = %P;
 	local own = "dock_"..kind;
 	if type(ShowMsgBox) ~= "function" or not TRF_BoxTake(own) then TRF_PlCall(s.fail, {s.a}); return nil; end;
-	local title = s.title;
-	if type(title) ~= "string" then
-		local ki = TRF_PlKinds()[kind];
-		title = "#UI_StationC_confirm";
-		if type(ki) == "table" and type(ki.t) == "string" then title = ki.t; end;
-	end;
+	local title = TRF_PlTitle(kind, s.title);
 	local bx = {k=kind, o=oname, args=args, s=s, g=TRF.gen};
 	p.box = bx;
 	-- The open box also lives in a function global (survives ClearGlobals), so an answer after a
@@ -730,6 +733,13 @@ function TRF_JbSet()
 	return nil;
 end;
 
+-- An optional row field for the native: a string or nil as given, another value as its string (the native refuses other
+-- types, which would drop the whole board).
+function TRF_PlJbStr(v)
+	if v == nil or type(v) == "string" then return v; end;
+	return tostring(v);
+end;
+
 -- Board of the dock body (after the lines, before the boxes): the rows of kind trade (TRF_JobRow, at most jb_max) into
 -- TRF_JobBoard, armed for the vanilla TradeStationDlg that follows; every other kind clears the board. A refused native
 -- logs jobs_fallback and leaves P.jb nil (the box candidates run as at step 1).
@@ -744,7 +754,8 @@ function TRF_PlJbDock(kind, a1)
 		local r = TRF_PlCall(l[i].f, {kind, a1});
 		if type(r) == "table" and type(r.id) == "string" and type(r.header) == "string" and type(r.text) == "string" then
 			tinsert(rows, r);
-			tinsert(t, {id=r.id, header=r.header, text=r.text, cost=r.cost, short=r.short, title=r.title});
+			tinsert(t, {id=r.id, header=r.header, text=r.text, cost=TRF_PlJbStr(r.cost), short=TRF_PlJbStr(r.short),
+				title=TRF_PlJbStr(r.title)});
 		end;
 	end;
 	local n = getn(rows);
@@ -793,7 +804,7 @@ function TRF_PlTsd(args)
 			TRF_N("SetTraderFlag", FALSE);
 			TRF_PlE("jobs_board", "kind", jb.k, "row_count", getn(jb.rows), "result", "armed", "trader_flag", "false");
 		end;
-	elseif TRF_JbBoard() then
+	else
 		TRF_PlJbClear("dialog");
 	end;
 end;
@@ -822,7 +833,8 @@ function TRF_PlJbReplyOk() end;
 -- An event of a board card (TRF_OnJobCard): nil when id is no row of this docking's board (the step 1 card path runs).
 -- "open" runs the row's shown(a, "board"); "ok" ok(a), "cancel" and "esc" no(a), once per row; a string reply opens as a
 -- box over the Office window (as the vanilla Recruits_ShowNoCashDlg), then TRF_JobBoardMark(id, jbtaken or jbgone, 1):
--- jbtaken after OK when the row's took(a) answers 1 (no took: always). Another generation or a second answer: stale.
+-- jbtaken after OK when the row's took(a) answers 1 (no took: always). Another generation, or any event of an answered row
+-- (a second answer; a card opened again when the mark left the row open): stale.
 function TRF_PlJbEvent(id, ev)
 	local jb = %P.jb;
 	local r = nil;
@@ -831,7 +843,7 @@ function TRF_PlJbEvent(id, ev)
 		if jb.rows[i].id == id then r = jb.rows[i]; break; end;
 	end;
 	if not r then return nil; end;
-	if type(TRF) ~= "table" or jb.g ~= TRF.gen or (r.done == 1 and ev ~= "open") then
+	if type(TRF) ~= "table" or jb.g ~= TRF.gen or r.done == 1 then
 		TRF_PlE("jobs_card", "id", id, "card_event", tostring(ev), "result", "stale", "via", "board");
 		if r.done ~= 1 then r.done = 1; TRF_PlJbMark(id, "jbgone"); end;
 		return 1;
@@ -851,9 +863,7 @@ function TRF_PlJbEvent(id, ev)
 	local mk = "jbgone";
 	if a == 1 and (r.took == nil or TRF_PlCall(r.took, {r.a}) == 1) then mk = "jbtaken"; end;
 	if type(v) == "string" and type(ShowMsgBox) == "function" then
-		local title = r.title;
-		if type(title) ~= "string" then title = "#UI_StationC_confirm"; end;
-		call(ShowMsgBox, {title, v, TRF_PlJbReplyOk}, "x", TRF_PlErr);
+		call(ShowMsgBox, {TRF_PlTitle(jb.k, r.title), v, TRF_PlJbReplyOk}, "x", TRF_PlErr);
 	end;
 	TRF_PlJbMark(id, mk);
 	TRF_PlE("jobs_card", "id", id, "card_event", ev, "result", "ok", "reply", v, "via", "board", "mark", mk);

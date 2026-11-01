@@ -115,6 +115,8 @@ static void tb_q(struct tb *b, const char *s, int lim, int sep)
 static void tb_begin(struct tb *b, const char *s) { b->n = 0; tb_s(b, "traffic: "); tb_s(b, s); }
 static void tb_end(struct tb *b) { b->s[b->n] = 0; sw3tp_log(b->s); }
 static void tlog(const char *s) { struct tb b; tb_begin(&b, s); tb_end(&b); }
+static void str_cpy(char *d, const char *s, int lim) { int i = 0; if (s) for (; s[i] && i < lim; i++) d[i] = s[i]; d[i] = 0; }
+static int str_same(const char *a, const char *b) { while (*a && *a == *b) { a++; b++; } return *a == *b; }
 
 static double real_sec(void)
 {
@@ -519,7 +521,10 @@ static const struct trf_msig g_jsig[] = {
     { 0x58ae60, 14, { 0x8b,0x7c,0x24,0x0c,0x8b,0x8c,0x24,0xb8,0x00,0x00,0x00,0x8b,0x77,0x38 }, "recruit fill: ecx = text, esi" },
     { 0x554ae0, 8, { 0x83,0x3d,0x10,0xa6,0x7b,0x00,0x00,0x56 }, "Hide 0x554ae0" },
     { 0x554b72, 3, { 0xc2,0x04,0x00 }, "Hide ret 4" },
-    /* step 2 (the first JSIG1_N entries are step 1; a mismatch below only turns the board off) */
+};
+#define JSIG_N (sizeof(g_jsig) / sizeof(g_jsig[0]))
+/* step 2, the Office board: a mismatch here only turns the board off */
+static const struct trf_msig g_jsig2[] = {
     { 0x730028, 4, { 0x40,0x84,0x58,0x00 }, "T9 Office Create slot 0x730028 = 0x588440" },
     { 0x587e61, 5, { 0xbe,0x0a,0x00,0x00,0x00 }, "Office ctor id 0xa" },
     { 0x587e7b, 7, { 0xc7,0x45,0x00,0xa0,0xff,0x72,0x00 }, "Office ctor vtable 0x72ffa0" },
@@ -557,8 +562,7 @@ static const struct trf_msig g_jsig[] = {
       0x7c,0x70,0x4e,0x58,0x00 }, "button vt+0x34 disable / vt+0x30 enable (Office tab)" },
     { 0x588b22, 7, { 0x8b,0x45,0x08,0x83,0x40,0x2c,0x01 }, "news card counter +0x2c (vanilla index range)" },
 };
-#define JSIG_N (sizeof(g_jsig) / sizeof(g_jsig[0]))
-#define JSIG1_N 33u   /* step 1 entries */
+#define JSIG2_N (sizeof(g_jsig2) / sizeof(g_jsig2[0]))
 #define JC_T7A 0x54098fu
 #define JC_T7B 0x5409a8u
 #define JC_T8  0x72a600u
@@ -639,8 +643,7 @@ static void jq_push(const char *id, const char *ev)
         for (i = 1; i < JQ_N; i++) g_jq[i - 1] = g_jq[i];
         g_jq_n--;
     }
-    for (i = 0; id[i] && i < JC_IDLEN; i++) g_jq[g_jq_n].id[i] = id[i];
-    g_jq[g_jq_n].id[i] = 0;
+    str_cpy(g_jq[g_jq_n].id, id, JC_IDLEN);
     g_jq[g_jq_n].ev = ev;
     g_jq_n++;
 }
@@ -714,7 +717,7 @@ static int jc_idok(const char *id)                    /* 1..31 characters [A-Za-
 static const char *jc_open(const char *id, const char *hd, const char *cost, const char *text, const char *title, int via)
 {
     unsigned st, w, c;
-    int i, f, nf = 0;
+    int f, nf = 0;
     struct tb b;
     if (!g_movie_ok || (ui_state() & (UI_MOVIE | UI_DIALOG))) return "ui";
     rd_reset();
@@ -727,8 +730,7 @@ static const char *jc_open(const char *id, const char *hd, const char *cost, con
         tb_begin(&b, "module=dll event=jobs_card action=push_failed top="); tb_x(&b, w); tb_end(&b);
         return "push";
     }
-    for (i = 0; id[i]; i++) g_jc_id[i] = id[i];
-    g_jc_id[i] = 0;
+    str_cpy(g_jc_id, id, JC_IDLEN);
     g_jc_open = 1; g_jc_ans = 0; g_jc_hid = 0; g_jc_n++;
     f = jc_set(grd(w, 0x2c), hd); nf += f;
     if (cost && cost[0]) nf += 2 * jc_set(grd(w, 0x30), cost);
@@ -799,9 +801,6 @@ static unsigned g_jb_win, g_jb_ctl[JB_N], g_jb_sets, g_jb_builds;
 static int (__thiscall *const eng_office_create)(unsigned) = API(0x588440);
 static void *(__stdcall *const eng_str_ctor)(void *, const char *) = API(0x40a890);
 static void (__thiscall *const eng_str_inner_dtor)(void *) = API(0x404a90);
-
-static void jb_cpy(char *d, const char *s, int lim) { int i = 0; if (s) for (; s[i] && i < lim; i++) d[i] = s[i]; d[i] = 0; }
-static int jb_same(const char *a, const char *b) { while (*a && *a == *b) { a++; b++; } return *a == *b; }
 
 /* 0x46f820: a copy of section tmpl (with its children) of the cached Office scr inside parent, named name; 0 on failure */
 static unsigned eng_build(unsigned parent, const char *name, const char *tmpl)
@@ -883,7 +882,7 @@ static void __cdecl trf_job_click(unsigned w, unsigned btn)
 static void jb_build(unsigned self)
 {
     unsigned gui, pm = 0, nt = 0, ns, sc, tab = 0, c;
-    int i, nf, nc = 0, ncl = 0;
+    int i, nf, nc = 0, ncl = 0, tc = 0;
     char nm[24];
     struct tb b;
     rd_reset();
@@ -902,34 +901,35 @@ static void jb_build(unsigned self)
         if (pm && nt && ns && (tab = eng_build(pm, "pTrfTabJobs", "pPanelRecruitsSecond")))
             sc = eng_build(pm, "pTrfScrollJobs", "pScrollPanelNews");
         rd_reset();
-        if (!tab || !sc) { tb_s(&b, " result=tab_failed"); tb_end(&b); return; }
+        if (!tab || !sc) { if (tab) eng_show(tab, 0); tb_s(&b, " result=tab_failed"); tb_end(&b); return; }   /* no orphan tab */
     }
     if (!sc) { tb_s(&b, " result=noscroll"); tb_end(&b); return; }
     g_jb_builds++;
     for (i = 0; i < g_jb_n; i++) {
         struct tb nb;
         nb.n = 0; tb_s(&nb, "pTrfJobCard_"); tb_i(&nb, i); nb.s[nb.n] = 0;
-        jb_cpy(nm, nb.s, (int)sizeof(nm) - 1);
+        str_cpy(nm, nb.s, (int)sizeof(nm) - 1);
         c = eng_build(sc, nm, "pPanelElementNews");
         rd_reset();
         g_jb_ctl[i] = c;
         if (!c) continue;
         *(unsigned *)(c + 0x7c) = (unsigned)trf_job_click;
         *(unsigned *)(c + 0x54) = JB_IDX0 + (unsigned)i;
-        nf = jb_text(c, "pTextHeaderNews", g_jb[i].hd) + 2 * jb_text(c, "pTextNews", g_jb[i].sh);
+        nf = jb_text(c, "pTextHeaderNews", g_jb[i].hd) + (g_jb[i].sh[0] ? 2 : 0) * jb_text(c, "pTextNews", g_jb[i].sh);
         if (g_jb[i].closed) { eng_vcall0(c, 0x34); ncl++; }
         nc++;
         if (!i) { tb_s(&b, " fields="); tb_i(&b, nf); }
     }
     if (tab) {
-        jc_set(tab, g_jb_tab);
+        tc = jc_set(tab, g_jb_tab);
         *(unsigned *)(tab + 0x7c) = (unsigned)trf_tab_jobs;
         *(unsigned *)(nt + 0x7c) = (unsigned)trf_tab_news;
     }
     g_jb_win = self;
     if (tab) jb_view(gui, 1);
     tb_s(&b, " cards="); tb_i(&b, nc); tb_s(&b, " closed="); tb_i(&b, ncl); tb_s(&b, " mode="); tb_i(&b, g_jb_mode);
-    tb_s(&b, tab ? " tab=1" : " tab=0"); tb_s(&b, " builds="); tb_u(&b, g_jb_builds); tb_end(&b);
+    tb_s(&b, tab ? " tab=1" : " tab=0"); if (tab) { tb_s(&b, " caption="); tb_i(&b, tc); }
+    tb_s(&b, " builds="); tb_u(&b, g_jb_builds); tb_end(&b);
 }
 
 static int __thiscall trf_office_create(unsigned self)   /* T9 */
@@ -954,7 +954,7 @@ static int jb_field(lua_State *L, int i, const char *k, int lim, char *d, int ne
     lua_rawget(L, -2);
     t = lua_type(L, -1);
     if (t == T_STRING) { s = lua_tostring(L, -1); for (; s && s[n]; n++) if (n >= lim) { lua_settop(L, 1); return 0; } }
-    if (d) jb_cpy(d, s, lim);
+    if (d) str_cpy(d, s, lim);
     if (need == 2 && !jc_idok(s)) { lua_settop(L, 1); return 0; }
     lua_settop(L, 1);
     return t == T_STRING || (t == T_NIL && !need);
@@ -985,11 +985,12 @@ static int __cdecl n_jobboard(lua_State *L)
     if (t != T_STRING && t != T_NIL) return cs_fail(L, "arg");
     for (i = 1; i <= n; i++) {                    /* check every row first: a refused call keeps the old board */
         if (!jb_row(L, i, 0) || !jb_field(L, i, "id", JC_IDLEN, ids[i - 1], 2)) return cs_fail(L, "arg");
-        for (k = 0; k < i - 1; k++) if (jb_same(ids[k], ids[i - 1])) return cs_fail(L, "arg");
+        for (k = 0; k < i - 1; k++) if (str_same(ids[k], ids[i - 1])) return cs_fail(L, "arg");
     }
     for (i = 0; i < n; i++) { jb_row(L, i + 1, &g_jb[i]); g_jb[i].closed = 0; }
-    if (t == T_STRING) { lua_pushstring(L, "tab"); lua_rawget(L, 1); jb_cpy(g_jb_tab, lua_tostring(L, -1), JB_TABLEN); lua_settop(L, 1); }
+    if (t == T_STRING) { lua_pushstring(L, "tab"); lua_rawget(L, 1); str_cpy(g_jb_tab, lua_tostring(L, -1), JB_TABLEN); lua_settop(L, 1); }
     g_jb_n = n;
+    g_jb_win = 0;                                 /* cards of an open Office window show the old rows: no mark reaches them */
     g_jb_sets++;
     tb_begin(&b, "module=dll event=jobs_board action=set rows="); tb_i(&b, n); tb_s(&b, " sets="); tb_u(&b, g_jb_sets); tb_end(&b);
     lua_pushnumber(L, (double)n);
@@ -1011,9 +1012,9 @@ static int __cdecl n_jobboardmark(lua_State *L)
         for (i = 0; hd[i]; i++) if (i >= JC_LEN) return cs_fail(L, "arg");
     }
     closed = lua_gettop(L) >= 3 && lua_type(L, 3) == T_NUMBER && lua_tonumber(L, 3) == 1.0;
-    for (i = 0; i < g_jb_n; i++) if (jb_same(g_jb[i].id, id)) break;
+    for (i = 0; i < g_jb_n; i++) if (str_same(g_jb[i].id, id)) break;
     if (i == g_jb_n) return cs_fail(L, "none");
-    if (hd) jb_cpy(g_jb[i].hd, hd, JC_LEN);
+    if (hd) str_cpy(g_jb[i].hd, hd, JC_LEN);
     if (closed) g_jb[i].closed = 1;
     rd_reset();
     if (g_jb_win && g_jb_ctl[i] && jb_onstack(g_jb_win) && grd(g_jb_ctl[i], 0x54) == JB_IDX0 + (unsigned)i) {
@@ -1161,12 +1162,11 @@ static int g_pend_on, g_pend_fi = -1;
 static unsigned g_tf_fires, g_tf_sp, g_tf_spres;  /* this frame: fires, ScriptParam calls, nresults of the last */
 static char g_tf_c[3][TS_LEN], g_tf_a[3][TS_LEN], g_tf_spn[TS_LEN];
 
-static void ts_cpy(char *d, const char *s) { int i = 0; if (s) for (; s[i] && i < TS_LEN - 1; i++) d[i] = s[i]; d[i] = 0; }
-static int ts_same(const char *a, const char *b) { while (*a && *a == *b) { a++; b++; } return *a == *b; }
+static void ts_cpy(char *d, const char *s) { str_cpy(d, s, TS_LEN - 1); }
 static void ts_add(struct ts_ent *t, unsigned cap, unsigned *k, unsigned *other, const char *c, const char *a)
 {
     unsigned i;
-    for (i = 0; i < *k; i++) if (ts_same(t[i].c, c) && ts_same(t[i].a, a)) { t[i].n++; return; }
+    for (i = 0; i < *k; i++) if (str_same(t[i].c, c) && str_same(t[i].a, a)) { t[i].n++; return; }
     if (*k < cap) { ts_cpy(t[*k].c, c); ts_cpy(t[*k].a, a); t[*k].n = 1; (*k)++; } else (*other)++;
 }
 static void ts_flush(void) { if (g_pend_on) { ts_add(g_ts, TS_N, &g_ts_k, &g_ts_other, g_pend, ""); g_pend_on = 0; } g_pend_fi = -1; }
@@ -1636,12 +1636,12 @@ void trf_init(const char *ini)
         }
         tb_begin(&b, "carcasses on="); tb_i(&b, g_cs_on); tb_s(&b, g_cs_ok ? " sig=ok sigs=" : " sig=bad sigs=");
         tb_u(&b, (unsigned)CSIG_N); tb_end(&b);
-        if ((bad = sig_verify(g_jsig, JSIG1_N, &e))) {
+        if ((bad = sig_verify(g_jsig, JSIG_N, &e))) {
             tb_begin(&b, "module=dll event=jobs_sig_mismatch what=\""); tb_q(&b, g_jsig[e].what, 400, 0); tb_s(&b, "\" at=");
             tb_x(&b, bad); tb_end(&b);
         } else g_jc_ok = 1;
-        if ((bad = sig_verify(g_jsig + JSIG1_N, JSIG_N - JSIG1_N, &e))) {   /* step 2: a mismatch turns only the board off */
-            tb_begin(&b, "module=dll event=jobs_sig_mismatch what=\""); tb_q(&b, g_jsig[JSIG1_N + e].what, 400, 0);
+        if ((bad = sig_verify(g_jsig2, JSIG2_N, &e))) {   /* step 2: a mismatch turns only the board off */
+            tb_begin(&b, "module=dll event=jobs_sig_mismatch what=\""); tb_q(&b, g_jsig2[e].what, 400, 0);
             tb_s(&b, "\" at="); tb_x(&b, bad); tb_end(&b);
         } else g_jb_ok = 1;
         if (g_jc_on && g_jc_ok && g_site_on[S_T4])   /* T7a, T7b handler immediates, T8 Hide slot (spec 4.3); the card needs T4
@@ -1651,9 +1651,9 @@ void trf_init(const char *ini)
         if (g_jb_on && g_jb_ok && g_jc_patched)       /* T9 Office Create slot (spec 4.3); the board opens the step 1 card */
             g_jb_patched = patch_dword(OF_SLOT, (unsigned)trf_office_create);
         tb_begin(&b, "module=dll event=jobs_init card="); tb_i(&b, g_jc_on); tb_s(&b, g_jc_ok ? " sig=ok" : " sig=bad");
-        tb_s(&b, " sigs="); tb_u(&b, JSIG1_N); tb_s(&b, " patched="); tb_i(&b, g_jc_patched);
+        tb_s(&b, " sigs="); tb_u(&b, (unsigned)JSIG_N); tb_s(&b, " patched="); tb_i(&b, g_jc_patched);
         tb_s(&b, " board="); tb_i(&b, g_jb_on); tb_s(&b, " mode="); tb_i(&b, g_jb_mode); tb_s(&b, g_jb_ok ? " board_sig=ok" : " board_sig=bad");
-        tb_s(&b, " board_sigs="); tb_u(&b, (unsigned)JSIG_N - JSIG1_N); tb_s(&b, " board_patched="); tb_i(&b, g_jb_patched);
+        tb_s(&b, " board_sigs="); tb_u(&b, (unsigned)JSIG2_N); tb_s(&b, " board_patched="); tb_i(&b, g_jb_patched);
         tb_s(&b, " log=0"); tb_end(&b);
     }
     if (!(g_page = build_page())) { tlog("disabled, stub page failed"); return; }
