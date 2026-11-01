@@ -639,6 +639,8 @@ function TRF_HlHelpSettle(id, pay, why)
 		TRF_N("AddPlayerCredits", n);
 	end;
 	if n > 0 then TRF_N("TRF_PrizeMark", "hail"); end;
+	-- Paid mark (also on a gone record, TRF_GoneKeep): a raid of this trader that ends later pays no second time.
+	r.hpd = 1;
 	local d = 1;
 	if TRF_HlRecovery() then d = 2; end;
 	if type(TRF_AddHelp) == "function" then TRF_HlP(TRF_AddHelp, {d, "hail help"}); end;
@@ -677,6 +679,14 @@ function TRF_HlHelpEnd(id, n, paid, how)
 		TRF_HlE("help", "trader_id", id, "raid_id", n, "via", "raid", "result", "unpaid", "reason", how);
 	end;
 	return 1;
+end;
+
+-- 1 when the help watch of trader id already paid (r.hpd, also on a gone record): trf_raid's TRF_Rd_Pay skips the
+-- raid-help pay of a raid on it that ends later.
+function TRF_HlHelpPaid(id)
+	local r = TRF_HlRecAny(id);
+	if r and r.hpd == 1 then return 1; end;
+	return nil;
 end;
 
 function TRF_HlTradeWar()

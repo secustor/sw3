@@ -658,6 +658,8 @@ function T_HL_C()
 	HOST_Check(TRF_H().hlw[id4d] == nil and h.credits - c0 == p and HL_Said(s0, m0, "FTU "..nm4d..": They're gone. "..p.." cr transferred.")
 		and S_Logs(n0, "event=help trader_id="..id4d.." pay="..p.." credits="..p.." kill_count=0 engaged=true help=1 via=watch result=paid reason=left") == 1,
 		"engaged, the trader docks mid-watch: paid "..(h.credits - c0));
+	TRF_LivePrune();
+	HOST_Check(TRF.live.tr[id4d].hpd == 1 and TRF_HlHelpPaid(id4d) == 1, "the paid mark stays on the gone record (TRF_GoneKeep)");
 	TRF.clock.pz = nil;
 	-- The trader gone during the watch: unpaid (gone); the time-out: unpaid (time).
 	local id5, r5, x5 = HL_Trader();
@@ -896,7 +898,44 @@ function T_HL_D()
 	HL_Kill(8001);
 	HL_Kill(9002);
 	T_Tick(5, 0.5);
-	HOST_Check(h.credits - c4d == want4d and S_Logs(n0, "via=watch result=paid") == 0, "no second pay by the watch");
+	HOST_Check(h.credits - c4d == want4d and S_Logs(n0, "via=watch result=paid") == 0 and r4d.hpd == nil, "no second pay by the watch");
+	-- Reverse order: the watch pays first (engaged, no hostile left near the lead: end), then its raid spawns and ends
+	-- with the help counted (rd.hit): TRF_Rd_Pay skips (reason=hail_paid), one pay.
+	HOST().carc = {};
+	TRF.clock.pz = nil;
+	local id4f, r4f, x4f = HL_Trader("C");
+	HL_NoEscorts(x4f);
+	local n4f = V_Raid(id4f);
+	local l4f = HL_Pirates(id4f, 2, 300);
+	TRF.std.heat = 1;
+	local c4f = h.credits;
+	n0 = S_Mark();
+	HL_Hail(id4f);
+	HOST_DlgPick("a_acc");
+	T_Tick(1, 0.5);
+	tinsert(h.carc, HL_PlNear(l4f[1]));
+	T_Tick(5, 0.5);
+	HL_Kill(9001);
+	HL_Kill(9002);
+	T_Tick(4, 0.5);
+	local p4f = h.credits - c4f;
+	local hp4f, ht4f = TRF.std.help, TRF.std.heat;
+	HOST_Check(p4f > 0 and r4f.hlp == 3 and r4f.hpd == 1 and TRF_HlHelpPaid(id4f) == 1 and TRF_H().hlw[id4f] == nil
+		and S_Logs(n0, "event=help trader_id="..id4f.." pay="..p4f.." credits="..p4f.." ") == 1 and S_Logs(n0, "via=watch result=paid reason=end") == 1,
+		"watch first: paid "..p4f.." (reason end), the paid mark set");
+	HOST_Fire("f_inside", "TRF_RaidGo("..n4f..",");
+	local hr4f = TRF_H().rd[n4f];
+	HOST_Check(V_Rd(n4f).st == "come" and type(hr4f) == "table", "the raid spawned after the watch paid");
+	HOST_Fire("attack", "TRF_OnRaidHit("..n4f..",1,");
+	V_Rd(n4f).hit = 1;
+	for j = 1, getn(hr4f.sh) do
+		hr4f.sh[j].alive = nil;
+		HOST_Fire("died", "TRF_OnRaidDied("..n4f..","..j..",");
+	end;
+	HOST_Check(V_Rd(n4f).st == "end" and V_Rd(n4f).paid == 0 and h.credits - c4f == p4f and TRF.std.help == hp4f and TRF.std.heat == ht4f
+		and r4f.res == 1 and S_Logs(n0, "module=raid event=paid raid_id="..n4f.." trader_id="..id4f.." credits=0 help=0 result=skipped reason=hail_paid") == 1
+		and S_Logs(n0, "raid_id="..n4f.." credits="..p4f) == 0 and S_Logs(n0, "event=help trader_id="..id4f.." raid_id="..n4f) == 0,
+		"raid ends with the help counted after the watch paid: skipped (hail_paid), no second pay ("..(h.credits - c4f - p4f)..")");
 	HOST().carc = {};
 	-- Accept on a raid, one player hit (ph, not deliberate fire), the raid killed: trf_raid pays help_k x N_eff.
 	local id5, r5, x5, n5 = HL_Raided();
@@ -960,6 +999,10 @@ function T_HL_E()
 	local s1 = HOST_SaveSize(TRF);
 	HOST_Check(s1 - s0 == 23, "hlp costs "..(s1 - s0).." bytes per trader record (23)");
 	r.hlp = nil;
+	r.hpd = 1;
+	s1 = HOST_SaveSize(TRF);
+	HOST_Check(s1 - s0 == 23, "hpd costs "..(s1 - s0).." bytes per trader record (23)");
+	r.hpd = nil;
 	-- Dump: the watch count.
 	local W = TRF_HlHw();
 	W[id] = {p=100, t0=0, s={}, k=0};

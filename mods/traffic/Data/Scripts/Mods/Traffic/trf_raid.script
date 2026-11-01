@@ -1590,6 +1590,14 @@ function TRF_Rd_Pay(n, rd)
 	if L and rd.id ~= nil then r = L.tr[rd.id]; end;
 	if type(r) ~= "table" or r.why == "kill" then return; end;
 	if rd.hit ~= 1 and not (r.hlp == 2 and rd.ph == 1) then return; end;
+	-- Combat hail (design/hail-spec.md 5.4): the help watch of this trader already paid; no second pay, no help, heat
+	-- or pro credit, no resolvers.
+	if TRF_N("TRF_HlHelpPaid", rd.id) == 1 then
+		rd.paid = 0;
+		if r.st ~= "gone" then r.res = 1; end;
+		TRF_RdE("paid", "raid_id", n, "trader_id", rd.id, "credits", 0, "help", 0, "result", "skipped", "reason", "hail_paid");
+		return;
+	end;
 	local cur = TRF_Rd_Cur();
 	local amt = floor(TRF_Rd_T("help_k", 0.5) * TRF_Rd_PayN(cur));
 	-- 8.5 raid-help resolvers (trf_plumb TRF_RaidHelp, 00 section 6): a captain claim cancels the credits,

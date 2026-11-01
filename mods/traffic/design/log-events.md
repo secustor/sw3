@@ -250,7 +250,7 @@ also the unused hulls).
 | `comply` | `module=raid event=comply raid_id=1 trader_id=11 cargo_lost=3 disruption=1` | 1 |
 | `refuse` | `module=raid event=refuse raid_id=2 trader_id=13 player_fired=true` | 1 |
 | `leave` | `module=raid event=leave raid_id=2 reason=comply destination=carrier` / `destination=base` / `distance=900` | 1 |
-| `paid` | `module=raid event=paid raid_id=2 trader_id=6 credits=658 help=1 help_rule=nil` (`help_rule`: trf_plumb raid-help rule, nil without resolvers) | 1 |
+| `paid` | `module=raid event=paid raid_id=2 trader_id=6 credits=658 help=1 help_rule=nil` (`help_rule`: trf_plumb raid-help rule, nil without resolvers) / `credits=0 help=0 result=skipped reason=hail_paid` (the combat hail's help watch already paid this trader, hail-spec 5.4) | 1 |
 | `end` | `module=raid event=end raid_id=1 trader_id=11 previous_state=leave decision=comply help_counted=false paid=nil result=left` | 1 |
 | `hit` | `module=raid event=hit raid_id=2 rearm_max=3 result=rearm_cap` | 1 |
 | `help` | `module=raid event=help raid_id=2 ship=1 reason=deliberate result=counted` (or `reason=kill_after_hit`) | 1 |

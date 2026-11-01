@@ -722,9 +722,9 @@ function TRF_LiveReset(keep)
 end;
 
 -- Fields a gone trader record keeps (v0.2 3.2; v1 3.2 adds tb, pi, cv, xt; fw: the player's freighter, trf_freight's
--- 8.5 resolver reads it after the ship docked).
+-- 8.5 resolver reads it after the ship docked; hpd: trf_hail's help watch paid, TRF_Rd_Pay reads it at a later raid end).
 function TRF_GoneKeep()
-	return {id=1, nm=1, cls=1, st=1, why=1, gg=1, tb=1, pi=1, cv=1, xt=1, fw=1};
+	return {id=1, nm=1, cls=1, st=1, why=1, gg=1, tb=1, pi=1, cv=1, xt=1, fw=1, hpd=1};
 end;
 
 -- Gone trader records: stripped to TRF_GoneKeep, the 8 newest by gg kept (v0.2 spec 3.2), called by the

@@ -251,7 +251,7 @@ Table: fighters with 75 %, bombers 25 %. Power is `pw` = the tier's power; row =
 
 - `NewTrigger("attack", nil, "TRF_OnRaidHit(n,j,g)--", PLAYER_GROUP, ship_j)` and `NewTrigger("died", nil, "TRF_OnRaidDied(n,j,g)--", ship_j)` on every raid ship; the attack trigger is re-armed up to 200 times per raid.
 - Help counts (`hit` = 1) when one raid ship has player hits in ≥ 5 distinct seconds within 20 s (`T_deliberate`), or a raid ship dies within 10 s of a player hit on it. Proximity alone never counts.
-- At raid end: trader record alive (not killed) and `hit` = 1 and `paid` nil → `AddPlayerCredits(floor(0.5 × TRF_PayN(cur)))`, `TRF_AddHelp(Recovery and 2 or 1)`, heat −1, leader line `thanks`, credits +4 (9.1), trader `res` = 1. Otherwise nothing; bounties and recovery still apply.
+- At raid end: trader record alive (not killed) and `hit` = 1 and `paid` nil → `AddPlayerCredits(floor(0.5 × TRF_PayN(cur)))`, `TRF_AddHelp(Recovery and 2 or 1)`, heat −1, leader line `thanks`, credits +4 (9.1), trader `res` = 1. Otherwise nothing; bounties and recovery still apply. When the combat hail's help watch already paid that trader (`TRF_HlHelpPaid`, hail-spec 5.4) the raid pays nothing more: `paid` = 0, `res` = 1, `event=paid result=skipped reason=hail_paid`.
 
 ### 5.6 Escort contract (S7, design 8.4)
 
