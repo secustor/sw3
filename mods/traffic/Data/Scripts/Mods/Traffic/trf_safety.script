@@ -724,7 +724,8 @@ function TRF_StrictIn(idx, f)
 end;
 
 -- Strict gate (v02 8.3, v1 10.2): 1 or nil, reason for system idx (nil = current) and feature (seed, raid,
--- staged, contract, parked, tt3, band, board; v1: track, conv, tt4, sweep, carrier, feq, dconv, offer).
+-- staged, contract, parked, tt3, band, board; v1: track, conv, tt4, sweep, carrier, feq, dconv, offer; freight unlock
+-- quest: wq).
 -- No map entry -> nil, "nomap". A denial counts gate_<feature> and is logged when it differs from the
 -- last one logged this visit.
 function TRF_StrictOk(idx, feature)

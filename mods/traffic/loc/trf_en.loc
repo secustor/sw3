@@ -857,6 +857,23 @@ FILETYPE STANDART
 #TRF_unknown = unknown space
 #TRF_who = FTU
 #TRF_whononame = FTU
+#TRF_wqalone = The Kestrel limped in alone.
+#TRF_wqbox = FTU charter office: transports keep going missing in Capricorn. The Kestrel is three days overdue on the lanes. Cover pays whoever brings a crew home. Will you keep your scope open?
+#TRF_wqboxo = FTU charter office: transports keep going missing in Capricorn. The Kestrel is three days overdue on the lanes. You still fly that old hauler of Alex's, so you know the clause. Cover pays whoever brings a crew home. Will you keep your scope open?
+#TRF_wqd10 = The FTU charter office lost the transport Kestrel in Capricorn. Keep your scope open on the Gefest and Golkonda lanes for her call.
+#TRF_wqd20 = The Kestrel's report on her sister ship Marlin is with the FTU charter office. The office will send word.
+#TRF_wqjobh = The overdue transport
+#TRF_wqjobs = Capricorn lanes, no deadline
+#TRF_wqlog = Charter office job added to the Job log.
+#TRF_wqlost = Kestrel's mate on the pod band: 'They knew our route. Same as the Marlin.'
+#TRF_wqmay = Kestrel: 'Any Wolves ship on this channel, we have company. Two minutes from the lane, please.'
+#TRF_wqname = Kestrel
+#TRF_wqok = Clerk: 'Her call sign is on your board. The office remembers who answers.'
+#TRF_wqoko = Clerk: 'Her call sign is on your board. Alex's old hauler on the lanes again, the office remembers that.'
+#TRF_wqt = Missing in Capricorn
+#TRF_wqthx = Kestrel: 'Thank you, Wolves. The charter office will hear who answered.'
+#TRF_wqthxo = Kestrel: 'A transport pilot who knows the clause. Thank you, Wolves, the charter office will hear of it.'
+#TRF_wqwho = FTU transport Kestrel
 
 ; sw3-traffic news records begin (tools/gen_news.py; News.xml records trf_*, cfg news_mode 2)
 #TRF_N_heat_5_Name = FTU warns captains about the Wolves

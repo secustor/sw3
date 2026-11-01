@@ -324,3 +324,20 @@ Install: `EXP=0 TRAFFIC=1 LOG=2 AUTOSAVE=0 HAIL_BOX=2 MERCS=1 TUNE=merc_cd=0,mer
 | | jump out after any of them | `GetTeamRelation("Pirates", PLAYER_TEAM)` unchanged (pirates of the next system as before) |
 
 Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes E-EXT.1=pass` (FAIL: an `extortion_seen` without a following `extort` line, a `result=skip` with a reason other than `off`, `not_war` or `restore`, or `trigger_count=0`).
+
+## 15. Freight unlock quest, commit 1 (Q-WQ.1-4; `FREIGHT=1 LOG=2`, chapter 5 or later, no freighter owned)
+
+`D/freight-quest-spec.md` 10; `check_ingame.py` items Q-WQ.1-4. Install: `LOG=2 sh mods/traffic/install-test.sh` (the game closed; `WQ=0` turns the quest off for an A/B; `JOBS_UI=1` or `2` for the card and the Office row). A chapter 5-6 save with help 2 or more and no Wolves freighter. One line per check: do, then see.
+
+| item | what to do | expected |
+|---|---|---|
+| Q-WQ.1 | dock at a trade station on the Golkonda or Gefest loop (e.g. Debris 6) | box "FTU charter office" with the Kestrel text (with `JOBS_UI=1` the mission card "The overdue transport", with `JOBS_UI=2` a card on the Office Jobs tab); `module=wq event=offer ... result=shown via=<box,card,board>` |
+| | Cancel, then dock again in the same visit and 10 legs later | no offer in the visit (`event=decline ... result=declined`), the offer again after 10 legs |
+| | OK | the clerk's reply, the logbook (`JOBS_LOG=0`) or Job log entry "Missing in Capricorn"; `event=accept ... result=ok`, `event=logbook list=<mission,job> id=trf_wq step=10 result=added` |
+| Q-WQ.2 | enter Golkonda, Callipso, Elio, Gredos, Valensia, Kassilia or XT-11 (repeat entries: half the entries roll) | `event=seed ... result=planned`, 30-60 s later the transport "Kestrel" through a portal, the mayday line, a marker, a clan raid on her (`event=spawn ... tier=2`) |
+| | fight the raid off | the 8.5 pay, `event=help`, `event=rescued`, the Kestrel's thanks, the logbook text "The Kestrel's report ..." (`event=step step_before=10 step_after=20`); note whether she survives a T2 raid in chapter 5 (spec open question 6) |
+| Q-WQ.3 | on another save at step 10: jump out after the mayday line, or let the raid end without firing on it | `event=void ... reason=<jump,no_help> tries=1`; no mayday within 6 legs (`reason=cooldown` at log 2), then again; the second miss: "The Kestrel limped in alone." (`event=limped`; after a jump as an arrival line in the next system) |
+| | save during the mayday and load | the Kestrel is gone, `event=orphan` (or trf_gen's load pass), `event=void ... reason=load` |
+| Q-WQ.4 | play Q-WQ.1 and Q-WQ.2 once with a start hull (HM Queen or the mission 2 Arba, if a save has one) and once with a later hull | `variant=old` lines show "that old hauler of Alex's" and "A transport pilot who knows the clause."; `variant=new` the plain lines |
+
+Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes Q-WQ.4=pass`.

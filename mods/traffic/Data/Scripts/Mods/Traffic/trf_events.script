@@ -571,6 +571,8 @@ function TRF_Ev_Kill(id, rec, h)
 		"kill_count", L.kills, "ship_count", rec.np);
 	-- Wolves Freight (trf_freight): the on-screen loss of the player's freighter, before the record is stripped.
 	if rec.fw then TRF_P("TRF_Fr_Killed", id, rec, by, idx); end;
+	-- Freight unlock quest (trf_wq): the Kestrel of the mayday is lost.
+	if rec.wq then TRF_P("TRF_Wq_Killed", id, rec, by, idx); end;
 	call(TRF_Ev_KillV2, {id, rec, by, idx}, "x", TRF_PErr);
 	call(TRF_Ev_KillV1, {id, rec, by, idx}, "x", TRF_PErr);
 	-- Survivors (design/survivors-spec.md): the witnessed loss and its beacon, before the record is stripped.

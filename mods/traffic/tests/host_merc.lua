@@ -93,13 +93,13 @@ function T_MC_A()
 	MC_Begin("5_1");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=14") >= 1, "trf_merc loads last (extra_count=14)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=15") >= 1, "trf_merc loads before trf_wq (extra_count=15)");
 	local ml, tf, uf = TRF_ModList(), TRF_Loc_TextFns(), TRF_UI_TextFns();
 	local tfs, ufs = "", "";
 	for i = 1, getn(tf) do tfs = tfs..tf[i]..","; end;
 	for i = 1, getn(uf) do ufs = ufs..uf[i]..","; end;
-	HOST_Check(ml[getn(ml)] == "Mc" and MC_Has(tfs, "TRF_Pc_Text,TRF_Mc_Text,TRF_Loc_Text,") and MC_Has(ufs, "TRF_Pc_Text,TRF_Mc_Text,"),
-		"TRF_ModList ends with Mc; TRF_Mc_Text after the parcel table in both text lists");
+	HOST_Check(ml[getn(ml) - 1] == "Mc" and MC_Has(tfs, "TRF_Pc_Text,TRF_Mc_Text,TRF_Wq_Text,TRF_Loc_Text,") and MC_Has(ufs, "TRF_Pc_Text,TRF_Mc_Text,TRF_Wq_Text,"),
+		"TRF_ModList ends with Mc, Wq; TRF_Mc_Text after the parcel table in both text lists");
 	HOST_Check(TRF_Mc_OptDef().merc == 0 and TRF_McOpt("merc") == 1 and TRF_McOpt("rv_enabled") == 0 and TRF_McOpt("mc_el_c") == 8
 		and TRF_McOpt("merc_war") == 1 and TRF_McOpt("merc_hostile") == 0 and TRF_McOpt("merc_hunt") == 0 and TRF_McOpt("merc_board") == 1 and TRF_McOpt("mc_launch") == 0,
 		"merc off by default (on in these runs), rivals off, elite clan 8, merc_war on and the other group-war keys off, board on, launches off");

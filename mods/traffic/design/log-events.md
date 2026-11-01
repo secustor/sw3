@@ -805,6 +805,32 @@ Mercenary clans, build steps 1 and 3 (`design/merc-spec.md` 8). `clan` is the cl
 | `legend` | `module=merc event=legend channel=<board, station> chapter=3` (Black Legion legend line) | 1 |
 | `dump_hire` | `module=merc event=dump_hire clan=4 system=gaoba composition=1 power=14 ship_count=4 time=420 fee=12600 share=2500 blood=10000 kill_count=3 loss_count=0 flown=180 hull=1000100010001000 visit=hired flight=1` / `result=none visit=<st> flight=<n>` | 1 |
 
+## wq (`trf_wq.script`; `TRF_WqE`, `TRF_WqDE`)
+
+Freight unlock quest "Missing in Capricorn", commit 1 (`design/freight-quest-spec.md` 8). `step` is `TRF.wq.s`, `tries` the voids of step 1 (`n`), `trader_id` and `raid_id` the Kestrel's trader record and her raid, `variant` the mothership variant of the text (`old` hauler, `new` ship).
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=wq event=error message=<m>` | 1 |
+| `offer` | `module=wq event=offer system=debris6 variant=new help=5 result=shown via=box` (`via=card`, `board`; `result=listed via=board` when the Office row is set; `result=failed reason=box`) | 1 |
+| `offer` | `module=wq event=offer system=debris6 result=none reason=declined` (`off, freight_off, nomap, chapter, chapter_end, mission, nk, grandfather, started, declined, heat, war, help, no_loop, chapter_region, strict:<why>`) | 2 |
+| `accept` | `module=wq event=accept system=debris6 variant=old seed=6664 leg=11 result=ok` (`result=stale`) | 1 |
+| `decline` | `module=wq event=decline system=debris6 leg=1 result=declined` (`result=stale`) | 1 |
+| `seed` | `module=wq event=seed system=golkonda roll=27 chance=50 delay=58 tries=0 result=planned` (`result=none reason=roll`, `slot holder=<kind>`, `due` at level 1) | 1 |
+| `seed` | `module=wq event=seed system=debris6 result=none reason=system` (`off, step, nomap, chapter, mission, system, cooldown, strict:<why>`) | 2 |
+| `spawn` | `module=wq event=spawn system=golkonda trader_id=1 raid_id=1 tier=2 ship_count=5 marker=true tries=0 result=spawned` | 1 |
+| `help` | `module=wq event=help raid_id=1 trader_id=1 credits=4269 flags=1` (the 8.5 resolver set bit 1) | 1 |
+| `rescued` | `module=wq event=rescued system=golkonda trader_id=1 raid_id=1 variant=new reason=raid_help tries=0` | 1 |
+| `lost` | `module=wq event=lost system=golkonda trader_id=3 raid_id=1 reason=killed_other tries=0` (`killed_player`) | 1 |
+| `void` | `module=wq event=void trader_id=4 reason=no_help tries=1 tries_max=2 leg=18` (`reason=raid, jump, load, entry, step, moved, generator, station, cap_<why>, plan_<why>, spawn`, a gate reason) | 1 |
+| `limped` | `module=wq event=limped tries=2 line=true` (`line=false`: the line waits for the next entry) | 1 |
+| `step` | `module=wq event=step step_before=10 step_after=20 reason=rescued` (`lost`, `limped`) | 1 |
+| `logbook` | `module=wq event=logbook list=mission id=trf_wq step=10 result=added` (`list=job`; `result=removed reason=<step,enter,load,moved>`, `none ... native=<why>`, `failed reason=<why>`) | 1 |
+| `reconcile` | `module=wq event=reconcile id=trf_wq list=mission step=10 result=added reason=accept` (`result=removed`; `reason=enter, load, step`) | 1 |
+| `orphan` | `module=wq event=orphan trader_id=7 result=removed` (load; `result=dropped` for a waiting record) | 1 |
+| `fix` | `module=wq event=fix step=15 result=dropped reason=step` (`reason=type`; `step=80 result=grandfather`) | 1 |
+| `dump` | `module=wq event=dump step=10 flags=0 tries=1 decline_leg=nil void_leg=18 seed=77 live=nil result_kind=nil pending=nil logbook_step=10 event_state=due` (`result=none event_state= grandfather=`) | 1 |
+
 ## supply (`trf_supply.script`; `TRF_SpE`)
 
 | Event | Example line | Level |

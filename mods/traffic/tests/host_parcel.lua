@@ -153,9 +153,9 @@ function T_PCL_A()
 	PC_Begin("altair", "9_1");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=14") >= 1, "trf_parcel loads before trf_merc (extra_count=14)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=15") >= 1, "trf_parcel loads before trf_merc (extra_count=15 with trf_wq)");
 	local ml, pm = TRF_ModList(), TRF_PlMods();
-	HOST_Check(ml[getn(ml) - 1] == "Pc" and ml[getn(ml)] == "Mc" and pm[getn(pm) - 1] == "Pc" and pm[getn(pm)] == "Mc", "TRF_ModList has Pc before Mc, TRF_PlMods ends with Pc, Mc");
+	HOST_Check(ml[getn(ml) - 2] == "Pc" and ml[getn(ml) - 1] == "Mc" and pm[getn(pm) - 2] == "Pc" and pm[getn(pm) - 1] == "Mc", "TRF_ModList has Pc before Mc, TRF_PlMods ends with Pc, Mc, Wq");
 	local d = TRF_Pc_OptDef();
 	HOST_Check(d.enable_parcels == 1 and d.enable_contraband == 0 and d.enable_customs == 0 and d.enable_intercept == 0 and d.pcl_prize_gap == 1
 		and d.pcl_logbook == 1 and d.pcl_probe == 0 and TRF_PcOpt("enable_parcels") == 1 and type(TRF_PcOpt("pcl_deny")) == "table",
@@ -179,8 +179,8 @@ function T_PCL_A()
 	for i = 1, getn(P.dock.trade.line) do lo = lo..P.dock.trade.line[i].o..":"..TRF_PlName(P.dock.trade.line[i].f)..","; end;
 	for i = 1, getn(P.dock.trade.box) do bo = bo..P.dock.trade.box[i].o..":"..TRF_PlName(P.dock.trade.box[i].f)..","; end;
 	for i = 1, getn(P.owe) do ow = ow..TRF_PlName(P.owe[i].f)..","; end;
-	HOST_Check(PC_Has(lo, "10:TRF_ShopDockLine,20:TRF_Pc_DockLine,") and strsub(bo, 1, 23) == "400:TRF_Pc_DockBox,300:" and PC_Has(ow, "TRF_Pc_Owe,"),
-		"trade line 20 right after the shortage restore, trade box 400 first, one owed payer ("..lo.." "..bo..")");
+	HOST_Check(PC_Has(lo, "10:TRF_ShopDockLine,20:TRF_Pc_DockLine,") and strsub(bo, 1, 42) == "450:TRF_Wq_DockBox,400:TRF_Pc_DockBox,300:" and PC_Has(ow, "TRF_Pc_Owe,"),
+		"trade line 20 right after the shortage restore, trade box 400 after the quest box 450, one owed payer ("..lo.." "..bo..")");
 	-- Texts.
 	local nt = PC_SetN(TRF_Pc_Text());
 	HOST_Check(nt == 194 and TRF_Txt("pcldone", "15,400") == "Parcel received, seals intact. Deposit returned, 15,400 cr paid."

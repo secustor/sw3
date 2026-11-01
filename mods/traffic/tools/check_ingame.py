@@ -4,7 +4,8 @@ the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10), the mercenary
 11, test plan section 11), the strength scale (D-STR.*, design/strength-spec.md 9), the pirate fits (D-FIT.1-6, E-BB1,
 design/fits-spec.md 11), the vanilla extortion fix (E-EXT.1, design/extort-fix-spec.md 7), the stack leak diagnostic
 (D-DLL.1), the station jobs mission card (K0-K7, design/station-jobs-spec.md 10, step 1), the Office jobs board (M1-M8,
-step 2) and the quest log's Job log (L1-L5, step 3) from traffic logs.
+step 2), the quest log's Job log (L1-L5, step 3) and the freight unlock quest, commit 1 (Q-WQ.1-4,
+design/freight-quest-spec.md 10) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -246,7 +247,7 @@ def c_err(ctx):
     res.logpart = True
     if not any(r.mod in ("haunt", "parcel") for r in ctx.recs):
         res.missing.append("no module=haunt or module=parcel line: the mod did not load or LOG=0")
-    for mod in ("haunt", "parcel", "core", "plumb", "hail", "merc"):
+    for mod in ("haunt", "parcel", "core", "plumb", "hail", "merc", "wq"):
         e = ctx.find(mod, "error")
         if e:
             res.fails.append("%d module=%s event=error lines" % (len(e), mod))
@@ -1867,6 +1868,90 @@ def c_l5(ctx):
     return res
 
 
+def c_wq1(ctx):
+    res = Res()
+    res.logpart = True
+    shown = ctx.find("wq", "offer", result="shown")
+    acc = ctx.find("wq", "accept", result="ok")
+    dec = ctx.find("wq", "decline", result="declined")
+    lb = [r for r in ctx.find("wq", "logbook", id="trf_wq", result="added") if r.get("step") == "10"]
+    for r in ctx.find("wq", "logbook", result="failed"):
+        res.fails.append("%s: the logbook entry was refused" % r.short())
+    for r in acc:
+        if not [s for s in shown if s.src == r.src and s.n < r.n]:
+            res.fails.append("%s: an accept without an offer line before it" % r.short())
+    if not shown:
+        res.missing.append("dock at a Gefest or Golkonda loop stop in chapter 5-6 (help 2+, no freighter): no offer result=shown line")
+    elif not acc:
+        res.missing.append("answer the charter office offer with OK: no accept result=ok line")
+    elif not lb:
+        res.missing.append("no logbook id=trf_wq step=10 result=added line after the accept")
+    res.ev("offers shown", shown)
+    res.ev("declines", dec)
+    res.ev("accepts", acc)
+    res.ev("logbook entries", lb)
+    return res
+
+
+def c_wq2(ctx):
+    res = Res()
+    res.logpart = True
+    sp = ctx.find("wq", "spawn", result="spawned")
+    ok = ctx.find("wq", "rescued")
+    for r in sp:
+        if r.get("tier") not in ("1", "2"):
+            res.fails.append("%s: the Kestrel's raid is not T1/T2" % r.short())
+    if not sp:
+        res.missing.append("at step 10 enter Golkonda, Callipso, Elio, Gredos, Valensia, Kassilia or XT-11 until a seed result=planned "
+                           "line and the Kestrel spawn")
+    elif not ok:
+        res.missing.append("defend the Kestrel against her raid: no rescued line")
+    res.ev("Kestrel spawns", sp)
+    res.ev("rescued", ok)
+    res.ev("lost", ctx.find("wq", "lost"))
+    return res
+
+
+def c_wq3(ctx):
+    res = Res()
+    res.logpart = True
+    vo = ctx.find("wq", "void")
+    lim = ctx.find("wq", "limped")
+    retry = []
+    for r in vo:
+        if r.int("tries", 0) > r.int("tries_max", 9):
+            res.fails.append("%s: more voids than wq_tries" % r.short())
+        later = [s for s in ctx.find("wq", "seed", result="planned") if s.src == r.src and s.n > r.n and s.get("tries") == r.get("tries")]
+        if later:
+            retry.append(later[0])
+    for r in lim:
+        prev = [v for v in vo if v.src == r.src and v.n < r.n]
+        if not prev or prev[-1].int("tries", 0) < prev[-1].int("tries_max", 0):
+            res.fails.append("%s: limped in before wq_tries voids" % r.short())
+    if not vo:
+        res.missing.append("at step 10 jump out after the mayday line, or let the raid end without firing: no void line")
+    elif not retry and not lim:
+        res.missing.append("after a void wait 6 legs and enter a mayday system again: no seed result=planned with the new tries")
+    res.ev("voids", vo)
+    res.ev("retries planned", retry)
+    res.ev("limped in", lim)
+    return res
+
+
+def c_wq4(ctx):
+    res = Res()
+    res.logpart = True
+    lines = [r for r in ctx.find("wq", "offer", result="shown") + ctx.find("wq", "accept") + ctx.find("wq", "rescued") if r.get("variant")]
+    for r in lines:
+        if r.get("variant") not in ("old", "new"):
+            res.fails.append("%s: unknown variant" % r.short())
+    if not lines:
+        res.missing.append("no offer, accept or rescued line with variant=")
+    res.ev("variant old", [r for r in lines if r.get("variant") == "old"])
+    res.ev("variant new", [r for r in lines if r.get("variant") == "new"])
+    return res
+
+
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
@@ -1986,6 +2071,13 @@ ITEMS = [
      "one parcel entry in the Job log after the load, no duplicate"),
     ("L5", "the same save with JOBS_LOG=0: the entry back in the Mission log", c_l5,
      "the parcel entry shows in the Mission log (the Job log tab disabled again)"),
+    ("Q-WQ.1", "charter office offer: shown, Cancel and OK, the logbook or Job log entry trf_wq", c_wq1, None),
+    ("Q-WQ.2", "Kestrel mayday: spawn under a T1/T2 raid, defended", c_wq2,
+     "the transport Kestrel comes through a portal 30-60 s after entry under a small raid, the raid lines and the focus "
+     "name her Kestrel, she survives the defended raid (chapter 5: note how close it was)"),
+    ("Q-WQ.3", "void and retry: a jump, a reload or no engagement voids, the mayday rolls again, wq_tries voids limp in", c_wq3, None),
+    ("Q-WQ.4", "mothership variant of the clerk's and the Kestrel's lines", c_wq4,
+     "variant=old shows 'that old hauler of Alex's' and 'A transport pilot who knows the clause.', variant=new the plain lines"),
 ]
 
 
@@ -2100,7 +2192,8 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "K7": "MANUAL",
             "M1": "MANUAL", "M2": "FAIL", "M3": "MANUAL", "M4": "MANUAL", "M5": "MANUAL", "M6": "MANUAL", "M7": "PASS",
             "M8": "NO DATA",
-            "L1": "MANUAL", "L2": "MANUAL", "L3": "MANUAL", "L4": "FAIL", "L5": "NO DATA"}
+            "L1": "MANUAL", "L2": "MANUAL", "L3": "MANUAL", "L4": "FAIL", "L5": "NO DATA",
+            "Q-WQ.1": "PASS", "Q-WQ.2": "MANUAL", "Q-WQ.3": "PASS", "Q-WQ.4": "MANUAL"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -2108,8 +2201,10 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # refused card (K5). Office board block (after that load, same visit): a pirate dock, then a trade dock with one row, the
 # Office with the Jobs tab, a switch to News and back, a click and OK (row closed, visible), the Office reopened with the
 # closed row and its second line missing (fields=1, M2 FAIL), a quest-opened station whose Office shows no row (M7); no
-# mode 2 run (M8). Job log block (the end): init log=1, a load, a parcel accepted into the Job log, the quest log opened
-# with both tab clicks, the entry done, a second load with two job entries (L4 FAIL); no JOBS_LOG=0 load (L5).
+# mode 2 run (M8). Job log block: init log=1, a load, a parcel accepted into the Job log, the quest log opened with both
+# tab clicks, the entry done, a second load with two job entries (L4 FAIL); no JOBS_LOG=0 load (L5). Freight unlock quest
+# block (the end, Debris 6 and Golkonda): an offer declined, a second one accepted from the card into the Job log, a
+# mayday voided by a jump, the retry rolled with tries=1, a mayday defended (rescued, step 20); new ship lines only.
 
 
 def selftest():

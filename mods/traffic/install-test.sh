@@ -42,6 +42,8 @@
 # STASHES=0|1 (cfg enable_stashes, clan stashes, design/stash-spec.md); STASH_AT=<system> (debug: a known cache record
 # there, placed at its entry, CHECK E7.1-E7.11); written only when set.
 # FREIGHT=0|1 (cfg enable_freight, Wolves Freight, design/freight-spec.md, CHECK EW8.1-EW8.8); written only when set.
+# WQ=0|1 (cfg enable_wq, the freight unlock quest "Missing in Capricorn", design/freight-quest-spec.md, CHECK
+# Q-WQ.1-Q-WQ.4); written only when set.
 # PARCELS=0|1 (cfg enable_parcels, sealed parcels, design/parcel-spec.md, CHECK E-PCL.1-E-PCL.6; LEVEL=v01/v02 write 0
 # unless PARCELS is set); PCL_PROBE=0|1 (cfg pcl_probe, the E-PCL.1/E-PCL.2 probe lines); written only when set.
 # HAUNTS=0|1 (cfg haunt, pirate haunts, design/haunt-spec.md, CHECK E16.1-E16.11); HAUNT_MODE=1|2 (cfg haunt_mode, 2 the
@@ -158,6 +160,7 @@ case "${SCAR_LOOT:-}" in "") ;; 0|1) opt="$opt, enable_scar_loot=$SCAR_LOOT" ;; 
 case "${CAPTAINS:-}" in "") ;; 0|1) opt="$opt, cap_enable=$CAPTAINS" ;; *) echo "CAPTAINS must be 0 or 1" >&2; exit 1;; esac
 case "${STASHES:-}" in "") ;; 0|1) opt="$opt, enable_stashes=$STASHES" ;; *) echo "STASHES must be 0 or 1" >&2; exit 1;; esac
 case "${FREIGHT:-}" in "") ;; 0|1) opt="$opt, enable_freight=$FREIGHT" ;; *) echo "FREIGHT must be 0 or 1" >&2; exit 1;; esac
+case "${WQ:-}" in "") ;; 0|1) opt="$opt, enable_wq=$WQ" ;; *) echo "WQ must be 0 or 1" >&2; exit 1;; esac
 case "${PARCELS:-}" in "") ;; 0|1) opt="$opt, enable_parcels=$PARCELS" ;; *) echo "PARCELS must be 0 or 1" >&2; exit 1;; esac
 case "${PCL_PROBE:-}" in "") ;; 0|1) opt="$opt, pcl_probe=$PCL_PROBE" ;; *) echo "PCL_PROBE must be 0 or 1" >&2; exit 1;; esac
 case "${HAUNTS:-}" in "") ;; 0|1) opt="$opt, haunt=$HAUNTS" ;; *) echo "HAUNTS must be 0 or 1" >&2; exit 1;; esac

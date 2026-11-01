@@ -438,8 +438,9 @@ function TRF_Rd_LeadPilot(id)
 	return TRF_Rd_P(TRF_Rd_FlLeader, {h.fl});
 end;
 
--- Display name of a trader record (TRF_Names index nm).
+-- Display name of a trader record (TRF_Names index nm; the Kestrel of trf_wq, flag wq, by its own text).
 function TRF_Rd_Name(r)
+	if type(r) == "table" and r.wq and type(TRF_Wq_Name) == "function" then return TRF_Wq_Name(); end;
 	if type(r) == "table" and type(r.nm) == "number" and type(TRF_Names) == "function" then
 		local l = TRF_Names();
 		if type(l) == "table" and type(l[r.nm]) == "string" then return l[r.nm]; end;

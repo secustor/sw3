@@ -67,7 +67,7 @@ end;
 -- v0.2 and v1 modules with TRF_<M>_OptDef, TRF_<M>_TuneDef and TRF_<M>_Dump (v0.2 spec 10.2, 10.4; v1 10.1).
 function TRF_ModList()
 	return {"Rg", "Str", "Ft", "Tier", "Raid", "Hail", "Shop", "Loc", "Track", "Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Pl", "Stn",
-		"Sv", "Lad", "Ch", "Sc", "Cap", "Sh", "Fr", "Haunt", "Pc", "Mc"};
+		"Sv", "Lad", "Ch", "Sc", "Cap", "Sh", "Fr", "Haunt", "Pc", "Mc", "Wq"};
 end;
 
 -- Value of key in the first module table getglobal("TRF_"..M..suffix)() that has it, else nil.
@@ -648,6 +648,8 @@ function TRF_Repair()
 	TRF_P("TRF_Cap_Fix");
 	TRF_P("TRF_Sh_Fix");
 	TRF_P("TRF_Fr_Fix");
+	-- Freight unlock quest: after TRF_Fr_Fix, its grandfather rule reads the repaired TRF.co.
+	TRF_P("TRF_Wq_Fix");
 	-- Pirate haunts were named nests before 2026-10-30: a save's TRF.nest (kill memory) moves to TRF.haunt.
 	if TRF.nest ~= nil then if TRF.haunt == nil then TRF.haunt = TRF.nest; end; TRF.nest = nil; end;
 	TRF_P("TRF_Haunt_Fix");

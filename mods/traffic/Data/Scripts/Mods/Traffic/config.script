@@ -36,6 +36,9 @@
 -- ticks, no on-screen ship); fw_onscreen and fw_losses are the step 1 toggles; fw_max_ships stays 1 (slots 2 and 3 are
 -- step 2); fw_prize_gap 1 holds a payout in the shared prize gap, fw_marker 1 marks the on-screen ship; the tune keys
 -- (fw_k, fw_price_k, fw_tick_real, fw_bank, ...) read the module defaults.
+-- Freight unlock quest "Missing in Capricorn" (design/freight-quest-spec.md 6, commit 1): enable_wq (default 1) = 0 turns
+-- trf_wq off (no charter office offer, no Kestrel mayday; the record is kept); tune wq_help (2), wq_cd (6 legs) and
+-- wq_tries (2) read the TRF_Wq_TuneDef defaults.
 -- Pirate haunts (design/haunt-spec.md 6): haunt (default 0 until CHECK E16.1-E16.5 pass) = 1 lets the regional clans field
 -- the scripted pirate flights; haunt_mode 1 the substituting NewPirateFlight wrapper, 2 the fallback (vanilla builds,
 -- the mod deletes and replaces); haunt_off, haunt_trig, haunt_lines, haunt_mirror, haunt_grudge_war (step 2, 0) and the tune
@@ -92,7 +95,7 @@ function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1, ext_fix=1,
 	enable_scars=1, enable_scar_loot=1, enable_scavengers=1, enable_scar_recorder=1, enable_salvage_licence=1,
 	cap_enable=1, cap_board=1, cap_intel=1, cap_chase=1, cap_capture=0, cap_force_eject=0, cap_vendetta=0,
 	enable_stashes=1, enable_stash_retrieval=1, enable_stash_decoys=0, stash_ret_war=0,
-	enable_freight=1, fw_max_ships=1, fw_onscreen=1, fw_losses=1, fw_prize_gap=1, fw_marker=1,
+	enable_freight=1, fw_max_ships=1, fw_onscreen=1, fw_losses=1, fw_prize_gap=1, fw_marker=1, enable_wq=1,
 	haunt=0, haunt_mode=1, fits=0, fits_gate=0, fits_test="",
 	enable_parcels=1, enable_contraband=0, enable_customs=0, enable_intercept=0,
 	demand_page=1, demand_drop=0, mc_names=0,

@@ -192,9 +192,9 @@ function T_FR_A()
 	FR_Begin("debris6", "9_1");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=14") >= 1, "trf_freight loads after trf_stash (extra_count=14 with trf_haunt, trf_parcel and trf_merc)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=15") >= 1, "trf_freight loads after trf_stash (extra_count=15 with trf_haunt, trf_parcel, trf_merc and trf_wq)");
 	local ml = TRF_ModList();
-	HOST_Check(ml[getn(ml) - 3] == "Fr" and TRF_Opt("enable_freight") == 1 and TRF_Opt("fw_onscreen") == 1 and TRF_Opt("fw_losses") == 1
+	HOST_Check(ml[getn(ml) - 4] == "Fr" and TRF_Opt("enable_freight") == 1 and TRF_Opt("fw_onscreen") == 1 and TRF_Opt("fw_losses") == 1
 		and TRF_Opt("fw_max_ships") == 1 and TRF_Fr_OptDef().fw_prize_gap == 1 and TRF_Fr_OptDef().fw_marker == 1,
 		"TRF_ModList has Fr; toggles: freight, on-screen, losses on, one ship, prize gap and marker on by default");
 	h.cfg.fw_max_ships = 3;

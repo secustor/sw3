@@ -386,3 +386,17 @@ traffic: module=dll event=jobs_log action=tab view=missions
 traffic: module=dll event=jobs_log action=state id=trf_pcl state=0
 traffic: lua: exp=v1 module=parcel event=logbook list=job id=trf_pcl state=0 result=set
 traffic: module=dll event=jobs_log action=qm_load cleared=1 loaded=2 result=1 loads=2
+traffic: lua: exp=v1 module=wq event=offer system=debris6 variant=new help=5 result=shown via=box
+traffic: lua: exp=v1 module=wq event=decline system=debris6 leg=40 result=declined
+traffic: lua: exp=v1 module=wq event=offer system=debris6 variant=new help=5 result=shown via=card
+traffic: lua: exp=v1 module=wq event=accept system=debris6 variant=new seed=6664 leg=51 result=ok
+traffic: lua: exp=v1 module=wq event=logbook list=job id=trf_wq step=10 result=added
+traffic: lua: exp=v1 module=wq event=reconcile id=trf_wq list=job step=10 result=added reason=accept
+traffic: lua: exp=v1 module=wq event=seed system=golkonda roll=27 chance=50 delay=58 tries=0 result=planned
+traffic: lua: exp=v1 module=wq event=spawn system=golkonda trader_id=31 raid_id=4 tier=2 ship_count=3 marker=true tries=0 result=spawned
+traffic: lua: exp=v1 module=wq event=void trader_id=31 reason=jump tries=1 tries_max=2 leg=52
+traffic: lua: exp=v1 module=wq event=seed system=golkonda roll=12 chance=50 delay=41 tries=1 result=planned
+traffic: lua: exp=v1 module=wq event=spawn system=golkonda trader_id=36 raid_id=5 tier=2 ship_count=3 marker=true tries=1 result=spawned
+traffic: lua: exp=v1 module=wq event=help raid_id=5 trader_id=36 credits=4269 flags=1
+traffic: lua: exp=v1 module=wq event=rescued system=golkonda trader_id=36 raid_id=5 variant=new reason=raid_help tries=1
+traffic: lua: exp=v1 module=wq event=step step_before=10 step_after=20 reason=rescued

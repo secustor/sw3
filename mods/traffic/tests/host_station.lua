@@ -99,8 +99,9 @@ end;
 -- Config: the repo defaults (v1 features on) plus t. Wanted captains (design/captain-spec.md) are off here: their
 -- board lines, informant box and staged-raid slot would change these scenarios; host_captain.lua turns them on.
 -- Sealed parcels (design/parcel-spec.md) are off for the same reason (trade box 400, line 20); host_parcel.lua turns them on.
+-- The freight unlock quest (design/freight-quest-spec.md, trade box 450) is off too; host_wq.lua turns it on.
 function S_Cfg(t)
-	local c = {exp=0, log=1, traffic=1, cap_enable=0, enable_parcels=0};
+	local c = {exp=0, log=1, traffic=1, cap_enable=0, enable_parcels=0, enable_wq=0};
 	if t then for k, v in t do c[k] = v; end; end;
 	HOST().cfg = c;
 end;

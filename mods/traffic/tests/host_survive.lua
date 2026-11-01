@@ -129,11 +129,11 @@ function T_SV_A()
 	local slot = TRF_RgOf(idx);
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=14") >= 1, "trf_survive loads after trf_station (extra_count=14 with trf_ladder, trf_charter, trf_scar, trf_captain, trf_stash, trf_freight, trf_haunt, trf_parcel and trf_merc)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=15") >= 1, "trf_survive loads after trf_station (extra_count=15 with trf_ladder, trf_charter, trf_scar, trf_captain, trf_stash, trf_freight, trf_haunt, trf_parcel, trf_merc and trf_wq)");
 	local P = TRF_PlReg();
 	local ord = "";
 	for i = 1, getn(P.dock.trade.line) do ord = ord..P.dock.trade.line[i].o..","; end;
-	HOST_Check(ord == "10,20,30,60,70,90," and getn(TRF_SeedList()) == 12, "trade dock lines 10 (shortage), 20 (parcels), 30 (pods), 60 (freight), 70 (charter), 90 (dockmaster); seed provider registered ("..ord..")");
+	HOST_Check(ord == "10,20,30,60,70,90," and getn(TRF_SeedList()) == 13, "trade dock lines 10 (shortage), 20 (parcels), 30 (pods), 60 (freight), 70 (charter), 90 (dockmaster); seed provider registered ("..ord..")");
 	local sl = TRF_SeedList();
 	local at = 0;
 	for i = 1, getn(sl) do if sl[i] == "TRF_Sv_SeedH" then at = i; end; end;

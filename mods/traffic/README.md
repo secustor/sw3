@@ -29,6 +29,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_haunt.script` | Pirate haunts step 1 ([design/haunt-spec.md](design/haunt-spec.md)): the scripted pirate flights of 58 systems become the haunt of the region's clan. A wrapper of `NewPirateFlight`, armed only while `activate.script` runs, builds each listed flight in group `TRF_Haunt_1` at the clan tier's power or answers with a stub; the count follows the region phase and a kill memory that refills per region tick (table from `tools/gen_haunt.py`). Off by default (cfg `haunt`). Loads after `trf_freight`. |
 | `trf_parcel.script` | Sealed parcels step 1 ([design/parcel-spec.md](design/parcel-spec.md)): the FTU courier desk at trade docks offers sealed crates (`Cargo_crate`, `Cargo_002`) for a trade dock 2-4 jumps away, usually one with a real shortage (relief x1.25), deterministic per station and region-tick window, against a deposit; the job slot, logbook entry `trf_pcl`, nav marker, delivery with pay, help, visit credits and #3 standing, expiry with help -1 and a 6-leg ban, void with a refund, the chapter 4 guard docks and the chapter deny sets from `tools/gen_parcel.py`. Step 2 (contraband, customs, prototypes) not built. Loads after `trf_haunt`. |
 | `trf_merc.script` | Mercenary clans, build steps 1 and 3 ([design/merc-spec.md](design/merc-spec.md)): the record of the twelve dormant clans (`TRF.mc`: standing, condition, fortune, stage, role, the fields of the later steps), updated at every region tick (presence by region demand, income and upkeep, off-screen losses, stages with the two-tick rule and two stage 4 slots, the Black Legion floor, break and re-form, decays); the hire role at stages 1-2: hire offers from chapter 5, the meeting and the conversations as dialog pages (`Data/Scripts/Trade/TRF_MercPg.xml`, box fallback), the hired wing for ten minutes across jumps, extension, settlement, collection, betrayal, the patrol board line and the Black Legion legend. Off by default (`merc` 0). Loads after `trf_parcel`. |
+| `trf_wq.script` | Freight unlock quest "Missing in Capricorn", commit 1 of 3 ([design/freight-quest-spec.md](design/freight-quest-spec.md)): the FTU charter office offer at a Gefest or Golkonda loop stop (trade box 450, the Office board row and the mission card of the station jobs UI), the logbook or Job log entry `trf_wq`, the Kestrel mayday (a seeded roll at entry, the transport under a T2 clan raid, saved through the 8.5 raid help, lost, or void and retried); the grandfather rule for saves with a freighter. The later steps and the freighter unlock are commits 2 and 3. Loads after `trf_merc`. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -768,6 +769,38 @@ Wolves Freight (proposal 8 step 1, spec [design/freight-spec.md](design/freight-
 ### In-game checks (freight)
 
 Experiments EW8.1-EW8.8 of the design with the confirming lines in the spec section 10: the box chain from the dock OK (`event=box ... result=shown`, `event=buy ... credits_before=... credits_after=...`, the dispatcher's vanilla call), the friendly on-screen ship (`event=spawn ... group=TRF_Fw_1 relation=friend hull=Btransport`, `event=dock ... esc=1 d=...`), the tick clock at 8x and in portal ping-pong (`event=tick`, `event=bank`), determinism across a reload (`event=roll`), the text modes (`event=pay ... mode=`), the save and load with the ship on-screen (`event=orphan`), and the own kill (`event=lost ... cause=player vch=0`).
+
+## Missing in Capricorn (`EXP=0 TRAFFIC=1`)
+
+The freight unlock quest (spec [design/freight-quest-spec.md](design/freight-quest-spec.md), user decisions 2026-11-01) is one module, `trf_wq`, loaded after `trf_merc` (`module=core event=loaded ... extra_count=15`). State `TRF.wq` (step, flags, tries, decline and void legs, seed, the result of the mayday, the logbook step; nil until the first offer is answered). It uses the plumbing: trade box 450 and the Office board row 450, the arrival seed registry (620), the scripted-event slot `wq`, the 8.5 resolver, a nav marker, an arrival line; trf_gen builds the Kestrel as a trader record with the flag `wq` and trf_clan raids it with `why` "wq". Commit 1 of 3: the offer and the mayday. The quest pays no credits of its own. `TRF_FrBuyGate` is unchanged until commit 3, so the first Wolves freighter still needs help 5. Implemented and host-tested (`wq-a`, `wq-b`), not run in the game.
+
+### What the player sees
+
+- Chapter 5 to 18, help 2 or more, heat 2 or less, Trade not at war, no freighter yet: docking at a trade station on a Wolves Freight loop (Gefest and Golkonda regions in chapters 5-6, every loop region from chapter 7) opens "FTU charter office" / `FTU charter office: transports keep going missing in Capricorn. The Kestrel is three days overdue on the lanes. Cover pays whoever brings a crew home. Will you keep your scope open?`. With the station jobs UI it is the mission card ("The overdue transport") or a card on the Office Jobs tab. Cancel: the offer comes back after 10 legs.
+- OK: `Clerk: 'Her call sign is on your board. The office remembers who answers.'` and the logbook (or Job log) entry "Missing in Capricorn".
+- Entering Elio, Gredos, Valensia, Kassilia, Golkonda, XT-11 or Callipso (Debris 6 from chapter 6): about half the entries, 30-60 s later, the FTU transport Kestrel comes through a portal with a small clan raid on her tail: `Kestrel: 'Any Wolves ship on this channel, we have company. Two minutes from the lane, please.'`, a marker on her. Fight the raid off and she thanks you (the normal raid-help pay); if she dies: `Kestrel's mate on the pod band: 'They knew our route. Same as the Marlin.'` (pods as for any lost trader). Either way the logbook moves on to her report on the Marlin (commit 2).
+- Leaving before the end, a reload, or letting the raid end without firing on it: the mayday comes back after 6 legs; after the second miss `The Kestrel limped in alone.` and the logbook moves on.
+- Mothership variants: while the player flies a start hull (HM Queen, `hm_queen_pl`, or the mission 2 Arba, `arba_t`) the clerk says `You still fly that old hauler of Alex's, so you know the clause.` in the offer and `Alex's old hauler on the lanes again, the office remembers that.` after OK, and the Kestrel `A transport pilot who knows the clause. Thank you, Wolves, the charter office will hear of it.`; other hulls get the plain lines.
+- A save that already owns a Wolves freighter skips the quest (no offer).
+
+### Config keys (Missing in Capricorn)
+
+`config.script` lists `enable_wq`; `install-test.sh` writes `WQ` (`enable_wq`) only when set; tune keys go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `enable_wq` | 1 | 0: no offer, no mayday, the record kept (commit 3: 0 also keeps help 5 for the first freighter) |
+| tune `wq_help` | 2 | help for the offer (0..99) |
+| tune `wq_cd` | 6 | legs before a missed mayday rolls again (0..200) |
+| tune `wq_tries` | 2 | missed maydays before step 1 ends without the player (1..9) |
+
+### Log lines (Missing in Capricorn)
+
+`module=wq event=offer ... variant=<old|new> result=<shown|listed|none> via=<box|card|board>`, `event=accept`, `event=decline`, `event=seed ... result=<planned|none> reason=`, `event=spawn ... tier=`, `event=help`, `event=rescued`, `event=lost`, `event=void ... reason=<no_help|raid|jump|load|entry|...> tries=`, `event=limped`, `event=step`, `event=logbook`, `event=reconcile`, `event=orphan`, `event=fix`, `event=dump`; full list in `design/log-events.md` (wq).
+
+### In-game checks (Missing in Capricorn)
+
+Q-WQ.1 (offer, card or row, OK and Cancel), Q-WQ.2 (the mayday, the raid tier, the save), Q-WQ.3 (void and retry), Q-WQ.4 (the mothership variant): `design/test-plan-haunts-parcels.md` section 15, scored by `tools/check_ingame.py`.
 
 ## Pirate haunts (`EXP=0 TRAFFIC=1`)
 

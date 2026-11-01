@@ -257,6 +257,7 @@ end;
 
 function TRF_HlName(r)
 	local n = nil;
+	if type(r) == "table" and r.wq and type(TRF_Wq_Name) == "function" then return TRF_Wq_Name(); end;
 	if type(r) == "table" and type(TRF_UI_Name) == "function" then n = TRF_UI_Name(r.nm); end;
 	return n or TRF_Txt("hull1");
 end;
@@ -435,13 +436,14 @@ function TRF_HlHelpPay()
 end;
 
 -- Pay of the help offer for trader record r in fight f, or nil, reason: offered before in this visit ("once"), heat
--- 3 and up ("heat"), the player's freighter or a station event ship ("own"), the strict gate ("strict"), the shared
+-- 3 and up ("heat"), the player's freighter, a station event ship or the Kestrel of trf_wq ("own": the 8.5 raid help
+-- pays them), the strict gate ("strict"), the shared
 -- combat prize gap open ("gap", only without a raid record: a raid pays through trf_raid's raid help), no pay
 -- ("pay").
 function TRF_HlHelpWhy(r, f)
 	if r.hlp then return nil, "once"; end;
 	if TRF_HlHeat() >= 3 then return nil, "heat"; end;
-	if r.fw or r.sev then return nil, "own"; end;
+	if r.fw or r.sev or r.wq then return nil, "own"; end;
 	local idx = TRF_HlCur();
 	if type(idx) == "number" and not TRF_HlStrict(idx, "contract") then return nil, "strict"; end;
 	if not f.n then
@@ -1812,6 +1814,8 @@ function TRF_CtOffer(id)
 	if r.ct or r.sev or type(r.rdn) == "number" then return nil, "used"; end;
 	-- r.fw: the player's own freighter (trf_freight) is never an 8.4 contract.
 	if r.fw then return nil, "freight"; end;
+	-- r.wq: the Kestrel of the freight unlock quest (trf_wq), also after her raid (r.rdn covers the raid).
+	if r.wq then return nil, "wq"; end;
 	local idx = TRF_HlCur();
 	local m = TRF_HlMap();
 	if type(idx) ~= "number" or type(m) ~= "table" or type(m.sys[idx]) ~= "table" then return nil, "nomap"; end;

@@ -175,13 +175,13 @@ function T_NE_A()
 	HA_Begin("gaoba");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=14") >= 1, "trf_haunt loads before trf_parcel (extra_count=14 with trf_merc)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=15") >= 1, "trf_haunt loads before trf_parcel (extra_count=15 with trf_merc and trf_wq)");
 	local ml = TRF_ModList();
-	HOST_Check(ml[getn(ml) - 2] == "Haunt" and TRF_Opt("haunt") == 1 and TRF_Haunt_OptDef().haunt == 0 and TRF_HaOpt("haunt_mode") == 1
+	HOST_Check(ml[getn(ml) - 3] == "Haunt" and TRF_Opt("haunt") == 1 and TRF_Haunt_OptDef().haunt == 0 and TRF_HaOpt("haunt_mode") == 1
 		and TRF_HaOpt("haunt_trig") == 2 and TRF_HaOpt("haunt_lines") == 1 and TRF_HaOpt("haunt_mirror") == 1 and TRF_HaOpt("haunt_grudge_war") == 0,
 		"TRF_ModList has Haunt; haunt off by default (on in these runs), mode 1, per-ship triggers, lines and mirror on, grudge war off");
 	local pm, pg = TRF_PlMods(), TRF_PlGroups();
-	HOST_Check(pm[getn(pm) - 2] == "Haunt" and pm[getn(pm) - 1] == "Pc" and pg[getn(pg)] == "Haunt" and TRF_PlAdopt().Haunt == 1, "trf_plumb: Haunt registers (before Pc), its group prefix is scanned, its ships adopted at load");
+	HOST_Check(pm[getn(pm) - 3] == "Haunt" and pm[getn(pm) - 2] == "Pc" and pg[getn(pg)] == "Haunt" and TRF_PlAdopt().Haunt == 1, "trf_plumb: Haunt registers (before Pc), its group prefix is scanned, its ships adopted at load");
 	HOST_Check(NewPirateFlight ~= TRF_orig_NewPirateFlight and TRF_HaIsMine(NewPirateFlight) and type(TRF_orig_NewPirateFlight) == "function"
 		and not TRF_HaIsMine(TRF_orig_NewPirateFlight), "NewPirateFlight wrapped once over this run's vanilla function");
 	local w0 = NewPirateFlight;

@@ -2244,6 +2244,9 @@ function T_V1_N()
 	TRF.mc.e = TRF_TpPackK({el=8, dj1=9999999, dc1=20, djl=9999999, dn=1}, TRF_McEKeys());
 	TRF.mc.x = 9999999; TRF.mc.w = strrep("9", 11); TRF.mc.wt = -9999999;
 	TRF.mc.o = TRF_TpPackK({c=12, s=113}, TRF_McOKeys());
+	-- Freight unlock quest worst case (design/freight-quest-spec.md 3.3): TRF.wq with every field at its widest (a bound:
+	-- the repair keeps dc, lv and p only at their steps).
+	TRF.wq = {v=1, s=90, k=3, n=9, dc=-9999999, cd=-9999999, sd=9999, lv=1, r=3, p=1, ql=90};
 	local mcz = HOST_SaveSize(TRF.mc);
 	TRF_Mc_Fix();
 	HOST_Check(HOST_SaveSize(TRF.mc) == mcz and mcz <= 6000, "merc worst case kept by the repair: "..mcz.." bytes <= 6000");
@@ -2270,7 +2273,7 @@ function T_V1_N()
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");
 	local size = 8 + 3 + HOST_SaveSize(TRF);
 	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "ch", "scar",
-		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "live"};
+		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "wq", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	local lp, ll = "", {"tr", "stat", "rd", "cvs", "tq", "sw", "fq", "cr", "dc", "bs", "pg"};
 	for i = 1, getn(ll) do lp = lp.." "..ll[i].."="..HOST_SaveSize(L[ll[i]]); end;
@@ -2292,7 +2295,7 @@ function T_V1_N()
 	HOST_Check(tg == "", "no TRF_G* or flight_trf_* globals"..tg);
 	TRF_DumpState("test");
 	local dl = {"module=state event=dump_v4 ", "module=track event=dump", "module=faction event=dump", "module=clan event=dump", "module=convoy event=dump", "module=danger event=dump", "module=supply event=dump", "module=base event=dump", "module=loc event=dump", "module=scar event=dump ",
-		"module=captain event=dump ", "module=stash event=dump ", "module=freight event=dump ", "module=haunt event=dump ", "module=parcel event=dump ", "module=merc event=dump "};
+		"module=captain event=dump ", "module=stash event=dump ", "module=freight event=dump ", "module=haunt event=dump ", "module=parcel event=dump ", "module=merc event=dump ", "module=wq event=dump "};
 	local md = "";
 	for i = 1, getn(dl) do if V_Logs(dl[i]) == 0 then md = md.." "..dl[i]; end; end;
 	HOST_Check(md == "", "TRF_DumpState calls every v1 dump"..md);

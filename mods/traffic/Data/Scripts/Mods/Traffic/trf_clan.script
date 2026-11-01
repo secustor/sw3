@@ -1394,7 +1394,8 @@ end;
 -- ids: list of trader ids (danger convoy members) and/or tables {g = group name, o = ship} (equipment convoy
 -- ships). tier is raised to at least T3 (tier_cap permitting; T1 in a guard system, where an equipment
 -- convoy gets none); why "stn" (trf_station's ore barge event, station-voices-spec 17) keeps the asked tier, a
--- small flight. why "fq": arrival through the registered portal nearest the target after delay s
+-- small flight; why "wq" (trf_wq's Kestrel mayday, freight-quest-spec 4.2) is T2 under the tier cap (min(2, cap)), so a
+-- chapter-5 transport can survive it. why "fq": arrival through the registered portal nearest the target after delay s
 -- (nil: 40-90 s drawn here, 0: now). Any other why ("dc"): armed at the lane raid point of the first trader
 -- (TRF_Rd_RaidPoint), portal arrival now without one. Gate: the raid gate without the busy rule (open
 -- sweep attempt, governor, flags, strict gate), raid_live_cap. Record kind = why, group TRF_Raid_<n>, no
@@ -1426,6 +1427,7 @@ function TRF_Cl_RaidOnBody(ids, tier, why, delay)
 	local fl = min(3, cap);
 	if why == "stn" then fl = 1; end;
 	local T = TRF_Cl_Clamp(max(tonumber(tier) or 0, fl), 1, 4);
+	if why == "wq" then T = TRF_Cl_Clamp(min(2, cap), 1, 4); end;
 	if guard then T = 1; end;
 	local tids, objs, tgg = {}, {}, nil;
 	for i = 1, getn(ids) do

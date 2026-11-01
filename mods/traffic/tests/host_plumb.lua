@@ -97,9 +97,10 @@ function T_PL_A()
 	-- (design/charter-spec.md 4): trade line 70, trade box 200, one owed payer; wanted captains (design/captain-spec.md 4):
 	-- patrol line 35, patrol box 100, one owed payer, seed providers 810 and 540; clan stashes (design/stash-spec.md 4):
 	-- pirate line 20, patrol line 40, pirate box 100; Wolves Freight (design/freight-spec.md 4): trade line 60, trade box
-	-- 300, seed provider 400; sealed parcels (design/parcel-spec.md 4): trade line 20, trade box 400, one owed payer.
-	HOST_Check(c2.line == 12 and c2.box == 9 and c2.none == 1 and c2.ej == 1 and c2.owe == 4 and c2.seed == 12 and c2.coh == 1,
-		"traffic registrations: 12 lines, 9 boxes, 1 none handler, 1 eject handler, 4 payers, 12 seed providers, 1 CostOfHead handler");
+	-- 300, seed provider 400; sealed parcels (design/parcel-spec.md 4): trade line 20, trade box 400, one owed payer; the
+	-- freight unlock quest (design/freight-quest-spec.md 5): trade box 450, seed provider 620.
+	HOST_Check(c2.line == 12 and c2.box == 10 and c2.none == 1 and c2.ej == 1 and c2.owe == 4 and c2.seed == 13 and c2.coh == 1,
+		"traffic registrations: 12 lines, 10 boxes, 1 none handler, 1 eject handler, 4 payers, 13 seed providers, 1 CostOfHead handler");
 	local o1 = TRF_orig_CostOfHead;
 	T_Jump("aurora");
 	T_Jump("gredos");
