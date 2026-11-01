@@ -338,6 +338,6 @@ Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes E-E
 | | fight the raid off | the 8.5 pay, `event=help`, `event=rescued`, the Kestrel's thanks, the logbook text "The Kestrel's report ..." (`event=step step_before=10 step_after=20`); note whether she survives a T2 raid in chapter 5 (spec open question 6) |
 | Q-WQ.3 | on another save at step 10: jump out after the mayday line, or let the raid end without firing on it | `event=void ... reason=<jump,no_help> tries=1`; no mayday within 6 legs (`reason=cooldown` at log 2), then again; the second miss: "The Kestrel limped in alone." (`event=limped`; after a jump as an arrival line in the next system) |
 | | save during the mayday and load | the Kestrel is gone, `event=orphan` (or trf_gen's load pass), `event=void ... reason=load` |
-| Q-WQ.4 | play Q-WQ.1 and Q-WQ.2 once with a start hull (HM Queen or the mission 2 Arba, if a save has one) and once with a later hull | `variant=old` lines show "that old hauler of Alex's" and "A transport pilot who knows the clause."; `variant=new` the plain lines |
+| Q-WQ.4 | play Q-WQ.1 and Q-WQ.2 once with an Arba-class hull (the chapter 4 Elio Arba `mothership_arba` of every vanilla run in chapters 5-6) and once after buying another mothership | `variant=old` lines show "that Arba hauler" and "a transport pilot who knows the clause"; `variant=new` the plain lines |
 
 Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes Q-WQ.4=pass`.

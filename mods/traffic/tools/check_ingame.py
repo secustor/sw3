@@ -2077,7 +2077,8 @@ ITEMS = [
      "name her Kestrel, she survives the defended raid (chapter 5: note how close it was)"),
     ("Q-WQ.3", "void and retry: a jump, a reload or no engagement voids, the mayday rolls again, wq_tries voids limp in", c_wq3, None),
     ("Q-WQ.4", "mothership variant of the clerk's and the Kestrel's lines", c_wq4,
-     "variant=old shows 'that old hauler of Alex's' and 'A transport pilot who knows the clause.', variant=new the plain lines"),
+     "with an Arba-class hull (arba_t, mothership_arba_pirate, mothership_arba) or hm_queen_pl variant=old shows "
+     "'that Arba hauler' and 'a transport pilot who knows the clause', variant=new the plain lines"),
 ]
 
 

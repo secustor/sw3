@@ -11,7 +11,7 @@
 -- limped in alone."). Steps 2-6 (cold trail, the fence, the clan hold at
 -- XB-13, the charter office unlock in TRF_FrBuyGate) are commits 2 and 3; the hook points say "Commit 2 hook".
 -- Dialog variants: the clerk's box and reply and the Kestrel's thanks read the "old hauler" key (<key>o) while the
--- player flies a start hull (TRF_WqK().ms0), chosen at display time, never saved.
+-- player flies one of the Arba haulers or the start hull (TRF_WqK().ms0), chosen at display time, never saved.
 -- Saved fields: TRF.wq = {v=1, s (step 0 declined, 10 mayday due, 20 report owed, 30..90 commits 2-3), k (bits: 1 the
 -- 8.5 help counted on the Kestrel's raid, 2 grandfathered), n (voids of step 1), dc (decline leg, s 0 only), cd (leg of
 -- the last void), sd (seed 1..9999), lv (1 while the Kestrel is on-screen, s 10 only), r (step 1 result: 1 saved,
@@ -187,14 +187,16 @@ end;
 -- Constants without a cfg key: the chapter window (as the freight offer, freight-spec G2), the early chapters (5-6:
 -- Gefest and Golkonda regions only, TRF_FrEarly), the heat gate, the decline cooldown (legs), the logbook id, the card id,
 -- the mayday systems (spec 4.2: the Gefest and Golkonda region systems outside the chapter-6 story systems TRF_FrCh6 and
--- the chapter-5 Quest5Freight systems; the sys6 list from chapter ch_d6), the start hulls of the "old hauler" variant (carcass
--- names as GetName() returns them: hm_queen_pl, the player start InitTeamScript.script:40 HMQueen_pl1; arba_t, the
--- mission 2 hauler bought on Alex's contract, TradersLife.script:394 Arba_pl0), the seeded chance, the spawn delay, the
--- marker label and owner, line seconds.
+-- the chapter-5 Quest5Freight systems; the sys6 list from chapter ch_d6), the hulls of the "old hauler" variant (carcass
+-- names as GetName() returns them, lower case: hm_queen_pl, the player start InitTeamScript.script:40 HMQueen_pl1; the
+-- Arba haulers every vanilla run flies until the player buys another mothership: arba_t, mission 2 Arba_pl0;
+-- mothership_arba_pirate, the chapter 4 Ahilles swap Arba_pl1; mothership_arba, the chapter 4 Elio swap Arba_pl2, which
+-- mission_7g NewBase_XB17.script tests by this name), the seeded chance, the spawn delay, the marker label and owner, line
+-- seconds.
 function TRF_WqK()
 	return {ch_min=5, ch_max=18, ch_early=6, ch_d6=6, heat_max=2, dc_legs=10, qid="trf_wq", jid="wq", nk="nk",
 		sys5={elio=1, gredos=1, valensia=1, kassilia=1, golkonda=1, xt11=1, callipso=1}, sys6={debris6=1},
-		ms0={hm_queen_pl=1, arba_t=1}, pct=50, d_min=30, d_max=60, tier=2, mk="TRF_".."WQ_NP", own="wq", secs=8};
+		ms0={hm_queen_pl=1, arba_t=1, mothership_arba_pirate=1, mothership_arba=1}, pct=50, d_min=30, d_max=60, tier=2, mk="TRF_".."WQ_NP", own="wq", secs=8};
 end;
 
 -- Clamps of the tune keys {lo, hi, int}.
@@ -240,7 +242,7 @@ function TRF_WqHull()
 	return strlower(nm);
 end;
 
--- "old" while the player flies a start hull (the "old hauler" lines), else "new". Read at display time, never saved.
+-- "old" while the player flies an Arba hauler or the start hull (the "old hauler" lines), else "new". Read at display time, never saved.
 function TRF_WqVar()
 	if TRF_WqK().ms0[TRF_WqHull() or ""] then return "old"; end;
 	return "new";
@@ -322,8 +324,9 @@ function TRF_WqSeedGate(cur, R)
 end;
 
 -- Logbook (spec 4.4) ---------------------------------------------------------------------
--- One entry trf_wq ("#TRF_wqt", "#TRF_wqd<s>") while the step has a description (10, 20). Keys take no arguments, so a step
--- change removes and adds the entry (ql = the step of the entry). With the station jobs Job log (trf_plumb TRF_JbLog) the
+-- One entry trf_wq ("#TRF_wqt", "#TRF_wqd<s>") while the step has a description (10, 20; step 20 per result r: wqd20 saved,
+-- wqd20l lost, wqd20a limped in). Keys take no arguments, so a step change removes and adds the entry (ql = the step of
+-- the entry; r is set before the step changes to 20 and never changes within it). With the station jobs Job log (trf_plumb TRF_JbLog) the
 -- entry goes through TRF_JobAdd / TRF_JobRemove / TRF_JobLogGet, else AddQuest / RemoveQuest / GetQuestState, as trf_parcel.
 
 function TRF_WqJl()
@@ -368,6 +371,16 @@ function TRF_WqQSteps()
 	return {[10]=1, [20]=1};
 end;
 
+-- Description key of step s: step 20 by the result (r 2 lost: wqd20l, r 3 limped in: wqd20a, else wqd20).
+function TRF_WqQKey(s)
+	local R = TRF_WqRec();
+	local x = "";
+	if s == 20 and R then
+		if R.r == 2 then x = "l"; elseif R.r == 3 then x = "a"; end;
+	end;
+	return "#TRF_wqd"..s..x;
+end;
+
 -- Removes the entry from list ("job" or "mission"). 1 when removed.
 function TRF_WqQRem(list, why)
 	local id = TRF_WqK().qid;
@@ -392,7 +405,7 @@ end;
 -- Adds the entry of step s to list. note 1 (an accept on the Job log): the line wqlog (TRF_JobAdd shows no notice).
 function TRF_WqQAdd(list, s, note)
 	local K = TRF_WqK();
-	local t, d = "#TRF_wqt", "#TRF_wqd"..s;
+	local t, d = "#TRF_wqt", TRF_WqQKey(s);
 	local r, w = nil, nil;
 	if list == "job" then
 		if type(TRF_JobAdd) ~= "function" then return nil; end;
@@ -890,23 +903,25 @@ function TRF_Wq_Dump()
 end;
 
 -- Texts (spec 7), EN; keys in TRF_UI_Key form (#TRF_wq<name> in loc/trf_en.loc; RU falls back to EN). <key>o: the old
--- hauler variant. wqt and wqd<s> are the logbook title and descriptions (AddQuest keys). The box title is freight's
--- fwboxtitle.
+-- hauler variant. wqt and wqd<s> are the logbook title and descriptions (AddQuest keys; step 20 also wqd20l and wqd20a,
+-- TRF_WqQKey). The box title is freight's fwboxtitle.
 function TRF_Wq_Text()
 	return {
 		wqt = "Missing in Capricorn",
 		wqd10 = "The FTU charter office lost the transport Kestrel in Capricorn. Keep your scope open on the Gefest and Golkonda lanes for her call.",
 		wqd20 = "The Kestrel's report on her sister ship Marlin is with the FTU charter office. The office will send word.",
+		wqd20l = "The Kestrel was lost. Her crew's pod-band account of the Marlin is with the FTU charter office. The office will send word.",
+		wqd20a = "The Kestrel made it in on her own. The FTU charter office will send word about her sister ship Marlin.",
 		wqjobh = "The overdue transport",
 		wqjobs = "Capricorn lanes, no deadline",
 		wqbox = "FTU charter office: transports keep going missing in Capricorn. The Kestrel is three days overdue on the lanes. Cover pays whoever brings a crew home. Will you keep your scope open?",
-		wqboxo = "FTU charter office: transports keep going missing in Capricorn. The Kestrel is three days overdue on the lanes. You still fly that old hauler of Alex's, so you know the clause. Cover pays whoever brings a crew home. Will you keep your scope open?",
+		wqboxo = "FTU charter office: transports keep going missing in Capricorn. The Kestrel is three days overdue on the lanes. You still fly that Arba hauler, so you know the clause. Cover pays whoever brings a crew home. Will you keep your scope open?",
 		wqok = "Clerk: 'Her call sign is on your board. The office remembers who answers.'",
-		wqoko = "Clerk: 'Her call sign is on your board. Alex's old hauler on the lanes again, the office remembers that.'",
+		wqoko = "Clerk: 'Her call sign is on your board. An Arba hauler answering for a transport, the office remembers that.'",
 		wqlog = "Charter office job added to the Job log.",
 		wqmay = "Kestrel: 'Any Wolves ship on this channel, we have company. Two minutes from the lane, please.'",
 		wqthx = "Kestrel: 'Thank you, Wolves. The charter office will hear who answered.'",
-		wqthxo = "Kestrel: 'A transport pilot who knows the clause. Thank you, Wolves, the charter office will hear of it.'",
+		wqthxo = "Kestrel: 'An Arba on the lane, a transport pilot who knows the clause. Thank you, Wolves, the charter office will hear of it.'",
 		wqlost = "Kestrel's mate on the pod band: 'They knew our route. Same as the Marlin.'",
 		wqalone = "The Kestrel limped in alone.",
 		wqname = "Kestrel",

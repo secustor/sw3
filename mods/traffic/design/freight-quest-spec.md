@@ -27,7 +27,7 @@ User decisions of 2026-11-01 (binding):
 | U6 | (f) names | the overdue transport is the Kestrel, the sister wreck the Marlin; not tied to Alex's story (the Marlin is not one of Alex's lost ships) |
 | U7 | quest credits | none of its own; the normal help, raid (8.5) and survivor pay apply |
 | U8 | presentation | through the station jobs UI: the offer is a Jobs row (`TRF_JobRow`) with a card, the accepted line a Job log entry (`TRF_JbLog`); the dock box at prio 450 and `AddQuest` are the fallbacks, as trf_parcel does |
-| U9 | dialog variants | the clerk and the Kestrel's crew branch on the mothership: while the player still flies the hull of the start (2.1) they use the "old hauler" lines ("that old hauler of Alex's", "a transport pilot who knows the clause"), otherwise the "new ship" lines; chosen at display time, never saved |
+| U9 | dialog variants | the clerk and the Kestrel's crew branch on the mothership: while the player still flies an Arba hauler or the start hull (2.1) they use the "old hauler" lines ("that Arba hauler", "a transport pilot who knows the clause"), otherwise the "new ship" lines; chosen at display time, never saved. Rekeyed 2026-11-02 from the start hulls to the Arba hulls (open question 15) |
 
 Implementation decisions of commit 1:
 
@@ -44,9 +44,18 @@ Implementation decisions of commit 1:
 | I9 | Combat hail | the Kestrel gets no combat-hail help offer (`TRF_HlHelpWhy` "own", as the freighter and the station event ship): a paid hail offer would skip the 8.5 pay and its resolver |
 | I10 | RU text | EN fallback (no RU keys; `wq` keys are not in the `stn-g` RU key set) |
 
-### 2.1 The start hull (U9)
+### 2.1 The old hauler hulls (U9)
 
-The player start is `CreateCarcass("HMQueen_pl1", ...)` (`G/InitTeamScript.script:40`), fit `HMQueen_pl1` on carcass `hm_queen_pl` (`Data/Game/ShipDescriptions.xml:5-7`). Mission 2 swaps it for the Arba bought with Alex's contract money (mail_002, `LocData/English/x_news.loc:38`: "the money should be enough to get you a decent ship"; `G/Quests/mission_2/TradersLife.script:394` `SetPlayerMotherShip(mothership_arba)`, fit `Arba_pl0`, carcass `Arba_t`, `ShipDescriptions.xml:8-12`). The chapter 4 swaps found (`mission_4_1`, `4_2`: `Arba_pl1` / `Mothership_arba_pirate`; `4_5`, `4_52`: `Arba_pl2` / `Mothership_arba`) replace it again; whether every chapter-4 branch runs one of them was not traced. The mod reads the hull as trf_supply does (`TRF_SpMsName`: `m:GetName()` on the `TRF_Ms()` handle, the lower-case carcass name, scan-tooling-spec F1). The old hauler set is `TRF_WqK().ms0 = {hm_queen_pl, arba_t}`; any other hull, or no readable name, is the new ship. If every branch swaps, a vanilla run leaves the start hulls behind before chapter 5 and the old hauler lines show only for a player who kept `Arba_t` (open question 15).
+User decision 2026-11-02 (open question 15): the variant is keyed on the Arba hauler the player still flies, not on Alex's start hull. The mod reads the hull as trf_supply does (`TRF_SpMsName`: `m:GetName()` on the `TRF_Ms()` handle, lower-cased, scan-tooling-spec F1). `GetName()` returns the carcass name; vanilla tests it the same way (`G/Locations/Corrino/activate.script:264-265` `"hm_queen_pl"`, `G/Quests/mission_7g/NewBase_XB17.script:533` `"mothership_arba"`). `TRF_WqK().ms0` holds four hulls (carcasses from `Data/Game/ShipDescriptions.xml:5-21`):
+
+| Carcass (`GetName`, lower case) | Fit | Swap (`SetPlayerMotherShip`, CreateCarcass) | Flown |
+|---|---|---|---|
+| `hm_queen_pl` | HMQueen_pl1 | the start, `G/InitTeamScript.script:40` | chapter 1 to mission 2 |
+| `arba_t` | Arba_pl0 | `G/Quests/mission_2/TradersLife.script:394` (:28) | mission 2 to the chapter 4 Ahilles swap |
+| `mothership_arba_pirate` | Arba_pl1 | `mission_4_1/PirateBase_w_merc.script:373` (:576), `mission_4_2/PirateBase_w_pirs.script:244` (:359) | chapter 4, Ahilles to Elio: the captured Wild Dogs base, black-marked in every police and military database (mail_0045, `LocData/English/x_news.loc:59`) |
+| `mothership_arba` | Arba_pl2 | `mission_4_5/Aerography_Elio.script:536` (:670), `mission_4_52/Find_Matt_Elio.script:131` (:208) | chapter 4 Elio until the player changes mothership: the same Arba after Carl Hader re-coded its ID and repainted it (mail_0045_02, `x_news.loc:65`) |
+
+Every branch runs one Ahilles swap and one Elio swap; the other exits blow the mothership (`.work/research/wq-early-start.md` 1.3). So every vanilla player flies `mothership_arba` through chapters 5-6 and sees the old hauler lines; the new ship lines start with the next mothership (the next vanilla `SetPlayerMotherShip` calls are in mission 7g and later). Fiction: the Arba is a transport-class hauler, so the clerk says the player still flies "that Arba hauler" and the Kestrel calls the player "a transport pilot who knows the clause"; no line says "Alex's", since neither chapter-4 Arba is the ship bought on Alex's contract. `hm_queen_pl` stays in the set (the vanilla start-hull test); no offer can show while it flies (chapters 1-2, below `ch_min` 5). Any other hull, or no readable name, is the new ship. The variant keeps the name "old" in the log (`variant=old|new`).
 
 ## 3. Data model
 
@@ -116,7 +125,7 @@ The plan of the research report with the critic's corrections:
 
 ### 4.4 Logbook
 
-One entry `trf_wq`, title `#TRF_wqt`, description `#TRF_wqd<s>` (keys take no arguments, so a step change removes and adds it; `ql` records the step written). Commit 1 describes steps 10 and 20. With `TRF_JbLog()` (cfg `jobs_log` 1 and the natives) the entry goes to the Job log (`TRF_JobAdd`, `TRF_JobRemove`, `TRF_JobLogGet`) and the accept shows `wqlog` (the native shows no notice); else `AddQuest` / `RemoveQuest` / `GetQuestState`. `TRF_WqReconcile` runs at the accept, every step change, every entry (after activate) and every load, never during a mission: the list not in use loses its entry (a move between the lists), a missing entry (`ClearQuests` at a mission start) or one of an older step is added again, an entry without a described step (s 0, 80 of the grandfather rule) is removed. The removal of a done entry 10 legs after done (as trf_captain) is commit 3.
+One entry `trf_wq`, title `#TRF_wqt`, description `#TRF_wqd<s>`; step 20 reads the result `r` (`TRF_WqQKey`): `#TRF_wqd20` (1 saved, the Kestrel's report is with the office), `#TRF_wqd20l` (2 lost, her crew's pod-band account is with the office), `#TRF_wqd20a` (3 limped in, she made it in on her own, the office will send word). Keys take no arguments, so a step change removes and adds it; `ql` records the step written. `r` is set before the step moves to 20 and does not change within it, so the step alone decides a rewrite. Commit 1 describes steps 10 and 20. With `TRF_JbLog()` (cfg `jobs_log` 1 and the natives) the entry goes to the Job log (`TRF_JobAdd`, `TRF_JobRemove`, `TRF_JobLogGet`) and the accept shows `wqlog` (the native shows no notice); else `AddQuest` / `RemoveQuest` / `GetQuestState`. `TRF_WqReconcile` runs at the accept, every step change, every entry (after activate) and every load, never during a mission: the list not in use loses its entry (a move between the lists), a missing entry (`ClearQuests` at a mission start) or one of an older step is added again, an entry without a described step (s 0, 80 of the grandfather rule) is removed. The removal of a done entry 10 legs after done (as trf_captain) is commit 3.
 
 ## 5. Hooks and registration
 
@@ -148,31 +157,33 @@ One entry `trf_wq`, title `#TRF_wqt`, description `#TRF_wqd<s>` (keys take no ar
 | tune `wq_cd` | 6 | 0..200 legs | legs before a voided mayday rolls again |
 | tune `wq_tries` | 2 | 1..9 | voids before step 1 ends without the player |
 
-Constants (`TRF_WqK`): the chapter window 5..18, chapters 5-6 early, debris6 from chapter 6, heat <= 2, the 10-leg decline cooldown, the 50 % roll, the 30-60 s delay, the asked raid tier 2, the start hulls `hm_queen_pl` and `arba_t`, the marker `TRF_WQ_NP` (owner `wq`), 8 s lines.
+Constants (`TRF_WqK`): the chapter window 5..18, chapters 5-6 early, debris6 from chapter 6, heat <= 2, the 10-leg decline cooldown, the 50 % roll, the 30-60 s delay, the asked raid tier 2, the old hauler hulls `hm_queen_pl`, `arba_t`, `mothership_arba_pirate`, `mothership_arba` (2.1), the marker `TRF_WQ_NP` (owner `wq`), 8 s lines.
 
 ## 7. Texts (`TRF_Wq_Text`; `#TRF_wq<name>` in `loc/trf_en.loc`; RU: EN fallback, I10)
 
-17 keys. No text starts with `#`, none holds `%` or a newline (`TRF_Br` is not needed: every text is one line); all are below the 480-character limit of the card natives.
+19 keys. No text starts with `#`, none holds `%` or a newline (`TRF_Br` is not needed: every text is one line); all are below the 480-character limit of the card natives.
 
 | Key | EN | Where |
 |---|---|---|
 | `wqbox` | FTU charter office: transports keep going missing in Capricorn. The Kestrel is three days overdue on the lanes. Cover pays whoever brings a crew home. Will you keep your scope open? | offer, new ship |
-| `wqboxo` | FTU charter office: transports keep going missing in Capricorn. The Kestrel is three days overdue on the lanes. You still fly that old hauler of Alex's, so you know the clause. Cover pays whoever brings a crew home. Will you keep your scope open? | offer, old hauler |
+| `wqboxo` | FTU charter office: transports keep going missing in Capricorn. The Kestrel is three days overdue on the lanes. You still fly that Arba hauler, so you know the clause. Cover pays whoever brings a crew home. Will you keep your scope open? | offer, old hauler |
 | `wqok` | Clerk: 'Her call sign is on your board. The office remembers who answers.' | OK reply, new ship |
-| `wqoko` | Clerk: 'Her call sign is on your board. Alex's old hauler on the lanes again, the office remembers that.' | OK reply, old hauler |
+| `wqoko` | Clerk: 'Her call sign is on your board. An Arba hauler answering for a transport, the office remembers that.' | OK reply, old hauler |
 | `wqjobh` | The overdue transport | card and row header |
 | `wqjobs` | Capricorn lanes, no deadline | row second line |
 | `wqlog` | Charter office job added to the Job log. | after `TRF_JobAdd` |
 | `wqmay` | Kestrel: 'Any Wolves ship on this channel, we have company. Two minutes from the lane, please.' | mayday |
 | `wqthx` | Kestrel: 'Thank you, Wolves. The charter office will hear who answered.' | saved, new ship |
-| `wqthxo` | Kestrel: 'A transport pilot who knows the clause. Thank you, Wolves, the charter office will hear of it.' | saved, old hauler |
+| `wqthxo` | Kestrel: 'An Arba on the lane, a transport pilot who knows the clause. Thank you, Wolves, the charter office will hear of it.' | saved, old hauler |
 | `wqlost` | Kestrel's mate on the pod band: 'They knew our route. Same as the Marlin.' | lost |
 | `wqalone` | The Kestrel limped in alone. | wq_tries voids |
 | `wqname` | Kestrel | raid and hail lines |
 | `wqwho` | FTU transport Kestrel | focus and hail who |
 | `wqt` | Missing in Capricorn | logbook title |
 | `wqd10` | The FTU charter office lost the transport Kestrel in Capricorn. Keep your scope open on the Gefest and Golkonda lanes for her call. | logbook, step 10 |
-| `wqd20` | The Kestrel's report on her sister ship Marlin is with the FTU charter office. The office will send word. | logbook, step 20 |
+| `wqd20` | The Kestrel's report on her sister ship Marlin is with the FTU charter office. The office will send word. | logbook, step 20, r 1 saved |
+| `wqd20l` | The Kestrel was lost. Her crew's pod-band account of the Marlin is with the FTU charter office. The office will send word. | logbook, step 20, r 2 lost |
+| `wqd20a` | The Kestrel made it in on her own. The FTU charter office will send word about her sister ship Marlin. | logbook, step 20, r 3 limped in |
 
 The box title is freight's `fwboxtitle` "FTU charter office". FTU fiction: the office rewards whoever brings a crew home and stays neutral; the mystery behind Alex's mail_005 and mail_007 (`x_news.loc:68`, `:102`) stays open (no line says "vanished", names InoCo or Beta Lethera); mail_005 posts at the end of chapter 5, so chapter-5 players know only the rumour.
 
@@ -186,8 +197,8 @@ Entry: `host_parcel.lua` up to its first scenario (the `PC_*` and `S_*` helpers)
 
 | Run | Covers |
 |---|---|
-| `wq-a` | `extra_count=15`, `TRF_ModList`, `TRF_PlMods` and both text lists end with Wq; cfg and tune defaults and clamps; registrations (box 450 and row 450 first, seed 620 between 650 and 600, the resolver); 17 texts within the card limits; the gate reasons (chapter 4 and 19, help, heat, Trade at war, a mission, the grandfather rule, a started line, the decline cooldown, `enable_wq` 0, freight off, Kadi in chapter 5 and 7, a station off the loop, New Kyoto); the box (new ship), Cancel and the 10-leg cooldown, no second offer in the visit; the old hauler box (`Arba_t`, any case) and OK (step 10, seed, `AddQuest` trf_wq with wqt/wqd10, the old hauler reply); hm_queen_pl old, mothership_arba new; ClearQuests and the reconcile, the removal at s 0; the mission card (id, header, title, no cost, the old hauler text, open and OK); the board row and no box after the board; the Job log (TRF_JobAdd, wqlog, the move to the mission list and back); the repair (type, step, ranges, dc/lv/p rules, a new seed, the grandfather rule through `TRF_Repair`) |
-| `wq-b` | the mayday systems against `TRF_Map`, the FrCh6 and Quest5Freight exclusion, debris6 from chapter 6; a system off the list; a failed and a passing roll; slot wq (rank 8); the spawn (path A, `wq`, `nm` 0, raid kind wq at T2, `lv`), the mayday line and the marker; the names; no 8.4 contract (used, then wq) and no combat-hail help offer; saved (8.5 pay, the resolver bit, step 20, r 1, wqthx, wqd20, the marker cleared); saved with the old hauler (wqthxo); lost (r 2, wqlost); no engagement (void, tries 1, the slot freed, `wq` kept); the cooldown; a refused raid (the flag cleared, a pool name) as the second void (r 3, the limped-in line); a jump on the last try (the arrival line of the next entry); a load with the Kestrel adopted (orphan removal, void); tier cap 1 gives T1; `enable_wq` 0; the size bound (248 bytes); the dump |
+| `wq-a` | `extra_count=15`, `TRF_ModList`, `TRF_PlMods` and both text lists end with Wq; cfg and tune defaults and clamps; registrations (box 450 and row 450 first, seed 620 between 650 and 600, the resolver); 19 texts within the card limits, the old hauler texts name the Arba and not Alex, the three step-20 descriptions; the gate reasons (chapter 4 and 19, help, heat, Trade at war, a mission, the grandfather rule, a started line, the decline cooldown, `enable_wq` 0, freight off, Kadi in chapter 5 and 7, a station off the loop, New Kyoto); the box (new ship), Cancel and the 10-leg cooldown, no second offer in the visit; the old hauler box (`Mothership_arba`, any case) and OK (step 10, seed, `AddQuest` trf_wq with wqt/wqd10, the old hauler reply); hm_queen_pl, arba_t, mothership_arba_pirate and mothership_arba old, any other hull or no name new; ClearQuests and the reconcile, the removal at s 0; the mission card (id, header, title, no cost, the old hauler text, open and OK); the board row and no box after the board; the Job log (TRF_JobAdd, wqlog, the move to the mission list and back); the repair (type, step, ranges, dc/lv/p rules, a new seed, the grandfather rule through `TRF_Repair`) |
+| `wq-b` | the mayday systems against `TRF_Map`, the FrCh6 and Quest5Freight exclusion, debris6 from chapter 6; a system off the list; a failed and a passing roll; slot wq (rank 8); the spawn (path A, `wq`, `nm` 0, raid kind wq at T2, `lv`), the mayday line and the marker; the names; no 8.4 contract (used, then wq) and no combat-hail help offer; saved (8.5 pay, the resolver bit, step 20, r 1, wqthx, wqd20, the marker cleared); saved with the old hauler (mothership_arba, wqthxo); lost (r 2, wqlost, wqd20l, again after ClearQuests); no engagement (void, tries 1, the slot freed, `wq` kept); the cooldown; a refused raid (the flag cleared, a pool name) as the second void (r 3, the limped-in line, wqd20a); a jump on the last try (the arrival line of the next entry, wqd20a); a load with the Kestrel adopted (orphan removal, void); tier cap 1 gives T1; `enable_wq` 0; the size bound (248 bytes); the dump |
 
 Changed scenarios: every `extra_count=14` check (now 15) and the module-list positions in `cap-a`, `fr-a`, `sh-a`, `sc-a`, `ha-a`, `pcl-a`, `mc-a`; `pl-a` (10 boxes, 13 seed providers), `sv-a` (13 seed providers), `ch-a` and `pcl-a` (box order with 450), `v1-n` (the wq worst case in the full-state save, the wq dump line), `v1-m` (`loc/trf_en.loc` regenerated with the wq keys).
 
@@ -198,7 +209,7 @@ Changed scenarios: every `extra_count=14` check (now 15) and the module-list pos
 | Q-WQ.1 | the offer at a Gefest or Golkonda loop stop: box 450 (or the card / the Office row with the jobs UI), OK starts the line and the logbook or Job log entry, Cancel the cooldown | `module=wq event=offer ... result=shown via=<box,card,board>`, `event=accept ... result=ok`, `event=logbook list=<mission,job> id=trf_wq step=10 result=added` |
 | Q-WQ.2 | the mayday: the Kestrel through a portal 30-60 s after entry under a T2 raid (T1 at a tier cap 1), named Kestrel in the raid lines and the focus, survives a defended raid in chapter 5 (research question 6) | `event=seed ... result=planned`, `event=spawn ... tier=2 ... result=spawned`, `event=help`, `event=rescued`, `event=step step_before=10 step_after=20` |
 | Q-WQ.3 | void and retry: leave before the result, or let the raid end without firing on it; after `wq_cd` legs the mayday rolls again; the second void ends step 1 with "The Kestrel limped in alone." | `event=void ... reason=<jump,no_help,load> tries=<n>`, `event=limped` |
-| Q-WQ.4 | the mothership variant: with a start hull (`hm_queen_pl`, `arba_t`) the old hauler lines, otherwise the new ship lines | `event=offer ... variant=old|new`, `event=rescued ... variant=old|new` and the text on screen |
+| Q-WQ.4 | the mothership variant: with an Arba-class hull (`arba_t`, `mothership_arba_pirate`, `mothership_arba`) or `hm_queen_pl` the old hauler lines, otherwise the new ship lines | `event=offer ... variant=old|new`, `event=rescued ... variant=old|new` and the text on screen |
 
 ## 11. How it fits
 
@@ -213,7 +224,7 @@ Changed scenarios: every `extra_count=14` check (now 15) and the module-list pos
 
 ## 12. Open questions
 
-Settled by the user (2026-11-01): research questions 1 (U1), 2 (U2), 3 (U3), 4 (U4), 5 (U5), 9 (U6). Still open:
+Settled by the user (2026-11-01): research questions 1 (U1), 2 (U2), 3 (U3), 4 (U4), 5 (U5), 9 (U6). Settled 2026-11-02: 15 (the old hauler variant is keyed on the Arba hull the player still flies, `arba_t`, `mothership_arba_pirate`, `mothership_arba`, plus `hm_queen_pl`; every vanilla player sees it in chapters 5-6; the texts no longer name Alex; 2.1, U9). Still open:
 
 6. The Kestrel surviving a T2 raid in chapter 5 (she flies with the escorts of her tier row, I4): CHECK Q-WQ.2; tune the asked tier if needed (`TRF_WqK().tier`).
 7. The base pirate-dock dispatch (`S/trf_base.script` `TRF_DockBox("pir")`): only the ransom needed it; moot after U3.
@@ -223,5 +234,4 @@ Settled by the user (2026-11-01): research questions 1 (U1), 2 (U2), 3 (U3), 4 (
 12. Unlock box hidden by the parcel box at s 70 (commit 3); the jobs board removes the conflict.
 13. `AddQuest` on an existing id: the code removes and adds; whether a second `AddQuest` replaces the description is unverified (CHECK in commit 3 with `SetQuestState` for done).
 14. No wreck point (commit 2): a host assert on golkonda and callipso contacts and a portal-offset fallback.
-15. The old hauler variant in a vanilla run: the chapter-4 swaps found replace the start hulls before chapter 5 (2.1). Decide whether `mothership_arba` (Arba_pl2, the chapter-4 Elio swap) or `mothership_arba_pirate` (the Arba refit of 4_1 / 4_2) should count as "the mothership Alex gave", or whether the variant is meant for players who skipped the swap.
 16. Board and card for the later steps (commit 2/3): only the offer is a row; the report and the unlock are dock lines and the freight box.

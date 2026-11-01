@@ -154,9 +154,15 @@ function T_WQ_A()
 	for k, v in tx do
 		if strlen(v) > 480 or strfind(v, "[%%#\n]") then bad = bad.." "..k; end;
 	end;
-	HOST_Check(WQ_N(tx) == 17 and bad == "" and TRF_Txt("wqt") == "Missing in Capricorn" and TRF_Txt("fwboxtitle") == "FTU charter office"
+	HOST_Check(WQ_N(tx) == 19 and bad == "" and TRF_Txt("wqt") == "Missing in Capricorn" and TRF_Txt("fwboxtitle") == "FTU charter office"
 		and TRF_Txt("wqalone") == "The Kestrel limped in alone." and TRF_Txt("wqname") == "Kestrel",
-		"17 texts, at most 480 characters, no %, # or newline; title fwboxtitle"..bad);
+		"19 texts, at most 480 characters, no %, # or newline; title fwboxtitle"..bad);
+	bad = "";
+	for k, v in {"wqboxo", "wqoko", "wqthxo"} do
+		if not WQ_Has(TRF_Txt(v), "Arba") or WQ_Has(TRF_Txt(v), "Alex") then bad = bad.." "..v; end;
+	end;
+	HOST_Check(bad == "" and WQ_Has(TRF_Txt("wqd20"), "report") and WQ_Has(TRF_Txt("wqd20l"), "pod-band account")
+		and WQ_Has(TRF_Txt("wqd20a"), "on her own"), "old hauler texts name the Arba, not Alex; step-20 logbook text per result (wqd20, wqd20l, wqd20a)"..bad);
 	-- Gate reasons (the station of debris6 is a loop stop of the Golkonda region).
 	local K = TRF_WqK();
 	HOST_Check(TRF_WqGate(idx) == nil and K.ch_min == 5 and K.ch_max == 18, "debris6, chapter 5, help 5: the offer is due");
@@ -203,13 +209,13 @@ function T_WQ_A()
 	HOST_Check(TRF_WqGate(idx) == "declined", "declined: no offer within 10 legs");
 	TRF.clock.legs = TRF.clock.legs + 10;
 	HOST_Check(TRF_WqGate(idx) == nil, "after 10 legs the offer is due again");
-	-- Old hauler variant (the start hulls), OK: step 10, the seed, the logbook entry, the clerk's reply.
-	h.ms.model = "Arba_t";
+	-- Old hauler variant (an Arba hauler), OK: step 10, the seed, the logbook entry, the clerk's reply.
+	h.ms.model = "Mothership_arba";
 	WQ_Visit();
 	n0 = S_Mark();
 	r = PC_Dock();
-	HOST_Check(r.nb == 1 and r.box.text == TRF_Txt("wqboxo") and WQ_Has(r.box.text, "that old hauler of Alex's") and WQ_Logs(n0, "variant=old") == 1,
-		"start hull Arba_t (GetName, any case): the old hauler text");
+	HOST_Check(r.nb == 1 and r.box.text == TRF_Txt("wqboxo") and WQ_Has(r.box.text, "that Arba hauler") and WQ_Logs(n0, "variant=old") == 1,
+		"Arba_pl2 hull Mothership_arba (GetName, any case): the old hauler text");
 	local s = PC_Press(r, "ok");
 	local R = TRF.wq;
 	HOST_Check(R.s == 10 and R.dc == nil and R.n == 0 and type(R.sd) == "number" and R.sd >= 1 and R.sd <= 9999 and R.ql == 10
@@ -221,11 +227,17 @@ function T_WQ_A()
 	r = PC_Dock();
 	if r.nb > 0 then PC_Press(r, "cancel"); end;
 	HOST_Check(TRF_WqGate(idx) == "started" and S_Logs(n0, "box=wq ") == 0, "started: no offer again (the freight purchase box may show)");
-	h.ms.model = "hm_queen_pl";
-	HOST_Check(TRF_WqVar() == "old" and TRF_WqVKey("wqthx") == "wqthxo", "hm_queen_pl (the player start) reads old");
-	h.ms.model = "mothership_arba";
-	HOST_Check(TRF_WqVar() == "new" and TRF_WqVKey("wqthx") == "wqthx", "mothership_arba reads new");
+	bad = "";
+	for k, v in {"hm_queen_pl", "arba_t", "Mothership_arba_pirate", "mothership_arba"} do
+		h.ms.model = v;
+		if TRF_WqVar() ~= "old" or TRF_WqVKey("wqthx") ~= "wqthxo" then bad = bad.." "..v; end;
+	end;
+	for k, v in {"mothership_empire", "Arba_0", "hm_queen", ""} do
+		h.ms.model = v;
+		if TRF_WqVar() ~= "new" or TRF_WqVKey("wqthx") ~= "wqthx" then bad = bad.." "..v; end;
+	end;
 	h.ms.model = nil;
+	HOST_Check(bad == "" and TRF_WqVar() == "new", "hm_queen_pl, arba_t, mothership_arba_pirate, mothership_arba read old; any other hull or no name new"..bad);
 	-- ClearQuests (a mission start) wipes the entry: the entry reconcile adds it again; s 0 removes it.
 	ClearQuests();
 	n0 = S_Mark();
@@ -372,10 +384,10 @@ function T_WQ_B()
 		and WQ_Logs(n0, "event=step step_before=10 step_after=20 reason=rescued") == 1 and S_Logs(n0, "module=plumb event=marker owner=wq deleted_count=1 result=cleared") == 1,
 		"saved: step 20, r 1, the thanks line (new ship), the logbook at wqd20, the marker gone");
 	TRF_Remove(ev.id, "test");
-	-- Saved with the old hauler: the thanks variant.
+	-- Saved with the old hauler (the Arba_pl2 hull): the thanks variant.
 	WQ_Begin("debris6", "5_1");
 	R = WQ_At(10);
-	h.ms.model = "arba_t";
+	h.ms.model = "mothership_arba";
 	ev = WQ_Mayday("golkonda");
 	n = ev.rn;
 	hr = WQ_RaidIn(n);
@@ -383,7 +395,7 @@ function T_WQ_B()
 	m0, s0 = getn(h.msgs), getn(h.screen);
 	for j = 1, getn(hr.sh) do hr.sh[j].alive = nil; HOST_Fire("died", "TRF_OnRaidDied("..n..","..j..","); end;
 	T_Tick(4, 0.5);
-	HOST_Check(TRF.wq.s == 20 and WQ_Has(WQ_Said(m0, s0), "A transport pilot who knows the clause."), "saved, old hauler: the thanks variant wqthxo");
+	HOST_Check(TRF.wq.s == 20 and WQ_Has(WQ_Said(m0, s0), TRF_Txt("wqthxo")) and h.qlog.trf_wq.d == "#TRF_wqd20", "saved, old hauler: the thanks variant wqthxo");
 	TRF_Remove(ev.id, "test");
 	-- Lost: the Kestrel killed by her raid.
 	WQ_Begin("debris6", "5_1");
@@ -395,7 +407,10 @@ function T_WQ_B()
 	for t = 1, getn(x.tp) do x.tp[t].alive = nil; HOST_Fire("died", "TRF_OnShipDied("..ev.id..","..t..","); end;
 	R = TRF.wq;
 	HOST_Check(R.s == 20 and R.r == 2 and R.lv == nil and WQ_Has(WQ_Said(m0, s0), TRF_Txt("wqlost")) and WQ_Logs(n0, "event=lost system=golkonda trader_id="..ev.id) == 1
-		and h.qlog.trf_wq.d == "#TRF_wqd20", "lost: step 20, r 2, the pod band line");
+		and h.qlog.trf_wq.d == "#TRF_wqd20l", "lost: step 20, r 2, the pod band line, the logbook at wqd20l");
+	ClearQuests();
+	TRF_Wq_OnActivate();
+	HOST_Check(h.qlog.trf_wq and h.qlog.trf_wq.d == "#TRF_wqd20l" and TRF.wq.ql == 20, "lost: the reconcile after ClearQuests adds wqd20l again");
 	for q, e in TRF.live.rd do if type(e) == "table" and e.st ~= "end" then TRF_Rd_End(q, "cancel"); end; end;
 	-- No engagement: the raid ends without counted help; void, slot freed, the cooldown, a re-roll after wq_cd legs.
 	WQ_Begin("debris6", "5_1");
@@ -431,8 +446,8 @@ function T_WQ_B()
 	R = TRF.wq;
 	HOST_Check(ev and ev.st == "end" and rec and rec.wq == nil and rec.nm >= 1 and R.n == 2 and R.s == 20 and R.r == 3 and R.p == nil
 		and WQ_Logs(n0, "event=void trader_id="..ev.id.." reason=raid tries=2") == 1 and WQ_Logs(n0, "event=limped tries=2 line=true") == 1
-		and WQ_Has(WQ_Said(m0, s0), "The Kestrel limped in alone.") and h.qlog.trf_wq.d == "#TRF_wqd20",
-		"refused raid: void, the flag cleared; wq_tries voids: step 20 (r 3) with the limped-in line");
+		and WQ_Has(WQ_Said(m0, s0), "The Kestrel limped in alone.") and h.qlog.trf_wq.d == "#TRF_wqd20a",
+		"refused raid: void, the flag cleared; wq_tries voids: step 20 (r 3) with the limped-in line, the logbook at wqd20a");
 	if rec then TRF_Remove(ev.id, "test"); end;
 	-- A jump while she is on-screen: void; at the last try the line waits for the next entry.
 	WQ_Begin("debris6", "5_1");
@@ -444,7 +459,8 @@ function T_WQ_B()
 	T_Jump("elio");
 	R = TRF.wq;
 	HOST_Check(R.s == 20 and R.r == 3 and R.n == 2 and WQ_Logs(n0, "event=void trader_id="..tid.." reason=jump tries=2") == 1 and WQ_Logs(n0, "event=limped tries=2 line=false") == 1
-		and R.p == nil and S_Logs(n0, "module=plumb event=arrival_line owner=wq ") == 1, "jump: void, the last try, the limped-in line as an arrival line of the next entry");
+		and R.p == nil and S_Logs(n0, "module=plumb event=arrival_line owner=wq ") == 1 and h.qlog.trf_wq and h.qlog.trf_wq.d == "#TRF_wqd20a",
+		"jump: void, the last try, the limped-in line as an arrival line of the next entry, the logbook at wqd20a");
 	-- A load while she is on-screen (the mothership next to her, so trf_gen's load pass adopts her): the record removed
 	-- (orphan), void.
 	WQ_Begin("debris6", "5_1");
