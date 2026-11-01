@@ -2,8 +2,8 @@
 """Score the in-game checks of pirate haunts (E16.1-E16.11), sealed parcels (E-PCL.1-E-PCL.6), trader docking (D-DOCK),
 the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10), the mercenary hire (D-MERC.*, design/merc-spec.md
 11, test plan section 11), the strength scale (D-STR.*, design/strength-spec.md 9), the pirate fits (D-FIT.1-6, E-BB1,
-design/fits-spec.md 11), the vanilla extortion fix (E-EXT.1, design/extort-fix-spec.md 7) and the stack leak diagnostic
-(D-DLL.1) from traffic logs.
+design/fits-spec.md 11), the vanilla extortion fix (E-EXT.1, design/extort-fix-spec.md 7), the stack leak diagnostic
+(D-DLL.1) and the station jobs mission card (K0-K7, design/station-jobs-spec.md 10, step 1) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -1414,6 +1414,188 @@ def c_ext1(ctx):
     return res
 
 
+# ---- station jobs mission card (design/station-jobs-spec.md 10, step 1: K0-K7) ---------------------------------
+
+def jobs_cards(ctx):
+    """(dock result=card line, [plumb jobs_card and box_answer lines up to the next trade dock or state line]) per card."""
+    out = []
+    for lg in ctx.logs:
+        rs = lg.recs
+        for i, r in enumerate(rs):
+            if not r.is_("plumb", "dock", kind="trade", result="card"):
+                continue
+            after = []
+            for s in rs[i + 1:]:
+                if s.is_("plumb", "dock", kind="trade") or (s.mod == "state" and s.ev in ("enter", "load")):
+                    break
+                if s.mod == "plumb" and s.ev in ("jobs_card", "box_answer"):
+                    after.append(s)
+            out.append((r, after))
+    return out
+
+
+def card_answers(after):
+    return [s for s in after if s.ev == "jobs_card" and s.get("result") == "ok" and s.get("card_event") in ("ok", "cancel", "esc")]
+
+
+def c_k0(ctx):
+    res = Res()
+    res.logpart = True
+    ini = ctx.find("dll", "jobs_init")
+    bad = ctx.find("dll", "jobs_sig_mismatch")
+    if not ini:
+        res.missing.append("no event=jobs_init line: a DLL built before 2026-11-01")
+    elif not [r for r in ini if r.get("card") == "1"]:
+        res.missing.append("jobs_init card=0: install with JOBS_CARD=1")
+    for r in ini:
+        if r.get("sig") != "ok" or (r.get("card") == "1" and r.get("patched") != "1"):
+            res.fails.append("%s: sig=%s patched=%s" % (r.short(), r.get("sig"), r.get("patched")))
+    if bad:
+        res.fails.append("%d jobs_sig_mismatch lines" % len(bad))
+    res.ev("jobs_init", ini)
+    res.ev("jobs_sig_mismatch", bad)
+    return res
+
+
+def c_k1(ctx):
+    res = Res()
+    res.logpart = True
+    cards = jobs_cards(ctx)
+    if not cards:
+        res.missing.append("dock at a trade station with a parcel offer (JOBS_CARD=1, cfg jobs_ui 1): no dock result=card line")
+    for r, after in cards:
+        if not [s for s in after if s.get("card_event") == "open" and s.get("result") == "ok"]:
+            res.fails.append("%s: card shown, no open event (TRF_OnJobCard not delivered)" % r.short())
+        elif not [s for s in after if s.ev == "box_answer" and s.get("result") == "done"]:
+            res.fails.append("%s: card never answered before the next docking (box_answer missing)" % r.short())
+    res.ev("cards shown", [c[0] for c in cards])
+    return res
+
+
+def c_k2(ctx):
+    res = Res()
+    res.logpart = True
+    op = ctx.find("dll", "jobs_card", action="open")
+    if not op:
+        res.missing.append("no DLL jobs_card action=open line (a card shown)")
+    for r in op:
+        f = r.int("fields", 0)
+        if f & 7 != 7:
+            res.fails.append("%s: fields=%d: %s not written (caption String not found)" % (
+                r.short(), f, ", ".join(n for b, n in ((1, "header"), (2, "cost"), (4, "text")) if not f & b)))
+    res.ev("cards opened by the DLL", op)
+    return res
+
+
+def c_k3(ctx):
+    res = Res()
+    res.logpart = True
+    oks, cancels = [], []
+    for r, after in jobs_cards(ctx):
+        ans = card_answers(after)
+        if len(ans) > 1:
+            res.fails.append("%s: %d answers for one card" % (r.short(), len(ans)))
+        for a in ans[:1]:
+            ba = [s for s in after if s.ev == "box_answer" and s.n < a.n]
+            want = "1" if a.get("card_event") == "ok" else "0"
+            if not ba or ba[-1].get("answer") != want:
+                res.fails.append("%s: card_event=%s without a box_answer answer=%s before it" % (a.short(), a.get("card_event"), want))
+            (oks if want == "1" else cancels).append(a)
+    cancels = [a for a in cancels if a.get("card_event") == "cancel"]
+    if not oks:
+        res.missing.append("press OK on a parcel card once")
+    if not cancels:
+        res.missing.append("press Cancel on a parcel card once")
+    res.ev("OK answers", oks)
+    res.ev("Cancel answers", cancels)
+    return res
+
+
+def c_k4(ctx):
+    res = Res()
+    res.logpart = True
+    esc = []
+    for r, after in jobs_cards(ctx):
+        for a in card_answers(after):
+            if a.get("card_event") == "esc":
+                esc.append(a)
+                ba = [s for s in after if s.ev == "box_answer" and s.n < a.n]
+                if not ba or ba[-1].get("answer") != "0":
+                    res.fails.append("%s: Esc not answered as Cancel (box_answer answer=0)" % a.short())
+    closed = [r for r in ctx.find("dll", "jobs_card", action="closed") if r.get("ev") == "esc"]
+    if not esc:
+        res.missing.append("press Esc on a parcel card once")
+    elif not closed:
+        res.notes.append("no DLL jobs_card action=closed ev=esc line")
+    res.ev("Esc answers", esc)
+    res.ev("DLL closed without an answer", closed)
+    return res
+
+
+def c_k5(ctx):
+    res = Res()
+    res.logpart = True
+    fb, ok = ctx.find("plumb", "jobs_fallback", reason="ui"), []
+    for lg in ctx.logs:
+        rs = lg.recs
+        for i, r in enumerate(rs):
+            if not r.is_("plumb", "jobs_fallback", reason="ui"):
+                continue
+            nxt = [s for s in rs[i + 1:i + 4] if s.is_("plumb", "dock", kind="trade")]
+            if nxt and nxt[0].get("result") == "box":
+                ok.append(nxt[0])
+            else:
+                res.fails.append("%s: the box did not open after the refused card" % r.short())
+    if not fb:
+        res.missing.append("a card call while a movie or dialog runs (dock during a quest movie, or TRF_MissionCard from a "
+                           "debug call then): no jobs_fallback reason=ui line")
+    res.ev("refused (ui)", fb)
+    res.ev("box instead", ok)
+    return res
+
+
+def c_k6(ctx):
+    res = Res()
+    res.logpart = True
+    for mod in ("plumb", "core"):
+        e = ctx.find(mod, "error")
+        if e:
+            res.fails.append("%d module=%s event=error lines" % (len(e), mod))
+    d = [r for r in ctx.recs if r.mod == "dll" and r.ev in ("lua_error", "lua_error_repeat")]
+    if d:
+        res.fails.append("%d DLL lua_error lines" % len(d))
+    script_errors(ctx, res)
+    if not ctx.find("dll", "jobs_card", action="open"):
+        res.missing.append("no card shown in these logs")
+    return res
+
+
+def c_k7(ctx):
+    res = Res()
+    res.logpart = True
+    seen = []
+    for lg in ctx.logs:
+        rs = lg.recs
+        last = None
+        for i, r in enumerate(rs):
+            if r.is_("plumb", "dock", kind="trade"):
+                last = None
+            if r.mod == "plumb" and r.ev == "jobs_card" and r.get("result") == "ok" and r.get("card_event") in ("ok", "cancel", "esc"):
+                last = r
+            if r.is_("state", "load") and last is not None:
+                seen.append(r)
+                for s in rs[i + 1:]:
+                    if s.is_("plumb", "dock", kind="trade") or s.is_("state", "enter"):
+                        break
+                    if s.is_("plumb", "jobs_card", result="stale"):
+                        res.fails.append("%s: a card event after the load (stale card)" % s.short())
+                last = None
+    if not seen:
+        res.missing.append("save right after a card answer (before the next docking) and load it")
+    res.ev("loads after a card answer", seen)
+    return res
+
+
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
@@ -1495,6 +1677,20 @@ ITEMS = [
      "no shot at the flight before the box (no turret or wing fire, HUD neutral); pay: it stays neutral and leaves; "
      "Cancel: it attacks and the turrets fire; fire first: it fights back"),
     ("D-DLL.1", "stack leak source: trig_fires names the condition, stack_leak carries v1=", c_dll1, None),
+    ("K0", "jobs init: card=1 sig=ok patched=1, no jobs_sig_mismatch", c_k0, None),
+    ("K1", "parcel offer as the mission card at the trade dock, answered before the next docking", c_k1,
+     "the mission window (credits sign by the pay) over the HUD, game time stopped while it is up; the shop opens after "
+     "the answer"),
+    ("K2", "card text: header, cost and body written", c_k2,
+     "header 'Sealed parcel to <system>', the pay, the body = the box text, title 'FTU courier contract', no #; note how "
+     "the line break (TRF_Br, '|') shows in the body"),
+    ("K3", "OK and Cancel: one answer per card, answered as the box (box_answer 1 / 0)", c_k3,
+     "each button closes the card once; after OK the crates are in the hold as with the box"),
+    ("K4", "Esc: answered as Cancel, the offer declined", c_k4, None),
+    ("K5", "card refused while a movie or dialog runs: the box instead", c_k5, None),
+    ("K6", "no new errors with the card", c_k6, "LOGfile.txt has no 'cannot load quest log' line (0x72a4cc)"),
+    ("K7", "save and load right after a card answer: no stale card", c_k7,
+     "no crash at the load and no card window after it"),
 ]
 
 
@@ -1604,10 +1800,14 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "D-STR.1": "PASS", "D-STR.2": "PASS", "D-STR.3": "FAIL",
             "D-FIT.1": "FAIL", "D-FIT.2": "MANUAL", "D-FIT.3": "PASS", "D-FIT.4": "MANUAL", "D-FIT.5": "MANUAL",
             "D-FIT.6": "PASS", "E-BB1": "MANUAL", "E-EXT.1": "FAIL",
-            "D-DLL.1": "PASS"}
+            "D-DLL.1": "PASS",
+            "K0": "PASS", "K1": "MANUAL", "K2": "FAIL", "K3": "MANUAL", "K4": "PASS", "K5": "NO DATA", "K6": "MANUAL",
+            "K7": "MANUAL"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
-# FAIL); extortion_seen lines at level 1.
+# FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
+# OK, Cancel and Esc, the second card with fields=5 (cost not written, K2 FAIL), a load after the third answer; no
+# refused card (K5).
 
 
 def selftest():

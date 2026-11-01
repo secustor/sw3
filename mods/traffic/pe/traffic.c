@@ -1,6 +1,7 @@
 /* traffic: hook module of the sw3-traffic mod, linked into the sw3tp zlib1.dll proxy
  * (mods/traffic/design/mod-options.md 5.1-5.5, 5.8 item 2). Ten E8 rel32 call-site patches (T5a, T5b, T6 only with
- * trig_log=1), seven natives (API.md), Lua callbacks, the TRF carry across the location-entry ClearGlobals, a C
+ * trig_log=1), eight natives (API.md), Lua callbacks, the mission card (two handler immediates T7a/T7b and the Hide
+ * slot T8 with jobs_card=1, design/station-jobs-spec.md), the TRF carry across the location-entry ClearGlobals, a C
  * _ERRORMESSAGE that logs a traceback (T1), a Lua stack leak guard (T4) and a trigger-fire sampler (T5a/T5b/T6).
  * TRF_Log lines carry at most 485 chars of the Lua string.
  * Target: sw3cw.exe GOG v1.12, ImageBase 0x400000, no ASLR. No CRT.
@@ -122,12 +123,14 @@ static double real_sec(void)
 }
 
 /* ---- Lua callbacks ---- */
-enum { CB_ENTER, CB_ACTIVATE, CB_LOAD, CB_TICK, CB_N };
+enum { CB_ENTER, CB_ACTIVATE, CB_LOAD, CB_TICK, CB_JOB, CB_N };
 static struct cb { const char *name; unsigned calls, errs, notfn; int off; } g_cb[CB_N] = {
-    { "TRF_OnEnter", 0, 0, 0, 0 }, { "TRF_OnActivate", 0, 0, 0, 0 }, { "TRF_OnLoad", 0, 0, 0, 0 }, { "TRF_OnTick", 0, 0, 0, 0 } };
+    { "TRF_OnEnter", 0, 0, 0, 0 }, { "TRF_OnActivate", 0, 0, 0, 0 }, { "TRF_OnLoad", 0, 0, 0, 0 }, { "TRF_OnTick", 0, 0, 0, 0 },
+    { "TRF_OnJobCard", 0, 0, 0, 0 } };
 
-/* Calls global c->name if it is a function; restores the stack top. Returns the status, or -1 when not called. */
-static int call_lua(lua_State *L, struct cb *c, int nargs, double a, double b)
+/* Calls global c->name if it is a function; restores the stack top. Returns the status, or -1 when not called.
+ * nargs 2: the strings sa, sb when sa is set, else the numbers a, b. */
+static int call_lua(lua_State *L, struct cb *c, int nargs, double a, double b, const char *sa, const char *sb)
 {
     int top, t, st = -1;
     struct tb lb;
@@ -136,7 +139,8 @@ static int call_lua(lua_State *L, struct cb *c, int nargs, double a, double b)
     lua_getglobal(L, c->name);
     t = lua_type(L, -1);
     if (t == T_FUNC) {
-        if (nargs) { lua_pushnumber(L, a); lua_pushnumber(L, b); }
+        if (nargs && sa) { lua_pushstring(L, sa); lua_pushstring(L, sb); }
+        else if (nargs) { lua_pushnumber(L, a); lua_pushnumber(L, b); }
         c->calls++;
         st = lua_call(L, nargs, 0);
         if (st) {
@@ -449,6 +453,272 @@ static int __cdecl n_carcasses(lua_State *L)
     return 1;
 }
 
+/* ---- station jobs, step 1: the mission card (design/station-jobs-spec.md 3, 4.1-4.4; research
+ * design/mod-research/station-jobs-ui.md 5) ----
+ * TRF_MissionCard{id=, header=, cost=, text= [, title=]} pushes DynWindowMission (window 0x1b, which vanilla never
+ * opens) and fills it: Push 0x484850 (ecx = window stack [[R]+4]+0x8c, eax = 0x1b, push 0; returns the new top
+ * wrapper), header and cost captions of the wrapper's controls +0x2c / +0x30 (GUIPanel: String at
+ * [ctrl+0x190]+0x190, the DynWindowRecruit fill 0x58ab56; GUIText pTextTitle: String at ctrl+0x190, the quest log
+ * 0x553f92; the String vtable 0x7174e8 is checked before the write) assigned from a char* with 0x402320 (stdcall
+ * (String *, const char *), the assign 0x40a890 uses), the body through the GUIAdvText +0x38: clear 0x47ca30
+ * (esi = control), add 0x47c980 (esi = control, ecx = char *), as the recruit fill 0x58ae54. pTextTitle is looked up
+ * by name with 0x46ff60 (thiscall: GUI window [w+0x1c], name, 1). Engine calls are a deviation from API "Adding a
+ * native" item 4 (spec J9); all run on the game thread inside the native.
+ * T7a/T7b: the OK and Cancel handler immediates of Create (0x54098f, 0x5409a8) point to trf_card_ok / trf_card_cancel,
+ * cdecl fn(wrapper, button) as the vanilla Cancel 0x5409f0: Close 0x484700 (eax = wrapper) and queue "ok" / "cancel".
+ * T8: the Hide slot 0x72a600 of the 0x1b vtable 0x72a5d8 calls 0x554ae0 and notes the hide. Hide also runs when a
+ * window with vt+0x30 != 0 is pushed over the card (Push 0x4848d1), so T4 decides: when no 0x1b window is left on the
+ * stack (list +0 head, +8 count, node +4 next, wrapper +0x24 id; 0x484b60, 0x5f3870) the card is closed, and without
+ * an answer it queues "esc". T4 delivers one queued event per tick to the Lua global TRF_OnJobCard(id, ev), never
+ * from GUI code (spec J4). why of nil, why: "off" (ini jobs_card 0), "sig" (g_jsig), "arg", "ui" (TRF_UiState bit 1
+ * movie or 4 dialog, or unknown), "busy" (a card or a queued answer, or a 0x1b window on the stack), "push". */
+#define JC_ID 0x1b
+#define JC_STR_VT 0x7174e8u    /* String vtable (0x40a8ae) */
+#define JC_LEN 480
+#define JC_IDLEN 31
+#define JQ_N 4
+static const struct trf_msig g_jsig[] = {
+    { 0x54098c, 7, { 0xc7,0x40,0x7c,0xc0,0x09,0x54,0x00 }, "T7a OK handler imm 0x5409c0" },
+    { 0x5409a5, 7, { 0xc7,0x40,0x7c,0xf0,0x09,0x54,0x00 }, "T7b Cancel handler imm 0x5409f0" },
+    { 0x72a600, 4, { 0xe0,0x4a,0x55,0x00 }, "T8 Hide slot 0x72a600 = 0x554ae0" },
+    { 0x5409f0, 9, { 0x8b,0x44,0x24,0x04,0xe9,0x07,0x3d,0xf4,0xff }, "Cancel = Close(arg1 wrapper), cdecl" },
+    { 0x5406fc, 5, { 0xbe,0x1b,0x00,0x00,0x00 }, "ctor id 0x1b" },
+    { 0x54070e, 6, { 0xc7,0x07,0xd8,0xa5,0x72,0x00 }, "ctor vtable 0x72a5d8" },
+    { 0x72a608, 4, { 0xf0,0x41,0x48,0x00 }, "vt+0x30 = 0x4841f0 (overlay)" },
+    { 0x4841f0, 3, { 0x33,0xc0,0xc3 }, "0x4841f0 return 0" },
+    { 0x540933, 25, { 0x8b,0x4e,0x1c,0x6a,0x01,0x68,0xa0,0xa5,0x72,0x00,0xe8,0x1e,0xf6,0xf2,0xff,0x8b,0x4e,0x1c,0x6a,0x01,
+      0x68,0xb0,0xa5,0x72,0x00 }, "Create looks up pPanelHeader, pPanelCost" },
+    { 0x54094c, 25, { 0x89,0x46,0x2c,0xe8,0x0c,0xf6,0xf2,0xff,0x8b,0x4e,0x1c,0x6a,0x01,0x68,0xbc,0xa5,0x72,0x00,0x89,0x46,
+      0x30,0xe8,0xfa,0xf5,0xf2 }, "Create keeps +0x2c header, +0x30 cost" },
+    { 0x540969, 23, { 0x6a,0x01,0x68,0x80,0xa3,0x72,0x00,0x89,0x46,0x34,0xe8,0xe8,0xf5,0xf2,0xff,0x8b,0x4e,0x1c,0x6a,0x01,
+      0x68,0xd8,0xa1 }, "Create looks up pAdvText" },
+    { 0x540982, 3, { 0x89,0x46,0x38 }, "Create keeps +0x38 pAdvText" },
+    { 0x484850, 8, { 0x53,0x55,0x8b,0x6c,0x24,0x0c,0x56,0x8b }, "Push 0x484850" },
+    { 0x484a07, 16, { 0x8b,0x76,0x04,0x85,0xf6,0x74,0x09,0x8b,0x06,0x5f,0x5e,0x5d,0x5b,0xc2,0x04,0x00 },
+      "Push returns the top [[stack+4]], ret 4" },
+    { 0x584f04, 22, { 0x8b,0x0d,0x10,0xa6,0x7b,0x00,0x8b,0x49,0x04,0x6a,0x00,0x81,0xc1,0x8c,0x00,0x00,0x00,0xb8,0x0a,0x00,
+      0x00,0x00 }, "stack [[R]+4]+0x8c, eax = id, push 0" },
+    { 0x484700, 11, { 0x56,0x8b,0x70,0x20,0x83,0x3e,0x00,0x57,0x8b,0x78,0x24 }, "Close 0x484700 (eax = wrapper)" },
+    { 0x484b60, 8, { 0x57,0x33,0xff,0x39,0x7e,0x08,0x7e,0x2b }, "stack count +8" },
+    { 0x484b79, 16, { 0x8b,0x46,0x0c,0x85,0xc0,0x74,0x04,0x8b,0x00,0xeb,0x02,0x33,0xc0,0x39,0x58,0x24 }, "wrapper id +0x24" },
+    { 0x5f3870, 6, { 0x8b,0x70,0x0c,0x8b,0x76,0x04 }, "list node next +4" },
+    { 0x46ff60, 8, { 0x6a,0xff,0x68,0x88,0x77,0x6b,0x00,0x64 }, "control lookup 0x46ff60" },
+    { 0x46ffb6, 3, { 0xc2,0x08,0x00 }, "0x46ff60 ret 8" },
+    { 0x402320, 8, { 0x53,0x55,0x8b,0x6c,0x24,0x10,0x85,0xed }, "String assign char* 0x402320" },
+    { 0x402374, 3, { 0xc2,0x08,0x00 }, "0x402320 ret 8" },
+    { 0x40a8ae, 6, { 0xc7,0x06,0xe8,0x74,0x71,0x00 }, "String vtable 0x7174e8" },
+    { 0x58ab56, 16, { 0x8b,0x47,0x2c,0x8b,0x88,0x90,0x01,0x00,0x00,0x81,0xc1,0x90,0x01,0x00,0x00,0x51 },
+      "panel caption [[w+0x2c]+0x190]+0x190" },
+    { 0x553f8e, 12, { 0x83,0xc0,0x08,0x50,0x81,0xc1,0x90,0x01,0x00,0x00,0x51,0xe8 }, "text caption ctrl+0x190" },
+    { 0x47ca30, 8, { 0x83,0xbe,0x94,0x01,0x00,0x00,0x00,0x57 }, "AdvText clear 0x47ca30 (esi)" },
+    { 0x47c980, 8, { 0x55,0x8b,0xec,0x83,0xe4,0xf8,0x6a,0xff }, "AdvText add 0x47c980" },
+    { 0x47c9a2, 9, { 0x8b,0xc4,0x89,0x64,0x24,0x28,0x51,0x50,0xe8 }, "0x47c980 takes ecx = char*" },
+    { 0x58ae54, 12, { 0x8b,0x54,0x24,0x0c,0x8b,0x72,0x38,0xe8,0xd0,0x1b,0xef,0xff }, "recruit fill: esi = [w+0x38], 0x47ca30" },
+    { 0x58ae60, 14, { 0x8b,0x7c,0x24,0x0c,0x8b,0x8c,0x24,0xb8,0x00,0x00,0x00,0x8b,0x77,0x38 }, "recruit fill: ecx = text, esi" },
+    { 0x554ae0, 8, { 0x83,0x3d,0x10,0xa6,0x7b,0x00,0x00,0x56 }, "Hide 0x554ae0" },
+    { 0x554b72, 3, { 0xc2,0x04,0x00 }, "Hide ret 4" },
+};
+#define JSIG_N (sizeof(g_jsig) / sizeof(g_jsig[0]))
+#define JC_T7A 0x54098fu
+#define JC_T7B 0x5409a8u
+#define JC_T8  0x72a600u
+
+static int (__thiscall *const eng_hide)(unsigned, int) = API(0x554ae0);
+static unsigned (__thiscall *const eng_find)(unsigned, const char *, int) = API(0x46ff60);
+static void *(__stdcall *const eng_str_set)(void *, const char *) = API(0x402320);
+
+static int g_jc_on, g_jc_ok, g_jc_patched, g_jc_open, g_jc_ans, g_jc_hid;
+static char g_jc_id[JC_IDLEN + 1];
+static struct { char id[JC_IDLEN + 1]; const char *ev; } g_jq[JQ_N];
+static int g_jq_n;
+static unsigned g_jc_n, g_jq_drop;
+
+static unsigned eng_push(unsigned stack, unsigned id)   /* Push 0x484850: eax = id, ecx = stack, one stack arg */
+{
+    unsigned a = id, c = stack;
+    __asm__ volatile("pushl $0\n\tcalll *%2" : "+a"(a), "+c"(c) : "r"(0x484850u) : "edx", "memory", "cc");
+    return a;
+}
+static void eng_close(unsigned w)                       /* Close 0x484700: eax = wrapper */
+{
+    unsigned a = w;
+    __asm__ volatile("calll *%1" : "+a"(a) : "r"(0x484700u) : "ecx", "edx", "memory", "cc");
+}
+static void eng_adv_clear(unsigned ctrl)                /* 0x47ca30: esi = GUIAdvText */
+{
+    unsigned s = ctrl;
+    __asm__ volatile("calll *%1" : "+S"(s) : "r"(0x47ca30u) : "eax", "ecx", "edx", "edi", "memory", "cc");
+}
+static void eng_adv_add(unsigned ctrl, const char *t)   /* 0x47c980: esi = GUIAdvText, ecx = text */
+{
+    unsigned s = ctrl;
+    const char *c = t;
+    __asm__ volatile("calll *%2" : "+S"(s), "+c"(c) : "r"(0x47c980u) : "eax", "edx", "edi", "memory", "cc");
+}
+
+static unsigned jc_stack(void) { unsigned gi = grd(grd(ROOT_SLOT, 0), 4); return gi ? gi + 0x8c : 0; }
+/* 1 when a window with id is on the stack, 0 when not, -1 unreadable (count or a node) */
+static int jc_has(unsigned stack, unsigned id)
+{
+    unsigned n, k, cnt;
+    if (!stack || !rd_ok(stack, 12)) return -1;
+    cnt = *(const unsigned *)(stack + 8);
+    if (cnt > 64) return -1;
+    for (n = grd(stack, 0), k = 0; k < cnt; k++, n = grd(n, 4)) {
+        if (!n) return -1;
+        if (grd(grd(n, 0), 0x24) == id) return 1;
+    }
+    return 0;
+}
+/* caption String of a control: GUIText at +0x190, GUIPanel at [+0x190]+0x190; 0 when neither is a String */
+static unsigned jc_cap(unsigned c)
+{
+    unsigned p;
+    if (!c) return 0;
+    p = grd(c, 0x190);
+    if (p == JC_STR_VT) return c + 0x190;
+    if (p && grd(p, 0x190) == JC_STR_VT) return p + 0x190;
+    return 0;
+}
+static int jc_set(unsigned c, const char *s)
+{
+    unsigned st = jc_cap(c);
+    if (!st || !s) return 0;
+    eng_str_set((void *)st, s);
+    return 1;
+}
+
+static void jq_push(const char *id, const char *ev)
+{
+    struct tb b;
+    int i;
+    if (g_jq_n == JQ_N) {
+        g_jq_drop++;
+        tb_begin(&b, "module=dll event=jobs_queue_drop id="); tb_s(&b, g_jq[0].id); tb_s(&b, " ev="); tb_s(&b, g_jq[0].ev);
+        tb_s(&b, " drop_count="); tb_u(&b, g_jq_drop); tb_end(&b);
+        for (i = 1; i < JQ_N; i++) g_jq[i - 1] = g_jq[i];
+        g_jq_n--;
+    }
+    for (i = 0; id[i] && i < JC_IDLEN; i++) g_jq[g_jq_n].id[i] = id[i];
+    g_jq[g_jq_n].id[i] = 0;
+    g_jq[g_jq_n].ev = ev;
+    g_jq_n++;
+}
+
+static void jc_answer(unsigned w, const char *ev)       /* T7a/T7b: queue first, then Close (the wrapper is freed) */
+{
+    struct tb b;
+    if (g_jc_open && !g_jc_ans) {
+        g_jc_ans = 1;
+        jq_push(g_jc_id, ev);
+        tb_begin(&b, "module=dll event=jobs_card action=answer id="); tb_s(&b, g_jc_id); tb_s(&b, " ev="); tb_s(&b, ev); tb_end(&b);
+    }
+    if (w) eng_close(w);
+}
+static void __cdecl trf_card_ok(unsigned w, unsigned btn) { jc_answer(w, "ok"); }
+static void __cdecl trf_card_cancel(unsigned w, unsigned btn) { jc_answer(w, "cancel"); }
+static int __thiscall trf_card_hide(unsigned self, int a)
+{
+    int r = eng_hide(self, a);
+    if (g_jc_open) g_jc_hid = 1;
+    return r;
+}
+
+/* T4, every frame: a hidden card that left the stack is closed; without an answer it was Esc */
+static void jc_frame(void)
+{
+    struct tb b;
+    if (!g_jc_open || !g_jc_hid) return;
+    g_jc_hid = 0;
+    rd_reset();
+    if (jc_has(jc_stack(), JC_ID) == 1) return;   /* covered by another window, still open */
+    if (!g_jc_ans) jq_push(g_jc_id, "esc");
+    tb_begin(&b, "module=dll event=jobs_card action=closed id="); tb_s(&b, g_jc_id); tb_s(&b, g_jc_ans ? " ev=answer" : " ev=esc");
+    tb_end(&b);
+    g_jc_open = 0;
+}
+
+/* t.k: a string of at most lim bytes (*s), absent (*s = 0, 1), else 0 */
+static int jc_field(lua_State *L, const char *k, int lim, const char **s)
+{
+    int t, n;
+    *s = 0;
+    lua_pushstring(L, k);
+    lua_rawget(L, 1);
+    t = lua_type(L, -1);
+    if (t == T_STRING) {
+        *s = lua_tostring(L, -1);
+        for (n = 0; *s && (*s)[n]; n++) if (n >= lim) return 0;
+    }
+    lua_settop(L, 1);                             /* a string stays alive in t */
+    return t == T_STRING || t == T_NIL;
+}
+
+static int __cdecl n_missioncard(lua_State *L)
+{
+    const char *id, *hd, *cost, *text, *title;
+    unsigned st, w, c;
+    int i, f, nf = 0;
+    struct tb b;
+    if (!g_jc_on) return cs_fail(L, "off");
+    if (!g_jc_ok || !g_jc_patched) return cs_fail(L, "sig");
+    if (lua_gettop(L) != 1 || lua_type(L, 1) != T_TABLE) return cs_fail(L, "arg");
+    if (!jc_field(L, "id", JC_IDLEN, &id) || !jc_field(L, "header", JC_LEN, &hd) || !jc_field(L, "cost", JC_LEN, &cost)
+        || !jc_field(L, "text", JC_LEN, &text) || !jc_field(L, "title", JC_LEN, &title) || !id || !id[0] || !hd || !text)
+        return cs_fail(L, "arg");
+    for (i = 0; id[i]; i++) {
+        char ch = id[i];
+        if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_')) return cs_fail(L, "arg");
+    }
+    if (!g_movie_ok || (ui_state() & (UI_MOVIE | UI_DIALOG))) return cs_fail(L, "ui");
+    rd_reset();
+    st = jc_stack();
+    if (g_jc_open || g_jq_n || jc_has(st, JC_ID) != 0) return cs_fail(L, "busy");
+    w = eng_push(st, JC_ID);
+    rd_reset();
+    if (!w || w != grd(grd(st, 4), 0) || grd(w, 0x24) != JC_ID || !grd(w, 0x1c)) {
+        if (w && w == grd(grd(st, 4), 0) && grd(w, 0x24) == JC_ID) eng_close(w);   /* pushed without a GUI window */
+        tb_begin(&b, "module=dll event=jobs_card action=push_failed top="); tb_x(&b, w); tb_end(&b);
+        return cs_fail(L, "push");
+    }
+    for (i = 0; id[i]; i++) g_jc_id[i] = id[i];
+    g_jc_id[i] = 0;
+    g_jc_open = 1; g_jc_ans = 0; g_jc_hid = 0; g_jc_n++;
+    f = jc_set(grd(w, 0x2c), hd); nf += f;
+    if (cost) nf += 2 * jc_set(grd(w, 0x30), cost);
+    if ((c = grd(w, 0x38))) { eng_adv_clear(c); eng_adv_add(c, text); nf += 4; }
+    if (title && (c = eng_find(grd(w, 0x1c), "pTextTitle", 1))) { rd_reset(); nf += 8 * jc_set(c, title); }
+    jq_push(g_jc_id, "open");
+    tb_begin(&b, "module=dll event=jobs_card action=open id="); tb_s(&b, g_jc_id); tb_s(&b, " fields="); tb_u(&b, (unsigned)nf);
+    tb_s(&b, " cards="); tb_u(&b, g_jc_n); tb_end(&b);
+    lua_pushnumber(L, 1.0);
+    return 1;
+}
+
+/* T4 tick: one queued event to TRF_OnJobCard(id, ev) */
+static void jq_deliver(lua_State *L)
+{
+    char id[JC_IDLEN + 1];
+    const char *ev;
+    int i;
+    if (!g_jq_n) return;
+    for (i = 0; i <= JC_IDLEN; i++) id[i] = g_jq[0].id[i];
+    ev = g_jq[0].ev;
+    for (i = 1; i < g_jq_n; i++) g_jq[i - 1] = g_jq[i];
+    g_jq_n--;
+    call_lua(L, &g_cb[CB_JOB], 2, 0.0, 0.0, id, ev);
+}
+
+static int patch_dword(unsigned a, unsigned v)
+{
+    DWORD old, tmp;
+    if (!VirtualProtect((void *)a, 4, PAGE_EXECUTE_READWRITE, &old)) return 0;
+    *(unsigned *)a = v;
+    VirtualProtect((void *)a, 4, old, &tmp);
+    FlushInstructionCache(GetCurrentProcess(), (void *)a, 4);
+    return 1;
+}
+
 /* ---- Lua error traceback (exe-hook-survey row 12, hooks/hook-mechanisms.md 2.2 E-b) ----
  * lua_error -> message 0x65f810 calls the global _ERRORMESSAGE with the message, unprotected, then longjmps.
  * n_errmsg replaces baselib's luaB__ERRORMESSAGE 0x65ade0 (set before T1; no shipped script assigns it):
@@ -699,7 +969,8 @@ static void __stdcall trf_register(void)          /* T1, after 0x5c7e80 */
 {
     static const struct { const char *name; lua_CFunction f; } nat[] = {
         { "TRF_Version", n_version }, { "TRF_GameTime", n_gametime }, { "TRF_RealTime", n_realtime }, { "TRF_Log", n_log },
-        { "TRF_InMovie", n_inmovie }, { "TRF_UiState", n_uistate }, { "TRF_Carcasses", n_carcasses } };
+        { "TRF_InMovie", n_inmovie }, { "TRF_UiState", n_uistate }, { "TRF_Carcasses", n_carcasses },
+        { "TRF_MissionCard", n_missioncard } };
     const int nn = (int)(sizeof(nat) / sizeof(nat[0]));
     lua_State *L = lstate();
     struct tb b;
@@ -759,7 +1030,7 @@ static void __stdcall trf_script_post(int i)      /* T2b/T2c/T2d, after 0x5c91f0
     struct tb b;
     int st;
     if (!L || i < 0 || i > 2) return;
-    st = call_lua(L, c, 0, 0.0, 0.0);
+    st = call_lua(L, c, 0, 0.0, 0.0, 0, 0);
     if (g_log_on) {
         tb_begin(&b, "hook="); tb_s(&b, g_site_name[site[i]]); tb_s(&b, " "); tb_s(&b, c->name);
         tb_s(&b, " calls="); tb_u(&b, c->calls); tb_s(&b, " status="); tb_i(&b, st);
@@ -821,12 +1092,13 @@ static void __stdcall trf_tick(void)              /* T4, after 0x49d4a0, once pe
         float dt = *(float *)(tm + 0x28);
         if (dt > 0.0f && dt < 60.0f) g_game_time += dt;
     }
+    jc_frame();
     if (!L) return;
     g_err_busy = 0;                               /* top level: no _ERRORMESSAGE call is active */
     if (g_guard_on) stack_guard(L);
     if (g_trig_on) ts_frame_end();
     if (g_err_dup && real_sec() - g_err_t0 >= ERR_WINDOW) err_flush();
-    if (g_cb[CB_TICK].off) return;
+    if (g_cb[CB_TICK].off && !g_jq_n) return;
     QueryPerformanceCounter(&now);
     if (!g_tick_qpc.QuadPart) { g_tick_qpc = now; g_tick_game = g_game_time; return; }
     dt_real = (double)(now.QuadPart - g_tick_qpc.QuadPart) / (double)g_qpf.QuadPart;
@@ -843,7 +1115,8 @@ static void __stdcall trf_tick(void)              /* T4, after 0x49d4a0, once pe
     if (!g_tick_n++ && g_log_on) {
         struct tb b; tb_begin(&b, "tick first tm="); tb_x(&b, tm); tb_end(&b);
     }
-    call_lua(L, &g_cb[CB_TICK], 2, dt_game, dt_real);
+    jq_deliver(L);
+    if (!g_cb[CB_TICK].off) call_lua(L, &g_cb[CB_TICK], 2, dt_game, dt_real, 0, 0);
 }
 
 /* ---- checks, stubs, patching ---- */
@@ -1002,6 +1275,7 @@ void trf_init(const char *ini)
     g_guard_on = (int)GetPrivateProfileIntA("traffic", "stack_guard", 1, ini);
     g_cs_on = (int)GetPrivateProfileIntA("traffic", "carcasses", 0, ini) != 0;
     g_trig_on = (int)GetPrivateProfileIntA("traffic", "trig_log", 0, ini) != 0;
+    g_jc_on = (int)GetPrivateProfileIntA("traffic", "jobs_card", 0, ini) != 0;
     QueryPerformanceFrequency(&g_qpf);
     QueryPerformanceCounter(&g_qpc0);
     tb_begin(&b, "config tick_ms="); tb_i(&b, g_tick_ms); tb_s(&b, " log="); tb_i(&b, g_log_on);
@@ -1041,6 +1315,16 @@ void trf_init(const char *ini)
         }
         tb_begin(&b, "carcasses on="); tb_i(&b, g_cs_on); tb_s(&b, g_cs_ok ? " sig=ok sigs=" : " sig=bad sigs=");
         tb_u(&b, (unsigned)CSIG_N); tb_end(&b);
+        if ((bad = sig_verify(g_jsig, JSIG_N, &e))) {
+            tb_begin(&b, "module=dll event=jobs_sig_mismatch what=\""); tb_q(&b, g_jsig[e].what, 400, 0); tb_s(&b, "\" at=");
+            tb_x(&b, bad); tb_end(&b);
+        } else g_jc_ok = 1;
+        if (g_jc_on && g_jc_ok)                   /* T7a, T7b handler immediates, T8 Hide slot (spec 4.3) */
+            g_jc_patched = patch_dword(JC_T7A, (unsigned)trf_card_ok) && patch_dword(JC_T7B, (unsigned)trf_card_cancel)
+                && patch_dword(JC_T8, (unsigned)trf_card_hide);
+        tb_begin(&b, "module=dll event=jobs_init card="); tb_i(&b, g_jc_on); tb_s(&b, g_jc_ok ? " sig=ok" : " sig=bad");
+        tb_s(&b, " sigs="); tb_u(&b, (unsigned)JSIG_N); tb_s(&b, " patched="); tb_i(&b, g_jc_patched);
+        tb_s(&b, " board=0 log=0"); tb_end(&b);
     }
     if (!(g_page = build_page())) { tlog("disabled, stub page failed"); return; }
     for (i = 0; i < S_N; i++) {

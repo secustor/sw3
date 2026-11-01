@@ -427,6 +427,10 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `dock` | `module=plumb event=dock original=TRF_orig_TradeOk result=no_original` | 1 |
 | `box_answer` | `module=plumb event=box_answer kind=pir box=pirate_offer answer=1 result=done` (or `result=stale`: another generation) | 1 |
 | `box_answer` | `module=plumb event=box_answer kind=trade box=p_high result=dropped` (a pending box of an earlier docking) / `answer=1 result=stale` (no box) | 1 |
+| `dock` | `module=plumb event=dock kind=trade line_count=0 box=parcel priority=400 result=card` (the box spec opened as the mission card, [station-jobs-spec.md](station-jobs-spec.md) 5.2) | 1 |
+| `jobs_card` | `module=plumb event=jobs_card id=pcl card_event=open result=ok` / `card_event=ok result=ok reply="<reply line>"` (`card_event` `open`, `ok`, `cancel`, `esc`; `TRF_OnJobCard` of the DLL) | 1 |
+| `jobs_card` | `module=plumb event=jobs_card id=pcl card_event=esc result=stale` (no open card of this generation) / `card_event=<x> result=unknown` / `id=pcl result=dropped` (load or jump with the card open) | 1 |
+| `jobs_fallback` | `module=plumb event=jobs_fallback jobs_ui=1 reason=native_missing` (or `reason=off`, `sig`: the probe, once per MapInitialization) / `id=pcl reason=<ui, busy, push, arg, error>` (the card call failed, the box opens) | 1 |
 | `box_lock` | `module=plumb event=box_lock owner=dock_trade holder=hail result=stale` | 1 |
 | `box_lock` | `module=plumb event=box_lock owner=hail holder=dock_trade result=refused` | 2 |
 | `none` | `module=plumb event=none param=1 handler=<f> result=handled` | 2 |
@@ -702,7 +706,7 @@ the lowercase system names, `item` the item index (1 `Cargo_crate`, 2 `Cargo_002
 | Event | Example line | Level |
 |---|---|---|
 | `error` | `module=parcel event=error message=<m>` | 1 |
-| `offer` | `module=parcel event=offer kind=2 source=altair destination=taira jumps=3 deadline=11 item=1 units=3 class=1 level=13 tier=1 prosperity=5 pay=14400 deposit=4320 waived=false candidate_count=8 route=altrabon,nj1,taira result=shown` (the box opened, E-PCL.3) | 1 |
+| `offer` | `module=parcel event=offer kind=2 source=altair destination=taira jumps=3 deadline=11 item=1 units=3 class=1 level=13 tier=1 prosperity=5 pay=14400 deposit=4320 waived=false candidate_count=8 route=altrabon,nj1,taira result=shown via=box` (the box opened, E-PCL.3; `via=card`: the mission card's open event, station-jobs-spec.md 5.2) | 1 |
 | `offer` | `module=parcel event=offer system=altair result=none reason=<off, nomap, chapter, mission, quiet, strict:<why>, job, ban, gap, heat, declined, station, guard, deny:<static, cfg, chapter, deny_entry, hostile, inoco>, pro, dockmaster, no_candidate, roll, plain_roll>` | 2 |
 | `offer` | `module=parcel event=offer destination=taira result=declined` / `module=parcel event=offer result=failed reason=box` | 1 |
 | `accept` | `module=parcel event=accept kind=2 source=altair destination=taira dock=taira item=Cargo_crate units=3 pay=14400 deposit=4320 deadline=11 credits_before=1000000 result=ok` | 1 |

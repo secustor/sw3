@@ -37,7 +37,7 @@ local H = {
 	-- relation and pirate dock originals run, modules added (AddModule), mothership inventory.
 	quests = {}, stations = {}, pdocks = {}, groups = {}, cst = {}, pir_ok = 0, mods = {},
 	-- hail dialog stubs: StartTradeDialog calls {d, init}, the mod dialog loaded (HOST().dlg), answer calls.
-	tdlgs = {}, dlg = nil, dlg_calls = {}
+	tdlgs = {}, dlg = nil, dlg_calls = {}, jc = {}, jq = {}, jc_open = nil
 };
 
 function HOST() return %H; end;
@@ -108,6 +108,42 @@ function HOST_Carcasses(...)
 		elseif type(c.x) == "number" and HOST_Dist(c, Vector3(arg[1], arg[2], arg[3])) <= arg[4] then tinsert(out, c); end;
 	end;
 	return out;
+end;
+-- Mission card (traffic.c TRF_MissionCard, design/station-jobs-spec.md 4.1, 4.2): undefined by default, so every run
+-- keeps the parcel box; a scenario sets TRF_MissionCard = HOST_MissionCard. HOST().jc lists the cards shown (copies of
+-- t), HOST().jc_off answers every call nil, why (also the probe {}: "off", "sig"), HOST().jc_why a card call (the probe
+-- still answers "arg"). A shown card queues "open" in HOST().jq; HOST_JobPress(ev) answers the open card ("ok",
+-- "cancel", "esc"); HOST_JobTick() delivers the oldest queued event to TRF_OnJobCard as T4 does, one per call.
+function HOST_MissionCard(...)
+	local h = HOST();
+	HOST_Want(arg.n == 1 and type(arg[1]) == "table", "TRF_MissionCard(t)");
+	local t = arg[1];
+	if h.jc_off then return nil, h.jc_off; end;
+	if type(t) ~= "table" or type(t.id) ~= "string" or type(t.header) ~= "string" or type(t.text) ~= "string" then return nil, "arg"; end;
+	HOST_Want(strlen(t.id) <= 31 and strlen(t.header) <= 480 and strlen(t.text) <= 480 and strlen(t.cost or "") <= 480
+		and strlen(t.title or "") <= 480, "TRF_MissionCard: id <= 31, strings <= 480 characters");
+	HOST_Want(not strfind(t.text, "\n", 1, 1) and strsub(t.text, 1, 1) ~= "#", "TRF_MissionCard: no newline byte (TRF_Br), no leading #");
+	if h.jc_why then return nil, h.jc_why; end;
+	if h.jc_open or getn(h.jq) > 0 then return nil, "busy"; end;
+	tinsert(h.jc, {id=t.id, header=t.header, cost=t.cost, text=t.text, title=t.title});
+	h.jc_open = t.id;
+	tinsert(h.jq, {t.id, "open"});
+	return 1;
+end;
+function HOST_JobPress(ev)
+	local h = HOST();
+	HOST_Want(h.jc_open ~= nil, "HOST_JobPress: an open card");
+	if not h.jc_open then return nil; end;
+	tinsert(h.jq, {h.jc_open, ev});
+	h.jc_open = nil;
+	return 1;
+end;
+function HOST_JobTick()
+	local h = HOST();
+	if getn(h.jq) == 0 then return nil; end;
+	local e = tremove(h.jq, 1);
+	if type(TRF_OnJobCard) == "function" then TRF_OnJobCard(e[1], e[2]); end;
+	return e[2];
 end;
 -- An " ERROR " or " event=error " line (TRF_Err, TRF_CbErr, TRF_GnErr: a mod error caught by a protected call)
 -- counts as a script error.

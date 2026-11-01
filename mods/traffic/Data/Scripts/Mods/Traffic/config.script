@@ -70,6 +70,10 @@
 -- merc_calls, merc_transfer, rv_enabled (rival role, 0: no clan becomes a rival) and mc_launch are the toggles of the
 -- later steps; mc_el_c the elite clan (8 Black Legion, 0 off); rv_deny and the tune keys (c_hire, merc_*, mc_*,
 -- mc_el_*, rv_*) read the module defaults.
+-- Station jobs UI (design/station-jobs-spec.md 6, step 1; default in TRF_Pl_OptDef): jobs_ui (default 1) = 1 opens the parcel
+-- offer as the mission card at the trade dock (the vanilla DynWindowMission, through the DLL native TRF_MissionCard, which
+-- answers only with sw3tp.ini [traffic] jobs_card=1); without the native or with jobs_card=0 the box stays; 0 always the box;
+-- 2 (the Office board, step 2) is not built and reads as 1.
 -- Vanilla fixes (README "Vanilla fixes"): ext_fix (default 1) = 0 leaves the vanilla extortion contact one-way neutral
 -- (the player side stays at war with the flight before the box) and mod raids one-way as before; tune ext_fix
 -- (install-test.sh TUNE=ext_fix=0) wins.
@@ -91,4 +95,4 @@ function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1, ext_fix=1,
 	demand_page=1, demand_drop=0, mc_names=0,
 	merc_war=1, merc_hunt=0, merc_hostile=0, merc_legion=0,
 	merc=0, merc_board=1, merc_book=0, merc_report=0, merc_marker=0, merc_calls=0, merc_transfer=0, rv_enabled=0,
-	mc_launch=0, mc_el_c=8} end
+	mc_launch=0, mc_el_c=8, jobs_ui=1} end

@@ -25,6 +25,7 @@ stubs, not yet run in the game.
 | `TRF_InMovie()` | none | `1` while a mission movie plays (`MM = [[R]+0x1a4]`, `[MM+0x30]` and `[MM+0x14]`), else `0`; `-1` unknown | pointer chain re-read and null-checked per call; 8 byte signatures `g_msig` at init, a mismatch gives `-1` (init line `movie: sig mismatch at ...`) | none | built 2026-10-21, unverified | [movie-state.md](../design/mod-research/movie-state.md) 1.2, 1.5, 4 | `TRF_Safe_Scene()` (trf_safety; falls back to `MovieIsPlaying()` on `-1`) |
 | `TRF_UiState()` | none | bit flags, `0` free play: `1` movie, `2` modal window on top (top GI state 20), `4` XML dialog open; `-1` unknown | as `TRF_InMovie` (same `g_msig`) | none | built 2026-10-21, unverified | movie-state.md 1.5, 4 | `TRF_Safe_Scene()` (trf_safety); trf_hail's dialog gate `TRF_HlP(TRF_UiState, {})` |
 | `TRF_Carcasses([cx, cy, cz, r])` | none (every object of the location) or four numbers, `r >= 0` | array of records `{id, cls, tpl, team, hp, hpmax, x, y, z, pl}` (below); `nil, why` with why `"off"` (ini `carcasses=0`), `"sig"` (signature or class-id mismatch at init), `"arg"` (not 0 or 4 numbers, or `r < 0`), `"noroot"` (`[0x7ba610]` null), `"nolm"` (LayerManager or its list null) | every load through `rd_ok` (`VirtualQuery` with a 16-region cache cleared per call; the exe image is readable without a query), weak links tested `+0x20 == 0`, the walk ends at a node with data 0 as the collector does, at most 4096 list nodes (once: `traffic: carcasses walk cut nodes=4096`); 22 byte signatures `g_csig` plus the class values `[0x7b52f8]=2`, `[0x7b5560]=3`, `[0x7b5324]=4` at init (`traffic: carcasses sig mismatch what="<entry>" at <addr>`, then `traffic: carcasses on=<0/1> sig=ok/bad sigs=22`) | `carcasses` | built 2026-10-24, unverified | [hooks/read-natives.md](../design/mod-research/hooks/read-natives.md) 3, [exe-hook-survey.md](../design/mod-research/exe-hook-survey.md) row 3, [carcass-count.md](../design/mod-research/carcass-count.md) 1.2 | `TRF_Near(pos, r, f)` / `TRF_NearCount(pos, r, f)` (trf_plumb, [wb-plumbing-spec.md](../design/wb-plumbing-spec.md) 16); caller: trf_supply `TRF_SpNear`, the No witnesses rule ([demand-page-spec.md](../design/demand-page-spec.md) 5.8) |
+| `TRF_MissionCard(t)` | `t = {id=, header=, text= [, cost=, title=]}`: `id` 1..31 characters `[A-Za-z0-9_]`, the strings at most 480 characters | `1` (the card is shown: window 0x1b `DynWindowMission` pushed over the current top, game paused; an `open` event is queued); `nil, why`: `"off"` (ini `jobs_card=0`), `"sig"` (a `g_jsig` mismatch or the patches failed), `"arg"`, `"ui"` (`TRF_UiState` bit 1 movie or 4 dialog, or unknown), `"busy"` (a card open, an event queued, or a 0x1b window on the stack), `"push"` (no 0x1b wrapper with a GUI window on top after the push; closed again) | game thread; the engine copies the strings: header and cost into the captions of the wrapper's `+0x2c` / `+0x30` panels (`[c+0x190]+0x190`, the DynWindowRecruit fill 0x58ab56), the text through the `+0x38` GUIAdvText (clear 0x47ca30, add 0x47c980), `title` into `pTextTitle` (lookup 0x46ff60, `c+0x190`); every caption written only when its String vtable 0x7174e8 is there. Engine calls Push 0x484850, Close 0x484700, 0x46ff60, String assign 0x402320, 0x47ca30, 0x47c980: a deviation from item 4 below (spec J9); 33 byte signatures `g_jsig` at init (`traffic: module=dll event=jobs_sig_mismatch what="..." at=<addr>`, then `event=jobs_init card=<0/1> sig=ok/bad sigs=33 patched=<0/1>`) | `jobs_card` | built 2026-11-01, unverified (CHECK K0-K7) | [station-jobs-ui.md](../design/mod-research/station-jobs-ui.md) 5, [station-jobs-spec.md](../design/station-jobs-spec.md) 3, 4.1 | `TRF_JbCard()` (trf_plumb; probe `TRF_MissionCard({})` answers `nil, "arg"` when live); a box spec with a `card` field opens as the card in `TRF_PlShow` (`TRF_PlCardOpen`), else the box |
 
 ### `TRF_Carcasses` records
 
@@ -59,6 +60,7 @@ that fails 10 times is not called again in that process (`traffic: callback disa
 | `TRF_OnActivate()` | T2c 0x4b01c6, after `activate.script` | every location entry, after the location's flights exist | none | confirmed 2026-10-21 | traffic.script |
 | `TRF_OnLoad()` | T2d 0x4a4f21, after `functions.script` of a savegame load | every load | none | confirmed 2026-10-21 | traffic.script |
 | `TRF_OnTick(dt_game, dt_real)` | T4 0x4a074e, frame loop | every `tick_ms` of real time; held while the game has no location (`[[R]+0x19c] == 0`, `tick held (no location)`, 7 signatures `g_lsig`) | game and real seconds since the last call | confirmed 2026-10-21 (the hold added 2026-10-21, unverified) | traffic.script; never call `GetPlayerMotherShip` from it (`TRF_Ms`) |
+| `TRF_OnJobCard(id, ev)` | T4 0x4a074e, frame loop | queued by the mission card, at most one event per `tick_ms` tick, in order, while the tick is not held: `ev` `"open"` (shown), `"ok"`, `"cancel"` (the buttons, T7a/T7b), `"esc"` (the card left the window stack without an answer); a queue of 4, an overflow drops the oldest (`traffic: module=dll event=jobs_queue_drop`) | the card's `id`, the event | built 2026-11-01, unverified | traffic.script → `TRF_Pl_OnJobCard` (trf_plumb: `open` runs the box spec's `shown(a, "card")`, the answers `TRF_PlAnswer`, then the vanilla dock call) |
 | `_ERRORMESSAGE(msg)` | set at T1 (`traceback=1`) | every Lua error | message | built 2026-10-24, unverified | the C handler `n_errmsg`: `module=dll event=lua_error ... trace=... message=...` to `sw3tp.log`, then baselib's text to `_ALERT` (README "DLL keys and log lines") |
 
 Other DLL actions on the Lua state: T2a 0x5d19e4 appends `Mods/Traffic/traffic.script` to `sys_IncludeFileList`
@@ -67,6 +69,13 @@ ClearGlobals and restores it after; T4 drops leaked top-level stack slots (`stac
 T5a 0x5e8e03 / T5b 0x5e8e27 (condition and action `ExecuteString` 0x5c9350 of `Trigger::OnEvent`) and T6 0x5e8442
 (`lua_settop` 0x65de60 in the ScriptParam ctor) record the strings and callback names and call the original
 (`event=trig_frame`, `event=trig_fires`, README "DLL keys and log lines"; built 2026-10-25, unverified).
+With `jobs_card=1` (station-jobs-spec.md 4.3; built 2026-11-01, unverified): T7a 0x54098c / T7b 0x5409a5 (bytes
+`c7 40 7c c0 09 54 00` / `c7 40 7c f0 09 54 00`, the OK and Cancel handler immediates 0x54098f / 0x5409a8 of the 0x1b
+Create) point to DLL handlers `fn(wrapper, button)` (cdecl, as the vanilla Cancel 0x5409f0) that queue `ok` / `cancel`
+and Close the card (0x484700, `eax` = wrapper); T8, the Hide slot 0x72a600 of the 0x1b vtable 0x72a5d8 (`e0 4a 55 00`),
+calls 0x554ae0 and marks the card hidden; T4 then walks the window stack (`[[R]+4]+0x8c`: head `+0`, count `+8`, node
+next `+4`, wrapper id `+0x24`) and, when no 0x1b window is left, closes the card and queues `esc` if no answer came
+(a window pushed over the card also hides it; it stays open).
 
 ## Ini keys (`sw3tp.ini [traffic]`)
 
@@ -79,10 +88,12 @@ T5a 0x5e8e03 / T5b 0x5e8e27 (condition and action `ExecuteString` 0x5c9350 of `T
 | `traceback` | 1 | the C `_ERRORMESSAGE` above | init (T1) |
 | `stack_guard` | 1 | T4 drops leaked Lua stack slots | init |
 | `trig_log` | 0 | 1 patches T5a/T5b/T6, the trigger-fire sampler ([hooks/runtime-limits.md](../design/mod-research/hooks/runtime-limits.md) 1.5; `install-test.sh` writes 1 with `LOG=2`) | init |
+| `jobs_card` | 0 | 1 patches T7a, T7b, T8 and lets `TRF_MissionCard` answer; 0 keeps it registered, returning `nil, "off"` (`install-test.sh` writes 1, `JOBS_CARD=0` off; `install.sh` writes 0 into a new section) | init |
 | `carcasses` | 0 | 1 lets `TRF_Carcasses` answer; 0 keeps it registered, returning `nil, "off"` (`install-test.sh` writes 1, `CARCASSES=0` to turn it off) | init |
 
 The init line `traffic: config tick_ms=... log=... traceback=... stack_guard=... trig_log=... sites=...` shows the values;
-`traffic: carcasses on=<0/1> sig=<ok/bad>` follows the signature checks.
+`traffic: carcasses on=<0/1> sig=<ok/bad>` follows the signature checks, then
+`traffic: module=dll event=jobs_init card=<0/1> sig=<ok/bad> sigs=33 patched=<0/1> board=0 log=0`.
 
 ## Adding a native
 

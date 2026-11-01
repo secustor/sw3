@@ -264,7 +264,8 @@ else
 fi
 rm -f "$cfg"
 
-# sw3tp.ini [traffic]: enabled=1, the other keys of an existing section stay. The section as it was before the
+# sw3tp.ini [traffic]: enabled=1, the other keys of an existing section stay; a new section also gets jobs_card=0 (the
+# mission card native off until its in-game checks K1-K7 pass, design/station-jobs-spec.md 10). The section as it was before the
 # first install is saved once (ini.traffic, or "ini none" when there was none) for uninstall.sh.
 sect() { awk '{l=$0; sub(/\r$/,"",l)} l=="[traffic]"{p=1;print;next} /^\[/{p=0} p{print}' "$1"; }
 if ! grep -q '^ini ' "$man"; then
@@ -283,7 +284,7 @@ if [ -n "$(sect "$ini")" ]; then
 else
     cp "$ini" "$new"
     [ -z "$(tail -c 1 "$new")" ] || printf '%s\n' "$eol" >> "$new"
-    for l in '; [traffic] added by sw3-traffic install.sh (traffic hook module; enabled=0 leaves the game untouched)' '[traffic]' enabled=1 tick_ms=250 log=1; do
+    for l in '; [traffic] added by sw3-traffic install.sh (traffic hook module; enabled=0 leaves the game untouched)' '[traffic]' enabled=1 tick_ms=250 log=1 jobs_card=0; do
         printf '%s%s\n' "$l" "$eol" >> "$new"
     done
 fi

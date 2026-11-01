@@ -421,6 +421,13 @@ function TRF_OnTick(dt_game, dt_real)
 	TRF_N("TRF_Exp_OnTick", dt_game, dt_real);
 end;
 
+-- T4 (design/station-jobs-spec.md 4.2): one event of the DLL's mission card per tick, id the card's id, ev "open", "ok",
+-- "cancel" or "esc" (closed without an answer). trf_plumb answers the box behind the card.
+function TRF_OnJobCard(id, ev)
+	if type(TRF) ~= "table" or not TRF_Traffic() then return; end;
+	TRF_P("TRF_Pl_OnJobCard", id, ev);
+end;
+
 -- Called by the jump wrappers before the original native (how "custom" from CustomTeleportate: no pool
 -- writes, v1 4.2). Ticks stop until the next OnEnter.
 -- CHECK: a cancelled jump leaves TRF.active nil until the next entry; jumps the engine starts

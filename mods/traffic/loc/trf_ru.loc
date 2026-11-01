@@ -430,6 +430,8 @@ FILETYPE STANDART
 #TRF_pclthx2 = Ящики Волков накормили станцию.
 #TRF_pclq = Опечатанная посылка
 #TRF_pclqd = Доставьте опечатанные ящики на торговую станцию, отмеченную на карте. Залог хранится у ФТС.
+#TRF_pcljobh = Опечатанная посылка
+#TRF_jbcard = Курьерский контракт ФТС
 ; sealed parcel logbook keys per destination (#TRF_pclq<idx>, #TRF_pclqd<idx>, trf_parcel TRF_PcDstData) begin
 #TRF_pclq1 = Опечатанная посылка: Ahilles
 #TRF_pclq2 = Опечатанная посылка: Altair

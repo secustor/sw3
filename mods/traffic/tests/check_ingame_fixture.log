@@ -328,3 +328,26 @@ traffic: lua: exp=v1 module=safety event=extort group=group_Pirate_money result=
 traffic: lua: exp=v1 module=safety event=extort group=group_Pirate_money result=war reason=refused
 traffic: lua: exp=v1 module=safety event=extortion_seen game_time=58100.000 via=edge money=4500 count=2
 traffic: lua: exp=v1 module=safety event=extort group=group_Pirate_money result=skip reason=vanilla_rel
+traffic: module=dll event=jobs_init card=1 sig=ok sigs=33 patched=1 board=0 log=0
+traffic: lua: exp=v1 module=state event=enter generation=80 fresh=false system=altair legs=120
+traffic: module=dll event=jobs_card action=open id=pcl fields=15 cards=1
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 box=parcel priority=400 result=card
+traffic: lua: exp=v1 module=plumb event=jobs_card id=pcl card_event=open result=ok
+traffic: module=dll event=jobs_card action=answer id=pcl ev=ok
+traffic: module=dll event=jobs_card action=closed id=pcl ev=answer
+traffic: lua: exp=v1 module=plumb event=box_answer kind=trade box=parcel answer=1 result=done
+traffic: lua: exp=v1 module=plumb event=jobs_card id=pcl card_event=ok result=ok reply="Crates are in your hold. Don't open them, don't sell them, don't be late."
+traffic: module=dll event=jobs_card action=open id=pcl fields=5 cards=2
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 box=parcel priority=400 result=card
+traffic: lua: exp=v1 module=plumb event=jobs_card id=pcl card_event=open result=ok
+traffic: module=dll event=jobs_card action=answer id=pcl ev=cancel
+traffic: module=dll event=jobs_card action=closed id=pcl ev=answer
+traffic: lua: exp=v1 module=plumb event=box_answer kind=trade box=parcel answer=0 result=done
+traffic: lua: exp=v1 module=plumb event=jobs_card id=pcl card_event=cancel result=ok reply=nil
+traffic: module=dll event=jobs_card action=open id=pcl fields=15 cards=3
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 box=parcel priority=400 result=card
+traffic: lua: exp=v1 module=plumb event=jobs_card id=pcl card_event=open result=ok
+traffic: module=dll event=jobs_card action=closed id=pcl ev=esc
+traffic: lua: exp=v1 module=plumb event=box_answer kind=trade box=parcel answer=0 result=done
+traffic: lua: exp=v1 module=plumb event=jobs_card id=pcl card_event=esc result=ok reply=nil
+traffic: lua: exp=v1 module=state event=load generation=81 fresh=false legs=120

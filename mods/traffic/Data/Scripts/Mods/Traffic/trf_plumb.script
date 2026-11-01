@@ -8,7 +8,8 @@
 -- the visit slots in TRF.live (box lock, scripted-event slot, escort slot, arrival line queue); the job slot
 -- TRF.job; owed payers; ship-cap registrations; nav markers; the 8.5 raid-help resolvers; the group prefix
 -- list and its orphan scan at load; the typed object query TRF_Near / TRF_NearCount over the DLL native
--- TRF_Carcasses (pe/API.md).
+-- TRF_Carcasses (pe/API.md); the mission card of the station jobs UI (design/station-jobs-spec.md 5.1, step 1: a box
+-- spec with a card field opens as the DLL's TRF_MissionCard, answered through TRF_OnJobCard).
 -- Registries live in the chunk local P (never saved; rebuilt by every MapInitialization). TRF_InstallPlumb runs
 -- after every file is loaded and calls TRF_<M>_Plumb() of each module in TRF_PlMods(), which register there.
 -- Saved fields: TRF.job (one open job), TRF.mk (packed marker labels, for the cleanup after a load), TRF.live
@@ -524,8 +525,10 @@ function TRF_PlDockBody(kind, oname, args)
 		local s = TRF_PlCall(e.f, {kind, a1});
 		if type(s) == "table" and type(s.text) == "string" then
 			if TRF_PlShow(kind, oname, args, s) then
+				local res = "box";
+				if type(%P.box) == "table" and %P.box.card ~= nil then res = "card"; end;
 				TRF_PlE("dock", "kind", kind, "line_count", getn(out), "box", tostring(s.own or TRF_PlName(e.f)), "priority", e.o,
-					"result", "box");
+					"result", res);
 				return "box";
 			end;
 			TRF_PlE("dock", "kind", kind, "line_count", getn(out), "box", tostring(s.own or TRF_PlName(e.f)), "result", "vanilla",
@@ -559,6 +562,8 @@ function TRF_PlShow(kind, oname, args, s)
 	-- The open box also lives in a function global (survives ClearGlobals), so an answer after a
 	-- MapInitialization (P rebuilt) still finds it; its handlers test the generation themselves.
 	TRF_PlBoxThunk = function() return %bx; end;
+	-- Mission card instead of the box (station-jobs-spec 5.2): s.shown runs at the card's open event.
+	if TRF_PlCardOpen(bx) then return 1; end;
 	if not call(TRF_PlShowRaw, {title, s.text}, "x", TRF_PlErr) then
 		p.box = nil;
 		TRF_PlBoxThunk = nil;
@@ -572,7 +577,8 @@ end;
 
 -- Box buttons: the spec's handler (protected; a returned string is shown as a line), then the vanilla call
 -- once (not for the request kind, whose box replaces it). During the handler of a fee box (s.fee = 1) a
--- nested trade docking opens no box (00 section 6, until E0.6; cfg wb_box_after_fee 1 allows it).
+-- nested trade docking opens no box (00 section 6, until E0.6; cfg wb_box_after_fee 1 allows it). TRF_PlAnswer
+-- returns the handler's reply line (the mission card logs it).
 function TRF_PlBoxOk() TRF_PlAnswer(1); end;
 function TRF_PlBoxNo() TRF_PlAnswer(0); end;
 
@@ -585,10 +591,11 @@ function TRF_PlAnswer(a)
 	if type(b) ~= "table" then TRF_PlE("box_answer", "answer", a, "result", "stale"); return; end;
 	TRF_BoxFree("dock_"..b.k);
 	if b.s.fee == 1 then p.fee = 1; end;
-	TRF_Cb("TRF_PlAnswer", TRF_PlAnsBody, {b, a});
+	local v = TRF_Cb("TRF_PlAnswer", TRF_PlAnsBody, {b, a});
 	p.fee = nil;
 	local ki = TRF_PlKinds()[b.k];
 	if type(ki) ~= "table" or ki.rep ~= 1 then TRF_PlOrig(b.o, b.args); end;
+	return v;
 end;
 
 -- An answer from another generation (a box carried over a load) still runs the handler, which tests the
@@ -603,6 +610,77 @@ function TRF_PlAnsBody(b, a)
 	if f then v = TRF_PlCall(f, {s.a}); end;
 	if type(v) == "string" then TRF_PlSay(v); end;
 	TRF_PlE("box_answer", "kind", b.k, "box", tostring(s.own), "answer", a, "result", res);
+	return v;
+end;
+
+-- Mission card (design/station-jobs-spec.md 5.1, 5.2, step 1) ---------------------------------
+
+-- 1 when a box spec with a card field opens as the mission card: cfg jobs_ui >= 1 and the DLL native TRF_MissionCard
+-- live (its probe with an empty table answers nil, "arg"; "off" is ini jobs_card 0, "sig" a signature mismatch). The
+-- probe answer is kept in P (rebuilt by every MapInitialization); a missing or refused native logs jobs_fallback once.
+function TRF_JbCard()
+	local v = TRF_PlOpt("jobs_ui");
+	if type(v) ~= "number" or v < 1 then return nil; end;
+	local p = %P;
+	if p.jbp == nil then
+		p.jbp = "native_missing";
+		if type(TRF_MissionCard) == "function" then
+			local r, w = call(TRF_MissionCard, {{}}, "x", TRF_PlErr);
+			p.jbp = tostring(w or r);
+		end;
+		if p.jbp ~= "arg" then TRF_PlE("jobs_fallback", "jobs_ui", v, "reason", p.jbp); end;
+	end;
+	if p.jbp == "arg" then return 1; end;
+	return nil;
+end;
+
+-- Opens the open box bx (TRF_PlShow) as the card when bx.s.card = {id, header, cost, title} and TRF_JbCard(): the text is
+-- the box text. 1 when the native answered 1 (bx.card = id, the answer comes through TRF_OnJobCard and the vanilla call
+-- follows it as after the box); nil after a jobs_fallback line with the native's why (the box opens instead).
+function TRF_PlCardOpen(bx)
+	local c = bx.s.card;
+	if type(c) ~= "table" or type(c.id) ~= "string" or not TRF_JbCard() then return nil; end;
+	local r, w = call(TRF_MissionCard, {{id=c.id, header=c.header, cost=c.cost, text=bx.s.text, title=c.title}}, "x", TRF_PlErr);
+	if r == 1 then bx.card = c.id; return 1; end;
+	if r == nil and w == nil then w = "error"; end;
+	TRF_PlE("jobs_fallback", "id", c.id, "reason", tostring(w));
+	return nil;
+end;
+
+-- TRF_OnJobCard(id, ev) of the DLL (traffic.script), one event per T4 tick: "open" runs the box's shown(a, "card");
+-- "ok" answers OK, "cancel" and "esc" answer Cancel (TRF_PlAnswer: the handler, its reply line, then the vanilla call once,
+-- so the shop opens after the card). An event without the open card of this generation is stale: logged, nothing runs.
+function TRF_Pl_OnJobCard(id, ev)
+	local p = %P;
+	local b = p.box;
+	if type(b) ~= "table" and type(TRF_PlBoxThunk) == "function" then b = TRF_PlBoxThunk(); end;
+	if type(b) ~= "table" or b.card == nil or b.card ~= id or type(TRF) ~= "table" or b.g ~= TRF.gen then
+		TRF_PlE("jobs_card", "id", tostring(id), "card_event", tostring(ev), "result", "stale");
+		return nil;
+	end;
+	if ev == "open" then
+		TRF_PlE("jobs_card", "id", id, "card_event", ev, "result", "ok");
+		TRF_PlCall(b.s.shown, {b.s.a, "card"});
+		return 1;
+	end;
+	local a = nil;
+	if ev == "ok" then a = 1; elseif ev == "cancel" or ev == "esc" then a = 0; end;
+	if a == nil then TRF_PlE("jobs_card", "id", id, "card_event", tostring(ev), "result", "unknown"); return nil; end;
+	p.box = b;
+	local v = TRF_PlAnswer(a);
+	TRF_PlE("jobs_card", "id", id, "card_event", ev, "result", "ok", "reply", v);
+	return 1;
+end;
+
+-- Load and jump: an open card is gone with its window; a late event of it finds no box (stale).
+function TRF_PlCardDrop()
+	if type(TRF_PlBoxThunk) ~= "function" then return; end;
+	local b = TRF_PlBoxThunk();
+	if type(b) == "table" and b.card ~= nil then
+		TRF_PlBoxThunk = nil;
+		TRF_BoxFree("dock_"..b.k);
+		TRF_PlE("jobs_card", "id", b.card, "result", "dropped");
+	end;
 end;
 
 -- _NoneStation_Action chain (spec 4.3) ---------------------------------------------
@@ -1201,6 +1279,7 @@ end;
 function TRF_Pl_OnLoad()
 	local p = %P;
 	p.box = nil; p.fee = nil; p.run = {};
+	TRF_PlCardDrop();
 	local L = TRF_PlLive();
 	if L then TRF_PlSlotsClear(L); end;
 	call(TRF_PlMkAll, {"load"}, "x", TRF_PlErr);
@@ -1211,6 +1290,7 @@ end;
 function TRF_Pl_BeforeJump()
 	local p = %P;
 	p.box = nil; p.fee = nil;
+	TRF_PlCardDrop();
 	TRF_PlMkAll("jump");
 end;
 
@@ -1257,7 +1337,7 @@ end;
 -- variant, 12 section 11.4); the last three 0 until E0.13 passes. merc_war is read by trf_merc (betrayal, refusal);
 -- the other three only by the module's own gates, no behaviour reads them yet.
 function TRF_Pl_OptDef()
-	return {wb_box_after_fee=0, merc_war=1, merc_hunt=0, merc_hostile=0, merc_legion=0};
+	return {wb_box_after_fee=0, merc_war=1, merc_hunt=0, merc_hostile=0, merc_legion=0, jobs_ui=1};
 end;
 
 -- prize_rs: the shared real-time gap between combat prize payouts (00 section 8 B1).

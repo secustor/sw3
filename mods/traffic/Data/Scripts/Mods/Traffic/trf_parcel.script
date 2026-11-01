@@ -1315,17 +1315,21 @@ function TRF_Pc_DockBox(kind, param)
 	if not o then TRF_PcDE("offer", "system", TRF_PcName(cur), "result", "none", "reason", w); return nil; end;
 	pc.offer = o;
 	-- Step 2 hook: the contraband offer at pirate docks (TRF_DockBox("pir", 200, ...), cfg enable_contraband).
+	-- card: the mission card of the station jobs UI (design/station-jobs-spec.md 5.2, step 1; trf_plumb opens it instead
+	-- of the box when cfg jobs_ui >= 1 and the DLL native answers, the same handlers answer it).
 	return {title=TRF_PcTxt("pcltitle"), text=TRF_PcBoxText(o), ok="TRF_Pc_BoxOk", no="TRF_Pc_BoxNo", shown="TRF_Pc_BoxShown",
-		fail="TRF_Pc_BoxFail", a={g=o.g, src=cur}, own="parcel"};
+		fail="TRF_Pc_BoxFail", a={g=o.g, src=cur}, own="parcel",
+		card={id="pcl", header=TRF_PcTxt("pcljobh", TRF_PcSys(o.dst)), cost=TRF_PcNum(o.pay), title=TRF_PcTxt("jbcard")}};
 end;
 
-function TRF_Pc_BoxShown(a)
+-- Offer shown: via "card" when trf_plumb opened the mission card, else the box.
+function TRF_Pc_BoxShown(a, via)
 	local o = %PC.offer;
 	if type(o) ~= "table" then return; end;
 	TRF_PcStat("pcl_offer");
 	TRF_PcE("offer", "kind", o.k, "source", TRF_PcName(o.src), "destination", TRF_PcName(o.dst), "jumps", o.j, "deadline", o.dl,
 		"item", o.it, "units", o.n, "class", o.cls, "level", o.L, "tier", o.T, "prosperity", o.pro, "pay", o.pay, "deposit", o.dep,
-		"waived", TRF_KvB(o.wv == 1), "candidate_count", o.nc, "route", o.route, "result", "shown");
+		"waived", TRF_KvB(o.wv == 1), "candidate_count", o.nc, "route", o.route, "result", "shown", "via", via or "box");
 end;
 
 function TRF_Pc_BoxFail(a)
@@ -1621,5 +1625,7 @@ function TRF_Pc_Text()
 		pclthx2 = "$1 dock: the Wolves' crates kept the station fed.",
 		pclq = "Sealed parcel",
 		pclqd = "Deliver the sealed crates to the trade station marked on your map. The FTU holds your deposit.",
+		pcljobh = "Sealed parcel to $1",
+		jbcard = "FTU courier contract",
 	});
 end;

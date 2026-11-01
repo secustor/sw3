@@ -306,6 +306,7 @@ FILETYPE STANDART
 #TRF_hull2 = freighters
 #TRF_hullconv = supply transport
 #TRF_inconvoy = in convoy
+#TRF_jbcard = FTU courier contract
 #TRF_keyarr = #TRF_ArriveDis_
 #TRF_keyfocus = #TRF_Focus__
 #TRF_ladcapped = standing capped at while you carry papers.
@@ -492,6 +493,7 @@ FILETYPE STANDART
 #TRF_pclit1s = 1 crate
 #TRF_pclit2 = containers
 #TRF_pclit2s = 1 container
+#TRF_pcljobh = Sealed parcel to
 #TRF_pcljump = 1 jump, legs
 #TRF_pcljumps = jumps, legs
 #TRF_pcllate = Courier desk: the parcel is overdue. Deposit forfeited.
