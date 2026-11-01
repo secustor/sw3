@@ -264,10 +264,10 @@ else
 fi
 rm -f "$cfg"
 
-# sw3tp.ini [traffic]: enabled=1, the other keys of an existing section stay; a new section also gets jobs_card=0 and
-# jobs_board=0 (the mission card and Office board natives off until their in-game checks K1-K7 and M1-M8 pass,
-# design/station-jobs-spec.md 10). The section as it was before the
-# first install is saved once (ini.traffic, or "ini none" when there was none) for uninstall.sh.
+# sw3tp.ini [traffic]: enabled=1, the other keys of an existing section stay; a new section also gets jobs_card=0,
+# jobs_board=0 and jobs_log=0 (the mission card, Office board and Job log natives off until their in-game checks K1-K7,
+# M1-M8 and L1-L5 pass, design/station-jobs-spec.md 10). The section as it was before the first install is saved
+# once (ini.traffic, or "ini none" when there was none) for uninstall.sh.
 sect() { awk '{l=$0; sub(/\r$/,"",l)} l=="[traffic]"{p=1;print;next} /^\[/{p=0} p{print}' "$1"; }
 if ! grep -q '^ini ' "$man"; then
     if [ -n "$(sect "$ini")" ]; then sect "$ini" > "$bk/ini.traffic"; rec "ini saved"; else rec "ini none"; fi
@@ -285,7 +285,7 @@ if [ -n "$(sect "$ini")" ]; then
 else
     cp "$ini" "$new"
     [ -z "$(tail -c 1 "$new")" ] || printf '%s\n' "$eol" >> "$new"
-    for l in '; [traffic] added by sw3-traffic install.sh (traffic hook module; enabled=0 leaves the game untouched)' '[traffic]' enabled=1 tick_ms=250 log=1 jobs_card=0 jobs_board=0; do
+    for l in '; [traffic] added by sw3-traffic install.sh (traffic hook module; enabled=0 leaves the game untouched)' '[traffic]' enabled=1 tick_ms=250 log=1 jobs_card=0 jobs_board=0 jobs_log=0; do
         printf '%s%s\n' "$l" "$eol" >> "$new"
     done
 fi

@@ -183,9 +183,9 @@ function T_PCL_A()
 		"trade line 20 right after the shortage restore, trade box 400 first, one owed payer ("..lo.." "..bo..")");
 	-- Texts.
 	local nt = PC_SetN(TRF_Pc_Text());
-	HOST_Check(nt == 193 and TRF_Txt("pcldone", "15,400") == "Parcel received, seals intact. Deposit returned, 15,400 cr paid."
+	HOST_Check(nt == 194 and TRF_Txt("pcldone", "15,400") == "Parcel received, seals intact. Deposit returned, 15,400 cr paid."
 		and TRF_Txt("pcllate", "Taira") == "Courier desk: the Taira parcel is overdue. Deposit forfeited."
-		and TRF_Txt("pclneed1", "Taira") == "Taira station is out of machinery and the refinery is idle.", "193 texts (43 and 75 destinations x 2); the design's lines");
+		and TRF_Txt("pclneed1", "Taira") == "Taira station is out of machinery and the refinery is idle.", "194 texts (44 and 75 destinations x 2); the design's lines");
 	-- Logbook keys per destination: every map system with a trade station has pclq<idx> and pclqd<idx>, no other system.
 	local mp, miss, nd, tx = TRF_Map(), "", 0, TRF_Pc_Text();
 	for i = 1, getn(mp.sys) do

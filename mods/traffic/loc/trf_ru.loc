@@ -437,6 +437,7 @@ FILETYPE STANDART
 #TRF_jbgone = Больше не доступно
 #TRF_pcljobs = прыжки, срок в переходах
 #TRF_pcljob1 = 1 прыжок, срок в переходах
+#TRF_pcllog = Курьерская работа внесена в журнал работ.
 ; sealed parcel logbook keys per destination (#TRF_pclq<idx>, #TRF_pclqd<idx>, trf_parcel TRF_PcDstData) begin
 #TRF_pclq1 = Опечатанная посылка: Ahilles
 #TRF_pclq2 = Опечатанная посылка: Altair

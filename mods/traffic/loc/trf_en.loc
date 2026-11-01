@@ -502,6 +502,7 @@ FILETYPE STANDART
 #TRF_pcljump = 1 jump, legs
 #TRF_pcljumps = jumps, legs
 #TRF_pcllate = Courier desk: the parcel is overdue. Deposit forfeited.
+#TRF_pcllog = Courier job added to the Job log.
 #TRF_pclmark = FTU courier desk: parcel drop marked at the trade station.
 #TRF_pclneed1 = station is out of machinery and the refinery is idle.
 #TRF_pclneed2 = station is out of spare parts and the repair bays are idle.

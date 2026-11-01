@@ -1,7 +1,8 @@
 /* traffic: hook module of the sw3-traffic mod, linked into the sw3tp zlib1.dll proxy
  * (mods/traffic/design/mod-options.md 5.1-5.5, 5.8 item 2). Ten E8 rel32 call-site patches (T5a, T5b, T6 only with
- * trig_log=1), ten natives (API.md), Lua callbacks, the mission card (two handler immediates T7a/T7b and the Hide
- * slot T8 with jobs_card=1) and the Office jobs board (the Create slot T9 with jobs_board=1, design/station-jobs-spec.md),
+ * trig_log=1), fifteen natives (API.md), Lua callbacks, the mission card (two handler immediates T7a/T7b and the Hide
+ * slot T8 with jobs_card=1), the Office jobs board (the Create slot T9 with jobs_board=1) and the Job log (the byte T10a,
+ * the QuestLog Create slot T10b and the QuestManager Load slot T11 with jobs_log=1; design/station-jobs-spec.md),
  * the TRF carry across the location-entry ClearGlobals, a C
  * _ERRORMESSAGE that logs a traceback (T1), a Lua stack leak guard (T4) and a trigger-fire sampler (T5a/T5b/T6).
  * TRF_Log lines carry at most 485 chars of the Lua string.
@@ -1028,6 +1029,300 @@ static int __cdecl n_jobboardmark(lua_State *L)
     return 1;
 }
 
+/* ---- station jobs, step 3: the Job log (design/station-jobs-spec.md 4.1, 4.3 T10/T11, 5.3; research
+ * design/mod-research/station-jobs-ui.md 6, 7.12) ----
+ * QuestManager QM = [Game+0x1a0] (Game = [R], 0x42009c; AddQuest 0x5cfe99), vtable 0x723e18: the mission list at +0x4
+ * (count +0xc), the job list at +0x18 (count +0x20); a list: head +0, count +8, node: entry +0, next +4, prev +8 (insert
+ * 0x4c6660, remove 0x5b2c70). Entry (0x98 bytes, vtable 0x723e28, vt[0] the deleting dtor 0x4c67c0): state +4, id String
+ * +0x2c (char* at +0x48, the compare of 0x4c6180). TRF_JobAdd(id, title, text, state) runs AddQuest's insert 0x4c6200
+ * (ecx = id, ebx = the list base: QM+0x14 makes its +4 / +0xc reads hit the job list; stdcall title, text, state; ret
+ * 0xc; 0 when the id is there) without AddQuest's screen notice (0x5cff0a-0x5cffc4). TRF_JobState, TRF_JobLogGet (the
+ * spec's TRF_JobGet is trf_plumb's job slot getter, a script global that would replace the native),
+ * TRF_JobRemove and TRF_JobIds find the entry by a guarded walk of the job list (gname on the id String); TRF_JobRemove
+ * is RemoveQuest's path on it: 0x4cee60 (eax = list, edx = entry) and the entry's vt[0](1) (0x5d004b-0x5d0065).
+ * Saved by the engine: Save 0x4c6360 (vt+4) writes the count +0x20 and every entry of +0x18 (0x4c63b6-0x4c63fd) after
+ * the missions; Load 0x4c6410 (vt+8) reads them back into +0x18 (0x4c64fc-0x4c656e) but clears only the mission list
+ * first (0x460940 on +0x4, 0x4c645e), and QM is made once per process. T11, the Load slot 0x723e20: clear the job list
+ * with 0x460940 (esi = list; it frees the nodes and leaves the entries, as the vanilla mission clear), then 0x4c6410.
+ * T10a: byte 0x554eb4 of QuestLog Create 0x554c00 (vt+0x34 on pWinButWork: disabled) becomes 0x30 (vt+0x30: enabled);
+ * T10b: the Create slot 0x72cbf0 of the QuestLog vtable 0x72cb68 calls 0x554c00 and, when it returned 1, sets the
+ * handlers fn(wrapper, button) (cdecl, called with [button+0x70], 0x4865ab) of pWinButWork (trf_qlog_jobs: pWorkPanel
+ * shown, pMainPanel hidden, the +0x228 flags Work 1 / Quest 0, a mirror of 0x554ef0) and pWinButQuest (trf_qlog_quests:
+ * the vanilla 0x554ef0, then Work's +0x228 cleared and the handler set again, as 0x554ef0 sets itself). Engine calls
+ * from natives: spec J9. A g_jsig3 mismatch turns only the job log off. */
+#define JL_T10A 0x554eb4u
+#define JL_T10B 0x72cbf0u
+#define JL_T11  0x723e20u
+#define QM_VT   0x723e18u
+#define QE_VT   0x723e28u
+#define JL_MAX  256
+static const struct trf_msig g_jsig3[] = {
+    { 0x554ea1, 17, { 0x8b,0x4e,0x1c,0x68,0x5c,0xcb,0x72,0x00,0xe8,0xb2,0xb0,0xf1,0xff,0x8b,0xf0,0x8b,0x16 },
+      "Create looks up pWinButWork (0x72cb5c)" },
+    { 0x554eb2, 3, { 0x8b,0x42,0x34 }, "T10a pWinButWork vt+0x34 (disable) at 0x554eb2" },
+    { 0x554e96, 12, { 0x8b,0xf8,0x6a,0x01,0xc7,0x47,0x7c,0xf0,0x4e,0x55,0x00,0x8b }, "Create: pWinButQuest+0x7c = 0x554ef0" },
+    { 0x554ebd, 20, { 0xc7,0x87,0x28,0x02,0x00,0x00,0x01,0x00,0x00,0x00,0x5f,0xc7,0x86,0x28,0x02,0x00,0x00,0x00,0x00,0x00 },
+      "Create: Quest +0x228 = 1, Work +0x228 = 0" },
+    { 0x554ed2, 6, { 0x5e,0xb8,0x01,0x00,0x00,0x00 }, "Create returns 1" },
+    { 0x554ee0, 4, { 0x83,0xc4,0x30,0xc3 }, "Create ret (thiscall, no stack args)" },
+    { 0x554c00, 8, { 0x6a,0xff,0x68,0xe0,0xd0,0x6d,0x00,0x64 }, "QuestLog Create 0x554c00" },
+    { 0x554c83, 3, { 0x89,0x46,0x1c }, "Create keeps the GUI window at +0x1c" },
+    { 0x72cbf0, 4, { 0x00,0x4c,0x55,0x00 }, "T10b QuestLog Create slot 0x72cbf0 = 0x554c00" },
+    { 0x553d4e, 6, { 0xc7,0x07,0x68,0xcb,0x72,0x00 }, "QuestLog ctor vtable 0x72cb68" },
+    { 0x554ef0, 25, { 0x56,0x8b,0x74,0x24,0x08,0x8b,0x4e,0x1c,0x6a,0x01,0x68,0x34,0xcb,0x72,0x00,0xe8,0x5c,0xb0,0xf1,0xff,
+      0x8b,0x10,0x8b,0xc8,0x8b }, "Missions tab 0x554ef0 cdecl fn(w): pMainPanel by name from [w+0x1c]" },
+    { 0x554f38, 19, { 0xc7,0x40,0x7c,0xf0,0x4e,0x55,0x00,0xc7,0x80,0x28,0x02,0x00,0x00,0x01,0x00,0x00,0x00,0x5e,0xc3 },
+      "0x554ef0 sets its own handler and +0x228 = 1, ret" },
+    { 0x4865ab, 17, { 0x8b,0x46,0x7c,0x85,0xc0,0x0f,0x84,0xda,0xfb,0xff,0xff,0x8b,0x56,0x70,0x56,0x52,0xff },
+      "button click: a null +0x7c is skipped, fn([b+0x70], b)" },
+    { 0x723e18, 12, { 0xe0,0x60,0x4c,0x00,0x60,0x63,0x4c,0x00,0x10,0x64,0x4c,0x00 }, "QM vtable: dtor, Save 0x4c6360, Load 0x4c6410" },
+    { 0x4c6095, 6, { 0xc7,0x00,0x18,0x3e,0x72,0x00 }, "QM ctor vtable 0x723e18" },
+    { 0x5cfe94, 11, { 0xe8,0xc7,0x01,0xe5,0xff,0x8b,0x80,0xa0,0x01,0x00,0x00 }, "AddQuest: QM = [Game+0x1a0]" },
+    { 0x42009c, 3, { 0x8b,0x00,0xc3 }, "Game = [R]" },
+    { 0x4c63b6, 3, { 0x8b,0x46,0x20 }, "Save writes the job count +0x20" },
+    { 0x4c63d8, 3, { 0x8d,0x46,0x18 }, "Save writes the job entries of +0x18" },
+    { 0x4c6410, 8, { 0x6a,0xff,0x68,0x46,0x69,0x6b,0x00,0x64 }, "QM Load 0x4c6410" },
+    { 0x4c645e, 8, { 0x8d,0x77,0x04,0xe8,0xda,0xa4,0xf9,0xff }, "Load clears only the missions (0x460940 on +0x4)" },
+    { 0x4c6504, 3, { 0x8d,0x77,0x18 }, "Load reads the jobs into +0x18" },
+    { 0x4c6584, 3, { 0xc2,0x04,0x00 }, "Load ret 4" },
+    { 0x460940, 8, { 0x83,0xc8,0xff,0x39,0x46,0x10,0x74,0x0a }, "list clear 0x460940 (esi)" },
+    { 0x4c6200, 8, { 0x6a,0xff,0x68,0x8b,0x91,0x6c,0x00,0x64 }, "list add 0x4c6200" },
+    { 0x4c6215, 7, { 0x51,0x56,0x8b,0xf1,0x56,0x8b,0xc3 }, "0x4c6200: ecx = id, eax = ebx for the dup check" },
+    { 0x4c6225, 2, { 0x33,0xc0 }, "0x4c6200 returns 0 on a dup" },
+    { 0x4c6236, 3, { 0xc2,0x0c,0x00 }, "0x4c6200 ret 0xc" },
+    { 0x4c62ab, 7, { 0x83,0x7b,0x04,0x00,0x8d,0x73,0x04 }, "0x4c6200 inserts into ebx+4" },
+    { 0x4c62ca, 5, { 0xb8,0x01,0x00,0x00,0x00 }, "0x4c6200 returns 1" },
+    { 0x5cfedb, 15, { 0x50,0x8b,0x44,0x24,0x10,0x50,0x8b,0xcb,0x8b,0x5c,0x24,0x18,0x57,0xe8,0x13 },
+      "AddQuest: state, text, title; ecx = id, ebx = QM" },
+    { 0x4c62e1, 3, { 0x8b,0x58,0x0c }, "dup check reads the count at +0xc" },
+    { 0x4c61b7, 3, { 0x8b,0x48,0x48 }, "entry id char* +0x48" },
+    { 0x4c6811, 9, { 0xc7,0x06,0x28,0x3e,0x72,0x00,0x89,0x46,0x04 }, "entry vtable 0x723e28, state +4" },
+    { 0x723e28, 4, { 0xc0,0x67,0x4c,0x00 }, "entry vt[0] = 0x4c67c0 (deleting dtor)" },
+    { 0x4c67c0, 16, { 0x56,0x8b,0xf1,0x56,0xe8,0xa7,0x00,0x00,0x00,0xf6,0x44,0x24,0x08,0x01,0x74,0x09 },
+      "0x4c67c0 thiscall (flags): dtor, free when bit 1" },
+    { 0x5d0103, 3, { 0x89,0x5e,0x04 }, "SetQuestState: entry+4 = state" },
+    { 0x5d004b, 10, { 0x8d,0x47,0x04,0x8b,0xd6,0xe8,0x0b,0xee,0xef,0xff }, "RemoveQuest: 0x4cee60(eax = list, edx = entry)" },
+    { 0x5d005d, 10, { 0x8b,0x06,0x8b,0x10,0x6a,0x01,0x8b,0xce,0xff,0xd2 }, "RemoveQuest: entry vt[0](1)" },
+    { 0x4cee60, 8, { 0x56,0x8b,0xf0,0x8b,0x06,0x85,0xc0,0x74 }, "list remove 0x4cee60 (eax, edx)" },
+    { 0x4c66c7, 2, { 0x89,0x07 }, "node entry +0" },
+    { 0x4c6716, 3, { 0x01,0x46,0x08 }, "list count +8" },
+    { 0x5b2ca8, 6, { 0x8b,0x50,0x04,0x89,0x51,0x04 }, "node next +4" },
+    { 0x49e1a0, 7, { 0x83,0xb8,0x84,0x00,0x00,0x00,0x00 }, "0x4c6200's 0x49e180 needs [R+0x84]" },
+};
+#define JSIG3_N (sizeof(g_jsig3) / sizeof(g_jsig3[0]))
+
+static int g_jl_on, g_jl_ok, g_jl_patched;
+static unsigned g_jl_loads;
+static int (__thiscall *const eng_qlog_create)(unsigned) = API(0x554c00);
+static void (__cdecl *const eng_qlog_quests)(unsigned, unsigned) = API(0x554ef0);
+static int (__thiscall *const eng_qm_load)(unsigned, unsigned) = API(0x4c6410);
+
+static unsigned eng_qadd(unsigned base, const char *id, const char *t, const char *d, int st)
+{   /* 0x4c6200: ebx = base (the list is base+4), ecx = id; stdcall title, text, state; 1 added, 0 the id is there */
+    unsigned a = (unsigned)st, c = (unsigned)id, x = base;
+    const char *s = t, *e = d;
+    __asm__ volatile("pushl %%ebx\n\tmovl %%edx, %%ebx\n\tpushl %%eax\n\tpushl %%edi\n\tpushl %%esi\n\t"
+        "movl $0x4c6200, %%eax\n\tcalll *%%eax\n\tpopl %%ebx"
+        : "+a"(a), "+c"(c), "+d"(x), "+S"(s), "+D"(e) : : "memory", "cc");
+    return a;
+}
+static unsigned eng_lremove(unsigned list, unsigned ent)   /* 0x4cee60: eax = list, edx = entry; nonzero when removed */
+{
+    unsigned a = list, d = ent;
+    __asm__ volatile("calll *%2" : "+a"(a), "+d"(d) : "r"(0x4cee60u) : "ecx", "memory", "cc");
+    return a;
+}
+static void eng_lclear(unsigned list)                      /* 0x460940: esi = list */
+{
+    unsigned s = list;
+    __asm__ volatile("calll *%1" : "+S"(s) : "r"(0x460940u) : "eax", "ecx", "edx", "memory", "cc");
+}
+
+static const char *jl_why(void) { return !g_jl_on ? "off" : !g_jl_ok || !g_jl_patched ? "sig" : 0; }
+static unsigned jl_mgr(void)                               /* QM with its vtable, else 0 */
+{
+    unsigned m = grd(grd(grd(ROOT_SLOT, 0), 0), 0x1a0);
+    return m && grd(m, 0) == QM_VT ? m : 0;
+}
+static const char *jl_eid(unsigned e) { return e && grd(e, 0) == QE_VT ? gname(e + 0x2c) : 0; }
+/* the entry of the job list with id, 0 when absent or the list unreadable; *cnt the entries walked */
+static unsigned jl_find(unsigned m, const char *id, unsigned *cnt)
+{
+    unsigned lst = m + 0x18, n, k = 0, c;
+    const char *s;
+    if (cnt) *cnt = 0;
+    if (!rd_ok(lst, 12) || (c = *(const unsigned *)(lst + 8)) > JL_MAX) return 0;
+    for (n = grd(lst, 0); k < c && n; k++, n = grd(n, 4)) {
+        if (cnt) *cnt = k + 1;
+        if (id && (s = jl_eid(grd(n, 0))) && str_same(s, id)) return grd(n, 0);
+    }
+    return 0;
+}
+/* argument i: a string of at most lim bytes, else 0 */
+static const char *jl_arg(lua_State *L, int i, int lim)
+{
+    const char *s;
+    int n;
+    if (lua_gettop(L) < i || lua_type(L, i) != T_STRING) return 0;
+    s = lua_tostring(L, i);
+    for (n = 0; s && s[n]; n++) if (n >= lim) return 0;
+    return s;
+}
+static int jl_state(lua_State *L, int i, int *st)          /* argument i: an integer 0..15 */
+{
+    double v;
+    if (lua_gettop(L) < i || lua_type(L, i) != T_NUMBER) return 0;
+    v = lua_tonumber(L, i);
+    if (v < 0.0 || v > 15.0 || v != (double)(int)v) return 0;
+    *st = (int)v;
+    return 1;
+}
+
+static int __cdecl n_jobadd(lua_State *L)
+{
+    const char *why = jl_why(), *id, *t, *d;
+    unsigned m, r, n;
+    int st;
+    struct tb b;
+    if (why) return cs_fail(L, why);
+    id = jl_arg(L, 1, JC_IDLEN); t = jl_arg(L, 2, JC_LEN); d = jl_arg(L, 3, JC_LEN);
+    if (lua_gettop(L) != 4 || !jc_idok(id) || !t || !d || !jl_state(L, 4, &st)) return cs_fail(L, "arg");
+    rd_reset();
+    if (!(m = jl_mgr()) || !grd(grd(ROOT_SLOT, 0), 0x84)) return cs_fail(L, "nomgr");
+    r = jl_find(m, id, 0) ? 0 : eng_qadd(m + 0x14, id, t, d, st);
+    rd_reset();
+    jl_find(m, 0, &n);
+    tb_begin(&b, "module=dll event=jobs_log action=add id="); tb_s(&b, id); tb_s(&b, " state="); tb_i(&b, st);
+    tb_s(&b, r ? " result=ok" : " result=dup"); tb_s(&b, " jobs="); tb_u(&b, n); tb_end(&b);
+    if (!r) return cs_fail(L, "dup");
+    lua_pushnumber(L, 1.0);
+    return 1;
+}
+
+static int __cdecl n_jobstate(lua_State *L)
+{
+    const char *why = jl_why(), *id;
+    unsigned m, e;
+    int st;
+    struct tb b;
+    if (why) return cs_fail(L, why);
+    id = jl_arg(L, 1, JC_IDLEN);
+    if (lua_gettop(L) != 2 || !jc_idok(id) || !jl_state(L, 2, &st)) return cs_fail(L, "arg");
+    rd_reset();
+    if (!(m = jl_mgr())) return cs_fail(L, "nomgr");
+    if (!(e = jl_find(m, id, 0))) return cs_fail(L, "none");
+    *(unsigned *)(e + 4) = (unsigned)st;
+    tb_begin(&b, "module=dll event=jobs_log action=state id="); tb_s(&b, id); tb_s(&b, " state="); tb_i(&b, st); tb_end(&b);
+    lua_pushnumber(L, 1.0);
+    return 1;
+}
+
+static int __cdecl n_jobget(lua_State *L)
+{
+    const char *why = jl_why(), *id;
+    unsigned m, e;
+    if (why) return cs_fail(L, why);
+    id = jl_arg(L, 1, JC_IDLEN);
+    if (lua_gettop(L) != 1 || !jc_idok(id)) return cs_fail(L, "arg");
+    rd_reset();
+    if (!(m = jl_mgr())) return cs_fail(L, "nomgr");
+    if (!(e = jl_find(m, id, 0))) return cs_fail(L, "none");
+    lua_pushnumber(L, (double)(int)grd(e, 4));
+    return 1;
+}
+
+static int __cdecl n_jobremove(lua_State *L)
+{
+    const char *why = jl_why(), *id;
+    unsigned m, e, f;
+    struct tb b;
+    if (why) return cs_fail(L, why);
+    id = jl_arg(L, 1, JC_IDLEN);
+    if (lua_gettop(L) != 1 || !jc_idok(id)) return cs_fail(L, "arg");
+    rd_reset();
+    if (!(m = jl_mgr())) return cs_fail(L, "nomgr");
+    if (!(e = jl_find(m, id, 0)) || !(f = eng_vfn(e, 0)) || !eng_lremove(m + 0x18, e)) return cs_fail(L, "none");
+    ((void (__thiscall *)(unsigned, int))f)(e, 1);
+    tb_begin(&b, "module=dll event=jobs_log action=remove id="); tb_s(&b, id); tb_end(&b);
+    lua_pushnumber(L, 1.0);
+    return 1;
+}
+
+static int __cdecl n_jobids(lua_State *L)
+{
+    const char *why = jl_why(), *s;
+    unsigned m, lst, n, k, c;
+    int i = 0;
+    if (why) return cs_fail(L, why);
+    if (lua_gettop(L) != 0) return cs_fail(L, "arg");
+    rd_reset();
+    if (!(m = jl_mgr())) return cs_fail(L, "nomgr");
+    lst = m + 0x18;
+    lua_newtable(L);
+    if (!rd_ok(lst, 12) || (c = *(const unsigned *)(lst + 8)) > JL_MAX) return 1;
+    for (n = grd(lst, 0), k = 0; k < c && n; k++, n = grd(n, 4))
+        if ((s = jl_eid(grd(n, 0)))) { lua_pushstring(L, s); lua_rawseti(L, -2, ++i); }
+    return 1;
+}
+
+static unsigned jl_ctl(unsigned gui, const char *name) { unsigned c = gui ? eng_find(gui, name, 1) : 0; rd_reset(); return c; }
+static void __cdecl trf_qlog_quests(unsigned w, unsigned btn);
+static void __cdecl trf_qlog_jobs(unsigned w, unsigned btn)
+{
+    unsigned gui, bw, bq, p;
+    struct tb b;
+    rd_reset();
+    if (!(gui = grd(w, 0x1c))) return;
+    if ((p = jl_ctl(gui, "pWorkPanel"))) eng_show(p, 1);
+    if ((p = jl_ctl(gui, "pMainPanel"))) eng_show(p, 0);
+    bw = jl_ctl(gui, "pWinButWork"); bq = jl_ctl(gui, "pWinButQuest");
+    if (bw) { *(unsigned *)(bw + 0x7c) = (unsigned)trf_qlog_jobs; *(unsigned *)(bw + 0x228) = 1; }
+    if (bq) *(unsigned *)(bq + 0x228) = 0;
+    tb_begin(&b, "module=dll event=jobs_log action=tab view=jobs"); tb_end(&b);
+}
+static void __cdecl trf_qlog_quests(unsigned w, unsigned btn)
+{
+    unsigned gui, bw, bq;
+    struct tb b;
+    eng_qlog_quests(w, btn);
+    rd_reset();
+    if (!(gui = grd(w, 0x1c))) return;
+    bw = jl_ctl(gui, "pWinButWork"); bq = jl_ctl(gui, "pWinButQuest");
+    if (bq) *(unsigned *)(bq + 0x7c) = (unsigned)trf_qlog_quests;
+    if (bw) *(unsigned *)(bw + 0x228) = 0;
+    tb_begin(&b, "module=dll event=jobs_log action=tab view=missions"); tb_end(&b);
+}
+static int __thiscall trf_qlog_create(unsigned self)       /* T10b */
+{
+    int r = eng_qlog_create(self);
+    unsigned gui, bw, bq, m, n = 0;
+    struct tb b;
+    if (r != 1) return r;
+    rd_reset();
+    gui = grd(self, 0x1c);
+    bw = jl_ctl(gui, "pWinButWork"); bq = jl_ctl(gui, "pWinButQuest");
+    if (bw && bq) { *(unsigned *)(bw + 0x7c) = (unsigned)trf_qlog_jobs; *(unsigned *)(bq + 0x7c) = (unsigned)trf_qlog_quests; }
+    if ((m = jl_mgr())) jl_find(m, 0, &n);
+    tb_begin(&b, "module=dll event=jobs_log action=create"); tb_s(&b, bw && bq ? " result=ok" : " result=nobutton");
+    tb_s(&b, " jobs="); tb_u(&b, n); tb_end(&b);
+    return r;
+}
+static int __thiscall trf_qm_load(unsigned self, unsigned st)   /* T11 */
+{
+    unsigned n = 0, k = 0;
+    int r, own;
+    struct tb b;
+    rd_reset();
+    if ((own = grd(self, 0) == QM_VT)) { jl_find(self, 0, &n); eng_lclear(self + 0x18); }
+    r = eng_qm_load(self, st);
+    g_jl_loads++;
+    rd_reset();
+    if (own) jl_find(self, 0, &k);
+    tb_begin(&b, "module=dll event=jobs_log action=qm_load cleared="); tb_u(&b, n); tb_s(&b, " loaded="); tb_u(&b, k);
+    tb_s(&b, " result="); tb_i(&b, r); tb_s(&b, " loads="); tb_u(&b, g_jl_loads); tb_end(&b);
+    return r;
+}
+
 static int patch_dword(unsigned a, unsigned v)
 {
     DWORD old, tmp;
@@ -1035,6 +1330,15 @@ static int patch_dword(unsigned a, unsigned v)
     *(unsigned *)a = v;
     VirtualProtect((void *)a, 4, old, &tmp);
     FlushInstructionCache(GetCurrentProcess(), (void *)a, 4);
+    return 1;
+}
+static int patch_byte(unsigned a, unsigned char v)
+{
+    DWORD old, tmp;
+    if (!VirtualProtect((void *)a, 1, PAGE_EXECUTE_READWRITE, &old)) return 0;
+    *(unsigned char *)a = v;
+    VirtualProtect((void *)a, 1, old, &tmp);
+    FlushInstructionCache(GetCurrentProcess(), (void *)a, 1);
     return 1;
 }
 
@@ -1288,7 +1592,9 @@ static void __stdcall trf_register(void)          /* T1, after 0x5c7e80 */
     static const struct { const char *name; lua_CFunction f; } nat[] = {
         { "TRF_Version", n_version }, { "TRF_GameTime", n_gametime }, { "TRF_RealTime", n_realtime }, { "TRF_Log", n_log },
         { "TRF_InMovie", n_inmovie }, { "TRF_UiState", n_uistate }, { "TRF_Carcasses", n_carcasses },
-        { "TRF_MissionCard", n_missioncard }, { "TRF_JobBoard", n_jobboard }, { "TRF_JobBoardMark", n_jobboardmark } };
+        { "TRF_MissionCard", n_missioncard }, { "TRF_JobBoard", n_jobboard }, { "TRF_JobBoardMark", n_jobboardmark },
+        { "TRF_JobAdd", n_jobadd }, { "TRF_JobState", n_jobstate }, { "TRF_JobLogGet", n_jobget }, { "TRF_JobRemove", n_jobremove },
+        { "TRF_JobIds", n_jobids } };
     const int nn = (int)(sizeof(nat) / sizeof(nat[0]));
     lua_State *L = lstate();
     struct tb b;
@@ -1597,6 +1903,7 @@ void trf_init(const char *ini)
     g_jc_on = (int)GetPrivateProfileIntA("traffic", "jobs_card", 0, ini) != 0;
     g_jb_on = (int)GetPrivateProfileIntA("traffic", "jobs_board", 0, ini) != 0;
     g_jb_mode = (int)GetPrivateProfileIntA("traffic", "jobs_board_mode", 1, ini) == 2 ? 2 : 1;
+    g_jl_on = (int)GetPrivateProfileIntA("traffic", "jobs_log", 0, ini) != 0;
     QueryPerformanceFrequency(&g_qpf);
     QueryPerformanceCounter(&g_qpc0);
     tb_begin(&b, "config tick_ms="); tb_i(&b, g_tick_ms); tb_s(&b, " log="); tb_i(&b, g_log_on);
@@ -1644,17 +1951,25 @@ void trf_init(const char *ini)
             tb_begin(&b, "module=dll event=jobs_sig_mismatch what=\""); tb_q(&b, g_jsig2[e].what, 400, 0);
             tb_s(&b, "\" at="); tb_x(&b, bad); tb_end(&b);
         } else g_jb_ok = 1;
+        if ((bad = sig_verify(g_jsig3, JSIG3_N, &e))) {   /* step 3: a mismatch turns only the job log off */
+            tb_begin(&b, "module=dll event=jobs_sig_mismatch what=\""); tb_q(&b, g_jsig3[e].what, 400, 0);
+            tb_s(&b, "\" at="); tb_x(&b, bad); tb_end(&b);
+        } else g_jl_ok = 1;
         if (g_jc_on && g_jc_ok && g_site_on[S_T4])   /* T7a, T7b handler immediates, T8 Hide slot (spec 4.3); the card needs T4
                                                       * (stack walk, event delivery): site_t4=0 leaves it off, the native answers "sig" */
             g_jc_patched = patch_dword(JC_T7A, (unsigned)trf_card_ok) && patch_dword(JC_T7B, (unsigned)trf_card_cancel)
                 && patch_dword(JC_T8, (unsigned)trf_card_hide);
         if (g_jb_on && g_jb_ok && g_jc_patched)       /* T9 Office Create slot (spec 4.3); the board opens the step 1 card */
             g_jb_patched = patch_dword(OF_SLOT, (unsigned)trf_office_create);
+        if (g_jl_on && g_jl_ok)                       /* T10a byte, T10b QuestLog Create slot, T11 QuestManager Load slot (spec 4.3) */
+            g_jl_patched = patch_byte(JL_T10A, 0x30) && patch_dword(JL_T10B, (unsigned)trf_qlog_create)
+                && patch_dword(JL_T11, (unsigned)trf_qm_load);
         tb_begin(&b, "module=dll event=jobs_init card="); tb_i(&b, g_jc_on); tb_s(&b, g_jc_ok ? " sig=ok" : " sig=bad");
         tb_s(&b, " sigs="); tb_u(&b, (unsigned)JSIG_N); tb_s(&b, " patched="); tb_i(&b, g_jc_patched);
         tb_s(&b, " board="); tb_i(&b, g_jb_on); tb_s(&b, " mode="); tb_i(&b, g_jb_mode); tb_s(&b, g_jb_ok ? " board_sig=ok" : " board_sig=bad");
         tb_s(&b, " board_sigs="); tb_u(&b, (unsigned)JSIG2_N); tb_s(&b, " board_patched="); tb_i(&b, g_jb_patched);
-        tb_s(&b, " log=0"); tb_end(&b);
+        tb_s(&b, " log="); tb_i(&b, g_jl_on); tb_s(&b, g_jl_ok ? " log_sig=ok" : " log_sig=bad");
+        tb_s(&b, " log_sigs="); tb_u(&b, (unsigned)JSIG3_N); tb_s(&b, " log_patched="); tb_i(&b, g_jl_patched); tb_end(&b);
     }
     if (!(g_page = build_page())) { tlog("disabled, stub page failed"); return; }
     for (i = 0; i < S_N; i++) {

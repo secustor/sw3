@@ -66,7 +66,8 @@
 # hooks T7a/T7b/T8, design/station-jobs-spec.md 4.4), JOBS_BOARD=0|1 (default 1: the TRF_JobBoard natives and the Office
 # Create hook T9, needs JOBS_CARD=1), JOBS_BOARD_MODE=1|2 (default 1 the Jobs tab, 2 the cards at the end of News)
 # (sw3tp.ini [traffic]). JOBS_UI=0|1|2 (cfg jobs_ui, default 1: the parcel offer as the mission card at the trade dock;
-# 2 a card on the Office Jobs tab; 0 the box).
+# 2 a card on the Office Jobs tab; 0 the box). JOBS_LOG=0|1 (default 1: ini jobs_log, the Job log natives and the hooks
+# T10/T11, and cfg jobs_log, the parcel's logbook entry in the quest log's Job log; 0 both off, the mission list).
 # STABILITY=0|1, RENDER_LOST_GUARD=0|1 (default 1) (sw3tp.ini [stability], mods/performance).
 # VIEW=0|1, FRUSTUM_CULL=0|1 (default 1), SIZE_CULL=0|1 (default 0), MIN_PIXELS (default 2), KEEP_RADIUS (default 10)
 # (sw3tp.ini [view], mods/performance README "View: frustum and size cull").
@@ -93,6 +94,7 @@ case "${CARCASSES:-$TRAFFIC}" in 0|1) ;; *) echo "CARCASSES must be 0 or 1" >&2;
 case "${JOBS_CARD:-1}" in 0|1) ;; *) echo "JOBS_CARD must be 0 or 1" >&2; exit 1;; esac
 case "${JOBS_BOARD:-1}" in 0|1) ;; *) echo "JOBS_BOARD must be 0 or 1" >&2; exit 1;; esac
 case "${JOBS_BOARD_MODE:-1}" in 1|2) ;; *) echo "JOBS_BOARD_MODE must be 1 or 2" >&2; exit 1;; esac
+case "${JOBS_LOG:-1}" in 0|1) ;; *) echo "JOBS_LOG must be 0 or 1" >&2; exit 1;; esac
 opt=""
 case "${NEWS:-0}" in 0) ;; 1) NEWS_MODE=${NEWS_MODE:-2} ;; *) echo "NEWS must be 0 or 1" >&2; exit 1;; esac
 LEVEL=${LEVEL:-v1}
@@ -162,6 +164,7 @@ case "${HAUNTS:-}" in "") ;; 0|1) opt="$opt, haunt=$HAUNTS" ;; *) echo "HAUNTS m
 case "${HAUNT_MODE:-}" in "") ;; 1|2) opt="$opt, haunt_mode=$HAUNT_MODE" ;; *) echo "HAUNT_MODE must be 1 or 2" >&2; exit 1;; esac
 case "${MERCS:-}" in "") ;; 0|1) opt="$opt, merc=$MERCS" ;; *) echo "MERCS must be 0 or 1" >&2; exit 1;; esac
 case "${JOBS_UI:-}" in "") ;; 0|1|2) opt="$opt, jobs_ui=$JOBS_UI" ;; *) echo "JOBS_UI must be 0, 1 or 2" >&2; exit 1;; esac
+opt="$opt, jobs_log=${JOBS_LOG:-1}"
 case "${FITS:-}" in "") ;; 0|1) opt="$opt, fits=$FITS" ;; *) echo "FITS must be 0 or 1" >&2; exit 1;; esac
 case "${FITS_GATE:-}" in "") ;; 0|1) opt="$opt, fits_gate=$FITS_GATE" ;; *) echo "FITS_GATE must be 0 or 1" >&2; exit 1;; esac
 if [ -n "${FITS_TEST:-}" ]; then
@@ -223,10 +226,10 @@ ini="$COPY/sw3tp.ini"; [ -f "$ini" ] || : > "$ini"
 trig_log=0; [ "${LOG:-1}" != 2 ] || trig_log=1
 tmp="$ini.new"
 awk '{l=$0; sub(/\r$/,"",l)} l=="[traffic]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$ini" > "$tmp"
-printf '[traffic]\r\nenabled=%s\r\nsite_t1=%s\r\nsite_t2a=%s\r\nsite_t2b=%s\r\nsite_t2c=%s\r\nsite_t2d=%s\r\nsite_t3=%s\r\nsite_t4=%s\r\ntick_ms=%s\r\nlog=%s\r\ncarcasses=%s\r\ntrig_log=%s\r\njobs_card=%s\r\njobs_board=%s\r\njobs_board_mode=%s\r\n' \
+printf '[traffic]\r\nenabled=%s\r\nsite_t1=%s\r\nsite_t2a=%s\r\nsite_t2b=%s\r\nsite_t2c=%s\r\nsite_t2d=%s\r\nsite_t3=%s\r\nsite_t4=%s\r\ntick_ms=%s\r\nlog=%s\r\ncarcasses=%s\r\ntrig_log=%s\r\njobs_card=%s\r\njobs_board=%s\r\njobs_board_mode=%s\r\njobs_log=%s\r\n' \
     "${TRAFFIC_ENABLED:-1}" "${SITE_T1:-1}" "${SITE_T2A:-1}" "${SITE_T2B:-1}" "${SITE_T2C:-1}" "${SITE_T2D:-1}" \
     "${SITE_T3:-1}" "${SITE_T4:-1}" "${TICK_MS:-250}" "${LOG:-1}" "${CARCASSES:-$TRAFFIC}" "${TRIG_LOG:-$trig_log}" "${JOBS_CARD:-1}" \
-    "${JOBS_BOARD:-1}" "${JOBS_BOARD_MODE:-1}" >> "$tmp"
+    "${JOBS_BOARD:-1}" "${JOBS_BOARD_MODE:-1}" "${JOBS_LOG:-1}" >> "$tmp"
 mv -f "$tmp" "$ini"
 # [stability] (mods/performance/pe/stability.c, in the same zlib1.dll): STABILITY=0|1, RENDER_LOST_GUARD=0|1 (default 1).
 awk '{l=$0; sub(/\r$/,"",l)} l=="[stability]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$ini" > "$tmp"

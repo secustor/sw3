@@ -1,8 +1,9 @@
--- Station jobs UI scenarios, steps 1 and 2 (design/station-jobs-spec.md 9) under stock Lua 4.0.1: TRF_JB=a, b, c, d, e
--- (f is step 3), run by run_host.sh as its own entry point. Loads host_parcel.lua up to its first scenario (helpers PC_*,
--- which load host_station.lua). Stubs in host_stubs.lua: HOST_MissionCard (TRF_MissionCard), HOST_JobPress and HOST_JobTick
--- (the T4 queue that calls TRF_OnJobCard), HOST_JobBoard, HOST_JobBoardMark (TRF_JobBoard, TRF_JobBoardMark) and
--- HOST_JobClick (a click on an Office card).
+-- Station jobs UI scenarios, steps 1 to 3 (design/station-jobs-spec.md 9) under stock Lua 4.0.1: TRF_JB=a, b, c, d, e
+-- (steps 1, 2) and f (step 3, the Job log), run by run_host.sh as its own entry point. Loads host_parcel.lua up to its first
+-- scenario (helpers PC_*, which load host_station.lua). Stubs in host_stubs.lua: HOST_MissionCard (TRF_MissionCard),
+-- HOST_JobPress and HOST_JobTick (the T4 queue that calls TRF_OnJobCard), HOST_JobBoard, HOST_JobBoardMark (TRF_JobBoard,
+-- TRF_JobBoardMark), HOST_JobClick (a click on an Office card) and HOST_JobLogOn (the Job log natives TRF_JobAdd,
+-- TRF_JobState, TRF_JobLogGet, TRF_JobRemove, TRF_JobIds over HOST().jl).
 
 local f = openfile((getenv("TRF_TESTS") or "./").."host_parcel.lua", "r");
 if not f then print("HOST FAIL host_jobs.lua: cannot open host_parcel.lua"); exit(1); end;
@@ -22,10 +23,14 @@ function JB_Logs(n0, pat)
 end;
 
 -- Parcel scenario start at Altair with an offer window for the relief offer to Taira; jobs_ui ui (nil: the default),
--- the stub card native when card is 1, the stub board natives when board is 1.
-function JB_Begin(ui, card, board)
+-- the stub card native when card is 1, the stub board natives when board is 1, cfg jobs_log lg (nil: the default 0); the
+-- Job log natives when jl is 1 (installed before the scripts load: trf_plumb probes them once per load), the job list
+-- empty.
+function JB_Begin(ui, card, board, lg, jl)
 	local h = HOST();
-	PC_Begin("altair", "9_1", {jobs_ui=ui});
+	h.jl = {}; h.jl_off = nil;
+	HOST_JobLogOn(jl or 0);
+	PC_Begin("altair", "9_1", {jobs_ui=ui, jobs_log=lg});
 	PC_Short("taira", 1);
 	PC_Window(TRF_CurIdx(), 80, nil);
 	h.jc = {}; h.jq = {}; h.jc_open = nil; h.jc_off = nil; h.jc_why = nil;
@@ -337,6 +342,84 @@ function T_JB_E()
 	HOST_Check(r.nb == 1 and JB_Logs(n0, "event=jobs_fallback id=pcl reason=busy") == 1, "busy: jobs_fallback reason=busy, the box");
 	h.jc_open = nil;
 	PC_Press(r, "cancel");
+end;
+
+-- f: step 3, the Job log -----------------------------------------------------------------------------
+
+function T_JB_F()
+	local h = HOST();
+	-- cfg jobs_log 1 with the natives: accept puts the entry into the Job log, AddQuest is not called, pcllog on screen.
+	JB_Begin(0, 0, 0, 1, 1);
+	local tq = PC_Idx("taira");
+	local n0, s0 = S_Mark(), getn(h.screen);
+	local r = PC_Dock();
+	PC_Press(r, "ok");
+	local e = h.jl[1] or {};
+	HOST_Check(TRF_PcJob() and getn(h.jl) == 1 and e.id == "trf_pcl" and e.s == QUEST_PROCESS and e.t == "#TRF_pclq"..tq
+		and e.d == "#TRF_pclqd"..tq and h.quests.trf_pcl == nil, "accept: trf_pcl in the Job log with the destination's keys, not in the mission list");
+	HOST_Check(PC_Logs(n0, "event=logbook list=job id=trf_pcl state=2 result=added") == 1 and PC_Logs(n0, "event=quest ") == 0
+		and PC_Has(JB_Scr(s0), "Courier job added to the Job log."), "logbook line list=job, no quest line, the pcllog line on screen");
+	-- Delivery: TRF_JobState(QUEST_DONE); the next trade dock removes the entry (TRF_JobRemove).
+	T_Jump("altrabon");
+	T_Jump("nj1");
+	T_Jump("taira");
+	n0 = S_Mark();
+	PC_Dock();
+	e = h.jl[1] or {};
+	HOST_Check(TRF_PcJob() == nil and getn(h.jl) == 1 and e.s == QUEST_DONE and h.quests.trf_pcl == nil
+		and PC_Logs(n0, "event=logbook list=job id=trf_pcl state=0 result=set") == 1, "delivery: the Job log entry done (TRF_JobState)");
+	n0 = S_Mark();
+	PC_Dock();
+	HOST_Check(getn(h.jl) == 0 and PC_Logs(n0, "event=logbook list=job id=trf_pcl result=removed") == 1, "next trade dock: the entry removed (TRF_JobRemove)");
+	-- Expiry: QUEST_FAILED in the Job log.
+	JB_Begin(0, 0, 0, 1, 1);
+	PC_Press(PC_Dock(), "ok");
+	TRF.clock.legs = TRF.clock.legs + 12;
+	PC_Visit();
+	S_NewVisit();
+	PC_Dock();
+	e = h.jl[1] or {};
+	HOST_Check(TRF_PcJob() == nil and e.s == QUEST_FAILED and h.quests.trf_pcl == nil, "overdue: the Job log entry failed");
+	-- cfg jobs_log 0 with the natives: AddQuest as before, the job list untouched, no probe call.
+	JB_Begin(0, 0, 0, 0, 1);
+	n0 = S_Mark();
+	PC_Press(PC_Dock(), "ok");
+	HOST_Check(h.quests.trf_pcl == QUEST_PROCESS and getn(h.jl) == 0 and PC_Logs(n0, "event=quest id=trf_pcl state=2") == 1
+		and JB_Logs(n0, "event=jobs_fallback") == 0, "cfg jobs_log 0: the mission list (AddQuest), no Job log entry");
+	-- cfg jobs_log 1 without the natives: AddQuest, one jobs_fallback line; a load with the natives moves the entry to the
+	-- Job log (mission entry removed); a load without them adds it to the mission list again (the job entry stays,
+	-- invisible); a load with the natives and cfg jobs_log 0 removes the job entry.
+	JB_Begin(0, 0, 0, 1);
+	n0 = S_Mark();
+	PC_Press(PC_Dock(), "ok");
+	HOST_Check(h.quests.trf_pcl == QUEST_PROCESS and getn(h.jl) == 0 and JB_Logs(0, "event=jobs_fallback jobs_log=1 reason=native_missing") == 1,
+		"cfg jobs_log 1 without the natives: AddQuest, jobs_fallback reason=native_missing");
+	n0 = S_Mark();
+	T_SaveLoad(function() HOST_JobLogOn(1); end);
+	HOST_Check(h.quests.trf_pcl == nil and getn(h.jl) == 1 and h.jl[1].s == QUEST_PROCESS and h.jl[1].t == "#TRF_pclq"..tq
+		and PC_Logs(n0, "event=reconcile id=trf_pcl list=job quest_state=2 result=moved reason=load") == 1, "load with the natives: mission -> Job log");
+	n0 = S_Mark();
+	T_SaveLoad(function() HOST_JobLogOn(1); end);
+	HOST_Check(h.quests.trf_pcl == nil and getn(h.jl) == 1 and PC_Logs(n0, "event=reconcile") == 0 and PC_Logs(n0, "event=logbook") == 0,
+		"a second load: one entry, nothing to reconcile");
+	n0 = S_Mark();
+	T_SaveLoad(function() HOST_JobLogOn(0); end);
+	HOST_Check(h.quests.trf_pcl == QUEST_PROCESS and getn(h.jl) == 1 and PC_Logs(n0, "result=readded reason=load") == 1,
+		"load without the natives: back in the mission list (the job entry stays invisible)");
+	n0 = S_Mark();
+	T_SaveLoad(function() local h = HOST(); HOST_JobLogOn(1); h.cfg.jobs_log = 0; end);
+	HOST_Check(h.quests.trf_pcl == QUEST_PROCESS and getn(h.jl) == 0 and PC_Logs(n0, "event=logbook list=mission id=trf_pcl result=moved reason=load") == 1,
+		"load with the natives and cfg jobs_log 0: the job entry removed, the mission entry kept");
+	-- An entry without a job is removed from the Job log at the next entry.
+	h.cfg.jobs_log = 1;
+	T_SaveLoad();
+	HOST_Check(getn(h.jl) == 1 and h.quests.trf_pcl == nil, "cfg jobs_log 1 again: moved to the Job log");
+	TRF.job = nil;
+	n0 = S_Mark();
+	T_Jump("altrabon");
+	HOST_Check(getn(h.jl) == 0 and PC_Logs(n0, "event=reconcile id=trf_pcl list=job job_state=2 result=removed reason=enter") == 1,
+		"reconcile: a Job log entry without a job removed");
+	h.cfg.jobs_log = nil;
 end;
 
 -- Dispatch ---------------------------------------------------------------------------------

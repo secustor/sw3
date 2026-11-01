@@ -234,7 +234,8 @@ def check_assign(toks, i, allow, add):
 
 
 # ---- --calls: cross-file check of the mod's own TRF_ functions ----
-NATIVES = set("TRF_Version TRF_GameTime TRF_RealTime TRF_Log TRF_InMovie TRF_UiState TRF_MissionCard TRF_JobBoard TRF_JobBoardMark".split())  # pe/traffic.c
+NATIVES = set("TRF_Version TRF_GameTime TRF_RealTime TRF_Log TRF_InMovie TRF_UiState TRF_MissionCard TRF_JobBoard TRF_JobBoardMark TRF_JobAdd TRF_JobState TRF_JobLogGet "
+            "TRF_JobRemove TRF_JobIds".split())  # pe/traffic.c
 TOLERANT = {"TRF_N", "TRF_P", "getglobal"}    # look the name up and skip a missing function
 TRF_NAME = re.compile(r"TRF_\w+$")
 TRF_ACTION = re.compile(r"(TRF_\w+)\s*\(")    # string trigger action "TRF_Name(..."

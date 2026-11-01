@@ -3,8 +3,8 @@
 the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10), the mercenary hire (D-MERC.*, design/merc-spec.md
 11, test plan section 11), the strength scale (D-STR.*, design/strength-spec.md 9), the pirate fits (D-FIT.1-6, E-BB1,
 design/fits-spec.md 11), the vanilla extortion fix (E-EXT.1, design/extort-fix-spec.md 7), the stack leak diagnostic
-(D-DLL.1), the station jobs mission card (K0-K7, design/station-jobs-spec.md 10, step 1) and the Office jobs board (M1-M8,
-step 2) from traffic logs.
+(D-DLL.1), the station jobs mission card (K0-K7, design/station-jobs-spec.md 10, step 1), the Office jobs board (M1-M8,
+step 2) and the quest log's Job log (L1-L5, step 3) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -1773,6 +1773,100 @@ def c_m8(ctx):
     return res
 
 
+# ---- station jobs Job log (design/station-jobs-spec.md 10, step 3: L1-L5) --------------------------------------------
+
+def c_l1(ctx):
+    res = Res()
+    res.logpart = True
+    ini = [r for r in ctx.find("dll", "jobs_init") if r.get("log") == "1"]
+    if not ini:
+        res.missing.append("no jobs_init log=1 line: install with JOBS_LOG=1")
+    for r in ini:
+        if r.get("log_sig") != "ok" or r.get("log_patched") != "1":
+            res.fails.append("%s: log_sig=%s log_patched=%s" % (r.short(), r.get("log_sig"), r.get("log_patched")))
+    cr = ctx.find("dll", "jobs_log", action="create")
+    for r in cr:
+        if r.get("result") != "ok":
+            res.fails.append("%s: the tab handlers were not set (result=%s)" % (r.short(), r.get("result")))
+    seen = []
+    for lg in ctx.logs:
+        jobs = None
+        for r in lg.recs:
+            if r.is_("dll", "jobs_log", action="create"):
+                jobs = None
+            elif r.is_("dll", "jobs_log", action="tab", view="jobs"):
+                jobs = r
+            elif r.is_("dll", "jobs_log", action="tab", view="missions") and jobs is not None:
+                seen.append(r)
+                jobs = None
+    if ini and not cr:
+        res.missing.append("open the quest log: no jobs_log action=create line")
+    elif ini and not seen:
+        res.missing.append("in the quest log click the Job log tab, then the Missions tab")
+    res.ev("jobs_init log=1", ini)
+    res.ev("tab switches Job log then Missions", seen)
+    return res
+
+
+def c_l2(ctx):
+    res = Res()
+    res.logpart = True
+    add = ctx.find("parcel", "logbook", list="job", result="added")
+    for r in ctx.find("parcel", "logbook", list="job", result="failed"):
+        res.fails.append("%s: TRF_JobAdd refused" % r.short())
+    for r in ctx.find("dll", "jobs_log", action="add", result="dup"):
+        res.fails.append("%s: the id was already in the Job log" % r.short())
+    if not add:
+        res.missing.append("accept a parcel offer with JOBS_LOG=1: no parcel logbook list=job result=added line")
+    res.ev("Job log entries added", add)
+    return res
+
+
+def c_l3(ctx):
+    res = Res()
+    res.logpart = True
+    st = [r for r in ctx.find("parcel", "logbook", list="job", result="set") if r.get("state") in ("0", "1")]
+    for r in ctx.find("parcel", "logbook", list="job", result="failed"):
+        if r.get("state") in ("0", "1"):
+            res.fails.append("%s: TRF_JobState refused" % r.short())
+    if not st:
+        res.missing.append("deliver a parcel or let one expire with JOBS_LOG=1: no logbook list=job result=set line")
+    res.ev("Job log entries done (state 0) or failed (1)", st)
+    return res
+
+
+def c_l4(ctx):
+    res = Res()
+    res.logpart = True
+    ld = ctx.find("dll", "jobs_log", action="qm_load")
+    for r in ld:
+        if r.int("loaded", 0) > 1:   # vanilla adds no job entries; the mod one, trf_pcl
+            res.fails.append("%s: %s job entries after the load (duplicates)" % (r.short(), r.get("loaded")))
+    seen = [r for r in ld if r.int("loaded", 0) == 1]
+    if not seen and not res.fails:
+        res.missing.append("save with a parcel job open, quit to the menu and load it (JOBS_LOG=1): no qm_load loaded=1 line")
+    res.ev("loads with the Job log entry", seen)
+    return res
+
+
+def c_l5(ctx):
+    res = Res()
+    res.logpart = True
+    seen = []
+    for lg in ctx.logs:
+        off = None
+        for r in lg.recs:
+            if r.is_("dll", "jobs_init"):
+                off = r if r.get("log") != "1" else None
+            elif off is not None and r.is_("parcel", "reconcile", result="readded") and r.get("list") is None:
+                seen.append(r)
+    if not seen:
+        res.missing.append("load the L4 save with JOBS_LOG=0: no mission-list reconcile result=readded line after a "
+                           "jobs_init log=0 line")
+    res.ev("entries back in the mission list", seen)
+    return res
+
+
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
@@ -1881,6 +1975,17 @@ ITEMS = [
      "the Office tab is enabled at the trade station after the pirate dock"),
     ("M7", "quest-opened station: board cleared, no rows in its Office window", c_m7, None),
     ("M8", "jobs_board_mode 2: cards at the end of News, no tab", c_m8, "the job cards below the news cards, no Jobs tab"),
+    ("L1", "Job log: init log=1 sig ok, the tab handlers set, Job log then Missions clicked", c_l1,
+     "the Job log tab is clickable; it shows the job list, Missions the mission list again, both ways"),
+    ("L2", "the accepted parcel goes to the Job log (TRF_JobAdd)", c_l2,
+     "the Job log lists 'Sealed parcel: <system>' with its status and text, the Mission log does not; the line "
+     "'Courier job added to the Job log.'"),
+    ("L3", "delivery or expiry sets the Job log entry done or failed", c_l3,
+     "the entry shows Completed after the delivery, Failed after the expiry"),
+    ("L4", "save, quit, load: one Job log entry (T11 clears the list before the load)", c_l4,
+     "one parcel entry in the Job log after the load, no duplicate"),
+    ("L5", "the same save with JOBS_LOG=0: the entry back in the Mission log", c_l5,
+     "the parcel entry shows in the Mission log (the Job log tab disabled again)"),
 ]
 
 
@@ -1994,7 +2099,8 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "K0": "PASS", "K1": "MANUAL", "K2": "FAIL", "K3": "MANUAL", "K4": "PASS", "K5": "NO DATA", "K6": "MANUAL",
             "K7": "MANUAL",
             "M1": "MANUAL", "M2": "FAIL", "M3": "MANUAL", "M4": "MANUAL", "M5": "MANUAL", "M6": "MANUAL", "M7": "PASS",
-            "M8": "NO DATA"}
+            "M8": "NO DATA",
+            "L1": "MANUAL", "L2": "MANUAL", "L3": "MANUAL", "L4": "FAIL", "L5": "NO DATA"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -2002,7 +2108,8 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # refused card (K5). Office board block (after that load, same visit): a pirate dock, then a trade dock with one row, the
 # Office with the Jobs tab, a switch to News and back, a click and OK (row closed, visible), the Office reopened with the
 # closed row and its second line missing (fields=1, M2 FAIL), a quest-opened station whose Office shows no row (M7); no
-# mode 2 run (M8).
+# mode 2 run (M8). Job log block (the end): init log=1, a load, a parcel accepted into the Job log, the quest log opened
+# with both tab clicks, the entry done, a second load with two job entries (L4 FAIL); no JOBS_LOG=0 load (L5).
 
 
 def selftest():

@@ -376,3 +376,13 @@ traffic: module=dll event=jobs_office action=create rows=1 fields=1 cards=1 clos
 traffic: module=dll event=jobs_office action=click id=pcl result=closed
 traffic: lua: exp=v1 module=plumb event=jobs_board row_count=0 result=cleared reason=dialog
 traffic: module=dll event=jobs_office action=create rows=0 result=empty
+traffic: module=dll event=jobs_init card=1 sig=ok sigs=33 patched=1 board=1 mode=1 board_sig=ok board_sigs=30 board_patched=1 log=1 log_sig=ok log_sigs=44 log_patched=1
+traffic: module=dll event=jobs_log action=qm_load cleared=0 loaded=0 result=1 loads=1
+traffic: module=dll event=jobs_log action=add id=trf_pcl state=2 result=ok jobs=1
+traffic: lua: exp=v1 module=parcel event=logbook list=job id=trf_pcl state=2 result=added
+traffic: module=dll event=jobs_log action=create result=ok jobs=1
+traffic: module=dll event=jobs_log action=tab view=jobs
+traffic: module=dll event=jobs_log action=tab view=missions
+traffic: module=dll event=jobs_log action=state id=trf_pcl state=0
+traffic: lua: exp=v1 module=parcel event=logbook list=job id=trf_pcl state=0 result=set
+traffic: module=dll event=jobs_log action=qm_load cleared=1 loaded=2 result=1 loads=2

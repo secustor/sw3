@@ -11,7 +11,8 @@
 -- TRF_Carcasses (pe/API.md); the mission card of the station jobs UI (design/station-jobs-spec.md 5.1, step 1: a box
 -- spec with a card field opens as the DLL's TRF_MissionCard, answered through TRF_OnJobCard) and the Office board (step 2:
 -- TRF_JobRow rows of the trade dock go to the DLL's TRF_JobBoard; the TradeStationDlg wrapper installed here clears them
--- unless the trade dock armed the call).
+-- unless the trade dock armed the call) and the Job log gate TRF_JbLog (step 3: cfg jobs_log 1 and the DLL's TRF_JobAdd
+-- live; trf_parcel then keeps its logbook entry in the quest log's Job log).
 -- Registries live in the chunk local P (never saved; rebuilt by every MapInitialization). TRF_InstallPlumb runs
 -- after every file is loaded and calls TRF_<M>_Plumb() of each module in TRF_PlMods(), which register there.
 -- Saved fields: TRF.job (one open job), TRF.mk (packed marker labels, for the cleanup after a load), TRF.live
@@ -830,6 +831,34 @@ end;
 
 function TRF_PlJbReplyOk() end;
 
+-- Job log (design/station-jobs-spec.md 5.1, 5.2, step 3) --------------------------------------
+
+-- 1 when the DLL's job-log natives answer (ini jobs_log 1, signatures and the T10/T11 patches ok): the probe TRF_JobAdd()
+-- answers nil, "arg" when live ("off" ini jobs_log 0, "sig" a mismatch). Kept in P like the card's probe. Also read with
+-- cfg jobs_log 0, so trf_parcel's reconcile can move a Job log entry back to the mission list.
+function TRF_JbLogLive()
+	local p = %P;
+	if p.jbl == nil then
+		p.jbl = "native_missing";
+		if type(TRF_JobAdd) == "function" then
+			local r, w = call(TRF_JobAdd, {}, "x", TRF_PlErr);
+			p.jbl = tostring(w or r);
+		end;
+	end;
+	if p.jbl == "arg" then return 1; end;
+	return nil;
+end;
+
+-- 1 when the parcel logbook entry goes to the Job log: cfg jobs_log 1 and TRF_JbLogLive(); with cfg 1 and the natives
+-- missing or refused one jobs_fallback line per MapInitialization (AddQuest stays).
+function TRF_JbLog()
+	if TRF_PlOpt("jobs_log") ~= 1 then return nil; end;
+	if TRF_JbLogLive() then return 1; end;
+	local p = %P;
+	if p.jblw == nil then p.jblw = 1; TRF_PlE("jobs_fallback", "jobs_log", 1, "reason", p.jbl); end;
+	return nil;
+end;
+
 -- An event of a board card (TRF_OnJobCard): nil when id is no row of this docking's board (the step 1 card path runs).
 -- "open" runs the row's shown(a, "board"); "ok" ok(a), "cancel" and "esc" no(a), once per row; a string reply opens as a
 -- box over the Office window (as the vanilla Recruits_ShowNoCashDlg), then TRF_JobBoardMark(id, jbtaken or jbgone, 1):
@@ -1538,7 +1567,7 @@ end;
 -- variant, 12 section 11.4); the last three 0 until E0.13 passes. merc_war is read by trf_merc (betrayal, refusal);
 -- the other three only by the module's own gates, no behaviour reads them yet.
 function TRF_Pl_OptDef()
-	return {wb_box_after_fee=0, merc_war=1, merc_hunt=0, merc_hostile=0, merc_legion=0, jobs_ui=1};
+	return {wb_box_after_fee=0, merc_war=1, merc_hunt=0, merc_hostile=0, merc_legion=0, jobs_ui=1, jobs_log=0};
 end;
 
 -- prize_rs: the shared real-time gap between combat prize payouts (00 section 8 B1).

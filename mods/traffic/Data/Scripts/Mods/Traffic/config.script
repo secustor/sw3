@@ -74,7 +74,9 @@
 -- offer as the mission card at the trade dock (the vanilla DynWindowMission, through the DLL native TRF_MissionCard, which
 -- answers only with sw3tp.ini [traffic] jobs_card=1); without the native or with jobs_card=0 the box stays; 0 always the box;
 -- 2 (step 2) lists the offer as a card on the Jobs tab of the station's Office window instead (TRF_JobBoard, ini
--- jobs_board=1); clicking it opens the mission card there; without the board native 2 reads as 1.
+-- jobs_board=1); clicking it opens the mission card there; without the board native 2 reads as 1. jobs_log (step 3,
+-- default 0) = 1 keeps the parcel's logbook entry in the quest log's Job log tab (TRF_JobAdd, ini jobs_log=1) instead of
+-- the mission list (AddQuest); without the native the mission list stays.
 -- Vanilla fixes (README "Vanilla fixes"): ext_fix (default 1) = 0 leaves the vanilla extortion contact one-way neutral
 -- (the player side stays at war with the flight before the box) and mod raids one-way as before; tune ext_fix
 -- (install-test.sh TUNE=ext_fix=0) wins.
@@ -96,4 +98,4 @@ function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1, ext_fix=1,
 	demand_page=1, demand_drop=0, mc_names=0,
 	merc_war=1, merc_hunt=0, merc_hostile=0, merc_legion=0,
 	merc=0, merc_board=1, merc_book=0, merc_report=0, merc_marker=0, merc_calls=0, merc_transfer=0, rv_enabled=0,
-	mc_launch=0, mc_el_c=8, jobs_ui=1} end
+	mc_launch=0, mc_el_c=8, jobs_ui=1, jobs_log=0} end

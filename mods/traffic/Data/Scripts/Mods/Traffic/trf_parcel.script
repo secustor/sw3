@@ -876,6 +876,42 @@ function TRF_PcPlan(cur, sj)
 end;
 
 -- Logbook (01 section 6: one entry trf_pcl) ------------------------------------------------
+-- With trf_plumb's TRF_JbLog() (cfg jobs_log 1 and the DLL's job-log natives live; design/station-jobs-spec.md 5.2, step
+-- 3) the entry is in the quest log's Job log (TRF_JobAdd, TRF_JobState, TRF_JobRemove, TRF_JobLogGet) instead of the mission
+-- list (AddQuest, SetQuestState, RemoveQuest, GetQuestState); the engine saves both lists, TRF stays the source.
+
+function TRF_PcJl()
+	if TRF_N("TRF_JbLog") == 1 then return 1; end;
+	return nil;
+end;
+
+function TRF_PcJAddRaw(id, t, d) return TRF_JobAdd(id, t, d, QUEST_PROCESS); end;
+function TRF_PcJSetRaw(id, s) return TRF_JobState(id, s); end;
+function TRF_PcJRemRaw(id) return TRF_JobRemove(id); end;
+function TRF_PcJGetRaw(id) return TRF_JobLogGet(id); end;
+
+-- Job log state of id (TRF_JobLogGet), nil when absent or without the native.
+function TRF_PcJs(id)
+	if type(TRF_JobLogGet) ~= "function" then return nil; end;
+	local s = call(TRF_PcJGetRaw, {id}, "x", TRF_PcNoErr);
+	if type(s) == "number" then return s; end;
+	return nil;
+end;
+
+-- The entry in the Job log. TRF_JobAdd shows no notice (AddQuest's is its own code), so an accept (note 1) shows the line
+-- pcllog.
+function TRF_PcJAdd(note)
+	local id = TRF_PcK().qid;
+	local t, d = TRF_PcQKeys();
+	local r, w = call(TRF_PcJAddRaw, {id, t, d}, "x", TRF_PcErr);
+	if r ~= 1 then
+		TRF_PcE("logbook", "list", "job", "id", id, "state", QUEST_PROCESS, "result", "failed", "reason", tostring(w));
+		return nil;
+	end;
+	TRF_PcE("logbook", "list", "job", "id", id, "state", QUEST_PROCESS, "result", "added");
+	if note == 1 then TRF_N("TRF_PlSay", TRF_PcTxt("pcllog")); end;
+	return 1;
+end;
 
 function TRF_PcQAddRaw(id, t, d)
 	AddQuest(id, t, d, QUEST_PROCESS);
@@ -900,8 +936,11 @@ function TRF_PcQKeys()
 	return t, d;
 end;
 
-function TRF_PcQAdd()
-	if TRF_PcOpt("pcl_logbook") ~= 1 or type(AddQuest) ~= "function" or QUEST_PROCESS == nil then return nil; end;
+-- note 1: an accept (the Job log's pcllog line).
+function TRF_PcQAdd(note)
+	if TRF_PcOpt("pcl_logbook") ~= 1 or QUEST_PROCESS == nil then return nil; end;
+	if TRF_PcJl() then return TRF_PcJAdd(note); end;
+	if type(AddQuest) ~= "function" then return nil; end;
 	local b = nil;
 	if type(GetPlayerQuestState) == "function" then b = GetPlayerQuestState(); end;
 	local t, d = TRF_PcQKeys();
@@ -913,13 +952,26 @@ function TRF_PcQAdd()
 end;
 
 function TRF_PcQSet(s)
-	if type(SetQuestState) ~= "function" or s == nil then return nil; end;
+	if s == nil then return nil; end;
+	if TRF_PcJl() then
+		local r, w = call(TRF_PcJSetRaw, {TRF_PcK().qid, s}, "x", TRF_PcErr);
+		if r == 1 then TRF_PcE("logbook", "list", "job", "id", TRF_PcK().qid, "state", s, "result", "set");
+		else TRF_PcE("logbook", "list", "job", "id", TRF_PcK().qid, "state", s, "result", "failed", "reason", tostring(w)); end;
+		return r;
+	end;
+	if type(SetQuestState) ~= "function" then return nil; end;
 	local ok = call(TRF_PcQSetRaw, {TRF_PcK().qid, s}, "x", TRF_PcErr);
 	TRF_PcE("quest", "id", TRF_PcK().qid, "state", s, "result", "set");
 	return ok;
 end;
 
 function TRF_PcQRem()
+	if TRF_PcJl() then
+		local r, w = call(TRF_PcJRemRaw, {TRF_PcK().qid}, "x", TRF_PcErr);
+		if r == 1 then TRF_PcE("logbook", "list", "job", "id", TRF_PcK().qid, "result", "removed");
+		else TRF_PcE("logbook", "list", "job", "id", TRF_PcK().qid, "result", "none", "reason", tostring(w)); end;
+		return r;
+	end;
 	if type(RemoveQuest) ~= "function" then return nil; end;
 	local ok = call(TRF_PcQRemRaw, {TRF_PcK().qid}, "x", TRF_PcErr);
 	TRF_PcE("quest", "id", TRF_PcK().qid, "result", "removed");
@@ -928,18 +980,50 @@ end;
 
 -- Reconcile at entry and load, outside a mission (01 section 6; as trf_captain and trf_charter): an open job whose entry
 -- reads QUEST_NOINIT (ClearQuests at a mission start) is added again; an entry without a job and without a pending
--- removal is removed.
+-- removal is removed. With the Job log (TRF_PcJl) the same on the job list, and a mission-list entry moves across (removed;
+-- an open job's entry added to the Job log); without it a Job log entry the live natives still show moves back.
 function TRF_PcReconcile(why)
 	if type(GetQuestState) ~= "function" or QUEST_NOINIT == nil or TRF_PcQuest() then return; end;
-	local qs = TRF_PcQs(TRF_PcK().qid);
+	local id = TRF_PcK().qid;
+	local qs = TRF_PcQs(id);
 	local J = TRF_PcJob();
 	local R = TRF_PcRec();
+	if TRF_PcJl() then TRF_PcJReconcile(why, qs, J, R); return; end;
+	if TRF_N("TRF_JbLogLive") == 1 and TRF_PcJs(id) ~= nil then
+		call(TRF_PcJRemRaw, {id}, "x", TRF_PcErr);
+		TRF_PcE("logbook", "list", "mission", "id", id, "result", "moved", "reason", why);
+		if not J and R then R.pq = nil; end;
+	end;
 	if J and qs == QUEST_NOINIT and TRF_PcOpt("pcl_logbook") == 1 then
 		TRF_PcQAdd();
 		TRF_PcE("reconcile", "id", TRF_PcK().qid, "quest_state", qs, "result", "readded", "reason", why);
 	elseif not J and qs ~= nil and qs ~= QUEST_NOINIT and not (R and R.pq == 1) then
 		TRF_PcQRem();
 		TRF_PcE("reconcile", "id", TRF_PcK().qid, "quest_state", qs, "result", "removed", "reason", why);
+	end;
+end;
+
+-- Reconcile on the Job log (TRF_PcReconcile): qs the mission-list state, J the open job, R the record.
+function TRF_PcJReconcile(why, qs, J, R)
+	local id = TRF_PcK().qid;
+	local js = TRF_PcJs(id);
+	local pend = R and R.pq == 1;
+	local mv = nil;
+	if qs ~= nil and qs ~= QUEST_NOINIT then
+		call(TRF_PcQRemRaw, {id}, "x", TRF_PcErr);
+		mv = 1;
+		if not J and js == nil and R then R.pq = nil; pend = nil; end;
+	end;
+	if J and js == nil and TRF_PcOpt("pcl_logbook") == 1 then
+		TRF_PcJAdd();
+		local res = "readded";
+		if mv then res = "moved"; end;
+		TRF_PcE("reconcile", "id", id, "list", "job", "quest_state", qs, "result", res, "reason", why);
+	elseif not J and js ~= nil and not pend then
+		TRF_PcQRem();
+		TRF_PcE("reconcile", "id", id, "list", "job", "job_state", js, "result", "removed", "reason", why);
+	elseif mv then
+		TRF_PcE("logbook", "list", "job", "id", id, "quest_state", qs, "result", "moved", "reason", why);
 	end;
 end;
 
@@ -1013,7 +1097,7 @@ function TRF_PcEnd(J, how)
 	R.lsys = J.dst; R.lleg = TRF_PcLegs(); R.lit = J.it; R.lt = nil;
 	if how == "done" then R.lok = 1; else R.lok = 0; end;
 	if J.k == 2 and how ~= "done" then TRF_N("TRF_ShortJob", J.dst, J.cls, nil); end;
-	if TRF_PcOpt("pcl_logbook") == 1 and type(SetQuestState) == "function" then
+	if TRF_PcOpt("pcl_logbook") == 1 and (type(SetQuestState) == "function" or TRF_PcJl()) then
 		if how == "done" then TRF_PcQSet(QUEST_DONE); else TRF_PcQSet(QUEST_FAILED); end;
 		R.pq = 1;
 	end;
@@ -1400,7 +1484,7 @@ function TRF_Pc_BoxOk(a)
 	-- A done or failed entry of the last job still in the logbook (pcl_gap 0: a new job at the docking that ended the
 	-- last one) goes first, or its pending removal would take the new entry at the next trade dock.
 	if R.pq == 1 then TRF_PcQRem(); R.pq = nil; end;
-	TRF_PcQAdd();
+	TRF_PcQAdd(1);
 	TRF_PcStat("pcl_accept");
 	TRF_PcE("accept", "kind", o.k, "source", TRF_PcName(o.src), "destination", TRF_PcName(o.dst), "dock", TRF_PcDockOf(o.dst, o.sj),
 		"item", TRF_PcK().items[o.it], "units", o.n, "pay", o.pay, "deposit", o.dep, "deadline", o.dl, "credits_before", cr,
@@ -1659,5 +1743,6 @@ function TRF_Pc_Text()
 		jbgone = "No longer available",
 		pcljobs = "$1 jumps, deadline $2 legs",
 		pcljob1 = "1 jump, deadline $1 legs",
+		pcllog = "Courier job added to the Job log.",
 	});
 end;

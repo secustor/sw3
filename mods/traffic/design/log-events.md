@@ -435,6 +435,7 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `jobs_board` | `module=plumb event=jobs_board row_count=0 result=cleared reason=<dialog, jump, load, unarmed, dock_patrol, dock_pir, dock_req>` (level 1 when this run had a board, else 2) / `row_count=0 result=native_missing reason=<native_missing, off, sig>` (the probe, once per MapInitialization) | 1 |
 | `jobs_fallback` | `module=plumb event=jobs_fallback kind=trade row_count=1 reason=<arg, error>` (TRF_JobBoard refused the rows: the box candidates run as at step 1) | 1 |
 | `jobs_fallback` | `module=plumb event=jobs_fallback jobs_ui=1 reason=native_missing` (or `reason=off`, `sig`: the probe, once per MapInitialization) / `id=pcl reason=<ui, busy, push, arg, error>` (the card call failed, the box opens) | 1 |
+| `jobs_fallback` | `module=plumb event=jobs_fallback jobs_log=1 reason=native_missing` (or `reason=off`, `sig`: cfg `jobs_log` 1 but the probe `TRF_JobAdd()` did not answer `nil, "arg"`; once per MapInitialization; the parcel entry stays in the mission list; station-jobs-spec.md 5.1, step 3) | 1 |
 | `box_lock` | `module=plumb event=box_lock owner=dock_trade holder=hail result=stale` | 1 |
 | `box_lock` | `module=plumb event=box_lock owner=hail holder=dock_trade result=refused` | 2 |
 | `none` | `module=plumb event=none param=1 handler=<f> result=handled` | 2 |
@@ -718,6 +719,8 @@ the lowercase system names, `item` the item index (1 `Cargo_crate`, 2 `Cargo_002
 | `accept` | `module=parcel event=accept deposit=4320 credits=100 result=poor` / `system=altair result=stale` / `result=error reason=<credits, job_<why>, items>` | 1 |
 | `quest` | `module=parcel event=quest id=trf_pcl state=2 quest_state_before=0 quest_state_after=0 result=added` (E-PCL.4) / `id=trf_pcl state=0 result=set` / `id=trf_pcl result=removed` | 1 |
 | `reconcile` | `module=parcel event=reconcile id=trf_pcl quest_state=3 result=<readded, removed> reason=<enter, load>` | 1 |
+| `logbook` | `module=parcel event=logbook list=job id=trf_pcl state=2 result=added` (cfg `jobs_log` 1, the entry in the quest log's Job log through `TRF_JobAdd`; `result=failed reason=<why>`) / `list=job id=trf_pcl state=0 result=set` (`TRF_JobState`, 0 done, 1 failed) / `list=job id=trf_pcl result=removed` (`TRF_JobRemove`; `result=none`) / `list=job ... result=moved reason=<enter, load>` (a mission-list entry dropped at the reconcile, the Job log one kept) / `list=mission id=trf_pcl result=moved reason=<enter, load>` (cfg `jobs_log` 0 with the natives live: the Job log entry removed, the mission list takes it; station-jobs-spec.md 5.2, step 3) | 1 |
+| `reconcile` | `module=parcel event=reconcile id=trf_pcl list=job quest_state=<n> result=<readded, moved> reason=<enter, load>` (the Job log entry added again, `moved` when a mission-list entry was removed for it) / `list=job job_state=<n> result=removed` (a Job log entry without a job) | 1 |
 | `arrive` | `module=parcel event=arrive system=taira marker=<true, false> reason=<nil, quest, cap, ...>` (arrival in the destination; the line itself is `module=plumb event=arrival_line owner=parcel ...`) | 1 |
 | `load` | `module=parcel event=load system=taira marker=true reason=nil` (a load in the destination) | 1 |
 | `mission_legs` | `module=parcel event=mission_legs mission_legs=3 legs=415` | 2 |

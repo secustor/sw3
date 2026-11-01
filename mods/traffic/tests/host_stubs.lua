@@ -37,7 +37,9 @@ local H = {
 	-- relation and pirate dock originals run, modules added (AddModule), mothership inventory.
 	quests = {}, stations = {}, pdocks = {}, groups = {}, cst = {}, pir_ok = 0, mods = {},
 	-- hail dialog stubs: StartTradeDialog calls {d, init}, the mod dialog loaded (HOST().dlg), answer calls.
-	tdlgs = {}, dlg = nil, dlg_calls = {}, jc = {}, jq = {}, jc_open = nil
+	tdlgs = {}, dlg = nil, dlg_calls = {}, jc = {}, jq = {}, jc_open = nil,
+	-- station jobs step 3: the Job log entries (HOST_JobAdd).
+	jl = {}
 };
 
 function HOST() return %H; end;
@@ -203,6 +205,68 @@ function HOST_JobClick(id)
 		end;
 	end;
 	return "none";
+end;
+-- Job log (traffic.c TRF_JobAdd, TRF_JobState, TRF_JobLogGet, TRF_JobRemove, TRF_JobIds, step 3): undefined by default, so
+-- every run keeps AddQuest; HOST_JobLogOn(1) installs them (0 removes them). HOST().jl holds the entries {id, t, d, s} in
+-- order (the engine's job list, kept across T_SaveLoad as the engine saves it), HOST().jl_off answers every call nil, why.
+function HOST_JobLogOn(on)
+	if on == 1 then
+		TRF_JobAdd = HOST_JobAdd; TRF_JobState = HOST_JobState; TRF_JobLogGet = HOST_JobGet; TRF_JobRemove = HOST_JobRemove;
+		TRF_JobIds = HOST_JobIds;
+	else
+		TRF_JobAdd = nil; TRF_JobState = nil; TRF_JobLogGet = nil; TRF_JobRemove = nil; TRF_JobIds = nil;
+	end;
+end;
+function HOST_JlFind(id)
+	local h = HOST();
+	for i = 1, getn(h.jl) do if h.jl[i].id == id then return i; end; end;
+	return nil;
+end;
+function HOST_JlId(id) return type(id) == "string" and strlen(id) >= 1 and strlen(id) <= 31 and not strfind(id, "[^%w_]"); end;
+function HOST_JobAdd(...)
+	local h = HOST();
+	if h.jl_off then return nil, h.jl_off; end;
+	if arg.n ~= 4 or not HOST_JlId(arg[1]) or type(arg[2]) ~= "string" or type(arg[3]) ~= "string" or type(arg[4]) ~= "number" then
+		return nil, "arg";
+	end;
+	HOST_Want(strlen(arg[2]) <= 480 and strlen(arg[3]) <= 480, "TRF_JobAdd: strings <= 480 characters");
+	if HOST_JlFind(arg[1]) then return nil, "dup"; end;
+	tinsert(h.jl, {id=arg[1], t=arg[2], d=arg[3], s=arg[4]});
+	return 1;
+end;
+function HOST_JobState(...)
+	local h = HOST();
+	if h.jl_off then return nil, h.jl_off; end;
+	if arg.n ~= 2 or not HOST_JlId(arg[1]) or type(arg[2]) ~= "number" then return nil, "arg"; end;
+	local i = HOST_JlFind(arg[1]);
+	if not i then return nil, "none"; end;
+	h.jl[i].s = arg[2];
+	return 1;
+end;
+function HOST_JobGet(...)
+	local h = HOST();
+	if h.jl_off then return nil, h.jl_off; end;
+	if arg.n ~= 1 or not HOST_JlId(arg[1]) then return nil, "arg"; end;
+	local i = HOST_JlFind(arg[1]);
+	if not i then return nil, "none"; end;
+	return h.jl[i].s;
+end;
+function HOST_JobRemove(...)
+	local h = HOST();
+	if h.jl_off then return nil, h.jl_off; end;
+	if arg.n ~= 1 or not HOST_JlId(arg[1]) then return nil, "arg"; end;
+	local i = HOST_JlFind(arg[1]);
+	if not i then return nil, "none"; end;
+	tremove(h.jl, i);
+	return 1;
+end;
+function HOST_JobIds(...)
+	local h = HOST();
+	if h.jl_off then return nil, h.jl_off; end;
+	if arg.n ~= 0 then return nil, "arg"; end;
+	local t = {};
+	for i = 1, getn(h.jl) do tinsert(t, h.jl[i].id); end;
+	return t;
 end;
 -- An " ERROR " or " event=error " line (TRF_Err, TRF_CbErr, TRF_GnErr: a mod error caught by a protected call)
 -- counts as a script error.
