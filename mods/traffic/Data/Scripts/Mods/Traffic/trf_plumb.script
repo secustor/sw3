@@ -630,6 +630,15 @@ function TRF_PlAnsBody(b, a)
 	return v;
 end;
 
+-- The probe of a DLL native (the station jobs natives, step 1 to 3): its answer as a string, "arg" when live, "off"
+-- (the ini key 0) or "sig" (a signature mismatch) when it refuses, "native_missing" without the function.
+function TRF_PlProbe(name, args)
+	local f = getglobal(name);
+	if type(f) ~= "function" then return "native_missing"; end;
+	local r, w = call(f, args, "x", TRF_PlErr);
+	return tostring(w or r);
+end;
+
 -- Mission card (design/station-jobs-spec.md 5.1, 5.2, step 1) ---------------------------------
 
 -- 1 when a box spec with a card field opens as the mission card: cfg jobs_ui >= 1 and the DLL native TRF_MissionCard
@@ -640,11 +649,7 @@ function TRF_JbCard()
 	if type(v) ~= "number" or v < 1 then return nil; end;
 	local p = %P;
 	if p.jbp == nil then
-		p.jbp = "native_missing";
-		if type(TRF_MissionCard) == "function" then
-			local r, w = call(TRF_MissionCard, {{}}, "x", TRF_PlErr);
-			p.jbp = tostring(w or r);
-		end;
+		p.jbp = TRF_PlProbe("TRF_MissionCard", {{}});
 		if p.jbp ~= "arg" then TRF_PlE("jobs_fallback", "jobs_ui", v, "reason", p.jbp); end;
 	end;
 	if p.jbp == "arg" then return 1; end;
@@ -717,11 +722,7 @@ function TRF_JbBoard()
 	if TRF_PlOpt("jobs_ui") ~= 2 or not TRF_JbCard() then return nil; end;
 	local p = %P;
 	if p.jbb == nil then
-		p.jbb = "native_missing";
-		if type(TRF_JobBoard) == "function" then
-			local r, w = call(TRF_JobBoard, {0}, "x", TRF_PlErr);
-			p.jbb = tostring(w or r);
-		end;
+		p.jbb = TRF_PlProbe("TRF_JobBoard", {0});
 		if p.jbb ~= "arg" then TRF_PlE("jobs_board", "row_count", 0, "result", "native_missing", "reason", p.jbb); end;
 	end;
 	if p.jbb == "arg" then return 1; end;
@@ -838,13 +839,7 @@ function TRF_PlJbReplyOk() end;
 -- cfg jobs_log 0, so trf_parcel's reconcile can move a Job log entry back to the mission list.
 function TRF_JbLogLive()
 	local p = %P;
-	if p.jbl == nil then
-		p.jbl = "native_missing";
-		if type(TRF_JobAdd) == "function" then
-			local r, w = call(TRF_JobAdd, {}, "x", TRF_PlErr);
-			p.jbl = tostring(w or r);
-		end;
-	end;
+	if p.jbl == nil then p.jbl = TRF_PlProbe("TRF_JobAdd", {}); end;
 	if p.jbl == "arg" then return 1; end;
 	return nil;
 end;

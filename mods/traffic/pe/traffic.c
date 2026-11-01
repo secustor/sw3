@@ -1145,16 +1145,20 @@ static unsigned jl_mgr(void)                               /* QM with its vtable
     return m && grd(m, 0) == QM_VT ? m : 0;
 }
 static const char *jl_eid(unsigned e) { return e && grd(e, 0) == QE_VT ? gname(e + 0x2c) : 0; }
-/* the entry of the job list with id, 0 when absent or the list unreadable; *cnt the entries walked */
-static unsigned jl_find(unsigned m, const char *id, unsigned *cnt)
+/* the entry of the job list with id, 0 when absent or the list unreadable; *cnt the entries walked; with L every
+ * readable id appended to the table on top of the Lua stack */
+static unsigned jl_find(unsigned m, const char *id, unsigned *cnt, lua_State *L)
 {
     unsigned lst = m + 0x18, n, k = 0, c;
+    int i = 0;
     const char *s;
     if (cnt) *cnt = 0;
     if (!rd_ok(lst, 12) || (c = *(const unsigned *)(lst + 8)) > JL_MAX) return 0;
     for (n = grd(lst, 0); k < c && n; k++, n = grd(n, 4)) {
         if (cnt) *cnt = k + 1;
-        if (id && (s = jl_eid(grd(n, 0))) && str_same(s, id)) return grd(n, 0);
+        s = jl_eid(grd(n, 0));
+        if (L && s) { lua_pushstring(L, s); lua_rawseti(L, -2, ++i); }
+        if (id && s && str_same(s, id)) return grd(n, 0);
     }
     return 0;
 }
@@ -1189,9 +1193,9 @@ static int __cdecl n_jobadd(lua_State *L)
     if (lua_gettop(L) != 4 || !jc_idok(id) || !t || !d || !jl_state(L, 4, &st)) return cs_fail(L, "arg");
     rd_reset();
     if (!(m = jl_mgr()) || !grd(grd(ROOT_SLOT, 0), 0x84)) return cs_fail(L, "nomgr");
-    r = jl_find(m, id, 0) ? 0 : eng_qadd(m + 0x14, id, t, d, st);
+    r = jl_find(m, id, 0, 0) ? 0 : eng_qadd(m + 0x14, id, t, d, st);
     rd_reset();
-    jl_find(m, 0, &n);
+    jl_find(m, 0, &n, 0);
     tb_begin(&b, "module=dll event=jobs_log action=add id="); tb_s(&b, id); tb_s(&b, " state="); tb_i(&b, st);
     tb_s(&b, r ? " result=ok" : " result=dup"); tb_s(&b, " jobs="); tb_u(&b, n); tb_end(&b);
     if (!r) return cs_fail(L, "dup");
@@ -1210,7 +1214,7 @@ static int __cdecl n_jobstate(lua_State *L)
     if (lua_gettop(L) != 2 || !jc_idok(id) || !jl_state(L, 2, &st)) return cs_fail(L, "arg");
     rd_reset();
     if (!(m = jl_mgr())) return cs_fail(L, "nomgr");
-    if (!(e = jl_find(m, id, 0))) return cs_fail(L, "none");
+    if (!(e = jl_find(m, id, 0, 0))) return cs_fail(L, "none");
     *(unsigned *)(e + 4) = (unsigned)st;
     tb_begin(&b, "module=dll event=jobs_log action=state id="); tb_s(&b, id); tb_s(&b, " state="); tb_i(&b, st); tb_end(&b);
     lua_pushnumber(L, 1.0);
@@ -1226,7 +1230,7 @@ static int __cdecl n_jobget(lua_State *L)
     if (lua_gettop(L) != 1 || !jc_idok(id)) return cs_fail(L, "arg");
     rd_reset();
     if (!(m = jl_mgr())) return cs_fail(L, "nomgr");
-    if (!(e = jl_find(m, id, 0))) return cs_fail(L, "none");
+    if (!(e = jl_find(m, id, 0, 0))) return cs_fail(L, "none");
     lua_pushnumber(L, (double)(int)grd(e, 4));
     return 1;
 }
@@ -1241,7 +1245,7 @@ static int __cdecl n_jobremove(lua_State *L)
     if (lua_gettop(L) != 1 || !jc_idok(id)) return cs_fail(L, "arg");
     rd_reset();
     if (!(m = jl_mgr())) return cs_fail(L, "nomgr");
-    if (!(e = jl_find(m, id, 0)) || !(f = eng_vfn(e, 0)) || !eng_lremove(m + 0x18, e)) return cs_fail(L, "none");
+    if (!(e = jl_find(m, id, 0, 0)) || !(f = eng_vfn(e, 0)) || !eng_lremove(m + 0x18, e)) return cs_fail(L, "none");
     ((void (__thiscall *)(unsigned, int))f)(e, 1);
     tb_begin(&b, "module=dll event=jobs_log action=remove id="); tb_s(&b, id); tb_end(&b);
     lua_pushnumber(L, 1.0);
@@ -1250,18 +1254,14 @@ static int __cdecl n_jobremove(lua_State *L)
 
 static int __cdecl n_jobids(lua_State *L)
 {
-    const char *why = jl_why(), *s;
-    unsigned m, lst, n, k, c;
-    int i = 0;
+    const char *why = jl_why();
+    unsigned m;
     if (why) return cs_fail(L, why);
     if (lua_gettop(L) != 0) return cs_fail(L, "arg");
     rd_reset();
     if (!(m = jl_mgr())) return cs_fail(L, "nomgr");
-    lst = m + 0x18;
     lua_newtable(L);
-    if (!rd_ok(lst, 12) || (c = *(const unsigned *)(lst + 8)) > JL_MAX) return 1;
-    for (n = grd(lst, 0), k = 0; k < c && n; k++, n = grd(n, 4))
-        if ((s = jl_eid(grd(n, 0)))) { lua_pushstring(L, s); lua_rawseti(L, -2, ++i); }
+    jl_find(m, 0, 0, L);                          /* an unreadable list reads as empty */
     return 1;
 }
 
@@ -1302,7 +1302,7 @@ static int __thiscall trf_qlog_create(unsigned self)       /* T10b */
     gui = grd(self, 0x1c);
     bw = jl_ctl(gui, "pWinButWork"); bq = jl_ctl(gui, "pWinButQuest");
     if (bw && bq) { *(unsigned *)(bw + 0x7c) = (unsigned)trf_qlog_jobs; *(unsigned *)(bq + 0x7c) = (unsigned)trf_qlog_quests; }
-    if ((m = jl_mgr())) jl_find(m, 0, &n);
+    if ((m = jl_mgr())) jl_find(m, 0, &n, 0);
     tb_begin(&b, "module=dll event=jobs_log action=create"); tb_s(&b, bw && bq ? " result=ok" : " result=nobutton");
     tb_s(&b, " jobs="); tb_u(&b, n); tb_end(&b);
     return r;
@@ -1313,34 +1313,28 @@ static int __thiscall trf_qm_load(unsigned self, unsigned st)   /* T11 */
     int r, own;
     struct tb b;
     rd_reset();
-    if ((own = grd(self, 0) == QM_VT)) { jl_find(self, 0, &n); eng_lclear(self + 0x18); }
+    if ((own = grd(self, 0) == QM_VT)) { jl_find(self, 0, &n, 0); eng_lclear(self + 0x18); }
     r = eng_qm_load(self, st);
     g_jl_loads++;
     rd_reset();
-    if (own) jl_find(self, 0, &k);
+    if (own) jl_find(self, 0, &k, 0);
     tb_begin(&b, "module=dll event=jobs_log action=qm_load cleared="); tb_u(&b, n); tb_s(&b, " loaded="); tb_u(&b, k);
     tb_s(&b, " result="); tb_i(&b, r); tb_s(&b, " loads="); tb_u(&b, g_jl_loads); tb_end(&b);
     return r;
 }
 
-static int patch_dword(unsigned a, unsigned v)
+static int patch_mem(unsigned a, const void *v, unsigned n)   /* n bytes of v over the image at a */
 {
     DWORD old, tmp;
-    if (!VirtualProtect((void *)a, 4, PAGE_EXECUTE_READWRITE, &old)) return 0;
-    *(unsigned *)a = v;
-    VirtualProtect((void *)a, 4, old, &tmp);
-    FlushInstructionCache(GetCurrentProcess(), (void *)a, 4);
+    unsigned k;
+    if (!VirtualProtect((void *)a, n, PAGE_EXECUTE_READWRITE, &old)) return 0;
+    for (k = 0; k < n; k++) ((unsigned char *)a)[k] = ((const unsigned char *)v)[k];
+    VirtualProtect((void *)a, n, old, &tmp);
+    FlushInstructionCache(GetCurrentProcess(), (void *)a, n);
     return 1;
 }
-static int patch_byte(unsigned a, unsigned char v)
-{
-    DWORD old, tmp;
-    if (!VirtualProtect((void *)a, 1, PAGE_EXECUTE_READWRITE, &old)) return 0;
-    *(unsigned char *)a = v;
-    VirtualProtect((void *)a, 1, old, &tmp);
-    FlushInstructionCache(GetCurrentProcess(), (void *)a, 1);
-    return 1;
-}
+static int patch_dword(unsigned a, unsigned v) { return patch_mem(a, &v, 4); }
+static int patch_byte(unsigned a, unsigned char v) { return patch_mem(a, &v, 1); }
 
 /* ---- Lua error traceback (exe-hook-survey row 12, hooks/hook-mechanisms.md 2.2 E-b) ----
  * lua_error -> message 0x65f810 calls the global _ERRORMESSAGE with the message, unprotected, then longjmps.

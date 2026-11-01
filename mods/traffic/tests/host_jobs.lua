@@ -380,7 +380,7 @@ function T_JB_F()
 	PC_Dock();
 	e = h.jl[1] or {};
 	HOST_Check(TRF_PcJob() == nil and e.s == QUEST_FAILED and h.quests.trf_pcl == nil, "overdue: the Job log entry failed");
-	-- cfg jobs_log 0 with the natives: AddQuest as before, the job list untouched, no probe call.
+	-- cfg jobs_log 0 with the natives: AddQuest as before, the job list untouched, no jobs_fallback line.
 	JB_Begin(0, 0, 0, 0, 1);
 	n0 = S_Mark();
 	PC_Press(PC_Dock(), "ok");

@@ -954,9 +954,10 @@ end;
 function TRF_PcQSet(s)
 	if s == nil then return nil; end;
 	if TRF_PcJl() then
-		local r, w = call(TRF_PcJSetRaw, {TRF_PcK().qid, s}, "x", TRF_PcErr);
-		if r == 1 then TRF_PcE("logbook", "list", "job", "id", TRF_PcK().qid, "state", s, "result", "set");
-		else TRF_PcE("logbook", "list", "job", "id", TRF_PcK().qid, "state", s, "result", "failed", "reason", tostring(w)); end;
+		local id = TRF_PcK().qid;
+		local r, w = call(TRF_PcJSetRaw, {id, s}, "x", TRF_PcErr);
+		if r == 1 then TRF_PcE("logbook", "list", "job", "id", id, "state", s, "result", "set");
+		else TRF_PcE("logbook", "list", "job", "id", id, "state", s, "result", "failed", "reason", tostring(w)); end;
 		return r;
 	end;
 	if type(SetQuestState) ~= "function" then return nil; end;
@@ -967,9 +968,10 @@ end;
 
 function TRF_PcQRem()
 	if TRF_PcJl() then
-		local r, w = call(TRF_PcJRemRaw, {TRF_PcK().qid}, "x", TRF_PcErr);
-		if r == 1 then TRF_PcE("logbook", "list", "job", "id", TRF_PcK().qid, "result", "removed");
-		else TRF_PcE("logbook", "list", "job", "id", TRF_PcK().qid, "result", "none", "reason", tostring(w)); end;
+		local id = TRF_PcK().qid;
+		local r, w = call(TRF_PcJRemRaw, {id}, "x", TRF_PcErr);
+		if r == 1 then TRF_PcE("logbook", "list", "job", "id", id, "result", "removed");
+		else TRF_PcE("logbook", "list", "job", "id", id, "result", "none", "reason", tostring(w)); end;
 		return r;
 	end;
 	if type(RemoveQuest) ~= "function" then return nil; end;
@@ -990,8 +992,9 @@ function TRF_PcReconcile(why)
 	local R = TRF_PcRec();
 	if TRF_PcJl() then TRF_PcJReconcile(why, qs, J, R); return; end;
 	if TRF_N("TRF_JbLogLive") == 1 and TRF_PcJs(id) ~= nil then
-		call(TRF_PcJRemRaw, {id}, "x", TRF_PcErr);
-		TRF_PcE("logbook", "list", "mission", "id", id, "result", "moved", "reason", why);
+		local r, w = call(TRF_PcJRemRaw, {id}, "x", TRF_PcErr);
+		if r == 1 then TRF_PcE("logbook", "list", "mission", "id", id, "result", "moved", "reason", why);
+		else TRF_PcE("logbook", "list", "mission", "id", id, "result", "none", "reason", tostring(w)); end;
 		if not J and R then R.pq = nil; end;
 	end;
 	if J and qs == QUEST_NOINIT and TRF_PcOpt("pcl_logbook") == 1 then
@@ -1003,13 +1006,14 @@ function TRF_PcReconcile(why)
 	end;
 end;
 
--- Reconcile on the Job log (TRF_PcReconcile): qs the mission-list state, J the open job, R the record.
+-- Reconcile on the Job log (TRF_PcReconcile): qs the mission-list state, J the open job, R the record. A mission-list
+-- entry is removed first (mv); the logbook moved line reports it unless the reconcile line of the same pass does.
 function TRF_PcJReconcile(why, qs, J, R)
 	local id = TRF_PcK().qid;
 	local js = TRF_PcJs(id);
 	local pend = R and R.pq == 1;
 	local mv = nil;
-	if qs ~= nil and qs ~= QUEST_NOINIT then
+	if qs ~= nil and qs ~= QUEST_NOINIT and type(RemoveQuest) == "function" then
 		call(TRF_PcQRemRaw, {id}, "x", TRF_PcErr);
 		mv = 1;
 		if not J and js == nil and R then R.pq = nil; pend = nil; end;
@@ -1019,12 +1023,13 @@ function TRF_PcJReconcile(why, qs, J, R)
 		local res = "readded";
 		if mv then res = "moved"; end;
 		TRF_PcE("reconcile", "id", id, "list", "job", "quest_state", qs, "result", res, "reason", why);
+		mv = nil;
 	elseif not J and js ~= nil and not pend then
 		TRF_PcQRem();
 		TRF_PcE("reconcile", "id", id, "list", "job", "job_state", js, "result", "removed", "reason", why);
-	elseif mv then
-		TRF_PcE("logbook", "list", "job", "id", id, "quest_state", qs, "result", "moved", "reason", why);
+		mv = nil;
 	end;
+	if mv then TRF_PcE("logbook", "list", "job", "id", id, "quest_state", qs, "result", "moved", "reason", why); end;
 end;
 
 -- Items (01 section 6, CHECK E-PCL.1) --------------------------------------------------------
