@@ -820,13 +820,13 @@ Freight unlock quest "Missing in Capricorn", commit 1 (`design/freight-quest-spe
 | `seed` | `module=wq event=seed system=debris6 result=none reason=system` (`off, step, nomap, chapter, mission, system, cooldown, strict:<why>`) | 2 |
 | `spawn` | `module=wq event=spawn system=golkonda trader_id=1 raid_id=1 tier=2 ship_count=5 marker=true tries=0 result=spawned` | 1 |
 | `help` | `module=wq event=help raid_id=1 trader_id=1 credits=4269 flags=1` (the 8.5 resolver set bit 1) | 1 |
-| `rescued` | `module=wq event=rescued system=golkonda trader_id=1 raid_id=1 variant=new reason=raid_help tries=0` | 1 |
+| `rescued` | `module=wq event=rescued system=golkonda trader_id=1 raid_id=1 variant=new reason=raid_help tries=0` (`event=rescued reason=entry tries=0`, `load`: the help bit of a saved live event resolved at the next entry or load, no line) | 1 |
 | `lost` | `module=wq event=lost system=golkonda trader_id=3 raid_id=1 reason=killed_other tries=0` (`killed_player`) | 1 |
-| `void` | `module=wq event=void trader_id=4 reason=no_help tries=1 tries_max=2 leg=18` (`reason=raid, jump, load, entry, step, moved, generator, station, cap_<why>, plan_<why>, spawn`, a gate reason) | 1 |
+| `void` | `module=wq event=void trader_id=4 reason=no_help tries=1 tries_max=2 leg=18` (`reason=raid, jump, load, entry, step, moved, generator, station, cap_<why>, plan_<why>, spawn, error`, a gate reason) | 1 |
 | `limped` | `module=wq event=limped tries=2 line=true` (`line=false`: the line waits for the next entry) | 1 |
 | `step` | `module=wq event=step step_before=10 step_after=20 reason=rescued` (`lost`, `limped`) | 1 |
 | `logbook` | `module=wq event=logbook list=mission id=trf_wq step=10 result=added` (`list=job`; `result=removed reason=<step,enter,load,moved>`, `none ... native=<why>`, `failed reason=<why>`) | 1 |
-| `reconcile` | `module=wq event=reconcile id=trf_wq list=mission step=10 result=added reason=accept` (`result=removed`; `reason=enter, load, step`) | 1 |
+| `reconcile` | `module=wq event=reconcile id=trf_wq list=mission step=10 result=added reason=accept` (`result=removed`, `failed` when the native refused the add; `reason=enter, load, step`) | 1 |
 | `orphan` | `module=wq event=orphan trader_id=7 result=removed` (load; `result=dropped` for a waiting record) | 1 |
 | `fix` | `module=wq event=fix step=15 result=dropped reason=step` (`reason=type`; `step=80 result=grandfather`) | 1 |
 | `dump` | `module=wq event=dump step=10 flags=0 tries=1 decline_leg=nil void_leg=18 seed=77 live=nil result_kind=nil pending=nil logbook_step=10 event_state=due` (`result=none event_state= grandfather=`) | 1 |

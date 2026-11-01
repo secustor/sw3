@@ -7,7 +7,8 @@
 -- seed provider 620, a seeded 50 % roll per entry, the scripted-event slot "wq", the Kestrel as a trf_gen trader with the
 -- record flag wq under a trf_clan raid of why "wq" (tier min(2, cap)); saved through the 8.5 raid-help resolver flag, lost
 -- through the trf_events kill hook; no engagement, a refused raid or spawn, a jump or a load before the result void the
--- event, wq_tries voids end it with "The Kestrel limped in alone."). Steps 2-6 (cold trail, the fence, the clan hold at
+-- event (a load or an unseen jump after the help was counted still gives saved), wq_tries voids end it with "The Kestrel
+-- limped in alone."). Steps 2-6 (cold trail, the fence, the clan hold at
 -- XB-13, the charter office unlock in TRF_FrBuyGate) are commits 2 and 3; the hook points say "Commit 2 hook".
 -- Dialog variants: the clerk's box and reply and the Kestrel's thanks read the "old hauler" key (<key>o) while the
 -- player flies a start hull (TRF_WqK().ms0), chosen at display time, never saved.
@@ -428,8 +429,9 @@ function TRF_WqReconcile(why, note)
 	if jl then list = "job"; have = js ~= nil; end;
 	if want and (not have or R.ql ~= want) then
 		if have then TRF_WqQRem(list, why); end;
-		if TRF_WqQAdd(list, want, note) then R.ql = want; end;
-		TRF_WqE("reconcile", "id", K.qid, "list", list, "step", want, "result", "added", "reason", why);
+		local res = "failed";
+		if TRF_WqQAdd(list, want, note) then R.ql = want; res = "added"; end;
+		TRF_WqE("reconcile", "id", K.qid, "list", list, "step", want, "result", res, "reason", why);
 	elseif not want and have then
 		TRF_WqQRem(list, why);
 		if R then R.ql = nil; end;
@@ -704,6 +706,23 @@ function TRF_WqVoid(ev, why, later)
 	TRF_WqStep(R, 20, "limped");
 end;
 
+-- A saved live flag without its visit event (an entry the jump wrappers did not see, a load): the help bit counted
+-- before the step resolved it gives the result saved (no line, the Kestrel is gone), else the void (the line at the next
+-- entry).
+function TRF_WqLvGone(why)
+	local R = TRF_WqRec();
+	if not R or R.lv ~= 1 then return; end;
+	if R.s == 10 and TRF_WqBit(R.k, 1) then
+		R.lv = nil;
+		R.r = 1;
+		TRF_N("TRF_Stat", "wq_rescued");
+		TRF_WqE("rescued", "reason", why, "tries", R.n or 0);
+		TRF_WqStep(R, 20, "rescued");
+		return;
+	end;
+	TRF_WqVoid(nil, why, 1);
+end;
+
 -- 8.5 raid-help resolver (trf_plumb TRF_RaidHelpReg; trf_raid asks only for counted help on a trader that was not
 -- killed): on the Kestrel's raid it sets bit 1 of k (the engagement rule; the step resolves it) and returns nil, so the
 -- normal 8.5 pay runs.
@@ -744,28 +763,26 @@ end;
 
 -- Loader callbacks ---------------------------------------------------------------------------
 
--- Every entry: a new visit state; a saved live flag without a jump hook (a jump the wrappers did not see) voids the event.
+-- Every entry: a new visit state; a saved live flag without a jump hook (a jump the wrappers did not see) resolves the
+-- event (TRF_WqLvGone).
 function TRF_Wq_OnEnter()
 	local wq = %WQ;
 	wq.v = {};
 	wq.offer = nil;
-	local R = TRF_WqRec();
-	if R and R.lv == 1 then TRF_WqVoid(nil, "entry", 1); end;
+	TRF_WqLvGone("entry");
 end;
 
--- After activate (entry only): the limped-in line of a void at a jump or a load, the logbook reconcile.
+-- After activate (entry only): the limped-in line of a void at a jump or a load (p stays until the queue takes it), the
+-- logbook reconcile.
 function TRF_Wq_OnActivate()
 	if not TRF_WqOn() then return; end;
 	local R = TRF_WqRec();
-	if R and R.p == 1 then
-		R.p = nil;
-		TRF_N("TRF_ArrivalLine", TRF_WqK().own, TRF_WqTxt("wqalone"));
-	end;
+	if R and R.p == 1 and TRF_N("TRF_ArrivalLine", TRF_WqK().own, TRF_WqTxt("wqalone")) == 1 then R.p = nil; end;
 	call(TRF_WqReconcile, {"enter"}, "x", TRF_WqErr);
 end;
 
 -- Load (after trf_gen's load pass): every Kestrel record and waiting record is removed (an on-screen event is void after
--- a load), a saved live flag voids the event, the logbook reconcile.
+-- a load), a saved live flag resolves the event (TRF_WqLvGone), the logbook reconcile.
 function TRF_Wq_OnLoad()
 	local wq = %WQ;
 	wq.v = {};
@@ -789,8 +806,7 @@ function TRF_Wq_OnLoad()
 			TRF_WqE("orphan", "trader_id", ws[k], "result", "dropped");
 		end;
 	end;
-	local R = TRF_WqRec();
-	if R and R.lv == 1 then TRF_WqVoid(nil, "load", 1); end;
+	TRF_WqLvGone("load");
 	if TRF_WqOn() then call(TRF_WqReconcile, {"load"}, "x", TRF_WqErr); end;
 end;
 

@@ -457,6 +457,14 @@ function T_WQ_B()
 	R = TRF.wq;
 	HOST_Check(R.s == 10 and R.n == 1 and R.lv == nil and TRF_Rec(tid) == nil and WQ_Logs(n0, "event=orphan trader_id="..tid.." result=removed") == 1
 		and WQ_Logs(n0, "event=void trader_id=nil reason=load tries=1") == 1, "load: the Kestrel removed, void (tries 1)");
+	-- A saved live flag with the help bit (a load or an unseen jump before the step resolved it): saved, no void.
+	WQ_Begin("debris6", "5_1");
+	R = WQ_At(10, {k=1, lv=1});
+	n0 = S_Mark();
+	TRF_Wq_OnEnter();
+	HOST_Check(R.s == 20 and R.r == 1 and R.lv == nil and R.n == 0 and WQ_Logs(n0, "event=rescued reason=entry tries=0") == 1
+		and WQ_Logs(n0, "event=void") == 0 and h.qlog.trf_wq and h.qlog.trf_wq.d == "#TRF_wqd20",
+		"live flag with the help bit at an entry: saved without the line, no void, the logbook at wqd20");
 	-- The tier rule: tier cap 1 gives T1.
 	WQ_Begin("debris6", "5_1", {tier_cap=1});
 	R = WQ_At(10);
