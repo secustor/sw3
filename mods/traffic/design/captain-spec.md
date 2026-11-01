@@ -1,6 +1,6 @@
 # Wanted captains: implementation spec (proposal 4, step 1)
 
-Status: step 1 implemented and host-tested 2026-10-24 (`tests/host_captain.lua`, runs `cap-a`..`cap-h`), not run in the game. Design: `D/worldbuilding/04-wanted-captains.md` (cited as "04 n.n"); shared rules: `D/worldbuilding/00-economy-and-progression.md` sections 6 and 8 ("00"); plumbing: `D/wb-plumbing-spec.md` ("WB"); raids: `D/v02-spec.md` 5.4 and `D/v1-spec.md` 6.1.
+Status: step 1 implemented and host-tested 2026-10-24 (`tests/host_captain.lua`, runs `cap-a`..`cap-h`; the FTU bulletins of 5.2 added 2026-11-01, run `cap-i`), not run in the game. Design: `D/worldbuilding/04-wanted-captains.md` (cited as "04 n.n"); shared rules: `D/worldbuilding/00-economy-and-progression.md` sections 6 and 8 ("00"); plumbing: `D/wb-plumbing-spec.md` ("WB"); raids: `D/v02-spec.md` 5.4 and `D/v1-spec.md` 6.1.
 Paths: `D` = `mods/traffic/design`, `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `T` = `mods/traffic/tests`, `G` = the game's `Data`.
 Module: new `S/trf_captain.script`, prefix `Cap` (`TRF_Cap_*` public, `TRF_Cap<X>` internal; the plumbing's ship-cap names `TRF_CapReg`, `TRF_CapShips`, `TRF_CapRank`, `TRF_CapTrim*` stay trf_plumb's), log lines `module=captain` through `TRF_CapE` / `TRF_CapDE`.
 
@@ -24,7 +24,7 @@ Module: new `S/trf_captain.script`, prefix `Cap` (`TRF_Cap_*` public, `TRF_Cap<X
 | Q7 | Sweep kill share | 50 % (fixed hash of slot, leg and generation) | - |
 | Q8 / E2 | Vendetta | step 2, off | `cap_vendetta` 0 |
 | Q9 | Names | 24 authored names (8), checked against `G/Game/Pilots.xml` and `G/LocData/English/*.loc` (no match), RU by hand | - |
-| Q10 | News posts | none in step 1 (no News.xml records): a death by others or by a sweep is a log line only | - |
+| Q10 | News posts | the regional bulletins `cap/hide`, `cap/out`, `cap/succ` (5.2, user request 2026-11-01); a death by others or by a sweep is a log line only | `news_mode` |
 | Q11 | Map-wide gap | kept map-wide (`cap_gap_j` 20) | `cap_gap_j` |
 | Q12 / D1 | 8x legs | traffic's `leg_cap` (WB 10); every rate limit here counts `TRF.clock.j` | - |
 | B1 | Shared prize gap | implemented in trf_plumb (`TRF_PrizeWait`, `TRF_PrizeMark`, tune `prize_rs` 1800): a claim earned inside the gap waits in `TRF.claim` | `prize_rs` |
@@ -70,7 +70,7 @@ Labels: ship `TRF_CAP_<slot>`, his own wing `trf_cap_<slot>_<j>` (j 1..6, the WB
 
 ### 3.3 Size
 
-Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case measured in `cap-h` and `v1-n`: `TRF.cap` with 11 records and every field at its widest 5,017 bytes, `TRF.claim` with 3 claims 522, `TRF.capg` 100 (with the held `ow`, `oh`); with the four top-level keys and the prize stamp 5,850 (checked <= 5,900). Typical: a record is about 400-460 bytes, 8 records about 3,300. Full-state `v1-n` with everything on: 78,425 bytes (budget 100,000; 72,601 before). The design's "3-5 KB" estimate (04 6) holds for the 8 records of the generated map; field names cost the rest.
+Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case measured in `cap-h` and `v1-n`: `TRF.cap` with 11 records and every field at its widest 5,017 bytes, `TRF.claim` with 3 claims 522, `TRF.capg` 100 (with the held `ow`, `oh`); with the four top-level keys and the prize stamp 5,850 (checked <= 5,900). Typical: a record is about 400-460 bytes, 8 records about 3,300. Full-state `v1-n` with everything on: 78,425 bytes (budget 100,000; 72,601 before); 93,882 on 2026-11-01 with the `cap` news topic in every region (93,194 before). The design's "3-5 KB" estimate (04 6) holds for the 8 records of the generated map; field names cost the rest.
 
 ## 4. Hooks and registration
 
@@ -116,6 +116,8 @@ For each record (the captain on screen this visit, planned or live, is left alon
 - Grudge -1 per 8 legs; a tip older than 4 legs expires, and while it is valid `seen` does not move (the informant names the system of his next run, V19); a done or failed logbook entry is removed 10 legs later.
 - Claims older than `cap_claim_legs` expire (screen line `capexp`, logbook failed).
 - Sweep outcome (`TRF_Cap_Sweep`, from `TRF_RgSweepOut` on a success): 50 % `st` 4 (dj, no claim), 50 % `st` 2 with `esc` + 1, `due` 2 jumps, `seen` the home (the third escape sets `lj`).
+
+Bulletins (`TRF_CapNews(slot, v)`, user request 2026-11-01): the transitions post the regional trf_ui news topic `cap` (`TRF_NewsPost("cap", v, slot)`, v02-spec 8.2): `hide` at active -> hiding, `out` at hiding -> active and at recovering -> active (`TRF_CapWake(r, slot)`, which also runs in the entry plan and the board list; only at region tier 2+, since at tier 1 the same tick hides him and posts `hide`), `succ` at a successor (also one born hiding). Gates: chapter >= 5 and the region's home not in cfg `cap_regions_off`; `news_mode` 0 posts nothing. One post per topic per region: a newer variant replaces an unseen older one, so a hide followed by out before the player sees either shows only out. The bulletin ("FTU bulletin: ..." 12 s after an entry, or in the patrol board box) fills `$4` with the region's current captain (`TRF_Cap_NameOf(slot)`, the display name); with no living captain (st 0 or 4) the entry is marked seen and not shown (`module=ui event=news ... result=dropped reason=no_text`). The record name is not in the post, so a bulletin about a captain whose successor took the record names the successor. `news_mode` 2 records come from `tools/gen_news.py` (24 records `trf_r<slot>_cap_<v>`, headlines without the name).
 
 ### 5.3 Spawn
 
@@ -208,6 +210,7 @@ Constants without a key (`TRF_CapK`): chapter 5, 3 board lines, 11 records, 24 n
 | `module=captain event=quest id=trf_cap_4 state=2` / `result=removed reason=<legs, successor>`, `event=reconcile id=trf_cap_4 quest=1 reason=enter` | logbook (EW4.5) |
 | `module=captain event=orphan label=TRF_CAP_4 action=portal` (`delete`) | load (EW4.7) |
 | `module=captain event=hide slot=4 tier=1 result=hiding` (`active`), `event=move slot=6 from=moscowia to=egleon` (2), `event=notoriety slot=4 notoriety=1 reason=raids` (2; `trader_killed` level 1), `event=retire slot=1 generation=1 age=201 life=90`, `event=successor slot=4 generation=2 name=9 previous=4 template=3 grudge=2 reason=boom`, `event=sweep slot=4 generation=4 via=off result=dead` (`escaped`), `event=tick leg=4 jumps=3 record_count=8 claim_count=0` (2) | region tick |
+| `module=captain event=news slot=4 topic=cap variant=hide region=golkonda result=posted` (`out`, `succ`); level 2 `result=none reason=<chapter, region_off, no_news>` | bulletin (5.2) |
 | `module=captain event=enter system=xb13 arrival_portal=PORTAL_R plan=wait slot=4` (2), `event=wind_down slot=4 state=leave` | entry, wind-down |
 | `module=captain event=dump record_count=8 claim_count=1 jumps=212 last_claim=197 vendettas=0 chase=nil visit=nil visit_slot=nil`, `event=dump_rec slot=5 name=7 generation=1 state=1 template=4 escapes=1 notoriety=2 grudge=2 seen=xb13 due=0 lie_low=0 died=0 born=640 met=1 last=91 tip=nil quest=1`, `event=dump_claim index=1 slot=5 generation=1 amount=26700 kind=1 leg=812` | `TRF_DumpState` |
 | `module=captain event=error message=<m>` | protected call failed |
@@ -219,7 +222,9 @@ Mapping to the design's experiment lines (04 8): `TRF cap hp slot=5 hp0=<n> thr=
 
 75 keys: `capnm1`..`capnm24` (names), `capq1`..`capq24` (logbook titles "Wanted: <name>"), `capqd` (description); board `caphead`, `capbrd` ($1 name, $2 clan, $3 tier word), `capesc` ($1), `capraids` ($1 system), `capseen` ($1 system, $2 price), `capnone` ($1 clan), `capquiet` ($1, $2); informant `capintel` ($1, $2 price), `capintelok` ($1, $2 system), `capintelpoor`; radio `capintro`, `capgrudge`, `capback`, `capsucc`, `cappatrol`, `capraid`, `capwin`, `capflee`, `capwing`, `capchase`, `capleave`, `capvend` (step 2); claims `capclaim`, `cappaid`, `capexp`, `capwait`. The design's `#TRF_Cap_Nm_<n>`, `#TRF_Cap_Q_<nm>_a` and `#TRF_Cap_Q_b` are `#TRF_capnm<n>`, `#TRF_capq<nm>` and `#TRF_capqd` (trf_loc normalises keys to lowercase letters and digits). Names avoid every story pilot and lore clan name (04 3); checked with `grep -w` against `G/Game/Pilots.xml` and `G/LocData/English/*.loc` (only the English verb "quell" matched an early candidate, which was replaced). RU: written by hand, cp1251, CRLF, fixed texts without the placeholders (the `loc_mode 1` form); checked by `stn-g`.
 
-## 9. Host scenarios (`T/host_captain.lua`, `TRF_CAP=a..h`; run_host.sh item `cap`)
+Bulletin texts (5.2) live in trf_ui's `TRF_UI_Text` next to the other news keys, EN only (no RU, `trf_ru.loc` unchanged; the RU language falls back to EN per key): `ncaphide` `$2 captain $4 has gone to ground near $1`, `ncapout` `$2 captain $4 is back on the lanes near $1`, `ncapsucc` `$4 now leads the $2 near $1` ($1 home display name, $2 clan, $4 captain name; `TRF_Txt` takes a fourth argument for `$4`).
+
+## 9. Host scenarios (`T/host_captain.lua`, `TRF_CAP=a..i`; run_host.sh item `cap`)
 
 Entry as `host_scar.lua`: `host_station.lua` up to its first scenario. Base cfg: captains on, sweeps, sweep contracts, equipment convoys, traffic's staged raids, the seed, queue, parked ship, station events, danger convoys, carriers, pirate-dock offers, survivors and the ladder off; log 2. `CP_Begin` puts every region in Build-up without a planned sweep (a sweep closes the raid gate). The CreateNavPoint stub now keeps the attached object (`n.obj`).
 
@@ -233,8 +238,9 @@ Entry as `host_scar.lua`: `host_station.lua` up to its first scenario. Base cfg:
 | `cap-f` | kill with player fire: claim by the formula, `capg.lc`, st 4, dj, clan score -4, logbook open, claim and wing lines; the map-wide gap for another clan and its end; sweep window half and no wind-down; killed by others (no claim, logbook failed); 8.5 credits and help held when the wing dies first, cancelled by the claim (help unchanged); paid with the help after an escape and after a load; cancelled when the raid ends after the claim |
 | `cap-g` | claim paid at the patrol dock before the board and the box (credits, help, heat, USS fst, logbook done, prize stamp); the second claim waits for `prize_rs`; board lines (wanted with escapes and the price, leaderless, lying low, hiding not listed); the informant box, none for a seen system the strict gate denies, purchase (price, tip, reply), certain spawn, no second offer, declined, poor, mission, `cap_intel 0`, `cap_board 0`, chapter 4, `__disableAction`; claim expiry; logbook removal; `TRF_Cap_Open` |
 | `cap-h` | load: orphan rule (in view to a portal and deleted after `cap_flee_s`, out of view deleted), no plan, record unchanged; logbook reconcile at entry and load, none in a mission; wind-down (leave, record unchanged); a ship gone on the way to a portal escaped without a claim; dump lines; repair (fields, claims, capch, capg with the held credits, a non-table `TRF.cap`); worst case 5,850 bytes <= 5,900, no reserved key; `cap_enable 0` inert |
+| `cap-i` | bulletins (5.2): a tier drop posts `cap/hide` for the region only, the recovery `cap/out`, the bulletin text with the clan, the captain's name and the home, shown once; hide then out unseen shows only out; recovering -> active at T2 posts `out`, at T1 only `hide`; a wake in the board list posts `out`; the successor posts `succ` with the new name; a dead captain's bulletin is dropped; none in chapter 4, in a region off by `cap_regions_off` or with `news_mode` 0; `news_mode` 2 record name |
 
-Changed scenarios: `pl-a` (8 lines, 6 boxes, 3 payers, 11 seed providers), `sv-a` (`extra_count=7`, 11 seed providers, the captain's provider between the slaver and the staged raid), `lad-a` (`extra_count=7`, patrol lines 10/35/50, boxes 400/300/100), `ch-a` and `sc-a` (`extra_count=7`; `Sc` second to last in `TRF_ModList`), `stn-g` (the RU key set includes the captain keys), `v1-m` (the generated `trf_en.loc` scaffold has the 74 `#TRF_cap*` lines), `v1-n` (the captain worst case in the full-state save, the captain dump line). `host_traffic.lua` `T_V1Off` and `host_station.lua` `S_Cfg` set `cap_enable=0` (the v0.1/v0.2 scenarios and the station, plumbing, survivors, ladder, charter and scar scenarios check their own lines and slots); the v1 scenarios run with captains on. All 94 host runs pass.
+Changed scenarios: `pl-a` (8 lines, 6 boxes, 3 payers, 11 seed providers), `sv-a` (`extra_count=7`, 11 seed providers, the captain's provider between the slaver and the staged raid), `lad-a` (`extra_count=7`, patrol lines 10/35/50, boxes 400/300/100), `ch-a` and `sc-a` (`extra_count=7`; `Sc` second to last in `TRF_ModList`), `stn-g` (the RU key set includes the captain keys), `v1-m` (the generated `trf_en.loc` scaffold has the 74 `#TRF_cap*` lines), `v1-n` (the captain worst case in the full-state save, the captain dump line; since 2026-11-01 also a `cap` news entry per region, as `v02-n`). `host_traffic.lua` `T_V1Off` and `host_station.lua` `S_Cfg` set `cap_enable=0` (the v0.1/v0.2 scenarios and the station, plumbing, survivors, ladder, charter and scar scenarios check their own lines and slots); the v1 scenarios run with captains on. All 94 host runs pass.
 
 ## 10. CHECK: game-only facts (test clone, `log 2`, `CAP_AT=xb13`; 04 section 8, 00 E0.3, E0.6, E0.11, E0.18, E0.20)
 
@@ -249,6 +255,7 @@ Changed scenarios: `pl-a` (8 lines, 6 boxes, 3 payers, 11 seed providers), `sv-a
 | EW4.7 | load in the captain's system: the orphan rule removes the old flight once | `event=orphan label=TRF_CAP_<s> action=portal` (or `delete`), no second captain |
 | C1 | `ComeToPortal` deletes the ship itself or not (E0.3) | `event=escaped ... reason=vanished` (the engine removed it) or `reason=portal` |
 | C2 | Pirates neutral seed and WAR after the first hit (S15) | `event=met slot=<s>` and the captain fights back |
+| C3 | bulletin on entry after a hide or an out (5.2; lower a clan below tier 2 or raise it again, then jump) | `module=captain event=news slot=<s> topic=cap variant=<hide, out> ... result=posted`, then on an entry the screen line `FTU bulletin: <clan> captain <name> has gone to ground near <home>` (or `is back on the lanes`) once |
 
 ## 11. Deviations
 
@@ -274,4 +281,4 @@ Changed scenarios: `pl-a` (8 lines, 6 boxes, 3 payers, 11 seed providers), `sv-a
 
 ## 12. Left out (step 2 and later)
 
-Forced eject and capture (`Case_Eject` handler, `CostOfHead` handler, pods `st` 5/6, the `base` trigger, `cap_hold_legs`, the capture claim kind 2), pod destruction, vendetta flights (`vend_*`, `capg.vn`, the `capvend` line), the #7 stash rumour and #8 freight log feeds, the #2 feed "a player-caused scar in the region gives grudge +1", the #3 station greeting about the captain's boys, the #13 rival taking the claim and the #14 charter goal replacing it, news posts (Q10), the captured faction hull of a clan at salvage stage 2+ and its board word, the captain leading a sweep flight (V13), `Carcass:SetName` (EW4.8). In-game checks EW4.1-EW4.7, C1, C2 are open.
+Forced eject and capture (`Case_Eject` handler, `CostOfHead` handler, pods `st` 5/6, the `base` trigger, `cap_hold_legs`, the capture claim kind 2), pod destruction, vendetta flights (`vend_*`, `capg.vn`, the `capvend` line), the #7 stash rumour and #8 freight log feeds, the #2 feed "a player-caused scar in the region gives grudge +1", the #3 station greeting about the captain's boys, the #13 rival taking the claim and the #14 charter goal replacing it, news posts beyond the three bulletins of 5.2 (a death, a retirement, an escape), the captured faction hull of a clan at salvage stage 2+ and its board word, the captain leading a sweep flight (V13), `Carcass:SetName` (EW4.8). In-game checks EW4.1-EW4.7, C1, C2 are open.

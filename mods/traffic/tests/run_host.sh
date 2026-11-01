@@ -5,7 +5,7 @@
 # station voices scenarios stn-a..h of host_station.lua, the worldbuilding plumbing scenarios pl-a..f of
 # host_plumb.lua, the survivors scenarios sv-a..g of host_survive.lua, the faction ladder scenarios lad-a..g of
 # host_ladder.lua, the charter scenarios ch-a..h of host_charter.lua, the battle scars scenarios sc-a..g of
-# host_scar.lua, the wanted captains scenarios cap-a..h of host_captain.lua, the demand page scenarios dm-a..h of
+# host_scar.lua, the wanted captains scenarios cap-a..i of host_captain.lua, the demand page scenarios dm-a..h of
 # host_demand.lua, the clan stashes scenarios sh-a..h of host_stash.lua, the Wolves Freight scenarios fr-a..h of
 # host_freight.lua, the pirate haunts scenarios ha-a..f of host_haunt.lua and the sealed parcels scenarios pcl-a..h of
 # host_parcel.lua, the mercenary clans scenarios mc-a..k of host_merc.lua (each its own entry point), the named mercenary pilots scenarios mcp-a..c of host_pilots.lua (own entry
@@ -14,7 +14,7 @@
 # when the vanilla Pilots.xml is not found, PILOTS_TEST=0 skips it).
 # Env: LUA4 (interpreter), LUAC4, EXPS (default "default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr ha pcl mc mcp hl str ft"), SCENS (default a..h),
 # V02 (default a..n), V1 (default a..n), STN (default a..h), PL (default a..f), SV (default a..g), LAD (default a..g), CH
-# (default a..h), SC (default a..g), CAP (default a..h), DM (default a..h), SH (default a..h), FR (default a..h), HA (default a..f),
+# (default a..h), SC (default a..g), CAP (default a..i), DM (default a..h), SH (default a..h), FR (default a..h), HA (default a..f),
 # PCL (default a..h), MC (default a..k), MCP (default a..c), HL (default a..e), STR (default a..e), FT (default a..f).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
@@ -68,7 +68,7 @@ for e in ${EXPS:-default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr
         lad) entry=host_ladder.lua; for s in ${LAD:-a b c d e f g}; do run "lad-$s" TRF_LAD="$s"; done; entry=host_stubs.lua ;;
         ch) entry=host_charter.lua; for s in ${CH:-a b c d e f g h}; do run "ch-$s" TRF_CH="$s"; done; entry=host_stubs.lua ;;
         sc) entry=host_scar.lua; for s in ${SC:-a b c d e f g}; do run "sc-$s" TRF_SC="$s"; done; entry=host_stubs.lua ;;
-        cap) entry=host_captain.lua; for s in ${CAP:-a b c d e f g h}; do run "cap-$s" TRF_CAP="$s"; done; entry=host_stubs.lua ;;
+        cap) entry=host_captain.lua; for s in ${CAP:-a b c d e f g h i}; do run "cap-$s" TRF_CAP="$s"; done; entry=host_stubs.lua ;;
         dm) entry=host_demand.lua; for s in ${DM:-a b c d e f g h}; do run "dm-$s" TRF_DM="$s"; done; entry=host_stubs.lua ;;
         sh) entry=host_stash.lua; for s in ${SH:-a b c d e f g h}; do run "sh-$s" TRF_SH="$s"; done; entry=host_stubs.lua ;;
         fr) entry=host_freight.lua; for s in ${FR:-a b c d e f g h}; do run "fr-$s" TRF_FR="$s"; done; entry=host_stubs.lua ;;

@@ -305,6 +305,7 @@ also the unused hulls).
 | `base_radio` | `module=ui event=base_radio system_index=12 key=baseradiowar` | 1 |
 | `news` | `module=ui event=news topic=sweep slot=4 result=removed` | 1 |
 | `news` | `module=ui event=news topic=sweep variant=gather slot=4 mode=1 result=posted` | 1 |
+| `news` | `module=ui event=news topic=cap variant=hide slot=4 result=dropped reason=no_text` (an unseen entry without a text: the cap bulletin of a gone captain; marked seen) | 1 |
 
 ## shop (`trf_shop.script`; `TRF_ShopE`)
 
@@ -573,6 +574,8 @@ Wanted captains, step 1 (`design/captain-spec.md` 7). `slot` is the clan region 
 | `notoriety` | `module=captain event=notoriety slot=4 notoriety=1 reason=trader_killed` | 1 |
 | `notoriety` | `module=captain event=notoriety slot=4 notoriety=2 reason=raids` | 2 |
 | `hide` | `module=captain event=hide slot=4 tier=1 result=hiding` (or `tier=2 result=active`) | 1 |
+| `news` | `module=captain event=news slot=4 topic=cap variant=hide region=golkonda result=posted` (variant `hide`, `out`, `succ`; region the home system; captain-spec 5.2) | 1 |
+| `news` | `module=captain event=news slot=4 topic=cap variant=out region=golkonda result=none reason=chapter` (reason `chapter`, `region_off`, `no_news`) | 2 |
 | `move` | `module=captain event=move slot=6 from=moscowia to=egleon` | 2 |
 | `retire` | `module=captain event=retire slot=1 generation=1 age=201 life=90` (cap_life) | 1 |
 | `successor` | `module=captain event=successor slot=4 generation=2 name=9 previous=4 template=3 grudge=2 reason=boom` | 1 |

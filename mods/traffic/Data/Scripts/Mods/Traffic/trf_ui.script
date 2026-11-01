@@ -99,6 +99,10 @@ function TRF_UI_Text()
 		nsweepgather = "$3 gathers a fleet against pirates near $1",
 		nsweepfail = "$3 sweep near $1 beaten back",
 		nsweepwin = "$3 clears pirates near $1",
+		-- Wanted captains (captain-spec 5.2): regional cap/<variant>, $4 the captain's name (TRF_Cap_NameOf). EN only.
+		ncaphide = "$2 captain $4 has gone to ground near $1",
+		ncapout = "$2 captain $4 is back on the lanes near $1",
+		ncapsucc = "$4 now leads the $2 near $1",
 		-- v1 news (v1-spec 3.1): regional war/<variant>[_<f>], global feq/<variant>_<f>. Regional $1 home,
 		-- $2 clan, $3 faction of the variant; global $1 faction.
 		nwarsalv2 = "Pirates near $1 fly captured $3 fighters",
@@ -159,10 +163,10 @@ function TRF_UI_Find(k)
 	return nil;
 end;
 
--- Template key -> string with $1..$3 replaced. An unknown key returns the key itself (logged).
+-- Template key -> string with $1..$4 replaced. An unknown key returns the key itself (logged).
 -- cfg loc_mode 1 (trf_loc): the scaffold key "#TRF_<key>" instead, arguments dropped (CHECK E0.6; lines
 -- joined from several keys then show several keys).
-function TRF_Txt(key, a, b, c)
+function TRF_Txt(key, a, b, c, d)
 	if type(TRF_Loc_Mode) == "function" and TRF_Loc_Mode() == 1 and type(TRF_LocKeyOf) == "function" then
 		local lk = TRF_LocKeyOf(key);
 		if lk then return lk; end;
@@ -172,8 +176,8 @@ function TRF_Txt(key, a, b, c)
 		TRF_UiE("text", "key", key, "result", "unknown_key");
 		return tostring(key);
 	end;
-	local v = {a, b, c};
-	for i = 1, 3 do
+	local v = {a, b, c, d};
+	for i = 1, 4 do
 		if strfind(s, "$"..i, 1, 1) then
 			s = gsub(s, "%$"..i, TRF_UI_Esc(tostring(v[i] or "")));
 		end;
@@ -1120,7 +1124,8 @@ function TRF_NewsCheck(topic, slot)
 end;
 
 -- Display text of an entry (region topics name the home system, clan and sweep faction). A v1 variant with
--- a faction suffix ("salv2_3", "kill_1") names that faction: $3 in region topics, $1 in global ones.
+-- a faction suffix ("salv2_3", "kill_1") names that faction: $3 in region topics, $1 in global ones. Topic cap
+-- also names the region's captain ($4, trf_captain TRF_Cap_NameOf); nil when he has no name (gone).
 function TRF_UI_NewsText(topic, v, slot)
 	local base, vf = TRF_UI_NewsVar(v);
 	local key = TRF_UI_Key("n"..topic..base);
@@ -1139,7 +1144,12 @@ function TRF_UI_NewsText(topic, v, slot)
 		if type(w) == "table" then fac = w.fac; end;
 	end;
 	if fn then return TRF_Txt(key, home, TRF_UI_ClanName(slot), fn); end;
-	return TRF_Txt(key, home, TRF_UI_ClanName(slot), TRF_UI_FacName(fac));
+	local cn = nil;
+	if topic == "cap" then
+		cn = TRF_N("TRF_Cap_NameOf", slot);
+		if type(cn) ~= "string" then return nil; end;
+	end;
+	return TRF_Txt(key, home, TRF_UI_ClanName(slot), TRF_UI_FacName(fac), cn);
 end;
 
 -- 1 when entry a (slot sa, topic ta) is newer than b: leg desc, then global before regional, lower slot,
@@ -1151,7 +1161,8 @@ function TRF_UI_NewsNewer(a, sa, ta, b, sb, tb)
 	return ta < tb;
 end;
 
--- Newest unseen entry: text, entry (set entry.n = 0 once shown), or nil.
+-- Newest unseen entry: text, entry (set entry.n = 0 once shown), or nil. An entry without a text (a cap
+-- bulletin whose captain is gone) is marked seen and the next one is taken.
 function TRF_NewsNext()
 	if type(TRF) ~= "table" then return nil; end;
 	local be, bs, bt = nil, 0, "";
@@ -1174,7 +1185,13 @@ function TRF_NewsNext()
 	if not be then return nil; end;
 	local slot = nil;
 	if bs > 0 then slot = bs; end;
-	return TRF_UI_NewsText(bt, be.v, slot), be;
+	local text = TRF_UI_NewsText(bt, be.v, slot);
+	if not text then
+		be.n = 0;
+		TRF_UiE("news", "topic", bt, "variant", be.v, "slot", slot, "result", "dropped", "reason", "no_text");
+		return TRF_NewsNext();
+	end;
+	return text, be;
 end;
 
 -- Due call 12 s after entry (news_mode 1): the newest unseen entry once as "FTU bulletin: ...".

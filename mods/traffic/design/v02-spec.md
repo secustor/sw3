@@ -111,7 +111,7 @@ Save encoding (`mod-research/save-format.md` 3): a string key with a number valu
 | `rg` (6 fields) | 8 × 157 | 1,300 |
 | `clan` | 8 × 47 | 400 |
 | `short`, `shops` | 8 + 8 | 1,500 |
-| `news`, `newsx` (3 global + 8 × 4 regional topics) | 35 | 2,700 |
+| `news`, `newsx` (3 global + 8 × 5 regional topics: lane, trade, pir, sweep, and `cap` of captain-spec 5.2; v1's `war` in v1-spec 3.4) | 43 | 3,300 |
 | `live.tr` live (≤ 8, ~45 fields, `fs` ≤ 5, TT3 hold of 4 stacks) | 8 × 1,490 | 11,900 |
 | `live.tr` gone (≤ 8, stripped, 3.2) | 8 × 110 | 900 |
 | `live.rd` (2 open with `fs` ≤ 5 per ship, 4 ended stripped) | | 2,500 |
@@ -360,6 +360,7 @@ Team, glows, offsets, group `TRF_Resp_<n>` and cleanup as v01 10.3. Heat changes
 | `trade` | region | `boom`: a region system reaches `pro` 7; `bust`: after `boom`, the region's highest `pro` ≤ 2 |
 | `pir` | region | `mass`: Build-up entry; `back`: Bust entry |
 | `sweep` | region | `gather` (attempt 1 scheduled), `fail`, `win` |
+| `cap` | region | `hide`, `out`, `succ`: the wanted captain hides, returns, is succeeded (trf_captain, captain-spec 5.2; `$4` the captain's name) |
 
 One post per topic: a new variant replaces the old (`news[topic]`, `newsx[slot][topic]`, `n = 1` until shown). News uses regions instead of the design's 7 sectors until a sector table exists (decision 11.9). Output by cfg `news_mode`:
 - 1 (default) bulletin: the newest unseen entry is shown once as `OutputToScreenLog("FTU bulletin: "..text, 10)` 12 s after entry (after the arrival line), or inside the board box; `n = 0`. Texts in `TRF_UI_Text`: `nheat5` `FTU warns captains about the Wolves`, `nheat7` `FTU blacklists the Wolves`, `nhelp5` `FTU thanks the Wolves`, `nhelp15` `FTU names the Wolves friends of the union`, `nshort` `Shortages reported at trade stations`, `nlaneraid` `Raids on trade lanes rising near $1`, `nlanequiet` `Lanes quiet again near $1`, `ntradeboom` `Trade booming near $1`, `ntradebust` `Trade collapsing near $1`, `npirmass` `$2 massing near $1`, `npirback` `$2 driven back near $1`, `nsweepgather` `$3 gathers a fleet against pirates near $1`, `nsweepfail` `$3 sweep near $1 beaten back`, `nsweepwin` `$3 clears pirates near $1` ($1 home display name, $2 clan, $3 faction).

@@ -2061,7 +2061,7 @@ function T_V02_N()
 	TRF.std.help = 15; TRF.std.heat = 2;
 	TRF_NewsPost("heat", "5"); TRF_NewsPost("help", "15"); TRF_NewsPost("short", "on");
 	for sl = 1, TRF_RgMap().n do
-		foreachi({"lane", "trade", "pir", "sweep"}, function(i, t) TRF_NewsPost(t, "raid", %sl); end);
+		foreachi({"lane", "trade", "pir", "sweep", "cap"}, function(i, t) TRF_NewsPost(t, "raid", %sl); end);
 	end;
 	for k = 1, 5 do TRF.tsh[k] = 2; end;
 	-- 12 traders removed (8 gone records stay), then live traders up to the caps (band 2), records of 8.

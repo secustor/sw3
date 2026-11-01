@@ -14,7 +14,8 @@ Record names are the ones trf_ui.script's TRF_UI_NewsRec builds: "trf_<topic>_<v
 display name (map.script sys[home].dir), $2 clan name (trf_region TRF_Rg_Text clan<slot>), $3 / global $1
 the faction of a "_<f>" variant suffix (TRF_FacTeams order Vks, Kfni, Triada, Uss, Inoco). The sweep
 faction is runtime state (TRF_SweepInfo) and not in the record name, so the sweep headlines use the
-SWEEP_TEXT wording without it. Body = the nbull template ("FTU bulletin: $1") around the header.
+SWEEP_TEXT wording without it; the captain's name ($4 of the cap headlines) is runtime state too (the
+record's current captain), so the cap headlines use the CAP_TEXT wording without it. Body = the nbull template ("FTU bulletin: $1") around the header.
 
 Outputs (CRLF, ASCII):
   news/trf_news.xml   the <NewsRecord> fragment (tab indentation as in the game's file)
@@ -48,16 +49,21 @@ F = "F"   # variant placeholder: one record per faction index 1..5
 
 # Topics and variants. Global: trf_state heat/help (TRF_UI_NewsLevel thresholds), trf_shop short,
 # trf_convoy feq kill_<f>/lost_<f>. Regional: trf_ui lane/trade, trf_region pir/sweep, trf_clan war
-# salv<2|3>_<f>/car, trf_base war base/basex.
+# salv<2|3>_<f>/car, trf_base war base/basex, trf_captain cap hide/out/succ.
 GLOBAL = [("heat", ["5", "7"]), ("help", ["5", "15"]), ("short", ["on"]),
           ("feq", ["kill_" + F, "lost_" + F])]
 REGIONAL = [("lane", ["raid", "quiet"]), ("trade", ["boom", "bust"]), ("pir", ["mass", "back"]),
             ("sweep", ["gather", "fail", "win"]),
-            ("war", ["salv2_" + F, "salv3_" + F, "base", "basex", "car"])]
+            ("war", ["salv2_" + F, "salv3_" + F, "base", "basex", "car"]),
+            ("cap", ["hide", "out", "succ"])]
 # Sweep headlines without the faction ($3 is TRF_SweepInfo(slot).fac at display time).
 SWEEP_TEXT = {"nsweepgather": "Fleet gathers against pirates near $1",
               "nsweepfail": "Sweep against pirates near $1 beaten back",
               "nsweepwin": "Pirates cleared near $1"}
+# Captain headlines without the name ($4 is TRF_Cap_NameOf(slot) at display time).
+CAP_TEXT = {"ncaphide": "$2 captain has gone to ground near $1",
+            "ncapout": "$2 captain is back on the lanes near $1",
+            "ncapsucc": "New captain leads the $2 near $1"}
 
 
 def die(msg):
@@ -155,6 +161,8 @@ def records(ui, regions, facs):
             return k, SWEEP_TEXT[k]
         if k not in ui:
             die("TRF_UI_Text has no %s (topic %s variant %s)" % (k, topic, v))
+        if topic == "cap":
+            return k, CAP_TEXT[k]
         return k, ui[k]
 
     for topic, vs in GLOBAL:

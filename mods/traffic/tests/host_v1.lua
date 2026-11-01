@@ -2054,7 +2054,7 @@ function T_V1_N()
 	TRF.std.help = 15; TRF.std.heat = 2;
 	TRF_NewsPost("heat", "5"); TRF_NewsPost("help", "15"); TRF_NewsPost("short", "on");
 	for sl = 1, m.n do
-		foreachi({"lane", "trade", "pir", "sweep"}, function(i, t) TRF_NewsPost(t, "raid", %sl); end);
+		foreachi({"lane", "trade", "pir", "sweep", "cap"}, function(i, t) TRF_NewsPost(t, "raid", %sl); end);
 		TRF_NewsPost("war", "salv3_3", sl);
 		TRF.rg[sl].ct = 7; TRF.rg[sl].sr = 2;
 		TRF.clan[sl].sv = 9; TRF.clan[sl].sf = 5;

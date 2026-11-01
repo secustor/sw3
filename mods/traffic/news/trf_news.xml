@@ -259,6 +259,27 @@
 		<sound_name/>
 	</NewsRecord>
 	<NewsRecord>
+		<name>trf_r1_cap_hide</name>
+		<header>#TRF_N_r1_cap_hide_Name</header>
+		<text>#TRF_N_r1_cap_hide_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r1_cap_out</name>
+		<header>#TRF_N_r1_cap_out_Name</header>
+		<text>#TRF_N_r1_cap_out_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r1_cap_succ</name>
+		<header>#TRF_N_r1_cap_succ_Name</header>
+		<text>#TRF_N_r1_cap_succ_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
 		<name>trf_r2_lane_raid</name>
 		<header>#TRF_N_r2_lane_raid_Name</header>
 		<text>#TRF_N_r2_lane_raid_LDesc</text>
@@ -409,6 +430,27 @@
 		<name>trf_r2_war_car</name>
 		<header>#TRF_N_r2_war_car_Name</header>
 		<text>#TRF_N_r2_war_car_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r2_cap_hide</name>
+		<header>#TRF_N_r2_cap_hide_Name</header>
+		<text>#TRF_N_r2_cap_hide_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r2_cap_out</name>
+		<header>#TRF_N_r2_cap_out_Name</header>
+		<text>#TRF_N_r2_cap_out_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r2_cap_succ</name>
+		<header>#TRF_N_r2_cap_succ_Name</header>
+		<text>#TRF_N_r2_cap_succ_LDesc</text>
 		<image_name>Studio66</image_name>
 		<sound_name/>
 	</NewsRecord>
@@ -567,6 +609,27 @@
 		<sound_name/>
 	</NewsRecord>
 	<NewsRecord>
+		<name>trf_r3_cap_hide</name>
+		<header>#TRF_N_r3_cap_hide_Name</header>
+		<text>#TRF_N_r3_cap_hide_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r3_cap_out</name>
+		<header>#TRF_N_r3_cap_out_Name</header>
+		<text>#TRF_N_r3_cap_out_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r3_cap_succ</name>
+		<header>#TRF_N_r3_cap_succ_Name</header>
+		<text>#TRF_N_r3_cap_succ_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
 		<name>trf_r4_lane_raid</name>
 		<header>#TRF_N_r4_lane_raid_Name</header>
 		<text>#TRF_N_r4_lane_raid_LDesc</text>
@@ -717,6 +780,27 @@
 		<name>trf_r4_war_car</name>
 		<header>#TRF_N_r4_war_car_Name</header>
 		<text>#TRF_N_r4_war_car_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r4_cap_hide</name>
+		<header>#TRF_N_r4_cap_hide_Name</header>
+		<text>#TRF_N_r4_cap_hide_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r4_cap_out</name>
+		<header>#TRF_N_r4_cap_out_Name</header>
+		<text>#TRF_N_r4_cap_out_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r4_cap_succ</name>
+		<header>#TRF_N_r4_cap_succ_Name</header>
+		<text>#TRF_N_r4_cap_succ_LDesc</text>
 		<image_name>Studio66</image_name>
 		<sound_name/>
 	</NewsRecord>
@@ -875,6 +959,27 @@
 		<sound_name/>
 	</NewsRecord>
 	<NewsRecord>
+		<name>trf_r5_cap_hide</name>
+		<header>#TRF_N_r5_cap_hide_Name</header>
+		<text>#TRF_N_r5_cap_hide_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r5_cap_out</name>
+		<header>#TRF_N_r5_cap_out_Name</header>
+		<text>#TRF_N_r5_cap_out_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r5_cap_succ</name>
+		<header>#TRF_N_r5_cap_succ_Name</header>
+		<text>#TRF_N_r5_cap_succ_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
 		<name>trf_r6_lane_raid</name>
 		<header>#TRF_N_r6_lane_raid_Name</header>
 		<text>#TRF_N_r6_lane_raid_LDesc</text>
@@ -1025,6 +1130,27 @@
 		<name>trf_r6_war_car</name>
 		<header>#TRF_N_r6_war_car_Name</header>
 		<text>#TRF_N_r6_war_car_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r6_cap_hide</name>
+		<header>#TRF_N_r6_cap_hide_Name</header>
+		<text>#TRF_N_r6_cap_hide_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r6_cap_out</name>
+		<header>#TRF_N_r6_cap_out_Name</header>
+		<text>#TRF_N_r6_cap_out_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r6_cap_succ</name>
+		<header>#TRF_N_r6_cap_succ_Name</header>
+		<text>#TRF_N_r6_cap_succ_LDesc</text>
 		<image_name>Studio66</image_name>
 		<sound_name/>
 	</NewsRecord>
@@ -1183,6 +1309,27 @@
 		<sound_name/>
 	</NewsRecord>
 	<NewsRecord>
+		<name>trf_r7_cap_hide</name>
+		<header>#TRF_N_r7_cap_hide_Name</header>
+		<text>#TRF_N_r7_cap_hide_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r7_cap_out</name>
+		<header>#TRF_N_r7_cap_out_Name</header>
+		<text>#TRF_N_r7_cap_out_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r7_cap_succ</name>
+		<header>#TRF_N_r7_cap_succ_Name</header>
+		<text>#TRF_N_r7_cap_succ_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
 		<name>trf_r8_lane_raid</name>
 		<header>#TRF_N_r8_lane_raid_Name</header>
 		<text>#TRF_N_r8_lane_raid_LDesc</text>
@@ -1333,6 +1480,27 @@
 		<name>trf_r8_war_car</name>
 		<header>#TRF_N_r8_war_car_Name</header>
 		<text>#TRF_N_r8_war_car_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r8_cap_hide</name>
+		<header>#TRF_N_r8_cap_hide_Name</header>
+		<text>#TRF_N_r8_cap_hide_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r8_cap_out</name>
+		<header>#TRF_N_r8_cap_out_Name</header>
+		<text>#TRF_N_r8_cap_out_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r8_cap_succ</name>
+		<header>#TRF_N_r8_cap_succ_Name</header>
+		<text>#TRF_N_r8_cap_succ_LDesc</text>
 		<image_name>Studio66</image_name>
 		<sound_name/>
 	</NewsRecord>

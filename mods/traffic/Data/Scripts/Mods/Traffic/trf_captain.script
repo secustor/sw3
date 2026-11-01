@@ -522,10 +522,43 @@ function TRF_CapExcl(idx)
 	return nil;
 end;
 
--- Recovering record back to active once the return jump stamp passed.
-function TRF_CapWake(r)
-	if r.st == 2 and TRF_CapJ() >= r.due then r.st = 1; return 1; end;
+-- Recovering record back to active once the return jump stamp passed. With slot: the bulletin cap/out when the region
+-- is at tier 2+ (at tier 1 the region tick hides him at once and posts cap/hide).
+function TRF_CapWake(r, slot)
+	if r.st == 2 and TRF_CapJ() >= r.due then
+		r.st = 1;
+		if slot and TRF_CapRgTier(slot) >= 2 then TRF_CapNews(slot, "out"); end;
+		return 1;
+	end;
 	return nil;
+end;
+
+-- FTU bulletin of region slot, trf_ui topic cap (variant hide, out or succ; captain-spec 5.2): chapter >= 5 and the
+-- region not off by cfg cap_regions_off. One post per region: a newer variant replaces an unseen one. Returns 1 when
+-- posted.
+function TRF_CapNews(slot, v)
+	local why = nil;
+	if TRF_CapChapter() < TRF_CapK().chapter then why = "chapter";
+	elseif TRF_CapRegOff(slot) then why = "region_off";
+	elseif not TRF_N("TRF_NewsPost", "cap", v, slot) then why = "no_news";
+	end;
+	local h = TRF_CapHome(slot);
+	local rn = nil;
+	if h then rn = TRF_CapName(h); end;
+	if why then
+		TRF_CapDE("news", "slot", slot, "topic", "cap", "variant", v, "region", rn, "result", "none", "reason", why);
+		return nil;
+	end;
+	TRF_CapE("news", "slot", slot, "topic", "cap", "variant", v, "region", rn, "result", "posted");
+	return 1;
+end;
+
+-- Display name of the captain of region slot for the cap bulletin ($4 of trf_ui's TRF_UI_NewsText); nil without a
+-- living captain (no record, retired st 0, dead st 4), so a stale bulletin is dropped.
+function TRF_Cap_NameOf(slot)
+	local r = TRF_CapRec(slot);
+	if not r or type(r.nm) ~= "number" or r.st == 0 or r.st == 4 then return nil; end;
+	return TRF_CapNm(r);
 end;
 
 -- Why record r is lying low now: "low" (after the third escape, lj), "gap" (cap_gap_j after a claim), else nil.
@@ -691,7 +724,7 @@ function TRF_CapPlan()
 	local r = TRF_CapRec(slot);
 	if not r then return nil; end;
 	local nm = TRF_CapName(cur);
-	TRF_CapWake(r);
+	TRF_CapWake(r, slot);
 	-- Debug (cfg cap_at, CHECK EW4.1-EW4.7): the captain of this region is seen here.
 	local dbg = TRF_CapOpt("cap_at");
 	if type(dbg) == "string" and dbg ~= "" and strlower(dbg) == nm and r.st == 1 and not TRF_CapExcl(cur) then r.seen = cur; end;
@@ -1449,7 +1482,7 @@ function TRF_CapBoardList(idx)
 	for s = 1, TRF_CapK().rec_n do
 		local r = l[s];
 		if type(r) == "table" and not TRF_CapRegOff(s) then
-			TRF_CapWake(r);
+			TRF_CapWake(r, s);
 			local k = nil;
 			if r.st == 0 or r.st == 4 then k = "none";
 			elseif r.st == 1 or r.st == 2 then
@@ -1719,14 +1752,16 @@ function TRF_Cap_RegionTick(L)
 				or cv.st == "leave" or cv.st == "chase" or cv.st == "wait" or cv.st == "cwait");
 			if not live then
 				local tier = TRF_CapRgTier(s);
-				TRF_CapWake(r);
+				TRF_CapWake(r, s);
 				if r.st == 1 and tier <= 1 then
 					r.st = 3;
 					TRF_CapE("hide", "slot", s, "tier", tier, "result", "hiding");
+					TRF_CapNews(s, "hide");
 				elseif r.st == 3 and tier >= 2 then
 					r.st = 1;
 					r.seen = TRF_CapHome(s) or r.seen;
 					TRF_CapE("hide", "slot", s, "tier", tier, "result", "active");
+					TRF_CapNews(s, "out");
 				elseif r.st == 1 and not (type(r.ti) == "number" and L - r.ti <= K.tip_legs) and TRF_CapRoll(s, L, r.gen) < 50 then
 					-- A sold tip pins seen until it expires (the informant names the system of his next run).
 					TRF_CapMove(s, r, L);
@@ -1745,6 +1780,7 @@ function TRF_Cap_RegionTick(L)
 				if rg.ph == 1 and rg.pt == L and (r.st == 0 or (r.st == 4 and J >= (r.dj or 0) + T.cap_succ_j and not TRF_CapClaimAt(s, r.gen))) then
 					r = TRF_CapSucc(s, r, L, "boom");
 					if tier <= 1 then r.st = 3; end;
+					TRF_CapNews(s, "succ");
 				end;
 			end;
 			if (r.gr or 0) > 0 and L - (r.gr_t or L) >= K.gr_legs then r.gr = r.gr - 1; r.gr_t = L; end;

@@ -8,7 +8,7 @@
 -- arrival, f the death with a player claim (half inside a sweep window), without one, the 8.5 resolver (held,
 -- cancelled, paid), the map-wide gap, g the patrol dock (claim paid before any box, help, heat, fst, the prize gap,
 -- board lines, the informant offer, claim expiry), h load (orphan rule, no spawn), logbook reconcile, wind-down, dump,
--- repair, toggles and TRF.cap/claim/capch/capg at their bound.
+-- repair, toggles and TRF.cap/claim/capch/capg at their bound, i the FTU bulletins (cap/hide, cap/out, cap/succ).
 -- Loads host_station.lua up to its first scenario, as host_scar.lua does. No new native stub: CreateCarcass,
 -- CreatePilot, SetObjectLabel, GetCurHP/SetHP, CreateNavPoint (attach object), NewTrigger (HP, died, attack,
 -- f_object_inside), AddQuest/SetQuestState/RemoveQuest and ShowMsgBox exist in host_stubs.lua.
@@ -1050,6 +1050,139 @@ function T_CAP_H()
 	TRF_Cap_RegionTick(TRF.clock.legs);
 	HOST_Check(S_Logs(n0, "module=captain event=plan") + S_Logs(n0, "module=captain event=spawn") + S_Logs(n0, "module=captain event=board")
 		+ S_Logs(n0, "module=captain event=tick") == 0 and not CP_Ship(s) and not CP_Has(d.scr, TRF_Txt("caphead")), "cap_enable 0: the module is inert");
+end;
+
+-- i: FTU bulletins ---------------------------------------------------------------------------------
+
+-- Expected bulletin line of variant v for slot s (name nm): the trf_ui template filled by hand.
+function CP_Bull(v, s, nm)
+	local home, clan = TRF_UI_SysName(TRF_RgMap()[s].home), TRF_UI_ClanName(s);
+	if v == "hide" then return "FTU bulletin: "..clan.." captain "..nm.." has gone to ground near "..home; end;
+	if v == "out" then return "FTU bulletin: "..clan.." captain "..nm.." is back on the lanes near "..home; end;
+	return "FTU bulletin: "..nm.." now leads the "..clan.." near "..home;
+end;
+
+-- Cap entry of slot s (variant, unseen flag) or nil.
+function CP_News(s)
+	if type(TRF.newsx) == "table" and type(TRF.newsx[s]) == "table" then return TRF.newsx[s].cap; end;
+	return nil;
+end;
+
+-- Bulletin shown now (TRF_NewsShow): the screen and radio text since then, or "".
+function CP_Show()
+	local h = HOST();
+	local s0, m0 = getn(h.screen), getn(h.msgs);
+	if TRF_NewsShow() ~= 1 then return ""; end;
+	return CP_Scr(s0)..CP_Msgs(m0);
+end;
+
+function T_CAP_I()
+	local h = HOST();
+	CP_Begin("callipso", "9_1");
+	local s = CP_Slot("xb13");
+	local rn = TRF_CapName(TRF_RgMap()[s].home);
+	local L = TRF.clock.legs + 1;
+	TRF.news = {}; TRF.newsx = {};
+	-- Tier drop: hiding, cap/hide for this region only; the bulletin names the clan, the captain and the home.
+	TRF.clan[s].sc = 10;
+	local n0 = S_Mark();
+	TRF_Cap_RegionTick(L);
+	local e = CP_News(s);
+	HOST_Check(CP_R(s).st == 3 and e and e.v == "hide" and e.n == 1 and S_Logs(n0, "module=captain event=news ") == 1
+		and S_Logs(n0, "module=captain event=news slot="..s.." topic=cap variant=hide region="..rn.." result=posted") == 1
+		and S_Logs(n0, "module=ui event=news topic=cap variant=hide slot="..s.." mode=1 result=posted") == 1, "tier drop: cap/hide posted for the region");
+	local nm = TRF_CapNm(CP_R(s));
+	local want = CP_Bull("hide", s, nm);
+	local got = CP_Show();
+	HOST_Check(CP_Has(got, want) and CP_News(s).n == 0, "bulletin on entry: "..want.." ("..got..")");
+	HOST_Check(CP_Show() == "", "shown once");
+	-- Tier recovery: active, cap/out.
+	TRF.clan[s].sc = 30;
+	n0 = S_Mark();
+	TRF_Cap_RegionTick(L + 1);
+	e = CP_News(s);
+	HOST_Check(CP_R(s).st == 1 and e and e.v == "out" and e.n == 1 and S_Logs(n0, "event=news slot="..s.." topic=cap variant=out region="..rn.." result=posted") == 1,
+		"tier recovery: cap/out posted");
+	want = CP_Bull("out", s, nm);
+	got = CP_Show();
+	HOST_Check(CP_Has(got, want), "bulletin: "..want.." ("..got..")");
+	-- Hide, then out before the player saw either: one entry, only out is shown.
+	TRF.clan[s].sc = 10;
+	TRF_Cap_RegionTick(L + 2);
+	TRF.clan[s].sc = 30;
+	TRF_Cap_RegionTick(L + 3);
+	got = CP_Show();
+	HOST_Check(CP_News(s).v == "out" and CP_Has(got, CP_Bull("out", s, nm)) and not CP_Has(got, "gone to ground") and CP_Show() == "",
+		"hide then out unseen: only out shown");
+	-- Recovering -> active at T2 (TRF_CapWake): cap/out; at T1 the same tick hides him and posts cap/hide only.
+	TRF.newsx[s].cap = nil;
+	CP_R(s).st = 2; CP_R(s).due = TRF_Jumps();
+	n0 = S_Mark();
+	TRF_Cap_RegionTick(L + 4);
+	HOST_Check(CP_R(s).st == 1 and CP_News(s) and CP_News(s).v == "out" and S_Logs(n0, "variant=out region="..rn.." result=posted") == 1,
+		"recovering -> active at T2: cap/out");
+	TRF.newsx[s].cap = nil;
+	CP_R(s).st = 2; CP_R(s).due = TRF_Jumps();
+	TRF.clan[s].sc = 10;
+	n0 = S_Mark();
+	TRF_Cap_RegionTick(L + 5);
+	HOST_Check(CP_R(s).st == 3 and CP_News(s) and CP_News(s).v == "hide" and S_Logs(n0, "variant=out") == 0, "recovering at T1: woken and hidden, cap/hide only");
+	-- A wake outside the tick (the patrol board list) posts cap/out too.
+	TRF.clan[s].sc = 60;
+	TRF.newsx[s].cap = nil;
+	CP_R(s).st = 2; CP_R(s).due = TRF_Jumps();
+	TRF_CapBoardList(V_Idx("xb13"));
+	HOST_Check(CP_R(s).st == 1 and CP_News(s) and CP_News(s).v == "out", "wake at the board list: cap/out");
+	-- Successor at a Boom entry: cap/succ with the new name.
+	TRF.newsx[s].cap = nil;
+	CP_R(s).st = 0;
+	TRF.rg[s].ph = 1; TRF.rg[s].pt = L + 6;
+	n0 = S_Mark();
+	TRF_Cap_RegionTick(L + 6);
+	local r = CP_R(s);
+	HOST_Check(r.gen == 2 and r.nm ~= nm and CP_News(s) and CP_News(s).v == "succ"
+		and S_Logs(n0, "event=news slot="..s.." topic=cap variant=succ region="..rn.." result=posted") == 1, "successor: cap/succ posted");
+	want = CP_Bull("succ", s, TRF_CapNm(r));
+	got = CP_Show();
+	HOST_Check(CP_Has(got, want), "bulletin: "..want.." ("..got..")");
+	TRF.rg[s].ph = 2;
+	-- A bulletin whose captain is gone (dead) is dropped unseen; nothing is shown.
+	TRF.newsx[s].cap = nil;
+	TRF.clan[s].sc = 10;
+	TRF_Cap_RegionTick(L + 7);
+	r = CP_R(s);
+	HOST_Check(r.st == 3 and CP_News(s) and CP_News(s).v == "hide", "hide posted");
+	r.st = 4; r.dj = TRF_Jumps();
+	n0 = S_Mark();
+	HOST_Check(CP_Show() == "" and CP_News(s).n == 0 and S_Logs(n0, "module=ui event=news topic=cap variant=hide slot="..s.." result=dropped reason=no_text") == 1
+		and TRF_Cap_NameOf(s) == nil, "dead captain: his bulletin dropped, no line");
+	-- Gates: no post below chapter 5, none in a region off by cfg, none with news_mode 0.
+	r.st = 1;
+	TRF.newsx[s].cap = nil;
+	h.labels.CurrentQuest = "4_3";
+	n0 = S_Mark();
+	TRF_Cap_RegionTick(L + 8);
+	HOST_Check(CP_R(s).st == 3 and CP_News(s) == nil and S_Logs(n0, "event=news slot="..s.." topic=cap variant=hide region="..rn.." result=none reason=chapter") == 1,
+		"chapter 4: no bulletin");
+	h.labels.CurrentQuest = "9_1";
+	CP_R(s).st = 1;
+	h.cfg.cap_regions_off = "dosis, "..rn;
+	n0 = S_Mark();
+	TRF_Cap_RegionTick(L + 9);
+	HOST_Check(CP_R(s).st == 3 and CP_News(s) == nil and S_Logs(n0, "result=none reason=region_off") == 1, "region off by cfg cap_regions_off: no bulletin");
+	h.cfg.cap_regions_off = nil;
+	CP_R(s).st = 1;
+	h.cfg.news_mode = 0;
+	n0 = S_Mark();
+	TRF_Cap_RegionTick(L + 10);
+	HOST_Check(CP_R(s).st == 3 and CP_News(s) == nil and S_Logs(n0, "result=none reason=no_news") == 1, "news_mode 0: no bulletin");
+	h.cfg.news_mode = nil;
+	-- news_mode 2: the record of the generated News.xml block (tools/gen_news.py).
+	CP_R(s).st = 1;
+	h.cfg.news_mode = 2;
+	TRF_Cap_RegionTick(L + 11);
+	HOST_Check(CP_News(s) and CP_News(s).v == "hide" and CP_News(s).n == 0 and TRF_UI_NewsRec("cap", "hide", s) == "trf_r"..s.."_cap_hide", "news_mode 2: AddPost trf_r"..s.."_cap_hide");
+	h.cfg.news_mode = nil;
 end;
 
 -- Dispatch ---------------------------------------------------------------------------------
