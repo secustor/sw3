@@ -60,7 +60,7 @@ that fails 10 times is not called again in that process (`traffic: callback disa
 | `TRF_OnActivate()` | T2c 0x4b01c6, after `activate.script` | every location entry, after the location's flights exist | none | confirmed 2026-10-21 | traffic.script |
 | `TRF_OnLoad()` | T2d 0x4a4f21, after `functions.script` of a savegame load | every load | none | confirmed 2026-10-21 | traffic.script |
 | `TRF_OnTick(dt_game, dt_real)` | T4 0x4a074e, frame loop | every `tick_ms` of real time; held while the game has no location (`[[R]+0x19c] == 0`, `tick held (no location)`, 7 signatures `g_lsig`) | game and real seconds since the last call | confirmed 2026-10-21 (the hold added 2026-10-21, unverified) | traffic.script; never call `GetPlayerMotherShip` from it (`TRF_Ms`) |
-| `TRF_OnJobCard(id, ev)` | T4 0x4a074e, frame loop | queued by the mission card, at most one event per `tick_ms` tick, in order, while the tick is not held: `ev` `"open"` (shown), `"ok"`, `"cancel"` (the buttons, T7a/T7b), `"esc"` (the card left the window stack without an answer); a queue of 4, an overflow drops the oldest (`traffic: module=dll event=jobs_queue_drop`) | the card's `id`, the event | built 2026-11-01, unverified | traffic.script → `TRF_Pl_OnJobCard` (trf_plumb: `open` runs the box spec's `shown(a, "card")`, the answers `TRF_PlAnswer`, then the vanilla dock call) |
+| `TRF_OnJobCard(id, ev)` | T4 0x4a074e, frame loop | queued by the mission card, at most one event per `tick_ms` tick, in order, while the tick is not held: `ev` `"open"` (shown), `"ok"`, `"cancel"` (the buttons, T7a/T7b), `"esc"` (the card left the window stack without an answer); a queue of 4, an overflow drops the oldest (`traffic: module=dll event=jobs_queue_drop`) | the card's `id`, the event | built 2026-11-01, unverified | traffic.script → `TRF_Pl_OnJobCard` (trf_plumb: `open` runs the box spec's `shown(a, "card")`, the answers `TRF_PlAnswer`, then the vanilla dock call). The handlers run at the T4 site without `TRF_OnTick`'s `intick` mark on purpose: the box handlers and the vanilla dock call read the mothership (`TRF_Ms` → `GetPlayerMotherShip`), which the tick hold makes safe (a location exists) |
 | `_ERRORMESSAGE(msg)` | set at T1 (`traceback=1`) | every Lua error | message | built 2026-10-24, unverified | the C handler `n_errmsg`: `module=dll event=lua_error ... trace=... message=...` to `sw3tp.log`, then baselib's text to `_ALERT` (README "DLL keys and log lines") |
 
 Other DLL actions on the Lua state: T2a 0x5d19e4 appends `Mods/Traffic/traffic.script` to `sys_IncludeFileList`
@@ -74,8 +74,9 @@ With `jobs_card=1` (station-jobs-spec.md 4.3; built 2026-11-01, unverified): T7a
 Create) point to DLL handlers `fn(wrapper, button)` (cdecl, as the vanilla Cancel 0x5409f0) that queue `ok` / `cancel`
 and Close the card (0x484700, `eax` = wrapper); T8, the Hide slot 0x72a600 of the 0x1b vtable 0x72a5d8 (`e0 4a 55 00`),
 calls 0x554ae0 and marks the card hidden; T4 then walks the window stack (`[[R]+4]+0x8c`: head `+0`, count `+8`, node
-next `+4`, wrapper id `+0x24`) and, when no 0x1b window is left, closes the card and queues `esc` if no answer came
-(a window pushed over the card also hides it; it stays open).
+next `+4`, wrapper id `+0x24`) after a hide or an answer, and once per `tick_ms` tick while a card is open, and, when no
+0x1b window is left, closes the card and queues `esc` if no answer came (a window pushed over the card also hides it; it
+stays open). The patches need `site_t4=1`: with it 0 they are skipped and the native answers `nil, "sig"`.
 
 ## Ini keys (`sw3tp.ini [traffic]`)
 

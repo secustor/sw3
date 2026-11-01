@@ -525,15 +525,14 @@ end;
 
 -- Recovering record back to active once the return jump stamp passed. With slot: the bulletin cap/out when the region
 -- is at tier 2+ (at tier 1 the region tick hides him at once and posts cap/hide) and he is not lying low (TRF_CapLow:
--- the region tick posts it when lj ends; none after the claim gap). A post clears the passed lj, so the tick does not
--- post again.
+-- the region tick posts it when lj ends; none after the claim gap). A passed lj ends at the wake (also at an entry or
+-- board wake between region ticks), so the tick posts nothing for it later.
 function TRF_CapWake(r, slot)
-	if r.st == 2 and TRF_CapJ() >= r.due then
+	local J = TRF_CapJ();
+	if r.st == 2 and J >= r.due then
 		r.st = 1;
-		if slot and TRF_CapRgTier(slot) >= 2 and not TRF_CapLow(r) then
-			r.lj = 0;
-			TRF_CapNews(slot, "out");
-		end;
+		if (r.lj or 0) > 0 and J >= r.lj then r.lj = 0; end;
+		if slot and TRF_CapRgTier(slot) >= 2 and not TRF_CapLow(r) then TRF_CapNews(slot, "out"); end;
 		return 1;
 	end;
 	return nil;

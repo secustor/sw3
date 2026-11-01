@@ -1587,6 +1587,8 @@ def c_k7(ctx):
                 for s in rs[i + 1:]:
                     if s.is_("plumb", "dock", kind="trade") or s.is_("state", "enter"):
                         break
+                    if s.is_("plumb", "jobs_card", result="dropped"):
+                        break   # a card open at the load (TRF_PlCardDrop): its late event is stale by design, not K7
                     if s.is_("plumb", "jobs_card", result="stale"):
                         res.fails.append("%s: a card event after the load (stale card)" % s.short())
                 last = None

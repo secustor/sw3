@@ -467,8 +467,9 @@ static int __cdecl n_carcasses(lua_State *L)
  * T7a/T7b: the OK and Cancel handler immediates of Create (0x54098f, 0x5409a8) point to trf_card_ok / trf_card_cancel,
  * cdecl fn(wrapper, button) as the vanilla Cancel 0x5409f0: Close 0x484700 (eax = wrapper) and queue "ok" / "cancel".
  * T8: the Hide slot 0x72a600 of the 0x1b vtable 0x72a5d8 calls 0x554ae0 and notes the hide. Hide also runs when a
- * window with vt+0x30 != 0 is pushed over the card (Push 0x4848d1), so T4 decides: when no 0x1b window is left on the
- * stack (list +0 head, +8 count, node +4 next, wrapper +0x24 id; 0x484b60, 0x5f3870) the card is closed, and without
+ * window with vt+0x30 != 0 is pushed over the card (Push 0x4848d1), so T4 decides (after a Hide or an answer, and once
+ * per tick while a card is open): when no 0x1b window is left on the stack (list +0 head, +8 count, node +4 next,
+ * wrapper +0x24 id; 0x484b60, 0x5f3870) the card is closed, and without
  * an answer it queues "esc". T4 delivers one queued event per tick to the Lua global TRF_OnJobCard(id, ev), never
  * from GUI code (spec J4). why of nil, why: "off" (ini jobs_card 0), "sig" (g_jsig), "arg", "ui" (TRF_UiState bit 1
  * movie or 4 dialog, or unknown), "busy" (a card or a queued answer, or a 0x1b window on the stack), "push". */
@@ -610,6 +611,7 @@ static void jc_answer(unsigned w, const char *ev)       /* T7a/T7b: queue first,
     struct tb b;
     if (g_jc_open && !g_jc_ans) {
         g_jc_ans = 1;
+        g_jc_hid = 1;                             /* T4 re-checks the stack even when Close reaches no Hide through T8 */
         jq_push(g_jc_id, ev);
         tb_begin(&b, "module=dll event=jobs_card action=answer id="); tb_s(&b, g_jc_id); tb_s(&b, " ev="); tb_s(&b, ev); tb_end(&b);
     }
@@ -624,11 +626,13 @@ static int __thiscall trf_card_hide(unsigned self, int a)
     return r;
 }
 
-/* T4, every frame: a hidden card that left the stack is closed; without an answer it was Esc */
-static void jc_frame(void)
+/* T4: a card that left the window stack is closed; without an answer it was Esc. Every frame after a Hide (T8) or an
+ * answer; force 1 once per tick while a card is open, so a card removed without a Hide through the 0x1b slot (a stack
+ * pop by another window's Close while the card was already hidden under it) does not leave the native "busy". */
+static void jc_frame(int force)
 {
     struct tb b;
-    if (!g_jc_open || !g_jc_hid) return;
+    if (!g_jc_open || (!g_jc_hid && !force)) return;
     g_jc_hid = 0;
     rd_reset();
     if (jc_has(jc_stack(), JC_ID) == 1) return;   /* covered by another window, still open */
@@ -1092,19 +1096,20 @@ static void __stdcall trf_tick(void)              /* T4, after 0x49d4a0, once pe
         float dt = *(float *)(tm + 0x28);
         if (dt > 0.0f && dt < 60.0f) g_game_time += dt;
     }
-    jc_frame();
+    jc_frame(0);
     if (!L) return;
     g_err_busy = 0;                               /* top level: no _ERRORMESSAGE call is active */
     if (g_guard_on) stack_guard(L);
     if (g_trig_on) ts_frame_end();
     if (g_err_dup && real_sec() - g_err_t0 >= ERR_WINDOW) err_flush();
-    if (g_cb[CB_TICK].off && !g_jq_n) return;
+    if (g_cb[CB_TICK].off && !g_jq_n && !g_jc_open) return;
     QueryPerformanceCounter(&now);
     if (!g_tick_qpc.QuadPart) { g_tick_qpc = now; g_tick_game = g_game_time; return; }
     dt_real = (double)(now.QuadPart - g_tick_qpc.QuadPart) / (double)g_qpf.QuadPart;
     if (dt_real * 1000.0 < (double)g_tick_ms) return;
     dt_game = g_game_time - g_tick_game;
     g_tick_qpc = now; g_tick_game = g_game_time;
+    jc_frame(1);
     if (g_loc_ok && !rdp(rdp(root, 0), 0x19c)) {   /* no location: hold; the held time is dropped */
         g_held_n++;
         if (!g_held && g_log_on) { struct tb b; tb_begin(&b, "tick held (no location) n="); tb_u(&b, g_held_n); tb_end(&b); }
@@ -1319,7 +1324,8 @@ void trf_init(const char *ini)
             tb_begin(&b, "module=dll event=jobs_sig_mismatch what=\""); tb_q(&b, g_jsig[e].what, 400, 0); tb_s(&b, "\" at=");
             tb_x(&b, bad); tb_end(&b);
         } else g_jc_ok = 1;
-        if (g_jc_on && g_jc_ok)                   /* T7a, T7b handler immediates, T8 Hide slot (spec 4.3) */
+        if (g_jc_on && g_jc_ok && g_site_on[S_T4])   /* T7a, T7b handler immediates, T8 Hide slot (spec 4.3); the card needs T4
+                                                      * (stack walk, event delivery): site_t4=0 leaves it off, the native answers "sig" */
             g_jc_patched = patch_dword(JC_T7A, (unsigned)trf_card_ok) && patch_dword(JC_T7B, (unsigned)trf_card_cancel)
                 && patch_dword(JC_T8, (unsigned)trf_card_hide);
         tb_begin(&b, "module=dll event=jobs_init card="); tb_i(&b, g_jc_on); tb_s(&b, g_jc_ok ? " sig=ok" : " sig=bad");
