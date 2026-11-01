@@ -12,7 +12,8 @@
 #      main display size at each game start ([display] in sw3tp.ini) and sets mtld3d's render.scale
 #      so the GPU renders about as many pixels as at 1680x1050. Installs the proxy with the trackpad
 #      features off if it is missing.
-#      Also writes [stability] with the defaults (render skipped while the quad batch is freed after a device loss).
+#      Also writes [stability] with the defaults (render skipped while the quad batch is freed after a device loss)
+#      and [view] with the defaults (frustum cull on, size cull off; README "View: frustum and size cull").
 # Backups and a manifest go to <game dir>/sw3-performance-backup/; uninstall.sh restores them.
 # Env: WINE_ARCHIVE=<path> uses a local copy of the release archive (still SHA-256 checked).
 #      HEROIC_CHECK=0 skips the "Heroic is running" check (only for tests with a fake HOME).
@@ -228,6 +229,11 @@ else
     printf '[stability]\r\nenabled=1\r\nrender_lost_guard=1\r\nlog=1\r\n' >> "$ini.sw3-new"
     mv -f "$ini.sw3-new" "$ini"
     say "stability: sw3tp.ini [stability] enabled=1 render_lost_guard=1"
+    # [view] (mesh pass cull, README "View: frustum and size cull"): written with the defaults.
+    awk '{l=$0; sub(/\r$/,"",l)} l=="[view]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$ini" > "$ini.sw3-new"
+    printf '[view]\r\nenabled=1\r\nfrustum_cull=1\r\nsize_cull=0\r\nmin_pixels=2\r\nkeep_radius=10\r\nlog=1\r\n' >> "$ini.sw3-new"
+    mv -f "$ini.sw3-new" "$ini"
+    say "view: sw3tp.ini [view] enabled=1 frustum_cull=1 size_cull=0"
     # render_scale: the DLL sets MTLD3D_CONFIG=render.scale=... for the game process (it wins over
     # mtld3d.conf); auto keeps about 1680x1050 pixels of GPU work at any display size.
 fi

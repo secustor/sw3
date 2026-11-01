@@ -87,6 +87,13 @@ static void put_f(struct buf *b, double v)   /* 6 decimals */
     put_u(b, ip); put_s(b, ".");
     for (unsigned d = 100000; d && b->n < (int)sizeof(b->s) - 2; d /= 10) b->s[b->n++] = (char)('0' + fp / d % 10);
 }
+void sw3tp_fmt_f(char *dst, int cap, double v)
+{
+    struct buf b; int i;
+    b.n = 0; put_f(&b, v);
+    for (i = 0; i < b.n && i < cap - 1; i++) dst[i] = b.s[i];
+    if (cap > 0) dst[i] = 0;
+}
 static void put_kv_i(struct buf *b, const char *k, int v) { put_s(b, k); put_i(b, v); }
 static void put_kv_f(struct buf *b, const char *k, double v) { put_s(b, k); put_f(b, v); }
 static void log_buf(struct buf *b)
@@ -1276,6 +1283,7 @@ static int patch_rel(unsigned site, BYTE op, BYTE *target)
     FlushInstructionCache(GetCurrentProcess(), (void *)site, 5);
     return 1;
 }
+int sw3tp_patch_rel(unsigned site, unsigned char op, void *target) { return patch_rel(site, op, (BYTE *)target); }
 
 static void log_attach(const char *hook, unsigned site, unsigned orig, BYTE *stub, const char *how)
 {
@@ -1331,18 +1339,19 @@ static int hook_iat_di8(void)
 }
 
 /* "1.5", "-0.25", "25" */
-static float ini_float(const char *sec, const char *key, float def)
+float sw3tp_ini_float(const char *ini, const char *sec, const char *key, float def)
 {
     char t[32], *c = t;
     float v = 0.0f, sc = 1.0f, sign = 1.0f;
     int any = 0;
-    GetPrivateProfileStringA(sec, key, "", t, sizeof(t), g_ini);
+    GetPrivateProfileStringA(sec, key, "", t, sizeof(t), ini);
     while (*c == ' ') c++;
     if (*c == '-') { sign = -1.0f; c++; } else if (*c == '+') c++;
     for (; *c >= '0' && *c <= '9'; c++, any = 1) v = v * 10.0f + (float)(*c - '0');
     if (*c == '.') for (c++; *c >= '0' && *c <= '9'; c++, any = 1) { sc /= 10.0f; v += sc * (float)(*c - '0'); }
     return any ? sign * v : def;
 }
+static float ini_float(const char *sec, const char *key, float def) { return sw3tp_ini_float(g_ini, sec, key, def); }
 
 static int ini_int(const char *sec, const char *key, int def) { return (int)GetPrivateProfileIntA(sec, key, def, g_ini); }
 
@@ -1480,6 +1489,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID res)
     trf_init(ini);   /* [traffic] is independent of [sw3tp] enabled and of the site A check */
     dsp_init(ini);   /* [display]: also independent; runs before the game reads default.cfg */
     stb_init(ini);   /* [stability]: render lost-device guard, also independent */
+    view_init(ini);  /* [view]: frustum and size cull in the mesh pass, also independent */
     if (!GetPrivateProfileIntA("sw3tp", "enabled", 1, ini)) { log_s("attach disabled enabled=0"); return TRUE; }
     read_config();
     if (!site_a_ok()) { log_s("attach mismatch"); return TRUE; }

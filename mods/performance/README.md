@@ -70,6 +70,42 @@ The proxy checks the bytes at ten addresses of `sw3cw.exe` (GOG v1.12) first. If
 - `stability: render skipped (batch freed) n=<count>`: the first render skipped in an episode; `n` counts all skipped renders since the start.
 - `stability: render resumed skipped=<k> episodes=<e>`: the first render after an episode; `k` renders were skipped in it.
 
+## View: frustum and size cull
+
+**What.** The sw3tp proxy puts a call into the game's per-frame mesh pass (`0x40c9dc` in `0x40c890`), which handles every mesh: stations, portals, asteroids, ships. The call runs for each mesh after the engine has computed its distance `d` and world radius `r`, and before the distance fade. It can skip the mesh for this frame in the same way as the game's own far-distance cull:
+- **Frustum cull** (`frustum_cull`, on by default). The pass already tests each mesh's sphere against the view frustum, but then throws the result away, so meshes behind the camera are still drawn. With `frustum_cull=1` a mesh that the engine's own test puts outside the view is skipped.
+- **Size cull** (`size_cull`, off by default). A mesh is skipped when its projected diameter `r * m11 * H / d` in pixels is below `min_pixels`. `m11` is the projection scale (1 at FOV 90) and `H` is the back-buffer height; both are read live each frame. A mesh with `r >= keep_radius` is never size-culled. With the default 10, the portal rings (r 11.8 and 15) and the station cores always stay.
+
+The patch never changes a mesh's detection flag or its fade alpha. With a raised far plane (`mods/infinite_view`), the gain is largest in dense systems. A host estimate puts the frustum cull at about 45 % fewer meshes; the size cull adds 2-9 % in 2000x2000 systems and 9-23 % in x244. Analysis: `mods/traffic/design/mod-research/size-cull.md`.
+
+The proxy checks the bytes at 14 addresses of `sw3cw.exe` (GOG v1.12) first. If any of them differ, it logs one line and installs nothing; the other hooks are not affected.
+
+**`[view]` keys** (in `sw3tp.ini`; independent of `[sw3tp] enabled`; a missing section means the defaults):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `1` | `0`: the module does nothing |
+| `frustum_cull` | `1` | skip meshes outside the engine's own frustum test |
+| `size_cull` | `0` | skip meshes smaller than `min_pixels` on screen |
+| `min_pixels` | `2.0` | projected diameter in pixels below which `size_cull` skips a mesh (0.5..16) |
+| `keep_radius` | `10` | world radius from which a mesh is never size-culled |
+| `log` | `1` | `1`: attach line and one stats line every 5 s; `2`: also the first 20 culled meshes; `0`: only a mismatch or an install failure |
+
+With `frustum_cull=0` and `size_cull=0` the hook only counts meshes and writes the stats line (the A/B baseline); with `log=0` as well, nothing is installed. `install.sh` writes the section with these defaults; `uninstall.sh` removes it. The traffic test install (`mods/traffic/install-test.sh`) takes `VIEW`, `FRUSTUM_CULL`, `SIZE_CULL`, `MIN_PIXELS` and `KEEP_RADIUS` from the environment.
+
+**Log lines** (`sw3tp.log`):
+- `view: attach ok hook=view patch=0x40c9dc stub=0x... frustum_cull=1 size_cull=0 min_pixels=2.000000 keep_radius=10.000000 log=1 sigs=14`: the hook is installed (at game start).
+- `view: attach mismatch hook=view at 0x... (<what>), not installed`: a different exe; nothing was patched.
+- `view: fps=<f> meshes=<n> frustum=<n> size=<n> px_min=<min_pixels> keep=<keep_radius> H=<h> m11=<m11>`: every 5 s (wall clock). The counts are from the last complete frame: `meshes` reached the check, `frustum` and `size` were skipped. `fps` is the engine's own measured FPS (the value it compares with `minFPSforQ`; `n/a` before the graphics object exists).
+- `view: cull n=<k> why=frustum|size mesh=0x... r=<r> d=<d> px=<px>` (`log=2`): the first 20 culled meshes after start.
+
+**A/B check** (game closed between installs; same save, same spot, camera still or the game paused):
+1. Baseline: install with `FRUSTUM_CULL=0` (nothing is culled, the stats line still comes), start, load the save in x244, wait 10 s, note `fps=` and `meshes=` from the last `view:` line. Repeat in ND, then Proserpina. `VIEW=0` (no hook at all) is the stricter baseline; it writes no `view:` line, so read the FPS from the Metal HUD (`--hud`) or `gr_showfps`.
+2. Install with `VIEW=1` (the defaults: frustum cull) and repeat. Then `SIZE_CULL=1` (and `MIN_PIXELS=4` for the aggressive setting) and repeat. Compare `fps=` and the `frustum=`/`size=` counts.
+3. Look for meshes that disappear: stations and portals across the map, asteroid fields at their edge, objects at the screen edges while turning the camera.
+
+**Risk.** A mesh may depend on another mesh's flag to be drawn (a parent and its child). The asteroid models are a small wrapper mesh that references the real model. If an asteroid or a station part disappears or pops at the screen edge, set `size_cull=0` or `frustum_cull=0` and report the spot.
+
 ## Why
 
 - **Rosetta 2 is ending.** macOS 27 is the last release with full Rosetta 2. Afterwards Apple keeps it only for "older, unmaintained gaming titles", and it is unclear whether that covers Wine. This build is native arm64: Wine, mtld3d's macOS half and the compatdb are arm64, and only `sw3cw.exe` is emulated, as i386 code through FEX in WoW64.

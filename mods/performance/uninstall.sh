@@ -51,6 +51,10 @@ if [ -f "$ini" ] && tr -d '\r' < "$ini" | grep -qxF '[stability]'; then
     awk '{l=$0; sub(/\r$/,"",l)} l=="[stability]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$ini" > "$ini.sw3-new"
     mv -f "$ini.sw3-new" "$ini"; say "removed [stability] from sw3tp.ini"
 fi
+if [ -f "$ini" ] && tr -d '\r' < "$ini" | grep -qxF '[view]'; then
+    awk '{l=$0; sub(/\r$/,"",l)} l=="[view]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$ini" > "$ini.sw3-new"
+    mv -f "$ini.sw3-new" "$ini"; say "removed [view] from sw3tp.ini"
+fi
 orig=$(find "$game" -mindepth 1 -maxdepth 1 -type f -iname default.cfg.sw3tp-orig | head -1)
 if [ -n "$orig" ]; then
     cfgf=${orig%.sw3tp-orig}

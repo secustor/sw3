@@ -64,6 +64,8 @@
 # TRAFFIC=1, else 0: the TRF_Carcasses native, pe/API.md), TRIG_LOG=0|1 (default 1 with LOG=2, else 0: the
 # trigger-fire sampler, README "DLL keys and log lines") (sw3tp.ini [traffic]).
 # STABILITY=0|1, RENDER_LOST_GUARD=0|1 (default 1) (sw3tp.ini [stability], mods/performance).
+# VIEW=0|1, FRUSTUM_CULL=0|1 (default 1), SIZE_CULL=0|1 (default 0), MIN_PIXELS (default 2), KEEP_RADIUS (default 10)
+# (sw3tp.ini [view], mods/performance README "View: frustum and size cull").
 # The trackpad install-test.sh rewrites sw3tp.ini; run this script again after it.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd); . "$here/env.sh"
@@ -221,6 +223,11 @@ mv -f "$tmp" "$ini"
 awk '{l=$0; sub(/\r$/,"",l)} l=="[stability]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$ini" > "$tmp"
 printf '[stability]\r\nenabled=%s\r\nrender_lost_guard=%s\r\nlog=1\r\n' "${STABILITY:-1}" "${RENDER_LOST_GUARD:-1}" >> "$tmp"
 mv -f "$tmp" "$ini"
+# [view] (mods/performance/pe/view.c, same zlib1.dll): VIEW, FRUSTUM_CULL, SIZE_CULL, MIN_PIXELS, KEEP_RADIUS.
+awk '{l=$0; sub(/\r$/,"",l)} l=="[view]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$ini" > "$tmp"
+printf '[view]\r\nenabled=%s\r\nfrustum_cull=%s\r\nsize_cull=%s\r\nmin_pixels=%s\r\nkeep_radius=%s\r\nlog=1\r\n' \
+    "${VIEW:-1}" "${FRUSTUM_CULL:-1}" "${SIZE_CULL:-0}" "${MIN_PIXELS:-2}" "${KEEP_RADIUS:-10}" >> "$tmp"
+mv -f "$tmp" "$ini"
 
 xattr -c "$COPY/zlib1.dll" "$ini" 2>/dev/null || true
 find "$SCRIPTS_DST" -type f -exec xattr -c {} \; 2>/dev/null || true
@@ -236,3 +243,4 @@ echo "loc: $locd/trf_en.loc (loc_mode $([ "${LOC:-0}" = 1 ] && echo 1 || echo 0)
 [ ! -f "$newsx.trf-orig" ] || echo "news: $(grep -c '<name>trf_' "$newsx") trf_ records in $newsx (vanilla in News.xml.trf-orig)"
 echo "sw3tp.ini [traffic]: $(awk '{sub(/\r$/,"")} /^\[/{p=($0=="[traffic]")} p&&!/^\[/{printf "%s ",$0}' "$ini")"
 echo "sw3tp.ini [stability]: $(awk '{sub(/\r$/,"")} /^\[/{p=($0=="[stability]")} p&&!/^\[/{printf "%s ",$0}' "$ini")"
+echo "sw3tp.ini [view]: $(awk '{sub(/\r$/,"")} /^\[/{p=($0=="[view]")} p&&!/^\[/{printf "%s ",$0}' "$ini")"

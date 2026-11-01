@@ -163,7 +163,7 @@ static void __stdcall stb_on_resume(void)
     g_ep = 0;
 }
 
-static const unsigned char *stb_rd_mem(unsigned a, unsigned n)
+const unsigned char *stb_rd_mem(unsigned a, unsigned n)   /* also used by view.c */
 {
     MEMORY_BASIC_INFORMATION mi;
     if (!VirtualQuery((void *)a, &mi, sizeof(mi)) || mi.State != MEM_COMMIT || (mi.Protect & (PAGE_NOACCESS | PAGE_GUARD))) return 0;
