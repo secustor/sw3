@@ -6,7 +6,7 @@ Target GOG 1.12 `sw3cw.exe`. Static reading of `.work/exe.asm`, exe bytes (`.wor
 
 Paths under `.work/` (`exe.asm`, `scripts/rd.py`, `research/sizecull/*.py`) are local scratch files, not in the repository; the disassembly is `llvm-objdump -d` of the exe.
 
-Built 2026-11-01 as `[view]` in `mods/performance/pe/view.c` (README "View: frustum and size cull"), with changes from section 4 by user decision: `frustum_cull=1` by default, `size_cull=0` by default, no `min_radius` and no `ab_key`, a stats line every 5 s with `log=1`. The C rule is cdecl `view_cull(mesh, d, r)`; the stub saves every register and the flags (`pushfd`/`pushad`, 52 bytes). Frames are told apart by the engine frame counter 0x7b75b0. 14 signatures (host test `mods/performance/tests/view_host.c`). Not run in game yet.
+Built 2026-11-01 as `[view]` in `mods/performance/pe/view.c` (README "View: frustum and size cull"), with changes from section 4 by user decision: `frustum_cull=1` by default, `size_cull=0` by default, no `min_radius` and no `ab_key`, a stats line every 5 s with `log=1`. The C rule is cdecl `view_cull(mesh, d, r)`; the stub saves every register and the flags (`pushfd`/`pushad`, 52 bytes). Frames are told apart by the engine frame counter 0x7b75b0. 14 signatures (host test `mods/performance/tests/view_host.c`). In game 2026-11-01 (Kruger, user run): attach ok, 900 meshes in the scene, 600-705 culled by the frustum rule per frame, engine FPS reading 200-228, frame rate about three times the baseline, nothing missing or popping [V]. The size cull is still untested in game.
 
 ## Summary
 

@@ -104,7 +104,9 @@ With `frustum_cull=0` and `size_cull=0` the hook only counts meshes and writes t
 2. Install with `VIEW=1` (the defaults: frustum cull) and repeat. Then `SIZE_CULL=1` (and `MIN_PIXELS=4` for the aggressive setting) and repeat. Compare `fps=` and the `frustum=`/`size=` counts.
 3. Look for meshes that disappear: stations and portals across the map, asteroid fields at their edge, objects at the screen edges while turning the camera. With `frustum_cull=1` also check what else reads the flag the cull clears (`+0x200` gates the camera ray tests and the lights loop, `size-cull.md` 1.12): mouse-over and click on near asteroids and ships, the sun glare hidden behind a near asteroid, the target HUD, ships beyond 1000 detected by allies.
 
-**Risk.** Neither rule has run in the game yet. A mesh may depend on another mesh's flag to be drawn (a parent and its child). The asteroid models are a small wrapper mesh that references the real model. If an asteroid or a station part disappears or pops at the screen edge, set `size_cull=0` or `frustum_cull=0` and report the spot.
+**In-game result (2026-11-01, Kruger, 1728x1117).** Frustum cull on: `meshes=900`, 600-705 culled per frame (about 75 %), engine FPS reading 200-228, frame rate about three times the baseline by the HUD counter, no script errors; stations, portals and the field edge look normal, nothing pops in at the screen edge and no asteroid lost its body. The size cull has not run in the game.
+
+**Risk.** A mesh may depend on another mesh's flag to be drawn (a parent and its child). The asteroid models are a small wrapper mesh that references the real model. If an asteroid or a station part disappears or pops at the screen edge, set `size_cull=0` or `frustum_cull=0` and report the spot.
 
 ## Why
 
