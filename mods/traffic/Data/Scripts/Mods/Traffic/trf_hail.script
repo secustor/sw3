@@ -598,9 +598,9 @@ function TRF_HlHelpStep(id)
 	if not TRF_Due(TRF_HlK().hstep, "TRF_HlHelpStep", id) then TRF_HlHelpSettle(id, nil, "due"); end;
 end;
 
--- The fight of watch w on trader id ended alive (how end: no hostile near the lead; left: docked, exited, escaped):
--- paid when the player engaged (help_engage 1, w.e) or, with help_engage 0, scored a counted kill (w.k); else unpaid
--- far (never engaged) or no_fire (help_engage 0, no kill).
+-- The fight of watch w on trader id ended alive (how end: no hostile near the lead; left: docked, exited, escaped;
+-- logged as reason): paid when the player engaged (help_engage 1, w.e) or, with help_engage 0, scored a counted
+-- kill (w.k); else unpaid far (never engaged) or no_fire (help_engage 0, no kill).
 function TRF_HlHelpDone(id, w, how)
 	if TRF_HlEngage() == 1 then
 		if w.e == 1 then return TRF_HlHelpSettle(id, 1, how); end;
@@ -648,7 +648,7 @@ function TRF_HlHelpSettle(id, pay, why)
 	if r.st ~= "gone" then r.res = 1; end;
 	TRF_HlSay(TRF_Txt("hlppaid", TRF_HlName(r), format("%d", n)), id);
 	TRF_HlStat("hl_help_paid");
-	TRF_HlE("help", "trader_id", id, "pay", p, "credits", n, "kill_count", k, "engaged", e, "help", d, "via", "watch", "result", "paid");
+	TRF_HlE("help", "trader_id", id, "pay", p, "credits", n, "kill_count", k, "engaged", e, "help", d, "via", "watch", "result", "paid", "reason", why);
 	return 1;
 end;
 
@@ -656,16 +656,20 @@ end;
 -- settled; paid = the credits of TRF_Rd_Pay (nil: not paid), how = the raid end. 1 when settled. An offer owned by
 -- the help watch (accepted without a spawned raid) stays with the watch unless the raid paid it.
 function TRF_HlHelpEnd(id, n, paid, how)
-	local r = TRF_HlRec(id);
-	if not r or r.hlp ~= 2 then return nil; end;
+	-- A gone record too (docked, exited or escaped before the raid end: hlp stripped): its watch ends here when
+	-- the raid paid, or TRF_HlHelpStep would pay it again (left).
+	local r = TRF_HlRecAny(id);
 	local W = TRF_HlHw();
-	if W and type(W[id]) == "table" then
+	local w = nil;
+	if W and type(id) == "number" and type(W[id]) == "table" then w = W[id]; end;
+	if not r or (r.hlp ~= 2 and not w) then return nil; end;
+	if w then
 		-- A watch owns the offer (accepted while the raid was armed): it stays with the watch unless the raid paid
 		-- (TRF_Rd_Pay counts the player's fire while r.hlp is 2); then the watch ends here, or it would pay again.
 		if type(paid) ~= "number" then return nil; end;
 		W[id] = nil;
 	end;
-	r.hlp = 3;
+	if r.hlp == 2 then r.hlp = 3; end;
 	if type(paid) == "number" then
 		TRF_HlStat("hl_help_paid");
 		TRF_HlE("help", "trader_id", id, "raid_id", n, "credits", paid, "via", "raid", "result", "paid");
@@ -1882,9 +1886,7 @@ function TRF_CtLost(id)
 	L.ct = nil;
 	local idx = TRF_HlCur();
 	if type(TRF_AddDis) == "function" and type(idx) == "number" then TRF_HlP(TRF_AddDis, {idx, 1, "ctlost"}); end;
-	local r = nil;
-	if type(L.tr) == "table" then r = L.tr[id]; end;
-	TRF_HlSay(TRF_Txt("ctlost", TRF_HlName(r)));
+	TRF_HlSay(TRF_Txt("ctlost", TRF_HlName(TRF_HlRecAny(id))));
 	TRF_HlStat("ct_lost");
 	TRF_HlE("contract", "trader_id", id, "result", "lost");
 	return 1;

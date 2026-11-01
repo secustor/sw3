@@ -283,7 +283,7 @@ function T_HL_A()
 	rg.fl = "raid";
 	HOST_Check(TRF_CtArrive(idg, "exit") == 1 and TRF.live.ct == nil and h.credits == c0 + 100
 		and S_Logs(n0, "event=contract trader_id="..idg.." via=exit pay=100 ") == 1 and S_Logs(n0, "reason=fled") == 0
-		and not HL_Said(s0, m0, "Contract off"), "fleeing trader at its exit first, within 400: paid, no void by flight");
+		and HL_Said(s0, m0, "Safe arrival. 100 cr transferred."), "fleeing trader at its exit first, within 400: paid, no void by flight");
 	rg.fl = nil;
 	-- Provider offer item (q): Accept calls ok; Decline returns to the menu.
 	local dco = TRF_Dc_HailOpts;
@@ -644,7 +644,7 @@ function T_HL_C()
 	T_Tick(4, 0.5);
 	HOST_Check(r4e.hlp == 3 and TRF_H().hlw[id4e] == nil and h.credits - c0 == p and TRF.std.help == hp0 + 1 and r4e.res == 1
 		and HL_Said(s0, m0, "They're gone. "..p.." cr transferred.")
-		and S_Logs(n0, "event=help trader_id="..id4e.." pay="..p.." credits="..p.." kill_count=0 engaged=true help=1 via=watch result=paid") == 1,
+		and S_Logs(n0, "event=help trader_id="..id4e.." pay="..p.." credits="..p.." kill_count=0 engaged=true help=1 via=watch result=paid reason=end") == 1,
 		"engaged without a kill: paid "..(h.credits - c0));
 	TRF.clock.pz = nil;
 	-- Engaged, then the trader docks during the watch (alive): paid.
@@ -656,7 +656,7 @@ function T_HL_C()
 	TRF_Remove(id4d, "dock");
 	T_Tick(4, 0.5);
 	HOST_Check(TRF_H().hlw[id4d] == nil and h.credits - c0 == p and HL_Said(s0, m0, "FTU "..nm4d..": They're gone. "..p.." cr transferred.")
-		and S_Logs(n0, "event=help trader_id="..id4d.." pay="..p.." credits="..p.." kill_count=0 engaged=true help=1 via=watch result=paid") == 1,
+		and S_Logs(n0, "event=help trader_id="..id4d.." pay="..p.." credits="..p.." kill_count=0 engaged=true help=1 via=watch result=paid reason=left") == 1,
 		"engaged, the trader docks mid-watch: paid "..(h.credits - c0));
 	TRF.clock.pz = nil;
 	-- The trader gone during the watch: unpaid (gone); the time-out: unpaid (time).
@@ -718,6 +718,16 @@ function T_HL_C()
 		and S_Logs(n0, "event=help trader_id="..id6k.." pay="..p.." kill_count=0 engaged=true via=watch result=unpaid reason=lost") == 1
 		and HL_Said(s0, m0, "FTU "..nm6k.." is gone. No pay."), "trader killed during the watch: unpaid (lost), the hlplost line");
 	p = floor(min(0.5 * TRF_PayN(idx), TRF_HlT("pay_cap")));
+	-- The raid end after the trader escaped (gone record, hlp stripped) with the raid-help paid (TRF_Rd_Pay, rd.hit):
+	-- TRF_HlHelpEnd ends the engaged watch (paid via raid), so the next step pays nothing (no second pay).
+	c0 = h.credits;
+	local id6e = HL_Watch(1);
+	TRF_Remove(id6e, "escaped");
+	n0 = S_Mark();
+	HOST_Check(TRF_HlHelpEnd(id6e, 7, 500, "left") == 1 and TRF_H().hlw[id6e] == nil
+		and S_Logs(n0, "event=help trader_id="..id6e.." raid_id=7 credits=500 via=raid result=paid") == 1, "raid end after the escape: the watch ends paid via raid");
+	T_Tick(4, 0.5);
+	HOST_Check(h.credits == c0 and S_Logs(n0, "trader_id="..id6e.." pay=") == 0, "no second pay by the watch of the escaped trader");
 	-- Box fallback (hail_box 1): the offer as an OK/Cancel box; Cancel -> the decline box; OK -> accepted.
 	HL_Dlg(nil);
 	local id7, r7, x7 = HL_Trader();
