@@ -589,7 +589,7 @@ function T_HL_C()
 	TRF_Remove(id5, "test");
 	T_Tick(4, 0.5);
 	HOST_Check(TRF_H().hlw[id5] == nil and S_Logs(n0, "event=help trader_id="..id5.." pay="..p.." kill_count=0 via=watch result=unpaid reason=gone") == 1
-		and not HL_Said(s0, m0, "No pay.") and not HL_Said(s0, m0, "too long"), "trader gone: unpaid (gone), no line");
+		and not HL_Said(s0, m0, "They broke off before we scored a kill. No pay.") and not HL_Said(s0, m0, "That took too long. The offer is off."), "trader gone: unpaid (gone), no line");
 	local id6, r6, x6 = HL_Trader();
 	HL_NoEscorts(x6);
 	HL_Pirates(id6, 2, 300);

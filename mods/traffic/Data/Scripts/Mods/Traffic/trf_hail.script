@@ -588,10 +588,10 @@ function TRF_HlHelpSettle(id, pay, why)
 	if type(w) == "table" then p = w.p; k = w.k; end;
 	if not pay or not r or type(p) ~= "number" then
 		TRF_HlE("help", "trader_id", id, "pay", p, "kill_count", k, "via", "watch", "result", "unpaid", "reason", why);
-		if type(w) == "table" and r and r.st ~= "gone" then
-			if why == "no_fire" then TRF_HlSay(TRF_Txt("hlpnofire", TRF_HlName(r)), id);
-			elseif why == "time" then TRF_HlSay(TRF_Txt("hlptime", TRF_HlName(r)), id); end;
-		end;
+		-- The line: no_fire and time come from TRF_HlHelpStep only (watch and trader record present); the rest say nothing.
+		local lk = nil;
+		if why == "no_fire" then lk = "hlpnofire"; elseif why == "time" then lk = "hlptime"; end;
+		if lk then TRF_HlSay(TRF_Txt(lk, TRF_HlName(r)), id); end;
 		return nil;
 	end;
 	local n = 0;

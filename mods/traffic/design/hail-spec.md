@@ -66,7 +66,7 @@ After the accept trf_raid pays at the raid end through `TRF_Rd_Pay` as for v02 5
 
 `TRF_H().hlw[id]` from the accept: the hostiles near are marked seen. `TRF_HlHelpStep(id)` every 2 s (`TRF_HlK().hstep`): marks every hostile within `hail_fight_r` of the lead, 2 when a player-team record is within `hail_fight_r` of it; a seen hostile missing from the near list and from the location's live records (`TRF_Near(nil, nil, {alive = 1})`) is dead and counts as a kill when it was marked 2. No hostile left near the lead: paid with a counted kill (`TRF_HlHelpSettle(id, 1)`), else unpaid `no_fire`. Unpaid also: the trader gone or killed (`gone`), 300 s after the accept (`hmax`, `time`), no typed list (`count`, `lead`), a refused due call (`due`), a jump (`jump`) or a load (`load`, `TRF_Hail_OnLoad` settles `hlp == 2` without a live raid).
 
-Paid: `TRF_Pay(p, "hail_help")` (else `AddPlayerCredits`), `TRF_PrizeMark("hail")`, help +1 (+2 in Recovery), heat -1, credits +4 (`TRF_ProCredit`), `TRF_Ch_Note(2)`, `r.res = 1`, the line `hlppaid`. Unpaid with the watch alive and the trader not gone: `no_fire` says `hlpnofire`, `time` says `hlptime`; the other reasons (`gone`, `due`, `jump`, ...) say nothing.
+Paid: `TRF_Pay(p, "hail_help")` (else `AddPlayerCredits`), `TRF_PrizeMark("hail")`, help +1 (+2 in Recovery), heat -1, credits +4 (`TRF_ProCredit`), `TRF_Ch_Note(2)`, `r.res = 1`, the line `hlppaid`. Unpaid: `no_fire` says `hlpnofire`, `time` says `hlptime` (both come from `TRF_HlHelpStep`, watch and trader record present); the other reasons (`gone`, `due`, `jump`, ...) say nothing.
 
 ## 6. Config and tune
 
