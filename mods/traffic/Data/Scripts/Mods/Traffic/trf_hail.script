@@ -1816,8 +1816,10 @@ function TRF_CtArrive(id, how)
 	local ct = L.ct;
 	L.ct = nil;
 	local r = TRF_HlRec(id);
-	-- A fleeing trader that reaches its exit escaped (5.6 void rule), whichever exit trigger fired first.
+	-- A fleeing trader that reaches its exit escaped (5.6 void rule), whichever exit trigger fired first:
+	-- the same line as TRF_CtVoid escaped (trf_raid TRF_Rd_Safe), so the player hears it in either order.
 	if r and r.fl then
+		TRF_HlSay(TRF_Txt("ctesc", TRF_HlName(r)), id);
 		TRF_HlStat("ct_void");
 		TRF_HlE("contract", "trader_id", id, "via", how, "fled", r.fl, "result", "void", "reason", "fled");
 		return nil;
@@ -1858,7 +1860,8 @@ function TRF_CtLost(id)
 	return 1;
 end;
 
--- Jump, load, escape, any other removal: contract ends without pay or penalty.
+-- Jump, load, escape, any other removal: contract ends without pay or penalty. escaped (trf_raid TRF_Rd_Safe:
+-- the fleeing trader reached its refuge, a portal or a station) says ctesc; the record is still there.
 function TRF_CtVoid(why)
 	local L = TRF_HlLive();
 	if not L or type(L.ct) ~= "table" then return nil; end;
@@ -2417,7 +2420,7 @@ function TRF_Hail_Text()
 		ctpaid = "Safe arrival. $1 cr transferred.",
 		ctfar = "We made it, but you were not with us. No pay.",
 		ctlost = "Contract lost: FTU $1 destroyed.",
-		ctesc = "FTU $1: We are running for the portal. Contract off, no pay.",
+		ctesc = "FTU $1: We are out of here. Contract off, no pay.",
 		brdhead = "Patrol report",
 		brdline = "$1: $2",
 		-- v1 (v1-spec 5.2, 6.2, 6.3, 7.4, 8.4, 9.2)

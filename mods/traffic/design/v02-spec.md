@@ -262,7 +262,7 @@ Table: fighters with 75 %, bombers 25 %. Power is `pw` = the tier's power; row =
 | accept | `live.ct = {id=id, n=N_eff, t=gt}`, `r.ct = 1`; cfg `esc_speed` > 0 → `leaderShip:SetMaxSpeed(esc_speed)` (default 0: off; values not measured); extra raid roll at 40 %; line `ctok` |
 | success | `TRF_OnDocked` or `TRF_OnExit` of that trader (`TRF_CtArrive(id, how)` runs before `TRF_Remove` deletes the flight, so the leader distance can be read) with the mothership ≤ 400 (`ct_dist`) from its leader → `AddPlayerCredits(n)`, help +1 (+2 in Recovery), heat −1, line `ctpaid`, credits +4. Mothership farther → void, line `ctfar` |
 | failure | trader killed → no pay, `dis` +1 (on top of the kill), line `ctlost` |
-| void | jump, load (live reset), trader escaped through a portal (`TRF_Flee`; line `ctesc`), any other removal (lifetime, watchdog, station lost); no penalty |
+| void | jump, load (live reset), trader fled and reached its refuge, a portal or a station (trf_raid `TRF_Rd_Safe`; line `ctesc`, also from `TRF_CtArrive` when the gen exit or dock trigger fires first, `reason=fled`), any other removal (lifetime, watchdog, station lost); no penalty |
 | suppression | contract paused; wind-down keeps `live.ct`, and the exit pays if the trader leaves alive |
 
 ## 6. Hail menu and work board (S8, S11, S19, S26)
@@ -297,7 +297,7 @@ Stage B (2026-10-25): with tune `hail_box` 2 every follow-up of the dialog menu 
 | `trhead`, `trnone` | `Raids reported: $1`, `Lanes are quiet within three jumps.` |
 | `sev1`..`sev5` | `light`, `some`, `heavy`, `severe`, `carrier` |
 | `bmhead`, `bmnone`, `bm1`, `bm2` | `Trade is good in: $1`, `No busy lanes within three jumps.`, `busy`, `booming` |
-| `ctoffer`, `ctok`, `ctpaid`, `ctfar`, `ctlost` | `Escort us to $1 for $2 cr?`, `Stay close, Wolves.`, `Safe arrival. $1 cr transferred.`, `We made it, but you were not with us. No pay.`, `Contract lost: FTU $1 destroyed.` |
+| `ctoffer`, `ctok`, `ctpaid`, `ctfar`, `ctlost`, `ctesc` | `Escort us to $1 for $2 cr?`, `Stay close, Wolves.`, `Safe arrival. $1 cr transferred.`, `We made it, but you were not with us. No pay.`, `Contract lost: FTU $1 destroyed.`, `FTU $1: We are out of here. Contract off, no pay.` |
 | R: `sos`, `demand`, `comply`, `flee`, `thanks` | `FTU $1: pirates on us, any ship assist!`, `$1: Cut your engines and drop cargo, trader.` (clan), `FTU $1: Cargo released. Don't shoot.`, `FTU $1: Breaking off, heading for $2.`, `FTU $1: Thank you, Wolves. We owe you.` |
 | `brdhead` | `Patrol report` |
 

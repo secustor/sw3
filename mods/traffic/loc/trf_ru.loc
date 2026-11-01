@@ -1,7 +1,7 @@
 LOCALE_FILE
 FILETYPE STANDART
 
-; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text) the wanted captains keys (#TRF_cap*, trf_captain TRF_Cap_Text), the clan stash keys (#TRF_stash*, trf_stash TRF_Sh_Text), the Wolves Freight keys (#TRF_fw*, trf_freight TRF_Fr_Text), the pirate haunt keys (#TRF_haunt*, trf_haunt TRF_Haunt_Text), the sealed parcel keys (#TRF_pcl*, trf_parcel TRF_Pc_Text), the mercenary clan keys (#TRF_mc*, trf_merc TRF_Mc_Text) and the demand page keys (#TRF_dmp*, trf_supply TRF_Supply_Text and trf_hail TRF_Hail_Text, with the answers #TRF_dmok and #TRF_dmno) and the hail page and combat hail keys (#TRF_hlp*, trf_hail TRF_Hail_Text), cp1251.
+; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text) the wanted captains keys (#TRF_cap*, trf_captain TRF_Cap_Text), the clan stash keys (#TRF_stash*, trf_stash TRF_Sh_Text), the Wolves Freight keys (#TRF_fw*, trf_freight TRF_Fr_Text), the pirate haunt keys (#TRF_haunt*, trf_haunt TRF_Haunt_Text), the sealed parcel keys (#TRF_pcl*, trf_parcel TRF_Pc_Text), the mercenary clan keys (#TRF_mc*, trf_merc TRF_Mc_Text) and the demand page keys (#TRF_dmp*, trf_supply TRF_Supply_Text and trf_hail TRF_Hail_Text, with the answers #TRF_dmok and #TRF_dmno) and the hail page and combat hail keys (#TRF_hlp*, trf_hail TRF_Hail_Text) and the contract void line (#TRF_ctesc, trf_hail TRF_Hail_Text), cp1251.
 ; Same keys and fixed texts as loc/trf_en.loc (no $n placeholders); used with cfg loc_mode 1 in a Russian install.
 ; Other #TRF_ keys have no RU line yet (design/station-voices-spec.md 13.5).
 
@@ -288,7 +288,7 @@ FILETYPE STANDART
 #TRF_hlpok = Торговый союз: договорились. Поторопитесь, Волки.
 #TRF_hlppaid = Торговый союз: они ушли. Оплата переведена.
 #TRF_hlptime = Торговый союз: слишком долго. Предложение снято.
-#TRF_ctesc = Торговый союз: уходим к порталу. Контракт расторгнут, оплаты не будет.
+#TRF_ctesc = Торговый союз: мы уходим. Контракт расторгнут, оплаты не будет.
 #TRF_stashbought = Ищите камень, который пищит. И вы ничего от нас не слышали.
 #TRF_stashpoor = Нет кредитов, нет секретов.
 #TRF_stasharrive = В поясе астероидов этой системы ловится сигнал маяка. Слабый, прерывистый.

@@ -196,7 +196,7 @@ FILETYPE STANDART
 #TRF_comply = FTU: Cargo released. Don't shoot.
 #TRF_ctbounty = command: bounty on the pirate base in, cr. Accept?
 #TRF_ctdone = command: sweep contract done. cr transferred.
-#TRF_ctesc = FTU: We are running for the portal. Contract off, no pay.
+#TRF_ctesc = FTU: We are out of here. Contract off, no pay.
 #TRF_ctfar = We made it, but you were not with us. No pay.
 #TRF_ctjoin = command: we move against the in. Join the sweep for cr?
 #TRF_ctlost = Contract lost: FTU destroyed.
