@@ -351,3 +351,28 @@ traffic: module=dll event=jobs_card action=closed id=pcl ev=esc
 traffic: lua: exp=v1 module=plumb event=box_answer kind=trade box=parcel answer=0 result=done
 traffic: lua: exp=v1 module=plumb event=jobs_card id=pcl card_event=esc result=ok reply=nil
 traffic: lua: exp=v1 module=state event=load generation=81 fresh=false legs=120
+traffic: module=dll event=jobs_init card=1 sig=ok sigs=33 patched=1 board=1 mode=1 board_sig=ok board_sigs=30 board_patched=1 log=0
+traffic: lua: exp=v1 module=plumb event=jobs_board row_count=0 result=cleared reason=dock_pir
+traffic: lua: exp=v1 module=plumb event=dock kind=pir line_count=0 result=vanilla
+traffic: lua: exp=v1 module=plumb event=jobs_board row_count=0 result=cleared reason=dialog
+traffic: lua: exp=v1 module=parcel event=offer destination=taira jumps=3 deadline=11 pay=14400 deposit=4320 result=listed via=board
+traffic: module=dll event=jobs_board action=set rows=1 sets=2
+traffic: lua: exp=v1 module=plumb event=jobs_board kind=trade row_count=1 result=set
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 result=vanilla
+traffic: lua: exp=v1 module=plumb event=jobs_board kind=trade row_count=1 result=armed trader_flag=false
+traffic: module=dll event=jobs_office action=tab view=jobs
+traffic: module=dll event=jobs_office action=create rows=1 fields=3 cards=1 closed=0 mode=1 tab=1 builds=1
+traffic: module=dll event=jobs_office action=tab view=news
+traffic: module=dll event=jobs_office action=tab view=jobs
+traffic: module=dll event=jobs_card action=open id=pcl fields=15 cards=4 via=board
+traffic: module=dll event=jobs_office action=click id=pcl result=open
+traffic: lua: exp=v1 module=plumb event=jobs_card id=pcl card_event=open result=ok via=board
+traffic: module=dll event=jobs_card action=answer id=pcl ev=ok
+traffic: module=dll event=jobs_card action=closed id=pcl ev=answer
+traffic: module=dll event=jobs_board action=mark id=pcl closed=1 visible=1
+traffic: lua: exp=v1 module=plumb event=jobs_card id=pcl card_event=ok result=ok reply="Crates are in your hold. Don't open them, don't sell them, don't be late." via=board mark=jbtaken
+traffic: module=dll event=jobs_office action=tab view=jobs
+traffic: module=dll event=jobs_office action=create rows=1 fields=1 cards=1 closed=1 mode=1 tab=1 builds=2
+traffic: module=dll event=jobs_office action=click id=pcl result=closed
+traffic: lua: exp=v1 module=plumb event=jobs_board row_count=0 result=cleared reason=dialog
+traffic: module=dll event=jobs_office action=create rows=0 result=empty

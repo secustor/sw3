@@ -145,6 +145,65 @@ function HOST_JobTick()
 	if type(TRF_OnJobCard) == "function" then TRF_OnJobCard(e[1], e[2]); end;
 	return e[2];
 end;
+-- Office board (traffic.c TRF_JobBoard, TRF_JobBoardMark, step 2): undefined by default; a scenario sets TRF_JobBoard =
+-- HOST_JobBoard, TRF_JobBoardMark = HOST_JobBoardMark. HOST().jb holds the stored rows (copies, closed flag), HOST().jbs the
+-- calls ({n, d = getn(HOST().dlgs) at the call}), HOST().jbm the marks ({id, header, closed}), HOST().jb_tab the tab
+-- caption; HOST().jb_off answers every call nil, why. HOST_JobClick(id) is a click on the row's Office card: like the DLL it
+-- opens the card from the stored row (HOST().jc, the "open" event queued) unless the row is closed or a card is busy.
+function HOST_JobBoard(...)
+	local h = HOST();
+	HOST_Want(arg.n == 1, "TRF_JobBoard(rows)");
+	local t = arg[1];
+	if h.jb_off then return nil, h.jb_off; end;
+	if type(t) ~= "table" or getn(t) > 8 then return nil, "arg"; end;
+	local rows, seen = {}, {};
+	for i = 1, getn(t) do
+		local r = t[i];
+		if type(r) ~= "table" or type(r.id) ~= "string" or type(r.header) ~= "string" or type(r.text) ~= "string" or seen[r.id] then
+			return nil, "arg";
+		end;
+		HOST_Want(strlen(r.id) <= 31 and strlen(r.header) <= 480 and strlen(r.text) <= 480 and strlen(r.cost or "") <= 480
+			and strlen(r.short or "") <= 480 and strlen(r.title or "") <= 480, "TRF_JobBoard: id <= 31, strings <= 480 characters");
+		HOST_Want(not strfind(r.text, "\n", 1, 1) and strsub(r.header, 1, 1) ~= "#", "TRF_JobBoard: no newline byte, no leading #");
+		seen[r.id] = 1;
+		tinsert(rows, {id=r.id, header=r.header, cost=r.cost, text=r.text, short=r.short, title=r.title});
+	end;
+	h.jb = rows;
+	if type(t.tab) == "string" then h.jb_tab = t.tab; end;
+	tinsert(h.jbs, {n=getn(rows), d=getn(h.dlgs)});
+	return getn(rows);
+end;
+function HOST_JobBoardMark(...)
+	local h = HOST();
+	HOST_Want(type(arg[1]) == "string" and (arg[2] == nil or type(arg[2]) == "string") and (arg[3] == nil or type(arg[3]) == "number"),
+		"TRF_JobBoardMark(id, header, closed)");
+	if h.jb_off then return nil, h.jb_off; end;
+	for i = 1, getn(h.jb or {}) do
+		local r = h.jb[i];
+		if r.id == arg[1] then
+			if arg[2] then r.header = arg[2]; end;
+			if arg[3] == 1 then r.closed = 1; end;
+			tinsert(h.jbm, {id=arg[1], header=arg[2], closed=arg[3]});
+			return 1;
+		end;
+	end;
+	return nil, "none";
+end;
+function HOST_JobClick(id)
+	local h = HOST();
+	for i = 1, getn(h.jb or {}) do
+		local r = h.jb[i];
+		if r.id == id then
+			if r.closed == 1 then return "closed"; end;
+			if h.jc_open or getn(h.jq) > 0 then return "busy"; end;
+			tinsert(h.jc, {id=r.id, header=r.header, cost=r.cost, text=r.text, title=r.title, via="board"});
+			h.jc_open = r.id;
+			tinsert(h.jq, {r.id, "open"});
+			return "open";
+		end;
+	end;
+	return "none";
+end;
 -- An " ERROR " or " event=error " line (TRF_Err, TRF_CbErr, TRF_GnErr: a mod error caught by a protected call)
 -- counts as a script error.
 function TRF_Log(s)

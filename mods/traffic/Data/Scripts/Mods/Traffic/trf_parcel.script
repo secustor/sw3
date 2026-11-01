@@ -1303,8 +1303,34 @@ function TRF_PcBoxText(o)
 end;
 
 -- Trade dock box 400 (#1 parcel offer 400 > #8 purchase 300 > #14 dues 200 > #13 arbitration 100; after a #3 fee box
--- the dispatcher opens none until E0.6, cfg wb_box_after_fee).
+-- the dispatcher opens none until E0.6, cfg wb_box_after_fee). None after the Office board was set at this docking
+-- (cfg jobs_ui 2, design/station-jobs-spec.md 5.2: the offer is its row, TRF_Pc_JobRow).
 function TRF_Pc_DockBox(kind, param)
+	if TRF_N("TRF_JbSet") then return nil; end;
+	return TRF_PcBoxSpec(kind);
+end;
+
+-- Office board row 400 (station-jobs-spec 5.2, step 2): the box spec's offer as a row, answered by the box handlers; the
+-- second line pcljobs (pcljob1 for one jump); took answers 1 once the offer became the job.
+function TRF_Pc_JobRow(kind, param)
+	local s = TRF_PcBoxSpec(kind);
+	local o = %PC.offer;
+	if type(s) ~= "table" or type(o) ~= "table" then return nil; end;
+	local sh = nil;
+	if o.j == 1 then sh = TRF_PcTxt("pcljob1", o.dl); else sh = TRF_PcTxt("pcljobs", o.j, o.dl); end;
+	TRF_PcE("offer", "destination", TRF_PcName(o.dst), "jumps", o.j, "deadline", o.dl, "pay", o.pay, "deposit", o.dep, "result", "listed",
+		"via", "board");
+	return {id=s.card.id, header=s.card.header, cost=s.card.cost, title=s.card.title, text=s.text, short=sh, ok=s.ok, no=s.no,
+		shown=s.shown, took="TRF_Pc_JobTook", a=s.a};
+end;
+
+function TRF_Pc_JobTook(a)
+	if TRF_PcJob() then return 1; end;
+	return nil;
+end;
+
+-- The offer box spec at a trade dock (gates, plan, pc.offer), or nil.
+function TRF_PcBoxSpec(kind)
 	if kind ~= "trade" or not TRF_PcOn() then return nil; end;
 	local pc = %PC;
 	local cur = TRF_PcCur();
@@ -1322,7 +1348,7 @@ function TRF_Pc_DockBox(kind, param)
 		card={id="pcl", header=TRF_PcTxt("pcljobh", TRF_PcSys(o.dst)), cost=TRF_PcNum(o.pay), title=TRF_PcTxt("jbcard")}};
 end;
 
--- Offer shown: via "card" when trf_plumb opened the mission card, else the box.
+-- Offer shown: via "card" when trf_plumb opened the mission card, "board" for a card opened from the Office board, else the box.
 function TRF_Pc_BoxShown(a, via)
 	local o = %PC.offer;
 	if type(o) ~= "table" then return; end;
@@ -1450,11 +1476,12 @@ function TRF_Pc_Step()
 	-- Step 2 hook: the customs distance poll (hail point, cust_radius).
 end;
 
--- trf_plumb TRF_InstallPlumb: trade line 20 (deliveries and hand-ins), the owed payer, trade box 400.
+-- trf_plumb TRF_InstallPlumb: trade line 20 (deliveries and hand-ins), the owed payer, trade box 400, Office board row 400.
 function TRF_Pc_Plumb()
 	TRF_DockLine("trade", 20, "TRF_Pc_DockLine");
 	TRF_OweReg("TRF_Pc_Owe");
 	TRF_DockBox("trade", 400, "TRF_Pc_DockBox");
+	TRF_JobRow("trade", 400, "TRF_Pc_JobRow");
 end;
 
 -- Repair, defaults, dump, text -----------------------------------------------------------
@@ -1627,5 +1654,10 @@ function TRF_Pc_Text()
 		pclqd = "Deliver the sealed crates to the trade station marked on your map. The FTU holds your deposit.",
 		pcljobh = "Sealed parcel to $1",
 		jbcard = "FTU courier contract",
+		jbtab = "Jobs",
+		jbtaken = "Accepted",
+		jbgone = "No longer available",
+		pcljobs = "$1 jumps, deadline $2 legs",
+		pcljob1 = "1 jump, deadline $1 legs",
 	});
 end;

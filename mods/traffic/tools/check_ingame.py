@@ -3,7 +3,8 @@
 the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10), the mercenary hire (D-MERC.*, design/merc-spec.md
 11, test plan section 11), the strength scale (D-STR.*, design/strength-spec.md 9), the pirate fits (D-FIT.1-6, E-BB1,
 design/fits-spec.md 11), the vanilla extortion fix (E-EXT.1, design/extort-fix-spec.md 7), the stack leak diagnostic
-(D-DLL.1) and the station jobs mission card (K0-K7, design/station-jobs-spec.md 10, step 1) from traffic logs.
+(D-DLL.1), the station jobs mission card (K0-K7, design/station-jobs-spec.md 10, step 1) and the Office jobs board (M1-M8,
+step 2) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -1598,6 +1599,180 @@ def c_k7(ctx):
     return res
 
 
+# ---- station jobs Office board (design/station-jobs-spec.md 10, step 2: M1-M8) ----------------------------------------
+
+def board_inits(ctx):
+    return [r for r in ctx.find("dll", "jobs_init") if r.get("board") == "1"]
+
+
+# DLL Office Create lines that built cards (rows=True) or all of them.
+def office_creates(ctx, rows=True):
+    out = ctx.find("dll", "jobs_office", action="create")
+    return [r for r in out if r.get("cards") is not None] if rows else out
+
+
+def c_m1(ctx):
+    res = Res()
+    res.logpart = True
+    ini = board_inits(ctx)
+    if not ini:
+        res.missing.append("no jobs_init board=1 line: install with JOBS_CARD=1 JOBS_BOARD=1 and JOBS_UI=2")
+    for r in ini:
+        if r.get("board_sig") != "ok" or r.get("board_patched") != "1":
+            res.fails.append("%s: board_sig=%s board_patched=%s" % (r.short(), r.get("board_sig"), r.get("board_patched")))
+    armed = ctx.find("plumb", "jobs_board", result="armed")
+    tab = [r for r in office_creates(ctx) if r.get("tab") == "1"]
+    for r in office_creates(ctx, False):
+        if r.get("result") in ("tab_failed", "noscroll", "nowin"):
+            res.fails.append("%s: the Jobs list was not built (result=%s)" % (r.short(), r.get("result")))
+    for r in office_creates(ctx):
+        if r.int("cards", 0) < r.int("rows", 0):
+            res.fails.append("%s: %s of %s rows built as cards" % (r.short(), r.get("cards"), r.get("rows")))
+    if not armed:
+        res.missing.append("dock at a trade station with a parcel offer (cfg jobs_ui 2): no jobs_board result=armed line")
+    elif not tab:
+        res.missing.append("open the Office tab after a trade dock with a parcel row: no jobs_office action=create tab=1 line")
+    res.ev("board armed at a trade dock", armed)
+    res.ev("Office windows with the Jobs tab", tab)
+    return res
+
+
+def c_m2(ctx):
+    res = Res()
+    res.logpart = True
+    cr = office_creates(ctx)
+    for r in cr:
+        f = r.int("fields", 0)
+        if f & 3 != 3:
+            res.fails.append("%s: fields=%d: %s not written" % (
+                r.short(), f, ", ".join(n for b, n in ((1, "header"), (2, "second line")) if not f & b)))
+    if not cr:
+        res.missing.append("open the Office tab with a parcel row: no jobs_office action=create cards= line")
+    res.ev("Office windows with cards", cr)
+    return res
+
+
+def c_m3(ctx):
+    res = Res()
+    res.logpart = True
+    seen = []
+    for lg in ctx.logs:
+        news = None
+        for r in lg.recs:
+            if r.is_("dll", "jobs_office", action="create"):
+                news = None
+            elif r.is_("dll", "jobs_office", action="tab", view="news"):
+                news = r
+            elif r.is_("dll", "jobs_office", action="tab", view="jobs") and news is not None:
+                seen.append(r)
+                news = None
+    if not seen:
+        res.missing.append("in the Office window click the News tab, then the Jobs tab")
+    res.ev("tab switches News then Jobs", seen)
+    return res
+
+
+def c_m4(ctx):
+    res = Res()
+    res.logpart = True
+    clicks = ctx.find("dll", "jobs_office", action="click", result="open")
+    opens = ctx.find("dll", "jobs_card", action="open", via="board")
+    oks = ctx.find("plumb", "jobs_card", via="board", card_event="ok", result="ok")
+    marks = [r for r in ctx.find("dll", "jobs_board", action="mark") if r.get("closed") == "1"]
+    for r in oks:
+        if r.get("mark") not in ("jbtaken", "jbgone"):
+            res.fails.append("%s: answered without a mark" % r.short())
+    if len(opens) < len(clicks):
+        res.fails.append("%d clicks opened %d cards" % (len(clicks), len(opens)))
+    if not clicks:
+        res.missing.append("click the parcel card on the Jobs tab")
+    elif not oks:
+        res.missing.append("press OK on a card opened from the Jobs tab")
+    elif not [r for r in marks if r.get("visible") == "1"]:
+        res.notes.append("no mark visible=1: the Office window was not on the stack when the answer came")
+    res.ev("card clicks", clicks)
+    res.ev("OK answers from the board", oks)
+    res.ev("rows closed", marks)
+    return res
+
+
+def c_m5(ctx):
+    res = Res()
+    res.logpart = True
+    seen = []
+    for lg in ctx.logs:
+        closed = None
+        for r in lg.recs:
+            if r.is_("dll", "jobs_board", action="mark") and r.get("closed") == "1":
+                closed = r
+            elif r.is_("dll", "jobs_board", action="set"):
+                closed = None
+            elif r.is_("dll", "jobs_office", action="create") and closed is not None and r.get("cards") is not None:
+                if r.int("closed", 0) < 1:
+                    res.fails.append("%s: the Office reopened after a closed row without a closed card" % r.short())
+                else:
+                    seen.append(r)
+    if not seen and not res.fails:
+        res.missing.append("answer a card from the Jobs tab, leave the Office and open it again")
+    res.ev("Office reopened with a closed row", seen)
+    return res
+
+
+def c_m6(ctx):
+    res = Res()
+    res.logpart = True
+    seen = []
+    for v in ctx.visits:
+        pir = None
+        for r in v.recs:
+            if r.is_("plumb", "dock", kind="pir"):
+                pir = r
+            elif pir is not None and r.is_("plumb", "jobs_board", result="armed"):
+                seen.append(r)
+                pir = None
+    if not seen:
+        res.missing.append("dock at a pirate station, then at a trade station with a parcel offer in the same visit")
+    res.ev("trade docks with rows after a pirate dock (trader_flag=false)", seen)
+    return res
+
+
+def c_m7(ctx):
+    res = Res()
+    res.logpart = True
+    seen = []
+    for lg in ctx.logs:
+        dlg = None
+        for r in lg.recs:
+            if r.is_("plumb", "jobs_board", result="cleared", reason="dialog"):
+                dlg = r
+            elif r.is_("plumb", "jobs_board", result="armed") or r.is_("plumb", "jobs_board", result="set"):
+                dlg = None
+            elif dlg is not None and r.is_("dll", "jobs_office", action="create"):
+                if r.int("rows", 0) > 0:
+                    res.fails.append("%s: rows=%s in an Office window opened after the board was cleared" % (r.short(), r.get("rows")))
+                else:
+                    seen.append(r)
+                dlg = None
+    if not seen and not res.fails:
+        res.missing.append("open the Office tab of a station opened by a quest script (TradeStationDlg without a trade dock): "
+                           "no jobs_board reason=dialog line followed by an Office window")
+    res.ev("Office windows after a quest-opened station", seen)
+    return res
+
+
+def c_m8(ctx):
+    res = Res()
+    res.logpart = True
+    m2 = [r for r in office_creates(ctx) if r.get("mode") == "2"]
+    for r in m2:
+        if r.get("tab") != "0":
+            res.fails.append("%s: mode=2 with a tab" % r.short())
+    if not m2:
+        res.missing.append("install with JOBS_BOARD_MODE=2 and open the Office tab after a trade dock with a parcel row")
+    res.ev("Office windows in mode 2", m2)
+    return res
+
+
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
@@ -1693,6 +1868,19 @@ ITEMS = [
     ("K6", "no new errors with the card", c_k6, "LOGfile.txt has no 'cannot load quest log' line (0x72a4cc)"),
     ("K7", "save and load right after a card answer: no stale card", c_k7,
      "no crash at the load and no card window after it"),
+    ("M1", "Office board: init board=1 sig ok, the Jobs tab built at a trade station with a row", c_m1,
+     "the Office tab is enabled at the trade station; a Jobs tab (caption Jobs) left of News, the Jobs list shown first"),
+    ("M2", "one parcel card per row with header and second line", c_m2,
+     "the card shows 'Sealed parcel to <system>', '<n> jumps, deadline <m> legs' and the divider; an empty picture frame"),
+    ("M3", "tab switch News then Jobs", c_m3, "both tabs switch the list; the News list is the vanilla one, unchanged"),
+    ("M4", "card click opens the mission card over the Office window, the answer closes the row", c_m4,
+     "the card over the Office window (the Office visible behind it); after OK the card header reads Accepted and the card "
+     "does not react to clicks"),
+    ("M5", "reopened Office window shows the closed row", c_m5, "the closed card keeps its place and its header"),
+    ("M6", "pirate dock, then a trade dock in the same visit: rows and trader_flag=false", c_m6,
+     "the Office tab is enabled at the trade station after the pirate dock"),
+    ("M7", "quest-opened station: board cleared, no rows in its Office window", c_m7, None),
+    ("M8", "jobs_board_mode 2: cards at the end of News, no tab", c_m8, "the job cards below the news cards, no Jobs tab"),
 ]
 
 
@@ -1804,12 +1992,17 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "D-FIT.6": "PASS", "E-BB1": "MANUAL", "E-EXT.1": "FAIL",
             "D-DLL.1": "PASS",
             "K0": "PASS", "K1": "MANUAL", "K2": "FAIL", "K3": "MANUAL", "K4": "PASS", "K5": "NO DATA", "K6": "MANUAL",
-            "K7": "MANUAL"}
+            "K7": "MANUAL",
+            "M1": "MANUAL", "M2": "FAIL", "M3": "MANUAL", "M4": "MANUAL", "M5": "MANUAL", "M6": "MANUAL", "M7": "PASS",
+            "M8": "NO DATA"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
 # OK, Cancel and Esc, the second card with fields=5 (cost not written, K2 FAIL), a load after the third answer; no
-# refused card (K5).
+# refused card (K5). Office board block (after that load, same visit): a pirate dock, then a trade dock with one row, the
+# Office with the Jobs tab, a switch to News and back, a click and OK (row closed, visible), the Office reopened with the
+# closed row and its second line missing (fields=1, M2 FAIL), a quest-opened station whose Office shows no row (M7); no
+# mode 2 run (M8).
 
 
 def selftest():
