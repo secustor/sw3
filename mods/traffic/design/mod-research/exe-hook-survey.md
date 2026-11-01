@@ -34,6 +34,7 @@ Ranked by value for the traffic mod and the worldbuilding features, with the che
 | 14 | **Save and load slots** | V | ScriptDispatcher Save/Load vtable 0x736268/0x73626c; TradeSystem Save/Load; `compress2` IAT 0x6fc2c0 is the proxy's own export | high | `pre_save`/`post_load` without E8 patches; a compact per-mod serializer if ever needed |
 | 15 | **Recruits regeneration** | N + C | flag 0x7acd08 forces regeneration; E8 at 0x58b6b4 to override the counts the `Recruits.xml` reload writes to 0x7acd0c..18 | low-medium | revives the rejected "mercenary office follows the cycle" proposal |
 | 16 | Hangar launch/land, module attach/detach, loot pickup, AI order change, GUI window open/close, perk purchase | C / V | H1 0x4fc878, H2 0x617867, M1 0x623911, M2 0x623a1f, LT 0x50505e, AI vtable 0x726c58, windows `GI+0x8c` | medium | wreck scan 15, veterans 05, station voices step 3 |
+| 17 | **Mesh pass cull** (built 2026-11-01, untested in game; owner `view`, `mods/performance/pe/view.c`, `[view]`) | C | 0x40c9dc in the mesh pass 0x40c890 (`a1 10 a6 7b 00`); d `[esp+0x10]`, r `[esp+0x40]`, frustum verdict `mesh+0x200`; cull exit `+0x200 = 0`, jmp 0x40c8b3; G = `[[0x7ba610]+0x8c]` m11 +0x1c, H +0xa4, FPS +0x50 ([size-cull.md](size-cull.md)) | high code; FPS gain [I] | FPS at a raised far plane (`mods/infinite_view`) in dense asteroid systems |
 
 Not needed from the DLL: XP gain (`ModifyGainedExperience`), message box results (`ShowMsgBox` callbacks), player jump start (`TRF_BeforeJump`), NPC portal jumps and NPC docking (both scripted in Lua).
 
@@ -68,3 +69,4 @@ Not needed from the DLL: XP gain (`ModifyGainedExperience`), message box results
 
 - Maps, asteroid fields and the render far plane: `maps-and-view-distance.md` (location.script, snapshots, InitMap, field helpers, ZFarPlane, detection test).
 - Why stations vanish at a raised far plane: `station-visibility.md` (mesh fade keys ZTranspar/zTransparLenght, slot-0x84 class table, detection gates).
+- Frustum and projected-size cull in the mesh pass: `size-cull.md` (pass layout, patch site 0x40c9dc, pixel factor from G, host estimate).
