@@ -588,6 +588,10 @@ function TRF_HlHelpSettle(id, pay, why)
 	if type(w) == "table" then p = w.p; k = w.k; end;
 	if not pay or not r or type(p) ~= "number" then
 		TRF_HlE("help", "trader_id", id, "pay", p, "kill_count", k, "via", "watch", "result", "unpaid", "reason", why);
+		if type(w) == "table" and r and r.st ~= "gone" then
+			if why == "no_fire" then TRF_HlSay(TRF_Txt("hlpnofire", TRF_HlName(r)), id);
+			elseif why == "time" then TRF_HlSay(TRF_Txt("hlptime", TRF_HlName(r)), id); end;
+		end;
 		return nil;
 	end;
 	local n = 0;
@@ -2443,5 +2447,7 @@ function TRF_Hail_Text()
 		hlpno = "FTU $1: Then stay out of the line of fire.",                              -- name
 		hlpok = "FTU $1: Deal. Make it quick, Wolves.",                                     -- name
 		hlppaid = "FTU $1: They're gone. $2 cr transferred.",                              -- name, credits
+		hlpnofire = "FTU $1: They broke off before we scored a kill. No pay.",                -- name
+		hlptime = "FTU $1: That took too long. The offer is off.",                        -- name
 	};
 end;

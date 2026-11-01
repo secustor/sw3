@@ -567,6 +567,7 @@ function T_HL_C()
 	HL_Pirates(id4, 2, 300);
 	c0 = h.credits;
 	n0 = S_Mark();
+	s0, m0 = getn(h.screen), getn(h.msgs);
 	HL_Hail(id4);
 	HOST_DlgPick("a_acc");
 	T_Tick(1, 0.5);
@@ -574,27 +575,32 @@ function T_HL_C()
 	HL_Kill(9002);
 	T_Tick(4, 0.5);
 	HOST_Check(r4.hlp == 3 and h.credits == c0 and TRF_H().hlw[id4] == nil
-		and S_Logs(n0, "event=help trader_id="..id4.." pay="..p.." kill_count=0 via=watch result=unpaid reason=no_fire") == 1, "no player fire: unpaid (no_fire)");
+		and S_Logs(n0, "event=help trader_id="..id4.." pay="..p.." kill_count=0 via=watch result=unpaid reason=no_fire") == 1
+		and HL_Said(s0, m0, "They broke off before we scored a kill. No pay."), "no player fire: unpaid (no_fire), the hlpnofire line");
 	-- The trader gone during the watch: unpaid (gone); the time-out: unpaid (time).
 	local id5, r5, x5 = HL_Trader();
 	HL_NoEscorts(x5);
 	HL_Pirates(id5, 2, 300);
 	n0 = S_Mark();
+	s0, m0 = getn(h.screen), getn(h.msgs);
 	HL_Hail(id5);
 	HOST_DlgPick("a_acc");
 	T_Tick(1, 0.5);
 	TRF_Remove(id5, "test");
 	T_Tick(4, 0.5);
-	HOST_Check(TRF_H().hlw[id5] == nil and S_Logs(n0, "event=help trader_id="..id5.." pay="..p.." kill_count=0 via=watch result=unpaid reason=gone") == 1, "trader gone: unpaid (gone)");
+	HOST_Check(TRF_H().hlw[id5] == nil and S_Logs(n0, "event=help trader_id="..id5.." pay="..p.." kill_count=0 via=watch result=unpaid reason=gone") == 1
+		and not HL_Said(s0, m0, "No pay.") and not HL_Said(s0, m0, "too long"), "trader gone: unpaid (gone), no line");
 	local id6, r6, x6 = HL_Trader();
 	HL_NoEscorts(x6);
 	HL_Pirates(id6, 2, 300);
 	n0 = S_Mark();
+	s0, m0 = getn(h.screen), getn(h.msgs);
 	HL_Hail(id6);
 	HOST_DlgPick("a_acc");
 	T_Tick(1, 0.5);
 	T_Tick(610, 0.5);
-	HOST_Check(r6.hlp == 3 and S_Logs(n0, "event=help trader_id="..id6.." pay="..p.." kill_count=0 via=watch result=unpaid reason=time") == 1, "300 s: unpaid (time)");
+	HOST_Check(r6.hlp == 3 and S_Logs(n0, "event=help trader_id="..id6.." pay="..p.." kill_count=0 via=watch result=unpaid reason=time") == 1
+		and HL_Said(s0, m0, "That took too long. The offer is off."), "300 s: unpaid (time), the hlptime line");
 	-- Box fallback (hail_box 1): the offer as an OK/Cancel box; Cancel -> the decline box; OK -> accepted.
 	HL_Dlg(nil);
 	local id7, r7, x7 = HL_Trader();

@@ -295,9 +295,11 @@ FILETYPE STANDART
 #TRF_hlpclose = Close
 #TRF_hlpdec = Decline
 #TRF_hlpno = FTU: Then stay out of the line of fire.
+#TRF_hlpnofire = FTU: They broke off before we scored a kill. No pay.
 #TRF_hlpoffer = FTU: We're outgunned. Clear them off and there's cr in it for you.
 #TRF_hlpok = FTU: Deal. Make it quick, Wolves.
 #TRF_hlppaid = FTU: They're gone. cr transferred.
+#TRF_hlptime = FTU: That took too long. The offer is off.
 #TRF_hull1 = freighter
 #TRF_hull2 = freighters
 #TRF_hullconv = supply transport
