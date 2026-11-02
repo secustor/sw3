@@ -4,8 +4,8 @@ the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10), the mercenary
 11, test plan section 11), the strength scale (D-STR.*, design/strength-spec.md 9), the pirate fits (D-FIT.1-6, E-BB1,
 design/fits-spec.md 11), the vanilla extortion fix (E-EXT.1, design/extort-fix-spec.md 7), the stack leak diagnostic
 (D-DLL.1), the station jobs mission card (K0-K7, design/station-jobs-spec.md 10, step 1), the Office jobs board (M1-M8,
-step 2), the quest log's Job log (L1-L5, step 3) and the freight unlock quest, commits 1-3 (Q-WQ.1-10,
-design/freight-quest-spec.md 10) from traffic logs.
+step 2), the quest log's Job log (L1-L5, step 3), the freight unlock quest, commits 1-3 (Q-WQ.1-10,
+design/freight-quest-spec.md 10) and Wolves Freight step 2 (EW8.11-EW8.17, design/freight-spec.md 10) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -2113,6 +2113,122 @@ def c_wq10(ctx):
     return res
 
 
+# Wolves Freight step 2 (design/freight-spec.md 10, EW8.11-EW8.17; FREIGHT=1 LOG=2, chapter 5 or later) ------------
+
+def c_ew8_11(ctx):
+    res = Res()
+    res.logpart = True
+    pl = ctx.find("freight", "plan", path="C")
+    sp = ctx.find("freight", "spawn", path="C", result="spawned")
+    ex = [r for r in ctx.find("freight", "dock", how="exit") if [s for s in sp if s.src == r.src and s.n < r.n]]
+    for r in pl:
+        d = r.int("delay", -1)
+        if r.get("follow") != "true" and not 60 <= d <= 120:
+            res.fails.append("%s: path C delay outside 60-120 s" % r.short())
+    if not pl:
+        res.missing.append("enter a transit system of the freighter's loop (not a stop) while it is there: no plan path=C line")
+    elif not sp:
+        res.missing.append("wait in the transit system after the plan: no spawn path=C result=spawned line")
+    res.ev("path C plans", pl)
+    res.ev("path C spawns", sp)
+    res.ev("exits after a path C spawn", ex)
+    return res
+
+
+def c_ew8_12(ctx):
+    res = Res()
+    res.logpart = True
+    wr = ctx.find("freight", "follow", result="written")
+    pl = ctx.find("freight", "follow", result="planned")
+    dr = ctx.find("freight", "follow", result="dropped")
+    for r in wr:
+        if r.int("elapsed", 0) > 60:
+            res.fails.append("%s: written after T_chase (60 s)" % r.short())
+    for r in pl:
+        if not 5 <= r.int("delay", -1) <= 15:
+            res.fails.append("%s: follow delay outside 5-15 s" % r.short())
+    if not wr:
+        res.missing.append("watch the freighter leave through a portal, jump through it within 60 s: no follow result=written line")
+    elif not pl:
+        res.missing.append("no follow result=planned line in the next system after the written one")
+    res.ev("written", wr)
+    res.ev("planned", pl)
+    res.ev("dropped", dr)
+    return res
+
+
+def c_ew8_13(ctx):
+    res = Res()
+    res.logpart = True
+    sp = ctx.find("freight", "parked", result="spawned")
+    rm = ctx.find("freight", "parked", result="removed")
+    for r in sp:
+        if r.get("relation") != "friend":
+            res.fails.append("%s: parked ship not FRIEND" % r.short())
+    if not sp:
+        res.missing.append("enter the home station system while the freighter is laid up or suspended there: no parked result=spawned line")
+    res.ev("parked spawns", sp)
+    res.ev("removed (jump, sale, loss)", rm)
+    res.ev("refused", ctx.find("freight", "parked", result="none"))
+    return res
+
+
+def c_ew8_14(ctx):
+    res = Res()
+    res.logpart = True
+    buys = [r for r in ctx.find("freight", "buy", result="ok") if r.get("slot") in ("2", "3")]
+    boxes = [r for r in ctx.find("freight", "box", result="shown") if r.get("slot") in ("2", "3")]
+    if not boxes:
+        res.missing.append("with one freighter and help 15 (or charter rank 3), dock at a stop of another loop region: no box slot=2 line")
+    elif not buys:
+        res.missing.append("answer the slot 2 or 3 box with OK: no buy slot=2|3 result=ok line")
+    res.ev("slot 2-3 boxes", boxes)
+    res.ev("slot 2-3 purchases", buys)
+    return res
+
+
+def c_ew8_15(ctx):
+    res = Res()
+    res.logpart = True
+    sp = [r for r in ctx.find("freight", "spawn", result="spawned") if r.get("hull") in ("Walrus_tr1", "Btransport2")]
+    for r in sp:
+        if r.get("hull") == "Walrus_tr1" and r.int("hold", 0) != 0:
+            res.fails.append("%s: a Walrus with a hold" % r.short())
+    sell = ctx.find("freight", "sell", result="sold")
+    if not sp:
+        res.missing.append("buy a freighter on the Gefest or Golkonda loop (Walrus_tr1) and meet it on-screen: no spawn hull=Walrus_tr1 line")
+    res.ev("Walrus / Btransport2 spawns", sp)
+    res.ev("sell-backs", sell)
+    return res
+
+
+def c_ew8_16(ctx):
+    res = Res()
+    res.logpart = True
+    po = ctx.find("ui", "news", topic="fw", result="posted")
+    reg = [r for r in po if r.get("variant") == "reg"]
+    if len(reg) > 1:
+        res.fails.append("%d registration posts (one expected)" % len(reg))
+    if not po:
+        res.missing.append("buy the first freighter of the game: no ui news topic=fw variant=reg result=posted line")
+    res.ev("fw posts", po)
+    return res
+
+
+def c_ew8_17(ctx):
+    res = Res()
+    res.logpart = True
+    crew = ctx.find("freight", "crew", result="home")
+    for r in crew:
+        if r.int("waived", 0) * 2 > r.int("liability", 0):
+            res.fails.append("%s: more than half the liability waived" % r.short())
+    if not crew:
+        res.missing.append("let pirates sink the freighter on-screen (no own fire), pick up the pods, hand them in at a trade dock: "
+                           "no freight crew result=home line")
+    res.ev("crew hand-ins", crew)
+    return res
+
+
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
@@ -2252,7 +2368,17 @@ ITEMS = [
      "the wrecked transport with its marker off the base site, clear of the stash asteroids, the guard attacks, 'Marlin's "
      "master: Wolves? ...' when the pods eject, after a switch from mode 1 'They moved the crew to a hulk at XB-13.'"),
     ("Q-WQ.10", "the charter office: the hand-in moves 60 to 70, the purchase box answered gives 80, the done entry goes 10 legs later", c_wq10,
-     None),
+     None),    ("EW8.11", "Wolves Freight transit appearance: path C between the loop neighbours' portals, 60-120 s", c_ew8_11,
+     "the freighter comes through the portal from the previous loop system and flies to the portal of the next one"),
+    ("EW8.12", "Wolves Freight portal follow: a jump within T_chase after its exit, arrival 5-15 s later", c_ew8_12,
+     "the freighter comes through the portal you came through, a few seconds after you"),
+    ("EW8.13", "Wolves Freight parked ship at home: laid up or suspended, FRIEND, still, gone at the jump", c_ew8_13,
+     "the hull lies behind the home station, does not move, draws no fire"),
+    ("EW8.14", "Wolves Freight slots 2-3: the box with the convoy fee sentence, the purchase", c_ew8_14, None),
+    ("EW8.15", "Wolves Freight hulls: Walrus_tr1 on-screen without a hold, Btransport2, the sell-back", c_ew8_15,
+     "the Walrus has two turrets and no cargo, the sell-back pays half the price"),
+    ("EW8.16", "Wolves Freight news: the registration once, a hull loss per region", c_ew8_16, None),
+    ("EW8.17", "Wolves Freight pods: the crew of an on-screen loss halves its liability", c_ew8_17, None),
 ]
 
 
@@ -2370,7 +2496,9 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "L1": "MANUAL", "L2": "MANUAL", "L3": "MANUAL", "L4": "FAIL", "L5": "NO DATA",
             "Q-WQ.1": "PASS", "Q-WQ.2": "MANUAL", "Q-WQ.3": "PASS", "Q-WQ.4": "MANUAL",
             "Q-WQ.5": "PASS", "Q-WQ.6": "MANUAL", "Q-WQ.7": "PASS", "Q-WQ.8": "MANUAL", "Q-WQ.9": "MANUAL",
-            "Q-WQ.10": "PASS"}
+            "Q-WQ.10": "PASS",
+            "EW8.11": "NO DATA", "EW8.12": "NO DATA", "EW8.13": "NO DATA", "EW8.14": "NO DATA", "EW8.15": "NO DATA",
+            "EW8.16": "NO DATA", "EW8.17": "NO DATA"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered

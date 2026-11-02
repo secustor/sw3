@@ -105,6 +105,13 @@
 		<sound_name/>
 	</NewsRecord>
 	<NewsRecord>
+		<name>trf_fw_reg</name>
+		<header>#TRF_N_fw_reg_Name</header>
+		<text>#TRF_N_fw_reg_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
 		<name>trf_r1_lane_raid</name>
 		<header>#TRF_N_r1_lane_raid_Name</header>
 		<text>#TRF_N_r1_lane_raid_LDesc</text>
@@ -276,6 +283,13 @@
 		<name>trf_r1_cap_succ</name>
 		<header>#TRF_N_r1_cap_succ_Name</header>
 		<text>#TRF_N_r1_cap_succ_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r1_fw_lost</name>
+		<header>#TRF_N_r1_fw_lost_Name</header>
+		<text>#TRF_N_r1_fw_lost_LDesc</text>
 		<image_name>Studio66</image_name>
 		<sound_name/>
 	</NewsRecord>
@@ -455,6 +469,13 @@
 		<sound_name/>
 	</NewsRecord>
 	<NewsRecord>
+		<name>trf_r2_fw_lost</name>
+		<header>#TRF_N_r2_fw_lost_Name</header>
+		<text>#TRF_N_r2_fw_lost_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
 		<name>trf_r3_lane_raid</name>
 		<header>#TRF_N_r3_lane_raid_Name</header>
 		<text>#TRF_N_r3_lane_raid_LDesc</text>
@@ -626,6 +647,13 @@
 		<name>trf_r3_cap_succ</name>
 		<header>#TRF_N_r3_cap_succ_Name</header>
 		<text>#TRF_N_r3_cap_succ_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r3_fw_lost</name>
+		<header>#TRF_N_r3_fw_lost_Name</header>
+		<text>#TRF_N_r3_fw_lost_LDesc</text>
 		<image_name>Studio66</image_name>
 		<sound_name/>
 	</NewsRecord>
@@ -805,6 +833,13 @@
 		<sound_name/>
 	</NewsRecord>
 	<NewsRecord>
+		<name>trf_r4_fw_lost</name>
+		<header>#TRF_N_r4_fw_lost_Name</header>
+		<text>#TRF_N_r4_fw_lost_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
 		<name>trf_r5_lane_raid</name>
 		<header>#TRF_N_r5_lane_raid_Name</header>
 		<text>#TRF_N_r5_lane_raid_LDesc</text>
@@ -976,6 +1011,13 @@
 		<name>trf_r5_cap_succ</name>
 		<header>#TRF_N_r5_cap_succ_Name</header>
 		<text>#TRF_N_r5_cap_succ_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r5_fw_lost</name>
+		<header>#TRF_N_r5_fw_lost_Name</header>
+		<text>#TRF_N_r5_fw_lost_LDesc</text>
 		<image_name>Studio66</image_name>
 		<sound_name/>
 	</NewsRecord>
@@ -1155,6 +1197,13 @@
 		<sound_name/>
 	</NewsRecord>
 	<NewsRecord>
+		<name>trf_r6_fw_lost</name>
+		<header>#TRF_N_r6_fw_lost_Name</header>
+		<text>#TRF_N_r6_fw_lost_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
 		<name>trf_r7_lane_raid</name>
 		<header>#TRF_N_r7_lane_raid_Name</header>
 		<text>#TRF_N_r7_lane_raid_LDesc</text>
@@ -1330,6 +1379,13 @@
 		<sound_name/>
 	</NewsRecord>
 	<NewsRecord>
+		<name>trf_r7_fw_lost</name>
+		<header>#TRF_N_r7_fw_lost_Name</header>
+		<text>#TRF_N_r7_fw_lost_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
 		<name>trf_r8_lane_raid</name>
 		<header>#TRF_N_r8_lane_raid_Name</header>
 		<text>#TRF_N_r8_lane_raid_LDesc</text>
@@ -1501,6 +1557,13 @@
 		<name>trf_r8_cap_succ</name>
 		<header>#TRF_N_r8_cap_succ_Name</header>
 		<text>#TRF_N_r8_cap_succ_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r8_fw_lost</name>
+		<header>#TRF_N_r8_fw_lost_Name</header>
+		<text>#TRF_N_r8_fw_lost_LDesc</text>
 		<image_name>Studio66</image_name>
 		<sound_name/>
 	</NewsRecord>

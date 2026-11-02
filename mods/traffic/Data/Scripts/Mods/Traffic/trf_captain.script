@@ -566,6 +566,21 @@ function TRF_Cap_NameOf(slot)
 	return TRF_CapNm(r);
 end;
 
+-- Name index of the living captain of region slot (trf_freight feature 4: the robbery log line keeps it), or nil (also
+-- while cfg cap_enable is 0).
+function TRF_Cap_NmIdx(slot)
+	if type(slot) ~= "number" or not TRF_CapOn() then return nil; end;
+	local r = TRF_CapRec(slot);
+	if not r or type(r.nm) ~= "number" or r.st == 0 or r.st == 4 then return nil; end;
+	return r.nm;
+end;
+
+-- Display name of captain name index i (TRF_Cap_NmIdx), or nil when i is not a number.
+function TRF_Cap_NmText(i)
+	if type(i) ~= "number" then return nil; end;
+	return TRF_CapNm({nm=i});
+end;
+
 -- Why record r is lying low now: "low" (after the third escape, lj), "gap" (cap_gap_j after a claim), else nil.
 function TRF_CapLow(r)
 	local J = TRF_CapJ();

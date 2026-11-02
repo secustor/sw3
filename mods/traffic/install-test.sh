@@ -41,7 +41,9 @@
 # is seen there and spawns for certain, CHECK EW4.1-EW4.7); written only when set.
 # STASHES=0|1 (cfg enable_stashes, clan stashes, design/stash-spec.md); STASH_AT=<system> (debug: a known cache record
 # there, placed at its entry, CHECK E7.1-E7.11); written only when set.
-# FREIGHT=0|1 (cfg enable_freight, Wolves Freight, design/freight-spec.md, CHECK EW8.1-EW8.8); written only when set.
+# FREIGHT=0|1 (cfg enable_freight, Wolves Freight, design/freight-spec.md, CHECK EW8.1-EW8.8); FW_TRANSIT=0|1 (cfg
+# fw_transit, transit appearances, EW8.11), FW_FOLLOW=0|1 (cfg fw_follow, portal follow, EW8.12), FW_PARKED=0|1 (cfg
+# fw_parked, the parked ship at home, EW8.13); written only when set.
 # WQ=0|1 (cfg enable_wq, the freight unlock quest "Missing in Capricorn", design/freight-quest-spec.md, CHECK
 # Q-WQ.1-Q-WQ.10; 0 also gives the first Wolves freighter its help 5 gate back); written only when set.
 # PARCELS=0|1 (cfg enable_parcels, sealed parcels, design/parcel-spec.md, CHECK E-PCL.1-E-PCL.6; LEVEL=v01/v02 write 0
@@ -160,6 +162,9 @@ case "${SCAR_LOOT:-}" in "") ;; 0|1) opt="$opt, enable_scar_loot=$SCAR_LOOT" ;; 
 case "${CAPTAINS:-}" in "") ;; 0|1) opt="$opt, cap_enable=$CAPTAINS" ;; *) echo "CAPTAINS must be 0 or 1" >&2; exit 1;; esac
 case "${STASHES:-}" in "") ;; 0|1) opt="$opt, enable_stashes=$STASHES" ;; *) echo "STASHES must be 0 or 1" >&2; exit 1;; esac
 case "${FREIGHT:-}" in "") ;; 0|1) opt="$opt, enable_freight=$FREIGHT" ;; *) echo "FREIGHT must be 0 or 1" >&2; exit 1;; esac
+case "${FW_TRANSIT:-}" in "") ;; 0|1) opt="$opt, fw_transit=$FW_TRANSIT" ;; *) echo "FW_TRANSIT must be 0 or 1" >&2; exit 1;; esac
+case "${FW_FOLLOW:-}" in "") ;; 0|1) opt="$opt, fw_follow=$FW_FOLLOW" ;; *) echo "FW_FOLLOW must be 0 or 1" >&2; exit 1;; esac
+case "${FW_PARKED:-}" in "") ;; 0|1) opt="$opt, fw_parked=$FW_PARKED" ;; *) echo "FW_PARKED must be 0 or 1" >&2; exit 1;; esac
 case "${WQ:-}" in "") ;; 0|1) opt="$opt, enable_wq=$WQ" ;; *) echo "WQ must be 0 or 1" >&2; exit 1;; esac
 case "${PARCELS:-}" in "") ;; 0|1) opt="$opt, enable_parcels=$PARCELS" ;; *) echo "PARCELS must be 0 or 1" >&2; exit 1;; esac
 case "${PCL_PROBE:-}" in "") ;; 0|1) opt="$opt, pcl_probe=$PCL_PROBE" ;; *) echo "PCL_PROBE must be 0 or 1" >&2; exit 1;; esac

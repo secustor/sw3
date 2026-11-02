@@ -14,10 +14,10 @@
 -- trf_hail TRF_HlRumourText (rumour), trf_plumb (trade dock line, seed provider, arrival lines, nav markers),
 -- traffic.script (activate, load, jump, tick, 1 s step).
 -- Saved fields (TRF.sv, created lazily, repaired by TRF_Sv_Fix):
---   b[i] = {s, si, x, y, z, n, n0, f, nm, lg, src, sl, pf, pp[, bx][, q]} (at most 4; the loss site s, x, y, z, lg, src
+--   b[i] = {s, si, x, y, z, n, n0, f, nm, lg, src, sl, pf, pp[, bx][, q][, fw]} (at most 4; the loss site s, x, y, z, lg, src
 --   is the shape feature 2 reuses: TRF_Sv_Site reads it, trf_scar's TRF_Sv_SiteLink writes si; q = 1 a quest record
---   of trf_wq, TRF_Sv_QuestSeed), c = {n, cr, pc, s1[, s2], f, lg[, q]} (absent when empty; q = 1 once a quest pod is
---   aboard), st = {res, sold, lost},
+--   of trf_wq, TRF_Sv_QuestSeed; fw the ship id of a Wolves freighter's crew, trf_freight), c = {n, cr, pc, s1[, s2], f,
+--   lg[, q][, fw]} (absent when empty; q = 1 once a quest pod is aboard, fw once a freighter's pod is), st = {res, sold, lost},
 --   r[slot] = credited beacons this cycle (absent = 0), sd = roll seed, hl = leg of the last heat -1, cd[idx] =
 --   leg of the last beacon in idx (at most 16, older than sv_cd dropped), x = {idx, ...} systems whose beacon
 --   went silent (at most 4), rm = {s, k, lg} rumour (k 1 taken by slavers, 2 rescued).
@@ -772,7 +772,7 @@ function TRF_Sv_OnLoss(id, rec, h, by, idx)
 	if mode then
 		if TRF_N("TRF_Ev_Own", rec) or rec.feq == 1 then why = "owner";
 		elseif rec.sev then why = "station_event";
-		elseif rec.fw then why = "freight";
+		elseif rec.fw and TRF_N("TRF_Fr_PodsOk") ~= 1 then why = "freight";
 		elseif fire then why = "fire";
 		else why = TRF_SvHold() or TRF_SvGate(idx); end;
 		if not why and TRF_SvAt(idx) then why = "record"; end;
@@ -794,6 +794,9 @@ function TRF_Sv_OnLoss(id, rec, h, by, idx)
 	end;
 	local b = {s=idx, si=0, x=floor(pos.x + 0.5), y=floor(pos.y + 0.5), z=floor(pos.z + 0.5), n=pods, n0=pods, f=0,
 		nm=rec.nm or 0, lg=TRF_SvLegs(), src=1, sl=0, pf=0, pp=0};
+	-- A Wolves freighter's crew (feature 6, trf_freight TRF_Fr_PodsOk): fw = the ship id; its hand-in halves that loss's
+	-- liability (TRF_Fr_CrewHome) and pays no credits (a witnessed record, pf 0).
+	if type(rec.fw) == "number" then b.fw = rec.fw; end;
 	local i = TRF_SvAdd(b, T);
 	if not i then
 		TRF_SvE("loss", "trader_id", id, "fire", TRF_KvB(fire), "help", TRF_KvB(help), "system", nm, "pods", pods, "result", "none", "reason", "quest_cap");
@@ -1244,6 +1247,7 @@ function TRF_SvPick(i, b, j, d, T)
 	c.cr = c.cr + b.pf;
 	c.pc = c.pc + b.pp;
 	if b.q == 1 then c.q = 1; end;
+	if type(b.fw) == "number" then c.fw = b.fw; end;
 	TRF_Sv_Say(TRF_SvTxt("svpick"), 5);
 	TRF_SvE("pick", "system", TRF_SvName(b.s), "beacon", i, "pod", j, "distance", TRF_SvF(d), "left", b.n, "carried", c.n,
 		"credits", c.cr);
@@ -1458,6 +1462,11 @@ function TRF_SvHand()
 	-- register their own dispatcher entries.
 	local ql = TRF_P("TRF_Wq_OnHand", idx, c);
 	if type(ql) == "string" then tinsert(out, ql); end;
+	-- A Wolves freighter's crew aboard (c.fw, feature 6): trf_freight halves that loss's liability.
+	if type(c.fw) == "number" then
+		local fl = TRF_P("TRF_Fr_CrewHome", c.fw);
+		if type(fl) == "string" then tinsert(out, fl); end;
+	end;
 	S.c = nil;
 	return out;
 end;
@@ -1551,6 +1560,7 @@ function TRF_Sv_Fix()
 						if TRF_SvNum(e.pp, 0, 30000) and r.src ~= 1 then r.pp = floor(e.pp); end;
 						if e.bx == 1 then r.bx = 1; end;
 						if qe then r.q = 1; end;
+						if TRF_SvNum(e.fw, 1, 99) then r.fw = floor(e.fw); end;
 						kp[i] = r;
 						nk = nk + 1;
 					end;
@@ -1572,6 +1582,7 @@ function TRF_Sv_Fix()
 			if TRF_SvNum(c.f, 0, 5) then r.f = floor(c.f); end;
 			if TRF_SvLeg(c.lg, legs) then r.lg = c.lg; end;
 			if c.q == 1 then r.q = 1; end;
+			if TRF_SvNum(c.fw, 1, 99) then r.fw = floor(c.fw); end;
 			S.c = r;
 		end;
 	end;

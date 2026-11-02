@@ -359,3 +359,21 @@ Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes E-E
 | | on another save before step 70 with `WQ=0` | the purchase box at help 5 again (`module=freight event=offer ... reason=help` below 5, never `reason=quest`) |
 
 Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes Q-WQ.4=pass,Q-WQ.6=pass,Q-WQ.8=pass,Q-WQ.9=pass`.
+
+## 16. Wolves Freight step 2 (EW8.11-EW8.17; `FREIGHT=1 LOG=2`, chapter 7 or later)
+
+`D/freight-spec.md` 5.6-5.10, 10; `check_ingame.py` items EW8.11-EW8.17. Install: `LOG=2 sh mods/traffic/install-test.sh` (the game closed; `FW_TRANSIT=0`, `FW_FOLLOW=0` or `FW_PARKED=0` turn a part off for an A/B). A save with one Wolves freighter, help 15 or more, heat 2 or less. One line per check: do, then see.
+
+| Check | Do | See |
+|---|---|---|
+| EW8.14 | dock at a trade stop of another loop region (pro 4+) | the charter box at 1.5 times the list with "FTU takes most of a second charter's run as convoy fee." (`event=box ... slot=2`); OK registers the second ship (`event=buy ... slot=2 result=ok`) |
+| EW8.15 | buy on the Gefest or Golkonda loop, then meet the ship at a stop | "A Walrus hauler is up for charter ..." at 70 % of the list; on-screen a Walrus with two turrets and no cargo (`event=spawn ... hull=Walrus_tr1 hold=0`) |
+| | dock at the ship's home station while it is laid up (after a robbery or damage) | "... lies at <home>. The office buys her back for <n> cr, half her price. Sell?"; OK pays half the price (`event=sell ... result=sold`) |
+| EW8.11 | read the whereabouts line, enter a transit system of the loop (not a stop) the ship is in | 60-120 s later it comes through the portal from the previous loop system, "<ship> passing through, boss. Bound for <stop>.", and flies to the portal of the next (`event=plan ... path=C`, `event=spawn ... path=C`) |
+| EW8.12 | watch it leave through a portal, jump through the same portal within 60 s | it arrives 5-15 s after you through that portal (`event=follow ... result=written`, `... result=planned`, `event=spawn ... follow=true`) |
+| EW8.13 | enter the home station system while the ship is laid up or suspended (heat 5) | the hull lies behind the station 4 s after entry, does not move, draws no fire (`event=parked ... result=spawned`); jump out: gone (`result=removed reason=jump`) |
+| EW8.16 | buy the first freighter of a new game; later lose one | the bulletin "FTU registers Wolves Freight" on a later entry, after the loss "Wolves Freight hull lost near <region>" (`module=ui event=news topic=fw`) |
+| EW8.17 | `SURVIVORS=1`: let pirates sink the ship in view (no own fire), pick up the pods, dock at a trade station | "FTU: the crew of <ship> is home. Half the carrier liability is waived: <n> cr." before the liability line (`event=crew ... result=home`) |
+| | in chapter 13 dock at a trade station with a ship owned | "FTU: HQ on alert. Charters run as usual." once per visit |
+
+Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes EW8.11=pass,EW8.12=pass,EW8.13=pass,EW8.15=pass`.

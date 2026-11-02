@@ -98,6 +98,7 @@ Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case m
 | trf_loc `TRF_Loc_TextFns`, trf_ui `TRF_UI_TextFns` | `"TRF_Cap_Text"` | text keys |
 | trf_charter `TRF_ChInfo` | `TRF_N("TRF_Cap_Open", slot)` (existing query) | no Break posting for a clan whose captain entry is open (charter-spec V21) |
 | trf_wq (`D/freight-quest-spec.md` 4.5, I20) | public `TRF_Cap_QuestTip(slot, idx)` (new) | the quest tip: `seen` = idx and `ti` = the leg as the informant sale gives, without the fee; `st` 1, idx in his region and off the exclusion list; the spawn gates unchanged (`event=intel ... result=tipped reason=quest`) |
+| trf_freight (`D/freight-spec.md` 5.10, feature 4) | public `TRF_Cap_NmIdx(slot)` (the name index of the living captain, nil while `cap_enable` 0, retired or dead) and `TRF_Cap_NmText(i)` (its display name) (new) | the robbing clan's captain named in the Wolves Freight robbery line; his price stays |
 
 ## 5. Mechanics
 

@@ -1,4 +1,4 @@
--- Wolves Freight scenarios (design/freight-spec.md 9) under stock Lua 4.0.1: TRF_FR=a..h, run by run_host.sh as its own
+-- Wolves Freight scenarios (design/freight-spec.md 9) under stock Lua 4.0.1: TRF_FR=a..l, run by run_host.sh as its own
 -- entry point. a registration, toggles, tune, the loop data of gen_map.py, texts and the pure rules (run pay, price,
 -- voucher, rob and loss chances, draw outcome, Park-Miller, seed, hold row, damage band, liability, next stop); b the
 -- purchase box (gates: chapter 4 and 19, help, heat, pro, the dockmaster, Trade at war, owe, a non-loop station, the
@@ -15,6 +15,11 @@
 -- the 8.5 resolver (no pay, no help), the hail status line, no 8.4 offer, no 8.6 demand, never tracked, the who line;
 -- h charters stop at chapter 19 (the ship keeps paying), enable_freight 0, dump, the load orphan rule, the jump damage
 -- band, repair, the save bound and the EW8.6 simulation (2000 ticks per loop region against the cycle model).
+-- Step 2 (the base cfg turns its parts off, so a..h run the step 1 rules): i slots 2-3 (help gates, the charter rank,
+-- prices, weights, one ship per region, three ships' lines); j hulls (the box by L_fw, carcass, hull_k pay, hull_r
+-- robbery, the sell-back, repair); k transit appearances (path C), portal follow (set, consumed, void on load), the parked
+-- ship and its cap slot, each cfg off; l news, the captain in the robbery line, pods and the halved liability, the
+-- chapter-13 line, size bounds.
 -- Loads host_station.lua up to its first scenario, as host_stash.lua does. No new stubs.
 
 local f = openfile((getenv("TRF_TESTS") or "./").."host_station.lua", "r");
@@ -31,7 +36,8 @@ dostring(strsub(src, 1, cut), "host_station.lua");
 -- that claim slots or boxes off, log 2, plus t.
 function FR_Cfg(t)
 	local c = {enable_freight=1, fw_prize_gap=0, cap_enable=0, sweeps=0, sweep_ct=0, feq=0, staged=0, seed=0, queue=0, parked=0,
-		voice_events=0, dconv=0, carriers=0, po=0, enable_survivors=0, lad_enabled=0, charter=0, enable_stashes=0, enable_scars=0, log=2, tune={}};
+		voice_events=0, dconv=0, carriers=0, po=0, enable_survivors=0, lad_enabled=0, charter=0, enable_stashes=0, enable_scars=0, log=2, tune={},
+		fw_hulls=0, fw_transit=0, fw_follow=0, fw_parked=0, fw_hooks=0};
 	if t then for k, v in t do c[k] = v; end; end;
 	return c;
 end;
@@ -195,15 +201,21 @@ function T_FR_A()
 	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=15") >= 1, "trf_freight loads after trf_stash (extra_count=15 with trf_haunt, trf_parcel, trf_merc and trf_wq)");
 	local ml = TRF_ModList();
 	HOST_Check(ml[getn(ml) - 4] == "Fr" and TRF_Opt("enable_freight") == 1 and TRF_Opt("fw_onscreen") == 1 and TRF_Opt("fw_losses") == 1
-		and TRF_Opt("fw_max_ships") == 1 and TRF_Fr_OptDef().fw_prize_gap == 1 and TRF_Fr_OptDef().fw_marker == 1,
-		"TRF_ModList has Fr; toggles: freight, on-screen, losses on, one ship, prize gap and marker on by default");
-	h.cfg.fw_max_ships = 3;
-	HOST_Check(TRF_FrMaxShips() == 1, "fw_max_ships 3 reads 1 in step 1");
+		and TRF_Fr_OptDef().fw_max_ships == 3 and TRF_Fr_OptDef().fw_prize_gap == 1 and TRF_Fr_OptDef().fw_marker == 1
+		and TRF_Fr_OptDef().fw_hulls == 1 and TRF_Fr_OptDef().fw_transit == 1 and TRF_Fr_OptDef().fw_follow == 1 and TRF_Fr_OptDef().fw_parked == 1
+		and TRF_Fr_OptDef().fw_hooks == 1,
+		"TRF_ModList has Fr; toggles: freight, on-screen, losses on, three ships, prize gap, marker and the step 2 parts on by default");
+	h.cfg.fw_max_ships = 7;
+	local m7 = TRF_FrMaxShips();
+	h.cfg.fw_max_ships = 0;
+	local m0 = TRF_FrMaxShips();
 	h.cfg.fw_max_ships = nil;
+	HOST_Check(m7 == 3 and m0 == 1 and TRF_FrMaxShips() == 3, "fw_max_ships clamped 1..3 (7 reads 3, 0 reads 1), default 3");
 	local T = TRF_FrTune();
 	HOST_Check(T.fw_k == 3.33 and T.fw_price_k == 1000 and T.fw_tick_real == 120 and T.fw_bank == 4 and T.fw_premium == 0.05 and T.fw_cover == 0.75
 		and T.fw_liab_ticks == 25 and T.fw_rob_base[1] == 0.005 and T.fw_rob_base[4] == 0.04 and T.fw_loss_base == 0.002 and T.fw_layup == 2
-		and T.fw_help_slot[1] == 5 and T.fw_help_slot[3] == 30 and T.fw_min_pro == 4 and T.fw_weights[2] == 0.3 and T.fw_offer_cd == 10,
+		and T.fw_help_slot[1] == 5 and T.fw_help_slot[3] == 30 and T.fw_min_pro == 4 and T.fw_weights[2] == 0.3 and T.fw_offer_cd == 10
+		and T.fw_hull_l[1] == 6 and T.fw_hull_l[2] == 13,
 		"tune defaults of design 6");
 	h.cfg.tune = {fw_tick_real=1, fw_rob_base={0.5, 0.5, 0.5, 0.5, 0.5, 0.5}, fw_bank=7.6};
 	T = TRF_FrTune();
@@ -257,8 +269,10 @@ function T_FR_A()
 	local tx = TRF_Fr_Text();
 	local nt = 0;
 	for k, v in tx do nt = nt + 1; end;
-	HOST_Check(nt == 31 and TRF_Txt("fwpaid", "3,900") == "Wolves Freight paid 3,900 cr since your last visit."
-		and TRF_Txt("fwwhere", "Kestrel", "Callipso", "Golkonda") == "Wolves Freight: Kestrel is in Callipso, bound for Golkonda.", "31 texts; payout and whereabouts lines of design 2");
+	local pct = "";
+	for k, v in tx do if strfind(v, "%", 1, 1) and k ~= "fwlost" and k ~= "fwlostt" then pct = pct.." "..k; end; end;
+	HOST_Check(nt == 43 and pct == "" and TRF_Txt("fwpaid", "3,900") == "Wolves Freight paid 3,900 cr since your last visit."
+		and TRF_Txt("fwwhere", "Kestrel", "Callipso", "Golkonda") == "Wolves Freight: Kestrel is in Callipso, bound for Golkonda.", "43 texts (no new one with a percent sign"..pct.."); payout and whereabouts lines of design 2");
 	-- Pure rules.
 	HOST_Check(TRF_FrEOf(3.33, 7, 4, 1, 1) == floor(3.33 * 49 * 7 / 8 * 1.2 + 0.5) and TRF_FrEOf(3.33, 10, 4, 0.7, 1) == floor(3.33 * 100 * 1.2 * 0.7 + 0.5)
 		and TRF_FrEOf(3.33, 4, 0, 1.25, 1) == floor(3.33 * 16 * 0.5 * 1.25 + 0.5), "run pay fw_k L^2 lk (1 + 0.05 R) d_k");
@@ -377,7 +391,14 @@ function T_FR_B()
 		and S_Logs(n0, "event=buy ship_id=1") == 1 and S_Logs(n0, "credits_before=1000000 credits_after="..(1000000 - list)) == 1 and TRF.co.decl == nil,
 		"OK: the ship at this stop, the price charged (EW8.1 log), the reply line");
 	FR_Visit();
-	HOST_Check(TRF_FrBuyGate(idx) == "ships", "a second ship: refused in step 1 (fw_max_ships 1)");
+	local g10 = TRF_FrBuyGate(idx);
+	TRF.std.help = 15;
+	local g15 = TRF_FrBuyGate(idx);
+	h.cfg.fw_max_ships = 1;
+	local g1 = TRF_FrBuyGate(idx);
+	h.cfg.fw_max_ships = nil;
+	TRF.std.help = 10;
+	HOST_Check(g10 == "help" and g15 == "region_ship" and g1 == "ships", "a second ship: help 10 below slot 2's 15, at help 15 the region already has a ship (G2), fw_max_ships 1 refuses it (step 1)");
 	-- Voucher price.
 	TRF.co.ships[1] = nil;
 	TRF.co.vch = 30000;
@@ -845,8 +866,8 @@ function T_FR_H()
 	HOST_Check(TRF.co == nil, "repair: a broken TRF.co goes");
 	-- Save bound: the worst case of 3.3.
 	TRF.co = {seq=99, bal=30000, vn=99999999, pg=99999999, rt=-99999, lk=-99999, vch=2000000, owe=30000, lost=99, decl={sys=113, leg=-99999},
-		log={}, ships={}};
-	for k = 1, 4 do TRF.co.log[k] = {k=2, s=99, nm=40, sys=113, leg=-99999, f=1}; end;
+		log={}, ships={}, fo={id=99, to=113}, lq={s=99, nm=40, o=30000}};
+	for k = 1, 4 do TRF.co.log[k] = {k=2, s=99, nm=40, sys=113, leg=-99999, f=1, c=99}; end;
 	for k = 1, 3 do
 		TRF.co.ships[k] = {id=97 + k, nm=40, hull=3, rg=k, home=113, p=50, w=1, k=99999999, run=30000, st=2, till=99999999, cov=99999999,
 			dmg=3, rs=2147483646, price=99999999, earned=99999999, sk=99999999, ek=99999999};
@@ -855,7 +876,7 @@ function T_FR_H()
 	print("HOST info TRF.co worst case "..sz.." bytes");
 	local one = {seq=1, bal=30000, vn=99999999, pg=99999999, rt=-99999, lk=-99999, vch=2000000, owe=30000, lost=99, ships={TRF.co.ships[1]}};
 	print("HOST info TRF.co one ship, no log "..HOST_SaveSize(one).." bytes");
-	HOST_Check(sz <= 2300, "TRF.co worst case "..sz.." bytes <= 2300 (spec 3.3)");
+	HOST_Check(sz <= 2500, "TRF.co worst case "..sz.." bytes <= 2500 (spec 3.3: three ships, four log entries with the captain index, decl, fo, lq)");
 	TRF.co = nil;
 	-- EW8.6: 2000 ticks per loop region against the cycle model (Q4 B16 Bu10 R14 Bs6 Rc6 legs; T1-T2 in Quiet, Boom, Bust,
 	-- Recovery, T3-T4 in Build-up, T4 in Raids; dis 2, 4 in Raids), a lost hull replaced at 25 % of list.
@@ -932,6 +953,523 @@ function T_FR_H()
 	print("HOST info fwsim expected ticks per loss "..ex);
 	HOST_Check(ex >= 600 and ex <= 1050 and per >= 0.6 * ex and per <= 1.4 * ex,
 		"EW8.6: one loss per 600-1050 ticks (20-35 h at 30 ticks/h): model "..format("%.0f", ex)..", sample "..format("%.0f", per));
+	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key");
+end;
+
+-- i: slots 2 and 3 (help gates, charter rank, prices, weights, one ship per region, three ships' lines) --------------
+
+-- Ship fixture in slot i (FR_Ship writes slot 1): the loop of sys's region, at its stop of sys, fields of t override.
+function FR_ShipAt(i, sys, t)
+	local co = TRF_FrCo(1);
+	local idx = V_Idx(sys);
+	local slot = TRF_RgOf(idx);
+	local lp = TRF_FrLoop(slot);
+	local s = {id=i, nm=i, hull=1, rg=slot, home=idx, p=TRF_FrStopOf(lp, idx), w=0, k=10, run=0, st=0, till=0, cov=0, dmg=0, rs=4711 + i,
+		price=50000, earned=0, sk=-1, ek=-1};
+	if t then for k, v in t do s[k] = v; end; end;
+	co.ships[i] = s;
+	co.seq = max(co.seq, i);
+	co.lk = TRF.clock.legs; co.rt = TRF.clock.rs;
+	return s;
+end;
+
+function T_FR_I()
+	local h = HOST();
+	FR_Begin("debris6", "9_1");
+	FR_Tune("fw_rob_base", {0, 0, 0, 0, 0, 0});
+	FR_Ship("debris6");
+	T_Jump("elio");
+	FR_World();
+	local elio = TRF_CurIdx();
+	TRF.std.help = 10;
+	local g10 = TRF_FrBuyGate(elio);
+	TRF.std.help = 15;
+	local g15 = TRF_FrBuyGate(elio);
+	TRF.std.help = 10;
+	-- Charter rank 3 with dues paid stands in for help 15 on slot 2 (14-charter-goals.md 4); unpaid dues do not.
+	h.cfg.charter = 1;
+	TRF.ch = {on=1, rk=3, rp=12, du=TRF.clock.legs + 10};
+	local gr3 = TRF_FrBuyGate(elio);
+	TRF.ch.du = TRF.clock.legs - 1;
+	local gru = TRF_FrBuyGate(elio);
+	TRF.ch.du = TRF.clock.legs + 10; TRF.ch.rk = 2;
+	local gr2 = TRF_FrBuyGate(elio);
+	h.cfg.charter = 0; TRF.ch = nil;
+	HOST_Check(g10 == "help" and g15 == nil and gr3 == nil and gru == "help" and gr2 == "help",
+		"slot 2: help 10 refused, help 15 opens it, charter rank 3 with dues paid opens it at help 10, unpaid dues or rank 2 do not ("
+		..tostring(g10)..","..tostring(g15)..","..tostring(gr3)..","..tostring(gru)..","..tostring(gr2)..")");
+	-- The slot 2 box: price x1.5 and the convoy fee sentence.
+	TRF.std.help = 15;
+	h.credits = 1000000;
+	FR_Visit();
+	local r = FR_Dock();
+	local lp2 = TRF_FrLoop(TRF_RgOf(elio));
+	local l2 = TRF_FrListOf(1000, lp2.L, 5, 1.5, 1);
+	HOST_Check(r.nb == 1 and FR_Has(r.box.text, "A bulk freighter is up for charter: "..TRF_FrNum(l2).." cr.")
+		and FR_Has(r.box.text, "FTU takes most of a second charter's run as convoy fee."), "slot 2 box: list x1.5 ("..l2..") and the convoy fee sentence: "..tostring(r.box and r.box.text));
+	local n0 = S_Mark();
+	FR_Press(r, "ok");
+	local s2 = TRF_FrShip(2);
+	HOST_Check(s2 and s2.rg == TRF_RgOf(elio) and s2.price == l2 and s2.nm ~= TRF_FrShip(1).nm and S_Logs(n0, "event=buy ship_id=2") == 1
+		and S_Logs(n0, "slot=2 hull=Btransport result=ok") == 1, "OK: ship 2 in slot 2 on the Gefest loop, its own name");
+	-- One ship per region (G2): another Gefest stop refuses at any help.
+	TRF.std.help = 30;
+	T_Jump("argon"); FR_World();
+	HOST_Check(TRF_FrBuyGate(TRF_CurIdx()) == "region_ship", "a second ship in the Gefest region: refused (one ship per region)");
+	-- Slot 3: help 30 (rank 3 does not stand in; rank 5 is charter step 2), price x2.25.
+	T_Jump("kadenoa"); FR_World();
+	local kd = TRF_CurIdx();
+	TRF.std.help = 29;
+	h.cfg.charter = 1;
+	TRF.ch = {on=1, rk=3, rp=12, du=TRF.clock.legs + 10};
+	local g29 = TRF_FrBuyGate(kd);
+	h.cfg.charter = 0; TRF.ch = nil;
+	TRF.std.help = 30;
+	local g30 = TRF_FrBuyGate(kd);
+	FR_Visit();
+	r = FR_Dock();
+	local lp3 = TRF_FrLoop(TRF_RgOf(kd));
+	local l3 = TRF_FrListOf(1000, lp3.L, 5, 2.25, 1);
+	HOST_Check(g29 == "help" and g30 == nil and r.nb == 1 and FR_Has(r.box.text, TRF_FrNum(l3).." cr.") and FR_Has(r.box.text, "convoy fee"),
+		"slot 3: help 29 with rank 3 refused, help 30 opens it, list x2.25 ("..l3..")");
+	FR_Press(r, "ok");
+	HOST_Check(TRF_FrCount() == 3 and TRF_FrShip(3) and TRF_FrShip(3).price == l3, "three ships owned");
+	FR_Visit();
+	HOST_Check(TRF_FrBuyGate(kd) == "ships", "a fourth ship: refused (fw_max_ships 3)");
+	-- Fleet weights by rank of run pay: 1 / 0.3 / 0.1, equal pay ranked by slot.
+	local co = TRF.co;
+	local e = {};
+	for i = 1, 3 do local s = TRF_FrShip(i); e[i] = TRF_FrEarn(s, TRF_FrLoop(s.rg)); end;
+	local rk = {TRF_FrRank(TRF_FrShip(1)), TRF_FrRank(TRF_FrShip(2)), TRF_FrRank(TRF_FrShip(3))};
+	local okr = 1;
+	for i = 1, 3 do for j = 1, 3 do
+		if i ~= j and rk[i] == rk[j] then okr = nil; end;
+		if i ~= j and e[i] > e[j] and rk[i] > rk[j] then okr = nil; end;
+	end; end;
+	local w = TRF_FrT("fw_weights");
+	local cr = {};
+	for i = 1, 3 do
+		local s = TRF_FrShip(i);
+		co.bal = 0; s.run = 1000;
+		TRF_FrCredit(co, s);
+		cr[i] = co.bal;
+	end;
+	HOST_Check(okr and cr[1] == floor(1000 * 0.95 * w[rk[1]]) and cr[2] == floor(1000 * 0.95 * w[rk[2]]) and cr[3] == floor(1000 * 0.95 * w[rk[3]]),
+		"weights by rank: run pay "..e[1]..","..e[2]..","..e[3].." ranks "..rk[1]..","..rk[2]..","..rk[3].." credits "..cr[1]..","..cr[2]..","..cr[3]);
+	-- Equal run pay: the lower slot ranks first.
+	local s3 = TRF_FrShip(3);
+	local rg3 = s3.rg;
+	s3.rg = TRF_FrShip(2).rg;
+	local t2, t3 = TRF_FrRank(TRF_FrShip(2)), TRF_FrRank(s3);
+	s3.rg = rg3;
+	HOST_Check(t3 == t2 + 1, "equal run pay: slot 2 ranks before slot 3 ("..t2..","..t3..")");
+	-- Lines for three ships: payout, at most 2 log lines, whereabouts in the room left; the first slot shown turns.
+	co.bal = 3000;
+	co.log = nil;
+	for i = 1, 3 do local s = TRF_FrShip(i); TRF_FrNote(co, 1, s, TRF_FrLoop(s.rg).s[s.p]); end;
+	FR_Visit();
+	r = FR_Dock();
+	local nl = 0;
+	for i = 1, 3 do if FR_Has(r.scr, TRF_FrShipName(TRF_FrShip(i).nm).." was robbed") then nl = nl + 1; end; end;
+	HOST_Check(r.n == 3 and FR_Has(r.scr, "Wolves Freight paid 3,000 cr") and nl == 2 and getn(co.log) == 1, "three robberies: payout and two log lines, one waits: "..r.scr);
+	FR_Visit();
+	r = FR_Dock();
+	nl = 0;
+	for i = 1, 3 do if FR_Has(r.scr, TRF_FrShipName(TRF_FrShip(i).nm).." was robbed") then nl = nl + 1; end; end;
+	local seen = {};
+	local wh = 0;
+	for v = 1, 3 do
+		if v > 1 then FR_Visit(); r = FR_Dock(); end;
+		for i = 1, 3 do if FR_Has(r.scr, "Wolves Freight: "..TRF_FrShipName(TRF_FrShip(i).nm).." is in ") then seen[i] = 1; wh = wh + 1; end; end;
+		HOST_Check(r.n <= 3, "at most 3 lines per dock ("..r.n..")");
+	end;
+	HOST_Check(nl == 1 and co.log == nil and seen[1] and seen[2] and seen[3], "the waiting log line next visit; over three visits every ship has its whereabouts line ("..wh..")");
+	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key");
+end;
+
+-- j: hulls (box by L_fw, carcass per hull, hull_k pay, hull_r robbery, the sell-back, repair) -----------------------
+
+function T_FR_J()
+	local h = HOST();
+	FR_Begin("debris6", "9_1", {fw_hulls=1});
+	FR_Tune("fw_tick_real", 3600);
+	FR_Tune("fw_rob_base", {0, 0, 0, 0, 0, 0});
+	local idx = TRF_CurIdx();
+	HOST_Check(TRF_FrHullOf(4, {6, 13}) == 2 and TRF_FrHullOf(6, {6, 13}) == 2 and TRF_FrHullOf(7, {6, 13}) == 1 and TRF_FrHullOf(12, {6, 13}) == 1
+		and TRF_FrHullOf(13, {6, 13}) == 3 and TRF_FrHullOf(16, {6, 17}) == 1, "hull by L: Walrus at L <= 6, Btransport 7-12, Btransport2 at L >= 13");
+	-- Golkonda (L 6): the Walrus box, price x0.7.
+	FR_Visit();
+	local r = FR_Dock();
+	local lp = TRF_FrLoop(TRF_RgOf(idx));
+	local lw = TRF_FrListOf(1000, lp.L, 5, 0.7, 1);
+	HOST_Check(r.nb == 1 and FR_Has(r.box.text, "A Walrus hauler is up for charter: "..TRF_FrNum(lw).." cr. Two turrets, no hold"), "Golkonda box: the Walrus at x0.7: "..tostring(r.box and r.box.text));
+	local n0 = S_Mark();
+	FR_Press(r, "ok");
+	local s = TRF_FrShip(1);
+	HOST_Check(s and s.hull == 2 and s.price == lw and S_Logs(n0, "hull=Walrus_tr1 result=ok") == 1, "bought: hull 2 (Walrus_tr1)");
+	-- hull_k: run pay x0.75.
+	HOST_Check(TRF_FrEarn(s, lp) == TRF_FrEOf(3.33, lp.L, TRF_RgR(s.rg), 1, 0.75), "Walrus run pay x0.75 ("..TRF_FrEarn(s, lp)..")");
+	-- hull_r: p_rob x0.8 in the roll.
+	FR_Tune("fw_tick_real", 120);
+	FR_Tune("fw_rob_base", {0.03, 0.03, 0.03, 0.03, 0.03, 0.03});
+	s.rs = FR_RsFor(0.9);
+	n0 = S_Mark();
+	FR_Ticks(1);
+	HOST_Check(S_Logs(n0, "event=roll ship_id=1 ") == 1 and FR_Kv(S_Line(n0, "event=roll ship_id=1 "), "p_rob") == format("%.4f", 0.03 * 0.5 * 0.8),
+		"Walrus robbery chance x0.8: "..S_Line(n0, "event=roll"));
+	FR_Tune("fw_rob_base", {0, 0, 0, 0, 0, 0});
+	FR_Tune("fw_tick_real", 3600);
+	-- On-screen: the Walrus carcass, no hold.
+	h.cfg.fw_marker = 0;
+	local cal = FR_Idx("debris1");
+	s.p = TRF_FrStopOf(lp, cal); s.w = 0; s.k = s.k + 1;
+	n0 = S_Mark();
+	s = FR_Jump("debris1");
+	FR_World();
+	FR_Wait(121);
+	local id, rec = FR_Rec();
+	local x = id and TRF_H().tr[id];
+	HOST_Check(id and x.sh[1].tpl == "Walrus_tr1" and getn(rec.hold) == 0 and S_Logs(n0, "hull=Walrus_tr1 hold=0") == 1, "on-screen Walrus: carcass Walrus_tr1, no hold");
+	TRF_Remove(id, "test");
+	-- Btransport2 (fw_hull_l {6, 11}: Kadi, L 11): price x1.8, run pay x1.5, p_rob x1.3, the carcass.
+	TRF.co = nil;
+	FR_Tune("fw_hull_l", {6, 11});
+	T_Jump("kadi"); FR_World();
+	local kd = TRF_CurIdx();
+	TRF_SetPro(kd, 5);
+	local lk = TRF_FrLoop(TRF_RgOf(kd));
+	FR_Visit();
+	r = FR_Dock();
+	local lb = TRF_FrListOf(1000, lk.L, 5, 1.8, 1);
+	HOST_Check(r.nb == 1 and FR_Has(r.box.text, "A heavy freighter is up for charter: "..TRF_FrNum(lb).." cr."), "Kadi box with fw_hull_l {6, 11}: Btransport2 at x1.8: "..tostring(r.box and r.box.text));
+	FR_Press(r, "ok");
+	s = TRF_FrShip(1);
+	HOST_Check(s and s.hull == 3 and TRF_FrEarn(s, lk) == TRF_FrEOf(3.33, lk.L, TRF_RgR(s.rg), 1, 1.5), "Btransport2: hull 3, run pay x1.5");
+	local p3 = TRF_FrRobOf(0.04, 1.5, 9, TRF_FrK().hull_r[3], 0.12);
+	HOST_Check(p3 == 0.12 and abs(TRF_FrRobOf(0.01, 1, 0, TRF_FrK().hull_r[3], 0.12) - 0.013) < 1e-9, "Btransport2 robbery chance x1.3, clamped 12 %");
+	FR_Tune("fw_hull_l", {6, 13});
+	-- fw_hulls 0: the bulk freighter everywhere.
+	h.cfg.fw_hulls = 0;
+	TRF.co.ships[1] = nil;
+	FR_Visit();
+	r = FR_Dock();
+	HOST_Check(r.nb == 1 and FR_Has(r.box.text, "A bulk freighter is up for charter: "..TRF_FrNum(TRF_FrListOf(1000, lk.L, 5, 1, 1)).." cr."), "fw_hulls 0: the bulk freighter at list");
+	FR_Press(r, "cancel");
+	h.cfg.fw_hulls = 1;
+	TRF.co.decl = nil;
+	-- Sell-back (trade-in at 50 %): a laid-up ship at its home station.
+	s = FR_ShipAt(1, "kadi", {hull=3, price=80000, st=1, till=99});
+	FR_Visit();
+	local c0 = h.credits;
+	n0 = S_Mark();
+	r = FR_Dock();
+	HOST_Check(r.nb == 1 and r.box.title == "FTU charter office" and FR_Has(r.box.text, "lies at "..TRF_FrSys(kd)..". The office buys her back for 40,000 cr, half her price. Sell?")
+		and S_Logs(n0, "kind=sell result=shown") == 1, "home station, laid up: the sell-back box: "..tostring(r.box and r.box.text));
+	local sx = FR_Press(r, "ok");
+	HOST_Check(TRF_FrShip(1) == nil and h.credits == c0 + 40000 and FR_Has(sx, "sold back to the FTU for 40,000 cr.") and S_Logs(n0, "event=sell ship_id=1") == 1,
+		"OK: the ship goes, 40,000 cr to the wallet");
+	FR_Visit();
+	r = FR_Dock();
+	HOST_Check(r.nb == 1 and FR_Has(r.box.text, "up for charter"), "the region is free: the purchase box again");
+	FR_Press(r, "cancel");
+	TRF.co.decl = nil;
+	-- Running (st 0) or away from home: no sell-back; Cancel starts the cooldown.
+	s = FR_ShipAt(1, "kadi", {st=0});
+	FR_Visit();
+	r = FR_Dock();
+	HOST_Check(r.nb == 0, "a running ship: no sell-back box");
+	s.st = 2;
+	FR_Visit();
+	r = FR_Dock();
+	HOST_Check(r.nb == 0, "suspended by a full account (paid out at this dock): no sell-back box");
+	s.st = 2;
+	TRF.std.heat = 5;
+	FR_Visit();
+	r = FR_Dock();
+	HOST_Check(r.nb == 1 and FR_Has(r.box.text, "buys her back"), "suspended at heat 5 at home: the sell-back box");
+	FR_Press(r, "cancel");
+	TRF.std.heat = 0;
+	FR_Visit();
+	r = FR_Dock();
+	HOST_Check(r.nb == 0 and TRF_FrShip(1) ~= nil, "Cancel: no box for fw_offer_cd legs, the ship kept");
+	-- Repair: hull 1..3.
+	TRF.co.ships[1].hull = 7;
+	TRF.co.ships[2] = nil;
+	TRF_Fr_Fix();
+	local h1 = TRF_FrShip(1).hull;
+	TRF.co.ships[1].hull = 3;
+	TRF_Fr_Fix();
+	HOST_Check(h1 == 1 and TRF_FrShip(1).hull == 3, "repair: hull 7 reads 1, hull 3 kept");
+	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key");
+end;
+
+-- k: transit appearances, portal follow, the parked ship ---------------------------------------------------------
+
+function T_FR_K()
+	local h = HOST();
+	FR_Begin("debris6", "9_1", {fw_transit=1, fw_follow=1});
+	FR_Tune("fw_tick_real", 3600);
+	FR_Tune("fw_rob_base", {0, 0, 0, 0, 0, 0});
+	h.cfg.fw_marker = 0;
+	local d6 = FR_Idx("debris6");
+	local lp = TRF_FrLoop(TRF_RgOf(d6));
+	-- Golkonda loop index 4: Debris6 as a transit system between Debris1 (3) and Golkonda (5).
+	local s = FR_Ship("debris6", {p=4, w=0, k=20});
+	HOST_Check(lp.s[4] == d6 and lp.t[4] == 0 and lp.s[3] == FR_Idx("debris1") and lp.s[5] == FR_Idx("golkonda"), "fixture: Debris6 transit at loop index 4");
+	local n0 = S_Mark();
+	s = FR_Jump("debris6", 1);
+	HOST_Check(S_Logs(n0, "event=plan ship_id=1 tick=20 path=C") == 1 and s.sk == 20, "transit system: path C planned, sk = k");
+	local dl = tonumber(FR_Kv(S_Line(n0, "event=plan ship_id=1"), "delay"));
+	FR_Wait(dl + 1);
+	local id, r = FR_Rec();
+	HOST_Check(id and r.path == "C" and r.from == FR_Idx("debris1") and r.to == FR_Idx("golkonda") and S_Logs(n0, "path=C tick=20") == 1,
+		"path C: in from the Debris1 portal, out to the Golkonda portal ("..tostring(r and r.from).."->"..tostring(r and r.to)..")");
+	local sc = "";
+	for i = 1, getn(h.screen) do sc = sc..h.screen[i].t.."|"; end;
+	HOST_Check(FR_Has(sc, TRF_FrShipName(s.nm).." passing through, boss. Bound for "), "path C radio line: "..sc);
+	-- Exit through the Golkonda portal: p + 1; then the player follows within T_chase (60 s).
+	T_Tick(20, 0.5);
+	n0 = S_Mark();
+	HOST_Fire("f_inside", "TRF_ArmExit("..id..",");
+	HOST_Fire("f_object_inside", "TRF_OnExit("..id..",");
+	HOST_Check(s.p == 5 and S_Logs(n0, "how=exit") == 1, "path C exit: p 5 (Golkonda)");
+	n0 = S_Mark();
+	T_Jump("golkonda");
+	s = TRF_FrShip(1);
+	HOST_Check(S_Logs(n0, "event=follow ship_id=1 destination=golkonda") == 1 and S_Logs(n0, "result=written") == 1, "jump through the same portal within T_chase: follow written");
+	HOST_Check(S_Logs(n0, "event=plan ship_id=1 tick=20 path=C") == 1 and S_Logs(n0, "follow=true") >= 1 and TRF.co.fo == nil, "follow consumed: path C in Golkonda in the same ship tick");
+	dl = tonumber(FR_Kv(S_Line(n0, "event=plan ship_id=1"), "delay"));
+	HOST_Check(dl >= 5 and dl <= 15, "follow delay 5-15 s ("..tostring(dl)..")");
+	FR_Wait(dl + 1);
+	id, r = FR_Rec();
+	HOST_Check(id and r.from == FR_Idx("debris6") and S_Logs(n0, "event=spawn ship_id=1 trader_id="..id) == 1, "the followed ship arrives from the Debris6 portal");
+	-- Too late: an exit, then 61 s, then the jump: no follow.
+	T_Tick(10, 0.5);
+	HOST_Fire("f_inside", "TRF_ArmExit("..id..",");
+	HOST_Fire("f_object_inside", "TRF_OnExit("..id..",");
+	HOST_Check(s.p == 6, "exit: p 6 (XT-05)");
+	T_Tick(122, 0.5);
+	n0 = S_Mark();
+	T_Jump("xt05");
+	HOST_Check(S_Logs(n0, "event=follow") == 0 or S_Logs(n0, "result=written") == 0, "jump 61 s after the exit: no follow record");
+	HOST_Check(S_Logs(n0, "event=spawn ship_id=1 tick=20 sk=20 result=skipped reason=same_tick") == 1, "no follow: the same ship tick is skipped in XT-05");
+	-- Void on load; an unconsumed record goes at OnActivate.
+	TRF.co.fo = {id=1, to=FR_Idx("xt05")};
+	n0 = S_Mark();
+	T_SaveLoad();
+	HOST_Check(TRF.co.fo == nil and S_Logs(n0, "event=follow result=dropped reason=load") == 1, "follow record void on load");
+	TRF.co.fo = {id=1, to=FR_Idx("kron")};
+	n0 = S_Mark();
+	T_Jump("debris1");
+	HOST_Check(TRF.co.fo == nil and S_Logs(n0, "event=follow ship_id=1 system=debris1 result=dropped reason=other_system") == 1, "follow record for another system: dropped at entry");
+	-- fw_follow 0: the exit keeps nothing.
+	h.cfg.fw_follow = 0;
+	s = TRF_FrShip(1);
+	s.p = 4; s.k = s.k + 1; s.w = 0;
+	T_Jump("kron"); s = FR_Jump("debris6");
+	FR_Wait(121);
+	id, r = FR_Rec();
+	T_Tick(4, 0.5);
+	HOST_Fire("f_inside", "TRF_ArmExit("..id..",");
+	HOST_Fire("f_object_inside", "TRF_OnExit("..id..",");
+	n0 = S_Mark();
+	T_Jump("golkonda");
+	HOST_Check(S_Logs(n0, "event=follow") == 0 and TRF.co.fo == nil, "fw_follow 0: no follow");
+	h.cfg.fw_follow = 1;
+	-- fw_transit 0: no path C.
+	h.cfg.fw_transit = 0;
+	s = TRF_FrShip(1);
+	s.p = 4; s.k = s.k + 1; s.w = 0;
+	n0 = S_Mark();
+	T_Jump("kron"); s = FR_Jump("debris6");
+	HOST_Check(S_Logs(n0, "event=plan ship_id=1") == 0, "fw_transit 0: no transit appearance");
+	h.cfg.fw_transit = 1;
+	-- Parked ship at home (S25): laid up at its home stop, one ship of cap_ships, no hold, FRIEND, still, gone at the jump.
+	h.cfg.fw_parked = 1;
+	-- Home Debris1 (the host scene's station label is the map label there).
+	local d1 = FR_Idx("debris1");
+	s = FR_Ship("debris1", {st=1, till=99, k=30});
+	n0 = S_Mark();
+	T_Jump("kron"); s = FR_Jump("debris1");
+	local cs0 = TRF_CapShips();
+	FR_Wait(5);
+	local pk = TRF_FrSH().v.pk;
+	local o = pk and pk.sh;
+	local rel = "";
+	for i = 1, getn(h.rel) do if h.rel[i][1] == "TRF_Fw_1" or h.rel[i][2] == "TRF_Fw_1" then rel = rel..h.rel[i][1]..">"..h.rel[i][2]..":"..h.rel[i][3]..","; end; end;
+	HOST_Check(o and o.alive and o.tpl == "Btransport" and o.cleared == 1 and pk.fl.stopped == 1 and o.label == "trf_fw_1_1" and S_Logs(n0, "event=parked ship_id=1 slot=1 system=debris1") == 1
+		and FR_Has(rel, "TRF_Fw_1>PlayerGroup:2,PlayerGroup>TRF_Fw_1:2,") and getglobal("TRF_GFw_1") == nil, "parked ship: Btransport, inventory cleared, stopped, label trf_fw_1_1, FRIEND, no group global");
+	HOST_Check(TRF_Fr_Ships("freight") == 1 and TRF_CapShips() == cs0 + 1, "the parked ship counts one ship of cap_ships (TRF_CapReg freight)");
+	local p0 = o:GetPosition();
+	FR_Wait(30);
+	HOST_Check(HOST_Dist(o:GetPosition(), p0) < 1, "it never moves");
+	T_Jump("kron");
+	HOST_Check(not o.alive and TRF_Fr_Ships("freight") == 0 and TRF_FrSH().v.pk == nil, "deleted at the jump");
+	-- Suspended fleet (st 2) at home: parked too; load: the plumbing orphan scan deletes it.
+	s = TRF_FrShip(1);
+	s.st = 2;
+	s = FR_Jump("debris1");
+	FR_Wait(5);
+	o = TRF_FrSH().v.pk and TRF_FrSH().v.pk.sh;
+	HOST_Check(o and o.alive, "suspended at home: parked");
+	T_SaveLoad();
+	HOST_Check(not o.alive and TRF_FrSH().v.pk == nil, "load: the parked ship removed (label scan trf_fw_1_1)");
+	-- Killed in view: the loss of its ship (cause parked).
+	s = TRF_FrShip(1);
+	T_Jump("kron"); s = FR_Jump("debris1");
+	FR_Wait(5);
+	o = TRF_FrSH().v.pk and TRF_FrSH().v.pk.sh;
+	HOST_Check(o ~= nil, "parked again after the load");
+	o.alive = nil;
+	n0 = S_Mark();
+	FR_Wait(2);
+	HOST_Check(TRF_FrShip(1) == nil and S_Logs(n0, "event=parked ship_id=1 result=destroyed") == 1 and S_Logs(n0, "cause=parked") == 1, "parked ship killed: the ship is lost");
+	-- fw_parked 0: none; away from home: none.
+	s = FR_Ship("debris1", {st=1, till=999});
+	h.cfg.fw_parked = 0;
+	T_Jump("kron"); FR_Jump("debris1");
+	FR_Wait(5);
+	HOST_Check(TRF_FrSH().v.pk == nil, "fw_parked 0: no parked ship");
+	h.cfg.fw_parked = 1;
+	T_Jump("golkonda");
+	FR_Wait(5);
+	HOST_Check(TRF_FrSH().v.pk == nil, "not its home station: no parked ship");
+	T_Jump("kron");
+	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key");
+end;
+
+-- l: news, the captain in the robbery line, pods and the halved liability, the chapter-13 line, size ----------------
+
+function T_FR_L()
+	local h = HOST();
+	FR_Begin("debris6", "9_1", {fw_hooks=1});
+	FR_Tune("fw_rob_base", {0, 0, 0, 0, 0, 0});
+	local idx = TRF_CurIdx();
+	local slot = TRF_RgOf(idx);
+	-- News: fw/reg (global) at the first charter only; fw/lost (regional) on a loss.
+	TRF.news = nil; TRF.newsx = nil;
+	local n0 = S_Mark();
+	local s = FR_Buy();
+	HOST_Check(s and type(TRF.news) == "table" and TRF.news.fw and TRF.news.fw.v == "reg" and TRF.news.fw.n == 1
+		and S_Logs(n0, "event=news topic=fw variant=reg") == 1 and TRF_UI_NewsText("fw", "reg", nil) == "FTU registers Wolves Freight",
+		"first charter: the global bulletin 'FTU registers Wolves Freight'");
+	TRF.news.fw.n = 0;
+	local lp = TRF_FrLoop(s.rg);
+	TRF_FrLose(TRF.co, 1, s, lp.s[s.p], "roll", nil, nil);
+	local e = TRF.newsx and TRF.newsx[slot] and TRF.newsx[slot].fw;
+	HOST_Check(e and e.v == "lost" and TRF_UI_NewsText("fw", "lost", slot) == "Wolves Freight hull lost near Golkonda", "a loss: the regional bulletin 'Wolves Freight hull lost near Golkonda'");
+	TRF.co.owe = 0; TRF.co.vch = 0;
+	n0 = S_Mark();
+	FR_Buy();
+	HOST_Check(S_Logs(n0, "topic=fw variant=reg") == 0 and TRF.news.fw.n == 0, "a later charter: no second registration post (one post per topic)");
+	-- news_mode 0: nothing posted.
+	h.cfg.news_mode = 0;
+	TRF.newsx = nil;
+	TRF_FrLose(TRF.co, 1, TRF_FrShip(1), idx, "roll", nil, nil);
+	HOST_Check(TRF.newsx == nil or TRF.newsx[slot] == nil or TRF.newsx[slot].fw == nil, "news_mode 0: no post");
+	h.cfg.news_mode = nil;
+	TRF.co.owe = 0; TRF.co.log = nil;
+	-- Feature 4: the robbing clan's living captain named in the robbery line.
+	s = FR_Ship("debris6");
+	h.cfg.cap_enable = 1;
+	if type(TRF.cap) ~= "table" then TRF.cap = {}; end;
+	TRF.cap[slot] = {nm=3, st=2, gen=1};
+	TRF_FrRob(TRF.co, s, idx, "roll");
+	local c3 = TRF.co.log[1].c;
+	TRF.cap[slot].st = 4;
+	TRF_FrRob(TRF.co, s, idx, "roll");
+	local c4 = TRF.co.log[2].c;
+	TRF.cap[slot].st = 2;
+	h.cfg.fw_hooks = 0;
+	TRF_FrRob(TRF.co, s, idx, "roll");
+	local c0 = TRF.co.log[3].c;
+	h.cfg.fw_hooks = 1;
+	local cn = TRF_Cap_NmText(3);
+	h.cfg.cap_enable = 0;
+	FR_Visit();
+	local r = FR_Dock();
+	HOST_Check(c3 == 3 and c4 == nil and c0 == nil and type(cn) == "string" and FR_Has(r.scr, "was robbed near "..TRF_FrSys(idx).." by the crew of "..cn..". Hold lost"),
+		"robbery with a living captain: his name in the line (dead captain or fw_hooks 0: none): "..r.scr);
+	TRF.cap = nil; TRF.co.log = nil;
+	-- Feature 6: an on-screen loss to pirates leaves pods with the ship id; the hand-in halves that loss's liability.
+	h.cfg.enable_survivors = 1;
+	FR_Tune("fw_tick_real", 3600);
+	local id = nil;
+	s, id, r = FR_Live();
+	local x = TRF_H().tr[id];
+	x.tp[1].alive = nil;
+	-- The loss point away from the portals and the station (the survivors' site rule).
+	TRF_SvSV().pc[id] = {x=-300, y=0, z=400};
+	x.tp[1].pos = Vector3(-300, 0, 400);
+	n0 = S_Mark();
+	HOST_Fire("died", "TRF_OnShipDied("..id..",1,"..TRF.gen..")--");
+	local lq = TRF.co.lq;
+	local b = TRF.sv and TRF.sv.b and TRF.sv.b[getn(TRF.sv.b)];
+	HOST_Check(TRF_FrShip(1) == nil and lq and lq.s == 1 and lq.o == TRF.co.owe and lq.o > 0 and b and b.fw == 1 and S_Logs(n0, "module=survive event=loss") >= 1
+		and S_Logs(n0, "result=beacon") == 1, "on-screen loss: pods with the ship id (fw 1), lq keeps the loss's liability ("..tostring(lq and lq.o)..")");
+	-- The pickup carries fw; the hand-in at a trade dock (line 30) halves the liability before the freight line 60.
+	FR_Wait(6);
+	local j = getn(TRF.sv.b);
+	TRF_SvPick(j, TRF.sv.b[j], 1, 10, TRF_SvTune());
+	HOST_Check(TRF.sv.c and TRF.sv.c.fw == 1, "the picked pod carries fw into the carry record");
+	local o0 = TRF.co.owe;
+	local w = floor(lq.o / 2);
+	TRF.co.bal = 0;
+	h.credits = 0;
+	FR_Visit();
+	n0 = S_Mark();
+	r = FR_Dock();
+	HOST_Check(FR_Has(r.scr, "FTU: the crew of "..TRF_FrShipName(lq.nm).." is home. Half the carrier liability is waived: "..TRF_FrNum(w).." cr.") and TRF.co.owe == o0 - w
+		and TRF.co.lq == nil and TRF.sv.c == nil and S_Logs(n0, "event=crew ship_id=1 liability="..lq.o.." waived="..w) == 1, "hand-in: half the liability waived: "..r.scr);
+	-- Counted player fire: no pods; fw_hooks 0: no pods (step 1 rule).
+	TRF.co = nil; TRF.sv = nil;
+	s, id, r = FR_Live();
+	n0 = S_Mark();
+	V_PlayerKill(id);
+	HOST_Check(S_Logs(n0, "module=survive event=loss") == 0 or S_Logs(n0, "reason=fire") == 1, "own kill: no pods");
+	HOST_Check(TRF.co.lq == nil, "own kill: no liability, no lq");
+	h.cfg.fw_hooks = 0;
+	TRF.co = nil; TRF.sv = nil;
+	s, id, r = FR_Live();
+	x = TRF_H().tr[id];
+	x.tp[1].alive = nil;
+	n0 = S_Mark();
+	HOST_Fire("died", "TRF_OnShipDied("..id..",1,"..TRF.gen..")--");
+	HOST_Check(S_Logs(n0, "reason=freight") == 1 and (TRF.sv == nil or getn(TRF.sv.b or {}) == 0), "fw_hooks 0: no pods (reason=freight)");
+	h.cfg.fw_hooks = 1;
+	h.cfg.enable_survivors = 0;
+	FR_Tune("fw_tick_real", 120);
+	-- A crew without a pending record: nothing.
+	HOST_Check(TRF_Fr_CrewHome(7) == nil, "another ship's crew: no waiver");
+	-- The chapter-13 FTU alarm line, once per visit, for an owner.
+	FR_Begin("debris6", "13_1", {fw_hooks=1});
+	FR_Tune("fw_rob_base", {0, 0, 0, 0, 0, 0});
+	FR_Ship("debris6");
+	FR_Visit();
+	r = FR_Dock();
+	local r2 = FR_Dock();
+	FR_Visit();
+	local r3 = FR_Dock();
+	HOST_Check(FR_Has(r.scr, "FTU: HQ on alert. Charters run as usual.") and not FR_Has(r2.scr, "HQ on alert") and FR_Has(r3.scr, "HQ on alert") and r.n <= 3,
+		"chapter 13: the alarm line once per visit: "..r.scr);
+	h.labels.CurrentQuest = "12_1";
+	FR_Visit();
+	r = FR_Dock();
+	h.labels.CurrentQuest = "13_1";
+	h.cfg.fw_hooks = 0;
+	FR_Visit();
+	r2 = FR_Dock();
+	h.cfg.fw_hooks = 1;
+	TRF.co.ships[1] = nil;
+	FR_Visit();
+	r3 = FR_Dock();
+	HOST_Check(not FR_Has(r.scr, "HQ on alert") and not FR_Has(r2.scr, "HQ on alert") and not FR_Has(r3.scr, "HQ on alert"), "no alarm line in chapter 12, with fw_hooks 0 or without a ship");
+	-- Size: the news entries of the topic and the crew record.
+	TRF_NewsPost("fw", "reg"); TRF_NewsPost("fw", "lost", 4);
+	local ns = HOST_SaveSize(TRF.news.fw) + HOST_SaveSize(TRF.newsx[4].fw) + 16;
+	local sz = HOST_SaveSize({s=99, nm=40, o=30000}) + HOST_SaveSize({id=99, to=113}) + 4;
+	print("HOST info fw news "..ns.." bytes, lq + fo "..sz.." bytes");
+	HOST_Check(ns <= 200 and sz <= 200, "news entries "..ns.." bytes, lq and fo "..sz.." bytes (spec 3.3)");
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key");
 end;
 

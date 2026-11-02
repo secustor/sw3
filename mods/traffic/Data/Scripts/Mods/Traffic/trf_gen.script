@@ -1011,8 +1011,11 @@ function TRF_Spawn(p)
 		end;
 	end;
 	-- Hold mirror (v02 3.2, 9.3): trf_tier TRF_FillHold; TT1 and the fallback are the v0.1 TRF_FillCargo draws.
+	-- p.nohold 1: a hull without cargo room (trf_freight's Walrus_tr1) gets no hold.
 	local hold, cls;
-	if type(TRF_FillHold) == "function" then
+	if p.nohold == 1 then
+		hold = {};
+	elseif type(TRF_FillHold) == "function" then
 		hold, cls = TRF_GnP(TRF_FillHold, {fl, p.tier or 1, p.pw or p.strength, p.path});
 	else
 		local st = TRF_GnP(TRF_FillCargo, {fl, p.strength});

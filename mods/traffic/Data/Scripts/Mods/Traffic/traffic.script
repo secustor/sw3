@@ -450,7 +450,8 @@ function TRF_BeforeJump(dest, how)
 		TRF_P("TRF_Hail_BeforeJump");
 		TRF_P("TRF_Track_BeforeJump", dest, how);
 		local v1 = {"Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Pl", "Stn", "Sv", "Sc", "Sh", "Fr", "Haunt", "Ft", "Pc"};
-		for i = 1, getn(v1) do TRF_P("TRF_"..v1[i].."_BeforeJump"); end;
+		-- dest and how reach every module of the list (trf_freight's portal follow reads them; the others take none).
+		for i = 1, getn(v1) do TRF_P("TRF_"..v1[i].."_BeforeJump", dest, how); end;
 		-- Mercenary clans: the destination decides whether a hired wing follows (design/merc-spec.md 6a); the hire record
 		-- and the visit's raid marks stay for trf_raid's 8.5 pay below.
 		TRF_P("TRF_Mc_BeforeJump", dest, how);

@@ -103,6 +103,9 @@ function TRF_UI_Text()
 		ncaphide = "$2 captain $4 has gone to ground near $1",
 		ncapout = "$2 captain $4 is back on the lanes near $1",
 		ncapsucc = "$4 now leads the $2 near $1",
+		-- Wolves Freight (freight-spec 5.8): global fw/reg at the first charter, regional fw/lost on a loss. EN only.
+		nfwreg = "FTU registers Wolves Freight",
+		nfwlost = "Wolves Freight hull lost near $1",
 		-- v1 news (v1-spec 3.1): regional war/<variant>[_<f>], global feq/<variant>_<f>. Regional $1 home,
 		-- $2 clan, $3 faction of the variant; global $1 faction.
 		nwarsalv2 = "Pirates near $1 fly captured $3 fighters",

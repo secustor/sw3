@@ -305,6 +305,7 @@ also the unused hulls).
 | `base_radio` | `module=ui event=base_radio system_index=12 key=baseradiowar` | 1 |
 | `news` | `module=ui event=news topic=sweep slot=4 result=removed` | 1 |
 | `news` | `module=ui event=news topic=sweep variant=gather slot=4 mode=1 result=posted` | 1 |
+| `news` | `module=ui event=news topic=fw variant=<reg, lost> slot=<nil, 4> mode=1 result=posted` (trf_freight: the first charter, a hull loss; EW8.16) | 1 |
 | `news` | `module=ui event=news topic=cap variant=hide slot=4 result=dropped reason=no_text` (an unseen entry without a text: the cap bulletin of a gone captain; marked seen) | 1 |
 
 ## shop (`trf_shop.script`; `TRF_ShopE`)
@@ -636,31 +637,39 @@ Clan stashes, step 1 (`design/stash-spec.md` 7). `index` is the record index i (
 
 ## freight (`trf_freight.script`; `TRF_FrE`, `TRF_FrDE`)
 
-Wolves Freight, step 1 (`design/freight-spec.md` 7). `ship_id` is the ship id (group `TRF_Fw_<id>`), `trader_id` the trader
+Wolves Freight, steps 1 and 2 (`design/freight-spec.md` 7). `ship_id` is the ship id (group `TRF_Fw_<id>`), `trader_id` the trader
 record of its on-screen appearance, `tick` the ship tick `k`.
 
 | Event | Example line | Level |
 |---|---|---|
 | `error` | `module=freight event=error message=<m>` | 1 |
 | `offer` | `module=freight event=offer system=debris6 result=none reason=<chapter, chapter_end, nk, mission, owe, ships, help, heat, war, no_loop, chapter_region, region_ship, pro, dockmaster, declined, strict:<why>, quest>` (`quest`: slot 1 waits for the freight unlock quest's step 70, cfg `enable_wq` 1) | 2 |
-| `box` | `module=freight event=box system=debris6 region=4 list=21609 price=21609 voucher_used=false result=shown` (EW8.1) | 1 |
-| `buy` | `module=freight event=buy ship_id=1 name=Kestrel region=4 home=debris6 price=21609 list=21609 credits_before=1000000 credits_after=978391 seed=... result=ok` (EW8.1) / `... price=21609 credits=100 result=poor` / `... system=debris6 result=declined` / `result=stale` / `result=error` | 1 |
+| `box` | `module=freight event=box system=debris6 region=4 list=21609 price=21609 voucher_used=false slot=1 hull=<Btransport, Walrus_tr1, Btransport2> result=shown` (EW8.1, EW8.14) | 1 |
+| `box` | `module=freight event=box system=kadi ship_id=1 price=40000 kind=sell result=shown` (the sell-back, step 2) | 1 |
+| `sell` | `module=freight event=sell ship_id=1 slot=1 hull=Btransport2 price_paid=80000 credits=40000 result=sold` (EW8.15) / `... system=kadi result=declined` / `result=stale` / `result=error` | 1 |
+| `buy` | `module=freight event=buy ship_id=1 name=Kestrel region=4 home=debris6 price=21609 list=21609 credits_before=1000000 credits_after=978391 seed=... slot=1 hull=Btransport result=ok` (EW8.1, EW8.14) / `... price=21609 credits=100 result=poor` / `... system=debris6 result=declined` / `result=stale` / `result=error` | 1 |
 | `tick` | `module=freight event=tick legs=12 lk=12 rt=0 ship_count=1 reason=<step, dock, entry, activate>` (EW8.3) | 2 |
 | `bank` | `module=freight event=bank legs=20 lk_before=10 lk=16 reason=step` (more than `fw_bank` legs waiting, EW8.3) | 2 |
 | `ship_tick` | `module=freight event=ship_tick ship_id=1 result=skipped reason=no_loop` | 2 |
 | `roll` | `module=freight event=roll ship_id=1 tick=37 r=0.4123 p_rob=0.0600 p_loss=0.0000 phase=2 tier=3 dis=2 system=debris4 out=<none, rob, loss> void=<nil, onscreen, cover>` (EW8.4) | 2 |
 | `credit` | `module=freight event=credit ship_id=1 tick=38 run=588 credited=558 balance=3900 weight=1.000` (the dwell tick of a stop) | 2 |
-| `rob` | `module=freight event=rob ship_id=1 tick=37 system=debris4 till=39 clan_score_change=1 via=<roll, onscreen>` | 1 |
-| `lost` | `module=freight event=lost ship_id=1 tick=40 system=debris4 cause=<roll, pirates, player> vch=44100 voucher=44100 owe_added=2900 owe=2900 shortage=debris1 class=2 clan_score_change=2 heat=0 lost_count=1` (EW8.8: `cause=player vch=0`) | 1 |
+| `rob` | `module=freight event=rob ship_id=1 tick=37 system=debris4 till=39 clan_score_change=1 via=<roll, onscreen> captain=<name index, nil>` | 1 |
+| `lost` | `module=freight event=lost ship_id=1 tick=40 system=debris4 cause=<roll, pirates, player, parked> vch=44100 voucher=44100 owe_added=2900 owe=2900 shortage=debris1 class=2 clan_score_change=2 heat=0 lost_count=1` (EW8.8: `cause=player vch=0`) | 1 |
 | `log` | `module=freight event=log kind=1 ship_id=1 result=dropped reason=cap` (more than 4 entries for the next dock) | 2 |
 | `layup` | `module=freight event=layup ship_id=1 tick=50 state=2 reason=<full, heat, war>` / `... state=1 till=52 reason=damage` | 1 |
 | `resume` | `module=freight event=resume ship_id=1 tick=51` / `... reason=layup` | 1 |
 | `pay` | `module=freight event=pay visit=12 paid_visit=12 balance=0 paid=3900 held=nil mode=<plain, key> system=golkonda` (EW8.5, EW8.10; `held=<s>` inside the prize gap) | 1 |
 | `pay` | `module=freight event=pay visit=12 paid_visit=12 result=none reason=visit` / `... result=none reason=nk` | 2 |
 | `liability` | `module=freight event=liability from_balance=1000 from_wallet=500 owe=1300 balance=0` | 1 |
-| `lines` | `module=freight event=lines line_count=3 log_shown=1 log_left=0` | 2 |
-| `plan` | `module=freight event=plan ship_id=1 tick=20 path=<A, B> delay=74 system=debris1` | 1 |
-| `spawn` | `module=freight event=spawn ship_id=1 trader_id=7 group=TRF_Fw_1 relation=friend hull=Btransport hold=2 tier=2 path=A tick=20 damage=0 raid_id=nil result=spawned` (EW8.2) | 1 |
+| `lines` | `module=freight event=lines line_count=3 log_shown=1 log_left=0 alarm=<true, false>` | 2 |
+| `plan` | `module=freight event=plan ship_id=1 tick=20 path=<A, B, C> delay=74 system=debris1 follow=<true, false>` (EW8.11) | 1 |
+| `follow` | `module=freight event=follow ship_id=1 destination=golkonda elapsed=12 result=written` / `... system=golkonda path=<A, C> delay=8 result=planned` / `... result=dropped reason=<off, ship, other_system, transit_off, no_plan, load, <spawn gate>>` (EW8.12) | 1 |
+| `follow` | `module=freight event=follow ship_id=1 destination=xt05 elapsed=61 result=none` | 2 |
+| `parked` | `module=freight event=parked ship_id=1 slot=1 system=debris1 hull=Btransport state=1 group=TRF_Fw_1 relation=friend position=..,..,.. result=spawned` (EW8.13) / `... result=none reason=<off, quest, chapter6, strict:<why>, mode, station, approach, cap_<why>, builder>` / `result=failed reason=<no_group, build>` / `result=destroyed` | 1 |
+| `parked` | `module=freight event=parked ship_id=1 result=removed reason=<jump, sold, lost>` | 2 |
+| `crew` | `module=freight event=crew ship_id=1 liability=2800 waived=1400 owe=1400 result=home` (EW8.17, the hand-in of trf_survive) | 1 |
+| `crew` | `module=freight event=crew ship_id=7 result=none reason=record` | 2 |
+| `spawn` | `module=freight event=spawn ship_id=1 trader_id=7 group=TRF_Fw_1 relation=friend hull=Btransport hold=2 tier=2 path=<A, B, C> tick=20 damage=0 raid_id=nil follow=<true, false> result=spawned` (EW8.2, EW8.11, EW8.15) | 1 |
 | `spawn` | `module=freight event=spawn ship_id=1 tick=21 sk=21 result=skipped reason=same_tick` (EW8.9) / `reason=<state_<st>, off, quest, chapter6, strict:<why>, mode, disable_action, sys_sos, suppressed, escort, handoff_max, due, moved, generator, contacts, station, cap_<why>, plan_<why>, spawn, error>` | 1 |
 | `build` | `module=freight event=build ship_id=1 trader_id=7 hull=Btransport ship_count=1` | 2 |
 | `build` | `module=freight event=build ship_id=1 result=failed reason=no_group` | 1 |
@@ -670,7 +679,7 @@ record of its on-screen appearance, `tick` the ship tick `k`.
 | `raid_answered` | `module=freight event=raid_answered ship_id=1 raid_id=3 pay=0 help=0 credits_cancelled=4500` (EW8.9) | 1 |
 | `jump` | `module=freight event=jump ship_id=1 trader_id=7 hp=320 damage=2` | 1 |
 | `orphan` | `module=freight event=orphan trader_id=7 ship_id=1 group=TRF_Fw_1 result=<removed, dropped>` (after a load, EW8.7) | 1 |
-| `dump` | `module=freight event=dump balance=3900/30000 vn=412 pg=409 lk=118 legs=119 rt=64 owe=0 vch=0 lost=0 susp=0 seq=1 log_count=0 ship_count=1` / `module=freight event=dump ship_count=0 result=none` | 1 |
+| `dump` | `module=freight event=dump balance=3900/30000 vn=412 pg=409 lk=118 legs=119 rt=64 owe=0 vch=0 lost=0 susp=0 seq=1 log_count=0 ship_count=1 max_ships=3 follow=<id>destination|nil crew_liability=<id>:<o>|nil` / `module=freight event=dump ship_count=0 result=none` | 1 |
 | `dump_ship` | `module=freight event=dump_ship slot=1 id=1 nm=Kestrel hull=bt rg=4 home=debris1 p=9/18 w=0 at=callipso st=<run, laid_up, suspended> till=0 cov=0 k=231 sk=229 ek=0 run=588 dmg=1 rs=885466 price=58800 earned=61200` | 1 |
 | `dump_roll` | `module=freight event=dump_roll id=1 k=231 r=0.4123 p_rob=0.0840 p_loss=0.0040 out=none void=nil` | 1 |
 | `fwsim` | `module=freight event=fwsim rg=4 ticks=2000 gross=224000 net=158866 rob=69 lost=3 net_share=0.709` (host run `fr-h` only, EW8.6) | 1 |

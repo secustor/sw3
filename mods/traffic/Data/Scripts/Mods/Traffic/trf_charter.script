@@ -1212,6 +1212,17 @@ function TRF_Ch_Heat3()
 	return 1;
 end;
 
+-- Rank whose perks hold now (0..3 in step 1; dues paid from rank 2, design 4), or nil while the module is off or before
+-- the unlock. trf_freight reads it: rank 3 stands in for help 15 on freighter slot 2, rank 5 for help 30 on slot 3
+-- (14-charter-goals.md 4, the OR rule of charter-spec Q4).
+function TRF_Ch_PerkRank()
+	if not TRF_ChOn() then return nil; end;
+	local C = TRF_ChRec();
+	if not C or type(C.rk) ~= "number" then return nil; end;
+	if not TRF_ChPaid(C) then return 0; end;
+	return C.rk;
+end;
+
 -- Loader callbacks, registrations -------------------------------------------------------------
 
 -- Entry (design 6 hooks): unlock check, visit counters reset, past deadlines, chapter suspension, reconcile.

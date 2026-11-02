@@ -2052,9 +2052,9 @@ function T_V1_N()
 	TRF.shops = {};
 	for i = 1, 8 do tinsert(TRF.shops, {s=i * 3, sh=TRF_SysName(i * 3), c=1 + mod(i, 6)}); end;
 	TRF.std.help = 15; TRF.std.heat = 2;
-	TRF_NewsPost("heat", "5"); TRF_NewsPost("help", "15"); TRF_NewsPost("short", "on");
+	TRF_NewsPost("heat", "5"); TRF_NewsPost("help", "15"); TRF_NewsPost("short", "on"); TRF_NewsPost("fw", "reg");
 	for sl = 1, m.n do
-		foreachi({"lane", "trade", "pir", "sweep", "cap"}, function(i, t) TRF_NewsPost(t, "raid", %sl); end);
+		foreachi({"lane", "trade", "pir", "sweep", "cap", "fw"}, function(i, t) TRF_NewsPost(t, "raid", %sl); end);
 		TRF_NewsPost("war", "salv3_3", sl);
 		TRF.rg[sl].ct = 7; TRF.rg[sl].sr = 2;
 		TRF.clan[sl].sv = 9; TRF.clan[sl].sf = 5;
@@ -2201,10 +2201,10 @@ function T_V1_N()
 	TRF.stx = {n=9999, op=9999, opp=9999, lc=-99999, jc=99999, lo=-99999, jo=99999, pt={{f=5, s=113}, {f=5, s=113}}, ms=113, mc=11};
 	for k, cc in TRF.clan do if type(cc) == "table" then cc.so = 1; cc.sk = -99999; end; end;
 	-- Wolves Freight worst case (design/freight-spec.md 3.3): three ship records (the step 2 slots) with every field, four
-	-- log entries with the first-loss flag, decl.
+	-- log entries with the first-loss flag and the captain index, decl, the follow record fo and the crew record lq.
 	TRF.co = {seq=99, bal=30000, vn=99999999, pg=99999999, rt=-99999, lk=-99999, vch=2000000, owe=30000, lost=99, decl={sys=113, leg=-99999},
-		log={}, ships={}};
-	for k = 1, 4 do TRF.co.log[k] = {k=2, s=99, nm=40, sys=113, leg=-99999, f=1}; end;
+		log={}, ships={}, fo={id=99, to=113}, lq={s=99, nm=40, o=30000}};
+	for k = 1, 4 do TRF.co.log[k] = {k=2, s=99, nm=40, sys=113, leg=-99999, f=1, c=99}; end;
 	for k = 1, 3 do
 		TRF.co.ships[k] = {id=97 + k, nm=40, hull=3, rg=k, home=113, p=50, w=1, k=99999999, run=30000, st=2, till=99999999, cov=99999999,
 			dmg=3, rs=2147483646, price=99999999, earned=99999999, sk=99999999, ek=99999999};

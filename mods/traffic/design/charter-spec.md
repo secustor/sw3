@@ -18,7 +18,7 @@ Module: new `S/trf_charter.script`, prefix `Ch` (`TRF_Ch_*` public, `TRF_Ch<X>` 
 | Q1 / A3 | Pay factor | `k_t` 0.3-0.4 as designed; the `min(1, L_r / 8)` term is the shared `lk` of `TRF_Pay` with `L_r` for `L_w`, not an extra factor; traffic's escort pay is unchanged | `ch_k`, `ch_low_L` |
 | Q2 | Offer box or automatic | automatic: postings appear in the logbook, no offer box (M10) | - |
 | Q3 | Dues | `ch_dues_k x L_h x rk` per `ch_dues_legs`, rank -1 per 24 legs past due | `ch_dues_k`, `ch_dues_legs` |
-| Q4 | Freight `help` gates | the OR rule is feature 8's read of `TRF.ch.rk`; feature 8 is not built | - |
+| Q4 | Freight `help` gates | the OR rule is feature 8's read of the rank through `TRF_Ch_PerkRank()` (the rank whose perks hold, 0 with dues unpaid; `D/freight-spec.md` S1, built 2026-11-02): rank 3 opens freighter slot 2; rank 5 (step 2) slot 3 | - |
 | Q5 / A1, A4 | Region level | `L_r` = rounded mean `L_w` (`TRF_LPay`) of the region's trader systems (`pc > 0`), 8 without one | - |
 | Q6 | Chapters | as designed: suspension from chapter `ch_last_ch + 1` (19); no headquarters line or rank post exists in step 1, so the chapter 13-14 rule holds | `ch_last_ch` |
 | Q7 | Heat 7 and S41 | one rank each | - |
@@ -266,4 +266,4 @@ Changed scenarios: `pl-a` (7 lines, 5 boxes, 2 payers), `sv-a` and `lad-a` (`ext
 
 ## 12. Left out (step 2 and later)
 
-Note kinds 10 and above (the step 2 posting types of features 1-11 and the top-up rule), ranks 4-5 and their perks (equipment convoy rumour, rival no-snipe, freight ship gates), the Hunting rank posts (`AddPost`/`RemovePost`, `nw`), the chapter flavour lines (chapter 5 introduction, the 15e headquarters line), the label fallback `TR_ch` (TDR 10.1; `TRF` is saved by the game). Features 8 and 13 read `TRF.ch.rk` when they are built. Experiments EC.1-EC.5, EC.7, EC.8 need the game.
+Note kinds 10 and above (the step 2 posting types of features 1-11 and the top-up rule), ranks 4-5 and their perks (equipment convoy rumour, rival no-snipe, freight ship gates), the Hunting rank posts (`AddPost`/`RemovePost`, `nw`), the chapter flavour lines (chapter 5 introduction, the 15e headquarters line), the label fallback `TR_ch` (TDR 10.1; `TRF` is saved by the game). Feature 8 reads the rank through `TRF_Ch_PerkRank` (Q4); feature 13 reads `TRF.ch.rk` when it is built. Experiments EC.1-EC.5, EC.7, EC.8 need the game.

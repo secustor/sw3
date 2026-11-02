@@ -1,4 +1,4 @@
--- sw3-traffic Wolves Freight (Lua 4.0.1). Spec: design/freight-spec.md (design worldbuilding/08-wolves-freight.md, step 1).
+-- sw3-traffic Wolves Freight (Lua 4.0.1). Spec: design/freight-spec.md (design worldbuilding/08-wolves-freight.md, steps 1-2).
 -- Prefix Fr (TRF_Fr_* public, TRF_Fr<X> internal), log module=freight.
 -- Step 1: one chartered Btransport (TRF.co.ships[1]) runs the loop of the region it was bought in (TRF_FwLoopData,
 -- tools/gen_map.py): real-time-gated freight ticks (a leg-clock step and fw_tick_real unpaused real seconds, at most
@@ -8,17 +8,22 @@
 -- the purchase box (trade box 300), the on-screen ship at its stops (paths A and B through the arrival seed registry,
 -- prio 400) as a trader record with the flag fw, escort cover and visit credits once per ship tick, the on-screen
 -- loss and robbery, the shortage (pk = 1) and clan score feeds, config, dump, repair.
--- Step 2 (three slots with fleet weights, Walrus_tr1 and Btransport2, transit appearances and portal follow, news,
--- the hooks of features 4, 6, 12 and 14, the chapter-13 alarm line) is not built: the saved fields hull, ships[2..3]
--- and fw_weights are kept, the hook points say "Step 2 hook".
+-- Step 2, each part behind its own cfg key: three slots (fw_max_ships 3, help 5 / 15 / 30 or charter rank 3 / 5 for
+-- slots 2 / 3, fleet weights by rank, slot prices x1.5 / x2.25), hulls by the loop's L (fw_hulls: Walrus_tr1, Btransport,
+-- Btransport2; the sell-back of a laid-up ship at home at 50 % of its price), transit appearances (path C, fw_transit)
+-- and portal follow (fw_follow), the parked ship at home (fw_parked), news (topic fw), the hooks of features 4 (the
+-- captain in the robbery line) and 6 (pods halve a loss's liability) and the chapter-13 alarm line (fw_hooks).
+-- Feature 12 (a pack escorting the freighter) and the feature 14 note kinds have no counterpart yet ("Step 2 hook").
 -- Hooks: trf_plumb (trade line 60, trade box 300, seed provider 400, 8.5 resolver, ship cap, marker, prize gap),
 -- trf_gen (TRF_GnSafeArrive -> TRF_Fr_Arrive; a fleeing ship earns nothing), trf_events (TRF_Ev_Kill -> TRF_Fr_Killed), trf_raid (comply ->
 -- TRF_Fr_Robbed, attr + 2 in the lane roll), trf_hail (status line only, no 8.4 offer), trf_supply (no 8.6 demand),
--- trf_track (never tracked), trf_survive (no pods), trf_ui (the "Wolves Freight" name), traffic.script (enter,
--- activate, load, jump, 1 s step).
--- Saved fields: TRF.co = {seq, bal, vn, pg, rt, lk, vch, owe, lost, decl {sys, leg}, log[1..4] {k, s, sys, leg, f},
--- ships[1..3] {id, nm, hull, rg, home, p, w, k, run, st, till, cov, dmg, rs, price, earned, sk, ek}}. Visit state lives
--- in the chunk local FR (never saved; rebuilt by every MapInitialization).
+-- trf_track (never tracked), trf_survive (pods with the ship id, TRF_Fr_CrewHome at the hand-in), trf_ui (the "Wolves
+-- Freight" name, topic fw), trf_captain (TRF_Cap_NmIdx), trf_charter (TRF_Ch_PerkRank), traffic.script (enter,
+-- activate, load, jump with the destination, 1 s step).
+-- Saved fields: TRF.co = {seq, bal, vn, pg, rt, lk, vch, owe, lost, decl {sys, leg}, log[1..4] {k, s, nm, sys, leg, f, c},
+-- fo {id, to} (portal follow), lq {s, nm, o} (the liability of the last on-screen loss, for its crew), ships[1..3] {id,
+-- nm, hull, rg, home, p, w, k, run, st, till, cov, dmg, rs, price, earned, sk, ek}}. Visit state lives in the chunk
+-- local FR (never saved; rebuilt by every MapInitialization).
 -- Layout as trf_stash: helpers, static tables, pure functions (*Of), state, gates, ticks, docks, appearance, contract
 -- functions. Top level: functions and FR only.
 
@@ -81,12 +86,24 @@ function TRF_FrOpt(key)
 	return v;
 end;
 
--- Ships allowed (cfg fw_max_ships): 1 in step 1 (slots 2 and 3 are step 2).
+-- Ships allowed (cfg fw_max_ships, default 3, clamped 1..3; 1 is step 1).
 function TRF_FrMaxShips()
 	local v = nil;
 	if type(TRF_Opt) == "function" then v = TRF_Opt("fw_max_ships"); end;
-	if type(v) ~= "number" then v = 1; end;
-	return TRF_FrCl(floor(v), 1, TRF_FrK().step_ships);
+	if type(v) ~= "number" then v = TRF_Fr_OptDef().fw_max_ships; end;
+	return TRF_FrCl(floor(v), 1, TRF_FrK().ship_max);
+end;
+
+-- Game seconds (TRF.clock.gt), for the portal follow window.
+function TRF_FrGt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+-- Hull index of ship s (1 Btransport, 2 Walrus_tr1, 3 Btransport2).
+function TRF_FrHull(s)
+	if type(s) == "table" and type(s.hull) == "number" and s.hull >= 1 and s.hull <= 3 then return floor(s.hull); end;
+	return 1;
 end;
 
 -- Tune values of this module, clamped (TRF_FrClampT: {lo, hi, int}); list keys are copied with each entry clamped.
@@ -169,8 +186,8 @@ function TRF_FrSys(idx)
 	return TRF_FrName(idx);
 end;
 
-function TRF_FrTxt(key, a, b, c)
-	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c); end;
+function TRF_FrTxt(key, a, b, c, d)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c, d); end;
 	return tostring(key);
 end;
 
@@ -264,15 +281,20 @@ end;
 
 -- Static tables --------------------------------------------------------------------
 
--- Constants without a cfg key: hard ship cap (step 2 slots), ships of step 1, log entries, name indices, the ship
--- id range, escort cover ticks and radius, the safe HP share, the path A delay window (s), the voucher cap, the
--- price floor share, the slot price factors, the chapter window, the first on-screen chapter in the chapter-6 story
--- systems, the hull, its pilot, hull_k and hull_r (bulk Btransport), line seconds and lines per dock, the real-time
--- bank factor of rt, the Park-Miller modulus, the robbery clamp.
+-- Constants without a cfg key: hard ship cap (slots), log entries, name indices, the ship id range, escort cover ticks
+-- and radius, the safe HP share, the path A and C delay window (s), the voucher cap, the price floor share, the slot
+-- price factors, the chapter window, the first on-screen chapter in the chapter-6 story systems, the hulls by index
+-- (1 bulk Btransport, 2 Walrus_tr1 (carcass Walrus_0, no hold), 3 Btransport2) with their price factor hull_p, run pay
+-- factor hull_k, robbery factor hull_r and log name, the pilot, line seconds and lines per dock, the real-time bank
+-- factor of rt, the Park-Miller modulus, the robbery clamp, the sell-back share, the slot ranks of charter standing
+-- (rank 3 slot 2, rank 5 slot 3), the parked ship (due delay after entry, distance behind the dock), the chapter of
+-- the FTU alarm line.
 function TRF_FrK()
-	return {ship_max=3, step_ships=1, log_max=4, nm_max=40, id_max=99, cover=6, esc_r=400, hp_safe=0.5, a_min=60, a_max=120,
-		vch_max=2000000, floor_k=0.25, slot_k={1, 1.5, 2.25}, ch_min=5, ch_max=18, ch_open=7, ch_early=6, hull="Btransport",
-		pilot="Trader", hull_k=1.0, hull_r=1.0, secs=8, lines=3, rt_max=2, pm=2147483647, rob_max=0.12, nk="nk"};
+	return {ship_max=3, log_max=4, nm_max=40, id_max=99, cover=6, esc_r=400, hp_safe=0.5, a_min=60, a_max=120,
+		vch_max=2000000, floor_k=0.25, slot_k={1, 1.5, 2.25}, ch_min=5, ch_max=18, ch_open=7, ch_early=6,
+		hull={"Btransport", "Walrus_tr1", "Btransport2"}, hull_p={1, 0.7, 1.8}, hull_k={1.0, 0.75, 1.5}, hull_r={1.0, 0.8, 1.3},
+		hull_n={"bt", "walrus", "bt2"}, pilot="Trader", secs=8, lines=3, rt_max=2, pm=2147483647, rob_max=0.12, nk="nk",
+		sell_k=0.5, rank_slot={0, 3, 5}, pk_dt=4, pk_back=450, ch_alarm=13};
 end;
 
 -- Story systems of chapter 6 (08 section 3): no on-screen Wolves ship there until chapter 7 (static entry).
@@ -289,7 +311,7 @@ end;
 function TRF_FrClampT()
 	return {fw_k={0, 20, 0}, fw_price_k={0, 100000, 1}, fw_tick_real={10, 3600, 1}, fw_bank={1, 20, 1}, fw_premium={0, 0.5, 0},
 		fw_cover={0, 1, 0}, fw_liab_ticks={0, 200, 1}, fw_rob_base={0, 0.12, 0}, fw_loss_base={0, 0.05, 0}, fw_layup={0, 50, 1},
-		fw_help_slot={0, 99, 1}, fw_min_pro={0, 9, 1}, fw_weights={0, 1, 0}, fw_offer_cd={0, 200, 1}};
+		fw_help_slot={0, 99, 1}, fw_min_pro={0, 9, 1}, fw_weights={0, 1, 0}, fw_offer_cd={0, 200, 1}, fw_hull_l={3, 17, 1}};
 end;
 
 -- Loops by region slot from the generated TRF_FwLoopData (map.script): {rg, L, s (system idx), t (1 stop), n}.
@@ -396,6 +418,15 @@ function TRF_FrWeightOf(n, w)
 	return w[n];
 end;
 
+-- Hull the purchase box offers for a loop of pay base L (fw_hull_l {lo, hi}): Walrus_tr1 (2) at L <= lo, Btransport2
+-- (3) at L >= hi, else Btransport (1).
+function TRF_FrHullOf(L, hl)
+	if type(hl) ~= "table" then return 1; end;
+	if L <= (hl[1] or 0) then return 2; end;
+	if L >= (hl[2] or 99) then return 3; end;
+	return 1;
+end;
+
 -- Delay lo..hi from a seed (no RAND draw: the shared RAND stream is unchanged).
 function TRF_FrDelayOf(seed, lo, hi)
 	return lo + TRF_FrM(floor(abs(seed or 0)), max(1, hi - lo + 1));
@@ -479,12 +510,14 @@ function TRF_FrOfRg(slot)
 end;
 
 -- Log entry for the next dock (08 section 6 log[1..4], oldest dropped): kind k 1 rob, 2 lost, 3 laid up, 4 full;
--- f = 1 first loss (the clerk line), 2 lost to the player's fire (no voucher).
-function TRF_FrNote(co, k, s, sys, f)
+-- f = 1 first loss (the clerk line), 2 lost to the player's fire (no voucher); c the name index of the robbing clan's
+-- captain (feature 4, trf_captain TRF_Cap_NmIdx) or nil.
+function TRF_FrNote(co, k, s, sys, f, c)
 	local v = {};
 	if type(co.log) == "table" then for i = 1, getn(co.log) do if type(co.log[i]) == "table" then v[getn(v) + 1] = co.log[i]; end; end; end;
 	local e = {k=k, s=s.id, nm=s.nm, sys=sys, leg=TRF_FrLegs()};
 	if f then e.f = f; end;
+	if type(c) == "number" then e.c = c; end;
 	v[getn(v) + 1] = e;
 	local o = {};
 	local mx = TRF_FrK().log_max;
@@ -497,20 +530,24 @@ end;
 function TRF_FrEarn(s, lp)
 	local R = TRF_N("TRF_RgR", s.rg) or 0;
 	local dk = TRF_N("TRF_DK") or 1;
-	return TRF_FrEOf(TRF_FrT("fw_k"), lp.L, R, dk, TRF_FrK().hull_k);
+	return TRF_FrEOf(TRF_FrT("fw_k"), lp.L, R, dk, TRF_FrK().hull_k[TRF_FrHull(s)]);
 end;
 
--- Rank of ship s among the owned ships by e (1 = highest; ties by slot).
+-- Rank of ship s among the owned ships by e (1 = highest; equal e: the lower slot ranks first).
 function TRF_FrRank(s)
 	local n = 1;
 	local lp = TRF_FrLoop(s.rg);
 	if not lp then return 1; end;
 	local es = TRF_FrEarn(s, lp);
+	local mine = TRF_FrById(s.id) or 99;
 	for i = 1, TRF_FrK().ship_max do
 		local o = TRF_FrShip(i);
 		if o and o ~= s then
 			local lo = TRF_FrLoop(o.rg);
-			if lo and TRF_FrEarn(o, lo) > es then n = n + 1; end;
+			if lo then
+				local eo = TRF_FrEarn(o, lo);
+				if eo > es or (eo == es and i < mine) then n = n + 1; end;
+			end;
 		end;
 	end;
 	return n;
@@ -565,6 +602,7 @@ end;
 function TRF_Fr_Step()
 	if not TRF_FrOn() or not TRF.active then return; end;
 	call(TRF_FrStepBody, {"step"}, "x", TRF_FrErr);
+	call(TRF_FrParkPoll, {}, "x", TRF_FrErr);
 end;
 
 -- Tick catch-up: while TRF.clock.legs > lk and fw_tick_real unpaused real seconds have passed since rt (a stamp of
@@ -652,7 +690,7 @@ function TRF_FrShipTick(co, i, s, susp)
 	local tf = TRF_FrTierFOf(T);
 	local K = TRF_FrK();
 	local base = TRF_FrT("fw_rob_base")[TRF_FrCl(ph, 0, 5) + 1] or 0;
-	local pr = TRF_FrRobOf(base, tf, dis, K.hull_r, K.rob_max);
+	local pr = TRF_FrRobOf(base, tf, dis, K.hull_r[TRF_FrHull(s)], K.rob_max);
 	local pl = 0;
 	if TRF_FrOpt("fw_losses") == 1 then pl = TRF_FrLossOf(TRF_FrT("fw_loss_base"), tf, dis, ph, T); end;
 	local out = TRF_FrOutOf(r, pl, pr);
@@ -712,26 +750,32 @@ function TRF_FrRob(co, s, sys, via)
 	s.run = 0;
 	s.st = 1;
 	s.till = s.k + TRF_FrT("fw_layup");
-	TRF_FrNote(co, 1, s, sys);
-	-- Step 2 hook: the robbing clan's named captain in the log line (feature 4; his price stays).
+	-- Feature 4 (fw_hooks): the robbing clan's living captain of the system's region is named in the log line (his
+	-- price stays, 08 exploit rule 6).
+	local cp = nil;
+	if TRF_FrOpt("fw_hooks") == 1 then cp = TRF_N("TRF_Cap_NmIdx", TRF_N("TRF_RgOf", sys)); end;
+	TRF_FrNote(co, 1, s, sys, nil, cp);
 	local d = 0;
 	if via == "roll" then
 		local slot = TRF_N("TRF_RgOf", sys);
 		if slot then d = TRF_N("TRF_Cl_Score", slot, 1, "freight rob") or 0; end;
 	end;
 	TRF_FrStat("fw_rob");
-	TRF_FrE("rob", "ship_id", s.id, "tick", s.k, "system", TRF_FrName(sys), "till", s.till, "clan_score_change", d, "via", via);
+	TRF_FrE("rob", "ship_id", s.id, "tick", s.k, "system", TRF_FrName(sys), "till", s.till, "clan_score_change", d, "via", via,
+		"captain", cp);
 end;
 
 -- Loss (08 section 6): record removed, log entry (f 1 first loss, 2 own fire); without counted player fire (pf) also
 -- the voucher, liability owed, a pk shortage at the next stop and clan score +2 (with pf traffic's normal kill effects
--- apply instead). cls: hold class (nil: from rs).
--- Step 2 hook: survivors (pods halve the liability), captain names, news.
+-- apply instead). cls: hold class (nil: from rs). An on-screen loss with a liability keeps lq = {s, nm, o} for its crew
+-- (feature 6: trf_survive's pods carry the ship id, TRF_Fr_CrewHome halves o); every loss posts the regional news topic
+-- fw "lost" of the loss system's region.
 function TRF_FrLose(co, i, s, sys, via, pf, cls)
 	local lp = TRF_FrLoop(s.rg);
 	local K = TRF_FrK();
 	local e = 0;
 	if lp then e = TRF_FrEarn(s, lp); end;
+	TRF_FrParkDel(s.id, "lost");
 	co.ships[i] = nil;
 	co.lost = min(co.lost + 1, 99);
 	local v = 0;
@@ -757,7 +801,11 @@ function TRF_FrLose(co, i, s, sys, via, pf, cls)
 	if pf then f = 2; elseif co.lost == 1 then f = 1; end;
 	TRF_FrNote(co, 2, s, sys, f);
 	local cause = "pirates";
-	if pf then cause = "player"; elseif via == "roll" then cause = "roll"; end;
+	if pf then cause = "player"; elseif via == "roll" or via == "parked" then cause = via; end;
+	if via == "onscreen" and add > 0 then co.lq = {s=s.id, nm=s.nm, o=add}; end;
+	local rg = TRF_N("TRF_RgOf", sys);
+	if type(rg) == "number" then TRF_N("TRF_NewsPost", "fw", "lost", rg); end;
+	-- Step 2 hook (feature 14): a charter note kind for a loss; trf_charter's kinds >= 10 are not built yet.
 	TRF_FrStat("fw_lost");
 	TRF_FrE("lost", "ship_id", s.id, "tick", s.k, "system", TRF_FrName(sys), "cause", cause, "vch", v, "voucher", co.vch, "owe_added", add,
 		"owe", co.owe, "shortage", TRF_FrName(nx), "class", cls, "clan_score_change", d, "heat", TRF_FrHeat(), "lost_count", co.lost);
@@ -813,6 +861,13 @@ function TRF_Fr_DockLine(kind, param)
 	local keep = {};
 	local cap = TRF_FrK().lines;
 	if liab then cap = cap - 1; end;
+	-- The chapter-13 FTU alarm line (fw_hooks; 08 section 9), once per visit (this line runs once per visit), for an
+	-- owner of a ship; it keeps its place as the liability does.
+	local alarm = nil;
+	if TRF_FrOpt("fw_hooks") == 1 and TRF_FrCount() > 0 and TRF_N("TRF_Chapter") == TRF_FrK().ch_alarm then
+		alarm = TRF_FrTxt("fwalarm");
+		cap = cap - 1;
+	end;
 	if type(co.log) == "table" then
 		for j = 1, getn(co.log) do
 			local e = co.log[j];
@@ -831,16 +886,20 @@ function TRF_Fr_DockLine(kind, param)
 		end;
 	end;
 	if getn(keep) > 0 then co.log = keep; else co.log = nil; end;
-	for i = 1, TRF_FrK().ship_max do
-		local s = TRF_FrShip(i);
+	-- Whereabouts lines in the room left; with several ships the first slot shown turns with the visit counter, so
+	-- every ship gets its line over the visits.
+	local nmax = TRF_FrK().ship_max;
+	local j0 = TRF_FrM(co.vn, nmax);
+	for q = 1, nmax do
+		local s = TRF_FrShip(TRF_FrM(j0 + q - 1, nmax) + 1);
 		if s and getn(out) < cap then
 			local w = TRF_FrWhere(s);
 			if w then out[getn(out) + 1] = w; end;
 		end;
 	end;
 	if liab then out[getn(out) + 1] = liab; end;
-	-- Step 2 hook: the chapter-13 FTU alarm line ("FTU: HQ on alert. Charters run as usual.") and the news records.
-	TRF_FrDE("lines", "line_count", getn(out), "log_shown", logs, "log_left", getn(keep));
+	if alarm then out[getn(out) + 1] = alarm; end;
+	TRF_FrDE("lines", "line_count", getn(out), "log_shown", logs, "log_left", getn(keep), "alarm", TRF_KvB(alarm and 1));
 	if getn(out) == 0 then return nil; end;
 	return out;
 end;
@@ -861,6 +920,13 @@ function TRF_FrLogText(e)
 	local nm = TRF_FrShipName(e.nm);
 	local sn = TRF_FrNameOk(e.sys);
 	if e.k == 1 then
+		-- Feature 4: the robbing clan's captain (name index c) when one was alive at the robbery.
+		local cn = nil;
+		if type(e.c) == "number" then cn = TRF_N("TRF_Cap_NmText", e.c); end;
+		if type(cn) == "string" then
+			if not sn then return TRF_FrTxt("fwrobct", nm, cn), nil; end;
+			return TRF_FrTxt("fwrobc", nm, sn, cn), nil;
+		end;
 		if not sn then return TRF_FrTxt("fwrobt", nm), nil; end;
 		return TRF_FrTxt("fwrob", nm, sn), nil;
 	end;
@@ -912,12 +978,11 @@ function TRF_FrBuyGate(cur)
 	if TRF_FrQuest() then return "mission"; end;
 	if co and co.owe > 0 then return "owe"; end;
 	local n = TRF_FrCount() + 1;
-	-- Step 2 hook: slots 2 and 3 (fw_max_ships 3), charter rank 3/5 standing in for help 15/30 (feature 14).
 	if n > TRF_FrMaxShips() then return "ships"; end;
 	if n == 1 and TRF_N("TRF_Wq_On") == 1 then
 		local ws = TRF_N("TRF_Wq_S");
 		if type(ws) ~= "number" or ws < 70 then return "quest"; end;
-	elseif TRF_FrHelp() < (TRF_FrT("fw_help_slot")[n] or 99) then
+	elseif TRF_FrHelp() < (TRF_FrT("fw_help_slot")[n] or 99) and not TRF_FrRankOk(n) then
 		return "help";
 	end;
 	if TRF_FrHeat() > 2 then return "heat"; end;
@@ -943,6 +1008,17 @@ function TRF_FrBuyGate(cur)
 	return nil, slot, lp;
 end;
 
+-- Charter standing for slot n (feature 14, 14-charter-goals.md 4: whichever comes first): rank 3 opens slot 2, rank 5
+-- slot 3, while the rank's perks hold (trf_charter TRF_Ch_PerkRank: dues paid). Slot 1 has no rank stand-in. Ranks 4-5
+-- are trf_charter's step 2, so slot 3 needs help 30 until then.
+function TRF_FrRankOk(n)
+	local need = TRF_FrK().rank_slot[n];
+	if type(need) ~= "number" or need <= 0 then return nil; end;
+	local rk = TRF_N("TRF_Ch_PerkRank");
+	if type(rk) == "number" and rk >= need then return 1; end;
+	return nil;
+end;
+
 -- Public (trf_wq TRF_Wq_UnlockDue, the parcel box at the quest's step 70): 1 when the purchase gate passes at cur.
 function TRF_Fr_BuyOpen(cur)
 	if TRF_FrOn() and not TRF_FrBuyGate(cur) then return 1; end;
@@ -958,26 +1034,39 @@ function TRF_Fr_DockBox(kind, param)
 	local fr = %FR;
 	local cur = TRF_FrCur();
 	local why, slot, lp = TRF_FrBuyGate(cur);
-	if why then TRF_FrDE("offer", "system", TRF_FrName(cur), "result", "none", "reason", why); return nil; end;
+	if why then
+		local sb = TRF_FrSellBox(cur);
+		if sb then return sb; end;
+		TRF_FrDE("offer", "system", TRF_FrName(cur), "result", "none", "reason", why);
+		return nil;
+	end;
 	local co = TRF_FrCo();
 	local n = TRF_FrCount() + 1;
 	local K = TRF_FrK();
-	local list = TRF_FrListOf(TRF_FrT("fw_price_k"), lp.L, TRF_N("TRF_Pro", cur) or 0, K.slot_k[n], TRF_N("TRF_DK") or 1);
+	-- The hull the region's L_fw suggests (fw_hulls 1; 0: the bulk Btransport only), its price factor on the list.
+	local hu = 1;
+	if TRF_FrOpt("fw_hulls") == 1 then hu = TRF_FrHullOf(lp.L, TRF_FrT("fw_hull_l")); end;
+	local list = TRF_FrListOf(TRF_FrT("fw_price_k"), lp.L, TRF_N("TRF_Pro", cur) or 0, K.slot_k[n] * K.hull_p[hu], TRF_N("TRF_DK") or 1);
 	local vch = 0;
 	if co then vch = co.vch; end;
 	local paid, used = TRF_FrPaidOf(list, vch, K.floor_k);
 	local rm = TRF_N("TRF_RgMap");
 	local rn = "";
 	if type(rm) == "table" and type(rm[slot]) == "table" then rn = TRF_FrSys(rm[slot].home); end;
-	local text = TRF_FrTxt("fwbox", TRF_FrNum(paid), rn);
-	if used == 1 then text = TRF_FrTxt("fwboxv", TRF_FrNum(paid), rn, TRF_FrNum(list)); end;
+	local hk = "";
+	if hu > 1 then hk = tostring(hu); end;
+	local text = TRF_FrTxt("fwbox"..hk, TRF_FrNum(paid), rn);
+	if used == 1 then text = TRF_FrTxt("fwboxv"..hk, TRF_FrNum(paid), rn, TRF_FrNum(list)); end;
 	if TRF_N("TRF_Wq_On") == 1 and TRF_N("TRF_Wq_S") == 70 then
 		text = TRF_FrTxt("fwboxq", TRF_FrNum(paid), rn);
 	elseif not co or (co.seq == 0 and co.decl == nil) then
 		text = TRF_FrTxt("fwrumour").." "..text;
 	end;
-	fr.offer = {sys=cur, rg=slot, price=paid, list=list, used=used, g=TRF_FrGen()};
-	TRF_FrE("box", "system", TRF_FrName(cur), "region", slot, "list", list, "price", paid, "voucher_used", TRF_KvB(used), "result", "shown");
+	-- Slots 2 and 3 (08 section 4 table): the box says the fleet weight costs most of the run.
+	if n >= 2 then text = text.." "..TRF_FrTxt("fwfee"); end;
+	fr.offer = {sys=cur, rg=slot, price=paid, list=list, used=used, hull=hu, g=TRF_FrGen()};
+	TRF_FrE("box", "system", TRF_FrName(cur), "region", slot, "list", list, "price", paid, "voucher_used", TRF_KvB(used), "slot", n,
+		"hull", K.hull[hu], "result", "shown");
 	return {title=TRF_FrTxt("fwboxtitle"), text=text, ok="TRF_Fr_BuyOk", no="TRF_Fr_BuyNo", a=cur, own="fw_buy"};
 end;
 
@@ -1004,9 +1093,19 @@ function TRF_Fr_BuyOk(a)
 	local slot = nil;
 	for i = 1, K.ship_max do if not slot and not co.ships[i] then slot = i; end; end;
 	local id = TRF_FrM(co.seq, K.id_max) + 1;
+	-- The news topic fw "reg" (global) once, at the first charter of the game (seq 0 only before it).
+	local first = co.seq == 0;
 	co.seq = id;
 	local legs = TRF_FrLegs();
-	local s = {id=id, nm=TRF_FrM(floor(id * 7 + cur * 3), K.nm_max) + 1, hull=1, rg=o.rg, home=cur, p=TRF_FrStopOf(lp, cur), w=0, k=0,
+	-- A name no other owned ship carries.
+	local nm = TRF_FrM(floor(id * 7 + cur * 3), K.nm_max) + 1;
+	for q = 1, K.ship_max do
+		for j = 1, K.ship_max do
+			local x = co.ships[j];
+			if x and x.nm == nm then nm = TRF_FrM(nm, K.nm_max) + 1; end;
+		end;
+	end;
+	local s = {id=id, nm=nm, hull=o.hull or 1, rg=o.rg, home=cur, p=TRF_FrStopOf(lp, cur), w=0, k=0,
 		run=0, st=0, till=0, cov=0, dmg=0, rs=TRF_FrSeedOf(id, legs), price=o.price, earned=0, sk=-1, ek=-1};
 	co.ships[slot] = s;
 	if o.used == 1 then co.vch = 0; end;
@@ -1015,7 +1114,9 @@ function TRF_Fr_BuyOk(a)
 	if TRF_FrCount() == 1 then co.lk = legs; co.rt = TRF_FrRs(); end;
 	TRF_FrStat("fw_buy");
 	TRF_FrE("buy", "ship_id", id, "name", TRF_FrShipName(s.nm), "region", o.rg, "home", TRF_FrName(cur), "price", o.price, "list", o.list,
-		"credits_before", cr, "credits_after", cr - o.price, "seed", s.rs, "result", "ok");
+		"credits_before", cr, "credits_after", cr - o.price, "seed", s.rs, "slot", slot, "hull", K.hull[s.hull], "result", "ok");
+	if first then TRF_N("TRF_NewsPost", "fw", "reg"); end;
+	-- Step 2 hook (feature 14): a charter note kind for a purchase; trf_charter's kinds >= 10 are not built yet.
 	TRF_P("TRF_Wq_Unlocked", 1);
 	return TRF_FrTxt("fwbought", TRF_FrShipName(s.nm), TRF_FrSys(cur));
 end;
@@ -1032,7 +1133,77 @@ function TRF_Fr_BuyNo(a)
 	return nil;
 end;
 
--- Appearance (08 section 6 spawn rules, step 1: stops only) ----------------------------------------------
+-- Sell-back (trade-in, 08 section 9 step 2): at its home station a laid-up ship (st 1, or st 2 while heat or a Trade
+-- war still suspends the charter; a full account is paid out at this dock and needs no sale) whose region blocks the
+-- purchase box can be sold back to the FTU for sell_k (50 %) of the price paid (fw_hulls 1; no mission, the decline
+-- cooldown, the strict gate). The credits go to the wallet; the region and the slot are free again. Returns the box or
+-- nil.
+function TRF_FrSellBox(cur)
+	if TRF_FrOpt("fw_hulls") ~= 1 or TRF_FrQuest() then return nil; end;
+	local co = TRF_FrCo();
+	if not co then return nil; end;
+	if type(co.decl) == "table" and co.decl.sys == cur and TRF_FrLegs() - co.decl.leg < TRF_FrT("fw_offer_cd") then return nil; end;
+	local s = nil;
+	local sp = TRF_FrSusp(co);
+	local susp = sp == "heat" or sp == "war";
+	for i = 1, TRF_FrK().ship_max do
+		local x = TRF_FrShip(i);
+		local lp = x and TRF_FrLoop(x.rg);
+		if not s and lp and x.home == cur and lp.s[x.p] == cur and (x.st == 1 or (x.st == 2 and susp)) and not TRF_FrLive(x) then s = x; end;
+	end;
+	if not s then return nil; end;
+	if type(TRF_StrictOk) == "function" then
+		local ok = TRF_StrictOk(cur, "freight");
+		if not ok then return nil; end;
+	end;
+	local v = floor(TRF_FrK().sell_k * s.price + 0.5);
+	if v <= 0 then return nil; end;
+	local fr = %FR;
+	fr.offer = {sys=cur, sell=s.id, price=v, g=TRF_FrGen()};
+	TRF_FrE("box", "system", TRF_FrName(cur), "ship_id", s.id, "price", v, "kind", "sell", "result", "shown");
+	return {title=TRF_FrTxt("fwboxtitle"), text=TRF_FrTxt("fwsell", TRF_FrShipName(s.nm), TRF_FrSys(cur), TRF_FrNum(v)), ok="TRF_Fr_SellOk",
+		no="TRF_Fr_SellNo", a=cur, own="fw_sell"};
+end;
+
+function TRF_FrAddRaw(n)
+	AddPlayerCredits(n);
+	return 1;
+end;
+
+-- Sell-back OK: the ship record goes (its parked flight with it), the credits to the wallet. Returns the reply line.
+function TRF_Fr_SellOk(a)
+	local fr = %FR;
+	local o = fr.offer;
+	fr.offer = nil;
+	local cur = TRF_FrCur();
+	local i, s = nil, nil;
+	if type(o) == "table" and o.sell then i, s = TRF_FrById(o.sell); end;
+	if not s or o.sys ~= a or o.sys ~= cur or o.g ~= TRF_FrGen() or s.home ~= cur or (s.st ~= 1 and s.st ~= 2) or TRF_FrLive(s) then
+		TRF_FrE("sell", "system", TRF_FrName(cur), "result", "stale");
+		return nil;
+	end;
+	if type(AddPlayerCredits) ~= "function" or not call(TRF_FrAddRaw, {o.price}, "x", TRF_FrErr) then
+		TRF_FrE("sell", "ship_id", s.id, "price", o.price, "result", "error");
+		return nil;
+	end;
+	TRF_FrParkDel(s.id, "sold");
+	TRF_FrCo().ships[i] = nil;
+	TRF_FrStat("fw_sell");
+	TRF_FrE("sell", "ship_id", s.id, "slot", i, "hull", TRF_FrK().hull[TRF_FrHull(s)], "price_paid", s.price, "credits", o.price, "result", "sold");
+	return TRF_FrTxt("fwsold", TRF_FrShipName(s.nm), TRF_FrNum(o.price));
+end;
+
+-- Sell-back Cancel: the offers wait fw_offer_cd legs in this system.
+function TRF_Fr_SellNo(a)
+	local fr = %FR;
+	fr.offer = nil;
+	local co = TRF_FrCo(1);
+	if type(a) == "number" then co.decl = {sys=a, leg=TRF_FrLegs()}; end;
+	TRF_FrE("sell", "system", TRF_FrName(a), "result", "declined");
+	return nil;
+end;
+
+-- Appearance (08 section 6 spawn rules: stops, transit systems, portal follow, the parked ship at home) -----------
 
 -- 1 while trader record id is open.
 function TRF_FrRecOpen(id)
@@ -1061,62 +1232,102 @@ function TRF_FrApEnd(ap, res)
 end;
 
 -- Arrival seed provider at the #8 freighter rank (trf_plumb TRF_SeedReg 400: after the staged raid and the hold, before
--- #5 captain). Tick catch-up first; then a running ship whose loop position is this system's stop, once per ship tick
--- (sk), under the on-screen gate: the first tick there (w 0) path A through the portal facing the previous system 60-120
--- s after entry (one handoff_max place), a later tick (w 1) path B undocking as the seed (the seed's place).
+-- #5 captain). A portal follow first, then the tick catch-up, then a running ship whose loop position is this system,
+-- once per ship tick (sk), under the on-screen gate: at a stop the first tick there (w 0) path A through the portal
+-- facing the previous system 60-120 s after entry (one handoff_max place), a later tick (w 1) path B undocking as the
+-- seed (the seed's place); in a transit system path C between the loop neighbours' portals (one handoff_max place).
 function TRF_Fr_Seed(c)
 	if not TRF_FrOn() then return; end;
+	-- A portal follow plans before the tick catch-up: the due appearance holds the ship, so a tick due at entry
+	-- cannot move the followed ship on.
+	local ap = nil;
+	local co = TRF_FrCo();
+	if co and type(co.fo) == "table" then ap = TRF_FrApPlan(c, 1); end;
 	call(TRF_FrStepBody, {"entry"}, "x", TRF_FrErr);
-	local ap = TRF_FrApPlan(c);
+	if not ap then ap = TRF_FrApPlan(c); end;
 	if type(ap) == "table" and ap.path == "B" then
 		c.done = 1;
 		if type(c.L) == "table" and c.L.ent == "none" then c.L.ent = "freight"; end;
 	end;
 end;
 
--- Appearance decision of this entry; returns the plan or nil.
-function TRF_FrApPlan(c)
+-- Appearance decision of this entry; returns the plan or nil. A portal follow record (co.fo, written at the jump) is
+-- consumed first: its ship appears 5-15 s after entry (track_chase_min..max, the 6.6 chased-row timing) through the
+-- portal facing the system the player came from, inside the ship tick it already spent (sk). Otherwise a running ship
+-- whose loop position is this system: a stop first (path A on the first tick there, B on the dwell tick), then a
+-- transit system (path C, fw_transit 1, between the portals of loop[p-1] and loop[p+1]); once per ship tick (sk).
+-- fonly: the follow record only (TRF_Fr_Seed, before the tick catch-up).
+function TRF_FrApPlan(c, fonly)
 	local fr = %FR;
 	local cur = TRF_FrCur();
-	local i, s, lp = nil, nil, nil;
-	for j = 1, TRF_FrK().ship_max do
-		local x = TRF_FrShip(j);
+	local co = TRF_FrCo();
+	local K = TRF_FrK();
+	local i, s, lp, fw = nil, nil, nil, nil;
+	if co and type(co.fo) == "table" then
+		local fo = co.fo;
+		co.fo = nil;
+		local j, x = TRF_FrById(fo.id);
 		local l = x and TRF_FrLoop(x.rg);
-		if not s and l and l.s[x.p] == cur and l.t[x.p] == 1 then i = j; s = x; lp = l; end;
+		local why = nil;
+		if TRF_FrOpt("fw_follow") ~= 1 then why = "off";
+		elseif not x or not l then why = "ship";
+		elseif fo.to ~= cur or l.s[x.p] ~= cur then why = "other_system";
+		elseif l.t[x.p] ~= 1 and TRF_FrOpt("fw_transit") ~= 1 then why = "transit_off"; end;
+		if why then
+			TRF_FrE("follow", "ship_id", fo.id, "system", TRF_FrName(cur), "result", "dropped", "reason", why);
+		else
+			i = j; s = x; lp = l; fw = 1;
+		end;
 	end;
-	-- Step 2 hook: transit systems (path C between the portals of loop[p-1] and loop[p+1]) and the parked ship at
-	-- home while laid up (S25).
+	if fonly and not s then return nil; end;
+	for pass = 1, 2 do
+		for j = 1, K.ship_max do
+			local x = TRF_FrShip(j);
+			local l = x and TRF_FrLoop(x.rg);
+			if not s and l and l.s[x.p] == cur and ((pass == 1 and l.t[x.p] == 1) or (pass == 2 and l.t[x.p] ~= 1 and TRF_FrOpt("fw_transit") == 1)) then
+				i = j; s = x; lp = l;
+			end;
+		end;
+	end;
 	if not s then return nil; end;
 	local why = nil;
 	if s.st ~= 0 then why = "state_"..s.st;
-	elseif s.sk == s.k then why = "same_tick";
+	elseif s.sk == s.k and not fw then why = "same_tick";
 	else why = TRF_FrScreenGate(cur); end;
 	if why then
 		TRF_FrE("spawn", "ship_id", s.id, "tick", s.k, "sk", s.sk, "result", "skipped", "reason", why);
+		if fw then TRF_FrE("follow", "ship_id", s.id, "system", TRF_FrName(cur), "result", "dropped", "reason", why); end;
 		return nil;
 	end;
-	local path = "A";
-	if s.w == 1 then path = "B"; end;
-	local K = TRF_FrK();
+	local path = "C";
+	if lp.t[s.p] == 1 then
+		path = "A";
+		if s.w == 1 then path = "B"; end;
+	end;
 	local dt = 0;
-	if path == "A" then
+	if path ~= "B" then
 		if type(c) == "table" and type(c.nh) == "number" and c.nh >= TRF_FrTv("handoff_max", 2) then
 			TRF_FrE("spawn", "ship_id", s.id, "tick", s.k, "result", "skipped", "reason", "handoff_max");
 			return nil;
 		end;
 		if type(c) == "table" and type(c.nh) == "number" then c.nh = c.nh + 1; end;
-		dt = TRF_FrDelayOf(s.rs, K.a_min, K.a_max);
+		if fw then
+			dt = TRF_FrDelayOf(s.rs, TRF_FrTv("track_chase_min", 5), TRF_FrTv("track_chase_max", 15));
+		else
+			dt = TRF_FrDelayOf(s.rs, K.a_min, K.a_max);
+		end;
 	else
 		dt = TRF_FrDelayOf(s.rs, TRF_FrTv("seed_min", 15), TRF_FrTv("seed_max", 30));
 	end;
 	s.sk = s.k;
-	local ap = {id=s.id, i=i, path=path, k=s.k, st="due", g=TRF_FrGen()};
+	local ap = {id=s.id, i=i, path=path, k=s.k, st="due", g=TRF_FrGen(), fw=fw};
 	if not TRF_N("TRF_Due", dt, "TRF_Fr_SpawnDue", s.id, TRF_FrGen()) then
 		TRF_FrE("spawn", "ship_id", s.id, "result", "skipped", "reason", "due");
 		return nil;
 	end;
 	fr.v.ap = ap;
-	TRF_FrE("plan", "ship_id", s.id, "tick", s.k, "path", path, "delay", dt, "system", TRF_FrName(cur));
+	TRF_FrE("plan", "ship_id", s.id, "tick", s.k, "path", path, "delay", dt, "system", TRF_FrName(cur), "follow", TRF_KvB(fw));
+	if fw then TRF_FrE("follow", "ship_id", s.id, "system", TRF_FrName(cur), "path", path, "delay", dt, "result", "planned"); end;
 	return ap;
 end;
 
@@ -1127,9 +1338,9 @@ function TRF_FrPortalTo(cv, to)
 	return nil;
 end;
 
--- Due call of the plan: the gates and caps again, the plan (TRF_Plan with the forced path, the portal facing the loop
--- neighbour), the build (TRF_FrBuild) through TRF_Spawn, the fw flag, the damage band (SetHP), the lane raid roll for
--- path A, the radio line, the marker. A refused spawn ends the appearance (sk stays: one try per ship tick).
+-- Due call of the plan: the gates and caps again, the plan (TRF_Plan with the forced path A or B and the portal facing
+-- the loop neighbour; path C through TRF_Plan's fixed entry portal), the build (TRF_FrBuild) through TRF_Spawn, the fw
+-- flag, the damage band (SetHP), the lane raid roll for paths A and C, the radio line, the marker. A refused spawn ends the appearance (sk stays: one try per ship tick).
 function TRF_Fr_SpawnDue(id, g)
 	local fr = %FR;
 	local ap = fr.v.ap;
@@ -1153,37 +1364,71 @@ function TRF_FrSpawnBody(ap)
 	if why then return why; end;
 	if not TRF_N("TRF_GenReady") then return "generator"; end;
 	if type(TRF_GnValidate) == "function" and not TRF_GnValidate() then return "contacts"; end;
-	local cis = TRF_N("TRF_GnSeedContacts");
 	local cs = TRF_N("TRF_GnContacts");
-	if type(cis) ~= "table" or getn(cis) == 0 or type(cs) ~= "table" then return "station"; end;
-	local ci = cis[TRF_FrM(s.rs, getn(cis)) + 1];
-	local ok, free = TRF_N("TRF_CanSpawn", 1, "freight");
-	if not ok then return "cap_"..tostring(free); end;
-	local plan, pw = TRF_N("TRF_Plan", cs[ci], ci, ap.path, free);
-	if type(plan) ~= "table" then return "plan_"..tostring(pw); end;
-	local cv = TRF.live.cv and TRF.live.cv[ci];
-	local c = cs[ci];
-	if ap.path == "A" then
-		local si = TRF_FrPortalTo(cv, lp.s[TRF_FrPrevOf(s.p, lp.n)]);
-		if si and type(c[3]) == "table" and c[3][si] then
-			local po = c[3][si];
-			local pos = po:GetEntryPoint(10);
-			-- The plan's space test (TRF_GnFree) for this portal too; a crowded entry point keeps the plan's portal.
-			local T = TRF_N("TRF_GnT");
-			if plan.ent == po or type(TRF_GnFree) ~= "function" or type(T) ~= "table" or TRF_GnFree(cv.pn[si], pos, T) then
-				plan.ent = po; plan.entn = cv.pn[si]; plan.from = cv.pt[si];
-				plan.pos = pos; plan.dir = po:GetOrientation();
-			else
-				TRF_FrDE("spawn", "ship_id", s.id, "result", "portal_kept", "reason", "space", "portal", cv.pn[si]);
+	if type(cs) ~= "table" then return "station"; end;
+	local ci, plan, pw, ok, free = nil, nil, nil, nil, nil;
+	if ap.path == "C" then
+		-- Path C (transit): a trader contact whose portals face both loop neighbours, in from loop[p-1] (TRF_Plan's fx.si,
+		-- with its space test), out to loop[p+1].
+		local pv, nx = lp.s[TRF_FrPrevOf(s.p, lp.n)], lp.s[TRF_FrNextOf(s.p, lp.n)];
+		local si, ni = nil, nil;
+		for j = 1, getn(cs) do
+			local cv = TRF.live.cv and TRF.live.cv[j];
+			if not ci and type(cv) == "table" and TRF_FrPortalTo(cv, pv) and TRF_FrPortalTo(cv, nx) then
+				ci = j; si = TRF_FrPortalTo(cv, pv); ni = TRF_FrPortalTo(cv, nx);
 			end;
 		end;
+		if not ci then return "portal"; end;
+		ok, free = TRF_N("TRF_CanSpawn", 1, "freight");
+		if not ok then return "cap_"..tostring(free); end;
+		-- A followed ship comes through the player's own arrival portal, which the spacing rule still holds: no space
+		-- test, 15 units further out (the chased-row arrival of trf_track does the same).
+		local fx = {si=si};
+		if ap.fw then fx = {si=si, nf=1, off=15}; end;
+		plan, pw = TRF_N("TRF_Plan", cs[ci], ci, nil, free, fx);
+		if type(plan) ~= "table" then return "plan_"..tostring(pw); end;
+		local cv = TRF.live.cv[ci];
+		local c = cs[ci];
+		if type(c[3]) == "table" and c[3][ni] then plan.ext = c[3][ni]; plan.extn = cv.pn[ni]; plan.to = cv.pt[ni]; end;
 	else
-		local si = TRF_FrPortalTo(cv, lp.s[TRF_FrNextOf(s.p, lp.n)]);
-		if si and type(c[3]) == "table" and c[3][si] then plan.ext = c[3][si]; plan.extn = cv.pn[si]; plan.to = cv.pt[si]; end;
+		local cis = TRF_N("TRF_GnSeedContacts");
+		if type(cis) ~= "table" or getn(cis) == 0 then return "station"; end;
+		ci = cis[TRF_FrM(s.rs, getn(cis)) + 1];
+		ok, free = TRF_N("TRF_CanSpawn", 1, "freight");
+		if not ok then return "cap_"..tostring(free); end;
+		plan, pw = TRF_N("TRF_Plan", cs[ci], ci, ap.path, free);
+		if type(plan) ~= "table" then return "plan_"..tostring(pw); end;
+		local cv = TRF.live.cv and TRF.live.cv[ci];
+		local c = cs[ci];
+		if ap.path == "A" then
+			local si = TRF_FrPortalTo(cv, lp.s[TRF_FrPrevOf(s.p, lp.n)]);
+			if si and type(c[3]) == "table" and c[3][si] then
+				local po = c[3][si];
+				local pos = po:GetEntryPoint(10);
+				-- The plan's space test (TRF_GnFree) for this portal too; a crowded entry point keeps the plan's portal. A
+				-- followed ship takes the player's arrival portal without the test, 15 units further out.
+				local T = TRF_N("TRF_GnT");
+				if ap.fw then pos = po:GetEntryPoint(25); end;
+				if ap.fw or plan.ent == po or type(TRF_GnFree) ~= "function" or type(T) ~= "table" or TRF_GnFree(cv.pn[si], pos, T) then
+					plan.ent = po; plan.entn = cv.pn[si]; plan.from = cv.pt[si];
+					plan.pos = pos; plan.dir = po:GetOrientation();
+				else
+					TRF_FrDE("spawn", "ship_id", s.id, "result", "portal_kept", "reason", "space", "portal", cv.pn[si]);
+				end;
+			end;
+		else
+			local si = TRF_FrPortalTo(cv, lp.s[TRF_FrNextOf(s.p, lp.n)]);
+			if si and type(c[3]) == "table" and c[3][si] then plan.ext = c[3][si]; plan.extn = cv.pn[si]; plan.to = cv.pt[si]; end;
+		end;
 	end;
 	local R = TRF_N("TRF_RgR", s.rg) or 0;
 	plan.esc = 0; plan.tpn = 1; plan.n = 1; plan.tier = TRF_FrTTOf(R); plan.bld = "TRF_FrBuild"; plan.fw = s.id;
+	-- The hull of the record (TRF_FrBuild); the Walrus has no hold (cargoCapacity 0): trf_gen skips TRF_FillHold.
+	plan.fwh = TRF_FrHull(s);
+	if plan.fwh == 2 then plan.nohold = 1; end;
 	plan.pw = TRF_FrCl(floor((TRF_FrLoop(s.rg).L or 8) * 1.25 + 0.5), 1, 20);
+	-- Step 2 hook (feature 12): a merc pack hired to ride with this ship for the visit; trf_merc's hire escorts the
+	-- mothership only (TRF_McOrderAll "escort"), it has no contract that targets another ship yet.
 	local tid = TRF_N("TRF_Spawn", plan);
 	local rec = TRF_N("TRF_Rec", tid);
 	if type(rec) ~= "table" then return "spawn"; end;
@@ -1202,11 +1447,13 @@ function TRF_FrSpawnBody(ap)
 		call(function(o, h) o:SetHP(h); end, {lead, v}, "x", TRF_FrNoErr);
 	end;
 	local rd = nil;
-	if ap.path == "A" then rd = TRF_N("TRF_RaidRoll", tid, "lane"); end;
+	if ap.path ~= "B" then rd = TRF_N("TRF_RaidRoll", tid, "lane"); end;
 	local pil = TRF_N("TRF_Ev_Leader", tid);
 	local nm = TRF_FrShipName(s.nm);
 	if ap.path == "A" then
 		TRF_FrSay(TRF_FrTxt("fwhello", nm, TRF_FrSys(cur)), 8, pil);
+	elseif ap.path == "C" then
+		TRF_FrSay(TRF_FrTxt("fwhelloc", nm, TRF_FrSys(lp.s[TRF_FrNextStopOf(lp, s.p)])), 8, pil);
 	else
 		TRF_FrSay(TRF_FrTxt("fwhellob", nm, TRF_FrSys(lp.s[TRF_FrNextStopOf(lp, s.p)])), 8, pil);
 	end;
@@ -1217,13 +1464,14 @@ function TRF_FrSpawnBody(ap)
 	local hn = 0;
 	if type(rec.hold) == "table" then hn = getn(rec.hold); end;
 	TRF_FrStat("fw_spawn");
-	TRF_FrE("spawn", "ship_id", s.id, "trader_id", tid, "group", "TRF_Fw_"..s.id, "relation", "friend", "hull", TRF_FrK().hull, "hold", hn,
-		"tier", plan.tier, "path", ap.path, "tick", s.k, "damage", s.dmg, "raid_id", rd, "result", "spawned");
+	TRF_FrE("spawn", "ship_id", s.id, "trader_id", tid, "group", "TRF_Fw_"..s.id, "relation", "friend", "hull", TRF_FrK().hull[TRF_FrHull(s)], "hold", hn,
+		"tier", plan.tier, "path", ap.path, "tick", s.k, "damage", s.dmg, "raid_id", rd, "follow", TRF_KvB(ap.fw), "result", "spawned");
 	return 1;
 end;
 
 -- Builder of TRF_Spawn (plan.bld; trf_convoy's equipment convoy pattern): group TRF_Fw_<id> on the Trade team (global
--- TRF_GFw_<id> only around the build), one Btransport with pilot Trader, FRIEND both ways with PLAYER_GROUP. Returns
+-- TRF_GFw_<id> only around the build), one ship of the record's hull (p.fwh) with pilot Trader, FRIEND both ways with
+-- PLAYER_GROUP. Returns
 -- the flight; p.sh, p.tpn set.
 function TRF_FrBuild(p, id, k)
 	if type(TRF_BuildFlight) ~= "function" then return nil; end;
@@ -1233,8 +1481,9 @@ function TRF_FrBuild(p, id, k)
 	if team then g = call(function(t, nm) return t:CreateGroup(nm); end, {team, "TRF_Fw_"..n}, "x", TRF_FrErr); end;
 	if not g then TRF_FrE("build", "ship_id", n, "result", "failed", "reason", "no_group"); return nil; end;
 	local K = TRF_FrK();
+	local hull = K.hull[p.fwh or 1] or K.hull[1];
 	setglobal("TRF_GFw_"..n, g);
-	local fl, sh = call(TRF_BuildFlight, {{K.pilot}, {{K.hull, 1, "A"}}, "TRF_GFw_"..n, "trf_"..id, p.pos, p.pw or 10, p.dir,
+	local fl, sh = call(TRF_BuildFlight, {{K.pilot}, {{hull, 1, "A"}}, "TRF_GFw_"..n, "trf_"..id, p.pos, p.pw or 10, p.dir,
 		"shipFormation", 5, 1}, "x", TRF_FrErr);
 	setglobal("TRF_GFw_"..n, nil);
 	if not fl or type(sh) ~= "table" or getn(sh) == 0 then return nil; end;
@@ -1244,7 +1493,7 @@ function TRF_FrBuild(p, id, k)
 	end;
 	p.sh = sh;
 	p.tpn = 1;
-	TRF_FrDE("build", "ship_id", n, "trader_id", id, "hull", K.hull, "ship_count", getn(sh));
+	TRF_FrDE("build", "ship_id", n, "trader_id", id, "hull", hull, "ship_count", getn(sh));
 	return fl;
 end;
 
@@ -1275,11 +1524,13 @@ function TRF_Fr_Arrive(id, how)
 	end;
 	-- The damage band while the flight still exists (a dock or exit removes the record before any jump).
 	if type(hp) == "number" then s.dmg = max(s.dmg, TRF_FrDmgOf(hp, r.hp0)); end;
-	-- Step 2 hook: portal follow (a player following within T_chase sees it arrive 5-15 s later).
 	if how == "exit" and lp then
 		s.w = 0;
 		s.p = TRF_FrNextOf(s.p, lp.n);
 		TRF_FrAtHome(s, lp);
+		-- Portal follow (fw_follow): the exit is kept for the visit; a jump to the system it entered within T_chase writes
+		-- co.fo (TRF_Fr_BeforeJump).
+		if TRF_FrOpt("fw_follow") == 1 then fr.v.ex = {id=s.id, gt=TRF_FrGt(), to=lp.s[s.p]}; end;
 	end;
 	-- A fleeing ship (r.fl: low hull or heat) earns no visit credit and no deed, as in traffic's TRF_GnSafeArrive.
 	local esc, cr = 0, 0;
@@ -1326,6 +1577,30 @@ function TRF_Fr_Robbed(id, r)
 	TRF_FrRob(co, s, TRF_FrCur(), "onscreen");
 end;
 
+-- trf_survive hook (TRF_Sv_OnLoss, feature 6): 1 when an on-screen freighter loss may leave pods (fw_hooks 1).
+function TRF_Fr_PodsOk()
+	if TRF_FrOn() and TRF_FrOpt("fw_hooks") == 1 then return 1; end;
+	return nil;
+end;
+
+-- trf_survive hook (TRF_SvHand, feature 6; 08 section 7): the crew of ship id handed in at a trade dock (the pods line
+-- 30 runs before the freight line 60). The liability of that loss (lq.o) is halved: min(owe, floor(o / 2)) is waived
+-- from what is still owed, lq goes. Returns the line or nil (another ship's crew, nothing owed any more).
+function TRF_Fr_CrewHome(id)
+	local co = TRF_FrCo();
+	if not co or not TRF_FrOn() or type(co.lq) ~= "table" or co.lq.s ~= id then
+		TRF_FrDE("crew", "ship_id", id, "result", "none", "reason", "record");
+		return nil;
+	end;
+	local q = co.lq;
+	co.lq = nil;
+	local w = min(co.owe, floor(q.o / 2));
+	co.owe = co.owe - w;
+	TRF_FrE("crew", "ship_id", id, "liability", q.o, "waived", w, "owe", co.owe, "result", "home");
+	if w <= 0 then return nil; end;
+	return TRF_FrTxt("fwpods", TRF_FrShipName(q.nm), TRF_FrNum(w));
+end;
+
 -- 8.5 raid-help resolver (trf_plumb TRF_RaidHelpReg; 08 section 10 question 10, chosen no): a raid on the player's own
 -- freighter pays no 8.5 credits, help or heat -1.
 function TRF_Fr_RaidHelp(n, rd, amt)
@@ -1352,9 +1627,130 @@ function TRF_Fr_HailId(id)
 	return TRF_FrTxt("fwhail", TRF_FrShipName(r.nm), to);
 end;
 
+-- Parked ship at home (S25, fw_parked) --------------------------------------------------------------
+
+-- 1 when object o answers IsAlive (protected).
+function TRF_FrAliveRaw(o)
+	if type(TRF_Is) == "function" then return TRF_Is(o:IsAlive()); end;
+	return o:IsAlive();
+end;
+
+function TRF_FrAlive(o)
+	if o == nil or type(o) == "number" or type(o) == "string" or type(o) == "function" then return nil; end;
+	return call(TRF_FrAliveRaw, {o}, "x", TRF_FrNoErr);
+end;
+
+-- Slot index and record of the ship that may lie parked at station system cur: laid up (st 1) or suspended (st 2) at
+-- its home stop, not on-screen otherwise. nil when none.
+function TRF_FrParkShip(cur)
+	for i = 1, TRF_FrK().ship_max do
+		local s = TRF_FrShip(i);
+		local lp = s and TRF_FrLoop(s.rg);
+		if lp and s.home == cur and lp.s[s.p] == cur and lp.t[s.p] == 1 and (s.st == 1 or s.st == 2) and not TRF_FrLive(s) then return i, s; end;
+	end;
+	return nil;
+end;
+
+-- Due call pk_dt s after entry: the parked ship of this home station. Gates: fw_parked, the on-screen gate (G3), a
+-- live station with an approach point, TRF_CanSpawn(1, "freight") (one ship of cap_ships, at any pro). One ship of the
+-- record's hull in group TRF_Fw_<id> (Trade team, FRIEND both ways), pilot Trader, no hold (ClearInventory), stopped,
+-- label trf_fw_<slot>_1 (the plumbing orphan scan deletes it after a load), pk_back behind the docking position away
+-- from the approach point; it never moves and goes at the jump. Returns 1 when built.
+function TRF_Fr_ParkDue(g)
+	if not TRF_FrOn() or g ~= TRF_FrGen() or TRF_FrOpt("fw_parked") ~= 1 then return nil; end;
+	local r = call(TRF_FrParkBody, {}, "x", TRF_FrErr);
+	return r;
+end;
+
+function TRF_FrParkBody()
+	local fr = %FR;
+	local cur = TRF_FrCur();
+	if type(fr.v.pk) == "table" then return nil; end;
+	local i, s = TRF_FrParkShip(cur);
+	if not s then return nil; end;
+	local why = TRF_FrScreenGate(cur);
+	local st, np = nil, nil;
+	if not why then
+		st = TRF_N("TRF_Station");
+		if not TRF_FrAlive(st) then why = "station"; end;
+	end;
+	if not why then
+		local cis = TRF_N("TRF_GnSeedContacts");
+		local cs = TRF_N("TRF_GnContacts");
+		local T = TRF_N("TRF_GnT");
+		if type(cis) == "table" and getn(cis) > 0 and type(cs) == "table" and type(T) == "table" then np = TRF_N("TRF_GnApproach", cs[cis[1]], st, T); end;
+		if not np then why = "approach"; end;
+	end;
+	if not why then
+		local ok, w = TRF_N("TRF_CanSpawn", 1, "freight");
+		if not ok then why = "cap_"..tostring(w); end;
+	end;
+	if not why and type(TRF_BuildFlight) ~= "function" then why = "builder"; end;
+	if why then
+		TRF_FrE("parked", "ship_id", s.id, "system", TRF_FrName(cur), "result", "none", "reason", why);
+		return nil;
+	end;
+	local K = TRF_FrK();
+	local dock = st:GetDockingPosition();
+	local dx, dy, dz = np.x - dock.x, np.y - dock.y, np.z - dock.z;
+	local l = sqrt(dx * dx + dy * dy + dz * dz);
+	if l < 0.001 then dx = 0; dy = 0; dz = 1; l = 1; end;
+	dx = dx / l; dy = dy / l; dz = dz / l;
+	local pos = Vector3(dock.x - dx * K.pk_back, dock.y - dy * K.pk_back, dock.z - dz * K.pk_back);
+	local team = TRF_N("CreateTeam", "Trade");
+	local grp = nil;
+	if team then grp = call(function(t, nm) return t:CreateGroup(nm); end, {team, "TRF_Fw_"..s.id}, "x", TRF_FrErr); end;
+	if not grp then TRF_FrE("parked", "ship_id", s.id, "result", "failed", "reason", "no_group"); return nil; end;
+	local hull = K.hull[TRF_FrHull(s)];
+	setglobal("TRF_GFw_"..s.id, grp);
+	local fl, sh = call(TRF_BuildFlight, {{K.pilot}, {{hull, 1, "A"}}, "TRF_GFw_"..s.id, "trf_fw_"..i, pos, 1, Vector3(dx, dy, dz),
+		"shipFormation", 15, 1}, "x", TRF_FrErr);
+	setglobal("TRF_GFw_"..s.id, nil);
+	if not fl or type(sh) ~= "table" or not sh[1] then TRF_FrE("parked", "ship_id", s.id, "hull", hull, "result", "failed", "reason", "build"); return nil; end;
+	local o = sh[1];
+	call(function(x) x:ClearInventory(); end, {o}, "x", TRF_FrNoErr);
+	call(function(f) f:Stop(); end, {fl}, "x", TRF_FrNoErr);
+	TRF_N("SetObjectLabel", o, "trf_fw_"..i.."_1");
+	if type(SetGroupRelation) == "function" and RELATION_FRIEND ~= nil then
+		call(SetGroupRelation, {grp, PLAYER_GROUP, RELATION_FRIEND}, "x", TRF_FrErr);
+		call(SetGroupRelation, {PLAYER_GROUP, grp, RELATION_FRIEND}, "x", TRF_FrNoErr);
+	end;
+	fr.v.pk = {id=s.id, i=i, fl=fl, sh=o};
+	TRF_FrStat("fw_park");
+	TRF_FrE("parked", "ship_id", s.id, "slot", i, "system", TRF_FrName(cur), "hull", hull, "state", s.st, "group", "TRF_Fw_"..s.id,
+		"relation", "friend", "position", floor(pos.x)..","..floor(pos.y)..","..floor(pos.z), "result", "spawned");
+	return 1;
+end;
+
+-- Deletes the parked flight (of ship id, or any with id nil): jump, sale, loss. why for the log.
+function TRF_FrParkDel(id, why)
+	local fr = %FR;
+	local pk = fr.v.pk;
+	if type(pk) ~= "table" or (id ~= nil and pk.id ~= id) then return nil; end;
+	fr.v.pk = nil;
+	if TRF_FrAlive(pk.fl) then call(function(f) f:Delete(); end, {pk.fl}, "x", TRF_FrNoErr);
+	elseif TRF_FrAlive(pk.sh) then call(function(x) x:Delete(); end, {pk.sh}, "x", TRF_FrNoErr); end;
+	TRF_FrDE("parked", "ship_id", pk.id, "result", "removed", "reason", why);
+	return 1;
+end;
+
+-- Every 1 s: the parked ship killed in view is the loss of its ship (cause parked).
+function TRF_FrParkPoll()
+	local fr = %FR;
+	local pk = fr.v.pk;
+	if type(pk) ~= "table" or TRF_FrAlive(pk.sh) then return; end;
+	fr.v.pk = nil;
+	local co = TRF_FrCo();
+	local i, s = TRF_FrById(pk.id);
+	TRF_FrE("parked", "ship_id", pk.id, "result", "destroyed");
+	if co and s then TRF_FrLose(co, i, s, TRF_FrCur(), "parked", nil, nil); end;
+end;
+
 -- Ship-cap count (trf_plumb TRF_CapReg): ships of a Wolves flight not held by an open trader record (traffic's count
--- already has the open record's ships); 0 in step 1 (step 2: the parked ship at home).
+-- already has the open record's ships): the parked ship at home.
 function TRF_Fr_Ships(g)
+	local pk = %FR.v.pk;
+	if type(pk) == "table" and TRF_FrAlive(pk.sh) then return 1; end;
 	return 0;
 end;
 
@@ -1369,16 +1765,43 @@ function TRF_Fr_OnEnter()
 	if co then co.vn = co.vn + 1; end;
 end;
 
--- After activate (T2c): the tick catch-up (the seed provider ran it already when the entry plan ran).
+-- After activate (T2c): the tick catch-up (the seed provider ran it already when the entry plan ran); a follow
+-- record the entry plan did not consume goes; the parked ship of a home station pk_dt s later (fw_parked).
 function TRF_Fr_OnActivate()
 	if not TRF_FrOn() then return; end;
 	call(TRF_FrStepBody, {"activate"}, "x", TRF_FrErr);
+	local co = TRF_FrCo();
+	if co and type(co.fo) == "table" then
+		TRF_FrE("follow", "ship_id", co.fo.id, "system", TRF_FrName(TRF_FrCur()), "result", "dropped", "reason", "no_plan");
+		co.fo = nil;
+	end;
+	if TRF_FrOpt("fw_parked") == 1 and TRF_FrParkShip(TRF_FrCur()) then TRF_N("TRF_Due", TRF_FrK().pk_dt, "TRF_Fr_ParkDue", TRF_FrGen()); end;
 end;
 
--- Before a jump: the damage band of the on-screen ship (GetCurHP) and the end of the appearance; trf_gen's jump hook
--- deletes the flight (p stays unless it left through a portal).
-function TRF_Fr_BeforeJump()
+-- Before a jump (dest, how from traffic.script): the damage band of the on-screen ship (GetCurHP) and the end of the
+-- appearance (trf_gen's jump hook deletes the flight; p stays unless it left through a portal); the portal follow
+-- record co.fo when the jump goes to the system the ship entered through a portal within T_chase (fw_follow; how
+-- "custom", a scripted long jump, never); the parked flight deleted.
+function TRF_Fr_BeforeJump(dest, how)
 	local fr = %FR;
+	TRF_FrParkDel(nil, "jump");
+	local ex = fr.v.ex;
+	fr.v.ex = nil;
+	local co = TRF_FrCo();
+	if type(ex) == "table" and co and how ~= "custom" and TRF_FrOn() and TRF_FrOpt("fw_follow") == 1 then
+		local di = dest;
+		if type(dest) == "string" then
+			local m = TRF_N("TRF_Map");
+			if type(m) == "table" and type(m.by) == "table" then di = m.by[strlower(dest)]; end;
+		end;
+		local dt = TRF_FrGt() - ex.gt;
+		if di == ex.to and dt <= TRF_FrTv("T_chase", 60) and TRF_FrById(ex.id) then
+			co.fo = {id=ex.id, to=ex.to};
+			TRF_FrE("follow", "ship_id", ex.id, "destination", TRF_FrName(ex.to), "elapsed", floor(dt), "result", "written");
+		else
+			TRF_FrDE("follow", "ship_id", ex.id, "destination", tostring(dest), "elapsed", floor(dt), "result", "none");
+		end;
+	end;
 	local ap = fr.v.ap;
 	if type(ap) ~= "table" or ap.st ~= "live" then fr.v.ap = nil; return; end;
 	local i, s = TRF_FrById(ap.id);
@@ -1399,6 +1822,12 @@ end;
 function TRF_Fr_OnLoad()
 	local fr = %FR;
 	fr.v = {g=TRF_FrGen()};
+	-- A portal follow record is void after a load (the parked flight of the save goes with the plumbing orphan scan).
+	local co = TRF_FrCo();
+	if co and co.fo ~= nil then
+		TRF_FrE("follow", "result", "dropped", "reason", "load");
+		co.fo = nil;
+	end;
 	if type(TRF) ~= "table" or type(TRF.live) ~= "table" then return; end;
 	local L = TRF.live;
 	local ids = {};
@@ -1463,7 +1892,8 @@ function TRF_FrShipFix(e, ns, legs)
 end;
 
 -- Repair (TRF_Repair, every entry and load): TRF.co with every field within its range, ships 1..ship_max with a known
--- loop (at most one per region and per id), log entries (newest log_max), decl.
+-- loop (at most one per region and per id; hull 1..3), log entries (newest log_max, the captain index c 1..99), decl,
+-- fo and lq.
 function TRF_Fr_Fix()
 	if type(TRF) ~= "table" or TRF.co == nil then return; end;
 	if type(TRF.co) ~= "table" then TRF.co = nil; return; end;
@@ -1491,12 +1921,19 @@ function TRF_Fr_Fix()
 				local f = {k=floor(e.k), s=TRF_FrFld(e, "s", 1, K.id_max, 1), nm=TRF_FrFld(e, "nm", 1, K.nm_max, 1), sys=TRF_FrFld(e, "sys", 1, ns, nil),
 					leg=TRF_FrFld(e, "leg", -99999, legs, legs)};
 				if e.f == 1 or e.f == 2 then f.f = e.f; end;
+				if TRF_FrNumOk(e.c, 1, 99) then f.c = floor(e.c); end;
 				v[getn(v) + 1] = f;
 			end;
 		end;
 		local l = {};
 		for j = max(1, getn(v) - K.log_max + 1), getn(v) do l[getn(l) + 1] = v[j]; end;
 		if getn(l) > 0 then o.log = l; end;
+	end;
+	if type(x.fo) == "table" and TRF_FrNumOk(x.fo.id, 1, K.id_max) and TRF_FrNumOk(x.fo.to, 1, ns) then
+		o.fo = {id=floor(x.fo.id), to=floor(x.fo.to)};
+	end;
+	if type(x.lq) == "table" and TRF_FrNumOk(x.lq.s, 1, K.id_max) and TRF_FrNumOk(x.lq.o, 0, cap) then
+		o.lq = {s=floor(x.lq.s), nm=TRF_FrFld(x.lq, "nm", 1, K.nm_max, 1), o=floor(x.lq.o)};
 	end;
 	local hr, hi = {}, {};
 	if type(x.ships) == "table" then
@@ -1508,19 +1945,23 @@ function TRF_Fr_Fix()
 	TRF.co = o;
 end;
 
--- Config keys (08 section 6 config). enable_freight, fw_onscreen and fw_losses act in step 1; fw_max_ships is clamped
--- to 1 in step 1 (slots 2 and 3 are step 2); fw_prize_gap 1 holds a payout inside the shared prize gap and stamps it
--- (00 B1, the brief); fw_marker 1 attaches a nav point to the on-screen ship.
+-- Config keys (08 section 6 config). enable_freight, fw_onscreen and fw_losses act since step 1; fw_max_ships ships
+-- owned (3, clamped 1..3; 1 is step 1); fw_prize_gap 1 holds a payout inside the shared prize gap and stamps it (00 B1,
+-- the brief); fw_marker 1 attaches a nav point to the on-screen ship. Step 2 parts, each 0 for the step 1 behaviour:
+-- fw_hulls (the hull by L and the sell-back), fw_transit (path C), fw_follow (portal follow), fw_parked (the parked ship
+-- at home), fw_hooks (the captain in the robbery line, pods for an on-screen loss, the chapter-13 alarm line).
 function TRF_Fr_OptDef()
-	return {enable_freight=1, fw_max_ships=1, fw_onscreen=1, fw_losses=1, fw_prize_gap=1, fw_marker=1};
+	return {enable_freight=1, fw_max_ships=3, fw_onscreen=1, fw_losses=1, fw_prize_gap=1, fw_marker=1, fw_hulls=1, fw_transit=1,
+		fw_follow=1, fw_parked=1, fw_hooks=1};
 end;
 
 -- Tune keys (08 section 6 config). fw_rob_base by phase Quiet, Boom, Build-up, Raids, Bust, Recovery; fw_help_slot
--- and fw_weights per slot (2 and 3: step 2); fw_cover the voucher share of the price paid.
+-- per slot; fw_weights per rank by run pay; fw_cover the voucher share of the price paid; fw_hull_l {lo, hi}: the box
+-- offers Walrus_tr1 at L <= lo, Btransport2 at L >= hi (17: never), else Btransport.
 function TRF_Fr_TuneDef()
 	return {fw_k=3.33, fw_price_k=1000, fw_tick_real=120, fw_bank=4, fw_premium=0.05, fw_cover=0.75, fw_liab_ticks=25,
 		fw_rob_base={0.005, 0.01, 0.03, 0.04, 0.03, 0.01}, fw_loss_base=0.002, fw_layup=2, fw_help_slot={5, 15, 30}, fw_min_pro=4,
-		fw_weights={1, 0.3, 0.1}, fw_offer_cd=10};
+		fw_weights={1, 0.3, 0.1}, fw_offer_cd=10, fw_hull_l={6, 13}};
 end;
 
 -- Debug dump (08 section 6): the account line, one dump_ship line per ship, the last roll.
@@ -1532,8 +1973,12 @@ function TRF_Fr_Dump()
 	local sp = TRF_FrSusp(co);
 	local ln = 0;
 	if type(co.log) == "table" then ln = getn(co.log); end;
+	local fo, lq = nil, nil;
+	if type(co.fo) == "table" then fo = co.fo.id..">"..TRF_FrName(co.fo.to); end;
+	if type(co.lq) == "table" then lq = co.lq.s..":"..co.lq.o; end;
 	TRF_FrE("dump", "balance", co.bal.."/"..TRF_FrPayCap(), "vn", co.vn, "pg", co.pg, "lk", co.lk, "legs", legs, "rt", floor(rs - co.rt), "owe", co.owe,
-		"vch", co.vch, "lost", co.lost, "susp", sp or 0, "seq", co.seq, "log_count", ln, "ship_count", TRF_FrCount());
+		"vch", co.vch, "lost", co.lost, "susp", sp or 0, "seq", co.seq, "log_count", ln, "ship_count", TRF_FrCount(), "max_ships", TRF_FrMaxShips(),
+		"follow", fo, "crew_liability", lq);
 	local sn = {"run", "laid_up", "suspended"};
 	for i = 1, TRF_FrK().ship_max do
 		local s = TRF_FrShip(i);
@@ -1541,7 +1986,7 @@ function TRF_Fr_Dump()
 			local lp = TRF_FrLoop(s.rg);
 			local n, at = 0, nil;
 			if lp then n = lp.n; at = lp.s[s.p]; end;
-			TRF_FrE("dump_ship", "slot", i, "id", s.id, "nm", TRF_FrShipName(s.nm), "hull", "bt", "rg", s.rg, "home", TRF_FrName(s.home),
+			TRF_FrE("dump_ship", "slot", i, "id", s.id, "nm", TRF_FrShipName(s.nm), "hull", TRF_FrK().hull_n[TRF_FrHull(s)], "rg", s.rg, "home", TRF_FrName(s.home),
 				"p", s.p.."/"..n, "w", s.w, "at", TRF_FrName(at), "st", sn[s.st + 1], "till", s.till, "cov", s.cov, "k", s.k, "sk", s.sk,
 				"ek", s.ek, "run", s.run, "dmg", s.dmg, "rs", s.rs, "price", s.price, "earned", s.earned);
 		end;
@@ -1560,6 +2005,14 @@ function TRF_Fr_Text()
 		fwboxtitle = "FTU charter office",
 		fwbox = "A bulk freighter is up for charter: $1 cr. She will run the $2 lanes under the Wolves name, FTU cover included. Sign the papers?",
 		fwboxv = "A bulk freighter is up for charter: $1 cr with your FTU cover (list $3 cr). She will run the $2 lanes under the Wolves name. Sign the papers?",
+		-- Hulls 2 (Walrus_tr1) and 3 (Btransport2): price, region, list.
+		fwbox2 = "A Walrus hauler is up for charter: $1 cr. Two turrets, no hold, lighter pay. She will run the $2 lanes under the Wolves name, FTU cover included. Sign the papers?",
+		fwboxv2 = "A Walrus hauler is up for charter: $1 cr with your FTU cover (list $3 cr). Two turrets, no hold, lighter pay. She will run the $2 lanes under the Wolves name. Sign the papers?",
+		fwbox3 = "A heavy freighter is up for charter: $1 cr. Twice the hold, better pay, a bigger target. She will run the $2 lanes under the Wolves name, FTU cover included. Sign the papers?",
+		fwboxv3 = "A heavy freighter is up for charter: $1 cr with your FTU cover (list $3 cr). Twice the hold, better pay, a bigger target. She will run the $2 lanes under the Wolves name. Sign the papers?",
+		fwfee = "FTU takes most of a second charter's run as convoy fee.",
+		fwsell = "$1 lies at $2. The office buys her back for $3 cr, half her price. Sell?",  -- ship, home, credits
+		fwsold = "Wolves Freight: $1 sold back to the FTU for $2 cr.",
 		fwrumour = "FTU charter office: transports keep going missing in Capricorn. Cover premiums are up.",
 		fwboxq = "FTU charter office: the office does not forget a carrier who brings his people back. Register a hull under Wolves Freight for $1 cr, loop of $2?",  -- price, region
 		fwbought = "Wolves Freight: $1 registered at $2. Her first run leaves next leg.",
@@ -1567,6 +2020,10 @@ function TRF_Fr_Text()
 		fwpaid = "Wolves Freight paid $1 cr since your last visit.",
 		fwrob = "Wolves Freight: $1 was robbed near $2. Hold lost, two legs in repair.",
 		fwrobt = "Wolves Freight: $1 was robbed in transit. Hold lost, two legs in repair.",
+		fwrobc = "Wolves Freight: $1 was robbed near $2 by the crew of $3. Hold lost, two legs in repair.",  -- ship, system, captain
+		fwrobct = "Wolves Freight: $1 was robbed in transit by the crew of $2. Hold lost, two legs in repair.",
+		fwpods = "FTU: the crew of $1 is home. Half the carrier liability is waived: $2 cr.",
+		fwalarm = "FTU: HQ on alert. Charters run as usual.",
 		fwlost = "Wolves Freight: $1 lost near $2. FTU cover: your next hull at 25 % of list.",
 		fwlostt = "Wolves Freight: $1 lost in transit. FTU cover: your next hull at 25 % of list.",
 		fwlostp = "Wolves Freight: $1 lost near $2. FTU pays no cover for a hull your own wing shot down.",
@@ -1584,6 +2041,7 @@ function TRF_Fr_Text()
 		fwsusp = "FTU: the Wolves charter is suspended until traders stop running from you.",
 		fwhello = "$1 here, boss. Cargo for $2. Good to see the Wolves out here.",
 		fwhellob = "$1 undocking, boss. Next stop $2.",
+		fwhelloc = "$1 passing through, boss. Bound for $2.",
 		fwdocked = "$1 docked. They saw who flies with us. Should be quiet for a while.",
 		fwwho = "Wolves Freight $1",
 		fwhail = "$1, Wolves Freight. Bound for $2, all well.",

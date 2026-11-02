@@ -246,18 +246,25 @@ FILETYPE STANDART
 #TRF_flee = FTU: Breaking off, heading for.
 #TRF_fleegate = the jump gate
 #TRF_focus = FTU
+#TRF_fwalarm = FTU: HQ on alert. Charters run as usual.
 #TRF_fwbought = Wolves Freight: registered at. Her first run leaves next leg.
 #TRF_fwbox = A bulk freighter is up for charter: cr. She will run the lanes under the Wolves name, FTU cover included. Sign the papers?
+#TRF_fwbox2 = A Walrus hauler is up for charter: cr. Two turrets, no hold, lighter pay. She will run the lanes under the Wolves name, FTU cover included. Sign the papers?
+#TRF_fwbox3 = A heavy freighter is up for charter: cr. Twice the hold, better pay, a bigger target. She will run the lanes under the Wolves name, FTU cover included. Sign the papers?
 #TRF_fwboxq = FTU charter office: the office does not forget a carrier who brings his people back. Register a hull under Wolves Freight for cr, loop of?
 #TRF_fwboxtitle = FTU charter office
 #TRF_fwboxv = A bulk freighter is up for charter: cr with your FTU cover (list cr). She will run the lanes under the Wolves name. Sign the papers?
+#TRF_fwboxv2 = A Walrus hauler is up for charter: cr with your FTU cover (list cr). Two turrets, no hold, lighter pay. She will run the lanes under the Wolves name. Sign the papers?
+#TRF_fwboxv3 = A heavy freighter is up for charter: cr with your FTU cover (list cr). Twice the hold, better pay, a bigger target. She will run the lanes under the Wolves name. Sign the papers?
 #TRF_fwclerk = FTU clerk: 'The Carrier makes amends for the Cargo.' You know the clause.
 #TRF_fwdocked = docked. They saw who flies with us. Should be quiet for a while.
+#TRF_fwfee = FTU takes most of a second charter's run as convoy fee.
 #TRF_fwfull = Wolves Freight: account full. waits at for your orders.
 #TRF_fwfullt = Wolves Freight: account full. waits for your orders.
 #TRF_fwhail = Wolves Freight. Bound for, all well.
 #TRF_fwhello = here, boss. Cargo for. Good to see the Wolves out here.
 #TRF_fwhellob = undocking, boss. Next stop.
+#TRF_fwhelloc = passing through, boss. Bound for.
 #TRF_fwliab = Wolves Freight: carrier liability charged: cr.
 #TRF_fwlost = Wolves Freight: lost near. FTU cover: your next hull at 25 % of list.
 #TRF_fwlostp = Wolves Freight: lost near. FTU pays no cover for a hull your own wing shot down.
@@ -265,12 +272,17 @@ FILETYPE STANDART
 #TRF_fwlostt = Wolves Freight: lost in transit. FTU cover: your next hull at 25 % of list.
 #TRF_fwowe = Wolves Freight: carrier liability charged: cr. Still owed: cr.
 #TRF_fwpaid = Wolves Freight paid cr since your last visit.
+#TRF_fwpods = FTU: the crew of is home. Half the carrier liability is waived: cr.
 #TRF_fwpoor = FTU charter office: come back with cr.
 #TRF_fwrepair = Wolves Freight: is in repair at.
 #TRF_fwrepairt = Wolves Freight: is in repair.
 #TRF_fwrob = Wolves Freight: was robbed near. Hold lost, two legs in repair.
+#TRF_fwrobc = Wolves Freight: was robbed near by the crew of. Hold lost, two legs in repair.
+#TRF_fwrobct = Wolves Freight: was robbed in transit by the crew of. Hold lost, two legs in repair.
 #TRF_fwrobt = Wolves Freight: was robbed in transit. Hold lost, two legs in repair.
 #TRF_fwrumour = FTU charter office: transports keep going missing in Capricorn. Cover premiums are up.
+#TRF_fwsell = lies at. The office buys her back for cr, half her price. Sell?
+#TRF_fwsold = Wolves Freight: sold back to the FTU for cr.
 #TRF_fwsusp = FTU: the Wolves charter is suspended until traders stop running from you.
 #TRF_fwtransit = Wolves Freight: is in transit, bound for.
 #TRF_fwunknown = her next stop
@@ -448,6 +460,8 @@ FILETYPE STANDART
 #TRF_ncapsucc = now leads the near
 #TRF_nfeqkill = equipment convoy destroyed; FTU blames the Wolves
 #TRF_nfeqlost = equipment convoy lost to pirates
+#TRF_nfwlost = Wolves Freight hull lost near
+#TRF_nfwreg = FTU registers Wolves Freight
 #TRF_nheat5 = FTU warns captains about the Wolves
 #TRF_nheat7 = FTU blacklists the Wolves
 #TRF_nhelp15 = FTU names the Wolves friends of the union
@@ -929,6 +943,8 @@ FILETYPE STANDART
 #TRF_N_feq_lost_4_LDesc = FTU bulletin: USS equipment convoy lost to pirates.
 #TRF_N_feq_lost_5_Name = InoCo equipment convoy lost to pirates
 #TRF_N_feq_lost_5_LDesc = FTU bulletin: InoCo equipment convoy lost to pirates.
+#TRF_N_fw_reg_Name = FTU registers Wolves Freight
+#TRF_N_fw_reg_LDesc = FTU bulletin: FTU registers Wolves Freight.
 #TRF_N_r1_lane_raid_Name = Raids on trade lanes rising near Dosis
 #TRF_N_r1_lane_raid_LDesc = FTU bulletin: Raids on trade lanes rising near Dosis.
 #TRF_N_r1_lane_quiet_Name = Lanes quiet again near Dosis
@@ -979,6 +995,8 @@ FILETYPE STANDART
 #TRF_N_r1_cap_out_LDesc = FTU bulletin: Rust Jackals captain is back on the lanes near Dosis.
 #TRF_N_r1_cap_succ_Name = New captain leads the Rust Jackals near Dosis
 #TRF_N_r1_cap_succ_LDesc = FTU bulletin: New captain leads the Rust Jackals near Dosis.
+#TRF_N_r1_fw_lost_Name = Wolves Freight hull lost near Dosis
+#TRF_N_r1_fw_lost_LDesc = FTU bulletin: Wolves Freight hull lost near Dosis.
 #TRF_N_r2_lane_raid_Name = Raids on trade lanes rising near Elinor
 #TRF_N_r2_lane_raid_LDesc = FTU bulletin: Raids on trade lanes rising near Elinor.
 #TRF_N_r2_lane_quiet_Name = Lanes quiet again near Elinor
@@ -1029,6 +1047,8 @@ FILETYPE STANDART
 #TRF_N_r2_cap_out_LDesc = FTU bulletin: Black Comets captain is back on the lanes near Elinor.
 #TRF_N_r2_cap_succ_Name = New captain leads the Black Comets near Elinor
 #TRF_N_r2_cap_succ_LDesc = FTU bulletin: New captain leads the Black Comets near Elinor.
+#TRF_N_r2_fw_lost_Name = Wolves Freight hull lost near Elinor
+#TRF_N_r2_fw_lost_LDesc = FTU bulletin: Wolves Freight hull lost near Elinor.
 #TRF_N_r3_lane_raid_Name = Raids on trade lanes rising near Gefest
 #TRF_N_r3_lane_raid_LDesc = FTU bulletin: Raids on trade lanes rising near Gefest.
 #TRF_N_r3_lane_quiet_Name = Lanes quiet again near Gefest
@@ -1079,6 +1099,8 @@ FILETYPE STANDART
 #TRF_N_r3_cap_out_LDesc = FTU bulletin: Ash Vipers captain is back on the lanes near Gefest.
 #TRF_N_r3_cap_succ_Name = New captain leads the Ash Vipers near Gefest
 #TRF_N_r3_cap_succ_LDesc = FTU bulletin: New captain leads the Ash Vipers near Gefest.
+#TRF_N_r3_fw_lost_Name = Wolves Freight hull lost near Gefest
+#TRF_N_r3_fw_lost_LDesc = FTU bulletin: Wolves Freight hull lost near Gefest.
 #TRF_N_r4_lane_raid_Name = Raids on trade lanes rising near Golkonda
 #TRF_N_r4_lane_raid_LDesc = FTU bulletin: Raids on trade lanes rising near Golkonda.
 #TRF_N_r4_lane_quiet_Name = Lanes quiet again near Golkonda
@@ -1129,6 +1151,8 @@ FILETYPE STANDART
 #TRF_N_r4_cap_out_LDesc = FTU bulletin: Grey Ravens captain is back on the lanes near Golkonda.
 #TRF_N_r4_cap_succ_Name = New captain leads the Grey Ravens near Golkonda
 #TRF_N_r4_cap_succ_LDesc = FTU bulletin: New captain leads the Grey Ravens near Golkonda.
+#TRF_N_r4_fw_lost_Name = Wolves Freight hull lost near Golkonda
+#TRF_N_r4_fw_lost_LDesc = FTU bulletin: Wolves Freight hull lost near Golkonda.
 #TRF_N_r5_lane_raid_Name = Raids on trade lanes rising near Kadi
 #TRF_N_r5_lane_raid_LDesc = FTU bulletin: Raids on trade lanes rising near Kadi.
 #TRF_N_r5_lane_quiet_Name = Lanes quiet again near Kadi
@@ -1179,6 +1203,8 @@ FILETYPE STANDART
 #TRF_N_r5_cap_out_LDesc = FTU bulletin: Red Knives captain is back on the lanes near Kadi.
 #TRF_N_r5_cap_succ_Name = New captain leads the Red Knives near Kadi
 #TRF_N_r5_cap_succ_LDesc = FTU bulletin: New captain leads the Red Knives near Kadi.
+#TRF_N_r5_fw_lost_Name = Wolves Freight hull lost near Kadi
+#TRF_N_r5_fw_lost_LDesc = FTU bulletin: Wolves Freight hull lost near Kadi.
 #TRF_N_r6_lane_raid_Name = Raids on trade lanes rising near Moscowia
 #TRF_N_r6_lane_raid_LDesc = FTU bulletin: Raids on trade lanes rising near Moscowia.
 #TRF_N_r6_lane_quiet_Name = Lanes quiet again near Moscowia
@@ -1229,6 +1255,8 @@ FILETYPE STANDART
 #TRF_N_r6_cap_out_LDesc = FTU bulletin: Cold Suns captain is back on the lanes near Moscowia.
 #TRF_N_r6_cap_succ_Name = New captain leads the Cold Suns near Moscowia
 #TRF_N_r6_cap_succ_LDesc = FTU bulletin: New captain leads the Cold Suns near Moscowia.
+#TRF_N_r6_fw_lost_Name = Wolves Freight hull lost near Moscowia
+#TRF_N_r6_fw_lost_LDesc = FTU bulletin: Wolves Freight hull lost near Moscowia.
 #TRF_N_r7_lane_raid_Name = Raids on trade lanes rising near Torr
 #TRF_N_r7_lane_raid_LDesc = FTU bulletin: Raids on trade lanes rising near Torr.
 #TRF_N_r7_lane_quiet_Name = Lanes quiet again near Torr
@@ -1279,6 +1307,8 @@ FILETYPE STANDART
 #TRF_N_r7_cap_out_LDesc = FTU bulletin: Bone Hounds captain is back on the lanes near Torr.
 #TRF_N_r7_cap_succ_Name = New captain leads the Bone Hounds near Torr
 #TRF_N_r7_cap_succ_LDesc = FTU bulletin: New captain leads the Bone Hounds near Torr.
+#TRF_N_r7_fw_lost_Name = Wolves Freight hull lost near Torr
+#TRF_N_r7_fw_lost_LDesc = FTU bulletin: Wolves Freight hull lost near Torr.
 #TRF_N_r8_lane_raid_Name = Raids on trade lanes rising near xt27
 #TRF_N_r8_lane_raid_LDesc = FTU bulletin: Raids on trade lanes rising near xt27.
 #TRF_N_r8_lane_quiet_Name = Lanes quiet again near xt27
@@ -1329,4 +1359,6 @@ FILETYPE STANDART
 #TRF_N_r8_cap_out_LDesc = FTU bulletin: Night Kites captain is back on the lanes near xt27.
 #TRF_N_r8_cap_succ_Name = New captain leads the Night Kites near xt27
 #TRF_N_r8_cap_succ_LDesc = FTU bulletin: New captain leads the Night Kites near xt27.
+#TRF_N_r8_fw_lost_Name = Wolves Freight hull lost near xt27
+#TRF_N_r8_fw_lost_LDesc = FTU bulletin: Wolves Freight hull lost near xt27.
 ; sw3-traffic news records end
