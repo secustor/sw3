@@ -215,7 +215,7 @@ function T_FR_A()
 	HOST_Check(T.fw_k == 3.33 and T.fw_price_k == 1000 and T.fw_tick_real == 120 and T.fw_bank == 4 and T.fw_premium == 0.05 and T.fw_cover == 0.75
 		and T.fw_liab_ticks == 25 and T.fw_rob_base[1] == 0.005 and T.fw_rob_base[4] == 0.04 and T.fw_loss_base == 0.002 and T.fw_layup == 2
 		and T.fw_help_slot[1] == 5 and T.fw_help_slot[3] == 30 and T.fw_min_pro == 4 and T.fw_weights[2] == 0.3 and T.fw_offer_cd == 10
-		and T.fw_hull_l[1] == 6 and T.fw_hull_l[2] == 13,
+		and T.fw_hull_l[1] == 6 and T.fw_hull_l[2] == 11,
 		"tune defaults of design 6");
 	h.cfg.tune = {fw_tick_real=1, fw_rob_base={0.5, 0.5, 0.5, 0.5, 0.5, 0.5}, fw_bank=7.6};
 	T = TRF_FrTune();
@@ -1131,23 +1131,25 @@ function T_FR_J()
 	local x = id and TRF_H().tr[id];
 	HOST_Check(id and x.sh[1].tpl == "Walrus_tr1" and getn(rec.hold) == 0 and S_Logs(n0, "hull=Walrus_tr1 hold=0") == 1, "on-screen Walrus: carcass Walrus_tr1, no hold");
 	TRF_Remove(id, "test");
-	-- Btransport2 (fw_hull_l {6, 11}: Kadi, L 11): price x1.8, run pay x1.5, p_rob x1.3, the carcass.
+	-- Btransport2 (default fw_hull_l {6, 11}: Kadi, L 11): price x1.8, run pay x1.5, p_rob x1.3, the carcass.
 	TRF.co = nil;
-	FR_Tune("fw_hull_l", {6, 11});
 	T_Jump("kadi"); FR_World();
 	local kd = TRF_CurIdx();
 	TRF_SetPro(kd, 5);
 	local lk = TRF_FrLoop(TRF_RgOf(kd));
+	local nh = {0, 0, 0};
+	for k, e in TRF_FrLoops() do local hh = TRF_FrHullOf(e.L, TRF_FrT("fw_hull_l")); nh[hh] = nh[hh] + 1; end;
+	HOST_Check(lk.L == 11 and TRF_FrHullOf(lk.L, TRF_FrT("fw_hull_l")) == 3 and nh[1] == 4 and nh[2] == 2 and nh[3] == 1,
+		"default fw_hull_l {6, 11}: Btransport2 on the Kadi loop (L 11) only, the Walrus on two loops, Btransport on four");
 	FR_Visit();
 	r = FR_Dock();
 	local lb = TRF_FrListOf(1000, lk.L, 5, 1.8, 1);
-	HOST_Check(r.nb == 1 and FR_Has(r.box.text, "A heavy freighter is up for charter: "..TRF_FrNum(lb).." cr."), "Kadi box with fw_hull_l {6, 11}: Btransport2 at x1.8: "..tostring(r.box and r.box.text));
+	HOST_Check(r.nb == 1 and FR_Has(r.box.text, "A heavy freighter is up for charter: "..TRF_FrNum(lb).." cr."), "Kadi box with the default fw_hull_l: Btransport2 at x1.8: "..tostring(r.box and r.box.text));
 	FR_Press(r, "ok");
 	s = TRF_FrShip(1);
 	HOST_Check(s and s.hull == 3 and TRF_FrEarn(s, lk) == TRF_FrEOf(3.33, lk.L, TRF_RgR(s.rg), 1, 1.5), "Btransport2: hull 3, run pay x1.5");
 	local p3 = TRF_FrRobOf(0.04, 1.5, 9, TRF_FrK().hull_r[3], 0.12);
 	HOST_Check(p3 == 0.12 and abs(TRF_FrRobOf(0.01, 1, 0, TRF_FrK().hull_r[3], 0.12) - 0.013) < 1e-9, "Btransport2 robbery chance x1.3, clamped 12 %");
-	FR_Tune("fw_hull_l", {6, 13});
 	-- fw_hulls 0: the bulk freighter everywhere.
 	h.cfg.fw_hulls = 0;
 	TRF.co.ships[1] = nil;
@@ -1314,16 +1316,49 @@ function T_FR_K()
 	HOST_Check(o and o.alive, "suspended at home: parked");
 	T_SaveLoad();
 	HOST_Check(not o.alive and TRF_FrSH().v.pk == nil, "load: the parked ship removed (label scan trf_fw_1_1)");
-	-- Killed in view: the loss of its ship (cause parked).
+	-- Gone without a died event: no loss, the record stays.
 	s = TRF_FrShip(1);
+	n0 = S_Mark();
 	T_Jump("kron"); s = FR_Jump("debris1");
 	FR_Wait(5);
 	o = TRF_FrSH().v.pk and TRF_FrSH().v.pk.sh;
-	HOST_Check(o ~= nil, "parked again after the load");
+	local pre = "TRF_Fr_ParkDied(1,"..TRF.gen..")--";
+	HOST_Check(o ~= nil and HOST_Live("died", pre) == 1 and HOST_Live("attack", "TRF_Fr_ParkHit(1,"..TRF.gen..")--") == 1
+		and S_Logs(n0, "attack_trigger=true died_trigger=true result=spawned") == 1, "parked again after the load, attack and died triggers armed");
 	o.alive = nil;
 	n0 = S_Mark();
-	FR_Wait(2);
-	HOST_Check(TRF_FrShip(1) == nil and S_Logs(n0, "event=parked ship_id=1 result=destroyed") == 1 and S_Logs(n0, "cause=parked") == 1, "parked ship killed: the ship is lost");
+	FR_Wait(3);
+	HOST_Check(TRF_FrShip(1) ~= nil and TRF_FrSH().v.pk == nil and S_Logs(n0, "event=parked ship_id=1 died_trigger=true result=gone") == 1
+		and S_Logs(n0, "event=lost") == 0, "parked ship gone without a died event: no loss, the record kept");
+	-- Killed by others (the died event, no player fire): the loss of its ship (cause parked) with the voucher.
+	TRF.co.vch = 0;
+	T_Jump("kron"); s = FR_Jump("debris1");
+	FR_Wait(5);
+	o = TRF_FrSH().v.pk and TRF_FrSH().v.pk.sh;
+	o.alive = nil;
+	n0 = S_Mark();
+	HOST_Fire("died", "TRF_Fr_ParkDied(1,"..TRF.gen..")--");
+	HOST_Check(TRF_FrShip(1) == nil and TRF.co.vch == 37500 and TRF.co.log[getn(TRF.co.log)].f == 1 and S_Logs(n0, "event=parked ship_id=1 by=other counted=false result=destroyed") == 1
+		and S_Logs(n0, "cause=parked vch=37500") == 1, "parked ship killed by others: the ship is lost, 75 % voucher, the first-loss log entry");
+	-- Own kill: player fire counted (T_del distinct seconds), the died event after pk_win: no voucher, heat +1, pro -3 (EW8.8).
+	s = FR_Ship("debris1", {st=1, till=99, k=30});
+	TRF.co.vch = 0;
+	T_Jump("kron"); s = FR_Jump("debris1");
+	FR_Wait(5);
+	o = TRF_FrSH().v.pk and TRF_FrSH().v.pk.sh;
+	local hp = "TRF_Fr_ParkHit(1,"..TRF.gen..")--";
+	n0 = S_Mark();
+	for j = 1, 5 do HOST_Fire("attack", hp); FR_Wait(1); end;
+	HOST_Check(TRF_FrSH().v.pk.cnt == 1 and S_Logs(n0, "event=parked ship_id=1 game_time=") == 1 and S_Logs(n0, "result=counted") == 1 and HOST_Live("attack", hp) == 5,
+		"five hits in five seconds count the fire (T_del), the trigger re-armed until then");
+	FR_Wait(12);
+	local h0, p0, o0 = TRF.std.heat, TRF_Pro(d1), TRF.co.owe;
+	o.alive = nil;
+	n0 = S_Mark();
+	HOST_Fire("died", "TRF_Fr_ParkDied(1,"..TRF.gen..")--");
+	HOST_Check(TRF_FrShip(1) == nil and TRF.co.vch == 0 and TRF.co.owe == o0 and TRF.std.heat == h0 + 1 and p0 >= 3 and TRF_Pro(d1) == p0 - 3 and TRF.co.log[getn(TRF.co.log)].f == 2
+		and S_Logs(n0, "event=parked ship_id=1 by=player counted=true result=destroyed") == 1 and S_Logs(n0, "cause=player vch=0 voucher=0 owe_added=0") == 1,
+		"own kill of the parked ship: no voucher, no liability, heat +1, pro -3, the own-fire log entry (EW8.8)");
 	-- fw_parked 0: none; away from home: none.
 	s = FR_Ship("debris1", {st=1, till=999});
 	h.cfg.fw_parked = 0;
