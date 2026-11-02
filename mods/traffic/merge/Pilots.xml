@@ -1,4 +1,4 @@
-	<!--sw3-traffic pilots begin (mods/traffic/tools/gen_pilots.py from merge/pilot_names.json; do not edit)-->
+	<!--sw3-traffic mercs begin (mods/traffic/tools/gen_pilots.py from merge/pilot_names.json; do not edit)-->
 	<!-- 120 named mercenary pilots (design/proposals/merc-pilot-names.md 4): TRF_McP_<clan>_<slot>_<gen> is a copy of RecruitAce_<clan> with a plain-text callsign and full_name. Slot 0 leader, 1-4 aces; placeholder names. -->
 	<GamePilot name="TRF_McP_angelrevenge_0_0">
 		<callsign>Rafe</callsign>
@@ -4320,6 +4320,8 @@
 			<perk>Countermeasures</perk>
 		</PerkDefines>
 	</GamePilot>
+	<!--sw3-traffic mercs end-->
+	<!--sw3-traffic speakers begin (mods/traffic/tools/gen_pilots.py; do not edit)-->
 	<!-- 8 speakers of the freight unlock quest's dialogs (design/freight-quest-spec.md 13.5): TRF_WqP_<role> is a copy of the vanilla pilot with the portrait of the role, the speaker label as callsign and full_name. -->
 	<GamePilot name="TRF_WqP_clerk">
 		<callsign>FTU clerk</callsign>
@@ -4470,4 +4472,4 @@
 			<perk>Systems_2</perk>
 		</PerkDefines>
 	</GamePilot>
-	<!--sw3-traffic pilots end-->
+	<!--sw3-traffic speakers end-->

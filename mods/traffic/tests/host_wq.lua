@@ -1532,10 +1532,12 @@ function T_WQ_G()
 	WQ_Begin("debris6", "5_1", WQ_GCfg());
 	WQ_DlgUi(0);
 	-- The files: answers as TRF_WqDlgFiles lists them, every message plain-text first (hail-dialog.md 3.6), tokens with
-	-- a text key (or who), page links to pages, every lua_function and init defined, speakers TRF_WqP_* in the Pilots merge
-	-- and in merge/wq_pilots.sed.
+	-- a text key (or who), page links to pages, every lua_function and init defined, speakers TRF_WqP_* in the speakers
+	-- block of merge/Pilots.xml (the block every install merges).
 	local px = WQ_Read("../../../../merge/Pilots.xml") or "";
-	local sed = WQ_Read("../../../../merge/wq_pilots.sed") or "";
+	local b0 = strfind(px, "<!--sw3-traffic speakers begin", 1, 1);
+	local e0 = strfind(px, "<!--sw3-traffic speakers end-->", 1, 1);
+	if b0 and e0 then px = strsub(px, b0, e0); else px = ""; end;
 	local bad, nf, np = "", 0, 0;
 	for k, fi in TRF_WqDlgFiles() do
 		local x = HOST_DlgXml(fi.f);
@@ -1567,7 +1569,7 @@ function T_WQ_G()
 					if t ~= "who" and not fi.tk[t] then bad = bad.." "..fi.f..":"..t; end;
 					i0 = e + 1;
 				end;
-				if not strfind(px, '<GamePilot name="'..(pg.pilot or "?")..'">', 1, 1) or not strfind(sed, "<pilot_name>"..(pg.pilot or "?").."</pilot_name>|", 1, 1) then
+				if not strfind(px, '<GamePilot name="'..(pg.pilot or "?")..'">', 1, 1) then
 					bad = bad.." "..fi.f..":"..pn..":pilot";
 				end;
 			end;
@@ -1576,13 +1578,13 @@ function T_WQ_G()
 		end;
 	end;
 	HOST_Check(bad == "" and nf == 12 and np == 35, "12 dialog files, 35 pages: answers as listed, messages 'Speaker: #token#', tokens with texts, links to pages, "
-		.."functions defined, speakers TRF_WqP_* in merge/Pilots.xml and wq_pilots.sed ("..nf.." files, "..np.." pages)"..bad);
+		.."functions defined, speakers TRF_WqP_* in the speakers block of merge/Pilots.xml ("..nf.." files, "..np.." pages)"..bad);
 	local sp = "";
 	for k, v in {"clerk", "kestrel", "nav", "fence", "patrol", "master", "clan", "cap"} do
 		if not strfind(px, '<GamePilot name="TRF_WqP_'..v..'">', 1, 1) then sp = sp.." "..v; end;
 	end;
 	HOST_Check(sp == "" and strfind(px, "<callsign>FTU clerk</callsign>", 1, 1) and strfind(px, "<callsign>Marlin's navigator</callsign>", 1, 1)
-		and strfind(sed, "TRF_WqP_clerk</pilot_name>|<pilot_name>Treasurer</pilot_name>", 1, 1), "eight speakers with plain-text callsigns; the vanilla fallback pilots"..sp);
+		and not strfind(px, "TRF_McP_", 1, 1), "eight speakers with plain-text callsigns in their own block, no mercenary pilot in it"..sp);
 	-- English map names and the clan.
 	local en = TRF_WqSysEn(V_Idx("gefest")).."/"..TRF_WqSysEn(V_Idx("golkonda")).."/"..TRF_WqSysEn(V_Idx("callipso")).."/"..TRF_WqSysEn(V_Idx("debris6"))
 		.."/"..TRF_WqSysEn(V_Idx("xb13"));

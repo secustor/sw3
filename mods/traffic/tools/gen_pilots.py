@@ -7,19 +7,18 @@ Run with: python3 -I gen_pilots.py [--check] [--names JSON] [--xml OUT] [--lua O
 Inputs: the game's vanilla Data/Game/Pilots.xml (positional; read only) and the name table merge/pilot_names.json
 (12 clans x 5 slots x 2 generations = 120 placeholder names; the table is the only place the names live).
 Outputs (CRLF, ASCII, like the vanilla file):
-  merge/Pilots.xml                              the fragment that install.sh --pilots inserts before </Pilots> of the
-                                                game's file (merge/pilots_merge.awk), between two marker comments.
-                                                One GamePilot "TRF_McP_<clan>_<slot>_<gen>" per name: a copy of the
-                                                vanilla RecruitAce_<clan> element (stats, 18 perks, face_texture,
-                                                sign_texture unchanged) with callsign and full_name set to the plain
-                                                name. LocalizationManager::GetString returns text that does not start
+  merge/Pilots.xml                              the fragment that the installers insert before </Pilots> of the game's
+                                                file (merge/pilots_merge.awk). Two blocks, each between its own marker
+                                                comments: "sw3-traffic mercs" (inserted only by install.sh --pilots,
+                                                install-test.sh PILOTS=1; awk -v mercs=1) and "sw3-traffic speakers"
+                                                (inserted by every install). Mercs block: one GamePilot
+                                                "TRF_McP_<clan>_<slot>_<gen>" per name: a copy of the vanilla
+                                                RecruitAce_<clan> element (stats, 18 perks, face_texture, sign_texture
+                                                unchanged) with callsign and full_name set to the plain name. LocalizationManager::GetString returns text that does not start
                                                 with '#' unchanged (proposal 1.3), so no .loc line is needed.
   Data/Scripts/Mods/Traffic/merc_names.script   TRF_Mc_Names() (the names as a code table, never saved) and
                                                 TRF_McName(clan, slot, gen) -> template name, plain name.
-  merge/wq_pilots.sed                           sed commands that turn each <pilot_name>TRF_WqP_<role></pilot_name> of
-                                                the quest dialogs (Data/Scripts/Trade/TRF_Wq*.xml) into its vanilla
-                                                source pilot; the installers apply it when they do not merge Pilots.xml.
-The same block also holds the speakers of the freight unlock quest's dialogs (design/freight-quest-spec.md 13.5):
+The speakers block holds the speakers of the freight unlock quest's dialogs (design/freight-quest-spec.md 13.5):
 one GamePilot "TRF_WqP_<role>" per entry of WQ_SPEAKERS, a copy of the vanilla pilot whose portrait fits the role,
 with the speaker label of the dialog script as callsign and full_name.
 Slot 0 is the clan leader, slots 1-4 the aces. Every slot, the leader's included, copies RecruitAce_<clan> (proposal
@@ -28,9 +27,9 @@ Checks: the vanilla file is ASCII, CRLF, declares encoding UTF-8 and has no sw3-
 RecruitAce_<clan> exists with callsign #M_pilot_Name_RecruitAce, face recruits<rc> and 18 perks; the table has the
 12 clans of the vanilla RecruitAce_* elements, 5 x 2 names each, unique ignoring case, ASCII without & < > " \\,
 at most max_len characters; no name occurs in the mod's text (loc/*.loc, news/*.xml, the .script files other than
-merc_names.script); with --locdata DIR also not in the game's .loc files of DIR (cp1251). The merged document parses,
-has 120 more GamePilot elements and unique names; it is validated with xmllint --schema (default XSD:
-<vanilla dir>/../XMLSchema/Pilots.xsd) when xmllint and the XSD exist, otherwise the run says it skipped that.
+merc_names.script); with --locdata DIR also not in the game's .loc files of DIR (cp1251). The merged documents (both
+blocks, the speakers block alone) parse, have 128 and 8 more GamePilot elements and unique names; they are validated
+with xmllint --schema (default XSD: <vanilla dir>/../XMLSchema/Pilots.xsd) when xmllint and the XSD exist, otherwise the run says it skipped that.
 --check: exit 1 if an output differs from what would be written (nothing is written).
 """
 import argparse
@@ -50,11 +49,14 @@ XML_OUT = os.path.join(MOD, "merge", "Pilots.xml")
 SRC = os.path.join(MOD, "Data", "Scripts", "Mods", "Traffic")
 LUA_OUT = os.path.join(SRC, "merc_names.script")
 
-XML_BEGIN = "<!--sw3-traffic pilots begin (mods/traffic/tools/gen_pilots.py from merge/pilot_names.json; do not edit)-->"
-XML_END = "<!--sw3-traffic pilots end-->"
+# Block markers; pilots_merge.awk drops every "<!--sw3-traffic <word> begin" .. "end-->" block of the game's file (also
+# the single "sw3-traffic pilots" block of earlier releases) and inserts the mercs block only with -v mercs=1.
+MC_BEGIN = "<!--sw3-traffic mercs begin (mods/traffic/tools/gen_pilots.py from merge/pilot_names.json; do not edit)-->"
+MC_END = "<!--sw3-traffic mercs end-->"
+WQ_BEGIN = "<!--sw3-traffic speakers begin (mods/traffic/tools/gen_pilots.py; do not edit)-->"
+WQ_END = "<!--sw3-traffic speakers end-->"
 PREFIX = "TRF_McP_"
 WQ_PREFIX = "TRF_WqP_"
-SED_OUT = os.path.join(MOD, "merge", "wq_pilots.sed")
 # Quest speakers (design/freight-quest-spec.md 13.5; the labels of design/freight-quest-dialogs.md): role, plain-text
 # callsign, vanilla source pilot (face_texture: Treasurer 20, m7d_Trader 30, m2_LabsDispetcher 13, m8d_Smuggler 49,
 # m8d_Patrol 47, CaravanMaster 91, m8a_Pirate 34, PirateCaptain "Pirate" = the Pir_Pilots template the wanted captain
@@ -84,7 +86,7 @@ def load_vanilla(path):
         die("%s is not CRLF throughout (the vanilla file is)" % path)
     if not re.match(r'<\?xml version="1\.0" encoding="UTF-8"\?>\r\n', text):
         die("%s does not start with the vanilla prolog (encoding UTF-8)" % path)
-    if "sw3-traffic pilots" in text or 'name="' + PREFIX in text or 'name="TRF_' in text:
+    if "sw3-traffic " in text or 'name="' + PREFIX in text or 'name="TRF_' in text:
         die("%s already holds sw3-traffic templates; pass the vanilla file" % path)
     return text
 
@@ -197,7 +199,8 @@ def check_text(clans, files, label):
 
 
 def build_xml(lines, clans, eol):
-    out = ["\t" + XML_BEGIN,
+    """The fragment (both blocks) and the speakers block alone (what the awk inserts without mercs=1)."""
+    out = ["\t" + MC_BEGIN,
            "\t<!-- %d named mercenary pilots (design/proposals/merc-pilot-names.md 4): TRF_McP_<clan>_<slot>_<gen> is a copy "
            "of RecruitAce_<clan> with a plain-text callsign and full_name. Slot 0 leader, 1-4 aces; placeholder names. -->"
            % (len(clans) * SLOTS * GENS)]
@@ -207,22 +210,15 @@ def build_xml(lines, clans, eol):
             for gen in range(GENS):
                 n = clans[clan]["names"][slot][gen]
                 out.extend(renamed(block, "%s%s_%d_%d" % (PREFIX, clan, slot, gen), n, "RecruitAce_" + clan))
-    out.append("\t<!-- %d speakers of the freight unlock quest's dialogs (design/freight-quest-spec.md 13.5): TRF_WqP_<role> is a "
-               "copy of the vanilla pilot with the portrait of the role, the speaker label as callsign and full_name. -->"
-               % len(WQ_SPEAKERS))
+    out.append("\t" + MC_END)
+    wq = ["\t" + WQ_BEGIN]
+    wq.append("\t<!-- %d speakers of the freight unlock quest's dialogs (design/freight-quest-spec.md 13.5): TRF_WqP_<role> is a "
+              "copy of the vanilla pilot with the portrait of the role, the speaker label as callsign and full_name. -->"
+              % len(WQ_SPEAKERS))
     for role, label, src in WQ_SPEAKERS:
-        out.extend(renamed(pilot_block(lines, src), WQ_PREFIX + role, label, src))
-    out.append("\t" + XML_END)
-    return eol.join(out) + eol
-
-
-def build_sed():
-    """sed commands: each quest speaker's pilot_name back to its vanilla source (installs without the Pilots.xml merge)."""
-    L = ["# Generated by tools/gen_pilots.py; do not edit. Without the Pilots.xml merge the installers turn each quest speaker",
-         "# of Data/Scripts/Trade/TRF_Wq*.xml into its vanilla source pilot (same portrait, the vanilla callsign)."]
-    for role, label, src in WQ_SPEAKERS:
-        L.append("s|<pilot_name>%s%s</pilot_name>|<pilot_name>%s</pilot_name>|" % (WQ_PREFIX, role, src))
-    return "\n".join(L) + "\n"
+        wq.extend(renamed(pilot_block(lines, src), WQ_PREFIX + role, label, src))
+    wq.append("\t" + WQ_END)
+    return eol.join(out + wq) + eol, eol.join(wq) + eol
 
 
 def check_wq(lines, vnames):
@@ -345,13 +341,14 @@ def main():
         check_text(clans, lf, a.locdata)
         note += ", %d game .loc files clean" % len(lf)
 
-    frag = build_xml(lines, clans, "\r\n")
+    frag, frag_wq = build_xml(lines, clans, "\r\n")
     lua = build_lua(clans)
     n_new = len(clans) * SLOTS * GENS + len(WQ_SPEAKERS)
     schema = a.schema or os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(a.pilots)), "..", "XMLSchema", "Pilots.xsd"))
-    vmsg = validate(text, frag, n_new, schema)
+    vmsg = "both blocks: " + validate(text, frag, n_new, schema)
+    vmsg += "; speakers block alone: " + validate(text, frag_wq, len(WQ_SPEAKERS), schema)
 
-    outs = [(a.xml, frag.encode("ascii")), (a.lua, lua.encode("ascii")), (SED_OUT, build_sed().encode("ascii"))]
+    outs = [(a.xml, frag.encode("ascii")), (a.lua, lua.encode("ascii"))]
     if a.check:
         stale = [p for p, b in outs if not os.path.isfile(p) or open(p, "rb").read() != b]
         if stale:

@@ -47,11 +47,11 @@
 # WQ=0|1 (cfg enable_wq, the freight unlock quest "Missing in Capricorn", design/freight-quest-spec.md, CHECK
 # Q-WQ.1-Q-WQ.10; 0 also gives the first Wolves freighter its help 5 gate back); written only when set. WQ_DIALOG=0|1
 # (cfg wq_dialog, spec 13: the quest's conversations as dialog windows, the logbook in the mission list, CHECK
-# Q-WQ.11-14; default 1 in config.script); written only when set. Data/Scripts/Trade/TRF_Wq*.xml are always copied
-# (with PILOTS=1 as they are, else through merge/wq_pilots.sed: the vanilla speakers).
-# PILOTS=1: merge/Pilots.xml (the named mercenary pilots and the quest speakers TRF_WqP_*, tools/gen_pilots.py) merged
-# into the clone's Data/Game/Pilots.xml (the vanilla file kept as Pilots.xml.trf-orig) and mc_names=2; unset restores
-# Pilots.xml from Pilots.xml.trf-orig. Restart the game after a change (the engine reads Pilots.xml at startup).
+# Q-WQ.11-14; default 1 in config.script); written only when set. Data/Scripts/Trade/TRF_Wq*.xml are always copied,
+# and the "sw3-traffic speakers" block of merge/Pilots.xml (their speakers TRF_WqP_*, tools/gen_pilots.py) is always
+# merged into the clone's Data/Game/Pilots.xml (the vanilla file kept as Pilots.xml.trf-orig, the merge source).
+# PILOTS=1: also the "sw3-traffic mercs" block (the named mercenary pilots TRF_McP_*) and mc_names=2; unset leaves it
+# out. Restart the game after a change (the engine reads Pilots.xml at startup).
 # PARCELS=0|1 (cfg enable_parcels, sealed parcels, design/parcel-spec.md, CHECK E-PCL.1-E-PCL.6; LEVEL=v01/v02 write 0
 # unless PARCELS is set); PCL_PROBE=0|1 (cfg pcl_probe, the E-PCL.1/E-PCL.2 probe lines); written only when set.
 # HAUNTS=0|1 (cfg haunt, pirate haunts, design/haunt-spec.md, CHECK E16.1-E16.11); HAUNT_MODE=1|2 (cfg haunt_mode, 2 the
@@ -222,19 +222,12 @@ cp -R "$SCRIPTS_SRC/." "$SCRIPTS_DST/"
 cp "$here/Data/Scripts/Trade/TRF_Hail.xml" "$COPY/Data/Scripts/Trade/TRF_Hail.xml"
 cp "$here/Data/Scripts/Trade/TRF_HailPg.xml" "$COPY/Data/Scripts/Trade/TRF_HailPg.xml"
 cp "$here/Data/Scripts/Trade/TRF_MercPg.xml" "$COPY/Data/Scripts/Trade/TRF_MercPg.xml"
-for n in 1 2 3 3b 4 5 6 7 7c 8 9 10; do
-    if [ "${PILOTS:-0}" = 1 ]; then cp "$here/Data/Scripts/Trade/TRF_Wq$n.xml" "$COPY/Data/Scripts/Trade/TRF_Wq$n.xml"
-    else sed -f "$here/merge/wq_pilots.sed" "$here/Data/Scripts/Trade/TRF_Wq$n.xml" > "$COPY/Data/Scripts/Trade/TRF_Wq$n.xml"; fi
-done
+for n in 1 2 3 3b 4 5 6 7 7c 8 9 10; do cp "$here/Data/Scripts/Trade/TRF_Wq$n.xml" "$COPY/Data/Scripts/Trade/TRF_Wq$n.xml"; done
 pilx=$COPY/Data/Game/Pilots.xml
-if [ "${PILOTS:-0}" = 1 ]; then
-    [ -f "$pilx.trf-orig" ] || cp -p "$pilx" "$pilx.trf-orig"
-    rc=0; awk -v frag="$here/merge/Pilots.xml" -f "$here/merge/pilots_merge.awk" "$pilx.trf-orig" > "$pilx.new" || rc=$?
-    [ "$rc" = 0 ] || { rm -f "$pilx.new"; echo "Pilots.xml merge failed (awk exit $rc: 3 no </Pilots>, 4 TRF_ template outside the block)" >&2; exit 1; }
-    mv -f "$pilx.new" "$pilx"
-elif [ -f "$pilx.trf-orig" ]; then
-    mv -f "$pilx.trf-orig" "$pilx"
-fi
+[ -f "$pilx.trf-orig" ] || cp -p "$pilx" "$pilx.trf-orig"
+rc=0; awk -v frag="$here/merge/Pilots.xml" -v mercs="${PILOTS:-0}" -f "$here/merge/pilots_merge.awk" "$pilx.trf-orig" > "$pilx.new" || rc=$?
+[ "$rc" = 0 ] || { rm -f "$pilx.new"; echo "Pilots.xml merge failed (awk exit $rc: 3 no </Pilots>, 4 TRF_ template outside the blocks)" >&2; exit 1; }
+mv -f "$pilx.new" "$pilx"
 locd=$COPY/Data/LocData/English
 cp "$here/loc/trf_en.loc" "$locd/trf_en.loc"
 locr=$COPY/Data/LocData/Russian
@@ -279,8 +272,8 @@ echo "installed zlib1.dll (sha1 $(shasum "$COPY/zlib1.dll" | cut -d' ' -f1))"
 echo "scripts in $SCRIPTS_DST:"; ls "$SCRIPTS_DST" | sed 's/^/  /'
 echo "config.script: $(tr -d '\r' < "$SCRIPTS_DST/config.script")"
 echo "hail dialog: $COPY/Data/Scripts/Trade/TRF_Hail.xml, TRF_HailPg.xml, TRF_MercPg.xml"
-echo "freight quest dialogs: $COPY/Data/Scripts/Trade/TRF_Wq*.xml ($([ "${PILOTS:-0}" = 1 ] && echo 'TRF_WqP_ speakers' || echo 'vanilla speakers'))"
-[ ! -f "$pilx.trf-orig" ] || echo "pilots: $(grep -c '<GamePilot name="TRF_' "$pilx") TRF_ templates in $pilx (vanilla in Pilots.xml.trf-orig)"
+echo "freight quest dialogs: $COPY/Data/Scripts/Trade/TRF_Wq*.xml"
+echo "pilots: $(grep -c '<GamePilot name="TRF_WqP_' "$pilx") TRF_WqP_ speakers, $(grep -c '<GamePilot name="TRF_McP_' "$pilx") TRF_McP_ templates in $pilx (vanilla in Pilots.xml.trf-orig)"
 echo "loc: $locd/trf_en.loc (loc_mode $([ "${LOC:-0}" = 1 ] && echo 1 || echo 0))"
 [ ! -f "$locr/trf_ru.loc" ] || echo "loc: $locr/trf_ru.loc"
 [ ! -f "$newsx.trf-orig" ] || echo "news: $(grep -c '<name>trf_' "$newsx") trf_ records in $newsx (vanilla in News.xml.trf-orig)"

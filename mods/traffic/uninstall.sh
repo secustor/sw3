@@ -5,8 +5,9 @@
 # was before the first install (or removes it), and removes sw3-traffic-backup/. Other sections stay.
 # After install.sh --news this restores Data/Game/News.xml from its backup. Data/LocData/<language>/trf_en.loc, written by
 # every install, is a created file in the manifest (a backup if one was there) and is reverted with the scripts.
-# After install.sh --pilots this restores Data/Game/Pilots.xml from its backup (the TRF_McP_ templates go with it; a
-# saved pilot hired from one keeps the name stored in the save, design/proposals/merc-pilot-names.md 4.5, check EN.4).
+# Data/Game/Pilots.xml, merged by every install (the quest speakers block, with --pilots also the mercs block), is
+# restored from its backup: both blocks go (a saved pilot hired from a TRF_McP_ template keeps the name stored in the
+# save, design/proposals/merc-pilot-names.md 4.5, check EN.4).
 # The dialogs Data/Scripts/Trade/TRF_Hail.xml, TRF_HailPg.xml, TRF_MercPg.xml and the freight quest's TRF_Wq*.xml are
 # created files in the manifest and are removed with the scripts.
 # Saves made with the mod keep the TRF table (ignored without the mod). Changed station prices and pirate bases
