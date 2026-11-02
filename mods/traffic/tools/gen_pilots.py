@@ -14,8 +14,9 @@ Outputs (CRLF, ASCII, like the vanilla file):
                                                 (inserted by every install). Mercs block: one GamePilot
                                                 "TRF_McP_<clan>_<slot>_<gen>" per name: a copy of the vanilla
                                                 RecruitAce_<clan> element (stats, 18 perks, face_texture, sign_texture
-                                                unchanged) with callsign and full_name set to the plain name. LocalizationManager::GetString returns text that does not start
-                                                with '#' unchanged (proposal 1.3), so no .loc line is needed.
+                                                unchanged) with callsign and full_name set to the plain name.
+                                                LocalizationManager::GetString returns text that does not start with
+                                                '#' unchanged (proposal 1.3), so no .loc line is needed.
   Data/Scripts/Mods/Traffic/merc_names.script   TRF_Mc_Names() (the names as a code table, never saved) and
                                                 TRF_McName(clan, slot, gen) -> template name, plain name.
 The speakers block holds the speakers of the freight unlock quest's dialogs (design/freight-quest-spec.md 13.5):

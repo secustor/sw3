@@ -216,9 +216,9 @@ drop() { grep -vxF "$1" "$man" > "$man.new" || true; mv -f "$man.new" "$man"; }
 unput() {
     if grep -qxF "backup $1" "$man"; then
         cp -p "$bk/files/$1" "$game/$1.sw3trf-new"; mv -f "$game/$1.sw3trf-new" "$game/$1"
-        rm -f "$bk/files/$1"; drop "backup $1"; say "restored $1 (no ${2:---news})"
+        rm -f "$bk/files/$1"; drop "backup $1"; say "restored $1 (no --news)"
     elif grep -qxF "created $1" "$man"; then
-        rm -f "$game/$1"; drop "created $1"; say "removed $1 (no ${2:---news})"
+        rm -f "$game/$1"; drop "created $1"; say "removed $1 (no --news)"
     fi
 }
 if [ "$news" = 1 ]; then
@@ -229,13 +229,12 @@ if [ "$news" = 1 ]; then
 elif grep -q '^news ' "$man"; then
     for rel in $(sed -n 's/^news //p' "$man"); do unput "$rel"; drop "news $rel"; done
 fi
-# Pilot templates: Pilots.xml is backed up on the first merge (uninstall.sh restores it); without --pilots the merge
-# has the speakers block only, so an earlier mercs block goes.
+# Pilot templates: Pilots.xml is backed up on the first merge (the backup line of the manifest; uninstall.sh restores
+# it); without --pilots the merge has the speakers block only, so an earlier mercs block goes.
 pilots_n() { echo "$(grep -c '<GamePilot name="TRF_WqP_' "$game/$pilotsrel") TRF_WqP_ speakers, $(grep -c '<GamePilot name="TRF_McP_' "$game/$pilotsrel") TRF_McP_ templates"; }
 if put "$pilotstmp" "$pilotsrel"; then say "pilots: $(pilots_n) merged into $pilotsrel"
 else say "unchanged $pilotsrel (pilot templates)"; fi
 rm -f "$pilotstmp"
-rec "pilots $pilotsrel"
 
 # config.script: the shipped file with exp=0, traffic=1, autosave=0, hail_xml=1 (the dialog file is in place)
 # (enabled=2 with --restore-only, news_mode=2 with --news, mc_names=2 with --pilots).

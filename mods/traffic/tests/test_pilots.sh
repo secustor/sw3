@@ -75,6 +75,8 @@ sed -e '/sw3-traffic mercs end-->/d' -e '/sw3-traffic speakers begin/d' -e 's/sw
     -e 's/sw3-traffic speakers end-->/sw3-traffic pilots end-->/' "$work/m1.xml" > "$work/old.xml"
 rc=0; awk -v frag="$frag" -f "$awkf" "$work/old.xml" > "$work/x.xml" || rc=$?
 check "merge over the old single 'sw3-traffic pilots' block replaces it (exit $rc)" sh -c "grep -q 'sw3-traffic pilots begin' \"$work/old.xml\" && cmp -s \"$work/x.xml\" \"$work/s1.xml\""
+rc=0; awk -v frag= -f "$awkf" "$work/old.xml" > "$work/rev.xml" || rc=$?
+check "revert (frag=\"\") of the old single block gives the vanilla file byte for byte (exit $rc)" cmp -s "$work/rev.xml" "$work/vanilla.xml"
 grep -v '</Pilots>' "$work/vanilla.xml" > "$work/noclose.xml"
 rc=0; awk -v frag="$frag" -f "$awkf" "$work/noclose.xml" > "$work/x.xml" || rc=$?
 check "no </Pilots> line: exit 3 ($rc)" [ "$rc" = 3 ]
@@ -135,7 +137,7 @@ if [ "$miss" = 0 ]; then
     check "install --pilots: vanilla backup kept" cmp -s "$fake/sw3-traffic-backup/files/Data/Game/Pilots.xml" "$van"
     check "install --pilots: mc_names=2 in config.script ($(mcn))" [ "$(mcn)" = 2 ]
     check "install --pilots: News.xml untouched (flags independent)" cmp -s "$fn" "$ORIG/Data/Game/News.xml"
-    check "install --pilots: manifest has 'pilots Data/Game/Pilots.xml'" grep -qxF "pilots Data/Game/Pilots.xml" "$fake/sw3-traffic-backup/manifest.txt"
+    check "install --pilots: manifest records the vanilla Pilots.xml backup" grep -qxF "backup Data/Game/Pilots.xml" "$fake/sw3-traffic-backup/manifest.txt"
     check "install --pilots: loc/trf_en.loc installed, 'created' in the manifest" sh -c "cmp -s \"$fake/Data/LocData/English/trf_en.loc\" \"$mod/loc/trf_en.loc\" && grep -qxF 'created Data/LocData/English/trf_en.loc' \"$fake/sw3-traffic-backup/manifest.txt\""
     check "re-run --pilots: exit 0" inst 2 sh "$mod/install.sh" --pilots "$fake"
     check "re-run --pilots: Pilots.xml unchanged" sh -c "cmp -s \"$fp\" \"$work/m1.xml\" && grep -q 'unchanged Data/Game/Pilots.xml' \"$work/install-2.log\""
@@ -145,7 +147,7 @@ if [ "$miss" = 0 ]; then
     check "--news without --pilots: Pilots.xml has the speakers only (mercs block dropped)" cmp -s "$fp" "$work/s1.xml"
     check "--news without --pilots: the quest dialogs as shipped (TRF_WqP_ speakers)" wqsame
     check "--news without --pilots: mc_names=0 ($(mcn)), news kept" sh -c "[ \"$(mcn)\" = 0 ] && grep -q '<name>trf_' \"$fn\""
-    check "--news without --pilots: pilots line and the vanilla Pilots.xml backup kept" sh -c "grep -qxF 'pilots Data/Game/Pilots.xml' \"$fake/sw3-traffic-backup/manifest.txt\" && cmp -s \"$fake/sw3-traffic-backup/files/Data/Game/Pilots.xml\" \"$van\""
+    check "--news without --pilots: the vanilla Pilots.xml backup kept" cmp -s "$fake/sw3-traffic-backup/files/Data/Game/Pilots.xml" "$van"
     check "--news without --pilots: loc/trf_en.loc kept" cmp -s "$fake/Data/LocData/English/trf_en.loc" "$mod/loc/trf_en.loc"
     check "--pilots without --news: exit 0" inst 5 sh "$mod/install.sh" --pilots "$fake"
     check "--pilots without --news: News.xml vanilla, Pilots.xml merged" sh -c "cmp -s \"$fn\" \"$ORIG/Data/Game/News.xml\" && cmp -s \"$fp\" \"$work/m1.xml\""

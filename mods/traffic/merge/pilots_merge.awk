@@ -13,10 +13,9 @@ index(l, "<GamePilot name=\"TRF_") { bad = 1 }
 !done && l ~ /^[ \t]*<\/Pilots>[ \t]*$/ {
     if (frag != "") {
         while ((getline s < frag) > 0) {
-            t = s; sub(/\r$/, "", t)
-            if (index(t, "<!--sw3-traffic mercs begin")) m = 1
+            if (index(s, "<!--sw3-traffic mercs begin")) m = 1
             if (!m || mercs == 1) print s
-            if (index(t, "<!--sw3-traffic mercs end")) m = 0
+            if (index(s, "<!--sw3-traffic mercs end")) m = 0
         }
         close(frag)
     }
