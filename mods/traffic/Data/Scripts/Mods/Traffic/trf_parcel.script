@@ -1393,9 +1393,15 @@ end;
 
 -- Trade dock box 400 (#1 parcel offer 400 > #8 purchase 300 > #14 dues 200 > #13 arbitration 100; after a #3 fee box
 -- the dispatcher opens none until E0.6, cfg wb_box_after_fee). None after the Office board was set at this docking
--- (cfg jobs_ui 2, design/station-jobs-spec.md 5.2: the offer is its row, TRF_Pc_JobRow).
+-- (cfg jobs_ui 2, design/station-jobs-spec.md 5.2: the offer is its row, TRF_Pc_JobRow). None either at the freight
+-- unlock quest's step 70 while the charter office's purchase box opens at this dock (trf_wq TRF_Wq_UnlockDue,
+-- freight-quest-spec open question 12): the quest's box 300 would sit below the parcel box 400.
 function TRF_Pc_DockBox(kind, param)
 	if TRF_N("TRF_JbSet") then return nil; end;
+	if kind == "trade" and TRF_N("TRF_Wq_UnlockDue", TRF_PcCur()) == 1 then
+		TRF_PcDE("offer", "system", TRF_PcName(TRF_PcCur()), "result", "none", "reason", "wq_unlock");
+		return nil;
+	end;
 	return TRF_PcBoxSpec(kind);
 end;
 

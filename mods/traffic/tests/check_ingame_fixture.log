@@ -411,3 +411,26 @@ traffic: lua: exp=v1 module=wq event=clue via=fence system=callipso result=decli
 traffic: lua: exp=v1 module=wq event=fence system=callipso price=3415 result=shown
 traffic: lua: exp=v1 module=wq event=clue via=fence system=callipso cost=3415 result=ok
 traffic: lua: exp=v1 module=wq event=step step_before=40 step_after=50 reason=fence
+traffic: lua: exp=v1 module=wq event=hold system=xb13 mode=1 captain_slot=4 captain_generation=1 result=tipped
+traffic: lua: exp=v1 module=captain event=intel slot=4 generation=1 seen=xb13 result=tipped reason=quest
+traffic: lua: exp=v1 module=captain event=plan slot=4 generation=1 system=xb13 chance=100 roll=30 via=tip delay=62 result=planned
+traffic: lua: exp=v1 module=wq event=hold system=xb13 mode=1 by=player off_screen=false result=base_gone
+traffic: lua: exp=v1 module=survive event=seed system=xb13 kind=quest source=2 pods=2 pay=0 point=given result=beacon beacon=1
+traffic: lua: exp=v1 module=wq event=hold system=xb13 mode=1 beacon=1 pods=2 via=base_gone result=pods
+traffic: lua: exp=v1 module=wq event=hold system=xb13 mode=3 x=750 z=400 hulk=true marker=true tier=3 power=15 ship_count=4 ships_asked=4 result=spawned
+traffic: lua: exp=v1 module=wq event=hold system=xb13 mode=3 kill_count=4 ship_count=4 via=died result=guard_dead
+traffic: lua: exp=v1 module=survive event=seed system=xb13 kind=quest source=2 pods=3 pay=0 point=given result=beacon beacon=1
+traffic: lua: exp=v1 module=wq event=hold system=xb13 mode=3 beacon=1 pods=3 via=guard_dead result=pods
+traffic: lua: exp=v1 module=wq event=crew system=xb13 picked=1 pods=3 left=2 result=picked
+traffic: lua: exp=v1 module=wq event=crew system=xb13 picked=2 pods=3 left=1 result=picked
+traffic: lua: exp=v1 module=wq event=crew system=xb13 picked=3 pods=3 result=aboard
+traffic: lua: exp=v1 module=wq event=step step_before=50 step_after=60 reason=aboard
+traffic: lua: exp=v1 module=wq event=crew system=golkonda carried=3 picked=3 pods=3 result=handed
+traffic: lua: exp=v1 module=wq event=step step_before=60 step_after=70 reason=handed
+traffic: lua: exp=v1 module=parcel event=offer system=debris6 result=none reason=wq_unlock
+traffic: lua: exp=v1 module=freight event=box system=debris6 region=4 list=58800 price=58800 voucher_used=false result=shown
+traffic: lua: exp=v1 module=wq event=unlock system=debris6 leg=61 result=bought
+traffic: lua: exp=v1 module=wq event=step step_before=70 step_after=80 reason=bought
+traffic: lua: exp=v1 module=wq event=logbook list=job id=trf_wq step=80 result=added
+traffic: lua: exp=v1 module=wq event=logbook list=job id=trf_wq state=0 result=done
+traffic: lua: exp=v1 module=wq event=reconcile id=trf_wq list=job result=removed reason=enter leg=71

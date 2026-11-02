@@ -4,7 +4,7 @@ the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10), the mercenary
 11, test plan section 11), the strength scale (D-STR.*, design/strength-spec.md 9), the pirate fits (D-FIT.1-6, E-BB1,
 design/fits-spec.md 11), the vanilla extortion fix (E-EXT.1, design/extort-fix-spec.md 7), the stack leak diagnostic
 (D-DLL.1), the station jobs mission card (K0-K7, design/station-jobs-spec.md 10, step 1), the Office jobs board (M1-M8,
-step 2), the quest log's Job log (L1-L5, step 3) and the freight unlock quest, commits 1-2 (Q-WQ.1-7,
+step 2), the quest log's Job log (L1-L5, step 3) and the freight unlock quest, commits 1-3 (Q-WQ.1-10,
 design/freight-quest-spec.md 10) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
@@ -2025,6 +2025,93 @@ def c_wq7(ctx):
     return res
 
 
+def c_wq8(ctx):
+    res = Res()
+    res.logpart = True
+    tip = ctx.find("wq", "hold", mode="1", result="tipped")
+    base = ctx.find("wq", "hold", mode="1", result="base")
+    gone = ctx.find("wq", "hold", result="base_gone")
+    pods = ctx.find("wq", "hold", result="pods")
+    for r in gone:
+        if r.get("off_screen") == "false" and not [p for p in pods if p.src == r.src and p.n > r.n and p.get("via") == "base_gone"]:
+            res.fails.append("%s: the base died in view but no pods ejected" % r.short())
+    if not tip and not base:
+        res.missing.append("at step 50 enter XB-13 while the Golkonda clan has an active base there: no hold mode=1 line")
+    elif not [r for r in gone if r.get("off_screen") == "false"]:
+        res.missing.append("destroy the clan base at XB-13 in view: no hold result=base_gone off_screen=false line")
+    res.ev("captain tipped", tip)
+    res.ev("mode 1 without a captain", base)
+    res.ev("captain plans after the tip", ctx.find("captain", "plan", via="tip", result="planned"))
+    res.ev("base lost", gone)
+    res.ev("pods of the base", [p for p in pods if p.get("via") == "base_gone"])
+    return res
+
+
+def c_wq9(ctx):
+    res = Res()
+    res.logpart = True
+    sp = ctx.find("wq", "hold", mode="3", result="spawned")
+    dead = ctx.find("wq", "hold", result="guard_dead")
+    pods = [p for p in ctx.find("wq", "hold", result="pods") if p.get("via") == "guard_dead"]
+    aboard = ctx.find("wq", "step", step_before="50", step_after="60")
+    for r in sp:
+        if r.get("tier") != "3" or not 3 <= r.int("ship_count", 0) <= 5:
+            res.fails.append("%s: the guard is not a tier-3 flight of 3-5 ships" % r.short())
+    for r in dead:
+        if not [s for s in sp if s.src == r.src and s.n < r.n]:
+            res.fails.append("%s: a dead guard without its spawn before it" % r.short())
+        if not [p for p in pods if p.src == r.src and p.n > r.n]:
+            res.fails.append("%s: the guard died but no pods ejected" % r.short())
+    if not sp:
+        res.missing.append("at step 50 enter XB-13 without an active clan base: no hold mode=3 result=spawned line")
+    elif not dead:
+        res.missing.append("kill every guard ship at the Marlin's hulk: no hold result=guard_dead line")
+    elif not aboard:
+        res.missing.append("fly through the Marlin's pods: no step 50 -> 60 line")
+    res.ev("hulk and guard", sp)
+    res.ev("guard dead", dead)
+    res.ev("pods of the hulk", pods)
+    res.ev("crew pickups", ctx.find("wq", "crew", result="picked") + ctx.find("wq", "crew", result="aboard")
+           + ctx.find("wq", "crew", result="partial"))
+    res.ev("steps 50 -> 60", aboard)
+    return res
+
+
+def c_wq10(ctx):
+    res = Res()
+    res.logpart = True
+    hand = ctx.find("wq", "crew", result="handed")
+    s70 = ctx.find("wq", "step", step_before="60", step_after="70")
+    unl = ctx.find("wq", "unlock")
+    done = [r for r in ctx.find("wq", "logbook", id="trf_wq", result="done")]
+    rem = ctx.find("wq", "reconcile", id="trf_wq", result="removed")
+    for r in hand:
+        if not [s for s in s70 if s.src == r.src and s.n > r.n]:
+            res.fails.append("%s: the hand-in did not move step 60 to 70" % r.short())
+    for r in unl:
+        if r.get("result") not in ("bought", "declined"):
+            res.fails.append("%s: unknown unlock result" % r.short())
+        if not [d for d in done if d.src == r.src and d.n > r.n]:
+            res.fails.append("%s: no logbook result=done after the unlock" % r.short())
+        late = [x for x in rem if x.src == r.src and x.n > r.n]
+        if late and late[0].int("leg", 0) - r.int("leg", 0) < 10:
+            res.fails.append("%s: the done entry went before 10 legs" % late[0].short())
+    if not hand:
+        res.missing.append("at step 60 dock at an FTU trade station with the Marlin's crew aboard: no crew result=handed line")
+    elif not unl:
+        res.missing.append("at step 70 dock at a Gefest or Golkonda loop stop (heat 2 or less, pro 4+) and answer the charter box: "
+                           "no unlock line")
+    elif not [x for x in rem if [u for u in unl if u.src == x.src and u.n < x.n]]:
+        res.missing.append("play 10 legs after the unlock: no reconcile result=removed line for the done entry")
+    res.ev("hand-ins", hand)
+    res.ev("steps 60 -> 70", s70)
+    res.ev("parcel box stepped aside", ctx.find("parcel", "offer", reason="wq_unlock"))
+    res.ev("unlocks", unl)
+    res.ev("logbook done", done)
+    res.ev("entry removed", rem)
+    return res
+
+
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
@@ -2157,6 +2244,14 @@ ITEMS = [
      "the beacon and one pod with a marker, reachable (not inside an asteroid field), 'Survivor aboard.' and the "
      "navigator's line at the pickup"),
     ("Q-WQ.7", "the clue: the fence box price paid, or the patrol board free at rung 1, moves step 40 to 50", c_wq7, None),
+    ("Q-WQ.8", "the clan hold, mode 1: the captain tipped to XB-13, the open-band line, the base lost in view ejects the crew", c_wq8,
+     "'Golkonda clan on open band: ... says the Marlin's people stay our guests.' with the captain's name (or 'The Golkonda "
+     "clan'), his raid at XB-13 after the tip, pods near the base site and the master's line when the base dies"),
+    ("Q-WQ.9", "the clan hold, mode 3: the Marlin's hulk with a tier-3 guard, its death ejects the crew, all aboard moves step 50 to 60", c_wq9,
+     "the wrecked transport with its marker off the base site, clear of the stash asteroids, the guard attacks, 'Marlin's "
+     "master: Wolves? ...' when the pods eject, after a switch from mode 1 'They moved the crew to a hulk at XB-13.'"),
+    ("Q-WQ.10", "the charter office: the hand-in moves 60 to 70, the purchase box answered gives 80, the done entry goes 10 legs later", c_wq10,
+     None),
 ]
 
 
@@ -2273,7 +2368,8 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "M8": "NO DATA",
             "L1": "MANUAL", "L2": "MANUAL", "L3": "MANUAL", "L4": "FAIL", "L5": "NO DATA",
             "Q-WQ.1": "PASS", "Q-WQ.2": "MANUAL", "Q-WQ.3": "PASS", "Q-WQ.4": "MANUAL",
-            "Q-WQ.5": "PASS", "Q-WQ.6": "MANUAL", "Q-WQ.7": "PASS"}
+            "Q-WQ.5": "PASS", "Q-WQ.6": "MANUAL", "Q-WQ.7": "PASS", "Q-WQ.8": "MANUAL", "Q-WQ.9": "MANUAL",
+            "Q-WQ.10": "PASS"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -2286,7 +2382,9 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # block (the end, Debris 6 and Golkonda): an offer declined, a second one accepted from the card into the Job log, a
 # mayday voided by a jump, the retry rolled with tries=1, a mayday defended (rescued, step 20); new ship lines only; the
 # report (step 30, wreck system golkonda), the wreck seeded, picked and handed in (step 40), a fence box declined, then
-# paid at its price (step 50).
+# paid at its price (step 50); at XB-13 the captain tipped (mode 1) and the base destroyed in view (two pods), then after a
+# reload the hulk guard (mode 3, four ships) killed, three pods picked (step 60), the hand-in at Golkonda (step 70), the
+# parcel box stepped aside and the purchase bought at Debris 6 (step 80, the entry done), removed 10 legs later.
 
 
 def selftest():

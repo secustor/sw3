@@ -622,10 +622,12 @@ end;
 
 -- The A base of idx is gone. by: "player" (attack event on it in the visit it died), "sweep" (won attempt),
 -- "blow" (scripted), "dead" (found dead on entry), "abandon" (base_life, 9.2: no score change, sv kept).
+-- trf_wq's TRF_Wq_BaseGone (the clan hold of XB-13, freight-quest-spec 4.5) runs first, before the record changes.
 -- Returns 1 when a record changed.
 function TRF_BaseDestroyed(idx, by)
 	local r = TRF_BaseOf(idx);
 	if not r or r.k ~= 2 then return nil; end;
+	TRF_P("TRF_Wq_BaseGone", idx, by);
 	local slot = TRF_Ba_Slot(idx);
 	local tks = {0.75, 1.0, 1.5, 2.0};
 	local tk = tks[TRF_Ba_Tier(idx)];

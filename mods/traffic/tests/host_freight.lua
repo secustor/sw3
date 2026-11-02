@@ -257,8 +257,8 @@ function T_FR_A()
 	local tx = TRF_Fr_Text();
 	local nt = 0;
 	for k, v in tx do nt = nt + 1; end;
-	HOST_Check(nt == 30 and TRF_Txt("fwpaid", "3,900") == "Wolves Freight paid 3,900 cr since your last visit."
-		and TRF_Txt("fwwhere", "Kestrel", "Callipso", "Golkonda") == "Wolves Freight: Kestrel is in Callipso, bound for Golkonda.", "30 texts; payout and whereabouts lines of design 2");
+	HOST_Check(nt == 31 and TRF_Txt("fwpaid", "3,900") == "Wolves Freight paid 3,900 cr since your last visit."
+		and TRF_Txt("fwwhere", "Kestrel", "Callipso", "Golkonda") == "Wolves Freight: Kestrel is in Callipso, bound for Golkonda.", "31 texts; payout and whereabouts lines of design 2");
 	-- Pure rules.
 	HOST_Check(TRF_FrEOf(3.33, 7, 4, 1, 1) == floor(3.33 * 49 * 7 / 8 * 1.2 + 0.5) and TRF_FrEOf(3.33, 10, 4, 0.7, 1) == floor(3.33 * 100 * 1.2 * 0.7 + 0.5)
 		and TRF_FrEOf(3.33, 4, 0, 1.25, 1) == floor(3.33 * 16 * 0.5 * 1.25 + 0.5), "run pay fw_k L^2 lk (1 + 0.05 R) d_k");
@@ -316,6 +316,30 @@ function T_FR_B()
 	end;
 	TRF.co = nil; h.rel_team = nil;
 	HOST_Check(bad == "", "purchase gates: chapter 19, help, heat, pro, Trade at war, owe, Kadi in chapter 5, a station off the loop (XT-05), a mission"..bad);
+	-- The first ship with the freight unlock quest (cfg enable_wq 1, design/freight-quest-spec.md 4.5): reason quest without
+	-- the record and below step 70 (help 10 does not count), steps 70 and 80 pass; enable_wq 0 restores help >= 5.
+	h.labels.CurrentQuest = "9_1";
+	h.cfg.enable_wq = 1;
+	TRF.std.help = 10;
+	TRF.wq = nil;
+	local q0 = TRF_FrBuyGate(TRF_CurIdx());
+	TRF.wq = {v=1, s=50, k=0, n=0, sd=1};
+	local q50 = TRF_FrBuyGate(TRF_CurIdx());
+	TRF.wq.s = 70;
+	local q70 = TRF_FrBuyGate(TRF_CurIdx());
+	TRF.wq.s = 80;
+	local q80 = TRF_FrBuyGate(TRF_CurIdx());
+	TRF.std.help = 4;
+	local q4 = TRF_FrBuyGate(TRF_CurIdx());
+	h.cfg.enable_wq = 0;
+	TRF.wq.s = 50;
+	local o4 = TRF_FrBuyGate(TRF_CurIdx());
+	TRF.std.help = 5;
+	local o5 = TRF_FrBuyGate(TRF_CurIdx());
+	TRF.std.help = 10;
+	TRF.wq = nil;
+	HOST_Check(q0 == "quest" and q50 == "quest" and q70 == nil and q80 == nil and q4 == nil and o4 == "help" and o5 == nil,
+		"enable_wq 1: the first ship needs the quest at step 70 (none: "..tostring(q0)..", s 50: "..tostring(q50)..", s 70 and 80 pass, help 4 passes at s 80); enable_wq 0: help 4 "..tostring(o4)..", help 5 passes");
 	-- Dockmaster standing below 0 (feature 3).
 	h.labels.CurrentQuest = "9_1";
 	local e = TRF_StnGet(TRF_Stn_Key(TRF_CurIdx(), 1), 1);

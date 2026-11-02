@@ -466,14 +466,14 @@ Survivors and beacons, step 1 (`design/survivors-spec.md` 7).
 | `error` | `module=survive event=error message=<m>` | 1 |
 | `loss` | `module=survive event=loss trader_id=17 fire=false help=true system=gaoba pods=2 position_source=ship mode=full result=beacon beacon=1` (no beacon: `result=none reason=<chapter, owner, station_event, fire, disable_action, sys_sos, suppressed, deny, deny_story, gate:<why>, mode:<why>, record, cooldown, governor, position, portal, station, quest_cap>`; `quest_cap`: every record is a quest record) | 1 |
 | `seed` | `module=survive event=seed system=gaoba roll=5 chance=25 region=5 budget_used=1 budget=2 pods=1 pay=2970 pay_pirate=4950 result=beacon beacon=1` (none: `result=none reason=<budget, roll, point>` at level 1; `off, chapter, plan, chase, sweep, carrier, feq, deny, gate:<why>, record, cooldown, region, quiet` at level 2; `quest_cap` at level 1) | 1 |
-| `seed` | `module=survive event=seed system=golkonda kind=quest source=2 pods=1 pay=0 point=portal result=beacon beacon=1` (trf_wq `TRF_Sv_QuestSeed`; `point=contact`; none: `kind=quest result=none reason=<off, nomap, deny, deny_story, gate:<why>, mode:<why>, record, point, quest_cap>`) | 1 |
+| `seed` | `module=survive event=seed system=golkonda kind=quest source=2 pods=1 pay=0 point=portal result=beacon beacon=1` (trf_wq `TRF_Sv_QuestSeed`; `point=contact`, `point=given`: the caller's point, XB-13's crew pods; none: `kind=quest result=none reason=<off, nomap, deny, deny_story, gate:<why>, mode:<why>, record, point, quest_cap>`) | 1 |
 | `place` | `module=survive event=place system=gaoba beacon=1 found=0 made=3 deleted=0 failed=0 pods_before=2 pods=2 reason=enter` (reason loss, enter, load, hold, quest); `... beacon=1 result=skipped reason=gate:quest` (also `disable_action`, `sys_sos`, `suppressed`: held until the flags clear) | 1 |
 | `pick` | `module=survive event=pick system=gaoba beacon=1 pod=2 distance=23.1 left=1 carried=1 credits=0` | 1 |
 | `full` | `module=survive event=full system=gaoba beacon=1 carried=6 carry_max=6` | 1 |
 | `pod_lost` | `module=survive event=pod_lost system=gaoba beacon=1 pod=2 left=1` | 1 |
 | `beacon_lost` | `module=survive event=beacon_lost system=gaoba beacon=1 pods=2` | 1 |
 | `hand` | `module=survive event=hand kind=ftu system=gaoba carried=3 pay=7290 help_before=4 help=5 heat_before=1 heat=0 heat_rule=applied prosperity=gaoba:4->5 result=paid` (`heat_rule` applied, cooldown, zero); `... carried=2 pay=3000 result=credits_only reason=deny quest_kept=false` (`quest_kept=true`: a quest crew stays aboard, its credits paid); `... carried=2 result=skipped reason=deny` | 1 |
-| `expire` | `module=survive event=expire system=gaoba beacon=1 pods=2 source=1 slaver=0 age=5 reason=ttl` (reason ttl, cap, fix; `quest`: an ordinary record replaced by a quest record); `module=survive event=expire kind=carried carried=2 credits=900 age=9 reason=carry` | 1 |
+| `expire` | `module=survive event=expire system=gaoba beacon=1 pods=2 source=1 slaver=0 age=5 reason=ttl` (reason ttl, cap, fix; `quest`: an ordinary record replaced by a quest record; `partial`: trf_wq's `TRF_Sv_QuestDrop`, the pods left of a crew partly aboard); `module=survive event=expire kind=carried carried=2 credits=900 age=9 reason=carry` | 1 |
 | `slaver_roll` | `module=survive event=slaver_roll system=gaoba beacon=1 tier=2 roll=12 chance=35 leg=40 result=taken` (`result=kept` at level 2) | 1 |
 | `budget_reset` | `module=survive event=budget_reset region=5 leg=40 budget_used=2` | 1 |
 | `enter` | `module=survive event=enter system=gaoba mode=full seed_plan=ok beacon=1 seeded=true pods=2 lines=svseed beacon_count=1` | 1 |
@@ -576,7 +576,7 @@ Wanted captains, step 1 (`design/captain-spec.md` 7). `slot` is the clan region 
 | `paid` | `module=captain event=paid slot=4 generation=1 amount=12345 paid=12345 faction=4 system=xb13 result=paid` / `... amount=5000 wait=1800 result=wait` (the prize gap) / `... result=failed` (TRF_Pay paid nothing; the claim stays) | 1 |
 | `board` | `module=captain event=board system=xb13 line_count=3 result=lines` (EW4.4) | 1 |
 | `board` | `module=captain event=board result=none reason=<disabled, board_disabled, chapter, quiet, nosys, mode, strict>` | 2 |
-| `intel` | `module=captain event=intel slot=4 price=5500 result=offered` / `... seen=xb13 result=bought` / `result=declined` / `... credits=100 result=poor` / `result=stale` | 1 |
+| `intel` | `module=captain event=intel slot=4 price=5500 result=offered` / `... seen=xb13 result=bought` / `result=declined` / `... credits=100 result=poor` / `result=stale`; `module=captain event=intel slot=4 generation=1 seen=xb13 result=tipped reason=quest` (trf_wq `TRF_Cap_QuestTip`, freight-quest-spec I20) | 1 |
 | `intel` | `module=captain event=intel slot=4 result=expired` (a tip older than 4 legs) | 2 |
 | `quest` | `module=captain event=quest id=trf_cap_4 state=2` (QUEST_* state; EW4.5) / `... result=removed reason=<legs, successor>` | 1 |
 | `reconcile` | `module=captain event=reconcile id=trf_cap_4 quest=1 reason=enter` (or `reason=load`: the entry added again) | 1 |
@@ -642,7 +642,7 @@ record of its on-screen appearance, `tick` the ship tick `k`.
 | Event | Example line | Level |
 |---|---|---|
 | `error` | `module=freight event=error message=<m>` | 1 |
-| `offer` | `module=freight event=offer system=debris6 result=none reason=<chapter, chapter_end, nk, mission, owe, ships, help, heat, war, no_loop, chapter_region, region_ship, pro, dockmaster, declined, strict:<why>>` | 2 |
+| `offer` | `module=freight event=offer system=debris6 result=none reason=<chapter, chapter_end, nk, mission, owe, ships, help, heat, war, no_loop, chapter_region, region_ship, pro, dockmaster, declined, strict:<why>, quest>` (`quest`: slot 1 waits for the freight unlock quest's step 70, cfg `enable_wq` 1) | 2 |
 | `box` | `module=freight event=box system=debris6 region=4 list=21609 price=21609 voucher_used=false result=shown` (EW8.1) | 1 |
 | `buy` | `module=freight event=buy ship_id=1 name=Kestrel region=4 home=debris6 price=21609 list=21609 credits_before=1000000 credits_after=978391 seed=... result=ok` (EW8.1) / `... price=21609 credits=100 result=poor` / `... system=debris6 result=declined` / `result=stale` / `result=error` | 1 |
 | `tick` | `module=freight event=tick legs=12 lk=12 rt=0 ship_count=1 reason=<step, dock, entry, activate>` (EW8.3) | 2 |
@@ -713,7 +713,7 @@ the lowercase system names, `item` the item index (1 `Cargo_crate`, 2 `Cargo_002
 |---|---|---|
 | `error` | `module=parcel event=error message=<m>` | 1 |
 | `offer` | `module=parcel event=offer kind=2 source=altair destination=taira jumps=3 deadline=11 item=1 units=3 class=1 level=13 tier=1 prosperity=5 pay=14400 deposit=4320 waived=false candidate_count=8 route=altrabon,nj1,taira result=shown via=box` (the box opened, E-PCL.3; `via=card`: the mission card's open event, station-jobs-spec.md 5.2) | 1 |
-| `offer` | `module=parcel event=offer system=altair result=none reason=<off, nomap, chapter, mission, quiet, strict:<why>, job, ban, gap, heat, declined, station, guard, deny:<static, cfg, chapter, deny_entry, hostile, inoco>, pro, dockmaster, no_candidate, roll, plain_roll>` | 2 |
+| `offer` | `module=parcel event=offer system=altair result=none reason=<off, nomap, chapter, mission, quiet, strict:<why>, job, ban, gap, heat, declined, station, guard, deny:<static, cfg, chapter, deny_entry, hostile, inoco>, pro, dockmaster, no_candidate, roll, plain_roll, wq_unlock>` (`wq_unlock`: the box steps aside for the charter office's purchase box at the freight unlock quest's step 70) | 2 |
 | `offer` | `module=parcel event=offer destination=taira result=declined` / `module=parcel event=offer result=failed reason=box` | 1 |
 | `offer` | `module=parcel event=offer destination=taira jumps=3 deadline=11 pay=14400 deposit=4320 result=listed via=board` (the offer as an Office board row, station-jobs-spec.md 5.2; `result=shown via=board` at its card's open event) | 1 |
 | `accept` | `module=parcel event=accept kind=2 source=altair destination=taira dock=taira item=Cargo_crate units=3 pay=14400 deposit=4320 deadline=11 credits_before=1000000 result=ok` | 1 |
@@ -808,7 +808,7 @@ Mercenary clans, build steps 1 and 3 (`design/merc-spec.md` 8). `clan` is the cl
 
 ## wq (`trf_wq.script`; `TRF_WqE`, `TRF_WqDE`)
 
-Freight unlock quest "Missing in Capricorn", commits 1 and 2 (`design/freight-quest-spec.md` 8). `step` is `TRF.wq.s`, `tries` the voids of step 1 (`n`), `trader_id` and `raid_id` the Kestrel's trader record and her raid, `variant` the mothership variant of the text (`old` hauler, `new` ship).
+Freight unlock quest "Missing in Capricorn", commits 1-3 (`design/freight-quest-spec.md` 8). `step` is `TRF.wq.s`, `tries` the voids of step 1 (`n`), `trader_id` and `raid_id` the Kestrel's trader record and her raid, `variant` the mothership variant of the text (`old` hauler, `new` ship), `mode` the hold mode `m` (1 base, 3 hulk), `pods` and `picked` the crew pods `pn` and `pk`.
 
 | Event | Example line | Level |
 |---|---|---|
@@ -834,11 +834,17 @@ Freight unlock quest "Missing in Capricorn", commits 1 and 2 (`design/freight-qu
 | `fence` | `module=wq event=fence system=golkonda price=3415 result=none reason=poor` (`off, step, nomap, mission, region, strict:<why>, price, poor`) | 2 |
 | `clue` | `module=wq event=clue via=fence system=golkonda cost=3415 result=ok` (`result=poor reason=<short,no_native,...>`, `result=declined`, `result=stale`); `module=wq event=clue via=patrol system=golkonda cost=0 rung=1 result=ok` | 1 |
 | `clue` | `module=wq event=clue via=patrol system=golkonda rung=0 result=none reason=rung` (the clue gate reasons, `rung`) | 2 |
-| `logbook` | `module=wq event=logbook list=mission id=trf_wq step=10 result=added` (`list=job`; `result=removed reason=<step,enter,load,moved>`, `none ... native=<why>`, `failed reason=<why>`) | 1 |
-| `reconcile` | `module=wq event=reconcile id=trf_wq list=mission step=10 result=added reason=accept` (`result=removed`, `failed` when the native refused the add; `reason=enter, load, step`) | 1 |
+| `hold` | `module=wq event=hold system=xb13 mode=1 captain_slot=4 captain_generation=1 result=tipped` (`result=base reason=captain:<off,none,state_<st>,deny,region,nil>`: mode 1 without the tip) | 1 |
+| `hold` | `module=wq event=hold system=xb13 mode=3 x=750 z=400 hulk=true marker=true tier=3 power=15 ship_count=4 ships_asked=4 result=spawned` (`result=none reason=<disable_action,sys_sos,suppressed,site,guard:<team,group,build,ships,raid_module>>`) | 1 |
+| `hold` | `module=wq event=hold system=xb13 mode=1 by=player off_screen=false result=base_gone` (`off_screen=true`: a sweep or abandon elsewhere, the next entry switches to mode 3); `... mode=3 kill_count=4 ship_count=4 via=<died,step> result=guard_dead`; `... mode=3 beacon=1 pods=3 via=<base_gone,guard_dead> result=pods` (`result=none reason=survive:<why>`); `module=wq event=hold deleted_count=4 hulk=true result=void reason=<jump,load>` | 1 |
+| `hold` | `module=wq event=hold system=golkonda result=none reason=system` (`off, step, nomap, mission, system, strict:<why>`); `module=wq event=hold mode=3 ship=2 kill_count=2 ship_count=4 result=guard_ship` | 2 |
+| `crew` | `module=wq event=crew system=xb13 picked=1 pods=3 left=2 result=picked` (`result=aboard`: the last pod, step 60); `... picked=1 pods=3 result=partial reason=<entry,handed>`; `... pods=3 result=reset reason=gone`; `module=wq event=crew system=golkonda carried=3 picked=3 pods=3 result=handed` (step 70) | 1 |
+| `unlock` | `module=wq event=unlock system=debris6 leg=61 result=bought` (`result=declined`; step 80) | 1 |
+| `logbook` | `module=wq event=logbook list=mission id=trf_wq step=10 result=added` (`list=job`; `result=removed reason=<step,enter,load,moved>`, `none ... native=<why>`, `failed reason=<why>`; `module=wq event=logbook list=mission id=trf_wq state=0 result=done` at step 80, `result=failed reason=<why>`) | 1 |
+| `reconcile` | `module=wq event=reconcile id=trf_wq list=mission step=10 result=added reason=accept` (`failed` when the native refused the add; `reason=enter, load, step`; `module=wq event=reconcile id=trf_wq list=mission result=removed reason=enter leg=71`: a step without a description or the done entry 10 legs after `wd`) | 1 |
 | `orphan` | `module=wq event=orphan trader_id=7 result=removed` (load; `result=dropped` for a waiting record) | 1 |
 | `fix` | `module=wq event=fix step=15 result=dropped reason=step` (`reason=type`; `step=80 result=grandfather`; `step=30 wreck_system=golkonda result=picked reason=ws`) | 1 |
-| `dump` | `module=wq event=dump step=10 flags=0 tries=1 decline_leg=nil void_leg=18 seed=77 live=nil result_kind=nil pending=nil logbook_step=10 wreck_system=nil event_state=due` (`result=none event_state= grandfather=`) | 1 |
+| `dump` | `module=wq event=dump step=10 flags=0 tries=1 decline_leg=nil void_leg=18 seed=77 live=nil result_kind=nil pending=nil logbook_step=10 wreck_system=nil mode=nil captain_generation=nil pods=nil picked=nil done_leg=nil event_state=due guard_state=nil` (`result=none event_state= grandfather=`) | 1 |
 
 ## supply (`trf_supply.script`; `TRF_SpE`)
 

@@ -14,20 +14,29 @@
 -- wreck (on entry into ws at s 30 trf_survive's TRF_Sv_QuestSeed makes a quest record q 1 with one pod; seeded again on
 -- each entry while no quest record or quest carry exists; the pickup gives the navigator's line, the hand-in at a trade
 -- dock s 40), the clue (s 40 -> 50: the fence, pirate dock box 300 in the region of XB-13, for round(0.4 x TRF_PayN)
--- through TRF_Charge; or free on the patrol board, patrol line 45 in that region, at dockmaster rung >= 1). Steps 3-4
--- (the clan hold at XB-13, the charter office unlock in TRF_FrBuyGate) are commit 3; the hook points say "Commit 3 hook".
+-- through TRF_Charge; or free on the patrol board, patrol line 45 in that region, at dockmaster rung >= 1).
+-- Commit 3 of 3: step 3, guests of the clan (s 50 -> 60 at XB-13: each entry picks the mode m, 1 while the clan has an
+-- active base there, else 3; mode 1 tips the region captain to XB-13 (trf_captain TRF_Cap_QuestTip) and the base's loss
+-- in view (trf_base TRF_BaseDestroyed hook TRF_Wq_BaseGone) ejects the crew; mode 3 moors the Marlin's hulk (a static
+-- carcass) at the base site with a tier-3 guard flight (trf_raid TRF_PirFlight, own died triggers), and the guard's
+-- death ejects the crew: 2-3 quest pods through trf_survive's TRF_Sv_QuestSeed; all aboard s 60, a crew partly aboard
+-- goes home at the next entry); step 4, the charter office (s 60 -> 70 at the hand-in at any FTU trade dock, the clerk's
+-- line; trf_freight's TRF_FrBuyGate passes the first Wolves freighter from s 70 with cfg enable_wq 1, its purchase box
+-- reads fwboxq at s 70 and either answer gives s 80, the logbook entry done and removed dn_legs later).
 -- Dialog variants: the clerk's box and reply and the Kestrel's thanks read the "old hauler" key (<key>o) while the
 -- player flies one of the Arba haulers or the start hull (TRF_WqK().ms0), chosen at display time, never saved.
 -- Saved fields: TRF.wq = {v=1, s (step 0 declined, 10 mayday due, 20 report owed, 30 find the wreck, 40 find the fence,
--- 50 crew held, 60..90 commit 3), k (bits: 1 the 8.5 help counted on the Kestrel's raid, 2 grandfathered, 4 the wreck
--- pick included debris6), n (voids of step 1), dc (decline leg, s 0 only), cd (leg of the last void), sd (seed
--- 1..9999), lv (1 while the Kestrel is on-screen, s 10 only), r (step 1 result: 1 saved, 2 lost, 3 limped in), p (1:
--- the limped-in line is due at the next entry), ql (step of the logbook entry), ws (wreck system idx, s 30..40)}; nil until
--- the first offer is answered (always read through TRF_WqRec). Visit state lives in the chunk local WQ (never saved;
--- rebuilt by every MapInitialization, so a jump or a load voids an on-screen event); the spawn timer is a TRF_Due entry
--- in the handle table (dropped with the generation).
--- Layout as trf_parcel: helpers, static tables, record, gates, logbook, offer, mayday, loader callbacks, repair,
--- defaults, dump, text. Top level: functions and WQ only.
+-- 50 crew held, 60 crew aboard, 70 charter offer pending, 80 done, 90 closed: not reachable, kept by the repair), k
+-- (bits: 1 the 8.5 help counted on the Kestrel's raid, 2 grandfathered, 4 the wreck pick included debris6), n (voids of
+-- step 1), dc (decline leg, s 0 only), cd (leg of the last void), sd (seed 1..9999), lv (1 while the Kestrel is
+-- on-screen, s 10 only), r (step 1 result: 1 saved, 2 lost, 3 limped in), p (1: the limped-in line is due at the next
+-- entry), ql (step of the logbook entry), ws (wreck system idx, s 30..40), m (hold mode 1 base, 3 hulk; s 50), cg (the
+-- tipped captain's generation, s 50), pn (pods ejected, s 50..60), pk (pods picked, 0..pn, s 50..60), wd (leg of done,
+-- s 80)}; nil until the first offer is answered (always read through TRF_WqRec). Visit state lives in the chunk local
+-- WQ (never saved; rebuilt by every MapInitialization, so a jump or a load voids an on-screen event; the hold's hulk
+-- and guard handles too); the spawn timer is a TRF_Due entry in the handle table (dropped with the generation).
+-- Layout as trf_parcel: helpers, static tables, record, gates, logbook, offer, mayday, cold trail, hold, charter
+-- office, loader callbacks, repair, defaults, dump, text. Top level: functions and WQ only.
 
 local WQ = {v={}};
 
@@ -201,12 +210,19 @@ end;
 -- mission_7g NewBase_XB17.script tests by this name), the seeded chance, the spawn delay, the marker label and owner, line
 -- seconds; step 2: the wreck systems in pick order (wsys, wsys6 from chapter ch_d6; both q=0 and strict-free, debris6
 -- q=1 under the normal strict check), the hash salt of the pick, the clue system (the region of xb13), the fence price
--- factor (of TRF_PayN).
+-- factor (of TRF_PayN); step 3: the hulk model (a decoration hull of trf_scar's TRF_ScHulls, no inventory) and its label
+-- and marker label, the offsets {x, z} from the map's base site of xb13 (hulk, pods; the guard and its patrol radius from
+-- the hulk), the clearance from xb13's stash slots, the guard tier and ships by difficulty (EASY, NORMAL, HARD), its
+-- group, group global, flight sign and ship labels, the pods (pods + hash(sd, pod_h) mod 2); step 4: legs a done entry
+-- stays in the logbook.
 function TRF_WqK()
 	return {ch_min=5, ch_max=18, ch_early=6, ch_d6=6, heat_max=2, dc_legs=10, qid="trf_wq", jid="wq", nk="nk",
 		sys5={elio=1, gredos=1, valensia=1, kassilia=1, golkonda=1, xt11=1, callipso=1}, sys6={debris6=1},
 		ms0={hm_queen_pl=1, arba_t=1, mothership_arba_pirate=1, mothership_arba=1}, pct=50, d_min=30, d_max=60, tier=2, mk="TRF_".."WQ_NP", own="wq", secs=8,
-		wsys={"golkonda", "callipso"}, wsys6={"debris6"}, ws_h=11, xb="xb13", fence_k=0.4};
+		wsys={"golkonda", "callipso"}, wsys6={"debris6"}, ws_h=11, xb="xb13", fence_k=0.4,
+		hk="Btransport_destroyed", hkl="TRF_".."WQ_HULK", hmk="TRF_".."WQ_HK", hk_off={-200, 0}, pod_off={-200, -120}, g_off={0, 150},
+		g_r=250, slot_r=150, g_t=3, g_n={3, 4, 5}, gn="TRF_".."Wq_G", gg="TRF_".."GWq", sign="trf_wqg", gl="trf_wqg_", pods=2, pod_h=17,
+		dn_legs=10};
 end;
 
 -- Clamps of the tune keys {lo, hi, int}.
@@ -386,9 +402,37 @@ function TRF_WqQRemRaw(id)
 	return 1;
 end;
 
--- Steps with a logbook description in this commit (Commit 3 hook: 60, 70).
+-- Steps with a logbook description (80: the entry done, kept dn_legs legs after wd; none for the grandfather rule).
 function TRF_WqQSteps()
-	return {[10]=1, [20]=1, [30]=1, [40]=1, [50]=1};
+	return {[10]=1, [20]=1, [30]=1, [40]=1, [50]=1, [60]=1, [70]=1, [80]=1};
+end;
+
+function TRF_WqJStRaw(id, s) return TRF_JobState(id, s); end;
+
+function TRF_WqQStRaw(id, s)
+	SetQuestState(id, s);
+	return 1;
+end;
+
+-- The entry of list closed with QUEST_DONE (as trf_captain TRF_CapQEnd: added, then the state set; the Job log through
+-- TRF_JobState). 1 when set.
+function TRF_WqQDone(list)
+	local id = TRF_WqK().qid;
+	if QUEST_DONE == nil then return nil; end;
+	local r, w = nil, nil;
+	if list == "job" then
+		if type(TRF_JobState) ~= "function" then return nil; end;
+		r, w = call(TRF_WqJStRaw, {id, QUEST_DONE}, "x", TRF_WqErr);
+	else
+		if type(SetQuestState) ~= "function" then return nil; end;
+		r = call(TRF_WqQStRaw, {id, QUEST_DONE}, "x", TRF_WqErr);
+	end;
+	if r == 1 then
+		TRF_WqE("logbook", "list", list, "id", id, "state", QUEST_DONE, "result", "done");
+	else
+		TRF_WqE("logbook", "list", list, "id", id, "state", QUEST_DONE, "result", "failed", "reason", tostring(w));
+	end;
+	return r;
 end;
 
 -- Description key of step s: step 20 by the result (r 2 lost: wqd20l, r 3 limped in: wqd20a, else wqd20); step 30 by
@@ -442,18 +486,21 @@ function TRF_WqQAdd(list, s, note)
 	end;
 	TRF_WqE("logbook", "list", list, "id", K.qid, "step", s, "result", "added");
 	if note == 1 and list == "job" then TRF_N("TRF_PlSay", TRF_WqTxt("wqlog")); end;
+	if s == 80 then TRF_WqQDone(list); end;
 	return 1;
 end;
 
 -- Reconcile (entry, load, every step change; never during a mission): the list not in use loses its entry (a move between
 -- the Job log and the mission list), a missing entry (ClearQuests at a mission start) or one of an older step is added
--- again, an entry without a described step is removed. note as TRF_WqQAdd.
+-- again, an entry without a described step is removed (also the done entry dn_legs legs after wd, and the grandfather
+-- rule's s 80 without wd). note as TRF_WqQAdd.
 function TRF_WqReconcile(why, note)
 	if TRF_WqQuest() then return; end;
 	local K = TRF_WqK();
 	local R = TRF_WqRec();
 	local want = nil;
 	if R and TRF_WqQSteps()[R.s] then want = R.s; end;
+	if want == 80 and not (type(R.wd) == "number" and TRF_WqLegs() - R.wd < K.dn_legs) then want = nil; end;
 	local jl = TRF_WqJl();
 	local inq = TRF_WqQs(K.qid);
 	local js = nil;
@@ -470,7 +517,7 @@ function TRF_WqReconcile(why, note)
 	elseif not want and have then
 		TRF_WqQRem(list, why);
 		if R then R.ql = nil; end;
-		TRF_WqE("reconcile", "id", K.qid, "list", list, "result", "removed", "reason", why);
+		TRF_WqE("reconcile", "id", K.qid, "list", list, "result", "removed", "reason", why, "leg", TRF_WqLegs());
 	end;
 end;
 
@@ -781,8 +828,11 @@ function TRF_Wq_Name()
 	return TRF_WqTxt("wqname");
 end;
 
--- Every 1 s (traffic.script): the help flag gives the result saved; a raid that ended without it voids the event.
+-- Every 1 s (traffic.script): the guard of the hulk counted (TRF_WqGuardStep); the help flag gives the result saved; a
+-- raid that ended without it voids the event.
 function TRF_Wq_Step()
+	local G = %WQ.v.gd;
+	if type(G) == "table" and G.st == "live" then call(TRF_WqGuardStep, {}, "x", TRF_WqErr); end;
 	local ev = %WQ.v.ev;
 	if type(ev) ~= "table" or ev.st ~= "live" then return; end;
 	call(TRF_WqStepBody, {ev}, "x", TRF_WqErr);
@@ -897,21 +947,42 @@ function TRF_WqWreck()
 	TRF_WqE("wreck", "system", nm, "beacon", i, "point", w, "result", "seeded");
 end;
 
--- trf_survive TRF_SvPick of a quest pod (record b, q 1): the navigator's line at s 30 (the marker goes with the record).
+-- trf_survive TRF_SvPick of a quest pod (record b, q 1): the navigator's line at s 30 (the marker goes with the record);
+-- at s 50 a pod of the Marlin's crew at XB-13 (pk + 1; the record's last pod: all aboard, step 60).
 function TRF_Wq_OnPick(b)
 	local R = TRF_WqRec();
-	if not R or R.s ~= 30 or type(b) ~= "table" then return; end;
+	if not R or type(b) ~= "table" then return; end;
+	if R.s == 50 and R.pn and b.s == TRF_WqXb() then
+		R.pk = min(R.pn, (R.pk or 0) + 1);
+		TRF_N("TRF_Stat", "wq_crew");
+		if b.n > 0 then
+			TRF_WqE("crew", "system", TRF_WqName(b.s), "picked", R.pk, "pods", R.pn, "left", b.n, "result", "picked");
+			return;
+		end;
+		TRF_WqE("crew", "system", TRF_WqName(b.s), "picked", R.pk, "pods", R.pn, "result", "aboard");
+		TRF_WqStep(R, 60, "aboard");
+		return;
+	end;
+	if R.s ~= 30 then return; end;
 	TRF_WqSay(TRF_WqTxt("wqnav"));
 	TRF_N("TRF_Stat", "wq_pick");
 	TRF_WqE("wreck", "system", TRF_WqName(b.s), "pods", b.n, "result", "picked");
 end;
 
 -- trf_survive TRF_SvHand, a full hand-in of carry c at the trade dock of idx before the carry goes: a quest crew (c.q 1)
--- at s 30 gives step 40 (the normal survivor standing was paid; no quest credits). Commit 3 hook: the crew of XB-13 at
--- s 60. Returns nil (no line of its own).
+-- at s 30 gives step 40 (the normal survivor standing was paid; no quest credits). At s 60 the Marlin's crew (also a
+-- crew partly aboard at s 50: the pods left at XB-13 go, step 60 first) gives step 70 and returns the clerk's line;
+-- else nil (no line of its own).
 function TRF_Wq_OnHand(idx, c)
 	local R = TRF_WqRec();
 	if not R or type(c) ~= "table" or c.q ~= 1 then return nil; end;
+	if R.s == 50 and (R.pk or 0) >= 1 then TRF_WqPartial(R, "handed"); end;
+	if R.s == 60 then
+		TRF_N("TRF_Stat", "wq_home");
+		TRF_WqE("crew", "system", TRF_WqName(idx), "carried", c.n, "picked", R.pk, "pods", R.pn, "result", "handed");
+		TRF_WqStep(R, 70, "handed");
+		return TRF_WqTxt("wqhome");
+	end;
 	if R.s ~= 30 then
 		TRF_WqE("wreck", "system", TRF_WqName(idx), "carried", c.n, "step", R.s, "result", "none", "reason", "step");
 		return nil;
@@ -1059,36 +1130,438 @@ function TRF_WqPatrolBody(R)
 	return TRF_WqTxt("wqpatrol");
 end;
 
+-- Step 3: guests of the clan (spec 4.5) ------------------------------------------------------
+
+-- Index of XB-13, or nil.
+function TRF_WqXb()
+	return TRF_WqIdx(TRF_WqK().xb);
+end;
+
+function TRF_WqObj(o)
+	if o == nil or type(o) == "number" or type(o) == "string" or type(o) == "function" then return nil; end;
+	return 1;
+end;
+
+function TRF_WqAliveRaw(o)
+	if o:IsAlive() then return 1; end;
+	return nil;
+end;
+
+-- 1 when o is an object handle that answers alive.
+function TRF_WqAlive(o)
+	if not TRF_WqObj(o) then return nil; end;
+	return call(TRF_WqAliveRaw, {o}, "x", TRF_WqNoErr);
+end;
+
+function TRF_WqDelRaw(o)
+	o:Delete();
+	return 1;
+end;
+
+-- Deletes o while it answers alive. 1 when deleted.
+function TRF_WqDel(o)
+	if not TRF_WqAlive(o) then return nil; end;
+	return call(TRF_WqDelRaw, {o}, "x", TRF_WqErr);
+end;
+
+-- The object labelled label while the lookup answers a live object (after a load it can answer the label string).
+function TRF_WqFind(label)
+	local o = TRF_N("GetObjectByLabel", label);
+	if TRF_WqAlive(o) then return o; end;
+	return nil;
+end;
+
+function TRF_WqMakeRaw(tpl, p, label)
+	local o = CreateCarcass(tpl, Vector3(p.x, p.y, p.z), Vector3(0, 0, 1));
+	if not TRF_WqObj(o) then return nil; end;
+	SetObjectLabel(o, label);
+	return o;
+end;
+
+function TRF_WqGrpRaw(tm, gn) return tm:CreateGroup(gn); end;
+
+function TRF_WqRelRaw(a, b, rel)
+	SetGroupRelation(a, b, rel);
+	return 1;
+end;
+
+function TRF_WqPatrolRaw(fl, pts)
+	fl:Patrol(pts, TRUE);
+	return 1;
+end;
+
+function TRF_WqTrigRaw(cb, o)
+	return NewTrigger("died", nil, cb, o);
+end;
+
+-- Vanilla's scene flags (__disableAction, __sys_SOS) and trf_safety's suppression: the reason, else nil.
+function TRF_WqHoldFlag()
+	if __disableAction == TRUE then return "disable_action"; end;
+	if __sys_SOS == TRUE then return "sys_sos"; end;
+	local sp = TRF_N("TRF_Supp");
+	if type(sp) == "number" and sp ~= 0 then return "suppressed"; end;
+	return nil;
+end;
+
+-- A point of the hold: the map's base site of XB-13 (map.script bs, where every clan base there stands; a base record
+-- keeps no position of its own) plus offset o = {x, z}, turned in 90 degree steps until the point lies at least slot_r
+-- from every stash slot of xb13 (trf_stash TRF_ShSlots), else the first. Returns {x, y, z}, or nil without a site.
+function TRF_WqHoldPt(o)
+	local K = TRF_WqK();
+	local m = TRF_N("TRF_Map");
+	local x = TRF_WqXb();
+	if type(m) ~= "table" or type(m.sys) ~= "table" or not x or type(m.sys[x]) ~= "table" or type(m.sys[x].bs) ~= "table" then return nil; end;
+	local b = m.sys[x].bs;
+	local bx, by, bz = b.x or b[1], b.y or b[2], b.z or b[3];
+	if type(bx) ~= "number" or type(by) ~= "number" or type(bz) ~= "number" then return nil; end;
+	local sl = TRF_N("TRF_ShSlots", K.xb);
+	if type(sl) ~= "table" then sl = {}; end;
+	local ox, oz = o[1], o[2];
+	local first = nil;
+	for k = 1, 4 do
+		local p = {x=bx + ox, y=by, z=bz + oz};
+		if not first then first = p; end;
+		local near = nil;
+		for i = 1, getn(sl) do
+			local s = sl[i];
+			local dx, dy, dz = p.x - s[1], p.y - s[2], p.z - s[3];
+			if sqrt(dx * dx + dy * dy + dz * dz) < K.slot_r then near = 1; end;
+		end;
+		if not near then return p; end;
+		ox, oz = -oz, ox;
+	end;
+	return first;
+end;
+
+-- The hold gate at an entry into cur: off, step, nomap, mission, system (not XB-13), strict:<why>; nil when they pass.
+function TRF_WqHoldGate(cur, R)
+	local why = TRF_WqSGate(cur, R, 50);
+	if why then return why; end;
+	if cur ~= TRF_WqXb() then return "system"; end;
+	return TRF_WqStrict(cur);
+end;
+
+-- The crew partly aboard goes home as it is (spec 4.5): the pods left at XB-13 are dropped with survive's quest record
+-- there, step 60.
+function TRF_WqPartial(R, why)
+	local x = TRF_WqXb();
+	TRF_N("TRF_Sv_QuestDrop", x, "partial");
+	TRF_WqE("crew", "system", TRF_WqName(x), "picked", R.pk, "pods", R.pn, "result", "partial", "reason", why);
+	TRF_WqStep(R, 60, "partial");
+end;
+
+-- Every entry at s 50 with the pods out (pn): a crew partly aboard (pk >= 1) goes home as it is (TRF_WqPartial); none
+-- aboard: the hold waits while survive's quest record of XB-13 has pods left (survive places them again on entry), else
+-- pn and pk go and the hold starts again.
+function TRF_WqCrewEnter(R)
+	if not R.pn then return; end;
+	if (R.pk or 0) >= 1 then TRF_WqPartial(R, "entry"); return; end;
+	local x = TRF_WqXb();
+	local n = TRF_N("TRF_Sv_QAt", x);
+	if type(n) == "number" and n > 0 then return; end;
+	TRF_WqE("crew", "system", TRF_WqName(x), "pods", R.pn, "result", "reset", "reason", "gone");
+	R.pn = nil;
+	R.pk = nil;
+end;
+
+-- Entry (TRF_Wq_OnEnter, before trf_gen's entry plan, so the captain's spawn decision sees the tip): the crew state of
+-- an earlier visit (TRF_WqCrewEnter); then at s 50 in XB-13 without pods out the mode m (1 while the clan has an active
+-- base there, trf_base TRF_BaseOf with k 2; else 3, the hulk; a switch from 1 to 3 gives the line wqmoved) and in mode 1
+-- the captain tip (TRF_WqTip). The lines and the hulk follow at activate (TRF_WqHoldAct).
+function TRF_WqHoldEnter()
+	local wq = %WQ;
+	local R = TRF_WqRec();
+	if not R or R.s ~= 50 then return; end;
+	TRF_WqCrewEnter(R);
+	if R.s ~= 50 or R.pn then return; end;
+	local cur = TRF_WqCur();
+	local why = TRF_WqHoldGate(cur, R);
+	if why then TRF_WqDE("hold", "system", TRF_WqName(cur), "result", "none", "reason", why); return; end;
+	local b = TRF_N("TRF_BaseOf", cur);
+	local m = 3;
+	if type(b) == "table" and b.k == 2 then m = 1; end;
+	local v = {m=m};
+	if R.m == 1 and m == 3 then v.moved = 1; end;
+	R.m = m;
+	if m == 3 then R.cg = nil; end;
+	wq.v.hold = v;
+	if m == 1 then TRF_WqTip(R, cur); end;
+end;
+
+-- Mode 1: the region captain is tipped to XB-13 (trf_captain TRF_Cap_QuestTip; his spawn still needs TRF_CapGate and
+-- TRF_CapSysGate); cg = his generation, else dropped. event=hold mode=1 result=tipped, or result=base with his reason.
+function TRF_WqTip(R, cur)
+	local slot = TRF_N("TRF_RgOf", cur);
+	local g, w = TRF_N("TRF_Cap_QuestTip", slot, cur);
+	if type(g) == "number" then
+		R.cg = g;
+		TRF_WqE("hold", "system", TRF_WqName(cur), "mode", 1, "captain_slot", slot, "captain_generation", g, "result", "tipped");
+		return;
+	end;
+	R.cg = nil;
+	TRF_WqE("hold", "system", TRF_WqName(cur), "mode", 1, "captain_slot", slot, "result", "base", "reason", "captain:"..tostring(w));
+end;
+
+-- Who speaks on the open band: the living captain of XB-13's region (trf_captain TRF_Cap_NameOf), else wqclan.
+function TRF_WqClanWho()
+	local x = TRF_WqXb();
+	local n = TRF_N("TRF_Cap_NameOf", TRF_N("TRF_RgOf", x));
+	if type(n) == "string" and n ~= "" then return n; end;
+	return TRF_WqTxt("wqclan");
+end;
+
+-- Activate (after survive's): the arrival lines of the hold (wqmoved after a switch to mode 3, the open band wqband) and
+-- in mode 3 the hulk and its guard (TRF_WqHulk).
+function TRF_WqHoldAct()
+	local v = %WQ.v.hold;
+	local R = TRF_WqRec();
+	if type(v) ~= "table" or not R or R.s ~= 50 or R.pn then return; end;
+	local K = TRF_WqK();
+	if v.moved == 1 then TRF_N("TRF_ArrivalLine", K.own, TRF_WqTxt("wqmoved")); end;
+	TRF_N("TRF_ArrivalLine", K.own, TRF_WqTxt("wqband", TRF_WqClanWho()));
+	if v.m == 3 then TRF_WqHulk(R); end;
+end;
+
+-- Mode 3: the Marlin's hulk at the hold point (K.hk, a decoration hull with no inventory; CreateCarcass, label hkl: no
+-- trader record, so it never counts for traffic pay, help or heat), its marker hmk (owner wq) and the guard
+-- (TRF_WqGuard). The scene flags skip it for this visit; a blocked carcass leaves the guard alone at the point.
+function TRF_WqHulk(R)
+	local wq = %WQ;
+	local K = TRF_WqK();
+	local nm = TRF_WqName(TRF_WqCur());
+	local hw = TRF_WqHoldFlag();
+	if hw then TRF_WqE("hold", "system", nm, "mode", 3, "result", "none", "reason", hw); return; end;
+	local p = TRF_WqHoldPt(K.hk_off);
+	if not p then TRF_WqE("hold", "system", nm, "mode", 3, "result", "none", "reason", "site"); return; end;
+	local o = nil;
+	if type(CreateCarcass) == "function" and type(Vector3) == "function" and type(SetObjectLabel) == "function" then
+		o = call(TRF_WqMakeRaw, {K.hk, p, K.hkl}, "x", TRF_WqErr);
+	end;
+	if TRF_WqObj(o) then wq.v.hk = o; end;
+	local mk = TRF_N("TRF_MarkerAdd", K.own, K.hmk, p.x, p.y, p.z);
+	local G, gw = TRF_WqGuard(p);
+	if type(G) ~= "table" then
+		TRF_WqE("hold", "system", nm, "mode", 3, "hulk", TRF_KvB(TRF_WqObj(o)), "marker", TRF_KvB(mk), "result", "none", "reason", "guard:"..tostring(gw));
+		return;
+	end;
+	TRF_N("TRF_Stat", "wq_hold");
+	TRF_WqE("hold", "system", nm, "mode", 3, "x", p.x, "z", p.z, "hulk", TRF_KvB(TRF_WqObj(o)), "marker", TRF_KvB(mk), "tier", K.g_t, "power", G.pw,
+		"ship_count", getn(G.sh), "ships_asked", G.n, "result", "spawned");
+end;
+
+-- The guard of the hulk at p: one tier-3 flight of fighters (TRF_PirFlight at TRF_Rd_Power(3, xb13), g_n ships by
+-- difficulty, at most the row's entries) in group gn of team Pirates, g_off from the hulk, patrolling g_r around it, at
+-- war with PLAYER_GROUP both ways, a died trigger per ship (the death bus carries only raid and captain ships). Returns
+-- the visit record {fl, sh, dead, k, g, st, n, pw}, or nil and the reason.
+function TRF_WqGuard(p)
+	local wq = %WQ;
+	local K = TRF_WqK();
+	local cur = TRF_WqCur();
+	if type(TRF_PirFlight) ~= "function" or type(Vector3) ~= "function" then return nil, "raid_module"; end;
+	local n = K.g_n[2];
+	local d = TRF_N("GetLevelDifficult");
+	if d ~= nil and d == EASY then n = K.g_n[1]; elseif d ~= nil and d == HARD then n = K.g_n[3]; end;
+	local tm = TRF_N("CreateTeam", "Pirates");
+	if not TRF_WqObj(tm) then return nil, "team"; end;
+	local grp = call(TRF_WqGrpRaw, {tm, K.gn}, "x", TRF_WqErr);
+	if not TRF_WqObj(grp) then return nil, "group"; end;
+	local pw = TRF_N("TRF_Rd_Power", K.g_t, cur, nil) or 5;
+	local gp = Vector3(p.x + K.g_off[1], p.y, p.z + K.g_off[2]);
+	-- Only protected calls between setglobal and its clear (v1 spec 13.4 O5).
+	setglobal(K.gg, grp);
+	local fl = call(TRF_PirFlight, {K.g_t, pw, K.gg, K.sign, gp, Vector3(0, 0, 1), 1, n, n}, "x", TRF_WqErr);
+	setglobal(K.gg, nil);
+	TRF_N("TRF_Rd_ClearSign", K.sign);
+	if not TRF_WqObj(fl) then return nil, "build"; end;
+	local sh = TRF_N("TRF_Rd_FlShips", fl);
+	if type(sh) ~= "table" then sh = {}; end;
+	local G = {fl=fl, sh={}, dead={}, k=0, g=TRF_WqGen(), st="live", n=n, pw=pw};
+	for j = 1, min(getn(sh), K.g_n[3]) do
+		tinsert(G.sh, sh[j]);
+		TRF_N("SetObjectLabel", sh[j], K.gl..j);
+	end;
+	if getn(G.sh) == 0 then TRF_WqDel(fl); return nil, "ships"; end;
+	wq.v.gd = G;
+	if type(SetGroupRelation) == "function" and RELATION_WAR ~= nil then
+		call(TRF_WqRelRaw, {K.gn, PLAYER_GROUP, RELATION_WAR}, "x", TRF_WqErr);
+		call(TRF_WqRelRaw, {PLAYER_GROUP, K.gn, RELATION_WAR}, "x", TRF_WqErr);
+	end;
+	if type(NewTrigger) == "function" then
+		for j = 1, getn(G.sh) do call(TRF_WqTrigRaw, {"TRF_Wq_GuardDied("..j..","..G.g..")--", G.sh[j]}, "x", TRF_WqErr); end;
+	end;
+	local r = K.g_r;
+	call(TRF_WqPatrolRaw, {fl, {Vector3(p.x + r, p.y, p.z), Vector3(p.x, p.y, p.z + r), Vector3(p.x - r, p.y, p.z), Vector3(p.x, p.y, p.z - r)}},
+		"x", TRF_WqErr);
+	return G;
+end;
+
+-- Died trigger of guard ship j (TRF_Cb shim): every ship of the guard dead ejects the crew.
+function TRF_Wq_GuardDied(j, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_Wq_GuardDied", TRF_WqGuardDiedBody, {j, g}); else TRF_WqGuardDiedBody(j, g); end;
+end;
+
+function TRF_WqGuardDiedBody(j, g)
+	local G = %WQ.v.gd;
+	if g ~= TRF_WqGen() or type(G) ~= "table" or G.st ~= "live" or G.g ~= g or type(j) ~= "number" or G.dead[j] then return; end;
+	G.dead[j] = 1;
+	G.k = G.k + 1;
+	TRF_WqDE("hold", "mode", 3, "ship", j, "kill_count", G.k, "ship_count", getn(G.sh), "result", "guard_ship");
+	if G.k >= getn(G.sh) then TRF_WqGuardDead(G, "died"); end;
+end;
+
+-- Every 1 s while the guard lives: its ships counted through their handles (IsAlive; a death the trigger missed).
+function TRF_WqGuardStep()
+	local G = %WQ.v.gd;
+	if type(G) ~= "table" or G.st ~= "live" or G.g ~= TRF_WqGen() then return; end;
+	local n = 0;
+	for j = 1, getn(G.sh) do if not G.dead[j] and TRF_WqAlive(G.sh[j]) then n = n + 1; end; end;
+	if n == 0 then TRF_WqGuardDead(G, "step"); end;
+end;
+
+-- The guard is dead: the marker goes, the crew ejects (TRF_WqPods).
+function TRF_WqGuardDead(G, via)
+	G.st = "dead";
+	local R = TRF_WqRec();
+	local x = TRF_WqXb();
+	TRF_N("TRF_MarkerClear", TRF_WqK().own);
+	TRF_N("TRF_Stat", "wq_guard");
+	TRF_WqE("hold", "system", TRF_WqName(x), "mode", 3, "kill_count", G.k, "ship_count", getn(G.sh), "via", via, "result", "guard_dead");
+	if R and R.s == 50 and not R.pn then TRF_WqPods(R, "guard_dead"); end;
+end;
+
+-- The Marlin's crew ejects: pods + hash(sd, pod_h) mod 2 quest pods (2 or 3; survive's quest record of XB-13: src 2,
+-- pay 0, q 1) at the pod point (TRF_WqHoldPt(pod_off)), the master's line; pn = the pods, pk = 0. A survive refusal is
+-- logged (pn stays unset: the next entry starts the hold again). Returns 1 when the pods are out.
+function TRF_WqPods(R, why)
+	local K = TRF_WqK();
+	local x = TRF_WqXb();
+	local nm = TRF_WqName(x);
+	local n = K.pods + TRF_WqM(TRF_WqHash(R.sd or 1, K.pod_h, 0), 2);
+	local p = TRF_WqHoldPt(K.pod_off);
+	local i, w = nil, "site";
+	if p then i, w = TRF_N("TRF_Sv_QuestSeed", x, 2, 0, n, p); end;
+	if type(i) ~= "number" then
+		TRF_WqE("hold", "system", nm, "mode", R.m, "pods", n, "result", "none", "reason", "survive:"..tostring(w), "via", why);
+		return nil;
+	end;
+	R.pn = n;
+	R.pk = 0;
+	TRF_WqSay(TRF_WqTxt("wqmaster"));
+	TRF_N("TRF_Stat", "wq_pods");
+	TRF_WqE("hold", "system", nm, "mode", R.m, "beacon", i, "pods", n, "via", why, "result", "pods");
+	return 1;
+end;
+
+-- trf_base TRF_BaseDestroyed hook, before the record changes: the clan base of XB-13 is lost while mode 1 holds the
+-- crew. In view (the player in XB-13, any cause: player, other, dead, blow, a sweep there) the crew ejects; off-screen
+-- (a sweep, abandon) nothing changes now: the next entry finds no active base and switches to mode 3 (wqmoved).
+function TRF_Wq_BaseGone(idx, by)
+	local R = TRF_WqRec();
+	if not TRF_WqOn() or not R or R.s ~= 50 or R.m ~= 1 or R.pn or idx ~= TRF_WqXb() then return; end;
+	local nm = TRF_WqName(idx);
+	if TRF_WqCur() ~= idx or TRF_WqQuest() then
+		TRF_WqE("hold", "system", nm, "mode", 1, "by", by, "off_screen", TRF_KvB(TRF_WqCur() ~= idx), "result", "base_gone");
+		return;
+	end;
+	TRF_N("TRF_Stat", "wq_base");
+	TRF_WqE("hold", "system", nm, "mode", 1, "by", by, "off_screen", "false", "result", "base_gone");
+	TRF_WqPods(R, "base_gone");
+end;
+
+-- Before a jump and at a load: the hulk and the guard of this visit are deleted (at a load the saved objects found by
+-- label), the marker goes; a live guard is void (the next entry into XB-13 builds the hold again).
+function TRF_WqHoldDel(why)
+	local wq = %WQ;
+	local K = TRF_WqK();
+	local G = wq.v.gd;
+	local n = 0;
+	if type(G) == "table" then
+		for j = 1, getn(G.sh) do if TRF_WqDel(G.sh[j]) then n = n + 1; end; end;
+		TRF_WqDel(G.fl);
+		if G.st == "live" then G.st = "void"; end;
+	elseif why == "load" then
+		for j = 1, K.g_n[3] do if TRF_WqDel(TRF_WqFind(K.gl..j)) then n = n + 1; end; end;
+	end;
+	local hk = wq.v.hk;
+	if not hk and why == "load" then hk = TRF_WqFind(K.hkl); end;
+	local h = TRF_WqDel(hk);
+	wq.v.gd = nil;
+	wq.v.hk = nil;
+	if G or h or n > 0 then
+		TRF_N("TRF_MarkerClear", K.own);
+		TRF_WqE("hold", "deleted_count", n, "hulk", TRF_KvB(h), "result", "void", "reason", why);
+	end;
+end;
+
+-- Step 4: the charter office (spec 4.5) -------------------------------------------------------
+
+-- Public (trf_freight TRF_FrBuyGate, TRF_Fr_DockBox): 1 while the quest gates the first Wolves freighter (cfg enable_wq 1).
+function TRF_Wq_On()
+	if TRF_WqOn() then return 1; end;
+	return nil;
+end;
+
+-- Public: the step, or nil without the record.
+function TRF_Wq_S()
+	return TRF_WqS();
+end;
+
+-- Public (trf_parcel TRF_Pc_DockBox, open question 12): 1 at s 70 without a Wolves freighter while trf_freight's purchase
+-- box opens at the dock of cur (TRF_Fr_BuyOpen): the parcel box 400 steps aside for it.
+function TRF_Wq_UnlockDue(cur)
+	if not TRF_WqOn() or TRF_WqS() ~= 70 or TRF_WqOwns() then return nil; end;
+	if TRF_N("TRF_Fr_BuyOpen", cur) == 1 then return 1; end;
+	return nil;
+end;
+
+-- trf_freight's purchase box answered at s 70 (TRF_Fr_BuyOk with the ship bought: ok 1; TRF_Fr_BuyNo: ok 0): the line is
+-- done, step 80, wd the leg (the logbook entry done, removed dn_legs legs later).
+function TRF_Wq_Unlocked(ok)
+	local R = TRF_WqRec();
+	if not TRF_WqOn() or not R or R.s ~= 70 then return; end;
+	local res = "declined";
+	if ok == 1 then res = "bought"; end;
+	R.wd = TRF_WqLegs();
+	TRF_N("TRF_Stat", "wq_done");
+	TRF_WqE("unlock", "system", TRF_WqName(TRF_WqCur()), "leg", R.wd, "result", res);
+	TRF_WqStep(R, 80, res);
+end;
+
 -- Loader callbacks ---------------------------------------------------------------------------
 
 -- Every entry: a new visit state; a saved live flag without a jump hook (a jump the wrappers did not see) resolves the
--- event (TRF_WqLvGone).
+-- event (TRF_WqLvGone); step 3's entry (TRF_WqHoldEnter: the crew of an earlier visit, the mode, the captain tip).
 function TRF_Wq_OnEnter()
 	local wq = %WQ;
 	wq.v = {};
 	wq.offer = nil;
 	wq.fence = nil;
 	TRF_WqLvGone("entry");
+	if TRF_WqOn() then call(TRF_WqHoldEnter, {}, "x", TRF_WqErr); end;
 end;
 
 -- After activate (entry only, after survive's): the limped-in line of a void at a jump or a load (p stays until the
--- queue takes it), the Marlin wreck at s 30 (TRF_WqWreck), the logbook reconcile.
+-- queue takes it), the Marlin wreck at s 30 (TRF_WqWreck), the hold of XB-13 at s 50 (TRF_WqHoldAct), the logbook
+-- reconcile.
 function TRF_Wq_OnActivate()
 	if not TRF_WqOn() then return; end;
 	local R = TRF_WqRec();
 	if R and R.p == 1 and TRF_N("TRF_ArrivalLine", TRF_WqK().own, TRF_WqTxt("wqalone")) == 1 then R.p = nil; end;
 	call(TRF_WqWreck, {}, "x", TRF_WqErr);
+	call(TRF_WqHoldAct, {}, "x", TRF_WqErr);
 	call(TRF_WqReconcile, {"enter"}, "x", TRF_WqErr);
 end;
 
 -- Load (after trf_gen's load pass): every Kestrel record and waiting record is removed (an on-screen event is void after
--- a load), a saved live flag resolves the event (TRF_WqLvGone), the logbook reconcile.
+-- a load), so are the hulk and the guard of the hold found by label (TRF_WqHoldDel: the next entry builds them again), a
+-- saved live flag resolves the event (TRF_WqLvGone), the logbook reconcile.
 function TRF_Wq_OnLoad()
 	local wq = %WQ;
 	wq.v = {};
 	wq.offer = nil;
 	wq.fence = nil;
 	if type(TRF) ~= "table" then return; end;
+	call(TRF_WqHoldDel, {"load"}, "x", TRF_WqErr);
 	local L = TRF.live;
 	if type(L) == "table" and type(L.tr) == "table" then
 		local ids = {};
@@ -1111,11 +1584,12 @@ function TRF_Wq_OnLoad()
 	if TRF_WqOn() then call(TRF_WqReconcile, {"load"}, "x", TRF_WqErr); end;
 end;
 
--- Before a jump (after trf_raid's jump hook, which pays the 8.5 help of an open raid): the help flag still gives the
--- result saved, else a planned or live event is void.
+-- Before a jump (after trf_raid's jump hook, which pays the 8.5 help of an open raid): the hulk and the guard of the hold
+-- go (TRF_WqHoldDel); the help flag still gives the result saved, else a planned or live event is void.
 function TRF_Wq_BeforeJump()
 	local wq = %WQ;
 	wq.offer = nil;
+	call(TRF_WqHoldDel, {"jump"}, "x", TRF_WqErr);
 	local ev = wq.v.ev;
 	if type(ev) ~= "table" or (ev.st ~= "due" and ev.st ~= "live") then return; end;
 	local R = TRF_WqRec();
@@ -1144,7 +1618,8 @@ end;
 
 -- Repair (TRF_Repair after TRF_Fr_Fix, every entry and load): a non-table TRF.wq or one with an unknown step is dropped;
 -- every field within its range (a wrong value is dropped; dc only at step 0, lv only at step 10, p only with r 3, ws only
--- at steps 30 and 40 and only a wreck system; a missing ws at step 30 is picked again); the grandfather rule: no record
+-- at steps 30 and 40 and only a wreck system; a missing ws at step 30 is picked again; m (1 or 3) and cg only at step 50,
+-- pn (1..3) and pk (0..pn) only at steps 50 and 60, wd only at step 80); the grandfather rule: no record
 -- and a Wolves freighter in TRF.co (repaired just before) gives s 80 with bit 2 (no entry).
 function TRF_Wq_Fix()
 	if type(TRF) ~= "table" then return; end;
@@ -1171,6 +1646,16 @@ function TRF_Wq_Fix()
 					TRF_WqE("fix", "step", s, "wreck_system", o.ws and TRF_WqName(o.ws), "result", "picked", "reason", "ws");
 				end;
 			end;
+			if s == 50 then
+				local m = TRF_WqFld(x, "m", 1, 3);
+				if m == 1 or m == 3 then o.m = m; end;
+				o.cg = TRF_WqFld(x, "cg", 0, 999);
+			end;
+			if s == 50 or s == 60 then
+				o.pn = TRF_WqFld(x, "pn", 1, 3);
+				if o.pn then o.pk = TRF_WqFld(x, "pk", 0, o.pn); end;
+			end;
+			if s == 80 then o.wd = TRF_WqFld(x, "wd", -9999999, legs); end;
 			TRF.wq = o;
 		end;
 	end;
@@ -1180,7 +1665,7 @@ function TRF_Wq_Fix()
 	end;
 end;
 
--- Config key: enable_wq (default 1; 0 also restores the help gate of the first Wolves freighter in commit 3).
+-- Config key: enable_wq (default 1; 0 also restores the help gate of the first Wolves freighter, TRF_Wq_On).
 function TRF_Wq_OptDef()
 	return {enable_wq=1};
 end;
@@ -1199,8 +1684,12 @@ function TRF_Wq_Dump()
 	local es = nil;
 	if type(ev) == "table" then es = ev.st; end;
 	if not R then TRF_WqE("dump", "result", "none", "event_state", es, "grandfather", TRF_KvB(TRF_WqOwns())); return; end;
+	local G = %WQ.v.gd;
+	local gs = nil;
+	if type(G) == "table" then gs = G.st; end;
 	TRF_WqE("dump", "step", R.s, "flags", R.k, "tries", R.n, "decline_leg", R.dc, "void_leg", R.cd, "seed", R.sd, "live", R.lv,
-		"result_kind", R.r, "pending", R.p, "logbook_step", R.ql, "wreck_system", R.ws and TRF_WqName(R.ws), "event_state", es);
+		"result_kind", R.r, "pending", R.p, "logbook_step", R.ql, "wreck_system", R.ws and TRF_WqName(R.ws), "mode", R.m,
+		"captain_generation", R.cg, "pods", R.pn, "picked", R.pk, "done_leg", R.wd, "event_state", es, "guard_state", gs);
 end;
 
 -- Texts (spec 7), EN; keys in TRF_UI_Key form (#TRF_wq<name> in loc/trf_en.loc; RU falls back to EN). <key>o: the old
@@ -1239,5 +1728,13 @@ function TRF_Wq_Text()
 		wqfenceok = "Fence: 'They came from XB-13. The clan keeps guests there until somebody pays.'",
 		wqfencepoor = "Fence: 'No credits, no papers.'",
 		wqpatrol = "Patrol board: 'Marlin manifests turned up on a fence's table. The lot came from XB-13.'",
+		wqband = "Golkonda clan on open band: '$1 says the Marlin's people stay our guests.'",  -- captain name or wqclan
+		wqclan = "The Golkonda clan",
+		wqmoved = "They moved the crew to a hulk at XB-13.",
+		wqmaster = "Marlin's master: 'Wolves? Then the FTU did send someone. Get us home.'",
+		wqhome = "FTU clerk: 'The Carrier makes amends for the Cargo. This time the Carrier brought the crew home.'",
+		wqd60 = "The Marlin's crew is aboard. Hand them in at any FTU trade dock.",
+		wqd70 = "The Marlin's crew is home. The FTU charter office will register a Wolves Freight hull at a trade dock on a freight loop.",
+		wqd80 = "The Marlin's crew is home. The FTU charter office registers Wolves Freight hulls for you.",
 	};
 end;

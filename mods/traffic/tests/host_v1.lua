@@ -2245,8 +2245,8 @@ function T_V1_N()
 	TRF.mc.x = 9999999; TRF.mc.w = strrep("9", 11); TRF.mc.wt = -9999999;
 	TRF.mc.o = TRF_TpPackK({c=12, s=113}, TRF_McOKeys());
 	-- Freight unlock quest worst case (design/freight-quest-spec.md 3.3): TRF.wq with every field at its widest (a bound:
-	-- the repair keeps dc, lv, p and ws only at their steps).
-	TRF.wq = {v=1, s=90, k=7, n=9, dc=-9999999, cd=-9999999, sd=9999, lv=1, r=3, p=1, ql=90, ws=999};
+	-- the repair keeps dc, lv, p, ws, m, cg, pn, pk and wd only at their steps).
+	TRF.wq = {v=1, s=90, k=7, n=9, dc=-9999999, cd=-9999999, sd=9999, lv=1, r=3, p=1, ql=90, ws=999, m=3, cg=999, pn=3, pk=3, wd=-9999999};
 	local mcz = HOST_SaveSize(TRF.mc);
 	TRF_Mc_Fix();
 	HOST_Check(HOST_SaveSize(TRF.mc) == mcz and mcz <= 6000, "merc worst case kept by the repair: "..mcz.." bytes <= 6000");

@@ -89,7 +89,7 @@ Host grammar (`HOST_SaveSize`: number 12, string 8 + n, key 8 + n). Worst case m
 | trf_region `TRF_RegionTick` | `TRF_P("TRF_Sv_RegionTick", L)` at the end | budget reset, off-screen roll, expiry |
 | trf_hail `TRF_HlRumourText` | `TRF_N("TRF_Sv_Rumour", idx, "rec")` after the v1 rumours (the `rm` rumour); `TRF_N("TRF_Sv_Rumour", idx)` after the sweep rumour, before `rnone` (the pre-chapter-5 line) | rumour line |
 | trf_plumb `TRF_PlMods` | `"Sv"` | `TRF_Sv_Plumb`: trade dock line order 30 (`TRF_Sv_DockLine`), seed provider prio 550 (`TRF_Sv_SeedH`) |
-| trf_wq (`D/freight-quest-spec.md` 4.3, 5) | `TRF_Sv_QuestSeed(idx, src, pf, n)`, `TRF_Sv_QHas()`; `TRF_P("TRF_Wq_OnPick", b)` in `TRF_SvPick`, `TRF_P("TRF_Wq_OnHand", idx, c)` before `S.c = nil` in `TRF_SvHand` | quest records (`q`), the navigator's line, the quest step of a hand-in |
+| trf_wq (`D/freight-quest-spec.md` 4.3, 4.5, 5) | `TRF_Sv_QuestSeed(idx, src, pf, n, pt)` (`pt` a given point, `point=given`), `TRF_Sv_QHas()`, `TRF_Sv_QAt(idx)` (pods left of the quest record of idx), `TRF_Sv_QuestDrop(idx, why)` (drops it, `reason=partial`); `TRF_P("TRF_Wq_OnPick", b)` in `TRF_SvPick`, `TRF_P("TRF_Wq_OnHand", idx, c)` before `S.c = nil` in `TRF_SvHand` | quest records (`q`), the navigator's line, the quest step of a hand-in |
 | trf_scar (`D/scar-spec.md` 5.3) | `TRF_Sv_Site(idx)`, `TRF_Sv_SiteLink(idx, sid)` | the shared loss site read by a source 7 scar and its `si` link (3.1 R2) |
 | trf_state `TRF_ModList`, `TRF_Repair` | `"Sv"`; `TRF_P("TRF_Sv_Fix")` | OptDef, TuneDef, Dump; repair |
 | trf_loc `TRF_Loc_TextFns`, trf_ui `TRF_UI_TextFns` | `"TRF_Sv_Text"` | text keys |

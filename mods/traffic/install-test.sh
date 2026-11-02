@@ -43,7 +43,7 @@
 # there, placed at its entry, CHECK E7.1-E7.11); written only when set.
 # FREIGHT=0|1 (cfg enable_freight, Wolves Freight, design/freight-spec.md, CHECK EW8.1-EW8.8); written only when set.
 # WQ=0|1 (cfg enable_wq, the freight unlock quest "Missing in Capricorn", design/freight-quest-spec.md, CHECK
-# Q-WQ.1-Q-WQ.4); written only when set.
+# Q-WQ.1-Q-WQ.10; 0 also gives the first Wolves freighter its help 5 gate back); written only when set.
 # PARCELS=0|1 (cfg enable_parcels, sealed parcels, design/parcel-spec.md, CHECK E-PCL.1-E-PCL.6; LEVEL=v01/v02 write 0
 # unless PARCELS is set); PCL_PROBE=0|1 (cfg pcl_probe, the E-PCL.1/E-PCL.2 probe lines); written only when set.
 # HAUNTS=0|1 (cfg haunt, pirate haunts, design/haunt-spec.md, CHECK E16.1-E16.11); HAUNT_MODE=1|2 (cfg haunt_mode, 2 the

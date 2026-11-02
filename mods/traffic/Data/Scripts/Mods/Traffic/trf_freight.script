@@ -898,9 +898,10 @@ function TRF_FrWhere(s)
 end;
 
 -- Purchase gate at a trade dock of system cur (08 section 4, 00 section 8 F1/F3): the chapter window, New Kyoto, the
--- mission, the liability, the ship cap, help, heat <= 2, Trade not at war, a loop stop of cur's region (chapters 5-6:
--- Gefest and Golkonda), no ship in that region, pro, the dockmaster standing (feature 3, st >= 0), the decline
--- cooldown, the strict gate. Returns nil, slot, lp or the reason.
+-- mission, the liability, the ship cap, help (the first ship with trf_wq's enable_wq 1: the freight unlock quest at
+-- step 70 or later instead, reason "quest", design/freight-quest-spec.md 4.5), heat <= 2, Trade not at war, a loop stop
+-- of cur's region (chapters 5-6: Gefest and Golkonda), no ship in that region, pro, the dockmaster standing (feature 3,
+-- st >= 0), the decline cooldown, the strict gate. Returns nil, slot, lp or the reason.
 function TRF_FrBuyGate(cur)
 	local K = TRF_FrK();
 	local co = TRF_FrCo();
@@ -913,7 +914,12 @@ function TRF_FrBuyGate(cur)
 	local n = TRF_FrCount() + 1;
 	-- Step 2 hook: slots 2 and 3 (fw_max_ships 3), charter rank 3/5 standing in for help 15/30 (feature 14).
 	if n > TRF_FrMaxShips() then return "ships"; end;
-	if TRF_FrHelp() < (TRF_FrT("fw_help_slot")[n] or 99) then return "help"; end;
+	if n == 1 and TRF_N("TRF_Wq_On") == 1 then
+		local ws = TRF_N("TRF_Wq_S");
+		if type(ws) ~= "number" or ws < 70 then return "quest"; end;
+	elseif TRF_FrHelp() < (TRF_FrT("fw_help_slot")[n] or 99) then
+		return "help";
+	end;
 	if TRF_FrHeat() > 2 then return "heat"; end;
 	if TRF_FrTradeWar() then return "war"; end;
 	local slot = TRF_N("TRF_RgOf", cur);
@@ -937,8 +943,16 @@ function TRF_FrBuyGate(cur)
 	return nil, slot, lp;
 end;
 
+-- Public (trf_wq TRF_Wq_UnlockDue, the parcel box at the quest's step 70): 1 when the purchase gate passes at cur.
+function TRF_Fr_BuyOpen(cur)
+	if TRF_FrOn() and not TRF_FrBuyGate(cur) then return 1; end;
+	return nil;
+end;
+
 -- Trade dock box 300 (#1 parcel offer 400 > #8 purchase 300 > #14 dues 200 > #13 arbitration 100): the charter offer.
--- Price max(list - vch, 25 % of list) with a voucher; the first offer of the game carries the rumour line.
+-- Price max(list - vch, 25 % of list) with a voucher; the first offer of the game carries the rumour line. At the
+-- freight unlock quest's step 70 (trf_wq) the text is fwboxq instead (the office answers the crew's return), and
+-- either answer closes the quest (TRF_Wq_Unlocked; an OK without the credits leaves it at 70).
 function TRF_Fr_DockBox(kind, param)
 	if kind ~= "trade" or not TRF_FrOn() then return nil; end;
 	local fr = %FR;
@@ -957,7 +971,11 @@ function TRF_Fr_DockBox(kind, param)
 	if type(rm) == "table" and type(rm[slot]) == "table" then rn = TRF_FrSys(rm[slot].home); end;
 	local text = TRF_FrTxt("fwbox", TRF_FrNum(paid), rn);
 	if used == 1 then text = TRF_FrTxt("fwboxv", TRF_FrNum(paid), rn, TRF_FrNum(list)); end;
-	if not co or (co.seq == 0 and co.decl == nil) then text = TRF_FrTxt("fwrumour").." "..text; end;
+	if TRF_N("TRF_Wq_On") == 1 and TRF_N("TRF_Wq_S") == 70 then
+		text = TRF_FrTxt("fwboxq", TRF_FrNum(paid), rn);
+	elseif not co or (co.seq == 0 and co.decl == nil) then
+		text = TRF_FrTxt("fwrumour").." "..text;
+	end;
 	fr.offer = {sys=cur, rg=slot, price=paid, list=list, used=used, g=TRF_FrGen()};
 	TRF_FrE("box", "system", TRF_FrName(cur), "region", slot, "list", list, "price", paid, "voucher_used", TRF_KvB(used), "result", "shown");
 	return {title=TRF_FrTxt("fwboxtitle"), text=text, ok="TRF_Fr_BuyOk", no="TRF_Fr_BuyNo", a=cur, own="fw_buy"};
@@ -998,16 +1016,19 @@ function TRF_Fr_BuyOk(a)
 	TRF_FrStat("fw_buy");
 	TRF_FrE("buy", "ship_id", id, "name", TRF_FrShipName(s.nm), "region", o.rg, "home", TRF_FrName(cur), "price", o.price, "list", o.list,
 		"credits_before", cr, "credits_after", cr - o.price, "seed", s.rs, "result", "ok");
+	TRF_P("TRF_Wq_Unlocked", 1);
 	return TRF_FrTxt("fwbought", TRF_FrShipName(s.nm), TRF_FrSys(cur));
 end;
 
 -- Purchase Cancel: the offer waits fw_offer_cd legs in this system.
 function TRF_Fr_BuyNo(a)
 	local fr = %FR;
+	local o = fr.offer;
 	fr.offer = nil;
 	local co = TRF_FrCo(1);
 	if type(a) == "number" then co.decl = {sys=a, leg=TRF_FrLegs()}; end;
 	TRF_FrE("buy", "system", TRF_FrName(a), "result", "declined");
+	if type(o) == "table" then TRF_P("TRF_Wq_Unlocked", 0); end;
 	return nil;
 end;
 
@@ -1540,6 +1561,7 @@ function TRF_Fr_Text()
 		fwbox = "A bulk freighter is up for charter: $1 cr. She will run the $2 lanes under the Wolves name, FTU cover included. Sign the papers?",
 		fwboxv = "A bulk freighter is up for charter: $1 cr with your FTU cover (list $3 cr). She will run the $2 lanes under the Wolves name. Sign the papers?",
 		fwrumour = "FTU charter office: transports keep going missing in Capricorn. Cover premiums are up.",
+		fwboxq = "FTU charter office: the office does not forget a carrier who brings his people back. Register a hull under Wolves Freight for $1 cr, loop of $2?",  -- price, region
 		fwbought = "Wolves Freight: $1 registered at $2. Her first run leaves next leg.",
 		fwpoor = "FTU charter office: come back with $1 cr.",
 		fwpaid = "Wolves Freight paid $1 cr since your last visit.",

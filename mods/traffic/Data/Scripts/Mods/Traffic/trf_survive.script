@@ -950,6 +950,22 @@ function TRF_Sv_QHas()
 	return nil;
 end;
 
+-- Public (trf_wq step 3): pods left of the quest record of system idx (0 when its pods are gone), or nil without one.
+function TRF_Sv_QAt(idx)
+	local i, b = TRF_SvAt(idx);
+	if b and b.q == 1 and type(b.n) == "number" then return b.n; end;
+	return nil;
+end;
+
+-- Public (trf_wq step 3, a crew partly aboard goes home): the quest record of system idx is dropped (why in the expire
+-- line), its objects with it when placed. 1 when one was dropped.
+function TRF_Sv_QuestDrop(idx, why)
+	local i, b = TRF_SvAt(idx);
+	if not b or b.q ~= 1 then return nil; end;
+	TRF_SvDrop(i, why or "quest");
+	return 1;
+end;
+
 -- Fallback point of a quest record when no contact point passes the site rule: K.q_off from the entry portal (the
 -- map portal nearest the mothership, else the first) in one of 8 directions of the x-z plane at 45 degree steps from
 -- the direction toward the system centre, starting k0 (0..7) steps on (the fixed roll, so a record made again after an
@@ -985,14 +1001,15 @@ function TRF_SvPortalPt(idx, K, k0)
 end;
 
 -- Public (trf_wq): a quest record in system idx: source src (1..3, default 2), pay per survivor pf (default 0), n pods
--- (1..3, default 1), q = 1. No roll, region budget, cooldown or event slot. The point: a registered contact point that
+-- (1..3, default 1), q = 1. No roll, region budget, cooldown or event slot. The point: pt ({x, y, z}, the caller's point
+-- as given: step 3's hold at XB-13), else a registered contact point that
 -- passes the site rule (TRF_SvPoints, the current system only, picked by the fixed roll), else TRF_SvPortalPt. An
 -- ordinary record of idx, or an empty quest record (its pod destroyed), is dropped first (one record per system; a
 -- quest record with pods left refuses, "record"); TRF_SvAdd drops the oldest ordinary record at sv_max. In the current
 -- system the record is placed at once with the seeded-beacon line (none when it replaced a record with pods: that one
 -- had its line; held under S2/S3 as on entry). Returns the record index and the point source ("contact", "portal"), or
--- nil and the reason.
-function TRF_Sv_QuestSeed(idx, src, pf, n)
+-- nil and the reason ("given" for pt).
+function TRF_Sv_QuestSeed(idx, src, pf, n, pt)
 	if not TRF_SvOn() then return nil, "off"; end;
 	if type(idx) ~= "number" then return nil, "nomap"; end;
 	local S = TRF_SvRec();
@@ -1005,7 +1022,10 @@ function TRF_Sv_QuestSeed(idx, src, pf, n)
 	local i0, b0 = TRF_SvAt(idx);
 	if not why and b0 and b0.q == 1 and b0.n > 0 then why = "record"; end;
 	local p, ps = nil, "contact";
-	if not why then
+	if not why and type(pt) == "table" and type(pt.x) == "number" and type(pt.y) == "number" and type(pt.z) == "number" then
+		p = pt;
+		ps = "given";
+	elseif not why then
 		-- Contact points are the current system's (TRF_GnContacts): another system gets the portal point.
 		local pts = {};
 		if cur == idx then pts = TRF_SvPoints(idx, K); end;

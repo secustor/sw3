@@ -325,9 +325,9 @@ Install: `EXP=0 TRAFFIC=1 LOG=2 AUTOSAVE=0 HAIL_BOX=2 MERCS=1 TUNE=merc_cd=0,mer
 
 Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes E-EXT.1=pass` (FAIL: an `extortion_seen` without a following `extort` line, a `result=skip` with a reason other than `off`, `not_war` or `restore`, or `trigger_count=0`).
 
-## 15. Freight unlock quest, commits 1-2 (Q-WQ.1-7; `FREIGHT=1 LOG=2`, chapter 5 or later, no freighter owned)
+## 15. Freight unlock quest, commits 1-3 (Q-WQ.1-10; `FREIGHT=1 LOG=2`, chapter 5 or later, no freighter owned)
 
-`D/freight-quest-spec.md` 10; `check_ingame.py` items Q-WQ.1-7. Install: `LOG=2 sh mods/traffic/install-test.sh` (the game closed; `WQ=0` turns the quest off for an A/B; `JOBS_UI=1` or `2` for the card and the Office row). A chapter 5-6 save with help 2 or more and no Wolves freighter. One line per check: do, then see.
+`D/freight-quest-spec.md` 10; `check_ingame.py` items Q-WQ.1-10. Install: `LOG=2 sh mods/traffic/install-test.sh` (the game closed; `WQ=0` turns the quest off for an A/B; `JOBS_UI=1` or `2` for the card and the Office row). A chapter 5-6 save with help 2 or more and no Wolves freighter. One line per check: do, then see.
 
 | item | what to do | expected |
 |---|---|---|
@@ -346,5 +346,16 @@ Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes E-E
 | | on another save at step 30: leave the pod 5 legs, then enter `wreck_system` again | the beacon expired (`event=expire ... reason=ttl`), a new one on the entry (`event=wreck ... result=seeded`) |
 | Q-WQ.7 | at step 40 dock at a pirate station in the Golkonda region (Callipso, Debris 6) with the credits | box "Fence: 'Marlin papers? Cost you <p> cr. Yes?'" (`event=fence ... price=<p> result=shown`); Cancel: nothing, the box again at the next docking; OK: credits down by p, "Fence: 'They came from XB-13. ...'", the logbook "... held at XB-13 ..." (`event=clue via=fence ... cost=<p> result=ok`) |
 | | on another save at step 40: dock at a patrol station of the region with the system's dockmaster at rung 0, then at rung 1 or more | rung 0: no board line (`reason=rung` at log 2); rung 1: "Patrol board: 'Marlin manifests ...'" (`event=clue via=patrol ... cost=0 rung=<e> result=ok`) |
+| Q-WQ.8 | at step 50 enter XB-13 while the Golkonda clan has an active base there (`BASE_AT=xb13` forces a founding) | "Golkonda clan on open band: '<captain> says the Marlin's people stay our guests.'" (or "The Golkonda clan says"); `event=hold mode=1 ... result=tipped`; note whether the captain's raid comes (`module=captain event=plan ... via=tip`, open question 8) |
+| | destroy the base | two or three pods with a beacon and a marker west of the base site, "Marlin's master: 'Wolves? ...'" (`event=hold ... by=player off_screen=false result=base_gone`, `event=hold ... via=base_gone result=pods`) |
+| | on another save: let the base fall off-screen (a sweep), then enter XB-13 | "They moved the crew to a hulk at XB-13." and the mode 3 hold (Q-WQ.9) |
+| Q-WQ.9 | at step 50 enter XB-13 without a clan base | the wrecked transport with a marker west of the base site, clear of the stash asteroids, a tier-3 guard of 3-5 fighters that attacks (`event=hold mode=3 ... tier=3 ship_count=<n> result=spawned`); note whether vanilla's pirates or the clan's haunt flights join |
+| | kill every guard ship | the pods and the master's line (`event=hold ... result=guard_dead`, `... via=guard_dead result=pods`) |
+| | fly through every pod | "Survivor aboard." each, the logbook "The Marlin's crew is aboard ..." (`event=crew ... result=aboard`, `event=step step_before=50 step_after=60`) |
+| | on another save: pick one pod and jump out | the crew aboard goes home as it is (`event=crew ... result=partial reason=entry`, step 60); jump out before the kill: the guard again on the next entry |
+| Q-WQ.10 | dock at any FTU trade station with the crew | the survivor lines, help +1, no credits, "FTU clerk: 'The Carrier makes amends ...'" (`event=crew ... result=handed`, `event=step step_before=60 step_after=70`) |
+| | dock at a Gefest or Golkonda loop stop (heat 2 or less, pro 4+), also one with a parcel offer | the charter box "FTU charter office: the office does not forget a carrier ..." with the price and the region, no parcel box at that dock (`module=parcel event=offer ... reason=wq_unlock` at log 2) |
+| | OK (or Cancel on another save) | the ship registered (or declined, the decline cooldown); the logbook entry shows Completed (`event=unlock ... result=<bought,declined>`, `event=logbook ... result=done`); 10 legs later it is gone (`event=reconcile ... result=removed ... leg=`) |
+| | on another save before step 70 with `WQ=0` | the purchase box at help 5 again (`module=freight event=offer ... reason=help` below 5, never `reason=quest`) |
 
-Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes Q-WQ.4=pass,Q-WQ.6=pass`.
+Score: `python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --eyes Q-WQ.4=pass,Q-WQ.6=pass,Q-WQ.8=pass,Q-WQ.9=pass`.

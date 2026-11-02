@@ -36,8 +36,9 @@
 -- ticks, no on-screen ship); fw_onscreen and fw_losses are the step 1 toggles; fw_max_ships stays 1 (slots 2 and 3 are
 -- step 2); fw_prize_gap 1 holds a payout in the shared prize gap, fw_marker 1 marks the on-screen ship; the tune keys
 -- (fw_k, fw_price_k, fw_tick_real, fw_bank, ...) read the module defaults.
--- Freight unlock quest "Missing in Capricorn" (design/freight-quest-spec.md 6, commit 1): enable_wq (default 1) = 0 turns
--- trf_wq off (no charter office offer, no Kestrel mayday; the record is kept); tune wq_help (2), wq_cd (6 legs) and
+-- Freight unlock quest "Missing in Capricorn" (design/freight-quest-spec.md 6): enable_wq (default 1) = 0 turns trf_wq
+-- off (no charter office offer, no Kestrel mayday, no hold at XB-13; the record is kept) and gives the first Wolves
+-- freighter its help >= 5 gate back (1: the finished quest, step 70, instead); tune wq_help (2), wq_cd (6 legs) and
 -- wq_tries (2) read the TRF_Wq_TuneDef defaults.
 -- Pirate haunts (design/haunt-spec.md 6): haunt (default 0 until CHECK E16.1-E16.5 pass) = 1 lets the regional clans field
 -- the scripted pirate flights; haunt_mode 1 the substituting NewPirateFlight wrapper, 2 the fallback (vanilla builds,
