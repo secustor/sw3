@@ -385,24 +385,13 @@ end;
 
 -- Attack (7.3, 10.3) ---------------------------------------------------------------------------
 
--- T_deliberate: distinct whole-second stamps of attack events within T_win; T_del of them count once.
+-- T_deliberate: distinct whole-second stamps of attack events within T_win (traffic.script TRF_HitSecsOf); T_del of
+-- them count once.
 function TRF_Ev_Deliberate(id, rec, gt)
 	if rec.cnt then return; end;
 	local win = TRF_Ev_Tune("T_win", 20);
 	local need = TRF_Ev_Tune("T_del", 5);
-	local s = floor(gt);
-	local keep = {};
-	local have = nil;
-	if type(rec.fs) == "table" then
-		for i = 1, getn(rec.fs) do
-			local v = rec.fs[i];
-			if type(v) == "number" and s - v < win then
-				tinsert(keep, v);
-				if v == s then have = 1; end;
-			end;
-		end;
-	end;
-	if not have then tinsert(keep, s); end;
+	local keep = TRF_HitSecsOf(rec.fs, floor(gt), win);
 	rec.fs = keep;
 	if getn(keep) < need then return; end;
 	rec.cnt = 1;

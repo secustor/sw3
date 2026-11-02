@@ -937,24 +937,7 @@ function TRF_CombatMark(why, src, hold)
 	L.cbw = why;
 end;
 
--- Pure: the hit seconds of list younger than win at second s, plus s once (distinct seconds).
-function TRF_HitSecsOf(list, s, win)
-	local keep = {};
-	local have = nil;
-	if type(list) == "table" then
-		for i = 1, getn(list) do
-			local v = list[i];
-			if type(v) == "number" and s - v < win then
-				tinsert(keep, v);
-				if v == s then have = 1; end;
-			end;
-		end;
-	end;
-	if not have then tinsert(keep, s); end;
-	return keep;
-end;
-
--- Debounce of the hit source (live table L, outside combat): 1 once hits were seen in tune combat_hit_n
+-- Debounce of the hit source (live table L, outside combat; traffic.script TRF_HitSecsOf): 1 once hits were seen in tune combat_hit_n
 -- (2) distinct whole seconds within combat_hit_win (6) seconds, else nil (one debug line per window).
 function TRF_CombatHitOk(L, gt, src)
 	local win = TRF_SafeTune("combat_hit_win", 6);

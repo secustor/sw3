@@ -1349,8 +1349,8 @@ function T_FR_K()
 	local hp = "TRF_Fr_ParkHit(1,"..TRF.gen..")--";
 	n0 = S_Mark();
 	for j = 1, 5 do HOST_Fire("attack", hp); FR_Wait(1); end;
-	HOST_Check(TRF_FrSH().v.pk.cnt == 1 and S_Logs(n0, "event=parked ship_id=1 game_time=") == 1 and S_Logs(n0, "result=counted") == 1 and HOST_Live("attack", hp) == 5,
-		"five hits in five seconds count the fire (T_del), the trigger re-armed until then");
+	HOST_Check(TRF_FrSH().v.pk.cnt == 1 and S_Logs(n0, "result=hit") == 5 and S_Logs(n0, "arm_count=4 result=hit") == 1 and S_Logs(n0, "result=counted") == 1
+		and HOST_Live("attack", hp) == 5, "five hits in five seconds count the fire (T_del), the trigger re-armed until then");
 	FR_Wait(12);
 	local h0, p0, o0 = TRF.std.heat, TRF_Pro(d1), TRF.co.owe;
 	o.alive = nil;
@@ -1359,6 +1359,31 @@ function T_FR_K()
 	HOST_Check(TRF_FrShip(1) == nil and TRF.co.vch == 0 and TRF.co.owe == o0 and TRF.std.heat == h0 + 1 and p0 >= 3 and TRF_Pro(d1) == p0 - 3 and TRF.co.log[getn(TRF.co.log)].f == 2
 		and S_Logs(n0, "event=parked ship_id=1 by=player counted=true result=destroyed") == 1 and S_Logs(n0, "cause=player vch=0 voucher=0 owe_added=0") == 1,
 		"own kill of the parked ship: no voucher, no liability, heat +1, pro -3, the own-fire log entry (EW8.8)");
+	-- Kill proxy without a count: one hit, then the died event within pk_win: by=player counted=false (no voucher); the
+	-- re-arm cap logs once; a died callback of a stale gen or another ship id does nothing.
+	s = FR_Ship("debris1", {st=1, till=99, k=30});
+	TRF.co.vch = 0;
+	T_Jump("kron"); s = FR_Jump("debris1");
+	FR_Wait(5);
+	o = TRF_FrSH().v.pk and TRF_FrSH().v.pk.sh;
+	hp = "TRF_Fr_ParkHit(1,"..TRF.gen..")--";
+	n0 = S_Mark();
+	HOST_Fire("attack", hp);
+	HOST_Check(o ~= nil and TRF_FrSH().v.pk.cnt == nil and TRF_FrSH().v.pk.arm == 1 and HOST_Live("attack", hp) == 2 and S_Logs(n0, "arm_count=0 result=hit") == 1,
+		"one hit: not counted, the hit line, the trigger re-armed once");
+	TRF_FrSH().v.pk.arm = TRF_FrK().pk_arm;
+	HOST_Fire("attack", hp);
+	HOST_Check(TRF_FrSH().v.pk.arm == TRF_FrK().pk_arm + 1 and HOST_Live("attack", hp) == 2 and S_Logs(n0, "rearm_max=200 result=rearm_cap") == 1
+		and HOST_Fire("attack", hp) == nil, "re-arm cap: one rearm_cap line, no new trigger");
+	TRF_Fr_ParkDied(1, TRF.gen - 1); TRF_Fr_ParkDied(2, TRF.gen);
+	HOST_Check(TRF_FrShip(1) ~= nil and TRF_FrSH().v.pk ~= nil, "a died callback of a stale gen or another ship id: nothing");
+	FR_Wait(3);
+	h0 = TRF.std.heat;
+	o.alive = nil;
+	n0 = S_Mark();
+	HOST_Fire("died", "TRF_Fr_ParkDied(1,"..TRF.gen..")--");
+	HOST_Check(TRF_FrShip(1) == nil and TRF.co.vch == 0 and TRF.std.heat == min(h0 + 1, 9) and S_Logs(n0, "event=parked ship_id=1 by=player counted=false result=destroyed") == 1
+		and S_Logs(n0, "cause=player vch=0") == 1, "a hit within pk_win before the died event: the own kill without a count");
 	-- fw_parked 0: none; away from home: none.
 	s = FR_Ship("debris1", {st=1, till=999});
 	h.cfg.fw_parked = 0;

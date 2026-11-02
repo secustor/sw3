@@ -180,7 +180,7 @@ end;
 -- Callback names of the hit shims (TRF_Cb) -> position of the gen argument in args, chunk local.
 local CBH = {TRF_OnAttack=3, TRF_OnRaidHit=3, TRF_OnRespHit=3, TRF_OnBaseHit=2, TRF_CvEscHit=3,
 	TRF_FeqAttack=3, TRF_SwHit=3, TRF_CtJoinPart=3, TRF_OnCarrierHit=2, TRF_CapHit=3, TRF_CapWHit=3, TRF_McHit=3,
-	TRF_OnExtHit=2};
+	TRF_OnExtHit=2, TRF_Fr_ParkHit=2};
 
 -- Protected trigger callback (review O1): the string action calls a thin shim, the shim calls
 -- TRF_Cb(name, body, {args}). An error in the body stops there (call "x" returns nil) instead of
@@ -239,6 +239,24 @@ end;
 function TRF_F(x)
 	if type(x) == "number" then return format("%.3f", x); end;
 	return tostring(x);
+end;
+
+-- Pure: the whole-second stamps of list younger than win at second s, plus s once (distinct seconds): the hit windows
+-- of trf_safety (combat source a2), trf_events (T_deliberate) and trf_freight (the parked ship).
+function TRF_HitSecsOf(list, s, win)
+	local keep = {};
+	local have = nil;
+	if type(list) == "table" then
+		for i = 1, getn(list) do
+			local v = list[i];
+			if type(v) == "number" and s - v < win then
+				tinsert(keep, v);
+				if v == s then have = 1; end;
+			end;
+		end;
+	end;
+	if not have then tinsert(keep, s); end;
+	return keep;
 end;
 
 -- One-line dump of a value; depth limits nesting, tables with more than 20 entries are summarised.

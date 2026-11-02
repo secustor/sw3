@@ -432,23 +432,6 @@ function TRF_FrDelayOf(seed, lo, hi)
 	return lo + TRF_FrM(floor(abs(seed or 0)), max(1, hi - lo + 1));
 end;
 
--- Attack stamps as trf_events TRF_Ev_Deliberate keeps them: the whole-second stamps of fs less than win before s,
--- plus s once. T_del of them count the fire.
-function TRF_FrStampsOf(fs, s, win)
-	local keep, have = {}, nil;
-	if type(fs) == "table" then
-		for i = 1, getn(fs) do
-			local v = fs[i];
-			if type(v) == "number" and s - v < win then
-				tinsert(keep, v);
-				if v == s then have = 1; end;
-			end;
-		end;
-	end;
-	if not have then tinsert(keep, s); end;
-	return keep;
-end;
-
 -- Liability (08 section 5): owe from bal first, then from the wallet cr. Returns from_bal, from_wallet, rest.
 function TRF_FrLiabOf(owe, bal, cr)
 	local x = min(owe, max(0, bal));
@@ -1787,21 +1770,28 @@ function TRF_FrParkPk(id, g)
 end;
 
 -- Attack event of PLAYER_GROUP on the parked ship: player fire counted as trf_events counts it on a trader (the last
--- hit pa for the pk_win kill proxy; T_del distinct seconds within T_win set cnt). The one-shot trigger is re-armed
--- until the fire is counted, at most pk_arm times.
+-- hit pa for the pk_win kill proxy; T_del distinct seconds within T_win, traffic.script TRF_HitSecsOf, set cnt). The
+-- one-shot trigger is re-armed until the fire is counted, at most pk_arm times (one rearm_cap line at the cap). The
+-- shim is in traffic.script's CBH: a hit marks combat (trf_safety source a2).
 function TRF_FrParkHitBody(id, g)
 	local pk = TRF_FrParkPk(id, g);
 	if not pk or pk.cnt == 1 then return; end;
 	local gt = TRF_FrGt();
 	pk.pa = gt;
-	pk.fs = TRF_FrStampsOf(pk.fs, floor(gt), TRF_FrTv("T_win", 20));
+	pk.fs = TRF_HitSecsOf(pk.fs, floor(gt), TRF_FrTv("T_win", 20));
+	TRF_FrDE("parked", "ship_id", id, "game_time", floor(gt), "arm_count", pk.arm, "result", "hit");
 	if getn(pk.fs) >= TRF_FrTv("T_del", 5) then
 		pk.cnt = 1;
 		pk.fs = {};
 		TRF_FrE("parked", "ship_id", id, "game_time", floor(gt), "result", "counted");
 		return;
 	end;
-	if pk.arm < TRF_FrK().pk_arm and TRF_FrAlive(pk.sh) then
+	local mx = TRF_FrK().pk_arm;
+	if pk.arm >= mx then
+		if pk.arm == mx then pk.arm = mx + 1; TRF_FrE("parked", "ship_id", id, "rearm_max", mx, "result", "rearm_cap"); end;
+		return;
+	end;
+	if TRF_FrAlive(pk.sh) then
 		pk.arm = pk.arm + 1;
 		TRF_FrTrig("attack", TRF_FrParkCb("TRF_Fr_ParkHit", id), PLAYER_GROUP, pk.sh);
 	end;
