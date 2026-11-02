@@ -1053,15 +1053,13 @@ function TRF_Fr_DockBox(kind, param)
 	if co then vch = co.vch; end;
 	local paid, used = TRF_FrPaidOf(list, vch, K.floor_k);
 	local rm = TRF_N("TRF_RgMap");
-	local rn = "";
-	if type(rm) == "table" and type(rm[slot]) == "table" then rn = TRF_FrSys(rm[slot].home); end;
+	local rn, home = "", nil;
+	if type(rm) == "table" and type(rm[slot]) == "table" then home = rm[slot].home; rn = TRF_FrSys(home); end;
 	local hk = "";
 	if hu > 1 then hk = tostring(hu); end;
 	local text = TRF_FrTxt("fwbox"..hk, TRF_FrNum(paid), rn);
 	if used == 1 then text = TRF_FrTxt("fwboxv"..hk, TRF_FrNum(paid), rn, TRF_FrNum(list)); end;
 	local wq70 = TRF_N("TRF_Wq_On") == 1 and TRF_N("TRF_Wq_S") == 70;
-	local home = nil;
-	if type(rm) == "table" and type(rm[slot]) == "table" then home = rm[slot].home; end;
 	if wq70 then
 		text = TRF_FrTxt("fwboxq", TRF_FrNum(paid), TRF_N("TRF_Wq_SysEn", home) or rn);
 	elseif not co or (co.seq == 0 and co.decl == nil) then

@@ -314,8 +314,8 @@ def verify(path, loc, recs):
             k = (n.findtext(tag) or "").strip()
             if k.upper() not in keys:
                 bad.append("%s %s key %s not in %s" % (nm, tag, k, loc))
-    print("verify: %d records, %d trf_ records, %d vanilla" % (
-        len(names), sum(1 for n in names if n.startswith("trf_")), sum(1 for n in names if not n.startswith("trf_"))))
+    nm = sum(1 for n in names if n.startswith("trf_") or n.startswith("mail_trf_"))
+    print("verify: %d records, %d trf_ and mail_trf_ records, %d vanilla" % (len(names), nm, len(names) - nm))
     return bad
 
 

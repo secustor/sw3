@@ -647,7 +647,8 @@ end;
 -- callback, as a box button): a = 1 OK, 0 Cancel (TRF_PlAnswer: the spec's handler, then the vanilla call once), -1
 -- neither (the lock freed, the vanilla call once). esc 1 (the window closed without a final answer, seen from a due call
 -- of the tick): the handler of a 1 or 0 runs, the vanilla call does not (as the Cancel of the vanilla dock request; the
--- player docks again). Returns the handler's reply, or nil (also for a stale answer: no open dialog box).
+-- player docks again; an armed Office board is cleared, as after the vanilla call). Returns the handler's reply, or nil
+-- (also for a stale answer: no open dialog box).
 function TRF_PlDlgAnswer(a, esc)
 	local p = %P;
 	local b = p.box;
@@ -660,6 +661,7 @@ function TRF_PlDlgAnswer(a, esc)
 	if esc == 1 then
 		local v = nil;
 		if a == 1 or a == 0 then v = TRF_Cb("TRF_PlDlgAnswer", TRF_PlAnsBody, {b, a}); end;
+		TRF_PlJbAfter();
 		TRF_PlE("box_answer", "kind", b.k, "box", tostring(b.s.own), "answer", a, "via", "dialog", "result", "closed");
 		return v;
 	end;

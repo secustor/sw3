@@ -1748,7 +1748,8 @@ end;
 
 -- Opens dialog file k (TRF_WqDlgFiles) for via: o.args ($1..$3 of every text), o.ov (token -> another text key: the
 -- variants), o.hd (the answers hidden), o.lit (token -> a literal value); x travels with the record to the finish. 1 when
--- StartTradeDialog ran (its init TRF_WqPgInit<k> has set the page), else nil and the reason (logged; the caller falls back).
+-- StartTradeDialog ran (its init TRF_WqPgInit<k> has set the page), else nil and the reason (logged; the caller falls back;
+-- due: the Esc check could not be armed).
 function TRF_WqDlgOpen(k, o, via, x)
 	local wq = %WQ;
 	local fi = TRF_WqDlgFiles()[k];
@@ -1766,12 +1767,18 @@ function TRF_WqDlgOpen(k, o, via, x)
 	if type(o.lit) == "table" then for t, v in o.lit do rv[t] = tostring(v); end; end;
 	wq.dn = (wq.dn or 0) + 1;
 	wq.dlg = {k=k, rv=rv, hd=o.hd or {}, an=fi.an, via=via, dn=wq.dn, x=x or {}, g=TRF_WqGen()};
+	-- The Esc check armed first (TRF_Wq_DlgCheck): without it a window closed without an answer would keep the record
+	-- (busy) and the lock for the visit.
+	if not TRF_N("TRF_Due", 1, "TRF_Wq_DlgCheck", wq.dn) then
+		wq.dlg = nil;
+		TRF_WqFb(k, "due");
+		return nil, "due";
+	end;
 	if call(TRF_WqDlgCall, {fi.f, fi.ini}, "x", TRF_WqErr) ~= 1 then
 		wq.dlg = nil;
 		TRF_WqFb(k, "error");
 		return nil, "error";
 	end;
-	TRF_N("TRF_Due", 1, "TRF_Wq_DlgCheck", wq.dn);
 	TRF_N("TRF_Stat", "wq_dialog");
 	TRF_WqE("dialog", "dialog", k, "via", via, "result", "opened");
 	return 1;
@@ -1877,7 +1884,11 @@ function TRF_WqDlgFx(d)
 	if k == "1" then
 		if r == "acc" then code = 1; elseif r == "dec" then code = 0; end;
 		if d.via == "board" then
-			if code == 1 then TRF_Wq_BoxOk(x.a); elseif code == 0 then TRF_Wq_BoxNo(x.a); else wq.offer = nil; end;
+			if code == 1 then
+				TRF_Wq_BoxOk(x.a);
+				-- The row was closed as gone at the card's OK (took answered before the window): accepted now.
+				if TRF_WqS() == 10 then TRF_N("TRF_PlJbMark", TRF_WqK().jid, "jbtaken"); end;
+			elseif code == 0 then TRF_Wq_BoxNo(x.a); else wq.offer = nil; end;
 			return;
 		end;
 		if code == -1 then wq.offer = nil; end;
@@ -2024,13 +2035,13 @@ end;
 
 -- In-space conversation k (D2, D4, D7, D8): the window from a due call dt s later (K.dly by default; then the gate, the
 -- box lock wq and, for the band, 7c while the wanted captain is on-screen), else the radio line (pilot pil) or with arr 1
--- an arrival line. Without the files (cfg off, xml, native) the line comes at once. One pending per visit (WQ.v.sp): a
+-- an arrival line. Without the files (cfg off, xml, native, uistate) the line comes at once. One pending per visit (WQ.v.sp): a
 -- second one says the first one's line.
 function TRF_WqSpace(k, o, line, pil, dt, arr)
 	local wq = %WQ;
 	local sp = {k=k, o=o or {}, line=line, pil=pil, arr=arr};
 	local why = TRF_WqDlgWhy("space");
-	if why == "off" or why == "xml" or why == "native" or why == "jump" then TRF_WqFb(k, why); TRF_WqSpaceLine(sp); return; end;
+	if why == "off" or why == "xml" or why == "native" or why == "uistate" or why == "jump" then TRF_WqFb(k, why); TRF_WqSpaceLine(sp); return; end;
 	if type(wq.v.sp) == "table" then TRF_WqFb(wq.v.sp.k, "replaced"); TRF_WqSpaceLine(wq.v.sp); end;
 	wq.sn = (wq.sn or 0) + 1;
 	sp.n = wq.sn;

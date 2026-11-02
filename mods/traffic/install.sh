@@ -143,7 +143,7 @@ if [ "$news" = 1 ]; then
     case $rc in
     0) ;;
     3) rm -f "$newstmp"; die "--news: $newsrel has no </News> line. Nothing changed." ;;
-    4) rm -f "$newstmp"; die "--news: $newsrel has trf_ records outside the sw3-traffic block. Nothing changed." ;;
+    4) rm -f "$newstmp"; die "--news: $newsrel has trf_ or mail_trf_ records outside the sw3-traffic block. Nothing changed." ;;
     *) rm -f "$newstmp"; die "--news: merging $newsrel failed (awk exit $rc). Nothing changed." ;;
     esac
 fi

@@ -1659,11 +1659,24 @@ function T_WQ_G()
 	n0 = S_Mark();
 	WQ_Visit();
 	PC_Dock();
+	TRF_PlReg().jb = {k="trade", rows={}, arm=1, g=TRF.gen};
 	HOST_DlgEsc();
 	T_Tick(4, 0.5);
 	HOST_Check(c1 and (TRF.wq == nil or TRF.wq.dc == nil) and getn(h.dlgs) == nd + 1 and WQ_Logs(n0, "event=dialog dialog=1 via=dock answer=none result=closed") == 1
-		and S_Logs(n0, "module=plumb event=box_answer kind=trade box=wq answer=-1 via=dialog result=closed") == 1 and TRF.live.box == nil,
-		"D1 close: no cooldown, the station window; Esc: no cooldown, the lock freed, no station window (dock again)");
+		and S_Logs(n0, "module=plumb event=box_answer kind=trade box=wq answer=-1 via=dialog result=closed") == 1 and TRF.live.box == nil
+		and TRF_PlReg().jb == nil,
+		"D1 close: no cooldown, the station window; Esc: no cooldown, the lock freed, no station window (dock again), an armed board cleared");
+	-- The due list full: the Esc check cannot be armed, so the window does not open (reason due) and the box follows.
+	WQ_Begin("debris6", "5_1", WQ_GCfg());
+	WQ_DlgUi(0);
+	WQ_Visit();
+	for i = 1, 32 do TRF_Due(0, "TRF_WqNoErr"); end;
+	n0 = S_Mark();
+	r = PC_Dock();
+	HOST_Check(r.nb == 1 and WQ_Dlg().name == nil and WQ_Logs(n0, "event=dialog_fallback dialog=1 reason=due") == 1 and TRF_WqSH().dlg == nil,
+		"D1 with the due list full: no window (reason due), no record, the box");
+	WQ_Begin("debris6", "5_1", WQ_GCfg());   -- no decline: the next block wants the offer again (the entry clears the due list)
+	WQ_DlgUi(0);
 	-- Fallbacks: hail_xml 0, no native, a window up: the box, a dialog_fallback line.
 	WQ_Visit();
 	h.cfg.hail_xml = nil;
@@ -1701,11 +1714,14 @@ function T_WQ_G()
 	WQ_Begin("debris6", "5_1", WQ_GCfg());
 	WQ_DlgUi(2);
 	local row = TRF_Wq_JobRow("trade");
+	TRF_JobBoardMark = HOST_JobBoardMark;
+	h.jb = {{id="wq", header="x"}}; h.jbm = {};
 	local v = TRF_Wq_CardOk(row.a);
 	w = WQ_Dlg();
 	WQ_Picks("a_go", "a_acc", "a_fin");
 	T_Tick(2, 0.5);
-	local b1 = v == nil and w.name == "TRF_Wq1" and TRF.wq and TRF.wq.s == 10;
+	local b1 = v == nil and w.name == "TRF_Wq1" and TRF.wq and TRF.wq.s == 10
+		and getn(h.jbm) == 1 and h.jbm[1].header == TRF_Txt("jbtaken") and h.jbm[1].closed == 1;
 	WQ_Begin("debris6", "5_1", WQ_GCfg());
 	WQ_DlgUi(4);
 	row = TRF_Wq_JobRow("trade");
