@@ -108,6 +108,7 @@ case "${JOBS_LOG:-1}" in 0|1) ;; *) echo "JOBS_LOG must be 0 or 1" >&2; exit 1;;
 opt=""
 case "${NEWS:-0}" in 0) ;; 1) NEWS_MODE=${NEWS_MODE:-2} ;; *) echo "NEWS must be 0 or 1" >&2; exit 1;; esac
 case "${MERC_NAMES:-0}" in 0) ;; 1) opt="$opt, mc_names=2" ;; *) echo "MERC_NAMES must be 0 or 1" >&2; exit 1;; esac
+[ -z "${PILOTS:-}" ] || { echo "PILOTS was renamed to MERC_NAMES" >&2; exit 1; }
 LEVEL=${LEVEL:-v1}
 case "$LEVEL" in
 v1) pre= ;;

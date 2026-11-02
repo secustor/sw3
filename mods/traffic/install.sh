@@ -55,6 +55,7 @@ done
 game=$(cd "$game" && pwd)
 case "$news" in 0|1) ;; *) die "NEWS must be 0 or 1" ;; esac
 case "$merc_names" in 0|1) ;; *) die "MERC_NAMES must be 0 or 1" ;; esac
+[ -z "${PILOTS:-}" ] || die "PILOTS was renamed: use MERC_NAMES=1 or --merc-names"
 
 # Package files: release layout and source tree are the same here.
 src=$here/Data/Scripts/Mods/Traffic
@@ -232,7 +233,7 @@ fi
 # Pilot templates: Pilots.xml is backed up on the first merge (the backup line of the manifest; uninstall.sh restores
 # it); without --merc-names the merge has the speakers block only, so an earlier mercs block goes.
 pilots_n() { echo "$(grep -c '<GamePilot name="TRF_WqP_' "$game/$pilotsrel") TRF_WqP_ speakers, $(grep -c '<GamePilot name="TRF_McP_' "$game/$pilotsrel") TRF_McP_ templates"; }
-if put "$pilotstmp" "$pilotsrel"; then say "merc-names: $(pilots_n) merged into $pilotsrel"
+if put "$pilotstmp" "$pilotsrel"; then say "pilots: $(pilots_n) merged into $pilotsrel"
 else say "unchanged $pilotsrel (pilot templates)"; fi
 rm -f "$pilotstmp"
 
@@ -321,7 +322,7 @@ say "hail dialog: $xmlrel, $xmlrel2, $xmlrel3, hail_xml $(tr -d '\r' < "$cur" | 
 say "freight quest dialogs: $trdrel/TRF_Wq*.xml (cfg wq_dialog $(tr -d '\r' < "$cur" | sed -n 's/.*wq_dialog=\([0-9]*\).*/\1/p' | head -1))"
 say "loc: $locrel"
 [ "$news" = 0 ] || say "news: $(grep -c '<name>trf_' "$game/$newsrel") trf_ records in $newsrel, news_mode $(tr -d '\r' < "$cur" | sed -n 's/.*news_mode=\([0-9]*\).*/\1/p' | head -1)"
-say "merc-names: $(pilots_n) in $pilotsrel, mc_names $(tr -d '\r' < "$cur" | sed -n 's/.*mc_names=\([0-9]*\).*/\1/p' | head -1)"
+say "pilots: $(pilots_n) in $pilotsrel, mc_names $(tr -d '\r' < "$cur" | sed -n 's/.*mc_names=\([0-9]*\).*/\1/p' | head -1)"
 say "backups and manifest: sw3-traffic-backup/"
 echo "done."
 echo "Start the game; the mod logs 'traffic: lua: v1 loaded ... modules=18' to $game/sw3tp.log (README, In-game checks)."

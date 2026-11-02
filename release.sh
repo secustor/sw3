@@ -50,7 +50,7 @@ stage_traffic() {   # own files only: scripts (CRLF, as in the repo), hail dialo
     cp "$s/install.sh" "$s/uninstall.sh" "$s/README.md" "$s/VERSION" "$1/"
     mkdir -p "$1/loc" "$1/news"
     cp "$s"/loc/*.loc "$1/loc/"; cp "$s/news/trf_news.xml" "$s/news/merge.awk" "$1/news/"
-    mkdir -p "$1/merge"; cp "$s/merge/Pilots.xml" "$s/merge/pilots_merge.awk" "$1/merge/"   # the speakers block on every install, the mercs block with --pilots
+    mkdir -p "$1/merge"; cp "$s/merge/Pilots.xml" "$s/merge/pilots_merge.awk" "$1/merge/"   # the speakers block on every install, the mercs block with --merc-names
     cp "$here/mods/trackpad/LICENSE" "$1/LICENSE"
     chmod 755 "$1/install.sh" "$1/uninstall.sh"
 }

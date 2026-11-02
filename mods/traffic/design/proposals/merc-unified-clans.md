@@ -205,7 +205,7 @@ Host grammar: number 12 B, string 8 + n, string key 8 + n, number key 12, table 
 | 12 + P packed, plus 13 keyed | about 3.9 KB | about 1.5 KB | [I] |
 | **Merged, packed, with fortune and stages (C.2)** | **about 2.9 KB** | **about 1.0 KB** | [I] |
 
-Host full state is 80,349 B with stashes against a budget of 100,000 B (TR:90, citing `D/PROGRESS.md`) [V]. With the merged record: about 83.2 KB worst case. Fortune, stage, role and the big-ship stamps cost about 0.5 KB of the 2.9 KB. Named pilots (`merc-pilot-names.md` 5.4, added 2026-10-24): `p0..p4`, `px`, `pt` and `dn` (in `e`) add about 0.6 KB worst case and about 150 B typical [I]. The cfg key `mc_names` (0; 2 after `install.sh --pilots`) and the template fallback of `TRF_BuildFlight`'s `ov` are in `12-mercenary-packs.md` section 6 (Config, Spawn).
+Host full state is 80,349 B with stashes against a budget of 100,000 B (TR:90, citing `D/PROGRESS.md`) [V]. With the merged record: about 83.2 KB worst case. Fortune, stage, role and the big-ship stamps cost about 0.5 KB of the 2.9 KB. Named pilots (`merc-pilot-names.md` 5.4, added 2026-10-24): `p0..p4`, `px`, `pt` and `dn` (in `e`) add about 0.6 KB worst case and about 150 B typical [I]. The cfg key `mc_names` (0; 2 after `install.sh --merc-names`) and the template fallback of `TRF_BuildFlight`'s `ov` are in `12-mercenary-packs.md` section 6 (Config, Spawn).
 
 ### C.6 Clocks and update points
 

@@ -165,7 +165,7 @@ if [ "$miss" = 0 ]; then
     check "plain install (no flags): exit 0" inst 9 sh "$mod/install.sh" "$fake"
     check "plain install: Pilots.xml has the 8 speakers only, vanilla backup, mc_names=0 ($(mcn))" sh -c "cmp -s \"$fp\" \"$work/s1.xml\" && cmp -s \"$fake/sw3-traffic-backup/files/Data/Game/Pilots.xml\" \"$van\" && [ \"\$(tr -d '\r' < \"$cfg\" | sed -n 's/.*[{ ,]mc_names=\([0-9]*\).*/\1/p' | head -1)\" = 0 ]"
     check "plain install: 12 quest dialogs as shipped (TRF_WqP_ speakers)" wqsame
-    check "plain install: summary names the speakers" grep -q 'merc-names: 8 TRF_WqP_ speakers, 0 TRF_McP_ templates in Data/Game/Pilots.xml' "$work/install-9.log"
+    check "plain install: summary names the speakers" grep -q 'pilots: 8 TRF_WqP_ speakers, 0 TRF_McP_ templates in Data/Game/Pilots.xml' "$work/install-9.log"
     check "uninstall after a plain install: exit 0" inst 10 sh "$mod/uninstall.sh" "$fake"
     check "uninstall after a plain install: Pilots.xml vanilla, no quest dialogs" sh -c "cmp -s \"$fp\" \"$van\" && ! ls \"$tq\"/TRF_Wq*.xml >/dev/null 2>&1"
     check "install aborts on a TRF_ template outside the blocks, Pilots.xml unchanged" sh -c "cp \"$work/clash.xml\" \"$fp\" && ! sh \"$mod/install.sh\" \"$fake\" && cmp -s \"$fp\" \"$work/clash.xml\" && [ ! -d \"$fake/sw3-traffic-backup\" ]"
