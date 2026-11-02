@@ -1149,6 +1149,16 @@ function T_WQ_E()
 	local hrec = nil;
 	for id, r in TRF.live.tr do if r.wq then hrec = id; end; end;
 	HOST_Check(hrec == nil, "the hulk is no trader record");
+	-- The guard group of this visit: TRF_Wq_G<gen> (as trf_raid's TRF_Raid_<n>), at war with the player both ways; the
+	-- builder's group global TRF_GWq<gen> is cleared.
+	local gn1 = TRF_WqSH().v.gd and TRF_WqSH().v.gd.gn;
+	local war = 0;
+	for i = 1, getn(h.rel) do
+		local r = h.rel[i];
+		if r[3] == RELATION_WAR and ((r[1] == gn1 and r[2] == PLAYER_GROUP) or (r[1] == PLAYER_GROUP and r[2] == gn1)) then war = war + 1; end;
+	end;
+	HOST_Check(gn1 == "TRF_Wq_G"..TRF.gen and h.groups[gn1] and h.groups[gn1].team == "Pirates" and war == 2 and getglobal("TRF_GWq"..TRF.gen) == nil,
+		"the guard group of the visit "..tostring(gn1).." (TRF_Wq_G<gen>, team Pirates), at war with the player both ways, no group global left");
 	-- Guard counts by difficulty: EASY 3, HARD 5 asked (the row's entries cap the ships).
 	h.diff = HARD;
 	T_Jump("golkonda");
@@ -1167,6 +1177,31 @@ function T_WQ_E()
 	h.diff = NORMAL;
 	HOST_Check(WQ_Logs(n0, "ships_asked=5 result=spawned") == 1 and WQ_Logs(n1, "ships_asked=3 result=spawned") == 1 and nge == 3 and ngh >= nge and ngh <= 5,
 		"guard ships by difficulty: HARD asks 5 ("..ngh.."), EASY 3 ("..nge..")");
+	local gn2 = TRF_WqSH().v.gd and TRF_WqSH().v.gd.gn;
+	HOST_Check(gn2 == "TRF_Wq_G"..TRF.gen and gn2 ~= gn1, "a later visit builds its guard in a group of its own ("..tostring(gn2).." after "..tostring(gn1)..")");
+	-- trf_safety's suppression at the entry (a movie: TRF_Supp 1): no hulk and no guard, and no line of the hold (the
+	-- lines follow the build).
+	T_Jump("golkonda");
+	R = TRF.wq;
+	local im0 = TRF_InMovie;
+	TRF_InMovie = HOST_InMovie; h.mov = 1;
+	n0 = S_Mark();
+	m0, s0 = getn(h.msgs), getn(h.screen);
+	T_Jump("xb13");
+	R = TRF.wq;
+	TRF_InMovie = im0; h.mov = nil;
+	T_Tick(30, 0.5);
+	said = WQ_Said(m0, s0);
+	HOST_Check(R.s == 50 and R.m == 3 and WQ_Logs(n0, "event=hold system=xb13 mode=3 result=none reason=suppressed") == 1 and WQ_Guard() == 0
+		and WQ_Objs("TRF_WQ_HULK") == 0 and not WQ_Has(said, "stay our guests") and S_Logs(n0, "module=plumb event=arrival_line owner=wq") == 0,
+		"a suppressed entry: result=none reason=suppressed, no hulk, no guard, no band line");
+	-- The hold of an EASY visit again (3 ships) for the jump check below.
+	h.diff = EASY;
+	T_Jump("golkonda");
+	R = TRF.wq;
+	T_Jump("xb13");
+	R = TRF.wq;
+	h.diff = NORMAL;
 	-- A jump deletes the hulk and the guard; the next entry builds them again.
 	n0 = S_Mark();
 	T_Jump("golkonda");
@@ -1201,6 +1236,30 @@ function T_WQ_E()
 		and WQ_Logs(n0, "event=crew system=xb13 picked=1 pods="..pn.." result=partial reason=entry") == 1
 		and S_Logs(n0, "module=survive event=expire system=xb13 ") == 1 and S_Logs(n0, "module=survive event=expire system=xb13 beacon=1 pods="..(pn - 1).." ") == 1
 		and WQ_Logs(n0, "event=step step_before=50 step_after=60 reason=partial") == 1, "partial carry, then a jump: step 60, the pods left dropped");
+	-- s 60 with the quest carry gone (TRF.sv dropped): the repair of the next entry falls back to s 50 (pn and pk go, the
+	-- logbook wqd50) and the hold runs again.
+	TRF.sv = nil;
+	n0 = S_Mark();
+	T_Jump("xb13");
+	R = TRF.wq;
+	HOST_Check(R.s == 50 and R.pn == nil and R.pk == nil and h.qlog.trf_wq.d == "#TRF_wqd50" and WQ_Logs(n0, "event=crew pods="..pn.." picked=1 result=reset reason=no_carry via=fix") == 1
+		and WQ_Logs(n0, "event=step step_before=60 step_after=50 reason=no_carry") == 1 and WQ_Logs(n0, "result=spawned") == 1,
+		"s 60 without the quest carry: back to s 50 at the repair, logbook wqd50, the hold again");
+	-- Survivors off: a crew partly aboard stays at s 50 (no partial without survive's carry).
+	T_Jump("golkonda");
+	R = WQ_At(50, {r=1, ql=50, m=3, pn=3, pk=1});
+	TRF.sv = {b={{s=x, si=0, x=750, y=0, z=280, n=2, n0=3, f=0, nm=0, lg=TRF.clock.legs, src=2, sl=0, pf=0, pp=0, q=1}},
+		c={n=1, cr=0, pc=0, s1=x, f=0, lg=TRF.clock.legs, q=1}, st={res=0, sold=0, lost=0}, r={}, sd=1};
+	TRF_Sv_Fix();
+	h.cfg.enable_survivors = 0;
+	n0 = S_Mark();
+	T_Jump("xb13");
+	R = TRF.wq;
+	h.cfg.enable_survivors = 1;
+	HOST_Check(R.s == 50 and R.pn == 3 and R.pk == 1 and WQ_XbRec() and WQ_Logs(n0, "result=partial") == 0 and WQ_Logs(n0, "event=step") == 0,
+		"survivors off: a crew partly aboard stays at s 50 (no partial)");
+	T_Jump("golkonda");
+	R = TRF.wq;
 	-- The record gone with no pod aboard: the hold starts again (pn and pk go).
 	R = WQ_At(50, {r=1, ql=50, m=3, pn=3, pk=0});
 	TRF.sv = nil;
@@ -1264,9 +1323,9 @@ function T_WQ_F()
 	TRF.sv = nil;
 	local x = V_Idx("xb13");
 	-- Hand-in at s 60: the normal survivor standing (help +1), no credits, step 70, the clerk's line, logbook wqd70.
-	local R = WQ_At(60, {r=1, ql=60, pn=3, pk=3});
 	TRF.sv = {b={}, c={n=3, cr=0, pc=0, s1=x, f=0, lg=TRF.clock.legs, q=1}, st={res=0, sold=0, lost=0}, r={}, sd=1};
 	TRF_Sv_Fix();
+	local R = WQ_At(60, {r=1, ql=60, pn=3, pk=3});
 	local cr0, h0 = h.credits, TRF.std.help;
 	local n0 = S_Mark();
 	WQ_Visit();
@@ -1374,9 +1433,37 @@ function T_WQ_F()
 	TRF.wq = {s=50, r=1, sd=7, m=2, cg="x", pn=4, pk=1};
 	TRF_Wq_Fix();
 	local b = TRF.wq;
+	TRF.sv = {b={}, c={n=2, cr=0, pc=0, s1=x, f=0, lg=TRF.clock.legs, q=1}, st={res=0, sold=0, lost=0}, r={}, sd=1};
+	TRF_Sv_Fix();
 	TRF.wq = {s=60, r=1, sd=7, m=1, cg=3, pn=2, pk=3};
 	TRF_Wq_Fix();
 	local c = TRF.wq;
+	-- s 60 with an empty TRF.sv (survive's quest carry gone): the repair falls back to s 50 (pn and pk go), the next
+	-- reconcile gives wqd50; at an entry (the carry lost after the repair) the same through TRF_WqStep. With survivors off
+	-- s 60 stays (open question 18).
+	local sv0 = h.cfg.enable_survivors;
+	h.cfg.enable_survivors = 1;
+	TRF.sv = nil;
+	TRF.wq = {s=60, r=1, sd=7, pn=3, pk=3, ql=60};
+	local n1 = S_Mark();
+	TRF_Wq_Fix();
+	local c0 = TRF.wq;
+	TRF_Wq_OnActivate();
+	HOST_Check(c0.s == 50 and c0.pn == nil and c0.pk == nil and h.qlog.trf_wq and h.qlog.trf_wq.d == "#TRF_wqd50"
+		and WQ_Logs(n1, "event=crew pods=3 picked=3 result=reset reason=no_carry via=fix") == 1 and WQ_Logs(n1, "event=step step_before=60 step_after=50 reason=no_carry") == 1,
+		"repair: s 60 with an empty TRF.sv falls back to s 50 (pn, pk gone), logbook wqd50");
+	TRF.wq = {v=1, s=60, k=0, n=0, r=1, sd=7, pn=2, pk=1, ql=60};
+	n1 = S_Mark();
+	TRF_Wq_OnEnter();
+	local c1 = TRF.wq;
+	h.cfg.enable_survivors = 0;
+	TRF.wq = {s=60, r=1, sd=7, pn=3, pk=3};
+	TRF_Wq_Fix();
+	local c2 = TRF.wq;
+	h.cfg.enable_survivors = sv0;
+	HOST_Check(c1.s == 50 and c1.pn == nil and WQ_Logs(n1, "event=crew pods=2 picked=1 result=reset reason=no_carry via=entry") == 1
+		and WQ_Logs(n1, "event=step step_before=60 step_after=50 reason=no_carry") == 1 and c2.s == 60 and c2.pn == 3,
+		"entry: s 60 without the carry back to s 50; survivors off: s 60 stays");
 	TRF.wq = {s=80, sd=7, wd=legs, pn=2, m=1};
 	TRF_Wq_Fix();
 	local e = TRF.wq;

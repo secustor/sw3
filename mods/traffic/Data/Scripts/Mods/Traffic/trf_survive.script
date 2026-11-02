@@ -950,6 +950,14 @@ function TRF_Sv_QHas()
 	return nil;
 end;
 
+-- Public (trf_wq steps 3-4): 1 while a quest crew is aboard (c.q 1), 0 without one, nil while the module is off (cfg
+-- enable_survivors 0). Unlike TRF_Sv_QHas it ignores the quest records.
+function TRF_Sv_QCarry()
+	if not TRF_SvOn() then return nil; end;
+	if type(TRF.sv) == "table" and type(TRF.sv.c) == "table" and TRF.sv.c.q == 1 then return 1; end;
+	return 0;
+end;
+
 -- Public (trf_wq step 3): pods left of the quest record of system idx (0 when its pods are gone), or nil without one.
 function TRF_Sv_QAt(idx)
 	local i, b = TRF_SvAt(idx);
