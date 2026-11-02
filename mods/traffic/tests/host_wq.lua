@@ -1088,6 +1088,20 @@ function T_WQ_E()
 		and WQ_Logs(n0, "event=hold system=xb13 mode=1 captain_slot="..slot.." result=base reason=captain:state_4") == 1,
 		"no living captain: no tip, cg dropped, 'The Golkonda clan says'");
 	TRF.cap[slot].st = 1;
+	-- A paid informant tip to another system (seen golkonda, ti this leg) stays: the quest tip is refused (tip).
+	TRF.cap[slot].seen = V_Idx("golkonda");
+	TRF.cap[slot].ti = TRF.clock.legs;
+	n0 = S_Mark();
+	T_Jump("golkonda");
+	R = TRF.wq;
+	TRF.cap[slot].seen = V_Idx("golkonda");
+	TRF.cap[slot].ti = TRF.clock.legs;
+	T_Jump("xb13");
+	R = TRF.wq;
+	HOST_Check(R.m == 1 and R.cg == nil and TRF.cap[slot].seen == V_Idx("golkonda")
+		and WQ_Logs(n0, "event=hold system=xb13 mode=1 captain_slot="..slot.." result=base reason=captain:tip") == 1,
+		"a paid tip to golkonda stays: the quest tip refused (tip), seen unchanged");
+	TRF.cap[slot].ti = nil;
 	-- The base destroyed by the player in view: the hook runs before the record changes, 2-3 pods, the master's line.
 	m0, s0 = getn(h.msgs), getn(h.screen);
 	n0 = S_Mark();

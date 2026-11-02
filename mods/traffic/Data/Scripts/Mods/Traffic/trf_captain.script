@@ -1642,8 +1642,9 @@ end;
 -- Public (trf_wq step 3, design/freight-quest-spec.md 4.5): the quest tip. The captain of slot (st 1) is seen at idx
 -- (a system of his region, off the exclusion list) with a tip leg r.ti as the informant sale gives it, without the fee:
 -- an entry into idx within tip_legs decides at chance 100 (TRF_CapChance via "tip"); TRF_CapGate and TRF_CapSysGate
--- still apply, and the plan uses the tip up. trf_wq tips again on every entry of the step. Returns the captain's
--- generation, or nil and the reason.
+-- still apply, and the plan uses the tip up. trf_wq tips again on every entry of the step. A paid informant tip to
+-- another system within tip_legs stays ("tip": the sale is the player's). Returns the captain's generation, or nil and
+-- the reason.
 function TRF_Cap_QuestTip(slot, idx)
 	if not TRF_CapOn() then return nil, "off"; end;
 	local r = TRF_CapRec(slot);
@@ -1651,6 +1652,7 @@ function TRF_Cap_QuestTip(slot, idx)
 	if r.st ~= 1 then return nil, "state_"..tostring(r.st); end;
 	if type(idx) ~= "number" or TRF_CapExcl(idx) then return nil, "deny"; end;
 	if TRF_CapSlotOf(idx) ~= slot then return nil, "region"; end;
+	if r.seen ~= idx and type(r.ti) == "number" and TRF_CapLegs() - r.ti <= TRF_CapK().tip_legs then return nil, "tip"; end;
 	r.seen = idx;
 	r.ti = TRF_CapLegs();
 	TRF_CapE("intel", "slot", slot, "generation", r.gen, "seen", TRF_CapName(idx), "result", "tipped", "reason", "quest");

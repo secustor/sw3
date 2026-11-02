@@ -2033,7 +2033,8 @@ def c_wq8(ctx):
     gone = ctx.find("wq", "hold", result="base_gone")
     pods = ctx.find("wq", "hold", result="pods")
     for r in gone:
-        if r.get("off_screen") == "false" and not [p for p in pods if p.src == r.src and p.n > r.n and p.get("via") == "base_gone"]:
+        if r.get("off_screen") == "false" and not r.get("reason") \
+                and not [p for p in pods if p.src == r.src and p.n > r.n and p.get("via") == "base_gone"]:
             res.fails.append("%s: the base died in view but no pods ejected" % r.short())
     if not tip and not base:
         res.missing.append("at step 50 enter XB-13 while the Golkonda clan has an active base there: no hold mode=1 line")

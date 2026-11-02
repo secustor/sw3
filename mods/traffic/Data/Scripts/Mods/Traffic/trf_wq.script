@@ -1454,17 +1454,21 @@ end;
 
 -- trf_base TRF_BaseDestroyed hook, before the record changes: the clan base of XB-13 is lost while mode 1 holds the
 -- crew. In view (the player in XB-13, any cause: player, other, dead, blow, a sweep there) the crew ejects; off-screen
--- (a sweep, abandon) nothing changes now: the next entry finds no active base and switches to mode 3 (wqmoved).
+-- (a sweep, abandon) or under a story mission nothing changes now (reason off_screen, mission): the next entry finds no
+-- active base and switches to mode 3 (wqmoved).
 function TRF_Wq_BaseGone(idx, by)
 	local R = TRF_WqRec();
 	if not TRF_WqOn() or not R or R.s ~= 50 or R.m ~= 1 or R.pn or idx ~= TRF_WqXb() then return; end;
 	local nm = TRF_WqName(idx);
-	if TRF_WqCur() ~= idx or TRF_WqQuest() then
-		TRF_WqE("hold", "system", nm, "mode", 1, "by", by, "off_screen", TRF_KvB(TRF_WqCur() ~= idx), "result", "base_gone");
+	local off = TRF_WqCur() ~= idx;
+	if off or TRF_WqQuest() then
+		local w = "mission";
+		if off then w = "off_screen"; end;
+		TRF_WqE("hold", "system", nm, "mode", 1, "by", by, "off_screen", TRF_KvB(off), "result", "base_gone", "reason", w);
 		return;
 	end;
 	TRF_N("TRF_Stat", "wq_base");
-	TRF_WqE("hold", "system", nm, "mode", 1, "by", by, "off_screen", "false", "result", "base_gone");
+	TRF_WqE("hold", "system", nm, "mode", 1, "by", by, "off_screen", TRF_KvB(off), "result", "base_gone");
 	TRF_WqPods(R, "base_gone");
 end;
 
@@ -1476,9 +1480,11 @@ function TRF_WqHoldDel(why)
 	local G = wq.v.gd;
 	local n = 0;
 	if type(G) == "table" then
+		-- Void before the deletes: Delete fires the died triggers (trf_raid's rd.del), and a live guard counted dead
+		-- would eject the crew at the jump.
+		if G.st == "live" then G.st = "void"; end;
 		for j = 1, getn(G.sh) do if TRF_WqDel(G.sh[j]) then n = n + 1; end; end;
 		TRF_WqDel(G.fl);
-		if G.st == "live" then G.st = "void"; end;
 	elseif why == "load" then
 		for j = 1, K.g_n[3] do if TRF_WqDel(TRF_WqFind(K.gl..j)) then n = n + 1; end; end;
 	end;
