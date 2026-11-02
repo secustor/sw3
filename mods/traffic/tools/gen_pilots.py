@@ -16,6 +16,12 @@ Outputs (CRLF, ASCII, like the vanilla file):
                                                 with '#' unchanged (proposal 1.3), so no .loc line is needed.
   Data/Scripts/Mods/Traffic/merc_names.script   TRF_Mc_Names() (the names as a code table, never saved) and
                                                 TRF_McName(clan, slot, gen) -> template name, plain name.
+  merge/wq_pilots.sed                           sed commands that turn each <pilot_name>TRF_WqP_<role></pilot_name> of
+                                                the quest dialogs (Data/Scripts/Trade/TRF_Wq*.xml) into its vanilla
+                                                source pilot; the installers apply it when they do not merge Pilots.xml.
+The same block also holds the speakers of the freight unlock quest's dialogs (design/freight-quest-spec.md 13.5):
+one GamePilot "TRF_WqP_<role>" per entry of WQ_SPEAKERS, a copy of the vanilla pilot whose portrait fits the role,
+with the speaker label of the dialog script as callsign and full_name.
 Slot 0 is the clan leader, slots 1-4 the aces. Every slot, the leader's included, copies RecruitAce_<clan> (proposal
 4.1); RecruitOfficer_<clan> is not used.
 Checks: the vanilla file is ASCII, CRLF, declares encoding UTF-8 and has no sw3-traffic block or TRF_ template; each
@@ -47,6 +53,16 @@ LUA_OUT = os.path.join(SRC, "merc_names.script")
 XML_BEGIN = "<!--sw3-traffic pilots begin (mods/traffic/tools/gen_pilots.py from merge/pilot_names.json; do not edit)-->"
 XML_END = "<!--sw3-traffic pilots end-->"
 PREFIX = "TRF_McP_"
+WQ_PREFIX = "TRF_WqP_"
+SED_OUT = os.path.join(MOD, "merge", "wq_pilots.sed")
+# Quest speakers (design/freight-quest-spec.md 13.5; the labels of design/freight-quest-dialogs.md): role, plain-text
+# callsign, vanilla source pilot (face_texture: Treasurer 20, m7d_Trader 30, m2_LabsDispetcher 13, m8d_Smuggler 49,
+# m8d_Patrol 47, CaravanMaster 91, m8a_Pirate 34, PirateCaptain "Pirate" = the Pir_Pilots template the wanted captain
+# flies with).
+WQ_SPEAKERS = [("clerk", "FTU clerk", "Treasurer"), ("kestrel", "Kestrel's captain", "m7d_Trader"),
+               ("nav", "Marlin's navigator", "m2_LabsDispetcher"), ("fence", "Fence", "m8d_Smuggler"),
+               ("patrol", "Patrol officer", "m8d_Patrol"), ("master", "Marlin's master", "CaravanMaster"),
+               ("clan", "Clan pirate", "m8a_Pirate"), ("cap", "Clan captain", "PirateCaptain")]
 SLOTS, GENS = 5, 2
 TITLES = ("Legate ", "Major ")      # a name with a title is also checked without it
 BAD_CHARS = set('&<>"\\')
@@ -73,14 +89,31 @@ def load_vanilla(path):
     return text
 
 
-def ace_block(lines, clan):
-    """Lines of the vanilla RecruitAce_<clan> element, from its start tag to its end tag."""
-    head = '\t<GamePilot name="RecruitAce_%s">' % clan
+def pilot_block(lines, name):
+    """Lines of the vanilla GamePilot element name, from its start tag to its end tag."""
+    head = '\t<GamePilot name="%s">' % name
     if lines.count(head) != 1:
         die("vanilla Pilots.xml has %d lines %r" % (lines.count(head), head))
     i = lines.index(head)
     j = lines.index("\t</GamePilot>", i)
     return lines[i:j + 1]
+
+
+def ace_block(lines, clan):
+    """Lines of the vanilla RecruitAce_<clan> element, from its start tag to its end tag."""
+    return pilot_block(lines, "RecruitAce_" + clan)
+
+
+def renamed(block, name, label, what):
+    """block with the start tag of GamePilot name and label as callsign and full_name."""
+    b = list(block)
+    b[0] = '\t<GamePilot name="%s">' % name
+    for k in ("callsign", "full_name"):
+        idx = [i for i, l in enumerate(b) if l.startswith("\t\t<%s>" % k)]
+        if len(idx) != 1:
+            die("%s: %d <%s> lines" % (what, len(idx), k))
+        b[idx[0]] = "\t\t<%s>%s</%s>" % (k, label, k)
+    return b
 
 
 def check_ace(block, clan, rc):
@@ -173,16 +206,38 @@ def build_xml(lines, clans, eol):
         for slot in range(SLOTS):
             for gen in range(GENS):
                 n = clans[clan]["names"][slot][gen]
-                b = list(block)
-                b[0] = '\t<GamePilot name="%s%s_%d_%d">' % (PREFIX, clan, slot, gen)
-                for k in ("callsign", "full_name"):
-                    idx = [i for i, l in enumerate(b) if l.startswith("\t\t<%s>" % k)]
-                    if len(idx) != 1:
-                        die("RecruitAce_%s: %d <%s> lines" % (clan, len(idx), k))
-                    b[idx[0]] = "\t\t<%s>%s</%s>" % (k, n, k)
-                out.extend(b)
+                out.extend(renamed(block, "%s%s_%d_%d" % (PREFIX, clan, slot, gen), n, "RecruitAce_" + clan))
+    out.append("\t<!-- %d speakers of the freight unlock quest's dialogs (design/freight-quest-spec.md 13.5): TRF_WqP_<role> is a "
+               "copy of the vanilla pilot with the portrait of the role, the speaker label as callsign and full_name. -->"
+               % len(WQ_SPEAKERS))
+    for role, label, src in WQ_SPEAKERS:
+        out.extend(renamed(pilot_block(lines, src), WQ_PREFIX + role, label, src))
     out.append("\t" + XML_END)
     return eol.join(out) + eol
+
+
+def build_sed():
+    """sed commands: each quest speaker's pilot_name back to its vanilla source (installs without the Pilots.xml merge)."""
+    L = ["# Generated by tools/gen_pilots.py; do not edit. Without the Pilots.xml merge the installers turn each quest speaker",
+         "# of Data/Scripts/Trade/TRF_Wq*.xml into its vanilla source pilot (same portrait, the vanilla callsign)."]
+    for role, label, src in WQ_SPEAKERS:
+        L.append("s|<pilot_name>%s%s</pilot_name>|<pilot_name>%s</pilot_name>|" % (WQ_PREFIX, role, src))
+    return "\n".join(L) + "\n"
+
+
+def check_wq(lines, vnames):
+    labels = set()
+    for role, label, src in WQ_SPEAKERS:
+        if WQ_PREFIX + role in vnames:
+            die("template name %s%s exists in the vanilla file" % (WQ_PREFIX, role))
+        if src not in vnames:
+            die("quest speaker %s: no vanilla pilot %s" % (role, src))
+        if any(ord(ch) < 32 or ord(ch) > 126 for ch in label) or BAD_CHARS & set(label) or label.startswith("#"):
+            die("quest speaker %s: label %r is not plain printable ASCII without & < > \" \\ or starts with '#'" % (role, label))
+        if label.lower() in labels:
+            die("quest speaker label %r repeats" % label)
+        labels.add(label.lower())
+        pilot_block(lines, src)
 
 
 def lua_str(s):
@@ -276,6 +331,7 @@ def main():
             for gen in range(GENS):
                 if "%s%s_%d_%d" % (PREFIX, clan, slot, gen) in vnames:
                     die("template name %s%s_%d_%d exists in the vanilla file" % (PREFIX, clan, slot, gen))
+    check_wq(lines, vnames)
 
     out_lua = os.path.abspath(a.lua)
     mod_files = sorted(glob.glob(os.path.join(MOD, "loc", "*.loc")) + glob.glob(os.path.join(MOD, "news", "*.xml"))
@@ -291,11 +347,11 @@ def main():
 
     frag = build_xml(lines, clans, "\r\n")
     lua = build_lua(clans)
-    n_new = len(clans) * SLOTS * GENS
+    n_new = len(clans) * SLOTS * GENS + len(WQ_SPEAKERS)
     schema = a.schema or os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(a.pilots)), "..", "XMLSchema", "Pilots.xsd"))
     vmsg = validate(text, frag, n_new, schema)
 
-    outs = [(a.xml, frag.encode("ascii")), (a.lua, lua.encode("ascii"))]
+    outs = [(a.xml, frag.encode("ascii")), (a.lua, lua.encode("ascii")), (SED_OUT, build_sed().encode("ascii"))]
     if a.check:
         stale = [p for p, b in outs if not os.path.isfile(p) or open(p, "rb").read() != b]
         if stale:

@@ -134,8 +134,8 @@ function T_LAD_A()
 	local ch = 0;
 	for i = 1, getn(P.coh) do if P.coh[i].f == "TRF_Lad_CoH" then ch = ch + 1; end; end;
 	-- Wanted captains (design/captain-spec.md 4) add patrol line 35 and box 100, clan stashes (design/stash-spec.md 4) line 40,
-	-- the freight unlock quest (design/freight-quest-spec.md 5) line 45.
-	HOST_Check(lo == "10:nil,35:nil,40:nil,45:nil,50:1," and bo == "400,300,100," and ch == 1 and getn(P.none) == 1,
+	-- the freight unlock quest (design/freight-quest-spec.md 5) line 45 and its talk box 460 (spec 13).
+	HOST_Check(lo == "10:nil,35:nil,40:nil,45:nil,50:1," and bo == "460,400,300,100," and ch == 1 and getn(P.none) == 1,
 		"patrol line 50 (always), box 300 below the 8.10 box, one CostOfHead handler, no _NoneStation_Action handler ("..lo.." "..bo..")");
 	-- Rank line for all five factions at every fst (09 section 2 table), with the empire status.
 	local sys = {"fort_russ", "llanovar1", "golkonda", "ergelan", "lasad"};

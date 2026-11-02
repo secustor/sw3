@@ -579,6 +579,19 @@ function TRF_PlShow(kind, oname, args, s)
 	-- The open box also lives in a function global (survives ClearGlobals), so an answer after a
 	-- MapInitialization (P rebuilt) still finds it; its handlers test the generation themselves.
 	TRF_PlBoxThunk = function() return %bx; end;
+	-- A dialog window instead of the box or the card (s.dlg, design/freight-quest-spec.md 13): s.dlg(s.a, s) answers 1 when
+	-- the dialog opened (its owner answers through TRF_PlDlgAnswer), 0 when the owner handled the offer without a window
+	-- (s.fail runs, no box), anything else lets the card or the box follow.
+	local dv = nil;
+	if s.dlg then dv = TRF_PlCall(s.dlg, {s.a, s}); end;
+	if dv == 1 then bx.dlg = 1; TRF_PlCall(s.shown, {s.a, "dialog"}); return 1; end;
+	if dv == 0 then
+		p.box = nil;
+		TRF_PlBoxThunk = nil;
+		TRF_BoxFree(own);
+		TRF_PlCall(s.fail, {s.a});
+		return nil;
+	end;
 	-- Mission card instead of the box (station-jobs-spec 5.2): s.shown runs at the card's open event.
 	if TRF_PlCardOpen(bx) then return 1; end;
 	if not call(TRF_PlShowRaw, {title, s.text}, "x", TRF_PlErr) then
@@ -628,6 +641,32 @@ function TRF_PlAnsBody(b, a)
 	if type(v) == "string" then TRF_PlSay(v); end;
 	TRF_PlE("box_answer", "kind", b.k, "box", tostring(s.own), "answer", a, "result", res);
 	return v;
+end;
+
+-- The answer of a box opened as a dialog window (s.dlg, TRF_PlShow), from its owner's final answer (the dialog's answer
+-- callback, as a box button): a = 1 OK, 0 Cancel (TRF_PlAnswer: the spec's handler, then the vanilla call once), -1
+-- neither (the lock freed, the vanilla call once). esc 1 (the window closed without a final answer, seen from a due call
+-- of the tick): the handler of a 1 or 0 runs, the vanilla call does not (as the Cancel of the vanilla dock request; the
+-- player docks again). Returns the handler's reply, or nil (also for a stale answer: no open dialog box).
+function TRF_PlDlgAnswer(a, esc)
+	local p = %P;
+	local b = p.box;
+	if type(b) ~= "table" and type(TRF_PlBoxThunk) == "function" then b = TRF_PlBoxThunk(); end;
+	if type(b) ~= "table" or b.dlg ~= 1 then TRF_PlE("box_answer", "answer", a, "via", "dialog", "result", "stale"); return nil; end;
+	if esc ~= 1 and (a == 1 or a == 0) then p.box = b; return TRF_PlAnswer(a); end;
+	p.box = nil;
+	TRF_PlBoxThunk = nil;
+	TRF_BoxFree("dock_"..b.k);
+	if esc == 1 then
+		local v = nil;
+		if a == 1 or a == 0 then v = TRF_Cb("TRF_PlDlgAnswer", TRF_PlAnsBody, {b, a}); end;
+		TRF_PlE("box_answer", "kind", b.k, "box", tostring(b.s.own), "answer", a, "via", "dialog", "result", "closed");
+		return v;
+	end;
+	TRF_PlE("box_answer", "kind", b.k, "box", tostring(b.s.own), "answer", "none", "via", "dialog", "result", "done");
+	local ki = TRF_PlKinds()[b.k];
+	if type(ki) ~= "table" or ki.rep ~= 1 then TRF_PlOrig(b.o, b.args); TRF_PlJbAfter(); end;
+	return nil;
 end;
 
 -- The probe of a DLL native (the station jobs natives, step 1 to 3): its answer as a string, "arg" when live, "off"
@@ -697,7 +736,7 @@ function TRF_Pl_OnJobCard(id, ev)
 	return 1;
 end;
 
--- Load and jump: an open card is gone with its window; a late event of it finds no box (stale).
+-- Load and jump: an open card or dialog box is gone with its window; a late event of it finds no box (stale).
 function TRF_PlCardDrop()
 	if type(TRF_PlBoxThunk) ~= "function" then return; end;
 	local b = TRF_PlBoxThunk();
@@ -705,6 +744,10 @@ function TRF_PlCardDrop()
 		TRF_PlBoxThunk = nil;
 		TRF_BoxFree("dock_"..b.k);
 		TRF_PlE("jobs_card", "id", b.card, "result", "dropped");
+	elseif type(b) == "table" and b.dlg == 1 then
+		TRF_PlBoxThunk = nil;
+		TRF_BoxFree("dock_"..b.k);
+		TRF_PlE("box_answer", "kind", b.k, "box", tostring(b.s.own), "via", "dialog", "result", "dropped");
 	end;
 end;
 

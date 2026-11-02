@@ -1027,8 +1027,10 @@ end;
 
 -- Trade dock box 300 (#1 parcel offer 400 > #8 purchase 300 > #14 dues 200 > #13 arbitration 100): the charter offer.
 -- Price max(list - vch, 25 % of list) with a voucher; the first offer of the game carries the rumour line. At the
--- freight unlock quest's step 70 (trf_wq) the text is fwboxq instead (the office answers the crew's return), and
--- either answer closes the quest (TRF_Wq_Unlocked; an OK without the credits leaves it at 70).
+-- freight unlock quest's step 70 (trf_wq) the text is fwboxq instead (the office answers the crew's return; the loop's
+-- home by its English map name, trf_wq TRF_Wq_SysEn) and the box opens as trf_wq's dialog D10 (field dlg, dv = {price,
+-- home}; design/freight-quest-spec.md 13), and either answer closes the quest (TRF_Wq_Unlocked; an OK without the
+-- credits leaves it at 70).
 function TRF_Fr_DockBox(kind, param)
 	if kind ~= "trade" or not TRF_FrOn() then return nil; end;
 	local fr = %FR;
@@ -1057,8 +1059,11 @@ function TRF_Fr_DockBox(kind, param)
 	if hu > 1 then hk = tostring(hu); end;
 	local text = TRF_FrTxt("fwbox"..hk, TRF_FrNum(paid), rn);
 	if used == 1 then text = TRF_FrTxt("fwboxv"..hk, TRF_FrNum(paid), rn, TRF_FrNum(list)); end;
-	if TRF_N("TRF_Wq_On") == 1 and TRF_N("TRF_Wq_S") == 70 then
-		text = TRF_FrTxt("fwboxq", TRF_FrNum(paid), rn);
+	local wq70 = TRF_N("TRF_Wq_On") == 1 and TRF_N("TRF_Wq_S") == 70;
+	local home = nil;
+	if type(rm) == "table" and type(rm[slot]) == "table" then home = rm[slot].home; end;
+	if wq70 then
+		text = TRF_FrTxt("fwboxq", TRF_FrNum(paid), TRF_N("TRF_Wq_SysEn", home) or rn);
 	elseif not co or (co.seq == 0 and co.decl == nil) then
 		text = TRF_FrTxt("fwrumour").." "..text;
 	end;
@@ -1067,7 +1072,9 @@ function TRF_Fr_DockBox(kind, param)
 	fr.offer = {sys=cur, rg=slot, price=paid, list=list, used=used, hull=hu, g=TRF_FrGen()};
 	TRF_FrE("box", "system", TRF_FrName(cur), "region", slot, "list", list, "price", paid, "voucher_used", TRF_KvB(used), "slot", n,
 		"hull", K.hull[hu], "result", "shown");
-	return {title=TRF_FrTxt("fwboxtitle"), text=text, ok="TRF_Fr_BuyOk", no="TRF_Fr_BuyNo", a=cur, own="fw_buy"};
+	local s = {title=TRF_FrTxt("fwboxtitle"), text=text, ok="TRF_Fr_BuyOk", no="TRF_Fr_BuyNo", a=cur, own="fw_buy"};
+	if wq70 then s.dlg = "TRF_Wq_Dlg10"; s.dv = {price=paid, home=home}; end;
+	return s;
 end;
 
 -- Purchase OK (EW8.1): credits checked, SubPlayerCredits, the ship registered at this station (p = its stop), the
@@ -2096,7 +2103,7 @@ function TRF_Fr_Text()
 		fwsell = "$1 lies at $2. The office buys her back for $3 cr, half her price. Sell?",  -- ship, home, credits
 		fwsold = "Wolves Freight: $1 sold back to the FTU for $2 cr.",
 		fwrumour = "FTU charter office: transports keep going missing in Capricorn. Cover premiums are up.",
-		fwboxq = "FTU charter office: the office does not forget a carrier who brings his people back. Register a hull under Wolves Freight for $1 cr, loop of $2?",  -- price, region
+		fwboxq = "FTU clerk: Wolves Freight, the Marlin case? Your papers came in. One transport on the $2 loop, Union cover included, for $1 credits. Register her?",  -- price, loop home (English name)
 		fwbought = "Wolves Freight: $1 registered at $2. Her first run leaves next leg.",
 		fwpoor = "FTU charter office: come back with $1 cr.",
 		fwpaid = "Wolves Freight paid $1 cr since your last visit.",

@@ -757,9 +757,11 @@ end;
 -- StartTradeDialog(dialog[, init]) (mod-research/hail-dialog.md 1.4): loads DATA\Scripts\Trade\<dialog>.xml and
 -- runs the global init (by name) before the window opens. Recorded in HOST().tdlg (name) and HOST().tdlgs
 -- ({d, init}). A mod dialog file (TRF_DIR../../Trade/<dialog>.xml) becomes HOST().dlg = {name, msg, ans = {answer
--- name -> {t, fn, hidden}}, order, rv = {token -> value}, open}: HideAnswer, ShowAnswer and SetReplaceValue act
--- on it (an unknown answer name fails), HOST_DlgPick(answer) closes it and calls the answer's lua_function,
--- HOST_DlgEsc() closes it without an answer. While it is open a HOST().ui of 0 reads 4 (dialog flag).
+-- name -> {t, fn, go, pg, hidden}}, order, pages = {message name -> {msg, pilot, order}}, cur (the page shown),
+-- rv = {token -> value}, open}: HideAnswer, ShowAnswer and SetReplaceValue act on it (an unknown answer name fails),
+-- HOST_DlgPick(answer) runs the answer's lua_function and goes to its go_message_name page, or without one closes
+-- the dialog and then calls the function; HOST_DlgEsc() closes it without an answer. While it is open a HOST().ui of
+-- 0 reads 4 (dialog flag). HOST_DlgPilot() is the pilot_name of the page shown.
 function StartTradeDialog(...)
 	local h = HOST();
 	HOST_Want((arg.n == 1 or arg.n == 2) and type(arg[1]) == "string" and (arg[2] == nil or type(arg[2]) == "string"),
@@ -779,17 +781,33 @@ function StartTradeDialog(...)
 		if h.ui == 0 then h.ui = 4; end;
 	end;
 end;
--- Mod dialog file of name parsed (message, answers with text and lua_function), or nil.
+-- Mod dialog file of name parsed (pages with message, pilot and answers: text, lua_function, go_message_name), or nil.
 function HOST_DlgXml(name)
 	local f = openfile(HOST().dir.."../../Trade/"..name..".xml", "r");
 	if not f then return nil; end;
 	local s = read(f, "*a");
 	closefile(f);
-	local x = {name=name, ans={}, order={}, rv={}};
-	local _, _, msg = strfind(s, "<message>([^<]*)</message>");
-	x.msg = msg;
-	gsub(s, '<DialogAnswer name="([^"]+)">%s*<answer>([^<]*)</answer>%s*<lua_function>([^<]*)</lua_function>',
-		function(n, t, fn) local y = %x; y.ans[n] = {t=t, fn=fn}; tinsert(y.order, n); end);
+	local x = {name=name, ans={}, order={}, rv={}, pages={}};
+	local _, _, st = strfind(s, "<start_message_name>([^<]*)</start_message_name>");
+	gsub(s, '<DialogMessage name="([^"]+)">(.-)</DialogMessage>', function(pn, body)
+		local y = %x;
+		local pg = {order={}};
+		local _, _, m = strfind(body, "<message>([^<]*)</message>");
+		local _, _, pl = strfind(body, "<pilot_name>([^<]*)</pilot_name>");
+		pg.msg = m; pg.pilot = pl;
+		gsub(body, '<DialogAnswer name="([^"]+)">(.-)</DialogAnswer>', function(n, ab)
+			local _, _, t = strfind(ab, "<answer>([^<]*)</answer>");
+			local _, _, fn = strfind(ab, "<lua_function>([^<]*)</lua_function>");
+			local _, _, go = strfind(ab, "<go_message_name>([^<]*)</go_message_name>");
+			HOST_Want(not %y.ans[n], "dialog "..%y.name..": answer name "..n.." once per file");
+			%y.ans[n] = {t=t, fn=fn, go=go, pg=%pn};
+			tinsert(%y.order, n);
+			tinsert(%pg.order, n);
+		end);
+		y.pages[pn] = pg;
+	end);
+	x.cur = st;
+	if x.pages[st or ""] then x.msg = x.pages[st].msg; end;
 	return x;
 end;
 function HOST_DlgAns(n, hide, what)
@@ -812,8 +830,16 @@ end;
 function HOST_DlgVis()
 	local d, s = HOST().dlg, "";
 	if not d or not d.open then return ""; end;
-	for i = 1, getn(d.order) do if not d.ans[d.order[i]].hidden then s = s..(s ~= "" and " " or "")..d.order[i]; end; end;
+	local o = d.order;
+	if d.pages and d.pages[d.cur or ""] then o = d.pages[d.cur].order; end;
+	for i = 1, getn(o) do if not d.ans[o[i]].hidden then s = s..(s ~= "" and " " or "")..o[i]; end; end;
 	return s;
+end;
+-- pilot_name of the page shown, or nil.
+function HOST_DlgPilot()
+	local d = HOST().dlg;
+	if not d or not d.pages or not d.pages[d.cur or ""] then return nil; end;
+	return d.pages[d.cur].pilot;
 end;
 -- Text with the #tokens# replaced (unknown ones kept): the message, or answer n.
 function HOST_DlgText(n)
@@ -835,19 +861,30 @@ function HOST_DlgEsc()
 	h.ui = d.ui0;
 	return 1;
 end;
--- Pick visible answer n of the open dialog: the dialog closes (no go_message_name), then its lua_function runs.
+-- Pick visible answer n of the page shown: with a go_message_name its lua_function (if any) runs and that page is shown
+-- (the dialog stays open); without one the dialog closes, then its lua_function runs.
 function HOST_DlgPick(n)
 	local h = HOST();
 	local d = h.dlg;
-	HOST_Want(d and d.open and d.ans[n] and not d.ans[n].hidden, "HOST_DlgPick: visible answer "..tostring(n));
-	if not d or not d.open or not d.ans[n] then return nil; end;
-	HOST_DlgEsc();
-	local f = getglobal(d.ans[n].fn);
-	HOST_Want(type(f) == "function", "lua_function "..tostring(d.ans[n].fn).." defined");
+	local a = d and d.ans[n];
+	HOST_Want(d and d.open and a and not a.hidden and (not a.pg or a.pg == d.cur), "HOST_DlgPick: visible answer "..tostring(n).." of the page shown");
+	if not d or not d.open or not a then return nil; end;
+	local go = a.go;
+	if go == "" then go = nil; end;
+	if not go then HOST_DlgEsc(); end;
+	local f = nil;
+	if a.fn and a.fn ~= "" then
+		f = getglobal(a.fn);
+		HOST_Want(type(f) == "function", "lua_function "..tostring(a.fn).." defined");
+	end;
 	print("HOST dialog pick "..n);
 	h.in_box = 1;
 	if type(f) == "function" then f(); end;
 	h.in_box = nil;
+	if go then
+		HOST_Want(d.pages and d.pages[go], "go_message_name "..go.." is a page of "..tostring(d.name));
+		if d.pages and d.pages[go] then d.cur = go; d.msg = d.pages[go].msg; end;
+	end;
 	return 1;
 end;
 

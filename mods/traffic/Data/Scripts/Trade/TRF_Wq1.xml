@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Dialog xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="D:\_Work\SW3\Data\XMLSchema\Dialogs.xsd">
+    <start_message_name>msg10</start_message_name>
+    <DialogMessage name="msg10">
+        <message>FTU clerk: #p1#</message>
+        <pilot_name>TRF_WqP_clerk</pilot_name>
+        <sound_name />
+        <DialogAnswer name="a_go">
+            <answer>- #a1#</answer>
+            <lua_function />
+            <go_message_name>msg20</go_message_name>
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_why">
+            <answer>- #a2#</answer>
+            <lua_function />
+            <go_message_name>msg11</go_message_name>
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_bye">
+            <answer>- #a3#</answer>
+            <lua_function>TRF_WqDlgA1_end</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+    </DialogMessage>
+    <DialogMessage name="msg11">
+        <message>FTU clerk: #pa#</message>
+        <pilot_name>TRF_WqP_clerk</pilot_name>
+        <sound_name />
+        <DialogAnswer name="a_pat">
+            <answer>- #aa#</answer>
+            <lua_function />
+            <go_message_name>msg12</go_message_name>
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_back1">
+            <answer>- #ab#</answer>
+            <lua_function />
+            <go_message_name>msg10</go_message_name>
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+    </DialogMessage>
+    <DialogMessage name="msg12">
+        <message>FTU clerk: #pb#</message>
+        <pilot_name>TRF_WqP_clerk</pilot_name>
+        <sound_name />
+        <DialogAnswer name="a_back2">
+            <answer>- #ab#</answer>
+            <lua_function />
+            <go_message_name>msg10</go_message_name>
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+    </DialogMessage>
+    <DialogMessage name="msg20">
+        <message>FTU clerk: #p2#</message>
+        <pilot_name>TRF_WqP_clerk</pilot_name>
+        <sound_name />
+        <DialogAnswer name="a_acc">
+            <answer>- #a4#</answer>
+            <lua_function>TRF_WqDlgA1_acc</lua_function>
+            <go_message_name>msg30</go_message_name>
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_dec">
+            <answer>- #a5#</answer>
+            <lua_function>TRF_WqDlgA1_dec</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+    </DialogMessage>
+    <DialogMessage name="msg30">
+        <message>FTU clerk: #p3#</message>
+        <pilot_name>TRF_WqP_clerk</pilot_name>
+        <sound_name />
+        <DialogAnswer name="a_fin">
+            <answer>- #a6#</answer>
+            <lua_function>TRF_WqDlgA1_end</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+    </DialogMessage>
+</Dialog>

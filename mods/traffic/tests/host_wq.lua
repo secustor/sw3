@@ -15,6 +15,10 @@
 -- step, the pods, the pickups, a jump with none or part of the crew aboard, a load, the gates). f: the hand-in, the
 -- TRF_FrBuyGate unlock with enable_wq 1 and 0, the box text fwboxq, OK, Cancel and a poor OK, the done entry and its
 -- removal (mission list and Job log), the parcel box at step 70, the repair of m, cg, pn, pk, wd, the dump, the size.
+-- Presentation (spec 13): g: the dialog files (answers, pages, tokens, links, speakers), D1-D10 at the dock, on the Office
+-- card and in space with their variants and effects, the fallbacks (hail_xml, native, UI state, mission), the letters
+-- once and only with news_mode 2, the logbook in the mission list and its move to the Job log, English map names, the
+-- clan name. a..f run with wq_dialog 0 (the lines, boxes and card).
 -- Loads host_parcel.lua up to its first scenario (helpers PC_*, which load host_station.lua). Stubs in host_stubs.lua:
 -- HOST_MissionCard, HOST_JobPress, HOST_JobTick (the card), HOST_JobLogOn (the Job log natives).
 
@@ -29,11 +33,12 @@ dostring(strsub(src, 1, cut), "host_parcel.lua");
 -- Helpers ----------------------------------------------------------------------------------
 
 -- Config of these runs: the quest and freight on (the freight prize gap off), parcels and the features that claim boxes,
--- lines or entry slots off, the box path of the jobs UI (jobs_ui 0), log 2, plus t.
+-- lines or entry slots off, the box path of the jobs UI (jobs_ui 0), the dialogs off (wq_dialog 0: the lines, boxes, card
+-- and Job log of a..f; wq-g turns them on), log 2, plus t.
 function WQ_Cfg(t)
 	local c = {enable_wq=1, enable_freight=1, fw_prize_gap=0, enable_parcels=0, charter=0, cap_enable=0, sweeps=0, sweep_ct=0, feq=0,
 		staged=0, seed=0, queue=0, parked=0, voice_events=0, dconv=0, carriers=0, po=0, enable_survivors=0, lad_enabled=0,
-		enable_stashes=0, enable_scars=0, jobs_ui=0, log=2, tune={}};
+		enable_stashes=0, enable_scars=0, jobs_ui=0, wq_dialog=0, log=2, tune={}};
 	if t then for k, v in t do c[k] = v; end; end;
 	return c;
 end;
@@ -156,22 +161,22 @@ function T_WQ_A()
 	for i = 1, getn(P.dock.trade.row) do ro = ro..P.dock.trade.row[i].o..":"..TRF_PlName(P.dock.trade.row[i].f)..","; end;
 	for i = 1, getn(P.seed) do so = so..P.seed[i].o..":"..TRF_PlName(P.seed[i].f)..","; end;
 	for i = 1, getn(P.rh) do rh = rh..TRF_PlName(P.rh[i].f)..","; end;
-	HOST_Check(strsub(bo, 1, 23) == "450:TRF_Wq_DockBox,400:" and strsub(ro, 1, 22) == "450:TRF_Wq_JobRow,400:" and WQ_Has(so, "650:TRF_GnSeedCarrier,620:TRF_Wq_Seed,600:TRF_GnSeedFeq,")
-		and WQ_Has(rh, "TRF_Wq_Help,"), "trade box 450 and board row 450 first, seed provider 620 between 650 and 600, the 8.5 resolver ("..bo.." "..so..")");
+	HOST_Check(strsub(bo, 1, 42) == "460:TRF_Wq_TalkBox,450:TRF_Wq_DockBox,400:" and strsub(ro, 1, 22) == "450:TRF_Wq_JobRow,400:" and WQ_Has(so, "650:TRF_GnSeedCarrier,620:TRF_Wq_Seed,600:TRF_GnSeedFeq,")
+		and WQ_Has(rh, "TRF_Wq_Help,"), "talk box 460, trade box 450 and board row 450 first, seed provider 620 between 650 and 600, the 8.5 resolver ("..bo.." "..so..")");
 	-- Texts.
 	local tx = TRF_Wq_Text();
 	local bad = "";
 	for k, v in tx do
 		if strlen(v) > 480 or strfind(v, "[%%#\n]") then bad = bad.." "..k; end;
 	end;
-	HOST_Check(WQ_N(tx) == 39 and bad == "" and TRF_Txt("wqt") == "Missing in Capricorn" and TRF_Txt("fwboxtitle") == "FTU charter office"
-		and TRF_Txt("wqalone") == "The Kestrel limped in alone." and TRF_Txt("wqname") == "Kestrel",
-		"39 texts, at most 480 characters, no %, # or newline; title fwboxtitle"..bad);
+	HOST_Check(WQ_N(tx) == 127 and bad == "" and TRF_Txt("wqt") == "Missing in Capricorn" and TRF_Txt("fwboxtitle") == "FTU charter office"
+		and TRF_Txt("wqalone") == "The Kestrel crawled in on her own, half her systems dead." and TRF_Txt("wqname") == "Kestrel",
+		"127 texts, at most 480 characters, no %, # or newline; title fwboxtitle"..bad);
 	bad = "";
 	for k, v in {"wqboxo", "wqoko", "wqthxo"} do
 		if not WQ_Has(TRF_Txt(v), "Arba") or WQ_Has(TRF_Txt(v), "Alex") then bad = bad.." "..v; end;
 	end;
-	HOST_Check(bad == "" and WQ_Has(TRF_Txt("wqd20"), "report") and WQ_Has(TRF_Txt("wqd20l"), "pod-band account")
+	HOST_Check(bad == "" and WQ_Has(TRF_Txt("wqd20"), "report") and WQ_Has(TRF_Txt("wqd20l"), "came home in pods")
 		and WQ_Has(TRF_Txt("wqd20a"), "on her own"), "old hauler texts name the Arba, not Alex; step-20 logbook text per result (wqd20, wqd20l, wqd20a)"..bad);
 	-- Gate reasons (the station of debris6 is a loop stop of the Golkonda region).
 	local K = TRF_WqK();
@@ -205,7 +210,7 @@ function T_WQ_A()
 	WQ_Visit();
 	local n0 = S_Mark();
 	local r = PC_Dock();
-	HOST_Check(r.nb == 1 and r.box.title == "FTU charter office" and r.box.text == TRF_Txt("wqbox") and WQ_Has(r.box.text, "The Kestrel is three days overdue")
+	HOST_Check(r.nb == 1 and r.box.title == "FTU charter office" and r.box.text == TRF_Txt("wqbox", "Hephaestus") and WQ_Has(r.box.text, "The Kestrel is three days overdue")
 		and not WQ_Has(r.box.text, "Alex") and WQ_Logs(n0, "event=offer system=debris6 variant=new help=5 result=shown via=box") == 1
 		and S_Logs(n0, "module=plumb event=dock kind=trade line_count=0 box=wq priority=450 result=box") == 1, "box 450: title fwboxtitle, the new ship text, offer line");
 	PC_Press(r, "cancel");
@@ -224,7 +229,7 @@ function T_WQ_A()
 	WQ_Visit();
 	n0 = S_Mark();
 	r = PC_Dock();
-	HOST_Check(r.nb == 1 and r.box.text == TRF_Txt("wqboxo") and WQ_Has(r.box.text, "that Arba hauler") and WQ_Logs(n0, "variant=old") == 1,
+	HOST_Check(r.nb == 1 and r.box.text == TRF_Txt("wqboxo", "Hephaestus") and WQ_Has(r.box.text, "that old Arba") and WQ_Logs(n0, "variant=old") == 1,
 		"Arba_pl2 hull Mothership_arba (GetName, any case): the old hauler text");
 	local s = PC_Press(r, "ok");
 	local R = TRF.wq;
@@ -265,7 +270,7 @@ function T_WQ_A()
 	r = PC_Dock();
 	local c = h.jc[1];
 	HOST_Check(r.nb == 0 and c and c.id == "wq" and c.header == "The overdue transport" and c.title == "FTU charter office" and c.cost == nil
-		and c.text == TRF_Txt("wqboxo") and S_Logs(n0, "box=wq priority=450 result=card") == 1, "card: id wq, header wqjobh, no cost, title fwboxtitle, the old hauler text");
+		and c.text == TRF_Txt("wqboxo", "Hephaestus") and S_Logs(n0, "box=wq priority=450 result=card") == 1, "card: id wq, header wqjobh, no cost, title fwboxtitle, the old hauler text");
 	HOST_Check(HOST_JobTick() == "open" and WQ_Logs(n0, "result=shown via=card") == 1, "card open: the offer line via=card");
 	HOST_JobPress("ok");
 	HOST_JobTick();
@@ -273,13 +278,13 @@ function T_WQ_A()
 	-- The Office board row (cfg jobs_ui 2): the box spec as a row, and no box after the board was set.
 	WQ_Begin("debris6", "5_1");
 	local row = TRF_Wq_JobRow("trade");
-	HOST_Check(row and row.id == "wq" and row.header == "The overdue transport" and row.short == "Capricorn lanes, no deadline" and row.text == TRF_Txt("wqbox")
-		and row.ok == "TRF_Wq_BoxOk" and row.no == "TRF_Wq_BoxNo" and row.took == "TRF_Wq_JobTook" and TRF_Wq_JobTook(row.a) == nil,
-		"board row: id wq, header, second line, the box text and handlers");
+	HOST_Check(row and row.id == "wq" and row.header == "The overdue transport" and row.short == "Lanes to Capricorn, no deadline" and row.text == TRF_Txt("wqbox", "Hephaestus")
+		and row.ok == "TRF_Wq_CardOk" and row.no == "TRF_Wq_BoxNo" and row.took == "TRF_Wq_JobTook" and TRF_Wq_JobTook(row.a) == nil,
+		"board row: id wq, header, second line, the box text and handlers (OK: TRF_Wq_CardOk, the accept without the dialogs)");
 	TRF_PlReg().jb = {k="trade", rows={}, g=TRF.gen};
 	HOST_Check(TRF_Wq_DockBox("trade") == nil, "no box after the board was set at this docking");
 	TRF_PlReg().jb = nil;
-	TRF_Wq_BoxOk(row.a);
+	TRF_Wq_CardOk(row.a);
 	HOST_Check(TRF.wq and TRF.wq.s == 10 and TRF_Wq_JobTook(row.a) == 1, "row OK: step 10, took answers 1");
 	-- The Job log (cfg jobs_log 1 with the natives): the entry in the Job log with the wqlog line; jobs_log 0 moves it back.
 	WQ_Begin("debris6", "5_1", {jobs_log=1}, 1);
@@ -307,7 +312,7 @@ function T_WQ_A()
 	TRF_Wq_Fix();
 	HOST_Check(TRF.wq == nil, "an unknown step is dropped");
 	local legs = TRF.clock.legs;
-	TRF.wq = {s=20, k=9, n=40, dc=legs - 1, cd=legs + 5, lv=1, r=3, p=1, ql=20, zz=1};
+	TRF.wq = {s=20, k=40, n=40, dc=legs - 1, cd=legs + 5, lv=1, r=3, p=1, ql=20, zz=1};
 	TRF_Wq_Fix();
 	R = TRF.wq;
 	HOST_Check(R.v == 1 and R.s == 20 and R.k == 0 and R.n == 0 and R.dc == nil and R.cd == nil and R.lv == nil and R.r == 3 and R.p == 1 and R.ql == 20
@@ -456,7 +461,7 @@ function T_WQ_B()
 	R = TRF.wq;
 	HOST_Check(ev and ev.st == "end" and rec and rec.wq == nil and rec.nm >= 1 and R.n == 2 and R.s == 20 and R.r == 3 and R.p == nil
 		and WQ_Logs(n0, "event=void trader_id="..ev.id.." reason=raid tries=2") == 1 and WQ_Logs(n0, "event=limped tries=2 line=true") == 1
-		and WQ_Has(WQ_Said(m0, s0), "The Kestrel limped in alone.") and h.qlog.trf_wq.d == "#TRF_wqd20a",
+		and WQ_Has(WQ_Said(m0, s0), TRF_Txt("wqalone")) and h.qlog.trf_wq.d == "#TRF_wqd20a",
 		"refused raid: void, the flag cleared; wq_tries voids: step 20 (r 3) with the limped-in line, the logbook at wqd20a");
 	if rec then TRF_Remove(ev.id, "test"); end;
 	-- A jump while she is on-screen: void; at the last try the line waits for the next entry.
@@ -598,7 +603,7 @@ function T_WQ_C()
 		local R = WQ_At(20, {r=r, ql=20});
 		local n0 = S_Mark();
 		local d = PC_Dock();
-		if R.s ~= 30 or not WQ_Has(d.scr, TRF_Txt("wqrep"..r)) or R.ws ~= WQ_WsOf(R.sd, 5) or TRF_WqBit(R.k, 4)
+		if R.s ~= 30 or not WQ_Has(d.scr, TRF_Txt("wqrep"..r, "Golconda")) or R.ws ~= WQ_WsOf(R.sd, 5) or TRF_WqBit(R.k, 4)
 			or WQ_Logs(n0, "event=report system=debris6 result="..res[r].." wreck_system="..TRF_WqName(R.ws)) ~= 1
 			or WQ_Logs(n0, "event=step step_before=20 step_after=30 reason=report") ~= 1 or h.qlog.trf_wq.d ~= "#TRF_wqd30" then
 			bad = bad.." r"..r;
@@ -630,7 +635,7 @@ function T_WQ_C()
 	R = WQ_At(20, {r=2});
 	local n0 = S_Mark();
 	local d = PC_Dock();
-	HOST_Check(R.s == 30 and WQ_Has(d.scr, TRF_Txt("wqrep2")), "report at gaoba (no loop stop): step 30");
+	HOST_Check(R.s == 30 and WQ_Has(d.scr, TRF_Txt("wqrep2", "Golconda")), "report at gaoba (no loop stop): step 30");
 	T_Enter("nk");
 	WQ_Visit();
 	R = WQ_At(20, {r=1});
@@ -691,7 +696,7 @@ function T_WQ_C()
 	n0 = S_Mark();
 	WQ_ToPod(V_Idx("golkonda"), 1);
 	local c = TRF.sv.c;
-	HOST_Check(c and c.q == 1 and c.n == 1 and c.cr == 0 and WQ_Has(WQ_Said(m0, s0), TRF_Txt("wqnav")) and WQ_Logs(n0, "event=wreck system=golkonda pods=0 result=picked") == 1
+	HOST_Check(c and c.q == 1 and c.n == 1 and c.cr == 0 and WQ_Has(WQ_Said(m0, s0), TRF_Txt("wqnav", "Golconda")) and WQ_Logs(n0, "event=wreck system=golkonda pods=0 result=picked") == 1
 		and S_Logs(n0, "module=plumb event=marker owner=sv deleted_count=1 result=cleared") == 1 and TRF.wq.s == 30,
 		"pickup: c.q 1, the navigator's line, the marker cleared, still step 30");
 	-- The carry is q: no seed even without a record.
@@ -892,7 +897,7 @@ function T_WQ_D()
 	WQ_Visit();
 	local n0 = S_Mark();
 	d = WQ_PirDock();
-	HOST_Check(d.nb == 1 and d.box.text == TRF_Txt("wqfence", tostring(price)) and WQ_Has(d.box.text, "Cost you "..price.." cr.") and price > 0
+	HOST_Check(d.nb == 1 and d.box.text == TRF_Txt("wqfence", TRF_WqNum(price)) and WQ_Has(d.box.text, TRF_WqNum(price).." credits") and price > 0
 		and WQ_Logs(n0, "event=fence system=golkonda price="..price.." result=shown") == 1, "step 40 at a Golkonda pirate dock: the fence box, price "..price);
 	-- Cancel: nothing; the box again at the next docking.
 	PC_Press(d, "cancel");
@@ -916,7 +921,7 @@ function T_WQ_D()
 	n0 = S_Mark();
 	d = WQ_PirDock();
 	s = PC_Press(d, "ok");
-	HOST_Check(R.s == 50 and h.credits == 1000000 - price and WQ_Has(s, TRF_Txt("wqfenceok")) and WQ_Logs(n0, "event=clue via=fence system=golkonda cost="..price.." result=ok") == 1
+	HOST_Check(R.s == 50 and h.credits == 1000000 - price and WQ_Has(s, TRF_Txt("wqfenceok", "Grey Ravens")) and WQ_Logs(n0, "event=clue via=fence system=golkonda cost="..price.." result=ok") == 1
 		and S_Logs(n0, "module=region event=charge reason=wq amount="..price) == 1 and h.qlog.trf_wq.d == "#TRF_wqd50" and WQ_Has(TRF_Txt("wqd50"), "XB-13"),
 		"OK: credits - "..price.." (TRF_Charge why wq), step 50, the reply, logbook wqd50");
 	WQ_Visit();
@@ -971,9 +976,9 @@ function T_WQ_D()
 	TRF.wq = {s=40, r=1, sd=77, ws=V_Idx("callipso")};
 	TRF_Wq_Fix();
 	local k40 = TRF.wq.ws;
-	TRF.wq = {s=50, r=1, sd=77, ws=V_Idx("callipso"), k=9};
+	TRF.wq = {s=50, r=1, sd=77, ws=V_Idx("callipso"), k=40};
 	TRF_Wq_Fix();
-	HOST_Check(k40 == V_Idx("callipso") and TRF.wq.ws == nil and TRF.wq.k == 0, "s 40 keeps a wreck system; s 50 drops ws; k 9 dropped");
+	HOST_Check(k40 == V_Idx("callipso") and TRF.wq.ws == nil and TRF.wq.k == 0, "s 40 keeps a wreck system; s 50 drops ws; k 40 dropped");
 	-- Dump and size: the record at its widest with ws.
 	R = WQ_At(30, {r=1, ws=g, ql=30});
 	n0 = S_Mark();
@@ -1073,7 +1078,7 @@ function T_WQ_E()
 	T_Tick(30, 0.5);
 	local said = WQ_Said(m0, s0);
 	local who = TRF_Cap_NameOf(slot);
-	HOST_Check(WQ_Has(said, TRF_Txt("wqband", who)) and WQ_Has(TRF_Txt("wqband", who), who.." says the Marlin's people") and not WQ_Has(said, TRF_Txt("wqmoved"))
+	HOST_Check(WQ_Has(said, TRF_Txt("wqband", who, "Grey Ravens")) and WQ_Has(TRF_Txt("wqband", who, "Grey Ravens"), "Open band, Grey Ravens: "..who.." says the Marlin's people") and not WQ_Has(said, TRF_Txt("wqmoved"))
 		and WQ_Objs("TRF_WQ_HULK") == 0 and WQ_Guard() == 0, "the open-band line names the captain ("..who.."); no hulk, no guard in mode 1");
 	-- Without a living captain: the clan speaks; the tip is refused (state).
 	TRF.cap[slot].st = 4;
@@ -1084,9 +1089,9 @@ function T_WQ_E()
 	R = TRF.wq;
 	m0, s0 = getn(h.msgs), getn(h.screen);
 	T_Tick(30, 0.5);
-	HOST_Check(R.m == 1 and R.cg == nil and WQ_Has(WQ_Said(m0, s0), TRF_Txt("wqband", "The Golkonda clan"))
+	HOST_Check(R.m == 1 and R.cg == nil and WQ_Has(WQ_Said(m0, s0), TRF_Txt("wqband", "The clan", "Grey Ravens"))
 		and WQ_Logs(n0, "event=hold system=xb13 mode=1 captain_slot="..slot.." result=base reason=captain:state_4") == 1,
-		"no living captain: no tip, cg dropped, 'The Golkonda clan says'");
+		"no living captain: no tip, cg dropped, 'The clan says' (the Grey Ravens on the open band)");
 	TRF.cap[slot].st = 1;
 	-- A paid informant tip to another system (seen golkonda, ti this leg) stays: the quest tip is refused (tip).
 	TRF.cap[slot].seen = V_Idx("golkonda");
@@ -1121,7 +1126,7 @@ function T_WQ_E()
 	WQ_PickAll(3);
 	HOST_Check(R.pk == pn and R.s == 60 and WQ_Logs(n0, "event=crew system=xb13 picked="..pn.." pods="..pn.." result=aboard") == 1
 		and WQ_Logs(n0, "event=step step_before=50 step_after=60 reason=aboard") == 1 and h.qlog.trf_wq.d == "#TRF_wqd60"
-		and WQ_Has(TRF_Txt("wqd60"), "Hand them in"), "all pods aboard: step 60, logbook wqd60");
+		and WQ_Has(TRF_Txt("wqd60"), "Take them to"), "all pods aboard: step 60, logbook wqd60");
 	-- An off-screen loss (sweep) leaves mode 1 now; the next entry switches to mode 3 with the line wqmoved.
 	TRF.sv = nil;
 	TRF.base = {{s=x, k=2, h=9, t=TRF.clock.legs, w=0}};
@@ -1140,7 +1145,7 @@ function T_WQ_E()
 	said = WQ_Said(m0, s0);
 	local ng, gl = WQ_Guard();
 	local hk = h.objs["TRF_WQ_HULK"];
-	HOST_Check(R.m == 3 and R.cg == nil and WQ_Has(said, TRF_Txt("wqmoved")) and WQ_Has(said, TRF_Txt("wqband", TRF_Cap_NameOf(slot)))
+	HOST_Check(R.m == 3 and R.cg == nil and WQ_Has(said, TRF_Txt("wqmoved")) and WQ_Has(said, TRF_Txt("wqband", TRF_Cap_NameOf(slot), "Grey Ravens"))
 		and hk and hk.alive and hk.tpl == "Btransport_destroyed" and hk.pos.x == 750 and hk.pos.z == 400
 		and ng >= 3 and ng <= 5 and WQ_Logs(n0, "event=hold system=xb13 mode=3 x=750 z=400 hulk=true marker=true tier=3 ") == 1
 		and WQ_Logs(n0, "ship_count="..ng.." ships_asked=4 result=spawned") == 1 and S_Logs(n0, "module=plumb event=marker owner=wq label=TRF_WQ_HK result=added") == 1,
@@ -1332,7 +1337,7 @@ function T_WQ_F()
 	local d = PC_Dock();
 	HOST_Check(R.s == 70 and TRF.sv.c == nil and h.credits == cr0 and TRF.std.help == h0 + 1 and WQ_Has(d.scr, TRF_Txt("wqhome"))
 		and WQ_Logs(n0, "event=crew system=golkonda carried=3 picked=3 pods=3 result=handed") == 1 and WQ_Logs(n0, "event=step step_before=60 step_after=70 reason=handed") == 1
-		and h.qlog.trf_wq.d == "#TRF_wqd70" and WQ_Has(TRF_Txt("wqhome"), "brought the crew home"), "hand-in at s 60: help +1, no credits, step 70, the clerk's line, logbook wqd70");
+		and h.qlog.trf_wq.d == "#TRF_wqd70" and WQ_Has(TRF_Txt("wqhome"), "in my office, alive"), "hand-in at s 60: help +1, no credits, step 70, the clerk's line, logbook wqd70");
 	-- A partial crew handed in at s 50: the pods left go, step 60, then 70.
 	R = WQ_At(50, {r=1, ql=50, m=3, pn=3, pk=1});
 	TRF.sv = {b={{s=x, si=0, x=750, y=0, z=280, n=2, n0=3, f=0, nm=0, lg=TRF.clock.legs, src=2, sl=0, pf=0, pp=0, q=1}},
@@ -1367,7 +1372,7 @@ function T_WQ_F()
 	WQ_Visit();
 	n0 = S_Mark();
 	d = PC_Dock();
-	HOST_Check(d.nb == 1 and WQ_Has(d.box.text, "does not forget a carrier who brings his people back") and WQ_Has(d.box.text, "Register a hull under Wolves Freight for ")
+	HOST_Check(d.nb == 1 and WQ_Has(d.box.text, "Wolves Freight, the Marlin case?") and WQ_Has(d.box.text, " loop, Union cover included, for ") and not WQ_Has(d.box.text, "Gefest")
 		and not WQ_Has(d.box.text, "Cover premiums") and d.box.title == TRF_Txt("fwboxtitle"), "s 70: the purchase box reads fwboxq");
 	local s = PC_Press(d, "ok");
 	local L = TRF.clock.legs;
@@ -1418,7 +1423,7 @@ function T_WQ_F()
 	WQ_Visit();
 	n0 = S_Mark();
 	d = PC_Dock();
-	HOST_Check(d.nb == 1 and WQ_Has(d.box.text, "does not forget a carrier") and S_Logs(n0, "module=parcel event=offer system=debris6 result=none reason=wq_unlock") == 1
+	HOST_Check(d.nb == 1 and WQ_Has(d.box.text, "the Marlin case") and S_Logs(n0, "module=parcel event=offer system=debris6 result=none reason=wq_unlock") == 1
 		and TRF_Wq_UnlockDue(TRF_CurIdx()) == 1, "s 70: the parcel box skipped (reason wq_unlock), the purchase box opens");
 	PC_Press(d, "cancel");
 	HOST_Check(TRF_Wq_UnlockDue(TRF_CurIdx()) == nil, "s 80: the parcel box is back");
@@ -1486,6 +1491,549 @@ function T_WQ_F()
 	HOST_Check(zz <= 390, "TRF.wq at its widest with the step 3-4 fields: "..zz.." bytes <= 390");
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key");
 end;
+
+-- g: presentation (spec 13): the dialog files, every dialog's pages, variants and effects, the fallbacks, the letters, the
+-- logbook in the mission list, the English map names and the clan ------------------------------------------------
+
+-- The dialogs on (WQ_Begin with t {wq_dialog=1, hail_xml=1}): the UI state native at u (default 0, idle).
+function WQ_DlgUi(u)
+	TRF_UiState = HOST_UiState;
+	HOST().ui = u or 0;
+end;
+
+-- The open dialog: file name, page, pilot, message text, visible answers ({} when none is open).
+function WQ_Dlg()
+	local d = HOST().dlg;
+	if not d or not d.open then return {}; end;
+	return {name=d.name, cur=d.cur, pilot=HOST_DlgPilot(), text=HOST_DlgText(), vis=HOST_DlgVis()};
+end;
+
+-- Answers picked in order (page links keep the window open).
+function WQ_Picks(...)
+	for i = 1, arg.n do HOST_DlgPick(arg[i]); end;
+end;
+
+function WQ_Read(rel)
+	local f = openfile(HOST().dir..rel, "r");
+	if not f then return nil; end;
+	local s = read(f, "*a");
+	closefile(f);
+	return s;
+end;
+
+function WQ_GCfg(t)
+	local c = {wq_dialog=1, hail_xml=1, news_mode=2};
+	if t then for k, v in t do c[k] = v; end; end;
+	return c;
+end;
+
+function T_WQ_G()
+	local h = HOST();
+	WQ_Begin("debris6", "5_1", WQ_GCfg());
+	WQ_DlgUi(0);
+	-- The files: answers as TRF_WqDlgFiles lists them, every message plain-text first (hail-dialog.md 3.6), tokens with
+	-- a text key (or who), page links to pages, every lua_function and init defined, speakers TRF_WqP_* in the Pilots merge
+	-- and in merge/wq_pilots.sed.
+	local px = WQ_Read("../../../../merge/Pilots.xml") or "";
+	local sed = WQ_Read("../../../../merge/wq_pilots.sed") or "";
+	local bad, nf, np = "", 0, 0;
+	for k, fi in TRF_WqDlgFiles() do
+		local x = HOST_DlgXml(fi.f);
+		nf = nf + 1;
+		if not x then
+			bad = bad.." "..fi.f..":missing";
+		else
+			local an = {};
+			for i = 1, getn(fi.an) do an[fi.an[i]] = 1; end;
+			if getn(x.order) ~= getn(fi.an) then bad = bad.." "..fi.f..":answer_count"; end;
+			for i = 1, getn(x.order) do
+				local n = x.order[i];
+				local a = x.ans[n];
+				local _, _, tk = strfind(a.t or "", "^%- #(%w+)#$");
+				if not an[n] then bad = bad.." "..fi.f..":"..n; end;
+				if not tk or not fi.tk[tk] then bad = bad.." "..fi.f..":"..n..":token"; end;
+				if a.fn and a.fn ~= "" and type(getglobal(a.fn)) ~= "function" then bad = bad.." "..fi.f..":"..a.fn; end;
+				if a.go and a.go ~= "" and not x.pages[a.go] then bad = bad.." "..fi.f..":"..n..":go"; end;
+				if (not a.go or a.go == "") and (not a.fn or a.fn == "") then bad = bad.." "..fi.f..":"..n..":dead_end"; end;
+			end;
+			for pn, pg in x.pages do
+				np = np + 1;
+				local m = pg.msg or "#";
+				if strsub(m, 1, 1) == "#" or not strfind(m, "^[A-Za-z][^:]*: #%w+#$") then bad = bad.." "..fi.f..":"..pn..":message"; end;
+				local i0 = 1;
+				while 1 do
+					local _, e, t = strfind(m, "#(%w+)#", i0);
+					if not e then break; end;
+					if t ~= "who" and not fi.tk[t] then bad = bad.." "..fi.f..":"..t; end;
+					i0 = e + 1;
+				end;
+				if not strfind(px, '<GamePilot name="'..(pg.pilot or "?")..'">', 1, 1) or not strfind(sed, "<pilot_name>"..(pg.pilot or "?").."</pilot_name>|", 1, 1) then
+					bad = bad.." "..fi.f..":"..pn..":pilot";
+				end;
+			end;
+			for t, key in fi.tk do if TRF_UI_Find(TRF_UI_Key(key)) == nil then bad = bad.." "..key; end; end;
+			if type(getglobal(fi.ini)) ~= "function" then bad = bad.." "..fi.ini; end;
+		end;
+	end;
+	HOST_Check(bad == "" and nf == 12 and np == 35, "12 dialog files, 35 pages: answers as listed, messages 'Speaker: #token#', tokens with texts, links to pages, "
+		.."functions defined, speakers TRF_WqP_* in merge/Pilots.xml and wq_pilots.sed ("..nf.." files, "..np.." pages)"..bad);
+	local sp = "";
+	for k, v in {"clerk", "kestrel", "nav", "fence", "patrol", "master", "clan", "cap"} do
+		if not strfind(px, '<GamePilot name="TRF_WqP_'..v..'">', 1, 1) then sp = sp.." "..v; end;
+	end;
+	HOST_Check(sp == "" and strfind(px, "<callsign>FTU clerk</callsign>", 1, 1) and strfind(px, "<callsign>Marlin's navigator</callsign>", 1, 1)
+		and strfind(sed, "TRF_WqP_clerk</pilot_name>|<pilot_name>Treasurer</pilot_name>", 1, 1), "eight speakers with plain-text callsigns; the vanilla fallback pilots"..sp);
+	-- English map names and the clan.
+	local en = TRF_WqSysEn(V_Idx("gefest")).."/"..TRF_WqSysEn(V_Idx("golkonda")).."/"..TRF_WqSysEn(V_Idx("callipso")).."/"..TRF_WqSysEn(V_Idx("debris6"))
+		.."/"..TRF_WqSysEn(V_Idx("xb13"));
+	local cs = CombineStr;
+	CombineStr = function(k, v) if k == "#M_location_gefest" then return "Hephaestus "; end; return k; end;
+	local ce = TRF_WqSysEn(V_Idx("gefest")).."/"..TRF_WqSysEn(V_Idx("kadi"));
+	CombineStr = cs;
+	bad = "";
+	for k, v in TRF_Wq_Text() do if strfind(v, "Gefest", 1, 1) or strfind(v, "Golkonda", 1, 1) or strfind(v, "Callipso", 1, 1) then bad = bad.." "..k; end; end;
+	if strfind(TRF_Txt("fwboxq", "1", "2"), "Gefest", 1, 1) then bad = bad.." fwboxq"; end;
+	HOST_Check(en == "Hephaestus/Golconda/Calypso/Debris 6/XB-13" and ce == "Hephaestus/Kadi" and bad == "" and TRF_WqClan() == "Grey Ravens"
+		and TRF_WqClan() == TRF_ClanName(TRF_RgOf(V_Idx("xb13"))),
+		"English map names (CombineStr of #M_location_<name>, else the table, else TRF_UI_SysName); no internal name in a text; the clan of XB-13 ("..en.." "..ce..")"..bad);
+
+	-- D1 at the dock: the window instead of the box, the optional pages, accept; the effects after the window closed.
+	WQ_Visit();
+	local n0 = S_Mark();
+	local m0, s0 = getn(h.msgs), getn(h.screen);
+	local nd = getn(h.dlgs);
+	local r = PC_Dock();
+	local w = WQ_Dlg();
+	HOST_Check(r.nb == 0 and w.name == "TRF_Wq1" and w.pilot == "TRF_WqP_clerk" and w.cur == "msg10" and w.vis == "a_go a_why a_bye"
+		and WQ_Has(w.text, "FTU clerk: Free traders? Good, sit down.") and HOST_DlgText("a_bye") == "- Not my business. Good day." and getn(h.dlgs) == nd
+		and WQ_Logs(n0, "event=dialog dialog=1 via=dock result=opened") == 1 and WQ_Logs(n0, "event=offer system=debris6 variant=new help=5 result=shown via=dialog") == 1
+		and S_Logs(n0, "module=plumb event=dock kind=trade line_count=0 box=wq priority=450 result=box") == 1,
+		"D1: the dialog at the dock (no box, the station window waits), the clerk's portrait, page 1 and its three answers");
+	WQ_Picks("a_why");
+	local t1 = WQ_Dlg().text;
+	WQ_Picks("a_pat");
+	local t2 = WQ_Dlg().text;
+	WQ_Picks("a_back2", "a_go");
+	w = WQ_Dlg();
+	HOST_Check(WQ_Has(t1, "paper, not guns") and WQ_Has(t2, "collecting donations for ammunition") and w.cur == "msg20" and w.vis == "a_acc a_dec"
+		and WQ_Has(w.text, "last call came from the Hephaestus side") and HOST_DlgText("a_acc") == "- I'll watch the scanner on those lanes.",
+		"D1: the optional pages D1-a and D1-b and back, page 2 with the Hephaestus side, accept and decline");
+	WQ_Picks("a_acc");
+	w = WQ_Dlg();
+	local open = w.cur == "msg30" and TRF.wq == nil;
+	WQ_Picks("a_fin");
+	T_Tick(2, 0.5);
+	local R = TRF.wq;
+	HOST_Check(open and WQ_Has(w.text, "the first one this week") and R and R.s == 10 and h.qlog.trf_wq and h.qlog.trf_wq.d == "#TRF_wqd10"
+		and h.quests.trf_wq == QUEST_PROCESS and getn(h.dlgs) == nd + 1 and not WQ_Has(WQ_Said(m0, s0), TRF_Txt("wqok"))
+		and WQ_Logs(n0, "event=dialog dialog=1 via=dock answer=acc result=done") == 1 and WQ_Logs(n0, "event=accept system=debris6 variant=new") == 1
+		and S_Logs(n0, "module=plumb event=box_answer kind=trade box=wq answer=1 result=done") == 1,
+		"D1 accept: the after-accept page, then step 10, the mission list, the station window once, no reply line");
+	HOST_Check(WQ_Has(WQ_Posts(), "+mail_trf_wq1") and TRF_WqBit(R.k, 8) and WQ_Logs(n0, "event=letter letter=1 post=mail_trf_wq1 flags=8 result=posted") == 1,
+		"letter P1 posted at the accept (news_mode 2), k bit 8");
+	local np0 = getn(h.posts);
+	TRF_WqLetter(1);
+	HOST_Check(getn(h.posts) == np0, "letter P1 never twice");
+	-- Old hauler: page 2 and 3 variants; decline gives the cooldown.
+	WQ_Begin("debris6", "5_1", WQ_GCfg());
+	WQ_DlgUi(0);
+	h.ms.model = "Mothership_arba";
+	WQ_Visit();
+	nd = getn(h.dlgs);
+	PC_Dock();
+	WQ_Picks("a_go");
+	w = WQ_Dlg();
+	WQ_Picks("a_dec");
+	T_Tick(2, 0.5);
+	HOST_Check(WQ_Has(w.text, "that old Arba, so you know the rule") and TRF.wq and TRF.wq.s == 0 and TRF.wq.dc == TRF.clock.legs and getn(h.dlgs) == nd + 1,
+		"D1 old hauler: the Arba page; decline: step 0 with the 10-leg cooldown, the station window");
+	-- Close (Not my business): no cooldown; Esc: the same; the offer comes back at the next docking.
+	WQ_Begin("debris6", "5_1", WQ_GCfg());
+	WQ_DlgUi(0);
+	WQ_Visit();
+	nd = getn(h.dlgs);
+	PC_Dock();
+	WQ_Picks("a_bye");
+	T_Tick(2, 0.5);
+	local c1 = (TRF.wq == nil or TRF.wq.dc == nil) and getn(h.dlgs) == nd + 1;
+	n0 = S_Mark();
+	WQ_Visit();
+	PC_Dock();
+	HOST_DlgEsc();
+	T_Tick(4, 0.5);
+	HOST_Check(c1 and (TRF.wq == nil or TRF.wq.dc == nil) and getn(h.dlgs) == nd + 1 and WQ_Logs(n0, "event=dialog dialog=1 via=dock answer=none result=closed") == 1
+		and S_Logs(n0, "module=plumb event=box_answer kind=trade box=wq answer=-1 via=dialog result=closed") == 1 and TRF.live.box == nil,
+		"D1 close: no cooldown, the station window; Esc: no cooldown, the lock freed, no station window (dock again)");
+	-- Fallbacks: hail_xml 0, no native, a window up: the box, a dialog_fallback line.
+	WQ_Visit();
+	h.cfg.hail_xml = nil;
+	n0 = S_Mark();
+	r = PC_Dock();
+	local f1 = r.nb == 1 and WQ_Logs(n0, "event=dialog_fallback dialog=1 reason=xml") == 1;
+	if r.nb > 0 then PC_Press(r, "cancel"); end;
+	h.cfg.hail_xml = 1;
+	WQ_Begin("debris6", "5_1", WQ_GCfg());
+	WQ_DlgUi(0);
+	local std = StartTradeDialog;
+	StartTradeDialog = nil;
+	WQ_Visit();
+	n0 = S_Mark();
+	r = PC_Dock();
+	local f2 = r.nb == 1 and WQ_Logs(n0, "event=dialog_fallback dialog=1 reason=native") == 1;
+	if r.nb > 0 then PC_Press(r, "cancel"); end;
+	StartTradeDialog = std;
+	WQ_Begin("debris6", "5_1", WQ_GCfg());
+	WQ_DlgUi(4);
+	WQ_Visit();
+	n0 = S_Mark();
+	r = PC_Dock();
+	local f3 = r.nb == 1 and WQ_Logs(n0, "event=dialog_fallback dialog=1 reason=\"ui=4\"") == 1 and r.box.text == TRF_Txt("wqbox", "Hephaestus");
+	if r.nb > 0 then PC_Press(r, "cancel"); end;
+	WQ_Begin("debris6", "5_1", WQ_GCfg());
+	WQ_DlgUi(2);
+	WQ_Visit();
+	local r2 = PC_Dock();
+	local f4 = r2.nb == 0 and WQ_Dlg().name == "TRF_Wq1";
+	if f4 then WQ_Picks("a_bye"); end;
+	HOST_Check(f1 and f2 and f3 and f4, "D1 fallback to the box: hail_xml 0 (reason xml), no StartTradeDialog (native), another dialog up (ui=4); "
+		.."the dock request box (modal flag 2) does not stop it");
+	-- The Office card's OK: D1 over the Office window (modal allowed), accept; with a dialog up the accept at once.
+	WQ_Begin("debris6", "5_1", WQ_GCfg());
+	WQ_DlgUi(2);
+	local row = TRF_Wq_JobRow("trade");
+	local v = TRF_Wq_CardOk(row.a);
+	w = WQ_Dlg();
+	WQ_Picks("a_go", "a_acc", "a_fin");
+	T_Tick(2, 0.5);
+	local b1 = v == nil and w.name == "TRF_Wq1" and TRF.wq and TRF.wq.s == 10;
+	WQ_Begin("debris6", "5_1", WQ_GCfg());
+	WQ_DlgUi(4);
+	row = TRF_Wq_JobRow("trade");
+	v = TRF_Wq_CardOk(row.a);
+	HOST_Check(b1 and v == TRF_Txt("wqok") and TRF.wq and TRF.wq.s == 10 and WQ_Dlg().name == nil,
+		"Office card OK: D1 over the Office window (ui 2), accept; under another dialog (ui 4) the accept at once with the reply");
+	-- The logbook: the mission list with the dialogs on (also with the Job log natives and jobs_log 1); wq_dialog 0 moves
+	-- the entry to the Job log at the reconcile, 1 back.
+	WQ_Begin("debris6", "5_1", WQ_GCfg({jobs_log=1}), 1);
+	WQ_DlgUi(0);
+	WQ_Visit();
+	PC_Dock();
+	WQ_Picks("a_go", "a_acc", "a_fin");
+	T_Tick(2, 0.5);
+	local l1 = h.qlog.trf_wq and getn(h.jl) == 0;
+	h.cfg.wq_dialog = 0;
+	TRF_Wq_OnActivate();
+	local l2 = h.qlog.trf_wq == nil and getn(h.jl) == 1;
+	h.cfg.wq_dialog = 1;
+	n0 = S_Mark();
+	TRF_Wq_OnActivate();
+	HOST_Check(l1 and l2 and h.qlog.trf_wq and h.qlog.trf_wq.d == "#TRF_wqd10" and getn(h.jl) == 0
+		and WQ_Logs(n0, "event=logbook list=job id=trf_wq result=removed reason=moved") == 1,
+		"logbook: the mission list with the dialogs on; wq_dialog 0 moves it to the Job log, 1 back");
+
+	-- D2: the Kestrel saved, the window after the raid (old hauler page); the step was set at the result.
+	WQ_Begin("golkonda", "5_1", WQ_GCfg());
+	WQ_DlgUi(0);
+	R = WQ_At(10);
+	h.ms.model = "Mothership_arba";
+	n0 = S_Mark();
+	m0, s0 = getn(h.msgs), getn(h.screen);
+	TRF_WqResult({st="live", id=99999, sys=TRF_CurIdx(), g=TRF_WqGen()}, 1, "test");
+	local s20 = R.s == 20 and WQ_Dlg().name == nil;
+	T_Tick(2, 0.5);
+	w = WQ_Dlg();
+	local lk = TRF.live.box;
+	WQ_Picks("a_what", "a_who");
+	local t3 = WQ_Dlg().text;
+	WQ_Picks("a_tell2");
+	T_Tick(1, 0.5);
+	HOST_Check(s20 and w.name == "TRF_Wq2" and w.pilot == "TRF_WqP_kestrel" and WQ_Has(w.text, "Kestrel's captain: An Arba! I knew it") and lk == "wq"
+		and WQ_Has(t3, "XT governors") and TRF.live.box == nil and not WQ_Has(WQ_Said(m0, s0), TRF_Txt("wqthxo"))
+		and WQ_Logs(n0, "event=dialog dialog=2 via=space result=opened") == 1 and WQ_Logs(n0, "event=dialog dialog=2 via=space answer=none result=done") == 1,
+		"D2: step 20 at the result, the window 0.5 s later under the box lock wq (old hauler page), D2-a, closed; no thanks line");
+	-- D2 fallbacks: a movie or modal window (ui 1), a story mission: the thanks line.
+	R = WQ_At(10);
+	h.ms.model = nil;
+	WQ_DlgUi(1);
+	n0 = S_Mark();
+	m0, s0 = getn(h.msgs), getn(h.screen);
+	TRF_WqResult({st="live", id=99999, sys=TRF_CurIdx(), g=TRF_WqGen()}, 1, "test");
+	T_Tick(2, 0.5);
+	local g1 = WQ_Logs(n0, "event=dialog_fallback dialog=2 reason=\"ui=1\"") == 1 and S_Logs(n0, "module=ui event=say result=skipped reason=quiet") == 1 and WQ_Dlg().name == nil;
+	R = WQ_At(10);
+	WQ_DlgUi(0);
+	h.qs = TRUE;
+	n0 = S_Mark();
+	m0, s0 = getn(h.msgs), getn(h.screen);
+	TRF_WqResult({st="live", id=99999, sys=TRF_CurIdx(), g=TRF_WqGen()}, 1, "test");
+	T_Tick(2, 0.5);
+	h.qs = FALSE;
+	HOST_Check(g1 and WQ_Has(WQ_Said(m0, s0), TRF_Txt("wqthx")) and WQ_Logs(n0, "event=dialog_fallback dialog=2 reason=mission") == 1 and WQ_Dlg().name == nil,
+		"D2 fallback: a window up (ui=1: the thanks line to TRF_Say, quiet then) or a story mission: the thanks line instead");
+
+	-- D3: the report at the dock (saved: the captain; chapter 5 Golconda or Calypso), the effect at the final answer.
+	WQ_Begin("golkonda", "5_1", WQ_GCfg());
+	WQ_DlgUi(0);
+	R = WQ_At(20, {r=1, ql=20});
+	WQ_Visit();
+	n0 = S_Mark();
+	nd = getn(h.dlgs);
+	r = PC_Dock();
+	w = WQ_Dlg();
+	WQ_Picks("a_conv");
+	t1 = WQ_Dlg().text;
+	WQ_Picks("a_back", "a_where");
+	t2 = WQ_Dlg().text;
+	local mid = R.s == 20 and getn(h.dlgs) == nd;
+	WQ_Picks("a_ok");
+	T_Tick(2, 0.5);
+	HOST_Check(r.nb == 0 and w.name == "TRF_Wq3" and w.pilot == "TRF_WqP_kestrel" and WQ_Has(w.text, "from the Golconda side, then nothing") and w.vis == "a_where a_conv"
+		and HOST_DlgText("a_where") == "- Where on the Golconda side?" and WQ_Has(t1, "A USS convoy?") and WQ_Has(t2, "Golconda or Calypso.") and mid
+		and R.s == 30 and R.ws and getn(h.dlgs) == nd + 1 and not WQ_Has(r.scr, "Kestrel's captain:")
+		and S_Logs(n0, "module=plumb event=dock kind=trade line_count=0 box=wq_talk priority=460 result=box") == 1
+		and WQ_Logs(n0, "event=report system=golkonda result=saved") == 1,
+		"D3 saved: the talk box opens the captain's dialog, D3-a and back, step 30 and the wreck pick at the final answer, the station window");
+	-- D3b lost and limped in (the clerk), chapter 6 with Debris 6; Esc keeps step 20.
+	h.labels.CurrentQuest = "6_1";
+	R = WQ_At(20, {r=2, ql=20});
+	WQ_Visit();
+	PC_Dock();
+	w = WQ_Dlg();
+	WQ_Picks("a_corp");
+	t1 = WQ_Dlg().text;
+	WQ_Picks("a_back", "a_where");
+	t2 = WQ_Dlg().text;
+	HOST_DlgEsc();
+	T_Tick(4, 0.5);
+	local e20 = R.s == 20;
+	R = WQ_At(20, {r=3, ql=20});
+	WQ_Visit();
+	PC_Dock();
+	t3 = WQ_Dlg().text;
+	WQ_Picks("a_where", "a_ok");
+	T_Tick(2, 0.5);
+	HOST_Check(w.name == "TRF_Wq3b" and w.pilot == "TRF_WqP_clerk" and WQ_Has(w.text, "FTU clerk: The Kestrel's people came home in pods") and WQ_Has(t1, "price list for escorts")
+		and WQ_Has(t2, "Golconda, Calypso or Debris 6") and e20 and WQ_Has(t3, "crawled in on her own") and R.s == 30,
+		"D3b: lost and limped-in pages, D3-b, chapter 6 with Debris 6; Esc keeps step 20");
+	h.labels.CurrentQuest = "5_1";
+	-- D3 fallback (no StartTradeDialog): the line and step 30 at once.
+	R = WQ_At(20, {r=1, ql=20});
+	std = StartTradeDialog;
+	StartTradeDialog = nil;
+	WQ_Visit();
+	n0 = S_Mark();
+	r = PC_Dock();
+	StartTradeDialog = std;
+	HOST_Check(R.s == 30 and WQ_Has(r.scr, TRF_Txt("wqrep1", "Golconda")) and WQ_Logs(n0, "event=dialog_fallback dialog=3 reason=native") == 1, "D3 fallback: the line, step 30");
+
+	-- D4: the navigator's pickup in space.
+	WQ_DlgUi(0);
+	R = WQ_At(30, {r=1, ws=V_Idx("golkonda"), ql=30});
+	TRF_Wq_OnPick({s=V_Idx("golkonda"), n=0});
+	T_Tick(2, 0.5);
+	w = WQ_Dlg();
+	WQ_Picks("a_what", "a_cargo");
+	t1 = WQ_Dlg().text;
+	WQ_Picks("a_back", "a_who");
+	t2 = WQ_Dlg().text;
+	WQ_Picks("a_home");
+	T_Tick(1, 0.5);
+	HOST_Check(w.name == "TRF_Wq4" and w.pilot == "TRF_WqP_nav" and WQ_Has(w.text, "Marlin's navigator: Thank you, friend") and WQ_Has(t1, "XT-27 market")
+		and WQ_Has(t2, "There's one on the Golconda side") and R.s == 30 and WQ_Dlg().name == nil, "D4: the navigator's dialog at the pickup, D4-a, step 30 kept");
+
+	-- D5: the fence (pay in the shim, the clan's name after it; step 50 at the end), the poor page, Esc after paying.
+	local g = V_Idx("golkonda");
+	R = WQ_At(40, {r=1, ws=g, ql=40});
+	local price = floor(0.4 * TRF_PayN(g) + 0.5);
+	h.credits = 1000000;
+	WQ_Visit();
+	n0 = S_Mark();
+	r = WQ_PirDock();
+	w = WQ_Dlg();
+	WQ_Picks("a_pat");
+	t1 = WQ_Dlg().text;
+	WQ_Picks("a_back", "a_how");
+	t2 = WQ_Dlg().text;
+	local v2 = WQ_Dlg().vis;
+	WQ_Picks("a_pay");
+	t3 = WQ_Dlg().text;
+	local paid = h.credits == 1000000 - price and R.s == 40;
+	WQ_Picks("a_ok");
+	T_Tick(2, 0.5);
+	HOST_Check(r.nb == 0 and w.name == "TRF_Wq5" and w.pilot == "TRF_WqP_fence" and WQ_Has(w.text, "Fence: Marlin papers? I know the name, dear guest.")
+		and WQ_Has(t1, "Triada keeps Golconda tidier") and WQ_Has(t2, TRF_WqNum(price).." credits. For that you get the papers") and v2 == "a_pay a_rich"
+		and paid and WQ_Has(t3, "The Grey Ravens clan keeps its guests there") and R.s == 50
+		and WQ_Logs(n0, "event=clue via=fence system=golkonda cost="..price.." result=ok") == 1 and S_Logs(n0, "module=region event=charge reason=wq amount="..price) == 1,
+		"D5: the fence, D5-a with Golconda, the price, the charge in the pay answer, the Grey Ravens, step 50");
+	R = WQ_At(40, {r=1, ws=g, ql=40});
+	h.credits = price - 1;
+	WQ_Visit();
+	r = WQ_PirDock();
+	WQ_Picks("a_how");
+	v2 = WQ_Dlg().vis;
+	WQ_Picks("a_payp");
+	t1 = WQ_Dlg().text;
+	WQ_Picks("a_forget2");
+	T_Tick(2, 0.5);
+	local p1 = r.nb == 0 and v2 == "a_payp a_rich" and WQ_Has(t1, "Your account says otherwise") and R.s == 40 and h.credits == price - 1;
+	h.credits = 1000000;
+	WQ_Visit();
+	WQ_PirDock();
+	WQ_Picks("a_how", "a_pay");
+	HOST_DlgEsc();
+	T_Tick(4, 0.5);
+	HOST_Check(p1 and R.s == 50 and h.credits == 1000000 - price, "D5 poor: the dialog opens, the poor page, step 40; Esc after paying: step 50");
+
+	-- D6: the patrol board at rung 1.
+	R = WQ_At(40, {r=1, ws=g, ql=40});
+	TRF.stn[TRF_Stn_Key(g, 1)] = {st=1, lg=TRF.clock.legs};
+	WQ_Visit();
+	local np = getn(h.pdlgs);
+	r = WQ_PatDock();
+	w = WQ_Dlg();
+	WQ_Picks("a_crew", "a_whose");
+	t1 = WQ_Dlg().text;
+	WQ_Picks("a_ok2");
+	T_Tick(2, 0.5);
+	HOST_Check(w.name == "TRF_Wq6" and w.pilot == "TRF_WqP_patrol" and WQ_Has(w.text, "Patrol officer: Trader, you asked about the Marlin") and WQ_Has(t1, "three old fighters")
+		and R.s == 50 and getn(h.pdlgs) == np + 1, "D6: the patrol officer, D6-a, step 50, the patrol window after it");
+
+	-- D7: the open band at XB-13 (mode 1 page; the clan's name as the speaker, "The clan" without a captain), the captain's
+	-- pilot while he is on-screen (7c), the mode 3 page.
+	TRF.wq = nil;
+	T_Enter("xb13");
+	WQ_DlgUi(0);
+	R = WQ_At(50, {r=1, ql=50, m=1});
+	TRF_WqSH().v.hold = {m=1};
+	TRF_WqHoldAct();
+	T_Tick(4, 0.5);
+	local early = WQ_Dlg().name == nil;
+	T_Tick(10, 0.5);
+	w = WQ_Dlg();
+	WQ_Picks("a_end");
+	T_Tick(1, 0.5);
+	local ca = TRF_Cap_Alive;
+	TRF_Cap_Alive = function() return 1; end;
+	TRF_WqSpace("7", {args={"The clan"}, lit={who="Grey Ravens"}}, "x", nil, 1);
+	T_Tick(3, 0.5);
+	local w2 = WQ_Dlg();
+	WQ_Picks("a_end");
+	TRF_Cap_Alive = ca;
+	T_Tick(1, 0.5);
+	TRF_WqDlgOpen("7", {args={"The clan"}, ov={p1="wq7p3"}, lit={who="Grey Ravens"}}, "space");
+	t1 = WQ_Dlg().text;
+	WQ_Picks("a_end");
+	T_Tick(1, 0.5);
+	HOST_Check(early and w.name == "TRF_Wq7" and w.pilot == "TRF_WqP_clan"
+		and w.text == "Open band, Grey Ravens: Look who's here, the Wolves! The clan says the Marlin's people are our guests, and guests stay until the Union pays. "
+			.."Or does the Union pay in protest letters? Turn around while you still have engines." and w2.name == "TRF_Wq7c" and w2.pilot == "TRF_WqP_cap"
+		and WQ_Has(t1, "back aboard their own ship") and TRF.live.box == nil, "D7: the band 6 s after the entry (clan pilot), 7c with the captain on-screen, mode 3 page");
+
+	-- D8: the master (the navigator handed in: one answer), D8-a and back.
+	TRF_WqSpace("8", {hd={"a_navc"}}, TRF_WqTxt("wqmaster"));
+	T_Tick(2, 0.5);
+	w = WQ_Dlg();
+	WQ_Picks("a_who");
+	t1 = WQ_Dlg().text;
+	WQ_Picks("a_back", "a_pods");
+	v2 = WQ_Dlg().vis;
+	t2 = WQ_Dlg().text;
+	WQ_Picks("a_navh");
+	T_Tick(1, 0.5);
+	HOST_Check(w.name == "TRF_Wq8" and w.pilot == "TRF_WqP_master" and WQ_Has(w.text, "Marlin's master: Wolves? So the Union did send someone!")
+		and WQ_Has(t1, "new Triada guns") and v2 == "a_navh" and WQ_Has(t2, "Henrik, my navigator") and HOST_DlgText("a_navh") == "- He got out. He's home and telling everyone about it.",
+		"D8: the master, D8-a, the navigator handed in (a_navc hidden)");
+	-- One pending in-space dialog: a second one says the first one's line.
+	n0 = S_Mark();
+	TRF_WqSpace("8", {hd={"a_navh"}}, TRF_WqTxt("wqmaster"));
+	TRF_WqSpace("2", {}, "second", nil, 1);
+	T_Tick(3, 0.5);
+	HOST_Check(WQ_Logs(n0, "event=dialog_fallback dialog=8 reason=replaced") == 1 and WQ_Dlg().name == "TRF_Wq2", "a second in-space dialog says the first one's line");
+	WQ_Picks("a_bye");
+	T_Tick(1, 0.5);
+
+	-- D9: home at the hand-in (step 70 and letter P2 at the hand-in, the dialog through the talk box).
+	WQ_Begin("golkonda", "5_1", WQ_GCfg({enable_survivors=1, sv_seeded=0}));
+	WQ_DlgUi(0);
+	local x = V_Idx("xb13");
+	TRF.sv = {b={}, c={n=3, cr=0, pc=0, s1=x, f=0, lg=TRF.clock.legs, q=1}, st={res=0, sold=0, lost=0}, r={}, sd=1};
+	TRF_Sv_Fix();
+	R = WQ_At(60, {r=1, ql=60, pn=3, pk=3});
+	n0 = S_Mark();
+	WQ_Visit();
+	nd = getn(h.dlgs);
+	r = PC_Dock();
+	w = WQ_Dlg();
+	local s70 = R.s == 70 and WQ_Has(WQ_Posts(), "+mail_trf_wq2") and TRF_WqBit(R.k, 16);
+	WQ_Picks("a_noise");
+	t1 = WQ_Dlg().text;
+	WQ_Picks("a_back", "a_para");
+	t2 = WQ_Dlg().text;
+	WQ_Picks("a_there");
+	T_Tick(2, 0.5);
+	HOST_Check(s70 and w.name == "TRF_Wq9" and w.pilot == "TRF_WqP_clerk" and WQ_Has(w.text, "FTU clerk: The Marlin's master is in my office") and WQ_Has(t1, "a thick one")
+		and WQ_Has(t2, "Ask at a charter desk on a freight loop") and not WQ_Has(r.scr, TRF_Txt("wqhome")) and getn(h.dlgs) == nd + 1
+		and WQ_Logs(n0, "event=letter letter=2 post=mail_trf_wq2 flags=16 result=posted") == 1,
+		"D9: step 70 and letter P2 at the hand-in, the clerk's dialog through the talk box, D9-a, the station window after it");
+
+	-- D10: the charter desk at s 70 (the Golconda loop, the price), buy: step 80, the entry done; the poor page keeps 70.
+	WQ_Begin("debris6", "5_1", WQ_GCfg());
+	WQ_DlgUi(0);
+	R = WQ_At(70, {r=1, ql=70});
+	TRF.co = nil;
+	WQ_Visit();
+	n0 = S_Mark();
+	nd = getn(h.dlgs);
+	r = PC_Dock();
+	w = WQ_Dlg();
+	WQ_Picks("a_buy");
+	T_Tick(2, 0.5);
+	HOST_Check(r.nb == 0 and w.name == "TRF_Wq10" and w.vis == "a_buy a_no" and WQ_Has(w.text, "on the Golconda loop, Union cover included")
+		and strfind(w.text, "%d credits%.$") and R.s == 80 and TRF_FrCount() == 1 and h.quests.trf_wq == QUEST_DONE and getn(h.dlgs) == nd + 1
+		and WQ_Logs(n0, "event=unlock system=debris6") == 1 and WQ_Logs(n0, "result=bought") >= 1,
+		"D10: the charter desk (Golconda loop, the price), Register: bought, step 80, the entry done, the station window");
+	WQ_Begin("debris6", "5_1", WQ_GCfg());
+	WQ_DlgUi(0);
+	R = WQ_At(70, {r=1, ql=70});
+	TRF.co = nil;
+	h.credits = 10;
+	WQ_Visit();
+	PC_Dock();
+	w = WQ_Dlg();
+	WQ_Picks("a_back");
+	T_Tick(2, 0.5);
+	local q1 = w.vis == "a_back" and WQ_Has(w.text, "your account is a little short") and R.s == 70 and (TRF.co == nil or TRF.co.decl == nil);
+	h.credits = 1000000;
+	WQ_Visit();
+	PC_Dock();
+	WQ_Picks("a_no");
+	T_Tick(2, 0.5);
+	HOST_Check(q1 and R.s == 80 and TRF.co and TRF.co.decl and TRF_FrCount() == 0, "D10 poor: the poor page, step 70 kept, no decline; Not now: step 80, the decline cooldown");
+	-- Letters: news_mode 1 skips (no post, no bit).
+	WQ_Begin("debris6", "5_1", WQ_GCfg({news_mode=1}));
+	R = WQ_At(10);
+	n0 = S_Mark();
+	np0 = getn(h.posts);
+	TRF_WqLetter(1);
+	HOST_Check(getn(h.posts) == np0 and not TRF_WqBit(R.k, 8) and WQ_Logs(n0, "event=letter letter=1 news_mode=1 result=skipped reason=news_mode") == 1,
+		"letters only with news_mode 2");
+	-- The records: news/trf_news.xml has both letters (mail, the trf_wq keys).
+	local nx = WQ_Read("../../../../news/trf_news.xml") or "";
+	HOST_Check(strfind(nx, "<name>mail_trf_wq1</name>\r\n\t\t<header>#TRF_wqlt</header>\r\n\t\t<text>#TRF_wql1b</text>\r\n\t\t<image_name>mail</image_name>", 1, 1)
+		and strfind(nx, "<name>mail_trf_wq2</name>", 1, 1) and WQ_Has(TRF_Txt("wql1b"), "|With respect,|FTU charter office, Capricorn Sector"),
+		"news records mail_trf_wq1 and mail_trf_wq2 with the letter keys, image mail");
+	-- The record with both letter bits within the repair range.
+	R = WQ_At(80, {r=1, k=31, wd=TRF.clock.legs});
+	HOST_Check(R.k == 31, "k 0..31 kept by the repair (letter bits 8, 16)");
+end;
+
+-- Posts so far joined by "|".
+function WQ_Posts()
+	local s = "";
+	for i = 1, getn(HOST().posts) do s = s..HOST().posts[i].."|"; end;
+	return s;
+end;
+
 
 -- Dispatch ---------------------------------------------------------------------------------
 

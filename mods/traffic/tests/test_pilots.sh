@@ -3,7 +3,7 @@
 # install.sh --pilots, on copies only. Usage: sh tests/test_pilots.sh (run_host.sh calls it last).
 # Reads the vanilla game files from $ORIG (default as in mods/trackpad/env.sh) and never writes there; every file it
 # writes is under <repo>/.work/pilots/ (test/ for the merge checks, fakegame/ for the installer, TMPDIR test/tmp/).
-# Merge: 120 TRF_McP_ templates added, a second run changes nothing, frag="" gives the vanilla file back byte for byte,
+# Merge: 120 TRF_McP_ templates and the 8 quest speakers TRF_WqP_ added, a second run changes nothing, frag="" gives the vanilla file back byte for byte,
 # exit 3 without </Pilots>, exit 4 with a TRF_ template outside the block, no name clash with vanilla templates,
 # callsigns non-empty and unique, fragment and merged file well-formed (xmllint, schema-valid when the XSD is there),
 # gen_pilots.py --check. Installer: sh -n, then on a fake game tree (copies of sw3cw.exe, zlib1_orig.dll, the two
@@ -41,7 +41,8 @@ nv=$(cnt '<GamePilot ' "$work/vanilla.xml")
 rc=0; awk -v frag="$frag" -f "$awkf" "$work/vanilla.xml" > "$work/m1.xml" || rc=$?
 check "merge exit 0" [ "$rc" = 0 ]
 n1=$(cnt '<GamePilot name="TRF_McP_' "$work/m1.xml"); na=$(cnt '<GamePilot ' "$work/m1.xml")
-check "merge adds exactly 120 templates ($n1 TRF_McP_, $na of $nv + 120 GamePilot)" [ "$n1:$na" = "120:$((nv + 120))" ]
+n2=$(cnt '<GamePilot name="TRF_WqP_' "$work/m1.xml")
+check "merge adds exactly 128 templates ($n1 TRF_McP_, $n2 TRF_WqP_, $na of $nv + 128 GamePilot)" [ "$n1:$n2:$na" = "120:8:$((nv + 128))" ]
 rc=0; awk -v frag="$frag" -f "$awkf" "$work/m1.xml" > "$work/m2.xml" || rc=$?
 check "second merge is idempotent (exit $rc, same bytes)" cmp -s "$work/m1.xml" "$work/m2.xml"
 rc=0; awk -v frag= -f "$awkf" "$work/m1.xml" > "$work/rev.xml" || rc=$?
@@ -54,11 +55,11 @@ rc=0; awk -v frag="$frag" -f "$awkf" "$work/clash.xml" > "$work/x.xml" || rc=$?
 check "TRF_ template outside the block: exit 4 ($rc)" [ "$rc" = 4 ]
 sed -n 's/.*<GamePilot name="\([^"]*\)".*/\1/p' "$work/vanilla.xml" | LC_ALL=C sort > "$work/van.names"
 sed -n 's/.*<GamePilot name="\([^"]*\)".*/\1/p' "$frag" | LC_ALL=C sort > "$work/frag.names"
-check "fragment template names are unique ($(wc -l < "$work/frag.names" | tr -d ' '))" [ "$(LC_ALL=C sort -u "$work/frag.names" | wc -l | tr -d ' ')" = 120 ]
+check "fragment template names are unique ($(wc -l < "$work/frag.names" | tr -d ' '))" [ "$(LC_ALL=C sort -u "$work/frag.names" | wc -l | tr -d ' ')" = 128 ]
 check "no template name collides with a vanilla name" [ -z "$(LC_ALL=C comm -12 "$work/van.names" "$work/frag.names")" ]
 tr -d '\r' < "$frag" | sed -n 's/^[[:space:]]*<callsign>\(.*\)<\/callsign>$/\1/p' > "$work/callsigns"
-check "120 callsigns, none empty" [ "$(grep -c . "$work/callsigns" || true):$(wc -l < "$work/callsigns" | tr -d ' ')" = "120:120" ]
-check "callsigns unique ignoring case" [ "$(LC_ALL=C sort -fu "$work/callsigns" | wc -l | tr -d ' ')" = 120 ]
+check "128 callsigns, none empty" [ "$(grep -c . "$work/callsigns" || true):$(wc -l < "$work/callsigns" | tr -d ' ')" = "128:128" ]
+check "callsigns unique ignoring case" [ "$(LC_ALL=C sort -fu "$work/callsigns" | wc -l | tr -d ' ')" = 128 ]
 check "fragment is CRLF throughout" [ "$(LC_ALL=C tr -cd '\n' < "$frag" | wc -c | tr -d ' ')" = "$(LC_ALL=C grep -c "$(printf '\r')\$" "$frag")" ]
 check "fragment is ASCII" sh -c "! LC_ALL=C grep -q '[^[:print:][:space:]]' \"$frag\""
 if [ "$havexl" = 1 ]; then
@@ -98,6 +99,8 @@ if [ "$miss" = 0 ]; then
 
     check "install --pilots: exit 0" inst 1 sh "$mod/install.sh" --pilots "$fake"
     check "install --pilots: 120 TRF_McP_ templates in Pilots.xml" [ "$(cnt '<GamePilot name="TRF_McP_' "$fp")" = 120 ]
+    tq=$fake/Data/Scripts/Trade
+    check "install --pilots: 12 quest dialogs with the TRF_WqP_ speakers" sh -c "[ \"\$(ls \"$tq\"/TRF_Wq*.xml | wc -l | tr -d ' ')\" = 12 ] && cmp -s \"$tq/TRF_Wq1.xml\" \"$mod/Data/Scripts/Trade/TRF_Wq1.xml\""
     check "install --pilots: Pilots.xml equals the merge of the copy" cmp -s "$fp" "$work/m1.xml"
     check "install --pilots: vanilla backup kept" cmp -s "$fake/sw3-traffic-backup/files/Data/Game/Pilots.xml" "$van"
     check "install --pilots: mc_names=2 in config.script ($(mcn))" [ "$(mcn)" = 2 ]
@@ -110,6 +113,7 @@ if [ "$miss" = 0 ]; then
     check "PILOTS=1 --news: both merges present" sh -c "cmp -s \"$fp\" \"$work/m1.xml\" && grep -q '<name>trf_' \"$fn\""
     check "--news without --pilots: exit 0" inst 4 sh "$mod/install.sh" --news "$fake"
     check "--news without --pilots: Pilots.xml is vanilla again" cmp -s "$fp" "$van"
+    check "--news without --pilots: the quest dialogs name the vanilla speakers (wq_pilots.sed)" sh -c "grep -q '<pilot_name>Treasurer</pilot_name>' \"$tq/TRF_Wq1.xml\" && ! grep -q 'TRF_WqP_' \"$tq\"/TRF_Wq*.xml"
     check "--news without --pilots: mc_names=0 ($(mcn)), news kept" sh -c "[ \"$(mcn)\" = 0 ] && grep -q '<name>trf_' \"$fn\""
     check "--news without --pilots: no pilots line, no Pilots.xml backup" sh -c "! grep -q '^pilots ' \"$fake/sw3-traffic-backup/manifest.txt\" && [ ! -f \"$fake/sw3-traffic-backup/files/Data/Game/Pilots.xml\" ]"
     check "--news without --pilots: loc/trf_en.loc kept" cmp -s "$fake/Data/LocData/English/trf_en.loc" "$mod/loc/trf_en.loc"
@@ -125,6 +129,7 @@ if [ "$miss" = 0 ]; then
     check "uninstall: no sw3-traffic-backup/, no Mods/Traffic/" sh -c "[ ! -d \"$fake/sw3-traffic-backup\" ] && [ ! -d \"$fake/Data/Scripts/Mods/Traffic\" ]"
     check "uninstall: sw3tp.ini without [traffic]" sh -c "! grep -q '^\[traffic\]' \"$fake/sw3tp.ini\""
     check "uninstall: loc/trf_en.loc removed" [ ! -f "$fake/Data/LocData/English/trf_en.loc" ]
+    check "uninstall: the quest dialogs removed" sh -c "! ls \"$tq\"/TRF_Wq*.xml >/dev/null 2>&1"
     check "install aborts on a TRF_ template outside the block, Pilots.xml unchanged" sh -c "cp \"$work/clash.xml\" \"$fp\" && ! sh \"$mod/install.sh\" --pilots \"$fake\" && cmp -s \"$fp\" \"$work/clash.xml\" && [ ! -d \"$fake/sw3-traffic-backup\" ]"
     cp "$van" "$fp"
 fi

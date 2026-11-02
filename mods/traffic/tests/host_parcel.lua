@@ -179,8 +179,8 @@ function T_PCL_A()
 	for i = 1, getn(P.dock.trade.line) do lo = lo..P.dock.trade.line[i].o..":"..TRF_PlName(P.dock.trade.line[i].f)..","; end;
 	for i = 1, getn(P.dock.trade.box) do bo = bo..P.dock.trade.box[i].o..":"..TRF_PlName(P.dock.trade.box[i].f)..","; end;
 	for i = 1, getn(P.owe) do ow = ow..TRF_PlName(P.owe[i].f)..","; end;
-	HOST_Check(PC_Has(lo, "10:TRF_ShopDockLine,20:TRF_Pc_DockLine,") and strsub(bo, 1, 42) == "450:TRF_Wq_DockBox,400:TRF_Pc_DockBox,300:" and PC_Has(ow, "TRF_Pc_Owe,"),
-		"trade line 20 right after the shortage restore, trade box 400 after the quest box 450, one owed payer ("..lo.." "..bo..")");
+	HOST_Check(PC_Has(lo, "10:TRF_ShopDockLine,20:TRF_Pc_DockLine,") and strsub(bo, 1, 61) == "460:TRF_Wq_TalkBox,450:TRF_Wq_DockBox,400:TRF_Pc_DockBox,300:" and PC_Has(ow, "TRF_Pc_Owe,"),
+		"trade line 20 right after the shortage restore, trade box 400 after the quest's boxes 460 and 450, one owed payer ("..lo.." "..bo..")");
 	-- Texts.
 	local nt = PC_SetN(TRF_Pc_Text());
 	HOST_Check(nt == 194 and TRF_Txt("pcldone", "15,400") == "Parcel received, seals intact. Deposit returned, 15,400 cr paid."

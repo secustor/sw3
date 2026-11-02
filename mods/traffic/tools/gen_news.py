@@ -21,6 +21,9 @@ Outputs (CRLF, ASCII):
   news/trf_news.xml   the <NewsRecord> fragment (tab indentation as in the game's file)
   loc/trf_en.loc      the block between the "; sw3-traffic news records begin/end" lines is replaced
                       (appended when missing); every other line stays as it is.
+Letters: the freight unlock quest's two letters (LETTERS; trf_wq TRF_WqLetter, design/freight-quest-spec.md 13.3) are
+records mail_trf_wq<i> with image mail whose header and text are trf_wq text keys (TRF_Wq_Text, already in the loc
+scaffold of gen_map.py --loc); the "mail" name prefix gives the new-mail notice (mod-research/news-records.md 1.10).
 Checks: every (topic, variant) that a .script posts as a literal (TRF_NewsPost call sites,
 TRF_UI_NewsLevel thresholds) has records; every n-key exists; no $n is left; no key collides with a
 key outside the block; names never collide with vanilla (the trf_ prefix is not used by the game).
@@ -64,6 +67,10 @@ SWEEP_TEXT = {"nsweepgather": "Fleet gathers against pirates near $1",
 CAP_TEXT = {"ncaphide": "$2 captain has gone to ground near $1",
             "ncapout": "$2 captain is back on the lanes near $1",
             "ncapsucc": "New captain leads the $2 near $1"}
+
+
+# Letters: record name, header key, text key (trf_wq.script TRF_Wq_Text).
+LETTERS = [("mail_trf_wq1", "wqlt", "wql1b"), ("mail_trf_wq2", "wqlt", "wql2b")]
 
 
 def die(msg):
@@ -193,6 +200,22 @@ def records(ui, regions, facs):
     return out
 
 
+def letters(src):
+    """The letter records; dies when a key is not in TRF_Wq_Text or trf_wq.script does not name the record."""
+    wq_p = os.path.join(src, "trf_wq.script")
+    wt = read(wq_p)
+    wq = {norm(k): v for k, v in lua_strings(func_body(wt, "TRF_Wq_Text", wq_p)).items()}
+    out = []
+    for name, hk, tk in LETTERS:
+        for k in (hk, tk):
+            if norm(k) not in wq:
+                die("TRF_Wq_Text has no %s (letter %s)" % (k, name))
+        if '"%s"' % name not in wt:
+            die("trf_wq.script does not post %s" % name)
+        out.append({"name": name, "hkey": "#TRF_%s" % hk, "tkey": "#TRF_%s" % tk, "image": "mail", "letter": 1, "slot": None})
+    return out
+
+
 def check_posts(src, recs):
     """Literal posts in the scripts must have records. Returns a list of problems."""
     have = {(r["topic"], r["v"]) for r in recs}
@@ -224,7 +247,7 @@ def xml_fragment(recs, image):
     L = ["\t" + XML_BEGIN]
     for r in recs:
         L += ["\t<NewsRecord>", "\t\t<name>%s</name>" % r["name"], "\t\t<header>%s</header>" % r["hkey"],
-              "\t\t<text>%s</text>" % r["tkey"], "\t\t<image_name>%s</image_name>" % image,
+              "\t\t<text>%s</text>" % r["tkey"], "\t\t<image_name>%s</image_name>" % r.get("image", image),
               "\t\t<sound_name/>", "\t</NewsRecord>"]
     L.append("\t" + XML_END)
     return ("\r\n".join(L) + "\r\n").encode("ascii")
@@ -252,6 +275,8 @@ def loc_text(old, recs):
     outside = {l.split("=", 1)[0].strip().upper() for l in keep if l.startswith("#") and "=" in l}
     block = [LOC_BEGIN]
     for r in recs:
+        if r.get("letter"):
+            continue
         for k, t in ((r["hkey"], r["head"]), (r["tkey"], r["body"])):
             if k.upper() in outside:
                 die("key %s already defined outside the news block" % k)
@@ -283,7 +308,7 @@ def verify(path, loc, recs):
             keys.add(l.split("=", 1)[0].strip().upper())
     for n in root.iter("NewsRecord"):
         nm = (n.findtext("name") or "").strip()
-        if not nm.startswith("trf_"):
+        if not nm.startswith("trf_") and not nm.startswith("mail_trf_"):
             continue
         for tag in ("header", "text"):
             k = (n.findtext(tag) or "").strip()
@@ -308,6 +333,7 @@ def main():
     ui, regions, facs = load_sources(a.src)
     recs = records(ui, regions, facs)
     bad = check_posts(a.src, recs)
+    recs += letters(a.src)
     if a.verify:
         bad += verify(a.verify, a.loc, recs)
         for b in bad:
@@ -318,8 +344,9 @@ def main():
     old = read(a.loc) if os.path.exists(a.loc) else "LOCALE_FILE\nFILETYPE STANDART\n"
     loc = loc_text(old, recs)
     ng = sum(1 for r in recs if r["slot"] is None)
-    print("records: %d (%d global, %d regional in %d regions), image %s" % (
-        len(recs), ng, len(recs) - ng, len(regions), a.image))
+    nl = sum(1 for r in recs if r.get("letter"))
+    print("records: %d (%d global, %d regional in %d regions, %d letters), image %s" % (
+        len(recs), ng - nl, len(recs) - ng, len(regions), nl, a.image))
     for r in regions:
         print("  r%d home %s clan %s" % (r["slot"], r["home"], r["clan"]))
     for b in bad:

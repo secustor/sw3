@@ -1,6 +1,6 @@
 # Freight unlock quest "Missing in Capricorn": implementation spec
 
-Status: all three commits implemented and host-tested 2026-11-02 (commit 1 2026-11-01, `tests/host_wq.lua` runs `wq-a`, `wq-b`; commit 2 2026-11-02, runs `wq-c`, `wq-d`; commit 3 2026-11-02, runs `wq-e`, `wq-f`), not run in the game: the module skeleton, step 0 (the offer), step 1 (the Kestrel mayday), step 2 (the report, the Marlin wreck, the fence or the patrol board), step 3 (the clan hold at XB-13: the base or the hulk guard, the crew pods) and step 4 (the hand-in, the charter office unlock). With cfg `enable_wq` 1 the first Wolves freighter needs the quest at step 70 instead of help >= 5 (`TRF_FrBuyGate` reason `quest`).
+Status: all three commits implemented and host-tested 2026-11-02 (commit 1 2026-11-01, `tests/host_wq.lua` runs `wq-a`, `wq-b`; commit 2 2026-11-02, runs `wq-c`, `wq-d`; commit 3 2026-11-02, runs `wq-e`, `wq-f`), not run in the game: the module skeleton, step 0 (the offer), step 1 (the Kestrel mayday), step 2 (the report, the Marlin wreck, the fence or the patrol board), step 3 (the clan hold at XB-13: the base or the hulk guard, the crew pods) and step 4 (the hand-in, the charter office unlock). With cfg `enable_wq` 1 the first Wolves freighter needs the quest at step 70 instead of help >= 5 (`TRF_FrBuyGate` reason `quest`). Presentation (section 13, 2026-11-02, run `wq-g`): campaign dialog windows for every conversation, two letters by post, the main mission list.
 Research: `.work/research/freight-questline.md` (options, judges, critic notes; this spec carries its content with the critic's corrections folded in). Freight: `D/freight-spec.md` ("FS"); design `D/worldbuilding/08-wolves-freight.md` ("08"); station jobs UI: `D/station-jobs-spec.md` ("SJ"); plumbing: `D/wb-plumbing-spec.md` ("WB").
 Paths: `D` = `mods/traffic/design`, `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `T` = `mods/traffic/tests`, `G` = the game's `Data/Scripts` (the clone `~/Games/Heroic/sw3-tp-test`, read only). Line numbers were read on 2026-11-01 and drift; functions are named so they can be found again.
 Module: new `S/trf_wq.script`, prefix `Wq` (`TRF_Wq_*` public, `TRF_Wq<X>` internal), log lines `module=wq` through `TRF_WqE` / `TRF_WqDE`; record `TRF.wq`; logbook id `trf_wq`; card and board row id `wq`.
@@ -226,6 +226,7 @@ Step 4, the charter office, s 60 -> 70 -> 80.
 | Key | Default | Range | Meaning |
 |---|---|---|---|
 | `enable_wq` | 1 | 0/1 | the quest on; 0: no offer, no mayday, no hold, the record kept, and slot 1 needs help >= `fw_help_slot[1]` (5) again |
+| `wq_dialog` | 1 | 0/1 | the dialog windows, letters and mission-list entry of section 13 (needs `hail_xml` 1); 0: the lines, boxes, card and Job log |
 | tune `wq_help` | 2 | 0..99 | help for the offer |
 | tune `wq_cd` | 6 | 0..200 legs | legs before a voided mayday rolls again |
 | tune `wq_tries` | 2 | 1..9 | voids before step 1 ends without the player |
@@ -234,7 +235,7 @@ Constants (`TRF_WqK`): the chapter window 5..18, chapters 5-6 early, debris6 fro
 
 ## 7. Texts (`TRF_Wq_Text`; `#TRF_wq<name>` in `loc/trf_en.loc`; RU: EN fallback, I10)
 
-39 keys (19 in commit 1, 31 after commit 2), plus freight's `fwboxq` (`TRF_Fr_Text`, with an RU line, I34). No text starts with `#`, none holds `%` or a newline (`TRF_Br` is not needed: every text is one line); all are below the 480-character limit of the card natives.
+39 keys (19 in commit 1, 31 after commit 2), plus freight's `fwboxq` (`TRF_Fr_Text`, with an RU line, I34). The presentation (13.2) rewrote every line and added the dialog pages and the letters (127 keys); the wording in the table below is that of commit 3, the current text is `TRF_Wq_Text` and `D/freight-quest-dialogs.md`. No text starts with `#`, none holds `%` or a newline (`TRF_Br` is not needed: every text is one line); all are below the 480-character limit of the card natives.
 
 | Key | EN | Where |
 |---|---|---|
@@ -285,7 +286,9 @@ The box title is freight's `fwboxtitle` "FTU charter office". FTU fiction: the o
 
 Level 1: `error`, `offer` (shown, listed, failed), `accept`, `decline`, `seed` (planned; none for roll, slot, due), `spawn`, `help`, `rescued`, `lost`, `void`, `limped`, `step`, `logbook`, `reconcile`, `orphan`, `fix`, `dump`; commit 2: `report`, `wreck` (seeded, picked, handed; none for a refused survive seed or a hand-in at another step), `fence` (shown, failed), `clue` (via fence or patrol: ok, poor, declined, stale); commit 3: `hold` (tipped, base, spawned, base_gone, guard_dead, pods, void; none for the scene flags, the site, a guard build or a survive refusal), `crew` (picked, aboard, partial, reset, handed), `unlock` (bought, declined), `logbook ... state= result=done`. Level 2: `offer ... result=none reason=<gate>`, `seed ... result=none reason=<gate>`, `report`, `wreck`, `fence`, `clue ... via=patrol`, `hold` with `result=none reason=<gate>`, `hold ... result=guard_ship` (one guard death). trf_survive: `event=seed ... kind=quest` (`point=given`), `event=hand ... quest_kept=`, `reason=quest_cap`, `reason=quest`, `event=expire ... reason=partial`; trf_captain: `event=intel ... result=tipped reason=quest`; trf_parcel: `event=offer ... result=none reason=wq_unlock` (level 2); trf_freight: `event=offer ... result=none reason=quest` (level 2).
 
-## 9. Host scenarios (`T/host_wq.lua`, `TRF_WQ=a..f`; run_host.sh item `wq`)
+Presentation (section 13): level 1 `dialog` (opened, done, closed, stale, ignored), `dialog_fallback`, `letter` (posted, skipped); level 2 `dialog` (`result=answer`, each answer), `dialog_answers` (the init's visible answers), `talk` (a dock conversation pending for the talk box). trf_plumb: `event=box_answer ... via=dialog` (`answer=none result=done`, `result=closed` after Esc, `result=stale`, `result=dropped` at a load or jump).
+
+## 9. Host scenarios (`T/host_wq.lua`, `TRF_WQ=a..g`; run_host.sh item `wq`; `wq-g`: section 13.8)
 
 Entry: `host_parcel.lua` up to its first scenario (the `PC_*` and `S_*` helpers). Base cfg `WQ_Cfg`: the quest and freight on, parcels, charter, captains, sweeps, carriers, equipment convoys, staged raids, the seed, queue, parked ship, station events, survivors, the ladder, stashes and scars off, `jobs_ui` 0, log 2 (`wq-c` turns survivors on with `sv_seeded` 0). `host_station.lua`'s `S_Cfg` turns the quest off for every other station-based run (like parcels). No new stubs (the pirate and patrol docks go through `__PirStationDock_Ok` and `__PatrolStationDock_Ok` as in `host_stash.lua`).
 
@@ -344,3 +347,89 @@ Settled by the user (2026-11-01): research questions 1 (U1), 2 (U2), 3 (U3), 4 (
 17. The fence box shows only while the wallet holds the price (gate `poor`); a poor player sees nothing at the pirate dock and learns of the fence from the logbook. A short "come back with credits" line instead of silence is an option.
 18. `enable_survivors` 0 (or a survive deny entry for `ws`) leaves step 30 without a wreck (`event=wreck ... reason=survive:off` or `survive:deny`); the record waits. Steps 50-60 depend on survive the same way: with survivors off no pods eject (`reason=survive:off`), a crew partly aboard stays at s 50 (no `partial` without `TRF_Sv_QCarry()` 1) and s 60 stays until survive runs again for the hand-in (`TRF_Sv_QCarry()` nil: no fall back to 50). With survive on, s 60 without the quest carry falls back to 50 (3.1). Settle: a wq-side wreck without survive, or document the dependency (current choice).
 19. A quest crew aboard takes a carry slot and one of the two loss systems until the hand-in; with a quest crew from Golkonda and an ordinary crew of a second system aboard, pods of a third system are refused (`svfull`). Low risk: the hand-in is any trade dock.
+
+## 13. Presentation (implemented 2026-11-02, host `wq-g`; not run in the game)
+
+The quest plays as a story mission: every conversation is a campaign dialog window, two letters come by post and the entry sits in the main mission list. The text of every page and answer is `D/freight-quest-dialogs.md` (the source of truth; `TRF_Wq_Text` carries it), the voice rules `D/dialog-style-guide.md`. Mechanism: `D/mod-research/hail-dialog.md` (`StartTradeDialog(file, init)`, `#key#` through `SetReplaceValue` in the init, `go_message_name` for page links).
+
+### 13.1 Dialogs
+
+Twelve files `Data/Scripts/Trade/TRF_Wq<k>.xml` (vanilla schema, validated against `Dialogs.xsd`; ASCII, CRLF, no BOM, as `TRF_MercPg.xml`). Each page is `<message><Speaker>: #<token>#</message>`; answers are `- #<token>#` (the mod's dash, as the hail and merc pages); page links and [back] are `go_message_name` with `<lua_function />`; answers with an effect or that close the window call one shim `TRF_WqDlgA<k>_<kind>`; `multi_pass` true everywhere. The init `TRF_WqPgInit<k>` sets every token (`TRF_WqTxt(key, $1, $2, $3)`, a variant key where the variant differs) and shows or hides every answer (a reused Dialog object keeps its hidden flags).
+
+| Key | File | Speaker (`pilot_name`) | Where, when | Replaces | Variant handling | Effects |
+|---|---|---|---|---|---|---|
+| 1 | `TRF_Wq1` | FTU clerk (`TRF_WqP_clerk`) | trade dock, the offer box 450 (`s.dlg`); the Office card's OK (`TRF_Wq_CardOk`) | `wqbox`/`wqboxo`, the card | old hauler: tokens `p2`, `p3` read `wq1p2o`, `wq1p3o` | accept: step 10, the logbook, letter P1 (plumbing answer 1: `TRF_Wq_BoxOk`); decline: the 10-leg cooldown (`TRF_Wq_BoxNo`); "Not my business" and Esc: nothing |
+| 2 | `TRF_Wq2` | Kestrel's captain (`TRF_WqP_kestrel`) | in space, 0.5 s after the raid ends with the Kestrel alive | `wqthx`/`wqthxo` | old hauler: `p1` = `wq2p1o` | none (step 20 is set at the result) |
+| 3 | `TRF_Wq3` | Kestrel's captain | trade dock at s 20, result saved (talk box 460) | `wqrep1` | chapter 6: `p2` = `wq3p2d` (Debris 6) | the final answer: the wreck pick, step 30; Esc: none (again at the next docking) |
+| 3b | `TRF_Wq3b` | FTU clerk | trade dock at s 20, lost or limped in | `wqrep2`, `wqrep3` | separate file (other speaker and answer set); limped in: `p1` = `wq3p1a`; chapter 6: `p2` = `wq3p3d` | as 3 |
+| 4 | `TRF_Wq4` | Marlin's navigator (`TRF_WqP_nav`) | in space, 0.5 s after the pod pickup at s 30 | `wqnav` | none | none (the hand-in gives 40) |
+| 5 | `TRF_Wq5` | Fence (`TRF_WqP_fence`) | pirate dock box 300 at s 40 in XB-13's region; also with a short wallet | `wqfence`, `wqfenceok`, `wqfencepoor` | poor: the pay answer `a_pay` hidden, `a_payp` (same label) leads to the poor page | the pay answer charges (`TRF_Charge` in the shim); step 50 when paid (also after Esc); "Forget it" and the price refusal: nothing |
+| 6 | `TRF_Wq6` | Patrol officer (`TRF_WqP_patrol`) | patrol dock at s 40, rung >= 1 (talk box 460) | `wqpatrol` | none | the final answers: step 50 |
+| 7 | `TRF_Wq7` | the clan (`TRF_WqP_clan`) | in space, 6 s after the entry into XB-13 at s 50 when the hold is built | the band arrival line `wqband` | mode 3: `p1` = `wq7p3`; `$1` the wanted captain's name or "The clan"; speaker prefix `Open band, #who#` with `who` = the region clan | none |
+| 7c | `TRF_Wq7c` | the captain (`TRF_WqP_cap`, a copy of `PirateCaptain`, the template his ship flies with) | as 7 while `TRF_Cap_Alive()` > 0 | as 7 | separate file (the pilot is fixed per page) | none |
+| 8 | `TRF_Wq8` | Marlin's master (`TRF_WqP_master`) | in space, 0.5 s after the pods eject | `wqmaster` | navigator handed in (no quest crew aboard, `TRF_Sv_QCarry` not 1): `a_navc` hidden, else `a_navh` hidden (one page, two answers) | none |
+| 9 | `TRF_Wq9` | FTU clerk | trade dock, the hand-in at s 60 (talk box 460) | `wqhome` | none | none (step 70 and letter P2 at the hand-in) |
+| 10 | `TRF_Wq10` | FTU clerk | trade dock at s 70, trf_freight's purchase box (`s.dlg`, `s.dv` = price and the loop's home) | `fwboxq` | poor: `p1` = `wq10pp`, only `a_back` | Register: the purchase (`TRF_Fr_BuyOk`, step 80); Not now: `TRF_Fr_BuyNo` (step 80, the freight decline cooldown); "I'll be back" and Esc: step 70 stays |
+
+Prefix rule: every `<message>` starts with the speaker's label as plain text (`FTU clerk: #p1#`, `Open band, #who#: #p1#`), because hail-dialog.md does not show that the window names the speaker (2.6 display: inferred) and a message starting with `#` is looked up as one key (3.6). `run_host.sh` fails on `<message>#`; `wq-g` checks the form `Speaker: #token#`.
+
+Dock dialogs (1, 3, 3b, 5, 6, 9, 10) are boxes of the plumbing opened as a dialog: a box spec with `dlg` (a function name) makes `TRF_PlShow` call it with `(s.a, s)` after the box lock; 1 = the dialog opened (`s.shown(a, "dialog")`), 0 = no window and no box (`s.fail`: the talk box says its line and applies its effect), anything else = the card or the box as before. The owner answers with `TRF_PlDlgAnswer(a, esc)`: 1 or 0 as OK or Cancel (the handler, then the vanilla dock call once), -1 neither (the vanilla call once); `esc` 1 (Esc, seen from a due call of the tick) runs the handler without the vanilla call (as the Cancel of the vanilla dock request: the player docks again), so the vanilla dock code never runs from a tick. A final answer runs its effects in the answer callback, as a box button does. A load or jump drops an open dialog box (`TRF_PlCardDrop`). The dock lines of D3, D6 and D9 (trade line 40, patrol line 45, survive's hand-in line 30) leave their text to the talk box 460 of the same docking (`TRF_Wq_TalkBox`, above every other box) when the dialog gate is open; otherwise they say the line and apply the effect as before. A docking whose box path is blocked (another box holds the lock, the fee-box rule) shows no talk: D3 and D6 come at the next docking (the step did not move), D9 is lost (the letter P2 carries its content).
+
+The Office board: the click on the Jobs row opens the DLL's mission card at once (`TRF_JobBoard`, pe/API.md), which Lua cannot replace; the card's OK opens D1 over the Office window (the gate allows the modal window flag 2, not a movie or another dialog), and its answers act directly (accept, decline). With the dialog unavailable the card's OK accepts as before.
+
+In-space dialogs (2, 4, 7, 8) open from a due call (`TRF_WqSpace`, `TRF_Wq_SpaceDue`) under the box lock `wq` (freed at the end), one pending per visit (a second one says the first one's line). The gate `TRF_WqDlgWhy`: cfg `wq_dialog` 1, `hail_xml` 1, `StartTradeDialog`, no wq dialog open, `TRF_UiState()` 0 in space, without the movie and dialog flags (1, 4) at a dock (the dock request box's callback may leave the modal flag 2 up, as the DLL's mission card and vanilla's `OnCStationStart` allow) and on the Office board, `TRF_InMovie()` not 1, no story mission, and in space no scene flag (`__disableAction`, `__sys_SOS`, trf_safety suppression) and no jump in progress (a result saved at a jump says the thanks line: a due call would be dropped with the generation). A due check 1 s after the open (the clock stands while the window is up) ends a window that closed without a final answer as Esc.
+
+### 13.2 Texts
+
+127 keys in `TRF_Wq_Text` (39 before): the logbook `wqt`, `wqd10`..`wqd80` rewritten in the script's voice (English map names, no "clause", no "office remembers"); the fallback lines and boxes (`wqbox`, `wqboxo`, `wqok`, `wqoko`, `wqthx`, `wqthxo`, `wqlost`, `wqalone`, `wqrep1`-`3`, `wqnav`, `wqfence`, `wqfenceok`, `wqfencepoor`, `wqpatrol`, `wqband`, `wqclan`, `wqmaster`, `wqhome`, `wqmay`, `wqjobs`; freight's `fwboxq`) rewritten to one line each in the guide's voice; the pages `wq<n>p<x>` and answers `wq<n>a<x>` of D1-D10 exactly as the script; the letters `wqlt`, `wql1b`, `wql2b`. `$1`..`$3` are `TRF_WqTxt` arguments (the `$n` placeholders of `TRF_Txt`); none holds `%`, starts with `#` or exceeds 480 characters; `loc/trf_en.loc` gets them through `gen_map.py --loc` (RU: EN fallback). Names: the English map names through `TRF_WqSysEn(idx)` (CombineStr of the vanilla key `#M_location_<name>`, else the table `K.en`, else `TRF_UI_SysName`); `TRF_UI_SysName` itself returns the map folder name (`Gefest`), so it is the last fallback only. The clan is `TRF_ClanName(TRF_RgOf(xb13))` (Grey Ravens on the vanilla map), where the script says "Golconda clan" (D5's last page, D7's speaker and `wqband`).
+
+Shipped keys outside the quest that still carry internal system names (not changed here): the news headlines and bulletins of regions 3, 4 and 8, `TRF_N_r3_*`, `TRF_N_r4_*`, `TRF_N_r8_*` (52 lines each, `gen_news.py` fills `$1` from `map.script`'s `dir`: `Gefest`, `Golkonda`, `xt27`); trf_charter's titles `chtgefest`, `chtgolkonda`, `chtxt27` ("FTU charter: Gefest region"); trf_parcel's destinations `pclq14`, `pclq22`, `pclq45` and `pclqd14`, `pclqd22`, `pclqd45` (`Callipso`, `Debris6`, `Golkonda`; generated from the folder names by `gen_parcel.py`). Lines built at run time through `TRF_UI_SysName` (the arrival lines, trf_freight's `fwbox*` with `$2` the region home, the station and haunt lines) show the same folder names.
+
+### 13.3 Letters
+
+P1 at the accept (`TRF_Wq_BoxOk`), P2 at the hand-in at s 60 (`TRF_Wq_OnHand`): `AddPost("mail_trf_wq1")`, `AddPost("mail_trf_wq2")`, once per game (`TRF.wq.k` bits 8 and 16; the repair keeps `k` 0..31), with cfg `news_mode` 2 only, as the news (else `event=letter ... result=skipped reason=news_mode`, no bit). The records are in the `gen_news.py` block of `news/trf_news.xml` (`install.sh --news`, `install-test.sh NEWS=1`): name `mail_trf_wq<i>` (the "mail" prefix gives the new-mail notice, news-records.md 1.10), header `#TRF_wqlt`, text `#TRF_wql<i>b`, image `mail`; `merge.awk` treats `mail_trf_` names like `trf_` ones. `|` is the paragraph break of the post window, as in `x_news.loc` `M_mail_*`. Letters are never removed (the mod removes a news post only when the same topic is posted again).
+
+### 13.4 Logbook
+
+With the dialogs on (`TRF_WqDlgOn`: cfg `wq_dialog` 1 and `hail_xml` 1) the entry `trf_wq` is in the main mission list (`AddQuest`, `SetQuestState(QUEST_DONE)` at s 80), also with the station jobs Job log live; `TRF_JbLog` selects the Job log only with the dialogs off. The reconcile moves an existing entry when the choice changes (`event=logbook list=<job,mission> ... result=removed reason=moved`, then the add).
+
+### 13.5 Portraits
+
+`tools/gen_pilots.py` adds eight GamePilot entries after the 120 mercenary pilots in the same `merge/Pilots.xml` block: a copy of a vanilla pilot whose portrait fits the role, with the script's speaker label as `callsign` and `full_name` (plain text). The 120 merc pilots are unchanged.
+
+| Entry | Callsign | Copy of (face) |
+|---|---|---|
+| `TRF_WqP_clerk` | FTU clerk | `Treasurer` (20: a bald older officer) |
+| `TRF_WqP_kestrel` | Kestrel's captain | `m7d_Trader` (30: the round-faced trader) |
+| `TRF_WqP_nav` | Marlin's navigator | `m2_LabsDispetcher` (13: a younger crewman) |
+| `TRF_WqP_fence` | Fence | `m8d_Smuggler` (49: the bald smuggler with a goatee) |
+| `TRF_WqP_patrol` | Patrol officer | `m8d_Patrol` (47: the heavy patrol officer) |
+| `TRF_WqP_master` | Marlin's master | `CaravanMaster` (91: the caravan master with an eyepiece) |
+| `TRF_WqP_clan` | Clan pirate | `m8a_Pirate` (34: mission 8a's pirate, Marco's tax collectors) |
+| `TRF_WqP_cap` | Clan captain | `PirateCaptain` ("Pirate": the Pir_Pilots template the wanted captain flies with) |
+
+The pilots exist only with the Pilots.xml merge (`install.sh --pilots`, `install-test.sh PILOTS=1`). Without it the installers copy the dialog files through `merge/wq_pilots.sed` (generated by `gen_pilots.py`), which names the vanilla source pilot instead: the same portrait with the vanilla callsign; the speaker label is in the message either way.
+
+### 13.6 Config and install
+
+| Key | Default | Meaning |
+|---|---|---|
+| `wq_dialog` | 1 | 1: the dialogs (needs `hail_xml` 1, written by every install that copies the dialog files), the mission list; 0: the lines, boxes, card and the Job log entry |
+
+`install.sh` copies the twelve files (package check: present, CRLF; created files in the manifest, removed by `uninstall.sh`), with `--pilots` as they are, else through `wq_pilots.sed`. `install-test.sh`: `WQ_DIALOG=0|1` written only when set; the files always copied (sed unless `PILOTS=1`); `PILOTS=1` merges `merge/Pilots.xml` into the clone's `Data/Game/Pilots.xml` (vanilla kept as `Pilots.xml.trf-orig`, restored when unset) and writes `mc_names=2`.
+
+### 13.7 Fallback
+
+Every conversation keeps its earlier form, rewritten in the script's voice, when the gate is shut: cfg `wq_dialog` 0 (no log line), `hail_xml` not 1 (`xml`), no `StartTradeDialog` (`native`), no `TRF_UiState` (`uistate`), a movie, modal window or dialog up (`ui=<v>`), a movie (`movie`), a story mission (`mission`), the scene flags in space (`disable_action`, `sys_sos`, `suppressed`), a jump in progress (`jump`), a wq dialog open (`busy`), the box lock held in space (`lock`), a failed call (`error`), a second in-space dialog (`replaced`): `module=wq event=dialog_fallback dialog=<k> reason=<why>`. D1, D5 and D10 fall back to their box (D1 also to the card); D3, D6 and D9 to their dock line with the effect at once; D2, D4 and D8 to the radio line; D7 to the arrival line. The fence box keeps its wallet gate in the fallback.
+
+### 13.8 Host and CHECK
+
+`wq-g` (`T/host_wq.lua`): the twelve files against `TRF_WqDlgFiles` (answers, 35 pages, message form, tokens with texts, links to pages, functions, the speakers in `merge/Pilots.xml` and `wq_pilots.sed`); the English names (CombineStr, the table, no internal name in any quest text or `fwboxq`) and the clan; D1 at the dock (pages, D1-a, D1-b, back, accept: step 10, the mission list, the station window once, no reply line, letter P1 once), old hauler and decline, close and Esc, the fallbacks (xml, native, `ui=4`; the modal flag 2 of the dock request box does not stop it), the Office card's OK (modal allowed; under another dialog the accept at once); the logbook move to the Job log and back; D2 (the window under the lock, D2-a; fallback `ui=1` and `mission`); D3 saved, D3b lost and limped in with chapter 6 and Esc, the D3 fallback; D4; D5 (D5-a, the charge in the shim, the clan, step 50; the poor page; Esc after paying); D6; D7 (6 s after the entry, 7c, the mode 3 page); D8 (D8-a, the handed-in answer); one pending in-space dialog; D9 (step 70 and P2 at the hand-in, the talk box); D10 (buy, poor, Not now); letters only with `news_mode` 2; the news records; `k` 31 kept. `host_stubs.lua`: `HOST_DlgXml` reads every page (message, pilot, answers with `go_message_name`), `HOST_DlgPick` follows page links, `HOST_DlgPilot`. `wq-a`..`wq-f` run with `wq_dialog` 0 and the new texts; `pl-a`, `lad-a`, `ch-a`, `pcl-a` see the talk box 460; `test_pilots.sh` counts 128 templates and the quest dialogs of the installer.
+
+| # | Fact | Confirming log line |
+|---|---|---|
+| Q-WQ.11 | D1 opens from the dock and from the Office Jobs card: the clerk's portrait (Treasurer's face; with `PILOTS=1` the callsign "FTU clerk"), `FTU clerk: ...` without `#`, D1-a, D1-b and back, accept, the station window after it | `module=wq event=dialog dialog=1 via=dock result=opened`, `... via=board result=opened`, `... answer=acc result=done`, `event=accept ... result=ok` |
+| Q-WQ.12 | an in-space dialog (D2, D4, D7, D8) opens over the flight, pauses it and returns to flight after the last answer | `event=dialog dialog=<2,4,7,7c,8> via=space result=opened`, then `result=done` or `closed` |
+| Q-WQ.13 | the letters arrive once each in the mail ("Letter from the FTU charter office:"), the paragraphs split at `|` (`NEWS=1`) | `event=letter letter=<1,2> post=mail_trf_wq<i> ... result=posted`, once each |
+| Q-WQ.14 | "Missing in Capricorn" in the main mission list (not the Job log), done at step 80 | `event=logbook list=mission id=trf_wq ... result=added`, `... result=done` |
+| (D) | whether the window names the speaker by itself (then the prefix doubles it), whether `CombineStr("#M_location_gefest", "")` returns "Hephaestus", and what Esc does in a trade dialog | the window, `event=dialog ... result=closed` |

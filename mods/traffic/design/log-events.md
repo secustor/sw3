@@ -428,6 +428,7 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `dock` | `module=plumb event=dock original=TRF_orig_TradeOk result=no_original` | 1 |
 | `box_answer` | `module=plumb event=box_answer kind=pir box=pirate_offer answer=1 result=done` (or `result=stale`: another generation) | 1 |
 | `box_answer` | `module=plumb event=box_answer kind=trade box=p_high result=dropped` (a pending box of an earlier docking) / `answer=1 result=stale` (no box) | 1 |
+| `box_answer` | `module=plumb event=box_answer kind=trade box=wq answer=none via=dialog result=done` (a box opened as a dialog, `s.dlg`, answered neither OK nor Cancel: the vanilla call once; freight-quest-spec 13.1); `... answer=1 via=dialog result=closed` (Esc: the handler without the vanilla call); `module=plumb event=box_answer answer=1 via=dialog result=stale` (no open dialog box); `... box=wq via=dialog result=dropped` (load or jump) | 1 |
 | `dock` | `module=plumb event=dock kind=trade line_count=0 box=parcel priority=400 result=card` (the box spec opened as the mission card, [station-jobs-spec.md](station-jobs-spec.md) 5.2) | 1 |
 | `jobs_card` | `module=plumb event=jobs_card id=pcl card_event=open result=ok` / `card_event=ok result=ok reply="<reply line>"` (`card_event` `open`, `ok`, `cancel`, `esc`; `TRF_OnJobCard` of the DLL) | 1 |
 | `jobs_card` | `module=plumb event=jobs_card id=pcl card_event=esc result=stale` (no open card of this generation) / `card_event=<x> result=unknown` / `id=pcl result=dropped` (load or jump with the card open) | 1 |
@@ -817,7 +818,7 @@ Mercenary clans, build steps 1 and 3 (`design/merc-spec.md` 8). `clan` is the cl
 
 ## wq (`trf_wq.script`; `TRF_WqE`, `TRF_WqDE`)
 
-Freight unlock quest "Missing in Capricorn", commits 1-3 (`design/freight-quest-spec.md` 8). `step` is `TRF.wq.s`, `tries` the voids of step 1 (`n`), `trader_id` and `raid_id` the Kestrel's trader record and her raid, `variant` the mothership variant of the text (`old` hauler, `new` ship), `mode` the hold mode `m` (1 base, 3 hulk), `pods` and `picked` the crew pods `pn` and `pk`.
+Freight unlock quest "Missing in Capricorn", commits 1-3 and the presentation (`design/freight-quest-spec.md` 8, 13). `step` is `TRF.wq.s`, `tries` the voids of step 1 (`n`), `trader_id` and `raid_id` the Kestrel's trader record and her raid, `variant` the mothership variant of the text (`old` hauler, `new` ship), `mode` the hold mode `m` (1 base, 3 hulk), `pods` and `picked` the crew pods `pn` and `pk`.
 
 | Event | Example line | Level |
 |---|---|---|
@@ -853,7 +854,13 @@ Freight unlock quest "Missing in Capricorn", commits 1-3 (`design/freight-quest-
 | `reconcile` | `module=wq event=reconcile id=trf_wq list=mission step=10 result=added reason=accept` (`failed` when the native refused the add; `reason=enter, load, step`; `module=wq event=reconcile id=trf_wq list=mission result=removed reason=enter leg=71`: a step without a description or the done entry 10 legs after `wd`) | 1 |
 | `orphan` | `module=wq event=orphan trader_id=7 result=removed` (load; `result=dropped` for a waiting record) | 1 |
 | `fix` | `module=wq event=fix step=15 result=dropped reason=step` (`reason=type`; `step=80 result=grandfather`; `step=30 wreck_system=golkonda result=picked reason=ws`) | 1 |
-| `dump` | `module=wq event=dump step=10 flags=0 tries=1 decline_leg=nil void_leg=18 seed=77 live=nil result_kind=nil pending=nil logbook_step=10 wreck_system=nil mode=nil captain_generation=nil pods=nil picked=nil done_leg=nil event_state=due guard_state=nil` (`result=none event_state= grandfather=`) | 1 |
+| `dump` | `module=wq event=dump step=10 flags=0 tries=1 decline_leg=nil void_leg=18 seed=77 live=nil result_kind=nil pending=nil logbook_step=10 wreck_system=nil mode=nil captain_generation=nil pods=nil picked=nil done_leg=nil event_state=due guard_state=nil dialogs=true` (`result=none event_state= grandfather=`; `dialogs`: cfg `wq_dialog` 1 and `hail_xml` 1) | 1 |
+| `dialog` | `module=wq event=dialog dialog=1 via=dock result=opened` (`via=board`, `space`; dialog `1`..`10`, `3b`, `7c`, freight-quest-spec 13.1); `module=wq event=dialog dialog=1 via=dock answer=acc result=done` (`answer=dec, ok, buy, no, pay, none`; `result=closed`: Esc, seen by the 1 s check); `module=wq event=dialog dialog=1 result=stale` (an init without its record); `... answer=<a> result=ignored` (an answer without the open record) | 1 |
+| `dialog` | `module=wq event=dialog dialog=5 answer=pay final=false result=answer` (each answer) | 2 |
+| `dialog_answers` | `module=wq event=dialog_answers dialog=10 answers=a_buy,a_no` (the answers the init shows) | 2 |
+| `dialog_fallback` | `module=wq event=dialog_fallback dialog=3 reason=native` (`xml, native, busy, uistate, ui=<v>, movie, mission, disable_action, sys_sos, suppressed, jump, lock, error, due, replaced, file`; the line, box or card follows; none for cfg `wq_dialog` 0) | 1 |
+| `talk` | `module=wq event=talk dialog=3 kind=trade result=pending` (a dock line left to the talk box 460) | 2 |
+| `letter` | `module=wq event=letter letter=1 post=mail_trf_wq1 flags=8 result=posted` (`letter=2 ... flags=24`); `... letter=1 news_mode=1 result=skipped reason=news_mode` (`reason=native`: no `AddPost`) | 1 |
 
 ## supply (`trf_supply.script`; `TRF_SpE`)
 

@@ -4320,4 +4320,154 @@
 			<perk>Countermeasures</perk>
 		</PerkDefines>
 	</GamePilot>
+	<!-- 8 speakers of the freight unlock quest's dialogs (design/freight-quest-spec.md 13.5): TRF_WqP_<role> is a copy of the vanilla pilot with the portrait of the role, the speaker label as callsign and full_name. -->
+	<GamePilot name="TRF_WqP_clerk">
+		<callsign>FTU clerk</callsign>
+		<full_name>FTU clerk</full_name>
+		<upkeep/>
+		<background/>
+		<face_texture>20</face_texture>
+		<sign_texture>IconPirate</sign_texture>
+		<piloting/>
+		<guns/>
+		<rockets/>
+		<electronic_warfare/>
+		<kills/>
+		<points/>
+		<morale/>
+		<mapping_name/>
+		<PerkDefines/>
+	</GamePilot>
+	<GamePilot name="TRF_WqP_kestrel">
+		<callsign>Kestrel's captain</callsign>
+		<full_name>Kestrel's captain</full_name>
+		<upkeep/>
+		<background/>
+		<face_texture>30</face_texture>
+		<sign_texture>IconTrader</sign_texture>
+		<piloting>10</piloting>
+		<guns>10</guns>
+		<rockets>10</rockets>
+		<electronic_warfare>10</electronic_warfare>
+		<kills/>
+		<points/>
+		<morale/>
+		<mapping_name/>
+		<PerkDefines/>
+	</GamePilot>
+	<GamePilot name="TRF_WqP_nav">
+		<callsign>Marlin's navigator</callsign>
+		<full_name>Marlin's navigator</full_name>
+		<upkeep/>
+		<background/>
+		<face_texture>13</face_texture>
+		<sign_texture>IconOthers</sign_texture>
+		<piloting>10</piloting>
+		<guns>10</guns>
+		<rockets>10</rockets>
+		<electronic_warfare>10</electronic_warfare>
+		<kills/>
+		<points/>
+		<morale/>
+		<mapping_name/>
+		<PerkDefines/>
+	</GamePilot>
+	<GamePilot name="TRF_WqP_fence">
+		<callsign>Fence</callsign>
+		<full_name>Fence</full_name>
+		<upkeep/>
+		<background/>
+		<face_texture>49</face_texture>
+		<sign_texture>IconOthers</sign_texture>
+		<piloting/>
+		<guns/>
+		<rockets/>
+		<electronic_warfare/>
+		<kills/>
+		<points/>
+		<morale/>
+		<mapping_name/>
+		<PerkDefines/>
+	</GamePilot>
+	<GamePilot name="TRF_WqP_patrol">
+		<callsign>Patrol officer</callsign>
+		<full_name>Patrol officer</full_name>
+		<upkeep/>
+		<background/>
+		<face_texture>47</face_texture>
+		<sign_texture>IconNavy</sign_texture>
+		<piloting/>
+		<guns/>
+		<rockets/>
+		<electronic_warfare/>
+		<kills/>
+		<points/>
+		<morale/>
+		<mapping_name/>
+		<PerkDefines/>
+	</GamePilot>
+	<GamePilot name="TRF_WqP_master">
+		<callsign>Marlin's master</callsign>
+		<full_name>Marlin's master</full_name>
+		<upkeep/>
+		<background/>
+		<face_texture>91</face_texture>
+		<sign_texture>IconUFT</sign_texture>
+		<piloting/>
+		<guns/>
+		<rockets/>
+		<electronic_warfare/>
+		<kills/>
+		<points/>
+		<morale/>
+		<mapping_name/>
+		<PerkDefines/>
+	</GamePilot>
+	<GamePilot name="TRF_WqP_clan">
+		<callsign>Clan pirate</callsign>
+		<full_name>Clan pirate</full_name>
+		<upkeep/>
+		<background/>
+		<face_texture>34</face_texture>
+		<sign_texture>IconPirate</sign_texture>
+		<piloting>10</piloting>
+		<guns>10</guns>
+		<rockets>10</rockets>
+		<electronic_warfare>10</electronic_warfare>
+		<kills/>
+		<points/>
+		<morale/>
+		<mapping_name/>
+		<PerkDefines/>
+	</GamePilot>
+	<GamePilot name="TRF_WqP_cap">
+		<callsign>Clan captain</callsign>
+		<full_name>Clan captain</full_name>
+		<upkeep/>
+		<background/>
+		<face_texture>Pirate</face_texture>
+		<sign_texture>IconPirate</sign_texture>
+		<piloting>10</piloting>
+		<guns>10</guns>
+		<rockets>10</rockets>
+		<electronic_warfare>10</electronic_warfare>
+		<kills/>
+		<points/>
+		<morale>1</morale>
+		<mapping_name/>
+		<PerkDefines>
+			<perk>Piloting_1</perk>
+			<perk>Piloting_2</perk>
+			<perk>Piloting_3</perk>
+			<perk>Tactics</perk>
+			<perk>Gunnery_1</perk>
+			<perk>Gunnery_2</perk>
+			<perk>Gunnery_3</perk>
+			<perk>Missiles_Rockets</perk>
+			<perk>Missiles_2</perk>
+			<perk>Missiles_3</perk>
+			<perk>Systems_1</perk>
+			<perk>Systems_2</perk>
+		</PerkDefines>
+	</GamePilot>
 	<!--sw3-traffic pilots end-->

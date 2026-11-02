@@ -7,6 +7,9 @@
 # Copies the hail dialogs Data/Scripts/Trade/TRF_Hail.xml, TRF_HailPg.xml (the demand result page) and TRF_MercPg.xml
 # (the mercenary pages) into the game's Data/Scripts/Trade/ and writes hail_xml=1 into config.script (the hail and the
 # mercenary clans use them with tune hail_box 2; without hail_xml=1 they keep the box chain).
+# Copies the freight quest dialogs Data/Scripts/Trade/TRF_Wq1..10.xml (with TRF_Wq3b, TRF_Wq7c; cfg wq_dialog, design/
+# freight-quest-spec.md 13): with --pilots as they are (the speakers are the merged TRF_WqP_ pilots), without it through
+# merge/wq_pilots.sed (each speaker becomes the vanilla pilot with the same portrait).
 # Copies loc/trf_en.loc to Data/LocData/<language>/ (default.cfg __localization_folder) on every install: the logbook
 # titles of the parcel, charter and captain quests are keys in it, in every loc_mode.
 # Re-running upgrades in place and keeps an edited config.script (--reset-config overwrites it).
@@ -69,6 +72,13 @@ for f in "$xml" "$xml2" "$xml3" loc/trf_en.loc; do
     [ -f "$here/$f" ] || die "package file $f missing"
     crlf "$here/$f" "$f"
 done
+wqx="1 2 3 3b 4 5 6 7 7c 8 9 10"
+for n in $wqx; do
+    f=Data/Scripts/Trade/TRF_Wq$n.xml
+    [ -f "$here/$f" ] || die "package file $f missing"
+    crlf "$here/$f" "$f"
+done
+[ -f "$here/merge/wq_pilots.sed" ] || die "package file merge/wq_pilots.sed missing"
 if [ "$news" = 1 ]; then
     for f in news/trf_news.xml news/merge.awk; do [ -f "$here/$f" ] || die "--news: package file $f missing"; done
     crlf "$here/news/trf_news.xml" news/trf_news.xml
@@ -190,6 +200,16 @@ if [ ! -d "$trd" ]; then mkdir "$trd"; rec "dir $trdrel"; fi
 if put "$here/$xml" "$xmlrel"; then say "hail dialog: wrote $xmlrel"; else say "unchanged $xmlrel (hail dialog)"; fi
 if put "$here/$xml2" "$xmlrel2"; then say "demand page dialog: wrote $xmlrel2"; else say "unchanged $xmlrel2 (demand page dialog)"; fi
 if put "$here/$xml3" "$xmlrel3"; then say "mercenary page dialog: wrote $xmlrel3"; else say "unchanged $xmlrel3 (mercenary page dialog)"; fi
+# Freight quest dialogs: the TRF_WqP_ speakers need the Pilots.xml merge; without it each is its vanilla source pilot.
+nwq=0
+for n in $wqx; do
+    if [ "$pilots" = 1 ]; then cp "$here/Data/Scripts/Trade/TRF_Wq$n.xml" "$bk/wq.tmp"
+    else sed -f "$here/merge/wq_pilots.sed" "$here/Data/Scripts/Trade/TRF_Wq$n.xml" > "$bk/wq.tmp"; fi
+    if put "$bk/wq.tmp" "$trdrel/TRF_Wq$n.xml"; then nwq=$((nwq + 1)); fi
+done
+rm -f "$bk/wq.tmp"
+if [ "$pilots" = 1 ]; then wqsp="TRF_WqP_ speakers"; else wqsp="vanilla speakers"; fi
+say "freight quest dialogs: $nwq of 12 TRF_Wq*.xml written or updated in $trdrel ($wqsp)"
 if put "$here/loc/trf_en.loc" "$locrel"; then say "loc: wrote $locrel"; else say "unchanged $locrel"; fi
 # Scripts of an earlier release that this one no longer ships.
 for rel in $(sed -n "s|^created \($dst/[^/]*\.script\)\$|\1|p" "$man"); do
@@ -294,7 +314,7 @@ else cp "$new" "$ini.sw3trf-new"; mv -f "$ini.sw3trf-new" "$ini"; say "sw3tp.ini
 rm -f "$new"
 
 q=0
-for f in "$ini" "$game/$dst"/*.script "$game/$xmlrel" "$game/$xmlrel2" "$game/$xmlrel3" ${newsrel:+"$game/$newsrel"} "$game/$locrel" ${pilotsrel:+"$game/$pilotsrel"}; do
+for f in "$ini" "$game/$dst"/*.script "$game/$xmlrel" "$game/$xmlrel2" "$game/$xmlrel3" "$game/$trdrel"/TRF_Wq*.xml ${newsrel:+"$game/$newsrel"} "$game/$locrel" ${pilotsrel:+"$game/$pilotsrel"}; do
     if xattr -p com.apple.quarantine "$f" >/dev/null 2>&1; then xattr -d com.apple.quarantine "$f"; q=$((q + 1)); fi
 done
 sed -i '' "s/^version .*/version $version/" "$man"
@@ -309,6 +329,7 @@ say "scripts: $(echo $files | wc -w | tr -d ' ') files in $dst/ (CRLF checked), 
 say "config: $(tr -d '\r' < "$cur" | sed -n 's/^function TRF_Config() return {\([^,]*, [^,]*, [^,]*, [^,]*\),.*/\1/p')$(grep -q 'enabled=2' "$cur" && echo ', enabled=2 (restore-and-stop)')"
 say "sw3tp.ini [traffic]: $(sect "$ini" | tr -d '\r' | grep -v '^\[\|^;' | tr '\n' ' ')"
 say "hail dialog: $xmlrel, $xmlrel2, $xmlrel3, hail_xml $(tr -d '\r' < "$cur" | sed -n 's/.*hail_xml=\([0-9]*\).*/\1/p' | head -1) (used with tune hail_box 2)"
+say "freight quest dialogs: $trdrel/TRF_Wq*.xml ($wqsp; cfg wq_dialog $(tr -d '\r' < "$cur" | sed -n 's/.*wq_dialog=\([0-9]*\).*/\1/p' | head -1))"
 say "loc: $locrel"
 [ "$news" = 0 ] || say "news: $(grep -c '<name>trf_' "$game/$newsrel") trf_ records in $newsrel, news_mode $(tr -d '\r' < "$cur" | sed -n 's/.*news_mode=\([0-9]*\).*/\1/p' | head -1)"
 [ "$pilots" = 0 ] || say "pilots: $(grep -c '<GamePilot name="TRF_McP_' "$game/$pilotsrel") TRF_McP_ templates in $pilotsrel, mc_names $(tr -d '\r' < "$cur" | sed -n 's/.*mc_names=\([0-9]*\).*/\1/p' | head -1)"

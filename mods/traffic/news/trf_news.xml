@@ -1567,4 +1567,18 @@
 		<image_name>Studio66</image_name>
 		<sound_name/>
 	</NewsRecord>
+	<NewsRecord>
+		<name>mail_trf_wq1</name>
+		<header>#TRF_wqlt</header>
+		<text>#TRF_wql1b</text>
+		<image_name>mail</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>mail_trf_wq2</name>
+		<header>#TRF_wqlt</header>
+		<text>#TRF_wql2b</text>
+		<image_name>mail</image_name>
+		<sound_name/>
+	</NewsRecord>
 	<!--sw3-traffic news end-->

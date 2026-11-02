@@ -5,7 +5,7 @@ the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10), the mercenary
 design/fits-spec.md 11), the vanilla extortion fix (E-EXT.1, design/extort-fix-spec.md 7), the stack leak diagnostic
 (D-DLL.1), the station jobs mission card (K0-K7, design/station-jobs-spec.md 10, step 1), the Office jobs board (M1-M8,
 step 2), the quest log's Job log (L1-L5, step 3), the freight unlock quest, commits 1-3 (Q-WQ.1-10,
-design/freight-quest-spec.md 10) and Wolves Freight step 2 (EW8.11-EW8.17, design/freight-spec.md 10) from traffic logs.
+design/freight-quest-spec.md 10) and its presentation (Q-WQ.11-14, spec 13: dialogs, letters, the mission list) and Wolves Freight step 2 (EW8.11-EW8.17, design/freight-spec.md 10) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -2113,6 +2113,84 @@ def c_wq10(ctx):
     return res
 
 
+# Freight unlock quest presentation (design/freight-quest-spec.md 13.8, Q-WQ.11-14; WQ_DIALOG=1, NEWS=1) ----------------
+
+def c_wq11(ctx):
+    res = Res()
+    res.logpart = True
+    op = [r for r in ctx.find("wq", "dialog", result="opened") if r.get("dialog") == "1"]
+    dock = [r for r in op if r.get("via") == "dock"]
+    board = [r for r in op if r.get("via") == "board"]
+    done = [r for r in ctx.find("wq", "dialog", result="done") if r.get("dialog") == "1"]
+    fb = [r for r in ctx.find("wq", "dialog_fallback") if r.get("dialog") == "1"]
+    for r in done:
+        if r.get("answer") == "acc" and not [a for a in ctx.find("wq", "accept", result="ok") if a.src == r.src and a.n > r.n]:
+            res.fails.append("%s: D1 accepted, no accept result=ok after it" % r.short())
+    for r in ctx.find("wq", "dialog", result="stale"):
+        res.fails.append("%s: a dialog init without its record" % r.short())
+    if not dock:
+        res.missing.append("WQ_DIALOG=1: dock at a Hephaestus or Golconda loop stop with the offer due: no dialog dialog=1 via=dock result=opened line")
+    elif not board:
+        res.missing.append("JOBS_UI=2: open the offer from the Office Jobs row and press OK on its card: no dialog dialog=1 via=board line")
+    res.ev("D1 opened at the dock", dock)
+    res.ev("D1 opened from the Office card", board)
+    res.ev("D1 done", done)
+    res.ev("D1 fallbacks", fb)
+    return res
+
+
+def c_wq12(ctx):
+    res = Res()
+    res.logpart = True
+    sp = [r for r in ctx.find("wq", "dialog", result="opened") if r.get("via") == "space"]
+    end = [r for r in ctx.find("wq", "dialog") if r.get("via") == "space" and r.get("result") in ("done", "closed")]
+    for r in sp:
+        if not [e for e in end if e.src == r.src and e.n > r.n and e.get("dialog") == r.get("dialog")]:
+            res.fails.append("%s: an in-space dialog never closed (no done or closed line)" % r.short())
+    if not sp:
+        res.missing.append("WQ_DIALOG=1: defend the Kestrel, pick up the navigator's pod or enter XB-13 at step 50: no dialog via=space line")
+    res.ev("in-space dialogs opened", sp)
+    res.ev("in-space dialogs ended", end)
+    res.ev("fallbacks", ctx.find("wq", "dialog_fallback"))
+    return res
+
+
+def c_wq13(ctx):
+    res = Res()
+    res.logpart = True
+    po = ctx.find("wq", "letter", result="posted")
+    seen = {}
+    for r in po:
+        k = (r.src, r.get("letter"))
+        if k in seen:
+            res.fails.append("%s: letter %s posted twice" % (r.short(), r.get("letter")))
+        seen[k] = 1
+    if not po:
+        res.missing.append("NEWS=1 (news_mode 2): accept the charter office offer: no letter letter=1 result=posted line")
+    res.ev("letters posted", po)
+    res.ev("letters skipped", ctx.find("wq", "letter", result="skipped"))
+    return res
+
+
+def c_wq14(ctx):
+    res = Res()
+    res.logpart = True
+    add = [r for r in ctx.find("wq", "logbook", id="trf_wq", result="added") if r.get("list") == "mission"]
+    job = [r for r in ctx.find("wq", "logbook", id="trf_wq", result="added") if r.get("list") == "job"]
+    done = [r for r in ctx.find("wq", "logbook", id="trf_wq", result="done") if r.get("list") == "mission"]
+    on = [r for r in ctx.find("wq", "dialog", result="opened")]
+    for r in job:
+        if [o for o in on if o.src == r.src]:
+            res.fails.append("%s: the entry went to the Job log in a run with the dialogs on" % r.short())
+    if not add:
+        res.missing.append("WQ_DIALOG=1: accept the offer: no logbook list=mission id=trf_wq result=added line")
+    elif not done:
+        res.missing.append("finish the quest at the charter desk (step 80): no logbook list=mission result=done line")
+    res.ev("mission-list entries", add)
+    res.ev("done", done)
+    return res
+
+
 # Wolves Freight step 2 (design/freight-spec.md 10, EW8.11-EW8.17; FREIGHT=1 LOG=2, chapter 5 or later) ------------
 
 def c_ew8_11(ctx):
@@ -2369,6 +2447,14 @@ ITEMS = [
      "master: Wolves? ...' when the pods eject, after a switch from mode 1 'They moved the crew to a hulk at XB-13.'"),
     ("Q-WQ.10", "the charter office: the hand-in moves 60 to 70, the purchase box answered gives 80, the done entry goes 10 legs later", c_wq10,
      None),
+    ("Q-WQ.11", "D1 opens from the dock and from the Office Jobs card: the clerk's portrait, the pages and the answers", c_wq11,
+     "the dialog window with the clerk's portrait and 'FTU clerk: ...', the optional pages and back, no '#' left; after it the station window"),
+    ("Q-WQ.12", "an in-space dialog (D2, D4, D7, D8) opens and returns to flight", c_wq12,
+     "the window over the flight, the speaker's portrait, the game paused while it is up and flying on after the last answer"),
+    ("Q-WQ.13", "the charter office letters arrive once each", c_wq13,
+     "two 'Letter from the FTU charter office:' entries in the mail, the paragraphs split at '|'"),
+    ("Q-WQ.14", "the main quest log entry and its done state", c_wq14,
+     "'Missing in Capricorn' in the mission list (not the Job log), its text per step, done at step 80"),
     ("EW8.11", "Wolves Freight transit appearance: path C between the loop neighbours' portals, 60-120 s", c_ew8_11,
      "the freighter comes through the portal from the previous loop system and flies to the portal of the next one"),
     ("EW8.12", "Wolves Freight portal follow: a jump within T_chase after its exit, arrival 5-15 s later", c_ew8_12,
@@ -2499,7 +2585,8 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "Q-WQ.5": "PASS", "Q-WQ.6": "MANUAL", "Q-WQ.7": "PASS", "Q-WQ.8": "MANUAL", "Q-WQ.9": "MANUAL",
             "Q-WQ.10": "PASS",
             "EW8.11": "NO DATA", "EW8.12": "NO DATA", "EW8.13": "NO DATA", "EW8.14": "NO DATA", "EW8.15": "NO DATA",
-            "EW8.16": "NO DATA", "EW8.17": "NO DATA"}
+            "EW8.16": "NO DATA", "EW8.17": "NO DATA", "Q-WQ.11": "NO DATA", "Q-WQ.12": "NO DATA", "Q-WQ.13": "NO DATA",
+            "Q-WQ.14": "NO DATA"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
