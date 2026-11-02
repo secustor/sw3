@@ -1,6 +1,6 @@
 #!/bin/sh
 # Pilot templates (named mercenary pilots, design/proposals/merc-pilot-names.md option B; the freight quest speakers,
-# design/freight-quest-spec.md 13.5): checks of the Pilots.xml merge and of install.sh with and without --pilots, on
+# design/freight-quest-spec.md 13.5): checks of the Pilots.xml merge and of install.sh with and without --merc-names, on
 # copies only. Usage: sh tests/test_pilots.sh (run_host.sh calls it last).
 # Reads the vanilla game files from $ORIG (default as in mods/trackpad/env.sh) and never writes there; every file it
 # writes is under <repo>/.work/pilots/ (test/ for the merge checks, fakegame/ for the installer, TMPDIR test/tmp/).
@@ -10,9 +10,9 @@
 # </Pilots>, exit 4 with a TRF_ template outside the blocks, no name clash with vanilla templates, callsigns non-empty
 # and unique, fragment and merged files well-formed (xmllint, schema-valid when the XSD is there), gen_pilots.py
 # --check. Installer: sh -n, then on a fake game tree (copies of sw3cw.exe, zlib1_orig.dll, the two checked game
-# scripts, default.cfg, News.xml and Pilots.xml; a text zlib1.dll with the strings install.sh greps for): --pilots,
-# re-run, --pilots with --news (independent flags), a re-run without --pilots (mercs block dropped, speakers kept,
-# mc_names=0, also in a kept edited config.script), --restore-only --pilots, uninstall.sh, a plain install (speakers
+# scripts, default.cfg, News.xml and Pilots.xml; a text zlib1.dll with the strings install.sh greps for): --merc-names,
+# re-run, --merc-names with --news (independent flags), a re-run without --merc-names (mercs block dropped, speakers kept,
+# mc_names=0, also in a kept edited config.script), --restore-only --merc-names, uninstall.sh, a plain install (speakers
 # only) and its uninstall; the quest dialogs always as shipped; loc/trf_en.loc installed by the first run, kept on a
 # re-run and removed by uninstall.sh. Exit 1 on any failed check; skips (exit 0) when the vanilla Pilots.xml is missing.
 set -eu
@@ -127,35 +127,35 @@ if [ "$miss" = 0 ]; then
     inst() { log=$work/install-$1.log; shift; rc=0; env "$@" > "$log" 2>&1 || rc=$?; [ "$rc" = 0 ] || sed 's/^/    /' "$log"; return $rc; }
     mcn() { tr -d '\r' < "$cfg" | sed -n 's/.*[{ ,]mc_names=\([0-9]*\).*/\1/p' | head -1; }
 
-    check "install --pilots: exit 0" inst 1 sh "$mod/install.sh" --pilots "$fake"
-    check "install --pilots: 120 TRF_McP_ templates in Pilots.xml" [ "$(cnt '<GamePilot name="TRF_McP_' "$fp")" = 120 ]
+    check "install --merc-names: exit 0" inst 1 sh "$mod/install.sh" --merc-names "$fake"
+    check "install --merc-names: 120 TRF_McP_ templates in Pilots.xml" [ "$(cnt '<GamePilot name="TRF_McP_' "$fp")" = 120 ]
     tq=$fake/Data/Scripts/Trade
     # wqsame: the 12 quest dialogs in the fake game are the shipped files (speakers TRF_WqP_*).
     wqsame() { [ "$(ls "$tq"/TRF_Wq*.xml | wc -l | tr -d ' ')" = 12 ] || return 1; for f in "$mod"/Data/Scripts/Trade/TRF_Wq*.xml; do cmp -s "$f" "$tq/${f##*/}" || return 1; done; }
-    check "install --pilots: 12 quest dialogs as shipped (TRF_WqP_ speakers)" wqsame
-    check "install --pilots: Pilots.xml equals the merge of the copy" cmp -s "$fp" "$work/m1.xml"
-    check "install --pilots: vanilla backup kept" cmp -s "$fake/sw3-traffic-backup/files/Data/Game/Pilots.xml" "$van"
-    check "install --pilots: mc_names=2 in config.script ($(mcn))" [ "$(mcn)" = 2 ]
-    check "install --pilots: News.xml untouched (flags independent)" cmp -s "$fn" "$ORIG/Data/Game/News.xml"
-    check "install --pilots: manifest records the vanilla Pilots.xml backup" grep -qxF "backup Data/Game/Pilots.xml" "$fake/sw3-traffic-backup/manifest.txt"
-    check "install --pilots: loc/trf_en.loc installed, 'created' in the manifest" sh -c "cmp -s \"$fake/Data/LocData/English/trf_en.loc\" \"$mod/loc/trf_en.loc\" && grep -qxF 'created Data/LocData/English/trf_en.loc' \"$fake/sw3-traffic-backup/manifest.txt\""
-    check "re-run --pilots: exit 0" inst 2 sh "$mod/install.sh" --pilots "$fake"
-    check "re-run --pilots: Pilots.xml unchanged" sh -c "cmp -s \"$fp\" \"$work/m1.xml\" && grep -q 'unchanged Data/Game/Pilots.xml' \"$work/install-2.log\""
-    check "PILOTS=1 --news: exit 0" inst 3 PILOTS=1 sh "$mod/install.sh" --news "$fake"
-    check "PILOTS=1 --news: both merges present" sh -c "cmp -s \"$fp\" \"$work/m1.xml\" && grep -q '<name>trf_' \"$fn\""
-    check "--news without --pilots: exit 0" inst 4 sh "$mod/install.sh" --news "$fake"
-    check "--news without --pilots: Pilots.xml has the speakers only (mercs block dropped)" cmp -s "$fp" "$work/s1.xml"
-    check "--news without --pilots: the quest dialogs as shipped (TRF_WqP_ speakers)" wqsame
-    check "--news without --pilots: mc_names=0 ($(mcn)), news kept" sh -c "[ \"$(mcn)\" = 0 ] && grep -q '<name>trf_' \"$fn\""
-    check "--news without --pilots: the vanilla Pilots.xml backup kept" cmp -s "$fake/sw3-traffic-backup/files/Data/Game/Pilots.xml" "$van"
-    check "--news without --pilots: loc/trf_en.loc kept" cmp -s "$fake/Data/LocData/English/trf_en.loc" "$mod/loc/trf_en.loc"
-    check "--pilots without --news: exit 0" inst 5 sh "$mod/install.sh" --pilots "$fake"
-    check "--pilots without --news: News.xml vanilla, Pilots.xml merged" sh -c "cmp -s \"$fn\" \"$ORIG/Data/Game/News.xml\" && cmp -s \"$fp\" \"$work/m1.xml\""
+    check "install --merc-names: 12 quest dialogs as shipped (TRF_WqP_ speakers)" wqsame
+    check "install --merc-names: Pilots.xml equals the merge of the copy" cmp -s "$fp" "$work/m1.xml"
+    check "install --merc-names: vanilla backup kept" cmp -s "$fake/sw3-traffic-backup/files/Data/Game/Pilots.xml" "$van"
+    check "install --merc-names: mc_names=2 in config.script ($(mcn))" [ "$(mcn)" = 2 ]
+    check "install --merc-names: News.xml untouched (flags independent)" cmp -s "$fn" "$ORIG/Data/Game/News.xml"
+    check "install --merc-names: manifest records the vanilla Pilots.xml backup" grep -qxF "backup Data/Game/Pilots.xml" "$fake/sw3-traffic-backup/manifest.txt"
+    check "install --merc-names: loc/trf_en.loc installed, 'created' in the manifest" sh -c "cmp -s \"$fake/Data/LocData/English/trf_en.loc\" \"$mod/loc/trf_en.loc\" && grep -qxF 'created Data/LocData/English/trf_en.loc' \"$fake/sw3-traffic-backup/manifest.txt\""
+    check "re-run --merc-names: exit 0" inst 2 sh "$mod/install.sh" --merc-names "$fake"
+    check "re-run --merc-names: Pilots.xml unchanged" sh -c "cmp -s \"$fp\" \"$work/m1.xml\" && grep -q 'unchanged Data/Game/Pilots.xml' \"$work/install-2.log\""
+    check "MERC_NAMES=1 --news: exit 0" inst 3 MERC_NAMES=1 sh "$mod/install.sh" --news "$fake"
+    check "MERC_NAMES=1 --news: both merges present" sh -c "cmp -s \"$fp\" \"$work/m1.xml\" && grep -q '<name>trf_' \"$fn\""
+    check "--news without --merc-names: exit 0" inst 4 sh "$mod/install.sh" --news "$fake"
+    check "--news without --merc-names: Pilots.xml has the speakers only (mercs block dropped)" cmp -s "$fp" "$work/s1.xml"
+    check "--news without --merc-names: the quest dialogs as shipped (TRF_WqP_ speakers)" wqsame
+    check "--news without --merc-names: mc_names=0 ($(mcn)), news kept" sh -c "[ \"$(mcn)\" = 0 ] && grep -q '<name>trf_' \"$fn\""
+    check "--news without --merc-names: the vanilla Pilots.xml backup kept" cmp -s "$fake/sw3-traffic-backup/files/Data/Game/Pilots.xml" "$van"
+    check "--news without --merc-names: loc/trf_en.loc kept" cmp -s "$fake/Data/LocData/English/trf_en.loc" "$mod/loc/trf_en.loc"
+    check "--merc-names without --news: exit 0" inst 5 sh "$mod/install.sh" --merc-names "$fake"
+    check "--merc-names without --news: News.xml vanilla, Pilots.xml merged" sh -c "cmp -s \"$fn\" \"$ORIG/Data/Game/News.xml\" && cmp -s \"$fp\" \"$work/m1.xml\""
     printf -- '-- edited by test_pilots.sh\r\n' >> "$cfg"
-    check "kept edited config, no --pilots: exit 0" inst 6 sh "$mod/install.sh" "$fake"
-    check "kept edited config, no --pilots: config kept, mc_names=0 ($(mcn)), Pilots.xml speakers only" sh -c "grep -q 'edited by test_pilots' \"$cfg\" && [ \"\$(tr -d '\r' < \"$cfg\" | sed -n 's/.*[{ ,]mc_names=\([0-9]*\).*/\1/p' | head -1)\" = 0 ] && cmp -s \"$fp\" \"$work/s1.xml\""
-    check "--restore-only --pilots: exit 0" inst 7 sh "$mod/install.sh" --restore-only --pilots "$fake"
-    check "--restore-only --pilots: enabled=2, mc_names=2 ($(mcn)), Pilots.xml merged" sh -c "grep -q 'enabled=2' \"$cfg\" && [ \"\$(tr -d '\r' < \"$cfg\" | sed -n 's/.*[{ ,]mc_names=\([0-9]*\).*/\1/p' | head -1)\" = 2 ] && cmp -s \"$fp\" \"$work/m1.xml\""
+    check "kept edited config, no --merc-names: exit 0" inst 6 sh "$mod/install.sh" "$fake"
+    check "kept edited config, no --merc-names: config kept, mc_names=0 ($(mcn)), Pilots.xml speakers only" sh -c "grep -q 'edited by test_pilots' \"$cfg\" && [ \"\$(tr -d '\r' < \"$cfg\" | sed -n 's/.*[{ ,]mc_names=\([0-9]*\).*/\1/p' | head -1)\" = 0 ] && cmp -s \"$fp\" \"$work/s1.xml\""
+    check "--restore-only --merc-names: exit 0" inst 7 sh "$mod/install.sh" --restore-only --merc-names "$fake"
+    check "--restore-only --merc-names: enabled=2, mc_names=2 ($(mcn)), Pilots.xml merged" sh -c "grep -q 'enabled=2' \"$cfg\" && [ \"\$(tr -d '\r' < \"$cfg\" | sed -n 's/.*[{ ,]mc_names=\([0-9]*\).*/\1/p' | head -1)\" = 2 ] && cmp -s \"$fp\" \"$work/m1.xml\""
     check "uninstall: exit 0" inst 8 sh "$mod/uninstall.sh" "$fake"
     check "uninstall: Pilots.xml and News.xml vanilla" sh -c "cmp -s \"$fp\" \"$van\" && cmp -s \"$fn\" \"$ORIG/Data/Game/News.xml\""
     check "uninstall: no sw3-traffic-backup/, no Mods/Traffic/" sh -c "[ ! -d \"$fake/sw3-traffic-backup\" ] && [ ! -d \"$fake/Data/Scripts/Mods/Traffic\" ]"
@@ -165,7 +165,7 @@ if [ "$miss" = 0 ]; then
     check "plain install (no flags): exit 0" inst 9 sh "$mod/install.sh" "$fake"
     check "plain install: Pilots.xml has the 8 speakers only, vanilla backup, mc_names=0 ($(mcn))" sh -c "cmp -s \"$fp\" \"$work/s1.xml\" && cmp -s \"$fake/sw3-traffic-backup/files/Data/Game/Pilots.xml\" \"$van\" && [ \"\$(tr -d '\r' < \"$cfg\" | sed -n 's/.*[{ ,]mc_names=\([0-9]*\).*/\1/p' | head -1)\" = 0 ]"
     check "plain install: 12 quest dialogs as shipped (TRF_WqP_ speakers)" wqsame
-    check "plain install: summary names the speakers" grep -q 'pilots: 8 TRF_WqP_ speakers, 0 TRF_McP_ templates in Data/Game/Pilots.xml' "$work/install-9.log"
+    check "plain install: summary names the speakers" grep -q 'merc-names: 8 TRF_WqP_ speakers, 0 TRF_McP_ templates in Data/Game/Pilots.xml' "$work/install-9.log"
     check "uninstall after a plain install: exit 0" inst 10 sh "$mod/uninstall.sh" "$fake"
     check "uninstall after a plain install: Pilots.xml vanilla, no quest dialogs" sh -c "cmp -s \"$fp\" \"$van\" && ! ls \"$tq\"/TRF_Wq*.xml >/dev/null 2>&1"
     check "install aborts on a TRF_ template outside the blocks, Pilots.xml unchanged" sh -c "cp \"$work/clash.xml\" \"$fp\" && ! sh \"$mod/install.sh\" \"$fake\" && cmp -s \"$fp\" \"$work/clash.xml\" && [ ! -d \"$fake/sw3-traffic-backup\" ]"

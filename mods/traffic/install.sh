@@ -1,5 +1,5 @@
 #!/bin/sh
-# sw3-traffic installer. Usage: ./install.sh [--reset-config] [--restore-only] [--news] [--pilots] <game dir>
+# sw3-traffic installer. Usage: ./install.sh [--reset-config] [--restore-only] [--news] [--merc-names] <game dir>
 # For GOG Star Wolves 3: Civil War v1.12. Needs the sw3tp proxy (zlib1.dll with the traffic module), installed
 # by the sw3-trackpad or sw3-performance mod of the same release; exits without changes if it is missing.
 # Copies Data/Scripts/Mods/Traffic/ (CRLF scripts), writes its config.script (exp=0 traffic=1 autosave=0) and sets
@@ -19,9 +19,9 @@
 # --news (or env NEWS=1): merges the mod's trf_* records (news/trf_news.xml) into Data/Game/News.xml, the one news
 # file the engine reads, and writes news_mode=2 into config.script (README, News records). A re-run without --news
 # puts News.xml back; the loc file stays.
-# --pilots (or env PILOTS=1): also merges the named mercenary pilot templates TRF_McP_* (the "sw3-traffic mercs" block
+# --merc-names (or env MERC_NAMES=1): also merges the named mercenary pilot templates TRF_McP_* (the "sw3-traffic mercs" block
 # of merge/Pilots.xml) and writes mc_names=2 into config.script (README, Named mercenary pilots). A re-run without
-# --pilots drops that block (the speakers stay) and writes mc_names=0.
+# --merc-names drops that block (the speakers stay) and writes mc_names=0.
 # Files it replaces are backed up to <game dir>/sw3-traffic-backup/, files and directories it creates and the
 # previous [traffic] section are recorded in sw3-traffic-backup/manifest.txt; uninstall.sh reverts them.
 set -eu
@@ -32,18 +32,18 @@ VAN_SHA1="include/Create_flight_2.script=3403ead37c2719fe6c6ee09fa05cd301cb0cf58
 include/DockStation.script=1744c15f911c34ebf905a6f1895aaf983de68877"
 here=$(cd "$(dirname "$0")" && pwd)
 
-usage() { echo "usage: $0 [--reset-config] [--restore-only] [--news] [--pilots] <game dir>" >&2; exit 2; }
+usage() { echo "usage: $0 [--reset-config] [--restore-only] [--news] [--merc-names] <game dir>" >&2; exit 2; }
 die() { echo "install.sh: $*" >&2; exit 1; }
 say() { echo "  $*"; }
 sha1() { shasum "$1" | cut -d' ' -f1; }
 
-game=; reset=0; restore=0; news=${NEWS:-0}; pilots=${PILOTS:-0}
+game=; reset=0; restore=0; news=${NEWS:-0}; merc_names=${MERC_NAMES:-0}
 while [ $# -gt 0 ]; do
     case $1 in
     --reset-config) reset=1 ;;
     --restore-only) restore=1 ;;
     --news) news=1 ;;
-    --pilots) pilots=1 ;;
+    --merc-names) merc_names=1 ;;
     -h|--help) usage ;;
     -*) echo "unknown option $1" >&2; usage ;;
     *) [ -z "$game" ] || usage; game=$1 ;;
@@ -54,7 +54,7 @@ done
 [ -d "$game" ] || die "$game is not a directory"
 game=$(cd "$game" && pwd)
 case "$news" in 0|1) ;; *) die "NEWS must be 0 or 1" ;; esac
-case "$pilots" in 0|1) ;; *) die "PILOTS must be 0 or 1" ;; esac
+case "$merc_names" in 0|1) ;; *) die "MERC_NAMES must be 0 or 1" ;; esac
 
 # Package files: release layout and source tree are the same here.
 src=$here/Data/Scripts/Mods/Traffic
@@ -146,7 +146,7 @@ if [ "$news" = 1 ]; then
     esac
 fi
 # Pilot templates: the engine reads only DATA\GAME\pilots.xml (design/proposals/merc-pilot-names.md 4.3). Every
-# install merges the quest speakers block, --pilots also the mercs block. The merge runs here into a temp file, before
+# install merges the quest speakers block, --merc-names also the mercs block. The merge runs here into a temp file, before
 # any write, as for the news records.
 gd=$(find "$data" -mindepth 1 -maxdepth 1 -type d -iname game | head -1)
 pf=; [ -z "$gd" ] || pf=$(find "$gd" -mindepth 1 -maxdepth 1 -type f -iname pilots.xml | head -1)
@@ -154,7 +154,7 @@ pf=; [ -z "$gd" ] || pf=$(find "$gd" -mindepth 1 -maxdepth 1 -type f -iname pilo
 pilotsrel=${pf#"$game"/}
 pilotstmp=$(mktemp "${TMPDIR:-/tmp}/sw3trf-pilots.XXXXXX"); trap 'rm -f ${newstmp:+"$newstmp"} "$pilotstmp"' EXIT
 chmod 644 "$pilotstmp"   # mktemp makes 0600 and put copies the mode into Pilots.xml
-rc=0; awk -v frag="$here/merge/Pilots.xml" -v mercs="$pilots" -f "$here/merge/pilots_merge.awk" "$pf" > "$pilotstmp" || rc=$?
+rc=0; awk -v frag="$here/merge/Pilots.xml" -v mercs="$merc_names" -f "$here/merge/pilots_merge.awk" "$pf" > "$pilotstmp" || rc=$?
 case $rc in
 0) ;;
 3) rm -f "$pilotstmp"; die "$pilotsrel has no </Pilots> line. Nothing changed." ;;
@@ -230,36 +230,36 @@ elif grep -q '^news ' "$man"; then
     for rel in $(sed -n 's/^news //p' "$man"); do unput "$rel"; drop "news $rel"; done
 fi
 # Pilot templates: Pilots.xml is backed up on the first merge (the backup line of the manifest; uninstall.sh restores
-# it); without --pilots the merge has the speakers block only, so an earlier mercs block goes.
+# it); without --merc-names the merge has the speakers block only, so an earlier mercs block goes.
 pilots_n() { echo "$(grep -c '<GamePilot name="TRF_WqP_' "$game/$pilotsrel") TRF_WqP_ speakers, $(grep -c '<GamePilot name="TRF_McP_' "$game/$pilotsrel") TRF_McP_ templates"; }
-if put "$pilotstmp" "$pilotsrel"; then say "pilots: $(pilots_n) merged into $pilotsrel"
+if put "$pilotstmp" "$pilotsrel"; then say "merc-names: $(pilots_n) merged into $pilotsrel"
 else say "unchanged $pilotsrel (pilot templates)"; fi
 rm -f "$pilotstmp"
 
 # config.script: the shipped file with exp=0, traffic=1, autosave=0, hail_xml=1 (the dialog file is in place)
-# (enabled=2 with --restore-only, news_mode=2 with --news, mc_names=2 with --pilots).
+# (enabled=2 with --restore-only, news_mode=2 with --news, mc_names=2 with --merc-names).
 cfg=$bk/config.script.new
 printf -- '-- Written by sw3-traffic install.sh. A reinstall keeps an edited file; install.sh --reset-config restores it.\r\n' > "$cfg"
 sed -e '/^function TRF_Config()/s/exp=[0-9]*/exp=0/' -e '/^function TRF_Config()/s/autosave=[0-9]*/autosave=0/' \
     -e '/^function TRF_Config()/s/traffic=[0-9]*/traffic=1/' -e 's/\([{ ,]\)hail_xml=[0-9]*/\1hail_xml=1/' "$src/config.script" >> "$cfg"
 if [ "$restore" = 1 ]; then sed -e 's/^\([[:blank:]]*\)enabled=[0-9]*/\1enabled=2/' "$cfg" > "$cfg.2"; mv -f "$cfg.2" "$cfg"; fi
 if [ "$news" = 1 ]; then sed -e 's/\([{ ,]\)news_mode=[0-9]*/\1news_mode=2/' "$cfg" > "$cfg.2"; mv -f "$cfg.2" "$cfg"; fi
-if [ "$pilots" = 1 ]; then sed -e 's/\([{ ,]\)mc_names=[0-9]*/\1mc_names=2/' "$cfg" > "$cfg.2"; mv -f "$cfg.2" "$cfg"; fi
+if [ "$merc_names" = 1 ]; then sed -e 's/\([{ ,]\)mc_names=[0-9]*/\1mc_names=2/' "$cfg" > "$cfg.2"; mv -f "$cfg.2" "$cfg"; fi
 for k in 'exp=0' 'autosave=0' 'traffic=1'; do grep -q "TRF_Config() return {.*$k" "$cfg" || die "shipped config.script has no $k on its first line"; done
 [ "$restore" = 0 ] || grep -q 'enabled=2' "$cfg" || die "could not set enabled=2 in config.script"
 [ "$news" = 0 ] || grep -q 'news_mode=2' "$cfg" || die "could not set news_mode=2 in config.script"
-[ "$pilots" = 0 ] || grep -q 'mc_names=2' "$cfg" || die "could not set mc_names=2 in config.script"
+[ "$merc_names" = 0 ] || grep -q 'mc_names=2' "$cfg" || die "could not set mc_names=2 in config.script"
 grep -q 'hail_xml=1' "$cfg" || die "could not set hail_xml=1 in config.script"
 cur=$game/$dst/config.script
 last=$(sed -n 's/^config //p' "$man" | tail -1)
 if [ -f "$cur" ] && [ "$reset" = 0 ] && [ "$restore" = 0 ] && [ -n "$last" ] && [ "$(sha1 "$cur")" != "$last" ]; then
     say "kept $dst/config.script (edited; --reset-config replaces it with the defaults of this release)"
     [ "$news" = 0 ] || grep -q 'news_mode=2' "$cur" || say "news: set news_mode=2 in $dst/config.script to post the records"
-    [ "$pilots" = 0 ] || grep -q 'mc_names=2' "$cur" || say "pilots: set mc_names=2 in $dst/config.script to use the named templates"
-    # Without --pilots the templates are gone: a kept mc_names=2 goes back to 0 (only that key changes).
-    if [ "$pilots" = 0 ] && grep -q '[{ ,]mc_names=2[^0-9]' "$cur"; then
+    [ "$merc_names" = 0 ] || grep -q 'mc_names=2' "$cur" || say "merc-names: set mc_names=2 in $dst/config.script to use the named templates"
+    # Without --merc-names the templates are gone: a kept mc_names=2 goes back to 0 (only that key changes).
+    if [ "$merc_names" = 0 ] && grep -q '[{ ,]mc_names=2[^0-9]' "$cur"; then
         sed -e 's/\([{ ,]\)mc_names=2\([^0-9]\)/\1mc_names=0\2/' "$cur" > "$cur.sw3trf-new"; mv -f "$cur.sw3trf-new" "$cur"
-        say "pilots: mc_names=0 in the kept $dst/config.script (no --pilots)"
+        say "merc-names: mc_names=0 in the kept $dst/config.script (no --merc-names)"
     fi
     grep -q 'hail_xml=1' "$cur" || say "hail dialog: add hail_xml=1 to $dst/config.script to use tune hail_box 2"
 else
@@ -321,7 +321,7 @@ say "hail dialog: $xmlrel, $xmlrel2, $xmlrel3, hail_xml $(tr -d '\r' < "$cur" | 
 say "freight quest dialogs: $trdrel/TRF_Wq*.xml (cfg wq_dialog $(tr -d '\r' < "$cur" | sed -n 's/.*wq_dialog=\([0-9]*\).*/\1/p' | head -1))"
 say "loc: $locrel"
 [ "$news" = 0 ] || say "news: $(grep -c '<name>trf_' "$game/$newsrel") trf_ records in $newsrel, news_mode $(tr -d '\r' < "$cur" | sed -n 's/.*news_mode=\([0-9]*\).*/\1/p' | head -1)"
-say "pilots: $(pilots_n) in $pilotsrel, mc_names $(tr -d '\r' < "$cur" | sed -n 's/.*mc_names=\([0-9]*\).*/\1/p' | head -1)"
+say "merc-names: $(pilots_n) in $pilotsrel, mc_names $(tr -d '\r' < "$cur" | sed -n 's/.*mc_names=\([0-9]*\).*/\1/p' | head -1)"
 say "backups and manifest: sw3-traffic-backup/"
 echo "done."
 echo "Start the game; the mod logs 'traffic: lua: v1 loaded ... modules=18' to $game/sw3tp.log (README, In-game checks)."

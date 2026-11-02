@@ -66,8 +66,8 @@
 -- (default 0, until E0.4 confirms drops) = 1 leaves the robbed stacks in a cargo01_destroyed_inv container beside the
 -- trader instead of the mothership.
 -- Named mercenary pilots (design/proposals/merc-pilot-names.md, option B): mc_names (default 0) = 2 means the
--- TRF_McP_ templates are merged into Data/Game/Pilots.xml (written by install.sh --pilots, 0 again when a re-run
--- without --pilots reverts the merge); trf_merc then passes the TRF_McP_ templates to its flights.
+-- TRF_McP_ templates are merged into Data/Game/Pilots.xml (written by install.sh --merc-names, 0 again when a re-run
+-- without --merc-names reverts the merge); trf_merc then passes the TRF_McP_ templates to its flights.
 -- Mercenary clans, group war against the player (design/merc-spec.md 4, 00 section 8 E2; defaults in TRF_Pl_OptDef):
 -- merc_war (betrayal fight-back and a refused payment answered with an attack; 1, the default: the pack fights back;
 -- 0: a betrayed pack leaves through its portal), merc_hunt (announced hunters), merc_hostile (rival HOSTILE meetings),

@@ -50,7 +50,7 @@
 # Q-WQ.11-14; default 1 in config.script); written only when set. Data/Scripts/Trade/TRF_Wq*.xml are always copied,
 # and the "sw3-traffic speakers" block of merge/Pilots.xml (their speakers TRF_WqP_*, tools/gen_pilots.py) is always
 # merged into the clone's Data/Game/Pilots.xml (the vanilla file kept as Pilots.xml.trf-orig, the merge source).
-# PILOTS=1: also the "sw3-traffic mercs" block (the named mercenary pilots TRF_McP_*) and mc_names=2; unset leaves it
+# MERC_NAMES=1: also the "sw3-traffic mercs" block (the named mercenary pilots TRF_McP_*) and mc_names=2; unset leaves it
 # out. Restart the game after a change (the engine reads Pilots.xml at startup).
 # PARCELS=0|1 (cfg enable_parcels, sealed parcels, design/parcel-spec.md, CHECK E-PCL.1-E-PCL.6; LEVEL=v01/v02 write 0
 # unless PARCELS is set); PCL_PROBE=0|1 (cfg pcl_probe, the E-PCL.1/E-PCL.2 probe lines); written only when set.
@@ -107,7 +107,7 @@ case "${JOBS_BOARD_MODE:-1}" in 1|2) ;; *) echo "JOBS_BOARD_MODE must be 1 or 2"
 case "${JOBS_LOG:-1}" in 0|1) ;; *) echo "JOBS_LOG must be 0 or 1" >&2; exit 1;; esac
 opt=""
 case "${NEWS:-0}" in 0) ;; 1) NEWS_MODE=${NEWS_MODE:-2} ;; *) echo "NEWS must be 0 or 1" >&2; exit 1;; esac
-case "${PILOTS:-0}" in 0) ;; 1) opt="$opt, mc_names=2" ;; *) echo "PILOTS must be 0 or 1" >&2; exit 1;; esac
+case "${MERC_NAMES:-0}" in 0) ;; 1) opt="$opt, mc_names=2" ;; *) echo "MERC_NAMES must be 0 or 1" >&2; exit 1;; esac
 LEVEL=${LEVEL:-v1}
 case "$LEVEL" in
 v1) pre= ;;
@@ -225,7 +225,7 @@ cp "$here/Data/Scripts/Trade/TRF_MercPg.xml" "$COPY/Data/Scripts/Trade/TRF_MercP
 for n in 1 2 3 3b 4 5 6 7 7c 8 9 10; do cp "$here/Data/Scripts/Trade/TRF_Wq$n.xml" "$COPY/Data/Scripts/Trade/TRF_Wq$n.xml"; done
 pilx=$COPY/Data/Game/Pilots.xml
 [ -f "$pilx.trf-orig" ] || cp -p "$pilx" "$pilx.trf-orig"
-rc=0; awk -v frag="$here/merge/Pilots.xml" -v mercs="${PILOTS:-0}" -f "$here/merge/pilots_merge.awk" "$pilx.trf-orig" > "$pilx.new" || rc=$?
+rc=0; awk -v frag="$here/merge/Pilots.xml" -v mercs="${MERC_NAMES:-0}" -f "$here/merge/pilots_merge.awk" "$pilx.trf-orig" > "$pilx.new" || rc=$?
 [ "$rc" = 0 ] || { rm -f "$pilx.new"; echo "Pilots.xml merge failed (awk exit $rc: 3 no </Pilots>, 4 TRF_ template outside the blocks)" >&2; exit 1; }
 mv -f "$pilx.new" "$pilx"
 locd=$COPY/Data/LocData/English
