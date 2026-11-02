@@ -2368,7 +2368,8 @@ ITEMS = [
      "the wrecked transport with its marker off the base site, clear of the stash asteroids, the guard attacks, 'Marlin's "
      "master: Wolves? ...' when the pods eject, after a switch from mode 1 'They moved the crew to a hulk at XB-13.'"),
     ("Q-WQ.10", "the charter office: the hand-in moves 60 to 70, the purchase box answered gives 80, the done entry goes 10 legs later", c_wq10,
-     None),    ("EW8.11", "Wolves Freight transit appearance: path C between the loop neighbours' portals, 60-120 s", c_ew8_11,
+     None),
+    ("EW8.11", "Wolves Freight transit appearance: path C between the loop neighbours' portals, 60-120 s", c_ew8_11,
      "the freighter comes through the portal from the previous loop system and flies to the portal of the next one"),
     ("EW8.12", "Wolves Freight portal follow: a jump within T_chase after its exit, arrival 5-15 s later", c_ew8_12,
      "the freighter comes through the portal you came through, a few seconds after you"),

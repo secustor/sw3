@@ -1374,8 +1374,9 @@ function TRF_FrSpawnBody(ap)
 		local si, ni = nil, nil;
 		for j = 1, getn(cs) do
 			local cv = TRF.live.cv and TRF.live.cv[j];
-			if not ci and type(cv) == "table" and TRF_FrPortalTo(cv, pv) and TRF_FrPortalTo(cv, nx) then
-				ci = j; si = TRF_FrPortalTo(cv, pv); ni = TRF_FrPortalTo(cv, nx);
+			if not ci and type(cv) == "table" then
+				local a, b = TRF_FrPortalTo(cv, pv), TRF_FrPortalTo(cv, nx);
+				if a and b then ci = j; si = a; ni = b; end;
 			end;
 		end;
 		if not ci then return "portal"; end;
@@ -1790,10 +1791,7 @@ function TRF_Fr_BeforeJump(dest, how)
 	local co = TRF_FrCo();
 	if type(ex) == "table" and co and how ~= "custom" and TRF_FrOn() and TRF_FrOpt("fw_follow") == 1 then
 		local di = dest;
-		if type(dest) == "string" then
-			local m = TRF_N("TRF_Map");
-			if type(m) == "table" and type(m.by) == "table" then di = m.by[strlower(dest)]; end;
-		end;
+		if type(dest) == "string" then di = TRF_N("TRF_GnSysIdx", dest); end;
 		local dt = TRF_FrGt() - ex.gt;
 		if di == ex.to and dt <= TRF_FrTv("T_chase", 60) and TRF_FrById(ex.id) then
 			co.fo = {id=ex.id, to=ex.to};

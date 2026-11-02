@@ -1251,7 +1251,7 @@ function T_FR_K()
 	T_Tick(122, 0.5);
 	n0 = S_Mark();
 	T_Jump("xt05");
-	HOST_Check(S_Logs(n0, "event=follow") == 0 or S_Logs(n0, "result=written") == 0, "jump 61 s after the exit: no follow record");
+	HOST_Check(S_Logs(n0, "result=written") == 0 and TRF.co.fo == nil, "jump 61 s after the exit: no follow record");
 	HOST_Check(S_Logs(n0, "event=spawn ship_id=1 tick=20 sk=20 result=skipped reason=same_tick") == 1, "no follow: the same ship tick is skipped in XT-05");
 	-- Void on load; an unconsumed record goes at OnActivate.
 	TRF.co.fo = {id=1, to=FR_Idx("xt05")};
