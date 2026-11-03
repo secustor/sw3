@@ -4,6 +4,8 @@ Running the GOG Windows build of Star Wolves 3: Civil War (GOG id `1426253436`, 
 
 ## Mods
 
+Short install guide and feature list per mod: [`MODS.md`](MODS.md).
+
 | Mod | Source | Release zip | What it does |
 |---|---|---|---|
 | sw3-performance | [`mods/performance/`](mods/performance/README.md) | `dist/sw3-performance-<v>.zip` | The setup of sections 7 and 10 as an installer: arm64 Wine `arm64-11.19-2` (SHA-256 checked), prefix `sw3-arm64` with `EmulateModeset=Y`, fullscreen in `default.cfg`, Heroic GamesConfig pointed at both; game resolution follows the main display (`[display]` in `sw3tp.ini`, mtld3d `render.scale` set to match) |
