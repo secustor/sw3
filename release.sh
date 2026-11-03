@@ -5,7 +5,7 @@
 #   dist/sw3-infinite-view-<v>.zip mods/infinite_view (v = mods/infinite_view/VERSION; not in the pack yet)
 #   dist/sw3-traffic-<v>.zip      mods/traffic scripts + installer (v = mods/traffic/VERSION; needs the sw3tp
 #                                 proxy of the trackpad or performance zip)
-#   dist/sw3-mods-pack-<v>.zip    both mods + top-level install.sh/uninstall.sh + README (v = VERSION)
+#   dist/sw3-mods-pack-<v>.zip    both mods + top-level install.sh/uninstall.sh + README.md minus its "More" section (v = VERSION)
 # Each zip has one top folder of the same name. Reproducible: build.sh is deterministic, file times
 # are fixed (SOURCE_DATE_EPOCH, default 2026-01-01 00:00 UTC), zip -X stores no uid/gid or xattrs.
 set -eu
@@ -74,7 +74,10 @@ stage_infinite_view "$dist/sw3-infinite-view-$ivv"; pack "sw3-infinite-view-$ivv
 stage_traffic "$dist/sw3-traffic-$tfv"; pack "sw3-traffic-$tfv"
 p=$dist/sw3-mods-pack-$pkv
 stage_trackpad "$p/trackpad"; stage_performance "$p/performance"
-cp "$here/install.sh" "$here/uninstall.sh" "$p/"; cp "$here/PACK-README.md" "$p/README.md"; cp "$here/mods/trackpad/LICENSE" "$p/LICENSE"
+cp "$here/install.sh" "$here/uninstall.sh" "$p/"
+# the pack README is README.md without its repo-only "## More" section (links to docs/, AGENTS.md, mods/)
+{ sed '/^## More/,$d' "$here/README.md"; printf '## More\n\nMod details: `performance/README.md`, `trackpad/README.md`.\n'; } > "$p/README.md"
+cp "$here/mods/trackpad/LICENSE" "$p/LICENSE"
 chmod 755 "$p/install.sh" "$p/uninstall.sh"
 pack "sw3-mods-pack-$pkv"
 (cd "$dist" && shasum -a 256 ./*.zip | sed 's| \./| |') > "$dist/SHA256SUMS"

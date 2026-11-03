@@ -21,3 +21,4 @@ Rules:
   `/code-review xhigh --fix` on its range and commit the fixes as `fix(traffic): ...`.
 - `README.md` is the player landing page (install steps, short feature list per mod). Update it when a mod's
   options, defaults or features change; put details in the mod's own README or `docs/`, not there.
+  `release.sh` ships it as the pack README minus its `## More` section, so keep repo-only links in that section.

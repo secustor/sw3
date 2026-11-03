@@ -13,7 +13,7 @@ Notation: [S] verified in the files named, [I] inference, `CHECK:` a fact only t
 | GS | Radar module table `sm` (rows `{md=, rs=}`) | `T/gen_map.py`, `S/map.script` | scan v2 (with `TRF_MsSensor`) |
 | GC | `--check` conditions, summary lines, notes, docstring, header comment | `T/gen_map.py` | with GH |
 | RD | README updates | `T/README.md`, `mods/traffic/README.md` | with each item |
-| IN | `config.script` keys, `--scan-key=N` / `SCAN_KEY` to the cfg key `scan_key`, proxy check, pass-through from the repo-root installer | `S/config.script`, `install.sh`, `uninstall.sh`, `R/install.sh`, `R/PACK-README.md` | scan v1 |
+| IN | `config.script` keys, `--scan-key=N` / `SCAN_KEY` to the cfg key `scan_key`, proxy check, pass-through from the repo-root installer | `S/config.script`, `install.sh`, `uninstall.sh`, `R/install.sh`, `R/README.md` | scan v1 |
 | IT | Test clone: `EXP=4`, `SCAN`, `SCAN_LIVE`, `SCAN_KEY`, `SCAN_AT`, kit keys, `LEVEL` presets | `install-test.sh`, `uninstall-test.sh` | scan v1 |
 | KX | Loader slot and lint for the scan experiment kit `exp_scan.script` (the kit itself is test plan 5) | `S/traffic.script`, `T/lint_lua.py` | before scan v1 code |
 | LH | Lint natives and kits, host stubs, run list, map check in the host run | `T/lint_lua.py`, `H/host_stubs.lua`, `H/run_host.sh` | with KX and scan v1 |
@@ -252,7 +252,7 @@ GC4: docstring lines 1-25 gain one paragraph each for `hm`, `we`, `sm`; `argpars
 5. "Installing into the game" (343-351): `--scan-key=N` / `SCAN_KEY`, written as decimal into the cfg key `scan_key` of the installed `config.script` (default 49, N), with the hint line when an edited `config.script` is kept (IN5); the repo-root form `./install.sh --mod trackpad --mod traffic --scan-key=49` (IN11); the `scan: off (proxy has no TRF_KeyEdge ...)` summary line (IN10).
 6. "Host checks" (402-410): run count, the `exp4` run and the map check of LH7.
 
-`R/PACK-README.md:17` (install options per mod): add `--scan-key=N` (traffic).
+`R/README.md` (traffic options table): add `--scan-key=N` (traffic).
 
 Comments that state the experiment range `1..3` (KX1 adds 4):
 
