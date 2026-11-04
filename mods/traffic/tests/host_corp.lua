@@ -359,7 +359,7 @@ function T_CO_B()
 		"Dosis Triada system: Triada "..c[3].."/200 (share "..TRF_F(s[3]).."), USS "..c[4].."/200 (share "..TRF_F(s[4])..")");
 	HOST_Check(CO_Logs(n0, "event=label trader_id=9001 ") == 1 and CO_Logs(n0, "event=label ") == 200, "one label line per record");
 	-- The excluded record kinds.
-	local ks = {own=4, fw=1, wq=1, cv=1, feq=1, sev=1};
+	local ks = {own=4, fw=1, wq=1, cv=1, feq=1, sev=1, tier=4};
 	local nk = 0;
 	for k, v in ks do
 		local x = {};
@@ -368,7 +368,7 @@ function T_CO_B()
 		if TRF_Crp_Label(9500) == nil and r.crp == nil then nk = nk + 1; end;
 		TRF.live.tr[9500] = nil;
 	end;
-	HOST_Check(nk == 6 and CO_Logs(n0, "reason=kind") == 6, "no label on supply, freight, quest, danger convoy, feq or station event records");
+	HOST_Check(nk == 7 and CO_Logs(n0, "reason=kind") == 7, "no label on supply, freight, quest, danger convoy, feq, station event or TT4 records");
 	-- A labelled record keeps its label; the same name in the same region draws the same corporation.
 	local r1 = CO_Rec(9600, 3);
 	local f1 = TRF_Crp_Label(9600);
@@ -417,10 +417,40 @@ function T_CO_B()
 	local tid = TRF_TrackSpawn(7400, "dock");
 	HOST_Check(tid and TRF.live.tr[tid].nm == nm and TRF.live.tr[tid].crp == fexp, "trf_track rebuild: name "..tostring(nm).." keeps corporation "..tostring(fexp));
 	if tid then TRF_Remove(tid, "test"); end;
+	-- A rebuild in another system of the region whose owner shares would draw another corporation: the pool record's fl
+	-- carries the corporation (bits 64, 128), the label is kept.
+	local fl = TRF_TkFlags(9800, CO_Rec(9800, 1, {crp=13}));
+	TRF.live.tr[9800] = nil;
+	local ui, oi = nil, nil;
+	for i = 1, getn(TRF_RgMap()[sl].sys) do
+		local k = TRF_RgMap()[sl].sys[i];
+		if TRF_CrpOwn(k) == 4 and (TRF_RgMap().pc[k] or 0) > 0 then ui = ui or k; end;
+	end;
+	local rgc, T = TRF_CrpCache()[sl], TRF_CrpTune();
+	local sa, sb = TRF_CrpSharesOf(rgc, 3, T, {}, nil), TRF_CrpSharesOf(rgc, 4, T, {}, nil);
+	local nx = nil;
+	for k = 1, 400 do
+		local u = TRF_CrpUOf(k, sl);
+		if not nx and TRF_CrpPickOf(u, sa) == 3 and TRF_CrpPickOf(u, sb) ~= 3 then nx = k; end;
+	end;
+	HOST_Check(fl == 64 and TRF_TkCrpOf(fl) == 3 and TRF_TkCrpOf(TRF_TkCrpFl(fl + 8, 5)) == 5 and TRF_TkCrpOf(TRF_TkCrpFl(fl, nil)) == nil
+		and ui and nx, "pool fl holds the corporation; a USS system in Dosis ("..tostring(ui)..") and a name Triada only in kondel ("..tostring(nx)..")");
+	if ui and nx then
+		T_Jump(TRF_Map().sys[ui].name);
+		V_ClearTr();
+		n0 = S_Mark();
+		TRF.tp = {TRF_TpPack({id=7401, nm=nx, o=0, c=1, tt=1, pw=3, n=1, e=0, s=ui, fr=cur, d=1, dm=0, fl=64, t=floor(TRF.clock.gt)})};
+		tid = TRF_TrackSpawn(7401, "port");
+		HOST_Check(tid and TRF.live.tr[tid].crp == 3 and CO_Logs(n0, "corp=Triada reason=kept") == 1,
+			"trf_track rebuild in "..TRF_Map().sys[ui].name..": name "..nx.." stays Triada (kept)");
+		if tid then TRF_Remove(tid, "test"); end;
+		T_Jump("kondel");
+	end;
 	-- Spawn volume and RAND draws: the same generator run with and without the module.
 	local runs = {};
 	for pass = 1, 2 do
 		h.cfg.corp = 2 - pass;
+		for id, r in TRF.live.tr do V_NoRaid(id); end;
 		V_ClearTr();
 		TRF.live.port = {};
 		h.seed = 4242;
@@ -432,7 +462,7 @@ function T_CO_B()
 	end;
 	h.cfg.corp = nil;
 	HOST_Check(runs[1].d == runs[2].d and runs[1].s == runs[2].s and runs[2].l == 0,
-		"40 generator ticks: same spawns ("..runs[1].s..") and RAND draws ("..runs[1].d..") with corp 1 and 0; no label with corp 0");
+		"40 generator ticks: same spawns ("..runs[1].s.."/"..runs[2].s..") and RAND draws ("..runs[1].d.."/"..runs[2].d..", labels "..runs[2].l..") with corp 1 and 0; no label with corp 0");
 	V_ClearTr();
 	-- Text surfaces: an InoCo carrier "Kestrel".
 	local id = CO_Trader(5);
@@ -620,6 +650,12 @@ function T_CO_D()
 	n0 = S_Mark();
 	local c = CO_Rates(200);
 	HOST_Check(c[4] == 0 and c[3] > 0 and CO_Logs(n0, "reason=pulled pulled=Uss") >= 1 and CO_Shares()[4] == 0, "USS pulled: no USS label, Triada still ("..c[3]..")");
+	-- A USS carrier labelled before the pull-out and killed during it: the standing hit, no count.
+	n0 = S_Mark();
+	id = CO_Trader(4);
+	V_PlayerKill(id);
+	HOST_Check(CO_B(gs) == "100410/"..(L + 24) and CO_Logs(n0, "how=kill by=player count_before=0 count=0 player_caused=true result=pulled") == 1,
+		"a kill of the pulled corporation's carrier: not counted ("..CO_B(gs)..")");
 	-- The cap: two regions out, a third blocked.
 	local ds, ks = V_Slot("dosis"), V_Slot("kadi");
 	CO_Put(ds, 0, 0, 0, 3, 1, 0, L + 10);
@@ -640,6 +676,11 @@ function T_CO_D()
 	TRF_Crp_RegionTick(L + 24);
 	HOST_Check(CO_B(gs) == "100040/0" and TRF.newsx[gs].crp == nil and CO_Logs(n0, "event=return region="..gs.." corp=Uss leg="..(L + 24).." told=true") == 1,
 		"end after 24 legs: told pull-out, return pending (t 4), the news topic removed");
+	-- A pull-out that ends while another count is at 3: no new one in the same tick, the return line stays pending.
+	CO_Put(gs, 3, 0, 0, 4, 0, 0, L + 26);
+	n0 = S_Mark();
+	TRF_Crp_RegionTick(L + 26);
+	HOST_Check(CO_B(gs) == "300040/0" and CO_Logs(n0, "event=pull ") == 0, "end and a count of 3 in one tick: the return stays pending ("..CO_B(gs)..")");
 	-- Quiet: counts and the mark reset.
 	CO_Put(gs, 2, 1, 0, 0, 4, 3, 0);
 	TRF.rg[gs].ph = 0;
@@ -893,6 +934,14 @@ function T_CO_F()
 		"pull-out: the run withdrawn (pull)");
 	r = TRF_ChDockBody(C, cur);
 	HOST_Check(r and CO_Has(r[1], "The corporation pulled its carriers out.") ~= nil, "close line names the pull-out");
+	-- cfg corp 0: no deed can reach the run, it is withdrawn (pull) instead of failing at its deadline.
+	TRF.crp = nil;
+	C.g[1] = {t=7, r=ks, f=5, d=5, k=2, p=0, w=0, a=L, e=L + 20, st=0, pay=5000, rq=2, l=10};
+	h.cfg.corp = 0;
+	TRF_Ch_RegionTick(ks, L);
+	h.cfg.corp = 1;
+	HOST_Check(C.g[1].st == 3 and C.g[1].c == "pull", "cfg corp 0: the run withdrawn (pull)");
+	C.g[1] = nil; C.cd[1] = nil;
 	TRF.crp = nil;
 	C.g[1] = {t=7, r=ks, f=5, d=5, k=2, p=0, w=0, a=L, e=L + 20, st=0, pay=5000, rq=2, l=10};
 	TRF.rg[ks].ph = 4;

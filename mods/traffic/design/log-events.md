@@ -945,10 +945,11 @@ Corporation carriers, A22 (`design/corp-carriers-spec.md` 8; host-tested only). 
 |---|---|---|
 | `error` | `module=corp event=error message=<m>` | 1 |
 | `label` | `module=corp event=label trader_id=12 name=17 system=kondel region=1 corp=Triada share=0.553 roll=0.209` | 1 |
+| `label` | `module=corp event=label trader_id=12 name=17 system=dalled region=1 corp=Triada reason=kept` (a trf_track rebuild keeps the corporation of its pool record) | 1 |
 | `label` | `module=corp event=label trader_id=12 name=17 system=debris4 region=4 corp=none share=0.172 roll=0.388 reason=pulled pulled=Uss` (an independent where the pulled corporation would have flown) | 1 |
 | `label` | `module=corp event=label trader_id=12 name=17 system=kondel region=1 corp=none share=0.750 roll=0.912 reason=roll`; `module=corp event=label trader_id=12 system=elinor region=2 corp=none reason=<chapter,gone,labelled,kind,noname,noregion,nocorp>` | 2 |
 | `shop` | `module=corp event=shop trader_id=12 corp=Inoco signature=RBot3 extra=0` (Triada `signature=nil extra=1`) | 2 |
-| `hit` | `module=corp event=hit trader_id=12 corp=Uss region=4 how=kill by=player count_before=2 count=3 player_caused=true result=counted` (`how=rob by=player`; `by=other player_caused=false` for a raid kill) | 1 |
+| `hit` | `module=corp event=hit trader_id=12 corp=Uss region=4 how=kill by=player count_before=2 count=3 player_caused=true result=counted` (`how=rob by=player`; `by=other player_caused=false` for a raid kill; `result=pulled` with `count` unchanged while that corporation is out of the region) | 1 |
 | `hit` | `module=corp event=hit trader_id=12 corp=Uss region=4 how=kill by=player result=skipped reason=<counted,chapter,noregion>` | 1 |
 | `offscreen` | `module=corp event=offscreen region=4 tier=4 chance=40 hash=1287 corp=Uss count=2` | 2 |
 | `pull` | `module=corp event=pull region=4 corp=Uss count=3 end_leg=60 leg=36 active_count=1 result=out` | 1 |

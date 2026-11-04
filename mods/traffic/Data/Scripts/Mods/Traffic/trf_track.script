@@ -330,7 +330,23 @@ function TRF_TkFlags(id, r)
 	if TRF_TkRobbed(r) then fl = TRF_BitSet(fl, 4); end;
 	if r.cnt then fl = TRF_BitSet(fl, 16); end;
 	if r.res then fl = TRF_BitSet(fl, 32); end;
+	return TRF_TkCrpFl(fl, TRF_N("TRF_Crp_Of", r));
+end;
+
+-- fl bits 64 and 128 hold the corporation of a contract carrier (design/corp-carriers-spec.md 5.1): c - 2 for c 3..5,
+-- 0 for none. TRF_TkCrpFl(fl, c) sets them, TRF_TkCrpOf(fl) reads 3..5 or nil.
+function TRF_TkCrpFl(fl, c)
+	if type(fl) ~= "number" then fl = 0; end;
+	fl = fl - 64 * mod(floor(fl / 64), 4);
+	if c == 3 or c == 4 or c == 5 then fl = fl + 64 * (c - 2); end;
 	return fl;
+end;
+
+function TRF_TkCrpOf(fl)
+	if type(fl) ~= "number" then return nil; end;
+	local c = mod(floor(fl / 64), 4);
+	if c > 0 then return c + 2; end;
+	return nil;
 end;
 
 -- Build power of a live trader: a rebuilt trader's pw (memo or r.pw), else an estimate from the
@@ -838,7 +854,10 @@ function TRF_TrackSpawn(i, how)
 	r.nm = rec.nm;
 	r.cls = rec.c;
 	-- Corporation carriers (design/corp-carriers-spec.md 5.1): the same name in the same region keeps its corporation.
-	TRF_N("TRF_Crp_Label", id);
+	-- The record was written in s (d 0, 2) or left fr through a portal (d 1).
+	local ls = rec.s;
+	if rec.d == 1 then ls = rec.fr; end;
+	TRF_N("TRF_Crp_Label", id, TRF_TkCrpOf(rec.fl), ls);
 	r.tb = TRF_BitSet(r.tb, 1);
 	if id ~= rec.id then r.pi = rec.id; end;
 	if how == "dock" then r.seed = 1; end;

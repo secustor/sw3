@@ -22,7 +22,7 @@ Module: new `S/trf_corp.script`, prefix `Crp` (`TRF_Crp_*` public, `TRF_Crp<X>` 
 | 1 | Corporation set | Triada (f 3), USS (f 4), InoCo (f 5): the faction indices of `TRF_FacTeams()`. Independent FTU traders are the rest. No empire carriers: faction-owned supply transports (`r.own`) already exist | the only three corporations of the lore, the side list and the gun lists (CD 1); a contract carrier is still an FTU member (style guide 10: the FTU is a noncommercial union of single traders), so "FTU" stays in the dialog title | - |
 | 2 | Home of each corporation | taken from the run-time owner team of the region's trade systems (`TRF_RgTeam`, `GetLocationTeam`): Triada Dosis and Golkonda (xt27 one system), USS Dosis, Golkonda and Kadi, InoCo Kadi and Moscowia; Elinor, Gefest and Torr have none (CD 2) | follows the side list and its label changes (`HafaLife`); no static home table to keep | - |
 | 3 | Share per region | `s_f = crp_share x k_f x n_f / N` (N trade systems, `pc > 0`; `n_f` of them owned by f); x `crp_own` (2) in a system owned by f; x `crp_job_x` (2) while a run posting of f is open there; 0 while f is pulled out; the total capped at `crp_max` (0.75) by scaling. Lore weights `k` Triada 0.7, USS 1.0, InoCo 0.3 (CD 1: USS hires transporters, InoCo rarely uses free traders). Defaults give Dosis 59 %, Golkonda 42 %, Kadi 17 %, Moscowia 10 %, xt27 9 % contract carriers (5.1) | "derived per system from existing data (owner, lore)", P 2.11 overlap fix | tune `crp_share`, `crp_k`, `crp_own`, `crp_max`, `crp_job_x` |
-| 4 | Which record and when | records of the plain trader paths (`TRF_GenTrader` single trader, `TRF_SeedSpawn`) and of `TRF_TrackSpawn`, at spawn; never supply transports (`own`), Wolves Freight (`fw`), the quest Kestrel (`wq`), danger convoy members (`cv`), equipment convoys (`feq`), station event ships (`sev`) | the label is identity of an FTU trader; the four convoy forms stay as built (P 0) | - |
+| 4 | Which record and when | records of the plain trader paths (`TRF_GenTrader` single trader, `TRF_SeedSpawn`) and of `TRF_TrackSpawn`, at spawn; never supply transports (`own`), Wolves Freight (`fw`), the quest Kestrel (`wq`), danger convoy members (`cv`), equipment convoys (`feq`), station event ships (`sev`), TT4 convoys (`tier` 4) | the label is identity of an FTU trader; the four convoy forms stay as built (P 0) | - |
 | 5 | Determinism | the draw `u = frac(nm x 0.6180339887 + slot x 0.4142135624)` uses the record's name index `nm` and the region slot, no RAND; the result is stored in `r.crp` for the record's life | the same named trader is the same corporation's carrier in a region, also after trf_track rebuilds it (it keeps `nm`, not `id`); no RAND draw moves, so host replays stay as they are; storing it keeps the label fixed when a pull-out starts or an owner changes mid-visit (23 bytes per open labelled record, 3.4) | - |
 | 6 | Volume | the label changes no spawn decision; a pulled corporation's share is 0, so its names come out as independents in the same slots | P 2.11 rule check: traffic caps 2-5 flights and 10-20 ships unchanged | - |
 | 7 | Greeting (the "who do you fly for" answer) | the announce line (cfg `meet` 2, the shipped default) becomes "FTU Kestrel, InoCo contract carrier, open for trade", with variants at standing `fst <= 2` and `>= 8` of that corporation; the dialog head (`hail_box` 2) "InoCo contract carrier. What do you need, Wolves?" under the fixed "FTU #who#:" of `TRF_Hail.xml`; no XML edit | ROADMAP 3 and P 4b.1 rule 5: no hail answer; the greeting needs no slot | - |
@@ -109,7 +109,7 @@ Against the last measured host full state 95,376 bytes (freight-spec 3.3) plus t
 
 | Part | Gate (first failing gate ends it) |
 |---|---|
-| label (5.1) | cfg `corp` 1 and `TRF_Traffic()`; `TRF_Chapter() >= crp_ch`; record plain (decision 4), not `gone`, `nm` a number, no `crp` yet; current system in a region with `N > 0` |
+| label (5.1) | cfg `corp` 1 and `TRF_Traffic()`; `TRF_Chapter() >= crp_ch`; record plain (decision 4, `tier` below 4), not `gone`, `nm` a number, no `crp` yet; current system in a region with `N > 0` |
 | text surfaces (5.2) | `TRF_Crp_Of(r)` not nil; each caller keeps its own suppression (`TRF_UI_Supp`, `TRF_UI_SuppHail`, the hail gates) |
 | shop (5.2) | `TRF_Crp_Of(r)`; signature item only at `TRF_Chapter() >= crp_sig_ch` |
 | count and standing (5.3) | `TRF_Crp_Of(r)`; `r.crp < 10`; `TRF_Chapter() >= crp_pull_ch`; the system in a region |
@@ -119,10 +119,11 @@ Against the last measured host full state 95,376 bytes (freight-spec 3.3) plus t
 
 ## 5. Flow
 
-### 5.1 Label at spawn (`TRF_Crp_Label(id)`)
+### 5.1 Label at spawn (`TRF_Crp_Label(id, keep, from)`)
 
 Called by trf_gen right after `TRF_Spawn` on the plain paths and by trf_track after the identity fields are restored (9.2).
 1. Gates of 4. `idx = TRF_CurIdx()`, `slot = TRF_RgOf(idx)`, `rg = CV.rg[slot]` (`TRF_CrpCache()`).
+   Kept label: trf_track passes `keep` = the corporation stored in the pool record's `fl` bits 64 and 128 (`c - 2`, written by `TRF_TkFlags` from `TRF_Crp_Of(r)`) and `from` = the system the record was written in (`fr` for `d` 1, else `s`). `keep` in 3..5, `TRF_RgOf(from) == slot`, `keep` not pulled out of the slot and `rg[keep] > 0` -> `r.crp = keep`, `event=label ... reason=kept`, no draw. So a chased trader stays the same corporation's carrier in another system of the region, where the owner factor would draw differently.
 2. `s = TRF_CrpSharesOf(rg, TRF_CrpTeam(idx), T, pulled, job)`: `pulled` = `{[p] = 1}` of the slot's block; `job` = `TRF_N("TRF_Ch_RunOpen", slot)` (set of f with an open run posting in the region, or nil).
    `TRF_CrpSharesOf(rg, own, T, pulled, job)`: for f = 3, 4, 5: `v = T.crp_share x T.crp_k[f - 2] x rg[f] / rg.N` (0 when `rg.N` = 0); `x T.crp_own` when `own == f`; `x T.crp_job_x` when `job[f]`; 0 when `pulled[f]`; when the sum exceeds `T.crp_max`, every `v` is scaled by `crp_max / sum`. Returns `{[3], [4], [5]}`.
 3. `u = TRF_CrpUOf(r.nm, slot)` = `frac(nm x hu + slot x hs)`; `f = TRF_CrpPickOf(u, s)`: 3 when `u < s3`, 4 when `u < s3 + s4`, 5 when `u < s3 + s4 + s5`, else nil.
@@ -157,7 +158,7 @@ The wipe list (`TRF_ShopWipeList`) already covers every owner's pool and `Syst_L
 
 Callers: trf_events `TRF_Ev_Kill` after its `kill` line, before the record is stripped (`how` "kill", `by` "player"/"other"); trf_supply `TRF_SpComply` (`how` "rob").
 1. Gates of 4 (count). `f = TRF_Crp_Of(r)`; `r.crp >= 13` -> `event=hit result=skipped reason=counted`.
-2. `slot = TRF_RgOf(idx)`; block `a[f] = min(9, a[f] + 1)`; `r.crp = f + 10`; `TRF_CrpPut`.
+2. `slot = TRF_RgOf(idx)`; block `a[f] = min(9, a[f] + 1)` and `TRF_CrpPut`, except while `p == f` (a carrier labelled before its corporation pulled out: `result=pulled`, no count); `r.crp = f + 10`.
 3. Player-caused (`how == "rob"`, `by == "player"` or `r.cnt == 1`): `TRF_N("TRF_Ev_FstHit", f, "carrier "..how.." "..id)` (fst -1 once per visit per faction, nothing while that team is seeded hostile or at war; trf_events logs `faction_standing`).
 4. `event=hit trader_id corp region how by count player_caused`.
 
@@ -171,7 +172,7 @@ For each slot of `TRF_RgMap()`, with `ph = TRF_Phase(slot)`, `b = TRF_CrpBlkOf(T
 3. Chapter `< crp_pull_ch` -> write and next slot.
 4. Off-screen roll: `ph == 3`, `tier = TRF_ClanTier(slot) >= 3`, `crp_off_pct > 0`: `c = crp_off_pct x (tier - 2)`; `h = TRF_CrpHashOf(slot, L, 1)` (0..9999); `h < c x 100` -> weights = `TRF_CrpSharesOf(rg, nil, T, pulled, nil)`; none positive -> no loss; else `f` by `TRF_CrpPickOf(TRF_CrpHashOf(slot, L, 2) / 10000 x sum, weights)`; `a[f] + 1` (clamp 9); `event=offscreen` (level 2).
    `TRF_CrpHashOf(slot, L, salt)`: seed `1 + (slot x 65537 + L x 977 + salt x 131) mod 2147483646`, two Park-Miller steps (`TRF_ChStepOf` arithmetic, exact in doubles), result `mod 10000`. No RAND draw.
-5. Start: `b.p == 0`; candidates f with `a[f] >= crp_pull_n` and `rg[f] > 0`; the highest count wins, a tie the lower f. Active pull-outs (blocks with `p ~= 0`) `>= crp_pull_max` -> `event=pull result=blocked reason=cap` (level 2), the count stays. Else `p = f`, `e = L + crp_pull_legs`, `t = 1`, `a[f] = 0`, `x = 0` when `x == f`; `TRF_P("TRF_NewsPost", "crp", "out_"..f, slot)`; stat `crp_pull`; `event=pull result=out`.
+5. Start: `b.p == 0` and no pull-out of this slot ended in step 1 of this tick (its return line is due first); candidates f with `a[f] >= crp_pull_n` and `rg[f] > 0`; the highest count wins, a tie the lower f. Active pull-outs (blocks with `p ~= 0`) `>= crp_pull_max` -> `event=pull result=blocked reason=cap` (level 2), the count stays. Else `p = f`, `e = L + crp_pull_legs`, `t = 1`, `a[f] = 0`, `x = 0` when `x == f`; `TRF_P("TRF_NewsPost", "crp", "out_"..f, slot)`; stat `crp_pull`; `event=pull result=out`.
 6. `TRF_CrpPut(slot, b)` when changed.
 
 The charter's region tick runs after this one in the same `TRF_RegionTick` and closes run postings of a pulled corporation (5.7).
@@ -196,7 +197,7 @@ Topic `crp` per region, variant `out_<f>` (`TRF_NewsPost`, trf_ui): `TRF_UI_News
 | candidate (`TRF_ChCandOf`) | `ri.run` in 3..5 (from `TRF_ChInfo`: `ri.run = TRF_N("TRF_Crp_Mark", slot)`, which returns `x` when cfg `corp` is 1, `x ~= 0` and `p ~= x`), `ph ~= 4`, `heat <= heat_ok` (2), `ri.pk == nil` -> `{t = 7, d = ri.run, f = ri.run, e = legs + T.ch_run_legs}`; the built `e - legs >= k x ch_leg_per_deed` test and the pay formula `TRF_ChPayOf(T.ch_k[7], ...)` apply |
 | post | `TRF_ChGenerate` after creating a type 7 posting: `TRF_N("TRF_Crp_MarkUse", x.r, x.f)` clears `x` |
 | deed | kind 9 `run`: only through `TRF_Crp_Escort`; `TRF_ChNoteOf(g, kind, r, vd, vb, cap, f)` matches a type 7 posting only when `p.f == f`; the visit cap `ch_visit_deeds` counts it |
-| closes | `TRF_ChWorld`: `t == 7` and `TRF_N("TRF_Crp_Pulled", slot, p.f)` -> withdrawn, reason `pull`; `t == 7` and `ph == 4` -> withdrawn `phase` (`chwhy7`); heat 5 and a player trader kill in the region close it with the trade family (`TRF_ChTrade` and the kind 7 set gain index 7); deadline, mission, chapter 19 as every type |
+| closes | `TRF_ChWorld`: `t == 7` and `TRF_N("TRF_Crp_Pulled", slot, p.f)`, or trf_corp missing or off (`TRF_N("TRF_Crp_On")` nil: no deed can reach it) -> withdrawn, reason `pull`; `t == 7` and `ph == 4` -> withdrawn `phase` (`chwhy7`); heat 5 and a player trader kill in the region close it with the trade family (`TRF_ChTrade` and the kind 7 set gain index 7); deadline, mission, chapter 19 as every type |
 | pay | `TRF_ChPay` as every type, plus `t == 7` -> `TRF_N("TRF_FstAdd", p.f, 1, "charter run")` |
 | while open | `TRF_Ch_RunOpen(slot)` -> `{[f] = 1}` of open type 7 postings of the region: `crp_job_x` in 5.1; `TRF_Crp_OfferMin(r)` -> `crp_job_offer` when `TRF_Crp_Of(r)` has an open run posting in the current region, else 0; `TRF_CtOfferRoll` uses `p = max(p, TRF_N("TRF_Crp_OfferMin", r) or 0)` |
 | logbook | title `cht<home>` as built; description `chd7<f>` (`TRF_ChDescKey`); board line `chdeed7` |
@@ -270,9 +271,9 @@ trf_charter: `TRF_Ch_TuneDef` `ch_k` gains a 7th entry 0.4 (a 6-entry `ch_k` tun
 
 | Line | When |
 |---|---|
-| `module=corp event=label trader_id=<id> name=<nm> system=<s> region=<slot> corp=<Inoco/none> share=<f> roll=<u> reason=<pulled/...>` | 5.1 (level 1 when labelled, 2 for none) |
+| `module=corp event=label trader_id=<id> name=<nm> system=<s> region=<slot> corp=<Inoco/none> share=<f> roll=<u> reason=<pulled/kept/...>` | 5.1 (level 1 when labelled or kept, 2 for none) |
 | `module=corp event=shop trader_id=<id> corp=<team> signature=<item> extra=<n>` | 5.2 shop (level 2; trf_shop's `open` line carries `corp` and `signature`) |
-| `module=corp event=hit trader_id=<id> corp=<team> region=<slot> how=<kill/rob> by=<player/other> count_before=<n> count=<n> player_caused=<bool> result=<counted/skipped> reason=<counted/chapter/noregion>` | 5.3 |
+| `module=corp event=hit trader_id=<id> corp=<team> region=<slot> how=<kill/rob> by=<player/other> count_before=<n> count=<n> player_caused=<bool> result=<counted/pulled/skipped> reason=<counted/chapter/noregion>` | 5.3 |
 | `module=corp event=offscreen region=<slot> tier=<t> chance=<c> hash=<h> corp=<team> count=<n>` | 5.4 step 4 (level 2) |
 | `module=corp event=pull region=<slot> corp=<team> count=<n> end_leg=<e> leg=<L> active_count=<n> result=<out/blocked> reason=<cap>` | 5.4 step 5 (blocked at level 2) |
 | `module=corp event=return region=<slot> corp=<team> leg=<L> told=<bool>` | 5.4 step 1 |
@@ -297,13 +298,13 @@ trf_charter writes its built lines with `type=run`, `faction=<f>` and `reason=pu
 |---|---|
 | `TRF_Crp_Plumb()` (registers `TRF_DockLine("req", 30, "TRF_Crp_DockLine")`) | trf_plumb `TRF_PlMods` |
 | `TRF_Crp_DockLine(kind, param)` | dock dispatcher |
-| `TRF_Crp_Label(id)` | trf_gen, trf_track |
+| `TRF_Crp_Label(id, keep, from)` (`keep`, `from` from trf_track only) | trf_gen, trf_track |
 | `TRF_Crp_Of(r)` | every reader |
 | `TRF_Crp_Open(r)`, `TRF_Crp_Owner(r)` | trf_ui |
 | `TRF_Crp_Head(r)`, `TRF_Crp_Dir(r, dir)`, `TRF_Crp_Escort(id, r, n, idx)`, `TRF_Crp_OfferMin(r)` | trf_hail |
 | `TRF_Crp_Shop(r)` | trf_shop |
 | `TRF_Crp_Hit(id, r, how, idx, by)` | trf_events, trf_supply |
-| `TRF_Crp_Mark(slot)`, `TRF_Crp_MarkUse(slot, f)`, `TRF_Crp_Pulled(slot, f)` | trf_charter |
+| `TRF_Crp_Mark(slot)`, `TRF_Crp_MarkUse(slot, f)`, `TRF_Crp_Pulled(slot, f)`, `TRF_Crp_On()` | trf_charter |
 | `TRF_Crp_RegionTick(L)` | trf_region |
 | `TRF_Crp_OnActivate()`, `TRF_Crp_OnLoad()` | loader |
 | `TRF_Crp_Fix()` | `TRF_Repair` |
@@ -321,7 +322,7 @@ Layout as trf_station and trf_warn: helpers, accessors (one native each, protect
 | `S/trf_plumb.script` | `TRF_PlMods()` + `"Crp"` |
 | `S/trf_region.script` | `TRF_RegionTick`: `TRF_P("TRF_Crp_RegionTick", L)` after `TRF_Sv_RegionTick`, before the charter loop |
 | `S/trf_gen.script` | `TRF_GenTrader`: after `local id = TRF_Spawn(plan)`, `if id then TRF_GnX("TRF_Crp_Label", id); end`; `TRF_SeedSpawn`: the same after its `TRF_Spawn` |
-| `S/trf_track.script` | `TRF_TrackSpawn`: `TRF_N("TRF_Crp_Label", id)` after `r.cls = rec.c;` |
+| `S/trf_track.script` | `TRF_TrackSpawn`: `TRF_N("TRF_Crp_Label", id, TRF_TkCrpOf(rec.fl), ls)` after `r.cls = rec.c;` (`ls` = `rec.fr` for `d` 1, else `rec.s`); `TRF_TkFlags` stores `TRF_Crp_Of(r)` in `fl` bits 64 and 128 (`TRF_TkCrpFl`), at most one character more per pool record |
 | `S/trf_ui.script` | `TRF_UI_Announce` and `TRF_UI_Who` (5.2); `ncrpout` in `TRF_UI_Text`; `TRF_Crp_Text` in `TRF_UI_TextFns()` |
 | `S/trf_hail.script` | `TRF_HlDlgOpen` head, `TRF_Headed` direction (5.2); `TRF_CtArrive`: `if TRF_N("TRF_Crp_Escort", id, TRF_HlRec(id), n, TRF_HlCur()) ~= 1 then TRF_N("TRF_Ch_Note", 1, TRF_HlCur(), n); end`; `TRF_CtOfferRoll` offer floor (5.7) |
 | `S/trf_shop.script` | `TRF_ShopOpen` (5.2) |
@@ -343,7 +344,7 @@ Own entry as `host_station.lua`/`host_warn.lua` (cut `host_stubs.lua` before `if
 | Scenario | Steps | Pass criteria |
 |---|---|---|
 | `co-a` pure | `TRF_CrpSharesOf` for the five regions with and without own system, pulled, job, cap; `TRF_CrpPickOf` at the bounds; `TRF_CrpUOf` over 40 names x 8 slots; `TRF_CrpHashOf` range and repeatability; block encode/decode round trip for all field values; `TRF_CrpSigOf` | shares as the 5.1 table (3 decimals); every u in [0, 1); same input same output; no RAND draw (the host RAND counter unchanged) |
-| `co-b` labels and text | 200 plain spawns in a Dosis Triada system, a Kadi InoCo system, an Elinor system; supply, freight, quest, danger convoy, feq and station-event records; a trf_track rebuild of a labelled trader in the same region; cfg `corp 0`; `crp_ch 4` at ch 3 | label rates within 3 percentage points of the shares; no label on the excluded kinds or in Elinor; rebuilt trader keeps its corporation; announce, who, dialog head and headed texts as 5.2, the `fst` 2 and 8 variants; `corp 0` gives the built texts |
+| `co-b` labels and text | 200 plain spawns in a Dosis Triada system, a Kadi InoCo system, an Elinor system; supply, freight, quest, danger convoy, feq, station-event and TT4 records; a trf_track rebuild of a labelled trader in the same system and, for a name whose draw differs by owner, in a USS system of the same region; cfg `corp 0`; `crp_ch 4` at ch 3 | label rates within 3 percentage points of the shares; no label on the excluded kinds or in Elinor; rebuilt trader keeps its corporation; announce, who, dialog head and headed texts as 5.2, the `fst` 2 and 8 variants; `corp 0` gives the built texts |
 | `co-c` shop | open the shop of an InoCo, a USS, a Triada carrier and an independent at the same dock, `crp_sig_ch` 5 at ch 4 | carrier pools from `Gun_List_<corp>` and `Syst_List`; signature first at count 1 and counted in the 3-6 items; Triada one item more; coefficients equal to the independent's; no signature below `crp_sig_ch` |
 | `co-d` counts and pull-out | three player kills of USS carriers in Golkonda at ch 5, a kill of a counted (robbed) carrier, a raid kill, a robbery; kills at ch 4; region ticks: pull-out, news post, labels during it, end after 24 legs, return; third region while two are pulled; Quiet reset; T4 Raids off-screen rolls over 200 legs | counts and `crp` +10 marking as 5.3; fst -1 once per visit; nothing at ch 4; `pull result=out` at the tick after the third loss, `TRF.newsx[4].crp.v == "out_4"`, USS share 0 in Golkonda, same spawn count as without A22; `blocked reason=cap`; news topic removed and `t = 4` at the end; reset in Quiet; off-screen pull-outs only in Raids at T3-T4, deterministic for a fixed leg sequence |
 | `co-e` dock line | approaches in the pulled region (out line once per save), after the return (back line once), at a USS dock in Dosis (identity per hash, once per visit), at an Elinor dock; `HOST().qs = TRUE`; strict denial; scene; flags; cfg `corp 0` | one line per approach after the station's and A12's req lines; told states saved across `T_SaveLoad`; pass reasons once per visit; nothing under the flags |
@@ -423,3 +424,4 @@ Not verifiable offline: whether `GetLocationTeam` returns the side-list team for
 6. trf_shop's `open` line ends with `corp=<team> signature=<item>` for every trader (`corp=nil signature=nil` for an independent).
 7. `mods/traffic/design/mod-options.md` (9.2) has no config-key table; the key is documented in `config.script`, the install-test.sh header and the README section, as A12, B06 and B10 did.
 8. `TRF_Ch_RunOpen` returns nil while cfg `charter` is 0; `TRF_Crp_Mark` and `TRF_Crp_Pulled` return nil while traffic or cfg `corp` is off.
+9. Review fixes (2026-11-04): TT4 convoys (`tier` 4) are excluded from labels, as decision 4's "four convoy forms" says; a trf_track rebuild keeps its corporation through the pool record's `fl` bits (5.1); a kill of a pulled corporation's carrier is not counted (5.3); no pull-out starts in the tick another one of the same region ended (5.4); an open run posting is withdrawn (`pull`) when trf_corp is missing or cfg `corp` is 0 (5.7).

@@ -862,10 +862,11 @@ end;
 
 -- World test of open posting i in its region (design 4 "closes" column): phase ends close Lanes, Relief, Convoy and
 -- Sweep (withdrawn, no penalty); Break records clan score < 50 (w) and completes with its deeds; Base closes when
--- the clan has no active base. Run (type 7) closes when its corporation pulls out of the region (pull) or in Bust.
+-- the clan has no active base. Run (type 7) closes when its corporation pulls out of the region (pull) or in Bust;
+-- also (pull) when trf_corp is missing or cfg corp is 0, since no deed can reach it then.
 function TRF_ChWorld(C, i, p, slot, ph)
 	local t = p.t;
-	if t == 7 and TRF_N("TRF_Crp_Pulled", slot, p.f) then TRF_ChClose(C, i, 3, "pull");
+	if t == 7 and (not TRF_N("TRF_Crp_On") or TRF_N("TRF_Crp_Pulled", slot, p.f)) then TRF_ChClose(C, i, 3, "pull");
 	elseif t == 7 and ph == 4 then TRF_ChClose(C, i, 3, "phase");
 	elseif t == 1 and ph ~= 1 and ph ~= 2 then TRF_ChClose(C, i, 3, "phase");
 	elseif t == 2 and ph ~= 4 and ph ~= 5 then TRF_ChClose(C, i, 3, "phase");

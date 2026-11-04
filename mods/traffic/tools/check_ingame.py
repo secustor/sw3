@@ -2974,7 +2974,16 @@ def c_wc6(ctx):
     for p in pays:
         st = [x for x in ctx.find("faction", "faction_standing", reason="charter run") if x.src == p.src and x.n < p.n and p.n - x.n <= 10]
         if not st:
-            res.fails.append("%s: a run paid without the standing line (reason=\"charter run\")" % p.short())
+            # TRF_FstAdd logs only a change: at standing 9 the +1 writes no line.
+            po = [x for x in posts if x.src == p.src and x.n < p.n and x.get("slot") == p.get("slot")]
+            team = {"3": "Triada", "4": "Uss", "5": "Inoco"}.get(po[-1].get("faction") if po else None)
+            last = [x for x in ctx.find("faction", "faction_standing", faction=team) if x.src == p.src and x.n < p.n] if team else []
+            if last and last[-1].get("standing_after") == "9":
+                res.notes.append("%s: no standing line, %s standing already 9" % (p.short(), team))
+            elif not last:
+                res.missing.append("%s: a run paid without the standing line and no earlier standing of the run's corporation" % p.short())
+            else:
+                res.fails.append("%s: a run paid without the standing line (reason=\"charter run\")" % p.short())
     if not posts:
         res.missing.append("escort a carrier to its dock, then dock until the board posts a supply run: no module=charter event=post type=run")
     elif not pays:

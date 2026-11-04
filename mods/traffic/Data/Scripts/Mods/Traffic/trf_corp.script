@@ -446,13 +446,17 @@ function TRF_Crp_Of(r)
 end;
 
 -- Label at spawn of trader id (trf_gen TRF_GenTrader and TRF_SeedSpawn after TRF_Spawn, trf_track TRF_TrackSpawn after
--- the identity fields): 3..5 or nil. Changes no spawn decision.
-function TRF_Crp_Label(id)
+-- the identity fields): 3..5 or nil. Changes no spawn decision. keep (3..5) and from (system index): trf_track's rebuilt
+-- trader carries the corporation it had in system from; it keeps it in the same region unless that corporation is out.
+function TRF_Crp_Label(id, keep, from)
 	if not TRF_CrpOn() then return nil; end;
-	return call(TRF_CrpLabelBody, {id}, "x", TRF_CrpErr);
+	return call(TRF_CrpLabelBody, {id, keep, from}, "x", TRF_CrpErr);
 end;
 
-function TRF_CrpLabelBody(id)
+-- 1 while cfg corp is 1 and traffic runs (trf_charter withdraws an open run posting otherwise).
+function TRF_Crp_On() return TRF_CrpOn(); end;
+
+function TRF_CrpLabelBody(id, keep, from)
 	local r = TRF_CrpRec(id);
 	if not r then return nil; end;
 	local T = TRF_CrpTune();
@@ -463,7 +467,7 @@ function TRF_CrpLabelBody(id)
 	if TRF_CrpCh() < T.crp_ch then why = "chapter";
 	elseif r.st == "gone" then why = "gone";
 	elseif r.crp ~= nil then why = "labelled";
-	elseif r.own or r.fw or r.wq or r.cv or r.feq or r.sev then why = "kind";
+	elseif r.own or r.fw or r.wq or r.cv or r.feq or r.sev or r.tier == 4 then why = "kind";
 	elseif type(r.nm) ~= "number" then why = "noname";
 	elseif not slot then why = "noregion";
 	else
@@ -475,6 +479,12 @@ function TRF_CrpLabelBody(id)
 		return nil;
 	end;
 	local b = TRF_CrpBlk(slot);
+	if (keep == 3 or keep == 4 or keep == 5) and TRF_CrpSlot(from) == slot and b.p ~= keep and rg[keep] > 0 then
+		r.crp = keep;
+		TRF_CrpE("label", "trader_id", id, "name", r.nm, "system", TRF_CrpName(idx), "region", slot, "corp", TRF_CrpTeam(keep),
+			"reason", "kept");
+		return keep;
+	end;
 	local pulled = {};
 	if b.p ~= 0 then pulled[b.p] = 1; end;
 	local job = TRF_N("TRF_Ch_RunOpen", slot);
@@ -577,15 +587,20 @@ function TRF_CrpHitBody(id, r, how, idx, by)
 	end;
 	local b = TRF_CrpBlk(slot);
 	local c0 = b.a[f];
-	b.a[f] = min(9, c0 + 1);
+	-- A carrier of a corporation that is out of the region (labelled before the pull-out) adds no loss.
+	local res = "pulled";
+	if b.p ~= f then
+		res = "counted";
+		b.a[f] = min(9, c0 + 1);
+		TRF_CrpPut(slot, b);
+	end;
 	r.crp = f + 10;
-	TRF_CrpPut(slot, b);
 	local pc = nil;
 	if how == "rob" or by == "player" or r.cnt == 1 then pc = 1; end;
 	if pc then TRF_N("TRF_Ev_FstHit", f, "carrier "..tostring(how).." "..tostring(id)); end;
 	TRF_N("TRF_Stat", "crp_hit");
 	TRF_CrpE("hit", "trader_id", id, "corp", team, "region", slot, "how", how, "by", by, "count_before", c0, "count", b.a[f],
-		"player_caused", TRF_KvB(pc), "result", "counted");
+		"player_caused", TRF_KvB(pc), "result", res);
 	return 1;
 end;
 
@@ -610,8 +625,10 @@ function TRF_CrpTickBody(L)
 		local s0 = TRF_CrpEncOf(b);
 		local ph = TRF_N("TRF_Phase", slot) or 0;
 		local rg = rgs[slot];
+		local ended = nil;
 		-- 1. End: the told state decides the return line; the news topic goes.
 		if b.p ~= 0 and L >= b.e then
+			ended = 1;
 			local f = b.p;
 			local told = nil;
 			if b.t == 0 then told = 1; end;
@@ -645,9 +662,10 @@ function TRF_CrpTickBody(L)
 					end;
 				end;
 			end;
-			-- 5. Start.
+			-- 5. Start (not in the tick a pull-out of this region ended: the return line is due first).
 			local act = TRF_CrpActive(slot);
-			local f, why, fb = TRF_CrpPullOf(b, T, act, rg);
+			local f, why, fb = nil, nil, nil;
+			if not ended then f, why, fb = TRF_CrpPullOf(b, T, act, rg); end;
 			if f then
 				local n = b.a[f];
 				b.p = f;

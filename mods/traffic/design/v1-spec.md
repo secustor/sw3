@@ -154,7 +154,7 @@ Measured 2026-10-21 (integration): `v1-n` gave 41,849 bytes with `live.due` save
 | `s`, `fr` | system idx now, system idx it came from | `s` is the system behind the exit portal it took |
 | `d` | 0 station-bound, 1 transit, 2 docked | where it is in `s` |
 | `dm` | 0..3 | HP band at write: ≥ 75 %, ≥ 50 %, ≥ 30 %, below |
-| `fl` | bits 1 met, 2 contract, 4 robbed, 8 chased, 16 attacked by the player, 32 rescued | |
+| `fl` | bits 1 met, 2 contract, 4 robbed, 8 chased, 16 attacked by the player, 32 rescued; bits 64 and 128 the contract carrier's corporation minus 2 (A22, corp-carriers-spec 5.1) | |
 | `t` | leg | stamp at write |
 
 ### 4.2 When a trader becomes tracked and when its record is written
