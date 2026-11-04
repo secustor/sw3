@@ -383,6 +383,8 @@ Not verifiable offline: whether `GetLocationTeam` returns the side-list team for
 9. Signature goods: InoCo carriers cycle RBot3, LRRNB3 and PLC2 (110,000 cr, also in four other pools); USS carriers WBoost3; Triada carriers one more item from their list. ALS2 left out because its text says it is not sold. Confirm, or limit InoCo to the two `Syst_List` items.
 10. Run posting reach: while it is open its corporation's share doubles in the region and its carriers offer escorts at 60 % or more. Without these, a Kadi InoCo run (7 % of traders) mostly fails at its deadline.
 
+11. Review finding (2026-11-04, wave 1 xhigh review, not fixed): a pull-out start writes the region's notice digit `b.t` 1 over a pending return notice (3..5), so the "carriers are back" dockmaster line of the previous corporation is lost when a second corporation pulls out of the same region before the next dock. Options: defer the second start until the return line was shown (changes pull-out timing by one dock), or a second notice digit (one more byte per region). Decide with the in-game run.
+
 ## 13. Conformance checklist
 
 1. [ ] New `S/trf_corp.script`: functions and the chunk local `CV` only at top level; CRLF, ASCII; `luac -p` clean; `lint_lua.py` 0 findings; `lint_lua.py --calls -q` only the 5 known warnings.
