@@ -12,8 +12,8 @@
 -- Lines only (00 section 4 leash): no marker, no box, no offer, no relation or label write; nothing sends the player
 -- anywhere. No line while a story mission runs (visit latch on TRF_Safe_QState, the strict gate), under
 -- __disableAction or __sys_SOS, during a scene, or below tune wn_ch.
--- Portal wrapper limits: it wraps each PORTAL_<X>_Action global once per MapInitialization (a function of a
--- Mods/Traffic chunk is never wrapped again). The trigger attaches by global name in activate.script, after T2b. A quest
+-- Portal wrapper limits: it wraps each PORTAL_<X>_Action global once per MapInitialization (a wrapper in the
+-- registry TRF_WnMine or a function of a Mods/Traffic chunk is never wrapped again). The trigger attaches by global name in activate.script, after T2b. A quest
 -- script that redefines a PORTAL_<X>_Action global after T2b replaces the wrapper and goes unwarned: the global is
 -- compared at wrap time only. Random portals (RAND_PORTAL) and quest teleports have no box and no warning.
 -- Saved fields (version 4, created lazily, repaired by TRF_Wn_Fix):
@@ -531,7 +531,8 @@ function TRF_WnDockBody(kind, param)
 		tinsert(shown, e.r.s);
 		wv.w[e.j] = 1;
 		TRF_WnStamp(e.j, legs);
-		TRF_WnE("warn", "system", e.r.s, "system_index", e.j, "dock_system", dn, "kind", e.r.k, "condition", e.c, "leg", legs);
+		TRF_WnE("warn", "system", e.r.s, "system_index", e.j, "dock_system", dn, "kind", e.r.k, "condition", e.c, "leg", legs,
+			"cooldown", T.wn_legs);
 	end;
 	TRF_WnE("dock", "system", dn, "neighbour_count", getn(nb), "listed", TRF_WnJoin(listed), "shown", TRF_WnJoin(shown),
 		"skipped", TRF_WnJoin(sk));
@@ -681,9 +682,14 @@ function TRF_WnWrap(fname, orig)
 	end;
 end;
 
--- 1 when f is a Mods/Traffic function (a wrapper of an earlier MapInitialization).
+-- 1 when f is a Mods/Traffic function (a wrapper of an earlier MapInitialization): identity with a wrapper in the
+-- registry TRF_WnMine (a function global, so it survives ClearGlobals; the set is its upvalue), else the chunk name.
 function TRF_WnIsMine(f)
 	if type(f) ~= "function" then return nil; end;
+	if type(TRF_WnMine) == "function" then
+		local m = TRF_WnMine();
+		if type(m) == "table" and m[f] then return 1; end;
+	end;
 	if type(TRF_IsMine) == "function" and TRF_IsMine(f) then return 1; end;
 	if type(getinfo) == "function" then
 		local i = getinfo(f, "S");
@@ -704,17 +710,22 @@ function TRF_WnInstallJump()
 	end;
 	sort(names);
 	local n, sk = 0, 0;
+	local set = {};
 	for i = 1, getn(names) do
 		local f = getglobal(names[i]);
 		if wv.pw[names[i]] == f or TRF_WnIsMine(f) then
+			set[f] = 1;
 			sk = sk + 1;
 		else
 			local w = TRF_WnWrap(names[i], f);
 			wv.pw[names[i]] = w;
 			setglobal(names[i], w);
+			set[w] = 1;
 			n = n + 1;
 		end;
 	end;
+	-- The registry holds only the wrappers now in a PORTAL_<X>_Action global, so it stays bounded.
+	TRF_WnMine = function() return %set; end;
 	if n > 0 then
 		TRF_WnE("jump_install", "wrapped_count", n, "skipped_count", sk);
 	else

@@ -168,7 +168,7 @@ The pure part `TRF_WnPickOf(cands, n)` (sort and cut) and `TRF_WnCdOf(c, j, legs
 ### 6.2 Due call (`TRF_Wn_NoteDue(idx)`, `TRF_Due` drops it when the generation changed: a jump or a load)
 
 Gates, first failing ends it with `event=note result=skipped reason=<r>`, bit unchanged: `idx ~= TRF_CurIdx()` (`moved`), W3 latch or `TRF_Safe_QState()` (`latch`), `__disableAction == TRUE` or `__sys_SOS == TRUE` (`flag`), `TRF_Safe_Scene()` (`scene`), `TRF_StrictOk(idx, "warn")` not 1 (`gate:<why>`), `TRF_Chapter() < wn_ch` (`chapter`).
-Then `ok, why = TRF_ArrivalLine("warn", TRF_Txt(r.n, r.nm))`: `ok` -> set the bit (WD1), `event=note result=queued`; else `event=note result=dropped reason=<why>` (`cap`, `due`, `entry`), bit clear.
+Then `ok, why = TRF_ArrivalLine("warn", TRF_Txt(r.n, r.nm))`: `ok` -> set the bit (WD1), `event=note result=queued`; else `event=note result=dropped reason=<why>` (`cap`, `due`, `entry`, `arg` for an empty text, `plumb` when trf_plumb is absent), bit clear.
 
 The note does not test the arming condition (decision 4). In an armed kill system the mothership is gone before the line (5 s against 8 s); a game over reloads a save from before the entry, so the bit stays clear.
 
@@ -271,7 +271,7 @@ Constant without a key (`TRF_WnK`): `cmax` 6 (stamps kept), `words` 3, `bits` 40
 | `module=warn event=load latch=<bool>` | `TRF_Wn_OnLoad` (level 2) |
 | `module=warn event=pass reason=<off/error/nomap/latch/gate:<why>/scene/chapter> at=dock` | 5.1, once per reason and visit |
 | `module=warn event=dock system=<s> neighbour_count=<n> listed=<s1,s2> shown=<s1> skipped=<s2:inactive,s3:cooldown>` | 5.2, an approach with a listed neighbour |
-| `module=warn event=warn system=<listed s> system_index=<j> dock_system=<s> kind=<k> condition=<c> leg=<legs>` | 5.2, per line |
+| `module=warn event=warn system=<listed s> system_index=<j> dock_system=<s> kind=<k> condition=<c> leg=<legs> cooldown=<wn_legs>` | 5.2, per line |
 | `module=warn event=note system=<s> kind=<k> result=<queued/dropped/skipped> reason=<r>` | 6.2 |
 | `module=warn event=jump_into system=<s> kind=<k> armed=<bool> condition=<c> how=<portal/custom>` | 7.1 |
 | `module=warn event=fix field=<f> result=<dropped/reset>` | `TRF_Wn_Fix` |
@@ -337,7 +337,7 @@ Own entry as `host_station.lua` (cut `host_stubs.lua` before `if H.scen then`, l
 | W-A12.5 | The first-visit note shows in the arrival queue and only once per save | Cassily at peace (ch 1-3): `module=warn event=note system=kassilia kind=garrison result=queued`, `module=plumb event=arrival_line owner=warn ... result=shown`; second visit `event=enter ... note=seen`; the same after a save and load |
 | W-A12.6 | The arming mirror matches vanilla (`GetQuestLabel` and `GetTeamRelation` read what the location script reads) | a jump into a listed system: `module=warn event=jump_into ... armed=<b>` agrees with what happens (armed kill row: the mothership is blown at 5 s; armed ambush: six flights at the mothership; not armed: nothing) |
 | W-A12.7 | Plain text and `$1` substitution in screen lines (station-voices C4, C7) | `wnwuss` near Debris 1 while Uss is at war shows "Debris 4" in place of `$1`; with `loc_mode 1` the scaffold text without the name |
-| W-A12.8 | Proposals 6 item 21 (jump warning hook, 7.2): a wrapper installed at T2b over `PORTAL_<X>_Action` is the function the portal trigger calls, before and after a load, and a line shown from it is readable while the confirm box is up | test build only (not in step 1): a debug line from the wrapper before the vanilla box; after a load the wrapper still runs. MANUAL |
+| W-A12.8 | Proposals 6 item 21 (jump warning hook, 7.2): a wrapper installed at T2b over `PORTAL_<X>_Action` is the function the portal trigger calls, before and after a load, and a line shown from it is readable while the confirm box is up | the wrappers are installed at T2b and T2d (18.2): `module=warn event=jump_install wrapped_count=<n> ...`, then `module=warn event=jump_warn system=<s> ... result=shown` before the confirm box; the same again after a load; screenshot of the line with the box up |
 
 ## 16. Decisions for the owner
 
@@ -379,7 +379,7 @@ Owner answers (2026-11-04, the standing rule "implement the recommendation as th
 
 ### 18.2 Jump warning (7.2, owner decision 4)
 
-- `TRF_WnInstallJump` runs at T2b (`TRF_Wn_OnEnter`, last in `TRF_OnEnter`) and at T2d (`TRF_Wn_OnLoad`). It collects every global function named `PORTAL_<X>_Action` and replaces it by a closure that holds the portal name and the original as upvalues (no other global holds either, so `AttachAction`'s global-name lookup in activate.script finds `PORTAL_<X>_Action`). A function already wrapped in this MapInitialization (`WV.pw`) or of a Mods/Traffic chunk (`TRF_IsMine`, a wrapper of an earlier MapInitialization left in a global the new location does not redefine) is skipped: never a wrapper of a wrapper.
+- `TRF_WnInstallJump` runs at T2b (`TRF_Wn_OnEnter`, last in `TRF_OnEnter`) and at T2d (`TRF_Wn_OnLoad`). It collects every global function named `PORTAL_<X>_Action` and replaces it by a closure that holds the portal name and the original as upvalues (no other global holds either, so `AttachAction`'s global-name lookup in activate.script finds `PORTAL_<X>_Action`). A function already wrapped in this MapInitialization (`WV.pw`), a wrapper in the registry `TRF_WnMine` (a function global, so it survives ClearGlobals; its upvalue is the set of the wrappers in a `PORTAL_<X>_Action` global after the last install, rebuilt each install so it stays bounded) or a function of a Mods/Traffic chunk (`TRF_IsMine`, the chunk-name fallback; the chunk name is a CHECK in v01-spec) is skipped: never a wrapper of a wrapper, also for a wrapper of an earlier MapInitialization left in a global the new location does not redefine.
 - The wrapper: the mod part under `call(..., "x", TRF_WnErr)`: the destination from map `portals[].to` by portal name; the gates W1-W6 of the current system (`warn`, map, the visit latch, `TRF_StrictOk(cur, "warn")`, scene, `wn_ch`), then `__disableAction`/`__sys_SOS`, the row armed, no quest naming the destination (`TRF_StrictOk(j, "warn")` = `quest`), once per destination and visit (`WV.jw`); shown as `TRF_Say(<the row's warning>, 8)` before the original opens the box. Then `call(original, arg)` with the same arguments, its results returned. A portal without a map entry: the original first, then `dest_location` (the line follows the box). `event=jump_warn` logs every listed destination (shown, not_shown, skipped with the reason); `event=portal` (log 2) an unlisted one.
 - Limit: the global is compared at wrap time only. A quest script that redefines `PORTAL_<X>_Action` after T2b replaces the wrapper, and that portal goes unwarned until the next entry or load (host `wn-f`). Quest scenes and missions get no line anyway (the latch, the strict gate, the scene gate). Random portals (`RAND_PORTAL`) and quest teleports have no box and no warning.
 
@@ -388,9 +388,10 @@ Owner answers (2026-11-04, the standing rule "implement the recommendation as th
 1. The wrappers are also installed at T2d (load), not only at T2b: after a load activate.script does not run and the saved trigger calls `PORTAL_<X>_Action` by its global name, which functions.script has just redefined (trf_gen notes the same global-name lookup of `AttachAction`). Without the T2d install the jump warning would be gone after every load (W-A12.8 checks both).
 2. The jump warning shows the row's dock warning text (it starts with "Dockmaster:"), as owner decision 4 says; no own text key. It is once per destination and visit and has no `wn_legs` cooldown (the player is at the portal).
 3. New log events not in 12: `jump_install` (level 1 when a function was wrapped, else 2), `jump_warn`, `portal` (level 2); rows in `log-events.md`.
-4. `condition` values hold `=` and are quoted in the log lines (log-format rule): `condition="GideonPermit=nil,Kfni=neutral"`.
+4. `condition` values hold `=` and are quoted in the log lines (log-format rule): `condition="GideonPermit=no,Kfni=neutral"` (`nil` only for a label no script has set, such as `XT86permit`; the host has no InitTeamScript, so its lines read `GideonPermit=nil`).
 5. WD3: the stamp just inserted is never the one dropped while another can go; equal legs drop the smaller idx.
 6. WD4 without the map (no listed idx known): the stamp keys are checked for shape only.
 7. `mod-options.md` lists no module keys; the key and the tune keys are documented in config.script and `mods/traffic/README.md` "Config keys (warnings)". `install-test.sh` `LEVEL=v01`/`v02` write `warn=0`, as for the other worldbuilding modules.
 8. The W-A12 items are in `PROGRESS.md` "Next in-game test plan", subsection "Wave 1 (host-tested only)" (the section the wave 1 items share), not in `test-plan-haunts-parcels.md` section 5.
 9. When the mod part of a wrapper errors before it read the map, the post step still reads `dest_location` after the original and may warn after the box opened (host `wn-f`).
+10. `event=warn` also logs `cooldown=<wn_legs>`, so `tools/check_ingame.py` W-A12.4 scores the repetition with the tuned cooldown.

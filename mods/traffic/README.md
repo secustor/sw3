@@ -1012,7 +1012,7 @@ Wave 1 item 1 of the roadmap, A12 step 1 (spec [design/warnings-spec.md](design/
 
 ### Log lines (warnings)
 
-`module=warn event=enter system= system_index= listed= note=<due|seen|none|off> pruned_count= latch=`, `event=pass reason=<off|error|nomap|latch|gate:<why>|scene|chapter> at=dock`, `event=dock system= neighbour_count= listed= shown= skipped=<s>:<inactive|quest|visit|cooldown|cap>`, `event=warn system= system_index= dock_system= kind= condition= leg=`, `event=note system= kind= result=<queued|dropped|skipped> reason=`, `event=jump_into system= kind= armed= condition= how=<portal|custom>`, `event=jump_install wrapped_count= skipped_count=`, `event=jump_warn system= kind= portal= via=<map|dest_location> condition= result=<shown|not_shown|skipped> reason=`, `event=fix`, `event=error`, at log 2 `event=load`, `event=portal`, `event=dump`; full list in [design/log-events.md](design/log-events.md) (warn).
+`module=warn event=enter system= system_index= listed= note=<due|seen|none|off> pruned_count= latch=`, `event=pass reason=<off|error|nomap|latch|gate:<why>|scene|chapter> at=dock`, `event=dock system= neighbour_count= listed= shown= skipped=<s>:<inactive|quest|visit|cooldown|cap>`, `event=warn system= system_index= dock_system= kind= condition= leg= cooldown=`, `event=note system= kind= result=<queued|dropped|skipped> reason=`, `event=jump_into system= kind= armed= condition= how=<portal|custom>`, `event=jump_install wrapped_count= skipped_count=`, `event=jump_warn system= kind= portal= via=<map|dest_location> condition= result=<shown|not_shown|skipped> reason=`, `event=fix`, `event=error`, at log 2 `event=load`, `event=portal`, `event=dump`; full list in [design/log-events.md](design/log-events.md) (warn).
 
 ### In-game checks (warnings)
 

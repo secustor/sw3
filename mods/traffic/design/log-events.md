@@ -864,7 +864,7 @@ Freight unlock quest "Missing in Capricorn", commits 1-3 and the presentation (`
 
 ## warn (`trf_warn.script`; `TRF_WnE`, `TRF_WnDE`)
 
-Lethal-system warnings, A12 step 1 (`design/warnings-spec.md` 12; host-tested only). `system` is the listed system's map name, `dock_system` the trade dock's, `kind` the row class (`kill`, `ambush`, `trap`, `garrison`), `condition` the row's arming inputs as read (`GideonPermit=nil,Kfni=neutral`; quoted in the line because it holds `=`), `leg` `TRF.clock.legs`.
+Lethal-system warnings, A12 step 1 (`design/warnings-spec.md` 12; host-tested only). `system` is the listed system's map name, `dock_system` the trade dock's, `kind` the row class (`kill`, `ambush`, `trap`, `garrison`), `condition` the row's arming inputs as read (`GideonPermit=no,Kfni=neutral`; quoted in the line because it holds `=`), `leg` `TRF.clock.legs`, `cooldown` the tune `wn_legs`.
 
 | Event | Example line | Level |
 |---|---|---|
@@ -873,11 +873,11 @@ Lethal-system warnings, A12 step 1 (`design/warnings-spec.md` 12; host-tested on
 | `load` | `module=warn event=load latch=false` | 2 |
 | `pass` | `module=warn event=pass reason=latch at=dock` (`off, error, nomap, latch, gate:<why>, scene, chapter`), once per reason and visit | 1 |
 | `dock` | `module=warn event=dock system=avalon neighbour_count=2 listed=gideon,kassilia shown=gideon skipped=kassilia:inactive` (skip reasons `inactive, quest, visit, cooldown, cap`); only at an approach with a listed neighbour | 1 |
-| `warn` | `module=warn event=warn system=gideon system_index=44 dock_system=avalon kind=kill condition="GideonPermit=nil,Kfni=neutral" leg=12` | 1 |
-| `note` | `module=warn event=note system=kassilia kind=garrison result=queued` (`result=dropped reason=cap\|due\|entry`, `result=skipped reason=moved\|latch\|flag\|scene\|gate:<why>\|chapter`) | 1 |
-| `jump_into` | `module=warn event=jump_into system=gideon kind=kill armed=true condition="GideonPermit=nil,Kfni=neutral" how=portal` (`how=custom` for `CustomTeleportate`) | 1 |
+| `warn` | `module=warn event=warn system=gideon system_index=44 dock_system=avalon kind=kill condition="GideonPermit=no,Kfni=neutral" leg=12 cooldown=8` | 1 |
+| `note` | `module=warn event=note system=kassilia kind=garrison result=queued` (`result=dropped reason=cap\|due\|entry\|arg\|plumb`, `result=skipped reason=moved\|latch\|flag\|scene\|gate:<why>\|chapter`) | 1 |
+| `jump_into` | `module=warn event=jump_into system=gideon kind=kill armed=true condition="GideonPermit=no,Kfni=neutral" how=portal` (`how=custom` for `CustomTeleportate`) | 1 |
 | `jump_install` | `module=warn event=jump_install wrapped_count=2 skipped_count=0` (T2b and T2d; level 2 when nothing was wrapped) | 1 |
-| `jump_warn` | `module=warn event=jump_warn system=gideon kind=kill portal=PORTAL_R via=map condition="GideonPermit=nil,Kfni=neutral" result=shown` (`via=dest_location`; `result=not_shown`; `result=skipped reason=off\|nomap\|latch\|gate:<why>\|scene\|chapter\|flag\|inactive\|quest\|visit`) | 1 |
+| `jump_warn` | `module=warn event=jump_warn system=gideon kind=kill portal=PORTAL_R via=map condition="GideonPermit=no,Kfni=neutral" result=shown` (`via=dest_location`; `result=not_shown`; `result=skipped reason=off\|nomap\|latch\|gate:<why>\|scene\|chapter\|flag\|inactive\|quest\|visit`) | 1 |
 | `portal` | `module=warn event=portal portal=PORTAL_U destination=argon via=map listed=false` (a wrapped portal to an unlisted system) | 2 |
 | `fix` | `module=warn event=fix field=c result=dropped dropped_count=4` (`field=wn\|v1\|v2\|v3\|<unknown key>`) | 1 |
 | `dump` | `module=warn event=dump note_words=0,4096,0 stamps=44:12,53:12` | 2 |

@@ -725,6 +725,14 @@ function T_WN_F()
 	T_SaveLoad();
 	h.wport = 1;
 	HOST_Check(W_PA(pg) == w0, "load: an earlier wrapper is not wrapped again");
+	-- The same without a chunk name (getinfo gone): the registry TRF_WnMine still finds the wrapper.
+	local gi = getinfo;
+	getinfo = nil;
+	h.wport = nil;
+	T_SaveLoad();
+	h.wport = 1;
+	getinfo = gi;
+	HOST_Check(W_PA(pg) == w0 and TRF_WnMine()[w0] == 1, "load without chunk names: the registry keeps the wrapper unwrapped");
 	-- wn_jump 0: nothing installed at the next entry.
 	h.cfg.tune = {wn_jump=0};
 	T_Jump("avalon");

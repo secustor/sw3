@@ -144,7 +144,7 @@ Every wave 1 feature of [ROADMAP.md](ROADMAP.md) is host-tested only and runs in
 
 A12 step 1, lethal-system warnings ([warnings-spec.md](warnings-spec.md) 15); a save in chapter 1-6 outside a mission:
 
-- W-A12.1: dock at Avalon (Gideon armed without the permit): `module=warn event=warn system=gideon ... dock_system=avalon kind=kill condition="GideonPermit=nil,Kfni=neutral"`; the line readable with the vanilla docking box up (screenshot).
+- W-A12.1: dock at Avalon (Gideon armed without the permit): `module=warn event=warn system=gideon ... dock_system=avalon kind=kill condition="GideonPermit=no,Kfni=neutral"`; the line readable with the vanilla docking box up (screenshot).
 - W-A12.2: dock at an eligible station during a story mission: `module=warn event=pass reason=latch at=dock` or `reason=gate:quest`, no `event=warn` in that visit.
 - W-A12.3: `module=station event=dock ...` before `module=warn event=warn ...` in the same second; the greeting and the warning both readable.
 - W-A12.4: dock twice in the visit (`skipped=gideon:visit`), jump out and back (`skipped=gideon:cooldown`), come back after 8 legs (`event=warn system=gideon` again).

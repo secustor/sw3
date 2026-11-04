@@ -438,11 +438,11 @@ traffic: lua: exp=v1 module=state event=enter generation=90 fresh=false system=a
 traffic: lua: exp=v1 module=warn event=jump_install wrapped_count=2 skipped_count=0
 traffic: lua: exp=v1 module=warn event=enter system=avalon system_index=10 listed=false note=none pruned_count=0 latch=false
 traffic: lua: exp=v1 module=station event=dock station_key=10 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=chapter
-traffic: lua: exp=v1 module=warn event=warn system=gideon system_index=44 dock_system=avalon kind=kill condition="GideonPermit=nil,Kfni=neutral" leg=130
+traffic: lua: exp=v1 module=warn event=warn system=gideon system_index=44 dock_system=avalon kind=kill condition="GideonPermit=no,Kfni=neutral" leg=130 cooldown=8
 traffic: lua: exp=v1 module=warn event=dock system=avalon neighbour_count=2 listed=gideon,kassilia shown=gideon skipped=kassilia:inactive
 traffic: lua: exp=v1 module=station event=dock station_key=10 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=chapter
 traffic: lua: exp=v1 module=warn event=dock system=avalon neighbour_count=2 listed=gideon,kassilia shown=nil skipped=gideon:visit,kassilia:inactive
-traffic: lua: exp=v1 module=warn event=jump_warn system=gideon kind=kill portal=PORTAL_R via=map condition="GideonPermit=nil,Kfni=neutral" result=shown
+traffic: lua: exp=v1 module=warn event=jump_warn system=gideon kind=kill portal=PORTAL_R via=map condition="GideonPermit=no,Kfni=neutral" result=shown
 traffic: lua: exp=v1 module=warn event=jump_into system=kassilia kind=garrison armed=false condition="Kfni=neutral" how=portal
 traffic: lua: exp=v1 module=state event=enter generation=91 fresh=false system=kassilia legs=131
 traffic: lua: exp=v1 module=warn event=enter system=kassilia system_index=53 listed=true note=due pruned_count=0 latch=false
@@ -452,4 +452,4 @@ traffic: lua: exp=v1 module=warn event=jump_into system=avalon kind=garrison arm
 traffic: lua: exp=v1 module=state event=enter generation=92 fresh=false system=avalon legs=132
 traffic: lua: exp=v1 module=warn event=pass reason=latch at=dock
 traffic: lua: exp=v1 module=station event=dock station_key=10 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=latch
-traffic: lua: exp=v1 module=warn event=warn system=gideon system_index=44 dock_system=avalon kind=kill condition="GideonPermit=nil,Kfni=neutral" leg=132
+traffic: lua: exp=v1 module=warn event=warn system=gideon system_index=44 dock_system=avalon kind=kill condition="GideonPermit=no,Kfni=neutral" leg=132 cooldown=8

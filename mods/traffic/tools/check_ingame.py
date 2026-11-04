@@ -25,6 +25,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURE = os.path.join(HERE, "..", "tests", "check_ingame_fixture.log")
+FIXTURE_WARN = os.path.join(HERE, "..", "tests", "check_ingame_warn_fixture.log")
 REL = ("war", "neutral", "friend")
 PHASES = ("Quiet", "Boom", "Build-up", "Raids", "Bust", "Recovery")
 # vanilla bounty flights (OutMission_kill_pirate), haunt-spec appendix A class P
@@ -2332,7 +2333,8 @@ def c_wa2(ctx):
     res = Res()
     res.logpart = True
     gate = [r for r in ctx.find("warn", "pass") if r.get("reason") in ("latch", "scene") or (r.get("reason") or "").startswith("gate:")]
-    for g in gate:
+    # Only the latch lasts for the visit; scene and the strict gate are checked again at each approach.
+    for g in [x for x in gate if x.get("reason") == "latch"]:
         later = [r for r in ctx.find("warn", "warn") if r.visit is g.visit and r.n > g.n]
         if later:
             res.fails.append("%s: a dock warning after it in the same visit (%s)" % (g.short(), later[0].short()))
@@ -2350,13 +2352,23 @@ def c_wa3(ctx):
     res = Res()
     res.logpart = True
     w = ctx.find("warn", "warn")
+    sd = ctx.find("station", "dock")
+    done = []
     for r in w:
-        st = [x for x in ctx.find("station", "dock") if x.visit is r.visit and x.n < r.n]
-        if not st:
+        # A visit without a station dock line (XT-23 in the station voice deny list, voice 0, a station pass) has no
+        # greeting to order against.
+        vs = [x for x in sd if x.visit is r.visit]
+        if not vs:
+            continue
+        if not [x for x in vs if x.n < r.n]:
             res.fails.append("%s: no module=station event=dock line before it in the visit" % r.short())
+        done.append(r)
     if not w:
         res.missing.append("no module=warn event=warn line (W-A12.1)")
-    res.ev("dock warnings", w)
+    elif not done:
+        res.missing.append("no warning in a visit with a module=station event=dock line (dock where the station greets, "
+                           "e.g. Avalon)")
+    res.ev("dock warnings after a station greeting", done)
     return res
 
 
@@ -2364,22 +2376,53 @@ def c_wa4(ctx):
     res = Res()
     res.logpart = True
     w = ctx.find("warn", "warn")
+    loads = [x for x in ctx.recs if x.is_("state", "load")]
+
+    def loaded(a, b):
+        # A load between two lines takes TRF.clock.legs back and drops the stamp.
+        return any(x.src == a.src and a.n < x.n < b.n for x in loads)
+
+    def gap(p, r):
+        if p.int("leg") is None or r.int("leg") is None:
+            return None
+        return r.int("leg") - p.int("leg")
+
     last = {}
     for r in w:
-        s, lg = r.get("system"), r.int("leg")
+        s = r.get("system")
         p = last.get((r.src, s))
-        if p is not None and lg is not None and p.int("leg") is not None and lg - p.int("leg") < 8:
-            res.fails.append("%s: named again %d legs after %s (wn_legs 8)" % (r.short(), lg - p.int("leg"), p.short()))
+        if p is not None and not loaded(p, r):
+            g, lim = gap(p, r), p.int("cooldown", 8)
+            if g is not None and g < lim:
+                res.fails.append("%s: named again %d legs after %s (wn_legs %d)" % (r.short(), g, p.short(), lim))
         last[(r.src, s)] = r
     docks = ctx.find("warn", "dock")
     vis = [r for r in docks if ":visit" in (r.get("skipped") or "")]
     cd = [r for r in docks if ":cooldown" in (r.get("skipped") or "")]
+    back = []
+    for c in cd:
+        for it in (c.get("skipped") or "").split(","):
+            if not it.endswith(":cooldown"):
+                continue
+            s = it[:-len(":cooldown")]
+            prev = [x for x in w if x.src == c.src and x.get("system") == s and x.n < c.n]
+            if not prev:
+                continue
+            p = prev[-1]
+            nxt = [x for x in w if x.src == c.src and x.get("system") == s and x.n > c.n
+                   and gap(p, x) is not None and gap(p, x) >= p.int("cooldown", 8)]
+            if nxt and nxt[0] not in back:
+                back.append(nxt[0])
     if not vis:
         res.missing.append("dock twice in one visit at a listed system's neighbour: no event=dock ... skipped=<s>:visit")
     if not cd:
         res.missing.append("jump out and back within 8 legs and dock again: no event=dock ... skipped=<s>:cooldown")
+    elif not back:
+        res.missing.append("come back after the cooldown (8 legs) and dock again: no event=warn for the skipped system "
+                           "at least wn_legs after its last warning")
     res.ev("visit skips", vis)
     res.ev("cooldown skips", cd)
+    res.ev("warnings again after the cooldown", back)
     return res
 
 
@@ -2741,6 +2784,11 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "Q-WQ.14": "NO DATA",
             "W-A12.1": "MANUAL", "W-A12.2": "FAIL", "W-A12.3": "MANUAL", "W-A12.4": "FAIL", "W-A12.5": "NO DATA",
             "W-A12.6": "MANUAL", "W-A12.7": "NO DATA", "W-A12.8": "NO DATA"}
+# tests/check_ingame_warn_fixture.log: correct warning behaviour only. A dock warning for Gideon at Avalon (leg 100) after
+# the station's dock line, a second approach skipped (visit), a return at leg 102 skipped (cooldown); at XT-23 (station
+# voice deny, a station pass, no station dock line) a pass reason=scene, then a warning for XT-24; a load of an earlier
+# save with a warning at leg 98; a return at leg 110 with the warning again.
+SELFTEST_WARN = {"W-A12.1": "MANUAL", "W-A12.2": "PASS", "W-A12.3": "MANUAL", "W-A12.4": "PASS"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -2776,7 +2824,12 @@ def selftest():
         if got.get(iid) != v:
             print("selftest: --eyes %s gives %s, expected %s" % (iid, got.get(iid), v))
             bad += 1
-    n = len(SELFTEST) + len(SELFTEST_EYES[1])
+    got = dict((r[0], r[2]) for r in score(Ctx([Log(FIXTURE_WARN, None, [])]), {}))
+    for iid, v in SELFTEST_WARN.items():
+        if got.get(iid) != v:
+            print("selftest: warn fixture %s is %s, expected %s" % (iid, got.get(iid), v))
+            bad += 1
+    n = len(SELFTEST) + len(SELFTEST_EYES[1]) + len(SELFTEST_WARN)
     if parse_logfmt('a=1 message="x \\"y\\" z" b=') != {"a": "1", "message": 'x "y" z', "b": ""}:
         print("selftest: logfmt quoting")
         bad += 1
