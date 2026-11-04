@@ -2,11 +2,13 @@
 # Create (or with -f re-create) an APFS clone of the game dir and install the proxy into it.
 # The original game dir is only read.  PATCH_AT=dllmain|dinput, ENABLED=0|1, FORMS=path[,bare] (bare needs WINEDLLPATH, set by run-test.sh),
 # MONITOR=0|1, MONITOR_DISPATCH=0|1, HOOK_B=0|1, HOOK_C=0|1, PRECISE_IS_TRACKPAD=0|1, WHEEL_HOLD=<ticks>,
-# DEBUG_KEYS=0|1, TRACE=0|1 (trace_events), KR/KS/KZ/KP/KA/KM (gains), FLIGHT_STATES (ids), AGG_MOD=ctrl|opt|ctrl+opt go into sw3tp.ini. Writes Data/GUI/trackpad.cfg if missing.  The unix lib goes to $COPY/aarch64-unix/.
+# DEBUG_KEYS=0|1, TRACE=0|1 (trace_events), KR/KS/KZ/KP/KA/KM (gains), FLIGHT_STATES (ids), AGG_MOD=ctrl|opt|ctrl+opt, DISPLAY_MODE=auto|fixed|off (default auto), DISPLAY_FIXED=WxH go into sw3tp.ini.
+# RENDER_SCALE=auto|off|<0.01..1.0> (default off; auto blurs UI text through the MetalFX upscale) is [display] render_scale (the DLL sets MTLD3D_CONFIG). Writes Data/GUI/trackpad.cfg if missing.  The unix lib goes to $COPY/aarch64-unix/.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd); . "$here/env.sh"
 [ "$(shasum "$ORIG/sw3cw.exe" | cut -d' ' -f1)" = "$EXE_SHA1" ] || { echo "sw3cw.exe SHA-1 mismatch" >&2; exit 1; }
-[ "$(shasum "$ORIG/zlib1.dll" | cut -d' ' -f1)" = "$ZLIB_SHA1" ] || { echo "original zlib1.dll SHA-1 mismatch" >&2; exit 1; }
+oz=$ORIG/zlib1.dll; [ ! -f "$ORIG/zlib1_orig.dll" ] || oz=$ORIG/zlib1_orig.dll   # the game dir may have the proxy installed
+[ "$(shasum "$oz" | cut -d' ' -f1)" = "$ZLIB_SHA1" ] || { echo "original zlib1.dll SHA-1 mismatch ($oz)" >&2; exit 1; }
 [ -f "$here/out/zlib1.dll" ] && [ -f "$here/out/sw3tp.so" ] || "$here/build.sh"
 
 if [ "${1:-}" = -f ] && [ -d "$COPY" ]; then rm -rf "$COPY"; fi
@@ -26,7 +28,10 @@ printf '[sw3tp]\r\nenabled=%s\r\npatch_at=%s\r\nunixlib_forms=%s\r\nmonitor=%s\r
     "${HOOK_B:-1}" "${HOOK_C:-1}" "${PRECISE_IS_TRACKPAD:-1}" "${WHEEL_HOLD:-3}" "${DEBUG_KEYS:-0}" "${TRACE:-0}" \
     "${FLIGHT_STATES:-3,7,8,9,10,27}" "${AGG_MOD:-ctrl}" \
     "${KR:-0.1}" "${KS:-1.5}" "${KZ:-25}" "${KP:-1.0}" "${KA:-1.0}" "${KM:-0.5}" "${KMY:-${KM:-0.5}}" > "$COPY/sw3tp.ini"
+printf '[display]\r\nmode=%s\r\nfixed=%s\r\nmin=1024x768\r\nmax=4096x4096\r\nkeep_bpp=32\r\nfullscreen=TRUE\r\nrender_scale=%s\r\nlog=1\r\n' \
+    "${DISPLAY_MODE:-auto}" "${DISPLAY_FIXED:-}" "${RENDER_SCALE:-off}" >> "$COPY/sw3tp.ini"
 # trackpad.cfg: run once by the mod through Console::Execute("exec ...").
 [ -f "$COPY/Data/GUI/trackpad.cfg" ] || cp "$here/Data/GUI/trackpad.cfg" "$COPY/Data/GUI/trackpad.cfg"
 xattr -d com.apple.quarantine "$COPY/zlib1.dll" "$COPY/zlib1_orig.dll" "$COPY/sw3tp.ini" 2>/dev/null || true
-echo "installed into $COPY ($(cat "$COPY/sw3tp.ini" | tr -d '\r' | tr '\n' ' '))"
+echo "installed into $COPY ($(tr -d '\r' < "$COPY/sw3tp.ini" | tr '\n' ' '))"
+[ ! -f "$COPY/mtld3d.conf" ] || echo "mtld3d.conf (MTLD3D_CONFIG from render_scale wins): $(tr '\n' ' ' < "$COPY/mtld3d.conf")"

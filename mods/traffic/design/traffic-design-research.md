@@ -256,7 +256,7 @@ IDs are referenced in later sections. Phase in brackets.
 | S4 | Heat counts only deliberate attacks (`T_deliberate`) or kills. [v0.1] |
 | S5 | Pirate raids on lanes away from stations, with demand, comply or fight, and flee. [v0.2] |
 | S6 | Pay for answering a raid, conditional on the player group damaging the raiders. [v0.2] |
-| S7 | In-system escort contracts with pay tied to a corrected level table and capped. [v0.2] |
+| S7 | In-system escort contracts with pay tied to the world level of the system (8.4) and capped. [v0.2] |
 | S8 | Player-initiated hail; the 70-unit trigger only announces the trader. [v0.2] |
 | S9 | Trader shop filled from the trader's own cargo class, in mod-owned shops. [v0.2] |
 | S10 | Shortage at the named destination station when a delivery is lost. [v0.2] |
@@ -335,7 +335,7 @@ IDs are referenced in later sections. Phase in brackets.
 | W7 | Team relation writes, including the earlier "heat 7 = Trade at war" rule | Story ships use the Trade team; `m18c_escort` ends on Trade war; `Intro_NJ3` resets Trade war (1.7) |
 | W8 | Use of the `OutMissionEscort` slot | Single slot, used by `m18c_escort`, no nil check on removal |
 | W9 | Escorts on the Merc team | Merc is neutral to Pirates (1.5) |
-| W10 | Pirate strength capped by campaign chapter or player hull (`cap_tier`, `cap_power` and the chapter gate on founding in [PP] 7.11.5) | Design rule: no player-level cap. The starting-region guard, real-tier information and tier-scaled pay (M20, S28) replace it; `L_pay` stays for pay only |
+| W10 | Pirate strength capped by campaign chapter or player hull (`cap_tier`, `cap_power` and the chapter gate on founding in [PP] 7.11.5) | Design rule: no player-level cap. The starting-region guard, real-tier information and tier-scaled pay (M20, S28) replace it; pay uses the world level `L_w` (8.4) |
 | W11 | Territory change from sweeps, bases or prosperity | Ownership comes from `Location_SideList` and story labels (1.5); the mod reads it with `GetLocationTeam` and never writes it |
 
 ---
@@ -378,7 +378,7 @@ A lane is one path in one system: (entry portal or station) → registered nav p
 | `rec` | pool id or nil | set when tracked (5.4) |
 | `owner` | `Trade` (FTU) by default; `Vks` or `Kfni` for supply convoys; any of Vks, Kfni, Triada, Uss, Inoco for equipment convoys (7.15) | Ambient traders stay on the Trade team, as in vanilla; equipment convoys too, with faction hulls (7.15) |
 | `name` | index into about 40 authored names (EN and RU), prefix "FTU" | Distinct from story convoy names |
-| `hull`, `escorts` | a `Trad_merc_Ships` row (TT1, TT2) or a tier composition (TT3, TT4; 7.11): one or two transports plus 1 to 5 mercenary fighters in the same flight, or for a TT4 convoy 3–4 transports with a separate escort flight of 4–6. The flight is one trader identity: HP, cargo, docking and flee rules read the leader; the trader counts as killed when its last transport dies | Escort count changed by disruption and heat |
+| `hull`, `escorts` | a `Trad_merc_Ships` row (TT1, TT2) or a tier composition (TT3, TT4; 7.11): one or two transports plus 1 to 5 mercenary fighters in the same flight (since 2026-10-22, cfg `esc_flight` 1: in a separate escort flight ordered `Escort(lead)`), or for a TT4 convoy 3–4 transports with a separate escort flight of 4–6. The flight is one trader identity: HP, cargo, docking and flee rules read the leader; the trader counts as killed when its last transport dies | Escort count changed by disruption and heat |
 | `convoy`, `conv_id` | `none`, `TT4`, `danger`, `equipment`, `supply`; convoy id or nil | Convoy form (7.16). A danger convoy differs from the rule above: each transport is its own flight and trader identity with these fields, the members share `conv_id` and group `TRF_Trade_<n>`, and the pooled escort flight belongs to the convoy |
 | `cargo`, `load` | class (5.6), containers per transport | Load follows the tier's hold row (7.11, S40); equipment items of a TT4 hold are listed with the flight |
 | `origin`, `dest` | `portal:<system>` or `station` | |
@@ -712,7 +712,7 @@ Section 6.4. A fleeing trader whose refuge is the station skips the queue and do
 
 - Trigger: leader HP below 50 % (`_EVENT_ONHEALTH`) while an attacker is present, or a hostile flight within `R_threat` (300) when the transport has no escort left.
 - Action: radio line, then move at maximum speed to the nearest refuge: an open trade or patrol station if it is closer than the nearest portal, else the nearest portal. Refuges near stations are preferred [PN §3.2]. On arrival the trader is removed (state `escaped`, no disruption).
-- Escorts are in the same flight and flee with it. Splitting them, or spawning escorts as a separate flight with `Flight:Escort(transport)`, is v1+ (13.6).
+- Escorts are in the same flight and flee with it. Splitting them, or spawning escorts as a separate flight with `Flight:Escort(transport)`, is v1+ (13.6). Built 2026-10-22 for TT1–TT3 (cfg `esc_flight` 1, v01-spec 4.5 step 5a): the escort flight is ordered `Escort(lead transport)` again when the trader flees.
 
 ### 7.5 Calling for help
 
@@ -725,7 +725,7 @@ Section 6.4. A fleeing trader whose refuge is the station skips the queue and do
 - When: on spawn of a path A or C trader in a system with `danger ≥ 1`, with `raid_chance`, only if Pirates are at war with Trade (true at new game) and the strict gate passes.
 - Where: a nav point on the trader's lane at least `raid_min_station_dist` (400, spec) from the trade and patrol stations [PN §3.2].
 - Who: one `PIRATE_FLIGHT` flight in its own group `TRF_Raid_<n>`, strength = trader strength −1..+2. From v0.2 the composition, power and pilots come from the effective clan tier of the system instead (7.12), and `raid_chance` is multiplied by the tier factor of 7.12 and by `(1 + 0.08 × attr)` (7.11). Pirates start neutral to the player (1.5). If the player is at war with Pirates, the raid group is set neutral to `PLAYER_GROUP` with `SetGroupRelation`, as `RandomPiratGetMoney` does [V], so it does not count as an enemy until the player engages (spec: autopause trigger, 13.6).
-- Sequence: intercept, demand line. The trader complies with 50 %: 1 to 3 containers are deleted from its inventory, the pirates leave through a portal, the trader continues, disruption +1. Otherwise the pirates attack and the trader flees (7.4).
+- Sequence: intercept, demand line. The trader complies when `RAND(100) < p`, `p = clamp(100 − 100 × br × q, comply_min, comply_max)`. `q` is the trader side over the raid side: trader build power × (live escorts + 0.5) over raid power × raid ships. `br` is the trader's braveness, rolled once per trader, uniform in [`brave_lo`, `brave_hi`], and kept for a repeat raid. If the player fired on the raiders first, the trader refuses. On comply, 1 to 3 containers are deleted from its inventory, the pirates leave through a portal, the trader continues, disruption +1. Otherwise the pirates attack and the trader flees (7.4).
 - Pirates leave when their leader drops below 30 % HP or the trader escapes.
 - Raids on a danger convoy (7.16): one roll per convoy, at least T3 composition, no demand step.
 
@@ -841,7 +841,7 @@ Traffic volume scales with the prosperity band, not only richness:
 - Effect of `val` on the cycle: it acts only through `raid_chance`, and so through the clan score event "trader killed or robbed by pirates" (+1, at most +3 per visit, 7.12). It can bring the Boom and Build-up exits (clan score 50 and 75) earlier, but never before their minimum lengths (8 and 4 legs × `cyc_k`, 6.9), and it lengthens no phase, so the 6.9 bounds hold.
 - Signals: traffic density first (about 5 traffic ships at `pro` 0–2, 15–16 at 5–7, 18–20 at 8–9 in the worked example below), then the arrival line (8.1), booming answer and rumour (8.2), trader remarks per band 0–2 / 3–5 / 6–9 in the 70-unit announce line, sector news (8.9).
 - Pay: escort and raid-help pay × `(1 + 0.05 × pro)` (8.4). Trader shop sell −0.1 at `pro ≥ 6` (8.3).
-- Mission safety: TT1 and TT2 stay within 9.8 S1 (same portals, nav points, one flight per spawn). TT3, TT4, the band volumes above the 0–2 row (spawn factor and caps) and parked ships need 9.8 S2, 9.8 S3 and 9.8 S4 at spawn. A denied system uses the 0–2 row, so no volume above vanilla runs during a mission. Faction escorts never in border systems or toward an owner at war with the player [TP §6.1].
+- Mission safety: TT1 and TT2 stay within 9.8 S1 (same portals, nav points, one flight per spawn; the escort flight of cfg `esc_flight` is built only where the strict gate passes). TT3, TT4, the band volumes above the 0–2 row (spawn factor and caps) and parked ships need 9.8 S2, 9.8 S3 and 9.8 S4 at spawn. A denied system uses the 0–2 row, so no volume above vanilla runs during a mission. Faction escorts never in border systems or toward an owner at war with the player [TP §6.1].
 - Anti-farm by consequence (replaces [TP §6.4] rules 1–3, keeps rules 4–8). Rich traders are not made poor: a TT3 F4 flight that the vanilla roll gave `Puma_merc1` and `Gunslinger_merc1` keeps them (about 400,000 cr of fitted gear [TP §1.4]), and a TT4 escort flight may use the rich rows. Farming is limited instead by:
   1. Rarity: TT3 needs `pro ≥ 5` and TT4 `pro ≥ 8`, each with its tier roll.
   2. Kill cost: a player kill costs 3 `pro` in total, heat +1 and disruption +2 (5.5, 8.7).
@@ -992,7 +992,7 @@ What the player sees: P gives the rumour "pirates are gathering in <system>"; A 
 - Disruption floor while A: at every decay step `dis(base system) ≥ base_dis_floor` (5) and each portal neighbour `≥ base_nb_floor` (2). `pro_cap` is 3 within 1 jump (7.11).
 
 Destruction:
-- By the player group (it attacked the base in the visit it died): `dis(base system) := 0`, each portal neighbour `dis −= 2`, bypassing the per-visit limit of 7.10; `help +2`, `heat −1`; FTU pays `min(base_reward_k × L_pay × tier_k, base_reward_max)`, with `tier_k` of the clan's tier before the loss (8.4), or the faction pays 1.5 × that, capped at `pay_cap`, under a base bounty contract (8.10); record D with leg stamp.
+- By the player group (it attacked the base in the visit it died): `dis(base system) := 0`, each portal neighbour `dis −= 2`, bypassing the per-visit limit of 7.10; `help +2`, `heat −1`; FTU pays `min(base_reward_k × L_w × lk × tier_k × d_k, base_reward_max)`, with `L_w` of the base's system and `tier_k` of the clan's tier before the loss (8.4), or the faction pays 1.5 × that, capped at `pay_cap`, under a base bounty contract (8.10); record D with leg stamp.
 - By a successful sweep, a scripted `Blow`, or found dead on entry with no player attack: the same disruption change and record D, no payment, help or heat change.
 - In both cases: clan score −25, `salv := 0`, and a region in Raids leaves it at the next tick. Live raid flights from the base break off to the nearest portal. News "lanes around <sector> are safe again".
 
@@ -1159,24 +1159,18 @@ Phase: v1, although the holds come from the TT1–TT3 rows (v0.2). The transport
 
 - Offered in the hail to path A and B traders when `danger ≥ 1` or disruption ≥ 2: "Escort us to the station / to the <portal> for N cr?".
 - On accept: the trader's speed is capped to the mothership's (`SetMaxSpeed`; values not measured), and the trader gets one extra raid roll at `contract_raid_chance`, so the contract has a reason to exist.
-- Success: the trader reaches its dock or portal volume alive with the mothership within 400 units → `AddPlayerCredits(N)`, `help` +1, heat −1, thanks line.
+- Success: the trader reaches its dock or portal volume alive with the mothership within 400 units → `AddPlayerCredits(N_eff)`, `help` +1, heat −1, thanks line.
 - Failure: the trader dies → no pay, disruption +1. The player jumps away or the trader flees out of the system → void without penalty.
 - Suppression during a contract: the contract is paused, not failed, and pays if the trader survives the wind-down [EF].
 - Load: a contract is void after load, without pay or penalty. This closes the accept, save, reload exploit.
-- Pay: `N = min(900 × L_pay, 15000)` with `L_pay` from this table, which replaces the extortion mapping (which returns 0 for the starting mothership):
+- Pay basis: the world level of the current system, `L_w(s) = clamp(round(0.8 × sys_base(s)), 3, 16)` (`sys_base` from 5.1). Pay reflects the danger of the job, not the hull flown; nothing reads the player's level or `GetPlayerLevel()` (W10). The planned worldbuilding features (`design/worldbuilding/`) use the same `L_w`, so all contracts pay on one scale. Before 2026-10-21 pay used a hull table keyed on `GetPlayerLevel()` (`L_pay`).
+- Shared pay formula, stated here once and referenced by every other pay rule: `N_eff = min(900 × L_w × lk × tier_k × (1 + 0.05 × pro) × d_k, pay_cap)` with
+  - `lk = min(1, L_w / 8)`, low-level damping. Pirate-farm income grows faster than linearly in L (about 5,000 / 12,000 / 30,000 cr per level point at L 4 / 10 / 15), so a linear payment is about 6 times as generous relative to farming early as late. Below `L_w` 8 the damping keeps pay under the farm; from 8 up pay is unchanged.
+  - `tier_k` 0.75 / 1.0 / 1.5 / 2.0 for the effective clan tier T1–T4 of the current system (S28). A job in a calm region pays little; the same job in a T4 region pays more because it is more dangerous.
+  - `d_k` 1.25 EASY / 1.0 NORMAL / 0.7 HARD: `GetLevelDifficult()` compared with the `EASY` and `NORMAL` globals as `InitTradeSystem.script` does; any other value is HARD. `d_k` multiplies every credit payment the mod makes and every mod-side price or fee (`po_intel_cost`, 8.11). Trader-shop prices (8.3) already use the vanilla difficulty coefficients and are unchanged.
+  - `pay_cap` 30000. No separate cap on `900 × L_w`: at `L_w` 16 and `tier_k` 1.0 the amount is 14,400 before `pro`.
 
-| `GetPlayerLevel()` | Hull | `L_pay` | Pay |
-|---|---|---|---|
-| 1 | hm_queen_pl (start) | 3 | 2700 |
-| 2, 3 | arba_t, mothership_arba_pirate | 5 | 4500 |
-| 4 | mothership_arba | 7 | 6300 |
-| 5 | mothership_astarta | 10 | 9000 |
-| 6–9 | old, corporate, kfni, empire | 13 | 11700 |
-| 10–13 | lion variants, uel | 16 | 14400 |
-| 0 | unlisted hull | 8 | 7200 |
-
-  Relative to the mean extortion demand `150 × L × (L+1)`, pay is `6/(L+1)` of it: 100 % at L 5, 46 % at L 12, 35 % at L 16. The calibration target is a pirate flight kill of similar risk (bounty plus loot), measured in v0.2 testing [PN §7 target 5].
-- Real-tier and prosperity scaling (S28, v0.2): the paid amount is `N_eff = min(N × tier_k × (1 + 0.05 × pro), pay_cap)` with `tier_k` 0.75 / 1.0 / 1.5 / 2.0 for the effective clan tier T1–T4 of the current system and `pay_cap` 30000. A weak player in a calm region takes cheap jobs; the same job in a T4 region pays more because it is more dangerous. `L_pay` stays for pay scaling only; it no longer limits pirate strength (W10).
+  At `tier_k` 1.0, `pro` 0 and NORMAL: `L_w` 3 → about 1,000, 5 → 2,800, 8 → 7,200, 12 → 10,800, 16 → 14,400. The calibration target is a pirate flight kill of similar risk (bounty plus loot), measured in v0.2 testing [PN §7 target 5].
 - In Recovery (6.9), help +2 instead of +1.
 - Danger convoys (7.16, 8.15): one contract covers the convoy; pay `min(N_eff × transports that reach the exit, dconv_pay_cap)`.
 - No XP: off-mission kill XP is already ×0.1 [V], so rewards are credits and standing.
@@ -1191,8 +1185,8 @@ Phase: v1, although the holds come from the TT1–TT3 rows (v0.2). The transport
 
 ### 8.6 Demand cargo (v1)
 
-- Offered in the hail when heat < 7 and `L_pay` ≥ the trader's strength.
-- Comply chance falls with escort count. On comply, 1 to 3 containers move from the trader's inventory to the mothership (`DeleteModule` / `AddModuleToInventory`), heat +2, disruption +1, a shortage if the trader was station-bound, and the trader flees. No shots, no relation change.
+- Offered in the hail when heat < 7. The offer has no check of the player's hull or level; the player judges the trader's escort.
+- Comply chance as the lane raid (7.6): `p = clamp(100 − 100 × br × q, comply_min, comply_max)` with the trader's braveness `br` of 7.6, `q` = trader side over player side. The player side is the hull's power (the strength of the vanilla extortion flight for that hull) × 3 for the mothership and 2 fighters. Heat does not change it. On comply, 1 to 3 containers move from the trader's inventory to the mothership (`DeleteModule` / `AddModuleToInventory`), heat +2, disruption +1, a shortage if the trader was station-bound, and the trader flees. No shots, no relation change.
 - On refusal the trader flees and calls for help (8.7 response).
 
 ### 8.7 Attack, heat and loot
@@ -1202,8 +1196,8 @@ Phase: v1, although the holds come from the TT1–TT3 rows (v0.2). The transport
 
 | Heat after attack | Response |
 |---|---|
-| 0–2 | Escorts fight back; one owner-faction patrol flight with 50 % chance, power from the owner's rung (7.13; `L_pay` before v1) |
-| 3–6 | 2 owner-faction flights, power from the owner's rung (7.13; `L_pay` before v1) |
+| 0–2 | Escorts fight back; one owner-faction patrol flight with 50 % chance, power from the owner's rung (7.13; hull level before v1) |
+| 3–6 | 2 owner-faction flights, power from the owner's rung (7.13; hull level before v1) |
 | 7–9 | As vanilla: 4 flights, strength 18 to 20 |
 
   The bands match the heat tiers in 7.8. Each response is first rolled against the system's vanilla `_Trader_Init` chance4, so systems where vanilla sends no help (chance4 = 0) stay that way. Response flights use the vanilla presentation (`CreatePortalGlow` near the mothership) and their own `TRF_Resp_<n>` group. Equipment convoys do not use this table; they call their faction in two waves (7.15).
@@ -1230,7 +1224,7 @@ Offered from the moment attempt 1 is scheduled (7.13) until the region leaves Ra
 
 | Contract | Accept | Part | Pay on success |
 |---|---|---|---|
-| Join the sweep | Region record bit 1 | Be in the target system while the attempt is open; the attempt then plays on-screen. Done when the player group has killed `sweep_part` (2) clan ships or put `T_deliberate` fire on 4 of them (the 8.5 proxy) | `min(2000 × L_pay × tier_k, pay_cap)`, help +1, heat −1, `fs` +1. The attempt succeeds (7.13) |
+| Join the sweep | Region record bit 1 | Be in the target system while the attempt is open; the attempt then plays on-screen. Done when the player group has killed `sweep_part` (2) clan ships or put `T_deliberate` fire on 4 of them (the 8.5 proxy) | `min(2000 × L_w × lk × tier_k × d_k, pay_cap)` with `L_w` of the target system (8.4), help +1, heat −1, `fs` +1. The attempt succeeds (7.13) |
 | Bounty on the base (if the clan has a base) | Region record bit 2 | The player group attacks the base in the visit it dies | 1.5 × the FTU base payment of 7.14, capped at `pay_cap`, paid by the faction instead of FTU; `fs` +1 |
 | Convoy escort | In the hail, in-system | As 8.4, with a faction supply convoy that runs in the faction's region systems at `sweep_convoy_chance` (30 %) while attempts are scheduled | `min(sweep_escort_mult (3) × N_eff, pay_cap)`, help +1, heat −1, `fs` +1 |
 
@@ -1244,7 +1238,7 @@ Offered from the moment attempt 1 is scheduled (7.13) until the region leaves Ra
 The traders-too-strong counterforce (6.9) also works through the player when the player has turned against traders.
 - When: the player docks at a pirate station (the 11 vanilla contraband stations or a base) in a region with R ≥ `pro_hi` (7), while heat ≥ 5 and Pirates are not at war with the player. The mod wraps `__PirStationDock_Ok` (`include/DockStation.script`, called before `TradeStationDlg(shop)` [PB §1.3]) and shows one OK/Cancel offer before the vanilla shop. At most one offer per docking and one open offer (`TRF.offer`).
 - Paid raid: the clan names the region system with a trade station within 2 jumps that has the highest `pro`. On the player's next entry there within `po_legs` (8) legs, a trader of the highest tier that system's `pro` allows (7.11, without the roll) undocks as the arrival seed if the strict gate, the governor and `cap_ships` allow. The heat tier cap of 7.11 does not apply to it, because it is the clan's tip-off rather than a random spawn. If the player group kills it or robs it (8.6) in that visit, the clan pays `0.5 × N_eff` (8.4 formula for that system) at the next pirate docking, and its score rises by 5 (7.12). Heat, disruption, prosperity and shortage follow the normal rules for the kill or robbery.
-- Convoy intelligence: for `po_intel_cost` (2000) cr the clan names a region system at `pro ≥ 8` where a TT4 convoy will undock on the player's next entry within `po_legs` legs, if caps allow (v1 convoys); the heat tier cap does not apply to it either. Because holds follow the tier (S40), the named convoy carries a TT4 hold of about 45,000–95,000 cr base plus rich escort gear. No pay; what the player does with it follows 8.6 and 8.7, and a kill forces the region into Bust (S41), so the tip-off pays off once per cycle.
+- Convoy intelligence: for `po_intel_cost` (2000 × `d_k`) cr the clan names a region system at `pro ≥ 8` where a TT4 convoy will undock on the player's next entry within `po_legs` legs, if caps allow (v1 convoys); the heat tier cap does not apply to it either. Because holds follow the tier (S40), the named convoy carries a TT4 hold of about 45,000–95,000 cr base plus rich escort gear. No pay; what the player does with it follows 8.6 and 8.7, and a kill forces the region into Bust (S41), so the tip-off pays off once per cycle.
 - Not offered in guard systems while the guard is active, and never while a suppression flag is set.
 
 ### 8.12 Base assault (v1)
@@ -1253,13 +1247,13 @@ The player finds a base through rumours, the sector post, the trouble answer and
 
 ### 8.13 Payouts
 
-Each pay rule is stated once: escort contract 8.4, answered and staged raids 8.5, join-the-sweep, base bounty and sweep convoy escort 8.10, paid raid 8.11, equipment convoy defence 8.14, danger convoy escort 7.16 and 8.15, base destruction 7.14, carrier bounty 7.12, captured pilots by `CostOfHead` (7.12), visit credits 7.11. Every amount the mod pays is capped at `pay_cap` or lower (11), and kill XP stays ×0.1 off-mission (8.4), so none of them creates an XP farm.
+Each pay rule is stated once: escort contract 8.4, answered and staged raids 8.5, join-the-sweep, base bounty and sweep convoy escort 8.10, paid raid 8.11, equipment convoy defence 8.14, danger convoy escort 7.16 and 8.15, base destruction 7.14, carrier bounty 7.12, captured pilots by `CostOfHead` (7.12), visit credits 7.11. Every credit amount the mod itself pays or charges is multiplied by `d_k` (8.4); vanilla `CostOfHead` bounties are unchanged. Every amount the mod pays is capped at `pay_cap` or lower (11), and kill XP stays ×0.1 off-mission (8.4), so none of them creates an XP farm.
 
 ### 8.14 Faction equipment convoys (v1, S42, S43)
 
 What the player sees: a rumour or the booming answer may say "a navy supply run is due at X" (8.2). In X, two or three faction transports with two flights of faction warships leave the station or arrive through a portal. The focus and hail lines name the faction and "equipment". Rules and numbers: 7.15.
 
-- Defend: in the convoy's hail, when the faction is not at war with the player at team level and `fst ≥ 4`: "Escort us to <destination> for N cr?". Accept and success as 8.4 (the convoy reaches its dock or portal volume alive with the mothership within 400 units). Pay `min(feq_pay_mult (4) × N_eff, pay_cap)`, `N_eff` from 8.4 for the current system; from `L_pay` 7 at `pro` 6 and `tier_k` ≥ 1 the cap of 30,000 applies. Also help +2, `fst` +1, `fs` +1 (5.13 "completed contract"), heat −1. Void after load, paused during wind-down, as 8.4.
+- Defend: in the convoy's hail, when the faction is not at war with the player at team level and `fst ≥ 4`: "Escort us to <destination> for N cr?". Accept and success as 8.4 (the convoy reaches its dock or portal volume alive with the mothership within 400 units). Pay `min(feq_pay_mult (4) × N_eff, pay_cap)`, `N_eff` from 8.4 for the current system; on NORMAL at `pro` 6 and `tier_k` ≥ 1 the cap of 30,000 applies from `L_w` 8 (at `L_w` 7 the pay is about 28,700), on HARD from `L_w` 10, on EASY from `L_w` 7. Also help +2, `fst` +1, `fs` +1 (5.13 "completed contract"), heat −1. Void after load, paused during wind-down, as 8.4.
 - Without a contract, helping against a clan raid pays as 8.5 (50 % of `N_eff`), help +2 and `fst` +1, under the same player-group damage rule.
 - Attack: the convoy turns for the nearest station or portal, wave 1 arrives 20–30 s after the first counted attack and wave 2 at 50 % transport HP. A kill is the richest legitimate prize in the mod (the hold and the escorts' gear drop per engine rules) and costs heat +3, `fst` −3 (at ≤ 2 the faction's traffic turns hostile, 5.9), `fs` −1, and a forced Bust of the region (S41).
 - Watch: in a T3 or T4 region a clan may raid the convoy; the faction's waves answer, and a pirate win feeds the clan's salvage (7.12).
@@ -1524,7 +1518,8 @@ Distances above a few hundred units are guesses until measured (spec). Vanilla r
 | `raid_chance` by danger 0/1/2/3 | 0 / 10 / 20 / 35 % | 0–50 % | per eligible spawn |
 | `contract_raid_chance` | 40 % | 20–60 % | extra roll for a contracted trader |
 | `raid_min_station_dist` | 400 | 200–800 | |
-| `raid_comply_chance` | 50 % | 20–80 % | |
+| `brave_lo` / `brave_hi` | 0.2 / 1.0 | — | trader braveness range, one roll per trader (7.6) |
+| `comply_min` / `comply_max` | 5 / 95 % | 0–100 % | clamp of the raid comply chance (7.6) |
 | `pirate_leave_hp` | 30 % | — | from v0.2 by clan tier: 50 / 40 / 30 / 30 %, carrier 25 % (7.12) |
 | `staged_raid_dis` | 3 | 3–6 | minimum disruption for a staged raid on arrival |
 | `staged_raid_chance` by dis 3 / 4 / 5 / 6 / 7–9 | 25 / 35 / 45 / 55 / 65 % | 0–80 % | once per entry |
@@ -1548,7 +1543,7 @@ Distances above a few hundred units are guesses until measured (spec). Vanilla r
 | heat: counted attack / kill / demand / help / contract | +1 / +1 / +2 / −1 / −1 | — | equipment convoy kill +3 in total (7.15) |
 | heat decay | −1 every 10 legs | 5–20 | |
 | heat tiers | 3 / 5 / 7 | — | refuse+flee, +escort+SOS, group war |
-| escort pay | `min(900 × L_pay, 15000)` | 500–1500 × L_pay | table in 8.4 |
+| escort pay `N_eff` | `min(900 × L_w × lk × tier_k × (1 + 0.05 × pro) × d_k, pay_cap)` | 500–1500 × `L_w` | 8.4 |
 | raid help pay | 50 % of escort pay | — | requires player-group damage |
 | `visit_kill_cap` | 3 | 2–5 | player kills per visit after which no trader spawns for the rest of that visit; resets on the next entry |
 | `L_shortage` | 6 legs | 3–10 | |
@@ -1619,7 +1614,7 @@ Distances above a few hundred units are guesses until measured (spec). Vanilla r
 | `raid_live_cap` | 8 ships | 6–10 | includes carrier |
 | `lr_raid_chance` / `lr_raid_legs` / `lr_raid_max` / range | 50 % / 6 / 2 / 2–3 jumps | 20–80 % / 4–10 / 1–3 / 2–4 | carrier raids |
 | `carrier_arrival_delay` / `launch_interval` / `carrier_waves` | 30–90 s / 60 s / 2 | — | |
-| `carrier_bounty` | `min(1000 × L_pay, 15000)` | — | player-group damage required |
+| `carrier_bounty` | `min(1000 × L_w × lk × d_k, 15000)` | — | player-group damage required; `L_w` of the current system |
 | `salv` gains / `salv_decay` | failed sweep +2, faction flight +1 (max +2 per visit), equipment convoy taken +3 or killed by the player +1 / −1 per 8 legs | — / 4–16 | |
 | salvage stages | 1–3 modules, 4–6 fighters, 7–9 corvette | — | faction rung ≤ 1 only |
 | `fs0` / `fs_pro_legs` / `fs_decay_legs` | 3 / 8 / 12 | 2–4 / 4–16 / 8–20 | faction strength |
@@ -1632,8 +1627,11 @@ Distances above a few hundred units are guesses until measured (spec). Vanilla r
 | `cap_sweep` | 14 ships | 10–16 | faction plus clan |
 | `sweep_part` | 2 kills or `T_deliberate` on 4 ships | — | join contract |
 | `tier_k` / `pay_cap` | 0.75 / 1.0 / 1.5 / 2.0 / 30000 | — | 8.4 |
-| sweep pay / `sweep_escort_mult` | `min(2000 × L_pay × tier_k, pay_cap)` / 3 | — | 8.10 |
-| `po_legs` / `po_intel_cost` | 8 legs / 2000 cr | 4–12 / 0–5000 | 8.11 |
+| `L_w` | `clamp(round(0.8 × sys_base(s)), 3, 16)` | — | world level of the system the payment is for (8.4) |
+| `lk` | `min(1, L_w / 8)` | — | low-level pay damping (8.4) |
+| `d_k` | 1.25 / 1.0 / 0.7 | — | EASY / NORMAL / HARD; every mod credit payment and mod-side price (8.4) |
+| sweep pay / `sweep_escort_mult` | `min(2000 × L_w × lk × tier_k × d_k, pay_cap)` / 3 | — | 8.10 |
+| `po_legs` / `po_intel_cost` | 8 legs / 2000 cr × `d_k` | 4–12 / 0–5000 | 8.11 |
 | `found_dis` / `found_hold` / `found_chance` | 6 / 2 legs / 25 % | 5–8 / 1–4 / 10–50 % | halved with a patrol station |
 | `found_delay` / `found_keep` | 2 legs / 4 | 1–4 / 3–6 | P → A |
 | `max_bases` / `base_cooldown` | 2 / 20 legs | 1–3 / 10–40 | |
@@ -1641,7 +1639,7 @@ Distances above a few hundred units are guesses until measured (spec). Vanilla r
 | `base_patrols` / `base_turrets` / `base_wave` | 2 / 3 / 2 flights at first attack and at 50 % HP | 1–3 / 0–4 / 1–3 | |
 | `base_dis_floor` / `base_nb_floor` | 5 / 2 | 3–7 / 0–3 | at decay |
 | `base_raid_cap` / `base_spawn_offset` | 1 / 60–120 units | 0–2 / 40–200 | |
-| `base_reward_k` / `base_reward_max` | 2500 × `L_pay` × `tier_k` / 30000 | — | 1.5 × under a bounty contract, capped; destruction effects in 7.14 |
+| `base_reward_k` / `base_reward_max` | 2500 × `L_w` × `lk` × `tier_k` × `d_k` / 30000 | — | 1.5 × under a bounty contract, capped; destruction effects in 7.14 |
 | `wreck_legs` | 10 | 5–20 | only if [PB] E2 is negative |
 | `base_abandon_legs` | not set | — | C11, after v1 |
 
@@ -1677,7 +1675,7 @@ Scope:
 - Docking queue, arrival seed, and the entry precedence of 6.5.
 - Raids with demand/comply, fleeing, distress line and nav marker.
 - Staged raids on arrival gated on disruption (S21), with the strict gate, the 180 s window and wind-down.
-- Raid-help pay, in-system escort contract with the `L_pay` table and cap.
+- Raid-help pay, in-system escort contract with the shared pay formula (world level `L_w`, 8.4) and cap.
 - Player-initiated hail with the menu, including "Where are you headed?", rumours and "Where is traffic in trouble?" (S19).
 - Patrol-station work board with the trouble answer (S19), through the `__PatrolStationDock_Ok` wrapper.
 - `trf_<class>` trader shops.
@@ -1708,7 +1706,7 @@ Scope:
 - Faction supply convoys in border systems.
 - Demand cargo.
 - Heat reset at the FTU relation station.
-- XML hail dialog if 13.5 confirms that a new dialog file and plain loc keys work.
+- XML hail dialog if 13.5 confirms that a new dialog file and plain loc keys work. Stage A implemented (tune `hail_box` 2, `mod-research/hail-dialog.md`), checks D1-D10 pending in game.
 - Full EN and RU localisation, complete deny list from a campaign pass, tuning pass on section 11.
 - Clan tiers T3–T4 (S27), carrier raids (S31), salvage (S36), carrier items of S29.
 - Faction strength and tech ladder (S32), on-screen sweeps (S33), sweep contracts (S34), pirate-side offers (S35), TT4 convoys (S30) with bands 8–9 (spawn factor 1.75 and 2.0, 5 flights, 20 ships, convoys of 3–4 transports and 4–6 escorts).
@@ -1805,7 +1803,7 @@ Each item says what depends on it and the fallback if scripts alone cannot do it
 |---|---|---|
 | Can `CombineStr` join a loc key with a system or ship name, or two keys? | Focus line, rumours, trouble answer (8.2) | Pre-built keys, cargo and direction only; the trouble answer names one system with a per-severity key |
 | Does a new plain-text `.loc` file load, in EN and RU? | All new text | Put keys in a folder whose keys are plain text |
-| Can a new dialog XML in `Scripts/Trade/` use plain text without the DYNAMIC/STANDARD header problem? | XML hail menu | `ShowMsgBox` chain |
+| Can a new dialog XML in `Scripts/Trade/` use plain text without the DYNAMIC/STANDARD header problem? Static analysis says yes (`mod-research/hail-dialog.md`); stage A implemented (`TRF_Hail.xml`, tune `hail_box` 2), checks D1-D10 pending in game | XML hail menu | `ShowMsgBox` chain (`hail_box` 1, also the automatic fallback) |
 | How should the player start a hail: focus plus proximity, a re-armed proximity box, or a key binding (byte patch)? | Hail | Focus plus proximity, else one proximity box per trader |
 | Are system display names available as loc keys? | Rumours, focus line, trouble answer | Author name keys |
 | Do about 110 new `News.xml` records (per-sector cycle, sweep, salvage and base posts, global equipment convoy posts, 8.9) load with EN and RU loc, and does `RemovePost` per sector topic work? | Sector news for both sides (S26) | Fewer, global posts; the booming and trouble answers carry the system detail |
@@ -1817,7 +1815,7 @@ Each item says what depends on it and the fallback if scripts alone cannot do it
 | What triggers the 8x→4x fallback (ship count, frame time, script load)? Can it be read? | Caps, governor | Caps and the 8x rule |
 | Does "enemy detected" autopause fire for groups neutral to the player, or for pirates hostile to the player but fighting traders? | Raids, staged raids on arrival | Raids only beyond 1000 units or in danger ≥ 2; staged raids placed beyond 1000 units |
 | Does `ComeToTradeStation` on an NPC carcass stop at the dock point? It is registered and usable on carcasses; NPC docking is visual plus bookkeeping [MO 2, 7 Q7] | Docking visuals | Removal at the approach point |
-| Do destroyed traders drop inventory as pick-up modules, and how much of the escorts' fitted gear drops? Expected from `AI.ini`: 60 % of the inventory is destroyed and the rest drops [MO 2]; confirm in game | Loot, tier holds (S40), equipment convoys (7.15) | Script-side containers to the player group (the engine reports no killer, 13.2) |
+| Do destroyed traders drop inventory as pick-up modules, and how much of the escorts' fitted gear drops? Expected from `AI.ini`: 40 % of the inventory is destroyed and the rest drops (`G/AI/AI.ini:219` `PercentToExcludeInventory = 40;25;40`, comment line 218 "inventory destroyed on explosion, percent"; 60 % is the installed-equipment value `PercentToExclude = 60;80`, line 217) [MO 2]; confirm in game, including which of the three values applies | Loot, tier holds (S40), equipment convoys (7.15) | Script-side containers to the player group (the engine reports no killer, 13.2) |
 | Does `ModuleGoodsState` on an unstocked item create a visible entry, and does the buy coefficient apply when the player sells that item? Vanilla precedent: count-0 entries on black markets (1.4) | Shortage | Shortage shown only as a rumour and news |
 | Does `UpdateTradeSystem(TRUE)` after edits persist correctly? | Trader shops, restore | Test on a throwaway shop |
 | Can `SetHP` be applied right after spawn, and does it survive the formation setup? | Chase arrival, staged raid trader | Fewer escorts and a damaged flag |
@@ -1918,7 +1916,7 @@ Ideas taken from the other proposals:
 Corrections applied (all re-checked against the game files):
 1. 113 systems, not 114. `Locations` has 113 directories plus `_template_`. `Location_SideList` has 114 keys because of the alias `kadenoa_tri`. `GlobalMap.xml` has 110 records; `disonsphere`, `earth` and `precursors` are missing.
 2. `Quests.xml` coverage: 89 of 113 systems are named (case-insensitive), 24 are not (list in 9.9). The earlier "95 of 114, 19 not named" counted case variants twice.
-3. `GetPlayerLevel()` is a 1-based hull index (0 for unlisted hulls), not a power scale. The extortion level is 0 for indices 0, 1 and 3 and at most 16+RAND(4). The escort pay formula now uses the `L_pay` table and a 15000 cr cap.
+3. `GetPlayerLevel()` is a 1-based hull index (0 for unlisted hulls), not a power scale. The extortion level is 0 for indices 0, 1 and 3 and at most 16+RAND(4). The escort pay formula then used a hull table (`L_pay`) and a 15000 cr cap; since 2026-10-21 it uses the world level `L_w` (8.4).
 4. Pay versus mean extortion demand is `6/(L+1)`, not a fixed half.
 5. Pirates start neutral to the player; Triada and Merc are neutral to everyone, including Pirates; Hunter starts neutral to the player.
 6. `_FTrader_exclude`: 229 call lines in 156 files outside its definition file, 6 of them under `Locations/`. `DisableRandom`: 13 files, 12 in Quests.
@@ -1953,7 +1951,7 @@ Changed:
 Open:
 - Whether containers can be sold at all (13.6). Shortage pricing, trader shop containers and demand cargo depend on it.
 - Feel target 1 (a ship with a job within 60 s) depends on the arrival seed, which is scheduled for v0.2; v0.1 cannot meet it in systems with long generator intervals.
-- Escort pay (8.4) does not scale with difficulty; shop prices do. Decide whether `L_pay` pay should follow the difficulty coefficients.
+- Decided 2026-10-21: escort pay (8.4) and every other mod payment and mod-side price follow the difficulty through `d_k` (1.25 / 1.0 / 0.7); see the 2026-10-21 entry below.
 - Being tracked on focus (5.4) may fill the 16-record pool with traders the player only glanced at; the eviction rule handles it, but whether focus alone should track is a tuning question.
 - `station_closed` is authored statically; whether any `activate.script` picks the docking type from quest labels was not checked.
 - Not re-verified in this pass: `_FTrader_exclude` per-file split, the 10 quest files that edit shops, the `DialogTrader1..17` count, `Data/Scripts/Trade/*.xml` header behaviour, and the `[PN]` and `[PA]` claims, which come from outside the game files.
@@ -2009,7 +2007,7 @@ Model sanity (one region walked through 6.9 at `cyc_k` 1.0; every phase has a ma
 - Staged raids at T3/T4: "threshold − 1" gave threshold 2 but the 7.6 chance table is 0 at dis 2; the chance is now read at `dis` + 1.
 - Kill cap: 6.7 v0.1 column "—" → 0, as M8 (v0.1) requires.
 - Pirate-side offers: the paid-raid and convoy-intelligence traders (TT3/TT4) contradicted the heat tier cap (heat ≥ 5 → TT2); the offer targets are now exempt from that cap only.
-- Base reward: `base_reward_k × L_pay` → `base_reward_k × L_pay × tier_k` (rule 6: contract pay scales with real tier).
+- Base reward: `base_reward_k × L_pay` → `base_reward_k × L_pay × tier_k` (rule 6: contract pay scales with real tier). Superseded 2026-10-21: `L_w × lk × tier_k × d_k`.
 - Convoy escort during a sweep now gives `fs` +1, matching "+1 per completed contract" in 5.13.
 
 Cross-references and labels:
@@ -2112,3 +2110,13 @@ Open:
 - Whether the include runs last, whether native globals can be overridden, and what `TM+0x28` does while paused are [MO] 7 Q8, Q2 and Q3; experiment 1 answers them.
 - The `TRF` size estimate (about 700 values) is counted, not measured ([MO] experiment 2).
 - Whether object-handle tables in the visit table could be kept across a load is not needed by the design; `_CLASS.trf_v` is never saved.
+
+2026-10-21: pay basis changed to the world level `L_w`, difficulty factor `d_k`, low-level damping `lk` (decided by the user).
+
+Reason: pay should reflect the danger of the job, not the hull flown; nothing in the design reads the player's level (W10). The 14 planned worldbuilding features (`design/worldbuilding/`) pay on `L_w`, and traffic pays the same contracts on the same scale. Pirate-farm income grows faster than linearly in L (about 5,000 / 12,000 / 30,000 cr per level point at L 4 / 10 / 15), so a linear payment was about 6 times as generous relative to farming early as late; `lk` brings the early stage under the farm and leaves `L_w` ≥ 8 unchanged. The open question on difficulty scaling (review notes) is closed with `d_k`.
+
+Changed:
+- 8.4: hull table keyed on `GetPlayerLevel()` (`L_pay`) and the step `min(900 × L_pay, 15000)` removed; `L_w(s) = clamp(round(0.8 × sys_base(s)), 3, 16)`; shared formula `N_eff = min(900 × L_w × lk × tier_k × (1 + 0.05 × pro) × d_k, pay_cap)`; `d_k` 1.25 / 1.0 / 0.7 on every mod payment and mod-side price, trader-shop prices unchanged. The extortion-demand comparison (`6/(L+1)`) is dropped because `L_w` is not the extortion level.
+- 7.14 and 11 base reward, 8.10 and 11 sweep pay, 11 `carrier_bounty`: `L_pay` → `L_w × lk × d_k` of the system the payment is for. 8.11 and 11 `po_intel_cost` × `d_k`. 8.14 cap example recomputed (NORMAL from `L_w` 8). 8.13 payouts index notes `d_k`.
+- 8.6 demand cargo: offered whenever heat < 7, without the `L_pay` ≥ trader strength check. 8.7 response table: "hull level before v1".
+- 4 S7 and W10, 12 v0.2 scope, corrections list item 3: wording. 11: rows `L_w`, `lk`, `d_k`; escort pay row.

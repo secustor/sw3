@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Dialog xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="D:\_Work\SW3\Data\XMLSchema\Dialogs.xsd">
+    <start_message_name>msg00</start_message_name>
+    <DialogMessage name="msg00">
+        <message>FTU #who#: #head#</message>
+        <pilot_name>Trader</pilot_name>
+        <sound_name />
+        <DialogAnswer name="a_trade">
+            <answer>Trade</answer>
+            <lua_function>TRF_HlDlgA_trade</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_head">
+            <answer>Where are you headed?</answer>
+            <lua_function>TRF_HlDlgA_head</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_news">
+            <answer>Any news?</answer>
+            <lua_function>TRF_HlDlgA_news</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_esc">
+            <answer>Need an escort?</answer>
+            <lua_function>TRF_HlDlgA_esc</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_demand">
+            <answer>Drop some of your cargo</answer>
+            <lua_function>TRF_HlDlgA_demand</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_p1">
+            <answer>- #p1#</answer>
+            <lua_function>TRF_HlDlgA_p1</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_p2">
+            <answer>- #p2#</answer>
+            <lua_function>TRF_HlDlgA_p2</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_p3">
+            <answer>- #p3#</answer>
+            <lua_function>TRF_HlDlgA_p3</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_p4">
+            <answer>- #p4#</answer>
+            <lua_function>TRF_HlDlgA_p4</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_p5">
+            <answer>- #p5#</answer>
+            <lua_function>TRF_HlDlgA_p5</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_sweep">
+            <answer>Any work against the pirates?</answer>
+            <lua_function>TRF_HlDlgA_sweep</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_trouble">
+            <answer>Where is traffic in trouble?</answer>
+            <lua_function>TRF_HlDlgA_trouble</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_boom">
+            <answer>Where is trade booming?</answer>
+            <lua_function>TRF_HlDlgA_boom</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_close">
+            <answer>Nothing, carry on</answer>
+            <lua_function>TRF_HlDlgA_close</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+    </DialogMessage>
+</Dialog>
+

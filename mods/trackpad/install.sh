@@ -5,6 +5,8 @@
 #   gestures  zlib1.dll proxy + aarch64-unix/sw3tp.so + sw3tp.ini + Data/GUI/trackpad.cfg
 # Re-running upgrades in place. Every file it replaces is backed up to <game dir>/sw3tp-backup/,
 # and every file it creates is listed in sw3tp-backup/manifest.txt; uninstall.sh reverts both.
+# A proxy installed by the sw3-performance display step is taken over. The [display] section of an
+# installed sw3tp.ini is kept (written by sw3-performance; mode=off if there is none).
 set -eu
 EXE_SHA1=57420a056f63a869148556dd978e5e2478e7ba2d     # sw3cw.exe, GOG v1.12
 ZLIB_SHA1=95af663e40106b5c7b116c250816af15df3c5409    # zlib1.dll shipped with it
@@ -50,10 +52,14 @@ s=$(sha1 "$game/sw3cw.exe")
 [ "$s" = "$EXE_SHA1" ] || die "sw3cw.exe SHA-1 is $s, expected $EXE_SHA1 (GOG v1.12). Other builds are not supported. Nothing changed."
 if pgrep -f 'sw3cw\.exe' >/dev/null 2>&1; then die "sw3cw.exe is running; quit the game first"; fi
 bk=$game/sw3tp-backup; man=$bk/manifest.txt
-zmode=skip
+pfman=$game/sw3-performance-backup/manifest.txt
+zmode=skip; adopt=0
 if [ "$gestures" = 1 ]; then
     if [ -f "$game/zlib1_orig.dll" ]; then
-        [ -f "$man" ] || die "zlib1_orig.dll exists but $man does not (not installed by this script). Nothing changed."
+        if [ ! -f "$man" ] || ! grep -qxF "created zlib1_orig.dll" "$man"; then
+            { [ -f "$pfman" ] && grep -q '^proxy ' "$pfman"; } || die "zlib1_orig.dll exists but $man does not list it (not installed by this script). Nothing changed."
+            adopt=1
+        fi
         s=$(sha1 "$game/zlib1_orig.dll")
         [ "$s" = "$ZLIB_SHA1" ] || die "zlib1_orig.dll SHA-1 is $s, expected $ZLIB_SHA1. Nothing changed."
         grep -q zlib1_orig "$game/zlib1.dll" 2>/dev/null || die "zlib1.dll is not the sw3tp proxy. Nothing changed."
@@ -117,13 +123,28 @@ if [ "$gestures" = 1 ]; then
         prep zlib1.dll; prep zlib1_orig.dll
         mv "$game/zlib1.dll" "$game/zlib1_orig.dll"
         say "renamed zlib1.dll -> zlib1_orig.dll"
+    elif [ "$adopt" = 1 ]; then
+        # Proxy from sw3-performance: zlib1_orig.dll (SHA-1 checked) is the original zlib1.dll.
+        cp -p "$game/zlib1_orig.dll" "$bk/files/zlib1.dll"; rec "backup zlib1.dll"; rec "created zlib1_orig.dll"
+        grep -qxF "file sw3tp.ini $game/sw3tp.ini" "$pfman" && rec "created sw3tp.ini"
+        say "took over the sw3tp proxy installed by sw3-performance"
     fi
     put "$dll" zlib1.dll
     if [ ! -d "$game/aarch64-unix" ]; then mkdir "$game/aarch64-unix"; rec "dir aarch64-unix"; fi
     put "$so" aarch64-unix/sw3tp.so
-    if [ -f "$game/sw3tp.ini" ] && grep -qxF "created sw3tp.ini" "$man" && ! cmp -s "$ini" "$game/sw3tp.ini"; then
+    # sw3tp.ini: this release's file, with the installed [display] section (else the shipped one, else mode=off).
+    nodsp() { awk '{l=$0; sub(/\r$/,"",l)} l=="[display]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$1"; }
+    dsp() { awk '{l=$0; sub(/\r$/,"",l)} l=="[display]"{p=1} p&&/^\[/&&l!="[display]"{p=0} p{print}' "$1"; }
+    new=$bk/sw3tp.ini.new; old=$bk/sw3tp.ini.old
+    nodsp "$ini" > "$new"
+    if [ -f "$game/sw3tp.ini" ] && [ -n "$(dsp "$game/sw3tp.ini")" ]; then dsp "$game/sw3tp.ini" >> "$new"
+    elif [ -n "$(dsp "$ini")" ]; then dsp "$ini" >> "$new"
+    else printf '[display]\r\nmode=off\r\n' >> "$new"; fi
+    [ ! -f "$game/sw3tp.ini" ] || nodsp "$game/sw3tp.ini" > "$old"
+    if [ "$adopt" = 0 ] && [ -f "$game/sw3tp.ini" ] && grep -qxF "created sw3tp.ini" "$man" && ! nodsp "$ini" | cmp -s - "$old"; then
         say "kept sw3tp.ini (edited; the defaults of this release are in $ini)"
-    else put "$ini" sw3tp.ini; fi
+    else put "$new" sw3tp.ini; fi
+    rm -f "$new" "$old"
     if [ -f "$game/$guirel/trackpad.cfg" ] && ! cmp -s "$cfg" "$game/$guirel/trackpad.cfg" && grep -qxF "created $guirel/trackpad.cfg" "$man"; then
         cp -p "$game/$guirel/trackpad.cfg" "$bk/trackpad.cfg.prev"; say "previous trackpad.cfg saved to sw3tp-backup/trackpad.cfg.prev"
     fi

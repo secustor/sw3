@@ -1,0 +1,91 @@
+-- E0.1 hooks and natives alive (mod-options section 7, experiment 1).
+-- Logs from top level, from every callback with counters, and once per real second from OnTick.
+-- State: TRF.exp.hooks (numbers only).
+
+-- logfmt event line, module=exp kit=hooks (design/log-format.md).
+function TRF_HkE(event, ...)
+	tinsert(arg, 1, "hooks"); tinsert(arg, 1, "kit"); tinsert(arg, 1, event); tinsert(arg, 1, "exp"); call(TRF_Lf, arg);
+end;
+
+-- Native values and types as key, value pairs (spliced last into a TRF_HkE call).
+function TRF_H_Natives()
+	return "version", TRF_N("TRF_Version"), "native_game_time", TRF_F(TRF_N("TRF_GameTime")),
+		"native_real_time", TRF_F(TRF_N("TRF_RealTime")), "log_type", type(TRF_Log), "version_type", type(TRF_Version),
+		"game_time_type", type(TRF_GameTime), "real_time_type", type(TRF_RealTime);
+end;
+
+-- x87 precision control. 2^24 + 1 needs 25 mantissa bits: 16777217.0 at 53/64-bit precision,
+-- 16777216.0 at 24-bit. 1/3 shows 0.33333333333333331 at 53/64-bit, 0.3333333432674408 at 24-bit.
+-- (The 16777217 + 1 of mod-options 7.1 cannot tell them apart: 16777218 = 2^24 + 2 fits in 24 bits.)
+-- The operands come from locals so the sum is computed when this runs, not when the chunk is parsed.
+function TRF_H_Precision(where)
+	local a = 16777216;
+	local b = 1;
+	local c = 3;
+	TRF_HkE("x87", "where", where, "sum_2_24_plus_1", format("%.1f", a + b), "one_third", format("%.17g", b / c));
+end;
+
+-- Callback counters and locations as key, value pairs (spliced last into a TRF_HkE call).
+function TRF_H_CntWhere()
+	local c = TRF.exp.cnt or {};
+	return "enter_count", c.enter or 0, "activate_count", c.activate or 0, "load_count", c.load or 0, "jump_count", c.jump or 0,
+		"location", TRF_N("GetCurrentLocation"), "last_location", TRF_N("GetLastLocation");
+end;
+
+function TRF_H_State()
+	if type(TRF.exp.hooks) ~= "table" then
+		TRF.exp.hooks = {acc=0, ticks=0, sum_game=0, sum_real=0, prec=0};
+	end;
+	return TRF.exp.hooks;
+end;
+
+function TRF_Exp_Init(w, map_ok)
+	TRF_HkE("init", "function", "TeleportToLocation", "type_before", w.tp_before, "type_after", w.tp_after,
+		"new_wrap", TRF_KvB(w.tp_new), "wrapped", TRF_KvB(w.tp_wrapped));
+	TRF_HkE("init", "function", "CustomTeleportate", "type_before", w.ct_before, "type_after", w.ct_after,
+		"new_wrap", TRF_KvB(w.ct_new), "wrapped", TRF_KvB(w.ct_wrapped));
+	TRF_HkE("init", "map", TRF_KvB(map_ok), TRF_H_Natives());
+	TRF_H_Precision("load");
+end;
+
+function TRF_Exp_OnEnter(fresh)
+	local h = TRF_H_State();
+	TRF_HkE("enter", "fresh", TRF_KvB(fresh), "generation", TRF.gen, TRF_H_CntWhere());
+	TRF_HkE("enter_natives", TRF_H_Natives());
+	if h.prec == 0 then
+		h.prec = 1;
+		TRF_H_Precision("first_enter");
+	end;
+end;
+
+function TRF_Exp_OnActivate(fresh)
+	TRF_HkE("activate", "fresh", TRF_KvB(fresh), TRF_H_CntWhere());
+end;
+
+function TRF_Exp_OnLoad(fresh)
+	TRF_HkE("load", "fresh", TRF_KvB(fresh), "generation", TRF.gen, TRF_H_CntWhere());
+	TRF_HkE("load_natives", TRF_H_Natives());
+end;
+
+-- Logs once per real second: the last deltas, their sums over that second, and the native clocks.
+-- Pass: sum_game reads 0 while the game is paused.
+function TRF_Exp_OnTick(dg, dr)
+	local h = TRF_H_State();
+	h.ticks = h.ticks + 1;
+	h.sum_game = h.sum_game + dg;
+	h.sum_real = h.sum_real + dr;
+	h.acc = h.acc + dr;
+	if h.acc < 1 then return; end;
+	TRF_HkE("tick", "tick_count", h.ticks, "dt_game", TRF_F(dg), "dt_real", TRF_F(dr), "sum_game", TRF_F(h.sum_game),
+		"sum_real", TRF_F(h.sum_real), "native_game_time", TRF_F(TRF_N("TRF_GameTime")),
+		"native_real_time", TRF_F(TRF_N("TRF_RealTime")), "game_time", TRF_F(TRF.clock.gt));
+	h.acc = 0;
+	h.sum_game = 0;
+	h.sum_real = 0;
+end;
+
+function TRF_Exp_BeforeJump(dest)
+	TRF_HkE("before_jump", "destination", dest, TRF_H_CntWhere());
+end;
+
+TRF_HkE("top_level_load");

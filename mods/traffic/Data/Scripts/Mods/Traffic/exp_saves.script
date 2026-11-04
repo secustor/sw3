@@ -1,0 +1,223 @@
+-- Baseline save kit (config autosave=1 or 2). traffic.script loads this file whenever autosave is set,
+-- whatever exp is. On OnActivate of a system that has no save yet it arms a one-shot timer trigger; when
+-- the timer fires it calls the game's AutoSave native with "TRF E0 <system>". README "Baseline saves".
+-- AutoSave(text) (native 0x5e6ff0): returns at once unless the profile option autosaveOn (profile.info
+-- AUTOSAVEON, Game+0x290 -> +0x14 -> +0x5c) is set. The text goes through LocalizationManager::GetString,
+-- which returns text that does not start with '#' unchanged, so free text works (the developers' own
+-- include/AutoTest2.script calls AutoSave('System_'..name)). The file name is "<#UI_AutoSave> - <text>"
+-- ("Autosave - TRF E0 gredos.sav"); the same text overwrites the same file. The native calls
+-- SaveManager::SaveGame synchronously (no deferred flag), so it must not run while the location is still
+-- loading: OnActivate only arms the timer, the save happens from the trigger action, as the quest scripts
+-- do (Timer_Seq callbacks, trigger actions, dialog callbacks).
+-- Guards: no save in the first system this TRF has seen (cnt.enter < 2: a new game's first system holds
+-- the scripted intro, and E0.2 wants a save after a jump), none during mission 1 (quest label
+-- CurrentQuest is unset until mission_2's ACTION_INIT sets "2"; autosave=2 skips this guard), at most
+-- cap saved systems. The record travels in TRF, so the cap holds per playthrough, not only per session.
+-- Cutscenes: every mission movie calls _FTrader_exclude() (include/RandomContacts.script), which only sets
+-- __sys_SOS = TRUE; _FTrader_include() sets it FALSE again; DisableRandom() sets __disableAction = TRUE. A
+-- save written during a movie keeps the movie only as an object reference: the action the movie attached
+-- (AttachAction) is not restored on load, so the mission step it starts never runs. Seen in Gredos,
+-- chapter 2 (mission_2 TradersLife.script: EntranceGredos -> Anim_1, a 22.3 s movie whose action
+-- GoTo_Station_1 never ran after loading the save made at 20 s). So the fire defers while either flag is
+-- TRUE, while a movie plays (TRF_Saves_InMovie), or while TRF_UiState reports a modal window or an open
+-- XML dialog (re-armed after delay s, at most retries times, then st=3), and saves only when all of them
+-- are clear at two fires quiet s apart (e.q = clock.gt at the first; any of them up again clears e.q).
+-- Movie and UI reads: natives TRF_InMovie / TRF_UiState (traffic.c, design/mod-research/movie-state.md),
+-- -1 when their byte check failed; without them the game's MovieIsPlaying() (same MovieManager field).
+-- State: TRF.exp.saves[<lowercase system>] = {st=1 armed | 2 saved | 3 gave up, gen=<TRF.gen when armed>,
+-- key=<text>, try=<deferred fires>, q=<clock.gt of the first clear fire>}. A later visit arms st=3 again.
+-- Trigger lifetime: a fired timer trigger stays in the trigger list and in the save (it is never deleted
+-- by the engine; a save showed two TRF_Saves_Fire(7) entries, one per arm), so each fire reuses its own
+-- trigger (GetTriggerContext(), SetTime, Activate: RandomContacts.script trigger_generator_Action) and
+-- deletes it when the entry ends (saved, gave up, stale, cap): ctx:Delete(), as trigger_exit_point_Action.
+-- NewTrigger only for the first arm (OnActivate) and when no context is available.
+
+function TRF_Saves_Opt()
+	return {delay=20, cap=6, quiet=10, retries=45};
+end;
+
+-- Mod game clock (traffic.script TRF_OnTick; trf_safety.script is not loaded for every exp).
+function TRF_Saves_Gt()
+	if type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+-- One-shot timer for entry e after secs: re-arms trigger t (the firing one) when given, else a new one.
+-- String action: the engine appends "();", the comment hides it (fact 1.14).
+function TRF_Saves_Arm(e, secs, t)
+	if t then
+		t:SetTime(secs);
+		t:Activate();
+		return t;
+	end;
+	return NewTrigger("timer", nil, "TRF_Saves_Fire("..e.gen..")--", secs);
+end;
+
+-- The trigger whose action runs now, or nil. GetTriggerContext() reads the engine's current trigger, so
+-- it also works below TRF_Cb's call() (trf_gen.script TRF_GenVanillaOne runs the vanilla action that way).
+function TRF_Saves_Ctx()
+	if type(GetTriggerContext) ~= "function" then return nil; end;
+	return GetTriggerContext();
+end;
+
+-- The entry of trigger t ended: delete t so it neither stays in the save nor fires again after a load.
+function TRF_Saves_End(t)
+	if t then t:Delete(); end;
+end;
+
+function TRF_Saves_Tab()
+	if type(TRF.exp.saves) ~= "table" then TRF.exp.saves = {}; end;
+	return TRF.exp.saves;
+end;
+
+-- GetCurrentLocation() is the system's script name (LocationManager+0x2c, also the save header's location).
+function TRF_Saves_Sys()
+	local s = TRF_N("GetCurrentLocation");
+	if type(s) ~= "string" or s == "" then return nil; end;
+	return strlower(s);
+end;
+
+function TRF_Saves_Done()
+	local n = 0;
+	for k, v in TRF_Saves_Tab() do
+		if type(v) == "table" and v.st == 2 then n = n + 1; end;
+	end;
+	return n;
+end;
+
+-- logfmt event line, module=exp kit=saves (design/log-format.md).
+function TRF_SavesE(event, ...)
+	tinsert(arg, 1, "saves"); tinsert(arg, 1, "kit"); tinsert(arg, 1, event); tinsert(arg, 1, "exp"); call(TRF_Lf, arg);
+end;
+
+-- Reason not to arm a save for sys (snake_case log value), or nil.
+function TRF_Saves_Block(sys)
+	if not sys then return "no_location"; end;
+	local e = TRF_Saves_Tab()[sys];
+	if type(e) == "table" and e.st == 2 then return "already_saved"; end;
+	if TRF_Saves_Done() >= TRF_Saves_Opt().cap then return "cap_reached"; end;
+	local c = TRF.exp.cnt or {};
+	if (c.enter or 0) < 2 then return "first_system"; end;
+	-- GetQuestLabel pushes nil for a label that was never set (AutoTest2.script tests "== nil").
+	if TRF_Cfg().autosave ~= 2 and TRF_N("GetQuestLabel", "CurrentQuest") == nil then return "mission_1_current_quest_unset"; end;
+	return nil;
+end;
+
+-- Called by traffic.script's TRF_OnActivate. A system armed earlier whose timer never fired (jump
+-- within the delay, or a load) is armed again with the current gen.
+function TRF_Saves_OnActivate(fresh)
+	local sys = TRF_Saves_Sys();
+	local why = TRF_Saves_Block(sys);
+	if why then
+		local c = TRF.exp.cnt or {};
+		TRF_SavesE("skip", "system", sys, "reason", why, "enter_count", c.enter or 0, "cap", TRF_Saves_Opt().cap);
+		return;
+	end;
+	if type(NewTrigger) ~= "function" then
+		TRF_SavesE("skip", "system", sys, "reason", "new_trigger_missing");
+		return;
+	end;
+	local o = TRF_Saves_Opt();
+	local e = {st=1, gen=TRF.gen, key="TRF E0 "..sys};
+	TRF_Saves_Tab()[sys] = e;
+	local t = TRF_Saves_Arm(e, o.delay);
+	TRF_SavesE("armed", "system", sys, "delay", o.delay, "generation", e.gen, "timer", TRF_KvB(t and 1));
+end;
+
+-- 1 while a movie plays, else nil. TRF_InMovie returns 1/0, or -1 (unknown) when its byte check failed;
+-- missing or -1 falls back to MovieIsPlaying() (pushes 1/0; it also counts main-menu movies).
+function TRF_Saves_InMovie()
+	if type(TRF_InMovie) == "function" then
+		local m = TRF_InMovie();
+		if m == 1 then return 1; end;
+		if m == 0 then return nil; end;
+	end;
+	if type(MovieIsPlaying) == "function" and MovieIsPlaying() == TRUE then return 1; end;
+	return nil;
+end;
+
+-- TRF_UiState() flags when one blocks a save (2 modal window on top, 4 XML dialog open, 1 movie), else nil.
+-- Missing native or -1 (unknown): nil.
+function TRF_Saves_Ui()
+	if type(TRF_UiState) ~= "function" then return nil; end;
+	local u = TRF_UiState();
+	if type(u) == "number" and u > 0 then return u; end;
+	return nil;
+end;
+
+-- Timer action. A timer from an older gen (restored from a save, or left over from another system)
+-- or one that fires during a jump does nothing.
+-- Trigger entry point (review O1): runs TRF_Saves_Fire_Body protected.
+function TRF_Saves_Fire(gen) TRF_Cb("TRF_Saves_Fire", TRF_Saves_Fire_Body, {gen}); end;
+
+function TRF_Saves_Fire_Body(gen)
+	local t = TRF_Saves_Ctx();
+	if type(TRF) ~= "table" then TRF_Saves_End(t); return; end;
+	TRF_Init();
+	local sys = TRF_Saves_Sys();
+	local e = nil;
+	if sys then e = TRF_Saves_Tab()[sys]; end;
+	if not TRF.active or gen ~= TRF.gen or type(e) ~= "table" or e.st ~= 1 or e.gen ~= gen then
+		TRF_SavesE("stale_timer", "system", sys, "generation", gen, "current_generation", TRF.gen, "active", TRF_KvB(TRF.active));
+		TRF_Saves_End(t);
+		return;
+	end;
+	if TRF_Saves_Done() >= TRF_Saves_Opt().cap then
+		TRF_SavesE("skip", "system", sys, "reason", "cap_reached");
+		TRF_Saves_End(t);
+		return;
+	end;
+	local o = TRF_Saves_Opt();
+	local gt = TRF_Saves_Gt();
+	local mov = TRF_Saves_InMovie();
+	local ui = TRF_Saves_Ui();
+	if __sys_SOS == TRUE or __disableAction == TRUE or mov or ui then
+		e.q = nil;
+		e.try = (e.try or 0) + 1;
+		local sos, dis = TRF_KvB(__sys_SOS), TRF_KvB(__disableAction);
+		if e.try > o.retries then
+			e.st = 3;
+			TRF_SavesE("gave_up", "system", sys, "sos", sos, "disable_action", dis, "movie", TRF_KvB(mov), "ui_state", ui,
+				"retries", o.retries);
+			TRF_Saves_End(t);
+			return;
+		end;
+		TRF_Saves_Arm(e, o.delay, t);
+		if e.try == 1 or e.try == o.retries or e.try == 5 * floor(e.try / 5) then
+			TRF_SavesE("deferred", "system", sys, "sos", sos, "disable_action", dis, "movie", TRF_KvB(mov), "ui_state", ui,
+				"retry", e.try, "retries", o.retries);
+		end;
+		return;
+	end;
+	if type(e.q) ~= "number" then
+		e.q = gt;
+		TRF_Saves_Arm(e, o.quiet, t);
+		TRF_SavesE("quiet", "system", sys, "quiet", o.quiet, "game_time", TRF_F(gt));
+		return;
+	end;
+	if gt - e.q < o.quiet then
+		-- Clock behind the timer (no ticks): wait once more, counted as a retry.
+		e.try = (e.try or 0) + 1;
+		if e.try > o.retries then
+			e.st = 3;
+			TRF_SavesE("gave_up", "system", sys, "reason", "quiet", "quiet_elapsed", TRF_F(gt - e.q), "retries", o.retries);
+			TRF_Saves_End(t);
+			return;
+		end;
+		TRF_Saves_Arm(e, o.quiet, t);
+		TRF_SavesE("quiet", "system", sys, "quiet", o.quiet, "quiet_elapsed", TRF_F(gt - e.q), "retry", e.try, "retries", o.retries);
+		return;
+	end;
+	-- Marked before the call so the save itself records the system as done; the trigger is deleted before
+	-- it too, so the save does not list it.
+	e.st = 2;
+	TRF_Saves_End(t);
+	TRF_SavesE("autosave", "system", sys, "key", e.key);
+	if type(AutoSave) ~= "function" then
+		TRF_SavesE("autosave", "system", sys, "result", "auto_save_missing");
+		return;
+	end;
+	AutoSave(e.key);
+end;
+
+TRF_SavesE("top_level_load");

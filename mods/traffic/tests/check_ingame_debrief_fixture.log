@@ -1,0 +1,60 @@
+traffic: lua: exp=v1 module=state event=enter generation=1 fresh=false system=altair legs=30
+traffic: lua: exp=v1 module=safety event=activate system=altair mode=mod reason=nil chapter=5 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=debrief event=points at=entry pilot=Hero points=10.000
+traffic: lua: exp=v1 module=debrief event=dump on=1 xp=1 gate=1 dialog=1 chapter=5 stamp=nil pool_left=nil pending=nil refill_due=nil step=0 done=0 xp_each=1.8
+traffic: lua: exp=v1 module=charter event=pay slot=1 type=lanes region=5 amount=1000 rank=0 rank_points=1 help=1 real_seconds=0
+traffic: lua: exp=v1 module=debrief event=settle kind=charter system=altair result=none reason=closed
+traffic: lua: exp=v1 module=plumb event=settle kind=charter system=altair amount=1000 handler_count=1
+traffic: lua: exp=v1 module=debrief event=dialog dialog=1 via=dock result=opened
+traffic: lua: exp=v1 module=debrief event=offer system=altair help=4 postings=1 result=shown via=dialog
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=2 box=db priority=420 result=box
+traffic: lua: exp=v1 module=debrief event=dialog dialog=1 via=dock answer=acc result=done
+traffic: lua: exp=v1 module=plumb event=iq quest=2 step=1 target=0 count=0 result=taken reason=nil
+traffic: lua: exp=v1 module=debrief event=accept system=altair leg=30 result=ok
+traffic: lua: exp=v1 module=debrief event=logbook list=mission id=trf_db text=#TRF_dbd10 quest_state_before=0 quest_state_after=0 result=added
+traffic: lua: exp=v1 module=state event=save
+traffic: lua: exp=v1 module=state event=load generation=2 fresh=false system=altair legs=30
+traffic: lua: exp=v1 module=state event=enter generation=3 fresh=false system=taira legs=31
+traffic: lua: exp=v1 module=safety event=activate system=taira mode=mod reason=nil chapter=5 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=debrief event=points at=entry pilot=Hero points=10.000
+traffic: lua: exp=v1 module=parcel event=deliver kind=2 source=altair destination=taira units=3 units_found=3 pay=14400 paid=14400 held=0 deposit_back=4320 help_change=1 visit_credit=4 shortage_ended=true ok_count=1
+traffic: lua: exp=v1 module=debrief event=count kind=parcel system=taira amount=14400 result=counted
+traffic: lua: exp=v1 module=debrief event=step step_before=10 step_after=20 reason=count
+traffic: lua: exp=v1 module=plumb event=settle kind=parcel system=taira amount=14400 handler_count=1
+traffic: lua: exp=v1 module=debrief event=talk dialog=2 result=pending
+traffic: lua: exp=v1 module=debrief event=dialog dialog=2 via=dock result=opened
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=3 box=db_talk priority=455 result=box
+traffic: lua: exp=v1 module=debrief event=dialog dialog=2 via=dock answer=end result=done
+traffic: lua: exp=v1 module=plumb event=iq quest=2 step=2 target=1 count=0 result=done reason=nil
+traffic: lua: exp=v1 module=debrief event=done system=taira kind=1 leg=31 via=dialog result=done
+traffic: lua: exp=v1 module=debrief event=refill chapter_after=5 pool_left=5 via=done result=opened
+traffic: lua: exp=v1 module=debrief event=settle kind=quest system=taira pool_left=4 pending=1 result=drawn
+traffic: lua: exp=v1 module=debrief event=points at=before pilot=Hero points=10.000
+traffic: lua: exp=v1 module=debrief event=points at=before pilot=Sedoy points=4.000
+traffic: lua: exp=v1 module=debrief event=points at=after pilot=Hero points=11.800
+traffic: lua: exp=v1 module=debrief event=points at=after pilot=Sedoy points=5.800
+traffic: lua: exp=v1 module=debrief event=pay via=quest jobs=1 xp_each=1.8 xp_total=1.8 pool_left=4 chapter=5 band=1 difficulty=normal result=paid
+traffic: lua: exp=v1 module=debrief event=logbook list=mission id=trf_db text=#TRF_dbd30 quest_state_before=0 quest_state_after=0 result=added
+traffic: lua: exp=v1 module=state event=enter generation=4 fresh=false system=escaflon legs=32
+traffic: lua: exp=v1 module=safety event=activate system=escaflon mode=mod reason=nil chapter=5 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=debrief event=points at=entry pilot=Hero points=11.800
+traffic: lua: exp=v1 module=captain event=paid slot=3 generation=7 amount=5000 paid=5000 faction=1 system=escaflon result=paid
+traffic: lua: exp=v1 module=debrief event=settle kind=claim system=escaflon amount=5000 pool_left=3 pending=1 result=drawn
+traffic: lua: exp=v1 module=plumb event=settle kind=claim system=escaflon amount=5000 handler_count=1
+traffic: lua: exp=v1 module=plumb event=dock kind=patrol line_count=1 result=vanilla
+traffic: lua: exp=v1 module=state event=enter generation=5 fresh=false system=taira legs=33
+traffic: lua: exp=v1 module=safety event=activate system=taira mode=mod reason=nil chapter=5 quest_state=1 gate=ok
+traffic: lua: exp=v1 module=debrief event=points at=entry pilot=Hero points=11.800
+traffic: lua: exp=v1 module=debrief event=settle kind=escort system=taira result=none reason=mission
+traffic: lua: exp=v1 module=debrief event=pay via=dock jobs=1 system=taira result=wait reason=mission
+traffic: lua: exp=v1 module=state event=enter generation=6 fresh=false system=altair legs=34
+traffic: lua: exp=v1 module=safety event=activate system=altair mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=debrief event=refill chapter_before=5 chapter_after=6 carried=3 pool_before=3 pool_left=8 via=enter result=refilled
+traffic: lua: exp=v1 module=debrief event=points at=entry pilot=Hero points=19.800
+traffic: lua: exp=v1 module=debrief event=line key=dbnew pool_left=8
+traffic: lua: exp=v1 module=debrief event=points at=before pilot=Hero points=19.800
+traffic: lua: exp=v1 module=debrief event=points at=before pilot=Sedoy points=5.800
+traffic: lua: exp=v1 module=debrief event=points at=after pilot=Hero points=21.600
+traffic: lua: exp=v1 module=debrief event=points at=after pilot=Sedoy points=7.600
+traffic: lua: exp=v1 module=debrief event=pay via=dock jobs=1 xp_each=1.8 xp_total=1.8 pool_left=8 chapter=6 band=1 difficulty=normal result=paid
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=2 result=vanilla

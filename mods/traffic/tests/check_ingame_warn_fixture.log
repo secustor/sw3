@@ -1,0 +1,25 @@
+traffic: lua: exp=v1 module=state event=enter generation=1 fresh=false system=avalon legs=100
+traffic: lua: exp=v1 module=warn event=jump_install wrapped_count=2 skipped_count=0
+traffic: lua: exp=v1 module=warn event=enter system=avalon system_index=10 listed=false note=none pruned_count=0 latch=false
+traffic: lua: exp=v1 module=station event=dock station_key=10 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=chapter
+traffic: lua: exp=v1 module=warn event=warn system=gideon system_index=44 dock_system=avalon kind=kill condition="GideonPermit=no,Kfni=neutral" leg=100 cooldown=8
+traffic: lua: exp=v1 module=warn event=dock system=avalon neighbour_count=2 listed=gideon,kassilia shown=gideon skipped=kassilia:inactive
+traffic: lua: exp=v1 module=station event=dock station_key=10 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=chapter
+traffic: lua: exp=v1 module=warn event=dock system=avalon neighbour_count=2 listed=gideon,kassilia shown=nil skipped=gideon:visit,kassilia:inactive
+traffic: lua: exp=v1 module=state event=enter generation=2 fresh=false system=kassilia legs=101
+traffic: lua: exp=v1 module=state event=enter generation=3 fresh=false system=avalon legs=102
+traffic: lua: exp=v1 module=station event=dock station_key=10 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=chapter
+traffic: lua: exp=v1 module=warn event=dock system=avalon neighbour_count=2 listed=gideon,kassilia shown=nil skipped=gideon:cooldown,kassilia:inactive
+traffic: lua: exp=v1 module=state event=enter generation=4 fresh=false system=xt23 legs=103
+traffic: lua: exp=v1 module=station event=pass reason=vdeny system=xt23 at=dock
+traffic: lua: exp=v1 module=warn event=pass reason=scene at=dock
+traffic: lua: exp=v1 module=warn event=warn system=xt24 system_index=80 dock_system=xt23 kind=kill condition=XT24Permit=nil leg=103 cooldown=8
+traffic: lua: exp=v1 module=warn event=dock system=xt23 neighbour_count=2 listed=xt24,xt11 shown=xt24 skipped=xt11:inactive
+traffic: lua: exp=v1 module=state event=load generation=5 fresh=false legs=98
+traffic: lua: exp=v1 module=station event=dock station_key=10 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=chapter
+traffic: lua: exp=v1 module=warn event=warn system=gideon system_index=44 dock_system=avalon kind=kill condition="GideonPermit=no,Kfni=neutral" leg=98 cooldown=8
+traffic: lua: exp=v1 module=warn event=dock system=avalon neighbour_count=2 listed=gideon,kassilia shown=gideon skipped=kassilia:inactive
+traffic: lua: exp=v1 module=state event=enter generation=6 fresh=false system=avalon legs=110
+traffic: lua: exp=v1 module=station event=dock station_key=10 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=chapter
+traffic: lua: exp=v1 module=warn event=warn system=gideon system_index=44 dock_system=avalon kind=kill condition="GideonPermit=no,Kfni=neutral" leg=110 cooldown=8
+traffic: lua: exp=v1 module=warn event=dock system=avalon neighbour_count=2 listed=gideon,kassilia shown=gideon skipped=kassilia:inactive

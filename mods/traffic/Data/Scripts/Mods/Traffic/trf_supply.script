@@ -1,0 +1,2003 @@
+-- sw3-traffic v1 supply module (Lua 4.0.1). Spec: design/v1-spec.md 5.1-5.3, 7.4 (sweep convoy escort), 10.1.
+-- Faction supply convoys (S17), demand cargo (S18), heat reset at the FTU relation stations (design 7.8).
+-- Top level defines functions only. Visit state (TRF.live, reset on entry and load): sp[id] = {f (faction
+-- 1..5), n (group serial), sc (1 = converted by the sweep chance), w (1 = seeded at war), ct (contract pay),
+-- cu (1 = contract used), d, dt (last mothership distance and its gt), fl (1 = fled), e (1 = ended), why,
+-- lv (gt of the end), go (gt of the portal order)}; spn (group serial); bd = {i, v} (border cache); hp = {p, k, g, c} (heat offer box); spc =
+-- {id, n, g, c} (contract box). Trader record fields written here: own (1..5, supply convoys only), dq (1 once
+-- demanded), dw (No witnesses mark {t (gt of the mark), w (1 once a kill was seen), b (background count, count
+-- path), d (unseen transport deaths, count path), v (via of the last witness check: "typed" or "count"), wc, wt
+-- (class and template of the first typed witness)}, design/demand-page-spec.md). Handles: TRF_H().sp[id] = {ef (escort flight), es (escort ships)}; TRF_H().dp = {n
+-- (last drop slot), o[slot] (cfg demand_drop containers, labels trf_drop_<a>_<j>)}. Log module=supply.
+-- Kill outcomes of supply convoys (5.1: no heat, dis, pro, fst, salvage) are trf_events' (records with own);
+-- this module releases the convoy slot, settles the contract and moves the escorts.
+-- Box callbacks are TRF_Cb shims with a generation check; every other module is called by name
+-- after a type check, so a missing one only disables its part.
+
+-- Helpers --------------------------------------------------------------------------
+
+-- logfmt event line, module=supply (design/log-format.md).
+function TRF_SpE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "supply"); call(TRF_Lf, arg);
+end;
+
+-- Log level: cfg log through TRF_Opt.
+function TRF_SpLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Level 2 line, module=supply.
+function TRF_SpDE(event, ...)
+	if TRF_SpLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_SpE, arg);
+end;
+
+-- Silent handler for reads that may fail on a dead handle.
+function TRF_SpNoErr(m) end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_SpErr(m)
+	TRF_SpE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Protected call; nil when f is not a function or on an error.
+function TRF_SpP(f, args)
+	if type(f) ~= "function" then return nil; end;
+	return call(f, args, "x", TRF_SpErr);
+end;
+
+-- Global function by name, protected; nil when missing.
+function TRF_SpX(name, ...)
+	local f = getglobal(name);
+	if type(f) ~= "function" then return nil; end;
+	return call(f, arg, "x", TRF_SpErr);
+end;
+
+-- demand_page: 1 = the result page after a demand (design/demand-page-spec.md), 0 = the answer as a line.
+-- demand_drop: 1 = a comply leaves the robbed stacks in one container beside the trader, 0 = on the mothership.
+function TRF_Supply_OptDef()
+	return {conv=1, demand=1, heat_offer=1, demand_page=1, demand_drop=0};
+end;
+
+-- sp_leave: seconds escorts of a killed convoy keep fighting before they leave. demand_k: containers of a
+-- comply 1 + RAND(demand_k). witness_t, witness_r, witness_dead: No witnesses window (s), witness radius, and
+-- the carcasses taken off every kill count (the transport that just died, CHECK W1). witness_slack: the excess a
+-- kill count may have and still read no witness, the margin for the player's rockets in flight and other short-lived
+-- objects no script can list (CHECK W2) (design/demand-page-spec.md). witness_dead and witness_slack apply to the
+-- count path only: the typed rule (TRF_Near, spec 5.8) reads no background or slack and subtracts no wrecks.
+function TRF_Supply_TuneDef()
+	return {convoy_chance=15, sweep_convoy_chance=30, kfni_queen=0,
+		heat_reset_k=100000, heat_reset_max=950000, sweep_escort_mult=3, pay_cap=30000, ct_dist=400,
+		sp_leave=60, demand_k=3, witness_t=180, witness_r=1500, witness_dead=0, witness_slack=1};
+end;
+
+-- cfg value: TRF_Opt, raw config, this module's default; 0/1 switches outside their range read as default.
+function TRF_SpOpt(key, def)
+	local d = TRF_Supply_OptDef()[key];
+	if d == nil then d = def; end;
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	if (key == "conv" or key == "demand" or key == "heat_offer" or key == "contracts" or key == "sweep_ct" or key == "demand_page"
+		or key == "demand_drop") and v ~= 0 and v ~= 1 then
+		return d;
+	end;
+	return v;
+end;
+
+-- Tune value: TRF_Tune(), cfg tune, this module's default, def.
+function TRF_SpT(key, def)
+	local v = nil;
+	if type(TRF_Tune) == "function" then
+		local t = TRF_Tune();
+		if type(t) == "table" then v = t[key]; end;
+	end;
+	if type(v) ~= "number" and type(TRF_CfgGet) == "function" then
+		local t = TRF_CfgGet("tune", nil);
+		if type(t) == "table" then v = t[key]; end;
+	end;
+	if type(v) ~= "number" then v = TRF_Supply_TuneDef()[key]; end;
+	if type(v) ~= "number" then v = def; end;
+	if type(v) ~= "number" then v = 0; end;
+	return v;
+end;
+
+function TRF_SpClamp(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+function TRF_SpLive()
+	if type(TRF) == "table" and type(TRF.live) == "table" then return TRF.live; end;
+	return nil;
+end;
+
+-- Visit record of supply convoy id, or nil.
+function TRF_SpRecOf(id)
+	local L = TRF_SpLive();
+	if not L or type(L.sp) ~= "table" then return nil; end;
+	local s = L.sp[id];
+	if type(s) == "table" then return s; end;
+	return nil;
+end;
+
+-- Handle table with the sp sub-table, or nil.
+function TRF_SpH()
+	if type(TRF_H) ~= "function" then return nil; end;
+	local h = TRF_H();
+	if type(h) ~= "table" then return nil; end;
+	if type(h.sp) ~= "table" then h.sp = {}; end;
+	return h;
+end;
+
+function TRF_SpHTr(id)
+	local H = TRF_SpH();
+	if H and type(H.tr) == "table" and type(H.tr[id]) == "table" then return H.tr[id]; end;
+	return nil;
+end;
+
+function TRF_SpGt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+function TRF_SpLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+function TRF_SpCur()
+	if type(TRF_CurIdx) == "function" then return TRF_CurIdx(); end;
+	return nil;
+end;
+
+function TRF_SpStat(k)
+	if type(TRF_Stat) == "function" then TRF_Stat(k); end;
+end;
+
+function TRF_SpRand(n)
+	if type(TRF_Rand) == "function" then return TRF_Rand(n); end;
+	if type(RAND) ~= "function" or type(n) ~= "number" or n < 1 then return 0; end;
+	return RAND(n);
+end;
+
+function TRF_SpHeat()
+	if type(TRF) == "table" and type(TRF.std) == "table" and type(TRF.std.heat) == "number" then return TRF.std.heat; end;
+	return 0;
+end;
+
+function TRF_SpRec(id)
+	if type(TRF_Rec) == "function" and type(id) == "number" then return TRF_Rec(id); end;
+	return nil;
+end;
+
+function TRF_SpDis(idx)
+	if type(TRF_Dis) == "function" and type(idx) == "number" then return TRF_Dis(idx) or 0; end;
+	return 0;
+end;
+
+function TRF_SpSysName(idx)
+	if type(TRF_SysName) == "function" then return TRF_SysName(idx); end;
+	return tostring(idx);
+end;
+
+-- Map entry of system idx, or nil.
+function TRF_SpMapSys(idx)
+	local m = nil;
+	if type(TRF_Map) == "function" then m = TRF_Map(); elseif type(TRF_MapData) == "function" then m = TRF_MapData(); end;
+	if type(m) == "table" and type(m.sys) == "table" and type(idx) == "number" and type(m.sys[idx]) == "table" then return m.sys[idx]; end;
+	return nil;
+end;
+
+-- Owner team of a system name by GetLocationTeam (Location_SideList keys are lowercase names).
+function TRF_SpTeamOf(name)
+	if type(name) ~= "string" or type(GetLocationTeam) ~= "function" then return nil; end;
+	local t = TRF_SpP(GetLocationTeam, {strlower(name)});
+	if type(t) == "string" and t ~= "" then return t; end;
+	return nil;
+end;
+
+function TRF_SpTeam(idx)
+	if type(idx) ~= "number" then return nil; end;
+	return TRF_SpTeamOf(TRF_SpSysName(idx));
+end;
+
+function TRF_SpMs()
+	if type(TRF_GnMs) == "function" then return TRF_SpP(TRF_GnMs, {}); end;
+	return TRF_SpX("TRF_Ms");
+end;
+
+function TRF_SpAlive(o)
+	if o == nil or type(o) == "number" or type(o) == "string" or type(o) == "function" then return nil; end;
+	return TRF_Is(TRF_SpP(function(x) return x:IsAlive(); end, {o}));
+end;
+
+function TRF_SpPos(o)
+	if not TRF_SpAlive(o) then return nil; end;
+	return TRF_SpP(function(x) return x:GetPosition(); end, {o});
+end;
+
+function TRF_SpDist(a, b)
+	if type(a) ~= "table" and type(a) ~= "userdata" then return nil; end;
+	if type(b) ~= "table" and type(b) ~= "userdata" then return nil; end;
+	local dx, dy, dz = a.x - b.x, a.y - b.y, a.z - b.z;
+	return sqrt(dx * dx + dy * dy + dz * dz);
+end;
+
+function TRF_SpDel(o)
+	if TRF_SpAlive(o) then TRF_SpP(function(x) x:Delete(); end, {o}); end;
+end;
+
+-- Leader ship of trader id (trf_gen), else the first live transport handle.
+function TRF_SpLead(id)
+	if type(TRF_GnLead) == "function" then return TRF_SpP(TRF_GnLead, {id}); end;
+	local h = TRF_SpHTr(id);
+	if h and type(h.tp) == "table" and TRF_SpAlive(h.tp[1]) then return h.tp[1]; end;
+	return nil;
+end;
+
+-- R2 flags (__disableAction) or the extortion debounce (TRF_Supp level 1 or 2).
+function TRF_SpSupp()
+	if __disableAction == TRUE then return 1; end;
+	if type(TRF_Supp) == "function" then
+		local s = TRF_SpP(TRF_Supp, {});
+		if type(s) == "number" and s ~= 0 then return 1; end;
+	end;
+	return nil;
+end;
+
+-- 1 while trf_safety reports combat (TRF_Combat; missing = not in combat). Supply run spawn only.
+function TRF_SpCombat()
+	if TRF_N("TRF_Combat") then return 1; end;
+	return nil;
+end;
+
+-- 1 while vanilla mutes chatter or a scene is visible (trf_safety TRF_Quiet). Talk option and dock box.
+function TRF_SpQuiet()
+	if TRF_N("TRF_Quiet") then return 1; end;
+	return nil;
+end;
+
+-- Strict gate (trf_safety); 1 without it, nil on an error.
+function TRF_SpStrict(idx, f)
+	if type(TRF_StrictOk) ~= "function" then return 1; end;
+	return TRF_SpP(TRF_StrictOk, {idx, f});
+end;
+
+-- 1 when team is at war with the player at team level.
+function TRF_SpWar(team)
+	if type(team) ~= "string" or type(GetTeamRelation) ~= "function" or RELATION_WAR == nil then return nil; end;
+	local v = TRF_SpP(GetTeamRelation, {team, PLAYER_TEAM});
+	if v ~= nil and v == RELATION_WAR then return 1; end;
+	return nil;
+end;
+
+-- Text: trf_loc's TRF_LocTxt, then this module's table, then TRF_Txt; $1..$3 replaced. cfg loc_mode 1: the
+-- scaffold key "#TRF_<key>" as TRF_Txt gives it (arguments dropped), so the RU .loc text can show.
+function TRF_SpTxt(key, a, b, c)
+	local s = nil;
+	if type(TRF_Loc_Mode) == "function" and type(TRF_LocKeyOf) == "function" and TRF_SpP(TRF_Loc_Mode, {}) == 1 then
+		s = TRF_SpP(TRF_LocKeyOf, {key});
+		if type(s) == "string" then return s; end;
+	end;
+	if type(TRF_LocTxt) == "function" then s = TRF_SpP(TRF_LocTxt, {key}); end;
+	if type(s) ~= "string" then s = TRF_Supply_Text()[key]; end;
+	if type(s) ~= "string" then
+		if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c); end;
+		return tostring(key);
+	end;
+	local v = {a, b, c};
+	for i = 1, 3 do
+		if strfind(s, "$"..i, 1, 1) then
+			local rep = gsub(tostring(v[i] or ""), "%%", "%%%%");
+			s = gsub(s, "%$"..i, rep);
+		end;
+	end;
+	return s;
+end;
+
+-- One line; the trader's leader pilot speaks when trf_hail's TRF_HlSay is there.
+function TRF_SpSay(text, id)
+	if type(text) ~= "string" then return nil; end;
+	if id and type(TRF_HlSay) == "function" then return TRF_SpP(TRF_HlSay, {text, id}); end;
+	if type(TRF_Say) == "function" then return TRF_SpP(TRF_Say, {text, 8}); end;
+	return TRF_SpX("OutputToScreenLog", text, 8);
+end;
+
+function TRF_SpName(r)
+	local n = nil;
+	if type(r) == "table" and type(TRF_UI_Name) == "function" then n = TRF_SpP(TRF_UI_Name, {r.nm}); end;
+	if type(n) ~= "string" then n = "freighter"; end;
+	return n;
+end;
+
+function TRF_SpCredits()
+	local c = TRF_SpX("GetPlayerCredits");
+	if type(c) == "number" then return c; end;
+	return nil;
+end;
+
+-- L_w (TDR 8.4) of system idx (default current): trf_region, else trf_hail, else 8.
+function TRF_SpLPay(idx)
+	local v = nil;
+	if type(TRF_LPay) == "function" then v = TRF_SpP(TRF_LPay, {idx}); end;
+	if type(v) ~= "number" and type(TRF_HlLPay) == "function" then v = TRF_SpP(TRF_HlLPay, {idx}); end;
+	if type(v) ~= "number" then return 8; end;
+	return v;
+end;
+
+-- Contract base pay N_eff of system idx (trf_region TRF_PayN, else 900 x L_w x lk x 0.75: T1, pro 0, d_k 1).
+function TRF_SpPayN(idx)
+	local n = nil;
+	if type(TRF_PayN) == "function" then n = TRF_SpP(TRF_PayN, {idx}); end;
+	if type(n) ~= "number" then
+		local L = TRF_SpLPay(idx);
+		n = 900 * L * min(1, L / 8) * 0.75;
+	end;
+	return n;
+end;
+
+-- Pay through trf_region's TRF_Pay (cap, stat, log), else AddPlayerCredits capped at pay_cap.
+function TRF_SpPay(n, why)
+	n = floor(min(n, TRF_SpT("pay_cap", 30000)));
+	if n <= 0 then return 0; end;
+	if type(TRF_Pay) == "function" then
+		TRF_SpP(TRF_Pay, {n, why});
+		return n;
+	end;
+	TRF_SpX("AddPlayerCredits", n);
+	TRF_SpStat("pay_"..tostring(why));
+	return n;
+end;
+
+-- Factions (v1-spec 3.1 order) ---------------------------------------------------------
+
+-- Team, hull suffix, pilot and fighter table globals, first pilot name, display name per faction 1..5.
+function TRF_SpFacTab()
+	return {
+		{team="Vks", sfx="nav", pil="Vks_Pilots", fig="Vks_Fighters", p1="VksPilot", nm="New Empire"},
+		{team="Kfni", sfx="kfni", pil="Kfni_Pilots", fig="Kfni_Fighters", p1="KfniPilot", nm="MSF"},
+		{team="Triada", sfx="tri", pil="Tri_Pilots", fig="Tri_Fighters", p1="TriadaPilot", nm="Triada"},
+		{team="Uss", sfx="uss", pil="USS_Pilots", fig="USS_Fighters", p1="USSPilot", nm="USS"},
+		{team="Inoco", sfx="ino", pil="Ino_Pilots", fig="Ino_Fighters", p1="InocoPilot", nm="InoCo"}};
+end;
+
+function TRF_SpFacIdx(team)
+	if type(team) ~= "string" then return nil; end;
+	if type(TRF_FacIdx) == "function" then
+		local f = TRF_SpP(TRF_FacIdx, {team});
+		if type(f) == "number" and f >= 1 and f <= 5 then return f; end;
+	end;
+	local t = TRF_SpFacTab();
+	for f = 1, 5 do
+		if t[f].team == team then return f; end;
+	end;
+	return nil;
+end;
+
+function TRF_SpFacTeam(f)
+	if type(TRF_FacTeam) == "function" then
+		local t = TRF_SpP(TRF_FacTeam, {f});
+		if type(t) == "string" and t ~= "" then return t; end;
+	end;
+	local e = TRF_SpFacTab()[f];
+	if e then return e.team; end;
+	return nil;
+end;
+
+function TRF_SpFacName(f)
+	local e = TRF_SpFacTab()[f];
+	if e then return e.nm; end;
+	return "Navy";
+end;
+
+-- Faction standing 0..9 (trf_faction TRF_Fst, else digit f of std.fst, else 5).
+function TRF_SpFst(f)
+	if type(TRF_Fst) == "function" then
+		local v = TRF_SpP(TRF_Fst, {f});
+		if type(v) == "number" then return v; end;
+	end;
+	if type(TRF) == "table" and type(TRF.std) == "table" and type(TRF.std.fst) == "string" and type(f) == "number" then
+		local v = tonumber(strsub(TRF.std.fst, f, f));
+		if type(v) == "number" then return v; end;
+	end;
+	return 5;
+end;
+
+function TRF_SpFstAdd(f, d, why)
+	if type(TRF_FstAdd) == "function" then return TRF_SpP(TRF_FstAdd, {f, d, why}); end;
+	TRF_SpE("standing_skip", "faction", f, "reason", tostring(why), "change", d, "result", "no_fst_add");
+	return nil;
+end;
+
+function TRF_SpFsAdd(slot, f, d, why)
+	if type(slot) ~= "number" then return nil; end;
+	if type(TRF_FsAdd) == "function" then return TRF_SpP(TRF_FsAdd, {slot, f, d, why}); end;
+	return nil;
+end;
+
+-- Relation of a new f group toward PLAYER_GROUP (5.1): WAR at team war or fst <= 2, else NEUTRAL.
+function TRF_SpRelOf(f, team)
+	if RELATION_WAR ~= nil and (TRF_SpWar(team) or TRF_SpFst(f) <= 2) then return RELATION_WAR, 1; end;
+	return RELATION_NEUTRAL, nil;
+end;
+
+-- Convoy slot (8.6): trf_convoy's functions, else live.cvs directly ----------------------
+
+function TRF_SpSlotBusy()
+	if type(TRF_ConvSlot) == "function" then
+		local s = TRF_SpP(TRF_ConvSlot, {});
+		if s == nil or s == 0 then return nil; end;
+		return 1;
+	end;
+	local L = TRF_SpLive();
+	if L and type(L.cvs) == "table" then return 1; end;
+	return nil;
+end;
+
+function TRF_SpTake(id)
+	if type(TRF_ConvTake) == "function" then TRF_SpP(TRF_ConvTake, {2, id}); return; end;
+	local L = TRF_SpLive();
+	if L then L.cvs = {k=2, id=id}; end;
+end;
+
+function TRF_SpFree(id)
+	if type(TRF_ConvFree) == "function" then TRF_SpP(TRF_ConvFree, {id}); end;
+	local L = TRF_SpLive();
+	if L and type(L.cvs) == "table" and L.cvs.id == id then L.cvs = nil; end;
+end;
+
+-- Border systems and the conversion roll (5.1) --------------------------------------------
+
+-- Pure: 1 when team is Vks or Kfni and a neighbour team in nb is the other one.
+function TRF_BorderOf(team, nb)
+	local o = nil;
+	if team == "Vks" then o = "Kfni"; elseif team == "Kfni" then o = "Vks"; else return nil; end;
+	for i = 1, getn(nb) do
+		if nb[i] == o then return 1; end;
+	end;
+	return nil;
+end;
+
+-- 1 when system idx (nil = current) is a Vks/Kfni border system: owner by GetLocationTeam and at least
+-- one managed "Portal" neighbour owned by the other. Cached per visit for the current system.
+function TRF_Border(idx)
+	local cur = TRF_SpCur();
+	if idx == nil then idx = cur; end;
+	if type(idx) ~= "number" then return nil; end;
+	local L = TRF_SpLive();
+	if idx == cur and L and type(L.bd) == "table" and L.bd.i == idx then
+		if L.bd.v == 1 then return 1; end;
+		return nil;
+	end;
+	local sy = TRF_SpMapSys(idx);
+	local nb = {};
+	if type(sy) == "table" and type(sy.portals) == "table" then
+		for i = 1, getn(sy.portals) do
+			local p = sy.portals[i];
+			if type(p) == "table" and type(p.to) == "string" then tinsert(nb, TRF_SpTeamOf(p.to) or ""); end;
+		end;
+	end;
+	local v = TRF_BorderOf(TRF_SpTeam(idx), nb);
+	if idx == cur and L then L.bd = {i=idx, v=v or 0}; end;
+	return v;
+end;
+
+-- Faction f and slot when the region of idx has a sweep attempt scheduled (rg.sl > 0) by f, else nil.
+function TRF_SpSweepF(idx)
+	local slot = TRF_SpX("TRF_RgOf", idx);
+	if type(slot) ~= "number" then return nil; end;
+	local rr = TRF_SpX("TRF_RgRec", slot);
+	if type(rr) ~= "table" or type(rr.sl) ~= "number" or rr.sl <= 0 then return nil; end;
+	local f = TRF_SpX("TRF_SweepOwner", slot);
+	if type(f) ~= "number" or f < 1 or f > 5 then return nil; end;
+	return f, slot;
+end;
+
+-- Escorts by disruption: 2, +1 at dis >= 3, +1 more at dis >= 6.
+function TRF_SpEscN(dis)
+	local n = 2;
+	if dis >= 3 then n = n + 1; end;
+	if dis >= 6 then n = n + 1; end;
+	return n;
+end;
+
+-- Transport hull: Walrus_<sfx><1..4> by clamp(floor(pw / 5) + 1, 1, 4); Kfni HMQueen_kfni3 with kfni_queen 1.
+function TRF_SpHull(f, pw)
+	if f == 2 and TRF_SpT("kfni_queen", 0) == 1 then return "HMQueen_kfni3"; end;
+	local i = TRF_SpClamp(floor((pw or 10) / 5) + 1, 1, 4);
+	return "Walrus_"..TRF_SpFacTab()[f].sfx..i;
+end;
+
+-- Entry portal candidates of a path B plan: its exit portal first, then the other portals of its contact
+-- (trf_gen's validated contact table live.cv). Each {o (portal), n (map name), t (system idx behind it)}.
+function TRF_SpEntryCands(plan)
+	local out = {};
+	if plan.ext then tinsert(out, {o=plan.ext, n=plan.extn, t=plan.to}); end;
+	local L = TRF_SpLive();
+	local c = nil;
+	if type(TRF_GnContacts) == "function" and type(plan.ci) == "number" then
+		local list = TRF_SpP(TRF_GnContacts, {});
+		if type(list) == "table" then c = list[plan.ci]; end;
+	end;
+	local cv = nil;
+	if L and type(L.cv) == "table" and type(plan.ci) == "number" then cv = L.cv[plan.ci]; end;
+	if type(c) == "table" and type(c[3]) == "table" and type(cv) == "table" and type(cv.pn) == "table" then
+		local pt = cv.pt;
+		if type(pt) ~= "table" then pt = {}; end;
+		for i = 1, getn(c[3]) do
+			if c[3][i] ~= plan.ext then tinsert(out, {o=c[3][i], n=cv.pn[i], t=pt[i]}); end;
+		end;
+	end;
+	return out;
+end;
+
+-- Switches plan to path A (station-bound): C keeps its entry portal; B enters through the first free
+-- portal of its contact (exit portal first, spacing as trf_gen's TRF_GnFree). Returns 1, or nil when no
+-- entry portal is usable.
+function TRF_SpToA(plan)
+	if plan.path == "A" then return 1; end;
+	if plan.path == "C" and plan.ent then
+		plan.path = "A"; plan.to = 0; plan.ext = nil; plan.extn = nil;
+		return 1;
+	end;
+	if plan.path ~= "B" then return nil; end;
+	local T = nil;
+	if type(TRF_Tune) == "function" then T = TRF_Tune(); end;
+	local cs = TRF_SpEntryCands(plan);
+	for i = 1, getn(cs) do
+		local p = cs[i].o;
+		local pos = TRF_SpP(function(o) return o:GetEntryPoint(10); end, {p});
+		if pos and (type(TRF_GnFree) ~= "function" or not T or TRF_SpP(TRF_GnFree, {cs[i].n, pos, T})) then
+			local dir = TRF_SpP(function(o) return o:GetOrientation(); end, {p});
+			plan.ent = p; plan.entn = cs[i].n; plan.from = cs[i].t or -1; plan.to = 0;
+			plan.ext = nil; plan.extn = nil; plan.pos = pos; plan.dir = dir or Vector3(0, 0, 1); plan.path = "A";
+			return 1;
+		end;
+	end;
+	return nil;
+end;
+
+-- Conversion at a spawn (5.1), called by TRF_GenTrader after the p_eff roll with the trader plan.
+-- Returns 1 when the plan is converted (plan.sup = f, sne = escorts, ssc = 1 for the sweep chance; path
+-- switched to A); the caller then builds it with TRF_SupplySpawn(plan).
+function TRF_SupplyRoll(plan)
+	if type(plan) ~= "table" or plan.sup or plan.sid then return nil; end;
+	if TRF_SpOpt("conv", 1) ~= 1 or not plan.st or not plan.np then return nil; end;
+	local cur = TRF_SpCur();
+	if type(cur) ~= "number" or TRF_SpSupp() or TRF_SpCombat() or TRF_SpSlotBusy() then return nil; end;
+	local f = TRF_SpFacIdx(TRF_SpTeam(cur));
+	if not f then return nil; end;
+	local ch, sc = 0, nil;
+	if TRF_SpSweepF(cur) == f then
+		ch = TRF_SpT("sweep_convoy_chance", 30);
+		sc = 1;
+	elseif f <= 2 and TRF_Border(cur) then
+		ch = TRF_SpT("convoy_chance", 15);
+	end;
+	if ch <= 0 or TRF_SpRand(100) >= ch then return nil; end;
+	if not TRF_SpStrict(cur, "conv") then return nil; end;
+	local ne = TRF_SpEscN(TRF_SpDis(cur));
+	if type(TRF_CanSpawn) == "function" then
+		local ok, why = TRF_SpP(TRF_CanSpawn, {1 + ne, "conv"});
+		if not ok then
+			TRF_SpE("roll", "faction", f, "reason", tostring(why), "result", "no_spawn");
+			return nil;
+		end;
+	end;
+	if not TRF_SpToA(plan) then return nil; end;
+	plan.sup = f; plan.sne = ne; plan.ssc = sc;
+	TRF_SpE("roll", "faction", f, "system", TRF_SpSysName(cur), "sweep", TRF_KvB(sc), "escort_count", ne, "chance", ch,
+		"result", "spawn");
+	return 1;
+end;
+
+-- Spawn (5.1) ------------------------------------------------------------------------------
+
+-- Clears the flight_/ship_/pilot_ globals NewFlight and NewAllFlight leave for sign.
+function TRF_SpClearSign(sign)
+	setglobal("flight_"..sign, nil);
+	for i = 1, 8 do
+		setglobal("ship_"..sign.."_"..i, nil);
+		setglobal("pilot_"..sign.."_"..i, nil);
+	end;
+end;
+
+-- Live ships of a flight in pilot order.
+function TRF_SpShips(fl)
+	local out = {};
+	if not fl or type(fl) == "number" then return out; end;
+	local n = TRF_SpP(function(x) return x:GetPilotCount(); end, {fl});
+	if type(n) ~= "number" then return out; end;
+	for i = 1, n do
+		local s = TRF_SpP(function(x, k) return x:GetPilotByNumber(k):GetShip(); end, {fl, i});
+		if TRF_SpAlive(s) then tinsert(out, s); end;
+	end;
+	return out;
+end;
+
+-- Escort flight of ne rung-0 fighters (7.2): trf_faction's TRF_FacFlight, else a row 5..9 of the faction's
+-- own fighter table built with trf_tier's TRF_BuildFlight. gname: global name of the group.
+function TRF_SpEscorts(f, gname, sign, pos, dir, ne)
+	if type(TRF_FacFlight) == "function" then
+		local fl = TRF_SpP(TRF_FacFlight, {f, 0, 1, gname, sign, pos, dir, ne});
+		if fl and type(fl) ~= "number" then return fl; end;
+	end;
+	local ft = TRF_SpFacTab()[f];
+	local tab, pil = getglobal(ft.fig), getglobal(ft.pil);
+	if type(tab) ~= "table" or type(pil) ~= "table" or type(TRF_BuildFlight) ~= "function" then return nil; end;
+	local fl = TRF_SpP(TRF_BuildFlight, {pil, tab[5 + TRF_SpRand(5)], gname, sign, pos, 6, dir, nil, 5, ne});
+	if fl and type(fl) ~= "number" then return fl; end;
+	return nil;
+end;
+
+-- Builds the convoy of a converted plan. Returns the trader id, or nil, reason (nothing left behind).
+function TRF_SpBuild(plan)
+	local L = TRF_SpLive();
+	local H = TRF_SpH();
+	if not L or not H or type(L.tr) ~= "table" or type(H.tr) ~= "table" then return nil, "live"; end;
+	local f = plan.sup;
+	local ft = TRF_SpFacTab()[f];
+	local team = TRF_SpFacTeam(f);
+	if not ft or not team or type(CreateTeam) ~= "function" or type(NewFlight) ~= "function" then return nil, "natives"; end;
+	local id = TRF_SpX("TRF_NewId");
+	if type(id) ~= "number" then return nil, "id"; end;
+	local n = (L.spn or 0) + 1;
+	L.spn = n;
+	local tm = CreateTeam(team);
+	if not tm then return nil, "team"; end;
+	local grp = tm:CreateGroup("TRF_Conv_"..n);
+	if not grp then return nil, "group"; end;
+	local rel, war = TRF_SpRelOf(f, team);
+	SetGroupRelation(grp, PLAYER_GROUP, rel);
+	local pw = plan.pw or plan.strength or 10;
+	local hull = TRF_SpHull(f, pw);
+	local pt = getglobal(ft.pil);
+	local pil = ft.p1;
+	if type(pt) == "table" and type(pt[1]) == "string" then pil = pt[1]; end;
+	local sign = "trf_"..id;
+	local gt = TRF_SpGt();
+	if plan.ent then TRF_SpP(function(o) o:Start(8, 0); end, {plan.ent}); end;
+	-- NewFlight looks the group up by global name; the global is cleared right after (no handle in the save).
+	-- Only protected calls between the set and the clear (v1 spec 13.4 O5).
+	local ep = Vector3(plan.pos.x, plan.pos.y, plan.pos.z + 25);
+	setglobal("TRF_GConv", grp);
+	local fl = TRF_SpP(NewFlight, {"TRF_GConv", sign, hull, pil, plan.pos, plan.dir, "shipFormationColumn"});
+	local tsh = getglobal("ship_"..sign.."_1");
+	local efl = nil;
+	-- NewFlight returns FALSE (0, truthy) on failure; a nil carcass raises an error (nil result here).
+	if fl and type(fl) ~= "number" and TRF_SpAlive(tsh) then
+		efl = TRF_SpP(TRF_SpEscorts, {f, "TRF_GConv", sign.."e", ep, plan.dir, plan.sne or 2});
+	end;
+	setglobal("TRF_GConv", nil);
+	TRF_SpClearSign(sign);
+	TRF_SpClearSign(sign.."e");
+	if not fl or type(fl) == "number" or not TRF_SpAlive(tsh) then
+		TRF_SpDel(tsh);
+		if fl and type(fl) ~= "number" then TRF_SpDel(fl); end;
+		return nil, "transport "..hull;
+	end;
+	local es = TRF_SpShips(efl);
+	while getn(es) > (plan.sne or 2) do TRF_SpDel(tremove(es)); end;
+	if getn(es) > 0 then TRF_SpP(function(a, b) a:Escort(b); end, {efl, tsh}); end;
+	-- Hold (5.1): TT2 containers from Trad_CargoType. CHECK [TP] E1: Walrus holds load and drop.
+	local hold, cls = nil, nil;
+	if type(TRF_FillHold) == "function" then
+		hold, cls = TRF_SpP(TRF_FillHold, {fl, 2, pw, "A"});
+	elseif type(TRF_FillCargo) == "function" then
+		local st = TRF_SpP(TRF_FillCargo, {fl, pw});
+		hold = {};
+		if type(st) == "table" then
+			for i = 1, getn(st) do tinsert(hold, {i=st[i][1], n=st[i][2], s=st[i][3] or 1}); end;
+		end;
+	end;
+	if type(hold) ~= "table" then hold = {}; end;
+	if type(cls) ~= "number" then cls = 6; end;
+	local sh = {tsh};
+	for j = 1, getn(es) do tinsert(sh, es[j]); end;
+	-- Labels trf_<id>_<i>: the trf_gen load pass and orphan scan find the escorts too.
+	for i = 1, getn(sh) do TRF_SpP(SetObjectLabel, {sh[i], sign.."_"..i}); end;
+	local hp0 = TRF_SpX("GetCurHP", tsh);
+	if type(hp0) ~= "number" then hp0 = nil; end;
+	local lp = TRF_SpPos(tsh) or plan.pos;
+	local nm = TRF_SpX("TRF_GnName");
+	if type(nm) ~= "number" then nm = 0; end;
+	L.tr[id] = {id=id, nm=nm, cls=cls, from=plan.from, to=0, path="A", st="in", ci=plan.ci, ent=plan.entn,
+		np=getn(sh), nt=1, esc=getn(es), born=gt, lx=lp.x, ly=lp.y, lz=lp.z, lt=gt, wd=0, tier=2, hold=hold,
+		hp0=hp0, own=f};
+	H.tr[id] = {fl=fl, sh=sh, tp={tsh}, ent=plan.ent, np=plan.np, st=plan.st};
+	H.sp[id] = {ef=efl, es=es};
+	if plan.np then H.np = plan.np; end;
+	TRF.seq = id;
+	if type(L.port) == "table" and plan.entn then L.port[plan.entn] = gt; end;
+	if type(L.sp) ~= "table" then L.sp = {}; end;
+	L.sp[id] = {f=f, n=n, sc=plan.ssc, w=war};
+	TRF_SpTake(id);
+	plan.sid = id;
+	TRF_SpX("TRF_ArmShips", id);
+	TRF_SpX("TRF_GnArmUI", id);
+	TRF_SpX("TRF_Orders", id);
+	TRF_SpX("TRF_RaidArmLowHP", id);
+	TRF_SpStat("conv_spawn");
+	TRF_SpE("spawn", "trader_id", id, "faction", f, "hull", hull, "escort_count", getn(es), "escort_planned", plan.sne,
+		"group", "TRF_Conv_"..n, "war", TRF_KvB(war), "sweep", TRF_KvB(plan.ssc), "entry", plan.entn, "hold_count", getn(hold));
+	return id;
+end;
+
+-- Builds a converted plan (TRF_SupplyRoll returned 1). Returns the trader id, or nil after a failed build
+-- (plan.sup cleared; the caller spawns the plain trader, 5.1 fallback). A second call returns the same id.
+function TRF_SupplySpawn(plan)
+	if type(plan) ~= "table" then return nil; end;
+	if plan.sid then return plan.sid; end;
+	if type(plan.sup) ~= "number" then return nil; end;
+	local id, why = TRF_SpP(TRF_SpBuild, {plan});
+	if type(id) == "number" then return id; end;
+	TRF_SpStat("conv_fail");
+	TRF_SpE("build", "faction", plan.sup, "reason", tostring(why), "result", "failed");
+	plan.sup = nil;
+	return nil;
+end;
+
+-- Outcomes (5.1) -----------------------------------------------------------------------------
+
+-- Escorts after the transport is gone. Docked, exited or jumped with it: deleted. Killed: they keep
+-- fighting for sp_leave s, then fly to the nearest portal; any other end: to the portal at once. Ships
+-- farther than ovd from the mothership, or sp_leave s after the portal order, are deleted.
+-- Returns 1 when none is left.
+function TRF_SpEscStep(id, s, gt)
+	local H = TRF_SpH();
+	if not H then return 1; end;
+	local hs = H.sp[id];
+	if type(hs) ~= "table" or type(hs.es) ~= "table" then return 1; end;
+	local es = {};
+	for j = 1, getn(hs.es) do
+		if TRF_SpAlive(hs.es[j]) then tinsert(es, hs.es[j]); end;
+	end;
+	hs.es = es;
+	if getn(es) == 0 then return 1; end;
+	local wait = TRF_SpT("sp_leave", 60);
+	if s.why == "kill" and not s.go and gt - (s.lv or gt) < wait then return nil; end;
+	local now = s.why == "dock" or s.why == "exit" or s.why == "jump";
+	local ovd = TRF_SpT("ovd", 600);
+	local mp = TRF_SpPos(TRF_SpMs());
+	local keep = {};
+	for j = 1, getn(es) do
+		local d = TRF_SpDist(TRF_SpPos(es[j]), mp);
+		if now or not d or d > ovd or (s.go and gt - s.go >= wait) then TRF_SpDel(es[j]); else tinsert(keep, es[j]); end;
+	end;
+	hs.es = keep;
+	if getn(keep) == 0 then
+		TRF_SpDel(hs.ef);
+		return 1;
+	end;
+	if not s.go then
+		s.go = gt;
+		local po = nil;
+		if type(TRF_GnNearPortal) == "function" then po = TRF_SpP(TRF_GnNearPortal, {nil, TRF_SpPos(keep[1])}); end;
+		if po and type(po) ~= "number" then
+			-- CHECK (E0.3): ComeToPortal is a Carcass method, called per ship.
+			for j = 1, getn(keep) do TRF_SpP(function(x, p) x:ComeToPortal(p); end, {keep[j], po}); end;
+		end;
+	end;
+	return nil;
+end;
+
+-- Record id ended (gone): slot released, contract result.
+function TRF_SpEnd(id, s, r, gt)
+	s.e = 1;
+	s.lv = gt;
+	local why = "lost";
+	if type(r) == "table" and type(r.why) == "string" then why = r.why; end;
+	s.why = why;
+	TRF_SpFree(id);
+	if s.ct then TRF_SpCtEnd(id, s, why, gt); end;
+	TRF_SpE("end", "trader_id", id, "faction", s.f, "reason", why);
+end;
+
+function TRF_SpStepOne(id, gt)
+	local L = TRF_SpLive();
+	local s = L.sp[id];
+	if type(s) ~= "table" then L.sp[id] = nil; return; end;
+	local r = nil;
+	if type(L.tr) == "table" then r = L.tr[id]; end;
+	if type(r) == "table" and r.st ~= "gone" then
+		s.d = TRF_SpDist(TRF_SpPos(TRF_SpLead(id)), TRF_SpPos(TRF_SpMs()));
+		s.dt = gt;
+		if r.fl then s.fl = 1; end;
+		return;
+	end;
+	if not s.e then TRF_SpEnd(id, s, r, gt); end;
+	if TRF_SpEscStep(id, s, gt) then
+		L.sp[id] = nil;
+		local H = TRF_SpH();
+		if H then H.sp[id] = nil; end;
+	end;
+end;
+
+-- Every step (10 s): the No witnesses time-out (any trader), then distances for the contract, ends, escorts.
+function TRF_Supply_Step()
+	TRF_SpP(TRF_SpPwStep, {TRF_SpGt()});
+	local L = TRF_SpLive();
+	if not L or type(L.sp) ~= "table" or type(TRF) ~= "table" or not TRF.active then return; end;
+	local gt = TRF_SpGt();
+	local ids = {};
+	for id, s in L.sp do tinsert(ids, id); end;
+	for i = 1, getn(ids) do TRF_SpP(TRF_SpStepOne, {ids[i], gt}); end;
+end;
+
+-- Sweep convoy escort contract (7.4) ----------------------------------------------------------
+
+-- Offer text and pay for supply convoy id, or nil, reason: converted by the sweep chance, inbound, no
+-- other contract, f not at team war, fst >= 4, strict gate "contract".
+function TRF_SpCtOffer(id)
+	local L = TRF_SpLive();
+	local s = TRF_SpRecOf(id);
+	if not L or not s or s.sc ~= 1 then return nil, "kind"; end;
+	if s.ct or s.cu then return nil, "used"; end;
+	if TRF_SpOpt("contracts", 1) ~= 1 or TRF_SpOpt("sweep_ct", 1) ~= 1 then return nil, "off"; end;
+	local r = TRF_SpRec(id);
+	if not r or r.st ~= "in" then return nil, "st"; end;
+	if r.ct or type(L.ct) == "table" then return nil, "busy"; end;
+	for k, o in L.sp do
+		if type(o) == "table" and o.ct then return nil, "busy"; end;
+	end;
+	if TRF_SpWar(TRF_SpFacTeam(s.f)) or TRF_SpFst(s.f) < 4 then return nil, "standing"; end;
+	if not TRF_SpStrict(nil, "contract") then return nil, "strict"; end;
+	local cur = TRF_SpCur();
+	local n = floor(min(TRF_SpT("sweep_escort_mult", 3) * TRF_SpPayN(cur), TRF_SpT("pay_cap", 30000)));
+	local dest = TRF_SpSysName(cur);
+	if type(TRF_UI_SysName) == "function" then dest = TRF_SpP(TRF_UI_SysName, {cur}) or dest; end;
+	return TRF_SpTxt("sescoffer", TRF_SpFacName(s.f), dest, format("%d", n)), n;
+end;
+
+-- Hail option "sesc": the offer box; OK accepts (due call TRF_SpCtGo).
+function TRF_SupplyCtDo(id)
+	local L = TRF_SpLive();
+	local text, n = TRF_SpCtOffer(id);
+	if not L or not text then TRF_SpE("contract", "trader_id", id, "reason", tostring(n), "result", "no_offer"); return nil; end;
+	-- Stage B (design/hail-spec.md 2): on a hail dialog chain the offer is a page of the hail; Accept runs TRF_SpCtPgOk
+	-- from the hail due call, Decline goes back to the menu.
+	if TRF_N("TRF_HlProvPage", text, "TRF_SpCtPgOk", "sesc") then return 1; end;
+	-- The box lock (trf_plumb live.box): the hail menu that called this closes after it (TRF_HailDoV1), so its
+	-- lock passes to this box and is freed at the answer.
+	if TRF_N("TRF_BoxHolder") == "hail" then TRF_N("TRF_BoxFree", "hail"); end;
+	if type(TRF_BoxTake) == "function" and not TRF_BoxTake("supply_ct") then
+		TRF_SpE("contract", "trader_id", id, "reason", "box_lock", "result", "no_offer");
+		return nil;
+	end;
+	L.spc = {id=id, n=n, g=TRF.gen};
+	if type(ShowMsgBox) ~= "function" or not TRF_SpP(function(t, a, b) ShowMsgBox("#UI_FTrader_confirm", t, a, b); return 1; end, {text, TRF_SpCtOk, TRF_SpCtNo}) then
+		L.spc = nil;
+		TRF_N("TRF_BoxFree", "supply_ct");
+		return nil;
+	end;
+	return 1;
+end;
+
+-- Accept on the hail page (trf_hail TRF_HlProvPage, from the hail due call): the chain closes, then the box OK path.
+function TRF_SpCtPgOk()
+	local L = TRF_SpLive();
+	if not L or type(L.hl) ~= "table" then return; end;
+	local id = L.hl.id;
+	TRF_N("TRF_HlClose", "sesc accept");
+	local text, n = TRF_SpCtOffer(id);
+	if not text then TRF_SpE("contract", "trader_id", id, "reason", tostring(n), "result", "no_offer"); return; end;
+	L.spc = {id=id, n=n, g=TRF.gen, c="ok"};
+	TRF_SpCtGo();
+end;
+
+function TRF_SpCtOk() TRF_Cb("TRF_SpCtOk", TRF_SpCtCb, {"ok"}); end;
+function TRF_SpCtNo() TRF_Cb("TRF_SpCtNo", TRF_SpCtCb, {"no"}); end;
+
+-- Box callback: records the choice only; the action runs from a due call.
+function TRF_SpCtCb(c)
+	TRF_N("TRF_BoxFree", "supply_ct");
+	local L = TRF_SpLive();
+	if not L or type(L.spc) ~= "table" or L.spc.g ~= TRF.gen then return; end;
+	if c ~= "ok" then L.spc = nil; return; end;
+	L.spc.c = c;
+	if type(TRF_Due) ~= "function" or not TRF_Due(0.1, "TRF_SpCtGo") then TRF_SpCtGo(); end;
+end;
+
+function TRF_SpCtGo()
+	local L = TRF_SpLive();
+	if not L or type(L.spc) ~= "table" then return; end;
+	local c = L.spc;
+	L.spc = nil;
+	local s = TRF_SpRecOf(c.id);
+	local r = TRF_SpRec(c.id);
+	if c.c ~= "ok" or c.g ~= TRF.gen or not s or not r or not TRF_SpCtOffer(c.id) then
+		TRF_SpE("contract", "trader_id", c.id, "result", "not_accepted");
+		return;
+	end;
+	s.ct = c.n;
+	s.cu = 1;
+	r.ct = 1;
+	TRF_SpX("TRF_RaidRoll", c.id, "contract");
+	TRF_SpSay(TRF_SpTxt("sescok"), c.id);
+	TRF_SpE("contract", "trader_id", c.id, "pay", c.n, "result", "accepted");
+end;
+
+-- Contract result at the convoy's end: paid when it docked or exited, did not flee, and the mothership was
+-- within ct_dist of its leader at the last sample (<= 2 steps old). Otherwise void.
+function TRF_SpCtEnd(id, s, why, gt)
+	local n = s.ct;
+	s.ct = nil;
+	local fresh = type(s.dt) == "number" and gt - s.dt <= 2 * TRF_SpT("step", 10) + 1;
+	local near = type(s.d) == "number" and s.d <= TRF_SpT("ct_dist", 400);
+	if (why == "dock" or why == "exit") and not s.fl and fresh and near then
+		local p = TRF_SpPay(n, "sesc");
+		local cur = TRF_SpCur();
+		TRF_SpX("TRF_AddHelp", 1, "sesc");
+		TRF_SpX("TRF_AddHeat", -1, "sesc");
+		TRF_SpFsAdd(TRF_SpX("TRF_RgOf", cur), s.f, 1, "sesc");
+		TRF_SpFstAdd(s.f, 1, "sesc");
+		TRF_SpSay(TRF_SpTxt("sescpaid", format("%d", p), TRF_SpFacName(s.f)), nil);
+		TRF_SpStat("sesc_paid");
+		TRF_SpE("contract", "trader_id", id, "distance", TRF_F(s.d), "pay", p, "result", "paid");
+		return;
+	end;
+	if why == "kill" then
+		TRF_SpSay(TRF_SpTxt("sesclost", TRF_SpFacName(s.f)), nil);
+	elseif why == "dock" or why == "exit" then
+		TRF_SpSay(TRF_SpTxt("sescfar"), nil);
+	end;
+	TRF_SpE("contract", "trader_id", id, "reason", tostring(why), "fled", TRF_KvB(s.fl), "distance", TRF_F(s.d), "result", "void");
+end;
+
+-- Demand cargo (5.2) ---------------------------------------------------------------------------
+
+-- Comply chance % of the lane raid model (v02 5.2): trf_raid's TRF_Rd_ComplyOf, else the same formula
+-- clamp(100 - 100 x br x st / sp, comply_min 5, comply_max 95); st trader side, sp player side.
+function TRF_DemandChanceOf(st, sp, br)
+	local p = TRF_SpX("TRF_Rd_ComplyOf", st, sp, br);
+	if type(p) == "number" then return p; end;
+	return TRF_SpClamp(100 - 100 * br * st / max(sp, 0.001), TRF_SpT("comply_min", 5), TRF_SpT("comply_max", 95));
+end;
+
+-- Braveness of trader record r: trf_raid's TRF_Rd_Brave (one roll kept as r.br, shared with lane raids),
+-- else the same roll here, uniform in [brave_lo 0.2, brave_hi 1], kept as r.br.
+function TRF_SpBrave(r)
+	local b = TRF_SpX("TRF_Rd_Brave", r);
+	if type(b) == "number" then return b; end;
+	if type(r.br) == "number" then return r.br; end;
+	local lo, hi = TRF_SpT("brave_lo", 0.2), TRF_SpT("brave_hi", 1);
+	if hi < lo then hi = lo; end;
+	r.br = lo + (hi - lo) * TRF_SpRand(1001) / 1000;
+	return r.br;
+end;
+
+-- Hull names of vanilla GetPlayerLevel (OutOfMission.script 217-232), index = level 1..13.
+function TRF_SpHulls()
+	return {"hm_queen_pl", "arba_t", "mothership_arba_pirate", "mothership_arba", "mothership_astarta", "mothership_old",
+		"mothership_corporate", "mothership_kfni", "mothership_empire", "mothership_lion", "mothership_lion_mk2a_grey",
+		"mothership_lion_mk2a_vks", "mothership_uel"};
+end;
+
+-- Player power by level, on the contact strength scale: the mean strength of the extortion flight vanilla
+-- RandomPiratGetMoney sends against the hull (OutOfMission.script 389-401: level 2 5+RAND(3), 4 7+RAND(3),
+-- 5 10+RAND(3), 6-9 13+RAND(3), 10-13 16+RAND(4)). Levels without extortion: 1 (start hull) 3, 3 (pirate
+-- Arba) as arba_t.
+function TRF_SpHullPw()
+	return {3, 6, 6, 8, 11, 14, 14, 14, 14, 17.5, 17.5, 17.5, 17.5};
+end;
+
+function TRF_SpMsName(m)
+	return m:GetName();
+end;
+
+-- GetPlayerLevel without GetPlayerMotherShip: hull index of the TRF_Ms() handle (case-insensitive), 0 for an
+-- unlisted hull or no mothership.
+function TRF_SpPlayerLevel()
+	local ms = TRF_SpMs();
+	if not ms then return 0; end;
+	local nm = TRF_SpP(TRF_SpMsName, {ms});
+	if type(nm) ~= "string" then return 0; end;
+	nm = strlower(nm);
+	local t = TRF_SpHulls();
+	for i = 1, getn(t) do
+		if t[i] == nm then return i; end;
+	end;
+	return 0;
+end;
+
+-- Player side of a demand: power x ships, and the power. Power by hull (TRF_SpHullPw); unlisted hull or no
+-- mothership: sys_base sb of the current system (as TRF_Rd_Power), else 5. Ships: the mothership plus 2
+-- fighters, 1 on the start hull (no hangar). No script API lists the player's live fighters (none in
+-- vanilla include/, none in the mod), so the count is a fixed proxy.
+function TRF_SpPlayerSide()
+	local lv = TRF_SpPlayerLevel();
+	local pw, ns = nil, 3;
+	if lv >= 1 then pw = TRF_SpHullPw()[lv]; end;
+	if lv == 1 then ns = 1; end;
+	if type(pw) ~= "number" then
+		local s = TRF_SpMapSys(TRF_SpCur());
+		if s and type(s.sb) == "number" and s.sb > 0 then pw = s.sb; else pw = 5; end;
+	end;
+	return pw * ns, pw, lv;
+end;
+
+-- 1 when a raid record on the trader is open or robbed it.
+function TRF_SpRaided(r)
+	local L = TRF_SpLive();
+	if type(r.rdn) ~= "number" or not L or type(L.rd) ~= "table" then return nil; end;
+	local rd = L.rd[r.rdn];
+	if type(rd) == "table" and (rd.st ~= "end" or rd.dc == "comply") then return 1; end;
+	return nil;
+end;
+
+-- Live escorts of trader id: live ships minus live transports (handles), else r.np - r.nt.
+function TRF_SpEscAlive(r, h)
+	if type(h) == "table" and type(h.sh) == "table" and type(h.tp) == "table" then
+		local n = 0;
+		for i = 1, getn(h.sh) do
+			local s = h.sh[i];
+			local tp = nil;
+			for j = 1, getn(h.tp) do if h.tp[j] == s then tp = 1; end; end;
+			if not tp and TRF_SpAlive(s) then n = n + 1; end;
+		end;
+		return n;
+	end;
+	return max(0, (r.np or 1) - (r.nt or 1));
+end;
+
+-- 1 or nil, reason: FTU trader, heat < 7 (no hull or level test, TDR 8.6), no contract, not raided, not demanded
+-- before, no flag, cfg demand 1.
+function TRF_DemandOk(id)
+	if TRF_SpOpt("demand", 1) ~= 1 then return nil, "off"; end;
+	local r = TRF_SpRec(id);
+	if not r then return nil, "norec"; end;
+	if r.own then return nil, "own"; end;
+	if r.fw then return nil, "freight"; end;
+	if r.dq == 1 then return nil, "used"; end;
+	if r.st == "wind" then return nil, "st"; end;
+	if TRF_SpHeat() >= 7 then return nil, "heat"; end;
+	local L = TRF_SpLive();
+	if r.ct or (L and type(L.ct) == "table" and L.ct.id == id) then return nil, "contract"; end;
+	if TRF_SpRaided(r) then return nil, "raid"; end;
+	if TRF_SpSupp() or TRF_SpQuiet() then return nil, "flag"; end;
+	return 1;
+end;
+
+-- Removes k containers from the hold mirror, largest stack first, and refills the transports as v02 5.2
+-- comply (ClearInventory + re-add). Returns the removed stacks {{i, n}} (empty when ClearInventory failed:
+-- no cargo moves, logged) and their count.
+function TRF_SpRob(r, h, k)
+	local got = {};
+	if type(r.hold) ~= "table" or getn(r.hold) == 0 or type(h) ~= "table" or type(h.tp) ~= "table" then return got, 0; end;
+	local new = {};
+	for i = 1, getn(r.hold) do
+		local s = r.hold[i];
+		if type(s) == "table" and type(s.i) == "string" and type(s.n) == "number" and s.n > 0 then
+			tinsert(new, {i=s.i, n=s.n, s=s.s});
+		end;
+	end;
+	local taken, cnt = {}, 0;
+	while cnt < k do
+		local bi, bn = nil, 0;
+		for i = 1, getn(new) do
+			if new[i].n > bn then bi = i; bn = new[i].n; end;
+		end;
+		if not bi then break; end;
+		local it = new[bi].i;
+		taken[it] = (taken[it] or 0) + 1;
+		new[bi].n = new[bi].n - 1;
+		cnt = cnt + 1;
+		if new[bi].n <= 0 then tremove(new, bi); end;
+	end;
+	local cleared, fail = {}, nil;
+	for j = 1, getn(h.tp) do
+		if TRF_SpAlive(h.tp[j]) then
+			-- CHECK (E0.3): ClearInventory on an NPC transport.
+			if TRF_SpP(function(x) x:ClearInventory(); return 1; end, {h.tp[j]}) then cleared[j] = 1; else fail = 1; end;
+		end;
+	end;
+	local use = new;
+	if fail then use = r.hold; end;
+	for j, v in cleared do
+		for i = 1, getn(use) do
+			local st = use[i];
+			local sj = st.s;
+			if type(sj) ~= "number" then sj = 1; end;
+			if sj == j and type(st.n) == "number" and st.n > 0 then
+				TRF_SpP(function(x, it, c) x:AddModuleToInventory(it, c); end, {h.tp[j], st.i, st.n});
+			end;
+		end;
+	end;
+	if fail then
+		TRF_SpE("demand_fail", "trader_id", r.id, "reason", "clear_inventory_failed", "result", "no_cargo_moved");
+		return {}, 0;
+	end;
+	r.hold = new;
+	for it, n in taken do tinsert(got, {i=it, n=n}); end;
+	sort(got, function(a, b) return a.i < b.i; end);
+	return got, cnt;
+end;
+
+-- Containers of a comply: 1 + RAND(demand_k); demand_k 0 or 1 (or less) is always one, without a roll.
+function TRF_SpDemandK()
+	local k = floor(TRF_SpT("demand_k", 3));
+	if k <= 1 then return 1; end;
+	return 1 + TRF_SpRand(k);
+end;
+
+-- Display name of module id it: the vanilla loc name #M_Name_<id> (G/Game/Modules.xml short_name) through
+-- CombineStr (lua-natives.md 115; CHECK DP3: a key without a placeholder comes back as its text), else the id.
+function TRF_SpItemName(it)
+	local s = nil;
+	if type(CombineStr) == "function" then s = TRF_SpP(CombineStr, {"#M_Name_"..it, ""}); end;
+	if type(s) == "string" then s = gsub(s, "%s+$", ""); end;
+	if type(s) ~= "string" or s == "" or strsub(s, 1, 1) == "#" then return it; end;
+	return s;
+end;
+
+-- Page list of stacks {{i, n}}: "<n> x <name>" joined by ", "; dmpnone when empty.
+function TRF_SpItems(l)
+	local s = nil;
+	for i = 1, getn(l) do
+		local e = format("%d x %s", l[i].n, TRF_SpItemName(l[i].i));
+		if s then s = s..", "..e; else s = e; end;
+	end;
+	return s or TRF_SpTxt("dmpnone");
+end;
+
+-- Log value of stacks {{i, n}}: "<id>:<n>,..." (nil when empty).
+function TRF_SpItemsKv(l)
+	local s = nil;
+	for i = 1, getn(l) do
+		local e = l[i].i..":"..l[i].n;
+		if s then s = s..","..e; else s = e; end;
+	end;
+	return s;
+end;
+
+-- Answer of a demand: with cfg demand_page 1 the result page (trf_hail TRF_HlPage: dialog or boxes, nw 1 offers
+-- No witnesses); without it, or when no page opens, the line. Returns "dialog", "box" or "line".
+function TRF_SpAnswer(id, line, page, nw)
+	if TRF_SpOpt("demand_page", 1) == 1 then
+		local v = TRF_SpX("TRF_HlPage", id, page, nw);
+		if v then return v; end;
+	end;
+	TRF_SpSay(line, id);
+	return "line";
+end;
+
+-- Drop container (cfg demand_drop, design/demand-page-spec.md 5.7) ---------------------------------------------
+
+-- Template, distance band from the leader, placement tries, label slots: the range trf_plumb's orphan scan probes
+-- (group Drop labels trf_drop_<a>_<j>, a 1..scan_n, j 1..scan_j of TRF_PlK: 4 x 6 = 24 slots; the same numbers
+-- without trf_plumb).
+function TRF_SpDropK()
+	local n, j = 4, 6;
+	local P = TRF_SpX("TRF_PlK");
+	if type(P) == "table" and type(P.scan_n) == "number" and type(P.scan_j) == "number" then n, j = P.scan_n, P.scan_j; end;
+	return {tpl="cargo01_destroyed_inv", r_lo=40, r_hi=80, tries=3, slots=n * j, per=j};
+end;
+
+-- Label of slot s (1..24): trf_drop_<a>_<j>.
+function TRF_SpDropLbl(s)
+	local K = TRF_SpDropK();
+	local a = floor((s - 1) / K.per);
+	return "trf_drop_"..(a + 1).."_"..(s - a * K.per);
+end;
+
+-- Handle store TRF_H().dp = {n, o}, or nil without the handle table.
+function TRF_SpDropH()
+	local H = TRF_SpH();
+	if not H then return nil; end;
+	if type(H.dp) ~= "table" then H.dp = {n=0, o={}}; end;
+	return H.dp;
+end;
+
+-- Spot r_lo..r_hi from p at a random heading in the plane of p.
+function TRF_SpDropAt(p, K)
+	local d = K.r_lo + TRF_SpRand(K.r_hi - K.r_lo + 1);
+	local a = TRF_SpRand(360);
+	return {x=p.x + d * cos(a), y=p.y, z=p.z + d * sin(a)};
+end;
+
+-- Deletes the container of slot s (the handle, else any object the label lookup answers, a destroyed one too);
+-- 1 when it was alive.
+function TRF_SpDropDel(D, s)
+	local o = D.o[s];
+	D.o[s] = nil;
+	local live = TRF_SpX("TRF_Sc_Alive", o);
+	if not live then
+		o = TRF_SpX("TRF_Sc_FindAny", TRF_SpDropLbl(s));
+		if not o then return nil; end;
+		live = TRF_SpX("TRF_Sc_Alive", o);
+	end;
+	TRF_SpX("TRF_Sc_Del", o);
+	return live;
+end;
+
+-- One container 40-80 from the leader of trader id holding the stacks l ({i, n}) through trf_scar's generic object
+-- helpers: TRF_Sc_Make (CreateCarcass of a <Station> model, label) and TRF_Sc_Inv (ClearInventory, then
+-- AddModuleToInventory per stack). The next slot is used, its old container deleted after 24 drops in one visit.
+-- Returns the label, or nil and why (no_helper, no_position, no_handles, create_failed, inventory_failed).
+function TRF_SpDrop(id, l)
+	local K = TRF_SpDropK();
+	if type(TRF_Sc_Make) ~= "function" or type(TRF_Sc_Inv) ~= "function" then return nil, "no_helper"; end;
+	local p = TRF_SpPos(TRF_SpLead(id));
+	if p == nil or type(p.x) ~= "number" then return nil, "no_position"; end;
+	local D = TRF_SpDropH();
+	if not D then return nil, "no_handles"; end;
+	local s = D.n + 1;
+	if s > K.slots then s = 1; end;
+	local lb = TRF_SpDropLbl(s);
+	TRF_SpDropDel(D, s);
+	local o = nil;
+	local t = 0;
+	while not o and t < K.tries do
+		o = TRF_SpX("TRF_Sc_Make", K.tpl, TRF_SpDropAt(p, K), lb);
+		t = t + 1;
+	end;
+	if not o then return nil, "create_failed"; end;
+	if not TRF_SpX("TRF_Sc_Inv", o, l) then
+		TRF_SpX("TRF_Sc_Del", o);
+		return nil, "inventory_failed";
+	end;
+	D.n = s;
+	D.o[s] = o;
+	return lb;
+end;
+
+-- Deletes every drop container of the visit (before a jump); event=demand_drop_clear when one was deleted.
+function TRF_SpDropClear(why)
+	local H = TRF_SpH();
+	if not H or type(H.dp) ~= "table" then return 0; end;
+	local K = TRF_SpDropK();
+	local n = 0;
+	for s = 1, K.slots do
+		if H.dp.o[s] and TRF_SpDropDel(H.dp, s) then n = n + 1; end;
+	end;
+	H.dp = nil;
+	if n > 0 then TRF_SpE("demand_drop_clear", "deleted_count", n, "reason", why); end;
+	return n;
+end;
+
+-- Robbed stacks got: with cfg demand_drop 1 into one container beside the trader (TRF_SpDrop), else, or when that
+-- fails, onto the mothership (AddModuleToInventory per stack). Returns moved count, moved stacks, container label,
+-- the drop failure (nil or why).
+function TRF_SpHandOver(id, got)
+	local moved, mv = 0, {};
+	local why = nil;
+	if TRF_SpOpt("demand_drop", 0) == 1 and getn(got) > 0 then
+		local lb;
+		lb, why = TRF_SpDrop(id, got);
+		if lb then
+			for i = 1, getn(got) do moved = moved + got[i].n; end;
+			return moved, got, lb, nil;
+		end;
+	end;
+	local ms = TRF_SpMs();
+	for i = 1, getn(got) do
+		if ms and TRF_SpP(function(m, it, c) m:AddModuleToInventory(it, c); return 1; end, {ms, got[i].i, got[i].n}) then
+			moved = moved + got[i].n;
+			tinsert(mv, got[i]);
+		end;
+	end;
+	return moved, mv, nil, why;
+end;
+
+function TRF_SpComply(id, r, h, cur)
+	local got, cnt = TRF_SpRob(r, h, TRF_SpDemandK());
+	local moved, mv, dn, dwhy = TRF_SpHandOver(id, got);
+	TRF_SpX("TRF_AddHeat", 2, "demand "..id);
+	if type(cur) == "number" then
+		TRF_SpX("TRF_AddDis", cur, 1, "demand "..id);
+		-- Player robbery: pk = 1, never a relief target (00 section 6).
+		if r.path == "A" then TRF_SpP(TRF_ShortAdd, {cur, r.cls, nil, 1}); end;
+	end;
+	-- Corporation carriers (design/corp-carriers-spec.md 5.3): a robbed contract carrier counts for a pull-out.
+	TRF_SpX("TRF_Crp_Hit", id, r, "rob", cur);
+	TRF_SpX("TRF_TrackMark", id, "rob");
+	TRF_SpX("TRF_PoDone", id, "rob");
+	local nm = TRF_SpName(r);
+	local line = TRF_SpTxt("dmok", nm);
+	local its = TRF_SpItems(mv);
+	local jet = TRF_SpTxt("dmpgot", nm, its);
+	-- loc_mode 1 drops $2: the item list follows the key.
+	if not strfind(jet, its, 1, 1) then jet = jet..": "..its; end;
+	TRF_SpAnswer(id, line, line..TRF_Br()..jet, 1);
+	TRF_SpX("TRF_Flee", id, "demand");
+	TRF_SpStat("dm_comply");
+	local d = 0;
+	if dn then d = 1; end;
+	if dwhy then
+		TRF_SpE("demand_comply", "trader_id", id, "container_count", cnt, "moved_count", moved, "heat", TRF_SpHeat(),
+			"items", TRF_SpItemsKv(mv), "drop", TRF_KvB(d), "container_name", dn, "reason", "drop_failed", "drop_cause", dwhy);
+	else
+		TRF_SpE("demand_comply", "trader_id", id, "container_count", cnt, "moved_count", moved, "heat", TRF_SpHeat(),
+			"items", TRF_SpItemsKv(mv), "drop", TRF_KvB(d), "container_name", dn);
+	end;
+end;
+
+function TRF_SpRefuse(id, r)
+	local line = TRF_SpTxt("dmno", TRF_SpName(r));
+	TRF_SpAnswer(id, line, line, nil);
+	TRF_SpX("TRF_Flee", id, "demand");
+	TRF_SpX("TRF_RespStart", id);
+	TRF_SpX("TRF_Distress", id, "demand");
+	TRF_SpStat("dm_refuse");
+	TRF_SpE("demand_refuse", "trader_id", id);
+end;
+
+-- Hail option "demand" (from a due call, never inside a box callback): comply when RAND(100) is below the
+-- comply chance of TRF_DemandChanceOf. Trader side = build power r.pw (nil: the player's) x (live escorts +
+-- 0.5); player side TRF_SpPlayerSide; braveness TRF_SpBrave. Returns "comply", "refuse" or nil, reason.
+function TRF_DemandDo(id)
+	local ok, why = TRF_DemandOk(id);
+	if not ok then
+		TRF_SpE("demand_skip", "trader_id", id, "reason", tostring(why));
+		return nil, why;
+	end;
+	local r = TRF_SpRec(id);
+	local h = TRF_SpHTr(id);
+	r.dq = 1;
+	local sp, pp, lv = TRF_SpPlayerSide();
+	local tw = r.pw;
+	if type(tw) ~= "number" or tw <= 0 then tw = pp; end;
+	local st = tw * (TRF_SpEscAlive(r, h) + 0.5);
+	local br = TRF_SpBrave(r);
+	local p = TRF_DemandChanceOf(st, sp, br);
+	local roll = TRF_SpRand(100);
+	local dc = "refuse";
+	if roll < p then dc = "comply"; end;
+	TRF_SpE("demand", "trader_id", id, "trader_strength", TRF_F(st), "player_strength", TRF_F(sp), "player_level", lv,
+		"strength_ratio", TRF_F(st / sp), "braveness", TRF_F(br), "chance", TRF_F(p), "roll", roll, "result", dc);
+	if dc == "comply" then
+		TRF_SpComply(id, r, h, TRF_SpCur());
+		return "comply";
+	end;
+	TRF_SpRefuse(id, r);
+	return "refuse";
+end;
+
+-- No witnesses (design/demand-page-spec.md) ------------------------------------------------------
+
+-- Prey mark of trader record r, or nil.
+function TRF_SpPw(r)
+	if type(r) ~= "table" or type(r.dw) ~= "table" or type(r.dw.t) ~= "number" then return nil; end;
+	return r.dw;
+end;
+
+-- Position of a handle as {x, y, z}, alive or not (a dead transport at its died trigger), or nil.
+function TRF_SpPosOf(o)
+	if type(o) ~= "table" and type(o) ~= "userdata" then return nil; end;
+	local p = call(function(x) local q = x:GetPosition(); return {x=q.x, y=q.y, z=q.z}; end, {o}, "x", TRF_SpNoErr);
+	if type(p) == "table" and type(p.x) == "number" then return p; end;
+	return nil;
+end;
+
+-- GetCarcassCountInSphere(Vector3, r): every carcass whose sphere touches the query sphere, no type or HP filter
+-- (design/mod-research/carcass-count.md); nil without the native or on an error.
+function TRF_SpCount(p, r)
+	if type(p) ~= "table" or type(GetCarcassCountInSphere) ~= "function" or type(Vector3) ~= "function" then return nil; end;
+	local n = TRF_SpP(function(x, y, z, rr) return GetCarcassCountInSphere(Vector3(x, y, z), rr); end, {p.x, p.y or 0, p.z, r});
+	if type(n) == "number" then return n; end;
+	return nil;
+end;
+
+-- Map stations and portals (managed, inner and broken: every portal object the native counts) of the current
+-- system within r of p: station count, portal count, label of the first labelled station within r (at most 63
+-- characters), nil without one.
+function TRF_SpStatic(p, r)
+	local sy = TRF_SpMapSys(TRF_SpCur());
+	local c = {0, 0};
+	local sl = nil;
+	if not sy or type(p) ~= "table" then return 0, 0, nil; end;
+	local ls = {sy.st or {}, sy.portals or {}, sy.inner or {}, sy.broken or {}};
+	for j = 1, getn(ls) do
+		local cj = 2;
+		if j == 1 then cj = 1; end;
+		for i = 1, getn(ls[j]) do
+			local q = ls[j][i];
+			if type(q) == "table" and type(q.x) == "number" and type(q.z) == "number" then
+				local d = TRF_SpDist({x=q.x, y=q.y or 0, z=q.z}, p);
+				if d and d <= r then
+					c[cj] = c[cj] + 1;
+					if cj == 1 and not sl and type(q.label) == "string" and q.label ~= "" then sl = strsub(q.label, 1, 63); end;
+				end;
+			end;
+		end;
+	end;
+	return c[1], c[2], sl;
+end;
+
+-- Live ships of the mod's other flights within r of p: other traders (H.tr[*].sh, not id) and raids (H.rd[*].sh).
+function TRF_SpOthersNear(id, p, r)
+	local H = TRF_SpH();
+	local n, ls = 0, {};
+	if type(H) ~= "table" or type(p) ~= "table" then return 0; end;
+	if type(H.tr) == "table" then
+		for k, x in H.tr do if k ~= id and type(x) == "table" and type(x.sh) == "table" then tinsert(ls, x.sh); end; end;
+	end;
+	if type(H.rd) == "table" then
+		for k, x in H.rd do if type(x) == "table" and type(x.sh) == "table" then tinsert(ls, x.sh); end; end;
+	end;
+	for j = 1, getn(ls) do
+		for i = 1, getn(ls[j]) do
+			local d = TRF_SpDist(TRF_SpPos(ls[j][i]), p);
+			if d and d <= r then n = n + 1; end;
+		end;
+	end;
+	return n;
+end;
+
+-- The player's mothership and the flight's live ships (handles h.sh) within r of p.
+function TRF_SpOwnNear(h, p, r)
+	local n = 0;
+	local d = TRF_SpDist(TRF_SpPos(TRF_SpMs()), p);
+	if d and d <= r then n = n + 1; end;
+	if type(h) == "table" and type(h.sh) == "table" then
+		for i = 1, getn(h.sh) do
+			local e = TRF_SpDist(TRF_SpPos(h.sh[i]), p);
+			if e and e <= r then n = n + 1; end;
+		end;
+	end;
+	return n;
+end;
+
+-- Count path only (TRF_SpPlayerDo). Pilot names of the player's crew (vanilla GetPilot("Hero") and the AddPilotToPlayer pilots; hired pilots are
+-- the templates RecruitPilot and RecruitOfficer of G/Game/Recruits.xml).
+function TRF_SpCrew()
+	return {"Hero", "Sedoy", "Validol", "Tramp", "Kalem", "Lastochka", "Lastochka2", "Yana", "Uel", "Cleric", "Alex",
+		"Blade", "Viper", "Natali", "Alexandra", "Aia", "RecruitPilot", "RecruitOfficer"};
+end;
+
+-- Count path only (the typed rule leaves the player's team out by its pl flag): ships of the player's team other
+-- than the mothership ms: every pilot of the side of ms's pilot in the flight of
+-- ms's pilot and in the flights of the crew pilots (GetPilot by name, TRF_SpCrew), each ship once (Carcass id).
+-- No native lists the PLAYER_GROUP ships (design/mod-research/combat-state.md 1.3): a pilot outside these flights
+-- is missed (CHECK W2). Runs protected.
+function TRF_SpPlayerDo(ms, crew)
+	local mp = ms:GetPilot();
+	local out, seen, fls = {}, {}, {};
+	if not mp then return out; end;
+	local side = mp:GetSide();
+	if type(side) ~= "string" then return out; end;
+	local f0 = mp:GetFlight();
+	if f0 then tinsert(fls, f0); end;
+	if type(GetPilot) == "function" then
+		for i = 1, getn(crew) do
+			local q = GetPilot(crew[i]);
+			local f = nil;
+			if q and q:GetSide() == side then f = q:GetFlight(); end;
+			if f then tinsert(fls, f); end;
+		end;
+	end;
+	if type(ms.id) == "number" then seen[ms.id] = 1; end;
+	seen[ms] = 1;
+	for j = 1, getn(fls) do
+		local fl = fls[j];
+		local c = fl:GetPilotCount();
+		if type(c) ~= "number" then c = 0; end;
+		for i = 1, min(c, 16) do
+			local q = fl:GetPilotByNumber(i);
+			local s = nil;
+			if q and q:GetSide() == side then s = q:GetShip(); end;
+			if s then
+				local key = s;
+				if type(s.id) == "number" then key = s.id; end;
+				if not seen[key] then seen[key] = 1; tinsert(out, s); end;
+			end;
+		end;
+	end;
+	return out;
+end;
+
+-- Count path only. Live ships of the player's team other than the mothership within r of p (TRF_SpPlayerDo).
+function TRF_SpPlayerNear(p, r)
+	local ms = TRF_SpMs();
+	local n = 0;
+	if type(p) ~= "table" or not TRF_SpAlive(ms) then return 0; end;
+	local ls = TRF_SpP(TRF_SpPlayerDo, {ms, TRF_SpCrew()});
+	if type(ls) ~= "table" then return 0; end;
+	for i = 1, getn(ls) do
+		local d = TRF_SpDist(TRF_SpPos(ls[i]), p);
+		if d and d <= r then n = n + 1; end;
+	end;
+	return n;
+end;
+
+-- Live drop containers (TRF_H().dp, 5.7) within r of p: mod objects, never witnesses, so the background and the
+-- kill count both leave them out.
+function TRF_SpDropNear(p, r)
+	local H = TRF_SpH();
+	local n = 0;
+	if type(H) ~= "table" or type(H.dp) ~= "table" or type(p) ~= "table" then return 0; end;
+	for s, o in H.dp.o do
+		if TRF_SpX("TRF_Sc_Alive", o) then
+			local d = TRF_SpDist(TRF_SpPosOf(o), p);
+			if d and d <= r then n = n + 1; end;
+		end;
+	end;
+	return n;
+end;
+
+-- Typed witness rule (spec 5.8) ---------------------------------------------------------------
+
+-- uid of handle o (its id field, the id of its TRF_Carcasses record), or nil.
+function TRF_SpUid(o)
+	if type(o) ~= "table" and type(o) ~= "userdata" then return nil; end;
+	local v = call(function(x) return x.id; end, {o}, "x", TRF_SpNoErr);
+	if type(v) == "number" then return v; end;
+	return nil;
+end;
+
+-- TRF_Near filter of a witness: a ship or station (cls 3..9) with hp > 0 outside the player's team (pl ~= 1), not
+-- one of the flight's own ships (uids of h.sh, which holds the transports h.tp as well) and not a drop container
+-- (its template, and the uids of the live containers in TRF_H().dp).
+function TRF_SpWitF(h)
+	local ids, ls = {}, {};
+	if type(h) == "table" and type(h.sh) == "table" then tinsert(ls, h.sh); end;
+	local H = TRF_SpH();
+	if type(H) == "table" and type(H.dp) == "table" and type(H.dp.o) == "table" then
+		local q = {};
+		for s, o in H.dp.o do tinsert(q, o); end;
+		tinsert(ls, q);
+	end;
+	for j = 1, getn(ls) do
+		for i = 1, getn(ls[j]) do
+			local u = TRF_SpUid(ls[j][i]);
+			if u then tinsert(ids, u); end;
+		end;
+	end;
+	return {cls={3, 4, 5, 6, 7, 8, 9}, alive=1, player=0, not_ids=ids, not_names={TRF_SpDropK().tpl}};
+end;
+
+-- Records within r of p that pass filter f (trf_plumb TRF_Near), or nil when TRF_Near answers no list
+-- (no native, an older DLL, ini carcasses=0, a failed read): the caller takes the count path.
+function TRF_SpNear(p, f, r)
+	local l, via = TRF_SpX("TRF_Near", p, r, f);
+	if type(l) == "table" and via == "typed" then return l; end;
+	return nil;
+end;
+
+-- CHECK W5 (spec 10), level 2, at a typed mark: every record (no filter, cls -1 included) within 3000 of p against
+-- GetCarcassCountInSphere there, and the record of the leader o (uid) with its team and hp against GetCurHP.
+function TRF_SpProbe(id, p, o)
+	if TRF_SpLog() < 2 then return; end;
+	local R = 3000;
+	local l = TRF_SpX("TRF_Near", p, R);
+	if type(l) ~= "table" then return; end;
+	local u = TRF_SpUid(o);
+	local c = nil;
+	for i = 1, getn(l) do if u and l[i].id == u then c = l[i]; end; end;
+	local cc, ct, ch = nil, nil, nil;
+	if c then cc, ct, ch = c.cls, c.team, c.hp; end;
+	TRF_SpDE("witness_probe", "trader_id", id, "radius", R, "typed_count", getn(l), "carcass_count", TRF_SpCount(p, R),
+		"leader_id", u, "leader_cls", cc, "leader_team", ct, "leader_hp", ch, "leader_cur_hp", TRF_SpX("GetCurHP", o));
+end;
+
+-- Background at the mark, b and the via. Typed (TRF_SpNear answers): nil, "typed" (no background). Count path:
+-- the count within witness_r of the leader less the map stations and portals, the mothership, the player's other
+-- ships (TRF_SpPlayerNear), the flight's live ships, the live drop containers (TRF_SpDropNear) and the mod's other
+-- live ships (TRF_SpOthersNear, so they count as witnesses at a kill); scenery, wrecks, player ships the crew
+-- flights miss and vanilla ships remain (CHECK W3); nil without a count.
+function TRF_SpBack(p, h, id)
+	local R = TRF_SpT("witness_r", 1500);
+	if TRF_SpNear(p, nil, R) then return nil, "typed"; end;
+	local n = TRF_SpCount(p, R);
+	if not n then return nil, "count"; end;
+	local ns, np = TRF_SpStatic(p, R);
+	return max(0, n - ns - np - TRF_SpOwnNear(h, p, R) - TRF_SpPlayerNear(p, R) - TRF_SpDropNear(p, R) - TRF_SpOthersNear(id, p, R)), "count";
+end;
+
+-- Witnesses of a kill at p: count, reason, via, witness record. On both paths a map station within witness_r makes
+-- the kill seen (reason station), whatever the DLL list holds. Typed (spec 5.8): the TRF_SpWitF records within
+-- witness_r; the record is the first station among them (cls 8 or 9, reason station, as the count path puts stations
+-- first), else, with a map station within witness_r, {cls = 8, tpl = its label or "map"} (count: the records plus the
+-- map stations), else the first record (reason ship); b and nd unused. Count path: the map stations
+-- within witness_r, else the count less the background b, the map portals, the mothership, the player's other
+-- ships, the flight's live ships, the live drop containers, the nd transports of the flight that died earlier in
+-- the mark (their wrecks, CHECK W3) and tune witness_dead; seen when that excess is more than tune witness_slack
+-- (rockets in flight, CHECK W2). No position or no count: 1 (a retraction needs a count).
+function TRF_SpWitness(p, h, b, nd)
+	if type(p) ~= "table" then return 1, "no_position", nil, nil; end;
+	local R = TRF_SpT("witness_r", 1500);
+	local ns, np, sl = TRF_SpStatic(p, R);
+	local l = TRF_SpNear(p, TRF_SpWitF(h), R);
+	if l then
+		for i = 1, getn(l) do if l[i].cls == 8 or l[i].cls == 9 then return getn(l), "station", "typed", l[i]; end; end;
+		if ns > 0 then return getn(l) + ns, "station", "typed", {cls=8, tpl=sl or "map"}; end;
+		if not l[1] then return 0, "none", "typed", nil; end;
+		return getn(l), "ship", "typed", l[1];
+	end;
+	if ns > 0 then return ns, "station", "count", nil; end;
+	local n = TRF_SpCount(p, R);
+	if not n then return 1, "no_count", "count", nil; end;
+	local w = n - (b or 0) - np - TRF_SpOwnNear(h, p, R) - TRF_SpPlayerNear(p, R) - TRF_SpDropNear(p, R) - (nd or 0)
+		- TRF_SpT("witness_dead", 0);
+	if w > TRF_SpT("witness_slack", 1) and w > 0 then return w, "ship", "count", nil; end;
+	return 0, "none", "count", nil;
+end;
+
+-- Page option No witnesses (trf_hail, from a due call): marks trader id as prey, dw = {t, w = 0, b, v}. Returns
+-- "prey" or nil, reason.
+function TRF_DemandNoWit(id)
+	local r = TRF_SpRec(id);
+	local why = nil;
+	if not r then why = "norec";
+	elseif r.dq ~= 1 then why = "not_demanded";
+	elseif r.st == "gone" then why = "st";
+	elseif TRF_SpPw(r) then why = "marked"; end;
+	if why then
+		TRF_SpE("demand_prey", "trader_id", id, "reason", why, "result", "refused");
+		return nil, why;
+	end;
+	local b, via = nil, nil;
+	local lead = TRF_SpLead(id);
+	local p = TRF_SpPos(lead);
+	if p then p = {x=p.x, y=p.y, z=p.z}; b, via = TRF_SpBack(p, TRF_SpHTr(id), id); end;
+	r.dw = {t=TRF_SpGt(), w=0, b=b, v=via};
+	TRF_SpStat("dm_nowit");
+	TRF_SpE("demand_prey", "trader_id", id, "background_count", b, "ship_count", r.np, "window", TRF_SpT("witness_t", 180),
+		"result", "marked", "via", via);
+	if via == "typed" then TRF_SpProbe(id, p, lead); end;
+	return "prey";
+end;
+
+-- trf_events TRF_OnShipDied_Body, transport k of a marked trader died: witnesses at its position (handle, else
+-- the watchdog position rec.lx/ly/lz); the first seen kill sets dw.w = 1 (typed: dw.wc, dw.wt of its first
+-- witness; dw.b and dw.d are cleared, unused once w = 1, which keeps the mark at its spec 3 size). dw.v keeps the
+-- via of the check. dw.d counts the unseen transport deaths of the mark on both paths (their wrecks); only the count
+-- path subtracts it, so a count kill inside a typed mark (TRF_Near nil at that kill) does not read the wrecks of the
+-- earlier typed kills as witnesses (the typed rule leaves wrecks out by cls 10). Returns the witness count or nil.
+function TRF_DemandSeen(id, k, rec, h)
+	local pw = TRF_SpPw(rec);
+	if not pw or pw.w == 1 or TRF_SpGt() - pw.t > TRF_SpT("witness_t", 180) then return nil; end;
+	local o = nil;
+	if type(h) == "table" and type(h.tp) == "table" then o = h.tp[k]; end;
+	local p = TRF_SpPosOf(o);
+	if not p and type(rec.lx) == "number" and type(rec.lz) == "number" then p = {x=rec.lx, y=rec.ly or 0, z=rec.lz}; end;
+	local nd = pw.d;
+	if type(nd) ~= "number" then nd = 0; end;
+	local n, why, via, c = TRF_SpWitness(p, h, pw.b, nd);
+	if via then pw.v = via; end;
+	if n > 0 then
+		pw.w = 1;
+		if c then pw.wc = c.cls; pw.wt = c.tpl; pw.b = nil; pw.d = nil; end;
+	else
+		pw.d = nd + 1;
+	end;
+	if c then
+		TRF_SpE("demand_kill", "trader_id", id, "ship", k, "witness_count", n, "reason", why, "witnessed", TRF_KvB(pw.w == 1),
+			"via", via, "witness_cls", c.cls, "witness_tpl", c.tpl);
+	else
+		TRF_SpE("demand_kill", "trader_id", id, "ship", k, "witness_count", n, "reason", why, "witnessed", TRF_KvB(pw.w == 1),
+			"via", via);
+	end;
+	return n;
+end;
+
+-- trf_events TRF_Ev_Kill, before the kill heat: the mark ends. Within witness_t, no kill seen and no ship of the
+-- flight left (rec.np): the demand is retracted (heat -2, the lost line) and 1 is returned, so the kill heat is
+-- skipped; pro and dis stay the kill's. Otherwise witnessed, with the witness line only for a player kill (or a
+-- late kill: timeout) and nil.
+function TRF_DemandKill(id, rec, h, by, idx)
+	local pw = TRF_SpPw(rec);
+	if not pw then return nil; end;
+	rec.dw = nil;
+	local age = TRF_SpGt() - pw.t;
+	if age > TRF_SpT("witness_t", 180) then
+		TRF_SpE("demand_witness_timeout", "trader_id", id, "age", TRF_F(age), "reason", "late_kill");
+		return nil;
+	end;
+	local left = rec.np or 0;
+	local nm = TRF_SpName(rec);
+	if pw.w ~= 1 and left == 0 then
+		TRF_SpX("TRF_AddHeat", -2, "demand retract "..id);
+		TRF_SpSay(TRF_SpTxt("dmplost", nm), nil);
+		TRF_SpStat("dm_retract");
+		TRF_SpE("demand_retract", "trader_id", id, "by", by, "age", TRF_F(age), "heat", TRF_SpHeat(), "via", pw.v);
+		return 1;
+	end;
+	local why = "witness";
+	if pw.w ~= 1 then why = "survivor"; end;
+	if by == "player" then TRF_SpSay(TRF_SpTxt("dmpseen", nm), nil); end;
+	TRF_SpStat("dm_witnessed");
+	if pw.wc ~= nil or pw.wt ~= nil then
+		TRF_SpE("demand_witnessed", "trader_id", id, "reason", why, "ship_count", left, "age", TRF_F(age), "result", "witnessed",
+			"via", pw.v, "witness_cls", pw.wc, "witness_tpl", pw.wt);
+	else
+		TRF_SpE("demand_witnessed", "trader_id", id, "reason", why, "ship_count", left, "age", TRF_F(age), "result", "witnessed",
+			"via", pw.v);
+	end;
+	return nil;
+end;
+
+-- Supply step: a mark older than witness_t (flight still alive) or on a gone record is cleared.
+function TRF_SpPwStep(gt)
+	if type(TRF) ~= "table" or type(TRF.live) ~= "table" or type(TRF.live.tr) ~= "table" then return; end;
+	local T = TRF_SpT("witness_t", 180);
+	for id, r in TRF.live.tr do
+		if type(r) == "table" and type(r.dw) == "table" then
+			local pw = r.dw;
+			local t = pw.t;
+			if type(t) ~= "number" then t = gt - T - 1; end;
+			if r.st == "gone" or gt - t > T then
+				r.dw = nil;
+				TRF_SpE("demand_witness_timeout", "trader_id", id, "age", TRF_F(gt - t), "witnessed", TRF_KvB(pw.w == 1), "reason", "time");
+			end;
+		end;
+	end;
+end;
+
+-- Hail options of trader id (trf_hail adds them): "demand" (FTU traders), "sesc" (sweep convoys).
+function TRF_Supply_HailOpts(id)
+	local o = {};
+	if TRF_DemandOk(id) then tinsert(o, "demand"); end;
+	if TRF_SpCtOffer(id) then tinsert(o, "sesc"); end;
+	return o;
+end;
+
+-- Action of a hail option returned by TRF_Supply_HailOpts.
+function TRF_Supply_HailDo(key, id)
+	if key == "demand" then return TRF_DemandDo(id); end;
+	if key == "sesc" then return TRF_SupplyCtDo(id); end;
+	return nil;
+end;
+
+-- Heat reset at the relation stations (5.3) ----------------------------------------------------
+
+function TRF_HeatCostOf(heat, k, mx)
+	return min(k * heat, mx);
+end;
+
+-- 1 when f is this module's wrapper (thunk identity of an earlier run, or a Mods/Traffic chunk name).
+function TRF_SpIsMine(f, thunk)
+	if type(f) ~= "function" then return nil; end;
+	if type(thunk) == "function" and f == thunk() then return 1; end;
+	if type(TRF_IsMine) == "function" and TRF_IsMine(f) then return 1; end;
+	return nil;
+end;
+
+-- Called on every MapInitialization after DockStation.script redefined the vanilla functions. The dock
+-- looks CStation_Action up by name at docking (DockStation.script 151-153) and DialogC_<team> calls
+-- _temp_change by name, so the wrappers take effect at once. Returns the number wrapped in this run.
+function TRF_InstallRelDock()
+	local n = 0;
+	if type(CStation_Action) == "function" and not TRF_SpIsMine(CStation_Action, TRF_RelThunk) then
+		TRF_orig_CStation = CStation_Action;
+		local w = function(param)
+			if type(TRF_RelDockAct) == "function" then return TRF_RelDockAct(param); end;
+			if type(TRF_orig_CStation) == "function" then return TRF_orig_CStation(param); end;
+		end;
+		CStation_Action = w;
+		TRF_RelThunk = function() return %w; end;
+		n = n + 1;
+	end;
+	if type(_temp_change) == "function" and not TRF_SpIsMine(_temp_change, TRF_TmpThunk) then
+		TRF_orig_TempChange = _temp_change;
+		local w = function(nameAI)
+			if type(TRF_TempChange) == "function" then return TRF_TempChange(nameAI); end;
+			if type(TRF_orig_TempChange) == "function" then return TRF_orig_TempChange(nameAI); end;
+		end;
+		_temp_change = w;
+		TRF_TmpThunk = function() return %w; end;
+		n = n + 1;
+	end;
+	TRF_SpE("install", "installed_count", n, "reldock_wrapped", TRF_KvB(TRF_SpIsMine(CStation_Action, TRF_RelThunk)),
+		"temp_change_wrapped", TRF_KvB(TRF_SpIsMine(_temp_change, TRF_TmpThunk)));
+	return n;
+end;
+
+-- The vanilla relation-station dialog, unprotected by a mod handler so vanilla errors keep their path.
+function TRF_SpRelOrig(param, why)
+	local f = TRF_orig_CStation;
+	if type(f) == "function" then
+		call(f, {param}, "x");
+	else
+		TRF_SpE("reldock", "reason", tostring(why), "result", "no_original");
+	end;
+end;
+
+-- Installed over CStation_Action. "box": the offer is open and the original runs after it; otherwise the
+-- original runs at once (also after an error in the mod part).
+function TRF_RelDockAct(param)
+	local how = call(TRF_SpRelBody, {param}, "x", TRF_SpErr);
+	if how ~= "box" then TRF_SpRelOrig(param, how or "error"); end;
+end;
+
+-- Offer conditions: cfg heat_offer 1, relation tip 1..8, heat >= 3, Trade not at war with the player (the
+-- vanilla FTU answer is hidden then, 1.1), no flag, strict gate "offer". Cost min(heat_reset_k x heat,
+-- heat_reset_max).
+function TRF_SpRelBody(param)
+	local L = TRF_SpLive();
+	if not L or type(TRF) ~= "table" then return "notrf"; end;
+	L.hp = nil;
+	if TRF_SpOpt("heat_offer", 1) ~= 1 then return "off"; end;
+	local tip = tonumber(param);
+	if not tip or tip < 1 or tip > 8 then return "tip"; end;
+	local heat = TRF_SpHeat();
+	if heat < 3 then return "heat"; end;
+	if TRF_SpWar("Trade") then return "war"; end;
+	if TRF_SpSupp() or TRF_SpQuiet() then return "flag"; end;
+	if not TRF_SpStrict(nil, "offer") then return "strict"; end;
+	if type(ShowMsgBox) ~= "function" then return "nobox"; end;
+	-- One mod box at a time (trf_plumb live.box, 00 section 6): held until the answer.
+	if type(TRF_BoxTake) == "function" and not TRF_BoxTake("heat_offer") then return "box_lock"; end;
+	local cost = TRF_HeatCostOf(heat, TRF_SpT("heat_reset_k", 100000), TRF_SpT("heat_reset_max", 950000));
+	L.hp = {p=tostring(param), k=cost, g=TRF.gen};
+	TRF_SpX("SetNormalTimeMode");
+	local text = TRF_SpTxt("heatoffer", format("%d", cost));
+	if not TRF_SpP(function(t, a, b) ShowMsgBox("#UI_StationC_confirm", t, a, b); return 1; end, {text, TRF_HeatPayOk, TRF_HeatPayNo}) then
+		L.hp = nil;
+		TRF_N("TRF_BoxFree", "heat_offer");
+		return "boxfail";
+	end;
+	TRF_SpE("heat_offer", "heat", heat, "cost", cost, "tip", tip);
+	return "box";
+end;
+
+function TRF_HeatPayOk() TRF_Cb("TRF_HeatPayOk", TRF_SpHeatCb, {"ok"}); end;
+function TRF_HeatPayNo() TRF_Cb("TRF_HeatPayNo", TRF_SpHeatCb, {"no"}); end;
+
+-- Box callback: records the choice only; payment and the original run from a due call (v02 decision 25).
+function TRF_SpHeatCb(c)
+	TRF_N("TRF_BoxFree", "heat_offer");
+	local L = TRF_SpLive();
+	if not L or type(L.hp) ~= "table" or L.hp.c then return; end;
+	L.hp.c = c;
+	if type(TRF_Due) ~= "function" or not TRF_Due(0.1, "TRF_SpHeatGo") then TRF_SpHeatGo(); end;
+end;
+
+function TRF_SpHeatGo()
+	local L = TRF_SpLive();
+	if not L or type(L.hp) ~= "table" then return; end;
+	local hp = L.hp;
+	L.hp = nil;
+	if hp.c == "ok" and hp.g == TRF.gen then TRF_SpP(TRF_SpHeatPay, {hp.k}); end;
+	TRF_SpRelOrig(hp.p, "after offer");
+end;
+
+function TRF_SpHeatPay(cost)
+	local cr = TRF_SpCredits();
+	if type(cr) ~= "number" or cr < cost then
+		TRF_SpSay(TRF_SpTxt("heatpoor", format("%d", cost)), nil);
+		TRF_SpE("heat_pay", "credits", cr, "cost", cost, "result", "too_poor");
+		return nil;
+	end;
+	TRF_SpX("SubPlayerCredits", cost);
+	TRF_SpHeatZero("paid");
+	TRF_SpSay(TRF_SpTxt("heatpaid", format("%d", cost)), nil);
+	TRF_SpStat("heat_paid");
+	return 1;
+end;
+
+-- heat 0, heat_t = legs, news topic heat removed.
+function TRF_SpHeatZero(why)
+	local h = TRF_SpHeat();
+	if h > 0 and type(TRF_AddHeat) == "function" then TRF_SpP(TRF_AddHeat, {-h, "heat reset "..why}); end;
+	if type(TRF) == "table" and type(TRF.std) == "table" then
+		TRF.std.heat = 0;
+		TRF.std.heat_t = TRF_SpLegs();
+	end;
+	TRF_SpX("TRF_NewsPost", "heat", nil);
+	TRF_SpE("heat_reset", "reason", tostring(why), "heat_before", h, "heat_after", 0);
+end;
+
+-- Installed over _temp_change (the vanilla paid reset, DockStation.script 440-487). The original runs
+-- first, unprotected; success = credits fell or tip 1 / 5 (free stations).
+function TRF_TempChange(nameAI)
+	local c0 = TRF_SpCredits();
+	local f = TRF_orig_TempChange;
+	if type(f) == "function" then call(f, {nameAI}, "x"); end;
+	call(TRF_SpTempAfter, {nameAI, c0}, "x", TRF_SpErr);
+end;
+
+-- After a vanilla reset: Trade -> heat 0; a faction -> fst at least 5 (decision 11.1 #9). With the faction
+-- ladder on, its sync replaces the faction rule (TRF_Lad_ResetSync: a paid reset of at least reset_min_paid
+-- lifts fst to 4; the free resets at tips 1 and 5 change nothing, 09-faction-ladder.md 5 item 4).
+function TRF_SpTempAfter(nameAI, c0)
+	local c1 = TRF_SpCredits();
+	local tip = tonumber(_param);
+	local ok = nil;
+	if type(c0) == "number" and type(c1) == "number" and c1 < c0 then ok = 1; end;
+	if tip == 1 or tip == 5 then ok = 1; end;
+	TRF_SpE("temp_change", "name", nameAI, "credits_before", c0, "credits_after", c1, "accepted", TRF_KvB(ok));
+	if not ok or type(TRF) ~= "table" then return; end;
+	if nameAI == "Trade" then
+		TRF_SpHeatZero("vanilla");
+		return;
+	end;
+	local fi = TRF_SpFacIdx(nameAI);
+	if fi and TRF_SpX("TRF_Lad_ResetSync", fi, nameAI, c0, c1) then return; end;
+	if fi then
+		local v = TRF_SpFst(fi);
+		if v < 5 then TRF_SpFstAdd(fi, 5 - v, "relation reset"); end;
+	end;
+end;
+
+-- Loader callbacks, text, dump (10.1) -----------------------------------------------------------
+
+-- Before a jump: escorts deleted, contract void, visit state cleared (trf_gen deletes the transports).
+function TRF_Supply_BeforeJump()
+	local L = TRF_SpLive();
+	local H = TRF_SpH();
+	if H then
+		for id, hs in H.sp do
+			if type(hs) == "table" then
+				if type(hs.es) == "table" then
+					for j = 1, getn(hs.es) do TRF_SpDel(hs.es[j]); end;
+				end;
+				TRF_SpDel(hs.ef);
+			end;
+		end;
+		H.sp = {};
+	end;
+	TRF_SpDropClear("jump");
+	if L then
+		if type(L.sp) == "table" then
+			for id, s in L.sp do
+				if type(s) == "table" and s.ct then TRF_SpE("contract", "trader_id", id, "reason", "jump", "result", "void"); end;
+				TRF_SpFree(id);
+			end;
+		end;
+		L.sp = nil; L.hp = nil; L.spc = nil; L.bd = nil;
+	end;
+end;
+
+-- After a load: live was reset by trf_gen (supply convoys wind down as traders; their escorts are found by
+-- label in its load pass), so only the handles and boxes are cleared. Contracts are void.
+function TRF_Supply_OnLoad()
+	local L = TRF_SpLive();
+	local H = TRF_SpH();
+	-- Drop containers restored with the save are deleted by trf_plumb's orphan scan (group Drop).
+	if H then H.sp = {}; H.dp = nil; end;
+	if L then L.sp = nil; L.hp = nil; L.spc = nil; L.bd = nil; end;
+	TRF_SpE("load", "reldock_wrapped", TRF_KvB(TRF_SpIsMine(CStation_Action, TRF_RelThunk)));
+end;
+
+function TRF_Supply_Text()
+	return {
+		spoptdemand = "Drop part of your cargo, or we open fire",   -- no caller: the hail label is trf_hail optdemand
+		dmok = "FTU $1: Fine, take it! Just let us go.",                 -- name
+		dmno = "FTU $1: Never! Mayday, the Wolves are threatening us!", -- name
+		heatoffer = "FTU liaison: for $1 cr the guild forgets your record with its captains. Pay?", -- cost
+		heatpaid = "FTU record cleared. $1 cr paid.",                     -- cost
+		heatpoor = "Not enough credits: the FTU asks $1 cr.",             -- cost
+		optsesc = "Need an escort for the supply run",
+		sescoffer = "$1 supply run to $2. Escort us for $3 cr?",          -- faction, destination, pay
+		sescok = "Form up on us, Wolves.",
+		sescpaid = "Supply run complete. $1 cr from $2.",                 -- pay, faction
+		sescfar = "We made it, but you were not with us. No pay.",
+		sesclost = "Contract lost: $1 supply transport destroyed.",       -- faction
+		-- demand result page and No witnesses (design/demand-page-spec.md)
+		dmpgot = "FTU $1 jettisons: $2",                                 -- name, item list
+		dmpnone = "nothing",
+		dmplost = "FTU: contact lost with freighter $1.",                 -- name
+		dmpseen = "FTU: witnesses report that the Wolves robbed and destroyed freighter $1.", -- name
+	};
+end;
+
+function TRF_Supply_Dump()
+	local L = TRF_SpLive() or {};
+	local s, n = nil, 0;
+	if type(L.sp) == "table" then
+		for id, e in L.sp do
+			if type(e) == "table" then
+				n = n + 1;
+				-- <trader_id>:<faction>:<end reason or live>:<contract pay or nil>
+				local c = id..":"..tostring(e.f)..":"..tostring(e.why or "live")..":"..tostring(e.ct);
+				if s then s = s..","..c; else s = c; end;
+			end;
+		end;
+	end;
+	local np = 0;
+	if type(TRF) == "table" and type(TRF.live) == "table" and type(TRF.live.tr) == "table" then
+		for id, r in TRF.live.tr do if TRF_SpPw(r) then np = np + 1; end; end;
+	end;
+	TRF_SpE("dump", "convoy_count", n, "convoys", s, "border", TRF_Border(), "convoy_option", TRF_SpOpt("conv", 1),
+		"demand_option", TRF_SpOpt("demand", 1), "demand_page_option", TRF_SpOpt("demand_page", 1), "prey_count", np,
+		"heat_offer_option", TRF_SpOpt("heat_offer", 1), "demand_drop_option", TRF_SpOpt("demand_drop", 0),
+		"reldock_wrapped", TRF_KvB(TRF_SpIsMine(CStation_Action, TRF_RelThunk)),
+		"temp_change_wrapped", TRF_KvB(TRF_SpIsMine(_temp_change, TRF_TmpThunk)));
+end;

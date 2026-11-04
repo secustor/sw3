@@ -1,0 +1,59 @@
+traffic: lua: exp=v1 module=state event=enter generation=1 fresh=false system=kondel legs=200
+traffic: lua: exp=v1 module=safety event=activate system=kondel mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=corp event=enter system=kondel region=1 trade_systems=13 triada=8 uss=4 inoco=0
+traffic: lua: exp=v1 module=corp event=label trader_id=11 name=17 system=kondel region=1 corp=Triada share=0.553 roll=0.209
+traffic: lua: exp=v1 module=ui event=announce trader_id=11 band=1
+traffic: lua: exp=v1 module=hail event=hail trader_id=11 via=meet answer_count=6 hail_count=1 dialog=false
+traffic: lua: exp=v1 module=hail event=option trader_id=11 key=head
+traffic: lua: exp=v1 module=corp event=label trader_id=12 name=4 system=kondel region=1 corp=Uss share=0.197 roll=0.601
+traffic: lua: exp=v1 module=hail event=hail trader_id=12 via=focus answer_count=6 hail_count=1 dialog=true
+traffic: lua: exp=v1 module=corp event=label trader_id=13 name=31 system=kondel region=1 corp=none share=0.750 roll=0.912 reason=roll
+traffic: lua: exp=v1 module=station event=dock station_key=26 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=chapter
+traffic: lua: exp=v1 module=corp event=dock system=kondel region=1 kind=id corp=Triada
+traffic: lua: exp=v1 module=state event=enter generation=2 fresh=false system=gaoba legs=201
+traffic: lua: exp=v1 module=safety event=activate system=gaoba mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=corp event=label trader_id=14 name=9 system=gaoba region=5 corp=Inoco share=0.141 roll=0.088
+traffic: lua: exp=v1 module=corp event=shop trader_id=14 corp=Inoco signature=RBot3 extra=0
+traffic: lua: exp=v1 module=shop event=open trader_id=14 shop=trf_shop_1 sell_coef=1.35 buy_coef=0.60 zero_count=77 hold_count=6 equip_count=5 owner=Inoco destination=31 shortage_classes= corp=Inoco signature=RBot3
+traffic: lua: exp=v1 module=corp event=hit trader_id=14 corp=Inoco region=5 how=kill by=player count_before=0 count=1 player_caused=true result=counted
+traffic: lua: exp=v1 module=events event=faction_standing faction=5 reason="carrier kill 14" change=-1
+traffic: lua: exp=v1 module=corp event=label trader_id=15 name=12 system=gaoba region=5 corp=Inoco share=0.141 roll=0.020
+traffic: lua: exp=v1 module=corp event=hit trader_id=15 corp=Inoco region=5 how=kill by=player count_before=1 count=2 player_caused=true result=counted
+traffic: lua: exp=v1 module=corp event=label trader_id=16 name=20 system=gaoba region=5 corp=Inoco share=0.141 roll=0.110
+traffic: lua: exp=v1 module=corp event=hit trader_id=16 corp=Inoco region=5 how=kill by=other count_before=2 count=3 player_caused=false result=counted
+traffic: lua: exp=v1 module=state event=enter generation=3 fresh=false system=kadi legs=202
+traffic: lua: exp=v1 module=safety event=activate system=kadi mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=corp event=pull region=5 corp=Inoco count=3 end_leg=226 leg=202 active_count=1 result=out
+traffic: lua: exp=v1 module=corp event=label trader_id=17 name=9 system=kadi region=5 corp=none share=0.094 roll=0.088 reason=pulled pulled=Inoco
+traffic: lua: exp=v1 module=station event=dock station_key=52 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=chapter
+traffic: lua: exp=v1 module=warn event=warn system=xk10 system_index=95 dock_system=kadi kind=ambush condition="InocoPermit=nil,Inoco=neutral" leg=202 cooldown=8
+traffic: lua: exp=v1 module=warn event=dock system=kadi neighbour_count=3 listed=xk10 shown=xk10 skipped=nil
+traffic: lua: exp=v1 module=corp event=dock system=kadi region=5 kind=out corp=Inoco
+traffic: lua: exp=v1 module=station event=dock station_key=52 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=chapter
+traffic: lua: exp=v1 module=corp event=dock system=kadi region=5 kind=none corp=nil
+traffic: lua: exp=v1 module=state event=enter generation=4 fresh=false system=ergelan legs=203
+traffic: lua: exp=v1 module=safety event=activate system=ergelan mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=corp event=label trader_id=20 name=5 system=ergelan region=5 corp=Uss share=0.188 roll=0.051
+traffic: lua: exp=v1 module=hail event=contract trader_id=20 pay=8100 result=accepted
+traffic: lua: exp=v1 module=charter event=note kind=run system=ergelan region=5 visit_deeds=0 result=none reason=nomatch faction=4
+traffic: lua: exp=v1 module=corp event=escort trader_id=20 corp=Uss region=5 result=marked
+traffic: lua: exp=v1 module=charter event=note kind=escort system=ergelan region=5 visit_deeds=0 result=none reason=nomatch faction=nil
+traffic: lua: exp=v1 module=hail event=contract trader_id=20 via=dock pay=8100 distance=40.311 help=1 result=paid
+traffic: lua: exp=v1 module=charter event=post slot=1 type=run region=5 system=kadi needed=2 deadline=223 pay=4500 rank_points=2 faction=4 candidate_count=1 seed=1622650073
+traffic: lua: exp=v1 module=corp event=mark_use region=5 corp=Uss
+traffic: lua: exp=v1 module=state event=enter generation=5 fresh=false system=ergelan legs=204
+traffic: lua: exp=v1 module=safety event=activate system=ergelan mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=corp event=label trader_id=21 name=8 system=ergelan region=5 corp=Uss share=0.188 roll=0.120
+traffic: lua: exp=v1 module=charter event=note kind=run system=ergelan region=5 slot=1 done=1 needed=2 visit_deeds=1 amount=8100 faction=4
+traffic: lua: exp=v1 module=corp event=escort trader_id=21 corp=Uss region=5 slot=1 result=run
+traffic: lua: exp=v1 module=corp event=label trader_id=22 name=6 system=ergelan region=5 corp=Uss share=0.188 roll=0.031
+traffic: lua: exp=v1 module=charter event=note kind=run system=ergelan region=5 slot=1 done=2 needed=2 visit_deeds=2 amount=8100 faction=4
+traffic: lua: exp=v1 module=charter event=note slot=1 type=run region=5 done=2 needed=2 world=0 result=complete reason=deeds
+traffic: lua: exp=v1 module=corp event=escort trader_id=22 corp=Uss region=5 slot=1 result=run
+traffic: lua: exp=v1 module=faction event=faction_standing faction=Uss reason="charter run" standing_before=5 standing_after=6
+traffic: lua: exp=v1 module=charter event=pay slot=1 type=run region=5 amount=4500 rank=1 rank_points=4 help=1 real_seconds=9000
+traffic: lua: exp=v1 module=state event=enter generation=6 fresh=false system=kadi legs=226
+traffic: lua: exp=v1 module=safety event=activate system=kadi mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=corp event=return region=5 corp=Inoco leg=226 told=true
+traffic: lua: exp=v1 module=station event=dock station_key=52 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=chapter
+traffic: lua: exp=v1 module=corp event=dock system=kadi region=5 kind=back corp=Inoco

@@ -1,0 +1,1816 @@
+-- sw3-traffic clan stashes (Lua 4.0.1). Spec: design/stash-spec.md (design worldbuilding/07-clan-stashes.md, step 1).
+-- Prefix Sh (TRF_Sh_* public, TRF_Sh<X> internal; St is trf_state's, Stn trf_station's), log module=stash.
+-- Step 1: each clan region keeps at most one hidden cache (TRF.stash[i], i 1..stash_max), a hollow radio-asteroid
+-- (Asteroid_inv_Val) at an authored slot of an allow-list system (TRF_ShSlotData, tools/gen_stash.py). Records are
+-- created and expired at the region tick (Build-up and Raids, stash_live, stash_gap and stash_open_gap counted in
+-- legs and jumps, the mission gate, the so flag cleared in Quiet), the object appears and disappears only at entry
+-- (the reconcile table and the orphan delete), its contents come from the record's seed and value (fill), the died
+-- trigger opens it (clan score -2 x cls, so, the open gap), the attack trigger marks the player's opening (source
+-- reward, the treasurer flight with the write-back rule, the shared prize stamp), known caches get an area nav point,
+-- an inside trigger for the attached nav point and an arrival line; the pirate dock sells a rival's cache (box 100),
+-- the patrol board gives a tip (line 40) and pays fst +1 at the next docking of that faction.
+-- Step 2 (hail rumour src 3, Hunting news, captain intel src 4, rivals, charter hooks, the C10 extension) is not built:
+-- src 3/4 and the tune key stash_rumour_pct are kept by the repair and read nowhere, the hook points say "Step 2
+-- hook". Decoys are dropped (00 section 8 E3): cfg enable_stash_decoys stays 0 and is read nowhere.
+-- Hooks: trf_region (TRF_RegionTick), trf_plumb (pirate box 100, pirate line 20, patrol line 40, ship cap, markers,
+-- arrival line, prize gap), trf_gen (TRF_WindDown), trf_raid (TRF_Rd_ClanAlive counts the treasurer), trf_scar
+-- (object helpers, the site rule keeps 150 from a cache), trf_clan (score outside the visit cap, salvage), trf_faction
+-- (fst), traffic.script (activate, load, jump, 1 s step).
+-- Saved fields: TRF.stash[i] = {sys, slot, clan, cls, v, seed, leg, st, src, sf, sv, rf, pl}; TRF.stx = {n, op, opp, lc, jc,
+-- lo, jo, pt, ps, ms, mc}; TRF.clan[slot].so and .sk. Visit state lives in the chunk local SH (never saved; rebuilt by
+-- every MapInitialization), handles in SH.o and SH.r.
+-- Layout as trf_scar: helpers, accessors, static tables, pure functions (*Of), state, gates, region tick, objects,
+-- callbacks, treasurer, docks, contract functions. Top level: functions and SH only.
+
+local SH = {o={}, v={hit={}, fnd={}, roll={}, dec={}}};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_ShSH() return %SH; end;
+
+-- logfmt event line, module=stash (design/log-format.md).
+function TRF_ShE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "stash"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_ShErr(m)
+	TRF_ShE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler (handles that may be stale): nil is the answer.
+function TRF_ShNoErr(m) end;
+
+function TRF_ShLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_ShDE(event, ...)
+	if TRF_ShLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_ShE, arg);
+end;
+
+function TRF_ShStat(k)
+	TRF_N("TRF_Stat", k);
+end;
+
+function TRF_ShCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- x mod m for x >= 0 (Lua 4 has no % operator).
+function TRF_ShM(x, m)
+	return x - floor(x / m) * m;
+end;
+
+-- Fixed hash 0..10008 of three integers (no RAND draw: the shared RAND stream is unchanged and a reload before the
+-- same tick, docking or opening gives the same answer, design 5 exploit 2).
+function TRF_ShHash(a, b, c)
+	local x = TRF_ShM(floor((a or 0) * 113 + (b or 0) * 149 + (c or 0) * 23 + 7919), 10000);
+	x = TRF_ShM(x * 43 + 17, 10007);
+	return TRF_ShM(x * 61 + 37, 10009);
+end;
+
+-- One Park-Miller step: the mod LCG of the fill and the nav offsets (design 6).
+function TRF_ShRng(s)
+	return TRF_ShM(s * 16807, 2147483647);
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Sh_OptDef), else the raw config, else the default; a wrong type or a number
+-- outside 0..1 reads as the default.
+function TRF_ShOpt(key)
+	local d = TRF_Sh_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	if type(v) == "number" and v ~= 0 and v ~= 1 then return d; end;
+	return v;
+end;
+
+-- Tune values of this module, clamped (TRF_ShClampT); list keys are copied with each entry clamped. Cached in SH while
+-- TRF_Tune returns the same table; callers must not write into it.
+function TRF_ShTune()
+	local sh = %SH;
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_ShErr); end;
+	if type(sh.tc) == "table" and sh.tc.s == t then return sh.tc.t; end;
+	local d, cl, o = TRF_Sh_TuneDef(), TRF_ShClampT(), {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if type(x) ~= type(v) then x = v; end;
+		local r = cl[k];
+		if type(x) == "table" then
+			local w = {};
+			for i = 1, getn(v) do
+				local e = x[i];
+				if type(e) ~= "number" then e = v[i]; end;
+				w[i] = TRF_ShCl(floor(e), r[1], r[2]);
+			end;
+			x = w;
+		elseif r then
+			x = TRF_ShCl(floor(x), r[1], r[2]);
+		end;
+		o[k] = x;
+	end;
+	-- stash_live <= stash_max <= the hard cap; the delay window lo <= hi.
+	o.stash_max = min(o.stash_max, TRF_ShK().rec_max);
+	o.stash_live = min(o.stash_live, o.stash_max);
+	if o.stash_ret_delay[2] < o.stash_ret_delay[1] then o.stash_ret_delay[2] = o.stash_ret_delay[1]; end;
+	sh.tc = {s=t, t=o};
+	return o;
+end;
+
+function TRF_ShT(key)
+	return TRF_ShTune()[key];
+end;
+
+-- A traffic tune value (ovd, raid_live_cap), else def.
+function TRF_ShTv(key, def)
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_ShErr); end;
+	if type(t) == "table" and type(t[key]) == "number" then return t[key]; end;
+	return def;
+end;
+
+function TRF_ShLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+-- Player jumps (00 section 6: the shared TRF.clock.j).
+function TRF_ShJ()
+	local j = TRF_N("TRF_Jumps");
+	if type(j) == "number" then return j; end;
+	return 0;
+end;
+
+function TRF_ShGt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+function TRF_ShGen()
+	if type(TRF) == "table" and type(TRF.gen) == "number" then return TRF.gen; end;
+	return 0;
+end;
+
+-- Lowercase map name of system idx (log values, slot and text keys), or the index.
+function TRF_ShName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+-- Text key suffix of system idx: the map name in TRF_LocKey form ("b_leftera3" -> "bleftera3").
+function TRF_ShKey(idx)
+	return gsub(TRF_ShName(idx), "[^%w]", "");
+end;
+
+function TRF_ShTxt(key, a, b, c)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c); end;
+	return tostring(key);
+end;
+
+-- Screen line (pilot nil) or radio line of pilot (cfg ui_out 2), through trf_ui's TRF_Say.
+function TRF_ShSay(text, secs, pilot)
+	if type(text) ~= "string" or text == "" then return nil; end;
+	return TRF_N("TRF_Say", text, secs or TRF_ShK().secs, pilot);
+end;
+
+function TRF_ShMap()
+	local m = TRF_N("TRF_Map");
+	if type(m) == "table" and type(m.sys) == "table" and type(m.by) == "table" then return m; end;
+	return nil;
+end;
+
+function TRF_ShCur()
+	local i = TRF_N("TRF_CurIdx");
+	if type(i) == "number" then return i; end;
+	return nil;
+end;
+
+function TRF_ShDist(a, b)
+	if type(a) ~= "table" or type(b) ~= "table" or type(a.x) ~= "number" or type(b.x) ~= "number" then return nil; end;
+	local dx, dy, dz = a.x - b.x, (a.y or 0) - (b.y or 0), (a.z or 0) - (b.z or 0);
+	return sqrt(dx * dx + dy * dy + dz * dz);
+end;
+
+-- 1 while a story mission runs (GetPlayerQuestState() == TRUE, design 3; trf_safety's TRF_Safe_QState).
+function TRF_ShQuest()
+	if type(GetPlayerQuestState) ~= "function" then return nil; end;
+	if GetPlayerQuestState() == TRUE then return 1; end;
+	return nil;
+end;
+
+-- Clan name of region slot.
+function TRF_ShClanName(slot)
+	local n = TRF_N("TRF_ClanName", slot);
+	if type(n) == "string" then return n; end;
+	return "pirates";
+end;
+
+-- Accessors (one native each, protected; the object helpers are trf_scar's) -----------------------
+
+function TRF_ShObj(o)
+	if o == nil or type(o) == "number" or type(o) == "string" or type(o) == "function" then return nil; end;
+	return 1;
+end;
+
+function TRF_ShAlive(o)
+	return TRF_N("TRF_Sc_Alive", o);
+end;
+
+function TRF_ShPos(o)
+	return TRF_N("TRF_Sc_Pos", o);
+end;
+
+function TRF_ShDel(o)
+	if not TRF_ShObj(o) then return nil; end;
+	return TRF_N("TRF_Sc_Del", o);
+end;
+
+function TRF_ShTrig(kind, cb, a, b, c)
+	if type(NewTrigger) ~= "function" then return nil; end;
+	return call(NewTrigger, {kind, nil, cb, a, b, c}, "x", TRF_ShErr);
+end;
+
+-- Callback string with the record index and the current TRF.gen last (traffic's rule, T_BadCallbacks):
+-- TRF_ShCb("TRF_ShDied", 1) -> "TRF_ShDied(1,<gen>)--"; with j: "TRF_ShRetDied(1,2,<gen>)--".
+function TRF_ShCb(name, i, j)
+	if j then return name.."("..i..","..j..","..TRF_ShGen()..")--"; end;
+	return name.."("..i..","..TRF_ShGen()..")--";
+end;
+
+function TRF_ShHpRaw(o)
+	return GetCurHP(o);
+end;
+
+function TRF_ShHp(o)
+	if not TRF_ShObj(o) or type(GetCurHP) ~= "function" then return nil; end;
+	local v = call(TRF_ShHpRaw, {o}, "x", TRF_ShNoErr);
+	if type(v) == "number" then return v; end;
+	return nil;
+end;
+
+function TRF_ShRelRaw(a, b, rel)
+	SetGroupRelation(a, b, rel);
+	return 1;
+end;
+
+function TRF_ShRel(a, b, rel)
+	if type(SetGroupRelation) ~= "function" or rel == nil then return nil; end;
+	return call(TRF_ShRelRaw, {a, b, rel}, "x", TRF_ShErr);
+end;
+
+function TRF_ShOrderRaw(o, how, a)
+	if how == "move" then o:Move(a);
+	elseif how == "portal" then o:ComeToPortal(a);
+	elseif how == "start" then o:Start(8, 0); end;
+	return 1;
+end;
+
+function TRF_ShOrder(o, how, a)
+	if not TRF_ShObj(o) then return nil; end;
+	return call(TRF_ShOrderRaw, {o, how, a}, "x", TRF_ShErr);
+end;
+
+function TRF_ShEntryRaw(o, d)
+	local p = o:GetEntryPoint(d);
+	return {x=p.x, y=p.y, z=p.z};
+end;
+
+function TRF_ShOnRaw(o)
+	return o:IsEnabled();
+end;
+
+-- 1 when portal o is enabled (lua-natives.md 468; story missions close links with EnablePortals). A handle
+-- without the method (host scene) counts as enabled.
+function TRF_ShEnabled(o)
+	if not TRF_ShObj(o) then return nil; end;
+	if type(o) == "table" and o.IsEnabled == nil then return 1; end;
+	local v = call(TRF_ShOnRaw, {o}, "x", TRF_ShNoErr);
+	if v == nil or v == 0 or (FALSE ~= nil and v == FALSE) then return nil; end;
+	return 1;
+end;
+
+function TRF_ShCreditsRaw()
+	return GetPlayerCredits();
+end;
+
+function TRF_ShSubRaw(n)
+	SubPlayerCredits(n);
+	return 1;
+end;
+
+-- Static tables --------------------------------------------------------------------
+
+-- Constants without a cfg key: hard record cap, slots per system, the patrol tip range (jumps), fill draws and
+-- container units, the default item cost, treasurer ships at most (trf_plumb's orphan scan covers j 1..6), the
+-- portal exit radius, the leave watchdog (s), line seconds, clan score per class, the seller bonus, the cache model
+-- and the nav icon, the find-poll radius factor.
+function TRF_ShK()
+	return {rec_max=4, slot_max=4, tip_j=3, draws=12, cargo_max=8, cost=1000, ret_max=6, portal_r=60, leave_s=120, secs=8,
+		score_k=-2, seller=2, model="Asteroid_inv_Val", icon="nav_Asteroid_inv.dds", ret_hp1=0.5, ret_hp2=0.4};
+end;
+
+-- Write-back systems (design 3, functions.script SetInitTeamRelation("Pirates", ...) on exit): the treasurer spawns
+-- there only while the Pirates team is already at war with the player.
+function TRF_ShWB()
+	return {golkonda=1, xb13=1, xt17=1, xt27=1, altair=1, escaflon=1};
+end;
+
+-- Slots of system name nm (TRF_ShSlotData), or nil.
+function TRF_ShSlots(nm)
+	local d = TRF_ShSlotData()[nm];
+	if type(d) == "table" and getn(d) > 0 then return d; end;
+	return nil;
+end;
+
+-- BEGIN gen_stash.py (do not edit by hand)
+-- Slots {x, y, z} per allow-list system (design 6 static data; tools/gen_stash.py, design/stash-spec.md 5.2).
+function TRF_ShSlotData()
+	return {
+		gaoba = {{102, -18, 58}, {-446, -32, -1618}, {20, 51, 1931}, {-270, -67, 252}},
+		b_leftera3 = {{463, -26, -59}, {197, 61, 263}, {689, -13, 297}, {151, -104, -309}},
+		altair = {{100, 16, 95}, {493, 10, -20}},
+		areko = {{179, -36, 395}, {-650, 90, -125}, {-239, -17, 381}, {-76, -74, 751}},
+		lasad = {{-822, -26, 801}, {321, -50, 268}},
+		egleon = {{205, 16, -166}},
+		fort_russ = {{715, 10, 216}},
+		xb13 = {{-48, -5, -446}, {202, -137, -151}, {98, -89, -832}, {270, 270, -356}},
+		fiasar = {{-403, -42, -249}},
+		llanovar1 = {{300, 0, -100}},
+		escaflon = {{-80, -35, -30}},
+	};
+end;
+-- END gen_stash.py
+
+-- Copies of the vanilla lists (include/FloodTradeStations.script ShopModules_Trader 240, ShopModulesRare 203,
+-- ShopModulesRare2 219), used when the vanilla globals are missing (host, an include that failed). k 1 trader, 2 rare,
+-- 3 rare2.
+function TRF_ShListDef(k)
+	if k == 1 then
+		return {"HC2", "HC3", "VC2", "VC3", "LC2", "LC3", "PLC2", "PC2", "RG1", "CG2", "AC2", "CG3", "AC3", "MM", "MM", "SM3", "SRM2", "SRM2",
+			"SRM3", "LRM2", "LRM2", "LRM3", "T1", "T2", "MIRV1", "MIRV2", "LRS2", "LRS3", "Stealth1", "CloD1", "ECM2", "ECM3", "AMS2", "AMS3",
+			"RNBot2", "RNBot3", "RBot2", "RBot3", "LRRNB1", "LRRNB2", "LRRNB3", "ShAmp2", "ShAmp3", "EngBoost1", "EngBoost2", "EngAmp1",
+			"EngAmp2", "ManAmp1", "WBoost1", "WBoost2", "GunAmp1", "ALS0"};
+	end;
+	if k == 2 then
+		return {"HC3", "THC3", "HC4", "THC4", "VC3", "TVC3", "VC4", "TVC4", "LC3", "LC4", "TLC4", "PLC2", "TPLC2", "PLC3", "TPLC3", "PC3",
+			"TPC3", "RG2", "TRG2", "HGK1", "LGK1", "PGK1", "RGK1", "CG3", "AC3", "SM3", "SM4", "SRM3", "SRM4", "LRM3", "LRM4", "T3", "MIRV2",
+			"MIRV3", "LRS3", "LRS4", "Stealth3", "CloD2", "ECM3", "ECM4", "AMS3", "AMS4", "BS_ECM3", "BS_ECM4", "BS_LRS3", "BS_LRS4", "RNBot3",
+			"RNBot4", "RBot3", "RBot4", "LRRNB3", "LRRNB4", "BS_RBot3", "BS_RBot4", "ShAmp3", "ShAmp4", "BS_ShAmp3", "BS_ShAmp4", "EngAmp2",
+			"EngAmp3", "ManAmp2", "WBoost3", "GunAmp2", "BS_ManAmp", "BS_EngAmp2", "BS_GunAmp1", "ALS2", "BS_ALS1", "BS_Stealth1"};
+	end;
+	return {"HC3", "THC3", "HC4", "THC4", "VC3", "TVC3", "VC4", "TVC4", "LC3", "LC4", "TLC4", "PLC2", "TPLC2", "PLC3", "TPLC3", "PC3", "TPC3",
+		"RG2", "TRG2", "RG3", "TRG3", "HGK2", "HGK3", "PGK2", "PGK3", "LGK2", "LGK3", "RGK2", "RGK3", "CG3", "AC3", "CG4", "AC4", "BSL1", "BSL2",
+		"SM3", "SM4", "SRM3", "SRM4", "LRM3", "LRM4", "T3", "MIRV2", "MIRV3", "LRS3", "LRS4", "Stealth3", "CloD2", "ECM3", "ECM4", "AMS3", "AMS4",
+		"BS_ECM3", "BS_ECM4", "BS_LRS3", "BS_LRS4", "RNBot3", "RNBot4", "RBot3", "RBot4", "LRRNB3", "LRRNB4", "BS_RBot3", "BS_RBot4", "ShAmp4",
+		"ShAmp5", "BS_ShAmp3", "BS_ShAmp4", "EngAmp2", "EngAmp3", "ManAmp2", "WBoost3", "GunAmp2", "BS_ManAmp", "BS_EngAmp2", "BS_GunAmp1",
+		"ALS2", "BS_ALS1", "BS_ALS2", "BS_Stealth1", "BS_Stealth2"};
+end;
+
+-- Vanilla list k (1 ShopModules_Trader, 2 ShopModulesRare, 3 ShopModulesRare2), else the copy.
+function TRF_ShList(k)
+	local g = {"ShopModules_Trader", "ShopModulesRare", "ShopModulesRare2"};
+	local l = getglobal(g[k]);
+	if type(l) == "table" and getn(l) > 0 then return l; end;
+	return TRF_ShListDef(k);
+end;
+
+-- Cargo containers (cls 1 draws and the remainder fill, design 4).
+function TRF_ShCargo()
+	return {"Cargo_01", "Cargo_02", "Cargo_03", "Cargo_04", "Cargo_05", "Cargo_06", "Cargo_07", "Cargo_08", "Cargo_09", "Cargo_10"};
+end;
+
+-- Clamps of the tune keys {lo, hi}; list keys clamp each entry.
+function TRF_ShClampT()
+	return {stash_max={1, 4}, stash_live={0, 4}, stash_gap={0, 200}, stash_open_gap={0, 200}, stash_ttl={1, 200}, stash_dead_legs={1, 100},
+		stash_chance={0, 100}, stash_k={0, 20}, stash_cap={1000, 100000}, stash_intel_k={0, 10000}, stash_intel_range={1, 12},
+		stash_board_pct={0, 100}, stash_rumour_pct={0, 100}, stash_area_r={0, 1000}, stash_find_r={50, 2000}, stash_ret_delay={1, 1800},
+		stash_ret_window={10, 1800}};
+end;
+
+-- Pure functions (explicit inputs, host-testable) ------------------------------------
+
+-- Value budget V (design 4 with 00 A1-A3): min(k x 900 x L_w x lk x tier_k x (1 + 0.05 R), cap); no d_k (the shop buy
+-- rate scales item value). Returns the stored v = V / 100 (whole, 10..450) and V.
+function TRF_ShVOf(k, Lw, lk, tk, R, cap)
+	local V = min(k * 900 * Lw * lk * tk * (1 + 0.05 * (R or 0)), cap);
+	local v = TRF_ShCl(floor(V / 100), 10, 450);
+	return v, floor(V);
+end;
+
+-- Content class (design 4): T1-T2 1, T3 2, T4 3; salvage >= 4 raises it by one (at most 3).
+function TRF_ShClsOf(T, salv)
+	-- design/strength-spec.md 4.3: the cls column of trf_str's tier table (class 1 without it).
+	local R = TRF_N("TRF_StrRow", T);
+	local c = 1;
+	if type(R) == "table" and type(R.cls) == "number" then c = R.cls; end;
+	if type(salv) == "number" and salv >= 4 then c = min(3, c + 1); end;
+	return c;
+end;
+
+-- Cost of item it from costs (the map's Modules.xml table), else K.cost.
+function TRF_ShCostOf(costs, it, K)
+	if type(costs) == "table" and type(costs[it]) == "number" then return costs[it]; end;
+	return K.cost;
+end;
+
+-- One unit of item it into the list out (at: name -> index).
+function TRF_ShAddOf(out, at, it)
+	if at[it] then out[at[it]].n = out[at[it]].n + 1; return; end;
+	tinsert(out, {i=it, n=1});
+	at[it] = getn(out);
+end;
+
+-- Fill (design 6): items drawn with the LCG on seed from the class list while their summed base cost stays <= 100 x v;
+-- an item that does not fit the remaining budget is skipped, at most K.draws draws. cls 1: trader modules and cargo
+-- containers; cls 2: rare modules; cls 3: one rare2 draw first (kept only when it fits), then the salvage modules fm
+-- (the rare list without them). Then the remainder takes cargo containers drawn the same way, at most K.cargo_max
+-- units. Never a ship. L = {trader, rare, rare2, cargo}. Returns the list {{i, n}, ...} (one entry per name, in
+-- draw order) and its summed cost.
+function TRF_ShFillOf(seed, v, cls, L, fm, costs, K)
+	local out, at, tot = {}, {}, 0;
+	local bud = 100 * v;
+	local s = TRF_ShCl(floor(seed), 1, 2147483646);
+	local l = L[2];
+	if cls == 1 then
+		l = {};
+		for i = 1, getn(L[1]) do tinsert(l, L[1][i]); end;
+		for i = 1, getn(L[4]) do tinsert(l, L[4][i]); end;
+	elseif cls == 3 then
+		if type(fm) == "table" and getn(fm) > 0 then l = fm; end;
+		s = TRF_ShRng(s);
+		local it = L[3][1 + TRF_ShM(s, getn(L[3]))];
+		local c = TRF_ShCostOf(costs, it, K);
+		if c <= bud then TRF_ShAddOf(out, at, it); tot = c; end;
+	end;
+	for d = 1, K.draws do
+		s = TRF_ShRng(s);
+		local it = l[1 + TRF_ShM(s, getn(l))];
+		local c = TRF_ShCostOf(costs, it, K);
+		if tot + c <= bud then TRF_ShAddOf(out, at, it); tot = tot + c; end;
+	end;
+	local cg = L[4];
+	for d = 1, K.cargo_max do
+		s = TRF_ShRng(s);
+		local it = cg[1 + TRF_ShM(s, getn(cg))];
+		local c = TRF_ShCostOf(costs, it, K);
+		if tot + c <= bud then TRF_ShAddOf(out, at, it); tot = tot + c; end;
+	end;
+	return out, tot;
+end;
+
+-- "HC3x1,EngAmp2x1,ECM2x2" of a fill list (the E7.4 log form).
+function TRF_ShItemsOf(l)
+	local s = nil;
+	for i = 1, getn(l) do
+		local e = l[i].i.."x"..l[i].n;
+		if s then s = s..","..e; else s = e; end;
+	end;
+	return s or "";
+end;
+
+-- Intel price (design 5, 00 A2 on mod prices): floor(k x L_w x d_k).
+function TRF_ShPriceOf(k, Lw, dk)
+	return floor(k * Lw * dk);
+end;
+
+-- Treasurer line key by tier (design 2: T1 "rainy-day rock", T2 "storage fee", T3+ "drop it").
+function TRF_ShRetKeyOf(T)
+	if T <= 1 then return "stashret1"; end;
+	if T == 2 then return "stashret3"; end;
+	return "stashret2";
+end;
+
+-- 1 when the gap since stamps (sl legs, sj jumps) has passed for both counters (gl legs and gj jumps); no stamp: 1.
+function TRF_ShGapOf(legs, J, sl, sj, gl, gj)
+	if type(sl) == "number" and legs - sl < gl then return nil; end;
+	if type(sj) == "number" and J - sj < gj then return nil; end;
+	return 1;
+end;
+
+-- Area nav point (design 6): the slot p moved by an LCG offset of at most r on the plane, from seed.
+function TRF_ShAreaOf(p, seed, r)
+	local s = TRF_ShRng(TRF_ShCl(floor(seed), 1, 2147483646) + 7);
+	local a = TRF_ShM(s, 360);
+	s = TRF_ShRng(s);
+	local d = TRF_ShM(s, floor(r) + 1);
+	return {x=floor(p.x + d * cos(a) + 0.5), y=p.y, z=floor(p.z + d * sin(a) + 0.5)}, d;
+end;
+
+-- Treasurer delay (design 6: stash_ret_delay lo..hi s) from the seed and the jump count.
+function TRF_ShDelayOf(seed, J, lo, hi)
+	return lo + TRF_ShM(TRF_ShHash(seed, J, 31), hi - lo + 1);
+end;
+
+-- State --------------------------------------------------------------------------------
+
+-- TRF.stash (index i 1..stash_max, table or nil), created on first use.
+function TRF_ShRecs()
+	if type(TRF.stash) ~= "table" then TRF.stash = {}; end;
+	return TRF.stash;
+end;
+
+function TRF_ShRec(i)
+	if type(TRF) ~= "table" or type(TRF.stash) ~= "table" or type(i) ~= "number" then return nil; end;
+	local r = TRF.stash[i];
+	if type(r) == "table" then return r; end;
+	return nil;
+end;
+
+-- TRF.stx = {n, op, opp (counters), lc, jc (last creation), lo, jo (last on-screen opening), pt (owed patrol thanks,
+-- a list {{f, s}, ...} oldest first: faction and cache system; TRF_ShOwe), ms, mc (moved notice: system and clan)}.
+function TRF_ShStx()
+	if type(TRF) ~= "table" then return {}; end;
+	if type(TRF.stx) ~= "table" then TRF.stx = {n=0, op=0, opp=0}; end;
+	return TRF.stx;
+end;
+
+-- Clan record of region slot (TRF.clan[slot], trf_region), or nil.
+function TRF_ShClan(slot)
+	if type(TRF) ~= "table" or type(TRF.clan) ~= "table" or type(slot) ~= "number" or type(TRF.clan[slot]) ~= "table" then return nil; end;
+	return TRF.clan[slot];
+end;
+
+-- Record of system idx: index, record; nil when none (one record per system).
+function TRF_ShAt(idx)
+	local K = TRF_ShK();
+	for i = 1, K.rec_max do
+		local r = TRF_ShRec(i);
+		if r and r.sys == idx then return i, r; end;
+	end;
+	return nil;
+end;
+
+-- Record of clan slot: index, record; nil when none.
+function TRF_ShOfClan(slot)
+	for i = 1, TRF_ShK().rec_max do
+		local r = TRF_ShRec(i);
+		if r and r.clan == slot then return i, r; end;
+	end;
+	return nil;
+end;
+
+-- Number of records.
+function TRF_ShRecN()
+	local u, n = TRF_ShCount();
+	return n;
+end;
+
+-- Unopened records (st < 2) and all records.
+function TRF_ShCount()
+	local u, n = 0, 0;
+	for i = 1, TRF_ShK().rec_max do
+		local r = TRF_ShRec(i);
+		if r then n = n + 1; if r.st < 2 then u = u + 1; end; end;
+	end;
+	return u, n;
+end;
+
+-- First free index within stash_max, or nil.
+function TRF_ShFree()
+	for i = 1, TRF_ShT("stash_max") do
+		if not TRF_ShRec(i) then return i; end;
+	end;
+	return nil;
+end;
+
+-- Slot position {x, y, z} of record r, or nil.
+function TRF_ShSlotPos(r)
+	local l = TRF_ShSlots(TRF_ShName(r.sys));
+	if not l or not l[r.slot] then return nil; end;
+	local p = l[r.slot];
+	return {x=p[1], y=p[2], z=p[3]};
+end;
+
+-- Removes record i (why ttl, open_gap, dead, fix, model): banked salvage returned (st < 2), a known cache leaves the
+-- moved notice. Only for records outside the current system or at entry (M16).
+function TRF_ShDrop(i, why)
+	local r = TRF_ShRec(i);
+	if not r then return; end;
+	TRF.stash[i] = nil;
+	local back = 0;
+	if r.st < 2 and r.sv > 0 then back = TRF_N("TRF_SalvAdd", r.clan, 1, r.sv, "stash") or 0; end;
+	if r.st == 1 and (why == "ttl" or why == "open_gap") then
+		local x = TRF_ShStx();
+		x.ms = r.sys; x.mc = r.clan;
+	end;
+	TRF_ShE("expire", "index", i, "system", TRF_ShName(r.sys), "clan", r.clan, "state", r.st, "age", TRF_ShLegs() - r.leg,
+		"salvage_back", back, "reason", why);
+end;
+
+-- Gates ------------------------------------------------------------------------------
+
+-- 1 when the module runs: TRF, the traffic modules, cfg enable_stashes, trf_scar's object helpers.
+function TRF_ShOn()
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return nil; end;
+	if type(TRF_Sc_Alive) ~= "function" or type(TRF_Sc_Make) ~= "function" then return nil; end;
+	return TRF_ShOpt("enable_stashes") == 1;
+end;
+
+-- 1 while the starting-region guard holds (chapter <= 4, TDR 6.9 M20; trf_region's TRF_RgGuardOn).
+function TRF_ShGuard()
+	if type(TRF_RgGuardOn) ~= "function" then return 1; end;
+	return TRF_RgGuardOn();
+end;
+
+-- S2 and S3 (9.8): __disableAction, __sys_SOS, trf_safety's suppression. Returns the reason or nil.
+function TRF_ShHold()
+	if __disableAction == TRUE then return "disable_action"; end;
+	if __sys_SOS == TRUE then return "sys_sos"; end;
+	local sp = TRF_N("TRF_Supp");
+	if type(sp) == "number" and sp ~= 0 then return "suppressed"; end;
+	return nil;
+end;
+
+-- Gate of every visible part in system idx (design 3, 4: offer, tip, arrival line, nav points, treasurer): guard,
+-- mission, the strict gate S4 (feature f), S2/S3, a visible scene. Returns nil or the reason.
+function TRF_ShVis(idx, f)
+	if TRF_ShGuard() then return "guard"; end;
+	if TRF_ShQuest() then return "quest"; end;
+	if type(TRF_StrictOk) == "function" then
+		local ok, w = TRF_StrictOk(idx, f);
+		if not ok then return "strict:"..tostring(w); end;
+	end;
+	local hw = TRF_ShHold();
+	if hw then return "hold:"..hw; end;
+	if TRF_N("TRF_Quiet") then return "quiet"; end;
+	return nil;
+end;
+
+-- 1 while an on-screen sweep window plays in this system (trf_faction live.sw waiting or on).
+function TRF_ShSweepWin()
+	if type(TRF) ~= "table" or type(TRF.live) ~= "table" or type(TRF.live.sw) ~= "table" then return nil; end;
+	local s = TRF.live.sw.st;
+	if s == "wait" or s == "on" then return 1; end;
+	return nil;
+end;
+
+-- Region tick: creation and expiry (design 6) ---------------------------------------------------------
+
+-- Expiry at the tick (records outside the current system only): st < 2 after stash_ttl legs, every st < 2 record
+-- created before the last on-screen opening (the clans move), st 2 after stash_dead_legs.
+function TRF_ShExpire(L)
+	local cur = TRF_ShCur();
+	local x = TRF_ShStx();
+	local T = TRF_ShTune();
+	for i = 1, TRF_ShK().rec_max do
+		local r = TRF_ShRec(i);
+		if r and r.sys ~= cur then
+			if r.st < 2 and L - r.leg >= T.stash_ttl then TRF_ShDrop(i, "ttl");
+			elseif r.st < 2 and type(x.lo) == "number" and r.leg <= x.lo then TRF_ShDrop(i, "open_gap");
+			elseif r.st == 2 and L - r.leg >= T.stash_dead_legs then TRF_ShDrop(i, "dead"); end;
+		end;
+	end;
+end;
+
+-- Map-wide creation gates (design 6): guard, mission, stash_live, stash_gap, stash_open_gap, the shared prize gap (00
+-- B1), a free index. Returns nil or the reason.
+function TRF_ShGate(L)
+	if TRF_ShGuard() then return "guard"; end;
+	if TRF_ShQuest() then return "quest"; end;
+	local T = TRF_ShTune();
+	local u = TRF_ShCount();
+	if u >= T.stash_live then return "live"; end;
+	local x = TRF_ShStx();
+	local J = TRF_ShJ();
+	if not TRF_ShGapOf(L, J, x.lc, x.jc, T.stash_gap[1], T.stash_gap[2]) then return "gap"; end;
+	if not TRF_ShGapOf(L, J, x.lo, x.jo, T.stash_open_gap[1], T.stash_open_gap[2]) then return "open_gap"; end;
+	local pw = TRF_N("TRF_PrizeWait");
+	if type(pw) == "number" and pw > 0 then return "prize"; end;
+	if not TRF_ShFree() then return "max"; end;
+	return nil;
+end;
+
+-- Allow-list systems of region slot for a new cache: a slot table, never the current system (M16 analogue), no
+-- record there; systems without a P/A base first (design 6). Returns the list.
+function TRF_ShCands(slot, cur)
+	local rm = TRF_N("TRF_RgMap");
+	local out, nb = {}, {};
+	if type(rm) ~= "table" or type(rm[slot]) ~= "table" or type(rm[slot].sys) ~= "table" then return out; end;
+	local ss = rm[slot].sys;
+	for k = 1, getn(ss) do
+		local s = ss[k];
+		if s ~= cur and TRF_ShSlots(TRF_ShName(s)) and not TRF_ShAt(s) then
+			local base = nil;
+			if type(TRF.base) == "table" then
+				for b = 1, getn(TRF.base) do
+					local e = TRF.base[b];
+					if type(e) == "table" and e.s == s and (e.k == 1 or e.k == 2) then base = 1; end;
+				end;
+			end;
+			if base then tinsert(nb, s); else tinsert(out, s); end;
+		end;
+	end;
+	sort(out); sort(nb);
+	if getn(out) == 0 then return nb; end;
+	return out;
+end;
+
+-- A new record of clan slot in system s at leg L (design 6): class, value, seed, slot; cls 3 banks one salvage point
+-- (sv = the salvage faction).
+function TRF_ShNew(i, slot, s, L)
+	local x = TRF_ShStx();
+	local T, K = TRF_ShTune(), TRF_ShK();
+	local nm = TRF_ShName(s);
+	local sl = TRF_ShSlots(nm);
+	local tier = TRF_ShCl(floor(TRF_N("TRF_EffTier", s) or 1), 1, 4);
+	local salv, sf = 0, 0;
+	if type(TRF_Cl_Sv) == "function" then salv, sf = TRF_Cl_Sv(slot); end;
+	local cls = TRF_ShClsOf(tier, salv);
+	local tk = TRF_N("TRF_TierK", s) or 1;
+	local v, V = TRF_ShVOf(T.stash_k, TRF_N("TRF_LPay", s) or 8, TRF_N("TRF_LK", s) or 1, tk, TRF_N("TRF_RgR", slot) or 0, T.stash_cap[tier]);
+	local seed = 1 + TRF_ShM(TRF_ShHash(x.n or 0, s, slot), 9999);
+	local k = 1 + TRF_ShM(TRF_ShHash(seed, L, s), min(getn(sl), K.slot_max));
+	local r = {sys=s, slot=k, clan=slot, cls=cls, v=v, seed=seed, leg=L, st=0, src=0, sf=0, sv=0, rf=0};
+	if cls == 3 and salv > 0 and sf >= 1 and sf <= 5 then
+		TRF_N("TRF_SalvUse", slot, "stash");
+		r.sv = sf;
+	end;
+	TRF_ShRecs()[i] = r;
+	x.n = (x.n or 0) + 1;
+	x.lc = L; x.jc = TRF_ShJ();
+	local c = TRF_ShClan(slot);
+	if c then c.sk = L; end;
+	TRF_ShStat("stash_new");
+	TRF_ShE("create", "index", i, "system", nm, "slot", k, "clan", slot, "tier", tier, "class", cls, "value", v, "budget", V, "seed", seed,
+		"salvage_banked", r.sv, "record_count", TRF_ShRecN());
+	return r;
+end;
+
+-- Creation at tick L (design 6): the map-wide gates, then among the regions in Build-up or Raids with no record, so 0
+-- and no open sweep attempt, the one whose last cache is oldest (clan.sk, then slot) rolls stash_chance (25 % Build-up,
+-- 35 % Raids); a system of its allow-list and a slot by the hash of the saved counters. At most one per tick.
+function TRF_ShCreate(L)
+	local why = TRF_ShGate(L);
+	if why then TRF_ShDE("create", "leg", L, "result", "none", "reason", why); return nil; end;
+	local rm = TRF_N("TRF_RgMap");
+	if type(rm) ~= "table" or type(rm.n) ~= "number" then return nil; end;
+	local cur = TRF_ShCur();
+	local best, bk, bc = nil, nil, nil;
+	for slot = 1, rm.n do
+		local ph = TRF_N("TRF_Phase", slot);
+		local c = TRF_ShClan(slot);
+		if c and (ph == 2 or ph == 3) and c.so ~= 1 and not TRF_ShOfClan(slot) and not TRF_N("TRF_SweepOpen", slot) then
+			local cs = TRF_ShCands(slot, cur);
+			if getn(cs) > 0 then
+				local k = c.sk or -99999;
+				if not bk or k < bk then best = slot; bk = k; bc = cs; end;
+			end;
+		end;
+	end;
+	if not best then TRF_ShDE("create", "leg", L, "result", "none", "reason", "no_region"); return nil; end;
+	local x = TRF_ShStx();
+	local ph = TRF_N("TRF_Phase", best);
+	local ch = TRF_ShT("stash_chance")[1];
+	if ph == 3 then ch = TRF_ShT("stash_chance")[2]; end;
+	local roll = TRF_ShM(TRF_ShHash(L, best, x.n or 0), 100);
+	if roll >= ch then
+		TRF_ShDE("create", "leg", L, "region", best, "chance", ch, "roll", roll, "result", "none", "reason", "roll");
+		return nil;
+	end;
+	local s = bc[1 + TRF_ShM(TRF_ShHash(x.n or 0, L, best), getn(bc))];
+	local i = TRF_ShFree();
+	local r = TRF_ShNew(i, best, s, L);
+	return i, r;
+end;
+
+-- Region tick (trf_region TRF_RegionTick, leg L; counters only, W1): so cleared for regions in Quiet, the expiry, then
+-- at most one new record. Expiry runs with the module's gates closed too; creation needs them.
+function TRF_Sh_RegionTick(L)
+	if not TRF_ShOn() or type(L) ~= "number" then return; end;
+	call(TRF_ShTickBody, {L}, "x", TRF_ShErr);
+end;
+
+function TRF_ShTickBody(L)
+	local rm = TRF_N("TRF_RgMap");
+	if type(rm) == "table" and type(rm.n) == "number" then
+		for slot = 1, rm.n do
+			local c = TRF_ShClan(slot);
+			if c and c.so ~= nil and TRF_N("TRF_Phase", slot) == 0 then
+				c.so = nil;
+				TRF_ShE("so", "region", slot, "result", "cleared");
+			end;
+		end;
+	end;
+	TRF_ShExpire(L);
+	TRF_ShCreate(L);
+	-- Step 2 hook: the hail rumour pool (stash_rumour_pct) and the rival's taking of a known cache run here.
+end;
+
+-- Objects (design 6 reconcile, fill, triggers, nav points) ---------------------------------------------
+
+function TRF_ShLbl(i) return "TRF_STASH_"..i; end;
+
+-- Fill of record r into object o (design 6: ClearInventory, then the seed's list). Logs the E7.4 line.
+function TRF_ShFill(i, r, o)
+	local m = TRF_ShMap();
+	local costs, fm = nil, nil;
+	if m then
+		costs = m.it;
+		if r.sv >= 1 and r.sv <= 5 and type(m.fm) == "table" then fm = m.fm[r.sv]; end;
+	end;
+	local l, sum = TRF_ShFillOf(r.seed, r.v, r.cls, {TRF_ShList(1), TRF_ShList(2), TRF_ShList(3), TRF_ShCargo()}, fm, costs, TRF_ShK());
+	TRF_N("TRF_Sc_Inv", o, l);
+	TRF_ShE("fill", "index", i, "seed", r.seed, "items", TRF_ShItemsOf(l), "sum", sum, "value", r.v);
+	return l, sum;
+end;
+
+-- died and attack triggers on the cache, and for a known cache (st 1) the area nav point and the inside trigger on the
+-- mothership at the slot (stash_find_r). Visible parts follow TRF_ShVis.
+function TRF_ShArm(i, r, o)
+	local sh = %SH;
+	sh.o[i] = o;
+	TRF_ShTrig("died", TRF_ShCb("TRF_ShDied", i), o);
+	TRF_ShTrig("attack", TRF_ShCb("TRF_ShHit", i), PLAYER_GROUP, o);
+	if r.st == 1 and not TRF_ShVis(r.sys, "offer") then
+		local p = TRF_ShSlotPos(r);
+		if p then
+			local a = TRF_ShAreaOf(p, r.seed, TRF_ShT("stash_area_r"));
+			local tx = "";
+			if TRF_N("TRF_Loc_Mode") == 1 then tx = "#TRF_stashnavarea"; end;
+			TRF_N("TRF_MarkerAdd", "stash", "TRF_STASH_AR_"..i, a.x, a.y, a.z, tx, TRF_ShK().icon);
+			local ms = TRF_N("TRF_Ms");
+			if TRF_ShObj(ms) and type(Vector3) == "function" and not sh.v.fnd[i] then
+				TRF_ShTrig("inside", TRF_ShCb("TRF_ShIn", i), ms, Vector3(p.x, p.y, p.z), TRF_ShT("stash_find_r"));
+			end;
+		end;
+	end;
+end;
+
+-- Creates the cache object of record i (CreateStation through trf_scar's TRF_Sc_Make; nil only for an unknown model:
+-- the record is dropped). Returns the object.
+function TRF_ShPlace(i, r)
+	local p = TRF_ShSlotPos(r);
+	if not p then
+		TRF_ShE("place", "index", i, "system", TRF_ShName(r.sys), "result", "failed", "reason", "slot");
+		TRF_ShDrop(i, "slot");
+		return nil;
+	end;
+	local o = TRF_Sc_Make(TRF_ShK().model, p, TRF_ShLbl(i), 1);
+	if not TRF_ShObj(o) then
+		TRF_ShE("place", "index", i, "system", TRF_ShName(r.sys), "model", TRF_ShK().model, "result", "failed", "reason", "model");
+		TRF_ShDrop(i, "model");
+		return nil;
+	end;
+	r.pl = 1;
+	return o;
+end;
+
+-- Opened without the player (dead at entry, design 6 table): st 2, clan loss, no treasurer, no so.
+function TRF_ShLost(i, r, why)
+	r.st = 2;
+	r.leg = TRF_ShLegs();
+	r.rf = 0;
+	local d = TRF_N("TRF_Cl_Score", r.clan, TRF_ShK().score_k * r.cls, "stash lost") or 0;
+	TRF_ShE("open", "index", i, "system", TRF_ShName(r.sys), "player", "false", "clan_score_change", d, "reason", why);
+end;
+
+-- Reconcile of index i in the current system cur (design 6 table). mode "enter" creates, "load" only re-fetches.
+-- Returns the action.
+function TRF_ShRecon(i, cur, mode)
+	local r = TRF_ShRec(i);
+	local raw = TRF_N("GetObjectByLabel", TRF_ShLbl(i));
+	local o = nil;
+	if TRF_ShObj(raw) then o = raw; end;
+	local st = "missing";
+	if type(raw) == "string" then st = "string"; elseif o then st = "dead"; if TRF_ShAlive(o) then st = "alive"; end; end;
+	local res = "none";
+	if not r or r.sys ~= cur then
+		if st == "alive" then TRF_ShDel(o); res = "orphan"; TRF_ShE("orphan_delete", "index", i, "system", TRF_ShName(cur)); end;
+		if res ~= "none" then TRF_ShE("reconcile", "index", i, "system", TRF_ShName(cur), "object", st, "result", res); end;
+		return res;
+	end;
+	-- A record never placed (pl ~= 1) owns no object: one under its label is a former record's of the same index.
+	local old = nil;
+	if r.st ~= 2 and r.pl ~= 1 and o then
+		TRF_ShDel(o); o = nil; old = 1;
+		TRF_ShE("orphan_delete", "index", i, "system", TRF_ShName(cur), "object", st, "reason", "index");
+	end;
+	if r.st == 2 then
+		if st == "alive" then TRF_ShDel(o); res = "delete"; end;
+	elseif st == "alive" and not old then
+		res = "reuse";
+		TRF_ShFill(i, r, o);
+		TRF_ShArm(i, r, o);
+	elseif st == "dead" and not old then
+		res = "lost";
+		TRF_ShLost(i, r, "entry");
+	elseif mode == "enter" then
+		local n = TRF_ShPlace(i, r);
+		if n then res = "create"; TRF_ShFill(i, r, n); TRF_ShArm(i, r, n); o = n; else res = "failed"; end;
+	end;
+	TRF_ShE("reconcile", "index", i, "system", TRF_ShName(cur), "label", TRF_ShLbl(i), "state", r.st, "object", st, "hp", o and TRF_ShHp(o),
+		"result", res);
+	return res;
+end;
+
+-- Debug (cfg stash_at, the in-game checks of design 8): a known record (st 1) in the named system at its entry when it
+-- has none and a slot, before the reconcile (so it is placed now).
+function TRF_ShDebugAt(cur)
+	local at = TRF_ShOpt("stash_at");
+	if type(at) ~= "string" or at == "" or strlower(at) ~= TRF_ShName(cur) or TRF_ShAt(cur) then return; end;
+	if not TRF_ShSlots(TRF_ShName(cur)) then return; end;
+	local slot = TRF_N("TRF_RgOf", cur);
+	local i = TRF_ShFree();
+	if type(slot) ~= "number" or not i then return; end;
+	local r = TRF_ShNew(i, slot, cur, TRF_ShLegs());
+	r.st = 1;
+	TRF_ShE("debug", "index", i, "system", TRF_ShName(cur), "result", "created");
+end;
+
+-- Loader callbacks -------------------------------------------------------------------
+
+-- Visit state reset (entry, load, jump): handles, the treasurer and the wind-down flag; v = 1 also the visit flags.
+function TRF_ShReset(v)
+	local sh = %SH;
+	sh.o = {}; sh.r = nil; sh.wd = nil;
+	if v == 1 then sh.v = {hit={}, fnd={}, roll={}, dec={}}; end;
+end;
+
+-- Activation (entry only, after trf_captain): visit reset; module off: every TRF_STASH_<i> object deleted (TDR 10.4);
+-- else the debug record, the reconcile of every index (orphans, create, reuse, lost, delete), the arrival line of a
+-- known cache.
+function TRF_Sh_OnActivate()
+	TRF_ShReset(1);
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return; end;
+	local cur = TRF_ShCur();
+	if type(cur) ~= "number" then return; end;
+	if not TRF_ShOn() then
+		local n = 0;
+		for i = 1, TRF_ShK().rec_max do
+			local o = TRF_N("GetObjectByLabel", TRF_ShLbl(i));
+			if TRF_ShObj(o) and TRF_N("TRF_Sc_Del", o) then n = n + 1; end;
+		end;
+		if n > 0 then TRF_ShE("disabled", "system", TRF_ShName(cur), "deleted", n); end;
+		return;
+	end;
+	call(TRF_ShEnterBody, {cur}, "x", TRF_ShErr);
+end;
+
+function TRF_ShEnterBody(cur)
+	TRF_ShDebugAt(cur);
+	for i = 1, TRF_ShK().rec_max do TRF_ShRecon(i, cur, "enter"); end;
+	local i, r = TRF_ShAt(cur);
+	local ln = nil;
+	if r and r.st == 1 and %SH.o[i] and not TRF_ShVis(cur, "offer") then
+		ln = "stasharrive";
+		if type(TRF_ArrivalLine) == "function" then TRF_ArrivalLine("stash", TRF_ShTxt(ln)); else TRF_ShSay(TRF_ShTxt(ln)); end;
+	end;
+	%SH.v.t0 = TRF_ShGt();
+	TRF_ShDE("enter", "system", TRF_ShName(cur), "index", i, "state", r and r.st, "arrival", ln, "pirates_relation",
+		TRF_N("GetTeamRelation", "Pirates", PLAYER_TEAM));
+end;
+
+-- Load inside a system (design 6 save/load): visit reset, the reconcile without creation, triggers and nav points again
+-- (trf_plumb deleted the saved visit's markers), a due treasurer (rf 1) re-armed with a fresh delay (exploit 4).
+function TRF_Sh_OnLoad()
+	TRF_ShReset(1);
+	for i = 1, TRF_ShK().rec_max do setglobal("TRF_GSh_"..i, nil); end;
+	if not TRF_ShOn() then return; end;
+	local cur = TRF_ShCur();
+	if type(cur) ~= "number" then return; end;
+	call(TRF_ShLoadBody, {cur}, "x", TRF_ShErr);
+end;
+
+function TRF_ShLoadBody(cur)
+	for i = 1, TRF_ShK().rec_max do TRF_ShRecon(i, cur, "load"); end;
+	local i, r = TRF_ShAt(cur);
+	if r and r.rf == 1 then TRF_ShRetArm(i, r, "rearm"); end;
+end;
+
+-- Before every jump: a cache seen dead now is opened (the poll), a treasurer not yet spawned is void (rf 2), a live one
+-- is deleted (M3); handles and group globals go. trf_plumb deletes the markers.
+function TRF_Sh_BeforeJump()
+	if TRF_ShOn() then call(TRF_ShJumpBody, {}, "x", TRF_ShErr); end;
+	for i = 1, TRF_ShK().rec_max do setglobal("TRF_GSh_"..i, nil); end;
+	TRF_ShReset();
+end;
+
+function TRF_ShJumpBody()
+	TRF_ShPoll("jump");
+	local sh = %SH;
+	for i = 1, TRF_ShK().rec_max do
+		local r = TRF_ShRec(i);
+		if r and r.rf == 1 then r.rf = 2; TRF_ShE("ret", "index", i, "result", "void", "reason", "jump"); end;
+	end;
+	if sh.r then TRF_ShRetDel(sh.r, "jump"); end;
+end;
+
+-- Wind-down (trf_gen TRF_WindDown, 9.10): the treasurer goes to its portal (rf 2), the nav points go.
+function TRF_Sh_WindDown()
+	local sh = %SH;
+	if sh.wd == 1 then return; end;
+	sh.wd = 1;
+	TRF_N("TRF_MarkerClear", "stash");
+	for i = 1, TRF_ShK().rec_max do
+		local r = TRF_ShRec(i);
+		if r and r.rf == 1 then r.rf = 2; TRF_ShE("ret", "index", i, "result", "void", "reason", "wind"); end;
+	end;
+	if sh.r and sh.r.st == "come" then TRF_ShRetLeave(sh.r, "wind"); end;
+end;
+
+-- Callbacks ---------------------------------------------------------------------------
+
+function TRF_ShDied(i, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_ShDied", TRF_ShDiedBody, {i, g}); else TRF_ShDiedBody(i, g); end;
+end;
+
+function TRF_ShDiedBody(i, g)
+	if g ~= TRF_ShGen() then TRF_ShE("stale", "index", i, "generation", g, "current", TRF_ShGen()); return; end;
+	TRF_ShOpen(i, "died");
+end;
+
+-- Opening (design 6 TRF_StashDied): st 2 at once, leg, clan score -2 x cls outside the visit cap, so, the open gap
+-- stamps and stx.op; with a player hit this visit: stx.opp, the source reward (seller clan +2, or the patrol faction
+-- owed fst +1), the open line, the prize stamp, and the treasurer due (rf 1); rf 2 at once while a mission runs or at
+-- the jump poll (the jump would void the timer, 5.9).
+function TRF_ShOpen(i, why)
+	local r = TRF_ShRec(i);
+	if not r or r.st == 2 or r.sys ~= TRF_ShCur() then return; end;
+	local sh = %SH;
+	local x = TRF_ShStx();
+	local L, J = TRF_ShLegs(), TRF_ShJ();
+	r.st = 2;
+	r.leg = L;
+	local d = TRF_N("TRF_Cl_Score", r.clan, TRF_ShK().score_k * r.cls, "stash open") or 0;
+	local c = TRF_ShClan(r.clan);
+	if c then c.so = 1; end;
+	x.lo = L; x.jo = J;
+	x.op = (x.op or 0) + 1;
+	TRF_N("TRF_MarkerClear", "stash");
+	sh.o[i] = nil;
+	local hit = sh.v.hit[i];
+	local q = TRF_ShQuest();
+	if hit == 1 then
+		x.opp = (x.opp or 0) + 1;
+		if r.src == 1 and r.sf >= 1 then TRF_N("TRF_Cl_Score", r.sf, TRF_ShK().seller, "stash intel sold"); end;
+		if r.src == 2 and r.sf >= 1 then TRF_ShOwe(x, r.sf, r.sys); end;
+		TRF_ShSay(TRF_ShTxt("stashopen"));
+		TRF_N("TRF_PrizeMark", "stash");
+		if q or why == "jump" or TRF_ShOpt("enable_stash_retrieval") ~= 1 then r.rf = 2; else r.rf = 1; TRF_ShRetArm(i, r, "open"); end;
+		-- Step 2 hook: the clan's captain grudge +1 (04) and the Hunting-channel news post run here.
+	end;
+	TRF_ShStat("stash_open");
+	TRF_ShE("died", "index", i, "generation", TRF_ShGen(), "system", TRF_ShName(r.sys), "hit", TRF_KvB(hit), "class", r.cls,
+		"clan_score_change", d, "source", r.src, "treasurer", r.rf, "quest", TRF_KvB(q), "reason", why);
+end;
+
+function TRF_ShHit(i, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_ShHit", TRF_ShHitBody, {i, g}); else TRF_ShHitBody(i, g); end;
+end;
+
+-- attack trigger with PLAYER_GROUP on the cache: the visit flag hit[i] (design 6).
+function TRF_ShHitBody(i, g)
+	if g ~= TRF_ShGen() then return; end;
+	local sh = %SH;
+	if sh.v.hit[i] == 1 then return; end;
+	sh.v.hit[i] = 1;
+	TRF_ShDE("hit", "index", i);
+end;
+
+function TRF_ShIn(i, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_ShIn", TRF_ShInBody, {i, g}); else TRF_ShInBody(i, g); end;
+end;
+
+-- inside trigger at the slot (or the step's distance poll): the attached nav point and the found line, once a visit.
+function TRF_ShInBody(i, g)
+	if g ~= TRF_ShGen() then return; end;
+	TRF_ShFound(i, "trigger");
+end;
+
+function TRF_ShFound(i, why)
+	local sh = %SH;
+	local r = TRF_ShRec(i);
+	if sh.v.fnd[i] or not r or r.st ~= 1 or not TRF_ShAlive(sh.o[i]) or sh.wd == 1 or TRF_ShVis(r.sys, "offer") then return; end;
+	sh.v.fnd[i] = 1;
+	local p = TRF_ShSlotPos(r);
+	local tx = "#M_Name_Asteroid_inv_Val";
+	if TRF_N("TRF_Loc_Mode") == 1 then tx = "#TRF_stashnav"; end;
+	if p then TRF_N("TRF_MarkerAdd", "stash", "TRF_STASH_NP_"..i, p.x, p.y, p.z, tx, TRF_ShK().icon, sh.o[i]); end;
+	TRF_ShSay(TRF_ShTxt("stashfound"));
+	TRF_ShE("found", "index", i, "system", TRF_ShName(r.sys), "reason", why);
+end;
+
+-- The cache of the current system no longer alive without its died event (poll, jump): the opening as from died.
+function TRF_ShPoll(why)
+	local sh = %SH;
+	for i = 1, TRF_ShK().rec_max do
+		local o = sh.o[i];
+		if o and not TRF_ShAlive(o) then TRF_ShOpen(i, why); sh.o[i] = nil; end;
+	end;
+end;
+
+-- Treasurer (design 6) ---------------------------------------------------------------------------------
+
+-- Schedules the treasurer of record i: stash_ret_delay from the seed and the jump count (a load re-arms with a fresh
+-- delay: the count of loads in TRF.gen moves the hash).
+function TRF_ShRetArm(i, r, why)
+	local d = TRF_ShT("stash_ret_delay");
+	local dt = TRF_ShDelayOf(r.seed + TRF_ShGen(), TRF_ShJ(), d[1], d[2]);
+	if not TRF_N("TRF_Due", dt, "TRF_ShRetDue", i, TRF_ShGen()) then
+		r.rf = 2;
+		TRF_ShE("ret", "index", i, "result", "void", "reason", "due");
+		return nil;
+	end;
+	TRF_ShE("ret", "index", i, "delay", dt, "result", why);
+	return 1;
+end;
+
+function TRF_ShRetDue(i, g)
+	if g ~= TRF_ShGen() then return; end;
+	call(TRF_ShRetBody, {i}, "x", TRF_ShErr);
+end;
+
+-- Spawn gates (design 6 treasurer): rf 1, the cache system, module and retrieval toggles, the visible gate (mission,
+-- strict "raid", S2/S3), no sweep window, no open sweep attempt against the clan (design 3), no carrier that is due or
+-- live (st other than skip and done), the write-back rule (and cfg stash_ret_war 0: Pirates at war with
+-- the player at team level everywhere), the caps. Returns nil or the reason.
+function TRF_ShRetGate(r, cur, n)
+	if TRF_ShOpt("enable_stash_retrieval") ~= 1 then return "disabled"; end;
+	local vw = TRF_ShVis(cur, "raid");
+	if vw then return vw; end;
+	if TRF_ShSweepWin() or TRF_N("TRF_SweepOpen", r.clan) then return "sweep"; end;
+	local cr = TRF_N("TRF_Cl_Cr");
+	if type(cr) == "table" and cr.st ~= "skip" and cr.st ~= "done" then return "carrier"; end;
+	local pr = TRF_N("GetTeamRelation", "Pirates", PLAYER_TEAM);
+	local war = RELATION_WAR ~= nil and pr == RELATION_WAR;
+	if TRF_ShWB()[TRF_ShName(cur)] and not war then return "writeback"; end;
+	if TRF_ShOpt("stash_ret_war") ~= 1 and not war then return "no_war"; end;
+	if not TRF_ShCaps(n) then return "caps"; end;
+	return nil;
+end;
+
+-- Room for n treasurer ships: cap_ships (traffic's live and parked ships plus every TRF_CapReg group, as TRF_CanSpawn; the treasurer is not trimmed
+-- and does not trim others, 00 section 6) and raid_live_cap (the clan ships alive, trf_raid's TRF_Rd_ClanAlive).
+function TRF_ShCaps(n)
+	local alive = TRF_N("TRF_Rd_ClanAlive") or 0;
+	if alive + n > TRF_ShTv("raid_live_cap", 8) then return nil; end;
+	if type(TRF) == "table" and type(TRF.live) == "table" and type(TRF.live.caps) == "number" then
+		local nt, ns = 0, 0;
+		if type(TRF_SafeCountOf) == "function" then nt, ns = TRF_SafeCountOf(TRF.live.tr); end;
+		local ex = TRF_N("TRF_CapShips") or 0;
+		local pk = 0;
+		if type(TRF_SafeParkedOf) == "function" then pk = TRF_SafeParkedOf(TRF.live.pk); end;
+		if (ns or 0) + pk + ex + n > TRF.live.caps then return nil; end;
+	end;
+	return 1;
+end;
+
+-- Entry portal of the treasurer: the map portal of cur on the shortest path toward the clan home (jumps from
+-- TRF_RgNear, ties by idx) whose IsEnabled() answers true, else the next shortest. Returns the object and its name.
+function TRF_ShRetPortal(cur, home)
+	local m = TRF_ShMap();
+	if not m or type(m.sys[cur]) ~= "table" or type(m.sys[cur].portals) ~= "table" then return nil; end;
+	local dist = {};
+	if type(home) == "number" then
+		dist[home] = 0;
+		local nb = TRF_N("TRF_RgNear", home, 12);
+		if type(nb) == "table" then for k = 1, getn(nb) do dist[nb[k].idx] = nb[k].j; end; end;
+	end;
+	local l = {};
+	local ps = m.sys[cur].portals;
+	for k = 1, getn(ps) do
+		local q = ps[k];
+		if type(q) == "table" and type(q.to) == "string" and type(q.name) == "string" then
+			local t = m.by[strlower(q.to)];
+			if t then tinsert(l, {n=q.name, d=dist[t] or 99, t=t}); end;
+		end;
+	end;
+	sort(l, function(a, b) if a.d ~= b.d then return a.d < b.d; end; return a.t < b.t; end);
+	for k = 1, getn(l) do
+		local o = TRF_N("TRF_GnPortalObj", l[k].n);
+		if TRF_ShEnabled(o) then return o, l[k].n; end;
+	end;
+	return nil;
+end;
+
+-- Skip (design 6): the leader line as a screen line (only while the visible gate G2 with strict "raid" passes), rf 2.
+function TRF_ShRetSkip(i, r, why)
+	r.rf = 2;
+	if not TRF_ShVis(r.sys, "raid") then
+		local T = TRF_ShCl(floor(TRF_N("TRF_EffTier", r.sys) or 1), 1, 4);
+		TRF_ShSay(TRF_ShTxt(TRF_ShRetKeyOf(T), TRF_ShClanName(r.clan)));
+	end;
+	TRF_ShStat("stash_ret_skip");
+	TRF_ShE("ret", "index", i, "result", "skipped", "reason", why);
+end;
+
+function TRF_ShRetBody(i)
+	local r = TRF_ShRec(i);
+	local cur = TRF_ShCur();
+	if not r or r.rf ~= 1 then return; end;
+	if r.sys ~= cur then r.rf = 2; TRF_ShE("ret", "index", i, "result", "void", "reason", "system"); return; end;
+	local T = TRF_ShCl(floor(TRF_N("TRF_EffTier", cur) or 1), 1, 4);
+	local nf = 1;
+	if T >= 4 then nf = 2; end;
+	local rows = TRF_N("TRF_Rd_TierRows");
+	if type(rows) ~= "table" or type(TRF_PirFlight) ~= "function" then TRF_ShRetSkip(i, r, "no_raid_module"); return; end;
+	local ns = min(rows[T].ns * nf, TRF_ShK().ret_max);
+	local why = TRF_ShRetGate(r, cur, ns);
+	if why then TRF_ShRetSkip(i, r, why); return; end;
+	local rm = TRF_N("TRF_RgMap");
+	local home = nil;
+	if type(rm) == "table" and type(rm[r.clan]) == "table" then home = rm[r.clan].home; end;
+	local prt, pn = TRF_ShRetPortal(cur, home);
+	if not prt then TRF_ShRetSkip(i, r, "portal"); return; end;
+	r.rf = 2;
+	if not TRF_ShRetSpawn(i, r, cur, T, nf, ns, prt, pn) then TRF_ShRetSkip(i, r, "build"); end;
+end;
+
+-- Builds the treasurer of record i (design 6): group TRF_Sh_<i> of team Pirates, nf flights of the tier at raid power
+-- (TRF_PirFlight, labels trf_sh_<i>_<j>) at the portal's entry point, group-level war with PLAYER_GROUP both ways, the
+-- leader's radio line, Move to the slot, a died trigger per ship. Returns 1, or nil (a build without a ship is
+-- deleted again).
+function TRF_ShRetSpawn(i, r, cur, T, nf, ns, prt, pn)
+	local e = call(TRF_ShEntryRaw, {prt, 10}, "x", TRF_ShNoErr);
+	if type(e) ~= "table" then return nil; end;
+	local tm = TRF_N("CreateTeam", "Pirates");
+	if not TRF_ShObj(tm) then return nil; end;
+	local gn = "TRF_Sh_"..i;
+	local grp = call(function(t, n) return t:CreateGroup(n); end, {tm, gn}, "x", TRF_ShErr);
+	if not TRF_ShObj(grp) then return nil; end;
+	TRF_ShOrder(prt, "start");
+	local sp = TRF_ShSlotPos(r) or e;
+	local pw = TRF_N("TRF_Rd_Power", T, cur, nil) or 5;
+	local R = {i=i, st="come", fls={}, sh={}, dead={}, prt=prt, pn=pn, t0=TRF_ShGt(), T=T, kills=0};
+	local gg = "TRF_GSh_"..i;
+	setglobal(gg, grp);
+	local left = ns;
+	for f = 1, nf do
+		if left > 0 then
+			local sign = "trf_shf_"..i.."_"..f;
+			local fl = call(TRF_PirFlight, {T, pw, gg, sign, Vector3(e.x + 30 * (f - 1), e.y, e.z), Vector3(0, 0, 1), 1, left}, "x", TRF_ShErr);
+			TRF_N("TRF_Rd_ClearSign", sign);
+			if TRF_ShObj(fl) then
+				local sh = TRF_N("TRF_Rd_FlShips", fl) or {};
+				local fe = {fl=fl, sh={}, dn=0};
+				for k = 1, getn(sh) do
+					if getn(R.sh) < TRF_ShK().ret_max then
+						tinsert(R.sh, sh[k]);
+						tinsert(fe.sh, getn(R.sh));
+						TRF_N("SetObjectLabel", sh[k], "trf_sh_"..i.."_"..getn(R.sh));
+					end;
+				end;
+				tinsert(R.fls, fe);
+				left = ns - getn(R.sh);
+				TRF_ShOrder(fl, "move", Vector3(sp.x, sp.y, sp.z));
+			end;
+		end;
+	end;
+	setglobal(gg, nil);
+	if getn(R.sh) == 0 then
+		for f = 1, getn(R.fls) do TRF_ShDel(R.fls[f].fl); end;
+		return nil;
+	end;
+	%SH.r = R;
+	if RELATION_WAR ~= nil then
+		TRF_ShRel(gn, PLAYER_GROUP, RELATION_WAR);
+		TRF_ShRel(PLAYER_GROUP, gn, RELATION_WAR);
+	end;
+	for k = 1, getn(R.sh) do TRF_ShTrig("died", TRF_ShCb("TRF_ShRetDied", i, k), R.sh[k]); end;
+	R.lead = R.sh[1];
+	R.hp0 = TRF_ShHp(R.lead);
+	local pl = nil;
+	if TRF_ShObj(R.lead) then pl = call(function(s) return s:GetPilot(); end, {R.lead}, "x", TRF_ShNoErr); end;
+	TRF_ShSay(TRF_ShTxt(TRF_ShRetKeyOf(T), TRF_ShClanName(r.clan)), 10, pl);
+	TRF_ShStat("stash_ret");
+	TRF_ShE("ret", "index", i, "group", gn, "tier", T, "power", pw, "flight_count", getn(R.fls), "ship_count", getn(R.sh), "portal", pn,
+		"relation", "war", "vanilla_relation", TRF_ShVanRel(), "result", "spawn");
+	return 1;
+end;
+
+function TRF_ShRetDied(i, j, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_ShRetDied", TRF_ShRetDiedBody, {i, j, g}); else TRF_ShRetDiedBody(i, j, g); end;
+end;
+
+-- A treasurer ship died: a flight with every ship dead is a normal clan kill (trf_events TRF_Ev_Recover: score -2 inside
+-- the visit cap, dis -1, design 4 feeds); battle scars source 7 gets the death with mine 1 whoever fired (V24): the
+-- flight came because the player opened the cache and is at war with the player (trf_captain, trf_raid and trf_clan
+-- pass a hit flag set by player fire instead).
+function TRF_ShRetDiedBody(i, j, g)
+	if g ~= TRF_ShGen() then return; end;
+	local R = %SH.r;
+	if type(R) ~= "table" or R.i ~= i or R.dead[j] or R.del == 1 then return; end;
+	R.dead[j] = 1;
+	R.kills = R.kills + 1;
+	TRF_P("TRF_Sc_Dead", 3, 0, R.sh[j], 1);
+	for f = 1, getn(R.fls) do
+		local fe = R.fls[f];
+		if fe.dn ~= 1 then
+			local all = 1;
+			for k = 1, getn(fe.sh) do if not R.dead[fe.sh[k]] then all = nil; end; end;
+			if all then
+				fe.dn = 1;
+				TRF_N("TRF_Ev_Recover", "raid", 0);
+				TRF_ShE("ret", "index", i, "flight", f, "result", "killed");
+			end;
+		end;
+	end;
+	if R.kills >= getn(R.sh) then R.st = "dead"; TRF_ShE("ret", "index", i, "kill_count", R.kills, "result", "dead"); end;
+end;
+
+-- Leave (design 6): to the entry portal at the tier's leave HP or after stash_ret_window.
+function TRF_ShRetLeave(R, why)
+	R.st = "leave";
+	R.tl = TRF_ShGt();
+	for k = 1, getn(R.sh) do
+		if not R.dead[k] and TRF_ShAlive(R.sh[k]) then TRF_ShOrder(R.sh[k], "portal", R.prt); end;
+	end;
+	TRF_ShE("ret", "index", R.i, "portal", R.pn, "result", "leave", "reason", why);
+end;
+
+-- Deletes the treasurer's live ships (portal reached, out of view, watchdog, jump).
+function TRF_ShRetDel(R, why)
+	R.del = 1;
+	local n = 0;
+	for k = 1, getn(R.sh) do
+		if TRF_ShAlive(R.sh[k]) and TRF_ShDel(R.sh[k]) then n = n + 1; end;
+	end;
+	for f = 1, getn(R.fls) do TRF_ShDel(R.fls[f].fl); end;
+	R.st = "gone";
+	TRF_ShE("ret", "index", R.i, "deleted", n, "result", "gone", "reason", why);
+	%SH.r = nil;
+end;
+
+-- Relation of the vanilla PiratesGroup_1 toward PLAYER_GROUP (CHECK E7.7: unchanged by the treasurer), or nil.
+function TRF_ShVanRel()
+	local pg = getglobal("PiratesGroup_1");
+	if not TRF_ShObj(pg) or type(GetGroupRelation) ~= "function" then return nil; end;
+	return call(GetGroupRelation, {pg, PLAYER_GROUP}, "x", TRF_ShNoErr);
+end;
+
+-- Live treasurer ships.
+function TRF_Sh_Alive()
+	local R = %SH.r;
+	if type(R) ~= "table" or R.del == 1 then return 0; end;
+	local n = 0;
+	for k = 1, getn(R.sh) do if not R.dead[k] and TRF_ShAlive(R.sh[k]) then n = n + 1; end; end;
+	return n;
+end;
+
+function TRF_Sh_Ships(g)
+	return TRF_Sh_Alive();
+end;
+
+-- Every 1 s (traffic.script): the cache poll, the find poll (fallback of the inside trigger), the treasurer's window
+-- and leave HP, the leave watchdog.
+function TRF_Sh_Step()
+	if type(TRF) ~= "table" or not TRF.active or not TRF_ShOn() then return; end;
+	call(TRF_ShStepBody, {}, "x", TRF_ShErr);
+end;
+
+function TRF_ShStepBody()
+	local sh = %SH;
+	TRF_ShPoll("poll");
+	local mp = TRF_ShPos(TRF_N("TRF_Ms"));
+	local cur = TRF_ShCur();
+	local i, r = TRF_ShAt(cur);
+	-- Slot clearance (CHECK E7.6): 60 s after the entry, the cache's HP and how far it moved from its slot, once a visit.
+	if r and sh.o[i] and sh.v.sc ~= 1 and type(sh.v.t0) == "number" and TRF_ShGt() - sh.v.t0 >= 60 then
+		sh.v.sc = 1;
+		local d = TRF_ShDist(TRF_ShPos(sh.o[i]), TRF_ShSlotPos(r));
+		TRF_ShE("slot", "system", TRF_ShName(cur), "slot", r.slot, "hp", TRF_ShHp(sh.o[i]), "moved", d and floor(d));
+	end;
+	if r and r.st == 1 and sh.o[i] and not sh.v.fnd[i] and mp then
+		local d = TRF_ShDist(mp, TRF_ShSlotPos(r));
+		if d and d <= TRF_ShT("stash_find_r") then TRF_ShFound(i, "poll"); end;
+	end;
+	local R = sh.r;
+	if type(R) ~= "table" then return; end;
+	if TRF_Sh_Alive() == 0 then TRF_ShRetDel(R, "dead"); return; end;
+	local gt = TRF_ShGt();
+	if R.st == "come" then
+		local hp = TRF_ShHp(R.lead);
+		local K = TRF_ShK();
+		local lim = K.ret_hp1;
+		if R.T >= 2 then lim = K.ret_hp2; end;
+		if R.dead[1] or (type(hp) == "number" and type(R.hp0) == "number" and hp < lim * R.hp0) then TRF_ShRetLeave(R, "hp");
+		elseif gt - R.t0 >= TRF_ShT("stash_ret_window") then TRF_ShRetLeave(R, "window"); end;
+		return;
+	end;
+	if R.st == "leave" then
+		local pp = TRF_ShPos(R.prt);
+		local near, far = nil, 1;
+		for k = 1, getn(R.sh) do
+			if not R.dead[k] and TRF_ShAlive(R.sh[k]) then
+				local p = TRF_ShPos(R.sh[k]);
+				local dp = TRF_ShDist(p, pp);
+				if dp and dp <= TRF_ShK().portal_r then near = 1; end;
+				local dm = TRF_ShDist(p, mp);
+				if not dm or dm <= TRF_ShTv("ovd", 600) then far = nil; end;
+			end;
+		end;
+		if near then TRF_ShRetDel(R, "portal");
+		elseif far then TRF_ShRetDel(R, "out_of_view");
+		elseif gt - (R.tl or gt) >= TRF_ShK().leave_s then TRF_ShRetDel(R, "watchdog"); end;
+	end;
+end;
+
+-- Docks (trf_plumb dispatcher; 00 section 6) -------------------------------------------------------------
+
+-- Pirate dock box at prio 100 (S35 400 > #6 300 > #1 200 > #7 100): a rival clan's unknown cache (st 0) within
+-- stash_intel_range jumps, not the dock's own clan, not offered and declined in this visit; one box. Price floor(
+-- stash_intel_k x L_w(cache) x d_k).
+function TRF_Sh_PirBox(kind, param)
+	if kind ~= "pir" or not TRF_ShOn() then return nil; end;
+	local cur = TRF_ShCur();
+	local why = TRF_ShVis(cur, "offer");
+	if why then TRF_ShDE("intel", "result", "none", "reason", why); return nil; end;
+	local own = TRF_N("TRF_RgOf", cur);
+	local dist = {};
+	local nb = TRF_N("TRF_RgNear", cur, TRF_ShT("stash_intel_range"));
+	if type(nb) == "table" then for k = 1, getn(nb) do dist[nb[k].idx] = nb[k].j; end; end;
+	local sh = %SH;
+	local best, bd = nil, nil;
+	for i = 1, TRF_ShK().rec_max do
+		local r = TRF_ShRec(i);
+		if r and r.st == 0 and r.clan ~= own and dist[r.sys] and not sh.v.dec[i] and (not bd or dist[r.sys] < bd) then best = i; bd = dist[r.sys]; end;
+	end;
+	if not best then return nil; end;
+	local r = TRF_ShRec(best);
+	local price = TRF_ShPriceOf(TRF_ShT("stash_intel_k"), TRF_N("TRF_LPay", r.sys) or 8, TRF_N("TRF_DK") or 1);
+	sh.offer = {i=best, seed=r.seed, price=price, g=TRF_ShGen(), seller=own or 0};
+	TRF_ShE("intel", "index", best, "system", TRF_ShName(r.sys), "price", price, "jumps", bd, "result", "offered");
+	return {text=TRF_ShTxt("stashintel"..TRF_ShKey(r.sys), TRF_ShClanName(r.clan), format("%d cr", price)), ok="TRF_Sh_IntelOk",
+		no="TRF_Sh_IntelNo", a=best, own="stash_intel"};
+end;
+
+-- Intel OK (design 6): credits checked, SubPlayerCredits, st 1, src 1, sf = the seller clan. Returns the reply line.
+function TRF_Sh_IntelOk(i)
+	local sh = %SH;
+	local o = sh.offer;
+	sh.offer = nil;
+	local r = TRF_ShRec(i);
+	if type(o) ~= "table" or o.i ~= i or o.g ~= TRF_ShGen() or not r or r.seed ~= o.seed or r.st ~= 0 then
+		TRF_ShE("intel", "index", i, "result", "stale");
+		return nil;
+	end;
+	local cr = nil;
+	if type(GetPlayerCredits) == "function" then cr = call(TRF_ShCreditsRaw, {}, "x", TRF_ShErr); end;
+	if type(cr) ~= "number" or cr < o.price or type(SubPlayerCredits) ~= "function" then
+		TRF_ShE("intel", "index", i, "price", o.price, "credits", cr, "result", "poor");
+		return TRF_ShTxt("stashpoor");
+	end;
+	call(TRF_ShSubRaw, {o.price}, "x", TRF_ShErr);
+	r.st = 1; r.src = 1; r.sf = o.seller;
+	TRF_ShStat("stash_intel");
+	TRF_ShE("intel", "index", i, "price", o.price, "credits_before", cr, "credits_after", cr - o.price, "seller", o.seller, "result", "ok");
+	return TRF_ShTxt("stashbought");
+end;
+
+function TRF_Sh_IntelNo(i)
+	local sh = %SH;
+	sh.offer = nil;
+	if type(i) == "number" then sh.v.dec[i] = 1; end;
+	TRF_ShE("intel", "index", i, "result", "declined");
+	return nil;
+end;
+
+-- Pirate dock line 20: the victim clan's own dock, while the cache it lost to the player is kept (st 2, rf > 0), says
+-- the grudge line once a visit (design 2, a screen line, no box).
+function TRF_Sh_PirLine(kind, param)
+	if kind ~= "pir" or not TRF_ShOn() then return nil; end;
+	local sh = %SH;
+	local cur = TRF_ShCur();
+	if sh.v.gl == 1 or TRF_ShVis(cur, "offer") then return nil; end;
+	local i, r = TRF_ShOfClan(TRF_N("TRF_RgOf", cur));
+	if not r or r.st ~= 2 or r.rf < 1 then return nil; end;
+	sh.v.gl = 1;
+	TRF_ShE("grudge", "index", i, "system", TRF_ShName(r.sys));
+	return TRF_ShTxt("stashgrudge"..TRF_ShKey(r.sys));
+end;
+
+-- Patrol dock line 40 (after the owed payers at 30, before the #9 rank line at 50), all under G2 with strict "board"
+-- (while it fails, stx.pt and stx.ms wait for a later docking): the thanks with fst +1 and one line for every entry of
+-- stx.pt owed to the docked faction (the entries are removed, the others kept), the moved notice of a known cache that
+-- expired, and the tip: one roll a record a
+-- visit (stash_board_pct) for an unknown cache (st 0) within 3 jumps; the tip sets st 1, src 2, sf = the station's
+-- faction.
+function TRF_Sh_PatrolLine(kind, param)
+	if kind ~= "patrol" or not TRF_ShOn() then return nil; end;
+	local cur = TRF_ShCur();
+	local why = TRF_ShVis(cur, "board");
+	if why then TRF_ShDE("tip", "result", "none", "reason", why); return nil; end;
+	local x = TRF_ShStx();
+	local out = {};
+	local f = TRF_N("TRF_FacIdx", TRF_N("TRF_FcTeamOf", cur));
+	if type(x.pt) == "table" and type(f) == "number" then
+		local keep = {};
+		for k = 1, getn(x.pt) do
+			local e = x.pt[k];
+			if type(e) == "table" and e.f == f then
+				local got = TRF_N("TRF_FstAdd", f, 1, "stash tip");
+				tinsert(out, TRF_ShTxt("stashthanks"..TRF_ShKey(e.s or cur)));
+				TRF_ShE("thanks", "faction", f, "system", TRF_ShName(e.s), "standing", got);
+			elseif type(e) == "table" then
+				keep[getn(keep) + 1] = e;
+			end;
+		end;
+		x.pt = TRF_ShPtCap(keep);
+	end;
+	if type(x.ms) == "number" then
+		tinsert(out, TRF_ShTxt("stashmoved"..TRF_ShKey(x.ms), TRF_ShClanName(x.mc)));
+		TRF_ShE("moved", "system", TRF_ShName(x.ms), "clan", x.mc);
+		x.ms = nil; x.mc = nil;
+	end;
+	if type(f) == "number" then
+		local tip = TRF_ShTip(cur, f);
+		if tip then tinsert(out, tip); end;
+	end;
+	if getn(out) == 0 then return nil; end;
+	return out;
+end;
+
+function TRF_ShTip(cur, f)
+	local sh = %SH;
+	local dist = {};
+	local nb = TRF_N("TRF_RgNear", cur, TRF_ShK().tip_j);
+	if type(nb) == "table" then for k = 1, getn(nb) do dist[nb[k].idx] = nb[k].j; end; end;
+	local pct = TRF_ShT("stash_board_pct");
+	for i = 1, TRF_ShK().rec_max do
+		local r = TRF_ShRec(i);
+		if r and r.st == 0 and dist[r.sys] and not sh.v.roll[i] then
+			sh.v.roll[i] = 1;
+			local roll = TRF_ShM(TRF_ShHash(r.seed, TRF_ShJ(), i), 100);
+			if roll < pct then
+				r.st = 1; r.src = 2; r.sf = f;
+				TRF_ShStat("stash_tip");
+				TRF_ShE("tip", "index", i, "system", TRF_ShName(r.sys), "faction", f, "roll", roll, "chance", pct, "result", "tip");
+				return TRF_ShTxt("stashtip"..TRF_ShKey(r.sys));
+			end;
+			TRF_ShDE("tip", "index", i, "roll", roll, "chance", pct, "result", "none", "reason", "roll");
+		end;
+	end;
+	return nil;
+end;
+
+-- trf_plumb TRF_InstallPlumb: pirate box 100 and line 20, patrol line 40, the ship-cap group (never trimmed: it skips).
+function TRF_Sh_Plumb()
+	TRF_DockBox("pir", 100, "TRF_Sh_PirBox");
+	TRF_DockLine("pir", 20, "TRF_Sh_PirLine");
+	TRF_DockLine("patrol", 40, "TRF_Sh_PatrolLine");
+	TRF_CapReg("stash", "TRF_Sh_Ships");
+	-- Two-marker rule for offered content (design/tips-spec.md 7.5): the intel area marker and a found cache's point.
+	TRF_N("TRF_MarkerOfferReg", "stash");
+end;
+
+-- Slot positions of records in system idx (trf_scar's site rule keeps 150 units from a cache, design 7).
+function TRF_Sh_Objs(idx)
+	local o = {};
+	if type(TRF) ~= "table" or type(TRF.stash) ~= "table" then return o; end;
+	for i = 1, TRF_ShK().rec_max do
+		local r = TRF_ShRec(i);
+		if r and r.sys == idx then
+			local p = TRF_ShSlotPos(r);
+			if p then tinsert(o, p); end;
+		end;
+	end;
+	return o;
+end;
+
+-- Repair, defaults, dump, text -----------------------------------------------------------
+
+function TRF_ShNum(x, lo, hi)
+	return type(x) == "number" and x >= lo and x <= hi;
+end;
+
+function TRF_ShFld(e, k, lo, hi, d)
+	if TRF_ShNum(e[k], lo, hi) then return floor(e[k]); end;
+	return d;
+end;
+
+-- The newest max(1, stash_live) entries of list v, oldest first; nil when v is empty. Built by index: Lua 4's tinsert
+-- writes an n field, which the save would keep.
+function TRF_ShPtCap(v)
+	local n = getn(v);
+	if n == 0 then return nil; end;
+	local p = {};
+	for k = max(1, n - max(1, TRF_ShT("stash_live")) + 1), n do p[getn(p) + 1] = v[k]; end;
+	return p;
+end;
+
+-- Owed patrol thanks (stx.pt, oldest first): faction f for the cache of system s; past max(1, stash_live) entries the
+-- oldest is dropped (level 2 event=thanks result=dropped).
+function TRF_ShOwe(x, f, s)
+	local v = {};
+	if type(x.pt) == "table" then for k = 1, getn(x.pt) do if type(x.pt[k]) == "table" then v[getn(v) + 1] = x.pt[k]; end; end; end;
+	v[getn(v) + 1] = {f=f, s=s};
+	local p = TRF_ShPtCap(v);
+	for k = 1, getn(v) - getn(p) do TRF_ShDE("thanks", "faction", v[k].f, "system", TRF_ShName(v[k].s), "result", "dropped", "reason", "cap"); end;
+	x.pt = p;
+end;
+
+-- Repair of stx.pt: entries {f 1..5, s 1..ns or nil}, the newest max(1, stash_live) kept; the old single-slot shape
+-- (pt = faction, ps = system) becomes a one-entry list.
+function TRF_ShPtFix(x, ns)
+	local src = x.pt;
+	if TRF_ShNum(src, 1, 5) then src = {{f=src, s=x.ps}}; end;
+	if type(src) ~= "table" then return nil; end;
+	local v = {};
+	for k = 1, min(getn(src), 99) do
+		local e = src[k];
+		if type(e) == "table" and TRF_ShNum(e.f, 1, 5) then v[getn(v) + 1] = {f=floor(e.f), s=TRF_ShFld(e, "s", 1, ns, nil)}; end;
+	end;
+	return TRF_ShPtCap(v);
+end;
+
+-- Repair (TRF_Repair, every entry and load): records with a known slot system and slot, one per system and per clan,
+-- indices 1..rec_max; every field within its range (a wrong value reads its default, stamps after now are clamped);
+-- TRF.stx and the clan fields so (1 or nil) and sk. Records are replaced by repaired copies (tests re-read them).
+function TRF_Sh_Fix()
+	if type(TRF) ~= "table" then return; end;
+	local legs, J = TRF_ShLegs(), TRF_ShJ();
+	local m = TRF_ShMap();
+	local ns = 999;
+	if m then ns = getn(m.sys); end;
+	local K = TRF_ShK();
+	if TRF.stash ~= nil then
+		if type(TRF.stash) ~= "table" then TRF.stash = nil; else
+			local out, hs, hc = {}, {}, {};
+			for i = 1, K.rec_max do
+				local e = TRF.stash[i];
+				if type(e) == "table" and TRF_ShNum(e.sys, 1, ns) and TRF_ShNum(e.clan, 1, 11) and not hs[floor(e.sys)] and not hc[floor(e.clan)] then
+					local sl = TRF_ShSlots(TRF_ShName(floor(e.sys)));
+					local r = {sys=floor(e.sys), slot=TRF_ShFld(e, "slot", 1, K.slot_max, 0), clan=floor(e.clan), cls=TRF_ShFld(e, "cls", 1, 3, 1),
+						v=TRF_ShFld(e, "v", 10, 450, 10), seed=TRF_ShFld(e, "seed", 0, 9999, 1), leg=TRF_ShFld(e, "leg", -99999, legs, legs),
+						st=TRF_ShFld(e, "st", 0, 2, 0), src=TRF_ShFld(e, "src", 0, 4, 0), sf=TRF_ShFld(e, "sf", 0, 11, 0), sv=TRF_ShFld(e, "sv", 0, 5, 0),
+						rf=TRF_ShFld(e, "rf", 0, 2, 0)};
+					if e.pl == 1 then r.pl = 1; end;
+					if sl and r.slot >= 1 and r.slot <= getn(sl) then
+						hs[r.sys] = 1; hc[r.clan] = 1;
+						out[i] = r;
+					end;
+				end;
+			end;
+			TRF.stash = out;
+		end;
+	end;
+	if TRF.stx ~= nil then
+		local x = TRF.stx;
+		if type(x) ~= "table" then x = {}; end;
+		local o = {n=TRF_ShFld(x, "n", 0, 9999, 0), op=TRF_ShFld(x, "op", 0, 9999, 0), opp=TRF_ShFld(x, "opp", 0, 9999, 0)};
+		if TRF_ShNum(x.lc, -99999, legs) then o.lc = floor(x.lc); end;
+		if TRF_ShNum(x.jc, 0, J) then o.jc = floor(x.jc); end;
+		if TRF_ShNum(x.lo, -99999, legs) then o.lo = floor(x.lo); end;
+		if TRF_ShNum(x.jo, 0, J) then o.jo = floor(x.jo); end;
+		o.pt = TRF_ShPtFix(x, ns);
+		if TRF_ShNum(x.ms, 1, ns) then o.ms = floor(x.ms); o.mc = TRF_ShFld(x, "mc", 1, 11, 1); end;
+		TRF.stx = o;
+	end;
+	if type(TRF.clan) == "table" then
+		for k, c in TRF.clan do
+			if type(c) == "table" then
+				if c.so ~= nil and c.so ~= 1 then c.so = nil; end;
+				if c.sk ~= nil and not TRF_ShNum(c.sk, -99999, legs) then c.sk = nil; end;
+			end;
+		end;
+	end;
+end;
+
+-- Config keys (design 6 config). enable_stashes and enable_stash_retrieval act in step 1; enable_stash_decoys is dropped
+-- (00 section 8 E3) and read nowhere; stash_ret_war 1 lets the treasurer seed group-level war while Pirates are not at
+-- war with the player at team level (00 section 8 E2, off); stash_at (debug, design 8) names a system that gets a known
+-- record at its entry.
+function TRF_Sh_OptDef()
+	return {enable_stashes=1, enable_stash_retrieval=1, enable_stash_decoys=0, stash_ret_war=0, stash_at=""};
+end;
+
+-- Tune keys (design 6 config). stash_gap and stash_open_gap are {legs, jumps}, stash_chance {Build-up %, Raids %},
+-- stash_cap the T1..T4 budgets, stash_ret_delay {lo, hi} s. stash_rumour_pct is step 2 and read nowhere.
+function TRF_Sh_TuneDef()
+	return {stash_max=4, stash_live=2, stash_gap={15, 6}, stash_open_gap={30, 10}, stash_ttl=20, stash_dead_legs=10, stash_chance={25, 35},
+		stash_k=3, stash_cap={6000, 10000, 20000, 45000}, stash_intel_k=150, stash_intel_range=4, stash_board_pct=30, stash_rumour_pct=15,
+		stash_area_r=150, stash_find_r=200, stash_ret_delay={60, 150}, stash_ret_window=180};
+end;
+
+-- Debug dump (design 6): one dump_rec line per record, the so digits of the 11 region slots, the stx counters, the owed
+-- thanks (patrol_owed=<faction>:<system>,... oldest first, nil when none) and the gate state (gap and open gap left in
+-- legs/jumps, the mission flag).
+function TRF_Sh_Dump()
+	if type(TRF) ~= "table" then return; end;
+	local sh = %SH;
+	local L, J = TRF_ShLegs(), TRF_ShJ();
+	local n = 0;
+	for i = 1, TRF_ShK().rec_max do
+		local r = TRF_ShRec(i);
+		if r then
+			n = n + 1;
+			local os = "none";
+			if sh.o[i] then os = "dead"; if TRF_ShAlive(sh.o[i]) then os = "alive"; end; end;
+			TRF_ShE("dump_rec", "index", i, "system", TRF_ShName(r.sys), "slot", r.slot, "clan", r.clan, "class", r.cls, "value", r.v,
+				"seed", r.seed, "state", r.st, "source", r.src, "source_from", r.sf, "salvage_banked", r.sv, "treasurer", r.rf, "age", L - r.leg,
+				"object", os);
+		end;
+	end;
+	local so = "";
+	for s = 1, 11 do
+		local c = TRF_ShClan(s);
+		if c and c.so == 1 then so = so.."1"; else so = so.."0"; end;
+	end;
+	local x = TRF.stx or {};
+	local T = TRF_ShTune();
+	local gl, gj, ol, oj = 0, 0, 0, 0;
+	if type(x.lc) == "number" then gl = max(0, T.stash_gap[1] - (L - x.lc)); end;
+	if type(x.jc) == "number" then gj = max(0, T.stash_gap[2] - (J - x.jc)); end;
+	if type(x.lo) == "number" then ol = max(0, T.stash_open_gap[1] - (L - x.lo)); end;
+	if type(x.jo) == "number" then oj = max(0, T.stash_open_gap[2] - (J - x.jo)); end;
+	local q = 0;
+	if TRF_ShQuest() then q = 1; end;
+	local pt = nil;
+	if type(x.pt) == "table" then
+		for k = 1, getn(x.pt) do
+			local e = x.pt[k];
+			if type(e) == "table" then
+				local s = tostring(e.f)..":"..TRF_ShName(e.s);
+				if pt then pt = pt..","..s; else pt = s; end;
+			end;
+		end;
+	end;
+	TRF_ShE("dump", "record_count", n, "so", so, "created", x.n or 0, "opened", x.op or 0, "opened_player", x.opp or 0, "last_create", x.lc,
+		"last_open", x.lo, "patrol_owed", pt, "gap", gl.."/"..gj, "open_gap", ol.."/"..oj, "quest", q);
+end;
+
+-- Texts (design 2, 6 text keys), EN; keys in TRF_UI_Key form (#TRF_stash<name> in loc/trf_en.loc). The lines that name
+-- a system have one key per slot system (the CombineStr fallback of TDR 13.5: with loc_mode 1 a template loses its $n,
+-- so the system is part of the key): stashintel<sys> ($1 clan, $2 price with "cr"), stashtip<sys>, stashthanks<sys>,
+-- stashmoved<sys> ($1 clan), stashgrudge<sys>. The step 2 rumour line (#TRF_StashRumour) is not defined yet.
+function TRF_Sh_Text()
+	return {
+		stashbought = "Look for the rock that pings. And you never heard it from us.",
+		stashpoor = "No credits, no secrets.",
+		stasharrive = "Beacon ping detected in this system's belt. Faint, intermittent.",
+		stashfound = "This rock is hollow. Somebody welded a hatch on it.",
+		stashopen = "Cache cracked. Cargo drifting free.",
+		stashret1 = "Hey! That was our rainy-day rock! Our clan ($1) wants it back.",               -- clan
+		stashret2 = "That cargo belongs to our clan ($1). Drop it and you might live.",          -- clan
+		stashret3 = "Who opened our rock? Our clan ($1) charges a storage fee!",                 -- clan
+		stashnavarea = "Beacon ping (area)",
+		stashnav = "Hollow asteroid",
+		stashintelgaoba = "Psst. Pirates ($1) stuffed a hollow rock in the Gaoba belt with other people's goods. For a fee ($2) I'll tell you which belt. What you do there is your business.",
+		stashtipgaoba = "Patrol note: smugglers keep pinging a beacon in the Gaoba asteroid belt. We have no ships to spare. If you dig, report what you find.",
+		stashthanksgaoba = "Report on the Gaoba cache received. Please sign here. Clear space to you!",
+		stashmovedgaoba = "Pirates ($1) moved their cache. The old ping in Gaoba is dead.",
+		stashgrudgegaoba = "Somebody cracked our rock in Gaoba. If I find out it was you, you'll be the next rock.",
+		stashintelbleftera3 = "Psst. Pirates ($1) stuffed a hollow rock in the Beta Lethera 3 belt with other people's goods. For a fee ($2) I'll tell you which belt. What you do there is your business.",
+		stashtipbleftera3 = "Patrol note: smugglers keep pinging a beacon in the Beta Lethera 3 asteroid belt. We have no ships to spare. If you dig, report what you find.",
+		stashthanksbleftera3 = "Report on the Beta Lethera 3 cache received. Please sign here. Clear space to you!",
+		stashmovedbleftera3 = "Pirates ($1) moved their cache. The old ping in Beta Lethera 3 is dead.",
+		stashgrudgebleftera3 = "Somebody cracked our rock in Beta Lethera 3. If I find out it was you, you'll be the next rock.",
+		stashintelaltair = "Psst. Pirates ($1) stuffed a hollow rock in the Altair belt with other people's goods. For a fee ($2) I'll tell you which belt. What you do there is your business.",
+		stashtipaltair = "Patrol note: smugglers keep pinging a beacon in the Altair asteroid belt. We have no ships to spare. If you dig, report what you find.",
+		stashthanksaltair = "Report on the Altair cache received. Please sign here. Clear space to you!",
+		stashmovedaltair = "Pirates ($1) moved their cache. The old ping in Altair is dead.",
+		stashgrudgealtair = "Somebody cracked our rock in Altair. If I find out it was you, you'll be the next rock.",
+		stashintelareko = "Psst. Pirates ($1) stuffed a hollow rock in the Areco belt with other people's goods. For a fee ($2) I'll tell you which belt. What you do there is your business.",
+		stashtipareko = "Patrol note: smugglers keep pinging a beacon in the Areco asteroid belt. We have no ships to spare. If you dig, report what you find.",
+		stashthanksareko = "Report on the Areco cache received. Please sign here. Clear space to you!",
+		stashmovedareko = "Pirates ($1) moved their cache. The old ping in Areco is dead.",
+		stashgrudgeareko = "Somebody cracked our rock in Areco. If I find out it was you, you'll be the next rock.",
+		stashintellasad = "Psst. Pirates ($1) stuffed a hollow rock in the Lasad belt with other people's goods. For a fee ($2) I'll tell you which belt. What you do there is your business.",
+		stashtiplasad = "Patrol note: smugglers keep pinging a beacon in the Lasad asteroid belt. We have no ships to spare. If you dig, report what you find.",
+		stashthankslasad = "Report on the Lasad cache received. Please sign here. Clear space to you!",
+		stashmovedlasad = "Pirates ($1) moved their cache. The old ping in Lasad is dead.",
+		stashgrudgelasad = "Somebody cracked our rock in Lasad. If I find out it was you, you'll be the next rock.",
+		stashintelegleon = "Psst. Pirates ($1) stuffed a hollow rock in the Egleon belt with other people's goods. For a fee ($2) I'll tell you which belt. What you do there is your business.",
+		stashtipegleon = "Patrol note: smugglers keep pinging a beacon in the Egleon asteroid belt. We have no ships to spare. If you dig, report what you find.",
+		stashthanksegleon = "Report on the Egleon cache received. Please sign here. Clear space to you!",
+		stashmovedegleon = "Pirates ($1) moved their cache. The old ping in Egleon is dead.",
+		stashgrudgeegleon = "Somebody cracked our rock in Egleon. If I find out it was you, you'll be the next rock.",
+		stashintelfortruss = "Psst. Pirates ($1) stuffed a hollow rock in the Fort Russ belt with other people's goods. For a fee ($2) I'll tell you which belt. What you do there is your business.",
+		stashtipfortruss = "Patrol note: smugglers keep pinging a beacon in the Fort Russ asteroid belt. We have no ships to spare. If you dig, report what you find.",
+		stashthanksfortruss = "Report on the Fort Russ cache received. Please sign here. Clear space to you!",
+		stashmovedfortruss = "Pirates ($1) moved their cache. The old ping in Fort Russ is dead.",
+		stashgrudgefortruss = "Somebody cracked our rock in Fort Russ. If I find out it was you, you'll be the next rock.",
+		stashintelxb13 = "Psst. Pirates ($1) stuffed a hollow rock in the XB-13 belt with other people's goods. For a fee ($2) I'll tell you which belt. What you do there is your business.",
+		stashtipxb13 = "Patrol note: smugglers keep pinging a beacon in the XB-13 asteroid belt. We have no ships to spare. If you dig, report what you find.",
+		stashthanksxb13 = "Report on the XB-13 cache received. Please sign here. Clear space to you!",
+		stashmovedxb13 = "Pirates ($1) moved their cache. The old ping in XB-13 is dead.",
+		stashgrudgexb13 = "Somebody cracked our rock in XB-13. If I find out it was you, you'll be the next rock.",
+		stashintelfiasar = "Psst. Pirates ($1) stuffed a hollow rock in the Fiasar belt with other people's goods. For a fee ($2) I'll tell you which belt. What you do there is your business.",
+		stashtipfiasar = "Patrol note: smugglers keep pinging a beacon in the Fiasar asteroid belt. We have no ships to spare. If you dig, report what you find.",
+		stashthanksfiasar = "Report on the Fiasar cache received. Please sign here. Clear space to you!",
+		stashmovedfiasar = "Pirates ($1) moved their cache. The old ping in Fiasar is dead.",
+		stashgrudgefiasar = "Somebody cracked our rock in Fiasar. If I find out it was you, you'll be the next rock.",
+		stashintelllanovar1 = "Psst. Pirates ($1) stuffed a hollow rock in the Llanowar 1 belt with other people's goods. For a fee ($2) I'll tell you which belt. What you do there is your business.",
+		stashtipllanovar1 = "Patrol note: smugglers keep pinging a beacon in the Llanowar 1 asteroid belt. We have no ships to spare. If you dig, report what you find.",
+		stashthanksllanovar1 = "Report on the Llanowar 1 cache received. Please sign here. Clear space to you!",
+		stashmovedllanovar1 = "Pirates ($1) moved their cache. The old ping in Llanowar 1 is dead.",
+		stashgrudgellanovar1 = "Somebody cracked our rock in Llanowar 1. If I find out it was you, you'll be the next rock.",
+		stashintelescaflon = "Psst. Pirates ($1) stuffed a hollow rock in the Escaflowne belt with other people's goods. For a fee ($2) I'll tell you which belt. What you do there is your business.",
+		stashtipescaflon = "Patrol note: smugglers keep pinging a beacon in the Escaflowne asteroid belt. We have no ships to spare. If you dig, report what you find.",
+		stashthanksescaflon = "Report on the Escaflowne cache received. Please sign here. Clear space to you!",
+		stashmovedescaflon = "Pirates ($1) moved their cache. The old ping in Escaflowne is dead.",
+		stashgrudgeescaflon = "Somebody cracked our rock in Escaflowne. If I find out it was you, you'll be the next rock.",
+	};
+end;

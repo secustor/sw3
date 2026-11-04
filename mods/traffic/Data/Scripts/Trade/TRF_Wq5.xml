@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Dialog xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="D:\_Work\SW3\Data\XMLSchema\Dialogs.xsd">
+    <start_message_name>msg10</start_message_name>
+    <DialogMessage name="msg10">
+        <message>Fence: #p1#</message>
+        <pilot_name>TRF_WqP_fence</pilot_name>
+        <sound_name />
+        <DialogAnswer name="a_how">
+            <answer>- #a1#</answer>
+            <lua_function />
+            <go_message_name>msg20</go_message_name>
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_pat">
+            <answer>- #a2#</answer>
+            <lua_function />
+            <go_message_name>msg11</go_message_name>
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_forget">
+            <answer>- #a3#</answer>
+            <lua_function>TRF_WqDlgA5_end</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+    </DialogMessage>
+    <DialogMessage name="msg11">
+        <message>Fence: #pa#</message>
+        <pilot_name>TRF_WqP_fence</pilot_name>
+        <sound_name />
+        <DialogAnswer name="a_back">
+            <answer>- #a4#</answer>
+            <lua_function />
+            <go_message_name>msg10</go_message_name>
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+    </DialogMessage>
+    <DialogMessage name="msg20">
+        <message>Fence: #p2#</message>
+        <pilot_name>TRF_WqP_fence</pilot_name>
+        <sound_name />
+        <DialogAnswer name="a_pay">
+            <answer>- #a5#</answer>
+            <lua_function>TRF_WqDlgA5_pay</lua_function>
+            <go_message_name>msg30</go_message_name>
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_payp">
+            <answer>- #a5#</answer>
+            <lua_function />
+            <go_message_name>msg31</go_message_name>
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_rich">
+            <answer>- #a6#</answer>
+            <lua_function>TRF_WqDlgA5_end</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_int">
+            <answer>- #a8#</answer>
+            <lua_function>TRF_WqDlgA5_int</lua_function>
+            <go_message_name>msg32</go_message_name>
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+    </DialogMessage>
+    <DialogMessage name="msg30">
+        <message>Fence: #p3#</message>
+        <pilot_name>TRF_WqP_fence</pilot_name>
+        <sound_name />
+        <DialogAnswer name="a_ok">
+            <answer>- #a7#</answer>
+            <lua_function>TRF_WqDlgA5_ok</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+    </DialogMessage>
+    <DialogMessage name="msg31">
+        <message>Fence: #pp#</message>
+        <pilot_name>TRF_WqP_fence</pilot_name>
+        <sound_name />
+        <DialogAnswer name="a_forget2">
+            <answer>- #a3#</answer>
+            <lua_function>TRF_WqDlgA5_end</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+    </DialogMessage>
+    <DialogMessage name="msg32">
+        <message>Fence: #pi#</message>
+        <pilot_name>TRF_WqP_fence</pilot_name>
+        <sound_name />
+        <DialogAnswer name="a_int2">
+            <answer>- #a9#</answer>
+            <lua_function>TRF_WqDlgA5_int2</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+    </DialogMessage>
+</Dialog>

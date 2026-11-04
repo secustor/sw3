@@ -1,5 +1,5 @@
 #!/bin/sh
-# sw3-performance installer. Usage: ./install.sh [--hud | --no-hud] <game dir>
+# sw3-performance installer. Usage: ./install.sh [--hud | --no-hud] [--no-display] <game dir>
 # Sets up Heroic to run GOG Star Wolves 3: Civil War (id 1426253436) on native arm64 Wine (FEX for
 # the i386 game, mtld3d for D3D9) in borderless fullscreen:
 #   a) download the pinned athei/wine-build release (WINE_RELEASE), check its SHA-256
@@ -8,21 +8,33 @@
 #      set HKCU\Software\Wine\X11 Driver\EmulateModeset=Y
 #   c) default.cfg: 4th gr_init_resolution value "TRUE" (fullscreen); width/height are kept
 #   d) GamesConfig/1426253436.json: wineVersion and winePrefix -> a) and b)
+#   e) display: the sw3tp proxy (zlib1.dll, from the trackpad mod) sets gr_init_resolution to the
+#      main display size at each game start ([display] in sw3tp.ini) and sets mtld3d's render.scale
+#      so the GPU renders about as many pixels as at 1680x1050. Installs the proxy with the trackpad
+#      features off if it is missing.
+#      Also writes [stability] with the defaults (render skipped while the quad batch is freed after a device loss)
+#      and [view] with the defaults (frustum cull on, size cull off; README "View: frustum and size cull").
 # Backups and a manifest go to <game dir>/sw3-performance-backup/; uninstall.sh restores them.
 # Env: WINE_ARCHIVE=<path> uses a local copy of the release archive (still SHA-256 checked).
 #      HEROIC_CHECK=0 skips the "Heroic is running" check (only for tests with a fake HOME).
+#      DISPLAY_MODE=auto|fixed|off (default auto), DISPLAY_FIXED=WxH (for fixed),
+#      RENDER_SCALE=auto|off|0.1..1.0 ([display] render_scale; default off: a scale below 1 blurs UI text through the MetalFX upscale; auto renders about 1680x1050 pixels).
 set -eu
 GOG_ID=1426253436
+EXE_SHA1=57420a056f63a869148556dd978e5e2478e7ba2d     # sw3cw.exe, GOG v1.12
+ZLIB_SHA1=95af663e40106b5c7b116c250816af15df3c5409    # zlib1.dll shipped with it
 here=$(cd "$(dirname "$0")" && pwd)
-usage() { echo "usage: $0 [--hud | --no-hud] <game dir>" >&2; exit 2; }
+usage() { echo "usage: $0 [--hud | --no-hud] [--no-display] <game dir>" >&2; exit 2; }
 die() { echo "install.sh: $*" >&2; exit 1; }
 say() { echo "  $*"; }
+sha1() { shasum "$1" | cut -d' ' -f1; }
 
-game=; hud=
+game=; hud=; display=1
 while [ $# -gt 0 ]; do
     case $1 in
     --hud) hud=on ;;
     --no-hud) hud=off ;;
+    --no-display) display=0 ;;
     -h|--help) usage ;;
     -*) echo "unknown option $1" >&2; usage ;;
     *) [ -z "$game" ] || usage; game=$1 ;;
@@ -56,6 +68,37 @@ cfgf=$(find "$game" -mindepth 1 -maxdepth 1 -type f -iname default.cfg | head -1
 [ -n "$cfgf" ] && grep -q '^gr_init_resolution' "$cfgf" || die "no gr_init_resolution line in $game/default.cfg"
 [ -f "$gcfg" ] || die "no $gcfg. Install the game in Heroic and open its settings once, then retry."
 grep -q "\"$GOG_ID\"" "$gcfg" || die "$gcfg has no \"$GOG_ID\" entry"
+
+# e) checks. pmode: present (proxy installed), install (install it here), own (installed by an
+# earlier run of this script; upgraded), skip (no proxy available).
+dmode=${DISPLAY_MODE:-auto}; dfixed=${DISPLAY_FIXED:-}; rscale=${RENDER_SCALE:-off}
+tpman=$game/sw3tp-backup/manifest.txt; pfman=$game/sw3-performance-backup/manifest.txt
+pmode=skip; pdll=
+if [ "$display" = 1 ]; then
+    case $dmode in auto|fixed|off) ;; *) die "DISPLAY_MODE must be auto, fixed or off" ;; esac
+    [ "$dmode" != fixed ] || printf '%s\n' "$dfixed" | grep -Eqx '[0-9]+x[0-9]+' || die "DISPLAY_MODE=fixed needs DISPLAY_FIXED=WxH"
+    [ "$rscale" = off ] || [ "$rscale" = auto ] || awk -v v="$rscale" 'BEGIN { exit !(v ~ /^(0?\.[0-9]+|1(\.0*)?)$/ && v + 0 >= 0.01 && v + 0 <= 1) }' \
+        || die "RENDER_SCALE must be auto, off or a number in [0.01, 1.0]"
+    if [ -f "$game/zlib1_orig.dll" ]; then
+        grep -q zlib1_orig "$game/zlib1.dll" 2>/dev/null || die "zlib1_orig.dll exists but zlib1.dll is not the sw3tp proxy. Use --no-display. Nothing changed."
+        if [ -f "$pfman" ] && grep -q '^proxy ' "$pfman" && ! { [ -f "$tpman" ] && grep -qxF "created zlib1_orig.dll" "$tpman"; }; then pmode=own; else pmode=present; fi
+    elif [ "$dmode" != off ]; then
+        [ "$(sha1 "$game/sw3cw.exe")" = "$EXE_SHA1" ] || die "sw3cw.exe is not GOG v1.12; the display step needs it. Use --no-display. Nothing changed."
+        [ -f "$game/zlib1.dll" ] && [ "$(sha1 "$game/zlib1.dll")" = "$ZLIB_SHA1" ] || die "zlib1.dll is not the original. Use --no-display. Nothing changed."
+        pmode=install
+    fi
+    if [ "$pmode" = install ] || [ "$pmode" = own ]; then
+        tp=$here/../trackpad   # mods pack: trackpad/zlib1.dll; source tree: mods/trackpad/out/zlib1.dll
+        if [ -f "$tp/zlib1.dll" ]; then pdll=$tp/zlib1.dll
+        elif [ -x "$tp/build.sh" ]; then
+            [ -f "$tp/out/zlib1.dll" ] || "$tp/build.sh" >/dev/null || die "trackpad build.sh failed"
+            pdll=$tp/out/zlib1.dll
+        fi
+        if [ -z "$pdll" ]; then
+            [ "$pmode" = own ] || pmode=skip
+        else grep -q zlib1_orig "$pdll" || die "$pdll is not the sw3tp proxy"; fi
+    fi
+fi
 
 bk=$game/sw3-performance-backup; man=$bk/manifest.txt
 echo "sw3-performance $version: Wine $tag for $game"
@@ -153,6 +196,48 @@ function run(argv) {
 JS
 ) || die "GamesConfig edit failed"
 say "GamesConfig: $res (wineVersion -> Wine-mtld3d-$tag, winePrefix -> $prefix${hud:+, MTL_HUD_ENABLED $hud})"
+
+# e) display
+ini=$game/sw3tp.ini
+if [ "$display" = 0 ]; then say "display: skipped (--no-display)"
+elif [ "$pmode" = skip ] && [ "$dmode" = off ]; then say "display: DISPLAY_MODE=off and no sw3tp proxy installed; nothing to do"
+elif [ "$pmode" = skip ]; then say "display: skipped; needs the sw3tp proxy (zlib1.dll) from the trackpad mod or the mods pack"
+else
+    if [ "$pmode" = install ]; then
+        rec "proxy zlib1.dll $game/zlib1.dll"
+        mv "$game/zlib1.dll" "$game/zlib1_orig.dll"
+        cp "$pdll" "$game/zlib1.dll.sw3-new"; mv -f "$game/zlib1.dll.sw3-new" "$game/zlib1.dll"
+        xattr -d com.apple.quarantine "$game/zlib1.dll" 2>/dev/null || true
+        say "display: renamed zlib1.dll -> zlib1_orig.dll, installed the sw3tp proxy as zlib1.dll"
+    elif [ "$pmode" = own ] && [ -n "$pdll" ] && ! cmp -s "$pdll" "$game/zlib1.dll"; then
+        cp "$pdll" "$game/zlib1.dll.sw3-new"; mv -f "$game/zlib1.dll.sw3-new" "$game/zlib1.dll"
+        xattr -d com.apple.quarantine "$game/zlib1.dll" 2>/dev/null || true
+        say "display: updated the sw3tp proxy zlib1.dll"
+    else say "display: sw3tp proxy already installed"; fi
+    grep -q 'default.cfg.sw3tp-orig' "$game/zlib1.dll" || say "WARNING: the installed zlib1.dll has no display module; update the trackpad mod"
+    if [ ! -f "$ini" ]; then
+        printf '[sw3tp]\r\nenabled=0\r\n' > "$ini"; rec "file sw3tp.ini $ini"
+        say "display: created sw3tp.ini ([sw3tp] enabled=0, trackpad features off)"
+    fi
+    # Replace the [display] section; other sections stay byte for byte.
+    awk '{l=$0; sub(/\r$/,"",l)} l=="[display]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$ini" > "$ini.sw3-new"
+    printf '[display]\r\nmode=%s\r\nfixed=%s\r\nmin=1024x768\r\nmax=4096x4096\r\nkeep_bpp=32\r\nfullscreen=TRUE\r\nrender_scale=%s\r\nlog=1\r\n' "$dmode" "$dfixed" "$rscale" >> "$ini.sw3-new"
+    mv -f "$ini.sw3-new" "$ini"
+    say "display: sw3tp.ini [display] mode=$dmode${dfixed:+ fixed=$dfixed} render_scale=$rscale"
+    # [stability] (render skipped while the quad batch is freed, README "Stability"): written with the defaults.
+    awk '{l=$0; sub(/\r$/,"",l)} l=="[stability]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$ini" > "$ini.sw3-new"
+    printf '[stability]\r\nenabled=1\r\nrender_lost_guard=1\r\nlog=1\r\n' >> "$ini.sw3-new"
+    mv -f "$ini.sw3-new" "$ini"
+    say "stability: sw3tp.ini [stability] enabled=1 render_lost_guard=1"
+    # [view] (mesh pass cull, README "View: frustum and size cull"): written with the defaults.
+    awk '{l=$0; sub(/\r$/,"",l)} l=="[view]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$ini" > "$ini.sw3-new"
+    printf '[view]\r\nenabled=1\r\nfrustum_cull=1\r\nsize_cull=0\r\nmin_pixels=2\r\nkeep_radius=10\r\nlog=1\r\n' >> "$ini.sw3-new"
+    mv -f "$ini.sw3-new" "$ini"
+    say "view: sw3tp.ini [view] enabled=1 frustum_cull=1 size_cull=0"
+    # render_scale: the DLL sets MTLD3D_CONFIG=render.scale=... for the game process (it wins over
+    # mtld3d.conf); auto keeps about 1680x1050 pixels of GPU work at any display size.
+fi
 sed -i '' "s/^version .*/version $version/" "$man"
 echo "done. Start Heroic and launch the game. The first launch installs DirectX 9.0c into a new prefix."
+[ "$pmode" = skip ] || [ "$display" = 0 ] || echo "Display decisions are logged as \"display: ...\" lines in $game/sw3tp.log."
 echo "To undo: ./uninstall.sh \"$game\" (keeps the Wine dir and prefix unless --purge)"

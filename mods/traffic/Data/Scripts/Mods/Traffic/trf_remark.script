@@ -1,0 +1,782 @@
+-- sw3-traffic crew remarks module (Lua 4.0.1). Spec: design/crew-remarks-spec.md (B06, A01 step 1; roadmap wave 1
+-- row 2). Prefix Rm (TRF_Rm_* public, TRF_Rm<X> internal), log module=remark. Host-tested only, not run in the game
+-- (W-B06.1-10 open).
+-- Owns: the shared crew-voice API (TRF_CrewVoiceTab, TRF_CrewVoice, TRF_CrewSay; B03 and A01 call it), the remark on
+-- system entry (at most one radio line from a story pilot in the squad about a dated record of the system the player
+-- has not heard about: an off-screen trader or sweep scar, a fallen pirate base, a captain killed by an off-screen
+-- sweep), the age sentence and the voice of trf_scar's own fresh beacon line (TRF_Rm_Own), the told stamps.
+-- The remark goes through trf_plumb's arrival queue (TRF_ArrivalLine with a spec table, counted in arr_max 3) from the
+-- last activate hook, so every built line queued at activation goes first; the due call comes back here
+-- (TRF_Rm_ArrSay), checks the gates again, speaks and stamps. A line dropped at the cap, refused at the due or lost to
+-- a jump or load stamps nothing. Records are read, never written (only trf_captain's dl field is new).
+-- Lines only: nothing marks, offers or sends the player anywhere. No line while the system mode is not "mod", while
+-- the strict gate denies "remark", under __disableAction, __sys_SOS or trf_safety's suppression, during a scene;
+-- never GetPlayerQuestState, never GetPlayerMotherShip, never CreatePilot of a story template.
+-- Saved fields (version 4, created at the first stamp, repaired by TRF_Rm_Fix):
+--   TRF.rm[idx] = event leg of the last told or witnessed event in system idx (at most 4 keys); TRF.rm.f = the largest
+--   leg evicted by the cap (events at or before it count as told everywhere).
+-- Visit state lives in the chunk local RM (never saved; rebuilt by every MapInitialization): done (a crew line was
+-- queued this entry), own (events whose own line was queued this entry), tc (the tune cache). No pilot handle is kept.
+-- Layout as trf_scar: helpers, accessors (one native each, protected), static tables, pure functions (*Of, explicit
+-- inputs, host-testable), contract functions. Top level: functions and RM only.
+
+local RM = {own={}};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_RmRM() return %RM; end;
+
+-- logfmt event line, module=remark (design/log-format.md).
+function TRF_RmE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "remark"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_RmErr(m)
+	TRF_RmE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler of the pilot probe: the error is the answer (tried=<tpl>:error).
+function TRF_RmNoErr(m) end;
+
+function TRF_RmLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_RmDE(event, ...)
+	if TRF_RmLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_RmE, arg);
+end;
+
+function TRF_RmCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- Ranges of the cfg keys (outside -> default) and clamps of the tune keys (spec 10).
+function TRF_RmClamp()
+	return {remarks={0, 1}, remark_mode={0, 1}, rm_ch={0, 20}, rm_ch_late={0, 20}, rm_age={1, 200}, rm_secs={3, 20},
+		rm_csr={0, 1}, rm_own={0, 1}};
+end;
+
+-- Constants without a key (spec 10): stamps kept.
+function TRF_RmK()
+	return {keep=4};
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Rm_OptDef), else the raw config, else the default; a wrong type or a value outside
+-- its range reads as the default.
+function TRF_RmOpt(key)
+	local d = TRF_Rm_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	local r = TRF_RmClamp()[key];
+	if type(v) == "number" and r and (v ~= floor(v) or v < r[1] or v > r[2]) then return d; end;
+	return v;
+end;
+
+-- Tune values of this module, clamped; TRF_Tune gives cfg tune overrides. Cached in RM.tc against the TRF_Tune table
+-- it was built from (TRF_Tune keeps one table until cfg tune or a TuneDef changes).
+function TRF_RmTune()
+	local rm = %RM;
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_RmErr); end;
+	if type(t) == "table" and type(rm.tc) == "table" and rm.tc.src == t then return rm.tc.v; end;
+	local d = TRF_Rm_TuneDef();
+	local cl = TRF_RmClamp();
+	local o = {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if type(x) ~= "number" then x = v; end;
+		local c = cl[k];
+		if c then x = TRF_RmCl(floor(x), c[1], c[2]); end;
+		o[k] = x;
+	end;
+	if type(t) == "table" then rm.tc = {src=t, v=o}; end;
+	return o;
+end;
+
+function TRF_RmT(key)
+	return TRF_RmTune()[key];
+end;
+
+-- R1: traffic on and cfg remarks 1.
+function TRF_RmOn()
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return nil; end;
+	if TRF_RmOpt("remarks") ~= 1 then return nil; end;
+	return 1;
+end;
+
+function TRF_RmLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+function TRF_RmName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+function TRF_RmTxt(key, a, b, c)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c); end;
+	return tostring(key);
+end;
+
+-- Comma-joined list of strings, or nil when empty.
+function TRF_RmJoin(l)
+	local s = nil;
+	for i = 1, getn(l) do
+		if s then s = s..","..tostring(l[i]); else s = tostring(l[i]); end;
+	end;
+	return s;
+end;
+
+-- Saved table, created when mk is set; nil otherwise when absent.
+function TRF_RmRec(mk)
+	if type(TRF) ~= "table" then return nil; end;
+	if type(TRF.rm) ~= "table" then
+		if not mk then return nil; end;
+		TRF.rm = {};
+	end;
+	return TRF.rm;
+end;
+
+-- Hold flags (R6, as trf_scar's TRF_ScHold): the reason or nil.
+function TRF_RmHold()
+	if __disableAction == TRUE then return "disable_action"; end;
+	if __sys_SOS == TRUE then return "sys_sos"; end;
+	local sp = TRF_N("TRF_Supp");
+	if type(sp) == "number" and sp ~= 0 then return "suppressed"; end;
+	return nil;
+end;
+
+-- Accessors: one native each, protected -----------------------------------------------
+
+-- Steps 1-4 of 5.2 for template tpl: {w = absent|dead|side|silent|ok, p = pilot when ok}.
+function TRF_RmProbeRaw(tpl, csr)
+	local p = GetPilot(tpl);
+	if p == nil then return {w="absent"}; end;
+	if not TRF_Is(p:IsAlive()) then return {w="dead"}; end;
+	if p:GetSide() ~= "Player" then return {w="side"}; end;
+	if csr == 1 and not TRF_Is(p:IsCanSayReplica()) then return {w="silent"}; end;
+	return {w="ok", p=p};
+end;
+
+-- One protected probe (5.2): pilot or nil, and the result word (step 5: an error in any step -> error).
+function TRF_RmProbe(tpl, csr)
+	if type(GetPilot) ~= "function" then return nil, "absent"; end;
+	local r = call(TRF_RmProbeRaw, {tpl, csr}, "x", TRF_RmNoErr);
+	if type(r) ~= "table" then return nil, "error"; end;
+	return r.p, r.w;
+end;
+
+-- Static tables ------------------------------------------------------------------------
+
+-- Voice table (5.1): voice key -> templates in order. A01 profiles replace this function (same shape).
+function TRF_CrewVoiceTab()
+	return {pirate={"Lastochka2", "Lastochka", "Hero"}, navy={"Kalem", "Hero"}, crew={"Hero"}};
+end;
+
+-- Display-name keys of the screen-line form (5.1, m_pilots.loc); any other template prints its template name.
+function TRF_RmNameKeys()
+	return {Hero="rmnhero", Lastochka="rmnlast", Lastochka2="rmnlast", Kalem="rmnkalem"};
+end;
+
+-- Text order of a merged remark (K2): the first kind present gives the text.
+function TRF_RmOrder()
+	return {base=1, sweep_pirate=2, sweep_navy=3, captain=4, trader=5};
+end;
+
+-- Pure functions (explicit inputs, host-testable) -------------------------------------
+
+-- Age phrase key and number of an age in legs (D13): earlier today, yesterday, <n> days back.
+function TRF_RmAgeOf(age)
+	if type(age) ~= "number" or age <= 0 then return "rmage0", 0; end;
+	if age == 1 then return "rmage1", 1; end;
+	return "rmagen", floor(age);
+end;
+
+-- Voice of a scar record (7.2): navy hulls (kind 3, fac >= 1) -> navy, else pirate.
+function TRF_RmScarVoice(kind, fac)
+	if kind == 3 and type(fac) == "number" and fac >= 1 then return "navy"; end;
+	return "pirate";
+end;
+
+-- 5.2 over list with probe(tpl, csr) -> pilot, word: the first template that passes. Returns tpl, tried, pilot; nil,
+-- tried when none passes. tried = "Lastochka2:absent,Lastochka:dead,Hero:ok".
+function TRF_RmVoiceOf(list, probe, csr)
+	local tried = {};
+	if type(list) ~= "table" then return nil, "-"; end;
+	for i = 1, getn(list) do
+		local tpl = list[i];
+		local p, w = nil, "error";
+		if type(tpl) == "string" and type(probe) == "function" then p, w = probe(tpl, csr); else tpl = tostring(tpl); end;
+		if p ~= nil and w == "ok" then
+			tinsert(tried, tpl..":ok");
+			return tpl, TRF_RmJoin(tried), p;
+		end;
+		tinsert(tried, tpl..":"..tostring(w));
+	end;
+	return nil, TRF_RmJoin(tried) or "-";
+end;
+
+-- Stamps: evicts the smallest legs (ties: the smaller idx) while more than keep index keys stay; the floor f rises to
+-- the largest evicted leg (D2). Returns the last evicted idx or nil.
+function TRF_RmCapOf(rm, keep)
+	local ev = nil;
+	while 1 do
+		local n, w = 0, nil;
+		for k, v in rm do
+			if k ~= "f" then
+				n = n + 1;
+				if w == nil or v < rm[w] or (v == rm[w] and k < w) then w = k; end;
+			end;
+		end;
+		if n <= keep or w == nil then break; end;
+		if type(rm.f) ~= "number" or rm[w] > rm.f then rm.f = rm[w]; end;
+		rm[w] = nil;
+		ev = w;
+	end;
+	return ev;
+end;
+
+-- D1, D2: rm[idx] = max(old, leg) in rm (created when nil), then the cap. Returns rm, evicted idx or nil.
+function TRF_RmStampOf(rm, idx, leg, keep)
+	if type(rm) ~= "table" then rm = {}; end;
+	if type(rm[idx]) ~= "number" or leg > rm[idx] then rm[idx] = leg; end;
+	return rm, TRF_RmCapOf(rm, keep);
+end;
+
+-- D3: keys older than age legs dropped (f untouched), f dropped when older than age. Returns rm or nil when empty,
+-- and the number of keys dropped.
+function TRF_RmPruneOf(rm, legs, age)
+	if type(rm) ~= "table" then return nil, 0; end;
+	local d = 0;
+	local ks = {};
+	for k, v in rm do tinsert(ks, k); end;
+	for i = 1, getn(ks) do
+		local k = ks[i];
+		if k ~= "f" and type(rm[k]) == "number" and legs - rm[k] > age then rm[k] = nil; d = d + 1; end;
+	end;
+	if type(rm.f) == "number" and legs - rm.f > age then rm.f = nil; end;
+	if next(rm) == nil then return nil, d; end;
+	return rm, d;
+end;
+
+-- Number of index stamps in rm.
+function TRF_RmCountOf(rm)
+	local n = 0;
+	if type(rm) ~= "table" then return 0; end;
+	for k, v in rm do if k ~= "f" then n = n + 1; end; end;
+	return n;
+end;
+
+-- 1 when event leg of system idx counts as told by rm (T2: the system's stamp or the floor).
+function TRF_RmToldOf(rm, idx, leg)
+	if type(rm) ~= "table" then return nil; end;
+	if type(rm[idx]) == "number" and leg <= rm[idx] then return "told"; end;
+	if type(rm.f) == "number" and leg <= rm.f then return "floor"; end;
+	return nil;
+end;
+
+-- K1, K3: the result word of candidate e in s (ok, old, told, floor, own, chapter, ch5, elsewhere).
+function TRF_RmJudgeOf(e, s)
+	local T = s.T;
+	if e.l > s.legs or s.legs - e.l > T.rm_age then return "old"; end;
+	local tw = TRF_RmToldOf(s.rm, s.idx, e.l);
+	if tw then return tw; end;
+	if type(s.own) == "table" and s.own[s.idx..":"..e.l] then return "own"; end;
+	if e.k == "trader" then
+		if s.ch < T.rm_ch then return "chapter"; end;
+		if s.ch5 then return "ch5"; end;
+		return "ok";
+	end;
+	if s.ch < T.rm_ch_late then return "chapter"; end;
+	if e.k ~= "base" then
+		for i = 1, getn(s.bases or {}) do
+			local b = s.bases[i];
+			if b.sl == s.slot and b.k == 3 and b.t == e.l and b.s ~= s.idx then return "elsewhere"; end;
+		end;
+	end;
+	return "ok";
+end;
+
+-- Candidates of system s.idx (4): s = {idx, slot, legs, ch, ch5, scar, bases = {{s, k, t, sl}}, cap, home, rm, own, T,
+-- fname, facname, clan, capnm}. Each {k = kind, l = event leg, v = voice, key, a, b, res = result word}.
+function TRF_RmCandsOf(s)
+	local l = {};
+	local r = s.scar;
+	if type(r) == "table" and r.on ~= 1 and r.hid ~= 1 and type(r.st) == "number" and r.st <= 1 and type(r.leg) == "number" then
+		if r.kind == 1 then
+			tinsert(l, {k="trader", l=r.leg, v="pirate", key="rmtrader", a=s.fname});
+		elseif r.kind == 3 and type(r.fac) == "number" and r.fac >= 1 then
+			tinsert(l, {k="sweep_navy", l=r.leg, v="navy", key="rmsweepn", a=s.facname, b=s.clan});
+		elseif r.kind == 3 then
+			tinsert(l, {k="sweep_pirate", l=r.leg, v="pirate", key="rmsweepp", a=s.clan});
+		end;
+	end;
+	for i = 1, getn(s.bases or {}) do
+		local b = s.bases[i];
+		if b.s == s.idx and b.k == 3 and type(b.t) == "number" then tinsert(l, {k="base", l=b.t, v="pirate", key="rmbase", a=s.clan}); end;
+	end;
+	local c = s.cap;
+	if type(c) == "table" and c.st == 4 and type(c.dl) == "number" and s.home == s.idx then
+		tinsert(l, {k="captain", l=c.dl, v="pirate", key="rmcap", a=s.capnm, b=s.clan});
+	end;
+	for i = 1, getn(l) do l[i].res = TRF_RmJudgeOf(l[i], s); end;
+	return l;
+end;
+
+-- K2-K4: the remark of candidate list l, or nil: the oldest ok leg; the first kind of TRF_RmOrder gives text and
+-- voice; a captain with that leg becomes the clause x (a base remark also takes the region's captain killed at its
+-- leg, K3); h = the home when a base remark tells a sweep (clause, a merged sweep scar, or a sweep scar at the home
+-- with that leg). The other candidates of the leg get res merged. Fields {k, l, v, key, a, b, x, h, n}.
+function TRF_RmPickOf(l, s)
+	local best, n = nil, 0;
+	for i = 1, getn(l) do
+		if l[i].res == "ok" then
+			n = n + 1;
+			if best == nil or l[i].l < best then best = l[i].l; end;
+		end;
+	end;
+	if best == nil then return nil; end;
+	local od = TRF_RmOrder();
+	local top, cp, sw = nil, nil, nil;
+	for i = 1, getn(l) do
+		local e = l[i];
+		if e.res == "ok" and e.l == best then
+			if e.k == "captain" then cp = e; end;
+			if e.k == "sweep_pirate" or e.k == "sweep_navy" then sw = 1; end;
+			if top == nil or od[e.k] < od[top.k] then top = e; end;
+		end;
+	end;
+	for i = 1, getn(l) do
+		if l[i].res == "ok" and l[i].l == best and l[i] ~= top then l[i].res = "merged"; end;
+	end;
+	local rem = {k=top.k, l=best, v=top.v, key=top.key, a=top.a, b=top.b, n=n};
+	if top.k ~= "captain" then
+		if cp then
+			rem.x = cp.a;
+		elseif top.k == "base" and type(s.cap) == "table" and s.cap.st == 4 and s.cap.dl == best then
+			rem.x = s.capnm;
+		end;
+	end;
+	if top.k == "base" and type(s.home) == "number" and s.home ~= s.idx then
+		local hs = s.hscar;
+		if rem.x or sw or (type(hs) == "table" and hs.kind == 3 and hs.leg == best) then rem.h = s.home; end;
+	end;
+	return rem;
+end;
+
+-- Contract: told stamps (3.1) -----------------------------------------------------------
+
+-- Stamp system idx with event leg (D1, D2) and log event=told via=<remark|own|witness>.
+function TRF_RmStamp(idx, leg, via)
+	if type(idx) ~= "number" or type(leg) ~= "number" then return; end;
+	local rm, ev = TRF_RmStampOf(TRF_RmRec(1), idx, leg, TRF_RmK().keep);
+	TRF.rm = rm;
+	TRF_RmDE("told", "system_index", idx, "event_leg", leg, "via", via, "evicted", ev, "floor", rm.f, "stamp_count", TRF_RmCountOf(rm));
+end;
+
+-- D3 at the entry.
+function TRF_RmPrune()
+	local rm, d = TRF_RmPruneOf(TRF_RmRec(nil), TRF_RmLegs(), TRF_RmT("rm_age"));
+	if type(TRF) == "table" then TRF.rm = rm; end;
+	return d;
+end;
+
+-- Contract: speaker function (5) --------------------------------------------------------
+
+-- Display name of template tpl for the screen-line form.
+function TRF_RmSpeakerName(tpl)
+	local k = TRF_RmNameKeys()[tostring(tpl)];
+	if k then return TRF_RmTxt(k); end;
+	return tostring(tpl);
+end;
+
+-- 5.2: kind is a voice key of TRF_CrewVoiceTab or a list of template names (B03). Returns pilot, tpl or nil, why.
+function TRF_CrewVoice(kind)
+	local list, vk = nil, "list";
+	if type(kind) == "table" then
+		list = kind;
+	else
+		vk = tostring(kind);
+		local tab = nil;
+		if type(TRF_CrewVoiceTab) == "function" then tab = call(TRF_CrewVoiceTab, {}, "x", TRF_RmErr); end;
+		if type(tab) == "table" then list = tab[vk]; end;
+	end;
+	local tpl, tried, p = TRF_RmVoiceOf(list, TRF_RmProbe, TRF_RmT("rm_csr"));
+	TRF_RmDE("voice", "voice", vk, "speaker", tpl, "tried", tried);
+	if not tpl then return nil, "no_speaker"; end;
+	return p, tpl;
+end;
+
+-- 5.3: says text for secs as the first pilot of kind. Returns 1, how (radio|line), tpl[, reason of a fallback] or
+-- nil, why (supp:<q>, no_speaker, line_failed).
+function TRF_CrewSay(kind, text, secs)
+	if type(text) ~= "string" or text == "" then return nil, "arg"; end;
+	if type(secs) ~= "number" then secs = TRF_RmT("rm_secs"); end;
+	local q = TRF_N("TRF_UI_Supp");
+	if q then return nil, "supp:"..tostring(q); end;
+	local p, tpl = TRF_CrewVoice(kind);
+	if not p then return nil, "no_speaker"; end;
+	local fb = nil;
+	if TRF_RmOpt("remark_mode") == 1 then
+		if type(TRF_UI_Msg) == "function" and call(TRF_UI_Msg, {p, text, secs}, "x", TRF_RmErr) then
+			if type(TRF.live) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then TRF.live.line = TRF.clock.gt; end;
+			return 1, "radio", tpl;
+		end;
+		fb = "msg_error";
+	end;
+	-- cfg loc_mode 1: text is already the remark's own key; the rmsay wrapper would drop it (its fixed form is "FTU").
+	local ln = text;
+	if TRF_N("TRF_Loc_Mode") ~= 1 then ln = TRF_RmTxt("rmsay", TRF_RmSpeakerName(tpl), text); end;
+	if TRF_N("TRF_Say", ln, secs) then return 1, "line", tpl, fb; end;
+	return nil, "line_failed", tpl;
+end;
+
+-- D13: the age phrase of event leg (A16's dated harbour news calls it).
+function TRF_Rm_AgeText(leg)
+	local age = 0;
+	if type(leg) == "number" then age = TRF_RmLegs() - leg; end;
+	local k, n = TRF_RmAgeOf(age);
+	return TRF_RmTxt(k, format("%d", n));
+end;
+
+-- Contract: gates (6) -------------------------------------------------------------------
+
+-- R1, R2, R4, R5 for system idx; entry 1 adds R3 (done) and R6 (hold). Returns the reason or nil.
+function TRF_RmGate(idx, entry)
+	if not TRF_RmOn() then return "off"; end;
+	if type(idx) ~= "number" then return "nomap"; end;
+	if entry == 1 and %RM.done == 1 then return "done"; end;
+	local mode, mw = TRF_N("TRF_SysModeQuiet");
+	if mode ~= "mod" then return "mode:"..tostring(mw); end;
+	if type(TRF_StrictOk) ~= "function" then return "gate:nosafety"; end;
+	local ok, gw = TRF_StrictOk(idx, "remark");
+	if not ok then return "gate:"..tostring(gw); end;
+	if entry == 1 then
+		local hw = TRF_RmHold();
+		if hw then return "hold:"..hw; end;
+	end;
+	return nil;
+end;
+
+-- Contract: remark (7.1) ----------------------------------------------------------------
+
+-- Home system of region slot (the captain's home, else the region map's), or nil.
+function TRF_RmHome(slot)
+	if type(slot) ~= "number" then return nil; end;
+	local home = TRF_N("TRF_CapHome", slot);
+	if type(home) ~= "number" then
+		local m = TRF_N("TRF_RgMap");
+		if type(m) == "table" and type(m[slot]) == "table" then home = m[slot].home; end;
+	end;
+	if type(home) == "number" then return home; end;
+	return nil;
+end;
+
+-- K3 for an own sweep line of system idx at leg: the region home when it differs from idx and the sweep took a base of
+-- idx or the region's captain at that leg (the home's captain candidate is the same event), else nil.
+function TRF_RmOwnHome(idx, leg)
+	local slot = TRF_N("TRF_RgOf", idx);
+	local home = TRF_RmHome(slot);
+	if not home or home == idx then return nil; end;
+	if type(TRF.base) == "table" then
+		for i = 1, getn(TRF.base) do
+			local b = TRF.base[i];
+			if type(b) == "table" and b.s == idx and b.k == 3 and b.t == leg then return home; end;
+		end;
+	end;
+	local c = TRF_N("TRF_CapRec", slot);
+	if type(c) == "table" and c.st == 4 and c.dl == leg then return home; end;
+	return nil;
+end;
+
+-- Inputs of TRF_RmCandsOf for system idx from the records.
+function TRF_RmIn(idx)
+	local slot = TRF_N("TRF_RgOf", idx);
+	local ch = TRF_N("TRF_Chapter");
+	if type(ch) ~= "number" then ch = 0; end;
+	local nm = TRF_RmName(idx);
+	local i, r = TRF_N("TRF_ScAt", idx);
+	local bases = {};
+	if type(TRF.base) == "table" then
+		for j = 1, getn(TRF.base) do
+			local b = TRF.base[j];
+			if type(b) == "table" and type(b.s) == "number" then tinsert(bases, {s=b.s, k=b.k, t=b.t, sl=TRF_N("TRF_RgOf", b.s)}); end;
+		end;
+	end;
+	local c, home = nil, TRF_RmHome(slot);
+	if type(slot) == "number" then c = TRF_N("TRF_CapRec", slot); end;
+	local hscar = nil;
+	if type(home) == "number" and home ~= idx then
+		local hi, hr = TRF_N("TRF_ScAt", home);
+		hscar = hr;
+	end;
+	local fname = "Kestrel";
+	if type(r) == "table" and r.kind == 1 then
+		local names = TRF_N("TRF_Names");
+		if type(names) == "table" and type(r.nm) == "number" and type(names[r.nm]) == "string" then fname = names[r.nm]; end;
+	end;
+	local facname = nil;
+	if type(r) == "table" and type(r.fac) == "number" and r.fac >= 1 then facname = TRF_N("TRF_FcFacName", r.fac) or tostring(r.fac); end;
+	local clan = TRF_N("TRF_ClanName", slot) or "pirates";
+	local capnm = nil;
+	if type(c) == "table" then capnm = TRF_N("TRF_CapNm", c); end;
+	local ch5 = nil;
+	if TRF_N("TRF_ScCh5Of", nm, ch, 1) then ch5 = 1; end;
+	return {idx=idx, slot=slot, legs=TRF_RmLegs(), ch=ch, ch5=ch5, scar=r, bases=bases, cap=c, home=home, hscar=hscar,
+		rm=TRF_RmRec(nil), own=%RM.own, T=TRF_RmTune(), fname=fname, facname=facname, clan=clan, capnm=capnm};
+end;
+
+-- Text of remark rem (9): its key with the age and arguments, the captain clause appended with a space (K2).
+function TRF_RmText(rem)
+	local t = TRF_RmTxt(rem.key, TRF_Rm_AgeText(rem.l), rem.a, rem.b);
+	if rem.x then t = t.." "..TRF_RmTxt("rmcapx", rem.x); end;
+	return t;
+end;
+
+-- 7.1 steps 2-6 for system idx.
+function TRF_RmEntry(idx)
+	local rm = %RM;
+	local nm = "?";
+	if type(idx) == "number" then nm = TRF_RmName(idx); end;
+	local why = TRF_RmGate(idx, 1);
+	if why then
+		TRF_RmDE("skip", "system", nm, "reason", why);
+		return;
+	end;
+	local s = TRF_RmIn(idx);
+	local l = TRF_RmCandsOf(s);
+	local rem = TRF_RmPickOf(l, s);
+	for i = 1, getn(l) do
+		TRF_RmDE("candidate", "system_index", idx, "kind", l[i].k, "event_leg", l[i].l, "age", s.legs - l[i].l, "result", l[i].res);
+	end;
+	if not rem then
+		TRF_RmDE("skip", "system", nm, "reason", "none");
+		return;
+	end;
+	local text = TRF_RmText(rem);
+	local p, tpl = TRF_CrewVoice(rem.v);
+	local ok, w = nil, "no_speaker";
+	if p then
+		ok, w = TRF_N("TRF_ArrivalLine", "remark", text, {v=rem.v, s=idx, l=rem.l, h=rem.h});
+		if not ok and w == nil then w = "plumb"; end;
+		if w == "entry" then w = "no_entry"; end;
+	end;
+	if ok then rm.done = 1; end;
+	local res = "queued";
+	if not ok then res = "dropped"; end;
+	if ok then w = nil; end;
+	TRF_RmE("remark", "system", nm, "system_index", idx, "kind", rem.k, "event_leg", rem.l, "age", s.legs - rem.l, "voice", rem.v,
+		"speaker", tpl, "clause", TRF_KvB(rem.x and 1), "candidate_count", rem.n, "result", res, "reason", w);
+end;
+
+-- Contract: own line (7.2) ----------------------------------------------------------------
+
+function TRF_RmOwnBody(owner, idx, leg, voice, text, kind)
+	local rm = %RM;
+	if not TRF_RmOn() or type(idx) ~= "number" or type(leg) ~= "number" or type(text) ~= "string" then return {t=text}; end;
+	local t2 = text.." "..TRF_RmTxt("rmownage", TRF_Rm_AgeText(leg));
+	local age = TRF_RmLegs() - leg;
+	if TRF_RmToldOf(TRF_RmRec(nil), idx, leg) then
+		TRF_RmDE("own", "owner", owner, "system_index", idx, "event_leg", leg, "age", age, "voice", voice, "voiced", "false", "result", "told");
+		return {t=t2};
+	end;
+	local sp = {s=idx, l=leg};
+	if kind == 3 then sp.h = TRF_RmOwnHome(idx, leg); end;
+	rm.own[idx..":"..leg] = 1;
+	local T = TRF_RmTune();
+	local ch = TRF_N("TRF_Chapter");
+	if type(ch) ~= "number" then ch = 0; end;
+	local cmin = T.rm_ch_late;
+	if kind == 1 then cmin = T.rm_ch; end;
+	if T.rm_own == 1 and TRF_RmOpt("remark_mode") == 1 and rm.done ~= 1 and ch >= cmin and TRF_CrewVoice(voice) then
+		sp.v = voice;
+		rm.done = 1;
+	end;
+	TRF_RmDE("own", "owner", owner, "system_index", idx, "event_leg", leg, "age", age, "voice", voice, "voiced", TRF_KvB(sp.v and 1),
+		"result", "suffix");
+	return {t=t2, sp=sp};
+end;
+
+-- trf_scar's own fresh line (7.2): returns text2, spec (spec nil when the event was told or the module is off). kind is
+-- the scar record's kind (its chapter rule: 1 rm_ch, else rm_ch_late). Protected: an error keeps the line as built.
+function TRF_Rm_Own(owner, idx, leg, voice, text, kind)
+	local r = call(TRF_RmOwnBody, {owner, idx, leg, voice, text, kind}, "x", TRF_RmErr);
+	if type(r) ~= "table" then return text, nil; end;
+	return r.t, r.sp;
+end;
+
+-- Contract: due (7.4) ---------------------------------------------------------------------
+
+function TRF_RmSayBody(owner, b)
+	local why, how, tpl, fb = nil, nil, nil, nil;
+	local ok = nil;
+	if not TRF_RmOn() then
+		why = "off";
+	elseif TRF_N("TRF_CurIdx") ~= b.s then
+		why = "left";
+	else
+		why = TRF_RmGate(b.s, nil);
+	end;
+	if not why then
+		if b.v then
+			ok, how, tpl, fb = TRF_CrewSay(b.v, b.t, TRF_RmT("rm_secs"));
+			if not ok then
+				why = how; how = nil;
+				-- The scar's own line falls back to its screen line when no crew member can speak (it stamps).
+				if owner == "scar" and why == "no_speaker" and TRF_N("TRF_Say", b.t, 8) then ok = 1; how = "line"; fb = why; why = nil; end;
+			end;
+		else
+			how = "line";
+			ok = TRF_N("TRF_Say", b.t, 8);
+			if not ok then why = "line_failed"; end;
+		end;
+	end;
+	if ok then
+		TRF_RmE("say", "owner", owner, "system_index", b.s, "event_leg", b.l, "voice", b.v, "speaker", tpl, "output", how, "result", "shown",
+			"reason", fb);
+		local via = "own";
+		if owner == "remark" then via = "remark"; end;
+		TRF_RmStamp(b.s, b.l, via);
+		if type(b.h) == "number" and b.h ~= b.s then TRF_RmStamp(b.h, b.l, via); end;
+		return 1;
+	end;
+	TRF_RmE("say", "owner", owner, "system_index", b.s, "event_leg", b.l, "voice", b.v, "speaker", tpl, "output", how, "result", "not_shown",
+		"reason", why);
+	return 0;
+end;
+
+-- Due call from trf_plumb's TRF_PlArrSay for a queued line with a spec b = {t, v, s, l, h}: 1 shown, 0 not shown.
+function TRF_Rm_ArrSay(owner, b)
+	if type(b) ~= "table" or type(b.t) ~= "string" or type(b.s) ~= "number" or type(b.l) ~= "number" then return 0; end;
+	local r = call(TRF_RmSayBody, {tostring(owner), b}, "x", TRF_RmErr);
+	if r == 1 then return 1; end;
+	return 0;
+end;
+
+-- Loader callbacks -------------------------------------------------------------------------
+
+-- 7.1, the last module call of TRF_OnActivate: prune, then the remark (protected).
+function TRF_Rm_OnActivate()
+	if not TRF_RmOn() then
+		TRF_RmDE("skip", "system", "-", "reason", "off");
+		return;
+	end;
+	call(TRF_RmPrune, {}, "x", TRF_RmErr);
+	call(TRF_RmEntry, {TRF_N("TRF_CurIdx")}, "x", TRF_RmErr);
+end;
+
+-- 7.5: the newest base event of the current system since the visit's entry leg is stamped (witnessed). A base destroyed
+-- off-screen (w = 1, the station still stands until the next entry) and a captain's dl (written only at an off-screen
+-- death, D16) were not seen, so neither is stamped.
+function TRF_RmJumpBody()
+	local idx = TRF_N("TRF_CurIdx");
+	if type(idx) ~= "number" then return; end;
+	local legs = TRF_RmLegs();
+	local vl = 0;
+	if type(TRF.clock) == "table" and type(TRF.clock.vl) == "number" then vl = TRF.clock.vl; end;
+	local l0 = legs - vl;
+	local best = nil;
+	if type(TRF.base) == "table" then
+		for i = 1, getn(TRF.base) do
+			local b = TRF.base[i];
+			if type(b) == "table" and b.s == idx and b.k == 3 and b.w ~= 1 and type(b.t) == "number" and b.t >= l0 and b.t <= legs then
+				if best == nil or b.t > best then best = b.t; end;
+			end;
+		end;
+	end;
+	if best and not TRF_RmToldOf(TRF_RmRec(nil), idx, best) then TRF_RmStamp(idx, best, "witness"); end;
+end;
+
+function TRF_Rm_BeforeJump()
+	if not TRF_RmOn() then return; end;
+	call(TRF_RmJumpBody, {}, "x", TRF_RmErr);
+end;
+
+-- D4: repair TRF.rm (called from TRF_Repair).
+function TRF_Rm_Fix()
+	if type(TRF) ~= "table" or TRF.rm == nil then return; end;
+	if type(TRF.rm) ~= "table" then
+		TRF.rm = nil;
+		TRF_RmE("fix", "field", "rm", "result", "dropped");
+		return;
+	end;
+	local legs = TRF_RmLegs();
+	local ns = 999;
+	local m = TRF_N("TRF_Map");
+	if type(m) == "table" and type(m.sys) == "table" then ns = getn(m.sys); end;
+	local t, o, d = TRF.rm, {}, 0;
+	local f = t.f;
+	if f ~= nil and not (type(f) == "number" and f <= legs) then f = nil; d = d + 1; end;
+	for k, v in t do
+		if k ~= "f" then
+			if type(k) == "number" and k == floor(k) and k >= 1 and k <= ns and type(v) == "number" and v <= legs then
+				o[k] = v;
+			else
+				d = d + 1;
+			end;
+		end;
+	end;
+	if f then o.f = f; end;
+	local n0 = TRF_RmCountOf(o);
+	TRF_RmCapOf(o, TRF_RmK().keep);
+	d = d + n0 - TRF_RmCountOf(o);
+	if d > 0 then TRF_RmE("fix", "field", "rm", "result", "repaired", "dropped_count", d); end;
+	if next(o) == nil then TRF.rm = nil; else TRF.rm = o; end;
+end;
+
+-- Defaults (10) ------------------------------------------------------------------------------
+
+function TRF_Rm_OptDef()
+	return {remarks=1, remark_mode=1};
+end;
+
+function TRF_Rm_TuneDef()
+	return {rm_ch=0, rm_ch_late=5, rm_age=40, rm_secs=8, rm_csr=1, rm_own=1};
+end;
+
+-- "module=remark event=dump floor=<leg> stamp_count=<n> stamps=<idx>:<leg>,... remark_mode=<m>" (log 1).
+function TRF_Rm_Dump()
+	if type(TRF) ~= "table" then return; end;
+	local t = TRF.rm;
+	if type(t) ~= "table" then t = {}; end;
+	local ks = {};
+	for k, v in t do if type(k) == "number" then tinsert(ks, k); end; end;
+	sort(ks);
+	local st = {};
+	for i = 1, getn(ks) do tinsert(st, ks[i]..":"..tostring(t[ks[i]])); end;
+	TRF_RmE("dump", "floor", t.f, "stamp_count", getn(ks), "stamps", TRF_RmJoin(st), "remark_mode", TRF_RmOpt("remark_mode"));
+end;
+
+-- Texts (9), EN; keys in TRF_UI_Key form (#TRF_rm<name> in loc/trf_en.loc). Plain spoken sentences: the portrait names
+-- the speaker (dialog style guide).
+function TRF_Rm_Text()
+	return {
+		rmtrader = "The freighter $2 went missing here $1. Pirates, most likely.",   -- age, freighter
+		rmsweepn = "$2 sent a fleet against the $3 here $1 and lost it.",             -- age, faction, clan
+		rmsweepp = "A sweep caught the $2 here $1.",                                  -- age, clan
+		rmbase = "The $2 lost their base here $1.",                                   -- age, clan
+		rmcap = "A sweep caught $2 here $1. The $3 lost their captain.",             -- age, captain, clan
+		rmcapx = "$1 went down with them.",                                           -- captain
+		rmownage = "That was $1.",                                                    -- age
+		rmage0 = "earlier today",
+		rmage1 = "yesterday",
+		rmagen = "$1 days back",                                                      -- days
+		rmsay = "$1: $2",                                                             -- name, text
+		rmnhero = "Hero",
+		rmnlast = "Ternie",
+		rmnkalem = "Kalem",
+	};
+end;

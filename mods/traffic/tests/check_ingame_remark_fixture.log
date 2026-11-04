@@ -1,0 +1,36 @@
+traffic: lua: exp=v1 module=state event=enter generation=1 fresh=false system=kadi legs=100
+traffic: lua: exp=v1 module=safety event=activate system=kadi mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=remark event=voice voice=pirate speaker=Lastochka tried=Lastochka2:absent,Lastochka:ok
+traffic: lua: exp=v1 module=remark event=own owner=scar system_index=52 event_leg=98 age=2 voice=pirate voiced=true result=suffix
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=scar line_index=1 delay=8.000 voiced=true result=queued
+traffic: lua: exp=v1 module=remark event=skip system=kadi reason=done
+traffic: lua: exp=v1 module=remark event=voice voice=pirate speaker=Lastochka tried=Lastochka2:absent,Lastochka:ok
+traffic: lua: exp=v1 module=remark event=say owner=scar system_index=52 event_leg=98 voice=pirate speaker=Lastochka output=radio result=shown reason=nil
+traffic: lua: exp=v1 module=remark event=told system_index=52 event_leg=98 via=own evicted=nil floor=nil stamp_count=1
+traffic: lua: exp=v1 module=state event=enter generation=2 fresh=false system=gaoba legs=101
+traffic: lua: exp=v1 module=safety event=activate system=gaoba mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=remark event=candidate system_index=42 kind=trader event_leg=89 age=12 result=ok
+traffic: lua: exp=v1 module=remark event=voice voice=pirate speaker=Lastochka tried=Lastochka2:absent,Lastochka:ok
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=scar line_index=1 delay=8.000 voiced=false result=queued
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=remark line_index=2 delay=11.000 voiced=true result=queued
+traffic: lua: exp=v1 module=remark event=remark system=gaoba system_index=42 kind=trader event_leg=89 age=12 voice=pirate speaker=Lastochka clause=false candidate_count=1 result=queued reason=nil
+traffic: lua: exp=v1 module=remark event=say owner=scar system_index=42 event_leg=99 voice=nil speaker=nil output=line result=shown reason=nil
+traffic: lua: exp=v1 module=remark event=voice voice=pirate speaker=Lastochka tried=Lastochka2:absent,Lastochka:ok
+traffic: lua: exp=v1 module=remark event=say owner=remark system_index=42 event_leg=89 voice=pirate speaker=Lastochka output=radio result=shown reason=nil
+traffic: lua: exp=v1 module=remark event=told system_index=42 event_leg=99 via=remark evicted=nil floor=nil stamp_count=2
+traffic: lua: exp=v1 module=state event=enter generation=3 fresh=false system=lidau legs=102
+traffic: lua: exp=v1 module=safety event=activate system=lidau mode=mod reason=nil chapter=6 quest_state=1 gate=ok
+traffic: lua: exp=v1 module=safety event=gate feature=remark system=lidau reason=quest result=denied
+traffic: lua: exp=v1 module=remark event=skip system=lidau reason=gate:quest
+traffic: lua: exp=v1 module=state event=enter generation=4 fresh=false system=gaoba legs=103
+traffic: lua: exp=v1 module=safety event=activate system=gaoba mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=remark event=candidate system_index=42 kind=trader event_leg=89 age=14 result=told
+traffic: lua: exp=v1 module=remark event=skip system=gaoba reason=none
+traffic: lua: exp=v1 module=state event=enter generation=5 fresh=false system=altair legs=104
+traffic: lua: exp=v1 module=safety event=activate system=altair mode=mod reason=nil chapter=11 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=remark event=candidate system_index=2 kind=base event_leg=101 age=3 result=ok
+traffic: lua: exp=v1 module=remark event=voice voice=pirate speaker=Hero tried=Lastochka2:absent,Lastochka:dead,Hero:ok
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=remark line_index=1 delay=8.000 voiced=true result=queued
+traffic: lua: exp=v1 module=remark event=remark system=altair system_index=2 kind=base event_leg=101 age=3 voice=pirate speaker=Hero clause=false candidate_count=1 result=queued reason=nil
+traffic: lua: exp=v1 module=remark event=voice voice=pirate speaker=Hero tried=Lastochka2:absent,Lastochka:dead,Hero:ok
+traffic: lua: exp=v1 module=remark event=say owner=remark system_index=2 event_leg=101 voice=pirate speaker=Hero output=radio result=shown reason=nil

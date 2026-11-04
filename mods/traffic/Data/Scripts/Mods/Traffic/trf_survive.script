@@ -1,0 +1,1705 @@
+-- sw3-traffic survivors and beacons module (Lua 4.0.1). Spec: design/survivors-spec.md (design
+-- worldbuilding/06-survivors-beacons.md, step 1). Prefix Sv (TRF_Sv_* public, TRF_Sv<X> internal), log
+-- module=survive.
+-- Step 1: FTU crews only. A traffic FTU trader lost to pirates in the player's current system (witnessed, src 1,
+-- standing only) or a beacon seeded on entry into a raided system (src 2, credits) leaves a radio beacon and 1-3
+-- escape pods at the loss point for sv_ttl legs. The mothership picks pods up by flying within sv_pick_r of them;
+-- any FTU trade dock takes the survivors (trade dock line at order 30: pay, help, heat, pro, dockmaster deed).
+-- Seeded beacons spend a region budget (sv_seed_cyc per region and cycle) and use a fixed roll of system, leg
+-- and the saved seed, so a reload followed by the same jump gets the same answer. The off-screen slaver roll
+-- at the region tick only changes counters (pods 0, sl 1, clan +1, rumour). Step 2 (on-screen slavers, the
+-- pirate-dock sale, faction crews, C8 off-screen losses, news posts) is not built; the record keeps its fields
+-- (f, sl, pp, src 3) and the hooks named in the spec.
+-- Hooks: trf_events TRF_Ev_Kill (loss), trf_region TRF_RegionTick (budget reset, off-screen roll, expiry),
+-- trf_hail TRF_HlRumourText (rumour), trf_plumb (trade dock line, seed provider, arrival lines, nav markers),
+-- traffic.script (activate, load, jump, tick, 1 s step).
+-- Saved fields (TRF.sv, created lazily, repaired by TRF_Sv_Fix):
+--   b[i] = {s, si, x, y, z, n, n0, f, nm, lg, src, sl, pf, pp[, bx][, q][, fw]} (at most 4; the loss site s, x, y, z, lg, src
+--   is the shape feature 2 reuses: TRF_Sv_Site reads it, trf_scar's TRF_Sv_SiteLink writes si; q = 1 a quest record
+--   of trf_wq, TRF_Sv_QuestSeed; fw the ship id of a Wolves freighter's crew, trf_freight), c = {n, cr, pc, s1[, s2], f,
+--   lg[, q][, fw]} (absent when empty; q = 1 once a quest pod is aboard, fw once a freighter's pod is), st = {res, sold, lost},
+--   r[slot] = credited beacons this cycle (absent = 0), sd = roll seed, hl = leg of the last heat -1, cd[idx] =
+--   leg of the last beacon in idx (at most 16, older than sv_cd dropped), x = {idx, ...} systems whose beacon
+--   went silent (at most 4), rm = {s, k, lg} rumour (k 1 taken by slavers, 2 rescued).
+-- Visit state lives in the chunk local SV (never saved; rebuilt by every MapInitialization), handles in
+-- TRF_H().sv and in the handle globals TRF_SVH_<idx>_<j> (j 0 beacon, 1..3 pods), which the save keeps.
+-- Layout as trf_station: helpers, accessors (one native each, protected), static tables, pure functions (*Of),
+-- contract functions. Top level: functions and SV only.
+
+local SV = {pc={}};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_SvSV() return %SV; end;
+
+-- logfmt event line, module=survive (design/log-format.md).
+function TRF_SvE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "survive"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_SvErr(m)
+	TRF_SvE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler (positions, liveness of handles that may be stale): nil is the answer.
+function TRF_SvNoErr(m) end;
+
+function TRF_SvLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_SvDE(event, ...)
+	if TRF_SvLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_SvE, arg);
+end;
+
+function TRF_SvCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Sv_OptDef), else the raw config, else the default; a wrong type or a number
+-- outside its range (TRF_SvClampO) reads as the default.
+function TRF_SvOpt(key)
+	local d = TRF_Sv_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	local r = TRF_SvClampO()[key];
+	if type(v) == "number" and r and (v ~= floor(v) or v < r[1] or v > r[2]) then return d; end;
+	return v;
+end;
+
+-- Tune values of this module, clamped (TRF_SvClampT); tables (sv_slave_on) are copied with each entry clamped
+-- 0..100. TRF_Tune gives cfg tune overrides. Cached in SV while TRF_Tune returns the same table (as TRF_RgTune;
+-- the tick reads it every 250 ms); callers must not write into it.
+function TRF_SvTune()
+	local sv = %SV;
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_SvErr); end;
+	if type(sv.tc) == "table" and sv.tc.s == t then return sv.tc.t; end;
+	local d = TRF_Sv_TuneDef();
+	local cl = TRF_SvClampT();
+	local o = {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if type(x) ~= type(v) then x = v; end;
+		if type(x) == "table" then
+			local w = {};
+			for i = 1, getn(v) do
+				local e = x[i];
+				if type(e) ~= "number" then e = v[i]; end;
+				w[i] = TRF_SvCl(floor(e), 0, 100);
+			end;
+			x = w;
+		elseif cl[k] then
+			x = TRF_SvCl(floor(x), cl[k][1], cl[k][2]);
+		end;
+		o[k] = x;
+	end;
+	sv.tc = {s=t, t=o};
+	return o;
+end;
+
+function TRF_SvT(key)
+	return TRF_SvTune()[key];
+end;
+
+function TRF_SvLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+function TRF_SvGt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+-- TRF.sv, created on first use. The seed comes from the leg count and the generation once (no RAND draw, so
+-- the shared RAND stream of the other modules is unchanged; no game time, which moves between a load and the
+-- first entry, so a save made before TRF.sv existed gives the same seed on every reload); saved, never rerolled.
+function TRF_SvRec()
+	if type(TRF.sv) ~= "table" then TRF.sv = {}; end;
+	local S = TRF.sv;
+	if type(S.b) ~= "table" then S.b = {}; end;
+	if type(S.st) ~= "table" then S.st = {res=0, sold=0, lost=0}; end;
+	if type(S.r) ~= "table" then S.r = {}; end;
+	if type(S.cd) ~= "table" then S.cd = {}; end;
+	if type(S.sd) ~= "number" then
+		local g = 0;
+		if type(TRF.gen) == "number" then g = TRF.gen; end;
+		S.sd = mod(floor(TRF_SvLegs() * 7919 + g * 13 + 4271), 10000);
+	end;
+	return S;
+end;
+
+function TRF_SvName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+function TRF_SvTxt(key, a, b)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b); end;
+	return tostring(key);
+end;
+
+-- Distance of two tables with x, y, z, or nil.
+function TRF_SvDist(a, b)
+	if type(a) ~= "table" or type(b) ~= "table" or type(a.x) ~= "number" or type(b.x) ~= "number" then return nil; end;
+	local dx, dy, dz = a.x - b.x, (a.y or 0) - (b.y or 0), (a.z or 0) - (b.z or 0);
+	return sqrt(dx * dx + dy * dy + dz * dz);
+end;
+
+-- One decimal for a log value, nil when not a number.
+function TRF_SvF(x)
+	if type(x) == "number" then return floor(x * 10 + 0.5) / 10; end;
+	return nil;
+end;
+
+-- Handle table of this module (TRF_H().sv: s = system of the placed record, o[j] = beacon (0) and pods 1..3).
+function TRF_SvH()
+	local H = TRF_N("TRF_H");
+	if type(H) ~= "table" then return nil; end;
+	if type(H.sv) ~= "table" then H.sv = {o={}}; end;
+	if type(H.sv.o) ~= "table" then H.sv.o = {}; end;
+	return H.sv;
+end;
+
+function TRF_SvMap()
+	local m = TRF_N("TRF_Map");
+	if type(m) == "table" and type(m.sys) == "table" then return m; end;
+	return nil;
+end;
+
+-- Accessors: one native or engine global each ------------------------------------
+
+function TRF_Sv_PosRaw(o)
+	local p = o:GetPosition();
+	return {x=p.x, y=p.y, z=p.z};
+end;
+
+-- Position of an object as {x, y, z}, or nil (missing handle, error).
+function TRF_Sv_Pos(o)
+	if type(o) ~= "table" and type(o) ~= "userdata" then return nil; end;
+	local p = call(TRF_Sv_PosRaw, {o}, "x", TRF_SvNoErr);
+	if type(p) == "table" and type(p.x) == "number" then return p; end;
+	return nil;
+end;
+
+function TRF_Sv_AliveRaw(o)
+	if o:IsAlive() then return 1; end;
+	return nil;
+end;
+
+-- 1 when o is an object handle that answers alive (IsAlive pushes 1 or nil).
+function TRF_Sv_Alive(o)
+	if type(o) ~= "table" and type(o) ~= "userdata" then return nil; end;
+	return call(TRF_Sv_AliveRaw, {o}, "x", TRF_SvNoErr);
+end;
+
+function TRF_Sv_DelRaw(o)
+	o:Delete();
+	return 1;
+end;
+
+function TRF_Sv_Del(o)
+	if not TRF_Sv_Alive(o) then return nil; end;
+	return call(TRF_Sv_DelRaw, {o}, "x", TRF_SvErr);
+end;
+
+-- Carcass tpl at p (CreateCarcass, nil when no free spot) labelled label (CHECK E-SV1).
+function TRF_Sv_MakeRaw(tpl, p, label)
+	local o = CreateCarcass(tpl, Vector3(p.x, p.y, p.z), Vector3(0, 0, 1));
+	if o == nil or type(o) == "number" then return nil; end;
+	SetObjectLabel(o, label);
+	return o;
+end;
+
+function TRF_Sv_Make(tpl, p, label)
+	if type(CreateCarcass) ~= "function" or type(Vector3) ~= "function" or type(SetObjectLabel) ~= "function" then return nil; end;
+	return call(TRF_Sv_MakeRaw, {tpl, p, label}, "x", TRF_SvErr);
+end;
+
+function TRF_Sv_RelabelRaw(o, label)
+	SetObjectLabel(o, label);
+	return 1;
+end;
+
+-- Object labelled label, only when the lookup answers an object (after a load it answers the label string for
+-- mod objects, v01-spec 3.3).
+function TRF_Sv_Find(label)
+	local o = TRF_N("GetObjectByLabel", label);
+	if TRF_Sv_Alive(o) then return o; end;
+	return nil;
+end;
+
+-- Mothership position (TRF_Ms: no GetPlayerMotherShip from a tick), or nil.
+function TRF_Sv_MsPos()
+	return TRF_Sv_Pos(TRF_Ms());
+end;
+
+function TRF_Sv_Say(text, secs)
+	return TRF_N("TRF_Say", text, secs or 8);
+end;
+
+-- S2: __disableAction or __sys_SOS (pickups, lines and spawns pause).
+function TRF_Sv_Flags()
+	if __disableAction == TRUE then return "disable_action"; end;
+	if __sys_SOS == TRUE then return "sys_sos"; end;
+	return nil;
+end;
+
+-- S2 and S3 at a spawn (6.6): the flag name, "suppressed" under trf_safety's suppression (the extortion
+-- debounce, a scene, the wind-down), else nil.
+function TRF_SvHold()
+	local f = TRF_Sv_Flags();
+	if f then return f; end;
+	local sp = TRF_N("TRF_Supp");
+	if type(sp) == "number" and sp ~= 0 then return "suppressed"; end;
+	return nil;
+end;
+
+-- Placement of system s held by S2/S3: placed (with line key ln) by TRF_SvRetry once the hold ends in this visit,
+-- else on the next entry or load.
+function TRF_SvHoldSet(s, ln)
+	local sv = %SV;
+	sv.hp = {s=s, ln=ln};
+end;
+
+function TRF_Sv_LabelRaw(o)
+	return GetObjectLabel(o, o);
+end;
+
+function TRF_Sv_QuestRaw(id)
+	return GetQuestState(id);
+end;
+
+-- Chapter 4 free time (OutOfMission.script 532-548): quest_Help in process.
+function TRF_Sv_Free4()
+	if type(GetQuestState) ~= "function" or QUEST_PROCESS == nil then return nil; end;
+	local s = call(TRF_Sv_QuestRaw, {"quest_Help"}, "x", TRF_SvNoErr);
+	if s ~= nil and s == QUEST_PROCESS then return 1; end;
+	return nil;
+end;
+
+-- Static tables --------------------------------------------------------------------
+
+-- Constants without a cfg key: distance rules of 6.4 (portal, station, mothership for seeded points), the
+-- player-fire window, the loss line delay, rumour lifetime in legs, caps of cd and x, model names.
+function TRF_SvK()
+	return {port_r=300, st_r=400, ms_r=600, fire_win=60, loss_dt=5, rum_legs=8, cd_max=16, x_max=4, b_max=4,
+		beacon="radiopod", pod="Escape_Pod_R", q_off=800};
+end;
+
+-- Directions of the quest fallback point (TRF_SvPortalPt): 8 unit vectors in the x-z plane at 45 degree steps, as
+-- {cos, sin} (no sin/cos call: Lua 4 takes degrees there).
+function TRF_SvQDir()
+	return {{1, 0}, {0.7071, 0.7071}, {0, 1}, {-0.7071, 0.7071}, {-1, 0}, {-0.7071, -0.7071}, {0, -1}, {0.7071, -0.7071}};
+end;
+
+-- Permanent deny list (design 6.7): never a beacon, a seed or a full hand-in there.
+function TRF_SvDenyP()
+	return {earth=1, precursors=1, disonsphere=1, fronn=1, nk=1, x297=1, x203=1, x213=1, x220=1};
+end;
+
+-- Story pod scenes by chapter (design 3, 6.7): no mod pod there while that chapter runs.
+function TRF_SvDenyCh()
+	return {b_leftera1=6, nj1=6, dionis=9, lidau=14};
+end;
+
+-- Pod j offset from the loss point: (25 cos(120 j), 8 j - 8, 25 sin(120 j)).
+function TRF_SvOff()
+	return {{x=-12.5, y=0, z=21.65}, {x=-12.5, y=8, z=-21.65}, {x=25, y=16, z=0}};
+end;
+
+function TRF_SvClampO()
+	return {enable_survivors={0, 1}, sv_seeded={0, 1}, sv_slavers={0, 1}, sv_pirate_sale={0, 1}, sv_factions={0, 1},
+		sv_ch4={0, 1}, sv_dk={0, 1}};
+end;
+
+function TRF_SvClampT()
+	return {k_pod={0, 100}, k_pod_pir={0, 100}, sv_ttl={1, 50}, sv_carry={1, 100}, sv_carry_max={1, 6}, sv_max={1, 4},
+		sv_cd={0, 100}, sv_seed_dis={0, 10}, sv_seed_chance={0, 100}, sv_seed_cyc={0, 9}, sv_heat_cd={0, 100},
+		sv_fst_cd={0, 100}, sv_pick_r={10, 500}, sv_near_r={0, 5000}, sv_slave_off={0, 100}};
+end;
+
+-- Pure functions (explicit inputs, host-testable) ------------------------------------
+
+-- Fixed roll 0..99 of system idx at leg legs with seed sd (design 5.4 item 4): the same inputs give the same
+-- roll, so a reload followed by the same jump cannot repeat it.
+function TRF_SvRollOf(idx, legs, sd)
+	local a = mod(floor(sd + idx * 97 + legs * 131), 10000);
+	a = mod(a * 37 + 11, 10007);
+	return mod(a, 100);
+end;
+
+-- Distance from point p to the segment a-b (the mothership's previous and current position).
+function TRF_SvSegOf(p, a, b)
+	local vx, vy, vz = b.x - a.x, b.y - a.y, b.z - a.z;
+	local wx, wy, wz = p.x - a.x, p.y - a.y, p.z - a.z;
+	local vv = vx * vx + vy * vy + vz * vz;
+	local t = 0;
+	if vv > 0 then
+		t = (wx * vx + wy * vy + wz * vz) / vv;
+		if t < 0 then t = 0; elseif t > 1 then t = 1; end;
+	end;
+	local dx, dy, dz = wx - t * vx, wy - t * vy, wz - t * vz;
+	return sqrt(dx * dx + dy * dy + dz * dz);
+end;
+
+-- Site rule (6.4): p at least K.port_r from every portal, K.st_r from every station, and (seeded points, ms
+-- given) more than K.ms_r from the mothership. Returns nil (ok) or the reason.
+function TRF_SvSiteOf(p, ports, sts, ms, K)
+	for i = 1, getn(ports or {}) do
+		local d = TRF_SvDist(p, ports[i]);
+		if d and d < K.port_r then return "portal"; end;
+	end;
+	for i = 1, getn(sts or {}) do
+		local d = TRF_SvDist(p, sts[i]);
+		if d and d < K.st_r then return "station"; end;
+	end;
+	if ms then
+		local d = TRF_SvDist(p, ms);
+		if d and d <= K.ms_r then return "mothership"; end;
+	end;
+	return nil;
+end;
+
+-- Pay per survivor (5.1): min(k / 100 x N, cap / 3), N = TRF_SvBaseN of the loss system (900 L_w lk tier_k (1 +
+-- 0.05 pro) d_k, not capped before k). 0 for k 0 or an unknown N.
+function TRF_SvPayOf(N, k, cap)
+	if type(N) ~= "number" or type(k) ~= "number" or type(cap) ~= "number" or N <= 0 or k <= 0 then return 0; end;
+	return floor(min(N * k / 100, cap / 3));
+end;
+
+-- Pay base of system idx (5.1, 00 section 0): floor(900 L_w lk tier_k (1 + 0.05 pro) d_k) from trf_region's terms,
+-- without TRF_PayN's pay_cap (the cap pay_cap / 3 applies after k); d_k divided out for sv_dk 0. Falls back to
+-- TRF_PayN when a term is missing.
+function TRF_SvBaseN(idx)
+	local lp, tk, pr = TRF_N("TRF_LPayK", idx), TRF_N("TRF_TierK", idx), TRF_N("TRF_Pro", idx);
+	local N = 0;
+	if type(lp) == "number" and type(tk) == "number" and type(pr) == "number" then
+		N = floor(900 * lp * tk * (1 + 0.05 * pr));
+	else
+		N = TRF_N("TRF_PayN", idx) or 0;
+	end;
+	local dk = TRF_N("TRF_DK") or 1;
+	if TRF_SvOpt("sv_dk") == 0 and dk > 0 then N = N / dk; end;
+	return N;
+end;
+
+-- Pods of a witnessed loss (6.4): min(3, transports at spawn + 1 for TT3+), at least 1.
+function TRF_SvPodsOf(tp, tier)
+	local n = 1;
+	if type(tp) == "number" then n = tp; end;
+	if type(tier) == "number" and tier >= 3 then n = n + 1; end;
+	return TRF_SvCl(floor(n), 1, 3);
+end;
+
+-- Counted player fire on the trader in this visit (5.4 item 2): the kill proxy, a counted attack, or a player
+-- attack event within win seconds. 1 or nil.
+function TRF_SvFireOf(by, cnt, pa, gt, win)
+	if by == "player" or cnt == 1 then return 1; end;
+	if type(pa) == "number" and type(gt) == "number" and gt - pa <= win then return 1; end;
+	return nil;
+end;
+
+-- Deny rule of system name nm in chapter ch (6.7): "deny" (permanent or cfg sv_deny), "deny_story" (a story pod
+-- scene's chapter), else nil.
+function TRF_SvDenyOf(nm, ch, extra)
+	if type(nm) ~= "string" then return "deny"; end;
+	nm = strlower(nm);
+	if TRF_SvDenyP()[nm] then return "deny"; end;
+	if type(extra) == "table" then
+		for k, v in extra do
+			if type(v) == "string" and strlower(v) == nm then return "deny"; end;
+		end;
+	end;
+	local c = TRF_SvDenyCh()[nm];
+	if c and ch == c then return "deny_story"; end;
+	return nil;
+end;
+
+-- Seed rule (6.4) on the inputs s = {on, mode, pv, gate, rec, cd, slot, used, cyc, dis, sdis, ph, roll, chance}:
+-- nil when a credited beacon is seeded, else the reason.
+function TRF_SvSeedOf(s)
+	if s.on ~= 1 then return "off"; end;
+	if s.mode ~= "full" then return "chapter"; end;
+	if s.pv ~= "ok" then return s.pv or "plan"; end;
+	if s.gate then return s.gate; end;
+	if s.rec then return "record"; end;
+	if s.cd then return "cooldown"; end;
+	if type(s.slot) ~= "number" then return "region"; end;
+	if s.used >= s.cyc then return "budget"; end;
+	if not (s.dis >= s.sdis or s.ph == 3 or s.ph == 4) then return "quiet"; end;
+	if s.roll >= s.chance then return "roll"; end;
+	return nil;
+end;
+
+-- State helpers --------------------------------------------------------------------
+
+-- Record of system idx: index, record; nil when none.
+function TRF_SvAt(idx)
+	if type(TRF) ~= "table" or type(TRF.sv) ~= "table" or type(TRF.sv.b) ~= "table" then return nil; end;
+	local l = TRF.sv.b;
+	for i = 1, getn(l) do
+		if type(l[i]) == "table" and l[i].s == idx then return i, l[i]; end;
+	end;
+	return nil;
+end;
+
+-- Shared loss site (spec 3.1 R2, design/scar-spec.md 5.3): a copy {s, x, y, z, lg, src, si} of the record of system
+-- idx, or nil. Battle scars read it for a witnessed trader loss instead of keeping a second position.
+function TRF_Sv_Site(idx)
+	local i, b = TRF_SvAt(idx);
+	if not b then return nil; end;
+	return {s=b.s, x=b.x, y=b.y, z=b.z, lg=b.lg, src=b.src, si=b.si};
+end;
+
+-- Battle scars link: the record of system idx shares the site of scar sid (0..1139); si is kept by TRF_Sv_Fix.
+-- Returns 1 when set.
+function TRF_Sv_SiteLink(idx, sid)
+	local i, b = TRF_SvAt(idx);
+	if not b or type(sid) ~= "number" or sid < 0 or sid > 1139 then return nil; end;
+	b.si = floor(sid);
+	TRF_SvDE("site_link", "system", TRF_SvName(idx), "beacon", i, "sid", b.si);
+	return 1;
+end;
+
+-- 1 when the system cooldown sv_cd still runs for idx (cd stamp younger than sv_cd legs).
+function TRF_SvCdOn(idx, T)
+	local S = TRF_SvRec();
+	local v = S.cd[idx];
+	return type(v) == "number" and TRF_SvLegs() - v < T.sv_cd;
+end;
+
+-- Cooldown stamp of idx; stamps at least sv_cd legs old are dropped, at most K.cd_max kept (the oldest go).
+function TRF_SvCdSet(idx, T)
+	local S = TRF_SvRec();
+	local legs = TRF_SvLegs();
+	S.cd[idx] = legs;
+	local ks = {};
+	for k, v in S.cd do
+		if type(v) ~= "number" or legs - v >= T.sv_cd then tinsert(ks, k); end;
+	end;
+	for i = 1, getn(ks) do if ks[i] ~= idx then S.cd[ks[i]] = nil; end; end;
+	local K = TRF_SvK();
+	local n = 0;
+	for k, v in S.cd do n = n + 1; end;
+	while n > K.cd_max do
+		local w, wv = nil, nil;
+		for k, v in S.cd do if k ~= idx and (wv == nil or v < wv) then w = k; wv = v; end; end;
+		if w == nil then break; end;
+		S.cd[w] = nil;
+		n = n - 1;
+	end;
+end;
+
+-- Adds record b; at sv_max records the oldest with n = 0, else the oldest overall, is dropped first. A quest record
+-- (q 1, trf_wq) is never dropped: nil when every record is one. Returns the new index.
+function TRF_SvAdd(b, T)
+	local S = TRF_SvRec();
+	while getn(S.b) >= T.sv_max do
+		local w = nil;
+		for i = 1, getn(S.b) do
+			local e = S.b[i];
+			if e.q ~= 1 and e.n == 0 and (w == nil or e.lg < S.b[w].lg) then w = i; end;
+		end;
+		if w == nil then
+			for i = 1, getn(S.b) do
+				local e = S.b[i];
+				if e.q ~= 1 and (w == nil or e.lg < S.b[w].lg) then w = i; end;
+			end;
+		end;
+		if w == nil then return nil; end;
+		TRF_SvDrop(w, "cap");
+	end;
+	tinsert(S.b, b);
+	return getn(S.b);
+end;
+
+-- Removes record i (why ttl, cap, fix, quest); a placed record loses its objects. A beacon that expires with pods left
+-- or taken by slavers goes silent: the next entry of that system shows the silent line (not a quest record: trf_wq
+-- seeds it again on that entry).
+function TRF_SvDrop(i, why)
+	local S = TRF_SvRec();
+	local b = S.b[i];
+	if type(b) ~= "table" then return; end;
+	tremove(S.b, i);
+	local H = TRF_SvH();
+	if H and H.s == b.s then TRF_SvClear(b.s, why); end;
+	if why == "ttl" and b.q ~= 1 and (b.n > 0 or b.sl == 1) then
+		if type(S.x) ~= "table" then S.x = {}; end;
+		local have = nil;
+		for j = 1, getn(S.x) do if S.x[j] == b.s then have = 1; end; end;
+		if not have then tinsert(S.x, b.s); end;
+		while getn(S.x) > TRF_SvK().x_max do tremove(S.x, 1); end;
+	end;
+	TRF_SvE("expire", "system", TRF_SvName(b.s), "beacon", i, "pods", b.n, "source", b.src, "slaver", b.sl, "age", TRF_SvLegs() - b.lg,
+		"reason", why);
+end;
+
+-- Gates --------------------------------------------------------------------------
+
+-- 1 when the module runs: TRF, the traffic modules, cfg enable_survivors.
+function TRF_SvOn()
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return nil; end;
+	return TRF_SvOpt("enable_survivors") == 1;
+end;
+
+-- Chapter mode (design 3, 4): "full" from chapter 5, "ch4" in chapter 4 free time with sv_ch4 (witnessed only,
+-- standing only), else nil and "chapter".
+function TRF_SvChMode()
+	local ch = TRF_N("TRF_Chapter");
+	if type(ch) ~= "number" then return nil, "chapter"; end;
+	if ch >= 5 then return "full"; end;
+	if ch == 4 and TRF_SvOpt("sv_ch4") == 1 and TRF_Sv_Free4() then return "ch4"; end;
+	return nil, "chapter";
+end;
+
+-- Placement gate of system idx (S4, S5, 6.7): deny list, strict gate (feature "sv"), system mode (skipped with
+-- nomode 1: the dock gate of 5.6 asks the first two only). Returns nil or the reason.
+function TRF_SvGate(idx, nomode)
+	if type(idx) ~= "number" then return "nomap"; end;
+	local ch = TRF_N("TRF_Chapter");
+	local dw = TRF_SvDenyOf(TRF_SvName(idx), ch, TRF_SvOpt("sv_deny"));
+	if dw then return dw; end;
+	if type(TRF_StrictOk) ~= "function" then return "gate:nosafety"; end;
+	local ok, gw = TRF_StrictOk(idx, "sv");
+	if not ok then return "gate:"..tostring(gw); end;
+	if nomode == 1 then return nil; end;
+	local mode, mw = TRF_N("TRF_SysModeQuiet");
+	if mode ~= "mod" then return "mode:"..tostring(mw); end;
+	return nil;
+end;
+
+-- Objects (6.4, 6.5) -----------------------------------------------------------------
+
+function TRF_SvLbl(s, j)
+	if j == 0 then return "TRF_SVB_"..s; end;
+	return "TRF_SVP_"..s.."_"..j;
+end;
+
+function TRF_SvGlb(s, j)
+	return "TRF_SVH_"..s.."_"..j;
+end;
+
+-- Object j of system s: this visit's handle, else the saved handle global, else the label lookup; nil when
+-- none answers alive.
+function TRF_SvGet(s, j)
+	local H = TRF_SvH();
+	if H and H.s == s and TRF_Sv_Alive(H.o[j]) then return H.o[j]; end;
+	local g = getglobal(TRF_SvGlb(s, j));
+	if TRF_Sv_Alive(g) then
+		-- A saved handle can name another object after a load or a jump that skipped TRF_BeforeJump (as trf_tier
+		-- TRF_TrPkFind): kept only when its label is unknown or ours.
+		local lb = nil;
+		if type(GetObjectLabel) == "function" then lb = call(TRF_Sv_LabelRaw, {g}, "x", TRF_SvNoErr); end;
+		if type(lb) ~= "string" or strlower(lb) == strlower(TRF_SvLbl(s, j)) then return g; end;
+		setglobal(TRF_SvGlb(s, j), nil);
+	end;
+	return TRF_Sv_Find(TRF_SvLbl(s, j));
+end;
+
+function TRF_SvSet(s, j, o)
+	local H = TRF_SvH();
+	if H then H.s = s; H.o[j] = o; end;
+	setglobal(TRF_SvGlb(s, j), o);
+end;
+
+function TRF_SvUnset(s, j)
+	local H = TRF_SvH();
+	if H and H.s == s then H.o[j] = nil; end;
+	setglobal(TRF_SvGlb(s, j), nil);
+end;
+
+-- Position of object j of record b (0 beacon at the point, pods at the 6.4 offsets).
+function TRF_SvPosOf(b, j)
+	if j == 0 then return {x=b.x, y=b.y, z=b.z}; end;
+	local o = TRF_SvOff()[j];
+	return {x=b.x + o.x, y=b.y + o.y, z=b.z + o.z};
+end;
+
+-- Deletes every object of system s (beacon and pods 1..3, found by handle, global or label) and the marker.
+-- Returns the number deleted.
+function TRF_SvClear(s, why)
+	local n = 0;
+	for j = 0, 3 do
+		local o = TRF_SvGet(s, j);
+		if o and TRF_Sv_Del(o) then n = n + 1; end;
+		TRF_SvUnset(s, j);
+	end;
+	local H = TRF_SvH();
+	if H and H.s == s then
+		H.s = nil; H.o = {};
+		-- The pickup's segment start goes with the handles: a record placed later in this visit must not be
+		-- swept from where the mothership was when this one went.
+		local sv = %SV;
+		sv.mp = nil;
+	end;
+	TRF_N("TRF_MarkerClear", "sv");
+	if n > 0 then TRF_SvDE("clear", "system", TRF_SvName(s), "deleted_count", n, "reason", why); end;
+	return n;
+end;
+
+-- Pods 1..n of record b packed to the lowest indices (a picked, lost or failed pod leaves a gap): handles move
+-- down with their labels and globals; n becomes the number of live pods. Returns the new n.
+function TRF_SvPack(b)
+	local s = b.s;
+	local live = {};
+	for j = 1, 3 do
+		local o = nil;
+		if j <= b.n then o = TRF_SvGet(s, j); end;
+		if o then tinsert(live, o); end;
+		TRF_SvUnset(s, j);
+	end;
+	for j = 1, getn(live) do
+		call(TRF_Sv_RelabelRaw, {live[j], TRF_SvLbl(s, j)}, "x", TRF_SvErr);
+		TRF_SvSet(s, j, live[j]);
+	end;
+	b.n = getn(live);
+	return b.n;
+end;
+
+-- Places or reconciles the objects of record i (entry, load, the witnessed loss): found objects are kept,
+-- missing ones made, objects beyond n deleted; the nav marker while pods are left and the beacon stands.
+function TRF_SvPlace(i, why)
+	local S = TRF_SvRec();
+	local b = S.b[i];
+	if type(b) ~= "table" then return nil; end;
+	local K = TRF_SvK();
+	local s = b.s;
+	local H = TRF_SvH();
+	if H and H.s ~= s then H.o = {}; end;
+	if H then H.s = s; end;
+	local found, made, del, fail = 0, 0, 0, 0;
+	for j = 0, 3 do
+		local want = (j == 0 and b.bx ~= 1 and b.n > 0) or (j >= 1 and j <= b.n);
+		local o = TRF_SvGet(s, j);
+		if want then
+			if o then
+				found = found + 1;
+				TRF_SvSet(s, j, o);
+			else
+				local tpl = K.pod;
+				if j == 0 then tpl = K.beacon; end;
+				o = TRF_Sv_Make(tpl, TRF_SvPosOf(b, j), TRF_SvLbl(s, j));
+				if o then made = made + 1; TRF_SvSet(s, j, o); else fail = fail + 1; TRF_SvUnset(s, j); end;
+			end;
+		else
+			if o and TRF_Sv_Del(o) then del = del + 1; end;
+			TRF_SvUnset(s, j);
+		end;
+	end;
+	local n0 = b.n;
+	if fail > 0 then TRF_SvPack(b); end;
+	if b.n > 0 and b.bx ~= 1 then
+		TRF_N("TRF_MarkerAdd", "sv", "TRF_SV_"..s, b.x, b.y, b.z);
+	else
+		TRF_N("TRF_MarkerClear", "sv");
+	end;
+	TRF_SvE("place", "system", TRF_SvName(s), "beacon", i, "found", found, "made", made, "deleted", del, "failed", fail,
+		"pods_before", n0, "pods", b.n, "reason", why);
+	return 1;
+end;
+
+-- Loss (witnessed, src 1) --------------------------------------------------------------
+
+-- Loss point of trader id: a transport (dead ships may still answer), a live ship of the flight, the 1 s
+-- position cache, the record's watchdog position. Returns pos, source.
+function TRF_SvLossPos(id, rec, h)
+	if type(h) == "table" then
+		local l = {h.tp, h.sh};
+		for a = 1, 2 do
+			if type(l[a]) == "table" then
+				for i = 1, getn(l[a]) do
+					local p = TRF_Sv_Pos(l[a][i]);
+					if p then return p, "ship"; end;
+				end;
+			end;
+		end;
+	end;
+	local sv = %SV;
+	if type(sv.pc[id]) == "table" then return sv.pc[id], "cache"; end;
+	if type(rec.lx) == "number" then return {x=rec.lx, y=rec.ly or 0, z=rec.lz or 0}, "watchdog"; end;
+	return nil, "none";
+end;
+
+-- Portals and stations of system idx from the map, as lists of {x, y, z}.
+function TRF_SvSites(idx)
+	local m = TRF_SvMap();
+	local ps, ss = {}, {};
+	if not m or type(m.sys[idx]) ~= "table" then return ps, ss; end;
+	local sy = m.sys[idx];
+	for i = 1, getn(sy.portals or {}) do
+		local p = sy.portals[i];
+		if type(p) == "table" and type(p.x) == "number" then tinsert(ps, {x=p.x, y=p.y or 0, z=p.z or 0}); end;
+	end;
+	for i = 1, getn(sy.st or {}) do
+		local p = sy.st[i];
+		if type(p) == "table" and type(p.x) == "number" then tinsert(ss, {x=p.x, y=p.y or 0, z=p.z or 0}); end;
+	end;
+	return ps, ss;
+end;
+
+-- trf_events hook (TRF_Ev_Kill, before the record is stripped): trader id with record rec and handles h died in
+-- the current system idx; by "player" is the 8.5 fire proxy. Writes a witnessed record and places it 5 s later.
+-- Returns the record index or nil.
+function TRF_Sv_OnLoss(id, rec, h, by, idx)
+	if not TRF_SvOn() or type(rec) ~= "table" or type(idx) ~= "number" then return nil; end;
+	local T, K = TRF_SvTune(), TRF_SvK();
+	local nm = TRF_SvName(idx);
+	local fire = TRF_SvFireOf(by, rec.cnt, rec.pa, TRF_SvGt(), K.fire_win);
+	local help = nil;
+	if type(rec.rdn) == "number" and type(TRF.live) == "table" and type(TRF.live.rd) == "table" then
+		local rd = TRF.live.rd[rec.rdn];
+		if type(rd) == "table" then help = rd.hit; end;
+	end;
+	local tp = nil;
+	if type(h) == "table" and type(h.tp) == "table" then tp = getn(h.tp); end;
+	local pods = TRF_SvPodsOf(tp, rec.tier);
+	local mode, why = TRF_SvChMode();
+	local pos, ps = nil, nil;
+	if mode then
+		if TRF_N("TRF_Ev_Own", rec) or rec.feq == 1 then why = "owner";
+		elseif rec.sev then why = "station_event";
+		elseif rec.fw and TRF_N("TRF_Fr_PodsOk") ~= 1 then why = "freight";
+		elseif fire then why = "fire";
+		else why = TRF_SvHold() or TRF_SvGate(idx); end;
+		if not why and TRF_SvAt(idx) then why = "record"; end;
+		if not why and TRF_SvCdOn(idx, T) then why = "cooldown"; end;
+		if not why and TRF_N("TRF_GovActive") then why = "governor"; end;
+		if not why then
+			pos, ps = TRF_SvLossPos(id, rec, h);
+			if not pos then why = "position"; end;
+		end;
+		if not why then
+			local pl, sl = TRF_SvSites(idx);
+			why = TRF_SvSiteOf(pos, pl, sl, nil, K);
+		end;
+	end;
+	if why then
+		TRF_SvE("loss", "trader_id", id, "fire", TRF_KvB(fire), "help", TRF_KvB(help), "system", nm, "pods", pods, "result", "none",
+			"reason", why);
+		return nil;
+	end;
+	local b = {s=idx, si=0, x=floor(pos.x + 0.5), y=floor(pos.y + 0.5), z=floor(pos.z + 0.5), n=pods, n0=pods, f=0,
+		nm=rec.nm or 0, lg=TRF_SvLegs(), src=1, sl=0, pf=0, pp=0};
+	-- A Wolves freighter's crew (feature 6, trf_freight TRF_Fr_PodsOk): fw = the ship id; its hand-in halves that loss's
+	-- liability (TRF_Fr_CrewHome) and pays no credits (a witnessed record, pf 0).
+	if type(rec.fw) == "number" then b.fw = rec.fw; end;
+	local i = TRF_SvAdd(b, T);
+	if not i then
+		TRF_SvE("loss", "trader_id", id, "fire", TRF_KvB(fire), "help", TRF_KvB(help), "system", nm, "pods", pods, "result", "none", "reason", "quest_cap");
+		return nil;
+	end;
+	TRF_SvCdSet(idx, T);
+	-- The due list (32 entries) can be full in a busy system: the 1 s step then places it as a held record.
+	if not TRF_N("TRF_Due", K.loss_dt, "TRF_Sv_LossDue", idx) then TRF_SvHoldSet(idx, "svloss"); end;
+	TRF_SvE("loss", "trader_id", id, "fire", "false", "help", TRF_KvB(help), "system", nm, "pods", pods, "position_source", ps,
+		"mode", mode, "result", "beacon", "beacon", i);
+	return i;
+end;
+
+-- Due call 5 s after a witnessed loss: the loss line and the objects (still this system and gate).
+function TRF_Sv_LossDue(idx)
+	if not TRF_SvOn() or TRF_N("TRF_CurIdx") ~= idx then return; end;
+	local i = TRF_SvAt(idx);
+	if not i then return; end;
+	local why = TRF_SvGate(idx);
+	if why then TRF_SvE("place", "system", TRF_SvName(idx), "beacon", i, "result", "skipped", "reason", why); return; end;
+	why = TRF_SvHold();
+	if why then
+		TRF_SvHoldSet(idx, "svloss");
+		TRF_SvE("place", "system", TRF_SvName(idx), "beacon", i, "result", "skipped", "reason", why);
+		return;
+	end;
+	TRF_Sv_Say(TRF_SvTxt("svloss"), 8);
+	TRF_SvPlace(i, "loss");
+end;
+
+-- Every 1 s: the placement held by S2/S3 in this visit (TRF_SvHoldSet), once the hold ends and the gate passes.
+function TRF_SvRetry()
+	local sv = %SV;
+	local p = sv.hp;
+	if type(p) ~= "table" then return; end;
+	if not TRF_SvOn() or TRF_N("TRF_CurIdx") ~= p.s then sv.hp = nil; return; end;
+	if TRF_SvHold() then return; end;
+	sv.hp = nil;
+	local i, b = TRF_SvAt(p.s);
+	if not b then return; end;
+	local why = TRF_SvGate(p.s);
+	if why then TRF_SvE("place", "system", TRF_SvName(p.s), "beacon", i, "result", "skipped", "reason", why); return; end;
+	if p.ln and b.n > 0 then TRF_Sv_Say(TRF_SvTxt(p.ln), 8); end;
+	TRF_SvPlace(i, "hold");
+end;
+
+-- Seeded beacon on entry (src 2) ----------------------------------------------------------
+
+-- trf_plumb seed provider (prio 550, after the equipment convoy, before the staged raid): records whether the
+-- entry plays a chased record, a sweep, a carrier raid or an equipment convoy (TDR 6.5 items 1-3, c.nost). It adds
+-- no flight, so it never sets c.noseed or c.done and never takes the scripted-event slot.
+function TRF_Sv_SeedH(c)
+	local sv = %SV;
+	if type(c) ~= "table" then return; end;
+	if c.nost == 1 then
+		local w = c.noseed;
+		if not w and (c.nh or 0) > 0 then w = "chase"; end;
+		sv.pv = w or "carrier";
+	else
+		sv.pv = "ok";
+	end;
+end;
+
+-- Registered nav points of the system's trader contacts (S6) that pass the site rule with the mothership
+-- distance, in contact and point order.
+function TRF_SvPoints(idx, K)
+	local o = {};
+	local l = TRF_N("TRF_GnContacts");
+	if type(l) ~= "table" then return o; end;
+	local pl, sl = TRF_SvSites(idx);
+	local ms = TRF_Sv_MsPos();
+	for i = 1, getn(l) do
+		local c = l[i];
+		if TRF_N("TRF_GnIsTrader", c) and type(c[4]) == "table" then
+			for j = 1, getn(c[4]) do
+				local v = c[4][j];
+				if (type(v) == "table" or type(v) == "userdata") and type(v.x) == "number" then
+					local p = {x=v.x, y=v.y, z=v.z};
+					if not TRF_SvSiteOf(p, pl, sl, ms, K) then tinsert(o, p); end;
+				end;
+			end;
+		end;
+	end;
+	return o;
+end;
+
+-- Seed plan of entry idx (6.4). Returns the record index or nil, the reason.
+function TRF_SvSeedPlan(idx, nm, mode)
+	local sv = %SV;
+	local S = TRF_SvRec();
+	local T, K = TRF_SvTune(), TRF_SvK();
+	local legs = TRF_SvLegs();
+	local slot = TRF_N("TRF_RgOf", idx);
+	local s = {on=TRF_SvOpt("sv_seeded"), mode=mode, pv=sv.pv, rec=TRF_SvAt(idx), cd=TRF_SvCdOn(idx, T),
+		slot=slot, used=0, cyc=T.sv_seed_cyc, dis=TRF_N("TRF_Dis", idx) or 0, sdis=T.sv_seed_dis, ph=-1,
+		roll=TRF_SvRollOf(idx, legs, S.sd), chance=T.sv_seed_chance};
+	-- The strict gate only once the cheap rules pass (it counts and logs its denials).
+	if s.on == 1 and s.mode == "full" and s.pv == "ok" then s.gate = TRF_SvGate(idx); end;
+	if type(slot) == "number" then
+		s.used = S.r[slot] or 0;
+		s.ph = TRF_N("TRF_Phase", slot) or 0;
+	end;
+	local why = TRF_SvSeedOf(s);
+	local pts = nil;
+	if not why then
+		pts = TRF_SvPoints(idx, K);
+		if getn(pts) == 0 then why = "point"; end;
+	end;
+	local lv = TRF_SvDE;
+	if why == nil or why == "budget" or why == "roll" or why == "point" then lv = TRF_SvE; end;
+	if why then
+		lv("seed", "system", nm, "roll", s.roll, "chance", s.chance, "region", slot, "budget_used", s.used, "budget", s.cyc,
+			"result", "none", "reason", why);
+		return nil, why;
+	end;
+	local p = pts[1 + mod(s.roll, getn(pts))];
+	local N = TRF_SvBaseN(idx);
+	local cap = 30000;
+	local rt = TRF_N("TRF_RgTune");
+	if type(rt) == "table" and type(rt.pay_cap) == "number" then cap = rt.pay_cap; end;
+	local tmax = 1;
+	local bc = TRF_N("TRF_BandCaps", idx);
+	if type(bc) == "table" and type(bc.tmax) == "number" then tmax = bc.tmax; end;
+	local pods = 3;
+	if tmax <= 2 then pods = 1 + floor(TRF_SvRollOf(idx, legs + 3, S.sd) / 50); end;
+	local b = {s=idx, si=0, x=floor(p.x + 0.5), y=floor(p.y + 0.5), z=floor(p.z + 0.5), n=pods, n0=pods, f=0, nm=0, lg=legs,
+		src=2, sl=0, pf=TRF_SvPayOf(N, T.k_pod, cap), pp=TRF_SvPayOf(N, T.k_pod_pir, cap)};
+	local i = TRF_SvAdd(b, T);
+	if not i then
+		TRF_SvE("seed", "system", nm, "roll", s.roll, "chance", s.chance, "region", slot, "result", "none", "reason", "quest_cap");
+		return nil, "quest_cap";
+	end;
+	S.r[slot] = s.used + 1;
+	TRF_SvCdSet(idx, T);
+	TRF_SvE("seed", "system", nm, "roll", s.roll, "chance", s.chance, "region", slot, "budget_used", S.r[slot], "budget", s.cyc,
+		"pods", pods, "pay", b.pf, "pay_pirate", b.pp, "result", "beacon", "beacon", i);
+	return i;
+end;
+
+-- Quest records (trf_wq) ------------------------------------------------------------------
+
+-- "record" while a quest record (q 1) with pods left is in TRF.sv.b, "carry" while a quest crew is aboard (c.q 1), else
+-- nil. An empty quest record (its pod destroyed) does not count: TRF_Sv_QuestSeed replaces it.
+function TRF_Sv_QHas()
+	if type(TRF) ~= "table" or type(TRF.sv) ~= "table" then return nil; end;
+	local S = TRF.sv;
+	if type(S.b) == "table" then
+		for i = 1, getn(S.b) do
+			local b = S.b[i];
+			if type(b) == "table" and b.q == 1 and type(b.n) == "number" and b.n > 0 then return "record"; end;
+		end;
+	end;
+	if type(S.c) == "table" and S.c.q == 1 then return "carry"; end;
+	return nil;
+end;
+
+-- Public (trf_wq steps 3-4): 1 while a quest crew is aboard (c.q 1), 0 without one, nil while the module is off (cfg
+-- enable_survivors 0). Unlike TRF_Sv_QHas it ignores the quest records.
+function TRF_Sv_QCarry()
+	if not TRF_SvOn() then return nil; end;
+	if type(TRF.sv) == "table" and type(TRF.sv.c) == "table" and TRF.sv.c.q == 1 then return 1; end;
+	return 0;
+end;
+
+-- Public (trf_wq step 3): pods left of the quest record of system idx (0 when its pods are gone), or nil without one.
+function TRF_Sv_QAt(idx)
+	local i, b = TRF_SvAt(idx);
+	if b and b.q == 1 and type(b.n) == "number" then return b.n; end;
+	return nil;
+end;
+
+-- Public (trf_wq step 3, a crew partly aboard goes home): the quest record of system idx is dropped (why in the expire
+-- line), its objects with it when placed. 1 when one was dropped.
+function TRF_Sv_QuestDrop(idx, why)
+	local i, b = TRF_SvAt(idx);
+	if not b or b.q ~= 1 then return nil; end;
+	TRF_SvDrop(i, why or "quest");
+	return 1;
+end;
+
+-- Fallback point of a quest record when no contact point passes the site rule: K.q_off from the entry portal (the
+-- map portal nearest the mothership, else the first) in one of 8 directions of the x-z plane at 45 degree steps from
+-- the direction toward the system centre, starting k0 (0..7) steps on (the fixed roll, so a record made again after an
+-- expiry can stand elsewhere); the first point that passes the site rule (portal, station, mothership), else the first
+-- point. Returns the point and its direction (0: none passed), or nil without a map portal.
+function TRF_SvPortalPt(idx, K, k0)
+	local pl, sl = TRF_SvSites(idx);
+	if getn(pl) == 0 then return nil; end;
+	-- The mothership's position belongs to the current system only.
+	local ms = nil;
+	if TRF_N("TRF_CurIdx") == idx then ms = TRF_Sv_MsPos(); end;
+	local e, ed = pl[1], nil;
+	if ms then
+		for i = 1, getn(pl) do
+			local d = TRF_SvDist(ms, pl[i]);
+			if d and (ed == nil or d < ed) then e = pl[i]; ed = d; end;
+		end;
+	end;
+	local ux, uz = -e.x, -e.z;
+	local l = sqrt(ux * ux + uz * uz);
+	if l < 1 then ux = 1; uz = 0; else ux = ux / l; uz = uz / l; end;
+	local dl = TRF_SvQDir();
+	local first = nil;
+	for kk = 0, getn(dl) - 1 do
+		local k = 1 + mod(floor(k0 or 0) + kk, getn(dl));
+		local c, s = dl[k][1], dl[k][2];
+		local dx, dz = ux * c - uz * s, ux * s + uz * c;
+		local p = {x=e.x + K.q_off * dx, y=e.y, z=e.z + K.q_off * dz};
+		if not first then first = p; end;
+		if not TRF_SvSiteOf(p, pl, sl, ms, K) then return p, k; end;
+	end;
+	return first, 0;
+end;
+
+-- Public (trf_wq): a quest record in system idx: source src (1..3, default 2), pay per survivor pf (default 0), n pods
+-- (1..3, default 1), q = 1. No roll, region budget, cooldown or event slot. The point: pt ({x, y, z}, the caller's point
+-- as given: step 3's hold at XB-13), else a registered contact point that
+-- passes the site rule (TRF_SvPoints, the current system only, picked by the fixed roll), else TRF_SvPortalPt. An
+-- ordinary record of idx, or an empty quest record (its pod destroyed), is dropped first (one record per system; a
+-- quest record with pods left refuses, "record"); TRF_SvAdd drops the oldest ordinary record at sv_max. In the current
+-- system the record is placed at once with the seeded-beacon line (none when it replaced a record with pods: that one
+-- had its line; held under S2/S3 as on entry). Returns the record index and the point source ("contact", "portal"), or
+-- nil and the reason ("given" for pt).
+function TRF_Sv_QuestSeed(idx, src, pf, n, pt)
+	if not TRF_SvOn() then return nil, "off"; end;
+	if type(idx) ~= "number" then return nil, "nomap"; end;
+	local S = TRF_SvRec();
+	local T, K = TRF_SvTune(), TRF_SvK();
+	local nm = TRF_SvName(idx);
+	local cur = TRF_N("TRF_CurIdx");
+	local nomode = nil;
+	if cur ~= idx then nomode = 1; end;
+	local why = TRF_SvGate(idx, nomode);
+	local i0, b0 = TRF_SvAt(idx);
+	if not why and b0 and b0.q == 1 and b0.n > 0 then why = "record"; end;
+	local p, ps = nil, "contact";
+	if not why and type(pt) == "table" and type(pt.x) == "number" and type(pt.y) == "number" and type(pt.z) == "number" then
+		p = pt;
+		ps = "given";
+	elseif not why then
+		-- Contact points are the current system's (TRF_GnContacts): another system gets the portal point.
+		local pts = {};
+		if cur == idx then pts = TRF_SvPoints(idx, K); end;
+		local roll = TRF_SvRollOf(idx, TRF_SvLegs(), S.sd);
+		if getn(pts) > 0 then
+			p = pts[1 + mod(roll, getn(pts))];
+		else
+			ps = "portal";
+			p = TRF_SvPortalPt(idx, K, mod(roll, 8));
+			if not p then why = "point"; end;
+		end;
+	end;
+	if why then
+		TRF_SvE("seed", "system", nm, "kind", "quest", "result", "none", "reason", why);
+		return nil, why;
+	end;
+	if b0 then TRF_SvDrop(i0, "quest"); end;
+	if type(src) ~= "number" or src < 1 or src > 3 then src = 2; end;
+	if type(pf) ~= "number" or pf < 0 then pf = 0; end;
+	if type(n) ~= "number" then n = 1; end;
+	n = TRF_SvCl(floor(n), 1, 3);
+	local b = {s=idx, si=0, x=floor(p.x + 0.5), y=floor(p.y + 0.5), z=floor(p.z + 0.5), n=n, n0=n, f=0, nm=0, lg=TRF_SvLegs(),
+		src=floor(src), sl=0, pf=floor(min(pf, 30000)), pp=0, q=1};
+	local i = TRF_SvAdd(b, T);
+	if not i then
+		TRF_SvE("seed", "system", nm, "kind", "quest", "result", "none", "reason", "quest_cap");
+		return nil, "quest_cap";
+	end;
+	TRF_SvE("seed", "system", nm, "kind", "quest", "source", b.src, "pods", n, "pay", b.pf, "point", ps, "result", "beacon", "beacon", i);
+	if cur == idx then
+		local hold = TRF_SvHold();
+		if hold then
+			TRF_SvHoldSet(idx, "svseed");
+			TRF_SvE("place", "system", nm, "beacon", i, "result", "skipped", "reason", hold);
+		else
+			TRF_SvPlace(i, "quest");
+			if not (b0 and b0.n > 0) then TRF_SvArr(TRF_SvTxt("svseed")); end;
+		end;
+	end;
+	return i, ps;
+end;
+
+-- Expiry (6.4): records older than sv_ttl legs; carried survivors older than sv_carry legs (lost, no pay), except a
+-- quest crew (c.q 1, trf_wq: its hand-in is a quest step). A quest record expires as any record (trf_wq seeds it
+-- again). Returns 1 when carried survivors were lost.
+function TRF_SvExpire(carried)
+	local S = TRF_SvRec();
+	local T = TRF_SvTune();
+	local legs = TRF_SvLegs();
+	for i = getn(S.b), 1, -1 do
+		local b = S.b[i];
+		if type(b) == "table" and legs - b.lg > T.sv_ttl then TRF_SvDrop(i, "ttl"); end;
+	end;
+	local c = S.c;
+	if carried and type(c) == "table" and c.q ~= 1 and legs - c.lg > T.sv_carry then
+		S.st.lost = min(9999, S.st.lost + c.n);
+		TRF_SvE("expire", "kind", "carried", "carried", c.n, "credits", c.cr, "age", legs - c.lg, "reason", "carry");
+		S.c = nil;
+		return 1;
+	end;
+	return nil;
+end;
+
+-- Queues an entry line: trf_plumb's arrival queue (00 order: the beacon line is the first mod line), else a due
+-- line 8 s after the entry.
+function TRF_SvArr(text)
+	if type(TRF_ArrivalLine) == "function" then return TRF_ArrivalLine("survive", text); end;
+	return TRF_N("TRF_Due", 8, "TRF_Sv_SayDue", text);
+end;
+
+function TRF_Sv_SayDue(text)
+	TRF_Sv_Say(text, 8);
+end;
+
+-- Loader callbacks -------------------------------------------------------------------
+
+-- Activation (entry only, after trf_gen's entry plan and trf_ui): expiry, the seed, the placement of this system's
+-- record (reconcile by handle and label as on load: story and galaxy-map jumps may bypass TRF_BeforeJump), the
+-- entry lines (beacon, silent, lost survivors).
+function TRF_Sv_OnActivate()
+	local sv = %SV;
+	if not TRF_SvOn() then return; end;
+	local idx = TRF_N("TRF_CurIdx");
+	if type(idx) ~= "number" then return; end;
+	local S = TRF_SvRec();
+	local nm = TRF_SvName(idx);
+	sv.hp = nil;
+	-- Handle globals of other systems are left over from a jump that skipped TRF_BeforeJump.
+	for k = 1, getn(S.b) do
+		local o = S.b[k];
+		if type(o) == "table" and o.s ~= idx then for j = 0, 3 do setglobal(TRF_SvGlb(o.s, j), nil); end; end;
+	end;
+	local lost = TRF_SvExpire(1);
+	local mode, mw = TRF_SvChMode();
+	local si = call(TRF_SvSeedPlan, {idx, nm, mode}, "x", TRF_SvErr);
+	local i, b = TRF_SvAt(idx);
+	local gate = nil;
+	if b then gate = TRF_SvGate(idx); end;
+	local placed, hold = nil, nil;
+	if b and not gate then hold = TRF_SvHold(); end;
+	if b and not gate and not hold then
+		placed = TRF_SvPlace(i, "enter");
+	elseif b and hold then
+		TRF_SvHoldSet(idx, "svseed");
+		TRF_SvE("place", "system", nm, "beacon", i, "result", "skipped", "reason", hold);
+	elseif b then
+		TRF_SvClear(idx, "gate");
+		TRF_SvE("place", "system", nm, "beacon", i, "result", "skipped", "reason", gate);
+	else
+		TRF_SvClear(idx, "stray");
+	end;
+	local lines = {};
+	if placed and b.n > 0 then tinsert(lines, "svseed"); end;
+	if type(S.x) == "table" then
+		for j = getn(S.x), 1, -1 do
+			if S.x[j] == idx then
+				tremove(S.x, j);
+				if not b then tinsert(lines, "svsilent"); end;
+			end;
+		end;
+		if getn(S.x) == 0 then S.x = nil; end;
+	end;
+	if lost then tinsert(lines, "svlost"); end;
+	for j = 1, getn(lines) do TRF_SvArr(TRF_SvTxt(lines[j])); end;
+	local ln = nil;
+	for j = 1, getn(lines) do if ln then ln = ln..","..lines[j]; else ln = lines[j]; end; end;
+	TRF_SvE("enter", "system", nm, "mode", mode or mw, "seed_plan", sv.pv or "plan", "beacon", i, "seeded", TRF_KvB(si and 1),
+		"pods", b and b.n, "lines", ln, "beacon_count", getn(S.b));
+end;
+
+-- Load inside a system: the saved record's objects are reconciled (found kept, missing made, extra deleted).
+function TRF_Sv_OnLoad()
+	if not TRF_SvOn() then return; end;
+	local idx = TRF_N("TRF_CurIdx");
+	if type(idx) ~= "number" or type(TRF.sv) ~= "table" then return; end;
+	local i, b = TRF_SvAt(idx);
+	local nm = TRF_SvName(idx);
+	if not b then
+		TRF_SvClear(idx, "stray");
+		TRF_SvE("load", "system", nm, "beacon", nil);
+		return;
+	end;
+	local gate = TRF_SvGate(idx);
+	if gate then
+		TRF_SvClear(idx, "gate");
+		TRF_SvE("load", "system", nm, "beacon", i, "result", "skipped", "reason", gate);
+		return;
+	end;
+	local hold = TRF_SvHold();
+	if hold then
+		TRF_SvHoldSet(idx, nil);
+		TRF_SvE("load", "system", nm, "beacon", i, "result", "skipped", "reason", hold);
+		return;
+	end;
+	TRF_SvPlace(i, "load");
+	TRF_SvE("load", "system", nm, "beacon", i, "pods", b.n);
+end;
+
+-- Before every jump: beacon, pods and marker deleted; the record stays (6.5).
+function TRF_Sv_BeforeJump()
+	local sv = %SV;
+	sv.hp = nil;
+	local H = TRF_SvH();
+	if H and type(H.s) == "number" then
+		local s = H.s;
+		local n = TRF_SvClear(s, "jump");
+		TRF_SvDE("jump", "system", TRF_SvName(s), "deleted_count", n);
+	end;
+end;
+
+-- Visit: pickup, losses, position cache -------------------------------------------------
+
+-- Carried survivors after picking one pod of record b: nil when there is no room (sv_carry_max, two loss systems).
+-- An ordinary crew merged into a quest carry leaves c.q set (its pay adds as usual).
+function TRF_SvRoom(S, b, T)
+	local c = S.c;
+	if type(c) ~= "table" then return 1; end;
+	if c.n >= T.sv_carry_max then return nil; end;
+	if c.s1 == b.s or c.s2 == b.s or c.s2 == nil then return 1; end;
+	return nil;
+end;
+
+-- Pod j of record i picked up at distance d.
+function TRF_SvPick(i, b, j, d, T)
+	local sv = %SV;
+	local S = TRF_SvRec();
+	if not TRF_SvRoom(S, b, T) then
+		if not sv.ful then
+			sv.ful = 1;
+			TRF_Sv_Say(TRF_SvTxt("svfull"), 6);
+			local cn = 0;
+			if type(S.c) == "table" then cn = S.c.n; end;
+			TRF_SvE("full", "system", TRF_SvName(b.s), "beacon", i, "carried", cn, "carry_max", T.sv_carry_max);
+		end;
+		return nil;
+	end;
+	local o = TRF_SvGet(b.s, j);
+	if o then TRF_Sv_Del(o); end;
+	TRF_SvUnset(b.s, j);
+	TRF_SvPack(b);
+	local c = S.c;
+	if type(c) ~= "table" then
+		c = {n=0, cr=0, pc=0, s1=b.s, f=b.f, lg=TRF_SvLegs()};
+		S.c = c;
+	end;
+	if c.s1 ~= b.s and c.s2 == nil then c.s2 = b.s; end;
+	c.n = c.n + 1;
+	c.cr = c.cr + b.pf;
+	c.pc = c.pc + b.pp;
+	if b.q == 1 then c.q = 1; end;
+	if type(b.fw) == "number" then c.fw = b.fw; end;
+	TRF_Sv_Say(TRF_SvTxt("svpick"), 5);
+	TRF_SvE("pick", "system", TRF_SvName(b.s), "beacon", i, "pod", j, "distance", TRF_SvF(d), "left", b.n, "carried", c.n,
+		"credits", c.cr);
+	if b.n == 0 then
+		TRF_Sv_Say(TRF_SvTxt("svpickall"), 6);
+		TRF_N("TRF_MarkerClear", "sv");
+	end;
+	if b.q == 1 then TRF_P("TRF_Wq_OnPick", b); end;
+	return 1;
+end;
+
+-- Every TRF_OnTick (250 ms real): the near line at sv_near_r, the swept-segment pickup at sv_pick_r (the segment
+-- between the mothership's previous and current position, so 8x cannot skip a pod), dead pods and beacon.
+-- Paused while __disableAction or __sys_SOS is set and under trf_safety's suppression (the wind-down); not by
+-- GetPlayerQuestState (unreliable, deny list only), so a beacon the strict gate placed stays collectable.
+function TRF_Sv_Tick(dt)
+	local sv = %SV;
+	if type(TRF) ~= "table" or type(TRF.sv) ~= "table" then return; end;
+	local H = TRF_SvH();
+	if not H or type(H.s) ~= "number" then return; end;
+	local i, b = TRF_SvAt(H.s);
+	if not b then return; end;
+	local p = TRF_Sv_MsPos();
+	if not p then return; end;
+	local a = sv.mp or p;
+	sv.mp = p;
+	if TRF_SvHold() then return; end;
+	local T = TRF_SvTune();
+	if b.bx ~= 1 and type(H.o[0]) ~= "nil" and not TRF_Sv_Alive(H.o[0]) then
+		b.bx = 1;
+		TRF_SvUnset(b.s, 0);
+		TRF_N("TRF_MarkerClear", "sv");
+		TRF_SvE("beacon_lost", "system", TRF_SvName(b.s), "beacon", i, "pods", b.n);
+	end;
+	if b.n <= 0 then return; end;
+	if not sv.nr and T.sv_near_r > 0 then
+		local d = TRF_SvDist(p, b);
+		if d and d <= T.sv_near_r then
+			sv.nr = 1;
+			TRF_Sv_Say(TRF_SvTxt("svnear"), 8);
+			TRF_SvDE("near", "system", TRF_SvName(b.s), "beacon", i, "distance", TRF_SvF(d));
+		end;
+	end;
+	for j = b.n, 1, -1 do
+		if j <= b.n then
+			local o = H.o[j];
+			if o ~= nil and not TRF_Sv_Alive(o) then
+				TRF_SvUnset(b.s, j);
+				TRF_SvPack(b);
+				local S = TRF_SvRec();
+				S.st.lost = min(9999, S.st.lost + 1);
+				TRF_SvE("pod_lost", "system", TRF_SvName(b.s), "beacon", i, "pod", j, "left", b.n);
+				if b.n == 0 then TRF_N("TRF_MarkerClear", "sv"); end;
+			elseif o ~= nil then
+				local q = TRF_Sv_Pos(o);
+				if q then
+					local d = TRF_SvSegOf(q, a, p);
+					if d <= T.sv_pick_r then TRF_SvPick(i, b, j, d, T); end;
+				end;
+			end;
+		end;
+	end;
+end;
+
+-- Every 1 s (traffic.script): the position cache of live traders (loss point fallback, 6.3) and the expiry of this
+-- system's record while the player is in it.
+function TRF_Sv_Step()
+	local sv = %SV;
+	TRF_SvRetry();
+	if type(TRF) ~= "table" or type(TRF.live) ~= "table" or type(TRF.live.tr) ~= "table" then return; end;
+	local Ht = TRF_N("TRF_H");
+	if type(Ht) == "table" and type(Ht.tr) == "table" then
+		for id, r in TRF.live.tr do
+			if type(r) == "table" and r.st ~= "gone" and type(Ht.tr[id]) == "table" and type(Ht.tr[id].sh) == "table" then
+				local l = Ht.tr[id].sh;
+				for j = 1, getn(l) do
+					local p = TRF_Sv_Pos(l[j]);
+					if p and TRF_Sv_Alive(l[j]) then sv.pc[id] = p; break; end;
+				end;
+			end;
+		end;
+	end;
+	local H = TRF_SvH();
+	if H and type(H.s) == "number" and type(TRF.sv) == "table" then
+		local i, b = TRF_SvAt(H.s);
+		if b and TRF_SvLegs() - b.lg > TRF_SvT("sv_ttl") then TRF_SvDrop(i, "ttl"); end;
+	end;
+end;
+
+-- Region tick (trf_region TRF_RegionTick, leg L): the budget of a region entering Raids is reset, the off-screen
+-- slaver roll (counters only, step 1) for credited records outside the current system, then the expiry.
+function TRF_Sv_RegionTick(L)
+	if not TRF_SvOn() or type(TRF.sv) ~= "table" or type(L) ~= "number" then return; end;
+	local S = TRF_SvRec();
+	local T = TRF_SvTune();
+	if type(TRF.rg) == "table" then
+		for slot, r in TRF.rg do
+			if type(r) == "table" and r.ph == 3 and r.pt == L and S.r[slot] then
+				TRF_SvE("budget_reset", "region", slot, "leg", L, "budget_used", S.r[slot]);
+				S.r[slot] = nil;
+			end;
+		end;
+	end;
+	local cur = TRF_N("TRF_CurIdx");
+	for i = 1, getn(S.b) do
+		local b = S.b[i];
+		if type(b) == "table" and b.s ~= cur and b.src >= 2 and b.sl == 0 and b.n > 0 and b.q ~= 1 and TRF_SvOpt("sv_slavers") == 1 then
+			local te = TRF_N("TRF_EffTier", b.s) or 1;
+			local roll = TRF_SvRollOf(b.s, L + 13, S.sd);
+			local res = "kept";
+			if te >= 2 and roll < T.sv_slave_off then
+				res = "taken";
+				local n = b.n;
+				b.n = 0;
+				b.sl = 1;
+				S.st.lost = min(9999, S.st.lost + n);
+				local slot = TRF_N("TRF_RgOf", b.s);
+				if type(slot) == "number" then TRF_N("TRF_ClanAdd", slot, 1, "sv slavers"); end;
+				S.rm = {s=b.s, k=1, lg=TRF_SvLegs()};
+			end;
+			local lv = TRF_SvDE;
+			if res == "taken" then lv = TRF_SvE; end;
+			lv("slaver_roll", "system", TRF_SvName(b.s), "beacon", i, "tier", te, "roll", roll, "chance", T.sv_slave_off,
+				"leg", L, "result", res);
+		end;
+	end;
+	TRF_SvExpire(nil);
+end;
+
+-- Hand-in (trade dock line, order 30) -------------------------------------------------
+
+-- trf_plumb trade dock line (00 order: deliveries 20, pods 30, recorder 40). Not run under __disableAction or
+-- __sys_SOS (the dispatcher skips it). Returns the lines or nil.
+function TRF_Sv_DockLine(kind, param)
+	if not TRF_SvOn() or type(TRF.sv) ~= "table" then return nil; end;
+	return call(TRF_SvHand, {}, "x", TRF_SvErr);
+end;
+
+-- Hand-in at an FTU trade dock of the current system (5.1, 4 feed table). Credits for credited survivors (sum
+-- capped at pay_cap by TRF_Pay); help +1 (+2 in Recovery), heat -1 at most once per sv_heat_cd legs, pro +1 in
+-- each loss system (clamped to the phase target and pro_cap), dockmaster deed +1, st.res. A denied dock system
+-- (6.7, strict gate) pays credits with one line and nothing else; witnessed survivors then stay aboard, and so does a
+-- quest crew (c.q 1, its FTU credits paid and cleared). trf_wq's TRF_Wq_OnHand reads a full hand-in before the carry goes.
+function TRF_SvHand()
+	local S = TRF_SvRec();
+	local idx = TRF_N("TRF_CurIdx");
+	local out = {};
+	if TRF_SvExpire(1) then tinsert(out, TRF_SvTxt("svlost")); return out; end;
+	local c = S.c;
+	if type(c) ~= "table" or c.n <= 0 or type(idx) ~= "number" then return nil; end;
+	local nm = TRF_SvName(idx);
+	local T = TRF_SvTune();
+	local legs = TRF_SvLegs();
+	local gate = TRF_SvGate(idx, 1);
+	if gate and c.cr <= 0 then
+		TRF_SvE("hand", "kind", "ftu", "system", nm, "carried", c.n, "result", "skipped", "reason", gate);
+		return nil;
+	end;
+	local pay = 0;
+	if c.cr > 0 then
+		pay = TRF_N("TRF_Pay", c.cr, "sv") or 0;
+		if pay > 0 then tinsert(out, TRF_SvTxt("svpaid", pay)); end;
+	end;
+	if gate then
+		TRF_SvE("hand", "kind", "ftu", "system", nm, "carried", c.n, "pay", pay, "result", "credits_only", "reason", gate, "quest_kept",
+			TRF_KvB(c.q == 1));
+		if c.q == 1 then c.cr = 0; else S.c = nil; end;
+		return out;
+	end;
+	local std = TRF.std or {};
+	local h0, e0 = std.help, std.heat;
+	local slot = TRF_N("TRF_RgOf", idx);
+	local dh = 1;
+	if type(slot) == "number" and TRF_N("TRF_Phase", slot) == 5 then dh = 2; end;
+	TRF_N("TRF_AddHelp", dh, "sv hand");
+	local hr = "cooldown";
+	if type(std.heat) == "number" and std.heat > 0 and (type(S.hl) ~= "number" or legs - S.hl >= T.sv_heat_cd) then
+		TRF_N("TRF_AddHeat", -1, "sv hand");
+		S.hl = legs;
+		hr = "applied";
+	elseif type(std.heat) ~= "number" or std.heat <= 0 then
+		hr = "zero";
+	end;
+	local ps = nil;
+	local sl = {c.s1, c.s2};
+	for j = 1, 2 do
+		local s = sl[j];
+		if type(s) == "number" then
+			local p0 = TRF_N("TRF_Pro", s) or 0;
+			local lim = TRF_N("TRF_ProCap", s) or 9;
+			local rs = TRF_N("TRF_RgOf", s);
+			if type(rs) == "number" and TRF_N("TRF_Opt", "cycle") ~= 0 then
+				local tp = TRF_N("TRF_PhaseTarget", rs);
+				if type(tp) == "number" then lim = min(lim, tp); end;
+			end;
+			local p1 = p0;
+			if p0 < lim then p1 = TRF_N("TRF_ProAdd", s, 1, "sv hand") or p0; end;
+			local e = TRF_SvName(s)..":"..p0.."->"..p1;
+			if ps then ps = ps..","..e; else ps = e; end;
+		end;
+	end;
+	TRF_N("TRF_Stn_Deed", idx, 1, "sv hand", TRF_Sv_MsPos());
+	S.st.res = min(9999, S.st.res + c.n);
+	local k = "svthanksw";
+	if c.cr > 0 then k = "svthanks"..(1 + floor(TRF_SvRollOf(idx, legs, S.sd) / 34)); end;
+	tinsert(out, TRF_SvTxt(k));
+	S.rm = {s=c.s1, k=2, lg=legs};
+	TRF_SvE("hand", "kind", "ftu", "system", nm, "carried", c.n, "pay", pay, "help_before", h0, "help", std.help, "heat_before", e0,
+		"heat", std.heat, "heat_rule", hr, "prosperity", ps, "result", "paid");
+	-- Step 2 hook points: the feature 5 veteran record (witnessed, nm > 0) and the feature 14 goal count read
+	-- this hand-in; the pirate-dock sale (TRF_Sv_DockPir) and the faction patrol hand-in (TRF_Sv_DockPatrol)
+	-- register their own dispatcher entries.
+	local ql = TRF_P("TRF_Wq_OnHand", idx, c);
+	if type(ql) == "string" then tinsert(out, ql); end;
+	-- A Wolves freighter's crew aboard (c.fw, feature 6): trf_freight halves that loss's liability.
+	if type(c.fw) == "number" then
+		local fl = TRF_P("TRF_Fr_CrewHome", c.fw);
+		if type(fl) == "string" then tinsert(out, fl); end;
+	end;
+	S.c = nil;
+	return out;
+end;
+
+-- Rumour (trf_hail "Where are you headed?", 8.2) ------------------------------------------
+
+-- A true rumour for system idx, or nil: before chapter 5 a lost transport near a system with dis >= 3 (creates
+-- nothing; skipped for only "rec", so trf_hail asks it after the rest of its pool); then, within sv_rum legs and
+-- 3 jumps, crews taken by slavers or rescued by the Wolves.
+function TRF_Sv_Rumour(idx, only)
+	if not TRF_SvOn() or type(idx) ~= "number" then return nil; end;
+	local ch = TRF_N("TRF_Chapter");
+	if type(ch) == "number" and ch < 5 then
+		if only == "rec" then return nil; end;
+		local near = TRF_N("TRF_HlNear", idx, 2);
+		if type(near) ~= "table" then near = {}; near[idx] = 0; end;
+		local ks = {};
+		for k, v in near do if type(k) == "number" then tinsert(ks, k); end; end;
+		sort(ks);
+		for i = 1, getn(ks) do
+			if (TRF_N("TRF_Dis", ks[i]) or 0) >= 3 then return TRF_SvTxt("svrumlost", TRF_N("TRF_SysName", ks[i])); end;
+		end;
+		return nil;
+	end;
+	if type(TRF.sv) ~= "table" or type(TRF.sv.rm) ~= "table" then return nil; end;
+	local rm = TRF.sv.rm;
+	if type(rm.s) ~= "number" or type(rm.lg) ~= "number" or TRF_SvLegs() - rm.lg > TRF_SvK().rum_legs then return nil; end;
+	local near = TRF_N("TRF_HlNear", idx, 3);
+	if type(near) == "table" and near[rm.s] == nil then return nil; end;
+	local k = "svrumsaved";
+	if rm.k == 1 then k = "svrumtaken"; end;
+	TRF_SvDE("rumour", "system", TRF_SvName(idx), "rumour_system", TRF_SvName(rm.s), "kind", k);
+	return TRF_SvTxt(k, TRF_N("TRF_SysName", rm.s));
+end;
+
+-- Registrations (trf_plumb TRF_InstallPlumb) ----------------------------------------------
+
+function TRF_Sv_Plumb()
+	TRF_DockLine("trade", 30, "TRF_Sv_DockLine");
+	TRF_SeedReg(550, "TRF_Sv_SeedH");
+end;
+
+-- Repair, defaults, dump, text -----------------------------------------------------------
+
+-- 1 when x is a number in lo..hi.
+function TRF_SvNum(x, lo, hi)
+	return type(x) == "number" and x >= lo and x <= hi;
+end;
+
+-- 1 when x is a leg stamp: a number not after the current leg (stamps before leg 0 are harmless).
+function TRF_SvLeg(x, legs)
+	return type(x) == "number" and x <= legs;
+end;
+
+-- Repair of TRF.sv (TRF_Repair): records with valid fields (bad ones dropped), the caps of the spec, absent
+-- optional fields stay absent. Quest records (q 1) are taken first, so the per-system and b_max caps drop an
+-- ordinary record before them; the kept records stay in their saved order. q survives on records and on c.
+function TRF_Sv_Fix()
+	if type(TRF) ~= "table" or TRF.sv == nil then return; end;
+	if type(TRF.sv) ~= "table" then TRF.sv = nil; return; end;
+	local S = TRF.sv;
+	local legs = TRF_SvLegs();
+	local m = TRF_SvMap();
+	local ns = 999;
+	if m then ns = getn(m.sys); end;
+	local K = TRF_SvK();
+	local b, kp, nk = {}, {}, 0;
+	if type(S.b) == "table" then
+		for pass = 1, 2 do
+			for i = 1, getn(S.b) do
+				local e = S.b[i];
+				local qe = type(e) == "table" and e.q == 1;
+				if type(e) == "table" and ((pass == 1 and qe) or (pass == 2 and not qe)) and TRF_SvNum(e.s, 1, ns) and type(e.x) == "number"
+					and type(e.y) == "number" and type(e.z) == "number" and nk < K.b_max then
+					local have = nil;
+					for j, v in kp do if v.s == e.s then have = 1; end; end;
+					if not have then
+						local r = {s=e.s, si=0, x=floor(e.x), y=floor(e.y), z=floor(e.z), f=0, nm=0, src=1, sl=0, pf=0, pp=0};
+						if TRF_SvNum(e.si, 0, 1139) then r.si = floor(e.si); end;
+						r.n0 = 1;
+						if TRF_SvNum(e.n0, 0, 3) then r.n0 = floor(e.n0); end;
+						r.n = 0;
+						if TRF_SvNum(e.n, 0, r.n0) then r.n = floor(e.n); end;
+						if TRF_SvNum(e.f, 0, 5) then r.f = floor(e.f); end;
+						if TRF_SvNum(e.nm, 0, 99) then r.nm = floor(e.nm); end;
+						r.lg = legs;
+						if TRF_SvLeg(e.lg, legs) then r.lg = e.lg; end;
+						if TRF_SvNum(e.src, 1, 3) then r.src = floor(e.src); end;
+						if TRF_SvNum(e.sl, 0, 2) then r.sl = floor(e.sl); end;
+						if TRF_SvNum(e.pf, 0, 30000) and r.src ~= 1 then r.pf = floor(e.pf); end;
+						if TRF_SvNum(e.pp, 0, 30000) and r.src ~= 1 then r.pp = floor(e.pp); end;
+						if e.bx == 1 then r.bx = 1; end;
+						if qe then r.q = 1; end;
+						if TRF_SvNum(e.fw, 1, 99) then r.fw = floor(e.fw); end;
+						kp[i] = r;
+						nk = nk + 1;
+					end;
+				end;
+			end;
+		end;
+		for i = 1, getn(S.b) do if kp[i] then tinsert(b, kp[i]); end; end;
+	end;
+	S.b = b;
+	local c = S.c;
+	if c ~= nil then
+		if type(c) ~= "table" or not TRF_SvNum(c.n, 1, 6) or not TRF_SvNum(c.s1, 1, ns) then
+			S.c = nil;
+		else
+			local r = {n=floor(c.n), cr=0, pc=0, s1=c.s1, f=0, lg=legs};
+			if TRF_SvNum(c.cr, 0, 180000) then r.cr = floor(c.cr); end;
+			if TRF_SvNum(c.pc, 0, 180000) then r.pc = floor(c.pc); end;
+			if TRF_SvNum(c.s2, 1, ns) and c.s2 ~= c.s1 then r.s2 = c.s2; end;
+			if TRF_SvNum(c.f, 0, 5) then r.f = floor(c.f); end;
+			if TRF_SvLeg(c.lg, legs) then r.lg = c.lg; end;
+			if c.q == 1 then r.q = 1; end;
+			if TRF_SvNum(c.fw, 1, 99) then r.fw = floor(c.fw); end;
+			S.c = r;
+		end;
+	end;
+	local st = {res=0, sold=0, lost=0};
+	if type(S.st) == "table" then
+		for k, v in st do if TRF_SvNum(S.st[k], 0, 9999) then st[k] = floor(S.st[k]); end; end;
+	end;
+	S.st = st;
+	local r = {};
+	if type(S.r) == "table" then
+		for k, v in S.r do
+			if TRF_SvNum(k, 1, 11) and TRF_SvNum(v, 1, 9) then r[k] = floor(v); end;
+		end;
+	end;
+	S.r = r;
+	if not TRF_SvNum(S.sd, 0, 9999) then S.sd = nil; else S.sd = floor(S.sd); end;
+	if S.hl ~= nil and not TRF_SvLeg(S.hl, legs) then S.hl = nil; end;
+	local cd, nc = {}, 0;
+	if type(S.cd) == "table" then
+		for k, v in S.cd do
+			if TRF_SvNum(k, 1, ns) and TRF_SvLeg(v, legs) and nc < K.cd_max then cd[k] = v; nc = nc + 1; end;
+		end;
+	end;
+	S.cd = cd;
+	if S.x ~= nil then
+		local x = {};
+		if type(S.x) == "table" then
+			for i = 1, getn(S.x) do if TRF_SvNum(S.x[i], 1, ns) and getn(x) < K.x_max then tinsert(x, S.x[i]); end; end;
+		end;
+		if getn(x) == 0 then S.x = nil; else S.x = x; end;
+	end;
+	local rm = S.rm;
+	if rm ~= nil and (type(rm) ~= "table" or not TRF_SvNum(rm.s, 1, ns) or not TRF_SvNum(rm.k, 1, 2) or not TRF_SvLeg(rm.lg, legs)) then
+		S.rm = nil;
+	elseif type(rm) == "table" then
+		S.rm = {s=rm.s, k=rm.k, lg=rm.lg};
+	end;
+	S.fl = nil;
+	TRF_SvRec();
+end;
+
+-- Config keys (design 6.8). sv_seeded, sv_slavers (off-screen roll in step 1), sv_ch4, sv_dk, sv_deny act in step 1;
+-- sv_pirate_sale and sv_factions are step 2 and read nowhere yet; sv_L "lw" is the only basis (decision A1).
+function TRF_Sv_OptDef()
+	return {enable_survivors=1, sv_seeded=1, sv_slavers=1, sv_pirate_sale=1, sv_factions=1, sv_ch4=1, sv_L="lw", sv_dk=1,
+		sv_deny={}};
+end;
+
+-- k_pod and k_pod_pir in percent of N (15 = 0.15); sv_slave_on (T2, T3, T4) and sv_fst_cd are step 2.
+function TRF_Sv_TuneDef()
+	return {k_pod=15, k_pod_pir=25, sv_ttl=4, sv_carry=8, sv_carry_max=6, sv_max=4, sv_cd=8, sv_seed_dis=4, sv_seed_chance=25,
+		sv_seed_cyc=2, sv_heat_cd=10, sv_fst_cd=10, sv_pick_r=60, sv_near_r=400, sv_slave_on={50, 60, 60}, sv_slave_off=35};
+end;
+
+-- "module=survive event=dump beacon_count=<n> beacons=<sys>:<n>/<n0>/<f>/<lg>/<src>/<sl>/<pf>[!][q],... carried=<n>
+-- credits=<cr> pirate_credits=<pc> carried_quest=<bool> rescued=<res> sold=<sold> lost=<lost> cooldowns=<sys>:<leg>,...
+-- region_budget=<slot>:<n>/<cyc>,... heat_leg=<hl> silent=<sys>,... rumour=<sys>:<k>/<lg> seed=<sd>".
+function TRF_Sv_Dump()
+	if type(TRF) ~= "table" or type(TRF.sv) ~= "table" then return; end;
+	local S = TRF.sv;
+	local bs = nil;
+	for i = 1, getn(S.b or {}) do
+		local b = S.b[i];
+		local e = TRF_SvName(b.s)..":"..b.n.."/"..b.n0.."/"..b.f.."/"..b.lg.."/"..b.src.."/"..b.sl.."/"..b.pf;
+		if b.bx == 1 then e = e.."!"; end;
+		if b.q == 1 then e = e.."q"; end;
+		if bs then bs = bs..","..e; else bs = e; end;
+	end;
+	local cs = nil;
+	local ks = {};
+	for k, v in S.cd or {} do tinsert(ks, k); end;
+	sort(ks);
+	for i = 1, getn(ks) do
+		local e = TRF_SvName(ks[i])..":"..S.cd[ks[i]];
+		if cs then cs = cs..","..e; else cs = e; end;
+	end;
+	local rs = nil;
+	local cyc = TRF_SvT("sv_seed_cyc");
+	local rk = {};
+	for k, v in S.r or {} do tinsert(rk, k); end;
+	sort(rk);
+	for i = 1, getn(rk) do
+		local e = rk[i]..":"..S.r[rk[i]].."/"..cyc;
+		if rs then rs = rs..","..e; else rs = e; end;
+	end;
+	local xs = nil;
+	for i = 1, getn(S.x or {}) do
+		if xs then xs = xs..","..TRF_SvName(S.x[i]); else xs = TRF_SvName(S.x[i]); end;
+	end;
+	local rm = nil;
+	if type(S.rm) == "table" then rm = TRF_SvName(S.rm.s)..":"..tostring(S.rm.k).."/"..tostring(S.rm.lg); end;
+	local c = S.c or {};
+	local st = S.st or {};
+	TRF_SvE("dump", "beacon_count", getn(S.b or {}), "beacons", bs, "carried", c.n or 0, "credits", c.cr or 0, "pirate_credits", c.pc or 0,
+		"carried_quest", TRF_KvB(c.q == 1), "rescued", st.res, "sold", st.sold, "lost", st.lost, "cooldowns", cs, "region_budget", rs,
+		"heat_leg", S.hl, "silent", xs, "rumour", rm, "seed", S.sd);
+end;
+
+-- Texts (design 2), EN; keys in TRF_UI_Key form (#TRF_sv<name> in loc/trf_en.loc). Step 2 keys (slavers, pirate
+-- dock) are not defined until step 2.
+function TRF_Sv_Text()
+	return {
+		svloss = "Distress beacon: FTU freighter lost. Escape pods transmitting.",
+		svseed = "FTU relay: a freighter went silent here. Its distress beacon is still transmitting.",
+		svnear = "...anyone on this channel... FTU crew, a few of us left... air for a few hours...",
+		svpick = "Survivor aboard.",
+		svpickall = "All survivors aboard. Any FTU station will take them.",
+		svfull = "No room for more survivors.",
+		svpaid = "Survivors handed over to FTU. $1 credits transferred.",       -- pay
+		svthanks1 = "Their families had stopped hoping. FTU will not forget this, Wolves.",
+		svthanks2 = "FTU takes the crew off your hands. The medics are already waiting.",
+		svthanks3 = "Another crew home alive. The lanes owe you one, Wolves.",
+		svthanksw = "FTU logs the rescue. The crew will remember who came for them.",
+		svlost = "The survivors were transferred to a passing FTU patrol.",
+		svsilent = "The beacon in this system has gone silent.",
+		svrumtaken = "Pirates picked up a freighter crew near $1. Nobody will see them again.", -- system
+		svrumsaved = "The Wolves pulled a crew out of $1.",                                    -- system
+		svrumlost = "A transport was lost near $1. The crew was never found.",                 -- system
+	};
+end;

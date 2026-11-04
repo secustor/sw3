@@ -1,0 +1,1896 @@
+-- sw3-traffic convoy module (v1-spec 8.1-8.4, 8.6, 10.1). Lua 4.0.1.
+-- Convoy slot (one convoy per system: 4 equipment, 3 TT4, 2 supply, 1 danger), TT4 convoys (build, escorts,
+-- holds; the tier pick is trf_tier's), forced Bust, faction equipment convoys (record life, appearance,
+-- waves, outcomes, defence contract). Saved state: TRF.feq {k, f, s, r, t, a} only, and rg[slot].ct bit 4.
+-- Visit state: live.cvs {k, id, pc, fs}, live.fq. Handles only in TRF_H().cv. Top level only defines
+-- functions. Other modules' functions are called guarded, so a missing module disables a feature only.
+-- An equipment convoy is a trader record (TRF_Spawn with plan.fq): it reuses paths, docking, exit, hail,
+-- load pass and the kill bookkeeping of trf_gen/trf_events; this module adds waves and outcomes.
+
+-- Helpers --------------------------------------------------------------------------
+
+-- Event line, module=convoy (design/log-format.md): TRF_CvE(event, k1, v1, ...); TRF_CvDE only at log 2.
+function TRF_CvE(event, ...) tinsert(arg, 1, event); tinsert(arg, 1, "convoy"); call(TRF_Lf, arg); end;
+
+function TRF_CvDE(event, ...)
+	local v = TRF_CvOpt("log");
+	if type(v) == "number" and v >= 2 then tinsert(arg, 1, event); call(TRF_CvE, arg); end;
+end;
+
+function TRF_CvErr(m)
+	TRF_CvE("error", "message", tostring(m));
+	TRF_CvStat("err_cv");
+end;
+
+-- Protected call; nil on error.
+function TRF_CvP(f, args)
+	if type(f) ~= "function" then return nil; end;
+	return call(f, args, "x", TRF_CvErr);
+end;
+
+-- Protected call of a global function by name when it exists.
+function TRF_CvX(name, ...)
+	local f = getglobal(name);
+	if type(f) ~= "function" then return nil; end;
+	return call(f, arg, "x", TRF_CvErr);
+end;
+
+function TRF_CvStat(k)
+	if type(TRF_Stat) == "function" then TRF_Stat(k); end;
+end;
+
+-- Config keys of this module (v1 10.5).
+function TRF_Convoy_OptDef()
+	return {tt4=1, tt4_split=0, feq=1, forced_bust=1, feq_at=""};
+end;
+
+-- Tune keys (v1 10.5). List keys of the spec are split: feq_w1_<rung>, feq_raid_t<tier>, feq_off_t<tier>,
+-- feq_v<rung>lo/hi.
+function TRF_Convoy_TuneDef()
+	return {tt4_vmin=45000, tt4_vmax=95000, tt4_eq_min=2, tt4_eq_max=4, tt4_redraw=8,
+		feq_chance=25, feq_min_strength=2, feq_min_pro=6, feq_due_legs=6, feq_cooldown_legs=20,
+		feq_announce_chance=50, feq_num=3, feq_escorts=2, feq_w1_0=1, feq_w1_1=2, feq_w1_2=2, feq_w1_3=3,
+		feq_wave1_s=20, feq_wave1_x=10, feq_wave2_hp=0.5, cap_feq=14, feq_raid_t3=30, feq_raid_t4=50,
+		feq_off_t3=20, feq_off_t4=35, feq_pay_mult=4, feq_v0lo=85000, feq_v0hi=120000, feq_v1lo=110000,
+		feq_v1hi=200000, feq_v2lo=160000, feq_v2hi=300000, feq_v3lo=260000, feq_v3hi=400000,
+		feq_app_min=20, feq_app_max=40, feq_raid_min=40, feq_raid_max=90, feq_leave_s=60, feq_big_fs=5,
+		feq_ct_r=400, cv_leave_s=120, pay_cap=30000, T_win=20, T_del=5, ovd=600};
+end;
+
+-- Config value: TRF_Opt, else the raw cfg, else this module's default; a wrong type reads as the default.
+function TRF_CvOpt(key)
+	local d = TRF_Convoy_OptDef()[key];
+	if key == "log" then d = 1; end;
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_Cfg) == "function" then
+		local c = TRF_Cfg();
+		if type(c) == "table" then v = c[key]; end;
+	end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then v = d; end;
+	return v;
+end;
+
+-- Tune value: TRF_Tune (merged module defaults and cfg tune), else this module's default.
+function TRF_CvT(key)
+	if type(TRF_Tune) == "function" then
+		local t = TRF_Tune();
+		if type(t) == "table" and type(t[key]) == "number" then return t[key]; end;
+	end;
+	if type(TRF_CfgGet) == "function" then
+		local o = TRF_CfgGet("tune", nil);
+		if type(o) == "table" and type(o[key]) == "number" then return o[key]; end;
+	end;
+	return TRF_Convoy_TuneDef()[key] or 0;
+end;
+
+function TRF_CvClamp(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- Draw 0..n-1 (trf_state TRF_Rand, else RAND); 0 without a native.
+function TRF_CvRand(n)
+	if type(n) ~= "number" or n < 1 then return 0; end;
+	if type(TRF_Rand) == "function" then return TRF_Rand(n); end;
+	if type(RAND) ~= "function" then return 0; end;
+	return RAND(floor(n));
+end;
+
+function TRF_CvGt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+function TRF_CvLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+-- Visit table of the current gen, or nil.
+function TRF_CvLive()
+	if type(TRF) ~= "table" or type(TRF.live) ~= "table" then return nil; end;
+	if type(TRF_LiveOk) == "function" and not TRF_LiveOk() then return nil; end;
+	if type(TRF.live.tr) ~= "table" then TRF.live.tr = {}; end;
+	return TRF.live;
+end;
+
+-- Handle table H.cv = {e (TT4 escorts by trader id), fq (equipment convoy handles), lv (ships leaving),
+-- b (build stash for the hold)}; nil without trf_state.
+function TRF_CvH()
+	if type(TRF_H) ~= "function" then return nil; end;
+	local H = TRF_H();
+	if type(H) ~= "table" then return nil; end;
+	if type(H.cv) ~= "table" then H.cv = {e={}, lv={}}; end;
+	if type(H.cv.e) ~= "table" then H.cv.e = {}; end;
+	if type(H.cv.lv) ~= "table" then H.cv.lv = {}; end;
+	return H.cv;
+end;
+
+function TRF_CvAlive(o)
+	if o == nil or type(o) == "number" or type(o) == "string" or type(o) == "function" then return nil; end;
+	if type(TRF_Is) == "function" then return TRF_Is(o:IsAlive()); end;
+	return o:IsAlive();
+end;
+
+function TRF_CvPos(o)
+	if TRF_CvAlive(o) then return o:GetPosition(); end;
+	return nil;
+end;
+
+function TRF_CvDist(a, b)
+	if a == nil or b == nil or type(a.x) ~= "number" or type(b.x) ~= "number" then return nil; end;
+	local dx, dy, dz = a.x - b.x, a.y - b.y, a.z - b.z;
+	return sqrt(dx * dx + dy * dy + dz * dz);
+end;
+
+function TRF_CvCur()
+	local i = TRF_CvX("TRF_CurIdx");
+	if type(i) == "number" then return i; end;
+	return nil;
+end;
+
+function TRF_CvMap()
+	local m = TRF_CvX("TRF_Map");
+	if type(m) == "table" and type(m.sys) == "table" then return m; end;
+	return nil;
+end;
+
+function TRF_CvSysName(idx)
+	local n = TRF_CvX("TRF_SysName", idx);
+	if type(n) == "string" then return n; end;
+	return "?";
+end;
+
+-- Bit b of bit field v: 1 or 0 (no bit operators in Lua 4).
+function TRF_CvBit(v, b)
+	if type(v) ~= "number" or type(b) ~= "number" or b < 1 then return 0; end;
+	return mod(floor(v / b), 2);
+end;
+
+function TRF_CvMs()
+	local m = TRF_CvX("TRF_Ms");
+	if TRF_CvAlive(m) then return m; end;
+	return nil;
+end;
+
+function TRF_CvTrig(kind, cb, a, b, c)
+	if type(NewTrigger) ~= "function" then return nil; end;
+	return TRF_CvP(NewTrigger, {kind, nil, cb, a, b, c});
+end;
+
+-- Ships of a flight in pilot order (handles), {} when none.
+function TRF_CvFlShips(fl)
+	local out = {};
+	if not fl or type(fl) == "number" then return out; end;
+	local n = TRF_CvP(function(f) return f:GetPilotCount(); end, {fl});
+	if type(n) ~= "number" then return out; end;
+	for i = 1, n do
+		local s = TRF_CvP(function(f, j) return f:GetPilotByNumber(j):GetShip(); end, {fl, i});
+		if TRF_CvAlive(s) then tinsert(out, s); end;
+	end;
+	return out;
+end;
+
+function TRF_CvDel(o)
+	if TRF_CvAlive(o) then TRF_CvP(function(x) x:Delete(); end, {o}); end;
+end;
+
+-- Text (v1 10.4): TRF_LocTxt, then this table, then TRF_Txt; $1..$3 replaced.
+function TRF_Convoy_Text()
+	return {optfeq="Escort us to $1 for $2 cr?", feqid="$1 supply run: equipment, $2 -> $3.",
+		feqok="Contract accepted. Stay close, captain.", feqatk="Convoy under attack! Requesting support!",
+		feqthx="Convoy delivered. Payment sent: $1 cr.", cvrfeq="$1 is moving equipment through $2. Pirates will want it.",
+		cvfeqkill="A $1 equipment convoy was destroyed in $2. The navy blames independent captains.",
+		cvfeqlost="Pirates took a $1 equipment convoy near $2.", feqdest="the trade station"};
+end;
+
+function TRF_CvTxt(key, a, b, c)
+	local s = TRF_CvX("TRF_LocTxt", key);
+	if type(s) ~= "string" then s = TRF_Convoy_Text()[key]; end;
+	if type(s) ~= "string" then
+		if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c); end;
+		return tostring(key);
+	end;
+	local v = {a, b, c};
+	for i = 1, 3 do
+		if strfind(s, "$"..i, 1, 1) then
+			local r = gsub(tostring(v[i] or ""), "%%", "%%%%");
+			s = gsub(s, "%$"..i, r);
+		end;
+	end;
+	return s;
+end;
+
+function TRF_CvSay(text, ship)
+	if type(TRF_Say) ~= "function" or not TRF_CvAlive(ship) then return nil; end;
+	local p = TRF_CvP(function(s) return s:GetPilot(); end, {ship});
+	return TRF_CvP(TRF_Say, {text, 6, p});
+end;
+
+-- Factions (v1 3.1 order) ------------------------------------------------------------
+
+-- f = 1..5: team, fit suffix, vanilla table prefix (<v>_Pilots, <v>_Fighters, <v>_CargoType), StoneArrow stem.
+function TRF_CvFac()
+	return {{t="Vks", sx="nav", v="Vks", sa="StoneArrow"}, {t="Kfni", sx="kfni", v="Kfni", sa="StoneArrow_kfni"},
+		{t="Triada", sx="tri", v="Tri", sa="StoneArrow_tri"}, {t="Uss", sx="uss", v="USS", sa="StoneArrow_uss"},
+		{t="Inoco", sx="ino", v="Ino", sa="StoneArrow_ino"}};
+end;
+
+-- Faction index of a team name (trf_faction TRF_FacIdx, else the table), 0 for others.
+function TRF_CvFacIdx(team)
+	if type(team) ~= "string" then return 0; end;
+	local v = TRF_CvX("TRF_FacIdx", team);
+	if type(v) == "number" then return v; end;
+	local F = TRF_CvFac();
+	for f = 1, 5 do if strlower(F[f].t) == strlower(team) then return f; end; end;
+	return 0;
+end;
+
+function TRF_CvFacTeam(f)
+	local F = TRF_CvFac();
+	if type(f) == "number" and F[f] then return F[f].t; end;
+	return "Trade";
+end;
+
+-- Display name (trf_region text facvks.. as v02 uses it).
+function TRF_CvFacName(f)
+	local t = TRF_CvX("TRF_Rg_Text");
+	local k = "fac"..strlower(TRF_CvFacTeam(f));
+	if type(t) == "table" and type(t[k]) == "string" then return t[k]; end;
+	return TRF_CvFacTeam(f);
+end;
+
+-- Team of system idx (GetLocationTeam on the map name) or nil.
+function TRF_CvTeam(idx)
+	local nm = TRF_CvSysName(idx);
+	if nm == "?" or type(GetLocationTeam) ~= "function" then return nil; end;
+	local t = TRF_CvP(GetLocationTeam, {nm});
+	if type(t) == "string" and t ~= "" then return t; end;
+	return nil;
+end;
+
+-- fs 0..9 (default fs0 3), rung 0..3, fst 0..9 (default 5), relation seed toward the player.
+function TRF_CvFs(slot, f)
+	local v = TRF_CvX("TRF_Fs", slot, f);
+	if type(v) == "number" then return v; end;
+	return 3;
+end;
+
+function TRF_CvRung(slot, f)
+	local v = TRF_CvX("TRF_Rung", slot, f);
+	if type(v) == "number" then return TRF_CvClamp(floor(v), 0, 3); end;
+	local s = TRF_CvFs(slot, f);
+	if s <= 2 then return 0; end;
+	if s <= 4 then return 1; end;
+	if s <= 7 then return 2; end;
+	return 3;
+end;
+
+function TRF_CvFst(f)
+	local v = TRF_CvX("TRF_Fst", f);
+	if type(v) == "number" then return v; end;
+	return 5;
+end;
+
+function TRF_CvWar(team)
+	if type(GetTeamRelation) ~= "function" or RELATION_WAR == nil or type(team) ~= "string" then return nil; end;
+	local v = TRF_CvP(GetTeamRelation, {team, PLAYER_TEAM});
+	if v ~= nil and v == RELATION_WAR then return 1; end;
+	return nil;
+end;
+
+function TRF_CvFstRel(f)
+	local v = TRF_CvX("TRF_FstRel", f);
+	if v ~= nil then return v; end;
+	if TRF_CvWar(TRF_CvFacTeam(f)) or TRF_CvFst(f) <= 2 then return RELATION_WAR; end;
+	return RELATION_NEUTRAL;
+end;
+
+-- Row band {lo, hi} of rung (trf_faction TRF_Ladder, else v1 7.2 rows); EASY one rung lower in the default.
+function TRF_CvBand(f, rung)
+	local l = TRF_CvX("TRF_Ladder", f, rung);
+	if type(l) == "table" and type(l.lo) == "number" and type(l.hi) == "number" then return l.lo, l.hi; end;
+	local r = TRF_CvClamp(floor(rung or 0), 0, 3);
+	local d = TRF_CvX("GetLevelDifficult");
+	if d ~= nil and d == EASY and r > 0 then r = r - 1; end;
+	local lo, hi = {5, 10, 15, 18}, {9, 14, 17, 20};
+	return lo[r + 1], hi[r + 1];
+end;
+
+-- Fighter row of faction f at rung, at most n ships: one row of the band, or with join rows joined until n
+-- ships (at most 4 draws).
+function TRF_CvRow(f, rung, n, join)
+	local F = TRF_CvFac()[f];
+	if not F then return nil; end;
+	local tab = getglobal(F.v.."_Fighters");
+	if type(tab) ~= "table" then return nil; end;
+	local lo, hi = TRF_CvBand(f, rung);
+	local row = {};
+	local k = 0;
+	while getn(row) < n and k < 4 do
+		local src = tab[TRF_CvClamp(lo + TRF_CvRand(hi - lo + 1), 1, getn(tab))];
+		if type(src) == "table" then
+			for i = 1, getn(src) do if getn(row) < n then tinsert(row, src[i]); end; end;
+		end;
+		k = k + 1;
+		if not join then k = 4; end;
+	end;
+	if getn(row) == 0 then return nil; end;
+	return row;
+end;
+
+-- Fighter flight of faction f at rung in the group held by global gname: trf_faction TRF_FacFlight, else
+-- the band rows with TRF_BuildFlight. Returns flight, ships or nil.
+function TRF_CvFacFlight(f, rung, gname, sign, pos, dir, maxn)
+	if maxn < 1 then return nil; end;
+	if type(TRF_FacFlight) == "function" then
+		local fl = TRF_CvP(TRF_FacFlight, {f, rung, 1, gname, sign, pos, dir, maxn});
+		if fl and type(fl) ~= "number" then return fl, TRF_CvFlShips(fl); end;
+	end;
+	local F = TRF_CvFac()[f];
+	local row = TRF_CvRow(f, rung, maxn);
+	if not F or not row or type(TRF_BuildFlight) ~= "function" then return nil; end;
+	local pil = getglobal(F.v.."_Pilots");
+	if type(pil) ~= "table" then return nil; end;
+	return TRF_CvP(TRF_BuildFlight, {pil, row, gname, sign, pos, 10, dir, "shipFormation", 5, maxn});
+end;
+
+-- Big ship hull of rung (trf_faction TRF_FacBig, else v1 7.2; never a battleship).
+function TRF_CvBig(f, rung)
+	local v = TRF_CvX("TRF_FacBig", f, rung);
+	if type(v) == "string" then return v; end;
+	local F = TRF_CvFac()[f];
+	if not F or rung < 1 then return nil; end;
+	if rung == 1 then return "Butcher_"..F.sx.."1"; end;
+	if rung == 2 then return "Butcher_"..F.sx..(2 + TRF_CvRand(2)); end;
+	return F.sa..(1 + TRF_CvRand(3));
+end;
+
+-- Map helpers ------------------------------------------------------------------------
+
+-- Jumps from system a over "Portal" links (map portals), up to maxd: table idx -> jumps.
+function TRF_CvJumps(a, maxd)
+	local m = TRF_CvMap();
+	local d = {};
+	if not m or type(a) ~= "number" or not m.sys[a] then return d; end;
+	d[a] = 0;
+	local q, i = {a}, 1;
+	while i <= getn(q) do
+		local x = q[i];
+		i = i + 1;
+		if d[x] < maxd then
+			local ps = m.sys[x].portals or {};
+			for j = 1, getn(ps) do
+				local y = m.by[strlower(tostring(ps[j].to))];
+				if type(y) == "number" and d[y] == nil then d[y] = d[x] + 1; tinsert(q, y); end;
+			end;
+		end;
+	end;
+	return d;
+end;
+
+-- Border system (trf_supply TRF_Border, else v1 5.1): owner Vks or Kfni with a portal neighbour of the other.
+function TRF_CvBorder(idx)
+	if type(TRF_Border) == "function" then return TRF_CvX("TRF_Border", idx); end;
+	local o = TRF_CvTeam(idx);
+	if o ~= "Vks" and o ~= "Kfni" then return nil; end;
+	local other = "Kfni";
+	if o == "Kfni" then other = "Vks"; end;
+	local d = TRF_CvJumps(idx, 1);
+	for y, j in d do
+		if j == 1 and TRF_CvTeam(y) == other then return 1; end;
+	end;
+	return nil;
+end;
+
+-- Danger system fallback (trf_danger TRF_DangerSys is preferred): dis >= 4 or the region in Raids.
+function TRF_CvDanger(idx)
+	if type(TRF_DangerSys) == "function" then return TRF_CvX("TRF_DangerSys", idx); end;
+	local dis = TRF_CvX("TRF_Dis", idx);
+	if type(dis) == "number" and dis >= 4 then return 1; end;
+	local slot = TRF_CvX("TRF_RgOf", idx);
+	if type(slot) == "number" and TRF_CvX("TRF_Phase", slot) == 3 then return 1; end;
+	return nil;
+end;
+
+-- Guard system while the guard is active (R16).
+function TRF_CvGuard(idx)
+	local m = TRF_CvMap();
+	if not m or not m.sys[idx] or m.sys[idx].start ~= 1 then return nil; end;
+	if type(TRF_RgGuardOn) ~= "function" then return 1; end;
+	return TRF_CvX("TRF_RgGuardOn");
+end;
+
+-- G-feature gate (v1 2): strict gate for feature, no suppression.
+function TRF_CvGate(idx, feature)
+	if type(TRF_Supp) == "function" and TRF_CvX("TRF_Supp") ~= 0 then return nil, "supp"; end;
+	if type(TRF_StrictOk) == "function" then
+		if not TRF_CvX("TRF_StrictOk", idx, feature) then return nil, "gate"; end;
+	elseif TRF_CvX("GetPlayerQuestState") == TRUE then
+		return nil, "gate";
+	end;
+	return 1;
+end;
+
+-- Nearest map portal of the current system to position p: object, map entry.
+function TRF_CvNearPortal(p)
+	local m = TRF_CvMap();
+	local cur = TRF_CvCur();
+	if not m or not cur or not m.sys[cur] or not p then return nil; end;
+	local ps = m.sys[cur].portals or {};
+	local best, be, bd = nil, nil, nil;
+	for i = 1, getn(ps) do
+		local o = TRF_CvX("TRF_GnPortalObj", ps[i].name);
+		if not o then
+			o = getglobal(ps[i].name);
+			if type(o) ~= "table" and type(o) ~= "userdata" then o = nil; end;
+		end;
+		local d = TRF_CvDist(p, ps[i]);
+		if o and d and (not bd or d < bd) then best = o; be = ps[i]; bd = d; end;
+	end;
+	return best, be;
+end;
+
+-- Prices and draws (v1 8.2, 8.4) ------------------------------------------------------------
+
+-- Base cost of an item: map field it (Modules.xml, gen_map.py), else the costs of the listed items
+-- (Modules.xml 2026-10-21), else 1000.
+function TRF_CvPrice(item)
+	local m = TRF_CvMap();
+	if m and type(m.it) == "table" and type(m.it[item]) == "number" then return m.it[item]; end;
+	local t = {MM=30, SRM2=110, ShAmp2=4900, TVC1=5800, THC2=2400, T1=600, TVC3=44000, SM3=60, ShAmp3=29000,
+		MIRV2=12000, SRM3=450, THC4=64000, ShAmp4=95000, SRM4=800, TLC4=170000, RNBot1=300, TLC2=23000,
+		LRM2=350, MIRV1=4000, LRM3=1200, ALS2=180000, Cargo_01=1200, Cargo_02=1000, Cargo_03=1100,
+		Cargo_04=800, Cargo_05=1200, Cargo_06=1300, Cargo_07=900, Cargo_08=850, Cargo_09=1400,
+		Cargo_10=1200, Uranium=2200, Barrel_02=500};
+	return t[item] or 1000;
+end;
+
+function TRF_CvIsCargo(item)
+	return type(item) == "string" and strsub(item, 1, 6) == "Cargo_";
+end;
+
+-- One equipment item from list CType with the FillCargoFlight window CType[RAND(n - 5) + floor(pw / 4) + 1];
+-- Cargo_* entries are redrawn (3 times), then the next equipment entry of the list is taken.
+function TRF_CvWinItem(CType, pw)
+	local n = getn(CType);
+	local P = floor((pw or 10) / 4);
+	local it = nil;
+	local k = 1;
+	for t = 1, 4 do
+		k = TRF_CvClamp(TRF_CvRand(max(1, n - 5)) + P + 1, 1, n);
+		it = CType[k];
+		if not TRF_CvIsCargo(it) then return it; end;
+	end;
+	for j = 1, n do
+		local x = CType[mod(k + j - 1, n) + 1];
+		if type(x) == "string" and not TRF_CvIsCargo(x) then return x; end;
+	end;
+	return it;
+end;
+
+function TRF_CvValue(list)
+	local v = 0;
+	for i = 1, getn(list) do v = v + TRF_CvPrice(list[i].i) * list[i].n; end;
+	return v;
+end;
+
+-- Big ships of flight fl in pilot order: {ship, pilot index}.
+function TRF_CvBig2(fl)
+	local out = {};
+	local n = TRF_CvP(function(f) return f:GetPilotCount(); end, {fl});
+	if type(n) ~= "number" then return out; end;
+	for i = 1, n do
+		local s = TRF_CvP(function(f, j) return f:GetPilotByNumber(j):GetShip(); end, {fl, i});
+		if s and TRF_Is(s:ImBigShip()) then tinsert(out, {s, i}); end;
+	end;
+	return out;
+end;
+
+-- Convoy slot (v1 8.6) -----------------------------------------------------------------------
+
+-- Live convoy slot {k, id} or nil. TT4 (k 3), equipment (k 4) and supply (k 2) holders are checked here: a
+-- gone TT4 record ends its convoy (forced Bust on a player kill), an ended equipment event or a gone supply
+-- record releases it. Danger convoys (k 1, id -n) are released by trf_danger.
+function TRF_ConvSlot()
+	local L = TRF_CvLive();
+	if not L or type(L.cvs) ~= "table" then return nil; end;
+	local c = L.cvs;
+	if c.k == 3 then
+		local r = L.tr[c.id];
+		if type(r) == "table" and r.st ~= "gone" then
+			if r.cnt then c.pc = 1; end;
+			return c;
+		end;
+		TRF_CvP(TRF_CvTt4End, {c, r});
+		return L.cvs;
+	end;
+	if c.k == 4 and (type(L.fq) ~= "table" or L.fq.st == "end") then
+		L.cvs = nil;
+		TRF_CvE("slot_release", "reason", "equipment_event_over");
+		return nil;
+	end;
+	-- A supply convoy (trf_supply takes the slot after its record exists) killed without TRF_Remove.
+	if c.k == 2 and type(c.id) == "number" and c.id > 0 and (type(L.tr[c.id]) ~= "table" or L.tr[c.id].st == "gone") then
+		L.cvs = nil;
+		TRF_CvE("slot_release", "trader_id", c.id, "reason", "supply_convoy_gone");
+		return nil;
+	end;
+	return c;
+end;
+
+-- Take the slot for kind k (1..4) and id; 1 when taken, nil when a convoy holds it.
+function TRF_ConvTake(k, id)
+	local L = TRF_CvLive();
+	if not L or type(k) ~= "number" then return nil; end;
+	if TRF_ConvSlot() then return nil; end;
+	L.cvs = {k=k, id=id};
+	TRF_CvDE("slot_take", "convoy_kind", k, "trader_id", id);
+	return 1;
+end;
+
+-- Release the slot held by id (trf_gen TRF_Remove calls it on every removal). Returns 1 when released.
+function TRF_ConvFree(id)
+	local L = TRF_CvLive();
+	if not L or type(L.cvs) ~= "table" or L.cvs.id ~= id then return nil; end;
+	local c = L.cvs;
+	if c.k == 3 then
+		TRF_CvP(TRF_CvTt4End, {c, L.tr[id]});
+		return 1;
+	end;
+	-- An equipment convoy keeps the slot until TRF_Feq_Step reads the removal reason (TRF_FeqEnd frees it).
+	if c.k == 4 then return 1; end;
+	L.cvs = nil;
+	TRF_CvDE("slot_release", "trader_id", id);
+	return 1;
+end;
+
+-- Distinct whole-second attack stamps within T_win; T_del of them make t.pc = 1 (v01 7.3 T_deliberate).
+function TRF_CvTally(t, gt)
+	if t.pc == 1 then return 1; end;
+	local win, need = TRF_CvT("T_win"), TRF_CvT("T_del");
+	local s = floor(gt);
+	local keep, have = {}, nil;
+	if type(t.fs) == "table" then
+		for i = 1, getn(t.fs) do
+			local v = t.fs[i];
+			if type(v) == "number" and s - v < win then
+				tinsert(keep, v);
+				if v == s then have = 1; end;
+			end;
+		end;
+	end;
+	if not have then tinsert(keep, s); end;
+	t.fs = keep;
+	if getn(keep) >= need then t.pc = 1; t.fs = nil; return 1; end;
+	return nil;
+end;
+
+-- Ships to the nearest portal, deleted there (within 60), after cv_leave_s, or when out of view (> ovd).
+function TRF_CvLeave(list, why)
+	local C = TRF_CvH();
+	if not C or type(list) ~= "table" then return 0; end;
+	local gt = TRF_CvGt();
+	local n = 0;
+	for i = 1, getn(list) do
+		local s = list[i];
+		if TRF_CvAlive(s) and getn(C.lv) < 40 then
+			local o, e = TRF_CvNearPortal(s:GetPosition());
+			if o then TRF_CvP(function(x, p) x:ComeToPortal(p); end, {s, o}); end;
+			tinsert(C.lv, {s=s, e=e, t=gt});
+			n = n + 1;
+		else
+			TRF_CvDel(s);
+		end;
+	end;
+	if n > 0 then TRF_CvDE("leave", "reason", why, "ship_count", n); end;
+	return n;
+end;
+
+-- Ships of an ended convoy: to a portal after a visible end (exit, dock, refuge, kill, wind-down), deleted at
+-- once after any other removal (lost, stuck, lifetime, queue, test).
+function TRF_CvGoAway(list, why)
+	local vis = {exit=1, dock=1, escaped=1, kill=1, wind=1, taken=1};
+	if vis[tostring(why)] then return TRF_CvLeave(list, why); end;
+	for i = 1, getn(list or {}) do TRF_CvDel(list[i]); end;
+	return 0;
+end;
+
+function TRF_CvLeaveStep()
+	local C = TRF_CvH();
+	if not C or getn(C.lv) == 0 then return; end;
+	local gt = TRF_CvGt();
+	local mp = TRF_CvPos(TRF_CvMs());
+	local keep = {};
+	for i = 1, getn(C.lv) do
+		local e = C.lv[i];
+		if TRF_CvAlive(e.s) then
+			local p = e.s:GetPosition();
+			local dp = TRF_CvDist(p, e.e);
+			local dm = TRF_CvDist(p, mp);
+			if (dp and dp < 60) or gt - e.t > TRF_CvT("cv_leave_s") or (gt - e.t > 30 and (not dm or dm > TRF_CvT("ovd"))) then
+				TRF_CvDel(e.s);
+			else
+				tinsert(keep, e);
+			end;
+		end;
+	end;
+	C.lv = keep;
+end;
+
+-- TT4 convoys (v1 8.1, 8.2) ------------------------------------------------------------------
+
+-- Transports of a TT4 plan: the row's lead transport plus family companions (F1 HMQueen_tr7, F2
+-- Walrus_tr2/tr4, F3-F4 Btransport), n in total.
+function TRF_CvTt4Row(plan, n)
+	local src = nil;
+	if type(Trad_merc_Ships) == "table" and type(plan.row) == "table" then src = Trad_merc_Ships[plan.row.row]; end;
+	local row = {};
+	if type(src) == "table" and type(src[1]) == "table" then tinsert(row, src[1]); end;
+	local fam = TRF_CvClamp((plan.row and plan.row.fam) or 3, 1, 4);
+	local comp = {{"HMQueen_tr7"}, {"Walrus_tr2", "Walrus_tr4"}, {"Btransport"}, {"Btransport"}};
+	local j = 0;
+	while getn(row) < n do
+		local c = comp[fam];
+		tinsert(row, {c[mod(j, getn(c)) + 1], 1, "A"});
+		j = j + 1;
+	end;
+	return row;
+end;
+
+-- Transports of a TT1-TT3 plan without escorts (danger convoy members): the row's transports, a TT3
+-- second transport from the family when the row has one.
+function TRF_CvMemberRow(plan)
+	local src = nil;
+	if type(Trad_merc_Ships) == "table" and type(plan.row) == "table" then src = Trad_merc_Ships[plan.row.row]; end;
+	if type(src) ~= "table" or type(src[1]) ~= "table" then return nil; end;
+	local ntp = TRF_CvClamp(floor(plan.tpn or plan.row.tp or 1), 1, 2);
+	local row = {src[1]};
+	if ntp >= 2 then
+		if (plan.row.tp or 1) >= 2 and type(src[2]) == "table" then tinsert(row, src[2]);
+		else tinsert(row, TRF_CvTt4Row(plan, 2)[2]); end;
+	end;
+	return row;
+end;
+
+-- Escort source of a TT4 convoy in system idx: owner fighters at rung 0 in a Vks/Kfni system that is no
+-- border, owner not at war with the player and fst >= 3; else 50 % rich mercenaries, 50 % green recruits.
+-- Returns kind ("own", "rich", "green"), faction index.
+function TRF_CvTt4Src(idx)
+	local f = TRF_CvFacIdx(TRF_CvTeam(idx));
+	if (f == 1 or f == 2) and not TRF_CvBorder(idx) and not TRF_CvWar(TRF_CvFacTeam(f)) and TRF_CvFst(f) >= 3 then
+		return "own", f;
+	end;
+	if TRF_CvRand(100) < 50 then return "rich", 0; end;
+	return "green", 0;
+end;
+
+-- Escort row of n ships by source kind. Returns row, pilots, formation.
+function TRF_CvTt4EscRow(kind, f, n, pw)
+	if kind == "own" then
+		local row = TRF_CvRow(f, 0, n, 1);
+		local pil = getglobal(TRF_CvFac()[f].v.."_Pilots");
+		if row and type(pil) == "table" then return row, pil, "shipFormation"; end;
+		kind = "rich";
+	end;
+	if kind == "green" and type(Rec_Fighters) == "table" and type(Green_Pilots) == "table" then
+		local tl = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20};
+		if type(TRF_TrTabs) == "function" then tl = TRF_TrTabs(); end;
+		local lv = TRF_CvClamp(tl[TRF_CvClamp(floor(pw or 10), 1, 20)] or 10, 1, getn(Rec_Fighters));
+		local row = {};
+		while getn(row) < n and lv >= 1 do
+			local src = Rec_Fighters[lv];
+			for i = 1, getn(src) do if getn(row) < n then tinsert(row, src[i]); end; end;
+			lv = lv - 1;
+		end;
+		return row, Green_Pilots, "shipFormationPyramid2";
+	end;
+	local rich = {"Puma_merc1", "Gunslinger_merc1", "Tiger_merc1", "Trident_merc1"};
+	local row = {};
+	for j = 1, n do tinsert(row, {rich[mod(j - 1, 4) + 1], 3 + mod(j, 2), "A"}); end;
+	return row, Trad_merc_Pilots, "shipFormation";
+end;
+
+-- Builder of trf_tier TRF_BuildTier for tier 4 (TT4 convoy), of an equipment convoy (plan.fq) and of
+-- danger convoy members (plan.tier 1..3: transports only, plan.esc = 0). The group global TRF_GTrade_<k>
+-- is set by TRF_Spawn; for a member built elsewhere it is created through TRF_GnGroup(k).
+-- Sets plan.sh (transports) and plan.tpn. Returns the transport flight or nil.
+function TRF_Tt4Build(plan, id, k)
+	if type(plan) ~= "table" or type(id) ~= "number" then return nil; end;
+	if plan.fq then return TRF_CvP(TRF_CvFeqBuild, {plan, id}); end;
+	k = k or plan.k;
+	local gname = "TRF_GTrade_"..tostring(k);
+	local set = nil;
+	if not getglobal(gname) and type(k) == "number" and type(TRF_GnGroup) == "function" then
+		local g = TRF_CvP(TRF_GnGroup, {k});
+		if g then setglobal(gname, g); set = 1; end;
+	end;
+	local fl = TRF_CvP(TRF_CvTt4Body, {plan, id, k, gname});
+	if set then setglobal(gname, nil); end;
+	return fl;
+end;
+
+function TRF_CvTt4Body(plan, id, k, gname)
+	if type(TRF_BuildFlight) ~= "function" or type(Trad_merc_Pilots) ~= "table" then return nil; end;
+	local sign = "trf_"..id;
+	local pw = plan.pw or plan.strength or 10;
+	if plan.tier ~= 4 then
+		local row = TRF_CvMemberRow(plan);
+		if not row then return nil; end;
+		local fl, sh = TRF_BuildFlight(Trad_merc_Pilots, row, gname, sign, plan.pos, pw, plan.dir, "shipFormationColumn", 15, getn(row));
+		if not fl then return nil; end;
+		plan.sh = sh;
+		plan.tpn = getn(sh);
+		plan.esc = 0;
+		return fl;
+	end;
+	local ntp = TRF_CvClamp(floor(plan.tpn or 3), 1, 4);
+	local row = TRF_CvTt4Row(plan, ntp);
+	local fl, sh = TRF_BuildFlight(Trad_merc_Pilots, row, gname, sign, plan.pos, pw, plan.dir, "shipFormationColumn", 15, ntp);
+	if not fl or type(sh) ~= "table" or getn(sh) == 0 then return nil; end;
+	local C = TRF_CvH();
+	local ne = TRF_CvClamp(floor(plan.ne or 4), 0, 6);
+	local kind, f = TRF_CvTt4Src(TRF_CvCur());
+	local e = {fl={}, sh={}, k=k};
+	local parts = {ne};
+	if TRF_CvOpt("tt4_split") == 1 and ne >= 2 then parts = {ne - floor(ne / 2), floor(ne / 2)}; end;
+	local p = plan.pos;
+	local sx = {"e", "f"};
+	for j = 1, getn(parts) do
+		local erow, pil, form = TRF_CvTt4EscRow(kind, f, parts[j], pw);
+		local q = Vector3(p.x + 40 * j, p.y + 10, p.z);
+		local efl, esh = nil, nil;
+		if erow and getn(erow) > 0 then
+			efl, esh = TRF_CvP(TRF_BuildFlight, {pil, erow, gname, sign..sx[j], q, pw, plan.dir, form, 10, parts[j]});
+		end;
+		if efl and type(esh) == "table" then
+			local tgt = sh[1];
+			if j == 2 then tgt = sh[getn(sh)]; end;
+			TRF_CvP(function(x, t) x:Escort(t); end, {efl, tgt});
+			tinsert(e.fl, efl);
+			for i = 1, getn(esh) do tinsert(e.sh, esh[i]); end;
+		end;
+	end;
+	if C then
+		C.e[id] = e;
+		C.b = {f=f};
+		if kind ~= "own" then C.b.f = 0; end;
+	end;
+	if not TRF_ConvTake(3, id) then TRF_CvE("tt4_slot", "trader_id", id, "result", "busy"); end;
+	for i = 1, getn(e.sh) do TRF_CvArmEsc(id, i, e.sh[i]); end;
+	-- Escorts follow the transports in plan.sh: trf_gen labels them trf_<id>_<i>, counts them in the
+	-- record's ships (caps) and its load pass finds them; TRF_Remove deletes only the transport flight.
+	plan.tpn = getn(sh);
+	for i = 1, getn(e.sh) do tinsert(sh, e.sh[i]); end;
+	plan.sh = sh;
+	plan.esc = 0;
+	TRF_CvStat("tt4");
+	TRF_CvE("tt4", "trader_id", id, "escort_source", kind, "faction", f, "transport_count", plan.tpn,
+		"escort_count", getn(e.sh), "escort_max", ne, "flight_count", getn(e.fl));
+	return fl;
+end;
+
+function TRF_CvArmEsc(id, j, s)
+	if type(TRF) ~= "table" then return nil; end;
+	return TRF_CvTrig("attack", "TRF_CvEscHit("..id..","..j..","..TRF.gen..")--", PLAYER_GROUP, s);
+end;
+
+-- Trigger entry point: player attack on TT4 escort j of trader id.
+function TRF_CvEscHit(id, j, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_CvEscHit", TRF_CvEscHitBody, {id, j, g}); end;
+end;
+
+function TRF_CvEscHitBody(id, j, g)
+	if type(TRF) ~= "table" or g ~= TRF.gen then return; end;
+	local L = TRF_CvLive();
+	local C = TRF_CvH();
+	if not L or type(L.cvs) ~= "table" or L.cvs.k ~= 3 or L.cvs.id ~= id then return; end;
+	local c = L.cvs;
+	TRF_CvTally(c, TRF_CvGt());
+	c.na = (c.na or 0) + 1;
+	if c.na <= 60 and C and type(C.e[id]) == "table" then
+		local s = C.e[id].sh[j];
+		if TRF_CvAlive(s) then TRF_CvArmEsc(id, j, s); end;
+	end;
+end;
+
+-- End of a TT4 convoy (record r gone or removed): forced Bust after a player kill (v1 8.3), escorts leave.
+function TRF_CvTt4End(c, r)
+	local L = TRF_CvLive();
+	local C = TRF_CvH();
+	if L then L.cvs = nil; end;
+	local why = "?";
+	if type(r) == "table" then why = tostring(r.why); end;
+	if type(r) == "table" and r.cnt then c.pc = 1; end;
+	if why == "kill" and c.pc == 1 then TRF_ForcedBust(TRF_CvCur(), "tt4 "..tostring(c.id)); end;
+	if C and type(C.e[c.id]) == "table" then
+		TRF_CvGoAway(C.e[c.id].sh, why);
+		C.e[c.id] = nil;
+	end;
+	TRF_CvE("tt4_end", "trader_id", c.id, "reason", why, "player_attacked", TRF_KvB(c.pc));
+end;
+
+-- Escorts follow the first live transport (every 10 s).
+function TRF_CvTt4Step()
+	local L = TRF_CvLive();
+	local C = TRF_CvH();
+	if not L or not C or type(L.cvs) ~= "table" or L.cvs.k ~= 3 then return; end;
+	local c = L.cvs;
+	local gt = TRF_CvGt();
+	if gt - (c.rt or 0) < 10 then return; end;
+	c.rt = gt;
+	local e = C.e[c.id];
+	local H = TRF_H();
+	if type(e) ~= "table" or type(H.tr[c.id]) ~= "table" then return; end;
+	local lead = nil;
+	local tp = H.tr[c.id].tp or {};
+	for i = 1, getn(tp) do if not lead and TRF_CvAlive(tp[i]) then lead = tp[i]; end; end;
+	if not lead then return; end;
+	for i = 1, getn(e.fl) do
+		if TRF_CvAlive(e.fl[i]) then TRF_CvP(function(x, t) x:Escort(t); end, {e.fl[i], lead}); end;
+	end;
+end;
+
+-- Hold of a tier-4 flight (trf_tier TRF_FillHold): the equipment convoy hold when the build stash says so,
+-- else the TT4 hold: per transport 8 + RAND(3) expensive containers (stack A 3-4 of one class, stack B any
+-- expensive item), and 2-4 equipment items on the lead transport from the owner's _CargoType (owner escorts)
+-- or Rec_CargoType, redrawn up to tt4_redraw times until the convoy value is in tt4_vmin..tt4_vmax.
+-- Returns the hold mirror {{i, n, s}, ...} and the class of the largest stack.
+function TRF_Tt4Hold(fl, power, path)
+	local C = TRF_CvH();
+	local b = {f=0};
+	if C and type(C.b) == "table" then b = C.b; C.b = nil; end;
+	if b.fq then return TRF_CvFeqHold(fl, b); end;
+	local out = {};
+	local big = TRF_CvBig2(fl);
+	local exp = {"Cargo_01", "Cargo_05", "Cargo_06", "Cargo_09", "Cargo_10", "Uranium"};
+	local cls = {{"Cargo_01", "Cargo_05", "Cargo_10"}, {"Cargo_06", "Cargo_09"}, {"Uranium"}};
+	local ca = cls[TRF_CvRand(3) + 1];
+	local ia = ca[TRF_CvRand(getn(ca)) + 1];
+	for i = 1, getn(big) do
+		local n = 8 + TRF_CvRand(3);
+		local a = 3 + TRF_CvRand(2);
+		local ib = exp[TRF_CvRand(getn(exp)) + 1];
+		tinsert(out, {i=ia, n=a, s=big[i][2]});
+		if ib == ia then out[getn(out)].n = n; else tinsert(out, {i=ib, n=n - a, s=big[i][2]}); end;
+	end;
+	local cv = TRF_CvValue(out);
+	local CType = Rec_CargoType;
+	if b.f and b.f > 0 then
+		local own = getglobal(TRF_CvFac()[b.f].v.."_CargoType");
+		if type(own) == "table" then CType = own; end;
+	end;
+	local eq = {};
+	if type(CType) == "table" and getn(CType) >= 6 and getn(big) > 0 then
+		local lo, hi = TRF_CvT("tt4_vmin"), TRF_CvT("tt4_vmax");
+		local e0, e1 = TRF_CvT("tt4_eq_min"), TRF_CvT("tt4_eq_max");
+		local tries = max(1, floor(TRF_CvT("tt4_redraw")) + 1);
+		local ok = nil;
+		local t = 0;
+		while t < tries and not ok do
+			eq = {};
+			local m = e0 + TRF_CvRand(max(1, e1 - e0 + 1));
+			for j = 1, m do
+				local it = TRF_CvWinItem(CType, power);
+				local found = nil;
+				for q = 1, getn(eq) do if eq[q].i == it then eq[q].n = eq[q].n + 1; found = 1; end; end;
+				if not found then tinsert(eq, {i=it, n=1, s=big[1][2]}); end;
+			end;
+			local v = cv + TRF_CvValue(eq);
+			if v >= lo and v <= hi then ok = 1; end;
+			t = t + 1;
+		end;
+		if not ok then
+			TRF_CvStat("tt4_value_miss");
+			TRF_CvE("tt4_value_miss", "value", cv + TRF_CvValue(eq), "try_count", t);
+		end;
+	end;
+	for i = 1, getn(eq) do tinsert(out, eq[i]); end;
+	for i = 1, getn(out) do
+		local s = nil;
+		for j = 1, getn(big) do if big[j][2] == out[i].s then s = big[j][1]; end; end;
+		if s then TRF_CvP(function(x, it, n) x:AddModuleToInventory(it, n); end, {s, out[i].i, out[i].n}); end;
+	end;
+	TRF_CvDE("tt4_hold", "value", TRF_CvValue(out), "stack_count", getn(out), "equip_count", getn(eq));
+	-- Class of the largest container stack (equipment has no cargo class).
+	local best, bn = 6, 0;
+	for i = 1, getn(out) do
+		local it = out[i].i;
+		if (TRF_CvIsCargo(it) or it == "Uranium") and out[i].n > bn then
+			bn = out[i].n;
+			best = 6;
+			if type(TRF_GnCls) == "function" then best = TRF_GnCls(it); end;
+		end;
+	end;
+	return out, best;
+end;
+
+-- Forced Bust (v1 8.3) -----------------------------------------------------------------------
+
+-- Player kill of a TT4 or equipment convoy in system idx: rg[slot].ct bit 4 (trf_region turns the slot to
+-- Bust at its next tick). Saved at once, so a jump or a save keeps it. Returns 1 when set.
+function TRF_ForcedBust(idx, why)
+	if TRF_CvOpt("forced_bust") == 0 then return nil; end;
+	local slot = TRF_CvX("TRF_RgOf", idx);
+	local r = TRF_CvX("TRF_RgRec", slot);
+	if type(slot) ~= "number" or type(r) ~= "table" then TRF_CvE("forced_bust", "system_index", idx, "reason", "no_region", "result", "skipped"); return nil; end;
+	if TRF_CvBit(r.ct, 4) == 1 then return 1; end;
+	if type(TRF_RgCtSet) == "function" then
+		TRF_CvP(TRF_RgCtSet, {slot, 4});
+	else
+		if type(r.ct) ~= "number" then r.ct = 0; end;
+		r.ct = r.ct + 4;
+	end;
+	TRF_CvStat("forced_bust");
+	TRF_CvE("forced_bust", "region", slot, "system", TRF_CvSysName(idx), "reason", why);
+	TRF_N("TRF_Ch_Note", 8, idx, 0);
+	return 1;
+end;
+
+-- Equipment convoys: record life (v1 8.4) ----------------------------------------------------
+
+-- TRF.feq or nil; a broken record is dropped.
+function TRF_CvFeq()
+	if type(TRF) ~= "table" then return nil; end;
+	local f = TRF.feq;
+	if f == nil then return nil; end;
+	if type(f) ~= "table" or (f.k ~= 1 and f.k ~= 2) or type(f.t) ~= "number" or type(f.f) ~= "number"
+		or f.f < 1 or f.f > 5 or type(f.s) ~= "number" then
+		TRF.feq = nil;
+		TRF_CvE("feq_drop", "reason", "bad_fields");
+		return nil;
+	end;
+	return f;
+end;
+
+-- Deny entry de of system idx under the transit rule (trf_safety TRF_SysModeOf, TRF_StrictOkOf): "deny"
+-- for an authored m = 1 entry (elio, x297, gefest, cfg sys_deny), "deny_tq" for a campaign teleport target
+-- (tq = 1) the strict gate for feature f denies (a quest naming the system in process, cfg transit 0 during
+-- a mission), else nil (also for an entry without m = 1).
+function TRF_CvDenyM(idx, de, f)
+	if type(de) ~= "table" or de.m ~= 1 then return nil; end;
+	if de.tq ~= 1 then return "deny"; end;
+	if type(TRF_StrictOk) ~= "function" or not TRF_CvX("TRF_StrictOk", idx, f) then return "deny_tq"; end;
+	return nil;
+end;
+
+-- Eligible systems (v1 8.4 creation): owner f 1..5 now, open trade station and trader registration, pro >=
+-- feq_min_pro, fs >= feq_min_strength, no border, not Fronn, no authored m = 1 deny entry, no teleport target
+-- the transit rule closes for feature feq (TRF_CvDenyM), no guard system.
+-- force: system name (cfg feq_at) skips the pro, fs and border tests. Returns {{idx, f, w}, ...}.
+function TRF_CvFeqCand(force)
+	local m = TRF_CvMap();
+	local out = {};
+	if not m then return out; end;
+	local mp, ms = TRF_CvT("feq_min_pro"), TRF_CvT("feq_min_strength");
+	for idx = 1, getn(m.sys) do
+		local sy = m.sys[idx];
+		local st = nil;
+		if type(sy.st) == "table" then st = sy.st[1]; end;
+		local nm = strlower(tostring(sy.name));
+		local ok = sy.trader == 1 and type(st) == "table" and st.kind == "trade" and st.cond ~= 1 and nm ~= "fronn";
+		if ok and force and force ~= nm then ok = nil; end;
+		local pro = TRF_CvX("TRF_Pro", idx) or 0;
+		if ok and not force and pro < mp then ok = nil; end;
+		if ok then
+			if TRF_CvDenyM(idx, TRF_CvX("TRF_DenyEntry", nm), "feq") then ok = nil; end;
+		end;
+		if ok and TRF_CvGuard(idx) then ok = nil; end;
+		if ok then
+			local f = TRF_CvFacIdx(TRF_CvTeam(idx));
+			local slot = TRF_CvX("TRF_RgOf", idx);
+			local fs = TRF_CvFs(slot, f);
+			if f < 1 then ok = nil; end;
+			if ok and not force and (fs < ms or TRF_CvBorder(idx)) then ok = nil; end;
+			if ok then tinsert(out, {idx, f, max(1, pro * fs), slot}); end;
+		end;
+	end;
+	return out;
+end;
+
+-- Once per region tick (trf_region TRF_RegionTick, after the slot loop): expiry of a scheduled record,
+-- cooldown end, creation (feq_chance, weighted by pro x fs; cfg feq_at forces a system).
+function TRF_Convoy_Tick(L)
+	if type(TRF) ~= "table" then return; end;
+	if type(L) ~= "number" then L = TRF_CvLegs(); end;
+	local f = TRF_CvFeq();
+	if f and f.k == 1 and L >= f.t + TRF_CvT("feq_due_legs") then
+		local slot = TRF_CvX("TRF_RgOf", f.s);
+		local tier = TRF_CvX("TRF_ClanTier", slot) or 1;
+		local ch = 0;
+		if tier == 3 then ch = TRF_CvT("feq_off_t3"); elseif tier >= 4 then ch = TRF_CvT("feq_off_t4"); end;
+		if f.a == 1 then ch = 0; end;
+		local roll = TRF_CvRand(100);
+		if roll < ch then
+			TRF_CvP(TRF_CvFeqTaken, {f.f, f.s, slot, 1, "off"});
+			TRF_CvE("feq_expire", "system", TRF_CvSysName(f.s), "tier", tier, "roll", roll, "chance", ch, "result", "taken_off_screen");
+		else
+			TRF_CvE("feq_expire", "system", TRF_CvSysName(f.s), "tier", tier, "roll", roll, "chance", ch, "result", "completed");
+		end;
+		f.k = 2; f.t = L; f.a = nil;
+	elseif f and f.k == 2 and L >= f.t + TRF_CvT("feq_cooldown_legs") then
+		TRF.feq = nil;
+		f = nil;
+		TRF_CvE("feq_cooldown_over", "leg", L);
+	end;
+	if f or TRF_CvOpt("feq") == 0 then return; end;
+	local force = TRF_CvOpt("feq_at");
+	if type(force) ~= "string" or force == "" then force = nil; else force = strlower(force); end;
+	if not force and not (TRF_CvRand(100) < TRF_CvT("feq_chance")) then return; end;
+	local cand = TRF_CvFeqCand(force);
+	if getn(cand) == 0 then TRF_CvDE("feq_schedule", "reason", "no_eligible_system", "result", "skipped"); return; end;
+	local sum = 0;
+	for i = 1, getn(cand) do sum = sum + cand[i][3]; end;
+	local r = TRF_CvRand(floor(sum));
+	local pick = cand[getn(cand)];
+	for i = 1, getn(cand) do
+		if r < cand[i][3] then pick = cand[i]; break; end;
+		r = r - cand[i][3];
+	end;
+	TRF.feq = {k=1, f=pick[2], s=pick[1], r=TRF_CvRung(pick[4], pick[2]), t=L};
+	TRF_CvStat("feq_new");
+	TRF_CvE("feq_schedule", "faction", pick[2], "system", TRF_CvSysName(pick[1]), "forced", TRF_KvB(force and 1),
+		"rung", TRF.feq.r, "leg", L, "candidate_count", getn(cand), "result", "scheduled");
+end;
+
+-- Announce (v1 8.4): the scheduled record when its system is within 3 jumps of idx and the stable
+-- feq_announce_chance test passes. Returns {s, f, j, txt} or nil (for the rumour and the booming answer).
+function TRF_FeqDue(idx)
+	local f = TRF_CvFeq();
+	if not f or f.k ~= 1 or type(idx) ~= "number" then return nil; end;
+	local j = TRF_CvJumps(idx, 3)[f.s];
+	if type(j) ~= "number" then return nil; end;
+	if mod(f.t * 7 + f.s * 13 + idx * 31, 100) >= TRF_CvT("feq_announce_chance") then return nil; end;
+	return {s=f.s, f=f.f, j=j, txt=TRF_CvTxt("cvrfeq", TRF_CvFacName(f.f), TRF_CvSysName(f.s))};
+end;
+
+-- Pirates took the convoy of faction f in system s (v1 8.4): salvage +3, clan score +5 (once per record, so
+-- outside the per-visit clan cap), fs -1, dis +2 when no kill bookkeeping added it (adddis), news.
+function TRF_CvFeqTaken(f, s, slot, adddis, why)
+	TRF_CvX("TRF_SalvAdd", slot, 3, f, "feqt");
+	local c = TRF_CvX("TRF_ClanRec", slot);
+	if type(c) == "table" and type(c.sc) == "number" then
+		local old = c.sc;
+		c.sc = TRF_CvClamp(old + 5, 0, 99);
+		TRF_CvE("clan_score", "region", slot, "reason", "feq_taken", "old_clan_score", old, "clan_score", c.sc);
+	end;
+	TRF_CvX("TRF_FsAdd", slot, f, -1, "feq lost");
+	if adddis == 1 then TRF_CvX("TRF_AddDis", s, 2, "feq taken"); end;
+	TRF_CvX("TRF_NewsPost", "feq", "lost_"..f);
+	TRF_CvStat("feq_taken");
+end;
+
+-- Equipment convoys: the visit (v1 8.4) ------------------------------------------------------
+
+-- Entry plan item 3 (trf_gen TRF_EntryPlan, when no on-screen sweep plays here): reserves the convoy slot
+-- and schedules TRF_FeqSpawn 20-40 s after entry. Returns 1 when the convoy is due in this visit.
+function TRF_FeqEntry()
+	local L = TRF_CvLive();
+	local f = TRF_CvFeq();
+	local cur = TRF_CvCur();
+	if not L or not f or f.k ~= 1 or f.s ~= cur or TRF_CvOpt("feq") == 0 then return nil; end;
+	if type(L.fq) == "table" then return L.fq.st ~= "end" and 1 or nil; end;
+	if f.a == 1 then return nil; end;
+	if type(L.sw) == "table" then TRF_CvE("feq_entry", "reason", "sweep", "result", "deferred"); return nil; end;
+	local ok, why = TRF_CvGate(cur, "feq");
+	if not ok then TRF_CvE("feq_entry", "reason", why, "result", "gated"); TRF_CvStat("skip_feq_"..tostring(why)); return nil; end;
+	-- Scripted-event slot (trf_plumb, 00 section 6): the equipment convoy ranks after the on-screen sweep.
+	if type(TRF_EventSlotTake) == "function" and not TRF_EventSlotTake("feq") then
+		TRF_CvE("feq_entry", "reason", "event_slot", "result", "skipped");
+		return nil;
+	end;
+	if not TRF_ConvTake(4, 0) then
+		TRF_CvX("TRF_EventSlotFree", "feq");
+		TRF_CvE("feq_entry", "reason", "slot_busy", "result", "skipped");
+		return nil;
+	end;
+	local a, b = TRF_CvT("feq_app_min"), TRF_CvT("feq_app_max");
+	local dt = a + TRF_CvRand(max(1, b - a + 1));
+	L.fq = {n=TRF.gen, id=0, f=f.f, r=f.r, st="due", t0=TRF_CvGt() + dt, try=0};
+	if not TRF_CvX("TRF_Due", dt, "TRF_FeqSpawn") then L.fq.st = "end"; L.cvs = nil; TRF_CvX("TRF_EventSlotFree", "feq"); return nil; end;
+	TRF_CvE("feq_entry", "faction", f.f, "rung", f.r, "delay", dt, "result", "due");
+	return 1;
+end;
+
+-- First hop portal index of contact validation cv toward the nearest system owned by f (BFS on the map).
+function TRF_CvFeqPortal(cv, f)
+	local m = TRF_CvMap();
+	local cur = TRF_CvCur();
+	if not m or not cur or type(cv) ~= "table" or type(cv.pt) ~= "table" then return nil; end;
+	local best, bj = nil, nil;
+	for i = 1, getn(cv.pt) do
+		local y = cv.pt[i];
+		if type(y) == "number" and y > 0 then
+			local d = TRF_CvJumps(y, 3);
+			for x, j in d do
+				if x ~= cur and TRF_CvFacIdx(TRF_CvTeam(x)) == f and (not bj or j < bj) then best = i; bj = j; end;
+			end;
+		end;
+	end;
+	return best;
+end;
+
+-- Plan of the equipment convoy (trf_gen TRF_Plan shape): path B from the station, or with 50 % path A
+-- through the portal facing the nearest other system of f. Returns plan or nil, reason.
+function TRF_CvFeqPlan(fq)
+	if type(TRF_Plan) ~= "function" or type(TRF_GnSeedContacts) ~= "function" then return nil, "gen"; end;
+	if type(TRF_GnValidate) == "function" and not TRF_GnValidate() then return nil, "contacts"; end;
+	local cis = TRF_GnSeedContacts();
+	if not cis then return nil, "station"; end;
+	local ci = cis[TRF_CvRand(getn(cis)) + 1];
+	local c = TRF_GnContacts()[ci];
+	local path = "B";
+	if TRF_CvRand(100) < 50 then path = "A"; end;
+	local plan, why = TRF_Plan(c, ci, path, nil);
+	if not plan then return nil, why; end;
+	if path == "A" then
+		local L = TRF_CvLive();
+		local cv = L.cv and L.cv[ci];
+		local si = TRF_CvFeqPortal(cv, fq.f);
+		if si and type(c[3]) == "table" and c[3][si] then
+			local po = c[3][si];
+			plan.ent = po; plan.entn = cv.pn[si]; plan.from = cv.pt[si];
+			plan.pos = po:GetEntryPoint(10); plan.dir = po:GetOrientation();
+		end;
+	end;
+	local ntp = 2;
+	if fq.r >= 3 then ntp = 3; end;
+	plan.tier = 4; plan.fq = fq.n; plan.tpn = ntp; plan.esc = 0;
+	local pws = {7, 12, 16, 19};
+	plan.pw = pws[fq.r + 1];
+	plan.n = min(TRF_CvT("cap_feq"), ntp + 3 * TRF_CvT("feq_escorts"));
+	return plan;
+end;
+
+-- Due call: the convoy appears (v1 8.4 appearance). Gate and caps again; a refused spawn retries twice,
+-- 20 s apart, then the record stays due (it expires off-screen). Returns the trader id or nil.
+function TRF_FeqSpawn()
+	local L = TRF_CvLive();
+	if not L or type(L.fq) ~= "table" or L.fq.st ~= "due" then return nil; end;
+	local fq = L.fq;
+	local cur = TRF_CvCur();
+	local ok, why = TRF_CvGate(cur, "feq");
+	local plan = nil;
+	if ok then plan, why = TRF_CvFeqPlan(fq); ok = plan; end;
+	if ok and type(TRF_CanSpawn) == "function" then
+		local o2, w2 = TRF_CvX("TRF_CanSpawn", plan.n, "feq");
+		if not o2 then ok = nil; why = w2; end;
+	end;
+	local id = nil;
+	if ok and type(TRF_Spawn) == "function" then
+		id = TRF_CvP(TRF_Spawn, {plan});
+		if not id then why = "build"; end;
+	end;
+	if not id then
+		fq.try = (fq.try or 0) + 1;
+		TRF_CvStat("skip_feq_"..tostring(why));
+		if fq.try < 3 and why ~= "gate" and why ~= "supp" and TRF_CvX("TRF_Due", 20, "TRF_FeqSpawn") then
+			TRF_CvE("feq_spawn", "reason", why, "try", fq.try, "result", "refused");
+			return nil;
+		end;
+		TRF_CvE("feq_spawn", "reason", why, "result", "given_up");
+		TRF_CvP(TRF_CvFeqDrop, {fq});
+		return nil;
+	end;
+	TRF_CvP(TRF_CvFeqStart, {fq, id});
+	return id;
+end;
+
+-- The convoy did not appear: slot released, the record stays due.
+function TRF_CvFeqDrop(fq)
+	local L = TRF_CvLive();
+	local C = TRF_CvH();
+	fq.st = "end";
+	if L and type(L.cvs) == "table" and L.cvs.k == 4 then L.cvs = nil; end;
+	if C and type(C.fq) == "table" then
+		TRF_CvLeave(C.fq.esh, "feq drop");
+		C.fq = nil;
+	end;
+end;
+
+-- Group TRF_Feq_<n> on the Trade team, transports Walrus_<f>{r + 1} with <F>_Pilots[2], feq_escorts
+-- fighter flights at the rung ordered to escort the lead, everything within cap_feq ships.
+function TRF_CvFeqBuild(plan, id)
+	local L = TRF_CvLive();
+	local C = TRF_CvH();
+	local fq = L and L.fq;
+	if not C or type(fq) ~= "table" or type(TRF_BuildFlight) ~= "function" then return nil; end;
+	local F = TRF_CvFac()[fq.f];
+	local pil = getglobal(F.v.."_Pilots");
+	if type(pil) ~= "table" then return nil; end;
+	local team = TRF_CvX("CreateTeam", "Trade");
+	local g = nil;
+	if team then g = TRF_CvP(function(t, nm) return t:CreateGroup(nm); end, {team, "TRF_Feq_"..fq.n}); end;
+	if not g then TRF_CvE("feq_spawn", "reason", "no_group", "result", "failed"); return nil; end;
+	local ntp = TRF_CvClamp(floor(plan.tpn or 2), 1, 3);
+	local hull = "Walrus_"..F.sx..(fq.r + 1);
+	local row = {};
+	for i = 1, ntp do tinsert(row, {hull, 1, "A"}); end;
+	local args = {{pil[2] or pil[1]}, row, "TRF_GFeq", "trf_"..id, plan.pos, plan.pw or 10, plan.dir,
+		"shipFormationColumn", 15, ntp};
+	-- Only protected calls while the group global is set (v1 spec 13.4 O5).
+	setglobal("TRF_GFeq", g);
+	local fl, sh = TRF_CvP(TRF_BuildFlight, args);
+	if not fl or type(sh) ~= "table" or getn(sh) == 0 then setglobal("TRF_GFeq", nil); return nil; end;
+	local h = {g=g, fl=fl, tp=sh, esc={}, esh={}, w={}, wsh={}, all={}};
+	TRF_CvP(TRF_CvFeqEscorts, {fq, plan, sh, h});
+	setglobal("TRF_GFeq", nil);
+	TRF_CvP(function(x, r) SetGroupRelation(x, PLAYER_GROUP, r); end, {g, TRF_CvFstRel(fq.f)});
+	C.fq = h;
+	C.b = {fq=fq.n, f=fq.f, r=fq.r};
+	plan.tpn = getn(sh);
+	local all = {};
+	for i = 1, getn(sh) do tinsert(all, sh[i]); end;
+	for i = 1, getn(h.esh) do tinsert(all, h.esh[i]); end;
+	plan.sh = all;
+	plan.esc = 0;
+	TRF_CvE("feq_build", "trader_id", id, "faction", fq.f, "hull_name", hull, "transport_count", getn(sh), "escort_count", getn(h.esh));
+	return fl;
+end;
+
+-- Escort flights of the equipment convoy (TRF_CvFeqBuild) into h.esc / h.esh, run protected while the
+-- group global TRF_GFeq is set.
+function TRF_CvFeqEscorts(fq, plan, sh, h)
+	local cap = TRF_CvT("cap_feq");
+	local p = plan.pos;
+	for j = 1, TRF_CvT("feq_escorts") do
+		local room = cap - getn(sh) - getn(h.esh);
+		if room > 0 then
+			local q = Vector3(p.x + 40 * j, p.y + 15, p.z - 20 * j);
+			local efl, esh = TRF_CvFacFlight(fq.f, fq.r, "TRF_GFeq", "trf_fqe"..j, q, plan.dir, min(room, 4));
+			if efl and type(esh) == "table" then
+				TRF_CvP(function(x, t) x:Escort(t); end, {efl, sh[1]});
+				tinsert(h.esc, efl);
+				for i = 1, getn(esh) do tinsert(h.esh, esh[i]); end;
+			end;
+		end;
+	end;
+end;
+
+-- Equipment hold per transport: the FillCargoFlight window over f's _CargoType at the rung's power with
+-- feq_num 3 (stack 1: 1-2 units, stack 2: 1-3), Cargo_* redrawn; the convoy value must fall in the rung
+-- window (feq_v<r>lo..hi), up to tt4_redraw redraws, then the last draw is kept (feq_value_miss).
+function TRF_CvFeqHold(fl, b)
+	local out = {};
+	local big = TRF_CvBig2(fl);
+	local CType = getglobal(TRF_CvFac()[b.f].v.."_CargoType");
+	if type(CType) ~= "table" or getn(CType) < 6 then return out, 6; end;
+	local r = TRF_CvClamp(b.r or 0, 0, 3);
+	local pws = {7, 12, 16, 19};
+	local pw = pws[r + 1];
+	local lo, hi = TRF_CvT("feq_v"..r.."lo"), TRF_CvT("feq_v"..r.."hi");
+	local X = max(1, floor(TRF_CvT("feq_num")));
+	local tries = max(1, floor(TRF_CvT("tt4_redraw")) + 1);
+	local ok, t, v = nil, 0, 0;
+	while t < tries and not ok do
+		out = {};
+		for i = 1, getn(big) do
+			if X > 2 then tinsert(out, {i=TRF_CvWinItem(CType, pw), n=TRF_CvRand(2) + 1, s=big[i][2]}); end;
+			tinsert(out, {i=TRF_CvWinItem(CType, pw), n=TRF_CvRand(X) + 1, s=big[i][2]});
+		end;
+		v = TRF_CvValue(out);
+		if v >= lo and v <= hi then ok = 1; end;
+		t = t + 1;
+	end;
+	if not ok then
+		TRF_CvStat("feq_value_miss");
+		TRF_CvE("feq_value_miss", "value", v, "value_min", lo, "value_max", hi, "try_count", t);
+	end;
+	for i = 1, getn(out) do
+		local s = nil;
+		for j = 1, getn(big) do if big[j][2] == out[i].s then s = big[j][1]; end; end;
+		if s then TRF_CvP(function(x, it, n) x:AddModuleToInventory(it, n); end, {s, out[i].i, out[i].n}); end;
+	end;
+	TRF_CvE("feq_hold", "value", v, "stack_count", getn(out));
+	return out, 6;
+end;
+
+-- After TRF_Spawn: record marks (no v02 response: waves replace it), slot, HP, attack triggers on every
+-- convoy ship, the clan raid roll (30 / 50 % at effective tier 3 / 4).
+function TRF_CvFeqStart(fq, id)
+	local L = TRF_CvLive();
+	local C = TRF_CvH();
+	local r = L.tr[id];
+	local h = C and C.fq;
+	if type(r) ~= "table" or type(h) ~= "table" then return; end;
+	r.resp = 2;
+	r.fq = fq.n;
+	fq.id = id;
+	fq.st = "live";
+	fq.t0 = TRF_CvGt();
+	if type(L.cvs) == "table" and L.cvs.k == 4 then L.cvs.id = id; else L.cvs = {k=4, id=id}; end;
+	local f = TRF_CvFeq();
+	if f then f.a = 1; end;
+	local hp = 0;
+	for i = 1, getn(h.tp) do
+		local v = TRF_CvX("GetCurHP", h.tp[i]);
+		if type(v) == "number" then hp = hp + v; end;
+	end;
+	fq.hp0 = hp;
+	fq.hps = hp;
+	h.all = {};
+	for i = 1, getn(h.tp) do tinsert(h.all, h.tp[i]); end;
+	for i = 1, getn(h.esh) do tinsert(h.all, h.esh[i]); end;
+	for i = 1, getn(h.all) do TRF_CvArmFeq(fq.n, i, h.all[i]); end;
+	local cur = TRF_CvCur();
+	local slot = TRF_CvX("TRF_RgOf", cur);
+	local tier = TRF_CvX("TRF_EffTier", cur) or 1;
+	local ch = 0;
+	if tier == 3 then ch = TRF_CvT("feq_raid_t3"); elseif tier >= 4 then ch = TRF_CvT("feq_raid_t4"); end;
+	if ch > 0 and (slot and TRF_CvX("TRF_SweepOpen", slot)) then ch = 0; end;
+	if ch > 0 and TRF_CvGuard(cur) then ch = 0; end;
+	fq.raid = 0;
+	local roll = TRF_CvRand(100);
+	if roll < ch then
+		local a, b = TRF_CvT("feq_raid_min"), TRF_CvT("feq_raid_max");
+		local dt = a + TRF_CvRand(max(1, b - a + 1));
+		if TRF_CvX("TRF_Due", dt, "TRF_FeqRaid", fq.n) then fq.raid = 1; end;
+	end;
+	TRF_CvStat("feq_spawn");
+	TRF_CvE("feq_appear", "trader_id", id, "path", r.path, "hull_start", hp, "ship_count", getn(h.all), "tier", tier,
+		"roll", roll, "chance", ch, "raid_planned", TRF_KvB(fq.raid));
+end;
+
+-- Due call: clan raid on the convoy without a demand step (trf_clan TRF_RaidOn, at least T3).
+function TRF_FeqRaid(n)
+	local L = TRF_CvLive();
+	if not L or type(L.fq) ~= "table" or L.fq.n ~= n or L.fq.st ~= "live" then return; end;
+	local fq = L.fq;
+	local cur = TRF_CvCur();
+	local tier = max(3, TRF_CvX("TRF_EffTier", cur) or 3);
+	if type(TRF_RaidOn) ~= "function" then TRF_CvE("feq_raid", "reason", "no_raid_module", "result", "skipped"); return; end;
+	local v = TRF_CvX("TRF_RaidOn", {fq.id}, tier, "feq");
+	fq.raid = 2;
+	TRF_CvE("feq_raid", "trader_id", fq.id, "tier", tier, "result", v);
+end;
+
+function TRF_CvArmFeq(n, j, s)
+	if type(TRF) ~= "table" then return nil; end;
+	return TRF_CvTrig("attack", "TRF_FeqAttack("..n..","..j..","..TRF.gen..")--", PLAYER_GROUP, s);
+end;
+
+-- Trigger entry point: player attack on convoy ship src (transport or escort) of equipment event n.
+function TRF_FeqAttack(n, src, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_FeqAttack", TRF_FeqAttackBody, {n, src, g}); end;
+end;
+
+function TRF_FeqAttackBody(n, src, g)
+	if type(TRF) ~= "table" or g ~= TRF.gen then return; end;
+	local L = TRF_CvLive();
+	local C = TRF_CvH();
+	if not L or type(L.fq) ~= "table" or L.fq.n ~= n or L.fq.st ~= "live" then return; end;
+	local fq = L.fq;
+	local gt = TRF_CvGt();
+	fq.lh = gt;
+	TRF_CvTally(fq, gt);
+	fq.na = (fq.na or 0) + 1;
+	if fq.na <= 100 and C and type(C.fq) == "table" then
+		local s = C.fq.all[src];
+		if TRF_CvAlive(s) then TRF_CvArmFeq(n, src, s); end;
+	end;
+end;
+
+-- Sum of live transport HP, number alive.
+function TRF_CvFeqHP(h)
+	local hp, n = 0, 0;
+	for i = 1, getn(h.tp) do
+		if TRF_CvAlive(h.tp[i]) then
+			local v = TRF_CvX("GetCurHP", h.tp[i]);
+			if type(v) == "number" then hp = hp + v; end;
+			n = n + 1;
+		end;
+	end;
+	return hp, n;
+end;
+
+-- Event ships alive: transports, escorts, waves, open raid flights in the system.
+function TRF_CvFeqShips(h)
+	local n = 0;
+	local lists = {h.tp, h.esh, h.wsh};
+	for k = 1, 3 do
+		for i = 1, getn(lists[k]) do if TRF_CvAlive(lists[k][i]) then n = n + 1; end; end;
+	end;
+	local L = TRF_CvLive();
+	if L and type(L.rd) == "table" then
+		for k, rd in L.rd do
+			if type(rd) == "table" and rd.st ~= "end" and type(rd.ns) == "number" then n = n + rd.ns; end;
+		end;
+	end;
+	return n;
+end;
+
+-- First counted attack (v1 8.4): src "p" player (counted fire on any convoy ship), "o" others (transport
+-- HP drop without player fire; CHECK: proxy for the attack triggers on clan raid groups). The convoy turns
+-- for a refuge; a player attack sets the convoy and its waves at war with the player for the visit.
+function TRF_CvFeqAtk(fq, h, src)
+	local gt = TRF_CvGt();
+	fq.atk = gt;
+	fq.src = src;
+	fq.lh = gt;
+	fq.w1 = gt + TRF_CvT("feq_wave1_s") + TRF_CvRand(floor(TRF_CvT("feq_wave1_x")) + 1);
+	if src == "p" and RELATION_WAR ~= nil then
+		TRF_CvP(function(x) SetGroupRelation(x, PLAYER_GROUP, RELATION_WAR); end, {h.g});
+		if h.wg then TRF_CvP(function(x) SetGroupRelation(x, PLAYER_GROUP, RELATION_WAR); end, {h.wg}); end;
+	end;
+	TRF_CvX("TRF_Flee", fq.id, "feq");
+	TRF_CvSay(TRF_CvTxt("feqatk"), h.tp[1]);
+	TRF_CvStat("feq_attack_"..src);
+	TRF_CvE("feq_attack", "trader_id", fq.id, "attacker", src, "wave1_delay", floor(fq.w1 - gt));
+end;
+
+-- Wave w (1: feq_w1_<r> flights at rung r from portal glows 150-250 from the lead transport; 2: 2 flights at
+-- min(3, r + 1) plus at fs >= feq_big_fs the rung's big ship through the nearest portal), group
+-- TRF_Feq_<n>w on f's team, trimmed to cap_feq event ships.
+function TRF_CvFeqWave(fq, h, w)
+	local lead = nil;
+	for i = 1, getn(h.tp) do if not lead and TRF_CvAlive(h.tp[i]) then lead = h.tp[i]; end; end;
+	if not lead then return 0; end;
+	local lp = lead:GetPosition();
+	local rung, nf = fq.r, TRF_CvT("feq_w1_"..fq.r);
+	if w == 2 then rung = min(3, fq.r + 1); nf = 2; end;
+	local room = TRF_CvT("cap_feq") - TRF_CvFeqShips(h);
+	if room <= 0 then TRF_CvE("feq_wave", "wave", w, "reason", "cap", "result", "skipped"); return 0; end;
+	if not h.wg then
+		local team = TRF_CvX("CreateTeam", TRF_CvFacTeam(fq.f));
+		if team then h.wg = TRF_CvP(function(t, nm) return t:CreateGroup(nm); end, {team, "TRF_Feq_"..fq.n.."w"}); end;
+	end;
+	if not h.wg then TRF_CvE("feq_wave", "wave", w, "reason", "no_group", "result", "failed"); return 0; end;
+	local rel = TRF_CvFstRel(fq.f);
+	if fq.src == "p" and RELATION_WAR ~= nil then rel = RELATION_WAR; end;
+	TRF_CvP(function(x, r) SetGroupRelation(x, PLAYER_GROUP, r); end, {h.wg, rel});
+	TRF_CvFeqTriada(fq, h.wg);
+	local ms = TRF_CvMs();
+	-- Only the protected body runs while the group global is set (v1 spec 13.4 O5).
+	setglobal("TRF_GFeqW", h.wg);
+	local made = TRF_CvP(TRF_CvFeqWaveBody, {fq, h, w, nf, rung, room, lp, lead, ms}) or 0;
+	setglobal("TRF_GFeqW", nil);
+	TRF_CvStat("feq_wave"..w);
+	TRF_CvE("feq_wave", "wave", w, "rung", rung, "ship_count", made);
+	return made;
+end;
+
+-- Flights of wave w (TRF_CvFeqWave) within room ships; returns the ships made. Runs protected while the
+-- group global TRF_GFeqW is set.
+function TRF_CvFeqWaveBody(fq, h, w, nf, rung, room, lp, lead, ms)
+	local made = 0;
+	for j = 1, nf do
+		if room > 0 then
+			local a = TRF_CvRand(360);
+			local d = 150 + TRF_CvRand(101);
+			local pos = Vector3(lp.x + d * cos(a), lp.y + 20, lp.z + d * sin(a));
+			local dir = Vector3(-cos(a), 0, -sin(a));
+			TRF_CvX("CreatePortalGlow", pos, dir, 7);
+			local fl, sh = TRF_CvFacFlight(fq.f, rung, "TRF_GFeqW", "trf_fqw"..w..j, pos, dir, min(room, 4));
+			if fl and type(sh) == "table" then
+				TRF_CvFeqOrder(fq, fl, lead, ms);
+				tinsert(h.w, fl);
+				for i = 1, getn(sh) do
+					tinsert(h.wsh, sh[i]);
+					TRF_CvX("SetObjectLabel", sh[i], "trf_fqw_"..getn(h.wsh));
+				end;
+				room = room - getn(sh);
+				made = made + getn(sh);
+			end;
+		end;
+	end;
+	if w == 2 and room > 0 then
+		local slot = TRF_CvX("TRF_RgOf", TRF_CvCur());
+		if TRF_CvFs(slot, fq.f) >= TRF_CvT("feq_big_fs") then made = made + TRF_CvFeqBig(fq, h, rung, lead, ms); end;
+	end;
+	return made;
+end;
+
+-- Wave orders: against the player when the player attacked, else escort the lead (they fight the raiders).
+function TRF_CvFeqOrder(fq, fl, lead, ms)
+	if fq.src == "p" and ms then
+		TRF_CvP(function(x, t) x:Attack(t); end, {fl, ms});
+	else
+		TRF_CvP(function(x, t) x:Escort(t); end, {fl, lead});
+	end;
+end;
+
+-- Big ship of wave 2 through the nearest portal (GetEntryPoint 60, 80, 100; nil -> skipped).
+function TRF_CvFeqBig(fq, h, rung, lead, ms)
+	local hull = TRF_CvBig(fq.f, rung);
+	local po = TRF_CvNearPortal(lead:GetPosition());
+	local F = TRF_CvFac()[fq.f];
+	local pil = getglobal(F.v.."_Pilots");
+	if not hull or not po or type(pil) ~= "table" then TRF_CvE("feq_big_ship", "result", "skipped"); return 0; end;
+	TRF_CvP(function(p) p:Start(8, 0); end, {po});
+	local s = nil;
+	local ds = {60, 80, 100};
+	for i = 1, 3 do
+		if not s then
+			local q = TRF_CvP(function(p, d) return p:GetEntryPoint(d); end, {po, ds[i]});
+			if q then s = TRF_CvP(CreateCarcass, {hull, q, TRF_CvP(function(p) return p:GetOrientation(); end, {po})}); end;
+		end;
+	end;
+	if not s then TRF_CvStat("feq_big_skip"); TRF_CvE("feq_big_ship", "hull_name", hull, "result", "failed"); return 0; end;
+	local fl = TRF_CvP(function(g, nm) return g:CreateFlight(nm); end, {h.wg, "flight_trf_fqb"});
+	TRF_CvP(function(x, p) x:AssignPilot(CreatePilot(p)); end, {s, pil[3] or pil[1]});
+	if fl then
+		TRF_CvP(function(f, x) f:AddShip(x); end, {fl, s});
+		TRF_CvFeqOrder(fq, fl, lead, ms);
+		tinsert(h.w, fl);
+	end;
+	tinsert(h.wsh, s);
+	TRF_CvX("SetObjectLabel", s, "trf_fqw_"..getn(h.wsh));
+	TRF_CvE("feq_big_ship", "hull_name", hull, "result", "created");
+	return 1;
+end;
+
+-- Triada waves fight the clan raid groups, the vanilla pirate groups present (v1 8.4, 7.3 names; the five spellings
+-- of the haunt systems, design/haunt-spec.md 5.6) and the haunt group of trf_haunt.
+function TRF_CvFeqTriada(fq, g)
+	if fq.f ~= 3 or RELATION_WAR == nil then return; end;
+	local L = TRF_CvLive();
+	local names = {"PiratesGroup_1", "PiratesGroup_2", "Pirate_Group", "Pirate_Group_1", "Pirates_Group_1", "PirateGroup_1", "Pirate_Group_1_1"};
+	if L and type(L.rd) == "table" then
+		for k, rd in L.rd do
+			if type(k) == "number" and type(rd) == "table" and rd.st ~= "end" then tinsert(names, "TRF_Raid_"..k); end;
+		end;
+	end;
+	for i = 1, getn(names) do
+		local o = getglobal(names[i]);
+		if o and type(o) ~= "number" and type(o) ~= "string" then
+			TRF_CvP(function(a, b) SetGroupRelation(a, b, RELATION_WAR); SetGroupRelation(b, a, RELATION_WAR); end, {g, o});
+		end;
+	end;
+	local ng = TRF_N("TRF_Haunt_Grp");
+	if ng then TRF_CvP(function(a, b) SetGroupRelation(a, b, RELATION_WAR); SetGroupRelation(b, a, RELATION_WAR); end, {g, ng}); end;
+end;
+
+-- 1 s step (v1 10.3): TT4 slot check and escorts, leaving ships, then the equipment event: outcome of a
+-- gone record, first counted attack, waves 1 and 2, waves leave feq_leave_s after the last hit.
+function TRF_Feq_Step()
+	if type(TRF) ~= "table" or not TRF.active then return; end;
+	local L = TRF_CvLive();
+	local C = TRF_CvH();
+	if not L or not C then return; end;
+	TRF_ConvSlot();
+	TRF_CvTt4Step();
+	TRF_CvLeaveStep();
+	local fq = L.fq;
+	if type(fq) ~= "table" or fq.st ~= "live" then return; end;
+	local h = C.fq;
+	local r = L.tr[fq.id];
+	if type(h) ~= "table" or type(r) ~= "table" or r.st == "gone" then
+		TRF_CvFeqGone(fq, r);
+		return;
+	end;
+	local gt = TRF_CvGt();
+	if r.cnt then fq.pc = 1; end;
+	local hp, nt = TRF_CvFeqHP(h);
+	local lead = nil;
+	for i = 1, getn(h.tp) do if not lead and TRF_CvAlive(h.tp[i]) then lead = h.tp[i]; end; end;
+	local lp = TRF_CvPos(lead);
+	if lp then fq.lx = lp.x; fq.ly = lp.y; fq.lz = lp.z; end;
+	if type(fq.hps) == "number" and hp < fq.hps - 1 then fq.lh = gt; end;
+	fq.hps = hp;
+	if not fq.atk then
+		if fq.pc == 1 then TRF_CvFeqAtk(fq, h, "p");
+		elseif type(fq.hp0) == "number" and fq.hp0 > 0 and hp < fq.hp0 * 0.97 then TRF_CvFeqAtk(fq, h, "o"); end;
+		return;
+	end;
+	if fq.pc == 1 and fq.src ~= "p" then
+		fq.src = "p";
+		if RELATION_WAR ~= nil then
+			TRF_CvP(function(x) SetGroupRelation(x, PLAYER_GROUP, RELATION_WAR); end, {h.g});
+			if h.wg then TRF_CvP(function(x) SetGroupRelation(x, PLAYER_GROUP, RELATION_WAR); end, {h.wg}); end;
+		end;
+	end;
+	if not fq.w1d and gt >= (fq.w1 or gt) then fq.w1d = 1; TRF_CvFeqWave(fq, h, 1); end;
+	if not fq.w2d and type(fq.hp0) == "number" and fq.hp0 > 0 and hp < fq.hp0 * TRF_CvT("feq_wave2_hp") then
+		fq.w2d = 1;
+		TRF_CvFeqWave(fq, h, 2);
+	end;
+	if getn(h.wsh) > 0 and not fq.wl and gt - (fq.lh or gt) >= TRF_CvT("feq_leave_s") and not TRF_CvRaidOn(fq) then
+		fq.wl = 1;
+		TRF_CvLeave(h.wsh, "feq waves done");
+		h.wsh = {};
+		h.w = {};
+	end;
+end;
+
+-- Open raid record aimed at the convoy (trf_raid live.rd: id = target trader).
+function TRF_CvRaidOn(fq)
+	local L = TRF_CvLive();
+	if not L or type(L.rd) ~= "table" then return nil; end;
+	for k, rd in L.rd do
+		if type(rd) == "table" and rd.st ~= "end" and rd.id == fq.id then return rd; end;
+	end;
+	return nil;
+end;
+
+-- The convoy record is gone: why "kill" -> killed by the player (counted player fire) or taken by
+-- pirates; any other removal (dock, exit, refuge, wind-down) -> completed.
+function TRF_CvFeqGone(fq, r)
+	local why = "lost";
+	if type(r) == "table" then why = tostring(r.why); end;
+	if why == "kill" then
+		if fq.pc == 1 then TRF_FeqEnd("kill"); else TRF_FeqEnd("taken"); end;
+	elseif why == "lost" and fq.atk then
+		if fq.pc == 1 then TRF_FeqEnd("kill"); else TRF_FeqEnd("taken"); end;
+	else
+		TRF_FeqEnd("done", why);
+	end;
+end;
+
+-- Outcome of the visible convoy (v1 8.4 outcome table). how: "done" (completed; why = removal reason),
+-- "kill", "taken", "taken_jump" (taken while the player left), "jump" (left with no attacker), "wind".
+function TRF_FeqEnd(how, why)
+	local L = TRF_CvLive();
+	local C = TRF_CvH();
+	if not L or type(L.fq) ~= "table" or L.fq.st == "end" then return nil; end;
+	local fq = L.fq;
+	fq.st = "end";
+	-- 8.6 item 5: an identity seed this convoy displaced undocks now (trf_gen, due call).
+	TRF_CvX("TRF_SeedResume");
+	local cur = TRF_CvCur();
+	local slot = TRF_CvX("TRF_RgOf", cur);
+	local f = fq.f;
+	if how == "kill" then
+		-- Heat +3 in total for the record (8.4 outcome table): trf_events gave +1 for the counted attack
+		-- (fq.pc) and +1 for a kill it classed "player" (fq.kh, TRF_FeqKillMark); the rest is added here.
+		local given = 0;
+		if fq.pc == 1 then given = given + 1; end;
+		if fq.kh == 1 then given = given + 1; end;
+		if given < 3 then TRF_CvX("TRF_AddHeat", 3 - given, "feq kill"); end;
+		TRF_CvX("TRF_FstAdd", f, -3, "feq kill");
+		TRF_CvX("TRF_FsAdd", slot, f, -1, "feq kill");
+		TRF_CvX("TRF_SalvAdd", slot, 1, f, "feqk");
+		TRF_ForcedBust(cur, "feq");
+		-- Battle scars source 7: the equipment convoy was killed by the player group.
+		TRF_P("TRF_Sc_Fight", "convoy", 1);
+		TRF_CvX("TRF_NewsPost", "feq", "kill_"..f);
+		TRF_CvStat("feq_kill");
+	elseif how == "taken" or how == "taken_jump" then
+		-- Battle scars source 7 (design/scar-spec.md 5.3): the equipment convoy was taken in view.
+		if how == "taken" then TRF_P("TRF_Sc_Fight", "convoy", fq.pc); end;
+		local d = 0;
+		if how == "taken_jump" then d = 1; end;
+		TRF_CvFeqTaken(f, cur, slot, d, how);
+	elseif how == "done" then
+		TRF_CvFeqPay(fq, why);
+	end;
+	local rec = TRF_CvFeq();
+	if rec and rec.k == 1 then rec.k = 2; rec.t = TRF_CvLegs(); rec.a = nil; end;
+	if type(L.cvs) == "table" and L.cvs.k == 4 then L.cvs = nil; end;
+	if C and type(C.fq) == "table" then
+		local all = {};
+		local lists = {C.fq.esh, C.fq.wsh};
+		for k = 1, 2 do for i = 1, getn(lists[k]) do tinsert(all, lists[k][i]); end; end;
+		local w = how;
+		if how == "done" then w = why; end;
+		if how == "jump" or how == "taken_jump" then w = "jump"; end;
+		TRF_CvGoAway(all, w);
+		C.fq.esh = {}; C.fq.wsh = {};
+	end;
+	TRF_CvE("feq_end", "trader_id", fq.id, "faction", f, "reason", why, "attacker", fq.src,
+		"player_attacked", TRF_KvB(fq.pc), "contract", TRF_KvB(fq.ct), "result", how);
+	return 1;
+end;
+
+-- trf_events TRF_Ev_Kill: the trader id died by a kill classed "player" and got its kill heat. Marks the
+-- live equipment convoy with that id (fq.kh = 1) for the heat top-up of TRF_FeqEnd.
+function TRF_FeqKillMark(id)
+	local L = TRF_CvLive();
+	if L and type(L.fq) == "table" and L.fq.id == id then L.fq.kh = 1; end;
+end;
+
+-- Completed: defence contract pay when the mothership was within feq_ct_r of the lead at dock or exit
+-- (v02 5.6), else player help against a clan raid (v02 5.5 rd.hit): 0.5 N_eff unless trf_raid paid it,
+-- help to +2 in total, fst +1.
+function TRF_CvFeqPay(fq, why)
+	local f = fq.f;
+	local cur = TRF_CvCur();
+	local slot = TRF_CvX("TRF_RgOf", cur);
+	local ne = TRF_CvX("TRF_PayN", cur) or 0;
+	if fq.ct == 1 and (why == "dock" or why == "exit" or why == "escaped") then
+		local mp = TRF_CvPos(TRF_CvMs());
+		local d = TRF_CvDist(mp, {x=fq.lx, y=fq.ly, z=fq.lz});
+		if d and d <= TRF_CvT("feq_ct_r") then
+			local amt = floor(min(TRF_CvT("feq_pay_mult") * ne, TRF_CvT("pay_cap")));
+			TRF_CvPay(amt, "feq");
+			TRF_CvX("TRF_AddHelp", 2, "feq contract");
+			TRF_CvX("TRF_FstAdd", f, 1, "feq contract");
+			TRF_CvX("TRF_FsAdd", slot, f, 1, "feq contract");
+			TRF_CvX("TRF_AddHeat", -1, "feq contract");
+			local C = TRF_CvH();
+			TRF_CvSay(TRF_CvTxt("feqthx", amt), C and C.fq and C.fq.tp[1]);
+			TRF_CvStat("feq_ct_paid");
+			return;
+		end;
+		TRF_CvE("feq_contract", "distance", d and floor(d), "result", "not_paid");
+	end;
+	local rd = TRF_CvRaidOn(fq);
+	local L = TRF_CvLive();
+	if not rd and L and type(L.rd) == "table" then
+		for k, x in L.rd do if type(x) == "table" and x.id == fq.id then rd = x; end; end;
+	end;
+	-- An ended raid record keeps only paid (trf_raid TRF_Rd_Strip): paid means the player helped.
+	if fq.ct ~= 1 and type(rd) == "table" and (rd.hit == 1 or rd.paid) then
+		if rd.paid then
+			TRF_CvX("TRF_AddHelp", 1, "feq defended");
+		else
+			TRF_CvPay(floor(0.5 * ne), "feqhelp");
+			TRF_CvX("TRF_AddHelp", 2, "feq defended");
+		end;
+		TRF_CvX("TRF_FstAdd", f, 1, "feq defended");
+		TRF_CvStat("feq_defended");
+	end;
+end;
+
+function TRF_CvPay(n, why)
+	if type(n) ~= "number" or n <= 0 then return 0; end;
+	n = floor(min(n, TRF_CvT("pay_cap")));
+	if type(TRF_Pay) == "function" then return TRF_CvX("TRF_Pay", n, why); end;
+	TRF_CvX("AddPlayerCredits", n);
+	TRF_CvE("pay", "reason", why, "amount", n);
+	return n;
+end;
+
+-- Defence contract and hail (v1 8.4) --------------------------------------------------------
+
+-- Hail options of trader id (trf_hail adds them): {"feq"} on the lead transport of the live equipment
+-- convoy while f is not at war with the player at team level, fst >= 4, no contract and no attack yet.
+function TRF_Feq_HailOpts(id)
+	local L = TRF_CvLive();
+	if not L or type(L.fq) ~= "table" or L.fq.id ~= id or L.fq.st ~= "live" then return {}; end;
+	local fq = L.fq;
+	if fq.ct == 1 or fq.atk or TRF_CvWar(TRF_CvFacTeam(fq.f)) or TRF_CvFst(fq.f) < 4 then return {}; end;
+	return {"feq"};
+end;
+
+-- Destination text of the convoy record r: the station (path A) or the system behind its exit portal.
+function TRF_CvFeqDest(r)
+	if type(r) == "table" and r.path ~= "A" and type(r.to) == "number" and r.to > 0 then return TRF_CvSysName(r.to); end;
+	return TRF_CvTxt("feqdest");
+end;
+
+-- Offer text and pay of option "feq": "Escort us to <destination> for N cr?", N = min(4 N_eff, pay_cap).
+function TRF_FeqOffer(id)
+	if getn(TRF_Feq_HailOpts(id)) == 0 then return nil; end;
+	local ne = TRF_CvX("TRF_PayN", TRF_CvCur()) or 0;
+	local amt = floor(min(TRF_CvT("feq_pay_mult") * ne, TRF_CvT("pay_cap")));
+	return TRF_CvTxt("optfeq", TRF_CvFeqDest(TRF.live.tr[id]), amt), amt;
+end;
+
+-- The player accepted the defence contract (box OK of the hail). Returns 1.
+function TRF_FeqAccept(id)
+	local L = TRF_CvLive();
+	if not L or type(L.fq) ~= "table" or L.fq.id ~= id or L.fq.st ~= "live" then return nil; end;
+	L.fq.ct = 1;
+	TRF_CvStat("feq_ct");
+	TRF_CvE("feq_contract", "trader_id", id, "result", "accepted");
+	return 1;
+end;
+
+-- Hail identity line ("<faction> supply run: equipment, <origin> -> <destination>"); nil for other traders.
+function TRF_FeqId(id)
+	local L = TRF_CvLive();
+	if not L or type(L.fq) ~= "table" or L.fq.id ~= id then return nil; end;
+	local r = L.tr[id];
+	local from = TRF_CvSysName(TRF_CvCur());
+	if type(r) == "table" and type(r.from) == "number" and r.from > 0 then from = TRF_CvSysName(r.from); end;
+	return TRF_CvTxt("feqid", TRF_CvFacName(L.fq.f), from, TRF_CvFeqDest(r));
+end;
+
+-- Loader callbacks (v1 10.3) ---------------------------------------------------------------
+
+-- Wind-down (trf_gen TRF_WindDown): the equipment convoy counts as completed (contract paused: no pay).
+function TRF_Convoy_WindDown()
+	local L = TRF_CvLive();
+	if not L or type(L.fq) ~= "table" then return; end;
+	if L.fq.st == "live" then TRF_FeqEnd("wind");
+	elseif L.fq.st == "due" then TRF_CvFeqDrop(L.fq); end;
+end;
+
+-- Before a jump (before trf_gen deletes the traders): equipment outcome on leaving (taken when a clan
+-- raid attacks it and the transports are below 50 % HP, else completed without pay), every convoy flight
+-- of this module deleted.
+function TRF_Convoy_BeforeJump()
+	local L = TRF_CvLive();
+	local C = TRF_CvH();
+	if L and type(L.fq) == "table" and L.fq.st == "live" then
+		local fq = L.fq;
+		local r = L.tr[fq.id];
+		if type(r) ~= "table" or r.st == "gone" then
+			TRF_CvFeqGone(fq, r);
+		else
+			local hp = fq.hps or fq.hp0 or 0;
+			if C and type(C.fq) == "table" then hp = TRF_CvFeqHP(C.fq); end;
+			if TRF_CvRaidOn(fq) and type(fq.hp0) == "number" and hp < 0.5 * fq.hp0 then TRF_FeqEnd("taken_jump");
+			else TRF_FeqEnd("jump"); end;
+		end;
+	end;
+	if C then
+		for id, e in C.e do
+			if type(e) == "table" then for i = 1, getn(e.sh) do TRF_CvDel(e.sh[i]); end; end;
+		end;
+		if type(C.fq) == "table" then
+			local lists = {C.fq.esh, C.fq.wsh};
+			for k = 1, 2 do for i = 1, getn(lists[k] or {}) do TRF_CvDel(lists[k][i]); end; end;
+		end;
+		for i = 1, getn(C.lv) do TRF_CvDel(C.lv[i].s); end;
+		C.e = {}; C.fq = nil; C.lv = {}; C.b = nil;
+	end;
+	if L then L.cvs = nil; end;
+end;
+
+-- Load (after trf_gen's load pass): an equipment convoy that was visible when the game was saved is
+-- completed (its transports wind down with the trader records). Escorts of tier-4 records (their own
+-- flights, so the transports' portal order does not move them; labels trf_<id>_<i> after the transports,
+-- 9 and 10 beyond the load pass) and waves (trf_fqw_<j>) are deleted out of view, else sent to a portal.
+function TRF_Convoy_OnLoad()
+	local f = TRF_CvFeq();
+	if f and f.k == 1 and f.a == 1 then
+		f.k = 2; f.t = TRF_CvLegs(); f.a = nil;
+		TRF_CvE("feq_load", "result", "completed");
+	end;
+	local list = {};
+	local add = function(lbl)
+		local o = TRF_CvX("GetObjectByLabel", lbl);
+		if TRF_CvAlive(o) then tinsert(%list, o); end;
+	end;
+	for j = 1, 12 do add("trf_fqw_"..j); end;
+	local L = TRF_CvLive();
+	if L then
+		for id, r in L.tr do
+			if type(r) == "table" and r.st ~= "gone" and r.tier == 4 and type(id) == "number" then
+				local nt = TRF_CvClamp(floor(r.nt or 1), 1, 4);
+				for j = nt + 1, 10 do add("trf_"..id.."_"..j); end;
+			end;
+		end;
+	end;
+	if getn(list) == 0 then return; end;
+	local mp = TRF_CvPos(TRF_CvMs());
+	local near = {};
+	for i = 1, getn(list) do
+		local d = TRF_CvDist(list[i]:GetPosition(), mp);
+		if d and d <= TRF_CvT("ovd") then tinsert(near, list[i]); else TRF_CvDel(list[i]); end;
+	end;
+	TRF_CvLeave(near, "load");
+	TRF_CvE("load", "ship_count", getn(list), "leaving_count", getn(near));
+end;
+
+-- Dump line: equipment record, slot, live event, TT4 escorts, leaving ships. Returns the line.
+function TRF_Convoy_Dump()
+	local f = TRF_CvFeq();
+	local L = TRF_CvLive() or {};
+	local C = TRF_CvH() or {e={}, lv={}};
+	-- feq_record k,f,system,r,t,a; convoy_slot k,id,pc; live_* from live.fq (nil without one).
+	local fs, cs = "-", "-";
+	if f then fs = f.k..","..f.f..","..TRF_CvSysName(f.s)..","..tostring(f.r)..","..f.t..","..tostring(f.a); end;
+	local c = L.cvs;
+	if type(c) == "table" then cs = tostring(c.k)..","..tostring(c.id)..","..tostring(c.pc); end;
+	local fq = L.fq;
+	if type(fq) ~= "table" then fq = {}; end;
+	local ne = 0;
+	for id, e in C.e do ne = ne + 1; end;
+	TRF_CvE("dump", "feq_record", fs, "convoy_slot", cs, "live_state", fq.st, "live_trader_id", fq.id, "attacker", fq.src,
+		"wave_delays", tostring(fq.w1d)..","..tostring(fq.w2d), "raid_state", fq.raid, "contract", TRF_KvB(fq.ct),
+		"escort_count", ne, "leaving_count", getn(C.lv));
+end;

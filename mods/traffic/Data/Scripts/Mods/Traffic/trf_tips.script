@@ -1,0 +1,1277 @@
+-- sw3-traffic sourced tips and the event ring (Lua 4.0.1). Spec: design/tips-spec.md (A16, roadmap wave 2 row 6).
+-- Prefix Ti (TRF_Ti_* public, TRF_Ti<X> internal; no name starts with TRF_Tier, trf_tier's prefix), log module=tips.
+-- Host-tested only, not run in the game (W-A16.1-10 open).
+-- Owns: one ring of dated events per region slot, packed in the digit string TRF.ti, and the shared ring API
+-- TRF_RingPush / TRF_RingRead / TRF_RingMark (stash step 2 and A08 call it). Feeds (one TRF_P("TRF_Ti_Feed", ...) line
+-- each in the owner module): off-screen raids (trf_region), sweep plans and off-screen outcomes (trf_region), a base going
+-- active or dark off-screen (trf_base), a wanted captain's move (trf_captain), a lost traffic freighter (trf_scar).
+-- Surfaces (existing channels only): one dated, sourced harbour news line after the built one (trf_station, rung >= 2),
+-- source, place and age clauses on the sweep and base dock tips and a captain tip (rung >= 4), the ring rumour first in
+-- the hail's where-headed answer, the informant reply's where and when (trf_captain). No arrival line, no box, no hail
+-- answer, no logbook entry, no marker of its own; nothing is shown while a story mission ran in the visit (latch on
+-- TRF_Safe_QState), during a scene, under __disableAction or __sys_SOS, for a system the strict gate denies ("tips") or
+-- below the kind's chapter (ti_ch, ti_ch_full).
+-- Saved fields (version 4, created at the first push, repaired by TRF_Ti_Fix):
+--   TRF.ti = "<block 1>/<block 2>/.../<block n>", n = TRF_RgMap().n, each block the records of that region slot, oldest
+--   first, each record 12 digits: kind 2, system 3, landmark 1, leg mod 1000 3, source 1, argument 1, told flags 1;
+--   nil while every block is empty.
+-- Visit state in the chunk local TI (never saved; rebuilt by every MapInitialization). No handle is stored anywhere.
+-- Layout as trf_corp: helpers, accessors, static tables, pure functions (*Of, explicit inputs, host-testable), contract
+-- functions. Top level: functions and TI only.
+
+local TI = {h={}, pr={}, d={}};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_TiCV() return %TI; end;
+
+-- logfmt event line, module=tips (design/log-format.md).
+function TRF_TiE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "tips"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_TiErr(m)
+	TRF_TiE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+function TRF_TiLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_TiDE(event, ...)
+	if TRF_TiLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_TiE, arg);
+end;
+
+function TRF_TiCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- a mod m, never negative (Lua 4 mod() keeps the sign of a).
+function TRF_TiMod(a, m)
+	return a - floor(a / m) * m;
+end;
+
+-- Range of the cfg key (outside -> default) and clamps of the tune keys (spec 9): {lo, hi}.
+function TRF_TiClampT()
+	return {tips={0, 1}, ti_ring={2, 8}, ti_age={4, 200}, ti_news_age={1, 60}, ti_hail_age={1, 60}, ti_hail_j={0, 4},
+		ti_ch={0, 20}, ti_ch_full={0, 20}};
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Ti_OptDef), else the raw config, else the default; a wrong type or a value outside its
+-- range reads as the default.
+function TRF_TiOpt(key)
+	local d = TRF_Ti_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	local r = TRF_TiClampT()[key];
+	if type(v) == "number" and r and (v ~= floor(v) or v < r[1] or v > r[2]) then return d; end;
+	return v;
+end;
+
+-- Tune values of this module, whole and clamped (TRF_TiClampT). Cached in TI while TRF_Tune returns the same table;
+-- callers must not write into it.
+function TRF_TiTune()
+	local ti = %TI;
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_TiErr); end;
+	if type(ti.tc) == "table" and ti.tc.s == t then return ti.tc.t; end;
+	local d = TRF_Ti_TuneDef();
+	local cl = TRF_TiClampT();
+	local o = {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if type(x) ~= "number" then x = v; end;
+		local c = cl[k];
+		x = floor(x);
+		if c then x = TRF_TiCl(x, c[1], c[2]); end;
+		o[k] = x;
+	end;
+	ti.tc = {s=t, t=o};
+	return o;
+end;
+
+-- cfg tips 1 and the clock (P1 of the push).
+function TRF_TiPushOn()
+	if type(TRF) ~= "table" or type(TRF.clock) ~= "table" then return nil; end;
+	if TRF_TiOpt("tips") ~= 1 then return nil; end;
+	return 1;
+end;
+
+-- Traffic on and cfg tips 1 (R1 of the surfaces).
+function TRF_TiOn()
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return nil; end;
+	if TRF_TiOpt("tips") ~= 1 then return nil; end;
+	return 1;
+end;
+
+function TRF_TiLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+function TRF_TiCh()
+	local c = TRF_N("TRF_Chapter");
+	if type(c) == "number" then return c; end;
+	return 0;
+end;
+
+function TRF_TiTxt(key, a, b, c, d)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c, d); end;
+	return tostring(key);
+end;
+
+-- Lowercase map name of system idx (log values), or the index.
+function TRF_TiName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+-- Display name of system idx.
+function TRF_TiSysTxt(idx)
+	local s = TRF_N("TRF_UI_SysName", idx);
+	if type(s) == "string" then return s; end;
+	return TRF_TiName(idx);
+end;
+
+-- Map data (TRF_Map), or nil.
+function TRF_TiMap()
+	local m = TRF_N("TRF_Map");
+	if type(m) == "table" and type(m.sys) == "table" and type(m.by) == "table" then return m; end;
+	return nil;
+end;
+
+-- Region table of trf_region (TRF_RgMap), or nil.
+function TRF_TiRgMap()
+	local r = TRF_N("TRF_RgMap");
+	if type(r) == "table" and type(r.n) == "number" then return r; end;
+	return nil;
+end;
+
+-- Number of region blocks (TRF_RgMap().n), 0 without the map.
+function TRF_TiN()
+	local r = TRF_TiRgMap();
+	if r and r.n > 0 then return r.n; end;
+	return 0;
+end;
+
+-- Region slot of system idx, or nil.
+function TRF_TiSlot(idx)
+	if type(idx) ~= "number" then return nil; end;
+	local s = TRF_N("TRF_RgOf", idx);
+	if type(s) == "number" then return s; end;
+	return nil;
+end;
+
+-- Jump distances from system t over the region adjacency (TRF_RgAdj, non-portal gates skipped), cached per visit.
+function TRF_TiDist(t)
+	local ti = %TI;
+	if type(t) ~= "number" then return {}; end;
+	if type(ti.d[t]) == "table" then return ti.d[t]; end;
+	if type(ti.adj) ~= "table" then
+		local m = TRF_TiMap();
+		if not m or type(TRF_RgAdj) ~= "function" then return {}; end;
+		ti.adj = TRF_RgAdj(m);
+	end;
+	local d = {};
+	if type(TRF_RgDistFrom) == "function" and ti.adj[t] then d = TRF_RgDistFrom(ti.adj, t); end;
+	ti.d[t] = d;
+	return d;
+end;
+
+-- Non-portal gate table of trf_region ({[system name] = portal name}), or {}.
+function TRF_TiNp()
+	local np = TRF_N("TRF_Rg_NonPortal");
+	if type(np) == "table" then return np; end;
+	return {};
+end;
+
+-- Static tables ---------------------------------------------------------------------------
+
+-- Constants (spec 9).
+function TRF_TiK()
+	return {rec_len=12, ring_max=8, leg_mod=1000};
+end;
+
+-- Kinds (spec 3.3): nm log name, cl "h" history or "t" target, ch the chapter tune key, rk the replace key ("ks" same
+-- kind and system, "sw" any sweep kind, "bs" same system and base kind, "cap" any captain record, "ka" same kind and
+-- argument), tx the text key; res 1 reserved (never pushed, dropped by the repair); step2 1 pushed only by stash step 2
+-- (its text comes from stash step 2's TRF_Sh_RingText). Built once per visit; callers must not write into it.
+function TRF_TiKinds()
+	local ti = %TI;
+	if type(ti.kt) == "table" then return ti.kt; end;
+	ti.kt = {
+		{nm="raid", cl="h", ch="ti_ch", rk="ks", tx="tiraid"},
+		{nm="gather", cl="h", ch="ti_ch", rk="sw", tx="tigather"},
+		{nm="swon", cl="h", ch="ti_ch", rk="sw", tx="tiswon"},
+		{nm="slost", cl="h", ch="ti_ch", rk="sw", tx="tislost"},
+		{nm="base", cl="t", ch="ti_ch_full", rk="bs", tx="tibase"},
+		{nm="basedn", cl="h", ch="ti_ch", rk="bs", tx="tibasedn"},
+		{nm="cap", cl="t", ch="ti_ch_full", rk="cap", tx="ticap"},
+		{nm="wreck", cl="h", ch="ti_ch", rk="ks", tx="tiwreck"},
+		{nm="rob", res=1},
+		{nm="pull", res=1},
+		{nm="cache", cl="t", ch="ti_ch_full", rk="ka", step2=1},
+		{nm="capcache", cl="t", ch="ti_ch_full", rk="ka", step2=1},
+	};
+	return ti.kt;
+end;
+
+-- Kind entry of k (an integer 1..12, not reserved), or nil.
+function TRF_TiKindOf(k)
+	if type(k) ~= "number" or k ~= floor(k) then return nil; end;
+	local e = TRF_TiKinds()[k];
+	if type(e) ~= "table" or e.res == 1 then return nil; end;
+	return e;
+end;
+
+-- Log name of kind k.
+function TRF_TiKName(k)
+	local e = TRF_TiKinds()[k or 0];
+	if type(e) == "table" then return e.nm; end;
+	return tostring(k);
+end;
+
+-- Tie order of the picks (7.1): swon, slost, basedn, gather, raid, wreck, then the target kinds.
+function TRF_TiRankOf(k)
+	local r = {[3]=1, [4]=2, [6]=3, [2]=4, [1]=5, [8]=6, [5]=7, [7]=8, [11]=9, [12]=10};
+	return r[k] or 11;
+end;
+
+-- Pure functions ------------------------------------------------------------------------
+
+-- 1 when flag bit b (1 or 2) is set in f.
+function TRF_TiBit(f, b)
+	if type(f) ~= "number" then return nil; end;
+	if TRF_TiMod(floor(f / b), 2) == 1 then return 1; end;
+	return nil;
+end;
+
+-- 12 digits of record r {k, s, l, g (leg), c, a, f}.
+function TRF_TiEncOf(r)
+	return format("%02d%03d%d%03d%d%d%d", r.k, r.s, r.l or 0, TRF_TiMod(floor(r.g or 0), 1000), r.c or 0, r.a or 0, r.f or 0);
+end;
+
+-- Decoded record of the 12-character piece p at clock legs, or nil (a non-digit, a short piece, an unknown or reserved
+-- kind): {k, s, l, g = leg, age, c, a, f}.
+function TRF_TiDecOf(p, legs)
+	if type(p) ~= "string" or strlen(p) ~= 12 or strfind(p, "[^0-9]") then return nil; end;
+	local k = tonumber(strsub(p, 1, 2));
+	if not TRF_TiKindOf(k) then return nil; end;
+	local g3 = tonumber(strsub(p, 7, 9));
+	local age = TRF_TiMod(TRF_TiMod(legs, 1000) - g3 + 1000, 1000);
+	return {k=k, s=tonumber(strsub(p, 3, 5)), l=tonumber(strsub(p, 6, 6)), g=legs - age, age=age, c=tonumber(strsub(p, 10, 10)),
+		a=tonumber(strsub(p, 11, 11)), f=tonumber(strsub(p, 12, 12))};
+end;
+
+-- Blocks of string str split at "/" (at least n, more when the string holds more), each a list of decoded records
+-- (slot = block number, pos = position); dropped = the number of pieces that did not decode.
+function TRF_TiSplitOf(str, n, legs)
+	local bs = {};
+	for i = 1, n do bs[i] = {}; end;
+	local dropped = 0;
+	if type(str) ~= "string" then return bs, dropped; end;
+	local i, b = 1, 1;
+	while 1 do
+		local e = strfind(str, "/", i, 1);
+		local part = nil;
+		if e then part = strsub(str, i, e - 1); else part = strsub(str, i); end;
+		if type(bs[b]) ~= "table" then bs[b] = {}; end;
+		local j = 1;
+		while j <= strlen(part) do
+			local r = TRF_TiDecOf(strsub(part, j, j + 11), legs);
+			if r then
+				tinsert(bs[b], r);
+				r.slot = b; r.pos = getn(bs[b]);
+			else
+				dropped = dropped + 1;
+			end;
+			j = j + 12;
+		end;
+		if not e then break; end;
+		i = e + 1;
+		b = b + 1;
+	end;
+	return bs, dropped;
+end;
+
+-- String of blocks 1..n (each a list of records), nil when every block is empty.
+function TRF_TiJoinOf(bs, n)
+	local o, any = "", nil;
+	for b = 1, n do
+		if b > 1 then o = o.."/"; end;
+		local l = bs[b];
+		if type(l) == "table" then
+			for i = 1, getn(l) do o = o..TRF_TiEncOf(l[i]); any = 1; end;
+		end;
+	end;
+	if not any then return nil; end;
+	return o;
+end;
+
+-- 1 when record a (being pushed) replaces record b of the same block (replace keys of 3.3).
+function TRF_TiKeyOf(a, b)
+	local e = TRF_TiKindOf(a.k);
+	if not e then return nil; end;
+	if e.rk == "ks" then return a.k == b.k and a.s == b.s; end;
+	if e.rk == "sw" then return b.k == 2 or b.k == 3 or b.k == 4; end;
+	if e.rk == "bs" then return a.s == b.s and (b.k == 5 or b.k == 6); end;
+	if e.rk == "cap" then return b.k == 7; end;
+	if e.rk == "ka" then return a.k == b.k and a.a == b.a; end;
+	return nil;
+end;
+
+-- Position of the record list evicts (4.2): the oldest history record, else the oldest target record; ties the lower
+-- position. nil for an empty list.
+function TRF_TiEvictOf(list)
+	local w, wt = nil, nil;
+	for i = 1, getn(list) do
+		local r = list[i];
+		local e = TRF_TiKinds()[r.k];
+		local h = 0;
+		if type(e) == "table" and e.cl == "h" then h = 1; end;
+		if not w or h > wt or (h == wt and r.g < list[w].g) then w = i; wt = h; end;
+	end;
+	return w;
+end;
+
+-- Push record r into block list at size K (4.1 P5): replace by key ("replace", or "refresh" when the removed record has
+-- the same kind, system and landmark), else evict while the block is full ("new"). Returns list, how, evicted record.
+function TRF_TiPushOf(list, r, K)
+	local how, ev = "new", nil;
+	for i = 1, getn(list) do
+		if TRF_TiKeyOf(r, list[i]) then
+			local o = list[i];
+			if o.k == r.k and o.s == r.s and o.l == r.l then how = "refresh"; else how = "replace"; end;
+			tremove(list, i);
+			break;
+		end;
+	end;
+	while getn(list) >= K do
+		local w = TRF_TiEvictOf(list);
+		if not w then break; end;
+		ev = list[w];
+		tremove(list, w);
+	end;
+	r.f = 0;
+	tinsert(list, r);
+	for i = 1, getn(list) do list[i].pos = i; end;
+	return list, how, ev;
+end;
+
+-- Prune block list (4.3): age above amax, records live(r) answers "dead" (live nil: none), then the eviction order down
+-- to K. Returns list, {age=n, dead=n, size=n}.
+function TRF_TiPruneOf(list, amax, live, K)
+	local o, d = {}, {age=0, dead=0, size=0};
+	for i = 1, getn(list) do
+		local r = list[i];
+		if r.age > amax then
+			d.age = d.age + 1;
+		elseif live and live(r) == "dead" then
+			d.dead = d.dead + 1;
+		else
+			tinsert(o, r);
+		end;
+	end;
+	while K and getn(o) > K do
+		tremove(o, TRF_TiEvictOf(o));
+		d.size = d.size + 1;
+	end;
+	for i = 1, getn(o) do o[i].pos = i; end;
+	return o, d;
+end;
+
+-- 1 when portal p of map entry e is a "Portal" gate (the region BFS rule of TRF_RgAdj; np the non-portal table).
+function TRF_TiPortOkOf(e, p, np)
+	if type(p) ~= "table" or type(p.to) ~= "string" then return nil; end;
+	if p.t ~= nil then return p.t == "Portal"; end;
+	if type(np) == "table" and np[e.name] == p.name then return nil; end;
+	return 1;
+end;
+
+-- Code of the first station of kind kd ("trade" 7, "patrol" 8) of map entry e, and the station; nil when none.
+function TRF_TiStOf(e, kd)
+	if type(e.st) ~= "table" then return nil; end;
+	for i = 1, getn(e.st) do
+		if type(e.st[i]) == "table" and e.st[i].kind == kd then
+			if kd == "trade" then return 7, e.st[i]; end;
+			return 8, e.st[i];
+		end;
+	end;
+	return nil;
+end;
+
+-- X1 exit portal of map entry e toward the target whose jump distances are d: the portal (1..6) to the smallest d below
+-- d[e.idx], ties the lower index; none (or e is the target) -> 7 with a trade station, else 0. by: name -> index.
+function TRF_TiExitOf(e, d, by, np)
+	local ds = d[e.idx];
+	local bi, bd = nil, nil;
+	if type(ds) == "number" and type(e.portals) == "table" then
+		for j = 1, min(6, getn(e.portals)) do
+			local p = e.portals[j];
+			if TRF_TiPortOkOf(e, p, np) then
+				local k = by[strlower(p.to)];
+				if k and type(d[k]) == "number" and d[k] < ds and (not bd or d[k] < bd) then bi = j; bd = d[k]; end;
+			end;
+		end;
+	end;
+	if bi then return bi; end;
+	if TRF_TiStOf(e, "trade") then return 7; end;
+	return 0;
+end;
+
+-- X2 arrival portal of map entry e for a captain from the system whose jump distances are d: the portal (1..6) to the
+-- smallest d, ties the lower index; none -> 0.
+function TRF_TiGateOf(e, d, by, np)
+	local bi, bd = nil, nil;
+	if type(e.portals) == "table" then
+		for j = 1, min(6, getn(e.portals)) do
+			local p = e.portals[j];
+			if TRF_TiPortOkOf(e, p, np) then
+				local k = by[strlower(p.to)];
+				if k and type(d[k]) == "number" and (not bd or d[k] < bd) then bi = j; bd = d[k]; end;
+			end;
+		end;
+	end;
+	return bi or 0;
+end;
+
+-- X3 nearest landmark of map entry e to position p {x, y, z}: portals 1..6, the first trade station 7, the first patrol
+-- station 8, by 3D distance, ties the lower code; p nil -> 0.
+function TRF_TiLmOf(e, p)
+	if type(e) ~= "table" or type(p) ~= "table" or type(p.x) ~= "number" or type(p.z) ~= "number" then return 0; end;
+	local py = p.y or 0;
+	local cs = {};
+	if type(e.portals) == "table" then
+		for j = 1, min(6, getn(e.portals)) do cs[j] = e.portals[j]; end;
+	end;
+	local c7, s7 = TRF_TiStOf(e, "trade");
+	local c8, s8 = TRF_TiStOf(e, "patrol");
+	cs[7] = s7; cs[8] = s8;
+	local bi, bd = 0, nil;
+	for j = 1, 8 do
+		local q = cs[j];
+		if type(q) == "table" and type(q.x) == "number" and type(q.z) == "number" then
+			local dx, dy, dz = q.x - p.x, (q.y or 0) - py, q.z - p.z;
+			local dd = dx * dx + dy * dy + dz * dz;
+			if not bd or dd < bd then bi = j; bd = dd; end;
+		end;
+	end;
+	return bi;
+end;
+
+-- Landmark l of map entry e checked (P2, F3): a portal index beyond e.portals or a missing station -> 0.
+function TRF_TiLFixOf(e, l)
+	if type(l) ~= "number" or l < 0 or l > 8 or l ~= floor(l) then return 0; end;
+	if l >= 1 and l <= 6 and (type(e.portals) ~= "table" or type(e.portals[l]) ~= "table") then return 0; end;
+	if l == 7 and not TRF_TiStOf(e, "trade") then return 0; end;
+	if l == 8 and not TRF_TiStOf(e, "patrol") then return 0; end;
+	return l;
+end;
+
+-- S1 owner source: faction f (nil: none) of the system; 3..5 while pulled out of the region -> 0.
+function TRF_TiSrcOf(f, pulled)
+	if type(f) ~= "number" or f < 1 or f > 5 then return 0; end;
+	if f >= 3 and pulled then return 0; end;
+	return f;
+end;
+
+-- S2 sweep source: sweep owner f 0 (FTU mercenaries) -> 9, else f.
+function TRF_TiSwSrcOf(f)
+	if type(f) ~= "number" or f < 1 or f > 5 then return 9; end;
+	return f;
+end;
+
+-- 7.6 truth of record r against the live records x = {base = TRF.base list, cap = the region's captain record, scar = the
+-- scar record of r.s, sh = stash record r.a}: "current"; "stale", why; "dead", why.
+function TRF_TiLiveOf(r, x)
+	local k = r.k;
+	if k == 1 or k == 2 or k == 3 or k == 4 or k == 6 then return "current"; end;
+	if k == 5 then
+		local l = x.base;
+		if type(l) == "table" then
+			for i = 1, getn(l) do
+				local b = l[i];
+				if type(b) == "table" and b.s == r.s then
+					-- A 05 record is pushed at k 1 -> 2, so a k 1 entry is a later base founded in the same system.
+					if b.k == 1 then return "dead", "gone"; end;
+					if b.k == 2 then return "current"; end;
+					if b.k == 3 then return "stale", "base"; end;
+				end;
+			end;
+		end;
+		return "dead", "gone";
+	end;
+	if k == 7 then
+		local c = x.cap;
+		if type(c) ~= "table" or type(c.gen) ~= "number" then return "dead", "none"; end;
+		if TRF_TiMod(c.gen, 10) ~= r.a then return "dead", "generation"; end;
+		if c.st == 1 then
+			if c.seen == r.s then return "current"; end;
+			return "stale", "moved";
+		end;
+		if c.st == 2 or c.st == 3 then return "stale", "low"; end;
+		return "dead", "state";
+	end;
+	if k == 8 then
+		local s = x.scar;
+		if type(s) ~= "table" or s.sys ~= r.s then return "dead", "none"; end;
+		if s.kind ~= 1 then return "dead", "kind"; end;
+		if type(s.st) ~= "number" or s.st > 1 then return "dead", "opened"; end;
+		if s.hid == 1 then return "dead", "hidden"; end;
+		return "current";
+	end;
+	if k == 11 or k == 12 then
+		local s = x.sh;
+		if type(s) == "table" and s.sys == r.s and (s.st == 0 or s.st == 1) then return "current"; end;
+		return "dead", "stash";
+	end;
+	return "dead", "kind";
+end;
+
+-- 1 when candidate a is a better pick than b (7.1, 7.3): newer leg, then nearer system (near: system -> jumps, optional),
+-- then the kind order, then the higher slot and position.
+function TRF_TiBetterOf(a, b, near)
+	if not b then return 1; end;
+	if a.g ~= b.g then return a.g > b.g; end;
+	if near then
+		local da, db = near[a.s] or 99, near[b.s] or 99;
+		if da ~= db then return da < db; end;
+	end;
+	local ra, rb = TRF_TiRankOf(a.k), TRF_TiRankOf(b.k);
+	if ra ~= rb then return ra < rb; end;
+	if (a.slot or 0) ~= (b.slot or 0) then return (a.slot or 0) > (b.slot or 0); end;
+	return (a.pos or 0) > (b.pos or 0);
+end;
+
+-- The pick of candidate list (7.1, 7.3), or nil.
+function TRF_TiPickOf(list, near)
+	local w = nil;
+	for i = 1, getn(list) do
+		if TRF_TiBetterOf(list[i], w, near) then w = list[i]; end;
+	end;
+	return w;
+end;
+
+-- Merge partner of record r in list (D15): swon with basedn, raid with wreck, of the same system and leg; or nil.
+function TRF_TiMateOf(r, list)
+	local m = {[3]=6, [6]=3, [1]=8, [8]=1};
+	local k = m[r.k];
+	if not k then return nil; end;
+	for i = 1, getn(list) do
+		local o = list[i];
+		if o.k == k and o.s == r.s and o.g == r.g then return o; end;
+	end;
+	return nil;
+end;
+
+-- Accessors -------------------------------------------------------------------------------
+
+-- Live records for TRF_TiLiveOf of record r.
+function TRF_TiLiveX(r)
+	local x = {};
+	if r.k == 5 and type(TRF.base) == "table" then x.base = TRF.base; end;
+	if r.k == 7 then x.cap = TRF_N("TRF_CapRec", r.slot or TRF_TiSlot(r.s)); end;
+	if r.k == 8 then
+		local i, s = TRF_N("TRF_ScAt", r.s);
+		x.scar = s;
+	end;
+	if r.k == 11 or r.k == 12 then x.sh = TRF_N("TRF_ShRec", r.a); end;
+	return x;
+end;
+
+-- Truth of record r now: state, why, the live records.
+function TRF_TiLive(r)
+	local x = TRF_TiLiveX(r);
+	local st, why = TRF_TiLiveOf(r, x);
+	return st, why, x;
+end;
+
+function TRF_TiLiveSt(r)
+	local st = TRF_TiLive(r);
+	return st;
+end;
+
+-- Blocks of TRF.ti (n = TRF_RgMap().n), decoded at the clock's legs.
+function TRF_TiBlocks()
+	local n = TRF_TiN();
+	local s = nil;
+	if type(TRF) == "table" and type(TRF.ti) == "string" then s = TRF.ti; end;
+	local bs = TRF_TiSplitOf(s, n, TRF_TiLegs());
+	return bs, n;
+end;
+
+-- Writes blocks 1..n to TRF.ti (nil when every block is empty).
+function TRF_TiStore(bs, n)
+	TRF.ti = TRF_TiJoinOf(bs, n);
+end;
+
+-- Ring API (4; shared) ------------------------------------------------------------------------
+
+-- 4.1: push record rec {k, s, l, c, a[, w]} into region slot (nil: the system's region), stamped TRF.clock.legs.
+-- Returns position, how ("new", "refresh", "replace") or nil, why ("off", "arg", "noregion", "current").
+function TRF_RingPush(slot, rec)
+	local p, how = call(TRF_TiPushBody, {slot, rec}, "x", TRF_TiErr);
+	return p, how;
+end;
+
+function TRF_TiPushRefuse(rec, why)
+	local k, s = nil, nil;
+	if type(rec) == "table" then k = rec.k; s = rec.s; end;
+	TRF_TiDE("push", "kind", TRF_TiKName(k), "system", TRF_TiName(s), "result", "refused", "reason", why);
+	return nil, why;
+end;
+
+function TRF_TiPushBody(slot, rec)
+	if not TRF_TiPushOn() then return TRF_TiPushRefuse(rec, "off"); end;
+	local m = TRF_TiMap();
+	if type(rec) ~= "table" or not m or not TRF_TiKindOf(rec.k) or type(rec.s) ~= "number" or type(m.sys[rec.s]) ~= "table" then
+		return TRF_TiPushRefuse(rec, "arg");
+	end;
+	local e = m.sys[rec.s];
+	local c, a = rec.c or 0, rec.a or 0;
+	if type(c) ~= "number" or type(a) ~= "number" or c ~= floor(c) or a ~= floor(a) or c < 0 or c > 9 or a < 0 or a > 9 then
+		return TRF_TiPushRefuse(rec, "arg");
+	end;
+	local l = rec.l or 0;
+	if type(l) ~= "number" or l < 0 or l > 8 or l ~= floor(l) then return TRF_TiPushRefuse(rec, "arg"); end;
+	l = TRF_TiLFixOf(e, l);
+	local rs = TRF_TiSlot(rec.s);
+	if slot == nil then slot = rs; end;
+	local n = TRF_TiN();
+	if not rs or rs ~= slot or slot < 1 or slot > n then return TRF_TiPushRefuse(rec, "noregion"); end;
+	if rec.w ~= 1 and rec.s == TRF_N("TRF_CurIdx") then return TRF_TiPushRefuse(rec, "current"); end;
+	local T = TRF_TiTune();
+	local legs = TRF_TiLegs();
+	local bs = TRF_TiBlocks();
+	local list, pd = TRF_TiPruneOf(bs[slot], T.ti_age, TRF_TiLiveSt, T.ti_ring);
+	TRF_TiPruneLog(slot, pd);
+	local r = {k=rec.k, s=rec.s, l=l, g=legs, age=0, c=c, a=a, f=0, slot=slot};
+	local how, ev = nil, nil;
+	list, how, ev = TRF_TiPushOf(list, r, T.ti_ring);
+	bs[slot] = list;
+	TRF_TiStore(bs, n);
+	local evs = nil;
+	if ev then evs = TRF_TiKName(ev.k)..":"..TRF_TiName(ev.s); end;
+	TRF_TiE("push", "kind", TRF_TiKName(r.k), "region", slot, "system", TRF_TiName(r.s), "system_index", r.s, "landmark", l,
+		"source", c, "arg", a, "event_leg", legs, "result", how, "evicted", evs, "record_count", getn(list));
+	return r.pos, how;
+end;
+
+-- 4.4: decoded records of slot (nil: every block), newest first (ties the higher slot and position). q optional: k (a
+-- kind or a list), s (a system or a set {[idx] = 1}), age (maximum), nf (a flag bit that must be clear). No prune.
+function TRF_RingRead(slot, q)
+	local bs, n = TRF_TiBlocks();
+	local o = {};
+	if type(q) ~= "table" then q = {}; end;
+	local ks = nil;
+	if type(q.k) == "table" then ks = {}; for i = 1, getn(q.k) do ks[q.k[i]] = 1; end; elseif q.k then ks = {[q.k]=1}; end;
+	local ss = nil;
+	if type(q.s) == "table" then ss = q.s; elseif q.s then ss = {[q.s]=1}; end;
+	for b = 1, n do
+		if slot == nil or slot == b then
+			local l = bs[b];
+			for i = 1, getn(l) do
+				local r = l[i];
+				local ok = 1;
+				if ks and not ks[r.k] then ok = nil; end;
+				if ok and ss and not ss[r.s] then ok = nil; end;
+				if ok and type(q.age) == "number" and r.age > q.age then ok = nil; end;
+				if ok and q.nf and TRF_TiBit(r.f, q.nf) then ok = nil; end;
+				if ok then tinsert(o, r); end;
+			end;
+		end;
+	end;
+	sort(o, TRF_TiNewer);
+	return o;
+end;
+
+function TRF_TiNewer(a, b)
+	if a.g ~= b.g then return a.g > b.g; end;
+	if a.slot ~= b.slot then return a.slot > b.slot; end;
+	return a.pos > b.pos;
+end;
+
+-- 4.5: sets flag bit (1 or 2) on the record of block slot with kind k, system s and decoded leg leg. 1, or nil.
+function TRF_RingMark(slot, k, s, leg, bit)
+	if bit ~= 1 and bit ~= 2 then return nil; end;
+	local bs, n = TRF_TiBlocks();
+	local l = bs[slot or 0];
+	if type(l) ~= "table" then return nil; end;
+	for i = 1, getn(l) do
+		local r = l[i];
+		if r.k == k and r.s == s and r.g == leg then
+			if not TRF_TiBit(r.f, bit) then r.f = r.f + bit; end;
+			TRF_TiStore(bs, n);
+			return 1;
+		end;
+	end;
+	return nil;
+end;
+
+-- Feeds (5) ---------------------------------------------------------------------------------
+
+-- 5.1: one event of an owner module (what: raid, gather, sweep, base, basedn, cap, wreck). Never raises, returns nothing.
+function TRF_Ti_Feed(what, slot, a1, a2, a3)
+	call(TRF_TiFeedBody, {what, slot, a1, a2, a3}, "x", TRF_TiErr);
+end;
+
+-- S1 owner source of system s in region slot.
+function TRF_TiOwnSrc(slot, s)
+	local f = TRF_N("TRF_FacIdx", TRF_N("TRF_RgTeam", s));
+	local pulled = nil;
+	if type(f) == "number" and f >= 3 then pulled = TRF_N("TRF_Crp_Pulled", slot, f); end;
+	return TRF_TiSrcOf(f, pulled);
+end;
+
+-- Sweep owner of slot (0..5).
+function TRF_TiSwOwner(slot)
+	local f = TRF_N("TRF_SweepOwner", slot);
+	if type(f) ~= "number" then return 0; end;
+	return f;
+end;
+
+-- X1 for a raid out of system s of slot: toward the clan's active base, else the region home.
+function TRF_TiExitAt(slot, s)
+	local m = TRF_TiMap();
+	if not m or type(m.sys[s]) ~= "table" then return 0; end;
+	local t = TRF_N("TRF_RgBaseA", slot);
+	if type(t) ~= "number" then
+		local rm = TRF_TiRgMap();
+		if rm and type(rm[slot]) == "table" then t = rm[slot].home; end;
+	end;
+	return TRF_TiExitOf(m.sys[s], TRF_TiDist(t), m.by, TRF_TiNp());
+end;
+
+-- X2 for a captain's move from system from into to.
+function TRF_TiGateAt(to, from)
+	local m = TRF_TiMap();
+	if not m or type(m.sys[to]) ~= "table" or type(from) ~= "number" then return 0; end;
+	return TRF_TiGateOf(m.sys[to], TRF_TiDist(from), m.by, TRF_TiNp());
+end;
+
+-- X3 for the map base site of system s.
+function TRF_TiSiteAt(s)
+	local m = TRF_TiMap();
+	if not m or type(m.sys[s]) ~= "table" then return 0; end;
+	return TRF_TiLmOf(m.sys[s], m.sys[s].bs);
+end;
+
+function TRF_TiFeedBody(what, slot, a1, a2, a3)
+	local r = nil;
+	if what == "raid" then
+		r = {k=1, s=a1, l=TRF_TiExitAt(slot, a1), c=TRF_TiOwnSrc(slot, a1), a=0};
+	elseif what == "gather" then
+		local f = TRF_TiSwOwner(slot);
+		r = {k=2, s=TRF_N("TRF_SweepTarget", slot), l=0, c=TRF_TiSwSrcOf(f), a=f};
+	elseif what == "sweep" then
+		local f = a3;
+		if type(f) ~= "number" then f = 0; end;
+		local k = 4;
+		if a2 then k = 3; end;
+		r = {k=k, s=a1, l=0, c=TRF_TiSwSrcOf(f), a=f};
+	elseif what == "base" then
+		r = {k=5, s=a1, l=TRF_TiSiteAt(a1), c=TRF_TiOwnSrc(slot, a1), a=0};
+	elseif what == "basedn" then
+		if a2 == "sweep" then
+			r = {k=6, s=a1, l=TRF_TiSiteAt(a1), c=TRF_TiSwSrcOf(TRF_TiSwOwner(slot)), a=1};
+		elseif a2 == "abandon" then
+			r = {k=6, s=a1, l=TRF_TiSiteAt(a1), c=0, a=2};
+		end;
+	elseif what == "cap" then
+		local g = a3;
+		if type(g) ~= "number" then g = 0; end;
+		r = {k=7, s=a1, l=TRF_TiGateAt(a1, a2), c=TRF_TiOwnSrc(slot, a1), a=TRF_TiMod(g, 10)};
+	elseif what == "wreck" then
+		r = {k=8, s=a1, l=0, c=7, a=0};
+	end;
+	if not r or type(r.s) ~= "number" then
+		TRF_TiDE("push", "kind", tostring(what), "result", "refused", "reason", "arg");
+		return;
+	end;
+	TRF_RingPush(slot, r);
+end;
+
+-- Gates (6) ----------------------------------------------------------------------------------
+
+-- Skip line of surface sf, once per reason and visit (log 2).
+function TRF_TiSkip(sf, why)
+	local ti = %TI;
+	if ti.pr[why] then return; end;
+	ti.pr[why] = 1;
+	TRF_TiDE("skip", "surface", sf, "reason", why);
+end;
+
+-- Visit latch: 1 once TRF_Safe_QState was seen at a surface call in this visit.
+function TRF_TiLatch()
+	local ti = %TI;
+	if ti.q == 1 then return 1; end;
+	if TRF_N("TRF_Safe_QState") then ti.q = 1; return 1; end;
+	return nil;
+end;
+
+-- R1, R3, R4 for surface sf: the reason (logged once per visit) or nil.
+function TRF_TiGate(sf)
+	local why = nil;
+	if not TRF_TiOn() or (TRF.ti ~= nil and type(TRF.ti) ~= "string") then why = "off";
+	elseif TRF_TiLatch() then why = "latch";
+	elseif TRF_N("TRF_Safe_Scene") then why = "scene";
+	elseif __disableAction == TRUE or __sys_SOS == TRUE then why = "flag"; end;
+	if why then TRF_TiSkip(sf, why); end;
+	return why;
+end;
+
+-- R5-R9 for record r on surface sf. o = {age = max, bit = told bit, cur = 1 (current only), hist = 1 (history kinds
+-- only), list = the block for the merge partner's told bit}. Returns "ok", state, why, live records; else the reason.
+function TRF_TiCand(r, sf, o, T, ch)
+	local e = TRF_TiKinds()[r.k];
+	local res, st, why, x = "ok", nil, nil, nil;
+	if (o.hist == 1 and e.cl ~= "h") or (e.step2 == 1 and type(TRF_Sh_RingText) ~= "function") then res = "kind";
+	elseif ch < T[e.ch] then res = "chapter";
+	else
+		local ok, gw = 1, nil;
+		if type(TRF_StrictOk) == "function" then ok, gw = TRF_StrictOk(r.s, "tips"); else ok = nil; gw = "nosafety"; end;
+		if not ok then res = "gate:"..tostring(gw); end;
+	end;
+	if res == "ok" then
+		st, why, x = TRF_TiLive(r);
+		if st == "dead" then res = "dead";
+		elseif st == "stale" and o.cur == 1 then res = "stale";
+		elseif type(o.age) == "number" and r.age > o.age then res = "old";
+		elseif o.bit and TRF_TiBit(r.f, o.bit) then res = "told";
+		elseif o.h and o.h[TRF_TiHKey(r)] then res = "told";
+		elseif o.bit and o.list then
+			local mt = TRF_TiMateOf(r, o.list);
+			if mt and TRF_TiBit(mt.f, o.bit) and TRF_TiLiveSt(mt) ~= "dead" then res = "told"; end;
+		end;
+	end;
+	TRF_TiDE("candidate", "surface", sf, "kind", e.nm, "target", TRF_TiName(r.s), "result", res);
+	if res ~= "ok" then return res; end;
+	return res, st, why, x;
+end;
+
+-- Hail told-set key of record r (3.5).
+function TRF_TiHKey(r)
+	return tostring(r.slot)..":"..r.k..":"..r.s..":"..r.g;
+end;
+
+-- Texts (8) ---------------------------------------------------------------------------------
+
+-- Source phrase of code c (3.4).
+function TRF_TiSrc(c)
+	if c == 1 or c == 2 then return TRF_TiTxt("tisrcnav", TRF_N("TRF_UI_FacOf", c) or ""); end;
+	if c == 3 or c == 4 or c == 5 then return TRF_TiTxt("tisrccrp", TRF_N("TRF_UI_FacOf", c) or ""); end;
+	if c == 7 then return TRF_TiTxt("tisrcbeacon"); end;
+	if c == 9 then return TRF_TiTxt("tisrcmerc"); end;
+	return TRF_TiTxt("tisrcftu");
+end;
+
+-- Display name of the destination of portal l (1..6) of system s, or nil.
+function TRF_TiPortTo(s, l)
+	local m = TRF_TiMap();
+	if not m or type(m.sys[s]) ~= "table" or type(l) ~= "number" or l < 1 or l > 6 then return nil; end;
+	local p = m.sys[s].portals;
+	if type(p) ~= "table" or type(p[l]) ~= "table" or type(p[l].to) ~= "string" then return nil; end;
+	local k = m.by[strlower(p[l].to)];
+	if k then return TRF_TiSysTxt(k); end;
+	return p[l].to;
+end;
+
+-- Place phrase of system s at landmark l (3.4).
+function TRF_TiPlace(s, l)
+	local nm = TRF_TiSysTxt(s);
+	local to = TRF_TiPortTo(s, l);
+	if to then return TRF_TiTxt("tipgate", nm, to); end;
+	if l == 7 then return TRF_TiTxt("tiptrade", nm); end;
+	if l == 8 then return TRF_TiTxt("tippatrol", nm); end;
+	return nm;
+end;
+
+-- Age phrase of decoded leg g (D11): trf_remark's, else tiagen.
+function TRF_TiAge(g, age)
+	local t = TRF_N("TRF_Rm_AgeText", g);
+	if type(t) == "string" then return t; end;
+	return TRF_TiTxt("tiagen", format("%d", age or 0));
+end;
+
+-- Landmark of record r as told: the wreck's from its placed hulk (7.6), else the stored one.
+function TRF_TiLmNow(r, x)
+	if r.k == 8 then
+		local s = x and x.scar;
+		local m = TRF_TiMap();
+		if type(s) == "table" and s.st == 1 and m and type(m.sys[r.s]) == "table" then return TRF_TiLmOf(m.sys[r.s], s); end;
+		return 0;
+	end;
+	return r.l;
+end;
+
+-- Subject of record r: the clan of its region, the captain, the freighter.
+function TRF_TiSubj(r, x)
+	if r.k == 7 then return TRF_N("TRF_CapNm", x and x.cap) or ""; end;
+	if r.k == 8 then
+		local s = x and x.scar;
+		local l = TRF_N("TRF_Names");
+		if type(s) == "table" and type(l) == "table" and type(l[s.nm]) == "string" then return l[s.nm]; end;
+		return TRF_TiTxt("hull1");
+	end;
+	return TRF_N("TRF_ClanName", r.slot or TRF_TiSlot(r.s)) or "";
+end;
+
+-- The kind template of record r with source, subject, place and age (8). Kinds 11 and 12 (stash step 2, 5.3): the text of
+-- trf_stash's TRF_Sh_RingText(a, k, place, age), nil without it.
+function TRF_TiLine(r, x, key)
+	if r.k == 11 or r.k == 12 then
+		local t = TRF_N("TRF_Sh_RingText", r.a, r.k, TRF_TiPlace(r.s, r.l), TRF_TiAge(r.g, r.age));
+		if type(t) == "string" then return t; end;
+		return nil;
+	end;
+	return TRF_TiTxt(key or TRF_TiKinds()[r.k].tx, TRF_TiSrc(r.c), TRF_TiSubj(r, x), TRF_TiPlace(r.s, TRF_TiLmNow(r, x)),
+		TRF_TiAge(r.g, r.age));
+end;
+
+-- The pick line (level 1 shown, level 2 none).
+function TRF_TiPickLog(sf, idx, r, st, merged, n)
+	if not r then
+		TRF_TiDE("pick", "surface", sf, "system", TRF_TiName(idx), "candidate_count", n, "result", "none");
+		return;
+	end;
+	local mk = nil;
+	if merged then mk = TRF_TiKName(merged.k); end;
+	TRF_TiE("pick", "surface", sf, "system", TRF_TiName(idx), "kind", TRF_TiKName(r.k), "target", TRF_TiName(r.s), "event_leg", r.g,
+		"age", r.age, "source", r.c, "live", st, "merged", mk, "candidate_count", n, "result", "shown");
+end;
+
+-- Surfaces (7) -------------------------------------------------------------------------------
+
+-- 7.1 harbour news of the dock at system idx (station key k): one dated, sourced line or nil; pre 1 wraps it in tinews.
+function TRF_Ti_News(idx, k, pre)
+	return call(TRF_TiNewsBody, {idx, k, pre}, "x", TRF_TiErr);
+end;
+
+function TRF_TiNewsBody(idx, k, pre)
+	if TRF_TiGate("news") then return nil; end;
+	local slot = TRF_TiSlot(idx);
+	if not slot then return nil; end;
+	local T, ch = TRF_TiTune(), TRF_TiCh();
+	local all = TRF_RingRead(slot, {k={1, 2, 3, 4, 6, 8}});
+	local cs, xs = {}, {};
+	for i = 1, getn(all) do
+		local r = all[i];
+		local res, st, why, x = TRF_TiCand(r, "news", {age=T.ti_news_age, bit=1, hist=1, list=all}, T, ch);
+		if res == "ok" then tinsert(cs, r); xs[r] = x; end;
+	end;
+	local r = TRF_TiPickOf(cs, nil);
+	if not r then TRF_TiPickLog("news", idx, nil, nil, nil, getn(cs)); return nil; end;
+	local mt = TRF_TiMateOf(r, all);
+	local mx = nil;
+	if mt then
+		local mst, mw = nil, nil;
+		mst, mw, mx = TRF_TiLive(mt);
+		if mst == "dead" then mt = nil; end;
+	end;
+	local t = nil;
+	if mt and (r.k == 3 or r.k == 6) then
+		local sw = r;
+		if r.k == 6 then sw = mt; end;
+		t = TRF_TiLine(sw, nil, "tiswon");
+	elseif mt and (r.k == 1 or r.k == 8) then
+		local rd, wr, wx = r, mt, mx;
+		if r.k == 8 then rd = mt; wr = r; wx = xs[r]; end;
+		t = TRF_TiLine(wr, wx, "tiwreck");
+		local to = TRF_TiPortTo(rd.s, rd.l);
+		if to then t = t.." "..TRF_TiTxt("tiraidx", to); end;
+	else
+		t = TRF_TiLine(r, xs[r]);
+	end;
+	if pre == 1 then t = TRF_TiTxt("tinews", t); end;
+	TRF_RingMark(slot, r.k, r.s, r.g, 1);
+	if mt then TRF_RingMark(slot, mt.k, mt.s, mt.g, 1); end;
+	TRF_TiPickLog("news", idx, r, "current", mt, getn(cs));
+	return t;
+end;
+
+-- 7.2 clause of a built dock tip: kind "sweep" (slot: the 02 record of the block) or "base" (s: the 05 record of that
+-- system). "<source> first saw it in <place> <age>." or nil.
+function TRF_Ti_TipClause(idx, kind, slot, s)
+	return call(TRF_TiClauseBody, {idx, kind, slot, s}, "x", TRF_TiErr);
+end;
+
+function TRF_TiClauseBody(idx, kind, slot, s)
+	if TRF_TiGate("tip") then return nil; end;
+	local k = 2;
+	if kind == "base" then k = 5; slot = TRF_TiSlot(s); end;
+	if type(slot) ~= "number" then return nil; end;
+	local T, ch = TRF_TiTune(), TRF_TiCh();
+	local q = {k=k, age=T.ti_age};
+	if k == 5 then q.s = s; end;
+	local l = TRF_RingRead(slot, q);
+	for i = 1, getn(l) do
+		local r = l[i];
+		local res, st, why, x = TRF_TiCand(r, "tip", {}, T, ch);
+		if res == "ok" then
+			TRF_TiPickLog("tip", idx, r, st, nil, 1);
+			local t = TRF_TiTxt("tiwhen", TRF_TiSrc(r.c), TRF_TiPlace(r.s, TRF_TiLmNow(r, x)), TRF_TiAge(r.g, r.age));
+			if st == "stale" then t = t.." "..TRF_TiTxt("tistbase"); end;
+			return t;
+		end;
+	end;
+	return nil;
+end;
+
+-- 7.2 captain tip of the dock at system idx: text, the captain's system; nil when none.
+function TRF_Ti_CapTip(idx)
+	local t, s = call(TRF_TiCapBody, {idx}, "x", TRF_TiErr);
+	return t, s;
+end;
+
+function TRF_TiCapBody(idx)
+	if TRF_TiGate("tip") then return nil; end;
+	local slot = TRF_TiSlot(idx);
+	if not slot then return nil; end;
+	local T, ch = TRF_TiTune(), TRF_TiCh();
+	local l = TRF_RingRead(slot, {k=7, nf=2});
+	local r = l[1];
+	if not r then return nil; end;
+	local res, st, why, x = TRF_TiCand(r, "tip", {}, T, ch);
+	if res ~= "ok" then TRF_TiPickLog("tip", idx, nil, nil, nil, 0); return nil; end;
+	local t = TRF_TiLine(r, x);
+	local nm = TRF_N("TRF_CapNm", x.cap) or "";
+	if st == "stale" and why == "moved" then t = t.." "..TRF_TiTxt("tistcap", nm, TRF_TiSysTxt(x.cap.seen));
+	elseif st == "stale" then t = t.." "..TRF_TiTxt("tistlow", nm); end;
+	TRF_RingMark(slot, r.k, r.s, r.g, 2);
+	TRF_TiPickLog("tip", idx, r, st, nil, 1);
+	return t, r.s;
+end;
+
+-- 7.3 the ring rumour of the hail's where-headed answer at system idx, or nil (then the built chain).
+function TRF_Ti_Rumour(idx)
+	return call(TRF_TiRumourBody, {idx}, "x", TRF_TiErr);
+end;
+
+function TRF_TiRumourBody(idx)
+	if TRF_TiGate("hail") or type(idx) ~= "number" then return nil; end;
+	local T, ch = TRF_TiTune(), TRF_TiCh();
+	local near = {[idx]=0};
+	local set = {[idx]=1};
+	if T.ti_hail_j > 0 and type(TRF_RgNear) == "function" then
+		local l = TRF_RgNear(idx, T.ti_hail_j);
+		for i = 1, getn(l) do near[l[i].idx] = l[i].j; set[l[i].idx] = 1; end;
+	end;
+	local all = TRF_RingRead(nil, {s=set, age=T.ti_hail_age});
+	local ti = %TI;
+	local cs, xs = {}, {};
+	for i = 1, getn(all) do
+		local r = all[i];
+		local res, st, why, x = TRF_TiCand(r, "hail", {cur=1, h=ti.h}, T, ch);
+		if res == "ok" then tinsert(cs, r); xs[r] = x; end;
+	end;
+	local r = TRF_TiPickOf(cs, near);
+	if not r then TRF_TiPickLog("hail", idx, nil, nil, nil, getn(cs)); return nil; end;
+	local t = TRF_TiLine(r, xs[r]);
+	if type(t) ~= "string" then TRF_TiPickLog("hail", idx, nil, nil, nil, getn(cs)); return nil; end;
+	ti.h[TRF_TiHKey(r)] = 1;
+	if r.k == 11 then TRF_P("TRF_Sh_RingTold", r.a, 11); end;
+	TRF_TiPickLog("hail", idx, r, "current", nil, getn(cs));
+	return t;
+end;
+
+-- 7.4 the informant reply's clause for the captain of slot: where and when he was last spotted (current only), or nil.
+function TRF_Ti_Intel(slot)
+	return call(TRF_TiIntelBody, {slot}, "x", TRF_TiErr);
+end;
+
+function TRF_TiIntelBody(slot)
+	if TRF_TiGate("intel") then return nil; end;
+	if type(slot) ~= "number" then return nil; end;
+	local l = TRF_RingRead(slot, {k=7});
+	local r = l[1];
+	if not r then return nil; end;
+	local res, st, why, x = "ok", nil, nil, nil;
+	local ok, gw = nil, "nosafety";
+	if type(TRF_StrictOk) == "function" then ok, gw = TRF_StrictOk(r.s, "tips"); end;
+	if TRF_TiCh() < TRF_TiTune().ti_ch_full then res = "chapter";
+	elseif not ok then res = "gate:"..tostring(gw); else st, why, x = TRF_TiLive(r); if st ~= "current" then res = st; end; end;
+	TRF_TiDE("candidate", "surface", "intel", "kind", "cap", "target", TRF_TiName(r.s), "result", res);
+	if res ~= "ok" then return nil; end;
+	TRF_TiPickLog("intel", r.s, r, st, nil, 1);
+	return TRF_TiLine(r, x, "tiintel");
+end;
+
+-- Region tick, repair and dump (7.7, 4.6) ---------------------------------------------------------
+
+-- Prune lines of block slot (counts d of TRF_TiPruneOf, log 2); 1 when anything was dropped.
+function TRF_TiPruneLog(slot, d)
+	local rs = {"age", "dead", "size"};
+	local any = nil;
+	for i = 1, 3 do
+		if d[rs[i]] > 0 then
+			any = 1;
+			TRF_TiDE("prune", "region", slot, "dropped_count", d[rs[i]], "reason", rs[i]);
+		end;
+	end;
+	return any;
+end;
+
+-- Last line of TRF_RegionTick: cfg tips 0 clears TRF.ti; else every block is pruned (4.3).
+function TRF_Ti_RegionTick(L)
+	call(TRF_TiTickBody, {L}, "x", TRF_TiErr);
+end;
+
+function TRF_TiTickBody(L)
+	if type(TRF) ~= "table" then return; end;
+	if TRF_TiOpt("tips") ~= 1 then
+		if TRF.ti ~= nil then TRF.ti = nil; TRF_TiDE("prune", "region", "all", "reason", "off"); end;
+		return;
+	end;
+	if type(TRF.ti) ~= "string" then return; end;
+	local T = TRF_TiTune();
+	local bs, n = TRF_TiBlocks();
+	local ch = nil;
+	for b = 1, n do
+		local d = nil;
+		bs[b], d = TRF_TiPruneOf(bs[b], T.ti_age, TRF_TiLiveSt, T.ti_ring);
+		if TRF_TiPruneLog(b, d) then ch = 1; end;
+	end;
+	if ch then TRF_TiStore(bs, n); end;
+end;
+
+-- 4.6: repair TRF.ti (called from TRF_Repair).
+function TRF_Ti_Fix()
+	if type(TRF) ~= "table" then return; end;
+	call(TRF_TiFixBody, {}, "x", TRF_TiErr);
+end;
+
+function TRF_TiFixBody()
+	local s = TRF.ti;
+	if s == nil then return; end;
+	if type(s) ~= "string" then
+		TRF.ti = nil;
+		TRF_TiE("fix", "kept", 0, "dropped", 1, "moved", 0);
+		return;
+	end;
+	local m = TRF_TiMap();
+	local n = TRF_TiN();
+	if not m or n == 0 then return; end;
+	local T = TRF_TiTune();
+	local legs = TRF_TiLegs();
+	local bs, dropped = TRF_TiSplitOf(s, n, legs);
+	local moved = 0;
+	local all = {};
+	for b = 1, getn(bs) do
+		local l = bs[b];
+		for i = 1, getn(l) do
+			local r = l[i];
+			local slot = nil;
+			if type(m.sys[r.s]) == "table" then slot = TRF_TiSlot(r.s); end;
+			if not slot or slot > n or r.age > T.ti_age then
+				dropped = dropped + 1;
+			else
+				r.l = TRF_TiLFixOf(m.sys[r.s], r.l);
+				if r.f > 3 then r.f = TRF_TiMod(r.f, 4); end;
+				if slot ~= b then moved = moved + 1; end;
+				r.slot = slot;
+				r.o = getn(all);
+				tinsert(all, r);
+			end;
+		end;
+	end;
+	-- F4: oldest first, so the newest of a replace key stays; then the eviction order down to ti_ring.
+	sort(all, TRF_TiOlder);
+	local nb = {};
+	for b = 1, n do nb[b] = {}; end;
+	local kept = 0;
+	for i = 1, getn(all) do
+		local r = all[i];
+		local l = nb[r.slot];
+		for j = getn(l), 1, -1 do
+			if TRF_TiKeyOf(r, l[j]) then tremove(l, j); dropped = dropped + 1; end;
+		end;
+		tinsert(l, r);
+	end;
+	for b = 1, n do
+		local d = nil;
+		nb[b], d = TRF_TiPruneOf(nb[b], T.ti_age, nil, T.ti_ring);
+		dropped = dropped + d.size;
+		kept = kept + getn(nb[b]);
+	end;
+	local o = TRF_TiJoinOf(nb, n);
+	if o ~= s then
+		TRF.ti = o;
+		TRF_TiE("fix", "kept", kept, "dropped", dropped, "moved", moved);
+	end;
+end;
+
+function TRF_TiOlder(a, b)
+	if a.g ~= b.g then return a.g < b.g; end;
+	return a.o < b.o;
+end;
+
+-- "module=tips event=dump record_count=<n> ring_size=<K> length=<chars> ring=<slot>:<kind>@<system>/<age>/<flags>,..."
+function TRF_Ti_Dump()
+	if type(TRF) ~= "table" then return; end;
+	local bs, n = TRF_TiBlocks();
+	local o, c = nil, 0;
+	for b = 1, n do
+		local l = bs[b];
+		for i = 1, getn(l) do
+			local r = l[i];
+			local e = b..":"..TRF_TiKName(r.k).."@"..TRF_TiName(r.s).."/"..r.age.."/"..r.f;
+			if o then o = o..","..e; else o = e; end;
+			c = c + 1;
+		end;
+	end;
+	local len = 0;
+	if type(TRF.ti) == "string" then len = strlen(TRF.ti); end;
+	TRF_TiE("dump", "on", TRF_TiOpt("tips"), "record_count", c, "ring_size", TRF_TiTune().ti_ring, "length", len, "ring", o);
+end;
+
+-- Defaults (9) ------------------------------------------------------------------------------
+
+function TRF_Ti_OptDef()
+	return {tips=1};
+end;
+
+function TRF_Ti_TuneDef()
+	return {ti_ring=4, ti_age=30, ti_news_age=12, ti_hail_age=6, ti_hail_j=2, ti_ch=4, ti_ch_full=5};
+end;
+
+-- Texts (8), EN; $1..$4 as the spec table. The style guide: "portal", never "gate"; the source first.
+function TRF_Ti_Text()
+	return {
+		tiraid = "$1 saw $2 raiders leave $3 $4.",                         -- source, clan, place, age
+		tiraidx = "The raiders left by the $1 portal.",                    -- portal destination
+		tigather = "$1 have a fleet gathering against the $2 in $3, first seen $4.",
+		tiswon = "$1 broke the $2 in $3 $4.",
+		tislost = "$1 lost a fleet to the $2 in $3 $4.",
+		tibase = "$1 saw the $2 open a base in $3 $4.",
+		tibasedn = "$1 saw the $2 base in $3 go dark $4.",
+		ticap = "$1 spotted $2 coming into $3 $4.",                        -- source, captain, place, age
+		tiwreck = "$1 logged the freighter $2 lost in $3 $4.",             -- source, freighter, place, age
+		tinews = "Harbour news: $1",                                       -- ring line
+		tiwhen = "$1 first saw it in $2 $3.",                              -- source, place, age
+		tiintel = "$1 last spotted $2 coming into $3 $4.",                 -- source, captain, place, age
+		tistcap = "Patrols place $1 in $2 now.",                           -- captain, system
+		tistlow = "$1 has gone quiet since.",                              -- captain
+		tistbase = "The base has gone dark since.",
+		tipgate = "$1 by the $2 portal",                                   -- system, portal destination
+		tiptrade = "$1 near the trade station",                            -- system
+		tippatrol = "$1 near the patrol station",                          -- system
+		tisrcftu = "FTU haulers",
+		tisrcnav = "$1 patrols",                                           -- faction 1, 2
+		tisrccrp = "$1 crews",                                             -- faction 3-5
+		tisrcmerc = "FTU mercenaries",
+		tisrcbeacon = "FTU beacons",
+		tiagen = "$1 days back",                                           -- age (without trf_remark)
+	};
+end;

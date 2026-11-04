@@ -1,0 +1,1761 @@
+-- sw3-traffic sealed parcels (Lua 4.0.1). Spec: design/parcel-spec.md (design worldbuilding/01-sealed-parcels.md, step 1).
+-- Prefix Pc (TRF_Pc_* public, TRF_Pc<X> internal), log module=parcel.
+-- Step 1, courier: plain and relief parcels (Cargo_crate, Cargo_002) offered by the FTU courier desk at trade docks
+-- (trade box 400), deterministic per station and region-tick window, for a trade dock 2-4 jumps away (1-3 between
+-- Aurora, Corrino and Pegas while the chapter 4 guard holds); deposit, the job slot TRF.job, the logbook entry trf_pcl,
+-- the nav marker at the destination, delivery at the destination dock (trade line 20), expiry and void, help, visit
+-- credits, #3 standing and the shortage feeds (TRF.short job), the shared prize gap on the pay, deny lists, toggles, dump.
+-- Step 2 (contraband at pirate docks, customs, prototype parcels and interception) is not built: the saved fields cu,
+-- cs, hot, fac, TRF.pcl.xl and .cfl, cfg enable_contraband, enable_customs, enable_intercept and the step 2 tune keys
+-- are kept by the repair and read nowhere; the hook points say "Step 2 hook".
+-- Saved fields: TRF.job = {k (1 plain, 2 relief), r, t0, ml, pd, m, c} (packed, TRF_PcPackOf; at most 6 fields, the
+-- plumbing job slot), TRF.pcl = {je, ban, ok, fail, lsys, lleg, lok, lg, lt, pm, pr, ow, pq, ll[, xl, cfl]},
+-- TRF.short[i].job. Visit state lives in the chunk local PC (never saved; rebuilt by every MapInitialization).
+-- Layout as trf_freight: helpers, static tables, pure functions (*Of), state, gates, plan, logbook, items, job life,
+-- docks, loader callbacks, repair, defaults, dump, text. Top level: functions and PC only.
+
+local PC = {v={}};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_PcSH() return %PC; end;
+
+-- logfmt event line, module=parcel (design/log-format.md).
+function TRF_PcE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "parcel"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_PcErr(m)
+	TRF_PcE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler (natives that may be missing or answer badly): nil is the answer.
+function TRF_PcNoErr(m) end;
+
+function TRF_PcLogLv()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_PcDE(event, ...)
+	if TRF_PcLogLv() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_PcE, arg);
+end;
+
+function TRF_PcStat(k)
+	TRF_N("TRF_Stat", k);
+end;
+
+function TRF_PcCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- x mod m for x >= 0 (Lua 4 has no % operator).
+function TRF_PcM(x, m)
+	return x - floor(x / m) * m;
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Pc_OptDef), else the raw config, else the default; a wrong type reads as the default,
+-- and a number outside 0..1 too (every number key is a toggle).
+function TRF_PcOpt(key)
+	local d = TRF_Pc_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	if type(v) == "number" and v ~= 0 and v ~= 1 then return d; end;
+	return v;
+end;
+
+-- Tune values of this module, clamped (TRF_PcClampT: {lo, hi, int}); list keys are copied with each entry clamped.
+-- Cached in PC while TRF_Tune returns the same table; callers must not write into it.
+function TRF_PcTune()
+	local pc = %PC;
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_PcErr); end;
+	if type(pc.tc) == "table" and pc.tc.s == t then return pc.tc.t; end;
+	local d, cl, o = TRF_Pc_TuneDef(), TRF_PcClampT(), {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if type(x) ~= type(v) then x = v; end;
+		local r = cl[k];
+		if type(x) == "table" then
+			local w = {};
+			for i = 1, getn(v) do
+				local e = x[i];
+				if type(e) ~= "number" then e = v[i]; end;
+				if r[3] == 1 then e = floor(e); end;
+				w[i] = TRF_PcCl(e, r[1], r[2]);
+			end;
+			x = w;
+		elseif r then
+			if r[3] == 1 then x = floor(x); end;
+			x = TRF_PcCl(x, r[1], r[2]);
+		end;
+		o[k] = x;
+	end;
+	pc.tc = {s=t, t=o};
+	return o;
+end;
+
+function TRF_PcT(key)
+	return TRF_PcTune()[key];
+end;
+
+-- A traffic tune value (pay_cap, rg_tick), else def.
+function TRF_PcTv(key, def)
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_PcErr); end;
+	if type(t) == "table" and type(t[key]) == "number" then return t[key]; end;
+	return def;
+end;
+
+-- The traffic pay_cap, at most 30,000 (the bound of the packed pay and of the repair).
+function TRF_PcPayCap()
+	return min(30000, TRF_PcTv("pay_cap", 30000));
+end;
+
+-- Region tick in legs (the offer window, 01 section 6), at least 1.
+function TRF_PcRgTick()
+	return max(1, floor(TRF_PcTv("rg_tick", 2)));
+end;
+
+function TRF_PcLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+-- Jumps (00 section 6: the shared TRF.clock.j).
+function TRF_PcJumps()
+	local v = TRF_N("TRF_Jumps");
+	if type(v) == "number" then return v; end;
+	return 0;
+end;
+
+function TRF_PcGen()
+	if type(TRF) == "table" and type(TRF.gen) == "number" then return TRF.gen; end;
+	return 0;
+end;
+
+function TRF_PcMap()
+	local m = TRF_N("TRF_Map");
+	if type(m) == "table" and type(m.sys) == "table" then return m; end;
+	return nil;
+end;
+
+-- Lowercase map name of system idx (log values), or the index.
+function TRF_PcName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" and n ~= "?" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+-- Display name of system idx (trf_ui: the location folder), for the lines.
+function TRF_PcSys(idx)
+	local n = TRF_N("TRF_UI_SysName", idx);
+	if type(n) == "string" then return n; end;
+	return TRF_PcName(idx);
+end;
+
+function TRF_PcTxt(key, a, b, c)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c); end;
+	return tostring(key);
+end;
+
+function TRF_PcCur()
+	local i = TRF_N("TRF_CurIdx");
+	if type(i) == "number" then return i; end;
+	return nil;
+end;
+
+-- 1 while GetPlayerQuestState() == TRUE (a story mission runs; LevelUp.script:32).
+function TRF_PcQuest()
+	if type(GetPlayerQuestState) == "function" and GetPlayerQuestState() == TRUE then return 1; end;
+	return nil;
+end;
+
+function TRF_PcQsRaw(id)
+	return GetQuestState(id);
+end;
+
+-- Logbook state of id (GetQuestState), or nil without the native.
+function TRF_PcQs(id)
+	if type(GetQuestState) ~= "function" then return nil; end;
+	return call(TRF_PcQsRaw, {id}, "x", TRF_PcNoErr);
+end;
+
+-- Free roam (01 section 3): no mission (GetPlayerQuestState() ~= TRUE), or quest_Help in process (a free-time window,
+-- OutOfMission.script:541-546).
+function TRF_PcFree()
+	if not TRF_PcQuest() then return 1; end;
+	local s = TRF_PcQs("quest_Help");
+	if s ~= nil and QUEST_PROCESS ~= nil and s == QUEST_PROCESS then return 1; end;
+	return nil;
+end;
+
+function TRF_PcHeat()
+	if type(TRF) == "table" and type(TRF.std) == "table" and type(TRF.std.heat) == "number" then return TRF.std.heat; end;
+	return 0;
+end;
+
+function TRF_PcHelp()
+	if type(TRF) == "table" and type(TRF.std) == "table" and type(TRF.std.help) == "number" then return TRF.std.help; end;
+	return 0;
+end;
+
+function TRF_PcChapter()
+	local c = TRF_N("TRF_Chapter");
+	if type(c) == "number" then return c; end;
+	return 0;
+end;
+
+-- 1 while the starting-region guard holds (chapter <= 4, trf_region TRF_RgGuardOn).
+function TRF_PcGuardOn()
+	if type(TRF_RgGuardOn) == "function" then return TRF_RgGuardOn(); end;
+	if TRF_PcChapter() <= 4 then return 1; end;
+	return nil;
+end;
+
+function TRF_PcCreditsRaw()
+	return GetPlayerCredits();
+end;
+
+function TRF_PcCredits()
+	if type(GetPlayerCredits) ~= "function" then return nil; end;
+	local v = call(TRF_PcCreditsRaw, {}, "x", TRF_PcErr);
+	if type(v) == "number" then return v; end;
+	return nil;
+end;
+
+function TRF_PcSubRaw(n)
+	SubPlayerCredits(n);
+	return 1;
+end;
+
+function TRF_PcSub(n)
+	if n <= 0 then return 1; end;
+	if type(SubPlayerCredits) ~= "function" then return nil; end;
+	return call(TRF_PcSubRaw, {n}, "x", TRF_PcErr);
+end;
+
+function TRF_PcAddRaw(n)
+	AddPlayerCredits(n);
+	return 1;
+end;
+
+-- Credits back to the player (deposit refunds; not pay, so no pay_cap and no prize gap). 1 when paid.
+function TRF_PcAdd(n)
+	if type(n) ~= "number" or n <= 0 then return 1; end;
+	if type(AddPlayerCredits) ~= "function" then return nil; end;
+	return call(TRF_PcAddRaw, {floor(n)}, "x", TRF_PcErr);
+end;
+
+-- "15,400": a whole number with thousands separators (the design's lines).
+function TRF_PcNum(n)
+	local s = format("%d", floor((n or 0) + 0.5));
+	local neg = "";
+	if strsub(s, 1, 1) == "-" then neg = "-"; s = strsub(s, 2); end;
+	local o = "";
+	while strlen(s) > 3 do
+		o = ","..strsub(s, -3)..o;
+		s = strsub(s, 1, strlen(s) - 3);
+	end;
+	return neg..s..o;
+end;
+
+-- Static tables --------------------------------------------------------------------
+
+-- Constants without a cfg key: first chapter, guard docks (01 section 3, chapter 4), static deny systems (01 section 3),
+-- the InoCo core systems (shut without the permit), item names by it (1 Cargo_crate, 2 Cargo_002, 3 Uranium,
+-- 4 Cargo_Electronic_2), their fallback costs, units per job, source pro gate, heat gate, thank-you window (legs),
+-- line seconds, logbook id, marker label and owner, the Recovery phase.
+function TRF_PcK()
+	return {ch_min=4, guard={aurora=1, corrino=1, pegas=1},
+		deny={fronn=1, nk=1, earth=1, precursors=1, disonsphere=1, x203=1, x213=1, x220=1, x297=1},
+		inoco={ashelon=1, danstag=1, hafa=1, xk10=1}, items={"Cargo_crate", "Cargo_002", "Uranium", "Cargo_Electronic_2"},
+		cost={1200, 850, 2200, 50000}, n_max=3, pro_min=3, heat_max=2, thx_legs=10, secs=8, qid="trf_pcl", mk="TRF_".."PCL_NP",
+		own="parcel", recovery=5};
+end;
+
+-- Clamps of the tune keys {lo, hi, int}; list keys clamp each entry.
+function TRF_PcClampT()
+	return {pcl_k={0, 5, 0}, pcl_relief_k={1, 3, 0}, pcl_x_k={0, 5, 0}, pcl_proto_k={0, 5, 0}, pcl_offer_pct={0, 100, 1},
+		pcl_offer_rpct={0, 100, 1}, pcl_plain_pct={0, 100, 1}, pcl_jmax={2, 6, 1}, pcl_jmax_g={1, 4, 1}, pcl_gap={0, 50, 1},
+		pcl_ban={0, 200, 1}, pcl_dep_k={0, 5, 0}, pcl_dep_k2={0, 5, 0}, pcl_waive_help={0, 99, 1}, pcl_x_score_legs={0, 200, 1},
+		pcl_hot_k={0, 1, 0}, cust_hostile_max={0, 2, 1}, cust_base={0, 100, 1}, cust_wait={5, 600, 1}, cust_radius={5, 500, 1},
+		cust_fine_k={0, 10, 0}, cust_flag_legs={0, 200, 1}};
+end;
+
+-- BEGIN gen_parcel.py (do not edit by hand)
+-- Chapter deny sets (01 section 3): the <location> systems of every mission_<c>* of Game/Quests.xml, lowercase,
+-- space separated, by chapter c (tools/gen_parcel.py, design/parcel-spec.md 5.2).
+function TRF_PcDenyChData()
+	return {
+		[1] = "aurora corrino",
+		[2] = "aurora elio gredos",
+		[3] = "ahilles argon aurora pegas",
+		[4] = "ahilles argon elio gefest gredos",
+		[5] = "ahilles argon aurora corrino debris1 debris2 debris4 debris6 elio endoria2 gefest gredos pegas poseidon valensia",
+		[6] = "ahilles altrabon argon aurora b_leftera1 corrino debris1 debris4 el_ariash hanoi kadi nj1 nj2 nj3 prien taira",
+		[7] = "danstag dosis gideon kadi kassilia kondel lidau nj1 nj2 nj3 xb15 xb17 xk10 xt20 xt26 xt39 xt41 xt45 xt52 xt54 xt93",
+		[8] = "aurora corrino debris1 debris2 debris3 debris4 debris6 deosis dionis elinor elio endoria1 endoria2 gaeon haron kadenoa kadi kondel kron kruger moscowia pandora shula solpuga torr xt20 xt41 xt45 xt52 xt54 xt93",
+		[9] = "angarsk ashelon dionis el_ariash elio endoria2 hafa hanoi kadi kondel moscowia nd nj2 prien solncevka",
+		[10] = "x203 x213 x220 x297",
+		[11] = "disonsphere precursors x203 x213 x220 x297",
+		[12] = "altrabon alzed dalled el_ariash hanoi kadi prien x297 xk10 xk16 xt41 xt45 xt52 xt81 xt93",
+		[13] = "lidau xt23 xt24",
+		[14] = "gaeon heos lidau nk proserpina xt23 zebos",
+		[15] = "debris1 gefest nk prien taira xt05 xt11 xt23 xt26 xt86",
+		[16] = "altrabon avalon dalled deosis eridan gideon kadenoa nj2 simeiz ule vulcan xt86 zebos",
+		[17] = "el_ariash eridan x203 x220 x297",
+		[18] = "earth eridan gaeon nj1 shula taira zebos",
+		[19] = "altrabon corrino el_ariash ergelan nk prien shula taira vuadil x297 xt86",
+		[20] = "nk",
+	};
+end;
+-- Parcel destinations (logbook keys pclq<idx>, pclqd<idx>, design/parcel-spec.md 8): every map.script system
+-- with a trade station, by idx: {location folder, trade station count}.
+function TRF_PcDstData()
+	return {
+		[1] = {"Ahilles", 1},
+		[2] = {"Altair", 1},
+		[3] = {"Altrabon", 1},
+		[4] = {"Alzed", 1},
+		[5] = {"Angarsk", 1},
+		[7] = {"Argon", 1},
+		[9] = {"Aurora", 1},
+		[10] = {"Avalon", 1},
+		[12] = {"B_leftera2", 1},
+		[14] = {"Callipso", 1},
+		[15] = {"Corrino", 1},
+		[16] = {"Dalled", 1},
+		[17] = {"Danstag", 1},
+		[18] = {"Debris1", 1},
+		[21] = {"Debris4", 1},
+		[22] = {"Debris6", 1},
+		[28] = {"Egleon", 1},
+		[29] = {"El_ariash", 1},
+		[31] = {"Elio", 1},
+		[32] = {"Endoria1", 1},
+		[33] = {"Endoria2", 1},
+		[34] = {"Ergelan", 1},
+		[35] = {"Eridan", 1},
+		[37] = {"Farles", 1},
+		[38] = {"Fiasar", 1},
+		[39] = {"Fort_russ", 1},
+		[41] = {"Gaeon", 1},
+		[42] = {"Gaoba", 1},
+		[45] = {"Golkonda", 1},
+		[46] = {"Gredos", 1},
+		[47] = {"Hafa", 1},
+		[48] = {"Hanoi", 1},
+		[49] = {"Haron", 1},
+		[51] = {"Kadenoa", 2},
+		[52] = {"Kadi", 1},
+		[53] = {"Kassilia", 1},
+		[54] = {"Kitaro", 1},
+		[55] = {"Kondel", 1},
+		[57] = {"Kruger", 1},
+		[58] = {"Lasad", 1},
+		[59] = {"Lidau", 1},
+		[62] = {"Moscowia", 1},
+		[63] = {"ND", 1},
+		[64] = {"NJ1", 1},
+		[65] = {"NJ2", 1},
+		[66] = {"NJ3", 1},
+		[67] = {"NK", 1},
+		[68] = {"Pandora", 1},
+		[69] = {"Pegas", 1},
+		[72] = {"Prien", 1},
+		[73] = {"Proserpina", 1},
+		[74] = {"Shula", 1},
+		[75] = {"Simeiz", 1},
+		[76] = {"Solncevka", 1},
+		[77] = {"Solpuga", 1},
+		[79] = {"Taira", 1},
+		[81] = {"Torr", 1},
+		[82] = {"Ule", 1},
+		[83] = {"Valensia", 1},
+		[85] = {"Vulcan", 1},
+		[90] = {"x297", 1},
+		[93] = {"xb17", 1},
+		[95] = {"xk10", 1},
+		[96] = {"xk16", 1},
+		[98] = {"xt11", 1},
+		[100] = {"xt20", 1},
+		[101] = {"xt23", 1},
+		[102] = {"xt24", 1},
+		[103] = {"xt26", 1},
+		[106] = {"xt41", 1},
+		[107] = {"xt45", 1},
+		[108] = {"xt52", 1},
+		[109] = {"xt54", 1},
+		[112] = {"xt93", 1},
+		[113] = {"Zebos", 1},
+	};
+end;
+-- END gen_parcel.py
+
+-- Pure rules (host-testable) --------------------------------------------------------
+
+-- Offer existence (01 section 6): (src x 7 + floor(legs / rg_tick) x 13) mod 100 < pct.
+function TRF_PcOfferOf(src, legs, rgt, pct)
+	return TRF_PcM(src * 7 + floor(legs / rgt) * 13, 100) < pct;
+end;
+
+-- Plain parcel without a relief target (01 section 6, pcl_plain_pct): (src x 3 + floor(legs / rg_tick) x 29 + 41) mod
+-- 100 < pct (the design gives the chance, not the draw; a second fixed hash of the same window).
+function TRF_PcPlainOf(src, legs, rgt, pct)
+	return TRF_PcM(src * 3 + floor(legs / rgt) * 29 + 41, 100) < pct;
+end;
+
+function TRF_PcR100(x)
+	return floor(x / 100 + 0.5) * 100;
+end;
+
+-- Courier pay (01 section 5, 00 A1-A3): min(r100(k x J x 900 x L x lk x tier_k x (1 + 0.05 pro) x d_k x s_k), cap) with
+-- lk = min(1, L / 8).
+function TRF_PcPayOf(k, J, L, tk, pro, dk, sk, cap)
+	local v = k * J * 900 * L * min(1, L / 8) * tk * (1 + 0.05 * pro) * dk * sk;
+	return min(TRF_PcR100(v), cap);
+end;
+
+-- Deposit: floor(k x cost x n + 0.5) (pcl_dep_k 1.2 sellable, 0.5 Cargo_002).
+function TRF_PcDepOf(cost, n, k)
+	return floor(k * cost * n + 0.5);
+end;
+
+-- Item index of a parcel: Cargo_002 under the guard and for perishables (5), general freight (6) and plain parcels (0);
+-- Cargo_crate for machinery, spare parts, ore and fuel (1-4).
+function TRF_PcItemOf(cls, guard)
+	if guard or type(cls) ~= "number" or cls < 1 or cls > 4 then return 2; end;
+	return 1;
+end;
+
+-- Units: one per jump, at most n_max (3).
+function TRF_PcUnitsOf(J, nmax)
+	return TRF_PcCl(floor(J), 1, nmax);
+end;
+
+-- Deadline legs 3J + 2.
+function TRF_PcDlOf(J)
+	return 3 * J + 2;
+end;
+
+-- Legs counted against the deadline: legs since accept minus legs spent in missions.
+function TRF_PcElapsedOf(legs, t0, ml)
+	return legs - t0 - ml;
+end;
+
+-- floor(x k / n): the part of pay or deposit for k of n units.
+function TRF_PcPartOf(x, k, n)
+	if n <= 0 then return 0; end;
+	return floor(x * k / n);
+end;
+
+-- BFS over adjacency adj (sorted neighbour lists) from src up to dmax jumps, skipping the systems of set ex.
+-- Returns dist {[idx] = jumps}, prev {[idx] = predecessor}.
+function TRF_PcBfsOf(adj, src, ex, dmax)
+	local dist, prev = {}, {};
+	dist[src] = 0;
+	local fr = {src};
+	for d = 1, dmax do
+		local nx = {};
+		for i = 1, getn(fr) do
+			local l = adj[fr[i]] or {};
+			for j = 1, getn(l) do
+				local v = l[j];
+				if dist[v] == nil and not ex[v] then dist[v] = d; prev[v] = fr[i]; tinsert(nx, v); end;
+			end;
+		end;
+		fr = nx;
+	end;
+	return dist, prev;
+end;
+
+-- Route from src to dst through prev, without src: {idx, ..., dst}.
+function TRF_PcRouteOf(prev, src, dst)
+	local r = {};
+	local v = dst;
+	local n = 0;
+	while v and v ~= src and n < 99 do
+		tinsert(r, 1, v);
+		v = prev[v];
+		n = n + 1;
+	end;
+	return r;
+end;
+
+-- L_job (01 section 5): the lowest, over all walks of at most hmax jumps from src to dst that avoid ex, of the highest
+-- lw on the walk (src excluded); nil when dst is not reachable within hmax.
+function TRF_PcLJobOf(adj, src, dst, hmax, lw, ex)
+	local best, cur = {}, {};
+	cur[src] = 0;
+	for h = 1, hmax do
+		local nx = {};
+		for u, bu in cur do
+			local l = adj[u] or {};
+			for j = 1, getn(l) do
+				local v = l[j];
+				if not ex[v] then
+					local c = bu;
+					if v ~= src then c = max(bu, lw[v] or 8); end;
+					if nx[v] == nil or c < nx[v] then nx[v] = c; end;
+				end;
+			end;
+		end;
+		for v, c in nx do
+			if best[v] == nil or c < best[v] then best[v] = c; end;
+		end;
+		cur = nx;
+	end;
+	return best[dst];
+end;
+
+-- Packed job record of the plumbing slot (at most 6 fields, wb-plumbing-spec 3): r = src x 1000 + dst, t0, ml,
+-- pd = pay x 100000 + dep, m = it + 10 n + 100 j + 1000 dl + 100000 cls + 1000000 sj + 10000000 fac + 100000000 ssj
+-- + 1000000000 wv (1: the deposit was waived), c = cu x 100 + cs x 10 + hot (step 2, 0).
+function TRF_PcPackOf(t)
+	return {r=t.src * 1000 + t.dst, t0=t.t0, ml=t.ml, pd=t.pay * 100000 + t.dep,
+		m=t.it + 10 * t.n + 100 * t.j + 1000 * t.dl + 100000 * t.cls + 1000000 * t.sj + 10000000 * t.fac + 100000000 * (t.ssj or 0)
+			+ 1000000000 * (t.wv or 0),
+		c=t.cu * 100 + t.cs * 10 + t.hot};
+end;
+
+function TRF_PcNumOk(x, lo, hi)
+	return type(x) == "number" and x >= lo and x <= hi and x == floor(x);
+end;
+
+-- Unpacks job e (TRF.job of kind 1..4) into {k, src, dst, t0, ml, pay, dep, it, n, j, dl, cls, sj, fac, ssj, wv, cu, cs, hot};
+-- nil, reason when a field is missing or out of range (ns = map system count, legs = now).
+function TRF_PcUnpackOf(e, ns, legs)
+	if type(e) ~= "table" or not TRF_PcNumOk(e.k, 1, 4) then return nil, "kind"; end;
+	if not TRF_PcNumOk(e.r, 1001, ns * 1000 + ns) or not TRF_PcNumOk(e.t0, -999999, legs) or not TRF_PcNumOk(e.ml, 0, 999)
+		or not TRF_PcNumOk(e.pd, 0, 30000 * 100000 + 60000) or not TRF_PcNumOk(e.m, 0, 9999999999) or not TRF_PcNumOk(e.c, 0, 99999) then
+		return nil, "field";
+	end;
+	local t = {k=e.k, src=floor(e.r / 1000), dst=TRF_PcM(e.r, 1000), t0=e.t0, ml=e.ml, pay=floor(e.pd / 100000), dep=TRF_PcM(e.pd, 100000)};
+	local m = e.m;
+	t.it = TRF_PcM(m, 10); t.n = TRF_PcM(floor(m / 10), 10); t.j = TRF_PcM(floor(m / 100), 10); t.dl = TRF_PcM(floor(m / 1000), 100);
+	t.cls = TRF_PcM(floor(m / 100000), 10); t.sj = TRF_PcM(floor(m / 1000000), 10); t.fac = TRF_PcM(floor(m / 10000000), 10);
+	t.ssj = TRF_PcM(floor(m / 100000000), 10); t.wv = floor(m / 1000000000);
+	t.cu = floor(e.c / 100); t.cs = TRF_PcM(floor(e.c / 10), 10); t.hot = TRF_PcM(e.c, 10);
+	if t.src < 1 or t.src > ns or t.dst < 1 or t.dst > ns or t.src == t.dst then return nil, "system"; end;
+	if t.it < 1 or t.it > 4 or t.n < 1 or t.n > 3 or t.j < 1 or t.j > 6 or t.dl < 5 or t.dl > 20 or t.cls > 6 or t.sj < 1 or t.fac > 5
+		or t.wv > 1 or t.cu > ns or t.cs > 2 or t.hot > 1 or t.pay > 30000 or t.dep > 60000 then
+		return nil, "range";
+	end;
+	if (t.k == 2) ~= (t.cls > 0) then return nil, "class"; end;
+	return t;
+end;
+
+-- Set of the space-separated names of s.
+function TRF_PcSetOf(s)
+	local o = {};
+	if type(s) ~= "string" then return o; end;
+	local i = 1;
+	while i <= strlen(s) do
+		local a, b = strfind(s, "[%w_]+", i);
+		if not a then break; end;
+		o[strsub(s, a, b)] = 1;
+		i = b + 1;
+	end;
+	return o;
+end;
+
+-- State ----------------------------------------------------------------------------
+
+-- TRF.pcl (created when mk is 1), else nil.
+function TRF_PcRec(mk)
+	if type(TRF) ~= "table" then return nil; end;
+	if type(TRF.pcl) ~= "table" then
+		if mk ~= 1 then return nil; end;
+		TRF.pcl = {ok=0, fail=0};
+	end;
+	return TRF.pcl;
+end;
+
+function TRF_PcNs()
+	local m = TRF_PcMap();
+	if m then return getn(m.sys); end;
+	return 999;
+end;
+
+-- The open parcel job, unpacked (kinds 1..4; kind 5 is #5's favour), or nil.
+function TRF_PcJob()
+	if type(TRF) ~= "table" or type(TRF.job) ~= "table" then return nil; end;
+	local e = TRF.job;
+	if not TRF_PcNumOk(e.k, 1, 4) then return nil; end;
+	return TRF_PcUnpackOf(e, TRF_PcNs(), TRF_PcLegs());
+end;
+
+-- Writes the changing fields of job t (ml, c) back into the slot.
+function TRF_PcJobPut(t)
+	if type(TRF) ~= "table" or type(TRF.job) ~= "table" then return nil; end;
+	local p = TRF_PcPackOf(t);
+	TRF.job.ml = p.ml;
+	TRF.job.c = p.c;
+	return 1;
+end;
+
+-- Chapter deny set of chapter c: the generated table and cfg pcl_deny_ch[c] (names), cached per MapInitialization.
+function TRF_PcDenyCh(c)
+	local pc = %PC;
+	if type(pc.dch) ~= "table" then
+		pc.dch = {};
+		local d = {};
+		if type(TRF_PcDenyChData) == "function" then d = TRF_PcDenyChData(); end;
+		for k, s in d do pc.dch[k] = TRF_PcSetOf(s); end;
+		local x = TRF_PcOpt("pcl_deny_ch");
+		if type(x) == "table" then
+			for k, l in x do
+				if type(k) == "number" and type(l) == "table" then
+					if type(pc.dch[k]) ~= "table" then pc.dch[k] = {}; end;
+					for i = 1, getn(l) do if type(l[i]) == "string" then pc.dch[k][strlower(l[i])] = 1; end; end;
+				end;
+			end;
+		end;
+	end;
+	return pc.dch[c] or {};
+end;
+
+-- Cached undirected portal adjacency (trf_region TRF_RgAdj) and L_w per system (TRF_LPay), per MapInitialization.
+function TRF_PcAdj()
+	local pc = %PC;
+	if type(pc.adj) == "table" then return pc.adj; end;
+	local m = TRF_PcMap();
+	local a = nil;
+	if m then a = TRF_N("TRF_RgAdj", m); end;
+	if type(a) ~= "table" then a = {}; end;
+	pc.adj = a;
+	return a;
+end;
+
+function TRF_PcLw()
+	local pc = %PC;
+	if type(pc.lw) == "table" then return pc.lw; end;
+	local o = {};
+	for i = 1, TRF_PcNs() do
+		if i > 200 then break; end;
+		local v = TRF_N("TRF_LPay", i);
+		if type(v) == "number" then o[i] = v; end;
+	end;
+	pc.lw = o;
+	return o;
+end;
+
+-- Gates and world reads ------------------------------------------------------------
+
+function TRF_PcOn()
+	return type(TRF) == "table" and TRF_PcOpt("enable_parcels") == 1;
+end;
+
+-- GetLocationTeam of idx (trf_region TRF_RgTeam), or nil.
+function TRF_PcTeam(idx)
+	local t = TRF_N("TRF_RgTeam", idx);
+	if type(t) == "string" then return t; end;
+	return nil;
+end;
+
+function TRF_PcRelRaw(a, b)
+	return GetTeamRelation(a, b);
+end;
+
+-- Team relation of team toward the player, or nil.
+function TRF_PcRel(team)
+	if type(team) ~= "string" or team == "" or type(GetTeamRelation) ~= "function" then return nil; end;
+	return call(TRF_PcRelRaw, {team, PLAYER_TEAM}, "x", TRF_PcNoErr);
+end;
+
+-- 1 when the owner of idx is at war with the player (01 section 3, hostile owners).
+function TRF_PcHostile(idx)
+	local r = TRF_PcRel(TRF_PcTeam(idx));
+	if r ~= nil and RELATION_WAR ~= nil and r == RELATION_WAR then return 1; end;
+	return nil;
+end;
+
+-- 1 while the InoCo core is open: label InocoPermit "yes" (read only) or InoCo FRIEND with the player.
+function TRF_PcInoOk()
+	if TRF_N("GetQuestLabel", "InocoPermit") == "yes" then return 1; end;
+	local r = TRF_PcRel("Inoco");
+	if r ~= nil and RELATION_FRIEND ~= nil and r == RELATION_FRIEND then return 1; end;
+	return nil;
+end;
+
+-- Why system idx may not be on a route (hostile owner, InoCo core without the permit), or nil.
+function TRF_PcRouteEx(idx, ino)
+	if TRF_PcHostile(idx) then return "hostile"; end;
+	if not ino and TRF_PcK().inoco[TRF_PcName(idx)] then return "inoco"; end;
+	return nil;
+end;
+
+-- Why system idx may not be a source or destination in chapter ch: static deny, cfg pcl_deny, the chapter deny set,
+-- a deny entry with parcel = 0, then the route rules. nil when it may.
+function TRF_PcEndEx(idx, ch, ino)
+	local nm = TRF_PcName(idx);
+	if TRF_PcK().deny[nm] then return "static"; end;
+	local cd = TRF_PcOpt("pcl_deny");
+	if type(cd) == "table" then
+		for i = 1, getn(cd) do if type(cd[i]) == "string" and strlower(cd[i]) == nm then return "cfg"; end; end;
+	end;
+	if TRF_PcDenyCh(ch)[nm] then return "chapter"; end;
+	local de = TRF_N("TRF_DenyEntry", nm);
+	if type(de) == "table" and de.parcel == 0 then return "deny_entry"; end;
+	return TRF_PcRouteEx(idx, ino);
+end;
+
+-- Trade stations of system idx from the map: {{j, label, prm, x, y, z}, ...} (01 section 10: trade stations only).
+function TRF_PcTradeSt(idx)
+	local m = TRF_PcMap();
+	local o = {};
+	if not m or type(idx) ~= "number" or type(m.sys[idx]) ~= "table" or type(m.sys[idx].st) ~= "table" then return o; end;
+	local st = m.sys[idx].st;
+	for i = 1, getn(st) do
+		local s = st[i];
+		if type(s) == "table" and s.kind == "trade" then
+			tinsert(o, {j=getn(o) + 1, label=s.label, prm=s.prm, x=s.x, y=s.y, z=s.z});
+		end;
+	end;
+	return o;
+end;
+
+-- Dock identity (01 section 6): the station's prm, else the location folder (the _param of a trade dock without a shop
+-- param, DockStation.script:174-179), lowercase.
+function TRF_PcDockOf(idx, sj)
+	local l = TRF_PcTradeSt(idx);
+	local s = l[sj or 1];
+	if type(s) == "table" and type(s.prm) == "string" and s.prm ~= "" then return strlower(s.prm); end;
+	local m = TRF_PcMap();
+	if m and type(m.sys[idx]) == "table" and type(m.sys[idx].dir) == "string" then return strlower(m.sys[idx].dir); end;
+	return TRF_PcName(idx);
+end;
+
+-- Station index of the docked station in system idx for dock param p (Kadenoa: "kadenoa_tri" is its second dock), else 1.
+function TRF_PcSjOf(idx, p)
+	local l = TRF_PcTradeSt(idx);
+	if type(p) ~= "string" then return 1; end;
+	for i = 1, getn(l) do
+		if TRF_PcDockOf(idx, i) == strlower(p) then return i; end;
+	end;
+	return 1;
+end;
+
+function TRF_PcParam()
+	local p = TRF_N("TRF_Shop_Param");
+	if type(p) == "string" then return p; end;
+	return nil;
+end;
+
+-- Offer gates at the trade dock of system cur, station sj (01 sections 3, 4): nil when an offer may show, else the
+-- reason.
+function TRF_PcGate(cur, sj)
+	if not TRF_PcOn() then return "off"; end;
+	if type(cur) ~= "number" then return "nomap"; end;
+	local K = TRF_PcK();
+	local ch = TRF_PcChapter();
+	if ch < K.ch_min then return "chapter"; end;
+	if not TRF_PcFree() then return "mission"; end;
+	if TRF_N("TRF_Quiet") then return "quiet"; end;
+	if type(TRF_StrictOk) == "function" then
+		local ok, w = TRF_StrictOk(cur, "parcel");
+		if not ok then return "strict:"..tostring(w); end;
+	end;
+	if type(TRF) == "table" and type(TRF.job) == "table" then return "job"; end;
+	local R = TRF_PcRec();
+	if R and type(R.ban) == "number" and TRF_PcLegs() < R.ban then return "ban"; end;
+	if R and type(R.je) == "number" and TRF_PcJumps() - R.je < TRF_PcT("pcl_gap") then return "gap"; end;
+	if TRF_PcHeat() > K.heat_max then return "heat"; end;
+	if %PC.v.dec == 1 then return "declined"; end;
+	if getn(TRF_PcTradeSt(cur)) == 0 then return "station"; end;
+	local guard = TRF_PcGuardOn();
+	if guard and not K.guard[TRF_PcName(cur)] then return "guard"; end;
+	local w = TRF_PcEndEx(cur, ch, TRF_PcInoOk());
+	if w then return "deny:"..w; end;
+	if not guard and (TRF_N("TRF_Pro", cur) or 0) < K.pro_min then return "pro"; end;
+	local st = TRF_N("TRF_Stn_Rung", cur, sj);
+	if type(st) == "number" and st < 0 then return "dockmaster"; end;
+	return nil;
+end;
+
+-- Offer plan (01 section 6) at the trade dock of system cur, station sj: candidates by BFS without route-excluded
+-- systems, the relief target (eligible TRF.short entry with the fewest jumps, ties by system then class) or a plain
+-- destination (lowest pro, then jumps, then idx), the fixed rolls, pay, item, units, deposit and deadline. Returns the
+-- offer record, or nil, reason.
+function TRF_PcPlan(cur, sj)
+	local K = TRF_PcK();
+	local ch = TRF_PcChapter();
+	local guard = TRF_PcGuardOn();
+	local ino = TRF_PcInoOk();
+	local jmin, jmax = 2, TRF_PcT("pcl_jmax");
+	if guard then jmin = 1; jmax = TRF_PcT("pcl_jmax_g"); end;
+	local adj = TRF_PcAdj();
+	-- Route exclusions only for the systems a walk of at most jmax + 1 jumps can reach (the bound of TRF_PcLJobOf):
+	-- two natives per system (GetLocationTeam, GetTeamRelation), not the whole map.
+	local reach = TRF_PcBfsOf(adj, cur, {}, jmax + 1);
+	local ex = {};
+	for i, d in reach do
+		if i ~= cur and TRF_PcRouteEx(i, ino) then ex[i] = 1; end;
+	end;
+	local dist, prev = TRF_PcBfsOf(adj, cur, ex, jmax);
+	local cand = {};
+	local nc = 0;
+	for v, d in dist do
+		if v ~= cur and d >= jmin and d <= jmax and getn(TRF_PcTradeSt(v)) > 0 and not TRF_PcEndEx(v, ch, ino)
+			and (not guard or K.guard[TRF_PcName(v)]) then
+			cand[v] = d;
+			nc = nc + 1;
+		end;
+	end;
+	if nc == 0 then return nil, "no_candidate"; end;
+	local legs, rgt = TRF_PcLegs(), TRF_PcRgTick();
+	local rl = TRF_N("TRF_ShortRelief");
+	local re = nil;
+	if type(rl) == "table" then
+		for i = 1, getn(rl) do
+			local e = rl[i];
+			if type(e) == "table" and cand[e.s] and type(e.c) == "number" then
+				if not re or cand[e.s] < cand[re.s] or (cand[e.s] == cand[re.s] and (e.s < re.s or (e.s == re.s and e.c < re.c))) then re = e; end;
+			end;
+		end;
+	end;
+	local pct = TRF_PcT("pcl_offer_pct");
+	if re then pct = TRF_PcT("pcl_offer_rpct"); end;
+	if not TRF_PcOfferOf(cur, legs, rgt, pct) then return nil, "roll"; end;
+	local k, dst, cls = 1, nil, 0;
+	if re then
+		k = 2; dst = re.s; cls = re.c;
+	else
+		if not TRF_PcPlainOf(cur, legs, rgt, TRF_PcT("pcl_plain_pct")) then return nil, "plain_roll"; end;
+		for v, d in cand do
+			if not dst then dst = v;
+			else
+				local pv, pd = TRF_N("TRF_Pro", v) or 0, TRF_N("TRF_Pro", dst) or 0;
+				if pv < pd or (pv == pd and (d < cand[dst] or (d == cand[dst] and v < dst))) then dst = v; end;
+			end;
+		end;
+	end;
+	local J = cand[dst];
+	local route = TRF_PcRouteOf(prev, cur, dst);
+	local L = TRF_PcLJobOf(adj, cur, dst, J + 1, TRF_PcLw(), ex) or TRF_PcLw()[dst] or 8;
+	local T = 1;
+	if not guard then
+		for i = 1, getn(route) do
+			local t = TRF_N("TRF_EffTier", route[i]);
+			if type(t) == "number" and t > T then T = t; end;
+		end;
+	end;
+	local tkl = {0.75, 1.0, 1.5, 2.0};
+	local tk = tkl[TRF_PcCl(T, 1, 4)];
+	local pro = TRF_N("TRF_Pro", cur) or 0;
+	local sk = 1;
+	if k == 2 then sk = TRF_PcT("pcl_relief_k"); end;
+	local pay = TRF_PcPayOf(TRF_PcT("pcl_k"), J, L, tk, pro, TRF_N("TRF_DK") or 1, sk, TRF_PcPayCap());
+	local it = TRF_PcItemOf(cls, guard);
+	local n = TRF_PcUnitsOf(J, K.n_max);
+	local cost = TRF_N("TRF_ShopItemCost", K.items[it]) or K.cost[it];
+	local dk = TRF_PcT("pcl_dep_k");
+	if it == 2 then dk = TRF_PcT("pcl_dep_k2"); end;
+	local dep = TRF_PcDepOf(cost, n, dk);
+	local wv = 0;
+	if it == 2 and TRF_PcHelp() >= TRF_PcT("pcl_waive_help") then dep = 0; wv = 1; end;
+	local sl = TRF_PcTradeSt(dst);
+	local dj = 1;
+	if getn(sl) > 1 then dj = TRF_PcM(cur + floor(legs / rgt), getn(sl)) + 1; end;
+	local fac = TRF_N("TRF_FacIdx", TRF_PcTeam(dst)) or 0;
+	local rs = "";
+	for i = 1, getn(route) do rs = rs..","..TRF_PcName(route[i]); end;
+	return {k=k, it=it, n=n, src=cur, dst=dst, sj=dj, j=J, dl=TRF_PcDlOf(J), pay=pay, dep=dep, cls=cls, fac=fac, cu=0, cs=0, hot=0,
+		L=L, T=T, pro=pro, wv=wv, ssj=sj, g=TRF_PcGen(), legs=legs, route=strsub(rs, 2), nc=nc};
+end;
+
+-- Logbook (01 section 6: one entry trf_pcl) ------------------------------------------------
+-- With trf_plumb's TRF_JbLog() (cfg jobs_log 1 and the DLL's job-log natives live; design/station-jobs-spec.md 5.2, step
+-- 3) the entry is in the quest log's Job log (TRF_JobAdd, TRF_JobState, TRF_JobRemove, TRF_JobLogGet) instead of the mission
+-- list (AddQuest, SetQuestState, RemoveQuest, GetQuestState); the engine saves both lists, TRF stays the source.
+
+function TRF_PcJl()
+	if TRF_N("TRF_JbLog") == 1 then return 1; end;
+	return nil;
+end;
+
+function TRF_PcJAddRaw(id, t, d) return TRF_JobAdd(id, t, d, QUEST_PROCESS); end;
+function TRF_PcJSetRaw(id, s) return TRF_JobState(id, s); end;
+function TRF_PcJRemRaw(id) return TRF_JobRemove(id); end;
+function TRF_PcJGetRaw(id) return TRF_JobLogGet(id); end;
+
+-- Job log state of id (TRF_JobLogGet), nil when absent or without the native.
+function TRF_PcJs(id)
+	if type(TRF_JobLogGet) ~= "function" then return nil; end;
+	local s = call(TRF_PcJGetRaw, {id}, "x", TRF_PcNoErr);
+	if type(s) == "number" then return s; end;
+	return nil;
+end;
+
+-- The entry in the Job log. TRF_JobAdd shows no notice (AddQuest's is its own code), so an accept (note 1) shows the line
+-- pcllog.
+function TRF_PcJAdd(note)
+	local id = TRF_PcK().qid;
+	local t, d = TRF_PcQKeys();
+	local r, w = call(TRF_PcJAddRaw, {id, t, d}, "x", TRF_PcErr);
+	if r ~= 1 then
+		TRF_PcE("logbook", "list", "job", "id", id, "state", QUEST_PROCESS, "result", "failed", "reason", tostring(w));
+		return nil;
+	end;
+	TRF_PcE("logbook", "list", "job", "id", id, "state", QUEST_PROCESS, "result", "added");
+	if note == 1 then TRF_N("TRF_PlSay", TRF_PcTxt("pcllog")); end;
+	return 1;
+end;
+
+function TRF_PcQAddRaw(id, t, d)
+	AddQuest(id, t, d, QUEST_PROCESS);
+	return 1;
+end;
+
+function TRF_PcQSetRaw(id, s)
+	SetQuestState(id, s);
+	return 1;
+end;
+
+function TRF_PcQRemRaw(id)
+	RemoveQuest(id);
+	return 1;
+end;
+
+-- Logbook keys of the open job: pclq<dst>, pclqd<dst> when the destination has keys (TRF_PcDstData), else pclq, pclqd.
+function TRF_PcQKeys()
+	local J = TRF_PcJob();
+	local t, d = "#TRF_pclq", "#TRF_pclqd";
+	if J and TRF_PcDstOf(J.dst) then t = t..J.dst; d = d..J.dst; end;
+	return t, d;
+end;
+
+-- note 1: an accept (the Job log's pcllog line).
+function TRF_PcQAdd(note)
+	if TRF_PcOpt("pcl_logbook") ~= 1 or QUEST_PROCESS == nil then return nil; end;
+	if TRF_PcJl() then return TRF_PcJAdd(note); end;
+	if type(AddQuest) ~= "function" then return nil; end;
+	local b = nil;
+	if type(GetPlayerQuestState) == "function" then b = GetPlayerQuestState(); end;
+	local t, d = TRF_PcQKeys();
+	local ok = call(TRF_PcQAddRaw, {TRF_PcK().qid, t, d}, "x", TRF_PcErr);
+	local a = nil;
+	if type(GetPlayerQuestState) == "function" then a = GetPlayerQuestState(); end;
+	TRF_PcE("quest", "id", TRF_PcK().qid, "state", QUEST_PROCESS, "quest_state_before", b, "quest_state_after", a, "result", "added");
+	return ok;
+end;
+
+function TRF_PcQSet(s)
+	if s == nil then return nil; end;
+	if TRF_PcJl() then
+		local id = TRF_PcK().qid;
+		local r, w = call(TRF_PcJSetRaw, {id, s}, "x", TRF_PcErr);
+		if r == 1 then TRF_PcE("logbook", "list", "job", "id", id, "state", s, "result", "set");
+		else TRF_PcE("logbook", "list", "job", "id", id, "state", s, "result", "failed", "reason", tostring(w)); end;
+		return r;
+	end;
+	if type(SetQuestState) ~= "function" then return nil; end;
+	local ok = call(TRF_PcQSetRaw, {TRF_PcK().qid, s}, "x", TRF_PcErr);
+	TRF_PcE("quest", "id", TRF_PcK().qid, "state", s, "result", "set");
+	return ok;
+end;
+
+function TRF_PcQRem()
+	if TRF_PcJl() then
+		local id = TRF_PcK().qid;
+		local r, w = call(TRF_PcJRemRaw, {id}, "x", TRF_PcErr);
+		if r == 1 then TRF_PcE("logbook", "list", "job", "id", id, "result", "removed");
+		else TRF_PcE("logbook", "list", "job", "id", id, "result", "none", "reason", tostring(w)); end;
+		return r;
+	end;
+	if type(RemoveQuest) ~= "function" then return nil; end;
+	local ok = call(TRF_PcQRemRaw, {TRF_PcK().qid}, "x", TRF_PcErr);
+	TRF_PcE("quest", "id", TRF_PcK().qid, "result", "removed");
+	return ok;
+end;
+
+-- Reconcile at entry and load, outside a mission (01 section 6; as trf_captain and trf_charter): an open job whose entry
+-- reads QUEST_NOINIT (ClearQuests at a mission start) is added again; an entry without a job and without a pending
+-- removal is removed. With the Job log (TRF_PcJl) the same on the job list, and a mission-list entry moves across (removed;
+-- an open job's entry added to the Job log); without it a Job log entry the live natives still show moves back.
+function TRF_PcReconcile(why)
+	if type(GetQuestState) ~= "function" or QUEST_NOINIT == nil or TRF_PcQuest() then return; end;
+	local id = TRF_PcK().qid;
+	local qs = TRF_PcQs(id);
+	local J = TRF_PcJob();
+	local R = TRF_PcRec();
+	if TRF_PcJl() then TRF_PcJReconcile(why, qs, J, R); return; end;
+	if TRF_N("TRF_JbLogLive") == 1 and TRF_PcJs(id) ~= nil then
+		local r, w = call(TRF_PcJRemRaw, {id}, "x", TRF_PcErr);
+		if r == 1 then TRF_PcE("logbook", "list", "mission", "id", id, "result", "moved", "reason", why);
+		else TRF_PcE("logbook", "list", "mission", "id", id, "result", "none", "reason", tostring(w)); end;
+		if not J and R then R.pq = nil; end;
+	end;
+	if J and qs == QUEST_NOINIT and TRF_PcOpt("pcl_logbook") == 1 then
+		TRF_PcQAdd();
+		TRF_PcE("reconcile", "id", TRF_PcK().qid, "quest_state", qs, "result", "readded", "reason", why);
+	elseif not J and qs ~= nil and qs ~= QUEST_NOINIT and not (R and R.pq == 1) then
+		TRF_PcQRem();
+		TRF_PcE("reconcile", "id", TRF_PcK().qid, "quest_state", qs, "result", "removed", "reason", why);
+	end;
+end;
+
+-- Reconcile on the Job log (TRF_PcReconcile): qs the mission-list state, J the open job, R the record. A mission-list
+-- entry is removed first (mv); the logbook moved line reports it unless the reconcile line of the same pass does.
+function TRF_PcJReconcile(why, qs, J, R)
+	local id = TRF_PcK().qid;
+	local js = TRF_PcJs(id);
+	local pend = R and R.pq == 1;
+	local mv = nil;
+	if qs ~= nil and qs ~= QUEST_NOINIT and type(RemoveQuest) == "function" then
+		call(TRF_PcQRemRaw, {id}, "x", TRF_PcErr);
+		mv = 1;
+		if not J and js == nil and R then R.pq = nil; pend = nil; end;
+	end;
+	if J and js == nil and TRF_PcOpt("pcl_logbook") == 1 then
+		TRF_PcJAdd();
+		local res = "readded";
+		if mv then res = "moved"; end;
+		TRF_PcE("reconcile", "id", id, "list", "job", "quest_state", qs, "result", res, "reason", why);
+		mv = nil;
+	elseif not J and js ~= nil and not pend then
+		TRF_PcQRem();
+		TRF_PcE("reconcile", "id", id, "list", "job", "job_state", js, "result", "removed", "reason", why);
+		mv = nil;
+	end;
+	if mv then TRF_PcE("logbook", "list", "job", "id", id, "quest_state", qs, "result", "moved", "reason", why); end;
+end;
+
+-- Items (01 section 6, CHECK E-PCL.1) --------------------------------------------------------
+
+function TRF_PcMs()
+	local m = nil;
+	if type(TRF_GnMs) == "function" then m = call(TRF_GnMs, {}, "x", TRF_PcErr);
+	else m = TRF_N("TRF_Ms"); end;
+	if m == nil or type(m) == "number" or type(m) == "string" or type(m) == "function" then return nil; end;
+	return m;
+end;
+
+function TRF_PcGiveRaw(ms, it, n)
+	ms:AddModuleToInventory(it, n);
+	return 1;
+end;
+
+-- n units of item it onto the mothership (the vanilla hand-over, EmpireWorkdays_Angarsk.script:562). 1 when given.
+function TRF_PcGive(it, n)
+	local ms = TRF_PcMs();
+	if not ms then return nil; end;
+	return call(TRF_PcGiveRaw, {ms, TRF_PcK().items[it], n}, "x", TRF_PcErr);
+end;
+
+-- Counting delete loop (01 section 6): while k < n and IsExist(item): DeleteModule(item). Returns k.
+function TRF_PcTakeRaw(name, n)
+	local inv = GetInventory();
+	local k = 0;
+	while k < n and inv:IsExist(name) do
+		inv:DeleteModule(name);
+		k = k + 1;
+	end;
+	return k;
+end;
+
+-- Units of item it removed from the player's inventory (at most n); 0 without the native or on an error.
+function TRF_PcTake(it, n)
+	if type(GetInventory) ~= "function" then return 0; end;
+	local k = call(TRF_PcTakeRaw, {TRF_PcK().items[it], n}, "x", TRF_PcErr);
+	if type(k) == "number" then return k; end;
+	return 0;
+end;
+
+-- Job life ---------------------------------------------------------------------------
+
+-- Mission legs (01 section 6, TRF_OnTick): legs added while GetPlayerQuestState() == TRUE count into ml, so the deadline
+-- waits. R.ll is the last leg seen (saved, so the entry leg of a jump during a mission counts too).
+function TRF_PcMlStep()
+	local J = TRF_PcJob();
+	if not J then return; end;
+	local R = TRF_PcRec(1);
+	if not R then return; end;
+	local legs = TRF_PcLegs();
+	if type(R.ll) ~= "number" or R.ll > legs then R.ll = legs; return; end;
+	if legs > R.ll then
+		if TRF_PcQuest() then
+			J.ml = min(999, J.ml + legs - R.ll);
+			TRF_PcJobPut(J);
+			TRF_PcDE("mission_legs", "mission_legs", J.ml, "legs", legs);
+		end;
+		R.ll = legs;
+	end;
+end;
+
+-- Common end of job J (how done, failed, void): jump stamp for pcl_gap, last-job fields, the logbook state (removed at the
+-- next dock), the relief shortage's job flag, the marker, the slot.
+function TRF_PcEnd(J, how)
+	local R = TRF_PcRec(1);
+	R.je = TRF_PcJumps();
+	R.lsys = J.dst; R.lleg = TRF_PcLegs(); R.lit = J.it; R.lt = nil;
+	if how == "done" then R.lok = 1; else R.lok = 0; end;
+	if J.k == 2 and how ~= "done" then TRF_N("TRF_ShortJob", J.dst, J.cls, nil); end;
+	if TRF_PcOpt("pcl_logbook") == 1 and (type(SetQuestState) == "function" or TRF_PcJl()) then
+		if how == "done" then TRF_PcQSet(QUEST_DONE); else TRF_PcQSet(QUEST_FAILED); end;
+		R.pq = 1;
+	end;
+	TRF_N("TRF_MarkerClear", TRF_PcK().own);
+	TRF_N("TRF_JobClear");
+	R.ll = nil;
+end;
+
+-- Failure (01 section 4 feeds, decision Q3): help -1 (-3 with a waived deposit), the deposit kept, the job ban pcl_ban legs,
+-- #3 standing -1 at the source, the units found removed; the line at the next trade dock (pm 1 late, 3 empty).
+function TRF_PcFail(J, why)
+	local R = TRF_PcRec(1);
+	local k = TRF_PcTake(J.it, J.n);
+	local d = 1;
+	if J.wv == 1 then d = 3; end;
+	TRF_N("TRF_AddHelp", -d, "parcel_fail");
+	R.ban = TRF_PcLegs() + TRF_PcT("pcl_ban");
+	local s = TRF_PcTradeSt(J.src)[J.ssj];
+	local pos = nil;
+	if type(s) == "table" and type(s.x) == "number" then pos = {x=s.x, y=s.y or 0, z=s.z or 0}; end;
+	TRF_N("TRF_Stn_Deed", J.src, -1, "parcel_fail", pos);
+	R.fail = min(999, (R.fail or 0) + 1);
+	TRF_PcEnd(J, "failed");
+	if why == "empty" then R.pm = 3; else R.pm = 1; end;
+	R.pr = nil;
+	TRF_PcStat("pcl_fail");
+	TRF_PcE("fail", "kind", J.k, "source", TRF_PcName(J.src), "destination", TRF_PcName(J.dst), "units_found", k, "deposit", J.dep,
+		"help_change", -d, "ban_until", R.ban, "fail_count", R.fail, "reason", why);
+end;
+
+-- Void (01 section 6): the destination station dead, the destination now denied or its owner at war: the units found
+-- removed, k/n of the deposit refunded at the next trade dock (pm 2, or 4 with nothing to refund), no penalty.
+function TRF_PcVoid(J, why)
+	local R = TRF_PcRec(1);
+	local k = TRF_PcTake(J.it, J.n);
+	local rf = TRF_PcPartOf(J.dep, k, J.n);
+	TRF_PcEnd(J, "void");
+	if rf > 0 then R.pm = 2; R.pr = rf; else R.pm = 4; R.pr = nil; end;
+	TRF_PcStat("pcl_void");
+	TRF_PcE("void", "kind", J.k, "source", TRF_PcName(J.src), "destination", TRF_PcName(J.dst), "units_found", k, "refund", rf,
+		"reason", why);
+end;
+
+-- Why job J is void now (at = arrive or dock), or nil: the destination on the static or chapter deny list, its owner at
+-- war, the InoCo core shut; in the destination at arrival its station found by label and not alive (IsAlive; a label
+-- the engine does not answer is no proof of a dead station).
+function TRF_PcVoidWhy(J, at)
+	local w = TRF_PcEndEx(J.dst, TRF_PcChapter(), TRF_PcInoOk());
+	if w then return w; end;
+	if at == "arrive" and TRF_PcCur() == J.dst then
+		local s = TRF_PcTradeSt(J.dst)[J.sj];
+		if type(s) == "table" and type(s.label) == "string" and type(GetObjectByLabel) == "function" then
+			local o = call(GetObjectByLabel, {s.label}, "x", TRF_PcNoErr);
+			if o ~= nil and type(o) ~= "number" and type(o) ~= "string" and type(o) ~= "function" then
+				local al = call(function(x) return x:IsAlive(); end, {o}, "x", TRF_PcNoErr);
+				if not TRF_Is(al) then return "dead"; end;
+			end;
+		end;
+	end;
+	return nil;
+end;
+
+-- Expiry before void (01 section 6). Returns "late", "void" or nil (job still open).
+function TRF_PcCheck(J, at)
+	local e = TRF_PcElapsedOf(TRF_PcLegs(), J.t0, J.ml);
+	if e > J.dl then
+		TRF_PcFail(J, "late");
+		return "late";
+	end;
+	local w = TRF_PcVoidWhy(J, at);
+	if w then
+		TRF_PcVoid(J, w);
+		return "void";
+	end;
+	return nil;
+end;
+
+-- Nav marker on the destination station (00 section 6; none during a mission, TRF_MarkerAdd refuses it, or when the strict
+-- gate denies the system), attached to the station when its object is found.
+function TRF_PcMark(J)
+	if type(TRF_MarkerAdd) ~= "function" or TRF_PcQuest() then return nil; end;
+	if type(TRF_StrictOk) == "function" and not TRF_StrictOk(J.dst, "parcel") then return nil; end;
+	local s = TRF_PcTradeSt(J.dst)[J.sj];
+	if type(s) ~= "table" or type(s.x) ~= "number" then return nil; end;
+	local o = nil;
+	if type(s.label) == "string" and type(GetObjectByLabel) == "function" then o = call(GetObjectByLabel, {s.label}, "x", TRF_PcNoErr); end;
+	if o == nil or type(o) == "number" or type(o) == "string" then o = nil; end;
+	return TRF_MarkerAdd(TRF_PcK().own, TRF_PcK().mk, s.x, s.y or 0, s.z or 0, "", "nav_target.dds", o);
+end;
+
+-- Delivery at the destination dock (01 section 6): the counting delete loop, k/n of pay and deposit, the deposit back,
+-- the pay through TRF_Pay (held in TRF.pcl.ow while the shared prize gap runs, cfg pcl_prize_gap, or when TRF_Pay pays
+-- less than the pay), help +1 (+2 in
+-- Recovery), visit credits +2 plain / +4 relief (doubled in Recovery by TRF_ProCredit), #3 standing +1, the relief
+-- shortage ended at the next cleanup. Returns the lines.
+function TRF_PcDeliver(J)
+	local K = TRF_PcK();
+	local R = TRF_PcRec(1);
+	local out = {};
+	local k = TRF_PcTake(J.it, J.n);
+	if k == 0 then
+		TRF_PcFail(J, "empty");
+		return out;
+	end;
+	local pay, dep = TRF_PcPartOf(J.pay, k, J.n), TRF_PcPartOf(J.dep, k, J.n);
+	if dep > 0 then TRF_PcAdd(dep); end;
+	local paid, held = 0, 0;
+	local gap = 0;
+	if TRF_PcOpt("pcl_prize_gap") == 1 then gap = TRF_N("TRF_PrizeWait") or 0; end;
+	if gap > 0 then
+		held = pay;
+	else
+		paid = TRF_N("TRF_Pay", pay, "parcel") or 0;
+		if paid > 0 and TRF_PcOpt("pcl_prize_gap") == 1 then TRF_N("TRF_PrizeMark", "parcel"); end;
+		-- A payout short of the pay (TRF_Pay failed, or pay_cap fell since the accept) is owed, as in TRF_Pc_Owe.
+		if paid < pay then held = pay - paid; end;
+	end;
+	if held > 0 then R.ow = min(999999, (R.ow or 0) + held); end;
+	local slot = TRF_N("TRF_RgOf", J.dst);
+	local rec = slot and (TRF_N("TRF_Phase", slot) == K.recovery);
+	local hd = 1;
+	if rec then hd = 2; end;
+	TRF_N("TRF_AddHelp", hd, "parcel");
+	local vc = 2;
+	if J.k == 2 then vc = 4; end;
+	TRF_N("TRF_ProCredit", vc, "parcel");
+	TRF_N("TRF_Stn_Deed", J.dst, 1, "parcel");
+	if k < J.n and held > 0 then
+		tinsert(out, TRF_PcTxt("pclparth", k, J.n, TRF_PcNum(held)));
+	elseif k < J.n then
+		tinsert(out, TRF_PcTxt("pclpart", k, J.n, TRF_PcNum(pay + dep)));
+	elseif held > 0 then
+		tinsert(out, TRF_PcTxt("pcldoneh", TRF_PcNum(held)));
+	elseif J.dep == 0 then
+		tinsert(out, TRF_PcTxt("pcldonew", TRF_PcNum(paid)));
+	else
+		tinsert(out, TRF_PcTxt("pcldone", TRF_PcNum(paid)));
+	end;
+	local ended = 0;
+	if J.k == 2 and TRF_N("TRF_ShortEnd", J.dst, J.cls) then
+		ended = 1;
+		tinsert(out, TRF_PcTxt("pclshort", TRF_PcSys(J.dst), TRF_PcTxt("cls"..J.cls)));
+	end;
+	R.ok = min(999, (R.ok or 0) + 1);
+	TRF_PcEnd(J, "done");
+	-- The settlement hook (design/debrief-spec.md 5.1): once per delivered job, also with the pay held.
+	TRF_N("TRF_Settle", "parcel", J.dst, paid + held, "pc:"..J.src..":"..J.dst..":"..J.t0);
+	TRF_PcStat("pcl_ok");
+	TRF_PcE("deliver", "kind", J.k, "source", TRF_PcName(J.src), "destination", TRF_PcName(J.dst), "units", J.n, "units_found", k,
+		"pay", pay, "paid", paid, "held", held, "deposit_back", dep, "help_change", hd, "visit_credit", vc, "shortage_ended", TRF_KvB(ended),
+		"ok_count", R.ok);
+	return out;
+end;
+
+-- Docks (trf_plumb dispatcher; 00 section 6) ---------------------------------------------------------
+
+-- Pending line of an ended job (pm) and its refund, else nil.
+function TRF_PcPending(R)
+	if type(R.pm) ~= "number" then return nil; end;
+	local nm = TRF_PcSys(R.lsys);
+	local t = nil;
+	if R.pm == 1 then t = TRF_PcTxt("pcllate", nm);
+	elseif R.pm == 2 then
+		if type(R.pr) == "number" and R.pr > 0 then TRF_PcAdd(R.pr); end;
+		t = TRF_PcTxt("pclvoid", nm);
+	elseif R.pm == 3 then t = TRF_PcTxt("pclempty");
+	elseif R.pm == 4 then t = TRF_PcTxt("pclvoid0", nm); end;
+	TRF_PcE("pending", "kind", R.pm, "system", TRF_PcName(R.lsys), "refund", R.pr);
+	R.pm = nil; R.pr = nil;
+	return t;
+end;
+
+-- Probe lines of cfg pcl_probe 1 (CHECK E-PCL.1, E-PCL.2): once per visit the inventory probe (three Cargo_crate added,
+-- the counting delete loop over the same 3; not while a job holds the slot, so no job's units are touched), at every
+-- trade dock the wallet.
+function TRF_PcProbe()
+	local pc = %PC;
+	TRF_PcE("probe", "probe_kind", "credits", "credits", TRF_PcCredits());
+	if pc.v.probe == 1 or (type(TRF) == "table" and type(TRF.job) == "table") then return; end;
+	pc.v.probe = 1;
+	local g = TRF_PcGive(1, 3);
+	local k = 0;
+	if g then k = TRF_PcTake(1, 3); end;
+	local left = nil;
+	if type(GetInventory) == "function" then
+		left = call(function(nm) return GetInventory():IsExist(nm); end, {TRF_PcK().items[1]}, "x", TRF_PcNoErr);
+	end;
+	TRF_PcE("probe", "probe_kind", "inventory", "added", g and 3 or 0, "deleted", k, "left", TRF_KvB(TRF_Is(left)));
+end;
+
+-- Trade dock line 20 (00 order: right after the shortage restore at 10): the logbook removal of the job ended at an earlier
+-- dock, the expiry and void checks, the pending failure or void line, the delivery, the thank-you line (first docking at
+-- the destination within 10 legs of a delivery, in a later visit), the cold line during the ban; level 2 the signal
+-- and dock identity lines (CHECK E-PCL.5, E-PCL.6).
+function TRF_Pc_DockLine(kind, param)
+	if kind ~= "trade" or not TRF_PcOn() then return nil; end;
+	local pc = %PC;
+	local K = TRF_PcK();
+	local cur = TRF_PcCur();
+	local p = TRF_PcParam();
+	TRF_PcDE("dock", "system", TRF_PcName(cur), "param", p, "dock_current", __system_Dock_current);
+	TRF_PcSignal("dock");
+	local out = {};
+	local R = TRF_PcRec();
+	if R and R.pq == 1 then TRF_PcQRem(); R.pq = nil; end;
+	local J = TRF_PcJob();
+	if J then
+		TRF_PcMlStep();
+		J = TRF_PcJob();
+		if J and TRF_PcCheck(J, "dock") then J = nil; end;
+	end;
+	if J and cur == J.dst then
+		if strlower(p or "") == TRF_PcDockOf(J.dst, J.sj) then
+			local l = TRF_PcDeliver(J);
+			for i = 1, getn(l) do tinsert(out, l[i]); end;
+		else
+			TRF_PcDE("deliver", "system", TRF_PcName(cur), "param", p, "want", TRF_PcDockOf(J.dst, J.sj), "result", "none", "reason", "dock");
+		end;
+	end;
+	R = TRF_PcRec();
+	if R then
+		local t = TRF_PcPending(R);
+		if t then tinsert(out, t); end;
+	end;
+	if R and R.lok == 1 and R.lt ~= 1 and R.lsys == cur and type(R.lleg) == "number" and TRF_PcLegs() - R.lleg <= K.thx_legs
+		and type(R.je) == "number" and TRF_PcJumps() > R.je then
+		R.lt = 1;
+		local key = "pclthx2";
+		if type(R.lit) == "number" and R.lit == 1 then key = "pclthx1"; end;
+		tinsert(out, TRF_PcTxt(key, TRF_PcSys(cur)));
+		TRF_PcE("thanks", "system", TRF_PcName(cur), "legs_since", TRF_PcLegs() - R.lleg);
+	end;
+	if R and type(R.ban) == "number" and TRF_PcLegs() < R.ban and pc.v.cold ~= 1 and not TRF_PcJob() then
+		pc.v.cold = 1;
+		tinsert(out, TRF_PcTxt("pclcold"));
+	end;
+	if TRF_PcOpt("pcl_probe") == 1 then TRF_PcProbe(); end;
+	if getn(out) == 0 then return nil; end;
+	return out;
+end;
+
+-- Owed payer (trade kind, before any box): parcel pay held by the shared prize gap pays once the gap allows, at most
+-- pay_cap per payout; the rest waits for the next gap.
+function TRF_Pc_Owe(kind)
+	if kind ~= "trade" or not TRF_PcOn() then return nil; end;
+	local R = TRF_PcRec();
+	if not R or type(R.ow) ~= "number" or R.ow <= 0 then return nil; end;
+	local w = 0;
+	if TRF_PcOpt("pcl_prize_gap") == 1 then w = TRF_N("TRF_PrizeWait") or 0; end;
+	if w > 0 then TRF_PcDE("owe", "amount", R.ow, "wait", floor(w), "result", "wait"); return nil; end;
+	local a = R.ow;
+	local paid = TRF_N("TRF_Pay", min(a, TRF_PcPayCap()), "parcel") or 0;
+	if paid <= 0 then TRF_PcE("owe", "amount", a, "result", "failed"); return nil; end;
+	if TRF_PcOpt("pcl_prize_gap") == 1 then TRF_N("TRF_PrizeMark", "parcel"); end;
+	R.ow = a - paid;
+	if R.ow <= 0 then R.ow = nil; end;
+	TRF_PcE("owe", "amount", a, "paid", paid, "owed", R.ow or 0, "result", "paid");
+	return TRF_PcTxt("pclowe", TRF_PcNum(paid));
+end;
+
+-- Signal line (level 2, CHECK E-PCL.6): GetPlayerQuestState, quest_Help, CountPauseQuest, CurrentQuest at entries and docks.
+function TRF_PcSignal(at)
+	if TRF_PcLogLv() < 2 then return; end;
+	local q = nil;
+	if type(GetPlayerQuestState) == "function" then q = GetPlayerQuestState(); end;
+	TRF_PcDE("signal", "at", at, "quest_state", q, "quest_help", TRF_PcQs("quest_Help"), "count_pause_quest", TRF_N("GetQuestLabel", "CountPauseQuest"),
+		"current_quest", TRF_N("GetQuestLabel", "CurrentQuest"));
+end;
+
+-- Box text of offer o (01 section 2): the shortage clause of a relief parcel, the parcel, the route, the deposit and pay.
+function TRF_PcBoxText(o)
+	local dn = TRF_PcSys(o.dst);
+	local u = nil;
+	if o.it == 1 then
+		if o.n == 1 then u = TRF_PcTxt("pclit1s"); else u = TRF_PcTxt("pclit1", o.n); end;
+	else
+		if o.n == 1 then u = TRF_PcTxt("pclit2s"); else u = TRF_PcTxt("pclit2", o.n); end;
+	end;
+	local r = nil;
+	if o.j == 1 then r = TRF_PcTxt("pcljump", o.dl); else r = TRF_PcTxt("pcljumps", o.j, o.dl); end;
+	local t = TRF_PcTxt("pclbox", u, dn, r);
+	if o.k == 2 then t = TRF_PcTxt("pclneed"..o.cls, dn).." "..t; end;
+	if o.dep > 0 then
+		t = t.." "..TRF_PcTxt("pcldep", TRF_PcNum(o.dep), TRF_PcNum(o.pay));
+	else
+		t = t.." "..TRF_PcTxt("pclnodep", TRF_PcNum(o.pay));
+	end;
+	return t;
+end;
+
+-- Trade dock box 400 (#1 parcel offer 400 > #8 purchase 300 > #14 dues 200 > #13 arbitration 100; after a #3 fee box
+-- the dispatcher opens none until E0.6, cfg wb_box_after_fee). None after the Office board was set at this docking
+-- (cfg jobs_ui 2, design/station-jobs-spec.md 5.2: the offer is its row, TRF_Pc_JobRow). None either at the freight
+-- unlock quest's step 70 while the charter office's purchase box opens at this dock (trf_wq TRF_Wq_UnlockDue,
+-- freight-quest-spec open question 12): the quest's box 300 would sit below the parcel box 400.
+function TRF_Pc_DockBox(kind, param)
+	if TRF_N("TRF_JbSet") then return nil; end;
+	if kind == "trade" and TRF_N("TRF_Wq_UnlockDue", TRF_PcCur()) == 1 then
+		TRF_PcDE("offer", "system", TRF_PcName(TRF_PcCur()), "result", "none", "reason", "wq_unlock");
+		return nil;
+	end;
+	return TRF_PcBoxSpec(kind);
+end;
+
+-- Office board row 400 (station-jobs-spec 5.2, step 2): the box spec's offer as a row, answered by the box handlers; the
+-- second line pcljobs (pcljob1 for one jump); took answers 1 once the offer became the job.
+function TRF_Pc_JobRow(kind, param)
+	local s = TRF_PcBoxSpec(kind);
+	local o = %PC.offer;
+	if type(s) ~= "table" or type(o) ~= "table" then return nil; end;
+	local sh = nil;
+	if o.j == 1 then sh = TRF_PcTxt("pcljob1", o.dl); else sh = TRF_PcTxt("pcljobs", o.j, o.dl); end;
+	TRF_PcE("offer", "destination", TRF_PcName(o.dst), "jumps", o.j, "deadline", o.dl, "pay", o.pay, "deposit", o.dep, "result", "listed",
+		"via", "board");
+	return {id=s.card.id, header=s.card.header, cost=s.card.cost, title=s.card.title, text=s.text, short=sh, ok=s.ok, no=s.no,
+		shown=s.shown, took="TRF_Pc_JobTook", a=s.a};
+end;
+
+function TRF_Pc_JobTook(a)
+	if TRF_PcJob() then return 1; end;
+	return nil;
+end;
+
+-- The offer box spec at a trade dock (gates, plan, pc.offer), or nil.
+function TRF_PcBoxSpec(kind)
+	if kind ~= "trade" or not TRF_PcOn() then return nil; end;
+	local pc = %PC;
+	local cur = TRF_PcCur();
+	local sj = TRF_PcSjOf(cur, TRF_PcParam());
+	local why = TRF_PcGate(cur, sj);
+	if why then TRF_PcDE("offer", "system", TRF_PcName(cur), "result", "none", "reason", why); return nil; end;
+	local o, w = TRF_PcPlan(cur, sj);
+	if not o then TRF_PcDE("offer", "system", TRF_PcName(cur), "result", "none", "reason", w); return nil; end;
+	pc.offer = o;
+	-- Step 2 hook: the contraband offer at pirate docks (TRF_DockBox("pir", 200, ...), cfg enable_contraband).
+	-- card: the mission card of the station jobs UI (design/station-jobs-spec.md 5.2, step 1; trf_plumb opens it instead
+	-- of the box when cfg jobs_ui >= 1 and the DLL native answers, the same handlers answer it).
+	return {title=TRF_PcTxt("pcltitle"), text=TRF_PcBoxText(o), ok="TRF_Pc_BoxOk", no="TRF_Pc_BoxNo", shown="TRF_Pc_BoxShown",
+		fail="TRF_Pc_BoxFail", a={g=o.g, src=cur}, own="parcel",
+		card={id="pcl", header=TRF_PcTxt("pcljobh", TRF_PcSys(o.dst)), cost=TRF_PcNum(o.pay), title=TRF_PcTxt("jbcard")}};
+end;
+
+-- Offer shown: via "card" when trf_plumb opened the mission card, "board" for a card opened from the Office board, else the box.
+function TRF_Pc_BoxShown(a, via)
+	local o = %PC.offer;
+	if type(o) ~= "table" then return; end;
+	TRF_PcStat("pcl_offer");
+	TRF_PcE("offer", "kind", o.k, "source", TRF_PcName(o.src), "destination", TRF_PcName(o.dst), "jumps", o.j, "deadline", o.dl,
+		"item", o.it, "units", o.n, "class", o.cls, "level", o.L, "tier", o.T, "prosperity", o.pro, "pay", o.pay, "deposit", o.dep,
+		"waived", TRF_KvB(o.wv == 1), "candidate_count", o.nc, "route", o.route, "result", "shown", "via", via or "box");
+end;
+
+function TRF_Pc_BoxFail(a)
+	local pc = %PC;
+	pc.offer = nil;
+	TRF_PcE("offer", "result", "failed", "reason", "box");
+end;
+
+-- OK (01 section 2): gates again, credits for the deposit, SubPlayerCredits, the slot, the units handed over, the relief
+-- shortage's job flag, the logbook. Returns the reply line.
+function TRF_Pc_BoxOk(a)
+	local pc = %PC;
+	local o = pc.offer;
+	pc.offer = nil;
+	local cur = TRF_PcCur();
+	if type(o) ~= "table" or type(a) ~= "table" or a.g ~= TRF_PcGen() or o.g ~= a.g or o.src ~= cur or TRF_PcGate(cur, o.ssj) then
+		TRF_PcE("accept", "system", TRF_PcName(cur), "result", "stale");
+		return nil;
+	end;
+	local cr = TRF_PcCredits();
+	if o.dep > 0 and (type(cr) ~= "number" or cr < o.dep) then
+		TRF_PcE("accept", "deposit", o.dep, "credits", cr, "result", "poor");
+		return TRF_PcTxt("pclpoor", TRF_PcNum(o.dep));
+	end;
+	if not TRF_PcSub(o.dep) then TRF_PcE("accept", "deposit", o.dep, "result", "error", "reason", "credits"); return nil; end;
+	o.t0 = TRF_PcLegs(); o.ml = 0;
+	local ok, w = TRF_N("TRF_JobTake", o.k, TRF_PcPackOf(o));
+	if not ok then
+		TRF_PcAdd(o.dep);
+		TRF_PcE("accept", "result", "error", "reason", "job_"..tostring(w));
+		return nil;
+	end;
+	if not TRF_PcGive(o.it, o.n) then
+		TRF_PcAdd(o.dep);
+		TRF_N("TRF_JobClear");
+		TRF_PcE("accept", "result", "error", "reason", "items");
+		return TRF_PcTxt("pclfail");
+	end;
+	if o.k == 2 then TRF_N("TRF_ShortJob", o.dst, o.cls, 1); end;
+	local R = TRF_PcRec(1);
+	R.ll = o.t0;
+	-- A done or failed entry of the last job still in the logbook (pcl_gap 0: a new job at the docking that ended the
+	-- last one) goes first, or its pending removal would take the new entry at the next trade dock.
+	if R.pq == 1 then TRF_PcQRem(); R.pq = nil; end;
+	TRF_PcQAdd(1);
+	TRF_PcStat("pcl_accept");
+	TRF_PcE("accept", "kind", o.k, "source", TRF_PcName(o.src), "destination", TRF_PcName(o.dst), "dock", TRF_PcDockOf(o.dst, o.sj),
+		"item", TRF_PcK().items[o.it], "units", o.n, "pay", o.pay, "deposit", o.dep, "deadline", o.dl, "credits_before", cr,
+		"result", "ok");
+	return TRF_PcTxt("pclhand");
+end;
+
+-- Cancel: not offered again in this visit.
+function TRF_Pc_BoxNo(a)
+	local pc = %PC;
+	local o = pc.offer;
+	pc.offer = nil;
+	pc.v.dec = 1;
+	local d = nil;
+	if type(o) == "table" then d = TRF_PcName(o.dst); end;
+	TRF_PcE("offer", "destination", d, "result", "declined");
+	return nil;
+end;
+
+-- Loader callbacks ---------------------------------------------------------------------------
+
+-- Every entry: a new visit state.
+function TRF_Pc_OnEnter()
+	local pc = %PC;
+	pc.v = {};
+	pc.offer = nil;
+end;
+
+-- After activate (entry only): mission legs, expiry and void on arrival; in the destination the arrival line and the
+-- marker; the logbook reconcile.
+function TRF_Pc_OnActivate()
+	if not TRF_PcOn() then return; end;
+	TRF_PcSignal("enter");
+	TRF_PcMlStep();
+	local J = TRF_PcJob();
+	if J and TRF_PcCheck(J, "arrive") then J = nil; end;
+	if J and TRF_PcCur() == J.dst then
+		TRF_N("TRF_ArrivalLine", TRF_PcK().own, TRF_PcTxt("pclmark"));
+		local ok, w = TRF_PcMark(J);
+		TRF_PcE("arrive", "system", TRF_PcName(J.dst), "marker", TRF_KvB(ok), "reason", w);
+	end;
+	-- Step 2 hook: the customs roll (k = 3, enable_customs) and the interception roll (k = 4, enable_intercept).
+	call(TRF_PcReconcile, {"enter"}, "x", TRF_PcErr);
+end;
+
+-- Load (after trf_plumb's load pass deleted the saved markers): the marker again in the destination, the logbook
+-- reconcile; no entry checks (a load is not an arrival).
+function TRF_Pc_OnLoad()
+	local pc = %PC;
+	pc.v = {};
+	pc.offer = nil;
+	if not TRF_PcOn() then return; end;
+	local J = TRF_PcJob();
+	if J and TRF_PcCur() == J.dst then
+		local ok, w = TRF_PcMark(J);
+		TRF_PcE("load", "system", TRF_PcName(J.dst), "marker", TRF_KvB(ok), "reason", w);
+	end;
+	-- Step 2 hook: re-arm an open customs encounter (cu == current) 20 s after the load.
+	call(TRF_PcReconcile, {"load"}, "x", TRF_PcErr);
+end;
+
+-- Before a jump: the jump counter of pcl_gap is the shared TRF.clock.j (trf_state); trf_plumb deletes the marker.
+function TRF_Pc_BeforeJump()
+	-- Step 2 hook: an open customs encounter counts as a run (fst -1, flag, hot); delete TRF_Cust_<n>.
+	local pc = %PC;
+	pc.offer = nil;
+end;
+
+-- Every 1 s (traffic.script): mission legs of the open job.
+function TRF_Pc_Step()
+	if not TRF_PcOn() or type(TRF) ~= "table" or type(TRF.job) ~= "table" then return; end;
+	TRF_PcMlStep();
+	-- Step 2 hook: the customs distance poll (hail point, cust_radius).
+end;
+
+-- trf_plumb TRF_InstallPlumb: trade line 20 (deliveries and hand-ins), the owed payer, trade box 400, Office board row 400.
+function TRF_Pc_Plumb()
+	TRF_DockLine("trade", 20, "TRF_Pc_DockLine");
+	TRF_OweReg("TRF_Pc_Owe");
+	TRF_DockBox("trade", 400, "TRF_Pc_DockBox");
+	TRF_JobRow("trade", 400, "TRF_Pc_JobRow");
+end;
+
+-- Repair, defaults, dump, text -----------------------------------------------------------
+
+function TRF_PcFld(e, k, lo, hi)
+	if type(e[k]) == "number" and e[k] >= lo and e[k] <= hi then return floor(e[k]); end;
+	return nil;
+end;
+
+-- Repair (TRF_Repair, every entry and load): TRF.pcl fields within range (a wrong value is dropped), the step 2 fields kept
+-- when well formed; a parcel job that does not unpack is dropped; a TRF.short job flag without the matching relief job
+-- is cleared.
+function TRF_Pc_Fix()
+	if type(TRF) ~= "table" then return; end;
+	local legs, jumps, ns = TRF_PcLegs(), TRF_PcJumps(), TRF_PcNs();
+	if TRF.pcl ~= nil and type(TRF.pcl) ~= "table" then TRF.pcl = nil; end;
+	local x = TRF.pcl;
+	if type(x) == "table" then
+		local o = {ok=TRF_PcFld(x, "ok", 0, 999) or 0, fail=TRF_PcFld(x, "fail", 0, 999) or 0, je=TRF_PcFld(x, "je", 0, jumps),
+			ban=TRF_PcFld(x, "ban", 0, legs + 200), lsys=TRF_PcFld(x, "lsys", 1, ns), lleg=TRF_PcFld(x, "lleg", -999999, legs),
+			lok=TRF_PcFld(x, "lok", 0, 1), lt=TRF_PcFld(x, "lt", 1, 1), pm=TRF_PcFld(x, "pm", 1, 4),
+			pr=TRF_PcFld(x, "pr", 0, 60000), ow=TRF_PcFld(x, "ow", 1, 999999), pq=TRF_PcFld(x, "pq", 1, 1), ll=TRF_PcFld(x, "ll", 0, legs),
+			lit=TRF_PcFld(x, "lit", 1, 4)};
+		if o.pm and not o.lsys then o.pm = nil; end;
+		if o.ban and o.ban <= legs then o.ban = nil; end;
+		if type(x.xl) == "table" then
+			local l = {};
+			local any = nil;
+			for k, v in x.xl do
+				if type(k) == "number" and k >= 1 and k <= 16 and type(v) == "number" and v <= legs then l[k] = floor(v); any = 1; end;
+			end;
+			if any then o.xl = l; end;
+		end;
+		if type(x.cfl) == "table" then
+			local l, good = {}, 1;
+			for f = 1, 5 do
+				if type(x.cfl[f]) == "number" then l[f] = floor(x.cfl[f]); else good = nil; end;
+			end;
+			if good then o.cfl = l; end;
+		end;
+		TRF.pcl = o;
+	end;
+	local J = nil;
+	if type(TRF.job) == "table" and TRF_PcNumOk(TRF.job.k, 1, 4) then
+		local w = nil;
+		J, w = TRF_PcUnpackOf(TRF.job, ns, legs);
+		if not J then
+			TRF_PcE("repair", "job_kind", TRF.job.k, "result", "dropped", "reason", w);
+			TRF.job = nil;
+		end;
+	end;
+	if type(TRF.short) == "table" then
+		for i = 1, getn(TRF.short) do
+			local e = TRF.short[i];
+			if type(e) == "table" and e.job ~= nil and not (e.job == 1 and J and J.k == 2 and J.dst == e.s and J.cls == e.c) then e.job = nil; end;
+		end;
+	end;
+end;
+
+-- Config keys (01 section 6 config). enable_parcels: step 1; enable_contraband, enable_customs, enable_intercept: step 2,
+-- read nowhere; pcl_prize_gap 1 holds the pay in the shared prize gap (TRF_PrizeWait/TRF_PrizeMark) and stamps it;
+-- pcl_logbook 0 drops the logbook entry (CHECK E-PCL.4 fallback); pcl_probe 1 the E-PCL.1/E-PCL.2 probe lines; pcl_deny
+-- extra lowercase system names, pcl_deny_ch {[c] = {names}} extra chapter deny names.
+function TRF_Pc_OptDef()
+	return {enable_parcels=1, enable_contraband=0, enable_customs=0, enable_intercept=0, pcl_prize_gap=1, pcl_logbook=1,
+		pcl_probe=0, pcl_deny={}, pcl_deny_ch={}};
+end;
+
+-- Tune keys (01 section 6 config). Step 1: pcl_k, pcl_relief_k, pcl_offer_pct (60), pcl_offer_rpct (80 with a relief
+-- target), pcl_plain_pct, pcl_jmax (4), pcl_jmax_g (3 under the guard, J from 1), pcl_gap (jumps), pcl_ban (legs),
+-- pcl_dep_k (1.2 sellable), pcl_dep_k2 (0.5 Cargo_002), pcl_waive_help (Cargo_002 only). Step 2 (read nowhere):
+-- pcl_x_k, pcl_proto_k, pcl_x_score_legs, pcl_hot_k, cust_hostile_max, cust_base (Vks, Kfni, Triada, Uss, Inoco,
+-- Neutral %), cust_wait, cust_radius, cust_fine_k, cust_flag_legs.
+function TRF_Pc_TuneDef()
+	return {pcl_k=0.35, pcl_relief_k=1.25, pcl_x_k=0.5, pcl_proto_k=0.5, pcl_offer_pct=60, pcl_offer_rpct=80, pcl_plain_pct=50,
+		pcl_jmax=4, pcl_jmax_g=3, pcl_gap=2, pcl_ban=6, pcl_dep_k=1.2, pcl_dep_k2=0.5, pcl_waive_help=10, pcl_x_score_legs=10,
+		pcl_hot_k=0.5, cust_hostile_max=1, cust_base={20, 15, 0, 10, 25, 5}, cust_wait=30, cust_radius=40, cust_fine_k=2,
+		cust_flag_legs=10};
+end;
+
+-- Debug dump (01 section 6): the job line, else result=none, with the TRF.pcl fields.
+function TRF_Pc_Dump()
+	if type(TRF) ~= "table" then return; end;
+	local R = TRF_PcRec() or {};
+	local cf = "0,0,0,0,0";
+	if type(R.cfl) == "table" then cf = R.cfl[1]..","..R.cfl[2]..","..R.cfl[3]..","..R.cfl[4]..","..R.cfl[5]; end;
+	local jn = nil;
+	if type(R.je) == "number" then jn = TRF_PcJumps() - R.je; end;
+	local J = TRF_PcJob();
+	if not J then
+		TRF_PcE("dump", "result", "none", "jumps_since", jn, "ban", R.ban, "ok_count", R.ok, "fail_count", R.fail, "owed", R.ow,
+			"pending", R.pm, "customs_flags", cf);
+		return;
+	end;
+	local left = J.dl - TRF_PcElapsedOf(TRF_PcLegs(), J.t0, J.ml);
+	TRF_PcE("dump", "kind", J.k, "item", J.it, "units", J.n, "source", TRF_PcName(J.src), "destination", TRF_PcName(J.dst),
+		"dock", TRF_PcDockOf(J.dst, J.sj), "jumps", J.j, "accept_leg", J.t0, "deadline", J.dl, "mission_legs", J.ml, "left", left,
+		"pay", J.pay, "deposit", J.dep, "class", J.cls, "customs_system", J.cu, "customs_met", J.cs, "hot", J.hot, "jumps_since", jn,
+		"ban", R.ban, "ok_count", R.ok, "fail_count", R.fail, "owed", R.ow, "customs_flags", cf);
+end;
+
+-- A destination entry has the shape {location folder, trade station count}.
+function TRF_PcDstOk(e)
+	return type(e) == "table" and type(e[1]) == "string" and type(e[2]) == "number";
+end;
+
+-- Destination entry {location folder, trade station count} of system idx (TRF_PcDstData), or nil.
+function TRF_PcDstOf(idx)
+	if type(idx) ~= "number" or type(TRF_PcDstData) ~= "function" then return nil; end;
+	local e = TRF_PcDstData()[idx];
+	if TRF_PcDstOk(e) then return e; end;
+	return nil;
+end;
+
+-- Logbook keys per destination (AddQuest takes engine keys, no argument): pclq<idx> title, pclqd<idx> description for every
+-- TRF_PcDstData system; with several trade stations (Kadenoa) the marked one receives the parcel.
+function TRF_PcDstText(t)
+	local d = {};
+	if type(TRF_PcDstData) == "function" then d = TRF_PcDstData(); end;
+	for i, x in d do
+		if type(i) == "number" and TRF_PcDstOk(x) then
+			t["pclq"..i] = "Sealed parcel: "..x[1];
+			local w = "Deliver the sealed parcel to the trade station at "..x[1]..", marked on your map on arrival.";
+			if x[2] > 1 then w = "Deliver the sealed parcel to the marked trade station at "..x[1]..". Your map marks it on arrival."; end;
+			t["pclqd"..i] = w.." The FTU holds your deposit until delivery. A late delivery forfeits it, a short one the share of the missing units.";
+		end;
+	end;
+	return t;
+end;
+
+-- Texts (01 section 2), EN; keys in TRF_UI_Key form (#TRF_pcl<name> in loc/trf_en.loc). pclq and pclqd are the logbook
+-- title and description (AddQuest keys) for a destination without keys of its own; TRF_PcDstText adds pclq<idx>, pclqd<idx>.
+function TRF_Pc_Text()
+	return TRF_PcDstText({
+		pcltitle = "FTU courier desk",
+		pclneed1 = "$1 station is out of machinery and the refinery is idle.",
+		pclneed2 = "$1 station is out of spare parts and the repair bays are idle.",
+		pclneed3 = "$1 station is out of ore and the smelters are cold.",
+		pclneed4 = "$1 station is out of fuel and the tankers are grounded.",
+		pclneed5 = "$1 station is out of food and medicine.",
+		pclneed6 = "$1 station is short of general freight and the shelves are empty.",
+		pclbox = "Sealed parcel: $1 for the trade station at $2, $3.",
+		pclit1 = "$1 crates",
+		pclit1s = "1 crate",
+		pclit2 = "$1 containers",
+		pclit2s = "1 container",
+		pcljumps = "$1 jumps, $2 legs",
+		pcljump = "1 jump, $1 legs",
+		pcldep = "Deposit $1 cr now, back on delivery. Pay $2 cr. Take it?",
+		pclnodep = "No deposit for you, the desk knows your work. Pay $1 cr. Take it?",
+		pclhand = "Crates are in your hold. Don't open them, don't sell them, don't be late.",
+		pclpoor = "Courier desk: the deposit is $1 cr. Come back with the money.",
+		pclfail = "Courier desk: the crates could not be loaded. The deal is off.",
+		pclmark = "FTU courier desk: parcel drop marked at the trade station.",
+		pcldone = "Parcel received, seals intact. Deposit returned, $1 cr paid.",
+		pcldonew = "Parcel received, seals intact. $1 cr paid.",
+		pcldoneh = "Parcel received, seals intact. Deposit returned. The desk pays your $1 cr at a later docking.",
+		pclpart = "Parcel received with $1 of $2 units. Pay and deposit for those: $3 cr.",
+		pclparth = "Parcel received with $1 of $2 units. Deposit for those returned. The desk pays your $3 cr at a later docking.",
+		pclempty = "Courier desk: the crates are gone. The deposit stays with the FTU.",
+		pclshort = "$1 dock: the $2 shortage is over once your hold is empty.",
+		pclowe = "FTU courier desk: $1 cr parcel pay.",
+		pcllate = "Courier desk: the $1 parcel is overdue. Deposit forfeited.",
+		pclvoid = "Courier desk: $1 station is not answering. Deposit refunded.",
+		pclvoid0 = "Courier desk: $1 station is not answering. The parcel is void.",
+		pclcold = "Courier desk: a parcel went missing with you. Come back in a while.",
+		pclthx1 = "$1 dock: the Wolves' crates kept the refinery running.",
+		pclthx2 = "$1 dock: the Wolves' crates kept the station fed.",
+		pclq = "Sealed parcel",
+		pclqd = "Deliver the sealed crates to the trade station marked on your map. The FTU holds your deposit.",
+		pcljobh = "Sealed parcel to $1",
+		jbcard = "FTU courier contract",
+		jbtab = "Jobs",
+		jbtaken = "Accepted",
+		jbgone = "No longer available",
+		pcljobs = "$1 jumps, deadline $2 legs",
+		pcljob1 = "1 jump, deadline $1 legs",
+		pcllog = "Courier job added to the Job log.",
+	});
+end;

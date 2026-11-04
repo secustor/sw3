@@ -1,0 +1,531 @@
+sw3tp 0.1.0
+traffic: config tick_ms=250 log=2 sites=T1:1,T2a:1,T2b:1,T2c:1,T2d:1,T3:1,T4:1
+traffic: natives registered n=6 L=0x1ba9130
+traffic: lua: exp=v1 module=haunt event=install installed=true wrapped=true
+traffic: lua: exp=v1 module=core event=loaded map=true module_count=18 extra_count=11 teleport_wrapped=true custom_teleportate_wrapped=true
+HOST check_ingame fixture, part A: HAUNTS=0 PARCELS=1 PCL_PROBE=1 (synthetic, from the ha-* and pcl-* host logs)
+traffic: lua: exp=v1 module=core event=load load_count=1 fresh=true
+traffic: lua: exp=v1 module=state event=load generation=50 fresh=false legs=90
+traffic: lua: exp=v1 module=state event=dump source=load version=4 generation=50 system=kadi system_index=52 legs=90 heat=0 help=0
+traffic: lua: exp=v1 module=parcel event=dock system=kadi param=Kadi dock_current=1
+traffic: lua: exp=v1 module=parcel event=signal at=dock quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=credits credits=250000
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=inventory added=3 deleted=3 left=false
+traffic: lua: exp=v1 module=parcel event=offer kind=1 source=kadi destination=nj3 jumps=2 deadline=8 item=2 units=2 class=6 level=13 tier=4 prosperity=3 pay=4800 deposit=850 waived=false candidate_count=6 route=prien,nj3 result=shown
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 box=parcel priority=400 result=box
+traffic: lua: exp=v1 module=plumb event=job kind=1 field_count=6 result=taken
+traffic: lua: exp=v1 module=parcel event=quest id=trf_pcl state=2 quest_state_before=0 quest_state_after=0 result=added
+traffic: lua: exp=v1 module=parcel event=accept kind=1 source=kadi destination=nj3 dock=nj3 item=Cargo_002 units=2 pay=4800 deposit=850 deadline=8 credits_before=250000 result=ok
+traffic: lua: exp=v1 module=ui event=say output=1 seconds=8 message="Crates are in your hold. Don't open them, don't sell them, don't be late."
+traffic: lua: exp=v1 module=plumb event=box_answer kind=trade box=parcel answer=1 result=done
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=91
+traffic: lua: exp=v1 module=state event=enter generation=51 fresh=false system=hanoi legs=91
+traffic: lua: exp=v1 module=haunt event=mode system=hanoi mode=vanilla reason=off phase=3 tier=4 f=100 dp=1 vanilla_count=12 memory=0 pins=0
+traffic: lua: exp=v1 module=haunt event=probe at=enter pirates=0
+traffic: lua: exp=v1 module=safety event=activate system=hanoi mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=haunt event=probe at=activate pirates=24
+traffic: lua: exp=v1 module=parcel event=signal at=enter quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=dock system=hanoi param=Hanoi dock_current=1
+traffic: lua: exp=v1 module=parcel event=signal at=dock quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=credits credits=249150
+traffic: lua: exp=v1 module=parcel event=offer system=hanoi result=none reason=job
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 result=vanilla
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=92
+traffic: lua: exp=v1 module=state event=enter generation=52 fresh=false system=kadi legs=92
+traffic: lua: exp=v1 module=haunt event=mode system=kadi mode=vanilla reason=off phase=3 tier=4 f=100 dp=1 vanilla_count=13 memory=0 pins=0
+traffic: lua: exp=v1 module=haunt event=probe at=enter pirates=0
+traffic: lua: exp=v1 module=safety event=activate system=kadi mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=haunt event=probe at=activate pirates=26
+traffic: lua: exp=v1 module=parcel event=signal at=enter quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=93
+traffic: lua: exp=v1 module=state event=enter generation=53 fresh=false system=prien legs=93
+traffic: lua: exp=v1 module=haunt event=mode system=prien mode=vanilla reason=off phase=3 tier=4 f=100 dp=1 vanilla_count=4 memory=0 pins=0
+traffic: lua: exp=v1 module=haunt event=probe at=enter pirates=0
+traffic: lua: exp=v1 module=safety event=activate system=prien mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=haunt event=probe at=activate pirates=8
+traffic: lua: exp=v1 module=parcel event=signal at=enter quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=94
+traffic: lua: exp=v1 module=state event=enter generation=54 fresh=false system=nj3 legs=94
+traffic: lua: exp=v1 module=haunt event=mode system=nj3 mode=vanilla reason=no_data
+traffic: lua: exp=v1 module=safety event=activate system=nj3 mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=parcel event=signal at=enter quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=parcel line_index=1 delay=8.000 result=queued
+traffic: lua: exp=v1 module=plumb event=marker owner=parcel label=TRF_PCL_NP result=added
+traffic: lua: exp=v1 module=parcel event=arrive system=nj3 marker=true reason=nil
+traffic: lua: exp=v1 module=parcel event=dock system=nj3 param=NJ3 dock_current=1
+traffic: lua: exp=v1 module=parcel event=signal at=dock quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=quest id=trf_pcl state=3 result=set
+traffic: lua: exp=v1 module=plumb event=marker owner=parcel deleted_count=1 result=cleared
+traffic: lua: exp=v1 module=plumb event=job kind=1 result=cleared
+traffic: lua: exp=v1 module=parcel event=deliver kind=1 source=kadi destination=nj3 units=2 units_found=2 pay=4800 paid=4800 held=0 deposit_back=850 help_change=1 visit_credit=2 shortage_ended=false ok_count=1
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=credits credits=254800
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=inventory added=3 deleted=3 left=false
+traffic: lua: exp=v1 module=parcel event=offer system=nj3 result=none reason=gap
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=1 result=vanilla
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=95
+traffic: lua: exp=v1 module=state event=enter generation=55 fresh=false system=nj1 legs=95
+traffic: lua: exp=v1 module=haunt event=mode system=nj1 mode=vanilla reason=no_data
+traffic: lua: exp=v1 module=safety event=activate system=nj1 mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=parcel event=signal at=enter quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=dock system=nj1 param=NJ1 dock_current=1
+traffic: lua: exp=v1 module=parcel event=signal at=dock quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=quest id=trf_pcl result=removed
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=credits credits=254800
+traffic: lua: exp=v1 module=parcel event=offer system=nj1 result=none reason=gap
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 result=vanilla
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=96
+traffic: lua: exp=v1 module=state event=enter generation=56 fresh=false system=taira legs=96
+traffic: lua: exp=v1 module=haunt event=mode system=taira mode=vanilla reason=off phase=1 tier=3 f=100 dp=1 vanilla_count=6 memory=0 pins=0
+traffic: lua: exp=v1 module=haunt event=probe at=enter pirates=0
+traffic: lua: exp=v1 module=safety event=activate system=taira mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=haunt event=probe at=activate pirates=12
+traffic: lua: exp=v1 module=parcel event=signal at=enter quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=dock system=taira param=Taira dock_current=1
+traffic: lua: exp=v1 module=parcel event=signal at=dock quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=credits credits=254800
+traffic: lua: exp=v1 module=parcel event=offer kind=1 source=taira destination=nj3 jumps=2 deadline=8 item=2 units=2 class=6 level=11 tier=3 prosperity=6 pay=3900 deposit=850 waived=false candidate_count=7 route=nj1,nj3 result=shown
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 box=parcel priority=400 result=box
+traffic: lua: exp=v1 module=parcel event=offer destination=nj3 result=declined
+traffic: lua: exp=v1 module=plumb event=box_answer kind=trade box=parcel answer=0 result=done
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=97
+traffic: lua: exp=v1 module=state event=enter generation=57 fresh=false system=corrino legs=97
+traffic: lua: exp=v1 module=haunt event=mode system=corrino mode=vanilla reason=off phase=3 tier=4 f=100 dp=1 vanilla_count=3 memory=0 pins=0
+traffic: lua: exp=v1 module=haunt event=probe at=enter pirates=0
+traffic: lua: exp=v1 module=safety event=activate system=corrino mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=haunt event=probe at=activate pirates=6
+traffic: lua: exp=v1 module=parcel event=signal at=enter quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=dock system=corrino param=nil dock_current=nil
+traffic: lua: exp=v1 module=parcel event=signal at=dock quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=credits credits=254800
+traffic: lua: exp=v1 module=parcel event=offer kind=1 source=corrino destination=nj1 jumps=2 deadline=8 item=2 units=2 class=6 level=11 tier=4 prosperity=7 pay=4200 deposit=850 waived=false candidate_count=5 route=taira,nj1 result=shown
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 box=parcel priority=400 result=box
+traffic: lua: exp=v1 module=plumb event=job kind=1 field_count=6 result=taken
+traffic: lua: exp=v1 module=parcel event=quest id=trf_pcl state=2 quest_state_before=0 quest_state_after=0 result=added
+traffic: lua: exp=v1 module=parcel event=accept kind=1 source=corrino destination=nj1 dock=nj1 item=Cargo_002 units=2 pay=4200 deposit=850 deadline=8 credits_before=254800 result=ok
+traffic: lua: exp=v1 module=plumb event=box_answer kind=trade box=parcel answer=1 result=done
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=98
+traffic: lua: exp=v1 module=state event=enter generation=58 fresh=false system=aurora legs=98
+traffic: lua: exp=v1 module=haunt event=mode system=aurora mode=vanilla reason=off phase=0 tier=1 f=70 dp=-1 vanilla_count=7 memory=0 pins=1
+traffic: lua: exp=v1 module=haunt event=probe at=enter pirates=0
+traffic: lua: exp=v1 module=safety event=activate system=aurora mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=haunt event=probe at=activate pirates=14
+traffic: lua: exp=v1 module=parcel event=signal at=enter quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=99
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=100
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=101
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=102
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=103
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=104
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=105
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=106
+traffic: lua: exp=v1 module=state event=leg reason=tick legs=107
+traffic: lua: exp=v1 module=parcel event=dock system=aurora param=Aurora dock_current=1
+traffic: lua: exp=v1 module=parcel event=signal at=dock quest_state=nil quest_help=nil count_pause_quest=nil current_quest=6
+traffic: lua: exp=v1 module=parcel event=quest id=trf_pcl state=4 result=set
+traffic: lua: exp=v1 module=plumb event=job kind=1 result=cleared
+traffic: lua: exp=v1 module=parcel event=fail kind=1 source=corrino destination=nj1 units_found=1 deposit=850 help_change=-1 ban_until=113 fail_count=1 reason=late
+traffic: lua: exp=v1 module=parcel event=pending kind=1 system=nj1 refund=nil
+traffic: lua: exp=v1 module=parcel event=probe probe_kind=credits credits=255370
+traffic: lua: exp=v1 module=parcel event=offer system=aurora result=none reason=ban
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=2 result=vanilla
+sw3tp 0.1.0
+HOST check_ingame fixture, part B: HAUNTS=1 HAUNT_MODE=1 (synthetic)
+traffic: lua: exp=v1 module=haunt event=install installed=true wrapped=true
+traffic: lua: exp=v1 module=core event=loaded map=true module_count=18 extra_count=11 teleport_wrapped=true custom_teleportate_wrapped=true
+traffic: lua: exp=v1 module=core event=load load_count=1 fresh=true
+traffic: lua: exp=v1 module=state event=load generation=60 fresh=false legs=120
+traffic: lua: exp=v1 module=state event=dump source=load version=4 generation=60 system=kadi system_index=52 legs=120 heat=0 help=0
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=121
+traffic: lua: exp=v1 module=state event=enter generation=61 fresh=false system=hanoi legs=121
+traffic: lua: exp=v1 module=haunt event=mode system=hanoi mode=haunt reason=ok phase=3 tier=4 f=100 dp=1 vanilla_count=12 memory=0 pins=0
+traffic: lua: exp=v1 module=haunt event=probe at=enter pirates=0
+traffic: lua: exp=v1 module=haunt event=plan system=hanoi target=12 fielded=12 skipped=0 pins=0 mode=1 plan=111111111111
+traffic: lua: exp=v1 module=haunt event=call sign=Pir01 result=substituted power=14 vanilla_power=13 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir08 result=substituted power=15 vanilla_power=14 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir09 result=substituted power=11 vanilla_power=10 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir10 result=substituted power=12 vanilla_power=11 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir11 result=substituted power=14 vanilla_power=13 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir13 result=substituted power=12 vanilla_power=11 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir17 result=substituted power=9 vanilla_power=8 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir19 result=substituted power=14 vanilla_power=13 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir14 result=substituted power=14 vanilla_power=13 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir15 result=substituted power=15 vanilla_power=14 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir16 result=substituted power=18 vanilla_power=17 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir12 result=substituted power=11 vanilla_power=10 pinned=false
+traffic: lua: exp=v1 module=safety event=activate system=hanoi mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=haunt event=activate system=hanoi fielded=12 stub=0 gone=0 unknown=0 missing=0 failed=0 relation=war mode=1
+traffic: lua: exp=v1 module=haunt event=probe at=activate pirates=36
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=haunt line_index=1 delay=8.000 result=queued
+traffic: lua: exp=v1 module=haunt event=arrival system=hanoi line=hauntraid result=queued
+traffic: lua: exp=v1 module=haunt event=hit index=3
+traffic: lua: exp=v1 module=haunt event=died index=3 sign=Pir09 mine=true memory=1 left=11 clan_score=93 generation=61 reason=died
+traffic: lua: exp=v1 module=haunt event=hit index=5
+traffic: lua: exp=v1 module=haunt event=died index=5 sign=Pir11 mine=true memory=2 left=10 clan_score=91 generation=61 reason=died
+traffic: lua: exp=v1 module=haunt event=hit index=7
+traffic: lua: exp=v1 module=haunt event=died index=7 sign=Pir17 mine=true memory=3 left=9 clan_score=89 generation=61 reason=ships
+traffic: lua: exp=v1 module=haunt event=jump system=hanoi deleted=9
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=122
+traffic: lua: exp=v1 module=state event=enter generation=62 fresh=false system=el_ariash legs=122
+traffic: lua: exp=v1 module=haunt event=mode system=el_ariash mode=vanilla reason=excluded phase=3 tier=4 f=100 dp=1 vanilla_count=6 memory=0 pins=6
+traffic: lua: exp=v1 module=haunt event=probe at=enter pirates=0
+traffic: lua: exp=v1 module=safety event=activate system=el_ariash mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=haunt event=probe at=activate pirates=18
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=123
+traffic: lua: exp=v1 module=state event=enter generation=63 fresh=false system=hanoi legs=123
+traffic: lua: exp=v1 module=haunt event=regen system=hanoi memory_before=3 memory_after=1 ticks=1
+traffic: lua: exp=v1 module=haunt event=mode system=hanoi mode=haunt reason=ok phase=3 tier=4 f=100 dp=1 vanilla_count=12 memory=1 pins=0
+traffic: lua: exp=v1 module=haunt event=plan system=hanoi target=11 fielded=11 skipped=1 pins=0 mode=1 plan=111111111101
+traffic: lua: exp=v1 module=haunt event=call sign=Pir01 result=substituted power=14 vanilla_power=13 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir08 result=substituted power=15 vanilla_power=14 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir09 result=substituted power=11 vanilla_power=10 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir10 result=substituted power=12 vanilla_power=11 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir11 result=substituted power=14 vanilla_power=13 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir13 result=substituted power=12 vanilla_power=11 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir17 result=substituted power=9 vanilla_power=8 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir19 result=substituted power=14 vanilla_power=13 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir14 result=substituted power=14 vanilla_power=13 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir15 result=substituted power=15 vanilla_power=14 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir16 result=stub reason=count
+traffic: lua: exp=v1 module=haunt event=call sign=Pir12 result=substituted power=11 vanilla_power=10 pinned=false
+traffic: lua: exp=v1 module=safety event=activate system=hanoi mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=haunt event=activate system=hanoi fielded=11 stub=1 gone=0 unknown=0 missing=0 failed=0 relation=war mode=1
+traffic: lua: exp=v1 module=haunt event=arrival system=hanoi line=haunthurt result=queued
+HOST quicksave here, then load it
+traffic: lua: exp=v1 module=core event=load load_count=2 fresh=false
+traffic: lua: exp=v1 module=state event=load generation=64 fresh=false legs=123
+traffic: lua: exp=v1 module=state event=dump source=load version=4 generation=64 system=hanoi system_index=40 legs=123 heat=0 help=0
+traffic: lua: exp=v1 module=haunt event=load system=hanoi rearmed=11
+traffic: lua: exp=v1 module=haunt event=hit index=4
+traffic: lua: exp=v1 module=haunt event=stale index=4 generation=63 current=64
+traffic: lua: exp=v1 module=haunt event=died index=4 sign=Pir10 mine=true memory=2 left=10 clan_score=87 generation=64 reason=died
+traffic: lua: exp=v1 module=haunt event=stale index=2 generation=63 current=64
+traffic: lua: exp=v1 module=haunt event=jump system=hanoi deleted=10
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=124
+traffic: lua: exp=v1 module=state event=enter generation=65 fresh=false system=corrino legs=124
+traffic: lua: exp=v1 module=haunt event=mode system=corrino mode=haunt reason=ok phase=3 tier=4 f=100 dp=1 vanilla_count=3 memory=0 pins=0
+traffic: lua: exp=v1 module=haunt event=plan system=corrino target=3 fielded=3 skipped=0 pins=0 mode=1 plan=111
+traffic: lua: exp=v1 module=haunt event=call sign=PirPatrol01 result=substituted power=2 vanilla_power=1 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=PirPatrol02 result=substituted power=4 vanilla_power=3 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=PirPatrol03 result=substituted power=3 vanilla_power=2 pinned=false
+traffic: lua: exp=v1 module=safety event=activate system=corrino mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=haunt event=activate system=corrino fielded=3 stub=0 gone=0 unknown=0 missing=0 failed=0 relation=war mode=1
+traffic: lua: exp=v1 module=haunt event=jump system=corrino deleted=3
+traffic: lua: exp=v1 module=state event=leg reason=enter legs=125
+traffic: lua: exp=v1 module=state event=enter generation=66 fresh=false system=aurora legs=125
+traffic: lua: exp=v1 module=haunt event=mode system=aurora mode=haunt reason=ok phase=0 tier=1 f=70 dp=-1 vanilla_count=7 memory=0 pins=1
+traffic: lua: exp=v1 module=haunt event=plan system=aurora target=5 fielded=5 skipped=2 pins=1 mode=1 plan=1111010
+traffic: lua: exp=v1 module=haunt event=call sign=pir_1 result=substituted power=3 vanilla_power=4 pinned=true
+traffic: lua: exp=v1 module=haunt event=call sign=pir_2 result=substituted power=4 vanilla_power=5 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir03 result=substituted power=4 vanilla_power=5 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir04 result=substituted power=6 vanilla_power=7 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir05 result=stub reason=count
+traffic: lua: exp=v1 module=haunt event=call sign=Pir06 result=substituted power=4 vanilla_power=5 pinned=false
+traffic: lua: exp=v1 module=haunt event=call sign=Pir07 result=stub reason=count
+traffic: lua: exp=v1 module=safety event=activate system=aurora mode=mod reason=nil chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=haunt event=activate system=aurora fielded=5 stub=2 gone=0 unknown=0 missing=0 failed=0 relation=war mode=1
+traffic: lua: exp=v1 module=haunt event=arrival system=aurora line=hauntquiet result=queued
+traffic: lua: exp=v1 module=generator event=approach trader_id=9 dock_mode=2
+traffic: lua: exp=v1 module=generator event=docked trader_id=9 arrival_kind=2
+traffic: lua: exp=v1 module=hail event=dialog_answers trader_id=21 answers=trade,head,esc,trouble,boom,close labels=""
+traffic: lua: exp=v1 module=hail event=hail trader_id=21 via=meet answer_count=5 hail_count=1 dialog=true
+traffic: lua: exp=v1 module=hail event=dialog_pick trader_id=21 key=head
+traffic: lua: exp=v1 module=hail event=option trader_id=21 key=head
+traffic: lua: exp=v1 module=hail event=dialog_answers trader_id=21 dialog=page answers=back,close kind=answer
+traffic: lua: exp=v1 module=hail event=page trader_id=21 via=dialog kind=answer key=head back=true
+traffic: lua: exp=v1 module=hail event=dialog_pick trader_id=21 key=back
+traffic: lua: exp=v1 module=hail event=dialog_answers trader_id=21 answers=trade,esc,trouble,boom,close labels=""
+traffic: lua: exp=v1 module=hail event=back trader_id=21 key=head answer_count=4 via=dialog result=menu
+traffic: lua: exp=v1 module=hail event=dialog_pick trader_id=21 key=esc
+traffic: lua: exp=v1 module=hail event=option trader_id=21 key=esc
+traffic: lua: exp=v1 module=hail event=dialog_answers trader_id=21 dialog=page answers=acc,dec kind=offer
+traffic: lua: exp=v1 module=hail event=page trader_id=21 via=dialog kind=offer key=esc back=false
+traffic: lua: exp=v1 module=hail event=dialog_pick trader_id=21 key=dec
+traffic: lua: exp=v1 module=hail event=contract trader_id=21 result=declined
+traffic: lua: exp=v1 module=hail event=dialog_answers trader_id=21 answers=trade,trouble,boom,close labels=""
+traffic: lua: exp=v1 module=hail event=back trader_id=21 key=esc answer_count=3 via=dialog result=menu
+traffic: lua: exp=v1 module=hail event=dialog_pick trader_id=21 key=trouble
+traffic: lua: exp=v1 module=hail event=option trader_id=21 key=trouble
+traffic: lua: exp=v1 module=hail event=page trader_id=21 via=dialog kind=answer key=trouble back=true
+traffic: lua: exp=v1 module=hail event=close trader_id=21 reason="dialog closed"
+traffic: lua: exp=v1 module=hail event=hail trader_id=22 via=meet answer_count=5 hail_count=1 dialog=true
+traffic: lua: exp=v1 module=hail event=dialog_pick trader_id=22 key=esc
+traffic: lua: exp=v1 module=hail event=option trader_id=22 key=esc
+traffic: lua: exp=v1 module=hail event=page trader_id=22 via=dialog kind=offer key=esc back=false
+traffic: lua: exp=v1 module=hail event=dialog_pick trader_id=22 key=acc
+traffic: lua: exp=v1 module=hail event=close trader_id=22 reason=accept
+traffic: lua: exp=v1 module=hail event=contract trader_id=22 pay=1417 result=accepted
+traffic: lua: exp=v1 module=hail event=fight trader_id=23 via=focus raid_id=nil hostile_count=2 escort_count=3 escort_fight=false trader_strength=nil raid_strength=nil losing=false lose_reason=nil answer=busy reason=nil
+traffic: lua: exp=v1 module=hail event=page trader_id=23 via=dialog kind=busy key=nil back=false
+traffic: lua: exp=v1 module=hail event=close trader_id=23 reason=close
+traffic: lua: exp=v1 module=hail event=fight trader_id=24 via=meet raid_id=nil hostile_count=3 escort_count=0 escort_fight=false trader_strength=nil raid_strength=nil losing=true lose_reason=outnumbered answer=help reason=nil
+traffic: lua: exp=v1 module=hail event=page trader_id=24 via=dialog kind=help key=nil back=false
+traffic: lua: exp=v1 module=hail event=help trader_id=24 raid_id=nil pay=1063 via=dialog result=offered
+traffic: lua: exp=v1 module=hail event=close trader_id=24 reason="help accept"
+traffic: lua: exp=v1 module=hail event=help trader_id=24 raid_id=nil pay=1063 via=watch result=accepted
+traffic: lua: exp=v1 module=region event=pay reason=hail_help amount=1063
+traffic: lua: exp=v1 module=hail event=help trader_id=24 pay=1063 credits=1063 kill_count=2 help=1 via=watch result=paid
+traffic: lua: exp=v1 module=merc event=roll system=gaoba chance=55.000 roll=23 clan=4 candidate_count=2 stage=1 power=14 ship_count=4 delay=47 result=planned
+traffic: lua: exp=v1 module=merc event=spawn flight=1 clan=4 group=TRF_Merc_1 stage=1 composition=1 power=14 ship_count=4 portal=PORTAL_D result=spawn
+traffic: lua: exp=v1 module=merc event=meet flight=1 clan=4 collection=false
+traffic: lua: exp=v1 module=merc event=offer flight=1 clan=4 fee=12600 share=2500 blood=10000 owe=0 discount=1.000 heat_k=1.000 condition=4 standing=0 result=line
+traffic: lua: exp=v1 module=merc event=talk kind=offer flight=1 clan=4 via=dialog result=shown
+traffic: lua: exp=v1 module=merc event=answer kind=offer answer=dec via=dialog
+traffic: lua: exp=v1 module=merc event=hire flight=1 clan=4 result=declined reason=dec rearm=true
+traffic: lua: exp=v1 module=merc event=talk kind=offer flight=1 clan=4 via=dialog result=shown
+traffic: lua: exp=v1 module=merc event=answer kind=offer answer=acc via=dialog
+traffic: lua: exp=v1 module=region event=charge reason=merc_fee amount=12600 taken=12600 credits=80000
+traffic: lua: exp=v1 module=merc event=hire flight=1 clan=4 fee=12600 owe=0 share=2500 blood=10000 time=600 ship_count=4 result=hired
+traffic: lua: exp=v1 module=merc event=seed flight=1 clan=4 group=TRF_Raid_2 reason=raid
+traffic: lua: exp=v1 module=merc event=kill flight=1 clan=4 ship=TRF_Raid_2:1 via=bus kill_count=1
+traffic: lua: exp=v1 module=merc event=jump clan=4 destination=heos time=420 result=follow
+traffic: lua: exp=v1 module=merc event=follow flight=1 clan=4 system=heos ship_count=4 sit_out=0 time=420 heal=150 hull=1000100010001000 result=rebuilt via=arrival
+traffic: lua: exp=v1 module=merc event=timeout flight=1 clan=4 kill_count=1 loss_count=0
+traffic: lua: exp=v1 module=merc event=talk kind=ext flight=1 clan=4 via=dialog result=shown
+traffic: lua: exp=v1 module=region event=charge reason=merc_ext amount=9500 taken=9500 credits=67400
+traffic: lua: exp=v1 module=merc event=extend flight=1 clan=4 fee=9500 time=600 result=extended
+traffic: lua: exp=v1 module=merc event=timeout flight=1 clan=4 kill_count=1 loss_count=0
+traffic: lua: exp=v1 module=merc event=talk kind=settle flight=1 clan=4 via=dialog result=shown
+traffic: lua: exp=v1 module=merc event=settle flight=1 clan=4 share=2500 blood=0 total=2500 taken=2500 result=paid reason=acc
+traffic: lua: exp=v1 module=merc event=end flight=1 clan=4 completed=true standing=1 jobs=1
+traffic: lua: exp=v1 module=merc event=leave flight=1 clan=4 portal=PORTAL_L reason=settled
+traffic: lua: exp=v1 module=merc event=refuse flight=1 clan=5 kind=settle amount=2500 pack_strength=52.000 player_strength=39.000 braveness=0.810 chance=0.000 roll=17 result=attack war=false
+traffic: lua: exp=v1 module=merc event=betray clan=5 betrayals=1 standing=-3 reason=fire
+traffic: lua: exp=v1 module=merc event=betray flight=1 clan=5 result=leave reason=fire
+traffic: lua: exp=v1 module=merc event=leave flight=1 clan=5 portal=PORTAL_D reason=betray
+traffic: module=dll event=stack_leak slots=1 total=1 v1=number:1
+traffic: module=dll event=trig_frame slots=1 fires=1 sp_n=0 c1="return Trig_Cond();" a1="TRF_RdHit(3,1,7)--"
+traffic: module=dll event=stack_leak slots=2 total=101 v1=number:0.85 v2=nil
+traffic: module=dll event=trig_frame slots=2 fires=0 sp_n=4 sp="UpgradeDamageToCriticalHit" sp_res=2
+traffic: module=dll event=trig_fires frames=1680 fires=150 true=40 distinct=6 other=0 top="return Timer1_Cond();" top_act="Work_with_Quests();" top_n=60 second="return Trig_Cond();" second_act="TRF_RdHit(3,1,7)--" second_n=30 sp_calls=2400 sp_distinct=3 sp_other=0 sp_top="CalculateRateOfFire" sp_top_n=1500
+traffic: lua: exp=v1 module=str event=roll kind=trade id=46 score=77 roll=47 step=0 rolled_tier=4 tier=3 reason=tt4_slot
+traffic: lua: exp=v1 module=tier event=plan tier=3 reason=tt4_slot strength=8 ship_count=6 escorts_added=0 score=77 roll=47 step=0
+traffic: lua: exp=v1 module=str event=roll kind=trade id=12 score=22 roll=none step=0 rolled_tier=1 tier=1 reason=pro
+traffic: lua: exp=v1 module=tier event=plan tier=1 reason=pro strength=5 ship_count=nil escorts_added=0 score=22 roll=none step=0
+traffic: lua: exp=v1 module=str event=tier slot=1 score=76 tier=4 prev=3 via=tick result=changed
+traffic: lua: exp=v1 module=str event=tier slot=1 score=72 tier=4 prev=4 via=tick result=kept
+traffic: lua: exp=v1 module=str event=tier slot=2 score=44 tier=2 prev=3 via=event result=changed
+traffic: lua: exp=v1 module=raid event=go raid_id=2 trader_id=3 via=lane tier=2 power=14 ship_count=4 distance=874.871
+traffic: lua: exp=v1 module=fits event=roll system=golkonda flight=pir07 source=haunt score=88 tier=4 up=3 down=0 roll=1 grade=1 captured_roll=false
+traffic: lua: exp=v1 module=fits event=row system=golkonda flight=pir07 grade=1 captured_ship=0 before=Stormcrow_pir1,Raptor_pir1 after=EvilEye_pir1,Bident_pir1
+traffic: lua: exp=v1 module=fits event=roll system=golkonda flight=pir08 source=haunt score=88 tier=4 up=3 down=0 roll=57 grade=0 captured_roll=false
+traffic: lua: exp=v1 module=fits event=roll system=golkonda flight=pir09 source=haunt score=88 tier=4 up=3 down=0 roll=60 grade=0 captured_roll=true pool=hull
+traffic: lua: exp=v1 module=fits event=row system=golkonda flight=pir09 grade=0 captured_ship=2 before=Stormcrow_pir1,Raptor_pir1 after=Stormcrow_pir1,TieFly_pir0 new_fit=TieFly_pir1
+traffic: lua: exp=v1 module=fits event=dress system=golkonda flight=pir09 ship=2 fit=TieFly_pir1 carcass=TieFly_pir0 hull=true modules=4 ok=4 failed=none
+traffic: lua: exp=v1 module=fits event=roll system=xt45 flight=Pir02 source=haunt score=40 tier=2 up=3 down=0 roll=50 grade=0 captured_roll=false
+traffic: lua: exp=v1 module=fits event=kill system=golkonda index=7 flight=pir07 grade=1 score_cost=3 mine=true
+traffic: lua: exp=v1 module=region event=clan_score region=4 reason="pirate kill haunt_elite" old_clan_score=88 clan_score=85
+traffic: lua: exp=v1 module=fits event=roll system=kadi flight=Pir05 source=gate score=95 tier=4 up=0 down=0 roll=40 grade=0 captured_roll=true
+traffic: lua: exp=v1 module=fits event=gate system=kadi built=1
+traffic: lua: exp=v1 module=fits event=test name=Panthera_pir0 step=create result=ok x=-950 z=850
+traffic: lua: exp=v1 module=fits event=test name=Panthera_pir0 step=hull bare=true hp=600
+traffic: lua: exp=v1 module=fits event=test name=Panthera_pir0 step=add_module module=PC2 ret=nil hp=600
+traffic: lua: exp=v1 module=fits event=test name=Panthera_pir0 step=add_module module=VC3 ret=nil hp=600
+traffic: lua: exp=v1 module=fits event=test name=Panthera_pir0 step=add_module module=ShAmp3 ret=nil hp=600
+traffic: lua: exp=v1 module=fits event=test name=Panthera_pir0 step=read result=ok tpl=Panthera_pir0 cls=6 hp=600 hpmax=600 alive=true
+traffic: lua: exp=v1 module=safety event=activate system=xt45 mode=vanilla reason=gate_quest chapter=6 quest_state=nil gate=ok
+traffic: lua: exp=v1 module=safety event=extortion_seen game_time=57793.710 via=change money=4500 count=1
+traffic: lua: exp=v1 module=safety event=extort group=group_Pirate_money result=neutral trigger_count=2
+traffic: lua: exp=v1 module=safety event=extort group=group_Pirate_money result=war reason=refused
+traffic: lua: exp=v1 module=safety event=extortion_seen game_time=58100.000 via=edge money=4500 count=2
+traffic: lua: exp=v1 module=safety event=extort group=group_Pirate_money result=skip reason=vanilla_rel
+traffic: module=dll event=jobs_init card=1 sig=ok sigs=33 patched=1 board=0 log=0
+traffic: lua: exp=v1 module=state event=enter generation=80 fresh=false system=altair legs=120
+traffic: module=dll event=jobs_card action=open id=pcl fields=15 cards=1
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 box=parcel priority=400 result=card
+traffic: lua: exp=v1 module=plumb event=jobs_card id=pcl card_event=open result=ok
+traffic: module=dll event=jobs_card action=answer id=pcl ev=ok
+traffic: module=dll event=jobs_card action=closed id=pcl ev=answer
+traffic: lua: exp=v1 module=plumb event=box_answer kind=trade box=parcel answer=1 result=done
+traffic: lua: exp=v1 module=plumb event=jobs_card id=pcl card_event=ok result=ok reply="Crates are in your hold. Don't open them, don't sell them, don't be late."
+traffic: module=dll event=jobs_card action=open id=pcl fields=5 cards=2
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 box=parcel priority=400 result=card
+traffic: lua: exp=v1 module=plumb event=jobs_card id=pcl card_event=open result=ok
+traffic: module=dll event=jobs_card action=answer id=pcl ev=cancel
+traffic: module=dll event=jobs_card action=closed id=pcl ev=answer
+traffic: lua: exp=v1 module=plumb event=box_answer kind=trade box=parcel answer=0 result=done
+traffic: lua: exp=v1 module=plumb event=jobs_card id=pcl card_event=cancel result=ok reply=nil
+traffic: module=dll event=jobs_card action=open id=pcl fields=15 cards=3
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 box=parcel priority=400 result=card
+traffic: lua: exp=v1 module=plumb event=jobs_card id=pcl card_event=open result=ok
+traffic: module=dll event=jobs_card action=closed id=pcl ev=esc
+traffic: lua: exp=v1 module=plumb event=box_answer kind=trade box=parcel answer=0 result=done
+traffic: lua: exp=v1 module=plumb event=jobs_card id=pcl card_event=esc result=ok reply=nil
+traffic: lua: exp=v1 module=state event=load generation=81 fresh=false legs=120
+traffic: module=dll event=jobs_init card=1 sig=ok sigs=33 patched=1 board=1 mode=1 board_sig=ok board_sigs=30 board_patched=1 log=0
+traffic: lua: exp=v1 module=plumb event=jobs_board row_count=0 result=cleared reason=dock_pir
+traffic: lua: exp=v1 module=plumb event=dock kind=pir line_count=0 result=vanilla
+traffic: lua: exp=v1 module=plumb event=jobs_board row_count=0 result=cleared reason=dialog
+traffic: lua: exp=v1 module=parcel event=offer destination=taira jumps=3 deadline=11 pay=14400 deposit=4320 result=listed via=board
+traffic: module=dll event=jobs_board action=set rows=1 sets=2
+traffic: lua: exp=v1 module=plumb event=jobs_board kind=trade row_count=1 result=set
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 result=vanilla
+traffic: lua: exp=v1 module=plumb event=jobs_board kind=trade row_count=1 result=armed trader_flag=false
+traffic: module=dll event=jobs_office action=tab view=jobs
+traffic: module=dll event=jobs_office action=create rows=1 fields=3 cards=1 closed=0 mode=1 tab=1 builds=1
+traffic: module=dll event=jobs_office action=tab view=news
+traffic: module=dll event=jobs_office action=tab view=jobs
+traffic: module=dll event=jobs_card action=open id=pcl fields=15 cards=4 via=board
+traffic: module=dll event=jobs_office action=click id=pcl result=open
+traffic: lua: exp=v1 module=plumb event=jobs_card id=pcl card_event=open result=ok via=board
+traffic: module=dll event=jobs_card action=answer id=pcl ev=ok
+traffic: module=dll event=jobs_card action=closed id=pcl ev=answer
+traffic: module=dll event=jobs_board action=mark id=pcl closed=1 visible=1
+traffic: lua: exp=v1 module=plumb event=jobs_card id=pcl card_event=ok result=ok reply="Crates are in your hold. Don't open them, don't sell them, don't be late." via=board mark=jbtaken
+traffic: module=dll event=jobs_office action=tab view=jobs
+traffic: module=dll event=jobs_office action=create rows=1 fields=1 cards=1 closed=1 mode=1 tab=1 builds=2
+traffic: module=dll event=jobs_office action=click id=pcl result=closed
+traffic: lua: exp=v1 module=plumb event=jobs_board row_count=0 result=cleared reason=dialog
+traffic: module=dll event=jobs_office action=create rows=0 result=empty
+traffic: module=dll event=jobs_init card=1 sig=ok sigs=33 patched=1 board=1 mode=1 board_sig=ok board_sigs=30 board_patched=1 log=1 log_sig=ok log_sigs=44 log_patched=1
+traffic: module=dll event=jobs_log action=qm_load cleared=0 loaded=0 result=1 loads=1
+traffic: module=dll event=jobs_log action=add id=trf_pcl state=2 result=ok jobs=1
+traffic: lua: exp=v1 module=parcel event=logbook list=job id=trf_pcl state=2 result=added
+traffic: module=dll event=jobs_log action=create result=ok jobs=1
+traffic: module=dll event=jobs_log action=tab view=jobs
+traffic: module=dll event=jobs_log action=tab view=missions
+traffic: module=dll event=jobs_log action=state id=trf_pcl state=0
+traffic: lua: exp=v1 module=parcel event=logbook list=job id=trf_pcl state=0 result=set
+traffic: module=dll event=jobs_log action=qm_load cleared=1 loaded=2 result=1 loads=2
+traffic: lua: exp=v1 module=wq event=offer system=debris6 variant=new help=5 result=shown via=box
+traffic: lua: exp=v1 module=wq event=decline system=debris6 leg=40 result=declined
+traffic: lua: exp=v1 module=wq event=offer system=debris6 variant=new help=5 result=shown via=card
+traffic: lua: exp=v1 module=wq event=accept system=debris6 variant=new seed=6664 leg=51 result=ok
+traffic: lua: exp=v1 module=wq event=logbook list=job id=trf_wq step=10 result=added
+traffic: lua: exp=v1 module=wq event=reconcile id=trf_wq list=job step=10 result=added reason=accept
+traffic: lua: exp=v1 module=wq event=seed system=golkonda roll=27 chance=50 delay=58 tries=0 result=planned
+traffic: lua: exp=v1 module=wq event=spawn system=golkonda trader_id=31 raid_id=4 tier=2 ship_count=3 marker=true tries=0 result=spawned
+traffic: lua: exp=v1 module=wq event=void trader_id=31 reason=jump tries=1 tries_max=2 leg=52
+traffic: lua: exp=v1 module=wq event=seed system=golkonda roll=12 chance=50 delay=41 tries=1 result=planned
+traffic: lua: exp=v1 module=wq event=spawn system=golkonda trader_id=36 raid_id=5 tier=2 ship_count=3 marker=true tries=1 result=spawned
+traffic: lua: exp=v1 module=wq event=help raid_id=5 trader_id=36 credits=4269 flags=1
+traffic: lua: exp=v1 module=wq event=rescued system=golkonda trader_id=36 raid_id=5 variant=new reason=raid_help tries=1
+traffic: lua: exp=v1 module=wq event=step step_before=10 step_after=20 reason=rescued
+traffic: lua: exp=v1 module=wq event=report system=debris6 result=saved wreck_system=golkonda flags=0
+traffic: lua: exp=v1 module=wq event=step step_before=20 step_after=30 reason=report
+traffic: lua: exp=v1 module=wq event=wreck system=golkonda beacon=1 point=portal result=seeded
+traffic: lua: exp=v1 module=wq event=wreck system=golkonda pods=0 result=picked
+traffic: lua: exp=v1 module=wq event=wreck system=golkonda carried=1 result=handed
+traffic: lua: exp=v1 module=wq event=step step_before=30 step_after=40 reason=handed
+traffic: lua: exp=v1 module=wq event=fence system=callipso price=3415 result=shown
+traffic: lua: exp=v1 module=wq event=clue via=fence system=callipso result=declined
+traffic: lua: exp=v1 module=wq event=fence system=callipso price=3415 result=shown
+traffic: lua: exp=v1 module=wq event=clue via=fence system=callipso cost=3415 result=ok
+traffic: lua: exp=v1 module=wq event=step step_before=40 step_after=50 reason=fence
+traffic: lua: exp=v1 module=wq event=hold system=xb13 mode=1 captain_slot=4 captain_generation=1 result=tipped
+traffic: lua: exp=v1 module=captain event=intel slot=4 generation=1 seen=xb13 result=tipped reason=quest
+traffic: lua: exp=v1 module=captain event=plan slot=4 generation=1 system=xb13 chance=100 roll=30 via=tip delay=62 result=planned
+traffic: lua: exp=v1 module=wq event=hold system=xb13 mode=1 by=player off_screen=false result=base_gone
+traffic: lua: exp=v1 module=survive event=seed system=xb13 kind=quest source=2 pods=2 pay=0 point=given result=beacon beacon=1
+traffic: lua: exp=v1 module=wq event=hold system=xb13 mode=1 beacon=1 pods=2 via=base_gone result=pods
+traffic: lua: exp=v1 module=wq event=hold system=xb13 mode=3 x=750 z=400 hulk=true marker=true tier=3 power=15 ship_count=4 ships_asked=4 result=spawned
+traffic: lua: exp=v1 module=wq event=hold system=xb13 mode=3 kill_count=4 ship_count=4 via=died result=guard_dead
+traffic: lua: exp=v1 module=survive event=seed system=xb13 kind=quest source=2 pods=3 pay=0 point=given result=beacon beacon=1
+traffic: lua: exp=v1 module=wq event=hold system=xb13 mode=3 beacon=1 pods=3 via=guard_dead result=pods
+traffic: lua: exp=v1 module=wq event=crew system=xb13 picked=1 pods=3 left=2 result=picked
+traffic: lua: exp=v1 module=wq event=crew system=xb13 picked=2 pods=3 left=1 result=picked
+traffic: lua: exp=v1 module=wq event=crew system=xb13 picked=3 pods=3 result=aboard
+traffic: lua: exp=v1 module=wq event=step step_before=50 step_after=60 reason=aboard
+traffic: lua: exp=v1 module=wq event=crew system=golkonda carried=3 picked=3 pods=3 result=handed
+traffic: lua: exp=v1 module=wq event=step step_before=60 step_after=70 reason=handed
+traffic: lua: exp=v1 module=parcel event=offer system=debris6 result=none reason=wq_unlock
+traffic: lua: exp=v1 module=freight event=box system=debris6 region=4 list=58800 price=58800 voucher_used=false result=shown
+traffic: lua: exp=v1 module=wq event=unlock system=debris6 leg=61 result=bought
+traffic: lua: exp=v1 module=wq event=step step_before=70 step_after=80 reason=bought
+traffic: lua: exp=v1 module=wq event=logbook list=job id=trf_wq step=80 result=added
+traffic: lua: exp=v1 module=wq event=logbook list=job id=trf_wq state=0 result=done
+traffic: lua: exp=v1 module=wq event=reconcile id=trf_wq list=job result=removed reason=enter leg=71
+traffic: lua: exp=v1 module=state event=enter generation=90 fresh=false system=avalon legs=130
+traffic: lua: exp=v1 module=warn event=jump_install wrapped_count=2 skipped_count=0
+traffic: lua: exp=v1 module=warn event=enter system=avalon system_index=10 listed=false note=none pruned_count=0 latch=false
+traffic: lua: exp=v1 module=station event=dock station_key=10 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=chapter
+traffic: lua: exp=v1 module=warn event=warn system=gideon system_index=44 dock_system=avalon kind=kill condition="GideonPermit=no,Kfni=neutral" leg=130 cooldown=8
+traffic: lua: exp=v1 module=warn event=dock system=avalon neighbour_count=2 listed=gideon,kassilia shown=gideon skipped=kassilia:inactive
+traffic: lua: exp=v1 module=station event=dock station_key=10 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=chapter
+traffic: lua: exp=v1 module=warn event=dock system=avalon neighbour_count=2 listed=gideon,kassilia shown=nil skipped=gideon:visit,kassilia:inactive
+traffic: lua: exp=v1 module=warn event=jump_warn system=gideon kind=kill portal=PORTAL_R via=map condition="GideonPermit=no,Kfni=neutral" result=shown
+traffic: lua: exp=v1 module=warn event=jump_into system=kassilia kind=garrison armed=false condition="Kfni=neutral" how=portal
+traffic: lua: exp=v1 module=state event=enter generation=91 fresh=false system=kassilia legs=131
+traffic: lua: exp=v1 module=warn event=enter system=kassilia system_index=53 listed=true note=due pruned_count=0 latch=false
+traffic: lua: exp=v1 module=warn event=note system=kassilia kind=garrison result=queued
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=warn line_index=1 delay=4.000 result=queued
+traffic: lua: exp=v1 module=warn event=jump_into system=avalon kind=garrison armed=false condition=- how=portal
+traffic: lua: exp=v1 module=state event=enter generation=92 fresh=false system=avalon legs=132
+traffic: lua: exp=v1 module=warn event=pass reason=latch at=dock
+traffic: lua: exp=v1 module=station event=dock station_key=10 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=latch
+traffic: lua: exp=v1 module=warn event=warn system=gideon system_index=44 dock_system=avalon kind=kill condition="GideonPermit=no,Kfni=neutral" leg=132 cooldown=8
+traffic: lua: exp=v1 module=state event=enter generation=90 fresh=false system=gaoba legs=300
+traffic: lua: exp=v1 module=safety event=activate system=gaoba mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=safety event=gate feature=remark system=gaoba reason=quest result=denied
+traffic: lua: exp=v1 module=remark event=voice voice=pirate speaker=nil tried=Lastochka2:silent,Lastochka:silent,Hero:silent
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=scar line_index=1 delay=8.000 voiced=true result=queued
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=survive line_index=2 delay=11.000 voiced=false result=queued
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=stash line_index=3 delay=14.000 voiced=false result=queued
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=remark line_index=4 delay=17.000 voiced=true result=queued
+traffic: lua: exp=v1 module=remark event=say owner=scar system_index=42 event_leg=299 voice=pirate speaker=Lastochka output=radio result=shown reason=nil
+traffic: lua: exp=v1 module=remark event=say owner=remark system_index=42 event_leg=280 voice=pirate speaker=Hero output=radio result=shown reason=nil
+traffic: lua: exp=v1 module=state event=enter generation=91 fresh=false system=kadi legs=301
+traffic: lua: exp=v1 module=state event=enter generation=92 fresh=false system=gaoba legs=302
+traffic: lua: exp=v1 module=remark event=candidate system_index=42 kind=trader event_leg=280 age=22 result=ok
+traffic: lua: exp=v1 module=remark event=say owner=remark system_index=42 event_leg=280 voice=pirate speaker=Hero output=line result=shown reason=nil
+traffic: lua: exp=v1 module=state event=enter generation=93 fresh=false system=kadi legs=303
+traffic: lua: exp=v1 module=safety event=activate system=kadi mode=mod reason=nil chapter=3 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=temper event=open raid_id=4 kind=lane clan_slot=5 temper=cutter form=no_demand mode=full result=said
+traffic: lua: exp=v1 module=raid event=demand raid_id=4 trader_id=40
+traffic: lua: exp=v1 module=raid event=refuse raid_id=4 trader_id=40 player_fired=false
+traffic: lua: exp=v1 module=state event=enter generation=94 fresh=false system=valensia legs=304
+traffic: lua: exp=v1 module=safety event=activate system=valensia mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=temper event=open raid_id=5 kind=lane clan_slot=3 temper=haggler form=demand mode=full result=said
+traffic: lua: exp=v1 module=raid event=demand raid_id=5 trader_id=41
+traffic: lua: exp=v1 module=raid event=decide raid_id=5 trader_id=41 trader_strength=27.000 player_strength=0.000 raid_strength=75.000 strength_ratio=0.360 braveness=1.000 chance=10.000 roll=60 result=refuse
+traffic: lua: exp=v1 module=state event=enter generation=95 fresh=false system=valensia legs=305
+traffic: lua: exp=v1 module=station event=tip station_key=61 kind=temper system=valensia tip_leg=nil
+traffic: lua: exp=v1 module=temper event=letter post=mail_trf_te1 result=posted
+traffic: lua: exp=v1 module=temper event=letter post=mail_trf_te1 result=posted
+traffic: lua: exp=v1 module=state event=enter generation=96 fresh=false system=debris4 legs=306
+traffic: lua: exp=v1 module=safety event=activate system=debris4 mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=corp event=pull region=4 corp=Uss count=3 end_leg=330 leg=306 active_count=1 result=out
+traffic: lua: exp=v1 module=corp event=label trader_id=50 name=12 system=debris4 region=4 corp=Uss share=0.246 roll=0.100
+traffic: lua: exp=v1 module=shop event=open trader_id=50 shop=trf_shop_2 sell_coef=1.35 buy_coef=0.60 zero_count=77 hold_count=6 equip_count=5 owner=Uss destination=31 shortage_classes= corp=Uss signature=PLC2
+traffic: lua: exp=v1 module=corp event=hit trader_id=50 corp=Uss region=4 how=kill by=player count_before=0 count=1 player_caused=true result=counted
+traffic: lua: exp=v1 module=events event=faction_standing faction=4 reason="carrier kill 50" change=-1
+traffic: lua: exp=v1 module=corp event=label trader_id=51 name=13 system=debris4 region=4 corp=Uss share=0.246 roll=0.120
+traffic: lua: exp=v1 module=corp event=hit trader_id=51 corp=Uss region=4 how=kill by=player count_before=1 count=2 player_caused=true result=counted
+traffic: lua: exp=v1 module=events event=faction_standing faction=4 reason="carrier kill 51" change=-1
+traffic: lua: exp=v1 module=corp event=label trader_id=52 name=99 system=debris4 region=4 corp=Inoco share=1.500 roll=0.100
+traffic: lua: exp=v1 module=state event=enter generation=97 fresh=false system=heos legs=307
+traffic: lua: exp=v1 module=safety event=activate system=heos mode=mod reason=nil chapter=7 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=debrief event=dump on=1 xp=0 gate=1 dialog=1 chapter=7 stamp=nil pool_left=nil pending=nil refill_due=nil step=0 done=0 xp_each=2.3
+traffic: lua: exp=v1 module=debrief event=offer system=heos help=5 postings=1 result=shown via=box
+traffic: lua: exp=v1 module=debrief event=pay via=quest jobs=1 xp_each=2.3 xp_total=2.3 pool_left=4 chapter=7 band=2 difficulty=normal result=paid
+traffic: lua: exp=v1 module=debrief event=done system=heos kind=1 leg=307 via=line result=done
+traffic: lua: exp=v1 module=debrief event=points at=before pilot=Hero points=12.000
+traffic: lua: exp=v1 module=debrief event=points at=after pilot=Hero points=12.000
+traffic: lua: exp=v1 module=debrief event=pay via=dock jobs=1 xp_each=2.3 xp_total=2.3 pool_left=3 chapter=7 band=2 difficulty=normal result=paid
+traffic: lua: exp=v1 module=debrief event=refill chapter_before=7 chapter_after=7 carried=0 pool_before=3 pool_left=8 via=dock result=refilled
+traffic: lua: exp=v1 module=state event=enter generation=98 fresh=false system=angarsk legs=310
+traffic: lua: exp=v1 module=safety event=activate system=angarsk mode=mod reason=nil chapter=7 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=tips event=dump on=1 record_count=5 ring_size=4 length=64 ring=6:raid@heos/2/1,6:raid@zebos/3/0,6:wreck@heos/2/1,6:cap@nd/1/0,6:raid@areko/0/0
+traffic: lua: exp=v1 module=tips event=pick surface=news system=angarsk kind=raid target=heos event_leg=308 age=2 source=2 live=current merged=nil candidate_count=2 result=shown
+traffic: lua: exp=v1 module=tips event=pick surface=news system=angarsk kind=raid target=heos event_leg=308 age=2 source=2 live=current merged=nil candidate_count=1 result=shown
+traffic: lua: exp=v1 module=tips event=pick surface=hail system=angarsk kind=cap target=nd event_leg=309 age=1 source=1 live=stale merged=nil candidate_count=1 result=shown
+traffic: lua: exp=v1 module=safety event=gate feature=tips system=zebos reason=quest result=denied
+traffic: lua: exp=v1 module=tips event=pick surface=hail system=angarsk kind=raid target=zebos event_leg=307 age=3 source=0 live=current merged=nil candidate_count=1 result=shown
+traffic: lua: exp=v1 module=tips event=skip surface=tip reason=latch
+traffic: lua: exp=v1 module=tips event=pick surface=tip system=angarsk kind=cap target=nd event_leg=309 age=1 source=1 live=current merged=nil candidate_count=1 result=shown
+traffic: lua: exp=v1 module=station event=tip station_key=77 kind=cap system=nd tip_leg=nil
+traffic: lua: exp=v1 module=tips event=pick surface=tip system=angarsk kind=cap target=nd event_leg=309 age=1 source=1 live=current merged=nil candidate_count=1 result=shown
+traffic: lua: exp=v1 module=plumb event=marker owner=stash label=TRF_STASH_AR_6 class=offer offer_count=1 result=added
+traffic: lua: exp=v1 module=plumb event=marker owner=stash label=TRF_STASH_AR_7 class=offer offer_count=2 result=added
+traffic: lua: exp=v1 module=plumb event=marker owner=stash label=TRF_STASH_AR_8 class=offer offer_count=3 result=added
+traffic: lua: exp=v1 module=state event=enter generation=99 fresh=false system=lidau legs=311
+traffic: lua: exp=v1 module=safety event=activate system=lidau mode=mod reason=nil chapter=9 quest_state=1 gate=ok
+traffic: lua: exp=v1 module=safety event=gate feature=spec system=lidau reason=quest result=denied
+traffic: lua: exp=v1 module=spec event=arm trader_id=31 raid_id=40 raid_end=killed flight=hp hp_fraction=0.300 meet=true
+traffic: lua: exp=v1 module=spec event=answer trader_id=31 speaker=Yana perk=Repairman rank=1 result=offered
+traffic: lua: exp=v1 module=spec event=patch trader_id=31 speaker=Yana rank=1 hp_before=300 target=750 hp_after=300 hp0=1000 state=out help=1 reason=sethp result=flee_only
+traffic: lua: exp=v1 module=spec event=patch trader_id=32 speaker=Yana rank=1 hp_before=300 target=750 hp_after=750 hp0=1000 state=out help=1 reason=nil result=patched
+traffic: lua: exp=v1 module=spec event=patch trader_id=32 speaker=Yana rank=1 hp_before=500 target=750 hp_after=750 hp0=1000 state=out help=0 reason=help_paid result=patched
+traffic: lua: exp=v1 module=raid event=flee trader_id=32 reason=hp refuge=portal portal=PORTAL_L station_distance=900.000 portal_distance=300.000
+traffic: lua: exp=v1 module=raid event=flee trader_id=31 reason=raid refuge=portal portal=PORTAL_L station_distance=900.000 portal_distance=250.000
+traffic: lua: exp=v1 module=generator event=remove trader_id=31 reason=escaped age=140.000
+traffic: lua: exp=v1 module=raid event=escaped trader_id=31 via=1

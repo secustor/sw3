@@ -141,6 +141,7 @@ Gestures drive the camera only in space flight: the top game state must be in `f
 | `tap_max_ms` | `250` | Longest two-finger tap (finger down to lift without movement). |
 | `double_tap_ms` | `500` | Longest gap between the two taps of a double tap. |
 | `agg_cooldown_ms` | `400` | Shortest gap between two aggressive orders, so one double tap that is also seen as a smart zoom fires once. |
+| `synth_max_ms` | `1500` | A right button, Shift or Ctrl the mod pressed is released after this long without gesture activity (`seq watchdog released` in the log). With `modifier_resync`, also the time a game modifier may stay held while the key is physically up. |
 
 ### [features]
 
@@ -157,6 +158,22 @@ Each is `1` (on) or `0` (off).
 | `force_click_focus` | Force click ToggleFocus |
 | `smart_magnify_switch_camera` | Two-finger double tap SwitchCamera |
 | `aggressive_double_tap` | Control + two-finger double tap aggressive order |
+| `modifier_resync` | Releases a Ctrl, Shift or Alt that the game still holds `synth_max_ms` after the physical key went up (a key-up lost during an app or Space switch; a stuck Ctrl shows as the aggressive cursor). Logged as `resync released key=...`. Command and Option count as held for Alt, Command also for Ctrl, so winemac's key mapping options cannot cause a false release. |
+
+### [display]
+
+Sets the game resolution to the main display size before the game reads `default.cfg`, so it runs without a mode change and the pointer reaches the whole image. Only the `gr_init_resolution` line is changed, and only when its values differ; the first change saves `default.cfg.sw3tp-orig`. A read-only `default.cfg` is left alone. The game writes the value back at exit, so `mode=off` keeps the last size; restore it from `default.cfg.sw3tp-orig`. Log lines start with `display:`.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `mode` | `off` | `off`: `default.cfg` is not touched. `auto`: the main display size (Wine's current display mode, in points). `fixed`: the size in `fixed`. |
+| `fixed` | empty | `WxH` used by `mode=fixed`, for example `2560x1440`. |
+| `min` | `1024x768` | `auto` does nothing when the display is smaller in either side. |
+| `max` | `4096x4096` | A display larger than this is scaled down to fit, keeping the aspect ratio, each side rounded to an even number. |
+| `keep_bpp` | `32` | Bits per pixel written (3rd value). `0` keeps the value in the file. |
+| `fullscreen` | `TRUE` | 4th value, `TRUE` or `FALSE`. |
+| `render_scale` | `off` | mtld3d render scale, set through `MTLD3D_CONFIG` in the game process (wins over `mtld3d.conf`; a `render.scale` already in `MTLD3D_CONFIG` is kept). `auto`: renders about as many pixels as 1680x1050 (0.52 at 3360x1890, 0.95 at 1728x1117) and MetalFX upscales. A number in `0.01`..`1.0` is used as given. `off`: not set. |
+| `log` | `1` | `0`: log only changes and errors, not the display query. |
 
 ## Troubleshooting
 

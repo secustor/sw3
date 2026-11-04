@@ -1,0 +1,2010 @@
+-- sw3-traffic pirate haunts (Lua 4.0.1). Spec: design/haunt-spec.md (design worldbuilding/16-pirate-haunts.md, step 1).
+-- Public TRF_Haunt_* (module name Haunt in the loader lists), internal TRF_Ha<X>, log module=haunt through TRF_HaE / TRF_HaDE.
+-- Step 1: the scripted pirate flights of the 58 systems in TRF_HauntData (tools/gen_haunt.py) become the haunt of the
+-- region's clan. A wrapper of the global NewPirateFlight (installed once per MapInitialization, TRF_InstallHaunt) is armed
+-- only between TRF_OnEnter and TRF_OnActivate (haunt_mode 1): a listed sign that the plan fields is built by the vanilla
+-- builder in group TRF_Haunt_1 of team Pirates at the haunt power (flight_/ship_/pilot_<sign> are real objects, the
+-- following Patrol line runs unchanged); a listed sign the plan skips gets a stub object until TRF_OnActivate. Pinned
+-- signs are always fielded. haunt_mode 2: vanilla builds every flight, TRF_OnActivate deletes the unpinned ones and builds
+-- the plan with the static routes. The plan is a pure function of saved state: phase count factor haunt_f (haunt_f_swept
+-- in the sweep target during Bust), tier power delta haunt_dp, kill memory TRF.haunt[idx] (refilled haunt_regen_pct of the
+-- vanilla count per haunt_regen_legs legs, applied at entry), never more flights than vanilla, no flight near an unopened
+-- clan stash cache. Replacement only in a non-excluded system (deny entries haunt = 0: X297, El Ariash; cfg haunt_off),
+-- from chapter 5, in mod mode (trf_safety TRF_SysMode) and through the strict gate (TRF_StrictOk feature haunt).
+-- Feeds: a destroyed flight writes the kill memory and costs the clan 2 score (with player fire through trf_events'
+-- TRF_Ev_Recover: dis -1 inside its visit cap, clan nk + 1); every destroyed ship feeds battle scars source 7.
+-- Pirate fits (design/fits-spec.md 5.2-5.4): with trf_fits on, both build sites take a graded row through TRF_Ft_Haunt
+-- (the vanilla builder with a row copy), the grade digits of the fielded flights are saved in TRF.nv.e and an elite
+-- kill costs the clan 3 score; a quest-gated visit (gate_quest) arms a fits-only record (mode 3): listed unpinned
+-- signs of the vanilla group get the captured roll only through TRF_Ft_Gate, in the caller's group at vanilla power.
+-- Relations: the haunt group copies the vanilla group's relation to the player after activate.script and mirrors later
+-- changes one way (haunt_mirror). Jump: every live haunt flight is deleted. Load: the saved flights are adopted by their
+-- globals (TRF.nv) and re-armed. Saved: TRF.haunt[idx] = {k, l, c}, TRF.nv = {i, b, e}, TRF.nst = {n, k, p},
+-- TRF.clan[slot].nk, .nl, .ns. Visit state lives in the chunk local HA (never saved; rebuilt by every MapInitialization).
+-- Layout as trf_stash: helpers, static tables, pure functions (*Of), state, gates, install and wrapper, entry,
+-- activation, callbacks, step, jump, load, contract functions. Top level: functions and HA only.
+
+local HA = {v={}};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_HaHA() return %HA; end;
+
+-- logfmt event line, module=haunt (design/log-format.md).
+function TRF_HaE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "haunt"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_HaErr(m)
+	TRF_HaE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler (handles that may be stale, a builder that may fail): nil is the answer.
+function TRF_HaNoErr(m) end;
+
+function TRF_HaLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" and type(TRF_Cfg) == "function" then v = TRF_Cfg().log; end;
+	if type(v) ~= "number" then v = 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_HaDE(event, ...)
+	if TRF_HaLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_HaE, arg);
+end;
+
+function TRF_HaCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+function TRF_HaNum(x, lo, hi)
+	return type(x) == "number" and x >= lo and x <= hi;
+end;
+
+-- Enumerated cfg keys of this module: {lo, hi}; other number keys are 0..1.
+function TRF_HaEnum()
+	return {haunt_mode={1, 2}, haunt_trig={1, 2}};
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Haunt_OptDef), else the raw config, else the default; a wrong type or a number
+-- outside its range reads as the default.
+function TRF_HaOpt(key)
+	local d = TRF_Haunt_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	if type(v) == "number" then
+		local e = TRF_HaEnum()[key] or {0, 1};
+		if v ~= floor(v) or v < e[1] or v > e[2] then return d; end;
+	end;
+	return v;
+end;
+
+-- Clamp ranges of the tune keys (lists: every entry).
+function TRF_HaClampT()
+	return {haunt_f={0, 100}, haunt_f_swept={0, 100}, haunt_dp={-5, 5}, haunt_regen_pct={0, 100}, haunt_regen_legs={1, 100},
+		haunt_cache_r={0, 5000}, haunt_grudge_nk={1, 99}, haunt_cap={0, 1}};
+end;
+
+-- Power step of tier T (design/strength-spec.md 4.3): the dp column of trf_str's tier table; a cfg tune haunt_dp set
+-- explicitly (a list in the cfg tune table) wins, and without trf_str the tune value (default {-1, 0, 1, 1}) is used.
+function TRF_HaDpOf(T, tn)
+	local o = TRF_N("TRF_CfgGet", "tune", nil);
+	local R = TRF_N("TRF_StrRow", T or 1);
+	if (type(o) ~= "table" or type(o.haunt_dp) ~= "table") and type(R) == "table" and type(R.dp) == "number" then return R.dp; end;
+	return tn.haunt_dp[T or 1] or 0;
+end;
+
+-- Tune values of this module, clamped; list keys copied with each entry clamped. Cached in HA while TRF_Tune returns
+-- the same table; callers must not write into it.
+function TRF_HaTune()
+	local ha = %HA;
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_HaErr); end;
+	if type(ha.tc) == "table" and ha.tc.s == t then return ha.tc.t; end;
+	local d, cl, o = TRF_Haunt_TuneDef(), TRF_HaClampT(), {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if type(x) ~= type(v) then x = v; end;
+		local r = cl[k];
+		if type(x) == "table" then
+			local w = {};
+			for i = 1, getn(v) do
+				local e = x[i];
+				if type(e) ~= "number" then e = v[i]; end;
+				w[i] = TRF_HaCl(floor(e), r[1], r[2]);
+			end;
+			x = w;
+		elseif r then
+			x = TRF_HaCl(floor(x), r[1], r[2]);
+		end;
+		o[k] = x;
+	end;
+	ha.tc = {s=t, t=o};
+	return o;
+end;
+
+function TRF_HaT(key)
+	return TRF_HaTune()[key];
+end;
+
+function TRF_HaLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+function TRF_HaGen()
+	if type(TRF) == "table" and type(TRF.gen) == "number" then return TRF.gen; end;
+	return 0;
+end;
+
+-- Lowercase map name of system idx (data key, log values), or the index.
+function TRF_HaName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" and n ~= "?" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+function TRF_HaCur()
+	local i = TRF_N("TRF_CurIdx");
+	if type(i) == "number" then return i; end;
+	return nil;
+end;
+
+function TRF_HaTxt(key, a)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a); end;
+	return tostring(key);
+end;
+
+-- Screen line (pilot nil) or radio line of pilot (cfg ui_out 2), through trf_ui's TRF_Say.
+function TRF_HaSay(text, secs, pilot)
+	if type(text) ~= "string" or text == "" then return nil; end;
+	return TRF_N("TRF_Say", text, secs or TRF_HaK().secs, pilot);
+end;
+
+-- 1 while a story mission runs (GetPlayerQuestState() == TRUE).
+function TRF_HaQuest()
+	if type(GetPlayerQuestState) ~= "function" then return nil; end;
+	if GetPlayerQuestState() == TRUE then return 1; end;
+	return nil;
+end;
+
+function TRF_HaClanName(slot)
+	local n = TRF_N("TRF_ClanName", slot);
+	if type(n) == "string" then return n; end;
+	return "pirates";
+end;
+
+function TRF_HaDist(a, b)
+	if type(a) ~= "table" or type(b) ~= "table" or type(a.x) ~= "number" or type(b.x) ~= "number" then return nil; end;
+	local dx, dy, dz = a.x - b.x, (a.y or 0) - (b.y or 0), (a.z or 0) - (b.z or 0);
+	return sqrt(dx * dx + dy * dy + dz * dz);
+end;
+
+-- Accessors (one native each, protected) -----------------------------------------------
+
+function TRF_HaObj(o)
+	if o == nil or type(o) == "number" or type(o) == "string" or type(o) == "function" then return nil; end;
+	return 1;
+end;
+
+function TRF_HaAliveRaw(o)
+	return o:IsAlive();
+end;
+
+-- 1 when o is a live engine object (IsAlive answers true; the stub answers nil).
+function TRF_HaAlive(o)
+	if not TRF_HaObj(o) then return nil; end;
+	local v = call(TRF_HaAliveRaw, {o}, "x", TRF_HaNoErr);
+	if v == nil or v == 0 or (FALSE ~= nil and v == FALSE) then return nil; end;
+	return 1;
+end;
+
+function TRF_HaDelRaw(o)
+	o:Delete();
+	return 1;
+end;
+
+function TRF_HaDel(o)
+	if not TRF_HaObj(o) then return nil; end;
+	return call(TRF_HaDelRaw, {o}, "x", TRF_HaNoErr);
+end;
+
+function TRF_HaTrig(kind, cb, a, b)
+	if type(NewTrigger) ~= "function" then return nil; end;
+	return call(NewTrigger, {kind, nil, cb, a, b}, "x", TRF_HaErr);
+end;
+
+-- Callback string with the table index and the current TRF.gen last (traffic's rule, T_BadCallbacks):
+-- TRF_HaCb("TRF_Haunt_Died", 3) -> "TRF_Haunt_Died(3,<gen>)--"; with j: "TRF_HaShipDied(3,2,<gen>)--".
+function TRF_HaCb(name, i, j)
+	if j then return name.."("..i..","..j..","..TRF_HaGen()..")--"; end;
+	return name.."("..i..","..TRF_HaGen()..")--";
+end;
+
+function TRF_HaShipsRaw(fl, jmax)
+	local out = {};
+	local n = fl:GetPilotCount();
+	if type(n) ~= "number" then return out; end;
+	for j = 1, min(n, jmax) do
+		local p = fl:GetPilotByNumber(j);
+		local s = nil;
+		if p then s = p:GetShip(); end;
+		out[j] = s;
+	end;
+	return out;
+end;
+
+-- Ships of flight fl (at most K.j_max), index j as the builder numbered them; the ship_<sign>_<j> globals fill gaps,
+-- never with a ship already listed (after a load the pilot list is compacted, so a global can name a listed ship; a
+-- second entry would give it two labels, two died triggers and two scar entries).
+function TRF_HaShips(fl, sign)
+	local K = TRF_HaK();
+	local out = call(TRF_HaShipsRaw, {fl, K.j_max}, "x", TRF_HaNoErr);
+	if type(out) ~= "table" then out = {}; end;
+	for j = 1, K.j_max do
+		if not TRF_HaObj(out[j]) and type(sign) == "string" then
+			local s = getglobal("ship_"..sign.."_"..j);
+			local dup = nil;
+			for k = 1, K.j_max do if out[k] ~= nil and out[k] == s then dup = 1; end; end;
+			if TRF_HaObj(s) and not dup then out[j] = s; end;
+		end;
+	end;
+	return out;
+end;
+
+function TRF_HaLeaderRaw(fl)
+	return fl:GetLeader();
+end;
+
+-- Group relation a -> b (objects or names), or nil.
+function TRF_HaGetRel(a, b)
+	if type(GetGroupRelation) ~= "function" or a == nil or b == nil then return nil; end;
+	local v = call(GetGroupRelation, {a, b}, "x", TRF_HaNoErr);
+	if type(v) == "number" then return v; end;
+	return nil;
+end;
+
+function TRF_HaSetRelRaw(a, b, r)
+	SetGroupRelation(a, b, r);
+	return 1;
+end;
+
+function TRF_HaSetRel(a, b, r)
+	if type(SetGroupRelation) ~= "function" or type(r) ~= "number" then return nil; end;
+	return call(TRF_HaSetRelRaw, {a, b, r}, "x", TRF_HaErr);
+end;
+
+-- Relation name for the log.
+function TRF_HaRelName(r)
+	if RELATION_WAR ~= nil and r == RELATION_WAR then return "war"; end;
+	if RELATION_FRIEND ~= nil and r == RELATION_FRIEND then return "friend"; end;
+	if RELATION_NEUTRAL ~= nil and r == RELATION_NEUTRAL then return "neutral"; end;
+	return tostring(r);
+end;
+
+-- Static tables --------------------------------------------------------------------
+
+-- Constants without a cfg key: flights per system at most (the TRF.nv bit string), ships per flight (labels
+-- trf_haunt_<i>_<j>), the haunt group and its build global, line seconds, clan score per destroyed flight, counter and
+-- nk bounds, the phase line keys (index phase + 1).
+function TRF_HaK()
+	return {f_max=31, j_max=6, grp="TRF_Haunt_".."1", gg="TRF_GHaunt_".."1", secs=8, hit_secs=6, score=-2, score_el=-3, cnt_max=99999, nk_max=99,
+		lines={"hauntquiet", nil, "hauntfull", "hauntraid", "hauntbust", nil}, swept_nl=7};
+end;
+
+-- Entry of system name nm in TRF_HauntData (cached per MapInitialization), or nil.
+function TRF_HaData(nm)
+	local ha = %HA;
+	if type(ha.data) ~= "table" then
+		ha.data = {};
+		if type(TRF_HauntData) == "function" then
+			local d = call(TRF_HauntData, {}, "x", TRF_HaErr);
+			if type(d) == "table" then ha.data = d; end;
+		end;
+	end;
+	local e = ha.data[nm];
+	if type(e) == "table" and type(e.f) == "table" and getn(e.f) > 0 then return e; end;
+	return nil;
+end;
+
+-- BEGIN gen_haunt.py (do not edit by hand)
+-- Per system (lowercase map name): g the vanilla group global, a {x, z} the rank anchor, f the listed flights
+-- {s sign, x, y, z spawn, t type, p power, rk rank, rr route radius, pin, c conditional, r route} in file order
+-- (design 6 static data; tools/gen_haunt.py, design/haunt-spec.md 5.2).
+function TRF_HauntData()
+	return {
+		ahilles = {g="Pirate_Group_1_1", a={0, 0}, f={
+			{s="Pirate01", x=782, y=-100, z=-758, t=1, p=10, rk=2, rr=1408, r={{300, 420, 100}, {-400, 0, 0}, {800, -120, -800}}},
+			{s="Pirate02", x=940, y=40, z=-536, t=1, p=3, rk=1, rr=1649, pin=1, r={{300, 0, 400}, {-100, -20, 100}, {-400, 30, -500}, {-700, 0, -700}, {400, 30, -500}, {800, 30, -500}}},
+		}},
+		altair = {g="Pirate_Group_1", a={0, 0}, f={
+			{s="pir_20", x=-596, y=-10, z=-856, t=2, p=20, rk=1, rr=385, r={{-876, 0, -592}, {-980, 0, -868}, {-480, 0, -968}}},
+		}},
+		altrabon = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="pir_11", x=-580, y=0, z=-660, t=1, p=8, rk=1, rr=438, r={{-828, 0, -372}, {-940, 0, -908}, {-500, 0, -904}}},
+			{s="pir02", x=-224, y=0, z=-868, t=1, p=12, rk=2, rr=510, r={{-60, 0, -732}, {-396, 0, -700}, {-732, 0, -832}, {-56, 0, -936}}},
+			{s="pir03", x=864, y=0, z=-548, t=1, p=12, rk=4, rr=406, r={{576, 0, -524}, {600, 0, -240}, {968, 0, -236}, {908, 0, -612}}},
+			{s="pir04", x=792, y=0, z=-652, t=1, p=14, rk=5, rr=346, r={{516, 0, -860}, {864, 0, -980}, {948, 0, -804}, {668, 0, -588}}},
+			{s="pir05", x=584, y=0, z=824, t=1, p=12, rk=3, rr=420, r={{264, 0, 932}, {256, 0, 580}, {892, 0, 956}, {904, 0, 552}}},
+			{s="pir06", x=-548, y=0, z=888, t=1, p=13, rk=6, rr=681, r={{-876, 0, 948}, {-940, 0, 552}, {-884, 0, 296}, {-512, 0, 628}, {-648, 0, 904}}},
+		}},
+		argon = {g="PirateGroup_1", a={0, 0}, f={
+			{s="Pir01", x=952, y=-80, z=-696, t=1, p=7, rk=7, rr=397, r={{916, 0, -496}, {760, 0, -420}, {624, 0, -904}}},
+			{s="Pir02", x=-600, y=20, z=-804, t=1, p=5, rk=6, rr=438, r={{-468, 0, -660}, {-576, 0, -428}, {-848, 0, -444}, {-900, 0, -812}}},
+			{s="Pir03", x=-652, y=0, z=-492, t=1, p=6, rk=4, rr=490, pin=1, r={{-668, 0, -336}, {-408, 0, -540}, {-388, 0, -904}}},
+			{s="Pir04", x=-592, y=0, z=440, t=1, p=4, rk=2, rr=295, r={{-304, 0, 500}, {-632, 0, 688}, {-772, 0, 396}}},
+			{s="Pir05", x=-140, y=0, z=-884, t=2, p=5, rk=5, rr=409, r={{-192, 0, -660}, {-448, 0, -616}, {-420, 0, -972}}},
+			{s="Pir06", x=-732, y=0, z=272, t=2, p=5, rk=3, rr=657, r={{-752, 0, 372}, {-936, 0, 708}, {-700, 0, 928}, {-588, 0, 620}}},
+			{s="Pir07", x=180, y=0, z=608, t=1, p=5, rk=1, rr=628, r={{-244, 0, 600}, {-432, 0, 560}, {-384, 0, 884}, {-56, 0, 848}}},
+			{s="Pir08", x=876, y=0, z=-880, t=2, p=5, rk=8, rr=581, r={{820, 0, -876}, {588, 0, -632}, {604, 0, -408}, {868, 0, -300}}},
+		}},
+		aurora = {g="Pirate_Group_1_1", a={0, 0}, f={
+			{s="pir_1", x=-600, y=0, z=-500, t=1, p=4, rk=3, rr=697, pin=1, r={{-250, 50, 100}, {-600, 0, -500}}},
+			{s="pir_2", x=-220, y=100, z=168, t=1, p=5, rk=1, rr=951, r={{-600, 0, -500}, {-200, -50, 0}, {700, 50, 400}}},
+			{s="Pir03", x=-772, y=0, z=-256, t=1, p=5, rk=4, rr=733, r={{-700, 0, -188}, {-212, 0, -204}, {-260, 0, -780}}},
+			{s="Pir04", x=-344, y=0, z=-744, t=1, p=7, rk=5, rr=701, r={{-420, 0, -684}, {-688, 0, -660}, {-916, 0, -340}, {-916, 0, -912}, {-176, 0, -916}}},
+			{s="Pir05", x=-372, y=0, z=848, t=1, p=5, rk=6, rr=727, r={{-404, 0, 704}, {-668, 0, 480}, {-928, 0, 380}, {-872, 0, 868}}},
+			{s="Pir06", x=-348, y=0, z=-548, t=2, p=5, rk=2, rr=582, r={{-400, 0, -700}, {-816, 0, -888}, {-872, 0, -296}, {-464, 0, -204}}},
+			{s="Pir07", x=364, y=0, z=912, t=2, p=4, rk=7, rr=590, r={{252, 0, 948}, {-224, 0, 952}, {328, 0, 688}, {452, 0, 972}}},
+		}},
+		avalon = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="pir_1", x=-600, y=0, z=-600, t=1, p=12, rk=3, rr=1119, r={{-500, 40, -500}, {400, 20, -600}, {500, 20, -400}, {-400, 20, -300}}},
+			{s="pir02", x=-844, y=0, z=-840, t=1, p=10, rk=9, rr=774, r={{-416, 0, -544}, {-560, 0, -120}, {-968, 0, -408}, {-740, 0, -776}}},
+			{s="pir03", x=708, y=0, z=-912, t=1, p=11, rk=8, rr=477, r={{232, 0, -932}, {332, 0, -656}, {832, 0, -492}, {940, 0, -912}}},
+			{s="pir04", x=-355, y=0, z=982, t=1, p=12, rk=6, rr=1260, r={{-252, 0, 968}, {-248, 0, 950}, {-52, 0, 956}, {396, 0, 936}, {904, 0, 944}, {864, 0, 844}, {40, 0, 988}}},
+			{s="pir05", x=-564, y=0, z=-796, t=2, p=11, rk=4, rr=779, r={{-932, 0, -912}, {-964, 0, -128}, {-600, 0, -184}, {-620, 0, -824}}},
+			{s="pir06", x=448, y=0, z=964, t=2, p=10, rk=7, rr=627, r={{120, 0, 956}, {948, 0, 968}, {952, 0, 592}}},
+			{s="pir07", x=408, y=0, z=-716, t=1, p=9, rk=2, rr=561, r={{384, 0, -624}, {900, 0, -488}, {900, 0, -916}, {-112, 0, -924}}},
+			{s="pir08", x=-612, y=0, z=-116, t=1, p=10, rk=1, rr=837, r={{-636, 0, -124}, {-920, 0, -148}, {-924, 0, -688}, {-600, 0, -940}, {-300, 0, -892}, {-656, 0, -484}}},
+			{s="pir09", x=-828, y=0, z=-596, t=2, p=11, rk=5, rr=618, r={{-956, 0, 8}, {-600, 0, -188}, {-780, 0, -784}, {-360, 0, -912}, {-904, 0, -908}}},
+		}},
+		b_leftera2 = {g="PiratesGroup_1", a={-184, 600}, f={
+			{s="pir01", x=-312, y=0, z=656, t=1, p=20, rk=1, rr=472, r={{-400, 0, 456}, {-280, 0, 312}, {84, 0, 400}, {68, 0, 680}, {-392, 0, 756}}},
+			{s="pir02", x=-584, y=0, z=620, t=2, p=20, rk=4, rr=950, r={{-884, 0, 336}, {-536, 0, -328}, {-492, 0, 676}}},
+			{s="pir03", x=-320, y=0, z=928, t=1, p=19, rk=2, rr=670, r={{68, 0, 656}, {44, 0, 472}, {-184, 0, 272}, {-424, 0, 284}, {-384, 0, 728}, {-112, 0, 816}}},
+			{s="pir04", x=0, y=0, z=924, t=2, p=19, rk=3, rr=565, r={{156, 0, 704}, {68, 0, 528}, {-200, 0, 396}, {-336, 0, 672}, {-120, 0, 808}}},
+			{s="pir05", x=-652, y=0, z=340, t=1, p=18, rk=5, rr=742, r={{-480, 0, -68}, {88, 0, 300}, {-712, 0, 464}}},
+		}},
+		callipso = {g="PiratesGroup_1", a={-464, -668}, f={
+			{s="Pirate01", x=-314, y=0, z=-758, t=1, p=7, rk=1, rr=489, r={{-264, 20, -668}, {-364, -20, -368}, {-764, 0, -568}, {-464, 20, -768}, {-364, 20, -788}}},
+			{s="Pirate02", x=-452, y=0, z=-854, t=1, p=6, rk=2, rr=794, r={{100, -30, -450}, {-300, -50, -200}, {-700, 0, -100}, {-800, 0, -300}}},
+			{s="pir03", x=608, y=0, z=-848, t=1, p=7, rk=6, rr=352, r={{928, 0, -900}, {836, 0, -580}, {404, 0, -852}}},
+			{s="pir04", x=-712, y=0, z=-540, t=1, p=6, rk=3, rr=467, r={{-344, 0, -564}, {-380, 0, -212}, {-856, 0, -164}, {-892, 0, -900}}},
+			{s="pir05", x=768, y=0, z=884, t=1, p=8, rk=11, rr=514, r={{936, 0, 940}, {476, 0, 952}, {292, 0, 692}, {956, 0, 612}}},
+			{s="pir06", x=268, y=0, z=924, t=2, p=4, rk=10, rr=417, r={{248, 0, 712}, {616, 0, 696}, {664, 0, 944}, {100, 0, 952}}},
+			{s="pir07", x=-224, y=0, z=840, t=1, p=5, rk=9, rr=629, r={{200, 0, 740}, {164, 0, 952}, {-528, 0, 940}, {-820, 0, 640}, {-412, 0, 804}}},
+			{s="pir08", x=-796, y=0, z=784, t=1, p=6, rk=8, rr=382, r={{-968, 0, 504}, {-416, 0, 756}, {-524, 0, 960}, {-788, 0, 828}}},
+			{s="pir09", x=220, y=0, z=-780, t=1, p=7, rk=5, rr=351, r={{4, 0, -928}, {-88, 0, -612}, {436, 0, -560}, {468, 0, -888}}},
+			{s="pir10", x=876, y=0, z=-584, t=1, p=8, rk=7, rr=563, r={{892, 0, -472}, {552, 0, -592}, {428, 0, -924}, {896, 0, -884}}},
+			{s="pir11", x=-56, y=0, z=-676, t=2, p=8, rk=4, rr=391, r={{332, 0, -716}, {-72, 0, -460}, {-308, 0, -680}, {-76, 0, -836}}},
+		}},
+		corrino = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="PirPatrol01", x=750, y=0, z=-790, t=1, p=1, rk=3, rr=797, r={{300, 20, -900}, {250, -10, -200}, {650, 20, 0}, {750, 10, -800}}},
+			{s="PirPatrol02", x=844, y=0, z=-576, t=1, p=3, rk=1, rr=970, r={{800, -10, -100}, {300, 0, 100}, {0, 10, -100}, {0, 20, -300}, {300, 0, -700}, {500, 0, -700}, {900, -10, -600}}},
+			{s="PirPatrol03", x=1012, y=0, z=-384, t=1, p=2, rk=2, rr=963, r={{1000, 0, -400}, {1000, 10, -100}, {700, 20, 0}, {200, 0, -900}, {500, 0, -600}, {400, 12, -300}}},
+		}},
+		debris1 = {g="PiratesGroup_1", a={-800, -800}, f={
+			{s="Pir01", x=-800, y=200, z=-720, t=1, p=8, rk=1, rr=539, pin=1, r={{-720, 200, -720}, {-300, 0, -700}}},
+			{s="Pir02", x=-800, y=220, z=-720, t=1, p=3, rk=2, rr=179, pin=1, r={{-720, 220, -720}, {-880, 220, -720}, {-880, 220, -880}, {-720, 220, -880}}},
+			{s="Pir03", x=-800, y=180, z=-720, t=1, p=4, rk=3, rr=179, pin=1, r={{-720, 180, -720}, {-720, 180, -880}, {-880, 180, -880}, {-880, 180, -720}}},
+			{s="pir04", x=764, y=0, z=360, t=1, p=5, rk=18, rr=321, r={{796, 0, 504}, {444, 0, 380}, {764, 0, 120}}},
+			{s="pir05", x=684, y=0, z=-352, t=1, p=6, rk=13, rr=384, r={{912, 0, -660}, {596, 0, -648}, {448, 0, -388}, {880, 0, -176}}},
+			{s="pir06", x=-392, y=0, z=188, t=1, p=8, rk=10, rr=268, pin=1, r={{-188, 0, 60}, {-128, 0, 228}, {-420, 0, 364}, {-576, 0, 12}, {-332, 0, -56}}},
+			{s="pir07", x=792, y=0, z=-528, t=2, p=5, rk=15, rr=363, r={{976, 0, -840}, {592, 0, -808}, {596, 0, -524}, {960, 0, -364}}},
+			{s="pir08", x=764, y=0, z=-828, t=1, p=9, rk=14, rr=276, r={{500, 0, -908}, {704, 0, -628}, {996, 0, -756}, {856, 0, -988}}},
+			{s="pir09", x=-340, y=0, z=-880, t=2, p=6, rk=6, rr=420, pin=1, r={{20, 0, -948}, {-172, 0, -732}, {-532, 0, -696}, {-748, 0, -976}}},
+			{s="pir10", x=-668, y=0, z=-500, t=2, p=10, rk=4, rr=464, pin=1, r={{-588, 0, -384}, {-836, 0, -192}, {-952, 0, -672}, {-916, 0, -892}, {-800, 0, -568}}},
+			{s="pir11", x=-952, y=0, z=-388, t=1, p=9, rk=5, rr=592, pin=1, r={{-928, 0, -136}, {-440, 0, -140}, {-376, 0, -252}, {-984, 0, -608}}},
+			{s="pir12", x=-904, y=0, z=-12, t=1, p=7, rk=8, rr=482, pin=1, r={{-896, 0, 212}, {-536, 0, 76}, {-456, 0, -188}, {-904, 0, -240}}},
+			{s="pir13", x=-796, y=0, z=712, t=1, p=6, rk=12, rr=293, pin=1, r={{-504, 0, 696}, {-840, 0, 940}, {-956, 0, 484}}},
+			{s="pir14", x=-472, y=0, z=540, t=1, p=6, rk=11, rr=544, pin=1, r={{-592, 0, 600}, {-896, 0, 504}, {-928, 0, 244}, {-476, 0, 132}}},
+			{s="pir15", x=-392, y=0, z=912, t=2, p=4, rk=16, rr=445, pin=1, r={{-652, 0, 964}, {-716, 0, 612}, {-32, 0, 652}, {-120, 0, 900}}},
+			{s="pir16", x=184, y=0, z=880, t=1, p=5, rk=17, rr=384, r={{548, 0, 760}, {320, 0, 584}, {20, 0, 632}, {-92, 0, 896}}},
+			{s="pir17", x=504, y=0, z=696, t=1, p=8, rk=19, rr=426, r={{664, 0, 676}, {896, 0, 564}, {592, 0, 280}, {380, 0, 520}}},
+			{s="pir18", x=208, y=0, z=-672, t=1, p=7, rk=9, rr=862, pin=1, r={{-196, 0, -676}, {-560, 0, -756}, {-604, 0, -960}, {-176, 0, -948}}},
+			{s="pir19", x=-312, y=0, z=-780, t=1, p=10, rk=7, rr=637, pin=1, r={{-196, 0, -484}, {-8, 0, -756}, {324, 0, -756}, {256, 0, -888}, {-128, 0, -904}}},
+		}},
+		debris2 = {g="Pirate_Group_1", a={0, 0}, f={
+			{s="Pir_5", x=151, y=5, z=157, t=1, p=3, rk=2, rr=170, r={{-19, 5, 157}, {251, 5, 77}, {131, 5, 77}}},
+			{s="Pir_6", x=-49, y=-55, z=157, t=1, p=3, rk=1, rr=289, r={{201, 5, 27}, {131, 0, 77}, {21, 5, 157}}},
+			{s="Pir_8", x=-710, y=50, z=-120, t=1, p=4, rk=5, rr=168, r={{-660, 60, -280}, {-770, 60, -180}}},
+			{s="Pir_9", x=-520, y=10, z=-50, t=2, p=2, rk=3, rr=151, r={{-530, 10, -90}, {-375, 50, -50}}},
+			{s="Pir_10", x=-490, y=10, z=-250, t=1, p=3, rk=4, rr=140, r={{-500, 70, -270}, {-375, -50, -200}}},
+			{s="pir01", x=-324, y=0, z=-868, t=1, p=10, rk=9, rr=609, r={{-480, 0, -876}, {-912, 0, -736}, {-928, 0, -940}, {-32, 0, -928}, {-180, 0, -656}}},
+			{s="pir02", x=708, y=0, z=-840, t=1, p=12, rk=11, rr=527, r={{916, 0, -576}, {568, 0, -456}, {184, 0, -888}, {892, 0, -896}}},
+			{s="pir03", x=716, y=0, z=-104, t=1, p=8, rk=6, rr=920, r={{712, 0, -452}, {164, 0, -840}, {892, 0, -900}}},
+			{s="pir04", x=-732, y=0, z=600, t=1, p=7, rk=10, rr=532, r={{-900, 0, 324}, {-416, 0, 396}, {-200, 0, 600}, {-620, 0, 852}, {-892, 0, 680}, {-588, 0, 536}}},
+			{s="pir05", x=-408, y=0, z=736, t=1, p=8, rk=7, rr=585, r={{8, 0, 732}, {-112, 0, 536}, {-32, 0, 472}, {-240, 0, 176}, {-532, 0, 412}, {-476, 0, 840}}},
+			{s="pir06", x=-636, y=0, z=-604, t=1, p=9, rk=8, rr=664, r={{-884, 0, -284}, {-928, 0, -688}, {-388, 0, -796}, {24, 0, -536}, {-520, 0, -544}}},
+		}},
+		debris3 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="Pir_2", x=-20, y=30, z=20, t=2, p=2, rk=1, rr=95, r={{-30, 20, -20}, {30, -40, -20}, {0, 20, 30}}},
+			{s="Pir_3", x=-170, y=0, z=-520, t=1, p=4, rk=2, rr=254, r={{-380, -20, -560}, {-150, -20, -560}, {80, -20, -560}}},
+			{s="pir04", x=-588, y=0, z=-388, t=1, p=3, rk=3, rr=407, r={{-356, 0, -648}, {-820, 0, -684}, {-784, 0, -32}, {-448, 0, -16}, {-608, 0, -308}}},
+			{s="pir05", x=-380, y=0, z=-800, t=1, p=4, rk=6, rr=694, r={{-128, 0, -820}, {124, 0, -700}, {-384, 0, -384}, {-800, 0, -248}, {-712, 0, -648}}},
+			{s="pir06", x=656, y=0, z=-732, t=1, p=5, rk=8, rr=718, r={{392, 0, -668}, {-44, 0, -888}, {860, 0, -912}}},
+			{s="pir07", x=884, y=0, z=-320, t=1, p=6, rk=7, rr=633, r={{688, 0, -84}, {296, 0, -360}, {496, 0, -820}, {800, 0, -676}}},
+			{s="pir08", x=-772, y=0, z=140, t=1, p=7, rk=4, rr=590, r={{-788, 0, 480}, {-532, 0, 488}, {-816, 0, -124}, {-288, 0, -196}, {-796, 0, -372}}},
+			{s="pir09", x=-652, y=0, z=560, t=1, p=8, rk=5, rr=763, r={{-420, 0, 560}, {20, 0, 920}, {-848, 0, 936}, {-808, 0, 200}}},
+		}},
+		debris4 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="pir01", x=-768, y=0, z=-828, t=1, p=9, rk=9, rr=261, r={{-576, 0, -1004}, {-888, 0, -1012}, {-896, 0, -668}, {-628, 0, -688}}},
+			{s="pir02", x=852, y=0, z=836, t=1, p=9, rk=11, rr=425, r={{972, 0, 916}, {696, 0, 956}, {764, 0, 656}, {956, 0, 424}}},
+			{s="pir03", x=864, y=0, z=-596, t=1, p=11, rk=8, rr=293, r={{976, 0, -388}, {860, 0, -304}, {796, 0, -380}, {816, 0, -668}, {996, 0, -728}}},
+			{s="pir04", x=-812, y=0, z=-548, t=1, p=10, rk=5, rr=240, r={{-916, 0, -680}, {-940, 0, -352}, {-664, 0, -360}, {-632, 0, -632}}},
+			{s="pir05", x=-836, y=0, z=-276, t=2, p=9, rk=3, rr=270, r={{-656, 0, -408}, {-964, 0, -400}, {-952, 0, -68}, {-632, 0, -100}}},
+			{s="pir06", x=-796, y=0, z=52, t=1, p=7, rk=1, rr=333, r={{-644, 0, 204}, {-780, 0, 384}, {-956, 0, 144}, {-912, 0, -68}, {-644, 0, -32}}},
+			{s="pir07", x=-952, y=0, z=300, t=2, p=10, rk=6, rr=353, r={{-948, 0, 592}, {-668, 0, 508}, {-668, 0, 364}, {-744, 0, 200}, {-960, 0, 268}}},
+			{s="pir08", x=-752, y=0, z=660, t=1, p=6, rk=7, rr=222, r={{-616, 0, 648}, {-628, 0, 756}, {-932, 0, 772}, {-920, 0, 516}, {-700, 0, 480}}},
+			{s="pir09", x=-856, y=0, z=888, t=2, p=13, rk=12, rr=361, r={{-872, 0, 664}, {-564, 0, 676}, {-656, 0, 948}, {-964, 0, 928}}},
+			{s="pir10", x=796, y=0, z=232, t=1, p=8, rk=2, rr=272, r={{988, 0, 424}, {784, 0, 440}, {644, 0, 124}, {708, 0, 16}, {960, 0, 28}}},
+			{s="pir11", x=708, y=0, z=-912, t=1, p=9, rk=10, rr=301, r={{596, 0, -808}, {744, 0, -720}, {972, 0, -768}, {972, 0, -956}, {524, 0, -956}}},
+			{s="pir12", x=900, y=0, z=-76, t=1, p=7, rk=4, rr=373, r={{984, 0, 44}, {976, 0, 220}, {768, 0, 272}, {708, 0, 148}, {872, 0, -196}, {948, 0, -288}}},
+		}},
+		debris6 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="Pir_2", x=250, y=30, z=-570, t=1, p=5, rk=3, rr=71, r={{260, 60, -530}, {260, 60, -570}, {300, 60, -570}, {300, 60, -530}}},
+			{s="Pir_5", x=146, y=5, z=-20, t=2, p=7, rk=1, rr=114, r={{120, 14, 45}, {100, -5, -55}, {250, 35, -55}}},
+			{s="pir01", x=-140, y=0, z=600, t=1, p=7, rk=2, rr=282, r={{88, 0, 572}, {-68, 0, 872}, {-312, 0, 792}, {-392, 0, 608}}},
+			{s="pir02", x=932, y=0, z=-512, t=1, p=6, rk=7, rr=468, r={{664, 0, -524}, {772, 0, -700}, {672, 0, -900}, {924, 0, -892}, {788, 0, -252}}},
+			{s="pir03", x=624, y=0, z=184, t=1, p=5, rk=4, rr=318, r={{852, 0, 8}, {504, 0, 88}, {312, 0, 244}, {640, 0, 484}}},
+			{s="pir04", x=-660, y=0, z=-596, t=1, p=8, rk=6, rr=218, r={{-464, 0, -636}, {-580, 0, -412}, {-796, 0, -444}, {-812, 0, -752}}},
+			{s="pir05", x=-536, y=0, z=620, t=1, p=9, rk=5, rr=478, r={{-560, 0, 704}, {-792, 0, 744}, {-956, 0, 392}, {-420, 0, 340}}},
+		}},
+		dosis = {g="PiratesGroup_1", a={704, 888}, f={
+			{s="Pir01", x=684, y=0, z=780, t=1, p=11, rk=1, rr=221, r={{600, 0, 900}, {700, 0, 1000}, {800, 0, 900}, {700, 0, 800}}},
+			{s="Pir02", x=-176, y=0, z=-440, t=1, p=13, rk=12, rr=624, r={{400, 0, -200}, {100, 0, -400}, {-300, 0, -300}, {-500, 0, -100}, {-100, 0, -400}}},
+			{s="Pir03", x=304, y=0, z=200, t=2, p=10, rk=7, rr=409, r={{200, 0, 400}, {400, 0, 500}, {700, 0, 300}, {400, 0, 100}}},
+			{s="Pir04", x=596, y=0, z=148, t=1, p=9, rk=6, rr=557, r={{100, 0, 400}, {300, 0, 100}, {700, 0, 200}, {500, 0, 100}}},
+			{s="Pir05", x=-172, y=0, z=292, t=1, p=10, rk=9, rr=288, r={{-200, 0, 100}, {100, 0, 200}}},
+			{s="Pir06", x=-80, y=0, z=368, t=1, p=10, rk=8, rr=294, r={{-100, 0, 400}, {-300, 0, 300}, {-200, 0, 100}}},
+			{s="Pir07", x=156, y=0, z=588, t=2, p=10, rk=4, rr=678, r={{200, 0, 400}, {-100, 0, 500}, {-400, 0, 400}, {-400, 0, 200}, {-200, 0, 400}}},
+			{s="Pir08", x=12, y=0, z=900, t=1, p=11, rk=5, rr=837, r={{0, 0, 900}, {-300, 0, 600}, {-600, 0, 400}, {-800, 0, 700}}},
+			{s="Pir09", x=564, y=0, z=864, t=1, p=10, rk=2, rr=355, r={{400, 0, 900}, {800, 0, 600}}},
+			{s="Pir010", x=384, y=0, z=436, t=1, p=11, rk=3, rr=462, r={{600, 0, 400}, {700, 0, 100}, {300, 0, 100}, {300, 0, 400}}},
+			{s="Pir011", x=220, y=0, z=-488, t=1, p=11, rk=10, rr=648, r={{500, 0, -700}, {100, 0, -500}, {-400, 0, -300}}},
+			{s="Pir012", x=444, y=0, z=-572, t=2, p=10, rk=11, rr=299, r={{500, 0, -300}, {200, 0, -400}, {500, 0, -300}, {500, 0, -600}}},
+		}},
+		el_ariash = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="Pir01", x=792, y=0, z=-796, t=1, p=8, rk=6, rr=503, pin=1, r={{900, 0, -600}, {600, 0, -700}, {300, 0, -900}, {700, 0, -900}}},
+			{s="Pir02", x=-660, y=0, z=-872, t=1, p=8, rk=5, rr=561, pin=1, r={{-100, 0, -900}, {-500, 0, -600}, {-650, 0, -900}}},
+			{s="Pir03", x=-828, y=0, z=-480, t=1, p=8, rk=4, rr=465, pin=1, r={{-900, 0, -100}, {-400, 0, -300}, {-600, 0, -700}}},
+			{s="Pir04", x=-420, y=0, z=-304, t=1, p=8, rk=1, rr=487, pin=1, r={{-200, 0, -300}, {-400, 0, 0}, {-800, 0, 0}, {-600, 0, -400}}},
+			{s="Pir05", x=-252, y=0, z=624, t=1, p=8, rk=2, rr=693, pin=1, r={{-100, 0, 900}, {-300, 0, 400}, {-500, 0, 300}, {-800, 0, 200}}},
+			{s="Pir06", x=-492, y=0, z=560, t=1, p=8, rk=3, rr=598, pin=1, r={{-500, 0, 600}, {-800, 0, 300}, {-700, 0, 0}, {-900, 0, 500}, {-400, 0, 800}}},
+		}},
+		elinor = {g="Pirate_Group_1", a={-40, -470}, f={
+			{s="Pir_1", x=20, y=0, z=-410, t=2, p=7, rk=1, rr=477, r={{-60, 0, 60}, {-100, 0, -530}, {20, 0, -530}, {20, 0, -410}}},
+			{s="Pir_2", x=450, y=80, z=550, t=2, p=9, rk=6, rr=708, r={{-50, 50, 50}, {350, 80, 450}, {450, 80, 450}, {450, 80, 550}}},
+			{s="Pir_5", x=-344, y=0, z=-424, t=1, p=8, rk=3, rr=386, r={{-660, 0, -204}, {-204, 0, -296}, {-488, 0, -628}}},
+			{s="Pir_7", x=184, y=-10, z=-384, t=2, p=12, rk=2, rr=486, r={{-300, -10, -350}, {-48, 0, -80}, {320, 0, -584}, {80, 0, -372}}},
+			{s="Pir_6", x=-450, y=0, z=-620, t=1, p=12, rk=5, rr=341, r={{-440, 0, -725}, {-200, 20, -390}}},
+			{s="Pir_8", x=-540, y=0, z=680, t=1, p=10, rk=8, rr=482, r={{-208, 0, 828}, {-748, 0, 836}, {-760, 0, 252}}},
+			{s="Pir_9", x=10, y=-10, z=700, t=2, p=8, rk=7, rr=589, r={{20, -10, 700}, {10, -10, 600}, {-240, 0, 888}, {568, 0, 888}}},
+			{s="Pir_10", x=300, y=0, z=-200, t=1, p=7, rk=4, rr=113, r={{290, 0, -200}, {250, -10, -300}}},
+		}},
+		elio = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="pir01", x=-544, y=0, z=-896, t=1, p=4, rk=7, rr=490, r={{-940, 0, -608}, {-928, 0, -916}, {-576, 0, -904}}},
+			{s="pir02", x=-932, y=0, z=272, t=2, p=5, rk=4, rr=917, r={{-924, 0, 416}, {-900, 0, 900}, {-296, 0, 932}, {-296, 0, 712}, {-660, 0, 860}, {-856, 0, 736}}},
+			{s="pir03", x=-316, y=0, z=860, t=1, p=5, rk=2, rr=835, r={{-320, -10, 928}, {-960, -10, 952}, {-952, -10, 320}, {-860, -10, 676}, {-688, -10, 852}, {-308, -10, 716}}},
+			{s="pir04", x=908, y=0, z=490, t=2, p=9, rk=5, rr=712, r={{908, 0, 492}, {956, 0, 944}, {392, 0, 980}, {404, 0, 936}, {652, 0, 688}, {552, 0, 612}}},
+			{s="pir05", x=404, y=0, z=952, t=2, p=8, rk=6, rr=787, r={{388, 0, 908}, {976, 0, 412}, {928, 0, 944}}},
+			{s="pir06", x=356, y=0, z=-900, t=2, p=7, rk=3, rr=834, r={{360, 0, -824}, {532, 0, -552}, {724, 0, -352}, {980, 0, -348}, {896, 0, -976}}},
+			{s="pir07", x=936, y=0, z=-868, t=2, p=6, rk=9, rr=740, r={{936, 0, -832}, {928, 0, -284}, {616, 0, -296}, {584, 0, -556}, {208, 0, -1000}}},
+			{s="pir08", x=580, y=0, z=-352, t=1, p=6, rk=1, rr=649, r={{892, 0, -368}, {928, 0, -792}, {524, 0, -952}, {468, 0, -624}, {324, 0, -948}, {556, 0, -380}, {664, 0, -636}}},
+			{s="pir09", x=932, y=0, z=-496, t=1, p=5, rk=8, rr=812, r={{704, 0, -492}, {416, 0, -748}, {284, 0, -984}, {980, 0, -996}, {980, 0, -512}, {860, 0, -360}}},
+			{s="pir10", x=-980, y=0, z=-936, t=2, p=6, rk=10, rr=577, r={{-956, 0, -508}, {-404, 0, -932}, {-852, 0, -952}}},
+		}},
+		endoria1 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="pir01", x=-404, y=0, z=-796, t=1, p=16, rk=2, rr=330, r={{-172, 0, -796}, {-636, 0, -652}, {-636, 0, -936}, {-116, 0, -956}}},
+			{s="pir02", x=-24, y=0, z=-712, t=1, p=16, rk=1, rr=353, r={{224, 0, -712}, {-48, 0, -408}, {-372, 0, -656}, {-44, 0, -860}}},
+			{s="pir03", x=-68, y=0, z=-916, t=1, p=16, rk=3, rr=608, r={{256, 0, -916}, {16, 0, -620}, {-664, 0, -796}}},
+			{s="pir04", x=-776, y=0, z=-892, t=1, p=16, rk=5, rr=405, r={{-936, 0, -520}, {-432, 0, -680}, {-460, 0, -932}, {-936, 0, -896}}},
+			{s="pir05", x=820, y=0, z=868, t=1, p=16, rk=6, rr=499, r={{492, 0, 952}, {948, 0, 968}, {940, 0, 384}}},
+			{s="pir06", x=-848, y=0, z=-604, t=1, p=16, rk=4, rr=824, r={{-852, 0, -524}, {-880, 0, -868}, {-76, 0, -892}}},
+		}},
+		endoria2 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="pir01", x=-832, y=0, z=-628, t=1, p=14, rk=4, rr=485, r={{-876, 0, -516}, {-612, 0, -432}, {-356, 0, -716}, {-760, 0, -892}}},
+			{s="pir02", x=-324, y=0, z=-904, t=1, p=15, rk=2, rr=795, r={{-360, 0, -684}, {-512, 0, -504}, {-972, 0, -444}, {-904, 0, -908}, {-336, 0, -836}}},
+			{s="pir03", x=-596, y=0, z=-844, t=2, p=14, rk=3, rr=457, r={{-748, 0, -880}, {-940, 0, -544}, {-532, 0, -492}, {-296, 0, -868}}},
+			{s="pir04", x=-856, y=0, z=-372, t=2, p=15, rk=1, rr=734, r={{-912, 0, -652}, {-720, 0, -952}, {-272, 0, -816}, {-852, 0, -336}}},
+		}},
+		escaflon = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="pir01", x=-708, y=0, z=816, t=1, p=10, rk=6, rr=467, r={{-912, 0, 960}, {-320, 0, 944}, {-344, 0, 580}, {-884, 0, 384}}},
+			{s="pir02", x=-776, y=0, z=-812, t=1, p=9, rk=7, rr=673, r={{-924, 0, -156}, {-608, 0, -672}, {-120, 0, -816}, {-200, 0, -960}, {-884, 0, -916}}},
+			{s="pir03", x=648, y=0, z=408, t=1, p=8, rk=3, rr=393, r={{256, 0, 416}, {392, 0, 636}, {948, 0, 320}, {828, 0, 112}}},
+			{s="pir04", x=64, y=0, z=552, t=1, p=7, rk=1, rr=340, r={{-216, 0, 576}, {-164, 0, 300}, {252, 0, 332}, {216, 0, 588}}},
+			{s="pir05", x=-480, y=0, z=420, t=2, p=8, rk=2, rr=546, r={{-164, 0, 456}, {-236, 0, 684}, {-960, 0, 680}, {-900, 0, 96}, {-616, 0, 404}}},
+			{s="pir06", x=804, y=0, z=-860, t=2, p=9, rk=9, rr=837, r={{-32, 0, -900}, {16, 0, -756}, {588, 0, -696}, {604, 0, -304}, {960, 0, -160}, {948, 0, -880}}},
+			{s="pir07", x=840, y=0, z=764, t=2, p=10, rk=8, rr=476, r={{836, 0, 916}, {464, 0, 940}, {384, 0, 628}, {844, 0, 376}}},
+			{s="pir08", x=268, y=0, z=800, t=1, p=11, rk=4, rr=522, r={{144, 0, 928}, {720, 0, 696}, {572, 0, 376}, {36, 0, 568}}},
+			{s="pir09", x=-260, y=0, z=840, t=1, p=12, rk=5, rr=478, r={{176, 0, 948}, {160, 0, 612}, {-344, 0, 516}, {-484, 0, 888}}},
+		}},
+		gefest = {g="PiratesGroup_1", a={-100, -800}, f={
+			{s="pirates_1", x=-100, y=-70, z=-750, t=1, p=1, rk=1, rr=673, r={{-100, -70, -750}, {-500, -70, -600}, {-600, -70, -300}, {-300, -70, -300}}},
+			{s="pirates_2", x=-50, y=-130, z=-770, t=1, p=1, rk=2, rr=774, r={{700, -50, -600}, {200, -50, -400}, {0, -100, -600}, {-50, -130, -770}}},
+		}},
+		golkonda = {g="PiratesGroup_1", a={-192, 460}, f={
+			{s="Pirate01", x=748, y=0, z=304, t=1, p=12, rk=6, rr=1449, r={{750, 20, 300}, {-700, -10, 300}, {-400, 30, 600}}},
+			{s="Pirate02", x=-20, y=0, z=-616, t=1, p=13, rk=8, rr=812, r={{-400, 0, -400}, {-600, 0, -100}, {-800, 60, -400}, {0, 0, -700}, {500, 0, -500}, {600, 0, -100}, {200, 0, -500}, {0, 100, -600}}},
+			{s="Pirate03", x=132, y=0, z=476, t=1, p=15, rk=1, rr=604, r={{0, 100, 400}, {-200, 0, 300}, {-300, 0, 500}, {500, -40, 400}, {600, 60, 100}}},
+			{s="pir04", x=-544, y=0, z=-916, t=1, p=13, rk=10, rr=394, r={{-300, 0, -988}, {-456, 0, -604}, {-936, 0, -952}}},
+			{s="pir05", x=-900, y=0, z=-692, t=1, p=14, rk=9, rr=400, r={{-916, 0, -316}, {-504, 0, -640}, {-900, 0, -944}}},
+			{s="pir06", x=-756, y=0, z=804, t=2, p=15, rk=4, rr=556, r={{-892, 0, 928}, {-208, 0, 892}, {-796, 0, 472}}},
+			{s="pir07", x=-516, y=0, z=508, t=1, p=14, rk=2, rr=460, r={{-784, 0, 192}, {-968, 0, 588}, {-388, 0, 596}}},
+			{s="pir08", x=-112, y=0, z=792, t=1, p=12, rk=3, rr=483, r={{-288, 0, 620}, {-364, 0, 924}, {348, 0, 936}, {276, 0, 572}, {-128, 0, 748}}},
+			{s="pir09", x=480, y=0, z=740, t=1, p=13, rk=5, rr=538, r={{488, 0, 296}, {140, 0, 324}, {344, 0, 924}}},
+			{s="pir10", x=784, y=0, z=724, t=1, p=15, rk=7, rr=371, r={{556, 0, 960}, {956, 0, 924}, {740, 0, 356}}},
+		}},
+		gredos = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="pir01", x=176, y=0, z=648, t=1, p=4, rk=1, rr=590, r={{172, 0, 748}, {-4, 0, 888}, {-372, 0, 864}, {-364, 0, 676}}},
+			{s="pir02", x=-292, y=0, z=640, t=2, p=4, rk=3, rr=689, r={{-172, 0, 752}, {-116, 0, 960}, {352, 0, 884}, {-116, 0, 592}}},
+			{s="pir03", x=-1132, y=0, z=228, t=1, p=3, rk=7, rr=350, r={{-1088, 0, -16}, {-792, 0, 148}, {-1080, 0, 292}}},
+			{s="pir04", x=-712, y=0, z=0, t=1, p=2, rk=4, rr=410, r={{-872, 0, 0}, {-944, 0, 168}, {-908, 0, 360}, {-556, 0, 276}, {-652, 0, 52}}},
+			{s="pir05", x=-456, y=0, z=-960, t=2, p=1, rk=6, rr=398, r={{-444, 0, -652}, {-712, 0, -656}, {-500, 0, -1008}}},
+			{s="pir06", x=-284, y=0, z=-744, t=1, p=1, rk=5, rr=353, r={{-496, 0, -732}, {-504, 0, -468}, {-104, 0, -636}, {-148, 0, -936}}},
+			{s="pir07", x=424, y=100, z=524, t=2, p=3, rk=2, rr=384, r={{432, 100, 584}, {432, 150, 760}, {72, 0, 640}, {148, 50, 480}}},
+		}},
+		hanoi = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="Pir01", x=-288, y=0, z=188, t=1, p=13, rk=3, rr=427, r={{-300, 0, 200}, {-400, 0, 600}}},
+			{s="Pir08", x=-620, y=0, z=-498, t=2, p=14, rk=9, rr=573, r={{-600, 0, -460}, {-724, 0, -568}, {-792, 0, -784}, {-136, 0, -804}}},
+			{s="Pir09", x=-615, y=0, z=-270, t=1, p=10, rk=7, rr=266, r={{-588, 0, -278}, {-388, 0, -278}, {-388, 0, -408}, {-588, 0, -408}}},
+			{s="Pir10", x=-596, y=0, z=-208, t=1, p=11, rk=6, rr=493, r={{-620, 0, -164}, {-764, 0, -140}, {-852, 0, -236}, {-884, 0, -608}}},
+			{s="Pir11", x=-351, y=0, z=-411, t=1, p=13, rk=4, rr=272, r={{-388, 0, -408}, {-588, 0, -408}, {-588, 0, -278}, {-388, 0, -278}}},
+			{s="Pir13", x=814, y=0, z=320, t=1, p=11, rk=10, rr=437, r={{900, 0, 400}, {600, 0, 700}, {700, 0, 100}}},
+			{s="Pir17", x=54, y=0, z=36, t=1, p=8, rk=1, rr=559, r={{600, 0, 0}, {500, 20, -300}, {300, 20, -100}}},
+			{s="Pir19", x=566, y=0, z=72, t=2, p=13, rk=5, rr=571, r={{900, 0, 100}, {300, 20, -100}, {0, 20, 0}, {300, 20, -100}}},
+			{s="Pir14", x=96, y=0, z=-716, t=1, p=13, rk=8, rr=433, r={{-164, 0, -628}, {504, -50, -850}, {328, 0, -912}, {-252, 0, -880}}},
+			{s="Pir15", x=12, y=0, z=-288, t=2, p=14, rk=2, rr=844, r={{-52, 0, -260}, {-24, 0, -568}, {-416, 0, -892}, {-676, 0, -776}, {-296, 0, -608}}},
+			{s="Pir16", x=864, y=0, z=-896, t=2, p=17, rk=12, rr=837, r={{904, 0, -800}, {628, 0, -736}, {196, 0, -600}, {28, 0, -872}}},
+			{s="Pir12", x=-796, y=0, z=496, t=2, p=10, rk=11, rr=711, r={{-812, 0, 404}, {-708, 0, 860}, {-204, 0, 888}}},
+		}},
+		haron = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="Pir01", x=-644, y=0, z=-8, t=1, p=6, rk=2, rr=916, r={{200, 120, 300}, {220, 80, -300}, {-100, 50, -300}, {-700, 10, 0}}},
+			{s="Pir02", x=-496, y=0, z=-568, t=1, p=15, rk=3, rr=237, r={{-500, 0, -500}, {-300, 0, -700}}},
+			{s="Pir03", x=-428, y=0, z=364, t=1, p=7, rk=1, rr=238, r={{-600, 0, 200}, {-400, 0, 500}, {-400, 0, 300}}},
+			{s="Pir04", x=-676, y=0, z=-380, t=2, p=17, rk=4, rr=282, r={{-600, 0, -400}, {-500, 0, -600}}},
+			{s="pir05", x=-524, y=0, z=864, t=1, p=9, rk=7, rr=446, r={{-216, 0, 628}, {-352, 0, 960}, {-916, 0, 944}, {-920, 0, 660}}},
+			{s="pir06", x=-384, y=0, z=-932, t=1, p=10, rk=6, rr=373, r={{-420, 0, -772}, {-656, 0, -724}, {-756, 0, -940}, {-396, 0, -904}}},
+			{s="pir07", x=-916, y=0, z=448, t=1, p=11, rk=8, rr=469, r={{-664, 0, 156}, {-968, 0, 180}, {-900, 0, 916}}},
+			{s="pir08", x=-852, y=0, z=200, t=1, p=12, rk=5, rr=758, r={{-928, 0, -264}, {-416, 0, -420}, {-340, 0, -136}, {-436, 0, 164}, {-836, 0, 252}}},
+		}},
+		kadi = {g="Pirate_Group_1", a={-1065, 825}, f={
+			{s="Pir_1", x=-1000, y=50, z=880, t=1, p=15, rk=1, rr=179, r={{-1100, 0, 750}, {-920, 50, 720}}},
+			{s="Pir02", x=216, y=0, z=-252, t=1, p=13, rk=9, rr=410, r={{0, 0, -200}, {-100, 20, -400}, {0, -10, -600}}},
+			{s="Pir05", x=-144, y=0, z=-902, t=2, p=12, rk=13, rr=428, r={{-400, -10, -900}, {0, -10, -500}, {-100, 30, -900}}},
+			{s="Pir06", x=376, y=0, z=-218, t=2, p=13, rk=11, rr=385, r={{400, 0, -200}, {0, 0, -300}}},
+			{s="Pir07", x=669, y=0, z=-53, t=1, p=14, rk=12, rr=335, r={{600, 0, 0}, {1000, 0, -100}}},
+			{s="Pir08", x=500, y=0, z=53, t=2, p=13, rk=10, rr=427, r={{500, 0, 100}, {100, 0, 200}}},
+			{s="Pir10", x=100, y=0, z=-100, t=2, p=12, rk=8, rr=441, r={{200, 20, -200}, {-200, 100, -200}, {-200, -120, 200}, {200, 40, 200}}},
+			{s="Pir12", x=-201, y=0, z=52, t=1, p=13, rk=7, rr=474, r={{-200, -30, 200}, {200, 40, 200}, {200, 10, -200}, {-200, 20, -200}}},
+			{s="Pir13", x=-800, y=0, z=800, t=1, p=14, rk=2, rr=610, r={{-700, 0, 800}, {-900, 0, 800}, {-700, 0, 900}, {-196, 0, 716}}},
+			{s="Pir14", x=-184, y=0, z=656, t=1, p=12, rk=6, rr=761, r={{0, -10, 700}, {-100, -10, 400}, {200, 10, 0}}},
+			{s="Pir15", x=-452, y=0, z=676, t=2, p=12, rk=4, rr=596, r={{-300, 0, 700}, {-200, 0, 400}, {-300, 0, 100}, {-200, 0, 200}}},
+			{s="Pir18", x=-1228, y=0, z=572, t=1, p=13, rk=3, rr=616, r={{-1200, 0, 400}, {-900, 0, 100}, {-1400, 30, 0}, {-1000, 0, 0}}},
+			{s="Pir19", x=-1380, y=0, z=97, t=2, p=14, rk=5, rr=490, r={{-1200, 0, 100}, {-900, 0, 0}}},
+		}},
+		kassilia = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="pir_1", x=-300, y=0, z=-500, t=1, p=10, rk=1, rr=1009, r={{-400, -40, -600}, {500, 80, -700}, {700, 80, -400}, {0, 50, -300}}},
+			{s="pir02", x=-392, y=0, z=-840, t=1, p=12, rk=4, rr=740, r={{-212, 0, -700}, {-644, 0, -616}, {-708, 0, -324}, {-944, 0, -348}, {-904, 0, -900}, {-224, 0, -896}}},
+			{s="pir03", x=-900, y=0, z=696, t=1, p=12, rk=7, rr=325, r={{-932, 0, 444}, {-588, 0, 608}, {-912, 0, 956}}},
+			{s="pir04", x=844, y=0, z=68, t=1, p=12, rk=2, rr=513, r={{992, 0, -112}, {476, 0, 48}, {912, 0, 576}}},
+			{s="pir05", x=892, y=0, z=764, t=1, p=12, rk=8, rr=697, r={{1000, 0, 192}, {804, 0, 600}, {220, 0, 948}, {940, 0, 956}}},
+			{s="pir06", x=572, y=0, z=940, t=1, p=12, rk=5, rr=1178, r={{952, 0, 960}, {972, 0, -168}, {652, 0, -12}, {892, 0, 312}, {864, 0, 708}, {152, 0, 940}}},
+			{s="pir07", x=-856, y=0, z=-704, t=1, p=12, rk=6, rr=643, pin=1, r={{-896, 0, -904}, {-244, 0, -900}, {-220, 0, -712}, {-400, 0, -432}, {-468, 0, -604}, {-876, 0, -576}}},
+			{s="pir08", x=-808, y=0, z=-396, t=1, p=12, rk=3, rr=782, r={{-908, 0, -304}, {-900, 0, -900}, {-208, 0, -896}}},
+		}},
+		kruger = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="Pir01", x=-168, y=0, z=260, t=1, p=13, rk=3, rr=203, r={{-272, 0, 272}, {-320, 0, 144}, {-104, 0, 128}, {20, 0, 184}, {-172, 0, 316}}},
+			{s="Pir02", x=-692, y=0, z=64, t=1, p=13, rk=15, rr=183, r={{-742, 0, 148}, {-661, 0, 244}, {-544, 0, 139}, {-589, 0, -20}, {-739, 0, -71}}},
+			{s="Pir03", x=-56, y=0, z=72, t=1, p=13, rk=1, rr=343, r={{17, 0, 217}, {-241, 0, 304}, {-280, 0, 79}, {-307, 0, -161}, {125, 0, -134}, {119, 0, 154}}},
+			{s="Pir04", x=-380, y=0, z=-408, t=1, p=13, rk=13, rr=315, r={{-670, 0, -287}, {-469, 0, -227}, {-142, 0, -542}, {-524, 0, -599}}},
+			{s="Pir05", x=452, y=0, z=-548, t=1, p=13, rk=16, rr=316, r={{618, 0, -368}, {482, 0, -306}, {139, 0, -506}, {494, 0, -775}}},
+			{s="Pir06", x=88, y=0, z=136, t=1, p=13, rk=2, rr=433, r={{98, 0, 322}, {338, 0, 295}, {515, 0, 202}, {455, 0, 31}, {275, 0, -65}, {-52, 0, -32}}},
+			{s="Pir07", x=856, y=0, z=-44, t=1, p=13, rk=19, rr=660, r={{707, 0, 61}, {314, 0, 145}, {197, 0, -62}, {485, 0, -314}, {899, 0, -134}}},
+			{s="Pir08", x=68, y=0, z=512, t=1, p=13, rk=9, rr=385, r={{29, 0, 595}, {221, 0, 625}, {323, 0, 295}, {236, 0, 166}, {-79, 0, 457}, {-202, 0, 361}, {8, 0, 211}, {-157, 0, 583}}},
+			{s="Pir09", x=152, y=0, z=304, t=1, p=13, rk=4, rr=295, r={{245, 0, 76}, {-7, 0, 58}, {-132, 0, 328}, {229, 0, 439}, {431, 0, 210}, {135, 0, 248}}},
+			{s="Pir10", x=284, y=0, z=476, t=1, p=13, rk=12, rr=280, r={{131, 0, 430}, {53, 0, 601}, {269, 0, 682}, {497, 0, 655}, {563, 0, 472}, {401, 0, 322}, {245, 0, 460}}},
+			{s="Pir11", x=520, y=0, z=648, t=1, p=13, rk=17, rr=448, r={{752, 0, 820}, {857, 0, 604}, {731, 0, 253}, {239, 0, 658}}},
+			{s="Pir12", x=540, y=0, z=260, t=1, p=13, rk=14, rr=273, r={{479, 0, 445}, {779, 0, 265}, {671, 0, 79}, {323, 0, 151}, {281, 0, 346}}},
+			{s="Pir13", x=476, y=0, z=-52, t=1, p=13, rk=7, rr=427, r={{512, 0, 97}, {695, 0, 46}, {893, 0, -143}, {713, 0, -245}, {347, 0, -14}}},
+			{s="Pir14", x=292, y=0, z=-236, t=1, p=13, rk=5, rr=460, r={{668, 0, -500}, {728, 0, -305}, {119, 0, -47}, {452, 0, 31}, {251, 0, -473}, {2, 0, -212}, {200, 0, -23}}},
+			{s="Pir15", x=84, y=0, z=-448, t=1, p=13, rk=6, rr=420, r={{20, 0, -545}, {-202, 0, -449}, {20, 0, -356}, {-4, 0, -38}, {281, 0, -83}, {245, 0, -506}}},
+			{s="Pir16", x=-480, y=0, z=-12, t=1, p=13, rk=8, rr=242, r={{-547, 0, 94}, {-463, 0, 229}, {-340, 0, 136}, {-349, 0, -89}, {-511, 0, -65}}},
+			{s="Pir17", x=-760, y=0, z=634, t=1, p=13, rk=20, rr=584, r={{-706, 0, 661}, {-478, 0, 595}, {-313, 0, 304}, {-391, 0, 223}, {-553, 0, 88}, {-802, 0, 109}, {-895, 0, 469}}},
+			{s="Pir18", x=-488, y=0, z=204, t=1, p=13, rk=10, rr=366, r={{-482, 0, 340}, {-397, 0, 416}, {-238, 0, 373}, {-204, 0, 160}, {-225, 0, -50}, {-688, 0, 101}}},
+			{s="Pir19", x=-204, y=0, z=488, t=1, p=13, rk=11, rr=306, r={{-334, 0, 571}, {-427, 0, 469}, {-487, 0, 373}, {-367, 0, 235}, {2, 0, 349}, {-124, 0, 511}}},
+			{s="Pir20", x=-332, y=0, z=764, t=1, p=13, rk=18, rr=539, r={{-307, 0, 880}, {-439, 0, 733}, {-376, 0, 412}, {-211, 0, 310}, {8, 0, 346}}},
+		}},
+		moscowia = {g="PiratesGroup_1", a={-584, 1436}, f={
+			{s="pir01", x=-168, y=0, z=1416, t=1, p=20, rk=2, rr=461, r={{-312, 0, 1524}, {-492, 0, 1140}, {-316, 0, 1244}, {84, 0, 1220}, {276, 0, 1540}}},
+			{s="pir02", x=-896, y=0, z=-540, t=1, p=19, rk=6, rr=530, r={{-952, 0, -176}, {-788, 0, -496}, {-940, 0, -1068}}},
+			{s="pir03", x=916, y=0, z=-1360, t=1, p=18, rk=7, rr=628, r={{608, 0, -1332}, {840, 0, -1100}, {848, 0, -736}, {988, 0, -748}, {964, 0, -1332}}},
+			{s="pir04", x=-860, y=0, z=900, t=1, p=17, rk=3, rr=405, r={{-924, 0, 1292}, {-504, 0, 1092}, {-952, 0, 660}}},
+			{s="pir05", x=368, y=0, z=1492, t=1, p=18, rk=4, rr=491, r={{156, 0, 1576}, {116, 0, 1316}, {532, 0, 1292}, {756, 0, 1192}, {836, 0, 1556}}},
+			{s="pir06", x=868, y=0, z=1456, t=1, p=19, rk=5, rr=368, r={{972, 0, 1564}, {580, 0, 1564}, {548, 0, 1276}, {960, 0, 1104}}},
+			{s="pir07", x=-872, y=0, z=1232, t=1, p=20, rk=1, rr=632, r={{-868, 0, 1036}, {-532, 0, 1032}, {-300, 0, 1500}, {-688, 0, 1496}}},
+		}},
+		pandora = {g="Pirates_Group_1", a={0, 0}, f={
+			{s="pir01", x=72, y=0, z=276, t=1, p=10, rk=2, rr=489, r={{-104, 0, 272}, {224, 0, 504}, {404, 0, -72}, {248, 0, -180}, {20, 0, 0}}},
+			{s="pir02", x=-68, y=0, z=492, t=1, p=10, rk=4, rr=430, r={{-44, 0, 692}, {-316, 0, 432}, {-156, 0, 72}, {332, 0, 504}}},
+			{s="pir03", x=-876, y=0, z=376, t=1, p=10, rk=12, rr=651, r={{-812, 0, 140}, {-256, 0, 180}, {-644, 0, 736}, {-876, 0, 416}}},
+			{s="pir04", x=-80, y=0, z=-816, t=1, p=10, rk=9, rr=613, r={{-412, 0, -640}, {-92, 0, -204}, {188, 0, -676}, {-140, 0, -784}}},
+			{s="pir05", x=-812, y=0, z=-296, t=1, p=10, rk=10, rr=864, r={{-860, 0, -24}, {-468, 0, -164}, {-76, 0, 156}, {-124, 0, -380}, {-280, 0, -644}, {-752, 0, -592}}},
+			{s="pir06", x=800, y=0, z=-572, t=1, p=10, rk=14, rr=403, r={{680, 0, -444}, {420, 0, -704}, {796, 0, -912}, {976, 0, -720}}},
+			{s="pir07", x=-820, y=0, z=848, t=1, p=10, rk=15, rr=778, r={{-256, 0, 916}, {-156, 0, 444}, {-560, 0, 264}, {-748, 0, 860}}},
+			{s="pir08", x=324, y=0, z=692, t=1, p=10, rk=8, rr=595, r={{88, 0, 556}, {136, 0, 904}, {884, 0, 892}}},
+			{s="pir09", x=80, y=0, z=-352, t=1, p=10, rk=3, rr=272, r={{-140, 0, -272}, {332, 0, -252}, {228, 0, -540}, {-144, 0, -476}}},
+			{s="pir10", x=-208, y=0, z=-40, t=1, p=10, rk=1, rr=437, r={{24, 0, 80}, {-188, 0, 396}, {-428, 0, 64}, {-384, 0, -256}}},
+			{s="pir11", x=228, y=0, z=-588, t=1, p=10, rk=6, rr=931, r={{584, 0, -700}, {448, 0, -888}, {-676, 0, -808}, {152, 0, -556}}},
+			{s="pir12", x=768, y=0, z=592, t=1, p=10, rk=13, rr=442, r={{904, 0, 420}, {456, 0, 904}, {972, 0, 924}}},
+			{s="pir13", x=636, y=0, z=-204, t=1, p=10, rk=7, rr=411, r={{936, 0, -176}, {384, 0, -72}, {228, 0, -160}, {264, 0, -348}, {876, 0, -432}}},
+			{s="pir14", x=-476, y=0, z=368, t=1, p=10, rk=5, rr=599, r={{-620, 0, 736}, {-388, 0, 960}, {-96, 0, 568}, {-376, 0, 148}}},
+			{s="pir15", x=-120, y=0, z=868, t=1, p=10, rk=11, rr=507, r={{-368, 0, 924}, {384, 0, 916}, {116, 0, 548}}},
+		}},
+		pegas = {g="PiratesGroup_1", a={-406, -530}, f={
+			{s="Pir01", x=-403, y=0, z=-473, t=1, p=7, rk=1, rr=607, r={{-400, -60, -500}, {0, 120, -500}, {-200, 320, 0}}},
+			{s="Pir02", x=-229, y=0, z=415, t=1, p=7, rk=7, rr=1069, pin=1, r={{-400, 0, 500}, {-400, 50, 200}, {700, -120, -100}}},
+			{s="Pir03", x=-298, y=0, z=22, t=1, p=6, rk=4, rr=823, r={{-100, 0, 200}, {500, -200, 0}, {0, 200, -500}, {-400, 60, -100}}},
+			{s="pir04", x=544, y=0, z=356, t=2, p=5, rk=12, rr=581, pin=1, r={{196, 0, 364}, {212, 0, 832}, {680, 0, 844}}},
+			{s="pir05", x=712, y=0, z=-188, t=1, p=4, rk=10, rr=679, r={{696, 0, -248}, {480, 0, -452}, {396, 0, -788}, {872, 0, -676}}},
+			{s="pir06", x=892, y=0, z=-500, t=1, p=5, rk=11, rr=740, r={{830, 0, -488}, {544, 0, -528}, {184, 0, -712}, {600, 0, -980}}},
+			{s="pir07", x=884, y=0, z=188, t=1, p=6, rk=15, rr=842, pin=1, r={{896, 0, 280}, {904, 0, 820}, {456, 0, 912}}},
+			{s="pir08", x=468, y=0, z=808, t=2, p=7, rk=16, rr=581, pin=1, r={{468, 0, 684}, {836, 0, 520}, {488, 0, 228}, {280, 0, 532}}},
+			{s="pir09", x=-344, y=0, z=268, t=2, p=6, rk=6, rr=642, r={{-440, 0, 284}, {-872, 0, 596}, {-944, 0, 40}}},
+			{s="pir10", x=-500, y=0, z=-144, t=1, p=5, rk=2, rr=884, r={{-620, 0, -12}, {-952, 0, -300}, {-944, 0, -908}}},
+			{s="pir11", x=-596, y=0, z=40, t=1, p=6, rk=5, rr=456, r={{-420, 0, 36}, {-720, 0, 280}, {-900, 0, -64}, {-772, 0, -380}}},
+			{s="pir12", x=-16, y=0, z=-832, t=1, p=4, rk=3, rr=795, r={{-392, 0, -780}, {-808, 0, -900}, {304, 0, -904}}},
+			{s="pir13", x=932, y=0, z=-928, t=2, p=3, rk=14, rr=1125, r={{848, 0, -924}, {360, 0, -552}, {-192, 0, -940}}},
+			{s="pir14", x=264, y=0, z=624, t=2, p=4, rk=13, rr=958, pin=1, r={{28, 0, 920}, {-648, 0, 916}, {96, 0, 560}}},
+			{s="pir15", x=356, y=0, z=300, t=1, p=4, rk=9, rr=909, r={{792, 0, -88}, {968, 0, -372}, {560, 0, -432}}},
+			{s="pir16", x=492, y=0, z=-132, t=2, p=6, rk=8, rr=749, r={{708, 0, 24}, {500, 0, 456}, {984, 0, 432}}},
+		}},
+		prien = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="Pir01", x=-32, y=0, z=-724, t=1, p=11, rk=1, rr=370, r={{124, 0, -592}, {-332, 0, -508}, {-228, 0, -980}, {44, 0, -960}}},
+			{s="Pir02", x=-912, y=0, z=752, t=1, p=15, rk=3, rr=733, r={{-956, 0, 584}, {-888, 0, 920}, {-196, 0, 908}}},
+			{s="Pir03", x=912, y=0, z=708, t=2, p=12, rk=2, rr=282, r={{904, 0, 924}, {632, 0, 736}, {904, 0, 552}}},
+			{s="Pir04", x=932, y=0, z=-872, t=2, p=15, rk=4, rr=582, r={{980, 0, -292}, {752, 0, -488}, {896, 0, -932}}},
+		}},
+		proserpina = {g="PiratesGroup_1", a={904, -4}, f={
+			{s="pir01", x=792, y=0, z=236, t=3, p=20, rk=6, rr=438, r={{800, -30, -200}, {800, -30, 200}}},
+			{s="pir04", x=792, y=0, z=136, t=2, p=12, rk=2, rr=338, r={{800, 30, -200}, {800, 30, 200}}},
+			{s="pir07", x=792, y=0, z=236, t=1, p=12, rk=7, rr=440, r={{840, 30, -200}, {840, 30, 200}}},
+			{s="pir08", x=850, y=0, z=200, t=1, p=11, rk=3, rr=874, r={{840, 0, 0}, {0, -30, 0}}},
+			{s="pir02", x=792, y=0, z=36, t=1, p=8, rk=1, rr=239, r={{770, 30, -200}, {770, 30, 200}}},
+			{s="pir06", x=792, y=0, z=-236, t=1, p=5, rk=5, rr=441, r={{740, -30, -200}, {740, -30, 200}}},
+			{s="pir09", x=804, y=50, z=196, t=2, p=7, rk=4, rr=1213, r={{700, 0, 100}, {-300, -30, -300}}},
+		}},
+		solncevka = {g="PiratesGroup_1", a={512, 796}, f={
+			{s="Pirate01", x=312, y=0, z=796, t=1, p=16, rk=1, rr=389, r={{500, 0, 600}, {700, 0, 800}, {500, 0, 600}, {312, 0, 796}}},
+			{s="Pirate02", x=-49, y=0, z=619, t=1, p=15, rk=6, rr=414, r={{-100, 0, 600}, {-400, 0, 400}}},
+			{s="pir03", x=0, y=0, z=872, t=1, p=14, rk=4, rr=765, r={{-444, 0, 892}, {56, 0, 412}, {764, 0, 856}}},
+			{s="pir04", x=708, y=0, z=348, t=1, p=15, rk=3, rr=674, r={{360, 0, 448}, {124, 0, 684}, {904, 0, 664}, {816, 0, 308}}},
+			{s="pir10", x=920, y=0, z=420, t=2, p=19, rk=5, rr=277, r={{976, 0, 600}, {808, 0, 660}, {696, 0, 472}, {904, 0, 144}}},
+			{s="pir11", x=880, y=0, z=888, t=2, p=18, rk=2, rr=536, r={{804, 0, 960}, {676, 0, 832}, {780, 0, 648}, {880, 0, 352}, {952, 0, 692}}},
+			{s="pir12", x=-396, y=0, z=616, t=2, p=17, rk=7, rr=626, r={{-400, 0, 780}, {-768, 0, 768}, {-828, 0, 288}, {-228, 0, 700}, {172, 0, 368}, {192, 0, 828}}},
+			{s="pir13", x=-776, y=0, z=876, t=2, p=16, rk=8, rr=969, r={{-108, 0, 952}, {80, 0, 424}, {-808, 0, 348}, {-892, 0, 844}}},
+			{s="pir05", x=232, y=0, z=-936, t=1, p=16, rk=11, rr=778, c=1, r={{648, 0, -948}, {976, 0, -732}, {908, 0, -552}, {568, 0, -856}, {68, 0, -920}}},
+			{s="pir06", x=-436, y=0, z=-896, t=1, p=17, rk=13, rr=391, c=1, r={{-126, 0, -868}, {-334, 0, -636}, {-820, 0, -824}}},
+			{s="pir07", x=780, y=0, z=-832, t=1, p=18, rk=10, rr=477, c=1, r={{964, 0, -392}, {768, 0, -364}, {652, 0, -768}, {340, 0, -864}, {800, 0, -976}, {968, 0, -856}}},
+			{s="pir08", x=-836, y=0, z=-584, t=1, p=19, rk=12, rr=468, c=1, r={{-924, 0, -128}, {-948, 0, -912}, {-456, 0, -856}}},
+			{s="pir09", x=-856, y=0, z=-16, t=1, p=20, rk=9, rr=707, c=1, r={{-924, 0, 340}, {-300, 0, 420}, {-536, 0, 4}, {-940, 0, -312}}},
+		}},
+		taira = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="pir01", x=-756, y=0, z=-564, t=1, p=8, rk=3, rr=269, r={{-596, 0, -692}, {-916, 0, -684}, {-920, 0, -404}, {-592, 0, -352}}},
+			{s="pir02", x=-848, y=0, z=-812, t=1, p=9, rk=6, rr=483, r={{-972, 0, -568}, {-596, 0, -520}, {-368, 0, -860}, {-944, 0, -916}}},
+			{s="pir03", x=-676, y=0, z=-820, t=1, p=10, rk=5, rr=394, r={{-340, 0, -956}, {-588, 0, -584}, {-936, 0, -524}, {-924, 0, -896}}},
+			{s="pir04", x=-856, y=0, z=-368, t=1, p=8, rk=2, rr=263, r={{-944, 0, -232}, {-684, 0, -256}, {-620, 0, -484}, {-956, 0, -508}}},
+			{s="pir05", x=-816, y=0, z=-156, t=2, p=9, rk=1, rr=257, r={{-812, 0, -112}, {-656, 0, -76}, {-652, 0, -200}, {-928, 0, -280}, {-940, 0, 68}}},
+			{s="pir06", x=-932, y=0, z=-212, t=2, p=9, rk=4, rr=534, r={{-712, 0, 164}, {-896, 0, 320}, {-960, 0, 68}, {-932, 0, -88}, {-672, 0, -84}}},
+		}},
+		tarrot = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="Pirates01", x=-800, y=0, z=0, t=1, p=17, rk=8, rr=461, r={{-350, 0, -100}, {-600, 0, -200}, {-350, 0, 100}}},
+			{s="Pirate02", x=504, y=0, z=276, t=1, p=20, rk=4, rr=157, r={{400, 0, 200}, {600, 0, 400}}},
+			{s="Pirate03", x=-380, y=0, z=144, t=1, p=20, rk=2, rr=197, r={{-500, 0, 300}, {-300, 0, 100}}},
+			{s="Pirate04", x=-336, y=0, z=-592, t=1, p=19, rk=7, rr=295, r={{-290, 0, -600}, {-300, 0, -300}}},
+			{s="Pirate05", x=347, y=0, z=-506, t=1, p=18, rk=5, rr=335, r={{430, 20, -600}, {430, 20, -300}, {30, 20, -400}}},
+			{s="pir07", x=320, y=0, z=-72, t=1, p=16, rk=1, rr=599, r={{436, 0, 80}, {692, 0, 280}, {452, 0, 512}, {280, 0, 380}}},
+			{s="pir08", x=236, y=0, z=520, t=1, p=17, rk=3, rr=1146, r={{416, 0, -360}, {288, 0, -624}, {92, 0, -356}, {340, 0, 540}, {524, 0, 540}, {612, 0, 460}}},
+			{s="pir09", x=-384, y=0, z=544, t=1, p=18, rk=6, rr=1058, r={{-224, 0, 192}, {-208, 0, -48}, {-152, 0, -488}, {-392, 0, -492}, {-792, 0, -312}, {-744, 0, 160}, {-452, 0, 588}}},
+			{s="pir10", x=-756, y=0, z=-476, t=1, p=17, rk=9, rr=1051, r={{-168, 0, -468}, {-476, 0, 536}, {-724, 0, -448}}},
+		}},
+		torr = {g="PiratesGroup_1", a={-1200, 560}, f={
+			{s="Pir01", x=-1142, y=0, z=688, t=1, p=8, rk=1, rr=188, r={{-1200, 0, 610}, {-1150, 0, 560}, {-1200, 0, 510}, {-1150, 0, 560}}},
+			{s="Pir02", x=-906, y=0, z=-948, t=1, p=8, rk=6, rr=394, r={{-800, 0, -1000}, {-600, 0, -700}, {-1000, 0, -800}}},
+			{s="Pir03", x=-1054, y=0, z=-456, t=2, p=8, rk=5, rr=387, r={{-1100, 0, -200}, {-700, 0, -300}, {-700, 0, -600}, {-1000, 0, -700}}},
+			{s="Pir04", x=-958, y=0, z=120, t=2, p=18, rk=3, rr=421, r={{-600, 0, 300}, {-1100, 0, 300}, {-1100, 0, -100}, {-600, 0, -100}}},
+			{s="Pir05", x=-706, y=0, z=584, t=1, p=8, rk=2, rr=407, r={{-300, 0, 600}, {-700, 0, 900}, {-900, 0, 500}, {-500, 0, 300}}},
+			{s="Pir06", x=-310, y=0, z=872, t=2, p=8, rk=4, rr=481, r={{-100, 0, 1000}, {-200, 0, 600}, {-400, 0, 400}, {-500, 0, 800}}},
+		}},
+		ule = {g="PiratesGroup_1", a={-600, 300}, f={
+			{s="pir01", x=-600, y=0, z=552, t=1, p=16, rk=2, rr=449, r={{-268, 0, 736}, {-832, 0, 936}, {-920, 0, 392}}},
+			{s="pir02", x=732, y=0, z=-124, t=1, p=17, rk=5, rr=552, r={{624, 0, 252}, {904, 0, 340}, {848, 0, -456}, {500, 0, -624}}},
+			{s="pir03", x=-836, y=0, z=-380, t=1, p=18, rk=4, rr=560, r={{-404, 0, -736}, {-548, 0, -392}, {-596, 0, -140}, {-872, 0, -384}}},
+			{s="pir04", x=-572, y=0, z=4, t=1, p=19, rk=3, rr=567, r={{-412, 0, 288}, {-656, 0, 564}, {-744, 0, -296}}},
+			{s="pir05", x=-776, y=0, z=304, t=1, p=20, rk=1, rr=621, r={{-416, 0, 504}, {-592, 0, 820}, {-716, 0, 164}, {-632, 0, -300}, {-744, 0, 328}}},
+		}},
+		x244 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="pir01", x=-540, y=0, z=-1036, t=1, p=10, rk=2, rr=679, r={{-400, 0, -1700}, {-200, 0, -1200}, {-200, 0, -800}, {-800, 0, -600}, {-700, 0, -1400}}},
+			{s="pir02", x=112, y=0, z=-1872, t=1, p=10, rk=5, rr=652, r={{600, 0, -1900}, {500, 0, -1500}, {-200, 0, -1300}, {-400, 0, -1800}}},
+			{s="pir03", x=252, y=0, z=-1228, t=1, p=10, rk=3, rr=666, r={{500, 0, -1700}, {700, 0, -1200}, {100, 0, -700}, {-300, 0, -1600}}},
+			{s="pir04", x=544, y=0, z=-300, t=1, p=10, rk=1, rr=557, r={{400, 0, -100}, {800, 0, -300}, {800, 0, -700}, {300, 0, -800}}},
+			{s="pir05", x=680, y=0, z=-1544, t=1, p=10, rk=4, rr=574, r={{1000, 0, -1900}, {900, 0, -1200}, {500, 0, -1000}, {400, 0, -1700}}},
+		}},
+		x297 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="Pir01", x=-700, y=0, z=756, t=1, p=9, rk=3, rr=606, pin=1, r={{-728, 0, 864}, {-508, 0, 884}, {-368, 0, 668}, {-320, 0, 500}, {-252, 0, 348}, {-528, 0, 400}, {-896, 0, 496}}},
+			{s="Pir02", x=-352, y=0, z=780, t=1, p=11, rk=1, rr=441, pin=1, r={{-96, 0, 704}, {68, 0, 912}, {-376, 0, 924}, {-552, 0, 480}}},
+			{s="Pir03", x=-796, y=0, z=520, t=1, p=9, rk=2, rr=640, pin=1, r={{-524, 0, 352}, {-440, 0, 240}, {-196, 0, 300}, {-424, 0, 604}, {-868, 0, 768}, {-896, 0, 300}, {-884, 0, -48}}},
+		}},
+		xb13 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="pir01", x=-271, y=0, z=466, t=1, p=15, rk=1, rr=143, r={{-313, 0, 602}, {-313, 0, 402}}},
+			{s="pir02", x=-271, y=0, z=538, t=1, p=14, rk=2, rr=217, r={{-313, 0, 502}, {-413, 0, 702}}},
+			{s="pir03", x=-271, y=0, z=578, t=1, p=12, rk=4, rr=311, r={{-313, 0, 502}, {-413, 0, 302}}},
+			{s="pir04", x=-636, y=0, z=824, t=1, p=13, rk=9, rr=390, r={{-264, 0, 708}, {-576, 0, 500}, {-932, 0, 836}}},
+			{s="pir05", x=-844, y=0, z=492, t=1, p=11, rk=8, rr=457, r={{-892, 0, 708}, {-388, 0, 512}, {-884, 0, 204}}},
+			{s="pir06", x=-744, y=0, z=232, t=1, p=13, rk=5, rr=499, r={{-552, 0, 452}, {-248, 0, 184}, {-852, 0, 132}}},
+			{s="pir07", x=-312, y=0, z=916, t=1, p=14, rk=7, rr=602, r={{-68, 0, 884}, {-524, 0, 908}, {-268, 0, 316}}},
+			{s="pir08", x=804, y=0, z=-856, t=1, p=14, rk=13, rr=232, r={{948, 0, -708}, {732, 0, -636}, {640, 0, -948}, {972, 0, -976}}},
+			{s="pir09", x=948, y=0, z=608, t=1, p=15, rk=12, rr=456, r={{976, 0, 216}, {492, 0, 608}, {940, 0, 948}}},
+			{s="pir10", x=-728, y=0, z=-804, t=1, p=16, rk=11, rr=392, r={{-564, 0, -948}, {-664, 0, -420}, {-936, 0, -472}, {-912, 0, -952}}},
+			{s="pir11", x=-844, y=0, z=-276, t=1, p=17, rk=6, rr=397, r={{-964, 0, 44}, {-704, 0, 8}, {-668, 0, -520}, {-928, 0, -664}}},
+			{s="pir12", x=580, y=0, z=904, t=1, p=12, rk=10, rr=588, r={{472, 0, 936}, {472, 0, 652}, {888, 0, 404}, {912, 0, 900}}},
+			{s="pir13", x=-604, y=0, z=72, t=1, p=15, rk=3, rr=454, r={{-308, 0, 120}, {-212, 0, 300}, {-876, 0, 384}, {-912, 0, 72}}},
+			{s="pir14", x=956, y=0, z=816, t=1, p=17, rk=14, rr=434, r={{580, 0, 752}, {772, 0, 424}, {908, 0, 812}}},
+		}},
+		xb15 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="pirate01", x=586, y=20, z=-564, t=1, p=16, rk=6, rr=207, r={{736, 120, -464}, {736, -80, -664}, {536, 120, -664}, {536, -80, -464}}},
+			{s="pirate02", x=607, y=20, z=-503, t=1, p=15, rk=5, rr=230, r={{736, 120, -464}, {536, -80, -464}, {536, 120, -664}, {736, -80, -664}}},
+			{s="pir03", x=872, y=0, z=-516, t=1, p=11, rk=9, rr=391, r={{900, 0, -300}, {800, 0, -600}, {800, 0, -900}}},
+			{s="pir04", x=-728, y=0, z=-380, t=2, p=14, rk=7, rr=548, r={{-400, 0, -300}, {-900, 0, -200}, {-900, 0, -900}, {-800, 0, -500}}},
+			{s="pir05", x=-108, y=0, z=-1060, t=2, p=12, rk=10, rr=476, r={{-100, -30, -1000}, {0, -50, -600}, {-300, 100, -900}}},
+			{s="pir06", x=524, y=0, z=-824, t=1, p=13, rk=8, rr=384, r={{400, 0, -600}, {300, 0, -900}, {900, 0, -900}}},
+			{s="Pir07", x=388, y=0, z=-304, t=1, p=10, rk=2, rr=444, r={{488, 0, -100}, {196, 0, 96}, {316, 0, -316}}},
+			{s="Pir08", x=224, y=0, z=8, t=2, p=11, rk=1, rr=326, r={{276, 0, 100}, {20, 0, 232}, {-84, 0, 112}, {396, 0, -132}}},
+			{s="Pir09", x=-772, y=0, z=-156, t=1, p=17, rk=4, rr=377, r={{-716, 0, 16}, {-524, 0, -8}, {-396, 0, -160}, {-780, 0, -232}}},
+			{s="Pir10", x=-596, y=0, z=8, t=1, p=16, rk=3, rr=546, r={{-908, 0, 112}, {-944, 0, 428}, {-620, 0, 308}}},
+		}},
+		xb19 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="pirate_patrol_01", x=65, y=0, z=55, t=1, p=13, rk=1, rr=169, r={{0, 20, 0}, {150, 10, 200}}},
+			{s="pirate_patrol_02", x=-244, y=0, z=-392, t=1, p=15, rk=5, rr=180, r={{-300, 0, -400}, {-100, 0, -500}}},
+			{s="pirate_patrol_03", x=400, y=0, z=-450, t=1, p=14, rk=11, rr=207, r={{400, 0, -500}, {600, 0, -400}}},
+			{s="pirate_patrol_04", x=610, y=0, z=310, t=1, p=16, rk=14, rr=212, r={{610, 0, 300}, {400, -20, 300}}},
+			{s="pirate_patrol_05", x=-157, y=0, z=124, t=1, p=18, rk=2, rr=227, r={{-157, 20, 124}, {-300, 0, 300}}},
+			{s="pirate_patrol_06", x=596, y=0, z=-299, t=1, p=17, rk=13, rr=287, r={{600, 0, -300}, {800, 0, -500}}},
+			{s="pirate_patrol_07", x=-40, y=0, z=-480, t=1, p=16, rk=10, rr=229, r={{-40, 0, -500}, {-100, 0, -700}}},
+			{s="pirate_patrol_08", x=-220, y=0, z=-816, t=1, p=11, rk=21, rr=215, r={{-200, 0, -800}, {-400, 0, -700}}},
+			{s="pirate_patrol_09", x=-300, y=0, z=300, t=1, p=15, rk=3, rr=201, r={{-300, -60, 300}, {-300, 20, 500}}},
+			{s="pir10", x=-868, y=0, z=-784, t=1, p=19, rk=30, rr=638, r={{-336, -300, -968}, {-756, 0, -536}, {-944, 300, -924}}},
+			{s="pir11", x=360, y=0, z=-856, t=1, p=13, rk=25, rr=480, r={{704, 0, -900}, {556, 0, -740}, {324, 0, -668}, {292, 0, -400}, {180, 0, -412}, {80, 0, -780}, {-40, 0, -936}}},
+			{s="pir12", x=-876, y=0, z=-392, t=1, p=12, rk=27, rr=514, r={{-672, 0, -656}, {-636, 0, -380}, {-440, 0, -120}, {-756, 0, 20}, {-952, 0, -300}, {-904, 0, -648}}},
+			{s="pir13", x=-696, y=0, z=208, t=1, p=11, rk=16, rr=854, r={{-800, 0, 400}, {-700, 100, 0}, {-300, -100, -200}, {100, 0, -100}, {-400, 50, 0}}},
+			{s="pir14", x=-596, y=0, z=-180, t=2, p=20, rk=12, rr=1323, r={{-676, 70, -388}, {-104, -100, -216}, {576, 100, -172}, {680, -200, 104}, {-368, 150, -84}}},
+			{s="pir15", x=740, y=0, z=736, t=1, p=15, rk=28, rr=1400, r={{750, 0, 700}, {800, 0, 200}, {400, 0, -300}, {-300, 0, -200}}},
+			{s="pir16", x=812, y=200, z=36, t=2, p=13, rk=19, rr=906, r={{800, 200, 0}, {0, -200, 0}}},
+			{s="pir17", x=284, y=0, z=804, t=1, p=14, rk=23, rr=997, r={{360, 0, 616}, {468, 0, 448}, {288, 0, 104}, {280, 0, -24}, {416, 0, -184}, {636, 0, -36}, {452, 0, 108}, {-372, 0, 116}, {-320, 0, 584}, {32, 0, 848}}},
+			{s="pir18", x=-636, y=0, z=540, t=1, p=9, rk=18, rr=1049, r={{-400, 0, 100}, {-800, 0, 0}, {-800, 0, 800}, {400, 0, 700}, {-300, 0, 600}}},
+			{s="pir19", x=-292, y=0, z=780, t=1, p=15, rk=17, rr=665, r={{-300, 100, 800}, {-300, 250, 400}, {-500, -250, 200}, {-300, -150, 200}, {-700, 150, 300}}},
+			{s="pir20", x=880, y=0, z=-828, t=1, p=16, rk=31, rr=531, r={{900, 50, -300}, {900, 0, -850}, {500, 0, -900}}},
+			{s="pir21", x=300, y=350, z=-40, t=2, p=13, rk=6, rr=650, r={{300, 300, -40}, {300, -300, -40}}},
+			{s="pir22", x=300, y=-350, z=-40, t=2, p=11, rk=7, rr=650, r={{300, -300, -40}, {300, 300, -40}}},
+			{s="pir23", x=310, y=350, z=-40, t=2, p=14, rk=8, rr=650, r={{310, 300, -40}, {310, -300, -40}}},
+			{s="pir24", x=310, y=-350, z=-40, t=2, p=13, rk=9, rr=650, r={{310, -300, -40}, {310, 300, -40}}},
+			{s="pir25", x=432, y=0, z=-728, t=1, p=15, rk=22, rr=741, r={{248, 0, -728}, {-92, 0, -544}, {-48, 0, -164}, {376, 0, -328}, {388, 0, -704}}},
+			{s="pir26", x=792, y=0, z=-272, t=1, p=13, rk=20, rr=789, r={{708, 0, -84}, {324, 0, -224}, {4, 0, -296}, {200, 0, -720}, {472, 0, -684}}},
+			{s="pir27", x=-368, y=0, z=-224, t=1, p=11, rk=4, rr=915, r={{-148, 0, -536}, {232, 0, -616}, {536, 0, -364}, {232, 0, -188}, {-88, 0, -300}}},
+			{s="pir28", x=896, y=0, z=176, t=2, p=15, rk=24, rr=844, r={{648, 0, 456}, {420, 0, 872}, {928, 0, 616}, {920, 0, 236}}},
+			{s="pir29", x=700, y=0, z=-60, t=2, p=16, rk=15, rr=748, r={{732, 0, -340}, {360, 0, -544}, {96, 0, -472}, {-40, 0, -168}}},
+			{s="pir30", x=948, y=0, z=-592, t=1, p=12, rk=29, rr=647, r={{796, 0, -720}, {324, 0, -760}, {856, 0, -452}, {888, 0, -972}, {512, 0, -920}}},
+			{s="pir31", x=840, y=0, z=404, t=1, p=13, rk=26, rr=597, r={{592, 0, 652}, {244, 0, 432}, {544, 0, 196}, {768, 0, 256}}},
+		}},
+		xk16 = {g="PiratesGroup_1", a={-600, 800}, f={
+			{s="pir01", x=-460, y=0, z=160, t=1, p=7, rk=4, rr=450, r={{-392, 0, 604}, {-684, 0, 492}, {-840, 0, 100}, {-160, 0, -20}}},
+			{s="pir02", x=-944, y=0, z=428, t=1, p=9, rk=2, rr=795, r={{-852, 0, 808}, {-336, 0, 940}, {-180, 0, 556}, {-944, 0, 464}}},
+			{s="pir03", x=-804, y=0, z=-468, t=1, p=16, rk=7, rr=801, r={{-792, 0, -68}, {-272, 0, -464}, {-68, 0, -784}, {-804, 0, -412}}},
+			{s="pir04", x=756, y=0, z=792, t=1, p=16, rk=8, rr=729, r={{816, 0, 148}, {68, 0, 552}, {736, 0, 844}}},
+			{s="pir05", x=856, y=0, z=-896, t=1, p=20, rk=15, rr=662, r={{960, 0, -564}, {596, 0, -308}, {248, 0, -636}, {652, 0, -956}}},
+			{s="pir06", x=468, y=0, z=-440, t=1, p=16, rk=11, rr=545, r={{360, 0, -264}, {96, 0, -616}, {788, 0, -880}, {28, 0, -156}}},
+			{s="pir07", x=264, y=0, z=-836, t=1, p=14, rk=13, rr=587, r={{484, 0, -636}, {48, 0, -300}, {-320, 0, -888}, {140, 0, -964}}},
+			{s="pir08", x=-380, y=0, z=-728, t=1, p=16, rk=9, rr=762, r={{24, 0, -752}, {364, 0, -564}, {220, 0, -944}, {-588, 0, -888}, {-428, 0, -696}}},
+			{s="pir09", x=-384, y=0, z=-240, t=1, p=16, rk=6, rr=645, r={{-176, 0, 156}, {-544, 0, 384}, {-852, 0, -300}, {-584, 0, -612}, {-28, 0, -184}}},
+			{s="pir10", x=-156, y=0, z=392, t=1, p=10, rk=3, rr=674, r={{144, 0, 564}, {20, 0, 880}, {-492, 0, 976}, {-416, 0, 268}}},
+			{s="pir11", x=840, y=0, z=-268, t=1, p=17, rk=12, rr=785, r={{940, 0, -56}, {760, 0, -4}, {716, 0, -248}, {304, 0, -368}, {208, 0, -732}, {712, 0, -916}}},
+			{s="pir12", x=876, y=0, z=168, t=1, p=16, rk=10, rr=752, r={{524, 0, 264}, {832, 0, 532}, {948, 0, -580}, {680, 0, -484}, {780, 0, -8}}},
+			{s="pir13", x=312, y=0, z=420, t=1, p=16, rk=5, rr=462, r={{40, 0, 508}, {248, 0, 876}, {760, 0, 308}, {164, 0, 200}}},
+			{s="pir14", x=808, y=0, z=-528, t=1, p=18, rk=14, rr=554, r={{504, 0, -312}, {280, 0, -532}, {472, 0, -968}, {868, 0, -800}, {740, 0, -476}}},
+			{s="pir15", x=-240, y=0, z=812, t=1, p=8, rk=1, rr=707, r={{148, 0, 956}, {444, 0, 636}, {-384, 0, 760}}},
+		}},
+		xt05 = {g="PiratesGroup_1", a={500, -800}, f={
+			{s="pir01", x=504, y=-10, z=-944, t=1, p=17, rk=1, rr=202, r={{450, 0, -750}, {550, 0, -750}, {550, 0, -850}, {450, 0, -850}}},
+			{s="pir02", x=504, y=-10, z=-944, t=1, p=15, rk=2, rr=202, r={{450, 0, -750}, {550, 0, -750}, {550, 0, -850}, {450, 0, -850}}},
+			{s="pir03", x=504, y=-10, z=-944, t=1, p=17, rk=3, rr=202, r={{450, 0, -750}, {550, 0, -750}, {550, 0, -850}, {450, 0, -850}}},
+			{s="pir04", x=504, y=-10, z=-944, t=1, p=16, rk=4, rr=202, r={{450, 0, -750}, {550, 0, -750}, {550, 0, -850}, {450, 0, -850}}},
+			{s="pir05", x=504, y=-10, z=-944, t=1, p=15, rk=5, rr=202, r={{450, 0, -750}, {550, 0, -750}, {550, 0, -850}, {450, 0, -850}}},
+			{s="pir06", x=64, y=0, z=-560, t=1, p=14, rk=8, rr=509, r={{-4, 0, -420}, {-164, 0, -716}, {324, 0, -700}, {536, 0, -372}}},
+			{s="pir07", x=808, y=0, z=428, t=1, p=13, rk=11, rr=371, r={{668, 0, 652}, {964, 0, 592}, {936, 0, 80}, {572, 0, 328}}},
+			{s="pir08", x=-292, y=0, z=-316, t=1, p=15, rk=10, rr=385, r={{-68, 0, -344}, {48, 0, -136}, {-180, 0, 40}, {-364, 0, -188}}},
+			{s="pir09", x=820, y=0, z=-712, t=2, p=12, rk=7, rr=420, r={{876, 0, -516}, {596, 0, -360}, {412, 0, -616}, {868, 0, -864}}},
+			{s="pir10", x=188, y=0, z=-904, t=1, p=13, rk=6, rr=431, r={{376, 0, -760}, {-132, 0, -616}, {-232, 0, -924}, {332, 0, -956}}},
+			{s="pir11", x=572, y=0, z=868, t=1, p=11, rk=15, rr=446, r={{800, 0, 912}, {848, 0, 608}, {504, 0, 428}, {364, 0, 676}}},
+			{s="pir12", x=688, y=0, z=-16, t=2, p=12, rk=9, rr=499, r={{780, 0, 92}, {960, 0, -132}, {880, 0, -476}, {412, 0, -320}}},
+			{s="pir13", x=32, y=0, z=684, t=1, p=15, rk=14, rr=459, r={{-220, 0, 424}, {196, 0, 256}, {420, 0, 484}, {56, 0, 724}}},
+			{s="pir14", x=-424, y=0, z=400, t=2, p=14, rk=13, rr=446, r={{-400, 0, 100}, {-12, 0, 328}, {-272, 0, 604}, {-860, 0, 308}}},
+			{s="pir15", x=-596, y=0, z=-68, t=2, p=13, rk=12, rr=427, r={{-292, 0, 36}, {-708, 0, 344}, {-904, 0, -112}, {-444, 0, -276}}},
+		}},
+		xt11 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="pir01", x=-496, y=0, z=-608, t=1, p=15, rk=2, rr=316, r={{-216, 0, -584}, {-508, 0, -376}, {-808, 0, -560}, {-480, 0, -896}}},
+			{s="pir02", x=-460, y=0, z=900, t=1, p=14, rk=4, rr=405, r={{-864, 0, 904}, {-436, 0, 620}, {-296, 0, 900}}},
+			{s="pir03", x=-804, y=0, z=-732, t=1, p=13, rk=5, rr=349, r={{-968, 0, -472}, {-576, 0, -472}, {-488, 0, -880}, {-840, 0, -776}}},
+			{s="pir04", x=208, y=0, z=896, t=1, p=12, rk=3, rr=408, r={{52, 0, 964}, {-160, 0, 720}, {196, 0, 530}, {336, 0, 816}}},
+			{s="pir05", x=-172, y=0, z=640, t=1, p=13, rk=1, rr=464, r={{-372, 0, 592}, {252, 0, 570}, {288, 0, 700}}},
+		}},
+		xt17 = {g="PiratesGroup_1", a={492, 496}, f={
+			{s="pir01", x=360, y=0, z=420, t=1, p=13, rk=3, rr=296, r={{392, -50, 396}, {392, -50, 596}, {592, -50, 596}, {592, -50, 396}}},
+			{s="pir02", x=404, y=0, z=376, t=1, p=12, rk=2, rr=290, r={{392, 0, 396}, {592, 0, 396}, {592, 0, 596}, {392, 0, 596}}},
+			{s="pir03", x=368, y=0, z=548, t=1, p=15, rk=1, rr=276, r={{392, 50, 396}, {392, 50, 596}, {592, 50, 596}, {592, 50, 396}}},
+			{s="pir04", x=-351, y=-10, z=653, t=1, p=14, rk=7, rr=295, r={{-296, -40, 508}, {-296, -40, 708}, {-96, -40, 708}, {-96, -40, 508}}},
+			{s="pir05", x=-367, y=-10, z=625, t=1, p=10, rk=8, rr=297, r={{-296, 20, 508}, {-96, 20, 508}, {-96, 20, 708}, {-296, 20, 708}}},
+			{s="pir06", x=4, y=0, z=-272, t=1, p=13, rk=9, rr=306, r={{60, -30, -436}, {60, -30, -236}, {260, -30, -236}, {260, -30, -436}}},
+			{s="pir07", x=8, y=0, z=-364, t=1, p=15, rk=11, rr=285, r={{60, 30, -436}, {260, 30, -436}, {260, 30, -236}, {60, 30, -236}}},
+			{s="pir08", x=92, y=0, z=44, t=1, p=12, rk=6, rr=350, r={{440, 0, 8}, {188, 0, 348}, {-104, 0, 80}, {12, 0, -184}}},
+			{s="pir09", x=744, y=0, z=12, t=1, p=11, rk=5, rr=566, r={{928, 0, 176}, {436, 0, 144}, {408, 0, -112}, {900, 0, -532}}},
+			{s="pir10", x=772, y=0, z=860, t=1, p=13, rk=4, rr=790, r={{212, 0, 920}, {640, 0, 540}, {828, 0, 72}, {888, 0, 888}}},
+			{s="pir11", x=-140, y=0, z=-748, t=1, p=14, rk=15, rr=645, r={{-36, 0, -444}, {-384, 0, -536}, {-140, 0, -920}, {484, 0, -908}, {68, 0, -684}}},
+			{s="pir12", x=-752, y=0, z=-380, t=1, p=13, rk=16, rr=661, r={{-884, 0, -104}, {-92, 0, -348}, {-672, 0, -760}}},
+			{s="pir13", x=-644, y=0, z=216, t=1, p=16, rk=12, rr=832, r={{-468, 0, 296}, {-828, 0, 464}, {-948, 0, 84}, {-864, 0, -584}, {-380, 0, -572}, {-632, 0, -212}}},
+			{s="pir14", x=-860, y=0, z=840, t=1, p=17, rk=14, rr=999, r={{-256, 0, 936}, {-584, 0, 472}, {-748, 0, -152}, {-892, 0, 824}}},
+			{s="pir15", x=-600, y=0, z=-808, t=1, p=18, rk=17, rr=813, r={{-908, 0, -500}, {-180, 0, -512}, {204, 0, -924}, {-408, 0, -860}}},
+			{s="pir16", x=904, y=0, z=-356, t=1, p=13, rk=10, rr=615, r={{908, 0, -628}, {320, 0, -548}, {760, 0, 116}}},
+			{s="pir18", x=700, y=0, z=-808, t=1, p=14, rk=13, rr=543, r={{900, 0, -892}, {232, 0, -892}, {324, 0, -536}, {592, 0, -276}}},
+		}},
+		xt23 = {g="PiratesGroup_1", a={496, 892}, f={
+			{s="pir01", x=0, y=-10, z=0, t=1, p=14, rk=8, rr=353, r={{80, 0, 88}, {-204, 0, 264}, {-340, 0, -72}, {-148, 0, -320}}},
+			{s="pir02", x=744, y=0, z=-780, t=1, p=12, rk=13, rr=475, r={{896, 0, -532}, {440, 0, -416}, {400, 0, -884}, {880, 0, -880}}},
+			{s="pir03", x=-244, y=0, z=412, t=1, p=13, rk=6, rr=618, r={{-400, 0, 632}, {-728, 0, 28}, {-160, 0, -144}, {-100, 0, 492}}},
+			{s="pir04", x=-176, y=0, z=-836, t=1, p=10, rk=14, rr=821, r={{128, 0, -352}, {636, 0, -720}, {412, 0, -908}, {-408, 0, -820}, {56, 0, -684}}},
+			{s="pir05", x=-372, y=0, z=-232, t=1, p=11, rk=11, rr=488, r={{-340, 0, -568}, {-620, 0, -100}, {-212, 0, 200}, {96, 0, -368}}},
+			{s="pir06", x=440, y=0, z=272, t=1, p=12, rk=4, rr=324, r={{644, 0, 216}, {250, 0, 400}, {356, 0, 584}}},
+			{s="pir07", x=-632, y=0, z=-784, t=1, p=13, rk=15, rr=415, r={{-844, 0, -428}, {-440, 0, -432}, {-232, 0, -800}, {-856, 0, -924}}},
+			{s="pir08", x=-232, y=0, z=804, t=1, p=10, rk=5, rr=458, r={{-608, 0, 544}, {-148, 0, 456}, {124, 0, 828}, {-360, 0, 948}}},
+			{s="pir09", x=-612, y=0, z=328, t=1, p=12, rk=9, rr=670, r={{-880, 0, -136}, {-200, 0, -200}, {-424, 0, 588}, {-888, 0, 612}}},
+			{s="pir10", x=244, y=0, z=-584, t=1, p=13, rk=12, rr=445, r={{576, 0, -880}, {40, 0, -852}, {208, 0, -432}, {588, 0, -572}}},
+			{s="pir11", x=688, y=0, z=-364, t=1, p=16, rk=10, rr=445, r={{980, 0, -252}, {428, 0, -564}, {912, 0, -748}}},
+			{s="pir12", x=272, y=0, z=928, t=1, p=14, rk=2, rr=607, r={{72, 0, 932}, {156, 0, 688}, {532, 0, 564}, {860, 0, 780}, {432, 0, 776}}},
+			{s="pir13", x=780, y=0, z=8, t=1, p=12, rk=7, rr=384, r={{964, 0, 252}, {632, 0, 300}, {708, 0, -8}, {888, 0, -360}}},
+			{s="pir14", x=328, y=0, z=780, t=1, p=14, rk=1, rr=521, r={{112, 0, 764}, {244, 0, 412}, {652, 0, 372}, {528, 0, 728}}},
+			{s="pir15", x=712, y=0, z=716, t=1, p=15, rk=3, rr=420, r={{724, 0, 596}, {352, 0, 604}, {376, 0, 968}, {656, 0, 924}}},
+		}},
+		xt24 = {g="PiratesGroup_1", a={-180, 280}, f={
+			{s="pir01", x=-864, y=0, z=140, t=1, p=14, rk=6, rr=430, r={{-996, 0, 292}, {-708, 0, 540}, {-496, 0, 240}, {-776, 0, 12}}},
+			{s="pir02", x=-732, y=0, z=704, t=1, p=14, rk=5, rr=432, r={{-880, 0, 492}, {-360, 0, 676}, {-376, 0, 948}, {-880, 0, 844}}},
+			{s="pir03", x=876, y=0, z=928, t=1, p=14, rk=8, rr=492, r={{476, 0, 948}, {596, 0, 812}, {852, 0, 780}, {980, 0, 448}, {948, 0, 972}}},
+			{s="pir04", x=-240, y=0, z=-348, t=2, p=8, rk=4, rr=478, r={{0, 0, -136}, {-352, 0, 116}, {-292, 0, -320}}},
+			{s="pir05", x=-344, y=0, z=80, t=1, p=14, rk=1, rr=428, r={{-476, 0, 292}, {-108, 0, 436}, {60, 0, 160}, {-312, 0, -72}}},
+			{s="pir06", x=-812, y=0, z=-280, t=1, p=14, rk=7, rr=553, r={{-996, 0, 8}, {-484, 0, 164}, {-468, 0, -188}, {-844, 0, -228}}},
+			{s="pir07", x=-40, y=0, z=876, t=1, p=14, rk=3, rr=747, r={{-140, 0, 976}, {-784, 0, 940}, {-492, 0, 640}}},
+			{s="pir08", x=-320, y=0, z=624, t=1, p=14, rk=2, rr=348, r={{-100, 0, 468}, {-132, 0, 916}, {-508, 0, 848}, {-536, 0, 424}}},
+		}},
+		xt26 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="Pir01", x=504, y=0, z=-8, t=1, p=14, rk=5, rr=323, r={{500, 0, 0}, {200, 0, 100}}},
+			{s="Pir02", x=572, y=0, z=-320, t=1, p=15, rk=10, rr=373, r={{200, 0, -300}, {700, 0, -200}, {600, 0, -600}}},
+			{s="Pir03", x=-40, y=0, z=716, t=2, p=14, rk=12, rr=403, r={{300, 0, 800}, {300, 0, 500}, {-100, 0, 500}, {-200, 0, 800}}},
+			{s="Pir04", x=-328, y=0, z=-280, t=1, p=16, rk=4, rr=414, r={{-300, 0, -200}, {-700, 0, -400}, {-700, 0, -100}, {-400, 0, 0}}},
+			{s="Pir05", x=124, y=0, z=368, t=2, p=13, rk=3, rr=385, r={{400, 0, 100}, {400, 0, 400}, {100, 0, 500}, {-100, 0, 200}}},
+			{s="Pir06", x=-572, y=0, z=140, t=1, p=12, rk=8, rr=364, r={{-300, 0, 100}, {-600, 0, 400}, {-700, 0, -200}}},
+			{s="Pir07", x=-12, y=0, z=-632, t=1, p=10, rk=9, rr=394, r={{200, 0, -400}, {200, 0, -800}, {-400, 0, -700}}},
+			{s="Pir08", x=408, y=0, z=-624, t=2, p=11, rk=14, rr=412, r={{200, 0, -400}, {800, 0, -500}, {300, 0, -800}}},
+			{s="Pir09", x=712, y=0, z=264, t=1, p=13, rk=16, rr=319, r={{800, 0, 0}, {400, 0, 200}, {700, 0, 500}}},
+			{s="Pir10", x=-240, y=0, z=508, t=1, p=10, rk=7, rr=673, r={{-532, 0, 924}, {-908, 0, 584}, {-740, 0, 380}, {-296, 0, 600}}},
+			{s="Pir11", x=600, y=0, z=448, t=2, p=12, rk=15, rr=512, r={{768, 0, 728}, {544, 0, 956}, {360, 0, 700}, {656, 0, 372}}},
+			{s="Pir12", x=-196, y=0, z=-316, t=1, p=13, rk=2, rr=680, r={{-272, 0, -360}, {-516, 40, -516}, {-692, 0, -780}}},
+			{s="Pir13", x=192, y=0, z=-112, t=1, p=15, rk=1, rr=395, r={{120, 0, 124}, {-136, 0, 108}, {-168, 0, -160}, {168, 0, -128}}},
+			{s="Pir14", x=-452, y=0, z=324, t=2, p=13, rk=6, rr=486, r={{-416, 0, 348}, {-80, 0, 448}, {24, 0, 228}, {-316, 0, 84}}},
+			{s="Pir15", x=932, y=0, z=-304, t=2, p=11, rk=19, rr=551, r={{920, 0, -188}, {840, 0, 44}, {512, 0, 52}, {556, 0, -240}}},
+			{s="Pir16", x=308, y=0, z=656, t=2, p=9, rk=13, rr=457, r={{348, 0, 688}, {484, 0, 760}, {704, 0, 736}, {756, 0, 568}, {464, 0, 428}}},
+			{s="Pir17", x=-392, y=0, z=-568, t=1, p=15, rk=11, rr=529, r={{-488, 0, -756}, {-672, 0, -472}, {12, 0, -908}}},
+			{s="Pir18", x=-800, y=0, z=-920, t=2, p=17, rk=22, rr=1249, r={{-804, 0, -848}, {-836, 0, 328}}},
+			{s="Pir19", x=-508, y=0, z=624, t=1, p=12, rk=17, rr=311, r={{-572, 0, 320}, {-548, 0, 640}, {-212, 0, 656}, {-452, 0, 740}}},
+			{s="Pir20", x=684, y=0, z=-652, t=2, p=13, rk=18, rr=607, r={{728, 0, -448}, {176, 0, -320}, {152, 0, -644}}},
+			{s="Pir21", x=776, y=0, z=-892, t=1, p=12, rk=21, rr=555, r={{896, 0, -880}, {640, 0, -508}, {368, 0, -516}, {390, 0, -780}}},
+			{s="Pir22", x=644, y=0, z=-908, t=2, p=16, rk=20, rr=342, r={{936, 0, -900}, {908, 0, -692}, {668, 0, -696}, {660, 0, -864}}},
+		}},
+		xt27 = {g="PiratesGroup_1", a={360, -556}, f={
+			{s="Pir01", x=412, y=0, z=296, t=1, p=18, rk=7, rr=630, r={{300, 0, 300}, {300, 0, 100}, {500, 0, -100}, {800, 0, -200}, {900, 0, 200}}},
+			{s="Pir02", x=524, y=0, z=-832, t=2, p=20, rk=2, rr=341, r={{200, 0, -800}, {500, 0, -900}, {800, 0, -700}, {600, 0, -500}, {500, 0, -700}}},
+			{s="Pir03", x=-200, y=0, z=-796, t=1, p=19, rk=4, rr=497, r={{-500, 0, -700}, {-500, 0, -400}, {100, 0, -600}, {100, -70, -800}, {-200, -70, -800}}},
+			{s="Pir04", x=-824, y=0, z=684, t=2, p=18, rk=13, rr=734, r={{-800, -60, 700}, {-800, 60, 200}, {-200, 30, 300}, {-100, 0, 600}}},
+			{s="Pir05", x=-724, y=0, z=-724, t=1, p=17, rk=9, rr=704, r={{-900, 0, -400}, {-400, 0, -300}, {-100, 0, -400}, {-300, 0, -800}, {-700, 0, -700}}},
+			{s="Pir06", x=-492, y=0, z=548, t=2, p=18, rk=11, rr=458, r={{-400, 0, 100}, {-100, -20, 400}, {-300, 20, 700}, {-700, 20, 400}}},
+			{s="Pir07", x=-428, y=0, z=-356, t=1, p=19, rk=6, rr=557, r={{-450, -50, -350}, {-100, 0, -100}, {-400, 0, 200}, {-900, 0, -100}}},
+			{s="Pir08", x=52, y=0, z=-560, t=2, p=20, rk=1, rr=296, r={{-100, 0, -400}, {300, 0, -400}, {100, 0, -800}}},
+			{s="Pir09", x=780, y=0, z=-432, t=1, p=20, rk=3, rr=410, r={{900, 0, -700}, {600, 0, -800}, {500, 0, -500}, {800, 0, -300}}},
+			{s="Pir10", x=824, y=0, z=-124, t=2, p=18, rk=5, rr=426, r={{900, 0, -400}, {500, 0, -400}, {600, 0, -100}, {900, 0, -200}}},
+			{s="Pir11", x=744, y=0, z=496, t=1, p=19, rk=10, rr=455, r={{900, 0, 100}, {500, 0, 200}, {300, 0, 400}, {600, 0, 600}, {900, 0, 400}}},
+			{s="Pir12", x=608, y=0, z=896, t=2, p=19, rk=12, rr=538, r={{900, 0, 900}, {900, 0, 500}, {400, 0, 400}, {200, 0, 700}, {600, 0, 600}}},
+			{s="Pir13", x=-124, y=0, z=188, t=1, p=20, rk=8, rr=477, r={{-100, 0, -100}, {-400, 0, -200}, {-500, 0, 100}, {-200, 0, 300}, {100, 0, 200}}},
+		}},
+		xt39 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="pir01", x=480, y=0, z=728, t=1, p=16, rk=5, rr=413, r={{220, 0, 916}, {888, 0, 792}, {600, 0, 400}, {96, 0, 600}}},
+			{s="pir02", x=-96, y=0, z=-776, t=1, p=17, rk=3, rr=546, r={{300, 0, -964}, {444, 0, -856}, {-56, 0, -524}, {-396, 0, -668}}},
+			{s="pir03", x=744, y=0, z=232, t=1, p=18, rk=2, rr=630, r={{912, 0, -144}, {500, 0, 48}, {160, 0, 64}, {144, 0, 424}, {800, 0, 500}}},
+			{s="pir04", x=-624, y=0, z=-448, t=1, p=17, rk=1, rr=383, r={{-736, 0, -240}, {-500, 0, -224}, {-268, 0, -588}, {-564, 0, -560}}},
+			{s="pir05", x=-124, y=0, z=916, t=1, p=16, rk=6, rr=589, r={{-504, 0, 908}, {404, 0, 892}, {300, 0, 508}}},
+			{s="pir06", x=-816, y=0, z=40, t=1, p=15, rk=4, rr=513, r={{-888, 0, 284}, {-604, 0, 212}, {-672, 0, -452}}},
+		}},
+		xt41 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="Pir01", x=744, y=0, z=224, t=1, p=7, rk=3, rr=274, r={{700, 0, 50}, {500, 0, 100}}},
+			{s="Pir02", x=864, y=0, z=-772, t=2, p=10, rk=7, rr=907, r={{700, 0, -300}, {400, 0, -200}, {400, 100, 0}}},
+			{s="Pir03", x=228, y=-900, z=152, t=2, p=8, rk=5, rr=1801, r={{230, -900, 150}, {230, 900, 150}}},
+			{s="Pir04", x=-200, y=0, z=300, t=1, p=8, rk=1, rr=568, r={{-200, 0, 300}, {-100, 50, -100}, {200, -50, -100}}},
+			{s="pir05", x=408, y=0, z=-852, t=1, p=11, rk=6, rr=555, r={{960, 0, -908}, {884, 0, -580}, {416, 0, -684}, {384, 0, -896}}},
+			{s="pir06", x=824, y=0, z=-920, t=1, p=12, rk=8, rr=433, r={{612, 0, -908}, {644, 0, -552}, {944, 0, -504}, {932, 0, -900}}},
+			{s="pir07", x=-920, y=0, z=904, t=1, p=13, rk=9, rr=431, r={{-972, 0, 972}, {-496, 0, 976}, {-820, 0, 796}, {-956, 0, 484}}},
+			{s="pir08", x=-308, y=0, z=-840, t=1, p=14, rk=4, rr=405, r={{-520, 0, -824}, {-688, 0, -980}, {-336, 0, -976}, {-232, 0, -676}}},
+			{s="pir09", x=600, y=0, z=436, t=1, p=15, rk=2, rr=421, r={{928, 0, 552}, {904, 0, 320}, {504, 0, 320}, {180, 0, 456}}},
+		}},
+		xt45 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="Pir01", x=-92, y=0, z=-312, t=1, p=11, rk=2, rr=358, r={{-100, -40, -300}, {-300, 40, -600}}},
+			{s="Pir02", x=-232, y=0, z=-160, t=2, p=12, rk=1, rr=347, r={{-230, 0, -160}, {-300, 0, -500}}},
+			{s="Pir03", x=-20, y=600, z=-592, t=2, p=8, rk=4, rr=1201, r={{0, 600, -600}, {0, -600, -600}}},
+			{s="Pir04", x=-472, y=-600, z=-336, t=2, p=9, rk=3, rr=1201, r={{-500, 600, -300}, {-500, -600, -300}}},
+			{s="Pir05", x=-288, y=0, z=-924, t=2, p=8, rk=6, rr=763, r={{-300, -150, -1000}, {-500, -150, -700}, {-100, 150, -200}, {0, 150, -500}}},
+			{s="pir06", x=-872, y=0, z=-260, t=1, p=7, rk=5, rr=1026, r={{-700, 0, -300}, {0, 0, -800}}},
+		}},
+		xt52 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="Pir01", x=-284, y=0, z=92, t=2, p=11, rk=1, rr=300, pin=1, r={{-500, 0, 300}, {-300, 0, 100}}},
+			{s="pir02", x=-664, y=0, z=802, t=2, p=10, rk=9, rr=791, pin=1, r={{-650, 200, 800}, {-400, 300, 500}, {-200, -150, 400}, {100, 0, 600}}},
+			{s="pir03", x=-304, y=600, z=334, t=1, p=9, rk=6, rr=1401, r={{-300, 800, 350}, {-300, -800, 350}}},
+			{s="pir04", x=-118, y=0, z=442, t=1, p=11, rk=2, rr=318, pin=1, r={{-300, -30, 600}, {-400, -30, 300}}},
+			{s="Pir05", x=580, y=0, z=-472, t=1, p=9, rk=5, rr=401, r={{580, 0, -500}, {200, 0, -600}, {500, 0, -800}}},
+			{s="Pir06", x=432, y=0, z=-260, t=1, p=8, rk=3, rr=292, r={{430, 0, -250}, {300, 0, 0}}},
+			{s="Pir07", x=-100, y=0, z=-608, t=1, p=9, rk=4, rr=701, r={{-100, 0, -600}, {-400, 0, -500}, {-800, 0, -600}, {-500, 0, -700}}},
+			{s="Pir08", x=472, y=0, z=728, t=2, p=8, rk=7, rr=371, r={{450, 0, 700}, {200, 0, 600}, {300, 0, 400}}},
+			{s="Pir09", x=472, y=-10, z=728, t=1, p=9, rk=8, rr=371, r={{450, -10, 700}, {200, -10, 600}, {300, -10, 400}}},
+		}},
+		xt54 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="Pir01", x=352, y=0, z=-32, t=1, p=13, rk=1, rr=435, r={{300, -10, 150}, {400, 10, 400}}},
+			{s="Pir02", x=600, y=0, z=72, t=1, p=12, rk=2, rr=249, r={{670, 0, 0}, {700, 0, 300}}},
+		}},
+		xt93 = {g="PiratesGroup_1", a={0, 0}, f={
+			{s="Pir01", x=150, y=0, z=40, t=1, p=8, rk=1, rr=260, pin=1, r={{150, 0, 0}, {150, 0, 300}}},
+			{s="Pir02", x=412, y=0, z=188, t=2, p=12, rk=3, rr=358, r={{400, 0, 200}, {700, 0, 400}}},
+			{s="Pir03", x=108, y=0, z=484, t=2, p=11, rk=4, rr=221, r={{100, 0, 500}, {150, 0, 700}}},
+			{s="Pir04", x=288, y=0, z=276, t=1, p=13, rk=2, rr=269, r={{408, 0, 516}, {284, 0, 312}}},
+			{s="Pir05", x=384, y=0, z=-344, t=1, p=9, rk=5, rr=501, r={{380, 0, 156}, {360, 0, -268}}},
+			{s="pir06", x=-636, y=0, z=704, t=1, p=16, rk=8, rr=416, r={{-988, 0, 924}, {-936, 0, 556}, {-428, 0, 460}, {-344, 0, 864}}},
+			{s="pir07", x=112, y=0, z=940, t=1, p=15, rk=7, rr=505, r={{616, 0, 968}, {488, 0, 704}, {-252, 0, 868}}},
+			{s="pir08", x=88, y=0, z=-860, t=1, p=14, rk=6, rr=715, r={{-96, 0, -560}, {-336, 0, -956}, {792, 0, -980}, {320, 0, -816}}},
+			{s="pir09", x=-856, y=0, z=-848, t=1, p=13, rk=10, rr=646, r={{-964, 0, -536}, {-220, 0, -956}, {-904, 0, -924}}},
+			{s="pir10", x=664, y=0, z=868, t=1, p=13, rk=9, rr=476, r={{984, 0, 516}, {636, 0, 616}, {372, 0, 964}, {884, 0, 904}}},
+		}},
+	};
+end;
+-- END gen_haunt.py
+
+-- Pure functions (*Of) ----------------------------------------------------------------
+
+-- Count factor in percent of phase ph (0 Quiet .. 5 Recovery): haunt_f[ph + 1]; the swept factor fs in Bust (ph 4)
+-- when the system is the target of the region's won sweep.
+function TRF_HaFOf(ph, swept, F, fs)
+	if ph == 4 and swept then return fs; end;
+	return F[ph + 1] or 100;
+end;
+
+-- Kill memory refill (design 6 entry step 2): t whole steps of rl legs since stamp l; each takes ceil(pct x nv / 100)
+-- killed flights back; a refill amount of 0 (pct 0) is no step (the stamp and c stay). Returns k', l', t.
+function TRF_HaRefillOf(k, l, legs, nv, pct, rl)
+	if rl < 1 then rl = 1; end;
+	local t = floor((legs - l) / rl);
+	if t <= 0 then return k, l, 0; end;
+	local dk = ceil(pct * nv / 100);
+	if dk <= 0 then return k, l, 0; end;
+	return max(0, k - t * dk), l + t * rl, t;
+end;
+
+-- Plan of one entry (design 4 scaling, 6 entry step 3), pure. rows: the system's static flights; f: count factor %;
+-- k: kill memory; dp: power delta; caches: list of {x, y, z} of unopened cache slots; cr: haunt_cache_r.
+-- n = clamp(round(f x nv / 100) - k, pins, nv); pinned signs first, then the ranks ascending; a sign within cr + rr of a
+-- cache is not fielded unless pinned. Returns {n (target), nv, pins, fl[i] = 1 fielded, sk[i] = "count" | "cache",
+-- pw[i] = power of the static row}, never more fielded flights than nv.
+function TRF_HauntPlanOf(rows, f, k, dp, caches, cr)
+	local nv = getn(rows);
+	local P = {nv=nv, pins=0, fl={}, sk={}, pw={}, nf=0};
+	for i = 1, nv do
+		if rows[i].pin == 1 then P.pins = P.pins + 1; end;
+		P.pw[i] = TRF_HaCl(floor((rows[i].p or 1) + dp), 1, 20);
+	end;
+	P.n = TRF_HaCl(floor(f * nv / 100 + 0.5) - (k or 0), P.pins, nv);
+	local cand = {};
+	for i = 1, nv do
+		local r = rows[i];
+		if r.pin == 1 then
+			P.fl[i] = 1; P.nf = P.nf + 1;
+		else
+			local near = nil;
+			for c = 1, getn(caches or {}) do
+				local d = TRF_HaDist({x=r.x, y=r.y, z=r.z}, caches[c]);
+				if d and d <= cr + (r.rr or 0) then near = 1; end;
+			end;
+			if near then P.sk[i] = "cache"; else tinsert(cand, i); end;
+		end;
+	end;
+	sort(cand, function(a, b) return (%rows[a].rk or a) < (%rows[b].rk or b); end);
+	for c = 1, getn(cand) do
+		local i = cand[c];
+		if P.nf < P.n then P.fl[i] = 1; P.nf = P.nf + 1; else P.sk[i] = "count"; end;
+	end;
+	return P;
+end;
+
+-- Arrival line of an entry (design 6 activation): with a memory record "haunthurt" ("hauntclear" when the last fielded
+-- flight died with player fire and nothing is fielded); else the phase line once per phase (nl = phase + 1; the swept
+-- target's line uses K.swept_nl). Returns key or nil, and the nl value to store (nil: unchanged).
+function TRF_HaLineOf(rec, nf, ph, nl, swept, K)
+	if type(rec) == "table" then
+		if rec.c == 1 and nf == 0 then return "hauntclear", nil; end;
+		return "haunthurt", nil;
+	end;
+	if ph == 4 and swept then
+		if nl == K.swept_nl then return nil, nil; end;
+		return "hauntswept", K.swept_nl;
+	end;
+	local key = K.lines[ph + 1];
+	if not key or nl == ph + 1 or (ph == 4 and nl == K.swept_nl) then return nil, nil; end;
+	return key, ph + 1;
+end;
+
+-- Bit string of n flags (1 or nil) as "1"/"0" characters.
+function TRF_HaBitsOf(t, n)
+	local s = "";
+	for i = 1, n do if t[i] then s = s.."1"; else s = s.."0"; end; end;
+	return s;
+end;
+
+-- State --------------------------------------------------------------------------------
+
+function TRF_HaRec(idx)
+	if type(TRF) ~= "table" or type(TRF.haunt) ~= "table" or type(idx) ~= "number" then return nil; end;
+	local r = TRF.haunt[idx];
+	if type(r) == "table" then return r; end;
+	return nil;
+end;
+
+-- Counters TRF.nst {n fielded, k killed, p killed with player fire}.
+function TRF_HaCount(k)
+	if type(TRF) ~= "table" then return; end;
+	if type(TRF.nst) ~= "table" then TRF.nst = {n=0, k=0, p=0}; end;
+	TRF.nst[k] = min(TRF_HaK().cnt_max, (TRF.nst[k] or 0) + 1);
+end;
+
+function TRF_HaClan(slot)
+	local c = TRF_N("TRF_ClanRec", slot);
+	if type(c) == "table" then return c; end;
+	return nil;
+end;
+
+-- Region slot of idx, its phase and the effective tier, and 1 when idx is the region's won-sweep target (clan ns).
+function TRF_HaRegion(idx)
+	local slot = TRF_N("TRF_RgOf", idx);
+	if type(slot) ~= "number" then return nil; end;
+	local ph = TRF_N("TRF_Phase", slot) or 0;
+	local T = TRF_N("TRF_EffTier", idx) or 1;
+	local c = TRF_HaClan(slot);
+	local sw = nil;
+	if c and c.ns == idx then sw = 1; end;
+	return slot, ph, T, sw;
+end;
+
+-- Unopened cache slots of system idx (trf_stash records with st 0 or 1): list of {x, y, z}.
+function TRF_HaCaches(idx)
+	local out = {};
+	if type(TRF) ~= "table" or type(TRF.stash) ~= "table" then return out; end;
+	for i, r in TRF.stash do
+		if type(r) == "table" and r.sys == idx and type(r.st) == "number" and r.st < 2 then
+			local p = TRF_N("TRF_ShSlotPos", r);
+			if type(p) == "table" and type(p.x) == "number" then tinsert(out, p); end;
+		end;
+	end;
+	return out;
+end;
+
+-- Gates --------------------------------------------------------------------------------
+
+-- 1 when the module runs: TRF, the traffic modules, cfg haunt 1.
+function TRF_HaOn()
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return nil; end;
+	return TRF_HaOpt("haunt") == 1;
+end;
+
+-- 1 when system name nm is excluded: a deny entry with haunt = 0 (X297, El Ariash) or a cfg haunt_off name.
+function TRF_HaExcluded(nm)
+	local e = TRF_N("TRF_DenyEntry", nm);
+	if type(e) == "table" and e.haunt == 0 then return 1; end;
+	local off = TRF_HaOpt("haunt_off");
+	if type(off) == "table" then
+		for k, v in off do if type(v) == "string" and strlower(v) == nm then return 1; end; end;
+	end;
+	return nil;
+end;
+
+-- Visit mode (design 6 entry step 1): "haunt", nil or "vanilla", reason (off, no_data, excluded, guard, sysmode,
+-- gate_<strict reason>, no_region, supp).
+function TRF_HaMode(cur, nm, d)
+	if not TRF_HaOn() then return "vanilla", "off"; end;
+	if not d then return "vanilla", "no_data"; end;
+	if TRF_HaExcluded(nm) then return "vanilla", "excluded"; end;
+	if type(TRF_RgGuardOn) ~= "function" or TRF_RgGuardOn() then return "vanilla", "guard"; end;
+	-- TRF_SysModeQuiet: trf_gen's entry decision already counts van_<reason> and logs the change (TRF_SysMode).
+	local sm = nil;
+	if type(TRF_SysModeQuiet) == "function" then sm = TRF_SysModeQuiet(); elseif type(TRF_SysMode) == "function" then sm = TRF_SysMode(); end;
+	if sm ~= nil and sm ~= "mod" then return "vanilla", "sysmode"; end;
+	if type(TRF_StrictOk) == "function" then
+		local ok, w = TRF_StrictOk(cur, "haunt");
+		if not ok then return "vanilla", "gate_"..tostring(w); end;
+	end;
+	if not TRF_N("TRF_RgOf", cur) then return "vanilla", "no_region"; end;
+	if not TRF_HaGateOk() then return "vanilla", "supp"; end;
+	return "haunt", nil;
+end;
+
+-- Install and wrapper ------------------------------------------------------------------------
+
+-- 1 when f is this module's NewPirateFlight wrapper (thunk identity of an earlier run, or a Mods/Traffic chunk).
+function TRF_HaIsMine(f)
+	if type(f) ~= "function" then return nil; end;
+	if type(TRF_HaThunk) == "function" and f == TRF_HaThunk() then return 1; end;
+	if type(TRF_IsMine) == "function" and TRF_IsMine(f) then return 1; end;
+	return nil;
+end;
+
+-- Called from TRF_Main on every MapInitialization after TRF_InstallPlumb: the vanilla includes have just redefined
+-- NewPirateFlight (system.lst, Create_flight_2.script), so the original saved here is this run's. TRF_orig_NewPirateFlight
+-- and the thunk are function globals: they survive ClearGlobals and are never saved. NewPiratesFlight and the "Pirate"
+-- branch of the side dispatcher look NewPirateFlight up at call time and need no wrap. Returns 1 when wrapped now.
+function TRF_InstallHaunt()
+	local w = 0;
+	if type(NewPirateFlight) == "function" and not TRF_HaIsMine(NewPirateFlight) then
+		TRF_orig_NewPirateFlight = NewPirateFlight;
+		local t = function(g, s, l, ty, p, o)
+			if type(TRF_Haunt_NPF) == "function" then return TRF_Haunt_NPF(g, s, l, ty, p, o); end;
+			if type(TRF_orig_NewPirateFlight) == "function" then return TRF_orig_NewPirateFlight(g, s, l, ty, p, o); end;
+			return FALSE;
+		end;
+		NewPirateFlight = t;
+		TRF_HaThunk = function() return %t; end;
+		w = 1;
+	end;
+	TRF_HaDE("install", "installed", TRF_KvB(w), "wrapped", TRF_KvB(TRF_HaIsMine(NewPirateFlight)));
+	return w;
+end;
+
+function TRF_HaNoop() end;
+function TRF_HaNil() return nil; end;
+
+-- Stub flight of a skipped sign (design 6): the methods activate.script uses on placed flights as no-ops, IsAlive nil.
+-- Only between the wrapper call and TRF_OnActivate (cleared there), so no table with functions reaches a save.
+function TRF_HaStub(sign)
+	return {trf_haunt_stub=sign, Patrol=TRF_HaNoop, Move=TRF_HaNoop, Escort=TRF_HaNoop, Attack=TRF_HaNoop, Delete=TRF_HaNoop,
+		SetFormation=TRF_HaNoop, SetOrientation=TRF_HaNoop, IsAlive=TRF_HaNil};
+end;
+
+-- The vanilla call with the caller's arguments (unprotected: its errors are vanilla's).
+function TRF_HaOrig(g, s, l, ty, p, o)
+	if type(TRF_orig_NewPirateFlight) ~= "function" then return FALSE; end;
+	return TRF_orig_NewPirateFlight(g, s, l, ty, p, o);
+end;
+
+-- A pass of an armed visit's call, logged at level 2 (no visit record: no line, so a vanilla-mode visit has none, E16.1).
+function TRF_HaPass(why, sign)
+	TRF_HaDE("call", "sign", tostring(sign), "result", "pass", "reason", why);
+	return {};
+end;
+
+function TRF_HaGroupRaw(gn)
+	return CreateTeam("Pirates"):CreateGroup(gn);
+end;
+
+-- The haunt group of armed visit a (created on the first fielded call; its build global set), or nil.
+function TRF_HaGroup(a)
+	if TRF_HaObj(a.grp) then return a.grp; end;
+	if type(CreateTeam) ~= "function" then return nil; end;
+	local K = TRF_HaK();
+	local g = call(TRF_HaGroupRaw, {K.grp}, "x", TRF_HaErr);
+	if not TRF_HaObj(g) then return nil; end;
+	a.grp = g;
+	setglobal(K.gg, g);
+	return g;
+end;
+
+-- NewPirateFlight while installed (design 6). The decision runs protected (TRF_HaDecide): an error there gives the
+-- vanilla call. A substituted flight or a stub is returned as decided; every other case is the vanilla call with the
+-- caller's arguments, unprotected (its errors are vanilla's, and a partial build is never repeated); haunt_mode 2
+-- records its flight.
+function TRF_Haunt_NPF(group, sign, location, ty, power, orient)
+	local r = call(TRF_HaDecide, {group, sign, location, ty, power, orient}, "x", TRF_HaErr);
+	if type(r) == "table" and r.ret then return r.ret; end;
+	local fl = TRF_HaOrig(group, sign, location, ty, power, orient);
+	if type(r) == "table" and r.rec then call(TRF_HaRecord, {r.rec, sign, fl}, "x", TRF_HaErr); end;
+	return fl;
+end;
+
+-- haunt_mode 2: the vanilla flight of row i recorded.
+function TRF_HaRecord(i, sign, fl)
+	local a = %HA.a;
+	if type(a) ~= "table" then return; end;
+	if TRF_HaObj(fl) then a.van[i] = fl; end;
+	TRF_HaDE("call", "sign", sign, "result", "recorded");
+end;
+
+-- Decision of one call: {ret = flight or stub} when decided, {rec = i} for haunt_mode 2, else {} (the vanilla call).
+-- No visit record: the vanilla call, no line. Not armed or another generation, a sign not in the system's table, a
+-- group other than the system's vanilla group or a second call of a sign: a pass. Planned and fielded: the vanilla
+-- builder with group TRF_GHaunt_1 and the haunt power, protected; any error or a non-object result: the vanilla call
+-- (result=failed reason=build). Planned and skipped: the stub.
+function TRF_HaDecide(group, sign, location, ty, power, orient)
+	local a = %HA.a;
+	if type(a) ~= "table" then return {}; end;
+	if a.on ~= 1 or a.gen ~= TRF_HaGen() then return TRF_HaPass("unarmed", sign); end;
+	if a.mode == 3 then return TRF_HaGateCall(a, group, sign, location, ty, power, orient); end;
+	local i = a.by[sign];
+	if not i then return TRF_HaPass("unlisted", sign); end;
+	if group ~= a.d.g then
+		a.unk = a.unk + 1;
+		return TRF_HaPass("group", sign);
+	end;
+	if a.st[i] then return TRF_HaPass("repeat", sign); end;
+	if a.mode == 2 then
+		a.st[i] = "rec";
+		return {rec=i};
+	end;
+	local pin = nil;
+	if a.d.f[i].pin == 1 then pin = 1; end;
+	if a.plan.fl[i] then
+		local g = TRF_HaGroup(a);
+		local pw = nil;
+		if type(power) == "number" then pw = TRF_HaCl(floor(power + a.dp), 1, 20); end;
+		local fl = nil;
+		if g and pw then fl = TRF_HaBuild(TRF_HaK().gg, sign, location, ty, pw, orient, a, i, pin); end;
+		if TRF_HaObj(fl) then
+			a.st[i] = "sub";
+			a.fl[i] = fl;
+			TRF_HaDE("call", "sign", sign, "result", "substituted", "power", pw, "vanilla_power", power, "pinned", TRF_KvB(pin));
+			return {ret=fl};
+		end;
+		a.st[i] = "van";
+		a.fail = a.fail + 1;
+		TRF_HaE("call", "sign", sign, "result", "failed", "reason", "build");
+		return {};
+	end;
+	local sb = TRF_HaStub(sign);
+	setglobal("flight_"..sign, sb);
+	a.st[i] = "stub";
+	a.sb[sign] = sb;
+	TRF_HaDE("call", "sign", sign, "result", "stub", "reason", a.plan.sk[i] or "count");
+	return {ret=sb};
+end;
+
+-- trf_fits' graded build of flight i (design/fits-spec.md 5.2), protected: nil when not handled (fits off, pinned,
+-- type 3, a normal flight), else {fl}; the grade digit goes to a.ge[i].
+function TRF_HaFits(gg, sign, location, ty, pw, orient, a, i, pin)
+	if type(TRF_Ft_Haunt) ~= "function" then return nil; end;
+	local ft = call(TRF_Ft_Haunt, {gg, sign, location, ty, pw, orient, a.idx, i, pin}, "x", TRF_HaErr);
+	if type(ft) ~= "table" then return nil; end;
+	if type(a.ge) ~= "table" then a.ge = {}; end;
+	a.ge[i] = ft.d;
+	return ft;
+end;
+
+-- Build of flight i at both sites (TRF_HaDecide, TRF_HaReplace): trf_fits' graded build when it handles the flight
+-- (TRF_HaFits), else the vanilla builder in the haunt group, protected. Returns the flight, or nil / FALSE on a failure.
+function TRF_HaBuild(gg, sign, location, ty, pw, orient, a, i, pin)
+	local ft = TRF_HaFits(gg, sign, location, ty, pw, orient, a, i, pin);
+	if ft then return ft.fl; end;
+	return call(TRF_orig_NewPirateFlight, {gg, sign, location, ty, pw, orient}, "x", TRF_HaNoErr);
+end;
+
+-- 1 when no quest scene runs (__disableAction) and suppression is below 2: the last tests of TRF_HaMode, repeated by
+-- the quest-gated record at its entry and at every call.
+function TRF_HaGateOk()
+	if __disableAction == TRUE then return nil; end;
+	local sp = TRF_N("TRF_Supp");
+	if type(sp) == "number" and sp >= 2 then return nil; end;
+	return 1;
+end;
+
+-- A call of a quest-gated visit's fits-only record (mode 3, design/fits-spec.md 5.4): a listed sign of the vanilla
+-- group, first call, a number power: trf_fits' captured row in the caller's group at the vanilla power, else (and for
+-- every other call) the vanilla call. No stub, no haunt group, no triggers, no TRF.nv.
+function TRF_HaGateCall(a, group, sign, location, ty, power, orient)
+	local i = a.by[sign];
+	if not i or group ~= a.d.g or a.st[i] or type(power) ~= "number" or not TRF_HaGateOk() then return {}; end;
+	a.st[i] = "van";
+	local ft = nil;
+	if type(TRF_Ft_Gate) == "function" then ft = call(TRF_Ft_Gate, {group, sign, location, ty, power, orient, a.idx, i, a.d.f[i].pin}, "x", TRF_HaErr); end;
+	if type(ft) == "table" and TRF_HaObj(ft.fl) then
+		a.st[i] = "fit";
+		a.nb = a.nb + 1;
+		return {ret=ft.fl};
+	end;
+	return {};
+end;
+
+-- Entry (TRF_OnEnter, after trf_safety) --------------------------------------------------------------
+
+-- Visit state reset (entry, load, jump).
+function TRF_HaReset()
+	local ha = %HA;
+	ha.a = nil;
+	ha.v = {fl={}, sh={}, hit={}, dead={}, sd={}, gone={}};
+end;
+
+-- Orphan delete (design 6 jumps, E16.2): live ships labelled trf_haunt_<i>_<j> found at an entry (a location snapshot
+-- that kept the mod's ships) are deleted before activate.script runs. Returns the count.
+function TRF_HaOrphans(nv)
+	local K = TRF_HaK();
+	local n = 0;
+	for i = 1, min(nv, K.f_max) do
+		for j = 1, K.j_max do
+			local lb = "trf_haunt_"..i.."_"..j;
+			local o = TRF_N("GetObjectByLabel", lb);
+			if TRF_HaAlive(o) and TRF_HaDel(o) then
+				n = n + 1;
+				TRF_HaE("orphan", "label", lb);
+			end;
+		end;
+	end;
+	return n;
+end;
+
+-- Refill of the memory record of system idx at entry (applied only here, never during a visit): the record goes when
+-- k reaches 0; c is cleared once a step refilled.
+function TRF_HaRefill(idx, nv)
+	local r = TRF_HaRec(idx);
+	if not r then return; end;
+	local k, l, t = TRF_HaRefillOf(r.k, r.l, TRF_HaLegs(), nv, TRF_HaT("haunt_regen_pct"), TRF_HaT("haunt_regen_legs"));
+	if t <= 0 then return; end;
+	TRF_HaE("regen", "system", TRF_HaName(idx), "memory_before", r.k, "memory_after", k, "ticks", t);
+	if k <= 0 then TRF.haunt[idx] = nil; return; end;
+	r.k = k; r.l = l; r.c = nil;
+end;
+
+-- E16.2 probe: live ships of team Pirates in the location (TRF_Near, cls 3..7), level 2; nothing without the native.
+function TRF_HaProbe(at)
+	if TRF_HaLog() < 2 or type(TRF_Near) ~= "function" then return; end;
+	local l, via = TRF_Near(nil, nil, {cls={3, 4, 5, 6, 7}, alive=1});
+	if type(l) ~= "table" then return; end;
+	local n = 0;
+	for i = 1, getn(l) do if l[i].team == "Pirates" then n = n + 1; end; end;
+	TRF_HaDE("probe", "at", at, "pirates", n);
+end;
+
+function TRF_Haunt_OnEnter()
+	TRF_HaReset();
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return; end;
+	call(TRF_HaEnterBody, {}, "x", TRF_HaErr);
+end;
+
+-- Mode, refill, plan, arm (design 6 TRF_Haunt_OnEnter). TRF.nv is rewritten at every entry (nil outside a haunt visit).
+function TRF_HaEnterBody()
+	local ha = %HA;
+	TRF.nv = nil;
+	local cur = TRF_HaCur();
+	if type(cur) ~= "number" then return; end;
+	local nm = TRF_HaName(cur);
+	local d = TRF_HaData(nm);
+	if not d then
+		TRF_HaDE("mode", "system", nm, "mode", "vanilla", "reason", "no_data");
+		return;
+	end;
+	local nv = getn(d.f);
+	TRF_HaOrphans(nv);
+	TRF_HaRefill(cur, nv);
+	local mode, why = TRF_HaMode(cur, nm, d);
+	local slot, ph, T, sw = TRF_HaRegion(cur);
+	local tn = TRF_HaTune();
+	local f = TRF_HaFOf(ph or 0, sw, tn.haunt_f, tn.haunt_f_swept);
+	local dp = TRF_HaDpOf(T, tn);
+	local r = TRF_HaRec(cur);
+	local k = 0;
+	if r then k = r.k; end;
+	local pins = 0;
+	for i = 1, nv do if d.f[i].pin == 1 then pins = pins + 1; end; end;
+	ha.v.info = {mode=mode, why=why or "ok", f=f, dp=dp, nv=nv, k=k};
+	local lf = TRF_HaE;
+	if why == "off" then lf = TRF_HaDE; end;
+	lf("mode", "system", nm, "mode", mode, "reason", why or "ok", "phase", ph, "tier", T, "f", f, "dp", dp, "vanilla_count", nv,
+		"memory", k, "pins", pins);
+	-- E16.2 probe in every system with data (also with haunt 0); pr asks TRF_Haunt_OnActivate for the second probe.
+	TRF_HaProbe("enter");
+	ha.v.pr = 1;
+	local by = {};
+	for i = 1, nv do by[d.f[i].s] = i; end;
+	if mode ~= "haunt" then
+		-- design/fits-spec.md 5.4: a quest-gated visit gets trf_fits' captured rows (fits on, fits_gate 0, not deny-listed),
+		-- never while a quest scene runs or suppression is on (TRF_HaGateOk).
+		if why == "gate_quest" and TRF_HaGateOk() and type(TRF_Ft_GateOn) == "function" and TRF_Ft_GateOn(nm) then
+			ha.a = {on=1, gen=TRF_HaGen(), idx=cur, nm=nm, d=d, by=by, mode=3, st={}, nb=0};
+		end;
+		return;
+	end;
+	local P = TRF_HauntPlanOf(d.f, f, k, dp, TRF_HaCaches(cur), tn.haunt_cache_r);
+	ha.a = {on=1, gen=TRF_HaGen(), idx=cur, nm=nm, d=d, plan=P, by=by, dp=dp, st={}, fl={}, sb={}, van={}, unk=0, fail=0,
+		mode=TRF_HaOpt("haunt_mode"), slot=slot, ph=ph, sw=sw};
+	TRF.nv = {i=cur, b=""};
+	TRF_HaE("plan", "system", nm, "target", P.n, "fielded", P.nf, "skipped", nv - P.nf, "pins", P.pins, "mode", ha.a.mode,
+		"plan", TRF_HaBitsOf(P.fl, nv));
+end;
+
+-- Activation (TRF_OnActivate, after trf_safety) -------------------------------------------------------
+
+-- Vanilla group of the visit (its global, else its name) and the relation toward the player both ways (after
+-- activate.script, so system rules such as Golkonda's neutral-with-Triada carry over); the Pirates team relation
+-- when the group has none.
+function TRF_HaVanRel(g)
+	local vg = getglobal(g);
+	if not TRF_HaObj(vg) then vg = g; end;
+	local to = TRF_HaGetRel(vg, PLAYER_GROUP);
+	local from = TRF_HaGetRel(PLAYER_GROUP, vg);
+	local tr = nil;
+	if type(GetTeamRelation) == "function" then tr = call(GetTeamRelation, {"Pirates", PLAYER_TEAM}, "x", TRF_HaNoErr); end;
+	if to == nil then to = tr; end;
+	if from == nil then from = to; end;
+	return to, from;
+end;
+
+-- Writes relations to and from to the haunt group toward the player (the group handle of this visit, else its name);
+-- recorded only while no haunt group exists (every flight stubbed or the builds failed).
+function TRF_HaRelSet(v, to, from)
+	v.rel = to; v.relf = from;
+	if (v.nf or 0) == 0 and not TRF_HaObj(v.grp) then return; end;
+	local g = v.grp or TRF_HaK().grp;
+	TRF_HaSetRel(g, PLAYER_GROUP, to);
+	TRF_HaSetRel(PLAYER_GROUP, g, from);
+end;
+
+-- Labels, triggers (design 6): per flight one f_died; with haunt_trig 2 per ship one died (scars, the flight-level
+-- fallback) and one attack with PLAYER_GROUP (the mine flag). Ships labelled trf_haunt_<i>_<j>.
+function TRF_HaArm(v, i, fl, sign)
+	local sh = TRF_HaShips(fl, sign);
+	v.fl[i] = fl; v.sh[i] = sh; v.sd[i] = {};
+	for j = 1, TRF_HaK().j_max do
+		if TRF_HaObj(sh[j]) then TRF_N("SetObjectLabel", sh[j], "trf_haunt_"..i.."_"..j); end;
+	end;
+	TRF_HaTrig("f_died", TRF_HaCb("TRF_Haunt_Died", i), fl);
+	if TRF_HaOpt("haunt_trig") == 2 then
+		for j = 1, TRF_HaK().j_max do
+			if TRF_HaAlive(sh[j]) then
+				TRF_HaTrig("died", TRF_HaCb("TRF_HaShipDied", i, j), sh[j]);
+				TRF_HaTrig("attack", TRF_HaCb("TRF_HaHit", i), PLAYER_GROUP, sh[j]);
+			end;
+		end;
+	end;
+end;
+
+-- Route of row r for Patrol: its static points, else the spawn point.
+function TRF_HaRoute(r)
+	local pts = {};
+	if type(r.r) == "table" then
+		for k = 1, getn(r.r) do local q = r.r[k]; tinsert(pts, Vector3(q[1], q[2], q[3])); end;
+	end;
+	if getn(pts) == 0 then tinsert(pts, Vector3(r.x, r.y, r.z)); end;
+	return pts;
+end;
+
+function TRF_HaPatrolRaw(fl, pts)
+	fl:Patrol(pts, TRUE);
+	return 1;
+end;
+
+-- haunt_mode 2 (design 6 mechanism b): every recorded vanilla flight of an unpinned sign is deleted; the plan's
+-- fielded unpinned signs are built again with the same sign in the haunt group at the haunt power from the static row
+-- and patrol its static route. A recorded flight no longer alive was removed by the location script (Pandora after
+-- mission 8a): gone, not built again. Pinned signs stay vanilla flights. Returns deleted, spawned.
+function TRF_HaReplace(a)
+	local nd, ns = 0, 0;
+	local K = TRF_HaK();
+	for i = 1, getn(a.d.f) do
+		local r = a.d.f[i];
+		if r.pin ~= 1 and a.van[i] then
+			local alive = TRF_HaAlive(a.van[i]);
+			if alive and TRF_HaDel(a.van[i]) then nd = nd + 1; end;
+			if not alive then
+				a.st[i] = "gone";
+			elseif a.plan.fl[i] and TRF_HaGroup(a) then
+				local fl = TRF_HaBuild(K.gg, r.s, Vector3(r.x, r.y, r.z), r.t, a.plan.pw[i], Vector3(0, 0, 1), a, i, nil);
+				if TRF_HaObj(fl) then
+					call(TRF_HaPatrolRaw, {fl, TRF_HaRoute(r)}, "x", TRF_HaNoErr);
+					a.fl[i] = fl; a.st[i] = "sub"; ns = ns + 1;
+				else
+					a.fail = a.fail + 1;
+				end;
+			end;
+		end;
+	end;
+	TRF_HaE("replace", "system", a.nm, "deleted", nd, "spawned", ns);
+	return nd, ns;
+end;
+
+-- Clears the stubs and the build global of visit a (every entry, also when the body failed).
+function TRF_HaClear(a)
+	for s, sb in a.sb do
+		if getglobal("flight_"..s) == sb then setglobal("flight_"..s, nil); end;
+	end;
+	setglobal(TRF_HaK().gg, nil);
+end;
+
+function TRF_Haunt_OnActivate()
+	local ha = %HA;
+	local a = ha.a;
+	if type(a) ~= "table" or a.mode == 3 then
+		if type(a) == "table" then
+			a.on = nil;
+			ha.a = nil;
+			TRF_P("TRF_Ft_GateDone", a.nm, a.nb);
+		end;
+		setglobal(TRF_HaK().gg, nil);
+		if ha.v.pr == 1 then TRF_HaProbe("activate"); end;
+		return;
+	end;
+	a.on = nil;
+	call(TRF_HaActBody, {a}, "x", TRF_HaErr);
+	TRF_HaClear(a);
+	TRF_HaE("activate", "system", a.nm, "fielded", ha.v.nf or 0, "stub", ha.v.ns or 0, "gone", ha.v.ng or 0, "unknown", a.unk,
+		"missing", ha.v.nmis or 0, "failed", a.fail, "relation", TRF_HaRelName(ha.v.rel), "mode", a.mode);
+	TRF_HaProbe("activate");
+	ha.a = nil;
+end;
+
+-- Disarm, replace (mode 2), gone flights, labels and triggers, relations, TRF.nv, counters, the arrival line.
+function TRF_HaActBody(a)
+	local v = %HA.v;
+	if a.mode == 2 then TRF_HaReplace(a); end;
+	v.idx = a.idx; v.nm = a.nm; v.d = a.d; v.slot = a.slot; v.grp = a.grp; v.mir = TRF_HaOpt("haunt_mirror");
+	local nv = getn(a.d.f);
+	local nf, ng, nmiss, ns = 0, 0, 0, 0;
+	local bits = {};
+	for i = 1, nv do
+		if a.st[i] == "stub" then ns = ns + 1; end;
+		if a.st[i] == "gone" then v.gone[i] = 1; ng = ng + 1; end;
+		if a.plan.fl[i] and not a.st[i] and a.mode ~= 2 then nmiss = nmiss + 1; end;
+		local fl = a.fl[i];
+		if fl then
+			if TRF_HaAlive(fl) then
+				TRF_HaArm(v, i, fl, a.d.f[i].s);
+				bits[i] = 1;
+				nf = nf + 1;
+				TRF_HaCount("n");
+			else
+				-- Removed by the location script (Pandora after mission 8a): gone, no kill.
+				v.gone[i] = 1;
+				ng = ng + 1;
+			end;
+		end;
+	end;
+	v.nf = nf; v.ns = ns; v.ng = ng; v.nmis = nmiss;
+	TRF.nv = {i=a.idx, b=TRF_HaBitsOf(bits, nv)};
+	-- design/fits-spec.md 4: the grade digits of the fielded flights, only when one is not 0.
+	local e, ne0 = "", nil;
+	for i = 1, nv do
+		local dg = 0;
+		if bits[i] and type(a.ge) == "table" and type(a.ge[i]) == "number" then dg = a.ge[i]; end;
+		if dg ~= 0 then ne0 = 1; end;
+		e = e..dg;
+	end;
+	if ne0 then TRF.nv.e = e; end;
+	local to, from = TRF_HaVanRel(a.d.g);
+	TRF_HaRelSet(v, to, from);
+	v.arr = {idx=a.idx, nm=a.nm, slot=a.slot, ph=a.ph, sw=a.sw, nf=nf};
+end;
+
+-- Arrival line of this entry (traffic.script, after trf_freight's activate hook: the haunt line is the last mod line of
+-- the 00 order, wb-plumbing-spec 5), once.
+function TRF_Haunt_Arrival()
+	local v = %HA.v;
+	local a = v.arr;
+	v.arr = nil;
+	if type(a) == "table" then call(TRF_HaArrival, {a, a.nf}, "x", TRF_HaErr); end;
+end;
+
+-- At most one arrival line (design 6): the memory line, else the phase line once per phase; never during a mission,
+-- cfg haunt_lines 0 none.
+function TRF_HaArrival(a, nf)
+	if TRF_HaOpt("haunt_lines") ~= 1 or TRF_HaQuest() then return; end;
+	local c = TRF_HaClan(a.slot);
+	local nl = nil;
+	if c then nl = c.nl; end;
+	local key, set = TRF_HaLineOf(TRF_HaRec(a.idx), nf, a.ph or 0, nl, a.sw, TRF_HaK());
+	if not key then return; end;
+	local text = TRF_HaTxt(key, TRF_HaClanName(a.slot));
+	local ok = nil;
+	if type(TRF_ArrivalLine) == "function" then ok = TRF_ArrivalLine("haunt", text); else ok = TRF_HaSay(text); end;
+	if ok and set and c then c.nl = set; end;
+	TRF_HaDE("arrival", "system", a.nm, "line", key, "result", ok and "queued" or "dropped");
+end;
+
+-- Callbacks ------------------------------------------------------------------------------------
+
+function TRF_Haunt_Died(i, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_Haunt_Died", TRF_HaDiedBody, {i, g}); else TRF_HaDiedBody(i, g); end;
+end;
+
+function TRF_HaDiedBody(i, g)
+	if g ~= TRF_HaGen() then TRF_HaE("stale", "index", i, "generation", g, "current", TRF_HaGen()); return; end;
+	TRF_HaFlightDead(i, "died");
+end;
+
+function TRF_HaShipDied(i, j, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_HaShipDied", TRF_HaShipDiedBody, {i, j, g}); else TRF_HaShipDiedBody(i, j, g); end;
+end;
+
+-- A haunt ship died: battle scars source 7 with the mine flag of its flight; the last ship of a flight whose f_died
+-- did not fire yet ends the flight (flight-level fallback).
+function TRF_HaShipDiedBody(i, j, g)
+	if g ~= TRF_HaGen() then return; end;
+	local v = %HA.v;
+	if v.del == 1 or type(v.sd[i]) ~= "table" or v.sd[i][j] then return; end;
+	v.sd[i][j] = 1;
+	local mine = nil;
+	if v.hit[i] then mine = 1; end;
+	TRF_P("TRF_Sc_Dead", 3, 0, v.sh[i][j], mine);
+	local all = 1;
+	for k = 1, TRF_HaK().j_max do
+		if TRF_HaObj(v.sh[i][k]) and not v.sd[i][k] and TRF_HaAlive(v.sh[i][k]) then all = nil; end;
+	end;
+	if all then TRF_HaFlightDead(i, "ships"); end;
+end;
+
+function TRF_HaHit(i, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_HaHit", TRF_HaHitBody, {i, g}); else TRF_HaHitBody(i, g); end;
+end;
+
+-- Player-group fire on a ship of flight i (the attack trigger): the mine flag; the first hit of the visit gives the
+-- leader's radio line (#TRF_Haunt_Hit).
+function TRF_HaHitBody(i, g)
+	if g ~= TRF_HaGen() then return; end;
+	local v = %HA.v;
+	if not v.fl[i] or v.hit[i] then return; end;
+	v.hit[i] = 1;
+	TRF_HaDE("hit", "index", i);
+	if v.said == 1 or TRF_HaOpt("haunt_lines") ~= 1 or TRF_HaQuest() then return; end;
+	v.said = 1;
+	local p = call(TRF_HaLeaderRaw, {v.fl[i]}, "x", TRF_HaNoErr);
+	if not TRF_HaObj(p) then p = nil; end;
+	TRF_HaSay(TRF_HaTxt("haunthit", TRF_HaClanName(v.slot)), TRF_HaK().hit_secs, p);
+end;
+
+-- Flight i destroyed (f_died, or every ship dead): kill memory + 1 (at most the vanilla count), clan score -2 inside the
+-- visit cap (with player fire through trf_events' TRF_Ev_Recover: also dis -1 inside its visit cap and clan nk + 1),
+-- the counters, TRF.nv bit cleared; the last fielded flight gives the screen line and c (player fire). Ignored after the
+-- jump delete and for a flight already counted.
+function TRF_HaFlightDead(i, why)
+	local v = %HA.v;
+	if v.del == 1 or not v.fl[i] or v.dead[i] or type(v.d) ~= "table" then return; end;
+	v.dead[i] = 1;
+	local idx, nv = v.idx, getn(v.d.f);
+	if type(TRF.haunt) ~= "table" then TRF.haunt = {}; end;
+	local r = TRF_HaRec(idx);
+	if not r then r = {k=0, l=TRF_HaLegs()}; TRF.haunt[idx] = r; end;
+	r.k = min(nv, r.k + 1);
+	local mine = v.hit[i];
+	local K = TRF_HaK();
+	-- design/fits-spec.md 5.3: an elite flight (saved digit 1 or 4) costs the clan 3 score.
+	local el = nil;
+	if type(TRF.nv) == "table" and TRF.nv.i == idx and type(TRF.nv.e) == "string" and type(TRF_Ft_Elite) == "function" then
+		el = TRF_Ft_Elite(strsub(TRF.nv.e, i, i));
+	end;
+	if mine and type(TRF_Ev_Recover) == "function" then
+		if el then TRF_Ev_Recover("haunt_elite", 0); else TRF_Ev_Recover("haunt", 0); end;
+	elseif type(v.slot) == "number" then
+		if el then TRF_N("TRF_ClanAdd", v.slot, K.score_el, "haunt kill elite"); else TRF_N("TRF_ClanAdd", v.slot, K.score, "haunt kill"); end;
+	end;
+	if el then TRF_P("TRF_Ft_Kill", v.nm, i, v.d.f[i].s, mine); end;
+	if mine then
+		local c = TRF_HaClan(v.slot);
+		if c then c.nk = min(K.nk_max, (c.nk or 0) + 1); end;
+		TRF_HaCount("p");
+	end;
+	TRF_HaCount("k");
+	if type(TRF.nv) == "table" and TRF.nv.i == idx and type(TRF.nv.b) == "string" and strlen(TRF.nv.b) >= i then
+		TRF.nv.b = strsub(TRF.nv.b, 1, i - 1).."0"..strsub(TRF.nv.b, i + 1);
+	end;
+	local left = 0;
+	for k, f in v.fl do if type(k) == "number" and not v.dead[k] and not v.gone[k] then left = left + 1; end; end;
+	if left == 0 then
+		if mine then r.c = 1; else r.c = nil; end;
+		if mine and TRF_HaOpt("haunt_lines") == 1 and not TRF_HaQuest() then TRF_HaSay(TRF_HaTxt("hauntlast", TRF_HaClanName(v.slot))); end;
+	end;
+	local c = TRF_HaClan(v.slot);
+	TRF_HaE("died", "index", i, "sign", v.d.f[i].s, "mine", TRF_KvB(mine), "memory", r.k, "left", left, "clan_score", c and c.sc,
+		"generation", TRF_HaGen(), "reason", why);
+end;
+
+-- 1 s step, jump, load --------------------------------------------------------------------------
+
+-- Every 1 s (traffic.script): the relation mirror (cfg haunt_mirror 1, read once at activation and load, v.mir): a
+-- change of the vanilla group's relation to the player is copied to the haunt group, one way; nothing while
+-- __disableAction is set.
+function TRF_Haunt_Step()
+	local v = %HA.v;
+	if type(v.d) ~= "table" or v.del == 1 or __disableAction == TRUE or v.mir ~= 1 then return; end;
+	call(TRF_HaStepBody, {v}, "x", TRF_HaErr);
+end;
+
+function TRF_HaStepBody(v)
+	if (v.nf or 0) == 0 and not TRF_HaObj(v.grp) then return; end;
+	local to, from = TRF_HaVanRel(v.d.g);
+	if to == v.vto and from == v.vfrom then return; end;
+	local first = v.vto == nil;
+	v.vto = to; v.vfrom = from;
+	if first and to == v.rel and from == v.relf then return; end;
+	local old = v.rel;
+	TRF_HaRelSet(v, to, from);
+	TRF_HaE("relation", "system", v.nm, "from", TRF_HaRelName(old), "to", TRF_HaRelName(to));
+end;
+
+-- Before every jump: every live haunt flight is deleted (no death event, the del flag), the visit state and TRF.nv go
+-- (debug cfg haunt_keep_on_jump 1 keeps the ships, E16.2).
+function TRF_Haunt_BeforeJump()
+	local v = %HA.v;
+	if type(v.d) == "table" then
+		v.del = 1;
+		local n = 0;
+		if TRF_HaOpt("haunt_keep_on_jump") ~= 1 then
+			for i, fl in v.fl do
+				if type(i) == "number" and not v.dead[i] and TRF_HaAlive(fl) and TRF_HaDel(fl) then n = n + 1; end;
+			end;
+		end;
+		TRF_HaE("jump", "system", v.nm, "deleted", n);
+	end;
+	setglobal(TRF_HaK().gg, nil);
+	if type(TRF) == "table" then TRF.nv = nil; end;
+	TRF_HaReset();
+end;
+
+-- Load inside a system (activate.script does not run): the flights of TRF.nv are adopted by their saved globals
+-- (flight_<sign>, ship_<sign>_<j>), labels and triggers re-armed with the new gen, the relation mirror resumed;
+-- nothing is spawned or refilled.
+function TRF_Haunt_OnLoad()
+	TRF_HaReset();
+	setglobal(TRF_HaK().gg, nil);
+	if not TRF_HaOn() or type(TRF.nv) ~= "table" then return; end;
+	call(TRF_HaLoadBody, {}, "x", TRF_HaErr);
+end;
+
+function TRF_HaLoadBody()
+	local v = %HA.v;
+	local nv = TRF.nv;
+	local cur = TRF_HaCur();
+	if nv.i ~= cur or type(nv.b) ~= "string" then TRF.nv = nil; return; end;
+	local nm = TRF_HaName(cur);
+	local d = TRF_HaData(nm);
+	if not d then TRF.nv = nil; return; end;
+	local slot = TRF_HaRegion(cur);
+	v.idx = cur; v.nm = nm; v.d = d; v.slot = slot; v.mir = TRF_HaOpt("haunt_mirror");
+	local n = 0;
+	local bits = {};
+	for i = 1, min(strlen(nv.b), getn(d.f)) do
+		if strsub(nv.b, i, i) == "1" then
+			local fl = getglobal("flight_"..d.f[i].s);
+			if TRF_HaAlive(fl) then
+				TRF_HaArm(v, i, fl, d.f[i].s);
+				bits[i] = 1;
+				n = n + 1;
+			end;
+		end;
+	end;
+	nv.b = TRF_HaBitsOf(bits, getn(d.f));
+	v.nf = n;
+	v.rel, v.relf = TRF_HaVanRel(d.g);
+	v.vto = v.rel; v.vfrom = v.relf;
+	TRF_HaE("load", "system", nm, "rearmed", n);
+end;
+
+-- Phase entry of region slot (trf_region TRF_RgEnter): nk cleared at Quiet, the won-sweep target cleared once the
+-- region leaves Bust (Recovery and later).
+function TRF_Haunt_Phase(slot, ph)
+	local c = TRF_HaClan(slot);
+	if not c then return; end;
+	if ph == 0 then c.nk = nil; end;
+	if ph ~= 3 and ph ~= 4 then c.ns = nil; end;
+	-- Every phase entry opens that phase's line again (a phase recurs in the next cycle; the Swept mark 7 is set
+	-- again by the Swept line within Bust).
+	c.nl = nil;
+end;
+
+-- Sweep outcome of slot (trf_region TRF_RgSweepOut): a success marks the sweep target (trf_faction TRF_SweepTarget)
+-- for the Bust count haunt_f_swept.
+function TRF_Haunt_Sweep(slot, L, won)
+	if not won then return; end;
+	local c = TRF_HaClan(slot);
+	local t = TRF_N("TRF_SweepTarget", slot);
+	if c and type(t) == "number" then
+		c.ns = t;
+		TRF_HaDE("sweep", "region", slot, "target", TRF_HaName(t));
+	end;
+end;
+
+-- Contract: plumbing, other modules, repair, defaults, dump, text -----------------------------------------
+
+-- trf_plumb TRF_InstallPlumb: the ship-cap group (never trimmed; counted only with tune haunt_cap 1, V3).
+function TRF_Haunt_Plumb()
+	TRF_CapReg("haunt", "TRF_Haunt_Ships");
+end;
+
+-- Live fielded ships of this visit.
+function TRF_Haunt_Alive()
+	local v = %HA.v;
+	if type(v.d) ~= "table" or v.del == 1 then return 0; end;
+	local n = 0;
+	for i, sh in v.sh do
+		if type(i) == "number" and not v.dead[i] then
+			for j = 1, TRF_HaK().j_max do if TRF_HaAlive(sh[j]) then n = n + 1; end; end;
+		end;
+	end;
+	return n;
+end;
+
+-- Ship-cap count (trf_plumb TRF_CapShips): 0 with tune haunt_cap 0 (default; haunt ships replace vanilla ships, which
+-- never counted, design 6 spawn rules), else the live haunt ships.
+function TRF_Haunt_Ships(g)
+	if TRF_HaT("haunt_cap") ~= 1 then return 0; end;
+	return TRF_Haunt_Alive();
+end;
+
+-- 1 when fl is a fielded flight of this visit (trf_events' pirate watch leaves it out: the haunt counts its kills).
+function TRF_Haunt_Owns(fl)
+	local v = %HA.v;
+	if fl == nil or type(v.fl) ~= "table" then return nil; end;
+	for i, f in v.fl do if f == fl then return 1; end; end;
+	return nil;
+end;
+
+-- The haunt group of this visit for the sweep and Triada wave relations (trf_faction, trf_convoy): the handle while
+-- held, else the name; nil without fielded flights.
+function TRF_Haunt_Grp()
+	local v = %HA.v;
+	if type(v.d) ~= "table" or v.del == 1 or (v.nf or 0) == 0 then return nil; end;
+	if TRF_HaObj(v.grp) then return v.grp; end;
+	return TRF_HaK().grp;
+end;
+
+-- Repair (TRF_Repair, every entry and load): TRF.haunt a table of records {k 1..nv, l <= now, c 1 or nil} keyed by the
+-- index of a system with static data; TRF.nv {i, b} with a 0/1 string of at most nv characters; TRF.nst {n, k, p}
+-- 0..99999; clan nk 0..99, nl 0..7, ns a system index.
+function TRF_Haunt_Fix()
+	if type(TRF) ~= "table" then return; end;
+	local legs = TRF_HaLegs();
+	local K = TRF_HaK();
+	-- Without map data the system names are unknown: TRF.haunt and TRF.nv are only type-checked (trf_region's rule).
+	local map = nil;
+	if type(TRF_Map) == "function" and TRF_Map() then map = 1; end;
+	if TRF.haunt ~= nil and not map then
+		if type(TRF.haunt) ~= "table" then TRF.haunt = {}; end;
+	elseif TRF.haunt ~= nil then
+		local out = {};
+		if type(TRF.haunt) == "table" then
+			for idx, e in TRF.haunt do
+				if type(idx) == "number" and type(e) == "table" then
+					local d = TRF_HaData(TRF_HaName(idx));
+					if d and TRF_HaNum(e.k, 1, getn(d.f)) then
+						local r = {k=floor(e.k), l=legs};
+						if TRF_HaNum(e.l, -99999, legs) then r.l = floor(e.l); end;
+						if e.c == 1 then r.c = 1; end;
+						out[idx] = r;
+					end;
+				end;
+			end;
+		end;
+		TRF.haunt = out;
+	end;
+	if TRF.nv ~= nil and not map then
+		if type(TRF.nv) ~= "table" then TRF.nv = nil; end;
+	elseif TRF.nv ~= nil then
+		local x = TRF.nv;
+		local ok = nil;
+		if type(x) == "table" and type(x.i) == "number" and type(x.b) == "string" then
+			local d = TRF_HaData(TRF_HaName(x.i));
+			if d and strlen(x.b) <= getn(d.f) and not strfind(x.b, "[^01]") then ok = 1; end;
+			-- design/fits-spec.md 4: grade digits 0..5, at most nv of them; anything else is dropped.
+			if ok and x.e ~= nil and (type(x.e) ~= "string" or strlen(x.e) > getn(d.f) or strfind(x.e, "[^0-5]")) then x.e = nil; end;
+		end;
+		if not ok then TRF.nv = nil; end;
+	end;
+	if TRF.nst ~= nil then
+		local x = TRF.nst;
+		if type(x) ~= "table" then x = {}; end;
+		local o = {};
+		for i, k in {"n", "k", "p"} do
+			if TRF_HaNum(x[k], 0, K.cnt_max) then o[k] = floor(x[k]); else o[k] = 0; end;
+		end;
+		TRF.nst = o;
+	end;
+	if type(TRF.clan) == "table" then
+		for k, c in TRF.clan do
+			if type(c) == "table" then
+				if c.nk ~= nil and not TRF_HaNum(c.nk, 0, K.nk_max) then c.nk = nil; end;
+				if c.nl ~= nil and not TRF_HaNum(c.nl, 0, K.swept_nl) then c.nl = nil; end;
+				if c.ns ~= nil and not TRF_HaNum(c.ns, 1, 999) then c.ns = nil; end;
+			end;
+		end;
+	end;
+end;
+
+-- Config keys (design 6 config). haunt 0 until E16.1-E16.5 pass; haunt_mode 1 the substituting wrapper, 2 the fallback;
+-- haunt_off system names kept vanilla; haunt_trig 2 per ship died and attack triggers, 1 the flight-level f_died only
+-- (E16.8); haunt_lines the arrival, radio and screen lines; haunt_mirror the 1 s relation mirror; haunt_grudge_war step 2
+-- (00 E2) and read nowhere; haunt_keep_on_jump debug (E16.2).
+function TRF_Haunt_OptDef()
+	return {haunt=0, haunt_mode=1, haunt_off={}, haunt_trig=2, haunt_lines=1, haunt_mirror=1, haunt_grudge_war=0, haunt_keep_on_jump=0};
+end;
+
+-- Tune keys (design 6 config): haunt_f % per phase (Quiet, Boom, Build-up, Raids, Bust, Recovery), haunt_f_swept % in the
+-- sweep target during Bust, haunt_dp power per tier T1..T4 (read only when the cfg tune sets it, else trf_str's dp
+-- column: TRF_HaDpOf), haunt_regen_pct % of the vanilla count back per
+-- haunt_regen_legs legs, haunt_cache_r (plus the route radius) from an unopened cache, haunt_grudge_nk step 2 (read nowhere),
+-- haunt_cap 1 counts the haunt ships in cap_ships (V3).
+function TRF_Haunt_TuneDef()
+	return {haunt_f={70, 100, 100, 100, 50, 70}, haunt_f_swept=0, haunt_dp={-1, 0, 1, 1}, haunt_regen_pct=15, haunt_regen_legs=2,
+		haunt_cache_r=600, haunt_grudge_nk=5, haunt_cap=0};
+end;
+
+-- Debug dump (design 6): records idx:k/l, the visit idx:bits, nk per clan slot, the counters, this visit's mode.
+function TRF_Haunt_Dump()
+	if type(TRF) ~= "table" then return; end;
+	local rs, n = nil, 0;
+	if type(TRF.haunt) == "table" then
+		local ks = {};
+		for idx, r in TRF.haunt do if type(idx) == "number" then tinsert(ks, idx); end; end;
+		sort(ks);
+		for q = 1, getn(ks) do
+			local r = TRF.haunt[ks[q]];
+			n = n + 1;
+			local s = ks[q]..":"..tostring(r.k).."/"..tostring(r.l);
+			if rs then rs = rs..","..s; else rs = s; end;
+		end;
+	end;
+	local vs = nil;
+	if type(TRF.nv) == "table" then vs = tostring(TRF.nv.i)..":"..tostring(TRF.nv.b); end;
+	local cs = "";
+	if type(TRF.clan) == "table" then
+		local m = TRF_N("TRF_RgMap");
+		local ns = 11;
+		if type(m) == "table" and type(m.n) == "number" then ns = m.n; end;
+		for s = 1, ns do
+			local c = TRF.clan[s];
+			if type(c) == "table" then
+				if cs ~= "" then cs = cs..","; end;
+				cs = cs..tostring(c.nk or 0);
+			end;
+		end;
+	end;
+	local x = TRF.nst or {};
+	local info = %HA.v.info or {};
+	TRF_HaE("dump", "record_count", n, "records", rs, "visit", vs, "clans", "nk:"..cs, "counters",
+		"n:"..(x.n or 0)..",k:"..(x.k or 0)..",p:"..(x.p or 0), "mode", info.mode, "reason", info.why, "alive", TRF_Haunt_Alive());
+end;
+
+-- Texts (design 2, 6 text keys), EN; keys in TRF_UI_Key form (#TRF_haunt<name> in loc/trf_en.loc). $1 the clan name, in
+-- parentheses so the loc_mode 1 scaffold reads without it (TDR 13.5 CombineStr fallback). Step 2 keys (Board, Cap) are
+-- not defined yet.
+function TRF_Haunt_Text()
+	return {
+		hauntfull = "The pirate haunt here ($1) is crowded. Ships are gathering.",
+		hauntraid = "The pirate haunt here ($1) is armed and restless.",
+		haunthurt = "The pirate haunt here ($1) is still licking its wounds.",
+		hauntclear = "The pirate haunt here is empty. Someone cleared it out.",
+		hauntbust = "Pirate wrecks on the scanner. The haunt here ($1) took a beating.",
+		hauntswept = "The patrol swept the pirate haunt here ($1) clean.",
+		hauntquiet = "Only a few pirate ships ($1) at the haunt here.",
+		haunthit = "We ($1) don't forget a face, Wolf.",
+		hauntlast = "The pirate haunt here ($1) is broken. They will be back.",
+	};
+end;
+

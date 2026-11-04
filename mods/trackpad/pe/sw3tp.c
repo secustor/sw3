@@ -9,6 +9,7 @@
 #include <windows.h>
 #include <winternl.h>
 #include "sw3tp_unix.h"
+#include "sw3tp_shared.h"
 
 #define SITE_A      0x4a0632u   /* E8 rel32 -> 0x4250e0 */
 #define INPUT_UPD   0x4250e0u
@@ -86,6 +87,13 @@ static void put_f(struct buf *b, double v)   /* 6 decimals */
     put_u(b, ip); put_s(b, ".");
     for (unsigned d = 100000; d && b->n < (int)sizeof(b->s) - 2; d /= 10) b->s[b->n++] = (char)('0' + fp / d % 10);
 }
+void sw3tp_fmt_f(char *dst, int cap, double v)
+{
+    struct buf b; int i;
+    b.n = 0; put_f(&b, v);
+    for (i = 0; i < b.n && i < cap - 1; i++) dst[i] = b.s[i];
+    if (cap > 0) dst[i] = 0;
+}
 static void put_kv_i(struct buf *b, const char *k, int v) { put_s(b, k); put_i(b, v); }
 static void put_kv_f(struct buf *b, const char *k, double v) { put_s(b, k); put_f(b, v); }
 static void log_buf(struct buf *b)
@@ -96,6 +104,7 @@ static void log_buf(struct buf *b)
     WriteFile(g_log, b->s, b->n, &w, NULL);
 }
 static void log_s(const char *s) { struct buf b; b.n = 0; put_s(&b, s); log_buf(&b); }
+void sw3tp_log(const char *s) { log_s(s); }
 static void put_x64(struct buf *b, unixlib_handle_t v)
 {
     static const char hx[] = "0123456789abcdef";
@@ -379,6 +388,8 @@ static void put_stack(struct buf *b, unsigned gi)   /* ids bottom..top */
 static float g_ka = 1.0f;                                   /* altitude: cursor px per scroll pt */
 static float g_thr_rot = 3.0f, g_thr_mag = 0.03f, g_thr_scroll = 4.0f, g_alt_min = 3.0f;
 static float g_wd_ms = 500.0f;
+static float g_synth_max_ms = 1500.0f;                      /* synth_max_ms: sequencer press / latched key watchdog */
+static int g_f_resync = 1;                                  /* modifier_resync */
 static int g_f_pinch = 1, g_f_orbit = 1, g_f_yaw = 1, g_f_alt = 1, g_f_pan = 1;
 static int g_f_force = 1, g_f_smart = 1, g_f_aggtap = 1, g_f_map = 1;
 static int g_debug_keys, g_alt_restore = 1;
@@ -699,7 +710,9 @@ static struct {
     DWORD t0;
     float cx, cy;                 /* cursor at t0 (+0x84c/+0x850) */
     float dy_sum;                 /* cursor px moved */
+    LONGLONG q_act;               /* QPC of the press or the last altitude move (watchdog) */
 } g_sq;
+static LARGE_INTEGER g_qpc_tick;  /* QPC at the start of this tick */
 static int g_post_n;              /* ticks left to log value/copy after a release */
 static DWORD g_sq_alt_ticks;      /* log window: held ticks */
 static unsigned g_phys;           /* this tick's phys_mods */
@@ -750,7 +763,7 @@ static int seq_alt_start(unsigned inp, unsigned gi, int inflight_prev, float sdy
     if (g_sq.pressed_shift) pair(inp, LSH_V, LSH_C, -1);
     if (m < g_alt_min) m = g_alt_min;
     FV(0x830) = dy < 0 ? -m : m;
-    g_sq.st = SQ_ALT_T0; g_sq.t0 = g_tick; g_sq.end_req = 0;
+    g_sq.st = SQ_ALT_T0; g_sq.t0 = g_tick; g_sq.end_req = 0; g_sq.q_act = g_qpc_tick.QuadPart;
     b.n = 0;
     put_s(&b, g_sq.pressed_shift ? "shift=pressed" : "shift=user");
     put_kv_f(&b, " d830=", FV(0x830));
@@ -782,6 +795,7 @@ static void seq_alt_move(unsigned inp, float sdy)
     int h = dev ? *(int *)(dev + 0x58c) : 0;
     float dy = sdy * g_ka, y;
     if (g_sq.st != SQ_ALT_HELD) return;
+    g_sq.q_act = g_qpc_tick.QuadPart;
     FV(0x830) = dy;
     y = FV(0x850) + dy;
     if (h > 0) { if (y < 0.0f) y = 0.0f; if (y > (float)h - 1.0f) y = (float)h - 1.0f; }
@@ -807,24 +821,61 @@ static int seq_agg_start(unsigned inp, unsigned gi, int inflight_prev, const cha
     seq_log("agg trigger", inp, gi, src);
     g_sq.pressed_ctrl = !(held(IV(LCT_V)) || held(IV(RCT_V)));
     if (g_sq.pressed_ctrl) pair(inp, LCT_V, LCT_C, -1);
-    g_sq.st = SQ_AGG; g_sq.step = 0; g_sq.t0 = g_tick;
+    g_sq.st = SQ_AGG; g_sq.step = 0; g_sq.t0 = g_tick; g_sq.q_act = g_qpc_tick.QuadPart;
     seq_log("agg t0", inp, gi, g_sq.pressed_ctrl ? "ctrl=pressed" : "ctrl=user");
     return 1;
 }
 
-/* Release everything the sequencer holds (design 4.3 step 7). */
+/* Release everything the sequencer holds (design 4.3 step 7). A synthetic Shift or Ctrl is released even
+ * when the key is physically held: the game reads keys only from DirectInput events (0x4259bc), so a press
+ * the game never saw is not ended by the physical key-up, and the key would stay at -2 (Ctrl = aggressive). */
 static void seq_release_all(unsigned inp, unsigned gi, const char *why)
 {
     int top = top_state_id(gi);
+    struct buf b;
     if (g_sq.st == SQ_IDLE) return;
-    if (g_sq.st == SQ_ALT_T0 || g_sq.st == SQ_ALT_HELD || (g_sq.st == SQ_AGG && g_sq.step == 1))
+    b.n = 0; put_s(&b, why); put_s(&b, " released=");
+    if (g_sq.st == SQ_ALT_T0 || g_sq.st == SQ_ALT_HELD || (g_sq.st == SQ_AGG && g_sq.step == 1)) {
         pair(inp, RMB_V, RMB_C, top == 10 ? 1 : 0);
-    if (g_sq.st != SQ_AGG && g_sq.pressed_shift && !(g_phys & TP_MOD_SHIFT)) pair(inp, LSH_V, LSH_C, 1);
-    if (g_sq.st == SQ_AGG && g_sq.pressed_ctrl && !(g_phys & TP_MOD_CTRL)) pair(inp, LCT_V, LCT_C, 1);
+        put_s(&b, "rmb,");
+    }
+    if (g_sq.st != SQ_AGG && g_sq.pressed_shift) { pair(inp, LSH_V, LSH_C, 1); put_s(&b, "shift,"); }
+    if (g_sq.st == SQ_AGG && g_sq.pressed_ctrl) { pair(inp, LCT_V, LCT_C, 1); put_s(&b, "ctrl,"); }
+    b.s[b.n] = 0;
     if (g_sq.st != SQ_AGG && g_alt_restore) cursor_set(inp, g_sq.cx, g_sq.cy);
     g_sq.st = SQ_IDLE;
     g_post_n = 6;
-    seq_log("release_all", inp, gi, why);
+    seq_log("release_all", inp, gi, b.s);
+}
+
+/* A game modifier held (-1/-2) while the physical key is up: the DirectInput key-up was lost, typically
+ * because the key was released while another app had focus (Cmd+Tab, Space switch). Released after
+ * synth_max_ms. winemac sends Command as Alt (keyboard.c kVK_Command -> VK_LMENU), or as Ctrl with
+ * LeftCommandIsCtrl, and Option as Alt with LeftOptionIsAlt, so those flags also count as "held". */
+static const struct { unsigned dik, mods; const char *name; } g_rs_key[] = {
+    { 0x1d, TP_MOD_CTRL | TP_MOD_CMD, "lctrl" }, { 0x9d, TP_MOD_CTRL | TP_MOD_CMD, "rctrl" },
+    { 0x2a, TP_MOD_SHIFT, "lshift" }, { 0x36, TP_MOD_SHIFT, "rshift" },
+    { 0x38, TP_MOD_CMD | TP_MOD_OPT, "lalt" }, { 0xb8, TP_MOD_CMD | TP_MOD_OPT, "ralt" },
+};
+static LONGLONG g_rs_since[sizeof(g_rs_key) / sizeof(g_rs_key[0])];
+
+static void key_resync(unsigned inp, unsigned gi, int run)
+{
+    unsigned i;
+    for (i = 0; i < sizeof(g_rs_key) / sizeof(g_rs_key[0]); i++) {
+        unsigned v = 0x24u + g_rs_key[i].dik * 4u, c = 0x878u + g_rs_key[i].dik * 4u;   /* value, copy */
+        double ms;
+        struct buf b;
+        if (!run || !held(IV(v)) || (g_phys & g_rs_key[i].mods)) { g_rs_since[i] = 0; continue; }
+        if (!g_rs_since[i]) { g_rs_since[i] = g_qpc_tick.QuadPart; continue; }
+        ms = qpc_us(g_qpc_tick.QuadPart - g_rs_since[i]) / 1000.0;
+        if (ms < g_synth_max_ms) continue;
+        pair(inp, v, c, 1);
+        g_rs_since[i] = 0;
+        g_post_n = 6;
+        b.n = 0; put_s(&b, "key="); put_s(&b, g_rs_key[i].name); put_kv_f(&b, " unheld_ms=", ms); b.s[b.n] = 0;
+        seq_log("resync released", inp, gi, b.s);
+    }
 }
 
 /* Steps that do not depend on this tick's gesture input. Runs before the arbiter. */
@@ -853,10 +904,7 @@ static void seq_tick(unsigned inp, unsigned gi)
         } else g_sq_alt_ticks++;
         break;
     case SQ_ALT_SHREL:                                /* r+1 */
-        if (g_sq.pressed_shift) {
-            if (g_phys & TP_MOD_SHIFT) seq_log("alt shift kept", inp, gi, "physical");
-            else pair(inp, LSH_V, LSH_C, 1);
-        }
+        if (g_sq.pressed_shift) pair(inp, LSH_V, LSH_C, 1);   /* also when physically held, see seq_release_all */
         if (g_alt_restore) cursor_set(inp, g_sq.cx, g_sq.cy);
         g_sq.st = SQ_IDLE;
         seq_log("alt done", inp, gi, g_sq.pressed_shift ? "shift=released" : "shift=user");
@@ -866,9 +914,9 @@ static void seq_tick(unsigned inp, unsigned gi)
         if (g_sq.step == 1) { pair(inp, RMB_V, RMB_C, -1); FV(0x82c) = 0.0f; FV(0x830) = 0.0f; seq_log("agg rmb down", inp, gi, 0); }
         else if (g_sq.step == 2) { pair(inp, RMB_V, RMB_C, 1); g_post_n = 6; seq_log("agg rmb up", inp, gi, 0); }
         else if (g_sq.step == 4) {                    /* step 3: state 9 reads Ctrl (0x5984d6) */
-            if (g_sq.pressed_ctrl && !(g_phys & TP_MOD_CTRL)) pair(inp, LCT_V, LCT_C, 1);
+            if (g_sq.pressed_ctrl) pair(inp, LCT_V, LCT_C, 1);   /* also when physically held */
             g_sq.st = SQ_IDLE;
-            seq_log("agg done", inp, gi, 0);
+            seq_log("agg done", inp, gi, g_sq.pressed_ctrl ? "ctrl=released" : "ctrl=user");
         }
         break;
     }
@@ -1031,7 +1079,6 @@ static void actions_tick(unsigned inp, unsigned gi, float dt, int inflight_prev)
 
 /* ---- hook A ---- */
 static int g_exec_done;
-static LARGE_INTEGER g_qpc_tick;
 
 void WINAPI tp_after_mouse(float dt)
 {
@@ -1080,6 +1127,14 @@ void WINAPI tp_after_mouse(float dt)
         seq_release_all(inp, gi, "hook_c_not_run");      /* state 10 on top is the altitude move itself */
     else if (g_gate == 0 && g_sq.st != SQ_IDLE && top_state_id(gi) != 10)
         seq_release_all(inp, gi, "gate_closed");         /* GUI state or game log came up mid-sequence */
+    else if (g_sq.st != SQ_IDLE && qpc_us(qn.QuadPart - g_sq.q_act) / 1000.0 > g_synth_max_ms) {
+        struct buf b; b.n = 0;
+        put_kv_i(&b, "seq watchdog released t=", (int)g_tick); put_kv_i(&b, " st=", g_sq.st);
+        put_kv_f(&b, " age_ms=", qpc_us(qn.QuadPart - g_sq.q_act) / 1000.0);
+        log_buf(&b);
+        seq_release_all(inp, gi, "watchdog");
+    }
+    key_resync(inp, gi, g_f_resync && g_fr_valid && g_sq.st == SQ_IDLE);
 
     seq_tick(inp, gi);
     actions_tick(inp, gi, dt, inflight_prev);
@@ -1228,6 +1283,7 @@ static int patch_rel(unsigned site, BYTE op, BYTE *target)
     FlushInstructionCache(GetCurrentProcess(), (void *)site, 5);
     return 1;
 }
+int sw3tp_patch_rel(unsigned site, unsigned char op, void *target) { return patch_rel(site, op, (BYTE *)target); }
 
 static void log_attach(const char *hook, unsigned site, unsigned orig, BYTE *stub, const char *how)
 {
@@ -1283,18 +1339,19 @@ static int hook_iat_di8(void)
 }
 
 /* "1.5", "-0.25", "25" */
-static float ini_float(const char *sec, const char *key, float def)
+float sw3tp_ini_float(const char *ini, const char *sec, const char *key, float def)
 {
     char t[32], *c = t;
     float v = 0.0f, sc = 1.0f, sign = 1.0f;
     int any = 0;
-    GetPrivateProfileStringA(sec, key, "", t, sizeof(t), g_ini);
+    GetPrivateProfileStringA(sec, key, "", t, sizeof(t), ini);
     while (*c == ' ') c++;
     if (*c == '-') { sign = -1.0f; c++; } else if (*c == '+') c++;
     for (; *c >= '0' && *c <= '9'; c++, any = 1) v = v * 10.0f + (float)(*c - '0');
     if (*c == '.') for (c++; *c >= '0' && *c <= '9'; c++, any = 1) { sc /= 10.0f; v += sc * (float)(*c - '0'); }
     return any ? sign * v : def;
 }
+static float ini_float(const char *sec, const char *key, float def) { return sw3tp_ini_float(g_ini, sec, key, def); }
 
 static int ini_int(const char *sec, const char *key, int def) { return (int)GetPrivateProfileIntA(sec, key, def, g_ini); }
 
@@ -1346,6 +1403,8 @@ static void read_config(void)
     g_thr_scroll = ini_float("thresholds", "scroll", 4.0f);
     g_alt_min = ini_float("thresholds", "altitude_min_dy", 3.0f);
     g_wd_ms = ini_float("thresholds", "watchdog_ms", 500.0f);
+    g_synth_max_ms = ini_float("thresholds", "synth_max_ms", 1500.0f);
+    g_f_resync = ini_int("features", "modifier_resync", 1);
     g_f_pinch = ini_int("features", "pinch_zoom", 1);
     g_f_orbit = ini_int("features", "scroll_orbit", 1);
     g_f_yaw = ini_int("features", "rotate_yaw", 1);
@@ -1395,6 +1454,7 @@ static void read_config(void)
     put_kv_i(&b, " smart=", g_f_smart); put_kv_i(&b, " aggtap=", g_f_aggtap); put_kv_i(&b, " map=", g_f_map);
     put_kv_i(&b, " tap_max_ms=", (int)g_tap_max_ms); put_kv_i(&b, " double_tap_ms=", (int)g_dtap_ms);
     put_kv_f(&b, " agg_cooldown_ms=", g_agg_cool_ms);
+    put_kv_f(&b, " synth_max_ms=", g_synth_max_ms); put_kv_i(&b, " modifier_resync=", g_f_resync);
     log_buf(&b);
 }
 
@@ -1426,6 +1486,10 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID res)
     g_log = CreateFileA(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);   /* truncated per launch */
     log_s("sw3tp " SW3TP_VERSION);
 
+    trf_init(ini);   /* [traffic] is independent of [sw3tp] enabled and of the site A check */
+    dsp_init(ini);   /* [display]: also independent; runs before the game reads default.cfg */
+    stb_init(ini);   /* [stability]: render lost-device guard, also independent */
+    view_init(ini);  /* [view]: frustum and size cull in the mesh pass, also independent */
     if (!GetPrivateProfileIntA("sw3tp", "enabled", 1, ini)) { log_s("attach disabled enabled=0"); return TRUE; }
     read_config();
     if (!site_a_ok()) { log_s("attach mismatch"); return TRUE; }

@@ -1,0 +1,1259 @@
+-- sw3-traffic debrief pool and the intro quest "Report in" (Lua 4.0.1). Spec: design/debrief-spec.md (B02, roadmap wave
+-- 2 item 7; owner decisions O2-O8 of spec 2.2 taken 2026-11-04, O1 open). Prefix Db (TRF_Db_* public, TRF_Db<X>
+-- internal), log module=debrief.
+-- Off by default: cfg debrief_xp 0 (owner decision O1, roadmap section 5 decision 1) leaves the whole feature inert (no
+-- count, no offer, no line, no XP); debrief_xp 1 turns it on from the next entry or load.
+-- The pool (spec 5): every settled mod job (trf_plumb TRF_Settle from the six pay points: parcel, charter, claim, sweep,
+-- escort) draws one debrief from the chapter's pool (db_pool, carried over one chapter, a bank of db_bank pools) into the
+-- pending count; the next trade dock (line 80, never a patrol or pirate dock) pays every pending debrief in one
+-- AddPlayerExperience call of pending x (band-mean threat + 2) x difficulty coefficient x db_shares / 2 (kill-XP units).
+-- The pool needs the done bit of "Report in" (cfg db_gate 1) and runs in chapters db_ch..db_last.
+-- Quest "Report in" (spec 6): quest id 2 of the shared intro-quest record TRF.iq (trf_plumb TRF_Iq*): the offer at a
+-- trade dock's charter office after the first paid posting (box 420, or the Office row 420; dialog TRF_Db1 with db_dialog
+-- 1, else the mission card with jobs_ui >= 1, else the box), one settled job (step 10 -> 20), the hand-in at any trade
+-- dock (line 80, talk box 455, dialog TRF_Db2, else the line dbrep); done opens the pool and pays the first debrief.
+-- Saved: TRF.db (one packed integer ch x 10^4 + p x 10^2 + pd x 10 + n: chapter stamp, debriefs left, pending, refill
+-- line due) and quest 2 of TRF.iq. Visit state in the chunk local DB (rebuilt by every MapInitialization): offer, talk,
+-- dlg, q (count lines queued for this trade docking), v.dec (declined in this visit), tc (tune cache), wn (the native
+-- wait logged). The logbook text on screen and the done leg live in the function global TRF_DbKeepThunk (dropped at a
+-- load).
+-- Top level: functions and DB only.
+
+local DB = {v={}};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_DbSH() return %DB; end;
+
+-- logfmt event line, module=debrief (design/log-format.md).
+function TRF_DbE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "debrief"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_DbErr(m)
+	TRF_DbE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler (natives that may be missing or answer badly): nil is the answer.
+function TRF_DbNoErr(m) end;
+
+function TRF_DbLogLv()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_DbDE(event, ...)
+	if TRF_DbLogLv() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_DbE, arg);
+end;
+
+function TRF_DbCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Db_OptDef), else the raw config, else the default; a wrong type or a number outside
+-- 0..1 reads as the default (every key is a toggle).
+function TRF_DbOpt(key)
+	local d = TRF_Db_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	if type(v) == "number" and v ~= 0 and v ~= 1 then return d; end;
+	return v;
+end;
+
+-- Tune values of this module, clamped (TRF_DbClampT: {lo, hi, int}); db_last >= db_ch. Cached in DB while TRF_Tune
+-- returns the same table.
+function TRF_DbTune()
+	local db = %DB;
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_DbErr); end;
+	if type(db.tc) == "table" and db.tc.s == t then return db.tc.t; end;
+	local d, cl, o = TRF_Db_TuneDef(), TRF_DbClampT(), {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if type(x) ~= "number" then x = v; end;
+		local r = cl[k];
+		if r[3] == 1 then x = floor(x); end;
+		o[k] = TRF_DbCl(x, r[1], r[2]);
+	end;
+	if o.db_last < o.db_ch then o.db_last = o.db_ch; end;
+	db.tc = {s=t, t=o};
+	return o;
+end;
+
+function TRF_DbT(key)
+	return TRF_DbTune()[key];
+end;
+
+function TRF_DbLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+function TRF_DbGen()
+	if type(TRF) == "table" and type(TRF.gen) == "number" then return TRF.gen; end;
+	return 0;
+end;
+
+function TRF_DbCur()
+	local i = TRF_N("TRF_CurIdx");
+	if type(i) == "number" then return i; end;
+	return nil;
+end;
+
+-- Lowercase map name of system idx (log values), or the index.
+function TRF_DbName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" and n ~= "?" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+function TRF_DbTxt(key, a, b, c)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c); end;
+	return tostring(key);
+end;
+
+function TRF_DbChapter()
+	local c = TRF_N("TRF_Chapter");
+	if type(c) == "number" then return c; end;
+	return 0;
+end;
+
+-- 1 while a story mission runs: trf_plumb's TRF_PlQuest (trf_safety TRF_Safe_QState, else GetPlayerQuestState() == TRUE),
+-- the same test without trf_plumb.
+function TRF_DbQuest()
+	if type(TRF_PlQuest) == "function" then return TRF_PlQuest(); end;
+	if type(TRF_Safe_QState) == "function" then
+		if TRF_Safe_QState() then return 1; end;
+		return nil;
+	end;
+	if type(GetPlayerQuestState) == "function" and GetPlayerQuestState() == TRUE then return 1; end;
+	return nil;
+end;
+
+-- Help of the standing record (trf_charter TRF_ChHelp, else TRF.std.help).
+function TRF_DbHelp()
+	local h = TRF_N("TRF_ChHelp");
+	if type(h) == "number" then return h; end;
+	if type(TRF) == "table" and type(TRF.std) == "table" and type(TRF.std.help) == "number" then return TRF.std.help; end;
+	return 0;
+end;
+
+-- 1 inside a trade docking's dispatch (trf_plumb P.run.trade), before this module's line 80 runs.
+function TRF_DbInTrade()
+	local p = TRF_N("TRF_PlReg");
+	if type(p) == "table" and type(p.run) == "table" and p.run.trade == 1 then return 1; end;
+	return nil;
+end;
+
+-- Static tables --------------------------------------------------------------------
+
+-- Constants without a cfg key (spec 8.2): the kind codes (1 parcel, 2 charter, 3 claim, 4 sweep, 5 escort) and names,
+-- the offer box 420, the Office row 420, the talk box 455, the trade line 80, the pending cap 9, the legs a done
+-- logbook entry stays, the line seconds, the quest id of TRF.iq, the logbook and card ids, the dialog files.
+function TRF_DbK()
+	return {kc={parcel=1, charter=2, claim=3, sweep=4, escort=5}, kn={"parcel", "charter", "claim", "sweep", "escort"}, box=420,
+		row=420, talk=455, line=80, pdmax=9, dn_legs=10, secs=8, q=2, qid="trf_db", jid="db", f1="TRF_".."Db1", f2="TRF_".."Db2"};
+end;
+
+-- Clamps of the tune keys {lo, hi, int}.
+function TRF_DbClampT()
+	return {db_pool={1, 9, 1}, db_bank={1, 2, 1}, db_shares={0.5, 4, 0}, db_thr1={0, 15, 0}, db_thr2={0, 15, 0}, db_thr3={0, 15, 0},
+		db_ch={5, 20, 1}, db_last={1, 20, 1}, db_help={0, 99, 1}, db_dc={0, 50, 1}};
+end;
+
+-- Pure functions -------------------------------------------------------------------
+
+-- Pure: TRF.db of chapter stamp ch, debriefs left p, pending pd, refill line due n.
+function TRF_DbPack(ch, p, pd, n)
+	return ch * 10000 + p * 100 + pd * 10 + n;
+end;
+
+-- Pure: {ch, p, pd, n} of packed a.
+function TRF_DbUnpack(a)
+	return {n=mod(a, 10), pd=mod(floor(a / 10), 10), p=mod(floor(a / 100), 100), ch=floor(a / 10000)};
+end;
+
+-- Pure: one debrief (spec 5.5) in chapter c at difficulty diff with tune T: (db_thr<b> + 2) x coeff x db_shares / 2,
+-- rounded to 0.1, at least 0.1; b the band (1: c <= 6, 2: c <= 12, else 3), coeff of CalculateExpPoints (EASY 0.8, HARD
+-- 0.35, else NORMAL 0.65). Returns x, b.
+function TRF_DbXpOf(c, diff, T)
+	local b = 3;
+	if c <= 6 then b = 1; elseif c <= 12 then b = 2; end;
+	local k = 0.65;
+	if EASY ~= nil and diff == EASY then k = 0.8; elseif HARD ~= nil and diff == HARD then k = 0.35; end;
+	local x = floor((T["db_thr"..b] + 2) * k * T.db_shares / 2 * 10 + 0.5) / 10;
+	if x < 0.1 then x = 0.1; end;
+	return x, b;
+end;
+
+-- Pure: debriefs left after steps chapter changes from p (spec 5.3): p = min(N + min(p, (bank - 1) x N), bank x N) per
+-- step, so unused debriefs carry over one chapter and the bank holds bank pools.
+function TRF_DbRefillOf(p, N, bank, steps)
+	for i = 1, steps do p = min(N + min(p, (bank - 1) * N), bank * N); end;
+	return p;
+end;
+
+-- Difficulty name for the log.
+function TRF_DbDiffName(d)
+	if EASY ~= nil and d == EASY then return "easy"; end;
+	if HARD ~= nil and d == HARD then return "hard"; end;
+	return "normal";
+end;
+
+-- Gates (spec 4) -------------------------------------------------------------------
+
+-- 1 while the feature may act, else nil and the reason: off (cfg debrief 0, enabled 2, traffic off), xp (debrief_xp 0).
+function TRF_DbOn()
+	if type(TRF) ~= "table" or TRF_DbOpt("debrief") ~= 1 then return nil, "off"; end;
+	if type(TRF_Cfg) == "function" and TRF_Cfg().enabled == 2 then return nil, "off"; end;
+	if type(TRF_Traffic) == "function" and not TRF_Traffic() then return nil, "off"; end;
+	if TRF_DbOpt("debrief_xp") ~= 1 then return nil, "xp"; end;
+	return 1;
+end;
+
+-- 1 while the pool is open (spec 4.2): the feature on and cfg db_gate 0 or the done bit of quest 2; else nil, reason.
+function TRF_DbOpen()
+	local on, w = TRF_DbOn();
+	if not on then return nil, w; end;
+	if TRF_DbOpt("db_gate") == 0 then return 1; end;
+	if type(TRF_IqDone) ~= "function" then return nil, "plumb"; end;
+	if TRF_IqDone(TRF_DbK().q) == 1 then return 1; end;
+	return nil, "closed";
+end;
+
+-- The strict gate of system idx (feature "debrief"): nil or "strict:<why>".
+function TRF_DbStrict(idx)
+	if type(TRF_StrictOk) ~= "function" then return nil; end;
+	local ok, w = TRF_StrictOk(idx, "debrief");
+	if ok then return nil; end;
+	return "strict:"..tostring(w);
+end;
+
+-- The pool record {ch, p, pd, n} from TRF.db, or nil.
+function TRF_DbRec()
+	if type(TRF) ~= "table" or type(TRF.db) ~= "number" then return nil; end;
+	return TRF_DbUnpack(TRF.db);
+end;
+
+function TRF_DbPut(u)
+	TRF.db = TRF_DbPack(u.ch, u.p, u.pd, u.n);
+end;
+
+-- Draw gate at a settlement of kind in system idx (spec 4.3): nil (draw) or the reason.
+function TRF_DbDrawWhy(kind, idx)
+	local on, w = TRF_DbOn();
+	if not on then return w; end;
+	if not TRF_DbK().kc[kind] then return "kind"; end;
+	if TRF_DbQuest() then return "mission"; end;
+	local c = TRF_DbChapter();
+	if c < TRF_DbT("db_ch") then return "chapter"; end;
+	if c > TRF_DbT("db_last") then return "chapter_end"; end;
+	local s = TRF_DbStrict(idx);
+	if s then return s; end;
+	local op, ow = TRF_DbOpen();
+	if not op then return ow; end;
+	local u = TRF_DbRec();
+	if not u or u.p <= 0 then return "empty"; end;
+	if u.pd >= TRF_DbK().pdmax then return "pending_cap"; end;
+	return nil;
+end;
+
+-- Pay gate at a trade dock in system idx (spec 4.4): nil (pay) or the reason. nonone 1: the none reason is skipped (the
+-- refill line).
+function TRF_DbPayWhy(idx, nonone)
+	local on, w = TRF_DbOn();
+	if not on then return w; end;
+	local u = TRF_DbRec();
+	if nonone ~= 1 and (not u or (u.pd == 0 and u.n == 0)) then return "none"; end;
+	if TRF_N("TRF_Quiet") then return "quiet"; end;
+	if TRF_DbQuest() then return "mission"; end;
+	local s = TRF_DbStrict(idx);
+	if s then return s; end;
+	if type(AddPlayerExperience) ~= "function" then return "native"; end;
+	return nil;
+end;
+
+-- The active "Report in": {s, t, c} from TRF.iq, or nil.
+function TRF_DbRun()
+	local I = TRF_N("TRF_IqGet");
+	if type(I) ~= "table" or I.q ~= TRF_DbK().q then return nil; end;
+	return {s=I.s, t=I.t, c=I.c};
+end;
+
+-- Offer gate at a trade dock in system cur (spec 4.5): nil (show) or the reason.
+function TRF_DbOfferWhy(cur)
+	local on, w = TRF_DbOn();
+	if not on then return w; end;
+	if TRF_DbOpt("db_gate") == 0 then return "gate"; end;
+	local K = TRF_DbK();
+	if TRF_N("TRF_IqDone", K.q) == 1 then return "done"; end;
+	if type(cur) ~= "number" then return "nomap"; end;
+	if TRF_DbChapter() < TRF_DbT("db_ch") then return "chapter"; end;
+	if TRF_DbQuest() then return "mission"; end;
+	if type(TRF_Ch_Office) ~= "function" then return "office:missing"; end;
+	local n, ow = TRF_Ch_Office();
+	if type(n) ~= "number" then return "office:"..tostring(ow); end;
+	if TRF_DbHelp() < TRF_DbT("db_help") then return "help"; end;
+	if n < 1 then return "posting"; end;
+	local I = TRF_N("TRF_IqGet");
+	if type(I) ~= "table" then return "plumb"; end;
+	if I.q ~= 0 then return "busy"; end;
+	if TRF_N("TRF_IqWait", K.q, TRF_DbT("db_dc")) == 1 or %DB.v.dec == 1 then return "declined"; end;
+	return TRF_DbStrict(cur);
+end;
+
+-- Count gate of step 10 for a settlement of kind in system idx (spec 4.6): nil (count) or the reason.
+function TRF_DbCountWhy(kind, idx)
+	if not TRF_DbK().kc[kind] then return "kind"; end;
+	if TRF_DbQuest() then return "mission"; end;
+	return TRF_DbStrict(idx);
+end;
+
+-- Hand-in gate at a trade dock in system cur (spec 4.6): nil or the reason.
+function TRF_DbRepWhy(cur, R)
+	local on, w = TRF_DbOn();
+	if not on then return w; end;
+	if not R or R.s ~= 2 then return "step"; end;
+	if type(cur) ~= "number" then return "nomap"; end;
+	if TRF_DbQuest() then return "mission"; end;
+	return TRF_DbStrict(cur);
+end;
+
+-- The pool (spec 5) ----------------------------------------------------------------
+
+-- Sync (entry, load, every trade dock line, every settlement, the done): the record created when the pool is open in
+-- chapters db_ch..db_last, the refill per chapter passed (to db_last at most), a lower chapter label clamped (a label below
+-- db_ch: nothing). why is the caller (log). 1 when the record changed.
+function TRF_DbSync(why)
+	if not TRF_DbOpen() then return nil; end;
+	local T = TRF_DbTune();
+	local N = T.db_pool;
+	local c = TRF_DbChapter();
+	local u = TRF_DbRec();
+	if not u then
+		if c < T.db_ch or c > T.db_last then return nil; end;
+		local n = 0;
+		if TRF_DbOpt("db_gate") == 0 then n = 1; end;
+		TRF_DbPut({ch=c, p=N, pd=0, n=n});
+		TRF_N("TRF_Stat", "db_open");
+		TRF_DbE("refill", "chapter_after", c, "pool_left", N, "via", why, "result", "opened");
+		TRF_DbRcn("refill");
+		return 1;
+	end;
+	local to = min(c, T.db_last);
+	if to > u.ch then
+		local ch0, p0 = u.ch, u.p;
+		u.p = TRF_DbRefillOf(u.p, N, T.db_bank, to - u.ch);
+		u.ch = to;
+		u.n = 1;
+		TRF_DbPut(u);
+		TRF_N("TRF_Stat", "db_refill");
+		TRF_DbE("refill", "chapter_before", ch0, "chapter_after", to, "carried", max(0, u.p - N), "pool_before", p0, "pool_left", u.p,
+			"via", why, "result", "refilled");
+		TRF_DbRcn("refill");
+		return 1;
+	end;
+	if c < T.db_ch then return nil; end;
+	if c < u.ch then
+		local nc = max(c, T.db_ch);
+		if nc ~= u.ch then
+			u.ch = nc;
+			TRF_DbPut(u);
+			TRF_DbE("fix", "field", "ch", "chapter", c, "result", "clamped");
+			return 1;
+		end;
+	end;
+	return nil;
+end;
+
+-- One debrief now (spec 5.5): x, band, difficulty name.
+function TRF_DbXp()
+	local d = TRF_N("GetLevelDifficult");
+	local x, b = TRF_DbXpOf(TRF_DbChapter(), d, TRF_DbTune());
+	return x, b, TRF_DbDiffName(d);
+end;
+
+-- Points of pilot q (raw, protected by the caller): nil unless alive and on the player side.
+function TRF_DbPtsRaw(q)
+	local a = q:IsAlive();
+	if a ~= TRUE and a ~= 1 then return nil; end;
+	if q:GetSide() ~= "Player" then return nil; end;
+	return q:GetPoints();
+end;
+
+function TRF_DbPilotRaw(n) return GetPilot(n); end;
+
+-- Points read (spec 5.6, log 2 only): event=points per crew pilot (TRF_SpCrew of trf_supply, else the Hero; hero 1: the
+-- Hero only). Nothing reads the values back.
+function TRF_DbPoints(at, hero)
+	if TRF_DbLogLv() < 2 or type(GetPilot) ~= "function" then return; end;
+	local l = {"Hero"};
+	if hero ~= 1 and type(TRF_SpCrew) == "function" then l = TRF_SpCrew(); end;
+	for i = 1, getn(l) do
+		local q = call(TRF_DbPilotRaw, {l[i]}, "x", TRF_DbNoErr);
+		if q then
+			local v = call(TRF_DbPtsRaw, {q}, "x", TRF_DbNoErr);
+			if type(v) == "number" then TRF_DbDE("points", "at", at, "pilot", l[i], "points", TRF_F(v)); end;
+		end;
+	end;
+end;
+
+function TRF_DbAddXpRaw(x)
+	AddPlayerExperience(x);
+	return 1;
+end;
+
+-- The pay at a trade dock in system idx (spec 5.4 step 4; via dock or quest): every pending debrief in one
+-- AddPlayerExperience(pd x x) call. Returns the pay line or nil (nothing pending, a gate, a native error).
+function TRF_DbPay(idx, via)
+	local db = %DB;
+	local u = TRF_DbRec();
+	if not u or u.pd <= 0 then return nil; end;
+	local why = TRF_DbPayWhy(idx);
+	if why then
+		if why ~= "none" and (why ~= "native" or db.wn ~= 1) then
+			if why == "native" then db.wn = 1; end;
+			TRF_DbE("pay", "via", via, "jobs", u.pd, "system", TRF_DbName(idx), "result", "wait", "reason", why);
+		end;
+		return nil;
+	end;
+	local x, b, dn = TRF_DbXp();
+	local tot = u.pd * x;
+	TRF_DbPoints("before");
+	if call(TRF_DbAddXpRaw, {tot}, "x", TRF_DbErr) ~= 1 then
+		TRF_DbE("pay", "via", via, "jobs", u.pd, "result", "failed", "reason", "error");
+		return nil;
+	end;
+	TRF_DbPoints("after");
+	local jobs = u.pd;
+	u.pd = 0;
+	TRF_DbPut(u);
+	local key = "dbpay1";
+	if jobs > 1 then key = "dbpayn"; end;
+	if u.p <= 0 then key = key.."e"; end;
+	TRF_N("TRF_Stat", "db_paid");
+	TRF_DbE("pay", "via", via, "jobs", jobs, "xp_each", format("%.1f", x), "xp_total", format("%.1f", tot), "pool_left", u.p,
+		"chapter", TRF_DbChapter(), "band", b, "difficulty", dn, "result", "paid");
+	TRF_DbRcn("pay");
+	return TRF_DbTxt(key, jobs, format("%.1f", tot), u.p);
+end;
+
+-- A count line (step 10 -> 20): queued for the trade line 80 inside a trade docking (after the pay point's own line), else
+-- said now.
+function TRF_DbLine(text)
+	local db = %DB;
+	if TRF_DbInTrade() then
+		if type(db.q) ~= "table" then db.q = {}; end;
+		tinsert(db.q, text);
+		return;
+	end;
+	TRF_N("TRF_Say", text, TRF_DbK().secs);
+end;
+
+-- The settlement handler (trf_plumb TRF_SettleReg; spec 5.2): the sync, the quest count of step 10, else the draw.
+function TRF_Db_Settle(kind, idx, amt, key)
+	if type(idx) ~= "number" then idx = TRF_DbCur(); end;
+	local on, w = TRF_DbOn();
+	if not on then
+		TRF_DbDE("settle", "kind", kind, "system", TRF_DbName(idx), "result", "none", "reason", w);
+		return;
+	end;
+	TRF_DbSync("settle");
+	local K = TRF_DbK();
+	local R = TRF_DbRun();
+	if R and R.s == 1 then
+		local cw = TRF_DbCountWhy(kind, idx);
+		if cw then
+			TRF_DbDE("count", "kind", kind, "system", TRF_DbName(idx), "result", "none", "reason", cw);
+			return;
+		end;
+		TRF_N("TRF_IqSet", K.q, 2, K.kc[kind], 0);
+		TRF_N("TRF_Stat", "db_count");
+		TRF_DbE("count", "kind", kind, "system", TRF_DbName(idx), "amount", amt, "result", "counted");
+		TRF_DbE("step", "step_before", 10, "step_after", 20, "reason", "count");
+		TRF_DbLine(TRF_DbTxt("dbcnt"));
+		TRF_DbRcn("count");
+		return;
+	end;
+	local why = TRF_DbDrawWhy(kind, idx);
+	if why then
+		if why == "xp" or why == "off" or why == "closed" or why == "plumb" then
+			TRF_DbDE("settle", "kind", kind, "system", TRF_DbName(idx), "result", "none", "reason", why);
+		else
+			TRF_DbE("settle", "kind", kind, "system", TRF_DbName(idx), "result", "none", "reason", why);
+		end;
+		return;
+	end;
+	local u = TRF_DbRec();
+	u.p = u.p - 1;
+	u.pd = u.pd + 1;
+	TRF_DbPut(u);
+	TRF_N("TRF_Stat", "db_drawn");
+	TRF_DbE("settle", "kind", kind, "system", TRF_DbName(idx), "amount", amt, "pool_left", u.p, "pending", u.pd, "result", "drawn");
+	TRF_DbRcn("draw");
+end;
+
+-- Trade dock line 80 (after the charter's 70, before the dockmaster's 90; spec 5.4): the count lines of this docking, the
+-- hand-in of step 20, the refill line dbnew, the pay. Patrol and pirate docks get no line.
+function TRF_Db_TradeLine(kind, param)
+	if kind ~= "trade" then return nil; end;
+	local db = %DB;
+	-- A talk of an earlier docking (its box did not open) never carries over.
+	db.talk = nil;
+	local out = {};
+	if type(db.q) == "table" then
+		for i = 1, getn(db.q) do tinsert(out, db.q[i]); end;
+		db.q = nil;
+	end;
+	if not TRF_DbOn() then return out; end;
+	TRF_DbSync("dock");
+	local cur = TRF_DbCur();
+	local R = TRF_DbRun();
+	if R and R.s == 2 and not TRF_N("TRF_Quiet") then
+		local why = TRF_DbRepWhy(cur, R);
+		if why then
+			TRF_DbDE("report", "system", TRF_DbName(cur), "result", "none", "reason", why);
+		else
+			local line = TRF_DbTxt("dbrep");
+			local dw = TRF_DbDlgWhy("dock");
+			if not dw then
+				db.talk = {g=TRF_DbGen(), sys=cur, k=R.t, line=line};
+				TRF_DbDE("talk", "dialog", 2, "result", "pending");
+			else
+				TRF_DbFb(2, dw);
+				tinsert(out, line);
+				local pl = TRF_DbDone(cur, "line");
+				if pl then tinsert(out, pl); end;
+			end;
+		end;
+	end;
+	local u = TRF_DbRec();
+	if u and u.n == 1 and u.p > 0 and not TRF_DbPayWhy(cur, 1) then
+		u.n = 0;
+		TRF_DbPut(u);
+		tinsert(out, TRF_DbTxt("dbnew", u.p));
+		TRF_DbDE("line", "key", "dbnew", "pool_left", u.p);
+	end;
+	local pl = TRF_DbPay(cur, "dock");
+	if pl then tinsert(out, pl); end;
+	return out;
+end;
+
+-- Quest step 0: the offer (spec 6.1) -------------------------------------------------
+
+-- The offer box spec at a trade dock (gate, DB.offer), or nil.
+function TRF_DbBoxSpec(kind)
+	if kind ~= "trade" or not TRF_DbOn() or TRF_N("TRF_Quiet") then return nil; end;
+	local db = %DB;
+	local cur = TRF_DbCur();
+	local why = TRF_DbOfferWhy(cur);
+	if why then TRF_DbDE("offer", "system", TRF_DbName(cur), "result", "none", "reason", why); return nil; end;
+	local K = TRF_DbK();
+	db.offer = {sys=cur, g=TRF_DbGen(), help=TRF_DbHelp(), post=TRF_N("TRF_Ch_Office")};
+	return {title="#UI_TradeStationWndCaption", text=TRF_DbTxt("dbbox"), ok="TRF_Db_BoxOk", no="TRF_Db_BoxNo", shown="TRF_Db_BoxShown",
+		fail="TRF_Db_BoxFail", dlg="TRF_Db_Dlg1", a={g=TRF_DbGen(), src=cur}, own="db",
+		card={id=K.jid, header=TRF_DbTxt("dbjobh"), title=TRF_DbTxt("dbbt")}};
+end;
+
+-- Trade box 420 (above the parcel offer 400 and the freight purchase 300, below the freight quest 450). None after the
+-- Office board was set at this docking (cfg jobs_ui 2: the offer is its row, TRF_Db_JobRow).
+function TRF_Db_DockBox(kind, param)
+	if TRF_N("TRF_JbSet") then return nil; end;
+	return TRF_DbBoxSpec(kind);
+end;
+
+-- Office board row 420 (station-jobs-spec 5.2): the box spec as a row; the card's OK opens D1 over the Office window.
+function TRF_Db_JobRow(kind, param)
+	local s = TRF_DbBoxSpec(kind);
+	local o = %DB.offer;
+	if type(s) ~= "table" or type(o) ~= "table" then return nil; end;
+	TRF_DbE("offer", "system", TRF_DbName(o.sys), "result", "listed", "via", "board");
+	return {id=s.card.id, header=s.card.header, title=s.card.title, text=s.text, short=TRF_DbTxt("dbjobs"), ok="TRF_Db_CardOk", no=s.no,
+		shown=s.shown, took="TRF_Db_JobTook", a=s.a};
+end;
+
+-- 1 once the quest is taken or done (the Office row closes).
+function TRF_Db_JobTook(a)
+	if TRF_DbRun() or TRF_N("TRF_IqDone", TRF_DbK().q) == 1 then return 1; end;
+	return nil;
+end;
+
+-- Offer shown: via "dialog", "card", "board", else the box.
+function TRF_Db_BoxShown(a, via)
+	local o = %DB.offer;
+	if type(o) ~= "table" then return; end;
+	TRF_N("TRF_Stat", "db_offer");
+	TRF_DbE("offer", "system", TRF_DbName(o.sys), "help", o.help, "postings", o.post, "result", "shown", "via", via or "box");
+end;
+
+function TRF_Db_BoxFail(a)
+	local db = %DB;
+	db.offer = nil;
+	TRF_DbE("offer", "result", "failed", "reason", "box");
+end;
+
+-- OK (also D1's accept and the card's OK): the gate again, TRF_IqTake(2, 0, 0), the logbook; the reply dbok without D1.
+function TRF_Db_BoxOk(a)
+	local db = %DB;
+	local o = db.offer;
+	db.offer = nil;
+	local cur = TRF_DbCur();
+	if type(o) ~= "table" or type(a) ~= "table" or a.g ~= TRF_DbGen() or o.g ~= a.g or o.sys ~= cur or TRF_DbOfferWhy(cur) then
+		TRF_DbE("accept", "system", TRF_DbName(cur), "result", "stale");
+		return nil;
+	end;
+	local ok, w = TRF_N("TRF_IqTake", TRF_DbK().q, 0, 0);
+	if ok ~= 1 then
+		TRF_DbE("accept", "system", TRF_DbName(cur), "result", "busy", "reason", tostring(w));
+		return nil;
+	end;
+	TRF_N("TRF_Stat", "db_accept");
+	TRF_DbE("accept", "system", TRF_DbName(cur), "leg", TRF_DbLegs(), "result", "ok");
+	TRF_DbRcn("accept", 1);
+	if o.dlg == 1 then return nil; end;
+	return TRF_DbTxt("dbok");
+end;
+
+-- OK of the Office board's card (TRF_Db_JobRow): D1 over the Office window; the accept at once when it cannot open.
+function TRF_Db_CardOk(a)
+	local o = %DB.offer;
+	if type(o) == "table" and TRF_DbDlgOpen("1", {}, "board", {a=a}) then o.dlg = 1; return nil; end;
+	return TRF_Db_BoxOk(a);
+end;
+
+-- Cancel (D1's decline): the decline stamp of TRF.iq (no offer for db_dc legs), none again in this visit. Esc of the card
+-- (ev "esc") or D1: nothing, the offer comes at the next docking.
+function TRF_Db_BoxNo(a, ev)
+	local db = %DB;
+	local o = db.offer;
+	db.offer = nil;
+	if ev == "esc" then
+		if type(o) == "table" then TRF_DbE("decline", "system", TRF_DbName(o.sys), "result", "closed"); end;
+		return nil;
+	end;
+	db.v.dec = 1;
+	if type(o) ~= "table" then TRF_DbE("decline", "result", "stale"); return nil; end;
+	TRF_N("TRF_IqDecline", TRF_DbK().q);
+	TRF_DbE("decline", "system", TRF_DbName(o.sys), "leg", TRF_DbLegs(), "result", "declined");
+	return nil;
+end;
+
+-- Quest step 20: the hand-in (spec 6.3, 6.4) -----------------------------------------
+
+-- Trade box 455 (below the freight quest's talk box 460): the pending hand-in of this docking.
+function TRF_Db_TalkBox(kind, param)
+	local t = %DB.talk;
+	if kind ~= "trade" or type(t) ~= "table" or t.g ~= TRF_DbGen() then return nil; end;
+	return {text=t.line, dlg="TRF_Db_Dlg2", fail="TRF_Db_TalkFail", own="db_talk", a={g=t.g}};
+end;
+
+-- Debriefs left after the first one at a hand-in now (D2's $2).
+function TRF_DbLeftAfter()
+	local u = TRF_DbRec();
+	local p = TRF_DbT("db_pool");
+	if u then p = u.p; end;
+	return max(0, p - 1);
+end;
+
+-- s.dlg of the talk box: D2 ($1 the job, $2 the debriefs left after this one) (1), else 0 (no box: TRF_Db_TalkFail says
+-- the line).
+function TRF_Db_Dlg2(a, s)
+	local db = %DB;
+	local t = db.talk;
+	if type(t) ~= "table" then return 0; end;
+	local k = t.k;
+	if type(k) ~= "number" or k < 1 or k > 5 then k = 1; end;
+	if not TRF_DbDlgOpen("2", {args={TRF_DbTxt("dbk"..k), TRF_DbLeftAfter()}}, "dock", {t=t}) then return 0; end;
+	db.talk = nil;
+	return 1;
+end;
+
+-- The talk box could not open (the lock, the dialog): the line and the hand-in now.
+function TRF_Db_TalkFail(a)
+	local db = %DB;
+	local t = db.talk;
+	db.talk = nil;
+	if type(t) ~= "table" then return; end;
+	TRF_N("TRF_PlSay", t.line);
+	TRF_DbTalkFx(t, "line");
+end;
+
+-- The hand-in's effect for talk record t: done when the run is still at step 20; the pay line said.
+function TRF_DbTalkFx(t, via)
+	local R = TRF_DbRun();
+	if not R or R.s ~= 2 then return; end;
+	local pl = TRF_DbDone(t.sys, via);
+	if pl then TRF_N("TRF_PlSay", pl); end;
+end;
+
+-- Done (spec 6.4): the run ends with the done bit, the pool opens (sync), the first debrief is drawn and paid here (else it
+-- stays pending for the next trade dock). Returns the pay line or nil.
+function TRF_DbDone(cur, via)
+	local R = TRF_DbRun();
+	if not R or R.s ~= 2 then return nil; end;
+	local K = TRF_DbK();
+	if TRF_N("TRF_IqEnd", K.q, "done") ~= 1 then return nil; end;
+	local L = TRF_DbLegs();
+	TRF_DbKeep().dn = L;
+	TRF_N("TRF_Stat", "db_done");
+	TRF_DbE("done", "system", TRF_DbName(cur), "kind", R.t, "leg", L, "via", via, "result", "done");
+	TRF_DbSync("done");
+	local u = TRF_DbRec();
+	local pl = nil;
+	if u and u.p > 0 and u.pd < K.pdmax then
+		u.p = u.p - 1;
+		u.pd = u.pd + 1;
+		TRF_DbPut(u);
+		TRF_DbE("settle", "kind", "quest", "system", TRF_DbName(cur), "pool_left", u.p, "pending", u.pd, "result", "drawn");
+		pl = TRF_DbPay(cur, "quest");
+	end;
+	TRF_DbRcn("done");
+	return pl;
+end;
+
+-- Lapse (trf_plumb TRF_IqStale through TRF_IqOwners): the run ends without a penalty, the entry goes.
+function TRF_Db_IqLapse()
+	local R = TRF_DbRun();
+	if not R then return; end;
+	TRF_N("TRF_IqEnd", TRF_DbK().q, "lapsed");
+	TRF_DbE("lapse", "step", R.s * 10, "leg", TRF_DbLegs(), "result", "lapsed");
+	TRF_DbRcn("lapse");
+end;
+
+-- Logbook (spec 6.5, 6.6) ------------------------------------------------------------
+-- One entry trf_db: during the quest "#TRF_dbt" with the step's description, the done entry for dn_legs legs, else the
+-- empty-pool note "#TRF_dbet" while the pool is empty until the refill. With the dialogs on it is in the mission list;
+-- else the Job log (trf_plumb TRF_JbLog), else AddQuest. The text on screen (ql) and the done leg (dn) live in
+-- TRF_DbKeep (not saved): after a load an existing entry counts as current.
+
+-- The keep table {ql, dn}: it survives an entry (a function global), TRF_Db_OnLoad drops it.
+function TRF_DbKeep()
+	if type(TRF_DbKeepThunk) == "function" then
+		local k = TRF_DbKeepThunk();
+		if type(k) == "table" then return k; end;
+	end;
+	local t = {};
+	TRF_DbKeepThunk = function() return %t; end;
+	return t;
+end;
+
+function TRF_DbJl()
+	if TRF_DbDlgOn() then return nil; end;
+	if TRF_N("TRF_JbLog") == 1 then return 1; end;
+	return nil;
+end;
+
+function TRF_DbJAddRaw(id, t, d) return TRF_JobAdd(id, t, d, QUEST_PROCESS); end;
+function TRF_DbJRemRaw(id) return TRF_JobRemove(id); end;
+function TRF_DbJGetRaw(id) return TRF_JobLogGet(id); end;
+function TRF_DbJStRaw(id, s) return TRF_JobState(id, s); end;
+function TRF_DbQsRaw(id) return GetQuestState(id); end;
+
+function TRF_DbQAddRaw(id, t, d)
+	AddQuest(id, t, d, QUEST_PROCESS);
+	return 1;
+end;
+
+function TRF_DbQRemRaw(id)
+	RemoveQuest(id);
+	return 1;
+end;
+
+function TRF_DbQStRaw(id, s)
+	SetQuestState(id, s);
+	return 1;
+end;
+
+-- Job log state of id, nil when absent or without the native.
+function TRF_DbJs(id)
+	if type(TRF_JobLogGet) ~= "function" then return nil; end;
+	local s = call(TRF_DbJGetRaw, {id}, "x", TRF_DbNoErr);
+	if type(s) == "number" then return s; end;
+	return nil;
+end;
+
+-- Mission-list state of id, nil without the native or for QUEST_NOINIT (no entry).
+function TRF_DbQs(id)
+	if type(GetQuestState) ~= "function" then return nil; end;
+	local s = call(TRF_DbQsRaw, {id}, "x", TRF_DbNoErr);
+	if s == nil or (QUEST_NOINIT ~= nil and s == QUEST_NOINIT) then return nil; end;
+	return s;
+end;
+
+-- 1 while the empty-pool note is wanted (spec 6.6): the pool open, TRF.db with nothing left or pending, a refill still
+-- to come (chapter below db_last).
+function TRF_DbEmpty()
+	if not TRF_DbOpen() then return nil; end;
+	local u = TRF_DbRec();
+	if not u or u.p > 0 or u.pd > 0 then return nil; end;
+	if TRF_DbChapter() >= TRF_DbT("db_last") then return nil; end;
+	return 1;
+end;
+
+-- The description key the entry should carry now and its title, or nil (no entry): step 10, step 20 by the job's kind,
+-- the done entry while its leg is younger than dn_legs, else the empty-pool note.
+function TRF_DbQKey()
+	local R = TRF_DbRun();
+	if R then
+		if R.s == 1 then return "#TRF_dbd10", "#TRF_dbt"; end;
+		local k = R.t;
+		if type(k) ~= "number" or k < 1 or k > 5 then k = 1; end;
+		return "#TRF_dbd20k"..k, "#TRF_dbt";
+	end;
+	local K = TRF_DbK();
+	local kp = TRF_DbKeep();
+	local L = TRF_DbLegs();
+	if type(kp.dn) == "number" and kp.dn <= L and L - kp.dn < K.dn_legs and TRF_N("TRF_IqDone", K.q) == 1 then
+		return "#TRF_dbd30", "#TRF_dbt";
+	end;
+	if TRF_DbEmpty() then return "#TRF_dbed", "#TRF_dbet"; end;
+	return nil;
+end;
+
+-- The entry of list closed with QUEST_DONE (as trf_temper TRF_TeQDone). 1 when set.
+function TRF_DbQDone(list)
+	local id = TRF_DbK().qid;
+	if QUEST_DONE == nil then return nil; end;
+	local r, w = nil, nil;
+	if list == "job" then
+		if type(TRF_JobState) ~= "function" then return nil; end;
+		r, w = call(TRF_DbJStRaw, {id, QUEST_DONE}, "x", TRF_DbErr);
+	else
+		if type(SetQuestState) ~= "function" then return nil; end;
+		r = call(TRF_DbQStRaw, {id, QUEST_DONE}, "x", TRF_DbErr);
+	end;
+	if r == 1 then
+		TRF_DbE("logbook", "list", list, "id", id, "state", QUEST_DONE, "result", "done");
+	else
+		TRF_DbE("logbook", "list", list, "id", id, "state", QUEST_DONE, "result", "failed", "reason", tostring(w));
+	end;
+	return r;
+end;
+
+-- Removes the entry from list ("job" or "mission"). 1 when removed.
+function TRF_DbQRem(list, why)
+	local id = TRF_DbK().qid;
+	local r, w = nil, nil;
+	if list == "job" then
+		if type(TRF_JobRemove) ~= "function" then return nil; end;
+		r, w = call(TRF_DbJRemRaw, {id}, "x", TRF_DbErr);
+	else
+		if type(RemoveQuest) ~= "function" then return nil; end;
+		r = call(TRF_DbQRemRaw, {id}, "x", TRF_DbErr);
+	end;
+	if r == 1 then
+		TRF_DbE("logbook", "list", list, "id", id, "result", "removed", "reason", why);
+	else
+		TRF_DbE("logbook", "list", list, "id", id, "result", "none", "reason", why, "native", tostring(w));
+	end;
+	return r;
+end;
+
+-- Adds the entry with description d and title t to list; the line carries GetPlayerQuestState before and after (as
+-- trf_parcel's E-PCL.4 line). note 1 (an accept on the Job log): the line dblog.
+function TRF_DbQAdd(list, d, t, note)
+	local K = TRF_DbK();
+	local r, w = nil, nil;
+	local q0 = TRF_N("GetPlayerQuestState");
+	if list == "job" then
+		if type(TRF_JobAdd) ~= "function" then return nil; end;
+		r, w = call(TRF_DbJAddRaw, {K.qid, t, d}, "x", TRF_DbErr);
+	else
+		if type(AddQuest) ~= "function" or QUEST_PROCESS == nil then return nil; end;
+		r = call(TRF_DbQAddRaw, {K.qid, t, d}, "x", TRF_DbErr);
+	end;
+	if r ~= 1 then
+		TRF_DbE("logbook", "list", list, "id", K.qid, "text", d, "result", "failed", "reason", tostring(w));
+		return nil;
+	end;
+	TRF_DbE("logbook", "list", list, "id", K.qid, "text", d, "quest_state_before", q0, "quest_state_after", TRF_N("GetPlayerQuestState"),
+		"result", "added");
+	if note == 1 and list == "job" then TRF_N("TRF_PlSay", TRF_DbTxt("dblog")); end;
+	if d == "#TRF_dbd30" then TRF_DbQDone(list); end;
+	return 1;
+end;
+
+-- Reconcile (accept, every step change, draw, pay, refill, entry, load; never during a mission): the list not in use loses
+-- its entry, a missing entry (ClearQuests) or one with another description is added again, an entry without a
+-- description is removed. After a load (ql unknown) an existing entry counts as current.
+function TRF_DbReconcile(why, note)
+	if TRF_DbQuest() then return; end;
+	local K = TRF_DbK();
+	local kp = TRF_DbKeep();
+	local want, title = TRF_DbQKey();
+	local jl = TRF_DbJl();
+	local inq = TRF_DbQs(K.qid);
+	local js = nil;
+	if jl or TRF_N("TRF_JbLogLive") == 1 then js = TRF_DbJs(K.qid); end;
+	if jl and inq ~= nil then TRF_DbQRem("mission", "moved"); inq = nil; kp.ql = nil; end;
+	if not jl and js ~= nil then TRF_DbQRem("job", "moved"); js = nil; kp.ql = nil; end;
+	local list, have = "mission", inq ~= nil;
+	if jl then list = "job"; have = js ~= nil; end;
+	if have and kp.ql == nil and why == "load" then kp.ql = want; end;
+	if want and (not have or kp.ql ~= want) then
+		if have then TRF_DbQRem(list, why); end;
+		local res = "failed";
+		if TRF_DbQAdd(list, want, title, note) then kp.ql = want; res = "added"; end;
+		TRF_DbE("reconcile", "id", K.qid, "list", list, "text", want, "result", res, "reason", why);
+	elseif not want and have then
+		TRF_DbQRem(list, why);
+		kp.ql = nil;
+		TRF_DbE("reconcile", "id", K.qid, "list", list, "result", "removed", "reason", why, "leg", TRF_DbLegs());
+	elseif not want then
+		kp.ql = nil;
+	end;
+end;
+
+function TRF_DbRcn(why, note)
+	call(TRF_DbReconcile, {why, note}, "x", TRF_DbErr);
+end;
+
+-- Dialog windows (spec 6.7; as trf_temper, dock and board) ---------------------------------
+
+-- 1 while the dialogs are on: cfg db_dialog 1 and hail_xml 1 (the dialog files are installed).
+function TRF_DbDlgOn()
+	if TRF_DbOpt("db_dialog") == 1 and TRF_N("TRF_Opt", "hail_xml") == 1 then return 1; end;
+	return nil;
+end;
+
+-- Dialog files by key (Data/Scripts/Trade/<f>.xml, init ini): an = every answer name, tk = token -> text key.
+function TRF_DbDlgFiles()
+	local K = TRF_DbK();
+	return {
+		["1"] = {f=K.f1, ini="TRF_DbPgInit1", an={"a_what", "a_acc", "a_why", "a_dec", "a_acc2", "a_dec2"},
+			tk={p1="db1p1", p2="db1p2", p3="db1p3", a1="db1awhat", a2="db1aacc", a3="db1awhy", a4="db1adec", a5="db1aacc2", a6="db1adec2"}},
+		["2"] = {f=K.f2, ini="TRF_DbPgInit2", an={"a_go", "a_end"}, tk={p1="db2p1", p2="db2p2", a1="db2ago", a2="db2aend"}},
+	};
+end;
+
+-- Why a dialog cannot open now (via dock: inside the dock request box's callback; board: over the Office window), or nil:
+-- trf_plumb's shared gate TRF_PlDlgWhy (spec D23); without trf_plumb nothing opens (native).
+function TRF_DbDlgWhy(via)
+	if TRF_DbOpt("db_dialog") ~= 1 then return "off"; end;
+	if type(TRF_PlDlgWhy) ~= "function" then return "native"; end;
+	return TRF_PlDlgWhy(TRF_DbOpt("db_dialog"), %DB.dlg, via or "dock");
+end;
+
+-- A dialog fell back to its line, box or card: event=dialog_fallback (none for cfg db_dialog 0, the normal path then).
+function TRF_DbFb(k, why)
+	if why == "off" then return; end;
+	TRF_N("TRF_Stat", "db_dlgfb");
+	TRF_DbE("dialog_fallback", "dialog", k, "reason", why);
+end;
+
+function TRF_DbDlgCall(f, ini)
+	StartTradeDialog(f, ini);
+	return 1;
+end;
+
+-- Opens dialog file k for via: o.args ($1..$3 of every text), o.hd (the answers hidden); x travels to the finish. 1 when
+-- StartTradeDialog ran, else nil and the reason (logged; the caller falls back).
+function TRF_DbDlgOpen(k, o, via, x)
+	local db = %DB;
+	local fi = TRF_DbDlgFiles()[k];
+	local why = TRF_DbDlgWhy(via);
+	if not why and type(fi) ~= "table" then why = "file"; end;
+	if why then TRF_DbFb(k, why); return nil, why; end;
+	local a = o.args or {};
+	local rv = {};
+	for t, key in fi.tk do rv[t] = TRF_DbTxt(key, a[1], a[2], a[3]); end;
+	db.dn = (db.dn or 0) + 1;
+	db.dlg = {k=k, rv=rv, hd=o.hd or {}, an=fi.an, dn=db.dn, x=x or {}, g=TRF_DbGen(), via=via};
+	-- The Esc check armed first (TRF_Db_DlgCheck): without it a window closed without an answer would keep the record.
+	if not TRF_N("TRF_Due", 1, "TRF_Db_DlgCheck", db.dn) then
+		db.dlg = nil;
+		TRF_DbFb(k, "due");
+		return nil, "due";
+	end;
+	if call(TRF_DbDlgCall, {fi.f, fi.ini}, "x", TRF_DbErr) ~= 1 then
+		db.dlg = nil;
+		TRF_DbFb(k, "error");
+		return nil, "error";
+	end;
+	TRF_N("TRF_Stat", "db_dialog");
+	TRF_DbE("dialog", "dialog", k, "via", via, "result", "opened");
+	return 1;
+end;
+
+-- Inits of StartTradeDialog (shims): every token set, the answers shown or hidden.
+function TRF_DbPgInit1() TRF_Cb("TRF_DbPgInit1", TRF_DbInit, {"1"}); end;
+function TRF_DbPgInit2() TRF_Cb("TRF_DbPgInit2", TRF_DbInit, {"2"}); end;
+
+function TRF_DbInit(k)
+	local d = %DB.dlg;
+	if type(d) ~= "table" or d.k ~= k then TRF_DbE("dialog", "dialog", k, "result", "stale"); return; end;
+	for t, v in d.rv do TRF_N("SetReplaceValue", t, v); end;
+	local hid = {};
+	for i = 1, getn(d.hd) do hid[d.hd[i]] = 1; end;
+	local vis = "";
+	for i = 1, getn(d.an) do
+		local nm = d.an[i];
+		if hid[nm] then TRF_N("HideAnswer", nm); else TRF_N("ShowAnswer", nm); vis = vis..","..nm; end;
+	end;
+	TRF_DbDE("dialog_answers", "dialog", k, "answers", strsub(vis, 2));
+end;
+
+-- Answer shims (lua_function of the files): r the kind of answer kept for the finish, fin 1 when it closes the window.
+-- TRF_DbDlgA1_end closes D1 without an answer (as Esc).
+function TRF_DbDlgA1_acc() TRF_Cb("TRF_DbDlgA1_acc", TRF_DbPick, {"1", "acc", 1}); end;
+function TRF_DbDlgA1_dec() TRF_Cb("TRF_DbDlgA1_dec", TRF_DbPick, {"1", "dec", 1}); end;
+function TRF_DbDlgA1_end() TRF_Cb("TRF_DbDlgA1_end", TRF_DbPick, {"1", "", 1}); end;
+function TRF_DbDlgA2_end() TRF_Cb("TRF_DbDlgA2_end", TRF_DbPick, {"2", "end", 1}); end;
+
+function TRF_DbPick(k, r, fin)
+	local d = %DB.dlg;
+	if r == "" then r = nil; end;
+	if type(d) ~= "table" or d.k ~= k or d.fin == 1 then TRF_DbE("dialog", "dialog", k, "answer", r or "none", "result", "ignored"); return; end;
+	if r then d.r = r; end;
+	TRF_DbDE("dialog", "dialog", k, "answer", r or "none", "final", TRF_KvB(fin == 1), "result", "answer");
+	if fin ~= 1 then return; end;
+	d.fin = 1;
+	TRF_DbDlgEnd(d, "answer");
+end;
+
+-- Due call 1 s after a window opened: no dialog flag (TRF_UiState bit 4) and no final answer means Esc. Re-armed while
+-- the flag holds or the state is unknown, at most 120 times.
+function TRF_Db_DlgCheck(dn)
+	local d = %DB.dlg;
+	if type(d) ~= "table" or d.dn ~= dn or d.fin == 1 then return; end;
+	local u = nil;
+	if type(TRF_UiState) == "function" then u = call(TRF_UiState, {}, "x", TRF_DbNoErr); end;
+	if type(u) ~= "number" or u < 0 or TRF_N("TRF_Bit", u, 4) == 1 then
+		d.ck = (d.ck or 0) + 1;
+		if d.ck < 120 and TRF_N("TRF_Due", 1, "TRF_Db_DlgCheck", dn) then return; end;
+	end;
+	d.fin = 1;
+	TRF_DbDlgEnd(d, "esc");
+end;
+
+-- The window is done (a final answer, or Esc from the check): the record goes, the effects run.
+function TRF_DbDlgEnd(d, how)
+	local db = %DB;
+	if db.dlg == d then db.dlg = nil; end;
+	if how == "esc" then d.esc = 1; end;
+	local res = "done";
+	if how == "esc" then res = "closed"; end;
+	TRF_DbE("dialog", "dialog", d.k, "via", d.via, "answer", d.r or "none", "result", res);
+	call(TRF_DbDlgFx, {d}, "x", TRF_DbErr);
+end;
+
+-- Effects: D1 accept, decline or neither (at the dock the plumbing's box answer: TRF_Db_BoxOk, TRF_Db_BoxNo or nothing;
+-- over the Office window the handlers directly); D2 the hand-in done at the final answer (Esc: nothing, the next trade
+-- docking asks again). At the dock the plumbing is answered last.
+function TRF_DbDlgFx(d)
+	local code = -1;
+	if d.k == "1" then
+		if d.r == "acc" then code = 1; elseif d.r == "dec" then code = 0; end;
+		if d.via == "board" then
+			if code == 1 then
+				TRF_Db_BoxOk(d.x.a);
+				if TRF_DbRun() then TRF_N("TRF_PlJbMark", TRF_DbK().jid, "jbtaken"); end;
+			elseif code == 0 then TRF_Db_BoxNo(d.x.a); else TRF_Db_BoxNo(d.x.a, "esc"); end;
+			return;
+		end;
+		if code == -1 then TRF_Db_BoxNo(d.x.a, "esc"); end;
+	elseif d.k == "2" and d.r == "end" and type(d.x.t) == "table" then
+		TRF_DbTalkFx(d.x.t, "dialog");
+	end;
+	TRF_N("TRF_PlDlgAnswer", code, d.esc);
+end;
+
+-- s.dlg of the offer box (trade box 420, trf_plumb TRF_PlShow): D1 at the dock. 1 when it opened (offer dlg 1), else nil
+-- (the card or the box follows).
+function TRF_Db_Dlg1(a, s)
+	local o = %DB.offer;
+	if type(o) ~= "table" then return nil; end;
+	if not TRF_DbDlgOpen("1", {}, "dock", {a=a}) then return nil; end;
+	o.dlg = 1;
+	return 1;
+end;
+
+-- Reads ------------------------------------------------------------------------------
+
+-- Debriefs left in the pool, or nil while it is closed or not created.
+function TRF_Db_Left()
+	if not TRF_DbOpen() then return nil; end;
+	local u = TRF_DbRec();
+	if not u then return nil; end;
+	return u.p;
+end;
+
+-- One debrief now (kill-XP units).
+function TRF_Db_Xp()
+	return TRF_DbXp();
+end;
+
+-- Loader callbacks ---------------------------------------------------------------------
+
+function TRF_DbVisit()
+	local db = %DB;
+	db.v = {};
+	db.offer = nil;
+	db.talk = nil;
+	db.dlg = nil;
+	db.q = nil;
+	db.wn = nil;
+end;
+
+-- Every entry: a new visit state, the sync, the Hero's points (log 2).
+function TRF_Db_OnEnter()
+	TRF_DbVisit();
+	if not TRF_DbOn() then return; end;
+	TRF_DbSync("enter");
+	TRF_DbPoints("entry", 1);
+end;
+
+-- After activate (entry only): the logbook reconcile (the lapse of an earlier entry, a ClearQuests, the done entry, the
+-- empty note).
+function TRF_Db_OnActivate()
+	if not TRF_DbOn() then return; end;
+	TRF_DbRcn("enter");
+end;
+
+-- Load: a new visit state; the keep table goes (an existing entry counts as current); the sync and the reconcile.
+function TRF_Db_OnLoad()
+	TRF_DbVisit();
+	TRF_DbKeepThunk = nil;
+	if not TRF_DbOn() then return; end;
+	TRF_DbSync("load");
+	TRF_DbRcn("load");
+end;
+
+-- Before a jump: the visit state goes.
+function TRF_Db_BeforeJump()
+	TRF_DbVisit();
+end;
+
+-- trf_plumb TRF_InstallPlumb: the settlement handler, trade line 80, trade box 420, Office row 420, trade talk box 455.
+function TRF_Db_Plumb()
+	local K = TRF_DbK();
+	TRF_SettleReg("TRF_Db_Settle");
+	TRF_DockLine("trade", K.line, "TRF_Db_TradeLine");
+	TRF_DockBox("trade", K.talk, "TRF_Db_TalkBox");
+	TRF_DockBox("trade", K.box, "TRF_Db_DockBox");
+	TRF_JobRow("trade", K.row, "TRF_Db_JobRow");
+end;
+
+-- Repair, defaults, dump, text -----------------------------------------------------------
+
+-- Repair (TRF_Repair after TRF_Pl_Fix, which repairs TRF.iq, and TRF_Te_Fix; spec 3.1): TRF.db not an integer in
+-- 0..209999 or with a chapter stamp outside 5..20 goes; p above db_bank x db_pool is clamped, n above 1 reads 0. An active
+-- quest 2 with a bad step, kind or count, or with the done bit already set, is dropped (TRF_IqEnd "dropped").
+function TRF_Db_Fix()
+	if type(TRF) ~= "table" then return; end;
+	local a = TRF.db;
+	if a ~= nil then
+		if type(a) ~= "number" or a ~= floor(a) or a < 0 or a > 209999 then
+			TRF.db = nil;
+			TRF_DbE("fix", "field", "db", "result", "dropped");
+		else
+			local u = TRF_DbUnpack(a);
+			local cap = TRF_DbT("db_bank") * TRF_DbT("db_pool");
+			if u.ch < 5 or u.ch > 20 then
+				TRF.db = nil;
+				TRF_DbE("fix", "field", "ch", "result", "dropped");
+			else
+				if u.p > cap then u.p = cap; TRF_DbE("fix", "field", "p", "result", "clamped"); end;
+				if u.n > 1 then u.n = 0; TRF_DbE("fix", "field", "n", "result", "clamped"); end;
+				TRF_DbPut(u);
+			end;
+		end;
+	end;
+	local R = TRF_DbRun();
+	if not R then return; end;
+	local bad = nil;
+	if R.s == 1 and (R.t ~= 0 or R.c ~= 0) then bad = "t"; end;
+	if R.s == 2 and (R.t < 1 or R.t > 5 or R.c ~= 0) then bad = "t"; end;
+	if R.s > 2 then bad = "s"; end;
+	if not bad and TRF_N("TRF_IqDone", TRF_DbK().q) == 1 then bad = "done"; end;
+	if not bad then return; end;
+	TRF_N("TRF_IqEnd", TRF_DbK().q, "dropped");
+	TRF_DbE("fix", "field", bad, "result", "dropped");
+end;
+
+-- Config keys (spec 8.1): debrief (the module switch), debrief_xp (owner decision O1, 0 until decided: the whole feature
+-- inert), db_gate (O4: the pool opens with "Report in"; 0 from chapter db_ch without the quest), db_dialog (the dialog
+-- windows; needs hail_xml 1).
+function TRF_Db_OptDef()
+	return {debrief=1, debrief_xp=0, db_gate=1, db_dialog=1};
+end;
+
+-- Tune keys (spec 8.2): db_pool debriefs per chapter, db_bank pools the bank holds, db_shares band-mean secondary kill
+-- shares per debrief, db_thr1..3 band-mean hull threat (chapters 5-6, 7-12, 13-20), db_ch first chapter of the pool and the
+-- offer, db_last last chapter of draws and refills, db_help help needed for the offer, db_dc decline wait in legs.
+function TRF_Db_TuneDef()
+	return {db_pool=5, db_bank=2, db_shares=1.5, db_thr1=1.7, db_thr2=2.8, db_thr3=4.5, db_ch=5, db_last=20, db_help=3, db_dc=2};
+end;
+
+-- Debug dump: the switches, the chapter, the record, the quest step and done bit, one debrief now.
+function TRF_Db_Dump()
+	if type(TRF) ~= "table" then return; end;
+	local u = TRF_DbRec() or {};
+	local R = TRF_DbRun();
+	local s = 0;
+	if R then s = R.s * 10; end;
+	local x = TRF_DbXp();
+	TRF_DbE("dump", "on", TRF_DbOpt("debrief"), "xp", TRF_DbOpt("debrief_xp"), "gate", TRF_DbOpt("db_gate"), "dialog", TRF_DbOpt("db_dialog"),
+		"chapter", TRF_DbChapter(), "stamp", u.ch, "pool_left", u.p, "pending", u.pd, "refill_due", u.n, "step", s,
+		"done", TRF_N("TRF_IqDone", TRF_DbK().q) or 0, "xp_each", format("%.1f", x));
+end;
+
+-- Texts (spec 7), EN; keys in TRF_UI_Key form (#TRF_db<name> in loc/trf_en.loc; RU falls back to EN). dbd*: the logbook
+-- descriptions (no arguments). db1*, db2*: the tokens of D1 and D2. dbk<k>: the job of kind k in D2's $1.
+function TRF_Db_Text()
+	return {
+		dbjobh = "Report in",
+		dbbt = "Charter office",
+		dbbox = "FTU clerk: the charter wants a flight log with every job. Finish one more job, a parcel, a posting, a bounty claim, a sweep or an escort, then hand the log in at any trade dock. Our old hands debrief your pilots. Will you do it?",
+		dbjobs = "Charter office: flight log and debrief",
+		dbok = "FTU clerk: 'One more job, then the log. Over and out.'",
+		dbcnt = "Report in: job done. Hand the flight log in at any trade dock.",
+		dbrep = "FTU clerk: 'The flight log, finally. Our old hands go over it with your pilots now. A few debriefs a chapter, so bring the log after each job. Over and out.'",
+		dbpay1 = "Debrief filed: +$2 experience for each pilot. Debriefs left this chapter: $3.",
+		dbpayn = "Debrief filed: $1 jobs, +$2 experience for each pilot. Debriefs left this chapter: $3.",
+		dbpay1e = "Debrief filed: +$2 experience for each pilot. That was the last debrief this chapter.",
+		dbpayne = "Debrief filed: $1 jobs, +$2 experience for each pilot. That was the last debrief this chapter.",
+		dbnew = "Charter office: a new chapter, new questions. Debriefs this chapter: $1.",
+		dbt = "Report in",
+		dbd10 = "The charter office wants a flight log. Finish one more job: a parcel, a charter posting, a bounty claim, a sweep or an escort.",
+		dbd20k1 = "Job done: the parcel run. Hand the flight log in at any trade dock.",
+		dbd20k2 = "Job done: the charter posting. Hand the flight log in at any trade dock.",
+		dbd20k3 = "Job done: the bounty claim. Hand the flight log in at any trade dock.",
+		dbd20k4 = "Job done: the sweep. Hand the flight log in at any trade dock.",
+		dbd20k5 = "Job done: the escort. Hand the flight log in at any trade dock.",
+		dbd30 = "The office has your log. Debriefs pay at trade docks after each job, a few per chapter.",
+		dbet = "Debriefs",
+		dbed = "The charter office has heard enough from your pilots this chapter. Debriefs open again next chapter.",
+		dblog = "Charter job added to the Job log.",
+		dbk1 = "the parcel run",
+		dbk2 = "the charter posting",
+		dbk3 = "the bounty claim",
+		dbk4 = "the sweep",
+		dbk5 = "the escort",
+		-- D1 the offer
+		db1p1 = "Your posting's paid and filed, captain. One more paragraph, if you have a minute. The charter wants a flight log with every job, and nobody ever brings one.",
+		db1awhat = "What does the office do with flight logs?",
+		db1p2 = "Reads them. Your pilots tell us where the lanes went bad and why, and our old hands tell them what they know in return. Call it a debrief. Finish one more job, any job, then bring the log to a trade dock.",
+		db1aacc = "One more job, then the log. Fair enough.",
+		db1awhy = "And what do my pilots get out of it?",
+		db1adec = "My pilots fly. They don't write reports.",
+		db1p3 = "They learn more in an hour with our old hands than in a week of patrols. Only a few debriefs a chapter, mind. The old hands have their own work.",
+		db1aacc2 = "Then they'll have something to read.",
+		db1adec2 = "Maybe next time, the paperwork can wait.",
+		-- D2 the hand-in ($1 the job, $2 the debriefs left after this one)
+		db2p1 = "The flight log? Finally, someone reads the paragraph. So, $1. Our old hands will go over it with your pilots right now.",
+		db2ago = "Take your time, we're docked anyway.",
+		db2p2 = "Done. Your pilots know a bit more than they did this morning. The office takes a few debriefs a chapter, $2 left this time. Bring the log after each job. Over and out.",
+		db2aend = "Thanks. We'll bring the next one.",
+	};
+end;

@@ -1,0 +1,38 @@
+{
+  "_note": [
+    "PLACEHOLDER names, not final text (design/proposals/merc-pilot-names.md 5.6, 5.7). This file is the only place the names live:",
+    "tools/gen_pilots.py writes merge/Pilots.xml (one GamePilot TRF_McP_<clan>_<slot>_<gen> per name) and",
+    "Data/Scripts/Mods/Traffic/merc_names.script (TRF_Mc_Names, TRF_McName) from it. Rerun the tool after an edit.",
+    "Per clan (key of RecruitAce_<clan> in Game/Pilots.xml): rc = the #RC_FLIGHT_NAME<rc> index in LocData/English/m_recruits.loc",
+    "(and the face recruits<rc>), unit = that unit name, names = 5 slots (0 leader, 1-4 aces) x 2 generations (0, 1).",
+    "Rules (checked by the tool): 120 names, unique ignoring case, printable ASCII without & < > \" \\, at most max_len characters;",
+    "gen_pilots.py --locdata also checks that no name occurs in the game's English .loc files or in the mod's text."
+  ],
+  "max_len": 14,
+  "clans": {
+    "morgenstern": {"rc": 1, "unit": "Morgenstern", "style": "surnames, terse (professional record, Mercenary Code, tacticians)",
+      "names": [["Kessler", "Wendt"], ["Falk", "Lorenz"], ["Hager", "Rauch"], ["Seidel", "Ebert"], ["Kranz", "Vogt"]]},
+    "angelrevenge": {"rc": 2, "unit": "Avenging Angels", "style": "short given names (young but battle-hardened)",
+      "names": [["Rafe", "Jonah"], ["Mika", "Tobin"], ["Elan", "Noor"], ["Dario", "Sami"], ["Lev", "Ilan"]]},
+    "fireaxe": {"rc": 3, "unit": "Fire Poleaxes", "style": "blunt nicknames (crush armour, fire and clear space)",
+      "names": [["Cleaver", "Firebrand"], ["Flint", "Clinker"], ["Splitter", "Sledge"], ["Scorch", "Ashfall"], ["Crusher", "Kindling"]]},
+    "stardragoon": {"rc": 4, "unit": "Star Dragoons", "style": "rank and surname for the leader, surnames for the aces (military academies)",
+      "names": [["Major Osten", "Major Calder"], ["Harlan", "Reyes"], ["Keel", "Lindqvist"], ["Voss", "Halloran"], ["Brandt", "Okafor"]]},
+    "kimmeria": {"rc": 5, "unit": "Cimmerians", "style": "short, hard names (war cry, from Avalon to Kitaro)",
+      "names": [["Brann", "Gorm"], ["Vark", "Ulfar"], ["Skarn", "Hrok"], ["Bodvar", "Ketil"], ["Torvik", "Drak"]]},
+    "kismet": {"rc": 6, "unit": "Fortune Favorites", "style": "lucky nicknames (Lady Luck)",
+      "names": [["Lucky Seven", "Windfall"], ["Clover", "Horseshoe"], ["Wildcard", "Snake Eyes"], ["Royal Flush", "Long Odds"], ["Lodestar", "Fortuna"]]},
+    "nomads": {"rc": 7, "unit": "Nomads", "style": "wanderers' single names (clearing star systems since the Fall of the Titan)",
+      "names": [["Idris", "Malik"], ["Tamir", "Yusuf"], ["Oren", "Kasim"], ["Anwar", "Zaid"], ["Rafiq", "Hamid"]]},
+    "blacklegion": {"rc": 8, "unit": "Black Legion", "style": "Roman names, leader titled Legate (Ave!, roots in Earth's ancient past)",
+      "names": [["Legate Varro", "Legate Cassius"], ["Corvus", "Sabinus"], ["Drusus", "Marcellus"], ["Scaevola", "Nerva"], ["Galba", "Tullus"]]},
+    "shinegard": {"rc": 9, "unit": "Shining Guards", "style": "formal given name and surname (glorious deeds, safety)",
+      "names": [["Aldous Vane", "Edmund Royce"], ["Cedric Ashby", "Julian Pell"], ["Lionel Crewe", "Rowan Ellery"], ["Ambrose Marsh", "Percival Lund"], ["Oswin Pryce", "Tristan Hale"]]},
+    "stardust": {"rc": 10, "unit": "Stardust", "style": "Amazon names from myth (space amazons)",
+      "names": [["Hippolyta", "Otrera"], ["Antiope", "Thalestris"], ["Melanippe", "Myrina"], ["Lysippe", "Areto"], ["Penthesilea", "Klonie"]]},
+    "apocalypserider": {"rc": 11, "unit": "Horsemen of the Apocalypse", "style": "grim nicknames (kill, avenge, punish)",
+      "names": [["Pale Rider", "Gravedigger"], ["Widowmaker", "Carrion"], ["Dirge", "Shroud"], ["Tombstone", "Last Rites"], ["Hearse", "Buzzard"]]},
+    "goldgrifon": {"rc": 12, "unit": "Golden Griffins", "style": "heraldic names (pirate hunters)",
+      "names": [["Argent", "Sable"], ["Vert", "Gules"], ["Saltire", "Chevron"], ["Pennant", "Tressure"], ["Mantling", "Fess"]]}
+  }
+}

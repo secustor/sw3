@@ -1,0 +1,1445 @@
+-- sw3-traffic regional cycle (v0.2 spec 4, 9.1, 9.6; design 6.9, 7.11-7.13). Lua 4.0.1.
+-- Region table from TRF_MapData, phase machine, off-screen sweeps, prosperity (TRF.sys[idx].pro),
+-- clan scores and tiers, pay helpers, the jump-range walk (TRF_RgNear).
+-- Saved state: TRF.rg[slot], TRF.clan[slot], TRF.sys[idx].pro, TRF.clock.rt (trf_state creates and repairs
+-- the fields). Region work runs only on leg changes (TRF_RegionCatchup, called by TRF_Decay).
+-- Random draws only through TRF_Rand, so a seeded RAND gives a reproducible run (spec 4.7).
+-- v1 (v1 spec 7, 8.3, 10.2): sweep odds from fs rung, salvage and base, the on-screen roll rg.sr, forced
+-- Bust (rg.ct bit 4), TRF_Pay, tier cap 4; trf_faction/trf_clan/trf_convoy/trf_base reached by name.
+-- Top level defines functions and the chunk-local cache below (rebuilt on every MapInitialization).
+
+local RC = {};
+
+-- Event line, module=region (design/log-format.md): TRF_RgE(event, k1, v1, ...); TRF_RgDE only at log 2.
+function TRF_RgE(event, ...) tinsert(arg, 1, event); tinsert(arg, 1, "region"); call(TRF_Lf, arg); end;
+
+function TRF_RgDE(event, ...)
+	if type(TRF_Opt) == "function" and TRF_Opt("log") >= 2 then tinsert(arg, 1, event); call(TRF_RgE, arg); end;
+end;
+
+-- Error handler that drops the message (vanilla helpers that index tables the scene may lack).
+function TRF_RgNoErr(m) end;
+
+-- Static data ----------------------------------------------------------------------
+
+-- The 11 CreatePirateStationDocking systems (Locations/*/activate.script), design 5.11.
+function TRF_Rg_Homes()
+	return {"dionis", "dosis", "elinor", "gefest", "golkonda", "kadi", "moscowia", "torr", "xk16", "xt24", "xt27"};
+end;
+
+-- Fallbacks for a map.script without rg/dg/pc fields (spec 4.1; gen_map.py output wins when present;
+-- gen_map.py --check fails when these lists no longer give the generated table).
+-- Active RegisterRandomContact(PIRATE_FLIGHT, ...) systems: danger 2 (design 5.1 default rule).
+function TRF_Rg_PirSys()
+	return {"altrabon", "aurora", "avalon", "deosis", "elinor", "golkonda", "pandora", "prien", "proserpina",
+		"xb13", "xb17", "xb19", "xt05", "xt11", "xt17", "xt23", "xt26", "xt27"};
+end;
+
+-- Active OutMissionActivity("RandomPiratGetMoney", ...) systems: danger 1.
+function TRF_Rg_ExtSys()
+	return {"ahilles", "altrabon", "alzed", "argon", "ashelon", "aurora", "avalon", "b_leftera2", "callipso",
+		"corrino", "dalled", "debris1", "debris2", "debris3", "debris4", "debris6", "dionis", "dosis", "elinor",
+		"elio", "endoria1", "endoria2", "ergelan", "escaflon", "fronn", "gaeon", "golkonda", "gredos", "hanoi",
+		"haron", "kadi", "kassilia", "kitaro", "kondel", "kron", "kruger", "moscowia", "nd", "pandora", "pegas",
+		"poseidon", "prien", "proserpina", "shula", "solncevka", "tarrot", "torr", "ule", "valensia", "x297",
+		"xb13", "xb15", "xb19", "xk16", "xt05", "xt11", "xt17", "xt20", "xt23", "xt24", "xt26", "xt27", "xt39",
+		"xt41", "xt45", "xt52", "xt81", "xt93"};
+end;
+
+-- Managed portals that are not CreateManagedPortal("Portal", ...) (Alien_Portal, Prec_Portal), by
+-- system and portal global. Skipped by the region BFS when the map gives no edge type (spec 4.1).
+function TRF_Rg_NonPortal()
+	return {disonsphere="PORTAL_A", precursors="PORTAL_P"};
+end;
+
+-- Phases (spec 4.2), index ph + 1: pro target p, score target s, min and max legs.
+function TRF_Rg_Phases()
+	return {{p=4, s=10, mn=4, mx=10}, {p=8, s=55, mn=8, mx=20}, {p=6, s=80, mn=4, mx=14},
+		{p=2, s=95, mn=4, mx=18}, {p=1, s=20, mn=4, mx=10}, {p=3, s=10, mn=4, mx=10}};
+end;
+
+-- Phase letters for log lines: Quiet, Boom, bUild-up, Raids, bust (X), recoVery.
+function TRF_Rg_Letters() return "QBURXV"; end;
+
+-- Config keys of this module (spec 10.4).
+function TRF_Rg_OptDef()
+	return {cycle=1, tier_cap=4, pro_set={}};
+end;
+
+-- Tune keys read here (spec 10.4).
+function TRF_Rg_TuneDef()
+	return {rg_tick=2, rg_catchup=30, pp_step=5, pro_hi=7, pro_step=6, pro_visit_max=2, sweep_gap=6,
+		sweep_wait=2, pay_cap=30000, rg_hold=6, rg_sep=6, charge_cap=250000};
+end;
+
+-- Texts: clan names by slot (spares 9..15), phase names, sweep factions by GetLocationTeam (lowercase).
+function TRF_Rg_Text()
+	return {clan1="Rust Jackals", clan2="Black Comets", clan3="Ash Vipers", clan4="Grey Ravens",
+		clan5="Red Knives", clan6="Cold Suns", clan7="Bone Hounds", clan8="Night Kites", clan9="Salt Eels",
+		clan10="Dead Stars", clan11="Copper Teeth", clan12="Void Hyenas", clan13="Scrap Barons",
+		clan14="Ember Wasps", clan15="Silent Hooks",
+		ph0="Quiet", ph1="Boom", ph2="Build-up", ph3="Raids", ph4="Bust", ph5="Recovery",
+		facvks="MSF", fackfni="New Empire", factriada="Triada", facuss="USS", facinoco="InoCo",
+		facnone="FTU mercenaries"};
+end;
+
+-- Config and tune access ----------------------------------------------------------
+
+function TRF_RgOpt(key)
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil then v = TRF_Rg_OptDef()[key]; end;
+	return v;
+end;
+
+-- Copy of TRF_Tune() with this module's defaults filled in (also when trf_state does not merge them).
+-- Cached in the handle table (rgt) while TRF_Tune returns the same table; callers must not write into it.
+function TRF_RgTune()
+	local s, h = nil, nil;
+	if type(TRF_Tune) == "function" then s = TRF_Tune(); end;
+	if type(s) ~= "table" then s = nil; end;
+	if s and type(TRF_H) == "function" then h = TRF_H(); end;
+	if type(h) == "table" and type(h.rgt) == "table" and h.rgt.s == s then return h.rgt.t; end;
+	local t = {};
+	if s then for k, v in s do t[k] = v; end; end;
+	local d = TRF_Rg_TuneDef();
+	d.L_short = 6;
+	for k, v in d do
+		if type(t[k]) ~= "number" then t[k] = v; end;
+	end;
+	t.rg_tick = max(1, floor(t.rg_tick));
+	t.rg_catchup = max(1, floor(t.rg_catchup));
+	t.pro_step = max(1, t.pro_step);
+	t.sweep_gap = max(1, floor(t.sweep_gap));
+	t.rg_hold = max(0, floor(t.rg_hold));
+	t.charge_cap = max(0, floor(t.charge_cap));
+	t.rg_sep = max(0, floor(t.rg_sep));
+	if type(h) == "table" then h.rgt = {s=s, t=t}; end;
+	return t;
+end;
+
+-- Effective tier cap (cfg tier_cap 1..4, default 4, v1 10.5). Read raw: v0.2 TRF_Opt clamps to 1..2.
+function TRF_RgTierCap()
+	local c = nil;
+	if type(TRF_CfgGet) == "function" then c = TRF_CfgGet("tier_cap", nil); end;
+	if type(c) ~= "number" then c = TRF_Rg_OptDef().tier_cap; end;
+	return TRF_Clamp(floor(c), 1, 4);
+end;
+
+-- Bit b (1, 2, 4, ...) of a bit field number v: 1 or 0 (v1 3.1; Lua 4 has no bit operators). Own copy of
+-- trf_state's TRF_Bit, so the region tick never depends on another file's version.
+function TRF_RgBit(v, b)
+	if type(v) ~= "number" or type(b) ~= "number" or b < 1 then return 0; end;
+	return mod(floor(v / b), 2);
+end;
+
+-- rg[slot].ct bit b: read, set, clear (absent ct = 0).
+function TRF_RgCt(slot, b)
+	local r = TRF_RgRec(slot);
+	if not r then return 0; end;
+	return TRF_RgBit(r.ct, b);
+end;
+
+function TRF_RgCtSet(slot, b)
+	local r = TRF_RgRec(slot);
+	if not r then return; end;
+	if type(r.ct) ~= "number" then r.ct = 0; end;
+	if TRF_RgBit(r.ct, b) == 0 then r.ct = r.ct + b; end;
+end;
+
+function TRF_RgCtClr(slot, b)
+	local r = TRF_RgRec(slot);
+	if not r or type(r.ct) ~= "number" then return; end;
+	if TRF_RgBit(r.ct, b) == 1 then r.ct = r.ct - b; end;
+end;
+
+-- System idx of an active (k = 2) base record in slot, or of system idx itself when slot is nil; nil when
+-- none (TRF.base, v1 3.1; trf_base writes it).
+function TRF_RgBaseA(slot, idx)
+	if type(TRF) ~= "table" or type(TRF.base) ~= "table" then return nil; end;
+	for i = 1, getn(TRF.base) do
+		local b = TRF.base[i];
+		if type(b) == "table" and b.k == 2 and type(b.s) == "number" then
+			if (slot and TRF_RgOf(b.s) == slot) or (not slot and b.s == idx) then return b.s; end;
+		end;
+	end;
+	return nil;
+end;
+
+-- Region table (spec 4.1) ----------------------------------------------------------
+
+-- Cached per MapInitialization: {n, ok, [slot]={home, sys={idx..}, guard, ck}, of[idx] = slot, dg[idx],
+-- pc[idx], ts[idx] (1 = trade station)}. n = 0 and ok nil without map data.
+function TRF_RgMap()
+	local c = %RC;
+	if c.map then return c.map; end;
+	local r = nil;
+	local m = nil;
+	if type(TRF_Map) == "function" then m = TRF_Map(); end;
+	if type(m) == "table" then r = call(TRF_RgBuild, {m}, "x", TRF_PErr); end;
+	if type(r) ~= "table" then r = {n=0, of={}, dg={}, pc={}, ts={}}; end;
+	c.map = r;
+	return r;
+end;
+
+-- Set of names -> 1.
+function TRF_RgSet(l)
+	local s = {};
+	for i = 1, getn(l) do s[l[i]] = 1; end;
+	return s;
+end;
+
+-- Undirected "Portal" adjacency, sorted neighbour lists by idx.
+function TRF_RgAdj(m)
+	local ns = getn(m.sys);
+	local np = TRF_Rg_NonPortal();
+	local set = {};
+	for i = 1, ns do set[i] = {}; end;
+	for i = 1, ns do
+		local s = m.sys[i];
+		local ps = s.portals;
+		if type(ps) ~= "table" then ps = {}; end;
+		for j = 1, getn(ps) do
+			local p = ps[j];
+			local skip = nil;
+			if type(p) ~= "table" then
+				skip = 1;
+			elseif p.t ~= nil then
+				if p.t ~= "Portal" then skip = 1; end;
+			elseif np[s.name] == p.name then
+				skip = 1;
+			end;
+			local k = nil;
+			if not skip and type(p.to) == "string" then k = m.by[strlower(p.to)]; end;
+			if k and k ~= i and set[k] then set[i][k] = 1; set[k][i] = 1; end;
+		end;
+	end;
+	local adj = {};
+	for i = 1, ns do
+		local l = {};
+		for k, v in set[i] do tinsert(l, k); end;
+		sort(l);
+		adj[i] = l;
+	end;
+	return adj;
+end;
+
+-- Multi-source BFS from the homes: owner home of each reachable system, ties to the lower home idx.
+function TRF_RgOwners(adj, homes)
+	local own, dist = {}, {};
+	local front = {};
+	for i = 1, getn(homes) do
+		local h = homes[i];
+		own[h] = h; dist[h] = 0; tinsert(front, h);
+	end;
+	local d = 0;
+	while getn(front) > 0 do
+		local nxt = {};
+		for i = 1, getn(front) do
+			local u = front[i];
+			local l = adj[u];
+			for j = 1, getn(l) do
+				local v = l[j];
+				if dist[v] == nil then
+					dist[v] = d + 1; own[v] = own[u]; tinsert(nxt, v);
+				elseif dist[v] == d + 1 and own[u] < own[v] then
+					own[v] = own[u];
+				end;
+			end;
+		end;
+		front = nxt;
+		d = d + 1;
+	end;
+	return own;
+end;
+
+-- Jump distances from one system on the adjacency.
+function TRF_RgDistFrom(adj, s)
+	local dist = {};
+	dist[s] = 0;
+	local front = {s};
+	local d = 0;
+	while getn(front) > 0 do
+		local nxt = {};
+		for i = 1, getn(front) do
+			local l = adj[front[i]];
+			for j = 1, getn(l) do
+				if dist[l[j]] == nil then dist[l[j]] = d + 1; tinsert(nxt, l[j]); end;
+			end;
+		end;
+		front = nxt;
+		d = d + 1;
+	end;
+	return dist;
+end;
+
+-- Builds the region table (TRF_RgMap). Map fields rg (top level and per system), dg, pc win over the
+-- computed values.
+function TRF_RgBuild(m)
+	local ns = getn(m.sys);
+	local r = {n=0, ok=1, of={}, dg={}, pc={}, ts={}};
+	local hs = TRF_Rg_Homes();
+	local homes, ishome = {}, {};
+	for i = 1, getn(hs) do
+		local k = m.by[hs[i]];
+		if k then tinsert(homes, k); ishome[k] = 1; end;
+	end;
+	sort(homes);
+	local own = {};
+	local gl = m.rg;
+	if type(gl) ~= "table" then gl = m.rgs; end;
+	if type(gl) == "table" and getn(gl) > 0 then
+		-- Generated table: rg[slot] = {name, home, dg, members} (gen_map.py), or the older rgs[i] =
+		-- {slot, home, ck} (named or positional). Membership from sys[idx].rg = slot.
+		for i = 1, getn(gl) do
+			local e = gl[i];
+			if type(e) == "table" then
+				local slot = e.slot or e[1] or i;
+				local home = e.home or e[2];
+				if type(home) == "string" then home = m.by[strlower(home)]; end;
+				if type(slot) == "number" and type(home) == "number" then
+					r[slot] = {home=home, sys={}, ck=e.ck or e[3]};
+					if slot > r.n then r.n = slot; end;
+				end;
+			end;
+		end;
+		for i = 1, ns do
+			local g = m.sys[i].rg;
+			if type(g) == "number" and r[g] then r.of[i] = g; tinsert(r[g].sys, i); end;
+		end;
+	else
+		local adj = TRF_RgAdj(m);
+		own = TRF_RgOwners(adj, homes);
+		local cnt = {};
+		for i = 1, ns do
+			if own[i] then cnt[own[i]] = (cnt[own[i]] or 0) + 1; end;
+		end;
+		-- Merge regions of <= 3 systems into the nearest home with a larger region (decision 11.1).
+		local mg = {};
+		for i = 1, getn(homes) do
+			local h = homes[i];
+			if (cnt[h] or 0) <= 3 then
+				local dist = TRF_RgDistFrom(adj, h);
+				local best, bd = nil, nil;
+				for j = 1, getn(homes) do
+					local o = homes[j];
+					if o ~= h and (cnt[o] or 0) > 3 and dist[o] and (bd == nil or dist[o] < bd) then
+						best = o; bd = dist[o];
+					end;
+				end;
+				if best then mg[h] = best; end;
+			end;
+		end;
+		for i = 1, ns do
+			if own[i] and mg[own[i]] then own[i] = mg[own[i]]; end;
+		end;
+		local slotof = {};
+		for i = 1, getn(homes) do
+			local h = homes[i];
+			if not mg[h] and (cnt[h] or 0) > 0 then
+				r.n = r.n + 1;
+				slotof[h] = r.n;
+				r[r.n] = {home=h, sys={}};
+			end;
+		end;
+		for i = 1, ns do
+			local h = own[i];
+			if h and slotof[h] then r.of[i] = slotof[h]; tinsert(r[slotof[h]].sys, i); end;
+		end;
+	end;
+	for slot = 1, r.n do
+		if type(r[slot]) ~= "table" then r[slot] = {home=0, sys={}}; end;
+		local e = r[slot];
+		if type(e.ck) ~= "number" then e.ck = 0.80 + 0.05 * mod(7 * slot, 9); end;
+		for i = 1, getn(e.sys) do
+			if m.sys[e.sys[i]].start == 1 then e.guard = 1; end;
+		end;
+	end;
+	local pir, ext = TRF_RgSet(TRF_Rg_PirSys()), TRF_RgSet(TRF_Rg_ExtSys());
+	for i = 1, ns do
+		local s = m.sys[i];
+		local dg = 0;
+		if type(s.dg) == "number" then
+			dg = s.dg;
+		elseif ishome[i] then
+			dg = 3;
+		elseif pir[s.name] then
+			dg = 2;
+		elseif ext[s.name] then
+			dg = 1;
+		end;
+		r.dg[i] = dg;
+		if type(s.st) == "table" then
+			for j = 1, getn(s.st) do
+				if type(s.st[j]) == "table" and s.st[j].kind == "trade" then r.ts[i] = 1; end;
+			end;
+		end;
+		local pc = 5;
+		if type(s.pc) == "number" then
+			pc = s.pc;
+		elseif s.trader ~= 1 then
+			pc = 0;
+		elseif s.name == "fronn" then
+			pc = 2;
+		elseif dg == 3 then
+			pc = 3;
+		elseif r.ts[i] then
+			pc = 9;
+		end;
+		r.pc[i] = TRF_Clamp(floor(pc), 0, 9);
+	end;
+	local hs, ns = "", "";
+	for slot = 1, r.n do
+		if slot > 1 then hs = hs..","; ns = ns..","; end;
+		hs = hs..TRF_SysName(r[slot].home);
+		ns = ns..getn(r[slot].sys);
+	end;
+	TRF_RgDE("map", "region_count", r.n, "homes", hs, "system_counts", ns);
+	return r;
+end;
+
+-- Slot of system idx, or nil (independent or no map).
+function TRF_RgOf(idx)
+	if type(idx) ~= "number" then return nil; end;
+	return TRF_RgMap().of[idx];
+end;
+
+-- Map danger 0..3 (design 5.1), 0 when unknown.
+function TRF_RgDanger(idx)
+	local d = TRF_RgMap().dg[idx];
+	if type(d) == "number" then return d; end;
+	return 0;
+end;
+
+-- Effective danger dE: max(dg, 1) under any clan, dg for independents (spec 5.1, 9.5).
+function TRF_DangerEff(idx)
+	local d = TRF_RgDanger(idx);
+	if TRF_RgOf(idx) and d < 1 then return 1; end;
+	return d;
+end;
+
+-- Saved records ---------------------------------------------------------------------
+
+function TRF_RgRec(slot)
+	if type(TRF) ~= "table" or type(TRF.rg) ~= "table" or type(slot) ~= "number" then return nil; end;
+	local r = TRF.rg[slot];
+	if type(r) == "table" then return r; end;
+	return nil;
+end;
+
+function TRF_ClanRec(slot)
+	if type(TRF) ~= "table" or type(TRF.clan) ~= "table" or type(slot) ~= "number" then return nil; end;
+	local c = TRF.clan[slot];
+	if type(c) == "table" then return c; end;
+	return nil;
+end;
+
+-- 1 when slot has a region and a clan record of the right field types.
+function TRF_RgValid(slot)
+	local r, c = TRF_RgRec(slot), TRF_ClanRec(slot);
+	if not r or not c or type(c.sc) ~= "number" then return nil; end;
+	if type(r.ph) ~= "number" or type(r.pt) ~= "number" or type(r.sn) ~= "number" or type(r.sl) ~= "number"
+		or type(r.gx) ~= "number" or type(r.sw) ~= "number" then return nil; end;
+	return 1;
+end;
+
+-- Phase 0..5 of slot (0 = Quiet without a record).
+function TRF_Phase(slot)
+	local r = TRF_RgRec(slot);
+	if r and type(r.ph) == "number" then return r.ph; end;
+	return 0;
+end;
+
+-- pro and score targets of the slot's current phase.
+function TRF_PhaseTarget(slot)
+	local P = TRF_Rg_Phases()[TRF_Phase(slot) + 1];
+	return P.p, P.s;
+end;
+
+function TRF_ClanScore(slot)
+	local c = TRF_ClanRec(slot);
+	if c and type(c.sc) == "number" then return c.sc; end;
+	return 0;
+end;
+
+-- Real clan tier 1..4 (design/strength-spec.md 4.2): trf_str's TRF_StrTier of the score with the saved tier digit tr as
+-- the previous tier (hysteresis; the region tick and TRF_ClanAdd commit it); floor(sc / 25) + 1 without trf_str; 1
+-- without a record.
+function TRF_ClanTier(slot)
+	local sc = TRF_ClanScore(slot);
+	if type(TRF_StrTier) == "function" then
+		local c, pv = TRF_ClanRec(slot), nil;
+		if c and type(c.tr) == "number" then pv = c.tr; end;
+		return TRF_StrTier(sc, pv);
+	end;
+	return TRF_Clamp(floor(sc / 25) + 1, 1, 4);
+end;
+
+function TRF_ClanName(slot)
+	local t = TRF_Rg_Text();
+	if type(slot) == "number" and t["clan"..slot] then return t["clan"..slot]; end;
+	return "pirates";
+end;
+
+-- Starting-region guard (spec 4.6): chapter <= 4. Unknown chapter counts as active.
+function TRF_RgGuardOn()
+	local ch = nil;
+	if type(TRF_Chapter) == "function" then ch = call(TRF_Chapter, {}, "x", TRF_PErr); end;
+	if type(ch) ~= "number" or ch <= 4 then return 1; end;
+	return nil;
+end;
+
+-- Effective clan tier of system idx (spec 9.6): min(real, tier_cap); 1 in guard systems while the guard
+-- is active and in systems without a region.
+function TRF_EffTier(idx)
+	local slot = TRF_RgOf(idx);
+	if not slot then return 1; end;
+	local m = TRF_Map();
+	if m and m.sys[idx] and m.sys[idx].start == 1 and TRF_RgGuardOn() then return 1; end;
+	local t = TRF_ClanTier(slot);
+	-- v1 6.2: a carrier raid target counts as T4 while its record runs (TRF.lr, trf_clan).
+	if type(TRF.lr) == "table" and type(TRF.clock) == "table" then
+		for i = 1, getn(TRF.lr) do
+			local e = TRF.lr[i];
+			if type(e) == "table" and e.t == idx and type(e.e) == "number" and TRF.clock.legs < e.e then t = 4; end;
+		end;
+	end;
+	return min(t, TRF_RgTierCap());
+end;
+
+-- Clan score event between ticks (spec 9.6): +d capped at +3 and -d at -6 per clan and visit (live.cl).
+-- Returns the applied change.
+function TRF_ClanAdd(slot, d, why)
+	local c = TRF_ClanRec(slot);
+	if not c or type(c.sc) ~= "number" or type(d) ~= "number" or d == 0 then return 0; end;
+	local a = d;
+	if type(TRF_LiveOk) == "function" and TRF_LiveOk() then
+		local cl = TRF_Tab(TRF.live, "cl");
+		local v = cl[slot];
+		if type(v) ~= "table" or type(v.up) ~= "number" or type(v.dn) ~= "number" then
+			v = {up=0, dn=0};
+			cl[slot] = v;
+		end;
+		if d > 0 then
+			a = min(d, max(0, 3 - v.up));
+			v.up = v.up + a;
+		else
+			a = max(d, -max(0, 6 - v.dn));
+			v.dn = v.dn - a;
+		end;
+	end;
+	local old = c.sc;
+	c.sc = TRF_Clamp(floor(old + a + 0.5), 0, 99);
+	a = c.sc - old;
+	if a ~= 0 then
+		TRF_RgE("clan_score", "region", slot, "reason", why, "old_clan_score", old, "clan_score", c.sc);
+		-- design/strength-spec.md 4.2: the hysteresis memory follows the event at once.
+		TRF_P("TRF_StrClanSet", slot, "event");
+	end;
+	return a;
+end;
+
+-- Prosperity (spec 9.1) --------------------------------------------------------------
+
+function TRF_Pro(idx)
+	if type(TRF) ~= "table" or type(TRF.sys) ~= "table" or type(idx) ~= "number" then return 0; end;
+	local e = TRF.sys[idx];
+	if type(e) == "table" and type(e.pro) == "number" then return e.pro; end;
+	return 0;
+end;
+
+-- pro cap pc(idx) (spec 4.1): 9 trade station, 5 trader without one, 3 at danger 3, 2 Fronn, 0 no trader.
+-- 9 when the map is missing (no clamp from unknown data).
+function TRF_ProCap(idx)
+	local m = TRF_RgMap();
+	if not m.ok then return 9; end;
+	local c = m.pc[idx];
+	if type(c) ~= "number" then return 0; end;
+	-- v1 9.4: pro_cap 3 within 1 jump of an active base (trf_base's TRF_BaseNear applies the skip rules).
+	if c > 3 and type(TRF_BaseNear) == "function" and type(TRF) == "table" and type(TRF.base) == "table"
+		and getn(TRF.base) > 0 and call(TRF_BaseNear, {idx}, "x", TRF_RgNoErr) then
+		return 3;
+	end;
+	return c;
+end;
+
+-- Writes pro (TRF_SetPro of trf_state, else the field itself).
+function TRF_RgSetPro(idx, v)
+	if type(TRF_SetPro) == "function" then return TRF_SetPro(idx, v); end;
+	if type(TRF.sys) ~= "table" then TRF.sys = {}; end;
+	if type(TRF.sys[idx]) ~= "table" then TRF.sys[idx] = {}; end;
+	if v <= 0 then TRF.sys[idx].pro = nil; else TRF.sys[idx].pro = v; end;
+	return v;
+end;
+
+-- Add d to pro of idx, clamped to 0..pc. Logs old -> new; returns the new value.
+function TRF_ProAdd(idx, d, why)
+	local old = TRF_Pro(idx);
+	if type(TRF) ~= "table" or type(idx) ~= "number" or type(d) ~= "number" then return old; end;
+	local new = TRF_Clamp(floor(old + d + 0.5), 0, TRF_ProCap(idx));
+	if new ~= old then
+		TRF_RgSetPro(idx, new);
+		TRF_RgE("prosperity", "system", TRF_SysName(idx), "system_index", idx, "reason", why, "old_prosperity", old, "prosperity", new);
+	end;
+	return new;
+end;
+
+-- Visit credits (spec 9.1, 4.5): n credits (doubled in Recovery) for the current system; every pro_step
+-- credits give pro +1 at once while dis <= 1, at most pro_visit_max per visit (live.pv), never above the
+-- current phase target (pc for independents or cfg cycle 0). Returns the pro gained.
+function TRF_ProCredit(n, why)
+	if type(n) ~= "number" or n <= 0 or type(TRF_LiveOk) ~= "function" or not TRF_LiveOk() then return 0; end;
+	local idx = TRF_CurIdx();
+	if not idx then return 0; end;
+	local L, T = TRF.live, TRF_RgTune();
+	local slot = TRF_RgOf(idx);
+	local k = 1;
+	if slot and TRF_Phase(slot) == 5 then k = 2; end;
+	if type(L.pc) ~= "number" then L.pc = 0; end;
+	if type(L.pv) ~= "number" then L.pv = 0; end;
+	L.pc = L.pc + n * k;
+	local lim = TRF_ProCap(idx);
+	if slot and TRF_RgOpt("cycle") ~= 0 then
+		local tp = TRF_PhaseTarget(slot);
+		lim = min(lim, tp);
+	end;
+	local up = 0;
+	while L.pc >= T.pro_step and L.pv < T.pro_visit_max and TRF_Dis(idx) <= 1 and TRF_Pro(idx) < lim do
+		L.pc = L.pc - T.pro_step;
+		L.pv = L.pv + 1;
+		TRF_RgSetPro(idx, TRF_Pro(idx) + 1);
+		up = up + 1;
+	end;
+	if up > 0 then
+		TRF_RgE("credit", "system", TRF_SysName(idx), "reason", why, "credit", n * k, "visit_gain", L.pv, "prosperity", TRF_Pro(idx));
+	else
+		TRF_RgDE("credit", "system", TRF_SysName(idx), "reason", why, "credit", n * k, "credit_pool", L.pc, "visit_gain", L.pv);
+	end;
+	return up;
+end;
+
+-- Highest pro of the portal neighbours of idx.
+function TRF_RgNbMax(idx)
+	local m = TRF_Map();
+	if not m or not m.sys[idx] then return 0; end;
+	local best = 0;
+	local ps = m.sys[idx].portals;
+	for i = 1, getn(ps) do
+		local k = nil;
+		if type(ps[i].to) == "string" then k = m.by[strlower(ps[i].to)]; end;
+		if k and TRF_Pro(k) > best then best = TRF_Pro(k); end;
+	end;
+	return best;
+end;
+
+-- Attraction (spec 9.1): min(9, floor((2 pro + nb) / 3) + val), val 1 at pro >= 5; no trader: floor(nb / 2).
+function TRF_Attr(idx)
+	if type(idx) ~= "number" then return 0; end;
+	local nb = TRF_RgNbMax(idx);
+	if TRF_ProCap(idx) <= 0 then return floor(nb / 2); end;
+	local p = TRF_Pro(idx);
+	local v = 0;
+	if p >= 5 then v = 1; end;
+	return min(9, floor((2 * p + nb) / 3) + v);
+end;
+
+-- Test cfg pro_set (spec 10.4): {gredos=9, ...} sets pro, clamped to pc, on every entry. Returns the count.
+function TRF_ProSet()
+	local ps = TRF_RgOpt("pro_set");
+	local m = TRF_Map();
+	if type(ps) ~= "table" or not m or type(TRF) ~= "table" then return 0; end;
+	local n = 0;
+	for k, v in ps do
+		local idx = nil;
+		if type(k) == "string" then idx = m.by[strlower(k)]; end;
+		if idx and type(v) == "number" then
+			local p = TRF_Clamp(floor(v), 0, TRF_ProCap(idx));
+			TRF_RgSetPro(idx, p);
+			TRF_RgE("prosperity_set", "system", k, "prosperity", p);
+			n = n + 1;
+		end;
+	end;
+	return n;
+end;
+
+-- Pay (spec 5.6, TDR 8.4) -----------------------------------------------------------------
+
+-- sys_base of system idx (design 5.1): the map's sb (gen_map.py emits it for every system), else, for a map
+-- without sb, for the current system the level of the first registered trader contact (as trf_raid's
+-- TRF_Rd_Power), else nil.
+function TRF_SysBase(idx)
+	if type(idx) ~= "number" then return nil; end;
+	local m = nil;
+	if type(TRF_Map) == "function" then m = TRF_Map(); end;
+	if type(m) == "table" and type(m.sys) == "table" and type(m.sys[idx]) == "table" and type(m.sys[idx].sb) == "number" then
+		return m.sys[idx].sb;
+	end;
+	if idx ~= TRF_CurIdx() then return nil; end;
+	local l = __sys_LevelRegisteredContacts;
+	if type(l) ~= "table" then return nil; end;
+	for i = 1, getn(l) do
+		local c = l[i];
+		local tr = nil;
+		if type(TRF_GnIsTrader) == "function" then tr = TRF_GnIsTrader(c);
+		else tr = type(c) == "table" and c[1] == "R_CreateTraderFlight"; end;
+		if tr and type(c[6]) == "number" then return c[6]; end;
+	end;
+	return nil;
+end;
+
+-- L_w, world level of system idx (default current): clamp(round(0.8 sys_base), 3, 16), 8 when sys_base is
+-- unknown. The name is kept from the hull-level L_pay it replaces.
+function TRF_LPay(idx)
+	if type(idx) ~= "number" then idx = TRF_CurIdx(); end;
+	local sb = TRF_SysBase(idx);
+	if type(sb) ~= "number" then return 8; end;
+	return TRF_Clamp(floor(0.8 * sb + 0.5), 3, 16);
+end;
+
+-- lk = min(1, L_w / 8) of system idx (default current): damps pay below world level 8 (knee 8, hardcoded).
+function TRF_LK(idx)
+	return min(1, TRF_LPay(idx) / 8);
+end;
+
+-- d_k by GetLevelDifficult: EASY 1.25, NORMAL 1.0, HARD 0.7 (hardcoded, config.script has no tune table);
+-- NORMAL when the difficulty is unknown.
+function TRF_DK()
+	local d = nil;
+	if type(GetLevelDifficult) == "function" then d = call(GetLevelDifficult, {}, "x", TRF_RgNoErr); end;
+	if d == nil or EASY == nil or NORMAL == nil then return 1.0; end;
+	if d == EASY then return 1.25; end;
+	if d == NORMAL then return 1.0; end;
+	return 0.7;
+end;
+
+-- Level term of every pay formula for system idx (default current): L_w * lk * d_k.
+function TRF_LPayK(idx)
+	return TRF_LPay(idx) * TRF_LK(idx) * TRF_DK();
+end;
+
+-- Level term of a charge (credits the player pays a feature, TRF_Charge) for system idx (default current): L_w * d_k,
+-- without lk (00 A1-A2 basis; lk damps pay to the player only, merc-spec Decisions, TR F.12).
+function TRF_LChargeK(idx)
+	return TRF_LPay(idx) * TRF_DK();
+end;
+
+-- N_eff = min(900 L_w lk tier_k[T] (1 + 0.05 pro) d_k, pay_cap) for system idx (default current).
+function TRF_PayN(idx)
+	if type(idx) ~= "number" then idx = TRF_CurIdx(); end;
+	local v = 900 * TRF_LPayK(idx) * TRF_TierK(idx) * (1 + 0.05 * TRF_Pro(idx));
+	return floor(min(v, TRF_RgTune().pay_cap));
+end;
+
+-- tier_k (v02 5.6) of the effective tier of idx (default current): 0.75, 1, 1.5, 2.
+function TRF_TierK(idx)
+	if type(idx) ~= "number" then idx = TRF_CurIdx(); end;
+	local tk = {0.75, 1.0, 1.5, 2.0};
+	return tk[TRF_Clamp(TRF_EffTier(idx), 1, 4)];
+end;
+
+-- Every v1 payment (v1 7.7): n = min(floor(n), pay_cap), AddPlayerCredits, stat pay_<why>, log.
+-- Returns the amount paid (0 when nothing was paid).
+function TRF_Pay(n, why)
+	if type(n) ~= "number" then return 0; end;
+	n = min(floor(n), TRF_RgTune().pay_cap);
+	if n <= 0 then return 0; end;
+	if type(AddPlayerCredits) ~= "function" then TRF_RgE("pay", "reason", why, "amount", n, "result", "no_add_player_credits"); return 0; end;
+	if not call(function(v) AddPlayerCredits(v); return 1; end, {n}, "x", TRF_PErr) then return 0; end;
+	if type(TRF_Stat) == "function" then TRF_Stat("pay_"..tostring(why), n); end;
+	TRF_RgE("pay", "reason", why, "amount", n);
+	return n;
+end;
+
+-- Every charge (credits taken from the player: fees, shares, debts; wb-plumbing-spec 2). n = min(floor(n), charge_cap);
+-- refused (0, "short") while the wallet holds less than reserve (default n; 0 takes what the wallet holds, at most n);
+-- SubPlayerCredits of min(n, wallet), never more than the wallet and never negative; stat charge_<why>, log. Returns the
+-- amount taken and nil, or 0 and the reason (none, no_native, short, error).
+function TRF_Charge(n, why, reserve)
+	if type(n) ~= "number" then return 0, "none"; end;
+	n = min(floor(n), TRF_RgTune().charge_cap);
+	if n <= 0 then return 0, "none"; end;
+	if type(GetPlayerCredits) ~= "function" or type(SubPlayerCredits) ~= "function" then
+		TRF_RgE("charge", "reason", why, "amount", n, "result", "no_native");
+		return 0, "no_native";
+	end;
+	local w = call(GetPlayerCredits, {}, "x", TRF_RgNoErr);
+	if type(w) ~= "number" then w = 0; end;
+	w = floor(w);
+	if type(reserve) ~= "number" then reserve = n; end;
+	if w < reserve or w <= 0 then
+		TRF_RgE("charge", "reason", why, "amount", n, "credits", w, "reserve", reserve, "result", "short");
+		return 0, "short";
+	end;
+	local take = min(n, w);
+	if not call(function(v) SubPlayerCredits(v); return 1; end, {take}, "x", TRF_PErr) then return 0, "error"; end;
+	if type(TRF_Stat) == "function" then TRF_Stat("charge_"..tostring(why), take); end;
+	TRF_RgE("charge", "reason", why, "amount", n, "taken", take, "credits", w);
+	return take, nil;
+end;
+
+-- Derived region values -------------------------------------------------------------------
+
+-- R: rounded mean pro of the region's trader systems (pc > 0).
+function TRF_RgR(slot)
+	local m = TRF_RgMap();
+	if not m[slot] then return 0; end;
+	local ss = m[slot].sys;
+	local s, n = 0, 0;
+	for i = 1, getn(ss) do
+		if m.pc[ss[i]] > 0 then s = s + TRF_Pro(ss[i]); n = n + 1; end;
+	end;
+	if n == 0 then return 0; end;
+	return floor(s / n + 0.5);
+end;
+
+-- D: highest dis in the region; an active base system is left out (v1 9.4, design 5.11: its floor 5
+-- would hold Bust and Recovery).
+function TRF_RgD(slot)
+	local m = TRF_RgMap();
+	if not m[slot] then return 0; end;
+	local ss = m[slot].sys;
+	local b = TRF_RgBaseA(slot);
+	local d = 0;
+	for i = 1, getn(ss) do
+		if ss[i] ~= b and TRF_Dis(ss[i]) > d then d = TRF_Dis(ss[i]); end;
+	end;
+	return d;
+end;
+
+-- t * ceil(x / t) (spec 4.2 tick()).
+function TRF_RgTickUp(x, t)
+	return t * ceil(x / t - 0.000001);
+end;
+
+-- Scaled min and max legs of phase ph (spec 4.2): x ck, x 2 with gx = 1; Raids max fixed.
+function TRF_RgLen(slot, ph, gx, T)
+	local P = TRF_Rg_Phases()[ph + 1];
+	local e = TRF_RgMap()[slot];
+	local ck = 1;
+	if e and type(e.ck) == "number" then ck = e.ck; end;
+	local g = 1;
+	if gx == 1 then g = 2; end;
+	local mn = TRF_RgTickUp(P.mn * ck * g, T.rg_tick);
+	local mx = TRF_RgTickUp(P.mx * ck * g, T.rg_tick);
+	if ph == 3 then mx = P.mx; end;
+	if mx < mn then mx = mn; end;
+	return mn, mx;
+end;
+
+-- Exit condition of the current phase (spec 4.2).
+function TRF_RgExit(slot, r, c)
+	local ph = r.ph;
+	if ph == 0 then return TRF_RgR(slot) >= 4; end;
+	if ph == 1 then return c.sc >= 50; end;
+	if ph == 2 then return c.sc >= 75; end;
+	if ph == 3 then return r.sw == 1 or c.sc < 50; end;
+	if ph == 4 then return c.sc < 50 and TRF_RgD(slot) <= 4; end;
+	return TRF_RgD(slot) <= 2 and TRF_RgR(slot) >= 3;
+end;
+
+-- Sort order: pro desc, idx asc.
+function TRF_RgCmpPro(a, b)
+	local pa, pb = TRF_Pro(a), TRF_Pro(b);
+	if pa ~= pb then return pa > pb; end;
+	return a < b;
+end;
+
+-- dis change by the cycle (cfg dis 0 freezes it).
+function TRF_RgDis(idx, d)
+	if type(TRF_Opt) == "function" and TRF_Opt("dis") == 0 then return; end;
+	TRF_SetDis(idx, TRF_Dis(idx) + d);
+end;
+
+-- Team of a system by GetLocationTeam, or nil (silent when the vanilla tables are missing).
+function TRF_RgTeam(idx)
+	if type(GetLocationTeam) ~= "function" then return nil; end;
+	local t = call(GetLocationTeam, {TRF_SysName(idx)}, "x", TRF_RgNoErr);
+	if type(t) == "string" then return t; end;
+	return nil;
+end;
+
+-- Sweep faction display name (spec 4.4): home owner if a sweep faction, else the most common sweep
+-- faction among the region's systems, else FTU mercenaries.
+function TRF_RgFaction(slot)
+	local tx = TRF_Rg_Text();
+	local e = TRF_RgMap()[slot];
+	if not e then return tx.facnone; end;
+	-- v1 7.3: the sweep owner of trf_faction (same rule, ties to the higher fs).
+	if type(TRF_SweepOwner) == "function" and type(TRF_FacTeam) == "function" then
+		local f = call(TRF_SweepOwner, {slot}, "x", TRF_PErr);
+		local ft = nil;
+		if type(f) == "number" and f > 0 then ft = TRF_FacTeam(f); end;
+		if type(ft) == "string" and tx["fac"..strlower(ft)] then return tx["fac"..strlower(ft)]; end;
+		if f == 0 then return tx.facnone; end;
+	end;
+	local t = TRF_RgTeam(e.home);
+	if t and tx["fac"..strlower(t)] and strlower(t) ~= "none" then return tx["fac"..strlower(t)]; end;
+	local cnt, best, bn = {}, nil, 0;
+	for i = 1, getn(e.sys) do
+		local o = TRF_RgTeam(e.sys[i]);
+		if o and tx["fac"..strlower(o)] and strlower(o) ~= "none" then
+			o = strlower(o);
+			cnt[o] = (cnt[o] or 0) + 1;
+			if cnt[o] > bn then best = o; bn = cnt[o]; end;
+		end;
+	end;
+	if best then return tx["fac"..best]; end;
+	return tx.facnone;
+end;
+
+-- Sweeps (spec 4.4) -----------------------------------------------------------------------
+
+-- Open attempt: legs >= sl - sweep_wait. Raids and staged raids of the clan pause.
+function TRF_SweepOpen(slot)
+	local r = TRF_RgRec(slot);
+	if not r or type(r.sl) ~= "number" or r.sl <= 0 or type(TRF.clock) ~= "table" then return nil; end;
+	if TRF.clock.legs >= r.sl - TRF_RgTune().sweep_wait then return 1; end;
+	return nil;
+end;
+
+-- {sn, sl, fac} of slot, or nil.
+function TRF_SweepInfo(slot)
+	local r = TRF_RgRec(slot);
+	if not r then return nil; end;
+	return {sn=r.sn or 0, sl=r.sl or 0, fac=TRF_RgFaction(slot)};
+end;
+
+-- Schedule attempt 1 at L + sweep_gap.
+function TRF_RgSweepPlan(slot, L, r, T)
+	r.sl = L + T.sweep_gap;
+	r.sn = 0;
+	TRF_RgE("sweep_plan", "region", slot, "leg", r.sl);
+	TRF_P("TRF_NewsPost", "sweep", "gather", slot);
+	-- Sourced tips (design/tips-spec.md 5.1): the gathering fleet, stamped TRF.clock.legs.
+	TRF_P("TRF_Ti_Feed", "gather", slot);
+end;
+
+-- Salvage stage 0..3 of slot: trf_clan's TRF_SalvStage, else from clan.sv (0, 1-3, 4-6, 7-9).
+function TRF_RgSalvStage(slot)
+	local s = nil;
+	if type(TRF_SalvStage) == "function" then s = call(TRF_SalvStage, {slot}, "x", TRF_PErr); end;
+	if type(s) == "number" then return TRF_Clamp(floor(s), 0, 3); end;
+	local c = TRF_ClanRec(slot);
+	if not c or type(c.sv) ~= "number" or c.sv < 1 then return 0; end;
+	return TRF_Clamp(floor((c.sv + 2) / 3), 0, 3);
+end;
+
+-- Chance in % of attempt k (v1 7.3): clamp(sweep_base[k] + 10 (F - S), 5, 90), F = min(3, rung + k - 1)
+-- with the owner's fs rung (FTU and no trf_faction: rung 1, the v0.2 value), S = real tier - 2 + salvage
+-- stage + 1 with an active base; attempt 4 certain.
+function TRF_RgSweepP(slot, k)
+	if type(k) ~= "number" or k >= 4 then return 100; end;
+	k = max(1, floor(k));
+	local rung = 1;
+	if type(TRF_SweepOwner) == "function" and type(TRF_Rung) == "function" then
+		local f = call(TRF_SweepOwner, {slot}, "x", TRF_PErr);
+		if type(f) == "number" and f > 0 then
+			local v = call(TRF_Rung, {slot, f}, "x", TRF_PErr);
+			if type(v) == "number" then rung = v; end;
+		end;
+	end;
+	local F = min(3, rung + k - 1);
+	local S = TRF_ClanTier(slot) - 2 + TRF_RgSalvStage(slot);
+	if TRF_RgBaseA(slot) then S = S + 1; end;
+	local base = {20, 45, 75};
+	return TRF_Clamp(base[k] + 10 * (F - S), 5, 90);
+end;
+
+-- Outcome of attempt k of slot at leg L (v1 7.3), off-screen (how "off") or from trf_faction's on-screen
+-- end ("on"). Clears the stored roll sr. Success: sc <= 35, sw = 1, owner fs +2, an active base of the clan
+-- destroyed (trf_base; off-screen w = 1). Failure: sc -10, next attempt +6/+4/+2 legs, owner fs -1,
+-- salvage +2 with the owner as sf (no fs or salvage for FTU mercenaries).
+function TRF_RgSweepOut(slot, L, won, k, how, p100)
+	local r, c = TRF_RgRec(slot), TRF_ClanRec(slot);
+	if not r or not c or type(c.sc) ~= "number" then return; end;
+	local T = TRF_RgTune();
+	local f = 0;
+	if type(TRF_SweepOwner) == "function" then f = call(TRF_SweepOwner, {slot}, "x", TRF_PErr) or 0; end;
+	r.sr = nil;
+	-- Pirate haunts (design/haunt-spec.md 5.3): a success marks the target system for the Bust count haunt_f_swept; read
+	-- before the outcome, since a won sweep destroys the active base that is the target (TRF_SweepTarget).
+	TRF_P("TRF_Haunt_Sweep", slot, L, won);
+	-- Battle scars source 3 reads the same target before the outcome (scar-spec 5.2: the base system, else the home).
+	local tgt = TRF_N("TRF_SweepTarget", slot);
+	if won then
+		c.sc = min(c.sc, 35);
+		r.sw = 1; r.sl = 0; r.sn = 0;
+		TRF_RgE("sweep", "region", slot, "faction", f, "via", how, "clan_score", c.sc, "chance", p100, "attempt", k, "result", "won");
+		if f > 0 then TRF_P("TRF_FsAdd", slot, f, 2, "sweep won"); end;
+		local b = TRF_RgBaseA(slot);
+		if b then
+			TRF_P("TRF_BaseDestroyed", b, "sweep");
+			-- Off-screen the station object still stands: trf_base blows it on the next entry (w = 1).
+			for i = 1, getn(TRF.base) do
+				local e = TRF.base[i];
+				if type(e) == "table" and e.s == b and e.k == 3 and how ~= "on" then e.w = 1; end;
+			end;
+		end;
+		TRF_P("TRF_NewsPost", "sweep", "win", slot);
+	else
+		c.sc = max(0, c.sc - 10);
+		r.sn = k;
+		r.sl = L + max(1, T.sweep_gap - 2 * (k - 1));
+		TRF_RgE("sweep", "region", slot, "faction", f, "via", how, "clan_score", c.sc, "next_leg", r.sl, "chance", p100, "attempt", k,
+			"result", "failed");
+		if f > 0 then
+			TRF_P("TRF_FsAdd", slot, f, -1, "sweep failed");
+			TRF_P("TRF_SalvAdd", slot, 2, f, "sweep");
+		end;
+		TRF_P("TRF_NewsPost", "sweep", "fail", slot);
+	end;
+	-- Battle scars source 3 (design/scar-spec.md 5.2): the off-screen attempt leaves a wreck field in its target.
+	if how == "off" then TRF_P("TRF_Sc_Sweep", slot, L, won, f, tgt); end;
+	-- Sourced tips (design/tips-spec.md 5.1): the off-screen outcome in the target read before it.
+	if how == "off" then TRF_P("TRF_Ti_Feed", "sweep", slot, tgt, won, f); end;
+	-- Wanted captains (design/captain-spec.md 5.6): a sweep success kills or drives off the region's captain.
+	TRF_P("TRF_Cap_Sweep", slot, L, won, how);
+end;
+
+-- Resolve attempt k = sn + 1 off-screen (region tick counterforce). An attempt playing on-screen now
+-- (trf_faction's TRF_SweepLive) waits for its end; a stored on-screen roll sr (1 won, 2 failed) replaces
+-- the roll (v1 decision 11.1 #10).
+function TRF_RgSweepRoll(slot, L, r, c, T)
+	if type(TRF_SweepLive) == "function" and call(TRF_SweepLive, {slot}, "x", TRF_PErr) then
+		TRF_RgE("sweep", "region", slot, "via", "on", "result", "deferred");
+		return;
+	end;
+	local k = r.sn + 1;
+	local p100 = TRF_RgSweepP(slot, k);
+	local won = nil;
+	if k >= 4 or r.sr == 1 then
+		won = 1;
+	elseif r.sr ~= 2 then
+		won = TRF_Rand(100) < p100;
+	end;
+	if r.sr == 1 or r.sr == 2 then p100 = "sr"..r.sr; end;
+	TRF_RgSweepOut(slot, L, won, k, "off", p100);
+end;
+
+-- Phase machine (spec 4.2, 4.3) -------------------------------------------------------------
+
+-- Shortages at Bust entry: the <= 2 region trade-station systems with the highest pro; class by owner. Each is a
+-- battle scars source 1 (design/scar-spec.md 5.2; forced 1 after a forced Bust: TT1 row, no recorder).
+function TRF_RgBustShort(slot, L, m, T, forced)
+	local ss = m[slot].sys;
+	local l = {};
+	for i = 1, getn(ss) do
+		if m.ts[ss[i]] then tinsert(l, ss[i]); end;
+	end;
+	sort(l, TRF_RgCmpPro);
+	for i = 1, min(2, getn(l)) do
+		local o = TRF_RgTeam(l[i]);
+		local cls = 0;
+		if o == "Uss" or o == "Inoco" then cls = TRF_Rand(2) + 1;
+		elseif o == "Neutral" then cls = 3;
+		else cls = TRF_Rand(6) + 1; end;
+		TRF_P("TRF_ShortAdd", l[i], cls, L + T.L_short);
+		TRF_P("TRF_Sc_Source", 1, l[i], slot, L, forced);
+	end;
+end;
+
+-- Next phase: pt = L, gx by the guard, Raids exit clears the sweep, entry effects.
+function TRF_RgAdvance(slot, L, r, c, gon, m, T)
+	TRF_RgEnter(slot, L, r, c, gon, m, T, mod(r.ph + 1, 6));
+end;
+
+-- Forced phase change (v1 8.3, forced Bust): straight to ph with the entry part of TRF_RgAdvance.
+function TRF_RgForce(slot, L, ph)
+	local r, c, m = TRF_RgRec(slot), TRF_ClanRec(slot), TRF_RgMap();
+	if not r or not c or not m[slot] or type(ph) ~= "number" then return; end;
+	TRF_RgE("phase_force", "region", slot, "leg", L, "phase", TRF_Rg_Text()["ph"..ph]);
+	TRF_RgEnter(slot, L, r, c, TRF_RgGuardOn(), m, TRF_RgTune(), TRF_Clamp(floor(ph), 0, 5));
+end;
+
+-- Phase entry shared by TRF_RgAdvance and TRF_RgForce: pt = L, gx by the guard, leaving Raids clears the
+-- sweep (v1: also the join and bounty bits and the stored roll), entry effects.
+function TRF_RgEnter(slot, L, r, c, gon, m, T, ph)
+	local old = r.ph;
+	r.ph = ph;
+	r.pt = L;
+	r.gx = 0;
+	if gon and m[slot].guard then r.gx = 1; end;
+	if old == 3 then
+		r.sw = 0; r.sn = 0; r.sl = 0; r.sr = nil;
+		TRF_RgCtClr(slot, 1);
+		TRF_RgCtClr(slot, 2);
+	end;
+	-- A forced Bust skips Raids; a score-planned attempt (Boom, Build-up) has no phase left to run in.
+	if ph == 4 and old ~= 3 then r.sn = 0; r.sl = 0; r.sr = nil; end;
+	-- sw means "a sweep won in this Raids phase" (spec 3.1): a win before Raids does not shorten it.
+	if r.ph == 3 then r.sw = 0; end;
+	local tx = TRF_Rg_Text();
+	TRF_RgE("phase", "region", slot, "system", TRF_SysName(m[slot].home), "leg", L, "old_phase", tx["ph"..old], "phase", tx["ph"..r.ph],
+		"clan_score", c.sc, "region_prosperity", TRF_RgR(slot), "region_disruption", TRF_RgD(slot));
+	if r.ph == 3 and r.sl == 0 then TRF_RgSweepPlan(slot, L, r, T); end;
+	if r.ph == 2 then TRF_P("TRF_NewsPost", "pir", "mass", slot); end;
+	if r.ph == 4 then
+		local forced = nil;
+		if old ~= 3 then forced = 1; end;
+		TRF_RgBustShort(slot, L, m, T, forced);
+		TRF_P("TRF_NewsPost", "pir", "back", slot);
+	end;
+	-- Pirate haunts (design/haunt-spec.md 5.3): nk cleared at Quiet, the swept target cleared after Bust.
+	TRF_P("TRF_Haunt_Phase", slot, r.ph);
+end;
+
+-- One slot of a region tick: drift and counterforce (spec 4.2). Returns the exit wish and mn: 2 must leave
+-- (len >= mx + rg_hold, or a won sweep after mn), 1 may leave (len >= mx, or exit condition after mn), 0 stays.
+function TRF_RgTickSlot(slot, L, r, c, m, T, PH)
+	local P = PH[r.ph + 1];
+	local ss = m[slot].sys;
+	local R = TRF_RgR(slot);
+	for i = 1, getn(ss) do
+		local k = ss[i];
+		local pc = m.pc[k];
+		if pc > 0 then
+			local p = TRF_Pro(k);
+			-- TRF_ProCap: the map pc, 3 next to an active base (v1 9.4).
+			local tg = min(P.p, TRF_ProCap(k));
+			if p < tg then TRF_RgSetPro(k, p + 1); elseif p > tg then TRF_RgSetPro(k, p - 1); end;
+		end;
+	end;
+	local step = T.pp_step;
+	if (r.ph == 1 or r.ph == 2) and R >= T.pro_hi then step = 2 * T.pp_step; end;
+	if c.sc < P.s then c.sc = min(P.s, c.sc + step); elseif c.sc > P.s then c.sc = max(P.s, c.sc - step); end;
+	-- Score-based scheduling only before or in Raids (Boom, Build-up, Raids), never in Bust..Quiet.
+	if r.sl == 0 and r.sw ~= 1 and c.sc >= 75 and r.ph >= 1 and r.ph <= 3 then TRF_RgSweepPlan(slot, L, r, T); end;
+	if r.sl > 0 and L >= r.sl then TRF_RgSweepRoll(slot, L, r, c, T); end;
+	if r.ph == 3 then
+		local l = {};
+		for i = 1, getn(ss) do tinsert(l, ss[i]); end;
+		sort(l, TRF_RgCmpPro);
+		-- Battle scars source 2 (design/scar-spec.md 5.2): each dis +1 rolls scar_raid_pct for a trader wreck.
+		-- Sourced tips (design/tips-spec.md 5.1): each raided system goes into the region's ring.
+		for i = 1, min(2, getn(l)) do TRF_RgDis(l[i], 1); TRF_P("TRF_Ti_Feed", "raid", slot, l[i]); TRF_P("TRF_Sc_Source", 2, l[i], slot, L); end;
+	elseif r.ph == 5 then
+		for i = 1, getn(ss) do
+			if TRF_Dis(ss[i]) > 0 then TRF_RgDis(ss[i], -1); end;
+		end;
+	end;
+	local mn, mx = TRF_RgLen(slot, r.ph, r.gx, T);
+	local len = L - r.pt;
+	if len >= mx + T.rg_hold or (r.ph == 3 and r.sw == 1 and len >= mn) then return 2, mn; end;
+	if len >= mx or (len >= mn and TRF_RgExit(slot, r, c)) then return 1, mn; end;
+	return 0, mn;
+end;
+
+-- Phase group by ph + 1 (spec 4.2a): 0 Quiet, 1 Boom, 2 Build-up/Raids, 3 Bust/Recovery.
+function TRF_Rg_Groups() return {0, 1, 2, 2, 3, 3}; end;
+
+-- Coordination of the exit wishes w[slot] (0/1/2, from TRF_RgTickSlot) at leg L (spec 4.2a). O(regions).
+-- Separation: a wish 1 into a phase that another region entered less than rg_sep legs ago, or enters in
+-- this tick, waits. Coverage: when a phase group would end the tick empty, one region with wish 1 that
+-- leaves it waits; if none, the region longest past mn in the phase before the group (Quiet, Boom, Raids)
+-- advances, unless that empties its own group or its sc >= 75 (leaving Raids would drop the sweep
+-- schedule, 4.4). Waits end at mx + rg_hold (wish 2), so no phase freezes.
+function TRF_RgCoord(L, w, mns, n, T)
+	local G = TRF_Rg_Groups();
+	local rg = TRF.rg;
+	local near = {};
+	for s = 1, n do
+		if w[s] and w[s] == 0 and L - rg[s].pt < T.rg_sep then near[rg[s].ph + 1] = 1; end;
+	end;
+	for s = 1, n do
+		if w[s] == 2 then near[mod(rg[s].ph + 1, 6) + 1] = 1; end;
+	end;
+	for s = 1, n do
+		if w[s] == 1 then
+			local q = mod(rg[s].ph + 1, 6) + 1;
+			if near[q] then w[s] = 0; TRF_RgE("coordinate", "region", s, "leg", L, "reason", "separation", "result", "wait"); else near[q] = 1; end;
+		end;
+	end;
+	local cnt = {0, 0, 0, 0};
+	for s = 1, n do
+		if w[s] then
+			local p = rg[s].ph;
+			if w[s] > 0 then p = mod(p + 1, 6); end;
+			cnt[G[p + 1] + 1] = cnt[G[p + 1] + 1] + 1;
+		end;
+	end;
+	local src = {0, 1, 3};
+	for g = 1, 3 do
+		if cnt[g + 1] == 0 then
+			local b = nil;
+			for s = 1, n do
+				if not b and w[s] == 1 and G[rg[s].ph + 1] == g then b = s; end;
+			end;
+			if b then
+				w[b] = 0;
+				local q = G[mod(rg[b].ph + 1, 6) + 1];
+				cnt[q + 1] = cnt[q + 1] - 1;
+				TRF_RgE("coordinate", "region", b, "leg", L, "reason", "coverage", "result", "wait");
+			else
+				local sg, bl = G[src[g] + 1], -1;
+				for s = 1, n do
+					if w[s] == 0 and rg[s].ph == src[g] and (sg == 0 or cnt[sg + 1] > 1) and TRF.clan[s].sc < 75
+						and L - rg[s].pt - mns[s] > bl then
+						b = s; bl = L - rg[s].pt - mns[s];
+					end;
+				end;
+				if b and bl >= 0 then
+					w[b] = 1;
+					cnt[sg + 1] = cnt[sg + 1] - 1;
+					TRF_RgE("coordinate", "region", b, "leg", L, "reason", "coverage", "result", "advance");
+				else
+					b = nil;
+				end;
+			end;
+			if b then cnt[g + 1] = cnt[g + 1] + 1; end;
+		end;
+	end;
+end;
+
+-- One region tick at leg L (spec 4.2) for every slot: drift and counterforce, coordination of the exits,
+-- advances, news checks; shortage expiry once. v1: forced Bust before the coordination (8.3), then the
+-- faction, clan and convoy ticks.
+function TRF_RegionTick(L)
+	local m = TRF_RgMap();
+	if m.n == 0 or type(TRF) ~= "table" or type(L) ~= "number" then return; end;
+	local T, PH, gon = TRF_RgTune(), TRF_Rg_Phases(), TRF_RgGuardOn();
+	TRF_P("TRF_ShortExpire");
+	local w, mns = {}, {};
+	for slot = 1, m.n do
+		if TRF_RgValid(slot) then w[slot], mns[slot] = TRF_RgTickSlot(slot, L, TRF.rg[slot], TRF.clan[slot], m, T, PH); end;
+	end;
+	local fz = TRF_RgForcedBust(L, w, m);
+	TRF_RgCoord(L, w, mns, m.n, T);
+	for slot = 1, m.n do
+		if w[slot] or fz[slot] then
+			if w[slot] and w[slot] > 0 then TRF_RgAdvance(slot, L, TRF.rg[slot], TRF.clan[slot], gon, m, T); end;
+			TRF_P("TRF_NewsCheck", "lane", slot);
+			TRF_P("TRF_NewsCheck", "trade", slot);
+		end;
+	end;
+	-- Strength scale (design/strength-spec.md 4.2): the clan tier digits, before the ticks below read the tier.
+	TRF_P("TRF_Str_RegionTick", L);
+	TRF_P("TRF_Faction_Tick", L);
+	TRF_P("TRF_Clan_Tick", L);
+	TRF_P("TRF_Convoy_Tick", L);
+	-- Survivors (design/survivors-spec.md): region budget reset at Raids, off-screen slaver roll, expiry.
+	TRF_P("TRF_Sv_RegionTick", L);
+	-- Corporation carriers (design/corp-carriers-spec.md 5.4): pull-out ends and starts, before the charter closes run
+	-- postings of a pulled corporation.
+	TRF_P("TRF_Crp_RegionTick", L);
+	-- Charter goals (design/charter-spec.md): phase closes, Break world test, pk clear; slot 1 also the board checks.
+	for slot = 1, m.n do TRF_P("TRF_Ch_RegionTick", slot, L); end;
+	-- Battle scars (design/scar-spec.md): expiry outside the current system.
+	TRF_P("TRF_Sc_RegionTick", L);
+	-- Wanted captains (design/captain-spec.md 5.6): the off-screen life cycle after the phase changes of this tick.
+	TRF_P("TRF_Cap_RegionTick", L);
+	-- Clan stashes (design/stash-spec.md 5.3): so cleared in Quiet, expiry, at most one new cache.
+	TRF_P("TRF_Sh_RegionTick", L);
+	-- Mercenary clans (design/merc-spec.md 6): presence, fortune, stages, roles and decays after the phase changes.
+	TRF_P("TRF_Mc_RegionTick", L);
+	-- Sourced tips (design/tips-spec.md 7.7): the ring pruned, or cleared with cfg tips 0.
+	TRF_P("TRF_Ti_RegionTick", L);
+end;
+
+-- Forced Bust (v1 8.3): every slot with ct bit 4 clears it; in Quiet, Boom or Build-up with sc < 75 (the old
+-- "real tier below 4"; the hysteresis tier is not read, design/strength-spec.md 10) (cfg forced_bust 1) it goes
+-- straight to Bust and leaves this tick's coordination (w[slot] = nil). Returns the set of forced slots.
+function TRF_RgForcedBust(L, w, m)
+	local fz = {};
+	local on = 1;
+	if type(TRF_CfgGet) == "function" and TRF_CfgGet("forced_bust", 1) == 0 then on = nil; end;
+	for slot = 1, m.n do
+		if w[slot] and TRF_RgCt(slot, 4) == 1 then
+			TRF_RgCtClr(slot, 4);
+			local r = TRF.rg[slot];
+			if on and r.ph <= 2 and TRF.clan[slot].sc < 75 then
+				TRF_RgForce(slot, L, 4);
+				w[slot] = nil;
+				fz[slot] = 1;
+			else
+				TRF_RgE("forced_bust", "region", slot, "phase", TRF_Rg_Text()["ph"..r.ph], "clan_score", TRF.clan[slot].sc, "result", "ignored");
+			end;
+		end;
+	end;
+	return fz;
+end;
+
+-- Phase letters and scores of all slots, for log lines.
+function TRF_RgLine()
+	local ka, a, kb, b = TRF_RgKvLine();
+	return a.." sc "..gsub(b, ",", " ");
+end;
+
+-- The same as log pairs: "phases", letters, "clan_scores", "s1,s2,..." (last argument of a TRF_RgE call).
+function TRF_RgKvLine()
+	local m = TRF_RgMap();
+	local lt = TRF_Rg_Letters();
+	local a, b = "", "";
+	for slot = 1, m.n do
+		local ph = TRF_Phase(slot);
+		a = a..strsub(lt, ph + 1, ph + 1);
+		if slot > 1 then b = b..","; end;
+		b = b..TRF_ClanScore(slot);
+	end;
+	return "phases", a, "clan_scores", b;
+end;
+
+-- Ticks every rg_tick legs since clock.rt, at most rg_catchup per call; older legs are skipped
+-- (spec 4.2). cfg cycle 0: no ticks, rt follows legs. Returns the number of ticks.
+function TRF_RegionCatchup()
+	if type(TRF) ~= "table" or type(TRF.clock) ~= "table" or type(TRF.clock.legs) ~= "number" then return 0; end;
+	local c = TRF.clock;
+	if type(c.rt) ~= "number" or c.rt > c.legs then c.rt = c.legs; end;
+	local m, T = TRF_RgMap(), TRF_RgTune();
+	if m.n == 0 or TRF_RgOpt("cycle") == 0 then c.rt = c.legs; return 0; end;
+	if c.legs - c.rt < T.rg_tick then return 0; end;
+	TRF_Rg_Init(nil);
+	local n = 0;
+	while c.legs - c.rt >= T.rg_tick and n < T.rg_catchup do
+		c.rt = c.rt + T.rg_tick;
+		TRF_RegionTick(c.rt);
+		n = n + 1;
+	end;
+	if c.legs - c.rt >= T.rg_tick then
+		local skip = c.legs - c.rt;
+		c.rt = c.legs - mod(c.legs - c.rt, T.rg_tick);
+		TRF_RgE("catchup", "skipped_legs", skip);
+	end;
+	TRF_RgE("tick", "tick_count", n, "legs", c.legs, TRF_RgKvLine());
+	return n;
+end;
+
+-- Init (spec 4.3): fresh == 1 re-initialises every slot and sets pro of independents to 0; otherwise only
+-- slots without a valid record. Start phase floor(((slot - 1) * 6 + 3) / n), guard region Quiet with
+-- score 0 and gx 1; pt = legs - mod(3 slot, mn + 1); a Raids start plans attempt 1. Returns slots set.
+function TRF_Rg_Init(fresh)
+	if type(TRF) ~= "table" or type(TRF.clock) ~= "table" or type(TRF.clock.legs) ~= "number" then return 0; end;
+	local m = TRF_RgMap();
+	if type(TRF.rg) ~= "table" then TRF.rg = {}; end;
+	if type(TRF.clan) ~= "table" then TRF.clan = {}; end;
+	if type(TRF.sys) ~= "table" then TRF.sys = {}; end;
+	if m.n == 0 then return 0; end;
+	local legs, T, PH = TRF.clock.legs, TRF_RgTune(), TRF_Rg_Phases();
+	local gon = TRF_RgGuardOn();
+	local n = 0;
+	for slot = 1, m.n do
+		if fresh == 1 or not TRF_RgValid(slot) then
+			local g = gon and m[slot].guard;
+			local ph = floor(((slot - 1) * 6 + 3) / m.n);
+			local gx = 0;
+			if g then ph = 0; gx = 1; end;
+			local sc = PH[ph + 1].s;
+			if g then sc = 0; end;
+			local mn = TRF_RgLen(slot, ph, gx, T);
+			local r = {ph=ph, pt=legs - mod(3 * slot, mn + 1), sn=0, sl=0, gx=gx, sw=0};
+			if ph == 3 then r.sl = legs + T.sweep_gap; end;
+			TRF.rg[slot] = r;
+			TRF.clan[slot] = {sc=sc};
+			-- design/strength-spec.md 3: the tier digit starts at the plain band of the score.
+			TRF.clan[slot].tr = TRF_ClanTier(slot);
+			local ss = m[slot].sys;
+			for i = 1, getn(ss) do
+				if m.pc[ss[i]] > 0 then TRF_RgSetPro(ss[i], min(PH[ph + 1].p, m.pc[ss[i]])); end;
+			end;
+			n = n + 1;
+		end;
+	end;
+	local bad = {};
+	for k, v in TRF.rg do
+		if type(k) ~= "number" or k < 1 or k > m.n or k ~= floor(k) then tinsert(bad, k); end;
+	end;
+	for i = 1, getn(bad) do TRF.rg[bad[i]] = nil; TRF.clan[bad[i]] = nil; end;
+	bad = {};
+	for k, v in TRF.clan do
+		if TRF.rg[k] == nil then tinsert(bad, k); end;
+	end;
+	for i = 1, getn(bad) do TRF.clan[bad[i]] = nil; end;
+	if fresh == 1 then
+		local ks = {};
+		for k, v in TRF.sys do
+			if type(k) == "number" and not m.of[k] then tinsert(ks, k); end;
+		end;
+		for i = 1, getn(ks) do TRF_RgSetPro(ks[i], 0); end;
+	end;
+	if n > 0 then
+		TRF_RgE("init", "fresh", TRF_KvB(fresh), "slot_count", n, "region_count", m.n, "legs", legs, "guard", TRF_KvB(gon),
+			TRF_RgKvLine());
+	end;
+	-- v1 7.1: fs strings of missing slots (TRF_Fs_Init only fills gaps, so repeated calls are harmless).
+	TRF_P("TRF_Fs_Init");
+	return n;
+end;
+
+-- Repair of rg and clan (TRF_Repair, spec 3.3): clamps fields, drops slots out of range, re-initialises
+-- missing or broken slots. Without map data the tables are only type-checked.
+function TRF_Rg_Fix()
+	if type(TRF) ~= "table" then return; end;
+	if type(TRF.rg) ~= "table" then TRF.rg = {}; end;
+	if type(TRF.clan) ~= "table" then TRF.clan = {}; end;
+	local m = TRF_RgMap();
+	if m.n == 0 or type(TRF.clock) ~= "table" or type(TRF.clock.legs) ~= "number" then return; end;
+	local legs = TRF.clock.legs;
+	for slot = 1, m.n do
+		if TRF_RgValid(slot) then
+			local r, c = TRF.rg[slot], TRF.clan[slot];
+			r.ph = TRF_Clamp(floor(r.ph), 0, 5);
+			if r.pt > legs then r.pt = legs; end;
+			r.sn = TRF_Clamp(floor(r.sn), 0, 3);
+			if r.sl < 0 then r.sl = 0; end;
+			if r.gx ~= 1 then r.gx = 0; end;
+			if r.sw ~= 1 then r.sw = 0; end;
+			c.sc = TRF_Clamp(floor(c.sc), 0, 99);
+			-- design/strength-spec.md 3: tier digit tr 1..4, else the plain band of the score.
+			if type(c.tr) == "number" then c.tr = TRF_Clamp(floor(c.tr), 1, 4); else c.tr = TRF_ClanTier(slot); end;
+			-- v1 3.3: ct 0..7, sr 1..2 or absent.
+			if r.ct ~= nil and (type(r.ct) ~= "number" or r.ct < 0 or r.ct > 7) then r.ct = 0; end;
+			if r.ct ~= nil then r.ct = floor(r.ct); end;
+			if r.sr ~= 1 and r.sr ~= 2 then r.sr = nil; end;
+		end;
+	end;
+	TRF_Rg_Init(nil);
+end;
+
+-- Queries for the hail menu and the board (spec 6.3, 6.4) ----------------------------------
+
+-- Systems within range jumps of idx over outgoing managed portals, idx excluded: list of {idx, j}.
+function TRF_RgNear(idx, range)
+	local m = TRF_Map();
+	local out = {};
+	if not m or type(idx) ~= "number" or not m.sys[idx] then return out; end;
+	local seen = {};
+	seen[idx] = 0;
+	local front = {idx};
+	for d = 1, range do
+		local nxt = {};
+		for i = 1, getn(front) do
+			local ps = m.sys[front[i]].portals;
+			for j = 1, getn(ps) do
+				local k = nil;
+				if type(ps[j].to) == "string" then k = m.by[strlower(ps[j].to)]; end;
+				if k and seen[k] == nil then
+					seen[k] = d;
+					tinsert(nxt, k);
+					tinsert(out, {idx=k, j=d});
+				end;
+			end;
+		end;
+		front = nxt;
+	end;
+	return out;
+end;
+
+-- Dump (TRF_DumpState) ----------------------------------------------------------------------
+
+function TRF_Rg_Dump()
+	local m = TRF_RgMap();
+	if m.n == 0 or type(TRF) ~= "table" or type(TRF.clock) ~= "table" then TRF_RgE("dump", "result", "none"); return; end;
+	local tx, legs = TRF_Rg_Text(), TRF.clock.legs;
+	TRF_RgE("dump", "region_count", m.n, "region_tick", TRF.clock.rt, TRF_RgKvLine());
+	for slot = 1, m.n do
+		local r = TRF_RgRec(slot);
+		if r and TRF_RgValid(slot) then
+			TRF_RgE("dump", "region", slot, "system", TRF_SysName(m[slot].home), "system_count", getn(m[slot].sys),
+				"phase", tx["ph"..r.ph], "phase_length", legs - r.pt, "clan_score", TRF_ClanScore(slot), "tier", TRF_ClanTier(slot),
+				"sweep_attempt", r.sn, "sweep_leg", r.sl, "guard_scaled", TRF_KvB(r.gx), "sweep_won", TRF_KvB(r.sw),
+				"region_prosperity", TRF_RgR(slot), "region_disruption", TRF_RgD(slot), "clan", TRF_ClanName(slot),
+				"convoy_bits", r.ct or 0, "sweep_roll", r.sr or 0);
+		else
+			TRF_RgE("dump", "region", slot, "result", "no_record");
+		end;
+	end;
+end;

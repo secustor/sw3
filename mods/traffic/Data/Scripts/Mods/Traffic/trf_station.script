@@ -1,0 +1,1710 @@
+-- sw3-traffic station voices module (Lua 4.0.1). Spec: design/station-voices-spec.md (design
+-- worldbuilding/03-station-voices.md, proposal 3 steps 1 and 2). Prefix Stn (TRF_Stn_* public, TRF_Stn<X>
+-- internal), log module=station.
+-- Owns: the wrappers of _NoneStation_Action (closed-station moods) and __TradeStation_Action (dockmaster:
+-- greeting, harbour news, region tips, ambient lines, hub and penalty fees with their own box). The fee box
+-- OK calls the global __TradeStationDock_Ok by name (trf_shop's wrapper, then vanilla); this module never
+-- wraps it. Deeds arrive through two hooks in trf_state (TRF_AddHelp, TRF_AddHeat) and TRF_Stn_Deed.
+-- With trf_plumb (design/wb-plumbing-spec.md 4) both thunks call its dispatchers: the mood is a
+-- _NoneStation_Action handler (prio 100, after a #9 depot match; the mood providers are TRF_Voice_Prov), the
+-- dockmaster runs as the request line (kind req, order 10) and the fee box as its box candidate (prio 400), and
+-- the docked line is the trade dock line at order 90 (dockmaster result, also under the flags). Without trf_plumb
+-- the old bodies run.
+-- Station events (spec 17): one optional event per visit (ore barge, tanker shuttle, refugee launch) by the
+-- classes of the dock rows activate.script placed; a traffic trader spawned through trf_gen (TRF_Plan, TRF_Spawn;
+-- record flag sev), the barge with a small raid (trf_clan TRF_RaidOn, why "stn"); scripted-event slot "station";
+-- pay through TRF_PayN/TRF_Pay; result through trf_gen's arrival hook (TRF_Stn_EvArrive), the 8.5 raid-help
+-- resolver (TRF_Stn_EvHelp) and the 1 s step (TRF_Stn_Step). The visit record is SV.ev (never saved).
+-- Saved fields (version 4, created lazily, repaired by TRF_Stn_Fix):
+--   TRF.stn[k] = {st=-3..5, lg=leg, gv=ve, bv=ve, pv=ve, tf=leg, ts=idx, nt=1, ec=leg}, k = idx + 200 (j - 1), j =
+--   ordinal of the station among the map's trade stations of system idx; optional fields only when set (ec: leg
+--   of the last station event, spec 17), an entry at st 0 without tf, nt and a running event cooldown is pruned
+--   on entry.
+--   TRF.vo[idx] = ve of the first visit that saw an owner change (transferable systems only).
+--   TRF.ve = TRF.clock.legs at the last entry (identifies the visit).
+-- Visit flags live in the chunk local SV (never saved; rebuilt by every MapInitialization, so entry and
+-- load both reset them). No handle is stored: speakers are function locals, the station handle is read
+-- from __system_Dock_array at call time.
+-- Layout as trf_shop: helpers, accessors (one native each, protected), static tables, pure functions
+-- (*Of, explicit inputs, host-testable), contract functions. Top level: functions and SV only.
+
+local SV = {g={}, p={}, c={}, nw={}, up={}, dn={}, pl={}, nd={}};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_StnSV() return %SV; end;
+
+-- logfmt event line, module=station (design/log-format.md).
+function TRF_StnE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "station"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_StnErr(m)
+	TRF_StnE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler (station handle position, mothership position): nil is the answer.
+function TRF_StnNoErr(m) end;
+
+-- RAND as the game defines it (0..n-1); 0 without it.
+function TRF_StnRand(n)
+	if type(RAND) ~= "function" or type(n) ~= "number" or n < 1 then return 0; end;
+	return RAND(n);
+end;
+
+function TRF_StnLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_StnDE(event, ...)
+	if TRF_StnLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_StnE, arg);
+end;
+
+function TRF_StnCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Stn_OptDef), else the raw config, else the default; a wrong type or a value
+-- outside its range (TRF_StnClamp) reads as the default.
+function TRF_StnOpt(key)
+	local d = TRF_Stn_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	local r = TRF_StnClamp()[key];
+	if type(v) == "number" and r and (v ~= floor(v) or v < r[1] or v > r[2]) then return d; end;
+	return v;
+end;
+
+-- Tune values of this module, clamped (TRF_StnClamp); TRF_Tune gives cfg tune overrides.
+function TRF_StnTune()
+	local d = TRF_Stn_TuneDef();
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_StnErr); end;
+	local cl = TRF_StnClamp();
+	local o = {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if type(x) ~= "number" then x = v; end;
+		local c = cl[k];
+		if c then x = TRF_StnCl(floor(x), c[1], c[2]); end;
+		o[k] = x;
+	end;
+	return o;
+end;
+
+function TRF_StnT(key)
+	return TRF_StnTune()[key];
+end;
+
+function TRF_StnLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+function TRF_StnGt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+-- Visit stamp: TRF.ve, else the current leg.
+function TRF_StnVe()
+	if type(TRF) == "table" and type(TRF.ve) == "number" then return TRF.ve; end;
+	return TRF_StnLegs();
+end;
+
+function TRF_StnHeat()
+	if type(TRF) == "table" and type(TRF.std) == "table" and type(TRF.std.heat) == "number" then return TRF.std.heat; end;
+	return 0;
+end;
+
+-- Saved tables, created on first use.
+function TRF_StnRecs()
+	if type(TRF.stn) ~= "table" then TRF.stn = {}; end;
+	return TRF.stn;
+end;
+
+function TRF_StnVo()
+	if type(TRF.vo) ~= "table" then TRF.vo = {}; end;
+	return TRF.vo;
+end;
+
+function TRF_StnName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" then return n; end;
+	return tostring(idx);
+end;
+
+function TRF_StnTxt(key, a, b, c)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c); end;
+	return tostring(key);
+end;
+
+function TRF_StnS(v)
+	if v == nil then return "-"; end;
+	return tostring(v);
+end;
+
+-- System index of key k (k = idx + 200 (j - 1), idx < 200).
+function TRF_StnIdx(k)
+	return mod(k - 1, 200) + 1;
+end;
+
+-- Distance of two tables with x, y, z, or nil.
+function TRF_StnDist(a, b)
+	if type(a) ~= "table" or type(b) ~= "table" or type(a.x) ~= "number" or type(b.x) ~= "number" then return nil; end;
+	local dx, dy, dz = a.x - b.x, a.y - (b.y or 0), (a.z or 0) - (b.z or 0);
+	return sqrt(dx * dx + dy * dy + dz * dz);
+end;
+
+-- Rounded number for a log value, nil when not a number.
+function TRF_StnF(x)
+	if type(x) == "number" then return floor(x + 0.5); end;
+	return nil;
+end;
+
+-- Trade stations of system idx in map order (map sys[idx].st entries with kind "trade").
+function TRF_StnTl(idx)
+	local o = {};
+	local m = TRF_N("TRF_Map");
+	if type(m) ~= "table" or type(m.sys) ~= "table" or type(idx) ~= "number" then return o; end;
+	local s = m.sys[idx];
+	if type(s) ~= "table" or type(s.st) ~= "table" then return o; end;
+	for i = 1, getn(s.st) do
+		local e = s.st[i];
+		if type(e) == "table" and e.kind == "trade" then tinsert(o, e); end;
+	end;
+	return o;
+end;
+
+-- Valid keys of TRF.stn (3.3), cached per MapInitialization; nil without a map.
+function TRF_StnKeys()
+	local sv = %SV;
+	if sv.kc then return sv.kc; end;
+	local m = TRF_N("TRF_Map");
+	if type(m) ~= "table" or type(m.sys) ~= "table" then return nil; end;
+	local o = {};
+	for i = 1, getn(m.sys) do
+		local n = getn(TRF_StnTl(i));
+		for j = 1, n do o[i + 200 * (j - 1)] = 1; end;
+	end;
+	sv.kc = o;
+	return o;
+end;
+
+-- Accessors: one native or engine global each ------------------------------------
+
+function TRF_Stn_Loc()
+	return TRF_N("GetCurrentLocation");
+end;
+
+-- Owner team of a location (raw, then lowercase name), nil when unknown.
+function TRF_Stn_Team(loc)
+	if type(loc) ~= "string" then return nil; end;
+	local t = TRF_N("GetLocationTeam", loc);
+	if type(t) ~= "string" or t == "" then t = TRF_N("GetLocationTeam", strlower(loc)); end;
+	if type(t) ~= "string" or t == "" then return nil; end;
+	return t;
+end;
+
+function TRF_Stn_PosRaw(o)
+	local p = o:GetPosition();
+	if type(p) == "table" or type(p) == "userdata" then return {x=p.x, y=p.y, z=p.z}; end;
+	return nil;
+end;
+
+-- Position of the dock's station handle (__system_Dock_array[N][5]), or nil (missing handle, error).
+-- CHECK C3: equals the map creation position, before and after a load.
+function TRF_Stn_Pos(o)
+	if o == nil or type(o) == "number" or type(o) == "string" or type(o) == "function" then return nil; end;
+	local p = call(TRF_Stn_PosRaw, {o}, "x", TRF_StnNoErr);
+	if type(p) == "table" and type(p.x) == "number" then return p; end;
+	return nil;
+end;
+
+function TRF_Stn_MsPosRaw()
+	local ms = TRF_Ms();
+	return TRF_Stn_PosRaw(ms);
+end;
+
+function TRF_Stn_MsPos()
+	if type(TRF_Ms) ~= "function" then return nil; end;
+	local p = call(TRF_Stn_MsPosRaw, {}, "x", TRF_StnNoErr);
+	if type(p) == "table" and type(p.x) == "number" then return p; end;
+	return nil;
+end;
+
+function TRF_Stn_RadioRaw(tpl, text, secs)
+	local p = CreatePilot(tpl);
+	p:Message(text, secs);
+	return 1;
+end;
+
+-- Radio line through a speaker template (CHECK C4: plain strings in Pilot:Message). 1 when sent.
+function TRF_Stn_Radio(tpl, text, secs)
+	if type(CreatePilot) ~= "function" or type(text) ~= "string" then return nil; end;
+	return call(TRF_Stn_RadioRaw, {tpl, text, secs}, "x", TRF_StnErr);
+end;
+
+-- Mod mood variant as _NoneStation_Action speaks (DockStation.script 712-737): speaker, normal time, 15 s.
+function TRF_Stn_SpeakRaw(tpl, text)
+	local p = CreatePilot(tpl);
+	TRF_N("SetNormalTimeMode");
+	p:Message(text, 15);
+	return 1;
+end;
+
+function TRF_Stn_Say(text, secs)
+	return TRF_N("TRF_Say", text, secs);
+end;
+
+function TRF_Stn_Credits()
+	local c = TRF_N("GetPlayerCredits");
+	if type(c) == "number" then return c; end;
+	return 0;
+end;
+
+function TRF_Stn_Sub(n)
+	if type(SubPlayerCredits) ~= "function" then return nil; end;
+	call(SubPlayerCredits, {n}, "x", TRF_StnErr);
+	return 1;
+end;
+
+function TRF_Stn_BoxRaw(text)
+	ShowMsgBox("#UI_TradeStationWndCaption", text, TRF_Stn_FeeOk, TRF_Stn_FeeNo);
+	return 1;
+end;
+
+-- Fee box (CHECK C5); 1 when opened, nil on error.
+function TRF_Stn_Box(text)
+	if type(ShowMsgBox) ~= "function" then return nil; end;
+	return call(TRF_Stn_BoxRaw, {text}, "x", TRF_StnErr);
+end;
+
+-- G4: __disableAction and trf_safety's suppression level (TRF_Supp, cfg sos_mode).
+function TRF_Stn_Flags()
+	if __disableAction == TRUE then return 1; end;
+	local s = TRF_N("TRF_Supp");
+	if type(s) == "number" and s ~= 0 then return 1; end;
+	return nil;
+end;
+
+-- G4b: vanilla suppresses chatter (trf_safety TRF_Quiet: __sys_SOS or a visible scripted scene; without
+-- trf_safety, not quiet). No mood, greeting, news, tip, ambient line or fee box; the vanilla box still runs.
+function TRF_Stn_Quiet()
+	return TRF_N("TRF_Quiet");
+end;
+
+-- G5: Trade at war with the player.
+function TRF_Stn_War()
+	if type(GetTeamRelation) ~= "function" or RELATION_WAR == nil then return nil; end;
+	local r = call(GetTeamRelation, {"Trade", PLAYER_TEAM}, "x", TRF_StnErr);
+	if r ~= nil and r == RELATION_WAR then return 1; end;
+	return nil;
+end;
+
+-- Dock row of the current approach: __system_Dock_array[__system_Dock_current] (set by __Wait_Action).
+function TRF_Stn_Row()
+	local N = __system_Dock_current;
+	if type(__system_Dock_array) ~= "table" or type(N) ~= "number" then return nil; end;
+	local r = __system_Dock_array[N];
+	if type(r) == "table" then return r; end;
+	return nil;
+end;
+
+-- Static tables --------------------------------------------------------------------
+
+-- Static owners of the transferable systems (FloodTradeStations.script 11-76), lowercase names.
+function TRF_StnOwners()
+	return {hafa="Inoco", moscowia="Vks", nd="Vks", solncevka="Vks", endoria2="Vks", aurora="Vks", corrino="Vks",
+		shula="Vks", taira="Vks"};
+end;
+
+-- Voice deny list (G3), on top of the authored m = 1 deny entries.
+function TRF_StnVDeny()
+	return {nk=1, xt23=1, xt24=1, x203=1, x213=1, x220=1, earth=1, precursors=1, disonsphere=1, fronn=1};
+end;
+
+-- Mood class of a vanilla closed-station key (5.1); any other key is "other" (always vanilla).
+function TRF_StnClass()
+	local t = {};
+	t["0"] = "civil"; t["1"] = "civil"; t["3adm"] = "civil";
+	t["5other"] = "restricted";
+	t["4"] = "private"; t["4uss"] = "private"; t["4tri"] = "private"; t["4ino"] = "private"; t["4rebel"] = "private";
+	t["pirate"] = "pirate";
+	t["5"] = "silent"; t["3"] = "silent"; t["3_vks"] = "silent"; t["2"] = "silent";
+	return t;
+end;
+
+-- Dockmaster speaker by owner team (8.7).
+function TRF_StnSpk()
+	return {Neutral="DialogSystem", Vks="DispetcherVKS", Kfni="DispetcherKFNI", Uss="USSDispetcher",
+		Triada="TriadaDispetcher", Inoco="InocoDispetcher", Rebel="DispetcherRebel", Pirate="PirateTough"};
+end;
+
+-- Speaker of a vanilla mood key (DockStation.script _NoneStation_Action table), for the log.
+function TRF_StnKeySpk(key)
+	local t = {};
+	t["3_vks"] = "DispetcherVKS"; t["4uss"] = "USSDispetcher"; t["4tri"] = "TriadaDispetcher";
+	t["4ino"] = "InocoDispetcher"; t["4rebel"] = "DispetcherRebel"; t["5"] = "None"; t["pirate"] = "PirateTough";
+	return t[key] or "DialogSystem";
+end;
+
+-- Speaker of a mod mood variant (5.3).
+function TRF_StnVarSpk()
+	return {stnmlkfni="DispetcherKFNI", stnmluss="USSDispetcher", stndepot="DialogSystem", stnpirdead="None",
+		stnpirheat="PirateTough"};
+end;
+
+-- Ranges of the cfg keys (outside -> default) and clamps of the tune keys (section 10).
+function TRF_StnClamp()
+	return {voice={0, 1}, voice_moods={0, 2}, voice_dock={0, 1}, voice_news={0, 1}, voice_fee={0, 1}, voice_gate={1, 2},
+		stn_decay={1, 100}, stn_near={0, 20000}, stn_pos={0, 500}, fee_k={0, 2000}, fee_pro={1, 10}, fee_cap={0, 30000},
+		fee_ch={1, 20}, news_ch={1, 20}, own_legs={0, 200}, mood_dis={1, 10}, mood_rdis={1, 10}, pir_heat={0, 10},
+		heat_c1={0, 10}, heat_c2={0, 10}, stn_radio={1, 30}, stn_gap={0, 30},
+		voice_events={0, 1}, ev_cd={1, 200}, ev_p={0, 100}, ev_k={0, 200}, ev_ch={1, 20}, ev_r={0, 5000},
+		ev_meet={50, 2000}, ev_tier={1, 2}, ev_dt={5, 120}};
+end;
+
+-- Constants without a key (spec 17): standing ceiling of an event deed.
+function TRF_StnK()
+	return {ev_ceil=4};
+end;
+
+-- Pure functions (explicit inputs, host-testable) -------------------------------
+
+-- Mood of a closed station (5.2). s = {tip, ph, dis, sw, ol, own, sh, tier, heat, prov, force, moods, t (tune:
+-- mood_dis, mood_rdis, pir_heat)}. Returns key, rule ("0".."8", "7b", "-" for a key of class other), variant
+-- (mod text key with voice_moods 2, else nil). First matching row wins; "vanilla" keeps the key.
+function TRF_StnMoodOf(s)
+	local tip = s.tip;
+	local c = TRF_StnClass()[tip];
+	if not c then return tip, "-", nil; end;
+	local key, rule = TRF_StnRowOf(s, c);
+	local v = nil;
+	if s.moods == 2 then
+		if key == "3" and s.own == "Kfni" then v = "stnmlkfni";
+		elseif key == "3" and s.own == "Uss" then v = "stnmluss";
+		elseif c == "restricted" and rule == "3" then v = "stndepot";
+		elseif c == "pirate" and (rule == "5" or rule == "6") then v = "stnpirdead";
+		elseif rule == "7b" then v = "stnpirheat"; end;
+	end;
+	return key, rule, v;
+end;
+
+-- Rows 0-8 of 5.2 for class c. Returns key, rule.
+function TRF_StnRowOf(s, c)
+	local tip = s.tip;
+	local t = s.t or TRF_Stn_TuneDef();
+	local dis = s.dis or 0;
+	if type(s.force) == "string" and s.force ~= "" then return s.force, "0"; end;
+	if type(s.prov) == "string" and c ~= "pirate" then
+		if c == "silent" then return tip, "1"; end;
+		return s.prov, "1";
+	end;
+	if s.sw or s.ol then
+		if c == "silent" then return tip, "2"; end;
+		if c ~= "pirate" then
+			if s.own == "Vks" then return "3_vks", "2"; end;
+			return "3", "2";
+		end;
+	end;
+	if dis >= t.mood_dis then
+		if c == "civil" or c == "restricted" then return "5", "3"; end;
+		if c ~= "pirate" then return tip, "3"; end;
+	end;
+	if s.ph == 3 and dis >= t.mood_rdis then
+		if c == "civil" then
+			if tip == "1" then return tip, "4"; end;
+			return "2", "4";
+		end;
+		if c ~= "pirate" then return tip, "4"; end;
+	end;
+	if s.ph == 4 or s.sh then
+		if c == "civil" then return "1", "5"; end;
+		if c == "pirate" then
+			if s.tier == 1 then return "5", "5"; end;
+		else
+			return tip, "5";
+		end;
+	end;
+	if s.ph == 5 then
+		if c == "civil" then return "0", "6"; end;
+		if c == "pirate" then
+			if s.tier == 1 then return "5", "6"; end;
+		else
+			return tip, "6";
+		end;
+	end;
+	if s.ph == 1 then
+		if c == "civil" then
+			if tip == "0" then return "3adm", "7"; end;
+			return tip, "7";
+		end;
+		if c ~= "pirate" then return tip, "7"; end;
+	end;
+	if s.moods == 2 and c == "pirate" and (s.heat or 0) >= t.pir_heat then return tip, "7b"; end;
+	return tip, "8";
+end;
+
+-- Fee (8.5): min(round100(k L (1 + 0.1 pro) m dk), cap); 0 when m <= 0.
+function TRF_StnFeeOf(L, pro, m, dk, k, cap)
+	if type(m) ~= "number" or m <= 0 then return 0; end;
+	local x = k * L * (1 + 0.1 * pro) * m * dk;
+	local r = floor(x / 100 + 0.5) * 100;
+	if r > cap then r = cap; end;
+	if r < 0 then r = 0; end;
+	return r;
+end;
+
+-- Effective rung (7.1): heat c1 caps at 0, heat c2 at -2.
+function TRF_StnRungOf(st, heat, c1, c2)
+	local e = st;
+	if heat >= c1 then e = min(e, 0); end;
+	if heat >= c2 then e = min(e, -2); end;
+	return e;
+end;
+
+-- Lazy decay (7.4): one step toward 0 per n legs since lg. Returns st, lg, steps.
+function TRF_StnDecayOf(st, lg, legs, n)
+	if n < 1 then n = 1; end;
+	local s = floor((legs - lg) / n);
+	if s <= 0 then return st, lg, 0; end;
+	if st > 0 then st = max(0, st - s); elseif st < 0 then st = min(0, st + s); end;
+	lg = lg + s * n;
+	if st == 0 then lg = legs; end;
+	return st, lg, s;
+end;
+
+-- Fee multiplier (8.5 step 1): hub 1 at pro >= fee_pro and e <= 2; penalty 2 at e -2, 3 at e -3; the larger.
+function TRF_StnMOf(e, pro, fee_pro)
+	local m = 0;
+	if pro >= fee_pro and e <= 2 then m = 1; end;
+	if e == -2 then m = max(m, 2); end;
+	if e <= -3 then m = 3; end;
+	return m;
+end;
+
+-- Station identity (3.3 I2-I5). Tl = trade list, param = dock param, pos = station handle position or nil,
+-- r = match radius (0: param only). Returns j, how ("prm+pos", "pos", "prm"), d, jp, jx, or nil, reason.
+function TRF_StnIdOf(Tl, param, pos, r)
+	if type(Tl) ~= "table" or getn(Tl) == 0 then return nil, "table"; end;
+	local jp = nil;
+	if param == nil or param == "" then
+		jp = 1;
+	else
+		for j = 1, getn(Tl) do
+			if jp == nil and Tl[j].prm == param then jp = j; end;
+		end;
+	end;
+	if not jp then return nil, "table"; end;
+	if type(pos) ~= "table" or type(r) ~= "number" or r <= 0 then return jp, "prm", nil, jp, nil; end;
+	local jx, bd = nil, nil;
+	for j = 1, getn(Tl) do
+		local d = TRF_StnDist(pos, Tl[j]);
+		if d and (bd == nil or d < bd) then jx = j; bd = d; end;
+	end;
+	if not jx or bd > r then return nil, "table"; end;
+	if jx ~= jp then return jx, "pos", bd, jp, jx; end;
+	return jp, "prm+pos", bd, jp, jx;
+end;
+
+-- Station event kinds the dock rows allow (17.1): rows = __system_Dock_array ({func, xyz, param, dist, station}).
+-- barge: a closed station of class restricted or private (depot, company yard); launch: one of class civil;
+-- shuttle: a trade docking. Returned in that order.
+function TRF_StnEvKindsOf(rows)
+	local o, has = {}, {};
+	if type(rows) ~= "table" then return o; end;
+	local cl = TRF_StnClass();
+	for i = 1, getn(rows) do
+		local r = rows[i];
+		if type(r) == "table" then
+			if r[1] == "__TradeStation_Action" then
+				has.shuttle = 1;
+			elseif r[1] == "_NoneStation_Action" then
+				local c = cl[tostring(r[3])];
+				if c == "restricted" or c == "private" then has.barge = 1; elseif c == "civil" then has.launch = 1; end;
+			end;
+		end;
+	end;
+	local ks = {"barge", "launch", "shuttle"};
+	for i = 1, getn(ks) do
+		if has[ks[i]] then tinsert(o, ks[i]); end;
+	end;
+	return o;
+end;
+
+-- Event pay (17.4): floor(k / 100 x N), N = TRF_PayN of the system (900 L_w lk tier_k (1 + 0.05 pro) d_k, capped).
+function TRF_StnEvPayOf(N, k)
+	if type(N) ~= "number" or type(k) ~= "number" or N <= 0 or k <= 0 then return 0; end;
+	return floor(N * k / 100);
+end;
+
+-- Greeting key by effective rung (8.4); nil at 0.
+function TRF_StnGreetOf(e, nt)
+	if e <= -3 then
+		if nt == 1 then return "stntiprob"; end;
+		return "stnrm3";
+	end;
+	if e == -2 then return "stnrm2"; end;
+	if e == -1 then return "stnrm1"; end;
+	if e <= 0 then return nil; end;
+	return "stnr"..min(e, 5);
+end;
+
+-- Ambient line key by chapter (decision 5): ch 0-5, 7-9, 10-11; none for 6 and 12+.
+function TRF_StnAmbOf(ch)
+	if type(ch) ~= "number" then return nil; end;
+	if ch <= 5 then return "stnamb1"; end;
+	if ch == 6 then return nil; end;
+	if ch <= 9 then return "stnamb2"; end;
+	if ch <= 11 then return "stnamb3"; end;
+	return nil;
+end;
+
+-- Contract: records, decay, deeds (7) -----------------------------------------------
+
+-- Entry k with decay applied (7.4) and the tip ban cleared in a Quiet region; created when mk is set,
+-- else nil when absent. T = TRF_StnTune() or nil.
+function TRF_StnGet(k, mk, T)
+	if type(TRF) ~= "table" then return nil; end;
+	local t = TRF_StnRecs();
+	local e = t[k];
+	local legs = TRF_StnLegs();
+	if type(e) ~= "table" then
+		if not mk then return nil; end;
+		e = {st=0, lg=legs};
+		t[k] = e;
+		return e;
+	end;
+	if type(e.st) ~= "number" then e.st = 0; end;
+	if type(e.lg) ~= "number" then e.lg = legs; end;
+	T = T or TRF_StnTune();
+	local a = e.st;
+	local st, lg, n = TRF_StnDecayOf(e.st, e.lg, legs, T.stn_decay);
+	e.st = st; e.lg = lg;
+	if st ~= a then TRF_StnE("decay", "station_key", k, "standing_before", a, "standing_after", st, "decay_steps", n); end;
+	if e.nt == 1 then
+		local slot = TRF_N("TRF_RgOf", TRF_StnIdx(k));
+		if TRF_N("TRF_Phase", slot) == 0 then e.nt = nil; TRF_StnDE("tip_ban_clear", "station_key", k, "reason", "quiet"); end;
+	end;
+	return e;
+end;
+
+-- Rung of station j (default 1) of system idx: st, e (0, 0 when absent).
+function TRF_Stn_Rung(idx, j)
+	if type(idx) ~= "number" then return 0, 0; end;
+	local T = TRF_StnTune();
+	local e = TRF_StnGet(TRF_Stn_Key(idx, j), nil, T);
+	local st = 0;
+	if e then st = e.st; end;
+	return st, TRF_StnRungOf(st, TRF_StnHeat(), T.heat_c1, T.heat_c2);
+end;
+
+function TRF_Stn_Key(idx, j)
+	if type(j) ~= "number" or j < 1 then j = 1; end;
+	return idx + 200 * (floor(j) - 1);
+end;
+
+-- Station of a deed in system idx: the only trade station, in a two-station system the one nearer pos (or
+-- the mothership), else 1. Returns j, distance from pos/mothership (nil unknown), or nil without a station.
+function TRF_StnPick(idx, pos)
+	local Tl = TRF_StnTl(idx);
+	if getn(Tl) == 0 then return nil; end;
+	if type(pos) ~= "table" then pos = TRF_Stn_MsPos(); end;
+	local j, bd = 1, TRF_StnDist(pos, Tl[1]);
+	if getn(Tl) > 1 and bd then
+		for i = 2, getn(Tl) do
+			local d = TRF_StnDist(pos, Tl[i]);
+			if d and d < bd then j = i; bd = d; end;
+		end;
+	end;
+	return j, bd;
+end;
+
+-- Deed on key k (7.3): d +1 gain (ceiling ceil, once per visit by gv), -1 loss (twice per visit by SV.dn),
+-- -9 set to -3 with the tip ban (rob rule). Returns the new st.
+function TRF_StnDeedK(k, d, why, ceil, dist)
+	local sv = %SV;
+	local e = TRF_StnGet(k, 1);
+	if not e then return nil; end;
+	local legs, ve = TRF_StnLegs(), TRF_StnVe();
+	local a = e.st;
+	local cap, dt = "none", "0";
+	if type(ceil) ~= "number" then ceil = 5; end;
+	if d == -9 then
+		e.st = -3; e.nt = 1; e.tf = nil; e.ts = nil; e.lg = legs; dt = "set";
+		TRF_StnE("rob", "station_key", k, "standing_after", -3, "tip_ban", "true");
+	elseif d > 0 then
+		if e.st >= ceil then cap = "ceiling";
+		elseif e.gv == ve then cap = "visit_gain";
+		else
+			e.st = min(e.st + 1, ceil); e.gv = ve; e.lg = legs; sv.up[k] = 1; dt = "+1";
+		end;
+	elseif d < 0 then
+		if (sv.dn[k] or 0) >= 2 then cap = "visit_loss";
+		else
+			e.st = max(e.st - 1, -3); sv.dn[k] = (sv.dn[k] or 0) + 1; e.lg = legs; dt = "-1";
+		end;
+	end;
+	TRF_StnE("deed", "station_key", k, "change", dt, "reason", tostring(why), "standing_before", a, "standing_after", e.st,
+		"cap", cap, "distance", TRF_StnF(dist));
+	return e.st;
+end;
+
+-- Public deed API (S3): station chosen by pos (Vector3 or nil), ceiling ceil (default 5), d -9 = set -3.
+function TRF_Stn_Deed(idx, d, why, pos, ceil)
+	if type(TRF) ~= "table" or type(idx) ~= "number" or type(d) ~= "number" then return nil; end;
+	local j, dist = TRF_StnPick(idx, pos);
+	if not j then TRF_StnDE("deed_skip", "reason", tostring(why), "result", "no_trade_station"); return nil; end;
+	return TRF_StnDeedK(TRF_Stn_Key(idx, j), d, why, ceil, dist);
+end;
+
+-- Rob rule (7.2 feq kill): every station that tipped a supply run to system cur gets -3 and the tip ban.
+function TRF_StnRob(cur, why)
+	local t = TRF_StnRecs();
+	local ks = {};
+	for k, e in t do
+		if type(e) == "table" and e.ts == cur and type(e.tf) == "number" then tinsert(ks, k); end;
+	end;
+	sort(ks);
+	for i = 1, getn(ks) do TRF_StnDeedK(ks[i], -9, why, nil, nil); end;
+	return getn(ks);
+end;
+
+-- trf_state hook in TRF_AddHelp (S1): escort deeds and raid help near the station.
+function TRF_Stn_OnHelp(d, why)
+	if type(TRF) ~= "table" or type(d) ~= "number" or d <= 0 or type(why) ~= "string" then return; end;
+	local idx = TRF_N("TRF_CurIdx");
+	if type(idx) ~= "number" then return; end;
+	if why == "contract" or why == "sesc" or why == "dc" then
+		TRF_Stn_Deed(idx, 1, why);
+		return;
+	end;
+	if strfind(why, "^raid %d") then
+		local j, dist = TRF_StnPick(idx, nil);
+		if not j then TRF_StnDE("deed_skip", "reason", why, "result", "no_trade_station"); return; end;
+		local k = TRF_Stn_Key(idx, j);
+		if not dist or dist > TRF_StnT("stn_near") then
+			local e = TRF_StnGet(k, nil);
+			local st = 0;
+			if e then st = e.st; end;
+			TRF_StnE("deed", "station_key", k, "change", "0", "reason", why, "standing_before", st, "standing_after", st,
+				"cap", "far", "distance", TRF_StnF(dist));
+			return;
+		end;
+		TRF_StnDeedK(k, 1, why, nil, dist);
+		return;
+	end;
+	TRF_StnDE("deed_skip", "reason", why, "result", "unhandled");
+end;
+
+-- trf_state hook in TRF_AddHeat (S1): kills, attacks, demands lose a rung; feq kill robs the tippers.
+function TRF_Stn_OnHeat(d, why)
+	if type(TRF) ~= "table" or type(d) ~= "number" or d <= 0 or type(why) ~= "string" then return; end;
+	local idx = TRF_N("TRF_CurIdx");
+	if type(idx) ~= "number" then return; end;
+	if why == "feq kill" then
+		TRF_StnRob(idx, why);
+		return;
+	end;
+	if strfind(why, "^kill ") or why == "parked kill" or strfind(why, "^attack ") or strfind(why, "^demand ") then
+		TRF_Stn_Deed(idx, -1, why);
+		return;
+	end;
+	TRF_StnDE("deed_skip", "reason", why, "result", "unhandled");
+end;
+
+-- Contract: gates (4) ---------------------------------------------------------------
+
+-- Pass line, once per reason and place per visit.
+function TRF_StnPass(why, nm, at)
+	local sv = %SV;
+	local k = tostring(at)..":"..tostring(why);
+	if sv.pl[k] then return; end;
+	sv.pl[k] = 1;
+	if nm == nil then
+		local i = TRF_N("TRF_CurIdx");
+		if type(i) == "number" then nm = strlower(TRF_StnName(i)); else nm = TRF_Stn_Loc(); end;
+	end;
+	TRF_StnE("pass", "reason", tostring(why), "system", tostring(nm or "?"), "at", tostring(at));
+end;
+
+-- G3 for the deny entry de of system idx under the transit rule (trf_safety TRF_SysModeOf, TRF_StrictOkOf):
+-- "deny" for an authored m = 1 entry (elio, x297, gefest, cfg sys_deny); "deny_tq" for a campaign teleport
+-- target (tq = 1) while TRF_StrictOk(idx, "voice") denies it with quest, mission_q or mission_deny (a quest
+-- naming the system in process, cfg transit 0 during a mission); else nil (G4-G10 decide).
+function TRF_StnDenyM(idx, de)
+	if type(de) ~= "table" or de.m ~= 1 then return nil; end;
+	if de.tq ~= 1 then return "deny"; end;
+	if type(TRF_StrictOk) ~= "function" then return "deny_tq"; end;
+	local ok, gw = TRF_StrictOk(idx, "voice");
+	if not ok and (gw == "quest" or gw == "mission_q" or gw == "mission_deny") then return "deny_tq"; end;
+	return nil;
+end;
+
+-- Gates G1-G9 for at = "none" (moods) or "dock". Returns reason or nil, idx, name. G9 includes the start-system
+-- guard: guard systems stay vanilla (no mood, greeting, news, tip, ambient line or fee).
+function TRF_StnGate(at)
+	local sv = %SV;
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) or TRF_StnOpt("voice") == 0 then
+		return "off";
+	end;
+	if at == "none" and TRF_StnOpt("voice_moods") == 0 then return "off"; end;
+	local idx = TRF_N("TRF_CurIdx");
+	if type(idx) ~= "number" then return "nomap"; end;
+	local nm = strlower(TRF_StnName(idx));
+	local dw = TRF_StnDenyM(idx, TRF_N("TRF_DenyEntry", nm));
+	if dw then return dw, idx, nm; end;
+	if TRF_StnVDeny()[nm] then return "vdeny", idx, nm; end;
+	if TRF_Stn_Flags() then return "flag", idx, nm; end;
+	if TRF_Stn_Quiet() then return "quiet", idx, nm; end;
+	if TRF_Stn_War() then return "trade_war", idx, nm; end;
+	-- G6: the visit latch (SV.mis) only stops the fee (TRF_StnTradeBody, nofee=latch); moods, greeting, news
+	-- and tips go on to G7-G10.
+	if TRF_N("TRF_Safe_QState") then sv.mis = 1; end;
+	if type(TRF_StrictOk) ~= "function" then return "gate:nosafety", idx, nm; end;
+	local ok, gw = TRF_StrictOk(idx, "voice");
+	if not ok then
+		if at == "none" then
+			if TRF_StnOpt("voice_gate") == 1 or gw == "quest" or gw == "deny_voice" then return "gate:"..tostring(gw), idx, nm; end;
+		else
+			if gw == "quest" or strfind(tostring(gw), "^mission_") then sv.mis = 1; end;
+			return "gate:"..tostring(gw), idx, nm;
+		end;
+	end;
+	local mode, mw = TRF_N("TRF_SysModeQuiet");
+	if mode ~= "mod" then return "mode:"..tostring(mw), idx, nm; end;
+	return nil, idx, nm;
+end;
+
+-- Contract: wrappers (6) ------------------------------------------------------------
+
+-- 1 when f is one of this module's wrappers (thunk identity of an earlier run, or a Mods/Traffic chunk name).
+function TRF_StnIsMine(f)
+	if type(f) ~= "function" then return nil; end;
+	if type(TRF_StnNoneThunk) == "function" and f == TRF_StnNoneThunk() then return 1; end;
+	if type(TRF_StnTradeThunk) == "function" and f == TRF_StnTradeThunk() then return 1; end;
+	if type(TRF_IsMine) == "function" and TRF_IsMine(f) then return 1; end;
+	return nil;
+end;
+
+-- Called from TRF_Main on every MapInitialization after TRF_InstallTradeDock (DockStation.script has just
+-- redefined both functions). TRF_orig_* and the thunks are function globals (survive ClearGlobals, never
+-- saved). Returns {none, trade} = 1 when wrapped in this run.
+function TRF_InstallStation()
+	local r = {none=0, trade=0};
+	if type(_NoneStation_Action) == "function" and not TRF_StnIsMine(_NoneStation_Action) then
+		TRF_orig_NoneSt = _NoneStation_Action;
+		local w = function(param)
+			if type(TRF_Stn_None) == "function" then return TRF_Stn_None(param); end;
+			if type(TRF_orig_NoneSt) == "function" then return TRF_orig_NoneSt(param); end;
+		end;
+		_NoneStation_Action = w;
+		TRF_StnNoneThunk = function() return %w; end;
+		r.none = 1;
+	end;
+	if type(__TradeStation_Action) == "function" and not TRF_StnIsMine(__TradeStation_Action) then
+		TRF_orig_TradeSt = __TradeStation_Action;
+		local w = function(param)
+			if type(TRF_Stn_Trade) == "function" then return TRF_Stn_Trade(param); end;
+			if type(TRF_orig_TradeSt) == "function" then return TRF_orig_TradeSt(param); end;
+		end;
+		__TradeStation_Action = w;
+		TRF_StnTradeThunk = function() return %w; end;
+		r.trade = 1;
+	end;
+	TRF_StnE("install", "none_installed", TRF_KvB(r.none), "trade_installed", TRF_KvB(r.trade),
+		"none_wrapped", TRF_KvB(TRF_StnIsMine(_NoneStation_Action)), "trade_wrapped", TRF_KvB(TRF_StnIsMine(__TradeStation_Action)));
+	return r;
+end;
+
+-- Installed over _NoneStation_Action (6.2). The mod part is protected; the original runs unprotected by a
+-- mod handler, with the mood key or the unchanged param.
+function TRF_Stn_None(param)
+	if type(TRF_PlNone) == "function" then return TRF_PlNone(param, "TRF_orig_NoneSt"); end;
+	local r = call(TRF_StnNoneBody, {param}, "x", TRF_StnErr);
+	if type(r) == "table" and r.text then
+		if call(TRF_Stn_SpeakRaw, {r.spk, r.text}, "x", TRF_StnErr) then return; end;
+	end;
+	if r == nil then TRF_StnPass("error", nil, "none"); end;
+	if type(TRF_orig_NoneSt) ~= "function" then return; end;
+	if type(r) == "table" then return call(TRF_orig_NoneSt, {r.key}, "x"); end;
+	return call(TRF_orig_NoneSt, {param}, "x");
+end;
+
+-- _NoneStation_Action handler (trf_plumb, prio 100, also under the flags: the gates G4/G4b log them): 0 when
+-- the mod variant was spoken, the key for the vanilla function, nil to pass on (gate closed or error).
+function TRF_Stn_NoneH(param)
+	local r = call(TRF_StnNoneBody, {param}, "x", TRF_StnErr);
+	if type(r) == "table" and r.text then
+		if call(TRF_Stn_SpeakRaw, {r.spk, r.text}, "x", TRF_StnErr) then return 0; end;
+	end;
+	if r == nil then TRF_StnPass("error", nil, "none"); end;
+	if type(r) == "table" then return r.key; end;
+	return nil;
+end;
+
+-- Mood providers (5.2 row 1), each f(idx, tip) -> key or nil: trf_plumb's TRF_Voice_Prov list (names or
+-- functions, registered with TRF_VoiceProvReg by #10 and #11), else none.
+function TRF_Stn_Prov()
+	local l = TRF_N("TRF_Voice_Prov");
+	if type(l) == "table" then return l; end;
+	return {};
+end;
+
+function TRF_StnProvKey(idx, tip)
+	local ps = TRF_Stn_Prov();
+	for i = 1, getn(ps) do
+		local f = ps[i];
+		if type(f) == "string" then f = getglobal(f); end;
+		if type(f) == "function" then
+			local k = call(f, {idx, tip}, "x", TRF_StnErr);
+			if type(k) == "string" and k ~= "" then return k; end;
+		end;
+	end;
+	return nil;
+end;
+
+-- Body of the mood wrapper: 0 = pass, {key, text, spk} = speak (text set: mod variant).
+function TRF_StnNoneBody(param)
+	local tip = param;
+	if type(tip) ~= "string" then tip = tostring(tip); end;
+	local why, idx, nm = TRF_StnGate("none");
+	if why then TRF_StnPass(why, nm, "none"); return 0; end;
+	if not TRF_StnClass()[tip] then TRF_StnPass("tip", nm, "none"); return 0; end;
+	local T = TRF_StnTune();
+	local slot = TRF_N("TRF_RgOf", idx);
+	local ph = nil;
+	if slot then ph = TRF_N("TRF_Phase", slot); end;
+	local dis = TRF_N("TRF_Dis", idx);
+	if type(dis) ~= "number" then dis = 0; end;
+	local own = TRF_Stn_Team(TRF_Stn_Loc());
+	local sw = nil;
+	if slot and TRF_N("TRF_SweepOpen", slot) then
+		local f = TRF_N("TRF_SweepOwner", slot);
+		if f and own and TRF_N("TRF_FacTeam", f) == own then sw = 1; end;
+	end;
+	local vo = TRF_StnVo()[idx];
+	local ol = nil;
+	if type(vo) == "number" and TRF_StnLegs() - vo < T.own_legs then ol = 1; end;
+	local sl = TRF_N("TRF_ShortOf", idx);
+	local sh = nil;
+	if type(sl) == "table" and getn(sl) > 0 then sh = 1; end;
+	local tier = 1;
+	if slot then tier = TRF_N("TRF_ClanTier", slot) or 1; end;
+	local moods = TRF_StnOpt("voice_moods");
+	local s = {tip=tip, ph=ph, dis=dis, sw=sw, ol=ol, own=own, sh=sh, tier=tier, heat=TRF_StnHeat(),
+		prov=TRF_StnProvKey(idx, tip), force=TRF_StnOpt("voice_force"), moods=moods, t=T};
+	local key, rule, var = TRF_StnMoodOf(s);
+	local r = {key=key};
+	local spk = TRF_StnKeySpk(key);
+	local mood = 0;
+	if key ~= tip then mood = 1; end;
+	if var then
+		r.text = TRF_StnTxt(var);
+		r.spk = TRF_StnVarSpk()[var];
+		spk = r.spk;
+		mood = 2;
+	end;
+	local lf = TRF_StnDE;
+	if mood > 0 then lf = TRF_StnE; end;
+	lf("mood", "system", nm, "system_index", idx, "vanilla_key", tip, "mood_key", key, "rule", rule, "phase", ph,
+		"disruption", dis, "owner", own, "mood", mood, "speaker", tostring(spk));
+	return r;
+end;
+
+-- Installed over __TradeStation_Action (6.3): the body shows greeting and news and may open the fee box;
+-- otherwise the original opens the vanilla box with the unchanged param.
+function TRF_Stn_Trade(param)
+	if type(TRF_PlDock) == "function" then return TRF_PlDock("req", "TRF_orig_TradeSt", {param}); end;
+	local r = call(TRF_StnTradeBody, {param}, "x", TRF_StnErr);
+	if r == "box" then return; end;
+	if r == nil then TRF_StnPass("error", nil, "dock"); end;
+	if type(TRF_orig_TradeSt) == "function" then return call(TRF_orig_TradeSt, {param}, "x"); end;
+end;
+
+-- Region tip (8.3) for station key k of system idx: text, kind, system idx, or nil.
+function TRF_StnTip(idx, k, T)
+	local slot = TRF_N("TRF_RgOf", idx);
+	if slot then
+		local i = TRF_N("TRF_SweepInfo", slot);
+		if type(i) == "table" and type(i.sl) == "number" and i.sl > 0 then
+			local rm = TRF_N("TRF_RgMap");
+			local home = nil;
+			if type(rm) == "table" and type(rm[slot]) == "table" then home = rm[slot].home; end;
+			local tx = TRF_StnTxt("stntipsweep", i.fac, TRF_N("TRF_ClanName", slot), TRF_StnName(home));
+			-- Sourced tips (design/tips-spec.md 7.2): who first saw the gathering fleet, where and when.
+			local cl = TRF_N("TRF_Ti_TipClause", idx, "sweep", slot);
+			if type(cl) == "string" then tx = tx.." "..cl; end;
+			return tx, "sweep", home;
+		end;
+	end;
+	local fq = TRF.feq;
+	if type(fq) == "table" and fq.k == 1 and type(fq.s) == "number" then
+		local e = TRF_StnGet(k, 1, T);
+		e.tf = TRF_StnLegs();
+		e.ts = fq.s;
+		return TRF_StnTxt("stntipfeq", TRF_StnName(fq.s)), "feq", fq.s;
+	end;
+	if slot and type(TRF.base) == "table" then
+		for i = 1, getn(TRF.base) do
+			local b = TRF.base[i];
+			if type(b) == "table" and (b.k == 1 or b.k == 2) and type(b.s) == "number" and TRF_N("TRF_RgOf", b.s) == slot then
+				local tx = TRF_StnTxt("stntipbase", TRF_StnName(b.s));
+				-- Sourced tips (design/tips-spec.md 7.2): who first saw the base open, where and when.
+				local cl = TRF_N("TRF_Ti_TipClause", idx, "base", slot, b.s);
+				if type(cl) == "string" then tx = tx.." "..cl; end;
+				return tx, "base", b.s;
+			end;
+		end;
+	end;
+	-- Sourced tips (design/tips-spec.md 7.2): the latest sighting of the region's wanted captain, before the temperament tip.
+	local ctx, cts = TRF_N("TRF_Ti_CapTip", idx);
+	if type(ctx) == "string" then return ctx, "cap", cts; end;
+	-- Clan temperaments (design/temperament-spec.md 5.3): the clan's habit after a raid of that clan in this visit.
+	local tx = TRF_P("TRF_Te_Tip", idx);
+	if type(tx) == "string" then return tx, "temper", idx; end;
+	return nil;
+end;
+
+-- Greeting radio line (8.2 step 2), spaced stn_gap from the last TRF radio or focus line. 1 when sent.
+function TRF_StnGreet(key, spk, T)
+	local sv = %SV;
+	local gt = TRF_StnGt();
+	local last = nil;
+	if type(TRF.live) == "table" and type(TRF.live.line) == "number" then last = TRF.live.line; end;
+	if type(sv.rt) == "number" and (last == nil or sv.rt > last) then last = sv.rt; end;
+	if last and gt >= last and gt - last < T.stn_gap then return nil, "gap"; end;
+	if not TRF_Stn_Radio(spk, TRF_StnTxt(key), T.stn_radio) then return nil, "err"; end;
+	sv.rt = gt;
+	if type(TRF.live) == "table" then TRF.live.line = gt; end;
+	return 1;
+end;
+
+-- Body of the trade wrapper (8.2): "pass", "go" (vanilla box follows) or "box" (fee box open). stage 1
+-- (trf_plumb): the fee box is not opened but kept in SV.fb for TRF_Stn_FeeBox ("staged").
+function TRF_StnTradeBody(param, stage)
+	local sv = %SV;
+	sv.k = nil;
+	sv.fb = nil;
+	local why, idx, nm = TRF_StnGate("dock");
+	if why then TRF_StnPass(why, nm, "dock"); return "pass"; end;
+	local row = TRF_Stn_Row();
+	if type(row) ~= "table" or row[1] ~= "__TradeStation_Action" then TRF_StnPass("row", nm, "dock"); return "pass"; end;
+	local prm = param;
+	if type(prm) ~= "string" then prm = ""; end;
+	local T = TRF_StnTune();
+	local pos = nil;
+	if T.stn_pos > 0 then pos = TRF_Stn_Pos(row[5]); end;
+	local j, how, d, jp, jx = TRF_StnIdOf(TRF_StnTl(idx), prm, pos, T.stn_pos);
+	if not j then TRF_StnPass(how, nm, "dock"); return "pass"; end;
+	local k = TRF_Stn_Key(idx, j);
+	if how == "pos" then
+		TRF_StnE("id_mismatch", "station_key", k, "param_station", jp, "position_station", jx, "distance", TRF_StnF(d));
+	end;
+	sv.k = k;
+	local e = TRF_StnGet(k, nil, T);
+	local st, nt = 0, nil;
+	if e then st = e.st; nt = e.nt; end;
+	local heat = TRF_StnHeat();
+	local er = TRF_StnRungOf(st, heat, T.heat_c1, T.heat_c2);
+	local ch = TRF_N("TRF_Chapter");
+	if type(ch) ~= "number" then ch = 0; end;
+	local loc = TRF_Stn_Loc();
+	local own = nil;
+	if prm ~= "" then own = TRF_Stn_Team(prm); else own = TRF_Stn_Team(loc); end;
+	local spk = TRF_StnSpk()[own or "Neutral"] or "DialogSystem";
+	-- Greeting, once per visit.
+	local gk, gs = nil, nil;
+	if TRF_StnOpt("voice_dock") == 1 and not sv.g[k] then
+		local key = TRF_StnGreetOf(er, nt);
+		if not key then
+			sv.g[k] = 1;
+		else
+			local ok, gw = TRF_StnGreet(key, spk, T);
+			gk = key;
+			if ok then sv.g[k] = 1; else gs = tostring(gw); end;
+		end;
+	end;
+	-- Info line, once per visit, never after docking on credit.
+	local nwf, tipk, amb = 0, nil, nil;
+	if TRF_StnOpt("voice_news") == 1 and not sv.nw[k] and not sv.c[k] then
+		local newsok = ch >= T.news_ch;
+		local shown = nil;
+		if er >= 2 and newsok then
+			local t, ntr = TRF_N("TRF_Trouble", idx);
+			local b, nb = TRF_N("TRF_Boom", idx);
+			if (ntr or 0) + (nb or 0) > 0 then
+				TRF_Stn_Say(TRF_StnTxt("stnnews", t, b), 10);
+				nwf = 1;
+				shown = 1;
+			end;
+			-- Sourced tips (design/tips-spec.md 7.1): one dated, sourced line of the region's ring after the built one.
+			local tn = TRF_N("TRF_Ti_News", idx, k, 1 - nwf);
+			if type(tn) == "string" then TRF_Stn_Say(tn, 10); nwf = 1; shown = 1; end;
+		end;
+		if er >= 4 and newsok and nt ~= 1 then
+			local tx, kind, ts = TRF_StnTip(idx, k, T);
+			if tx then
+				TRF_Stn_Say(tx, 10);
+				tipk = kind;
+				shown = 1;
+				local tf = nil;
+				if kind == "feq" then tf = TRF_StnLegs(); end;
+				TRF_StnE("tip", "station_key", k, "kind", kind, "system", TRF_StnName(ts), "tip_leg", tf);
+			end;
+		end;
+		if not shown and er >= 1 then
+			local ak = TRF_StnAmbOf(ch);
+			if ak then TRF_Stn_Say(TRF_StnTxt(ak), 10); amb = ak; shown = 1; end;
+		end;
+		if shown then sv.nw[k] = 1; end;
+	end;
+	-- Fee (8.5): F1 (the gates above), F2 no story mission and no visit latch (G6: SV.mis, logged as pass
+	-- reason=latch at=dock), F3 strict not 0, F4 chapter; pv = paid or docked on credit in this visit (saved, so a
+	-- load inside the visit does not charge again).
+	local fee, m, nofee = 0, 0, nil;
+	local pro = TRF_N("TRF_Pro", idx);
+	if type(pro) ~= "number" then pro = 0; end;
+	if TRF_StnOpt("voice_fee") == 1 and not sv.p[k] then
+		m = TRF_StnMOf(er, pro, T.fee_pro);
+		if m > 0 then
+			if e and e.pv == TRF_StnVe() then nofee = "paid_visit";
+			elseif sv.mis == 1 or TRF_N("TRF_Safe_QState") then
+				sv.mis = 1;
+				nofee = "latch";
+				TRF_StnPass("latch", nm, "dock");
+			elseif TRF_N("TRF_Opt", "strict") == 0 then nofee = "strict_0";
+			elseif ch < T.fee_ch then nofee = "chapter";
+			else
+				local L = TRF_N("TRF_LPay", idx);
+				if type(L) ~= "number" then L = 8; end;
+				local dk = TRF_N("TRF_DK");
+				if type(dk) ~= "number" then dk = 1; end;
+				fee = TRF_StnFeeOf(L, pro, m, dk, T.fee_k, T.fee_cap);
+				sv.fl = {L=L, dk=dk};
+			end;
+		end;
+	end;
+	TRF_StnE("dock", "station_key", k, "param", prm, "via", how, "distance", TRF_StnF(d), "standing", st, "rung", er,
+		"heat", heat, "greeting", gk, "greeting_skip", gs, "news", TRF_KvB(nwf), "tip", tipk, "ambient", amb, "fee", fee,
+		"fee_multiplier", m, "no_fee_reason", nofee);
+	if fee <= 0 then return "go"; end;
+	local cr = TRF_Stn_Credits();
+	local fs = format("%d", fee);
+	local text = "";
+	if cr >= fee then
+		if m >= 2 then text = TRF_StnTxt("stnfeepen", fs); else text = TRF_StnTxt("stnfeehub", fs); end;
+	else
+		text = TRF_StnTxt("stncredit");
+	end;
+	text = text..TRF_Br()..TRF_StnTxt("stnfeereq");
+	if stage == 1 then
+		sv.fb = {text=text, k=k, idx=idx, fee=fee, m=m, cr=cr, prm=prm, loc=loc, pro=pro};
+		return "staged";
+	end;
+	sv.box = {k=k, idx=idx, fee=fee, m=m, cr=cr, g=TRF.gen};
+	if prm == "" then setglobal("_param", loc); else setglobal("_param", prm); end;
+	local ok = TRF_Stn_Box(text);
+	local fl = sv.fl or {};
+	TRF_StnE("fee", "station_key", k, "fee", fee, "world_level", fl.L, "prosperity", pro, "fee_multiplier", m,
+		"difficulty_factor", fl.dk, "box", TRF_KvB(ok and 1 or 0));
+	if ok then return "box"; end;
+	sv.box = nil;
+	return "go";
+end;
+
+-- Request line (trf_plumb kind req, order 10, also under the flags: the gates log them): greeting, news and
+-- the staged fee; shows no line of its own (the greeting is a radio line).
+function TRF_Stn_ReqLine(kind, param)
+	local sv = %SV;
+	local r = call(TRF_StnTradeBody, {param, 1}, "x", TRF_StnErr);
+	if r == nil then sv.fb = nil; TRF_StnPass("error", nil, "dock"); end;
+	return nil;
+end;
+
+-- Box candidate of kind req (prio 400, the #3 fee box): the staged fee as a box spec (fee = 1: no offer box
+-- follows at the trade dock until E0.6), else nil. The event=fee line follows the dispatcher's result:
+-- TRF_Stn_FeeShown (box=true) or TRF_Stn_FeeFail (box=false).
+function TRF_Stn_FeeBox(kind, param)
+	local sv = %SV;
+	local fb = sv.fb;
+	sv.fb = nil;
+	if type(fb) ~= "table" then return nil; end;
+	sv.box = {k=fb.k, idx=fb.idx, fee=fb.fee, m=fb.m, cr=fb.cr, pro=fb.pro, g=TRF.gen};
+	if fb.prm == "" then setglobal("_param", fb.loc); else setglobal("_param", fb.prm); end;
+	return {title="#UI_TradeStationWndCaption", text=fb.text, ok="TRF_Stn_FeeOk", no="TRF_Stn_FeeNo", fail="TRF_Stn_FeeFail",
+		shown="TRF_Stn_FeeShown", fee=1, own="station_fee"};
+end;
+
+-- event=fee line of the pending fee box b (box: "true" opened, "false" could not open).
+function TRF_StnFeeLog(b, box)
+	local sv = %SV;
+	local fl = sv.fl or {};
+	TRF_StnE("fee", "station_key", b.k, "fee", b.fee, "world_level", fl.L, "prosperity", b.pro, "fee_multiplier", b.m,
+		"difficulty_factor", fl.dk, "box", box);
+end;
+
+-- The fee box opened (trf_plumb's show result).
+function TRF_Stn_FeeShown()
+	local sv = %SV;
+	local b = sv.box;
+	if type(b) == "table" then TRF_StnFeeLog(b, "true"); end;
+end;
+
+-- The fee box could not open (box lock refused, no ShowMsgBox, an error): no box pending, event=fee box=false.
+function TRF_Stn_FeeFail()
+	local sv = %SV;
+	if type(sv.box) == "table" then TRF_StnFeeLog(sv.box, "false"); end;
+	sv.box = nil;
+end;
+
+-- Registrations (trf_plumb TRF_InstallPlumb). The docked line runs also under __disableAction and __sys_SOS (as
+-- the old TRF_TradeDockOk hook did); the event raid-help resolver is asked by every 8.5 payment.
+function TRF_Stn_Plumb()
+	TRF_NoneStationReg(100, "TRF_Stn_NoneH", 1);
+	TRF_DockLine("req", 10, "TRF_Stn_ReqLine", 1);
+	TRF_DockBox("req", 400, "TRF_Stn_FeeBox");
+	TRF_DockLine("trade", 90, "TRF_Stn_DockedLine", 1);
+	TRF_RaidHelpReg("TRF_Stn_EvHelp");
+end;
+
+-- Fee box callbacks (6.3): the mod part through TRF_Cb (generation check in the body), then the vanilla
+-- chain by global name. OK always docks; Cancel never pays and never docks.
+function TRF_Stn_FeeOk()
+	TRF_Cb("TRF_Stn_FeeOk", TRF_StnFeeOkBody, {});
+	local f = __TradeStationDock_Ok;
+	if type(f) == "function" then f(); end;
+end;
+
+function TRF_Stn_FeeNo()
+	TRF_Cb("TRF_Stn_FeeNo", TRF_StnFeeNoBody, {});
+	local f = __TradeStationDock_Cancel;
+	if type(f) == "function" then f(); end;
+end;
+
+-- W7 / 8.5 step 5: pay (penalty buy-back once per visit) or dock on credit (-1, no news).
+function TRF_StnFeeOkBody()
+	local sv = %SV;
+	local b = sv.box;
+	sv.box = nil;
+	if type(b) ~= "table" or type(TRF) ~= "table" or b.g ~= TRF.gen then TRF_StnE("stale_box", "answer", "ok"); return; end;
+	local cr = TRF_Stn_Credits();
+	local cr2 = cr;
+	local credit, bb = 0, 0;
+	if cr >= b.fee then
+		TRF_Stn_Sub(b.fee);
+		cr2 = TRF_Stn_Credits();
+		sv.p[b.k] = 1;
+		TRF_Stn_Say(TRF_StnTxt("stnpaid", format("%d", b.fee)), 8);
+		local e = TRF_StnGet(b.k, 1);
+		local ve = TRF_StnVe();
+		e.pv = ve;
+		if e.st <= -2 and e.bv ~= ve then
+			local a = e.st;
+			e.st = min(e.st + 1, -1);
+			e.bv = ve;
+			e.lg = TRF_StnLegs();
+			sv.up[b.k] = 1;
+			bb = 1;
+			TRF_StnE("deed", "station_key", b.k, "change", "+1", "reason", "buyback", "standing_before", a, "standing_after", e.st,
+				"cap", "none", "distance", nil);
+		end;
+	else
+		sv.p[b.k] = 1;
+		sv.c[b.k] = 1;
+		credit = 1;
+		TRF_StnDeedK(b.k, -1, "credit", nil, nil);
+		TRF_StnGet(b.k, 1).pv = TRF_StnVe();
+	end;
+	TRF_StnE("fee_ok", "station_key", b.k, "credits_before", cr, "credits_after", cr2, "credit", TRF_KvB(credit),
+		"buyback", TRF_KvB(bb));
+end;
+
+function TRF_StnFeeNoBody()
+	local sv = %SV;
+	local b = sv.box;
+	sv.box = nil;
+	if type(b) ~= "table" then TRF_StnE("stale_box", "answer", "cancel"); return; end;
+	local cr = TRF_Stn_Credits();
+	TRF_StnE("fee_cancel", "station_key", b.k, "credits_before", cr, "credits_after", cr, "credit", "false", "buyback", "false");
+end;
+
+-- Result line when the standing rose this visit (8.6), once per station and visit, else nil; logs docked.
+function TRF_Stn_DockedText()
+	local sv = %SV;
+	local k = sv.k;
+	if type(k) ~= "number" then return nil; end;
+	local up = 0;
+	local t = nil;
+	if sv.up[k] == 1 then up = 1; end;
+	if up == 1 and not sv.nd[k] then
+		sv.nd[k] = 1;
+		t = TRF_StnTxt("stnnoted");
+	end;
+	TRF_StnE("docked", "station_key", k, "standing_up", TRF_KvB(up));
+	return t;
+end;
+
+-- Trade dock line (trf_plumb kind trade, order 90: dockmaster result).
+function TRF_Stn_DockedLine(kind)
+	return TRF_Stn_DockedText();
+end;
+
+-- trf_shop hook in TRF_TradeDockOk without trf_plumb (8.6).
+function TRF_Stn_Docked()
+	local t = TRF_Stn_DockedText();
+	if t then TRF_Stn_Say(t, 8); end;
+end;
+
+-- Contract: station events (17) ---------------------------------------------------------
+
+-- Plan line of a skipped event (debug, the slot refusal at log 1); returns nil.
+function TRF_StnEvSkip(why, nm, k, roll)
+	local f = TRF_StnDE;
+	if why == "slot" then f = TRF_StnE; end;
+	f("ev_plan", "system", nm, "station_key", k, "roll", roll, "result", "skipped", "reason", tostring(why));
+	return nil;
+end;
+
+-- Entry plan (17.2), from TRF_Stn_OnActivate after the entry plan of trf_gen (traffic's slot claimants asked first):
+-- free roam, the dock gate, chapter, a kind the dock rows allow, the usable trade station, the per-station
+-- cooldown, the chance, then the scripted-event slot "station" (an own kind, ranks as optional: last). The spawn
+-- is a due call.
+function TRF_StnEvPlan(idx, nm)
+	local sv = %SV;
+	sv.ev = nil;
+	if TRF_StnOpt("voice_events") ~= 1 then return TRF_StnEvSkip("off", nm); end;
+	local why = TRF_StnGate("dock");
+	if why then return TRF_StnEvSkip(why, nm); end;
+	if sv.mis == 1 or TRF_N("TRF_Safe_QState") then sv.mis = 1; return TRF_StnEvSkip("latch", nm); end;
+	local T = TRF_StnTune();
+	local ch = TRF_N("TRF_Chapter");
+	if type(ch) ~= "number" or ch < T.ev_ch then return TRF_StnEvSkip("chapter", nm); end;
+	local kinds = TRF_StnEvKindsOf(__system_Dock_array);
+	-- The barge pays through the 8.5 raid-help resolver (TRF_Stn_EvHelp), registered with trf_plumb only.
+	if type(TRF_RaidHelpReg) ~= "function" and kinds[1] == "barge" then tremove(kinds, 1); end;
+	if getn(kinds) == 0 then return TRF_StnEvSkip("class", nm); end;
+	local st = TRF_N("TRF_GnStation");
+	local cis = TRF_N("TRF_GnSeedContacts");
+	if not st or type(cis) ~= "table" then return TRF_StnEvSkip("station", nm); end;
+	local j = TRF_StnPick(idx, TRF_Stn_Pos(st));
+	if not j then return TRF_StnEvSkip("station", nm); end;
+	local k = TRF_Stn_Key(idx, j);
+	local e = TRF_StnGet(k, nil, T);
+	if e and type(e.ec) == "number" and TRF_StnLegs() - e.ec < T.ev_cd then return TRF_StnEvSkip("cooldown", nm, k); end;
+	local roll = TRF_StnRand(100);
+	if roll >= T.ev_p then return TRF_StnEvSkip("chance", nm, k, roll); end;
+	local kind = kinds[TRF_StnRand(getn(kinds)) + 1];
+	if type(TRF_EventSlotTake) == "function" and not TRF_EventSlotTake("station") then return TRF_StnEvSkip("slot", nm, k, roll); end;
+	local dt = T.ev_dt + TRF_StnRand(T.ev_dt);
+	if not TRF_N("TRF_Due", dt, "TRF_Stn_EvSpawn") then
+		TRF_N("TRF_EventSlotFree", "station");
+		return TRF_StnEvSkip("due", nm, k, roll);
+	end;
+	sv.ev = {kind=kind, k=k, idx=idx, st="plan", g=TRF.gen};
+	TRF_StnE("ev_plan", "kind", kind, "system", nm, "station_key", k, "kind_count", getn(kinds), "chance", T.ev_p, "roll", roll,
+		"delay", dt, "result", "planned");
+	return sv.ev;
+end;
+
+-- Due call of the plan (17.3): the event ship, the barge's raid, the cooldown stamp and the dockmaster's line. A
+-- spawn that cannot start ends the event (void) and frees the slot.
+function TRF_Stn_EvSpawn()
+	local sv = %SV;
+	local ev = sv.ev;
+	if type(ev) ~= "table" or ev.st ~= "plan" or type(TRF) ~= "table" or ev.g ~= TRF.gen then return; end;
+	local r = call(TRF_StnEvSpawnBody, {ev}, "x", TRF_StnErr);
+	if r ~= 1 then TRF_StnEvEnd(ev, "void", r or "error"); end;
+end;
+
+-- 1 when the ship spawned, else the reason.
+function TRF_StnEvSpawnBody(ev)
+	local sv = %SV;
+	local why = TRF_StnGate("dock");
+	if why then return why; end;
+	if sv.mis == 1 or TRF_N("TRF_Safe_QState") then sv.mis = 1; return "latch"; end;
+	if not TRF_N("TRF_GenReady") then return "generator"; end;
+	local T = TRF_StnTune();
+	local cis = TRF_N("TRF_GnSeedContacts");
+	local cs = TRF_N("TRF_GnContacts");
+	if type(cis) ~= "table" or getn(cis) == 0 or type(cs) ~= "table" then return "station"; end;
+	local ci = cis[TRF_StnRand(getn(cis)) + 1];
+	local ok, free = TRF_N("TRF_CanSpawn", 0, "voice");
+	if not ok then return "cap_"..tostring(free); end;
+	local plan, pw = TRF_N("TRF_Plan", cs[ci], ci, "A", free);
+	if type(plan) ~= "table" then return "plan_"..tostring(pw); end;
+	-- No added escorts (the barge needs the player, the launch is alone); the launch waits for the pickup.
+	plan.esc = 0;
+	if ev.kind == "launch" then plan.noord = 1; end;
+	local spare = nil;
+	ok, spare = TRF_N("TRF_CanSpawn", plan.n, "voice");
+	if not ok then return "cap_"..tostring(spare); end;
+	local id = TRF_N("TRF_Spawn", plan);
+	local r = TRF_N("TRF_Rec", id);
+	if type(r) ~= "table" then return "spawn"; end;
+	r.sev = 1;
+	ev.id = id;
+	if ev.kind == "launch" then
+		-- Held like a forming convoy member (no watchdog re-route) until the mothership comes within ev_meet.
+		r.st = "form";
+		ev.st = "wait";
+		ev.meet = T.ev_meet;
+	else
+		ev.st = "run";
+	end;
+	if ev.kind == "barge" then
+		-- S5 before the stamp and the line: a refused raid is void, the barge flies on as ordinary traffic.
+		ev.rn = TRF_N("TRF_RaidOn", {id}, T.ev_tier, "stn");
+		if type(ev.rn) ~= "number" then r.sev = nil; return "raid"; end;
+	end;
+	local e = TRF_StnGet(ev.k, 1, T);
+	e.ec = TRF_StnLegs();
+	TRF_StnEvLine("stnev"..ev.kind, T);
+	TRF_StnE("ev_spawn", "kind", ev.kind, "station_key", ev.k, "trader_id", id, "raid_id", ev.rn, "tier", r.tier,
+		"ship_count", r.np, "cooldown_leg", e.ec);
+	return 1;
+end;
+
+-- Dockmaster line of the event start: radio through the owner's speaker (spaced stn_gap), else the screen log.
+function TRF_StnEvLine(key, T)
+	local spk = TRF_StnSpk()[TRF_Stn_Team(TRF_Stn_Loc()) or "Neutral"] or "DialogSystem";
+	if TRF_StnGreet(key, spk, T) then return "radio"; end;
+	TRF_Stn_Say(TRF_StnTxt(key), 10);
+	return "screen";
+end;
+
+-- Distance mothership - lead ship of trader id, or nil.
+function TRF_StnEvDist(id)
+	local lead = TRF_N("TRF_GnLead", id);
+	return TRF_StnDist(TRF_Stn_MsPos(), TRF_Stn_Pos(lead));
+end;
+
+-- Resolver (17.5): results defended and delivered pay k x N and give the deed (ceiling 4); the others pay
+-- nothing. A void event frees the scripted-event slot (no event took place; a ship it spawned is ordinary traffic).
+function TRF_StnEvEnd(ev, res, why, d)
+	if type(ev) ~= "table" or ev.st == "end" then return; end;
+	ev.st = "end";
+	ev.res = res;
+	local pay, line = 0, nil;
+	if res == "defended" or res == "delivered" then
+		local N = TRF_N("TRF_PayN", ev.idx);
+		local n = TRF_StnEvPayOf(N, TRF_StnT("ev_k"));
+		if n > 0 then pay = TRF_N("TRF_Pay", n, "stn_event") or 0; end;
+		TRF_StnDeedK(ev.k, 1, "event "..ev.kind, TRF_StnK().ev_ceil, nil);
+		line = TRF_StnTxt("stnevok", format("%d", pay));
+	elseif res == "lost" or res == "expired" then
+		line = TRF_StnTxt("stnevlost");
+	elseif res == "far" or res == "no_help" then
+		line = TRF_StnTxt("stnevfar");
+	end;
+	if line then TRF_Stn_Say(line, 8); end;
+	if res == "void" then TRF_N("TRF_EventSlotFree", "station"); end;
+	TRF_StnE("ev_end", "kind", ev.kind, "station_key", ev.k, "trader_id", ev.id, "raid_id", ev.rn, "result", res,
+		"reason", tostring(why), "pay", pay, "distance", TRF_StnF(d));
+end;
+
+-- Every 1 s (traffic.script): the launch pickup and the end of an event ship that left without arriving.
+function TRF_Stn_Step()
+	local sv = %SV;
+	local ev = sv.ev;
+	if type(ev) ~= "table" or (ev.st ~= "wait" and ev.st ~= "run" and ev.st ~= "raid") then return; end;
+	call(TRF_StnEvStep, {ev}, "x", TRF_StnErr);
+end;
+
+-- 1 while raid ev.rn of the barge event is open (not ended, not pruned).
+function TRF_StnEvRaidOpen(ev)
+	if type(ev.rn) ~= "number" or type(TRF) ~= "table" or type(TRF.live) ~= "table" or type(TRF.live.rd) ~= "table" then return nil; end;
+	local rd = TRF.live.rd[ev.rn];
+	if type(rd) == "table" and rd.st ~= "end" then return 1; end;
+	return nil;
+end;
+
+-- The barge docked or escaped to its refuge (17.5): while its raid is open the raid's end decides (TRF_Stn_EvHelp
+-- defended, else the step ends it no_help), state "raid"; with the raid ended the help was not counted: no_help.
+function TRF_StnEvBargeOut(ev, why)
+	if TRF_StnEvRaidOpen(ev) then
+		ev.st = "raid";
+		ev.gw = why;
+		return;
+	end;
+	TRF_StnEvEnd(ev, "no_help", why);
+end;
+
+function TRF_StnEvStep(ev)
+	if type(TRF) ~= "table" or ev.g ~= TRF.gen then return; end;
+	if ev.st == "raid" then
+		if not TRF_StnEvRaidOpen(ev) then TRF_StnEvEnd(ev, "no_help", ev.gw); end;
+		return;
+	end;
+	local r = TRF_N("TRF_Rec", ev.id);
+	if type(r) ~= "table" then
+		local g = nil;
+		if type(TRF.live) == "table" and type(TRF.live.tr) == "table" then g = TRF.live.tr[ev.id]; end;
+		local why = "gone";
+		if type(g) == "table" and g.why ~= nil then why = tostring(g.why); end;
+		if ev.kind == "barge" and (why == "dock" or why == "escaped") then TRF_StnEvBargeOut(ev, why); return; end;
+		local res = "lost";
+		if why == "life" then res = "expired";
+		elseif why == "dock" then res = "far";
+		end;
+		TRF_StnEvEnd(ev, res, why);
+		return;
+	end;
+	-- Pickup only while the launch is still held: one that fled (trf_raid's heat reaction, 8.1) is ordinary traffic.
+	if ev.st == "wait" and r.st == "form" then
+		local d = TRF_StnEvDist(ev.id);
+		if d and d <= (ev.meet or TRF_StnT("ev_meet")) then
+			r.st = "in";
+			TRF_N("TRF_Orders", ev.id);
+			ev.st = "run";
+			TRF_Stn_Say(TRF_StnTxt("stnevmet"), 8);
+			TRF_StnE("ev_pickup", "kind", ev.kind, "trader_id", ev.id, "distance", TRF_StnF(d));
+		end;
+	end;
+end;
+
+-- trf_gen hook in TRF_GnSafeArrive (record flag sev), before the flight is deleted: the shuttle and the
+-- launch are delivered when they dock with the mothership within ev_r; a docked barge waits for its raid's end.
+function TRF_Stn_EvArrive(id, how)
+	local sv = %SV;
+	local ev = sv.ev;
+	if type(ev) ~= "table" or ev.id ~= id or (ev.st ~= "run" and ev.st ~= "wait") then return; end;
+	if how ~= "dock" then TRF_StnEvEnd(ev, "lost", how); return; end;
+	if ev.kind == "barge" then TRF_StnEvBargeOut(ev, how); return; end;
+	local d = TRF_StnEvDist(id);
+	if d and d <= TRF_StnT("ev_r") then TRF_StnEvEnd(ev, "delivered", how, d); else TRF_StnEvEnd(ev, "far", how, d); end;
+end;
+
+-- 8.5 raid-help resolver (trf_plumb TRF_RaidHelpReg): the player helped against the barge's raid (trf_raid pays
+-- only for counted help on a trader that was not killed): the event pays instead of the 8.5 credits ("cancel";
+-- help, heat and the visit credit of the raid stay).
+function TRF_Stn_EvHelp(n, rd, amt)
+	local sv = %SV;
+	local ev = sv.ev;
+	if type(ev) ~= "table" or ev.kind ~= "barge" or ev.rn ~= n or (ev.st ~= "run" and ev.st ~= "raid") then return nil; end;
+	TRF_StnEvEnd(ev, "defended", "raid_help");
+	return "cancel";
+end;
+
+-- Contract: loader callbacks, repair, dump -------------------------------------------
+
+-- Prune (D2): decay first, then drop entries at st 0 without tf, nt and a running event cooldown (an ec older than
+-- ev_cd legs is removed first). Returns the number dropped.
+function TRF_StnPrune()
+	local t = TRF_StnRecs();
+	local T = TRF_StnTune();
+	local legs = TRF_StnLegs();
+	local ks = {};
+	for k, e in t do tinsert(ks, k); end;
+	local n = 0;
+	for i = 1, getn(ks) do
+		local e = TRF_StnGet(ks[i], nil, T);
+		if type(e) == "table" and type(e.ec) == "number" and legs - e.ec >= T.ev_cd then e.ec = nil; end;
+		if type(e) == "table" and e.st == 0 and e.tf == nil and e.nt == nil and e.ec == nil then t[ks[i]] = nil; n = n + 1; end;
+	end;
+	return n;
+end;
+
+-- Entry (after TRF_State_OnEnter's leg): visit stamp, prune, mission latch.
+function TRF_Stn_OnEnter()
+	local sv = %SV;
+	if type(TRF) ~= "table" then return; end;
+	TRF.ve = TRF_StnLegs();
+	sv.pr = TRF_StnPrune();
+	if TRF_N("TRF_Safe_QState") then sv.mis = 1; end;
+end;
+
+-- Activate: owner change of a transferable system (5.4), entry line.
+function TRF_Stn_OnActivate()
+	local sv = %SV;
+	if type(TRF) ~= "table" then return; end;
+	local idx = TRF_N("TRF_CurIdx");
+	local nm = "?";
+	if type(idx) == "number" then nm = strlower(TRF_StnName(idx)); end;
+	local so = TRF_StnOwners()[nm];
+	if so then
+		local now = TRF_Stn_Team(nm);
+		local vo = TRF_StnVo();
+		if now and now ~= so and vo[idx] == nil then
+			vo[idx] = TRF_StnVe();
+			TRF_StnE("owner", "system", nm, "static_owner", so, "owner", now, "owner_visit", vo[idx]);
+		end;
+	end;
+	local v = nil;
+	if type(idx) == "number" and type(TRF.vo) == "table" and TRF.vo[idx] then v = TRF.vo[idx]; end;
+	TRF_StnE("enter", "visit", TRF_StnVe(), "system", nm, "system_index", idx, "latch", TRF_KvB(sv.mis),
+		"pruned_count", sv.pr or 0, "owner_visit", v);
+	if type(idx) == "number" then call(TRF_StnEvPlan, {idx, nm}, "x", TRF_StnErr); end;
+end;
+
+function TRF_Stn_OnLoad()
+	local sv = %SV;
+	if TRF_N("TRF_Safe_QState") then sv.mis = 1; end;
+	TRF_StnE("load", "latch", TRF_KvB(sv.mis));
+end;
+
+function TRF_Stn_BeforeJump()
+	local sv = %SV;
+	sv.box = nil;
+	if type(sv.ev) == "table" and sv.ev.st ~= "end" then TRF_StnEvEnd(sv.ev, "void", "jump"); end;
+end;
+
+-- D4: repair TRF.stn, TRF.vo and TRF.ve (called from TRF_Repair). Absent fields stay absent.
+function TRF_Stn_Fix()
+	if type(TRF) ~= "table" then return; end;
+	local legs = TRF_StnLegs();
+	if TRF.ve ~= nil and (type(TRF.ve) ~= "number" or TRF.ve > legs) then TRF.ve = legs; end;
+	local m = TRF_N("TRF_Map");
+	local ok = TRF_StnKeys();
+	if TRF.stn ~= nil then
+		if type(TRF.stn) ~= "table" then TRF.stn = {}; end;
+		local o, ks = {}, {};
+		for k, e in TRF.stn do
+			if type(k) == "number" and type(e) == "table" and (not ok or ok[k]) then
+				local r = {};
+				local st = e.st;
+				if type(st) ~= "number" then st = 0; end;
+				r.st = TRF_StnCl(floor(st), -3, 5);
+				r.lg = e.lg;
+				if type(r.lg) ~= "number" or r.lg > legs then r.lg = legs; end;
+				if type(e.gv) == "number" and e.gv <= legs then r.gv = e.gv; end;
+				if type(e.bv) == "number" and e.bv <= legs then r.bv = e.bv; end;
+				if type(e.pv) == "number" and e.pv <= legs then r.pv = e.pv; end;
+				if type(e.tf) == "number" and e.tf <= legs then r.tf = e.tf; end;
+				local ts = e.ts;
+				if type(ts) == "number" and type(m) == "table" and type(m.sys) == "table" and type(m.sys[ts]) == "table" then
+					r.ts = ts;
+				else
+					r.tf = nil;
+				end;
+				if r.tf == nil then r.ts = nil; end;
+				if e.nt == 1 then r.nt = 1; end;
+				if type(e.ec) == "number" and e.ec <= legs then r.ec = e.ec; end;
+				o[k] = r;
+				tinsert(ks, k);
+			end;
+		end;
+		while getn(ks) > 76 do
+			local w = 1;
+			for i = 2, getn(ks) do if o[ks[i]].lg < o[ks[w]].lg then w = i; end; end;
+			o[ks[w]] = nil;
+			tremove(ks, w);
+		end;
+		TRF.stn = o;
+	end;
+	if TRF.vo ~= nil then
+		local o = {};
+		if type(TRF.vo) == "table" then
+			local own = TRF_StnOwners();
+			for k, v in TRF.vo do
+				if type(k) == "number" and type(v) == "number" and v <= legs and own[strlower(TRF_StnName(k))] then o[k] = v; end;
+			end;
+		end;
+		TRF.vo = o;
+	end;
+end;
+
+-- Defaults (10) ----------------------------------------------------------------------
+
+function TRF_Stn_OptDef()
+	return {voice=1, voice_moods=2, voice_dock=1, voice_news=1, voice_fee=1, voice_gate=1, voice_force="", voice_events=1};
+end;
+
+-- ev_k is the event pay constant k in percent of N_eff (40 = k 0.4); ev_p the event chance in percent per entry.
+function TRF_Stn_TuneDef()
+	return {stn_decay=12, stn_near=2500, stn_pos=60, fee_k=200, fee_pro=8, fee_cap=10000, fee_ch=5, news_ch=4,
+		own_legs=20, mood_dis=7, mood_rdis=5, pir_heat=5, heat_c1=5, heat_c2=7, stn_radio=8, stn_gap=6,
+		ev_cd=24, ev_p=25, ev_k=40, ev_ch=5, ev_r=400, ev_meet=300, ev_tier=1, ev_dt=20};
+end;
+
+-- "module=station event=dump visit=<ve> record_count=<n> records=<k>:<st>/<lg>/<gv>/<bv>/<tf>[!],...
+-- owner_visits=<name>:<leg>,... event_legs=<k>:<ec>,... event_kind=<kind> event_state=<plan|wait|run|end>
+-- event_result=<res> none_wrapped=<bool> trade_wrapped=<bool>" (lists and event fields nil when empty).
+function TRF_Stn_Dump()
+	if type(TRF) ~= "table" then return; end;
+	local ks = {};
+	if type(TRF.stn) == "table" then for k, e in TRF.stn do if type(k) == "number" then tinsert(ks, k); end; end; end;
+	sort(ks);
+	local rs = nil;
+	for i = 1, getn(ks) do
+		local e = TRF.stn[ks[i]];
+		if type(e) == "table" then
+			local r = ks[i]..":"..tostring(e.st).."/"..tostring(e.lg).."/"..TRF_StnS(e.gv).."/"..TRF_StnS(e.bv).."/"..TRF_StnS(e.tf);
+			if e.nt == 1 then r = r.."!"; end;
+			if rs then rs = rs..","..r; else rs = r; end;
+		end;
+	end;
+	local vs = nil;
+	if type(TRF.vo) == "table" then
+		for k, v in TRF.vo do
+			local r = TRF_StnName(k)..":"..tostring(v);
+			if vs then vs = vs..","..r; else vs = r; end;
+		end;
+	end;
+	local es = nil;
+	for i = 1, getn(ks) do
+		local e = TRF.stn[ks[i]];
+		if type(e) == "table" and type(e.ec) == "number" then
+			local r = ks[i]..":"..e.ec;
+			if es then es = es..","..r; else es = r; end;
+		end;
+	end;
+	local sv = %SV;
+	local ev = sv.ev or {};
+	TRF_StnE("dump", "visit", TRF.ve, "record_count", getn(ks), "records", rs, "owner_visits", vs, "event_legs", es,
+		"event_kind", ev.kind, "event_state", ev.st, "event_result", ev.res,
+		"none_wrapped", TRF_KvB(TRF_StnIsMine(_NoneStation_Action)), "trade_wrapped", TRF_KvB(TRF_StnIsMine(__TradeStation_Action)));
+end;
+
+-- Texts (9), EN only; keys in TRF_UI_Key form.
+function TRF_Stn_Text()
+	return {
+		stnrm3 = "Wolves? Your account here is closed. Pay the penalty or fly on.",
+		stnrm2 = "We hear what you do on the lanes. Docking costs you double.",
+		stnrm1 = "Dock if you must. Security has your berth on camera.",
+		stnr1 = "Welcome back, Wolves. Berth four is free.",
+		stnr2 = "Wolves, good to see you again. The harbour hears things:",
+		stnr3 = "No surcharge for you, captain. Harbour news follows.",
+		stnr4 = "A word between us, Wolves:",
+		stnr5 = "Clear the lane, the Wolves are coming in! Dock three is yours.",
+		stntiprob = "You used our word to rob the navy.",
+		stnnews = "Harbour news: $1 $2",                                   -- trouble answer, boom answer
+		stntipsweep = "$1 is gathering a fleet against the $2. Stay off the $3 lanes for a while.", -- faction, clan, home
+		stntipfeq = "A navy supply run is due at $1.",                       -- system
+		stntipbase = "The pirates have a base in $1. Everybody knows, nobody goes.", -- system
+		stnamb1 = "Another freighter overdue on the Debris lanes. FTU says nothing.",
+		stnamb2 = "Half our berths are military charters since the war opened.",
+		stnamb3 = "Border crews talk about berserk skirmishes again.",
+		stnfeehub = "Heavy traffic surcharge: $1 credits.",                 -- fee
+		stnfeepen = "Penalty docking fee: $1 credits.",                     -- fee
+		stnfeereq = "Initiate docking?",
+		stncredit = "Docking on credit. The harbour will remember.",
+		stnpaid = "Docking fee paid: $1 credits.",                          -- fee
+		stnnoted = "Dockmaster: noted, Wolves.",
+		stnmlkfni = "New Empire administration. Martial law in this system. All docking suspended.",
+		stnmluss = "USS security. Station locked down until the sweep is over.",
+		stndepot = "Depot control. The lanes are not safe, we sealed the bays. Try the trade station.",
+		stnpirdead = "... (only static on the channel)",
+		stnpirheat = "Ha, the Wolves! Nice work on the lanes. Still closed, but the boys say hello.",
+		-- Station events (17.6).
+		stnevbarge = "Dockmaster: an ore barge is inbound with pirates on its tail. Cover it to the station and the harbour pays.",
+		stnevshuttle = "Dockmaster: a tanker shuttle is inbound. Escort it to the station and the harbour pays.",
+		stnevlaunch = "Dockmaster: a refugee launch is adrift near the gate. Bring it in to the station and the harbour pays.",
+		stnevmet = "Launch: thank you, Wolves! We follow you to the station.",
+		stnevok = "Dockmaster: they are in. $1 credits for your trouble, Wolves.", -- pay
+		stnevlost = "Dockmaster: we lost them.",
+		stnevfar = "Dockmaster: they made it, but not with your help. No pay.",
+	};
+end;

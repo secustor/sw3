@@ -234,7 +234,7 @@ Script `Trigger` object: 0x60 bytes, ctor 0x5e8a50, vtable 0x73a42c `[Save 0x5e8
 
 ## 6. Save and load of script state
 
-Files: `Profiles\<user>\Save\<"%x %X">.sav` (strings 0x7256a4 `Profiles\`, 0x72569c `Save\`, 0x725488, 0x725490). `SaveFileHeader` has a version check (0x725438). `SaveManager::SaveGame` is at around 0x4e6400.
+Files: `Profiles\<user>\Save\<name>.sav` (strings 0x7256a4 `Profiles\`, 0x72569c `Save\`, 0x725490); `"%x %X"` at 0x725488 is the load-menu date format, not part of the file name (corrected 2026-10-20, see `save-format.md`). `SaveFileHeader` has a version check (0x725438). `SaveManager::SaveGame` is at around 0x4e6400.
 
 Full-game save 0x4a51d0 serialises into a memory stream (`0x7bc200`) in this chunk order: `STREAMID_Environment` 0x4a69b0, `CameraParams` 0x4a6aa0, `Map` 0x4a7130, `MapSelector` 0x4a7200, `GameObjects` 0x4a6b50, `TeamManager` 0x4a6ec0, `SceneStuff` 0x4a6f70, **`Script` 0x4a7280**, `Diplomacy` 0x4a7400, `QuestManager` 0x4a74b0, `GameInterface` 0x4a7560, `MusicPlayList` 0x4a7690, `LocationManager` 0x4a7740, `TradeSystem` 0x4a77f0, `QuestManager2` 0x4a78a0, `PortalManager` 0x4a7950, `RecruitManager` 0x4a7a00. The buffer is then compressed with zlib `compress2` (thunk 0x678060 → IAT 0x6fc2c0, called at 0x4a541a) and written out. A second, shorter chain at 0x4a54e2 is used for another save variant (probably the inter-mission or autosave state).
 

@@ -1,0 +1,3552 @@
+-- sw3-traffic mercenary clans (Lua 4.0.1). Spec: design/merc-spec.md (design worldbuilding/12-mercenary-packs.md and
+-- 13-rival-packs.md, merged; build step 1, the pure part). Prefix Mc (TRF_Mc_* public, TRF_Mc<X> internal), log
+-- module=merc through TRF_McE / TRF_McDE.
+-- Step 1: the clan record TRF.mc (one 20-digit block per clan in the digit string s, packed integer strings t[c] for
+-- the clans with a non-zero value, the Wolves ratings w, the hire record h/hb, the call r, the blacklist x, the
+-- next-entry note n, the elite record e), created at the first region tick in chapter >= 5 with cfg merc 1; the region
+-- tick TRF_Mc_RegionTick(L) (trf_region TRF_RegionTick): presence, fortune income, upkeep, off-screen losses, the stage
+-- rule (two ticks in a row, stage 4 slots with slot 1 reserved for the elite clan, big-ship closure), the Black Legion
+-- fortune floor, the rival candidate rule (applied only with cfg rv_enabled 1), break and re-form, hp recovery, the
+-- rel, g, bk, w and owe decays; the fixed hash for every roll (no RAND); the blacklist and big-ship loss rules as
+-- functions for the later steps; repair TRF_Mc_Fix (TRF_Repair); debug dump.
+-- Step 3 (merc-spec 6a): the hire role at fielded stages 1-2: the appearance roll at entry (TRF_Mc_OnActivate), the
+-- spawn 30-90 s later at the portal toward the clan's home (group TRF_Merc_<n>, n the flight number of the visit), the
+-- patrol loop of the unhired pack through the system and its approach to the mothership within merc_app_r, the stay of
+-- merc_wait_s 3600 game seconds (user decision 2026-10-29), the
+-- meeting at 70 units, the conversations (offer, extension, settlement, collection) as dialog pages TRF_MercPg with the
+-- box chain as the fallback, the hire (fee, owe, escort, seeding of the groups at war, share deaths through the death bus
+-- and died triggers), the time-based hire carried across jumps (the wing rebuilt at every arrival from TRF.mc.h, the
+-- hire suspended where it cannot be), extension, settlement, the pre-mission settlement, the collection of a debt left by
+-- a jump, betrayal, the robbery and heat 7 ends, the 8.5 factor, the wind-down refund, the load re-adopt or rebuild, the
+-- patrol board line and the Black Legion legend and hire gate. Steps 4-9 (rival actions, bookings, corvette,
+-- mothership, Legion actions) are not built; their saved fields are kept by the repair and read nowhere.
+-- Layout as trf_haunt: helpers, static tables, pure functions (*Of), record accessors, region tick, the hire role,
+-- contract functions (repair, defaults, dump, text). Top level: functions and MC only.
+
+local MC = {};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_McMC() return %MC; end;
+
+-- logfmt event line, module=merc (design/log-format.md).
+function TRF_McE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "merc"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_McErr(m)
+	TRF_McE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler (natives that may be missing or answer badly): nil is the answer.
+function TRF_McNoErr(m) end;
+
+function TRF_McLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" and type(TRF_Cfg) == "function" then v = TRF_Cfg().log; end;
+	if type(v) ~= "number" then v = 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_McDE(event, ...)
+	if TRF_McLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_McE, arg);
+end;
+
+function TRF_McCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+function TRF_McNum(x, lo, hi)
+	return type(x) == "number" and x >= lo and x <= hi;
+end;
+
+-- x mod m (Lua 4 has no % operator); 0..m-1 also for a negative x.
+function TRF_McM(x, m)
+	return x - floor(x / m) * m;
+end;
+
+-- Fixed hash 0..10008 of three integers in the TRF_CapHash pattern (trf_captain) with its own constants: no RAND draw,
+-- so a reload before the same roll gives the same answer and the shared RAND stream is unchanged.
+function TRF_McHash(a, b, c)
+	local x = TRF_McM(floor((a or 0) * 103 + (b or 0) * 139 + (c or 0) * 23 + 7919), 10000);
+	x = TRF_McM(x * 43 + 17, 10007);
+	return TRF_McM(x * 61 + 29, 10009);
+end;
+
+-- Roll 0..99 of the hash.
+function TRF_McRoll(a, b, c)
+	return TRF_McM(TRF_McHash(a, b, c), 100);
+end;
+
+-- Enumerated cfg keys of this module {lo, hi}; other number keys are 0..1.
+function TRF_McEnum()
+	return {mc_el_c={0, 12}};
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Mc_OptDef and the group-war keys of TRF_Pl_OptDef), else the raw config, else the
+-- default; a wrong type or a number outside its range reads as the default.
+function TRF_McOpt(key)
+	local d = TRF_Mc_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if d == nil and (v == nil or type(v) == "number") then
+		if v == 1 or v == 0 then return v; end;
+		local gd = nil;
+		if type(TRF_Pl_OptDef) == "function" then gd = TRF_Pl_OptDef()[key]; end;
+		if gd == nil then return 0; end;
+		return gd;
+	end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	if type(v) == "number" then
+		local e = TRF_McEnum()[key] or {0, 1};
+		if v ~= floor(v) or v < e[1] or v > e[2] then return d; end;
+	end;
+	return v;
+end;
+
+-- Clamps of the tune keys {lo, hi, int}; list keys clamp each entry.
+function TRF_McClampT()
+	return {c_hire={0, 5000, 1}, c_share={0, 500, 1}, c_blood={0, 20, 1}, merc_reserve_k={0, 10, 1}, merc_owe_j={1, 999, 1},
+		merc_ext_k={0, 5, 0}, mc_heal_j={0, 1000, 1}, mc_heal_s={0, 1000, 0},
+		merc_hire_s={60, 3600, 1}, merc_wait_s={30, 10800, 1}, merc_app_r={0, 5000, 1}, merc_cd={0, 99, 1}, merc_reach={0, 20, 1},
+		merc_p={0, 100, 1},
+		merc_sweep_p={0, 100, 1}, merc_p_max={0, 100, 1}, merc_rel_decay={1, 999, 1}, merc_rel_j={1, 999, 1},
+		merc_bk_j={1, 999, 1}, merc_black={0, 999, 1}, merc_black_max={0, 9999, 1}, merc_rev_n={1, 6, 1},
+		merc_book_p={0, 100, 1}, merc_book_legs={1, 99, 1}, merc_ret_k={0, 5, 0}, merc_rep_cd={1, 999, 1},
+		merc_call_j={1, 999, 1}, merc_call_rel={-3, 3, 1}, merc_call_gap={0, 99, 1}, merc_rc_jobs={0, 99, 1},
+		merc_rc_k={0, 10, 0}, merc_hunt_n={1, 7, 1}, merc_hunt_k={0, 10, 0}, merc_dm_j={1, 999, 1}, merc_sw_legs={0, 99, 1},
+		mc_inc={-10, 10, 1}, mc_up={0, 10, 0}, mc_fo_ev={0, 99, 1}, mc_st_up={0, 99, 1}, mc_st_dn={0, 99, 1},
+		mc_st_off={-5, 5, 1}, mc_size_k={0, 5, 0}, mc_ships={1, 20, 1}, mc_ms_max={0, 12, 1}, mc_bs_j={0, 999, 1},
+		mc_st_ch={1, 21, 1}, mc_ms_hold={0, 5000, 1}, mc_fo0={0, 99, 1}, mc_fo0_r={1, 100, 1}, mc_loss_p={0, 25, 1},
+		mc_loss_fo={0, 99, 1}, mc_hp_ticks={1, 99, 1}, mc_hp_jumps={0, 99, 1}, mc_break_fo={0, 99, 1}, mc_break_min={0, 99, 1},
+		mc_el_fo={0, 99, 1}, mc_el_hp={0, 4, 1}, mc_el_jobs={0, 99, 1}, mc_el_fee_k={0, 5, 0}, mc_el_w={0, 9, 1},
+		mc_el_g={0, 9, 1}, mc_el_fight_cd={0, 999, 1}, mc_el_break={0, 100, 1}, mc_el_wd={0, 999, 1}, mc_st4_n={1, 6, 1},
+		rv_count={0, 12, 1}, rv_home_n={0, 20, 1}, rv_cd_legs={0, 999, 1}, rv_cd_jumps={0, 999, 1}, rv_g_decay={1, 999, 1},
+		rv_w_decay={1, 999, 1}, rv_intro_chapter={1, 21, 1}, rv_min_chapter={1, 21, 1}, rv_hunt_chapter={1, 21, 1},
+		rv_min_pro={0, 9, 1}, rv_snipe_pct={0, 100, 1}, rv_snipe_wait={0, 600, 1}, rv_answer_pct={0, 100, 1},
+		rv_answer_wait={0, 600, 1}, rv_hunt_pct={0, 100, 1}, rv_hostile_g={0, 9, 1}, rv_split={0, 1, 0}, rv_act_cd={0, 99, 1},
+		rv_fight_cd={0, 999, 1}, rv_answer_r={0, 10000, 1}, rv_station_r={0, 10000, 1}, rv_spawn_min={0, 10000, 1},
+		rv_arb_k={0, 10000, 1}};
+end;
+
+-- Tune values of this module, clamped; list keys copied with each entry clamped. Cached in MC while TRF_Tune returns
+-- the same table; callers must not write into it.
+function TRF_McTune()
+	local mc = %MC;
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_McErr); end;
+	if type(mc.tc) == "table" and mc.tc.s == t then return mc.tc.t; end;
+	local d, cl, o = TRF_Mc_TuneDef(), TRF_McClampT(), {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if type(x) ~= type(v) then x = v; end;
+		local r = cl[k] or {-999999, 999999, 0};
+		if type(x) == "table" then
+			local w = {};
+			for i = 1, getn(v) do
+				local e = x[i];
+				if type(e) ~= "number" then e = v[i]; end;
+				if r[3] == 1 then e = floor(e); end;
+				w[i] = TRF_McCl(e, r[1], r[2]);
+			end;
+			x = w;
+		else
+			if r[3] == 1 then x = floor(x); end;
+			x = TRF_McCl(x, r[1], r[2]);
+		end;
+		o[k] = x;
+	end;
+	mc.tc = {s=t, t=o};
+	return o;
+end;
+
+-- Tune value of key (TRF_McTune).
+function TRF_McTn(key)
+	return TRF_McTune()[key];
+end;
+
+-- A traffic tune value (rg_tick), else def.
+function TRF_McTv(key, def)
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_McErr); end;
+	if type(t) == "table" and type(t[key]) == "number" then return t[key]; end;
+	return def;
+end;
+
+-- Region tick in legs, at least 1.
+function TRF_McRgTick()
+	return max(1, floor(TRF_McTv("rg_tick", 2)));
+end;
+
+function TRF_McLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+-- Jumps (00 section 6: the shared TRF.clock.j).
+function TRF_McJumps()
+	local j = TRF_N("TRF_Jumps");
+	if type(j) == "number" then return j; end;
+	return 0;
+end;
+
+-- Chapter (trf_safety TRF_Chapter), 0 when unknown.
+function TRF_McChapter()
+	local c = TRF_N("TRF_Chapter");
+	if type(c) == "number" then return c; end;
+	return 0;
+end;
+
+-- Module on: cfg merc 1 (design 6: 0 until E0.13 passes).
+function TRF_McOn()
+	return TRF_McOpt("merc") == 1;
+end;
+
+-- Static tables --------------------------------------------------------------------
+
+-- Constants without a cfg key: clan count, digit block width, field bounds of the packed values, the big-ship loss
+-- values (12 section 6, UC D.5), the first chapter, the demand per phase (12 section 6 Presence), units per region.
+-- Built once per MapInitialization (MC.k); callers must not write into it.
+function TRF_McK()
+	local mc = %MC;
+	if type(mc.k) ~= "table" then
+		mc.k = {nc=12, sw=20, first_ch=5, stamp=9999999, money=9999999, ue_k=100, bs_fo={42, 62}, bs_sg={2, 3},
+			demand={0, 1, 2, 3, 1, 0}, sweep_d=2, region_max=2, demand_min=2, raids=3, hp_max=4, fo_max=99, nreg=11,
+			lead_min=2, lead_fo=2};
+	end;
+	return mc.k;
+end;
+
+-- Clans in the vanilla order of _Fmerc_names / _Fmerc_groups (G/Scripts/include/RandomFmerc.script:9-11): key k, bloc
+-- b, unit type ty (12 section 6 table; type 2 = fighters and bombers), home system h (the developers' commented
+-- placements; the region slot is the region holding that system on the current map).
+function TRF_McClans()
+	return {
+		{k="morgenstern", b=1, ty=1, h="gefest"}, {k="angelrevenge", b=2, ty=1, h="dosis"},
+		{k="fireaxe", b=1, ty=2, h="xt27"}, {k="stardragoon", b=2, ty=1, h="kadi"},
+		{k="kimmeria", b=1, ty=2, h="kadi"}, {k="kismet", b=2, ty=1, h="dionis"},
+		{k="nomads", b=1, ty=1, h="golkonda"}, {k="blacklegion", b=2, ty=1, h="torr"},
+		{k="shinegard", b=1, ty=1, h="moscowia"}, {k="stardust", b=2, ty=2, h="xt27"},
+		{k="apocalypserider", b=1, ty=1, h="xt24"}, {k="goldgrifon", b=2, ty=1, h="elinor"}};
+end;
+
+-- Clan c's static entry (copied once per MapInitialization into MC.cl; the vanilla tables are compared, never used,
+-- so a mod that changes _Fmerc_names cannot shift a saved clan index). nil for a bad index.
+function TRF_McClan(c)
+	local mc = %MC;
+	if type(mc.cl) ~= "table" then
+		mc.cl = TRF_McClans();
+		local v = "absent";
+		if type(_Fmerc_names) == "table" and type(_Fmerc_groups) == "table" then
+			v = "match";
+			for i = 1, getn(mc.cl) do
+				if _Fmerc_names[i] ~= mc.cl[i].k or _Fmerc_groups[i] ~= mc.cl[i].b then v = "differs"; end;
+			end;
+		end;
+		mc.clv = v;
+		if v == "differs" then TRF_McE("static", "vanilla", v, "result", "own_table"); end;
+	end;
+	if type(c) ~= "number" then return nil; end;
+	return mc.cl[c];
+end;
+
+-- Pilot list of clan c as RegisterNaemnik builds it (RandomFmerc.script:67-90), for the later steps.
+function TRF_McPilots(c)
+	local e = TRF_McClan(c);
+	if not e then return nil; end;
+	local k = e.k;
+	return {"RecruitPilot_"..k, "RecruitOfficer_"..k, "RecruitAce_"..k, "RecruitAce_"..k, "RecruitAce_"..k};
+end;
+
+-- Digit fields of a clan block in s: offset o (1-based in the 20-digit block), width w, bounds lo..hi, stored as
+-- value + a (rel: -3..3 stored 0..6). 12 section 6 Saved state, plus the named-pilot slots p0..p4. Built once per
+-- MapInitialization (MC.dk); callers must not write into it.
+function TRF_McDigK()
+	local mc = %MC;
+	if type(mc.dk) ~= "table" then
+		mc.dk = {rel={o=1, w=1, lo=-3, hi=3, a=3}, hp={o=2, w=1, lo=0, hi=4, a=0}, bk={o=3, w=1, lo=0, hi=9, a=0},
+			ek={o=4, w=1, lo=0, hi=3, a=0}, eh={o=5, w=1, lo=0, hi=3, a=0}, rc={o=6, w=1, lo=0, hi=1, a=0},
+			at={o=7, w=2, lo=0, hi=11, a=0}, es={o=9, w=2, lo=0, hi=11, a=0}, fo={o=11, w=2, lo=0, hi=99, a=0},
+			sg={o=13, w=1, lo=1, hi=4, a=0}, g={o=14, w=1, lo=0, hi=9, a=0}, rl={o=15, w=1, lo=0, hi=2, a=0},
+			p0={o=16, w=1, lo=0, hi=9, a=0}, p1={o=17, w=1, lo=0, hi=9, a=0}, p2={o=18, w=1, lo=0, hi=9, a=0},
+			p3={o=19, w=1, lo=0, hi=9, a=0}, p4={o=20, w=1, lo=0, hi=9, a=0}};
+	end;
+	return mc.dk;
+end;
+
+-- Keys of the packed clan string t[c], in order (12, P, 13, UC, names, and the stamps the spec lacked: su stage-up
+-- streak, hl/hj hp recovery leg and jump, bj bk decay jump; merc-spec Deviations).
+function TRF_McTKeys()
+	return {"jobs", "met", "rd", "rj", "owe", "oj", "ee", "ec", "wn", "ir", "rs", "dj", "cd", "cj", "bh", "ft", "gt", "n",
+		"k", "ml", "mk", "ue", "bt", "px", "pt", "su", "hl", "hj", "bj"};
+end;
+
+-- Bounds {lo, hi} of the t[c] keys (merc-spec 3.1): leg and jump stamps within +-K.stamp (7 digits), money within
+-- K.money; every bound below the packing limit 2^31-1 (trf_track TRF_TpMax).
+function TRF_McTB()
+	local K = TRF_McK();
+	local s, m = K.stamp, K.money;
+	return {jobs={0, 999}, met={-s, s}, rd={-s, s}, rj={-s, s}, owe={0, m}, oj={-s, s}, ee={-s, s}, ec={0, m}, wn={-s, s},
+		ir={-s, s}, rs={-s, s}, dj={-s, s}, cd={-s, s}, cj={-s, s}, bh={0, 11}, ft={-s, s}, gt={-s, s}, n={0, 999}, k={0, 999},
+		ml={-s, s}, mk={0, 4}, ue={0, 200000000}, bt={0, 999}, px={0, 1000000000}, pt={0, 4}, su={0, 1}, hl={-s, s},
+		hj={-s, s}, bj={-s, s}};
+end;
+
+-- Packed keys of the hire record h, the call r, the next-entry note n and the elite record e (12 section 6, 11.7).
+function TRF_McHKeys() return {"c", "sys", "ty", "pw", "n", "tr", "fee", "sh", "bm", "k", "lo", "g", "hj", "hg"}; end;
+function TRF_McRKeys() return {"c", "ej", "lj"}; end;
+function TRF_McNKeys() return {"c", "a"}; end;
+function TRF_McEKeys() return {"el", "dj1", "dc1", "djl", "dn"}; end;
+
+-- Pure rules (host-testable) --------------------------------------------------------
+
+-- Starting fortune (12 section 6): base + hash(c) mod range (20 + 0..30).
+function TRF_McFo0Of(c, base, r)
+	return base + TRF_McM(TRF_McHash(c, 0, 0), r);
+end;
+
+-- Stage a fortune supports by the up thresholds alone (1..maxs), for creation and re-form.
+function TRF_McStageOfFo(fo, up, maxs)
+	local s = 1;
+	while s < maxs and fo >= up[s] do s = s + 1; end;
+	return s;
+end;
+
+-- Stage rule of one tick (12 section 6, UC C.4): returns the new stage and streak flag. Down at the first tick below
+-- dn[sg - 1] (as far as the fortune goes); up one stage after two ticks in a row at or above up[sg] (su = 1 from the
+-- tick before); never above cap (big-ship closure).
+function TRF_McStageOf(fo, sg, su, up, dn, cap)
+	local n = sg;
+	local s = 0;
+	if n >= 2 and fo < dn[n - 1] then
+		while n >= 2 and fo < dn[n - 1] do n = n - 1; end;
+	elseif n < 4 and n < cap and fo >= up[n] then
+		if su == 1 then n = n + 1; else s = 1; end;
+	end;
+	if n > cap then n = max(1, cap); s = 0; end;
+	return n, s;
+end;
+
+-- Highest stage open after a big-ship loss: mk and above closed until j >= ml + bsj[mk - 2] (20 jumps after the
+-- corvette, 40 after the mothership); 4 otherwise.
+function TRF_McCapOf(ml, mk, j, bsj)
+	if mk == 3 or mk == 4 then
+		local w = bsj[mk - 2] or 0;
+		if j < ml + w then return mk - 1; end;
+	end;
+	return 4;
+end;
+
+-- Upkeep of a stage at tick number tk: the whole part every tick, a half every second (even) tick.
+function TRF_McUpOf(u, tk)
+	local w = floor(u);
+	local h = 0;
+	if u - w >= 0.5 and TRF_McM(tk, 2) == 0 then h = 1; end;
+	return w + h;
+end;
+
+-- Big-ship loss values (12 section 6, UC D.5): mk 3 (corvette) fo <= 42, stage 2; mk 4 (mothership) fo <= 62,
+-- stage 3 (a lower stage stays); both hp -1. Returns fo, sg, hp.
+function TRF_McBigLossOf(fo, sg, hp, mk)
+	local K = TRF_McK();
+	local i = 1;
+	if mk == 4 then i = 2; end;
+	return min(fo, K.bs_fo[i]), min(sg, K.bs_sg[i]), max(0, hp - 1);
+end;
+
+-- Blacklist length (12 section 4): merc_black x bk jumps, at most merc_black_max.
+function TRF_McBlackOf(bk, per, mx)
+	return min(per * bk, mx);
+end;
+
+-- Positive event gain with the per-phase cap (12 section 6): ue packs the gain so far and the phase key (ue_k x key +
+-- gain). Returns the gain applied and the new ue.
+function TRF_McGainOf(d, ue, key, cap, uk)
+	local g, k0 = TRF_McM(ue, uk), floor(ue / uk);
+	if k0 ~= key then g = 0; end;
+	local a = max(0, min(d, cap - g));
+	return a, key * uk + g + a;
+end;
+
+-- Rival candidate rule (12 section 6 Roles, UC C.1) over l = {{c, rl, rel, sg, ek, ok (eligible home), b (bloc), fo,
+-- hz (hash), el (1: the elite clan), tk (1: its home already holds a rival)}, ...} and the office bloc ob (nil: no
+-- office unit). Candidates: rl 0, rel <= 0, stage >= 2, ek ~= 1, an eligible home not taken, not the elite clan (it has
+-- its own entry rule, 11.4), the other bloc when ob is set; the highest fortune, ties by the lower hash. Without one:
+-- the lowest rel at rel <= 1 under the same rules (ties fortune, then hash). Returns the clan index or nil.
+function TRF_McRivalOf(l, ob)
+	local best, fb = nil, nil;
+	for pass = 1, 2 do
+		local rmax = 0;
+		if pass == 2 then rmax = 1; end;
+		for i = 1, getn(l) do
+			local e = l[i];
+			if e.rl == 0 and e.rel <= rmax and e.sg >= 2 and e.ek ~= 1 and e.ok == 1 and e.el ~= 1 and e.tk ~= 1
+				and (ob == nil or e.b ~= ob) then
+				local better = nil;
+				if not best then
+					better = 1;
+				elseif pass == 1 then
+					better = e.fo > best.fo or (e.fo == best.fo and e.hz < best.hz);
+				else
+					better = e.rel < best.rel or (e.rel == best.rel and (e.fo > best.fo or (e.fo == best.fo and e.hz < best.hz)));
+				end;
+				if better then best = e; end;
+			end;
+		end;
+		if best then fb = best.c; break; end;
+	end;
+	return fb;
+end;
+
+-- Clans of list l ranked for the stage 4 slots: fortune V[c].fo descending, ties by the lower fixed hash.
+function TRF_McRankOf(l, V)
+	local r = {};
+	for i = 1, getn(l) do
+		local c = l[i];
+		local j = getn(r);
+		while j >= 1 do
+			local a = r[j];
+			if V[a].fo > V[c].fo or (V[a].fo == V[c].fo and TRF_McHash(a, 4, 4) <= TRF_McHash(c, 4, 4)) then break; end;
+			j = j - 1;
+		end;
+		tinsert(r, j + 1, c);
+	end;
+	return r;
+end;
+
+-- Presence (12 section 6): home when d(home) >= 2, else the slot with the highest d >= 2 within reach of the home whose
+-- count is below rmax (ties: nearer, then the lower slot), else home. d, dist, cnt by slot; n slots.
+function TRF_McPresenceOf(home, d, dist, cnt, n, reach, rmax)
+	if (d[home] or 0) >= 2 then return home; end;
+	local b, bd, bx = nil, nil, nil;
+	for s = 1, n do
+		local x = dist[s];
+		if s ~= home and (d[s] or 0) >= 2 and type(x) == "number" and x <= reach and (cnt[s] or 0) < rmax then
+			if not b or d[s] > bd or (d[s] == bd and x < bx) then b = s; bd = d[s]; bx = x; end;
+		end;
+	end;
+	return b or home;
+end;
+
+-- Record accessors ------------------------------------------------------------------
+
+-- The elite clan: the saved e.el (fixed from cfg mc_el_c when the record is created, so the Wolves' deeds stay with one
+-- clan), else cfg mc_el_c; cfg mc_el_c 0 turns the elite rules off whatever is saved.
+function TRF_McElite()
+	local c = TRF_McOpt("mc_el_c");
+	if type(c) ~= "number" or c == 0 then return 0; end;
+	local R = TRF_McRec();
+	if R and type(R.e) == "string" then
+		local e = TRF_TpUnpackK(R.e, TRF_McEKeys());
+		if e and e.el >= 1 and e.el <= 12 then return e.el; end;
+	end;
+	return c;
+end;
+
+-- Region map (trf_region TRF_RgMap) or nil without regions.
+function TRF_McMap()
+	local m = TRF_N("TRF_RgMap");
+	if type(m) == "table" and type(m.n) == "number" and m.n > 0 then return m; end;
+	return nil;
+end;
+
+-- Map index of clan c's home system, or nil.
+function TRF_McHomeIdx(c)
+	local e = TRF_McClan(c);
+	local mp = TRF_N("TRF_Map");
+	if not e or type(mp) ~= "table" or type(mp.by) ~= "table" then return nil; end;
+	return mp.by[e.h];
+end;
+
+-- Region slot of clan c's home (the region holding its home system on this map), or nil.
+function TRF_McHome(c)
+	local i = TRF_McHomeIdx(c);
+	if not i then return nil; end;
+	return TRF_N("TRF_RgOf", i);
+end;
+
+-- Jump distances from clan c's home system (cached per MapInitialization), or {}.
+function TRF_McDist(c)
+	local mc = %MC;
+	if type(mc.dist) ~= "table" then mc.dist = {}; end;
+	if mc.dist[c] then return mc.dist[c]; end;
+	local d = {};
+	local i = TRF_McHomeIdx(c);
+	local mp = TRF_N("TRF_Map");
+	if i and type(mp) == "table" then
+		if type(mc.adj) ~= "table" then mc.adj = TRF_N("TRF_RgAdj", mp); end;
+		if type(mc.adj) == "table" then d = TRF_N("TRF_RgDistFrom", mc.adj, i) or {}; end;
+	end;
+	mc.dist[c] = d;
+	return d;
+end;
+
+-- Jumps from clan c's home system to the home system of region slot s, or nil.
+function TRF_McSlotDist(c, s, m)
+	local e = m[s];
+	if type(e) ~= "table" then return nil; end;
+	return TRF_McDist(c)[e.home];
+end;
+
+-- TRF.mc, or nil. mk = 1 creates it (callers check the module and the chapter first).
+function TRF_McRec(mk)
+	if type(TRF) ~= "table" then return nil; end;
+	if type(TRF.mc) == "table" then return TRF.mc; end;
+	if mk ~= 1 then return nil; end;
+	TRF.mc = {s=TRF_McDefS(), t={}};
+	local el = TRF_McOpt("mc_el_c");
+	if type(el) == "number" and el > 0 then TRF.mc.e = TRF_TpPackK({el=el}, TRF_McEKeys()); end;
+	TRF_McE("create", "legs", TRF_McLegs(), "jumps", TRF_McJumps(), "chapter", TRF_McChapter(), "elite", el);
+	return TRF.mc;
+end;
+
+-- Creation values of clan c's digit fields (12 section 6): rel 0, hp 4, at its home, fo mc_fo0 (the elite clan at
+-- least its floor), stage by fortune (at most 3; stage 4 only through the tick's slots).
+function TRF_McDefOf(c)
+	local T = TRF_McTune();
+	local fo = TRF_McFo0Of(c, T.mc_fo0, T.mc_fo0_r);
+	if c == TRF_McElite() then fo = max(fo, TRF_McFloorOf(TRF_McChapter(), T)); end;
+	fo = TRF_McCl(fo, 0, 99);
+	return {rel=0, hp=4, bk=0, ek=0, eh=0, rc=0, at=TRF_McHome(c) or 0, es=0, fo=fo, sg=TRF_McStageOfFo(fo, T.mc_st_up, 3),
+		g=0, rl=0, p0=0, p1=0, p2=0, p3=0, p4=0};
+end;
+
+-- Elite fortune floor by chapter (11.1): mc_el_fo[1] from chapter 5, mc_el_fo[2] from mc_st_ch (7); 0 before.
+function TRF_McFloorOf(ch, T)
+	if ch >= T.mc_st_ch then return T.mc_el_fo[2]; end;
+	if ch >= TRF_McK().first_ch then return T.mc_el_fo[1]; end;
+	return 0;
+end;
+
+-- Digit block of the values v (TRF_McDigK fields, clamped).
+function TRF_McBlockOf(v)
+	local D = TRF_McDigK();
+	local b = strrep("0", TRF_McK().sw);
+	for k, f in D do
+		local x = TRF_McCl(floor(v[k] or 0), f.lo, f.hi) + f.a;
+		b = strsub(b, 1, f.o - 1)..format("%0"..f.w.."d", x)..strsub(b, f.o + f.w);
+	end;
+	return b;
+end;
+
+-- The default digit string: every clan's creation block.
+function TRF_McDefS()
+	local s = "";
+	for c = 1, TRF_McK().nc do s = s..TRF_McBlockOf(TRF_McDefOf(c)); end;
+	return s;
+end;
+
+-- Digit field k of clan c (its value; rel -3..3). Without the record: the creation value. nil for a bad key or clan
+-- (TRF_McCOk: a fraction would read across two blocks).
+function TRF_McDig(c, k)
+	local f = TRF_McDigK()[k];
+	if not f or not TRF_McCOk(c) then return nil; end;
+	local R = TRF_McRec();
+	if not R or type(R.s) ~= "string" then return TRF_McDefOf(c)[k]; end;
+	local p = (c - 1) * TRF_McK().sw + f.o;
+	local x = tonumber(strsub(R.s, p, p + f.w - 1));
+	if type(x) ~= "number" then return TRF_McDefOf(c)[k]; end;
+	return TRF_McCl(x - f.a, f.lo, f.hi);
+end;
+
+-- Sets digit field k of clan c to v, clamped to the field's bounds (a value never spills into the next field). Needs
+-- the record and a whole clan index (TRF_McCOk: a fraction would write across two blocks); returns the value written or
+-- nil.
+function TRF_McSetDig(c, k, v)
+	local f = TRF_McDigK()[k];
+	local R = TRF_McRec();
+	if not f or not R or type(R.s) ~= "string" or not TRF_McCOk(c) or type(v) ~= "number" then return nil; end;
+	v = TRF_McCl(floor(v), f.lo, f.hi);
+	local p = (c - 1) * TRF_McK().sw + f.o;
+	R.s = strsub(R.s, 1, p - 1)..format("%0"..f.w.."d", v + f.a)..strsub(R.s, p + f.w);
+	return v;
+end;
+
+-- Standing of clan c (-3..3), for the other roles and modules.
+function TRF_McRel(c)
+	return TRF_McDig(c, "rel");
+end;
+
+-- Clan c's packed fields as a table (every key of TRF_McTKeys; absent or unreadable: zeros).
+function TRF_McT(c)
+	local R = TRF_McRec();
+	local ks = TRF_McTKeys();
+	local r = nil;
+	if R and type(R.t) == "table" and type(R.t[c]) == "string" then r = TRF_TpUnpackK(R.t[c], ks); end;
+	if not r then
+		r = {};
+		for i = 1, getn(ks) do r[ks[i]] = 0; end;
+	end;
+	return r;
+end;
+
+-- Writes clan c's packed fields (each clamped to TRF_McTB); a record of zeros is removed. Needs the record.
+function TRF_McPutT(c, r)
+	local R = TRF_McRec();
+	if not R or type(r) ~= "table" or not TRF_McCOk(c) then return nil; end;
+	if type(R.t) ~= "table" then R.t = {}; end;
+	local ks, B = TRF_McTKeys(), TRF_McTB();
+	local nz = nil;
+	for i = 1, getn(ks) do
+		local k = ks[i];
+		local v = r[k];
+		if type(v) ~= "number" then v = 0; end;
+		v = TRF_McCl(floor(v), B[k][1], B[k][2]);
+		r[k] = v;
+		if v ~= 0 then nz = 1; end;
+	end;
+	if nz then R.t[c] = TRF_TpPackK(r, ks); else R.t[c] = nil; end;
+	return 1;
+end;
+
+-- The clan's values for the tick: digit fields and packed fields in one table (written back by TRF_McPut).
+function TRF_McGet(c)
+	local v = TRF_McT(c);
+	for k, f in TRF_McDigK() do v[k] = TRF_McDig(c, k); end;
+	return v;
+end;
+
+-- 1 when c is a whole clan index 1..12 (every reader and writer of a clan's fields checks it).
+function TRF_McCOk(c)
+	if type(c) == "number" and c >= 1 and c <= TRF_McK().nc and c == floor(c) then return 1; end;
+	return nil;
+end;
+
+function TRF_McPut(c, v)
+	local R = TRF_McRec();
+	if not R or not TRF_McCOk(c) then return nil; end;
+	local p = (c - 1) * TRF_McK().sw;
+	R.s = strsub(R.s, 1, p)..TRF_McBlockOf(v)..strsub(R.s, p + TRF_McK().sw + 1);
+	return TRF_McPutT(c, v);
+end;
+
+-- Phase key of region slot s for the event cap (ue): (phase start leg mod 100,000) x 16 + slot, unique per region and
+-- phase within 100,000 legs, so ue stays below 2^31 (TRF_TpMax).
+function TRF_McPhaseKey(s)
+	if type(TRF) ~= "table" or type(TRF.rg) ~= "table" or type(TRF.rg[s]) ~= "table" then return 0; end;
+	local pt = TRF.rg[s].pt;
+	if type(pt) ~= "number" or pt < 0 then pt = 0; end;
+	return TRF_McM(floor(pt), 100000) * 16 + s;
+end;
+
+-- Positive fortune event of clan c (completed hire +3, SNIPE +2, ...; later steps), capped at mc_fo_ev per phase of its
+-- at region (ue); a negative d is applied in full. Returns the change applied.
+function TRF_Mc_Fortune(c, d, why)
+	if not TRF_McRec() or not TRF_McCOk(c) or type(d) ~= "number" then return 0; end;
+	local v = TRF_McGet(c);
+	local a = d;
+	if d > 0 then a, v.ue = TRF_McGainOf(d, v.ue, TRF_McPhaseKey(v.at), TRF_McTn("mc_fo_ev"), TRF_McK().ue_k); end;
+	local fo0 = v.fo;
+	v.fo = TRF_McCl(v.fo + a, 0, TRF_McK().fo_max);
+	TRF_McPut(c, v);
+	TRF_McE("fortune", "clan", c, "change", d, "applied", v.fo - fo0, "fortune", v.fo, "reason", why);
+	return v.fo - fo0;
+end;
+
+-- Ships of clan c lost on screen (later steps, written at the died event): hp -1 and fo -mc_loss_fo per ship; hp 0
+-- breaks the clan with bh := its home.
+function TRF_Mc_Lost(c, n, why)
+	if not TRF_McRec() or not TRF_McCOk(c) or type(n) ~= "number" or n <= 0 then return; end;
+	local v = TRF_McGet(c);
+	local T = TRF_McTune();
+	v.hp = max(0, v.hp - n);
+	v.fo = max(0, v.fo - T.mc_loss_fo * n);
+	v.hl = TRF_McLegs(); v.hj = TRF_McJumps();
+	if v.hp == 0 and v.rl ~= 2 then TRF_McBreak(c, v, TRF_McHome(c) or v.at, why or "lost"); end;
+	TRF_McPut(c, v);
+	TRF_McE("lost", "clan", c, "ships", n, "condition", v.hp, "fortune", v.fo, "role", v.rl, "reason", why);
+end;
+
+-- A big ship of clan c killed (mk 3 corvette, 4 mothership; steps 6-7): the loss values and the closure stamp.
+function TRF_Mc_BigLoss(c, mk)
+	if not TRF_McRec() or not TRF_McCOk(c) or (mk ~= 3 and mk ~= 4) then return; end;
+	local v = TRF_McGet(c);
+	v.fo, v.sg, v.hp = TRF_McBigLossOf(v.fo, v.sg, v.hp, mk);
+	v.ml = TRF_McJumps(); v.mk = mk; v.su = 0;
+	v.hl = TRF_McLegs(); v.hj = v.ml;
+	if v.hp == 0 and v.rl ~= 2 then TRF_McBreak(c, v, TRF_McHome(c) or v.at, "big_ship"); end;
+	TRF_McPut(c, v);
+	TRF_McE("big_loss", "clan", c, "stage_lost", mk, "fortune", v.fo, "stage", v.sg, "condition", v.hp, "closed_until", v.ml + TRF_McTn("mc_bs_j")[mk - 2]);
+end;
+
+-- Betrayal blacklist (12 section 4; step 3 calls it): x := max(x, jumps + merc_black x bk, at most merc_black_max).
+function TRF_Mc_Black(c)
+	local R = TRF_McRec();
+	if not R or not TRF_McCOk(c) then return nil; end;
+	local T = TRF_McTune();
+	local u = TRF_McJumps() + TRF_McBlackOf(TRF_McDig(c, "bk"), T.merc_black, T.merc_black_max);
+	if type(R.x) ~= "number" or R.x < u then R.x = u; end;
+	TRF_McE("black", "clan", c, "betrayals", TRF_McDig(c, "bk"), "until_jump", R.x);
+	return R.x;
+end;
+
+-- 1 while the Exchange blacklist holds (TRF.clock.j below x).
+function TRF_Mc_Blacked()
+	local R = TRF_McRec();
+	if R and type(R.x) == "number" and TRF_McJumps() < R.x then return 1; end;
+	return nil;
+end;
+
+-- Fielded stage of clan c in this step: min(sg, 2), no big ship before build steps 6-7 (gap 6). Step 6 adds the chapter
+-- rule (at most 2 before chapter mc_st_ch, 12 section 4) when stages 3-4 can be fielded.
+function TRF_Mc_Fielded(c)
+	return min(TRF_McDig(c, "sg") or 1, 2);
+end;
+
+-- Region tick ----------------------------------------------------------------------
+
+-- Demand of region slot s (12 section 6 Presence): by phase, +2 while a sweep attempt is scheduled (rg.sl > 0).
+function TRF_McDemand(s)
+	local K = TRF_McK();
+	if type(TRF.rg) ~= "table" or type(TRF.rg[s]) ~= "table" then return 0; end;
+	local d = K.demand[TRF_McPh(s) + 1];
+	local sl = TRF.rg[s].sl;
+	if type(sl) == "number" and sl > 0 then d = d + K.sweep_d; end;
+	return d;
+end;
+
+-- Phase 0..5 of slot s (trf_region TRF_Phase; 0 without a record), clamped so a bad saved value never indexes past
+-- mc_inc or demand.
+function TRF_McPh(s)
+	return TRF_McCl(floor(TRF_N("TRF_Phase", s) or 0), 0, 5);
+end;
+
+-- Effective tier of region slot s: the real clan tier within the cfg tier cap (trf_region).
+function TRF_McTier(s)
+	local t = TRF_N("TRF_ClanTier", s) or 1;
+	local cap = TRF_N("TRF_RgTierCap") or 4;
+	return TRF_McCl(min(t, cap), 1, 4);
+end;
+
+-- Eligible rival home (13 section 4 Unlock): at least rv_home_n systems with a trader registration (map pc > 0), Vks
+-- systems not counted in chapters 13-15, no guard region while the guard holds.
+function TRF_McHomeOk(s, m, ch, T)
+	local e = m[s];
+	if type(e) ~= "table" or type(e.sys) ~= "table" then return nil; end;
+	if e.guard == 1 and TRF_N("TRF_RgGuardOn") then return nil; end;
+	local n = 0;
+	for i = 1, getn(e.sys) do
+		local idx = e.sys[i];
+		if (m.pc[idx] or 0) > 0 and not (ch >= 13 and ch <= 15 and TRF_N("TRF_RgTeam", idx) == "Vks") then n = n + 1; end;
+	end;
+	return n >= T.rv_home_n;
+end;
+
+-- Bloc of the player's office unit (GetRecruitGroupName, LN line 206), nil when none or unknown.
+function TRF_McOfficeBloc()
+	local k = nil;
+	if type(GetRecruitGroupName) == "function" then k = call(GetRecruitGroupName, {}, "x", TRF_McNoErr); end;
+	if type(k) ~= "string" or k == "" then return nil; end;
+	for c = 1, TRF_McK().nc do
+		local e = TRF_McClan(c);
+		if e.k == k then return e.b; end;
+	end;
+	return nil;
+end;
+
+-- Break (hp 0, 13 section 6): rl 2, fo := max(mc_break_min, fo - mc_break_fo), re-form not before cd legs and cj jumps,
+-- bh the region it broke in, absent (at 0); the stage at most 3 (a broken clan holds no stage 4 slot), the elite clan's
+-- fortune not below its floor (11.1).
+function TRF_McBreak(c, v, bh, why)
+	local T = TRF_McTune();
+	v.rl = 2; v.hp = 0;
+	v.fo = max(T.mc_break_min, v.fo - T.mc_break_fo);
+	if c == TRF_McElite() then v.fo = max(v.fo, TRF_McFloorOf(TRF_McChapter(), T)); end;
+	v.sg = min(v.sg, 3);
+	v.cd = TRF_McLegs() + T.rv_cd_legs;
+	v.cj = TRF_McJumps() + T.rv_cd_jumps;
+	v.bh = bh or 0;
+	v.at = 0; v.su = 0;
+	TRF_McE("break", "clan", c, "region", bh, "fortune", v.fo, "stage", v.sg, "reform_leg", v.cd, "reform_jump", v.cj, "reason", why);
+end;
+
+-- Re-form region (13 section 6): home unless it is bh, else the region nearest the home system other than bh (ties: the
+-- lower slot); 0 without regions.
+function TRF_McReformAt(c, bh, m)
+	local h = TRF_McHome(c);
+	if h and h ~= bh then return h; end;
+	local b, bd = nil, nil;
+	for s = 1, m.n do
+		local x = TRF_McSlotDist(c, s, m);
+		if s ~= bh and type(x) == "number" and (not b or x < bd) then b = s; bd = x; end;
+	end;
+	return b or h or 0;
+end;
+
+-- Wolves lead in region slot s (12 section 4, 13 section 4): the w digit of s minus rp_eq = floor(fo / 10); 0 without w.
+function TRF_McLeadOf(w, s, fo)
+	if type(w) ~= "string" or type(s) ~= "number" or s < 1 or s > strlen(w) then return 0; end;
+	return (tonumber(strsub(w, s, s)) or 0) - floor(fo / 10);
+end;
+
+-- One region tick at leg L (12 section 6): creation, presence, fortune, losses, stage, rivals, re-form, hp recovery and
+-- the decays, in this order for every clan; one summary line.
+function TRF_Mc_RegionTick(L)
+	if type(TRF) ~= "table" or type(L) ~= "number" or not TRF_McOn() then return; end;
+	local ch = TRF_McChapter();
+	local K = TRF_McK();
+	if ch < K.first_ch then return; end;
+	local m = TRF_McMap();
+	if not m then return; end;
+	local R = TRF_McRec(1);
+	local T = TRF_McTune();
+	local J = TRF_McJumps();
+	local tk = floor(L / TRF_McRgTick());
+	local el = TRF_McElite();
+	local V = {};
+	for c = 1, K.nc do V[c] = TRF_McGet(c); end;
+	-- Presence for free clans in an order rotated by tick.
+	local d, cnt = {}, {};
+	for s = 1, m.n do d[s] = TRF_McDemand(s); end;
+	local st = TRF_McM(tk, K.nc);
+	for i = 0, K.nc - 1 do
+		local c = TRF_McM(st + i, K.nc) + 1;
+		local v = V[c];
+		local h = TRF_McHome(c);
+		if v.rl == 0 and h then
+			local dist = {};
+			for s = 1, m.n do dist[s] = TRF_McSlotDist(c, s, m); end;
+			local a = TRF_McPresenceOf(h, d, dist, cnt, m.n, T.merc_reach, K.region_max);
+			if a ~= v.at then TRF_McDE("presence", "clan", c, "region", a, "region_before", v.at, "demand", d[a]); end;
+			v.at = a;
+			cnt[a] = (cnt[a] or 0) + 1;
+		elseif v.rl == 1 and h then
+			v.at = h;
+		end;
+	end;
+	-- Fortune: income by the at region's phase, upkeep by stage, a rival's -2 while the Wolves lead in its home by 2,
+	-- off-screen losses in Raids; the elite floor.
+	for c = 1, K.nc do
+		local v = V[c];
+		if v.rl ~= 2 and v.at >= 1 then
+			local ph = TRF_McPh(v.at);
+			local fo0 = v.fo;
+			v.fo = v.fo + T.mc_inc[ph + 1] - TRF_McUpOf(T.mc_up[v.sg], tk);
+			if v.rl == 1 and TRF_McLeadOf(R.w, TRF_McHome(c), fo0) >= K.lead_min then v.fo = v.fo - K.lead_fo; end;
+			local hpmin = 0;
+			if c == el then hpmin = T.mc_el_hp; end;
+			if ph == K.raids and v.hp > hpmin and TRF_McRoll(c, tk, 7) < T.mc_loss_p * TRF_McTier(v.at) then
+				v.hp = v.hp - 1;
+				v.fo = v.fo - T.mc_loss_fo;
+				v.hl = L; v.hj = J;
+				TRF_McDE("loss", "clan", c, "region", v.at, "condition", v.hp, "tier", TRF_McTier(v.at));
+				if v.hp == 0 then TRF_McBreak(c, v, v.at, "raids"); end;
+			end;
+			if c == el and v.rl ~= 2 then v.fo = max(v.fo, TRF_McFloorOf(ch, T)); end;
+			v.fo = TRF_McCl(v.fo, 0, K.fo_max);
+			if v.fo ~= fo0 then TRF_McDE("income", "clan", c, "fortune_before", fo0, "fortune", v.fo, "phase", ph, "stage", v.sg); end;
+		end;
+	end;
+	-- Stage rule, then the stage 4 slots (slot 1 reserved for the elite clan, 11.1; a clan already at stage 4 keeps its
+-- slot before a newcomer, merc-spec Decisions).
+	local hold, want = {}, {};
+	for c = 1, K.nc do
+		local v = V[c];
+		if v.rl ~= 2 then
+			local cap = TRF_McCapOf(v.ml, v.mk, J, T.mc_bs_j);
+			v.ns, v.su = TRF_McStageOf(v.fo, v.sg, v.su, T.mc_st_up, T.mc_st_dn, cap);
+			if v.ns == 4 and c ~= el then
+				if v.sg == 4 then tinsert(hold, c); else tinsert(want, c); end;
+			end;
+		else
+			v.ns = v.sg;
+		end;
+	end;
+	local slots = T.mc_ms_max;
+	if el >= 1 then slots = slots - 1; end;
+	-- Holders keep their slot; newcomers take the free ones (each list by fortune, then hash).
+	hold = TRF_McRankOf(hold, V);
+	want = TRF_McRankOf(want, V);
+	for i = 1, getn(want) do tinsert(hold, want[i]); end;
+	want = hold;
+	for i = 1, getn(want) do
+		if i > slots then
+			local v = V[want[i]];
+			v.ns = 3; v.su = 1;
+		end;
+	end;
+	if el >= 1 and V[el].ns == 4 and T.mc_ms_max < 1 then V[el].ns = 3; end;
+	for c = 1, K.nc do
+		local v = V[c];
+		if v.ns ~= v.sg then
+			TRF_McE("stage", "clan", c, "stage_before", v.sg, "stage", v.ns, "fortune", v.fo);
+			v.sg = v.ns;
+		end;
+		v.ns = nil;
+	end;
+	-- Roles: rivals (rv_enabled), re-form of broken clans.
+	TRF_McRoles(V, m, ch, T, L, J, el);
+	-- hp recovery outside Raids, then the decays.
+	for c = 1, K.nc do
+		local v = V[c];
+		if v.rl ~= 2 and v.hp < K.hp_max and v.at >= 1 and TRF_McPh(v.at) ~= K.raids
+			and L - v.hl >= T.mc_hp_ticks * TRF_McRgTick() and J - v.hj >= T.mc_hp_jumps then
+			v.hp = v.hp + 1; v.hl = L; v.hj = J;
+			TRF_McDE("recover", "clan", c, "condition", v.hp);
+		end;
+		TRF_McDecay(c, v, T, L, J);
+	end;
+	for c = 1, K.nc do TRF_McPut(c, V[c]); end;
+	TRF_McWDecay(T, L);
+	local fs, ss, rs = "", "", "";
+	for c = 1, K.nc do
+		if c > 1 then fs = fs..","; ss = ss..","; rs = rs..","; end;
+		fs = fs..V[c].fo; ss = ss..V[c].sg; rs = rs..V[c].rl;
+	end;
+	TRF_McE("tick", "legs", L, "tick", tk, "jumps", J, "fortunes", fs, "stages", ss, "roles", rs);
+end;
+
+-- Roles at the tick (12 section 6 Roles): with cfg rv_enabled 1 rivals leave at rel >= 1, stage 1 or an ineligible
+-- home and empty slots (rv_count) take the best candidate (TRF_McRivalOf; a clan released at this tick waits for the
+-- next); with 0 no clan is a rival. Broken clans re-form at legs >= cd and jumps >= cj: hp 4, stage by fortune (1 or 2;
+-- the elite clan at its floor, up to the closure cap, 11.1), g at most 3, free, in a region other than bh.
+function TRF_McRoles(V, m, ch, T, L, J, el)
+	local K = TRF_McK();
+	local on = TRF_McOpt("rv_enabled") == 1;
+	local nr = 0;
+	local out = {};
+	for c = 1, K.nc do
+		local v = V[c];
+		if v.rl == 1 then
+			local h = TRF_McHome(c);
+			local why = nil;
+			if not on then why = "off";
+			elseif v.rel >= 1 then why = "standing";
+			elseif v.sg <= 1 then why = "stage";
+			elseif not h or not TRF_McHomeOk(h, m, ch, T) then why = "home"; end;
+			if why then
+				v.rl = 0; out[c] = 1;
+				TRF_McE("role", "clan", c, "role", 0, "role_before", 1, "reason", why);
+			else
+				nr = nr + 1;
+			end;
+		end;
+	end;
+	if on then
+		local ob = TRF_McOfficeBloc();
+		while nr < T.rv_count do
+			local taken = {};
+			for c = 1, K.nc do if V[c].rl == 1 then taken[TRF_McHome(c) or 0] = 1; end; end;
+			local l = {};
+			for c = 1, K.nc do
+				local v = V[c];
+				local h = TRF_McHome(c);
+				local ok, tkn, e, rl = 0, 0, 0, v.rl;
+				if h and TRF_McHomeOk(h, m, ch, T) then ok = 1; end;
+				if h and taken[h] then tkn = 1; end;
+				if c == el then e = 1; end;
+				if out[c] then rl = -1; end;
+				tinsert(l, {c=c, rl=rl, rel=v.rel, sg=v.sg, ek=v.ek, ok=ok, b=TRF_McClan(c).b, fo=v.fo, hz=TRF_McHash(c, L, 13), el=e, tk=tkn});
+			end;
+			local c = TRF_McRivalOf(l, ob);
+			if not c then break; end;
+			V[c].rl = 1; V[c].at = TRF_McHome(c);
+			nr = nr + 1;
+			TRF_McE("role", "clan", c, "role", 1, "role_before", 0, "standing", V[c].rel, "fortune", V[c].fo, "office_bloc", ob);
+		end;
+	end;
+	for c = 1, K.nc do
+		local v = V[c];
+		if v.rl == 2 and L >= v.cd and J >= v.cj then
+			v.rl = 0; v.hp = K.hp_max;
+			local mx = 2;
+			if c == el then
+				v.fo = max(v.fo, TRF_McFloorOf(ch, T));
+				mx = TRF_McCapOf(v.ml, v.mk, J, T.mc_bs_j);
+				if T.mc_ms_max < 1 then mx = min(mx, 3); end;
+			end;
+			v.sg = TRF_McStageOfFo(v.fo, T.mc_st_up, mx);
+			v.g = min(v.g, 3);
+			v.at = TRF_McReformAt(c, v.bh, m);
+			v.su = 0; v.hl = L; v.hj = J;
+			TRF_McE("reform", "clan", c, "region", v.at, "region_before", v.bh, "fortune", v.fo, "stage", v.sg);
+		end;
+	end;
+end;
+
+-- Decays of clan c at the tick (12 section 4 "What feeds what"): positive rel one step toward 0 after merc_rel_decay legs
+-- without a meeting (met, rd); negative rel one step per merc_rel_j jumps (rj); g -1 per rv_g_decay legs (gt); bk -1 per
+-- merc_bk_j jumps (bj); an unpaid owe written off after merc_owe_j jumps (oj) with rel := -3. Each count runs from its
+-- stamp, which the writer of the value sets (TRF_Mc_Mark; a stamp of 0 counts from jump or leg 0).
+function TRF_McDecay(c, v, T, L, J)
+	if v.rel > 0 then
+		if L - max(v.met, v.rd) >= T.merc_rel_decay then v.rel = v.rel - 1; v.rd = L; TRF_McDE("decay", "clan", c, "field", "rel", "value", v.rel); end;
+	elseif v.rel < 0 and J - v.rj >= T.merc_rel_j then
+		v.rel = v.rel + 1; v.rj = J; TRF_McDE("decay", "clan", c, "field", "rel", "value", v.rel);
+	end;
+	if v.g > 0 and L - v.gt >= T.rv_g_decay then v.g = v.g - 1; v.gt = L; TRF_McDE("decay", "clan", c, "field", "g", "value", v.g); end;
+	if v.bk > 0 and J - v.bj >= T.merc_bk_j then v.bk = v.bk - 1; v.bj = J; TRF_McDE("decay", "clan", c, "field", "bk", "value", v.bk); end;
+	if v.owe > 0 and J - v.oj >= T.merc_owe_j then
+		TRF_McE("owe", "clan", c, "amount", v.owe, "jumps", J - v.oj, "result", "written_off");
+		v.owe = 0; v.oj = 0; v.rel = -3; v.rj = J;
+	end;
+end;
+
+-- Writes rel, g, bk or owe of clan c (the later steps' events) with the stamp its decay counts from: rd/rj for rel (legs
+-- for a positive, jumps for a negative value), gt for g, bj for bk, oj when an owe starts. Returns the value written.
+function TRF_Mc_Mark(c, k, x)
+	if not TRF_McRec() or not TRF_McCOk(c) or type(x) ~= "number" then return nil; end;
+	local v = TRF_McGet(c);
+	local L, J = TRF_McLegs(), TRF_McJumps();
+	if k == "rel" then
+		v.rel = TRF_McCl(floor(x), -3, 3); v.rd = L; v.rj = J;
+	elseif k == "g" then
+		v.g = TRF_McCl(floor(x), 0, 9); v.gt = L;
+	elseif k == "bk" then
+		v.bk = TRF_McCl(floor(x), 0, 9); v.bj = J;
+	elseif k == "owe" then
+		if v.owe <= 0 then v.oj = J; end;
+		v.owe = TRF_McCl(floor(x), 0, TRF_McK().money);
+		if v.owe == 0 then v.oj = 0; end;
+	else
+		return nil;
+	end;
+	TRF_McPut(c, v);
+	return v[k];
+end;
+
+-- Wolves ratings w (13 section 6; one digit per region slot): every rating -1 per rv_w_decay legs (stamp wt).
+function TRF_McWDecay(T, L)
+	local R = TRF_McRec();
+	if not R or type(R.w) ~= "string" or not strfind(R.w, "[1-9]") then return; end;
+	if type(R.wt) ~= "number" then R.wt = L; return; end;
+	if L - R.wt < T.rv_w_decay then return; end;
+	R.w = gsub(R.w, "(%d)", function(x) return tostring(max(0, tonumber(x) - 1)); end);
+	R.wt = L;
+	if not strfind(R.w, "[1-9]") then R.w = nil; R.wt = nil; end;
+end;
+
+-- Hire role (build step 3; 12 sections 4-6, 11.2-11.3; merc-spec 6a) -------------------------------------------
+
+-- Constants of the hire role without a cfg key (12 section 6): meeting radius, offer delay after the line, re-arm delay
+-- and offers per visit, grace after time out, HP window, pre-mission portal radius, portal delete radius, out-of-view
+-- distance and leave watchdog, flight numbers per visit and labels per number, attack re-arms, the kill window after a
+-- hit, the vanilla ship rescan, conversation retries and their delay, the load wait, the arrival delay, the 7.12 power
+-- offsets by tier, the full hull per mille, the SetHP fallback hull and the jump counter cap, the FTU help threshold,
+-- heat bands, the refusal standing, the escort offset at a rebuild, the vanilla pirate groups (my grep of CreateGroup in
+-- Locations, 12 section 6), the extortion group, the permanent exclusions (12 section 3); the patrol loop (user decision
+-- 2026-10-29): stations per loop, points per loop, the least gap between two points, the station standoff, the approach
+-- point short of the mothership and the drift of the mothership that renews it. Built once per MapInitialization (MC.hk).
+function TRF_McHK()
+	local mc = %MC;
+	if type(mc.hk) ~= "table" then
+		mc.hk = {meet_r=70, box_dt=12, rearm=60, box_max=2, grace=60, hp_win=30, pm_r=300, portal_r=25, ovd=600,
+			leave_s=120, nmax=4, jmax=6, arm_max=200, hit_win=10, rescan=10, tries=12, try_dt=5, load_wait=10, due_a=30,
+			due_b=90, off={-3, 0, 2, 3}, pm=1000, pm_min=550, hj_max=99, help=15, heat_lo=5, heat_max=7, rel_no=-2, ms_off=60,
+			pt_st=2, pt_max=5, pt_min=200, pt_off=300, ap_off=60, ap_re=100,
+			pir={"PiratesGroup_1", "Pirate_Group_1", "Pirate_Group_1_1", "Pirates_Group_1", "PirateGroup_1"},
+			money="group_Pirate_money",
+			excl={earth=1, precursors=1, disonsphere=1, fronn=1, nk=1, x297=1, x203=1, x213=1, x220=1, kassilia=1}};
+	end;
+	return mc.hk;
+end;
+
+function TRF_McGt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+function TRF_McGen()
+	if type(TRF) == "table" and type(TRF.gen) == "number" then return TRF.gen; end;
+	return 0;
+end;
+
+function TRF_McCur()
+	local i = TRF_N("TRF_CurIdx");
+	if type(i) == "number" then return i; end;
+	return nil;
+end;
+
+-- Lowercase map name of system idx (log values, exclusions), or the index as text.
+function TRF_McSysName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+-- Display name of system idx (lines).
+function TRF_McSysTxt(idx)
+	local s = TRF_N("TRF_UI_SysName", idx);
+	if type(s) == "string" then return s; end;
+	return TRF_McSysName(idx);
+end;
+
+-- Text of key with $1..$3 (trf_ui TRF_Txt; the module table when trf_ui is missing).
+function TRF_McTxt(key, a, b, c)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c); end;
+	local s = TRF_Mc_Text()[key];
+	if type(s) ~= "string" then return tostring(key); end;
+	local v = {a, b, c};
+	for i = 1, 3 do s = gsub(s, "%$"..i, tostring(v[i] or "")); end;
+	return s;
+end;
+
+-- Screen line, or the radio line of pilot (trf_ui TRF_Say, cfg ui_out 2).
+function TRF_McSay(text, secs, pilot)
+	if type(text) ~= "string" or text == "" then return nil; end;
+	return TRF_N("TRF_Say", text, secs or 8, pilot);
+end;
+
+function TRF_McStat(k, n) TRF_N("TRF_Stat", k, n); end;
+
+-- Engine objects (one native each, protected) --------------------------------------------
+
+function TRF_McObj(o)
+	if o == nil or type(o) == "number" or type(o) == "string" or type(o) == "function" then return nil; end;
+	return 1;
+end;
+
+function TRF_McAliveRaw(o)
+	if o:IsAlive() then return 1; end;
+	return nil;
+end;
+
+function TRF_McAlive(o)
+	if not TRF_McObj(o) then return nil; end;
+	return call(TRF_McAliveRaw, {o}, "x", TRF_McNoErr);
+end;
+
+function TRF_McPosRaw(o)
+	local p = o:GetPosition();
+	return {x=p.x, y=p.y, z=p.z};
+end;
+
+function TRF_McPos(o)
+	if not TRF_McObj(o) then return nil; end;
+	return call(TRF_McPosRaw, {o}, "x", TRF_McNoErr);
+end;
+
+function TRF_McD3(a, b)
+	if type(a) ~= "table" or type(b) ~= "table" or type(a.x) ~= "number" or type(b.x) ~= "number" then return nil; end;
+	local dx, dy, dz = a.x - b.x, (a.y or 0) - (b.y or 0), (a.z or 0) - (b.z or 0);
+	return sqrt(dx * dx + dy * dy + dz * dz);
+end;
+
+function TRF_McDelRaw(o)
+	o:Delete();
+	return 1;
+end;
+
+function TRF_McDel(o)
+	if not TRF_McObj(o) then return nil; end;
+	return call(TRF_McDelRaw, {o}, "x", TRF_McNoErr);
+end;
+
+function TRF_McHpRaw(o)
+	return GetCurHP(o);
+end;
+
+function TRF_McHp(o)
+	if not TRF_McObj(o) or type(GetCurHP) ~= "function" then return nil; end;
+	local v = call(TRF_McHpRaw, {o}, "x", TRF_McNoErr);
+	if type(v) == "number" then return v; end;
+	return nil;
+end;
+
+function TRF_McSetHpRaw(o, v)
+	o:SetHP(v);
+	return 1;
+end;
+
+-- SetHP (CHECK E0.20); 1 when the call ran.
+function TRF_McSetHp(o, v)
+	if not TRF_McObj(o) or type(v) ~= "number" then return nil; end;
+	return call(TRF_McSetHpRaw, {o, v}, "x", TRF_McNoErr);
+end;
+
+function TRF_McPilotRaw(o)
+	return o:GetPilot();
+end;
+
+function TRF_McPilot(o)
+	if not TRF_McAlive(o) then return nil; end;
+	return call(TRF_McPilotRaw, {o}, "x", TRF_McNoErr);
+end;
+
+function TRF_McTrig(kind, cb, a, b, c)
+	if type(NewTrigger) ~= "function" then return nil; end;
+	return call(NewTrigger, {kind, nil, cb, a, b, c}, "x", TRF_McErr);
+end;
+
+-- Callback string with the current TRF.gen last (traffic's rule, T_BadCallbacks): TRF_McCb("TRF_McDied", 1, 3) ->
+-- "TRF_McDied(1,3,<gen>)--"; b nil gives name(a,<gen>)--.
+function TRF_McCb(name, a, b)
+	if b == nil then return name.."("..a..","..TRF_McGen()..")--"; end;
+	return name.."("..a..","..b..","..TRF_McGen()..")--";
+end;
+
+function TRF_McOrderRaw(o, how, a)
+	if how == "escort" then o:Escort(a);
+	elseif how == "portal" then o:ComeToPortal(a);
+	elseif how == "move" then o:Move(a);
+	elseif how == "patrol" then o:Patrol(a, TRUE);
+	elseif how == "stop" then o:Stop();
+	elseif how == "attack" then o:Attack(a);
+	elseif how == "start" then o:Start(8, 0); end;
+	return 1;
+end;
+
+function TRF_McOrder(o, how, a)
+	if not TRF_McObj(o) then return nil; end;
+	return call(TRF_McOrderRaw, {o, how, a}, "x", TRF_McErr);
+end;
+
+function TRF_McRelRaw(a, b, rel)
+	SetGroupRelation(a, b, rel);
+	SetGroupRelation(b, a, rel);
+	return 1;
+end;
+
+-- Group relation both ways (group names, M6 and S15: group level only).
+function TRF_McRel2(a, b, rel)
+	if type(SetGroupRelation) ~= "function" or rel == nil then return nil; end;
+	return call(TRF_McRelRaw, {a, b, rel}, "x", TRF_McErr);
+end;
+
+function TRF_McGrpRel(a, b)
+	if type(GetGroupRelation) ~= "function" then return nil; end;
+	return call(GetGroupRelation, {a, b}, "x", TRF_McNoErr);
+end;
+
+-- 1 when a group of that name exists in this scene (GetOwnerTeamOfGroup, nil for an unknown name: vanilla's own
+-- probe, DefStation.script 38), protected; 1 when the native is absent.
+function TRF_McGrpIn(gn)
+	if type(GetOwnerTeamOfGroup) ~= "function" then return 1; end;
+	if call(GetOwnerTeamOfGroup, {gn}, "x", TRF_McNoErr) then return 1; end;
+	return nil;
+end;
+
+function TRF_McEntryRaw(o, d)
+	local p = o:GetEntryPoint(d);
+	return {x=p.x, y=p.y, z=p.z};
+end;
+
+function TRF_McOnRaw(o)
+	return o:IsEnabled();
+end;
+
+-- 1 when portal o is usable (IsEnabled answers true, or the portal has no IsEnabled).
+function TRF_McEnabled(o)
+	if not TRF_McObj(o) then return nil; end;
+	if type(o) == "table" and o.IsEnabled == nil then return 1; end;
+	local v = call(TRF_McOnRaw, {o}, "x", TRF_McNoErr);
+	if v == nil or v == 0 or (FALSE ~= nil and v == FALSE) then return nil; end;
+	return 1;
+end;
+
+function TRF_McMs() return TRF_N("TRF_Ms"); end;
+
+-- The team of a clan flight: CreateTeam("Merc") on every spawn, as m18c_escort does (OutOfMission.script:271); the
+-- E0.13 fallback (the mod team TRF_Merc, 12 section 3) is this one change.
+function TRF_McTeam()
+	return TRF_N("CreateTeam", "Merc");
+end;
+
+-- Pure rules of the hire (host-testable) --------------------------------------------------
+
+-- x rounded to the nearest 100.
+function TRF_McR100(x)
+	return floor(x / 100 + 0.5) * 100;
+end;
+
+-- Strength (12 section 4, UC D.1): clamp(sys_base + off(T_eff) + mc_st_off[fielded stage] - (4 - hp), 1, 20).
+function TRF_McPwOf(sb, t, so, hp)
+	local off = TRF_McHK().off[TRF_McCl(t, 1, 4)];
+	return TRF_McCl(floor(sb + off + so - (4 - hp)), 1, 20);
+end;
+
+-- Fee (12 section 5): round100(min(c_hire x L_w x d_k x tier_k x (1 + 0.05 pro) x mc_size_k x disc x heat_k x
+-- (1 + 0.1 (4 - hp)) x el_k, pay_cap)); disc = 1 - 0.1 x max(rel, -1), 0.1 less at help >= 15; heat_k 1.5 at heat 5-6.
+-- f = {ch (c_hire), lk (L_w x d_k), tk, pro, sk (mc_size_k), rel, help, heat, hp, ek (Legion premium or 1), cap}.
+-- Returns fee, disc, heat_k.
+function TRF_McFeeOf(f)
+	local HK = TRF_McHK();
+	local disc = 1 - 0.1 * max(f.rel, -1);
+	if f.help >= HK.help then disc = disc - 0.1; end;
+	local hk = 1;
+	if f.heat >= HK.heat_lo and f.heat < HK.heat_max then hk = 1.5; end;
+	local x = f.ch * f.lk * f.tk * (1 + 0.05 * f.pro) * f.sk * disc * hk * (1 + 0.1 * (4 - f.hp)) * (f.ek or 1);
+	return TRF_McR100(min(x, f.cap)), disc, hk;
+end;
+
+-- Prize share (12 section 5): round100(c_share x L_w^2 x d_k); blood money c_blood x share.
+function TRF_McShareOf(cs, lw, dk, cb)
+	local sh = TRF_McR100(cs * lw * lw * dk);
+	return sh, cb * sh;
+end;
+
+-- Appearance chance % (12 section 6): merc_p[phase] + merc_sweep_p with a sweep scheduled, at most merc_p_max, times the
+-- owner factor.
+function TRF_McPOf(pp, sp, pmax, ok)
+	return min(pp + sp, pmax) * ok;
+end;
+
+-- Owner factor (12 section 3): Vks-owned x0.5 in chapters 7-11 and 16-20, x0 in 12-15; Kfni-owned x1.25 in 7-11.
+function TRF_McOwnerKOf(team, ch)
+	if team == "Vks" then
+		if ch >= 12 and ch <= 15 then return 0; end;
+		if ch >= 7 then return 0.5; end;
+	elseif team == "Kfni" and ch >= 7 and ch <= 11 then
+		return 1.25;
+	end;
+	return 1;
+end;
+
+-- Weighted pick: l = {{c, w}, ...}, r 0..sum(w) - 1 -> c.
+function TRF_McPickOf(l, r)
+	local a = 0;
+	for i = 1, getn(l) do
+		a = a + l[i].w;
+		if r < a then return l[i].c; end;
+	end;
+	if getn(l) > 0 then return l[getn(l)].c; end;
+	return nil;
+end;
+
+-- Hull per mille 1..1000 of a live ship (hp of hp0, rounded up), 0 for none.
+function TRF_McPmOf(hp, hp0)
+	if type(hp) ~= "number" or type(hp0) ~= "number" or hp0 <= 0 or hp <= 0 then return 0; end;
+	return TRF_McCl(-floor(-1000 * hp / hp0), 1, 1000);
+end;
+
+-- Off-screen repair per ship in per mille (12 section 6 End of a hire, user decision 2026-10-25): kj per jump made with
+-- the player (hj) plus ks per game second of suspended visits (s). The caller adds it to a live hull and caps at 1000.
+function TRF_McHealOf(hj, s, kj, ks)
+	return floor(kj * max(0, hj or 0) + ks * max(0, s or 0));
+end;
+
+-- Composition code of a fielded stage (12 section 4 table): 1 Rec_Fighters at most 4 (stage 1, unit type 1), 2
+-- Rec_Bombers at most 4 (stage 1, unit type 2), 3 Rec_Fighters at most 3 plus Rec_Bombers at pw - 2 at most 3 (stage 2).
+function TRF_McCompOf(ty, fs)
+	if fs >= 2 then return 3; end;
+	if ty == 2 then return 2; end;
+	return 1;
+end;
+
+-- Settlement (12 section 5): share k x sh, blood money lo x bm, total.
+function TRF_McSettleOf(k, sh, lo, bm)
+	return k * sh, lo * bm, k * sh + lo * bm;
+end;
+
+-- Completion rule (12 section 4): half of merc_hire_s flown or one counted kill.
+function TRF_McDoneOf(el, hs, k)
+	if el * 2 >= hs or k >= 1 then return 1; end;
+	return nil;
+end;
+
+-- Refusal roll (12 section 5 Settlement; the raid decision of trf_raid): leave chance = the comply chance with the pack
+-- as the deciding side (st = pack power x live ships, sr = the player's group strength, br = braveness); roll 0..99.
+-- Returns "leave" or "attack".
+function TRF_McRollOf(st, sr, br, roll)
+	local p = TRF_N("TRF_Rd_ComplyOf", st, sr, br);
+	if type(p) ~= "number" then p = TRF_McCl(100 - 100 * br * st / max(sr, 0.001), 5, 95); end;
+	if roll < p then return "leave", p; end;
+	return "attack", p;
+end;
+
+-- Hire record, collection flag, owe -------------------------------------------------------
+
+-- The hire record TRF.mc.h unpacked, or nil.
+function TRF_McH()
+	local R = TRF_McRec();
+	if not R or type(R.h) ~= "string" then return nil; end;
+	local h = TRF_TpUnpackK(R.h, TRF_McHKeys());
+	if not h or not TRF_McCOk(h.c) then return nil; end;
+	return h;
+end;
+
+-- Writes the hire record (nil clears h and hb).
+function TRF_McPutH(h, hb)
+	local R = TRF_McRec();
+	if not R then return; end;
+	if type(h) ~= "table" then R.h = nil; R.hb = nil; return; end;
+	R.h = TRF_TpPackK(h, TRF_McHKeys());
+	R.hb = hb;
+end;
+
+-- Hull per mille of the record by label index (table j -> 0..1000; hb holds 4 digits per slot).
+function TRF_McHull()
+	local R = TRF_McRec();
+	local b = {};
+	if R and type(R.hb) == "string" then
+		for j = 1, floor(strlen(R.hb) / 4) do b[j] = tonumber(strsub(R.hb, 4 * j - 3, 4 * j)) or 0; end;
+	end;
+	return b;
+end;
+
+-- Hull string: 4 digits per slot 1..n of p (j -> 0..1000, missing 0), nil for n 0.
+function TRF_McHullStr(p, n)
+	local s = "";
+	for j = 1, n or 0 do s = s..format("%04d", TRF_McCl(floor(p[j] or 0), 0, 1000)); end;
+	if s == "" then return nil; end;
+	return s;
+end;
+
+-- 1 when s is a readable hull string: 1..jmax slots of 4 digits, each at most 1000.
+function TRF_McHullOk(s)
+	if type(s) ~= "string" or strfind(s, "[^%d]") then return nil; end;
+	local n = strlen(s) / 4;
+	if n < 1 or n > TRF_McHK().jmax or n ~= floor(n) then return nil; end;
+	for j = 1, n do if tonumber(strsub(s, 4 * j - 3, 4 * j)) > 1000 then return nil; end; end;
+	return 1;
+end;
+
+-- Collection flag TRF.mc.o (12 section 5): the clan and the system of a debt left by a jump without settling, or nil.
+function TRF_McOKeys() return {"c", "s"}; end;
+
+function TRF_McO()
+	local R = TRF_McRec();
+	if not R or type(R.o) ~= "string" then return nil; end;
+	local o = TRF_TpUnpackK(R.o, TRF_McOKeys());
+	if not o or not TRF_McCOk(o.c) then return nil; end;
+	return o;
+end;
+
+function TRF_McPutO(c, s)
+	local R = TRF_McRec();
+	if not R then return; end;
+	if not TRF_McCOk(c) then R.o = nil; return; end;
+	R.o = TRF_TpPackK({c=c, s=s or 0}, TRF_McOKeys());
+end;
+
+-- Every clan's owe added up (the Exchange keeps one book, 12 section 5).
+function TRF_McOweAll()
+	local n = 0;
+	for c = 1, TRF_McK().nc do n = n + TRF_McT(c).owe; end;
+	return n;
+end;
+
+-- Adds a to clan c's owe (stamped by TRF_Mc_Mark); rel -1 with rl 1 (a shortfall or a refusal).
+function TRF_McOwe(c, a, rl, why)
+	if not TRF_McCOk(c) or type(a) ~= "number" or a <= 0 then return; end;
+	TRF_Mc_Mark(c, "owe", TRF_McT(c).owe + floor(a));
+	if rl == 1 then TRF_Mc_Mark(c, "rel", TRF_McRel(c) - 1); end;
+	TRF_McE("owe", "clan", c, "amount", floor(a), "owe", TRF_McT(c).owe, "standing", TRF_McRel(c), "result", "added", "reason", why);
+end;
+
+-- Visit state ------------------------------------------------------------------------------
+
+-- The visit's clan flight (MC.v, never saved): {n, c, st, idx, cp (composition), pw, sh = {j -> ship}, fl, dead, gone,
+-- hp0, lh, nj, n0, fee, sh1 (share), bm, k, lo, tr, el, pp (patrol points {x, y, z}), ap (1 while approaching), am (the
+-- mothership at the last approach order), ...}; st due, wait, meet, offer, noh, hired, ask, leave, war, susp, void, gone.
+function TRF_McV() return %MC.v; end;
+
+-- Next flight number of the visit (1..nmax), nil when used up.
+function TRF_McAlloc()
+	local mc = %MC;
+	local n = (mc.nx or 0) + 1;
+	if n > TRF_McHK().nmax then return nil; end;
+	mc.nx = n;
+	return n;
+end;
+
+-- Live ships of flight v.
+function TRF_McAliveN(v)
+	local n = 0;
+	if type(v) ~= "table" or type(v.sh) ~= "table" then return 0; end;
+	for j = 1, v.nj or 0 do
+		local s = v.sh[j];
+		if s and not v.dead[j] and not v.gone[j] and TRF_McAlive(s) then n = n + 1; end;
+	end;
+	return n;
+end;
+
+-- Live merc ships of the visit (ev of TRF_CanSpawn kind merc).
+function TRF_McLive()
+	local v = TRF_McV();
+	if type(v) ~= "table" or v.del == 1 then return 0; end;
+	return TRF_McAliveN(v);
+end;
+
+-- First live ship of v (the leader).
+function TRF_McLead(v)
+	if type(v) ~= "table" or type(v.sh) ~= "table" then return nil; end;
+	for j = 1, v.nj or 0 do
+		local s = v.sh[j];
+		if s and not v.dead[j] and not v.gone[j] and TRF_McAlive(s) then return s; end;
+	end;
+	return nil;
+end;
+
+function TRF_McHired(v)
+	return type(v) == "table" and (v.st == "hired" or v.st == "ask");
+end;
+
+-- Why clan visits cannot happen in system idx now, or nil: permanent exclusion, strict gate of feature merc (deny entries
+-- with merc = 0 included), suppression (TRF_Supp).
+function TRF_McSysWhy(idx)
+	if type(idx) ~= "number" then return "system"; end;
+	if TRF_McHK().excl[TRF_McSysName(idx)] then return "excluded"; end;
+	if type(TRF_StrictOk) == "function" then
+		local ok, w = TRF_StrictOk(idx, "merc");
+		if not ok then return "strict:"..tostring(w); end;
+	end;
+	local sp = TRF_N("TRF_Supp");
+	if type(sp) == "number" and sp ~= 0 then return "supp"; end;
+	return nil;
+end;
+
+-- 1 when a hired wing can follow the player into system idx (12 section 6 End of a hire): not excluded, the strict gate
+-- of feature merc passes there, no deny entry with merc = 0.
+function TRF_McCanGo(idx)
+	if type(idx) ~= "number" then return nil; end;
+	local nm = TRF_McSysName(idx);
+	if TRF_McHK().excl[nm] then return nil; end;
+	local e = TRF_N("TRF_DenyEntry", nm);
+	if type(e) == "table" and e.merc == 0 then return nil; end;
+	if type(TRF_StrictOk) == "function" and not TRF_StrictOk(idx, "merc") then return nil; end;
+	return 1;
+end;
+
+-- TRF_McCanGo of system idx cached for 10 s per visit (the pre-mission check asks it for every portal each second; the
+-- strict gate logs and counts each denial).
+function TRF_McCanGoC(idx)
+	local mc = %MC;
+	if type(mc.cg) ~= "table" then mc.cg = {}; end;
+	local e = mc.cg[idx];
+	local gt = TRF_McGt();
+	if type(e) == "table" and gt >= e.t and gt - e.t < 10 then return e.v; end;
+	local v = TRF_McCanGo(idx);
+	mc.cg[idx] = {v=v, t=gt};
+	return v;
+end;
+
+-- Mission signal (12 section 6): GetPlayerQuestState() == TRUE or a quest of system idx in process (trf_loc).
+function TRF_McSignal(idx)
+	if TRF_N("GetPlayerQuestState") == TRUE then return 1; end;
+	if TRF_N("TRF_QuestActive", idx) == 1 then return 1; end;
+	return nil;
+end;
+
+-- Rows of composition cp at power pw (TRF_TrTabs __tablevel): {{t = row, m = at most, p = power}, ...}, nil without the
+-- vanilla tables.
+function TRF_McRows(cp, pw)
+	if type(Rec_Fighters) ~= "table" or type(Rec_Bombers) ~= "table" then return nil; end;
+	local tl = TRF_N("TRF_TrTabs");
+	if type(tl) ~= "table" then tl = {1,1,2,3,4,5,6,6,7,8,9,10,11,12,12,13,14,15,16,17}; end;
+	local pb = max(1, pw - 2);
+	local f, b = Rec_Fighters[tl[pw]], Rec_Bombers[tl[pw]];
+	if cp == 1 then return {{t=f, m=4, p=pw}}; end;
+	if cp == 2 then return {{t=b, m=4, p=pw}}; end;
+	return {{t=f, m=3, p=pw}, {t=Rec_Bombers[tl[pb]], m=3, p=pb}};
+end;
+
+-- Ships the rows build (each row at most m entries).
+function TRF_McRowsN(rows)
+	local n = 0;
+	if type(rows) ~= "table" then return 0; end;
+	for i = 1, getn(rows) do
+		if type(rows[i].t) == "table" then n = n + min(getn(rows[i].t), rows[i].m); end;
+	end;
+	return n;
+end;
+
+-- Plan of clan c in system idx: fielded stage, composition, power, rows, ships.
+function TRF_McPlan(c, idx)
+	local T = TRF_McTune();
+	local fs = TRF_Mc_Fielded(c);
+	local cp = TRF_McCompOf(TRF_McClan(c).ty, fs);
+	local sb = TRF_N("TRF_SysBase", idx);
+	if type(sb) ~= "number" then sb = 5; end;
+	local te = TRF_N("TRF_EffTier", idx);
+	if type(te) ~= "number" then te = 1; end;
+	local pw = TRF_McPwOf(sb, te, T.mc_st_off[fs], TRF_McDig(c, "hp"));
+	local rows = TRF_McRows(cp, pw);
+	return {fs=fs, cp=cp, pw=pw, rows=rows, n=TRF_McRowsN(rows)};
+end;
+
+-- Price of clan c in system idx (12 section 5, 11.3): fee, share, blood money and the terms that set the fee.
+function TRF_McPrice(c, idx, fs)
+	local T = TRF_McTune();
+	local lw = TRF_N("TRF_LPay", idx);
+	if type(lw) ~= "number" then lw = 8; end;
+	local dk = TRF_N("TRF_DK");
+	if type(dk) ~= "number" then dk = 1; end;
+	local cap = 30000;
+	local rt = TRF_N("TRF_RgTune");
+	if type(rt) == "table" and type(rt.pay_cap) == "number" then cap = rt.pay_cap; end;
+	local ek = 1;
+	if c == TRF_McElite() then ek = T.mc_el_fee_k; end;
+	local std = {};
+	if type(TRF.std) == "table" then std = TRF.std; end;
+	local f = {ch=T.c_hire, lk=lw * dk, tk=TRF_N("TRF_TierK", idx) or 1, pro=TRF_N("TRF_Pro", idx) or 0, sk=T.mc_size_k[fs],
+		rel=TRF_McRel(c), help=std.help or 0, heat=std.heat or 0, hp=TRF_McDig(c, "hp"), ek=ek, cap=cap};
+	local fee, disc, hk = TRF_McFeeOf(f);
+	local sh, bm = TRF_McShareOf(T.c_share, lw, dk, T.c_blood);
+	return {fee=fee, sh=sh, bm=bm, disc=disc, hk=hk, help=f.help, heat=f.heat, hp=f.hp};
+end;
+
+-- Appearance (12 section 6) ----------------------------------------------------------------
+
+-- Entry: the visit starts empty (MC is rebuilt by MapInitialization; this also covers a host entry without one).
+function TRF_Mc_OnEnter()
+	local mc = %MC;
+	mc.v = nil; mc.nx = 0; mc.cv = nil; mc.dlg = nil; mc.rh = {}; mc.rk = {}; mc.bl = nil; mc.lw = nil; mc.cg = nil;
+end;
+
+-- Activation (after TRF_Pc_OnActivate): the next-entry note, then an open hire follows the player (its wing is rebuilt
+-- here) or the appearance roll of a hire offer. Nothing at chapter < 5 or with cfg merc 0.
+function TRF_Mc_OnActivate()
+	if type(TRF) ~= "table" or not TRF_McOn() or TRF_McChapter() < TRF_McK().first_ch then return; end;
+	local mc = %MC;
+	if type(mc.rh) ~= "table" then mc.rh = {}; mc.rk = {}; end;
+	TRF_McRec(1);
+	local cur = TRF_McCur();
+	TRF_McNote();
+	if TRF_McH() then TRF_McFollow(cur, "arrival"); return; end;
+	TRF_McAppear(cur);
+end;
+
+-- The next-entry note TRF.mc.n {c, a}: a 1 the Exchange blacklist, 2 a debt left by a jump; shown through the arrival
+-- line queue, then dropped.
+function TRF_McNote()
+	local R = TRF_McRec();
+	if not R or type(R.n) ~= "string" then return; end;
+	local e = TRF_TpUnpackK(R.n, TRF_McNKeys());
+	R.n = nil;
+	if not e or not TRF_McCOk(e.c) then return; end;
+	local t = TRF_McTxt("mcblack");
+	if e.a == 2 then t = TRF_McTxt("mcjumpowe", TRF_McClanName(e.c), TRF_McT(e.c).owe); end;
+	TRF_N("TRF_ArrivalLine", "merc", t);
+	TRF_McE("note", "clan", e.c, "kind", e.a);
+end;
+
+-- Appearance roll of a hire offer in system cur (12 section 6 Appearance): gates, chance, clan pick by fixed hash, the
+-- spawn due 30-90 s later. Returns the flight number or nil.
+function TRF_McAppear(cur)
+	local mc = %MC;
+	if mc.v then return nil; end;
+	local K, HK, T = TRF_McK(), TRF_McHK(), TRF_McTune();
+	local L = TRF_McLegs();
+	local ch = TRF_McChapter();
+	local slot = TRF_N("TRF_RgOf", cur);
+	local why = TRF_McSysWhy(cur);
+	if not why and not slot then why = "region"; end;
+	if not why and TRF_Mc_Blacked() then why = "black"; end;
+	if not why then
+		local e = TRF_N("GetQuestLabel", "OutMissionEscort");
+		if type(e) == "string" and e ~= "" then why = "escort_mission"; end;
+	end;
+	if not why and type(TRF.live) == "table" and TRF.live.esc ~= nil then why = "escort_slot"; end;
+	if not why then
+		local ev = TRF_N("TRF_EventSlot");
+		if ev == "sweep" or ev == "feq" then why = "event"; end;
+	end;
+	if why then TRF_McDE("roll", "system", TRF_McSysName(cur), "result", "none", "reason", why); return nil; end;
+	local ph = TRF_McPh(slot);
+	local sp = 0;
+	if type(TRF.rg) == "table" and type(TRF.rg[slot]) == "table" and (TRF.rg[slot].sl or 0) > 0 then sp = T.merc_sweep_p; end;
+	local ok = TRF_McOwnerKOf(TRF_N("TRF_RgTeam", cur), ch);
+	local p = TRF_McPOf(T.merc_p[ph + 1], sp, T.merc_p_max, ok);
+	local roll = TRF_McRoll(cur, L, 31);
+	if not (roll < p) then
+		TRF_McDE("roll", "system", TRF_McSysName(cur), "chance", TRF_F(p), "roll", roll, "result", "none", "reason", "roll");
+		return nil;
+	end;
+	local l, tot = {}, 0;
+	for c = 1, K.nc do
+		local v = TRF_McGet(c);
+		if v.rl == 0 and v.at == slot and (v.met == 0 or v.met + T.merc_cd <= L) then
+			tinsert(l, {c=c, w=v.rel + 4});
+			tot = tot + v.rel + 4;
+		end;
+	end;
+	if tot <= 0 then
+		TRF_McDE("roll", "system", TRF_McSysName(cur), "chance", TRF_F(p), "roll", roll, "result", "none", "reason", "no_clan");
+		return nil;
+	end;
+	local c = TRF_McPickOf(l, TRF_McM(TRF_McHash(cur, L, 57), tot));
+	local pl = TRF_McPlan(c, cur);
+	if pl.n <= 0 then TRF_McE("roll", "clan", c, "result", "none", "reason", "rows"); return nil; end;
+	if type(TRF_CanSpawn) == "function" then
+		local okc, no = TRF_CanSpawn(pl.n, "merc", TRF_McLive());
+		if not okc then
+			TRF_McE("roll", "clan", c, "system", TRF_McSysName(cur), "ship_count", pl.n, "result", "none", "reason", "cap:"..tostring(no));
+			return nil;
+		end;
+	end;
+	local n = TRF_McAlloc();
+	if not n then return nil; end;
+	local dt = HK.due_a + TRF_McM(TRF_McHash(cur, L, c), HK.due_b - HK.due_a + 1);
+	if not TRF_N("TRF_Due", dt, "TRF_McSpawnDue", n, c) then TRF_McE("roll", "clan", c, "result", "none", "reason", "due"); return nil; end;
+	mc.v = {n=n, c=c, st="due", idx=cur, fs=pl.fs, cp=pl.cp, pw=pl.pw, ns=pl.n};
+	TRF_McStat("merc_roll");
+	TRF_McE("roll", "system", TRF_McSysName(cur), "chance", TRF_F(p), "roll", roll, "clan", c, "candidate_count", getn(l),
+		"stage", pl.fs, "power", pl.pw, "ship_count", pl.n, "delay", dt, "result", "planned");
+	return n;
+end;
+
+-- Spawn ------------------------------------------------------------------------------------
+
+-- Portal of the spawn (the treasurer's rule of trf_stash TRF_ShRetPortal, copied): the portal of cur on the shortest
+-- path toward the clan's home system (jumps from TRF_RgNear, ties by system index) that is enabled, else the next.
+function TRF_McPortal(cur, home)
+	local m = TRF_N("TRF_Map");
+	if type(m) ~= "table" or type(m.sys) ~= "table" or type(m.sys[cur]) ~= "table" or type(m.sys[cur].portals) ~= "table" then return nil; end;
+	local dist = {};
+	if type(home) == "number" then
+		dist[home] = 0;
+		local nb = TRF_N("TRF_RgNear", home, 12);
+		if type(nb) == "table" then for k = 1, getn(nb) do dist[nb[k].idx] = nb[k].j; end; end;
+	end;
+	local l = {};
+	local ps = m.sys[cur].portals;
+	for k = 1, getn(ps) do
+		local q = ps[k];
+		if type(q) == "table" and type(q.to) == "string" and type(q.name) == "string" then
+			local t = m.by[strlower(q.to)];
+			if t then tinsert(l, {n=q.name, d=dist[t] or 99, t=t}); end;
+		end;
+	end;
+	sort(l, function(a, b) if a.d ~= b.d then return a.d < b.d; end; return a.t < b.t; end);
+	for k = 1, getn(l) do
+		local o = TRF_N("TRF_GnPortalObj", l[k].n);
+		if TRF_McEnabled(o) then return o, l[k].n; end;
+	end;
+	return nil;
+end;
+
+-- Nearest enabled map portal of cur to position p: object, name.
+function TRF_McNearPortal(cur, p)
+	local m = TRF_N("TRF_Map");
+	if type(m) ~= "table" or type(m.sys) ~= "table" or type(m.sys[cur]) ~= "table" or type(m.sys[cur].portals) ~= "table" then return nil; end;
+	local b, bn, bd = nil, nil, nil;
+	local ps = m.sys[cur].portals;
+	for k = 1, getn(ps) do
+		local q = ps[k];
+		if type(q) == "table" and type(q.name) == "string" and type(q.x) == "number" then
+			local o = TRF_N("TRF_GnPortalObj", q.name);
+			local d = TRF_McD3(p, {x=q.x, y=q.y or 0, z=q.z or 0}) or 0;
+			if TRF_McEnabled(o) and (not bd or d < bd) then b = o; bn = q.name; bd = d; end;
+		end;
+	end;
+	return b, bn;
+end;
+
+-- Named pilot templates of a built row (cfg mc_names 2, design/proposals/merc-pilot-names.md 5.2): the clan leader in
+-- slot 0 for label slot 1 of the first flight (js: the label slot of each row entry, so a rebuild without slot 1 gives
+-- the leader's name to nobody), the Ace-class entries (pilot list index 3..5) in slots 1..4 in row order; the name of
+-- each slot by its death digit p<slot> mod 2. nil without the merge.
+function TRF_McOv(c, row, f, st, js)
+	if TRF_N("TRF_Opt", "mc_names") ~= 2 or type(TRF_McName) ~= "function" then return nil; end;
+	local tl, tp = TRF_N("TRF_TrTabs");
+	if type(tp) ~= "table" then tp = {1, 2, 2, 3, 4}; end;
+	local ov = {};
+	local key = TRF_McClan(c).k;
+	for i = 1, getn(row) do
+		local slot = nil;
+		local sl = i;
+		if type(js) == "table" and type(js[i]) == "number" then sl = js[i]; end;
+		if f == 1 and sl == 1 then
+			slot = 0;
+		elseif (tp[TRF_McCl(floor(row[i][2] or 1), 1, 5)] or 1) >= 3 and st.a < 4 then
+			st.a = st.a + 1;
+			slot = st.a;
+		end;
+		if slot then ov[i] = TRF_McName(key, slot, TRF_McM(TRF_McDig(c, "p"..slot) or 0, 2)); end;
+	end;
+	return ov;
+end;
+
+-- Builds the flights of v at pos (12 section 6 Spawn): group TRF_Merc_<n> on the Merc team (global TRF_GMerc_<n> only
+-- around the builds), the rows of v.cp at v.pw with the clan pilot list (TRF_BuildFlight, formation shipFormationPyramid2),
+-- labels trf_merc_<n>_<j> (j the row slot, 1..6), handle globals TRF_ship_trf_merc_<n>_<j> (the TRF_GnKeepSign globals by
+-- slot, so a load finds them through TRF_GnFindG). pm (hull j -> 0..1000, nil: all): slot j with 0 is not built.
+-- Returns the ships built, or nil.
+function TRF_McBuild(v, pos, dir, pm)
+	local ok = call(TRF_McBuildRaw, {v, pos, dir, pm}, "x", TRF_McErr);
+	setglobal("TRF_GMerc_"..v.n, nil);
+	if ok then return ok; end;
+	TRF_McDelAll(v, "build");
+	return nil;
+end;
+
+function TRF_McBuildRaw(v, pos, dir, pm)
+	local rows = TRF_McRows(v.cp, v.pw);
+	if type(rows) ~= "table" or type(TRF_BuildFlight) ~= "function" then return nil; end;
+	local tm = TRF_McTeam();
+	if not TRF_McObj(tm) then return nil; end;
+	local gn = "TRF_Merc_"..v.n;
+	local grp = tm:CreateGroup(gn);
+	if not TRF_McObj(grp) then return nil; end;
+	local gg = "TRF_GMerc_"..v.n;
+	setglobal(gg, grp);
+	v.gn = gn; v.sh = {}; v.fl = {}; v.dead = {}; v.gone = {}; v.hp0 = {}; v.lh = {};
+	local pil = TRF_McPilots(v.c);
+	local j, made, st = 0, 0, {a=0};
+	for f = 1, getn(rows) do
+		local e = rows[f];
+		local full, fr, js = {}, {}, {};
+		if type(e.t) == "table" then for i = 1, min(getn(e.t), e.m) do tinsert(full, e.t[i]); end; end;
+		for i = 1, getn(full) do
+			if not pm or (pm[j + i] or 0) > 0 then tinsert(fr, full[i]); tinsert(js, j + i); end;
+		end;
+		j = j + getn(full);
+		if getn(fr) > 0 then
+			local p = Vector3(pos.x + 40 * (f - 1), pos.y, pos.z);
+			local fl, sh, mi = TRF_BuildFlight(pil, fr, gg, "trf_mercf_"..v.n.."_"..f, p, e.p, dir, "shipFormationPyramid2", 15,
+				getn(fr), TRF_McOv(v.c, fr, f, st, js));
+			if TRF_McObj(fl) and type(sh) == "table" then
+				tinsert(v.fl, fl);
+				for k = 1, getn(sh) do
+					local jj = js[mi[k]];
+					v.sh[jj] = sh[k];
+					v.hp0[jj] = TRF_McHp(sh[k]);
+					TRF_N("SetObjectLabel", sh[k], "trf_merc_"..v.n.."_"..jj);
+					setglobal("TRF_ship_trf_merc_"..v.n.."_"..jj, sh[k]);
+					made = made + 1;
+				end;
+			end;
+		end;
+	end;
+	v.nj = j;
+	if made == 0 then return nil; end;
+	return made;
+end;
+
+-- Triggers of v's ships (12 section 6 Meeting and hire): died and the attack proxy filtered to PLAYER_GROUP per ship.
+function TRF_McArm(v)
+	for j = 1, v.nj or 0 do
+		local s = v.sh[j];
+		if s and not v.dead[j] and not v.gone[j] and TRF_McAlive(s) then
+			TRF_McTrig("died", TRF_McCb("TRF_McDied", v.n, j), s);
+			TRF_McTrig("attack", TRF_McCb("TRF_McHit", v.n, j), PLAYER_GROUP, s);
+		end;
+	end;
+end;
+
+-- The meeting trigger (12 section 6): the pack's first flight inside 70 units of the mothership, "TRF_McMeet(<n>,<gen>)--".
+function TRF_McArmMeet(v)
+	local ms = TRF_McMs();
+	if TRF_McObj(v.fl[1]) and TRF_McObj(ms) then TRF_McTrig("f_object_inside", TRF_McCb("TRF_McMeet", v.n), v.fl[1], ms, TRF_McHK().meet_r); end;
+end;
+
+-- Every live flight of v gets order how (escort the mothership, attack it, stop, ...); a flight whose ships are all
+-- dead is skipped (the vanilla "if flight:IsAlive() then flight:Patrol" idiom), so a renewed order logs no error for it.
+function TRF_McOrderAll(v, how, a)
+	for i = 1, getn(v.fl or {}) do if TRF_McAlive(v.fl[i]) then TRF_McOrder(v.fl[i], how, a); end; end;
+end;
+
+function TRF_McSpawnDue(n, c)
+	if not call(TRF_McSpawnBody, {n, c}, "x", TRF_McErr) then
+		local v = TRF_McV();
+		if v and v.n == n and v.st == "due" then TRF_McDelAll(v, "error"); TRF_McVoid(v, "error"); end;
+	end;
+end;
+
+-- The visit's offer could not start.
+function TRF_McVoid(v, why)
+	v.st = "void";
+	TRF_N("TRF_EscortFree", "merc");
+	TRF_McE("spawn", "flight", v.n, "clan", v.c, "result", "skipped", "reason", why);
+end;
+
+-- Mouth of portal o: GetEntryPoint(150) plus 60 off-axis (the spawn's old move point), or nil.
+function TRF_McMouth(o)
+	if not TRF_McObj(o) then return nil; end;
+	local e = call(TRF_McEntryRaw, {o, 150}, "x", TRF_McNoErr);
+	if type(e) ~= "table" then return nil; end;
+	return {x=e.x + 60, y=e.y, z=e.z};
+end;
+
+-- Point dist units from station s toward point m (both {x, y, z}); +x when they coincide.
+function TRF_McStandOf(s, m, dist)
+	local dx, dy, dz = m.x - s.x, (m.y or 0) - (s.y or 0), (m.z or 0) - (s.z or 0);
+	local d = sqrt(dx * dx + dy * dy + dz * dz);
+	if d < 1 then return {x=s.x + dist, y=s.y or 0, z=s.z or 0}; end;
+	return {x=s.x + dx * dist / d, y=(s.y or 0) + dy * dist / d, z=(s.z or 0) + dz * dist / d};
+end;
+
+-- Patrol loop of the unhired pack (user decision 2026-10-29; merc-spec 6a Patrol), pure. c = {m the spawn mouth, st
+-- station positions, op other portal mouths, ex extra points (stash belt slots or haunt route points)}, h the fixed hash
+-- 0..10008. Points in order: the mouth, the standoffs 300 units from at most two stations (toward the mouth; from station
+-- h mod n on), one other portal mouth (floor(h / 7) mod n), one extra point (floor(h / 11) mod n); a point closer than
+-- 200 units to a point kept before it is dropped; at most 5. No mouth: no points.
+function TRF_McPtsOf(c, h)
+	local HK = TRF_McHK();
+	local l = {};
+	if type(c) ~= "table" or type(c.m) ~= "table" then return l; end;
+	local m = c.m;
+	local cand = {m};
+	local st, op, ex = c.st or {}, c.op or {}, c.ex or {};
+	local ns = getn(st);
+	for i = 1, min(ns, HK.pt_st) do tinsert(cand, TRF_McStandOf(st[TRF_McM(h + i - 1, ns) + 1], m, HK.pt_off)); end;
+	if getn(op) > 0 then tinsert(cand, op[TRF_McM(floor(h / 7), getn(op)) + 1]); end;
+	if getn(ex) > 0 then tinsert(cand, ex[TRF_McM(floor(h / 11), getn(ex)) + 1]); end;
+	for i = 1, getn(cand) do
+		local p = cand[i];
+		local ok = type(p) == "table" and type(p.x) == "number" and getn(l) < HK.pt_max;
+		for k = 1, getn(l) do
+			if ok then
+				local d = TRF_McD3(p, l[k]);
+				if not d or d < HK.pt_min then ok = nil; end;
+			end;
+		end;
+		if ok then tinsert(l, {x=p.x, y=p.y or 0, z=p.z or 0}); end;
+	end;
+	return l;
+end;
+
+-- Candidates of the patrol loop in system cur (TRF_McPtsOf): the mouth of the spawn portal prt (name pn), the map
+-- stations (sys[cur].st), the mouths of the other enabled managed portals, the stash belt slots of the system
+-- (trf_stash TRF_ShSlots), else the route points of its haunt flights (trf_haunt TRF_HaData).
+function TRF_McPtsCand(cur, prt, pn)
+	local c = {m=TRF_McMouth(prt), st={}, op={}, ex={}};
+	local m = TRF_N("TRF_Map");
+	local s = nil;
+	if type(m) == "table" and type(m.sys) == "table" then s = m.sys[cur]; end;
+	if type(s) ~= "table" then return c; end;
+	if type(s.st) == "table" then
+		for i = 1, getn(s.st) do
+			local q = s.st[i];
+			if type(q) == "table" and type(q.x) == "number" then tinsert(c.st, {x=q.x, y=q.y or 0, z=q.z or 0}); end;
+		end;
+	end;
+	if type(s.portals) == "table" then
+		for i = 1, getn(s.portals) do
+			local q = s.portals[i];
+			if type(q) == "table" and type(q.name) == "string" and q.name ~= pn then
+				local o = TRF_N("TRF_GnPortalObj", q.name);
+				local e = nil;
+				if TRF_McEnabled(o) then e = TRF_McMouth(o); end;
+				if e then tinsert(c.op, e); end;
+			end;
+		end;
+	end;
+	local nm = TRF_McSysName(cur);
+	local sl = TRF_N("TRF_ShSlots", nm);
+	if type(sl) == "table" then
+		for i = 1, getn(sl) do
+			local q = sl[i];
+			if type(q) == "table" and type(q[1]) == "number" then tinsert(c.ex, {x=q[1], y=q[2] or 0, z=q[3] or 0}); end;
+		end;
+	end;
+	local nd = nil;
+	if getn(c.ex) == 0 then nd = TRF_N("TRF_HaData", nm); end;
+	if type(nd) == "table" and type(nd.f) == "table" then
+		for i = 1, getn(nd.f) do
+			local r = nd.f[i];
+			if type(r) == "table" and type(r.r) == "table" then
+				for k = 1, getn(r.r) do
+					local q = r.r[k];
+					if type(q) == "table" and type(q[1]) == "number" then tinsert(c.ex, {x=q[1], y=q[2] or 0, z=q[3] or 0}); end;
+				end;
+			end;
+		end;
+	end;
+	return c;
+end;
+
+-- Patrol of the unhired pack: every flight loops the points v.pp (Patrol(points, TRUE), fresh Vector3s per flight);
+-- fewer than 2 points: one Move to the first, the spawn rule before the patrol. why start or resume (logged as the
+-- result, or fallback).
+function TRF_McPatrol(v, why)
+	local pp = v.pp or {};
+	local r = why;
+	if getn(pp) >= 2 then
+		for i = 1, getn(v.fl or {}) do
+			if TRF_McAlive(v.fl[i]) then
+				local pts = {};
+				for k = 1, getn(pp) do tinsert(pts, Vector3(pp[k].x, pp[k].y, pp[k].z)); end;
+				TRF_McOrder(v.fl[i], "patrol", pts);
+			end;
+		end;
+	else
+		r = "fallback";
+		if pp[1] then TRF_McOrderAll(v, "move", Vector3(pp[1].x, pp[1].y, pp[1].z)); end;
+	end;
+	TRF_McE("patrol", "flight", v.n, "clan", v.c, "points", getn(pp), "result", r);
+end;
+
+-- An approaching pack (v.ap 1) goes back to its patrol: a scene, a decline with the re-arm, state noh, the mothership
+-- past 2 x merc_app_r. Returns 1 when it did, nil when the pack was not approaching.
+function TRF_McResume(v)
+	if v.ap ~= 1 then return nil; end;
+	v.ap = nil; v.am = nil;
+	TRF_McPatrol(v, "resume");
+	return 1;
+end;
+
+-- Approach rule of the waiting pack (user decision 2026-10-29): with the mothership mp within r (merc_app_r) of the
+-- leader lp (distance d), every flight moves to ap_off units short of the mothership on the line from the leader; the
+-- point is renewed when the mothership moved more than ap_re units from the last order; past 2 r the patrol resumes.
+function TRF_McApproach(v, d, lp, mp, r)
+	if not d or not lp or not mp then return; end;
+	local HK = TRF_McHK();
+	if v.ap == 1 then
+		if d > 2 * r then
+			TRF_McE("approach", "flight", v.n, "clan", v.c, "distance", floor(d), "result", "resume");
+			TRF_McResume(v);
+			return;
+		end;
+		local dm = TRF_McD3(v.am, mp);
+		if dm and dm <= HK.ap_re then return; end;
+	elseif d > r then
+		return;
+	end;
+	local k = 0;
+	if d > HK.ap_off then k = HK.ap_off / d; else k = 1; end;
+	TRF_McOrderAll(v, "move", Vector3(mp.x + (lp.x - mp.x) * k, mp.y + (lp.y - mp.y) * k, mp.z + (lp.z - mp.z) * k));
+	v.am = {x=mp.x, y=mp.y, z=mp.z};
+	if v.ap ~= 1 then
+		v.ap = 1;
+		TRF_McE("approach", "flight", v.n, "clan", v.c, "distance", floor(d), "result", "start");
+	end;
+end;
+
+-- Due call 30-90 s after the entry (12 section 6 Spawn): the gates again, the portal toward the clan's home, the build,
+-- relations neutral both ways, the escort slot, the marker, the triggers, met, the signature line, then the patrol loop
+-- (TRF_McPtsOf by the hash of system, flight number and leg, computed before the build so an error there still voids the
+-- flight; user decision 2026-10-29). Returns 1 when it ran through.
+function TRF_McSpawnBody(n, c)
+	local v = TRF_McV();
+	if not v or v.n ~= n or v.st ~= "due" then return 1; end;
+	local cur = TRF_McCur();
+	if cur ~= v.idx then TRF_McVoid(v, "system"); return 1; end;
+	local why = TRF_McSysWhy(cur);
+	if not why and TRF_Mc_Blacked() then why = "black"; end;
+	if not why and type(TRF_CanSpawn) == "function" then
+		local ok, no = TRF_CanSpawn(v.ns, "merc", TRF_McLive());
+		if not ok then why = "cap:"..tostring(no); end;
+	end;
+	if why then TRF_McVoid(v, why); return 1; end;
+	local prt, pn = TRF_McPortal(cur, TRF_McHomeIdx(c));
+	if not prt then TRF_McVoid(v, "portal"); return 1; end;
+	if TRF_N("TRF_EscortTake", "merc") == nil and type(TRF_EscortTake) == "function" then TRF_McVoid(v, "escort_slot"); return 1; end;
+	local e = call(TRF_McEntryRaw, {prt, 10}, "x", TRF_McNoErr);
+	if type(e) ~= "table" then TRF_McVoid(v, "portal"); return 1; end;
+	v.pp = TRF_McPtsOf(TRF_McPtsCand(cur, prt, pn), TRF_McHash(cur, n, TRF_McLegs()));
+	TRF_McOrder(prt, "start");
+	if not TRF_McBuild(v, e, Vector3(0, 0, 1), nil) then TRF_McVoid(v, "build"); return 1; end;
+	v.prt = prt; v.pn = pn; v.st = "wait"; v.t0 = TRF_McGt(); v.lt = v.t0; v.nb = 0; v.n0 = TRF_McAliveN(v);
+	if RELATION_NEUTRAL ~= nil then TRF_McRel2(v.gn, PLAYER_GROUP, RELATION_NEUTRAL); end;
+	local lead = TRF_McLead(v);
+	local lp = TRF_McPos(lead);
+	if lp then TRF_N("TRF_MarkerAdd", "merc", "TRF_MERC_"..n.."_NP", lp.x, lp.y, lp.z, "#TRF_mcnav", "nav_target.dds", lead); end;
+	TRF_McArm(v);
+	TRF_McArmMeet(v);
+	local cv = TRF_McGet(c);
+	cv.met = TRF_McLegs();
+	TRF_McPut(c, cv);
+	local sig = TRF_McTxt("mcsig", TRF_McClanName(c));
+	if c == TRF_McElite() then sig = TRF_McTxt("mcsigel"); end;
+	TRF_McSay(sig, 10, TRF_McPilot(lead));
+	TRF_McStat("merc_spawn");
+	TRF_McE("spawn", "flight", n, "clan", c, "group", v.gn, "stage", v.fs, "composition", v.cp, "power", v.pw, "ship_count", v.n0,
+		"portal", pn, "result", "spawn");
+	TRF_McPatrol(v, "start");
+	return 1;
+end;
+
+-- Meeting and offer (12 section 6) -----------------------------------------------------------
+
+function TRF_McMeet(n, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_McMeet", TRF_McMeetBody, {n, g}); else TRF_McMeetBody(n, g); end;
+end;
+
+-- The trigger only records the meeting; a due call acts (no box inside a callback).
+function TRF_McMeetBody(n, g)
+	if g ~= TRF_McGen() then return; end;
+	local v = TRF_McV();
+	if not v or v.n ~= n or v.st ~= "wait" or TRF_McGt() < (v.ra or 0) then return; end;
+	v.st = "meet";
+	if not TRF_N("TRF_Due", 0.1, "TRF_McMeetDo", n) then v.st = "wait"; end;
+end;
+
+-- Why clan c refuses the Wolves at the meeting (12 section 6, 11.3), or nil: heat >= 7, rel <= -2, the office bloc rule,
+-- the Legion gate. Returns the reason and the line.
+function TRF_McRefuseWhy(c)
+	local HK, T = TRF_McHK(), TRF_McTune();
+	local heat = 0;
+	if type(TRF.std) == "table" and type(TRF.std.heat) == "number" then heat = TRF.std.heat; end;
+	if heat >= HK.heat_max then return "heat", TRF_McTxt("mcheat7"); end;
+	local rel = TRF_McRel(c);
+	if rel <= HK.rel_no then
+		local o = c + 1;
+		if o > TRF_McK().nc then o = 1; end;
+		return "standing", TRF_McTxt("mcrefuse", TRF_McClanName(o));
+	end;
+	local ob = TRF_McOfficeBloc();
+	if ob and ob ~= TRF_McClan(c).b then
+		local k = TRF_N("GetRecruitGroupName");
+		local on = tostring(k);
+		for i = 1, TRF_McK().nc do if TRF_McClan(i).k == k then on = TRF_McClanName(i); end; end;
+		return "bloc", TRF_McTxt("mcbloc", on);
+	end;
+	if c == TRF_McElite() then
+		local jobs, ow = 0, TRF_McOweAll();
+		for i = 1, TRF_McK().nc do jobs = jobs + TRF_McT(i).jobs; end;
+		local e = TRF_TpUnpackK(TRF_McRec().e, TRF_McEKeys()) or {dj1=0};
+		if TRF_McChapter() < T.mc_st_ch or (jobs < T.mc_el_jobs and (e.dj1 or 0) <= 0) or rel < 0 or TRF_McDig(c, "bk") > 0 or ow > 0 then
+			return "legion", TRF_McTxt("mclegion");
+		end;
+	end;
+	return nil;
+end;
+
+-- Due step of the meeting: the collection dialog first when a debt waits for it, then the refusal rules or the offer
+-- line and, 12 s later, the offer page.
+function TRF_McMeetDo(n)
+	local v = TRF_McV();
+	if not v or v.n ~= n or v.st ~= "meet" then return; end;
+	if TRF_N("TRF_Quiet") then v.st = "wait"; v.ra = TRF_McGt() + TRF_McHK().try_dt; return; end;
+	TRF_McStat("merc_meet");
+	TRF_McE("meet", "flight", n, "clan", v.c, "collection", TRF_KvB(TRF_McO() and 1));
+	if TRF_McO() and v.co ~= 1 then
+		v.co = 1;
+		v.st = "offer";
+		TRF_McTalk(v, "collect");
+		return;
+	end;
+	TRF_McOfferLine(v);
+end;
+
+-- The offer line (12 section 2, 4) and the page 12 s later, or the refusal line.
+function TRF_McOfferLine(v)
+	local c = v.c;
+	local lead = TRF_McPilot(TRF_McLead(v));
+	local why, line = TRF_McRefuseWhy(c);
+	if why then
+		v.st = "noh";
+		TRF_McSay(line, 10, lead);
+		TRF_McE("meet", "flight", v.n, "clan", c, "result", "refused", "reason", why);
+		return;
+	end;
+	local p = TRF_McPrice(c, v.idx, v.fs);
+	v.fee = p.fee; v.sh1 = p.sh; v.bm = p.bm; v.owe = TRF_McOweAll();
+	local rel = TRF_McRel(c);
+	local t = TRF_McTxt("mcoffer0", v.n0, p.fee, p.sh);
+	if rel >= 1 then t = TRF_McTxt("mcoffer1", p.fee, p.sh); elseif rel < 0 then t = TRF_McTxt("mcofferm", p.fee, p.sh); end;
+	TRF_McSay(t, 12, lead);
+	if p.hp < 4 then TRF_McSay(TRF_McTxt("mcgrief", 4 - p.hp), 8, lead); end;
+	if p.hk > 1 then TRF_McSay(TRF_McTxt("mcheatk"), 8, lead); end;
+	if p.help >= TRF_McHK().help then TRF_McSay(TRF_McTxt("mcftu"), 8, lead); end;
+	if v.owe > 0 then TRF_McSay(TRF_McTxt("mcbook", v.owe), 8, lead); end;
+	v.st = "offer";
+	if not TRF_N("TRF_Due", TRF_McHK().box_dt, "TRF_McOfferDue", v.n) then v.st = "noh"; end;
+	TRF_McE("offer", "flight", v.n, "clan", c, "fee", p.fee, "share", p.sh, "blood", p.bm, "owe", v.owe, "discount", TRF_F(p.disc),
+		"heat_k", TRF_F(p.hk), "condition", p.hp, "standing", rel, "result", "line");
+end;
+
+function TRF_McOfferDue(n)
+	local v = TRF_McV();
+	if not v or v.n ~= n or v.st ~= "offer" then return; end;
+	v.nb = (v.nb or 0) + 1;
+	TRF_McTalk(v, "offer");
+end;
+
+-- Decline (or a short wallet, or Esc): one re-arm after 60 s while fewer than two offers were shown this visit; an
+-- approaching pack resumes its patrol (state noh: the 1 s step).
+function TRF_McDecline(v, why)
+	if (v.nb or 0) < TRF_McHK().box_max then
+		v.st = "wait";
+		v.ra = TRF_McGt() + TRF_McHK().rearm;
+		TRF_McArmMeet(v);
+		TRF_McResume(v);
+		TRF_McE("hire", "flight", v.n, "clan", v.c, "result", "declined", "reason", why, "rearm", "true");
+	else
+		v.st = "noh";
+		TRF_McE("hire", "flight", v.n, "clan", v.c, "result", "declined", "reason", why, "rearm", "false");
+	end;
+end;
+
+-- Conversations: dialog pages in the hail-page pattern, box chain as the fallback -------------------------
+
+-- Why the merc page cannot open now, or nil (the TRF_HlDlgWhy pattern): xml (cfg hail_xml not 1: the dialog files are
+-- not installed), box (tune hail_box not 2), native, uistate, ui=<v>, movie.
+function TRF_McDlgWhy()
+	if TRF_N("TRF_Opt", "hail_xml") ~= 1 then return "xml"; end;
+	if TRF_McTv("hail_box", 1) ~= 2 then return "box"; end;
+	if type(StartTradeDialog) ~= "function" then return "native"; end;
+	if type(TRF_UiState) ~= "function" then return "uistate"; end;
+	local u = call(TRF_UiState, {}, "x", TRF_McNoErr);
+	if u ~= 0 then return "ui="..tostring(u); end;
+	if type(TRF_InMovie) == "function" and call(TRF_InMovie, {}, "x", TRF_McNoErr) == 1 then return "movie"; end;
+	return nil;
+end;
+
+-- Starts conversation kind (offer, ext, settle, collect) of flight v: the box lock merc for the whole conversation, the
+-- page or box from a due call.
+function TRF_McTalk(v, kind)
+	local mc = %MC;
+	mc.cv = {k=kind, n=v.n, t=TRF_McGt(), tr=0};
+	if not TRF_N("TRF_Due", 0.1, "TRF_McTalkDo") then TRF_McAnswerOf(mc.cv, "none"); end;
+end;
+
+-- Due call of a conversation step: retried every 5 s while the lock is held by another owner or a scene is visible; after
+-- 12 tries the kind's default answer applies (TRF_McAnswerOf "none").
+function TRF_McTalkDo()
+	local mc = %MC;
+	local cv = mc.cv;
+	if type(cv) ~= "table" or cv.via then return; end;
+	local v = TRF_McV();
+	if not TRF_McCvOk(v, cv) then mc.cv = nil; mc.dlg = nil; TRF_N("TRF_BoxFree", "merc"); return; end;
+	local HK = TRF_McHK();
+	local held = type(TRF_BoxTake) == "function" and not TRF_BoxTake("merc");
+	if held or TRF_N("TRF_Quiet") then
+		cv.tr = cv.tr + 1;
+		if cv.tr > HK.tries or not TRF_N("TRF_Due", HK.try_dt, "TRF_McTalkDo") then TRF_McAnswerOf(cv, "none"); return; end;
+		TRF_McDE("talk", "kind", cv.k, "flight", v.n, "try_count", cv.tr, "result", "wait", "reason", held and "lock" or "quiet");
+		return;
+	end;
+	local text, la, ld = TRF_McTalkText(v, cv.k);
+	local via = TRF_McShow(text, la, ld);
+	if not via then TRF_McAnswerOf(cv, "none"); return; end;
+	cv.via = via;
+	TRF_McStat("merc_talk_"..via);
+	TRF_McE("talk", "kind", cv.k, "flight", v.n, "clan", v.c, "via", via, "result", "shown");
+end;
+
+-- 1 when conversation cv still belongs to flight v: same flight, not deleted, still offering (offer, collect) or asking
+-- (ext, settle).
+function TRF_McCvOk(v, cv)
+	if type(v) ~= "table" or type(cv) ~= "table" or v.n ~= cv.n or v.del == 1 then return nil; end;
+	if cv.k == "offer" or cv.k == "collect" then return v.st == "offer" or nil; end;
+	return v.st == "ask" or nil;
+end;
+
+-- Drops the open conversation of flight v (deleted, leaving, betraying): the page record and the box lock go.
+function TRF_McCvDrop(v)
+	local mc = %MC;
+	if type(mc.cv) == "table" and type(v) == "table" and mc.cv.n == v.n then mc.cv = nil; mc.dlg = nil; TRF_N("TRF_BoxFree", "merc"); end;
+end;
+
+-- Text and answer labels of conversation kind for v.
+function TRF_McTalkText(v, kind)
+	local nm = TRF_McClanName(v.c);
+	if kind == "offer" then
+		return TRF_McTxt("mcpage", nm, v.fee + (v.owe or 0), v.sh1), TRF_McTxt("mcacc"), TRF_McTxt("mcdec");
+	elseif kind == "ext" then
+		return TRF_McTxt("mcext", TRF_McExtFee(v)), TRF_McTxt("mcexty"), TRF_McTxt("mcextn");
+	elseif kind == "collect" then
+		local o = TRF_McO() or {c=v.c, s=0};
+		return TRF_McTxt("mccollect", TRF_McSysTxt(o.s), TRF_McClanName(o.c), TRF_McT(o.c).owe), TRF_McTxt("mcpay"), TRF_McTxt("mcrefusea");
+	end;
+	local s, b, t = TRF_McSettleOf(v.k or 0, v.sh1 or 0, v.lo or 0, v.bm or 0);
+	return TRF_McTxt("mcset1", v.k or 0, s).." "..TRF_McTxt("mcset2", v.lo or 0, b).." "..TRF_McTxt("mcset3", t), TRF_McTxt("mcpay"),
+		TRF_McTxt("mcrefusea");
+end;
+
+function TRF_McPgCall()
+	StartTradeDialog("TRF_MercPg", "TRF_McPgInit");
+	return 1;
+end;
+
+-- The page TRF_MercPg (message "#who#: #m1#", answers a_acc, a_dec, a_close) or the box: "dialog", "box" or nil.
+function TRF_McShow(text, la, ld)
+	local mc = %MC;
+	local why = TRF_McDlgWhy();
+	if not why then
+		mc.dn = (mc.dn or 0) + 1;
+		mc.dlg = {who=TRF_McClanName(TRF_McV().c), m1=text, la=la, ld=ld, dn=mc.dn};
+		if call(TRF_McPgCall, {}, "x", TRF_McErr) == 1 then
+			TRF_N("TRF_Due", 1, "TRF_McDlgCheck", mc.dn);
+			return "dialog";
+		end;
+		mc.dlg = nil;
+		why = "error";
+	end;
+	TRF_McE("dialog_fallback", "reason", why);
+	if type(ShowMsgBox) ~= "function" then return nil; end;
+	if call(TRF_McBoxRaw, {text}, "x", TRF_McErr) == 1 then return "box"; end;
+	return nil;
+end;
+
+function TRF_McBoxRaw(text)
+	ShowMsgBox("#UI_Fmerc_confirm", text, TRF_McBoxOk, TRF_McBoxNo);
+	return 1;
+end;
+
+-- Init of the page (shim): #who#, #m1#, the labels; Accept and Decline shown, Close hidden (no page of this step has a
+-- single answer). A stale record leaves Close only.
+function TRF_McPgInit() TRF_Cb("TRF_McPgInit", TRF_McPgInitBody, {}); end;
+
+function TRF_McPgInitBody()
+	local d = %MC.dlg;
+	local on = {acc=1, dec=1};
+	if type(d) ~= "table" then d = {who="", m1="", la="", ld=""}; on = {close=1}; TRF_McE("dialog_init", "result", "stale"); end;
+	local ks = {"acc", "dec", "close"};
+	local vis = "";
+	for i = 1, getn(ks) do
+		if on[ks[i]] then TRF_N("ShowAnswer", "a_"..ks[i]); vis = vis..","..ks[i]; else TRF_N("HideAnswer", "a_"..ks[i]); end;
+	end;
+	TRF_N("SetReplaceValue", "who", d.who);
+	TRF_N("SetReplaceValue", "m1", d.m1);
+	TRF_N("SetReplaceValue", "lacc", d.la);
+	TRF_N("SetReplaceValue", "ldec", d.ld);
+	TRF_N("SetReplaceValue", "lclose", TRF_McTxt("mcclose"));
+	TRF_McDE("dialog_answers", "answers", strsub(vis, 2));
+end;
+
+-- Answer callbacks (shims): they only record the answer; TRF_McAnswer acts from a due call.
+function TRF_McDlgA_acc() TRF_Cb("TRF_McDlgA_acc", TRF_McPick, {"acc", "dialog"}); end;
+function TRF_McDlgA_dec() TRF_Cb("TRF_McDlgA_dec", TRF_McPick, {"dec", "dialog"}); end;
+function TRF_McDlgA_close() TRF_Cb("TRF_McDlgA_close", TRF_McPick, {"esc", "dialog"}); end;
+function TRF_McBoxOk() TRF_Cb("TRF_McBoxOk", TRF_McPick, {"acc", "box"}); end;
+function TRF_McBoxNo() TRF_Cb("TRF_McBoxNo", TRF_McPick, {"dec", "box"}); end;
+
+function TRF_McPick(a, via)
+	local mc = %MC;
+	local cv = mc.cv;
+	if via == "dialog" then mc.dlg = nil; end;
+	if type(cv) ~= "table" or cv.a or cv.via ~= via then TRF_McE("answer", "answer", a, "via", via, "result", "ignored"); return; end;
+	cv.a = a;
+	TRF_McE("answer", "kind", cv.k, "answer", a, "via", via);
+	if not TRF_N("TRF_Due", 0.1, "TRF_McAnswer") then TRF_McAnswerOf(cv, a); end;
+end;
+
+function TRF_McAnswer()
+	local cv = %MC.cv;
+	if type(cv) ~= "table" or not cv.a then return; end;
+	TRF_McAnswerOf(cv, cv.a);
+end;
+
+-- Due call 1 s after a page opened (the clock stands while it is up): no dialog flag (TRF_UiState bit 4, trf_state
+-- TRF_Bit) and no answer means Esc.
+function TRF_McDlgCheck(dn)
+	local mc = %MC;
+	local cv = mc.cv;
+	if type(cv) ~= "table" or cv.via ~= "dialog" or cv.a or dn ~= mc.dn then return; end;
+	local u = nil;
+	if type(TRF_UiState) == "function" then u = call(TRF_UiState, {}, "x", TRF_McNoErr); end;
+	if type(u) ~= "number" or u < 0 or TRF_N("TRF_Bit", u, 4) == 1 then
+		if TRF_McGt() - cv.t < 120 and TRF_N("TRF_Due", 1, "TRF_McDlgCheck", dn) then return; end;
+	end;
+	mc.dlg = nil;
+	TRF_McE("answer", "kind", cv.k, "answer", "esc", "via", "dialog");
+	TRF_McAnswerOf(cv, "esc");
+end;
+
+-- Acts on answer a (acc, dec, esc, none) of conversation cv; the lock is freed unless a follow-up page starts.
+function TRF_McAnswerOf(cv, a)
+	local mc = %MC;
+	mc.cv = nil;
+	local v = TRF_McV();
+	if not TRF_McCvOk(v, cv) then TRF_N("TRF_BoxFree", "merc"); return; end;
+	local k = cv.k;
+	if k == "offer" then
+		if a == "acc" then TRF_McHire(v); else TRF_McDecline(v, a); end;
+	elseif k == "ext" then
+		if a == "acc" then TRF_McExtend(v); else TRF_McSettleAsk(v); end;
+	elseif k == "settle" then
+		if a == "acc" or a == "none" then TRF_McPay(v, a);
+		elseif a == "dec" then TRF_McRefuse(v, "settle");
+		else TRF_McSettleEsc(v); end;
+	elseif k == "collect" then
+		if a == "acc" then
+			TRF_McCollectPay(v);
+			if v.st == "offer" then TRF_McOfferLine(v); end;
+		elseif a == "dec" then
+			TRF_McRefuse(v, "collect");
+		else
+			local o = TRF_McO();
+			if o then TRF_Mc_Mark(o.c, "rel", TRF_McRel(o.c) - 1); end;
+			TRF_McPutO(nil);
+			TRF_McE("collect", "flight", v.n, "result", "unanswered", "answer", a);
+			TRF_McLeave(v, "collect", nil);
+		end;
+	end;
+	if not mc.cv then TRF_N("TRF_BoxFree", "merc"); end;
+end;
+
+-- Hire (12 section 6 OK) --------------------------------------------------------------------
+
+-- OK: the fee plus every clan's owe through TRF_Charge with the reserve merc_reserve_k x price (a zero price, c_hire 0,
+-- charges nothing), relations friend both ways, escort, the hire record, the opening seed; a short wallet is a decline
+-- with #UI_Fmerc_nojoined3.
+function TRF_McHire(v)
+	local c = v.c;
+	local T = TRF_McTune();
+	local owe = TRF_McOweAll();
+	local price = v.fee + owe;
+	local got, no = 0, nil;
+	if price > 0 then got, no = TRF_N("TRF_Charge", price, "merc_fee", T.merc_reserve_k * price); end;
+	if price > 0 and (type(got) ~= "number" or got <= 0) then
+		TRF_McSay("#UI_Fmerc_nojoined3", 7);
+		TRF_McE("hire", "flight", v.n, "clan", c, "fee", v.fee, "owe", owe, "result", "short", "reason", no);
+		TRF_McDecline(v, "short");
+		return;
+	end;
+	if owe > 0 then
+		-- TRF_Charge caps the amount (charge_cap): the owes are cleared only up to what it took beyond the fee.
+		local rem = max(0, got - v.fee);
+		for i = 1, TRF_McK().nc do
+			local w = TRF_McT(i).owe;
+			local p = min(w, rem);
+			if p > 0 then
+				rem = rem - p;
+				TRF_Mc_Mark(i, "owe", w - p);
+				TRF_McE("owe", "clan", i, "amount", p, "result", p < w and "part" or "paid", "reason", "hire");
+			end;
+		end;
+		local o = TRF_McO();
+		if not o or TRF_McT(o.c).owe <= 0 then TRF_McPutO(nil); end;
+	end;
+	v.st = "hired"; v.tr = T.merc_hire_s; v.el = 0; v.k = 0; v.lo = 0; v.hn = v.nj;
+	TRF_McHiredSetup(v);
+	TRF_N("TRF_MarkerClear", "merc");
+	TRF_McSay("#UI_Fmerc_joined", 7);
+	TRF_McSay(TRF_McTxt("mcon"), 8, TRF_McPilot(TRF_McLead(v)));
+	TRF_McStat("merc_hire");
+	TRF_McE("hire", "flight", v.n, "clan", c, "fee", v.fee, "owe", owe, "share", v.sh1, "blood", v.bm, "time", v.tr, "ship_count", TRF_McAliveN(v),
+		"result", "hired");
+end;
+
+-- A hired wing (hire, arrival rebuild, load): relations friend both ways, every flight escorts the mothership, the hire
+-- record, the counted-attack baseline, the seeding of the groups already at war.
+function TRF_McHiredSetup(v)
+	if RELATION_FRIEND ~= nil then TRF_McRel2(v.gn, PLAYER_GROUP, RELATION_FRIEND); end;
+	TRF_McOrderAll(v, "escort", TRF_McMs());
+	v.ac0 = TRF_McAttacks();
+	v.qsl = TRF_McSignal(v.idx);
+	v.hs = {}; v.vh = {}; v.vs = {}; v.seed = v.seed or {}; v.kd = v.kd or {}; v.rs = TRF_McGt();
+	TRF_McWriteH(v);
+	TRF_McSeedStep(v, "hire");
+end;
+
+-- Counted attacks on traders and convoys this visit (trf_events attack_counted, trf_convoy feq_attack_p; read only).
+function TRF_McAttacks()
+	if type(TRF.live) ~= "table" or type(TRF.live.stat) ~= "table" then return 0; end;
+	return (TRF.live.stat.attack_counted or 0) + (TRF.live.stat.feq_attack_p or 0);
+end;
+
+-- Hire record from v while the wing is fielded: h {c, sys, ty (composition), pw, n (label slots), tr, fee, sh, bm, k, lo,
+-- g (seconds flown), hj (jumps made with the player since this write: 0), hg (game clock of this write)} and the hull hb
+-- per slot in per mille of hp0 (0: lost or not rebuilt; a live ship whose HP cannot be read counts as full, never as 1).
+-- hpm (optional): the HP by slot the caller read this step, so the step does not read every ship twice.
+function TRF_McWriteH(v, hpm)
+	local p, full = {}, TRF_McHK().pm;
+	for j = 1, v.nj or 0 do
+		local s = v.sh[j];
+		p[j] = 0;
+		if s and not v.dead[j] and not v.gone[j] and TRF_McAlive(s) then
+			local hp = nil;
+			if type(hpm) == "table" then hp = hpm[j]; end;
+			if hp == nil then hp = TRF_McHp(s); end;
+			p[j] = TRF_McPmOf(hp, v.hp0[j]);
+			if p[j] == 0 then p[j] = full; end;
+		end;
+	end;
+	TRF_McPutH({c=v.c, sys=v.idx, ty=v.cp, pw=v.pw, n=v.nj, tr=floor(max(0, v.tr)), fee=v.fee, sh=v.sh1, bm=v.bm, k=v.k, lo=v.lo,
+		g=floor(v.el), hj=0, hg=floor(TRF_McGt())}, TRF_McHullStr(p, v.nj));
+end;
+
+-- Seeding (12 section 6 Whom the pack fights, gap 1): raid groups whose fight opened (rd.ph, TRF.live.rd, read only),
+-- the captain's group after his fight opened (trf_captain visit op), the vanilla pirate groups at war with
+-- PLAYER_GROUP (group_Pirate_money only then), each at war with the pack both ways once. A vanilla group is read by
+-- name once GetOwnerTeamOfGroup finds it in this scene: its global may be a stale handle of an earlier scene, and
+-- vanilla's P_Group holds group_Pirate_money or the escort miniquest's group_escort (OutOfMission.script 241, 388).
+-- Faction, trader, FTU and convoy groups never.
+function TRF_McSeedStep(v, why)
+	if not TRF_McHired(v) or v.del == 1 then return; end;
+	if type(TRF.live) == "table" and type(TRF.live.rd) == "table" then
+		for n, rd in TRF.live.rd do
+			if type(rd) == "table" and rd.st ~= "end" and rd.ph == 1 then TRF_McSeed(v, "TRF_Raid_"..n, "raid"); end;
+		end;
+	end;
+	local cp = TRF_N("TRF_CapCP");
+	if type(cp) == "table" and type(cp.v) == "table" and cp.v.op == 1 and type(cp.v.slot) == "number" then
+		local s = cp.v.st;
+		if s ~= "dead" and s ~= "gone" and s ~= "end" and s ~= "void" and s ~= "wait" then TRF_McSeed(v, "TRF_Cap_"..cp.v.slot, "captain"); end;
+	end;
+	local HK = TRF_McHK();
+	local l = {};
+	for i = 1, getn(HK.pir) do tinsert(l, HK.pir[i]); end;
+	tinsert(l, HK.money);
+	for i = 1, getn(l) do
+		local gn = l[i];
+		if TRF_McGrpIn(gn) and RELATION_WAR ~= nil and TRF_McGrpRel(gn, PLAYER_GROUP) == RELATION_WAR then TRF_McSeed(v, gn, "vanilla"); end;
+	end;
+end;
+
+function TRF_McSeed(v, g, why)
+	if v.seed[g] then return; end;
+	v.seed[g] = why;
+	if RELATION_WAR ~= nil then TRF_McRel2(v.gn, g, RELATION_WAR); end;
+	if why == "vanilla" then TRF_McVArm(v); end;
+	if v.eng ~= 1 then
+		v.eng = 1;
+		TRF_McSay(TRF_McTxt("mcengage", TRF_McClanName(v.c)), 6, TRF_McPilot(TRF_McLead(v)));
+	end;
+	TRF_McStat("merc_seed");
+	TRF_McE("seed", "flight", v.n, "clan", v.c, "group", g, "reason", why);
+end;
+
+function TRF_McGrpNameRaw(o)
+	return o:GetGroupName();
+end;
+
+-- Died triggers on the ships of the seeded vanilla groups (no death bus site there): handle globals ship_<sign>_<i> of
+-- the vanilla builders whose group (Carcass:GetGroupName) is seeded, each armed once (v.vh).
+function TRF_McVArm(v)
+	v.rs = TRF_McGt();
+	for k, o in globals() do
+		-- IsAlive before any other method (the load pass of trf_gen does the same): vanilla never clears these globals,
+		-- so most of them are stale handles.
+		if type(k) == "string" and strsub(k, 1, 5) == "ship_" and strsub(k, 1, 9) ~= "ship_trf_" and not v.vh[o] and TRF_McAlive(o) then
+			local gn = call(TRF_McGrpNameRaw, {o}, "x", TRF_McNoErr);
+			if type(gn) == "string" and v.seed[gn] == "vanilla" then
+				tinsert(v.vs, o);
+				v.vh[o] = getn(v.vs);
+				TRF_McTrig("died", TRF_McCb("TRF_McVDied", v.n, getn(v.vs)), o);
+			end;
+		end;
+	end;
+end;
+
+function TRF_McVDied(n, k, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_McVDied", TRF_McVDiedBody, {n, k, g}); else TRF_McVDiedBody(n, k, g); end;
+end;
+
+function TRF_McVDiedBody(n, k, g)
+	if g ~= TRF_McGen() then return; end;
+	local v = TRF_McV();
+	if not v or v.n ~= n or not TRF_McHired(v) then return; end;
+	TRF_McKill(v, "vanilla:"..k, "died");
+end;
+
+-- A counted share death (12 section 5): k + 1 once per ship.
+function TRF_McKill(v, key, via)
+	if v.kd[key] then return; end;
+	v.kd[key] = 1;
+	v.k = v.k + 1;
+	TRF_McStat("merc_kill");
+	TRF_McE("kill", "flight", v.n, "clan", v.c, "ship", key, "via", via, "kill_count", v.k);
+end;
+
+-- Death bus (trf_plumb TRF_Dead; wb-plumbing-spec 2): a raid ship the player group hit marks the raid for the 8.5 factor
+-- (hired or not: the kill counts for the whole visit); a raid or captain ship of a seeded group died while the hire ran.
+function TRF_Mc_OnDeath(kind, rec, ship, pfire)
+	local mc = %MC;
+	local v = mc.v;
+	if type(rec) ~= "table" then return; end;
+	if kind == "raid" and pfire == 1 and type(rec.n) == "number" then
+		if type(mc.rk) ~= "table" then mc.rk = {}; end;
+		mc.rk[rec.n] = 1;
+	end;
+	if not TRF_McHired(v) then return; end;
+	if type(rec.g) == "string" and v.seed[rec.g] then TRF_McKill(v, rec.g..":"..tostring(rec.j), "bus"); end;
+end;
+
+-- 8.5 resolver (trf_plumb TRF_RaidHelpReg; 12 section 5 exploit 6): while a hire ran during raid n, raid help pays 0.5 x
+-- and only after a raid ship the player group killed (rd.pk when trf_raid keeps it, else the death bus pfire flag);
+-- without such a kill it pays nothing. One factor, never multiplied (TRF_RaidHelpOf takes the lowest).
+function TRF_Mc_RaidHelp(n, rd, amt)
+	local mc = %MC;
+	if type(mc.rh) ~= "table" or not mc.rh[n] then return nil; end;
+	local pk = nil;
+	if type(mc.rk) == "table" then pk = mc.rk[n]; end;
+	if type(rd) == "table" and rd.pk ~= nil then pk = rd.pk == 1 or nil; end;
+	if pk then
+		TRF_McE("help_factor", "raid_id", n, "credits", amt, "factor", "0.5", "result", "half");
+		return 0.5;
+	end;
+	TRF_McE("help_factor", "raid_id", n, "credits", amt, "result", "cancelled", "reason", "no_player_kill");
+	return "cancel";
+end;
+
+-- Fight: deaths, fire, betrayal ------------------------------------------------------------------
+
+function TRF_McDied(n, j, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_McDied", TRF_McDiedBody, {n, j, g}); else TRF_McDiedBody(n, j, g); end;
+end;
+
+function TRF_McDiedBody(n, j, g)
+	if g ~= TRF_McGen() then return; end;
+	local v = TRF_McV();
+	if v and v.n == n then TRF_McDeath(v, j, "died"); end;
+end;
+
+-- A pack ship lost (12 section 4): hp -1, fo -3 (TRF_Mc_Lost), lo + 1 while hired (blood money); a player hit within
+-- hit_win before it: grudge +3 and heat +1 (the kill row) and betrayal if not yet.
+function TRF_McDeath(v, j, why)
+	if type(v.dead) ~= "table" or v.dead[j] or v.gone[j] or v.del == 1 or not v.sh[j] then return; end;
+	v.dead[j] = 1;
+	local pk = type(v.lh[j]) == "number" and TRF_McGt() - v.lh[j] <= TRF_McHK().hit_win;
+	TRF_Mc_Lost(v.c, 1, "on_screen");
+	local hired = TRF_McHired(v);
+	if hired then v.lo = v.lo + 1; end;
+	TRF_McStat("merc_loss");
+	TRF_McE("loss", "flight", v.n, "clan", v.c, "ship", j, "player", TRF_KvB(pk and 1), "hired", TRF_KvB(hired and 1), "loss_count", v.lo,
+		"reason", why);
+	if pk then
+		TRF_Mc_Mark(v.c, "g", TRF_McDig(v.c, "g") + 3);
+		TRF_N("TRF_AddHeat", 1, "merc kill");
+		if v.bt ~= 1 then TRF_McBetray(v, "kill"); end;
+	end;
+	if TRF_McHired(v) then TRF_McWriteH(v); end;
+end;
+
+function TRF_McHit(n, j, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_McHit", TRF_McHitBody, {n, j, g}); else TRF_McHitBody(n, j, g); end;
+end;
+
+-- Attack of PLAYER_GROUP on pack ship j: the last hit per ship (kill window) and the 8.5 proxy (T_del distinct whole
+-- seconds within T_win, the T_deliberate rule): counted fire is betrayal. Re-armed at most arm_max times per ship.
+function TRF_McHitBody(n, j, g)
+	if g ~= TRF_McGen() then return; end;
+	local v = TRF_McV();
+	if not v or v.n ~= n or type(v.sh) ~= "table" or not v.sh[j] or v.del == 1 then return; end;
+	local gt = TRF_McGt();
+	v.lh[j] = gt;
+	if v.bt ~= 1 then
+		local need, win = TRF_McTv("T_del", 5), TRF_McTv("T_win", 20);
+		local s = floor(gt);
+		local keep, have = {}, nil;
+		local old = v.fst or {};
+		for i = 1, getn(old) do
+			if s - old[i] < win then tinsert(keep, old[i]); if old[i] == s then have = 1; end; end;
+		end;
+		if not have then tinsert(keep, s); end;
+		v.fst = keep;
+		if getn(keep) >= need then v.fst = nil; TRF_McBetray(v, "fire"); end;
+	end;
+	if type(v.arm) ~= "table" then v.arm = {}; end;
+	v.arm[j] = (v.arm[j] or 0) + 1;
+	if v.arm[j] <= TRF_McHK().arm_max and TRF_McAlive(v.sh[j]) and not v.dead[j] then
+		TRF_McTrig("attack", TRF_McCb("TRF_McHit", n, j), PLAYER_GROUP, v.sh[j]);
+	end;
+end;
+
+-- Betrayal standing of clan c (12 section 4): rel := -3, bk + 1, bloc-mates -2, grudge + 2, heat + 1, the Exchange
+-- blacklist and its next-entry note.
+function TRF_McBetrayRec(c, why)
+	TRF_Mc_Mark(c, "rel", -3);
+	TRF_Mc_Mark(c, "bk", TRF_McDig(c, "bk") + 1);
+	TRF_Mc_Mark(c, "g", TRF_McDig(c, "g") + 2);
+	local b = TRF_McClan(c).b;
+	for i = 1, TRF_McK().nc do
+		if i ~= c and TRF_McClan(i).b == b then TRF_Mc_Mark(i, "rel", TRF_McRel(i) - 2); end;
+	end;
+	TRF_N("TRF_AddHeat", 1, "merc betrayal");
+	TRF_Mc_Black(c);
+	local R = TRF_McRec();
+	if R then R.n = TRF_TpPackK({c=c, a=1}, TRF_McNKeys()); end;
+	TRF_McE("betray", "clan", c, "betrayals", TRF_McDig(c, "bk"), "standing", -3, "reason", why);
+end;
+
+-- Betrayal of flight v (counted player fire or a kill; a refused payment that the roll answers with an attack): the
+-- standing above, the hire ends without settlement or refund; with cfg merc_war 1 the pack is at war with PLAYER_GROUP
+-- and breaks off at half losses, with 0 it leaves at once (00 section 8 E2).
+function TRF_McBetray(v, why, rc)
+	if v.bt == 1 then return; end;
+	v.bt = 1;
+	local mc = %MC;
+	TRF_McBetrayRec(rc or v.c, why);
+	if TRF_McHired(v) then TRF_McPutH(nil); end;
+	TRF_McCvDrop(v);
+	TRF_N("TRF_EscortFree", "merc");
+	TRF_N("TRF_MarkerClear", "merc");
+	local lead = TRF_McPilot(TRF_McLead(v));
+	if TRF_McOpt("merc_war") == 1 and RELATION_WAR ~= nil then
+		v.st = "war";
+		v.n0 = max(1, (v.n0 or 0));
+		TRF_McRel2(v.gn, PLAYER_GROUP, RELATION_WAR);
+		TRF_McOrderAll(v, "attack", TRF_McMs());
+		if why ~= "refuse" then TRF_McSay(TRF_McTxt("mctraitor", TRF_McClanName(v.c)), 6, lead); end;
+		TRF_McE("betray", "flight", v.n, "clan", v.c, "result", "war", "reason", why);
+	else
+		TRF_McSay(TRF_McTxt("mctraitor0", TRF_McClanName(v.c)), 6, lead);
+		TRF_McE("betray", "flight", v.n, "clan", v.c, "result", "leave", "reason", why);
+		TRF_McLeave(v, "betray", nil);
+	end;
+end;
+
+-- End of a hire (12 section 6 End of a hire, 5 Settlement) --------------------------------------------------
+
+-- Fee of an extension: merc_ext_k x fee, rounded to 100.
+function TRF_McExtFee(v)
+	return TRF_McR100(TRF_McTn("merc_ext_k") * (v.fee or 0));
+end;
+
+-- Extend: the extension fee at once (wallet >= fee; a zero fee, merc_ext_k 0, charges nothing), tr + merc_hire_s, no
+-- limit; a short wallet is Settle up.
+function TRF_McExtend(v)
+	local f = TRF_McExtFee(v);
+	local got = 0;
+	if f > 0 then got = TRF_N("TRF_Charge", f, "merc_ext", f); end;
+	if f > 0 and (type(got) ~= "number" or got <= 0) then
+		TRF_McE("extend", "flight", v.n, "clan", v.c, "fee", f, "result", "short");
+		TRF_McSettleAsk(v);
+		return;
+	end;
+	v.tr = v.tr + TRF_McTn("merc_hire_s");
+	v.st = "hired";
+	v.gr = nil;
+	TRF_McWriteH(v);
+	TRF_McSay(TRF_McTxt("mcextok"), 6, TRF_McPilot(TRF_McLead(v)));
+	TRF_McStat("merc_ext");
+	TRF_McE("extend", "flight", v.n, "clan", v.c, "fee", f, "time", v.tr, "result", "extended");
+end;
+
+-- Completion (12 section 4 first row): rel + 1 (at most 3), jobs + 1, fortune + 3 after half the hire time or a kill.
+function TRF_McComplete(v)
+	if not TRF_McDoneOf(v.el or 0, TRF_McTn("merc_hire_s"), v.k or 0) then
+		TRF_McE("end", "flight", v.n, "clan", v.c, "completed", "false");
+		return nil;
+	end;
+	local c = v.c;
+	TRF_Mc_Mark(c, "rel", min(3, TRF_McRel(c) + 1));
+	local t = TRF_McGet(c);
+	t.jobs = t.jobs + 1;
+	TRF_McPut(c, t);
+	TRF_Mc_Fortune(c, 3, "hire");
+	TRF_McE("end", "flight", v.n, "clan", c, "completed", "true", "standing", TRF_McRel(c), "jobs", t.jobs);
+	return 1;
+end;
+
+-- Settles v's share and blood money by charge (Pay, a direct settlement): TRF_Charge with reserve 0, the rest to owe
+-- with rel - 1 (short). Returns total, taken.
+function TRF_McCharge(v, why)
+	local s, b, t = TRF_McSettleOf(v.k or 0, v.sh1 or 0, v.lo or 0, v.bm or 0);
+	local got = 0;
+	if t > 0 then
+		got = TRF_N("TRF_Charge", t, "merc_share", 0);
+		if type(got) ~= "number" then got = 0; end;
+	end;
+	if got < t then TRF_McOwe(v.c, t - got, 1, "short"); end;
+	TRF_McE("settle", "flight", v.n, "clan", v.c, "share", s, "blood", b, "total", t, "taken", got, "result", got < t and "short" or "paid",
+		"reason", why);
+	return t, got;
+end;
+
+-- The settlement page, or Pay at once when nothing is owed.
+function TRF_McSettleAsk(v)
+	local s, b, t = TRF_McSettleOf(v.k or 0, v.sh1 or 0, v.lo or 0, v.bm or 0);
+	if t <= 0 then TRF_McPay(v, "zero"); return; end;
+	TRF_McTalk(v, "settle");
+end;
+
+-- Pay on the settlement page (or its default): the charge, completion, the share line, the end line, leave.
+function TRF_McPay(v, a)
+	local t, got = TRF_McCharge(v, a);
+	TRF_McComplete(v);
+	TRF_McPutH(nil);
+	local lead = TRF_McPilot(TRF_McLead(v));
+	if got > 0 then TRF_McSay(TRF_McTxt("mcshare", TRF_McClanName(v.c), v.k, got), 8); end;
+	if got < t then TRF_McSay(TRF_McTxt("mcsetshort"), 8, lead); else TRF_McSay(TRF_McTxt("mcend"), 6, lead); end;
+	TRF_McLeave(v, "settled", nil);
+end;
+
+-- Esc on the settlement page: the total becomes owe with rel - 1, no completion, the pack leaves.
+function TRF_McSettleEsc(v)
+	local s, b, t = TRF_McSettleOf(v.k or 0, v.sh1 or 0, v.lo or 0, v.bm or 0);
+	if t > 0 then TRF_McOwe(v.c, t, 1, "unanswered"); end;
+	TRF_McPutH(nil);
+	TRF_McE("settle", "flight", v.n, "clan", v.c, "total", t, "result", "unanswered");
+	TRF_McLeave(v, "settled", nil);
+end;
+
+-- Direct settlement without a page (half the pack lost, a robbery end, a wind-down): charge, completion unless robbed.
+function TRF_McSettleDirect(v, why)
+	TRF_McCharge(v, why);
+	if why ~= "attack" and why ~= "heat" then TRF_McComplete(v); end;
+	TRF_McPutH(nil);
+end;
+
+-- Refuse (settlement or collection page): the raid decision roll with the pack as the deciding side; attack (cfg
+-- merc_war 1): the betrayal consequences for the clan owed and group war; leave (or attack with merc_war 0): the amount
+-- stays owe with rel - 1.
+function TRF_McRefuse(v, kind)
+	local c, amt = v.c, 0;
+	if kind == "collect" then
+		local o = TRF_McO();
+		if o then c = o.c; amt = TRF_McT(c).owe; end;
+		TRF_McPutO(nil);
+	else
+		local s, b, t = TRF_McSettleOf(v.k or 0, v.sh1 or 0, v.lo or 0, v.bm or 0);
+		amt = t;
+		TRF_McPutH(nil);
+	end;
+	local st = (v.pw or 5) * max(1, TRF_McAliveN(v));
+	local sr = TRF_N("TRF_SpPlayerSide");
+	if type(sr) ~= "number" or sr <= 0 then sr = 15; end;
+	local lo, hi = TRF_McTv("brave_lo", 0.2), TRF_McTv("brave_hi", 1);
+	local br = lo + (hi - lo) * TRF_McM(TRF_McHash(v.c, TRF_McLegs(), 91), 1001) / 1000;
+	local roll = TRF_McRoll(v.c, TRF_McLegs(), 93);
+	local r, p = TRF_McRollOf(st, sr, br, roll);
+	local war = TRF_McOpt("merc_war") == 1;
+	TRF_McE("refuse", "flight", v.n, "clan", c, "kind", kind, "amount", amt, "pack_strength", TRF_F(st), "player_strength", TRF_F(sr),
+		"braveness", TRF_F(br), "chance", TRF_F(p), "roll", roll, "result", r, "war", TRF_KvB(war and 1));
+	if r == "attack" and war then
+		TRF_McSay(TRF_McTxt("mcsetwar"), 6, TRF_McPilot(TRF_McLead(v)));
+		v.st = "noh";
+		TRF_McBetray(v, "refuse", c);
+		return;
+	end;
+	if kind ~= "collect" and amt > 0 then TRF_McOwe(c, amt, 1, "refused"); elseif kind == "collect" then TRF_Mc_Mark(c, "rel", TRF_McRel(c) - 1); end;
+	TRF_McSay(TRF_McTxt("mcsetno", amt), 8, TRF_McPilot(TRF_McLead(v)));
+	TRF_McLeave(v, "refused", nil);
+end;
+
+-- Pay on the collection page: the clan's owe through TRF_Charge (reserve 0; the rest stays owe with rel - 1), the flag
+-- cleared; the offer follows.
+function TRF_McCollectPay(v)
+	local o = TRF_McO();
+	TRF_McPutO(nil);
+	if not o then return; end;
+	local w = TRF_McT(o.c).owe;
+	local got = 0;
+	if w > 0 then got = TRF_N("TRF_Charge", w, "merc_owe", 0); if type(got) ~= "number" then got = 0; end; end;
+	TRF_Mc_Mark(o.c, "owe", w - got);
+	if got < w then TRF_Mc_Mark(o.c, "rel", TRF_McRel(o.c) - 1); end;
+	TRF_McSay(TRF_McTxt("mccollectok"), 6, TRF_McPilot(TRF_McLead(v)));
+	TRF_McE("collect", "flight", v.n, "clan", o.c, "owe", w, "taken", got, "result", got < w and "short" or "paid");
+end;
+
+-- Leave (12 section 6): every live ship to the nearest portal, deleted within 25 units of it (or out of view, or after
+-- the watchdog); the marker and the escort slot go; key: the leader's line.
+function TRF_McLeave(v, why, key)
+	if v.st == "leave" or v.st == "gone" then return; end;
+	v.st = "leave";
+	v.tl = TRF_McGt();
+	TRF_McCvDrop(v);
+	local o, pn = TRF_McNearPortal(TRF_McCur(), TRF_McPos(TRF_McLead(v)));
+	if not o then o = v.prt; pn = v.pn; end;
+	v.lp = o;
+	-- No enabled portal (a rebuilt wing has no spawn portal to fall back on): the ships keep their orders and the
+	-- out-of-view rule or the watchdog deletes them.
+	if o then
+		-- The flight order (the Patrol loop, Escort) off first (Stop, as trf_raid does before re-ordering a patrolling
+		-- flight; CHECK in-game: whether a flight-level Patrol otherwise overrides the ships' ComeToPortal), then every
+		-- live ship to the portal.
+		TRF_McOrderAll(v, "stop");
+		for j = 1, v.nj or 0 do
+			local s = v.sh[j];
+			if s and not v.dead[j] and not v.gone[j] and TRF_McAlive(s) then TRF_McOrder(s, "portal", o); end;
+		end;
+	end;
+	if key then TRF_McSay(TRF_McTxt(key), 8, TRF_McPilot(TRF_McLead(v))); end;
+	TRF_N("TRF_MarkerClear", "merc");
+	TRF_N("TRF_EscortFree", "merc");
+	TRF_McE("leave", "flight", v.n, "clan", v.c, "portal", pn, "reason", why);
+end;
+
+-- Deletes every ship of v, its flights and handle globals; the marker and the escort slot go (the flight is over,
+-- whatever ended it).
+function TRF_McDelAll(v, why)
+	local n = 0;
+	v.del = 1;
+	TRF_McCvDrop(v);
+	for j = 1, v.nj or 0 do
+		local s = v.sh and v.sh[j];
+		if s and TRF_McAlive(s) and TRF_McDel(s) then n = n + 1; end;
+		if v.gone then v.gone[j] = 1; end;
+	end;
+	for i = 1, getn(v.fl or {}) do TRF_McDel(v.fl[i]); end;
+	TRF_N("TRF_GnClearSign", "trf_merc_"..v.n);
+	if v.st ~= "susp" then v.st = "gone"; end;
+	TRF_N("TRF_MarkerClear", "merc");
+	TRF_N("TRF_EscortFree", "merc");
+	TRF_McE("gone", "flight", v.n, "clan", v.c, "deleted_count", n, "reason", why);
+end;
+
+-- Pre-mission check (12 section 6): the mission signal turned on, or the mothership within 300 units of a portal whose
+-- destination the wing cannot follow. Returns the reason or nil.
+function TRF_McPmWhy(v, cur)
+	local sg = TRF_McSignal(cur);
+	local was = v.qsl;
+	v.qsl = sg;
+	if sg and not was then return "signal"; end;
+	local m = TRF_N("TRF_Map");
+	local mp = TRF_McPos(TRF_McMs());
+	if type(m) ~= "table" or not mp or type(m.sys[cur]) ~= "table" or type(m.sys[cur].portals) ~= "table" then return nil; end;
+	local ps = m.sys[cur].portals;
+	for i = 1, getn(ps) do
+		local p = ps[i];
+		if type(p) == "table" and type(p.to) == "string" and type(p.x) == "number" then
+			local to = m.by[strlower(p.to)];
+			local d = TRF_McD3(mp, {x=p.x, y=p.y or 0, z=p.z or 0});
+			if to and d and d <= TRF_McHK().pm_r and not TRF_McCanGoC(to) then return "portal"; end;
+		end;
+	end;
+	return nil;
+end;
+
+-- Every 1 s (traffic.script) -------------------------------------------------------------------
+
+function TRF_Mc_Step()
+	if type(TRF) ~= "table" or not TRF.active or not TRF_McOn() then return; end;
+	call(TRF_McStepBody, {}, "x", TRF_McErr);
+end;
+
+-- The visit flight: deaths missed by a trigger, the meeting poll, the approach rule (TRF_McApproach, none during a
+-- scene; the patrol again in state noh), the wait, half losses, the leave; while hired the
+-- clock (tr, seconds flown), the HP window, the raids that ran during the hire, seeding, the vanilla rescan, the end on a
+-- counted attack or heat 7, the pre-mission check, time out (grace, extension page), the hire record.
+function TRF_McStepBody()
+	local mc = %MC;
+	local v = mc.v;
+	if type(v) ~= "table" or v.st == "due" or v.st == "void" or v.st == "gone" or v.st == "susp" then return; end;
+	local HK, T = TRF_McHK(), TRF_McTune();
+	local gt = TRF_McGt();
+	local dt = TRF_McCl(gt - (v.lt or gt), 0, 5);
+	v.lt = gt;
+	for j = 1, v.nj or 0 do
+		local s = v.sh[j];
+		if s and not v.dead[j] and not v.gone[j] and v.del ~= 1 and not TRF_McAlive(s) then
+			-- On the way to a portal the engine may remove the ship there itself (ComeToPortal, CHECK E0.3): it left.
+			if v.st == "leave" then v.gone[j] = 1; v.pg = 1; else TRF_McDeath(v, j, "poll"); end;
+		end;
+	end;
+	if v.st == "gone" then return; end;
+	local na = TRF_McAliveN(v);
+	if v.st == "leave" then TRF_McLeaveStep(v, na, gt); return; end;
+	if na == 0 then
+		if TRF_McHired(v) then TRF_McSettleDirect(v, "lost"); end;
+		TRF_McDelAll(v, "dead");
+		return;
+	end;
+	if v.st == "war" then
+		if na * 2 <= (v.n0 or na) then TRF_McLeave(v, "half", "mchalf"); end;
+		return;
+	end;
+	if not TRF_McHired(v) then
+		if v.st == "wait" and gt >= (v.ra or 0) then
+			local lp, mp = TRF_McPos(TRF_McLead(v)), TRF_McPos(TRF_McMs());
+			local d = TRF_McD3(lp, mp);
+			if d and d <= HK.meet_r then TRF_McMeetBody(v.n, TRF_McGen()); end;
+			-- No approach during a scene (TRF_Quiet): an approaching pack goes back to its patrol.
+			if v.st == "wait" then
+				if TRF_N("TRF_Quiet") then TRF_McResume(v); else TRF_McApproach(v, d, lp, mp, T.merc_app_r); end;
+			end;
+		end;
+		if v.st == "noh" then TRF_McResume(v); end;
+		if na * 2 <= (v.n0 or na) then TRF_McLeave(v, "half", "mchalf"); return; end;
+		if gt - (v.t0 or gt) >= T.merc_wait_s and not mc.cv and v.st ~= "meet" and v.st ~= "offer" then TRF_McLeave(v, "wait", "mcleave"); end;
+		return;
+	end;
+	if v.st == "hired" then
+		v.tr = v.tr - dt;
+		v.el = v.el + dt;
+	end;
+	-- HP of the pack over the last hp_win seconds.
+	local sum, hpm = 0, {};
+	for j = 1, v.nj or 0 do
+		local s = v.sh[j];
+		if s and not v.dead[j] and not v.gone[j] then hpm[j] = TRF_McHp(s); sum = sum + (hpm[j] or 0); end;
+	end;
+	local keep, fell = {}, nil;
+	for i = 1, getn(v.hs) do
+		if gt - v.hs[i].t <= HK.hp_win then tinsert(keep, v.hs[i]); if v.hs[i].s > sum then fell = 1; end; end;
+	end;
+	tinsert(keep, {t=gt, s=sum});
+	v.hs = keep;
+	if type(TRF.live) == "table" and type(TRF.live.rd) == "table" then
+		if type(mc.rh) ~= "table" then mc.rh = {}; mc.rk = {}; end;
+		for n, rd in TRF.live.rd do if type(rd) == "table" and rd.st ~= "end" then mc.rh[n] = 1; end; end;
+	end;
+	TRF_McSeedStep(v, "step");
+	if gt - (v.rs or 0) >= HK.rescan then
+		local any = nil;
+		for g, w in v.seed do if w == "vanilla" then any = 1; end; end;
+		if any then TRF_McVArm(v); else v.rs = gt; end;
+	end;
+	if v.st == "hired" and not mc.cv then
+		local heat = 0;
+		if type(TRF.std) == "table" and type(TRF.std.heat) == "number" then heat = TRF.std.heat; end;
+		local rob = nil;
+		if TRF_McAttacks() > (v.ac0 or 0) then rob = "attack"; elseif heat >= HK.heat_max then rob = "heat"; end;
+		if rob then
+			TRF_Mc_Mark(v.c, "rel", TRF_McRel(v.c) - 1);
+			TRF_McSettleDirect(v, rob);
+			TRF_McE("end", "flight", v.n, "clan", v.c, "result", "robbery", "reason", rob);
+			TRF_McLeave(v, rob, "mcrob");
+			return;
+		end;
+		if v.lo * 2 >= max(1, v.hn or v.nj) then
+			TRF_McSettleDirect(v, "half");
+			TRF_McLeave(v, "half", "mchalf");
+			return;
+		end;
+		local pm = nil;
+		if v.pm ~= 1 then pm = TRF_McPmWhy(v, TRF_McCur()); end;
+		if pm then
+			v.pm = 1;
+			v.st = "ask";
+			TRF_McSay(TRF_McTxt("mcpremission"), 8, TRF_McPilot(TRF_McLead(v)));
+			TRF_McStat("merc_premission");
+			TRF_McE("premission", "flight", v.n, "clan", v.c, "reason", pm);
+			TRF_McSettleAsk(v);
+		elseif v.tr <= 0 then
+			if v.gr ~= 1 and fell then
+				v.gr = 1;
+				v.tr = HK.grace;
+				TRF_McSay(TRF_McTxt("mcgrace"), 6, TRF_McPilot(TRF_McLead(v)));
+				TRF_McE("grace", "flight", v.n, "clan", v.c, "time", v.tr);
+			else
+				v.tr = 0;
+				v.st = "ask";
+				TRF_McE("timeout", "flight", v.n, "clan", v.c, "kill_count", v.k, "loss_count", v.lo);
+				TRF_McTalk(v, "ext");
+			end;
+		end;
+	end;
+	if TRF_McHired(v) then TRF_McWriteH(v, hpm); end;
+end;
+
+-- Leaving flight: deleted at the portal, out of view, or after the watchdog.
+function TRF_McLeaveStep(v, na, gt)
+	local HK = TRF_McHK();
+	if na == 0 then TRF_McDelAll(v, v.pg == 1 and "portal" or "dead"); return; end;
+	local pp = TRF_McPos(v.lp);
+	local mp = TRF_McPos(TRF_McMs());
+	local near, far = nil, 1;
+	for j = 1, v.nj or 0 do
+		local s = v.sh[j];
+		if s and not v.dead[j] and not v.gone[j] and TRF_McAlive(s) then
+			local p = TRF_McPos(s);
+			local d = TRF_McD3(p, pp);
+			if d and d <= HK.portal_r then near = 1; end;
+			local dm = TRF_McD3(p, mp);
+			if not dm or dm <= HK.ovd then far = nil; end;
+		end;
+	end;
+	if near then TRF_McDelAll(v, "portal");
+	elseif far then TRF_McDelAll(v, "out_of_view");
+	elseif gt - (v.tl or gt) >= HK.leave_s then TRF_McDelAll(v, "watchdog"); end;
+end;
+
+-- Jumps, arrivals, loads ------------------------------------------------------------------------
+
+-- Before every jump (traffic.script, before TRF_Raid_BeforeJump; dest = the destination name): an open hire keeps its
+-- record and follows when the wing can go there (the hull written now, the jump counted in hj); a jump it cannot follow
+-- (a mission running, a deny-listed or mission destination) ends it unsettled: the total becomes owe without rel loss and
+-- the collection flag (12 section 5), completion by its rule. Every clan ship is deleted before the snapshot.
+function TRF_Mc_BeforeJump(dest, how)
+	if type(TRF) ~= "table" or not TRF_McOn() then return; end;
+	local mc = %MC;
+	local v = mc.v;
+	local h = TRF_McH();
+	if TRF_McHired(v) then TRF_McWriteH(v); h = TRF_McH(); end;
+	if h then
+		local m = TRF_N("TRF_Map");
+		local di = nil;
+		if type(m) == "table" and type(dest) == "string" then di = m.by[strlower(dest)]; end;
+		local go = di and TRF_McCanGo(di) and TRF_N("GetPlayerQuestState") ~= TRUE;
+		if TRF_McHired(v) and v.pm == 1 then go = nil; end;
+		if go then
+			h.hj = min(h.hj + 1, TRF_McHK().hj_max);
+			TRF_McPutH(h, TRF_McRec().hb);
+			TRF_McE("jump", "clan", h.c, "destination", tostring(dest), "time", h.tr, "result", "follow");
+		else
+			local s, b, t = TRF_McSettleOf(h.k, h.sh, h.lo, h.bm);
+			if t > 0 then TRF_McOwe(h.c, t, 0, "jump"); TRF_McPutO(h.c, h.sys); end;
+			local w = v;
+			if not TRF_McHired(w) then w = {n=0, c=h.c, el=h.g, k=h.k}; end;
+			TRF_McComplete(w);
+			TRF_McPutH(nil);
+			local R = TRF_McRec();
+			if R and t > 0 then R.n = TRF_TpPackK({c=h.c, a=2}, TRF_McNKeys()); end;
+			TRF_McE("jump", "clan", h.c, "destination", tostring(dest), "total", t, "result", "owe");
+		end;
+	end;
+	if type(mc.cv) == "table" then mc.cv = nil; mc.dlg = nil; TRF_N("TRF_BoxFree", "merc"); end;
+	if type(v) == "table" and v.st ~= "gone" and v.st ~= "void" and v.st ~= "susp" then TRF_McDelAll(v, "jump"); end;
+	mc.v = nil;
+end;
+
+-- Rebuild of the hired wing at the arrival (12 section 6 End of a hire; the vanilla OutMissionEscort_run pattern) or after
+-- a load without the ships (Save/load): the gates per system, the escort slot, the ship cap; a refusal suspends the hire
+-- for the visit (tr frozen, wing absent, the arrival note). Rebuilt from the record: one ship per slot with a hull > 0,
+-- after the off-screen repair (user decision 2026-10-25: mc_heal_j per jump made with the player, hj, plus mc_heal_s per
+-- game second since the last fielded write, hg: the jump takes no game time, so these are the seconds of suspended
+-- visits; capped at 1000; a lost ship stays 0), SetHP to the hull (without SetHP a ship below 550 per mille sits out;
+-- every ship sitting out suspends the hire for the visit), relations friend, escort, triggers, the record written. A
+-- broken clan's hire, or a record without a live hull (every ship lost before the jump, or the hull dropped by the
+-- repair), ends here with the total as owe (13 R11): a suspension would never end.
+function TRF_McFollow(cur, via)
+	local mc = %MC;
+	local h = TRF_McH();
+	if not h then return nil; end;
+	local c = h.c;
+	local HK = TRF_McHK();
+	local pm = TRF_McHull();
+	local heal = TRF_McHealOf(h.hj, floor(TRF_McGt()) - h.hg, TRF_McTn("mc_heal_j"), TRF_McTn("mc_heal_s"));
+	local na = 0;
+	for j = 1, h.n do
+		if (pm[j] or 0) > 0 then pm[j] = min(HK.pm, pm[j] + heal); na = na + 1; else pm[j] = 0; end;
+	end;
+	local over = nil;
+	if TRF_McDig(c, "rl") == 2 then over = "broken"; elseif na == 0 then over = "ships"; end;
+	if over then
+		local s, b, t = TRF_McSettleOf(h.k, h.sh, h.lo, h.bm);
+		if t > 0 then TRF_McOwe(c, t, 0, over); end;
+		TRF_McPutH(nil);
+		TRF_McE("follow", "clan", c, "total", t, "result", "ended", "reason", over);
+		return nil;
+	end;
+	local why = TRF_McSysWhy(cur);
+	if not why then
+		local e = TRF_N("GetQuestLabel", "OutMissionEscort");
+		if type(e) == "string" and e ~= "" then why = "escort_mission"; end;
+	end;
+	if not why and type(TRF_CanSpawn) == "function" then
+		local ok, no = TRF_CanSpawn(na, "merc", 0);
+		if not ok then why = "cap:"..tostring(no); end;
+	end;
+	if not why and type(TRF_EscortTake) == "function" and not TRF_EscortTake("merc") then why = "escort_slot"; end;
+	local n = nil;
+	if not why then n = TRF_McAlloc(); if not n then why = "flight"; end; end;
+	local v = {n=n or 0, c=c, st="hired", idx=cur, cp=h.ty, pw=h.pw, fee=h.fee, sh1=h.sh, bm=h.bm, k=h.k, lo=h.lo, tr=h.tr, el=h.g,
+		hn=h.n, nb=2, seed={}, kd={}};
+	local sit = 0;
+	if not why then
+		local ms = TRF_McMs();
+		local mp = TRF_McPos(ms);
+		if not mp then why = "mothership"; else
+			local pos = {x=mp.x + HK.ms_off, y=mp.y, z=mp.z - HK.ms_off};
+			if not TRF_McBuild(v, pos, Vector3(0, 0, 1), pm) then why = "build"; else
+				-- Hull (E0.20): SetHP to the repaired per mille (only with a known full HP); a failed SetHP keeps full HP,
+				-- and a ship below 550 then sits out. Every ship sitting out: no wing this visit, the hire waits (not "lost").
+				for j = 1, v.nj do
+					local s = v.sh[j];
+					local p = pm[j] or 0;
+					local hp0 = v.hp0[j];
+					if s and p > 0 and p < HK.pm and type(hp0) == "number" and hp0 > 0 then
+						if not TRF_McSetHp(s, hp0 * p / HK.pm) and p < HK.pm_min then
+							TRF_McDel(s);
+							v.gone[j] = 1;
+							sit = sit + 1;
+						end;
+					end;
+				end;
+				v.n0 = TRF_McAliveN(v);
+				if v.n0 == 0 then TRF_McDelAll(v, "sit_out"); why = "sit_out"; end;
+			end;
+		end;
+	end;
+	if why then
+		mc.v = {st="susp", c=c, n=0};
+		TRF_N("TRF_EscortFree", "merc");
+		if via == "arrival" then TRF_N("TRF_ArrivalLine", "merc", TRF_McTxt("mcsuspend", TRF_McClanName(c))); end;
+		TRF_McStat("merc_suspend");
+		TRF_McE("suspend", "clan", c, "system", TRF_McSysName(cur), "time", h.tr, "reason", why);
+		return nil;
+	end;
+	mc.v = v;
+	TRF_McHiredSetup(v);
+	TRF_McArm(v);
+	if via == "arrival" then TRF_N("TRF_ArrivalLine", "merc", TRF_McTxt("mcresume", TRF_McClanName(c))); end;
+	TRF_McStat("merc_follow");
+	TRF_McE("follow", "flight", n, "clan", c, "system", TRF_McSysName(cur), "ship_count", v.n0, "sit_out", sit, "time", v.tr,
+		"heal", heal, "hull", TRF_McHullStr(pm, h.n), "result", "rebuilt", "via", via);
+	return 1;
+end;
+
+-- Load (12 section 6 Save/load): gen bumped by trf_state; tr clamped to merc_hire_s + 60; a hire of this system re-adopts
+-- its ships through the handle globals (TRF_GnFindG, waiting as TRF_GnLoadRetry does) or rebuilds them; every other clan
+-- ship is deleted (no refund, no re-roll); the escort slot is taken again after TRF_Pl_OnLoad.
+function TRF_Mc_OnLoad()
+	local mc = %MC;
+	mc.v = nil; mc.nx = 0; mc.cv = nil; mc.dlg = nil; mc.rh = {}; mc.rk = {}; mc.lw = nil; mc.cg = nil;
+	if type(TRF) ~= "table" or not TRF_McOn() then return; end;
+	local h = TRF_McH();
+	local cur = TRF_McCur();
+	if h then
+		local mx = TRF_McTn("merc_hire_s") + TRF_McHK().grace;
+		if h.tr > mx then h.tr = mx; TRF.mc.h = TRF_TpPackK(h, TRF_McHKeys()); end;
+	end;
+	if h and h.sys == cur and cur then
+		mc.lw = {t0=TRF_McGt(), n=0};
+		TRF_McLoadTry();
+		return;
+	end;
+	TRF_McLoadDel(nil);
+	if h and cur then
+		local ok = TRF_McFollow(cur, "load");
+		TRF_McE("load", "clan", h.c, "result", ok and "rebuilt" or "suspended", "reason", "other_system");
+	elseif h then
+		mc.v = {st="susp", c=h.c, n=0};
+		TRF_McE("load", "clan", h.c, "result", "suspended");
+	end;
+end;
+
+-- Load retry (due 1 s): the first sign with live ships is adopted; no handle at all, or nothing alive after load_wait:
+-- the rebuild.
+function TRF_McLoadTry()
+	local mc = %MC;
+	local w = mc.lw;
+	if type(w) ~= "table" or not TRF_McH() then return; end;
+	w.n = w.n + 1;
+	local none = 1;
+	for n = 1, TRF_McHK().nmax do
+		local sh, s = TRF_N("TRF_GnFindG", "merc_"..n);
+		if type(sh) == "table" and getn(sh) > 0 then
+			mc.lw = nil;
+			TRF_McAdopt(n, sh, s.ix);
+			TRF_McLoadDel(n);
+			return;
+		end;
+		if type(s) == "table" and s.why ~= "none" then none = nil; end;
+	end;
+	if none or TRF_McGt() - w.t0 >= TRF_McHK().load_wait or not TRF_N("TRF_Due", 1, "TRF_McLoadTry") then
+		mc.lw = nil;
+		TRF_McLoadDel(nil);
+		local ok = TRF_McFollow(TRF_McCur(), "load");
+		TRF_McE("load", "result", ok and "rebuilt" or "suspended", "try_count", w.n, "reason", none and "no_handle" or "not_alive");
+	end;
+end;
+
+-- Re-adopts the hired ships sh (slots ix) of flight number n after a load: triggers with the new gen, relations friend,
+-- escort through each ship's flight, the escort slot, the hull kept (hp0 from the saved per mille).
+function TRF_McAdopt(n, sh, ix)
+	local mc = %MC;
+	local h = TRF_McH();
+	local pm = TRF_McHull();
+	local HK = TRF_McHK();
+	mc.nx = max(mc.nx or 0, n);
+	local v = {n=n, c=h.c, st="hired", idx=TRF_McCur(), cp=h.ty, pw=h.pw, fee=h.fee, sh1=h.sh, bm=h.bm, k=h.k, lo=h.lo, tr=h.tr, el=h.g,
+		hn=h.n, nb=2, nj=h.n, gn="TRF_Merc_"..n, sh={}, fl={}, dead={}, gone={}, hp0={}, lh={}, seed={}, kd={}};
+	for i = 1, getn(sh) do
+		local j = ix[i] or i;
+		v.sh[j] = sh[i];
+		local p = pm[j] or HK.pm;
+		if p <= 0 then p = HK.pm; end;
+		local hp = TRF_McHp(sh[i]);
+		if hp then v.hp0[j] = hp * HK.pm / p; end;
+		local pl = TRF_McPilot(sh[i]);
+		local fl = nil;
+		if pl then fl = call(function(x) return x:GetFlight(); end, {pl}, "x", TRF_McNoErr); end;
+		if TRF_McObj(fl) then
+			local dup = nil;
+			for k = 1, getn(v.fl) do if v.fl[k] == fl then dup = 1; end; end;
+			if not dup then tinsert(v.fl, fl); end;
+		end;
+		if j > v.nj then v.nj = j; end;
+	end;
+	v.n0 = TRF_McAliveN(v);
+	mc.v = v;
+	TRF_N("TRF_EscortTake", "merc");
+	TRF_McHiredSetup(v);
+	TRF_McArm(v);
+	TRF_McStat("merc_adopt");
+	TRF_McE("load", "flight", n, "clan", v.c, "ship_count", v.n0, "time", v.tr, "result", "adopt");
+end;
+
+-- Deletes the clan ships of every flight number except keep (unhired packs at a load): handle globals, then labels.
+function TRF_McLoadDel(keep)
+	local n0 = 0;
+	for n = 1, TRF_McHK().nmax do
+		if n ~= keep then
+			local sh = TRF_N("TRF_GnFindG", "merc_"..n);
+			if type(sh) == "table" then for i = 1, getn(sh) do if TRF_McDel(sh[i]) then n0 = n0 + 1; end; end; end;
+			for j = 1, TRF_McHK().jmax do
+				local o = TRF_N("GetObjectByLabel", "trf_merc_"..n.."_"..j);
+				if TRF_McAlive(o) and TRF_McDel(o) then n0 = n0 + 1; end;
+			end;
+			TRF_N("TRF_GnClearSign", "trf_merc_"..n);
+		end;
+	end;
+	if n0 > 0 then TRF_McE("load", "deleted_count", n0, "result", "delete"); end;
+	return n0;
+end;
+
+-- Wind-down (trf_gen TRF_WindDown, 9.10): an open hire ends with a direct settlement and the 50 % refund when it ended
+-- before half its time with no counted kill; every flight leaves.
+function TRF_Mc_WindDown()
+	local mc = %MC;
+	local v = mc.v;
+	if type(v) ~= "table" or v.st == "gone" or v.st == "void" or v.st == "leave" then return; end;
+	if type(mc.cv) == "table" then mc.cv = nil; mc.dlg = nil; TRF_N("TRF_BoxFree", "merc"); end;
+	if v.st == "due" or v.st == "susp" then
+		if v.st == "due" then TRF_McVoid(v, "wind"); end;
+		return;
+	end;
+	if TRF_McHired(v) then
+		if not TRF_McDoneOf(v.el, TRF_McTn("merc_hire_s"), v.k) then
+			local r = floor((v.fee or 0) / 2);
+			local paid = TRF_N("TRF_Pay", r, "merc_refund") or 0;
+			if paid > 0 then TRF_McSay(TRF_McTxt("mcrefund", paid), 8); end;
+			TRF_McE("refund", "flight", v.n, "clan", v.c, "amount", paid);
+		end;
+		TRF_McSettleDirect(v, "wind");
+	end;
+	TRF_McLeave(v, "wind", nil);
+end;
+
+-- Plumbing, board line, legend ----------------------------------------------------------------------------
+
+-- trf_plumb TRF_InstallPlumb (cfg merc 1 only, so with the module off the orphan scan still deletes trf_merc_ labels):
+-- the adoption of Merc groups, the ship-cap group (pack rank, unhired ships trimmed), the patrol board line 70, the
+-- legend station lines, the 8.5 resolver, the death bus.
+function TRF_Mc_Plumb()
+	if not TRF_McOn() then return; end;
+	TRF_N("TRF_PlAdoptReg", "Merc");
+	TRF_N("TRF_CapReg", "merc", "TRF_Mc_Ships", "pack", "TRF_Mc_Trim");
+	TRF_N("TRF_DockLine", "patrol", 70, "TRF_Mc_BoardLine");
+	TRF_N("TRF_VoiceProvReg", "TRF_Mc_VoiceProv");
+	TRF_N("TRF_RaidHelpReg", "TRF_Mc_RaidHelp");
+	TRF_N("TRF_DeathReg", "Mc");
+end;
+
+-- Live clan ships (ship cap, TRF_CapShips).
+function TRF_Mc_Ships(g)
+	return TRF_McLive();
+end;
+
+-- Ship-cap trim (trf_plumb TRF_CapTrimDo): an unhired pack gives up to n ships (highest slot first); a hired wing none.
+function TRF_Mc_Trim(g, n)
+	local v = TRF_McV();
+	if type(v) ~= "table" or TRF_McHired(v) or type(n) ~= "number" then return 0; end;
+	local k = 0;
+	for j = v.nj or 0, 1, -1 do
+		local s = v.sh[j];
+		if k < n and s and not v.dead[j] and not v.gone[j] and TRF_McAlive(s) and TRF_McDel(s) then v.gone[j] = 1; k = k + 1; end;
+	end;
+	if k > 0 then TRF_McE("trim", "flight", v.n, "clan", v.c, "trimmed", k); end;
+	return k;
+end;
+
+-- Patrol board line 70 (12 section 2 #12; 11.2): chapter >= 5 with cfg merc_board 1, once per visit under the strict
+-- gate "board": the free clan nearest by jumps to this system that works a region ("Mercenaries for hire: <clan> in the
+-- <region> lanes."); chapters 1-4: a Legion legend line (no system name in 1-3, the Torr region in 4) by the fixed hash.
+function TRF_Mc_BoardLine(kind, param)
+	local mc = %MC;
+	if kind ~= "patrol" or not TRF_McOn() or TRF_McOpt("merc_board") ~= 1 or mc.bl == 1 then return nil; end;
+	local cur = TRF_McCur();
+	if not cur or (type(TRF_StrictOk) == "function" and not TRF_StrictOk(cur, "board")) then return nil; end;
+	local ch = TRF_McChapter();
+	if ch < TRF_McK().first_ch then
+		local t = TRF_McLegend(cur, ch, 17);
+		if t then mc.bl = 1; TRF_McE("legend", "channel", "board", "chapter", ch); end;
+		return t;
+	end;
+	if not TRF_McRec() then return nil; end;
+	local rm = TRF_N("TRF_RgMap");
+	if type(rm) ~= "table" then return nil; end;
+	local dist = {};
+	dist[cur] = 0;
+	local nb = TRF_N("TRF_RgNear", cur, 12);
+	if type(nb) == "table" then for k = 1, getn(nb) do dist[nb[k].idx] = nb[k].j; end; end;
+	local best, bd = nil, nil;
+	for c = 1, TRF_McK().nc do
+		local at, rl = TRF_McDig(c, "at"), TRF_McDig(c, "rl");
+		if rl == 0 and at >= 1 and type(rm[at]) == "table" and type(rm[at].home) == "number" then
+			local d = dist[rm[at].home] or 99;
+			if not bd or d < bd then best = c; bd = d; end;
+		end;
+	end;
+	if not best then return nil; end;
+	mc.bl = 1;
+	local at = TRF_McDig(best, "at");
+	TRF_McE("board", "clan", best, "region", at, "jumps", bd);
+	return TRF_McTxt("mcboard", TRF_McClanName(best), TRF_McSysTxt(rm[at].home));
+end;
+
+-- A Legion legend line for system idx in chapter ch (11.2), or nil: only with an elite clan, by the fixed hash (about one
+-- dock in three), chapters 1-3 the three lines without a name, chapter 4 the Torr line.
+function TRF_McLegend(idx, ch, salt)
+	if TRF_McOpt("mc_el_c") == 0 or ch < 1 or ch >= TRF_McK().first_ch then return nil; end;
+	local h = TRF_McHash(idx or 0, TRF_McLegs(), salt);
+	if TRF_McM(h, 3) ~= 0 then return nil; end;
+	if ch >= 4 then return TRF_McTxt("mcleg4"); end;
+	return TRF_McTxt("mcleg"..(TRF_McM(floor(h / 3), 3) + 1));
+end;
+
+-- Mood provider of closed stations (trf_plumb TRF_VoiceProvReg, station-voices-spec 5.5): a legend line in chapters 1-4;
+-- state reads only.
+function TRF_Mc_VoiceProv(idx, tip)
+	if not TRF_McOn() then return nil; end;
+	local ch = TRF_McChapter();
+	local t = TRF_McLegend(idx, ch, 29);
+	if t then TRF_McE("legend", "channel", "station", "chapter", ch); end;
+	return t;
+end;
+
+-- Contract: repair, defaults, dump, text ---------------------------------------------------------------------
+
+-- 1 when s is a string of n digits.
+function TRF_McDigitsOk(s, n)
+	return type(s) == "string" and strlen(s) == n and not strfind(s, "[^%d]");
+end;
+
+-- Repair (TRF_Repair, every entry and load): only the known keys stay; s of 12 x 20 digits (else the creation
+-- defaults) with every field clamped; t[c] readable for c 1..12 and clamped (zeros dropped); h, r, n, e readable
+-- (else dropped; hb goes with h); hb 4 digits per slot, each <= 1000 (TRF_McHullOk); o readable with a clan 1..12;
+-- x, wt numbers; w 11 digits.
+function TRF_Mc_Fix()
+	if type(TRF) ~= "table" or TRF.mc == nil then return; end;
+	local R = TRF.mc;
+	local K = TRF_McK();
+	if type(R) ~= "table" then TRF.mc = nil; TRF_McE("fix", "field", "mc", "result", "dropped"); return; end;
+	local o = {};
+	if TRF_McDigitsOk(R.s, K.nc * K.sw) then o.s = R.s; else o.s = TRF_McDefS(); if R.s ~= nil then TRF_McE("fix", "field", "s", "result", "reset"); end; end;
+	o.t = {};
+	TRF.mc = o;
+	for c = 1, K.nc do
+		local v = {};
+		for k, f in TRF_McDigK() do v[k] = TRF_McDig(c, k); end;
+		local p = (c - 1) * K.sw;
+		o.s = strsub(o.s, 1, p)..TRF_McBlockOf(v)..strsub(o.s, p + K.sw + 1);
+	end;
+	if type(R.t) == "table" then
+		for c, x in R.t do
+			local r = nil;
+			if TRF_McCOk(c) and type(x) == "string" then r = TRF_TpUnpackK(x, TRF_McTKeys()); end;
+			if r then TRF_McPutT(c, r); else TRF_McE("fix", "field", "t", "clan", c, "result", "dropped"); end;
+		end;
+	end;
+	local hk = TRF_TpUnpackK(R.h, TRF_McHKeys());
+	if hk and hk.c >= 1 and hk.c <= K.nc then
+		o.h = R.h;
+		if TRF_McHullOk(R.hb) then o.hb = R.hb; end;
+	elseif R.h ~= nil then
+		TRF_McE("fix", "field", "h", "result", "dropped");
+	end;
+	local ok = {r=TRF_McRKeys(), n=TRF_McNKeys(), e=TRF_McEKeys()};
+	for f, ks in ok do
+		if R[f] ~= nil then
+			if TRF_TpUnpackK(R[f], ks) then o[f] = R[f]; else TRF_McE("fix", "field", f, "result", "dropped"); end;
+		end;
+	end;
+	if R.o ~= nil then
+		local oc = TRF_TpUnpackK(R.o, TRF_McOKeys());
+		if oc and TRF_McCOk(oc.c) then o.o = R.o; else TRF_McE("fix", "field", "o", "result", "dropped"); end;
+	end;
+	if TRF_McNum(R.x, 0, K.stamp) then o.x = floor(R.x); end;
+	if TRF_McDigitsOk(R.w, K.nreg) then o.w = R.w; end;
+	if o.w and TRF_McNum(R.wt, -K.stamp, K.stamp) then o.wt = floor(R.wt); end;
+end;
+
+-- Config keys (design 6 config; merc-spec 7). merc 0 until E0.13 (the release gate) passes; merc_board, the options of
+-- P D.2 (merc_book, merc_report, merc_marker, merc_calls, merc_transfer), rv_enabled (the rival role; 0 in this step, so
+-- no clan becomes a rival without rival behaviour) and mc_launch are read by the later steps; mc_el_c the elite clan
+-- (0 off); rv_deny extra lowercase system names for the rival role. The group-war keys merc_war (default 1), merc_hunt,
+-- merc_hostile, merc_legion (default 0) are in TRF_Pl_OptDef.
+function TRF_Mc_OptDef()
+	return {merc=0, merc_board=1, merc_book=0, merc_report=0, merc_marker=0, merc_calls=0, merc_transfer=0, rv_enabled=0,
+		mc_launch=0, mc_el_c=8, rv_deny={}};
+end;
+
+-- Tune keys (12 section 6 Config, 13 section 6, 11.7; merc-spec 7). The fortune, stage, presence, decay and elite floor
+-- keys (step 1) and the hire keys (step 3: c_hire, c_share, c_blood, merc_reserve_k, merc_hire_s, merc_ext_k,
+-- merc_wait_s (3600 game seconds, user decision 2026-10-29), merc_app_r, merc_cd, merc_p, merc_sweep_p, merc_p_max,
+-- mc_st_off, mc_size_k, mc_el_jobs, mc_el_fee_k, mc_heal_j, mc_heal_s; mc_ships 14 is read by trf_safety) are read; the
+-- others are kept for steps 4-9.
+function TRF_Mc_TuneDef()
+	return {c_hire=700, c_share=25, c_blood=4, merc_reserve_k=2, merc_owe_j=60, merc_hire_s=600, merc_ext_k=0.75, mc_heal_j=150, mc_heal_s=1,
+		merc_wait_s=3600, merc_app_r=700, merc_cd=4,
+		merc_reach=6, merc_p={5, 10, 35, 55, 15, 5}, merc_sweep_p=25, merc_p_max=80, merc_rel_decay=20, merc_rel_j=20,
+		merc_bk_j=60, merc_black=30, merc_black_max=90, merc_rev_n=3, merc_book_p={20, 40}, merc_book_legs=12,
+		merc_ret_k=0.5, merc_rep_cd=28, merc_call_j=30, merc_call_rel=1, merc_call_gap=8, merc_rc_jobs=3, merc_rc_k=1.5,
+		merc_hunt_n=4, merc_hunt_k=1.0, merc_dm_j=60, merc_sw_legs=2,
+		mc_inc={0, 3, 2, 2, -2, 0}, mc_up={0, 0.5, 1, 2}, mc_fo_ev=12, mc_st_up={30, 55, 78}, mc_st_dn={22, 47, 70},
+		mc_st_off={-2, -1, 0, 1}, mc_size_k={1.0, 1.1, 1.25, 1.4}, mc_ships=14, mc_ms_max=2, mc_bs_j={20, 40}, mc_st_ch=7,
+		mc_ms_hold=1500, mc_fo0=20, mc_fo0_r=31, mc_loss_p=8, mc_loss_fo=3, mc_hp_ticks=3, mc_hp_jumps=3, mc_break_fo=30,
+		mc_break_min=10, mc_el_fo={55, 78}, mc_el_hp=2, mc_el_jobs=6, mc_el_fee_k=1.5, mc_el_w=4, mc_el_g=5,
+		mc_el_fight_cd=24, mc_el_break={4, 25}, mc_el_wd=60, mc_st4_n=6,
+		rv_count=3, rv_home_n=4, rv_cd_legs=24, rv_cd_jumps=8, rv_g_decay=10, rv_w_decay=8, rv_intro_chapter=4,
+		rv_min_chapter=5, rv_hunt_chapter=7, rv_min_pro=3, rv_snipe_pct=60, rv_snipe_wait=60, rv_answer_pct=50,
+		rv_answer_wait=90, rv_hunt_pct=50, rv_hostile_g=6, rv_split=0.5, rv_act_cd=4, rv_fight_cd=16, rv_answer_r=1500,
+		rv_station_r=2500, rv_spawn_min=1000, rv_arb_k=1500};
+end;
+
+-- Debug dump (12 section 6 Debug dump): a summary line and one line per clan.
+function TRF_Mc_Dump()
+	local R = TRF_McRec();
+	if not R then
+		TRF_McE("dump", "on", TRF_KvB(TRF_McOn() and 1), "result", "none");
+		return;
+	end;
+	local K = TRF_McK();
+	local nt = 0;
+	if type(R.t) == "table" then for c, x in R.t do nt = nt + 1; end; end;
+	local e = TRF_TpUnpackK(R.e, TRF_McEKeys()) or {};
+	TRF_McE("dump", "on", TRF_KvB(TRF_McOn() and 1), "clan_count", K.nc, "packed_count", nt, "elite", TRF_McElite(),
+		"deed_jump", e.dj1, "deed_chapter", e.dc1, "deed_last", e.djl, "blacklist_until", R.x, "wolves_rating", R.w,
+		"hire", R.h, "hull", R.hb, "call", R.r, "note", R.n, "collect", R.o, "static", %MC.clv);
+	local h = TRF_McH();
+	local v = %MC.v;
+	local vs, vn = nil, nil;
+	if type(v) == "table" then vs = v.st; vn = v.n; end;
+	if h then
+		TRF_McE("dump_hire", "clan", h.c, "system", TRF_McSysName(h.sys), "composition", h.ty, "power", h.pw, "ship_count", h.n, "time", h.tr,
+			"fee", h.fee, "share", h.sh, "blood", h.bm, "kill_count", h.k, "loss_count", h.lo, "flown", h.g, "hull", R.hb, "visit", vs,
+			"flight", vn);
+	elseif vs then
+		TRF_McE("dump_hire", "result", "none", "visit", vs, "flight", vn);
+	end;
+	for c = 1, K.nc do
+		local v = TRF_McGet(c);
+		local cl = TRF_McClan(c);
+		TRF_McE("dump_clan", "clan", c, "key", cl.k, "name", TRF_McClanName(c), "bloc", cl.b, "home", TRF_McHome(c), "rel", v.rel,
+			"at", v.at, "jobs", v.jobs, "condition", v.hp, "fortune", v.fo, "stage", v.sg, "fielded", TRF_Mc_Fielded(c),
+			"role", v.rl, "met", v.met, "betrayals", v.bk, "grudge", v.g, "owe", v.owe, "streak", v.su, "closed", v.mk);
+	end;
+end;
+
+-- Display name of clan c (the vanilla #RC_FLIGHT_NAME<c> without "Mercenary unit", as plain text; TRF_Txt).
+function TRF_McClanName(c)
+	local t = TRF_N("TRF_Txt", "mcname"..tostring(c));
+	if type(t) == "string" and t ~= "" then return t; end;
+	local x = TRF_Mc_Text()["mcname"..tostring(c)];
+	return x or tostring(c);
+end;
+
+-- Texts (12 section 6 text keys, 11.2-11.3), EN; keys in TRF_UI_Key form (#TRF_mc<name> in loc/trf_en.loc, prefix
+-- #TRF_MC_ of 00 section 6): the clan names, the hire role's lines, the page texts and answers, the board and legend
+-- lines. The vanilla keys #UI_Fmerc_confirm (box caption), #UI_Fmerc_joined and #UI_Fmerc_nojoined3 are reused.
+function TRF_Mc_Text()
+	return {
+		mcname1 = "Morgenstern", mcname2 = "Avenging Angels", mcname3 = "Fire Poleaxes", mcname4 = "Star Dragoons",
+		mcname5 = "Cimmerians", mcname6 = "Fortune Favorites", mcname7 = "Nomads", mcname8 = "Black Legion",
+		mcname9 = "Shining Guards", mcname10 = "Stardust", mcname11 = "Horsemen of the Apocalypse", mcname12 = "Golden Griffins",
+		mcnav = "Mercenaries",
+		mcsig = "$1, working these lanes. Raiders giving you grief, Wolves? We're out on patrol, come find us.",
+		mcsigel = "Black Legion. We are out on patrol. Mind your manners, Wolves.",
+		mcoffer0 = "$1 guns, one price: $2. Pirates we shoot. Navy we don't. Plus $3 a head for every pirate that falls while we fly, and blood money for any of ours that falls.",
+		mcoffer1 = "The Wolves! That was clean work last time. Friends' rate: $1, and $2 a head.",
+		mcofferm = "Price went up, Wolves: $1. And $2 a head.",
+		mcgrief = "We buried $1 of ours not long ago. Rate's up till the wake's over.",
+		mcheatk = "We guard freighters, we don't hunt them. Costs extra.",
+		mcftu = "FTU vouches for you. That's worth a discount.",
+		mcbook = "The Exchange keeps one book: $1 cr of old debt goes on the price.",
+		mcpage = "$1 will fly with you for $2 cr, plus $3 cr per pirate downed. Hire them?",
+		mcacc = "Hire them", mcdec = "Not now", mcpay = "Pay", mcrefusea = "Refuse", mcexty = "Extend", mcextn = "Settle up",
+		mcclose = "Close",
+		mcon = "Contract's on. We stay on your six for ten minutes, through the gates too.",
+		mcengage = "Got them. $1, break and engage!",
+		mcext = "Time's up, Wolves. Another ten minutes for $1 cr?",
+		mcextok = "Ten more minutes. Lead on.",
+		mcgrace = "Finishing this one.",
+		mcset1 = "Share for $1 kills $2 cr,",
+		mcset2 = "blood money for $1 of ours $2 cr:",
+		mcset3 = "$1 cr.",
+		mcshare = "$1: prize share for $2 pirates, $3 credits.",
+		mcend = "Good hunting today.",
+		mcsetshort = "Short again, Wolves. The rest goes on the Exchange book.",
+		mcsetno = "Have it your way. The Exchange will remember the $1 cr.",
+		mcsetwar = "Then we take it out of your hide. Weapons free!",
+		mcpremission = "We don't fly into that, Wolves. Settle up first.",
+		mccollect = "You left $1 owing the $2 $3 cr.",
+		mccollectok = "Book's clean. Now, business.",
+		mcjumpowe = "You jumped without settling. The $1 want their $2 cr; the Exchange keeps one book.",
+		mcsuspend = "$1 can't follow you here. The contract waits for the next gate.",
+		mcresume = "$1 are back on your six.",
+		mcleave = "No contract, no reason to stay. We're off.",
+		mchalf = "Half of us are down. We're pulling out.",
+		mcrob = "We guard freighters, we don't rob them. Contract's off.",
+		mcrefuse = "We don't fly for the Wolves. Try the $1, if they'll have you.",
+		mcheat7 = "We guard freighters, we don't rob them. Not for any price.",
+		mcbloc = "You fly with the $1. We don't share a sky with them.",
+		mclegion = "Black Legion. We don't fly for carriers nobody has heard of. Come back with a record, Wolves.",
+		mctraitor = "Turncoat! $1, weapons free on the carrier!",
+		mctraitor0 = "Turncoat! $1, we're done here.",
+		mcblack = "The Mercenary Exchange has struck the Wolves off its books.",
+		mcrefund = "Contract cut short. Half the fee back: $1 cr.",
+		mcboard = "Mercenaries for hire: $1 in the $2 lanes.",
+		mcleg1 = "Black Legion crews drank here once. Nobody asks them twice.",
+		mcleg2 = "The Exchange ratings came out. Black Legion first, again.",
+		mcleg3 = "Nobody has broken the Black Legion in the field. Nobody living.",
+		mcleg4 = "Black Legion winters in the Torr lanes. They don't take cheap contracts.",
+	};
+end;

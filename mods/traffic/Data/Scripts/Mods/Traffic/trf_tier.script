@@ -1,0 +1,1034 @@
+-- sw3-traffic tier module (v0.2 spec 9.1-9.4, 10.1). Lua 4.0.1.
+-- Prosperity bands (spawn factor, caps, parked ships, seed bonus), trader tiers TT1-TT3 (composition,
+-- escorts, holds), the shared one-row builder TRF_BuildFlight, parked ships. trf_gen calls TRF_TierPlan,
+-- TRF_BuildTier and TRF_FillHold; at pro 0-2 they keep the v0.1 path (no RAND draw, NewAllFlight,
+-- TRF_FillCargo). Top level only defines functions. Handles only in TRF_H().pk / .pkg.
+-- v1 (v1-spec 8.1, 8.2, 10.2): bands 3-4 (pro 8-9), TT4 convoys (pick here; build and holds in trf_convoy
+-- TRF_Tt4Build / TRF_Tt4Hold), up to 2 parked ships.
+
+-- Helpers --------------------------------------------------------------------------
+
+-- Event line of module tier (design/log-format.md): event, then key/value pairs.
+function TRF_TrE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "tier"); call(TRF_Lf, arg);
+end;
+
+-- Debug event line (cfg log 2).
+function TRF_TrDE(event, ...)
+	local v = TRF_TrOpt("log", 1);
+	if type(v) == "number" and v >= 2 then tinsert(arg, 1, event); call(TRF_TrE, arg); end;
+end;
+
+function TRF_TrErr(m)
+	TRF_TrE("error", "message", tostring(m));
+	TRF_TrStat("err_tier");
+end;
+
+-- Protected call; nil on error.
+function TRF_TrP(f, args)
+	if type(f) ~= "function" then return nil; end;
+	return call(f, args, "x", TRF_TrErr);
+end;
+
+-- Protected call of a global function by name when it exists (other modules, optional natives).
+function TRF_TrX(name, ...)
+	local f = getglobal(name);
+	if type(f) ~= "function" then return nil; end;
+	return call(f, arg, "x", TRF_TrErr);
+end;
+
+function TRF_TrStat(k)
+	if type(TRF_Stat) == "function" then TRF_Stat(k); end;
+end;
+
+-- Defaults of this module's config keys (spec 10.4). esc_flight 1: TT1-TT3 escorts fly as their own flight
+-- (TRF_BuildSplit); 0: one flight as before. mc_names: 2 = the TRF_McP_ pilot templates are merged (install.sh --merc-names;
+-- design/proposals/merc-pilot-names.md); kept here, next to TRF_BuildFlight's ov, until the clan module trf_merc reads it.
+function TRF_Tier_OptDef()
+	return {prosperity=1, band_half=0, parked=1, esc_flight=1, mc_names=0};
+end;
+
+-- Tune keys of trf_tier and of the trf_gen queue and seed (spec 9.4, 9.5, 10.4), TT4 chances and sizes
+-- (v1 10.5). Hold-point and parked offsets are unmeasured (open O9), so they are tune keys too. tt4_p8 / tt4_p9 are
+-- read nowhere since the strength scale (design/strength-spec.md 4.4: the TT4 chance comes from TRF_StrRoll).
+function TRF_Tier_TuneDef()
+	return {q_wait=180, q_prio=30, q_r=150, q_hp1=180, q_hp2=220, q_hpw=60, seed_min=15, seed_max=30,
+		pk_back=250, pk_side=150, pk_far=600,
+		tt4_p8=25, tt4_p9=40, tt4_tp8=3, tt4_tp9=4, tt4_e8=4, tt4_e9=6};
+end;
+
+-- Config value: TRF_Opt, else the raw cfg, else this module's default or def; a wrong type reads as the default.
+function TRF_TrOpt(key, def)
+	local d = TRF_Tier_OptDef()[key];
+	if d == nil then d = def; end;
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_Cfg) == "function" then
+		local c = TRF_Cfg();
+		if type(c) == "table" then v = c[key]; end;
+	end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then v = d; end;
+	return v;
+end;
+
+-- Tune value (TRF_Tune merges the module TuneDefs and cfg tune in v0.2), else this module's default.
+function TRF_TrT(key, def)
+	if type(TRF_Tune) == "function" then
+		local t = TRF_Tune();
+		if type(t) == "table" and type(t[key]) == "number" then return t[key]; end;
+	end;
+	local d = TRF_Tier_TuneDef()[key];
+	if type(d) == "number" then return d; end;
+	return def;
+end;
+
+-- 1 when list t holds value v.
+function TRF_TrIn(t, v)
+	if type(t) ~= "table" then return nil; end;
+	for i = 1, getn(t) do if t[i] == v then return 1; end; end;
+	return nil;
+end;
+
+function TRF_TrClamp(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+function TRF_TrRand(n)
+	if type(RAND) ~= "function" or type(n) ~= "number" or n < 1 then return 0; end;
+	return RAND(n);
+end;
+
+function TRF_TrGt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+-- Visit table of the current gen, or nil.
+function TRF_TrLive()
+	if type(TRF) ~= "table" or type(TRF.live) ~= "table" then return nil; end;
+	if type(TRF_LiveOk) == "function" and not TRF_LiveOk() then return nil; end;
+	return TRF.live;
+end;
+
+-- Handle table with the parked sub-table, or nil.
+function TRF_TrH()
+	if type(TRF_H) ~= "function" then return nil; end;
+	local H = TRF_H();
+	if type(H) ~= "table" then return nil; end;
+	if type(H.pk) ~= "table" then H.pk = {}; end;
+	return H;
+end;
+
+function TRF_TrAlive(o)
+	if o == nil or type(o) == "number" or type(o) == "string" or type(o) == "function" then return nil; end;
+	if type(TRF_Is) == "function" then return TRF_Is(o:IsAlive()); end;
+	return o:IsAlive();
+end;
+
+function TRF_TrDist(a, b)
+	if a == nil or b == nil or type(a.x) ~= "number" or type(b.x) ~= "number" then return nil; end;
+	local dx, dy, dz = a.x - b.x, a.y - b.y, a.z - b.z;
+	return sqrt(dx * dx + dy * dy + dz * dz);
+end;
+
+-- Unit vector {x, y, z} or nil for a zero vector.
+function TRF_TrUnit(x, y, z)
+	local l = sqrt(x * x + y * y + z * z);
+	if l < 0.001 then return nil; end;
+	return {x=x / l, y=y / l, z=z / l};
+end;
+
+function TRF_TrCur()
+	local i = TRF_TrX("TRF_CurIdx");
+	if type(i) == "number" then return i; end;
+	return nil;
+end;
+
+function TRF_TrHeat()
+	if type(TRF) == "table" and type(TRF.std) == "table" and type(TRF.std.heat) == "number" then return TRF.std.heat; end;
+	return 0;
+end;
+
+-- pro 0..9 of system idx (trf_region TRF_Pro, else the saved field), 0 when unknown.
+function TRF_TrPro(idx)
+	if type(idx) ~= "number" then return 0; end;
+	local v = nil;
+	if type(TRF_Pro) == "function" then
+		v = TRF_TrX("TRF_Pro", idx);
+	elseif type(TRF) == "table" and type(TRF.sys) == "table" and type(TRF.sys[idx]) == "table" then
+		v = TRF.sys[idx].pro;
+	end;
+	if type(v) ~= "number" then return 0; end;
+	return TRF_TrClamp(floor(v), 0, 9);
+end;
+
+-- Strict gate (spec 8.3) for feature f in system idx: 1 or nil. Without trf_safety's TRF_StrictOk every
+-- system is denied while a mission runs (the strict 2 behaviour).
+function TRF_TrOk(idx, f)
+	if type(TRF_StrictOk) == "function" then
+		if TRF_TrX("TRF_StrictOk", idx, f) then return 1; end;
+		return nil;
+	end;
+	if TRF_TrX("GetPlayerQuestState") == TRUE then return nil; end;
+	return 1;
+end;
+
+-- 1 while the density governor is active (design 6.7): trf_safety's TRF_GovActive when defined, else the
+-- flag TRF_TrGovCheck set on entry and load.
+function TRF_TrGov()
+	if type(TRF_GovActive) == "function" then
+		if TRF_TrX("TRF_GovActive") then return 1; end;
+		return nil;
+	end;
+	local L = TRF_TrLive();
+	if L and L.tgv == 1 then return 1; end;
+	return nil;
+end;
+
+-- Governor flag: one carcass count (the trf_safety sphere) against cfg gov. Sets live.tgv 0/1.
+function TRF_TrGovCheck()
+	local L = TRF_TrLive();
+	if not L then return; end;
+	L.tgv = 0;
+	if type(TRF_GovActive) == "function" then return; end;
+	local n = TRF_TrX("TRF_Safe_Count", TRF_TrOpt("gov_r", 3000));
+	local gov = TRF_TrOpt("gov", 40);
+	if type(n) == "number" and type(gov) == "number" and n > gov then L.tgv = 1; end;
+end;
+
+-- __tablevel and __tabpilot of NewAllFlight (Create_flight_2.script 87-96) for the difficulty.
+function TRF_TrTabs()
+	local d = TRF_TrX("GetLevelDifficult");
+	if d ~= nil and d == EASY then
+		return {1,1,1,2,3,4,5,6,7,7,8,9,9,10,11,11,12,13,13,14}, {1,1,2,2,3};
+	elseif d ~= nil and d == NORMAL then
+		return {1,1,2,3,4,5,6,6,7,8,9,10,11,12,12,13,14,15,16,17}, {1,2,2,3,4};
+	end;
+	return {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}, {1,2,3,4,5};
+end;
+
+-- Family lists F1-F4 (spec 9.3).
+function TRF_TrCheap() return {"Hatchet_merc1", "Stormcrow_merc1", "Stormcrow_merc2", "Tiger_merc1"}; end;
+function TRF_TrMid() return {"Tiger_merc1", "Stormcrow_merc2", "Stormcrow_merc3", "Trident_merc1"}; end;
+function TRF_TrComp() return {"HMQueen_tr7", "Walrus_tr2", "Btransport", "Btransport"}; end;
+
+-- Bands (spec 9.1) -------------------------------------------------------------------
+
+-- Band 0 (pro 0-2), 1 (3-4), 2 (5-7), 3 (8), 4 (9); 0 with cfg prosperity 0.
+function TRF_Band(idx)
+	if TRF_TrOpt("prosperity", 1) == 0 then return 0; end;
+	local p = TRF_TrPro(idx);
+	if p >= 9 then return 4; end;
+	if p >= 8 then return 3; end;
+	if p >= 5 then return 2; end;
+	if p >= 3 then return 1; end;
+	return 0;
+end;
+
+-- Band row before strict gate and governor: {ct (flights), cs (ships), cp (parked), sf (spawn factor),
+-- tmax (highest tier), sb (seed bonus, points), band, pro}. cfg band_half 1: halved increments (design 6.7).
+-- tmax (design/strength-spec.md 10): band 0 TT1, else the highest tier the TRF_TierPick roll can give before the
+-- caps (TRF_StrTierMax of the trade score): TT3 at pro 3-4, TT4 from pro 5; without trf_str band + 1.
+function TRF_BandCaps(idx)
+	local b = TRF_Band(idx);
+	local p = TRF_TrPro(idx);
+	local sf, ct, cs = {1.00, 1.25, 1.50, 1.75, 2.00}, {2, 3, 4, 5, 5}, {10, 12, 16, 20, 20};
+	if TRF_TrOpt("band_half", 0) == 1 then sf = {1.00, 1.13, 1.25, 1.38, 1.50}; ct = {2, 2, 3, 3, 3}; cs = {10, 11, 13, 15, 15}; end;
+	local cp, sb = {0, 0, 1, 2, 2}, {0, 10, 15, 20, 20};
+	local c = {ct=ct[b + 1], cs=cs[b + 1], cp=cp[b + 1], sf=sf[b + 1], tmax=min(b + 1, 4), sb=sb[b + 1], band=b, pro=p};
+	if b > 0 and type(TRF_StrTierMax) == "function" and type(TRF_StrScore) == "function" then
+		c.tmax = TRF_StrTierMax(TRF_StrScore("trade", idx));
+	end;
+	if b == 2 and p >= 7 then c.sb = 20; end;
+	return c;
+end;
+
+-- Tiers (spec 9.2, 9.3) -----------------------------------------------------------------
+
+-- Composition of tier t at strength s: {tier, pw (build power), row (TRF_Row at pw), tp (transports),
+-- ne (escorts in the composition), n (ships), tmax (escort maximum), tesc (tier escorts {template, rank})}.
+-- TT2: row at strength + 2 plus one cheap escort; TT3: two transports, row escorts + cheap + mid
+-- (+ cheap at pro >= 7), at most 5 escorts.
+-- TT4 (v1 8.1): convoy of 3 / 4 transports (pro 8 / 9) and an escort flight of 4 / 6 ships; no added escorts.
+-- pro 5-7 (TT4 by the strength roll, design/strength-spec.md 10) use the pro 8 sizes.
+function TRF_TierComp(t, s, pro)
+	s = TRF_TrClamp(floor(s or 1), 1, 20);
+	if t == 4 then
+		local pw = min(20, s + 2);
+		local ntp, ne = TRF_TrT("tt4_tp8", 3), TRF_TrT("tt4_e8", 4);
+		if (pro or 0) >= 9 then ntp = TRF_TrT("tt4_tp9", 4); ne = TRF_TrT("tt4_e9", 6); end;
+		ntp = TRF_TrClamp(floor(ntp), 1, 4);
+		ne = TRF_TrClamp(floor(ne), 0, 6);
+		return {tier=4, pw=pw, row=TRF_Row(pw), tp=ntp, ne=ne, n=ntp + ne, tmax=ne, tesc={}};
+	end;
+	if t ~= 2 and t ~= 3 then
+		local r = TRF_Row(s);
+		return {tier=1, pw=s, row=r, tp=r.tp, ne=r.esc, n=r.tp + r.esc, tmax=4, tesc={}};
+	end;
+	local pw = min(20, s + 2);
+	local r = TRF_Row(pw);
+	local fam = TRF_TrClamp(r.fam or 1, 1, 4);
+	local cheap = TRF_TrCheap()[fam];
+	if t == 2 then
+		local ne = min(4, r.esc + 1);
+		local te = {};
+		if ne > r.esc then te = {{cheap, 2}}; end;
+		return {tier=2, pw=pw, row=r, tp=r.tp, ne=ne, n=r.tp + ne, tmax=4, tesc=te};
+	end;
+	local te = {{cheap, 2}, {TRF_TrMid()[fam], 3}};
+	if (pro or 0) >= 7 then tinsert(te, {cheap, 2}); end;
+	local ne = min(5, r.esc + getn(te));
+	return {tier=3, pw=pw, row=r, tp=2, ne=ne, n=2 + ne, tmax=5, tesc=te};
+end;
+
+function TRF_TierShips(t, s, pro)
+	return TRF_TierComp(t, s, pro).n;
+end;
+
+-- Reason a TT4 convoy cannot start now in system idx (v1 8.1), or nil: cfg tt4, trf_convoy loaded, strict
+-- gate tt4, no danger system, convoy slot free, heat <= 2, no governor, no counted player attack this visit,
+-- free ships (nil: no fit test).
+function TRF_TrTt4Why(idx, strength, free, p)
+	if TRF_TrOpt("tt4", 1) == 0 then return "cfg"; end;
+	if type(TRF_Tt4Build) ~= "function" or type(TRF_ConvSlot) ~= "function" then return "mod"; end;
+	if not TRF_TrOk(idx, "tt4") then return "gate"; end;
+	local dz = nil;
+	if type(TRF_DangerSys) == "function" then dz = TRF_TrX("TRF_DangerSys", idx); else dz = TRF_TrX("TRF_CvDanger", idx); end;
+	if dz then return "danger"; end;
+	if TRF_TrX("TRF_ConvSlot") then return "slot"; end;
+	if TRF_TrHeat() > 2 then return "heat"; end;
+	if TRF_TrGov() then return "gov"; end;
+	local L = TRF_TrLive();
+	if L and L.patk == 1 then return "patk"; end;
+	if type(free) == "number" and TRF_TierShips(4, strength, p) > free then return "ships"; end;
+	return nil;
+end;
+
+-- Tier for a spawn in system idx (design/strength-spec.md 4.4, 5.1; replaces the literal chances of spec 9.2 and
+-- v1 8.1): trade score pro x 11 (TRF_StrScore), one TRF_StrRoll step with TRF_TrRand(100), drawn only when the roll can
+-- change the tier (TRF_StrRollUseful); pro 0-2 is TT1 without a draw (band 0, the v0.1 path). Then the caps in the old
+-- order: a failed TT4 condition gives TT3 (cfg tt4 0 too), then the TT3 caps (heat >= 5, strict gate tt3, governor,
+-- counted player attack this visit -> TT2), then the highest tier that fits free ships (nil: no fit test). TT1 too
+-- large is left to the v0.1 cap check (skip_ships). Without trf_str: TT1, reason "str".
+-- Returns tier, reason, score, roll (nil: not drawn), step.
+function TRF_TierPick(idx, strength, free)
+	if TRF_TrOpt("prosperity", 1) == 0 then return 1, "off"; end;
+	if type(TRF_StrScore) ~= "function" or type(TRF_StrRoll) ~= "function" or type(TRF_StrRollUseful) ~= "function" then
+		return 1, "str";
+	end;
+	local p = TRF_TrPro(idx);
+	local sc = TRF_StrScore("trade", idx);
+	local t, why, roll, step = 1, "pro", nil, 0;
+	if p >= 3 then
+		if TRF_StrRollUseful(sc) then roll = TRF_TrRand(100); end;
+		t, step = TRF_StrRoll(sc, roll);
+		if step ~= 0 then why = "roll"; end;
+	end;
+	local t0 = t;
+	if t == 4 then
+		local w = TRF_TrTt4Why(idx, strength, free, p);
+		if w then t = 3; why = "tt4_"..w; end;
+	end;
+	if t == 3 then
+		local L = TRF_TrLive();
+		-- heat 3-4 caps at TT3, the v0.2 maximum, so only heat >= 5 acts here.
+		if TRF_TrHeat() >= 5 then t = 2; why = "heat";
+		elseif not TRF_TrOk(idx, "tt3") then t = 2; why = "gate";
+		elseif TRF_TrGov() then t = 2; why = "gov";
+		elseif L and L.patk == 1 then t = 2; why = "patk"; end;
+	end;
+	if type(free) == "number" then
+		while t > 1 and TRF_TierShips(t, strength, p) > free do t = t - 1; why = "ships"; end;
+	end;
+	if type(TRF_StrDE) == "function" then
+		TRF_StrDE("roll", "kind", "trade", "id", idx, "score", sc, "roll", roll or "none", "step", step, "rolled_tier", t0, "tier", t,
+			"reason", why);
+	end;
+	return t, why, sc, roll, step;
+end;
+
+-- Tier fields of a trf_gen plan (spec 9.2, 9.3): tier, twhy and, from TT2, pw (build power), row, n (base
+-- ships), tpn (transports), tesc, ne. Trims plan.esc (disruption and heat escorts) to the tier's escort
+-- maximum; for TT1 that is the v0.1 rule (4 - row escorts). plan.free: free ships. Returns the tier.
+function TRF_TierPlan(plan)
+	local idx = TRF_TrCur();
+	local t, why, sc, roll, step = TRF_TierPick(idx, plan.strength, plan.free);
+	local c = TRF_TierComp(t, plan.strength, TRF_TrPro(idx));
+	if t > 1 then
+		plan.pw = c.pw; plan.row = c.row; plan.n = c.n; plan.tpn = c.tp; plan.tesc = c.tesc; plan.ne = c.ne;
+	end;
+	plan.tier = t;
+	plan.twhy = why;
+	if type(plan.esc) == "number" then plan.esc = max(0, min(plan.esc, c.tmax - c.ne)); end;
+	TRF_TrDE("plan", "tier", t, "reason", why, "strength", plan.strength, "ship_count", plan.n, "escorts_added", plan.esc,
+		"score", sc or "none", "roll", roll or "none", "step", step or 0);
+	return t;
+end;
+
+-- Builders (spec 9.3) ------------------------------------------------------------------
+
+-- NewAllFlight (Create_flight_2.script 66-139) for one given row {{template, pilot rank, role}, ...}:
+-- ships space units apart, at most maxn, a nil carcass skips that ship (it keeps its spot). No
+-- flight_/ship_/pilot_ globals are left. power is kept for the call shape (the row is given).
+-- Returns flight, ships (in row order), made (row index of each ship); nil when no ship was built.
+-- ov (optional, design/proposals/merc-pilot-names.md 4.4): table of row index to pilot template, used before the
+-- rank template; when CreatePilot of it gives no engine object (userdata in the game, table in the host harness;
+-- a template missing from Pilots.xml), that ship gets the rank template, as without ov. Clan flights pass the
+-- clan's pilot list, so the fallback of an Ace-class entry is RecruitAce_<clan>.
+function TRF_BuildFlight(pilots, row, group, sign, pos, power, dir, form, space, maxn, ov)
+	local grp = getglobal(group);
+	if sign == nil or type(row) ~= "table" or type(pilots) ~= "table" or not grp or type(grp) == "number" then return nil; end;
+	local tl, tp = TRF_TrTabs();
+	space = space or 5;
+	maxn = maxn or 8;
+	local fl = grp:CreateFlight("flight_"..sign);
+	if not fl or type(fl) == "number" then return nil; end;
+	local sh, made = {}, {};
+	local roles = {A=ROLE_ATTACK, D=ROLE_DEFEND, M=ROLE_MISSLEDEFENCE, R=ROLE_REPAIR, C=ROLE_CLOACKING};
+	for i = 1, getn(row) do
+		local e = row[i];
+		if getn(sh) < maxn and type(e) == "table" and type(e[1]) == "string" then
+			local ship = CreateCarcass(e[1], Vector3(pos.x, pos.y, pos.z + (i - 1) * space), dir);
+			if ship then
+				local rk = TRF_TrClamp(floor(e[2] or 1), 1, 5);
+				local p = nil;
+				if type(ov) == "table" and type(ov[i]) == "string" then
+					p = CreatePilot(ov[i]);
+					if type(p) ~= "table" and type(p) ~= "userdata" then p = nil; end;
+				end;
+				if p == nil then p = CreatePilot(pilots[tp[rk]] or pilots[1]); end;
+				ship:AssignPilot(p);
+				fl:AddShip(ship);
+				if getn(sh) > 0 then ship:SetRole(roles[e[3] or "A"] or ROLE_ATTACK); end;
+				tinsert(sh, ship);
+				tinsert(made, i);
+			end;
+		end;
+	end;
+	if getn(sh) == 0 then
+		TRF_TrP(function(f) f:Delete(); end, {fl});
+		return nil;
+	end;
+	fl:SetFormation(form or "shipFormation");
+	fl:SetOrientation(dir or Vector3(0, 0, 1));
+	return fl, sh, made;
+end;
+
+-- TT3 row: the TT2 row's two transports, or its lead and the family companion, then the row escorts and
+-- the tier escorts, ne in total. nil without Trad_merc_Ships.
+function TRF_TierRow3(plan)
+	if type(Trad_merc_Ships) ~= "table" or type(plan.row) ~= "table" then return nil; end;
+	local src = Trad_merc_Ships[plan.row.row];
+	if type(src) ~= "table" or getn(src) < 1 then return nil; end;
+	local fam = TRF_TrClamp(plan.row.fam or 1, 1, 4);
+	local ntp = TRF_TrClamp(plan.row.tp or 1, 1, getn(src));
+	local row = {src[1]};
+	if ntp >= 2 then tinsert(row, src[2]); else tinsert(row, {TRF_TrComp()[fam], 1, "A"}); end;
+	local esc = {};
+	for i = ntp + 1, getn(src) do tinsert(esc, src[i]); end;
+	local te = plan.tesc or {};
+	for j = 1, getn(te) do tinsert(esc, {te[j][1], te[j][2], "A"}); end;
+	for i = 1, min(plan.ne or 5, getn(esc)) do tinsert(row, esc[i]); end;
+	return row;
+end;
+
+-- 1 when plan builds as two flights: cfg esc_flight 1, TT1-TT3, the vanilla trader tables present and the
+-- strict gate passes (feature esc_flight): a denied system keeps one flight per spawn (design 9.8 S1).
+function TRF_TierSplitOn(plan)
+	if TRF_TrOpt("esc_flight", 1) ~= 1 or type(plan) ~= "table" or (plan.tier or 1) > 3 then return nil; end;
+	if type(Trad_merc_Ships) ~= "table" or type(Trad_merc_Pilots) ~= "table" or type(plan.row) ~= "table" then return nil; end;
+	if not TRF_TrOk(TRF_TrCur(), "esc_flight") then return nil; end;
+	return 1;
+end;
+
+-- Rows of a two-flight build: transports and escorts {template, pilot rank, role}. TT1/TT2: the
+-- Trad_merc_Ships row NewAllFlight picks (plan.row), split after plan.row.tp; TT2 adds the tier escorts;
+-- TT3: TRF_TierRow3 split after the two transports. Then the added escorts plan.esc (disruption and heat,
+-- v01 4.5 step 6: family cheap hull, rank 2). Every escort row gets role "D" (ROLE_DEFEND). Returns the
+-- transport row, the escort row and the number of escorts before the added ones; nil without a row.
+function TRF_TierSplitRows(plan)
+	local tpr, esr = {}, {};
+	local src, ntp = nil, 2;
+	if plan.tier == 3 then
+		src = TRF_TierRow3(plan);
+	else
+		src = Trad_merc_Ships[plan.row.row];
+		if type(src) == "table" then ntp = TRF_TrClamp(plan.row.tp or 1, 1, getn(src)); end;
+	end;
+	if type(src) ~= "table" or getn(src) < 1 then return nil; end;
+	for i = 1, getn(src) do
+		if i <= ntp then tinsert(tpr, src[i]); else tinsert(esr, {src[i][1], src[i][2], "D"}); end;
+	end;
+	if plan.tier == 2 then
+		local te = plan.tesc or {};
+		for j = 1, getn(te) do tinsert(esr, {te[j][1], te[j][2], "D"}); end;
+	end;
+	local nb = getn(esr);
+	for j = 1, (plan.esc or 0) do tinsert(esr, {plan.row.cheap or "Hatchet_merc1", 2, "D"}); end;
+	return tpr, esr, nb;
+end;
+
+-- Two-flight build of a TT1-TT3 plan (cfg esc_flight 1): the transports as the convoy flight flight_<sign>
+-- (5 apart as NewAllFlight, TT3 15), every escort (row, tier, disruption and heat escorts) as one escort
+-- flight flight_<sign>e in the same group, 15 behind the last transport. BuildFlight sets the row role
+-- (ROLE_DEFEND) on every escort but the escort flight's first ship, as NewAllFlight leaves the leader's role.
+-- trf_gen gives the Escort order (TRF_GnEscOrder). Sets plan.sh (transports, then escorts: labels
+-- trf_<id>_<i> run across both flights), plan.tpn, plan.ef (escort flight or nil), plan.esa (added escorts
+-- built), plan.split = 1. Returns the convoy flight or nil (no transport built).
+function TRF_BuildSplit(plan, id, k)
+	local tpr, esr, nb = TRF_TierSplitRows(plan);
+	if not tpr or getn(tpr) == 0 then return nil; end;
+	local sign = "trf_"..id;
+	local gname = "TRF_GTrade_"..k;
+	local pw = plan.pw or plan.strength;
+	local sp = 5;
+	if plan.tier == 3 then sp = 15; end;
+	local fl, sh = TRF_BuildFlight(Trad_merc_Pilots, tpr, gname, sign, plan.pos, pw, plan.dir, "shipFormationConvoy", sp, 8);
+	if not fl then return nil; end;
+	local ntp = getn(sh);
+	local efl, esh, made = nil, nil, nil;
+	if getn(esr) > 0 then
+		local p = plan.pos;
+		local q = Vector3(p.x, p.y, p.z + sp * (getn(tpr) - 1) + 15);
+		efl, esh, made = TRF_TrP(TRF_BuildFlight, {Trad_merc_Pilots, esr, gname, sign.."e", q, pw, plan.dir, "shipFormation", 15, 8 - ntp});
+	end;
+	local added = 0;
+	if efl and type(esh) == "table" and type(made) == "table" then
+		for i = 1, getn(made) do if made[i] > nb then added = added + 1; end; end;
+		for i = 1, getn(esh) do tinsert(sh, esh[i]); end;
+	else
+		efl = nil;
+	end;
+	plan.sh = sh;
+	plan.tpn = ntp;
+	plan.ef = efl;
+	plan.esa = added;
+	plan.split = 1;
+	return fl;
+end;
+
+-- Flight of a TT2/TT3 plan (trf_gen TRF_Spawn sets the group global TRF_GTrade_<k> around this call).
+-- TT2: NewAllFlight at power + 2, then the tier escorts as v01 4.5 step 6; TT3: TRF_BuildFlight, 15 apart.
+-- cfg esc_flight 1 (and TT1 then too): TRF_BuildSplit. Sets plan.sh (ships, transports first) and plan.tpn.
+-- Returns the flight or nil.
+function TRF_BuildTier(plan, id, k)
+	local sign = "trf_"..id;
+	local gname = "TRF_GTrade_"..k;
+	-- TT4 and equipment convoys (v1 8.1, 8.4) build in trf_convoy; without it a TT4 plan builds as TT3.
+	if plan.tier == 4 then
+		if type(TRF_Tt4Build) == "function" then return TRF_Tt4Build(plan, id, k); end;
+		plan.tier = 3;
+	end;
+	if TRF_TierSplitOn(plan) then return TRF_BuildSplit(plan, id, k); end;
+	if plan.tier == 3 then
+		local row = TRF_TierRow3(plan);
+		if not row then return nil; end;
+		local fl, sh, made = TRF_BuildFlight(Trad_merc_Pilots, row, gname, sign, plan.pos, plan.pw, plan.dir, "shipFormationConvoy", 15, 8);
+		if not fl then return nil; end;
+		local tpn = 0;
+		for i = 1, getn(made) do if made[i] <= 2 then tpn = tpn + 1; end; end;
+		if tpn == 0 then
+			-- Escorts without a transport are no trader.
+			TRF_TrP(function(f) f:Delete(); end, {fl});
+			return nil;
+		end;
+		plan.sh = sh;
+		plan.tpn = tpn;
+		return fl;
+	end;
+	local fl = NewAllFlight(Trad_merc_Pilots, Trad_merc_Ships, gname, sign, plan.pos, plan.pw, plan.dir, "shipFormationConvoy");
+	if not fl or type(fl) == "number" or fl == FALSE then return nil; end;
+	local sh = {};
+	for i = 1, 8 do
+		local s = getglobal("ship_"..sign.."_"..i);
+		if s == nil or type(s) == "number" then break; end;
+		sh[i] = s;
+	end;
+	local nr = getn(sh);
+	local tl, tp = TRF_TrTabs();
+	local te = plan.tesc or {};
+	for j = 1, getn(te) do
+		local q = Vector3(plan.pos.x, plan.pos.y, plan.pos.z + 15 * (nr + j));
+		local s = CreateCarcass(te[j][1], q, plan.dir);
+		if s then
+			s:AssignPilot(CreatePilot(Trad_merc_Pilots[tp[te[j][2]]] or Trad_merc_Pilots[1]));
+			fl:AddShip(s);
+			s:SetRole(ROLE_ATTACK);
+			tinsert(sh, s);
+		end;
+	end;
+	plan.sh = sh;
+	plan.tpn = min(plan.tpn or 1, nr);
+	return fl;
+end;
+
+-- Holds (spec 9.3, S40) ------------------------------------------------------------------
+
+-- Container items per cargo class 1..6 (v01 4.1) and the expensive items.
+function TRF_TrClsItems()
+	return {{"Cargo_01", "Cargo_05", "Cargo_10"}, {"Cargo_06", "Cargo_09"}, {"Uranium"}, {"Barrel_02"},
+		{"Cargo_04", "Cargo_08"}, {"Cargo_02", "Cargo_03", "Cargo_07"}};
+end;
+
+function TRF_TrExpItems()
+	return {"Cargo_01", "Cargo_05", "Cargo_06", "Cargo_09", "Cargo_10", "Uranium"};
+end;
+
+function TRF_TrCls(item)
+	if type(TRF_GnCls) == "function" then return TRF_GnCls(item); end;
+	local c = TRF_TrClsItems();
+	for i = 1, getn(c) do
+		for j = 1, getn(c[i]) do if c[i][j] == item then return i; end; end;
+	end;
+	return 6;
+end;
+
+-- Owner team of the current system (GetLocationTeam), "" when unknown.
+function TRF_TrOwner()
+	local loc = TRF_TrX("GetCurrentLocation");
+	if type(loc) ~= "string" then return ""; end;
+	local o = TRF_TrX("GetLocationTeam", loc);
+	if type(o) == "string" then return o; end;
+	return "";
+end;
+
+-- Class weights of stack A: Uss/Inoco machinery and spare parts 40, others 4; Neutral ore 50, others 10;
+-- else uniform; path A doubles perishables.
+function TRF_TrClsW(owner, path)
+	local w = {1, 1, 1, 1, 1, 1};
+	if owner == "Uss" or owner == "Inoco" then w = {40, 40, 4, 4, 4, 4};
+	elseif owner == "Neutral" then w = {10, 10, 50, 10, 10, 10}; end;
+	if path == "A" then w[5] = w[5] * 2; end;
+	return w;
+end;
+
+-- Weighted draw 1..getn(w), one RAND.
+function TRF_TrPickW(w)
+	local sum = 0;
+	for i = 1, getn(w) do sum = sum + w[i]; end;
+	local r = TRF_TrRand(sum);
+	for i = 1, getn(w) do
+		if r < w[i] then return i; end;
+		r = r - w[i];
+	end;
+	return getn(w);
+end;
+
+-- Item of class cls; exp: an expensive item (classes 4-6 have none, so any expensive item).
+function TRF_TrItem(cls, exp)
+	local items = TRF_TrClsItems()[cls] or {"Cargo_02"};
+	if exp and cls > 3 then items = TRF_TrExpItems(); end;
+	return items[TRF_TrRand(getn(items)) + 1];
+end;
+
+-- Class of the largest stack (first on a tie), 6 for an empty hold, as v01 TRF_GnHoldCls.
+function TRF_TrHoldCls(m)
+	local best, bn = 6, 0;
+	for i = 1, getn(m) do
+		if type(m[i].n) == "number" and m[i].n > bn then best = TRF_TrCls(m[i].i); bn = m[i].n; end;
+	end;
+	return best;
+end;
+
+-- Hold of flight fl (spec 9.3): TT1 the v0.1 FillCargoFlight copy (same RAND draws); TT2 4-7 containers per
+-- transport (stack A 2-3 of the trader's class, stack B from the vanilla window); TT3 6-9 (stack A 3-4
+-- expensive, stack B from the whole Trad_CargoType list). Returns the hold mirror {{i=item, n=count,
+-- s=pilot index}, ...} and the class of the largest stack.
+-- Tier 4 (v1 8.2, 8.4): trf_convoy TRF_Tt4Hold (TT4 containers and equipment, or the equipment convoy hold).
+function TRF_FillHold(fl, tier, power, path)
+	local out = {};
+	if tier == 4 then
+		if type(TRF_Tt4Hold) == "function" then return TRF_Tt4Hold(fl, power, path); end;
+		tier = 3;
+	end;
+	if tier ~= 2 and tier ~= 3 then
+		local st = {};
+		if type(TRF_FillCargo) == "function" then st = TRF_FillCargo(fl, power); end;
+		if type(st) ~= "table" then st = {}; end;
+		for i = 1, getn(st) do tinsert(out, {i=st[i][1], n=st[i][2], s=st[i][3] or 1}); end;
+		return out, TRF_TrHoldCls(out);
+	end;
+	local CType = Trad_CargoType;
+	if type(CType) ~= "table" or not fl or getn(CType) < 6 then return out, 6; end;
+	local nc = getn(CType);
+	local P = TRF_TrClamp(floor((power or 10) / 4), 0, 5);
+	local cls = TRF_TrPickW(TRF_TrClsW(TRF_TrOwner(), path));
+	for i = 1, fl:GetPilotCount() do
+		local ship = fl:GetPilotByNumber(i):GetShip();
+		if ship and ship:ImBigShip() then
+			local n, a, ia, ib;
+			if tier == 2 then
+				n = 4 + TRF_TrRand(4); a = 2 + TRF_TrRand(2);
+				ia = TRF_TrItem(cls, nil);
+				ib = CType[min(nc, TRF_TrRand(nc - 5) + P + 1)];
+			else
+				n = 6 + TRF_TrRand(4); a = 3 + TRF_TrRand(2);
+				ia = TRF_TrItem(cls, 1);
+				ib = CType[TRF_TrRand(nc) + 1];
+			end;
+			ship:AddModuleToInventory(ia, a);
+			tinsert(out, {i=ia, n=a, s=i});
+			if n > a and type(ib) == "string" then
+				ship:AddModuleToInventory(ib, n - a);
+				tinsert(out, {i=ib, n=n - a, s=i});
+			end;
+		end;
+	end;
+	return out, TRF_TrHoldCls(out);
+end;
+
+-- Parked ships (spec 9.4) ------------------------------------------------------------------
+
+function TRF_ParkedN()
+	local L = TRF_TrLive();
+	if not L or type(L.pk) ~= "table" then return 0; end;
+	return getn(L.pk);
+end;
+
+-- Trader contact with an approach point at station st: contact, approach point; nil when none.
+function TRF_TrApproach(st)
+	if type(TRF_GnContacts) ~= "function" or type(TRF_GnIsTrader) ~= "function" or type(TRF_GnApproach) ~= "function" then return nil; end;
+	local T = TRF_GnT();
+	local list = TRF_GnContacts();
+	for ci = 1, getn(list) do
+		if TRF_GnIsTrader(list[ci]) then
+			local np = TRF_GnApproach(list[ci], st, T);
+			if np then return list[ci], np; end;
+		end;
+	end;
+	return nil;
+end;
+
+-- Reason the parked ship is not spawned now, or nil.
+function TRF_ParkWhyNot(L)
+	if TRF_TrOpt("parked", 1) == 0 then return "cfg"; end;
+	local idx = TRF_TrCur();
+	if not idx then return "sys"; end;
+	local c = TRF_BandCaps(idx);
+	if getn(L.pk) >= c.cp then return "band"; end;
+	local mode = nil;
+	if type(TRF_SysModeQuiet) == "function" then mode = TRF_TrX("TRF_SysModeQuiet"); else mode = TRF_TrX("TRF_SysMode"); end;
+	if mode ~= "mod" then return "mode"; end;
+	if type(TRF_Supp) == "function" and TRF_TrX("TRF_Supp") ~= 0 then return "supp"; end;
+	if not TRF_TrOk(idx, "parked") or not TRF_TrOk(idx, "band") then return "gate"; end;
+	if type(TRF_CanSpawn) == "function" then
+		local ok, why = TRF_TrX("TRF_CanSpawn", 1, "parked");
+		if not ok then return tostring(why); end;
+	end;
+	return nil;
+end;
+
+-- Due call 3 s (and 6 s at bands 3-4) after OnActivate: one empty, stopped transport near the open trade
+-- station, group TRF_Park, label trf_pk_<n> (n 1..2, the second on the other side). Returns 1 when built.
+function TRF_Parked_Spawn()
+	local L = TRF_TrLive();
+	local H = TRF_TrH();
+	if not L or not H or type(TRF) ~= "table" or not TRF.active then return nil; end;
+	if type(L.pk) ~= "table" then L.pk = {}; end;
+	local why = TRF_ParkWhyNot(L);
+	local st = nil;
+	if not why then
+		st = TRF_TrX("TRF_Station");
+		if not TRF_TrAlive(st) then why = "station"; end;
+	end;
+	local c, np = nil, nil;
+	if not why then
+		c, np = TRF_TrApproach(st);
+		if not np then why = "approach"; end;
+	end;
+	local n = 1;
+	if not why then
+		while n <= 2 and TRF_TrIn(L.pk, n) do n = n + 1; end;
+		if n > 2 then why = "band"; end;
+	end;
+	if why then
+		TRF_TrStat("skip_park_"..why);
+		TRF_TrDE("parked_spawn", "reason", why, "result", "none");
+		return nil;
+	end;
+	-- Position (9.4): dock - d * pk_back + p * pk_side, d toward the approach point, p across it.
+	local dock = st:GetDockingPosition();
+	local d = TRF_TrUnit(np.x - dock.x, np.y - dock.y, np.z - dock.z) or {x=0, y=0, z=1};
+	local p = TRF_TrUnit(-d.z, 0, d.x) or {x=1, y=0, z=0};
+	local bk, sd = TRF_TrT("pk_back", 250), TRF_TrT("pk_side", 150);
+	if n == 2 then sd = -sd; end;
+	local pos = Vector3(dock.x - d.x * bk + p.x * sd, dock.y - d.y * bk, dock.z - d.z * bk + p.z * sd);
+	local fam = 1;
+	if type(c[6]) == "number" and type(TRF_Row) == "function" then
+		local r = TRF_Row(c[6]);
+		if type(r) == "table" and type(r.fam) == "number" then fam = r.fam; end;
+	end;
+	local tpl = "HMQueen_tr1";
+	if fam >= 3 then tpl = "Btransport"; end;
+	local g = H.pkg;
+	if not g then
+		local team = TRF_TrX("CreateTeam", "Trade");
+		if team then g = TRF_TrP(function(t) return t:CreateGroup("TRF_Park"); end, {team}); end;
+		H.pkg = g;
+	end;
+	if not g then TRF_TrStat("skip_park_grp"); return nil; end;
+	TRF_TrP(function(x) SetGroupRelation(x, PLAYER_GROUP, GetTeamRelation("Trade", PLAYER_TEAM)); end, {g});
+	local args = {Trad_merc_Pilots, {{tpl, 1, "A"}}, "TRF_GPark", "trf_park_"..n, pos, 1, Vector3(d.x, d.y, d.z),
+		"shipFormation", 15, 1};
+	setglobal("TRF_GPark", g);
+	local fl, sh = TRF_TrP(TRF_BuildFlight, args);
+	setglobal("TRF_GPark", nil);
+	if not fl or type(sh) ~= "table" or not sh[1] then TRF_TrStat("skip_park_build"); TRF_TrE("parked_spawn", "template", tpl, "reason", "build", "result", "failed"); return nil; end;
+	local s = sh[1];
+	-- CHECK: ClearInventory and Flight:Stop on an NPC transport right after the build (spec 9.4).
+	TRF_TrP(function(x) x:ClearInventory(); end, {s});
+	TRF_TrP(function(f) f:Stop(); end, {fl});
+	TRF_TrX("SetObjectLabel", s, "trf_pk_"..n);
+	-- Handle for the save (v01 3.3): the load finds the ship through TRF_pk_<n>, not by label
+	-- (crash-load-432500.md 10). Cleared when the entry goes.
+	setglobal("TRF_pk_"..n, s);
+	H.pk[n] = {fl=fl, sh=s};
+	tinsert(L.pk, n);
+	TRF_TrArmPark(n, s);
+	TRF_TrStat("park");
+	TRF_TrE("parked_spawn", "slot", n, "template", tpl, "position", floor(pos.x)..","..floor(pos.y)..","..floor(pos.z), "family", fam,
+		"result", "spawned");
+	return 1;
+end;
+
+function TRF_TrArmPark(n, s)
+	if type(NewTrigger) ~= "function" or type(TRF) ~= "table" then return nil; end;
+	return NewTrigger("died", nil, "TRF_ParkDied("..n..","..TRF.gen..")--", s);
+end;
+
+-- Trigger entry point (review O1): runs TRF_ParkDied_Body protected.
+function TRF_ParkDied(n, g)
+	if type(TRF_Cb) == "function" then TRF_Cb("TRF_ParkDied", TRF_ParkDied_Body, {n, g}); end;
+end;
+
+-- A killed parked ship counts as a trader kill for heat only (9.4). Entries removed by TRF_Parked_Clear
+-- before Delete are not found, so a died event fired by Delete does nothing.
+function TRF_ParkDied_Body(n, g)
+	if type(TRF) ~= "table" or g ~= TRF.gen then return; end;
+	local L = TRF_TrLive();
+	if not L or type(L.pk) ~= "table" then return; end;
+	local keep, found = {}, nil;
+	for i = 1, getn(L.pk) do
+		if L.pk[i] == n then found = 1; else tinsert(keep, L.pk[i]); end;
+	end;
+	if not found then return; end;
+	L.pk = keep;
+	local H = TRF_TrH();
+	if H then H.pk[n] = nil; end;
+	setglobal("TRF_pk_"..n, nil);
+	TRF_TrX("TRF_AddHeat", 1, "parked kill");
+	TRF_TrStat("park_kill");
+	TRF_TrE("parked_destroyed", "slot", n);
+end;
+
+function TRF_TrDelPk(h)
+	if type(h) ~= "table" then return; end;
+	if TRF_TrAlive(h.fl) then TRF_TrP(function(f) f:Delete(); end, {h.fl});
+	elseif TRF_TrAlive(h.sh) then TRF_TrP(function(s) s:Delete(); end, {h.sh}); end;
+end;
+
+-- 1 when o is an object that answers IsAlive (protected: a restored object may fail the call).
+function TRF_TrPkAlive(o)
+	if o == nil or type(o) == "number" or type(o) == "string" or type(o) == "function" then return nil; end;
+	return TRF_TrP(TRF_TrAlive, {o});
+end;
+
+-- Parked ship j after a load: the handle global TRF_pk_<j> kept for the save, else (a save without it)
+-- the label trf_pk_<j>. A handle whose label (GetObjectLabel through trf_gen, when it answers a string) is
+-- not trf_pk_<j> names another object and is dropped. Returns the value found (nil: none) and its source,
+-- "global" or "label".
+function TRF_TrPkFind(j)
+	local o = getglobal("TRF_pk_"..j);
+	if type(o) == "table" or type(o) == "userdata" then
+		local lb = nil;
+		if TRF_TrPkAlive(o) and type(GetObjectLabel) == "function" then lb = TRF_TrX("TRF_GnRawLabel", o); end;
+		if type(lb) ~= "string" or lb == "trf_pk_"..j then return o, "global"; end;
+		setglobal("TRF_pk_"..j, nil);
+	end;
+	return TRF_TrX("GetObjectByLabel", "trf_pk_"..j), "label";
+end;
+
+-- Load: parked ship j found alive (via: "global" or "label"): kept with new handles, its handle global and a
+-- died trigger of the new gen when within far of the mothership position mp, else deleted. Returns 1 when
+-- deleted.
+function TRF_TrPkLoad(j, o, far, mp, via)
+	local L = TRF_TrLive();
+	local H = TRF_TrH();
+	local d = TRF_TrDist(o:GetPosition(), mp);
+	local fl = TRF_TrP(function(s) return s:GetPilot():GetFlight(); end, {o});
+	via = tostring(via or "label");
+	if d and d <= far and L and H then
+		H.pk[j] = {fl=fl, sh=o};
+		tinsert(L.pk, j);
+		setglobal("TRF_pk_"..j, o);
+		TRF_TrArmPark(j, o);
+		TRF_TrE("parked_load", "slot", j, "result", "kept", "distance", floor(d), "via", via);
+		return nil;
+	end;
+	TRF_TrDelPk({fl=fl, sh=o});
+	setglobal("TRF_pk_"..j, nil);
+	TRF_TrE("parked_load", "slot", j, "result", "deleted", "distance", d and floor(d), "via", via);
+	return 1;
+end;
+
+-- Load retry (due call: the first tick after the load, then every 1 s of game time up to tune load_wait,
+-- 10 s): parked handles or labels found at OnLoad whose ship did not answer alive (TRF_TrPkFind).
+function TRF_Parked_LoadRetry()
+	local L = TRF_TrLive();
+	if not L or type(L.pkw) ~= "table" or type(L.pkw.j) ~= "table" then return; end;
+	local w = L.pkw;
+	w.n = (w.n or 0) + 1;
+	local gt = TRF_TrGt();
+	local late = gt - (w.t0 or gt) >= TRF_TrT("load_wait", 10);
+	local far = TRF_TrT("pk_far", 600);
+	local ms = TRF_TrX("TRF_Ms");
+	local mp = nil;
+	if TRF_TrPkAlive(ms) then mp = ms:GetPosition(); end;
+	local keep = {};
+	for i = 1, getn(w.j) do
+		local j = w.j[i];
+		local o, via = TRF_TrPkFind(j);
+		if TRF_TrPkAlive(o) then
+			TRF_TrPkLoad(j, o, far, mp, via);
+		elseif o ~= nil and not late then
+			tinsert(keep, j);
+		else
+			local why = "label";
+			if o ~= nil then why = "alive"; end;
+			setglobal("TRF_pk_"..j, nil);
+			TRF_TrE("parked_load", "slot", j, "result", "gone", "reason", why, "try_count", w.n, "via", via);
+		end;
+	end;
+	w.j = keep;
+	if w.n == 1 or getn(keep) == 0 then TRF_TrE("parked_load_retry", "try_count", w.n, "wait_count", getn(keep)); end;
+	if getn(keep) == 0 or not TRF_TrX("TRF_Due", 1, "TRF_Parked_LoadRetry") then L.pkw = nil; end;
+end;
+
+-- Remove parked ships (9.4). why "jump" (and anything else): all deleted; "wind": deleted when farther than
+-- pk_far (600) from the mothership, else kept; "load": found by handle global or label (TRF_TrPkFind),
+-- deleted when farther than pk_far, else kept with new handles and a died trigger of the new gen. A removed
+-- entry loses its handle global TRF_pk_<j>. Returns the number removed.
+function TRF_Parked_Clear(why)
+	local L = TRF_TrLive();
+	local H = TRF_TrH();
+	if not H then return 0; end;
+	local far = TRF_TrT("pk_far", 600);
+	local ms = TRF_TrX("TRF_Ms");
+	local mp = nil;
+	if TRF_TrAlive(ms) then mp = ms:GetPosition(); end;
+	local n = 0;
+	if why == "load" then
+		if L then L.pk = {}; L.pkw = nil; end;
+		H.pk = {};
+		local wait = {};
+		for j = 1, 2 do
+			local o, via = TRF_TrPkFind(j);
+			if TRF_TrPkAlive(o) then
+				if TRF_TrPkLoad(j, o, far, mp, via) then n = n + 1; end;
+			elseif o ~= nil then
+				-- Handle or label found, ship not alive yet (trf_gen load pass, spec 5.5): TRF_Parked_LoadRetry.
+				tinsert(wait, j);
+				TRF_TrE("parked_load", "slot", j, "result", "wait", "return_type", type(o), "via", via);
+			end;
+		end;
+		if getn(wait) > 0 and L then
+			L.pkw = {t0=TRF_TrGt(), n=0, j=wait};
+			if not TRF_TrX("TRF_Due", 0, "TRF_Parked_LoadRetry") then L.pkw = nil; end;
+		end;
+		return n;
+	end;
+	if not L or type(L.pk) ~= "table" then return 0; end;
+	local list = L.pk;
+	-- Entries go first, so a died event fired by Delete finds nothing.
+	L.pk = {};
+	local keep = {};
+	for i = 1, getn(list) do
+		local j = list[i];
+		local h = H.pk[j];
+		local del = why ~= "wind";
+		if not del and type(h) == "table" and TRF_TrAlive(h.sh) then
+			local d = TRF_TrDist(h.sh:GetPosition(), mp);
+			if not d or d > far then del = 1; end;
+		end;
+		if del or type(h) ~= "table" or not TRF_TrAlive(h.sh) then
+			H.pk[j] = nil;
+			setglobal("TRF_pk_"..j, nil);
+			TRF_TrDelPk(h);
+			n = n + 1;
+		else
+			tinsert(keep, j);
+		end;
+	end;
+	L.pk = keep;
+	if n > 0 then TRF_TrE("parked_clear", "reason", why, "removed_count", n); end;
+	return n;
+end;
+
+-- Loader callbacks (spec 10.3) -------------------------------------------------------------
+
+-- After trf_safety's OnActivate: governor flag, entry band line, parked ship scheduled for 3 s.
+function TRF_Tier_OnActivate()
+	local L = TRF_TrLive();
+	if not L then return; end;
+	TRF_TrGovCheck();
+	local idx = TRF_TrCur();
+	if not idx then return; end;
+	local c = TRF_BandCaps(idx);
+	L.band = c.band;
+	TRF_TrE("entry", "system", TRF_TrX("TRF_SysName", idx), "prosperity", c.pro, "band", c.band, "spawn_factor", TRF_F(c.sf),
+		"trader_cap", c.ct, "ship_cap", c.cs, "parked_cap", c.cp, "governor", TRF_KvB(L.tgv));
+	if c.cp > 0 and TRF_TrOpt("parked", 1) ~= 0 then TRF_TrX("TRF_Due", 3, "TRF_Parked_Spawn"); end;
+	if c.cp > 1 and TRF_TrOpt("parked", 1) ~= 0 then TRF_TrX("TRF_Due", 6, "TRF_Parked_Spawn"); end;
+end;
+
+-- After trf_gen's OnLoad (live reset): governor flag, parked ship by handle global or label.
+function TRF_Tier_OnLoad()
+	TRF_TrGovCheck();
+	TRF_Parked_Clear("load");
+end;
+
+-- Manager step: parked entries whose ship is gone without a died event are dropped.
+function TRF_Tier_Step()
+	local L = TRF_TrLive();
+	local H = TRF_TrH();
+	if not L or not H or type(L.pk) ~= "table" or getn(L.pk) == 0 then return; end;
+	local keep = {};
+	for i = 1, getn(L.pk) do
+		local h = H.pk[L.pk[i]];
+		if type(h) == "table" and TRF_TrAlive(h.sh) then
+			tinsert(keep, L.pk[i]);
+		else
+			H.pk[L.pk[i]] = nil;
+			setglobal("TRF_pk_"..L.pk[i], nil);
+			TRF_TrStat("park_lost");
+		end;
+	end;
+	L.pk = keep;
+end;
+
+-- Dump line: band row, open traders per tier, parked ships, docking queue.
+function TRF_Tier_Dump()
+	local idx = TRF_TrCur();
+	local c = TRF_BandCaps(idx);
+	local L = TRF_TrLive() or {};
+	local nt = {0, 0, 0, 0};
+	if type(L.tr) == "table" then
+		for id, r in L.tr do
+			if type(r) == "table" and r.st ~= "gone" then
+				local t = TRF_TrClamp(floor(r.tier or 1), 1, 4);
+				nt[t] = nt[t] + 1;
+			end;
+		end;
+	end;
+	-- Docking queue: the trader in the docking slot and the three hold points (none without a queue).
+	local dk, q = "none", "none";
+	if type(L.q) == "table" and type(L.q.hp) == "table" then
+		dk = L.q.dk;
+		q = tostring(L.q.hp[1])..","..tostring(L.q.hp[2])..","..tostring(L.q.hp[3]);
+	end;
+	TRF_TrE("dump", "prosperity", c.pro, "band", c.band, "spawn_factor", TRF_F(c.sf), "trader_cap", c.ct, "ship_cap", c.cs,
+		"parked_cap", c.cp, "governor", TRF_KvB(L.tgv), "tier_counts", nt[1]..","..nt[2]..","..nt[3]..","..nt[4],
+		"parked_count", TRF_ParkedN(), "docking_id", dk, "hold_points", q, "entry_plan", L.ent);
+end;

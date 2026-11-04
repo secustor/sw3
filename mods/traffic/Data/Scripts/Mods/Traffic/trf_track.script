@@ -1,0 +1,959 @@
+-- sw3-traffic tracked trader pool (v1 spec 4, S14, design 5.4, 6.6). Lua 4.0.1.
+-- TRF.tp: at most pool_size packed records "id,nm,o,c,tt,pw,n,e,s,fr,d,dm,fl,t" (4.1). A trader becomes
+-- tracked (live record tb bit 1) on focus, hail, contract, comply, counted attack, rescue or heat flee
+-- (4.2); its record is written at the exit portal and before a jump, and seeds it again on a later
+-- entry: chased arrival, portal arrival or docked seed (4.3). Visit memo live.tq: planned and spawned
+-- arrivals {i (pool id), h (how), j (arrival number), id (live id), pw, fl, fr, tt} (<= 4), d (plan done),
+-- w (exit writes this visit {id, x = gt when the chase test may apply}), m (metagain shown).
+-- Spawning goes through trf_gen (TRF_Plan, TRF_Spawn) and trf_tier (TRF_TierComp); every call into
+-- another module is guarded, so a missing module only disables that part. Top level defines functions only.
+-- fl bits (4.1): 1 met, 2 contract, 4 robbed, 8 chased, 16 attacked, 32 rescued, 64 and 128 the corporation of a contract
+-- carrier (trf_corp), 256 patched by the Wolves this visit (trf_spec, design/specialist-spec.md F3: set from r.sk 2 at the
+-- write, read once at the rebuild, cleared by the next write).
+
+-- Event line, module=track (design/log-format.md): TRF_TkE(event, k1, v1, ...); TRF_TkDE only at log 2.
+function TRF_TkE(event, ...) tinsert(arg, 1, event); tinsert(arg, 1, "track"); call(TRF_Lf, arg); end;
+
+function TRF_TkDE(event, ...)
+	if type(TRF_Opt) == "function" and TRF_Opt("log") >= 2 then tinsert(arg, 1, event); call(TRF_TkE, arg); end;
+end;
+
+function TRF_TkNoErr(m) end;
+
+function TRF_TkStat(k)
+	if type(TRF_Stat) == "function" then TRF_Stat(k); end;
+end;
+
+-- Module tables (v1 spec 10.1, 10.5) ----------------------------------------------------------------
+
+function TRF_Track_OptDef() return {track=1}; end;
+
+function TRF_Track_TuneDef()
+	return {pool_size=16, record_ttl=8, T_chase=60, handoff_max=2, track_chase_min=5, track_chase_max=15,
+		track_port_min=60, track_port_max=120};
+end;
+
+function TRF_Track_Text()
+	return {seenin="seen in $1", metagain="Wolves again. We remember you.", chased="They followed us!",
+		spcmet="Wolves again! That patch of yours held all the way."};
+end;
+
+-- Text of key: TRF_Txt (trf_loc / trf_ui) when it knows the key, else this module's table.
+function TRF_TkTxt(key, a)
+	if type(TRF_Txt) == "function" then
+		local s = call(TRF_Txt, {key, a}, "x", TRF_TkNoErr);
+		if type(s) == "string" and s ~= key then return s; end;
+	end;
+	local s = TRF_Track_Text()[key] or key;
+	if a ~= nil then
+		local v = gsub(tostring(a), "%%", "%%%%");
+		s = gsub(s, "%$1", v);
+	end;
+	return s;
+end;
+
+-- Config and tune ------------------------------------------------------------------------------------
+
+function TRF_TkOn()
+	if type(TRF) ~= "table" or type(TRF_Opt) ~= "function" then return nil; end;
+	return TRF_Opt("track") ~= 0;
+end;
+
+-- Tune value of key (number), def when missing.
+function TRF_TkT(key, def)
+	if type(TRF_Tune) ~= "function" then return def; end;
+	local v = TRF_Tune()[key];
+	if type(v) == "number" then return v; end;
+	return def;
+end;
+
+function TRF_TkPoolMax() return TRF_Clamp(floor(TRF_TkT("pool_size", 16)), 1, 16); end;
+
+-- Helpers ---------------------------------------------------------------------------------------------
+
+function TRF_TkGt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+function TRF_TkLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+-- Live trader record id, also a gone one that is not stripped yet (TRF_Remove sets st first), or nil.
+function TRF_TkRaw(id)
+	if type(TRF) ~= "table" or type(TRF.live) ~= "table" or type(TRF.live.tr) ~= "table" then return nil; end;
+	local r = TRF.live.tr[id];
+	if type(r) == "table" and (r.st ~= "gone" or r.path) then return r; end;
+	return nil;
+end;
+
+-- Visit table of this gen, or nil.
+function TRF_TkLive()
+	if type(TRF_LiveOk) == "function" and TRF_LiveOk() then return TRF.live; end;
+	return nil;
+end;
+
+-- Visit memo live.tq (created lazily), or nil.
+function TRF_TkQ()
+	local L = TRF_TkLive();
+	if not L then return nil; end;
+	if type(L.tq) ~= "table" then L.tq = {}; end;
+	if type(L.tq.w) ~= "table" then L.tq.w = {}; end;
+	return L.tq;
+end;
+
+function TRF_TkIsAlive(o) return o:IsAlive(); end;
+
+-- 1 for a live engine object.
+function TRF_TkAlive(o)
+	if o == nil or type(o) == "number" or type(o) == "string" then return nil; end;
+	return TRF_Is(call(TRF_TkIsAlive, {o}, "x", TRF_TkNoErr));
+end;
+
+-- System idx of a system name or idx, or nil.
+function TRF_TkIdx(v)
+	if type(v) == "number" then return v; end;
+	local m = TRF_Map();
+	if type(v) ~= "string" or not m then return nil; end;
+	return m.by[strlower(v)];
+end;
+
+-- Destination idx of map portal pn of system idx, or nil.
+function TRF_TkPortalDest(idx, pn)
+	local m = TRF_Map();
+	if not m or type(idx) ~= "number" or type(pn) ~= "string" or not m.sys[idx] then return nil; end;
+	local p = m.sys[idx].pby[pn];
+	if type(p) ~= "table" then return nil; end;
+	return TRF_TkIdx(p.to);
+end;
+
+-- Map portal name of system idx that leads to system to, or nil.
+function TRF_TkPortalTo(idx, to)
+	local m = TRF_Map();
+	if not m or type(idx) ~= "number" or type(to) ~= "number" or not m.sys[idx] or not m.sys[to] then return nil; end;
+	local ps = m.sys[idx].portals;
+	for i = 1, getn(ps) do
+		if type(ps[i].to) == "string" and strlower(ps[i].to) == m.sys[to].name then return ps[i].name; end;
+	end;
+	return nil;
+end;
+
+-- Scripted escort mission running (R9): label OutMissionEscort set and non-empty.
+function TRF_TkEscortMission()
+	local s = TRF_N("GetQuestLabel", "OutMissionEscort");
+	return type(s) == "string" and s ~= "";
+end;
+
+-- Strict gate for feature f in system idx; without trf_safety every system is denied while a quest runs.
+function TRF_TkGate(idx, f)
+	if type(TRF_StrictOk) == "function" then return TRF_StrictOk(idx, f); end;
+	return TRF_N("GetPlayerQuestState") ~= TRUE;
+end;
+
+function TRF_TkSupp()
+	if type(TRF_Supp) == "function" then return TRF_Supp() or 0; end;
+	return 0;
+end;
+
+-- Writes are allowed (4.2 "Not written"): mod on, no escort mission, no suppression.
+function TRF_TkWriteOk()
+	if not TRF_TkOn() then return nil, "cfg"; end;
+	if TRF_TkEscortMission() then return nil, "escort"; end;
+	if TRF_TkSupp() > 0 then return nil, "supp"; end;
+	return 1;
+end;
+
+-- Packed records (4.1) --------------------------------------------------------------------------------
+
+function TRF_TpKeys() return {"id", "nm", "o", "c", "tt", "pw", "n", "e", "s", "fr", "d", "dm", "fl", "t"}; end;
+
+-- Record table -> "id,nm,...,t" (missing fields 0, integers).
+function TRF_TpPack(r)
+	return TRF_TpPackK(r, TRF_TpKeys());
+end;
+
+-- Packed string -> record table, or nil unless it holds exactly 14 integers.
+function TRF_TpUnpack(s)
+	return TRF_TpUnpackK(s, TRF_TpKeys(), 80);
+end;
+
+-- Packing bound: format("%d") converts to a C int, 32 bits in the game's Lua 4.0.1, so every packed value must lie in
+-- -(2^31 - 1) .. 2^31 - 1. The game (x86) wraps a larger value and the host (arm64) saturates it, so the host cannot
+-- show an overflow; TRF_TpPackK clamps to the bound itself, so both give the same string.
+function TRF_TpMax() return 2147483647; end;
+
+-- Record table r -> "v1,v2,..." over the key list ks (missing or non-number fields 0, floor, clamped to the
+-- TRF_TpMax bound). nil unless r and ks are tables.
+function TRF_TpPackK(r, ks)
+	if type(r) ~= "table" or type(ks) ~= "table" then return nil; end;
+	local mx = TRF_TpMax();
+	local s = "";
+	for i = 1, getn(ks) do
+		local v = r[ks[i]];
+		if type(v) ~= "number" then v = 0; end;
+		v = floor(v);
+		if v > mx then v = mx; elseif v < -mx then v = -mx; end;
+		if i > 1 then s = s..","; end;
+		s = s..format("%d", v);
+	end;
+	return s;
+end;
+
+-- Packed string -> record table over the key list ks, or nil unless s holds exactly getn(ks) integers separated by
+-- single commas and is at most len characters (default 12 per key: the widest value "-2147483647" is 11 characters,
+-- plus its comma, so every string TRF_TpPackK makes fits).
+function TRF_TpUnpackK(s, ks, len)
+	if type(ks) ~= "table" then return nil; end;
+	if type(len) ~= "number" then len = 12 * getn(ks); end;
+	if type(s) ~= "string" or strlen(s) > len or strfind(s, "[^%d,%-]") then return nil; end;
+	local t = {};
+	gsub(s, "(%-?%d+)", function(x) tinsert(%t, tonumber(x)); end);
+	if getn(t) ~= getn(ks) then return nil; end;
+	local _, nc = gsub(s, ",", ",");
+	if nc ~= getn(ks) - 1 then return nil; end;
+	local r = {};
+	for i = 1, getn(ks) do r[ks[i]] = t[i]; end;
+	return r;
+end;
+
+-- Pool list TRF.tp (created when missing).
+function TRF_TkPool()
+	if type(TRF.tp) ~= "table" then TRF.tp = {}; end;
+	return TRF.tp;
+end;
+
+-- Index and unpacked record of trader id in the pool, or nil.
+function TRF_TpFind(id)
+	if type(TRF) ~= "table" or type(id) ~= "number" then return nil; end;
+	local tp = TRF_TkPool();
+	for i = 1, getn(tp) do
+		local r = TRF_TpUnpack(tp[i]);
+		if r and r.id == id then return i, r; end;
+	end;
+	return nil;
+end;
+
+-- Remove the record of trader id; 1 if one was there.
+function TRF_TkDrop(id, why)
+	local i, r = TRF_TpFind(id);
+	if not i then return nil; end;
+	tremove(TRF.tp, i);
+	TRF_TkStat("tk_drop");
+	TRF_TkE("drop", "trader_id", id, "reason", why, "system", TRF_SysName(r.s), "pool_count", getn(TRF.tp));
+	return 1;
+end;
+
+-- Store record r: replaces the record of the same id; a full pool drops the oldest t without the chased
+-- bit, else the oldest (4.2). Returns the pool index.
+function TRF_TkPut(r)
+	local tp = TRF_TkPool();
+	local s = TRF_TpPack(r);
+	local i = TRF_TpFind(r.id);
+	if i then tp[i] = s; return i; end;
+	while getn(tp) >= TRF_TkPoolMax() do
+		local bi, bt, ci, ct = nil, nil, nil, nil;
+		for j = 1, getn(tp) do
+			local q = TRF_TpUnpack(tp[j]);
+			if not q then bi = j; bt = -1; break; end;
+			if TRF_Bit(q.fl, 8) == 0 and (not bt or q.t < bt) then bi = j; bt = q.t; end;
+			if not ct or q.t < ct then ci = j; ct = q.t; end;
+		end;
+		local k = bi or ci or 1;
+		TRF_TkStat("tk_evict");
+		TRF_TkE("evict", "record", tp[k]);
+		tremove(tp, k);
+	end;
+	tinsert(tp, s);
+	return getn(tp);
+end;
+
+-- Elapsed legs of a record (4.3): legs - t - 1, at least 0.
+function TRF_TkElapsed(r)
+	return max(0, TRF_TkLegs() - (r.t or 0) - 1);
+end;
+
+-- Drop records past record_ttl (and unreadable ones). Returns the number dropped.
+function TRF_TkExpire()
+	if type(TRF) ~= "table" then return 0; end;
+	local tp = TRF_TkPool();
+	local ttl = TRF_TkT("record_ttl", 8);
+	local keep, n = {}, 0;
+	for i = 1, getn(tp) do
+		local r = TRF_TpUnpack(tp[i]);
+		if r and TRF_TkElapsed(r) <= ttl and getn(keep) < TRF_TkPoolMax() then
+			tinsert(keep, tp[i]);
+		else
+			n = n + 1;
+			TRF_TkE("expire", "record", tp[i]);
+		end;
+	end;
+	TRF.tp = keep;
+	if n > 0 then TRF_TkStat("tk_expire"); end;
+	return n;
+end;
+
+-- Live state of a trader ------------------------------------------------------------------------------
+
+-- Spawn memo of live trader id in live.tq, or nil.
+function TRF_TkMemo(id)
+	local q = TRF_TkQ();
+	if not q then return nil; end;
+	for i = 1, getn(q) do
+		if type(q[i]) == "table" and q[i].id == id then return q[i]; end;
+	end;
+	return nil;
+end;
+
+-- 1 when the live record counts as tracked (4.2): tb bit 1, or the v0.2 fields of the same events (focus
+-- line met, contract, counted attack, rescue, heat flee, comply), so a module that does not call
+-- TRF_TrackMark still tracks. Supply convoys (own) and the player's freighter (fw, trf_freight) never.
+function TRF_TkTracked(r)
+	if type(r) ~= "table" or r.own or r.fw then return nil; end;
+	if TRF_Bit(r.tb, 1) == 1 or r.met or r.ct or r.cnt or r.res or r.fl == "heat" then return 1; end;
+	if TRF_TkRobbed(r) then return 1; end;
+	return nil;
+end;
+
+-- 1 when the trader complied with a raid this visit (raid record dc = "comply").
+function TRF_TkRobbed(r)
+	local L = TRF_TkLive();
+	if not L or type(r.rdn) ~= "number" or type(L.rd) ~= "table" or type(L.rd[r.rdn]) ~= "table" then return nil; end;
+	return L.rd[r.rdn].dc == "comply";
+end;
+
+-- Pool flag bits from the live record (4.1): carried bits of a rebuilt trader, 1 met, 2 contract,
+-- 4 robbed, 16 attacked by the player, 32 rescued (8 chased is set by the jump test).
+function TRF_TkFlags(id, r)
+	local fl = 0;
+	local m = TRF_TkMemo(id);
+	if m and type(m.fl) == "number" then fl = m.fl; end;
+	-- 256 (design/specialist-spec.md F3): this visit's patch only; a carried bit goes.
+	fl = TRF_BitClr(fl, 256);
+	if r.sk == 2 then fl = TRF_BitSet(fl, 256); end;
+	if r.met then fl = TRF_BitSet(fl, 1); end;
+	if r.ct then fl = TRF_BitSet(fl, 2); end;
+	if TRF_TkRobbed(r) then fl = TRF_BitSet(fl, 4); end;
+	if r.cnt then fl = TRF_BitSet(fl, 16); end;
+	if r.res then fl = TRF_BitSet(fl, 32); end;
+	return TRF_TkCrpFl(fl, TRF_N("TRF_Crp_Of", r));
+end;
+
+-- fl bits 64 and 128 hold the corporation of a contract carrier (design/corp-carriers-spec.md 5.1): c - 2 for c 3..5,
+-- 0 for none. TRF_TkCrpFl(fl, c) sets them, TRF_TkCrpOf(fl) reads 3..5 or nil.
+function TRF_TkCrpFl(fl, c)
+	if type(fl) ~= "number" then fl = 0; end;
+	fl = fl - 64 * mod(floor(fl / 64), 4);
+	if c == 3 or c == 4 or c == 5 then fl = fl + 64 * (c - 2); end;
+	return fl;
+end;
+
+function TRF_TkCrpOf(fl)
+	if type(fl) ~= "number" then return nil; end;
+	local c = mod(floor(fl / 64), 4);
+	if c > 0 then return c + 2; end;
+	return nil;
+end;
+
+-- Build power of a live trader: a rebuilt trader's pw (memo or r.pw), else an estimate from the
+-- contact level as TRF_Plan draws it (level - 4 .. level + 3, +2 from TT2). CHECK: the live record does
+-- not keep the drawn strength (v02 3.2), so the hull row of a fresh record is approximate.
+function TRF_TkPw(id, r)
+	local m = TRF_TkMemo(id);
+	if m and type(m.pw) == "number" then return m.pw; end;
+	if type(r.pw) == "number" then return TRF_Clamp(floor(r.pw), 1, 20); end;
+	local lv = 10;
+	if type(TRF_GnContacts) == "function" and type(r.ci) == "number" then
+		local c = call(TRF_GnContacts, {}, "x", TRF_TkNoErr);
+		if type(c) == "table" and type(c[r.ci]) == "table" and type(c[r.ci][6]) == "number" then lv = c[r.ci][6]; end;
+	end;
+	local s = TRF_Clamp(floor(lv), 1, 20);
+	if (r.tier or 1) >= 2 then s = min(20, s + 2); end;
+	return s;
+end;
+
+-- Live escorts (ships minus transports alive) of trader id.
+function TRF_TkEscorts(id, r)
+	local h = TRF_H().tr[id];
+	if type(h) == "table" and type(h.sh) == "table" and type(h.tp) == "table" then
+		local na, nt = 0, 0;
+		for i = 1, getn(h.sh) do if TRF_TkAlive(h.sh[i]) then na = na + 1; end; end;
+		for i = 1, getn(h.tp) do if TRF_TkAlive(h.tp[i]) then nt = nt + 1; end; end;
+		return max(0, na - nt);
+	end;
+	return max(0, (r.np or 0) - (r.nt or 0));
+end;
+
+-- First live ship of trader id.
+function TRF_TkLead(id)
+	if type(TRF_GnLead) == "function" then return call(TRF_GnLead, {id}, "x", TRF_TkNoErr); end;
+	local h = TRF_H().tr[id];
+	if type(h) ~= "table" or type(h.sh) ~= "table" then return nil; end;
+	for i = 1, getn(h.sh) do if TRF_TkAlive(h.sh[i]) then return h.sh[i]; end; end;
+	return nil;
+end;
+
+-- HP band of the leader against hp0 (4.1): 0 >= 75 %, 1 >= 50 %, 2 >= 30 %, 3 below; 0 when unknown.
+function TRF_TkDm(id, r)
+	if type(r.hp0) ~= "number" or r.hp0 <= 0 then return 0; end;
+	local hp = TRF_N("GetCurHP", TRF_TkLead(id));
+	if type(hp) ~= "number" then return 0; end;
+	local q = hp / r.hp0;
+	if q >= 0.75 then return 0; elseif q >= 0.5 then return 1; elseif q >= 0.3 then return 2; end;
+	return 3;
+end;
+
+-- Containers in the hold mirror.
+function TRF_TkHoldN(r)
+	local n = 0;
+	if type(r.hold) == "table" then
+		for i = 1, getn(r.hold) do
+			if type(r.hold[i]) == "table" and type(r.hold[i].n) == "number" then n = n + r.hold[i].n; end;
+		end;
+	end;
+	return min(99, n);
+end;
+
+-- Contract (v1 spec 10.1) ------------------------------------------------------------------------------
+
+-- Trader id becomes tracked (why: focus, hail, contract, comply, attack, rescue, flee, tip). Returns 1.
+function TRF_TrackMark(id, why)
+	if not TRF_TkOn() then return nil; end;
+	local r = TRF_Rec(id);
+	if type(r) ~= "table" or r.own or r.fw then return nil; end;
+	if TRF_Bit(r.tb, 1) == 0 then
+		r.tb = TRF_BitSet(r.tb, 1);
+		TRF_TkStat("tk_mark");
+		TRF_TkDE("mark", "trader_id", id, "reason", why);
+	end;
+	return 1;
+end;
+
+-- Write the record of live trader id: now in system sys, d 0 station-bound, 1 transit, 2 docked (4.1, 4.2).
+-- fr: system it came from (default: the current system for d 1, else the trader's origin). Returns the
+-- pool index or nil, reason.
+function TRF_TrackWrite(id, sys, d, fr)
+	local ok, why = TRF_TkWriteOk();
+	if not ok then return nil, why; end;
+	local r = TRF_TkRaw(id);
+	if type(r) ~= "table" or r.own or r.fw then return nil, "rec"; end;
+	sys = TRF_TkIdx(sys);
+	if type(sys) ~= "number" or sys < 1 then return nil, "sys"; end;
+	local cur = TRF_CurIdx();
+	if type(fr) ~= "number" then
+		if d == 1 then fr = cur;
+		elseif type(r.from) == "number" and r.from > 0 then fr = r.from;
+		else fr = cur; end;
+	end;
+	if TRF_Bit(r.tb, 1) == 0 then r.tb = TRF_BitSet(r.tb, 1); end;
+	local m = TRF_TkMemo(id);
+	local tt = r.tier or 1;
+	-- A rebuilt TT4 that arrived as TT3 keeps its tier (4.3).
+	if m and type(m.tt) == "number" and m.tt > tt then tt = m.tt; end;
+	local rec = {id=id, nm=r.nm or 0, o=0, c=r.cls or 6, tt=TRF_Clamp(tt, 1, 4), pw=TRF_TkPw(id, r),
+		n=TRF_TkHoldN(r), e=TRF_TkEscorts(id, r), s=sys, fr=fr or 0, d=TRF_Clamp(d or 1, 0, 2),
+		dm=TRF_TkDm(id, r), fl=TRF_TkFlags(id, r), t=TRF_TkLegs()};
+	local i = TRF_TkPut(rec);
+	-- The pool id a rebuilt trader came from is replaced by its live id.
+	if type(r.pi) == "number" and r.pi ~= id then TRF_TkDrop(r.pi, "renamed"); end;
+	TRF_TkStat("tk_write");
+	TRF_TkE("write", "trader_id", rec.id, "system", TRF_SysName(sys), "route_state", rec.d, "record", TRF_TpPack(rec),
+		"pool_count", getn(TRF.tp));
+	return i;
+end;
+
+-- Exit portal of a tracked trader (TRF_OnExit, before the delete): record in the system behind the
+-- portal (to: idx or name; else from r.ext), xt for the chase test when it fled or was attacked.
+function TRF_TrackExit(id, to)
+	local r = TRF_TkRaw(id);
+	if not TRF_TkTracked(r) then return nil; end;
+	local cur = TRF_CurIdx();
+	-- The portal it leaves by (r.ext, changed by wind-down, watchdog and flee) before the planned to.
+	local s = TRF_TkPortalDest(cur, r.ext);
+	if type(s) ~= "number" then s = TRF_TkIdx(to); end;
+	if type(s) ~= "number" or s < 1 then TRF_TkStat("tk_nodest"); return nil; end;
+	if not TRF_TrackWrite(id, s, 1, cur) then return nil; end;
+	local q = TRF_TkQ();
+	local x = nil;
+	if r.fl or r.cnt then x = TRF_TkGt(); r.xt = x; end;
+	if q then
+		local w = nil;
+		for i = 1, getn(q.w) do if q.w[i].id == id then w = q.w[i]; end; end;
+		if not w then w = {id=id}; tinsert(q.w, w); end;
+		w.x = x;
+		while getn(q.w) > 8 do tremove(q.w, 1); end;
+	end;
+	return 1;
+end;
+
+-- 1 when trader id was written at an exit portal in this visit.
+function TRF_TkExited(id)
+	local q = TRF_TkQ();
+	if not q then return nil; end;
+	for i = 1, getn(q.w) do if q.w[i].id == id then return 1; end; end;
+	return nil;
+end;
+
+-- Live trader id is gone (why as TRF_Remove / trf_events). Death (kill, lost) and docking by removal
+-- drop its record (4.3); an escape through a portal (trf_raid) is written as an exit when the gen hook
+-- did not; other reasons (jump, wind, life, ...) keep what the pool has.
+function TRF_TrackGone(id, why)
+	if type(TRF) ~= "table" or type(id) ~= "number" then return nil; end;
+	if why == "kill" or why == "lost" or why == "dock" or why == "killed" or why == "dead" then
+		if not TRF_TkExited(id) then TRF_TkDrop(id, why); end;
+		return 1;
+	end;
+	if (why == "escaped" or why == "exit") and not TRF_TkExited(id) then
+		local r = TRF_TkRaw(id);
+		if TRF_TkTracked(r) then
+			-- Fled to a station refuge: no ext portal near the leader -> docked here.
+			local cur = TRF_CurIdx();
+			local s = TRF_TkPortalDest(cur, r.ext);
+			local near = nil;
+			local m = TRF_Map();
+			local lp = nil;
+			local lead = TRF_TkLead(id);
+			if lead then lp = call(function(o) return o:GetPosition(); end, {lead}, "x", TRF_TkNoErr); end;
+			if s and m and m.sys[cur] and type(lp) == "table" then
+				local p = m.sys[cur].pby[r.ext];
+				local dd = TRF_Dist(lp, p);
+				if dd and dd < 150 then near = 1; end;
+			end;
+			if s and (near or why == "exit" or not lp) then
+				TRF_TrackExit(id, s);
+			else
+				TRF_TrackWrite(id, cur, 2);
+			end;
+		end;
+	end;
+	return 1;
+end;
+
+-- Before a jump (4.2), after TRF_Hail_BeforeJump and before any flight is deleted: every live tracked
+-- trader is written by state, then the chase test runs for the exit writes of this visit.
+-- how "custom" (scripted long jump): nothing written.
+function TRF_Track_BeforeJump(dest, how)
+	if type(TRF) ~= "table" or type(TRF.live) ~= "table" or type(TRF.live.tr) ~= "table" then return; end;
+	if how == "custom" then TRF_TkE("jump", "reason", "custom", "result", "no_writes"); return; end;
+	local ok, why = TRF_TkWriteOk();
+	if not ok then TRF_TkE("jump", "reason", why, "result", "no_writes"); return; end;
+	local cur = TRF_CurIdx();
+	local tr = TRF.live.tr;
+	local ids, n = {}, 0;
+	for id, r in tr do tinsert(ids, id); end;
+	for i = 1, getn(ids) do
+		local id = ids[i];
+		local r = tr[id];
+		if type(r) == "table" and r.st ~= "gone" and TRF_TkTracked(r) then
+			local s, d, fr = cur, 0, nil;
+			if r.st == "dock" or r.st == "queue" then
+				d = 2;
+			elseif r.path == "A" and r.st == "in" then
+				d = 0;
+			else
+				local to = TRF_TkPortalDest(cur, r.ext);
+				if to then s = to; d = 1; fr = cur; end;
+			end;
+			if TRF_TrackWrite(id, s, d, fr) then n = n + 1; end;
+		elseif type(r) == "table" and r.st == "gone" and (r.why == "kill" or r.why == "lost" or r.why == "dock") then
+			-- Gone records keep why (v02 3.2): a death the gone hook missed still drops the record.
+			if not TRF_TkExited(id) and TRF_TpFind(id) then TRF_TkDrop(id, r.why); end;
+		end;
+	end;
+	-- Chase test: same portal (pool s = dest), within T_chase of the exit, fled or attacked.
+	local di = TRF_TkIdx(dest);
+	local q = TRF_TkQ();
+	local nc = 0;
+	if q and di then
+		local gt, T = TRF_TkGt(), TRF_TkT("T_chase", 60);
+		for i = 1, getn(q.w) do
+			local w = q.w[i];
+			local j, rec = TRF_TpFind(w.id);
+			if j and type(w.x) == "number" and rec.s == di and gt - w.x <= T then
+				rec.fl = TRF_BitSet(rec.fl, 8);
+				TRF.tp[j] = TRF_TpPack(rec);
+				nc = nc + 1;
+				TRF_TkStat("tk_chase");
+				TRF_TkE("chased", "trader_id", w.id, "destination", TRF_SysName(di), "elapsed", TRF_F(gt - w.x));
+			end;
+		end;
+	end;
+	TRF_TkE("jump", "destination", dest, "written_count", n, "chased_count", nc, "pool_count", getn(TRF_TkPool()));
+end;
+
+-- Arrivals (4.3) --------------------------------------------------------------------------------------
+
+-- Plan of this entry: {chase = pool id or nil, port = {ids}, dock = {ids}} (ids are trader ids of pool
+-- records, at most handoff_max in all). TRF_EntryPlan schedules TRF_TrackSpawn(id, "chase") at
+-- track_chase 5-15 s, (id, "port") at track_port 60-120 s and (id, "dock") as the seed (8.6 items 1, 5b).
+-- The first call per visit decides; later calls return the same plan.
+function TRF_TrackEntry()
+	local out = {port={}, dock={}};
+	local q = TRF_TkQ();
+	if not q then return out; end;
+	if q.d ~= 1 then
+		q.d = 1;
+		TRF_TkPlanEntry(q);
+	end;
+	for i = 1, getn(q) do
+		local e = q[i];
+		if type(e) == "table" then
+			if e.h == "chase" then out.chase = e.i;
+			elseif e.h == "port" then tinsert(out.port, e.i);
+			elseif e.h == "dock" then tinsert(out.dock, e.i); end;
+		end;
+	end;
+	return out;
+end;
+
+function TRF_TkPlanEntry(q)
+	if not TRF_TkOn() then return; end;
+	TRF_TkExpire();
+	local cur = TRF_CurIdx();
+	if type(cur) ~= "number" then return; end;
+	if TRF_TkEscortMission() or TRF_TkSupp() > 0 then TRF_TkDE("entry", "reason", "escort_or_suppressed", "result", "no_arrivals"); return; end;
+	if type(TRF_GnModeQ) == "function" and TRF_GnModeQ() ~= "mod" then TRF_TkDE("entry", "reason", "not_mod_mode", "result", "no_arrivals"); return; end;
+	if not TRF_TkGate(cur, "track") then return; end;
+	local tp = TRF_TkPool();
+	local c = {};
+	for i = 1, getn(tp) do
+		local r = TRF_TpUnpack(tp[i]);
+		if r and r.s == cur then tinsert(c, r); end;
+	end;
+	if getn(c) == 0 then return; end;
+	sort(c, function(a, b)
+		local ca, cb = TRF_Bit(a.fl, 8), TRF_Bit(b.fl, 8);
+		if ca ~= cb then return ca > cb; end;
+		if a.t ~= b.t then return a.t > b.t; end;
+		return a.id < b.id;
+	end);
+	local last = TRF_TkIdx(TRF_N("GetLastLocation"));
+	local hmax = TRF_Clamp(floor(TRF_TkT("handoff_max", 2)), 0, 4);
+	local nj = 0;
+	for i = 1, getn(c) do
+		if getn(q) >= hmax then break; end;
+		local r = c[i];
+		local e = TRF_TkElapsed(r);
+		local how = "dock";
+		if TRF_Bit(r.fl, 8) == 1 and e == 0 and r.fr == last and not TRF_TrackEntryHas(q, "chase") then how = "chase";
+		elseif r.d ~= 2 and e <= 1 then how = "port"; end;
+		local en = {i=r.id, h=how};
+		if how ~= "dock" then en.j = nj; nj = nj + 1; end;
+		tinsert(q, en);
+		TRF_TkE("entry", "trader_id", r.id, "legs_elapsed", e, "route_state", r.d, "flags", r.fl, "result", how);
+	end;
+end;
+
+function TRF_TrackEntryHas(q, how)
+	for i = 1, getn(q) do if type(q[i]) == "table" and q[i].h == how then return 1; end; end;
+	return nil;
+end;
+
+-- Trader contact index and portal index in it of map portal pn of the current system, or nil.
+function TRF_TkContactOf(pn)
+	local L = TRF_TkLive();
+	local list = TRF_GnContacts();
+	if not L or type(L.cv) ~= "table" or type(list) ~= "table" then return nil; end;
+	local any = {};
+	for ci = 1, getn(list) do
+		local cv = L.cv[ci];
+		if TRF_GnIsTrader(list[ci]) and type(cv) == "table" and type(cv.pn) == "table" then
+			tinsert(any, ci);
+			for i = 1, getn(cv.pn) do
+				if pn and cv.pn[i] == pn then return ci, i; end;
+			end;
+		end;
+	end;
+	if getn(any) == 0 then return nil; end;
+	return any[TRF_Rand(getn(any)) + 1], nil;
+end;
+
+-- trf_gen plan for record rec (4.3): dock -> path B at the station (as the arrival seed); chase and port
+-- -> through the portal toward fr (else a registered portal), path A when a station is usable, else C.
+-- j: arrival number of this entry (spawn point GetEntryPoint(10 + 15 j)). Returns plan or nil, reason.
+function TRF_TkPlan(rec, how, j, free)
+	if how == "dock" then
+		local cis = TRF_GnSeedContacts();
+		if not cis then return nil, "station"; end;
+		local ci = cis[TRF_Rand(getn(cis)) + 1];
+		return TRF_Plan(TRF_GnContacts()[ci], ci, "B", free);
+	end;
+	local cur = TRF_CurIdx();
+	local pn = TRF_TkPortalTo(cur, rec.fr);
+	local ci, si = TRF_TkContactOf(pn);
+	if not ci then return nil, "contact"; end;
+	local c = TRF_GnContacts()[ci];
+	local st = TRF_GnStation();
+	local force = nil;
+	if st and TRF_GnApproach(c, st, TRF_GnT()) then force = "A"; end;
+	local p, why = TRF_Plan(c, ci, force, free);
+	if not p then return nil, why; end;
+	if si then
+		local L = TRF_TkLive();
+		local cv = L.cv[ci];
+		local ps = c[3];
+		p.ent = ps[si];
+		p.entn = cv.pn[si];
+		p.pos = ps[si]:GetEntryPoint(10 + 15 * (j or 0));
+		p.dir = ps[si]:GetOrientation();
+		p.from = cv.pt[si];
+		if p.path == "C" and p.extn == p.entn and getn(ps) >= 2 then
+			local o = {};
+			for i = 1, getn(ps) do if i ~= si then tinsert(o, i); end; end;
+			local ei = o[TRF_Rand(getn(o)) + 1];
+			p.ext = ps[ei]; p.extn = cv.pn[ei]; p.to = cv.pt[ei];
+		end;
+	else
+		TRF_TkStat("tk_anyportal");
+	end;
+	return p;
+end;
+
+-- Tier fields of plan p for record rec (4.3, v02 9.2): tier tt capped (TT4 -> TT3 without a free convoy
+-- slot, convoy module, gate or in a danger system; TT3+ -> TT2 at heat >= 5, gate tt3, governor, counted
+-- attack; then the free ships), the same build power pw, escorts trimmed to e. Returns the tier.
+function TRF_TkTier(p, rec, free)
+	local cur = TRF_CurIdx();
+	local L = TRF_TkLive() or {};
+	local tt = TRF_Clamp(rec.tt or 1, 1, 4);
+	local pw = TRF_Clamp(rec.pw or 1, 1, 20);
+	local s = pw;
+	if tt >= 2 then s = max(1, pw - 2); end;
+	local pro = 0;
+	if type(TRF_TrPro) == "function" then pro = TRF_TrPro(cur) or 0; end;
+	local comp = TRF_TierComp;
+	if type(comp) ~= "function" then tt = 1; end;
+	local why = "rec";
+	if tt >= 4 then
+		local c4 = nil;
+		if type(TRF_ConvSlot) == "function" and L.cvs == nil and not TRF_N("TRF_DangerSys", cur) and TRF_TkGate(cur, "tt4") then
+			c4 = call(comp, {4, s, pro}, "x", TRF_TkNoErr);
+		end;
+		if type(c4) ~= "table" or c4.tier ~= 4 then tt = 3; why = "tt4"; end;
+	end;
+	if tt >= 3 then
+		local heat = 0;
+		if type(TRF.std) == "table" and type(TRF.std.heat) == "number" then heat = TRF.std.heat; end;
+		if heat >= 5 then tt = 2; why = "heat";
+		elseif not TRF_TkGate(cur, "tt3") then tt = 2; why = "gate";
+		elseif type(TRF_GovActive) == "function" and TRF_GovActive() then tt = 2; why = "gov";
+		elseif L.patk == 1 then tt = 2; why = "patk"; end;
+	end;
+	local c = nil;
+	if tt >= 2 then c = comp(tt, s, pro); end;
+	if type(free) == "number" and c then
+		while tt > 1 and c and c.n > free do
+			tt = tt - 1;
+			why = "ships";
+			if tt >= 2 then c = comp(tt, s, pro); else c = nil; end;
+		end;
+	end;
+	local e = TRF_Clamp(rec.e or 0, 0, 8);
+	if c then
+		p.pw = c.pw; p.row = c.row; p.n = c.n; p.tpn = c.tp; p.tesc = c.tesc; p.ne = c.ne;
+		local ne, tmax = c.ne or 0, c.tmax or 4;
+		if tt == 3 and e < ne then
+			p.ne = e;
+			p.n = (c.tp or 2) + e;
+		elseif tt == 2 and e < ne and type(c.tesc) == "table" then
+			local re = (c.row and c.row.esc) or 0;
+			local k = max(0, e - re);
+			local te = {};
+			for i = 1, min(k, getn(c.tesc)) do tinsert(te, c.tesc[i]); end;
+			p.tesc = te;
+			p.ne = re + getn(te);
+			p.n = (c.tp or 1) + p.ne;
+		end;
+		p.ne = p.ne or 0;
+		if p.ne > e then TRF_TkStat("tk_esc_over"); end;
+		p.esc = max(0, min(p.esc or 0, tmax - (c.ne or 0), e - p.ne));
+	else
+		p.pw = nil; p.tpn = nil; p.tesc = nil; p.ne = nil;
+		p.row = TRF_GnRow(s);
+		p.n = p.row.tp + p.row.esc;
+		if p.row.esc > e then TRF_TkStat("tk_esc_over"); end;
+		p.esc = max(0, min(p.esc or 0, 4 - p.row.esc, e - p.row.esc));
+	end;
+	p.strength = s;
+	p.tier = tt;
+	p.twhy = why;
+	return tt;
+end;
+
+-- Hold mirror and transports of trader id trimmed to n containers (largest stack first, as the raid
+-- comply). CHECK (E0.3): ClearInventory on an NPC transport; on failure the hold stays as built.
+function TRF_TkTrimHold(id, n)
+	local r = TRF_Rec(id);
+	local h = TRF_H().tr[id];
+	if type(r) ~= "table" or type(r.hold) ~= "table" or type(h) ~= "table" or type(h.tp) ~= "table" then return 0; end;
+	local have = TRF_TkHoldN(r);
+	if type(n) ~= "number" or n >= have then return 0; end;
+	local new = {};
+	for i = 1, getn(r.hold) do
+		local st = r.hold[i];
+		if type(st) == "table" then tinsert(new, {i=st.i, n=st.n or 0, s=st.s}); end;
+	end;
+	local cut = 0;
+	while have - cut > n do
+		local bi, bn = nil, 0;
+		for i = 1, getn(new) do if new[i].n > bn then bi = i; bn = new[i].n; end; end;
+		if not bi then break; end;
+		new[bi].n = new[bi].n - 1;
+		cut = cut + 1;
+		if new[bi].n <= 0 then tremove(new, bi); end;
+	end;
+	for j = 1, getn(h.tp) do
+		if TRF_TkAlive(h.tp[j]) then
+			if not call(function(x) x:ClearInventory(); return 1; end, {h.tp[j]}, "x", TRF_TkNoErr) then
+				TRF_TkE("trim", "trader_id", id, "reason", "clear_inventory_failed", "result", "hold_kept");
+				return 0;
+			end;
+			for i = 1, getn(new) do
+				local sj = new[i].s;
+				if type(sj) ~= "number" then sj = 1; end;
+				if sj == j and new[i].n > 0 then
+					call(function(x, it, k) x:AddModuleToInventory(it, k); end, {h.tp[j], new[i].i, new[i].n}, "x", TRF_TkNoErr);
+				end;
+			end;
+		end;
+	end;
+	r.hold = new;
+	return cut;
+end;
+
+-- Due call: spawn the trader of pool record i (trader id) as how (chase, port, dock), with its identity
+-- (4.3). Each spawn passes the gates and TRF_CanSpawn now. The record leaves the pool when the trader
+-- spawns; on refusal it stays. Returns the live id or nil.
+function TRF_TrackSpawn(i, how)
+	if not TRF_TkOn() or type(TRF_Plan) ~= "function" or type(TRF_Spawn) ~= "function" then return nil; end;
+	local k, rec = TRF_TpFind(i);
+	if not k then return nil; end;
+	if type(TRF_GenReady) == "function" and not TRF_GenReady() then return nil; end;
+	if type(TRF_GnModeQ) == "function" and TRF_GnModeQ() ~= "mod" then return nil; end;
+	local cur = TRF_CurIdx();
+	if TRF_TkEscortMission() or TRF_TkSupp() > 0 or not TRF_TkGate(cur, "track") then
+		TRF_TkStat("tk_skip");
+		return nil;
+	end;
+	if type(TRF_GnValidate) == "function" and not TRF_GnValidate() then return nil; end;
+	local ok, free = TRF_CanSpawn(0, "trader");
+	if not ok then TRF_TkStat("tk_skip"); return nil; end;
+	local q = TRF_TkQ();
+	if not q then return nil; end;
+	local en = nil;
+	for j = 1, getn(q) do if type(q[j]) == "table" and q[j].i == i and not q[j].id then en = q[j]; end; end;
+	local p, why = TRF_TkPlan(rec, how, (en and en.j) or 0, free);
+	if not p then TRF_TkStat("tk_skip"); TRF_TkDE("spawn", "pool_id", i, "reason", why, "result", "no_plan"); return nil; end;
+	TRF_TkTier(p, rec, free);
+	local spare;
+	ok, spare = TRF_CanSpawn(p.n, "trader");
+	if not ok then TRF_TkStat("tk_skip"); return nil; end;
+	if type(spare) == "number" and p.esc > spare then p.esc = max(0, spare); end;
+	-- Same id when free (TRF_NewId takes seq + 1), else a new one (r.pi keeps the pool id).
+	local seq = TRF.seq;
+	TRF.seq = TRF_Clamp(rec.id - 1, 0, 9998);
+	local id = call(TRF_Spawn, {p}, "x", TRF_PErr);
+	TRF.seq = seq;
+	if not id then TRF_TkStat("tk_skip"); return nil; end;
+	local r = TRF_Rec(id);
+	if not r then return nil; end;
+	r.nm = rec.nm;
+	r.cls = rec.c;
+	-- Corporation carriers (design/corp-carriers-spec.md 5.1): the same name in the same region keeps its corporation.
+	-- The record was written in s (d 0, 2) or left fr through a portal (d 1).
+	local ls = rec.s;
+	if rec.d == 1 then ls = rec.fr; end;
+	TRF_N("TRF_Crp_Label", id, TRF_TkCrpOf(rec.fl), ls);
+	r.tb = TRF_BitSet(r.tb, 1);
+	if id ~= rec.id then r.pi = rec.id; end;
+	-- Specialist answers (design/specialist-spec.md 6.7): a trader patched on its last visit gives its rumour free.
+	if TRF_Bit(rec.fl, 256) == 1 then TRF_P("TRF_Spc_Rebuilt", id, rec.id); end;
+	if how == "dock" then r.seed = 1; end;
+	if not en then en = {i=rec.id, h=how}; tinsert(q, en); end;
+	en.id = id; en.pw = rec.pw; en.fl = TRF_BitClr(rec.fl, 8); en.fr = rec.fr; en.tt = rec.tt;
+	while getn(q) > 4 do tremove(q, 1); end;
+	tremove(TRF.tp, k);
+	local cut = TRF_TkTrimHold(id, rec.n);
+	if how == "chase" then
+		local hp0 = r.hp0;
+		local f = {1, 0.75, 0.5, 0.3};
+		local lead = TRF_TkLead(id);
+		if type(hp0) == "number" and lead and rec.dm > 0 then
+			-- CHECK (v02 O4): late SetHP on an NPC carcass; on failure the trader keeps full HP.
+			if not call(function(o, v) o:SetHP(v); return 1; end, {lead, hp0 * f[TRF_Clamp(rec.dm, 0, 3) + 1]}, "x", TRF_TkNoErr) then
+				TRF_TkStat("tk_sethp_fail");
+			end;
+		end;
+		if type(TRF_Flee) == "function" then TRF_Flee(id, "chased"); end;
+		if type(TRF_Say) == "function" then
+			local pilot = nil;
+			if lead then pilot = call(function(o) return o:GetPilot(); end, {lead}, "x", TRF_TkNoErr); end;
+			TRF_Say(TRF_TkTxt("chased"), 6, pilot);
+		end;
+	end;
+	TRF_TkStat("tk_spawn");
+	TRF_TkE("spawn", "pool_id", rec.id, "trader_id", id, "via", how, "origin", TRF_SysName(rec.fr), "tier", r.tier,
+		"pool_tier", rec.tt, "power", en.pw, "escort_count", rec.e, "hold_cut", cut, "damage_band", rec.dm, "flags", rec.fl);
+	return id;
+end;
+
+-- Signals for trf_ui / trf_hail (4.3) ------------------------------------------------------------------
+
+-- System idx a rebuilt trader came from ("seen in <fr>"), or nil for a trader seen first in this visit.
+function TRF_TrackSeen(id)
+	local m = TRF_TkMemo(id);
+	if m and type(m.fr) == "number" and m.fr > 0 then return m.fr; end;
+	return nil;
+end;
+
+-- The metagain line once per visit for a rebuilt trader the player met before (spcmet for one the Wolves patched on its
+-- last visit, design/specialist-spec.md 6.7); nil otherwise.
+function TRF_TrackMetAgain(id)
+	local m = TRF_TkMemo(id);
+	local q = TRF_TkQ();
+	if not m or not q or q.m == 1 then return nil; end;
+	if TRF_Bit(m.fl, 256) == 1 then q.m = 1; return TRF_TkTxt("spcmet"); end;
+	if TRF_Bit(m.fl, 1) == 0 then return nil; end;
+	q.m = 1;
+	return TRF_TkTxt("metagain");
+end;
+
+-- Loader callbacks (v1 spec 10.3) ----------------------------------------------------------------------
+
+-- After base reconciliation: expiry, then the entry plan (cached; TRF_EntryPlan reads the same plan).
+function TRF_Track_OnActivate()
+	if type(TRF) ~= "table" then return; end;
+	TRF_TkExpire();
+	TRF_TrackEntry();
+end;
+
+-- Load: expiry and bounds only; arrivals scheduled before the save are not replayed (their records stay).
+function TRF_Track_OnLoad()
+	if type(TRF) ~= "table" then return; end;
+	TRF_TkExpire();
+end;
+
+function TRF_Track_Dump()
+	if type(TRF) ~= "table" then return; end;
+	local tp = TRF_TkPool();
+	-- records: packed records joined with ";" (each is itself a comma list); arrivals: pool_id/how/trader_id,...
+	local s = "";
+	for i = 1, getn(tp) do
+		if i > 1 then s = s..";"; end;
+		s = s..tostring(tp[i]);
+	end;
+	TRF_TkE("dump", "part", "pool", "pool_count", getn(tp), "records", s);
+	local q = TRF_TkQ();
+	if q then
+		local t = "";
+		for i = 1, getn(q) do
+			local e = q[i];
+			if type(e) == "table" then
+				if t ~= "" then t = t..","; end;
+				t = t..tostring(e.i).."/"..tostring(e.h).."/"..tostring(e.id);
+			end;
+		end;
+		TRF_TkE("dump", "part", "arrivals", "arrivals", t, "exit_write_count", getn(q.w));
+	end;
+end;

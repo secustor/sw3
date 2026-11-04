@@ -1,0 +1,2 @@
+{"out": "../out/arba_Inoco_heavy_destroyed.IMD", "gelp": "none",
+ "parts": [{"imd": "arba_Inoco_destroyed", "ops": [{"scale": 1.3}], "refs": "all", "spheres": "transform", "ref_size": ["flare", "fire", "module"]}]}
