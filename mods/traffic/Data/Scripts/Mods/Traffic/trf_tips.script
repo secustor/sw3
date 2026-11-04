@@ -504,7 +504,9 @@ function TRF_TiLiveOf(r, x)
 			for i = 1, getn(l) do
 				local b = l[i];
 				if type(b) == "table" and b.s == r.s then
-					if b.k == 1 or b.k == 2 then return "current"; end;
+					-- A 05 record is pushed at k 1 -> 2, so a k 1 entry is a later base founded in the same system.
+					if b.k == 1 then return "dead", "gone"; end;
+					if b.k == 2 then return "current"; end;
 					if b.k == 3 then return "stale", "base"; end;
 				end;
 			end;
@@ -642,7 +644,9 @@ function TRF_TiPushBody(slot, rec)
 	if type(c) ~= "number" or type(a) ~= "number" or c ~= floor(c) or a ~= floor(a) or c < 0 or c > 9 or a < 0 or a > 9 then
 		return TRF_TiPushRefuse(rec, "arg");
 	end;
-	local l = TRF_TiLFixOf(e, rec.l or 0);
+	local l = rec.l or 0;
+	if type(l) ~= "number" or l < 0 or l > 8 or l ~= floor(l) then return TRF_TiPushRefuse(rec, "arg"); end;
+	l = TRF_TiLFixOf(e, l);
 	local rs = TRF_TiSlot(rec.s);
 	if slot == nil then slot = rs; end;
 	local n = TRF_TiN();
@@ -1074,10 +1078,12 @@ function TRF_TiRumourBody(idx)
 	end;
 	local r = TRF_TiPickOf(cs, near);
 	if not r then TRF_TiPickLog("hail", idx, nil, nil, nil, getn(cs)); return nil; end;
+	local t = TRF_TiLine(r, xs[r]);
+	if type(t) ~= "string" then TRF_TiPickLog("hail", idx, nil, nil, nil, getn(cs)); return nil; end;
 	ti.h[TRF_TiHKey(r)] = 1;
 	if r.k == 11 then TRF_P("TRF_Sh_RingTold", r.a, 11); end;
 	TRF_TiPickLog("hail", idx, r, "current", nil, getn(cs));
-	return TRF_TiLine(r, xs[r]);
+	return t;
 end;
 
 -- 7.4 the informant reply's clause for the captain of slot: where and when he was last spotted (current only), or nil.
@@ -1086,7 +1092,7 @@ function TRF_Ti_Intel(slot)
 end;
 
 function TRF_TiIntelBody(slot)
-	if not TRF_TiOn() or (TRF.ti ~= nil and type(TRF.ti) ~= "string") then TRF_TiSkip("intel", "off"); return nil; end;
+	if TRF_TiGate("intel") then return nil; end;
 	if type(slot) ~= "number" then return nil; end;
 	local l = TRF_RingRead(slot, {k=7});
 	local r = l[1];
@@ -1094,7 +1100,8 @@ function TRF_TiIntelBody(slot)
 	local res, st, why, x = "ok", nil, nil, nil;
 	local ok, gw = nil, "nosafety";
 	if type(TRF_StrictOk) == "function" then ok, gw = TRF_StrictOk(r.s, "tips"); end;
-	if not ok then res = "gate:"..tostring(gw); else st, why, x = TRF_TiLive(r); if st ~= "current" then res = st; end; end;
+	if TRF_TiCh() < TRF_TiTune().ti_ch_full then res = "chapter";
+	elseif not ok then res = "gate:"..tostring(gw); else st, why, x = TRF_TiLive(r); if st ~= "current" then res = st; end; end;
 	TRF_TiDE("candidate", "surface", "intel", "kind", "cap", "target", TRF_TiName(r.s), "result", res);
 	if res ~= "ok" then return nil; end;
 	TRF_TiPickLog("intel", r.s, r, st, nil, 1);

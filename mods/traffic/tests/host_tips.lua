@@ -359,6 +359,10 @@ function T_TI_B()
 	HOST_Check(w1 == "arg" and w2 == "arg" and w3 == "arg" and w4 == "noregion" and w5 == "current" and w6 == "new" and w7 == "new"
 		and TI_Logs(n0, "result=refused reason=noregion") == 1 and TI_Logs(n0, "kind=raid system=gaoba result=refused reason=current") == 1,
 		"refusals arg (reserved kind, no system, source 10), noregion, current; w 1 skips the current rule; slot nil = the system's region");
+	local w8, w9;
+	p, w8 = TRF_RingPush(slot, {k=1, s=li, l=9});
+	p, w9 = TRF_RingPush(slot, {k=1, s=li, l=2.5});
+	HOST_Check(w8 == "arg" and w9 == "arg", "P2: a landmark outside 0..8 or not an integer is refused (arg)");
 	bl = TI_Blk(slot);
 	HOST_Check(bl[getn(bl)].s == xi and bl[getn(bl)].l == 0, "a portal index beyond the system's portals is landmark 0");
 	-- Read filters, newest first.
@@ -506,6 +510,12 @@ function T_TI_C()
 	n0 = S_Mark();
 	TRF_BaseDestroyed(ai, "player");
 	HOST_Check(TI_Logs(n0, "event=push") == 0, "the player's kill pushes nothing");
+	local rb = {k=5, s=ai, l=0, g=TRF.clock.legs, age=0, c=1, a=0, f=0};
+	TRF.base = {{s=ai, k=2, t=TRF.clock.legs, w=0, h=0}};
+	local sb1 = TRF_TiLive(rb);
+	TRF.base = {{s=ai, k=1, t=TRF.clock.legs, w=0, h=0}};
+	local sb2 = TRF_TiLive(rb);
+	HOST_Check(sb1 == "current" and sb2 == "dead", "a base record reads dead once a new base is founding (k 1) in its system");
 	TRF.base = {};
 	-- Captain moves: the arrival portal from the old system, the generation digit.
 	TRF.ti = nil;
@@ -542,6 +552,11 @@ function T_TI_C()
 	TRF_ScWrite(V_Idx("hanoi"), {src=3, kind=2, fac=0, lv=1, rec=0, on=0, mine=0});
 	HOST_Check(TI_Logs(n0, "kind=wreck region="..slot.." system=lidau system_index="..li.." landmark=0 source=7 arg=0 ") == 2 and TI_Logs(n0, "kind=wreck") == 2
 		and TI_Logs(n0, "result=refresh") == 1, "trader scar new and refresh push the wreck; an on-screen scar and another kind push nothing");
+	TRF.scar[1].rf = nil;
+	TRF.clock.legs = TRF.clock.legs + 1;
+	n0 = S_Mark();
+	TRF_ScWrite(li, {src=3, kind=3, fac=0, lv=1, rec=0, on=0, mine=0});
+	HOST_Check(S_Logs(n0, "module=scar event=source source=3 system=lidau sid=") == 1 and S_Logs(n0, "result=refresh") == 1 and TI_Logs(n0, "kind=wreck") == 0, "a sweep scar refreshing a trader record pushes no wreck");
 	-- No push for the current system (D22).
 	n0 = S_Mark();
 	TRF_Ti_Feed("raid", V_Slot("gredos"), TRF_CurIdx());
@@ -778,6 +793,20 @@ function T_TI_E()
 	c.seen = V_Idx("hanoi");
 	t1 = ofr(slot, c);
 	HOST_Check(t1 == TRF_Txt("capintelok", cn, TRF_UI_SysName(c.seen)), "informant without a current sighting: the built reply");
+	c.seen = ki;
+	h.labels.CurrentQuest = "4_01";
+	n0 = S_Mark();
+	t1 = ofr(slot, c);
+	HOST_Check(t1 == TRF_Txt("capintelok", cn, TRF_UI_SysName(ki)) and TI_Logs(n0, "surface=intel kind=cap target=kadi result=chapter") == 1,
+		"informant below ti_ch_full: the built reply");
+	h.labels.CurrentQuest = "5_1";
+	TI_NewVisit();
+	TRF_TiCV().q = 1;
+	n0 = S_Mark();
+	t1 = ofr(slot, c);
+	HOST_Check(t1 == TRF_Txt("capintelok", cn, TRF_UI_SysName(ki)) and TI_Logs(n0, "event=skip surface=intel reason=latch") == 1,
+		"informant after a mission in the visit (latch): the built reply");
+	TI_NewVisit();
 end;
 
 -- f: hail rumour ----------------------------------------------------------------------------------------
@@ -842,6 +871,12 @@ function T_TI_F()
 	TI_Set({[slot]={TI_R(11, "xk10", 7, 0, 0, 2)}});
 	t1 = TRF_HlRumourText(cur);
 	HOST_Check(t1 == "Pirate talk: a cache "..TI_Place("xk10", 7).." "..TI_Age(0).."." and h.told == "2:11;", "kind 11: the stash text and the reveal call");
+	TI_NewVisit();
+	h.told = nil;
+	local rt = TRF_Sh_RingText;
+	TRF_Sh_RingText = function(a, k, place, age) return nil; end;
+	HOST_Check(TRF_HlRumourText(cur) == built and h.told == nil and TI_N(TRF_TiCV().h) == 0, "kind 11 without a stash text: the built chain, no reveal, not told");
+	TRF_Sh_RingText = rt;
 	TRF.stash[2].st = 2;
 	TI_NewVisit();
 	HOST_Check(TRF_HlRumourText(cur) == built, "kind 11 of an opened cache: dead");

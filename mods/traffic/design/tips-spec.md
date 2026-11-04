@@ -189,7 +189,7 @@ A load adds no record and shows no line; `TI` is rebuilt empty (the hail told se
 | `base` | 05 | trf_base `TRF_Ba_Life`, the k 1 -> 2 branch after the news post: `TRF_P("TRF_Ti_Feed", "base", slot, r.s)` | `r.s` | nearest to the base site (X3) | owner (S1) | 0 |
 | `basedn` | 06 | trf_base `TRF_BaseDestroyed`, after `r.w` is set, only `by == "sweep"` or `"abandon"`: `TRF_P("TRF_Ti_Feed", "basedn", slot, idx, by)` | `idx` | nearest to the base site (X3) | sweep: sweep owner (S2); abandon: 0 | 1 sweep, 2 abandon |
 | `cap` | 07 | trf_captain `TRF_CapMove`, after `r.seen = to`: `TRF_P("TRF_Ti_Feed", "cap", slot, to, from, r.gen)` (`from` = the old `seen`) | `to` | arrival portal (X2) | owner of `to` (S1) | `mod(r.gen, 10)` |
-| `wreck` | 08 | trf_scar `TRF_ScWrite`, after a new record (`result=new`) or a refresh (`result=refresh`) of kind 1 with `on ~= 1`: `TRF_P("TRF_Ti_Feed", "wreck", slot, idx)` | the scar system | 0 (read time, 7.6) | 7 | 0 |
+| `wreck` | 08 | trf_scar `TRF_ScWrite`, after a new record (`result=new`) or a refresh (`result=refresh`) of kind 1 by a kind 1 source (1, 2) with `on ~= 1` (a sweep scar refreshing a trader record feeds nothing, D6): `TRF_P("TRF_Ti_Feed", "wreck", slot, idx)` | the scar system | 0 (read time, 7.6) | 7 | 0 |
 
 `TRF_Ti_Feed` never raises (protected inside) and returns nothing; a refusal is a level 2 log line. The owner modules behave as built without trf_tips.
 
@@ -276,7 +276,7 @@ local x = TRF_N("TRF_Ti_Intel", slot);
 if type(x) == "string" then t = t.." "..x; end;
 return t;
 ```
-`TRF_Ti_Intel`: R1, R6; the 07 record of block `slot`, current only (`s == r.seen`): `tiintel` ("Kfni patrols last spotted Hask 'Red Hand' coming into Gredos by the Aurora portal 2 days back."). No flag (paid every time). Log `event=pick surface=intel`.
+`TRF_Ti_Intel`: R1-R6 (R5: `ti_ch_full`); the 07 record of block `slot`, current only (`s == r.seen`): `tiintel` ("Kfni patrols last spotted Hask 'Red Hand' coming into Gredos by the Aurora portal 2 days back."). No flag (paid every time). Log `event=pick surface=intel`.
 
 ### 7.5 Bought tips and the two-marker rule (trf_plumb)
 
@@ -290,7 +290,7 @@ return t;
 | Kind | Current | Stale (clause) | Dead |
 |---|---|---|---|
 | 01-04, 06 | always | - | - |
-| 05 `base` | `TRF.base` entry with `s == rec.s`, `k` 1 or 2 | `k == 3` (`tistbase`) | no entry |
+| 05 `base` | `TRF.base` entry with `s == rec.s`, `k` 2 | `k == 3` (`tistbase`) | no entry, or `k` 1 (a later base founding there; a 05 record is pushed at k 1 -> 2) |
 | 07 `cap` | `TRF_CapRec(slot)`: `mod(gen, 10) == a`, `st == 1`, `seen == s` | same generation, `st == 1`, `seen ~= s` (`tistcap`, $2 = `seen`); `st` 2 or 3 (`tistlow`) | other generation, `st` 0 or 4, no record |
 | 08 `wreck` | scar record at `s` (`TRF_ScAt(s)`) with `kind == 1`, `st <= 1`, `hid ~= 1`; landmark from `TRF_TiLmOf(e, r)` when `st == 1` (placed, `r.x`, `r.z`), else 0; `$2` = `TRF_Names()[r.nm]` | - | no record, opened (`st 2`), hidden, other kind |
 | 11, 12 | 5.3 | - | 5.3 |
