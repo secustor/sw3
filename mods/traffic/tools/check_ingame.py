@@ -3581,7 +3581,7 @@ def c_wsp8(ctx):
     den = ctx.find("safety", "gate", feature="spec", result="denied")
     for g in den:
         for a in ctx.find("spec", "answer"):
-            if a.visit is g.visit and g.get("system") == a.visit.system:
+            if a.visit is not None and a.visit is g.visit and g.get("system") == a.visit.system:
                 res.fails.append("%s: an answer in a visit whose system the strict gate denied for spec (%s)" % (a.short(), g.short()))
                 break
     if not den:

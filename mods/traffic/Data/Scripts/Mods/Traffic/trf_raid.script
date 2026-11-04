@@ -20,7 +20,8 @@
 -- and chance weight (TRF_Te_RollK, formula branch only), the Ghost decloak spawn (TRF_Te_GhostPos, TRF_Te_Decloak), the
 -- Clan file count on both pay branches (TRF_Te_Answer).
 -- Specialist answers (design/specialist-spec.md 6.4, 6.5, A05): TRF_Rd_Unflee ends a flee after the Repairman patch (state
--- in or out, the exit kept by TRF_Rd_FleeBody in H.tr[id].ex0 / exn0, TRF_GnReissue); TRF_Rd_End calls trf_spec's raid end
+-- in or out, the exit and its armed flag kept by TRF_Rd_FleeBody in H.tr[id].ex0 / exn0 / xa0, TRF_GnReissue); TRF_Rd_End
+-- calls trf_spec's raid end
 -- (the re-arm); the poll and the HP trigger ask trf_spec's hold guard (TRF_Spc_Hold) after a fallback patch.
 
 -- Defaults and constants -------------------------------------------------------------
@@ -2018,9 +2019,10 @@ function TRF_Rd_FleeBody(id, why)
 		pn = nil;
 	elseif TRF_Rd_Obj(po) then
 		TRF_Rd_P(function(s, p) s:ComeToPortal(p); end, {lead, po});
-		-- The exit before the flee, for TRF_Rd_Unflee (handle table only).
+		-- The exit and its armed flag before the flee, for TRF_Rd_Unflee (handle table only).
 		h.ex0 = h.ext;
 		h.exn0 = r.ext;
+		h.xa0 = r.xa;
 		h.ext = po;
 		if pn then r.ext = pn; end;
 		r.xa = 1;
@@ -2070,8 +2072,10 @@ function TRF_Rd_UnfleeStOf(path, dkd, st_alive)
 	return "out";
 end;
 
--- Ends the flee of trader id (why: patch): its state in or out, the exit it had before the flee (or the nearest portal),
--- r.fl and r.xa cleared, the route reissued (TRF_GnReissue). Returns 1, or nil and the reason (rec, state, wind, error).
+-- Ends the flee of trader id (why: patch): its state in or out, after a portal flee the exit it had before with its armed
+-- flag (a station flee left both; a lost exit takes the nearest portal and a fresh trigger), r.fl cleared, state in with
+-- the approach trigger again, the route reissued (TRF_GnReissue). Returns 1, or nil and the reason (rec, state, wind,
+-- error).
 -- The flee's refuge trigger stays armed and does nothing (TRF_Rd_SafeBody returns unless r.st is flee).
 function TRF_Rd_Unflee(id, why)
 	local a, b = call(TRF_Rd_UnfleeBody, {id, why}, "x", TRF_PErr);
@@ -2090,20 +2094,36 @@ function TRF_Rd_UnfleeBody(id, why)
 	local sa = 0;
 	if type(TRF_GnStation) == "function" and TRF_Rd_Alive(TRF_GnStation()) then sa = 1; end;
 	local st = TRF_Rd_UnfleeStOf(r.path, r.dkd, sa);
-	if TRF_Rd_Obj(h.ex0) then
-		h.ext = h.ex0;
-		r.ext = h.exn0;
+	-- A portal flee: the exit and its armed flag as before it (an armed TRF_OnExit trigger stays the one, TRF_GnReissue
+	-- arms no second); the old exit gone: the flee portal with a fresh trigger. A station flee left both as they were.
+	if h.ex0 ~= nil then
+		if TRF_Rd_Obj(h.ex0) then
+			h.ext = h.ex0;
+			r.ext = h.exn0;
+			r.xa = h.xa0;
+		else
+			r.xa = nil;
+		end;
+		h.ex0 = nil; h.exn0 = nil; h.xa0 = nil;
 	end;
 	if st == "out" and not TRF_Rd_Obj(h.ext) and type(TRF_GnNearPortal) == "function" then
 		local o, nm = TRF_GnNearPortal(r.ci, lead:GetPosition());
 		if TRF_Rd_Obj(o) then
 			h.ext = o;
 			if nm then r.ext = nm; end;
+			r.xa = nil;
 		end;
 	end;
 	r.fl = nil;
-	r.xa = nil;
 	r.st = st;
+	-- State in: the approach trigger again (a trader that fled from the queue used its first one; a second one at the
+	-- point is inert, TRF_OnArrive_Body returns unless the state is in).
+	if st == "in" and h.np and TRF_Rd_Alive(h.fl) then
+		local T = TRF_N("TRF_GnT");
+		local npr = 30;
+		if type(T) == "table" and type(T.np_r) == "number" then npr = T.np_r; end;
+		TRF_Rd_Trig("f_inside", TRF_Rd_Cb("TRF_OnArrive", id, 0), h.fl, h.np, npr);
+	end;
 	if type(TRF_GnReissue) == "function" then TRF_Rd_P(TRF_GnReissue, {id}); end;
 	TRF_Rd_Stat("unflee");
 	TRF_RdE("unflee", "trader_id", id, "reason", why, "state", st, "portal", r.ext);

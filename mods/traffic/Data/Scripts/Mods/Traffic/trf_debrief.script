@@ -128,8 +128,10 @@ function TRF_DbChapter()
 	return 0;
 end;
 
--- 1 while a story mission runs (trf_safety TRF_Safe_QState, else GetPlayerQuestState() == TRUE), as trf_wq.
+-- 1 while a story mission runs: trf_plumb's TRF_PlQuest (trf_safety TRF_Safe_QState, else GetPlayerQuestState() == TRUE),
+-- the same test without trf_plumb.
 function TRF_DbQuest()
+	if type(TRF_PlQuest) == "function" then return TRF_PlQuest(); end;
 	if type(TRF_Safe_QState) == "function" then
 		if TRF_Safe_QState() then return 1; end;
 		return nil;

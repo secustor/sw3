@@ -13,8 +13,8 @@
 -- Player_Group:HavePerk, never GetPlayerMotherShip.
 -- Saved: r.sk (2 or nil) on a live trader record (TRF_Spc_Fix), the fix mark in r.hx (trf_hail), r.res on a rebuilt
 -- patched trader, pool fl bit 256 (trf_track). Visit state in the handle table TRF_H().spc (never saved): w (the
--- specialist found per trader), hold (fallback guard {g, f}), mt (meeting trigger armed), an, sk, nd (log latches), tc
--- (tune cache).
+-- specialist found per trader), pb (the probe of the last menu per trader: who and tried, read by the head text), hold
+-- (fallback guard {g, f}), mt (meeting trigger armed), an, sk, nd (log latches), tc (tune cache).
 -- Layout as trf_remark: helpers, accessors (one native each, protected), static tables, pure functions (*Of, explicit
 -- inputs, host-testable), contract functions. Top level: functions only.
 
@@ -65,9 +65,10 @@ end;
 
 -- Visit state in the handle table (3.2), created on first use; a throwaway table without trf_state.
 function TRF_SpcSH()
-	if type(TRF_H) ~= "function" then return {w={}, hold={}, mt={}, an={}, sk={}, nd={}}; end;
+	if type(TRF_H) ~= "function" then return {w={}, pb={}, hold={}, mt={}, an={}, sk={}, nd={}}; end;
 	local h = TRF_H();
-	if type(h.spc) ~= "table" then h.spc = {w={}, hold={}, mt={}, an={}, sk={}, nd={}}; end;
+	if type(h.spc) ~= "table" then h.spc = {w={}, pb={}, hold={}, mt={}, an={}, sk={}, nd={}}; end;
+	if type(h.spc.pb) ~= "table" then h.spc.pb = {}; end;
 	return h.spc;
 end;
 
@@ -340,31 +341,32 @@ end;
 -- Gates ------------------------------------------------------------------------------
 
 -- The inputs of TRF_SpcQualOf for trader id (record r). nohx: the fix mark in r.hx is not tested (the pick, after
--- trf_hail set it). The strict gate is asked only when G1-G3 pass and r is a fleeing trader (G6): its denial counts a
--- stat, and trf_hail asks every hailed trader through TRF_HlMax.
+-- trf_hail set it). The reads stop at the first gate TRF_SpcQualOf fails on (G1-G11 in its order): trf_hail asks every
+-- hailed trader through TRF_HlMax, so a trader that is not fleeing costs no engine read; the strict gate is asked only
+-- when G1-G6 pass (its denial counts a stat).
 function TRF_SpcIn(id, r, nohx)
 	local s = {r=r, T=TRF_SpcTune(), on=0, ch=TRF_SpcCh(), mode="mod", gate=1};
 	if TRF_SpcOn() then s.on = 1; end;
+	if s.on ~= 1 or s.ch < s.T.spc_ch then return s; end;
 	if type(TRF_SysModeQuiet) == "function" then
 		local m, mw = call(TRF_SysModeQuiet, {}, "x", TRF_SpcErr);
 		s.mode = m; s.mwhy = mw;
 	end;
+	if s.mode ~= "mod" then return s; end;
 	-- D17: heat 3 and up or Trade at war, trf_hail refuses the menu (the providers still run for its demand box).
 	s.heat = TRF_N("TRF_HlHeat");
 	if TRF_N("TRF_HlTradeWar") == 1 then s.war = 1; end;
-	if s.on == 1 and s.ch >= s.T.spc_ch and s.mode == "mod" and not (type(s.heat) == "number" and s.heat >= 3) and not s.war
-		and type(TRF_StrictOk) == "function" and type(r) == "table"
-		and r.st == "flee" and (r.fl == "hp" or r.fl == "raid") then
+	if (type(s.heat) == "number" and s.heat >= 3) or s.war == 1 or type(r) ~= "table" then return s; end;
+	s.kind_ok = TRF_SpcKindOk(id, r);
+	if s.kind_ok ~= 1 or r.st ~= "flee" or (r.fl ~= "hp" and r.fl ~= "raid") then return s; end;
+	if type(TRF_StrictOk) == "function" then
 		local ok, why = call(TRF_StrictOk, {TRF_N("TRF_CurIdx"), "spec"}, "x", TRF_SpcErr);
 		s.gate = ok; s.gwhy = why;
 	end;
-	if type(r) == "table" then
-		s.kind_ok = TRF_SpcKindOk(id, r);
-		s.raided = TRF_SpcRaided(r);
-		if not nohx and type(r.hx) == "string" and strfind(r.hx, ",fix,", 1, 1) then s.hx = 1; end;
-		s.hp0 = r.hp0;
-		s.hp = TRF_SpcHp(TRF_SpcLead(id));
-	end;
+	s.raided = TRF_SpcRaided(r);
+	if not nohx and type(r.hx) == "string" and strfind(r.hx, ",fix,", 1, 1) then s.hx = 1; end;
+	s.hp0 = r.hp0;
+	s.hp = TRF_SpcHp(TRF_SpcLead(id));
 	if type(TRF_Rd_Unflee) == "function" and type(TRF_GnReissue) == "function" then s.mods = 1; end;
 	return s;
 end;
@@ -405,9 +407,12 @@ end;
 function TRF_Spc_HailOpts(id, r)
 	local sp = TRF_SpcSH();
 	local why = TRF_SpcQual(id, r);
-	local who = nil;
+	local who, tried = nil, nil;
+	sp.pb[id] = nil;
 	if not why then
-		who = TRF_Spc_Who("rep");
+		who, tried = TRF_Spc_Who("rep");
+		-- Kept for the head text of this menu (TRF_SpcHeadTxt): one probe per menu, not three.
+		sp.pb[id] = {w=who, t=tried};
 		if not who then why = "no_specialist"; end;
 	end;
 	if why then
@@ -538,18 +543,21 @@ function TRF_Spc_SayDue(id)
 end;
 
 -- 6.3: the dialog head (TRF_HlDlgOpen) and the first box text (TRF_HailShow) of a qualifying trader: with a specialist
--- the plain greeting, without one the missing-skill line (event=need once per trader and visit); nil otherwise.
+-- the plain greeting, without one the missing-skill line (event=need once per trader and visit); nil otherwise. The
+-- specialist is the one TRF_Spc_HailOpts probed for this menu (trf_hail asks the providers first), else a probe of its own.
 function TRF_Spc_Head(r, id) return TRF_SpcHeadTxt(r, id, "dialog"); end;
 function TRF_Spc_Pre(r, id) return TRF_SpcHeadTxt(r, id, "box"); end;
 
 function TRF_SpcHeadTxt(r, id, via)
 	if TRF_SpcQual(id, r) then return nil; end;
-	local who, tried = TRF_Spc_Who("rep");
+	local sp = TRF_SpcSH();
+	local who, tried = nil, nil;
+	local pb = sp.pb[id];
+	if type(pb) == "table" then who = pb.w; tried = pb.t; else who, tried = TRF_Spc_Who("rep"); end;
 	if who then
 		if via == "box" then return TRF_SpcTxt("spcheadb", TRF_SpcName(r)); end;
 		return TRF_SpcTxt("spchead");
 	end;
-	local sp = TRF_SpcSH();
 	if not sp.nd[id] then
 		sp.nd[id] = 1;
 		TRF_SpcE("need", "trader_id", id, "via", via, "tried", tried);
