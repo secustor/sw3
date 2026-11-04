@@ -115,7 +115,7 @@ API (trf_plumb, public, all protected):
 | `TRF_IqDone(q)`, `TRF_IqR(bit)` | the done bit, a reward bit (1 or nil) |
 | `TRF_IqStale()` | at every entry (`TRF_Pl_OnEnter`) and load: an active quest with `legs - l >= iq_stale` calls the owner `TRF_IqOwners()[q]` (`{"TRF_Te_IqLapse"}` for q 1; later quests add theirs) through `TRF_P`; when the owner function is missing (module not loaded), the plumbing ends it itself (`how` "lapsed") |
 
-Repair in `TRF_Pl_Fix` (after the job slot): `TRF.iq` not a table -> nil; `a`, `d`, `r` not integers in range -> 0; `l` not an integer in 0..legs x 10 + 9 -> nil; an `a` whose `q` is 0 or above 6, or whose `s` is 0, -> 0; unknown keys dropped; a record with `a` 0, `d` 0, `r` 0 and no `l` -> nil. Quest-specific fields are checked by the owner (`TRF_Te_Fix`, 3.2).
+Repair in `TRF_Pl_Fix` (after the job slot): `TRF.iq` not a table -> nil; `a`, `d`, `r` not integers in range -> 0; `l` not an integer in 0..legs x 10 + 9 -> nil; with an active `a`, a missing `l` or one above legs -> legs (the lapse clock restarts); an `a` whose `q` is 0 or above 6, or whose `s` is 0, -> 0; unknown keys dropped; a record with `a` 0, `d` 0, `r` 0 and no `l` -> nil. Quest-specific fields are checked by the owner (`TRF_Te_Fix`, 3.2).
 
 ### 3.2 Clan file validation (`TRF_Te_Fix`, in `TRF_Repair` after `TRF_Pl_Fix` and `TRF_Wq_Fix`)
 
@@ -193,7 +193,7 @@ Count (`TRF_Te_Answer`): `q` 1 at `s` 1, `TRF_RgOf(cur) == slot`, cfg `te_quest`
 
 `TRF_Te_Nd`: 1 for a Cutter row. `TRF_Te_Comply`: `te_hag_cmin`, `te_hag_cmax` for a Haggler row. `TRF_Te_LeaveHp`: Cutter `te_cut_hp`, Planner `te_pl_hp`, Ghost `te_gh_hp`, else nil. `TRF_Te_LossLeave`: 1 for a Haggler row. `TRF_Te_RollK(cur, r)`: Planner row: `te_pl_hi` when `r.tier >= 3` or `type(r.cv) == "number"`, else `te_pl_lo`; else 1 (debug line `event=roll`). `TRF_Te_ComplyLine`: Haggler row: `tehcp` with `$1` the trader name (`TRF_Rd_Name(r)`), `$2` the clan.
 
-`TRF_Te_CallOff(n, rd)`: Planner row, `rd.st == "fight"`, (`rd.ph == 1` or a death in `hr.dk`), `st, sr = TRF_Rd_HailRatio(n)`, `st2 = st + (rd.ph == 1 and TRF_N("TRF_SpPlayerSide") or 0)`, `st2 >= te_pl_out x sr` -> says `tepoff` (leader pilot, 6 s), logs `event=calloff`, returns 1. `TRF_Rd_LeaveBody` then calms and routes the raid as for any leave.
+`TRF_Te_CallOff(n, rd)`: Planner row, `rd.st == "fight"`, (`rd.ph == 1` or a death in `hr.dk`), `st, sr = TRF_Rd_HailRatio(n)`, `st2 = st + (rd.ph == 1 and TRF_N("TRF_SpPlayerSide") or 0)` (the player side is added only when `TRF_Rd_PlayerSide(rd)` is 0: `TRF_Rd_HailRatio` already counts it under a live escort contract near the mothership), `st2 >= te_pl_out x sr` -> says `tepoff` (leader pilot, 6 s), logs `event=calloff`, returns 1. `TRF_Rd_LeaveBody` then calms and routes the raid as for any leave.
 
 `TRF_Te_GhostPos(n, rd, lead)`: Ghost row, `te_fx` 1, a lane raid (`rd.why` "lane" or "contract"), the lead alive: 8 directions at 45 degrees in the x-z plane, starting at `TRF_Rand(8)`, distance `te_gh_lo + TRF_Rand(te_gh_hi - te_gh_lo + 1)` from the lead; the first point with `TRF_Rd_PointOk(p, sy, raid_min_st, 0)` and at least `R_threat` from the mothership; returns the point and the direction to the lead, else nil (`event=decloak result=none reason=no_point`; `reason=fx_off` at level 2 when `te_fx` 0). `TRF_Te_Decloak(n)`: `ship:PlayFX("Cloak Out.shfx")` on every ship of `H.rd[n].sh`, protected; `event=decloak raid_id= distance= fx_count= result=placed`.
 
@@ -213,7 +213,7 @@ Count (`TRF_Te_Answer`): `q` 1 at `s` 1, `TRF_RgOf(cur) == slot`, cfg `te_quest`
 
 - Box candidate `TRF_DockBox("patrol", 350, "TRF_Te_DockBox")`: the gate 4.3; `TE.offer = {sys, g, f, slot, k}`; spec `{title="#UI_PatrolStationWndCaption", text=tebox ($1 clan, $2 region, $3 faction), ok="TRF_Te_BoxOk", no="TRF_Te_BoxNo", shown="TRF_Te_BoxShown", fail="TRF_Te_BoxFail", dlg="TRF_Te_Dlg1", a={g, src=cur}, own="te", card={id="te", header=tejobh, title=tebt}}`. trf_plumb's `TRF_PlShow` opens the dialog (with `te_dialog` 1 and the dialog gate, as FQ 13.1), else the mission card (`jobs_ui` >= 1 and `TRF_JbCard()`), else the box.
 - OK (`TRF_Te_BoxOk`, also D1's accept): the gate again (stale otherwise, `event=accept result=stale`); `TRF_IqTake(1, slot x 10 + f, sd)`; logbook (6.5); without the dialog the reply `teok`. A refused take (`busy`, a race with another quest) logs `result=busy`.
-- Cancel (`TRF_Te_BoxNo`, D1's decline): `TRF_IqDecline(1)`, `TE.v.dec = 1`. Esc in D1 or the card's Esc: nothing (the offer comes at the next docking; as FQ D1's "Not my business").
+- Cancel (`TRF_Te_BoxNo`, D1's decline): `TRF_IqDecline(1)`, `TE.v.dec = 1`. Esc in D1 or the card's Esc: nothing (the offer comes at the next docking; as FQ D1's "Not my business"). trf_plumb passes the card event to the handler as its second argument (`TRF_Te_BoxNo(a, "esc")`), which then logs `event=decline result=closed` and stamps nothing.
 
 ### 6.2 Step 10: answer two raids
 

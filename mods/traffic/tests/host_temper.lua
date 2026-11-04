@@ -281,6 +281,11 @@ function T_TP_A()
 	local r5 = fx({a=0, d=0, r=0});
 	local r6 = fx({a=0, d=1, l=(TRF.clock.legs + 1) * 10 + 1});
 	local r7 = fx({a=TRF_IqPack(1, 2, 21, 0, 1), d=0, r=0, l=TRF.clock.legs});
+	n0 = S_Mark();
+	local r8 = fx({a=TRF_IqPack(1, 1, 21, 0, 1), d=0, r=0});
+	local r9 = fx({a=TRF_IqPack(1, 1, 21, 0, 1), d=0, r=0, l=TRF.clock.legs * 10 + 1});
+	HOST_Check(r8.l == TRF.clock.legs and r9.l == TRF.clock.legs and S_Logs(n0, "module=plumb event=iq_fix field=l result=reset") == 2,
+		"repair: an active quest without a progress leg, or with a decline stamp, gets legs (the lapse clock)");
 	HOST_Check(r1 == nil and r2 == nil and r2b.a == 0 and r2b.d == 1 and r2b.r == 2 and r2b.l == 1 and r2b.x == nil and r3.a == 0 and r3.d == 1
 		and r4.a == 0 and r4.l == nil and r5 == nil and r6.l == nil and r6.d == 1 and r7.a == TRF_IqPack(1, 2, 21, 0, 1) and r7.l == TRF.clock.legs,
 		"repair: a string dropped, bad a/d/r reset, unknown keys dropped, q 7 and s 0 reset (with their l), empty record nil, l above legs dropped, a sound record kept");
@@ -610,6 +615,25 @@ function T_TP_C()
 	HOST_Check(c0 == "fight" and TP_Logs(n0, "event=calloff raid_id="..n.." trader_strength=") == 1 and TP_Logs(n0, "player_fired=false") == 1,
 		"Planner: a strong trader after a loss: the call-off without a player shot");
 	TRF_Rd_End(n, "cancel");
+	-- Under a live escort contract near the mothership TRF_Rd_HailRatio counts the player side; ph adds it no second time.
+	local orps = TRF_Rd_PlayerSide;
+	TRF_Rd_PlayerSide = function() return 1; end;
+	n, id, r, hr = TP_Raid("C");
+	TP_Meet(n);
+	TP_Fight(n);
+	r.pw = 1;
+	local st, sr = TRF_Rd_HailRatio(n);
+	TRF_SpPlayerSide = function() return %sr, 5, 2; end;
+	n0 = S_Mark();
+	V_Rd(n).ph = 1;
+	T_Tick(4, 0.5);
+	local c2 = TP_Logs(n0, "event=calloff");
+	TRF_Rd_PlayerSide = function() return 0; end;
+	T_Tick(4, 0.5);
+	TRF_Rd_PlayerSide = orps;
+	HOST_Check(st < sr and c2 == 0 and TP_Logs(n0, "event=calloff raid_id="..n.." trader_strength=") == 1,
+		"Planner: the player side counted once (in TRF_Rd_HailRatio under a live contract), the call-off once it is not");
+	TRF_Rd_End(n, "cancel");
 	TRF_SpPlayerSide = osps;
 	-- Ghost (Taira): leave at 0.7 x hp0.
 	TP_Begin("taira", "5_1");
@@ -712,6 +736,16 @@ function T_TP_D()
 	local p1 = TRF_TeGhostOf({x=0, y=0, z=0}, 500, 1, nil, 400, {x=500, y=0, z=0}, 300);
 	HOST_Check(p1 and abs(p1.x - 353.55) < 0.01 and abs(p1.z - 353.55) < 0.01 and p1.y == 0,
 		"TRF_TeGhostOf: the first direction (on the mothership) skipped, the next one (45 degrees) taken");
+	-- In the game a position is userdata: the lead and mothership positions are taken as such (type() answers "userdata"
+	-- for the host's Vector3 here).
+	n, id = TP_Armed();
+	local ot = type;
+	type = function(v) if tag(v) == HOST().vtag then return "userdata"; end; return %ot(v); end;
+	local pu = TRF_TeGhostOf(Vector3(0, 0, 0), 500, 1, nil, 400, Vector3(500, 0, 0), 300);
+	local gu = TRF_Te_GhostPos(n, TRF_Rd_Live().rd[n], TRF_GnLead(id));
+	type = ot;
+	HOST_Check(pu and abs(pu.x - 353.55) < 0.01 and gu and HOST_Dist(gu, TRF_GnLead(id):GetPosition()) >= 399 and HOST_Dist(gu, h.ms.pos) >= 300,
+		"userdata positions: the mothership rule applies and the decloak point is found");
 	-- Every direction blocked: event=decloak result=none reason=no_point, the built spawn.
 	n, id = TP_Armed();
 	local pok = TRF_Rd_PointOk;
@@ -1112,6 +1146,17 @@ function T_TP_G()
 	HOST_JobPress("ok");
 	HOST_JobTick();
 	HOST_Check(TRF_IqGet().q == 1, "card OK: accepted");
+	-- The card's Esc: nothing (no decline stamp, no visit flag); the next docking offers again.
+	TP_Begin("taira", "5_1", {jobs_ui=1});
+	TRF_MissionCard = HOST_MissionCard;
+	n0 = S_Mark();
+	r = TP_PatDock();
+	HOST_JobTick();
+	HOST_JobPress("esc");
+	HOST_JobTick();
+	HOST_Check(TRF_IqGet().q == 0 and TRF_IqWait(1, 9) == nil and TRF_TeOfferWhy(cur, 1) == nil
+		and TP_Logs(n0, "event=decline system=taira faction=1 result=closed") == 1 and TP_Logs(n0, "result=declined") == 0,
+		"card Esc: no decline stamp, no visit flag, offered again");
 	TRF_MissionCard = nil;
 	-- D1 (te_dialog 1, hail_xml 1): three pages, the tokens, accept.
 	TP_Begin("taira", "5_1", TP_GCfg());
@@ -1293,6 +1338,15 @@ function T_TP_H()
 	T_Jump("escaflon");
 	h.cfg.te_dialog = 1; h.cfg.hail_xml = 1;
 	TP_DlgUi(0);
+	-- A talk whose box did not open stays with its docking: a later docking that fails the report gate clears it.
+	_param = GetCurrentLocation();
+	TRF_Te_PatrolLine("patrol");
+	local tb1 = TRF_Te_TalkBox("patrol");
+	local odf = TRF_TeDockFac;
+	TRF_TeDockFac = function() return 2; end;
+	TRF_Te_PatrolLine("patrol");
+	TRF_TeDockFac = odf;
+	HOST_Check(type(tb1) == "table" and TRF_Te_TalkBox("patrol") == nil and TRF_IqGet().s == 2, "a stale talk: no talk box at a later docking of another faction");
 	n0 = S_Mark();
 	r = TP_PatDock();
 	local w = TP_Dlg();

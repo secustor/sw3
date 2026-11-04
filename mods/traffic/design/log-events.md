@@ -450,7 +450,7 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `arrival_line` | `module=plumb event=arrival_line owner=beacon result=shown` (or `result=not_shown`) | 2 |
 | `job` | `module=plumb event=job kind=1 field_count=2 result=taken` / `holder=1 result=refused` / `result=cleared` | 1 |
 | `iq` | `module=plumb event=iq quest=1 step=1 target=21 count=0 result=<taken,set,done,lapsed,dropped,declined> reason=nil` / `quest=2 step=nil target=nil count=nil result=busy reason=q1` / `result=owner` (the shared intro-quest record `TRF.iq`, [temperament-spec.md](temperament-spec.md) 3.1) | 1 |
-| `iq_fix` | `module=plumb event=iq_fix field=<iq,a,d,r,l,<unknown key>> result=<dropped,reset>` (repair of `TRF.iq` in `TRF_Pl_Fix`) | 1 |
+| `iq_fix` | `module=plumb event=iq_fix field=<iq,a,d,r,l,<unknown key>> result=<dropped,reset>` (repair of `TRF.iq` in `TRF_Pl_Fix`; `field=l result=reset`: an active quest without a progress leg, or one above legs, gets legs) | 1 |
 | `raid_help` | `module=plumb event=raid_help raid_id=7 credits_before=1063 credits_after=398 rule=excluded_factor resolver_count=3` (rule: none, factor, excluded, excluded_factor, cancel) | 1 |
 | `marker` | `module=plumb event=marker owner=pcl label=TRF_Pcl_1 result=added` / `result=refused reason=quest` (or `label`, `cap`) / `result=failed reason=create_nav_point_nil` | 1 |
 | `marker` | `module=plumb event=marker owner=pcl deleted_count=1 result=cleared` / `reason=jump deleted_count=3 result=cleared` (or `reason=load`, `reason=quest`: a mission started) | 1 |
@@ -919,7 +919,7 @@ Clan temperaments and the intro quest "Clan file", B10 (`design/temperament-spec
 | `offer` | `module=temper event=offer system=taira faction=1 clan_slot=2 result=shown via=<box,card,dialog>` / `result=failed reason=box` | 1 |
 | `offer` | `module=temper event=offer system=taira faction=1 result=none reason=<off,nomap,chapter,chapter_end,mission,nk,owner,war,region,tier,plumb,busy,done,declined,strict:<why>>` | 2 |
 | `accept` | `module=temper event=accept system=taira faction=1 clan_slot=2 seed=4410 leg=31 result=ok` (`result=stale`; `result=busy reason=<why>`: the shared slot refused) | 1 |
-| `decline` | `module=temper event=decline system=taira faction=1 leg=31 result=declined` (`result=stale`) | 1 |
+| `decline` | `module=temper event=decline system=taira faction=1 leg=31 result=declined` (`result=stale`; `system=taira faction=1 result=closed`: the card's Esc, no decline stamp) | 1 |
 | `count` | `module=temper event=count raid_id=12 kind=lane clan_slot=2 count=1 via=<paid,hail> result=counted` | 1 |
 | `count` | `module=temper event=count raid_id=12 kind=lane clan_slot=5 via=paid result=none reason=region` | 2 |
 | `step` | `module=temper event=step step_before=10 step_after=20 reason=count` | 1 |

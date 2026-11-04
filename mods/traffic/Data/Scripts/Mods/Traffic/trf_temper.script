@@ -356,7 +356,8 @@ end;
 
 -- Planner call-off (T10): in the fight state after a player shot (rd.ph) or a raid ship lost, once the trader side (plus
 -- the player side TRF_SpPlayerSide when the player fired) reaches te_pl_out x the raid side: tepoff from the raid
--- leader, event=calloff; returns 1 (the caller leaves with reason calloff).
+-- leader, event=calloff; returns 1 (the caller leaves with reason calloff). TRF_Rd_HailRatio already counts the player side
+-- under a live escort contract near the mothership; it is added once.
 function TRF_Te_CallOff(n, rd)
 	local te = %TE;
 	if type(rd) ~= "table" or rd.st ~= "fight" or te.v.co[n] then return nil; end;
@@ -370,7 +371,7 @@ function TRF_Te_CallOff(n, rd)
 	local st, sr = TRF_N("TRF_Rd_HailRatio", n);
 	if type(st) ~= "number" or type(sr) ~= "number" then return nil; end;
 	local ps = 0;
-	if rd.ph == 1 then
+	if rd.ph == 1 and (TRF_N("TRF_Rd_PlayerSide", rd) or 0) <= 0 then
 		ps = TRF_N("TRF_SpPlayerSide");
 		if type(ps) ~= "number" or ps < 0 then ps = 0; end;
 	end;
@@ -405,7 +406,7 @@ function TRF_TeGhostOf(lp, d, i0, sy, dst, mp, rt)
 		local p = {x=lp.x + d * u[1], y=lp.y, z=lp.z + d * u[2]};
 		local ok = 1;
 		if type(TRF_Rd_PointOk) == "function" and type(sy) == "table" and not TRF_Rd_PointOk(p, sy, dst, 0) then ok = nil; end;
-		if ok and type(mp) == "table" and type(mp.x) == "number" then
+		if ok and (type(mp) == "table" or type(mp) == "userdata") and type(mp.x) == "number" then
 			local dx, dy, dz = p.x - mp.x, p.y - mp.y, p.z - mp.z;
 			if sqrt(dx * dx + dy * dy + dz * dz) < rt then ok = nil; end;
 		end;
@@ -423,7 +424,7 @@ function TRF_Te_GhostPos(n, rd, lead)
 	if not r or r.k ~= 4 then return nil; end;
 	if TRF_TeT("te_fx") ~= 1 then TRF_TeDE("decloak", "raid_id", n, "result", "none", "reason", "fx_off"); return nil; end;
 	local lp = TRF_N("TRF_Rd_Pos", lead);
-	if type(lp) ~= "table" or type(lp.x) ~= "number" then return nil; end;
+	if (type(lp) ~= "table" and type(lp) ~= "userdata") or type(lp.x) ~= "number" then return nil; end;
 	local T = TRF_TeTune();
 	local d = T.te_gh_lo + (TRF_N("TRF_Rd_Rand", T.te_gh_hi - T.te_gh_lo + 1) or 0);
 	local i0 = 1 + (TRF_N("TRF_Rd_Rand", 8) or 0);
@@ -811,11 +812,16 @@ function TRF_Te_BoxOk(a)
 	return TRF_TeTxt("teok");
 end;
 
--- Cancel (D1's decline): the decline stamp of TRF.iq (no offer for te_dc legs), none again in this visit.
-function TRF_Te_BoxNo(a)
+-- Cancel (D1's decline): the decline stamp of TRF.iq (no offer for te_dc legs), none again in this visit. The card's Esc
+-- (ev "esc", spec 6.1): nothing, the offer comes at the next docking.
+function TRF_Te_BoxNo(a, ev)
 	local te = %TE;
 	local o = te.offer;
 	te.offer = nil;
+	if ev == "esc" then
+		if type(o) == "table" then TRF_TeE("decline", "system", TRF_TeName(o.sys), "faction", o.f, "result", "closed"); end;
+		return nil;
+	end;
 	te.v.dec = 1;
 	if type(o) ~= "table" then TRF_TeE("decline", "result", "stale"); return nil; end;
 	TRF_N("TRF_IqDecline", TRF_TeK().q);
@@ -858,7 +864,11 @@ end;
 -- Patrol line 47: at a dock of the quest's faction the report; with the dialog gate open it waits for the talk box 455
 -- (D2) and says nothing, else the line terep<k> and done at once.
 function TRF_Te_PatrolLine(kind, param)
-	if kind ~= "patrol" or not TRF_TeQOn() or TRF_N("TRF_Quiet") then return nil; end;
+	if kind ~= "patrol" then return nil; end;
+	-- A talk of an earlier docking (its box did not open) never carries over.
+	local te = %TE;
+	te.talk = nil;
+	if not TRF_TeQOn() or TRF_N("TRF_Quiet") then return nil; end;
 	local R = TRF_TeRun();
 	if not R or R.s ~= 2 then return nil; end;
 	local cur = TRF_TeCur();
@@ -867,7 +877,6 @@ function TRF_Te_PatrolLine(kind, param)
 	if why then TRF_TeDE("report", "system", TRF_TeName(cur), "faction", f, "result", "none", "reason", why); return nil; end;
 	local k = TRF_Te_Of(R.slot);
 	local line = TRF_TeTxt("terep"..k);
-	local te = %TE;
 	local dw = TRF_TeDlgWhy();
 	if not dw then
 		te.talk = {g=TRF_TeGen(), sys=cur, f=f, slot=R.slot, k=k, line=line};

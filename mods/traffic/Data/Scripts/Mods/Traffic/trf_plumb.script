@@ -614,7 +614,7 @@ end;
 function TRF_PlBoxOk() TRF_PlAnswer(1); end;
 function TRF_PlBoxNo() TRF_PlAnswer(0); end;
 
-function TRF_PlAnswer(a)
+function TRF_PlAnswer(a, ev)
 	local p = %P;
 	local b = p.box;
 	p.box = nil;
@@ -623,7 +623,7 @@ function TRF_PlAnswer(a)
 	if type(b) ~= "table" then TRF_PlE("box_answer", "answer", a, "result", "stale"); return; end;
 	TRF_BoxFree("dock_"..b.k);
 	if b.s.fee == 1 then p.fee = 1; end;
-	local v = TRF_Cb("TRF_PlAnswer", TRF_PlAnsBody, {b, a});
+	local v = TRF_Cb("TRF_PlAnswer", TRF_PlAnsBody, {b, a, ev});
 	p.fee = nil;
 	local ki = TRF_PlKinds()[b.k];
 	if type(ki) ~= "table" or ki.rep ~= 1 then TRF_PlOrig(b.o, b.args); TRF_PlJbAfter(); end;
@@ -631,15 +631,16 @@ function TRF_PlAnswer(a)
 end;
 
 -- An answer from another generation (a box carried over a load) still runs the handler, which tests the
--- generation of its own record (station fee, pirate offer) or finds nothing (board offers in H).
-function TRF_PlAnsBody(b, a)
+-- generation of its own record (station fee, pirate offer) or finds nothing (board offers in H). ev: the card event
+-- ("esc" for the card's Esc), the handler's second argument.
+function TRF_PlAnsBody(b, a, ev)
 	local s = b.s;
 	local res = "done";
 	if type(TRF) ~= "table" or b.g ~= TRF.gen then res = "stale"; end;
 	local f = s.no;
 	if a == 1 then f = s.ok; end;
 	local v = nil;
-	if f then v = TRF_PlCall(f, {s.a}); end;
+	if f then v = TRF_PlCall(f, {s.a, ev}); end;
 	if type(v) == "string" then TRF_PlSay(v); end;
 	TRF_PlE("box_answer", "kind", b.k, "box", tostring(s.own), "answer", a, "result", res);
 	return v;
@@ -714,7 +715,8 @@ end;
 
 -- TRF_OnJobCard(id, ev) of the DLL (traffic.script), one event per T4 tick: "open" runs the box's shown(a, "card");
 -- "ok" answers OK, "cancel" and "esc" answer Cancel (TRF_PlAnswer: the handler, its reply line, then the vanilla call once,
--- so the shop opens after the card). An event without the open card of this generation is stale: logged, nothing runs.
+-- so the shop opens after the card; the handler gets the event as its second argument, so an owner can treat Esc apart).
+-- An event without the open card of this generation is stale: logged, nothing runs.
 function TRF_Pl_OnJobCard(id, ev)
 	local p = %P;
 	if TRF_PlJbEvent(id, ev) then return 1; end;
@@ -735,7 +737,7 @@ function TRF_Pl_OnJobCard(id, ev)
 	if ev == "ok" then a = 1; elseif ev == "cancel" or ev == "esc" then a = 0; end;
 	if a == nil then TRF_PlE("jobs_card", "id", id, "card_event", tostring(ev), "result", "unknown"); return nil; end;
 	p.box = b;
-	local v = TRF_PlAnswer(a);
+	local v = TRF_PlAnswer(a, ev);
 	TRF_PlE("jobs_card", "id", id, "card_event", ev, "result", "ok", "reply", v);
 	return 1;
 end;
@@ -1470,6 +1472,8 @@ function TRF_IqFix()
 	end;
 	-- A dropped active quest leaves no progress leg behind (it would read as a decline stamp).
 	if o.a == 0 and x.a ~= nil and x.a ~= 0 then o.l = nil; end;
+	-- An active quest keeps a progress leg (the lapse clock): a missing one or a decline stamp above legs is set to legs.
+	if o.a ~= 0 and (o.l == nil or o.l > L) then o.l = L; TRF_PlE("iq_fix", "field", "l", "result", "reset"); end;
 	TRF.iq = o;
 	TRF_IqTidy();
 end;
