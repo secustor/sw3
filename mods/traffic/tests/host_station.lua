@@ -1479,6 +1479,8 @@ function T_STN_G()
 	if type(TRF_Rm_Text) == "function" then for kx, v in TRF_Rm_Text() do want[TRF_LocKey(kx)] = 1; end; end;
 	-- Sourced tips keys (design/tips-spec.md 8, X3).
 	if type(TRF_Ti_Text) == "function" then for kx, v in TRF_Ti_Text() do want[TRF_LocKey(kx)] = 1; end; end;
+	-- Specialist answer keys (design/specialist-spec.md 7, X3).
+	if type(TRF_Spc_Text) == "function" then for kx, v in TRF_Spc_Text() do want[TRF_LocKey(kx)] = 1; end; end;
 	-- Demand page keys (design/demand-page-spec.md 8): the dmp* keys of the supply and hail tables and the answers dmok, dmno;
 	-- the hail page and combat hail keys hlp* (design/hail-spec.md 7).
 	for i, fn in {"TRF_Supply_Text", "TRF_Hail_Text"} do
@@ -1495,7 +1497,7 @@ function T_STN_G()
 	end;
 	for kx, v in want do if not got[kx] then bad = bad.." missing:"..kx; end; end;
 	for kx, v in got do if not want[kx] then bad = bad.." extra:"..kx; end; end;
-	HOST_Check(ru and strsub(ru, 1, 13) == "LOCALE_FILE\r\n" and bad == "" and nl == ncr and not b2, "loc/trf_ru.loc: every station, survivors, ladder, charter, scar, captain, stash, freight, haunt, parcel, merc, demand page, hail page, crew remark and sourced tips key, cp1251, CRLF"..bad);
+	HOST_Check(ru and strsub(ru, 1, 13) == "LOCALE_FILE\r\n" and bad == "" and nl == ncr and not b2, "loc/trf_ru.loc: every station, survivors, ladder, charter, scar, captain, stash, freight, haunt, parcel, merc, demand page, hail page, crew remark, sourced tips and specialist answer key, cp1251, CRLF"..bad);
 	for id, rr in TRF.live.tr do if type(rr) == "table" and rr.st ~= "gone" then TRF_Remove(id, "test"); end; end;
 end;
 

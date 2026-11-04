@@ -117,7 +117,7 @@ function T_LAD_A()
 	L_Begin("fort_russ");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=21") >= 1, "trf_ladder loads after trf_survive (extra_count=21 with trf_charter, trf_scar, trf_captain, trf_stash, trf_freight, trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=22") >= 1, "trf_ladder loads after trf_survive (extra_count=22 with trf_charter, trf_scar, trf_captain, trf_stash, trf_freight, trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
 	HOST_Check(S_Logs(0, "module=ladder event=install gibdd_installed=true gibdd_wrapped=true temp_change_wrapped=true") >= 1,
 		"install: _PatrolGIBDD_shtraf wrapped, _temp_change keeps trf_supply's wrapper");
 	local src = function(fn) local i = getinfo(fn, "S"); return tostring(i and i.source); end;

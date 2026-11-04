@@ -260,6 +260,7 @@ also the unused hulls).
 | `flee` | `module=raid event=flee trader_id=1 reason=heat result=no_refuge` | 1 |
 | `flee` | `module=raid event=flee trader_id=1 reason=heat refuge=portal portal=nil station_distance=1350.926 portal_distance=0.000` | 1 |
 | `escaped` | `module=raid event=escaped trader_id=1 via=station` | 1 |
+| `unflee` | `module=raid event=unflee trader_id=4 reason=patch state=<in,out> portal=PORTAL_D` (`TRF_Rd_Unflee` after the Repairman patch, design/specialist-spec.md 6.4; `portal` the exit name it resumes by) | 1 |
 | `staged_roll` | `module=raid event=staged_roll disruption=6 chance=55 roll=80 result=no_raid` | 2 |
 | `staged_plan` | `module=raid event=staged_plan result=failed reason=no_placement` | 1 |
 | `staged_plan` | `module=raid event=staged_plan disruption=6 chance=55 roll=0 contact_index=1 entry_index=1 path=C point=50,0,-150 result=planned` | 1 |
@@ -848,7 +849,7 @@ Freight unlock quest "Missing in Capricorn", commits 1-3 and the presentation (`
 | `wreck` | `module=wq event=wreck system=callipso result=none reason=system` (`off, step, nomap, mission, system, record, carry, strict:<why>`) | 2 |
 | `fence` | `module=wq event=fence system=golkonda price=3415 result=shown` (`result=failed reason=box`) | 1 |
 | `fence` | `module=wq event=fence system=golkonda price=3415 result=none reason=poor` (`off, step, nomap, mission, region, strict:<why>, price, poor`) | 2 |
-| `clue` | `module=wq event=clue via=fence system=golkonda cost=3415 result=ok` (`result=poor reason=<short,no_native,...>`, `result=declined`, `result=stale`); `module=wq event=clue via=patrol system=golkonda cost=0 rung=1 result=ok` | 1 |
+| `clue` | `module=wq event=clue via=fence system=golkonda cost=3415 result=ok` (`result=poor reason=<short,no_native,...>`, `result=declined`, `result=stale`); `module=wq event=clue via=patrol system=golkonda cost=0 rung=1 result=ok`; `module=wq event=clue via=intuition system=golkonda cost=0 speaker=Hero result=ok` (the fence page's Intuition answer, design/specialist-spec.md 6.8; `result=stale` when the gate changed) | 1 |
 | `clue` | `module=wq event=clue via=patrol system=golkonda rung=0 result=none reason=rung` (the clue gate reasons, `rung`) | 2 |
 | `hold` | `module=wq event=hold system=xb13 mode=1 captain_slot=4 captain_generation=1 result=tipped` (`result=base reason=captain:<off,none,state_<st>,deny,region,tip,nil>`: mode 1 without the tip; `tip`: a paid informant tip to another system stays) | 1 |
 | `hold` | `module=wq event=hold system=xb13 mode=3 x=750 z=400 hulk=true marker=true tier=3 power=15 ship_count=4 ships_asked=4 result=spawned` (`result=none reason=<disable_action,sys_sos,suppressed,site,guard:<team,group,build,ships,raid_module>>`) | 1 |
@@ -1019,6 +1020,24 @@ Sourced tips and the event ring, A16 (`design/tips-spec.md` 10; host-tested only
 | `prune` | `module=tips event=prune region=5 dropped_count=2 reason=<age,dead,size>` (at a push or the region tick) / `region=all reason=off` (cfg tips 0 cleared the ring) | 2 |
 | `fix` | `module=tips event=fix kept=12 dropped=3 moved=1` (only when the repair changed `TRF.ti`) | 1 |
 | `dump` | `module=tips event=dump on=1 record_count=3 ring_size=4 length=43 ring=5:raid@lidau/2/0,5:cap@kadi/1/2,...` (`<slot>:<kind>@<system>/<age>/<flags>`) | 1 |
+
+## spec (`trf_spec.script`; `TRF_SpcE`, `TRF_SpcDE`)
+
+Specialist answers, A05 (`design/specialist-spec.md` 9; host-tested only). `speaker` is the squad pilot's template (`ai` the mothership firmware), `rank` 2 for `Repairman_Exp`, 1 for `Repairman`; `tried` lists every probed template with its word (`absent`, `dead`, `side`, `noperk`, `error`, `ok<rank>`). The hail line of a meeting trigger has `via=patch` (hail section).
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=spec event=error message=<m>` | 1 |
+| `arm` | `module=spec event=arm trader_id=4 raid_id=3 raid_end=killed flight=hp hp_fraction=0.310 meet=true` (the raid end re-arm, 6.1) | 1 |
+| `answer` | `module=spec event=answer trader_id=4 speaker=Yana perk=Repairman rank=1 result=offered` (once per trader and visit) | 1 |
+| `need` | `module=spec event=need trader_id=4 via=<dialog,box> tried=Kalem:absent,Yana:absent,...,Hero:noperk,ai:noperk` (the missing-skill head, once per trader and visit) | 1 |
+| `patch` | `module=spec event=patch trader_id=4 speaker=Yana rank=1 hp_before=310 target=900 hp_after=900 hp0=1200 state=out help=1 reason=nil result=patched` (`reason=help_paid` with `help=0`; `result=flee_only reason=sethp`; `result=failed reason=<gate,no_specialist,sethp,unflee:<why>>`) | 1 |
+| `say` | `module=spec event=say trader_id=4 speaker=Yana output=<radio,line> result=<shown,not_shown> reason=<nil,no_speaker,supp:<q>,line_failed>` | 1 |
+| `rebuilt` | `module=spec event=rebuilt trader_id=9 pool_id=2` (a trader rebuilt from a pool record with fl bit 256: `r.res`) | 1 |
+| `skip` | `module=spec event=skip trader_id=4 reason=<off,chapter,mode:<why>,gate:<why>,kind,flight,no_raid,raid,attacked,done,hp,raid_module,no_specialist>` (once per trader, reason and visit) | 2 |
+| `who` | `module=spec event=who kind=<rep,int> speaker=Yana rank=1 tried=Kalem:absent,Yana:ok1,...,ai:noperk` | 2 |
+| `hold` | `module=spec event=hold trader_id=4 hp=300 floor=270.000 result=<held,released>` (the fallback guard, 6.5; held once per patch) | 2 |
+| `dump` | `module=spec event=dump spec=1 hold_count=0 armed_count=1` | 1 |
 
 ## supply (`trf_supply.script`; `TRF_SpE`)
 

@@ -175,9 +175,9 @@ function T_NE_A()
 	HA_Begin("gaoba");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=21") >= 1, "trf_haunt loads before trf_parcel (extra_count=21 with trf_merc, trf_wq, trf_warn and trf_remark)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=22") >= 1, "trf_haunt loads before trf_parcel (extra_count=22 with trf_merc, trf_wq, trf_warn and trf_remark)");
 	local ml = TRF_ModList();
-	HOST_Check(ml[getn(ml) - 9] == "Haunt" and TRF_Opt("haunt") == 1 and TRF_Haunt_OptDef().haunt == 0 and TRF_HaOpt("haunt_mode") == 1
+	HOST_Check(ml[getn(ml) - 10] == "Haunt" and TRF_Opt("haunt") == 1 and TRF_Haunt_OptDef().haunt == 0 and TRF_HaOpt("haunt_mode") == 1
 		and TRF_HaOpt("haunt_trig") == 2 and TRF_HaOpt("haunt_lines") == 1 and TRF_HaOpt("haunt_mirror") == 1 and TRF_HaOpt("haunt_grudge_war") == 0,
 		"TRF_ModList has Haunt; haunt off by default (on in these runs), mode 1, per-ship triggers, lines and mirror on, grudge war off");
 	local pm, pg = TRF_PlMods(), TRF_PlGroups();

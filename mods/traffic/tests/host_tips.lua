@@ -210,10 +210,10 @@ end;
 function T_TI_A()
 	local h = HOST();
 	TI_Begin("gaoba", "5_1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=21") >= 1, "trf_tips loads last (extra_count=21)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=22") >= 1, "trf_tips loads before trf_spec (extra_count=22)");
 	local ml, pm, tf, uf = TRF_ModList(), TRF_PlMods(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml)] == "Ti" and ml[getn(ml) - 1] == "Db" and pm[getn(pm)] == "Db" and tf[getn(tf) - 1] == "TRF_Ti_Text"
-		and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf)] == "TRF_Ti_Text", "Ti last in TRF_ModList (not a plumb module); TRF_Ti_Text in both text lists");
+	HOST_Check(ml[getn(ml) - 1] == "Ti" and ml[getn(ml) - 2] == "Db" and ml[getn(ml)] == "Spc" and pm[getn(pm)] == "Db" and tf[getn(tf) - 2] == "TRF_Ti_Text"
+		and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf) - 1] == "TRF_Ti_Text", "Ti before Spc at the end of TRF_ModList (not a plumb module); TRF_Ti_Text in both text lists");
 	HOST_Check(TRF_Opt("tips") == 1 and TRF_Ti_OptDef().tips == 1 and TRF_OptEnum().tips == 1, "cfg tips 1 by default, enumerated 0..1");
 	local T = TRF_TiTune();
 	HOST_Check(TI_N(TRF_Ti_TuneDef()) == 7 and T.ti_ring == 4 and T.ti_age == 30 and T.ti_news_age == 12 and T.ti_hail_age == 6

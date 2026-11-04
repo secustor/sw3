@@ -36,6 +36,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_corp.script` | Corporation carriers, A22 ([design/corp-carriers-spec.md](design/corp-carriers-spec.md)): plain FTU traders in corporation space become Triada, USS or InoCo contract carriers at spawn (a fixed draw from the trader's name and region, shares from the run-time owners of the region's trade systems), with the corporation in the greeting, the focus line, the dialog head and the where-headed answer, and the corporation's gun list and a lore-named item in the trader shop; kills and robberies of a corporation's carriers (and an off-screen roll in Raids at clan T3-T4) pull it out of a region for 24 legs with a news post and dockmaster lines (req line 30); an escort of a carrier marks the region for trf_charter's supply run posting (type 7). State `TRF.crp` (one 88-digit string). Host-tested only. Loads after `trf_temper`. |
 | `trf_debrief.script` | Debrief pool and the intro quest "Report in", B02 ([design/debrief-spec.md](design/debrief-spec.md)), **off by default** (cfg `debrief_xp` 0 until roadmap decision 1): each settled mod job (parcel, charter posting, bounty claim, sweep join, escort; trf_plumb's settlement hook `TRF_Settle`) draws one debrief from a pool of 5 per chapter (one chapter of carry-over, a bank of 10), paid as pilot experience at the next trade dock (line 80, one `AddPlayerExperience` call); the pool opens with the quest "Report in" (quest 2 of `TRF.iq`: the charter office's offer, box 420 or Office row 420, dialogs `TRF_Db1`/`TRF_Db2`). State `TRF.db` (one packed number). Host-tested only. Loads after `trf_corp`. |
 | `trf_tips.script` | Sourced tips and the event ring, A16 ([design/tips-spec.md](design/tips-spec.md)): one ring of dated events per region (4 records, `TRF.ti`, one digit string), fed by off-screen raids, sweep plans and outcomes, pirate bases going active or dark, the wanted captain's moves and lost traffic freighters; read by the harbour news (one dated, sourced line), the sweep and base dock tips (who first saw it, where, when), a captain tip, the hail's where-headed answer and the informant's reply. Owns the shared ring API `TRF_RingPush`/`TRF_RingRead`/`TRF_RingMark`; trf_plumb's two-marker rule for offered content (`TRF_MarkerOfferReg`, tune `mk_offer`). Host-tested only. Loads after `trf_debrief`. |
+| `trf_spec.script` | Specialist answers, A05 ([design/specialist-spec.md](design/specialist-spec.md)): the Repairman patch, one answer in the hail menu's spare provider slot for an FTU trader fleeing with low HP after its raid ended ("Jana [Repairman]: ..."; `SetHP` on the lead, trf_raid's `TRF_Rd_Unflee`, help +1), the missing-skill head of that menu, the re-arm of its hail at the raid end and one hail beyond `hail_max`, the patched flag `r.sk` (trf_track's pool `fl` bit 256: the free rumour and a thank-you line at the next meeting), the specialist probe for the fence page's Intuition answer (trf_wq D5). Host-tested only. Loads after `trf_tips`. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -1201,6 +1202,43 @@ Wave 2 item 6 of the roadmap, A16 (spec [design/tips-spec.md](design/tips-spec.m
 ### In-game checks (sourced tips)
 
 W-A16.1 (dated harbour news), W-A16.2 (no news twice), W-A16.3 (never a dead target), W-A16.4 (strict gate), W-A16.5 (mission latch), W-A16.6 (hail rumour), W-A16.7 (informant clause), W-A16.8 (captain tip), W-A16.9 (ring bound), W-A16.10 (offer markers); [design/PROGRESS.md](design/PROGRESS.md) "Wave 2 (host-tested only)", scored by `tools/check_ingame.py`.
+
+## Specialist answers (`EXP=0 TRAFFIC=1`)
+
+Wave 2 item 5 of the roadmap, A05 (spec [design/specialist-spec.md](design/specialist-spec.md); owner decisions 1-11 of spec 2.1 taken 2026-11-04 as recommended): module `trf_spec`, loaded after `trf_tips` (`extra_count=22`). On by default (cfg `spec` 1). Saved: `sk` on a live trader record, the `fix` mark in its `hx`, `res` on a rebuilt patched trader and pool `fl` bit 256 (592 bytes worst case; full state `v1-n` 97,572 bytes). Host-tested only (`spc-a`..`spc-g`, the fence answer in `wq-g`), not run in the game.
+
+### What the player sees
+
+- From chapter 4, an FTU trader that flees with its hull below 60 % after its raid ended (raid over or the pirates gone, no shot from the Wolves) can be hailed again: the hail is armed for 90 s at the raid end, closing to 70 units opens it, and it may exceed the usual two hails once.
+- With a squad pilot who has the Repairman perk (Yana from chapter 9, Joseph from 10, Kalem from 13, Blade, SAM, the Hero if bought) or a mothership with System firmware, the menu shows only "- Jana [Repairman]: Cut your engines and hold still, we can patch that drive" (Expert Repairman: Kalem, firmware Mk 3). Picking it patches the transport to 75 % hull (90 % for an expert), it turns back to its route, the trader thanks the Wolves (help +1 unless raid help already paid) and the pilot says one radio line.
+- Without such a pilot the trader's greeting says what it lacks: "If you had a repairman aboard, I'd beg you for a patch." No answer.
+- A patched trader met again in a later visit says "Wolves again! That patch of yours held all the way." and gives its rumour free when the vanilla roll offers "Any news".
+- Missing in Capricorn, the fence (step 40): a Hero with the Intuition perk gets "- Hero [Intuition]: Nobody else on this station buys Marlin papers. ..." and the clue for free.
+
+### Config keys (specialist answers)
+
+`install-test.sh` writes `SPEC` only when set (`LEVEL=v01`/`v02` write `spec=0` unless `SPEC` is set); tune keys go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `spec` | 1 | 0: no patch answer, no head text, no re-arm, no extra hail, no fence answer |
+| tune `spc_ch` | 4 | first chapter |
+| tune `spc_low` | 0.6 | hull fraction below which a trader fleeing a refused raid qualifies |
+| tune `spc_hp`, `spc_hp_exp` | 0.75, 0.9 | patch target with Repairman, Expert Repairman |
+| tune `spc_arm` | 90 | hail window after the raid end, game seconds |
+| tune `spc_meet` | 1 | the 70-unit trigger that opens the hail after the raid end |
+| tune `spc_ai` | 1 | the mothership's System firmware counts as a specialist |
+| tune `spc_fb` | 1 | `SetHP` without effect: end the flee anyway with a guard (1) or no patch (0) |
+| tune `spc_say`, `spc_secs` | 1, 6 | the specialist's line after the patch and its seconds |
+| tune `spc_wq` | 1 | the fence page's Intuition answer |
+
+### Log lines (specialist answers)
+
+`module=spec event=arm trader_id= raid_id= raid_end= flight= hp_fraction= meet=`, `event=answer speaker= perk= rank= result=offered`, `event=need via= tried=`, `event=patch speaker= rank= hp_before= target= hp_after= hp0= state= help= reason= result=<patched|flee_only|failed>`, `event=say output= result=`, `event=rebuilt pool_id=`, `event=skip reason=`, `event=who`, `event=hold` (log 2), `event=dump`, `event=error`; trf_raid's `event=unflee`, trf_hail's `event=hail via=patch`, trf_wq's `event=clue via=intuition cost=0`. Full list in [design/log-events.md](design/log-events.md) (spec, raid, wq).
+
+### In-game checks (specialist answers)
+
+W-A05.1 (specialist found), W-A05.2 (hail after the raid end), W-A05.3 (no answer during a raid), W-A05.4 (`SetHP` works), W-A05.5 (the leg resumes), W-A05.6 (missing skill line), W-A05.7 (once per trader), W-A05.8 (quest safety), W-A05.9 (the pilot speaks), W-A05.10 (patched trader met again), W-A05.11 (firmware specialist), W-A05.12 (fence answer); [design/PROGRESS.md](design/PROGRESS.md) "Wave 2 (host-tested only)", scored by `tools/check_ingame.py`.
 
 ## Vanilla fixes
 

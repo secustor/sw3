@@ -11,7 +11,8 @@ the lethal-system warnings (W-A12.1-8, design/warnings-spec.md 15; wave 1, host-
 (W-B10.1-10, design/temperament-spec.md 12; wave 1, host-tested only) and the corporation carriers (W-A22.1-9,
 design/corp-carriers-spec.md 11; wave 1, host-tested only) and the debrief pool with "Report in" (W-B02.1-10,
 design/debrief-spec.md 12; wave 2, host-tested only, off by default: DEBRIEF_XP=1) and the sourced tips with the event
-ring (W-A16.1-10, design/tips-spec.md 13; wave 2, host-tested only) from traffic logs.
+ring (W-A16.1-10, design/tips-spec.md 13; wave 2, host-tested only) and the specialist answers with the Repairman patch
+(W-A05.1-12, design/specialist-spec.md 12; wave 2, host-tested only) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -36,6 +37,7 @@ FIXTURE_TEMPER = os.path.join(HERE, "..", "tests", "check_ingame_temper_fixture.
 FIXTURE_CORP = os.path.join(HERE, "..", "tests", "check_ingame_corp_fixture.log")
 FIXTURE_DEBRIEF = os.path.join(HERE, "..", "tests", "check_ingame_debrief_fixture.log")
 FIXTURE_TIPS = os.path.join(HERE, "..", "tests", "check_ingame_tips_fixture.log")
+FIXTURE_SPEC = os.path.join(HERE, "..", "tests", "check_ingame_spec_fixture.log")
 REL = ("war", "neutral", "friend")
 PHASES = ("Quiet", "Boom", "Build-up", "Raids", "Bust", "Recovery")
 # vanilla bounty flights (OutMission_kill_pirate), haunt-spec appendix A class P
@@ -3438,6 +3440,199 @@ def c_wi10(ctx):
     return res
 
 
+# Specialist answers and the Repairman patch (design/specialist-spec.md 12, W-A05.1-12; host-tested only, wave 2) ---------
+
+def same_log_after(r, recs):
+    return [x for x in recs if x.src == r.src and x.n > r.n]
+
+
+def last_enter_n(ctx, r):
+    """Line number of the last module=state event=enter at or before r in its log (0 when none)."""
+    n = 0
+    for x in ctx.recs:
+        if x.src == r.src and x.n <= r.n and x.is_("state", "enter"):
+            n = x.n
+    return n
+
+
+def c_wsp1(ctx):
+    res = Res()
+    res.logpart = True
+    arm = ctx.find("spec", "arm")
+    ans = ctx.find("spec", "answer", result="offered")
+    if not arm:
+        res.missing.append("a trader flees with low HP during a raid and the raid ends, chapter 4+ (LOG=1): no module=spec event=arm")
+    elif not ans:
+        res.missing.append("a squad pilot with Repairman (Yana from chapter 9, the Hero if bought, System firmware): no "
+                           "module=spec event=answer result=offered (see W-A05.6)")
+    res.ev("re-arms", arm)
+    res.ev("answers offered", ans)
+    return res
+
+
+def c_wsp2(ctx):
+    res = Res()
+    res.logpart = True
+    arm = ctx.find("spec", "arm")
+    hails = ctx.find("hail", "hail")
+    ok = []
+    for a in arm:
+        later = [h for h in same_log_after(a, hails) if h.get("trader_id") == a.get("trader_id") and h.visit is a.visit]
+        good = [h for h in later if h.get("result") != "skipped"]
+        if good:
+            ok.append(good[0])
+        elif later and all(h.get("reason") == "raid" for h in later):
+            res.fails.append("%s: the hail after the raid end skipped reason=raid only (%s)" % (a.short(), later[0].short()))
+    if not ok and not res.fails:
+        res.missing.append("close to (or focus) the trader within 90 s after module=spec event=arm: no module=hail event=hail "
+                           "for it")
+    res.ev("hails after the re-arm", ok)
+    return res
+
+
+def c_wsp3(ctx):
+    res = Res()
+    res.logpart = True
+    ans = ctx.find("spec", "answer", result="offered")
+    ends = ctx.find("raid", "end")
+    for a in ans:
+        e0 = last_enter_n(ctx, a)
+        if not [e for e in ends if e.src == a.src and e0 < e.n < a.n and e.get("trader_id") == a.get("trader_id")]:
+            res.fails.append("%s: no module=raid event=end for the trader before the answer in this visit" % a.short())
+    if not ans:
+        res.missing.append("no module=spec event=answer (see W-A05.1)")
+    res.ev("answers", ans)
+    return res
+
+
+def c_wsp4(ctx):
+    res = Res()
+    res.logpart = True
+    pat = ctx.find("spec", "patch")
+    for r in pat:
+        if r.get("result") == "flee_only" and r.get("reason") == "sethp":
+            res.fails.append("%s: SetHP did not take (SPC4; keep spc_fb 1)" % r.short())
+    ok = [r for r in pat if r.get("result") == "patched"]
+    if not ok and not res.fails:
+        res.missing.append("pick the patch answer: no module=spec event=patch result=patched")
+    res.ev("patches", pat)
+    return res
+
+
+def c_wsp5(ctx):
+    res = Res()
+    res.logpart = True
+    pat = [r for r in ctx.find("spec", "patch") if r.get("result") in ("patched", "flee_only")]
+    ok = []
+    for p in pat:
+        tid = p.get("trader_id")
+        later = [x for x in same_log_after(p, ctx.recs) if x.visit is p.visit and x.get("trader_id") == tid]
+        bad = None
+        for x in later:
+            if x.is_("generator", "remove"):
+                if x.get("reason") in ("dock", "exit"):
+                    ok.append(x)
+                break
+            if x.is_("raid", "escaped") or x.is_("raid", "flee", reason="hp"):
+                bad = x
+                break
+        if bad:
+            res.fails.append("%s: the trader fled again after the patch (%s; SPC5, SPC9)" % (p.short(), bad.short()))
+    if not ok and not res.fails:
+        res.missing.append("follow a patched trader until it docks or exits: no module=generator event=remove reason=dock|exit "
+                           "after module=spec event=patch")
+    res.ev("removals after a patch", ok)
+    return res
+
+
+def c_wsp6(ctx):
+    res = Res()
+    res.logpart = True
+    nd = ctx.find("spec", "need")
+    if not nd:
+        res.missing.append("the same without a Repairman in the squad and no System firmware: no module=spec event=need")
+    res.ev("missing-skill heads", nd)
+    return res
+
+
+def c_wsp7(ctx):
+    res = Res()
+    res.logpart = True
+    pat = ctx.find("spec", "patch", result="patched")
+    seen = {}
+    for r in pat:
+        k = (id(r.visit), r.get("trader_id"))
+        if k in seen:
+            res.fails.append("%s: a second patch of the trader in the visit (%s)" % (r.short(), seen[k].short()))
+        else:
+            seen[k] = r
+    if not pat:
+        res.missing.append("no module=spec event=patch result=patched (see W-A05.4)")
+    res.ev("patches", pat)
+    return res
+
+
+def c_wsp8(ctx):
+    res = Res()
+    res.logpart = True
+    den = ctx.find("safety", "gate", feature="spec", result="denied")
+    for g in den:
+        for a in ctx.find("spec", "answer"):
+            if a.visit is g.visit and g.get("system") == a.visit.system:
+                res.fails.append("%s: an answer in a visit whose system the strict gate denied for spec (%s)" % (a.short(), g.short()))
+                break
+    if not den:
+        res.missing.append("a raided trader in a system whose story quest is in process (LOG=1): no module=safety event=gate "
+                           "feature=spec result=denied")
+    res.ev("strict gate denials", den)
+    return res
+
+
+def c_wsp9(ctx):
+    res = Res()
+    res.logpart = True
+    say = ctx.find("spec", "say", output="radio", result="shown")
+    if not say:
+        res.missing.append("a story pilot patches (not the firmware): no module=spec event=say output=radio result=shown")
+    res.ev("radio lines", say)
+    return res
+
+
+def c_wsp10(ctx):
+    res = Res()
+    res.logpart = True
+    rb = ctx.find("spec", "rebuilt")
+    if not rb:
+        res.missing.append("meet a patched trader again in a later visit (it exits after the patch, follow or meet it): no "
+                           "module=spec event=rebuilt")
+    res.ev("patched traders met again", rb)
+    return res
+
+
+def c_wsp11(ctx):
+    res = Res()
+    res.logpart = True
+    ai = [r for r in ctx.find("spec", "answer") + ctx.find("spec", "patch") if r.get("speaker") == "ai"]
+    if not ai:
+        res.missing.append("System firmware attached and no story pilot with Repairman: no module=spec event=answer speaker=ai")
+    res.ev("firmware answers", ai)
+    return res
+
+
+def c_wsp12(ctx):
+    res = Res()
+    res.logpart = True
+    cl = ctx.find("wq", "clue", via="intuition", result="ok")
+    for r in cl:
+        if r.get("cost") != "0":
+            res.fails.append("%s: the Intuition answer charged" % r.short())
+    if not cl:
+        res.missing.append("Missing in Capricorn step 40 at the fence with the Hero's Intuition perk (LOG=1): no module=wq "
+                           "event=clue via=intuition result=ok")
+    res.ev("Intuition clues", cl)
+    return res
+
+
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
@@ -3679,6 +3874,20 @@ ITEMS = [
     ("W-A16.8", "captain tip, once per sighting", c_wi8, "the tip names the portal and the age; a stale tip says where he is now"),
     ("W-A16.9", "ring bound", c_wi9, None),
     ("W-A16.10", "offer markers: at most mk_offer per visit", c_wi10, None),
+    ("W-A05.1", "specialist found", c_wsp1, "the answer '- Jana [Repairman]: Cut your engines ...' in the menu (SPC6)"),
+    ("W-A05.2", "hail opens after the raid end", c_wsp2, None),
+    ("W-A05.3", "no answer during a raid", c_wsp3, None),
+    ("W-A05.4", "SetHP works", c_wsp4, None),
+    ("W-A05.5", "the leg resumes", c_wsp5, None),
+    ("W-A05.6", "missing skill line", c_wsp6, "the head names a repairman ('If you had a repairman aboard ...', SPC10)"),
+    ("W-A05.7", "once per trader", c_wsp7, None),
+    ("W-A05.8", "quest safety", c_wsp8, None),
+    ("W-A05.9", "the pilot speaks", c_wsp9, "the specialist's portrait with 'Done. Their drive will hold for a while yet.'"),
+    ("W-A05.10", "patched trader met again", c_wsp10, "'Wolves again! That patch of yours held all the way.' in its greeting"),
+    ("W-A05.11", "firmware specialist", c_wsp11,
+     "with System firmware attached the label reads 'Mothership [Repairman]' (mark fail when the firmware is attached and "
+     "event=who shows ai:noperk, SPC3)"),
+    ("W-A05.12", "fence answer", c_wsp12, None),
 ]
 
 
@@ -3811,7 +4020,10 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "W-B02.1": "FAIL", "W-B02.2": "NO DATA", "W-B02.3": "NO DATA", "W-B02.4": "NO DATA", "W-B02.5": "FAIL",
             "W-B02.6": "FAIL", "W-B02.7": "NO DATA", "W-B02.8": "FAIL", "W-B02.9": "NO DATA", "W-B02.10": "FAIL",
             "W-A16.1": "MANUAL", "W-A16.2": "FAIL", "W-A16.3": "FAIL", "W-A16.4": "FAIL", "W-A16.5": "FAIL",
-            "W-A16.6": "MANUAL", "W-A16.7": "NO DATA", "W-A16.8": "FAIL", "W-A16.9": "FAIL", "W-A16.10": "FAIL"}
+            "W-A16.6": "MANUAL", "W-A16.7": "NO DATA", "W-A16.8": "FAIL", "W-A16.9": "FAIL", "W-A16.10": "FAIL",
+            "W-A05.1": "MANUAL", "W-A05.2": "NO DATA", "W-A05.3": "FAIL", "W-A05.4": "FAIL", "W-A05.5": "FAIL",
+            "W-A05.6": "NO DATA", "W-A05.7": "FAIL", "W-A05.8": "FAIL", "W-A05.9": "NO DATA", "W-A05.10": "NO DATA",
+            "W-A05.11": "NO DATA", "W-A05.12": "NO DATA"}
 # tests/check_ingame_warn_fixture.log: correct warning behaviour only. A dock warning for Gideon at Avalon (leg 100) after
 # the station's dock line, a second approach skipped (visit), a return at leg 102 skipped (cooldown); at XT-23 (station
 # voice deny, a station pass, no station dock line) a pass reason=scene, then a warning for XT-24; a load of an earlier
@@ -3848,6 +4060,13 @@ SELFTEST_DEBRIEF = {"W-B02.1": "MANUAL", "W-B02.2": "MANUAL", "W-B02.3": "PASS",
 # markers added and the third refused.
 SELFTEST_TIPS = {"W-A16.1": "MANUAL", "W-A16.2": "PASS", "W-A16.3": "PASS", "W-A16.4": "PASS", "W-A16.5": "PASS",
                  "W-A16.6": "MANUAL", "W-A16.7": "MANUAL", "W-A16.8": "MANUAL", "W-A16.9": "PASS", "W-A16.10": "PASS"}
+# tests/check_ingame_spec_fixture.log: correct specialist behaviour (LOG=2). Gaoba (chapter 9): a raided trader flees, the
+# raid ends, the re-arm, Yana's answer, the hail via patch, the unflee, the patch, her radio line, the trader exits; a second
+# trader without a specialist: the re-arm, the need head, the hail; Lidau: a patched trader rebuilt, the firmware's answer
+# and patch, the trader docks; Golkonda: a strict-gate denial for spec (no answer there), the fence's Intuition clue.
+SELFTEST_SPEC = {"W-A05.1": "MANUAL", "W-A05.2": "PASS", "W-A05.3": "PASS", "W-A05.4": "PASS", "W-A05.5": "PASS",
+                 "W-A05.6": "MANUAL", "W-A05.7": "PASS", "W-A05.8": "PASS", "W-A05.9": "MANUAL", "W-A05.10": "MANUAL",
+                 "W-A05.11": "MANUAL", "W-A05.12": "PASS"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -3885,6 +4104,10 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # told by the hail (W-A16.3 FAIL), Zebos told after the strict gate denied it (W-A16.4 FAIL), a captain tip after the
 # latch skip (W-A16.5 FAIL) and the same sighting tipped twice (W-A16.8 FAIL), a dump with five records in region 6
 # (W-A16.9 FAIL), three offer markers in the visit (W-A16.10 FAIL); no informant line (W-A16.7 NO DATA).
+# Specialist answers block (the very end, Lidau): a strict-gate denial of Lidau for spec, then an answer there (W-A05.8
+# FAIL) without a raid end for the trader (W-A05.3 FAIL), a flee_only patch for SetHP (W-A05.4 FAIL), two patched lines for
+# another trader (W-A05.7 FAIL) which flees again by HP (W-A05.5 FAIL); an arm without a hail (W-A05.2 NO DATA), no need,
+# radio, rebuild, firmware or fence line (W-A05.6, .9, .10, .11, .12 NO DATA).
 
 
 def selftest():
@@ -3931,8 +4154,13 @@ def selftest():
         if got.get(iid) != v:
             print("selftest: tips fixture %s is %s, expected %s" % (iid, got.get(iid), v))
             bad += 1
+    got = dict((r[0], r[2]) for r in score(Ctx([Log(FIXTURE_SPEC, None, [])]), {}))
+    for iid, v in SELFTEST_SPEC.items():
+        if got.get(iid) != v:
+            print("selftest: spec fixture %s is %s, expected %s" % (iid, got.get(iid), v))
+            bad += 1
     n = (len(SELFTEST) + len(SELFTEST_EYES[1]) + len(SELFTEST_WARN) + len(SELFTEST_REMARK) + len(SELFTEST_TEMPER) + len(SELFTEST_CORP)
-         + len(SELFTEST_DEBRIEF) + len(SELFTEST_TIPS))
+         + len(SELFTEST_DEBRIEF) + len(SELFTEST_TIPS) + len(SELFTEST_SPEC))
     if parse_logfmt('a=1 message="x \\"y\\" z" b=') != {"a": "1", "message": 'x "y" z', "b": ""}:
         print("selftest: logfmt quoting")
         bad += 1

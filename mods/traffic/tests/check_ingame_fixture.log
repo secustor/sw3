@@ -517,3 +517,12 @@ traffic: lua: exp=v1 module=tips event=pick surface=tip system=angarsk kind=cap 
 traffic: lua: exp=v1 module=plumb event=marker owner=stash label=TRF_STASH_AR_6 class=offer offer_count=1 result=added
 traffic: lua: exp=v1 module=plumb event=marker owner=stash label=TRF_STASH_AR_7 class=offer offer_count=2 result=added
 traffic: lua: exp=v1 module=plumb event=marker owner=stash label=TRF_STASH_AR_8 class=offer offer_count=3 result=added
+traffic: lua: exp=v1 module=state event=enter generation=99 fresh=false system=lidau legs=311
+traffic: lua: exp=v1 module=safety event=activate system=lidau mode=mod reason=nil chapter=9 quest_state=1 gate=ok
+traffic: lua: exp=v1 module=safety event=gate feature=spec system=lidau reason=quest result=denied
+traffic: lua: exp=v1 module=spec event=arm trader_id=31 raid_id=40 raid_end=killed flight=hp hp_fraction=0.300 meet=true
+traffic: lua: exp=v1 module=spec event=answer trader_id=31 speaker=Yana perk=Repairman rank=1 result=offered
+traffic: lua: exp=v1 module=spec event=patch trader_id=31 speaker=Yana rank=1 hp_before=300 target=750 hp_after=300 hp0=1000 state=out help=1 reason=sethp result=flee_only
+traffic: lua: exp=v1 module=spec event=patch trader_id=32 speaker=Yana rank=1 hp_before=300 target=750 hp_after=750 hp0=1000 state=out help=1 reason=nil result=patched
+traffic: lua: exp=v1 module=spec event=patch trader_id=32 speaker=Yana rank=1 hp_before=500 target=750 hp_after=750 hp0=1000 state=out help=0 reason=help_paid result=patched
+traffic: lua: exp=v1 module=raid event=flee trader_id=32 reason=hp refuge=portal portal=PORTAL_L station_distance=900.000 portal_distance=300.000

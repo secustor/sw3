@@ -64,6 +64,13 @@
             <multi_pass>true</multi_pass>
             <sound_name />
         </DialogAnswer>
+        <DialogAnswer name="a_int">
+            <answer>- #a8#</answer>
+            <lua_function>TRF_WqDlgA5_int</lua_function>
+            <go_message_name>msg32</go_message_name>
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
     </DialogMessage>
     <DialogMessage name="msg30">
         <message>Fence: #p3#</message>
@@ -84,6 +91,18 @@
         <DialogAnswer name="a_forget2">
             <answer>- #a3#</answer>
             <lua_function>TRF_WqDlgA5_end</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+    </DialogMessage>
+    <DialogMessage name="msg32">
+        <message>Fence: #pi#</message>
+        <pilot_name>TRF_WqP_fence</pilot_name>
+        <sound_name />
+        <DialogAnswer name="a_int2">
+            <answer>- #a9#</answer>
+            <lua_function>TRF_WqDlgA5_int2</lua_function>
             <go_message_name />
             <multi_pass>true</multi_pass>
             <sound_name />

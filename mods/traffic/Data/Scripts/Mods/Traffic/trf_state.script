@@ -67,7 +67,7 @@ end;
 -- v0.2 and v1 modules with TRF_<M>_OptDef, TRF_<M>_TuneDef and TRF_<M>_Dump (v0.2 spec 10.2, 10.4; v1 10.1).
 function TRF_ModList()
 	return {"Rg", "Str", "Ft", "Tier", "Raid", "Hail", "Shop", "Loc", "Track", "Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Pl", "Stn",
-		"Sv", "Lad", "Ch", "Sc", "Cap", "Sh", "Fr", "Haunt", "Pc", "Mc", "Wq", "Wn", "Rm", "Te", "Crp", "Db", "Ti"};
+		"Sv", "Lad", "Ch", "Sc", "Cap", "Sh", "Fr", "Haunt", "Pc", "Mc", "Wq", "Wn", "Rm", "Te", "Crp", "Db", "Ti", "Spc"};
 end;
 
 -- Value of key in the first module table getglobal("TRF_"..M..suffix)() that has it, else nil.
@@ -92,7 +92,7 @@ function TRF_OptEnum()
 		sweep_ct=1, po=1, tt4=1, tt4_split=1, feq=1, forced_bust=1, dconv=1, dc_speed=1, bases=1, base_glow=1,
 		wreck=1, loc_mode=1, transit=1, sos_mode=-2, combat=1, hail_quiet=1, wb_box_after_fee=1, ext_fix=1,
 		merc_war=1, merc_hunt=1, merc_hostile=1, merc_legion=1, jobs_ui=2, jobs_log=1, warn=1, remarks=1, remark_mode=1, temper=1, te_quest=1, te_gate=1,
-		te_dialog=1, corp=1, debrief=1, debrief_xp=1, db_gate=1, db_dialog=1, tips=1};
+		te_dialog=1, corp=1, debrief=1, debrief_xp=1, db_gate=1, db_dialog=1, tips=1, spec=1};
 end;
 
 function TRF_Clamp(x, lo, hi)
@@ -666,6 +666,8 @@ function TRF_Repair()
 	TRF_P("TRF_Db_Fix");
 	-- Sourced tips (design/tips-spec.md 4.6): the ring string TRF.ti, re-bucketed by region.
 	TRF_P("TRF_Ti_Fix");
+	-- Specialist answers (design/specialist-spec.md F2): the patched flag sk on the live trader records.
+	TRF_P("TRF_Spc_Fix");
 	-- cfg enabled 2 (restore-and-stop, trf_haunt and trf_merc not loaded): the pirate haunt fields and the mercenary clan
 	-- record go (design 16 section 6, Removal; design/merc-spec.md 3).
 	if type(TRF_Cfg) == "function" and TRF_Cfg().enabled == 2 then

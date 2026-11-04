@@ -419,6 +419,14 @@ function HOST_Pilot(tpl)
 		tinsert(HOST().msgs, {t=text, gt=HOST().gt});
 	end;
 	p.SetPerk = function(self, k) HOST_Want(type(k) == "string", "Pilot:SetPerk(perk)"); self.perks = (self.perks or 0) + 1; end;
+	-- HasProperty(name) (0x5d8830, design/mod-research/perks.md 1.1): 1 for a perk or special in self.props, else nil;
+	-- self.props_err raises (design/specialist-spec.md spc-b).
+	p.HasProperty = function(self, k)
+		HOST_Want(type(k) == "string", "Pilot:HasProperty(name)");
+		if self.props_err then error("injected HasProperty error"); end;
+		if type(self.props) == "table" and self.props[k] then return 1; end;
+		return nil;
+	end;
 	return p;
 end;
 function CreatePilot(tpl)
@@ -545,8 +553,14 @@ HOST().ms.GetPilot = function(self)
 	local fl = {Stop = function(self) HOST().ms_stops = (HOST().ms_stops or 0) + 1; end};
 	fl.GetPilotCount = function(self) return getn(HOST().pwing); end;
 	fl.GetPilotByNumber = function(self, i) HOST_Want(type(i) == "number", "Flight:GetPilotByNumber(i)"); return HOST().pwing[i]; end;
+	-- HasProperty: the attached firmware's perks in HOST().ms_props (design/mod-research/perks.md 1.6).
 	return {kind="pilot", GetFlight = function(self) return %fl; end, GetSide = function(self) return "Player"; end,
-		GetShip = function(self) return HOST().ms; end};
+		GetShip = function(self) return HOST().ms; end,
+		HasProperty = function(self, k)
+			HOST_Want(type(k) == "string", "Pilot:HasProperty(name)");
+			if type(HOST().ms_props) == "table" and HOST().ms_props[k] then return 1; end;
+			return nil;
+		end};
 end;
 function GetPilot(name)
 	HOST_Want(type(name) == "string", "GetPilot(name)");

@@ -24,6 +24,8 @@
 -- s 50 and the hold runs again); step 4, the charter office (s 60 -> 70 at the hand-in at any FTU trade dock, the clerk's
 -- line; trf_freight's TRF_FrBuyGate passes the first Wolves freighter from s 70 with cfg enable_wq 1, its purchase box
 -- reads fwboxq at s 70 and either answer gives s 80, the logbook entry done and removed dn_legs later).
+-- Specialist answers (design/specialist-spec.md 6.8, A05): on the fence page D5 a Hero with the Intuition perk
+-- (F_of_Merchant, trf_spec's TRF_Spc_Who("int")) gets one more answer (a_int, page msg32): the clue without the price.
 -- Dialog variants: the clerk's box and reply and the Kestrel's thanks read the "old hauler" key (<key>o) while the
 -- player flies one of the Arba haulers or the start hull (TRF_WqK().ms0), chosen at display time, never saved.
 -- Presentation (spec 13; the text is design/freight-quest-dialogs.md): with cfg wq_dialog 1 and hail_xml 1 every
@@ -1694,9 +1696,10 @@ function TRF_WqDlgFiles()
 			tk={p1="wq3p1l", pb="wq3pb", p2="wq3p3", a1="wq3a1", a3="wq3a3", a4="wq3a4"}},
 		["4"] = {f=p.."4", ini="TRF_WqPgInit4", an={"a_what", "a_who", "a_cargo", "a_back", "a_home"},
 			tk={p1="wq4p1", p2="wq4p2", pa="wq4pa", p3="wq4p3", a1="wq4a1", a2="wq4a2", a3="wq4a3", a4="wq4a4"}},
-		["5"] = {f=p.."5", ini="TRF_WqPgInit5", an={"a_how", "a_pat", "a_forget", "a_back", "a_pay", "a_payp", "a_rich", "a_ok", "a_forget2"},
-			tk={p1="wq5p1", pa="wq5pa", p2="wq5p2", p3="wq5p3", pp="wq5pp", a1="wq5a1", a2="wq5a2", a3="wq5a3", a4="wq5a4",
-				a5="wq5a5", a6="wq5a6", a7="wq5a7"}},
+		["5"] = {f=p.."5", ini="TRF_WqPgInit5", an={"a_how", "a_pat", "a_forget", "a_back", "a_pay", "a_payp", "a_rich", "a_int", "a_ok",
+			"a_forget2", "a_int2"},
+			tk={p1="wq5p1", pa="wq5pa", p2="wq5p2", p3="wq5p3", pp="wq5pp", pi="wq5pi", a1="wq5a1", a2="wq5a2", a3="wq5a3", a4="wq5a4",
+				a5="wq5a5", a6="wq5a6", a7="wq5a7", a8="wq5a8", a9="wq5a9"}},
 		["6"] = {f=p.."6", ini="TRF_WqPgInit6", an={"a_crew", "a_whose", "a_ok", "a_ok2"},
 			tk={p1="wq6p1", p2="wq6p2", pa="wq6pa", a1="wq6a1", a2="wq6a2", a3="wq6a3", a4="wq6a4"}},
 		["7"] = {f=p.."7", ini="TRF_WqPgInit7", an={"a_end"}, tk={p1="wq7p1", a1="wq7a1"}},
@@ -1815,6 +1818,8 @@ function TRF_WqDlgA4_end() TRF_Cb("TRF_WqDlgA4_end", TRF_WqPick, {"4", "", 1}); 
 function TRF_WqDlgA5_pay() TRF_Cb("TRF_WqDlgA5_pay", TRF_WqPick, {"5", "pay", 0}); end;
 function TRF_WqDlgA5_ok() TRF_Cb("TRF_WqDlgA5_ok", TRF_WqPick, {"5", "ok", 1}); end;
 function TRF_WqDlgA5_end() TRF_Cb("TRF_WqDlgA5_end", TRF_WqPick, {"5", "", 1}); end;
+function TRF_WqDlgA5_int() TRF_Cb("TRF_WqDlgA5_int", TRF_WqPick, {"5", "int", 0}); end;
+function TRF_WqDlgA5_int2() TRF_Cb("TRF_WqDlgA5_int2", TRF_WqPick, {"5", "ok", 1}); end;
 function TRF_WqDlgA6_ok() TRF_Cb("TRF_WqDlgA6_ok", TRF_WqPick, {"6", "ok", 1}); end;
 function TRF_WqDlgA7_end() TRF_Cb("TRF_WqDlgA7_end", TRF_WqPick, {"7", "", 1}); end;
 function TRF_WqDlgA7c_end() TRF_Cb("TRF_WqDlgA7c_end", TRF_WqPick, {"7c", "", 1}); end;
@@ -1830,6 +1835,7 @@ function TRF_WqPick(k, r, fin)
 	if type(d) ~= "table" or d.k ~= k or d.fin == 1 then TRF_WqE("dialog", "dialog", k, "answer", r or "none", "result", "ignored"); return; end;
 	if r then d.r = r; end;
 	if r == "pay" then TRF_WqPay(d); end;
+	if r == "int" then TRF_WqInt(d); end;
 	TRF_WqDE("dialog", "dialog", k, "answer", r or "none", "final", TRF_KvB(fin == 1), "result", "answer");
 	if fin ~= 1 then return; end;
 	d.fin = 1;
@@ -1924,7 +1930,13 @@ function TRF_Wq_Dlg5(a, s)
 	local w = TRF_WqWallet();
 	local hd = {"a_payp"};
 	if type(w) ~= "number" or w < o.price then hd = {"a_pay"}; end;
-	if not TRF_WqDlgOpen("5", {args={TRF_WqNum(o.price), TRF_WqClan(), TRF_WqEn("golkonda")}, hd=hd}, "dock", {a=a}) then return nil; end;
+	-- Specialist answers (design/specialist-spec.md 6.8): the Intuition answer for a Hero with the perk (#a8# with its own
+	-- arguments, the specialist's name and perk).
+	local lit = nil;
+	local who = nil;
+	if TRF_N("TRF_Spc_WqOk") == 1 then who = TRF_P("TRF_Spc_Who", "int"); end;
+	if type(who) == "table" then lit = {a8=TRF_WqTxt("wq5a8", who.name, who.perkname)}; else tinsert(hd, "a_int"); end;
+	if not TRF_WqDlgOpen("5", {args={TRF_WqNum(o.price), TRF_WqClan(), TRF_WqEn("golkonda")}, hd=hd, lit=lit}, "dock", {a=a}) then return nil; end;
 	o.dlg = 1;
 	return 1;
 end;
@@ -1946,7 +1958,21 @@ function TRF_WqPay(d)
 	d.paid = got;
 end;
 
--- D5 done: paid gives step 50 (also after Esc on the last page), else nothing (the box returns at the next docking).
+-- D5's Intuition answer (the shim, the window still open; design/specialist-spec.md 6.8): the gate again; d.int when it
+-- holds. Nothing is charged.
+function TRF_WqInt(d)
+	local o = %WQ.fence;
+	local R = TRF_WqRec();
+	local cur = TRF_WqCur();
+	if type(o) ~= "table" or o.g ~= TRF_WqGen() or o.sys ~= cur or TRF_WqClueGate(cur, R) then
+		TRF_WqE("clue", "via", "intuition", "system", TRF_WqName(cur), "result", "stale");
+		return;
+	end;
+	d.int = 1;
+end;
+
+-- D5 done: paid gives step 50 (also after Esc on the last page), so does the Intuition answer (d.int, cost 0, also after
+-- Esc on its page); else nothing (the box returns at the next docking).
 function TRF_WqFenceEnd(d)
 	local wq = %WQ;
 	local o = wq.fence;
@@ -1954,6 +1980,13 @@ function TRF_WqFenceEnd(d)
 	local R = TRF_WqRec();
 	local s = nil;
 	if type(o) == "table" then s = TRF_WqName(o.sys); end;
+	if not d.paid and d.int == 1 then
+		if not R or R.s ~= 40 then return; end;
+		TRF_N("TRF_Stat", "wq_clue");
+		TRF_WqE("clue", "via", "intuition", "system", s, "cost", 0, "speaker", "Hero", "result", "ok");
+		TRF_WqStep(R, 50, "intuition");
+		return;
+	end;
 	if not d.paid then TRF_WqE("clue", "via", "fence", "system", s, "result", "declined"); return; end;
 	if not R or R.s ~= 40 then return; end;
 	TRF_N("TRF_Stat", "wq_clue");
@@ -2366,6 +2399,10 @@ function TRF_Wq_Text()
 		wq5pp = "Your account says otherwise, dear guest. No credits, no papers.",
 		wq5p3 = "The papers came in from XB-13. The $2 clan keeps its guests there until somebody pays for them. Nobody has paid for the Marlin's people. Hard times, eh?",
 		wq5a7 = "XB-13. Thanks for the bad memory.",
+		-- D5-b the Intuition answer (design/specialist-spec.md 7; $1 the specialist, $2 the perk; wq5pi: $2 the clan)
+		wq5a8 = "$1 [$2]: Nobody else on this station buys Marlin papers. Tell me where they came from and keep them.",
+		wq5pi = "Ha! You read people too well, dear guest. XB-13. The $2 clan keeps its guests there. Now go, before I remember your face.",
+		wq5a9 = "Thanks for the slip of the tongue.",
 		-- D6 the patrol board
 		wq6p1 = "Trader, you asked about the Marlin. Her manifests turned up at a fence's last week. He sits in clan space, so we can't touch him. The papers came in from XB-13.",
 		wq6a1 = "And the crew?",

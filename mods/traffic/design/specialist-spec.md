@@ -1,6 +1,6 @@
 # A05 specialist answers and the Repairman patch: implementation spec
 
-Status: spec 2026-11-04, not implemented. Roadmap: [ROADMAP.md](ROADMAP.md) wave 2 row 5 and section 3 ("Hail" rule). Design: [proposals/activities-after-worldbuilding.md](proposals/activities-after-worldbuilding.md) 2.3 (A05 with the skeptic fixes, cited as "P 2.3"), 4.3, 4b.1 rule 5, 4b.2, section 6 items 6, 7, 8, 22. Built code it extends: [hail-spec.md](hail-spec.md) (pages, combat hail, help pay), [mod-research/hail-dialog.md](mod-research/hail-dialog.md) (dialog init, `HideAnswer`/`ShowAnswer`, `SetReplaceValue`), [crew-remarks-spec.md](crew-remarks-spec.md) 5 (`TRF_CrewVoice`/`TRF_CrewSay`), [freight-quest-spec.md](freight-quest-spec.md) 13 and [freight-quest-dialogs.md](freight-quest-dialogs.md) D5 (the fence). Shared rules: `worldbuilding/00-economy-and-progression.md` sections 2, 4, 6 ("00"). Perk facts: [mod-research/perks.md](mod-research/perks.md) (cited as "PK n").
+Status: spec 2026-11-04; implemented 2026-11-04 (`trf_spec`), host-tested only, not run in the game (`spc-a`..`spc-g`, the fence answer in `wq-g`; in-game checks W-A05.1-12 open). Implementation notes and deviations: section 14. Roadmap: [ROADMAP.md](ROADMAP.md) wave 2 row 5 and section 3 ("Hail" rule). Design: [proposals/activities-after-worldbuilding.md](proposals/activities-after-worldbuilding.md) 2.3 (A05 with the skeptic fixes, cited as "P 2.3"), 4.3, 4b.1 rule 5, 4b.2, section 6 items 6, 7, 8, 22. Built code it extends: [hail-spec.md](hail-spec.md) (pages, combat hail, help pay), [mod-research/hail-dialog.md](mod-research/hail-dialog.md) (dialog init, `HideAnswer`/`ShowAnswer`, `SetReplaceValue`), [crew-remarks-spec.md](crew-remarks-spec.md) 5 (`TRF_CrewVoice`/`TRF_CrewSay`), [freight-quest-spec.md](freight-quest-spec.md) 13 and [freight-quest-dialogs.md](freight-quest-dialogs.md) D5 (the fence). Shared rules: `worldbuilding/00-economy-and-progression.md` sections 2, 4, 6 ("00"). Perk facts: [mod-research/perks.md](mod-research/perks.md) (cited as "PK n").
 Paths: `D` = `mods/traffic/design`, `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `X` = `mods/traffic/Data/Scripts/Trade`, `T` = `mods/traffic/tests`, `G` = the clone's `Data` (read-only).
 Module: new `S/trf_spec.script`, prefix `Spc` (`TRF_Spc_*` public, `TRF_Spc<X>` internal), log lines `module=spec`, cfg `spec`. `Sp` is trf_supply's (`TRF_SpCrew`, `TRF_SpAnswer`, ...); every supply identifier has an upper-case letter or `_` after `TRF_Sp`, so `TRF_Spc` and `TRF_Sp[A-Z_]` never match each other's names in a grep. "Spec" names what the player gets (a specialist's answer); `perk` would describe the mechanism only.
 
@@ -363,18 +363,47 @@ In-game checks for `tools/check_ingame.py` (verdicts PASS / FAIL / NO DATA / MAN
 
 ## 13. Conformance checklist
 
-1. [ ] `S/trf_spec.script`: functions only at top level; CRLF, ASCII; `luac -p`; `lint_lua.py` 0 findings; `--calls -q` only the 5 known warnings.
-2. [ ] Lua 4 rules: no `local function`, `true`/`false`, `%` operator or `#`; flags tested `== 1`; protected natives.
-3. [ ] Saved state only `r.sk`, the `fix` mark in `hx`, `res` on a rebuilt patched trader and pool bit 256 (3.1); no handle in `TRF`; `TRF_Spc_Fix`.
-4. [ ] Answer set exactly 4.1; specialist lists and ranks 4.2; no `SetPerk`, no `Player_Group:HavePerk` outcome on a perk granted by the mod.
-5. [ ] Gates G1-G12; no item while a raid record is open; chapter 4+; strict gate `spec`.
-6. [ ] Patch as 6.4: one `SetHP`, the read-back, `TRF_Rd_Unflee`, help rule D11, no credits, once per record.
-7. [ ] Item 22 as D15: no change to the raid refusal; the re-arm and `TRF_HlMax` only for qualifying traders.
-8. [ ] Head texts (D5) in dialog and box mode; no hidden answer for the missing perk.
-9. [ ] Fence answer as 6.8, no `TRF_Charge`, step 50 once.
-10. [ ] Text keys of 7 registered (X1), scaffold regenerated (X2), RU fixed forms (X3).
-11. [ ] Config `spec`, `install-test.sh` `SPEC`, TuneDef keys and clamps of 8.
-12. [ ] Log lines of 9; `log-events.md` section; dump in `TRF_DumpState`.
-13. [ ] Host `spc-a`..`spc-g` pass; all earlier runs pass with `extra_count=20`; A05 fields <= 592 bytes, TRF < 100,000.
-14. [ ] README sections, the root README line, PROGRESS entry with SPC1-SPC10 and W-A05.1-12, ROADMAP row 5 example.
+1. [x] `S/trf_spec.script`: functions only at top level; CRLF, ASCII; `luac -p`; `lint_lua.py` 0 findings; `--calls -q` only the 5 known warnings.
+2. [x] Lua 4 rules: no `local function`, `true`/`false`, `%` operator or `#`; flags tested `== 1`; protected natives.
+3. [x] Saved state only `r.sk`, the `fix` mark in `hx`, `res` on a rebuilt patched trader and pool bit 256 (3.1); no handle in `TRF`; `TRF_Spc_Fix`.
+4. [x] Answer set exactly 4.1; specialist lists and ranks 4.2; no `SetPerk`, no `Player_Group:HavePerk` outcome on a perk granted by the mod.
+5. [x] Gates G1-G12; no item while a raid record is open; chapter 4+; strict gate `spec`.
+6. [x] Patch as 6.4: one `SetHP`, the read-back, `TRF_Rd_Unflee`, help rule D11, no credits, once per record.
+7. [x] Item 22 as D15: no change to the raid refusal; the re-arm and `TRF_HlMax` only for qualifying traders.
+8. [x] Head texts (D5) in dialog and box mode; no hidden answer for the missing perk.
+9. [x] Fence answer as 6.8, no `TRF_Charge`, step 50 once.
+10. [x] Text keys of 7 registered (X1), scaffold regenerated (X2), RU fixed forms (X3).
+11. [x] Config `spec`, `install-test.sh` `SPEC`, TuneDef keys and clamps of 8.
+12. [x] Log lines of 9; `log-events.md` section; dump in `TRF_DumpState`.
+13. [x] Host `spc-a`..`spc-g` pass; all earlier runs pass with `extra_count=20`; A05 fields <= 592 bytes, TRF < 100,000.
+14. [x] README sections, the root README line, PROGRESS entry with SPC1-SPC10 and W-A05.1-12, ROADMAP row 5 example.
 15. [ ] `/code-review xhigh --fix` on the implementation range, fixes committed as `fix(traffic): ...`.
+
+## 14. Implementation notes (2026-11-04)
+
+Built as specified in `S/trf_spec.script` with the edits of 10.2; host-tested only (`spc-a`..`spc-g` in `T/host_spec.lua`, the fence answer in `T/host_wq.lua` `wq-g`), not run in the game. Item 15 of 13 (the review) follows the implementation commit.
+
+Measured: the A05 fields of one record 68 bytes (`sk` 22, `hx` `",fix,"` 23, `res` 23), the pool bit +1 to +3 characters, so the bound of 3.3 is 8 x 68 + 16 x 3 = 592; on the records of the `v1-n` full state the worst case adds 560 bytes and the full state is 97,572 bytes (budget 100,000).
+
+### Deviations
+
+1. Load order and pins: `trf_spec` loads after `trf_tips` (A16 and B02 landed after this spec was written), so `extra_count` goes 21 -> 22 and the "module missing" pins 20 -> 21 (10.2 names 19 -> 20 and 18 -> 19); the `TRF_ModList` / text-list position pins in the other host files moved by one.
+2. `config.script` gains `spec=1` and a comment line, as every module since `trf_warn` (8 said "not changed"; a missing key would read the module default as well).
+3. `TRF_Spc_Rebuilt(id, pi)` takes the pool id as a second argument for its log line (`event=rebuilt ... pool_id=`).
+4. The pure state rule of 6.4 is trf_raid's `TRF_Rd_UnfleeStOf(path, dkd, st_alive)` (the unflee is trf_raid's), not `TRF_SpcStateOf` in trf_spec.
+5. G9 includes the `fix` mark in `r.hx` everywhere except the pick's re-check (trf_hail marks the item used before the provider's HailDo runs): a trader whose patch failed gets neither the extra hail (`TRF_Spc_Due`) nor the head text again.
+6. The pick re-checks G1-G11 before `TRF_Rd_Unflee`, so a trader that stopped fleeing between the menu and the pick fails with `reason=flight`; `reason=unflee:<why>` remains for the wind-down (`wind`) and an error. `TRF_Rd_Unflee` itself answers `nil, "state"` for a trader not fleeing (spc-e).
+7. The meeting trigger is created by trf_spec's protected `TRF_SpcTrigRaw` (`NewTrigger("f_object_inside", nil, "TRF_Spc_Meet(<id>,<gen>)--", h.fl, TRF_GnMs(), 70)`) instead of `TRF_GnTrig` with `TRF_GnCb`: the same trigger and callback string, and an error cannot reach the raid end.
+8. The hold guard logs `result=held` once per patch (not at every 2 s poll); `result=released` once when it drops.
+9. `TRF_Spc_Dump` reads the visit state without creating it (the dump runs at every load and entry).
+10. The kind gate (G5) also tests `r.feq` (as trf_corp's kind rule) beside `TRF_FeqId(id)`.
+11. RU fixed forms (X3): the 24 `spc*` keys only. No `wq*` key has an RU line yet and stn-g's RU key set covers the module tables that have one, so the 3 `wq5*` keys stay EN-only like the rest of trf_wq.
+12. The fixed forms of the labels (X2): `TRF_Loc_Plain` now drops an empty `[]` as it drops `()`, so `#TRF_spclab` reads "Cut your engines and hold still, we can patch that drive" and `#TRF_wq5a8` "Nobody else on this station buys Marlin papers. ..." (no other key changed). The spec's example fixed form ("A squad pilot offers to patch the drive.") would need a hand-written fixed-form table, which the scaffold does not have.
+13. The pilot line of 6.6 runs 1 s after the patch from a due call; in the host the page is closed first (the game clock stands while it is up). A suppressed `TRF_CrewSay` (`supp:<q>`) falls back to `TRF_Say`, which the same suppression may also hold (`result=not_shown`).
+14. spc-f's fence part (the D5-b page, Esc, the hidden cases) is in `wq-g`, which has the quest harness; spc-f keeps the pool bit, the rebuild, `spcmet`, the corporation bits and the second patch.
+15. Host fixture: the harness traders of `gredos` are TT4 by default, which never qualify (G5); the spc runs set `tt4=0 tier_cap=3`. Path A has no raid point there, so the path A run makes and ends its raid record by hand and calls `TRF_Spc_RaidEnd`.
+16. G4 (`TRF_StrictOk(idx, "spec")`) is asked only for a fleeing record (`r.st` flee, `r.fl` hp or raid) once G1-G3 pass: trf_hail's `TRF_HlMax` asks every hailed trader, and each denial counts the stat `gate_spec`. A trader that fails both G4 and G6 reads `flight` instead of `gate:<why>`; the answer is the same.
+
+### In-game checks (`tools/check_ingame.py`)
+
+W-A05.1-12 as 12, with `tests/check_ingame_spec_fixture.log` (correct behaviour) and a failing block at the end of `tests/check_ingame_fixture.log`. W-A05.5 has no game clock in the log, so "within 10 s" reads "after the patch and before the trader's next `module=generator event=remove`" in the same visit. W-A05.11 cannot see the firmware in the log: PASS-with-eyes on `speaker=ai`; the player marks it fail with the firmware attached and `ai:noperk`.

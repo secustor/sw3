@@ -1809,7 +1809,7 @@ function T_V1_M()
 	-- No key with two different texts in the TRF_Loc_TextFns tables (the merge keeps the first one); keys
 	-- defined twice with the same text are the accepted list below.
 	local acc = {demand=1, flee=1, clan0=1, comply=1, noname=1, fleegate=1, sos=1, thanks=1, factriada=1, fackfni=1,
-		facuss=1, facvks=1, facinoco=1, seenin=1, metagain=1, chased=1, popaid=1, optdc=1, optfeq=1};
+		facuss=1, facvks=1, facinoco=1, seenin=1, metagain=1, chased=1, popaid=1, optdc=1, optfeq=1, spcmet=1};
 	local dt, ddiff, dsame, nsame = {}, "", "", 0;
 	local tf = TRF_Loc_TextFns();
 	for i = 1, getn(tf) do
@@ -1828,7 +1828,7 @@ function T_V1_M()
 		end;
 	end;
 	HOST_Check(ddiff == "", "no text key defined with two different texts"..ddiff);
-	HOST_Check(dsame == "" and nsame == 19, nsame.." keys defined twice with the same text, all accepted"..dsame);
+	HOST_Check(dsame == "" and nsame == 20, nsame.." keys defined twice with the same text, all accepted"..dsame);
 	HOST_Check(TRF_FcCtOk and TRF_Txt("ctok") == "Stay close, Wolves." and TRF_LocTxt("fctok") == "$1 command: noted, Wolves."
 		and TRF_LocTxt("cvfeqkill") and TRF_LocTxt("fcoptsweep") == "Sweep contracts" and TRF_CvTxt("cvrfeq", "USS", "Gredos") == "USS is moving equipment through Gredos. Pirates will want it.", "renamed keys: fctok, fcoptsweep, cvfeqkill, cvrfeq");
 	local ctl = TRF_FcCtOk(1);
@@ -2273,6 +2273,21 @@ function T_V1_N()
 	end;
 	TRF.ti = TRF_TiJoinOf(tib, TRF_RgMap().n);
 	HOST_Check(strlen(TRF.ti) == 48 * TRF_RgMap().n + TRF_RgMap().n - 1, "TRF.ti at its bound: "..strlen(TRF.ti).." characters");
+	-- Specialist answers worst case (design/specialist-spec.md 3.3): sk, the fix mark in hx and res on every open trader
+	-- record, pool fl bit 256 on every pool record.
+	local spz0 = HOST_SaveSize(TRF);
+	for id, r in L.tr do
+		if type(r) == "table" and r.st ~= "gone" then
+			r.sk = 2;
+			r.hx = (r.hx or ",").."fix,";
+			r.res = 1;
+		end;
+	end;
+	for k = 1, getn(TRF.tp) do
+		local pr = TRF_TpUnpack(TRF.tp[k]);
+		if pr then pr.fl = TRF_BitSet(pr.fl, 256); TRF.tp[k] = TRF_TpPack(pr); end;
+	end;
+	print("HOST info specialist answers worst case: +"..(HOST_SaveSize(TRF) - spz0).." bytes");
 	local mcz = HOST_SaveSize(TRF.mc);
 	TRF_Mc_Fix();
 	HOST_Check(HOST_SaveSize(TRF.mc) == mcz and mcz <= 6000, "merc worst case kept by the repair: "..mcz.." bytes <= 6000");

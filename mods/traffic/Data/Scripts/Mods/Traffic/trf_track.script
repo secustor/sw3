@@ -7,6 +7,9 @@
 -- w (exit writes this visit {id, x = gt when the chase test may apply}), m (metagain shown).
 -- Spawning goes through trf_gen (TRF_Plan, TRF_Spawn) and trf_tier (TRF_TierComp); every call into
 -- another module is guarded, so a missing module only disables that part. Top level defines functions only.
+-- fl bits (4.1): 1 met, 2 contract, 4 robbed, 8 chased, 16 attacked, 32 rescued, 64 and 128 the corporation of a contract
+-- carrier (trf_corp), 256 patched by the Wolves this visit (trf_spec, design/specialist-spec.md F3: set from r.sk 2 at the
+-- write, read once at the rebuild, cleared by the next write).
 
 -- Event line, module=track (design/log-format.md): TRF_TkE(event, k1, v1, ...); TRF_TkDE only at log 2.
 function TRF_TkE(event, ...) tinsert(arg, 1, event); tinsert(arg, 1, "track"); call(TRF_Lf, arg); end;
@@ -31,7 +34,8 @@ function TRF_Track_TuneDef()
 end;
 
 function TRF_Track_Text()
-	return {seenin="seen in $1", metagain="Wolves again. We remember you.", chased="They followed us!"};
+	return {seenin="seen in $1", metagain="Wolves again. We remember you.", chased="They followed us!",
+		spcmet="Wolves again! That patch of yours held all the way."};
 end;
 
 -- Text of key: TRF_Txt (trf_loc / trf_ui) when it knows the key, else this module's table.
@@ -325,6 +329,9 @@ function TRF_TkFlags(id, r)
 	local fl = 0;
 	local m = TRF_TkMemo(id);
 	if m and type(m.fl) == "number" then fl = m.fl; end;
+	-- 256 (design/specialist-spec.md F3): this visit's patch only; a carried bit goes.
+	fl = TRF_BitClr(fl, 256);
+	if r.sk == 2 then fl = TRF_BitSet(fl, 256); end;
 	if r.met then fl = TRF_BitSet(fl, 1); end;
 	if r.ct then fl = TRF_BitSet(fl, 2); end;
 	if TRF_TkRobbed(r) then fl = TRF_BitSet(fl, 4); end;
@@ -860,6 +867,8 @@ function TRF_TrackSpawn(i, how)
 	TRF_N("TRF_Crp_Label", id, TRF_TkCrpOf(rec.fl), ls);
 	r.tb = TRF_BitSet(r.tb, 1);
 	if id ~= rec.id then r.pi = rec.id; end;
+	-- Specialist answers (design/specialist-spec.md 6.7): a trader patched on its last visit gives its rumour free.
+	if TRF_Bit(rec.fl, 256) == 1 then TRF_P("TRF_Spc_Rebuilt", id, rec.id); end;
 	if how == "dock" then r.seed = 1; end;
 	if not en then en = {i=rec.id, h=how}; tinsert(q, en); end;
 	en.id = id; en.pw = rec.pw; en.fl = TRF_BitClr(rec.fl, 8); en.fr = rec.fr; en.tt = rec.tt;
@@ -898,11 +907,14 @@ function TRF_TrackSeen(id)
 	return nil;
 end;
 
--- The metagain line once per visit for a rebuilt trader the player met before; nil otherwise.
+-- The metagain line once per visit for a rebuilt trader the player met before (spcmet for one the Wolves patched on its
+-- last visit, design/specialist-spec.md 6.7); nil otherwise.
 function TRF_TrackMetAgain(id)
 	local m = TRF_TkMemo(id);
 	local q = TRF_TkQ();
-	if not m or not q or q.m == 1 or TRF_Bit(m.fl, 1) == 0 then return nil; end;
+	if not m or not q or q.m == 1 then return nil; end;
+	if TRF_Bit(m.fl, 256) == 1 then q.m = 1; return TRF_TkTxt("spcmet"); end;
+	if TRF_Bit(m.fl, 1) == 0 then return nil; end;
 	q.m = 1;
 	return TRF_TkTxt("metagain");
 end;

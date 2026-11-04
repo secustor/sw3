@@ -19,6 +19,9 @@
 -- (TRF_Te_LossLeave, reason loss), the leave HP (TRF_Te_LeaveHp), the Planner call-off (TRF_Te_CallOff, reason calloff)
 -- and chance weight (TRF_Te_RollK, formula branch only), the Ghost decloak spawn (TRF_Te_GhostPos, TRF_Te_Decloak), the
 -- Clan file count on both pay branches (TRF_Te_Answer).
+-- Specialist answers (design/specialist-spec.md 6.4, 6.5, A05): TRF_Rd_Unflee ends a flee after the Repairman patch (state
+-- in or out, the exit kept by TRF_Rd_FleeBody in H.tr[id].ex0 / exn0, TRF_GnReissue); TRF_Rd_End calls trf_spec's raid end
+-- (the re-arm); the poll and the HP trigger ask trf_spec's hold guard (TRF_Spc_Hold) after a fallback patch.
 
 -- Defaults and constants -------------------------------------------------------------
 
@@ -1757,6 +1760,8 @@ function TRF_Rd_End(n, how)
 	if was ~= "armed" then TRF_Rd_Pay(n, rd); end;
 	-- Combat hail: an accepted help offer on this trader is settled (trf_hail TRF_HlHelpEnd).
 	TRF_P("TRF_HlHelpEnd", rd.id, n, rd.paid, how);
+	-- Specialist answers (design/specialist-spec.md 6.1): a trader fleeing with low HP gets its hail armed again.
+	TRF_P("TRF_Spc_RaidEnd", rd.id, n, how);
 	if how == "killed" and rd.hit == 1 then TRF_N("TRF_Ch_Note", 4, TRF_Rd_Cur(), 0); end;
 	-- Wanted captains (design/captain-spec.md 5.3): the end of a captain's raid (his notoriety, his departure).
 	if rd.cap ~= nil then TRF_P("TRF_Cap_RaidEnd", n, how, rd.tk); end;
@@ -2013,6 +2018,9 @@ function TRF_Rd_FleeBody(id, why)
 		pn = nil;
 	elseif TRF_Rd_Obj(po) then
 		TRF_Rd_P(function(s, p) s:ComeToPortal(p); end, {lead, po});
+		-- The exit before the flee, for TRF_Rd_Unflee (handle table only).
+		h.ex0 = h.ext;
+		h.exn0 = r.ext;
 		h.ext = po;
 		if pn then r.ext = pn; end;
 		r.xa = 1;
@@ -2055,12 +2063,64 @@ function TRF_Rd_SafeBody(id, how, g)
 	TRF_RdE("escaped", "trader_id", id, "via", how);
 end;
 
+-- State of a trader whose flee ends (design/specialist-spec.md 6.4): "in" on path A, not docked, with the trade station
+-- alive (st_alive 1); else "out".
+function TRF_Rd_UnfleeStOf(path, dkd, st_alive)
+	if path == "A" and dkd ~= 1 and st_alive == 1 then return "in"; end;
+	return "out";
+end;
+
+-- Ends the flee of trader id (why: patch): its state in or out, the exit it had before the flee (or the nearest portal),
+-- r.fl and r.xa cleared, the route reissued (TRF_GnReissue). Returns 1, or nil and the reason (rec, state, wind, error).
+-- The flee's refuge trigger stays armed and does nothing (TRF_Rd_SafeBody returns unless r.st is flee).
+function TRF_Rd_Unflee(id, why)
+	local a, b = call(TRF_Rd_UnfleeBody, {id, why}, "x", TRF_PErr);
+	if a == 1 then return 1; end;
+	return nil, b or "error";
+end;
+
+function TRF_Rd_UnfleeBody(id, why)
+	local r = TRF_Rd_Rec(id);
+	local h = TRF_Rd_HTr(id);
+	local lead = TRF_Rd_Lead(id);
+	if not r or not h or not lead then return nil, "rec"; end;
+	if r.st ~= "flee" then return nil, "state"; end;
+	local L = TRF_Rd_Live();
+	if L and L.wind == 1 then return nil, "wind"; end;
+	local sa = 0;
+	if type(TRF_GnStation) == "function" and TRF_Rd_Alive(TRF_GnStation()) then sa = 1; end;
+	local st = TRF_Rd_UnfleeStOf(r.path, r.dkd, sa);
+	if TRF_Rd_Obj(h.ex0) then
+		h.ext = h.ex0;
+		r.ext = h.exn0;
+	end;
+	if st == "out" and not TRF_Rd_Obj(h.ext) and type(TRF_GnNearPortal) == "function" then
+		local o, nm = TRF_GnNearPortal(r.ci, lead:GetPosition());
+		if TRF_Rd_Obj(o) then
+			h.ext = o;
+			if nm then r.ext = nm; end;
+		end;
+	end;
+	r.fl = nil;
+	r.xa = nil;
+	r.st = st;
+	if type(TRF_GnReissue) == "function" then TRF_Rd_P(TRF_GnReissue, {id}); end;
+	TRF_Rd_Stat("unflee");
+	TRF_RdE("unflee", "trader_id", id, "reason", why, "state", st, "portal", r.ext);
+	return 1;
+end;
+
 function TRF_OnLowHP(id, g) TRF_Rd_Cb2("TRF_OnLowHP", TRF_Rd_LowBody, {id, g}); end;
 
 function TRF_Rd_LowBody(id, g)
 	if type(TRF) ~= "table" or g ~= TRF.gen then return; end;
 	local r = TRF_Rd_Rec(id);
 	if not r or r.fl then return; end;
+	-- Specialist answers (6.5): the hold guard of a fallback patch keeps the trader on course while its HP stays.
+	local lead = TRF_Rd_Lead(id);
+	local hp = nil;
+	if lead then hp = TRF_N("GetCurHP", lead); end;
+	if TRF_P("TRF_Spc_Hold", id, hp) == 1 then return; end;
 	TRF_Rd_FleeBody(id, "hp");
 end;
 
@@ -2571,7 +2631,9 @@ function TRF_Rd_StepBody()
 		local lead = TRF_Rd_Lead(id);
 		local hp = nil;
 		if lead then hp = TRF_N("GetCurHP", lead); end;
-		if type(hp) == "number" and hp < K.low_hp * L.tr[id].hp0 then TRF_Rd_P(TRF_Rd_FleeBody, {id, "hp"}); end;
+		if type(hp) == "number" and hp < K.low_hp * L.tr[id].hp0 and TRF_P("TRF_Spc_Hold", id, hp) ~= 1 then
+			TRF_Rd_P(TRF_Rd_FleeBody, {id, "hp"});
+		end;
 	end;
 	if getn(H.rdl) > 0 then
 		local keep = {};

@@ -124,6 +124,14 @@ Limped in:
 **Fence (after payment):** The papers came in from XB-13. The Golconda clan keeps its guests there until somebody pays for them. Nobody has paid for the Marlin's people. Hard times, eh?
 > XB-13. Thanks for the bad memory. [step 50, log]
 
+### D5-b (Hero with the Intuition perk): the slip of the tongue
+
+A05 specialist answers ([specialist-spec.md](specialist-spec.md) 6.8, 7): one more answer on the price page for a Hero with `F_of_Merchant` (cfg `spec` 1, tune `spc_wq` 1); keys `wq5a8`, `wq5pi`, `wq5a9`.
+> Hero [Intuition]: Nobody else on this station buys Marlin papers. Tell me where they came from and keep them. [page msg32]
+
+**Fence:** Ha! You read people too well, dear guest. XB-13. The Golconda clan keeps its guests there. Now go, before I remember your face.
+> Thanks for the slip of the tongue. [step 50 at no cost, log; Esc on this page gives step 50 too]
+
 ## D6. The patrol board (patrol station, Golconda region, dockmaster rung 1 or higher, step 40)
 
 **Patrol officer:** Trader, you asked about the Marlin. Her manifests turned up at a fence's last week. He sits in clan space, so we can't touch him. The papers came in from XB-13.

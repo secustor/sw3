@@ -143,9 +143,9 @@ function T_WQ_A()
 	local h = HOST();
 	WQ_Begin("debris6", "5_1");
 	local idx = TRF_CurIdx();
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=21") >= 1, "trf_wq loads before trf_warn and trf_remark (extra_count=21)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=22") >= 1, "trf_wq loads before trf_warn and trf_remark (extra_count=22)");
 	local ml, pm, tf, uf = TRF_ModList(), TRF_PlMods(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml) - 6] == "Wq" and pm[getn(pm) - 4] == "Wq" and tf[getn(tf) - 7] == "TRF_Wq_Text" and uf[getn(uf) - 6] == "TRF_Wq_Text",
+	HOST_Check(ml[getn(ml) - 7] == "Wq" and pm[getn(pm) - 4] == "Wq" and tf[getn(tf) - 8] == "TRF_Wq_Text" and uf[getn(uf) - 7] == "TRF_Wq_Text",
 		"Wq before Wn (trf_warn) at the end of TRF_ModList and TRF_PlMods, TRF_Wq_Text in both text lists");
 	HOST_Check(TRF_Wq_OptDef().enable_wq == 1 and TRF_WqOpt("enable_wq") == 1 and TRF_Opt("enable_wq") == 1, "cfg enable_wq 1 by default");
 	local T = TRF_WqTune();
@@ -169,9 +169,9 @@ function T_WQ_A()
 	for k, v in tx do
 		if strlen(v) > 480 or strfind(v, "[%%#\n]") then bad = bad.." "..k; end;
 	end;
-	HOST_Check(WQ_N(tx) == 127 and bad == "" and TRF_Txt("wqt") == "Missing in Capricorn" and TRF_Txt("fwboxtitle") == "FTU charter office"
+	HOST_Check(WQ_N(tx) == 130 and bad == "" and TRF_Txt("wqt") == "Missing in Capricorn" and TRF_Txt("fwboxtitle") == "FTU charter office"
 		and TRF_Txt("wqalone") == "The Kestrel crawled in on her own, half her systems dead." and TRF_Txt("wqname") == "Kestrel",
-		"127 texts, at most 480 characters, no %, # or newline; title fwboxtitle"..bad);
+		"130 texts (3 of them the fence page Intuition answer, design/specialist-spec.md 7), at most 480 characters, no %, # or newline; title fwboxtitle"..bad);
 	bad = "";
 	for k, v in {"wqboxo", "wqoko", "wqthxo"} do
 		if not WQ_Has(TRF_Txt(v), "Arba") or WQ_Has(TRF_Txt(v), "Alex") then bad = bad.." "..v; end;
@@ -1577,7 +1577,7 @@ function T_WQ_G()
 			if type(getglobal(fi.ini)) ~= "function" then bad = bad.." "..fi.ini; end;
 		end;
 	end;
-	HOST_Check(bad == "" and nf == 12 and np == 35, "12 dialog files, 35 pages: answers as listed, messages 'Speaker: #token#', tokens with texts, links to pages, "
+	HOST_Check(bad == "" and nf == 12 and np == 36, "12 dialog files, 36 pages (msg32 the Intuition page of D5): answers as listed, messages 'Speaker: #token#', tokens with texts, links to pages, "
 		.."functions defined, speakers TRF_WqP_* in the speakers block of merge/Pilots.xml ("..nf.." files, "..np.." pages)"..bad);
 	local sp = "";
 	for k, v in {"clerk", "kestrel", "nav", "fence", "patrol", "master", "clan", "cap"} do
@@ -1901,6 +1901,57 @@ function T_WQ_G()
 	HOST_DlgEsc();
 	T_Tick(4, 0.5);
 	HOST_Check(p1 and R.s == 50 and h.credits == 1000000 - price, "D5 poor: the dialog opens, the poor page, step 40; Esc after paying: step 50");
+	-- D5-b (design/specialist-spec.md 6.8, spc-f): a Hero with Intuition (F_of_Merchant) gets a_int, the clue without the
+	-- price (msg32, a_int2: step 50, no charge); Esc on msg32 gives step 50 too; without the perk, with spc_wq 0 or cfg
+	-- spec 0 the answer is hidden.
+	local hero = HOST_Pilot("Hero");
+	hero.IsAlive = function(self) return 1; end;
+	hero.GetSide = function(self) return "Player"; end;
+	hero.props = {F_of_Merchant=1};
+	h.crew = {Hero=hero};
+	R = WQ_At(40, {r=1, ws=g, ql=40});
+	h.credits = 1000000;
+	WQ_Visit();
+	n0 = S_Mark();
+	WQ_PirDock();
+	WQ_Picks("a_how");
+	v2 = WQ_Dlg().vis;
+	t1 = HOST_DlgText("a_int");
+	WQ_Picks("a_int");
+	t2 = WQ_Dlg().text;
+	local v3, w3 = WQ_Dlg().vis, WQ_Dlg().cur;
+	local s3 = R.s;
+	WQ_Picks("a_int2");
+	T_Tick(2, 0.5);
+	HOST_Check(v2 == "a_pay a_rich a_int" and t1 == "- Hero [Intuition]: Nobody else on this station buys Marlin papers. Tell me where they came from and keep them."
+		and w3 == "msg32" and v3 == "a_int2" and WQ_Has(t2, "Fence: Ha! You read people too well") and WQ_Has(t2, "The Grey Ravens clan keeps its guests there")
+		and s3 == 40 and R.s == 50 and h.credits == 1000000 and WQ_Logs(n0, "event=clue via=intuition system=golkonda cost=0 speaker=Hero result=ok") == 1
+		and S_Logs(n0, "module=region event=charge") == 0 and WQ_Dlg().name == nil,
+		"D5-b: a_int with the Hero's label, msg32, a_int2: step 50 at cost 0, no charge");
+	R = WQ_At(40, {r=1, ws=g, ql=40});
+	WQ_Visit();
+	WQ_PirDock();
+	WQ_Picks("a_how", "a_int");
+	HOST_DlgEsc();
+	T_Tick(4, 0.5);
+	local e1 = R.s == 50 and h.credits == 1000000;
+	local vis = {};
+	for k, c in {{p={}}, {p={F_of_Merchant=1}, tune={spc_wq=0}}, {p={F_of_Merchant=1}, spec=0}} do
+		hero.props = c.p;
+		h.cfg.tune = c.tune or {};
+		h.cfg.spec = c.spec;
+		R = WQ_At(40, {r=1, ws=g, ql=40});
+		WQ_Visit();
+		WQ_PirDock();
+		WQ_Picks("a_how");
+		tinsert(vis, WQ_Dlg().vis);
+		HOST_DlgEsc();
+		T_Tick(4, 0.5);
+	end;
+	h.cfg.tune = {}; h.cfg.spec = nil;
+	h.crew = {};
+	HOST_Check(e1 and vis[1] == "a_pay a_rich" and vis[2] == "a_pay a_rich" and vis[3] == "a_pay a_rich",
+		"D5-b: Esc on msg32 gives step 50; a_int hidden without the perk, with spc_wq 0, with spec 0 ("..vis[1].."/"..vis[2].."/"..vis[3]..")");
 
 	-- D6: the patrol board at rung 1.
 	R = WQ_At(40, {r=1, ws=g, ql=40});

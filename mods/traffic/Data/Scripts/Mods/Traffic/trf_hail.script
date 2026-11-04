@@ -45,6 +45,9 @@
 -- trader: r.hlp 1 offered, 2 accepted, 3 settled), else "busy". An accepted offer on a raid is paid by trf_raid's raid
 -- help (TRF_Rd_Pay, any player fire on the raid counts, then TRF_HlHelpEnd); any other fight by the watch H.hlw[id]
 -- (TRF_HlHelpStep) through TRF_Pay when no hostile is left near the trader.
+-- Specialist answers (design/specialist-spec.md, A05): trf_spec's TRF_Spc_HailOpts / TRF_Spc_HailDo are the fourth provider
+-- (the Repairman patch in the spare p slot, x = 1); TRF_HlMax allows one hail beyond hail_max while TRF_Spc_Due holds; the
+-- dialog head and the first box take trf_spec's head text (TRF_Spc_Head, TRF_Spc_Pre).
 
 -- Helpers --------------------------------------------------------------------------
 
@@ -290,13 +293,21 @@ end;
 function TRF_HailArm(id)
 	local r = TRF_HlRec(id);
 	if not r or type(NewTrigger) ~= "function" or type(TRF) ~= "table" then return nil; end;
-	if (r.hn or 0) >= TRF_HlT("hail_max") then return nil; end;
+	if (r.hn or 0) >= TRF_HlMax(id, r) then return nil; end;
 	r.hr = (r.hr or 0) + 1;
 	if r.hr > TRF_HlT("hail_rearm") then return nil; end;
 	local lead = TRF_HlLead(id);
 	if not lead then return nil; end;
 	TRF_HlP(NewTrigger, {"focus", nil, "TRF_OnHail("..id..","..TRF.gen..")--", lead});
 	return 1;
+end;
+
+-- Hails allowed for trader id (record r): hail_max, one more while trf_spec's TRF_Spc_Due holds (a trader fleeing with low HP
+-- after its raid ended, not patched yet; design/specialist-spec.md D15).
+function TRF_HlMax(id, r)
+	local m = TRF_HlT("hail_max");
+	if TRF_P("TRF_Spc_Due", id, r) == 1 then return m + 1; end;
+	return m;
 end;
 
 -- Trigger entry point: runs TRF_OnHail_Body protected.
@@ -763,8 +774,8 @@ end;
 -- Items of the v1 providers for trader id: key list, key -> item, only (1 when an item has x = 1).
 function TRF_HlV1Opts(id, r)
 	local keys, x, only = {}, {}, nil;
-	local ps = {"TRF_Supply_HailOpts", "TRF_Feq_HailOpts", "TRF_Dc_HailOpts"};
-	local ds = {"TRF_Supply_HailDo", "TRF_Feq_HailDo", "TRF_Dc_HailDo"};
+	local ps = {"TRF_Supply_HailOpts", "TRF_Feq_HailOpts", "TRF_Dc_HailOpts", "TRF_Spc_HailOpts"};
+	local ds = {"TRF_Supply_HailDo", "TRF_Feq_HailDo", "TRF_Dc_HailDo", "TRF_Spc_HailDo"};
 	local l0 = {};
 	if type(TRF_FeqId) == "function" then
 		local t = TRF_HlP(TRF_FeqId, {id});
@@ -856,7 +867,7 @@ function TRF_HailOpen(id, via)
 	local why = nil;
 	local sq = TRF_HlSupp();
 	local fg = nil;
-	if (r.hn or 0) >= TRF_HlT("hail_max") then why = "max";
+	if (r.hn or 0) >= TRF_HlMax(id, r) then why = "max";
 	elseif gt - (r.hlt or -1000) < TRF_HlT("hail_cd") then why = "cd";
 	elseif type(L.hl) == "table" and gt - (L.hl.t or 0) < TRF_HlT("hail_stale") then why = "busy";
 	elseif sq and sq ~= "combat" then why = sq;
@@ -960,7 +971,7 @@ function TRF_HlClose(why)
 	L.hl = nil;
 	if type(hl) ~= "table" then return; end;
 	local r = TRF_HlRec(hl.id);
-	if r and (r.hn or 0) < TRF_HlT("hail_max") then
+	if r and (r.hn or 0) < TRF_HlMax(hl.id, r) then
 		r.ha = max(r.ha or 0, TRF_HlGt() + TRF_HlT("hail_cd") + TRF_HlT("hail_arm"));
 	end;
 	TRF_HlE("close", "trader_id", hl.id, "reason", why);
@@ -982,7 +993,14 @@ function TRF_HailShow()
 		hl.bx = 1;
 	end;
 	local text = TRF_Txt("hailq", TRF_HlWho(r, hl.id), TRF_HlLabel(hl.id, key));
-	if hl.rf == 1 then text = TRF_Txt("refuse", TRF_HlName(r))..TRF_Br()..text; end;
+	if hl.rf == 1 then
+		text = TRF_Txt("refuse", TRF_HlName(r))..TRF_Br()..text;
+	elseif hl.k == 1 then
+		-- Specialist answers (design/specialist-spec.md 6.3): the first box of a trader fleeing after its raid says what it
+		-- needs (spcheadb with a specialist, spcneedb without).
+		local pre = TRF_P("TRF_Spc_Pre", r, hl.id);
+		if type(pre) == "string" then text = pre..TRF_Br()..text; end;
+	end;
 	if not TRF_HlBox("#UI_FTrader_confirm", text, TRF_HailOk, TRF_HailNext) then
 		local id, rf = hl.id, hl.rf;
 		TRF_HlClose("nobox");
@@ -1165,8 +1183,9 @@ end;
 -- Option keys with an answer of their own; every other key (provider items) takes the next p slot.
 function TRF_HlDlgFixed() return {trade=1, head=1, news=1, esc=1, demand=1, sweep=1, trouble=1, boom=1}; end;
 
--- Number of p slots: TRF_HlV1Opts gives at most 5 items (feqinfo, demand, sesc, feq, dc); demand has its own
--- answer, so one slot is spare for a new provider key.
+-- Number of p slots: TRF_HlV1Opts gives at most 6 items (feqinfo, demand, sesc, feq, dc, fix); demand has its own
+-- answer. The spare slot is A05's patch item fix (design/specialist-spec.md D16): its gates exclude every record with
+-- sesc, feq, dc, feqinfo or fwinfo, so it takes a_p1. A sixth slotted item drops the menu to the boxes (reason slots).
 function TRF_HlDlgNp() return 5; end;
 
 -- Answer callbacks named in TRF_Hail.xml (<lua_function>, called without arguments).
@@ -1256,7 +1275,8 @@ function TRF_HlDlgOpen(hl, r)
 	if type(TRF_BoxTake) == "function" and not TRF_BoxTake("hail") then TRF_HlDlgFb("lock"); return nil; end;
 	-- Corporation carriers (design/corp-carriers-spec.md 5.2): a contract carrier's head names its corporation.
 	local head = nil;
-	if hl.rf == 1 then head = TRF_Txt("dlgrefuse"); else head = TRF_N("TRF_Crp_Head", r) or TRF_Txt("dlghead"); end;
+	-- Specialist answers (design/specialist-spec.md 6.3): a trader fleeing after its raid says what it needs.
+	if hl.rf == 1 then head = TRF_Txt("dlgrefuse"); else head = TRF_P("TRF_Spc_Head", r, hl.id) or TRF_N("TRF_Crp_Head", r) or TRF_Txt("dlghead"); end;
 	local st = TRF_HlStore();
 	st.dlg = {id=hl.id, g=hl.g, on=on, dk=dk, who=TRF_HlName(r), head=head};
 	hl.w = "dlg";

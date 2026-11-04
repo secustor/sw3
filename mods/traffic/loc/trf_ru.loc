@@ -1,7 +1,7 @@
 LOCALE_FILE
 FILETYPE STANDART
 
-; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text) the wanted captains keys (#TRF_cap*, trf_captain TRF_Cap_Text), the clan stash keys (#TRF_stash*, trf_stash TRF_Sh_Text), the Wolves Freight keys (#TRF_fw*, trf_freight TRF_Fr_Text), the pirate haunt keys (#TRF_haunt*, trf_haunt TRF_Haunt_Text), the sealed parcel keys (#TRF_pcl*, trf_parcel TRF_Pc_Text), the mercenary clan keys (#TRF_mc*, trf_merc TRF_Mc_Text) and the demand page keys (#TRF_dmp*, trf_supply TRF_Supply_Text and trf_hail TRF_Hail_Text, with the answers #TRF_dmok and #TRF_dmno) and the hail page and combat hail keys (#TRF_hlp*, trf_hail TRF_Hail_Text) and the crew remark keys (#TRF_rm*, trf_remark TRF_Rm_Text) and the sourced tips keys (#TRF_ti*, trf_tips TRF_Ti_Text), cp1251.
+; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text) the wanted captains keys (#TRF_cap*, trf_captain TRF_Cap_Text), the clan stash keys (#TRF_stash*, trf_stash TRF_Sh_Text), the Wolves Freight keys (#TRF_fw*, trf_freight TRF_Fr_Text), the pirate haunt keys (#TRF_haunt*, trf_haunt TRF_Haunt_Text), the sealed parcel keys (#TRF_pcl*, trf_parcel TRF_Pc_Text), the mercenary clan keys (#TRF_mc*, trf_merc TRF_Mc_Text) and the demand page keys (#TRF_dmp*, trf_supply TRF_Supply_Text and trf_hail TRF_Hail_Text, with the answers #TRF_dmok and #TRF_dmno) and the hail page and combat hail keys (#TRF_hlp*, trf_hail TRF_Hail_Text) and the crew remark keys (#TRF_rm*, trf_remark TRF_Rm_Text) and the sourced tips keys (#TRF_ti*, trf_tips TRF_Ti_Text) and the specialist answer keys (#TRF_spc*, trf_spec TRF_Spc_Text), cp1251.
 ; Same keys and fixed texts as loc/trf_en.loc (no $n placeholders); used with cfg loc_mode 1 in a Russian install.
 ; Other #TRF_ keys have no RU line yet (design/station-voices-spec.md 13.5).
 
@@ -712,3 +712,27 @@ FILETYPE STANDART
 #TRF_tiswon = Пиратов разбили.
 #TRF_tiwhen = Первыми это заметили там.
 #TRF_tiwreck = Маяки отметили пропавший грузовик.
+#TRF_spcfail = Торговый союз: не помогло. Уходим, пока она ещё летит.
+#TRF_spcfo = Торговый союз: ещё дребезжит, но долетит. Возвращаемся на курс, друзья.
+#TRF_spchead = Нас здорово потрепали. Двигатель до портала не дотянет, но мы стараемся!
+#TRF_spcheadb = Торговый союз: нас здорово потрепали. Двигатель до портала не дотянет, но мы стараемся!
+#TRF_spclab = Заглушите двигатели и замрите, мы залатаем ваш привод
+#TRF_spcmet = Опять Волки! Ваша заплатка продержалась всю дорогу.
+#TRF_spcnai = Материнский корабль
+#TRF_spcnaia = Айя
+#TRF_spcnalex = Алекс
+#TRF_spcnblade = Блейд
+#TRF_spcneed = Нас здорово потрепали, двигатель отказывает. Будь у вас на борту ремонтник, я бы умолял о заплатке.
+#TRF_spcneedb = Торговый союз: нас здорово потрепали, двигатель отказывает. Будь у вас на борту ремонтник, я бы умолял о заплатке.
+#TRF_spcnhero = Герой
+#TRF_spcnjosef = Йозеф
+#TRF_spcnkalem = Калем
+#TRF_spcnuel = SAM
+#TRF_spcnyana = Яна
+#TRF_spcok = Торговый союз: клянусь Космосом, держится! Возвращаемся на курс, спасибо, друзья.
+#TRF_spcpint = Интуиция
+#TRF_spcprep = Ремонтник
+#TRF_spcprepx = Опытный ремонтник
+#TRF_spcsay = Готово. Их двигатель ещё продержится.
+#TRF_spcsayai = Материнский корабль: ремонтные дроны вернулись на борт. Двигатель транспорта в порядке.
+#TRF_spcsayl = Экипаж

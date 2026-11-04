@@ -1,0 +1,693 @@
+-- sw3-traffic specialist answers module (Lua 4.0.1). Spec: design/specialist-spec.md (A05; roadmap wave 2 row 5). Prefix
+-- Spc (TRF_Spc_* public, TRF_Spc<X> internal), log module=spec, cfg spec. Host-tested only, not run in the game
+-- (W-A05.1-12 open).
+-- Owns: the Repairman patch, one answer in the hail menu's spare provider slot (trf_hail TRF_HlV1Opts) for an FTU trader
+-- that flees with low HP after its raid record ended. The answer is labelled "<pilot> [<perk>]: ..."; picking it raises
+-- the lead's HP once (SetHP, read back with GetCurHP), ends the flee through trf_raid's TRF_Rd_Unflee and gives help +1
+-- unless raid help already paid. Also: the missing-skill head of that trader's menu (no answer then), the re-arm of its
+-- hail at the raid end (window, focus trigger, one 70-unit meeting trigger) and one hail beyond hail_max (trf_hail
+-- TRF_HlMax), the patched flag r.sk 2 that trf_track carries as pool fl bit 256 (r.res and the spcmet line when the
+-- trader is rebuilt), the specialist probe TRF_Spc_Who that trf_wq's fence page asks for the Hero's Intuition answer.
+-- Specialist: a fixed template list probed with GetPilot, IsAlive, GetSide == "Player" and HasProperty (best rank first,
+-- then list order), the mothership firmware last (TRF_GnMs():GetPilot(), tune spc_ai). No SetPerk, no
+-- Player_Group:HavePerk, never GetPlayerMotherShip.
+-- Saved: r.sk (2 or nil) on a live trader record (TRF_Spc_Fix), the fix mark in r.hx (trf_hail), r.res on a rebuilt
+-- patched trader, pool fl bit 256 (trf_track). Visit state in the handle table TRF_H().spc (never saved): w (the
+-- specialist found per trader), hold (fallback guard {g, f}), mt (meeting trigger armed), an, sk, nd (log latches), tc
+-- (tune cache).
+-- Layout as trf_remark: helpers, accessors (one native each, protected), static tables, pure functions (*Of, explicit
+-- inputs, host-testable), contract functions. Top level: functions only.
+
+-- Helpers --------------------------------------------------------------------------
+
+-- logfmt event line, module=spec (design/log-format.md).
+function TRF_SpcE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "spec"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_SpcErr(m)
+	TRF_SpcE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler of the probes: the error is the answer (tried=<tpl>:error, reason=sethp).
+function TRF_SpcNoErr(m) end;
+
+function TRF_SpcLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_SpcDE(event, ...)
+	if TRF_SpcLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_SpcE, arg);
+end;
+
+function TRF_SpcCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- Clamps of the tune keys (spec 8): {lo, hi, integer}.
+function TRF_SpcClampT()
+	return {spc_ch={0, 20, 1}, spc_low={0.1, 1, 0}, spc_hp={0.55, 1, 0}, spc_hp_exp={0.55, 1, 0}, spc_arm={30, 600, 1},
+		spc_meet={0, 1, 1}, spc_ai={0, 1, 1}, spc_fb={0, 1, 1}, spc_say={0, 1, 1}, spc_secs={3, 20, 1}, spc_wq={0, 1, 1}};
+end;
+
+-- Constants without a key (spec 8): hold guard fraction, meeting trigger radius, delay of the pilot line.
+function TRF_SpcK()
+	return {guard=0.9, meet_r=70, say_t=1};
+end;
+
+-- Visit state in the handle table (3.2), created on first use; a throwaway table without trf_state.
+function TRF_SpcSH()
+	if type(TRF_H) ~= "function" then return {w={}, hold={}, mt={}, an={}, sk={}, nd={}}; end;
+	local h = TRF_H();
+	if type(h.spc) ~= "table" then h.spc = {w={}, hold={}, mt={}, an={}, sk={}, nd={}}; end;
+	return h.spc;
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Spc_OptDef), else the raw config, else the default; a wrong type or a value outside
+-- 0..1 reads as the default.
+function TRF_SpcOpt(key)
+	local d = TRF_Spc_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	if type(v) == "number" and v ~= 0 and v ~= 1 then return d; end;
+	return v;
+end;
+
+-- Tune values of this module, clamped; cached in the visit state while TRF_Tune returns the same table.
+function TRF_SpcTune()
+	local sp = TRF_SpcSH();
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_SpcErr); end;
+	if type(t) == "table" and type(sp.tc) == "table" and sp.tc.s == t then return sp.tc.t; end;
+	local d, cl, o = TRF_Spc_TuneDef(), TRF_SpcClampT(), {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if type(x) ~= "number" then x = v; end;
+		local c = cl[k];
+		if c then
+			if c[3] == 1 then x = floor(x); end;
+			x = TRF_SpcCl(x, c[1], c[2]);
+		end;
+		o[k] = x;
+	end;
+	if type(t) == "table" then sp.tc = {s=t, t=o}; end;
+	return o;
+end;
+
+function TRF_SpcT(key)
+	return TRF_SpcTune()[key];
+end;
+
+-- G1: traffic on and cfg spec 1.
+function TRF_SpcOn()
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return nil; end;
+	if TRF_SpcOpt("spec") ~= 1 then return nil; end;
+	return 1;
+end;
+
+function TRF_SpcGt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+function TRF_SpcGen()
+	if type(TRF) == "table" and type(TRF.gen) == "number" then return TRF.gen; end;
+	return 0;
+end;
+
+-- Story chapter (trf_safety), 0 when unknown.
+function TRF_SpcCh()
+	local c = TRF_N("TRF_Chapter");
+	if type(c) == "number" then return c; end;
+	return 0;
+end;
+
+function TRF_SpcTxt(key, a, b, c)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c); end;
+	return tostring(key);
+end;
+
+-- Comma-joined list of strings, or nil when empty.
+function TRF_SpcJoin(l)
+	local s = nil;
+	for i = 1, getn(l) do
+		if s then s = s..","..tostring(l[i]); else s = tostring(l[i]); end;
+	end;
+	return s;
+end;
+
+-- Trader record id (not gone), or nil.
+function TRF_SpcRec(id)
+	if type(id) ~= "number" then return nil; end;
+	local r = TRF_N("TRF_Rec", id);
+	if type(r) == "table" then return r; end;
+	return nil;
+end;
+
+function TRF_SpcLead(id)
+	return TRF_P("TRF_GnLead", id);
+end;
+
+-- Display name of trader record r (trf_hail, else trf_ui).
+function TRF_SpcName(r)
+	local n = TRF_P("TRF_HlName", r);
+	if type(n) == "string" then return n; end;
+	if type(r) == "table" then n = TRF_P("TRF_UI_Name", r.nm); end;
+	if type(n) == "string" then return n; end;
+	return TRF_SpcTxt("hull1");
+end;
+
+-- G7: a raid record r.rdn that has not ended (as trf_hail's TRF_HlRaided).
+function TRF_SpcRaided(r)
+	if type(r) ~= "table" or type(r.rdn) ~= "number" then return nil; end;
+	local L = nil;
+	if type(TRF) == "table" then L = TRF.live; end;
+	if type(L) == "table" and type(L.rd) == "table" and type(L.rd[r.rdn]) == "table" and L.rd[r.rdn].st ~= "end" then return 1; end;
+	return nil;
+end;
+
+-- G5: an FTU traffic trader (not a supply convoy, the player's freighter, a station event ship, the Kestrel, a danger
+-- convoy member, the equipment convoy lead, a TT4).
+function TRF_SpcKindOk(id, r)
+	if r.own or r.fw or r.sev or r.wq or r.cv or r.feq or r.tier == 4 then return nil; end;
+	if type(TRF_P("TRF_FeqId", id)) == "string" then return nil; end;
+	return 1;
+end;
+
+-- A skip line at log 2, once per trader, reason and visit.
+function TRF_SpcSkip(id, why)
+	if TRF_SpcLog() < 2 then return; end;
+	local sp = TRF_SpcSH();
+	local k = tostring(id)..":"..tostring(why);
+	if sp.sk[k] then return; end;
+	sp.sk[k] = 1;
+	TRF_SpcE("skip", "trader_id", id, "reason", why);
+end;
+
+-- The answer page (or box) of the open hail chain.
+function TRF_SpcAnswer(text)
+	TRF_P("TRF_HlAnswer", text);
+end;
+
+-- Accessors: one native each, protected -----------------------------------------------
+
+-- Highest perk of pilot p over ps ({{perk id, rank}, ...}, best first): {w = ok, k = rank} or {w = noperk}.
+function TRF_SpcPerkRaw(p, ps)
+	for i = 1, getn(ps) do
+		if TRF_Is(p:HasProperty(ps[i][1])) then return {w="ok", k=ps[i][2]}; end;
+	end;
+	return {w="noperk"};
+end;
+
+-- 4.2 probe of squad template tpl: absent (no pilot), dead, side (not "Player"), then the perk.
+function TRF_SpcProbeRaw(tpl, ps)
+	local p = GetPilot(tpl);
+	if p == nil then return {w="absent"}; end;
+	if not TRF_Is(p:IsAlive()) then return {w="dead"}; end;
+	if p:GetSide() ~= "Player" then return {w="side"}; end;
+	return TRF_SpcPerkRaw(p, ps);
+end;
+
+-- The mothership firmware (the cached mothership's pilot, never GetPlayerMotherShip here).
+function TRF_SpcAiRaw(ps)
+	local ms = TRF_N("TRF_GnMs");
+	if ms == nil then return {w="absent"}; end;
+	local p = ms:GetPilot();
+	if p == nil then return {w="absent"}; end;
+	return TRF_SpcPerkRaw(p, ps);
+end;
+
+-- One protected probe of template tpl ("ai": the firmware): the rank and "ok<rank>", or nil and the word (absent, dead,
+-- side, noperk, error).
+function TRF_SpcProbe(tpl, ps)
+	local r = nil;
+	if tpl == "ai" then
+		r = call(TRF_SpcAiRaw, {ps}, "x", TRF_SpcNoErr);
+	elseif type(GetPilot) ~= "function" then
+		return nil, "absent";
+	else
+		r = call(TRF_SpcProbeRaw, {tpl, ps}, "x", TRF_SpcNoErr);
+	end;
+	if type(r) ~= "table" then return nil, "error"; end;
+	if r.w == "ok" and type(r.k) == "number" then return r.k, "ok"..r.k; end;
+	return nil, r.w;
+end;
+
+function TRF_SpcHpRaw(o) return GetCurHP(o); end;
+
+-- Current hull HP of carcass o, or nil.
+function TRF_SpcHp(o)
+	if o == nil or type(GetCurHP) ~= "function" then return nil; end;
+	local v = call(TRF_SpcHpRaw, {o}, "x", TRF_SpcNoErr);
+	if type(v) == "number" then return v; end;
+	return nil;
+end;
+
+function TRF_SpcSetHpRaw(o, v) o:SetHP(v); return 1; end;
+
+-- SetHP on carcass o; 1 when it ran without an error (CHECK SPC4: whether it takes on a moving NPC carcass).
+function TRF_SpcSetHp(o, v)
+	if o == nil then return nil; end;
+	return call(TRF_SpcSetHpRaw, {o, v}, "x", TRF_SpcNoErr);
+end;
+
+-- One f_object_inside trigger of flight fl around object o (the meeting trigger); 1 when NewTrigger ran.
+function TRF_SpcTrigRaw(cb, fl, o, rad)
+	NewTrigger("f_object_inside", nil, cb, fl, o, rad);
+	return 1;
+end;
+
+-- Static tables ------------------------------------------------------------------------
+
+-- Specialist lists (4.2): kind -> templates in order (t, "ai" the firmware) and perks best first (p = {id, rank}).
+function TRF_SpcCands()
+	return {
+		rep={t={"Kalem", "Yana", "Josef", "Blade", "Uel", "Uel4", "Uel2", "Uel3", "Aia", "Alex", "Hero", "ai"},
+			p={{"Repairman_Exp", 2}, {"Repairman", 1}}},
+		int={t={"Hero"}, p={{"F_of_Merchant", 1}}}
+	};
+end;
+
+-- Name keys of the label (English callsigns, m_pilots.loc): template -> text key.
+function TRF_SpcNames()
+	return {Kalem="spcnkalem", Yana="spcnyana", Josef="spcnjosef", Blade="spcnblade", Uel="spcnuel", Uel2="spcnuel",
+		Uel3="spcnuel", Uel4="spcnuel", Aia="spcnaia", Alex="spcnalex", Hero="spcnhero", ai="spcnai"};
+end;
+
+-- Perk name keys (English names, m_perks.loc): perk id -> text key.
+function TRF_SpcPerks()
+	return {Repairman="spcprep", Repairman_Exp="spcprepx", F_of_Merchant="spcpint"};
+end;
+
+-- Pure functions (explicit inputs, host-testable) -------------------------------------
+
+-- 4.2 over list with probe(tpl, ps) -> rank or nil, word: the best rank, the first in list order among equals. Returns
+-- the template, its rank and tried ("Kalem:absent,Yana:ok1,..."), or nil, nil, tried.
+function TRF_SpcPickOf(list, probe, ps)
+	local tried, best, bk = {}, nil, nil;
+	if type(list) ~= "table" or type(probe) ~= "function" then return nil, nil, "-"; end;
+	for i = 1, getn(list) do
+		local k, w = probe(list[i], ps);
+		tinsert(tried, tostring(list[i])..":"..tostring(w));
+		if type(k) == "number" and (bk == nil or k > bk) then best = list[i]; bk = k; end;
+	end;
+	return best, bk, TRF_SpcJoin(tried) or "-";
+end;
+
+-- G1-G11 (5) over s = {on, ch, mode, mwhy, gate, gwhy, r, kind_ok, raided, hx, hp, hp0, mods, T}: nil when the trader
+-- qualifies, else the reason of the first failing gate.
+function TRF_SpcQualOf(s)
+	local r, T = s.r, s.T;
+	if s.on ~= 1 then return "off"; end;
+	if type(s.ch) ~= "number" or s.ch < T.spc_ch then return "chapter"; end;
+	if s.mode ~= "mod" then return "mode:"..tostring(s.mwhy or s.mode); end;
+	if s.gate ~= 1 then return "gate:"..tostring(s.gwhy); end;
+	if type(r) ~= "table" or s.kind_ok ~= 1 then return "kind"; end;
+	if r.st ~= "flee" or (r.fl ~= "hp" and r.fl ~= "raid") then return "flight"; end;
+	if type(r.rdn) ~= "number" then return "no_raid"; end;
+	if s.raided == 1 then return "raid"; end;
+	if r.cnt then return "attacked"; end;
+	if r.sk == 2 or s.hx == 1 then return "done"; end;
+	if type(s.hp) == "number" and type(s.hp0) == "number" and s.hp0 > 0 then
+		if s.hp >= T.spc_low * s.hp0 then return "hp"; end;
+	elseif r.fl ~= "hp" then
+		return "hp";
+	end;
+	if s.mods ~= 1 then return "raid_module"; end;
+	return nil;
+end;
+
+-- 6.4: the patch target max(cur, f x hp0), f = spc_hp_exp for rank 2, else spc_hp.
+function TRF_SpcTargetOf(cur, hp0, rank, T)
+	local f = T.spc_hp;
+	if rank == 2 then f = T.spc_hp_exp; end;
+	local t = f * hp0;
+	if type(cur) == "number" and cur > t then t = cur; end;
+	return t;
+end;
+
+-- Gates ------------------------------------------------------------------------------
+
+-- The inputs of TRF_SpcQualOf for trader id (record r). nohx: the fix mark in r.hx is not tested (the pick, after
+-- trf_hail set it). The strict gate is asked only when G1-G3 pass and r is a fleeing trader (G6): its denial counts a
+-- stat, and trf_hail asks every hailed trader through TRF_HlMax.
+function TRF_SpcIn(id, r, nohx)
+	local s = {r=r, T=TRF_SpcTune(), on=0, ch=TRF_SpcCh(), mode="mod", gate=1};
+	if TRF_SpcOn() then s.on = 1; end;
+	if type(TRF_SysModeQuiet) == "function" then
+		local m, mw = call(TRF_SysModeQuiet, {}, "x", TRF_SpcErr);
+		s.mode = m; s.mwhy = mw;
+	end;
+	if s.on == 1 and s.ch >= s.T.spc_ch and s.mode == "mod" and type(TRF_StrictOk) == "function" and type(r) == "table"
+		and r.st == "flee" and (r.fl == "hp" or r.fl == "raid") then
+		local ok, why = call(TRF_StrictOk, {TRF_N("TRF_CurIdx"), "spec"}, "x", TRF_SpcErr);
+		s.gate = ok; s.gwhy = why;
+	end;
+	if type(r) == "table" then
+		s.kind_ok = TRF_SpcKindOk(id, r);
+		s.raided = TRF_SpcRaided(r);
+		if not nohx and type(r.hx) == "string" and strfind(r.hx, ",fix,", 1, 1) then s.hx = 1; end;
+		s.hp0 = r.hp0;
+		s.hp = TRF_SpcHp(TRF_SpcLead(id));
+	end;
+	if type(TRF_Rd_Unflee) == "function" and type(TRF_GnReissue) == "function" then s.mods = 1; end;
+	return s;
+end;
+
+-- G1-G11 for trader id: nil when it qualifies, else the reason; and the inputs.
+function TRF_SpcQual(id, r, nohx)
+	local s = TRF_SpcIn(id, r, nohx);
+	return TRF_SpcQualOf(s), s;
+end;
+
+-- Contract -----------------------------------------------------------------------------
+
+-- 4.2: the specialist of kind (rep, int): {tpl, rank, name, perk, perkname} or nil; and tried.
+function TRF_Spc_Who(kind)
+	local c = TRF_SpcCands()[kind];
+	if type(c) ~= "table" then return nil, "-"; end;
+	local list = {};
+	local ai = TRF_SpcT("spc_ai");
+	for i = 1, getn(c.t) do
+		if c.t[i] ~= "ai" or ai == 1 then tinsert(list, c.t[i]); end;
+	end;
+	local tpl, k, tried = TRF_SpcPickOf(list, TRF_SpcProbe, c.p);
+	TRF_SpcDE("who", "kind", kind, "speaker", tpl, "rank", k, "tried", tried);
+	if not tpl then return nil, tried; end;
+	local perk = nil;
+	for i = 1, getn(c.p) do if c.p[i][2] == k then perk = c.p[i][1]; end; end;
+	return {tpl=tpl, rank=k, name=TRF_SpcTxt(TRF_SpcNames()[tpl] or tpl), perk=perk,
+		perkname=TRF_SpcTxt(TRF_SpcPerks()[perk] or tostring(perk))}, tried;
+end;
+
+-- 1 while the fence answer may show (trf_wq D5): cfg spec 1 and tune spc_wq 1.
+function TRF_Spc_WqOk()
+	if TRF_SpcOn() and TRF_SpcT("spc_wq") == 1 then return 1; end;
+	return nil;
+end;
+
+-- 6.2: the patch item of trader id (trf_hail TRF_HlV1Opts), x = 1 (provider items only); {} when a gate fails.
+function TRF_Spc_HailOpts(id, r)
+	local sp = TRF_SpcSH();
+	local why = TRF_SpcQual(id, r);
+	local who = nil;
+	if not why then
+		who = TRF_Spc_Who("rep");
+		if not who then why = "no_specialist"; end;
+	end;
+	if why then
+		sp.w[id] = nil;
+		TRF_SpcSkip(id, why);
+		return {};
+	end;
+	sp.w[id] = who;
+	if not sp.an[id] then
+		sp.an[id] = 1;
+		TRF_SpcE("answer", "trader_id", id, "speaker", who.tpl, "perk", who.perk, "rank", who.rank, "result", "offered");
+	end;
+	return {{k="fix", t=TRF_SpcTxt("spclab", who.name, who.perkname), x=1}};
+end;
+
+-- 6.4: the pick of the patch item (from trf_hail's due call, the menu open).
+function TRF_Spc_HailDo(key, id)
+	if key ~= "fix" then return nil; end;
+	return call(TRF_SpcPatch, {id}, "x", TRF_SpcErr);
+end;
+
+-- The specialist of the pick: the one of the menu re-probed (same rank), else a new probe; nil when none.
+function TRF_SpcPickWho(w)
+	if type(w) == "table" and (w.tpl ~= "ai" or TRF_SpcT("spc_ai") == 1) then
+		local k = TRF_SpcProbe(w.tpl, TRF_SpcCands().rep.p);
+		if k == w.rank then return w; end;
+	end;
+	return TRF_Spc_Who("rep");
+end;
+
+function TRF_SpcPatchLog(id, w, cur, tg, got, hp0, st, help, rsn, res)
+	local tpl, rk = nil, nil;
+	if type(w) == "table" then tpl = w.tpl; rk = w.rank; end;
+	TRF_SpcE("patch", "trader_id", id, "speaker", tpl, "rank", rk, "hp_before", cur, "target", tg, "hp_after", got, "hp0", hp0,
+		"state", st, "help", help, "reason", rsn, "result", res);
+end;
+
+function TRF_SpcPatch(id)
+	local sp = TRF_SpcSH();
+	local T = TRF_SpcTune();
+	local r = TRF_SpcRec(id);
+	local nm = TRF_SpcName(r);
+	local why = TRF_SpcQual(id, r, 1);
+	local w = nil;
+	if not why then
+		w = TRF_SpcPickWho(sp.w[id]);
+		if not w then why = "no_specialist"; end;
+	end;
+	if why then
+		TRF_SpcAnswer(TRF_SpcTxt("spcfail", nm));
+		TRF_SpcPatchLog(id, nil, nil, nil, nil, nil, nil, 0, why, "failed");
+		return nil;
+	end;
+	sp.w[id] = w;
+	local lead = TRF_SpcLead(id);
+	local hp0 = r.hp0;
+	local cur = TRF_SpcHp(lead);
+	local tg, got, ok = nil, nil, nil;
+	if type(hp0) == "number" and hp0 > 0 and lead then
+		tg = TRF_SpcTargetOf(cur, hp0, w.rank, T);
+		TRF_SpcSetHp(lead, tg);
+		got = TRF_SpcHp(lead);
+		local K = TRF_N("TRF_Rd_K");
+		local low = 0.5;
+		if type(K) == "table" and type(K.low_hp) == "number" then low = K.low_hp; end;
+		if type(got) == "number" and got >= low * hp0 + 1 then ok = 1; end;
+	end;
+	if not ok and T.spc_fb ~= 1 then
+		TRF_SpcAnswer(TRF_SpcTxt("spcfail", nm));
+		TRF_SpcPatchLog(id, w, cur, tg, got, hp0, r.st, 0, "sethp", "failed");
+		return nil;
+	end;
+	local u, uw = nil, "raid_module";
+	if type(TRF_Rd_Unflee) == "function" then u, uw = TRF_Rd_Unflee(id, "patch"); end;
+	if not u then
+		TRF_SpcAnswer(TRF_SpcTxt("spcfail", nm));
+		TRF_SpcPatchLog(id, w, cur, tg, got, hp0, r.st, 0, "unflee:"..tostring(uw), "failed");
+		return nil;
+	end;
+	local res, rsn, help = "patched", nil, 0;
+	if not ok then
+		res = "flee_only";
+		rsn = "sethp";
+		sp.hold[id] = {g=TRF_SpcGen(), f=got or cur};
+	end;
+	r.sk = 2;
+	if r.res == 1 or r.hpd == 1 then
+		rsn = rsn or "help_paid";
+	else
+		help = 1;
+		TRF_P("TRF_AddHelp", 1, "patch "..id);
+	end;
+	TRF_P("TRF_TrackMark", id, "patch");
+	local tk = "spcok";
+	if res == "flee_only" then tk = "spcfo"; end;
+	TRF_SpcAnswer(TRF_SpcTxt(tk, nm));
+	if T.spc_say == 1 then TRF_N("TRF_Due", TRF_SpcK().say_t, "TRF_Spc_SayDue", id); end;
+	TRF_N("TRF_Stat", "spc_patch");
+	TRF_SpcPatchLog(id, w, cur, tg, got, hp0, r.st, help, rsn, res);
+	return 1;
+end;
+
+-- 6.6: the specialist's line after the patch (due call: the clock stands while the page is up).
+function TRF_Spc_SayDue(id)
+	local w = TRF_SpcSH().w[id];
+	if type(w) ~= "table" then return; end;
+	local secs = TRF_SpcT("spc_secs");
+	local txt = TRF_SpcTxt("spcsay");
+	local ok, out, why = nil, "line", nil;
+	if w.tpl == "ai" then
+		ok = TRF_P("TRF_Say", TRF_SpcTxt("spcsayai"), secs);
+		if not ok then why = "line_failed"; end;
+	else
+		local a, b = TRF_P("TRF_CrewSay", {w.tpl}, txt, secs);
+		if a then
+			ok = 1; out = b;
+		else
+			why = b or "no_crew_say";
+			ok = TRF_P("TRF_Say", TRF_SpcTxt("spcsayl", w.name, txt), secs);
+		end;
+	end;
+	local res = "not_shown";
+	if ok then res = "shown"; end;
+	TRF_SpcE("say", "trader_id", id, "speaker", w.tpl, "output", out, "result", res, "reason", why);
+end;
+
+-- 6.3: the dialog head (TRF_HlDlgOpen) and the first box text (TRF_HailShow) of a qualifying trader: with a specialist
+-- the plain greeting, without one the missing-skill line (event=need once per trader and visit); nil otherwise.
+function TRF_Spc_Head(r, id) return TRF_SpcHeadTxt(r, id, "dialog"); end;
+function TRF_Spc_Pre(r, id) return TRF_SpcHeadTxt(r, id, "box"); end;
+
+function TRF_SpcHeadTxt(r, id, via)
+	if TRF_SpcQual(id, r) then return nil; end;
+	local who, tried = TRF_Spc_Who("rep");
+	if who then
+		if via == "box" then return TRF_SpcTxt("spcheadb", TRF_SpcName(r)); end;
+		return TRF_SpcTxt("spchead");
+	end;
+	local sp = TRF_SpcSH();
+	if not sp.nd[id] then
+		sp.nd[id] = 1;
+		TRF_SpcE("need", "trader_id", id, "via", via, "tried", tried);
+	end;
+	if via == "box" then return TRF_SpcTxt("spcneedb", TRF_SpcName(r)); end;
+	return TRF_SpcTxt("spcneed");
+end;
+
+-- 6.2: 1 while trader id qualifies (G1-G11, not patched): trf_hail TRF_HlMax allows one hail more.
+function TRF_Spc_Due(id, r)
+	if type(r) ~= "table" then r = TRF_SpcRec(id); end;
+	if TRF_SpcQual(id, r) then return nil; end;
+	return 1;
+end;
+
+-- 6.1: raid n on trader id ended (trf_raid TRF_Rd_End, after the help settle): a qualifying trader's hail is armed again
+-- (window spc_arm, the focus trigger, one 70-unit meeting trigger with spc_meet 1).
+function TRF_Spc_RaidEnd(id, n, how)
+	if how == "cancel" or how == "build" or how == "jump" then return nil; end;
+	local r = TRF_SpcRec(id);
+	if not r then return nil; end;
+	local why, s = TRF_SpcQual(id, r);
+	if why then TRF_SpcSkip(id, why); return nil; end;
+	local sp = TRF_SpcSH();
+	local T = s.T;
+	r.ha = max(r.ha or 0, TRF_SpcGt() + T.spc_arm);
+	TRF_P("TRF_HailArm", id);
+	local mt = 0;
+	if T.spc_meet == 1 and not sp.mt[id] and type(NewTrigger) == "function" and type(TRF_H) == "function" then
+		local h = TRF_H().tr[id];
+		local ms = TRF_P("TRF_GnMs");
+		if type(h) == "table" and h.fl and ms then
+			local cb = "TRF_Spc_Meet("..id..","..TRF_SpcGen()..")--";
+			if call(TRF_SpcTrigRaw, {cb, h.fl, ms, TRF_SpcK().meet_r}, "x", TRF_SpcErr) == 1 then
+				sp.mt[id] = 1;
+				mt = 1;
+			end;
+		end;
+	end;
+	local f = nil;
+	if type(s.hp) == "number" and type(s.hp0) == "number" and s.hp0 > 0 then f = TRF_F(s.hp / s.hp0); end;
+	TRF_SpcE("arm", "trader_id", id, "raid_id", n, "raid_end", how, "flight", r.fl, "hp_fraction", f, "meet", TRF_KvB(mt));
+	return 1;
+end;
+
+-- The 70-unit meeting trigger (shim): with cfg hail_start 2 the hail opens (via patch), else the focus is armed.
+function TRF_Spc_Meet(id, g) TRF_Cb("TRF_Spc_Meet", TRF_SpcMeetBody, {id, g}); end;
+
+function TRF_SpcMeetBody(id, g)
+	if type(TRF) ~= "table" or g ~= TRF.gen then return; end;
+	local r = TRF_SpcRec(id);
+	local why = TRF_SpcQual(id, r);
+	if why then TRF_SpcSkip(id, why); return; end;
+	if TRF_P("TRF_HlOpt", "hail_start") == 2 then
+		TRF_P("TRF_HailOpen", id, "patch");
+	else
+		TRF_P("TRF_HailArm", id);
+	end;
+end;
+
+-- 6.5: 1 while the fallback guard of trader id holds (this generation, hp at or above guard x the HP at the patch);
+-- otherwise the entry is dropped (trf_raid flees as before).
+function TRF_Spc_Hold(id, hp)
+	local sp = TRF_SpcSH();
+	local e = sp.hold[id];
+	if type(e) ~= "table" then return nil; end;
+	local fl = nil;
+	if type(e.f) == "number" then fl = TRF_SpcK().guard * e.f; end;
+	if e.g == TRF_SpcGen() and type(hp) == "number" and fl and hp >= fl then
+		if e.lg ~= 1 then
+			e.lg = 1;
+			TRF_SpcDE("hold", "trader_id", id, "hp", hp, "floor", TRF_F(fl), "result", "held");
+		end;
+		return 1;
+	end;
+	sp.hold[id] = nil;
+	TRF_SpcDE("hold", "trader_id", id, "hp", hp, "floor", TRF_F(fl), "result", "released");
+	return nil;
+end;
+
+-- 6.7: trader id rebuilt by trf_track from a patched pool record (pool id pi): the free rumour (r.res).
+function TRF_Spc_Rebuilt(id, pi)
+	local r = TRF_SpcRec(id);
+	if not r then return nil; end;
+	r.res = 1;
+	TRF_SpcE("rebuilt", "trader_id", id, "pool_id", pi);
+	return 1;
+end;
+
+-- F2 (from TRF_Repair): sk other than 2, or on a gone record, is dropped.
+function TRF_Spc_Fix()
+	if type(TRF) ~= "table" or type(TRF.live) ~= "table" or type(TRF.live.tr) ~= "table" then return; end;
+	for id, r in TRF.live.tr do
+		if type(r) == "table" and r.sk ~= nil and (r.sk ~= 2 or r.st == "gone") then r.sk = nil; end;
+	end;
+end;
+
+-- The dump (TRF_DumpState): the module switch and the visit state's counts (read only: no state is created).
+function TRF_Spc_Dump()
+	if type(TRF) ~= "table" then return; end;
+	local sp = nil;
+	if type(TRF_H) == "function" then sp = TRF_H().spc; end;
+	local nh, nm = 0, 0;
+	if type(sp) == "table" then
+		for k, v in sp.hold do nh = nh + 1; end;
+		for k, v in sp.mt do nm = nm + 1; end;
+	end;
+	TRF_SpcE("dump", "spec", TRF_SpcOpt("spec"), "hold_count", nh, "armed_count", nm);
+end;
+
+function TRF_Spc_OptDef()
+	return {spec=1};
+end;
+
+function TRF_Spc_TuneDef()
+	return {spc_ch=4, spc_low=0.6, spc_hp=0.75, spc_hp_exp=0.9, spc_arm=90, spc_meet=1, spc_ai=1, spc_fb=1, spc_say=1,
+		spc_secs=6, spc_wq=1};
+end;
+
+-- Texts (7), EN; $1, $2 as the spec table. The style guide: "portal", never "gate"; the trader captain's voice.
+function TRF_Spc_Text()
+	return {
+		spclab = "$1 [$2]: Cut your engines and hold still, we can patch that drive",      -- name, perk
+		spchead = "They chewed us up good. The drive won't last to the portal, but we're trying!",
+		spcheadb = "FTU $1: They chewed us up good. The drive won't last to the portal, but we're trying!",  -- trader
+		spcneed = "They chewed us up good and the drive is failing. If you had a repairman aboard, I'd beg you for a patch.",
+		spcneedb = "FTU $1: They chewed us up good and the drive is failing. If you had a repairman aboard, I'd beg you for a patch.",
+		spcok = "FTU $1: By Space, she's holding! Back on course, and thank you, friends.",  -- trader
+		spcfo = "FTU $1: She still rattles, but she'll fly. Back on course, friends.",      -- trader
+		spcfail = "FTU $1: It didn't take. We're running for it while she still flies.",   -- trader
+		spcsay = "Done. Their drive will hold for a while yet.",
+		spcsayai = "Mothership: Repair drones are back aboard. The transport's drive is stable.",
+		spcsayl = "$1: $2",                                                                   -- name, text
+		spcmet = "Wolves again! That patch of yours held all the way.",
+		spcnkalem = "Kalem",
+		spcnyana = "Jana",
+		spcnjosef = "Joseph",
+		spcnblade = "Blade",
+		spcnuel = "SAM",
+		spcnaia = "Aja",
+		spcnalex = "Alex",
+		spcnhero = "Hero",
+		spcnai = "Mothership",
+		spcprep = "Repairman",
+		spcprepx = "Expert Repairman",
+		spcpint = "Intuition",
+	};
+end;

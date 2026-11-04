@@ -1,0 +1,35 @@
+traffic: lua: exp=v1 module=state event=enter generation=60 fresh=false system=gaoba legs=200
+traffic: lua: exp=v1 module=safety event=activate system=gaoba mode=mod reason=nil chapter=9 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=spec event=dump spec=1 hold_count=0 armed_count=0
+traffic: lua: exp=v1 module=raid event=flee trader_id=4 reason=hp refuge=portal portal=PORTAL_L station_distance=1252.847 portal_distance=100.623
+traffic: lua: exp=v1 module=raid event=end raid_id=3 trader_id=4 previous_state=fight decision=nil help_counted=false paid=nil result=killed
+traffic: lua: exp=v1 module=spec event=arm trader_id=4 raid_id=3 raid_end=killed flight=hp hp_fraction=0.310 meet=true
+traffic: lua: exp=v1 module=spec event=who kind=rep speaker=Yana rank=1 tried=Kalem:absent,Yana:ok1,Josef:absent,Blade:absent,Uel:absent,Uel4:absent,Uel2:absent,Uel3:absent,Aia:absent,Alex:absent,Hero:noperk,ai:noperk
+traffic: lua: exp=v1 module=spec event=answer trader_id=4 speaker=Yana perk=Repairman rank=1 result=offered
+traffic: lua: exp=v1 module=hail event=hail trader_id=4 via=patch answer_count=1 hail_count=1 dialog=true
+traffic: lua: exp=v1 module=raid event=unflee trader_id=4 reason=patch state=out portal=PORTAL_D
+traffic: lua: exp=v1 module=spec event=patch trader_id=4 speaker=Yana rank=1 hp_before=310 target=750 hp_after=750 hp0=1000 state=out help=1 reason=nil result=patched
+traffic: lua: exp=v1 module=spec event=say trader_id=4 speaker=Yana output=radio result=shown reason=nil
+traffic: lua: exp=v1 module=generator event=remove trader_id=4 reason=exit age=95.000
+traffic: lua: exp=v1 module=raid event=flee trader_id=6 reason=hp refuge=portal portal=PORTAL_D station_distance=1300.000 portal_distance=200.000
+traffic: lua: exp=v1 module=raid event=end raid_id=4 trader_id=6 previous_state=fight decision=nil help_counted=false paid=nil result=left
+traffic: lua: exp=v1 module=spec event=arm trader_id=6 raid_id=4 raid_end=left flight=hp hp_fraction=0.280 meet=true
+traffic: lua: exp=v1 module=spec event=skip trader_id=6 reason=no_specialist
+traffic: lua: exp=v1 module=spec event=need trader_id=6 via=dialog tried=Kalem:absent,Yana:dead,Josef:absent,Blade:absent,Uel:absent,Uel4:absent,Uel2:absent,Uel3:absent,Aia:absent,Alex:absent,Hero:noperk,ai:noperk
+traffic: lua: exp=v1 module=hail event=hail trader_id=6 via=patch answer_count=4 hail_count=1 dialog=true
+traffic: lua: exp=v1 module=state event=enter generation=61 fresh=false system=lidau legs=201
+traffic: lua: exp=v1 module=safety event=activate system=lidau mode=mod reason=nil chapter=9 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=track event=spawn pool_id=4 trader_id=9 via=port origin=gaoba tier=1 pool_tier=1 power=9 escort_count=0 hold_cut=0 damage_band=0 flags=257
+traffic: lua: exp=v1 module=spec event=rebuilt trader_id=9 pool_id=4
+traffic: lua: exp=v1 module=raid event=end raid_id=5 trader_id=10 previous_state=fight decision=nil help_counted=false paid=nil result=killed
+traffic: lua: exp=v1 module=spec event=arm trader_id=10 raid_id=5 raid_end=killed flight=hp hp_fraction=0.400 meet=true
+traffic: lua: exp=v1 module=spec event=answer trader_id=10 speaker=ai perk=Repairman rank=1 result=offered
+traffic: lua: exp=v1 module=hail event=hail trader_id=10 via=patch answer_count=1 hail_count=2 dialog=true
+traffic: lua: exp=v1 module=raid event=unflee trader_id=10 reason=patch state=in portal=PORTAL_L
+traffic: lua: exp=v1 module=spec event=patch trader_id=10 speaker=ai rank=1 hp_before=400 target=750 hp_after=750 hp0=1000 state=in help=1 reason=nil result=patched
+traffic: lua: exp=v1 module=spec event=say trader_id=10 speaker=ai output=line result=shown reason=nil
+traffic: lua: exp=v1 module=generator event=remove trader_id=10 reason=dock age=120.000
+traffic: lua: exp=v1 module=state event=enter generation=62 fresh=false system=golkonda legs=202
+traffic: lua: exp=v1 module=safety event=activate system=golkonda mode=mod reason=nil chapter=9 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=safety event=gate feature=spec system=golkonda reason=quest result=denied
+traffic: lua: exp=v1 module=wq event=clue via=intuition system=golkonda cost=0 speaker=Hero result=ok
