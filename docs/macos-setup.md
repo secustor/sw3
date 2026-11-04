@@ -8,7 +8,7 @@ How the GOG Windows build (GOG id `1426253436`, v1.12) runs on an Apple Silicon 
 |---|---|
 | Mac | Apple M2 Max, macOS 27.0.1, built-in 3456×2234 Retina display (1728×1117 points) |
 | Launcher | Heroic Games Launcher 2.22.4 (Homebrew cask `heroic`) |
-| Wine | athei/wine-build `arm64-11.19-2` (wine-11.19), native ARM64, game runs under FEX. See [section 10](#10-native-arm64-wine-with-fex-current-setup). Fallback: `cx-26.3.0-9` x86_64 under Rosetta 2 ([section 6](#6-mtld3d-d3d9--metal-rosetta-setup)) |
+| Wine | athei/wine-build `arm64-11.19-2` (wine-11.19), native ARM64, game runs under FEX. See [section 10](#10-native-arm64-wine-with-fex-current-setup). Fallback: `cx-26.3.0-9` x86_64 under Rosetta 2 ([section 6](#6-mtld3d-d3d9--metal-rosetta-setup-superseded-by-section-10)) |
 | Graphics | mtld3d v0.14.0 (D3D9 → Metal), borderless fullscreen 1680×1050 through `EmulateModeset=Y` |
 | Redists | DirectX 9.0c, installed by Heroic on first launch |
 | Game files | `~/Games/Heroic/Star Wolves 3 - Civil War` |
@@ -20,16 +20,16 @@ Launch from Heroic, or with `open "heroic://launch?appName=1426253436&runner=gog
 
 ## Problems and fixes
 
-### 1. Homebrew Wine casks are disabled
+### 1. Homebrew Wine casks are disabled (Wine-Crossover fix superseded by section 10)
 - **Problem:** `wine-stable`, `wine@staging` and `wine@devel` were disabled on 2026-09-01 because they fail the Gatekeeper check.
 - **Fix:** Install Heroic and use its Wine Manager to download Wine-Crossover. Heroic's global default is Game Porting Toolkit, which doesn't handle D3D9, so the per-game config pins Wine-Crossover.
 
 ### 2. Game was downloaded outside Heroic's UI
 - **Problem:** The game was downloaded with Heroic's bundled `gogdl` from the command line, so Heroic did not list it as installed.
-- **Fix:** Quit Heroic, then run [`register_sw3.py`](../register_sw3.py). It:
+- **Fix:** Quit Heroic, then run [`register_sw3.py`](../register_sw3.py). It was written for the first setup and sets Wine-Crossover 23.7.1 with the `shared` prefix, so run `./install.sh --mod performance` again after it. It:
   - adds the entry to `gog_store/installed.json`
   - writes the per-game Wine config
-  - moves `gog-support` and the gogdl manifest to where Heroic expects them
+  - moves `gog-support` and copies the gogdl manifest to where Heroic expects them
 
   Heroic must be closed while editing, because it overwrites `installed.json` from memory. On the next launch Heroic runs the GOG support script, installs DirectX 9.0c and DXVK, and starts the game.
 - Download command used:
@@ -38,7 +38,7 @@ Launch from Heroic, or with `open "heroic://launch?appName=1426253436&runner=gog
     download 1426253436 --platform windows --lang en-US --skip-dlcs --path ~/Games/Heroic
   ```
 
-### 3. White window on start
+### 3. White window on start (windowed fix replaced by fullscreen, see section 7)
 - **Symptom:** A white window titled "CrossOver FOSS" / `wine-preloader`.
 - **Cause:**
   - The game's default config requests fullscreen 1024×768.

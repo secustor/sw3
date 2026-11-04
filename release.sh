@@ -76,7 +76,8 @@ p=$dist/sw3-mods-pack-$pkv
 stage_trackpad "$p/trackpad"; stage_performance "$p/performance"
 cp "$here/install.sh" "$here/uninstall.sh" "$p/"
 # the pack README is README.md without its repo-only "## More" section (links to docs/, AGENTS.md, mods/)
-{ sed '/^## More/,$d' "$here/README.md"; printf '## More\n\nMod details: `performance/README.md`, `trackpad/README.md`.\n'; } > "$p/README.md"
+grep -qx '## More' "$here/README.md" || { echo "release.sh: README.md has no '## More' section" >&2; exit 1; }
+{ sed '/^## More$/,$d' "$here/README.md"; printf '## More\n\nMod details: `performance/README.md`, `trackpad/README.md`.\n'; } > "$p/README.md"
 cp "$here/mods/trackpad/LICENSE" "$p/LICENSE"
 chmod 755 "$p/install.sh" "$p/uninstall.sh"
 pack "sw3-mods-pack-$pkv"

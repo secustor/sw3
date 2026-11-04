@@ -88,6 +88,8 @@ Exit criteria: design §12 v1 list (full campaign without mission breakage, 8x p
 
 ## After v1 (not committed)
 
+Order and scope of the activity features after worldbuilding, including what they add to stash step 2 (A15, A10), survivors step 2 (B13) and ladder step 2 (A36 lane warrant): [ROADMAP.md](ROADMAP.md); owner decisions in its section 5.
+
 C1–C21 as ordered in design §12 "After v1": cross-system escort contracts, station supply deliveries, work board contracts on real traffic, scavengers, faction clashes, hunters, off-screen loss rolls, DLL natives for cargo/market/order/ship-list reads (mod-options §5.4 phase 2), real carrier launch via DLL native, portal gathering for danger convoys. Added by the v1 implementation (v1-spec 13.4 and the verify report):
 
 - RU text table (`TRF_Loc_RU`) and the XML hail dialog (deferred, v1-spec 11.1 #1).

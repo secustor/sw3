@@ -236,7 +236,7 @@ Open questions (unconfirmed, in order of impact on the design):
 1. Are NPC flights part of the location snapshot? This decides whether mod ships left behind would reappear frozen.
 2. Can scripts override native globals (`TeleportToLocation`, `GetPlayerMotherShip`)? This is expected, because `setglobal` is a plain write and no game file sets tag methods.
 3. Does `TM+0x28` go to 0 when paused or in tactical pause, and what does the time-scale path look like? What does Game+0x58 mean (it skips `functions.script` on load)?
-4. x87 precision in the running game (D3D9 may set 24-bit precision; FEX runs reduced precision by default, see `README.md` §10).
+4. x87 precision in the running game (D3D9 may set 24-bit precision; FEX runs reduced precision by default, see `docs/macos-setup.md` section 10).
 5. The size limit of the save stream and how `GLOBAL_TABLE` grows with the number of traders.
 6. Does the engine market refresh 0x4ebcf0 overwrite mod writes to `ModuleGoodsState`?
 7. NPC behaviour: does `ComeToTradeStation` stop at the dock point? Which `SetChaseDistance` keeps armed traders on route? Does `cargoCapacity` limit `AddModuleToInventory`? What do 20+ volume triggers cost?
@@ -281,7 +281,7 @@ Inputs read:
 - the six surveys in `mods/traffic/design/mod-research/`: `hook-options.md`, `exe-lua-integration.md`, `lua-natives.md` (with `.tsv`/`.json`), `npc-primitives.md`, `script-runtime.md`, `community-prior-art.md`;
 - `mods/trackpad/{install.sh, install-test.sh, run-test.sh, env.sh, pe/sw3tp.c}`;
 - `.work/game-hooks.md`;
-- `README.md` (legal and FEX notes);
+- `docs/macos-setup.md` (legal note in section 9, FEX notes in section 10);
 - `mods/traffic/design/proposals/minimal-first.md` (scope only).
 
 Checked directly in this session (read-only):

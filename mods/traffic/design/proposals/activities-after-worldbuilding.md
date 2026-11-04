@@ -44,7 +44,7 @@ The user's rules, which override the research notes. Every proposal below was ch
 - value: players asked for it, and another game shows the loop works;
 - cost: effort, save size, quest risk and maintenance (5 = cheapest).
 
-The 12 ideas with the highest totals became finalists. The cut was made on the totals before the skeptics, and section 2 keeps that order: after the corrected value scores A06 (2.4), A10 (2.9) and A22 (2.11) total 14, below A07 and A15 and level with the section 3 rows A01, A09, A19, A20 and A23, which are the first round 1 rows to send to the skeptics next (section 5). Three skeptics then checked each finalist: overlap (is it built, deferred or rejected already, or does it break a built rule), engine (can each step be done and observed), and value (did players ask for this form, and would they notice it next to what exists). "Refuted" means the idea as pitched fails that test; most refutations came with a fix. All 12 finalists were refuted by at least one skeptic. The recommendations in section 2 carry the fixes and say which fix wins where two conflict.
+The 12 ideas with the highest totals became finalists. The cut was made on the totals before the skeptics, and section 2 keeps that order: after the corrected value scores A06 (2.4), A10 (2.9) and A22 (2.11) total 14, below A07 and A15 and level with the section 3 rows A01, A09, A19, A20 and A23. A20, A19, A09 and A23 are the first round 1 rows to send to the skeptics next; A01's remaining parts follow B06 and B03 (section 5). Three skeptics then checked each finalist: overlap (is it built, deferred or rejected already, or does it break a built rule), engine (can each step be done and observed), and value (did players ask for this form, and would they notice it next to what exists). "Refuted" means the idea as pitched fails that test; most refutations came with a fix. All 12 finalists were refuted by at least one skeptic. The recommendations in section 2 carry the fixes and say which fix wins where two conflict.
 
 Each finalist also has a concept lens line: a score from 1 to 5 for how far its recommended form improves on the Star Wolves concept, judged against criteria C1-C10 of `../research/activities-prior-art.md` 11.8 (C1 role-split wing and perks, C2 pilot presence and stakes, C3 mothership as a mobile base, C4 short range, C5 pay capped by chapter and risk, C6 optional with partial outcomes, C7 outcomes other than kills, C8 curated contracts, C9 XP for mod activities, C10 EN and RU text). It is not part of the totals.
 
@@ -132,7 +132,7 @@ Recommendation: build with the fix, after A07 (2.5), in two parts, because the l
 - Placement: registered nav points only (pc > 0) or a generated safe-point table like the one `gen_stash.py` makes; Fronn, xt27 and story systems excluded through `sv_deny` (overlap fix). Of the 24 never-named systems, 13 have pc > 0 in map.script and 12 remain after Fronn: altair, callipso, egleon, escaflon, fiasar, fort_russ, gaoba, golkonda, kitaro, llanovar1, llanovar2 and xb13. All 12 have a vanilla trade station, so "empty" here means no other mod event on that entry. The 11 never-named systems with pc = 0 (b_leftera3, sunji, tarrot, xt17, xt27 and xb19 among them) become eligible only if `gen_stash.py`'s safe-point table is extended to pc = 0 systems.
 - Drift from the request: shda asked for static and broken phrases in empty systems with no services [src 8], and the 12 placement systems all have a trade station. The recommended form uses them because the source and the lure path need registered nav points (pc > 0; S6 and the survive seeding rule, overlap skeptic). The way to meet the request is to extend the safe-point table to the pc = 0 systems (section 6 item 33), which makes b_leftera3, sunji, tarrot, xt17 and xb19 eligible; xt27 stays out as a clan home.
 - Outcomes: (a) survivors is dropped; seeded beacons cover it. (c) the Quiet/Boom flight recorder is the main outcome (value fix); it points at a stash through the `TRF_Sh` pirate-dock intel path until A07 exists (overlap fix), then at a trail fragment. (b) the lure is the on-screen slaver flight of survivors step 2 (`TRF_PirFlight`, `T_eff` - 1, `sv_slave_on`, the raid slot, S12, S15), with the repeated call sign as the tell and a threat word from clan tier in the opening line (value fix). A waiting lure flight shows on radar inside sensor range (engine fix), so the radar contact is part of the tell.
-- Dependency: survivors step 2 is not built; only the off-screen slaver roll is (`../PROGRESS.md`, `../survivors-spec.md` row 2). The first build ships the trigger, the search and outcome (c); the lure branch waits for survivors step 2 (section 5 item 7).
+- Dependency: survivors step 2 is not built; only the off-screen slaver roll is (`../PROGRESS.md`, `../survivors-spec.md` row 2). The first build ships the trigger, the search and outcome (c); the lure branch waits for survivors step 2 (section 5 item 11).
 
 Concept lens: 3. Scored in the fixed form: static and a broken phrase, a threat word, one reading then a coarse area marker, a flight recorder as the main outcome, the survivors step 2 slaver flight as the lure once that step exists. Meets C4 (in-system), C6 (optional, ends when the player leaves, strict gate, once per record) and C7 (a find and lore, not a kill). C5 only through the prize gap. Misses C1 and C2 (no pilots), and C3 is not met: the mothership only carries the receiver, with no repair, recovery, tow or refit role. No C9. It adds atmosphere to empty systems but does not draw on the series' squad or carrier.
 
@@ -562,7 +562,7 @@ Recommendation: build with the fix (S), as A01 step 1.
 - Lines: a record that still has its own arrival line (a fresh scar, a haunt line, a base wreck, a survive beacon) gets no second line. Once per record, when an eligible story pilot is aboard, that line plays through his portrait with an age suffix (overlap fix (1)). A record past its fresh window, or one with no arrival line, gets one remark through `TRF_ArrivalLine`, counted in `arr_max` 3 and dropped at the cap (overlap fix (2), value fix (a)). The fixes agree: no event is told twice.
 - Speaker: the engine fix's selection (template names from `TRF_SpCrew`, nil check, `IsAlive`, player side, `IsCanSayReplica`, the Hero as fallback, else no remark), inside `call(..., TRF_PErr)`, through `TRF_UI_Msg`. It is one function that A01's profiles later replace; until then pirate records go to Lastochka and navy records to Kalem when they are aboard.
 - Dates: the age phrase ("12 days back") is `TRF.clock.legs - r.leg`. Dated harbour news moves to A16's ring as a leg field and a format rule (overlap fix (3)), and the existing scar and haunt lines show the same phrase (value fix (c)). The vanilla News screen stays undated (2b.11).
-- Priority: transit entries first (value fix (b)); a remark yields to every other mod arrival line.
+- Priority: transit entries first (value fix (b)); a remark yields to accepted-job lines and the built module lines, and goes before the A08 signal and the B03 radio pair (4b.1 rule 1).
 - Record types switch on with their source: scar, captain, base and sweep at once; lost Wolves freighter and B01 strike later (engine fix).
 - Open checks: CHECK C4, shared with the built lines, and the `IsAlive` filter on a pilot killed by vanilla script (section 6 items 24 and 25).
 
@@ -637,7 +637,7 @@ Cost: M. Risk: repeated losses drain the weaker side's fs (fs drifts back to 3 e
 | concept | 3 | C4, C5 (existing contract pay), C6 and C7 (watch and loot, or change faction strength). A world feature: no C1, C2, C3 or C9. |
 
 Skeptics:
-- Overlap: refuted. Nothing builds, defers or rejects an interior strike: C6 is border-only and deferred, design 11 pushes are at border checkpoints, and the built equipment convoy has only clan raids. Four outcome rules conflict. (1) Design 11 removed fs changes from faction-vs-faction fights because +1 to the side helped raises its rung and push chance, a loop the player can feed (11-front-pressure.md:105); B01 gates on the fs gap and then widens it by 2. (2) The built code gives fs +1 only for a completed defence contract (trf_convoy.script:1718-1719); B01 adds a second +1 with no player. (3) TDR 7.15 puts `TRF_Feq_<n>` on the Trade team, so "no relation write" is wrong. (4) A transport death with no player fire is "taken by pirates" (trf_convoy.script:1070-1079: clan salvage +3, clan score +5), which breaks S36 for a faction kill. Fix: (a) no attacker fs gain and no fs +1 for an uncontracted dock; only the 7.15 owner fs -1 on a loss to the strike, added to the 5.13 mover list as "killed by an enemy faction"; the gate reads fs and never writes it; gap = fs[r_A][A] - fs[r_D][D] with r_A the attacker's nearest owned region; (b) a "taken by <faction>" outcome with no `TRF_SalvAdd` and no clan score, dis +2 and pro -3 as other kills, news "<A> strike destroyed a <D> supply run", and the strike group `TRF_Strk_<n>` as a wave 1 trigger source; (c) `SetGroupRelation` war both ways between `TRF_Strk_<n>` and `TRF_Feq_<n>`; (d) the feq clan-raid slot, counted against `cap_feq` and the one-scripted-event-per-visit order, rate-limited with future design 11 pushes (`fr_os_gap` 24 legs plus `fr_os_rs` 2,400 s); joining the strike moves only fst and heat, never fs.
+- Overlap: refuted. Nothing builds, defers or rejects an interior strike: C6 is border-only and deferred, design 11 pushes are at border checkpoints, and the built equipment convoy has only clan raids. Four outcome rules conflict. (1) Design 11 removed fs changes from faction-vs-faction fights because +1 to the side helped raises its rung and push chance, a loop the player can feed (11-front-pressure.md:105); B01 gates on the fs gap and then widens it by 2. (2) The built code gives fs +1 only for a completed defence contract (trf_convoy.script:1718-1719); B01 adds a second +1 with no player. (3) TDR 7.15 puts `TRF_Feq_<n>` on the Trade team, so "no relation write" is wrong. (4) A transport death with no player fire is "taken by pirates" (trf_convoy.script:1070-1079: clan salvage +3, clan score +5), which breaks S36 for a faction kill. Fix: (a) no attacker fs gain and no fs +1 for an uncontracted dock; only the 7.15 owner fs -1 on a loss to the strike, added to the 5.13 mover list as "killed by an enemy faction"; the gate reads fs and never writes it; gap = fs[r_A][A] - fs[r_D][D] with r_A the attacker's nearest owned region; (b) a "taken by `<faction>`" outcome with no `TRF_SalvAdd` and no clan score, dis +2 and pro -3 as other kills, news "`<A>` strike destroyed a `<D>` supply run", and the strike group `TRF_Strk_<n>` as a wave 1 trigger source; (c) `SetGroupRelation` war both ways between `TRF_Strk_<n>` and `TRF_Feq_<n>`; (d) the feq clan-raid slot, counted against `cap_feq` and the one-scripted-event-per-visit order, rate-limited with future design 11 pushes (`fr_os_gap` 24 legs plus `fr_os_rs` 2,400 s); joining the strike moves only fst and heat, never fs.
 - Engine: survives. `TRF_CvFeqBuild` (trf_convoy.script:1214-1252) puts transports and escorts in `TRF_Feq_<n>` on the Trade team; InitTeamScript rows 7-8 make Vks-Trade and Kfni-Trade neutral, so the wing is neutral to its target until a group write, and whether `Flight:Attack` fires on a neutral group is unverified. No killer identity reaches Lua (K2 not built), and `TRF_CvFeqGone` (1629-1640) sends every non-player loss to `TRF_CvFeqTaken`. The only triggers on the convoy are attack triggers on `PLAYER_GROUP`; `TRF_CvFeqStart` (1312-1355) still rolls the clan raid and `TRF_Feq_Step` (1600) still spawns wave 2; `TRF_CvFeqShips` (1409-1424) does not count strike ships; the contract hail needs `fq.atk` nil, so the player must hail inside the 20-40 s window. Fix: `SetGroupRelation` both ways as `TRF_CvFeqTriada` does, and the strike group's relation to `PLAYER_GROUP` from the attacker's fst (`TRF_CvFstRel`) and the war rule; a strike flag `fq.sk` that skips the clan-raid roll, pre-sets `fq.w2d = 1`, counts strike ships against `cap_feq` with the wing shrunk to fit, and sends a non-player loss to a new "struck" outcome that never calls `TRF_CvFeqTaken`; an off-screen strike branch in `TRF_Convoy_Tick`; an in-game check that `Attack` fires once the relation is WAR.
 - Value: refuted. fs is per region, and the attacker's fs stays at 3 in an owner's interior region where it has no trader system, so a gap of 2 needs owner fs <= 1, while an equipment convoy needs owner fs >= 2 (TDR:1022): the gate can never fire there. One feq record map-wide (25 % per tick after a 20-leg cooldown, about 1 per 34 legs; TDR:1023) plus the 30-leg cap gives a few strikes in many hours, mostly off screen. On screen it replaces the existing clan raid one for one (same portal raid, waves and contract; TDR:1041-1042), so it would not read as new. Зуул and the Fleet mod describe frequent, incidental fights with no contract; B01 is a rare, tipped convoy-defence job. Fix: (a) a fixed strike chance (for example 35 %) on Vks or Kfni feq records in place of the clan-raid roll, with no fs condition, optionally +15 % when the attacker's fs in the adjacent border region exceeds the owner's; (b) announce strike records at 100 % in the rumour, the booming answer and the dock tip of owner-side stations within 3 jumps, not gated on rung 4, and leave a lasting scar after an off-screen expiry; (c) on screen, escorts and wave 1 break off to fight the strike wing whatever the player does; no defence contract by default (only at owner fst 6+); the player watches, loots capped wreck pods or joins a side under the war rule.
 
@@ -770,17 +770,17 @@ Recommendation: defer, folded into A06 as its purchase form. The overlap and val
 
 Scores after the fixes: concept 4 (from 5), the other lenses unchanged, total 18, deferred. The medbay and comms are dropped; the one field workshop still meets C3, but C7 narrows to a single effect.
 
-### 2b.7 B10 Clan temperaments: four fixed raid styles for the 15 region clans (total 19)
+### 2b.7 B10 Clan temperaments: four fixed raid styles for the 8 region clans (total 19)
 
 Answers request 9.
 
-Pitch: each region clan (trf_region clan1..clan15, "Rust Jackals" to "Silent Hooks") gets one of four fixed temperaments from a static table. Butchers skip the demand step and fire on wrecks and survivor pods. Hagglers always demand first, let a complying trader go and leave at their first loss. Ghosts approach cloaked, arrive without the usual tier warning and flee early. Planners hit only convoys and TT3+ traders when their side outweighs the target and break off after one ship lost. The temperament only sets existing raid knobs; the player learns it from what the clan does and from dock lines.
+Pitch: each region clan (trf_region slots 1..8 on the generated map, "Rust Jackals" to "Night Kites"; names 9..15 are spares) gets one of four fixed temperaments from a static table. Butchers skip the demand step and fire on wrecks and survivor pods. Hagglers always demand first, let a complying trader go and leave at their first loss. Ghosts approach cloaked, arrive without the usual tier warning and flee early. Planners hit only convoys and TT3+ traders when their side outweighs the target and break off after one ship lost. The temperament only sets existing raid constants and tune keys; the player learns it from what the clan does and from dock lines.
 
 Player loop: the player meets a raid, and its behaviour tells which clan it is (no demand, a demand, a late radar contact); the player decides how fast to commit (Butcher pods are gone within about a minute, a Haggler raid ends in comply if the player waits). Off screen the temperament shapes the region's results (more losses or more shortages), reported in news, beacon counts and scars. Signals: after a clan's first raid in a visit the dockmaster tip names the habit, the raided trader's hail gains "who hit you", and news uses the temperament word. The table is static per slot, so what the player learns stays true for the save, and a regrown clan keeps its slot's temperament.
 
 Reuses: trf_raid (`nd`, `comply_min`/`comply_max`, `low_hp`, `leave1`/`leave2`, a target filter), trf_fits (Stealth1 on Ghost ships), trf_survive (pods), the trf_station tip, a trf_hail answer, the trf_ui arrival line, news.
 
-Engine needs: the raid knobs in `TRF_Rd_K` and the tune table (trf_raid.script:28, 49-52) and `TRF_Rd_ComplyOf` (1311-1314). Ghosts: `Stealth1` (Modules.xml:3987) through `AddModule` and the AI Cloaking strategy, both untested, with a closer start and an early flee as fallback. Butchers: `Flight:Attack` on a pod carcass, untested, with the mod deleting one pod per 20 s near a Butcher ship as fallback. No new natives. Save: 0 bytes.
+Engine needs: the raid constants in `TRF_Rd_K` and the tune keys in `TRF_Raid_TuneDef` (trf_raid.script:28, 49-52) and `TRF_Rd_ComplyOf` (1311-1314). Ghosts: `Stealth1` (Modules.xml:3987) through `AddModule` and the AI Cloaking strategy, both untested, with a closer start and an early flee as fallback. Butchers: `Flight:Attack` on a pod carcass, untested, with the mod deleting one pod per 20 s near a Butcher ship as fallback. No new natives. Save: 0 bytes.
 
 Evidence: Колючий names Capricorn clans by tactic: Хищники keep firing at wrecks and pods, Призраки use stealth, Пантеры plan raids for minimal losses [src 2]; he also asks that traders fight back to the last [src 1]. Wishlist 4.2 lists per-clan tactics on top of tiers. Theory W1 (learnable Nemesis temperaments).
 
@@ -788,22 +788,22 @@ Cost: S. Risk: Butchers raise trader deaths and bring Bust sooner (check with a 
 
 | Lens | Score | Reason |
 |---|---|---|
-| feasible | 4 | A static table over existing knobs, 0 bytes, host-testable. The Ghost cloak and the Butcher pod attack are untested engine paths with script fallbacks. |
-| fit | 4 | Clan identity through existing knobs and no new system; static per slot, so regions still cycle; Stealth1 is a civilian shop module, so S36 holds. Risks to the survivors budget, the pro and Bust cycle and the tier warning. |
+| feasible | 4 | A static table over existing raid constants and tune keys, 0 bytes, host-testable. The Ghost cloak and the Butcher pod attack are untested engine paths with script fallbacks. |
+| fit | 4 | Clan identity through existing raid constants and tune keys and no new system; static per slot, so regions still cycle; Stealth1 is a civilian shop module, so S36 holds. Risks to the survivors budget, the pro and Bust cycle and the tier warning. |
 | value | 4 | Колючий E19 in this form and wishlist 4.2; one poster; Nemesis temperaments; Ghosts touch the "no silent death" complaint. |
 | cost | 4 | S for the Butcher, Haggler and Planner rows; Ghost and pod paths later; trf_raid is the largest module (2655 lines). |
 | concept | 3 | C4, C5, C6, C7 and C8; weak C1; no C2, C3 or C9. |
 
 Skeptics:
 - Overlap: refuted. Butchers shooting or deleting pods conflict with the built survivors rules: witnessed pods appear 5 s after a witnessed loss and live `sv_ttl` 4 legs, an expired pod counts as rescued, no slaver follows a witnessed loss (06:38), the raid leaves `gone_t` 5 s after the trader is gone (trf_raid.script:50), and pod taking belongs to the step 2 slaver on seeded beacons. The off-screen claims have no carrier: C8 off-screen loss rolls and survivors src 3 are not built, and shortages come from the pro rank at Bust entry (trf_region.script:1015). Ghosts dropping the tier line remove a built signal (the A08 lesson), and cloak at T3 already exists (EvilEye_pir3). "Who hit you" duplicates the trouble page and costs an answer slot. "Butchers" collides with the T4 `Butcher_pir1` row (trf_raid.script:10, 870). A hard Planner filter can stall low-tier regions below Raids. Fix: an on-screen static table: Butchers renamed (for example "Cutters") with `nd` = 1 and a lower leave HP, no pod attack or deletion and no lingering, at most a raised `sv_slave_on` once step 2 slavers exist; Hagglers with demand first, wider comply clamps and leave at the first loss; Planners with a target weight, not a filter, and early break-off, checked over 200 legs; Ghosts keep the tier line plus a temperament word, cloak on the approach only after an in-game test; signals in the existing trouble page, tip and news; no off-screen claims until C8; A18 may later rewrite a slot.
-- Engine: survives, except for the Ghost cloak. `nd`, the comply clamps and the leave knobs become per-slot Lua lookups (`TRF_Rd_Slot`, trf_raid.script:1278-1280); pods are mod objects with saved handles (`TRF_SVH_<idx>_<j>`), and `o:Delete()` exists (trf_survive.script:210). Ghosts fail as specified: no order starts or stops the Cloaking strategy, `Carcass` has `AddModule` but no `RemoveModule`, and nothing reads cloak state, so "drop the cloak at the first shot" cannot be done; vanilla never cloaks an NPC through `AddModule`. Fix: stage Ghost raids as vanilla stages decloak ambushes: spawn 400-600 units from the target trader, `ship:PlayFX("Cloak Out.shfx")` on each ship (NightRaid_Vulcan.script:159-165), "unidentified contacts" in the arrival line, early flee; for Butchers the pod-deletion fallback as the primary path (one trf_survive pod per 20 s within 300 units, the record's count decremented, a leader line); per-slot lookups in trf_raid.
+- Engine: survives, except for the Ghost cloak. `nd`, the comply clamps and the leave constants in `TRF_Rd_K` become per-slot Lua lookups (`TRF_Rd_Slot`, trf_raid.script:1278-1280); pods are mod objects with saved handles (`TRF_SVH_<idx>_<j>`), and `o:Delete()` exists (trf_survive.script:210). Ghosts fail as specified: no order starts or stops the Cloaking strategy, `Carcass` has `AddModule` but no `RemoveModule`, and nothing reads cloak state, so "drop the cloak at the first shot" cannot be done; vanilla never cloaks an NPC through `AddModule`. Fix: stage Ghost raids as vanilla stages decloak ambushes: spawn 400-600 units from the target trader, `ship:PlayFX("Cloak Out.shfx")` on each ship (NightRaid_Vulcan.script:159-165), "unidentified contacts" in the arrival line, early flee; for Butchers the pod-deletion fallback as the primary path (one trf_survive pod per 20 s within 300 units, the record's count decremented, a leader line); per-slot lookups in trf_raid.
 - Value: refuted. The request is real (research-ru.md:72; wishlist 4.2) but backed by one poster. Two temperaments and the main Butcher tell would not be noticed: staged and convoy raids already have no demand step (v02-spec.md:247; trf_raid.script:12, 1279); a Haggler comply sends no distress line; a Planner shows as an absence; off-screen differences are simulation nobody notices (Sylvester); raid density already draws complaints (E18; research-mods.md:94). Fix: (a) one opening radio line per temperament on every raid kind, naming the clan; (b) the Butcher tell is the visible pod shooting with a leader line while the player is within `R_radio`; (c) a trader line when a Haggler comply ends within `R_radio`; (d) Planners act visibly: two flights from two directions, or a call-off line when outweighed; (e) no region-outcome claims; (f) at most one temperament line per raid.
 
 Recommendation: build with the fix (S), as an on-screen static table that A18 succession can later rewrite.
 - Lines: one opening radio line per raid, naming the clan and its temperament, on every raid kind (value fix (a), (f)). This is the main tell, because raids without a demand already exist.
 - Cutters (Butchers renamed, overlap fix): `nd` = 1 and a lower leave HP, plus the "no talk" opening line. No pod attack, no pod deletion and no lingering: the overlap fix wins over value fix (b) and the engine fix's deletion path, because pod lifetime, witnessed-pod pay and the slaver role are set by the built survivors module. Once survivors step 2 slavers exist, a raised `sv_slave_on` in Cutter regions is the pod-taking form.
-- Hagglers: demand first, wider comply clamps, leave at the first ship lost; a trader line "<clan> took the cargo and let us go" when a comply ends within `R_radio` (value fix (c)).
-- Planners: a target weight toward convoys and TT3+ traders and early break-off, not a filter (overlap fix), with a call-off radio line "<clan>: too hot, pull back" when outweighed (value fix (d)). The two-direction arrival is not taken, because it adds a flight per raid. A host check over 200 legs confirms that every Planner region still reaches Raids and that the cycle mean holds.
+- Hagglers: demand first, wider comply clamps, leave at the first ship lost; a trader line "`<clan>` took the cargo and let us go" when a comply ends within `R_radio` (value fix (c)).
+- Planners: a target weight toward convoys and TT3+ traders and early break-off, not a filter (overlap fix), with a call-off radio line "`<clan>`: too hot, pull back" when outweighed (value fix (d)). The two-direction arrival is not taken, because it adds a flight per raid. A host check over 200 legs confirms that every Planner region still reaches Raids and that the cycle mean holds.
 - Ghosts: spawn 400-600 units from the target trader and at least 400 units from any station, with `PlayFX("Cloak Out.shfx")` on each ship, and flee early (engine fix). The tier arrival line stays and gains "unidentified contacts" as its temperament word (the overlap fix keeps the tier signal; the engine and value fixes add the phrase). No `Stealth1` and no Cloaking strategy. Ghost rows ship after the in-game `PlayFX` test (section 6 item 29).
 - Signals: the temperament word in the existing hail trouble page, the dockmaster tip and news; no new hail answer (overlap fix).
 - Off screen: no region-result claims until C8 off-screen loss rolls exist (both fixes).
@@ -862,9 +862,9 @@ Scored but not sent to the skeptics, so unrefuted, not confirmed. Lens scores in
 | B16 | Bad paymasters | 18 | 5/3/3/4/3 | 16 | Pirate-dock offers state the clan's word in the offer line ("pays on the nail", "pays late", "known to stiff crews" at 30 %); a stiffed fee becomes a debt whose paymaster flies in the region for 6 legs: demand it, take it by force, or let it go. Evidence: Зуул [src 13], skorpionxxl [src 12], Privateer fixers [src 110], Battle Brothers betrayal [src 102]. | Only pirate clients, stated before acceptance, never the player's own money; Stormcrow and Kish warn that it annoys players [src 85]. Under W1 the paymaster is a saved record (clan, sum, system, end leg) that spawns as a flight when the player enters that system before the end leg; nothing flies off screen. The deferred A28 fence double-cross (2.8) is a second source for the request. The paymaster group starts neutral to `PLAYER_GROUP` (`SetGroupRelation` both ways) and turns to war on "attack". Small reach (S35 needs heat >= 5 and pro >= 7). The attack outcome (mark := 0) needs B12. The grade can use the B10 temperament. Save: est. 40 bytes (ideator estimate). |
 | B12 | Clan marks and the amnesty run | 15 | 4/2/4/2/3 | 12 | Paid raids for a clan earn a mark 0-3 (greetings, a joint raid, paid stash intel); the way back is an amnesty run escorting an FTU envoy out of the region while marked clans intercept; success clears heat and marks and raises fst to at least 4. Evidence: Колючий [src 1], E67 [src 87], skorpionxxl [src 12], Pirates! Amnesty Mission [src 109]. | Fit 2: the free amnesty replaces the paid heat reset and the 09 settlement (a sink, like the free heat step cut in 4.3); a heat-5 player with no marks gets it free every 10 legs; mark 3 duplicates paid intel and the survivor sale; mark 1 removes the 04 grudge. Could return if the run lowers heat one step or needs the fee and marks >= 1, with mark 3 dropped. The cross-system envoy needs the S14 write; an allied pirate flight has no in-game precedent. Save: est. 70 bytes (ideator estimate). |
 
-### 2b.10 Killed by the lenses (round 2)
+### 2b.10 Rejected by the lenses (round 2)
 
-None. The lens step of round 2 killed no candidate; every scored B-idea is a finalist (2b.1-2b.8) or in 2b.9.
+None. The lens step of round 2 rejected no candidate; every scored B-idea is a finalist (2b.1-2b.8) or in 2b.9.
 
 ### 2b.11 Requests answered by a rejection
 
@@ -893,7 +893,7 @@ Every row of `../research/community-wishlist.md` 4.2 "Still open" (26 rows, in t
 | Inter-system convoy contracts (NCW plan [src 96]) | Rejection: TDR C1 cross-system escort contracts; no fifth convoy form | 2b.11 |
 | Client competition per region [src 89] | A22 corporation carriers: pull-out after repeated attacks, a supply-run charter job after escorts; the share contest was cut (4.3) | 2.11 |
 | Hand-written contract board per region | B05 (unrefuted, next to the skeptics); A07 authored chains | 2b.9, 2.5 |
-| Rumours with concrete clues | A16 sourced tips with a system plus a landmark | 2.7 |
+| Rumours with concrete clues | A16 sourced tips with a system plus a landmark; stash step 2 intel | 2.7 |
 | Secrets with lore | A07 derelict trails; A08 static signals | 2.5, 2.2 |
 | Crew chatter and dated news | B06; dates in the A16 ring; News screen dates rejected | 2b.1, 2b.11 |
 | Escalation to bounty hunters | Planned C-item C7; `merc_hunt` behind E0.13 | 2b.11 |
@@ -906,7 +906,7 @@ Every row of `../research/community-wishlist.md` 4.2 "Still open" (26 rows, in t
 | Stealth, recon and sabotage jobs; patrol jobs paid in gear | B14 dispatch interception (unrefuted) | 2b.9 |
 | Jobs shown on the map; no disguised task | Rule in section 0: a task that can fail shows a marker or a card first. Met by the built surfaces: offer boxes, mission cards and Job board rows before acceptance, nav markers on accepted targets. Must obey it: A08 (the lure fight comes after the threat word and the radar contact, and nothing in it can fail), A16 (a tip about a raid due on a lane carries its area marker before the raid), B14 (the offer states the 20 s clock and the witness range before acceptance) | section 0 |
 | Timed caravan shops | A27 Boom fairs (unrefuted) | 3 |
-| Player-owned assets and territory | Rejected: W11 territory rule and the rejected table in `worldbuilding-after-traffic.md` ("Leased station": a permanent player place is a form of settling; "Outpost construction": tiny reach). Wolves Freight stays the only owned asset | section 0 |
+| Player-owned assets and territory | Rejected: W11 territory rule and the rejected table in `worldbuilding-after-traffic.md` ("Leased station": a permanent player place is a form of settling; "Outpost construction": tiny reach). Wolves Freight stays the only owned asset; A24 public works (section 3) is close to both | section 0 |
 | Arena, cinema, teleporter | Rejected (engine, no screen): an arena or cinema needs a new UI screen (W3), and a teleporter breaks story scripts unless gated on quest state; both mod authors flag loot exploits (wishlist 4.2 note) | this row |
 | Commodity trade | Not built: the EGT decision (wishlist 1.13, PN 8); cargo stays as labels on traffic and jobs | this row |
 
@@ -943,9 +943,9 @@ These 24 ideas were scored but not sent to the skeptics, so they are unrefuted, 
 
 ## 4. Rejected or deferred
 
-### 4.1 Killed by the lenses
+### 4.1 Rejected by the lenses
 
-None. The lens step of this round killed no idea; every scored idea is a finalist (section 2) or in the section 3 table. A04 (total 10) is the lowest. Round 2 also killed none (2b.10).
+None. The lens step of this round rejected no idea; every scored idea is a finalist (section 2) or in the section 3 table. A04 (total 10) is the lowest. Round 2 also rejected none (2b.10).
 
 ### 4.2 Dropped at merge
 
@@ -1059,7 +1059,8 @@ Wave 1: identity and information on existing channels. No new module dependency;
 6. B10 clan temperaments (S). Cutter, Haggler and Planner rows first, with the 200-leg host check; the Ghost rows after the `PlayFX` test (section 6 item 29). Pod taking by Cutters waits for survivors step 2 slavers (item 11).
 7. B02 debrief pool (S), only after the user approves the reversal of the "no XP from mod jobs" lines (2b.4). Ships with cfg `debrief_xp` 0 until the Q4 SLOG run (section 6 item 26), then 1. It hooks the pay points of built modules (parcel, charter, captain, sweep contract, escort).
 
-Wave 2: places to find, early-to-mid band (ch 5+). Needs the stash step 1 in-game results (loot drop E21, container pickup E0.4) and the runtime carcass persistence answer (E0.8).
+Wave 2: places to find, early-to-mid band (ch 5+). Needs the stash step 1 in-game results (loot drop E7.2, container pickup E0.4) and the runtime carcass persistence answer (E0.8).
+
 8. Clan stashes step 2 bundle: A15 guarded cache (T3-T4 caches, so mostly mid band and Raids from ch 5 under the score-only tier) and A10 treasurer handover, both fed by A16.
 9. A07 derelict trails (M). Ch 5+, strict gate. Three chains first, one per stage band, placed in never-named systems so the mid and late chains stay reachable in ch 10-20; the early chain's item fits L_w 3-5. Needs the `PlaceModule` check (section 6 item 1).
 10. A08 static signals (S). After A07, so the flight recorder can point at a trail; until then it points at a stash. Ch 5+. Ship the trigger, the search and the flight recorder first; the lure branch waits for item 11.
@@ -1067,6 +1068,7 @@ Wave 2: places to find, early-to-mid band (ch 5+). Needs the stash step 1 in-gam
 12. A12 step 2, survey layer (M, optional). After A07 and A08, so readings can point at a trail or signal; a reading never reveals a stash (2.6).
 
 Wave 3: mid band contracts and crew requests. Needs ladder step 2 and CHECK C4.
+
 13. A36 lane warrant. Ladder step 2 warrants open at rank 7, which 00 places in chapters 8-9; build the lane warrant together with the kill warrant so they share `warrant_cd`, `warrant_rs` and the prize gap.
 14. B03 crew requests, as A01 step 2 (M). After item 5 and after CHECK C4 or E0.6 passes; deadline requests from chapter 5; no perk grants.
 15. B01 deep strike (M). After the in-game checks of section 6 item 27 (`Attack` after the group WAR write, 8x with 10+ ships). Mid and late band, where Vks and Kfni equipment convoys run; on-screen strikes share their rate limit with design 11 pushes if those are built.
@@ -1082,7 +1084,7 @@ Union of the open engine questions across the recommended forms, deduplicated. "
 1. `PlaceModule` hand-over: an item placed within 60 units of a moving mothership is adsorbed at 8x, and a reload after the save mark cannot place it twice (WB fact 6; vanilla Quests/mission_8a/EmpireHelpers_Endoria1_2.script:61, AI.ini `moduleAdsorbtionRadius`). Gates A07, A15. Test.
 2. `PercentToExcludeInventory = 40;25;40`: which value applies and whether it rolls per item on a one-item inventory (read-natives.md 283; trader-progression E7). The recommended forms avoid it; it still matters for any filler cargo. Gates A07, A15, A10. Test.
 3. Runtime carcass and station persistence in the location snapshot, and recreate-on-entry as the fallback (E0.8, WB fact 1). Gates A07, A15. Test.
-4. Container loot pickup from an `*_inv` container (E0.4) and the stash step 1 loot drop (E21). Gates A10, A15. Test.
+4. Container loot pickup from an `*_inv` container (E0.4) and the stash step 1 loot drop (stash-spec E7.2). Gates A10, A15. Test.
 5. `TRF_JobAdd`, `TRF_JobState`, `TRF_JobRemove` in game (CHECK L1-L5) and the `AddQuest` notice each time it is called. `install.sh` writes `jobs_log=0`, so the fallback is the default. Gates A07, A12, A16. Test.
 6. `HideAnswer`/`ShowAnswer` on the spare provider slot of `TRF_Hail.xml` msg00 (17-answer limit) and on the merc and wq pages. Gates A05. Test.
 7. Perks: `Player_Group:HavePerk` for each Perks.xml name used, `Pilot:HasProperty` for specials such as `hack_ship_1`, and `GetPilot(name)` plus `IsBasePilot()`/`GetSide()` to name the squad pilot (nil on a miss, item 24). Also how often common squads carry each perk. Gates A05. Offline (Perks.xml, PilotProperties.script) plus a test.
@@ -1102,7 +1104,7 @@ Union of the open engine questions across the recommended forms, deduplicated. "
 
 Added after critic round 1 and round 2 (2026-11-04):
 
-21. Destination-portal check: whether the mod can tell which portal the mothership is jumping through, and so the target system in map.script, before the jump completes. The before-jump hooks exist (`TRF_Raid_BeforeJump`, `TRF_Haunt_BeforeJump`); whether they see the portal is open. Until it passes, A12 step 1 warns at the dock only. Gates the A12 step 1 jump warning. Offline (trf code) plus a test.
+21. Jump warning timing: `TRF_BeforeJump(dest, how)` already passes the destination to every v1 module (trf_freight resolves it with `TRF_GnSysIdx`; the hook fired in game, PROGRESS E0.1), but it runs after the player confirmed the portal box, and galaxy-map and quest jumps bypass it. A warning the player can act on needs a hook at the portal box, where vanilla `PORTAL_*_Action` has set `dest_location`. Until that is checked, A12 step 1 warns at the dock only. Gates the A12 step 1 jump warning. Offline plus a test.
 22. A05 answer slot: the combat-hail help offer (`../hail-spec.md` row 4) is one page with no menu, shown during the fight, so it has no answer slot. The Repairman answer needs the hail menu (msg00 spare slot) to open for a trader in `r.st == "flee"` with why "hp" once its raid record has ended; trf_hail refuses while a raid is open (trf_hail.script 395, 441). Gates A05. Test.
 23. Captured-pilot store: held captives are `RescuePod` entries in the mothership inventory, each storing a pilot name and callsign (hand-in 0x53a2c0, name at `+0x4d4`; research-engine2.md section 4). No Lua read lists their templates or counts. `GetInventory():DeleteModule("RescuePod")` removes one unknown captive and `Inventory:IsExist("RescuePod")` tests for any; both are untested on engine pods. A `TRF_HeldPilots()` read is possible as an extension of the planned `TRF_InvList` walk (exe-hook-survey row 8); a targeted release calls the engine remover 0x61af20 and needs the API.md evidence rules. Gates A30 (named ransom stays on mod-owned pods) and B13 (sweep fighters keep their engine pods for the ladder POW chain). Offline done; test `DeleteModule` and `IsExist`.
 24. `GetPilot(name)` for an absent pilot returns nil: 0x5e7410 calls the name lookup 0x527eb0 and pushes nil on a miss (`lua_pushnil` 0x65e1d0 at 0x5e74ba-0x5e74bf). This settles research-engine2.md unknown 4 for pilots never created. A pilot that exists but is dead or not in the squad is filtered with `IsAlive`, `GetSide()=="Player"` and `IsCanSayReplica`. Names are templates (Hero, Lastochka, Lastochka2, Kalem and the `TRF_SpCrew` list), not quest globals such as `LastochkaSpeaker`, which `ClearGlobals` erases. Gates B06, B03 and item 7. Static result; test `IsAlive` on a pilot removed and killed by vanilla script.
@@ -1142,6 +1144,7 @@ SW community, elite-games.ru:
 19. [src] Star Wolves Remastered, nagakasi1, 07-10-2026 (goals include "поиск кладов"): https://www.elite-games.ru/conference/viewtopic.php?p=3772487#3772487
 
 SW community, Steam:
+
 20. [src] Drakezero, SW2 review, 13.4 h (DE; empty routes, enemies always at one point on patrol): https://steamcommunity.com/id/Drakezero/recommended/46280/
 21. [src] R10, SW3 review, 40.8 h (skill-gated quest answers, trader rumours, escort flying boring, x16): https://steamcommunity.com/profiles/76561198031191057/recommended/46260/
 22. [src] R14, SW2 review (4-7 jump jobs): https://steamcommunity.com/profiles/76561198130223593/recommended/46280/
@@ -1157,11 +1160,13 @@ SW community, Steam:
 32. [src] T16, "Hidden stash map": https://steamcommunity.com/app/46260/discussions/0/594033220190808743/
 
 Series press:
+
 33. [src] AG.ru, Star Wolves 2 review: https://ag.ru/games/star-wolves-2/review
 34. [src] Igromania, Star Wolves (SW1) review: https://www.igromania.ru/review/4143/zvezdnyie-volki.html
 35. [src] PCGamesN, BattleTech review (Argo upgrades): https://www.pcgamesn.com/battletech/battletech-pc-review
 
 X series:
+
 36. [src] X3 wiki, Patrol: https://x3.solasistim.net/index.php/Patrol/
 37. [src] Igromania, X3 Земной конфликт guide (patrol base fee): https://www.igromania.ru/article/14832/Rukovodstvo_i_prohozhdenie_po_'X3_Zemnoy_konflikt'.html
 38. [src] Steam X4, "Faction missions are absurd?": https://steamcommunity.com/app/392160/discussions/0/3042732434754818936/
@@ -1170,6 +1175,7 @@ X series:
 41. [src] Egosoft forum, X-Missions Reloaded: https://forum.egosoft.com/viewtopic.php?p=4401176
 
 Other space games:
+
 42. [src] Steam Star Valor discussion (marauder hideouts): https://steamcommunity.com/app/833360/discussions/0/3464976518713432312/
 43. [src] Rebel Galaxy Outlaw tip sheet (p.4, rumours and grid squares): https://rebel-galaxy.com/wp-content/uploads/2019/07/Rebel-Galaxy-Outlaw-Tip-Sheet.pdf
 44. [src:snip] Elite Dangerous wiki, Distress Call: https://elite-dangerous.fandom.com/wiki/Distress_Call
@@ -1194,11 +1200,13 @@ Other space games:
 63. [src] THD forum, Freelancer and Discovery mod (blockaded jump gate): https://forum.thd.vg/threads/freelancer-and-discovery-mod.21076/
 
 Mount & Blade:
+
 64. [src] TheSixthAxis, Bannerlord prisoners, ransom and recruit guide: https://www.thesixthaxis.com/2020/04/04/mount-blade-2-bannerlord-prisoners-ransom-recruit-guide/
 65. [src] Steam Bannerlord discussion (ransom quest as a model): https://steamcommunity.com/app/261550/discussions/0/2265817650399546939/
 66. [gk] Nexus Mods, Vivid World (false rumours with a source line; search snippet): https://nexusmods.com/mountandblade2bannerlord/mods/13395
 
 Design writing:
+
 67. [src] GamesBeat, Nesmith on Radiant Story: https://gamesbeat.com/bethesdas-nesmith-reflects-on-the-difficult-birth-of-skyrims-radiant-story-system/
 68. [src] GamesBeat, Shadow of Mordor's Nemesis system: https://gamesbeat.com/shadow-of-mordors-nemesis-system-draws-from-burnout-football-and-an-architecture-book/
 69. [src] AlifePlus readme (ru): https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/readme_ru.txt
@@ -1214,6 +1222,7 @@ Design writing:
 Added for section 2b (2026-11-04). Wishlist and research keys in brackets.
 
 SW community, elite-games.ru:
+
 78. [src] megaded, 06-04-2010 (E3; "прорыв ВКС в системы КФНИ", frequent raids): https://www.elite-games.ru/conference/viewtopic.php?p=2422519#2422519
 79. [src] Necron1994, 07-04-2010 (E8; Vks and Kfni ships pass each other without firing): https://www.elite-games.ru/conference/viewtopic.php?p=2423007#2423007
 80. [src] Marafon, 01-09-2010 (E36; a calendar and dated news): https://www.elite-games.ru/conference/viewtopic.php?p=2496064#2496064
@@ -1228,6 +1237,7 @@ SW community, elite-games.ru:
 89. [src] NCW client competition, 05-03-2023 and 14-03-2023 (E51): https://www.elite-games.ru/conference/viewtopic.php?p=3725707#3725707 and https://www.elite-games.ru/conference/viewtopic.php?p=3726096#3726096
 
 SW community, Steam:
+
 90. [src] SW2 review, 2.0 h (SR20; RU, pods handed to the Patrol): https://steamcommunity.com/profiles/76561197988322673/recommended/46280/
 91. [src] SW1 reviews (SR25, "квазисвободы"; SR26, mutually exclusive missions): https://steamcommunity.com/id/festratori/recommended/46270/ and https://steamcommunity.com/profiles/76561197993135732/recommended/46270/
 92. [src] SW3 "Avoid this game!!" (ST9; Fleet mod, shipyard): https://steamcommunity.com/app/46260/discussions/0/558754899555691201/
@@ -1237,6 +1247,7 @@ SW community, Steam:
 96. [src] NCW update log, Steam group SW3_NCW (M2; inter-system convoy plan): https://steamcommunity.com/groups/SW3_NCW/discussions/0/1743352529773501941/
 
 Other SW communities:
+
 97. [src] GOG SW3 reviews (Manganakus 2016, bbbryan14 2016, pzogel 2022, Andre_geo 2023, grim_seraph 2026; research-community2 C4): https://www.gog.com/en/game/star_wolves_3_civil_war
 98. [src] GOG SW1 reviews (bbbryan14 2016, departures that do not matter; research-community2 C2): https://www.gog.com/en/game/star_wolves
 99. [src] Overclockers.ru, TIMBERWOLF, 26-06-2009 (levelling pilots off the story rails; research-community2 C23): https://forums.overclockers.ru/viewtopic.php?f=13&t=317683
@@ -1244,6 +1255,7 @@ Other SW communities:
 101. [src] Playground, ЗВ1 forum "Вопросы по миру игры", 2025 (what mercenaries do with corporate and patrol pods; research-community2 C13): https://www.playground.ru/star_wolves/forum/voprosy_po_miru_igry-1782170
 
 Squad and classic games:
+
 102. [src] Battle Brothers Dev Blog #61 (contract betrayal; mercsquad S6): https://battlebrothersgame.com/?p=7430
 103. [src] BattleTech random events guide (events on tagged pilots; mercsquad S17): https://kosgames.com/battletech-random-events-guide-v2-0-35013
 104. [src:snip] The design philosophy of BattleTech (the small event pool; mercsquad S20): https://persenche.medium.com/the-design-philosophy-of-battletech-2-1132a0eb388

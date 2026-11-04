@@ -485,7 +485,7 @@ Verdicts as defined in section 0. "Games" lists where the pattern appears in the
 | Pilot injury state | BattleTech, Battle Brothers, MW5, XCOM 2, Darkest Dungeon, Far Cry 2 buddies | medium | Engine check: remove or suspend a perk, effect of `Disabled` (15.9 T5) |
 | Event answers gated by a crew member's trait | FTL, Battle Brothers, BattleTech, Crying Suns | cheap | `Pilot:HavePerk`, non-combat perks first; the NPC names a missing perk (15.9 T1) |
 | Short pilot events naming one or two crew | BattleTech, Battle Brothers, Wartales, Darkest Dungeon 2 | cheap | Curated pool, once per save, off in story missions (15.9 T2) |
-| Crew trait gained through events | Battle Brothers, BattleTech, Wartales, XCOM 2 | cheap | Rare `SetPerk` grant, one per pilot per chapter; the C9 answer (15.9 T3) |
+| Crew trait gained through events | Battle Brothers, BattleTech, Wartales, XCOM 2 | cheap | Rare `SetPerk` grant (15.9 T3); not taken in round 2, where B02 is the C9 answer (proposals 2b.4, 2b.5) |
 | Morale or mood meter | Battle Brothers, BattleTech, Wartales, Darkest Dungeon | medium | Rejected: no screen; BT morale maxed, DD had to show numbers (15.9 T4) |
 | Pair banter, quarrels and bonds | JA2, XCOM 2, Wartales, Darkest Dungeon 2 | cheap | Scripted two-line radio pairs, once per save, no hidden value (15.9 T6) |
 | Wages, upkeep and desertion | Battle Brothers, BattleTech, Wartales, JA2 | medium | Rejected: story pilots must not leave (15.9 T7) |
@@ -542,7 +542,7 @@ Collected from the notes; check `design/mod-research/exe-hook-survey.md` and `mo
 
 Added 2026-11-04 from `research-mercsquad.md`. The critic of round 1 found that the genre closest to the Star Wolves concept (named pilots, contracts, company reputation) had only [gk] lines, although criteria C1 and C2 (11.8) depend on it. Games: Battle Brothers (BB, 2017), BattleTech (BT, 2018), MechWarrior 5: Mercenaries (MW5, 2019), XCOM 2 and War of the Chosen (WotC) (2016, 2017), Jagged Alliance 2 (JA2, 1999), FTL: Faster Than Light (2012), Wartales (2023), Darkest Dungeon 1 and 2 (DD, 2016, 2024). The Fandom wikis for BB, JA2, XCOM and FTL returned 402, PC Gamer article bodies came back truncated, and techraptor and Medium returned 403; claims from those sites carry [src:snip]. Pattern IDs T1-T15 are scored in 15.9.
 
-**15.1 SW3 levers checked [local].** `mods/traffic/design/mod-research/lua-natives.md` lines 399-430 list `Pilot:Message(textKey, seconds)` (radio line), `Pilot:HavePerk`, `Pilot:SetPerk`, `Pilot:IsBasePilot`, `Group:HavePerk`, `GetPilot(name)`, `Team:RemovePilot`, `AddPilotToPlayer`, `AddPlayerExperience(n)` (10 vanilla calls) and `AddPost(mailId)` for news. No perk-removal native is listed. `Perks.xml` in the GOG install has 66 perks. Besides combat perks it holds `Black_Market`, `F_of_Merchant`, `Imperial_Agent`, `Accountancy`, `Economics`, `Economics_Exp`, `Repairman`, `Repairman_Exp`, `Tech_Adaptation_Alien`, `Learner`, `Instructor` and `Lone_Wolf`. One perk is named `Disabled`: no requirements, cost 0, unknown effect. Off-mission kill XP is x0.1 (11.7).
+**15.1 SW3 pilot natives and perks checked [local].** `mods/traffic/design/mod-research/lua-natives.md` lines 172-199 and 403-451 list `Pilot:Message(textKey, seconds)` (radio line), `Pilot:HavePerk`, `Pilot:SetPerk`, `Pilot:IsBasePilot`, `Group:HavePerk`, `GetPilot(name)`, `Team:RemovePilot`, `AddPilotToPlayer`, `AddPlayerExperience(n)` (10 vanilla calls) and `AddPost(mailId)` for news. No perk-removal native is listed. `Perks.xml` in the GOG install has 66 perks. Besides combat perks it holds `Black_Market`, `F_of_Merchant`, `Imperial_Agent`, `Accountancy`, `Economics`, `Economics_Exp`, `Repairman`, `Repairman_Exp`, `Tech_Adaptation_Alien`, `Learner`, `Instructor` and `Lone_Wolf`. One perk is named `Disabled`: no requirements, cost 0, unknown effect. Off-mission kill XP is x0.1 (11.7).
 
 **15.2 Battle Brothers (2017).**
 - Activity: world-map events with choices, contracts from settlements and noble houses, player-chosen ambitions, late-game crises [src MS1, MS6, MS10, MS12].
@@ -627,7 +627,7 @@ Notes per row (SW3 conclusions unless tagged):
 - T14. The SW3 ending is story code; an epilogue needs an ending hook (section 14) and BB's choice of when to retire has no SW3 equivalent.
 - T15. DD, DD2 and JA2 show crew state to the player [src MS48, MS52, MS36]. Rule: every pilot-level effect a mod creates appears in a logbook card or a radio line that names the pilot and the cause.
 
-**Verdict for section 15.** The genre supplies the C2 and C9 answers the round 1 proposals lacked: perk-gated answers (T1), a small curated pool of pilot events (T2), a capped perk grant in place of XP (T3) and scripted radio banter (T6), all cheap. Fitting flags (T11) are the cheap C3 answer. Meters, wages and desertion fail C2 or have no screen. Wounded state and detached wings wait on engine checks.
+**Verdict for section 15.** The genre supplies the C2 and C9 answers the round 1 proposals lacked: perk-gated answers (T1), a small curated pool of pilot events (T2), a capped perk grant in place of XP (T3) and scripted radio banter (T6), all cheap. Fitting flags (T11) are the cheap C3 answer. Meters, wages and desertion fail C2 or have no screen. Wounded state and detached wings wait on engine checks. Round 2 took neither T3 nor the T1 perk list: B03 grants no perks and drops Imperial_Agent and Economics, which no pilot template carries (proposals 2b.5), and the B02 debrief pool is the single C9 answer (2b.4).
 
 ---
 
@@ -1085,5 +1085,5 @@ Added 2026-11-04 from `research-classics.md`. The critic of round 1 named games 
 ### Local files [local]
 - `README.md` (sw3-traffic feature list); `mods/traffic/design/worldbuilding/00-16`; `mods/traffic/design/station-jobs-spec.md`.
 - GOG 1.12 install (read-only): `Data/Scripts/include/LevelUp.script` lines 32-34; `Data/Game/DynamicMissions.xml`; `sw3cw.exe` string search.
-- `mods/traffic/design/mod-research/lua-natives.md` lines 399-430 (pilot natives); `Perks.xml` in the GOG install (66 perks); `mods/traffic/design/proposals/activities-after-worldbuilding.md` 2.5 and 2.7 (A07, A16); `mods/traffic/design/charter-spec.md`; `mods/traffic/design/proposals/merc-packs-beyond-flavour.md`.
+- `mods/traffic/design/mod-research/lua-natives.md` lines 172-199 and 403-451 (pilot, team, group and news natives); `Perks.xml` in the GOG install (66 perks); `mods/traffic/design/proposals/activities-after-worldbuilding.md` 2.5 and 2.7 (A07, A16); `mods/traffic/design/charter-spec.md`; `mods/traffic/design/proposals/merc-packs-beyond-flavour.md`.
 - Full research notes: `.work/wf/activities/research-*.md` (the eleven listed in section 0 plus `research-mercsquad.md` and `research-classics.md`).

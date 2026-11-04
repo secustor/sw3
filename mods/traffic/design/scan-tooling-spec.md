@@ -13,7 +13,7 @@ Notation: [S] verified in the files named, [I] inference, `CHECK:` a fact only t
 | GS | Radar module table `sm` (rows `{md=, rs=}`) | `T/gen_map.py`, `S/map.script` | scan v2 (with `TRF_MsSensor`) |
 | GC | `--check` conditions, summary lines, notes, docstring, header comment | `T/gen_map.py` | with GH |
 | RD | README updates | `T/README.md`, `mods/traffic/README.md` | with each item |
-| IN | `config.script` keys, `--scan-key=N` / `SCAN_KEY` to the cfg key `scan_key`, proxy check, pass-through from the repo-root installer | `S/config.script`, `install.sh`, `uninstall.sh`, `R/install.sh`, `R/README.md` | scan v1 |
+| IN | `config.script` keys, `--scan-key=N` / `SCAN_KEY` to the cfg key `scan_key`, proxy check, pass-through from the repo-root installer | `S/config.script`, `install.sh`, `uninstall.sh`, `R/README.md` | scan v1 |
 | IT | Test clone: `EXP=4`, `SCAN`, `SCAN_LIVE`, `SCAN_KEY`, `SCAN_AT`, kit keys, `LEVEL` presets | `install-test.sh`, `uninstall-test.sh` | scan v1 |
 | KX | Loader slot and lint for the scan experiment kit `exp_scan.script` (the kit itself is test plan 5) | `S/traffic.script`, `T/lint_lua.py` | before scan v1 code |
 | LH | Lint natives and kits, host stubs, run list, map check in the host run | `T/lint_lua.py`, `H/host_stubs.lua`, `H/run_host.sh` | with KX and scan v1 |
@@ -249,7 +249,7 @@ GC4: docstring lines 1-25 gain one paragraph each for `hm`, `we`, `sm`; `argpars
 2. Line 32: `EXP=0..4`; the key list gains `SCAN`, `SCAN_LIVE`, `SCAN_KEY`, `SCAN_AT` and the kit keys `SC_AUTO`, `SC_SND`, `SC_ADD`.
 3. New section after "E0.3" (after line 60): "### SC scan kit (`EXP=4`)", the 8.4 tests, log lines and pass criteria.
 4. New section "## Active wreck scan" after "Station voices" (line 284 onwards, same subsections: what the player sees, config keys, log lines, in-game checks), written with the module.
-5. "Installing into the game" (343-351): `--scan-key=N` / `SCAN_KEY`, written as decimal into the cfg key `scan_key` of the installed `config.script` (default 49, N), with the hint line when an edited `config.script` is kept (IN5); the repo-root form `./install.sh --mod trackpad --mod traffic --scan-key=49` (IN11); the `scan: off (proxy has no TRF_KeyEdge ...)` summary line (IN10).
+5. "Installing into the game" (992-1042): `--scan-key=N` / `SCAN_KEY`, written as decimal into the cfg key `scan_key` of the installed `config.script` (default 49, N), with the hint line when an edited `config.script` is kept (IN5); the repo-root form `./install.sh --mod trackpad --mod traffic --scan-key=49` (IN11); the `scan: off (proxy has no TRF_KeyEdge ...)` summary line (IN10).
 6. "Host checks" (402-410): run count, the `exp4` run and the map check of LH7.
 
 `R/README.md` (traffic options table): add `--scan-key=N` (traffic).
@@ -286,7 +286,7 @@ The installer contract is:
 - IN8, uninstall: no change. `config.script` is a manifest record of the mod (`config <sha1>`, read at 189) and is handled with the other mod files; `sw3tp.ini` is not touched for the scan.
 - IN9: the final log hint (249) names the module count; update it when the scan module joins the load list (`module_count=18` today; an `extra` module raises `extra_count=`, `S/traffic.script:376-378, 387`).
 - IN10, proxy without the native: `install.sh` already checks the proxy for the traffic module (`grep -q 'Mods/Traffic/traffic.script' "$game/zlib1.dll"`, 73). It adds `grep -q TRF_KeyEdge "$game/zlib1.dll"` (the name is a string of the `nat[]` table, `pe/traffic.c:222-224` plus the new entry). When it is absent the install does not fail; the summary block (242-247) prints `scan: off (proxy has no TRF_KeyEdge; update sw3-trackpad)`.
-- IN11, repo-root installer: `R/install.sh` passes mod options through as single tokens only: an option is accepted when `" $flags "` contains it exactly (41), and any following bare argument dies with `unexpected argument ... (use --game-dir)` (42). Its `opts()` regex (18) finds only `--name)` case patterns. Required changes: `opts()` also discovers `--name=*)` patterns and emits them as `--name=` (regex `(--[a-z][a-z-]*=?)(\*)?[)]`); the option loop (41) and the two per-mod filters (81, 87) compare a token of the form `--name=value` by its `--name=` prefix. Then `./install.sh --mod trackpad --mod traffic --scan-key=49` (the README form, `mods/traffic/README.md:347`) forwards `--scan-key=49` to the traffic installer only. The env form `SCAN_KEY=49 ./install.sh --mod ...` works without this change, because the environment reaches the mod script.
+- IN11, repo-root installer: no change needed. Since 594b1ff (2026-10-31) `R/install.sh` lists `--name=*)` case patterns as `--name=` (`opts()`) and matches a `--name=value` token by that prefix (`fkey`), so the IN3 pattern `--scan-key=*)` is discovered and passed through. `./install.sh --mod trackpad --mod traffic --scan-key=49` (README "Installing into the game") forwards `--scan-key=49` to the traffic installer only; `--scan-key 49` stops with `unknown option --scan-key: pass its value as --scan-key=<v>`. The env form `SCAN_KEY=49 ./install.sh --mod ...` also works.
 
 ### 8.3 `install-test.sh`
 

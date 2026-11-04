@@ -6,7 +6,7 @@ These mods are for the GOG build of Star Wolves 3: Civil War (v1.12) on an Apple
 |---|---|
 | [sw3-performance](#sw3-performance-010) | Runs the game on native arm64 Wine in fullscreen at your display's resolution |
 | [sw3-trackpad](#sw3-trackpad-010) | Adds camera keys and trackpad gestures |
-| [sw3-infinite-view](#sw3-infinite-view-020) | Draws the whole star system instead of fading it at 800 units |
+| [sw3-infinite-view](#sw3-infinite-view-020) | Draws the whole star system instead of fading it out at 600 to 800 units |
 | [sw3-traffic](#sw3-traffic-010-dev) | Adds NPC traders, pirate clans, factions and jobs |
 
 ## Install
@@ -18,7 +18,7 @@ These mods are for the GOG build of Star Wolves 3: Civil War (v1.12) on an Apple
 
 **Steps:**
 1. Quit Heroic and the game.
-2. Unpack the zip, or use the repo.
+2. Unpack the zip.
 3. Open Terminal in that folder and run:
 
 ```sh
@@ -26,26 +26,29 @@ These mods are for the GOG build of Star Wolves 3: Civil War (v1.12) on an Apple
 ./uninstall.sh --mod all
 ```
 
+In the `sw3-infinite-view` and `sw3-traffic` zips, run `./install.sh "<game dir>"` and `./uninstall.sh "<game dir>"` instead; their installers have no `--mod`. With sw3-traffic installed, do its [uninstall steps](#sw3-traffic-010-dev) first, or your saves keep its pirate bases and changed station prices.
+
 **How the installer works:**
 - Mods install in this order: performance, trackpad, infinite_view, traffic. They uninstall in reverse.
 - traffic needs the `zlib1.dll` proxy, which trackpad or performance installs.
 - The game dir is read from Heroic. Use `--game-dir <path>` to override it.
-- Mod options pass through the combined installer as `--name=value`, for example `--view=4000`.
-- `./install.sh --help` lists every option.
+- Mod options pass through the combined installer; values go as `--name=value`. `./install.sh --help` and `./uninstall.sh --help` list every option.
 - Each mod folder also has its own `install.sh` / `uninstall.sh`, which takes the game dir as an argument.
-- Every installer backs up the files it changes and restores them on uninstall.
+- Every installer backs up the files it changes and puts those copies back on uninstall, so later changes to them are lost too: Heroic's game settings and the game's `default.cfg` (performance), `Main.ini` (infinite_view).
 
-**Release zips** (built with `./release.sh` into `dist/`):
+**Release zips:**
 
 | Zip | Contains |
 |---|---|
 | `sw3-mods-pack-<v>.zip` | performance and trackpad, with the combined installer |
+| `sw3-performance-<v>.zip` | performance alone, with its own installer |
+| `sw3-trackpad-<v>.zip` | trackpad alone, with its own installer |
 | `sw3-infinite-view-<v>.zip` | infinite_view, shipped separately |
 | `sw3-traffic-<v>.zip` | traffic, shipped separately |
 
 ## sw3-performance (0.1.0)
 
-Makes the game run natively on arm64.
+Runs the game on native arm64 Wine, without Rosetta. The game itself is still 32-bit x86 code, emulated by FEX.
 
 - Downloads native arm64 Wine (`arm64-11.19-2`: FEX, mtld3d D3D9→Metal). The download is SHA-256 checked and needs no Rosetta.
 - Creates the prefix `sw3-arm64` with `EmulateModeset=Y` and points Heroic's game config at it.
@@ -57,18 +60,18 @@ Makes the game run natively on arm64.
 | Option | Effect |
 |---|---|
 | `--hud` / `--no-hud` | Turn the Metal FPS overlay on or off |
-| `--no-display` | Skip the resolution-follows-display step |
+| `--no-display` | Skip the resolution-follows-display step. Without sw3-trackpad this also skips the sw3tp proxy, so the crash fix and the frustum cull are not installed |
 | `uninstall --purge` | Also delete the Wine dir and prefix it created |
 
 ## sw3-trackpad (0.1.0)
 
-Adds a keymap and trackpad gestures (`zlib1.dll` proxy + `sw3tp.so`).
+Adds a keymap and trackpad gestures (`zlib1.dll` proxy + `sw3tp.so`). The gestures need the arm64 Wine that sw3-performance installs; under x86_64 Wine (Rosetta) the game runs without them.
 
 **Keys:**
-- U: free camera
-- J: target camera
-- K: chase camera
-- O: azimuth camera
+- U: free camera (F9)
+- J: follow camera (F10)
+- K: view camera, third person (F11)
+- O: chase camera (F12)
 - F2 / F4: edge rotation off / on
 - F6: console
 
@@ -93,26 +96,30 @@ Adds a keymap and trackpad gestures (`zlib1.dll` proxy + `sw3tp.so`).
 | `--no-gestures` | Install the keymap only |
 | `uninstall --reset-profile-cvars` | Remove the cvar lines it added to your profile |
 
-To switch the gestures off without uninstalling, set `enabled=0` in `sw3tp.ini`.
+To switch the gestures off without uninstalling, set `enabled=0` under `[sw3tp]` in `sw3tp.ini`.
 
 ## sw3-infinite-view (0.2.0)
 
-Draws the whole system: stations, portals, asteroids and clouds no longer fade out at 800 units. Ships are still shown only within sensor range.
+Shipped separately as `sw3-infinite-view-<v>.zip`, not in the mods pack.
+
+Draws the whole system: stations, portals and asteroids no longer fade out by 600 units, and clouds no longer stop at 800. Ships are still shown only within sensor range.
 
 | Option | Effect |
 |---|---|
-| `--view N` | Far plane, 1000–20000. Default 6000; vanilla is 800 |
-| `--fade N\|keep` | Width of the mesh fade band. Default 500 |
-| `--fog clear\|keep` | `keep` rescales fog so haze still ends at 800 units |
+| `--view=N` | Far plane, 1000–20000. Default 6000; vanilla is 800 |
+| `--fade=N\|keep` | Width of the mesh fade band. Default 500 |
+| `--fog=clear\|keep` | `keep` rescales fog so haze still ends at 800 units |
 | `--dry-run` | Print the changes without writing |
 
-Restart the game after installing. Only `--view 1600` has been tested in game. 6000 may cause depth flicker or a lower frame rate in dense systems; if it does, use a lower `--view`.
+Restart the game after installing. Only `--view=1600` has been tested in game. 6000 may cause depth flicker or a lower frame rate in dense systems; if it does, use a lower `--view`.
 
 ## sw3-traffic (0.1.0-dev)
 
-Adds a living economy: NPC traders, pirate clans, factions and jobs, written as Lua scripts loaded by the sw3tp proxy. No game files are edited.
+Shipped separately as `sw3-traffic-<v>.zip`, not in the mods pack.
 
-**Status:** host-tested only. The hooks, save/load and the first jobs card have been seen working in game. A full in-game pass is still open.
+Adds NPC traders, pirate clans, factions and jobs, written as Lua scripts loaded by the sw3tp proxy. Every install also merges eight quest pilots into `Data/Game/Pilots.xml` (and with `--news`, news posts into `News.xml`); both are backed up and restored on uninstall.
+
+**Status:** mostly host-tested. The hooks, save/load and the first jobs card have been seen working in game. A full in-game pass is still open.
 
 **Traffic and economy**
 - Named FTU traders fly between portals and stations, and dock in a queue where you get priority.
@@ -128,16 +135,16 @@ Adds a living economy: NPC traders, pirate clans, factions and jobs, written as 
 - Factions sweep against the clans, and you can join for pay.
 - Each clan region has a wanted captain with a bounty, and you can buy informant tips about them.
 - You can demand cargo from a trader.
-- Opt-in (`haunt=1`): vanilla pirate patrols scale with the region's state and stay dead once destroyed.
+- Opt-in (`haunt=1`, chapter 5+): vanilla pirate patrols follow the region's phase and clan tier, never above vanilla numbers. Destroyed patrols come back slowly: 15 % of the system's patrols every two jumps or 10 game minutes.
 - Opt-in (`fits=1`): pirate loadouts vary with clan strength.
 
 **Jobs and quests**
-- Hail menu: trade, ask where a ship is headed or for news, take escort contracts, call for combat help.
+- Hail menu: trade, ask where a ship is headed, for news or for troubled and booming lanes, and take escort contracts. A trader in a fight skips the menu and may pay you to drive off its attackers.
 - Sealed parcels from a courier desk, with a deposit and a deadline.
 - FTU charter goals per region, with ranks and perks (chapter 5+).
 - Wolves Freight: run up to 3 chartered freighters for income (chapter 5+). It is unlocked by the quest "Missing in Capricorn".
-- Jobs are shown as cards in the mission window.
-- The Office jobs board and the job log are built but off by default.
+- Job offers open as message boxes.
+- A mission-window card for offers, the Office jobs board and a job log are built but off by default (`jobs_card`, `jobs_board`, `jobs_log` in `sw3tp.ini`).
 - Opt-in (`merc=1`): 12 mercenary clans work the regions, and you can hire their packs for 10 minutes. Add `--merc-names` to give their pilots names.
 
 **Stations and standing**
@@ -158,17 +165,19 @@ Adds a living economy: NPC traders, pirate clans, factions and jobs, written as 
 
 | Option | Effect |
 |---|---|
-| `--news` | Merge 224 news posts into `News.xml` |
+| `--news` | Merge the mod's news posts into `News.xml` |
 | `--merc-names` | Merge 120 named mercenary pilots into `Pilots.xml` |
 | `--reset-config` | Replace an edited `config.script` with the defaults |
-| `--restore-only` | Remove the mod's changes from your save. See uninstall below |
+| `--restore-only` | Clean-up mode before uninstalling: the mod only resets the station prices it changed and removes its pirate bases. Its other data stays in the save and is ignored without the mod. See uninstall below |
 
 Feature toggles (`haunt`, `fits`, `merc`, …) are set in `Data/Scripts/Mods/Traffic/config.script`.
 
+A reinstall keeps an edited `config.script`, so after `--news` or `--merc-names` set `news_mode=2` or `mc_names=2` in it yourself. Pass these options on every reinstall; a run without them removes the news posts or the pilot names.
+
 **Uninstall:**
-1. Run `install.sh --restore-only`.
-2. Load your save in the game. This removes the mod's pirate bases. Changed station prices are reset when you dock at those stations. Save the game.
-3. Run `uninstall.sh`.
+1. Run `./install.sh --mod traffic --restore-only` (from the sw3-traffic zip: `./install.sh --restore-only "<game dir>"`).
+2. Load your save and play on: a mod pirate base is removed when you enter its system, a changed station price when you dock there. `sw3tp.log` lists what is left (`module=shop event=dump restore_list=`); save once it shows `event=restore pending_count=0 result=done` (and `event=bases_removed` if the mod founded bases).
+3. Run `./uninstall.sh --mod traffic` (from the zip: `./uninstall.sh "<game dir>"`).
 
 ## More
 
@@ -176,3 +185,4 @@ Feature toggles (`haunt`, `fits`, `merc`, …) are set in `Data/Scripts/Mods/Tra
 - Mod details: [performance](mods/performance/README.md), [trackpad](mods/trackpad/README.md), [infinite_view](mods/infinite_view/README.md), [traffic](mods/traffic/README.md)
 - Build the release zips with `./release.sh`
 - Contributing with an AI agent: [AGENTS.md](AGENTS.md)
+- Installing from a clone: build the trackpad proxy first ([Building from source](mods/trackpad/README.md#building-from-source)). `build.sh` compiles against the Wine that sw3-performance downloads, so run `./install.sh --mod performance --no-display` once before it.
