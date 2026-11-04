@@ -143,10 +143,10 @@ function T_WQ_A()
 	local h = HOST();
 	WQ_Begin("debris6", "5_1");
 	local idx = TRF_CurIdx();
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=15") >= 1, "trf_wq loads last (extra_count=15)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=16") >= 1, "trf_wq loads before trf_warn (extra_count=16)");
 	local ml, pm, tf, uf = TRF_ModList(), TRF_PlMods(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml)] == "Wq" and pm[getn(pm)] == "Wq" and tf[getn(tf) - 1] == "TRF_Wq_Text" and uf[getn(uf)] == "TRF_Wq_Text",
-		"Wq last in TRF_ModList and TRF_PlMods, TRF_Wq_Text in both text lists");
+	HOST_Check(ml[getn(ml) - 1] == "Wq" and pm[getn(pm) - 1] == "Wq" and tf[getn(tf) - 2] == "TRF_Wq_Text" and uf[getn(uf) - 1] == "TRF_Wq_Text",
+		"Wq before Wn (trf_warn) at the end of TRF_ModList and TRF_PlMods, TRF_Wq_Text in both text lists");
 	HOST_Check(TRF_Wq_OptDef().enable_wq == 1 and TRF_WqOpt("enable_wq") == 1 and TRF_Opt("enable_wq") == 1, "cfg enable_wq 1 by default");
 	local T = TRF_WqTune();
 	HOST_Check(T.wq_help == 2 and T.wq_cd == 6 and T.wq_tries == 2 and TRF_Tune().wq_cd == 6, "tune defaults wq_help 2, wq_cd 6, wq_tries 2, merged into TRF_Tune");

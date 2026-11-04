@@ -5,7 +5,8 @@ the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10), the mercenary
 design/fits-spec.md 11), the vanilla extortion fix (E-EXT.1, design/extort-fix-spec.md 7), the stack leak diagnostic
 (D-DLL.1), the station jobs mission card (K0-K7, design/station-jobs-spec.md 10, step 1), the Office jobs board (M1-M8,
 step 2), the quest log's Job log (L1-L5, step 3), the freight unlock quest, commits 1-3 (Q-WQ.1-10,
-design/freight-quest-spec.md 10) and its presentation (Q-WQ.11-14, spec 13: dialogs, letters, the mission list) and Wolves Freight step 2 (EW8.11-EW8.17, design/freight-spec.md 10) from traffic logs.
+design/freight-quest-spec.md 10) and its presentation (Q-WQ.11-14, spec 13: dialogs, letters, the mission list), Wolves Freight step 2 (EW8.11-EW8.17, design/freight-spec.md 10)
+and the lethal-system warnings (W-A12.1-8, design/warnings-spec.md 15; wave 1, host-tested only) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -247,7 +248,7 @@ def c_err(ctx):
     res.logpart = True
     if not any(r.mod in ("haunt", "parcel") for r in ctx.recs):
         res.missing.append("no module=haunt or module=parcel line: the mod did not load or LOG=0")
-    for mod in ("haunt", "parcel", "core", "plumb", "hail", "merc", "wq"):
+    for mod in ("haunt", "parcel", "core", "plumb", "hail", "merc", "wq", "warn"):
         e = ctx.find(mod, "error")
         if e:
             res.fails.append("%d module=%s event=error lines" % (len(e), mod))
@@ -2307,6 +2308,142 @@ def c_ew8_17(ctx):
     return res
 
 
+# Lethal-system warnings (design/warnings-spec.md 15, W-A12.1-8; host-tested only, wave 1) -------------------------------
+
+USS_ROWS = ("debris4", "xt11", "fiasar", "ergelan", "xb15", "xb13", "deosis", "el_ariash")
+
+
+def c_wa1(ctx):
+    res = Res()
+    res.logpart = True
+    w = ctx.find("warn", "warn")
+    for r in w:
+        if not r.get("condition") or not r.get("dock_system"):
+            res.fails.append("%s: warn line without condition or dock_system" % r.short())
+    if not w:
+        res.missing.append("dock at a trade station next to an armed listed system (Avalon in ch 1-6, Gideon armed): no "
+                           "module=warn event=warn line")
+    res.ev("dock warnings", w)
+    res.ev("dock lines", ctx.find("warn", "dock"))
+    return res
+
+
+def c_wa2(ctx):
+    res = Res()
+    res.logpart = True
+    gate = [r for r in ctx.find("warn", "pass") if r.get("reason") in ("latch", "scene") or (r.get("reason") or "").startswith("gate:")]
+    for g in gate:
+        later = [r for r in ctx.find("warn", "warn") if r.visit is g.visit and r.n > g.n]
+        if later:
+            res.fails.append("%s: a dock warning after it in the same visit (%s)" % (g.short(), later[0].short()))
+    for r in ctx.find("warn", "note", result="queued"):
+        if any(g.visit is r.visit and g.n < r.n and g.get("reason") == "latch" for g in gate):
+            res.fails.append("%s: a note queued after the visit latch" % r.short())
+    if not gate:
+        res.missing.append("dock at a listed system's neighbour during a story mission: no module=warn event=pass "
+                           "reason=latch (or gate:<why>) at=dock line")
+    res.ev("mission and scene passes", gate)
+    return res
+
+
+def c_wa3(ctx):
+    res = Res()
+    res.logpart = True
+    w = ctx.find("warn", "warn")
+    for r in w:
+        st = [x for x in ctx.find("station", "dock") if x.visit is r.visit and x.n < r.n]
+        if not st:
+            res.fails.append("%s: no module=station event=dock line before it in the visit" % r.short())
+    if not w:
+        res.missing.append("no module=warn event=warn line (W-A12.1)")
+    res.ev("dock warnings", w)
+    return res
+
+
+def c_wa4(ctx):
+    res = Res()
+    res.logpart = True
+    w = ctx.find("warn", "warn")
+    last = {}
+    for r in w:
+        s, lg = r.get("system"), r.int("leg")
+        p = last.get((r.src, s))
+        if p is not None and lg is not None and p.int("leg") is not None and lg - p.int("leg") < 8:
+            res.fails.append("%s: named again %d legs after %s (wn_legs 8)" % (r.short(), lg - p.int("leg"), p.short()))
+        last[(r.src, s)] = r
+    docks = ctx.find("warn", "dock")
+    vis = [r for r in docks if ":visit" in (r.get("skipped") or "")]
+    cd = [r for r in docks if ":cooldown" in (r.get("skipped") or "")]
+    if not vis:
+        res.missing.append("dock twice in one visit at a listed system's neighbour: no event=dock ... skipped=<s>:visit")
+    if not cd:
+        res.missing.append("jump out and back within 8 legs and dock again: no event=dock ... skipped=<s>:cooldown")
+    res.ev("visit skips", vis)
+    res.ev("cooldown skips", cd)
+    return res
+
+
+def c_wa5(ctx):
+    res = Res()
+    res.logpart = True
+    q = ctx.find("warn", "note", result="queued")
+    seen = {}
+    for r in q:
+        p = seen.get((r.src, r.get("system")))
+        if p is not None and not [x for x in ctx.recs if x.src == r.src and p.n < x.n < r.n and x.is_("state", "load")]:
+            res.fails.append("%s: a second note for the system without a load in between (%s)" % (r.short(), p.short()))
+        seen[(r.src, r.get("system"))] = r
+    seen_e = ctx.find("warn", "enter", note="seen")
+    if not q:
+        res.missing.append("enter a listed system for the first time (Cassily at peace in ch 1-3): no event=note result=queued")
+    elif not seen_e:
+        res.missing.append("enter the same listed system again: no event=enter ... note=seen")
+    res.ev("notes queued", q)
+    res.ev("arrival lines of the notes", ctx.find("plumb", "arrival_line", owner="warn"))
+    res.ev("seen", seen_e)
+    return res
+
+
+def c_wa6(ctx):
+    res = Res()
+    res.logpart = True
+    j = ctx.find("warn", "jump_into")
+    if not j:
+        res.missing.append("jump into a listed system (armed and not armed): no module=warn event=jump_into line")
+    res.ev("armed", [r for r in j if r.get("armed") == "true"])
+    res.ev("not armed", [r for r in j if r.get("armed") == "false"])
+    return res
+
+
+def c_wa7(ctx):
+    res = Res()
+    res.logpart = True
+    u = [r for r in ctx.find("warn", "warn") + ctx.find("warn", "jump_warn", result="shown") if r.get("system") in USS_ROWS]
+    if not u:
+        res.missing.append("dock next to a USS row while Uss is at war (Debris 1 for Debris 4): no event=warn for a USS system")
+    res.ev("USS family lines", u)
+    return res
+
+
+def c_wa8(ctx):
+    res = Res()
+    res.logpart = True
+    ins = ctx.find("warn", "jump_install")
+    sh = ctx.find("warn", "jump_warn", result="shown")
+    after_load = [r for r in sh if r.visit is not None and r.visit.kind == "load"]
+    if not ins:
+        res.missing.append("no module=warn event=jump_install line: wn_jump 0, or no PORTAL_<X>_Action global at T2b")
+    elif not sh:
+        res.missing.append("fly into the portal of an armed listed system (Avalon PORTAL_R to Gideon): no event=jump_warn result=shown")
+    elif not after_load:
+        res.missing.append("load a save in that system and touch the portal again: no jump_warn result=shown after a load")
+    res.ev("installs", ins)
+    res.ev("jump warnings shown", sh)
+    res.ev("after a load", after_load)
+    res.ev("skipped", ctx.find("warn", "jump_warn", result="skipped"))
+    return res
+
+
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
@@ -2466,6 +2603,21 @@ ITEMS = [
      "the Walrus has two turrets and no cargo, the sell-back pays half the price"),
     ("EW8.16", "Wolves Freight news: the registration once, a hull loss per region", c_ew8_16, None),
     ("EW8.17", "Wolves Freight pods: the crew of an on-screen loss halves its liability", c_ew8_17, None),
+    ("W-A12.1", "lethal-system warning at the trade dock next to an armed row", c_wa1,
+     "the line 'Dockmaster: do not jump to Gideon. ...' on screen at the approach, readable while the vanilla docking box is up"),
+    ("W-A12.2", "no warning or note while a story mission or a scene runs", c_wa2, None),
+    ("W-A12.3", "the warning follows the station's greeting and news (req order 10, then 20)", c_wa3,
+     "the dockmaster's radio greeting first, then the warning line; both readable"),
+    ("W-A12.4", "repetition: once per visit, not again within 8 legs, again after 8 legs", c_wa4, None),
+    ("W-A12.5", "first-visit note in the arrival queue, once per save", c_wa5,
+     "the note 'Cassily: Kfni garrison ...' among the arrival lines a few seconds after the entry, not again on the next visit or after a load"),
+    ("W-A12.6", "the arming mirror agrees with the game at a jump into a listed system", c_wa6,
+     "armed kill row: the mothership is blown 5 s after the arrival; armed ambush row: six flights attack the mothership; "
+     "armed=false: nothing happens"),
+    ("W-A12.7", "plain text and $1 in the family lines", c_wa7,
+     "the USS line names the system ('... the guard in Debris 4 ...'); with LOC=1 the scaffold text without the name"),
+    ("W-A12.8", "jump warning: the PORTAL_<X>_Action wrapper runs before the confirm box, also after a load", c_wa8,
+     "the warning line on screen while the 'teleport' confirm box is up; OK still jumps, Cancel still stays"),
 ]
 
 
@@ -2586,7 +2738,9 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "Q-WQ.10": "PASS",
             "EW8.11": "NO DATA", "EW8.12": "NO DATA", "EW8.13": "NO DATA", "EW8.14": "NO DATA", "EW8.15": "NO DATA",
             "EW8.16": "NO DATA", "EW8.17": "NO DATA", "Q-WQ.11": "NO DATA", "Q-WQ.12": "NO DATA", "Q-WQ.13": "NO DATA",
-            "Q-WQ.14": "NO DATA"}
+            "Q-WQ.14": "NO DATA",
+            "W-A12.1": "MANUAL", "W-A12.2": "FAIL", "W-A12.3": "MANUAL", "W-A12.4": "FAIL", "W-A12.5": "NO DATA",
+            "W-A12.6": "MANUAL", "W-A12.7": "NO DATA", "W-A12.8": "NO DATA"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -2602,6 +2756,10 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # paid at its price (step 50); at XB-13 the captain tipped (mode 1) and the base destroyed in view (two pods), then after a
 # reload the hulk guard (mode 3, four ships) killed, three pods picked (step 60), the hand-in at Golkonda (step 70), the
 # parcel box stepped aside and the purchase bought at Debris 6 (step 80, the entry done), removed 10 legs later.
+# Lethal-system warnings block (the end, Avalon and Cassily): a dock warning for Gideon after the station's dock line,
+# a second approach skipped (visit), the jump warning at the portal, a first-visit note at Cassily (no later note=seen:
+# W-A12.5 NO DATA), then back at Avalon a pass reason=latch followed by a warning for Gideon 2 legs later (W-A12.2 and
+# W-A12.4 FAIL); no USS line (W-A12.7), no jump warning after a load (W-A12.8).
 
 
 def selftest():

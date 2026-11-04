@@ -1,6 +1,6 @@
 # A12 step 1: lethal-system warnings and first-visit notes: implementation spec
 
-Status: spec 2026-11-04, not implemented. Roadmap wave 1 row 1 ([ROADMAP.md](ROADMAP.md) sections 2, 3, 5 decision 6); proposals [proposals/activities-after-worldbuilding.md](proposals/activities-after-worldbuilding.md) 2.6 (A12), 4b.1, 4b.2, 6 items 5 and 21; shared rules `worldbuilding/00-economy-and-progression.md` sections 4 and 6; the list: [mod-research/lethal-systems.md](mod-research/lethal-systems.md) (cited as "LS n").
+Status: implemented 2026-11-04, host-tested only (`wn-a`..`wn-g`), not run in the game; the user tests wave 1 in game together with the freight quest and the Jobs tab checks (W-A12.1-8, PROGRESS "Wave 1 (host-tested only)"). Owner decisions of 16 taken 2026-11-04; implementation notes and deviations in 18. Roadmap wave 1 row 1 ([ROADMAP.md](ROADMAP.md) sections 2, 3, 5 decision 6); proposals [proposals/activities-after-worldbuilding.md](proposals/activities-after-worldbuilding.md) 2.6 (A12), 4b.1, 4b.2, 6 items 5 and 21; shared rules `worldbuilding/00-economy-and-progression.md` sections 4 and 6; the list: [mod-research/lethal-systems.md](mod-research/lethal-systems.md) (cited as "LS n").
 Paths: `D` = `mods/traffic/design`, `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `T` = `mods/traffic/tests`, `G` = game `Data/Scripts` (read-only test clone).
 Module: new `S/trf_warn.script`, prefix `Wn` (`TRF_Wn_*` public, `TRF_Wn<X>` internal), log lines `module=warn`.
 
@@ -12,8 +12,8 @@ Module: new `S/trf_warn.script`, prefix `Wn` (`TRF_Wn_*` public, `TRF_Wn<X>` int
 | first-visit note | one arrival line per listed system, once per save, through `TRF_ArrivalLine` (6) | implement now |
 | list | 23 rows in four classes (kill, ambush, trap, garrison) with the exact vanilla arming condition (4), checked by `tools/check_warn.py` (11) | implement now |
 | jump log | `TRF_Wn_BeforeJump(dest, how)` logs a jump into an armed listed system; no line (7) | implement now |
-| jump warning | a line or box at the portal confirm box (proposals 6 item 21) | deferred; CHECK W-A12.8 names the hook (7.2) |
-| deferred | survivable systems (LS 7), notes for unlisted systems (A12 step 2 or later), RU text, patrol docks and two-jump docks for the rows without a trade neighbour (16), the survey layer (A12 step 2) | not now |
+| jump warning | a screen line before the portal confirm box from a wrapper over every `PORTAL_<X>_Action` global (7.2; owner decisions 3 and 4, 2026-11-04) | built in step 1 (18); CHECK W-A12.8 |
+| deferred | survivable systems (LS 7), notes for unlisted systems (A12 step 2 or later), RU text, the survey layer (A12 step 2); patrol docks and two-jump docks for the rows without a trade neighbour are dropped (the jump warning covers them, 16 decision 3) | not now |
 
 ## 2. Decisions
 
@@ -23,7 +23,7 @@ Module: new `S/trf_warn.script`, prefix `Wn` (`TRF_Wn_*` public, `TRF_Wn<X>` int
 | 2 | Note channel: first visit or first dock | first visit, an arrival line through `TRF_ArrivalLine("warn", text)`, counted in `arr_max` 3 | 9 of the 23 listed systems have no trade station (gideon, xt86, xb15, xb13, deosis, ashelon, b_leftera1, x244, kron), so a first-dock note would never fire there; the note is about the system the player is in; the dock slot already carries the warning | tune `wn_note` |
 | 3 | Note priority in the arrival queue (proposals 4b.1 rule 1) | after the built module lines (tier, scar, haunt, survive, stash), before B06, A08 and B03: `TRF_Wn_OnActivate` runs after `TRF_Stn_OnActivate`, and the line is queued from a due call at `wn_delay` (4 s), so it follows every line queued at entry. A note dropped at the cap keeps its bit clear and fires on a later entry | built lines keep their slots; the note is once per save and loses nothing by waiting; in a kill system the first mod line (8 s) comes after the kill (5 s) anyway | tune `wn_delay` |
 | 4 | What the note says | the system's rule, independent of the current state ("without a permit the guard ..."), shown on the first visit whether or not the trap is armed | a player who reads it is alive, so in a kill system the trap is off for now and the rule is what matters next time; in ambush systems it says when the gates open | - |
-| 5 | Jump warning | deferred until proposals 6 item 21 passes. `TRF_BeforeJump` runs after the confirm box and after the `Teleporter` timer; the location is torn down 10 frames later, so a line there is never read and the jump cannot be stopped. Step 1 uses it for a log line only (7.1) | the hook comes too late | - |
+| 5 | Jump warning | deferred until proposals 6 item 21 passes. `TRF_BeforeJump` runs after the confirm box and after the `Teleporter` timer; the location is torn down 10 frames later, so a line there is never read and the jump cannot be stopped. Step 1 uses it for a log line only (7.1) | the hook comes too late; superseded by owner decision 4: the jump warning comes from the portal action wrapper (18.2), the hook stays a log line | `wn_jump` |
 | 6 | Start chapter (roadmap decision 6) | from chapter 0 (mission 1), the proposals' recommendation; tune `wn_ch` 4 gives the alternative of starting at chapter 4 | the early traps act from chapter 1 (LS 2: every portal is open from the start) | tune `wn_ch` |
 | 7 | Leash (00 section 4, ch 1-3) | lines only: no marker, no box, no offer, no relation or label write; nothing sends the player anywhere | the warning tells the player where not to go | - |
 | 8 | Arming condition | each row carries the exact vanilla condition (permit label, team relation, `CurrentQuest` exception) and the mod evaluates it at the dock; no chapter window at run time | the labels toggle inside chapters and by branch (Gideon 7c/7e, XT-24 end of 12 to 13, the InoCo permit through ch 7-15); a chapter window would warn about open systems and miss closed ones. The chapters stay in LS 3-6 as the human summary, and the check tool verifies the label setters that define them (11) | - |
@@ -182,7 +182,7 @@ Nothing but the log: after a load there is no entry, so no note (`TRF_ArrivalLin
 
 `dest` resolved with `TRF_GnSysIdx` (as trf_freight); a listed row -> `event=jump_into system=<s> kind=<k> armed=<bool> condition=<c> how=<portal|custom>`. No line: the hook runs after the confirm box and the `Teleporter` timer (`G/Locations/Ahilles/functions.script:66-70`), the location is torn down 10 frames later (`mod-research/hooks/engine-events.md` section 7), and nothing can cancel the jump. The log line is the in-game evidence that the arming mirror is right (W-A12.6) and counts how often players jump into armed systems.
 
-### 7.2 What proposals 6 item 21 needs (not built in step 1)
+### 7.2 What proposals 6 item 21 needs (built in step 1 after owner decisions 3 and 4, see 18)
 
 - Vanilla sequence (all Lua): the portal volume trigger calls `PORTAL_<X>_Action`, which sets `dest_location` and opens `ShowMsgBox("#M_teleport_confirm", "#M_teleport_to_<dest>", OnPortalStart_<X>, OnPortalCancel)` (`G/Locations/Ahilles/functions.script:50-57`); OK runs `OnPortalStart_<X>` (portal effect, `Teleporter:Activate()`), and the timer calls `TeleportToLocation`, where `TRF_BeforeJump` runs.
 - Candidate hook, Lua only, no DLL: every location with portals defines `PORTAL_<X>_Action` in functions.script and attaches it in activate.script (`PortalTrigger_<X>:AttachAction(PORTAL_<X>_Action)`; 112 of 112 systems with portals, none attaches in functions.script; Earth has none; offline grep 2026-11-04). `TRF_OnEnter` runs at T2b, after functions.script and before activate.script (traffic.script 310-312), so a wrapper installed there over each `PORTAL_<X>_Action` global is what the trigger attaches. The wrapper knows the destination before the box (map `portals[].to` by portal name, or `dest_location` after the original) and could show a screen line before the box opens, or open its own box first.
@@ -247,6 +247,7 @@ Rules: no `%`, `#` or `\n`; one sentence group, under 200 characters; the warnin
 | `wn_dock` | 2 | 1..3 | lines per approach |
 | `wn_note` | 1 | 0..1 | 0: no first-visit notes |
 | `wn_delay` | 4 | 1..20 | game seconds from the entry to the note's gate check |
+| `wn_jump` | 1 | 0..1 | 0: no wrapper over the `PORTAL_<X>_Action` globals, no jump warning (added with owner decision 4, 18.2) |
 
 Constant without a key (`TRF_WnK`): `cmax` 6 (stamps kept), `words` 3, `bits` 40.
 
@@ -307,7 +308,7 @@ Layout as trf_station: helpers, accessors (one native each, protected), the stat
 | `tools/check_warn.py`, `tools/README.md` | 11 |
 | `D/log-events.md`, `D/PROGRESS.md`, `D/mod-options.md`, `D/test-plan-haunts-parcels.md` section 5, `tools/check_ingame.py`, `mods/traffic/README.md`, `README.md` | log rows, tracker entry, option, W-A12 items, module table, one player-facing feature line |
 
-No vanilla function is wrapped or replaced; no vanilla global is written.
+No vanilla function is wrapped or replaced and no vanilla global is written, except the `PORTAL_<X>_Action` globals the jump warning wraps (18.2).
 
 ## 14. Host harness (`T/host_warn.lua`, scenarios `wn-a`..`wn-g`)
 
@@ -349,19 +350,47 @@ Own entry as `host_station.lua` (cut `host_stubs.lua` before `if H.scen then`, l
 7. Save cost: 253 bytes worst case instead of the roadmap's 20 (the per-system cooldown stamps and three numbers for 113 bits). Dropping the `wn_legs` rule (a warning on every first approach of a visit) cuts it to 88.
 8. Proposals 2.6 named "harbour or comm line": the spec uses screen lines (decision 8 of 2 and section 8). A radio line with the dockmaster's portrait would be more visible but competes with the greeting's radio slot.
 
+Owner answers (2026-11-04, the standing rule "implement the recommendation as the default"): (1) `wn_ch` 0; (2) Kronos, Cassily and Endoria 1 stay garrison rows, no generated garrison class; (3) and (4) the jump warning is built now as part of step 1 (18.2), which covers XT-86, Vulcan and XB-13: no patrol-dock line, no two-jump rule; (5) no softer class for survivable systems; (6) family texts for the USS and InoCo rows; (7) the 253-byte worst case is accepted; (8) screen lines.
+
 ## 17. Conformance checklist
 
-1. [ ] New `S/trf_warn.script`: functions and the chunk local `WV` only at top level; CRLF, ASCII; `luac -p` clean; `lint_lua.py` 0 findings; `lint_lua.py --calls -q` only the 5 known warnings.
-2. [ ] Lua 4 rules: no `local function`, no `true`/`false`, no `%` operator or `#`; flags compared with `== 1` or `== TRUE`.
-3. [ ] Every new global starts with `TRF_`; no vanilla global or function written; no label or relation written.
-4. [ ] Saved state only in `TRF.wn` with the fields of 3.1; caps `cmax` 6 and 3 words enforced by insert, prune and Fix; worst case 253 bytes asserted in `wn-e`.
-5. [ ] The list has 23 rows; `python3 -I tools/check_warn.py --check` exits 0 on the clone.
-6. [ ] Dock handler registered at kind `req` order 20 without `always`; no box; at most `wn_dock` lines per approach.
-7. [ ] Note only through `TRF_ArrivalLine("warn", ...)` from the due call; bit set only on `queued`.
-8. [ ] No line while `TRF_Safe_QState()` held in the visit, under a strict-gate denial, under the flags or a scene, below `wn_ch`.
-9. [ ] `TRF_Wn_BeforeJump` writes nothing and shows nothing.
-10. [ ] Texts of 9 byte-identical in `TRF_Wn_Text()`; `loc/trf_en.loc` regenerated, gen_news block untouched, `gen_news.py --check` 0.
-11. [ ] Config `warn`, `install-test.sh` `WARN`, TuneDef keys of 10 with their clamps; `sh -n install-test.sh`.
-12. [ ] Host `wn-a`..`wn-g` green; every existing run green (`TMPDIR=$PWD/.work/host sh mods/traffic/tests/run_host.sh`).
-13. [ ] Log events of 12 in `log-events.md`; `check_ingame.py` W-A12.1-8; test plan rows; PROGRESS entry; README module table and the player README feature line.
+1. [x] New `S/trf_warn.script`: functions and the chunk local `WV` only at top level; CRLF, ASCII; `luac -p` clean; `lint_lua.py` 0 findings; `lint_lua.py --calls -q` only the 5 known warnings.
+2. [x] Lua 4 rules: no `local function`, no `true`/`false`, no `%` operator or `#`; flags compared with `== 1` or `== TRUE`.
+3. [x] Every new global starts with `TRF_`; no vanilla global or function written except the `PORTAL_<X>_Action` wrappers (18.2); no label or relation written.
+4. [x] Saved state only in `TRF.wn` with the fields of 3.1; caps `cmax` 6 and 3 words enforced by insert, prune and Fix; worst case 253 bytes asserted in `wn-e`.
+5. [x] The list has 23 rows; `python3 -I tools/check_warn.py --check` exits 0 on the clone.
+6. [x] Dock handler registered at kind `req` order 20 without `always`; no box; at most `wn_dock` lines per approach.
+7. [x] Note only through `TRF_ArrivalLine("warn", ...)` from the due call; bit set only on `queued`.
+8. [x] No line while `TRF_Safe_QState()` held in the visit, under a strict-gate denial, under the flags or a scene, below `wn_ch`.
+9. [x] `TRF_Wn_BeforeJump` writes nothing and shows nothing.
+10. [x] Texts of 9 byte-identical in `TRF_Wn_Text()`; `loc/trf_en.loc` regenerated, gen_news block untouched, `gen_news.py --check` 0.
+11. [x] Config `warn`, `install-test.sh` `WARN`, TuneDef keys of 10 with their clamps; `sh -n install-test.sh`.
+12. [x] Host `wn-a`..`wn-g` green; every existing run green (`TMPDIR=$PWD/.work/host sh mods/traffic/tests/run_host.sh`).
+13. [x] Log events of 12 in `log-events.md`; `check_ingame.py` W-A12.1-8; test plan rows; PROGRESS entry; README module table and the player README feature line.
 14. [ ] `/code-review xhigh --fix` on the implementation range, fixes committed as `fix(traffic): ...`.
+
+## 18. Implementation notes (2026-11-04)
+
+### 18.1 What was built
+
+- `S/trf_warn.script` as 3-15: `TRF_WnData()` (23 rows between the markers), `TRF_WnArmedOf`/`TRF_WnHafaOf`, `TRF_Wn_Q` (one protected native each), the dock line (`TRF_DockLine("req", 20, "TRF_Wn_DockLine")`, not `always`), the first-visit note (`TRF_Due(wn_delay, "TRF_Wn_NoteDue", idx)`, `TRF_ArrivalLine("warn", ...)`, the bit only on `queued`), `TRF_Wn_BeforeJump` (log only), `TRF_Wn_Fix`, `TRF_Wn_Dump`, cfg `warn`, tune `wn_ch`, `wn_legs`, `wn_dock`, `wn_note`, `wn_delay`, `wn_jump`, 28 EN texts (9, byte-identical).
+- Registration as trf_station: traffic.script (`ex` list `"warn"` after `"wq"`, `TRF_Wn_OnEnter` last at T2b, `TRF_Wn_OnActivate` after `TRF_Stn_OnActivate`, `"Wn"` in the load and jump lists), trf_state (`TRF_ModList`, `TRF_Repair`), trf_plumb (`TRF_PlMods`), trf_loc and trf_ui (text lists), config.script, install-test.sh, `loc/trf_en.loc` (`gen_map.py --loc`), `tools/check_warn.py`, `check_ingame.py` W-A12.1-8, host `wn-a`..`wn-g` and the worst case in `v1-n`.
+- Size: `HOST_SaveSize(TRF.wn)` 243 bytes at the bound (+10 for the key = 253, as 3.4); host full state 95,629 bytes.
+
+### 18.2 Jump warning (7.2, owner decision 4)
+
+- `TRF_WnInstallJump` runs at T2b (`TRF_Wn_OnEnter`, last in `TRF_OnEnter`) and at T2d (`TRF_Wn_OnLoad`). It collects every global function named `PORTAL_<X>_Action` and replaces it by a closure that holds the portal name and the original as upvalues (no other global holds either, so `AttachAction`'s global-name lookup in activate.script finds `PORTAL_<X>_Action`). A function already wrapped in this MapInitialization (`WV.pw`) or of a Mods/Traffic chunk (`TRF_IsMine`, a wrapper of an earlier MapInitialization left in a global the new location does not redefine) is skipped: never a wrapper of a wrapper.
+- The wrapper: the mod part under `call(..., "x", TRF_WnErr)`: the destination from map `portals[].to` by portal name; the gates W1-W6 of the current system (`warn`, map, the visit latch, `TRF_StrictOk(cur, "warn")`, scene, `wn_ch`), then `__disableAction`/`__sys_SOS`, the row armed, no quest naming the destination (`TRF_StrictOk(j, "warn")` = `quest`), once per destination and visit (`WV.jw`); shown as `TRF_Say(<the row's warning>, 8)` before the original opens the box. Then `call(original, arg)` with the same arguments, its results returned. A portal without a map entry: the original first, then `dest_location` (the line follows the box). `event=jump_warn` logs every listed destination (shown, not_shown, skipped with the reason); `event=portal` (log 2) an unlisted one.
+- Limit: the global is compared at wrap time only. A quest script that redefines `PORTAL_<X>_Action` after T2b replaces the wrapper, and that portal goes unwarned until the next entry or load (host `wn-f`). Quest scenes and missions get no line anyway (the latch, the strict gate, the scene gate). Random portals (`RAND_PORTAL`) and quest teleports have no box and no warning.
+
+### 18.3 Deviations
+
+1. The wrappers are also installed at T2d (load), not only at T2b: after a load activate.script does not run and the saved trigger calls `PORTAL_<X>_Action` by its global name, which functions.script has just redefined (trf_gen notes the same global-name lookup of `AttachAction`). Without the T2d install the jump warning would be gone after every load (W-A12.8 checks both).
+2. The jump warning shows the row's dock warning text (it starts with "Dockmaster:"), as owner decision 4 says; no own text key. It is once per destination and visit and has no `wn_legs` cooldown (the player is at the portal).
+3. New log events not in 12: `jump_install` (level 1 when a function was wrapped, else 2), `jump_warn`, `portal` (level 2); rows in `log-events.md`.
+4. `condition` values hold `=` and are quoted in the log lines (log-format rule): `condition="GideonPermit=nil,Kfni=neutral"`.
+5. WD3: the stamp just inserted is never the one dropped while another can go; equal legs drop the smaller idx.
+6. WD4 without the map (no listed idx known): the stamp keys are checked for shape only.
+7. `mod-options.md` lists no module keys; the key and the tune keys are documented in config.script and `mods/traffic/README.md` "Config keys (warnings)". `install-test.sh` `LEVEL=v01`/`v02` write `warn=0`, as for the other worldbuilding modules.
+8. The W-A12 items are in `PROGRESS.md` "Next in-game test plan", subsection "Wave 1 (host-tested only)" (the section the wave 1 items share), not in `test-plan-haunts-parcels.md` section 5.
+9. When the mod part of a wrapper errors before it read the map, the post step still reads `dest_location` after the original and may warn after the box opened (host `wn-f`).

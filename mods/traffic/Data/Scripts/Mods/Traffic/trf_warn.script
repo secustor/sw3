@@ -1,0 +1,869 @@
+-- sw3-traffic lethal-system warnings module (Lua 4.0.1). Spec: design/warnings-spec.md (A12 step 1, roadmap wave 1
+-- row 1; the list: design/mod-research/lethal-systems.md). Prefix Wn (TRF_Wn_* public, TRF_Wn<X> internal), log
+-- module=warn. Host-tested only, not run in the game (W-A12.1-8 open).
+-- Owns: the list of 23 vanilla systems that kill, ambush or trap an arriving mothership (TRF_WnData, four classes),
+-- the mirror of each row's vanilla arming condition (permit label, team relation, CurrentQuest exception), and three
+-- lines: the dockmaster's warning at a trade dock one jump from an armed row (trf_plumb dock line, kind req, order 20,
+-- after the station's greeting at 10), the first-visit note of a listed system (one arrival line per system and save
+-- through TRF_ArrivalLine, queued from a due call wn_delay s after the entry), and the jump warning at the portal
+-- (owner decisions 3 and 4 of spec 16, 2026-11-04): a wrapper over every PORTAL_<X>_Action global, installed at T2b
+-- (TRF_Wn_OnEnter) and at T2d (TRF_Wn_OnLoad), shows the row's warning as a screen line before the vanilla confirm
+-- box opens, then calls the original with the same arguments. The jump hook TRF_Wn_BeforeJump logs only.
+-- Lines only (00 section 4 leash): no marker, no box, no offer, no relation or label write; nothing sends the player
+-- anywhere. No line while a story mission runs (visit latch on TRF_Safe_QState, the strict gate), under
+-- __disableAction or __sys_SOS, during a scene, or below tune wn_ch.
+-- Portal wrapper limits: it wraps each PORTAL_<X>_Action global once per MapInitialization (a function of a
+-- Mods/Traffic chunk is never wrapped again). The trigger attaches by global name in activate.script, after T2b. A quest
+-- script that redefines a PORTAL_<X>_Action global after T2b replaces the wrapper and goes unwarned: the global is
+-- compared at wrap time only. Random portals (RAND_PORTAL) and quest teleports have no box and no warning.
+-- Saved fields (version 4, created lazily, repaired by TRF_Wn_Fix):
+--   TRF.wn = {v1, v2, v3, c}: v1..v3 note bits (system idx is word floor((idx - 1) / 40) + 1, bit 2^((idx - 1) mod 40)),
+--   absent when 0; c[idx] = TRF.clock.legs when listed system idx was last named at a dock, at most 6 entries.
+-- Visit flags live in the chunk local WV (never saved; rebuilt by every MapInitialization, so entry and load reset
+-- them). No handle is stored anywhere.
+-- Layout as trf_station: helpers, accessors (one native each, protected), the static list, pure functions (*Of,
+-- explicit inputs, host-testable), contract functions. Top level: functions and WV only.
+
+local WV = {w={}, pr={}, jw={}, pw={}};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_WnWV() return %WV; end;
+
+-- logfmt event line, module=warn (design/log-format.md).
+function TRF_WnE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "warn"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_WnErr(m)
+	TRF_WnE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+function TRF_WnLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_WnDE(event, ...)
+	if TRF_WnLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_WnE, arg);
+end;
+
+function TRF_WnCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- Ranges of the cfg key (outside -> default) and clamps of the tune keys (spec 10).
+function TRF_WnClamp()
+	return {warn={0, 1}, wn_ch={0, 20}, wn_legs={1, 100}, wn_dock={1, 3}, wn_note={0, 1}, wn_delay={1, 20}, wn_jump={0, 1}};
+end;
+
+-- Constants without a key (spec 10): stamps kept, note words, bits per word.
+function TRF_WnK()
+	return {cmax=6, words=3, bits=40};
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Wn_OptDef), else the raw config, else the default; a wrong type or a value outside
+-- its range reads as the default.
+function TRF_WnOpt(key)
+	local d = TRF_Wn_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	local r = TRF_WnClamp()[key];
+	if type(v) == "number" and r and (v ~= floor(v) or v < r[1] or v > r[2]) then return d; end;
+	return v;
+end;
+
+-- Tune values of this module, clamped; TRF_Tune gives cfg tune overrides.
+function TRF_WnTune()
+	local d = TRF_Wn_TuneDef();
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_WnErr); end;
+	local cl = TRF_WnClamp();
+	local o = {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if type(x) ~= "number" then x = v; end;
+		local c = cl[k];
+		if c then x = TRF_WnCl(floor(x), c[1], c[2]); end;
+		o[k] = x;
+	end;
+	return o;
+end;
+
+function TRF_WnT(key)
+	return TRF_WnTune()[key];
+end;
+
+-- Traffic on and cfg warn 1.
+function TRF_WnOn()
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return nil; end;
+	if TRF_WnOpt("warn") ~= 1 then return nil; end;
+	return 1;
+end;
+
+function TRF_WnLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+function TRF_WnName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+-- System idx of a map name (any case), or nil.
+function TRF_WnIdx(name)
+	local m = TRF_N("TRF_Map");
+	if type(m) ~= "table" or type(m.by) ~= "table" or type(name) ~= "string" then return nil; end;
+	return m.by[strlower(name)];
+end;
+
+function TRF_WnTxt(key, a)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a); end;
+	return tostring(key);
+end;
+
+-- Comma-joined list of strings, or nil when empty.
+function TRF_WnJoin(l)
+	local s = nil;
+	for i = 1, getn(l) do
+		if s then s = s..","..tostring(l[i]); else s = tostring(l[i]); end;
+	end;
+	return s;
+end;
+
+-- Rows by map name and by map idx (only rows whose name is in the map), cached per MapInitialization.
+function TRF_WnRows()
+	local wv = %WV;
+	if type(wv.rows) == "table" then return wv.rows, wv.ix; end;
+	local by, ix = {}, {};
+	local d = TRF_WnData();
+	for i = 1, getn(d) do
+		local r = d[i];
+		by[r.s] = r;
+		local j = TRF_WnIdx(r.s);
+		if j then ix[j] = r; end;
+	end;
+	wv.rows = by; wv.ix = ix;
+	return by, ix;
+end;
+
+-- Managed-portal adjacency (trf_region TRF_RgAdj), cached per MapInitialization; {} without the map or trf_region.
+function TRF_WnAdj()
+	local wv = %WV;
+	if type(wv.adj) == "table" then return wv.adj; end;
+	local m = TRF_N("TRF_Map");
+	local a = nil;
+	if type(m) == "table" and type(TRF_RgAdj) == "function" then a = call(TRF_RgAdj, {m}, "x", TRF_WnErr); end;
+	if type(a) ~= "table" then a = {}; end;
+	wv.adj = a;
+	return a;
+end;
+
+-- Saved table, created when mk is set; nil otherwise when absent.
+function TRF_WnRec(mk)
+	if type(TRF) ~= "table" then return nil; end;
+	if type(TRF.wn) ~= "table" then
+		if not mk then return nil; end;
+		TRF.wn = {};
+	end;
+	return TRF.wn;
+end;
+
+-- Accessors: one native each, protected ---------------------------------------------
+
+function TRF_WnLabRaw(n) return {v=GetQuestLabel(n)}; end;
+
+-- Quest label: value, err (err 1 when the native is missing or failed).
+function TRF_Wn_Lab(n)
+	if type(GetQuestLabel) ~= "function" then TRF_WnErr("no GetQuestLabel"); return nil, 1; end;
+	local r = call(TRF_WnLabRaw, {n}, "x", TRF_WnErr);
+	if type(r) ~= "table" then return nil, 1; end;
+	return r.v, nil;
+end;
+
+function TRF_WnRelRaw(t) return {v=GetTeamRelation(t, PLAYER_TEAM)}; end;
+
+-- Relation of team t to the player: value, err.
+function TRF_Wn_Rel(t)
+	if type(GetTeamRelation) ~= "function" then TRF_WnErr("no GetTeamRelation"); return nil, 1; end;
+	local r = call(TRF_WnRelRaw, {t}, "x", TRF_WnErr);
+	if type(r) ~= "table" then return nil, 1; end;
+	return r.v, nil;
+end;
+
+-- q for row r (3.3): {lab = {name -> value}, rel = {team -> relation}, cq}; nil when a read failed (the row then
+-- counts as not armed).
+function TRF_Wn_Q(r)
+	local q = {lab={}, rel={}};
+	local ls, ts = {}, {};
+	if r.lbl then tinsert(ls, r.lbl); end;
+	if r.lyes then tinsert(ls, r.lyes); end;
+	if r.hafa == 1 then tinsert(ls, "HafaLife"); tinsert(ls, "InocoPermit"); tinsert(ts, "Vks"); tinsert(ts, "Inoco"); end;
+	if r.cqn then tinsert(ls, "CurrentQuest"); end;
+	if r.nf then tinsert(ts, r.nf); end;
+	if type(r.war) == "table" then for i = 1, getn(r.war) do tinsert(ts, r.war[i]); end; end;
+	for i = 1, getn(ls) do
+		local v, e = TRF_Wn_Lab(ls[i]);
+		if e then return nil; end;
+		q.lab[ls[i]] = v;
+	end;
+	for i = 1, getn(ts) do
+		local v, e = TRF_Wn_Rel(ts[i]);
+		if e then return nil; end;
+		q.rel[ts[i]] = v;
+	end;
+	q.cq = q.lab.CurrentQuest;
+	return q;
+end;
+
+function TRF_Wn_Flags()
+	if __disableAction == TRUE or __sys_SOS == TRUE then return 1; end;
+	return nil;
+end;
+
+-- The list (spec 4) ------------------------------------------------------------------
+
+-- Rows in spec 4 order, one per line between the markers (tools/check_warn.py parses them). s map name, nm English
+-- caption, k class, lbl armed while the label is not "yes", lyes armed while it is "yes", nf with lbl: and the team is
+-- not FRIEND, war armed while one team is at WAR, cqn off during these CurrentQuest values, hafa Hafa's switch, w and
+-- n the warning and note keys.
+function TRF_WnData()
+	return {
+		-- BEGIN warn list
+		{s="gideon", nm="Gideon", k="kill", lbl="GideonPermit", nf="Kfni", w="wnwgideon", n="wnngideon"},
+		{s="eridan", nm="Eridan", k="kill", lbl="EridanPermit", w="wnweridan", n="wnneridan"},
+		{s="xt86", nm="XT-86", k="kill", lbl="XT86permit", nf="Vks", w="wnwxt86", n="wnnxt86"},
+		{s="vulcan", nm="Vulcan", k="kill", lbl="VulcanPermit", w="wnwvulcan", n="wnnvulcan"},
+		{s="xt24", nm="XT-24", k="kill", lbl="XT24Permit", w="wnwxt24", n="wnnxt24"},
+		{s="zebos", nm="Zebos", k="kill", lbl="ZebosPermit", w="wnwzebos", n="wnnzebos"},
+		{s="debris4", nm="Debris 4", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
+		{s="xt11", nm="XT-11", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
+		{s="fiasar", nm="Fiasar", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
+		{s="ergelan", nm="Ergelan", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
+		{s="xb15", nm="XB-15", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
+		{s="xb13", nm="XB-13", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
+		{s="deosis", nm="Deosis", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
+		{s="el_ariash", nm="Al Ariash", k="ambush", war={"Uss"}, cqn={"11_1", "11_2", "12d", "12e"}, w="wnwuss", n="wnnuss"},
+		{s="xk10", nm="XK-10", k="ambush", lbl="InocoPermit", nf="Inoco", w="wnwino", n="wnnino"},
+		{s="danstag", nm="Danstag", k="ambush", lbl="InocoPermit", nf="Inoco", w="wnwino", n="wnnino"},
+		{s="ashelon", nm="Ashelon", k="ambush", lbl="InocoPermit", nf="Inoco", w="wnwino", n="wnnino"},
+		{s="hafa", nm="Hapha", k="ambush", hafa=1, w="wnwhafa", n="wnnhafa"},
+		{s="b_leftera1", nm="Beta Lethera 1", k="ambush", cqn={"6"}, w="wnwbleftera1", n="wnnbleftera1"},
+		{s="x244", nm="X244", k="trap", lyes="Block_X213", w="wnwx244", n="wnnx244"},
+		{s="endoria1", nm="Endoria 1", k="garrison", war={"Vks", "Patrol"}, w="wnwendoria1", n="wnnendoria1"},
+		{s="kron", nm="Kronos", k="garrison", war={"Patrol"}, w="wnwkron", n="wnnkron"},
+		{s="kassilia", nm="Cassily", k="garrison", war={"Kfni"}, w="wnwkassilia", n="wnnkassilia"},
+		-- END warn list
+	};
+end;
+
+-- Class rank of the dock order (5.2).
+function TRF_WnRank()
+	return {kill=1, ambush=2, trap=3, garrison=4};
+end;
+
+-- Pure functions (explicit inputs, host-testable) -------------------------------------
+
+-- Relation word for the log.
+function TRF_WnRelOf(v)
+	if v == RELATION_WAR then return "war"; end;
+	if v == RELATION_FRIEND then return "friend"; end;
+	if v == RELATION_NEUTRAL then return "neutral"; end;
+	return tostring(v);
+end;
+
+-- Hafa (4, row 18): HafaLife "Vks" -> armed while Vks is not FRIEND; "none" -> never; else armed while InocoPermit is
+-- not "yes" and Inoco is not FRIEND. Returns 1 or nil, condition.
+function TRF_WnHafaOf(q)
+	local hl = q.lab.HafaLife;
+	local c = "HafaLife="..tostring(hl);
+	if hl == "Vks" then
+		local rv = q.rel.Vks;
+		c = c..",Vks="..TRF_WnRelOf(rv);
+		if rv ~= RELATION_FRIEND then return 1, c; end;
+		return nil, c;
+	end;
+	if hl == "none" then return nil, c; end;
+	local ip, ri = q.lab.InocoPermit, q.rel.Inoco;
+	c = c..",InocoPermit="..tostring(ip)..",Inoco="..TRF_WnRelOf(ri);
+	if ip ~= "yes" and ri ~= RELATION_FRIEND then return 1, c; end;
+	return nil, c;
+end;
+
+-- Arming condition of row r (3.3) for q = {lab, rel, cq}: 1 when every given condition holds, else nil; and the
+-- condition string for the log (for example GideonPermit=no,Kfni=neutral).
+function TRF_WnArmedOf(r, q)
+	if type(r) ~= "table" or type(q) ~= "table" then return nil, "-"; end;
+	if r.hafa == 1 then return TRF_WnHafaOf(q); end;
+	local a = 1;
+	local cs = {};
+	if r.lbl then
+		local v = q.lab[r.lbl];
+		tinsert(cs, r.lbl.."="..tostring(v));
+		if v == "yes" then a = nil; end;
+	end;
+	if r.nf then
+		local v = q.rel[r.nf];
+		tinsert(cs, r.nf.."="..TRF_WnRelOf(v));
+		if v == RELATION_FRIEND then a = nil; end;
+	end;
+	if r.lyes then
+		local v = q.lab[r.lyes];
+		tinsert(cs, r.lyes.."="..tostring(v));
+		if v ~= "yes" then a = nil; end;
+	end;
+	if type(r.war) == "table" then
+		local any = nil;
+		for i = 1, getn(r.war) do
+			local v = q.rel[r.war[i]];
+			tinsert(cs, r.war[i].."="..TRF_WnRelOf(v));
+			if v == RELATION_WAR then any = 1; end;
+		end;
+		if not any then a = nil; end;
+	end;
+	if type(r.cqn) == "table" then
+		tinsert(cs, "CurrentQuest="..tostring(q.cq));
+		for i = 1, getn(r.cqn) do
+			if q.cq == r.cqn[i] then a = nil; end;
+		end;
+	end;
+	return a, TRF_WnJoin(cs) or "-";
+end;
+
+-- 2^e for an integer e >= 0 (Lua 4 has no ^ without the math tag method).
+function TRF_WnPow2(e)
+	local b = 1;
+	for i = 1, e do b = b * 2; end;
+	return b;
+end;
+
+-- Note bit of system idx (3.1): word w (1..3), bit b.
+function TRF_WnBitOf(idx)
+	local K = TRF_WnK();
+	local w = floor((idx - 1) / K.bits) + 1;
+	return w, TRF_WnPow2(idx - 1 - K.bits * (w - 1));
+end;
+
+-- 1 while system j's dock stamp in c is younger than n legs (5.2 C4).
+function TRF_WnCdOf(c, j, legs, n)
+	if type(c) ~= "table" or type(c[j]) ~= "number" then return nil; end;
+	if legs - c[j] < n then return 1; end;
+	return nil;
+end;
+
+-- Candidates {j, rk, ...} sorted by class rank, then idx; the first n are taken, the rest cut. Returns taken, cut.
+function TRF_WnPickOf(cands, n)
+	local l = {};
+	for i = 1, getn(cands) do tinsert(l, cands[i]); end;
+	sort(l, function(a, b) return a.rk < b.rk or (a.rk == b.rk and a.j < b.j); end);
+	local t, c = {}, {};
+	for i = 1, getn(l) do
+		if i <= n then tinsert(t, l[i]); else tinsert(c, l[i]); end;
+	end;
+	return t, c;
+end;
+
+-- Prune of the stamps (WD2): drop entries n legs old or older, entries of an idx not in listed, and bad entries.
+-- Returns the new table (nil when empty) and the number dropped.
+function TRF_WnPruneOf(c, legs, n, listed)
+	if type(c) ~= "table" then return nil, 0; end;
+	local o, k, d = {}, 0, 0;
+	for j, v in c do
+		if type(j) == "number" and type(v) == "number" and listed[j] and legs - v < n then
+			o[j] = v; k = k + 1;
+		else
+			d = d + 1;
+		end;
+	end;
+	if k == 0 then o = nil; end;
+	return o, d;
+end;
+
+-- Stamps over cap: drop the smallest leg (ties: the smaller idx), never keep idx j out when another can go (WD3).
+-- Returns the number dropped.
+function TRF_WnCapOf(c, cap, j)
+	local d = 0;
+	while 1 do
+		local n, w = 0, nil;
+		for k, v in c do
+			n = n + 1;
+			if k ~= j and (w == nil or v < c[w] or (v == c[w] and k < w)) then w = k; end;
+		end;
+		if n <= cap then break; end;
+		if w == nil then w = j; end;
+		c[w] = nil;
+		d = d + 1;
+	end;
+	return d;
+end;
+
+-- Contract: note bits and stamps (3.1) ---------------------------------------------------
+
+function TRF_WnNoteSeen(idx)
+	local t = TRF_WnRec(nil);
+	if not t then return nil; end;
+	local w, b = TRF_WnBitOf(idx);
+	if TRF_Bit(t["v"..w], b) == 1 then return 1; end;
+	return nil;
+end;
+
+function TRF_WnNoteSet(idx)
+	local t = TRF_WnRec(1);
+	local w, b = TRF_WnBitOf(idx);
+	t["v"..w] = TRF_BitSet(t["v"..w], b);
+end;
+
+-- Stamp of listed system j at leg legs (5.2), capped at cmax (WD3).
+function TRF_WnStamp(j, legs)
+	local t = TRF_WnRec(1);
+	if type(t.c) ~= "table" then t.c = {}; end;
+	t.c[j] = legs;
+	TRF_WnCapOf(t.c, TRF_WnK().cmax, j);
+end;
+
+-- WD2: prune the stamps; drop TRF.wn when it holds nothing. Returns the number dropped.
+function TRF_WnPrune()
+	local t = TRF_WnRec(nil);
+	if not t then return 0; end;
+	local by, ix = TRF_WnRows();
+	local c, d = TRF_WnPruneOf(t.c, TRF_WnLegs(), TRF_WnT("wn_legs"), ix);
+	t.c = c;
+	if next(t) == nil then TRF.wn = nil; end;
+	return d;
+end;
+
+-- Contract: gates (5.1) ------------------------------------------------------------------
+
+-- Pass line, once per reason and place per visit.
+function TRF_WnPass(why, at)
+	local wv = %WV;
+	local k = tostring(at)..":"..tostring(why);
+	if wv.pr[k] then return; end;
+	wv.pr[k] = 1;
+	TRF_WnE("pass", "reason", tostring(why), "at", tostring(at));
+end;
+
+-- Visit latch (W3): 1 once TRF_Safe_QState was seen in this visit.
+function TRF_WnLatch()
+	local wv = %WV;
+	if wv.q == 1 then return 1; end;
+	if TRF_N("TRF_Safe_QState") then wv.q = 1; return 1; end;
+	return nil;
+end;
+
+-- Gates W1-W6 for the current system idx. Returns the reason or nil.
+function TRF_WnGate(idx)
+	if not TRF_WnOn() then return "off"; end;
+	if type(idx) ~= "number" then return "nomap"; end;
+	if TRF_WnLatch() then return "latch"; end;
+	if type(TRF_StrictOk) ~= "function" then return "gate:nosafety"; end;
+	local ok, gw = TRF_StrictOk(idx, "warn");
+	if not ok then return "gate:"..tostring(gw); end;
+	if TRF_N("TRF_Safe_Scene") then return "scene"; end;
+	local ch = TRF_N("TRF_Chapter");
+	if type(ch) ~= "number" then ch = 0; end;
+	if ch < TRF_WnT("wn_ch") then return "chapter"; end;
+	return nil;
+end;
+
+-- Why listed system j is skipped (C1-C4 of 5.2), or nil (a candidate); and the condition string.
+function TRF_WnSkip(j, r, legs, T)
+	local wv = %WV;
+	local q = TRF_Wn_Q(r);
+	local a, cond = nil, "-";
+	if q then a, cond = TRF_WnArmedOf(r, q); end;
+	if not a then return "inactive", cond; end;
+	local ok, gw = TRF_StrictOk(j, "warn");
+	if not ok and gw == "quest" then return "quest", cond; end;
+	if wv.w[j] == 1 then return "visit", cond; end;
+	local t = TRF_WnRec(nil);
+	if t and TRF_WnCdOf(t.c, j, legs, T.wn_legs) then return "cooldown", cond; end;
+	return nil, cond;
+end;
+
+-- Contract: dock warning (5) ---------------------------------------------------------------
+
+-- Body of the dock line: a list of lines, or 0 for none.
+function TRF_WnDockBody(kind, param)
+	local wv = %WV;
+	local idx = TRF_N("TRF_CurIdx");
+	local why = TRF_WnGate(idx);
+	if why then TRF_WnPass(why, "dock"); return 0; end;
+	local T = TRF_WnTune();
+	local legs = TRF_WnLegs();
+	local by, ix = TRF_WnRows();
+	local nb = TRF_WnAdj()[idx] or {};
+	local listed, cands, sk = {}, {}, {};
+	local rk = TRF_WnRank();
+	for i = 1, getn(nb) do
+		local j = nb[i];
+		local r = ix[j];
+		if r then
+			tinsert(listed, r.s);
+			local s, cond = TRF_WnSkip(j, r, legs, T);
+			if s then
+				tinsert(sk, r.s..":"..s);
+			else
+				tinsert(cands, {j=j, r=r, rk=rk[r.k] or 9, c=cond});
+			end;
+		end;
+	end;
+	if getn(listed) == 0 then return 0; end;
+	local take, cut = TRF_WnPickOf(cands, T.wn_dock);
+	for i = 1, getn(cut) do tinsert(sk, cut[i].r.s..":cap"); end;
+	local out, shown = {}, {};
+	local dn = TRF_WnName(idx);
+	for i = 1, getn(take) do
+		local e = take[i];
+		tinsert(out, TRF_WnTxt(e.r.w, e.r.nm));
+		tinsert(shown, e.r.s);
+		wv.w[e.j] = 1;
+		TRF_WnStamp(e.j, legs);
+		TRF_WnE("warn", "system", e.r.s, "system_index", e.j, "dock_system", dn, "kind", e.r.k, "condition", e.c, "leg", legs);
+	end;
+	TRF_WnE("dock", "system", dn, "neighbour_count", getn(nb), "listed", TRF_WnJoin(listed), "shown", TRF_WnJoin(shown),
+		"skipped", TRF_WnJoin(sk));
+	if getn(out) == 0 then return 0; end;
+	return out;
+end;
+
+-- Dock line handler (trf_plumb kind req, order 20, not always: the dispatcher skips it under the flags).
+function TRF_Wn_DockLine(kind, param)
+	local r = call(TRF_WnDockBody, {kind, param}, "x", TRF_WnErr);
+	if r == nil then TRF_WnPass("error", "dock"); return nil; end;
+	if type(r) == "table" then return r; end;
+	return nil;
+end;
+
+-- Registration (trf_plumb TRF_InstallPlumb).
+function TRF_Wn_Plumb()
+	TRF_DockLine("req", 20, "TRF_Wn_DockLine");
+end;
+
+-- Contract: first-visit note (6) -------------------------------------------------------------
+
+-- Due call of the note (6.2): gates, then the arrival line; the bit is set only when it was queued.
+function TRF_Wn_NoteDue(idx)
+	if not TRF_WnOn() then return; end;
+	local by, ix = TRF_WnRows();
+	local r = ix[idx];
+	if not r then return; end;
+	local why = nil;
+	if idx ~= TRF_N("TRF_CurIdx") then why = "moved";
+	elseif TRF_WnLatch() then why = "latch";
+	elseif TRF_Wn_Flags() then why = "flag";
+	elseif TRF_N("TRF_Safe_Scene") then why = "scene";
+	else
+		local ok, gw = TRF_N("TRF_StrictOk", idx, "warn");
+		if not ok then why = "gate:"..tostring(gw); end;
+	end;
+	if not why then
+		local ch = TRF_N("TRF_Chapter");
+		if type(ch) ~= "number" then ch = 0; end;
+		if ch < TRF_WnT("wn_ch") then why = "chapter"; end;
+	end;
+	if why then
+		TRF_WnE("note", "system", r.s, "kind", r.k, "result", "skipped", "reason", why);
+		return;
+	end;
+	local ok, w2 = TRF_N("TRF_ArrivalLine", "warn", TRF_WnTxt(r.n, r.nm));
+	if ok then
+		TRF_WnNoteSet(idx);
+		TRF_WnE("note", "system", r.s, "kind", r.k, "result", "queued");
+	else
+		TRF_WnE("note", "system", r.s, "kind", r.k, "result", "dropped", "reason", tostring(w2 or "plumb"));
+	end;
+end;
+
+-- Contract: jump (7) -------------------------------------------------------------------------
+
+-- 7.1: log a jump into a listed system; no line, no write.
+function TRF_Wn_BeforeJump(dest, how)
+	if not TRF_WnOn() then return; end;
+	local j = TRF_WnIdx(dest);
+	if not j then return; end;
+	local by, ix = TRF_WnRows();
+	local r = ix[j];
+	if not r then return; end;
+	local q = TRF_Wn_Q(r);
+	local a, cond = nil, "-";
+	if q then a, cond = TRF_WnArmedOf(r, q); end;
+	TRF_WnE("jump_into", "system", r.s, "kind", r.k, "armed", TRF_KvB(a), "condition", cond, "how", tostring(how or "portal"));
+end;
+
+-- Jump warning at the portal (owner decision 4): the row's warning as a screen line for destination dest (map name,
+-- any case) reached through portal pn; via "map" (portals[].to) or "dest_location" (read after the original).
+function TRF_WnJumpWarn(dest, pn, via)
+	local wv = %WV;
+	local j = TRF_WnIdx(dest);
+	if not j then return; end;
+	local by, ix = TRF_WnRows();
+	local r = ix[j];
+	if not r then
+		TRF_WnDE("portal", "portal", pn, "destination", tostring(dest), "via", via, "listed", "false");
+		return;
+	end;
+	local cur = TRF_N("TRF_CurIdx");
+	local why = TRF_WnGate(cur);
+	if not why and TRF_Wn_Flags() then why = "flag"; end;
+	local cond = "-";
+	if not why then
+		local q = TRF_Wn_Q(r);
+		local a = nil;
+		if q then a, cond = TRF_WnArmedOf(r, q); end;
+		if not a then
+			why = "inactive";
+		else
+			local ok, gw = TRF_StrictOk(j, "warn");
+			if not ok and gw == "quest" then why = "quest";
+			elseif wv.jw[j] == 1 then why = "visit"; end;
+		end;
+	end;
+	if why then
+		TRF_WnE("jump_warn", "system", r.s, "kind", r.k, "portal", pn, "via", via, "condition", cond, "result", "skipped",
+			"reason", why);
+		return;
+	end;
+	wv.jw[j] = 1;
+	local ok = TRF_N("TRF_Say", TRF_WnTxt(r.w, r.nm), 8);
+	TRF_WnE("jump_warn", "system", r.s, "kind", r.k, "portal", pn, "via", via, "condition", cond, "result",
+		ok and "shown" or "not_shown");
+end;
+
+-- Mod part before the original: 1 when the destination came from the map (warned or not), nil when it must be read
+-- from dest_location after the original.
+function TRF_WnJumpPre(pn)
+	if not TRF_WnOn() then return 1; end;
+	local m = TRF_N("TRF_Map");
+	local idx = TRF_N("TRF_CurIdx");
+	if type(m) ~= "table" or type(idx) ~= "number" or type(m.sys[idx]) ~= "table" then return nil; end;
+	local p = nil;
+	if type(m.sys[idx].pby) == "table" then p = m.sys[idx].pby[pn]; end;
+	if type(p) ~= "table" or type(p.to) ~= "string" then return nil; end;
+	TRF_WnJumpWarn(p.to, pn, "map");
+	return 1;
+end;
+
+function TRF_WnJumpPost(pn)
+	if not TRF_WnOn() then return; end;
+	if type(dest_location) == "string" then TRF_WnJumpWarn(dest_location, pn, "dest_location"); end;
+end;
+
+-- Body of a portal wrapper: the mod part protected (an error never blocks the portal), then the original with the
+-- same arguments, its result returned.
+function TRF_WnPortalRun(pn, orig, args)
+	local pre = call(TRF_WnJumpPre, {pn}, "x", TRF_WnErr);
+	if type(orig) ~= "function" then return nil; end;
+	if pre then return call(orig, args); end;
+	local r = call(orig, args);
+	call(TRF_WnJumpPost, {pn}, "x", TRF_WnErr);
+	return r;
+end;
+
+-- Wrapper of PORTAL_<X>_Action: portal name and original as upvalues (no global holds them, so AttachAction's
+-- global-name lookup finds only PORTAL_<X>_Action).
+function TRF_WnWrap(fname, orig)
+	local pn = strsub(fname, 1, strlen(fname) - 7);
+	return function(...)
+		return TRF_WnPortalRun(%pn, %orig, arg);
+	end;
+end;
+
+-- 1 when f is a Mods/Traffic function (a wrapper of an earlier MapInitialization).
+function TRF_WnIsMine(f)
+	if type(f) ~= "function" then return nil; end;
+	if type(TRF_IsMine) == "function" and TRF_IsMine(f) then return 1; end;
+	if type(getinfo) == "function" then
+		local i = getinfo(f, "S");
+		local s = "";
+		if type(i) == "table" and type(i.source) == "string" then s = strlower(i.source); end;
+		if strfind(s, "trf_warn", 1, 1) then return 1; end;
+	end;
+	return nil;
+end;
+
+-- Installs the portal wrappers (T2b and T2d): every PORTAL_<X>_Action global function, once. Returns wrapped, skipped.
+function TRF_WnInstallJump()
+	local wv = %WV;
+	if not TRF_WnOn() or TRF_WnT("wn_jump") ~= 1 then return 0, 0; end;
+	local names = {};
+	for k, v in globals() do
+		if type(k) == "string" and type(v) == "function" and strfind(k, "^PORTAL_[%w_]+_Action$") then tinsert(names, k); end;
+	end;
+	sort(names);
+	local n, sk = 0, 0;
+	for i = 1, getn(names) do
+		local f = getglobal(names[i]);
+		if wv.pw[names[i]] == f or TRF_WnIsMine(f) then
+			sk = sk + 1;
+		else
+			local w = TRF_WnWrap(names[i], f);
+			wv.pw[names[i]] = w;
+			setglobal(names[i], w);
+			n = n + 1;
+		end;
+	end;
+	if n > 0 then
+		TRF_WnE("jump_install", "wrapped_count", n, "skipped_count", sk);
+	else
+		TRF_WnDE("jump_install", "wrapped_count", n, "skipped_count", sk);
+	end;
+	return n, sk;
+end;
+
+-- Loader callbacks ---------------------------------------------------------------------------
+
+-- T2b, after functions.script: the portal wrappers.
+function TRF_Wn_OnEnter()
+	call(TRF_WnInstallJump, {}, "x", TRF_WnErr);
+end;
+
+-- T2c (6.1), after TRF_Stn_OnActivate: prune, latch, the note's due call.
+function TRF_Wn_OnActivate()
+	local wv = %WV;
+	if not TRF_WnOn() then return; end;
+	local pr = TRF_WnPrune();
+	TRF_WnLatch();
+	local idx = TRF_N("TRF_CurIdx");
+	local by, ix = TRF_WnRows();
+	local r = nil;
+	if type(idx) == "number" then r = ix[idx]; end;
+	local note = "none";
+	if r then
+		if TRF_WnNoteSeen(idx) then
+			note = "seen";
+		elseif TRF_WnT("wn_note") ~= 1 then
+			note = "off";
+		else
+			note = "due";
+			if not TRF_N("TRF_Due", TRF_WnT("wn_delay"), "TRF_Wn_NoteDue", idx) then
+				TRF_WnE("note", "system", r.s, "kind", r.k, "result", "dropped", "reason", "due");
+			end;
+		end;
+	end;
+	local nm = "?";
+	if type(idx) == "number" then nm = TRF_WnName(idx); end;
+	TRF_WnE("enter", "system", nm, "system_index", idx, "listed", TRF_KvB(r and 1), "note", note, "pruned_count", pr,
+		"latch", TRF_KvB(wv.q));
+end;
+
+-- T2d: no note after a load (6.3); the portal wrappers again (the saved triggers call PORTAL_<X>_Action by name).
+function TRF_Wn_OnLoad()
+	local wv = %WV;
+	if not TRF_WnOn() then return; end;
+	TRF_WnLatch();
+	call(TRF_WnInstallJump, {}, "x", TRF_WnErr);
+	TRF_WnDE("load", "latch", TRF_KvB(wv.q));
+end;
+
+-- WD4: repair TRF.wn (called from TRF_Repair).
+function TRF_Wn_Fix()
+	if type(TRF) ~= "table" or TRF.wn == nil then return; end;
+	if type(TRF.wn) ~= "table" then
+		TRF.wn = nil;
+		TRF_WnE("fix", "field", "wn", "result", "dropped");
+		return;
+	end;
+	local t, o = TRF.wn, {};
+	local lim = TRF_WnPow2(TRF_WnK().bits);
+	for w = 1, TRF_WnK().words do
+		local v = t["v"..w];
+		if v ~= nil then
+			if type(v) == "number" and v == floor(v) and v >= 0 and v < lim then
+				if v > 0 then o["v"..w] = v; end;
+			else
+				TRF_WnE("fix", "field", "v"..w, "result", "dropped");
+			end;
+		end;
+	end;
+	if t.c ~= nil then
+		if type(t.c) ~= "table" then
+			TRF_WnE("fix", "field", "c", "result", "dropped");
+		else
+			local legs = TRF_WnLegs();
+			local by, ix = TRF_WnRows();
+			-- Without the map (no listed idx known) only the shape is checked.
+			local any = next(ix) == nil;
+			local c, d = {}, 0;
+			for j, v in t.c do
+				if type(j) == "number" and (any or ix[j]) and type(v) == "number" and v >= 0 and v <= legs then c[j] = v; else d = d + 1; end;
+			end;
+			d = d + TRF_WnCapOf(c, TRF_WnK().cmax, nil);
+			if d > 0 then TRF_WnE("fix", "field", "c", "result", "dropped", "dropped_count", d); end;
+			if next(c) ~= nil then o.c = c; end;
+		end;
+	end;
+	for k, v in t do
+		if k ~= "c" and k ~= "v1" and k ~= "v2" and k ~= "v3" then TRF_WnE("fix", "field", tostring(k), "result", "dropped"); end;
+	end;
+	if next(o) == nil then TRF.wn = nil; else TRF.wn = o; end;
+end;
+
+-- Defaults (10) ------------------------------------------------------------------------------
+
+function TRF_Wn_OptDef()
+	return {warn=1};
+end;
+
+function TRF_Wn_TuneDef()
+	return {wn_ch=0, wn_legs=8, wn_dock=2, wn_note=1, wn_delay=4, wn_jump=1};
+end;
+
+-- "module=warn event=dump note_words=<v1>,<v2>,<v3> stamps=<idx>:<leg>,..." (log 2).
+function TRF_Wn_Dump()
+	if TRF_WnLog() < 2 or type(TRF) ~= "table" then return; end;
+	local t = TRF.wn;
+	if type(t) ~= "table" then t = {}; end;
+	local ks = {};
+	if type(t.c) == "table" then for k, v in t.c do if type(k) == "number" then tinsert(ks, k); end; end; end;
+	sort(ks);
+	local st = {};
+	for i = 1, getn(ks) do tinsert(st, ks[i]..":"..tostring(t.c[ks[i]])); end;
+	TRF_WnE("dump", "note_words", format("%.0f,%.0f,%.0f", t.v1 or 0, t.v2 or 0, t.v3 or 0), "stamps", TRF_WnJoin(st));
+end;
+
+-- Texts (9), EN only; $1 = the row's English caption in the family texts.
+function TRF_Wn_Text()
+	return {
+		wnwgideon = "Dockmaster: do not jump to Gideon. Without a Kfni permit their guard blows up any ship five seconds after it arrives, shields or not.",
+		wnngideon = "Gideon: Kfni restricted space. Without a permit the guard blows up an arriving ship in five seconds. Six minefields lie off the lanes; a ship that enters one is lost within three seconds.",
+		wnweridan = "Dockmaster: Eridan is closed. Without a Kfni pass the guard destroys an arriving ship within five seconds. The random gates can drop you there too.",
+		wnneridan = "Eridan: Kfni restricted space. Without a pass the guard destroys an arriving ship in five seconds. The random gates lead here as well.",
+		wnwxt86 = "Dockmaster: XT-86 is closed by the VKS. Their guard destroys an arriving ship within five seconds unless you hold their clearance.",
+		wnnxt86 = "XT-86: VKS restricted space. Without their clearance the guard destroys an arriving ship in five seconds.",
+		wnwvulcan = "Dockmaster: Vulcan is closed by InoCo. Without their clearance the guard destroys an arriving ship within five seconds.",
+		wnnvulcan = "Vulcan: InoCo restricted space. Without their clearance the guard destroys an arriving ship in five seconds.",
+		wnwxt24 = "Dockmaster: XT-24 belongs to the Grey Ones. Unless they invited you, their ships destroy a mothership five seconds after it arrives.",
+		wnnxt24 = "XT-24: Grey Ones space. An uninvited mothership is destroyed five seconds after it arrives, and the invitation ends when you leave.",
+		wnwzebos = "Dockmaster: Zebos is Berserk ground. Without a pass an arriving ship is gone in five seconds, and the patrols there attack anything.",
+		wnnzebos = "Zebos: Berserk space. Without a pass an arriving ship is destroyed in five seconds. The Berserk patrols attack on sight unless the Berserk are at peace with you.",
+		wnwuss = "Dockmaster: the USS is at war with you, and the guard in $1 meets every hostile arrival with six heavy flights. Do not jump there before you make peace.", -- system
+		wnnuss = "$1: USS space. While the USS is at war with you, the guard attacks every arrival with six heavy flights. The gates open 20 seconds after arrival.", -- system
+		wnwino = "Dockmaster: $1 is InoCo core space. Without an InoCo permit the guard attacks on arrival with six heavy flights. Do not jump there.", -- system
+		wnnino = "$1: InoCo core. Without an InoCo permit the guard attacks every arrival with six heavy flights. The gates open 20 seconds after arrival.", -- system
+		wnwhafa = "Dockmaster: the Hapha guard attacks every arrival it does not trust with six heavy flights. Do not jump there without leave from its owners.",
+		wnnhafa = "Hapha: the guard attacks every arrival it does not trust, InoCo without a permit, VKS unless you are their friend. The gates open 20 seconds after arrival.",
+		wnwbleftera1 = "Dockmaster: the VKS guard the depot at Beta Lethera 1 and fire on anyone who arrives. Six flights at close range, no hail. Keep out.",
+		wnnbleftera1 = "Beta Lethera 1: VKS depot. The guard fires on every arrival, six flights at close range. The gates open 20 seconds after arrival.",
+		wnwx244 = "Dockmaster: the X213 gate in X244 is blocked. Fly near it and Berserk waves come out and the gate burns out. Leave X244 by the X297 gate.",
+		wnnx244 = "X244: Berserk space. While the X213 gate is blocked, flying near it brings out Berserk waves and burns the gate out. The X297 gate stays open.",
+		wnwendoria1 = "Dockmaster: Endoria 1 is hostile to you right now. It is a VKS fortress with a patrol base, and the garrison flies heavy ships. Do not jump there.",
+		wnnendoria1 = "Endoria 1: VKS fortress with a patrol base. While the VKS or the patrol is at war with you, the garrison fires on sight.",
+		wnwkron = "Dockmaster: the patrol at Kronos has orders to fire on you. Twenty patrol flights. Stay out until that is settled.",
+		wnnkron = "Kronos: patrol system. While the patrol is at war with you, its twenty flights fire on sight.",
+		wnwkassilia = "Dockmaster: the Kfni at Cassily are at war with you, and their guard fires on sight. Stay out for now.",
+		wnnkassilia = "Cassily: Kfni garrison and the mercenary exchange. While the Kfni are at war with you, the guard fires on sight.",
+	};
+end;

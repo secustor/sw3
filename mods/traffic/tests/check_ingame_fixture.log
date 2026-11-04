@@ -434,3 +434,22 @@ traffic: lua: exp=v1 module=wq event=step step_before=70 step_after=80 reason=bo
 traffic: lua: exp=v1 module=wq event=logbook list=job id=trf_wq step=80 result=added
 traffic: lua: exp=v1 module=wq event=logbook list=job id=trf_wq state=0 result=done
 traffic: lua: exp=v1 module=wq event=reconcile id=trf_wq list=job result=removed reason=enter leg=71
+traffic: lua: exp=v1 module=state event=enter generation=90 fresh=false system=avalon legs=130
+traffic: lua: exp=v1 module=warn event=jump_install wrapped_count=2 skipped_count=0
+traffic: lua: exp=v1 module=warn event=enter system=avalon system_index=10 listed=false note=none pruned_count=0 latch=false
+traffic: lua: exp=v1 module=station event=dock station_key=10 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=chapter
+traffic: lua: exp=v1 module=warn event=warn system=gideon system_index=44 dock_system=avalon kind=kill condition="GideonPermit=nil,Kfni=neutral" leg=130
+traffic: lua: exp=v1 module=warn event=dock system=avalon neighbour_count=2 listed=gideon,kassilia shown=gideon skipped=kassilia:inactive
+traffic: lua: exp=v1 module=station event=dock station_key=10 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=chapter
+traffic: lua: exp=v1 module=warn event=dock system=avalon neighbour_count=2 listed=gideon,kassilia shown=nil skipped=gideon:visit,kassilia:inactive
+traffic: lua: exp=v1 module=warn event=jump_warn system=gideon kind=kill portal=PORTAL_R via=map condition="GideonPermit=nil,Kfni=neutral" result=shown
+traffic: lua: exp=v1 module=warn event=jump_into system=kassilia kind=garrison armed=false condition="Kfni=neutral" how=portal
+traffic: lua: exp=v1 module=state event=enter generation=91 fresh=false system=kassilia legs=131
+traffic: lua: exp=v1 module=warn event=enter system=kassilia system_index=53 listed=true note=due pruned_count=0 latch=false
+traffic: lua: exp=v1 module=warn event=note system=kassilia kind=garrison result=queued
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=warn line_index=1 delay=4.000 result=queued
+traffic: lua: exp=v1 module=warn event=jump_into system=avalon kind=garrison armed=false condition=- how=portal
+traffic: lua: exp=v1 module=state event=enter generation=92 fresh=false system=avalon legs=132
+traffic: lua: exp=v1 module=warn event=pass reason=latch at=dock
+traffic: lua: exp=v1 module=station event=dock station_key=10 param= via=pos distance=40 standing=1 rung=1 heat=0 greeting=- news=false fee=0 fee_multiplier=0 difficulty_factor=1 no_fee_reason=latch
+traffic: lua: exp=v1 module=warn event=warn system=gideon system_index=44 dock_system=avalon kind=kill condition="GideonPermit=nil,Kfni=neutral" leg=132

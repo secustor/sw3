@@ -129,7 +129,7 @@ function T_SV_A()
 	local slot = TRF_RgOf(idx);
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=15") >= 1, "trf_survive loads after trf_station (extra_count=15 with trf_ladder, trf_charter, trf_scar, trf_captain, trf_stash, trf_freight, trf_haunt, trf_parcel, trf_merc and trf_wq)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=16") >= 1, "trf_survive loads after trf_station (extra_count=16 with trf_ladder, trf_charter, trf_scar, trf_captain, trf_stash, trf_freight, trf_haunt, trf_parcel, trf_merc, trf_wq and trf_warn)");
 	local P = TRF_PlReg();
 	local ord = "";
 	for i = 1, getn(P.dock.trade.line) do ord = ord..P.dock.trade.line[i].o..","; end;

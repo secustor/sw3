@@ -862,6 +862,26 @@ Freight unlock quest "Missing in Capricorn", commits 1-3 and the presentation (`
 | `talk` | `module=wq event=talk dialog=3 kind=trade result=pending` (a dock line left to the talk box 460) | 2 |
 | `letter` | `module=wq event=letter letter=1 post=mail_trf_wq1 flags=8 result=posted` (`letter=2 ... flags=24`); `... letter=1 news_mode=1 result=skipped reason=news_mode` (`reason=native`: no `AddPost`) | 1 |
 
+## warn (`trf_warn.script`; `TRF_WnE`, `TRF_WnDE`)
+
+Lethal-system warnings, A12 step 1 (`design/warnings-spec.md` 12; host-tested only). `system` is the listed system's map name, `dock_system` the trade dock's, `kind` the row class (`kill`, `ambush`, `trap`, `garrison`), `condition` the row's arming inputs as read (`GideonPermit=nil,Kfni=neutral`; quoted in the line because it holds `=`), `leg` `TRF.clock.legs`.
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=warn event=error message=<m>` (also `no GetQuestLabel`, `no GetTeamRelation`) | 1 |
+| `enter` | `module=warn event=enter system=kassilia system_index=53 listed=true note=due pruned_count=0 latch=false` (`note=seen`, `none`, `off`) | 1 |
+| `load` | `module=warn event=load latch=false` | 2 |
+| `pass` | `module=warn event=pass reason=latch at=dock` (`off, error, nomap, latch, gate:<why>, scene, chapter`), once per reason and visit | 1 |
+| `dock` | `module=warn event=dock system=avalon neighbour_count=2 listed=gideon,kassilia shown=gideon skipped=kassilia:inactive` (skip reasons `inactive, quest, visit, cooldown, cap`); only at an approach with a listed neighbour | 1 |
+| `warn` | `module=warn event=warn system=gideon system_index=44 dock_system=avalon kind=kill condition="GideonPermit=nil,Kfni=neutral" leg=12` | 1 |
+| `note` | `module=warn event=note system=kassilia kind=garrison result=queued` (`result=dropped reason=cap\|due\|entry`, `result=skipped reason=moved\|latch\|flag\|scene\|gate:<why>\|chapter`) | 1 |
+| `jump_into` | `module=warn event=jump_into system=gideon kind=kill armed=true condition="GideonPermit=nil,Kfni=neutral" how=portal` (`how=custom` for `CustomTeleportate`) | 1 |
+| `jump_install` | `module=warn event=jump_install wrapped_count=2 skipped_count=0` (T2b and T2d; level 2 when nothing was wrapped) | 1 |
+| `jump_warn` | `module=warn event=jump_warn system=gideon kind=kill portal=PORTAL_R via=map condition="GideonPermit=nil,Kfni=neutral" result=shown` (`via=dest_location`; `result=not_shown`; `result=skipped reason=off\|nomap\|latch\|gate:<why>\|scene\|chapter\|flag\|inactive\|quest\|visit`) | 1 |
+| `portal` | `module=warn event=portal portal=PORTAL_U destination=argon via=map listed=false` (a wrapped portal to an unlisted system) | 2 |
+| `fix` | `module=warn event=fix field=c result=dropped dropped_count=4` (`field=wn\|v1\|v2\|v3\|<unknown key>`) | 1 |
+| `dump` | `module=warn event=dump note_words=0,4096,0 stamps=44:12,53:12` | 2 |
+
 ## supply (`trf_supply.script`; `TRF_SpE`)
 
 | Event | Example line | Level |

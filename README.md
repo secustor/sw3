@@ -152,6 +152,7 @@ Adds NPC traders, pirate clans, factions and jobs, written as Lua scripts loaded
 - Local events: ore-barge rescue, tanker shuttle, refugee launch.
 - Rank ladder for all five factions, with transit permits, settle-the-file offers and prisoners of war.
 - The patrol board lists raid reports, booming lanes, wanted captains and sweep offers.
+- Warnings for 23 systems that kill, ambush or trap an arriving mothership: a dockmaster line at a trade station one jump away, a note on the first visit, a line at the portal (`warn`; not yet tested in game).
 
 **Salvage and intel**
 - Collect distress beacons and escape pods (up to 6) and hand them in for credits or standing.
