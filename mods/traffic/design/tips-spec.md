@@ -1,6 +1,6 @@
 # A16 sourced tips and the event ring: implementation spec
 
-Status: spec 2026-11-04, not implemented. Roadmap: [ROADMAP.md](ROADMAP.md) wave 2 row 6 (sections 3, 4 and 5). Design: [proposals/activities-after-worldbuilding.md](proposals/activities-after-worldbuilding.md) 2.7 (A16 with its skeptic fixes, cited as "P 2.7"), 2b.1 (B06 moved dated harbour news here), 4b.1 (lines, markers, offers), 4b.2 (save), 6 items 5 and 9. Shared rules: `worldbuilding/00-economy-and-progression.md` sections 4 and 6 ("00"). Built surfaces read: [station-voices-spec.md](station-voices-spec.md) 8.3 (harbour news and region tips, "SV n"), [v02-spec.md](v02-spec.md) 6.3 (S11, the where-headed rumour), [captain-spec.md](captain-spec.md) (informant), [stash-spec.md](stash-spec.md) (pirate-dock intel, patrol tip, area nav point), [crew-remarks-spec.md](crew-remarks-spec.md) D13 (`TRF_Rm_AgeText`).
+Status: implemented 2026-11-04, **host-tested only** (`ti-a`..`ti-g`), not run in the game (W-A16.1-10, PROGRESS "Wave 2 (host-tested only)"); implementation notes and deviations in 16. Roadmap: [ROADMAP.md](ROADMAP.md) wave 2 row 6 (sections 3, 4 and 5). Design: [proposals/activities-after-worldbuilding.md](proposals/activities-after-worldbuilding.md) 2.7 (A16 with its skeptic fixes, cited as "P 2.7"), 2b.1 (B06 moved dated harbour news here), 4b.1 (lines, markers, offers), 4b.2 (save), 6 items 5 and 9. Shared rules: `worldbuilding/00-economy-and-progression.md` sections 4 and 6 ("00"). Built surfaces read: [station-voices-spec.md](station-voices-spec.md) 8.3 (harbour news and region tips, "SV n"), [v02-spec.md](v02-spec.md) 6.3 (S11, the where-headed rumour), [captain-spec.md](captain-spec.md) (informant), [stash-spec.md](stash-spec.md) (pirate-dock intel, patrol tip, area nav point), [crew-remarks-spec.md](crew-remarks-spec.md) D13 (`TRF_Rm_AgeText`).
 Paths: `D` = `mods/traffic/design`, `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `T` = `mods/traffic/tests`, `G` = the clone's `Data/Scripts` (read-only).
 Module: new `S/trf_tips.script`, prefix `Ti` (`TRF_Ti_*` public, `TRF_Ti<X>` internal), log lines `module=tips`. It also owns the shared ring API `TRF_RingPush` / `TRF_RingRead` / `TRF_RingMark` (4), which stash step 2 and A08 call. `TRF_Tp` is trf_track's prefix; `TRF_Ti` is free, but `TRF_Tier*` (trf_tier) starts with the same letters, so no internal name of this module may start with `TRF_Tier` (rule M1, 11.1).
 
@@ -467,21 +467,21 @@ In-game checks for `tools/check_ingame.py` (verdicts PASS / FAIL / NO DATA / MAN
 
 ## 14. Conformance checklist
 
-1. [ ] `S/trf_tips.script`: functions and the chunk local `TI` only; CRLF; `luac -p`; `lint_lua.py` 0 findings; `--calls` only the 5 known warnings; no internal name starting with `TRF_Tier`.
-2. [ ] Lua 4 rules: no `local function`, `true`/`false`, `%` operator or `#`; flags tested `== 1`; `mod()` for legs.
-3. [ ] Saved state only `TRF.ti` (3.1, 3.2); no handle anywhere; `TRF_Ti_Fix` as 4.6; nil when empty.
-4. [ ] Ring API as 4.1-4.5, shared names `TRF_RingPush`, `TRF_RingRead`, `TRF_RingMark`; replace keys and eviction as 3.3 and 4.2; prune as 4.3.
-5. [ ] Feeds exactly as 5.1 with the landmark and source rules of 5.2; no push for the current system; legs stamped with `TRF.clock.legs`; owner modules unchanged without trf_tips.
-6. [ ] Kinds 09, 10 reserved; 11, 12 reserved for stash step 2 with the contract of 5.3.
-7. [ ] Surfaces as 7.1-7.4; truth states as 7.6; told rules D14; merges D15.
-8. [ ] Gates R1-R9; chapters D16; no line in a mission visit, a scene or under the flags.
-9. [ ] No arrival line, no box, no hail answer, no logbook entry, no marker of its own.
-10. [ ] trf_plumb offer registry and `mk_offer` cap; stash registered (7.5).
-11. [ ] 24 text keys registered (X1); scaffold regenerated (X2); RU fixed forms (X3); "portal", never "gate".
-12. [ ] Config `tips` and the tune keys of 9 with defaults and clamps; `install-test.sh` `TIPS`.
-13. [ ] Log lines of 10; `log-events.md` section; dump through `TRF_ModList`.
-14. [ ] Host `ti-a`..`ti-g` pass; all earlier runs pass with `extra_count=20`; `TRF.ti` <= 409 bytes at `ti_ring` 4; TRF < 100,000.
-15. [ ] README sections and the root README line; PROGRESS entry with TI1-TI5 and W-A16.1-10.
+1. [x] `S/trf_tips.script`: functions and the chunk local `TI` only; CRLF; `luac -p`; `lint_lua.py` 0 findings; `--calls` only the 5 known warnings; no internal name starting with `TRF_Tier`.
+2. [x] Lua 4 rules: no `local function`, `true`/`false`, `%` operator or `#`; flags tested `== 1`; `mod()` for legs.
+3. [x] Saved state only `TRF.ti` (3.1, 3.2); no handle anywhere; `TRF_Ti_Fix` as 4.6; nil when empty.
+4. [x] Ring API as 4.1-4.5, shared names `TRF_RingPush`, `TRF_RingRead`, `TRF_RingMark`; replace keys and eviction as 3.3 and 4.2; prune as 4.3.
+5. [x] Feeds exactly as 5.1 with the landmark and source rules of 5.2; no push for the current system; legs stamped with `TRF.clock.legs`; owner modules unchanged without trf_tips.
+6. [x] Kinds 09, 10 reserved; 11, 12 reserved for stash step 2 with the contract of 5.3.
+7. [x] Surfaces as 7.1-7.4; truth states as 7.6; told rules D14; merges D15.
+8. [x] Gates R1-R9; chapters D16; no line in a mission visit, a scene or under the flags.
+9. [x] No arrival line, no box, no hail answer, no logbook entry, no marker of its own.
+10. [x] trf_plumb offer registry and `mk_offer` cap; stash registered (7.5).
+11. [x] 24 text keys registered (X1); scaffold regenerated (X2); RU fixed forms (X3); "portal", never "gate".
+12. [x] Config `tips` and the tune keys of 9 with defaults and clamps; `install-test.sh` `TIPS`.
+13. [x] Log lines of 10; `log-events.md` section; dump through `TRF_ModList`.
+14. [x] Host `ti-a`..`ti-g` pass; all earlier runs pass with `extra_count=20`; `TRF.ti` <= 409 bytes at `ti_ring` 4; TRF < 100,000.
+15. [x] README sections and the root README line; PROGRESS entry with TI1-TI5 and W-A16.1-10.
 
 ## 15. Notes on the inputs
 
@@ -489,3 +489,22 @@ In-game checks for `tools/check_ingame.py` (verdicts PASS / FAIL / NO DATA / MAN
 - Leg stamps: trf_region passes the tick leg `L` to its hooks while trf_base and trf_scar stamp `legs`; the feeds ignore `L` (D10), as trf_captain's `dl` does after crew-remarks-spec 17.3 item 2.
 - Stash wording: the pirate-dock intel box (`stashintel<sys>`) already names "which belt" per system and its reply places the area marker; A16 changes neither (stash step 2 owns them).
 - Hail rumour range: the built chain uses `rumour_range` 3 jumps (v1 rumours) and 1-2 jumps for the others; the ring uses its own `ti_hail_j` 2.
+
+## 16. Implementation notes (2026-11-04)
+
+Built as specified: `S/trf_tips.script`, the feed lines in trf_region, trf_base, trf_captain and trf_scar, the surface calls in trf_station, trf_hail and trf_captain, the offer registry in trf_plumb with trf_stash registered, cfg `tips` with `TIPS` in `install-test.sh`, the 24 keys in `loc/trf_en.loc` (scaffold regenerated, `gen_map.py --check --loc` clean) and their RU fixed forms in `loc/trf_ru.loc`, host runs `ti-a`..`ti-g`, W-A16.1-10 in `tools/check_ingame.py` (fixture `T/check_ingame_tips_fixture.log`, failing block at the end of `T/check_ingame_fixture.log`; selftest 202 of 202). `TRF.ti` at its bound 409 bytes; full state `v1-n` 97,012 bytes.
+
+### Deviations
+
+1. Load order: B02 landed first, so `trf_tips` loads after `trf_debrief` (`extra_count` 20 -> 21, not 19 -> 20), `"Ti"` follows `"Db"` in `TRF_ModList`, `TRF_Ti_Text` follows `TRF_Db_Text` in both text lists and `TRF_Ti_Fix` runs after `TRF_Db_Fix` (still after `TRF_Crp_Fix`). The pins of the other host files moved by one.
+2. `TRF_Ti_TipClause(idx, kind, slot, s)`: a fourth argument names the base system for kind `base` (the spec's three arguments cannot say which base record to read); `sweep` calls it as written.
+3. Kinds 11 and 12 (stash step 2): their text comes from `TRF_Sh_RingText(a, k, place, age)`, which stash step 2 provides with `#TRF_StashRumour`; without that function the records are not candidates (`result=kind`), so a pushed record never shows a key. The reveal call `TRF_Sh_RingTold(a, 11)` is as 5.3.
+4. Wrecks (kind 08) are history records with a live check; a dead wreck (opened, hidden, gone) is pruned like a dead target (D12 "dead records are pruned"; 4.3 names only target records).
+5. Merges (D15): a record whose merge partner already carries told bit 1 counts as told, so the same event is not told a second time when the partner was told alone before the other record arrived.
+6. `event=prune` is also written for the prune at a push (4.3 prunes there too), not only at the region tick.
+7. `tistbase` is appended to the base clause when the base record is stale; the built base tip shows only bases in state 1 or 2, so the clause is current in practice.
+8. The pure functions take the inputs they need: `TRF_TiExitOf(e, d, by, np)` and `TRF_TiGateOf(e, d, by, np)` (map name table, non-portal table), `TRF_TiPruneOf(list, age, live, K)`, `TRF_TiPickOf(list, near)` (the candidate filter of R5-R9 is `TRF_TiCand`), `TRF_TiSwSrcOf(f)` (S2), `TRF_TiMateOf(r, list)` (D15).
+9. Log values: the dump line adds `on=<cfg tips>`; the informant's pick line names the captain's system as `system` (no dock index reaches `TRF_Ti_Intel`); F1 logs `event=fix kept=0 dropped=1 moved=0`.
+10. ti-a checks the surfaces under `tips` 0 against the built texts in the same run (the station's news line, the hail rumour, nil from every surface function) instead of a second run without the module; `co-h`-style absence is covered by every run of the other host files, which pass with the module present and an empty ring.
+11. Left as the spec says: the oldest-first ordering across offer owners (7.5) waits for the second offer owner of wave 3.
+

@@ -783,6 +783,8 @@ function TRF_ScWrite(idx, s)
 		if r.st <= 1 and r.rf ~= 1 then r.leg = legs; r.rf = 1; res = "refresh"; end;
 		TRF_ScE("source", "source", s.src, "system", nm, "sid", TRF_ScSid(r), "kind", TRF_ScKindName(r.kind), "state", r.st, "leg", r.leg,
 			"result", res);
+		-- Sourced tips (design/tips-spec.md 5.1): a lost traffic freighter off-screen.
+		if res == "refresh" and r.kind == 1 and s.on ~= 1 then TRF_P("TRF_Ti_Feed", "wreck", TRF_N("TRF_RgOf", idx), idx); end;
 		return i, res;
 	end;
 	if not why and TRF_ScCdOn(idx) then why = "cooldown"; end;
@@ -820,6 +822,8 @@ function TRF_ScWrite(idx, s)
 	TRF_ScE("source", "source", s.src, "system", nm, "sid", TRF_ScSid(n), "kind", TRF_ScKindName(n.kind), "faction", n.fac,
 		"cap_row", n.lv, "seed", n.seed, "ttl", n.ttl, "decorations", n.nd, "scavenger", n.scv, "recorder", n.rec, "mine", n.mine,
 		"on_screen", n.on, "result", "new", "record_count", getn(TRF.scar));
+	-- Sourced tips (design/tips-spec.md 5.1): a lost traffic freighter off-screen.
+	if n.kind == 1 and n.on ~= 1 then TRF_P("TRF_Ti_Feed", "wreck", slot, idx); end;
 	return i, "new";
 end;
 

@@ -136,6 +136,7 @@ Adds NPC traders, pirate clans, factions and jobs, written as Lua scripts loaded
 - Factions sweep against the clans, and you can join for pay.
 - Each clan region has a wanted captain with a bounty, and you can buy informant tips about them.
 - You can demand cargo from a trader.
+- Dockmasters date their harbour news and say who saw a raid, a sweep, a pirate base or the wanted captain, and where; hailed traders pass on the same sightings (`tips`; not yet tested in game).
 - Each clan has a raid style: some open fire without a word, some talk first, some pick their targets, some appear out of nowhere. The intro quest "Clan file" puts the style on the patrol board (`temper`; not yet tested in game).
 - Opt-in (`haunt=1`, chapter 5+): vanilla pirate patrols follow the region's phase and clan tier, never above vanilla numbers. Destroyed patrols come back slowly: 15 % of the system's patrols every two jumps or 10 game minutes.
 - Opt-in (`fits=1`): pirate loadouts vary with clan strength.

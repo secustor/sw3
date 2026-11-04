@@ -107,6 +107,9 @@
 -- paid as pilot experience at the next trade dock; debrief (default 1) = 0 turns the module off; db_gate (default 1) = 0
 -- opens the pool from chapter 5 without the quest "Report in"; db_dialog (default 1) = 0 keeps the box, card and lines (1
 -- needs hail_xml 1). Tune keys db_* read the module defaults.
+-- Sourced tips and the event ring (design/tips-spec.md 9, A16; default in TRF_Ti_OptDef): tips (default 1) = 0 stops the
+-- ring (cleared at the next region tick) and leaves the harbour news, dock tips, hail rumour and informant reply as built;
+-- the tune keys ti_* and trf_plumb's mk_offer read the module defaults.
 function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1, ext_fix=1,
 	enabled=1, cycle=1, prosperity=1, tier_cap=4, cap_traders=5, cap_ships=20, spawn_scale=1.0, band_half=0,
 	parked=1, esc_flight=1, seed=1, queue=1, raids=1, staged=1, contracts=1, esc_speed=0, meet=2, hail_start=2, board=1,
@@ -127,4 +130,4 @@ function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1, ext_fix=1,
 	merc_war=1, merc_hunt=0, merc_hostile=0, merc_legion=0,
 	merc=0, merc_board=1, merc_book=0, merc_report=0, merc_marker=0, merc_calls=0, merc_transfer=0, rv_enabled=0,
 	mc_launch=0, mc_el_c=8, jobs_ui=1, jobs_log=0, warn=1, temper=1, te_quest=1, te_gate=1, te_dialog=1, corp=1,
-	debrief=1, debrief_xp=0, db_gate=1, db_dialog=1} end
+	debrief=1, debrief_xp=0, db_gate=1, db_dialog=1, tips=1} end

@@ -10,7 +10,8 @@ the lethal-system warnings (W-A12.1-8, design/warnings-spec.md 15; wave 1, host-
 (W-B06.1-10, design/crew-remarks-spec.md 14; wave 1, host-tested only) and the clan temperaments with the Clan file
 (W-B10.1-10, design/temperament-spec.md 12; wave 1, host-tested only) and the corporation carriers (W-A22.1-9,
 design/corp-carriers-spec.md 11; wave 1, host-tested only) and the debrief pool with "Report in" (W-B02.1-10,
-design/debrief-spec.md 12; wave 2, host-tested only, off by default: DEBRIEF_XP=1) from traffic logs.
+design/debrief-spec.md 12; wave 2, host-tested only, off by default: DEBRIEF_XP=1) and the sourced tips with the event
+ring (W-A16.1-10, design/tips-spec.md 13; wave 2, host-tested only) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -34,6 +35,7 @@ FIXTURE_REMARK = os.path.join(HERE, "..", "tests", "check_ingame_remark_fixture.
 FIXTURE_TEMPER = os.path.join(HERE, "..", "tests", "check_ingame_temper_fixture.log")
 FIXTURE_CORP = os.path.join(HERE, "..", "tests", "check_ingame_corp_fixture.log")
 FIXTURE_DEBRIEF = os.path.join(HERE, "..", "tests", "check_ingame_debrief_fixture.log")
+FIXTURE_TIPS = os.path.join(HERE, "..", "tests", "check_ingame_tips_fixture.log")
 REL = ("war", "neutral", "friend")
 PHASES = ("Quiet", "Boom", "Build-up", "Raids", "Bust", "Recovery")
 # vanilla bounty flights (OutMission_kill_pirate), haunt-spec appendix A class P
@@ -257,7 +259,7 @@ def c_err(ctx):
     res.logpart = True
     if not any(r.mod in ("haunt", "parcel") for r in ctx.recs):
         res.missing.append("no module=haunt or module=parcel line: the mod did not load or LOG=0")
-    for mod in ("haunt", "parcel", "core", "plumb", "hail", "merc", "wq", "warn", "remark", "debrief"):
+    for mod in ("haunt", "parcel", "core", "plumb", "hail", "merc", "wq", "warn", "remark", "debrief", "tips"):
         e = ctx.find(mod, "error")
         if e:
             res.fails.append("%d module=%s event=error lines" % (len(e), mod))
@@ -3278,6 +3280,164 @@ def c_wd10(ctx):
     return res
 
 
+# Sourced tips and the event ring (design/tips-spec.md 13, W-A16.1-10; host-tested only, wave 2) --------------------------
+
+def ti_shown(ctx, surface=None):
+    return [r for r in ctx.find("tips", "pick", result="shown") if surface is None or r.get("surface") == surface]
+
+
+def c_wi1(ctx):
+    res = Res()
+    res.logpart = True
+    sh = ti_shown(ctx, "news")
+    if not sh:
+        res.missing.append("dock at a trade station at standing rung 2 or more in chapter 4+ after a raid or a sweep in the "
+                           "region (LOG=1): no module=tips event=pick surface=news result=shown")
+    res.ev("harbour news lines", sh)
+    return res
+
+
+def c_wi2(ctx):
+    res = Res()
+    res.logpart = True
+    sh = ti_shown(ctx, "news")
+    seen = {}
+    for r in sh:
+        k = (r.get("kind"), r.get("target"), r.get("event_leg"))
+        if k in seen:
+            res.fails.append("%s: told before (%s)" % (r.short(), seen[k].short()))
+        else:
+            seen[k] = r
+    if not sh:
+        res.missing.append("no harbour news line (see W-A16.1)")
+    res.ev("harbour news lines", sh)
+    return res
+
+
+def c_wi3(ctx):
+    res = Res()
+    res.logpart = True
+    sh = ti_shown(ctx)
+    for r in sh:
+        if r.get("live") == "dead":
+            res.fails.append("%s: a dead record told" % r.short())
+        elif r.get("live") == "stale" and r.get("surface") in ("hail", "intel"):
+            res.fails.append("%s: a stale record told by the %s" % (r.short(), r.get("surface")))
+    if not sh:
+        res.missing.append("no ring line shown (news, tip, hail or intel)")
+    res.ev("ring lines", sh)
+    return res
+
+
+def c_wi4(ctx):
+    res = Res()
+    res.logpart = True
+    den = ctx.find("safety", "gate", feature="tips", result="denied")
+    for r in ti_shown(ctx):
+        for g in den:
+            if g.visit is r.visit and g.get("system") == r.get("target"):
+                res.fails.append("%s: shown although the strict gate denied %s in this visit (%s)" % (r.short(), g.get("system"), g.short()))
+                break
+    if not den:
+        res.missing.append("a ring record about a system whose story quest is in process (LOG=1): no module=safety event=gate "
+                           "feature=tips result=denied")
+    res.ev("strict gate denials", den)
+    return res
+
+
+def c_wi5(ctx):
+    res = Res()
+    res.logpart = True
+    lat = ctx.find("tips", "skip", reason="latch")
+    for g in lat:
+        later = [r for r in ti_shown(ctx) if r.visit is g.visit and r.src == g.src and r.n > g.n]
+        if later:
+            res.fails.append("%s: a ring line after the visit latch (%s)" % (g.short(), later[0].short()))
+    if not lat:
+        res.missing.append("dock or hail during a story mission (LOG=2): no module=tips event=skip reason=latch")
+    res.ev("latch skips", lat)
+    return res
+
+
+def c_wi6(ctx):
+    res = Res()
+    res.logpart = True
+    sh = ti_shown(ctx, "hail")
+    if not sh:
+        res.missing.append("hail a trader and ask where it is headed near a raided system (LOG=1): no event=pick surface=hail "
+                           "result=shown")
+    res.ev("hail rumours", sh)
+    return res
+
+
+def c_wi7(ctx):
+    res = Res()
+    res.logpart = True
+    bought = ctx.find("captain", "intel", result="bought")
+    ok = [r for r in ti_shown(ctx, "intel") if any(b.src == r.src and b.n < r.n and b.visit is r.visit for b in bought)]
+    if not ok:
+        res.missing.append("buy the informant's tip at a patrol dock after the captain moved (LOG=1): no event=pick surface=intel "
+                           "result=shown after module=captain event=intel result=bought")
+    res.ev("informant clauses", ok)
+    return res
+
+
+def c_wi8(ctx):
+    res = Res()
+    res.logpart = True
+    tips = ctx.find("station", "tip", kind="cap")
+    seen = {}
+    picks = [r for r in ti_shown(ctx, "tip") if r.get("kind") == "cap"]
+    for r in picks:
+        k = (r.get("target"), r.get("event_leg"))
+        if k in seen:
+            res.fails.append("%s: the same sighting told twice (%s)" % (r.short(), seen[k].short()))
+        else:
+            seen[k] = r
+    if not tips:
+        res.missing.append("dock at a trade station at rung 4 in chapter 5+ after the region's wanted captain moved: no "
+                           "module=station event=tip kind=cap")
+    res.ev("captain tips", tips + picks)
+    return res
+
+
+def c_wi9(ctx):
+    res = Res()
+    res.logpart = True
+    dumps = ctx.find("tips", "dump")
+    for d in dumps:
+        k = d.int("ring_size", 4)
+        per = {}
+        for e in (d.get("ring") or "").split(","):
+            if ":" in e:
+                per[e.split(":", 1)[0]] = per.get(e.split(":", 1)[0], 0) + 1
+        big = [sl for sl, c in per.items() if c > k]
+        if big:
+            res.fails.append("%s: more than %d records in region %s" % (d.short(), k, ",".join(sorted(big))))
+        if d.int("length", 0) > 8 * k * 12 + 7:
+            res.fails.append("%s: length above %d" % (d.short(), 8 * k * 12 + 7))
+    if not dumps:
+        res.missing.append("enter a system (LOG=1): no module=tips event=dump")
+    res.ev("ring dumps", dumps)
+    return res
+
+
+def c_wi10(ctx):
+    res = Res()
+    res.logpart = True
+    added = [r for r in ctx.find("plumb", "marker", result="added") if r.get("class") == "offer"]
+    per = {}
+    for r in added:
+        per.setdefault(id(r.visit), []).append(r)
+    for lst in per.values():
+        if len(lst) > 2:
+            res.fails.append("%s: %d offer markers in one visit (mk_offer 2)" % (lst[2].short(), len(lst)))
+    if not added:
+        res.missing.append("buy the pirate-dock stash intel (area marker): no module=plumb event=marker class=offer result=added")
+    res.ev("offer markers", added)
+    return res
+
+
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
@@ -3509,6 +3669,16 @@ ITEMS = [
     ("W-B02.9", "the reference mission for the debrief size", c_wd9,
      "compare a pool of 5 with the Hero's gain over one main mission: at most 25 % (else lower db_shares)"),
     ("W-B02.10", "the default install (debrief_xp 0) shows nothing of B02", c_wd10, None),
+    ("W-A16.1", "dated harbour news shows", c_wi1, "the ring line after the built news line: source, place and age readable (TI1)"),
+    ("W-A16.2", "no news told twice", c_wi2, None),
+    ("W-A16.3", "never a dead target; hail and informant current only", c_wi3, None),
+    ("W-A16.4", "strict gate on the named system", c_wi4, None),
+    ("W-A16.5", "no ring line in a mission visit", c_wi5, None),
+    ("W-A16.6", "hail rumour", c_wi6, "the where-headed answer with the ring rumour fits the box and the dialog page (TI2)"),
+    ("W-A16.7", "informant clause", c_wi7, "the reply names where and when the captain was last spotted"),
+    ("W-A16.8", "captain tip, once per sighting", c_wi8, "the tip names the portal and the age; a stale tip says where he is now"),
+    ("W-A16.9", "ring bound", c_wi9, None),
+    ("W-A16.10", "offer markers: at most mk_offer per visit", c_wi10, None),
 ]
 
 
@@ -3639,7 +3809,9 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "W-A22.1": "FAIL", "W-A22.2": "NO DATA", "W-A22.3": "NO DATA", "W-A22.4": "FAIL", "W-A22.5": "FAIL",
             "W-A22.6": "NO DATA", "W-A22.7": "MANUAL", "W-A22.8": "NO DATA", "W-A22.9": "FAIL",
             "W-B02.1": "FAIL", "W-B02.2": "NO DATA", "W-B02.3": "NO DATA", "W-B02.4": "NO DATA", "W-B02.5": "FAIL",
-            "W-B02.6": "FAIL", "W-B02.7": "NO DATA", "W-B02.8": "FAIL", "W-B02.9": "NO DATA", "W-B02.10": "FAIL"}
+            "W-B02.6": "FAIL", "W-B02.7": "NO DATA", "W-B02.8": "FAIL", "W-B02.9": "NO DATA", "W-B02.10": "FAIL",
+            "W-A16.1": "MANUAL", "W-A16.2": "FAIL", "W-A16.3": "FAIL", "W-A16.4": "FAIL", "W-A16.5": "FAIL",
+            "W-A16.6": "MANUAL", "W-A16.7": "NO DATA", "W-A16.8": "FAIL", "W-A16.9": "FAIL", "W-A16.10": "FAIL"}
 # tests/check_ingame_warn_fixture.log: correct warning behaviour only. A dock warning for Gideon at Avalon (leg 100) after
 # the station's dock line, a second approach skipped (visit), a return at leg 102 skipped (cooldown); at XT-23 (station
 # voice deny, a station pass, no station dock line) a pass reason=scene, then a warning for XT-24; a load of an earlier
@@ -3670,6 +3842,12 @@ SELFTEST_CORP = {"W-A22.1": "MANUAL", "W-A22.2": "MANUAL", "W-A22.3": "MANUAL", 
 # patrol dock; Taira in a mission: no draw, the pay waits; Altair (chapter 6): the refill, dbnew, the pay at the trade dock.
 SELFTEST_DEBRIEF = {"W-B02.1": "MANUAL", "W-B02.2": "MANUAL", "W-B02.3": "PASS", "W-B02.4": "MANUAL", "W-B02.5": "MANUAL",
                     "W-B02.6": "MANUAL", "W-B02.7": "MANUAL", "W-B02.8": "MANUAL", "W-B02.9": "MANUAL", "W-B02.10": "NO DATA"}
+# tests/check_ingame_tips_fixture.log: correct sourced tips behaviour. Gaoba (chapter 5): the dump, a dock with the ring
+# line and the captain tip, a strict-gate denial of Prien for tips (nothing about Prien told), the hail rumour; Kadi in a
+# mission: the latch skip, no ring line; XK10: news of another record, the informant bought with its clause, two offer
+# markers added and the third refused.
+SELFTEST_TIPS = {"W-A16.1": "MANUAL", "W-A16.2": "PASS", "W-A16.3": "PASS", "W-A16.4": "PASS", "W-A16.5": "PASS",
+                 "W-A16.6": "MANUAL", "W-A16.7": "MANUAL", "W-A16.8": "MANUAL", "W-A16.9": "PASS", "W-A16.10": "PASS"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -3703,6 +3881,10 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # DATA), a quest pay before any done line (W-B02.6 FAIL), a done without a counted job (W-B02.5 FAIL), a dock pay whose
 # Hero points did not rise (W-B02.1 FAIL), a refill without a later chapter (W-B02.8 FAIL); no claim, no load, one pilot,
 # no entry points (W-B02.7, .3, .2, .9 NO DATA).
+# Sourced tips block (the very end, Angarsk): the same raid told twice as harbour news (W-A16.2 FAIL), a stale captain
+# told by the hail (W-A16.3 FAIL), Zebos told after the strict gate denied it (W-A16.4 FAIL), a captain tip after the
+# latch skip (W-A16.5 FAIL) and the same sighting tipped twice (W-A16.8 FAIL), a dump with five records in region 6
+# (W-A16.9 FAIL), three offer markers in the visit (W-A16.10 FAIL); no informant line (W-A16.7 NO DATA).
 
 
 def selftest():
@@ -3744,8 +3926,13 @@ def selftest():
         if got.get(iid) != v:
             print("selftest: debrief fixture %s is %s, expected %s" % (iid, got.get(iid), v))
             bad += 1
+    got = dict((r[0], r[2]) for r in score(Ctx([Log(FIXTURE_TIPS, None, [])]), {}))
+    for iid, v in SELFTEST_TIPS.items():
+        if got.get(iid) != v:
+            print("selftest: tips fixture %s is %s, expected %s" % (iid, got.get(iid), v))
+            bad += 1
     n = (len(SELFTEST) + len(SELFTEST_EYES[1]) + len(SELFTEST_WARN) + len(SELFTEST_REMARK) + len(SELFTEST_TEMPER) + len(SELFTEST_CORP)
-         + len(SELFTEST_DEBRIEF))
+         + len(SELFTEST_DEBRIEF) + len(SELFTEST_TIPS))
     if parse_logfmt('a=1 message="x \\"y\\" z" b=') != {"a": "1", "message": 'x "y" z', "b": ""}:
         print("selftest: logfmt quoting")
         bad += 1

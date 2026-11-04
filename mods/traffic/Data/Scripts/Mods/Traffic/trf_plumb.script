@@ -19,6 +19,8 @@
 -- (TRF_Settle from the six pay points: parcel, charter, claim, sweep, escort), a repeated key of the generation dropped.
 -- The shared dialog gate TRF_PlDlgWhy (debrief-spec D23) of the dock and space dialog windows of trf_wq, trf_temper and
 -- trf_debrief.
+-- The two-marker rule for offered content (design/tips-spec.md 7.5): TRF_MarkerOfferReg owners (trf_stash) get at most
+-- tune mk_offer markers per visit.
 -- Saved fields: TRF.job (one open job), TRF.iq (the shared intro-quest record, design/temperament-spec.md 3.1: one
 -- active intro quest, done and reward bits, the lapse and decline stamp; API TRF_Iq*; quest 1 Clan file of trf_temper,
 -- quest 2 Report in of trf_debrief), TRF.mk (packed marker labels, for
@@ -26,7 +28,7 @@
 -- TRF_H().mk.
 -- Top level: functions and P only.
 
-local P = {dock={}, none={}, coh={}, ej={}, owe={}, seed={}, rh={}, cap={}, vp={}, run={}, ad={}, dh={}, stl={}, stk={}};
+local P = {dock={}, none={}, coh={}, ej={}, owe={}, seed={}, rh={}, cap={}, vp={}, run={}, ad={}, dh={}, stl={}, stk={}, off={}};
 
 -- Helpers --------------------------------------------------------------------------
 
@@ -1502,6 +1504,7 @@ function TRF_PlTune(key)
 	if type(t) == "table" then v = t[key]; end;
 	if type(v) ~= "number" then v = d; end;
 	if key == "iq_stale" then return TRF_PlCl(floor(v), 0, 500); end;
+	if key == "mk_offer" then return TRF_PlCl(floor(v), 0, 8); end;
 	return v;
 end;
 
@@ -1757,6 +1760,18 @@ function TRF_MarkerAdd(owner, label, x, y, z, text, icon, obj)
 		TRF_PlE("marker", "owner", owner, "label", label, "result", "refused", "reason", "cap");
 		return nil, "cap";
 	end;
+	-- Offered content (design/tips-spec.md 7.5): at most mk_offer markers of offer owners per visit (0 = no cap).
+	local oc = nil;
+	local off = %P.off;
+	if off[owner] then
+		oc = TRF_PlOfferCount();
+		local mo = TRF_PlTune("mk_offer");
+		if mo > 0 and oc >= mo then
+			TRF_PlMkSave();
+			TRF_PlE("marker", "owner", owner, "label", label, "class", "offer", "offer_count", oc, "result", "refused", "reason", "offer_cap");
+			return nil, "offer_cap";
+		end;
+	end;
 	-- The engine's RGB() value is passed through (a Vector3 in the game, trader-marker.md); without RGB the
 	-- 3-argument form takes the default colour.
 	local col = TRF_N("RGB", 80, 200, 255);
@@ -1774,8 +1789,31 @@ function TRF_MarkerAdd(owner, label, x, y, z, text, icon, obj)
 	TRF_N("SetNavPointLabel", nav, label);
 	m[label] = {o=owner, n=nav};
 	TRF_PlMkSave();
-	TRF_PlE("marker", "owner", owner, "label", label, "result", "added");
+	if oc then
+		TRF_PlE("marker", "owner", owner, "label", label, "class", "offer", "offer_count", oc + 1, "result", "added");
+	else
+		TRF_PlE("marker", "owner", owner, "label", label, "result", "added");
+	end;
 	return 1;
+end;
+
+-- Two-marker rule for offered content (design/tips-spec.md 7.5, 4b.1 rule 2): owner's markers are offered, not accepted
+-- content; TRF_MarkerAdd refuses one when the visit already holds mk_offer markers of offer owners (reason offer_cap).
+-- The registry is rebuilt at install, never saved. Returns 1.
+function TRF_MarkerOfferReg(owner)
+	if type(owner) ~= "string" or owner == "" then return nil; end;
+	local p = %P;
+	p.off[owner] = 1;
+	return 1;
+end;
+
+-- Markers of offer owners held now (handles of this visit).
+function TRF_PlOfferCount()
+	local m = TRF_PlMkH();
+	local off = %P.off;
+	local n = 0;
+	if m then for k, e in m do if type(e) == "table" and off[e.o] then n = n + 1; end; end; end;
+	return n;
 end;
 
 -- Deletes the markers of owner (nil: all). Returns the number deleted.
@@ -1941,8 +1979,9 @@ end;
 
 -- prize_rs: the shared real-time gap between combat prize payouts (00 section 8 B1). iq_stale: legs without progress
 -- after which an active intro quest lapses (design/temperament-spec.md T23, owner decision O3; 0 never, 0..500).
+-- mk_offer: markers of offered content per visit (design/tips-spec.md 7.5; 0 = no cap, 0..8).
 function TRF_Pl_TuneDef()
-	return {prize_rs=1800, iq_stale=40};
+	return {prize_rs=1800, iq_stale=40, mk_offer=2};
 end;
 
 -- Combat prize gap (00 section 8 B1, the recommended default; design/captain-spec.md 2): the prizes of #4 claims

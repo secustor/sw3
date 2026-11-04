@@ -79,6 +79,9 @@
 -- and the load hook (v1 list, last) reconcile the logbook, the jump hook (v1 list) clears the visit; the six pay points
 -- call trf_plumb's TRF_Settle, which runs its handler; trf_plumb owns its quest record (TRF.iq quest 2), its trade line 80,
 -- boxes 420 and 455 and the Office row 420.
+-- Sourced tips and the event ring (design/tips-spec.md, A16): trf_tips loads after trf_debrief (extra=); no hook here:
+-- the owner modules feed it (TRF_Ti_Feed), trf_region calls its region tick, TRF_Repair its repair, trf_station, trf_hail
+-- and trf_captain its surfaces.
 
 function TRF_Path(name)
 	return "DATA/Scripts/Mods/Traffic/"..name;
@@ -588,7 +591,7 @@ function TRF_Main()
 			for i = 1, getn(v2) do if TRF_LoadFile(v2[i]) then nm = nm + 1; end; end;
 			local v1 = {"loc", "track", "faction", "clan", "convoy", "danger", "supply", "base"};
 			for i = 1, getn(v1) do if TRF_LoadFile("trf_"..v1[i]..".script") then nm = nm + 1; end; end;
-			local ex = {"plumb", "station", "survive", "ladder", "charter", "scar", "captain", "stash", "freight", "fits", "haunt", "parcel", "merc", "wq", "warn", "remark", "temper", "corp", "debrief"};
+			local ex = {"plumb", "station", "survive", "ladder", "charter", "scar", "captain", "stash", "freight", "fits", "haunt", "parcel", "merc", "wq", "warn", "remark", "temper", "corp", "debrief", "tips"};
 			for i = 1, getn(ex) do if TRF_LoadFile("trf_"..ex[i]..".script") then ne = ne + 1; end; end;
 			TRF_P("TRF_InstallPlumb");
 			TRF_P("TRF_InstallHaunt");

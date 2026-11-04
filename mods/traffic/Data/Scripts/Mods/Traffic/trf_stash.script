@@ -1561,6 +1561,8 @@ function TRF_Sh_Plumb()
 	TRF_DockLine("pir", 20, "TRF_Sh_PirLine");
 	TRF_DockLine("patrol", 40, "TRF_Sh_PatrolLine");
 	TRF_CapReg("stash", "TRF_Sh_Ships");
+	-- Two-marker rule for offered content (design/tips-spec.md 7.5): the intel area marker and a found cache's point.
+	TRF_N("TRF_MarkerOfferReg", "stash");
 end;
 
 -- Slot positions of records in system idx (trf_scar's site rule keeps 150 units from a cache, design 7).

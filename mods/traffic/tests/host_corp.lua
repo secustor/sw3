@@ -224,10 +224,10 @@ end;
 function T_CO_A()
 	local h = HOST();
 	CO_Begin("golkonda", "1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=20") >= 1, "trf_corp loads before trf_debrief (extra_count=20)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=21") >= 1, "trf_corp loads before trf_debrief (extra_count=21)");
 	local ml, pm, tf, uf = TRF_ModList(), TRF_PlMods(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml) - 1] == "Crp" and pm[getn(pm) - 1] == "Crp" and tf[getn(tf) - 2] == "TRF_Crp_Text" and tf[getn(tf)] == "TRF_Loc_Text"
-		and uf[getn(uf) - 1] == "TRF_Crp_Text", "Crp before Db at the end of TRF_ModList and TRF_PlMods; TRF_Crp_Text before TRF_Db_Text in both text lists");
+	HOST_Check(ml[getn(ml) - 2] == "Crp" and pm[getn(pm) - 1] == "Crp" and tf[getn(tf) - 3] == "TRF_Crp_Text" and tf[getn(tf)] == "TRF_Loc_Text"
+		and uf[getn(uf) - 2] == "TRF_Crp_Text", "Crp before Db at the end of TRF_ModList and TRF_PlMods; TRF_Crp_Text before TRF_Db_Text in both text lists");
 	HOST_Check(TRF_Opt("corp") == 1 and TRF_Crp_OptDef().corp == 1 and TRF_OptEnum().corp == 1, "cfg corp 1 by default, enumerated 0..1");
 	local T = TRF_CrpTune();
 	HOST_Check(CO_N(TRF_Crp_TuneDef()) == 14 and T.crp_ch == 0 and T.crp_pull_ch == 5 and T.crp_sig_ch == 0 and T.crp_share == 0.8
@@ -1076,8 +1076,8 @@ function T_CO_H()
 	local h = HOST();
 	h.hide = {["trf_corp.script"]=1};
 	CO_Begin("golkonda", "5_1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=19") >= 1 and type(TRF_Crp_Label) ~= "function",
-		"trf_corp missing: extra_count=19, no module");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=20") >= 1 and type(TRF_Crp_Label) ~= "function",
+		"trf_corp missing: extra_count=20, no module");
 	TRF_SetPro(TRF_CurIdx(), 9);
 	local n0 = S_Mark();
 	local r = CO_Dock();

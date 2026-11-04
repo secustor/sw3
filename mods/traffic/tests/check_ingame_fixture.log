@@ -502,3 +502,18 @@ traffic: lua: exp=v1 module=debrief event=points at=before pilot=Hero points=12.
 traffic: lua: exp=v1 module=debrief event=points at=after pilot=Hero points=12.000
 traffic: lua: exp=v1 module=debrief event=pay via=dock jobs=1 xp_each=2.3 xp_total=2.3 pool_left=3 chapter=7 band=2 difficulty=normal result=paid
 traffic: lua: exp=v1 module=debrief event=refill chapter_before=7 chapter_after=7 carried=0 pool_before=3 pool_left=8 via=dock result=refilled
+traffic: lua: exp=v1 module=state event=enter generation=98 fresh=false system=angarsk legs=310
+traffic: lua: exp=v1 module=safety event=activate system=angarsk mode=mod reason=nil chapter=7 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=tips event=dump on=1 record_count=5 ring_size=4 length=64 ring=6:raid@heos/2/1,6:raid@zebos/3/0,6:wreck@heos/2/1,6:cap@nd/1/0,6:raid@areko/0/0
+traffic: lua: exp=v1 module=tips event=pick surface=news system=angarsk kind=raid target=heos event_leg=308 age=2 source=2 live=current merged=nil candidate_count=2 result=shown
+traffic: lua: exp=v1 module=tips event=pick surface=news system=angarsk kind=raid target=heos event_leg=308 age=2 source=2 live=current merged=nil candidate_count=1 result=shown
+traffic: lua: exp=v1 module=tips event=pick surface=hail system=angarsk kind=cap target=nd event_leg=309 age=1 source=1 live=stale merged=nil candidate_count=1 result=shown
+traffic: lua: exp=v1 module=safety event=gate feature=tips system=zebos reason=quest result=denied
+traffic: lua: exp=v1 module=tips event=pick surface=hail system=angarsk kind=raid target=zebos event_leg=307 age=3 source=0 live=current merged=nil candidate_count=1 result=shown
+traffic: lua: exp=v1 module=tips event=skip surface=tip reason=latch
+traffic: lua: exp=v1 module=tips event=pick surface=tip system=angarsk kind=cap target=nd event_leg=309 age=1 source=1 live=current merged=nil candidate_count=1 result=shown
+traffic: lua: exp=v1 module=station event=tip station_key=77 kind=cap system=nd tip_leg=nil
+traffic: lua: exp=v1 module=tips event=pick surface=tip system=angarsk kind=cap target=nd event_leg=309 age=1 source=1 live=current merged=nil candidate_count=1 result=shown
+traffic: lua: exp=v1 module=plumb event=marker owner=stash label=TRF_STASH_AR_6 class=offer offer_count=1 result=added
+traffic: lua: exp=v1 module=plumb event=marker owner=stash label=TRF_STASH_AR_7 class=offer offer_count=2 result=added
+traffic: lua: exp=v1 module=plumb event=marker owner=stash label=TRF_STASH_AR_8 class=offer offer_count=3 result=added

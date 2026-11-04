@@ -10,13 +10,13 @@
 # host_freight.lua, the pirate haunts scenarios ha-a..f of host_haunt.lua and the sealed parcels scenarios pcl-a..h of
 # host_parcel.lua, the station jobs scenarios jb-a..f of host_jobs.lua (steps 1-3), the mercenary clans scenarios mc-a..k of host_merc.lua (each its own entry point), the named mercenary pilots scenarios mcp-a..c of host_pilots.lua (own entry
 # point), the hail stage B and combat hail scenarios hl-a..e of host_hail.lua (own entry point), the strength scale
-# scenarios str-a..e of host_str.lua (own entry point), the pirate fits scenarios ft-a..h of host_fits.lua (own entry point), the freight unlock quest scenarios wq-a..g of host_wq.lua (own entry point), the lethal-system warnings scenarios wn-a..g of host_warn.lua (own entry point), the crew remarks scenarios rm-a..g of host_remark.lua (own entry point), the clan temperaments scenarios tp-a..h of host_temper.lua (own entry point), the corporation carriers scenarios co-a..h of host_corp.lua (own entry point), the debrief pool scenarios db-a..h of host_debrief.lua (own entry point), then tests/test_pilots.sh (Pilots.xml merge and installer dry run on copies under .work/pilots/; it skips
+# scenarios str-a..e of host_str.lua (own entry point), the pirate fits scenarios ft-a..h of host_fits.lua (own entry point), the freight unlock quest scenarios wq-a..g of host_wq.lua (own entry point), the lethal-system warnings scenarios wn-a..g of host_warn.lua (own entry point), the crew remarks scenarios rm-a..g of host_remark.lua (own entry point), the clan temperaments scenarios tp-a..h of host_temper.lua (own entry point), the corporation carriers scenarios co-a..h of host_corp.lua (own entry point), the debrief pool scenarios db-a..h of host_debrief.lua (own entry point), the sourced tips scenarios ti-a..g of host_tips.lua (own entry point), then tests/test_pilots.sh (Pilots.xml merge and installer dry run on copies under .work/pilots/; it skips
 # when the vanilla Pilots.xml is not found, PILOTS_TEST=0 skips it).
-# Env: LUA4 (interpreter), LUAC4, EXPS (default "default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr ha pcl jb mc mcp hl str ft wq wn rm tp co db"), SCENS (default a..h),
+# Env: LUA4 (interpreter), LUAC4, EXPS (default "default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr ha pcl jb mc mcp hl str ft wq wn rm tp co db ti"), SCENS (default a..h),
 # V02 (default a..n), V1 (default a..n), STN (default a..h), PL (default a..f), SV (default a..g), LAD (default a..g), CH
 # (default a..h), SC (default a..g), CAP (default a..i), DM (default a..h), SH (default a..h), FR (default a..l), HA (default a..f),
 # PCL (default a..h), JB (default a..f), MC (default a..k), MCP (default a..c), HL (default a..e), STR (default a..e), FT (default a..f),
-# WQ (default a..g), WN (default a..g), RM (default a..g), TP (default a..h), CO (default a..h), DB (default a..h).
+# WQ (default a..g), WN (default a..g), RM (default a..g), TP (default a..h), CO (default a..h), DB (default a..h), TI (default a..g).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
@@ -31,7 +31,7 @@ for f in "$src"/*.script; do
     [ "$lines" = "$crs" ] || { echo "not CRLF: $f ($crs CR, $lines lines)"; rc=1; }
     if [ -x "$LUAC4" ]; then "$LUAC4" -p "$f" || { echo "luac -p failed: $f"; rc=1; }; fi
 done
-for t in host_stubs.lua host_traffic.lua host_v02.lua host_v1.lua host_v1_tables.lua host_station.lua host_plumb.lua host_survive.lua host_ladder.lua host_charter.lua host_scar.lua host_captain.lua host_demand.lua host_stash.lua host_freight.lua host_haunt.lua host_parcel.lua host_jobs.lua host_merc.lua host_pilots.lua host_hail.lua host_str.lua host_fits.lua host_wq.lua host_warn.lua host_remark.lua host_temper.lua host_corp.lua host_debrief.lua; do
+for t in host_stubs.lua host_traffic.lua host_v02.lua host_v1.lua host_v1_tables.lua host_station.lua host_plumb.lua host_survive.lua host_ladder.lua host_charter.lua host_scar.lua host_captain.lua host_demand.lua host_stash.lua host_freight.lua host_haunt.lua host_parcel.lua host_jobs.lua host_merc.lua host_pilots.lua host_hail.lua host_str.lua host_fits.lua host_wq.lua host_warn.lua host_remark.lua host_temper.lua host_corp.lua host_debrief.lua host_tips.lua; do
     if [ -x "$LUAC4" ]; then "$LUAC4" -p "$here/$t" || { echo "luac -p failed: $t"; rc=1; }; fi
 done
 rm -f luac.out
@@ -42,11 +42,11 @@ for x in "$here"/../Data/Scripts/Trade/*.xml; do
 done
 if command -v python3 >/dev/null; then
     python3 -I "$lint" --allow TeleportToLocation,CustomTeleportate "$src"/*.script || rc=1
-    python3 -I "$lint" --host "$here/host_stubs.lua" "$here/host_traffic.lua" "$here/host_v02.lua" "$here/host_v1.lua" "$here/host_station.lua" "$here/host_plumb.lua" "$here/host_survive.lua" "$here/host_ladder.lua" "$here/host_charter.lua" "$here/host_scar.lua" "$here/host_captain.lua" "$here/host_demand.lua" "$here/host_stash.lua" "$here/host_freight.lua" "$here/host_haunt.lua" "$here/host_parcel.lua" "$here/host_jobs.lua" "$here/host_merc.lua" "$here/host_pilots.lua" "$here/host_hail.lua" "$here/host_str.lua" "$here/host_fits.lua" "$here/host_wq.lua" "$here/host_warn.lua" "$here/host_remark.lua" "$here/host_temper.lua" "$here/host_corp.lua" "$here/host_debrief.lua" || rc=1
+    python3 -I "$lint" --host "$here/host_stubs.lua" "$here/host_traffic.lua" "$here/host_v02.lua" "$here/host_v1.lua" "$here/host_station.lua" "$here/host_plumb.lua" "$here/host_survive.lua" "$here/host_ladder.lua" "$here/host_charter.lua" "$here/host_scar.lua" "$here/host_captain.lua" "$here/host_demand.lua" "$here/host_stash.lua" "$here/host_freight.lua" "$here/host_haunt.lua" "$here/host_parcel.lua" "$here/host_jobs.lua" "$here/host_merc.lua" "$here/host_pilots.lua" "$here/host_hail.lua" "$here/host_str.lua" "$here/host_fits.lua" "$here/host_wq.lua" "$here/host_warn.lua" "$here/host_remark.lua" "$here/host_temper.lua" "$here/host_corp.lua" "$here/host_debrief.lua" "$here/host_tips.lua" || rc=1
 fi
 
 entry=host_stubs.lua
-run() { # $1 label, then env assignments; $entry is the entry file (host_station.lua, host_plumb.lua, host_survive.lua, host_ladder.lua, host_charter.lua, host_scar.lua, host_captain.lua, host_demand.lua, host_stash.lua, host_freight.lua, host_haunt.lua, host_parcel.lua, host_jobs.lua, host_merc.lua, host_hail.lua, host_str.lua, host_fits.lua, host_wq.lua, host_warn.lua, host_remark.lua, host_temper.lua, host_corp.lua, host_debrief.lua for stn, pl, sv, lad, ch, sc, cap, dm, sh, fr, ne, pcl, jb, mc, hl, str, ft, wq, wn, rm, tp, co, db)
+run() { # $1 label, then env assignments; $entry is the entry file (host_station.lua, host_plumb.lua, host_survive.lua, host_ladder.lua, host_charter.lua, host_scar.lua, host_captain.lua, host_demand.lua, host_stash.lua, host_freight.lua, host_haunt.lua, host_parcel.lua, host_jobs.lua, host_merc.lua, host_hail.lua, host_str.lua, host_fits.lua, host_wq.lua, host_warn.lua, host_remark.lua, host_temper.lua, host_corp.lua, host_debrief.lua, host_tips.lua for stn, pl, sv, lad, ch, sc, cap, dm, sh, fr, ne, pcl, jb, mc, hl, str, ft, wq, wn, rm, tp, co, db, ti)
     label=$1; shift
     out=$(env TRF_DIR="$src/" TRF_TESTS="$here/" "$@" "$LUA4" "$here/$entry" 2>&1) && st=0 || st=$?
     printf '%s\n' "$out" > "${TMPDIR:-/tmp}/trf-host-$label.log"
@@ -54,7 +54,7 @@ run() { # $1 label, then env assignments; $entry is the entry file (host_station
     printf '%s\n' "$out" | grep -E '^HOST (FAIL|SCRIPT ERROR)' || true
     [ "$st" = 0 ] || rc=1
 }
-for e in ${EXPS:-default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr ha pcl jb mc mcp hl str ft wq wn rm tp co db}; do
+for e in ${EXPS:-default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr ha pcl jb mc mcp hl str ft wq wn rm tp co db ti}; do
     case $e in
         default) run default ;;
         2) run exp2 TRF_EXP=2; run exp2-big TRF_EXP=2 TRF_BIG=1; run exp2-saves TRF_EXP=2 TRF_AUTOSAVE=1 ;;
@@ -87,6 +87,7 @@ for e in ${EXPS:-default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr
         tp) entry=host_temper.lua; for s in ${TP:-a b c d e f g h}; do run "tp-$s" TRF_TP="$s"; done; entry=host_stubs.lua ;;
         co) entry=host_corp.lua; for s in ${CO:-a b c d e f g h}; do run "co-$s" TRF_CO="$s"; done; entry=host_stubs.lua ;;
         db) entry=host_debrief.lua; for s in ${DB:-a b c d e f g h}; do run "db-$s" TRF_DB="$s"; done; entry=host_stubs.lua ;;
+        ti) entry=host_tips.lua; for s in ${TI:-a b c d e f g}; do run "ti-$s" TRF_TI="$s"; done; entry=host_stubs.lua ;;
         *) run "exp$e" TRF_EXP="$e" ;;
     esac
 done

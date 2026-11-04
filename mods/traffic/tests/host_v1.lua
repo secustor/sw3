@@ -2264,6 +2264,15 @@ function T_V1_N()
 	end;
 	-- Debrief pool worst case (design/debrief-spec.md 3.3): one packed number (chapter 20, 18 left, 9 pending, line due).
 	TRF.db = 201891;
+	-- Sourced tips worst case (design/tips-spec.md 3.6): every region block full at ti_ring 4 (12 digits a record).
+	local tib = {};
+	for b = 1, TRF_RgMap().n do
+		tib[b] = {};
+		local ss = TRF_RgMap()[b].sys;
+		for i = 1, 4 do tinsert(tib[b], {k=1, s=ss[1 + mod(i, getn(ss))], l=8, g=TRF.clock.legs, c=9, a=9, f=3}); end;
+	end;
+	TRF.ti = TRF_TiJoinOf(tib, TRF_RgMap().n);
+	HOST_Check(strlen(TRF.ti) == 48 * TRF_RgMap().n + TRF_RgMap().n - 1, "TRF.ti at its bound: "..strlen(TRF.ti).." characters");
 	local mcz = HOST_SaveSize(TRF.mc);
 	TRF_Mc_Fix();
 	HOST_Check(HOST_SaveSize(TRF.mc) == mcz and mcz <= 6000, "merc worst case kept by the repair: "..mcz.." bytes <= 6000");
@@ -2290,7 +2299,7 @@ function T_V1_N()
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");
 	local size = 8 + 3 + HOST_SaveSize(TRF);
 	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "ch", "scar",
-		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "wq", "wn", "rm", "iq", "crp", "db", "live"};
+		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "wq", "wn", "rm", "iq", "crp", "db", "ti", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	local lp, ll = "", {"tr", "stat", "rd", "cvs", "tq", "sw", "fq", "cr", "dc", "bs", "pg"};
 	for i = 1, getn(ll) do lp = lp.." "..ll[i].."="..HOST_SaveSize(L[ll[i]]); end;

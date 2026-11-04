@@ -397,7 +397,7 @@ also the unused hulls).
 | `pass` | `module=station event=pass reason=off system=gaoba at=dock` | 1 |
 | `mood` | `module=station event=mood system=gaoba system_index=42 vanilla_key=1 mood_key=3 rule=2 phase=0 disruption=0 owner=Inoco mood=1 speaker=X` | 1 (2 when mood=0) |
 | `id_mismatch` | `module=station event=id_mismatch station_key=251 param_station=1 position_station=2 distance=40` | 1 |
-| `tip` | `module=station event=tip station_key=42 kind=feq system=gaoba tip_leg=35` (`kind` sweep, feq, base, temper: the clan's habit after its raid in the visit, trf_temper) | 1 |
+| `tip` | `module=station event=tip station_key=42 kind=feq system=gaoba tip_leg=35` (`kind` sweep, feq, base, cap: the latest sighting of the region's wanted captain, trf_tips, `system` his; temper: the clan's habit after its raid in the visit, trf_temper) | 1 |
 | `dock` | `module=station event=dock station_key=51 param="" via=prm+pos distance=0 standing=0 rung=0 heat=0 greeting=stnr1 greeting_skip=gap news=false tip=nil ambient=nil fee=0 fee_multiplier=0 no_fee_reason=paid_visit` (no_fee_reason: paid_visit, latch, strict_0, chapter) | 1 |
 | `fee` | `module=station event=fee station_key=42 fee=7800 world_level=10 prosperity=3 fee_multiplier=3 difficulty_factor=1 box=true` (after the dispatcher's show; `box=false`: the box could not open) | 1 |
 | `fee_ok` | `module=station event=fee_ok station_key=51 credits_before=a credits_after=b credit=false buyback=false` | 1 |
@@ -455,6 +455,7 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `settle` | `module=plumb event=settle kind=escort system=taira amount=1000 key=ct:7 result=dup` (a key already settled in this generation: no handler runs) | 1 |
 | `raid_help` | `module=plumb event=raid_help raid_id=7 credits_before=1063 credits_after=398 rule=excluded_factor resolver_count=3` (rule: none, factor, excluded, excluded_factor, cancel) | 1 |
 | `marker` | `module=plumb event=marker owner=pcl label=TRF_Pcl_1 result=added` / `result=refused reason=quest` (or `label`, `cap`) / `result=failed reason=create_nav_point_nil` | 1 |
+| `marker` | `module=plumb event=marker owner=stash label=TRF_STASH_AR_2 class=offer offer_count=1 result=added` / `class=offer offer_count=2 result=refused reason=offer_cap` (an owner of offered content, `TRF_MarkerOfferReg`, design/tips-spec.md 7.5: at most tune `mk_offer` such markers per visit; `offer_count` the offer markers held after the add, or before the refusal) | 1 |
 | `marker` | `module=plumb event=marker owner=pcl deleted_count=1 result=cleared` / `reason=jump deleted_count=3 result=cleared` (or `reason=load`, `reason=quest`: a mission started) | 1 |
 | `cap_trim` | `module=plumb event=cap_trim over_count=3 group_count=2 freed_count=3` (a spawn over `cap_ships`: the planned groups' trim calls) | 1 |
 | `orphan` | `module=plumb event=orphan deleted_count=2 global_count=1` (load: ships `trf_<prefix>_<n>_<j>`, globals `TRF_G<prefix>_*`) | 1 |
@@ -1001,6 +1002,23 @@ The debrief pool and the intro quest "Report in", B02 (`design/debrief-spec.md` 
 | `dialog_fallback` | `module=debrief event=dialog_fallback dialog=<1,2> reason=<xml,native,busy,uistate,ui=<v>,movie,mission,file,due,error>` (none for cfg `db_dialog` 0) | 1 |
 | `fix` | `module=debrief event=fix field=<db,ch> result=dropped` / `field=<p,n> result=clamped` / `field=ch chapter=8 result=clamped` (a lower chapter label at the sync) / `field=<t,s,done> result=dropped` (quest 2 of `TRF.iq`) | 1 |
 | `dump` | `module=debrief event=dump on=1 xp=0 gate=1 dialog=1 chapter=7 stamp=7 pool_left=3 pending=1 refill_due=0 step=0 done=1 xp_each=2.3` | 1 |
+
+## tips (`trf_tips.script`; `TRF_TiE`, `TRF_TiDE`)
+
+Sourced tips and the event ring, A16 (`design/tips-spec.md` 10; host-tested only). `kind` is the record kind by name (`raid`, `gather`, `swon`, `slost`, `base`, `basedn`, `cap`, `wreck`, `cache`, `capcache`), `system`/`target` the record's system, `event_leg` its leg (`TRF.clock.legs` at the push), `source` the source code (0 FTU haulers, 1..5 the faction, 6 pirate talk, 7 FTU beacons, 9 FTU mercenaries), `landmark` 0 the system, 1..6 a portal, 7 the trade station, 8 the patrol station.
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=tips event=error message=<m>` | 1 |
+| `push` | `module=tips event=push kind=raid region=3 system=gredos system_index=46 landmark=2 source=3 arg=0 event_leg=31 result=<new,refresh,replace> evicted=<kind:system,nil> record_count=3` | 1 |
+| `push` | `module=tips event=push kind=raid system=gredos result=refused reason=<off,arg,noregion,current>` | 2 |
+| `pick` | `module=tips event=pick surface=<news,tip,hail,intel> system=gaoba kind=raid target=lidau event_leg=118 age=2 source=3 live=<current,stale> merged=<basedn,wreck,raid,swon,nil> candidate_count=1 result=shown` (`system`: the dock or the hailed ship's system; intel: the captain's) | 1 |
+| `pick` | `module=tips event=pick surface=news system=gaoba candidate_count=0 result=none` | 2 |
+| `candidate` | `module=tips event=candidate surface=news kind=raid target=lidau result=<ok,kind,chapter,gate:<why>,dead,stale,old,told>` | 2 |
+| `skip` | `module=tips event=skip surface=news reason=<off,latch,scene,flag>` (once per reason and visit) | 2 |
+| `prune` | `module=tips event=prune region=5 dropped_count=2 reason=<age,dead,size>` (at a push or the region tick) / `region=all reason=off` (cfg tips 0 cleared the ring) | 2 |
+| `fix` | `module=tips event=fix kept=12 dropped=3 moved=1` (only when the repair changed `TRF.ti`) | 1 |
+| `dump` | `module=tips event=dump on=1 record_count=3 ring_size=4 length=43 ring=5:raid@lidau/2/0,5:cap@kadi/1/2,...` (`<slot>:<kind>@<system>/<age>/<flags>`) | 1 |
 
 ## supply (`trf_supply.script`; `TRF_SpE`)
 

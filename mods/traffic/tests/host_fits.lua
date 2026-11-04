@@ -131,7 +131,7 @@ end;
 
 function T_FT_A()
 	FT_Begin("xb13");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=20") >= 1, "trf_fits loads (extra_count=20)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=21") >= 1, "trf_fits loads (extra_count=21)");
 	local ml, ok = TRF_ModList(), nil;
 	for i = 1, getn(ml) do if ml[i] == "Ft" and ml[i - 1] == "Str" then ok = 1; end; end;
 	HOST_Check(ok and type(TRF_Ft_TuneDef) == "function" and type(TRF_FtData) == "function", "Ft in the module list after Str");

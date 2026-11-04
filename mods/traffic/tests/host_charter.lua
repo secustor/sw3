@@ -177,7 +177,7 @@ function T_CH_A()
 	C_Begin("golkonda", "4_1");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=20") >= 1, "trf_charter loads after trf_ladder (extra_count=20 with trf_scar, trf_captain, trf_stash, trf_freight, trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=21") >= 1, "trf_charter loads after trf_ladder (extra_count=21 with trf_scar, trf_captain, trf_stash, trf_freight, trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
 	local P = TRF_PlReg();
 	local lo, bo, ow = "", "", "";
 	for i = 1, getn(P.dock.trade.line) do lo = lo..P.dock.trade.line[i].o..","; end;

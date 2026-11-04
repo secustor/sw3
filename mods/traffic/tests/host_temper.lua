@@ -167,10 +167,10 @@ function TP_Bit(v, b) return TRF_IqHas(v, b) == 1; end;
 function T_TP_A()
 	local h = HOST();
 	TP_Begin("gredos", "5_1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=20") >= 1, "trf_temper loads before trf_corp and trf_debrief (extra_count=20)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=21") >= 1, "trf_temper loads before trf_corp and trf_debrief (extra_count=21)");
 	local ml, pm, tf, uf = TRF_ModList(), TRF_PlMods(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml) - 2] == "Te" and pm[getn(pm) - 2] == "Te" and tf[getn(tf) - 3] == "TRF_Te_Text" and tf[getn(tf)] == "TRF_Loc_Text"
-		and uf[getn(uf) - 2] == "TRF_Te_Text", "Te, Crp, Db at the end of TRF_ModList and TRF_PlMods, TRF_Te_Text before TRF_Crp_Text and TRF_Db_Text in both text lists");
+	HOST_Check(ml[getn(ml) - 3] == "Te" and pm[getn(pm) - 2] == "Te" and tf[getn(tf) - 4] == "TRF_Te_Text" and tf[getn(tf)] == "TRF_Loc_Text"
+		and uf[getn(uf) - 3] == "TRF_Te_Text", "Te, Crp, Db at the end of TRF_ModList and TRF_PlMods, TRF_Te_Text before TRF_Crp_Text and TRF_Db_Text in both text lists");
 	-- cfg and tune defaults, clamps.
 	local d = TRF_Te_OptDef();
 	local e = TRF_OptEnum();
@@ -354,7 +354,7 @@ function T_TP_B()
 	-- temper 0 against the module hidden: the same raid log and lines (same seed, same draws).
 	h.hide = {["trf_temper.script"]=1};
 	local a = TP_LaneFlow({temper=0});
-	HOST_Check(S_Logs(0, "extra_count=19") >= 1 and type(TRF_Te_Open) ~= "function", "trf_temper hidden: extra_count=19, no hooks");
+	HOST_Check(S_Logs(0, "extra_count=20") >= 1 and type(TRF_Te_Open) ~= "function", "trf_temper hidden: extra_count=20, no hooks");
 	h.hide = nil;
 	h.logs = {};
 	local b = TP_LaneFlow({temper=0});

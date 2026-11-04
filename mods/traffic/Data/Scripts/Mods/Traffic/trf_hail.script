@@ -2142,6 +2142,9 @@ end;
 -- equipment convoy due (rolled), busy neighbour, scheduled sweep with its home within 3 jumps, else
 -- "quiet". Reads saved state only.
 function TRF_HlRumourText(idx)
+	-- Sourced tips (design/tips-spec.md 7.3): a dated ring record within ti_hail_j jumps first.
+	local tr = TRF_N("TRF_Ti_Rumour", idx);
+	if type(tr) == "string" then return tr; end;
 	local n1 = TRF_HlPick(idx, 1, TRF_HlTroubleV);
 	if getn(n1) > 0 then return TRF_Txt("rdis", TRF_HlSysName(n1[1].i)); end;
 	local v1 = TRF_HlRumourV1(idx);

@@ -1,0 +1,23 @@
+traffic: lua: exp=v1 module=state event=enter generation=40 fresh=false system=gaoba legs=120
+traffic: lua: exp=v1 module=safety event=activate system=gaoba mode=mod reason=nil chapter=5 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=tips event=dump on=1 record_count=3 ring_size=4 length=43 ring=5:raid@lidau/2/0,5:cap@kadi/1/0,6:raid@heos/0/0
+traffic: lua: exp=v1 module=station event=dock station_key=42 param= via=prm+pos distance=0 standing=4 rung=4 heat=0 greeting=stnr4 greeting_skip=nil news=true tip=cap ambient=nil fee=0 fee_multiplier=0 no_fee_reason=nil
+traffic: lua: exp=v1 module=tips event=pick surface=news system=gaoba kind=raid target=lidau event_leg=118 age=2 source=3 live=current merged=nil candidate_count=1 result=shown
+traffic: lua: exp=v1 module=tips event=pick surface=tip system=gaoba kind=cap target=kadi event_leg=119 age=1 source=1 live=current merged=nil candidate_count=1 result=shown
+traffic: lua: exp=v1 module=station event=tip station_key=42 kind=cap system=kadi tip_leg=nil
+traffic: lua: exp=v1 module=safety event=gate feature=tips system=prien reason=quest result=denied
+traffic: lua: exp=v1 module=tips event=candidate surface=hail kind=raid target=prien result=gate:quest
+traffic: lua: exp=v1 module=tips event=pick surface=hail system=gaoba kind=raid target=lidau event_leg=118 age=2 source=3 live=current merged=nil candidate_count=1 result=shown
+traffic: lua: exp=v1 module=state event=enter generation=41 fresh=false system=kadi legs=121
+traffic: lua: exp=v1 module=safety event=activate system=kadi mode=mod reason=nil chapter=5 quest_state=1 gate=ok
+traffic: lua: exp=v1 module=tips event=dump on=1 record_count=3 ring_size=4 length=43 ring=5:raid@lidau/3/1,5:cap@kadi/2/2,6:raid@heos/1/0
+traffic: lua: exp=v1 module=tips event=skip surface=news reason=latch
+traffic: lua: exp=v1 module=state event=enter generation=42 fresh=false system=xk10 legs=122
+traffic: lua: exp=v1 module=safety event=activate system=xk10 mode=mod reason=nil chapter=5 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=tips event=dump on=1 record_count=4 ring_size=4 length=55 ring=5:raid@lidau/4/1,5:cap@kadi/3/2,5:raid@hanoi/0/0,6:raid@heos/2/0
+traffic: lua: exp=v1 module=tips event=pick surface=news system=xk10 kind=raid target=hanoi event_leg=122 age=0 source=0 live=current merged=nil candidate_count=1 result=shown
+traffic: lua: exp=v1 module=captain event=intel slot=5 price=4000 seen=kadi result=bought
+traffic: lua: exp=v1 module=tips event=pick surface=intel system=kadi kind=cap target=kadi event_leg=119 age=3 source=1 live=current merged=nil candidate_count=1 result=shown
+traffic: lua: exp=v1 module=plumb event=marker owner=stash label=TRF_STASH_AR_2 class=offer offer_count=1 result=added
+traffic: lua: exp=v1 module=plumb event=marker owner=stash label=TRF_STASH_AR_3 class=offer offer_count=2 result=added
+traffic: lua: exp=v1 module=plumb event=marker owner=stash label=TRF_STASH_AR_4 class=offer offer_count=2 result=refused reason=offer_cap

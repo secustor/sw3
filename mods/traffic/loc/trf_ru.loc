@@ -1,7 +1,7 @@
 LOCALE_FILE
 FILETYPE STANDART
 
-; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text) the wanted captains keys (#TRF_cap*, trf_captain TRF_Cap_Text), the clan stash keys (#TRF_stash*, trf_stash TRF_Sh_Text), the Wolves Freight keys (#TRF_fw*, trf_freight TRF_Fr_Text), the pirate haunt keys (#TRF_haunt*, trf_haunt TRF_Haunt_Text), the sealed parcel keys (#TRF_pcl*, trf_parcel TRF_Pc_Text), the mercenary clan keys (#TRF_mc*, trf_merc TRF_Mc_Text) and the demand page keys (#TRF_dmp*, trf_supply TRF_Supply_Text and trf_hail TRF_Hail_Text, with the answers #TRF_dmok and #TRF_dmno) and the hail page and combat hail keys (#TRF_hlp*, trf_hail TRF_Hail_Text) and the crew remark keys (#TRF_rm*, trf_remark TRF_Rm_Text), cp1251.
+; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text) the wanted captains keys (#TRF_cap*, trf_captain TRF_Cap_Text), the clan stash keys (#TRF_stash*, trf_stash TRF_Sh_Text), the Wolves Freight keys (#TRF_fw*, trf_freight TRF_Fr_Text), the pirate haunt keys (#TRF_haunt*, trf_haunt TRF_Haunt_Text), the sealed parcel keys (#TRF_pcl*, trf_parcel TRF_Pc_Text), the mercenary clan keys (#TRF_mc*, trf_merc TRF_Mc_Text) and the demand page keys (#TRF_dmp*, trf_supply TRF_Supply_Text and trf_hail TRF_Hail_Text, with the answers #TRF_dmok and #TRF_dmno) and the hail page and combat hail keys (#TRF_hlp*, trf_hail TRF_Hail_Text) and the crew remark keys (#TRF_rm*, trf_remark TRF_Rm_Text) and the sourced tips keys (#TRF_ti*, trf_tips TRF_Ti_Text), cp1251.
 ; Same keys and fixed texts as loc/trf_en.loc (no $n placeholders); used with cfg loc_mode 1 in a Russian install.
 ; Other #TRF_ keys have no RU line yet (design/station-voices-spec.md 13.5).
 
@@ -688,3 +688,27 @@ FILETYPE STANDART
 #TRF_rmsweepn = Здесь флот ходил на пиратов и был разбит.
 #TRF_rmsweepp = Здесь облава накрыла пиратов.
 #TRF_rmtrader = Здесь пропал грузовик. Скорее всего, пираты.
+#TRF_tiagen = несколько дней назад
+#TRF_tibase = Видели, как пираты открыли базу.
+#TRF_tibasedn = Видели, как пиратская база затихла.
+#TRF_ticap = Разыскиваемого капитана видели на подходе.
+#TRF_tigather = Против пиратов собирается флот.
+#TRF_tiintel = Последний раз его видели на подходе.
+#TRF_tinews = Новости порта
+#TRF_tipgate = у портала
+#TRF_tippatrol = у патрульной станции
+#TRF_tiptrade = у торговой станции
+#TRF_tiraid = Видели, как уходили рейдеры.
+#TRF_tiraidx = Рейдеры ушли через портал.
+#TRF_tislost = Флот разбит пиратами.
+#TRF_tisrcbeacon = Маяки FTU
+#TRF_tisrccrp = Экипажи корпорации
+#TRF_tisrcftu = Грузовики FTU
+#TRF_tisrcmerc = Наёмники FTU
+#TRF_tisrcnav = Патрули
+#TRF_tistbase = С тех пор база затихла.
+#TRF_tistcap = Патрули видят его уже в другом месте.
+#TRF_tistlow = С тех пор он затаился.
+#TRF_tiswon = Пиратов разбили.
+#TRF_tiwhen = Первыми это заметили там.
+#TRF_tiwreck = Маяки отметили пропавший грузовик.

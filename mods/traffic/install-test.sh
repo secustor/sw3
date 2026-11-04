@@ -88,6 +88,10 @@
 # DB_DIALOG=0|1 (cfg db_dialog, the dialogs TRF_Db1/TRF_Db2); each written only when set (no LEVEL preset entry: inert by
 # default). Data/Scripts/Trade/TRF_Db1.xml and TRF_Db2.xml (speaker TRF_WqP_clerk) are always copied. Tune keys (db_pool,
 # db_bank, db_shares, db_thr1, db_thr2, db_thr3, db_ch, db_last, db_help, db_dc) go through TUNE.
+# TIPS=0|1 (cfg tips, sourced tips and the event ring, design/tips-spec.md, CHECK W-A16.1-10: dated harbour news, source
+# and age clauses on the dock tips, the captain tip, the ring rumour in the hail, the informant's where and when; default 1
+# in config.script, LEVEL=v01/v02 write 0 unless TIPS is set); written only when set. Tune keys (ti_ring, ti_age,
+# ti_news_age, ti_hail_age, ti_hail_j, ti_ch, ti_ch_full, and trf_plumb's mk_offer) go through TUNE.
 # NEWS=1: the trf_* records of news/trf_news.xml (tools/gen_news.py) merged into the clone's Data/Game/News.xml
 # (the vanilla file is kept as News.xml.trf-orig; loc/trf_en.loc is copied on every run), and news_mode=2 unless
 # NEWS_MODE is set; unset restores News.xml from News.xml.trf-orig.
@@ -139,8 +143,8 @@ case "${MERC_NAMES:-0}" in 0) ;; 1) opt="$opt, mc_names=2" ;; *) echo "MERC_NAME
 LEVEL=${LEVEL:-v1}
 case "$LEVEL" in
 v1) pre= ;;
-v02) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0 corp=0" ;;
-v01) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 prosperity=0 seed=0 parked=0 queue=0 raids=0 staged=0 contracts=0 meet=1 board=0 shop_mode=0 short_price=0 news_mode=0 esc_flight=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0 corp=0" ;;
+v02) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0 corp=0 tips=0" ;;
+v01) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 prosperity=0 seed=0 parked=0 queue=0 raids=0 staged=0 contracts=0 meet=1 board=0 shop_mode=0 short_price=0 news_mode=0 esc_flight=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0 corp=0 tips=0" ;;
 *) echo "LEVEL must be v01, v02 or v1" >&2; exit 1 ;;
 esac
 for e in $pre; do
@@ -218,6 +222,7 @@ case "${DEBRIEF:-}" in "") ;; 0|1) opt="$opt, debrief=$DEBRIEF" ;; *) echo "DEBR
 case "${DEBRIEF_XP:-}" in "") ;; 0|1) opt="$opt, debrief_xp=$DEBRIEF_XP" ;; *) echo "DEBRIEF_XP must be 0 or 1" >&2; exit 1;; esac
 case "${DB_GATE:-}" in "") ;; 0|1) opt="$opt, db_gate=$DB_GATE" ;; *) echo "DB_GATE must be 0 or 1" >&2; exit 1;; esac
 case "${DB_DIALOG:-}" in "") ;; 0|1) opt="$opt, db_dialog=$DB_DIALOG" ;; *) echo "DB_DIALOG must be 0 or 1" >&2; exit 1;; esac
+case "${TIPS:-}" in "") ;; 0|1) opt="$opt, tips=$TIPS" ;; *) echo "TIPS must be 0 or 1" >&2; exit 1;; esac
 case "${JOBS_UI:-}" in "") ;; 0|1|2) opt="$opt, jobs_ui=$JOBS_UI" ;; *) echo "JOBS_UI must be 0, 1 or 2" >&2; exit 1;; esac
 opt="$opt, jobs_log=${JOBS_LOG:-1}"
 case "${FITS:-}" in "") ;; 0|1) opt="$opt, fits=$FITS" ;; *) echo "FITS must be 0 or 1" >&2; exit 1;; esac

@@ -241,15 +241,15 @@ end;
 function T_DB_A()
 	local h = HOST();
 	DB_Begin("altair", "5_1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=20") >= 1, "trf_debrief loads last (extra_count=20)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=21") >= 1, "trf_debrief loads before trf_tips (extra_count=21)");
 	local ml, pm, tf, uf = TRF_ModList(), TRF_PlMods(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml)] == "Db" and pm[getn(pm)] == "Db" and tf[getn(tf) - 1] == "TRF_Db_Text" and tf[getn(tf)] == "TRF_Loc_Text"
-		and uf[getn(uf)] == "TRF_Db_Text" and TRF_PlCounts().stl == 1 and TRF_IqOwners()[2] == "TRF_Db_IqLapse",
-		"Db last in TRF_ModList and TRF_PlMods, TRF_Db_Text last in both text lists, one settlement handler, the lapse owner of quest 2");
+	HOST_Check(ml[getn(ml) - 1] == "Db" and pm[getn(pm)] == "Db" and tf[getn(tf) - 2] == "TRF_Db_Text" and tf[getn(tf)] == "TRF_Loc_Text"
+		and uf[getn(uf) - 1] == "TRF_Db_Text" and TRF_PlCounts().stl == 1 and TRF_IqOwners()[2] == "TRF_Db_IqLapse",
+		"Db last in TRF_PlMods and before Ti in TRF_ModList, TRF_Db_Text before TRF_Ti_Text in both text lists, one settlement handler, the lapse owner of quest 2");
 	-- cfg and tune defaults, clamps (8).
 	local d, e = TRF_Db_OptDef(), TRF_OptEnum();
 	HOST_Check(d.debrief == 1 and d.debrief_xp == 0 and d.db_gate == 1 and d.db_dialog == 1 and e.debrief == 1 and e.debrief_xp == 1
-		and e.db_gate == 1 and e.db_dialog == 1 and DB_Has(DB_Read("config.script"), "debrief=1, debrief_xp=0, db_gate=1, db_dialog=1}"), "cfg defaults: debrief 1, debrief_xp 0 (inert), db_gate 1, db_dialog 1; enumerations 0..1; config.script ships debrief_xp 0");
+		and e.db_gate == 1 and e.db_dialog == 1 and DB_Has(DB_Read("config.script"), "debrief=1, debrief_xp=0, db_gate=1, db_dialog=1"), "cfg defaults: debrief 1, debrief_xp 0 (inert), db_gate 1, db_dialog 1; enumerations 0..1; config.script ships debrief_xp 0");
 	h.cfg.db_gate = 3;
 	HOST_Check(TRF_DbOpt("db_gate") == 1 and TRF_DbOpt("debrief_xp") == 1, "cfg db_gate outside 0..1 reads as the default; the runs set debrief_xp 1");
 	h.cfg.db_gate = nil;

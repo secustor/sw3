@@ -943,7 +943,11 @@ function TRF_StnTip(idx, k, T)
 			local rm = TRF_N("TRF_RgMap");
 			local home = nil;
 			if type(rm) == "table" and type(rm[slot]) == "table" then home = rm[slot].home; end;
-			return TRF_StnTxt("stntipsweep", i.fac, TRF_N("TRF_ClanName", slot), TRF_StnName(home)), "sweep", home;
+			local tx = TRF_StnTxt("stntipsweep", i.fac, TRF_N("TRF_ClanName", slot), TRF_StnName(home));
+			-- Sourced tips (design/tips-spec.md 7.2): who first saw the gathering fleet, where and when.
+			local cl = TRF_N("TRF_Ti_TipClause", idx, "sweep", slot);
+			if type(cl) == "string" then tx = tx.." "..cl; end;
+			return tx, "sweep", home;
 		end;
 	end;
 	local fq = TRF.feq;
@@ -957,10 +961,17 @@ function TRF_StnTip(idx, k, T)
 		for i = 1, getn(TRF.base) do
 			local b = TRF.base[i];
 			if type(b) == "table" and (b.k == 1 or b.k == 2) and type(b.s) == "number" and TRF_N("TRF_RgOf", b.s) == slot then
-				return TRF_StnTxt("stntipbase", TRF_StnName(b.s)), "base", b.s;
+				local tx = TRF_StnTxt("stntipbase", TRF_StnName(b.s));
+				-- Sourced tips (design/tips-spec.md 7.2): who first saw the base open, where and when.
+				local cl = TRF_N("TRF_Ti_TipClause", idx, "base", slot, b.s);
+				if type(cl) == "string" then tx = tx.." "..cl; end;
+				return tx, "base", b.s;
 			end;
 		end;
 	end;
+	-- Sourced tips (design/tips-spec.md 7.2): the latest sighting of the region's wanted captain, before the temperament tip.
+	local ctx, cts = TRF_N("TRF_Ti_CapTip", idx);
+	if type(ctx) == "string" then return ctx, "cap", cts; end;
 	-- Clan temperaments (design/temperament-spec.md 5.3): the clan's habit after a raid of that clan in this visit.
 	local tx = TRF_P("TRF_Te_Tip", idx);
 	if type(tx) == "string" then return tx, "temper", idx; end;
@@ -1039,6 +1050,9 @@ function TRF_StnTradeBody(param, stage)
 				nwf = 1;
 				shown = 1;
 			end;
+			-- Sourced tips (design/tips-spec.md 7.1): one dated, sourced line of the region's ring after the built one.
+			local tn = TRF_N("TRF_Ti_News", idx, k, 1 - nwf);
+			if type(tn) == "string" then TRF_Stn_Say(tn, 10); nwf = 1; shown = 1; end;
 		end;
 		if er >= 4 and newsok and nt ~= 1 then
 			local tx, kind, ts = TRF_StnTip(idx, k, T);

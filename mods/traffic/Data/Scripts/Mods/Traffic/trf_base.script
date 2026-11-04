@@ -474,6 +474,8 @@ function TRF_Ba_Life(L, cur)
 					TRF_BaE("active", "system", TRF_Ba_Name(r.s), "system_index", r.s, "leg", L, "disruption", TRF_Ba_Dis(r.s));
 					local slot = TRF_Ba_Slot(r.s);
 					if slot then TRF_P("TRF_NewsPost", "war", "base", slot); end;
+					-- Sourced tips (design/tips-spec.md 5.1): the base went active off-screen.
+					if slot then TRF_P("TRF_Ti_Feed", "base", slot, r.s); end;
 				else
 					TRF_Ba_Drop(r, "low_disruption", TRF_Ba_Dis(r.s), keep);
 				end;
@@ -637,6 +639,8 @@ function TRF_BaseDestroyed(idx, by)
 	r.h = 0;
 	r.w = 0;
 	if (by == "sweep" or by == "abandon") and cur ~= idx then r.w = 1; end;
+	-- Sourced tips (design/tips-spec.md 5.1): gone dark off-screen by a sweep or abandoned (never the player's kill).
+	if r.w == 1 and slot then TRF_P("TRF_Ti_Feed", "basedn", slot, idx, by); end;
 	TRF_Ba_DisFx(idx);
 	if by == "player" then TRF_Ba_P(TRF_Ba_PlayerFx, {idx, slot, tk}); end;
 	if by == "player" then TRF_N("TRF_Ch_Note", 6, idx, 0); end;

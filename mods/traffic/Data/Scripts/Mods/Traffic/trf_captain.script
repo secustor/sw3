@@ -1645,7 +1645,11 @@ function TRF_Cap_IntelOk(slot)
 	r.ti = TRF_CapLegs();
 	TRF_CapStat("cap_intel");
 	TRF_CapE("intel", "slot", slot, "price", o.price, "seen", TRF_CapName(r.seen), "result", "bought");
-	return TRF_CapTxt("capintelok", TRF_CapNm(r), TRF_CapSysTxt(r.seen));
+	local t = TRF_CapTxt("capintelok", TRF_CapNm(r), TRF_CapSysTxt(r.seen));
+	-- Sourced tips (design/tips-spec.md 7.4): where and when he was last spotted.
+	local x = TRF_N("TRF_Ti_Intel", slot);
+	if type(x) == "string" then t = t.." "..x; end;
+	return t;
 end;
 
 function TRF_Cap_IntelNo(slot)
@@ -1753,7 +1757,10 @@ function TRF_CapMove(slot, r, L)
 	local to = TRF_CapPickOf(l, TRF_CapHash(slot, L, r.gen + 7));
 	if to and to ~= r.seen then
 		TRF_CapDE("move", "slot", slot, "from", TRF_CapName(r.seen), "to", TRF_CapName(to));
+		local from = r.seen;
 		r.seen = to;
+		-- Sourced tips (design/tips-spec.md 5.1): the sighting with the arrival portal from the old system.
+		TRF_P("TRF_Ti_Feed", "cap", slot, to, from, r.gen);
 	end;
 end;
 

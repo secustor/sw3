@@ -35,6 +35,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_temper.script` | Clan temperaments and the intro quest "Clan file", B10 ([design/temperament-spec.md](design/temperament-spec.md)): one raid style per region clan (Cutters skip the demand, Hagglers talk first and leave at a loss, Planners weight their targets and call off when outgunned, Ghosts leave early and, with tune `te_fx` 1, decloak next to the target), the opening radio line of every raid, the style word on the hail trouble page, the dockmaster tip, the news bulletin and (gated by the quest) the patrol board; the Clan file at faction patrol docks (dialogs `TRF_Te1`, `TRF_Te2`) on the shared intro-quest record `TRF.iq` of trf_plumb. Host-tested only. Loads after `trf_remark`. |
 | `trf_corp.script` | Corporation carriers, A22 ([design/corp-carriers-spec.md](design/corp-carriers-spec.md)): plain FTU traders in corporation space become Triada, USS or InoCo contract carriers at spawn (a fixed draw from the trader's name and region, shares from the run-time owners of the region's trade systems), with the corporation in the greeting, the focus line, the dialog head and the where-headed answer, and the corporation's gun list and a lore-named item in the trader shop; kills and robberies of a corporation's carriers (and an off-screen roll in Raids at clan T3-T4) pull it out of a region for 24 legs with a news post and dockmaster lines (req line 30); an escort of a carrier marks the region for trf_charter's supply run posting (type 7). State `TRF.crp` (one 88-digit string). Host-tested only. Loads after `trf_temper`. |
 | `trf_debrief.script` | Debrief pool and the intro quest "Report in", B02 ([design/debrief-spec.md](design/debrief-spec.md)), **off by default** (cfg `debrief_xp` 0 until roadmap decision 1): each settled mod job (parcel, charter posting, bounty claim, sweep join, escort; trf_plumb's settlement hook `TRF_Settle`) draws one debrief from a pool of 5 per chapter (one chapter of carry-over, a bank of 10), paid as pilot experience at the next trade dock (line 80, one `AddPlayerExperience` call); the pool opens with the quest "Report in" (quest 2 of `TRF.iq`: the charter office's offer, box 420 or Office row 420, dialogs `TRF_Db1`/`TRF_Db2`). State `TRF.db` (one packed number). Host-tested only. Loads after `trf_corp`. |
+| `trf_tips.script` | Sourced tips and the event ring, A16 ([design/tips-spec.md](design/tips-spec.md)): one ring of dated events per region (4 records, `TRF.ti`, one digit string), fed by off-screen raids, sweep plans and outcomes, pirate bases going active or dark, the wanted captain's moves and lost traffic freighters; read by the harbour news (one dated, sourced line), the sweep and base dock tips (who first saw it, where, when), a captain tip, the hail's where-headed answer and the informant's reply. Owns the shared ring API `TRF_RingPush`/`TRF_RingRead`/`TRF_RingMark`; trf_plumb's two-marker rule for offered content (`TRF_MarkerOfferReg`, tune `mk_offer`). Host-tested only. Loads after `trf_debrief`. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -1166,6 +1167,40 @@ Wave 2 item 7 of the roadmap, B02 (spec [design/debrief-spec.md](design/debrief-
 ### In-game checks (debrief pool)
 
 W-B02.1 (the grant in kill-XP units), W-B02.2 (a reserve pilot), W-B02.3 (`GetPoints` across a load), W-B02.4 (offer and accept), W-B02.5 (count and hand-in), W-B02.6 (the first debrief), W-B02.7 (a claim pays at the trade dock), W-B02.8 (mission, refill, `dbnew`), W-B02.9 (the reference mission), W-B02.10 (the default install shows nothing); [design/PROGRESS.md](design/PROGRESS.md) "Wave 2 (host-tested only)", scored by `tools/check_ingame.py`.
+
+## Sourced tips and the event ring (`EXP=0 TRAFFIC=1`)
+
+Wave 2 item 6 of the roadmap, A16 (spec [design/tips-spec.md](design/tips-spec.md); owner decisions 1-7 of spec 2.1 taken 2026-11-04 as recommended): module `trf_tips`, loaded after `trf_debrief` (`extra_count=21`). On by default (cfg `tips` 1). State `TRF.ti`: one digit string, a block per region, at most 4 records of 12 digits each (409 bytes worst case; full state `v1-n` 97,012 bytes). Host-tested only (`ti-a`..`ti-g`), not run in the game.
+
+### What the player sees
+
+- Harbour news (trade dock, standing rung 2 or more, chapter 4+): after the built "Harbour news" line, one dated line about the dock's region, naming who saw it, where and when: "Harbour news: Triada crews saw Red Knives raiders leave Lidau by the Egleon portal yesterday." Each event is told once (a sweep won and the base it broke are one line; a raid and the freighter it took are one line).
+- Dock tips (rung 4): the sweep and base tips add who first saw the fleet or the base, where and when. From chapter 5 a new tip names the latest sighting of the region's wanted captain, with the portal he came through; if he has moved or gone quiet since, the tip says so. Once per sighting.
+- Hail: asked where it is headed, a trader first passes on a dated sighting within 2 jumps (once per record and visit), else the built rumours.
+- Wanted captains: the informant's reply adds where and when the captain was last spotted.
+- Nothing about a system whose story quest runs, nothing in a visit that saw a story mission, never a dead captain, a looted wreck or a destroyed base as if current. No new box, marker, arrival line or logbook entry.
+
+### Config keys (sourced tips)
+
+`install-test.sh` writes `TIPS` only when set (`LEVEL=v01`/`v02` write `tips=0` unless `TIPS` is set); tune keys go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `tips` | 1 | 0: no record pushed, the ring cleared at the next region tick, every surface as built |
+| tune `ti_ring` | 4 | records per region (2..8) |
+| tune `ti_age` | 30 | legs a record is kept |
+| tune `ti_news_age`, `ti_hail_age` | 12, 6 | oldest record told as harbour news, in a hail |
+| tune `ti_hail_j` | 2 | hail rumour range in jumps |
+| tune `ti_ch`, `ti_ch_full` | 4, 5 | first chapter of the history records (raids, sweeps, bases gone dark, wrecks), of the target records (active bases, captains) and the captain tip |
+| tune `mk_offer` | 2 | trf_plumb: markers of offered content (the stash intel area marker) per visit; 0 no cap |
+
+### Log lines (sourced tips)
+
+`module=tips event=push kind= region= system= system_index= landmark= source= arg= event_leg= result=<new|refresh|replace> evicted= record_count=` (refusals at log 2), `event=pick surface=<news|tip|hail|intel> system= kind= target= event_leg= age= source= live= merged= candidate_count= result=shown`, `event=candidate` and `event=skip` and `event=prune` (log 2), `event=fix`, `event=dump record_count= ring_size= length= ring=`, `event=error`; trf_plumb's marker line gains `class=offer offer_count=` and `reason=offer_cap`; trf_station's tip line `kind=cap`. Full list in [design/log-events.md](design/log-events.md) (tips, plumb).
+
+### In-game checks (sourced tips)
+
+W-A16.1 (dated harbour news), W-A16.2 (no news twice), W-A16.3 (never a dead target), W-A16.4 (strict gate), W-A16.5 (mission latch), W-A16.6 (hail rumour), W-A16.7 (informant clause), W-A16.8 (captain tip), W-A16.9 (ring bound), W-A16.10 (offer markers); [design/PROGRESS.md](design/PROGRESS.md) "Wave 2 (host-tested only)", scored by `tools/check_ingame.py`.
 
 ## Vanilla fixes
 

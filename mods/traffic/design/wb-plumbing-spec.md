@@ -43,6 +43,7 @@ Config: `wb_box_after_fee` (default 0, enum 0..1, `install-test.sh` `WB_BOX_AFTE
 | `TRF_ArrivalLine(owner, text)` | `live.arq`, `live.ag`, `live.aqt` | see 5 |
 | `TRF_JobTake(kind, rec)`, `TRF_JobGet()`, `TRF_JobClear()` | `TRF.job` | one open job `{k = kind, flat fields}`; at most `job_max` number or string fields, field names and strings up to `job_len`; refused when one is open |
 | `TRF_MarkerAdd(owner, label, x, y, z[, text, icon, obj])`, `TRF_MarkerClear(owner)` | `TRF.mk`, `TRF_H().mk` | see 8 |
+| `TRF_MarkerOfferReg(owner)` | registry (never saved) | (2026-11-04, [tips-spec.md](tips-spec.md) 7.5, A16) owner of offered, not accepted content (4b.1 rule 2); `TRF_MarkerAdd` refuses a marker of such an owner when the visit already holds tune `mk_offer` (2, 0 = no cap) of them (`reason=offer_cap`, keys `class=offer offer_count=` on the marker line); trf_stash registers `stash` |
 | `TRF_PrizeWait()`, `TRF_PrizeMark(owner)`, `TRF_PrizeGap()` | `TRF.clock.pz` | see 10 (B1) |
 
 `TRF.live` is rebuilt on entry (`TRF_LiveReset`) and by the load pass, and `TRF_Pl_OnEnter`/`TRF_Pl_OnLoad` clear the slot fields again, so every slot starts empty on entry and on load.
