@@ -36,7 +36,7 @@ dostring(strsub(src, 1, cut), "host_parcel.lua");
 -- lines or entry slots off, the box path of the jobs UI (jobs_ui 0), the dialogs off (wq_dialog 0: the lines, boxes, card
 -- and Job log of a..f; wq-g turns them on), log 2, plus t.
 function WQ_Cfg(t)
-	local c = {enable_wq=1, enable_freight=1, fw_prize_gap=0, enable_parcels=0, charter=0, cap_enable=0, sweeps=0, sweep_ct=0, feq=0,
+	local c = {enable_wq=1, enable_freight=1, fw_prize_gap=0, enable_parcels=0, charter=0, cap_enable=0, sweeps=0, sweep_ct=0, feq=0, temper=0,
 		staged=0, seed=0, queue=0, parked=0, voice_events=0, dconv=0, carriers=0, po=0, enable_survivors=0, lad_enabled=0,
 		enable_stashes=0, enable_scars=0, jobs_ui=0, wq_dialog=0, log=2, tune={}};
 	if t then for k, v in t do c[k] = v; end; end;
@@ -143,9 +143,9 @@ function T_WQ_A()
 	local h = HOST();
 	WQ_Begin("debris6", "5_1");
 	local idx = TRF_CurIdx();
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=17") >= 1, "trf_wq loads before trf_warn and trf_remark (extra_count=17)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=18") >= 1, "trf_wq loads before trf_warn and trf_remark (extra_count=18)");
 	local ml, pm, tf, uf = TRF_ModList(), TRF_PlMods(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml) - 2] == "Wq" and pm[getn(pm) - 1] == "Wq" and tf[getn(tf) - 3] == "TRF_Wq_Text" and uf[getn(uf) - 2] == "TRF_Wq_Text",
+	HOST_Check(ml[getn(ml) - 3] == "Wq" and pm[getn(pm) - 2] == "Wq" and tf[getn(tf) - 4] == "TRF_Wq_Text" and uf[getn(uf) - 3] == "TRF_Wq_Text",
 		"Wq before Wn (trf_warn) at the end of TRF_ModList and TRF_PlMods, TRF_Wq_Text in both text lists");
 	HOST_Check(TRF_Wq_OptDef().enable_wq == 1 and TRF_WqOpt("enable_wq") == 1 and TRF_Opt("enable_wq") == 1, "cfg enable_wq 1 by default");
 	local T = TRF_WqTune();
@@ -880,7 +880,7 @@ function T_WQ_D()
 	local lb, ll = "", "";
 	for i = 1, getn(P.dock.pir.box) do lb = lb..P.dock.pir.box[i].o..":"..TRF_PlName(P.dock.pir.box[i].f)..","; end;
 	for i = 1, getn(P.dock.patrol.line) do ll = ll..P.dock.patrol.line[i].o..":"..TRF_PlName(P.dock.patrol.line[i].f)..","; end;
-	HOST_Check(WQ_Has(lb, "300:TRF_Wq_PirBox,") and WQ_Has(ll, "40:TRF_Sh_PatrolLine,45:TRF_Wq_PatrolLine,50:"), "pirate box 300, patrol line 45 ("..lb.." "..ll..")");
+	HOST_Check(WQ_Has(lb, "300:TRF_Wq_PirBox,") and WQ_Has(ll, "40:TRF_Sh_PatrolLine,45:TRF_Wq_PatrolLine,47:TRF_Te_PatrolLine,50:"), "pirate box 300, patrol line 45 ("..lb.." "..ll..")");
 	-- The clue region: the slot of XB-13.
 	local bad = "";
 	for k, nm in {"golkonda", "callipso", "xb13", "debris6"} do if not TRF_WqClueRg(V_Idx(nm)) then bad = bad.." "..nm; end; end;

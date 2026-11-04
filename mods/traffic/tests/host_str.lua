@@ -60,7 +60,7 @@ function T_ST_A()
 	local h = HOST();
 	ST_Begin();
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=17") >= 1, "trf_str loads (extra_count=17, module_count unchanged)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=18") >= 1, "trf_str loads (extra_count=18, module_count unchanged)");
 	local ml, ok = TRF_ModList(), nil;
 	for i = 1, getn(ml) do if ml[i] == "Str" and ml[i - 1] == "Rg" then ok = 1; end; end;
 	HOST_Check(ok and type(TRF_Str_TuneDef) == "function" and type(TRF_StrRows) == "function", "Str in the module list after Rg");

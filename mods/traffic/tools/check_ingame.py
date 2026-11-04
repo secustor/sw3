@@ -7,7 +7,8 @@ design/fits-spec.md 11), the vanilla extortion fix (E-EXT.1, design/extort-fix-s
 step 2), the quest log's Job log (L1-L5, step 3), the freight unlock quest, commits 1-3 (Q-WQ.1-10,
 design/freight-quest-spec.md 10) and its presentation (Q-WQ.11-14, spec 13: dialogs, letters, the mission list), Wolves Freight step 2 (EW8.11-EW8.17, design/freight-spec.md 10)
 the lethal-system warnings (W-A12.1-8, design/warnings-spec.md 15; wave 1, host-tested only) and the crew remarks
-(W-B06.1-10, design/crew-remarks-spec.md 14; wave 1, host-tested only) from traffic logs.
+(W-B06.1-10, design/crew-remarks-spec.md 14; wave 1, host-tested only) and the clan temperaments with the Clan file
+(W-B10.1-10, design/temperament-spec.md 12; wave 1, host-tested only) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -28,6 +29,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURE = os.path.join(HERE, "..", "tests", "check_ingame_fixture.log")
 FIXTURE_WARN = os.path.join(HERE, "..", "tests", "check_ingame_warn_fixture.log")
 FIXTURE_REMARK = os.path.join(HERE, "..", "tests", "check_ingame_remark_fixture.log")
+FIXTURE_TEMPER = os.path.join(HERE, "..", "tests", "check_ingame_temper_fixture.log")
 REL = ("war", "neutral", "friend")
 PHASES = ("Quiet", "Boom", "Build-up", "Raids", "Bust", "Recovery")
 # vanilla bounty flights (OutMission_kill_pirate), haunt-spec appendix A class P
@@ -2671,6 +2673,186 @@ def c_wb10(ctx):
     return res
 
 
+# Clan temperaments and the Clan file (design/temperament-spec.md 12, W-B10.1-10; host-tested only, wave 1) ---------------
+
+def te_raid_recs(ctx, rec, mod, ev):
+    """raid or temper records of event ev in the visit of rec with the same raid_id."""
+    return [r for r in rec.visit.recs if r.is_(mod, ev) and r.get("raid_id") == rec.get("raid_id")] if rec.visit else []
+
+
+def c_wt1(ctx):
+    res = Res()
+    res.logpart = True
+    dem = [r for r in ctx.find("temper", "open", form="demand", result="said", mode="full")]
+    cut = [r for r in ctx.find("temper", "open", temper="cutter", form="no_demand", result="said", mode="full") if r.get("kind") == "lane"]
+    for r in dem:
+        if not [x for x in te_raid_recs(ctx, r, "raid", "demand") if x.n > r.n]:
+            res.fails.append("%s: no module=raid event=demand for the raid after its opening line" % r.short())
+    for r in cut:
+        if te_raid_recs(ctx, r, "raid", "demand"):
+            res.fails.append("%s: a Cutter raid with a demand step" % r.short())
+        if not te_raid_recs(ctx, r, "raid", "refuse"):
+            res.fails.append("%s: a Cutter raid without the refuse" % r.short())
+    if not dem:
+        res.missing.append("a lane raid in a Haggler, Planner or Ghost region from chapter 4 (outside the Hephaestus start "
+                           "systems): no module=temper event=open form=demand mode=full result=said")
+    if not cut:
+        res.missing.append("a lane raid in Cadi or Torr (Cutters): no event=open temper=cutter form=no_demand kind=lane")
+    res.ev("demand-form opening lines", dem)
+    res.ev("Cutter opening lines", cut)
+    return res
+
+
+def c_wt2(ctx):
+    res = Res()
+    res.logpart = True
+    for r in ctx.find("temper", "open", result="said"):
+        if r.visit is not None and r.visit.chapter is not None and r.visit.chapter <= 3:
+            res.fails.append("%s: an opening line in chapter %d" % (r.short(), r.visit.chapter))
+    ln = ctx.find("temper", "open", mode="lines", result="said")
+    if not ln:
+        res.missing.append("a raid in a Hephaestus start system in chapter 4: no event=open mode=lines")
+    res.ev("lines-only opening lines", ln)
+    return res
+
+
+def c_wt3(ctx):
+    res = Res()
+    res.logpart = True
+    hag = ctx.find("temper", "open", temper="haggler", mode="full", result="said")
+    dec = []
+    for r in hag:
+        for d in te_raid_recs(ctx, r, "raid", "decide"):
+            dec.append(d)
+            if d.num("chance", 0) < 25 - 1e-6:
+                res.fails.append("%s: a Haggler decide below the 25 %% clamp" % d.short())
+    loss = ctx.find("raid", "leave", reason="loss")
+    if not dec:
+        res.missing.append("a Haggler raid with a demand (Dosis or Hephaestus region, chapter 4+): no module=raid event=decide for it")
+    if not loss:
+        res.missing.append("kill a ship of a Haggler raid: no module=raid event=leave reason=loss")
+    res.ev("Haggler decides", dec)
+    res.ev("loss leaves", loss)
+    return res
+
+
+def c_wt4(ctx):
+    res = Res()
+    res.logpart = True
+    co = ctx.find("temper", "calloff", result="leave")
+    for r in co:
+        if not [x for x in te_raid_recs(ctx, r, "raid", "leave") if x.get("reason") == "calloff" and x.n > r.n] and not \
+                [x for x in te_raid_recs(ctx, r, "raid", "end") if x.n > r.n]:
+            res.fails.append("%s: no module=raid leave reason=calloff after it" % r.short())
+    if not co:
+        res.missing.append("fire on a Planner raid (Golconda or Muscovy) beside a strong trader: no module=temper event=calloff result=leave")
+    res.ev("call-offs", co)
+    res.ev("raid leaves reason=calloff", ctx.find("raid", "leave", reason="calloff"))
+    return res
+
+
+def c_wt5(ctx):
+    res = Res()
+    res.logpart = True
+    dc = ctx.find("temper", "decloak", result="placed")
+    for r in dc:
+        d = r.num("distance")
+        if d is None or d < 400 or d > 600:
+            res.fails.append("%s: decloak distance outside 400-600" % r.short())
+        if r.int("fx_count", 0) < 1:
+            res.fails.append("%s: PlayFX on no ship" % r.short())
+        if not [x for x in te_raid_recs(ctx, r, "raid", "go") if x.get("via") == "decloak"]:
+            res.fails.append("%s: no module=raid event=go via=decloak for the raid" % r.short())
+    if not dc:
+        res.missing.append("install with TUNE=te_fx=1 and meet a lane raid in Elinor or XT-27: no event=decloak result=placed")
+    res.ev("decloaks", dc)
+    res.ev("no point", ctx.find("temper", "decloak", reason="no_point"))
+    return res
+
+
+def c_wt6(ctx):
+    res = Res()
+    res.logpart = True
+    s = [r for r in ctx.find("ui", "say") if "and unidentified contacts" in (r.get("message") or "")]
+    if not s:
+        res.missing.append("enter a disrupted system of Elinor or XT-27 (chapter 4+): no screen line with 'and unidentified contacts'")
+    res.ev("arrival lines with the Ghost word", s)
+    return res
+
+
+def c_wt7(ctx):
+    res = Res()
+    res.logpart = True
+    tips = ctx.find("station", "tip", kind="temper")
+    for r in tips:
+        if not [x for x in (r.visit.recs if r.visit else []) if x.is_("temper", "open", result="said") and x.n < r.n]:
+            res.fails.append("%s: a temperament tip without an opening line earlier in the visit" % r.short())
+    gate = ctx.find("temper", "board", result="gate")
+    if not gate:
+        res.missing.append("dock at a patrol station before the Clan file (LOG=2): no module=temper event=board result=gate")
+    if not tips:
+        res.missing.append("after a raid of the clan, dock at a trade station there at dockmaster rung 4: no event=tip kind=temper")
+    res.ev("board gate lines", gate)
+    res.ev("temperament tips", tips)
+    return res
+
+
+def c_wt8(ctx):
+    res = Res()
+    res.logpart = True
+    shown = ctx.find("temper", "offer", result="shown")
+    acc = ctx.find("temper", "accept", result="ok")
+    for r in acc:
+        if not [x for x in (r.visit.recs if r.visit else []) if x.is_("temper", "offer", result="shown") and x.n < r.n]:
+            res.fails.append("%s: an accept without a shown offer in the visit" % r.short())
+    lb = [r for r in ctx.find("temper", "logbook", result="added") if r.get("id") == "trf_te"]
+    if not shown:
+        res.missing.append("dock at a faction patrol station in a T2+ clan region, chapter 5-20: no event=offer result=shown")
+    if not acc:
+        res.missing.append("accept the Clan file: no event=accept result=ok")
+    elif not lb:
+        res.fails.append("an accept without the logbook entry trf_te")
+    res.ev("offers shown", shown)
+    res.ev("accepts", acc)
+    res.ev("logbook", lb)
+    return res
+
+
+def c_wt9(ctx):
+    res = Res()
+    res.logpart = True
+    c1 = ctx.find("temper", "count", result="counted", count="1")
+    c2 = ctx.find("temper", "count", result="counted", count="2")
+    st = ctx.find("temper", "step", step_before="10", step_after="20")
+    done = ctx.find("temper", "done", result="done")
+    for r in done:
+        if not [x for x in c2 if x.n < r.n or x.src != r.src]:
+            res.fails.append("%s: done without a second answered raid" % r.short())
+        f = r.get("faction")
+        if not [x for x in ctx.find("temper", "board", result="words") if x.get("faction") == f and (x.src != r.src or x.n > r.n)]:
+            res.missing.append("dock at a %s patrol station after the report (LOG=2): no event=board faction=%s result=words" % (f, f))
+    if not done:
+        res.missing.append("answer two raids of the quest clan and report at a patrol dock of the same faction: no event=done")
+    res.ev("first counts", c1)
+    res.ev("second counts", c2)
+    res.ev("step 10 -> 20", st)
+    res.ev("done", done)
+    return res
+
+
+def c_wt10(ctx):
+    res = Res()
+    res.logpart = True
+    p = ctx.find("temper", "letter", post="mail_trf_te1", result="posted")
+    if len(p) > 1:
+        res.fails.append("%d letters mail_trf_te1 posted (once per game)" % len(p))
+    if not p:
+        res.missing.append("finish the first Clan file with NEWS=1: no event=letter post=mail_trf_te1 result=posted")
+    res.ev("letters", p)
+    res.ev("skipped", ctx.find("temper", "letter", result="skipped"))
+    return res
+
+
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
@@ -2857,6 +3039,22 @@ ITEMS = [
     ("W-B06.9", "tick safety: Message from a due call", c_wb9, None),
     ("W-B06.10", "the scar beacon line voiced by the crew", c_wb10,
      "the beacon line in a squad pilot's portrait, ending 'That was <n> days back.'"),
+    ("W-B10.1", "the opening raid line replaces the demand; Cutters attack without one", c_wt1,
+     "one line with the raid leader's portrait naming the clan ('Ash Vipers: We always talk first, trader. ...')"),
+    ("W-B10.2", "chapter 4 guard systems: lines only; chapter 3: no line", c_wt2, None),
+    ("W-B10.3", "Haggler: comply clamp 25..98, the comply line, leave at the first loss", c_wt3,
+     "the trader's comply line names the clan ('The Ash Vipers took it and let us go')"),
+    ("W-B10.4", "Planner call-off after the player engages", c_wt4,
+     "the tepoff line ('Too hot. Pull back ...'), the raid flies to a portal"),
+    ("W-B10.5", "Ghost decloak with te_fx 1 (PlayFX on mod raid ships)", c_wt5,
+     "raid ships appear 400-600 from the trader with the cloak-out effect, visible and targetable at once, no shots while invisible"),
+    ("W-B10.6", "the Ghost word in the tier arrival line", c_wt6, "the line fits the screen"),
+    ("W-B10.7", "trouble page words, board gate, the dockmaster tip after a raid", c_wt7,
+     "the hail trouble page shows '(some, talk first)'; the patrol board none before the Clan file"),
+    ("W-B10.8", "the Clan file offer at a faction patrol dock and the accept", c_wt8,
+     "the dialog with the patrol officer's portrait (D1), or the card (JOBS=1), or the box; 'Clan file' in the mission list"),
+    ("W-B10.9", "two answered raids, the report (D2), the board words after it", c_wt9, None),
+    ("W-B10.10", "the letter once (NEWS=1)", c_wt10, "the letter's paragraphs split at |"),
 ]
 
 
@@ -2981,7 +3179,9 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "W-A12.1": "MANUAL", "W-A12.2": "FAIL", "W-A12.3": "MANUAL", "W-A12.4": "FAIL", "W-A12.5": "NO DATA",
             "W-A12.6": "MANUAL", "W-A12.7": "NO DATA", "W-A12.8": "NO DATA",
             "W-B06.1": "MANUAL", "W-B06.2": "FAIL", "W-B06.3": "FAIL", "W-B06.4": "FAIL", "W-B06.5": "NO DATA",
-            "W-B06.6": "NO DATA", "W-B06.7": "FAIL", "W-B06.8": "FAIL", "W-B06.9": "PASS", "W-B06.10": "MANUAL"}
+            "W-B06.6": "NO DATA", "W-B06.7": "FAIL", "W-B06.8": "FAIL", "W-B06.9": "PASS", "W-B06.10": "MANUAL",
+            "W-B10.1": "FAIL", "W-B10.2": "FAIL", "W-B10.3": "FAIL", "W-B10.4": "NO DATA", "W-B10.5": "NO DATA",
+            "W-B10.6": "NO DATA", "W-B10.7": "FAIL", "W-B10.8": "NO DATA", "W-B10.9": "NO DATA", "W-B10.10": "FAIL"}
 # tests/check_ingame_warn_fixture.log: correct warning behaviour only. A dock warning for Gideon at Avalon (leg 100) after
 # the station's dock line, a second approach skipped (visit), a return at leg 102 skipped (cooldown); at XT-23 (station
 # voice deny, a station pass, no station dock line) a pass reason=scene, then a warning for XT-24; a load of an earlier
@@ -2992,6 +3192,13 @@ SELFTEST_WARN = {"W-A12.1": "MANUAL", "W-A12.2": "PASS", "W-A12.3": "MANUAL", "W
 # quest names it (gate skip); Gaoba again: the event told; Altair (chapter 11): Lastochka dead, the Hero speaks.
 SELFTEST_REMARK = {"W-B06.1": "MANUAL", "W-B06.2": "PASS", "W-B06.3": "PASS", "W-B06.4": "PASS", "W-B06.5": "PASS",
                    "W-B06.6": "PASS", "W-B06.7": "PASS", "W-B06.8": "PASS", "W-B06.9": "PASS", "W-B06.10": "MANUAL"}
+# tests/check_ingame_temper_fixture.log: correct temperament and Clan file behaviour. Valensia (chapter 5): a Haggler lane
+# raid with the demand-form line, its decide at 25 %, a loss leave; Gredos (chapter 4): a lines-only line; Kadi: a
+# Cutter raid opens, refuses; Golkonda: a Planner call-off; Taira: a decloak, the Ghost arrival line, the board gate,
+# the offer shown and accepted (logbook), an opening line then the tip; two counts, the step, the report done at
+# Escaflon, the board words there, the letter once.
+SELFTEST_TEMPER = {"W-B10.1": "MANUAL", "W-B10.2": "PASS", "W-B10.3": "MANUAL", "W-B10.4": "MANUAL", "W-B10.5": "MANUAL",
+                   "W-B10.6": "MANUAL", "W-B10.7": "MANUAL", "W-B10.8": "MANUAL", "W-B10.9": "PASS", "W-B10.10": "MANUAL"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -3011,6 +3218,9 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # a second approach skipped (visit), the jump warning at the portal, a first-visit note at Cassily (no later note=seen:
 # W-A12.5 NO DATA), then back at Avalon a pass reason=latch followed by a warning for Gideon 2 legs later (W-A12.2 and
 # W-A12.4 FAIL); no USS line (W-A12.7), no jump warning after a load (W-A12.8).
+# Clan temperaments block (after the crew remarks block): in Kadi in chapter 3 a Cutter opening line (W-B10.2 FAIL) with a
+# demand step (W-B10.1 FAIL); in Valensia a Haggler decide at 10 % (W-B10.3 FAIL), then on the next entry a temperament
+# tip without an opening line in that visit (W-B10.7 FAIL) and the letter twice (W-B10.10 FAIL).
 # Crew remarks block (the very end, Gaoba twice): a remark shown after a strict-gate denial for feature remark (W-B06.8
 # FAIL) and after a voiced beacon line in the same entry (W-B06.3 FAIL), four arrival lines queued in one entry (W-B06.4
 # FAIL), every voice line silent (W-B06.7 FAIL), the same event said again on the next entry (W-B06.2 FAIL); no voice
@@ -3041,7 +3251,12 @@ def selftest():
         if got.get(iid) != v:
             print("selftest: remark fixture %s is %s, expected %s" % (iid, got.get(iid), v))
             bad += 1
-    n = len(SELFTEST) + len(SELFTEST_EYES[1]) + len(SELFTEST_WARN) + len(SELFTEST_REMARK)
+    got = dict((r[0], r[2]) for r in score(Ctx([Log(FIXTURE_TEMPER, None, [])]), {}))
+    for iid, v in SELFTEST_TEMPER.items():
+        if got.get(iid) != v:
+            print("selftest: temper fixture %s is %s, expected %s" % (iid, got.get(iid), v))
+            bad += 1
+    n = len(SELFTEST) + len(SELFTEST_EYES[1]) + len(SELFTEST_WARN) + len(SELFTEST_REMARK) + len(SELFTEST_TEMPER)
     if parse_logfmt('a=1 message="x \\"y\\" z" b=') != {"a": "1", "message": 'x "y" z', "b": ""}:
         print("selftest: logfmt quoting")
         bad += 1

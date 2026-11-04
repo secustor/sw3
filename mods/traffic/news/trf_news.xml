@@ -1581,4 +1581,11 @@
 		<image_name>mail</image_name>
 		<sound_name/>
 	</NewsRecord>
+	<NewsRecord>
+		<name>mail_trf_te1</name>
+		<header>#TRF_telt</header>
+		<text>#TRF_tel1b</text>
+		<image_name>mail</image_name>
+		<sound_name/>
+	</NewsRecord>
 	<!--sw3-traffic news end-->

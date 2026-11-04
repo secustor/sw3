@@ -32,6 +32,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_wq.script` | Freight unlock quest "Missing in Capricorn", all three commits ([design/freight-quest-spec.md](design/freight-quest-spec.md)): the FTU charter office offer at a Gefest or Golkonda loop stop (trade box 450, the Office board row and the mission card of the station jobs UI), the logbook or Job log entry `trf_wq`, the Kestrel mayday (a seeded roll at entry, the transport under a T2 clan raid, saved through the 8.5 raid help, lost, or void and retried); the grandfather rule for saves with a freighter; the Kestrel's report (trade line 40), the Marlin wreck (a quest record of `trf_survive`), the fence (pirate box 300) or the patrol board (patrol line 45); the clan hold at XB-13 (the clan base with the captain tipped there, or the Marlin's hulk with a tier-3 guard; the crew as quest pods of `trf_survive`), the hand-in and the charter office unlock of the first Wolves freighter (`TRF_FrBuyGate` reason `quest` below step 70); the presentation: campaign dialog windows (`Data/Scripts/Trade/TRF_Wq*.xml`), two letters by post, the main mission list (cfg `wq_dialog`). Loads after `trf_merc`. |
 | `trf_warn.script` | Lethal-system warnings, A12 step 1 ([design/warnings-spec.md](design/warnings-spec.md)): the list of 23 vanilla systems that kill, ambush or trap an arriving mothership with the mirror of each one's vanilla arming condition (checked by `tools/check_warn.py`), the dockmaster's warning at a trade dock one jump from an armed one (req line 20), the first-visit note (an arrival line once per system and save) and the jump warning at the portal (a wrapper over the `PORTAL_<X>_Action` globals). Host-tested only. Loads after `trf_wq`. |
 | `trf_remark.script` | Crew remarks on system history, B06 ([design/crew-remarks-spec.md](design/crew-remarks-spec.md)): on system entry one radio line from a squad pilot about a dated record of the system the player has not heard about (an off-screen trader or sweep scar, a fallen pirate base, a captain killed by an off-screen sweep), the age sentence and crew voice of the scar's beacon line, the told stamps `TRF.rm`; owns the shared crew-voice API `TRF_CrewVoice` / `TRF_CrewSay` (B03 and A01 use it). Host-tested only. Loads after `trf_warn`. |
+| `trf_temper.script` | Clan temperaments and the intro quest "Clan file", B10 ([design/temperament-spec.md](design/temperament-spec.md)): one raid style per region clan (Cutters skip the demand, Hagglers talk first and leave at a loss, Planners weight their targets and call off when outgunned, Ghosts leave early and, with tune `te_fx` 1, decloak next to the target), the opening radio line of every raid, the style word on the hail trouble page, the dockmaster tip, the news bulletin and (gated by the quest) the patrol board; the Clan file at faction patrol docks (dialogs `TRF_Te1`, `TRF_Te2`) on the shared intro-quest record `TRF.iq` of trf_plumb. Host-tested only. Loads after `trf_remark`. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -1053,6 +1054,44 @@ Wave 1 item 2 of the roadmap, B06 (A01 step 1; spec [design/crew-remarks-spec.md
 ### In-game checks (remarks)
 
 W-B06.1 (radio with the portrait), W-B06.2 (no event told twice), W-B06.3 (one crew line per entry), W-B06.4 (`arr_max` 3, the remark after the scar line), W-B06.5 (absent pilots), W-B06.6 (dead Lastochka, chapters 11-12), W-B06.7 (`IsCanSayReplica`), W-B06.8 (quest safety), W-B06.9 (`Message` from a due call), W-B06.10 (the voiced beacon line): [design/PROGRESS.md](design/PROGRESS.md) "Wave 1 (host-tested only)", scored by `tools/check_ingame.py`.
+
+## Clan temperaments and the Clan file (`EXP=0 TRAFFIC=1`)
+
+Wave 1 item 3 of the roadmap, B10 (spec [design/temperament-spec.md](design/temperament-spec.md); owner decisions O1-O6 taken 2026-11-04): module `trf_temper`, loaded after `trf_remark` (`extra_count=18`). Saved state: only the shared intro-quest record `TRF.iq` of trf_plumb (one active intro quest packed into a number, the done and reward bits, the lapse or decline stamp; 96 bytes at most, nil until the first offer is answered); the temperaments are a fixed table by clan slot. Host-tested only (`tp-a`..`tp-h`), not run in the game; the user tests wave 1 together with the freight quest and the Jobs tab checks.
+
+### What the player sees
+
+- One raid style per region clan from chapter 4: Cutters (Red Knives, Bone Hounds) open fire without a demand and fight to a quarter of their hull; Hagglers (Rust Jackals, Ash Vipers) talk first, take what is handed over more often, and leave when they lose a ship; Planners (Grey Ravens, Cold Suns) raid big haulers and convoy members more and small traders less, and pull back when the trader side (plus the player after a shot) outweighs them; Ghosts (Black Comets, Night Kites) break off early and, with tune `te_fx` 1, appear 400-600 units from their target.
+- Every raid opens with one radio line from the raid leader that names the clan and its style ("Ash Vipers: We always talk first, trader. ..."); on a demand it is the demand. A captain's raid keeps his own line. In the Hephaestus start systems in chapter 4 only the line changes.
+- The style word on the hail trouble page ("Gredos (some, talk first)"), a dockmaster tip after a raid of that clan in the visit, the news bulletin of rising raids and, in a Ghost region, "and unidentified contacts" in the arrival line.
+- Intro quest "Clan file" (chapter 5-20): at a faction patrol station in a region whose clan is tier 2 or higher the patrol officer asks for two answered raids of that clan (8.5 help, the trader alive) and a report at any patrol station of the same faction. The reward: that faction's patrol boards mark each clan by its style. A letter comes after the first file (`NEWS=1`). One intro quest at a time; a run without progress for 40 legs lapses without a penalty.
+
+### Config keys (temperaments)
+
+`install-test.sh` writes `TEMPER`, `TE_QUEST`, `TE_GATE` and `TE_DIALOG` only when set (`LEVEL=v01`/`v02` write `temper=0` unless `TEMPER` is set); tune keys go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `temper` | 1 | 0: raids as built, no line, no word, no quest |
+| `te_quest` | 1 | 0: no Clan file offer, count or report (an active run lapses) |
+| `te_gate` | 1 | 1: board words only for factions whose Clan file is done; 0: at every patrol board |
+| `te_dialog` | 1 | 1: the dialogs `TRF_Te1`, `TRF_Te2` (needs `hail_xml` 1); 0: box, card and lines |
+| tune `te_ch` | 4 | first chapter of the temperaments |
+| tune `te_cut_hp`, `te_pl_hp`, `te_gh_hp` | 0.25, 0.6, 0.7 | leave HP of Cutters, Planners, Ghosts (fraction of the leader's hull) |
+| tune `te_hag_cmin`, `te_hag_cmax` | 25, 98 | Haggler comply chance clamps |
+| tune `te_pl_hi`, `te_pl_lo`, `te_pl_out` | 1.6, 0.7, 1.0 | Planner lane raid chance factors (tier 3+ or convoy member, other traders), call-off ratio |
+| tune `te_fx` | 0 | 1: the Ghost decloak spawn with `Cloak Out.shfx` (CHECK W-B10.5) |
+| tune `te_gh_lo`, `te_gh_hi` | 400, 600 | Ghost decloak distance from the target |
+| tune `te_dc` | 2 | legs before a declined offer comes again |
+| tune `iq_stale` | 40 | legs without progress before an intro quest lapses (trf_plumb; 0 never) |
+
+### Log lines (temperaments)
+
+`module=temper event=open raid_id= kind= clan_slot= temper= form=<demand|no_demand> mode=<full|lines> result=said`, `event=calloff`, `event=decloak`, `event=offer`, `event=accept`, `event=decline`, `event=count`, `event=step`, `event=done`, `event=lapse`, `event=letter`, `event=logbook`, `event=reconcile`, `event=dialog`, `event=fix`, `event=dump`; trf_plumb `event=iq`; full list in [design/log-events.md](design/log-events.md) (temper, plumb).
+
+### In-game checks (temperaments)
+
+W-B10.1 (the opening line, Cutters without a demand), W-B10.2 (chapter 4 guard, chapter 3), W-B10.3 (Haggler), W-B10.4 (Planner call-off), W-B10.5 (Ghost decloak with `TUNE=te_fx=1`), W-B10.6 (the arrival word), W-B10.7 (trouble page, board gate, tip), W-B10.8 (the offer), W-B10.9 (count, report, board words), W-B10.10 (the letter): [design/PROGRESS.md](design/PROGRESS.md) "Wave 1 (host-tested only)", scored by `tools/check_ingame.py`.
 
 ## Vanilla fixes
 

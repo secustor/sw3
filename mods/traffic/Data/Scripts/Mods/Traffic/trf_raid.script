@@ -13,6 +13,12 @@
 -- base-system and base-neighbour raids (trf_base), no staged raid while a carrier, sweep or equipment
 -- convoy plays here. H.rd[n] gains fls (every flight), dl (ships removed by recovery), tg (non-trader
 -- targets), bp (base return point); H.rdt[n] holds TRF_RaidOn targets until the raid spawns.
+-- Clan temperaments (design/temperament-spec.md 5.2, B10): trf_temper's hooks through TRF_P, so every raid stays as built
+-- without the module: the opening line (TRF_Te_Open: the demand text, or said at the fight start), the Cutter's skipped
+-- demand (TRF_Te_Nd), the Haggler comply clamps and line (TRF_Te_Comply, TRF_Te_ComplyLine) and its leave at a loss
+-- (TRF_Te_LossLeave, reason loss), the leave HP (TRF_Te_LeaveHp), the Planner call-off (TRF_Te_CallOff, reason calloff)
+-- and chance weight (TRF_Te_RollK, formula branch only), the Ghost decloak spawn (TRF_Te_GhostPos, TRF_Te_Decloak), the
+-- Clan file count on both pay branches (TRF_Te_Answer).
 
 -- Defaults and constants -------------------------------------------------------------
 
@@ -1128,6 +1134,17 @@ function TRF_RaidRoll(id, why)
 	return call(TRF_Rd_RollBody, {id, why}, "x", TRF_PErr);
 end;
 
+-- Pure: the lane raid chance of the formula branch (5.1): rc[dE + 1] x tf (0.5 at T1) x (1 + 0.08 x attr); the player's
+-- freighter (fw) draws raids with attr + 2 (trf_freight, 08 section 6).
+function TRF_Rd_RollPOf(dE, T, attr, fw)
+	local rc = {0, 0.10, 0.20, 0.35};
+	local tf = 1.0;
+	if T <= 1 then tf = 0.5; end;
+	if type(attr) ~= "number" then attr = 0; end;
+	if fw then attr = attr + 2; end;
+	return rc[TRF_Rd_Clamp(floor(dE), 0, 3) + 1] * tf * (1 + 0.08 * attr);
+end;
+
 function TRF_Rd_RollBody(id, why)
 	if TRF_Rd_Opt("raids", 1) ~= 1 then return nil; end;
 	local L = TRF_Rd_Live();
@@ -1146,24 +1163,24 @@ function TRF_Rd_RollBody(id, why)
 	local dE = TRF_Rd_BaseDanger(cur, TRF_Rd_DangerEff(cur));
 	local T = TRF_Rd_Tier(cur);
 	local p;
+	local tk = 1;
 	if why == "contract" then
 		p = TRF_Rd_T("ct_raid", 40) / 100;
 	elseif TRF_Rd_T("raid_p", -1) >= 0 then
 		p = TRF_Rd_T("raid_p", -1) / 100;
 	else
-		local rc = {0, 0.10, 0.20, 0.35};
-		local tf = 1.0;
-		if T <= 1 then tf = 0.5; end;
 		local attr = TRF_N("TRF_Attr", cur);
 		if type(attr) ~= "number" then attr = 0; end;
-		-- The player's freighter draws raids with attr + 2 (trf_freight, 08 section 6).
-		if r.fw then attr = attr + 2; end;
-		p = rc[dE + 1] * tf * (1 + 0.08 * attr);
+		p = TRF_Rd_RollPOf(dE, T, attr, r.fw);
+		-- Clan temperaments (design/temperament-spec.md T9): the Planner weight on the formula branch only.
+		local k = TRF_P("TRF_Te_RollK", cur, r);
+		if type(k) == "number" and k >= 0 then tk = k; p = p * k; end;
 	end;
 	local roll = TRF_Rd_Rand(10000);
 	if not (roll < p * 10000) then
 		TRF_Rd_Stat("raid_roll_no");
-		TRF_RdDE("roll", "trader_id", id, "source", why, "danger_eff", dE, "tier", T, "chance", TRF_F(p), "roll", roll, "result", "no_raid");
+		TRF_RdDE("roll", "trader_id", id, "source", why, "danger_eff", dE, "tier", T, "chance", TRF_F(p), "roll", roll, "result", "no_raid",
+			"temper_k", TRF_F(tk));
 		return nil;
 	end;
 	local rp = TRF_Rd_RaidPoint(r, h, cur);
@@ -1221,6 +1238,11 @@ function TRF_Rd_GoBody(n, g)
 			pos = nil;
 		end;
 	end;
+	-- Clan temperaments (design/temperament-spec.md T11): a Ghost lane raid with tune te_fx 1 spawns at its decloak point.
+	if not pos then
+		local gp, gd = TRF_P("TRF_Te_GhostPos", n, rd, lead);
+		if TRF_Rd_Obj(gp) and type(gp.x) == "number" then pos = gp; dir = gd; via = "decloak"; end;
+	end;
 	-- M3: out of view at the raid point, else through the registered portal nearest the point (next to a
 	-- base: the portal facing it).
 	if pos then
@@ -1247,6 +1269,7 @@ function TRF_Rd_GoBody(n, g)
 		TRF_Rd_End(n, "build");
 		return;
 	end;
+	if via == "decloak" then TRF_P("TRF_Te_Decloak", n); end;
 	local hr = H.rd[n];
 	TRF_Rd_Order(hr, function(f, p) f:Move(p); end, lead:GetPosition());
 	TRF_Rd_Trig("f_object_inside", TRF_Rd_Cb("TRF_RaidMeet", n), hr.fl, lead, TRF_Rd_T("raid_meet", 250));
@@ -1275,9 +1298,17 @@ function TRF_Rd_Meet(n, rd)
 	local h = TRF_Rd_HTr(rd.id);
 	if not TRF_Rd_Rec(rd.id) or not h or not hr then TRF_RaidLeave(n, "gone"); return; end;
 	if TRF_Rd_Supp() then TRF_RaidLeave(n, "supp"); return; end;
-	-- v1 convoy raids (TRF_RaidOn): no demand step.
-	if rd.nd == 1 then TRF_Rd_Refuse(n, rd, hr); return; end;
-	TRF_Rd_Say(TRF_Rd_Txt("demand", TRF_Rd_Clan(TRF_Rd_Slot(TRF_Rd_Cur()))), 6, TRF_Rd_P(TRF_Rd_FlLeader, {hr.fl}));
+	-- v1 convoy raids (TRF_RaidOn) and a Cutter raid (design/temperament-spec.md 2.1): no demand step; the opening line
+	-- in its no-demand form within R_radio.
+	if rd.nd == 1 or TRF_P("TRF_Te_Nd", n, rd) == 1 then
+		TRF_P("TRF_Te_Open", n, rd, "n");
+		TRF_Rd_Refuse(n, rd, hr);
+		return;
+	end;
+	-- The opening line replaces the demand line (T7).
+	local dt = TRF_P("TRF_Te_Open", n, rd, "d");
+	if type(dt) ~= "string" then dt = TRF_Rd_Txt("demand", TRF_Rd_Clan(TRF_Rd_Slot(TRF_Rd_Cur()))); end;
+	TRF_Rd_Say(dt, 6, TRF_Rd_P(TRF_Rd_FlLeader, {hr.fl}));
 	TRF_Rd_P(function(f) f:Stop(); end, {h.fl});
 	TRF_Rd_Order(hr, function(f) f:Stop(); end);
 	rd.st = "demand";
@@ -1309,9 +1340,10 @@ function TRF_Rd_Brave(r)
 end;
 
 -- Pure: comply chance % = clamp(100 - 100 x br x q, comply_min, comply_max), q = st / sr (trader side /
--- raid side).
-function TRF_Rd_ComplyOf(st, sr, br)
-	return TRF_Rd_Clamp(100 - 100 * br * st / max(sr, 0.001), TRF_Rd_T("comply_min", 5), TRF_Rd_T("comply_max", 95));
+-- raid side). lo, hi: other clamps (the Haggler's, design/temperament-spec.md 2.1); nil keeps the tune clamps.
+function TRF_Rd_ComplyOf(st, sr, br, lo, hi)
+	if type(lo) ~= "number" or type(hi) ~= "number" then lo = TRF_Rd_T("comply_min", 5); hi = TRF_Rd_T("comply_max", 95); end;
+	return TRF_Rd_Clamp(100 - 100 * br * st / max(sr, 0.001), lo, hi);
 end;
 
 -- Player side power added to the trader side of a decide: trf_supply's TRF_SpPlayerSide (power x ships
@@ -1372,7 +1404,8 @@ function TRF_Rd_DecideBody(n)
 	local ps = TRF_Rd_PlayerSide(rd, r, h);
 	local st, sr = tw * (TRF_Rd_EscAlive(r, h) + 0.5) + ps, pw * ns;
 	local br = TRF_Rd_Brave(r);
-	local p = TRF_Rd_ComplyOf(st, sr, br);
+	local lo, hi = TRF_P("TRF_Te_Comply", TRF_Rd_Cur(), rd);
+	local p = TRF_Rd_ComplyOf(st, sr, br, lo, hi);
 	local roll = TRF_Rd_Rand(100);
 	local dc = "refuse";
 	if rd.ph ~= 1 and roll < p then dc = "comply"; end;
@@ -1444,7 +1477,9 @@ function TRF_Rd_Comply(n, rd, r, h)
 	rd.lost = lost;
 	-- The player's freighter (trf_freight): run pay lost and the lay-up; no shortage (only a loss gives one).
 	if r.fw then TRF_N("TRF_Fr_Robbed", rd.id, r); end;
-	TRF_Rd_Say(TRF_Rd_Txt("comply", TRF_Rd_Name(r)), 6, TRF_Rd_LeadPilot(rd.id));
+	local cl = TRF_P("TRF_Te_ComplyLine", TRF_Rd_Cur(), rd, r);
+	if type(cl) ~= "string" then cl = TRF_Rd_Txt("comply", TRF_Rd_Name(r)); end;
+	TRF_Rd_Say(cl, 6, TRF_Rd_LeadPilot(rd.id));
 	local cur = TRF_Rd_Cur();
 	if cur and type(TRF_AddDis) == "function" then TRF_AddDis(cur, 1, "raid comply"); end;
 	local slot = TRF_Rd_Slot(cur);
@@ -1614,6 +1649,7 @@ function TRF_Rd_Pay(n, rd)
 		rd.paid = 0;
 		if type(r) == "table" and r.st ~= "gone" then r.res = 1; end;
 		TRF_RdE("paid", "raid_id", n, "trader_id", rd.id, "credits", 0, "help", 0, "result", "skipped", "reason", "hail_paid");
+		TRF_P("TRF_Te_Answer", n, rd, "hail");
 		return;
 	end;
 	local cur = TRF_Rd_Cur();
@@ -1645,6 +1681,8 @@ function TRF_Rd_Pay(n, rd)
 	TRF_Rd_Stat("raid_paid");
 	TRF_RdE("paid", "raid_id", n, "trader_id", rd.id, "credits", amt, "help", d, "help_rule", rule);
 	TRF_N("TRF_Ch_Note", 2, cur, amt);
+	-- The Clan file (design/temperament-spec.md T20): an answered raid, after the thanks line.
+	TRF_P("TRF_Te_Answer", n, rd, "paid");
 end;
 
 -- Ended record keeps n, id, st, how, paid (3.2).
@@ -1843,7 +1881,12 @@ function TRF_Rd_DiedBody(n, j, g)
 	if hr and type(hr.sh) == "table" then ds = hr.sh[j]; end;
 	TRF_P("TRF_Dead", "raid", {g="TRF_Raid_"..n, n=n, j=j}, ds, pf);
 	TRF_Rd_SalvDead(n, rd, hr);
-	if TRF_Rd_AliveN(hr) == 0 then TRF_Rd_End(n, "killed"); end;
+	if TRF_Rd_AliveN(hr) == 0 then
+		TRF_Rd_End(n, "killed");
+	elseif (rd.st == "come" or rd.st == "demand" or rd.st == "fight") and TRF_P("TRF_Te_LossLeave", n, rd) == 1 then
+		-- A Haggler raid leaves at its first ship lost (design/temperament-spec.md 2.1).
+		TRF_RaidLeave(n, "loss");
+	end;
 end;
 
 -- Distress line and nav marker (5.4) ------------------------------------------------------------
@@ -2345,6 +2388,8 @@ function TRF_Rd_StSpawnAt(e, opt)
 	if rl then TRF_Rd_P(function(f, s) f:Attack(s); end, {h.fl, rl}); end;
 	-- Escort flight (esc_flight) attacks too; the trf_gen step gives Escort again once the fight ends (h.eo).
 	if rl and TRF_Rd_Alive(h.ef) then TRF_Rd_P(function(f, s) f:Attack(s); end, {h.ef, rl}); h.eo = nil; end;
+	-- The opening line at the fight start (design/temperament-spec.md T7); a captain's raid has his own line.
+	if type(opt) ~= "table" then TRF_P("TRF_Te_Open", n, rd, "n"); end;
 	if not TRF_Rd_Due(10 + TRF_Rd_Rand(11), "TRF_StagedDistress", n) then TRF_StagedDistress(n); end;
 	TRF_Rd_Stat("staged");
 	TRF_RdE("staged_spawn", "raid_id", n, "trader_id", id, "path", p.path, "tier", rd.tier, "ship_count", rd.ns,
@@ -2456,7 +2501,11 @@ function TRF_Rd_StepOne(n)
 		if rl then hp = TRF_N("GetCurHP", rl); end;
 		local lim = K.leave1;
 		if rd.tier >= 2 then lim = K.leave2; end;
+		-- Clan temperaments (design/temperament-spec.md 2.1): the leave HP of Cutters, Planners and Ghosts.
+		local tl = TRF_P("TRF_Te_LeaveHp", TRF_Rd_Cur(), rd);
+		if type(tl) == "number" then lim = tl; end;
 		if type(hp) == "number" and type(rd.hp0) == "number" and hp < lim * rd.hp0 then TRF_RaidLeave(n, "hp"); return; end;
+		if TRF_P("TRF_Te_CallOff", n, rd) == 1 then TRF_RaidLeave(n, "calloff"); return; end;
 		if not r.fl then TRF_Rd_Threat(rd.id, hr, lead); end;
 	elseif rd.st == "leave" then
 		local lp = TRF_Rd_RaidLeadPos(hr);

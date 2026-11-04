@@ -1,0 +1,1300 @@
+-- sw3-traffic clan temperaments and the intro quest "Clan file" (Lua 4.0.1). Spec: design/temperament-spec.md (B10,
+-- roadmap wave 1 item 3; owner decisions O1-O6 of spec 2.2 taken 2026-11-04). Prefix Te (TRF_Te_* public, TRF_Te<X>
+-- internal), log module=temper.
+-- Temperaments (spec 2.1, 5): a fixed table by region clan slot 1..8 (TRF_TeTab: 1 Cutter, 2 Haggler, 3 Planner, 4
+-- Ghost), never saved. trf_raid and trf_clan ask the hooks of this file through TRF_N/TRF_P, so a raid works unchanged
+-- without it: the opening line on every raid (the demand line of demand kinds, else at the fight start within
+-- R_radio; none for a captain's raid), Cutters skip the demand and leave at te_cut_hp, Hagglers clamp the comply chance
+-- to te_hag_cmin..te_hag_cmax, say tehcp and leave at the first raid ship lost, Planners weight the lane raid chance
+-- (te_pl_hi, te_pl_lo), leave at te_pl_hp and call off once the trader side outweighs them after a player shot or a
+-- loss, Ghosts leave at te_gh_hp and, with tune te_fx 1, spawn 400-600 units from the target with Cloak Out.shfx.
+-- Kinds stn, wq and a captain's raid keep their built behaviour (T6). Chapters 1-3 nothing; chapter 4 full except the
+-- starting-region guard systems (lines only). Signals: the hail trouble page word, the patrol board raid rows (gated by
+-- the Clan file, cfg te_gate), the dockmaster tip after a raid of that clan in the visit, the news bulletin suffix and
+-- the Ghost word in the tier arrival line.
+-- Quest "Clan file" (spec 6): quest id 1 of the shared intro-quest record TRF.iq (trf_plumb TRF_Iq*): the offer at a
+-- faction patrol dock (box 350; dialog TRF_Te1 with te_dialog 1, else the mission card with jobs_ui >= 1, else the box),
+-- two answered raids of that clan (TRF_Te_Answer from both TRF_Rd_Pay branches), the report at a patrol dock of the same
+-- faction (line 47, talk box 455, dialog TRF_Te2), the reward bit of the faction (the board words), logbook trf_te, one
+-- letter mail_trf_te1 at the first completion. Saved: nothing but TRF.iq (through the trf_plumb API).
+-- Visit state lives in the chunk local TE (rebuilt by every MapInitialization): v.ol (opening line said per raid id),
+-- v.rs (a raid of that slot opened in this visit), v.co (call-off said), v.gp (decloak distance), v.dec (offer declined
+-- in this visit), offer, talk, dlg, tc (tune cache). The logbook step on screen and the done leg survive an entry in
+-- the function global TRF_TeKeepThunk (not saved, dropped at a load).
+-- Top level: functions and TE only.
+
+local TE = {v={ol={}, rs={}, co={}, gp={}}};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_TeSH() return %TE; end;
+
+-- logfmt event line, module=temper (design/log-format.md).
+function TRF_TeE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "temper"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_TeErr(m)
+	TRF_TeE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler (natives that may be missing or answer badly): nil is the answer.
+function TRF_TeNoErr(m) end;
+
+function TRF_TeLogLv()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_TeDE(event, ...)
+	if TRF_TeLogLv() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_TeE, arg);
+end;
+
+function TRF_TeCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- x mod m for x >= 0 (Lua 4 has no % operator).
+function TRF_TeM(x, m)
+	return x - floor(x / m) * m;
+end;
+
+-- Fixed hash 0..10008 of three integers (as trf_wq's TRF_WqHash; no RAND draw).
+function TRF_TeHash(a, b, c)
+	local x = TRF_TeM(floor((a or 0) * 113 + (b or 0) * 149 + (c or 0) * 23 + 7919), 10000);
+	x = TRF_TeM(x * 43 + 17, 10007);
+	return TRF_TeM(x * 61 + 37, 10009);
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Te_OptDef), else the raw config, else the default; a wrong type or a number outside
+-- 0..1 reads as the default (every key is a toggle).
+function TRF_TeOpt(key)
+	local d = TRF_Te_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	if type(v) == "number" and v ~= 0 and v ~= 1 then return d; end;
+	return v;
+end;
+
+-- Tune values of this module, clamped (TRF_TeClampT: {lo, hi, int}); te_hag_cmax >= te_hag_cmin and te_gh_hi >=
+-- te_gh_lo. Cached in TE while TRF_Tune returns the same table.
+function TRF_TeTune()
+	local te = %TE;
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_TeErr); end;
+	if type(te.tc) == "table" and te.tc.s == t then return te.tc.t; end;
+	local d, cl, o = TRF_Te_TuneDef(), TRF_TeClampT(), {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if type(x) ~= "number" then x = v; end;
+		local r = cl[k];
+		if r[3] == 1 then x = floor(x); end;
+		o[k] = TRF_TeCl(x, r[1], r[2]);
+	end;
+	if o.te_hag_cmax < o.te_hag_cmin then o.te_hag_cmax = o.te_hag_cmin; end;
+	if o.te_gh_hi < o.te_gh_lo then o.te_gh_hi = o.te_gh_lo; end;
+	te.tc = {s=t, t=o};
+	return o;
+end;
+
+function TRF_TeT(key)
+	return TRF_TeTune()[key];
+end;
+
+function TRF_TeLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+function TRF_TeGen()
+	if type(TRF) == "table" and type(TRF.gen) == "number" then return TRF.gen; end;
+	return 0;
+end;
+
+function TRF_TeCur()
+	local i = TRF_N("TRF_CurIdx");
+	if type(i) == "number" then return i; end;
+	return nil;
+end;
+
+-- Lowercase map name of system idx (log values), or the index.
+function TRF_TeName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" and n ~= "?" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+function TRF_TeTxt(key, a, b, c)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c); end;
+	return tostring(key);
+end;
+
+function TRF_TeChapter()
+	local c = TRF_N("TRF_Chapter");
+	if type(c) == "number" then return c; end;
+	return 0;
+end;
+
+-- 1 while a story mission runs (trf_safety TRF_Safe_QState, else GetPlayerQuestState() == TRUE), as trf_wq.
+function TRF_TeQuest()
+	if type(TRF_Safe_QState) == "function" then
+		if TRF_Safe_QState() then return 1; end;
+		return nil;
+	end;
+	if type(GetPlayerQuestState) == "function" and GetPlayerQuestState() == TRUE then return 1; end;
+	return nil;
+end;
+
+-- Clan name of region slot (trf_region TRF_ClanName; static by slot), "pirates" without one.
+function TRF_TeClan(slot)
+	local n = TRF_N("TRF_ClanName", slot);
+	if type(n) == "string" and n ~= "" then return n; end;
+	return "pirates";
+end;
+
+-- Region slot of system idx, or nil.
+function TRF_TeSlot(idx)
+	if type(idx) ~= "number" then return nil; end;
+	local s = TRF_N("TRF_RgOf", idx);
+	if type(s) == "number" then return s; end;
+	return nil;
+end;
+
+-- Static tables --------------------------------------------------------------------
+
+-- Pure: temperament k by clan slot 1..8 (spec 2.1, owner decision O5): 1 Cutter, 2 Haggler, 3 Planner, 4 Ghost.
+function TRF_TeTab()
+	return {2, 4, 2, 3, 1, 3, 1, 4};
+end;
+
+-- Constants without a cfg key (spec 8.2): the quest chapters, raids to answer, the dock orders (box 350, talk box 455,
+-- line 47), legs a done logbook entry stays, the line seconds (raid 6, count 8), the quest id of TRF.iq, the logbook and
+-- card ids, the letter, the dialog files, New Kyoto, the temperament code letters (text keys te<c><d|n>) and log names,
+-- the English home names of slots 1..8 (m_location_spec.loc; the logbook keys carry the same names), the eight
+-- decloak directions in the x-z plane.
+function TRF_TeK()
+	return {ch_q=5, ch_qmax=20, n=2, box=350, talk=455, line=47, dn_legs=10, secs=6, csecs=8, q=1, qid="trf_te", jid="te",
+		post="mail_trf_te1", nk="nk", f1="TRF_".."Te1", f2="TRF_".."Te2", code={"c", "h", "p", "g"},
+		name={"cutter", "haggler", "planner", "ghost"},
+		home={"Dosis", "Elinor", "Hephaestus", "Golconda", "Cadi", "Muscovy", "Torr", "XT-27"},
+		dirs={{1, 0}, {0.7071, 0.7071}, {0, 1}, {-0.7071, 0.7071}, {-1, 0}, {-0.7071, -0.7071}, {0, -1}, {0.7071, -0.7071}}};
+end;
+
+-- Clamps of the tune keys {lo, hi, int}.
+function TRF_TeClampT()
+	return {te_ch={1, 20, 1}, te_cut_hp={0.05, 0.9, 0}, te_hag_cmin={0, 100, 1}, te_hag_cmax={0, 100, 1}, te_pl_hi={0, 3, 0},
+		te_pl_lo={0, 3, 0}, te_pl_hp={0.05, 0.9, 0}, te_pl_out={0.1, 5, 0}, te_gh_hp={0.05, 0.9, 0}, te_fx={0, 1, 1},
+		te_gh_lo={200, 1500, 1}, te_gh_hi={200, 1500, 1}, te_dc={0, 50, 1}};
+end;
+
+-- Lookups (spec 4.1, 5.1) ------------------------------------------------------------
+
+-- Temperament k of clan slot (1..8), or nil (spare slots 9..15, no region).
+function TRF_Te_Of(slot)
+	if type(slot) ~= "number" then return nil; end;
+	return TRF_TeTab()[slot];
+end;
+
+-- 1 while temperaments may act: cfg temper 1 and not cfg enabled 2 (restore-and-stop).
+function TRF_TeOn()
+	if type(TRF) ~= "table" or TRF_TeOpt("temper") ~= 1 then return nil; end;
+	if type(TRF_Cfg) == "function" and TRF_Cfg().enabled == 2 then return nil; end;
+	return 1;
+end;
+
+-- Mode of system idx: 0 off, 1 lines only (starting-region guard in chapter 4), 2 full; and the reason.
+function TRF_Te_Mode(idx)
+	if not TRF_TeOn() then return 0, "off"; end;
+	if type(idx) ~= "number" then return 0, "nomap"; end;
+	local slot = TRF_TeSlot(idx);
+	if not TRF_Te_Of(slot) then return 0, "no_clan"; end;
+	if TRF_TeChapter() < TRF_TeT("te_ch") then return 0, "chapter"; end;
+	if TRF_N("TRF_Rd_Guard", idx) then return 1, "guard"; end;
+	return 2, "full";
+end;
+
+-- 1 for a raid whose kind keeps its built behaviour (T6): stn, wq, a captain's raid.
+function TRF_TeKept(rd)
+	if type(rd) ~= "table" then return nil; end;
+	if rd.why == "stn" or rd.why == "wq" or rd.cap ~= nil then return 1; end;
+	return nil;
+end;
+
+-- Behaviour row of raid rd in system idx (spec 2.1): {k, nd, cmin, cmax, hp, loss, pl} in mode 2 for a kind that is not
+-- kept, else nil.
+function TRF_Te_Row(idx, rd)
+	if TRF_TeKept(rd) then return nil; end;
+	local m = TRF_Te_Mode(idx);
+	if m ~= 2 then return nil; end;
+	local k = TRF_Te_Of(TRF_TeSlot(idx));
+	local T = TRF_TeTune();
+	local r = {k=k};
+	if k == 1 then r.nd = 1; r.hp = T.te_cut_hp; end;
+	if k == 2 then r.cmin = T.te_hag_cmin; r.cmax = T.te_hag_cmax; r.loss = 1; end;
+	if k == 3 then r.hp = T.te_pl_hp; r.pl = 1; end;
+	if k == 4 then r.hp = T.te_gh_hp; end;
+	return r;
+end;
+
+-- Board and trouble word (tew<k>) of system idx in mode >= 1, else nil.
+function TRF_Te_Word(idx)
+	local m = TRF_Te_Mode(idx);
+	if m < 1 then return nil; end;
+	return TRF_TeTxt("tew"..TRF_Te_Of(TRF_TeSlot(idx)));
+end;
+
+-- Raid hooks (spec 5.2; called by trf_raid and trf_clan) ------------------------------------
+
+-- Live raid flight table H.rd[n] of trf_raid, or nil.
+function TRF_TeHr(n)
+	local H = TRF_N("TRF_Rd_H");
+	if type(H) ~= "table" or type(H.rd) ~= "table" then return nil; end;
+	local hr = H.rd[n];
+	if type(hr) == "table" then return hr; end;
+	return nil;
+end;
+
+-- The raid leader's pilot of raid n, or nil.
+function TRF_TeLeadPilot(n)
+	local hr = TRF_TeHr(n);
+	if not hr or type(TRF_Rd_FlLeader) ~= "function" then return nil; end;
+	return call(TRF_Rd_FlLeader, {hr.fl}, "x", TRF_TeNoErr);
+end;
+
+-- One radio line of the raid leader (trf_raid TRF_Rd_Say: trf_ui's TRF_Say, else the screen log).
+function TRF_TeRaidSay(n, text, secs)
+	if type(TRF_Rd_Say) == "function" then return TRF_Rd_Say(text, secs, TRF_TeLeadPilot(n)); end;
+	return TRF_N("TRF_Say", text, secs);
+end;
+
+-- The opening line (T7) of raid n, once per raid id in the visit. form "d" (the demand of a demand kind): returns the
+-- text for the caller's demand line; form "n" (no-demand kinds, the fight start): said here when the raid leader is
+-- within R_radio of the mothership (else never for this raid). Mode >= 1, no captain's raid. Returns the text (form d)
+-- or 1 (said), else nil.
+function TRF_Te_Open(n, rd, form)
+	local te = %TE;
+	if type(rd) ~= "table" then return nil; end;
+	if not TRF_TeOn() then TRF_TeDE("open", "raid_id", n, "result", "none", "reason", "off"); return nil; end;
+	if te.v.ol[n] then TRF_TeDE("open", "raid_id", n, "result", "none", "reason", "said"); return nil; end;
+	if rd.cap ~= nil then TRF_TeDE("open", "raid_id", n, "result", "none", "reason", "captain"); return nil; end;
+	local cur = TRF_TeCur();
+	local m, why = TRF_Te_Mode(cur);
+	if m < 1 then TRF_TeDE("open", "raid_id", n, "result", "none", "reason", why); return nil; end;
+	local slot = TRF_TeSlot(cur);
+	local k = TRF_Te_Of(slot);
+	local K = TRF_TeK();
+	local fm = "demand";
+	if form ~= "d" then
+		fm = "no_demand";
+		local d = TRF_N("TRF_RaidMsDist", n);
+		local rr = TRF_N("TRF_Rd_T", "R_radio", 2000) or 2000;
+		if type(d) ~= "number" or d > rr then
+			te.v.ol[n] = 1;
+			TRF_TeDE("open", "raid_id", n, "distance", TRF_F(d), "result", "none", "reason", "range");
+			return nil;
+		end;
+	end;
+	te.v.ol[n] = 1;
+	te.v.rs[slot] = 1;
+	local key = "te"..K.code[k].."n";
+	if form == "d" then key = "te"..K.code[k].."d"; end;
+	local text = TRF_TeTxt(key, TRF_TeClan(slot));
+	local mn = "full";
+	if m == 1 then mn = "lines"; end;
+	TRF_N("TRF_Stat", "te_open");
+	TRF_TeE("open", "raid_id", n, "kind", rd.why, "clan_slot", slot, "temper", K.name[k], "form", fm, "mode", mn, "result", "said");
+	if form == "d" then return text; end;
+	TRF_TeRaidSay(n, text, K.secs);
+	return 1;
+end;
+
+-- Cutter row: 1 (no demand step).
+function TRF_Te_Nd(n, rd)
+	local r = TRF_Te_Row(TRF_TeCur(), rd);
+	if r and r.nd == 1 then return 1; end;
+	return nil;
+end;
+
+-- Haggler row: the comply clamps lo, hi; else nil.
+function TRF_Te_Comply(cur, rd)
+	local r = TRF_Te_Row(cur, rd);
+	if r and r.cmin then return r.cmin, r.cmax; end;
+	return nil;
+end;
+
+-- Haggler row: the trader's comply line tehcp ($1 trader name, $2 clan), else nil.
+function TRF_Te_ComplyLine(cur, rd, tr)
+	local r = TRF_Te_Row(cur, rd);
+	if not r or r.k ~= 2 then return nil; end;
+	local nm = TRF_N("TRF_Rd_Name", tr) or "";
+	return TRF_TeTxt("tehcp", nm, TRF_TeClan(TRF_TeSlot(cur)));
+end;
+
+-- Leave HP fraction of hp0 (Cutter, Planner, Ghost), else nil (the built T1/T2+ value).
+function TRF_Te_LeaveHp(cur, rd)
+	local r = TRF_Te_Row(cur, rd);
+	if r and type(r.hp) == "number" then return r.hp; end;
+	return nil;
+end;
+
+-- Haggler row: 1 (the raid leaves at its first ship lost).
+function TRF_Te_LossLeave(n, rd)
+	local r = TRF_Te_Row(TRF_TeCur(), rd);
+	if r and r.loss == 1 then return 1; end;
+	return nil;
+end;
+
+-- Planner call-off (T10): in the fight state after a player shot (rd.ph) or a raid ship lost, once the trader side (plus
+-- the player side TRF_SpPlayerSide when the player fired) reaches te_pl_out x the raid side: tepoff from the raid
+-- leader, event=calloff; returns 1 (the caller leaves with reason calloff).
+function TRF_Te_CallOff(n, rd)
+	local te = %TE;
+	if type(rd) ~= "table" or rd.st ~= "fight" or te.v.co[n] then return nil; end;
+	local cur = TRF_TeCur();
+	local r = TRF_Te_Row(cur, rd);
+	if not r or r.pl ~= 1 then return nil; end;
+	local lost = nil;
+	local hr = TRF_TeHr(n);
+	if hr and type(hr.dk) == "table" then for j, v in hr.dk do lost = 1; end; end;
+	if rd.ph ~= 1 and not lost then return nil; end;
+	local st, sr = TRF_N("TRF_Rd_HailRatio", n);
+	if type(st) ~= "number" or type(sr) ~= "number" then return nil; end;
+	local ps = 0;
+	if rd.ph == 1 then
+		ps = TRF_N("TRF_SpPlayerSide");
+		if type(ps) ~= "number" or ps < 0 then ps = 0; end;
+	end;
+	local st2 = st + ps;
+	if st2 < TRF_TeT("te_pl_out") * sr then return nil; end;
+	te.v.co[n] = 1;
+	TRF_TeRaidSay(n, TRF_TeTxt("tepoff", TRF_TeClan(TRF_TeSlot(cur))), TRF_TeK().secs);
+	TRF_N("TRF_Stat", "te_calloff");
+	TRF_TeE("calloff", "raid_id", n, "trader_strength", TRF_F(st2), "raid_strength", TRF_F(sr), "player_fired", TRF_KvB(rd.ph == 1),
+		"result", "leave");
+	return 1;
+end;
+
+-- Planner weight of the lane raid chance (T9; trf_raid's formula branch only): te_pl_hi for a trader of tier >= 3 or a
+-- danger-convoy member, te_pl_lo otherwise; 1 for any other temperament or mode.
+function TRF_Te_RollK(cur, r)
+	if TRF_Te_Mode(cur) ~= 2 or TRF_Te_Of(TRF_TeSlot(cur)) ~= 3 or type(r) ~= "table" then return 1; end;
+	local hi = (type(r.tier) == "number" and r.tier >= 3) or type(r.cv) == "number";
+	local f = TRF_TeT("te_pl_lo");
+	if hi then f = TRF_TeT("te_pl_hi"); end;
+	TRF_TeDE("roll", "trader_id", r.id, "tier", r.tier, "convoy", TRF_KvB(type(r.cv) == "number"), "factor", TRF_F(f));
+	return f;
+end;
+
+-- Pure: the decloak point of a lead at lp (spec 5.2): 8 directions from i0 (1..8) at distance d in the x-z plane; the
+-- first point at least dst from every station of sy (trf_raid TRF_Rd_PointOk with no portal rule) and rt from the
+-- mothership position mp. Returns the point (a table x, y, z) or nil.
+function TRF_TeGhostOf(lp, d, i0, sy, dst, mp, rt)
+	local dirs = TRF_TeK().dirs;
+	for i = 0, 7 do
+		local u = dirs[1 + TRF_TeM(i0 - 1 + i, 8)];
+		local p = {x=lp.x + d * u[1], y=lp.y, z=lp.z + d * u[2]};
+		local ok = 1;
+		if type(TRF_Rd_PointOk) == "function" and type(sy) == "table" and not TRF_Rd_PointOk(p, sy, dst, 0) then ok = nil; end;
+		if ok and type(mp) == "table" and type(mp.x) == "number" then
+			local dx, dy, dz = p.x - mp.x, p.y - mp.y, p.z - mp.z;
+			if sqrt(dx * dx + dy * dy + dz * dz) < rt then ok = nil; end;
+		end;
+		if ok then return p; end;
+	end;
+	return nil;
+end;
+
+-- Ghost decloak point of lane raid n (T11, te_fx 1): position and direction to the lead, else nil (the built spawn).
+function TRF_Te_GhostPos(n, rd, lead)
+	local te = %TE;
+	if type(rd) ~= "table" or (rd.why ~= "lane" and rd.why ~= "contract") then return nil; end;
+	local cur = TRF_TeCur();
+	local r = TRF_Te_Row(cur, rd);
+	if not r or r.k ~= 4 then return nil; end;
+	if TRF_TeT("te_fx") ~= 1 then TRF_TeDE("decloak", "raid_id", n, "result", "none", "reason", "fx_off"); return nil; end;
+	local lp = TRF_N("TRF_Rd_Pos", lead);
+	if type(lp) ~= "table" or type(lp.x) ~= "number" then return nil; end;
+	local T = TRF_TeTune();
+	local d = T.te_gh_lo + (TRF_N("TRF_Rd_Rand", T.te_gh_hi - T.te_gh_lo + 1) or 0);
+	local i0 = 1 + (TRF_N("TRF_Rd_Rand", 8) or 0);
+	local p = TRF_TeGhostOf(lp, d, i0, TRF_N("TRF_Rd_Sys", cur), TRF_N("TRF_Rd_T", "raid_min_st", 400) or 400, TRF_N("TRF_Rd_MsPos"),
+		TRF_N("TRF_Rd_T", "R_threat", 300) or 300);
+	if not p then
+		TRF_TeE("decloak", "raid_id", n, "distance", d, "result", "none", "reason", "no_point");
+		return nil;
+	end;
+	te.v.gp[n] = d;
+	local pos = Vector3(p.x, p.y, p.z);
+	return pos, TRF_N("TRF_Rd_Dir", pos, lp);
+end;
+
+function TRF_TeFxRaw(s)
+	s:PlayFX("Cloak Out.shfx");
+	return 1;
+end;
+
+-- After a decloak spawn: Cloak Out.shfx on every ship of raid n (protected; a refusal counts nothing).
+function TRF_Te_Decloak(n)
+	local hr = TRF_TeHr(n);
+	local c = 0;
+	if hr and type(hr.sh) == "table" then
+		for j = 1, getn(hr.sh) do
+			if call(TRF_TeFxRaw, {hr.sh[j]}, "x", TRF_TeErr) == 1 then c = c + 1; end;
+		end;
+	end;
+	TRF_N("TRF_Stat", "te_decloak");
+	TRF_TeE("decloak", "raid_id", n, "distance", %TE.v.gp[n], "fx_count", c, "result", "placed");
+	return c;
+end;
+
+-- Signal hooks (spec 5.3) ------------------------------------------------------------------
+
+-- trf_ui's tier arrival line: the pirate word tw with "and unidentified contacts" in a Ghost slot (mode 2), else nil.
+function TRF_Te_ArrWord(idx, tw)
+	if TRF_Te_Mode(idx) ~= 2 or TRF_Te_Of(TRF_TeSlot(idx)) ~= 4 then return nil; end;
+	return TRF_TeTxt("tegw", tw);
+end;
+
+-- trf_ui's lane raid bulletin of region slot: the suffix tenw while the home system is in mode >= 1, else nil.
+function TRF_Te_NewsAdd(slot)
+	local k = TRF_Te_Of(slot);
+	if not k then return nil; end;
+	local rm = TRF_N("TRF_RgMap");
+	local home = nil;
+	if type(rm) == "table" and type(rm[slot]) == "table" then home = rm[slot].home; end;
+	if TRF_Te_Mode(home) < 1 then return nil; end;
+	return TRF_TeTxt("tenw", TRF_TeClan(slot), TRF_TeTxt("tev"..k));
+end;
+
+-- trf_station's dockmaster tip (fourth kind): the habit of the clan of idx after a raid of that clan opened in this visit.
+function TRF_Te_Tip(idx)
+	if TRF_Te_Mode(idx) < 1 then return nil; end;
+	local slot = TRF_TeSlot(idx);
+	if not %TE.v.rs[slot] then return nil; end;
+	return TRF_TeTxt("tetip"..TRF_Te_Of(slot), TRF_TeClan(slot));
+end;
+
+function TRF_TeTeamRaw(loc) return GetLocationTeam(loc); end;
+
+-- Faction f 1..5 of the docked station (_param of the dock action, else the current location) and the location name.
+function TRF_TeDockFac()
+	local loc = _param;
+	if type(loc) ~= "string" or loc == "" then loc = TRF_N("GetCurrentLocation"); end;
+	if type(loc) ~= "string" or type(GetLocationTeam) ~= "function" then return nil, loc; end;
+	local t = call(TRF_TeTeamRaw, {loc}, "x", TRF_TeNoErr);
+	local f = TRF_N("TRF_FacIdx", t);
+	if type(f) == "number" and f >= 1 and f <= 5 then return f, loc; end;
+	return nil, loc;
+end;
+
+-- Reward bit of faction f (the Clan file done for it).
+function TRF_TeFBit(f)
+	if type(f) ~= "number" or f < 1 or f > 5 then return nil; end;
+	local b = 1;
+	for i = 2, f do b = b * 2; end;
+	return b;
+end;
+
+-- trf_hail's patrol board: 1 when its raid rows carry the words (cfg te_gate 0, or the docked faction's reward bit).
+function TRF_Te_BoardOn()
+	if not TRF_TeOn() then return nil; end;
+	if TRF_TeOpt("te_gate") == 0 then TRF_TeDE("board", "gate", 0, "result", "words"); return 1; end;
+	local f = TRF_TeDockFac();
+	if f and TRF_N("TRF_IqR", TRF_TeFBit(f)) == 1 then TRF_TeDE("board", "faction", f, "result", "words"); return 1; end;
+	TRF_TeDE("board", "faction", f, "result", "gate");
+	return nil;
+end;
+
+-- Quest: gates (spec 4.3, 4.4) --------------------------------------------------------------
+
+function TRF_TeQOn()
+	return TRF_TeOn() and TRF_TeOpt("te_quest") == 1;
+end;
+
+-- The strict gate of system cur (feature "temper"): nil or "strict:<why>".
+function TRF_TeStrict(cur)
+	if type(TRF_StrictOk) ~= "function" then return nil; end;
+	local ok, w = TRF_StrictOk(cur, "temper");
+	if ok then return nil; end;
+	return "strict:"..tostring(w);
+end;
+
+-- 1 while faction f is at war with the player (trf_faction TRF_FcWar of its team).
+function TRF_TeWar(f)
+	local t = TRF_N("TRF_FacTeam", f);
+	if type(t) == "string" and TRF_N("TRF_FcWar", t, PLAYER_TEAM) then return 1; end;
+	return nil;
+end;
+
+-- Offer gate at a patrol dock of faction f in system cur: nil (show) or the reason.
+function TRF_TeOfferWhy(cur, f)
+	if not TRF_TeQOn() then return "off"; end;
+	if type(cur) ~= "number" then return "nomap"; end;
+	local K = TRF_TeK();
+	local ch = TRF_TeChapter();
+	if ch < K.ch_q then return "chapter"; end;
+	if ch > K.ch_qmax then return "chapter_end"; end;
+	if TRF_TeQuest() then return "mission"; end;
+	if TRF_TeName(cur) == K.nk then return "nk"; end;
+	if type(f) ~= "number" then return "owner"; end;
+	if TRF_TeWar(f) then return "war"; end;
+	local slot = TRF_TeSlot(cur);
+	if not TRF_Te_Of(slot) then return "region"; end;
+	local t = TRF_N("TRF_ClanTier", slot);
+	local cap = TRF_N("TRF_RgTierCap");
+	if type(t) ~= "number" then t = 1; end;
+	if type(cap) == "number" and cap < t then t = cap; end;
+	if t < 2 then return "tier"; end;
+	local I = TRF_N("TRF_IqGet");
+	if type(I) ~= "table" then return "plumb"; end;
+	if I.q ~= 0 then return "busy"; end;
+	if TRF_N("TRF_IqR", TRF_TeFBit(f)) == 1 then return "done"; end;
+	if TRF_N("TRF_IqWait", K.q, TRF_TeT("te_dc")) == 1 or %TE.v.dec == 1 then return "declined"; end;
+	return TRF_TeStrict(cur);
+end;
+
+-- The active Clan file: {s, slot, f, c, sd} from TRF.iq, or nil.
+function TRF_TeRun()
+	local I = TRF_N("TRF_IqGet");
+	if type(I) ~= "table" or I.q ~= TRF_TeK().q then return nil; end;
+	return {s=I.s, slot=floor(I.t / 10), f=TRF_TeM(I.t, 10), c=I.c, sd=I.sd, t=I.t};
+end;
+
+-- Report gate at a patrol dock of faction f in system cur (spec 4.4): nil or the reason.
+function TRF_TeRepWhy(cur, f, R)
+	if not TRF_TeQOn() then return "off"; end;
+	if not R or R.s ~= 2 then return "step"; end;
+	if type(cur) ~= "number" then return "nomap"; end;
+	if TRF_TeQuest() then return "mission"; end;
+	if type(f) ~= "number" then return "owner"; end;
+	if f ~= R.f then return "faction"; end;
+	if TRF_TeWar(f) then return "war"; end;
+	return TRF_TeStrict(cur);
+end;
+
+-- Logbook (spec 6.5) -----------------------------------------------------------------------
+-- One entry trf_te ("#TRF_tet", the description by step, count, slot and faction). With the dialogs on (TRF_TeDlgOn) it
+-- is in the mission list; else the Job log (trf_plumb TRF_JbLog), else AddQuest. The description on screen (ql) and the
+-- done leg (dn) live in TRF_TeKeep (not saved): after a load an existing entry counts as current, a done one is removed.
+
+-- The keep table {ql, dn}: it survives an entry (a function global), TRF_Te_OnLoad drops it.
+function TRF_TeKeep()
+	if type(TRF_TeKeepThunk) == "function" then
+		local k = TRF_TeKeepThunk();
+		if type(k) == "table" then return k; end;
+	end;
+	local t = {};
+	TRF_TeKeepThunk = function() return %t; end;
+	return t;
+end;
+
+function TRF_TeJl()
+	if TRF_TeDlgOn() then return nil; end;
+	if TRF_N("TRF_JbLog") == 1 then return 1; end;
+	return nil;
+end;
+
+function TRF_TeJAddRaw(id, t, d) return TRF_JobAdd(id, t, d, QUEST_PROCESS); end;
+function TRF_TeJRemRaw(id) return TRF_JobRemove(id); end;
+function TRF_TeJGetRaw(id) return TRF_JobLogGet(id); end;
+function TRF_TeJStRaw(id, s) return TRF_JobState(id, s); end;
+function TRF_TeQsRaw(id) return GetQuestState(id); end;
+
+function TRF_TeQAddRaw(id, t, d)
+	AddQuest(id, t, d, QUEST_PROCESS);
+	return 1;
+end;
+
+function TRF_TeQRemRaw(id)
+	RemoveQuest(id);
+	return 1;
+end;
+
+function TRF_TeQStRaw(id, s)
+	SetQuestState(id, s);
+	return 1;
+end;
+
+-- Job log state of id, nil when absent or without the native.
+function TRF_TeJs(id)
+	if type(TRF_JobLogGet) ~= "function" then return nil; end;
+	local s = call(TRF_TeJGetRaw, {id}, "x", TRF_TeNoErr);
+	if type(s) == "number" then return s; end;
+	return nil;
+end;
+
+-- Mission-list state of id, nil without the native or for QUEST_NOINIT (no entry).
+function TRF_TeQs(id)
+	if type(GetQuestState) ~= "function" then return nil; end;
+	local s = call(TRF_TeQsRaw, {id}, "x", TRF_TeNoErr);
+	if s == nil or (QUEST_NOINIT ~= nil and s == QUEST_NOINIT) then return nil; end;
+	return s;
+end;
+
+-- The description key the entry should carry now, or nil (no entry): step 10 by count and slot, step 20 by faction, the
+-- done entry while its leg is younger than dn_legs.
+function TRF_TeQKey()
+	local R = TRF_TeRun();
+	if R then
+		if R.s == 1 and R.c == 0 then return "#TRF_ted10s"..R.slot; end;
+		if R.s == 1 then return "#TRF_ted11s"..R.slot; end;
+		return "#TRF_ted20f"..R.f;
+	end;
+	local kp = TRF_TeKeep();
+	local L = TRF_TeLegs();
+	if type(kp.dn) == "number" and kp.dn <= L and L - kp.dn < TRF_TeK().dn_legs and TRF_N("TRF_IqDone", TRF_TeK().q) == 1 then
+		return "#TRF_ted30";
+	end;
+	return nil;
+end;
+
+-- The entry of list closed with QUEST_DONE (as trf_wq TRF_WqQDone). 1 when set.
+function TRF_TeQDone(list)
+	local id = TRF_TeK().qid;
+	if QUEST_DONE == nil then return nil; end;
+	local r, w = nil, nil;
+	if list == "job" then
+		if type(TRF_JobState) ~= "function" then return nil; end;
+		r, w = call(TRF_TeJStRaw, {id, QUEST_DONE}, "x", TRF_TeErr);
+	else
+		if type(SetQuestState) ~= "function" then return nil; end;
+		r = call(TRF_TeQStRaw, {id, QUEST_DONE}, "x", TRF_TeErr);
+	end;
+	if r == 1 then
+		TRF_TeE("logbook", "list", list, "id", id, "state", QUEST_DONE, "result", "done");
+	else
+		TRF_TeE("logbook", "list", list, "id", id, "state", QUEST_DONE, "result", "failed", "reason", tostring(w));
+	end;
+	return r;
+end;
+
+-- Removes the entry from list ("job" or "mission"). 1 when removed.
+function TRF_TeQRem(list, why)
+	local id = TRF_TeK().qid;
+	local r, w = nil, nil;
+	if list == "job" then
+		if type(TRF_JobRemove) ~= "function" then return nil; end;
+		r, w = call(TRF_TeJRemRaw, {id}, "x", TRF_TeErr);
+	else
+		if type(RemoveQuest) ~= "function" then return nil; end;
+		r = call(TRF_TeQRemRaw, {id}, "x", TRF_TeErr);
+	end;
+	if r == 1 then
+		TRF_TeE("logbook", "list", list, "id", id, "result", "removed", "reason", why);
+	else
+		TRF_TeE("logbook", "list", list, "id", id, "result", "none", "reason", why, "native", tostring(w));
+	end;
+	return r;
+end;
+
+-- Adds the entry with description key d to list. note 1 (an accept on the Job log): the line telog.
+function TRF_TeQAdd(list, d, note)
+	local K = TRF_TeK();
+	local r, w = nil, nil;
+	if list == "job" then
+		if type(TRF_JobAdd) ~= "function" then return nil; end;
+		r, w = call(TRF_TeJAddRaw, {K.qid, "#TRF_tet", d}, "x", TRF_TeErr);
+	else
+		if type(AddQuest) ~= "function" or QUEST_PROCESS == nil then return nil; end;
+		r = call(TRF_TeQAddRaw, {K.qid, "#TRF_tet", d}, "x", TRF_TeErr);
+	end;
+	if r ~= 1 then
+		TRF_TeE("logbook", "list", list, "id", K.qid, "text", d, "result", "failed", "reason", tostring(w));
+		return nil;
+	end;
+	TRF_TeE("logbook", "list", list, "id", K.qid, "text", d, "result", "added");
+	if note == 1 and list == "job" then TRF_N("TRF_PlSay", TRF_TeTxt("telog")); end;
+	if d == "#TRF_ted30" then TRF_TeQDone(list); end;
+	return 1;
+end;
+
+-- Reconcile (accept, every step or count change, entry, load; never during a mission): the list not in use loses its
+-- entry, a missing entry (ClearQuests) or one with another description is added again, an entry without a description
+-- is removed. After a load (ql unknown) an existing entry counts as current.
+function TRF_TeReconcile(why, note)
+	if TRF_TeQuest() then return; end;
+	local K = TRF_TeK();
+	local kp = TRF_TeKeep();
+	local want = TRF_TeQKey();
+	local jl = TRF_TeJl();
+	local inq = TRF_TeQs(K.qid);
+	local js = nil;
+	if jl or TRF_N("TRF_JbLogLive") == 1 then js = TRF_TeJs(K.qid); end;
+	if jl and inq ~= nil then TRF_TeQRem("mission", "moved"); inq = nil; kp.ql = nil; end;
+	if not jl and js ~= nil then TRF_TeQRem("job", "moved"); js = nil; kp.ql = nil; end;
+	local list, have = "mission", inq ~= nil;
+	if jl then list = "job"; have = js ~= nil; end;
+	if have and kp.ql == nil and why == "load" then kp.ql = want; end;
+	if want and (not have or kp.ql ~= want) then
+		if have then TRF_TeQRem(list, why); end;
+		local res = "failed";
+		if TRF_TeQAdd(list, want, note) then kp.ql = want; res = "added"; end;
+		TRF_TeE("reconcile", "id", K.qid, "list", list, "text", want, "result", res, "reason", why);
+	elseif not want and have then
+		TRF_TeQRem(list, why);
+		kp.ql = nil;
+		TRF_TeE("reconcile", "id", K.qid, "list", list, "result", "removed", "reason", why, "leg", TRF_TeLegs());
+	elseif not want then
+		kp.ql = nil;
+	end;
+end;
+
+function TRF_TeRec(why, note)
+	call(TRF_TeReconcile, {why, note}, "x", TRF_TeErr);
+end;
+
+-- Quest step 0: the offer (spec 6.1) ----------------------------------------------------------
+
+-- Patrol box 350 (below the board offers 400, above the ladder box 300): the gate, TE.offer, the box spec (dialog D1 with
+-- te_dialog 1, the card with jobs_ui >= 1, else the box; trf_plumb TRF_PlShow).
+function TRF_Te_DockBox(kind, param)
+	if kind ~= "patrol" or not TRF_TeQOn() or TRF_N("TRF_Quiet") then return nil; end;
+	local te = %TE;
+	local cur = TRF_TeCur();
+	local f = TRF_TeDockFac();
+	local why = TRF_TeOfferWhy(cur, f);
+	if why then TRF_TeDE("offer", "system", TRF_TeName(cur), "faction", f, "result", "none", "reason", why); return nil; end;
+	local slot = TRF_TeSlot(cur);
+	local K = TRF_TeK();
+	te.offer = {sys=cur, g=TRF_TeGen(), f=f, slot=slot, k=TRF_Te_Of(slot)};
+	local title = TRF_TeTxt("tebt");
+	return {title="#UI_PatrolStationWndCaption", text=TRF_TeTxt("tebox", TRF_TeClan(slot), K.home[slot], TRF_TeTxt("tefac"..f)),
+		ok="TRF_Te_BoxOk", no="TRF_Te_BoxNo", shown="TRF_Te_BoxShown", fail="TRF_Te_BoxFail", dlg="TRF_Te_Dlg1",
+		a={g=TRF_TeGen(), src=cur}, own="te", card={id=K.jid, header=TRF_TeTxt("tejobh"), title=title}};
+end;
+
+-- Offer shown: via "dialog", "card", else the box.
+function TRF_Te_BoxShown(a, via)
+	local o = %TE.offer;
+	if type(o) ~= "table" then return; end;
+	TRF_N("TRF_Stat", "te_offer");
+	TRF_TeE("offer", "system", TRF_TeName(o.sys), "faction", o.f, "clan_slot", o.slot, "result", "shown", "via", via or "box");
+end;
+
+function TRF_Te_BoxFail(a)
+	local te = %TE;
+	te.offer = nil;
+	TRF_TeE("offer", "result", "failed", "reason", "box");
+end;
+
+-- OK (also D1's accept): the gate again, TRF_IqTake(1, slot x 10 + f, seed), the logbook; the reply teok without D1.
+function TRF_Te_BoxOk(a)
+	local te = %TE;
+	local o = te.offer;
+	te.offer = nil;
+	local cur = TRF_TeCur();
+	if type(o) ~= "table" or type(a) ~= "table" or a.g ~= TRF_TeGen() or o.g ~= a.g or o.sys ~= cur or TRF_TeOfferWhy(cur, o.f) then
+		TRF_TeE("accept", "system", TRF_TeName(cur), "result", "stale");
+		return nil;
+	end;
+	local legs = TRF_TeLegs();
+	local sd = TRF_TeM(TRF_TeHash(legs, cur, TRF.seq or 0), 10000);
+	local ok, w = TRF_N("TRF_IqTake", TRF_TeK().q, o.slot * 10 + o.f, sd);
+	if ok ~= 1 then
+		TRF_TeE("accept", "system", TRF_TeName(cur), "faction", o.f, "clan_slot", o.slot, "result", "busy", "reason", tostring(w));
+		return nil;
+	end;
+	TRF_N("TRF_Stat", "te_accept");
+	TRF_TeE("accept", "system", TRF_TeName(cur), "faction", o.f, "clan_slot", o.slot, "seed", sd, "leg", legs, "result", "ok");
+	TRF_TeRec("accept", 1);
+	if o.dlg == 1 then return nil; end;
+	return TRF_TeTxt("teok");
+end;
+
+-- Cancel (D1's decline): the decline stamp of TRF.iq (no offer for te_dc legs), none again in this visit.
+function TRF_Te_BoxNo(a)
+	local te = %TE;
+	local o = te.offer;
+	te.offer = nil;
+	te.v.dec = 1;
+	if type(o) ~= "table" then TRF_TeE("decline", "result", "stale"); return nil; end;
+	TRF_N("TRF_IqDecline", TRF_TeK().q);
+	TRF_TeE("decline", "system", TRF_TeName(o.sys), "faction", o.f, "leg", TRF_TeLegs(), "result", "declined");
+	return nil;
+end;
+
+-- Quest step 10: answered raids (spec 6.2) ------------------------------------------------------
+
+-- trf_raid's TRF_Rd_Pay, both branches (how "paid" after the pay, "hail" after the hail_paid skip): a raid of the quest
+-- clan's region counts; the second moves to step 20.
+function TRF_Te_Answer(n, rd, how)
+	if not TRF_TeQOn() or type(rd) ~= "table" then return; end;
+	local R = TRF_TeRun();
+	if not R or R.s ~= 1 then return; end;
+	local K = TRF_TeK();
+	local cur = TRF_TeCur();
+	local slot = TRF_TeSlot(cur);
+	if slot ~= R.slot then
+		TRF_TeDE("count", "raid_id", n, "kind", rd.why, "clan_slot", slot, "via", how, "result", "none", "reason", "region");
+		return;
+	end;
+	local c = R.c + 1;
+	local clan = TRF_TeClan(R.slot);
+	if c >= K.n then
+		TRF_N("TRF_IqSet", K.q, 2, R.t, 0);
+		TRF_TeE("step", "step_before", 10, "step_after", 20, "reason", "count");
+		TRF_N("TRF_Say", TRF_TeTxt("tecnt2", clan, TRF_TeTxt("tefac"..R.f)), K.csecs);
+	else
+		TRF_N("TRF_IqSet", K.q, 1, R.t, c);
+		TRF_N("TRF_Say", TRF_TeTxt("tecnt", c, K.n, clan), K.csecs);
+	end;
+	TRF_N("TRF_Stat", "te_count");
+	TRF_TeE("count", "raid_id", n, "kind", rd.why, "clan_slot", slot, "count", c, "via", how, "result", "counted");
+	TRF_TeRec("count");
+end;
+
+-- Quest step 20: the report (spec 6.3, 6.4) ---------------------------------------------------
+
+-- Patrol line 47: at a dock of the quest's faction the report; with the dialog gate open it waits for the talk box 455
+-- (D2) and says nothing, else the line terep<k> and done at once.
+function TRF_Te_PatrolLine(kind, param)
+	if kind ~= "patrol" or not TRF_TeQOn() or TRF_N("TRF_Quiet") then return nil; end;
+	local R = TRF_TeRun();
+	if not R or R.s ~= 2 then return nil; end;
+	local cur = TRF_TeCur();
+	local f = TRF_TeDockFac();
+	local why = TRF_TeRepWhy(cur, f, R);
+	if why then TRF_TeDE("report", "system", TRF_TeName(cur), "faction", f, "result", "none", "reason", why); return nil; end;
+	local k = TRF_Te_Of(R.slot);
+	local line = TRF_TeTxt("terep"..k);
+	local te = %TE;
+	local dw = TRF_TeDlgWhy();
+	if not dw then
+		te.talk = {g=TRF_TeGen(), sys=cur, f=f, slot=R.slot, k=k, line=line};
+		TRF_TeDE("talk", "dialog", 2, "result", "pending");
+		return nil;
+	end;
+	TRF_TeFb(2, dw);
+	TRF_TeDone(cur, R);
+	return line;
+end;
+
+-- Patrol box 455 (below the freight quest's talk box 460): the pending report of this docking.
+function TRF_Te_TalkBox(kind, param)
+	local t = %TE.talk;
+	if kind ~= "patrol" or type(t) ~= "table" or t.g ~= TRF_TeGen() then return nil; end;
+	return {text=t.line, dlg="TRF_Te_Dlg2", fail="TRF_Te_TalkFail", own="te_talk", a={g=t.g}};
+end;
+
+-- s.dlg of the talk box: D2 ($1 clan, $2 region home; only the answer of the clan's temperament shown) (1), else 0 (no
+-- box: TRF_Te_TalkFail says the line).
+function TRF_Te_Dlg2(a, s)
+	local te = %TE;
+	local t = te.talk;
+	if type(t) ~= "table" then return 0; end;
+	local hd = {};
+	for j = 1, 4 do if j ~= t.k then tinsert(hd, "a_k"..j); end; end;
+	if not TRF_TeDlgOpen("2", {args={TRF_TeClan(t.slot), TRF_TeK().home[t.slot]}, hd=hd}, {t=t}) then return 0; end;
+	te.talk = nil;
+	return 1;
+end;
+
+-- The talk box could not open (the lock, the dialog): the line and the report now.
+function TRF_Te_TalkFail(a)
+	local te = %TE;
+	local t = te.talk;
+	te.talk = nil;
+	if type(t) ~= "table" then return; end;
+	TRF_N("TRF_PlSay", t.line);
+	TRF_TeTalkFx(t);
+end;
+
+-- The report's effect for talk record t: done, when the run is still at step 20 for that faction.
+function TRF_TeTalkFx(t)
+	local R = TRF_TeRun();
+	if not R or R.s ~= 2 or R.f ~= t.f then return; end;
+	TRF_TeDone(t.sys, R);
+end;
+
+-- Done (spec 6.4): the run ends with the faction's reward bit, the logbook entry done, the letter at the first completion.
+function TRF_TeDone(cur, R)
+	local K = TRF_TeK();
+	local first = TRF_N("TRF_IqDone", K.q) ~= 1;
+	if TRF_N("TRF_IqEnd", K.q, "done", TRF_TeFBit(R.f)) ~= 1 then return nil; end;
+	local L = TRF_TeLegs();
+	TRF_TeKeep().dn = L;
+	TRF_N("TRF_Stat", "te_done");
+	TRF_TeE("done", "system", TRF_TeName(cur), "faction", R.f, "clan_slot", R.slot, "leg", L, "result", "done");
+	TRF_TeRec("done");
+	if first then call(TRF_TeLetter, {}, "x", TRF_TeErr); end;
+	return 1;
+end;
+
+-- The letter mail_trf_te1 (spec 6.7): with cfg news_mode 2 only, as the freight quest's letters.
+function TRF_TeLetter()
+	local K = TRF_TeK();
+	local m = TRF_N("TRF_UI_NewsMode");
+	if m ~= 2 then TRF_TeE("letter", "post", K.post, "news_mode", m, "result", "skipped", "reason", "news_mode"); return nil; end;
+	if type(AddPost) ~= "function" then TRF_TeE("letter", "post", K.post, "result", "skipped", "reason", "native"); return nil; end;
+	TRF_N("AddPost", K.post);
+	TRF_N("TRF_Stat", "te_letter");
+	TRF_TeE("letter", "post", K.post, "result", "posted");
+	return 1;
+end;
+
+-- Lapse (spec 6.8; trf_plumb TRF_IqStale through TRF_IqOwners): the run ends without a penalty, the entry goes.
+function TRF_Te_IqLapse()
+	local R = TRF_TeRun();
+	if not R then return; end;
+	TRF_N("TRF_IqEnd", TRF_TeK().q, "lapsed");
+	TRF_TeE("lapse", "step", R.s * 10, "count", R.c, "leg", TRF_TeLegs(), "result", "lapsed");
+	TRF_TeRec("lapse");
+end;
+
+-- Dialog windows (spec 6.9; as trf_wq 13.1, dock only) --------------------------------------------
+
+-- 1 while the dialogs are on: cfg te_dialog 1 and hail_xml 1 (the dialog files are installed).
+function TRF_TeDlgOn()
+	if TRF_TeOpt("te_dialog") == 1 and TRF_N("TRF_Opt", "hail_xml") == 1 then return 1; end;
+	return nil;
+end;
+
+-- Dialog files by key (Data/Scripts/Trade/<f>.xml, init ini): an = every answer name, tk = token -> text key.
+function TRF_TeDlgFiles()
+	local K = TRF_TeK();
+	return {
+		["1"] = {f=K.f1, ini="TRF_TePgInit1", an={"a_what", "a_acc", "a_why", "a_dec", "a_acc2", "a_dec2"},
+			tk={p1="te1p1", p2="te1p2", p3="te1p3", a1="te1awhat", a2="te1aacc", a3="te1awhy", a4="te1adec", a5="te1aacc2", a6="te1adec2"}},
+		["2"] = {f=K.f2, ini="TRF_TePgInit2", an={"a_k1", "a_k2", "a_k3", "a_k4", "a_end"},
+			tk={p1="te2p1", p2="te2p2", a1="te2a1", a2="te2a2", a3="te2a3", a4="te2a4", a5="te2aend"}},
+	};
+end;
+
+-- Why a dialog cannot open at the dock now (inside the dock request box's callback; the modal flag 2 allowed), or nil:
+-- off (cfg te_dialog 0), xml (hail_xml not 1), native, busy (a te dialog is open), uistate, ui=<v> (a movie or a dialog
+-- flag, or unknown), movie, mission. A copy of trf_wq's TRF_WqDlgWhy (spec 13 item 20: B02 moves it into trf_plumb).
+function TRF_TeDlgWhy()
+	if TRF_TeOpt("te_dialog") ~= 1 then return "off"; end;
+	if TRF_N("TRF_Opt", "hail_xml") ~= 1 then return "xml"; end;
+	if type(StartTradeDialog) ~= "function" then return "native"; end;
+	if type(%TE.dlg) == "table" then return "busy"; end;
+	if type(TRF_UiState) ~= "function" then return "uistate"; end;
+	local u = call(TRF_UiState, {}, "x", TRF_TeNoErr);
+	if type(u) ~= "number" or u < 0 then return "ui="..tostring(u); end;
+	if TRF_N("TRF_Bit", u, 1) == 1 or TRF_N("TRF_Bit", u, 4) == 1 then return "ui="..u; end;
+	if type(TRF_InMovie) == "function" and call(TRF_InMovie, {}, "x", TRF_TeNoErr) == 1 then return "movie"; end;
+	if TRF_TeQuest() then return "mission"; end;
+	return nil;
+end;
+
+-- A dialog fell back to its line, box or card: event=dialog_fallback (none for cfg te_dialog 0, the normal path then).
+function TRF_TeFb(k, why)
+	if why == "off" then return; end;
+	TRF_N("TRF_Stat", "te_dlgfb");
+	TRF_TeE("dialog_fallback", "dialog", k, "reason", why);
+end;
+
+function TRF_TeDlgCall(f, ini)
+	StartTradeDialog(f, ini);
+	return 1;
+end;
+
+-- Opens dialog file k at the dock: o.args ($1..$3 of every text), o.hd (the answers hidden); x travels to the finish.
+-- 1 when StartTradeDialog ran, else nil and the reason (logged; the caller falls back).
+function TRF_TeDlgOpen(k, o, x)
+	local te = %TE;
+	local fi = TRF_TeDlgFiles()[k];
+	local why = TRF_TeDlgWhy();
+	if not why and type(fi) ~= "table" then why = "file"; end;
+	if why then TRF_TeFb(k, why); return nil, why; end;
+	local a = o.args or {};
+	local rv = {};
+	for t, key in fi.tk do rv[t] = TRF_TeTxt(key, a[1], a[2], a[3]); end;
+	te.dn = (te.dn or 0) + 1;
+	te.dlg = {k=k, rv=rv, hd=o.hd or {}, an=fi.an, dn=te.dn, x=x or {}, g=TRF_TeGen()};
+	-- The Esc check armed first (TRF_Te_DlgCheck): without it a window closed without an answer would keep the record.
+	if not TRF_N("TRF_Due", 1, "TRF_Te_DlgCheck", te.dn) then
+		te.dlg = nil;
+		TRF_TeFb(k, "due");
+		return nil, "due";
+	end;
+	if call(TRF_TeDlgCall, {fi.f, fi.ini}, "x", TRF_TeErr) ~= 1 then
+		te.dlg = nil;
+		TRF_TeFb(k, "error");
+		return nil, "error";
+	end;
+	TRF_N("TRF_Stat", "te_dialog");
+	TRF_TeE("dialog", "dialog", k, "via", "dock", "result", "opened");
+	return 1;
+end;
+
+-- Inits of StartTradeDialog (shims): every token set, the answers shown or hidden.
+function TRF_TePgInit1() TRF_Cb("TRF_TePgInit1", TRF_TeInit, {"1"}); end;
+function TRF_TePgInit2() TRF_Cb("TRF_TePgInit2", TRF_TeInit, {"2"}); end;
+
+function TRF_TeInit(k)
+	local d = %TE.dlg;
+	if type(d) ~= "table" or d.k ~= k then TRF_TeE("dialog", "dialog", k, "result", "stale"); return; end;
+	for t, v in d.rv do TRF_N("SetReplaceValue", t, v); end;
+	local hid = {};
+	for i = 1, getn(d.hd) do hid[d.hd[i]] = 1; end;
+	local vis = "";
+	for i = 1, getn(d.an) do
+		local nm = d.an[i];
+		if hid[nm] then TRF_N("HideAnswer", nm); else TRF_N("ShowAnswer", nm); vis = vis..","..nm; end;
+	end;
+	TRF_TeDE("dialog_answers", "dialog", k, "answers", strsub(vis, 2));
+end;
+
+-- Answer shims (lua_function of the files): r the kind of answer kept for the finish, fin 1 when it closes the window.
+-- TRF_TeDlgA1_end closes D1 without an answer (as Esc).
+function TRF_TeDlgA1_acc() TRF_Cb("TRF_TeDlgA1_acc", TRF_TePick, {"1", "acc", 1}); end;
+function TRF_TeDlgA1_dec() TRF_Cb("TRF_TeDlgA1_dec", TRF_TePick, {"1", "dec", 1}); end;
+function TRF_TeDlgA1_end() TRF_Cb("TRF_TeDlgA1_end", TRF_TePick, {"1", "", 1}); end;
+function TRF_TeDlgA2_end() TRF_Cb("TRF_TeDlgA2_end", TRF_TePick, {"2", "end", 1}); end;
+
+function TRF_TePick(k, r, fin)
+	local d = %TE.dlg;
+	if r == "" then r = nil; end;
+	if type(d) ~= "table" or d.k ~= k or d.fin == 1 then TRF_TeE("dialog", "dialog", k, "answer", r or "none", "result", "ignored"); return; end;
+	if r then d.r = r; end;
+	TRF_TeDE("dialog", "dialog", k, "answer", r or "none", "final", TRF_KvB(fin == 1), "result", "answer");
+	if fin ~= 1 then return; end;
+	d.fin = 1;
+	TRF_TeDlgEnd(d, "answer");
+end;
+
+-- Due call 1 s after a window opened: no dialog flag (TRF_UiState bit 4) and no final answer means Esc. Re-armed while
+-- the flag holds or the state is unknown, at most 120 times.
+function TRF_Te_DlgCheck(dn)
+	local d = %TE.dlg;
+	if type(d) ~= "table" or d.dn ~= dn or d.fin == 1 then return; end;
+	local u = nil;
+	if type(TRF_UiState) == "function" then u = call(TRF_UiState, {}, "x", TRF_TeNoErr); end;
+	if type(u) ~= "number" or u < 0 or TRF_N("TRF_Bit", u, 4) == 1 then
+		d.ck = (d.ck or 0) + 1;
+		if d.ck < 120 and TRF_N("TRF_Due", 1, "TRF_Te_DlgCheck", dn) then return; end;
+	end;
+	d.fin = 1;
+	TRF_TeDlgEnd(d, "esc");
+end;
+
+-- The window is done (a final answer, or Esc from the check): the record goes, the effects run.
+function TRF_TeDlgEnd(d, how)
+	local te = %TE;
+	if te.dlg == d then te.dlg = nil; end;
+	if how == "esc" then d.esc = 1; end;
+	local res = "done";
+	if how == "esc" then res = "closed"; end;
+	TRF_TeE("dialog", "dialog", d.k, "via", "dock", "answer", d.r or "none", "result", res);
+	call(TRF_TeDlgFx, {d}, "x", TRF_TeErr);
+end;
+
+-- Effects: D1 accept, decline or neither (the plumbing's box answer: TRF_Te_BoxOk, TRF_Te_BoxNo or nothing); D2 the
+-- report done at the final answer (Esc: nothing, the next docking asks again). The plumbing is answered last.
+function TRF_TeDlgFx(d)
+	local te = %TE;
+	local code = -1;
+	if d.k == "1" then
+		if d.r == "acc" then code = 1; elseif d.r == "dec" then code = 0; end;
+		if code == -1 then te.offer = nil; end;
+	elseif d.k == "2" and d.r == "end" and type(d.x.t) == "table" then
+		TRF_TeTalkFx(d.x.t);
+	end;
+	TRF_N("TRF_PlDlgAnswer", code, d.esc);
+end;
+
+-- s.dlg of the offer box (patrol box 350, trf_plumb TRF_PlShow): D1 ($1 clan, $2 region home, $3 faction). 1 when it
+-- opened (offer dlg 1), else nil (the card or the box follows).
+function TRF_Te_Dlg1(a, s)
+	local o = %TE.offer;
+	if type(o) ~= "table" then return nil; end;
+	if not TRF_TeDlgOpen("1", {args={TRF_TeClan(o.slot), TRF_TeK().home[o.slot], TRF_TeTxt("tefac"..o.f)}}, {a=a}) then return nil; end;
+	o.dlg = 1;
+	return 1;
+end;
+
+-- Loader callbacks ---------------------------------------------------------------------------
+
+function TRF_TeVisit()
+	local te = %TE;
+	te.v = {ol={}, rs={}, co={}, gp={}};
+	te.offer = nil;
+	te.talk = nil;
+	te.dlg = nil;
+end;
+
+-- Every entry: a new visit state.
+function TRF_Te_OnEnter()
+	TRF_TeVisit();
+end;
+
+-- After activate (entry only): the logbook reconcile (the lapse of an earlier entry, a ClearQuests, the done entry).
+function TRF_Te_OnActivate()
+	if not TRF_TeOn() then return; end;
+	TRF_TeRec("enter");
+end;
+
+-- Load: a new visit state; the keep table goes (an existing entry counts as current, a done entry is removed).
+function TRF_Te_OnLoad()
+	TRF_TeVisit();
+	TRF_TeKeepThunk = nil;
+	if TRF_TeOn() then TRF_TeRec("load"); end;
+end;
+
+-- Before a jump (after trf_raid's jump hook, which pays the 8.5 help of an open raid): the visit state goes.
+function TRF_Te_BeforeJump()
+	TRF_TeVisit();
+end;
+
+-- trf_plumb TRF_InstallPlumb: patrol talk box 455, patrol box 350, patrol line 47.
+function TRF_Te_Plumb()
+	local K = TRF_TeK();
+	TRF_DockBox("patrol", K.talk, "TRF_Te_TalkBox");
+	TRF_DockBox("patrol", K.box, "TRF_Te_DockBox");
+	TRF_DockLine("patrol", K.line, "TRF_Te_PatrolLine");
+end;
+
+-- Repair, defaults, dump, text -----------------------------------------------------------
+
+-- Repair (TRF_Repair after TRF_Pl_Fix, which repairs TRF.iq): an active quest 1 with a bad step, target or count, or for
+-- a faction already done, is dropped (TRF_IqEnd "dropped").
+function TRF_Te_Fix()
+	if type(TRF) ~= "table" then return; end;
+	local R = TRF_TeRun();
+	if not R then return; end;
+	local bad = nil;
+	if R.s ~= 1 and R.s ~= 2 then bad = "s"; end;
+	if not bad and (R.slot < 1 or R.slot > 8 or not TRF_Te_Of(R.slot)) then bad = "slot"; end;
+	if not bad and (R.f < 1 or R.f > 5) then bad = "faction"; end;
+	if not bad and ((R.s == 1 and R.c > 1) or (R.s == 2 and R.c ~= 0)) then bad = "c"; end;
+	if not bad and TRF_N("TRF_IqR", TRF_TeFBit(R.f)) == 1 then bad = "done"; end;
+	if not bad then return; end;
+	TRF_N("TRF_IqEnd", TRF_TeK().q, "dropped");
+	TRF_TeE("fix", "field", bad, "result", "dropped");
+end;
+
+-- Config keys (spec 8.1): temper (0: no temperament anywhere, no quest), te_quest (the Clan file), te_gate (owner
+-- decision O1: 1 board words only for factions with the reward), te_dialog (the dialog windows; needs hail_xml 1).
+function TRF_Te_OptDef()
+	return {temper=1, te_quest=1, te_gate=1, te_dialog=1};
+end;
+
+-- Tune keys (spec 8.2): te_ch first chapter; leave HP of Cutters, Planners, Ghosts; Haggler comply clamps; Planner chance
+-- factors and call-off ratio; te_fx the Ghost decloak (0 until CHECK W-B10.5); the decloak distance; the decline wait.
+function TRF_Te_TuneDef()
+	return {te_ch=4, te_cut_hp=0.25, te_hag_cmin=25, te_hag_cmax=98, te_pl_hi=1.6, te_pl_lo=0.7, te_pl_hp=0.6, te_pl_out=1.0,
+		te_gh_hp=0.7, te_fx=0, te_gh_lo=400, te_gh_hi=600, te_dc=2};
+end;
+
+-- Debug dump: the switches, the run, the done and reward bits, the table.
+function TRF_Te_Dump()
+	if type(TRF) ~= "table" then return; end;
+	local R = TRF_TeRun();
+	local I = TRF_N("TRF_IqGet") or {};
+	local s, slot, f, c = nil, nil, nil, nil;
+	if R then s = R.s * 10; slot = R.slot; f = R.f; c = R.c; end;
+	local t = TRF_TeTab();
+	local ts = "";
+	for i = 1, getn(t) do
+		if i > 1 then ts = ts..","; end;
+		ts = ts..t[i];
+	end;
+	TRF_TeE("dump", "temper", TRF_TeOpt("temper"), "gate", TRF_TeOpt("te_gate"), "quest", TRF_TeOpt("te_quest"), "step", s, "slot", slot,
+		"faction", f, "count", c, "done", I.d, "reward", I.r, "table", ts);
+end;
+
+-- Texts (spec 7), EN; keys in TRF_UI_Key form (#TRF_te<name> in loc/trf_en.loc; RU falls back to EN). te<c><d|n>: the
+-- opening line by temperament letter (c Cutter, h Haggler, p Planner, g Ghost) and form (d demand, n no demand); $1 the
+-- clan. tew<k> the board word, tev<k> the news verb, tetip<k> the dockmaster tip. ted10s<slot>, ted11s<slot>,
+-- ted20f<faction>, ted30: the logbook descriptions (no arguments). te1*, te2*: the tokens of D1 and D2. telt, tel1b: the
+-- letter (record mail_trf_te1; "|" is the post window's paragraph break).
+function TRF_Te_Text()
+	return {
+		tecn = "$1 here. No talk, no tax. Open fire.",
+		tecd = "$1: No talk, usually. Today you get a choice: cut your engines and drop cargo.",
+		tehd = "$1: We always talk first, trader. Cut your engines, drop some cargo, and everybody flies home.",
+		tehn = "$1: We'd rather talk first, but you're not listening. Open fire.",
+		tepd = "$1: We pick our targets, trader, and today it's you. Cut your engines and drop cargo.",
+		tepn = "$1: Target picked, odds checked. Take it apart.",
+		tegd = "$1: Unseen till now, trader. Cut your engines and drop cargo.",
+		tegn = "$1: Unseen till now. Open fire.",
+		tepoff = "$1: Too hot. Pull back, we'll pick another day.",
+		tehcp = "FTU $1: Cargo released. The $2 took it and let us go.",
+		tegw = "$1 and unidentified contacts",
+		tews = "$1, $2",
+		tew1 = "no talk",
+		tew2 = "talk first",
+		tew3 = "pick targets",
+		tew4 = "unseen",
+		tev1 = "don't talk, they shoot",
+		tev2 = "talk first",
+		tev3 = "pick their targets",
+		tev4 = "come in unseen",
+		tenw = "The $1 $2.",
+		tetip1 = "The $1 don't talk. When they jump a trader they open fire, so fight or run, there's no buying them off.",
+		tetip2 = "The $1 talk first. Drop a few crates and they let you go, and they quit the moment they lose a ship.",
+		tetip3 = "The $1 pick their targets: convoys and fat haulers. When the odds turn they pull back.",
+		tetip4 = "The $1 come in unseen, right next to their mark, and break off early. Watch your scanner.",
+		-- The quest
+		tejobh = "Clan file",
+		tebt = "Patrol office",
+		tebox = "Patrol officer: our file on the $1 is two lines long. Answer two of their raids in the $2 region, then report to any $3 patrol station how they fight. No pay; the file is the point. Will you do it?",
+		teok = "Patrol officer: 'Two raids, then come back. Over and out.'",
+		tecnt = "Clan file: $1 of $2 raids of the $3 answered.",
+		tecnt2 = "Clan file: two raids of the $1 answered. Report to any $2 patrol station.",
+		terep1 = "Patrol officer: 'No talk, they just open fire? Into the file it goes. Our board marks each clan by how it fights now.'",
+		terep2 = "Patrol officer: 'They talk first and let you go for a few crates? Into the file it goes. Our board marks each clan by how it fights now.'",
+		terep3 = "Patrol officer: 'Fat targets, and they pull back when the odds turn? Into the file it goes. Our board marks each clan by how it fights now.'",
+		terep4 = "Patrol officer: 'Out of nowhere, and gone early? Into the file it goes. Our board marks each clan by how it fights now.'",
+		tet = "Clan file",
+		ted10s1 = "The patrol wants a file on the Rust Jackals. Answer two of their raids in the Dosis region.",
+		ted10s2 = "The patrol wants a file on the Black Comets. Answer two of their raids in the Elinor region.",
+		ted10s3 = "The patrol wants a file on the Ash Vipers. Answer two of their raids in the Hephaestus region.",
+		ted10s4 = "The patrol wants a file on the Grey Ravens. Answer two of their raids in the Golconda region.",
+		ted10s5 = "The patrol wants a file on the Red Knives. Answer two of their raids in the Cadi region.",
+		ted10s6 = "The patrol wants a file on the Cold Suns. Answer two of their raids in the Muscovy region.",
+		ted10s7 = "The patrol wants a file on the Bone Hounds. Answer two of their raids in the Torr region.",
+		ted10s8 = "The patrol wants a file on the Night Kites. Answer two of their raids in the XT-27 region.",
+		ted11s1 = "One raid of the Rust Jackals answered. Answer one more in the Dosis region.",
+		ted11s2 = "One raid of the Black Comets answered. Answer one more in the Elinor region.",
+		ted11s3 = "One raid of the Ash Vipers answered. Answer one more in the Hephaestus region.",
+		ted11s4 = "One raid of the Grey Ravens answered. Answer one more in the Golconda region.",
+		ted11s5 = "One raid of the Red Knives answered. Answer one more in the Cadi region.",
+		ted11s6 = "One raid of the Cold Suns answered. Answer one more in the Muscovy region.",
+		ted11s7 = "One raid of the Bone Hounds answered. Answer one more in the Torr region.",
+		ted11s8 = "One raid of the Night Kites answered. Answer one more in the XT-27 region.",
+		ted20f1 = "The file is ready. Report to any MSF patrol station.",
+		ted20f2 = "The file is ready. Report to any NESF patrol station.",
+		ted20f3 = "The file is ready. Report to any Triada patrol station.",
+		ted20f4 = "The file is ready. Report to any USS patrol station.",
+		ted20f5 = "The file is ready. Report to any InoCo patrol station.",
+		ted30 = "The patrol has its file. Their board marks every clan by how it fights.",
+		telog = "Patrol job added to the Job log.",
+		tefac1 = "MSF",
+		tefac2 = "NESF",
+		tefac3 = "Triada",
+		tefac4 = "USS",
+		tefac5 = "InoCo",
+		telt = "Letter from the patrol command:",
+		tel1b = "Your report closed the last gap in our clan file. For the record, and for your own flights:|The Rust Jackals and the Ash Vipers talk first.|The Grey Ravens and the Cold Suns pick their targets.|The Red Knives and the Bone Hounds don't talk.|The Black Comets and the Night Kites come in unseen.|Lane security desk, patrol command",
+		-- D1 the offer ($1 clan, $2 region home, $3 faction)
+		te1p1 = "Transport pilot, a word. The $1 have been working our lanes around $2, and our file on them is two lines long: the name and the trouble.",
+		te1awhat = "What's missing from it?",
+		te1p2 = "How they fight. Do they talk or shoot, run or stay. Answer two of their raids in their own space, then tell any $3 patrol station what you saw. No pay, the file is the point. Once it's full, our board marks every clan by how it fights.",
+		te1aacc = "Two raids and a report. Deal.",
+		te1awhy = "Why not send your own pilots?",
+		te1adec = "Not my war, officer.",
+		te1p3 = "Our own pilots? Three old fighters, and they're busy watching the portals. You fly through clan space anyway.",
+		te1aacc2 = "Fair enough. You'll get your file.",
+		te1adec2 = "Then the file waits.",
+		-- D2 the report ($1 clan, $2 region home)
+		te2p1 = "Back from $2 in one piece, I see. So how do the $1 work?",
+		te2a1 = "No talk at all. They open fire and keep at it.",
+		te2a2 = "They talk first. Drop a few crates and they let you go.",
+		te2a3 = "They pick fat targets and pull back when the odds turn.",
+		te2a4 = "They show up right next to you out of nowhere, and they break off early.",
+		te2p2 = "That goes in the file. From now on our board marks each clan by how it fights. Over and out.",
+		te2aend = "Glad to help.",
+	};
+end;

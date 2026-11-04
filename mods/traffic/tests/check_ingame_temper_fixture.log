@@ -1,0 +1,48 @@
+traffic: lua: exp=v1 module=state event=enter generation=1 fresh=false system=valensia legs=40
+traffic: lua: exp=v1 module=safety event=activate system=valensia mode=mod reason=nil chapter=5 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=raid event=armed raid_id=1 trader_id=3 source=lane path=C danger_eff=1 tier=3 chance=0.172 point=300,30,0
+traffic: lua: exp=v1 module=raid event=go raid_id=1 trader_id=3 via=point tier=3 power=15 ship_count=5 distance=791.138
+traffic: lua: exp=v1 module=temper event=open raid_id=1 kind=lane clan_slot=3 temper=haggler form=demand mode=full result=said
+traffic: lua: exp=v1 module=raid event=demand raid_id=1 trader_id=3
+traffic: lua: exp=v1 module=raid event=decide raid_id=1 trader_id=3 trader_strength=27.000 player_strength=0.000 raid_strength=75.000 strength_ratio=0.360 braveness=1.000 chance=25.000 roll=60 result=refuse
+traffic: lua: exp=v1 module=raid event=refuse raid_id=1 trader_id=3 player_fired=false
+traffic: lua: exp=v1 module=raid event=leave raid_id=1 reason=loss distance=300.000
+traffic: lua: exp=v1 module=state event=enter generation=2 fresh=false system=gredos legs=41
+traffic: lua: exp=v1 module=safety event=activate system=gredos mode=mod reason=nil chapter=4 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=temper event=open raid_id=1 kind=lane clan_slot=3 temper=haggler form=demand mode=lines result=said
+traffic: lua: exp=v1 module=raid event=demand raid_id=1 trader_id=4
+traffic: lua: exp=v1 module=state event=enter generation=3 fresh=false system=kadi legs=42
+traffic: lua: exp=v1 module=safety event=activate system=kadi mode=mod reason=nil chapter=5 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=raid event=go raid_id=1 trader_id=5 via=point tier=3 power=15 ship_count=5 distance=700.000
+traffic: lua: exp=v1 module=temper event=open raid_id=1 kind=lane clan_slot=5 temper=cutter form=no_demand mode=full result=said
+traffic: lua: exp=v1 module=raid event=refuse raid_id=1 trader_id=5 player_fired=false
+traffic: lua: exp=v1 module=state event=enter generation=4 fresh=false system=golkonda legs=43
+traffic: lua: exp=v1 module=safety event=activate system=golkonda mode=mod reason=nil chapter=5 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=temper event=open raid_id=2 kind=lane clan_slot=4 temper=planner form=demand mode=full result=said
+traffic: lua: exp=v1 module=raid event=demand raid_id=2 trader_id=6
+traffic: lua: exp=v1 module=raid event=refuse raid_id=2 trader_id=6 player_fired=true
+traffic: lua: exp=v1 module=temper event=calloff raid_id=2 trader_strength=1012.000 raid_strength=60.000 player_fired=true result=leave
+traffic: lua: exp=v1 module=raid event=leave raid_id=2 reason=calloff distance=200.000
+traffic: lua: exp=v1 module=state event=enter generation=5 fresh=false system=taira legs=44
+traffic: lua: exp=v1 module=safety event=activate system=taira mode=mod reason=nil chapter=5 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=ui event=say output=1 seconds=8 message="FTU reports packs and unidentified contacts on the lanes in this system"
+traffic: lua: exp=v1 module=temper event=decloak raid_id=1 distance=545 fx_count=6 result=placed
+traffic: lua: exp=v1 module=raid event=go raid_id=1 trader_id=2 via=decloak tier=3 power=11 ship_count=6 distance=626.977
+traffic: lua: exp=v1 module=temper event=open raid_id=1 kind=lane clan_slot=2 temper=ghost form=demand mode=full result=said
+traffic: lua: exp=v1 module=raid event=demand raid_id=1 trader_id=2
+traffic: lua: exp=v1 module=station event=tip station_key=60 kind=temper system=taira tip_leg=nil
+traffic: lua: exp=v1 module=temper event=board faction=1 result=gate
+traffic: lua: exp=v1 module=temper event=offer system=taira faction=1 clan_slot=2 result=shown via=dialog
+traffic: lua: exp=v1 module=temper event=accept system=taira faction=1 clan_slot=2 seed=4410 leg=44 result=ok
+traffic: lua: exp=v1 module=temper event=logbook list=mission id=trf_te text=#TRF_ted10s2 result=added
+traffic: lua: exp=v1 module=temper event=count raid_id=3 kind=lane clan_slot=2 count=1 via=paid result=counted
+traffic: lua: exp=v1 module=state event=enter generation=6 fresh=false system=elinor legs=45
+traffic: lua: exp=v1 module=safety event=activate system=elinor mode=mod reason=nil chapter=5 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=temper event=count raid_id=1 kind=lane clan_slot=2 count=2 via=hail result=counted
+traffic: lua: exp=v1 module=temper event=step step_before=10 step_after=20 reason=count
+traffic: lua: exp=v1 module=state event=enter generation=7 fresh=false system=escaflon legs=46
+traffic: lua: exp=v1 module=safety event=activate system=escaflon mode=mod reason=nil chapter=5 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=temper event=dialog dialog=2 via=dock answer=end result=done
+traffic: lua: exp=v1 module=temper event=done system=escaflon faction=1 clan_slot=2 leg=46 result=done
+traffic: lua: exp=v1 module=temper event=letter post=mail_trf_te1 result=posted
+traffic: lua: exp=v1 module=temper event=board faction=1 result=words

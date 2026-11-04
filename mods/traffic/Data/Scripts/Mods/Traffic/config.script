@@ -92,6 +92,12 @@
 -- Lethal-system warnings (design/warnings-spec.md 10, A12 step 1; default in TRF_Wn_OptDef): warn (default 1) = 0 turns off
 -- the dockmaster's warning next to an armed lethal system, the first-visit note and the portal jump warning; the tune
 -- keys wn_ch, wn_legs, wn_dock, wn_note, wn_delay and wn_jump (0: no portal wrapper) read the module defaults.
+-- Clan temperaments and the Clan file (design/temperament-spec.md 8, B10; defaults in TRF_Te_OptDef): temper (default 1)
+-- = 0 leaves every raid as built (no opening line, no temperament rule, no word, no quest); te_quest (default 1) = 0 no
+-- Clan file offer, count or report (an active run lapses after iq_stale legs); te_gate (default 1, owner decision O1) = 0
+-- shows the temperament words on every patrol board, 1 only for factions whose Clan file is done; te_dialog (default 1)
+-- = 0 keeps the box, card and lines (1 needs hail_xml 1). Tune keys te_* (te_fx 1: the Ghost decloak, CHECK W-B10.5) and
+-- trf_plumb's iq_stale (legs before a stalled intro quest lapses) read the module defaults.
 function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1, ext_fix=1,
 	enabled=1, cycle=1, prosperity=1, tier_cap=4, cap_traders=5, cap_ships=20, spawn_scale=1.0, band_half=0,
 	parked=1, esc_flight=1, seed=1, queue=1, raids=1, staged=1, contracts=1, esc_speed=0, meet=2, hail_start=2, board=1,
@@ -111,4 +117,4 @@ function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1, ext_fix=1,
 	demand_page=1, demand_drop=0, mc_names=0,
 	merc_war=1, merc_hunt=0, merc_hostile=0, merc_legion=0,
 	merc=0, merc_board=1, merc_book=0, merc_report=0, merc_marker=0, merc_calls=0, merc_transfer=0, rv_enabled=0,
-	mc_launch=0, mc_el_c=8, jobs_ui=1, jobs_log=0, warn=1} end
+	mc_launch=0, mc_el_c=8, jobs_ui=1, jobs_log=0, warn=1, temper=1, te_quest=1, te_gate=1, te_dialog=1} end

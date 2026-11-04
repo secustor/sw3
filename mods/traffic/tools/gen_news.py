@@ -21,9 +21,10 @@ Outputs (CRLF, ASCII):
   news/trf_news.xml   the <NewsRecord> fragment (tab indentation as in the game's file)
   loc/trf_en.loc      the block between the "; sw3-traffic news records begin/end" lines is replaced
                       (appended when missing); every other line stays as it is.
-Letters: the freight unlock quest's two letters (LETTERS; trf_wq TRF_WqLetter, design/freight-quest-spec.md 13.3) are
-records mail_trf_wq<i> with image mail whose header and text are trf_wq text keys (TRF_Wq_Text, already in the loc
-scaffold of gen_map.py --loc); the "mail" name prefix gives the new-mail notice (mod-research/news-records.md 1.10).
+Letters: the freight unlock quest's two letters (LETTERS; trf_wq TRF_WqLetter, design/freight-quest-spec.md 13.3) and the
+Clan file's letter (trf_temper TRF_TeLetter, design/temperament-spec.md 6.7) are records mail_trf_<id> with image mail whose
+header and text are text keys of the posting module (TRF_Wq_Text, TRF_Te_Text, already in the loc scaffold of
+gen_map.py --loc); the "mail" name prefix gives the new-mail notice (mod-research/news-records.md 1.10).
 Checks: every (topic, variant) that a .script posts as a literal (TRF_NewsPost call sites,
 TRF_UI_NewsLevel thresholds) has records; every n-key exists; no $n is left; no key collides with a
 key outside the block; names never collide with vanilla (the trf_ prefix is not used by the game).
@@ -69,8 +70,10 @@ CAP_TEXT = {"ncaphide": "$2 captain has gone to ground near $1",
             "ncapsucc": "New captain leads the $2 near $1"}
 
 
-# Letters: record name, header key, text key (trf_wq.script TRF_Wq_Text).
-LETTERS = [("mail_trf_wq1", "wqlt", "wql1b"), ("mail_trf_wq2", "wqlt", "wql2b")]
+# Letters: record name, header key, text key, the posting module and its text table.
+LETTERS = [("mail_trf_wq1", "wqlt", "wql1b", "trf_wq.script", "TRF_Wq_Text"),
+           ("mail_trf_wq2", "wqlt", "wql2b", "trf_wq.script", "TRF_Wq_Text"),
+           ("mail_trf_te1", "telt", "tel1b", "trf_temper.script", "TRF_Te_Text")]
 
 
 def die(msg):
@@ -201,17 +204,17 @@ def records(ui, regions, facs):
 
 
 def letters(src):
-    """The letter records; dies when a key is not in TRF_Wq_Text or trf_wq.script does not name the record."""
-    wq_p = os.path.join(src, "trf_wq.script")
-    wt = read(wq_p)
-    wq = {norm(k): v for k, v in lua_strings(func_body(wt, "TRF_Wq_Text", wq_p)).items()}
+    """The letter records; dies when a key is not in the module's text table or the module does not name the record."""
     out = []
-    for name, hk, tk in LETTERS:
+    for name, hk, tk, fn, tf in LETTERS:
+        p = os.path.join(src, fn)
+        wt = read(p)
+        tab = {norm(k): v for k, v in lua_strings(func_body(wt, tf, p)).items()}
         for k in (hk, tk):
-            if norm(k) not in wq:
-                die("TRF_Wq_Text has no %s (letter %s)" % (k, name))
+            if norm(k) not in tab:
+                die("%s has no %s (letter %s)" % (tf, k, name))
         if '"%s"' % name not in wt:
-            die("trf_wq.script does not post %s" % name)
+            die("%s does not post %s" % (fn, name))
         out.append({"name": name, "hkey": "#TRF_%s" % hk, "tkey": "#TRF_%s" % tk, "image": "mail", "letter": 1, "slot": None})
     return out
 

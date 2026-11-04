@@ -240,16 +240,16 @@ also the unused hulls).
 | `pirflight` | `module=raid event=pirflight result=failed reason=no_pir_tables` | 1 |
 | `spawn` | `module=raid event=spawn raid_id=3 result=skipped reason=raid_live_cap` | 1 |
 | `roll` | `module=raid event=roll trader_id=7 source=lane result=skipped reason=governor` (also `reason=suppressed`, `reason=no_system`) | 2 |
-| `roll` | `module=raid event=roll trader_id=7 source=lane danger_eff=1 tier=2 chance=0.172 roll=9000 result=no_raid` | 2 |
+| `roll` | `module=raid event=roll trader_id=7 source=lane danger_eff=1 tier=2 chance=0.172 roll=9000 result=no_raid temper_k=1.000` (`temper_k`: trf_temper's Planner weight on the formula branch, 1 otherwise) | 2 |
 | `roll` | `module=raid event=roll trader_id=7 path=A result=skipped reason=no_raid_point` | 1 |
 | `armed` | `module=raid event=armed raid_id=1 trader_id=11 source=lane path=A danger_eff=1 tier=2 chance=0.172 point=125,0,-490` | 1 |
-| `go` | `module=raid event=go raid_id=1 trader_id=11 via=point tier=2 power=4 ship_count=2 distance=1566.916` | 1 |
+| `go` | `module=raid event=go raid_id=1 trader_id=11 via=point tier=2 power=4 ship_count=2 distance=1566.916` (`via` point, portal, base, decloak: a Ghost lane raid with tune `te_fx` 1, trf_temper) | 1 |
 | `demand` | `module=raid event=demand raid_id=1 trader_id=11` | 1 |
 | `decide` | `module=raid event=decide raid_id=3 trader_id=7 trader_strength=12.5 player_strength=0 raid_strength=30 strength_ratio=0.42 braveness=0.62 chance=74 roll=51 result=comply` | 1 |
 | `rob` | `module=raid event=rob trader_id=7 cargo_lost=0 result=no_loss reason=no_hold_mirror` (or `reason=clear_inventory_failed`) | 1 |
 | `comply` | `module=raid event=comply raid_id=1 trader_id=11 cargo_lost=3 disruption=1` | 1 |
 | `refuse` | `module=raid event=refuse raid_id=2 trader_id=13 player_fired=true` | 1 |
-| `leave` | `module=raid event=leave raid_id=2 reason=comply destination=carrier` / `destination=base` / `distance=900` | 1 |
+| `leave` | `module=raid event=leave raid_id=2 reason=comply destination=carrier` / `destination=base` / `distance=900` (reasons also `loss`, a Haggler raid's first ship lost, and `calloff`, the Planner call-off; trf_temper) | 1 |
 | `paid` | `module=raid event=paid raid_id=2 trader_id=6 credits=658 help=1 help_rule=nil` (`help_rule`: trf_plumb raid-help rule, nil without resolvers) / `credits=0 help=0 result=skipped reason=hail_paid` (the combat hail's help watch already paid this trader, hail-spec 5.4) | 1 |
 | `end` | `module=raid event=end raid_id=1 trader_id=11 previous_state=leave decision=comply help_counted=false paid=nil result=left` | 1 |
 | `hit` | `module=raid event=hit raid_id=2 rearm_max=3 result=rearm_cap` | 1 |
@@ -397,7 +397,7 @@ also the unused hulls).
 | `pass` | `module=station event=pass reason=off system=gaoba at=dock` | 1 |
 | `mood` | `module=station event=mood system=gaoba system_index=42 vanilla_key=1 mood_key=3 rule=2 phase=0 disruption=0 owner=Inoco mood=1 speaker=X` | 1 (2 when mood=0) |
 | `id_mismatch` | `module=station event=id_mismatch station_key=251 param_station=1 position_station=2 distance=40` | 1 |
-| `tip` | `module=station event=tip station_key=42 kind=feq system=gaoba tip_leg=35` | 1 |
+| `tip` | `module=station event=tip station_key=42 kind=feq system=gaoba tip_leg=35` (`kind` sweep, feq, base, temper: the clan's habit after its raid in the visit, trf_temper) | 1 |
 | `dock` | `module=station event=dock station_key=51 param="" via=prm+pos distance=0 standing=0 rung=0 heat=0 greeting=stnr1 greeting_skip=gap news=false tip=nil ambient=nil fee=0 fee_multiplier=0 no_fee_reason=paid_visit` (no_fee_reason: paid_visit, latch, strict_0, chapter) | 1 |
 | `fee` | `module=station event=fee station_key=42 fee=7800 world_level=10 prosperity=3 fee_multiplier=3 difficulty_factor=1 box=true` (after the dispatcher's show; `box=false`: the box could not open) | 1 |
 | `fee_ok` | `module=station event=fee_ok station_key=51 credits_before=a credits_after=b credit=false buyback=false` | 1 |
@@ -449,6 +449,8 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `arrival_line` | `module=plumb event=arrival_line owner=p4 line_index=4 result=dropped reason=cap` (or `reason=no_entry`, `reason=due`) | 1 |
 | `arrival_line` | `module=plumb event=arrival_line owner=beacon result=shown` (or `result=not_shown`) | 2 |
 | `job` | `module=plumb event=job kind=1 field_count=2 result=taken` / `holder=1 result=refused` / `result=cleared` | 1 |
+| `iq` | `module=plumb event=iq quest=1 step=1 target=21 count=0 result=<taken,set,done,lapsed,dropped,declined> reason=nil` / `quest=2 step=nil target=nil count=nil result=busy reason=q1` / `result=owner` (the shared intro-quest record `TRF.iq`, [temperament-spec.md](temperament-spec.md) 3.1) | 1 |
+| `iq_fix` | `module=plumb event=iq_fix field=<iq,a,d,r,l,<unknown key>> result=<dropped,reset>` (repair of `TRF.iq` in `TRF_Pl_Fix`) | 1 |
 | `raid_help` | `module=plumb event=raid_help raid_id=7 credits_before=1063 credits_after=398 rule=excluded_factor resolver_count=3` (rule: none, factor, excluded, excluded_factor, cancel) | 1 |
 | `marker` | `module=plumb event=marker owner=pcl label=TRF_Pcl_1 result=added` / `result=refused reason=quest` (or `label`, `cap`) / `result=failed reason=create_nav_point_nil` | 1 |
 | `marker` | `module=plumb event=marker owner=pcl deleted_count=1 result=cleared` / `reason=jump deleted_count=3 result=cleared` (or `reason=load`, `reason=quest`: a mission started) | 1 |
@@ -458,6 +460,7 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `prize` | `module=plumb event=prize owner=captain real_seconds=3600 gap=1800` (a combat prize paid: the shared gap of 00 B1 starts, `TRF.clock.pz`) | 1 |
 | `near` | `module=plumb event=near via=typed record_count=12 kept_count=3` / `via=count reason=no_native` (or `reason=off`, `sig`, `arg`, `noroot`, `nolm`: the `TRF_Carcasses` why; `error`: it raised) / `result=failed reason=pos` (`TRF_Near`, spec 16) | 2 |
 | `dump` | `module=plumb event=dump box_holder=nil event_slot=staged escort=nil arrival_count=1 job=nil marker_count=0 jumps=12 real_seconds=3600.500 visit_tick_legs=2 line_count=4 box_count=3 cap_count=0 cost_of_head_wrapped=true` | 1 |
+| `dump_iq` | `module=plumb event=dump_iq quest=1 step=1 target=21 count=1 seed=4410 done=0 reward=0 leg=31` (only with a `TRF.iq` record) | 1 |
 
 ## survive (`trf_survive.script`; `TRF_SvE`, `TRF_SvDE`)
 
@@ -898,6 +901,41 @@ Crew remarks on system history, B06 (`design/crew-remarks-spec.md` 11; host-test
 | `told` | `module=remark event=told system_index=42 event_leg=31 via=remark evicted=nil floor=nil stamp_count=1` (`via=own\|witness`; `evicted=<idx>` when the cap of 4 dropped a stamp) | 2 |
 | `fix` | `module=remark event=fix field=rm result=dropped` (`result=repaired dropped_count=<n>`) | 1 |
 | `dump` | `module=remark event=dump floor=nil stamp_count=2 stamps=7:12,42:31 remark_mode=1` | 1 |
+
+## temper (`trf_temper.script`; `TRF_TeE`, `TRF_TeDE`)
+
+Clan temperaments and the intro quest "Clan file", B10 (`design/temperament-spec.md` 9; host-tested only). `clan_slot` is the region slot 1..8, `temper` the temperament of the slot (`cutter`, `haggler`, `planner`, `ghost`), `faction` 1..5 (`TRF_FacTeams`), `kind` the raid record's `why` (`lane`, `contract`, `carrier`, `staged`, `fq`, `dc`, `stn`, `wq`).
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=temper event=error message=<m>` | 1 |
+| `open` | `module=temper event=open raid_id=12 kind=lane clan_slot=3 temper=haggler form=demand mode=full result=said` (`form=no_demand`: said at the fight start or the meet of a no-demand raid; `mode=lines`: a chapter-4 guard system) | 1 |
+| `open` | `module=temper event=open raid_id=12 result=none reason=<off,nomap,no_clan,chapter,captain,said>` / `raid_id=12 distance=2400.000 result=none reason=range` (beyond `R_radio`: never said for that raid) | 2 |
+| `roll` | `module=temper event=roll trader_id=7 tier=3 convoy=false factor=1.600` (the Planner weight of the lane raid chance) | 2 |
+| `calloff` | `module=temper event=calloff raid_id=12 trader_strength=24.000 raid_strength=20.000 player_fired=true result=leave` | 1 |
+| `decloak` | `module=temper event=decloak raid_id=12 distance=512 fx_count=4 result=placed` / `raid_id=12 distance=480 result=none reason=no_point` | 1 |
+| `decloak` | `module=temper event=decloak raid_id=12 result=none reason=fx_off` (tune `te_fx` 0) | 2 |
+| `board` | `module=temper event=board faction=1 result=words` (or `result=gate`; `gate=0 result=words` with cfg `te_gate` 0) | 2 |
+| `offer` | `module=temper event=offer system=taira faction=1 clan_slot=2 result=shown via=<box,card,dialog>` / `result=failed reason=box` | 1 |
+| `offer` | `module=temper event=offer system=taira faction=1 result=none reason=<off,nomap,chapter,chapter_end,mission,nk,owner,war,region,tier,plumb,busy,done,declined,strict:<why>>` | 2 |
+| `accept` | `module=temper event=accept system=taira faction=1 clan_slot=2 seed=4410 leg=31 result=ok` (`result=stale`; `result=busy reason=<why>`: the shared slot refused) | 1 |
+| `decline` | `module=temper event=decline system=taira faction=1 leg=31 result=declined` (`result=stale`) | 1 |
+| `count` | `module=temper event=count raid_id=12 kind=lane clan_slot=2 count=1 via=<paid,hail> result=counted` | 1 |
+| `count` | `module=temper event=count raid_id=12 kind=lane clan_slot=5 via=paid result=none reason=region` | 2 |
+| `step` | `module=temper event=step step_before=10 step_after=20 reason=count` | 1 |
+| `talk` | `module=temper event=talk dialog=2 result=pending` (the report waits for the talk box 455) | 2 |
+| `report` | `module=temper event=report system=proserpina faction=2 result=none reason=<off,step,nomap,mission,owner,faction,war,strict:<why>>` | 2 |
+| `done` | `module=temper event=done system=escaflon faction=1 clan_slot=2 leg=40 result=done` | 1 |
+| `lapse` | `module=temper event=lapse step=10 count=1 leg=72 result=lapsed` (trf_plumb `TRF_IqStale` after `iq_stale` legs) | 1 |
+| `logbook` | `module=temper event=logbook list=mission id=trf_te text=#TRF_ted10s2 result=added` / `id=trf_te result=removed reason=<why>` / `state=<QUEST_DONE> result=done` (as trf_wq's lines; `list=job` with the Job log) | 1 |
+| `reconcile` | `module=temper event=reconcile id=trf_te list=mission text=#TRF_ted11s2 result=added reason=<accept,count,done,enter,load,lapse>` / `result=removed reason=enter leg=52` | 1 |
+| `dialog` | `module=temper event=dialog dialog=1 via=dock result=opened` / `dialog=1 via=dock answer=acc result=done` (`answer=dec`, `end`; `result=closed`: Esc) / `result=stale` / `answer=<a> result=ignored` | 1 |
+| `dialog` | `module=temper event=dialog dialog=1 answer=acc final=true result=answer` | 2 |
+| `dialog_answers` | `module=temper event=dialog_answers dialog=2 answers=a_k4` | 2 |
+| `dialog_fallback` | `module=temper event=dialog_fallback dialog=<1,2> reason=<xml,native,busy,uistate,ui=<v>,movie,mission,file,due,error>` (none for cfg `te_dialog` 0) | 1 |
+| `letter` | `module=temper event=letter post=mail_trf_te1 result=posted` (`result=skipped reason=news_mode`, `reason=native`) | 1 |
+| `fix` | `module=temper event=fix field=<s,slot,faction,c,done> result=dropped` | 1 |
+| `dump` | `module=temper event=dump temper=1 gate=1 quest=1 step=10 slot=2 faction=1 count=1 done=0 reward=0 table=2,4,2,3,1,3,1,4` | 1 |
 
 ## supply (`trf_supply.script`; `TRF_SpE`)
 

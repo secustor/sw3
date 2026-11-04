@@ -274,9 +274,9 @@ function T_WN_A()
 	HOST_Check(n == 28 and TRF_Txt("wnwuss", "Debris 4") == "Dockmaster: the USS is at war with you, and the guard in Debris 4 meets every hostile arrival with six heavy flights. Do not jump there before you make peace.",
 		"28 text keys; the family text takes the caption as $1");
 	-- Registration and defaults.
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=17") >= 1, "trf_warn loads before trf_remark (extra_count=17)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=18") >= 1, "trf_warn loads before trf_remark (extra_count=18)");
 	local ml, pm = TRF_ModList(), TRF_PlMods();
-	HOST_Check(ml[getn(ml) - 1] == "Wn" and ml[getn(ml)] == "Rm" and pm[getn(pm)] == "Wn" and TRF_Opt("warn") == 1 and TRF_Wn_OptDef().warn == 1,
+	HOST_Check(ml[getn(ml) - 2] == "Wn" and ml[getn(ml) - 1] == "Rm" and pm[getn(pm) - 1] == "Wn" and TRF_Opt("warn") == 1 and TRF_Wn_OptDef().warn == 1,
 		"Wn last in TRF_ModList and TRF_PlMods; cfg warn 1 by default");
 	local T = TRF_WnTune();
 	HOST_Check(T.wn_ch == 0 and T.wn_legs == 8 and T.wn_dock == 2 and T.wn_note == 1 and T.wn_delay == 4 and T.wn_jump == 1 and TRF_Tune().wn_legs == 8,
@@ -757,8 +757,8 @@ function T_WN_G()
 	h.hide = {["trf_warn.script"]=1};
 	W_Begin("avalon", "9_1");
 	TRF_SetPro(TRF_CurIdx(), 9);
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=16") >= 1 and type(TRF_Wn_DockLine) ~= "function",
-		"trf_warn missing: extra_count=16, no module");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=17") >= 1 and type(TRF_Wn_DockLine) ~= "function",
+		"trf_warn missing: extra_count=17, no module");
 	local n0 = S_Mark();
 	local m0 = getn(h.msgs);
 	local r = W_Dock();

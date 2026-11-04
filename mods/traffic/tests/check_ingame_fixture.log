@@ -467,3 +467,17 @@ traffic: lua: exp=v1 module=state event=enter generation=91 fresh=false system=k
 traffic: lua: exp=v1 module=state event=enter generation=92 fresh=false system=gaoba legs=302
 traffic: lua: exp=v1 module=remark event=candidate system_index=42 kind=trader event_leg=280 age=22 result=ok
 traffic: lua: exp=v1 module=remark event=say owner=remark system_index=42 event_leg=280 voice=pirate speaker=Hero output=line result=shown reason=nil
+traffic: lua: exp=v1 module=state event=enter generation=93 fresh=false system=kadi legs=303
+traffic: lua: exp=v1 module=safety event=activate system=kadi mode=mod reason=nil chapter=3 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=temper event=open raid_id=4 kind=lane clan_slot=5 temper=cutter form=no_demand mode=full result=said
+traffic: lua: exp=v1 module=raid event=demand raid_id=4 trader_id=40
+traffic: lua: exp=v1 module=raid event=refuse raid_id=4 trader_id=40 player_fired=false
+traffic: lua: exp=v1 module=state event=enter generation=94 fresh=false system=valensia legs=304
+traffic: lua: exp=v1 module=safety event=activate system=valensia mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=temper event=open raid_id=5 kind=lane clan_slot=3 temper=haggler form=demand mode=full result=said
+traffic: lua: exp=v1 module=raid event=demand raid_id=5 trader_id=41
+traffic: lua: exp=v1 module=raid event=decide raid_id=5 trader_id=41 trader_strength=27.000 player_strength=0.000 raid_strength=75.000 strength_ratio=0.360 braveness=1.000 chance=10.000 roll=60 result=refuse
+traffic: lua: exp=v1 module=state event=enter generation=95 fresh=false system=valensia legs=305
+traffic: lua: exp=v1 module=station event=tip station_key=61 kind=temper system=valensia tip_leg=nil
+traffic: lua: exp=v1 module=temper event=letter post=mail_trf_te1 result=posted
+traffic: lua: exp=v1 module=temper event=letter post=mail_trf_te1 result=posted

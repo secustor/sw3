@@ -1,6 +1,6 @@
 # Clan temperaments and the intro quest "Clan file": implementation spec (roadmap Wave 1 item 3, B10)
 
-Status: spec 2026-11-04, not built. Design: `D/proposals/activities-after-worldbuilding.md` 2b.7 (cited as "P 2b.7", the recommendation with the skeptic fixes), 4b (budgets), 6 item 29 (`PlayFX` test); roadmap `D/ROADMAP.md` Wave 1 row 3, sections 2, 3 and 5 decision 4. Quest model: `D/freight-quest-spec.md` ("FQ"), dialogs `D/freight-quest-dialogs.md`, voice `D/dialog-style-guide.md`; card: `D/station-jobs-spec.md` ("SJ"); plumbing `D/wb-plumbing-spec.md` ("WB"); shared rules `D/worldbuilding/00-economy-and-progression.md` sections 4 and 6 ("00").
+Status: implemented 2026-11-04, host-tested only (`tp-a`..`tp-h`), not run in the game; the user tests wave 1 in game together with the freight quest and the Jobs tab checks (W-B10.1-10, PROGRESS "Wave 1 (host-tested only)"). Owner decisions O1-O6 of 2.2 taken 2026-11-04 (the defaults of the table); implementation notes and deviations in 14. Design: `D/proposals/activities-after-worldbuilding.md` 2b.7 (cited as "P 2b.7", the recommendation with the skeptic fixes), 4b (budgets), 6 item 29 (`PlayFX` test); roadmap `D/ROADMAP.md` Wave 1 row 3, sections 2, 3 and 5 decision 4. Quest model: `D/freight-quest-spec.md` ("FQ"), dialogs `D/freight-quest-dialogs.md`, voice `D/dialog-style-guide.md`; card: `D/station-jobs-spec.md` ("SJ"); plumbing `D/wb-plumbing-spec.md` ("WB"); shared rules `D/worldbuilding/00-economy-and-progression.md` sections 4 and 6 ("00").
 Paths: `D` = `mods/traffic/design`, `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `T` = `mods/traffic/tests`, `X` = `mods/traffic/Data/Scripts/Trade`. Functions are named so they can be found again; line numbers drift.
 Module: new `S/trf_temper.script`, prefix `Te` (`TRF_Te_*` public, `TRF_Te<X>` internal), log lines `module=temper` through `TRF_TeE` / `TRF_TeDE`; quest id 1 of the shared intro-quest record `TRF.iq` (owned by trf_plumb); logbook id `trf_te`; card id `te`.
 
@@ -452,23 +452,51 @@ Not verifiable offline: `PlayFX` on mod raid ships and how a decloaked raid look
 
 ## 13. Conformance checklist
 
-1. [ ] `trf_temper.script` CRLF, ASCII, Lua 4 rules (no `local function`, `TRUE`/`FALSE`, no `%` modulo, `call` for protected calls); only functions and the chunk local `TE` at top level.
-2. [ ] The table `{2, 4, 2, 3, 1, 3, 1, 4}` by slot; nothing about temperaments saved; `temper` 0 leaves every raid as built (`tp-b` compares `v02-h`).
-3. [ ] Every trf_raid, trf_clan, trf_hail, trf_station and trf_ui edit goes through `TRF_N`/`TRF_P`; with trf_temper absent the host runs of those modules pass unchanged.
-4. [ ] One opening line per raid id; demand kinds replace the demand line; no-demand kinds within `R_radio`; none for a captain's raid; none in chapters 1-3; lines only in guard systems in chapter 4.
-5. [ ] Cutters: no pod attack, no pod deletion, `gone_t` unchanged; no temperament adds a flight or a ship.
-6. [ ] `stn`, `wq` and captain raids keep their built behaviour (T6).
-7. [ ] Planner weight only on the formula branch; `tp-e` passes (cycle criteria, every slot in Raids twice, Planner shares within 0.05).
-8. [ ] `te_fx` 0 by default; with 1 the decloak point rules of 5.2 and `PlayFX` on every ship; no `Stealth1`, no Cloaking strategy.
-9. [ ] Hail trouble page words ungated, harbour news unchanged, the tip only after a raid of that clan in the visit, news_mode 2 posts unchanged; board words only with the faction's reward bit or `te_gate` 0.
-10. [ ] `TRF.iq` only through the trf_plumb API; `HOST_SaveSize(TRF.iq) <= 100`; repair as 3.1 and 3.2; full state printed `< 100000` (about 96,119 with B06 and A12 step 1).
-11. [ ] One intro quest active at a time; `TRF.wq` untouched; the lapse after `iq_stale` legs, also without the owner module.
-12. [ ] Offer gate 4.3 complete, chapter 5-20, never during a mission or a scene, strict feature `temper`; box 350, talk box 455, line 47; one box per docking; no Office row at patrol docks.
-13. [ ] An answered raid is exactly the 8.5 pay condition of `TRF_Rd_Pay` (both branches), in the quest clan's region.
-14. [ ] Report only at a patrol dock of the quest's faction; done sets `d` 1 (first run) and `r` bit f; the letter once; logbook `trf_te` in the mission list with the dialogs on.
-15. [ ] `X/TRF_Te1.xml`, `X/TRF_Te2.xml`: schema-valid, CRLF, ASCII, no BOM, no `<message>#`, pilot `TRF_WqP_patrol`; fallbacks for every dialog gate reason.
-16. [ ] Text keys of 7 in `TRF_Te_Text` and `loc/trf_en.loc`; no `\n` joins (`TRF_Br()` where two lines meet); the letter uses `|`.
-17. [ ] cfg and tune keys of 8 in the OptDef/TuneDef, `TRF_OptEnum`, `config.script`, `install-test.sh` (written only when set), `install.sh` copies the files.
-18. [ ] Log events of 9 in `D/log-events.md`; `lint_lua.py` 0 findings, `--calls -q` only the known warnings; `luac -p`; all host runs green; `sh -n install-test.sh`.
-19. [ ] README feature line; PROGRESS entry; `check_ingame.py` W-B10.1-10 with a fixture.
-20. [ ] Note for the next intro quest (B02 "Report in"): move the dialog gate (`TRF_WqDlgWhy`, `TRF_TeDlgWhy`) into trf_plumb as one shared function before a third copy.
+1. [x] `trf_temper.script` CRLF, ASCII, Lua 4 rules (no `local function`, `TRUE`/`FALSE`, no `%` modulo, `call` for protected calls); only functions and the chunk local `TE` at top level.
+2. [x] The table `{2, 4, 2, 3, 1, 3, 1, 4}` by slot; nothing about temperaments saved; `temper` 0 leaves every raid as built (`tp-b` compares `v02-h`).
+3. [x] Every trf_raid, trf_clan, trf_hail, trf_station and trf_ui edit goes through `TRF_N`/`TRF_P`; with trf_temper absent the host runs of those modules pass unchanged.
+4. [x] One opening line per raid id; demand kinds replace the demand line; no-demand kinds within `R_radio`; none for a captain's raid; none in chapters 1-3; lines only in guard systems in chapter 4.
+5. [x] Cutters: no pod attack, no pod deletion, `gone_t` unchanged; no temperament adds a flight or a ship.
+6. [x] `stn`, `wq` and captain raids keep their built behaviour (T6).
+7. [x] Planner weight only on the formula branch; `tp-e` passes (cycle criteria, every slot in Raids twice, Planner shares within 0.05).
+8. [x] `te_fx` 0 by default; with 1 the decloak point rules of 5.2 and `PlayFX` on every ship; no `Stealth1`, no Cloaking strategy.
+9. [x] Hail trouble page words ungated, harbour news unchanged, the tip only after a raid of that clan in the visit, news_mode 2 posts unchanged; board words only with the faction's reward bit or `te_gate` 0.
+10. [x] `TRF.iq` only through the trf_plumb API; `HOST_SaveSize(TRF.iq) <= 100`; repair as 3.1 and 3.2; full state printed `< 100000` (about 96,119 with B06 and A12 step 1).
+11. [x] One intro quest active at a time; `TRF.wq` untouched; the lapse after `iq_stale` legs, also without the owner module.
+12. [x] Offer gate 4.3 complete, chapter 5-20, never during a mission or a scene, strict feature `temper`; box 350, talk box 455, line 47; one box per docking; no Office row at patrol docks.
+13. [x] An answered raid is exactly the 8.5 pay condition of `TRF_Rd_Pay` (both branches), in the quest clan's region.
+14. [x] Report only at a patrol dock of the quest's faction; done sets `d` 1 (first run) and `r` bit f; the letter once; logbook `trf_te` in the mission list with the dialogs on.
+15. [x] `X/TRF_Te1.xml`, `X/TRF_Te2.xml`: schema-valid, CRLF, ASCII, no BOM, no `<message>#`, pilot `TRF_WqP_patrol`; fallbacks for every dialog gate reason.
+16. [x] Text keys of 7 in `TRF_Te_Text` and `loc/trf_en.loc`; no `\n` joins (`TRF_Br()` where two lines meet); the letter uses `|`.
+17. [x] cfg and tune keys of 8 in the OptDef/TuneDef, `TRF_OptEnum`, `config.script`, `install-test.sh` (written only when set), `install.sh` copies the files.
+18. [x] Log events of 9 in `D/log-events.md`; `lint_lua.py` 0 findings, `--calls -q` only the known warnings; `luac -p`; all host runs green; `sh -n install-test.sh`.
+19. [x] README feature line; PROGRESS entry; `check_ingame.py` W-B10.1-10 with a fixture.
+20. [x] Note for the next intro quest (B02 "Report in"): move the dialog gate (`TRF_WqDlgWhy`, `TRF_TeDlgWhy`) into trf_plumb as one shared function before a third copy.
+
+## 14. Implementation notes (2026-11-04)
+
+### 14.1 What was built
+
+`S/trf_temper.script` as 10.1 (chunk local `TE`); the shared intro-quest record `TRF.iq` with `TRF_IqPack`, `TRF_IqUnpack`, `TRF_IqGet`, `TRF_IqTake`, `TRF_IqSet`, `TRF_IqEnd`, `TRF_IqDecline`, `TRF_IqWait`, `TRF_IqDone`, `TRF_IqR`, `TRF_IqOwners`, `TRF_IqStale` (entry and load) and `TRF_IqFix` (in `TRF_Pl_Fix`) in `S/trf_plumb.script`, `iq_stale` in `TRF_Pl_TuneDef`, `"Te"` last in `TRF_PlMods`; the edits of 10.2 (trf_raid 5.2 with the pure `TRF_Rd_RollPOf`, trf_clan, trf_hail, trf_station, trf_ui, trf_safety comment, trf_state `TRF_ModList`, `TRF_OptEnum` and `TRF_Repair`, trf_loc, traffic.script, config.script); `X/TRF_Te1.xml`, `X/TRF_Te2.xml` (schema-valid against `Dialogs.xsd`); install.sh, install-test.sh (`TEMPER`, `TE_QUEST`, `TE_GATE`, `TE_DIALOG`, `temper=0` in the `LEVEL=v01`/`v02` presets), uninstall.sh comment, uninstall-test.sh, release.sh; the record `mail_trf_te1` in `news/trf_news.xml` (`tools/gen_news.py`); `loc/trf_en.loc` (82 keys); host `tp-a`..`tp-h` (`T/host_temper.lua`); W-B10.1-10 in `tools/check_ingame.py` with `T/check_ingame_temper_fixture.log` and a failing block at the end of `T/check_ingame_fixture.log` (selftest 144 of 144). Sizes on the host grammar: `TRF.iq` 96 bytes at its widest, full state `v1-n` 96,116 bytes.
+
+### 14.2 Notes
+
+- On the vanilla map no mod trader spawns in a chapter-4 guard system (trf_safety runs it in vanilla mode), so the "lines only" mode of T13 reaches raids only through a raid that was built before the chapter check; in practice it gives the signals (trouble page word, tip, bulletin) there. `tp-b` builds the guard-system raids in chapter 5 and sets chapter 4 before the meet. No Cutter region has a start system; `tp-b` marks Kadi as one for its Cutter guard check.
+- `tp-e` (the 200-leg check) passes at the default seed: Planner slots 4 and 6 have Raids shares 0.220/0.250 and 0.180/0.230 (temper/flat) and raids ratios 1.00 and 0.98. With other seeds the Raids share of every region (Planner or not) differs between the two runs by up to 0.07 and one Planner raids ratio reached 1.23 (seed 2), because the random streams part after the first changed draw; the check is pinned to the default seed (`TRF_SEED` unset).
+- trf_wq's `TRF_WqDlgWhy` and `TRF_TeDlgWhy` are two copies of the dock dialog gate (13 item 20): B02 "Report in" should move one shared gate into trf_plumb before a third copy.
+- `TRF_Quiet` answers a visible scene for UI state 4 (a dialog flag), so at a patrol dock with a dialog up neither the board line nor the offer runs; the dialog gate's `ui=<v>` reason is reached only when `TRF_Quiet` does not see it (`tp-g` stubs it).
+
+### 14.3 Deviations
+
+1. `TRF_Te_Word(idx)` returns the word text (`TRF_Txt` of `tew<k>`), not the key, so trf_hail joins it with `tews` directly.
+2. The raid hooks are called through `TRF_P` (protected, values returned) where 5.2 writes `TRF_N`, so an error in trf_temper cannot break a raid callback.
+3. The logbook description on screen (`ql`) and the done leg (`dn`) of 6.5 live in a function global (`TRF_TeKeepThunk`, as trf_plumb's `TRF_PlBoxThunk`) instead of the chunk local `TE`: `TE` is rebuilt by every MapInitialization, including each entry, so the done entry would go at the next entry (not `dn_legs` 10 legs later) and every entry would rewrite (remove, add) the entry. The thunk is dropped at a load (`TRF_Te_OnLoad`); after a load an existing entry counts as current and a done one is removed, as 6.5 says. Nothing more is saved.
+4. `TRF_IqFix` also drops `l` when it resets a non-zero `a` (a bad `q` or `s`): the progress leg of the dropped quest would otherwise read as a decline stamp. Its lines are `module=plumb event=iq_fix field= result=<dropped,reset>`; `TRF_Pl_Dump` adds `event=dump_iq` when a record exists. `TRF_IqStale` ends the quest itself when the owner function left it active.
+5. The raid `roll` debug line carries `temper_k` after `result` (`... roll=9000 result=no_raid temper_k=1.000`), so the `v02-h` pattern `roll=0 result=no_raid` stays.
+6. `TRF_TeDlgWhy()` takes no `via` (both dialogs open at a dock); `TRF_Te_Dlg2(a, s)` is the talk box's `s.dlg` and `TRF_Te_TalkFail` its `s.fail`. `TRF_TeOfferWhy` answers `plumb` when `TRF_IqGet` is missing.
+7. The visit state has two more fields: `TE.v.co[n]` (a Planner call-off said, once per raid) and `TE.v.gp[n]` (the decloak distance for the log).
+8. 8.2 lists 12 rows with 13 `te_*` keys (`te_gh_lo` and `te_gh_hi` share a row); all 13 are in `TRF_Te_TuneDef`.
+9. `tp-b`'s "`temper` 0: the `v02-h` log unchanged" is a Valensia lane raid run twice with the same seed, once with trf_temper hidden and once loaded with `temper` 0, and the `module=raid` lines and the lines said compared; `v02-h` itself runs with `temper` 0. `tp-e` draws the trader tier from the system's `pro` (0-2 T1, 3-5 T2, 6-8 T3, 9 T4) instead of `TRF_TierPick`, which needs the generator's live state.
+10. Host configs with `temper` 0: besides `WQ_Cfg` and `S_Cfg` (which every `S_Begin` scenario file inherits: ladder, captain, hail, survivors, warnings, remarks) also `T_V1Off` of host_traffic.lua (the v0.1 and v0.2 scenarios), because the Haggler rows changed `v02-h` and `v02-i` outcomes.
+11. `tools/gen_news.py` takes the letters as (record, header key, text key, module file, text table), so `mail_trf_te1` is checked against `TRF_Te_Text` and trf_temper.script; `release.sh` copies `TRF_Te*.xml`.
+12. W-B10.6 in `check_ingame.py` finds the Ghost word in the `module=ui event=say` message; the tool does not map systems to regions, so a word in a wrong region is left to the eye check.

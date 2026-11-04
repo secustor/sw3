@@ -69,6 +69,13 @@
 # of the scar's beacon line; default 1 in the module, LEVEL=v01/v02 write 0 unless REMARKS is set); REMARK_MODE=0|1 (cfg
 # remark_mode: 1 radio with the pilot's portrait, 0 a screen line "<name>: <text>"); written only when set. Tune keys
 # (rm_ch, rm_ch_late, rm_age, rm_secs, rm_csr, rm_own) go through TUNE.
+# TEMPER=0|1 (cfg temper, clan temperaments, design/temperament-spec.md, CHECK W-B10.1-10: the opening raid line, the four
+# raid styles by clan, the board words, the intro quest "Clan file"; default 1 in config.script, LEVEL=v01/v02 write 0
+# unless TEMPER is set); TE_QUEST=0|1 (cfg te_quest, the Clan file), TE_GATE=0|1 (cfg te_gate, 1 board words only after
+# the faction's Clan file), TE_DIALOG=0|1 (cfg te_dialog, the dialogs TRF_Te1/TRF_Te2); written only when set.
+# Data/Scripts/Trade/TRF_Te1.xml and TRF_Te2.xml (speaker TRF_WqP_patrol) are always copied. Tune keys (te_ch,
+# te_cut_hp, te_hag_cmin, te_hag_cmax, te_pl_hi, te_pl_lo, te_pl_hp, te_pl_out, te_gh_hp, te_fx, te_gh_lo, te_gh_hi,
+# te_dc, and trf_plumb's iq_stale) go through TUNE; W-B10.5 runs with TUNE=te_fx=1.
 # NEWS=1: the trf_* records of news/trf_news.xml (tools/gen_news.py) merged into the clone's Data/Game/News.xml
 # (the vanilla file is kept as News.xml.trf-orig; loc/trf_en.loc is copied on every run), and news_mode=2 unless
 # NEWS_MODE is set; unset restores News.xml from News.xml.trf-orig.
@@ -120,8 +127,8 @@ case "${MERC_NAMES:-0}" in 0) ;; 1) opt="$opt, mc_names=2" ;; *) echo "MERC_NAME
 LEVEL=${LEVEL:-v1}
 case "$LEVEL" in
 v1) pre= ;;
-v02) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0" ;;
-v01) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 prosperity=0 seed=0 parked=0 queue=0 raids=0 staged=0 contracts=0 meet=1 board=0 shop_mode=0 short_price=0 news_mode=0 esc_flight=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0" ;;
+v02) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0" ;;
+v01) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 prosperity=0 seed=0 parked=0 queue=0 raids=0 staged=0 contracts=0 meet=1 board=0 shop_mode=0 short_price=0 news_mode=0 esc_flight=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0" ;;
 *) echo "LEVEL must be v01, v02 or v1" >&2; exit 1 ;;
 esac
 for e in $pre; do
@@ -192,6 +199,10 @@ case "${HAUNT_MODE:-}" in "") ;; 1|2) opt="$opt, haunt_mode=$HAUNT_MODE" ;; *) e
 case "${MERCS:-}" in "") ;; 0|1) opt="$opt, merc=$MERCS" ;; *) echo "MERCS must be 0 or 1" >&2; exit 1;; esac
 case "${WARN:-}" in "") ;; 0|1) opt="$opt, warn=$WARN" ;; *) echo "WARN must be 0 or 1" >&2; exit 1;; esac
 case "${REMARKS:-}" in "") ;; 0|1) opt="$opt, remarks=$REMARKS" ;; *) echo "REMARKS must be 0 or 1" >&2; exit 1;; esac
+case "${TEMPER:-}" in "") ;; 0|1) opt="$opt, temper=$TEMPER" ;; *) echo "TEMPER must be 0 or 1" >&2; exit 1;; esac
+case "${TE_QUEST:-}" in "") ;; 0|1) opt="$opt, te_quest=$TE_QUEST" ;; *) echo "TE_QUEST must be 0 or 1" >&2; exit 1;; esac
+case "${TE_GATE:-}" in "") ;; 0|1) opt="$opt, te_gate=$TE_GATE" ;; *) echo "TE_GATE must be 0 or 1" >&2; exit 1;; esac
+case "${TE_DIALOG:-}" in "") ;; 0|1) opt="$opt, te_dialog=$TE_DIALOG" ;; *) echo "TE_DIALOG must be 0 or 1" >&2; exit 1;; esac
 case "${JOBS_UI:-}" in "") ;; 0|1|2) opt="$opt, jobs_ui=$JOBS_UI" ;; *) echo "JOBS_UI must be 0, 1 or 2" >&2; exit 1;; esac
 opt="$opt, jobs_log=${JOBS_LOG:-1}"
 case "${FITS:-}" in "") ;; 0|1) opt="$opt, fits=$FITS" ;; *) echo "FITS must be 0 or 1" >&2; exit 1;; esac
@@ -236,6 +247,7 @@ cp "$here/Data/Scripts/Trade/TRF_Hail.xml" "$COPY/Data/Scripts/Trade/TRF_Hail.xm
 cp "$here/Data/Scripts/Trade/TRF_HailPg.xml" "$COPY/Data/Scripts/Trade/TRF_HailPg.xml"
 cp "$here/Data/Scripts/Trade/TRF_MercPg.xml" "$COPY/Data/Scripts/Trade/TRF_MercPg.xml"
 for n in 1 2 3 3b 4 5 6 7 7c 8 9 10; do cp "$here/Data/Scripts/Trade/TRF_Wq$n.xml" "$COPY/Data/Scripts/Trade/TRF_Wq$n.xml"; done
+for n in 1 2; do cp "$here/Data/Scripts/Trade/TRF_Te$n.xml" "$COPY/Data/Scripts/Trade/TRF_Te$n.xml"; done
 pilx=$COPY/Data/Game/Pilots.xml
 [ -f "$pilx.trf-orig" ] || cp -p "$pilx" "$pilx.trf-orig"
 rc=0; awk -v frag="$here/merge/Pilots.xml" -v mercs="${MERC_NAMES:-0}" -f "$here/merge/pilots_merge.awk" "$pilx.trf-orig" > "$pilx.new" || rc=$?
@@ -279,6 +291,7 @@ mv -f "$tmp" "$ini"
 xattr -c "$COPY/zlib1.dll" "$ini" 2>/dev/null || true
 find "$SCRIPTS_DST" -type f -exec xattr -c {} \; 2>/dev/null || true
 xattr -c "$COPY/Data/Scripts/Trade/TRF_Hail.xml" "$COPY/Data/Scripts/Trade/TRF_HailPg.xml" "$COPY/Data/Scripts/Trade/TRF_MercPg.xml" "$COPY/Data/Scripts/Trade"/TRF_Wq*.xml \
+    "$COPY/Data/Scripts/Trade"/TRF_Te*.xml \
     "$locd/trf_en.loc" 2>/dev/null || true
 [ ! -f "$locr/trf_ru.loc" ] || xattr -c "$locr/trf_ru.loc" 2>/dev/null || true
 echo "installed zlib1.dll (sha1 $(shasum "$COPY/zlib1.dll" | cut -d' ' -f1))"
@@ -286,6 +299,7 @@ echo "scripts in $SCRIPTS_DST:"; ls "$SCRIPTS_DST" | sed 's/^/  /'
 echo "config.script: $(tr -d '\r' < "$SCRIPTS_DST/config.script")"
 echo "hail dialog: $COPY/Data/Scripts/Trade/TRF_Hail.xml, TRF_HailPg.xml, TRF_MercPg.xml"
 echo "freight quest dialogs: $COPY/Data/Scripts/Trade/TRF_Wq*.xml"
+echo "Clan file dialogs: $COPY/Data/Scripts/Trade/TRF_Te1.xml, TRF_Te2.xml"
 echo "pilots: $(grep -c '<GamePilot name="TRF_WqP_' "$pilx") TRF_WqP_ speakers, $(grep -c '<GamePilot name="TRF_McP_' "$pilx") TRF_McP_ templates in $pilx (vanilla in Pilots.xml.trf-orig)"
 echo "loc: $locd/trf_en.loc (loc_mode $([ "${LOC:-0}" = 1 ] && echo 1 || echo 0))"
 [ ! -f "$locr/trf_ru.loc" ] || echo "loc: $locr/trf_ru.loc"

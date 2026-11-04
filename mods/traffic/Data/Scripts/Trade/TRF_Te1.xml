@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Dialog xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="D:\_Work\SW3\Data\XMLSchema\Dialogs.xsd">
+    <start_message_name>msg10</start_message_name>
+    <DialogMessage name="msg10">
+        <message>Patrol officer: #p1#</message>
+        <pilot_name>TRF_WqP_patrol</pilot_name>
+        <sound_name />
+        <DialogAnswer name="a_what">
+            <answer>- #a1#</answer>
+            <lua_function />
+            <go_message_name>msg20</go_message_name>
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+    </DialogMessage>
+    <DialogMessage name="msg20">
+        <message>Patrol officer: #p2#</message>
+        <pilot_name>TRF_WqP_patrol</pilot_name>
+        <sound_name />
+        <DialogAnswer name="a_acc">
+            <answer>- #a2#</answer>
+            <lua_function>TRF_TeDlgA1_acc</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_why">
+            <answer>- #a3#</answer>
+            <lua_function />
+            <go_message_name>msg30</go_message_name>
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_dec">
+            <answer>- #a4#</answer>
+            <lua_function>TRF_TeDlgA1_dec</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+    </DialogMessage>
+    <DialogMessage name="msg30">
+        <message>Patrol officer: #p3#</message>
+        <pilot_name>TRF_WqP_patrol</pilot_name>
+        <sound_name />
+        <DialogAnswer name="a_acc2">
+            <answer>- #a5#</answer>
+            <lua_function>TRF_TeDlgA1_acc</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+        <DialogAnswer name="a_dec2">
+            <answer>- #a6#</answer>
+            <lua_function>TRF_TeDlgA1_dec</lua_function>
+            <go_message_name />
+            <multi_pass>true</multi_pass>
+            <sound_name />
+        </DialogAnswer>
+    </DialogMessage>
+</Dialog>

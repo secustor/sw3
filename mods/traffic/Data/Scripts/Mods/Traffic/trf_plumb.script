@@ -15,8 +15,10 @@
 -- live; trf_parcel then keeps its logbook entry in the quest log's Job log).
 -- Registries live in the chunk local P (never saved; rebuilt by every MapInitialization). TRF_InstallPlumb runs
 -- after every file is loaded and calls TRF_<M>_Plumb() of each module in TRF_PlMods(), which register there.
--- Saved fields: TRF.job (one open job), TRF.mk (packed marker labels, for the cleanup after a load), TRF.live
--- box/bt/ev/esc/arq/ag (visit slots; TRF.live is rebuilt on entry and load). Handles: TRF_H().mk.
+-- Saved fields: TRF.job (one open job), TRF.iq (the shared intro-quest record, design/temperament-spec.md 3.1: one
+-- active intro quest, done and reward bits, the lapse and decline stamp; API TRF_Iq*), TRF.mk (packed marker labels, for
+-- the cleanup after a load), TRF.live box/bt/ev/esc/arq/ag (visit slots; TRF.live is rebuilt on entry and load). Handles:
+-- TRF_H().mk.
 -- Top level: functions and P only.
 
 local P = {dock={}, none={}, coh={}, ej={}, owe={}, seed={}, rh={}, cap={}, vp={}, run={}, ad={}, dh={}};
@@ -268,7 +270,7 @@ end;
 
 -- Modules whose TRF_<M>_Plumb() registers handlers (TRF_InstallPlumb).
 function TRF_PlMods()
-	return {"Shop", "Hail", "Faction", "Events", "Gen", "Stn", "Sv", "Lad", "Ch", "Cap", "Sh", "Fr", "Haunt", "Pc", "Mc", "Wq", "Wn"};
+	return {"Shop", "Hail", "Faction", "Events", "Gen", "Stn", "Sv", "Lad", "Ch", "Cap", "Sh", "Fr", "Haunt", "Pc", "Mc", "Wq", "Wn", "Te"};
 end;
 
 -- Group and allocator prefixes of the worldbuilding features (00 section 6, "Group and allocator names"):
@@ -1242,6 +1244,236 @@ function TRF_JobClear()
 	return 1;
 end;
 
+-- Shared intro-quest record TRF.iq (design/temperament-spec.md 3.1, T16; 00 section 6 shared slots) -------------
+-- {a, d, r, l}: a the active quest packed as sd x 10^5 + q x 10^4 + s x 10^3 + t x 10 + c (counter c 0..9, target t
+-- 0..99, step s 1..9, quest id q 1..6, seed sd 0..9999; 0 = none), d the done bits (bit q), r the reward bits (the Clan
+-- file: 1..16 for factions 1..5; each later quest spec claims its bits from 32 up), l with an active quest the leg of its
+-- last progress (the lapse clock), without one leg x 10 + q of the last decline (the decline wait). Nil until the first
+-- quest is offered and answered; every intro quest module reads and writes it only through the TRF_Iq* functions here.
+-- Quest ids: 1 Clan file (trf_temper), 2 Report in, 3 Survivor's log, 4 Chart the frontier, 5 First watch, 6 The interior
+-- convoy. One active quest at a time; the freight quest TRF.wq is not part of it.
+
+-- Pure: the packed number of the active quest.
+function TRF_IqPack(q, s, t, c, sd)
+	return sd * 100000 + q * 10000 + s * 1000 + t * 10 + c;
+end;
+
+-- Pure: x mod m for x >= 0.
+function TRF_IqM(x, m)
+	return x - floor(x / m) * m;
+end;
+
+-- Pure: {q, s, t, c, sd} of packed a.
+function TRF_IqUnpack(a)
+	return {c=TRF_IqM(a, 10), t=TRF_IqM(floor(a / 10), 100), s=TRF_IqM(floor(a / 1000), 10), q=TRF_IqM(floor(a / 10000), 10),
+		sd=floor(a / 100000)};
+end;
+
+-- Pure: 1 when v is an integer in lo..hi.
+function TRF_IqInt(v, lo, hi)
+	if type(v) == "number" and v == floor(v) and v >= lo and v <= hi then return 1; end;
+	return nil;
+end;
+
+-- Pure: 2^(q-1), the bit of quest q.
+function TRF_IqBitOf(q)
+	local b = 1;
+	for i = 2, q do b = b * 2; end;
+	return b;
+end;
+
+-- Pure: 1 when bit b (a power of 2) is set in v.
+function TRF_IqHas(v, b)
+	if type(v) ~= "number" or type(b) ~= "number" or b < 1 then return nil; end;
+	local x = floor(v / b);
+	if x - floor(x / 2) * 2 == 1 then return 1; end;
+	return nil;
+end;
+
+-- Pure: v OR w for integers 0..2^30-1.
+function TRF_IqOr(v, w)
+	local o, b = 0, 1;
+	for i = 1, 30 do
+		if TRF_IqHas(v, b) or TRF_IqHas(w, b) then o = o + b; end;
+		b = b * 2;
+	end;
+	return o;
+end;
+
+function TRF_IqLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+-- TRF.iq, created with mk = 1, else nil.
+function TRF_IqRec(mk)
+	if type(TRF) ~= "table" then return nil; end;
+	if type(TRF.iq) == "table" then return TRF.iq; end;
+	if mk ~= 1 then return nil; end;
+	TRF.iq = {a=0, d=0, r=0};
+	return TRF.iq;
+end;
+
+-- An empty record (no quest, no bits, no decline stamp) goes.
+function TRF_IqTidy()
+	local x = TRF_IqRec();
+	if x and (x.a or 0) == 0 and (x.d or 0) == 0 and (x.r or 0) == 0 and x.l == nil then TRF.iq = nil; end;
+end;
+
+-- An unpacked copy {q, s, t, c, sd, d, r, l} (zeros without the record).
+function TRF_IqGet()
+	local x = TRF_IqRec();
+	local o = {q=0, s=0, t=0, c=0, sd=0, d=0, r=0};
+	if not x then return o; end;
+	if type(x.a) == "number" and x.a > 0 then
+		local u = TRF_IqUnpack(x.a);
+		o.q = u.q; o.s = u.s; o.t = u.t; o.c = u.c; o.sd = u.sd;
+	end;
+	o.d = x.d or 0; o.r = x.r or 0; o.l = x.l;
+	return o;
+end;
+
+-- The plumb iq line of quest q (the active one's digits when it is q).
+function TRF_IqLog(q, res, why)
+	local I = TRF_IqGet();
+	if I.q ~= q then I = {s=nil, t=nil, c=nil}; end;
+	TRF_PlE("iq", "quest", q, "step", I.s, "target", I.t, "count", I.c, "result", res, "reason", why);
+end;
+
+-- Takes the slot for quest q (target t, seed sd) when no quest is active: step 1, count 0, l = legs. 1, else nil, why.
+function TRF_IqTake(q, t, sd)
+	if type(TRF) ~= "table" then return nil, "trf"; end;
+	if type(q) ~= "number" or q < 1 or q > 6 or q ~= floor(q) or type(t) ~= "number" or t < 0 or t > 99 or t ~= floor(t) then
+		return nil, "arg";
+	end;
+	if type(sd) ~= "number" or sd < 0 or sd > 9999 then sd = 0; end;
+	local x = TRF_IqRec(1);
+	if (x.a or 0) ~= 0 then TRF_IqLog(q, "busy", "q"..TRF_IqUnpack(x.a).q); return nil, "busy"; end;
+	x.a = TRF_IqPack(q, 1, t, 0, floor(sd));
+	x.l = TRF_IqLegs();
+	TRF_IqLog(q, "taken");
+	return 1;
+end;
+
+-- Rewrites step s, target t and counter c of the active quest q (else nil, "owner"); l = legs (progress).
+function TRF_IqSet(q, s, t, c)
+	local I = TRF_IqGet();
+	if I.q == 0 or I.q ~= q then TRF_IqLog(q, "owner"); return nil, "owner"; end;
+	if type(s) ~= "number" or s < 1 or s > 9 or type(t) ~= "number" or t < 0 or t > 99 or type(c) ~= "number" or c < 0 or c > 9 then
+		return nil, "arg";
+	end;
+	local x = TRF_IqRec();
+	x.a = TRF_IqPack(q, floor(s), floor(t), floor(c), I.sd);
+	x.l = TRF_IqLegs();
+	TRF_IqLog(q, "set");
+	return 1;
+end;
+
+-- Ends the active quest q (else nil, "owner"): how "done" sets its done bit and ORs rbits into r; every how (done, lapsed,
+-- dropped) clears a and l.
+function TRF_IqEnd(q, how, rbits)
+	local I = TRF_IqGet();
+	if I.q == 0 or I.q ~= q then TRF_IqLog(q, "owner"); return nil, "owner"; end;
+	local x = TRF_IqRec();
+	TRF_IqLog(q, tostring(how));
+	if how == "done" then
+		x.d = TRF_IqOr(x.d or 0, TRF_IqBitOf(q));
+		if type(rbits) == "number" and rbits > 0 then x.r = TRF_IqOr(x.r or 0, floor(rbits)); end;
+	end;
+	x.a = 0;
+	x.l = nil;
+	TRF_IqTidy();
+	return 1;
+end;
+
+-- A declined offer of quest q without an active quest: l = legs x 10 + q (the decline wait).
+function TRF_IqDecline(q)
+	if type(q) ~= "number" or q < 1 or q > 6 then return nil, "arg"; end;
+	local I = TRF_IqGet();
+	if I.q ~= 0 then return nil, "busy"; end;
+	local x = TRF_IqRec(1);
+	if not x then return nil, "trf"; end;
+	x.l = TRF_IqLegs() * 10 + q;
+	TRF_IqLog(q, "declined");
+	return 1;
+end;
+
+-- 1 while the last decline was quest q and fewer than w legs ago (no active quest).
+function TRF_IqWait(q, w)
+	local I = TRF_IqGet();
+	if I.q ~= 0 or type(I.l) ~= "number" or type(w) ~= "number" then return nil; end;
+	if I.l - floor(I.l / 10) * 10 ~= q then return nil; end;
+	if TRF_IqLegs() - floor(I.l / 10) < w then return 1; end;
+	return nil;
+end;
+
+-- 1 when quest q was done once.
+function TRF_IqDone(q)
+	if type(q) ~= "number" then return nil; end;
+	return TRF_IqHas(TRF_IqGet().d, TRF_IqBitOf(q));
+end;
+
+-- 1 when reward bit b is set.
+function TRF_IqR(b)
+	return TRF_IqHas(TRF_IqGet().r, b);
+end;
+
+-- Tune value of trf_plumb key (TRF_Pl_TuneDef; iq_stale 0..500 legs, whole).
+function TRF_PlTune(key)
+	local d = TRF_Pl_TuneDef()[key];
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_PlErr); end;
+	local v = nil;
+	if type(t) == "table" then v = t[key]; end;
+	if type(v) ~= "number" then v = d; end;
+	if key == "iq_stale" then return TRF_PlCl(floor(v), 0, 500); end;
+	return v;
+end;
+
+-- The owner function of each quest id (its lapse handler); a later quest adds its own.
+function TRF_IqOwners()
+	return {"TRF_Te_IqLapse"};
+end;
+
+-- Lapse (entry and load): an active quest without progress for iq_stale legs (0: never) calls its owner; a missing owner
+-- (module not loaded), or one that left it active, ends it here (how "lapsed").
+function TRF_IqStale()
+	local I = TRF_IqGet();
+	if I.q == 0 or type(I.l) ~= "number" then return; end;
+	local w = TRF_PlTune("iq_stale");
+	if w <= 0 or TRF_IqLegs() - I.l < w then return; end;
+	local f = TRF_IqOwners()[I.q];
+	if type(f) == "string" and type(getglobal(f)) == "function" then call(getglobal(f), {}, "x", TRF_PlErr); end;
+	local J = TRF_IqGet();
+	if J.q == I.q and J.l == I.l then TRF_IqEnd(I.q, "lapsed"); end;
+end;
+
+-- Repair of TRF.iq (TRF_Pl_Fix): spec 3.1. Fields out of range are reset, unknown keys dropped, an empty record goes.
+function TRF_IqFix()
+	if type(TRF) ~= "table" or TRF.iq == nil then return; end;
+	if type(TRF.iq) ~= "table" then TRF.iq = nil; TRF_PlE("iq_fix", "field", "iq", "result", "dropped"); return; end;
+	local x = TRF.iq;
+	local L = TRF_IqLegs();
+	local o = {};
+	local int = TRF_IqInt;
+	for k, v in x do
+		if k ~= "a" and k ~= "d" and k ~= "r" and k ~= "l" then TRF_PlE("iq_fix", "field", tostring(k), "result", "dropped"); end;
+	end;
+	o.a = 0; o.d = 0; o.r = 0;
+	if int(x.a, 0, 999999999) then o.a = x.a; elseif x.a ~= nil then TRF_PlE("iq_fix", "field", "a", "result", "reset"); end;
+	if int(x.d, 0, 63) then o.d = x.d; elseif x.d ~= nil then TRF_PlE("iq_fix", "field", "d", "result", "reset"); end;
+	if int(x.r, 0, 1073741823) then o.r = x.r; elseif x.r ~= nil then TRF_PlE("iq_fix", "field", "r", "result", "reset"); end;
+	if int(x.l, 0, L * 10 + 9) then o.l = x.l; elseif x.l ~= nil then TRF_PlE("iq_fix", "field", "l", "result", "dropped"); end;
+	if o.a ~= 0 then
+		local u = TRF_IqUnpack(o.a);
+		if u.q < 1 or u.q > 6 or u.s == 0 then o.a = 0; TRF_PlE("iq_fix", "field", "a", "result", "reset"); end;
+	end;
+	-- A dropped active quest leaves no progress leg behind (it would read as a decline stamp).
+	if o.a == 0 and x.a ~= nil and x.a ~= 0 then o.l = nil; end;
+	TRF.iq = o;
+	TRF_IqTidy();
+end;
+
 -- Raid help (8.5, spec 6) -----------------------------------------------------------
 
 -- Pure: credits after the resolver results rs for a raid of ns ships. "cancel" (or {cancel = 1}) -> 0;
@@ -1548,10 +1780,11 @@ function TRF_PlSlotsClear(L)
 	L.box = nil; L.bt = nil; L.ev = nil; L.esc = nil; L.arq = nil; L.ag = nil; L.aqt = nil;
 end;
 
--- Entry: the visit slots start empty (TRF_LiveReset already rebuilt TRF.live).
+-- Entry: the visit slots start empty (TRF_LiveReset already rebuilt TRF.live); a stalled intro quest lapses.
 function TRF_Pl_OnEnter()
 	local L = TRF_PlLive();
 	if L then TRF_PlSlotsClear(L); end;
+	call(TRF_IqStale, {}, "x", TRF_PlErr);
 end;
 
 -- Activation (entry only): arrival lines count from now.
@@ -1570,6 +1803,7 @@ function TRF_Pl_OnLoad()
 	if L then TRF_PlSlotsClear(L); end;
 	call(TRF_PlMkAll, {"load"}, "x", TRF_PlErr);
 	call(TRF_PlOrphans, {}, "x", TRF_PlErr);
+	call(TRF_IqStale, {}, "x", TRF_PlErr);
 end;
 
 -- Before every jump: all markers deleted (00 section 6).
@@ -1588,7 +1822,7 @@ function TRF_Pl_Step()
 	if TRF_N("GetPlayerQuestState") == TRUE then TRF_PlMkAll("quest"); end;
 end;
 
--- Repair (TRF_Repair): TRF.job a table with a number or string k and flat fields, TRF.mk a string.
+-- Repair (TRF_Repair): TRF.job a table with a number or string k and flat fields, TRF.iq (TRF_IqFix), TRF.mk a string.
 function TRF_Pl_Fix()
 	if type(TRF) ~= "table" then return; end;
 	local j = TRF.job;
@@ -1610,6 +1844,7 @@ function TRF_Pl_Fix()
 		end;
 		if big or n > K.job_max then TRF.job = nil; end;
 	end;
+	TRF_IqFix();
 	if TRF.mk ~= nil and (type(TRF.mk) ~= "string" or strlen(TRF.mk) > K.mk_max * (K.mk_len + K.mk_own + 2)) then TRF.mk = nil; end;
 	-- The prize stamp (B1) is a real-seconds value not after TRF.clock.rs.
 	local c = TRF.clock;
@@ -1627,9 +1862,10 @@ function TRF_Pl_OptDef()
 	return {wb_box_after_fee=0, merc_war=1, merc_hunt=0, merc_hostile=0, merc_legion=0, jobs_ui=1, jobs_log=0};
 end;
 
--- prize_rs: the shared real-time gap between combat prize payouts (00 section 8 B1).
+-- prize_rs: the shared real-time gap between combat prize payouts (00 section 8 B1). iq_stale: legs without progress
+-- after which an active intro quest lapses (design/temperament-spec.md T23, owner decision O3; 0 never, 0..500).
 function TRF_Pl_TuneDef()
-	return {prize_rs=1800};
+	return {prize_rs=1800, iq_stale=40};
 end;
 
 -- Combat prize gap (00 section 8 B1, the recommended default; design/captain-spec.md 2): the prizes of #4 claims
@@ -1668,4 +1904,8 @@ function TRF_Pl_Dump()
 	TRF_PlE("dump", "box_holder", L.box, "event_slot", L.ev, "escort", L.esc, "arrival_count", L.arq, "job", jk,
 		"marker_count", TRF_PlMkCount(), "jumps", c.j, "real_seconds", TRF_F(c.rs), "visit_tick_legs", c.vl,
 		"line_count", n.line, "box_count", n.box, "cap_count", n.cap, "cost_of_head_wrapped", TRF_KvB(TRF_PlIsMine(CostOfHead)));
+	local I = TRF_IqGet();
+	if I.q ~= 0 or I.d ~= 0 or I.r ~= 0 or I.l ~= nil then
+		TRF_PlE("dump_iq", "quest", I.q, "step", I.s, "target", I.t, "count", I.c, "seed", I.sd, "done", I.d, "reward", I.r, "leg", I.l);
+	end;
 end;

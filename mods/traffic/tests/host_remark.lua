@@ -227,9 +227,9 @@ function T_RM_A()
 	local h = HOST();
 	RM_Begin("gaoba", "6");
 	local g, al, kd, sl = RM_Sys();
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=17") >= 1, "trf_remark loads last (extra_count=17)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=18") >= 1, "trf_remark loads last (extra_count=18)");
 	local ml, tf, uf = TRF_ModList(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml)] == "Rm" and tf[getn(tf) - 1] == "TRF_Rm_Text" and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf)] == "TRF_Rm_Text",
+	HOST_Check(ml[getn(ml) - 1] == "Rm" and tf[getn(tf) - 2] == "TRF_Rm_Text" and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf) - 1] == "TRF_Rm_Text",
 		"TRF_ModList ends with Rm; TRF_Rm_Text before TRF_Loc_Text and last in TRF_UI_TextFns");
 	HOST_Check(g == 42 and al == 2 and kd == 52 and sl == 5 and TRF_RgMap()[sl].home == kd and TRF_BaseAllowed(al), "fixture: gaoba 42, altair 2 (base slot), kadi 52 (home) in region 5");
 	-- Text keys (9): 14, plain sentences without %, # or a line break; the loc layer finds each one.

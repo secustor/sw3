@@ -217,9 +217,9 @@ function T_SH_A()
 	SH_Begin("gaoba", "9_1");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=17") >= 1, "trf_stash loads after trf_captain (extra_count=17 with trf_freight, trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=18") >= 1, "trf_stash loads after trf_captain (extra_count=18 with trf_freight, trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
 	local ml = TRF_ModList();
-	HOST_Check(ml[getn(ml) - 7] == "Sh" and TRF_Opt("enable_stashes") == 1 and TRF_Opt("enable_stash_retrieval") == 1 and TRF_Opt("enable_stash_decoys") == 0
+	HOST_Check(ml[getn(ml) - 8] == "Sh" and TRF_Opt("enable_stashes") == 1 and TRF_Opt("enable_stash_retrieval") == 1 and TRF_Opt("enable_stash_decoys") == 0
 		and TRF_Opt("stash_ret_war") == 0 and TRF_Opt("stash_at") == "", "TRF_ModList has Sh; toggles: stashes and retrieval on, decoys and ret_war off");
 	SH_Tune("stash_chance", nil);
 	h.cfg.tune = {};
@@ -240,7 +240,7 @@ function T_SH_A()
 	for i = 1, getn(P.dock.pir.line) do lp = lp..P.dock.pir.line[i].o..":"..TRF_PlName(P.dock.pir.line[i].f)..","; end;
 	for i = 1, getn(P.dock.patrol.line) do ll = ll..P.dock.patrol.line[i].o..","; end;
 	for i = 1, getn(P.cap) do if P.cap[i].g == "stash" and P.cap[i].t == 0 then cg = cg + 1; end; end;
-	HOST_Check(SH_Has(lb, "100:TRF_Sh_PirBox,") and SH_Has(lb, "400:TRF_FcPoBox,") and SH_Has(lp, "20:TRF_Sh_PirLine,") and SH_Has(ll, "35,40,45,50,")
+	HOST_Check(SH_Has(lb, "100:TRF_Sh_PirBox,") and SH_Has(lb, "400:TRF_FcPoBox,") and SH_Has(lp, "20:TRF_Sh_PirLine,") and SH_Has(ll, "35,40,45,47,50,")
 		and cg == 1, "pirate box 100 below S35 400, pirate line 20, patrol line 40 between 35 and 50, ship-cap group never trimmed ("..lb.." "..lp.." "..ll..")");
 	-- Slots: every slot system is an allow-list system of a region, 1..4 slots each; the excluded systems have none.
 	local sd = TRF_ShSlotData();

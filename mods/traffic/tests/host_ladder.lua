@@ -117,7 +117,7 @@ function T_LAD_A()
 	L_Begin("fort_russ");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=17") >= 1, "trf_ladder loads after trf_survive (extra_count=17 with trf_charter, trf_scar, trf_captain, trf_stash, trf_freight, trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=18") >= 1, "trf_ladder loads after trf_survive (extra_count=18 with trf_charter, trf_scar, trf_captain, trf_stash, trf_freight, trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
 	HOST_Check(S_Logs(0, "module=ladder event=install gibdd_installed=true gibdd_wrapped=true temp_change_wrapped=true") >= 1,
 		"install: _PatrolGIBDD_shtraf wrapped, _temp_change keeps trf_supply's wrapper");
 	local src = function(fn) local i = getinfo(fn, "S"); return tostring(i and i.source); end;
@@ -134,8 +134,9 @@ function T_LAD_A()
 	local ch = 0;
 	for i = 1, getn(P.coh) do if P.coh[i].f == "TRF_Lad_CoH" then ch = ch + 1; end; end;
 	-- Wanted captains (design/captain-spec.md 4) add patrol line 35 and box 100, clan stashes (design/stash-spec.md 4) line 40,
-	-- the freight unlock quest (design/freight-quest-spec.md 5) line 45 and its talk box 460 (spec 13).
-	HOST_Check(lo == "10:nil,35:nil,40:nil,45:nil,50:1," and bo == "460,400,300,100," and ch == 1 and getn(P.none) == 1,
+	-- the freight unlock quest (design/freight-quest-spec.md 5) line 45 and its talk box 460 (spec 13), the Clan file
+	-- (design/temperament-spec.md 6) line 47, box 350 and talk box 455.
+	HOST_Check(lo == "10:nil,35:nil,40:nil,45:nil,47:nil,50:1," and bo == "460,455,400,350,300,100," and ch == 1 and getn(P.none) == 1,
 		"patrol line 50 (always), box 300 below the 8.10 box, one CostOfHead handler, no _NoneStation_Action handler ("..lo.." "..bo..")");
 	-- Rank line for all five factions at every fst (09 section 2 table), with the empire status.
 	local sys = {"fort_russ", "llanovar1", "golkonda", "ergelan", "lasad"};

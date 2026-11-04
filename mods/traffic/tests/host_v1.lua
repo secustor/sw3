@@ -2251,6 +2251,8 @@ function T_V1_N()
 	TRF.wn = {v1=1099511627775, v2=1099511627775, v3=8589934591, c={[44]=skl, [35]=skl, [111]=skl, [85]=skl, [102]=skl, [113]=skl}};
 	-- Crew remarks worst case (design/crew-remarks-spec.md 3.3): 4 told stamps and the floor (the captains' dl above).
 	TRF.rm = {[110]=skl, [111]=skl, [112]=skl, [113]=skl, f=skl};
+	-- Shared intro-quest record worst case (design/temperament-spec.md 3.4): every field at its widest.
+	TRF.iq = {a=999969999, d=63, r=1073741823, l=TRF.clock.legs};
 	local mcz = HOST_SaveSize(TRF.mc);
 	TRF_Mc_Fix();
 	HOST_Check(HOST_SaveSize(TRF.mc) == mcz and mcz <= 6000, "merc worst case kept by the repair: "..mcz.." bytes <= 6000");
@@ -2277,7 +2279,7 @@ function T_V1_N()
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");
 	local size = 8 + 3 + HOST_SaveSize(TRF);
 	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "ch", "scar",
-		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "wq", "wn", "rm", "live"};
+		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "wq", "wn", "rm", "iq", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	local lp, ll = "", {"tr", "stat", "rd", "cvs", "tq", "sw", "fq", "cr", "dc", "bs", "pg"};
 	for i = 1, getn(ll) do lp = lp.." "..ll[i].."="..HOST_SaveSize(L[ll[i]]); end;

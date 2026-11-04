@@ -1512,6 +1512,8 @@ function TRF_Cl_RaidOnGoBody(n)
 	rd.st = "fight";
 	rd.t = TRF_Cl_Gt();
 	rd.dc = "nodemand";
+	-- The opening line at the fight start (design/temperament-spec.md T7).
+	TRF_P("TRF_Te_Open", n, rd, "n");
 	local r = TRF_Rd_Rec(rd.id);
 	if r then
 		if not r.rdn then r.rdn = n; end;

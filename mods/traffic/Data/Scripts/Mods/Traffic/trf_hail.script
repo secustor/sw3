@@ -1490,7 +1490,7 @@ function TRF_HailDo(key)
 		TRF_HlOffer(text, "acc", "cdec", "offer", "ct", TRF_CtAccept, TRF_HailClose, key);
 	elseif key == "trouble" then
 		r.tu = 1;
-		TRF_HlAnswer(TRF_Trouble(TRF_HlCur()));
+		TRF_HlAnswer(TRF_Trouble(TRF_HlCur(), 1));
 	elseif key == "boom" then
 		r.bm = 1;
 		TRF_HlAnswer(TRF_Boom(TRF_HlCur()));
@@ -1986,24 +1986,29 @@ function TRF_HlBoomV(i)
 	return nil;
 end;
 
--- "Raids reported: Gredos (some), Aurora (light)" (S19): dis >= 3 within trouble_range jumps.
-function TRF_Trouble(idx)
+-- "Raids reported: Gredos (some), Aurora (light)" (S19): dis >= 3 within trouble_range jumps. tw 1: each item also
+-- names the clan's temperament (trf_temper, design/temperament-spec.md 5.3: "Gredos (some, talk first)").
+function TRF_Trouble(idx, tw)
 	local o = TRF_HlPick(idx, TRF_HlT("trouble_range"), TRF_HlTroubleV);
 	if getn(o) == 0 then return TRF_Txt("trnone"), 0; end;
 	local s = "";
 	for i = 1, getn(o) do
 		if i > 1 then s = s..", "; end;
-		s = s..TRF_Txt("tritem", TRF_HlSysName(o[i].i), TRF_HlSevWord(o[i].i));
+		s = s..TRF_Txt("tritem", TRF_HlSysName(o[i].i), TRF_HlSevWord(o[i].i, tw));
 	end;
 	return TRF_Txt("trhead", s), getn(o);
 end;
 
 -- Severity word of a system: tier word; "carrier" for a carrier target, ", pirate base" with an active base
--- (v1-spec 6.2, 9.5).
-function TRF_HlSevWord(i)
+-- (v1-spec 6.2, 9.5); tw 1 adds the temperament word of the system's clan (trf_temper TRF_Te_Word).
+function TRF_HlSevWord(i, tw)
 	local w = TRF_Txt("sev"..min(TRF_HlTier(i), 4));
 	if type(TRF_UI_CarAt) == "function" and TRF_UI_CarAt(i) then w = TRF_Txt("sev5"); end;
 	if type(TRF_UI_BaseAt) == "function" and TRF_UI_BaseAt(i) == 2 then w = TRF_Txt("sevbase", w); end;
+	if tw == 1 then
+		local tx = TRF_P("TRF_Te_Word", i);
+		if type(tx) == "string" then w = TRF_Txt("tews", w, tx); end;
+	end;
 	return w;
 end;
 
@@ -2248,9 +2253,10 @@ function TRF_Hail_Plumb()
 	TRF_DockBox("patrol", 400, "TRF_BoardOfBox");
 end;
 
--- Board text: trouble line, boom line. Returns text, short form (one line), boom line.
+-- Board text: trouble line, boom line. Returns text, short form (one line), boom line. The raid rows carry the clan's
+-- temperament word when trf_temper's TRF_Te_BoardOn allows it (the Clan file reward of the docked faction, cfg te_gate).
 function TRF_BoardText(idx)
-	local t = TRF_Trouble(idx);
+	local t = TRF_Trouble(idx, TRF_P("TRF_Te_BoardOn"));
 	local b = TRF_Boom(idx);
 	return t..TRF_Br()..b, TRF_Txt("brdline", TRF_Txt("brdhead"), t), b;
 end;

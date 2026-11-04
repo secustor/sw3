@@ -961,6 +961,9 @@ function TRF_StnTip(idx, k, T)
 			end;
 		end;
 	end;
+	-- Clan temperaments (design/temperament-spec.md 5.3): the clan's habit after a raid of that clan in this visit.
+	local tx = TRF_P("TRF_Te_Tip", idx);
+	if type(tx) == "string" then return tx, "temper", idx; end;
 	return nil;
 end;
 

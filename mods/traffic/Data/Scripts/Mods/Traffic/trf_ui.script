@@ -138,7 +138,7 @@ function TRF_UI_TextFns()
 	return {"TRF_Hail_Text", "TRF_Raid_Text", "TRF_Rg_Text", "TRF_Tier_Text", "TRF_Shop_Text", "TRF_Track_Text",
 		"TRF_Supply_Text", "TRF_Clan_Text", "TRF_Faction_Text", "TRF_Convoy_Text", "TRF_Danger_Text", "TRF_Base_Text",
 		"TRF_Stn_Text", "TRF_Sv_Text", "TRF_Lad_Text", "TRF_Ch_Text", "TRF_Sc_Text", "TRF_Cap_Text", "TRF_Sh_Text", "TRF_Fr_Text",
-		"TRF_Haunt_Text", "TRF_Pc_Text", "TRF_Mc_Text", "TRF_Wq_Text", "TRF_Wn_Text", "TRF_Rm_Text"};
+		"TRF_Haunt_Text", "TRF_Pc_Text", "TRF_Mc_Text", "TRF_Wq_Text", "TRF_Wn_Text", "TRF_Rm_Text", "TRF_Te_Text"};
 end;
 
 -- One logfmt event line of module ui (design/log-format.md 5).
@@ -888,7 +888,11 @@ function TRF_UI_ArrDis(idx, band)
 		t = min(floor(t), 4);
 		-- v1-spec 6.1: T3 packs, T4 raiders.
 		local w = {"pirw1", "pirw2", "packs", "raiders"};
-		text = TRF_Txt("arrt"..band, TRF_Txt(w[t]));
+		local tw = TRF_Txt(w[t]);
+		-- A Ghost clan (trf_temper, design/temperament-spec.md T12): "... and unidentified contacts".
+		local gw = TRF_P("TRF_Te_ArrWord", idx, tw);
+		if type(gw) == "string" then tw = gw; end;
+		text = TRF_Txt("arrt"..band, tw);
 	else
 		text = TRF_Txt("arr"..band);
 	end;
@@ -1154,7 +1158,13 @@ function TRF_UI_NewsText(topic, v, slot)
 		cn = TRF_N("TRF_Cap_NameOf", slot);
 		if type(cn) ~= "string" then return nil; end;
 	end;
-	return TRF_Txt(key, home, TRF_UI_ClanName(slot), TRF_UI_FacName(fac), cn);
+	local text = TRF_Txt(key, home, TRF_UI_ClanName(slot), TRF_UI_FacName(fac), cn);
+	-- The lane raid bulletin names the clan's habit (trf_temper TRF_Te_NewsAdd, design/temperament-spec.md 5.3).
+	if topic == "lane" and base == "raid" then
+		local x = TRF_P("TRF_Te_NewsAdd", slot);
+		if type(x) == "string" then text = text..". "..x; end;
+	end;
+	return text;
 end;
 
 -- 1 when entry a (slot sa, topic ta) is newer than b: leg desc, then global before regional, lower slot,
