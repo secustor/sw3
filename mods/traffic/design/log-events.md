@@ -421,7 +421,7 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | Event | Example line | Level |
 |---|---|---|
 | `error` | `module=plumb event=error message=<m>` (a handler failed; the dispatcher goes on) | 1 |
-| `install` | `module=plumb event=install cost_of_head_installed=true cost_of_head_wrapped=true line_count=4 box_count=3 none_count=1 cost_of_head_count=0 eject_count=1 owe_count=1 seed_count=8 raid_help_count=0 cap_count=0` | 1 |
+| `install` | `module=plumb event=install cost_of_head_installed=true cost_of_head_wrapped=true line_count=4 box_count=3 none_count=1 cost_of_head_count=0 eject_count=1 owe_count=1 seed_count=8 raid_help_count=0 cap_count=0 settle_count=1` (`settle_count`: the settlement handlers, [debrief-spec.md](debrief-spec.md) 5.1) | 1 |
 | `dock` | `module=plumb event=dock kind=trade line_count=2 result=vanilla` / `... box=station_fee priority=400 result=box` | 1 |
 | `dock` | `module=plumb event=dock kind=trade line_count=0 result=skipped reason=sys_sos` (or `reason=disable_action`) | 1 |
 | `dock` | `module=plumb event=dock kind=trade line_count=4 result=vanilla reason=after_fee` (or `reason=box_lock`, `box=<own> result=vanilla reason=box_failed`) | 1 |
@@ -451,6 +451,8 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `job` | `module=plumb event=job kind=1 field_count=2 result=taken` / `holder=1 result=refused` / `result=cleared` | 1 |
 | `iq` | `module=plumb event=iq quest=1 step=1 target=21 count=0 result=<taken,set,done,lapsed,dropped,declined> reason=nil` / `quest=2 step=nil target=nil count=nil result=busy reason=q1` / `result=owner` (the shared intro-quest record `TRF.iq`, [temperament-spec.md](temperament-spec.md) 3.1) | 1 |
 | `iq_fix` | `module=plumb event=iq_fix field=<iq,a,d,r,l,<unknown key>> result=<dropped,reset>` (repair of `TRF.iq` in `TRF_Pl_Fix`; `field=l result=reset`: an active quest without a progress leg, or one above legs, gets legs) | 1 |
+| `settle` | `module=plumb event=settle kind=parcel system=taira amount=14400 handler_count=1` (`TRF_Settle` from a pay point, kinds `parcel`, `charter`, `claim`, `sweep`, `escort`; [debrief-spec.md](debrief-spec.md) 5.1; `handler_count=0` without trf_debrief) | 2 |
+| `settle` | `module=plumb event=settle kind=escort system=taira amount=1000 key=ct:7 result=dup` (a key already settled in this generation: no handler runs) | 1 |
 | `raid_help` | `module=plumb event=raid_help raid_id=7 credits_before=1063 credits_after=398 rule=excluded_factor resolver_count=3` (rule: none, factor, excluded, excluded_factor, cancel) | 1 |
 | `marker` | `module=plumb event=marker owner=pcl label=TRF_Pcl_1 result=added` / `result=refused reason=quest` (or `label`, `cap`) / `result=failed reason=create_nav_point_nil` | 1 |
 | `marker` | `module=plumb event=marker owner=pcl deleted_count=1 result=cleared` / `reason=jump deleted_count=3 result=cleared` (or `reason=load`, `reason=quest`: a mission started) | 1 |
@@ -964,6 +966,41 @@ Corporation carriers, A22 (`design/corp-carriers-spec.md` 8; host-tested only). 
 | `load` | `module=corp event=load latch=false` | 2 |
 | `fix` | `module=corp event=fix field=<state,block,p,e,t,x> [region=<slot>] result=<dropped,padded,cut,reset,capped>`; `field=crp trader_id=12 result=dropped` | 1 |
 | `dump` | `module=corp event=dump state=00000000000000000000000000000000000041000060... active=1 labelled=12:4,14:13` | 2 |
+
+## debrief (`trf_debrief.script`; `TRF_DbE`, `TRF_DbDE`)
+
+The debrief pool and the intro quest "Report in", B02 (`design/debrief-spec.md` 9; host-tested only; off by default: with cfg `debrief_xp` 0 only `dump` and `settle ... reason=xp` at level 2 appear). `kind` is the settled job (`parcel`, `charter`, `claim`, `sweep`, `escort`; `quest` for the first debrief at the hand-in), `pool_left` the debriefs left (`p`), `pending` the drawn ones not yet paid (`pd`).
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=debrief event=error message=<m>` | 1 |
+| `settle` | `module=debrief event=settle kind=parcel system=dalled amount=2400 pool_left=3 pending=1 result=drawn` (`kind=quest system=dalled pool_left=4 pending=1 result=drawn`: the first debrief at the hand-in) | 1 |
+| `settle` | `module=debrief event=settle kind=claim system=taira result=none reason=<kind,mission,chapter,chapter_end,strict:<why>,empty,pending_cap>` | 1 |
+| `settle` | `module=debrief event=settle kind=claim system=taira result=none reason=<off,xp,closed,plumb>` | 2 |
+| `refill` | `module=debrief event=refill chapter_before=6 chapter_after=7 carried=2 pool_before=2 pool_left=7 via=<enter,load,dock,settle,done> result=refilled` / `chapter_after=5 pool_left=5 via=enter result=opened` | 1 |
+| `pay` | `module=debrief event=pay via=dock jobs=2 xp_each=2.3 xp_total=4.6 pool_left=3 chapter=8 band=2 difficulty=normal result=paid` (`via=quest`: the first debrief at the hand-in) | 1 |
+| `pay` | `module=debrief event=pay via=dock jobs=1 system=taira result=wait reason=<quiet,mission,strict:<why>,native>` (`native` once per visit) / `jobs=1 result=failed reason=error` (the native raised; the debriefs stay pending) | 1 |
+| `points` | `module=debrief event=points at=<before,after,entry> pilot=Hero points=12.400` (`GetPoints` of each crew pilot on the player side around a pay; the Hero at every entry) | 2 |
+| `line` | `module=debrief event=line key=dbnew pool_left=5` | 2 |
+| `offer` | `module=debrief event=offer system=dalled help=4 postings=1 result=shown via=<box,card,board,dialog>` / `system=dalled result=listed via=board` / `result=failed reason=box` | 1 |
+| `offer` | `module=debrief event=offer system=dalled result=none reason=<off,xp,gate,done,nomap,chapter,mission,office:<why>,help,posting,plumb,busy,declined,strict:<why>>` | 2 |
+| `accept` | `module=debrief event=accept system=dalled leg=31 result=ok` (`result=stale`; `result=busy reason=<why>`) | 1 |
+| `decline` | `module=debrief event=decline system=dalled leg=31 result=declined` (`result=stale`; `system=dalled result=closed`: Esc of the card or D1) | 1 |
+| `count` | `module=debrief event=count kind=escort system=aurora amount=1000 result=counted` | 1 |
+| `count` | `module=debrief event=count kind=escort system=aurora result=none reason=<kind,mission,strict:<why>>` | 2 |
+| `step` | `module=debrief event=step step_before=10 step_after=20 reason=count` | 1 |
+| `talk` | `module=debrief event=talk dialog=2 result=pending` (the hand-in waits for the talk box 455) | 2 |
+| `report` | `module=debrief event=report system=dalled result=none reason=<off,xp,step,nomap,mission,strict:<why>>` | 2 |
+| `done` | `module=debrief event=done system=dalled kind=1 leg=40 via=<dialog,line> result=done` | 1 |
+| `lapse` | `module=debrief event=lapse step=10 leg=72 result=lapsed` (trf_plumb `TRF_IqStale` after `iq_stale` legs) | 1 |
+| `logbook` | `module=debrief event=logbook list=mission id=trf_db text=#TRF_dbd10 quest_state_before=0 quest_state_after=0 result=added` (`text=#TRF_dbed`: the empty-pool note) / `id=trf_db result=removed reason=<why>` / `state=<QUEST_DONE> result=done` (`list=job` with the Job log) | 1 |
+| `reconcile` | `module=debrief event=reconcile id=trf_db list=mission text=#TRF_dbd20k1 result=added reason=<accept,count,draw,pay,refill,done,enter,load,lapse>` / `result=removed reason=enter leg=52` | 1 |
+| `dialog` | `module=debrief event=dialog dialog=1 via=<dock,board> result=opened` / `dialog=2 via=dock answer=end result=done` (`answer=acc`, `dec`; `result=closed`: Esc) / `result=stale` / `answer=<a> result=ignored` | 1 |
+| `dialog` | `module=debrief event=dialog dialog=1 answer=acc final=true result=answer` | 2 |
+| `dialog_answers` | `module=debrief event=dialog_answers dialog=1 answers=a_what` | 2 |
+| `dialog_fallback` | `module=debrief event=dialog_fallback dialog=<1,2> reason=<xml,native,busy,uistate,ui=<v>,movie,mission,file,due,error>` (none for cfg `db_dialog` 0) | 1 |
+| `fix` | `module=debrief event=fix field=<db,ch> result=dropped` / `field=<p,n> result=clamped` / `field=ch chapter=8 result=clamped` (a lower chapter label at the sync) / `field=<t,s,done> result=dropped` (quest 2 of `TRF.iq`) | 1 |
+| `dump` | `module=debrief event=dump on=1 xp=0 gate=1 dialog=1 chapter=7 stamp=7 pool_left=3 pending=1 refill_due=0 step=0 done=1 xp_each=2.3` | 1 |
 
 ## supply (`trf_supply.script`; `TRF_SpE`)
 

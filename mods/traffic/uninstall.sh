@@ -9,7 +9,8 @@
 # restored from its backup: both blocks go (a saved pilot hired from a TRF_McP_ template keeps the name stored in the
 # save, design/proposals/merc-pilot-names.md 4.5, check EN.4).
 # The dialogs Data/Scripts/Trade/TRF_Hail.xml, TRF_HailPg.xml, TRF_MercPg.xml, the freight quest's TRF_Wq*.xml and the
-# Clan file's TRF_Te1.xml, TRF_Te2.xml are created files in the manifest and are removed with the scripts.
+# Clan file's TRF_Te1.xml, TRF_Te2.xml and the Report in dialogs TRF_Db1.xml, TRF_Db2.xml are created files in the
+# manifest and are removed with the scripts.
 # Saves made with the mod keep the TRF table (ignored without the mod). Changed station prices and pirate bases
 # stay in those saves unless the game ran once with ./install.sh --restore-only first (README, Removal).
 set -eu

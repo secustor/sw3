@@ -224,10 +224,10 @@ end;
 function T_CO_A()
 	local h = HOST();
 	CO_Begin("golkonda", "1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=19") >= 1, "trf_corp loads last (extra_count=19)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=20") >= 1, "trf_corp loads before trf_debrief (extra_count=20)");
 	local ml, pm, tf, uf = TRF_ModList(), TRF_PlMods(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml)] == "Crp" and pm[getn(pm)] == "Crp" and tf[getn(tf) - 1] == "TRF_Crp_Text" and tf[getn(tf)] == "TRF_Loc_Text"
-		and uf[getn(uf)] == "TRF_Crp_Text", "Crp last in TRF_ModList and TRF_PlMods; TRF_Crp_Text in both text lists");
+	HOST_Check(ml[getn(ml) - 1] == "Crp" and pm[getn(pm) - 1] == "Crp" and tf[getn(tf) - 2] == "TRF_Crp_Text" and tf[getn(tf)] == "TRF_Loc_Text"
+		and uf[getn(uf) - 1] == "TRF_Crp_Text", "Crp before Db at the end of TRF_ModList and TRF_PlMods; TRF_Crp_Text before TRF_Db_Text in both text lists");
 	HOST_Check(TRF_Opt("corp") == 1 and TRF_Crp_OptDef().corp == 1 and TRF_OptEnum().corp == 1, "cfg corp 1 by default, enumerated 0..1");
 	local T = TRF_CrpTune();
 	HOST_Check(CO_N(TRF_Crp_TuneDef()) == 14 and T.crp_ch == 0 and T.crp_pull_ch == 5 and T.crp_sig_ch == 0 and T.crp_share == 0.8
@@ -906,7 +906,7 @@ function T_CO_F()
 		id = CO_Trader(5);
 		CO_Escort(id);
 	end;
-	HOST_Check(C.g[pi].p == 2 and C.g[pi].st == 1 and S_Logs(n0, "module=charter event=note kind=run ") == 2 and S_Logs(n0, "kind=escort") == 0
+	HOST_Check(C.g[pi].p == 2 and C.g[pi].st == 1 and S_Logs(n0, "module=charter event=note kind=run ") == 2 and S_Logs(n0, "module=charter event=note kind=escort") == 0
 		and CO_Logs(n0, "result=run") == 2, "two InoCo escorts: kind 9 deeds, the posting complete, no kind 1 note");
 	-- Pay through the owed payer: credits through TRF_Pay, fst +1.
 	TRF.std.fst = "55555";
@@ -924,7 +924,7 @@ function T_CO_F()
 	n0 = S_Mark();
 	id = CO_Trader(4);
 	CO_Escort(id);
-	HOST_Check(C.g[1].p == 0 and S_Logs(n0, "kind=run system=gaoba region="..ks.." visit_deeds=0 result=none reason=corp faction=4") == 1 and S_Logs(n0, "kind=escort") == 1,
+	HOST_Check(C.g[1].p == 0 and S_Logs(n0, "kind=run system=gaoba region="..ks.." visit_deeds=0 result=none reason=corp faction=4") == 1 and S_Logs(n0, "module=charter event=note kind=escort") == 1,
 		"a USS escort while an InoCo run is open: no deed (reason corp), the kind 1 note");
 	-- Closes: pull-out, Bust, heat 5, a player trader kill, chapter 19.
 	TRF_CrpPut(ks, {a={[3]=0, [4]=0, [5]=0}, p=5, t=1, x=0, e=L + 24});
@@ -1076,8 +1076,8 @@ function T_CO_H()
 	local h = HOST();
 	h.hide = {["trf_corp.script"]=1};
 	CO_Begin("golkonda", "5_1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=18") >= 1 and type(TRF_Crp_Label) ~= "function",
-		"trf_corp missing: extra_count=18, no module");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=19") >= 1 and type(TRF_Crp_Label) ~= "function",
+		"trf_corp missing: extra_count=19, no module");
 	TRF_SetPro(TRF_CurIdx(), 9);
 	local n0 = S_Mark();
 	local r = CO_Dock();

@@ -101,9 +101,10 @@ function T_PL_A()
 	-- freight unlock quest (design/freight-quest-spec.md 5): trade box 450, seed provider 620, trade line 40, pirate box 300,
 	-- patrol line 45; its presentation (spec 13) the talk box 460 of the trade and patrol docks; lethal-system warnings
 	-- (design/warnings-spec.md 5): req line 20; the Clan file (design/temperament-spec.md 6): patrol line 47, patrol box 350
-	-- and talk box 455; corporation carriers (design/corp-carriers-spec.md 5.5): req line 30.
-	HOST_Check(c2.line == 17 and c2.box == 15 and c2.none == 1 and c2.ej == 1 and c2.owe == 4 and c2.seed == 13 and c2.coh == 1,
-		"traffic registrations: 17 lines, 15 boxes, 1 none handler, 1 eject handler, 4 payers, 13 seed providers, 1 CostOfHead handler");
+	-- and talk box 455; corporation carriers (design/corp-carriers-spec.md 5.5): req line 30; the debrief pool and "Report in"
+	-- (design/debrief-spec.md 10.1): trade line 80, trade boxes 420 and 455, one settlement handler.
+	HOST_Check(c2.line == 18 and c2.box == 17 and c2.none == 1 and c2.ej == 1 and c2.owe == 4 and c2.seed == 13 and c2.coh == 1 and c2.stl == 1,
+		"traffic registrations: 18 lines, 17 boxes, 1 none handler, 1 eject handler, 4 payers, 13 seed providers, 1 CostOfHead handler, 1 settlement handler");
 	local o1 = TRF_orig_CostOfHead;
 	T_Jump("aurora");
 	T_Jump("gredos");

@@ -101,6 +101,12 @@
 -- Corporation carriers (design/corp-carriers-spec.md 7, A22; default in TRF_Crp_OptDef): corp (default 1) = 0 turns off
 -- the Triada, USS and InoCo contract-carrier labels, their greeting, shop stock, dockmaster lines, pull-outs and the supply
 -- run charter posting; the tune keys crp_* and the charter's ch_run_legs read the module defaults.
+-- Debrief pool and the quest "Report in" (design/debrief-spec.md 8, B02; defaults in TRF_Db_OptDef): OFF BY DEFAULT.
+-- debrief_xp (default 0, roadmap decision 1 open) = 1 turns it on from the next entry or load: each settled mod job (a
+-- parcel, a charter posting, a bounty claim, a sweep join, an escort) draws one debrief from a small pool per chapter,
+-- paid as pilot experience at the next trade dock; debrief (default 1) = 0 turns the module off; db_gate (default 1) = 0
+-- opens the pool from chapter 5 without the quest "Report in"; db_dialog (default 1) = 0 keeps the box, card and lines (1
+-- needs hail_xml 1). Tune keys db_* read the module defaults.
 function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1, ext_fix=1,
 	enabled=1, cycle=1, prosperity=1, tier_cap=4, cap_traders=5, cap_ships=20, spawn_scale=1.0, band_half=0,
 	parked=1, esc_flight=1, seed=1, queue=1, raids=1, staged=1, contracts=1, esc_speed=0, meet=2, hail_start=2, board=1,
@@ -120,4 +126,5 @@ function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1, ext_fix=1,
 	demand_page=1, demand_drop=0, mc_names=0,
 	merc_war=1, merc_hunt=0, merc_hostile=0, merc_legion=0,
 	merc=0, merc_board=1, merc_book=0, merc_report=0, merc_marker=0, merc_calls=0, merc_transfer=0, rv_enabled=0,
-	mc_launch=0, mc_el_c=8, jobs_ui=1, jobs_log=0, warn=1, temper=1, te_quest=1, te_gate=1, te_dialog=1, corp=1} end
+	mc_launch=0, mc_el_c=8, jobs_ui=1, jobs_log=0, warn=1, temper=1, te_quest=1, te_gate=1, te_dialog=1, corp=1,
+	debrief=1, debrief_xp=0, db_gate=1, db_dialog=1} end

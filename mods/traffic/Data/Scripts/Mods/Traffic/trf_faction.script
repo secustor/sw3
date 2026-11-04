@@ -1149,6 +1149,8 @@ function TRF_SweepEnd(how)
 		if sw.f >= 1 then TRF_FsAdd(sw.s, sw.f, 1, "join"); TRF_FstAdd(sw.f, 1, "join"); end;
 		TRF_FcSay(TRF_FcTxt("ctdone", TRF_FcFacName(sw.f), paid), 8);
 		TRF_N("TRF_Ch_Note", 5, idx, paid);
+		-- The settlement hook (design/debrief-spec.md 5.1): once per join pay.
+		TRF_N("TRF_Settle", "sweep", idx, paid, "sw:"..sw.s..":"..TRF_FcLegs());
 	end;
 	TRF_N("TRF_RgSweepOut", sw.s, TRF_FcLegs(), won, sw.k, "on", "sr"..tostring(sw.roll));
 	if won and sw.b and TRF_FcAlive(H.base) then

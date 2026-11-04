@@ -82,6 +82,12 @@
 # (crp_ch, crp_pull_ch, crp_sig_ch, crp_share, crp_k, crp_own, crp_max, crp_job_x, crp_job_offer, crp_pull_n,
 # crp_pull_legs, crp_pull_max, crp_off_pct, crp_id_pct, and trf_charter's ch_run_legs) go through TUNE; W-A22.5 runs
 # faster with TUNE=crp_pull_n=1.
+# DEBRIEF_XP=0|1 (cfg debrief_xp, the debrief pool, design/debrief-spec.md, CHECK W-B02.1-10: off by default pending
+# roadmap decision 1; 1 turns on the per-chapter XP pool paid at trade docks and the intro quest "Report in"),
+# DEBRIEF=0|1 (cfg debrief, the module switch), DB_GATE=0|1 (cfg db_gate, 0 opens the pool without the quest),
+# DB_DIALOG=0|1 (cfg db_dialog, the dialogs TRF_Db1/TRF_Db2); each written only when set (no LEVEL preset entry: inert by
+# default). Data/Scripts/Trade/TRF_Db1.xml and TRF_Db2.xml (speaker TRF_WqP_clerk) are always copied. Tune keys (db_pool,
+# db_bank, db_shares, db_thr1, db_thr2, db_thr3, db_ch, db_last, db_help, db_dc) go through TUNE.
 # NEWS=1: the trf_* records of news/trf_news.xml (tools/gen_news.py) merged into the clone's Data/Game/News.xml
 # (the vanilla file is kept as News.xml.trf-orig; loc/trf_en.loc is copied on every run), and news_mode=2 unless
 # NEWS_MODE is set; unset restores News.xml from News.xml.trf-orig.
@@ -208,6 +214,10 @@ case "${TE_QUEST:-}" in "") ;; 0|1) opt="$opt, te_quest=$TE_QUEST" ;; *) echo "T
 case "${TE_GATE:-}" in "") ;; 0|1) opt="$opt, te_gate=$TE_GATE" ;; *) echo "TE_GATE must be 0 or 1" >&2; exit 1;; esac
 case "${TE_DIALOG:-}" in "") ;; 0|1) opt="$opt, te_dialog=$TE_DIALOG" ;; *) echo "TE_DIALOG must be 0 or 1" >&2; exit 1;; esac
 case "${CORP:-}" in "") ;; 0|1) opt="$opt, corp=$CORP" ;; *) echo "CORP must be 0 or 1" >&2; exit 1;; esac
+case "${DEBRIEF:-}" in "") ;; 0|1) opt="$opt, debrief=$DEBRIEF" ;; *) echo "DEBRIEF must be 0 or 1" >&2; exit 1;; esac
+case "${DEBRIEF_XP:-}" in "") ;; 0|1) opt="$opt, debrief_xp=$DEBRIEF_XP" ;; *) echo "DEBRIEF_XP must be 0 or 1" >&2; exit 1;; esac
+case "${DB_GATE:-}" in "") ;; 0|1) opt="$opt, db_gate=$DB_GATE" ;; *) echo "DB_GATE must be 0 or 1" >&2; exit 1;; esac
+case "${DB_DIALOG:-}" in "") ;; 0|1) opt="$opt, db_dialog=$DB_DIALOG" ;; *) echo "DB_DIALOG must be 0 or 1" >&2; exit 1;; esac
 case "${JOBS_UI:-}" in "") ;; 0|1|2) opt="$opt, jobs_ui=$JOBS_UI" ;; *) echo "JOBS_UI must be 0, 1 or 2" >&2; exit 1;; esac
 opt="$opt, jobs_log=${JOBS_LOG:-1}"
 case "${FITS:-}" in "") ;; 0|1) opt="$opt, fits=$FITS" ;; *) echo "FITS must be 0 or 1" >&2; exit 1;; esac
@@ -253,6 +263,7 @@ cp "$here/Data/Scripts/Trade/TRF_HailPg.xml" "$COPY/Data/Scripts/Trade/TRF_HailP
 cp "$here/Data/Scripts/Trade/TRF_MercPg.xml" "$COPY/Data/Scripts/Trade/TRF_MercPg.xml"
 for n in 1 2 3 3b 4 5 6 7 7c 8 9 10; do cp "$here/Data/Scripts/Trade/TRF_Wq$n.xml" "$COPY/Data/Scripts/Trade/TRF_Wq$n.xml"; done
 for n in 1 2; do cp "$here/Data/Scripts/Trade/TRF_Te$n.xml" "$COPY/Data/Scripts/Trade/TRF_Te$n.xml"; done
+for n in 1 2; do cp "$here/Data/Scripts/Trade/TRF_Db$n.xml" "$COPY/Data/Scripts/Trade/TRF_Db$n.xml"; done
 pilx=$COPY/Data/Game/Pilots.xml
 [ -f "$pilx.trf-orig" ] || cp -p "$pilx" "$pilx.trf-orig"
 rc=0; awk -v frag="$here/merge/Pilots.xml" -v mercs="${MERC_NAMES:-0}" -f "$here/merge/pilots_merge.awk" "$pilx.trf-orig" > "$pilx.new" || rc=$?
@@ -296,7 +307,7 @@ mv -f "$tmp" "$ini"
 xattr -c "$COPY/zlib1.dll" "$ini" 2>/dev/null || true
 find "$SCRIPTS_DST" -type f -exec xattr -c {} \; 2>/dev/null || true
 xattr -c "$COPY/Data/Scripts/Trade/TRF_Hail.xml" "$COPY/Data/Scripts/Trade/TRF_HailPg.xml" "$COPY/Data/Scripts/Trade/TRF_MercPg.xml" "$COPY/Data/Scripts/Trade"/TRF_Wq*.xml \
-    "$COPY/Data/Scripts/Trade"/TRF_Te*.xml \
+    "$COPY/Data/Scripts/Trade"/TRF_Te*.xml "$COPY/Data/Scripts/Trade"/TRF_Db*.xml \
     "$locd/trf_en.loc" 2>/dev/null || true
 [ ! -f "$locr/trf_ru.loc" ] || xattr -c "$locr/trf_ru.loc" 2>/dev/null || true
 echo "installed zlib1.dll (sha1 $(shasum "$COPY/zlib1.dll" | cut -d' ' -f1))"
@@ -305,6 +316,7 @@ echo "config.script: $(tr -d '\r' < "$SCRIPTS_DST/config.script")"
 echo "hail dialog: $COPY/Data/Scripts/Trade/TRF_Hail.xml, TRF_HailPg.xml, TRF_MercPg.xml"
 echo "freight quest dialogs: $COPY/Data/Scripts/Trade/TRF_Wq*.xml"
 echo "Clan file dialogs: $COPY/Data/Scripts/Trade/TRF_Te1.xml, TRF_Te2.xml"
+echo "Report in dialogs: $COPY/Data/Scripts/Trade/TRF_Db1.xml, TRF_Db2.xml"
 echo "pilots: $(grep -c '<GamePilot name="TRF_WqP_' "$pilx") TRF_WqP_ speakers, $(grep -c '<GamePilot name="TRF_McP_' "$pilx") TRF_McP_ templates in $pilx (vanilla in Pilots.xml.trf-orig)"
 echo "loc: $locd/trf_en.loc (loc_mode $([ "${LOC:-0}" = 1 ] && echo 1 || echo 0))"
 [ ! -f "$locr/trf_ru.loc" ] || echo "loc: $locr/trf_ru.loc"

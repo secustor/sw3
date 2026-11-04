@@ -1893,6 +1893,8 @@ function TRF_CtArrive(id, how)
 	if type(TRF_AddHeat) == "function" then TRF_HlP(TRF_AddHeat, {-1, "contract"}); end;
 	if type(TRF_ProCredit) == "function" then TRF_HlP(TRF_ProCredit, {4, "contract"}); end;
 	TRF_HlSay(TRF_Txt("ctpaid", format("%d", n)), id);
+	-- The settlement hook (design/debrief-spec.md 5.1): once per paid contract (void and lost ones call nothing).
+	TRF_N("TRF_Settle", "escort", TRF_HlCur(), n, "ct:"..id);
 	-- Corporation carriers (design/corp-carriers-spec.md 5.7): a deed of an open supply run is not also an escort deed.
 	if TRF_N("TRF_Crp_Escort", id, TRF_HlRec(id), n, TRF_HlCur()) ~= 1 then TRF_N("TRF_Ch_Note", 1, TRF_HlCur(), n); end;
 	TRF_HlStat("ct_paid");

@@ -1,6 +1,6 @@
 # Debrief pool and the intro quest "Report in": implementation spec (roadmap Wave 2 item 7, B02)
 
-Status: spec only, not built. Owner decision 1 of `D/ROADMAP.md` section 5 (reverse the "no XP from mod jobs" rule) is open, so the module ships with cfg `debrief_xp` 0: with 0 the whole feature is inert (no count, no quest offer, no dock line, no XP); `debrief_xp=1` in `config.script` turns it on in a running save from the next system entry or load. Design: `D/proposals/activities-after-worldbuilding.md` 2b.4 (cited as "P 2b.4", the recommendation with the skeptic fixes), 4.3, 4b, 6 item 26 (units); roadmap `D/ROADMAP.md` Wave 2 row 7, sections 3 and 5 decisions 1 and 4. Quest model: `D/temperament-spec.md` ("TE": the shared intro-quest record `TRF.iq`, 3.1), `D/freight-quest-spec.md` ("FQ"), voice `D/dialog-style-guide.md`; card `D/station-jobs-spec.md` ("SJ"); plumbing `D/wb-plumbing-spec.md` ("WB"); shared rules `D/worldbuilding/00-economy-and-progression.md` sections 4, 6, 8 ("00").
+Status: implemented 2026-11-04, **host-tested only** (`db-a`..`db-h`), not run in the game, and **off by default** pending roadmap decision 1 (W-B02.1-10, PROGRESS "Wave 2 (host-tested only)"). Owner decisions O2-O8 of 2.2 taken 2026-11-04 (the defaults of the table); implementation notes and deviations in 14. Owner decision 1 of `D/ROADMAP.md` section 5 (reverse the "no XP from mod jobs" rule) is open, so the module ships with cfg `debrief_xp` 0: with 0 the whole feature is inert (no count, no quest offer, no dock line, no XP); `debrief_xp=1` in `config.script` turns it on in a running save from the next system entry or load. Design: `D/proposals/activities-after-worldbuilding.md` 2b.4 (cited as "P 2b.4", the recommendation with the skeptic fixes), 4.3, 4b, 6 item 26 (units); roadmap `D/ROADMAP.md` Wave 2 row 7, sections 3 and 5 decisions 1 and 4. Quest model: `D/temperament-spec.md` ("TE": the shared intro-quest record `TRF.iq`, 3.1), `D/freight-quest-spec.md` ("FQ"), voice `D/dialog-style-guide.md`; card `D/station-jobs-spec.md` ("SJ"); plumbing `D/wb-plumbing-spec.md` ("WB"); shared rules `D/worldbuilding/00-economy-and-progression.md` sections 4, 6, 8 ("00").
 Paths: `D` = `mods/traffic/design`, `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `T` = `mods/traffic/tests`, `X` = `mods/traffic/Data/Scripts/Trade`, `G` = game `Data/Scripts` (read-only test clone). Functions are named so they can be found again; line numbers drift.
 Module: new `S/trf_debrief.script`, prefix `Db` (`TRF_Db_*` public, `TRF_Db<X>` internal; `Db`, `TRF.db` and the loc prefix `#TRF_db` are unused), log lines `module=debrief` through `TRF_DbE` / `TRF_DbDE`; quest id 2 (`ri`) of `TRF.iq`; logbook id `trf_db`; card id `db`. Loads after `trf_corp`.
 
@@ -394,21 +394,49 @@ Not verifiable offline: the XP units and the team scope of `AddPlayerExperience`
 
 ## 13. Conformance checklist
 
-1. [ ] `trf_debrief.script` CRLF, ASCII, Lua 4 rules (no `local function`, `TRUE`/`FALSE`, no `%` modulo, `call` for protected calls); only functions and the chunk local `DB` at top level.
-2. [ ] With `debrief_xp` 0 or `debrief` 0: no draw, count, offer, line, logbook entry or `AddPlayerExperience` call; `db-b` passes; switching to 1 works from the next entry.
-3. [ ] The six pay points call `TRF_Settle` once per record, after their pay; voided, lost and waiting records do not; the callers' host runs pass unchanged with trf_debrief absent.
-4. [ ] `TRF.db` is one packed integer, 22 bytes in the full state; repair as 3.1; full state printed `< 100000`.
-5. [ ] Draw at the settlement, pay only at trade docks in one `AddPlayerExperience(pd x x)` call; never at patrol or pirate docks; vanilla `ExpForSaved` untouched.
-6. [ ] Refill `p = N + min(p, N)` per chapter passed, bank 2 pools, chapters 5-20; pending pays in any chapter.
-7. [ ] `x` from `TRF_DbXpOf` matches 2.1; kill XP, `CalculateExpPoints` and `GetPlayerQuestState` unchanged.
-8. [ ] No draw during a mission; no pay during a mission or a visible scene; strict feature `debrief`.
-9. [ ] No per-job line; the count only in the pay line and `dbnew`; the empty note between the last debrief and the refill.
-10. [ ] "Report in" only through the `TRF.iq` API (q 2, done bit 2, no reward bits); one intro quest at a time; the lapse after `iq_stale`, also without the owner module.
-11. [ ] Offer gate 4.5 complete (charter office, help 3, a paid posting, chapters 5-18); box 420 or Office row 420; talk box 455; line 80; one box per docking.
-12. [ ] The hand-in pays the first debrief and opens the pool (4 left at the defaults).
-13. [ ] `X/TRF_Db1.xml`, `X/TRF_Db2.xml`: schema-valid, CRLF, ASCII, no BOM, no `<message>#`, pilot `TRF_WqP_clerk`; fallbacks for every gate reason; `TRF_PlDlgWhy` shared with trf_wq and trf_temper, their reasons unchanged.
-14. [ ] Text keys of 7 in `TRF_Db_Text` and `loc/trf_en.loc`; no `\n` joins.
-15. [ ] cfg and tune keys of 8 in OptDef/TuneDef, `TRF_OptEnum`, `config.script`, `install-test.sh` (written only when set); install scripts copy the files.
-16. [ ] Log events of 9 in `D/log-events.md`; `lint_lua.py` 0 findings, `--calls -q` only the known warnings; `luac -p`; all host runs green; `sh -n install-test.sh`; `sh mods/trackpad/build.sh` clean (no DLL change expected).
-17. [ ] README lines (repo and mod); PROGRESS entry; `check_ingame.py` W-B02.1-10 with a fixture.
-18. [ ] The design-doc edits of 10.3 are made only after owner decision O1; until then the docs keep the "no XP" lines and this spec says why the module ships off.
+1. [x] `trf_debrief.script` CRLF, ASCII, Lua 4 rules (no `local function`, `TRUE`/`FALSE`, no `%` modulo, `call` for protected calls); only functions and the chunk local `DB` at top level.
+2. [x] With `debrief_xp` 0 or `debrief` 0: no draw, count, offer, line, logbook entry or `AddPlayerExperience` call; `db-b` passes; switching to 1 works from the next entry.
+3. [x] The six pay points call `TRF_Settle` once per record, after their pay; voided, lost and waiting records do not; the callers' host runs pass unchanged with trf_debrief absent.
+4. [x] `TRF.db` is one packed integer, 22 bytes in the full state; repair as 3.1; full state printed `< 100000`.
+5. [x] Draw at the settlement, pay only at trade docks in one `AddPlayerExperience(pd x x)` call; never at patrol or pirate docks; vanilla `ExpForSaved` untouched.
+6. [x] Refill `p = N + min(p, N)` per chapter passed, bank 2 pools, chapters 5-20; pending pays in any chapter.
+7. [x] `x` from `TRF_DbXpOf` matches 2.1; kill XP, `CalculateExpPoints` and `GetPlayerQuestState` unchanged.
+8. [x] No draw during a mission; no pay during a mission or a visible scene; strict feature `debrief`.
+9. [x] No per-job line; the count only in the pay line and `dbnew`; the empty note between the last debrief and the refill.
+10. [x] "Report in" only through the `TRF.iq` API (q 2, done bit 2, no reward bits); one intro quest at a time; the lapse after `iq_stale`, also without the owner module.
+11. [x] Offer gate 4.5 complete (charter office, help 3, a paid posting, chapters 5-18); box 420 or Office row 420; talk box 455; line 80; one box per docking.
+12. [x] The hand-in pays the first debrief and opens the pool (4 left at the defaults).
+13. [x] `X/TRF_Db1.xml`, `X/TRF_Db2.xml`: schema-valid, CRLF, ASCII, no BOM, no `<message>#`, pilot `TRF_WqP_clerk`; fallbacks for every gate reason; `TRF_PlDlgWhy` shared with trf_wq and trf_temper, their reasons unchanged.
+14. [x] Text keys of 7 in `TRF_Db_Text` and `loc/trf_en.loc`; no `\n` joins.
+15. [x] cfg and tune keys of 8 in OptDef/TuneDef, `TRF_OptEnum`, `config.script`, `install-test.sh` (written only when set); install scripts copy the files.
+16. [x] Log events of 9 in `D/log-events.md`; `lint_lua.py` 0 findings, `--calls -q` only the known warnings; `luac -p`; all host runs green; `sh -n install-test.sh`; no DLL change (the trackpad build is not touched).
+17. [x] README lines (repo and mod); PROGRESS entry; `check_ingame.py` W-B02.1-10 with a fixture.
+18. [x] The design-doc edits of 10.3 are made only after owner decision O1; until then the docs keep the "no XP" lines and this spec says why the module ships off.
+
+## 14. Implementation notes (2026-11-04)
+
+### 14.1 What was built
+
+`S/trf_debrief.script` as 10.1 (chunk local `DB`, the keep thunk `TRF_DbKeepThunk`); in `S/trf_plumb.script` the settlement hook (`TRF_SettleReg`, `TRF_Settle`, `P.stl`, `P.stk`), the shared dialog gate `TRF_PlDlgWhy` with its quest test `TRF_PlQuest`, `"TRF_Db_IqLapse"` in `TRF_IqOwners`, `"Db"` last in `TRF_PlMods`, `stl` in `TRF_PlCounts` (and `settle_count` on the install line); `TRF_WqDlgWhy` and `TRF_TeDlgWhy` on top of `TRF_PlDlgWhy` (their reasons unchanged, `wq-*` and `tp-*` green); the six `TRF_N("TRF_Settle", ...)` lines of 5.1; `TRF_Ch_Office` in trf_charter; the edits of 10.2 in traffic.script, trf_state (`TRF_ModList`, `TRF_OptEnum`, `TRF_Repair`), trf_ui, trf_loc, trf_safety (comment), config.script; `X/TRF_Db1.xml`, `X/TRF_Db2.xml` (Te1/Te2's schema shape, speaker `TRF_WqP_clerk`); install.sh, install-test.sh (`DEBRIEF`, `DEBRIEF_XP`, `DB_GATE`, `DB_DIALOG`, written only when set), uninstall.sh comment, uninstall-test.sh, release.sh; `loc/trf_en.loc` (41 keys); host `db-a`..`db-h` (`T/host_debrief.lua`, entry over host_parcel.lua's helpers), `T/host_stubs.lua` (`HOST().xpn` call count of the `AddPlayerExperience` stub, `HOST_CrewPilot` with `GetPoints`), the pins of `extra_count` 20, the module and text lists, the trade line and box orders, `pl-a` (18 lines, 17 boxes, one settlement handler), `co-f` (its `kind=escort` count narrowed to the charter's note line), `TRF.db` at its widest in `v1-n`; W-B02.1-10 in `tools/check_ingame.py` with `T/check_ingame_debrief_fixture.log` and a failing block at the end of `T/check_ingame_fixture.log` (selftest 182 of 182). Sizes on the host grammar: `TRF.db` 12 bytes (22 with the key), full state `v1-n` 96,603 bytes. 222 host runs, 0 fails.
+
+### 14.2 Notes
+
+- With `debrief_xp` 0 the settlement hook still runs (plumb `settle` lines at log 2) and trf_debrief answers each call with `event=settle ... result=none reason=xp` at log 2; nothing else of the module runs except the dump, the repair and the lapse of an active run.
+- The count line `dbcnt` of a settlement inside a trade docking (a parcel at line 20, a posting at the owed payers 50) is queued and returned first by line 80, so it follows the pay point's own line; outside a trade docking (a claim at a patrol dock, an escort or a sweep in space) it is said at once through `TRF_Say`, before the patrol dock's own lines.
+- The pay gate of the refill line `dbnew` is 4.4 without `none`, so it also waits for `AddPlayerExperience` (`native`); without the native nothing of the pool can pay anyway.
+- The first debrief of the hand-in is drawn with its own line `event=settle kind=quest ... result=drawn` before `event=pay via=quest`.
+- `TRF_Ch_Office` goes through `TRF_ChDockGate`, which unlocks the charter record when the chapter and help allow it, as the charter's own dock flow does.
+
+### 14.3 Deviations
+
+1. 41 text keys, not 43: the list of 7 names 28 line, card and logbook keys and 13 dialog tokens (`db1p1`..`db1p3`, six D1 answers, `db2p1`, `db2p2`, `db2ago`, `db2aend`); the "15 dialog tokens" of the count is not reached by the list.
+2. `dbd20k1`..`dbd20k5` read "Job done: the parcel run. Hand the flight log in at any trade dock." (the table writes the five variants in one cell).
+3. The empty-pool note (6.6) is wanted only while the current chapter is below `db_last` (a refill still comes); the spec's "`ch <= db_last`" is always true for the stamp, and "Debriefs open again next chapter" would be wrong in chapter 20.
+4. Visit state: no `DB.keys` (the keys live in trf_plumb's `P.stk`, as 5.1 says); `DB.q` (count lines queued for line 80) and `DB.wn` (the `native` wait logged once per visit) added.
+5. Log lines carry more keys than 9: `refill` has `pool_before` and `via`, `pay` waits have `jobs` and `system`, `count` has `amount`, `fix field=ch` (the lower chapter label) has `chapter`, the plumb install line has `settle_count`; `settle ... reason=plumb` (no `TRF_IqDone`) is level 2 like `closed`.
+6. `TRF_Db_Fix` logs `field=db` for a value that is not an integer in 0..209,999 and `field=ch` for a stamp outside 5..20; for quest 2 `field=t` (a bad kind or count), `s`, `done`.
+7. The 00 section 6 row "Settlement hook" of 10.2 is not added: the owner instruction of 2026-11-04 keeps design 00 (with 14, 01, 04) unchanged until O1; the hook is documented in `D/wb-plumbing-spec.md` 2 and here.
+8. `TRF_WqDlgWhy` and `TRF_TeDlgWhy` keep their own `off` test first and answer `native` without trf_plumb; `TRF_PlDlgWhy` treats any `via` other than `dock` and `board` as space (as trf_wq did).
+9. `TRF_DbOfferWhy` answers `office:missing` when trf_charter is not loaded; `TRF_DbOn` also answers `off` when `TRF_Traffic()` is false.
+10. Host harness: the escort pay points take the contract as `TRF.live.ct` directly (the hail's offer flow is covered by `v02-*` and `hl-*`); the sweep join pay runs `TRF_SweepEnd` with the faction internals stubbed; a deny entry `debrief = 0` comes from a stubbed `TRF_DenyEntry`; the vanilla rescue experience at the patrol dock comes from a stubbed `InitExpForSaved` (0.4); `db-a` reads the shipped default from `config.script` (the host config differs); `db-h` prints its own run's state and `v1-n` measures the full state with `TRF.db` at its widest (96,603).
+11. W-B02.3 in `check_ingame.py` compares the Hero's entry points before and after a load (the load hook reads no points; 5.6 reads them at entries and around a pay); W-B02.5 notes, but does not require, a count of an escort or a sweep (a second game or a lapse).

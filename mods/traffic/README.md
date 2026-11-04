@@ -34,6 +34,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_remark.script` | Crew remarks on system history, B06 ([design/crew-remarks-spec.md](design/crew-remarks-spec.md)): on system entry one radio line from a squad pilot about a dated record of the system the player has not heard about (an off-screen trader or sweep scar, a fallen pirate base, a captain killed by an off-screen sweep), the age sentence and crew voice of the scar's beacon line, the told stamps `TRF.rm`; owns the shared crew-voice API `TRF_CrewVoice` / `TRF_CrewSay` (B03 and A01 use it). Host-tested only. Loads after `trf_warn`. |
 | `trf_temper.script` | Clan temperaments and the intro quest "Clan file", B10 ([design/temperament-spec.md](design/temperament-spec.md)): one raid style per region clan (Cutters skip the demand, Hagglers talk first and leave at a loss, Planners weight their targets and call off when outgunned, Ghosts leave early and, with tune `te_fx` 1, decloak next to the target), the opening radio line of every raid, the style word on the hail trouble page, the dockmaster tip, the news bulletin and (gated by the quest) the patrol board; the Clan file at faction patrol docks (dialogs `TRF_Te1`, `TRF_Te2`) on the shared intro-quest record `TRF.iq` of trf_plumb. Host-tested only. Loads after `trf_remark`. |
 | `trf_corp.script` | Corporation carriers, A22 ([design/corp-carriers-spec.md](design/corp-carriers-spec.md)): plain FTU traders in corporation space become Triada, USS or InoCo contract carriers at spawn (a fixed draw from the trader's name and region, shares from the run-time owners of the region's trade systems), with the corporation in the greeting, the focus line, the dialog head and the where-headed answer, and the corporation's gun list and a lore-named item in the trader shop; kills and robberies of a corporation's carriers (and an off-screen roll in Raids at clan T3-T4) pull it out of a region for 24 legs with a news post and dockmaster lines (req line 30); an escort of a carrier marks the region for trf_charter's supply run posting (type 7). State `TRF.crp` (one 88-digit string). Host-tested only. Loads after `trf_temper`. |
+| `trf_debrief.script` | Debrief pool and the intro quest "Report in", B02 ([design/debrief-spec.md](design/debrief-spec.md)), **off by default** (cfg `debrief_xp` 0 until roadmap decision 1): each settled mod job (parcel, charter posting, bounty claim, sweep join, escort; trf_plumb's settlement hook `TRF_Settle`) draws one debrief from a pool of 5 per chapter (one chapter of carry-over, a bank of 10), paid as pilot experience at the next trade dock (line 80, one `AddPlayerExperience` call); the pool opens with the quest "Report in" (quest 2 of `TRF.iq`: the charter office's offer, box 420 or Office row 420, dialogs `TRF_Db1`/`TRF_Db2`). State `TRF.db` (one packed number). Host-tested only. Loads after `trf_corp`. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -1130,6 +1131,41 @@ Wave 1 item 4 of the roadmap, A22 (spec [design/corp-carriers-spec.md](design/co
 ### In-game checks (corporation carriers)
 
 W-A22.1 (the greeting), W-A22.2 (focus line, hail box, dialog head), W-A22.3 (where headed), W-A22.4 (carrier shop), W-A22.5 (pull-out), W-A22.6 (supply run), W-A22.7 (target-panel callsign, manual, EN.1), W-A22.8 (req line order), W-A22.9 (standing): [design/PROGRESS.md](design/PROGRESS.md) "Wave 1 (host-tested only)", scored by `tools/check_ingame.py`.
+
+## Debrief pool and "Report in" (`EXP=0 TRAFFIC=1 DEBRIEF_XP=1`)
+
+Wave 2 item 7 of the roadmap, B02 (spec [design/debrief-spec.md](design/debrief-spec.md); owner decisions O2-O8 of spec 2.2 taken 2026-11-04 as recommended): module `trf_debrief`, loaded after `trf_corp` (`extra_count=20`). **Off by default**: roadmap section 5 decision 1 (experience from mod jobs) is open, so cfg `debrief_xp` is 0 and nothing is counted, offered, said or granted; `debrief_xp=1` in `config.script` (or `DEBRIEF_XP=1` in `install-test.sh`) turns it on from the next system entry or load. State `TRF.db` (one packed number: chapter stamp, debriefs left, pending, refill line due; 12 bytes) and quest 2 of the shared intro-quest record `TRF.iq`. Host-tested only (`db-a`..`db-h`), not run in the game.
+
+### What the player sees (with `debrief_xp=1`)
+
+- From chapter 5, after the first paid charter posting at help 3 or more, the FTU clerk of the charter office offers "Report in" at a trade dock (a dialog with `hail_xml` 1, else the mission card or a box; with the Office board a row). Finish one more mod job (a parcel, a charter posting, a bounty claim, a sweep join or an escort), then hand the flight log in at any trade dock: the first debrief pays there.
+- From then on every settled mod job draws one debrief from the chapter's pool (5; unused ones carry over one chapter, at most 10). At the next trade dock the pending debriefs pay in one grant: "Debrief filed: +2.3 experience for each pilot. Debriefs left this chapter: 4." Patrol and pirate docks pay nothing.
+- One debrief is 1.5 band-mean secondary kill shares: 1.8 / 2.3 / 3.2 experience at NORMAL in chapters 5-6 / 7-12 / 13-20 (EASY 0.8, HARD 0.35 of the threat sum instead of 0.65, as vanilla kill experience).
+- A new chapter refills the pool ("Charter office: a new chapter, new questions. Debriefs this chapter: 7." at the next trade dock); while the pool is empty the logbook holds the note "Debriefs". No draw during a story mission.
+
+### Config keys (debrief pool)
+
+`install-test.sh` writes `DEBRIEF`, `DEBRIEF_XP`, `DB_GATE` and `DB_DIALOG` only when set (no `LEVEL` preset entry); tune keys go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `debrief_xp` | 0 | owner gate (roadmap decision 1): 1 turns the pool and the quest on |
+| `debrief` | 1 | 0: the module does nothing |
+| `db_gate` | 1 | 0: the pool from chapter 5 without the quest (no offer) |
+| `db_dialog` | 1 | 0: box, card and lines instead of the dialogs (1 needs `hail_xml` 1) |
+| tune `db_pool`, `db_bank` | 5, 2 | debriefs per chapter, pools the bank holds |
+| tune `db_shares` | 1.5 | band-mean secondary kill shares per debrief |
+| tune `db_thr1`, `db_thr2`, `db_thr3` | 1.7, 2.8, 4.5 | band-mean hull threat, chapters 5-6, 7-12, 13-20 |
+| tune `db_ch`, `db_last` | 5, 20 | first and last chapter of draws and refills |
+| tune `db_help`, `db_dc` | 3, 2 | help needed for the offer, decline wait in legs |
+
+### Log lines (debrief pool)
+
+`module=debrief event=settle kind= system= amount= pool_left= pending= result=<drawn|none> [reason=]`, `event=refill`, `event=pay via=<dock|quest> jobs= xp_each= xp_total= pool_left= chapter= band= difficulty= result=<paid|wait|failed>`, `event=points at=<before|after|entry>` (log 2), `event=offer`, `event=accept`, `event=decline`, `event=count`, `event=step`, `event=done`, `event=lapse`, `event=logbook`, `event=reconcile`, `event=dialog`, `event=fix`, `event=dump`; trf_plumb's `event=settle` (log 2, `result=dup` at 1); full list in [design/log-events.md](design/log-events.md) (debrief, plumb).
+
+### In-game checks (debrief pool)
+
+W-B02.1 (the grant in kill-XP units), W-B02.2 (a reserve pilot), W-B02.3 (`GetPoints` across a load), W-B02.4 (offer and accept), W-B02.5 (count and hand-in), W-B02.6 (the first debrief), W-B02.7 (a claim pays at the trade dock), W-B02.8 (mission, refill, `dbnew`), W-B02.9 (the reference mission), W-B02.10 (the default install shows nothing); [design/PROGRESS.md](design/PROGRESS.md) "Wave 2 (host-tested only)", scored by `tools/check_ingame.py`.
 
 ## Vanilla fixes
 

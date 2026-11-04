@@ -17,6 +17,8 @@
 -- corporation), posted in a region with trf_corp's run mark (TRF_Crp_Mark), deed kind 9 through trf_corp's
 -- TRF_Crp_Escort, closed when the corporation pulls out (reason pull) or in Bust; its pay also gives fst +1;
 -- TRF_Ch_RunOpen tells trf_corp which corporations have one open in a region.
+-- Debrief pool (design/debrief-spec.md 5.1, 4.5): a paid posting calls trf_plumb's settlement hook (TRF_Settle "charter");
+-- TRF_Ch_Office answers the paid postings for the "Report in" offer.
 -- Saved fields (TRF.ch, created at the unlock, repaired by TRF_Ch_Fix): on, rk, rp, du, pt, lh, vd, vb, sd, cnt,
 -- g[1..3] = {t, r, f, d, k, p, w, a, e, st, pay, rq, l[, c]}, cd[1..3], rs[r], rb[r], pk[r], tot = {d, f, w}, nw,
 -- hx. Visit state in the chunk local CV (never saved; rebuilt by every MapInitialization).
@@ -631,6 +633,16 @@ function TRF_ChDockGate()
 	return C, idx;
 end;
 
+-- The charter office for the debrief quest offer (design/debrief-spec.md 4.5): the paid postings (C.tot.d) when the dock
+-- gate passes and the chapter is at most ch_last_ch, else nil and the reason (off, locked, nomap, deny, quiet, strict,
+-- chapter).
+function TRF_Ch_Office()
+	local C, w = TRF_ChDockGate();
+	if not C then return nil, w; end;
+	if TRF_ChChapter() > TRF_ChT("ch_last_ch") then return nil, "chapter"; end;
+	return C.tot.d or 0;
+end;
+
 -- Logbook ------------------------------------------------------------------------------
 
 function TRF_ChQAdd(i, p)
@@ -1094,6 +1106,8 @@ function TRF_ChPay(C, i, p, idx, out)
 	TRF_N("TRF_Stat", "ch_paid");
 	TRF_ChE("pay", "slot", i, "type", TRF_ChTypes()[p.t].n, "region", p.r, "amount", paid, "rank", C.rk, "rank_points", C.rp,
 		"help", d, "real_seconds", floor(C.pt));
+	-- The settlement hook (design/debrief-spec.md 5.1): once per paid posting.
+	TRF_N("TRF_Settle", "charter", idx, paid, "ch:"..i..":"..p.a);
 end;
 
 -- pro +1 in the lowest-pro trade station system of region slot (tie: lower idx), never above the current phase

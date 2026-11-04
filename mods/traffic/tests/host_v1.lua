@@ -2262,6 +2262,8 @@ function T_V1_N()
 		if type(TRF.newsx[k]) ~= "table" then TRF.newsx[k] = {}; end;
 		TRF.newsx[k].crp = {v="out_5", n=1, l=-99999};
 	end;
+	-- Debrief pool worst case (design/debrief-spec.md 3.3): one packed number (chapter 20, 18 left, 9 pending, line due).
+	TRF.db = 201891;
 	local mcz = HOST_SaveSize(TRF.mc);
 	TRF_Mc_Fix();
 	HOST_Check(HOST_SaveSize(TRF.mc) == mcz and mcz <= 6000, "merc worst case kept by the repair: "..mcz.." bytes <= 6000");
@@ -2288,7 +2290,7 @@ function T_V1_N()
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");
 	local size = 8 + 3 + HOST_SaveSize(TRF);
 	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "ch", "scar",
-		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "wq", "wn", "rm", "iq", "crp", "live"};
+		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "wq", "wn", "rm", "iq", "crp", "db", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	local lp, ll = "", {"tr", "stat", "rd", "cvs", "tq", "sw", "fq", "cr", "dc", "bs", "pg"};
 	for i = 1, getn(ll) do lp = lp.." "..ll[i].."="..HOST_SaveSize(L[ll[i]]); end;

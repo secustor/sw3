@@ -982,7 +982,18 @@ function SubPlayerCredits(n) HOST().credits = HOST().credits - n; end;
 -- Office unit of the player (LN line 206; mercenary clans, TR F.17): HOST().recruit, else "" (no unit).
 function GetRecruitGroupName() return HOST().recruit or ""; end;
 function GetPlayerLevel() return HOST().level; end;
-function AddPlayerExperience(x) HOST().xp = (HOST().xp or 0) + x; end;
+-- xpn counts the calls (design/debrief-spec.md 11: one call for every pending debrief).
+function AddPlayerExperience(x) HOST().xp = (HOST().xp or 0) + x; HOST().xpn = (HOST().xpn or 0) + 1; end;
+-- A crew pilot for GetPilot(name) (design/debrief-spec.md 5.6): unspent points pts plus every AddPlayerExperience grant
+-- (HOST().xp) through pilot:GetPoints(), alive, side "Player" unless side is given.
+function HOST_CrewPilot(name, pts, side)
+	local q = {kind="pilot", name=name, pts=pts or 0, side=side or "Player"};
+	q.IsAlive = function(self) return TRUE; end;
+	q.GetSide = function(self) return self.side; end;
+	q.GetPoints = function(self) return self.pts + (HOST().xp or 0); end;
+	HOST().crew[name] = q;
+	return q;
+end;
 -- News: (mailId) strings; recorded as "+id" / "-id".
 function AddPost(id) HOST_Want(type(id) == "string", "AddPost(mailId)"); tinsert(HOST().posts, "+"..id); end;
 function RemovePost(id) HOST_Want(type(id) == "string", "RemovePost(mailId)"); tinsert(HOST().posts, "-"..id); end;

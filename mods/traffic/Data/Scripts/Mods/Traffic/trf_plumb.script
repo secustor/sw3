@@ -15,13 +15,18 @@
 -- live; trf_parcel then keeps its logbook entry in the quest log's Job log).
 -- Registries live in the chunk local P (never saved; rebuilt by every MapInitialization). TRF_InstallPlumb runs
 -- after every file is loaded and calls TRF_<M>_Plumb() of each module in TRF_PlMods(), which register there.
+-- The settlement hook (design/debrief-spec.md 5.1): TRF_SettleReg handlers run once per settled mod job record
+-- (TRF_Settle from the six pay points: parcel, charter, claim, sweep, escort), a repeated key of the generation dropped.
+-- The shared dialog gate TRF_PlDlgWhy (debrief-spec D23) of the dock and space dialog windows of trf_wq, trf_temper and
+-- trf_debrief.
 -- Saved fields: TRF.job (one open job), TRF.iq (the shared intro-quest record, design/temperament-spec.md 3.1: one
--- active intro quest, done and reward bits, the lapse and decline stamp; API TRF_Iq*), TRF.mk (packed marker labels, for
+-- active intro quest, done and reward bits, the lapse and decline stamp; API TRF_Iq*; quest 1 Clan file of trf_temper,
+-- quest 2 Report in of trf_debrief), TRF.mk (packed marker labels, for
 -- the cleanup after a load), TRF.live box/bt/ev/esc/arq/ag (visit slots; TRF.live is rebuilt on entry and load). Handles:
 -- TRF_H().mk.
 -- Top level: functions and P only.
 
-local P = {dock={}, none={}, coh={}, ej={}, owe={}, seed={}, rh={}, cap={}, vp={}, run={}, ad={}, dh={}};
+local P = {dock={}, none={}, coh={}, ej={}, owe={}, seed={}, rh={}, cap={}, vp={}, run={}, ad={}, dh={}, stl={}, stk={}};
 
 -- Helpers --------------------------------------------------------------------------
 
@@ -270,7 +275,7 @@ end;
 
 -- Modules whose TRF_<M>_Plumb() registers handlers (TRF_InstallPlumb).
 function TRF_PlMods()
-	return {"Shop", "Hail", "Faction", "Events", "Gen", "Stn", "Sv", "Lad", "Ch", "Cap", "Sh", "Fr", "Haunt", "Pc", "Mc", "Wq", "Wn", "Te", "Crp"};
+	return {"Shop", "Hail", "Faction", "Events", "Gen", "Stn", "Sv", "Lad", "Ch", "Cap", "Sh", "Fr", "Haunt", "Pc", "Mc", "Wq", "Wn", "Te", "Crp", "Db"};
 end;
 
 -- Group and allocator prefixes of the worldbuilding features (00 section 6, "Group and allocator names"):
@@ -377,6 +382,40 @@ function TRF_OweReg(fn)
 	return TRF_PlIns(%P.owe, getn(%P.owe) + 1, fn, nil, 1);
 end;
 
+-- Settlement handler fn(kind, idx, amt, key) (design/debrief-spec.md 5.1), run in registration order by TRF_Settle.
+function TRF_SettleReg(fn)
+	return TRF_PlIns(%P.stl, getn(%P.stl) + 1, fn, nil, 1);
+end;
+
+-- A mod job record settled (paid) now: kind parcel, charter, claim, sweep or escort, idx the system (nil: the current
+-- one), amt the credits, key an optional record key (a key already seen in this generation is dropped, result=dup; at
+-- most 16 keys are kept, the oldest dropped). Every handler runs protected. Returns the handler count (0 for a dup).
+function TRF_Settle(kind, idx, amt, key)
+	local p = %P;
+	if type(kind) ~= "string" then return 0; end;
+	if type(idx) ~= "number" then idx = TRF_N("TRF_CurIdx"); end;
+	local nm = TRF_N("TRF_SysName", idx);
+	if type(nm) == "string" then nm = strlower(nm); else nm = tostring(idx); end;
+	if key ~= nil then
+		key = tostring(key);
+		for i = 1, getn(p.stk) do
+			if p.stk[i] == key then
+				TRF_PlE("settle", "kind", kind, "system", nm, "amount", amt, "key", key, "result", "dup");
+				return 0;
+			end;
+		end;
+		tinsert(p.stk, key);
+		while getn(p.stk) > 16 do tremove(p.stk, 1); end;
+	end;
+	local l = p.stl;
+	local n = 0;
+	for i = 1, getn(l) do
+		if TRF_PlFn(l[i].f) then TRF_PlCall(l[i].f, {kind, idx, amt, key}); n = n + 1; end;
+	end;
+	TRF_PlDE("settle", "kind", kind, "system", nm, "amount", amt, "handler_count", n);
+	return n;
+end;
+
 -- Arrival seed provider fn(c), highest prio first (trf_gen's TRF_EntryPlan).
 function TRF_SeedReg(prio, fn)
 	return TRF_PlIns(%P.seed, prio, fn, nil, 0);
@@ -443,13 +482,47 @@ function TRF_CapReg(group, countfn, trim, trimfn)
 	return 1;
 end;
 
--- Registration counts for the install and dump lines: {line, box, none, coh, ej, owe, seed, rh, cap}.
+-- Registration counts for the install and dump lines: {line, box, none, coh, ej, owe, seed, rh, cap, stl}.
 function TRF_PlCounts()
 	local p = %P;
 	local nl, nb = 0, 0;
 	for k, d in p.dock do nl = nl + getn(d.line); nb = nb + getn(d.box); end;
 	return {line=nl, box=nb, none=getn(p.none), coh=getn(p.coh), ej=getn(p.ej), owe=getn(p.owe), seed=getn(p.seed),
-		rh=getn(p.rh), cap=getn(p.cap)};
+		rh=getn(p.rh), cap=getn(p.cap), stl=getn(p.stl)};
+end;
+
+-- 1 while a story mission runs (trf_safety TRF_Safe_QState, else GetPlayerQuestState() == TRUE).
+function TRF_PlQuest()
+	if type(TRF_Safe_QState) == "function" then
+		if TRF_Safe_QState() then return 1; end;
+		return nil;
+	end;
+	if type(GetPlayerQuestState) == "function" and GetPlayerQuestState() == TRUE then return 1; end;
+	return nil;
+end;
+
+-- The shared dialog gate (design/debrief-spec.md D23): why a dialog window of a module cannot open now, or nil. on: the
+-- module's dialog cfg value (not 1: off); busy: the module's open dialog record (a table or 1: busy); via: dock (inside
+-- the dock request box's callback, a modal window allowed) and board (over the Office window, likewise) refuse a movie or
+-- dialog flag of TRF_UiState (bits 1, 4), any other via (space) every non-zero state. Reasons: off, xml (hail_xml not 1:
+-- the files are not installed), native (no StartTradeDialog), busy, uistate (no TRF_UiState), ui=<v>, movie, mission.
+-- The caller logs the reason and adds its own (trf_wq: jump and the scene flags in space).
+function TRF_PlDlgWhy(on, busy, via)
+	if on ~= 1 then return "off"; end;
+	if TRF_N("TRF_Opt", "hail_xml") ~= 1 then return "xml"; end;
+	if type(StartTradeDialog) ~= "function" then return "native"; end;
+	if type(busy) == "table" or busy == 1 then return "busy"; end;
+	if type(TRF_UiState) ~= "function" then return "uistate"; end;
+	local u = call(TRF_UiState, {}, "x", TRF_PlNoErr);
+	if type(u) ~= "number" or u < 0 then return "ui="..tostring(u); end;
+	if via == "board" or via == "dock" then
+		if TRF_N("TRF_Bit", u, 1) == 1 or TRF_N("TRF_Bit", u, 4) == 1 then return "ui="..u; end;
+	elseif u ~= 0 then
+		return "ui="..u;
+	end;
+	if type(TRF_InMovie) == "function" and call(TRF_InMovie, {}, "x", TRF_PlNoErr) == 1 then return "movie"; end;
+	if TRF_PlQuest() then return "mission"; end;
+	return nil;
 end;
 
 -- Dock dispatcher (spec 4) ----------------------------------------------------------
@@ -1050,7 +1123,7 @@ function TRF_InstallPlumb()
 	TRF_PlE("install", "cost_of_head_installed", TRF_KvB(r.coh), "cost_of_head_wrapped", TRF_KvB(TRF_PlIsMine(CostOfHead)),
 		"trade_dlg_installed", TRF_KvB(r.tsd), "trade_dlg_wrapped", TRF_KvB(TRF_PlTsdMine(TradeStationDlg)),
 		"line_count", c.line, "box_count", c.box, "none_count", c.none, "cost_of_head_count", c.coh, "eject_count", c.ej,
-		"owe_count", c.owe, "seed_count", c.seed, "raid_help_count", c.rh, "cap_count", c.cap);
+		"owe_count", c.owe, "seed_count", c.seed, "raid_help_count", c.rh, "cap_count", c.cap, "settle_count", c.stl);
 	return r;
 end;
 
@@ -1434,7 +1507,7 @@ end;
 
 -- The owner function of each quest id (its lapse handler); a later quest adds its own.
 function TRF_IqOwners()
-	return {"TRF_Te_IqLapse"};
+	return {"TRF_Te_IqLapse", "TRF_Db_IqLapse"};
 end;
 
 -- Lapse (entry and load): an active quest without progress for iq_stale legs (0: never) calls its owner; a missing owner

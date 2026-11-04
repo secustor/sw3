@@ -145,6 +145,7 @@ Adds NPC traders, pirate clans, factions and jobs, written as Lua scripts loaded
 - Sealed parcels from a courier desk, with a deposit and a deadline.
 - FTU charter goals per region, with ranks and perks (chapter 5+).
 - Wolves Freight: run up to 3 chartered freighters for income (chapter 5+). It is unlocked by the quest "Missing in Capricorn".
+- Off by default (`debrief_xp=1` turns it on): settled mod jobs give your pilots a few debriefs of experience per chapter at trade docks, opened by the charter office's quest "Report in" (not yet tested in game).
 - Job offers open as message boxes.
 - A mission-window card for offers, the Office jobs board and a job log are built but off by default (`jobs_card`, `jobs_board`, `jobs_log` in `sw3tp.ini`).
 - Opt-in (`merc=1`): 12 mercenary clans work the regions, and you can hire their packs for 10 minutes. Add `--merc-names` to give their pilots names.

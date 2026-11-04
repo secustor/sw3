@@ -6,7 +6,7 @@ here=$(cd "$(dirname "$0")" && pwd); . "$here/env.sh"
 [ -d "$COPY" ] || { echo "no copy at $COPY"; exit 0; }
 rm -rf "$SCRIPTS_DST"; rmdir "$COPY/Data/Scripts/Mods" 2>/dev/null || true
 rm -f "$COPY/Data/Scripts/Trade/TRF_Hail.xml" "$COPY/Data/Scripts/Trade/TRF_HailPg.xml" "$COPY/Data/Scripts/Trade/TRF_MercPg.xml" "$COPY/Data/Scripts/Trade"/TRF_Wq*.xml \
-    "$COPY/Data/Scripts/Trade"/TRF_Te*.xml
+    "$COPY/Data/Scripts/Trade"/TRF_Te*.xml "$COPY/Data/Scripts/Trade"/TRF_Db*.xml
 # Pilots.xml: install-test.sh merges the quest speakers (and with MERC_NAMES=1 the mercenary pilots) on every run.
 pilx=$COPY/Data/Game/Pilots.xml
 [ ! -f "$pilx.trf-orig" ] || mv -f "$pilx.trf-orig" "$pilx"

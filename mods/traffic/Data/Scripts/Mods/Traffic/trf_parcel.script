@@ -1248,6 +1248,8 @@ function TRF_PcDeliver(J)
 	end;
 	R.ok = min(999, (R.ok or 0) + 1);
 	TRF_PcEnd(J, "done");
+	-- The settlement hook (design/debrief-spec.md 5.1): once per delivered job, also with the pay held.
+	TRF_N("TRF_Settle", "parcel", J.dst, paid + held, "pc:"..J.src..":"..J.dst..":"..J.t0);
 	TRF_PcStat("pcl_ok");
 	TRF_PcE("deliver", "kind", J.k, "source", TRF_PcName(J.src), "destination", TRF_PcName(J.dst), "units", J.n, "units_found", k,
 		"pay", pay, "paid", paid, "held", held, "deposit_back", dep, "help_change", hd, "visit_credit", vc, "shortage_ended", TRF_KvB(ended),

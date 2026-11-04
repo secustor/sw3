@@ -979,19 +979,12 @@ end;
 
 -- Why a dialog cannot open at the dock now (inside the dock request box's callback; the modal flag 2 allowed), or nil:
 -- off (cfg te_dialog 0), xml (hail_xml not 1), native, busy (a te dialog is open), uistate, ui=<v> (a movie or a dialog
--- flag, or unknown), movie, mission. A copy of trf_wq's TRF_WqDlgWhy (spec 13 item 20: B02 moves it into trf_plumb).
+-- flag, or unknown), movie, mission: trf_plumb's shared gate TRF_PlDlgWhy (design/debrief-spec.md D23); without
+-- trf_plumb nothing opens (native).
 function TRF_TeDlgWhy()
 	if TRF_TeOpt("te_dialog") ~= 1 then return "off"; end;
-	if TRF_N("TRF_Opt", "hail_xml") ~= 1 then return "xml"; end;
-	if type(StartTradeDialog) ~= "function" then return "native"; end;
-	if type(%TE.dlg) == "table" then return "busy"; end;
-	if type(TRF_UiState) ~= "function" then return "uistate"; end;
-	local u = call(TRF_UiState, {}, "x", TRF_TeNoErr);
-	if type(u) ~= "number" or u < 0 then return "ui="..tostring(u); end;
-	if TRF_N("TRF_Bit", u, 1) == 1 or TRF_N("TRF_Bit", u, 4) == 1 then return "ui="..u; end;
-	if type(TRF_InMovie) == "function" and call(TRF_InMovie, {}, "x", TRF_TeNoErr) == 1 then return "movie"; end;
-	if TRF_TeQuest() then return "mission"; end;
-	return nil;
+	if type(TRF_PlDlgWhy) ~= "function" then return "native"; end;
+	return TRF_PlDlgWhy(TRF_TeOpt("te_dialog"), %TE.dlg, "dock");
 end;
 
 -- A dialog fell back to its line, box or card: event=dialog_fallback (none for cfg te_dialog 0, the normal path then).

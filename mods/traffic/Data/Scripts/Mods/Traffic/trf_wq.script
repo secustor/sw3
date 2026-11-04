@@ -1713,22 +1713,13 @@ end;
 -- DLL's mission card and vanilla's OnCStationStart; board: over the Office window, likewise; space: nothing up), or nil:
 -- off (cfg wq_dialog 0), xml (hail_xml not 1: the files are not installed), native, busy (a dialog of this module is
 -- open), uistate, ui=<v> (a movie, a dialog, in space also a modal window, or unknown), movie, mission, and in space
--- the scene flags (TRF_WqHoldFlag) and a jump in progress (jump).
+-- the scene flags (TRF_WqHoldFlag) and a jump in progress (jump). The common reasons come from trf_plumb's shared gate
+-- TRF_PlDlgWhy (design/debrief-spec.md D23); without trf_plumb nothing opens (native).
 function TRF_WqDlgWhy(via)
 	if TRF_WqOpt("wq_dialog") ~= 1 then return "off"; end;
-	if TRF_N("TRF_Opt", "hail_xml") ~= 1 then return "xml"; end;
-	if type(StartTradeDialog) ~= "function" then return "native"; end;
-	if type(%WQ.dlg) == "table" then return "busy"; end;
-	if type(TRF_UiState) ~= "function" then return "uistate"; end;
-	local u = call(TRF_UiState, {}, "x", TRF_WqNoErr);
-	if type(u) ~= "number" or u < 0 then return "ui="..tostring(u); end;
-	if via == "board" or via == "dock" then
-		if TRF_N("TRF_Bit", u, 1) == 1 or TRF_N("TRF_Bit", u, 4) == 1 then return "ui="..u; end;
-	elseif u ~= 0 then
-		return "ui="..u;
-	end;
-	if type(TRF_InMovie) == "function" and call(TRF_InMovie, {}, "x", TRF_WqNoErr) == 1 then return "movie"; end;
-	if TRF_WqQuest() then return "mission"; end;
+	if type(TRF_PlDlgWhy) ~= "function" then return "native"; end;
+	local w = TRF_PlDlgWhy(TRF_WqOpt("wq_dialog"), %WQ.dlg, via);
+	if w then return w; end;
 	if via == "space" and %WQ.v.jmp == 1 then return "jump"; end;
 	if via == "space" then return TRF_WqHoldFlag(); end;
 	return nil;

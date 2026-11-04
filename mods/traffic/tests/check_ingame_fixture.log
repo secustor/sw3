@@ -492,3 +492,13 @@ traffic: lua: exp=v1 module=corp event=label trader_id=51 name=13 system=debris4
 traffic: lua: exp=v1 module=corp event=hit trader_id=51 corp=Uss region=4 how=kill by=player count_before=1 count=2 player_caused=true result=counted
 traffic: lua: exp=v1 module=events event=faction_standing faction=4 reason="carrier kill 51" change=-1
 traffic: lua: exp=v1 module=corp event=label trader_id=52 name=99 system=debris4 region=4 corp=Inoco share=1.500 roll=0.100
+traffic: lua: exp=v1 module=state event=enter generation=97 fresh=false system=heos legs=307
+traffic: lua: exp=v1 module=safety event=activate system=heos mode=mod reason=nil chapter=7 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=debrief event=dump on=1 xp=0 gate=1 dialog=1 chapter=7 stamp=nil pool_left=nil pending=nil refill_due=nil step=0 done=0 xp_each=2.3
+traffic: lua: exp=v1 module=debrief event=offer system=heos help=5 postings=1 result=shown via=box
+traffic: lua: exp=v1 module=debrief event=pay via=quest jobs=1 xp_each=2.3 xp_total=2.3 pool_left=4 chapter=7 band=2 difficulty=normal result=paid
+traffic: lua: exp=v1 module=debrief event=done system=heos kind=1 leg=307 via=line result=done
+traffic: lua: exp=v1 module=debrief event=points at=before pilot=Hero points=12.000
+traffic: lua: exp=v1 module=debrief event=points at=after pilot=Hero points=12.000
+traffic: lua: exp=v1 module=debrief event=pay via=dock jobs=1 xp_each=2.3 xp_total=2.3 pool_left=3 chapter=7 band=2 difficulty=normal result=paid
+traffic: lua: exp=v1 module=debrief event=refill chapter_before=7 chapter_after=7 carried=0 pool_before=3 pool_left=8 via=dock result=refilled

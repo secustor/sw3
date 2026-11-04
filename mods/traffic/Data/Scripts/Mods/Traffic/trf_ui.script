@@ -141,7 +141,7 @@ function TRF_UI_TextFns()
 		"TRF_Supply_Text", "TRF_Clan_Text", "TRF_Faction_Text", "TRF_Convoy_Text", "TRF_Danger_Text", "TRF_Base_Text",
 		"TRF_Stn_Text", "TRF_Sv_Text", "TRF_Lad_Text", "TRF_Ch_Text", "TRF_Sc_Text", "TRF_Cap_Text", "TRF_Sh_Text", "TRF_Fr_Text",
 		"TRF_Haunt_Text", "TRF_Pc_Text", "TRF_Mc_Text", "TRF_Wq_Text", "TRF_Wn_Text", "TRF_Rm_Text", "TRF_Te_Text",
-		"TRF_Crp_Text"};
+		"TRF_Crp_Text", "TRF_Db_Text"};
 end;
 
 -- One logfmt event line of module ui (design/log-format.md 5).

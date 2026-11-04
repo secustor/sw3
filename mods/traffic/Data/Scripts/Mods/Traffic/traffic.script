@@ -74,6 +74,11 @@
 -- spawn, trf_ui, trf_hail and trf_shop its text and stock functions, trf_events and trf_supply its loss count,
 -- trf_region its region tick (before the charter's), trf_charter its run mark; the dock line is a trf_plumb line (req,
 -- order 30).
+-- Debrief pool and the quest "Report in" (design/debrief-spec.md, B02, off by default: cfg debrief_xp 0): trf_debrief
+-- loads after trf_corp (extra=); its enter hook (after trf_temper's) syncs the pool, the activate hook (after trf_temper's)
+-- and the load hook (v1 list, last) reconcile the logbook, the jump hook (v1 list) clears the visit; the six pay points
+-- call trf_plumb's TRF_Settle, which runs its handler; trf_plumb owns its quest record (TRF.iq quest 2), its trade line 80,
+-- boxes 420 and 455 and the Office row 420.
 
 function TRF_Path(name)
 	return "DATA/Scripts/Mods/Traffic/"..name;
@@ -337,6 +342,7 @@ function TRF_OnEnter()
 		TRF_P("TRF_Mc_OnEnter");
 		TRF_P("TRF_Wq_OnEnter");
 		TRF_P("TRF_Te_OnEnter");
+		TRF_P("TRF_Db_OnEnter");
 		TRF_P("TRF_Wn_OnEnter");
 		TRF.active = 1;
 	else
@@ -378,6 +384,7 @@ function TRF_OnActivate()
 		TRF_P("TRF_Mc_OnActivate");
 		TRF_P("TRF_Wq_OnActivate");
 		TRF_P("TRF_Te_OnActivate");
+		TRF_P("TRF_Db_OnActivate");
 		TRF_P("TRF_Stn_OnActivate");
 		TRF_P("TRF_Wn_OnActivate");
 		TRF_P("TRF_Crp_OnActivate");
@@ -400,7 +407,7 @@ function TRF_OnLoad()
 		TRF_P("TRF_Tier_OnLoad");
 		TRF_P("TRF_Raid_OnLoad");
 		TRF_P("TRF_Hail_OnLoad");
-		local v1 = {"Base", "Track", "Clan", "Faction", "Convoy", "Danger", "Supply", "Cap", "Pl", "Pc", "Stn", "Sv", "Lad", "Ch", "Sc", "Sh", "Fr", "Haunt", "Mc", "Wq", "Wn", "Te", "Crp"};
+		local v1 = {"Base", "Track", "Clan", "Faction", "Convoy", "Danger", "Supply", "Cap", "Pl", "Pc", "Stn", "Sv", "Lad", "Ch", "Sc", "Sh", "Fr", "Haunt", "Mc", "Wq", "Wn", "Te", "Crp", "Db"};
 		for i = 1, getn(v1) do TRF_P("TRF_"..v1[i].."_OnLoad"); end;
 		TRF.active = 1;
 		TRF_P("TRF_DumpState", "load");
@@ -488,7 +495,7 @@ function TRF_BeforeJump(dest, how)
 		TRF_P("TRF_State_BeforeJump");
 		TRF_P("TRF_Hail_BeforeJump");
 		TRF_P("TRF_Track_BeforeJump", dest, how);
-		local v1 = {"Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Pl", "Stn", "Sv", "Sc", "Sh", "Fr", "Haunt", "Ft", "Pc", "Wn", "Te"};
+		local v1 = {"Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Pl", "Stn", "Sv", "Sc", "Sh", "Fr", "Haunt", "Ft", "Pc", "Wn", "Te", "Db"};
 		-- dest and how reach every module of the list (trf_freight's portal follow reads them; the others take none).
 		for i = 1, getn(v1) do TRF_P("TRF_"..v1[i].."_BeforeJump", dest, how); end;
 		-- Mercenary clans: the destination decides whether a hired wing follows (design/merc-spec.md 6a); the hire record
@@ -581,7 +588,7 @@ function TRF_Main()
 			for i = 1, getn(v2) do if TRF_LoadFile(v2[i]) then nm = nm + 1; end; end;
 			local v1 = {"loc", "track", "faction", "clan", "convoy", "danger", "supply", "base"};
 			for i = 1, getn(v1) do if TRF_LoadFile("trf_"..v1[i]..".script") then nm = nm + 1; end; end;
-			local ex = {"plumb", "station", "survive", "ladder", "charter", "scar", "captain", "stash", "freight", "fits", "haunt", "parcel", "merc", "wq", "warn", "remark", "temper", "corp"};
+			local ex = {"plumb", "station", "survive", "ladder", "charter", "scar", "captain", "stash", "freight", "fits", "haunt", "parcel", "merc", "wq", "warn", "remark", "temper", "corp", "debrief"};
 			for i = 1, getn(ex) do if TRF_LoadFile("trf_"..ex[i]..".script") then ne = ne + 1; end; end;
 			TRF_P("TRF_InstallPlumb");
 			TRF_P("TRF_InstallHaunt");

@@ -1578,6 +1578,8 @@ function TRF_Cap_Owe(kind)
 		TRF_CapStat("cap_paid");
 		TRF_CapE("paid", "slot", c.slot, "generation", c.gen, "amount", c.amt, "paid", paid, "faction", f, "system", TRF_CapName(cur),
 			"result", "paid");
+		-- The settlement hook (design/debrief-spec.md 5.1): once per paid claim (a claim waiting for the gap calls nothing).
+		TRF_N("TRF_Settle", "claim", cur, paid, "cap:"..c.slot..":"..c.gen);
 	end;
 	if getn(TRF.claim) == 0 then TRF.claim = nil; end;
 	return out;

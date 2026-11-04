@@ -48,6 +48,7 @@ stage_traffic() {   # own files only: scripts (CRLF, as in the repo), hail dialo
     mkdir -p "$1/Data/Scripts/Trade"; cp "$s/Data/Scripts/Trade/TRF_Hail.xml" "$s/Data/Scripts/Trade/TRF_HailPg.xml" "$s/Data/Scripts/Trade/TRF_MercPg.xml" "$1/Data/Scripts/Trade/"
     cp "$s"/Data/Scripts/Trade/TRF_Wq*.xml "$1/Data/Scripts/Trade/"   # the freight quest dialogs (install.sh checks all twelve)
     cp "$s"/Data/Scripts/Trade/TRF_Te*.xml "$1/Data/Scripts/Trade/"   # the Clan file dialogs (install.sh checks both)
+    cp "$s"/Data/Scripts/Trade/TRF_Db*.xml "$1/Data/Scripts/Trade/"   # the Report in dialogs (install.sh checks both)
     cp "$s/install.sh" "$s/uninstall.sh" "$s/README.md" "$s/VERSION" "$1/"
     mkdir -p "$1/loc" "$1/news"
     cp "$s"/loc/*.loc "$1/loc/"; cp "$s/news/trf_news.xml" "$s/news/merge.awk" "$1/news/"

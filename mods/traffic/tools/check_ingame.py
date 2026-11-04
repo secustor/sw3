@@ -9,7 +9,8 @@ design/freight-quest-spec.md 10) and its presentation (Q-WQ.11-14, spec 13: dial
 the lethal-system warnings (W-A12.1-8, design/warnings-spec.md 15; wave 1, host-tested only) and the crew remarks
 (W-B06.1-10, design/crew-remarks-spec.md 14; wave 1, host-tested only) and the clan temperaments with the Clan file
 (W-B10.1-10, design/temperament-spec.md 12; wave 1, host-tested only) and the corporation carriers (W-A22.1-9,
-design/corp-carriers-spec.md 11; wave 1, host-tested only) from traffic logs.
+design/corp-carriers-spec.md 11; wave 1, host-tested only) and the debrief pool with "Report in" (W-B02.1-10,
+design/debrief-spec.md 12; wave 2, host-tested only, off by default: DEBRIEF_XP=1) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -32,6 +33,7 @@ FIXTURE_WARN = os.path.join(HERE, "..", "tests", "check_ingame_warn_fixture.log"
 FIXTURE_REMARK = os.path.join(HERE, "..", "tests", "check_ingame_remark_fixture.log")
 FIXTURE_TEMPER = os.path.join(HERE, "..", "tests", "check_ingame_temper_fixture.log")
 FIXTURE_CORP = os.path.join(HERE, "..", "tests", "check_ingame_corp_fixture.log")
+FIXTURE_DEBRIEF = os.path.join(HERE, "..", "tests", "check_ingame_debrief_fixture.log")
 REL = ("war", "neutral", "friend")
 PHASES = ("Quiet", "Boom", "Build-up", "Raids", "Bust", "Recovery")
 # vanilla bounty flights (OutMission_kill_pirate), haunt-spec appendix A class P
@@ -255,7 +257,7 @@ def c_err(ctx):
     res.logpart = True
     if not any(r.mod in ("haunt", "parcel") for r in ctx.recs):
         res.missing.append("no module=haunt or module=parcel line: the mod did not load or LOG=0")
-    for mod in ("haunt", "parcel", "core", "plumb", "hail", "merc", "wq", "warn", "remark"):
+    for mod in ("haunt", "parcel", "core", "plumb", "hail", "merc", "wq", "warn", "remark", "debrief"):
         e = ctx.find(mod, "error")
         if e:
             res.fails.append("%d module=%s event=error lines" % (len(e), mod))
@@ -3040,6 +3042,242 @@ def c_wc9(ctx):
     return res
 
 
+# Debrief pool and the quest "Report in" (design/debrief-spec.md 12, W-B02.1-10; host-tested only, wave 2, off by default:
+# DEBRIEF_XP=1) ------------------------------------------------------------------------------------------------------------
+
+def db_pts(ctx, at, pilot=None):
+    return [r for r in ctx.find("debrief", "points", at=at) if pilot is None or r.get("pilot") == pilot]
+
+
+def db_around(ctx, pay):
+    """{pilot: [before, after]} of the points lines right before pay (same log)."""
+    out = {}
+    recs = [r for r in ctx.recs if r.src == pay.src]
+    j = recs.index(pay) - 1
+    # TRF_DbPay logs the points before, grants, logs the points after, then event=pay
+    while j >= 0 and recs[j].is_("debrief", "points", at="after"):
+        out.setdefault(recs[j].get("pilot"), [None, None])[1] = recs[j].num("points")
+        j -= 1
+    while j >= 0 and recs[j].is_("debrief", "points", at="before"):
+        out.setdefault(recs[j].get("pilot"), [None, None])[0] = recs[j].num("points")
+        j -= 1
+    return out
+
+
+def c_wd1(ctx):
+    res = Res()
+    res.logpart = True
+    paid = ctx.find("debrief", "pay", result="paid")
+    for p in paid:
+        tot = p.num("xp_total")
+        pts = db_around(ctx, p)
+        h = pts.get("Hero")
+        if not h or h[0] is None or h[1] is None:
+            res.missing.append("%s: no points lines of the Hero around the pay (LOG=2)" % p.short())
+            continue
+        for nm, (b, a) in pts.items():
+            if b is None or a is None or tot is None:
+                continue
+            if a - b <= 0:
+                res.fails.append("%s: %s gained %.3f points from a grant of %.1f" % (p.short(), nm, a - b, tot))
+            elif abs((a - b) - tot) > 0.05:
+                res.notes.append("%s: %s gained %.3f for %.1f (factor %.2f: Learner or Instructor?)" % (p.short(), nm, a - b, tot, (a - b) / tot))
+    if not paid:
+        res.missing.append("with DEBRIEF_XP=1 LOG=2 finish a job after \"Report in\" and dock at a trade station: no module=debrief "
+                           "event=pay result=paid")
+    res.ev("pays", paid)
+    res.ev("points before", db_pts(ctx, "before"))
+    res.ev("points after", db_pts(ctx, "after"))
+    return res
+
+
+def c_wd2(ctx):
+    res = Res()
+    res.logpart = True
+    paid = ctx.find("debrief", "pay", result="paid")
+    names = set()
+    for p in paid:
+        for nm, (b, a) in db_around(ctx, p).items():
+            if b is not None and a is not None:
+                names.add(nm)
+    if not paid:
+        res.missing.append("a debrief paid with a pilot in the mothership's reserve (LOG=2): no event=pay result=paid")
+    elif len(names) < 2:
+        res.missing.append("a debrief paid with more than the Hero in the crew list: points lines of the Hero only")
+    res.ev("pilots read around a pay", [r for r in db_pts(ctx, "after")])
+    return res
+
+
+def c_wd3(ctx):
+    res = Res()
+    res.logpart = True
+    pairs = []
+    for lg in ctx.logs:
+        last = None
+        loaded = False
+        for r in lg.recs:
+            if r.is_("state", "load"):
+                loaded = last is not None
+            elif r.is_("debrief", "pay", result="paid"):
+                last, loaded = None, False
+            elif r.is_("debrief", "points", at="entry", pilot="Hero"):
+                if loaded and last is not None:
+                    pairs.append((last, r))
+                last, loaded = r, False
+    for a, b in pairs:
+        if a.num("points") != b.num("points"):
+            res.notes.append("%s -> %s: the Hero's points changed across a load (a kill or a story step between?)" % (a.short(), b.short()))
+    if not pairs:
+        res.missing.append("enter a system (LOG=2), save, load the save and enter the next system without a fight: no two "
+                           "event=points at=entry pilot=Hero around a load")
+    res.ev("entry points around a load", [x for p in pairs for x in p])
+    return res
+
+
+def c_wd4(ctx):
+    res = Res()
+    res.logpart = True
+    shown = ctx.find("debrief", "offer", result="shown")
+    acc = ctx.find("debrief", "accept", result="ok")
+    for r in acc:
+        if not [x for x in (r.visit.recs if r.visit else []) if x.is_("debrief", "offer", result="shown") and x.n < r.n]:
+            res.fails.append("%s: an accept without a shown offer in the visit" % r.short())
+    lb = [r for r in ctx.find("debrief", "logbook", result="added") if r.get("id") == "trf_db" and r.get("quest_state_after") is not None]
+    for r in lb:
+        if r.get("quest_state_after") not in ("0", "false"):
+            res.fails.append("%s: GetPlayerQuestState turned TRUE with the trf_db entry" % r.short())
+    if not shown:
+        res.missing.append("with DEBRIEF_XP=1 get a charter posting paid at a trade dock (help 3, chapter 5): no module=debrief "
+                           "event=offer result=shown")
+    if not acc:
+        res.missing.append("accept \"Report in\": no module=debrief event=accept result=ok")
+    elif not lb:
+        res.fails.append("an accept without the logbook entry trf_db")
+    res.ev("offers shown", shown)
+    res.ev("accepts", acc)
+    res.ev("logbook", lb)
+    return res
+
+
+def c_wd5(ctx):
+    res = Res()
+    res.logpart = True
+    cnt = ctx.find("debrief", "count", result="counted")
+    st = ctx.find("debrief", "step", step_before="10", step_after="20")
+    done = ctx.find("debrief", "done", result="done")
+    for r in done:
+        if not [x for x in cnt if x.src != r.src or x.n < r.n]:
+            res.fails.append("%s: done without a counted job" % r.short())
+    for r in cnt:
+        if not [x for x in st if x.src == r.src and x.n > r.n]:
+            res.fails.append("%s: a counted job without the step 10 -> 20 line" % r.short())
+    if not [r for r in cnt if r.get("kind") == "parcel"]:
+        res.missing.append("deliver a parcel during \"Report in\": no event=count kind=parcel result=counted")
+    if not [r for r in done if r.get("via") == "dialog"]:
+        res.missing.append("hand the log in at a trade dock with the dialogs (hail_xml 1): no event=done via=dialog")
+    if not [r for r in cnt if r.get("kind") in ("escort", "sweep")]:
+        res.notes.append("an escort or a sweep counted in space (the hand-in at the next trade dock) needs a second game or a lapse")
+    res.ev("counts", cnt)
+    res.ev("steps", st)
+    res.ev("done", done)
+    return res
+
+
+def c_wd6(ctx):
+    res = Res()
+    res.logpart = True
+    q = ctx.find("debrief", "pay", via="quest", result="paid")
+    for r in q:
+        if not [x for x in ctx.find("debrief", "done", result="done") if x.src == r.src and x.n < r.n]:
+            res.fails.append("%s: a quest pay without the done line before it" % r.short())
+    if not q:
+        res.missing.append("finish \"Report in\": no module=debrief event=pay via=quest result=paid")
+    res.ev("first debriefs", q)
+    return res
+
+
+def c_wd7(ctx):
+    res = Res()
+    res.logpart = True
+    cl = ctx.find("debrief", "settle", kind="claim", result="drawn")
+    for p in ctx.find("debrief", "pay", via="dock", result="paid"):
+        recs = [r for r in ctx.recs if r.src == p.src and r.n > p.n and r.is_("plumb", "dock")]
+        if recs and recs[0].get("kind") != "trade":
+            res.fails.append("%s: a debrief paid in a %s docking" % (p.short(), recs[0].get("kind")))
+    paid_after = [p for p in ctx.find("debrief", "pay", via="dock", result="paid") if [c for c in cl if c.src == p.src and c.n < p.n]]
+    if not cl:
+        res.missing.append("collect a wanted-captain claim at a patrol dock with the pool open: no event=settle kind=claim result=drawn")
+    elif not paid_after:
+        res.missing.append("dock at a trade station after the claim: no event=pay via=dock result=paid")
+    res.ev("claims drawn", cl)
+    res.ev("pays after a claim", paid_after)
+    return res
+
+
+def c_wd8(ctx):
+    res = Res()
+    res.logpart = True
+    mis = ctx.find("debrief", "settle", reason="mission")
+    rf = ctx.find("debrief", "refill", result="refilled")
+    nl = ctx.find("debrief", "line", key="dbnew")
+    for r in rf:
+        if r.int("chapter_after", 0) <= r.int("chapter_before", 0):
+            res.fails.append("%s: a refill without a later chapter" % r.short())
+    for r in ctx.find("debrief", "settle", result="drawn"):
+        v = r.visit
+        if v and [x for x in v.recs if x.mod == "safety" and x.ev in ("activate", "mode") and x.get("quest_state") in ("1", "true")]:
+            res.notes.append("%s: drawn in a visit that started in a story mission (check the mission had ended)" % r.short())
+    if not mis:
+        res.missing.append("finish a mod job while a story mission runs: no event=settle result=none reason=mission")
+    if not rf:
+        res.missing.append("play into the next chapter with the pool open: no event=refill result=refilled")
+    elif not nl:
+        res.missing.append("dock at a trade station after the refill (LOG=2): no event=line key=dbnew")
+    res.ev("no draw in a mission", mis)
+    res.ev("refills", rf)
+    res.ev("dbnew lines", nl)
+    return res
+
+
+def c_wd9(ctx):
+    res = Res()
+    res.logpart = True
+    ent = db_pts(ctx, "entry", "Hero")
+    gains = []
+    for a, b in zip(ent, ent[1:]):
+        if a.src == b.src and b.num("points", 0) > a.num("points", 0):
+            gains.append(b)
+            res.notes.append("%s: the Hero gained %.2f points since %s" % (b.short(), b.num("points") - a.num("points"), a.short()))
+    pays = ctx.find("debrief", "pay", result="paid")
+    if pays:
+        x = max(p.num("xp_each", 0) for p in pays)
+        res.notes.append("largest debrief %.1f: a pool of 5 is %.1f; it should stay at or below 25 %% of one main mission's gain" % (x, 5 * x))
+    if len(ent) < 2:
+        res.missing.append("enter a system before and after one main mission of chapters 5-7 (LOG=2, no perk bought): fewer "
+                           "than two event=points at=entry pilot=Hero")
+    res.ev("Hero points at entry", ent)
+    return res
+
+
+def c_wd10(ctx):
+    res = Res()
+    res.logpart = True
+    dumps = ctx.find("debrief", "dump")
+    if not dumps:
+        res.missing.append("install without DEBRIEF_XP and play (any log level): no module=debrief event=dump")
+        return res
+    if [d for d in dumps if d.get("xp") != "0"]:
+        res.missing.append("a run with debrief_xp 1 (DEBRIEF_XP=1): score the default install's log for this item")
+        res.ev("dumps with xp=1", [d for d in dumps if d.get("xp") != "0"])
+        return res
+    bad = [r for r in ctx.recs if r.mod == "debrief" and r.ev in ("offer", "accept", "pay", "refill", "count", "done", "logbook")
+           and not (r.ev == "offer" and r.get("result") == "none")]
+    for r in bad:
+        res.fails.append("%s: a debrief line with debrief_xp 0" % r.short())
+    res.ev("dumps", dumps)
+    return res
+
+
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
@@ -3256,6 +3494,21 @@ ITEMS = [
      "a hand-made Pilots.xml template with callsign 'InoCo carrier' on a trader leader: the target panel shows the callsign"),
     ("W-A22.8", "req order: station greeting, A12 warning, corporation line", c_wc8, "the three lines readable in that order"),
     ("W-A22.9", "standing: a carrier kill costs fst once per visit", c_wc9, "the rank line at a USS patrol dock shows the lower rank"),
+    ("W-B02.1", "the debrief grant in kill-XP units, the vanilla notice once", c_wd1,
+     "the notice '#UI_ExperienceRecieved' once at the trade dock; each pilot's points rise by the grant"),
+    ("W-B02.2", "a reserve pilot gains from AddPlayerExperience or not", c_wd2,
+     "name a pilot of the reserve (not in a flight) in the points lines and note whether it gained"),
+    ("W-B02.3", "GetPoints reads the unspent points, stable across a load", c_wd3, None),
+    ("W-B02.4", "the \"Report in\" offer at a trade dock and the accept", c_wd4,
+     "the dialog with the FTU clerk's portrait (D1), or the card (JOBS=1), or the box; 'Report in' in the mission list"),
+    ("W-B02.5", "a counted job, step 20, the hand-in (D2)", c_wd5, "D2 through the talk box after a parcel delivery"),
+    ("W-B02.6", "the first debrief at the hand-in", c_wd6, "'Debriefs left this chapter: 4.' after D2 closes"),
+    ("W-B02.7", "a claim at a patrol dock pays at the next trade dock", c_wd7,
+     "at a patrol dock with rescued pilots the vanilla rescue XP notice alone"),
+    ("W-B02.8", "no draw in a mission; the chapter refill and dbnew", c_wd8, "the dbnew line at the trade dock after the refill"),
+    ("W-B02.9", "the reference mission for the debrief size", c_wd9,
+     "compare a pool of 5 with the Hero's gain over one main mission: at most 25 % (else lower db_shares)"),
+    ("W-B02.10", "the default install (debrief_xp 0) shows nothing of B02", c_wd10, None),
 ]
 
 
@@ -3384,7 +3637,9 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "W-B10.1": "FAIL", "W-B10.2": "FAIL", "W-B10.3": "FAIL", "W-B10.4": "NO DATA", "W-B10.5": "NO DATA",
             "W-B10.6": "NO DATA", "W-B10.7": "FAIL", "W-B10.8": "NO DATA", "W-B10.9": "NO DATA", "W-B10.10": "FAIL",
             "W-A22.1": "FAIL", "W-A22.2": "NO DATA", "W-A22.3": "NO DATA", "W-A22.4": "FAIL", "W-A22.5": "FAIL",
-            "W-A22.6": "NO DATA", "W-A22.7": "MANUAL", "W-A22.8": "NO DATA", "W-A22.9": "FAIL"}
+            "W-A22.6": "NO DATA", "W-A22.7": "MANUAL", "W-A22.8": "NO DATA", "W-A22.9": "FAIL",
+            "W-B02.1": "FAIL", "W-B02.2": "NO DATA", "W-B02.3": "NO DATA", "W-B02.4": "NO DATA", "W-B02.5": "FAIL",
+            "W-B02.6": "FAIL", "W-B02.7": "NO DATA", "W-B02.8": "FAIL", "W-B02.9": "NO DATA", "W-B02.10": "FAIL"}
 # tests/check_ingame_warn_fixture.log: correct warning behaviour only. A dock warning for Gideon at Avalon (leg 100) after
 # the station's dock line, a second approach skipped (visit), a return at leg 102 skipped (cooldown); at XT-23 (station
 # voice deny, a station pass, no station dock line) a pass reason=scene, then a warning for XT-24; a load of an earlier
@@ -3409,6 +3664,12 @@ SELFTEST_TEMPER = {"W-B10.1": "MANUAL", "W-B10.2": "PASS", "W-B10.3": "MANUAL", 
 # escort mark, the run posted, two run deeds, the standing line and the pay; Kadi 24 legs later: the return and the back line.
 SELFTEST_CORP = {"W-A22.1": "MANUAL", "W-A22.2": "MANUAL", "W-A22.3": "MANUAL", "W-A22.4": "MANUAL", "W-A22.5": "MANUAL",
                  "W-A22.6": "MANUAL", "W-A22.7": "MANUAL", "W-A22.8": "MANUAL", "W-A22.9": "MANUAL"}
+# tests/check_ingame_debrief_fixture.log: correct debrief behaviour (DEBRIEF_XP=1, LOG=2). Altair (chapter 5): a posting
+# paid (the pool closed), the offer by D1 and the accept with the logbook entry; a save and load; Taira: a parcel counted,
+# step 20, D2 through the talk box, done, the first debrief paid (points of two pilots); Escaflon: a claim drawn at the
+# patrol dock; Taira in a mission: no draw, the pay waits; Altair (chapter 6): the refill, dbnew, the pay at the trade dock.
+SELFTEST_DEBRIEF = {"W-B02.1": "MANUAL", "W-B02.2": "MANUAL", "W-B02.3": "PASS", "W-B02.4": "MANUAL", "W-B02.5": "MANUAL",
+                    "W-B02.6": "MANUAL", "W-B02.7": "MANUAL", "W-B02.8": "MANUAL", "W-B02.9": "MANUAL", "W-B02.10": "NO DATA"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -3438,6 +3699,10 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # Corporation carriers block (the very end, Debris 4): a USS pull-out, then a USS label in that region during it (W-A22.5
 # FAIL), a USS carrier shop with PLC2 (W-A22.4 FAIL), two carrier standing hits of USS in one visit (W-A22.9 FAIL), an InoCo
 # label with share 1.5 (W-A22.1 FAIL); no hail, answer, run, req order line (W-A22.2, .3, .6, .8 NO DATA).
+# Debrief block (the very end, Heos, debrief_xp 0 in the dump): an offer shown (W-B02.10 FAIL) and no accept (W-B02.4 NO
+# DATA), a quest pay before any done line (W-B02.6 FAIL), a done without a counted job (W-B02.5 FAIL), a dock pay whose
+# Hero points did not rise (W-B02.1 FAIL), a refill without a later chapter (W-B02.8 FAIL); no claim, no load, one pilot,
+# no entry points (W-B02.7, .3, .2, .9 NO DATA).
 
 
 def selftest():
@@ -3474,7 +3739,13 @@ def selftest():
         if got.get(iid) != v:
             print("selftest: corp fixture %s is %s, expected %s" % (iid, got.get(iid), v))
             bad += 1
-    n = len(SELFTEST) + len(SELFTEST_EYES[1]) + len(SELFTEST_WARN) + len(SELFTEST_REMARK) + len(SELFTEST_TEMPER) + len(SELFTEST_CORP)
+    got = dict((r[0], r[2]) for r in score(Ctx([Log(FIXTURE_DEBRIEF, None, [])]), {}))
+    for iid, v in SELFTEST_DEBRIEF.items():
+        if got.get(iid) != v:
+            print("selftest: debrief fixture %s is %s, expected %s" % (iid, got.get(iid), v))
+            bad += 1
+    n = (len(SELFTEST) + len(SELFTEST_EYES[1]) + len(SELFTEST_WARN) + len(SELFTEST_REMARK) + len(SELFTEST_TEMPER) + len(SELFTEST_CORP)
+         + len(SELFTEST_DEBRIEF))
     if parse_logfmt('a=1 message="x \\"y\\" z" b=') != {"a": "1", "message": 'x "y" z', "b": ""}:
         print("selftest: logfmt quoting")
         bad += 1

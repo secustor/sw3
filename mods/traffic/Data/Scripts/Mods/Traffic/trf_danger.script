@@ -964,6 +964,8 @@ function TRF_DcEnd(n)
 			TRF_DgStat("dc_paid");
 			TRF_DgE("contract", "convoy_id", n, "arrived_count", dc.ok, "amount", pay, "help", hp, "result", "paid");
 			TRF_N("TRF_Ch_Note", 3, TRF_DgCur(), pay);
+			-- The settlement hook (design/debrief-spec.md 5.1): the hail's second escort contract, once per paid convoy.
+			TRF_N("TRF_Settle", "escort", TRF_DgCur(), pay, "dc:"..n);
 		elseif dc.far == 1 then
 			TRF_DgX("TRF_Say", TRF_DgTxt("dcfar"), 8);
 			TRF_DgStat("dc_ct_far");
