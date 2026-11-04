@@ -1,6 +1,6 @@
 # Prior art: activities that fill a game world
 
-Scope: how other space games, their mods, Mount & Blade, the Star Wolves community and design writing fill a world with activities between story beats, and what transfers to Star Wolves 3: Civil War (SW3) through the traffic mod. It does not choose an implementation or a build order. Date of research: 2026-11-03.
+Scope: how other space games, their mods, Mount & Blade, the Star Wolves community and design writing fill a world with activities between story beats, and what transfers to Star Wolves 3: Civil War (SW3) through the traffic mod. It does not choose an implementation or a build order. Date of research: 2026-11-03; sections 15 and 16 added 2026-11-04.
 
 Companion file: `prior-art.md` covers NPC trader traffic (movement, cargo, prices). This file covers what the player does: jobs, encounters, leads, standing, rivals, news. Traffic topics are not repeated.
 
@@ -13,8 +13,9 @@ Companion file: `prior-art.md` covers NPC trader traffic (movement, cargo, price
 - Series and community: `research-series.md` (Star Wolves 1-3 press and fan reception), `research-steam.md` (all Steam reviews of SW1 (469, 84 % positive), SW2 (167, 40 % positive) and SW3 (744, 81 % positive), read through the community hub because the appreviews JSON API returned 302; 75 threads read in full; top guides), `research-ru.md` (five elite-games.ru threads downloaded and keyword-filtered, plus AG.ru, Igromania and other Russian reviews), `research-mods.md` (SW3EXP, New Civil War, story mods, local GOG files).
 - Other games: `research-freelancer.md`, `research-rangers.md` (Space Rangers 2 and HD), `research-x.md` (X3 TC/AP, X4), `research-starsector.md`, `research-bannerlord.md` (Warband, Bannerlord), `research-peers.md` (Elite Dangerous, Rebel Galaxy Outlaw, Everspace 2, Star Valor, Underspace, No Man's Sky, Endless Sky).
 - Theory: `research-theory.md` (41 sources on emergent narrative, procedural quests, pacing and world events).
+- Added 2026-11-04 after the round 1 critic: `research-mercsquad.md` (Battle Brothers, BattleTech, MechWarrior 5, XCOM 2, Jagged Alliance 2, FTL, Wartales, Darkest Dungeon; section 15) and `research-classics.md` (Pirates!, Wing Commander Privateer, EV Nova, EVE Online and the substitutes fans named; section 16).
 
-**Access limits.** Fandom wikis returned HTTP 402 (the Space Rangers wiki was read as wikitext through the MediaWiki API instead). The Frontier, TaleWorlds, Fractal Softworks, Nexus, ModDB, GameFAQs and Discovery sites returned 403 or 402. Reddit was blocked. VK and YouTube comments were not reached. Claims from those sites rest on search-result excerpts and carry the [src:snip] tag.
+**Access limits.** Fandom wikis returned HTTP 402 (the Space Rangers wiki was read as wikitext through the MediaWiki API instead). The Frontier, TaleWorlds, Fractal Softworks, Nexus, ModDB, GameFAQs and Discovery sites returned 403 or 402. Reddit was blocked. VK and YouTube comments were not reached. Claims from those sites rest on search-result excerpts and carry the [src:snip] tag. For sections 15 and 16, the Battle Brothers, Jagged Alliance, XCOM and FTL Fandom wikis returned 402 and techraptor and Medium returned 403; the Pirates! wiki was read as wikitext through the MediaWiki API.
 
 **Tags.**
 - **[src]** = read from the cited page in this session.
@@ -118,7 +119,7 @@ SR2 keeps about fifty NPC rangers on the same rules as the player (prior-art sec
 
 **2.7 News centre.**
 - Activity: attacks, liberations, trade tips, operation gathering points, pirate activity, known rangers meeting ("Они что-то замышляют", they are plotting something), location of title holders; news loads only at a planet or station [src SR6].
-- Reception: "The game universe runs autonomously in the background" [src SR18]; "Самый живой открытый мир из всех" (the most alive open world of all) [src SR21]. Counter-view: "many mini-games ... around a hollow core" [src SR18].
+- Reception: "The game universe runs autonomously in the background" [src SR18]; RPG Codex: "In SR2 you must pay attention to the news announcements" [src SR17]; "Самый живой открытый мир из всех" (the most alive open world of all) [src SR21]. Counter-view: "many mini-games ... around a hollow core" [src SR18].
 - SW3: dynamic News rows from simulation events (raids, clan moves, captain meetings, top pirate location): **cheap** to **medium** depending on the event log (section 12). Dock-only news matches the Office panel.
 
 **Verdict for section 2.** SR2's "living" reputation rests on two things: the world runs without the player, and the player can see it (rating, news, jobs finished by others). The traffic mod already simulates regions; the gap is visibility.
@@ -207,7 +208,7 @@ Starsector ties almost every activity to an object on the map and shows several 
 - SW3: "send a wing" for 1-3 legs: **medium** (can a script remove a story pilot and return them). Hired mercs only, if not.
 
 **5.3 Named characters with memory.**
-- Warband companions had "quarrels, likes and dislikes, and memorable backstories"; "In Bannerlord the companions are completely generic" [src MB4]. NPCs have "no more roleplay value than a bag of rocks" [src MB4]. Warband felt "more handcrafted" [src MB5]. Russian players remember Jeremus and Dastum Khan [src MB7].
+- Warband companions had "quarrels, likes and dislikes, and memorable backstories"; "In Bannerlord the companions are completely generic" [src MB4]. NPCs have "no more roleplay value than a bag of rocks" [src MB4]. A poster mocks the shared companion backstories: "So personable, so endearing, so very unique" [src MB6]. Warband felt "more handcrafted" [src MB5]. Russian players remember Jeremus and Dastum Khan [src MB7].
 - Warband lords have seven personalities; a sadistic lord at -20 relation hires tavern assassins [src:snip MB20].
 - SW3: personality tag and short event memory for clan bosses, wanted captains, merc leaders and veteran FTU captains: **cheap**. Personal requests from the six Wolves tied to sim state, with a perk or a refusal line, never departure: **medium**.
 
@@ -320,7 +321,7 @@ SW3 was criticised for scripts that fail on deviation: "the scripts are on such 
 
 **11.4 What the communities ask for.**
 
-Steam (EN and DE players) [src as listed]:
+Steam (EN and DE players), sources per item:
 1. Side jobs and contracts; a mod-choice thread asks above all for "missions for free play" [src SW20, SW59].
 2. Play after the story ends; the ending is forced "as soon as I got my sixth member" [src SW60, SW61, SW62].
 3. Fewer empty transits; requests for 16x time compression on escorts [src SW63].
@@ -358,11 +359,11 @@ Elite-games.ru (RU players):
 **11.9 Candidate families that use pilots.** None of the current traffic specs uses individual pilots or classes; they act on the fleet as a whole [local].
 - Role-check jobs naming a class (systems pilot scans a picket, missile pilot hits at range), partial success if the role is missing: **medium**.
 - Short pilot side arcs rewarding a perk via `:SetPerk`: **medium**. Models: SW1 companion stakes, ME2 loyalty [gk].
-- Own-pilot pod recovery under fire with a wounded state for N legs: **medium** (perk removal is an open check). Model: BattleTech injuries lasting months [src SW73].
-- Detached-wing contracts (lend 1-2 fighters for N legs): **medium**. Models: XCOM covert ops [gk], Crying Suns expeditions "trading the lives of your soldiers for other resources" [src SW74].
+- Own-pilot pod recovery under fire with a wounded state for N legs: **medium** (perk removal is an open check). Model: BattleTech injuries lasting months [src SW73]; evidence in 15.9 T5.
+- Detached-wing contracts (lend 1-2 fighters for N legs): **medium**. Models: XCOM covert actions (15.5), Crying Suns expeditions "trading the lives of your soldiers for other resources" [src SW74].
 - Mothership field services (repair or tow for NPC traders): **cheap**.
 - Recruitable enemy aces, officers found in derelict pods (Starsector [src SW75]): **medium**; overlaps `proposals/merc-ace-defection.md`.
-- Short pilot events at jumps with a choice that sets a temporary buff (BattleTech travel events [src:snip SW76]): **cheap**, if kept short.
+- Short pilot events at jumps with a choice that sets a temporary buff (BattleTech travel events [src:snip SW76]): **cheap**, if kept short; evidence and rules in 15.9 T2 and T3.
 
 ---
 
@@ -413,7 +414,7 @@ Each rule cites the theory note (TH) and the games above where they confirm it.
 
 ## 13. Cross-game table of activity patterns
 
-Verdicts as defined in section 0. "Games" lists where the pattern appears in the notes above.
+Verdicts as defined in section 0. "Games" lists where the pattern appears in the sections of this file, 15 and 16 included.
 
 | Pattern | Games that have it | SW3 transfer | SW3 form or note |
 |---|---|---|---|
@@ -426,14 +427,20 @@ Verdicts as defined in section 0. "Games" lists where the pattern appears in the
 | Base found through a bar or informant tip | Starsector, Freelancer | native | Clan bases, informant tips |
 | Unique high-value bounty list | Vayra's Sector, Freelancer hidden weapons | cheap | 10-20 named targets, one-time flags in the save |
 | Hunters sent after the player | Vayra's Sector, Star Valor, SR2 critical failure, Warband assassins | cheap | Heat or grudge threshold spawns hunters; base kill stops them |
-| Revenge flight from a named enemy | Everspace 2, AlifePlus, Nemesis | cheap | Clan pilot arrives on a later entry after a stash raid |
+| Revenge flight from a named enemy | Everspace 2, AlifePlus, Nemesis, EV Nova grudge persons | cheap | Clan pilot arrives on a later entry after a stash raid |
+| Taking a rival's prize turns him into a hunter | Pirates! | cheap | Owning clan's captain hunts the Wolves for N legs after the A07 end or a stash raid |
 | Named antagonists with memory and promotion | Nemesis, Warband lords, Kenshi | native in part | Wanted captains; add wingman memory and promotion |
 | Power vacuum after a notable death | Kenshi | cheap | Rival clan or sweep takes the region for one cycle |
-| Named contacts with relationship and offers | Starsector, Bannerlord notables, XM-R stations, NMS agents | medium | Per-person record in the save, cap of five |
+| Named contacts with relationship and offers | Starsector, Bannerlord notables, XM-R stations, NMS agents, EVE agents, Privateer contacts | medium | Per-person record in the save, cap of five |
 | Per-station trust scaling pay and slots | XM-R, NMS | cheap | Counter beside station voices (03) |
 | Bar rumours, some false | Freelancer, Vivid World, Crossfire, SW3 vanilla rumours | native in part | Truth rate tied to price and standing |
 | Coarse-location lead that needs a search | RGO, Starsector, Underspace | native | Stash area markers; cache shown at scanner range |
-| Breadcrumb chain to a guaranteed reward | Starsector derelicts, Freelancer tips | cheap | Wreck dialogs pointing to the next wreck |
+| Breadcrumb chain to a guaranteed reward | Starsector derelicts, Freelancer tips, Pirates! map pieces | cheap | Wreck dialogs pointing to the next wreck |
+| Fragment carried by a named moving NPC, won by beating him | Pirates! (Raymondo) | cheap | One A07 fragment per chain on a wanted captain or treasurer record; drop line on kill or capture |
+| Fragments in any order from different sources; partial progress counts | Pirates! | cheap | Final A07 site needs 2 of 3 fragments; 3-bit set per chain |
+| Chains that lead into each other | Pirates! (a rescue hands over a lost-city map) | cheap | The end of one A07 chain names the start of the next |
+| Tip about a moving target with its current route | Pirates! barmaid | cheap | Live flight tip gives current leg and exit portal; nav point after entry |
+| Separate free and paid tip roles with different subjects | Pirates! traveler, barmaid, barkeeper | native | Harbour tips (free, region state) and informant tips (paid, named target) stay separate in A16 |
 | Follow NPC traffic to a hidden place | Freelancer | medium | Tail a treasurer or supply flight to its cache |
 | Distress signal with threat label and content roll | Elite, RGO, Starsector, Star Valor, Everspace 2 | cheap | Extends beacons and pods |
 | Minefield or trapped-trader rescue | Everspace 2, RGO | cheap | Disabled trader ringed by mines or drones |
@@ -444,27 +451,50 @@ Verdicts as defined in section 0. "Games" lists where the pattern appears in the
 | Bounty for the common enemy in friendly space | X4 (missing, complained), Discovery warzone multiplier | cheap | Pay at next dock for pirates killed in a friendly system |
 | Destroy criminal traffic for reputation | X4 | cheap | One marked smuggler flight per system |
 | Hidden or illegal job found by scanning | X4 secret missions | cheap | Wreck-scan pulse near a station |
+| Every Nth job for one faction unlocks a written special job | EVE storyline missions | cheap | Counter per faction; one authored job per faction and stage band; curated layer (C8) |
+| Escalation from a cleared site, a few percent, up to 4 steps | EVE escalations | cheap | Nest or base kill yields an A07 fragment or stash lead; closing line instead of a silent end |
+| "This place needs X" line that is itself the job offer | Pirates! barkeeper, Privateer bartenders | cheap | Dock line pointing at an Office or patrol board job |
+| Off-board handshake job with higher pay and stated risk | Privateer fixers | cheap | Dock-line offer with the ambush chance shown before acceptance |
+| Paid membership for a guaranteed-legal board | Privateer guilds | cheap | Registration fee at the FTU office unlocks a better tier; extends charter ranks |
+| Contact chain whose reward is a tool or access | Privateer plot contacts | cheap | Ends in a permit or dock service; a scan-proof hold is medium (needs checkpoints 11) |
+| Job offered by a named ship when hailed | EV Nova persons | cheap | Hail menu answer on a named trader or captain; leaves after acceptance |
+| Escort that clears a bounty | Pirates! amnesty ship | cheap | Escort a Patrol courier to lower heat; heat clearing is native |
+| Timed container that explodes on delay | EVE ghost sites | cheap | Inside trigger plus timer; no hacking screen |
 | Shared-objective region drive filled by NPCs | Elite community goals, Discovery events | medium | Counter in card and news; NPC convoys add to it |
 | Player-pushable regional states | Elite BGS, Underspace storms, Bannerlord issues | native in part | Region cycle; add smuggling -> unrest, relief -> early Recovery |
-| Incursion with an anchor that ends it early | Underspace, Elite Thargoids, Freeworlds | cheap | Raids-phase anchor (relay, carrier), capped length |
+| Incursion with an anchor that ends it early | Underspace, Elite Thargoids, Freeworlds, EVE incursions | cheap | Raids-phase anchor (relay, carrier), capped length; EVE adds a pay or spawn penalty for everyone present |
 | Announced operation (build-up, then battle) | SR2, X3 AP, Faction Enhancer | cheap | Two-step news before a sweep or push |
+| Timed event with date window, chance, holdoff and per-faction news | EV Nova | native in part | trf_events and News.xml; add an explicit post-holdoff |
 | Timed wars between NPC factions, joinable | Starsector, Nexerelin, Star Valor, X AP, Fleet mod, SW3EXP | medium | Story-fixed war limits it; sweeps are native |
 | Crisis meter ending in a planned attack with exits | Starsector colony crises | medium | Per-clan meter on the player or Wolves Freight |
 | Faction ladder with visible rungs and unique rewards | X3 corps, X4 bands, RGO guilds, SR2 ranks, Starsector commission | native | Ladder 09; publish rungs and unlocks |
 | Commission with stipend and per-kill pay | Starsector | cheap | Dialog contract plus monthly payout |
 | Pirate career ladder, joining a clan | SR2 HD, Prophesy of Pendor orders | medium | Opt-in clan ladder with low thresholds |
+| Player picks the target of an NPC pirate raid | Pirates! pirate haven | medium | At a clan base, choose the lane of the next raid; never Wolves Freight |
 | Pirate base services (contraband, standing fee) | SR2, Freelancer bribes | cheap | On the mod's pirate bases; FTU heat clearing is native |
 | Contraband scans by reputation, transit log | Freelancer, Discovery, RGO | native | Checkpoints (11), customs (01); transit log is cheap |
 | Timed clean status after helping police | RGO Blue Star | cheap | Saved timer read by dock lines and heat checks |
 | Licence that defines legal targets | Discovery IDs | cheap | Extends 09 permits |
 | Favour currency or event tokens | Starsector story points, Discovery Scientific Data | cheap | Lua counter; must fit the 00 economy budget |
 | News that reports NPC deeds, sifted from a log | SR2, AlifePlus, Dwarf Fortress, Endless Sky, DeadAir | native in part | Harbour news exists; event log is medium |
-| Public rating and titles of NPC captains | SR2 | medium | Dialog page or News rows |
+| Public rating and titles of NPC captains | SR2, Pirates! Top 10 | medium | Dialog page or News rows |
 | Rival company that acts like the player | LU Phanon, SR2 rangers, Steam wish | native | Rival packs (13), as design |
 | Faction muster or army call | Bannerlord, SR2 operations | cheap | At ladder rank 3+, rare |
-| Delegation, detached wing, ventures | Bannerlord companions, X4 ventures, XCOM, Crying Suns | medium | Engine check: remove and return a pilot |
-| Personal requests and loyalty of crew | Warband, ME2, BattleTech | medium | Wolves requests, perk reward, no departure |
-| Pilot injury state | BattleTech, Far Cry 2 buddies | medium | Engine check: remove or suspend a perk |
+| Delegation, detached wing, ventures | Bannerlord companions, X4 ventures, XCOM covert actions, Crying Suns expeditions | medium | Engine check: remove and return a pilot; merc pilots only, visible result (15.9 T12, 16.7) |
+| Personal requests and loyalty of crew | Warband, ME2, BattleTech, Battle Brothers, Wartales | medium | Wolves requests, perk reward, no departure |
+| Pilot injury state | BattleTech, Battle Brothers, MW5, XCOM 2, Darkest Dungeon, Far Cry 2 buddies | medium | Engine check: remove or suspend a perk, effect of `Disabled` (15.9 T5) |
+| Event answers gated by a crew member's trait | FTL, Battle Brothers, BattleTech, Crying Suns | cheap | `Pilot:HavePerk`, non-combat perks first; the NPC names a missing perk (15.9 T1) |
+| Short pilot events naming one or two crew | BattleTech, Battle Brothers, Wartales, Darkest Dungeon 2 | cheap | Curated pool, once per save, off in story missions (15.9 T2) |
+| Crew trait gained through events | Battle Brothers, BattleTech, Wartales, XCOM 2 | cheap | Rare `SetPerk` grant, one per pilot per chapter; the C9 answer (15.9 T3) |
+| Morale or mood meter | Battle Brothers, BattleTech, Wartales, Darkest Dungeon | medium | Rejected: no screen; BT morale maxed, DD had to show numbers (15.9 T4) |
+| Pair banter, quarrels and bonds | JA2, XCOM 2, Wartales, Darkest Dungeon 2 | cheap | Scripted two-line radio pairs, once per save, no hidden value (15.9 T6) |
+| Wages, upkeep and desertion | Battle Brothers, BattleTech, Wartales, JA2 | medium | Rejected: story pilots must not leave (15.9 T7) |
+| Negotiated contract terms (advance, pay vs standing) | Battle Brothers, BattleTech, MW5 | cheap | 2-3 answers on charter or freight pages; no salvage shares (15.9 T8) |
+| Early withdrawal pays a part and costs standing | BattleTech, MW5, Battle Brothers | native in part | Shared rule for all mod jobs (15.9 T9) |
+| Decision in the middle of a contract | Battle Brothers | cheap | Clan hail offers credits to break off an escort or freight job (15.9 T10) |
+| Mobile-base facilities that change event outcomes | BattleTech Argo, XCOM Avenger | cheap | One-time mothership fitting flags, no upkeep (15.9 T11) |
+| Player picks a company goal from 3-4 offers | Battle Brothers ambitions | native in part | Pick 1 of 3 charter postings; named rewards (15.9 T13) |
+| Visible crew state with a named cause | Darkest Dungeon 1 and 2, JA2 | cheap | Rule: logbook card or radio line names the pilot and the cause (15.9 T15) |
 | Prisoner ransom, hand-over or recruit | Bannerlord, PoP, SW3 vanilla pods | native in part | Named captain from a pod; escape chance per leg |
 | Owned property paying income | Bannerlord workshops, SW3EXP bank, Discovery bases | medium | Wolves Freight is native; station stake is new |
 | Supplied outpost that consumes goods | Discovery POBs | medium | Runtime station persistence check |
@@ -476,16 +506,19 @@ Verdicts as defined in section 0. "Games" lists where the pattern appears in the
 | Text-quest chains | SR2 | medium | 5-15 dialog pages, state in text |
 | Arena, wave challenge, tournament | XM-R, Bannerlord, SW3EXP Cinema, NCW XL-15 | medium | Low priority; loot capped |
 | Fast travel or teleport | NCW, SW3EXP hyperjumps | medium | Gate on quest state |
-| Post-story free play | NCW, Steam requests | medium | Needs an ending hook; check `exe-hook-survey.md` |
+| Post-story free play | NCW, Steam requests, Starpoint Gemini Warlords, Privateer | medium | Needs an ending hook; check `exe-hook-survey.md` |
+| Final score and epilogue from all activities | Pirates! retirement, Battle Brothers retirement | medium | Running "Wolves record" in the Job log is cheap; an epilogue needs an ending hook |
 | Off-mission XP for mod activities | SW3EXP, NCW (both change the rule) | cheap | Count as quest state or grant own XP |
 | Warning before lethal zones | Starsector warning beacons, Steam requests | cheap | Comm warning or news on entry |
-| Offer pacing governor and cooldowns | Warband, X4 guilds, Endless Sky `minor`, L4D, RimWorld | cheap | Per-jump count, decline cooldown, one new chain per docking |
+| Offer pacing governor and cooldowns | Warband, X4 guilds, Endless Sky `minor`, L4D, RimWorld, EVE agents, EV Nova holdoffs | cheap | Per-jump count, decline cooldown, one new chain per docking, expiry without penalty |
+| Accepted-job cap with an in-world reason | Privateer guild standard (3) | cheap | Cap of 3 open mod jobs, explained by the FTU office; also caps markers |
 | Relation drift among AI factions | DeadAir | medium | Minor teams only, deny list |
 | Planetary RTS, arcade mode, bar minigames | SR2, RGO, Everspace 2 | impossible | Only the follow-up job slot transfers |
-| Station building, sector claims | X3/X4, Freeworlds | impossible | Reduced form: sponsor a service through charter goals |
+| Station building, sector claims | X3/X4, Freeworlds, Starpoint Gemini Warlords, EV Nova tribute | impossible | Reduced form: sponsor a service through charter goals |
 | Galaxy-map overlays and recolouring | SR2, Star Valor | impossible | News rows and dockmaster lines instead |
 | New hidden routes (jump holes) | Freelancer | impossible | Map edits, not runtime Lua |
 | Multiplayer shared goals, roleplay factions | Discovery, NMS Nexus, Elite | impossible | Only the simulated form (region drive) |
+| Several live systems at once | Conquest: Frontier Wars | impossible | Only the current system is loaded |
 
 ---
 
@@ -499,6 +532,167 @@ Collected from the notes; check `design/mod-research/exe-hook-survey.md` and `mo
 - Is there a damage-over-time area primitive (hazard as guard)?
 - Can the session survive the story ending (post-story free play)?
 - Does the fighter inventory API support "deliver a fighter of type X" (`AddShipToInventory`) [gk]?
+- What does `SetPerk("Disabled")` do in game, and does any vanilla script use it (wounded state, 15.9 T5)?
+- Does `Team:RemovePilot` followed by `AddPilotToPlayer` keep a hired merc pilot's perks, ship and XP across a save (detached wing, 15.9 T12)?
+- Does `AddPlayerExperience(n)` give XP to the squad or only to the player's pilot, and does the x0.1 off-mission rule apply to it (C9)?
+
+---
+
+## 15. Mercenary-squad games
+
+Added 2026-11-04 from `research-mercsquad.md`. The critic of round 1 found that the genre closest to the Star Wolves concept (named pilots, contracts, company reputation) had only [gk] lines, although criteria C1 and C2 (11.8) depend on it. Games: Battle Brothers (BB, 2017), BattleTech (BT, 2018), MechWarrior 5: Mercenaries (MW5, 2019), XCOM 2 and War of the Chosen (WotC) (2016, 2017), Jagged Alliance 2 (JA2, 1999), FTL: Faster Than Light (2012), Wartales (2023), Darkest Dungeon 1 and 2 (DD, 2016, 2024). The Fandom wikis for BB, JA2, XCOM and FTL returned 402, PC Gamer article bodies came back truncated, and techraptor and Medium returned 403; claims from those sites carry [src:snip]. Pattern IDs T1-T15 are scored in 15.9.
+
+**15.1 SW3 levers checked [local].** `mods/traffic/design/mod-research/lua-natives.md` lines 399-430 list `Pilot:Message(textKey, seconds)` (radio line), `Pilot:HavePerk`, `Pilot:SetPerk`, `Pilot:IsBasePilot`, `Group:HavePerk`, `GetPilot(name)`, `Team:RemovePilot`, `AddPilotToPlayer`, `AddPlayerExperience(n)` (10 vanilla calls) and `AddPost(mailId)` for news. No perk-removal native is listed. `Perks.xml` in the GOG install has 66 perks. Besides combat perks it holds `Black_Market`, `F_of_Merchant`, `Imperial_Agent`, `Accountancy`, `Economics`, `Economics_Exp`, `Repairman`, `Repairman_Exp`, `Tech_Adaptation_Alien`, `Learner`, `Instructor` and `Lone_Wolf`. One perk is named `Disabled`: no requirements, cost 0, unknown effect. Off-mission kill XP is x0.1 (11.7).
+
+**15.2 Battle Brothers (2017).**
+- Activity: world-map events with choices, contracts from settlements and noble houses, player-chosen ambitions, late-game crises [src MS1, MS6, MS10, MS12].
+- Discovery: contracts are offered in settlements; offers depend on relations and renown; one contract at a time [src MS6]. Some events need "characters of certain backgrounds or traits in your party" [src MS1]. The active ambition is shown on the world map with a tooltip [src MS10].
+- Loop: contract talks let the player ask for "payment in advance, more payment on completion"; pushing too hard ends the talks [src MS6]. Dev Blog #95 replaced "you just ask for more money until the employer denies" with a choice of upfront share and per-head or flat pay [src MS7]. "Contracts can now trigger dialogs with player decisions at any time", for example a bribe to betray the employer; a betrayed employer may later set a trap disguised as a job [src MS6]. Events give and remove traits: a defeat by orcs can give a fear of greenskins that the man loses again over time; 16 traits, most with event interactions [src MS2]. Injuries per body part heal over time, faster at temples; a downed man who survives may get a permanent injury [src MS3]. Camp followers unlocked by renown, such as a Negotiator and a Surgeon, add options [src:snip MS5]. Wages and food upkeep, desertion when unhappy [gk].
+- Reward: pay graded by result (fewer carts delivered, less pay and a lower chance of rehire) [src MS6]. Renown is "your business reputation"; it rises with contracts and hard battles and falls with failed or cancelled contracts and betrayal [src MS6]; a wiki excerpt gives 25 renown per contract and 100 per ambition, less after haggling [src:snip MS8]. An ambition gives renown, mood and often a unique item; failing one for a long time lowers mood [src MS10]. Retirement at any time picks one of five endings, "not all of them are happy ends" [src MS11].
+- Reception and intent: permanent injuries "cushion the impact that losing important characters can have on your campaign" and force roster rotation [src MS3]. Commenters on #95 said that with an equal total the advance is always the better choice and asked for non-money terms [src MS7]. Players: "it's all about the brothers"; a bad knee is "a death sentence" [src:snip MS14, MS4]. Reviews: "demands your time, but grants rewards" [src MS13].
+- SW3: T1, T2, T3, T8, T10, T13 and T14 in 15.9.
+
+**15.3 BattleTech (2018).**
+- Activity: shipboard events aboard the Argo between contracts, contracts with negotiated terms, Argo upgrades [src MS16, MS17, MS22].
+- Discovery: events fire aboard the Argo and target pilots by tags such as Jinxed, Rebellious, Klutz, Criminal or Dishonest; pilot backgrounds are random [src MS16, MS17].
+- Loop: an event names one or two pilots and offers 2-3 answers. "Class Warfare": pilot A punches pilot B; punishing both gives Low Spirits and 7 days off. "Beyond Repair": an injured pilot dies and another blames the commander; the speech sets a trait and +-2 morale. A Black Market event needs a Dishonest or Criminal pilot [src MS17]. At acceptance the player emphasises pay or salvage, or gives up both for reputation with the client's faction [src MS16]. Pilots cost money every month "or face desertion"; a wounded pilot can be out for close to three months; a bad-faith withdrawal costs reputation [src MS15].
+- Reward: credits, salvage, faction reputation; event outcomes on the named pilots (spirits, traits, days unavailable, XP) [src MS16, MS17].
+- Reception: morale is "very easy to get to maximum morale"; "Morale strikes me as nice campaign game idea that never really got enough love to give it depth" [src MS18]. Players see the same events and ask for lower weights; negative events come mostly at low morale or cut pay [src MS19]. A search excerpt of a design essay says HBS called the event library "perhaps a tenth of what it was meant to be" [src:snip MS20]. On Argo facilities: a lounge gives a one-time +1 for a monthly fee; "Anything that you need to pay to keep should provide ongoing bonuses"; facilities that improve event outcomes or "remove the chance for harmful events to show up at all" are valued [src MS23]. Metacritic 80 [src MS24].
+- SW3: T2, T4, T5, T7, T8, T9 and T11.
+
+**15.4 MechWarrior 5: Mercenaries (2019).**
+- Activity and loop: generated contracts with per-faction standing. Reputation and standing set rewards and negotiation points (payout, salvage, insurance, airstrikes); aborting a contract lowers both; long pilot recovery forces a deeper roster [src MS25]. Hero standing gives a 25 % discount, sworn enemy +25 % [src MS26].
+- Reception: "There's lots of repetition in the gameplay"; story missions are "mostly dialogue spoken at you between similar missions to the others" [src MS27]. Pilots share one passive skill set, and the game has "a lot less personality" than its trailers [src:snip MS28].
+- SW3: a generated board without crew identity draws the same complaints as SW2 (11.3). This supports C2 and C8. T9 in 15.9.
+
+**15.5 XCOM 2 and War of the Chosen.**
+- Activity: named and customised soldiers; covert actions; the Avenger as a mobile base [src MS30, MS34].
+- Discovery: from the Avenger bridge players "advance time, move the Avenger, access scanning missions and combat missions" [src MS30].
+- Loop: WotC fatigue; stress gives negative traits (fear of Mutons) that are cured in the infirmary [src MS31]. Compatible pairs form bonds ("You can't predict who's going to be compatible" [src MS32]); watershed moments (the two sole survivors, carrying an unconscious squadmate) set compatibility to high [src MS31, MS33]. Covert actions send at least two soldiers away for "a couple days"; the risks are wounded, captured and ambushed; adding an engineer, scientist or resource lowers them; an action cannot be aborted [src MS34].
+- Reward: covert actions give ability points, intel, supplies or a promotion [src MS34].
+- Reception: customisation was "widely praised" for making deaths matter [src MS30]; the designers rely on stories that emerge "in the player's head" [src MS29]; Dark Events felt "passive and indirect" [src MS30].
+- SW3: T6, T11 and T12.
+
+**15.6 Jagged Alliance 2 (1999).**
+- Activity and discovery: hired mercs with friends, enemies and attitudes; the friends and enemies list is shown in the stats screen, and attitudes arrive by e-mail on day 3 [src MS36].
+- Loop: "Mercs who really hate one another will refuse to re-up their contract with you or even quit the team mid-assignment" [src MS35]; traits "can cause verbal complaints" [src MS36]; a 50 % raise may keep a merc who wants to leave [src:snip MS37].
+- Reception: banter between mercs is the most loved feature; repeated voice clips are the main complaint [src:snip MS38].
+- SW3: T6 and T15.
+
+**15.7 FTL: Faster Than Light (2012).**
+- Activity and loop: event answers ("blue options") unlocked by crew species, ship systems or augments; a Steam guide: "priority will be to get a diverse crew ASAP and maximize 'blue option' dialogue options" [src MS39].
+- Reward: better event outcomes; some species unlock answers that recruit crew [src:snip MS40].
+- Reception: "Attachment to the crew grows stronger with every passing sector"; events repeat after a few hours [src MS41]. The developers regret unlock conditions that depend too much on chance [src MS42].
+- SW3: T1.
+
+**15.8 Wartales (2023) and Darkest Dungeon 1 and 2.**
+- Wartales: hidden traits; "Confessions" are personal events that "will deeply affect your companion for the rest of their life"; friends and enemies inside the company [src MS43]. Wages are due at intervals; late wages give a stacking -2 happiness, and a companion who leaves is "gone forever"; the chance to leave per rest is shown on hover [src MS44]. Review: companions are "a bit bland" [src MS45]. Players complain that a companion turned to "HATES" after three campfire rests with no visible cause [src MS46]. Once a region is cleared there is little reason to take more of its contracts [src:snip MS47].
+- Darkest Dungeon: stress rises from crits, curios and party interaction; at 100 a hero gets an affliction or a virtue; "We realized early on that we needed to completely expose the Stress meter and display stress increases and decreases directly as numbers" [src MS48]. Negative quirks lock in with a 25 % chance per mission, and some block town activities [src MS50]. DD2 reworked affinity because players found it "too intrusive": it removed "all of the apparently random affinity gains and losses during combat" and now shows effects "before you commit" [src MS52].
+- SW3: T4, T6, T7 and T15.
+
+**15.9 Transfer under C1-C10.** Scale: + meets the criterion, 0 neutral or partial, - violates it. "Label" uses the section 0 verdicts; "Recommendation" says whether to build it, adopt it as a rule for all mod activities, merge it into an existing design, defer it or reject it.
+
+| Pattern | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 | C9 | C10 | Label | Recommendation |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| T1 Perk-gated dialog answers | + | + | 0 | + | 0 | + | + | + | 0 | 0 | cheap | Build; extends A05 |
+| T2 Pilot events at docks or jumps | + | + | 0 | + | 0 | + | + | + | 0 | - | cheap | Build a small curated pool |
+| T3 Event outcome grants a perk | + | + | 0 | 0 | + | + | + | 0 | + | 0 | cheap | Build; the C9 answer |
+| T4 Morale or mood meter | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | medium | Reject |
+| T5 Wounded pilot state | + | + | + | 0 | 0 | - | 0 | 0 | 0 | 0 | medium | Defer (engine checks, section 14) |
+| T6 Pair banter as radio lines | 0 | + | 0 | + | 0 | + | + | + | 0 | - | cheap | Build lines only |
+| T7 Wages and desertion | 0 | - | 0 | 0 | 0 | - | 0 | 0 | 0 | 0 | medium | Reject |
+| T8 Terms choice on mod contracts | 0 | 0 | 0 | + | + | + | 0 | + | 0 | 0 | cheap | Build |
+| T9 Early withdrawal with partial pay | 0 | 0 | 0 | + | + | + | + | + | 0 | 0 | native in part | Adopt as rule |
+| T10 Mid-job counter-offer | 0 | 0 | 0 | + | 0 | + | + | + | 0 | 0 | cheap | Build |
+| T11 Mothership fitting flags | + | 0 | + | 0 | + | + | 0 | 0 | 0 | 0 | cheap | Build |
+| T12 Detached wing | + | + | + | 0 | 0 | + | + | 0 | + | 0 | medium | Defer (engine check, section 14) |
+| T13 Company ambition card | 0 | 0 | 0 | 0 | + | + | 0 | + | + | 0 | native in part | Merge into charter goals |
+| T14 Retirement epilogue | - | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | medium | Reject |
+| T15 Visible crew state | 0 | + | 0 | 0 | 0 | + | 0 | 0 | 0 | 0 | cheap | Adopt as rule |
+
+Notes per row (SW3 conclusions unless tagged):
+- T1. FTL, BB and BT gate answers on crew traits [src MS39, MS1, MS17]. SW3 form: `Pilot:HavePerk` on each squad pilot, the speaker named through `GetPilot(name)` [local]. Key first on the non-combat perks (`Black_Market`, `F_of_Merchant`, `Imperial_Agent`, `Accountancy`, `Economics`, `Repairman`, `Tech_Adaptation_Alien`), which do little in free roam. One answer slot per existing dialog node. When no pilot has the perk, the NPC's line names it.
+- T2. BT shows the form and its failure: a small pool repeats, and negative events tied to low pay feel like a spiral [src MS19, MS23; src:snip MS20]. SW3 form: a fixed written pool (C8); each event fires once per save, with a cooldown in legs, never during a story mission (C6); one dock dialog page or a radio pair with 2-3 answers; the outcome lands on a named pilot (perk, credits, standing, tip or news line). Story pilots never leave or die from an event (C2). The cost is EN and RU text (C10).
+- T3. BB, BT and Wartales change traits through events [src MS2, MS17, MS43]. SW3 can add a perk with `SetPerk` but cannot remove one [local]. A rare perk grant is the C9 reward for mod activities in place of XP: at most one per pilot per chapter, only when the pilot meets the perk's requirements and lacks it. It cannot be farmed, which answers AnrDaemon's objection to free XP (11.5).
+- T4. SW3 has no screen for a meter; BT players maxed morale and DD had to show stress as numbers [src MS18, MS48]. Any pilot state must be a named state written in a logbook card (T15).
+- T5. BB, BT, MW5 and XCOM use recovery time to force rotation [src MS3, MS15, MS25, MS30]. SW3 has no pilot HP and no known perk removal or launch lock; the effect of `Disabled` is unknown [local]. Ejection already limits the loss of a pilot. Defer until the section 14 checks on `Disabled` and perk removal.
+- T6. JA2 is remembered for banter [src:snip MS38]; WotC sets bonds at visible moments [src MS33]; Wartales and DD2 drew complaints when relationships changed at random or out of sight [src MS46, MS52]. SW3 form: scripted two-line radio exchanges (`Pilot:Message`) between named squad pilots after defined mod events (pod rescue, clan captain kill, pirate dock visit), each once per save, with no hidden relationship value and no departure.
+- T7. Conflicts with C2; `proposals/merc-packs-beyond-flavour.md` already rejected idle upkeep [local]; BT's underpay spiral drew complaints [src MS23].
+- T8. BB replaced "ask for more" with terms [src MS7]; BT trades pay or salvage for reputation, and players give up pay on pirate contracts to raise pirate reputation [src MS16; src:snip MS21]. SW3 form: 2-3 answers on charter or freight pages that change something besides the total: full pay; half pay plus client standing; an advance forfeited on abandonment. Pay stays inside the C5 caps. Salvage shares do not fit because loot is the main SW3 income (11.5).
+- T9. BT bad-faith withdrawal, MW5 abort penalties and BB graded pay [src MS15, MS25, MS6]. Rule for C6: leaving a mod job early pays a part and costs client standing, never a hard fail. Most mod specs already grade outcomes; this states it for all of them.
+- T10. BB contracts open a decision mid-job [src MS6]. SW3 form: during an escort or freight job the attacking clan hails and offers credits to break off; accepting raises clan standing, lowers client standing and forfeits the pay (C7). Check the overlap with the extortion box (`extort-fix-spec.md`).
+- T11. BT players value facilities that change event outcomes and dislike paid one-time bonuses [src MS23]; the Avenger is a mobile base with facilities [src MS30]. SW3 form: a few mothership fittings (medbay, workshop, comms) bought once at a dock dialog and stored as flags, with no upkeep. Each flag unlocks answers or removes a bad outcome on existing pages. Meets C3 without a new screen. Check that no flag duplicates a vanilla module.
+- T12. XCOM covert actions show the shape: two soldiers away for days, visible risks, risk lowered by adding a resource [src MS34]. SW3 needs a `Team:RemovePilot` and `AddPilotToPlayer` round trip [local]. Hired merc pilots only, never plot pilots; reward a perk (T3) or credits; a bad roll returns the pilot with a logbook note, never death.
+- T13. BB ambitions are a goal picked from 3-4 offers with a reward [src MS9, MS10]. Charter goals already give postings, ranks and a logbook card (`charter-spec.md`) [local]. Take two details only: the player picks 1 of 3 postings at the dock page, and rank thresholds give a named reward (a perk to a named pilot, T3, or a fitting flag, T11).
+- T14. The SW3 ending is story code; an epilogue needs an ending hook (section 14) and BB's choice of when to retire has no SW3 equivalent.
+- T15. DD, DD2 and JA2 show crew state to the player [src MS48, MS52, MS36]. Rule: every pilot-level effect a mod creates appears in a logbook card or a radio line that names the pilot and the cause.
+
+**Verdict for section 15.** The genre supplies the C2 and C9 answers the round 1 proposals lacked: perk-gated answers (T1), a small curated pool of pilot events (T2), a capped perk grant in place of XP (T3) and scripted radio banter (T6), all cheap. Fitting flags (T11) are the cheap C3 answer. Meters, wages and desertion fail C2 or have no screen. Wounded state and detached wings wait on engine checks.
+
+---
+
+## 16. Classic open-space games and fan-named substitutes
+
+Added 2026-11-04 from `research-classics.md`. The critic of round 1 named games with job boards, rumours and exploration that no note covered (Pirates!, Wing Commander Privateer, Escape Velocity Nova, EVE Online) and the substitutes fans named in a Steam thread [src CL52]: Starpoint Gemini Warlords, Crying Suns, Nexus: The Jupiter Incident, Conquest: Frontier Wars and O.R.B. Ceres, also named there, was not researched. The Pirates! wiki returned 402 to direct fetches and was read as wikitext through the MediaWiki API; the Privateer manual was read from the PDF; EV Nova facts come from the data-format Bible.
+
+**16.1 Sid Meier's Pirates! (1987; remake 2004).**
+- Activity: dig up the buried treasure of nine named pirates; hunt those pirates; rescue four lost relatives and defeat the villain Montalbán; find lost cities; court governors' daughters; duel criminals; escort an amnesty ship; at a pirate haven, choose which port the pirates raid next [src CL1, CL3, CL5, CL7, CL12, CL13, CL14].
+- Discovery: one tavern per port with three tip roles. The paid Mysterious Traveler sells special items, map pieces and leads such as which villain holds the family. The free barmaid shows a rich ship's route and current position on the map, and gives pirate and villain positions and bounty warnings. The barkeeper says what the town needs (a raid, a missionary, a new governor) and where criminals are [src CL4]. A Captain of the Guard sometimes harasses the barmaid, and "When he is around, neither she nor the Barkeeper will talk to you" until the player duels him [src CL4]. Rescued relatives and daughters also give leads and map pieces [src CL3, CL7]; Raymondo can be spawned at a Jesuit mission and then tracked through bartenders [src CL10]. Missions, villages and pirate havens are on the map, but the game gives no text pointer when the player is close [src CL11, CL12].
+- Loop: the next piece of the family map is carried by Baron Raymondo, who sails; the player gets a location tip, catches and beats him, and receives one piece [src CL3, CL8]. Map pieces come from the traveler, Raymondo, relatives, Mendoza and daughters [src CL3, CL4, CL7]; four pieces reveal a spot [src:snip CL17b]. A rescued relative either points to Montalbán or hands over a lost-city map, so one chain leads into the next [src CL3]. Locations are written as a generated landmark name (two word lists) near "the closest city" [src CL6, CL16]. Digging up a pirate's treasure before beating him turns him into a "Pirate Hunter" [src CL1]. While the player sails, days pass, AI ships move between ports and nations invade each other [src CL19].
+- Reward: gold, ships, specialists, items; fame points per deed: 1 per treasure, 1 per pirate beaten, 4 per relative or lost city, 1 per map piece held but not yet used, 10 for Montalbán [src CL9]. Ranks give services such as cheaper repairs and upgrades [src CL15c]. An amnesty escort erases or reduces the player's bounty [src CL13, CL13b]. Retirement turns fame into a score and an epilogue whose text changes with what was done, for example "This omission haunts you throughout your remaining years" when no relative was rescued [src CL3, CL15].
+- Ledger: the Top 10 page lists every rival's wealth, ships captured, cities sacked and treasures found [src CL5, CL15b].
+- Reception: IGN praised the variety and criticised "the repetitive nature of the gameplay over time"; Metacritic 88 [src CL1]. The 1987 original sold over a million copies [src CL2]. A reviewer: barmaids "tip you off to particularly valuable ships to attack" [src CL17]. A Steam player "literally spent hours trying to find Montalban's hideout"; duplicate landmark names (two Rum Rocks, "the 'two Captains Reef' issue") confused players [src CL16].
+- Truth of tips: no page read says a tip is ever false; [gk] tips are always true and only go stale because ships move.
+
+**16.2 What Pirates! does that A07 and A16 lack.** A07 (derelict trails) and A16 (sourced rumours) are the round 1 forms in `proposals/activities-after-worldbuilding.md` 2.5 and 2.7 [local]: A07 is 3-5 authored chains of 3-4 wrecks, each log naming the next system and landmark, with fragments in scar hulks, stash openings and survivor hand-ins; A16 adds source tags and landmark precision to the existing tip channels, true or stale, with no false tips.
+1. Fragments held by people. Raymondo carries the next piece and moves [src CL3, CL8]; all A07 fragments sit in static objects. SW3: one fragment per chain on a wanted captain or clan treasurer record, dropped on kill or capture: **cheap**.
+2. Any order, partial progress counts. Pieces are collected in any order and each held piece already scores fame [src CL9]; A07 is strictly sequential. SW3: the final site needs 2 of 3 fragments from different sources, a 3-bit set per chain: **cheap**.
+3. Many sources, linked chains. Five kinds of source, and a rescue hands over the next chain's map [src CL3, CL4, CL7]; A07 has three sources. SW3: the patrol board, charter ranks and the paid informant also hand out fragments, and the end of one chain names the start of the next: **cheap**.
+4. A visible ledger. The Top 10 page and the status page show rivals and finds [src CL5, CL15b]; A07 has one Job log line per chain. SW3: open chains, held fragments and named targets as Job log rows: **cheap**; a ranked list of rival captains: **medium** (as SR2's rating, 2.2).
+5. The rival reacts. Taking a pirate's treasure first makes him a hunter [src CL1]; in A07 only the clan races the player. SW3: the owning clan's captain hunts the Wolves for a few legs after the final site: **cheap** (section 13 row "Hunters sent after the player").
+6. Readable locations. A landmark name near the closest port [src CL6, CL16]. SW3: every landmark named in a fragment is unique within its region, and the text names the system plus a direction from a station or portal: **native** (text rule).
+7. Three tip roles with different subjects [src CL4]; A16 merges sources into one ring. SW3: (a) a tip about a live flight (rich trader, treasurer, captain) gives its current leg and exit portal, so it can be checked at once: **cheap**; (b) free harbour tips about region state and paid informant tips about named targets stay separate: **native**; (c) a "this station needs X" dock line that points at an Office or patrol board job: **cheap**.
+8. A tip giver can be blocked. The Captain of the Guard silences the tavern [src CL4]. SW3: a dock line "the informant will not talk while the clan's man is here" with that pilot's flight outside: **cheap**, low priority.
+9. One final score. Every activity adds fame and changes the epilogue [src CL3, CL9]. SW3: a running "Wolves record" summary in the Job log: **cheap**; an epilogue at the story's end: **medium** (ending hook, section 14).
+10. Truth. Tips go stale but are not false ([gk], see 16.1). This supports A16's recommended form (true or stale) over false tips. Clients who cheat the hero, which players asked for, fit the Privateer fixer form instead (16.3).
+
+**16.3 Wing Commander: Privateer (1993).**
+- Activity: "randomly generated non-plot missions": cargo runs, base defence, patrols, strikes, some legal and some not [src CL20, CL21]; bar fixers; a plot of 23 missions from nine named contacts, started by the player's choice [src CL22, CL24].
+- Discovery: a Mission Computer on every base concourse; Mercenaries' and Merchants' Guild offices with their own boards; fixers in bars, more often in large bases; bartender gossip [src CL23, CL25].
+- Loop: the guild standard says pilots "ought not to take more than three missions at a time", with an in-world reason: over-committed pilots fail deliveries, and the cap stops "mobsters and shady characters" from taking all the work [src CL23]. Guild membership costs a fee; "no missions are illegal and payment is guaranteed" [src CL23]. Fixer jobs pay more, are bound "with only a handshake and often prove not to be legit" [src CL23]. Pirate bases are converted mining bases with no guild offices; they buy food, sell weapons and trade drugs and slaves, and anyone known to trade there is attacked by Confederation forces [src CL23].
+- Reward: credits for ship upgrades [src CL21]. Plot contacts give tools: a "secret compartment, which cannot be scanned", library access that yields a scanner, an alien gun from a derelict [src CL24].
+- Reception: "the trading and mercenary missions may get a bit boring after awhile"; "there are no side quests to speak of"; "your log doesn't tell you what to do after you've completed a mission" [src CL25]. Post-plot play is "hundreds of hours just smuggling and flying random generic missions" [src:snip CL28b]. Once the ship is maxed, money has little use [src CL26].
+- SW3: generic board **native**. Accepted-job cap of three with an in-world reason (the FTU office) also limits markers: **cheap**. Paid registration that unlocks a better board tier: **cheap** (extends charter ranks). Handshake job off the board with its risk (an ambush chance) stated before acceptance: **cheap**; stating the risk keeps it consistent with A16's rule of no false tips and gives players the cheating client they asked for. Contact chain ending in an access right (dock service, permit): **cheap** (A28, 09 permits). Hold hidden from checkpoint scans: **medium** (needs checkpoints 11). Supply run to a clan base that raises Patrol heat: **cheap**. Hidden jump points (forum posters report one in Rikel [src:snip CL27]): **impossible**.
+
+**16.4 Escape Velocity Nova (2002).**
+- Activity: generic transport missions, trade, piracy; six mutually exclusive storylines with sub-lines; demanding tribute from a planet [src CL29, CL30r].
+- Discovery: a mission appears at the mission computer, the bar, a dialog, or from a named ship when hailed. It is gated by legal record, combat rating, ship type, control bits and a percent chance "recalculated each time the player warps into a system" [src CL31].
+- Loop: missions carry special ships with one goal (destroy, disable, board, escort, observe, rescue, chase off), time limits and fail flags; `OnSuccess`, `OnRefuse` and similar fields set bits that open the next mission [src CL31]. About 5 % of ships are named persons; one can offer a mission when hailed, leave after acceptance, or hold "a grudge and attacks the player later" [src CL31]. Timed events have a date window, a chance, a duration, holdoff periods ("PostHoldoff prevents immediate repeats") and news per government [src CL31].
+- Reward: credits, legal record, ships and outfits locked to storylines [src CL30r].
+- Reception: "Without the internet, there's a good chance you'll miss most of the missions in EV: Nova"; designers "should plan for people playing their game blind" [src CL30r]. Critics noted "lengthy repetition" [src CL29].
+- SW3: gating by place, record and state, and per-entry rolls: **native**. A named ship that offers a job when hailed and may come back with a grudge: **cheap**. Timed events with an explicit post-holdoff: **native in part** (trf_events, News.xml). Planet tribute: **impossible**. Lesson for A07: every chain start needs a pointer in a channel the player already reads (harbour line, informant, Job log); a random roll decides when the start appears, not whether.
+
+**16.5 EVE Online (2003-).**
+- Activity: agent missions (courier, mining, combat), exploration sites, escalations, incursions [src CL33, CL35, CL36, CL37].
+- Discovery: agents in NPC stations, levels 1-5 gated by standing [src CL33]. Combat anomalies show on entry; signatures need probe scanning [src CL35]. An escalation appears as a pop-up after a cleared site [src CL36].
+- Loop: declining an agent more than once in four hours costs standing; an offer that expires costs nothing [src CL34]. A storyline mission comes "after every 16 missions of the same level and faction" [src CL34]. Escalations start with "a small chance (about 5%)", run up to four steps, each further out, and end silently when no system fits [src CL36]. Ghost sites give "limited time to hack" and the container explodes on failure [src CL35]. Incursion penalties "apply to everyone in the constellation, whether or not they are fighting" until fleets lower the invaders' influence and clear the final site [src CL37].
+- Reward: ISK, loyalty points, standing; storyline missions give "a large corporation standing increase and a moderate faction standing increase" [src CL33, CL34].
+- Reception: search excerpts call agent missions grindy ("the same 15-20 of 'em"); exploration is preferred for "the thrill of the unknown" [src:snip CL38].
+- SW3: every Nth job for one faction unlocks a written special job: **cheap**, a counter per faction and one authored job per faction and stage band; this is the C8 curated layer on a generated board. Decline cooldown and penalty-free expiry: **cheap** (offer pacing governor, section 13). Escalation from a cleared nest or base to an A07 fragment or stash lead: **cheap**, with a closing line in place of a silent end. Timed container that explodes on delay: **cheap** (no hacking screen). Raids-phase penalty for everyone present (pay or spawn modifier): **cheap**.
+
+**16.6 Starpoint Gemini Warlords (2017).**
+- Activity: one capital ship (gunship to carrier) with side quests, freelance jobs and exploration; a free-roam Conquest mode with territory, fleets and a personal HQ [src CL39, CL40, CL41].
+- Reception: Metacritic 73 [src CL39]; conquest is "where this game really shines", later runs "feel a little samey" [src CL43]; "the campaign mode feels so tacked on" [src:snip CL42].
+- SW3: free play without the story equals post-story play: **medium** (ending hook). Territory, HQ and conquest: **impossible**. Its freelance jobs are a generic board (**native**). It supports the request for play after the story (11.4) but has no activity loop to copy.
+
+**16.7 Crying Suns (2019).**
+- Activity and loop: events in each system; officers "open alternative options during random encounters"; expeditions send commandos to a planet, auto-resolved, and can bring back officers, weapons or squadrons or lose commandos [src CL44, CL45, CL46].
+- Reception: expeditions "lack interactivity, you choose who to send then watch things happen" [src CL46]; events with "the exact same dialogue trees and identical outcomes" went stale within one run [src CL45].
+- SW3: officer-gated answers are the A05 and T1 form: **cheap**. An auto-resolved send-off: **medium** (T12), and it needs a visible part, such as a pod to collect or a returning flight the player can escort. Each authored event fires once per save or varies its outcome by region phase.
+
+**16.8 Nexus: The Jupiter Incident (2004), Conquest: Frontier Wars (2001), O.R.B. (2002).** Fans named these as substitutes for the Star Wolves combat style, not for activities [src CL52]. Nexus is a linear mission campaign with points for repairs and upgrades between missions [src CL47; src:snip CL48]. Conquest is a mission RTS across several live systems with supply lines [src CL49]. O.R.B. is an RTS of asteroid mining bases [src CL51]. None has a free-roam activity layer. SW3: refits between fights are **native**; several live systems at once is **impossible**. No activity to transfer.
+
+**Verdict for section 16.** Pirates! is the direct precedent for A07 and A16 and adds five cheap changes: fragments carried by named moving NPCs, any-order fragments from different sources, chains that lead into each other, a visible ledger, and a rival who reacts. Privateer and EVE give cheap pacing rules (a three-job cap, decline cooldowns) and a cheap curated layer (a written job every Nth job per faction). EV Nova shows that chain starts hidden behind a random roll are missed. The substitutes add nothing beyond post-story play (medium).
 
 ---
 
@@ -781,7 +975,115 @@ Collected from the notes; check `design/mod-research/exe-hook-survey.md` and `mo
 - TH39 https://www.videogameschronicle.com/news/i-dont-think-this-is-a-good-idea-veteran-bethesda-world-artist-says-starfield-having-1000-planets-was-the-wrong-move/ [src]
 - TH40 https://www.dpss.space/bgs [src]
 
+### Mercenary-squad games (MS)
+- MS1 https://battlebrothersgame.com/dev-blog-43-event-system/ [src]
+- MS2 https://battlebrothersgame.com/?p=23298 (Dev Blog #111) [src]
+- MS3 https://battlebrothersgame.com/dev-blog-79-progress-update-injury-mechanics [src]
+- MS4 https://steamcommunity.com/app/365360/discussions/0/5829358177512171373/ and related Battle Brothers injury threads [src:snip]
+- MS5 https://rpghq.org/forums/viewtopic.php?p=99027 [src:snip]
+- MS6 https://battlebrothersgame.com/?p=7430 (Dev Blog #61) [src]
+- MS7 https://battlebrothersgame.com/?p=18878 (Dev Blog #95) [src]
+- MS8 https://battlebrothers.fandom.com/wiki/File:Loot_two_named.png (wiki excerpt on renown and negotiation) [src:snip]
+- MS9 https://gameplay.tips/guides/5034-battle-brothers.html [src]
+- MS10 https://battlebrothersgame.com/dev-blog-89-ambitions/ [src]
+- MS11 https://battlebrothersgame.com/dev-blog-90-retirement/ [src]
+- MS12 https://battlebrothersgame.com/?p=18285 (Dev Blog #92) [src]
+- MS13 https://en.wikipedia.org/wiki/Battle_Brothers [src]
+- MS14 https://steamcommunity.com/app/1527950/discussions/0/3195868146173977814 ; https://steamcommunity.com/app/365360/discussions/0/620712364025411221 [src:snip]
+- MS15 https://www.pcgamesn.com/battletech/battletech-pc-review (same page as SW73) [src]
+- MS16 https://www.gamebanshee.com/k49du [src]
+- MS17 https://kosgames.com/battletech-random-events-guide-v2-0-35013 [src]
+- MS18 https://steamcommunity.com/app/637090/discussions/0/2828702372996862417/ [src]
+- MS19 https://steamcommunity.com/app/637090/discussions/0/1736593325989920051/ [src]
+- MS20 https://persenche.medium.com/the-design-philosophy-of-battletech-2-1132a0eb388 [src:snip]
+- MS21 https://forum.paradoxplaza.com/forum/threads/is-it-possible-to-recover-reputation-after-being-loathed.1348746/post-26653965 [src:snip]
+- MS22 https://www.pcgamesn.com/battletech/battletech-campaign [src]
+- MS23 https://steamcommunity.com/app/637090/discussions/0/1696048786954857207/ [src]
+- MS24 https://en.wikipedia.org/wiki/BattleTech_(video_game) [src]
+- MS25 https://www.sarna.net/wiki/MechWarrior_5:_Mercenaries [src]
+- MS26 https://steamcommunity.com/app/784080/discussions/0/3200369112075985774 [src]
+- MS27 https://www.thesixthaxis.com/2021/09/28/mechwarrior-5-mercenaries-review-legend-of-the-kestrel-lancers/ [src]
+- MS28 https://techraptor.net/gaming/reviews/mechwarrior-5-mercenaries-review ; https://windowscentral.com/mechwarrior-5-mercenaries-review [src:snip]
+- MS29 https://www.gamedeveloper.com/business/how-i-xcom-i-enables-players-to-tell-their-own-stories [src]
+- MS30 https://en.wikipedia.org/wiki/XCOM_2 [src]
+- MS31 http://www.gamebanshee.com/kdd8x [src]
+- MS32 https://www.pcgamesn.com/xcom-2/xcom-2-war-of-the-chosen-relationship [src]
+- MS33 https://www.pcgamesn.com/xcom-2/xcom-2-soldier-bonds-war-of-the-chosen [src]
+- MS34 https://www.gamepressure.com/xcom2/covert-actions/zba109 [src]
+- MS35 https://forums.coin-return.org/threads/lets-play-jagged-alliance-2.704 [src]
+- MS36 https://fadden.com/gaming/ja2/ [src]
+- MS37 https://www.scribd.com/document/48520052/JA2-FAQ [src:snip]
+- MS38 https://forceforgood.co.uk/?p=3304 ; https://www.justgamesretro.com/?p=8379 [src:snip]
+- MS39 https://steamcommunity.com/app/212680/discussions/0/882961586724017385 [src]
+- MS40 https://steamcommunity.com/app/212680/discussions/0/4637114675688929745 [src:snip]
+- MS41 https://www.gamereactor.eu/?p=12956 [src]
+- MS42 https://www.shacknews.com/article/78422/ftl-devs-there-are-some-things-we-should-have-done [src]
+- MS43 http://www.gamebanshee.com/xrdcy (Wartales community update #3) [src]
+- MS44 https://www.slythergames.com/2021/12/15/wartales-how-to-pay-wages/ [src]
+- MS45 https://fingerguns.net/reviews/2023/04/12/wartales-review-pc-a-mercenarys-life-for-me/ [src]
+- MS46 https://steamcommunity.com/app/1527950/discussions/0/6169410450158452111/ [src]
+- MS47 https://www.pcgamer.com/wartales-review-the-mercenary-life-isnt-flashy-but-it-is-rewarding [src:snip]
+- MS48 https://www.gamedeveloper.com/design/game-design-deep-dive-i-darkest-dungeon-s-i-affliction-system [src]
+- MS50 https://darkestdungeon.wiki.gg/wiki/Quirks [src]
+- MS52 https://www.pcgamesn.com/darkest-dungeon-2/update-relationship-system [src]
+
+### Classic and substitute games (CL)
+- CL1 https://en.wikipedia.org/wiki/Sid_Meier%27s_Pirates!_(2004_video_game) [src]
+- CL2 https://en.wikipedia.org/wiki/Sid_Meier%27s_Pirates! [src]
+- CL3 https://sidmeierspirates.fandom.com/wiki/Family (read through https://sidmeierspirates.fandom.com/api.php?action=parse&page=Family&prop=wikitext&format=json) [src, via MediaWiki API]
+- CL4 https://sidmeierspirates.fandom.com/wiki/Tavern [src, via API]
+- CL5 https://sidmeierspirates.fandom.com/wiki/Famous_Pirate [src, via API]
+- CL6 https://sidmeierspirates.fandom.com/wiki/Landmarks [src, via API]
+- CL7 https://sidmeierspirates.fandom.com/wiki/Governor%27s_Daughter [src, via API]
+- CL8 https://sidmeierspirates.fandom.com/wiki/Evil_Spaniards ; https://sidmeierspirates.fandom.com/wiki/Baron_Raymondo ; https://sidmeierspirates.fandom.com/wiki/Marquis_Montalban [src, via API]
+- CL9 https://sidmeierspirates.fandom.com/wiki/Fame [src, via API]
+- CL10 https://sidmeierspirates.fandom.com/wiki/Special_Item [src, via API]
+- CL11 https://sidmeierspirates.fandom.com/wiki/Jesuit_Mission [src, via API]
+- CL12 https://sidmeierspirates.fandom.com/wiki/Pirate_Haven [src, via API]
+- CL13 https://sidmeierspirates.fandom.com/wiki/Amnesty_Mission [src, via API]
+- CL13b https://sidmeierspirates.fandom.com/wiki/Bounty [src, via API]
+- CL14 https://sidmeierspirates.fandom.com/wiki/Criminal [src, via API]
+- CL15 https://sidmeierspirates.fandom.com/wiki/Age ; https://sidmeierspirates.fandom.com/wiki/Retirement_Job [src, via API]
+- CL15b https://sidmeierspirates.fandom.com/wiki/Top_10_Pirates [src, via API]
+- CL15c https://sidmeierspirates.fandom.com/wiki/Rank [src, via API]
+- CL16 https://steamcommunity.com/app/3920/discussions/0/2791619883085462427 [src]
+- CL17 https://www.gamewatcher.com/sid-meiers-pirates/review [src]
+- CL17b https://gog.com/forum/sid_meiers_pirates/fast_build_stratagy [src:snip]
+- CL19 https://sidmeierspirates.fandom.com/wiki/Sailing_Map [src, via API]
+- CL20 https://en.wikipedia.org/wiki/Wing_Commander:_Privateer [src]
+- CL21 https://wcnews.com/wcpedia/Wing_Commander_Privateer [src]
+- CL22 https://www.wcnews.com/background/privateer.shtml [src]
+- CL23 https://download.wcnews.com/files/manuals/Wing%20Commander%20-%20Privateer%20-%20Manual.pdf (pages 33, 36-41) [src]
+- CL24 https://classicgaming.cc/pc/privateer/walkthrough [src]
+- CL25 https://www.choicestgames.com/2011/06/wing-commander-privateer-review.html [src]
+- CL26 https://www.wcnews.com/chatzone/threads/privateer-pirate-lifestyle.8001/ [src]
+- CL27 https://www.wcnews.com/chatzone/threads/privateer-logical-map.31425/ ; https://wedge009.net/wc/privateer/bases.php [src:snip]
+- CL28b https://www.mobygames.com/game/611/wing-commander-privateer/ ; https://www.wcnews.com/chatzone/threads/righteous-playthrough-of-privateer-and-expansion-september-22-2016.28583/ [src:snip]
+- CL29 https://en.wikipedia.org/wiki/Escape_Velocity_Nova [src]
+- CL30r https://themagnuskit.squarespace.com/reviews/tag/Escape+Velocity%3A+Nova [src]
+- CL31 https://andrews05.github.io/evstuff/guides/evnbible.html (EV Nova Bible: mïsn, crön, përs) [src]
+- CL33 https://wiki.eveuniversity.org/Agents [src]
+- CL34 https://wiki.eveuniversity.org/Missions [src]
+- CL35 https://wiki.eveuniversity.org/Exploration [src]
+- CL36 https://wiki.eveuniversity.org/Escalations [src]
+- CL37 https://wiki.eveuniversity.org/Incursions [src]
+- CL38 https://forums-archive.eveonline.com/topic/427981 ; https://steamcommunity.com/app/8500/discussions/0/626329186781362442 [src:snip]
+- CL39 https://en.wikipedia.org/wiki/Starpoint_Gemini_Warlords [src]
+- CL40 https://store.steampowered.com/app/419480 [src]
+- CL41 https://www.gamewatcher.com/reviews/starpoint-gemini-warlords-review/12847 [src]
+- CL42 https://ztgd.com/?p=71593 ; https://www.keengamer.com/articles/reviews/starpoint-gemini-warlords-review-xbox-one/ [src:snip]
+- CL43 https://eip.gg/reviews/starpoint-gemini-warlords-review/ [src]
+- CL44 https://en.wikipedia.org/wiki/Crying_Suns [src]
+- CL45 https://gametyrant.com/news/crying-suns-death-is-the-only-way-forward [src]
+- CL46 https://gideonsgaming.com/crying-suns-review-dark-space-rogue-lite/ [src]
+- CL47 https://en.wikipedia.org/wiki/Nexus:_The_Jupiter_Incident [src]
+- CL48 https://www.gamespot.com/nexus-the-jupiter-incident/user-reviews/2200-147651/ ; https://steamcommunity.com/app/6420/discussions/0/1333474229078034521 [src:snip]
+- CL49 https://en.wikipedia.org/wiki/Conquest:_Frontier_Wars [src]
+- CL51 https://en.wikipedia.org/wiki/O.R.B:_Off-World_Resource_Base [src]
+- CL52 https://steamcommunity.com/app/46270/discussions/0/2983033649170510675/ ("Star Wolves 1 Fan is searching for 'The next Star Wolves'") [src]
+
 ### Local files [local]
 - `README.md` (sw3-traffic feature list); `mods/traffic/design/worldbuilding/00-16`; `mods/traffic/design/station-jobs-spec.md`.
 - GOG 1.12 install (read-only): `Data/Scripts/include/LevelUp.script` lines 32-34; `Data/Game/DynamicMissions.xml`; `sw3cw.exe` string search.
-- Full research notes: `.work/wf/activities/research-*.md` (eleven files).
+- `mods/traffic/design/mod-research/lua-natives.md` lines 399-430 (pilot natives); `Perks.xml` in the GOG install (66 perks); `mods/traffic/design/proposals/activities-after-worldbuilding.md` 2.5 and 2.7 (A07, A16); `mods/traffic/design/charter-spec.md`; `mods/traffic/design/proposals/merc-packs-beyond-flavour.md`.
+- Full research notes: `.work/wf/activities/research-*.md` (the eleven listed in section 0 plus `research-mercsquad.md` and `research-classics.md`).
