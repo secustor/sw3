@@ -3530,8 +3530,11 @@ def c_wsp5(ctx):
         bad = None
         for x in later:
             if x.is_("generator", "remove"):
+                # An escape logs the generator remove (reason=escaped) before module=raid event=escaped.
                 if x.get("reason") in ("dock", "exit"):
                     ok.append(x)
+                elif x.get("reason") == "escaped":
+                    bad = x
                 break
             if x.is_("raid", "escaped") or x.is_("raid", "flee", reason="hp"):
                 bad = x
@@ -4106,7 +4109,8 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # (W-A16.9 FAIL), three offer markers in the visit (W-A16.10 FAIL); no informant line (W-A16.7 NO DATA).
 # Specialist answers block (the very end, Lidau): a strict-gate denial of Lidau for spec, then an answer there (W-A05.8
 # FAIL) without a raid end for the trader (W-A05.3 FAIL), a flee_only patch for SetHP (W-A05.4 FAIL), two patched lines for
-# another trader (W-A05.7 FAIL) which flees again by HP (W-A05.5 FAIL); an arm without a hail (W-A05.2 NO DATA), no need,
+# another trader (W-A05.7 FAIL) which flees again by HP (W-A05.5 FAIL), the flee_only trader escaping by portal after
+# a raid flight (W-A05.5 FAIL); an arm without a hail (W-A05.2 NO DATA), no need,
 # radio, rebuild, firmware or fence line (W-A05.6, .9, .10, .11, .12 NO DATA).
 
 

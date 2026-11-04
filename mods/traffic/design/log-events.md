@@ -1034,7 +1034,7 @@ Specialist answers, A05 (`design/specialist-spec.md` 9; host-tested only). `spea
 | `patch` | `module=spec event=patch trader_id=4 speaker=Yana rank=1 hp_before=310 target=900 hp_after=900 hp0=1200 state=out help=1 reason=nil result=patched` (`reason=help_paid` with `help=0`; `result=flee_only reason=sethp`; `result=failed reason=<gate,no_specialist,sethp,unflee:<why>>`) | 1 |
 | `say` | `module=spec event=say trader_id=4 speaker=Yana output=<radio,line> result=<shown,not_shown> reason=<nil,no_speaker,supp:<q>,line_failed>` | 1 |
 | `rebuilt` | `module=spec event=rebuilt trader_id=9 pool_id=2` (a trader rebuilt from a pool record with fl bit 256: `r.res`) | 1 |
-| `skip` | `module=spec event=skip trader_id=4 reason=<off,chapter,mode:<why>,gate:<why>,kind,flight,no_raid,raid,attacked,done,hp,raid_module,no_specialist>` (once per trader, reason and visit) | 2 |
+| `skip` | `module=spec event=skip trader_id=4 reason=<off,chapter,mode:<why>,heat,gate:<why>,kind,flight,no_raid,raid,attacked,done,hp,raid_module,no_specialist>` (once per trader and visit) | 2 |
 | `who` | `module=spec event=who kind=<rep,int> speaker=Yana rank=1 tried=Kalem:absent,Yana:ok1,...,ai:noperk` | 2 |
 | `hold` | `module=spec event=hold trader_id=4 hp=300 floor=270.000 result=<held,released>` (the fallback guard, 6.5; held once per patch) | 2 |
 | `dump` | `module=spec event=dump spec=1 hold_count=0 armed_count=1` | 1 |

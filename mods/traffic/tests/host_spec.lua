@@ -84,9 +84,10 @@ end;
 
 -- A trader of path (default C) 40 from the mothership whose raid spawned; its lead at hpf (default 0.3) x hp0, then
 -- TRF_Flee(fl, default hp); the raid ends how (default killed; "open" keeps it; "fake": a raid record 997 made and ended
--- by hand, as path A has no raid point in gredos, then trf_spec's raid end). Returns id, record, handles, raid id,
--- lead; HOST().sp_ext the exit name before the flee.
-function SP_Fled(path, fl, hpf, how)
+-- by hand, as path A has no raid point in gredos, then trf_spec's raid end); np: the station approach point (a near one
+-- makes the station the refuge). The trader was met before (r.ha set, as the announce does) unless HOST().sp_unmet.
+-- Returns id, record, handles, raid id, lead; HOST().sp_ext the exit name before the flee.
+function SP_Fled(path, fl, hpf, how, np)
 	local h = HOST();
 	V_ClearTr();
 	T_Tick(2, 0.5);
@@ -98,6 +99,7 @@ function SP_Fled(path, fl, hpf, how)
 	if not id then return nil; end;
 	T_MoveTr(id, h.ms.pos.x + 40, h.ms.pos.y, h.ms.pos.z);
 	local r, x = TRF.live.tr[id], TRF_H().tr[id];
+	if not h.sp_unmet then r.ha = r.ha or TRF.clock.gt; end;
 	local n, rh = 997, nil;
 	if how == "fake" then
 		if r.rdn then TRF_Rd_End(r.rdn, "cancel"); end;
@@ -112,6 +114,7 @@ function SP_Fled(path, fl, hpf, how)
 	local lead = TRF_GnLead(id);
 	lead.hp = (hpf or 0.3) * r.hp0;
 	h.sp_ext = r.ext;
+	if np then x.np = np; end;
 	TRF_Flee(id, fl or "hp");
 	TRF.live.cbt = nil;
 	if how == "fake" then
@@ -355,13 +358,34 @@ function T_SPC_C()
 	TRF_Rd_Unflee = uf;
 	HOST_Check(c3 == "chapter" and dn == "gate:deny_spec" and S_Logs(n0, "module=safety event=gate feature=spec") == 1 and gd == "mode:guard"
 		and rm == "raid_module" and SP_Q(id2) == "ok", "chapter 3, deny row spec = 0, start-system guard, no TRF_Rd_Unflee: "..c3.." "..dn.." "..gd.." "..rm);
-	-- The skip line once per trader and reason; an open raid: no item, the combat hail instead of the menu.
+	-- D17 heat below 3: at heat 3 (the refusal box, the charter menu) and with Trade at war no item, no answer line, no extra hail.
+	TRF.std.heat = 3;
 	n0 = S_Mark();
+	local ht = SP_Q(id2);
+	local hm = TRF_HlMax(id2, r2);
+	local ho = TRF_Spc_HailOpts(id2, r2);
+	local hh = SP_Hail(id2);
+	SP_End();
+	TRF.std.heat = 0;
+	local tw = TRF_HlTradeWar;
+	TRF_HlTradeWar = function() return 1; end;
+	local wr = SP_Q(id2);
+	TRF_HlTradeWar = tw;
+	HOST_Check(ht == "heat" and hm == 2 and getn(ho) == 0 and hh == "refuse" and S_Logs(n0, "module=spec event=answer") == 0
+		and S_Logs(n0, "module=safety event=gate feature=spec") == 0 and wr == "heat" and SP_Q(id2) == "ok",
+		"heat 3: reason heat, hail_max 2, no item, the refusal, no answer line, no strict-gate ask; Trade at war: heat");
+	-- The skip line once per trader and visit; an open raid: no item, the combat hail instead of the menu.
+	n0 = S_Mark();
+	TRF_SpcSH().sk[id2] = nil;
 	r2.fl = "heat";
 	TRF_Spc_HailOpts(id2, r2);
 	TRF_Spc_HailOpts(id2, r2);
 	r2.fl = "raid";
-	HOST_Check(S_Logs(n0, "module=spec event=skip trader_id="..id2.." reason=flight") == 1, "skip line at log 2, once per trader and reason");
+	r2.cnt = 1;
+	TRF_Spc_HailOpts(id2, r2);
+	r2.cnt = nil;
+	HOST_Check(S_Logs(n0, "module=spec event=skip trader_id="..id2.." reason=flight") == 1 and S_Logs(n0, "module=spec event=skip trader_id="..id2) == 1,
+		"skip line at log 2, once per trader and visit (flight, then attacked: one line)");
 	local id3, r3, x3, rn3 = SP_Fled("C", "hp", 0.3, "open");
 	n0 = S_Mark();
 	local o = SP_Hail(id3);
@@ -447,6 +471,17 @@ function T_SPC_D()
 	SP_End();
 	HOST_Check(SP_Has(SP_Scr(s0), "Jana: Done. Their drive will hold for a while yet.") and S_Logs(n0, "speaker=Yana output=line result=shown reason=no_speaker") == 1,
 		"a pilot who cannot speak (IsCanSayReplica 0): the screen line 'Jana: ...'");
+	-- loc_mode 1: the screen line is the spcsay key (the spcsayl wrapper would show only its fixed form).
+	local idl = SP_Fled("C", "hp", 0.3);
+	h.cfg.loc_mode = 1; TRF_H().loc = nil;
+	s0 = getn(h.screen);
+	SP_Hail(idl);
+	HOST_DlgPick("a_p1");
+	T_Tick(1, 0.5);
+	SP_End();
+	local sl = SP_Scr(s0);
+	h.cfg.loc_mode = nil; TRF_H().loc = nil;
+	HOST_Check(SP_Has(sl, "#TRF_spcsay") and not SP_Has(sl, "#TRF_spcsayl"), "loc_mode 1, a pilot who cannot speak: the spcsay key on screen ("..sl..")");
 	-- No specialist: no item, the head names the missing skill, the full menu.
 	SP_Crew({});
 	local idn, rn2 = SP_Fled("C", "hp", 0.3);
@@ -487,6 +522,19 @@ function T_SPC_D()
 	SP_End();
 	local o2, w2 = SP_Hail(idx);
 	HOST_Check(o1 == "menu" and rx.hn == 3 and rx.sk == 2 and o2 == nil and w2 == "max", "hail_max 2 reached: a third hail while qualifying, none after the patch");
+	-- A trader not met before its raid: the raid end leaves r.ha nil, so the meeting still announces it and arms the hail.
+	h.sp_unmet = 1;
+	local idu, ru = SP_Fled("C", "hp", 0.3);
+	h.sp_unmet = nil;
+	local hu = ru.ha;
+	local mc = h.cfg.meet;
+	h.cfg.meet = 2;
+	n0 = S_Mark();
+	HOST_Fire("f_object_inside", "TRF_OnMeet("..idu..",");
+	h.cfg.meet = mc;
+	HOST_Check(hu == nil and type(ru.ha) == "number" and S_Logs(n0, "module=ui event=announce trader_id="..idu) == 1,
+		"unmet trader: no r.ha at the raid end, the meeting announces it and arms the hail");
+	SP_End();
 	-- A synthetic sixth slotted provider item: the menu falls back to the box chain (reason slots).
 	local dco, dcd = TRF_Dc_HailOpts, TRF_Dc_HailDo;
 	TRF_Dc_HailOpts = function(id, r) return {"z1", "z2", "z3", "z4", "z5"}; end;
@@ -563,6 +611,21 @@ function T_SPC_E()
 	r4.st = "out";
 	local u, uw = TRF_Rd_Unflee(id4, "test");
 	HOST_Check(u == nil and uw == "state", "TRF_Rd_Unflee of a trader not fleeing: nil, state");
+	-- A station-refuge flee keeps no exit (h.ex0 nil); with the exit handle lost the unflee takes the nearest portal.
+	n0 = S_Mark();
+	local id5, r5, x5 = SP_Fled("C", "hp", 0.3, nil, Vector3(h.ms.pos.x + 45, h.ms.pos.y, h.ms.pos.z));
+	HOST_Check(S_Logs(n0, "module=raid event=flee trader_id="..id5.." reason=hp refuge=station") == 1 and x5.ex0 == nil,
+		"a near station approach point: the trader flees to the station, no h.ex0");
+	x5.ext = nil;
+	n0 = S_Mark();
+	SP_Hail(id5);
+	HOST_DlgPick("a_p1");
+	T_Tick(1, 0.5);
+	HOST_Check(r5.st == "out" and r5.fl == nil and x5.ext ~= nil and type(r5.ext) == "string"
+		and S_Logs(n0, "module=raid event=unflee trader_id="..id5.." reason=patch state=out portal="..r5.ext) == 1
+		and HOST_Count("f_object_inside", "TRF_OnExit("..id5..",") == 1,
+		"unflee after a station flee, exit lost: out by the nearest portal "..tostring(r5.ext).." with one exit trigger");
+	SP_End();
 end;
 
 -- f: the next meeting --------------------------------------------------------------------------------

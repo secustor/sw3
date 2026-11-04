@@ -126,6 +126,7 @@ Templates whose start list and tree both lack the perk (Sedoy, Lastochka, Lastoc
 | G1 | cfg `spec` 1 and `TRF_Traffic()` | `off` |
 | G2 | `TRF_Chapter() >= spc_ch` | `chapter` |
 | G3 | `TRF_SysModeQuiet() == "mod"` | `mode:<why>` |
+| G3a | D17: `TRF_HlHeat() < 3` and Trade not at war (`TRF_HlTradeWar()` nil) | `heat` |
 | G4 | `TRF_StrictOk(TRF_CurIdx(), "spec")` | `gate:<why>` |
 | G5 | record kind (D8: `own`, `fw`, `sev`, `wq`, `cv`, feq lead, `tier` 4) | `kind` |
 | G6 | `r.st == "flee"`, `r.fl` is `hp` or `raid` | `flight` |
@@ -136,7 +137,7 @@ Templates whose start list and tree both lack the perk (Sedoy, Lastochka, Lastoc
 | G11 | trf_raid present (`TRF_Rd_Unflee` is a function) and trf_gen's `TRF_GnReissue` | `raid_module` |
 | G12 | `TRF_Spc_Who("rep")` finds a holder | `no_specialist` (the head shows `spcneed`, D5) |
 
-Heat 3 and up, Trade at war, `hail_max`, cooldown, an open chain and the hail suppression are trf_hail's own refusals before any provider runs. `TRF_Spc_Head` (6.3) uses G1-G11; it returns the missing-skill text exactly when G1-G11 pass and G12 fails.
+`hail_max`, cooldown, an open chain and the hail suppression are trf_hail's own refusals before any provider runs. Heat 3 and up and Trade at war are refusals too, but trf_hail still calls the providers for the heat 3-6 demand box and the heat-3 charter menu, so G3a keeps the item, its `answer` line and the extra hail (`TRF_Spc_Due`) out of those paths. `TRF_Spc_Head` (6.3) uses G1-G11; it returns the missing-skill text exactly when G1-G11 pass and G12 fails.
 
 ## 6. Flow
 
@@ -144,7 +145,7 @@ Heat 3 and up, Trade at war, `hail_max`, cooldown, an open chain and the hail su
 
 1. `how` in `cancel`, `build`, `jump` -> return (no spawned fight, or the visit ends).
 2. G1-G11 for record `id` (G7 holds: the record has just ended). Fail -> return.
-3. Re-arm (D15): `r.ha = max(r.ha or 0, gt + spc_arm)`; `TRF_N("TRF_HailArm", id)` (the focus trigger; its max test uses `TRF_HlMax`); with `spc_meet` 1 and no `spc.mt[id]`: one trigger `TRF_N("TRF_GnTrig", "f_object_inside", TRF_GnCb("TRF_Spc_Meet", id), h.fl, TRF_GnMs(), 70)`, `spc.mt[id] = 1`.
+3. Re-arm (D15): `r.ha = max(r.ha, gt + spc_arm)` when `r.ha` is a number (a trader not met yet keeps `r.ha` nil, so `TRF_UI_Announce` still announces it at the meeting and arms the hail); `TRF_N("TRF_HailArm", id)` (the focus trigger; its max test uses `TRF_HlMax`); with `spc_meet` 1 and no `spc.mt[id]`: one trigger `TRF_N("TRF_GnTrig", "f_object_inside", TRF_GnCb("TRF_Spc_Meet", id), h.fl, TRF_GnMs(), 70)`, `spc.mt[id] = 1`.
 4. Log `module=spec event=arm trader_id=<id> raid_id=<n> raid_end=<how> flight=<hp|raid> hp_fraction=<f> meet=<bool>`.
 
 `TRF_Spc_Meet(id, g)` (trigger shim through `TRF_Cb`): stale gen or G1-G11 fail -> nothing; cfg `hail_start` 2 -> `TRF_HailOpen(id, "patch")`; else `TRF_HailArm(id)` only (the player focuses). Its menu goes through every refusal of `TRF_HailOpen` (`cd`, `busy`, flags, `combat` hold for `combat_hold` 25 s after the last hostile event, `max`).
@@ -402,7 +403,7 @@ Measured: the A05 fields of one record 68 bytes (`sk` 22, `hx` `",fix,"` 23, `re
 13. The pilot line of 6.6 runs 1 s after the patch from a due call; in the host the page is closed first (the game clock stands while it is up). A suppressed `TRF_CrewSay` (`supp:<q>`) falls back to `TRF_Say`, which the same suppression may also hold (`result=not_shown`).
 14. spc-f's fence part (the D5-b page, Esc, the hidden cases) is in `wq-g`, which has the quest harness; spc-f keeps the pool bit, the rebuild, `spcmet`, the corporation bits and the second patch.
 15. Host fixture: the harness traders of `gredos` are TT4 by default, which never qualify (G5); the spc runs set `tt4=0 tier_cap=3`. Path A has no raid point there, so the path A run makes and ends its raid record by hand and calls `TRF_Spc_RaidEnd`.
-16. G4 (`TRF_StrictOk(idx, "spec")`) is asked only for a fleeing record (`r.st` flee, `r.fl` hp or raid) once G1-G3 pass: trf_hail's `TRF_HlMax` asks every hailed trader, and each denial counts the stat `gate_spec`. A trader that fails both G4 and G6 reads `flight` instead of `gate:<why>`; the answer is the same.
+16. G4 (`TRF_StrictOk(idx, "spec")`) is asked only for a fleeing record (`r.st` flee, `r.fl` hp or raid) once G1-G3a pass: trf_hail's `TRF_HlMax` asks every hailed trader, and each denial counts the stat `gate_spec`. A trader that fails both G4 and G6 reads `flight` instead of `gate:<why>`; the answer is the same.
 
 ### In-game checks (`tools/check_ingame.py`)
 

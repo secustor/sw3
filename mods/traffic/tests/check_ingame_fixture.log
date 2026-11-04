@@ -526,3 +526,6 @@ traffic: lua: exp=v1 module=spec event=patch trader_id=31 speaker=Yana rank=1 hp
 traffic: lua: exp=v1 module=spec event=patch trader_id=32 speaker=Yana rank=1 hp_before=300 target=750 hp_after=750 hp0=1000 state=out help=1 reason=nil result=patched
 traffic: lua: exp=v1 module=spec event=patch trader_id=32 speaker=Yana rank=1 hp_before=500 target=750 hp_after=750 hp0=1000 state=out help=0 reason=help_paid result=patched
 traffic: lua: exp=v1 module=raid event=flee trader_id=32 reason=hp refuge=portal portal=PORTAL_L station_distance=900.000 portal_distance=300.000
+traffic: lua: exp=v1 module=raid event=flee trader_id=31 reason=raid refuge=portal portal=PORTAL_L station_distance=900.000 portal_distance=250.000
+traffic: lua: exp=v1 module=generator event=remove trader_id=31 reason=escaped age=140.000
+traffic: lua: exp=v1 module=raid event=escaped trader_id=31 via=1

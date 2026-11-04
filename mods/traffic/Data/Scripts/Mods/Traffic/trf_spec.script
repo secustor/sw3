@@ -185,13 +185,12 @@ function TRF_SpcKindOk(id, r)
 	return 1;
 end;
 
--- A skip line at log 2, once per trader, reason and visit.
+-- A skip line at log 2, once per trader and visit.
 function TRF_SpcSkip(id, why)
 	if TRF_SpcLog() < 2 then return; end;
 	local sp = TRF_SpcSH();
-	local k = tostring(id)..":"..tostring(why);
-	if sp.sk[k] then return; end;
-	sp.sk[k] = 1;
+	if sp.sk[id] then return; end;
+	sp.sk[id] = 1;
 	TRF_SpcE("skip", "trader_id", id, "reason", why);
 end;
 
@@ -305,13 +304,14 @@ function TRF_SpcPickOf(list, probe, ps)
 	return best, bk, TRF_SpcJoin(tried) or "-";
 end;
 
--- G1-G11 (5) over s = {on, ch, mode, mwhy, gate, gwhy, r, kind_ok, raided, hx, hp, hp0, mods, T}: nil when the trader
--- qualifies, else the reason of the first failing gate.
+-- G1-G11 (5) over s = {on, ch, mode, mwhy, heat, war, gate, gwhy, r, kind_ok, raided, hx, hp, hp0, mods, T}: nil when the
+-- trader qualifies, else the reason of the first failing gate.
 function TRF_SpcQualOf(s)
 	local r, T = s.r, s.T;
 	if s.on ~= 1 then return "off"; end;
 	if type(s.ch) ~= "number" or s.ch < T.spc_ch then return "chapter"; end;
 	if s.mode ~= "mod" then return "mode:"..tostring(s.mwhy or s.mode); end;
+	if (type(s.heat) == "number" and s.heat >= 3) or s.war == 1 then return "heat"; end;
 	if s.gate ~= 1 then return "gate:"..tostring(s.gwhy); end;
 	if type(r) ~= "table" or s.kind_ok ~= 1 then return "kind"; end;
 	if r.st ~= "flee" or (r.fl ~= "hp" and r.fl ~= "raid") then return "flight"; end;
@@ -349,7 +349,11 @@ function TRF_SpcIn(id, r, nohx)
 		local m, mw = call(TRF_SysModeQuiet, {}, "x", TRF_SpcErr);
 		s.mode = m; s.mwhy = mw;
 	end;
-	if s.on == 1 and s.ch >= s.T.spc_ch and s.mode == "mod" and type(TRF_StrictOk) == "function" and type(r) == "table"
+	-- D17: heat 3 and up or Trade at war, trf_hail refuses the menu (the providers still run for its demand box).
+	s.heat = TRF_N("TRF_HlHeat");
+	if TRF_N("TRF_HlTradeWar") == 1 then s.war = 1; end;
+	if s.on == 1 and s.ch >= s.T.spc_ch and s.mode == "mod" and not (type(s.heat) == "number" and s.heat >= 3) and not s.war
+		and type(TRF_StrictOk) == "function" and type(r) == "table"
 		and r.st == "flee" and (r.fl == "hp" or r.fl == "raid") then
 		local ok, why = call(TRF_StrictOk, {TRF_N("TRF_CurIdx"), "spec"}, "x", TRF_SpcErr);
 		s.gate = ok; s.gwhy = why;
@@ -522,7 +526,10 @@ function TRF_Spc_SayDue(id)
 			ok = 1; out = b;
 		else
 			why = b or "no_crew_say";
-			ok = TRF_P("TRF_Say", TRF_SpcTxt("spcsayl", w.name, txt), secs);
+			-- cfg loc_mode 1: txt is the spcsay key; the spcsayl wrapper would drop it (its fixed form is "FTU").
+			local ln = txt;
+			if TRF_N("TRF_Loc_Mode") ~= 1 then ln = TRF_SpcTxt("spcsayl", w.name, txt); end;
+			ok = TRF_P("TRF_Say", ln, secs);
 		end;
 	end;
 	local res = "not_shown";
@@ -568,7 +575,8 @@ function TRF_Spc_RaidEnd(id, n, how)
 	if why then TRF_SpcSkip(id, why); return nil; end;
 	local sp = TRF_SpcSH();
 	local T = s.T;
-	r.ha = max(r.ha or 0, TRF_SpcGt() + T.spc_arm);
+	-- r.ha nil: not met yet; TRF_UI_Announce sets it at the 70-unit meeting (an r.ha here would skip that announce).
+	if type(r.ha) == "number" then r.ha = max(r.ha, TRF_SpcGt() + T.spc_arm); end;
 	TRF_P("TRF_HailArm", id);
 	local mt = 0;
 	if T.spc_meet == 1 and not sp.mt[id] and type(NewTrigger) == "function" and type(TRF_H) == "function" then
