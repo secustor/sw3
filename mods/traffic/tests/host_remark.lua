@@ -564,6 +564,19 @@ function T_RM_D()
 	n0 = S_Mark();
 	RM_Go("altair");
 	HOST_Check(RM_Msgs() == "" and S_Logs(n0, "kind=base") == 1 and S_Logs(n0, "result=told") == 1, "re-entry: no remark about it");
+	-- An off-screen sweep during the visit (the base falls with w = 1, the captain dies with dl): not seen, no stamp.
+	TRF.rm = nil; TRF.base = {};
+	RM_Base(al, TRF.clock.legs);
+	TRF.base[1].w = 1;
+	n0 = S_Mark();
+	RM_Go("kadi");
+	HOST_Check(RM_St(al) == nil and S_Logs(n0, "via=witness") == 0, "jump after a base fell off-screen (w = 1): no witness stamp");
+	TRF.base = {};
+	RM_Cap(sl, 7, TRF.clock.legs);
+	n0 = S_Mark();
+	RM_Go("gaoba");
+	HOST_Check(RM_St(kd) == nil and S_Logs(n0, "via=witness") == 0, "jump after an off-screen captain death at home: no witness stamp");
+	TRF.cap = nil;
 	-- The arrival queue full before the remark: dropped (cap), not stamped, told on the next entry.
 	TRF.rm = nil; TRF.base = {};
 	RM_Scar(g, RM_L(8));
@@ -651,6 +664,14 @@ function T_RM_E()
 	local scr = RM_Scr();
 	HOST_Check(RM_Msgs() == "" and RM_Has(scr, line.." That was yesterday.|") and RM_Has(scr, "|Ternie: A sweep caught ") and S_Logs(n0, "output=line result=shown") == 2,
 		"remark_mode 0: the own line plain, the remark 'Ternie: ...' ("..scr..")");
+	-- loc_mode 1: the screen line is the remark's own key (the rmsay wrapper would show only its fixed form).
+	TRF.rm = nil;
+	h.cfg.loc_mode = 1; TRF_H().loc = nil;
+	RM_Cap(sl, 2, RM_L(9));
+	RM_Go("kadi");
+	scr = RM_Scr();
+	h.cfg.loc_mode = nil; TRF_H().loc = nil;
+	HOST_Check(RM_Has(scr, "#TRF_rmcap") and not RM_Has(scr, "#TRF_rmsay") and RM_St(kd) == TRF.cap[sl].dl, "loc_mode 1, remark_mode 0: the remark key on screen ("..scr..")");
 	h.cfg.remark_mode = nil;
 	-- Message raising: the remark falls back to the screen line (reason msg_error).
 	TRF.rm = nil; TRF.scar = nil;
@@ -669,6 +690,16 @@ function T_RM_E()
 	RM_Go("gaoba");
 	HOST_Check(RM_Has(RM_Scr(), line.." That was yesterday.|") and RM_St(g) == TRF.scar[1].leg and S_Logs(n0, "voiced=false result=suffix") == 1, "no speaker at the entry: the own line plain, stamped");
 	RM_Crew0();
+	-- A voiced sweep beacon line in the base system (D record at its leg): the home is stamped too (K3, T4).
+	TRF.rm = nil; TRF.scar = nil; TRF.cap = nil; TRF.base = {};
+	local lw = RM_L(1);
+	RM_Base(al, lw);
+	RM_Scar(al, lw, {st=0, kind=3, fac=0});
+	n0 = S_Mark();
+	RM_GoK("altair");
+	HOST_Check(RM_St(al) == lw and RM_St(kd) == lw and S_Logs(n0, "voiced=true result=suffix") == 1 and S_Logs(n0, "event=told system_index="..kd.." event_leg="..lw.." via=own") == 1,
+		"voiced sweep beacon line in the base system: base system and home stamped ("..RM_Msgs()..")");
+	TRF.base = {};
 	-- scarold (an opened wreck) unchanged.
 	TRF.rm = nil; TRF.scar = nil;
 	RM_Scar(g, RM_L(3), {st=2});
