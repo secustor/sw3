@@ -69,6 +69,11 @@
 -- enter hook (after trf_wq's) clears the visit, the activate hook (after trf_wq's) and the load hook (v1 list, last)
 -- reconcile the logbook, the jump hook (v1 list) clears the visit; trf_raid and trf_clan call its raid hooks, trf_plumb
 -- owns its saved record (TRF.iq) and its dock box, talk box and line.
+-- Corporation carriers (design/corp-carriers-spec.md, A22): trf_corp loads after trf_temper (extra=); its activate hook
+-- (after trf_warn's) and its load hook (v1 list, last) set the visit latch; trf_gen and trf_track call its label at
+-- spawn, trf_ui, trf_hail and trf_shop its text and stock functions, trf_events and trf_supply its loss count,
+-- trf_region its region tick (before the charter's), trf_charter its run mark; the dock line is a trf_plumb line (req,
+-- order 30).
 
 function TRF_Path(name)
 	return "DATA/Scripts/Mods/Traffic/"..name;
@@ -375,6 +380,7 @@ function TRF_OnActivate()
 		TRF_P("TRF_Te_OnActivate");
 		TRF_P("TRF_Stn_OnActivate");
 		TRF_P("TRF_Wn_OnActivate");
+		TRF_P("TRF_Crp_OnActivate");
 		TRF_P("TRF_Rm_OnActivate");
 		TRF_P("TRF_DumpState", "enter");
 	end;
@@ -394,7 +400,7 @@ function TRF_OnLoad()
 		TRF_P("TRF_Tier_OnLoad");
 		TRF_P("TRF_Raid_OnLoad");
 		TRF_P("TRF_Hail_OnLoad");
-		local v1 = {"Base", "Track", "Clan", "Faction", "Convoy", "Danger", "Supply", "Cap", "Pl", "Pc", "Stn", "Sv", "Lad", "Ch", "Sc", "Sh", "Fr", "Haunt", "Mc", "Wq", "Wn", "Te"};
+		local v1 = {"Base", "Track", "Clan", "Faction", "Convoy", "Danger", "Supply", "Cap", "Pl", "Pc", "Stn", "Sv", "Lad", "Ch", "Sc", "Sh", "Fr", "Haunt", "Mc", "Wq", "Wn", "Te", "Crp"};
 		for i = 1, getn(v1) do TRF_P("TRF_"..v1[i].."_OnLoad"); end;
 		TRF.active = 1;
 		TRF_P("TRF_DumpState", "load");
@@ -575,7 +581,7 @@ function TRF_Main()
 			for i = 1, getn(v2) do if TRF_LoadFile(v2[i]) then nm = nm + 1; end; end;
 			local v1 = {"loc", "track", "faction", "clan", "convoy", "danger", "supply", "base"};
 			for i = 1, getn(v1) do if TRF_LoadFile("trf_"..v1[i]..".script") then nm = nm + 1; end; end;
-			local ex = {"plumb", "station", "survive", "ladder", "charter", "scar", "captain", "stash", "freight", "fits", "haunt", "parcel", "merc", "wq", "warn", "remark", "temper"};
+			local ex = {"plumb", "station", "survive", "ladder", "charter", "scar", "captain", "stash", "freight", "fits", "haunt", "parcel", "merc", "wq", "warn", "remark", "temper", "corp"};
 			for i = 1, getn(ex) do if TRF_LoadFile("trf_"..ex[i]..".script") then ne = ne + 1; end; end;
 			TRF_P("TRF_InstallPlumb");
 			TRF_P("TRF_InstallHaunt");

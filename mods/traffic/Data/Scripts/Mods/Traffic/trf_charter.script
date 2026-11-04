@@ -13,6 +13,10 @@
 -- trf_danger TRF_DcEnd (3), trf_clan TRF_Cl_Died (4), trf_faction TRF_SweepEnd (5), trf_base TRF_BaseDestroyed (6),
 -- trf_events TRF_Ev_Kill (7, player trader kill), trf_convoy TRF_ForcedBust (8, S41); trf_region TRF_RegionTick
 -- calls TRF_Ch_RegionTick(slot, L) for every slot; trf_plumb (trade line 70, owed payer, trade box 200).
+-- Corporation carriers (design/corp-carriers-spec.md 5.7): type 7 "run" (supply run, two escorts of carriers of one
+-- corporation), posted in a region with trf_corp's run mark (TRF_Crp_Mark), deed kind 9 through trf_corp's
+-- TRF_Crp_Escort, closed when the corporation pulls out (reason pull) or in Bust; its pay also gives fst +1;
+-- TRF_Ch_RunOpen tells trf_corp which corporations have one open in a region.
 -- Saved fields (TRF.ch, created at the unlock, repaired by TRF_Ch_Fix): on, rk, rp, du, pt, lh, vd, vb, sd, cnt,
 -- g[1..3] = {t, r, f, d, k, p, w, a, e, st, pay, rq, l[, c]}, cd[1..3], rs[r], rb[r], pk[r], tot = {d, f, w}, nw,
 -- hx. Visit state in the chunk local CV (never saved; rebuilt by every MapInitialization).
@@ -98,6 +102,13 @@ function TRF_ChTune()
 		if type(t) == "table" then x = t[k]; end;
 		if ls[k] then
 			local e = ls[k];
+			-- A ch_k of the six types before type 7 (design/corp-carriers-spec.md 7) gets the default 7th entry.
+			if k == "ch_k" and type(x) == "table" and getn(x) == getn(v) - 1 then
+				local y = {};
+				for i = 1, getn(x) do y[i] = x[i]; end;
+				y[getn(v)] = v[getn(v)];
+				x = y;
+			end;
 			o[k] = TRF_ChTuneList(x, getn(v), e[1], e[2], e[3]) or v;
 		else
 			if type(x) ~= "number" then x = v; end;
@@ -294,29 +305,37 @@ function TRF_ChTypes()
 		{n="break", fam=2, rq=3, k=3},
 		{n="convoy", fam=1, rq=2, k=2},
 		{n="sweep", fam=3, rq=2, k=1},
-		{n="base", fam=2, rq=3, k=1}};
+		{n="base", fam=2, rq=3, k=1},
+		{n="run", fam=1, rq=2, k=2}};
 end;
 
 -- Deed kinds of TRF_Ch_Note: 1 escort contract (8.4), 2 raid answered (8.5), 3 danger convoy escorted (8.15), 4 clan
 -- flight downed after counted player fire, 5 join-the-sweep done (8.10), 6 base destroyed by the player (S39), 7 player
--- trader kill (heat kill event), 8 forced-Bust flag (S41); 10 and above are step 2.
+-- trader kill (heat kill event), 8 forced-Bust flag (S41), 9 escort contract of a corporation carrier for a supply run
+-- (trf_corp TRF_Crp_Escort, faction argument f); 10 and above are step 2.
 function TRF_ChKinds()
-	return {"escort", "raid", "dconv", "clan", "sweep", "base", "kill", "s41"};
+	return {"escort", "raid", "dconv", "clan", "sweep", "base", "kill", "s41", "run"};
 end;
 
 -- Close reasons (TRF_ChClose why; the dock line key chwhy<why>, phase by type) as a set: the repair keeps no other.
 function TRF_ChCloseWhy()
-	return {phase=1, base=1, heat=1, kill=1, s41=1, deadline=1, mission=1, chapter=1};
+	return {phase=1, base=1, heat=1, kill=1, s41=1, deadline=1, mission=1, chapter=1, pull=1};
 end;
 
--- Trade-family types (Lanes, Relief, Convoy) as a set: closed at heat 5 (design 4).
+-- Trade-family types (Lanes, Relief, Convoy, Run) as a set: closed at heat 5 (design 4).
 function TRF_ChTrade()
-	return {1, 1, nil, 1};
+	return {[1]=1, [2]=1, [4]=1, [7]=1};
+end;
+
+-- Types closed by a player trader kill in their region (kind 7): Lanes, Relief, Run.
+function TRF_ChKillSet()
+	return {[1]=1, [2]=1, [7]=1};
 end;
 
 -- Kinds that count for type t (design 4 table).
 function TRF_ChDeeds()
-	return {{1, 1, 1, 0, 0, 0}, {1, 1, 1, 0, 0, 0}, {0, 1, 0, 1, 0, 0}, {0, 0, 1, 0, 0, 0}, {0, 0, 0, 0, 1, 0}, {0, 0, 0, 0, 0, 1}};
+	return {{1, 1, 1, 0, 0, 0}, {1, 1, 1, 0, 0, 0}, {0, 1, 0, 1, 0, 0}, {0, 0, 1, 0, 0, 0}, {0, 0, 0, 0, 1, 0}, {0, 0, 0, 0, 0, 1},
+		{0, 0, 0, 0, 0, 0, 0, 0, 1}};
 end;
 
 -- Permanent charter deny list (design 3): no posting, no deed, no dock line. Traffic's authored deny names and cfg
@@ -339,7 +358,7 @@ end;
 function TRF_ChClampT()
 	return {ch_unlock_ch={1, 20}, ch_last_ch={1, 20}, ch_unlock_help={0, 99}, ch_low_L={1, 16}, ch_pay_gap_rs={0, 100000},
 		ch_visit_deeds={0, 9}, ch_dues_k={0, 100000}, ch_dues_legs={1, 500}, ch_region_cd={0, 500}, ch_big_cd={0, 500},
-		ch_slot_cd={0, 100}, ch_pk_legs={0, 500}, ch_leg_per_deed={0, 50}};
+		ch_slot_cd={0, 100}, ch_pk_legs={0, 500}, ch_leg_per_deed={0, 50}, ch_run_legs={8, 100}};
 end;
 
 -- List tune keys: {lo, hi, fraction}.
@@ -388,8 +407,8 @@ end;
 
 -- Candidates of one region (design 4 table and generation steps 1-2). ri = {r, ph, pt, mx (by phase 0..5), R, L,
 -- tk, tier, sc, pk, rs, rb, cap (#4 entry open), base (1 active), bok (base system not denied), ok (a system not
--- denied), sw (attempt scheduled), swf (sweep faction 0..5), fst (standing of swf), dconv, near}; T the clamped
--- tune; legs; heat. Returns a list of {t, r, f, d, k, e, fam, wt, pay, rq, l}.
+-- denied), sw (attempt scheduled), swf (sweep faction 0..5), fst (standing of swf), dconv, near, run (trf_corp's run mark
+-- 3..5 or nil)}; T the clamped tune; legs; heat. Returns a list of {t, r, f, d, k, e, fam, wt, pay, rq, l}.
 function TRF_ChCandOf(ri, T, legs, heat)
 	local out = {};
 	if not ri.ok then return out; end;
@@ -419,6 +438,10 @@ function TRF_ChCandOf(ri, T, legs, heat)
 		tinsert(c, {t=5, d=ri.swf, e=ri.pt + mx[3], f=ri.swf});
 	end;
 	if ri.base and ri.bok and big then tinsert(c, {t=6, d=0, e=legs + K.base_legs, f=0}); end;
+	-- Supply run (design/corp-carriers-spec.md 5.7): a run mark of corporation 3..5, not in Bust, trade heat, no player kill.
+	if type(ri.run) == "number" and ri.run >= 3 and ri.run <= 5 and ph ~= 4 and heat <= K.heat_ok and ri.pk == nil then
+		tinsert(c, {t=7, d=ri.run, e=legs + T.ch_run_legs, f=ri.run});
+	end;
 	local wt = K.w_far;
 	if ri.near then wt = K.w_near; end;
 	for i = 1, getn(c) do
@@ -470,8 +493,9 @@ end;
 
 -- Posting that deed kind of region r advances (design 4: the oldest open match, within the visit cap; at most one
 -- Break deed per visit; a Break posting with all deeds waits for its world test and takes no more). g = the
--- postings, vd/vb the visit counters, cap = ch_visit_deeds. Returns the slot or nil and the reason.
-function TRF_ChNoteOf(g, kind, r, vd, vb, cap)
+-- postings, vd/vb the visit counters, cap = ch_visit_deeds, f the corporation of a kind 9 deed (a type 7 posting
+-- matches only its own corporation). Returns the slot or nil and the reason.
+function TRF_ChNoteOf(g, kind, r, vd, vb, cap, f)
 	if type(r) ~= "number" then return nil, "region"; end;
 	if vd >= cap then return nil, "visit_cap"; end;
 	local D = TRF_ChDeeds();
@@ -482,6 +506,7 @@ function TRF_ChNoteOf(g, kind, r, vd, vb, cap)
 			local skip = nil;
 			if p.p >= p.k then skip = "full"; end;
 			if p.t == 3 and vb >= 1 then skip = "break_cap"; end;
+			if p.t == 7 and p.f ~= f then skip = "corp"; end;
 			if skip then
 				why = skip;
 			elseif best == nil or p.a < g[best].a then
@@ -748,13 +773,14 @@ end;
 -- Deeds (TRF_Ch_Note) ---------------------------------------------------------------------
 
 -- Contract: a traffic pay or event point (design 6 hooks) in system idx; amt the credits the source paid (the
--- step 2 top-up rule). Protected, so a charter error never stops the caller.
-function TRF_Ch_Note(kind, idx, amt)
+-- step 2 top-up rule); f the corporation of a kind 9 deed (trf_corp). Protected, so a charter error never stops the
+-- caller.
+function TRF_Ch_Note(kind, idx, amt, f)
 	if not TRF_ChOn() then return nil; end;
-	return call(TRF_ChNoteBody, {kind, idx, amt}, "x", TRF_ChErr);
+	return call(TRF_ChNoteBody, {kind, idx, amt, f}, "x", TRF_ChErr);
 end;
 
-function TRF_ChNoteBody(kind, idx, amt)
+function TRF_ChNoteBody(kind, idx, amt, f)
 	local C = TRF_ChRec();
 	if type(kind) ~= "number" then return nil; end;
 	if kind >= 10 then
@@ -775,7 +801,7 @@ function TRF_ChNoteBody(kind, idx, amt)
 		C.pk[r] = legs;
 		local n = 0;
 		if kind == 7 then
-			n = TRF_ChCloseAll(C, 2, "kill", {1, 1}, r);
+			n = TRF_ChCloseAll(C, 2, "kill", TRF_ChKillSet(), r);
 		else
 			n = TRF_ChCloseAll(C, 2, "s41");
 			TRF_ChRankDown(C, "s41");
@@ -784,9 +810,9 @@ function TRF_ChNoteBody(kind, idx, amt)
 		return nil;
 	end;
 	if TRF_ChChapter() > TRF_ChT("ch_last_ch") then return nil; end;
-	local i, why = TRF_ChNoteOf(C.g, kind, r, C.vd, C.vb, TRF_ChT("ch_visit_deeds"));
+	local i, why = TRF_ChNoteOf(C.g, kind, r, C.vd, C.vb, TRF_ChT("ch_visit_deeds"), f);
 	if not i then
-		TRF_ChDE("note", "kind", kn, "system", TRF_ChName(idx), "region", r, "visit_deeds", C.vd, "result", "none", "reason", why);
+		TRF_ChDE("note", "kind", kn, "system", TRF_ChName(idx), "region", r, "visit_deeds", C.vd, "result", "none", "reason", why, "faction", f);
 		return nil;
 	end;
 	local p = C.g[i];
@@ -795,7 +821,7 @@ function TRF_ChNoteBody(kind, idx, amt)
 	if p.t == 3 then C.vb = C.vb + 1; end;
 	TRF_N("TRF_Stat", "ch_note");
 	TRF_ChE("note", "kind", kn, "system", TRF_ChName(idx), "region", r, "slot", i, "done", p.p, "needed", p.k, "visit_deeds", C.vd,
-		"amount", amt);
+		"amount", amt, "faction", f);
 	if p.p >= p.k and (p.t ~= 3 or p.w == 1) then
 		TRF_ChDone(C, i, "deeds");
 	elseif not TRF_N("TRF_Quiet") then
@@ -836,10 +862,12 @@ end;
 
 -- World test of open posting i in its region (design 4 "closes" column): phase ends close Lanes, Relief, Convoy and
 -- Sweep (withdrawn, no penalty); Break records clan score < 50 (w) and completes with its deeds; Base closes when
--- the clan has no active base.
+-- the clan has no active base. Run (type 7) closes when its corporation pulls out of the region (pull) or in Bust.
 function TRF_ChWorld(C, i, p, slot, ph)
 	local t = p.t;
-	if t == 1 and ph ~= 1 and ph ~= 2 then TRF_ChClose(C, i, 3, "phase");
+	if t == 7 and TRF_N("TRF_Crp_Pulled", slot, p.f) then TRF_ChClose(C, i, 3, "pull");
+	elseif t == 7 and ph == 4 then TRF_ChClose(C, i, 3, "phase");
+	elseif t == 1 and ph ~= 1 and ph ~= 2 then TRF_ChClose(C, i, 3, "phase");
 	elseif t == 2 and ph ~= 4 and ph ~= 5 then TRF_ChClose(C, i, 3, "phase");
 	elseif (t == 4 or t == 5) and ph ~= 3 then TRF_ChClose(C, i, 3, "phase");
 	elseif t == 6 and not TRF_N("TRF_RgBaseA", slot) then TRF_ChClose(C, i, 3, "base");
@@ -936,6 +964,8 @@ function TRF_ChInfo(C, slot, near)
 	if ri.swf >= 1 and ri.swf <= 5 then ri.fst = TRF_N("TRF_Fst", ri.swf) or 5; end;
 	ri.dconv = 0;
 	if TRF_N("TRF_Opt", "dconv") == 1 then ri.dconv = 1; end;
+	-- Corporation carriers (design/corp-carriers-spec.md 5.7): the run mark of the region.
+	ri.run = TRF_N("TRF_Crp_Mark", slot);
 	return ri;
 end;
 
@@ -986,6 +1016,7 @@ function TRF_ChGenerate(C, idx)
 		C.rs[x.r] = legs;
 		if x.fam == 2 then C.rb[x.r] = legs; end;
 		C.cnt = min(9999, C.cnt + 1);
+		if x.t == 7 then TRF_N("TRF_Crp_MarkUse", x.r, x.f); end;
 		TRF_ChQAdd(i, p);
 		TRF_N("TRF_Stat", "ch_post");
 		TRF_ChE("post", "slot", i, "type", ty[x.t].n, "region", x.r, "system", TRF_ChHome(x.r), "needed", x.k, "deadline", x.e,
@@ -1047,6 +1078,8 @@ function TRF_ChPay(C, i, p, idx, out)
 	TRF_N("TRF_AddHelp", d, "charter");
 	if p.t == 1 or p.t == 2 then TRF_ChProNudge(p.r); end;
 	if p.t == 3 then TRF_N("TRF_ClanAdd", p.r, -3, "charter"); end;
+	-- Supply run (design/corp-carriers-spec.md 5.8): the corporation's standing +1.
+	if p.t == 7 then TRF_N("TRF_FstAdd", p.f, 1, "charter run"); end;
 	tinsert(C.lh, 1, p.l);
 	while getn(C.lh) > 3 do tremove(C.lh); end;
 	C.tot.d = min(9999, C.tot.d + 1);
@@ -1201,6 +1234,25 @@ function TRF_Ch_DuesNo(a)
 	return nil;
 end;
 
+-- Supply run (design/corp-carriers-spec.md 5.7) -------------------------------------------------
+
+-- Set {[f] = 1} of the corporations with an open type 7 posting in region slot, or nil (trf_corp: the share factor
+-- crp_job_x and the escort offer floor).
+function TRF_Ch_RunOpen(slot)
+	if not TRF_ChOn() then return nil; end;
+	local C = TRF_ChRec();
+	if not C or type(slot) ~= "number" then return nil; end;
+	local o = nil;
+	for i = 1, TRF_ChK().slots do
+		local p = C.g[i];
+		if type(p) == "table" and p.st == 0 and p.t == 7 and p.r == slot then
+			if not o then o = {}; end;
+			o[p.f] = 1;
+		end;
+	end;
+	return o;
+end;
+
 -- Perk (rank 2, design 4) ---------------------------------------------------------------------
 
 -- 1 while rank 2 or higher with dues paid: FTU traders offer 8.4 and 8.15 contracts at heat 3 (trf_hail TRF_CtOffer,
@@ -1268,7 +1320,7 @@ end;
 -- Posting record p, or nil when a field is out of its bounds (design 6 table).
 function TRF_ChFixG(p, nr, legs)
 	if type(p) ~= "table" then return nil; end;
-	if not (TRF_ChNum(p.t, 1, 6) and TRF_ChNum(p.r, 1, nr) and TRF_ChNum(p.f, 0, 5) and TRF_ChNum(p.d, 0, 5) and TRF_ChNum(p.k, 1, 3)
+	if not (TRF_ChNum(p.t, 1, 7) and TRF_ChNum(p.r, 1, nr) and TRF_ChNum(p.f, 0, 5) and TRF_ChNum(p.d, 0, 5) and TRF_ChNum(p.k, 1, 3)
 		and type(p.p) == "number" and p.p >= 0 and (p.w == 0 or p.w == 1) and type(p.a) == "number" and type(p.e) == "number"
 		and TRF_ChNum(p.st, 0, 3) and type(p.pay) == "number" and p.pay >= 0 and TRF_ChNum(p.rq, 1, 3) and TRF_ChNum(p.l, 3, 16)) then
 		return nil;
@@ -1340,9 +1392,9 @@ end;
 
 -- Tune keys (design 6).
 function TRF_Ch_TuneDef()
-	return {ch_unlock_ch=5, ch_last_ch=18, ch_unlock_help=3, ch_slots={2, 3}, ch_k={0.4, 0.3, 0.4, 0.4, 0.4, 0.4}, ch_low_L=8,
+	return {ch_unlock_ch=5, ch_last_ch=18, ch_unlock_help=3, ch_slots={2, 3}, ch_k={0.4, 0.3, 0.4, 0.4, 0.4, 0.4, 0.4}, ch_low_L=8,
 		ch_pay_gap_rs=1800, ch_visit_deeds=2, ch_rank_pts={2, 6, 12, 20, 30}, ch_dues_k=100, ch_dues_legs=24, ch_region_cd=20,
-		ch_big_cd=28, ch_slot_cd=4, ch_pk_legs=28, ch_leg_per_deed=4};
+		ch_big_cd=28, ch_slot_cd=4, ch_pk_legs=28, ch_leg_per_deed=4, ch_run_legs=20};
 end;
 
 -- "<k>:<v>/..." of a region-keyed table, or nil.
@@ -1406,6 +1458,10 @@ function TRF_Ch_Text()
 		chd54 = "USS is sweeping the clan of this region. Fly with the sweep. Progress and pay at any FTU trade dock.",
 		chd55 = "InoCo is sweeping the clan of this region. Fly with the sweep. Progress and pay at any FTU trade dock.",
 		chd60 = "The clan keeps a base in this region. The charter pays when the Wolves destroy it. Progress and pay at any FTU trade dock.",
+		-- Supply run per corporation (design/corp-carriers-spec.md 6).
+		chd73 = "Triada ships through this region on FTU contract carriers. Escort two Triada carriers to their dock or exit. Progress and pay at any FTU trade dock.",
+		chd74 = "USS caravans in this region fly on FTU contract carriers and need guards. Escort two USS carriers to their dock or exit. Progress and pay at any FTU trade dock.",
+		chd75 = "InoCo hired free traders for a run through this region. Escort two InoCo carriers to their dock or exit. Progress and pay at any FTU trade dock.",
 		chrk0 = "Unlisted", chrk1 = "Listed carrier", chrk2 = "Contracted carrier", chrk3 = "Bonded carrier", chrk4 = "Trusted carrier",
 		chrk5 = "Senior charter",
 		chhead = "FTU charter office: Wolves, $1.",                                  -- rank title
@@ -1414,6 +1470,7 @@ function TRF_Ch_Text()
 		chdeed1 = "escorts and raid answers $1 of $2", chdeed2 = "escorts and raid answers $1 of $2",
 		chdeed3 = "clan flights and raid answers $1 of $2", chdeed4 = "danger convoys $1 of $2", chdeed5 = "sweep joined $1 of $2",
 		chdeed6 = "base destroyed $1 of $2",                                         -- done, needed
+		chdeed7 = "contract carriers escorted $1 of $2",
 		chboard = "$1 region: $2.",                                                  -- region, deed line
 		chpays = "Pays $1 cr.",                                                      -- pay
 		chheld = "The clan still holds; its strength must break.",
@@ -1429,7 +1486,8 @@ function TRF_Ch_Text()
 		chclose = "FTU charter office: $1 posting closed. $2",                       -- region, reason line
 		chmission = "FTU withdrew the $1 posting while you were on contract elsewhere.", -- region
 		chwhy1 = "The clan is raiding now.", chwhy2 = "Trade there is back on its feet.", chwhy4 = "The raids there are over.",
-		chwhy5 = "The raids there are over.", chwhybase = "The base is gone.", chwhyheat = "The Wolves are too hot for FTU work.",
+		chwhy5 = "The raids there are over.", chwhy7 = "Trade there has collapsed.", chwhypull = "The corporation pulled its carriers out.",
+		chwhybase = "The base is gone.", chwhyheat = "The Wolves are too hot for FTU work.",
 		chwhykill = "The Wolves fired on FTU traders there.", chwhys41 = "FTU does not pay convoy killers.",
 		chwhydeadline = "The deadline passed.", chwhychapter = "The office closed the board.",
 		chdues = "FTU charter office: dues for the Wolves, $1: $2 cr. Pay now?",    -- rank title, amount

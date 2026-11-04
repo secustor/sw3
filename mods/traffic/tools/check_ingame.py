@@ -8,7 +8,8 @@ step 2), the quest log's Job log (L1-L5, step 3), the freight unlock quest, comm
 design/freight-quest-spec.md 10) and its presentation (Q-WQ.11-14, spec 13: dialogs, letters, the mission list), Wolves Freight step 2 (EW8.11-EW8.17, design/freight-spec.md 10)
 the lethal-system warnings (W-A12.1-8, design/warnings-spec.md 15; wave 1, host-tested only) and the crew remarks
 (W-B06.1-10, design/crew-remarks-spec.md 14; wave 1, host-tested only) and the clan temperaments with the Clan file
-(W-B10.1-10, design/temperament-spec.md 12; wave 1, host-tested only) from traffic logs.
+(W-B10.1-10, design/temperament-spec.md 12; wave 1, host-tested only) and the corporation carriers (W-A22.1-9,
+design/corp-carriers-spec.md 11; wave 1, host-tested only) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -30,6 +31,7 @@ FIXTURE = os.path.join(HERE, "..", "tests", "check_ingame_fixture.log")
 FIXTURE_WARN = os.path.join(HERE, "..", "tests", "check_ingame_warn_fixture.log")
 FIXTURE_REMARK = os.path.join(HERE, "..", "tests", "check_ingame_remark_fixture.log")
 FIXTURE_TEMPER = os.path.join(HERE, "..", "tests", "check_ingame_temper_fixture.log")
+FIXTURE_CORP = os.path.join(HERE, "..", "tests", "check_ingame_corp_fixture.log")
 REL = ("war", "neutral", "friend")
 PHASES = ("Quiet", "Boom", "Build-up", "Raids", "Bust", "Recovery")
 # vanilla bounty flights (OutMission_kill_pirate), haunt-spec appendix A class P
@@ -2853,6 +2855,182 @@ def c_wt10(ctx):
     return res
 
 
+# Corporation carriers (design/corp-carriers-spec.md 11, W-A22.1-9; host-tested only, wave 1) -----------------------------
+
+CORP_TEAMS = ("Triada", "Uss", "Inoco")
+CORP_SIG = {"Triada": (), "Uss": ("WBoost3",), "Inoco": ("RBot3", "LRRNB3", "PLC2")}
+
+
+def crp_labels(ctx):
+    """{(visit id, trader_id): label record} of the contract-carrier labels."""
+    return dict(((id(r.visit), r.get("trader_id")), r) for r in ctx.find("corp", "label") if r.get("corp") in CORP_TEAMS)
+
+
+def crp_of(lab, r):
+    """The label record of the trader of record r in its visit, if it was labelled before r."""
+    x = lab.get((id(r.visit), r.get("trader_id")))
+    return x if x is not None and x.src == r.src and x.n < r.n else None
+
+
+def c_wc1(ctx):
+    res = Res()
+    res.logpart = True
+    lab = crp_labels(ctx)
+    for r in ctx.find("corp", "label"):
+        c, u, s = r.get("corp"), r.num("roll"), r.num("share")
+        if c not in CORP_TEAMS + ("none",):
+            res.fails.append("%s: unknown corporation" % r.short())
+        elif c in CORP_TEAMS and (u is None or s is None or not 0 <= u < 1 or not 0 < s <= 0.9):
+            res.fails.append("%s: a label without a roll in [0, 1) or a share in (0, 0.9]" % r.short())
+    ann = [r for r in ctx.find("ui", "announce") if crp_of(lab, r)]
+    if not ann:
+        res.missing.append("meet traders in Dosis or Golkonda: no module=corp event=label corp=<Triada|Uss|Inoco> followed by "
+                           "module=ui event=announce for that trader")
+    res.ev("labels", list(lab.values()))
+    res.ev("greetings of carriers", ann)
+    return res
+
+
+def c_wc2(ctx):
+    res = Res()
+    res.logpart = True
+    lab = crp_labels(ctx)
+    h = [r for r in ctx.find("hail", "hail") if r.get("answer_count") and crp_of(lab, r)]
+    if not [r for r in h if r.get("dialog") == "true"]:
+        res.missing.append("hail a contract carrier with the dialog (hail_box 2): no module=hail event=hail dialog=true for a labelled trader")
+    if not [r for r in h if r.get("dialog") != "true"]:
+        res.missing.append("hail a contract carrier with the box (hail_box 1): no module=hail event=hail dialog=false for a labelled trader")
+    res.ev("hails of carriers", h)
+    return res
+
+
+def c_wc3(ctx):
+    res = Res()
+    res.logpart = True
+    lab = crp_labels(ctx)
+    o = [r for r in ctx.find("hail", "option", key="head") if crp_of(lab, r)]
+    if not o:
+        res.missing.append("ask a contract carrier \"Where are you headed?\": no module=hail event=option key=head for a labelled trader")
+    res.ev("where-headed answers of carriers", o)
+    return res
+
+
+def c_wc4(ctx):
+    res = Res()
+    res.logpart = True
+    op = [r for r in ctx.find("shop", "open") if r.get("corp")]
+    for r in op:
+        c, s = r.get("corp"), r.get("signature")
+        if c not in CORP_TEAMS:
+            res.fails.append("%s: unknown corporation" % r.short())
+        elif r.get("owner") != c:
+            res.fails.append("%s: the carrier shop draws the owner %s, not its corporation" % (r.short(), r.get("owner")))
+        elif s is not None and s not in CORP_SIG[c]:
+            res.fails.append("%s: signature %s is not a %s item" % (r.short(), s, c))
+    if not [r for r in op if r.get("corp") == "Inoco" and r.get("signature")]:
+        res.missing.append("trade with an InoCo carrier in Kadi or Moscowia: no module=shop event=open corp=Inoco signature=<item>")
+    res.ev("carrier shops", op)
+    return res
+
+
+def c_wc5(ctx):
+    res = Res()
+    res.logpart = True
+    pulls = ctx.find("corp", "pull", result="out")
+    rets = ctx.find("corp", "return")
+    for p in pulls:
+        reg, c = p.get("region"), p.get("corp")
+        end = [x for x in rets if x.src == p.src and x.n > p.n and x.get("region") == reg]
+        stop = end[0].n if end else None
+        for x in ctx.find("corp", "label", region=reg, corp=c):
+            if x.src == p.src and x.n > p.n and (stop is None or x.n < stop):
+                res.fails.append("%s: a %s label in region %s during its pull-out (%s)" % (x.short(), c, reg, p.short()))
+        outs = [x for x in ctx.find("corp", "dock", kind="out", region=reg) if x.src == p.src and x.n > p.n and (stop is None or x.n < stop)]
+        if len(outs) > 1:
+            res.fails.append("%s: the pull-out told %d times" % (p.short(), len(outs)))
+    if not pulls:
+        res.missing.append("kill three carriers of one corporation in a region at chapter 5+ (or TUNE=crp_pull_n=1): no "
+                           "module=corp event=pull result=out")
+    elif not ctx.find("corp", "dock", kind="out"):
+        res.missing.append("dock in the pulled region: no module=corp event=dock kind=out")
+    elif not rets:
+        res.missing.append("wait crp_pull_legs (24) legs after the pull-out: no module=corp event=return")
+    res.ev("pull-outs", pulls)
+    res.ev("dock lines", ctx.find("corp", "dock"))
+    res.ev("returns", rets)
+    res.ev("pulled labels", [r for r in ctx.find("corp", "label", reason="pulled")])
+    return res
+
+
+def c_wc6(ctx):
+    res = Res()
+    res.logpart = True
+    posts = ctx.find("charter", "post", type="run")
+    notes = ctx.find("charter", "note", kind="run")
+    pays = ctx.find("charter", "pay", type="run")
+    for r in notes:
+        if r.get("slot") and r.get("faction") not in ("3", "4", "5"):
+            res.fails.append("%s: a run deed without the corporation" % r.short())
+    for p in pays:
+        st = [x for x in ctx.find("faction", "faction_standing", reason="charter run") if x.src == p.src and x.n < p.n and p.n - x.n <= 10]
+        if not st:
+            res.fails.append("%s: a run paid without the standing line (reason=\"charter run\")" % p.short())
+    if not posts:
+        res.missing.append("escort a carrier to its dock, then dock until the board posts a supply run: no module=charter event=post type=run")
+    elif not pays:
+        res.missing.append("escort two carriers of the run's corporation and collect: no module=charter event=pay type=run")
+    res.ev("run postings", posts)
+    res.ev("run deeds", notes)
+    res.ev("run payments", pays)
+    return res
+
+
+def c_wc7(ctx):
+    return Res()
+
+
+def c_wc8(ctx):
+    res = Res()
+    res.logpart = True
+    seen = []
+    for v in ctx.visits:
+        cd = [r for r in v.recs if r.is_("corp", "dock") and r.get("kind") != "none"]
+        for c in cd:
+            st = [r for r in v.recs if r.is_("station", "dock") and r.n < c.n]
+            wn = [r for r in v.recs if r.is_("warn", "warn") and r.n > c.n and (not st or r.n > st[-1].n)]
+            if wn:
+                res.fails.append("%s: a corp dock line before the warning %s of the same approach" % (c.short(), wn[0].short()))
+            if st:
+                seen.append(c)
+    if not seen:
+        res.missing.append("dock where a corporation line is due (a pull-out, a return or the identity line): no module=station "
+                           "event=dock followed by module=corp event=dock kind=<out|back|id>")
+    res.ev("corp lines after the station's", seen)
+    return res
+
+
+def c_wc9(ctx):
+    res = Res()
+    res.logpart = True
+    lab = crp_labels(ctx)
+    hits = [r for r in ctx.find("corp", "hit", result="counted", player_caused="true")]
+    for v in ctx.visits:
+        fs = {}
+        for r in v.recs:
+            if r.is_("events", "faction_standing") and (r.get("reason") or "").startswith("carrier "):
+                fs[r.get("faction")] = fs.get(r.get("faction"), 0) + 1
+        for f, n in fs.items():
+            if n > 1:
+                res.fails.append("%s: %d carrier standing hits of faction %s in one visit" % (v.name(), n, f))
+    if not hits:
+        res.missing.append("kill a USS carrier at chapter 5+: no module=corp event=hit ... player_caused=true result=counted")
+    elif not [r for r in ctx.find("events", "faction_standing") if (r.get("reason") or "").startswith("carrier ")]:
+        res.missing.append("a counted carrier kill without module=events event=faction_standing reason=\"carrier ...\" "
+                           "(the faction may be hostile or already hit in that visit)")
+    res.ev("counted player hits", hits)
+    return res
+
+
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
@@ -3055,6 +3233,20 @@ ITEMS = [
      "the dialog with the patrol officer's portrait (D1), or the card (JOBS=1), or the box; 'Clan file' in the mission list"),
     ("W-B10.9", "two answered raids, the report (D2), the board words after it", c_wt9, None),
     ("W-B10.10", "the letter once (NEWS=1)", c_wt10, "the letter's paragraphs split at |"),
+    ("W-A22.1", "the greeting names the corporation", c_wc1,
+     "'FTU <name>, Triada contract carrier, open for trade' readable on screen"),
+    ("W-A22.2", "focus line, hail box title and dialog head name the corporation", c_wc2,
+     "'Triada contract freighter <name>' in the focus line and the box title; the dialog head under 'FTU <name>:'"),
+    ("W-A22.3", "the where-headed answer", c_wc3, "'<Corp> cargo, <direction>. <rumour>' in the answer"),
+    ("W-A22.4", "carrier shop stock", c_wc4, "the signature item at count 1; prices equal to an independent's at the same dock"),
+    ("W-A22.5", "pull-out: bulletin, dockmaster lines, no carrier of the corporation, the return", c_wc5,
+     "'FTU bulletin: <Corp> pulls its contract carriers off the lanes near <home>' (or the news record), the dockmaster lines"),
+    ("W-A22.6", "the supply run posting, its deeds and pay", c_wc6,
+     "the logbook entry with the chd7<f> text, the board line 'contract carriers escorted 0 of 2'"),
+    ("W-A22.7", "EN.1: the target panel shows a pilot template's callsign (test build)", c_wc7,
+     "a hand-made Pilots.xml template with callsign 'InoCo carrier' on a trader leader: the target panel shows the callsign"),
+    ("W-A22.8", "req order: station greeting, A12 warning, corporation line", c_wc8, "the three lines readable in that order"),
+    ("W-A22.9", "standing: a carrier kill costs fst once per visit", c_wc9, "the rank line at a USS patrol dock shows the lower rank"),
 ]
 
 
@@ -3181,7 +3373,9 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "W-B06.1": "MANUAL", "W-B06.2": "FAIL", "W-B06.3": "FAIL", "W-B06.4": "FAIL", "W-B06.5": "NO DATA",
             "W-B06.6": "NO DATA", "W-B06.7": "FAIL", "W-B06.8": "FAIL", "W-B06.9": "PASS", "W-B06.10": "MANUAL",
             "W-B10.1": "FAIL", "W-B10.2": "FAIL", "W-B10.3": "FAIL", "W-B10.4": "NO DATA", "W-B10.5": "NO DATA",
-            "W-B10.6": "NO DATA", "W-B10.7": "FAIL", "W-B10.8": "NO DATA", "W-B10.9": "NO DATA", "W-B10.10": "FAIL"}
+            "W-B10.6": "NO DATA", "W-B10.7": "FAIL", "W-B10.8": "NO DATA", "W-B10.9": "NO DATA", "W-B10.10": "FAIL",
+            "W-A22.1": "FAIL", "W-A22.2": "NO DATA", "W-A22.3": "NO DATA", "W-A22.4": "FAIL", "W-A22.5": "FAIL",
+            "W-A22.6": "NO DATA", "W-A22.7": "MANUAL", "W-A22.8": "NO DATA", "W-A22.9": "FAIL"}
 # tests/check_ingame_warn_fixture.log: correct warning behaviour only. A dock warning for Gideon at Avalon (leg 100) after
 # the station's dock line, a second approach skipped (visit), a return at leg 102 skipped (cooldown); at XT-23 (station
 # voice deny, a station pass, no station dock line) a pass reason=scene, then a warning for XT-24; a load of an earlier
@@ -3199,6 +3393,13 @@ SELFTEST_REMARK = {"W-B06.1": "MANUAL", "W-B06.2": "PASS", "W-B06.3": "PASS", "W
 # Escaflon, the board words there, the letter once.
 SELFTEST_TEMPER = {"W-B10.1": "MANUAL", "W-B10.2": "PASS", "W-B10.3": "MANUAL", "W-B10.4": "MANUAL", "W-B10.5": "MANUAL",
                    "W-B10.6": "MANUAL", "W-B10.7": "MANUAL", "W-B10.8": "MANUAL", "W-B10.9": "PASS", "W-B10.10": "MANUAL"}
+# tests/check_ingame_corp_fixture.log: correct corporation carrier behaviour. Kondel (chapter 6): a Triada carrier labelled,
+# greeted, hailed with the box and asked where it is headed, a USS carrier hailed with the dialog, the identity dock line
+# after the station's; Gaoba: an InoCo carrier's shop with RBot3, three losses with one standing line; Kadi: the pull-out,
+# a pulled label, the station's line, the A12 warning, then the out line, a second approach without a line; Ergelan: an
+# escort mark, the run posted, two run deeds, the standing line and the pay; Kadi 24 legs later: the return and the back line.
+SELFTEST_CORP = {"W-A22.1": "MANUAL", "W-A22.2": "MANUAL", "W-A22.3": "MANUAL", "W-A22.4": "MANUAL", "W-A22.5": "MANUAL",
+                 "W-A22.6": "MANUAL", "W-A22.7": "MANUAL", "W-A22.8": "MANUAL", "W-A22.9": "MANUAL"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -3225,6 +3426,9 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # FAIL) and after a voiced beacon line in the same entry (W-B06.3 FAIL), four arrival lines queued in one entry (W-B06.4
 # FAIL), every voice line silent (W-B06.7 FAIL), the same event said again on the next entry (W-B06.2 FAIL); no voice
 # line with an absent template and a speaker (W-B06.5), no chapter 11-12 voice line (W-B06.6).
+# Corporation carriers block (the very end, Debris 4): a USS pull-out, then a USS label in that region during it (W-A22.5
+# FAIL), a USS carrier shop with PLC2 (W-A22.4 FAIL), two carrier standing hits of USS in one visit (W-A22.9 FAIL), an InoCo
+# label with share 1.5 (W-A22.1 FAIL); no hail, answer, run, req order line (W-A22.2, .3, .6, .8 NO DATA).
 
 
 def selftest():
@@ -3256,7 +3460,12 @@ def selftest():
         if got.get(iid) != v:
             print("selftest: temper fixture %s is %s, expected %s" % (iid, got.get(iid), v))
             bad += 1
-    n = len(SELFTEST) + len(SELFTEST_EYES[1]) + len(SELFTEST_WARN) + len(SELFTEST_REMARK) + len(SELFTEST_TEMPER)
+    got = dict((r[0], r[2]) for r in score(Ctx([Log(FIXTURE_CORP, None, [])]), {}))
+    for iid, v in SELFTEST_CORP.items():
+        if got.get(iid) != v:
+            print("selftest: corp fixture %s is %s, expected %s" % (iid, got.get(iid), v))
+            bad += 1
+    n = len(SELFTEST) + len(SELFTEST_EYES[1]) + len(SELFTEST_WARN) + len(SELFTEST_REMARK) + len(SELFTEST_TEMPER) + len(SELFTEST_CORP)
     if parse_logfmt('a=1 message="x \\"y\\" z" b=') != {"a": "1", "message": 'x "y" z', "b": ""}:
         print("selftest: logfmt quoting")
         bad += 1

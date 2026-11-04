@@ -177,7 +177,7 @@ function T_CH_A()
 	C_Begin("golkonda", "4_1");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=18") >= 1, "trf_charter loads after trf_ladder (extra_count=18 with trf_scar, trf_captain, trf_stash, trf_freight, trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=19") >= 1, "trf_charter loads after trf_ladder (extra_count=19 with trf_scar, trf_captain, trf_stash, trf_freight, trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
 	local P = TRF_PlReg();
 	local lo, bo, ow = "", "", "";
 	for i = 1, getn(P.dock.trade.line) do lo = lo..P.dock.trade.line[i].o..","; end;
@@ -224,7 +224,7 @@ function T_CH_A()
 		"tune defaults (design 6)");
 	h.cfg.tune = {ch_pay_gap_rs=-5, ch_k={0.4, 9}, ch_rank_pts={5, 4, 3, 2, 1}, ch_slots={1, 3}};
 	T = TRF_ChTune();
-	HOST_Check(T.ch_pay_gap_rs == 0 and T.ch_k[1] == 0.4 and getn(T.ch_k) == 6 and T.ch_rank_pts[1] == 2 and T.ch_slots[1] == 1,
+	HOST_Check(T.ch_pay_gap_rs == 0 and T.ch_k[1] == 0.4 and getn(T.ch_k) == 7 and T.ch_rank_pts[1] == 2 and T.ch_slots[1] == 1,
 		"tune clamps: gap >= 0, a short list reads the default, thresholds must ascend");
 	h.cfg.tune = nil;
 	local nt, nd = 0, 0;
@@ -232,7 +232,8 @@ function T_CH_A()
 		if strfind(k, "^cht") then nt = nt + 1; end;
 		if strfind(k, "^chd%d") then nd = nd + 1; end;
 	end;
-	HOST_Check(nt == 11 and nd == 13, "11 logbook titles, 13 descriptions ("..nt..", "..nd..")");
+	-- Supply run (design/corp-carriers-spec.md 6): chd73..chd75 make 16 descriptions.
+	HOST_Check(nt == 11 and nd == 16, "11 logbook titles, 16 descriptions ("..nt..", "..nd..")");
 end;
 
 -- b: generation ------------------------------------------------------------------------------------------

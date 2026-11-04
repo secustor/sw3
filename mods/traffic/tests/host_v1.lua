@@ -2253,6 +2253,15 @@ function T_V1_N()
 	TRF.rm = {[110]=skl, [111]=skl, [112]=skl, [113]=skl, f=skl};
 	-- Shared intro-quest record worst case (design/temperament-spec.md 3.4): every field at its widest.
 	TRF.iq = {a=999969999, d=63, r=1073741823, l=TRF.clock.legs};
+	-- Corporation carriers worst case (design/corp-carriers-spec.md 3.4): the 88-digit state string at its widest, crp
+	-- on every open trader record (at most cap_traders 5), the news topic crp in two regions.
+	TRF.crp = strrep("99954599999", 8);
+	for id, r in L.tr do if type(r) == "table" and r.st ~= "gone" then r.crp = 15; end; end;
+	if type(TRF.newsx) ~= "table" then TRF.newsx = {}; end;
+	for k = 1, 2 do
+		if type(TRF.newsx[k]) ~= "table" then TRF.newsx[k] = {}; end;
+		TRF.newsx[k].crp = {v="out_5", n=1, l=-99999};
+	end;
 	local mcz = HOST_SaveSize(TRF.mc);
 	TRF_Mc_Fix();
 	HOST_Check(HOST_SaveSize(TRF.mc) == mcz and mcz <= 6000, "merc worst case kept by the repair: "..mcz.." bytes <= 6000");
@@ -2279,7 +2288,7 @@ function T_V1_N()
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");
 	local size = 8 + 3 + HOST_SaveSize(TRF);
 	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "ch", "scar",
-		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "wq", "wn", "rm", "iq", "live"};
+		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "wq", "wn", "rm", "iq", "crp", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	local lp, ll = "", {"tr", "stat", "rd", "cvs", "tq", "sw", "fq", "cr", "dc", "bs", "pg"};
 	for i = 1, getn(ll) do lp = lp.." "..ll[i].."="..HOST_SaveSize(L[ll[i]]); end;

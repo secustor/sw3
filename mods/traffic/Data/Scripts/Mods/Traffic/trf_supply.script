@@ -1294,6 +1294,8 @@ function TRF_SpComply(id, r, h, cur)
 		-- Player robbery: pk = 1, never a relief target (00 section 6).
 		if r.path == "A" then TRF_SpP(TRF_ShortAdd, {cur, r.cls, nil, 1}); end;
 	end;
+	-- Corporation carriers (design/corp-carriers-spec.md 5.3): a robbed contract carrier counts for a pull-out.
+	TRF_SpX("TRF_Crp_Hit", id, r, "rob", cur);
 	TRF_SpX("TRF_TrackMark", id, "rob");
 	TRF_SpX("TRF_PoDone", id, "rob");
 	local nm = TRF_SpName(r);

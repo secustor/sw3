@@ -198,9 +198,9 @@ function T_FR_A()
 	FR_Begin("debris6", "9_1");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=18") >= 1, "trf_freight loads after trf_stash (extra_count=18 with trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=19") >= 1, "trf_freight loads after trf_stash (extra_count=19 with trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
 	local ml = TRF_ModList();
-	HOST_Check(ml[getn(ml) - 7] == "Fr" and TRF_Opt("enable_freight") == 1 and TRF_Opt("fw_onscreen") == 1 and TRF_Opt("fw_losses") == 1
+	HOST_Check(ml[getn(ml) - 8] == "Fr" and TRF_Opt("enable_freight") == 1 and TRF_Opt("fw_onscreen") == 1 and TRF_Opt("fw_losses") == 1
 		and TRF_Fr_OptDef().fw_max_ships == 3 and TRF_Fr_OptDef().fw_prize_gap == 1 and TRF_Fr_OptDef().fw_marker == 1
 		and TRF_Fr_OptDef().fw_hulls == 1 and TRF_Fr_OptDef().fw_transit == 1 and TRF_Fr_OptDef().fw_follow == 1 and TRF_Fr_OptDef().fw_parked == 1
 		and TRF_Fr_OptDef().fw_hooks == 1,

@@ -294,6 +294,41 @@
 		<sound_name/>
 	</NewsRecord>
 	<NewsRecord>
+		<name>trf_r1_crp_out_1</name>
+		<header>#TRF_N_r1_crp_out_1_Name</header>
+		<text>#TRF_N_r1_crp_out_1_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r1_crp_out_2</name>
+		<header>#TRF_N_r1_crp_out_2_Name</header>
+		<text>#TRF_N_r1_crp_out_2_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r1_crp_out_3</name>
+		<header>#TRF_N_r1_crp_out_3_Name</header>
+		<text>#TRF_N_r1_crp_out_3_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r1_crp_out_4</name>
+		<header>#TRF_N_r1_crp_out_4_Name</header>
+		<text>#TRF_N_r1_crp_out_4_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r1_crp_out_5</name>
+		<header>#TRF_N_r1_crp_out_5_Name</header>
+		<text>#TRF_N_r1_crp_out_5_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
 		<name>trf_r2_lane_raid</name>
 		<header>#TRF_N_r2_lane_raid_Name</header>
 		<text>#TRF_N_r2_lane_raid_LDesc</text>
@@ -472,6 +507,41 @@
 		<name>trf_r2_fw_lost</name>
 		<header>#TRF_N_r2_fw_lost_Name</header>
 		<text>#TRF_N_r2_fw_lost_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r2_crp_out_1</name>
+		<header>#TRF_N_r2_crp_out_1_Name</header>
+		<text>#TRF_N_r2_crp_out_1_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r2_crp_out_2</name>
+		<header>#TRF_N_r2_crp_out_2_Name</header>
+		<text>#TRF_N_r2_crp_out_2_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r2_crp_out_3</name>
+		<header>#TRF_N_r2_crp_out_3_Name</header>
+		<text>#TRF_N_r2_crp_out_3_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r2_crp_out_4</name>
+		<header>#TRF_N_r2_crp_out_4_Name</header>
+		<text>#TRF_N_r2_crp_out_4_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r2_crp_out_5</name>
+		<header>#TRF_N_r2_crp_out_5_Name</header>
+		<text>#TRF_N_r2_crp_out_5_LDesc</text>
 		<image_name>Studio66</image_name>
 		<sound_name/>
 	</NewsRecord>
@@ -658,6 +728,41 @@
 		<sound_name/>
 	</NewsRecord>
 	<NewsRecord>
+		<name>trf_r3_crp_out_1</name>
+		<header>#TRF_N_r3_crp_out_1_Name</header>
+		<text>#TRF_N_r3_crp_out_1_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r3_crp_out_2</name>
+		<header>#TRF_N_r3_crp_out_2_Name</header>
+		<text>#TRF_N_r3_crp_out_2_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r3_crp_out_3</name>
+		<header>#TRF_N_r3_crp_out_3_Name</header>
+		<text>#TRF_N_r3_crp_out_3_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r3_crp_out_4</name>
+		<header>#TRF_N_r3_crp_out_4_Name</header>
+		<text>#TRF_N_r3_crp_out_4_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r3_crp_out_5</name>
+		<header>#TRF_N_r3_crp_out_5_Name</header>
+		<text>#TRF_N_r3_crp_out_5_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
 		<name>trf_r4_lane_raid</name>
 		<header>#TRF_N_r4_lane_raid_Name</header>
 		<text>#TRF_N_r4_lane_raid_LDesc</text>
@@ -836,6 +941,41 @@
 		<name>trf_r4_fw_lost</name>
 		<header>#TRF_N_r4_fw_lost_Name</header>
 		<text>#TRF_N_r4_fw_lost_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r4_crp_out_1</name>
+		<header>#TRF_N_r4_crp_out_1_Name</header>
+		<text>#TRF_N_r4_crp_out_1_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r4_crp_out_2</name>
+		<header>#TRF_N_r4_crp_out_2_Name</header>
+		<text>#TRF_N_r4_crp_out_2_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r4_crp_out_3</name>
+		<header>#TRF_N_r4_crp_out_3_Name</header>
+		<text>#TRF_N_r4_crp_out_3_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r4_crp_out_4</name>
+		<header>#TRF_N_r4_crp_out_4_Name</header>
+		<text>#TRF_N_r4_crp_out_4_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r4_crp_out_5</name>
+		<header>#TRF_N_r4_crp_out_5_Name</header>
+		<text>#TRF_N_r4_crp_out_5_LDesc</text>
 		<image_name>Studio66</image_name>
 		<sound_name/>
 	</NewsRecord>
@@ -1022,6 +1162,41 @@
 		<sound_name/>
 	</NewsRecord>
 	<NewsRecord>
+		<name>trf_r5_crp_out_1</name>
+		<header>#TRF_N_r5_crp_out_1_Name</header>
+		<text>#TRF_N_r5_crp_out_1_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r5_crp_out_2</name>
+		<header>#TRF_N_r5_crp_out_2_Name</header>
+		<text>#TRF_N_r5_crp_out_2_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r5_crp_out_3</name>
+		<header>#TRF_N_r5_crp_out_3_Name</header>
+		<text>#TRF_N_r5_crp_out_3_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r5_crp_out_4</name>
+		<header>#TRF_N_r5_crp_out_4_Name</header>
+		<text>#TRF_N_r5_crp_out_4_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r5_crp_out_5</name>
+		<header>#TRF_N_r5_crp_out_5_Name</header>
+		<text>#TRF_N_r5_crp_out_5_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
 		<name>trf_r6_lane_raid</name>
 		<header>#TRF_N_r6_lane_raid_Name</header>
 		<text>#TRF_N_r6_lane_raid_LDesc</text>
@@ -1200,6 +1375,41 @@
 		<name>trf_r6_fw_lost</name>
 		<header>#TRF_N_r6_fw_lost_Name</header>
 		<text>#TRF_N_r6_fw_lost_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r6_crp_out_1</name>
+		<header>#TRF_N_r6_crp_out_1_Name</header>
+		<text>#TRF_N_r6_crp_out_1_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r6_crp_out_2</name>
+		<header>#TRF_N_r6_crp_out_2_Name</header>
+		<text>#TRF_N_r6_crp_out_2_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r6_crp_out_3</name>
+		<header>#TRF_N_r6_crp_out_3_Name</header>
+		<text>#TRF_N_r6_crp_out_3_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r6_crp_out_4</name>
+		<header>#TRF_N_r6_crp_out_4_Name</header>
+		<text>#TRF_N_r6_crp_out_4_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r6_crp_out_5</name>
+		<header>#TRF_N_r6_crp_out_5_Name</header>
+		<text>#TRF_N_r6_crp_out_5_LDesc</text>
 		<image_name>Studio66</image_name>
 		<sound_name/>
 	</NewsRecord>
@@ -1386,6 +1596,41 @@
 		<sound_name/>
 	</NewsRecord>
 	<NewsRecord>
+		<name>trf_r7_crp_out_1</name>
+		<header>#TRF_N_r7_crp_out_1_Name</header>
+		<text>#TRF_N_r7_crp_out_1_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r7_crp_out_2</name>
+		<header>#TRF_N_r7_crp_out_2_Name</header>
+		<text>#TRF_N_r7_crp_out_2_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r7_crp_out_3</name>
+		<header>#TRF_N_r7_crp_out_3_Name</header>
+		<text>#TRF_N_r7_crp_out_3_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r7_crp_out_4</name>
+		<header>#TRF_N_r7_crp_out_4_Name</header>
+		<text>#TRF_N_r7_crp_out_4_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r7_crp_out_5</name>
+		<header>#TRF_N_r7_crp_out_5_Name</header>
+		<text>#TRF_N_r7_crp_out_5_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
 		<name>trf_r8_lane_raid</name>
 		<header>#TRF_N_r8_lane_raid_Name</header>
 		<text>#TRF_N_r8_lane_raid_LDesc</text>
@@ -1564,6 +1809,41 @@
 		<name>trf_r8_fw_lost</name>
 		<header>#TRF_N_r8_fw_lost_Name</header>
 		<text>#TRF_N_r8_fw_lost_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r8_crp_out_1</name>
+		<header>#TRF_N_r8_crp_out_1_Name</header>
+		<text>#TRF_N_r8_crp_out_1_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r8_crp_out_2</name>
+		<header>#TRF_N_r8_crp_out_2_Name</header>
+		<text>#TRF_N_r8_crp_out_2_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r8_crp_out_3</name>
+		<header>#TRF_N_r8_crp_out_3_Name</header>
+		<text>#TRF_N_r8_crp_out_3_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r8_crp_out_4</name>
+		<header>#TRF_N_r8_crp_out_4_Name</header>
+		<text>#TRF_N_r8_crp_out_4_LDesc</text>
+		<image_name>Studio66</image_name>
+		<sound_name/>
+	</NewsRecord>
+	<NewsRecord>
+		<name>trf_r8_crp_out_5</name>
+		<header>#TRF_N_r8_crp_out_5_Name</header>
+		<text>#TRF_N_r8_crp_out_5_LDesc</text>
 		<image_name>Studio66</image_name>
 		<sound_name/>
 	</NewsRecord>

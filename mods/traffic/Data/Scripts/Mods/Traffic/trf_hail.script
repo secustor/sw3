@@ -1254,8 +1254,9 @@ function TRF_HlDlgOpen(hl, r)
 	if why then TRF_HlDlgFb(why); return nil; end;
 	-- Message box lock (00 section 6): owner "hail" for the whole conversation, dialogs included.
 	if type(TRF_BoxTake) == "function" and not TRF_BoxTake("hail") then TRF_HlDlgFb("lock"); return nil; end;
-	local head = TRF_Txt("dlghead");
-	if hl.rf == 1 then head = TRF_Txt("dlgrefuse"); end;
+	-- Corporation carriers (design/corp-carriers-spec.md 5.2): a contract carrier's head names its corporation.
+	local head = nil;
+	if hl.rf == 1 then head = TRF_Txt("dlgrefuse"); else head = TRF_N("TRF_Crp_Head", r) or TRF_Txt("dlghead"); end;
 	local st = TRF_HlStore();
 	st.dlg = {id=hl.id, g=hl.g, on=on, dk=dk, who=TRF_HlName(r), head=head};
 	hl.w = "dlg";
@@ -1793,6 +1794,9 @@ function TRF_CtOfferRoll(id, r, idx, s)
 	local dE, dis = TRF_HlDanger(idx, s), TRF_HlDis(idx);
 	local br = TRF_HlBrave(r);
 	local p = TRF_CtOfferP(dE, dis, br);
+	-- Corporation carriers (design/corp-carriers-spec.md 5.7): the offer floor while a supply run of its corporation is open.
+	local pm = TRF_N("TRF_Crp_OfferMin", r);
+	if type(pm) == "number" and pm > p then p = pm; end;
 	local roll = TRF_HlDraw(100);
 	local res = "declined";
 	r.co = 0;
@@ -1889,7 +1893,8 @@ function TRF_CtArrive(id, how)
 	if type(TRF_AddHeat) == "function" then TRF_HlP(TRF_AddHeat, {-1, "contract"}); end;
 	if type(TRF_ProCredit) == "function" then TRF_HlP(TRF_ProCredit, {4, "contract"}); end;
 	TRF_HlSay(TRF_Txt("ctpaid", format("%d", n)), id);
-	TRF_N("TRF_Ch_Note", 1, TRF_HlCur(), n);
+	-- Corporation carriers (design/corp-carriers-spec.md 5.7): a deed of an open supply run is not also an escort deed.
+	if TRF_N("TRF_Crp_Escort", id, TRF_HlRec(id), n, TRF_HlCur()) ~= 1 then TRF_N("TRF_Ch_Note", 1, TRF_HlCur(), n); end;
 	TRF_HlStat("ct_paid");
 	TRF_HlE("contract", "trader_id", id, "via", how, "pay", n, "distance", TRF_F(d), "help", h, "result", "paid");
 	return 1;
@@ -2191,6 +2196,8 @@ function TRF_Headed(id)
 	local r = TRF_HlRec(id);
 	local dir = "";
 	if r and type(TRF_UI_DirText) == "function" then dir = TRF_UI_DirText(r); end;
+	-- Corporation carriers (design/corp-carriers-spec.md 5.2): "InoCo cargo, <direction>".
+	if r then dir = TRF_N("TRF_Crp_Dir", r, dir) or dir; end;
 	local idx = TRF_HlCur();
 	local rum = TRF_Txt("rnone");
 	if type(idx) == "number" then rum = TRF_HlRumourText(idx); end;

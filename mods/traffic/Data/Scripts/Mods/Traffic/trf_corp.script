@@ -1,0 +1,1001 @@
+-- sw3-traffic corporation carriers module (Lua 4.0.1). Spec: design/corp-carriers-spec.md (A22, roadmap wave 1 row 4;
+-- data: design/mod-research/corp-carriers-data.md). Prefix Crp (TRF_Crp_* public, TRF_Crp<X> internal), log
+-- module=corp. Host-tested only, not run in the game (W-A22.1-9 open).
+-- Owns: the contract-carrier label of a plain mod trader (Triada 3, USS 4, InoCo 5, the faction indices of
+-- TRF_FacTeams), drawn at spawn from the record's name index and region slot (no RAND draw) with shares derived from
+-- the run-time owners of the region's trade systems (GetLocationTeam) and stored in the trader record (r.crp); the text
+-- surfaces (greeting, owner word, dialog head, where-headed answer) and the shop stock a carrier shows (callers in
+-- trf_ui, trf_hail, trf_shop); the loss counts per region and corporation (on-screen kill, player robbery, the
+-- off-screen roll in Raids at clan T3-T4) and the pull-out they trigger (crp_pull_legs legs, one news post, dockmaster
+-- lines); the run mark a completed escort of a carrier leaves for trf_charter's type 7 posting (supply run).
+-- Lines only (00 section 4): no box, no hail answer, no marker; the dock line is a trf_plumb line (kind req, order 30,
+-- after the station's greeting at 10 and trf_warn's warning at 20), not run under __disableAction or __sys_SOS, never
+-- while a story mission runs (visit latch on TRF_Safe_QState, the strict gate), during a scene or below tune crp_ch.
+-- Standing: counted kills and robberies go through trf_events' TRF_Ev_FstHit (fst -1 once per visit), a paid run
+-- posting through trf_charter (TRF_FstAdd +1). No vanilla label, relation or station stock is written.
+-- Saved fields (version 4, created at the first non-zero write, repaired by TRF_Crp_Fix):
+--   TRF.crp = one string of 11 digits per region slot (TRF_RgMap().n blocks): a3 a4 a5 (losses), p (pulled
+--   corporation), t (dock notice pending: 1 pull-out, 3..5 return), x (run mark), e (5 digits, end leg of the pull-out);
+--   nil while every digit is 0.
+--   TRF.live.tr[id].crp = 3..5, 13..15 once counted (visit lifetime; not in TRF_GoneKeep).
+-- Visit cache in the chunk local CV (never saved; rebuilt by every MapInitialization). No handle is stored anywhere.
+-- Layout as trf_station and trf_warn: helpers, accessors (one native each, protected), static tables, pure functions
+-- (*Of, explicit inputs, host-testable), contract functions. Top level: functions and CV only.
+
+local CV = {pr={}, id={}, tm={}};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_CrpCV() return %CV; end;
+
+-- logfmt event line, module=corp (design/log-format.md).
+function TRF_CrpE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "corp"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_CrpErr(m)
+	TRF_CrpE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler (a native that may be missing or error on unknown input): nil is the answer.
+function TRF_CrpNoErr(m) end;
+
+function TRF_CrpLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_CrpDE(event, ...)
+	if TRF_CrpLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_CrpE, arg);
+end;
+
+function TRF_CrpCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- Range of the cfg key (outside -> default) and clamps of the tune keys (spec 7): {lo, hi, fraction}.
+function TRF_CrpClampT()
+	return {corp={0, 1}, crp_ch={0, 20}, crp_pull_ch={0, 20}, crp_sig_ch={0, 20}, crp_share={0, 1, 1}, crp_own={1, 4, 1},
+		crp_max={0, 0.9, 1}, crp_job_x={1, 4, 1}, crp_job_offer={0, 100}, crp_pull_n={1, 9}, crp_pull_legs={4, 200},
+		crp_pull_max={1, 8}, crp_off_pct={0, 50}, crp_id_pct={0, 100}};
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Crp_OptDef), else the raw config, else the default; a wrong type or a value outside
+-- its range reads as the default.
+function TRF_CrpOpt(key)
+	local d = TRF_Crp_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	local r = TRF_CrpClampT()[key];
+	if type(v) == "number" and r and (v ~= floor(v) or v < r[1] or v > r[2]) then return d; end;
+	return v;
+end;
+
+-- crp_k: three numbers, each clamped 0..2, else nil.
+function TRF_CrpKOf(x)
+	if type(x) ~= "table" or getn(x) ~= 3 then return nil; end;
+	local o = {};
+	for i = 1, 3 do
+		if type(x[i]) ~= "number" then return nil; end;
+		o[i] = TRF_CrpCl(x[i], 0, 2);
+	end;
+	return o;
+end;
+
+-- Tune values of this module, clamped (TRF_CrpClampT; crp_k by TRF_CrpKOf). Cached in CV while TRF_Tune returns the
+-- same table; callers must not write into it.
+function TRF_CrpTune()
+	local cv = %CV;
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_CrpErr); end;
+	if type(cv.tc) == "table" and cv.tc.s == t then return cv.tc.t; end;
+	local d = TRF_Crp_TuneDef();
+	local cl = TRF_CrpClampT();
+	local o = {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if k == "crp_k" then
+			o[k] = TRF_CrpKOf(x) or v;
+		else
+			if type(x) ~= "number" then x = v; end;
+			local c = cl[k];
+			if c then
+				if not c[3] then x = floor(x); end;
+				x = TRF_CrpCl(x, c[1], c[2]);
+			end;
+			o[k] = x;
+		end;
+	end;
+	cv.tc = {s=t, t=o};
+	return o;
+end;
+
+-- Traffic on and cfg corp 1.
+function TRF_CrpOn()
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return nil; end;
+	if TRF_CrpOpt("corp") ~= 1 then return nil; end;
+	return 1;
+end;
+
+function TRF_CrpLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+function TRF_CrpCh()
+	local c = TRF_N("TRF_Chapter");
+	if type(c) == "number" then return c; end;
+	return 0;
+end;
+
+function TRF_CrpTxt(key, a, b)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b); end;
+	return tostring(key);
+end;
+
+-- Team name of corporation f (log values and the shop owner): trf_faction's TRF_FacTeam, else the same list.
+function TRF_CrpTeam(f)
+	local t = TRF_N("TRF_FacTeam", f);
+	if type(t) == "string" then return t; end;
+	local l = {"Vks", "Kfni", "Triada", "Uss", "Inoco"};
+	return l[f];
+end;
+
+-- Display name of corporation f ("Triada", "USS", "InoCo"): trf_ui's TRF_UI_FacOf, else the team name.
+function TRF_CrpFac(f)
+	local s = TRF_N("TRF_UI_FacOf", f);
+	if type(s) == "string" then return s; end;
+	return tostring(TRF_CrpTeam(f));
+end;
+
+-- Lowercase map name of system idx (log values), or the index.
+function TRF_CrpName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+-- Region table of trf_region (TRF_RgMap), or nil.
+function TRF_CrpRgMap()
+	local r = TRF_N("TRF_RgMap");
+	if type(r) == "table" and type(r.n) == "number" then return r; end;
+	return nil;
+end;
+
+-- Region slot of system idx, or nil.
+function TRF_CrpSlot(idx)
+	if type(idx) ~= "number" then return nil; end;
+	local s = TRF_N("TRF_RgOf", idx);
+	if type(s) == "number" then return s; end;
+	return nil;
+end;
+
+-- Display name of region slot (the home system's display name, as the charter names regions).
+function TRF_CrpRgName(slot)
+	local r = TRF_CrpRgMap();
+	if r and type(slot) == "number" and type(r[slot]) == "table" and type(r[slot].home) == "number" then
+		local s = TRF_N("TRF_UI_SysName", r[slot].home);
+		if type(s) == "string" then return s; end;
+		return TRF_CrpName(r[slot].home);
+	end;
+	return tostring(slot);
+end;
+
+-- Number of region blocks of the saved string (TRF_RgMap().n), 0 without the map.
+function TRF_CrpN()
+	local r = TRF_CrpRgMap();
+	if r and r.n > 0 then return r.n; end;
+	return 0;
+end;
+
+-- Trader record id (TRF_Rec, else TRF.live.tr), or nil.
+function TRF_CrpRec(id)
+	local r = TRF_N("TRF_Rec", id);
+	if type(r) == "table" then return r; end;
+	if type(TRF) == "table" and type(TRF.live) == "table" and type(TRF.live.tr) == "table" and type(TRF.live.tr[id]) == "table" then
+		return TRF.live.tr[id];
+	end;
+	return nil;
+end;
+
+-- Accessors: one native each, protected ---------------------------------------------
+
+function TRF_CrpTeamRaw(n) return {v=GetLocationTeam(n)}; end;
+
+-- Owner team of system idx: trf_region's TRF_RgTeam (protected there), else GetLocationTeam of the map name; nil when
+-- unknown.
+function TRF_Crp_Team(idx)
+	if type(TRF_RgTeam) == "function" then
+		local t = call(TRF_RgTeam, {idx}, "x", TRF_CrpNoErr);
+		if type(t) == "string" then return t; end;
+		return nil;
+	end;
+	if type(GetLocationTeam) ~= "function" then return nil; end;
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) ~= "string" then return nil; end;
+	local r = call(TRF_CrpTeamRaw, {n}, "x", TRF_CrpNoErr);
+	if type(r) == "table" and type(r.v) == "string" then return r.v; end;
+	return nil;
+end;
+
+-- Static tables (3.5) ----------------------------------------------------------------
+
+-- Constants: corporation indices, block width, the label hash constants.
+function TRF_CrpK()
+	return {fs={3, 4, 5}, blk=11, hu=0.6180339887, hs=0.4142135624};
+end;
+
+-- Lore-named items of the carrier shops (CD 3): Triada none, USS Cold Wave, InoCo Gremlin, Sigil and M-805 Shining.
+function TRF_CrpSigTab()
+	return {[3]={}, [4]={"WBoost3"}, [5]={"RBot3", "LRRNB3", "PLC2"}};
+end;
+
+-- Pure functions (explicit inputs, host-testable) -------------------------------------
+
+-- Corporation index of a team name (3 Triada, 4 USS, 5 InoCo, any case), 0 for any other team or nil.
+function TRF_CrpFOf(team)
+	if type(team) ~= "string" then return 0; end;
+	local s = strlower(team);
+	if s == "triada" then return 3; end;
+	if s == "uss" then return 4; end;
+	if s == "inoco" then return 5; end;
+	return 0;
+end;
+
+-- Shares per corporation (5.1) for the region counts rg = {N, [3], [4], [5]}, the dock system's owner own (3..5 or
+-- nil), the clamped tune T, the pulled set and the open run set job ({[f] = 1} or nil). Returns {[3], [4], [5]}.
+function TRF_CrpSharesOf(rg, own, T, pulled, job)
+	local s = {[3]=0, [4]=0, [5]=0};
+	if type(rg) ~= "table" or type(rg.N) ~= "number" or rg.N <= 0 then return s; end;
+	local sum = 0;
+	for f = 3, 5 do
+		local v = T.crp_share * T.crp_k[f - 2] * (rg[f] or 0) / rg.N;
+		if own == f then v = v * T.crp_own; end;
+		if type(job) == "table" and job[f] then v = v * T.crp_job_x; end;
+		if type(pulled) == "table" and pulled[f] then v = 0; end;
+		s[f] = v;
+		sum = sum + v;
+	end;
+	if sum > T.crp_max and sum > 0 then
+		for f = 3, 5 do s[f] = s[f] * T.crp_max / sum; end;
+	end;
+	return s;
+end;
+
+-- Corporation of roll u for shares s: 3 when u < s3, 4 when u < s3 + s4, 5 when u < s3 + s4 + s5, else nil.
+function TRF_CrpPickOf(u, s)
+	local acc = 0;
+	for f = 3, 5 do
+		acc = acc + (s[f] or 0);
+		if u < acc then return f; end;
+	end;
+	return nil;
+end;
+
+-- Label roll in [0, 1) of name index nm in region slot (5.1): frac(nm x 0.618... + slot x 0.414...).
+function TRF_CrpUOf(nm, slot)
+	local K = TRF_CrpK();
+	local v = (nm or 0) * K.hu + (slot or 0) * K.hs;
+	return v - floor(v);
+end;
+
+-- Park-Miller step, exact in doubles (trf_charter's TRF_ChStepOf arithmetic).
+function TRF_CrpStepOf(sd)
+	local x = sd * 16807;
+	return x - floor(x / 2147483647) * 2147483647;
+end;
+
+-- Fixed hash 0..9999 of (slot, L, salt) (5.4): seed 1 + (slot x 65537 + L x 977 + salt x 131) mod 2147483646, two
+-- Park-Miller steps, mod 10000. No RAND draw.
+function TRF_CrpHashOf(slot, L, salt)
+	local v = (slot or 0) * 65537 + (L or 0) * 977 + (salt or 0) * 131;
+	v = v - floor(v / 2147483646) * 2147483646;
+	local sd = TRF_CrpStepOf(TRF_CrpStepOf(1 + v));
+	return sd - floor(sd / 10000) * 10000;
+end;
+
+-- Zero block.
+function TRF_CrpBlk0()
+	return {a={[3]=0, [4]=0, [5]=0}, p=0, t=0, x=0, e=0};
+end;
+
+-- Block of slot in the saved string s (3.1): {a = {[3], [4], [5]}, p, t, x, e}; zeros for a missing or non-digit
+-- block.
+function TRF_CrpBlkOf(s, slot)
+	local b = TRF_CrpBlk0();
+	if type(s) ~= "string" or type(slot) ~= "number" or slot < 1 then return b; end;
+	local o = 11 * (slot - 1);
+	if strlen(s) < o + 11 then return b; end;
+	local d = strsub(s, o + 1, o + 11);
+	if strfind(d, "[^0-9]") then return b; end;
+	b.a[3] = tonumber(strsub(d, 1, 1)); b.a[4] = tonumber(strsub(d, 2, 2)); b.a[5] = tonumber(strsub(d, 3, 3));
+	b.p = tonumber(strsub(d, 4, 4)); b.t = tonumber(strsub(d, 5, 5)); b.x = tonumber(strsub(d, 6, 6));
+	b.e = tonumber(strsub(d, 7, 11));
+	return b;
+end;
+
+-- The 11 digits of block b (counts clamped 0..9, e 0..99999).
+function TRF_CrpEncOf(b)
+	local c = function(v) return TRF_CrpCl(floor(v or 0), 0, 9); end;
+	return format("%d%d%d%d%d%d%05d", c(b.a[3]), c(b.a[4]), c(b.a[5]), c(b.p), c(b.t), c(b.x), TRF_CrpCl(floor(b.e or 0), 0, 99999));
+end;
+
+-- s with the block of slot replaced by b, padded with zero blocks to at least n blocks (and slot).
+function TRF_CrpBlkStr(s, slot, b, n)
+	if type(s) ~= "string" then s = ""; end;
+	local nb = max(n or 0, slot);
+	while strlen(s) < 11 * nb do s = s.."00000000000"; end;
+	return strsub(s, 1, 11 * (slot - 1))..TRF_CrpEncOf(b)..strsub(s, 11 * slot + 1);
+end;
+
+-- 1 when every digit of s is 0 (or s is not a string).
+function TRF_CrpZeroOf(s)
+	if type(s) ~= "string" or not strfind(s, "[1-9]") then return 1; end;
+	return nil;
+end;
+
+-- Signature item of corporation f for name index nm (5.2): TRF_CrpSigTab()[f][mod(nm, n) + 1], nil for Triada.
+function TRF_CrpSigOf(f, nm)
+	local t = TRF_CrpSigTab()[f];
+	if type(t) ~= "table" or getn(t) == 0 then return nil; end;
+	local n = 0;
+	if type(nm) == "number" and nm >= 0 then n = floor(nm); end;
+	return t[mod(n, getn(t)) + 1];
+end;
+
+-- Pull-out start choice (5.4 step 5) for block b, tune T, the number of other active pull-outs and the region counts
+-- rg: the corporation with count >= crp_pull_n and systems in the region, the highest count first, a tie to the lower f.
+-- Returns f, or nil and the reason (active, none, cap) and the blocked f.
+function TRF_CrpPullOf(b, T, active, rg)
+	if b.p ~= 0 then return nil, "active"; end;
+	local best = nil;
+	for f = 3, 5 do
+		if b.a[f] >= T.crp_pull_n and type(rg) == "table" and (rg[f] or 0) > 0 and (best == nil or b.a[f] > b.a[best]) then best = f; end;
+	end;
+	if not best then return nil, "none"; end;
+	if active >= T.crp_pull_max then return nil, "cap", best; end;
+	return best, nil;
+end;
+
+-- State -------------------------------------------------------------------------------
+
+-- Block of slot in TRF.crp.
+function TRF_CrpBlk(slot)
+	local s = nil;
+	if type(TRF) == "table" then s = TRF.crp; end;
+	return TRF_CrpBlkOf(s, slot);
+end;
+
+-- CD1: every write of a block goes through here; TRF.crp = nil when the result is all zeros.
+function TRF_CrpPut(slot, b)
+	if type(TRF) ~= "table" or type(slot) ~= "number" then return; end;
+	local s = TRF_CrpBlkStr(TRF.crp, slot, b, TRF_CrpN());
+	if TRF_CrpZeroOf(s) then TRF.crp = nil; else TRF.crp = s; end;
+end;
+
+-- Blocks with an active pull-out, slot skip not counted.
+function TRF_CrpActive(skip)
+	local s = nil;
+	if type(TRF) == "table" then s = TRF.crp; end;
+	if type(s) ~= "string" then return 0; end;
+	local n = 0;
+	for slot = 1, floor(strlen(s) / 11) do
+		if slot ~= skip and TRF_CrpBlkOf(s, slot).p ~= 0 then n = n + 1; end;
+	end;
+	return n;
+end;
+
+-- Owner of system idx as a corporation index (3..5) or 0, cached in CV.tm for the visit.
+function TRF_CrpOwn(idx)
+	local cv = %CV;
+	if type(idx) ~= "number" then return 0; end;
+	TRF_CrpCache();
+	if type(cv.tm[idx]) ~= "number" then cv.tm[idx] = TRF_CrpFOf(TRF_Crp_Team(idx)); end;
+	return cv.tm[idx];
+end;
+
+-- Visit cache (3.3): rg[slot] = {N, [3], [4], [5]}, the trade systems (pc > 0) of the region and how many each
+-- corporation owns now; rebuilt when TRF_Map returns another table.
+function TRF_CrpCache()
+	local cv = %CV;
+	local m = TRF_N("TRF_Map");
+	if type(cv.rg) == "table" and cv.m == m then return cv.rg; end;
+	cv.m = m;
+	cv.rg = {};
+	cv.tm = {};
+	local rm = TRF_CrpRgMap();
+	if not rm or type(rm.pc) ~= "table" then return cv.rg; end;
+	for slot = 1, rm.n do
+		local e = {N=0, [3]=0, [4]=0, [5]=0};
+		local ss = {};
+		if type(rm[slot]) == "table" and type(rm[slot].sys) == "table" then ss = rm[slot].sys; end;
+		for i = 1, getn(ss) do
+			local k = ss[i];
+			if type(rm.pc[k]) == "number" and rm.pc[k] > 0 then
+				e.N = e.N + 1;
+				local f = TRF_CrpFOf(TRF_Crp_Team(k));
+				cv.tm[k] = f;
+				if f >= 3 then e[f] = e[f] + 1; end;
+			end;
+		end;
+		cv.rg[slot] = e;
+	end;
+	return cv.rg;
+end;
+
+-- Contract: the label (5.1) --------------------------------------------------------------
+
+-- 3..5 for a contract carrier record r (13..15 read as 3..5), nil for anything else or while cfg corp is 0.
+function TRF_Crp_Of(r)
+	if type(r) ~= "table" or type(r.crp) ~= "number" then return nil; end;
+	local c = r.crp;
+	if c > 10 then c = c - 10; end;
+	if c ~= 3 and c ~= 4 and c ~= 5 then return nil; end;
+	if TRF_CrpOpt("corp") ~= 1 then return nil; end;
+	return c;
+end;
+
+-- Label at spawn of trader id (trf_gen TRF_GenTrader and TRF_SeedSpawn after TRF_Spawn, trf_track TRF_TrackSpawn after
+-- the identity fields): 3..5 or nil. Changes no spawn decision.
+function TRF_Crp_Label(id)
+	if not TRF_CrpOn() then return nil; end;
+	return call(TRF_CrpLabelBody, {id}, "x", TRF_CrpErr);
+end;
+
+function TRF_CrpLabelBody(id)
+	local r = TRF_CrpRec(id);
+	if not r then return nil; end;
+	local T = TRF_CrpTune();
+	local why = nil;
+	local idx = TRF_N("TRF_CurIdx");
+	local slot = TRF_CrpSlot(idx);
+	local rg = nil;
+	if TRF_CrpCh() < T.crp_ch then why = "chapter";
+	elseif r.st == "gone" then why = "gone";
+	elseif r.crp ~= nil then why = "labelled";
+	elseif r.own or r.fw or r.wq or r.cv or r.feq or r.sev then why = "kind";
+	elseif type(r.nm) ~= "number" then why = "noname";
+	elseif not slot then why = "noregion";
+	else
+		rg = TRF_CrpCache()[slot];
+		if type(rg) ~= "table" or rg.N == 0 or rg[3] + rg[4] + rg[5] == 0 then why = "nocorp"; end;
+	end;
+	if why then
+		TRF_CrpDE("label", "trader_id", id, "system", TRF_CrpName(idx), "region", slot, "corp", "none", "reason", why);
+		return nil;
+	end;
+	local b = TRF_CrpBlk(slot);
+	local pulled = {};
+	if b.p ~= 0 then pulled[b.p] = 1; end;
+	local job = TRF_N("TRF_Ch_RunOpen", slot);
+	local own = TRF_CrpOwn(idx);
+	local s = TRF_CrpSharesOf(rg, own, T, pulled, job);
+	local u = TRF_CrpUOf(r.nm, slot);
+	local f = TRF_CrpPickOf(u, s);
+	if f then
+		r.crp = f;
+		TRF_N("TRF_Stat", "crp_label_"..f);
+		TRF_CrpE("label", "trader_id", id, "name", r.nm, "system", TRF_CrpName(idx), "region", slot, "corp", TRF_CrpTeam(f),
+			"share", TRF_F(s[f]), "roll", TRF_F(u));
+		return f;
+	end;
+	-- An independent where the pulled corporation would have flown: logged at level 1 (W-A22.5).
+	if b.p ~= 0 and TRF_CrpPickOf(u, TRF_CrpSharesOf(rg, own, T, nil, job)) == b.p then
+		TRF_CrpE("label", "trader_id", id, "name", r.nm, "system", TRF_CrpName(idx), "region", slot, "corp", "none",
+			"share", TRF_F(s[3] + s[4] + s[5]), "roll", TRF_F(u), "reason", "pulled", "pulled", TRF_CrpTeam(b.p));
+		return nil;
+	end;
+	TRF_CrpDE("label", "trader_id", id, "name", r.nm, "system", TRF_CrpName(idx), "region", slot, "corp", "none",
+		"share", TRF_F(s[3] + s[4] + s[5]), "roll", TRF_F(u), "reason", "roll");
+	return nil;
+end;
+
+-- Contract: text and shop surfaces (5.2) ---------------------------------------------------
+
+-- Greeting (announce line, meet 2): "FTU Kestrel, InoCo contract carrier, open for trade", the variants at fst <= 2 and
+-- >= 8 of that corporation; nil for an independent.
+function TRF_Crp_Open(r)
+	local f = TRF_Crp_Of(r);
+	if not f then return nil; end;
+	local k = "crpopen";
+	local fs = TRF_N("TRF_Fst", f);
+	if type(fs) == "number" then
+		if fs <= 2 then k = "crpopenlo"; elseif fs >= 8 then k = "crpopenhi"; end;
+	end;
+	local nm = TRF_N("TRF_UI_Name", r.nm);
+	if type(nm) ~= "string" then nm = TRF_CrpTxt("hull1"); end;
+	return TRF_CrpTxt(k, nm, TRF_CrpFac(f));
+end;
+
+-- Owner word of the focus line and the hail box ("InoCo contract"), nil for an independent.
+function TRF_Crp_Owner(r)
+	local f = TRF_Crp_Of(r);
+	if not f then return nil; end;
+	return TRF_CrpTxt("crpown", TRF_CrpFac(f));
+end;
+
+-- Dialog head (hail_box 2): "InoCo contract carrier. What do you need, Wolves?", nil for an independent.
+function TRF_Crp_Head(r)
+	local f = TRF_Crp_Of(r);
+	if not f then return nil; end;
+	return TRF_CrpTxt("crphead", TRF_CrpFac(f));
+end;
+
+-- Where-headed direction: "InoCo cargo, <dir>", nil for an independent.
+function TRF_Crp_Dir(r, dir)
+	local f = TRF_Crp_Of(r);
+	if not f then return nil; end;
+	return TRF_CrpTxt("crpdir", TRF_CrpFac(f), tostring(dir or ""));
+end;
+
+-- Shop of a carrier (trf_shop TRF_ShopOpen): {own = the corporation's team (its gun list), sig = the lore item first at
+-- count 1 (from crp_sig_ch), add = 1 more item for Triada}; nil for an independent.
+function TRF_Crp_Shop(r)
+	local f = TRF_Crp_Of(r);
+	if not f then return nil; end;
+	local sig = nil;
+	if TRF_CrpCh() >= TRF_CrpTune().crp_sig_ch then sig = TRF_CrpSigOf(f, r.nm); end;
+	local add = 0;
+	if f == 3 then add = 1; end;
+	TRF_CrpDE("shop", "trader_id", r.id, "corp", TRF_CrpTeam(f), "signature", sig, "extra", add);
+	return {own=TRF_CrpTeam(f), sig=sig, add=add};
+end;
+
+-- Contract: losses and robberies (5.3) -------------------------------------------------------
+
+-- Loss of carrier id (record r) in system idx: how "kill" (trf_events TRF_Ev_Kill, by "player"/"other") or "rob"
+-- (trf_supply TRF_SpComply). Counts once per record from crp_pull_ch; a player-caused one costs fst -1 through the
+-- built once-per-visit rule. Returns 1 when counted.
+function TRF_Crp_Hit(id, r, how, idx, by)
+	if not TRF_CrpOn() then return nil; end;
+	return call(TRF_CrpHitBody, {id, r, how, idx, by}, "x", TRF_CrpErr);
+end;
+
+function TRF_CrpHitBody(id, r, how, idx, by)
+	local f = TRF_Crp_Of(r);
+	if not f then return nil; end;
+	if how == "rob" then by = "player"; end;
+	local team = TRF_CrpTeam(f);
+	local slot = TRF_CrpSlot(idx);
+	local why = nil;
+	if r.crp > 10 then why = "counted";
+	elseif TRF_CrpCh() < TRF_CrpTune().crp_pull_ch then why = "chapter";
+	elseif not slot then why = "noregion"; end;
+	if why then
+		TRF_CrpE("hit", "trader_id", id, "corp", team, "region", slot, "how", how, "by", by, "result", "skipped", "reason", why);
+		return nil;
+	end;
+	local b = TRF_CrpBlk(slot);
+	local c0 = b.a[f];
+	b.a[f] = min(9, c0 + 1);
+	r.crp = f + 10;
+	TRF_CrpPut(slot, b);
+	local pc = nil;
+	if how == "rob" or by == "player" or r.cnt == 1 then pc = 1; end;
+	if pc then TRF_N("TRF_Ev_FstHit", f, "carrier "..tostring(how).." "..tostring(id)); end;
+	TRF_N("TRF_Stat", "crp_hit");
+	TRF_CrpE("hit", "trader_id", id, "corp", team, "region", slot, "how", how, "by", by, "count_before", c0, "count", b.a[f],
+		"player_caused", TRF_KvB(pc), "result", "counted");
+	return 1;
+end;
+
+-- Contract: region tick (5.4) -------------------------------------------------------------
+
+-- trf_region TRF_RegionTick at leg L, after the survivors' tick and before the charter's: pull-out ends, Quiet resets,
+-- from crp_pull_ch the off-screen roll in Raids at clan T3-T4 and the pull-out starts.
+function TRF_Crp_RegionTick(L)
+	if not TRF_CrpOn() then return; end;
+	call(TRF_CrpTickBody, {L}, "x", TRF_CrpErr);
+end;
+
+function TRF_CrpTickBody(L)
+	local rm = TRF_CrpRgMap();
+	if not rm or rm.n == 0 then return; end;
+	if type(L) ~= "number" then L = TRF_CrpLegs(); end;
+	local T = TRF_CrpTune();
+	local rgs = TRF_CrpCache();
+	local late = TRF_CrpCh() >= T.crp_pull_ch;
+	for slot = 1, rm.n do
+		local b = TRF_CrpBlk(slot);
+		local s0 = TRF_CrpEncOf(b);
+		local ph = TRF_N("TRF_Phase", slot) or 0;
+		local rg = rgs[slot];
+		-- 1. End: the told state decides the return line; the news topic goes.
+		if b.p ~= 0 and L >= b.e then
+			local f = b.p;
+			local told = nil;
+			if b.t == 0 then told = 1; end;
+			b.p = 0;
+			b.e = 0;
+			if told then b.t = f; else b.t = 0; end;
+			TRF_P("TRF_NewsPost", "crp", nil, slot);
+			TRF_CrpE("return", "region", slot, "corp", TRF_CrpTeam(f), "leg", L, "told", TRF_KvB(told));
+		end;
+		-- 2. Quiet: counts and the run mark reset.
+		if ph == 0 and b.a[3] + b.a[4] + b.a[5] + b.x > 0 then
+			b.a[3] = 0; b.a[4] = 0; b.a[5] = 0; b.x = 0;
+			TRF_CrpDE("reset", "region", slot, "leg", L);
+		end;
+		if late then
+			-- 4. Off-screen loss in Raids at clan T3-T4 (fixed hash), one corporation drawn by share.
+			local tier = TRF_N("TRF_ClanTier", slot) or 1;
+			if ph == 3 and tier >= 3 and T.crp_off_pct > 0 then
+				local c = T.crp_off_pct * (tier - 2);
+				local h = TRF_CrpHashOf(slot, L, 1);
+				if h < c * 100 then
+					local pl = {};
+					if b.p ~= 0 then pl[b.p] = 1; end;
+					local w = TRF_CrpSharesOf(rg, nil, T, pl, nil);
+					local sum = w[3] + w[4] + w[5];
+					local f = nil;
+					if sum > 0 then f = TRF_CrpPickOf(TRF_CrpHashOf(slot, L, 2) / 10000 * sum, w); end;
+					if f then
+						b.a[f] = min(9, b.a[f] + 1);
+						TRF_CrpDE("offscreen", "region", slot, "tier", tier, "chance", c, "hash", h, "corp", TRF_CrpTeam(f), "count", b.a[f]);
+					end;
+				end;
+			end;
+			-- 5. Start.
+			local act = TRF_CrpActive(slot);
+			local f, why, fb = TRF_CrpPullOf(b, T, act, rg);
+			if f then
+				local n = b.a[f];
+				b.p = f;
+				b.e = min(L + T.crp_pull_legs, 99999);
+				b.t = 1;
+				b.a[f] = 0;
+				if b.x == f then b.x = 0; end;
+				TRF_P("TRF_NewsPost", "crp", "out_"..f, slot);
+				TRF_N("TRF_Stat", "crp_pull");
+				TRF_CrpE("pull", "region", slot, "corp", TRF_CrpTeam(f), "count", n, "end_leg", b.e, "leg", L, "active_count", act + 1,
+					"result", "out");
+			elseif why == "cap" then
+				TRF_CrpDE("pull", "region", slot, "corp", TRF_CrpTeam(fb), "count", b.a[fb], "leg", L, "active_count", act,
+					"result", "blocked", "reason", "cap");
+			end;
+		end;
+		-- 6. Write when changed.
+		if TRF_CrpEncOf(b) ~= s0 then TRF_CrpPut(slot, b); end;
+	end;
+end;
+
+-- Contract: gates and the dock line (5.5) ---------------------------------------------------
+
+-- Pass line, once per reason and visit.
+function TRF_CrpPass(why)
+	local cv = %CV;
+	local k = tostring(why);
+	if cv.pr[k] then return; end;
+	cv.pr[k] = 1;
+	TRF_CrpE("pass", "reason", k, "at", "dock");
+end;
+
+-- Visit latch: 1 once TRF_Safe_QState was seen in this visit.
+function TRF_CrpLatch()
+	local cv = %CV;
+	if cv.q == 1 then return 1; end;
+	if TRF_N("TRF_Safe_QState") then cv.q = 1; return 1; end;
+	return nil;
+end;
+
+-- Gates D1-D6 for the current system idx. Returns the reason or nil.
+function TRF_CrpGate(idx)
+	if not TRF_CrpOn() then return "off"; end;
+	if type(idx) ~= "number" then return "nomap"; end;
+	if TRF_CrpLatch() then return "latch"; end;
+	if type(TRF_StrictOk) ~= "function" then return "gate:nosafety"; end;
+	local ok, gw = TRF_StrictOk(idx, "corp");
+	if not ok then return "gate:"..tostring(gw); end;
+	if TRF_N("TRF_Safe_Scene") then return "scene"; end;
+	if TRF_CrpCh() < TRF_CrpTune().crp_ch then return "chapter"; end;
+	return nil;
+end;
+
+-- Body of the dock line: the line or nil. The first that applies: the untold pull-out of the region, the untold return,
+-- the identity line of the dock system's corporation (hash below crp_id_pct, once per system and visit).
+function TRF_CrpDockBody(kind, param)
+	local cv = %CV;
+	local idx = TRF_N("TRF_CurIdx");
+	local why = TRF_CrpGate(idx);
+	if why then TRF_CrpPass(why); return nil; end;
+	local T = TRF_CrpTune();
+	local slot = TRF_CrpSlot(idx);
+	local line, k, f = nil, "none", nil;
+	if slot then
+		local b = TRF_CrpBlk(slot);
+		if b.p ~= 0 and b.t == 1 and TRF_CrpCh() >= T.crp_pull_ch then
+			f = b.p;
+			k = "out";
+			line = TRF_CrpTxt("crpdockout", TRF_CrpFac(f), TRF_CrpRgName(slot));
+			b.t = 0;
+			TRF_CrpPut(slot, b);
+		elseif b.t >= 3 and b.t <= 5 then
+			f = b.t;
+			k = "back";
+			line = TRF_CrpTxt("crpdockback", TRF_CrpFac(f), TRF_CrpRgName(slot));
+			b.t = 0;
+			TRF_CrpPut(slot, b);
+		else
+			local o = TRF_CrpOwn(idx);
+			local rg = TRF_CrpCache()[slot];
+			if o >= 3 and type(rg) == "table" and (rg[o] or 0) > 0 and b.p ~= o and cv.id[idx] ~= 1
+				and TRF_CrpHashOf(idx, TRF_CrpLegs(), 3) < T.crp_id_pct * 100 then
+				f = o;
+				k = "id";
+				line = TRF_CrpTxt("crpdockid"..o, TRF_CrpRgName(slot));
+				cv.id[idx] = 1;
+			end;
+		end;
+	end;
+	local team = nil;
+	if f then team = TRF_CrpTeam(f); end;
+	TRF_CrpE("dock", "system", TRF_CrpName(idx), "region", slot, "kind", k, "corp", team);
+	return line;
+end;
+
+-- Dock line handler (trf_plumb kind req, order 30, not always: the dispatcher skips it under the flags).
+function TRF_Crp_DockLine(kind, param)
+	local r = call(TRF_CrpDockBody, {kind, param}, "x", TRF_CrpErr);
+	if type(r) == "string" then return r; end;
+	return nil;
+end;
+
+-- Registration (trf_plumb TRF_InstallPlumb).
+function TRF_Crp_Plumb()
+	TRF_DockLine("req", 30, "TRF_Crp_DockLine");
+end;
+
+-- Contract: the run posting (5.7) ---------------------------------------------------------------
+
+-- A paid escort contract of trader id (record r, pay n) in system idx (trf_hail TRF_CtArrive): a deed of kind 9 for an
+-- open type 7 posting of its corporation (returns 1; the caller then skips its kind 1 note), else the run mark of the
+-- region from crp_pull_ch (a newer escort replaces an older mark). nil otherwise.
+function TRF_Crp_Escort(id, r, n, idx)
+	if not TRF_CrpOn() then return nil; end;
+	return call(TRF_CrpEscortBody, {id, r, n, idx}, "x", TRF_CrpErr);
+end;
+
+function TRF_CrpEscortBody(id, r, n, idx)
+	local f = TRF_Crp_Of(r);
+	if not f then return nil; end;
+	local slot = TRF_CrpSlot(idx);
+	local team = TRF_CrpTeam(f);
+	local i = TRF_N("TRF_Ch_Note", 9, idx, n, f);
+	if type(i) == "number" then
+		TRF_CrpE("escort", "trader_id", id, "corp", team, "region", slot, "slot", i, "result", "run");
+		return 1;
+	end;
+	local why = nil;
+	if TRF_CrpCh() < TRF_CrpTune().crp_pull_ch then why = "chapter";
+	elseif not slot then why = "noregion";
+	else
+		local b = TRF_CrpBlk(slot);
+		if b.p == f then
+			why = "pulled";
+		else
+			b.x = f;
+			TRF_CrpPut(slot, b);
+		end;
+	end;
+	if why then
+		TRF_CrpE("escort", "trader_id", id, "corp", team, "region", slot, "result", "none", "reason", why);
+		return nil;
+	end;
+	TRF_N("TRF_Stat", "crp_mark");
+	TRF_CrpE("escort", "trader_id", id, "corp", team, "region", slot, "result", "marked");
+	return nil;
+end;
+
+-- Run mark of region slot for the charter (TRF_ChInfo): the corporation 3..5 while cfg corp is 1 and it is not pulled
+-- out there, else nil.
+function TRF_Crp_Mark(slot)
+	if not TRF_CrpOn() then return nil; end;
+	local b = TRF_CrpBlk(slot);
+	if b.x >= 3 and b.x <= 5 and b.p ~= b.x then return b.x; end;
+	return nil;
+end;
+
+-- The charter posted a type 7 posting of f in slot (TRF_ChGenerate): the mark is used up.
+function TRF_Crp_MarkUse(slot, f)
+	if type(TRF) ~= "table" then return nil; end;
+	local b = TRF_CrpBlk(slot);
+	if b.x == 0 or b.x ~= f then return nil; end;
+	b.x = 0;
+	TRF_CrpPut(slot, b);
+	TRF_CrpE("mark_use", "region", slot, "corp", TRF_CrpTeam(f));
+	return 1;
+end;
+
+-- 1 while corporation f is pulled out of region slot (cfg corp 1), else nil (trf_charter TRF_ChWorld).
+function TRF_Crp_Pulled(slot, f)
+	if not TRF_CrpOn() then return nil; end;
+	if TRF_CrpBlk(slot).p == f and f ~= 0 then return 1; end;
+	return nil;
+end;
+
+-- Escort offer floor (%) of carrier r (trf_hail TRF_CtOfferRoll): crp_job_offer while a type 7 posting of its
+-- corporation is open in the current region, else 0.
+function TRF_Crp_OfferMin(r)
+	local f = TRF_Crp_Of(r);
+	if not f then return 0; end;
+	local slot = TRF_CrpSlot(TRF_N("TRF_CurIdx"));
+	if not slot then return 0; end;
+	local j = TRF_N("TRF_Ch_RunOpen", slot);
+	if type(j) == "table" and j[f] then return TRF_CrpTune().crp_job_offer; end;
+	return 0;
+end;
+
+-- Loader callbacks ---------------------------------------------------------------------------
+
+-- T2c, after TRF_Stn_OnActivate and trf_warn's: the latch and the region cache (level 2 line).
+function TRF_Crp_OnActivate()
+	if not TRF_CrpOn() then return; end;
+	call(TRF_CrpActBody, {}, "x", TRF_CrpErr);
+end;
+
+function TRF_CrpActBody()
+	TRF_CrpLatch();
+	local idx = TRF_N("TRF_CurIdx");
+	local slot = TRF_CrpSlot(idx);
+	local rg = TRF_CrpCache()[slot or 0];
+	if type(rg) ~= "table" then rg = {N=0, [3]=0, [4]=0, [5]=0}; end;
+	TRF_CrpDE("enter", "system", TRF_CrpName(idx), "region", slot, "trade_systems", rg.N, "triada", rg[3], "uss", rg[4],
+		"inoco", rg[5]);
+end;
+
+-- T2d: the latch (level 2 line).
+function TRF_Crp_OnLoad()
+	if not TRF_CrpOn() then return; end;
+	local cv = %CV;
+	TRF_CrpLatch();
+	TRF_CrpDE("load", "latch", TRF_KvB(cv.q));
+end;
+
+-- CD3: repair TRF.crp and the record fields (called from TRF_Repair).
+function TRF_Crp_Fix()
+	if type(TRF) ~= "table" then return; end;
+	call(TRF_CrpFixBody, {}, "x", TRF_CrpErr);
+end;
+
+-- A digit d of a block is one of the allowed values in set ok.
+function TRF_CrpIn(d, ok)
+	for i = 1, getn(ok) do if d == ok[i] then return 1; end; end;
+	return nil;
+end;
+
+function TRF_CrpFixBody()
+	if type(TRF.live) == "table" and type(TRF.live.tr) == "table" then
+		for id, r in TRF.live.tr do
+			if type(r) == "table" and r.crp ~= nil then
+				local c = r.crp;
+				if r.st == "gone" or type(c) ~= "number" or not TRF_CrpIn(c, {3, 4, 5, 13, 14, 15}) then
+					r.crp = nil;
+					TRF_CrpE("fix", "field", "crp", "trader_id", id, "result", "dropped");
+				end;
+			end;
+		end;
+	end;
+	local s = TRF.crp;
+	if s == nil then return; end;
+	if type(s) ~= "string" or strlen(s) == 0 or mod(strlen(s), 11) ~= 0 then
+		TRF.crp = nil;
+		TRF_CrpE("fix", "field", "state", "result", "dropped");
+		return;
+	end;
+	local n = TRF_CrpN();
+	if n == 0 then n = strlen(s) / 11; end;
+	if strlen(s) < 11 * n then
+		s = s..strrep("0", 11 * n - strlen(s));
+		TRF_CrpE("fix", "field", "state", "result", "padded");
+	elseif strlen(s) > 11 * n then
+		s = strsub(s, 1, 11 * n);
+		TRF_CrpE("fix", "field", "state", "result", "cut");
+	end;
+	local legs = TRF_CrpLegs();
+	local pl = TRF_CrpTune().crp_pull_legs;
+	local bs = {};
+	for slot = 1, n do
+		local d = strsub(s, 11 * (slot - 1) + 1, 11 * slot);
+		local b = TRF_CrpBlk0();
+		if strfind(d, "[^0-9]") then
+			TRF_CrpE("fix", "field", "block", "region", slot, "result", "reset");
+		else
+			b = TRF_CrpBlkOf(s, slot);
+			if not TRF_CrpIn(b.p, {0, 3, 4, 5}) then
+				b.p = 0; b.e = 0;
+				TRF_CrpE("fix", "field", "p", "region", slot, "result", "reset");
+			end;
+			if b.p == 0 and b.e ~= 0 then
+				b.e = 0;
+				TRF_CrpE("fix", "field", "e", "region", slot, "result", "reset");
+			end;
+			if b.p ~= 0 and b.e > legs + pl then
+				b.e = legs + pl;
+				TRF_CrpE("fix", "field", "e", "region", slot, "result", "capped");
+			end;
+			if not TRF_CrpIn(b.t, {0, 1, 3, 4, 5}) then
+				b.t = 0;
+				TRF_CrpE("fix", "field", "t", "region", slot, "result", "reset");
+			end;
+			if not TRF_CrpIn(b.x, {0, 3, 4, 5}) then
+				b.x = 0;
+				TRF_CrpE("fix", "field", "x", "region", slot, "result", "reset");
+			end;
+		end;
+		bs[slot] = b;
+	end;
+	-- More active pull-outs than crp_pull_max: those with the largest e end at once (a tie: the higher slot).
+	local mx = TRF_CrpTune().crp_pull_max;
+	while 1 do
+		local act, w = 0, nil;
+		for slot = 1, n do
+			local b = bs[slot];
+			if b.p ~= 0 then
+				act = act + 1;
+				if w == nil or b.e >= bs[w].e then w = slot; end;
+			end;
+		end;
+		if act <= mx then break; end;
+		bs[w].p = 0; bs[w].e = 0; bs[w].t = 0;
+		TRF_P("TRF_NewsPost", "crp", nil, w);
+		TRF_CrpE("fix", "field", "p", "region", w, "result", "capped");
+	end;
+	local o = "";
+	for slot = 1, n do o = o..TRF_CrpEncOf(bs[slot]); end;
+	if TRF_CrpZeroOf(o) then TRF.crp = nil; else TRF.crp = o; end;
+end;
+
+-- Defaults (7) ------------------------------------------------------------------------------
+
+function TRF_Crp_OptDef()
+	return {corp=1};
+end;
+
+function TRF_Crp_TuneDef()
+	return {crp_ch=0, crp_pull_ch=5, crp_sig_ch=0, crp_share=0.8, crp_k={0.7, 1.0, 0.3}, crp_own=2, crp_max=0.75, crp_job_x=2,
+		crp_job_offer=60, crp_pull_n=3, crp_pull_legs=24, crp_pull_max=2, crp_off_pct=20, crp_id_pct=30};
+end;
+
+-- "module=corp event=dump state=<string> active=<n> labelled=<id>:<crp>,..." (log 2).
+function TRF_Crp_Dump()
+	if TRF_CrpLog() < 2 or type(TRF) ~= "table" then return; end;
+	local ls = {};
+	if type(TRF.live) == "table" and type(TRF.live.tr) == "table" then
+		for id, r in TRF.live.tr do
+			if type(r) == "table" and type(r.crp) == "number" then tinsert(ls, tostring(id)..":"..r.crp); end;
+		end;
+	end;
+	sort(ls);
+	local l = nil;
+	for i = 1, getn(ls) do
+		if l then l = l..","..ls[i]; else l = ls[i]; end;
+	end;
+	TRF_CrpE("dump", "state", TRF.crp or "none", "active", TRF_CrpActive(nil), "labelled", l);
+end;
+
+-- Texts (6), EN only; $1, $2 as the spec table.
+function TRF_Crp_Text()
+	return {
+		crpown = "$1 contract",                                                     -- corporation
+		crpopen = "FTU $1, $2 contract carrier, open for trade",                    -- name, corporation
+		crpopenlo = "FTU $1, $2 contract carrier. $2 says the Wolves are trouble, but trade's trade",
+		crpopenhi = "FTU $1, $2 contract carrier. $2 speaks well of the Wolves. Open for trade",
+		crphead = "$1 contract carrier. What do you need, Wolves?",                -- corporation
+		crpdir = "$1 cargo, $2",                                                    -- corporation, direction
+		crpdockout = "Dockmaster: $1 pulled its contract carriers off the $2 lanes after the losses. Free traders fly the routes until they come back.",
+		crpdockback = "Dockmaster: $1 carriers are back on the $2 lanes. Business as usual.", -- corporation, region
+		crpdockid3 = "Dockmaster: Triada carriers work the $1 lanes. Fair prices, and nobody asks where the cargo came from.",
+		crpdockid4 = "Dockmaster: USS moves its caravans through $1 on FTU contract carriers. Their holds carry USS stock.",
+		crpdockid5 = "Dockmaster: InoCo hires a few free traders for the $1 runs. Top gear, top prices.", -- region
+	};
+end;

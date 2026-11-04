@@ -688,6 +688,8 @@ function TRF_GenTrader(c, ci)
 	if not ok then TRF_GnStat("skip_"..tostring(spare)); return nil; end;
 	if type(spare) == "number" and plan.esc > spare then plan.esc = max(0, spare); end;
 	local id = TRF_Spawn(plan);
+	-- Corporation carriers (design/corp-carriers-spec.md 5.1): the label of a plain trader; no spawn decision changes.
+	if id then TRF_GnX("TRF_Crp_Label", id); end;
 	-- Lane raid roll (v02 5.1) after a path A or C spawn.
 	if id and plan.path ~= "B" then TRF_GnX("TRF_RaidRoll", id, "lane"); end;
 	return id;
@@ -1770,6 +1772,7 @@ function TRF_SeedSpawn()
 	if not ok then TRF_GnStat("skip_seed_"..tostring(spare)); return nil; end;
 	if type(spare) == "number" and plan.esc > spare then plan.esc = max(0, spare); end;
 	local id = TRF_Spawn(plan);
+	if id then TRF_GnX("TRF_Crp_Label", id); end;
 	local r = TRF_Rec(id);
 	if r then
 		r.seed = 1;

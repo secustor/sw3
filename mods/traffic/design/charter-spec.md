@@ -121,6 +121,7 @@ Runs only at a trade dock with G4, G5 and not G6, never at entry, load or a tick
 | 4 | Convoy | trade | Raids, cfg `dconv` 1 (S44) | 2 | `pt + mx[3]` | 0 | 0.4 | 2 |
 | 5 | Sweep | navy | Raids, attempt scheduled (`sl > 0`), sweep owner f 1..5 with `fst[f] >= 4` | 1 | `pt + mx[3]` | f (`f` = f) | 0.4 | 2 |
 | 6 | Base | pirate | active base of the clan, its system off the deny list, `rb[r]` as Break | 1 | `legs + 30` | 0 | 0.4 | 3 |
+| 7 | Run (A22, [corp-carriers-spec.md](corp-carriers-spec.md) 5.7) | trade | trf_corp's run mark of corporation f 3..5 (`TRF_Crp_Mark`: a completed escort of f's carrier there since the last Quiet, f not pulled out), not Bust, heat <= 2, `pk[r]` absent | 2 | `legs + ch_run_legs` (20) | f (`f` = f) | 0.4 | 2 |
 
 Pay `TRF_ChPayOf(k_t, L_r, ch_low_L, tier_k, R, d_k, pay_cap)` = `k_t x 900 x L_r x min(1, L_r / 8) x tier_k x (1 + 0.05 R) x d_k`, rounded to 100 cr, at most `pay_cap` (30,000). Examples (`ch-a`): Golkonda Lanes 7,020 -> 7,000; Kadi Lanes 4,500; early Lanes (L_r 5) 1,400; late Break (L_r 15, T4) 14,000; HARD 0.7.
 
@@ -128,11 +129,11 @@ Pay `TRF_ChPayOf(k_t, L_r, ch_low_L, tier_k, R, d_k, pay_cap)` = `k_t x 900 x L_
 
 Kinds 1 escort, 2 raid answered, 3 danger convoy, 4 clan flight, 5 sweep joined, 6 base destroyed count for the types: Lanes and Relief 1, 2, 3; Break 2, 4; Convoy 3; Sweep 5; Base 6. A deed in system idx counts for the oldest open posting (`a`, then slot) of `idx`'s region that takes the kind, when `vd < ch_visit_deeds` (2); a Break deed also needs `vb = 0`, so a second Break-eligible deed in the visit goes to the next matching posting; a posting with `p = k` takes no more. A denied system counts nothing. Progress line `Charter, Golkonda region: 2 of 3.`; at `p = k` (Break also `w = 1`) the posting is done: `st = 1`, `SetQuestState(..., QUEST_DONE)`, `Charter, Golkonda region: 3 of 3. Collect at any FTU dock.`. A Break at 3 of 3 without its world test says `The clan still holds; its strength must break.`. Kinds 10 and above are step 2 (logged, `reason=step2`).
 
-Kind 7 (player trader kill): `pk[r] = legs`, open Lanes and Relief in r fail (`kill`). Kind 8 (S41): `pk[r] = legs`, every open posting fails (`s41`), rank -1.
+Kind 9 (A22): an escort contract of a contract carrier of corporation f (`TRF_Ch_Note(9, idx, amt, f)` from trf_corp `TRF_Crp_Escort`) counts only for Run postings of f; a deed taken by a Run is not also noted as kind 1. Kind 7 (player trader kill): `pk[r] = legs`, open Lanes, Relief and Run in r fail (`kill`). Kind 8 (S41): `pk[r] = legs`, every open posting fails (`s41`), rank -1.
 
 ### 5.4 World tests and closes (`TRF_Ch_RegionTick(slot, L)`)
 
-Per slot: Lanes outside Boom/Build-up, Relief outside Bust/Recovery, Convoy and Sweep outside Raids are withdrawn (`phase`); Base without an active base is withdrawn (`base`); Break records `w = 1` once the clan score is below 50 and is done if its deeds are in. `pk[r]` clears at a tick in Quiet whose start `pt` is at or after the stamp and `L - pk >= ch_pk_legs` (28).
+Per slot: Lanes outside Boom/Build-up, Relief outside Bust/Recovery, Convoy and Sweep outside Raids, Run in Bust are withdrawn (`phase`); a Run whose corporation pulled out of the region is withdrawn (`pull`, A22); Base without an active base is withdrawn (`base`); Break records `w = 1` once the clan score is below 50 and is done if its deeds are in. `pk[r]` clears at a tick in Quiet whose start `pt` is at or after the stamp and `L - pk >= ch_pk_legs` (28).
 
 Slot 1 also runs the board checks (at every entry too): chapter > `ch_last_ch`: every open posting withdrawn (`chapter`); otherwise heat >= 7 or the Trade relation W: once per blacklisting (`hx`) rank -1 and every open posting fails (`heat`); heat >= 5: open Lanes, Relief and Convoy fail (`heat`); dues: rank >= 2 and `L >= du + ch_dues_legs`: `du += ch_dues_legs`, rank -1 (repeats per further 24 legs). Deadlines: `L >= e` fails the posting (`deadline`), or withdraws it while `TRF_Safe_QState()` reports a mission (`mission`).
 
@@ -172,7 +173,8 @@ For each slot: a record whose entry reads `QUEST_NOINIT` (e.g. after `ClearQuest
 | `ch_unlock_ch`, `ch_last_ch` | 5, 18 | 1..20 | first chapter, last chapter before the suspension |
 | `ch_unlock_help` | 3 | 0..99 | help needed for the unlock |
 | `ch_slots` | {2, 3} | 1..3 each, the second not below the first (else the default) | slots at rank 0-2, from rank 3 |
-| `ch_k` | {0.4, 0.3, 0.4, 0.4, 0.4, 0.4} | 0..5 | `k_t` per type |
+| `ch_k` | {0.4, 0.3, 0.4, 0.4, 0.4, 0.4, 0.4} | 0..5 | `k_t` per type (7 entries since A22; a 6-entry tune gets the default 7th) |
+| `ch_run_legs` | 20 | 8..100 | deadline of a Run posting (A22) |
 | `ch_low_L` | 8 | 1..16 | knee of the `L_r / 8` term |
 | `ch_pay_gap_rs` | 1800 | 0..100000 | real seconds between paid completions |
 | `ch_visit_deeds` | 2 | 0..9 | deeds per visit |

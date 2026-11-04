@@ -327,7 +327,7 @@ also the unused hulls).
 | `install` | `module=shop event=install trade_dock=true wrapped=true restore_pending_count=0` (nil unless enabled 2) | 1 |
 | `open` | `module=shop event=open trader_id=4 via=vanilla reason=mode` | 1 |
 | `create` | `module=shop event=create shop=trf_shop_1` / `reason=market_missing` | 1 |
-| `open` | `module=shop event=open trader_id=92 shop=trf_shop_1 sell_coef=1.35 buy_coef=0.60 zero_count=77 hold_count=6 equip_count=5 owner=Neutral destination=31 shortage_classes=1,3` | 1 |
+| `open` | `module=shop event=open trader_id=92 shop=trf_shop_1 sell_coef=1.35 buy_coef=0.60 zero_count=77 hold_count=6 equip_count=5 owner=Neutral destination=31 shortage_classes=1,3 corp=nil signature=nil` (a contract carrier, `design/corp-carriers-spec.md` 5.2: `owner=Inoco ... corp=Inoco signature=RBot3`, the signature counted in `equip_count`) | 1 |
 | `items` | `module=shop event=items trader_id=14 shop=trf_shop_1 hold=Cargo_05:8,Uranium:3 equip=AMS3,CG1` | 2 |
 | `dump` | `module=shop event=dump shortages=none restore_list=none trader_shops=none shop_mode=1 short_price=1 restore=1` (lists joined with `,`) | 1 |
 | `error` | `module=shop event=error message=msg` | 1 |
@@ -517,11 +517,11 @@ Charter goals, step 1 (`design/charter-spec.md` 7).
 |---|---|---|
 | `error` | `module=charter event=error message=<m>` | 1 |
 | `unlock` | `module=charter event=unlock chapter=5 help=3 seed=9 result=unlocked reason=enter` (reason enter, dock); `... chapter=4 help=0 result=locked reason=enter` | 1 / 2 |
-| `post` | `module=charter event=post slot=1 type=lanes region=4 system=golkonda needed=3 deadline=13 pay=7200 rank_points=2 faction=0 candidate_count=3 seed=112318345` (type lanes, relief, break, convoy, sweep, base); `module=charter event=post candidate_count=0 free_slots=1 result=none` | 1 / 2 |
-| `note` | `module=charter event=note kind=raid system=golkonda region=4 slot=1 done=1 needed=3 visit_deeds=1 amount=500` (kind escort, raid, dconv, clan, sweep, base); completion `module=charter event=note slot=1 type=lanes region=4 done=3 needed=3 world=0 result=complete reason=deeds` (reason deeds, world); kill and S41 `module=charter event=note kind=kill system=golkonda region=4 player_kill_leg=12 closed_count=1 result=marked` (kind kill, s41); level 2 `... result=none reason=<deny, region, visit_cap, break_cap, full, nomatch, step2>` | 1 / 2 |
+| `post` | `module=charter event=post slot=1 type=lanes region=4 system=golkonda needed=3 deadline=13 pay=7200 rank_points=2 faction=0 candidate_count=3 seed=112318345` (type lanes, relief, break, convoy, sweep, base, run; a run has `faction=3..5`, the corporation, `design/corp-carriers-spec.md` 5.7); `module=charter event=post candidate_count=0 free_slots=1 result=none` | 1 / 2 |
+| `note` | `module=charter event=note kind=raid system=golkonda region=4 slot=1 done=1 needed=3 visit_deeds=1 amount=500 faction=nil` (kind escort, raid, dconv, clan, sweep, base, run; `faction` the corporation of a kind 9 run deed, trf_corp `TRF_Crp_Escort`); completion `module=charter event=note slot=1 type=lanes region=4 done=3 needed=3 world=0 result=complete reason=deeds` (reason deeds, world); kill and S41 `module=charter event=note kind=kill system=golkonda region=4 player_kill_leg=12 closed_count=1 result=marked` (kind kill, s41); level 2 `... result=none reason=<deny, region, visit_cap, break_cap, full, nomatch, corp, step2> faction=<f>` (`corp`: a run posting of another corporation) | 1 / 2 |
 | `world` | `module=charter event=world slot=1 region=4 clan_score=40 done=3 needed=3` (Break world test met at a region tick) | 1 |
-| `close` | `module=charter event=close slot=1 type=lanes region=4 done=0 needed=3 state=3 reason=phase` (state 2 failed, 3 withdrawn; reason phase, base, heat, kill, s41, deadline, mission, chapter) | 1 |
-| `pay` | `module=charter event=pay slot=1 type=lanes region=4 amount=7000 rank=2 rank_points=9 help=1 real_seconds=0` (with `module=region event=pay reason=charter amount=7000`) | 1 |
+| `close` | `module=charter event=close slot=1 type=lanes region=4 done=0 needed=3 state=3 reason=phase` (state 2 failed, 3 withdrawn; reason phase, base, heat, kill, s41, deadline, mission, chapter, pull; `type=run reason=pull` when the run's corporation pulls out, `reason=phase` in Bust) | 1 |
+| `pay` | `module=charter event=pay slot=1 type=lanes region=4 amount=7000 rank=2 rank_points=9 help=1 real_seconds=0` (with `module=region event=pay reason=charter amount=7000`; a run also `module=faction event=faction_standing faction=Inoco reason="charter run" standing_before=5 standing_after=6`) | 1 |
 | `pay_wait` | `module=charter event=pay_wait slot=2 real_seconds=14000 paid_real_seconds=13100 gap=1800` | 1 |
 | `rank` | `module=charter event=rank rank_before=2 rank=3 rank_points=14 dues_leg=40 result=up`; `... result=down reason=<heat, s41, dues>`; `module=charter event=rank rank=2 rank_points=14 gain=0 result=dues_unpaid`; `... rank=0 ... result=none reason=<r>` | 1 |
 | `dues` | `module=charter event=dues rank=2 dues_leg=1 leg=1 amount=2000 result=offered`; `... amount=2000 credits=1000000 dues_leg=25 result=paid` (also `declined`, `poor`, `error`, `stale`); `module=charter event=dues rank=3 dues_leg=25 leg=25 result=overdue`; level 2 `... result=none reason=<rank, chapter, paid, mission, declined>` | 1 / 2 |
@@ -936,6 +936,33 @@ Clan temperaments and the intro quest "Clan file", B10 (`design/temperament-spec
 | `letter` | `module=temper event=letter post=mail_trf_te1 result=posted` (`result=skipped reason=news_mode`, `reason=native`) | 1 |
 | `fix` | `module=temper event=fix field=<s,slot,faction,c,done> result=dropped` | 1 |
 | `dump` | `module=temper event=dump temper=1 gate=1 quest=1 step=10 slot=2 faction=1 count=1 done=0 reward=0 table=2,4,2,3,1,3,1,4` | 1 |
+
+## corp (`trf_corp.script`; `TRF_CrpE`, `TRF_CrpDE`)
+
+Corporation carriers, A22 (`design/corp-carriers-spec.md` 8; host-tested only). `corp` is the team name (`Triada`, `Uss`, `Inoco`, `TRF_FacTeam` of 3..5), `region` the region slot 1..8, `name` the trader's name index, `share` and `roll` fractions (`TRF_F`).
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=corp event=error message=<m>` | 1 |
+| `label` | `module=corp event=label trader_id=12 name=17 system=kondel region=1 corp=Triada share=0.553 roll=0.209` | 1 |
+| `label` | `module=corp event=label trader_id=12 name=17 system=debris4 region=4 corp=none share=0.172 roll=0.388 reason=pulled pulled=Uss` (an independent where the pulled corporation would have flown) | 1 |
+| `label` | `module=corp event=label trader_id=12 name=17 system=kondel region=1 corp=none share=0.750 roll=0.912 reason=roll`; `module=corp event=label trader_id=12 system=elinor region=2 corp=none reason=<chapter,gone,labelled,kind,noname,noregion,nocorp>` | 2 |
+| `shop` | `module=corp event=shop trader_id=12 corp=Inoco signature=RBot3 extra=0` (Triada `signature=nil extra=1`) | 2 |
+| `hit` | `module=corp event=hit trader_id=12 corp=Uss region=4 how=kill by=player count_before=2 count=3 player_caused=true result=counted` (`how=rob by=player`; `by=other player_caused=false` for a raid kill) | 1 |
+| `hit` | `module=corp event=hit trader_id=12 corp=Uss region=4 how=kill by=player result=skipped reason=<counted,chapter,noregion>` | 1 |
+| `offscreen` | `module=corp event=offscreen region=4 tier=4 chance=40 hash=1287 corp=Uss count=2` | 2 |
+| `pull` | `module=corp event=pull region=4 corp=Uss count=3 end_leg=60 leg=36 active_count=1 result=out` | 1 |
+| `pull` | `module=corp event=pull region=5 corp=Inoco count=3 leg=37 active_count=2 result=blocked reason=cap` | 2 |
+| `return` | `module=corp event=return region=4 corp=Uss leg=60 told=true` (`told=false`: the pull-out was never told at a dock, the return is not told either) | 1 |
+| `reset` | `module=corp event=reset region=4 leg=70` (Quiet) | 2 |
+| `pass` | `module=corp event=pass reason=<off,nomap,latch,gate:<why>,scene,chapter> at=dock` (once per reason and visit) | 1 |
+| `dock` | `module=corp event=dock system=golkonda region=4 kind=out corp=Uss` (`kind=back`, `id`; `kind=none corp=nil`) | 1 |
+| `escort` | `module=corp event=escort trader_id=12 corp=Inoco region=5 result=marked` / `... slot=1 result=run` (a kind 9 deed) / `... result=none reason=<pulled,chapter,noregion>` | 1 |
+| `mark_use` | `module=corp event=mark_use region=5 corp=Inoco` (a run posted) | 1 |
+| `enter` | `module=corp event=enter system=gaoba region=5 trade_systems=17 triada=0 uss=2 inoco=5` | 2 |
+| `load` | `module=corp event=load latch=false` | 2 |
+| `fix` | `module=corp event=fix field=<state,block,p,e,t,x> [region=<slot>] result=<dropped,padded,cut,reset,capped>`; `field=crp trader_id=12 result=dropped` | 1 |
+| `dump` | `module=corp event=dump state=00000000000000000000000000000000000041000060... active=1 labelled=12:4,14:13` | 2 |
 
 ## supply (`trf_supply.script`; `TRF_SpE`)
 

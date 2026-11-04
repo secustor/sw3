@@ -837,6 +837,8 @@ function TRF_TrackSpawn(i, how)
 	if not r then return nil; end;
 	r.nm = rec.nm;
 	r.cls = rec.c;
+	-- Corporation carriers (design/corp-carriers-spec.md 5.1): the same name in the same region keeps its corporation.
+	TRF_N("TRF_Crp_Label", id);
 	r.tb = TRF_BitSet(r.tb, 1);
 	if id ~= rec.id then r.pi = rec.id; end;
 	if how == "dock" then r.seed = 1; end;

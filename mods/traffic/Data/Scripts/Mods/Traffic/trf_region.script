@@ -1213,6 +1213,9 @@ function TRF_RegionTick(L)
 	TRF_P("TRF_Convoy_Tick", L);
 	-- Survivors (design/survivors-spec.md): region budget reset at Raids, off-screen slaver roll, expiry.
 	TRF_P("TRF_Sv_RegionTick", L);
+	-- Corporation carriers (design/corp-carriers-spec.md 5.4): pull-out ends and starts, before the charter closes run
+	-- postings of a pulled corporation.
+	TRF_P("TRF_Crp_RegionTick", L);
 	-- Charter goals (design/charter-spec.md): phase closes, Break world test, pk clear; slot 1 also the board checks.
 	for slot = 1, m.n do TRF_P("TRF_Ch_RegionTick", slot, L); end;
 	-- Battle scars (design/scar-spec.md): expiry outside the current system.

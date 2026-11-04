@@ -887,9 +887,22 @@ function TRF_ShopOpen(id)
 		end;
 	end;
 	local owner = TRF_Shop_Team(TRF_N("GetCurrentLocation"));
+	-- Corporation carriers (design/corp-carriers-spec.md 5.2): a carrier stocks its corporation's gun list and Syst_List,
+	-- its lore-named item first at count 1 (counted in the 3-6 items), Triada one item more; coefficients unchanged.
+	local cs = TRF_N("TRF_Crp_Shop", r);
+	if type(cs) ~= "table" then cs = nil; end;
+	if cs and type(cs.own) == "string" then owner = cs.own; end;
 	local pool = TRF_ShopEquipPool(owner);
 	local ne = 0;
 	local want = 3 + TRF_Shop_Rand(4);
+	local sig = nil;
+	if cs then
+		want = want + (cs.add or 0);
+		if type(cs.sig) == "string" then
+			for i = getn(pool), 1, -1 do if pool[i] == cs.sig then tremove(pool, i); end; end;
+			if TRF_Shop_Put(m, cs.sig, 1, s, b) then ne = ne + 1; pe = pe..","..cs.sig; sig = cs.sig; end;
+		end;
+	end;
 	while ne < want and getn(pool) > 0 do
 		local it = tremove(pool, TRF_Shop_Rand(getn(pool)) + 1);
 		if TRF_Shop_Put(m, it, 2, s, b) then ne = ne + 1; pe = pe..","..it; end;
@@ -900,7 +913,8 @@ function TRF_ShopOpen(id)
 	local sc = "";
 	for c, t in act do sc = sc..","..c; end;
 	TRF_ShopE("open", "trader_id", id, "shop", name, "sell_coef", TRF_ShopF(s), "buy_coef", TRF_ShopF(b), "zero_count", nz,
-		"hold_count", nh, "equip_count", ne, "owner", owner, "destination", dest, "shortage_classes", strsub(sc, 2));
+		"hold_count", nh, "equip_count", ne, "owner", owner, "destination", dest, "shortage_classes", strsub(sc, 2),
+		"corp", cs and cs.own, "signature", sig);
 	local lv = TRF_ShopOpt("log", 1);
 	if type(lv) == "number" and lv >= 2 then
 		TRF_ShopE("items", "trader_id", id, "shop", name, "hold", strsub(ph, 2), "equip", strsub(pe, 2));

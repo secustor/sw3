@@ -558,6 +558,8 @@ function TRF_Ev_Kill(id, rec, h)
 	end;
 	TRF_EvE("kill", "trader_id", id, "system_index", idx, "by", by, "last_attack_time", TRF_F(rec.pa), "game_time", TRF_F(gt),
 		"kill_count", L.kills, "ship_count", rec.np);
+	-- Corporation carriers (design/corp-carriers-spec.md 5.3): the loss count of a contract carrier, before the strip.
+	TRF_N("TRF_Crp_Hit", id, rec, "kill", idx, by);
 	-- Wolves Freight (trf_freight): the on-screen loss of the player's freighter, before the record is stripped.
 	if rec.fw then TRF_P("TRF_Fr_Killed", id, rec, by, idx); end;
 	-- Freight unlock quest (trf_wq): the Kestrel of the mayday is lost.

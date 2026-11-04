@@ -106,6 +106,8 @@ function TRF_UI_Text()
 		-- Wolves Freight (freight-spec 5.8): global fw/reg at the first charter, regional fw/lost on a loss. EN only.
 		nfwreg = "FTU registers Wolves Freight",
 		nfwlost = "Wolves Freight hull lost near $1",
+		-- Corporation carriers (corp-carriers-spec 5.6): regional crp/out_<f>, $3 the corporation. EN only.
+		ncrpout = "$3 pulls its contract carriers off the lanes near $1",
 		-- v1 news (v1-spec 3.1): regional war/<variant>[_<f>], global feq/<variant>_<f>. Regional $1 home,
 		-- $2 clan, $3 faction of the variant; global $1 faction.
 		nwarsalv2 = "Pirates near $1 fly captured $3 fighters",
@@ -138,7 +140,8 @@ function TRF_UI_TextFns()
 	return {"TRF_Hail_Text", "TRF_Raid_Text", "TRF_Rg_Text", "TRF_Tier_Text", "TRF_Shop_Text", "TRF_Track_Text",
 		"TRF_Supply_Text", "TRF_Clan_Text", "TRF_Faction_Text", "TRF_Convoy_Text", "TRF_Danger_Text", "TRF_Base_Text",
 		"TRF_Stn_Text", "TRF_Sv_Text", "TRF_Lad_Text", "TRF_Ch_Text", "TRF_Sc_Text", "TRF_Cap_Text", "TRF_Sh_Text", "TRF_Fr_Text",
-		"TRF_Haunt_Text", "TRF_Pc_Text", "TRF_Mc_Text", "TRF_Wq_Text", "TRF_Wn_Text", "TRF_Rm_Text", "TRF_Te_Text"};
+		"TRF_Haunt_Text", "TRF_Pc_Text", "TRF_Mc_Text", "TRF_Wq_Text", "TRF_Wn_Text", "TRF_Rm_Text", "TRF_Te_Text",
+		"TRF_Crp_Text"};
 end;
 
 -- One logfmt event line of module ui (design/log-format.md 5).
@@ -343,7 +346,8 @@ function TRF_UI_Who(r, id)
 	if r.wq then return TRF_Txt("wqwho"); end;
 	local hull = TRF_Txt("hull1");
 	if TRF_UI_Transports(r, id) >= 2 then hull = TRF_Txt("hull2"); end;
-	local own = TRF_Txt("owner");
+	-- Corporation carriers (design/corp-carriers-spec.md 5.2): "InoCo contract freighter Kestrel".
+	local own = TRF_N("TRF_Crp_Owner", r) or TRF_Txt("owner");
 	if type(r.own) == "number" and r.own >= 1 and r.own <= 5 then
 		own = TRF_UI_FacOf(r.own);
 		hull = TRF_Txt("hullconv");
@@ -571,7 +575,8 @@ function TRF_UI_Announce(id)
 	local r = TRF_UI_Rec(id);
 	if type(r) ~= "table" or r.ha then return nil; end;
 	r.ha = TRF_UI_Gt() + TRF_UI_Tune("hail_arm", 60);
-	local s = TRF_Txt("open", TRF_UI_Name(r.nm) or TRF_Txt("hull1"));
+	-- Corporation carriers (design/corp-carriers-spec.md 5.2): a contract carrier names its corporation.
+	local s = TRF_N("TRF_Crp_Open", r) or TRF_Txt("open", TRF_UI_Name(r.nm) or TRF_Txt("hull1"));
 	local b = TRF_UI_ProBand(TRF_CurIdx());
 	if b then s = s..". "..TRF_Txt("rem"..b); end;
 	-- v1-spec 4.3: a trader met before says so once: trf_track's TRF_TrackMetAgain when loaded (once per

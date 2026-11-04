@@ -481,3 +481,14 @@ traffic: lua: exp=v1 module=state event=enter generation=95 fresh=false system=v
 traffic: lua: exp=v1 module=station event=tip station_key=61 kind=temper system=valensia tip_leg=nil
 traffic: lua: exp=v1 module=temper event=letter post=mail_trf_te1 result=posted
 traffic: lua: exp=v1 module=temper event=letter post=mail_trf_te1 result=posted
+traffic: lua: exp=v1 module=state event=enter generation=96 fresh=false system=debris4 legs=306
+traffic: lua: exp=v1 module=safety event=activate system=debris4 mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=corp event=pull region=4 corp=Uss count=3 end_leg=330 leg=306 active_count=1 result=out
+traffic: lua: exp=v1 module=corp event=label trader_id=50 name=12 system=debris4 region=4 corp=Uss share=0.246 roll=0.100
+traffic: lua: exp=v1 module=shop event=open trader_id=50 shop=trf_shop_2 sell_coef=1.35 buy_coef=0.60 zero_count=77 hold_count=6 equip_count=5 owner=Uss destination=31 shortage_classes= corp=Uss signature=PLC2
+traffic: lua: exp=v1 module=corp event=hit trader_id=50 corp=Uss region=4 how=kill by=player count_before=0 count=1 player_caused=true result=counted
+traffic: lua: exp=v1 module=events event=faction_standing faction=4 reason="carrier kill 50" change=-1
+traffic: lua: exp=v1 module=corp event=label trader_id=51 name=13 system=debris4 region=4 corp=Uss share=0.246 roll=0.120
+traffic: lua: exp=v1 module=corp event=hit trader_id=51 corp=Uss region=4 how=kill by=player count_before=1 count=2 player_caused=true result=counted
+traffic: lua: exp=v1 module=events event=faction_standing faction=4 reason="carrier kill 51" change=-1
+traffic: lua: exp=v1 module=corp event=label trader_id=52 name=99 system=debris4 region=4 corp=Inoco share=1.500 roll=0.100

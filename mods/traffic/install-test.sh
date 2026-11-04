@@ -76,6 +76,12 @@
 # Data/Scripts/Trade/TRF_Te1.xml and TRF_Te2.xml (speaker TRF_WqP_patrol) are always copied. Tune keys (te_ch,
 # te_cut_hp, te_hag_cmin, te_hag_cmax, te_pl_hi, te_pl_lo, te_pl_hp, te_pl_out, te_gh_hp, te_fx, te_gh_lo, te_gh_hi,
 # te_dc, and trf_plumb's iq_stale) go through TUNE; W-B10.5 runs with TUNE=te_fx=1.
+# CORP=0|1 (cfg corp, corporation carriers, design/corp-carriers-spec.md, CHECK W-A22.1-9: the Triada, USS and InoCo
+# contract-carrier labels, their greeting, shop stock and dockmaster lines, the pull-out and the supply run charter
+# posting; default 1 in config.script, LEVEL=v01/v02 write 0 unless CORP is set); written only when set. Tune keys
+# (crp_ch, crp_pull_ch, crp_sig_ch, crp_share, crp_k, crp_own, crp_max, crp_job_x, crp_job_offer, crp_pull_n,
+# crp_pull_legs, crp_pull_max, crp_off_pct, crp_id_pct, and trf_charter's ch_run_legs) go through TUNE; W-A22.5 runs
+# faster with TUNE=crp_pull_n=1.
 # NEWS=1: the trf_* records of news/trf_news.xml (tools/gen_news.py) merged into the clone's Data/Game/News.xml
 # (the vanilla file is kept as News.xml.trf-orig; loc/trf_en.loc is copied on every run), and news_mode=2 unless
 # NEWS_MODE is set; unset restores News.xml from News.xml.trf-orig.
@@ -127,8 +133,8 @@ case "${MERC_NAMES:-0}" in 0) ;; 1) opt="$opt, mc_names=2" ;; *) echo "MERC_NAME
 LEVEL=${LEVEL:-v1}
 case "$LEVEL" in
 v1) pre= ;;
-v02) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0" ;;
-v01) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 prosperity=0 seed=0 parked=0 queue=0 raids=0 staged=0 contracts=0 meet=1 board=0 shop_mode=0 short_price=0 news_mode=0 esc_flight=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0" ;;
+v02) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0 corp=0" ;;
+v01) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 prosperity=0 seed=0 parked=0 queue=0 raids=0 staged=0 contracts=0 meet=1 board=0 shop_mode=0 short_price=0 news_mode=0 esc_flight=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0 corp=0" ;;
 *) echo "LEVEL must be v01, v02 or v1" >&2; exit 1 ;;
 esac
 for e in $pre; do
@@ -203,6 +209,7 @@ case "${TEMPER:-}" in "") ;; 0|1) opt="$opt, temper=$TEMPER" ;; *) echo "TEMPER 
 case "${TE_QUEST:-}" in "") ;; 0|1) opt="$opt, te_quest=$TE_QUEST" ;; *) echo "TE_QUEST must be 0 or 1" >&2; exit 1;; esac
 case "${TE_GATE:-}" in "") ;; 0|1) opt="$opt, te_gate=$TE_GATE" ;; *) echo "TE_GATE must be 0 or 1" >&2; exit 1;; esac
 case "${TE_DIALOG:-}" in "") ;; 0|1) opt="$opt, te_dialog=$TE_DIALOG" ;; *) echo "TE_DIALOG must be 0 or 1" >&2; exit 1;; esac
+case "${CORP:-}" in "") ;; 0|1) opt="$opt, corp=$CORP" ;; *) echo "CORP must be 0 or 1" >&2; exit 1;; esac
 case "${JOBS_UI:-}" in "") ;; 0|1|2) opt="$opt, jobs_ui=$JOBS_UI" ;; *) echo "JOBS_UI must be 0, 1 or 2" >&2; exit 1;; esac
 opt="$opt, jobs_log=${JOBS_LOG:-1}"
 case "${FITS:-}" in "") ;; 0|1) opt="$opt, fits=$FITS" ;; *) echo "FITS must be 0 or 1" >&2; exit 1;; esac

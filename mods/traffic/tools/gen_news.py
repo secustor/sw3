@@ -53,13 +53,14 @@ F = "F"   # variant placeholder: one record per faction index 1..5
 
 # Topics and variants. Global: trf_state heat/help (TRF_UI_NewsLevel thresholds), trf_shop short,
 # trf_convoy feq kill_<f>/lost_<f>. Regional: trf_ui lane/trade, trf_region pir/sweep, trf_clan war
-# salv<2|3>_<f>/car, trf_base war base/basex, trf_captain cap hide/out/succ, trf_freight fw reg (global)/lost.
+# salv<2|3>_<f>/car, trf_base war base/basex, trf_captain cap hide/out/succ, trf_freight fw reg (global)/lost,
+# trf_corp crp out_<f> (only f 3..5 are posted).
 GLOBAL = [("heat", ["5", "7"]), ("help", ["5", "15"]), ("short", ["on"]),
           ("feq", ["kill_" + F, "lost_" + F]), ("fw", ["reg"])]
 REGIONAL = [("lane", ["raid", "quiet"]), ("trade", ["boom", "bust"]), ("pir", ["mass", "back"]),
             ("sweep", ["gather", "fail", "win"]),
             ("war", ["salv2_" + F, "salv3_" + F, "base", "basex", "car"]),
-            ("cap", ["hide", "out", "succ"]), ("fw", ["lost"])]
+            ("cap", ["hide", "out", "succ"]), ("fw", ["lost"]), ("crp", ["out_" + F])]
 # Sweep headlines without the faction ($3 is TRF_SweepInfo(slot).fac at display time).
 SWEEP_TEXT = {"nsweepgather": "Fleet gathers against pirates near $1",
               "nsweepfail": "Sweep against pirates near $1 beaten back",

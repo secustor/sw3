@@ -1,6 +1,6 @@
 # A22 corporation carriers: implementation spec
 
-Status: spec 2026-11-04, not implemented. Roadmap wave 1 row 4 ([ROADMAP.md](ROADMAP.md) sections 2, 3, 4, 5 decision 6); proposals [proposals/activities-after-worldbuilding.md](proposals/activities-after-worldbuilding.md) 2.11 (A22, cited as "P 2.11"), 2b.8 (no corporation-only module), 4b.1, 4b.2, 6 items 18 and 19; shared rules `worldbuilding/00-economy-and-progression.md` sections 2.1, 4 and 6 ("00"); lore `dialog-style-guide.md` 10; offline data [mod-research/corp-carriers-data.md](mod-research/corp-carriers-data.md) (cited as "CD n").
+Status: implemented 2026-11-04, host-tested only (`co-a`..`co-h`), not run in the game; the user tests wave 1 in game together with the freight quest and the Jobs tab checks (W-A22.1-9, PROGRESS "Wave 1 (host-tested only)"). Owner decisions 1-10 of 12 taken 2026-11-04 as recommended; implementation notes and deviations in 14. Roadmap wave 1 row 4 ([ROADMAP.md](ROADMAP.md) sections 2, 3, 4, 5 decision 6); proposals [proposals/activities-after-worldbuilding.md](proposals/activities-after-worldbuilding.md) 2.11 (A22, cited as "P 2.11"), 2b.8 (no corporation-only module), 4b.1, 4b.2, 6 items 18 and 19; shared rules `worldbuilding/00-economy-and-progression.md` sections 2.1, 4 and 6 ("00"); lore `dialog-style-guide.md` 10; offline data [mod-research/corp-carriers-data.md](mod-research/corp-carriers-data.md) (cited as "CD n").
 Paths: `D` = `mods/traffic/design`, `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `T` = `mods/traffic/tests`, `G` = the clone's `Data` (read-only).
 Module: new `S/trf_corp.script`, prefix `Crp` (`TRF_Crp_*` public, `TRF_Crp<X>` internal), log lines `module=corp`, saved key `TRF.crp`, trader record field `crp`, loc keys `#TRF_crp*`. `co` is taken twice (`TRF.co` is Wolves Freight, `r.co` is trf_hail's contract-offer roll), so the module uses `crp` everywhere.
 
@@ -398,3 +398,28 @@ Not verifiable offline: whether `GetLocationTeam` returns the side-list team for
 12. [ ] Host `co-a`..`co-h` green; every existing run green (`TMPDIR=$PWD/.work/host sh mods/traffic/tests/run_host.sh`).
 13. [ ] Log events of 8 in `log-events.md` (new section `corp`, charter rows updated); `check_ingame.py` W-A22.1-9; test plan rows; PROGRESS entry; charter-spec type 7 and kind 9; README module table and the player README feature line.
 14. [ ] `/code-review xhigh --fix` on the implementation range, fixes committed as `fix(traffic): ...`.
+
+## 14. Implementation notes (2026-11-04)
+
+### 14.1 What was built
+
+`S/trf_corp.script` as 9.1 (chunk local `CV`); the edits of 9.2 in traffic.script (loader `ex` list, `TRF_OnActivate` after trf_warn's hook, the v1 load list, header), trf_state (`TRF_ModList`, `TRF_OptEnum` `corp=1`, `TRF_Repair`), trf_plumb (`TRF_PlMods`), trf_loc and trf_ui (`TRF_Crp_Text` in both text lists, `ncrpout`, `TRF_UI_Announce`, `TRF_UI_Who`), trf_region (`TRF_RegionTick`), trf_gen (`TRF_GenTrader`, `TRF_SeedSpawn`), trf_track (`TRF_TrackSpawn`), trf_hail (`TRF_HlDlgOpen`, `TRF_Headed`, `TRF_CtArrive`, `TRF_CtOfferRoll`), trf_shop (`TRF_ShopOpen`), trf_events (`TRF_Ev_Kill`), trf_supply (`TRF_SpComply`), trf_safety (comment), trf_charter (type 7 `run`, kind 9, `TRF_Ch_RunOpen`, the closes, the pay, `ch_k` 7 entries with the 6-entry padding, `ch_run_legs`), config.script (`corp=1`); install-test.sh `CORP` (`corp=0` in the `LEVEL=v01`/`v02` presets); `tools/gen_news.py` REGIONAL `("crp", ["out_" + F])`, `news/trf_news.xml` and `loc/trf_en.loc` regenerated (gen_news.py, the scaffold of `TRF_Loc_LocLines`); host `co-a`..`co-h` (`T/host_corp.lua`), the 19th module pinned in the other host files, `v1-n` carries the A22 worst case; W-A22.1-9 in `tools/check_ingame.py` with `T/check_ingame_corp_fixture.log` and a failing block at the end of `T/check_ingame_fixture.log`. Sizes on the host grammar: the A22 worst case 444 bytes (`co-g`), full state `v1-n` 96,581 bytes.
+
+### 14.2 Notes
+
+- Label rates: over 200 name indices the label rates are within 3 points of the shares (`co-b`: Kondel, Triada-owned, 112 Triada and 38 USS of 200 for shares 0.553 and 0.197; Gaoba, InoCo-owned, 18 USS and 29 InoCo for 0.094 and 0.141). The shipped name list is shorter than 200, so in game the rate of one region moves by up to one name's weight; the draw is the same for every save.
+- The spawn volume and the RAND draws of 40 generator ticks are equal with `corp` 1 and 0 (`co-b`); the only new RAND draw is the Triada shop's extra item.
+- The off-screen roll gave 85 losses in 200 Raids legs at T4 in Golkonda (40 % expected), split between Triada and USS by share (`co-d`).
+- The host runs `co-c` and `co-f` give every system a trade station (`HOST().st_label`), as `v02-h` does, so path A and B traders spawn in Gaoba.
+- A pull-out ending in the same region tick as another region's start frees its slot first: the active count skips the block being ticked (`TRF_CrpActive(slot)`), and the blocks are written slot by slot.
+
+### 14.3 Deviations
+
+1. RU text (X3 "no RU text in this step"): `loc/trf_ru.loc` gets the six charter keys `chd73`, `chd74`, `chd75`, `chdeed7`, `chwhy7`, `chwhypull` in Russian, because the host check `stn-g` requires every charter key in the RU file. The `crp*` and `ncrpout` keys stay EN only.
+2. `event=label ... corp=none reason=pulled` (an independent where the pulled corporation would have flown, W-A22.5) is logged at level 1 with `pulled=<team>`; other `corp=none` lines stay at level 2, with the gate reasons `chapter`, `gone`, `labelled`, `kind`, `noname`, `noregion`, `nocorp`.
+3. `TRF_Crp_Fix` logs a cut of a too-long string as `result=cut` (8 lists dropped, reset, padded, capped), and a pull-out it ends for the cap also removes that region's news topic (`TRF_NewsPost("crp", nil, slot)`), so no bulletin outlives its pull-out.
+4. The owner team accessor `TRF_Crp_Team` reads `TRF_RgTeam` when trf_region is loaded and `GetLocationTeam` of the map name otherwise.
+5. trf_charter: the trade-family set and the kind 7 close set are written as explicit sets (`TRF_ChTrade`, new `TRF_ChKillSet`); `faction=<f>` is appended at the end of the `note` lines, so the existing host patterns stay. A kind 9 deed of another corporation's run logs `reason=corp`.
+6. trf_shop's `open` line ends with `corp=<team> signature=<item>` for every trader (`corp=nil signature=nil` for an independent).
+7. `mods/traffic/design/mod-options.md` (9.2) has no config-key table; the key is documented in `config.script`, the install-test.sh header and the README section, as A12, B06 and B10 did.
+8. `TRF_Ch_RunOpen` returns nil while cfg `charter` is 0; `TRF_Crp_Mark` and `TRF_Crp_Pulled` return nil while traffic or cfg `corp` is off.

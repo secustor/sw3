@@ -33,6 +33,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_warn.script` | Lethal-system warnings, A12 step 1 ([design/warnings-spec.md](design/warnings-spec.md)): the list of 23 vanilla systems that kill, ambush or trap an arriving mothership with the mirror of each one's vanilla arming condition (checked by `tools/check_warn.py`), the dockmaster's warning at a trade dock one jump from an armed one (req line 20), the first-visit note (an arrival line once per system and save) and the jump warning at the portal (a wrapper over the `PORTAL_<X>_Action` globals). Host-tested only. Loads after `trf_wq`. |
 | `trf_remark.script` | Crew remarks on system history, B06 ([design/crew-remarks-spec.md](design/crew-remarks-spec.md)): on system entry one radio line from a squad pilot about a dated record of the system the player has not heard about (an off-screen trader or sweep scar, a fallen pirate base, a captain killed by an off-screen sweep), the age sentence and crew voice of the scar's beacon line, the told stamps `TRF.rm`; owns the shared crew-voice API `TRF_CrewVoice` / `TRF_CrewSay` (B03 and A01 use it). Host-tested only. Loads after `trf_warn`. |
 | `trf_temper.script` | Clan temperaments and the intro quest "Clan file", B10 ([design/temperament-spec.md](design/temperament-spec.md)): one raid style per region clan (Cutters skip the demand, Hagglers talk first and leave at a loss, Planners weight their targets and call off when outgunned, Ghosts leave early and, with tune `te_fx` 1, decloak next to the target), the opening radio line of every raid, the style word on the hail trouble page, the dockmaster tip, the news bulletin and (gated by the quest) the patrol board; the Clan file at faction patrol docks (dialogs `TRF_Te1`, `TRF_Te2`) on the shared intro-quest record `TRF.iq` of trf_plumb. Host-tested only. Loads after `trf_remark`. |
+| `trf_corp.script` | Corporation carriers, A22 ([design/corp-carriers-spec.md](design/corp-carriers-spec.md)): plain FTU traders in corporation space become Triada, USS or InoCo contract carriers at spawn (a fixed draw from the trader's name and region, shares from the run-time owners of the region's trade systems), with the corporation in the greeting, the focus line, the dialog head and the where-headed answer, and the corporation's gun list and a lore-named item in the trader shop; kills and robberies of a corporation's carriers (and an off-screen roll in Raids at clan T3-T4) pull it out of a region for 24 legs with a news post and dockmaster lines (req line 30); an escort of a carrier marks the region for trf_charter's supply run posting (type 7). State `TRF.crp` (one 88-digit string). Host-tested only. Loads after `trf_temper`. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -1092,6 +1093,43 @@ Wave 1 item 3 of the roadmap, B10 (spec [design/temperament-spec.md](design/temp
 ### In-game checks (temperaments)
 
 W-B10.1 (the opening line, Cutters without a demand), W-B10.2 (chapter 4 guard, chapter 3), W-B10.3 (Haggler), W-B10.4 (Planner call-off), W-B10.5 (Ghost decloak with `TUNE=te_fx=1`), W-B10.6 (the arrival word), W-B10.7 (trouble page, board gate, tip), W-B10.8 (the offer), W-B10.9 (count, report, board words), W-B10.10 (the letter): [design/PROGRESS.md](design/PROGRESS.md) "Wave 1 (host-tested only)", scored by `tools/check_ingame.py`.
+
+## Corporation carriers (`EXP=0 TRAFFIC=1`)
+
+Wave 1 item 4 of the roadmap, A22 (spec [design/corp-carriers-spec.md](design/corp-carriers-spec.md), data [design/mod-research/corp-carriers-data.md](design/mod-research/corp-carriers-data.md); owner decisions 1-10 of spec 12 taken 2026-11-04 as recommended): module `trf_corp`, loaded after `trf_temper` (`extra_count=19`). State `TRF.crp` (one string of 11 digits per region: losses per corporation, the pulled corporation, the pending dock notice, the run mark, the end leg; nil while all zero) and the trader record field `crp` (the label, visit lifetime); 444 bytes at most with two news topics and five labelled records. Host-tested only (`co-a`..`co-h`), not run in the game; the user tests wave 1 together with the freight quest and the Jobs tab checks.
+
+### What the player sees
+
+- In Dosis, Golkonda, Kadi, Moscowia and xt27 some FTU traders are Triada, USS or InoCo contract carriers (about 59, 42, 17, 10 and 9 % of them; more in a system the corporation owns). Their greeting says so ("FTU Kestrel, InoCo contract carrier, open for trade"; other words when your standing with the corporation is 2 or less, or 8 or more), as do the focus line ("InoCo contract freighter Kestrel"), the dialog head and the answer to "Where are you headed?". From mission 1.
+- A carrier's shop stocks its corporation's guns and systems; USS carriers put a Cold Wave, InoCo carriers a Gremlin, Sigil or M-805 Shining first (one piece), Triada carriers one item more. Prices as any trader's.
+- Dockmasters in corporation-owned systems sometimes name the carriers on the region's lanes.
+- From chapter 5: three kills or robberies of one corporation's carriers in a region (a kill by raiders counts too, and in Raids at clan tier 3-4 an off-screen loss roll adds to it) make it pull out of the region for 24 legs: an FTU bulletin, a dockmaster line at the next dock there, independents in its place, a dockmaster line when it comes back. At most two regions at once; the counts reset when the region turns Quiet. Your kill or robbery of a carrier costs standing with its corporation (once per visit).
+- From chapter 5 (charter help 3): after you escort a carrier to the end of its contract, the charter board can post a supply run for that corporation in the region: escort two of its carriers within 20 legs. While it is open the corporation flies more carriers there and they offer escorts more readily. It pays through the charter office and raises your standing with the corporation by one; it closes when the corporation pulls out or the region falls into Bust.
+
+### Config keys (corporation carriers)
+
+`install-test.sh` writes `CORP` only when set (`LEVEL=v01`/`v02` write `corp=0` unless `CORP` is set); tune keys go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `corp` | 1 | 0: no label, line, count or run posting; existing labels and the state string are ignored |
+| tune `crp_ch` | 0 | first chapter of labels and the identity dock line |
+| tune `crp_pull_ch` | 5 | first chapter of counts, standing hits, pull-outs and run marks |
+| tune `crp_sig_ch` | 0 | first chapter of the signature item in carrier shops |
+| tune `crp_share`, `crp_k`, `crp_own`, `crp_max` | 0.8, {0.7, 1.0, 0.3}, 2, 0.75 | share factor, lore weights Triada/USS/InoCo, factor in an owned system, cap of the summed share |
+| tune `crp_job_x`, `crp_job_offer` | 2, 60 | share factor and escort offer floor (%) while a supply run is open |
+| tune `crp_pull_n`, `crp_pull_legs`, `crp_pull_max` | 3, 24, 2 | losses that pull a corporation out, pull-out length, regions out at once |
+| tune `crp_off_pct` | 20 | off-screen loss chance per tier step above T2 per region tick in Raids (0: player and on-screen only) |
+| tune `crp_id_pct` | 30 | identity dock line chance per approach |
+| tune `ch_run_legs` | 20 | supply run deadline (trf_charter; `ch_k` has a 7th entry, 0.4) |
+
+### Log lines (corporation carriers)
+
+`module=corp event=label trader_id= name= system= region= corp= share= roll= [reason=]`, `event=shop`, `event=hit how=<kill|rob> by= count_before= count= player_caused= result=`, `event=offscreen`, `event=pull result=<out|blocked>`, `event=return told=`, `event=reset`, `event=pass`, `event=dock kind=<out|back|id|none>`, `event=escort result=<run|marked|none>`, `event=mark_use`, `event=enter`, `event=load`, `event=fix`, `event=dump`; trf_shop's `event=open` carries `corp=` and `signature=`, trf_charter's lines `type=run` and `reason=pull`; full list in [design/log-events.md](design/log-events.md) (corp, charter).
+
+### In-game checks (corporation carriers)
+
+W-A22.1 (the greeting), W-A22.2 (focus line, hail box, dialog head), W-A22.3 (where headed), W-A22.4 (carrier shop), W-A22.5 (pull-out), W-A22.6 (supply run), W-A22.7 (target-panel callsign, manual, EN.1), W-A22.8 (req line order), W-A22.9 (standing): [design/PROGRESS.md](design/PROGRESS.md) "Wave 1 (host-tested only)", scored by `tools/check_ingame.py`.
 
 ## Vanilla fixes
 

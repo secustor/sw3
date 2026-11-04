@@ -127,6 +127,7 @@ Adds NPC traders, pirate clans, factions and jobs, written as Lua scripts loaded
 - Lost traders cause shortages, and stations pay +50 % for the missing cargo.
 - Supply, TT4, equipment and danger convoys run. Killing a big convoy forces a Bust.
 - Attacking traders raises your heat. Traders then flee or refuse to deal, and an FTU station can clear heat for a fee.
+- In corporation space some traders fly as Triada, USS or InoCo contract carriers with their own stock. Losses make the corporation pull out of a region for a while, and escorting its carriers opens a supply-run charter job (`corp`; not yet tested in game).
 
 **Pirates and factions**
 - Pirate clans raid the lanes. Traders comply or call for help, and helping them pays.
