@@ -82,11 +82,14 @@ function TRF_WnOpt(key)
 	return v;
 end;
 
--- Tune values of this module, clamped; TRF_Tune gives cfg tune overrides.
+-- Tune values of this module, clamped; TRF_Tune gives cfg tune overrides. Cached in WV while TRF_Tune returns the same
+-- table (as TRF_CrpTune); callers must not write into it.
 function TRF_WnTune()
-	local d = TRF_Wn_TuneDef();
+	local wv = %WV;
 	local t = nil;
 	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_WnErr); end;
+	if type(wv.tc) == "table" and wv.tc.s == t then return wv.tc.t; end;
+	local d = TRF_Wn_TuneDef();
 	local cl = TRF_WnClamp();
 	local o = {};
 	for k, v in d do
@@ -97,6 +100,7 @@ function TRF_WnTune()
 		if c then x = TRF_WnCl(floor(x), c[1], c[2]); end;
 		o[k] = x;
 	end;
+	wv.tc = {s=t, t=o};
 	return o;
 end;
 

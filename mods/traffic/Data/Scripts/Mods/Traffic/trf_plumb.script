@@ -1260,9 +1260,9 @@ function TRF_IqPack(q, s, t, c, sd)
 	return sd * 100000 + q * 10000 + s * 1000 + t * 10 + c;
 end;
 
--- Pure: x mod m for x >= 0.
+-- Pure: x mod m for x >= 0 (Lua 4's mod).
 function TRF_IqM(x, m)
-	return x - floor(x / m) * m;
+	return mod(x, m);
 end;
 
 -- Pure: {q, s, t, c, sd} of packed a.

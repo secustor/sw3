@@ -324,9 +324,14 @@ function TRF_CrpBlkOf(s, slot)
 	return b;
 end;
 
+-- One digit 0..9 of a block value (nil reads as 0).
+function TRF_CrpDig(v)
+	return TRF_CrpCl(floor(v or 0), 0, 9);
+end;
+
 -- The 11 digits of block b (counts clamped 0..9, e 0..99999).
 function TRF_CrpEncOf(b)
-	local c = function(v) return TRF_CrpCl(floor(v or 0), 0, 9); end;
+	local c = TRF_CrpDig;
 	return format("%d%d%d%d%d%d%05d", c(b.a[3]), c(b.a[4]), c(b.a[5]), c(b.p), c(b.t), c(b.x), TRF_CrpCl(floor(b.e or 0), 0, 99999));
 end;
 

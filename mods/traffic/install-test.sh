@@ -154,8 +154,6 @@ for e in $pre; do
     [ "${e%%=*}" = enable_freight ] && [ -n "${FREIGHT:-}" ] && continue
     # enable_parcels is set by PARCELS (below), which overrides the preset.
     [ "${e%%=*}" = enable_parcels ] && [ -n "${PARCELS:-}" ] && continue
-    # remarks is set by REMARKS (below), which overrides the preset.
-    [ "${e%%=*}" = remarks ] && [ -n "${REMARKS:-}" ] && continue
     eval v=\${$(printf '%s' "${e%%=*}" | tr 'a-z' 'A-Z'):-}
     [ -n "$v" ] || opt="$opt, $e"
 done
