@@ -261,6 +261,8 @@ function T_DB_A()
 	T = TRF_DbTune();
 	HOST_Check(T.db_pool == 9 and T.db_bank == 2 and T.db_shares == 4 and T.db_thr1 == 0 and T.db_ch == 12 and T.db_last == 12 and T.db_help == 99 and T.db_dc == 0,
 		"tune clamps: db_bank 3 -> 2, db_last below db_ch raised to it");
+	h.cfg.tune = {db_ch=3};
+	HOST_Check(TRF_DbTune().db_ch == 5, "tune clamp: db_ch 3 -> 5 (the repair range 5..20)");
 	h.cfg.tune = {};
 	T = TRF_DbTune();
 	-- Texts (7): every key plain and in TRF_Loc_EN.
@@ -623,6 +625,25 @@ function T_DB_D()
 	TRF_PlReg().jb = nil;
 	TRF_Db_CardOk(row.a);
 	HOST_Check(TRF_IqGet().q == 2 and TRF_Db_JobTook(row.a) == 1, "row OK: taken, took answers 1");
+	-- The Office row with D1 (db_dialog 1): the dialog over the board; accept, decline and Esc call the handlers directly.
+	local brd = {{"a_acc2", "accept"}, {"a_dec", "decline"}, {nil, "esc"}};
+	local bad = "";
+	for i = 1, getn(brd) do
+		DB_Begin("altair", "5_1", {db_dialog=1, hail_xml=1, jobs_ui=2});
+		DB_Office(1);
+		DB_DlgUi(0);
+		row = TRF_Db_JobRow("trade");
+		n0 = S_Mark();
+		TRF_Db_CardOk(row.a);
+		local ok = DB_Dlg().name == "TRF_Db1" and DB_Logs(n0, "event=dialog dialog=1 via=board result=opened") == 1 and TRF_IqGet().q == 0;
+		if brd[i][1] == "a_acc2" then DB_Picks("a_what", "a_why", "a_acc2"); elseif brd[i][1] then DB_Picks("a_what", brd[i][1]); else HOST_DlgEsc(); end;
+		T_Tick(4, 0.5);
+		if brd[i][2] == "accept" then ok = ok and TRF_IqGet().q == 2 and DB_Logs(n0, "result=ok") == 1;
+		elseif brd[i][2] == "decline" then ok = ok and TRF_IqGet().q == 0 and TRF.iq and TRF.iq.l == TRF.clock.legs * 10 + 2;
+		else ok = ok and TRF.iq == nil and DB_Logs(n0, "event=decline system=altair result=closed") == 1; end;
+		if not ok then bad = bad.." "..brd[i][2]; end;
+	end;
+	HOST_Check(bad == "", "Office row with D1 via board: accept starts the run, decline stamps, Esc closes"..bad);
 	-- D1 (db_dialog 1, hail_xml 1): three pages, the tokens, accept.
 	DB_Begin("altair", "5_1", {db_dialog=1, hail_xml=1});
 	DB_Office(1);
@@ -654,9 +675,11 @@ function T_DB_D()
 	DB_Begin("altair", "5_1", {db_dialog=1, hail_xml=1});
 	DB_Office(1);
 	DB_DlgUi(0);
+	n0 = S_Mark();
 	r = DB_Dock();
 	HOST_DlgEsc();
 	T_Tick(4, 0.5);
+	HOST_Check(DB_Logs(n0, "event=decline system=altair result=closed") == 1 and DB_Logs(n0, "result=declined") == 0, "D1 Esc at the dock: decline result=closed, no stamp");
 	DB_Visit();
 	r = DB_Dock();
 	HOST_Check(TRF.iq == nil and DB_Dlg().name == "TRF_Db1", "D1 Esc: no record, the offer again at the next docking");
@@ -664,7 +687,7 @@ function T_DB_D()
 	T_Tick(4, 0.5);
 	-- Fallbacks: db_dialog 0 (box, no fallback line), hail_xml 0, no StartTradeDialog, ui=4.
 	local fb = {{{db_dialog=0, hail_xml=1}, nil}, {{db_dialog=1, hail_xml=0}, "xml"}, {{db_dialog=1, hail_xml=1}, "native"}, {{db_dialog=1, hail_xml=1}, "ui=4", '"ui=4"'}};
-	local bad = "";
+	bad = "";
 	for i = 1, getn(fb) do
 		DB_Begin("altair", "5_1", fb[i][1]);
 		DB_Office(1);
@@ -775,6 +798,24 @@ function T_DB_E()
 	T_Tick(2, 0.5);
 	HOST_Check(TRF_IqDone(2) == 1 and DB_Rec() == "5,4,0,0" and DB_Eq(h.xp, 1.8) and DB_Logs(n0, "via=dialog result=done") == 1
 		and DB_Has(DB_Scr(s0), "Debriefs left this chapter: 4."), "D2 final answer: done, the first debrief paid, the line after the window");
+	-- The talk box passes the dialog gate but D2 cannot open (TRF_Due refused): TRF_Db_TalkFail says the line, the done, the pay.
+	DB_Begin("altair", "5_1", {db_dialog=1, hail_xml=1});
+	DB_DlgUi(0);
+	DB_Take();
+	T_Jump("taira");
+	DB_Escort("paid");
+	DB_Visit();
+	local due = TRF_Due;
+	TRF_Due = function(dt, f, a, b) if f == "TRF_Db_DlgCheck" then return nil; end; return %due(dt, f, a, b); end;
+	n0 = S_Mark();
+	local t0 = h.trade_ok;
+	r = DB_Dock();
+	TRF_Due = due;
+	local q1 = strfind(r.scr, TRF_Txt("dbrep"), 1, 1);
+	local q2 = strfind(r.scr, "Debriefs left this chapter: 4.", 1, 1);
+	HOST_Check(r.nb == 0 and DB_Dlg().name == nil and DB_Logs(n0, "event=dialog_fallback dialog=2 reason=due") == 1 and TRF_IqDone(2) == 1
+		and DB_Rec() == "5,4,0,0" and DB_Eq(h.xp, 1.8) and DB_Logs(n0, "via=line result=done") == 1 and q1 and q2 and q1 < q2 and h.trade_ok == t0 + 1,
+		"D2 cannot open: TalkFail says dbrep, the done, the pay line after it, the trade window follows ("..r.scr..")");
 	-- A settlement during a mission or in a denied system: no count.
 	DB_Begin("altair", "5_1");
 	DB_Take();
@@ -961,6 +1002,16 @@ function T_DB_G()
 	n0 = S_Mark();
 	T_Jump("altair");
 	HOST_Check(DB_Rec() == "8,3,0,0" and DB_Logs(n0, "event=fix field=ch chapter=8 result=clamped") == 1, "a lower chapter label: the stamp clamped");
+	-- A label below db_ch (a bad read gives 0): nothing; the next good read of the same chapter no refill.
+	TRF.db = TRF_DbPack(9, 3, 0, 0);
+	h.labels.CurrentQuest = "x";
+	n0 = S_Mark();
+	T_Jump("taira");
+	HOST_Check(DB_Rec() == "9,3,0,0" and DB_Logs(n0, "event=fix") == 0, "a chapter read below db_ch: the stamp kept");
+	h.labels.CurrentQuest = "9_1";
+	n0 = S_Mark();
+	T_Jump("altair");
+	HOST_Check(DB_Rec() == "9,3,0,0" and DB_Logs(n0, "event=refill") == 0, "the next read of 9: no refill");
 	-- Bands at 6/7 and 12/13; EASY and HARD.
 	local xs = "";
 	local labels = {"6_1", "7_1", "12_1", "13_1"};

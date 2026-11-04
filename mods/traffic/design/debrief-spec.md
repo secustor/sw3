@@ -281,7 +281,7 @@ No text starts with `#`, holds `%` or a newline; all below 480 characters. `$n` 
 | `db_bank` | 2 | 1..2 | pools the bank holds (D3; 1 = no carry-over) |
 | `db_shares` | 1.5 | 0.5..4 | band-mean secondary kill shares per debrief (D4) |
 | `db_thr1`, `db_thr2`, `db_thr3` | 1.7, 2.8, 4.5 | 0..15 | band-mean hull threat, ch 5-6, 7-12, 13-20 |
-| `db_ch` | 5 | 1..20 | first chapter of the pool and the offer |
+| `db_ch` | 5 | 5..20 | first chapter of the pool and the offer |
 | `db_last` | 20 | 1..20 | last chapter of draws and refills (`db_last >= db_ch` enforced) |
 | `db_help` | 3 | 0..99 | help needed for the offer |
 | `db_dc` | 2 | 0..50 legs | decline wait (one region tick, R10) |

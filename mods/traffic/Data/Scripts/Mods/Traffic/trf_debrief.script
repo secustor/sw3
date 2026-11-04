@@ -166,7 +166,7 @@ end;
 -- Clamps of the tune keys {lo, hi, int}.
 function TRF_DbClampT()
 	return {db_pool={1, 9, 1}, db_bank={1, 2, 1}, db_shares={0.5, 4, 0}, db_thr1={0, 15, 0}, db_thr2={0, 15, 0}, db_thr3={0, 15, 0},
-		db_ch={1, 20, 1}, db_last={1, 20, 1}, db_help={0, 99, 1}, db_dc={0, 50, 1}};
+		db_ch={5, 20, 1}, db_last={1, 20, 1}, db_help={0, 99, 1}, db_dc={0, 50, 1}};
 end;
 
 -- Pure functions -------------------------------------------------------------------
@@ -330,8 +330,8 @@ end;
 -- The pool (spec 5) ----------------------------------------------------------------
 
 -- Sync (entry, load, every trade dock line, every settlement, the done): the record created when the pool is open in
--- chapters db_ch..db_last, the refill per chapter passed (to db_last at most), a lower chapter label clamped. why is the
--- caller (log). 1 when the record changed.
+-- chapters db_ch..db_last, the refill per chapter passed (to db_last at most), a lower chapter label clamped (a label below
+-- db_ch: nothing). why is the caller (log). 1 when the record changed.
 function TRF_DbSync(why)
 	if not TRF_DbOpen() then return nil; end;
 	local T = TRF_DbTune();
@@ -361,6 +361,7 @@ function TRF_DbSync(why)
 		TRF_DbRcn("refill");
 		return 1;
 	end;
+	if c < T.db_ch then return nil; end;
 	if c < u.ch then
 		local nc = max(c, T.db_ch);
 		if nc ~= u.ch then
@@ -1048,7 +1049,6 @@ end;
 -- over the Office window the handlers directly); D2 the hand-in done at the final answer (Esc: nothing, the next trade
 -- docking asks again). At the dock the plumbing is answered last.
 function TRF_DbDlgFx(d)
-	local db = %DB;
 	local code = -1;
 	if d.k == "1" then
 		if d.r == "acc" then code = 1; elseif d.r == "dec" then code = 0; end;
@@ -1056,10 +1056,10 @@ function TRF_DbDlgFx(d)
 			if code == 1 then
 				TRF_Db_BoxOk(d.x.a);
 				if TRF_DbRun() then TRF_N("TRF_PlJbMark", TRF_DbK().jid, "jbtaken"); end;
-			elseif code == 0 then TRF_Db_BoxNo(d.x.a); else db.offer = nil; end;
+			elseif code == 0 then TRF_Db_BoxNo(d.x.a); else TRF_Db_BoxNo(d.x.a, "esc"); end;
 			return;
 		end;
-		if code == -1 then db.offer = nil; end;
+		if code == -1 then TRF_Db_BoxNo(d.x.a, "esc"); end;
 	elseif d.k == "2" and d.r == "end" and type(d.x.t) == "table" then
 		TRF_DbTalkFx(d.x.t, "dialog");
 	end;
