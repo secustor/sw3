@@ -93,12 +93,12 @@ function T_MC_A()
 	MC_Begin("5_1");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=16") >= 1, "trf_merc loads before trf_wq and trf_warn (extra_count=16)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=17") >= 1, "trf_merc loads before trf_wq, trf_warn and trf_remark (extra_count=17)");
 	local ml, tf, uf = TRF_ModList(), TRF_Loc_TextFns(), TRF_UI_TextFns();
 	local tfs, ufs = "", "";
 	for i = 1, getn(tf) do tfs = tfs..tf[i]..","; end;
 	for i = 1, getn(uf) do ufs = ufs..uf[i]..","; end;
-	HOST_Check(ml[getn(ml) - 2] == "Mc" and MC_Has(tfs, "TRF_Pc_Text,TRF_Mc_Text,TRF_Wq_Text,TRF_Wn_Text,TRF_Loc_Text,") and MC_Has(ufs, "TRF_Pc_Text,TRF_Mc_Text,TRF_Wq_Text,"),
+	HOST_Check(ml[getn(ml) - 3] == "Mc" and MC_Has(tfs, "TRF_Pc_Text,TRF_Mc_Text,TRF_Wq_Text,TRF_Wn_Text,TRF_Rm_Text,TRF_Loc_Text,") and MC_Has(ufs, "TRF_Pc_Text,TRF_Mc_Text,TRF_Wq_Text,"),
 		"TRF_ModList ends with Mc, Wq, Wn; TRF_Mc_Text after the parcel table in both text lists");
 	HOST_Check(TRF_Mc_OptDef().merc == 0 and TRF_McOpt("merc") == 1 and TRF_McOpt("rv_enabled") == 0 and TRF_McOpt("mc_el_c") == 8
 		and TRF_McOpt("merc_war") == 1 and TRF_McOpt("merc_hostile") == 0 and TRF_McOpt("merc_hunt") == 0 and TRF_McOpt("merc_board") == 1 and TRF_McOpt("mc_launch") == 0,

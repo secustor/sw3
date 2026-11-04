@@ -1,6 +1,6 @@
 # Crew remarks on system history: implementation spec (B06, A01 step 1)
 
-Status: spec 2026-11-04, not implemented. Roadmap: `D/ROADMAP.md` wave 1 item 2. Design: `D/proposals/activities-after-worldbuilding.md` 2b.1 (B06, cited as "P 2b.1"), 2b.5 (B03, the next user of the speaker function), 4b.1, 4b.2, section 6 items 24 and 25. Shared rules: `D/worldbuilding/00-economy-and-progression.md` sections 4 and 6 ("00"); arrival queue: `D/wb-plumbing-spec.md` 5.
+Status: implemented 2026-11-04, host-tested only (`rm-a`..`rm-g`), not run in the game; the user tests wave 1 in game together with the freight quest and the Jobs tab checks (W-B06.1-10, PROGRESS "Wave 1 (host-tested only)"). Owner decisions of 2.1 taken 2026-11-04 (the recommendations); implementation notes and deviations in 17. Roadmap: `D/ROADMAP.md` wave 1 item 2. Design: `D/proposals/activities-after-worldbuilding.md` 2b.1 (B06, cited as "P 2b.1"), 2b.5 (B03, the next user of the speaker function), 4b.1, 4b.2, section 6 items 24 and 25. Shared rules: `D/worldbuilding/00-economy-and-progression.md` sections 4 and 6 ("00"); arrival queue: `D/wb-plumbing-spec.md` 5.
 Paths: `D` = `mods/traffic/design`, `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `T` = `mods/traffic/tests`, `G` = the clone's `Data/Scripts` (read-only).
 Module: new `S/trf_remark.script`, prefix `Rm` (`TRF_Rm_*` public, `TRF_Rm<X>` internal), log lines `module=remark`. It also owns the shared crew-voice API `TRF_CrewVoice` / `TRF_CrewSay` (5), which B03 and A01 call.
 
@@ -36,6 +36,8 @@ Module: new `S/trf_remark.script`, prefix `Rm` (`TRF_Rm_*` public, `TRF_Rm<X>` i
 | D17 | Sweep family | One sweep can leave a base record (base system), a sweep scar and a captain death (both in the home, 16). It is told once: in the base system when a D record of the slot has the sweep's leg, else in the home; the captain is a clause of that remark | - |
 
 ### 2.1 Decisions for the owner
+
+Taken 2026-11-04 by the user's standing rule "implement the recommendation as the default": (1) `rm_ch` 0; (2) `rm_own` 1; (3) no Greyhair voice, the Hero stays the fallback; (4) the save cost is accepted; (5) `remark_mode` 1, recorded as untested until C4; (6) the scar placement is fixed (trf_region reads the target before the outcome, 16).
 
 1. Chapters 1-3 (ROADMAP decision 6): trader-scar remarks run from mission 1 (`rm_ch` 0). Set `rm_ch` 4 to start them with the other items.
 2. Voicing the scar's own beacon line through a crew portrait (P 2b.1 recommendation, `rm_own` 1): "FTU beacon: freighter Kestrel lost here. That was 2 days back." in Ternie's portrait. The alternative keeps it a screen line with the age sentence (`rm_own` 0); the event is marked told either way.
@@ -82,7 +84,7 @@ Host grammar (`HOST_SaveSize`: table 12, number 12, numeric key 12, string key 8
 | `TRF.rm` worst case (4 stamps and `f`) | 10 + 12 + 21 + 4 x 24 = 139 (host bound 140) |
 | `dl` per captain record | 22; worst case 11 records 242 (the `cap-h` bound rises from 6,150 to 6,400) |
 | raw fields (4b.2 basis) | 5 numbers, about 40 |
-| full state `v1-n` | 95,376 + 139 + 242 = about 95,760, budget 100,000 |
+| full state `v1-n` | 95,376 + 139 + 242 = about 95,760, budget 100,000 (built: 95,629 after A12 + 381 = 96,010) |
 
 ## 4. Record kinds
 
@@ -323,7 +325,7 @@ Layout as trf_scar: helpers, accessors (one native each, protected: `TRF_RmProbe
 | README.md (mod) | section "Crew remarks" (what the player sees, config, log lines, in-game checks W-B06.*) |
 | README.md (repo root) | one line in the traffic feature list (player landing page) |
 | D/log-events.md, D/PROGRESS.md | section `remark`; entry with the CHECK pointer |
-| tests | `T/host_remark.lua`, run_host.sh item `rm`; every host check that pins `extra_count=15` becomes 16 (host_charter, host_captain, host_fits, host_freight, host_haunt, host_merc, host_ladder, host_parcel, host_scar, host_stash and any other `grep -n extra_count T/*.lua` finds); `stn-g` RU key set; `v1-n` full state; `cap-h` bound 6,400 |
+| tests | `T/host_remark.lua`, run_host.sh item `rm`; every host check that pins `extra_count=15` becomes 16 (built after A12: 16 becomes 17, 17.3) (host_charter, host_captain, host_fits, host_freight, host_haunt, host_merc, host_ladder, host_parcel, host_scar, host_stash and any other `grep -n extra_count T/*.lua` finds); `stn-g` RU key set; `v1-n` full state; `cap-h` bound 6,400 |
 
 ## 13. Host harness (`T/host_remark.lua`, `TRF_RM=a..g`)
 
@@ -371,23 +373,51 @@ In-game checks for `tools/check_ingame.py` (new items, verdicts PASS / FAIL / NO
 
 ## 15. Conformance checklist
 
-1. [ ] `S/trf_remark.script`: functions and the chunk local `RM` only; CRLF; `luac -p`; `lint_lua.py` 0 findings; `--calls` only the 5 known warnings.
-2. [ ] Lua 4 rules: no `local function`, `true`/`false`, `%` operator or `#`; flags tested `== 1`.
-3. [ ] Saved state only `TRF.rm` (3.1) and trf_captain's `dl`; no handle anywhere; `TRF_Rm_Fix`, `TRF_Cap_Fix` D4, D5.
-4. [ ] Record kinds, chapters and exclusions exactly as 4 and D6; records are never written.
-5. [ ] Merge, sweep family and oldest-first (K2-K4); one crew line per entry (D9).
-6. [ ] Told rules T1-T7; stamps only after a shown line or at the jump.
-7. [ ] Gates R1-R8 at entry; R1, R2, R4, R5 and `TRF_UI_Supp` again at the due.
-8. [ ] `TRF_CrewVoice` order and filters (5.1, 5.2), each native protected; no `CreatePilot` of a story template; no `GetPlayerMotherShip`.
-9. [ ] `remark_mode` 1 radio with fallback line, 0 line with the name (5.3).
-10. [ ] Arrival queue: `TRF_ArrivalLine(owner, text, spec)` and `TRF_PlArrSay` as 7.3; remark queued last at activation.
-11. [ ] Own line: suffix, single voicing, `scarold` untouched; trf_scar unchanged in behaviour without trf_remark.
-12. [ ] 14 text keys registered (X1); scaffold regenerated (X2); RU fixed forms (X3).
-13. [ ] Config and tune keys of 10 with defaults and clamps; `install-test.sh` `REMARKS`, `REMARK_MODE`.
-14. [ ] Log lines of 11; `log-events.md` section; dump in `TRF_DumpState`.
-15. [ ] Host `rm-a`..`rm-g` pass; all earlier runs pass with `extra_count=16`; `TRF.rm <= 140` bytes, TRF `< 100000`.
-16. [ ] README sections and the root README line; PROGRESS entry with CR1-CR8 and W-B06.1-10.
+1. [x] `S/trf_remark.script`: functions and the chunk local `RM` only; CRLF; `luac -p`; `lint_lua.py` 0 findings; `--calls` only the 5 known warnings.
+2. [x] Lua 4 rules: no `local function`, `true`/`false`, `%` operator or `#`; flags tested `== 1`.
+3. [x] Saved state only `TRF.rm` (3.1) and trf_captain's `dl`; no handle anywhere; `TRF_Rm_Fix`, `TRF_Cap_Fix` D4, D5.
+4. [x] Record kinds, chapters and exclusions exactly as 4 and D6; records are never written.
+5. [x] Merge, sweep family and oldest-first (K2-K4); one crew line per entry (D9).
+6. [x] Told rules T1-T7; stamps only after a shown line or at the jump.
+7. [x] Gates R1-R8 at entry; R1, R2, R4, R5 and `TRF_UI_Supp` again at the due.
+8. [x] `TRF_CrewVoice` order and filters (5.1, 5.2), each native protected; no `CreatePilot` of a story template; no `GetPlayerMotherShip`.
+9. [x] `remark_mode` 1 radio with fallback line, 0 line with the name (5.3).
+10. [x] Arrival queue: `TRF_ArrivalLine(owner, text, spec)` and `TRF_PlArrSay` as 7.3; remark queued last at activation.
+11. [x] Own line: suffix, single voicing, `scarold` untouched; trf_scar unchanged in behaviour without trf_remark.
+12. [x] 14 text keys registered (X1); scaffold regenerated (X2); RU fixed forms (X3).
+13. [x] Config and tune keys of 10 with defaults and clamps; `install-test.sh` `REMARKS`, `REMARK_MODE`.
+14. [x] Log lines of 11; `log-events.md` section; dump in `TRF_DumpState`.
+15. [x] Host `rm-a`..`rm-g` pass; all earlier runs pass with `extra_count=16`; `TRF.rm <= 140` bytes, TRF `< 100000`.
+16. [x] README sections and the root README line; PROGRESS entry with CR1-CR8 and W-B06.1-10.
 
 ## 16. Finding in built code
 
 Scar source 3 writes its record in `TRF_SweepTarget(slot)` (scar-spec 5.2: "the base system, else the home"), but `TRF_RgSweepOut` (`S/trf_region.script` 950) calls `TRF_BaseDestroyed` before `TRF_Sc_Sweep`, so after a won off-screen sweep against an active base `TRF_RgBaseA` finds no `k = 2` base and the scar lands in the home system. trf_haunt avoids the same trap by reading the target before the outcome (comment at the `TRF_Haunt_Sweep` call). B06 handles both placements (K3); the fix belongs to trf_scar (owner decision 6).
+
+## 17. Implementation notes (2026-11-04)
+
+### 17.1 What was built
+
+`S/trf_remark.script` as 12.1 (layout as trf_scar; chunk local `RM`); the edits of 12.2 and 12.3 (trf_plumb spec table and `TRF_PlArrSay` branch, trf_scar `TRF_ScArr(text, r, ln)`, trf_captain `dl`, `TRF_Cap_Fix` D5 and `death_leg` in the dump, trf_state, trf_loc, trf_ui, `install-test.sh`, both loc files); host `rm-a`..`rm-g` (`T/host_remark.lua`); W-B06.1-10 in `tools/check_ingame.py` with `T/check_ingame_remark_fixture.log` and a failing block at the end of `T/check_ingame_fixture.log` (selftest 124 of 124). Sizes on the host grammar: `TRF.rm` 139 bytes (4 stamps and the floor), the `cap-h` worst case 6,334 bytes (bound 6,400), full state `v1-n` 96,010 bytes.
+
+The scar placement finding of 16 (owner decision 6): `TRF_RgSweepOut` reads `TRF_SweepTarget(slot)` before the outcome, as for trf_haunt, and passes it to `TRF_Sc_Sweep(slot, L, won, f, tgt)` (a fifth argument; without it trf_scar reads the target itself). A won off-screen sweep over an active base now leaves its wreck in the base system (host `sc-a`, `rm-g`); B06 handles both placements (K3; `rm-d` covers a save with the old placement).
+
+### 17.2 Notes
+
+- `RM` is rebuilt by every MapInitialization (the host reloads the module files at each entry, so the visit state is fresh there too); `TRF_Rm_Own` runs inside trf_scar's activate hook, before `TRF_Rm_OnActivate`, in the same chunk instance.
+- The told stamp is per system (the leg of the newest told event), so an older untold event in a system counts as told once a newer one there was told (T2). A fresh beacon line stamps its event, so an older record of the same system is not remarked later; `rm-e` keeps the captain's death newer than the beacon for that reason.
+- The remark's due call does not check the told stamp again: two lines of one entry (an unvoiced own line and a remark about an older event) are both shown, the stamp takes the larger leg.
+- trf_warn's first-visit note is queued from a due call 4 s after the entry, after the remark: in a listed system with an untold record the remark can take the last of the 3 slots and the note is dropped (cap) and comes on the next entry. Not changed (a listed lethal system with a record is rare).
+- W-B06.9 cannot order `ScriptErrors.log` lines against the say line (the file has no time stamps): any `ScriptErrors.log` line in a run with a shown crew line is a FAIL to look at; there is no crash marker to read.
+
+### 17.3 Deviations
+
+1. Load order: A12 (trf_warn) landed first, so trf_remark loads after `"warn"` (`extra_count` 17, not 16), `"Rm"` follows `"Wn"` in `TRF_ModList()`, `TRF_Rm_Text` follows `TRF_Wn_Text` in both text lists, `TRF_Rm_Fix` runs after `TRF_Wn_Fix` (still after `TRF_Cap_Fix`) and `TRF_Rm_OnActivate` after `TRF_Wn_OnActivate` (still the last module call, D10). Every host pin moved from 16 to 17 and the module-list offsets by one.
+2. D16: trf_captain writes `dl = TRF.clock.legs`, not the tick leg `L`. During a region catch-up `L` trails `legs`, while trf_base (`t`) and trf_scar (`leg`) stamp `legs` at the same outcome; with `L` the same-leg rules K2 and K3 would split one sweep into two events.
+3. 7.2: `TRF_Rm_Own(owner, idx, leg, voice, text, kind)` takes the scar record's kind as a sixth argument for the chapter rule of step 4 (kind 1 `rm_ch`, else `rm_ch_late`); the voice alone cannot tell a trader wreck from a pirate sweep. trf_scar passes `r.kind`.
+4. 12.1 pure signatures: `TRF_RmVoiceOf(list, probe, csr)` (the probe takes the `rm_csr` value) and `TRF_RmPickOf(list, s)` (the clause and the home stamp need the captain record and the home). `TRF_CrewSay` returns a fourth value, the fallback reason (`msg_error`), when a raising `Message` falls back to the screen line; the say line logs `result=shown reason=msg_error`.
+5. K3 "a base remark of a sweep": the base record does not keep what destroyed it, so `h` (the home stamp) is set when the base remark carries the captain clause, merges a sweep scar of the same leg, or the home's scar record is a sweep scar with that leg (a save from before the fix). At most one clause: from a captain candidate with the leg, else the region's captain killed at the base's leg.
+6. X2: the EN fixed forms of `loc/trf_en.loc` are generated by `TRF_Loc_Plain` from the spec 9 templates (`gen_map.py --loc`), as for every other module, so some read badly under `loc_mode 1` ("sent a fleet against the here and lost it."; CR8 sees these, not "A freighter went missing here."). Readable EN fixed forms would need an override table in the loc generator; left out. The RU file has hand-written fixed forms of the 14 keys (X3).
+7. 13 `rm-f` "a mission naming it": with cfg `strict` 1 a system whose quest ids are known and none in process stays open during a mission (design 9.9 option 1, `TRF_StrictOkOf`), so the run uses `strict` 2 (`gate:mission_all`); the quest in process is `gate:quest`. `rm-g`'s "`lint_lua.py --calls` adds no warning" is the lint step of `run_host.sh`, not a Lua check.
+8. host_scar.lua runs with `remarks` 0 (`SC_Cfg`): its checks compare trf_scar's own line text; the age sentence and the voice are covered by `rm-e`.
+

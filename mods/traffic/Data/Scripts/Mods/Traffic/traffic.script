@@ -63,6 +63,8 @@
 -- (last) and its load hook (v1 list, last) wrap the PORTAL_<X>_Action globals (the jump warning), the activate hook
 -- (after trf_station's) prunes the dock stamps and schedules the first-visit note, the jump hook (v1 list) logs a jump
 -- into a listed system; the dock warning is a trf_plumb dock line (req, order 20).
+-- Crew remarks (design/crew-remarks-spec.md, B06): trf_remark loads after trf_warn (extra=); its activate hook (the last
+-- module call) queues one remark through TRF_ArrivalLine, its jump hook (after trf_captain's) stamps witnessed events.
 
 function TRF_Path(name)
 	return "DATA/Scripts/Mods/Traffic/"..name;
@@ -367,6 +369,7 @@ function TRF_OnActivate()
 		TRF_P("TRF_Wq_OnActivate");
 		TRF_P("TRF_Stn_OnActivate");
 		TRF_P("TRF_Wn_OnActivate");
+		TRF_P("TRF_Rm_OnActivate");
 		TRF_P("TRF_DumpState", "enter");
 	end;
 	TRF_N("TRF_Exp_OnActivate", fresh);
@@ -481,6 +484,7 @@ function TRF_BeforeJump(dest, how)
 		TRF_P("TRF_Mc_BeforeJump", dest, how);
 		TRF_P("TRF_Raid_BeforeJump");
 		TRF_P("TRF_Cap_BeforeJump", dest, how);
+		TRF_P("TRF_Rm_BeforeJump");
 		TRF_P("TRF_Wq_BeforeJump");
 		TRF_P("TRF_Gen_BeforeJump", dest);
 		TRF_P("TRF_DumpState", "jump");
@@ -565,7 +569,7 @@ function TRF_Main()
 			for i = 1, getn(v2) do if TRF_LoadFile(v2[i]) then nm = nm + 1; end; end;
 			local v1 = {"loc", "track", "faction", "clan", "convoy", "danger", "supply", "base"};
 			for i = 1, getn(v1) do if TRF_LoadFile("trf_"..v1[i]..".script") then nm = nm + 1; end; end;
-			local ex = {"plumb", "station", "survive", "ladder", "charter", "scar", "captain", "stash", "freight", "fits", "haunt", "parcel", "merc", "wq", "warn"};
+			local ex = {"plumb", "station", "survive", "ladder", "charter", "scar", "captain", "stash", "freight", "fits", "haunt", "parcel", "merc", "wq", "warn", "remark"};
 			for i = 1, getn(ex) do if TRF_LoadFile("trf_"..ex[i]..".script") then ne = ne + 1; end; end;
 			TRF_P("TRF_InstallPlumb");
 			TRF_P("TRF_InstallHaunt");

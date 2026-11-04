@@ -21,10 +21,11 @@ dostring(strsub(src, 1, cut), "host_station.lua");
 -- Helpers ----------------------------------------------------------------------------------
 
 -- Config of these runs: the repo defaults with the entry events that would claim the slot or spawn on their own
--- turned off, survivors off (sc-e turns them on), log 2, plus t.
+-- turned off, survivors off (sc-e turns them on), crew remarks off (the scar line as trf_scar builds it; the age sentence
+-- and the voice are host_remark.lua's rm-e), log 2, plus t.
 function SC_Cfg(t)
 	local c = {sweeps=0, feq=0, staged=0, seed=0, queue=0, parked=0, voice_events=0, dconv=0, carriers=0, po=0,
-		enable_survivors=0, log=2};
+		enable_survivors=0, remarks=0, log=2};
 	if t then for k, v in t do c[k] = v; end; end;
 	return c;
 end;
@@ -160,9 +161,9 @@ function T_SC_A()
 	SC_Begin("gaoba", "9_1");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=16") >= 1, "trf_scar loads after trf_charter (extra_count=16 with trf_captain, trf_stash, trf_freight, trf_haunt, trf_parcel, trf_merc, trf_wq and trf_warn)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=17") >= 1, "trf_scar loads after trf_charter (extra_count=17 with trf_captain, trf_stash, trf_freight, trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
 	local ml = TRF_ModList();
-	HOST_Check(ml[getn(ml) - 8] == "Sc" and type(TRF_Sc_TuneDef) == "function" and TRF_Opt("enable_scars") == 1 and TRF_Opt("enable_scar_loot") == 1
+	HOST_Check(ml[getn(ml) - 9] == "Sc" and type(TRF_Sc_TuneDef) == "function" and TRF_Opt("enable_scars") == 1 and TRF_Opt("enable_scar_loot") == 1
 		and TRF_Opt("enable_scavengers") == 1 and TRF_Opt("enable_scar_recorder") == 1 and TRF_Opt("enable_salvage_licence") == 1,
 		"TRF_ModList has Sc; the five toggles of 6.8 default to 1");
 	local T = TRF_ScTune();
@@ -256,6 +257,22 @@ function T_SC_A()
 	n0 = S_Mark();
 	TRF_RgSweepOut(gs, L, 1, 1, "on", 50);
 	HOST_Check(S_Logs(n0, "event=source source=3 ") == 0, "an on-screen attempt is not source 3 (it is source 7)");
+	-- A won off-screen sweep over an active base: the target is read before the outcome destroys the base, so the wreck
+	-- lies in the base system, not in the home (scar-spec 5.2; crew-remarks-spec 16, owner decision 6).
+	local home, bi = TRF_RgMap()[gs].home, nil;
+	for i = 1, getn(TRF_RgMap()[gs].sys) do
+		local x = TRF_RgMap()[gs].sys[i];
+		if x ~= home and x ~= TRF_CurIdx() and not TRF_ScDenyOf(TRF_ScName(x)) then bi = x; end;
+	end;
+	local b0 = TRF.base;
+	TRF.base = {{s=bi, k=2, h=9, t=0, w=0}};
+	TRF.scar = nil;
+	HOST_Check(bi and TRF_SweepTarget(gs) == bi, "an active base in "..tostring(bi)..": the sweep target");
+	TRF_RgSweepOut(gs, L, 1, 1, "off", 50);
+	local ib, rb = TRF_ScAt(bi);
+	local ih, rh = TRF_ScAt(home);
+	HOST_Check(TRF.base[1].k == 3 and rb and rb.kind == 3 and rb.fac == 0 and rh == nil, "won sweep over the base: the wreck in the base system, none at home");
+	TRF.base = b0;
 	-- Sources 4-6 are step 2.
 	n0 = S_Mark();
 	HOST_Check(TRF_Sc_Source(4, cs, gs, L) == nil and S_Logs(n0, "result=none reason=step2") == 1, "sources 4-6: step 2");

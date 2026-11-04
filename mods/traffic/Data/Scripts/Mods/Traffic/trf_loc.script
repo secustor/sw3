@@ -102,7 +102,7 @@ function TRF_Loc_TextFns()
 	return {"TRF_UI_Text", "TRF_Hail_Text", "TRF_Raid_Text", "TRF_Rg_Text", "TRF_Tier_Text", "TRF_Shop_Text",
 		"TRF_Track_Text", "TRF_Supply_Text", "TRF_Clan_Text", "TRF_Faction_Text", "TRF_Convoy_Text",
 		"TRF_Danger_Text", "TRF_Base_Text", "TRF_Stn_Text", "TRF_Sv_Text", "TRF_Lad_Text", "TRF_Ch_Text", "TRF_Sc_Text", "TRF_Cap_Text",
-		"TRF_Sh_Text", "TRF_Fr_Text", "TRF_Haunt_Text", "TRF_Pc_Text", "TRF_Mc_Text", "TRF_Wq_Text", "TRF_Wn_Text", "TRF_Loc_Text"};
+		"TRF_Sh_Text", "TRF_Fr_Text", "TRF_Haunt_Text", "TRF_Pc_Text", "TRF_Mc_Text", "TRF_Wq_Text", "TRF_Wn_Text", "TRF_Rm_Text", "TRF_Loc_Text"};
 end;
 
 -- Number of text-table functions defined now (a module loaded after the cache was built rebuilds it).

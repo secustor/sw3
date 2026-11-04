@@ -6,7 +6,8 @@ design/fits-spec.md 11), the vanilla extortion fix (E-EXT.1, design/extort-fix-s
 (D-DLL.1), the station jobs mission card (K0-K7, design/station-jobs-spec.md 10, step 1), the Office jobs board (M1-M8,
 step 2), the quest log's Job log (L1-L5, step 3), the freight unlock quest, commits 1-3 (Q-WQ.1-10,
 design/freight-quest-spec.md 10) and its presentation (Q-WQ.11-14, spec 13: dialogs, letters, the mission list), Wolves Freight step 2 (EW8.11-EW8.17, design/freight-spec.md 10)
-and the lethal-system warnings (W-A12.1-8, design/warnings-spec.md 15; wave 1, host-tested only) from traffic logs.
+the lethal-system warnings (W-A12.1-8, design/warnings-spec.md 15; wave 1, host-tested only) and the crew remarks
+(W-B06.1-10, design/crew-remarks-spec.md 14; wave 1, host-tested only) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -26,6 +27,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURE = os.path.join(HERE, "..", "tests", "check_ingame_fixture.log")
 FIXTURE_WARN = os.path.join(HERE, "..", "tests", "check_ingame_warn_fixture.log")
+FIXTURE_REMARK = os.path.join(HERE, "..", "tests", "check_ingame_remark_fixture.log")
 REL = ("war", "neutral", "friend")
 PHASES = ("Quiet", "Boom", "Build-up", "Raids", "Bust", "Recovery")
 # vanilla bounty flights (OutMission_kill_pirate), haunt-spec appendix A class P
@@ -249,7 +251,7 @@ def c_err(ctx):
     res.logpart = True
     if not any(r.mod in ("haunt", "parcel") for r in ctx.recs):
         res.missing.append("no module=haunt or module=parcel line: the mod did not load or LOG=0")
-    for mod in ("haunt", "parcel", "core", "plumb", "hail", "merc", "wq", "warn"):
+    for mod in ("haunt", "parcel", "core", "plumb", "hail", "merc", "wq", "warn", "remark"):
         e = ctx.find(mod, "error")
         if e:
             res.fails.append("%d module=%s event=error lines" % (len(e), mod))
@@ -2487,6 +2489,188 @@ def c_wa8(ctx):
     return res
 
 
+# Crew remarks (design/crew-remarks-spec.md 14, W-B06.1-10; host-tested only, wave 1) -----------------------------------
+
+def remark_says(ctx, owner=None):
+    return [r for r in ctx.find("remark", "say", result="shown") if owner is None or r.get("owner") == owner]
+
+
+def crew_lines(ctx):
+    # A crew line: a shown remark, or a scar beacon line voiced by a squad pilot (output=radio).
+    return [r for r in remark_says(ctx) if r.get("owner") == "remark" or r.get("output") == "radio"]
+
+
+def c_wb1(ctx):
+    res = Res()
+    res.logpart = True
+    r = [x for x in remark_says(ctx, "remark") if x.get("output") == "radio"]
+    if not r:
+        res.missing.append("enter a system with an untold record (a trader scar from chapter 1, sweeps, bases, captains from "
+                           "chapter 5) with remark_mode 1: no module=remark event=say owner=remark output=radio result=shown")
+    res.ev("radio remarks", r)
+    res.ev("screen-line remarks", [x for x in remark_says(ctx, "remark") if x.get("output") == "line"])
+    return res
+
+
+def c_wb2(ctx):
+    res = Res()
+    res.logpart = True
+    loads = [x for x in ctx.recs if x.is_("state", "load")]
+    seen = {}
+    for r in remark_says(ctx):
+        k = (r.src, r.get("system_index"), r.get("event_leg"))
+        p = seen.get(k)
+        # A load of an earlier save takes TRF.rm back: the event may be told again after it.
+        if p is not None and not any(x.src == r.src and p.n < x.n < r.n for x in loads):
+            res.fails.append("%s: the event was told before (%s)" % (r.short(), p.short()))
+        seen[k] = r
+    idx = {}
+    for r in ctx.find("remark", "candidate") + ctx.find("remark", "remark"):
+        if r.visit is not None and r.visit.kind == "enter":
+            idx.setdefault((r.src, r.get("system_index")), set()).add(id(r.visit))
+    if not any(len(v) >= 2 for v in idx.values()):
+        res.missing.append("enter one system with a record twice (log 2): no system_index with candidate lines in two entries")
+    res.ev("lines shown", remark_says(ctx))
+    res.ev("told again (result=told)", ctx.find("remark", "candidate", result="told"))
+    return res
+
+
+def c_wb3(ctx):
+    res = Res()
+    res.logpart = True
+    by = {}
+    for r in crew_lines(ctx):
+        by.setdefault(id(r.visit), []).append(r)
+    for v in by.values():
+        if len(v) > 1:
+            res.fails.append("%s: a second crew line in the entry (%s)" % (v[1].short(), v[0].short()))
+    if not crew_lines(ctx):
+        res.missing.append("no crew line shown (a remark or a voiced scar beacon line)")
+    res.ev("crew lines", crew_lines(ctx))
+    res.ev("skips reason=done", ctx.find("remark", "skip", reason="done"))
+    return res
+
+
+def c_wb4(ctx):
+    res = Res()
+    res.logpart = True
+    q = ctx.find("plumb", "arrival_line", result="queued")
+    by = {}
+    for r in q:
+        by.setdefault(id(r.visit), []).append(r)
+    after = []
+    for v in by.values():
+        if len(v) > 3:
+            res.fails.append("%s: %d arrival lines queued after one entry (arr_max 3)" % (v[3].short(), len(v)))
+        sc = [x for x in v if x.get("owner") == "scar"]
+        rm = [x for x in v if x.get("owner") == "remark"]
+        if sc and rm and rm[0].n > sc[0].n:
+            after.append(rm[0])
+    if not after:
+        res.missing.append("enter a system with a fresh scar beacon line and another untold record (rm_own 0 or no crew): "
+                           "no owner=remark arrival line queued after an owner=scar line")
+    res.ev("remark lines after the scar line", after)
+    res.ev("dropped at the cap", ctx.find("remark", "remark", result="dropped", reason="cap"))
+    return res
+
+
+def c_wb5(ctx):
+    res = Res()
+    res.logpart = True
+    v = [r for r in ctx.find("remark", "voice") if ":absent" in (r.get("tried") or "") and r.get("speaker")]
+    for lg in ctx.logs:
+        bad = [e for e in (lg.errors or []) if "TRF_RmProbe" in e.text]
+        if bad:
+            res.fails.append("ScriptErrors.log names TRF_RmProbe (%d lines)" % len(bad))
+            res.ev("TRF_RmProbe errors", bad)
+    if not v:
+        res.missing.append("a voice line with an absent template and a speaker (log 2; Kalem or Lastochka2 before mission 13)")
+    res.ev("voice lines with :absent", v)
+    return res
+
+
+def c_wb6(ctx):
+    res = Res()
+    res.logpart = True
+    v = [r for r in ctx.find("remark", "voice") if r.visit is not None and r.visit.chapter in (11, 12)]
+    for r in v:
+        if r.get("speaker") == "Lastochka":
+            res.fails.append("%s: Lastochka speaks in chapter %s" % (r.short(), r.visit.chapter))
+    ok = [r for r in v if ("Lastochka:dead" in (r.get("tried") or "") or "Lastochka:absent" in (r.get("tried") or ""))
+          and r.get("speaker") != "Lastochka"]
+    if not ok:
+        res.missing.append("a save in chapter 11 or 12 (after missions 11_1/11_2) with a remark: no voice line with "
+                           "Lastochka:dead or Lastochka:absent")
+    res.ev("chapter 11-12 voice lines", v)
+    return res
+
+
+def c_wb7(ctx):
+    res = Res()
+    res.logpart = True
+    v = ctx.find("remark", "voice")
+
+    def silent_only(r):
+        t = [x for x in (r.get("tried") or "").split(",") if x and x != "-"]
+        return t and all(x.endswith(":silent") for x in t)
+    if v and all(silent_only(r) for r in v):
+        res.fails.append("every voice line has only :silent entries: IsCanSayReplica is false for the squad (set rm_csr 0)")
+    if not v:
+        res.missing.append("no module=remark event=voice line (install with LOG=2)")
+    res.ev("voice lines with a speaker", [r for r in v if r.get("speaker")])
+    res.ev("silent entries", [r for r in v if ":silent" in (r.get("tried") or "")])
+    return res
+
+
+def c_wb8(ctx):
+    res = Res()
+    res.logpart = True
+    den = [r for r in ctx.find("safety", "gate", feature="remark", result="denied")]
+    for r in remark_says(ctx, "remark"):
+        d = [x for x in den if x.visit is r.visit and x.n < r.n]
+        if d:
+            res.fails.append("%s: shown after %s in the same visit" % (r.short(), d[0].short()))
+    sk = [r for r in ctx.find("remark", "skip") if (r.get("reason") or "").startswith("gate:")]
+    if not sk:
+        res.missing.append("enter a system named by a running quest with a record: no event=skip reason=gate:<why>")
+    res.ev("gate skips", sk)
+    res.ev("not shown at the due (gate)", [r for r in ctx.find("remark", "say", result="not_shown") if (r.get("reason") or "").startswith("gate:")])
+    return res
+
+
+def c_wb9(ctx):
+    res = Res()
+    res.logpart = True
+    says = remark_says(ctx)
+    err = ctx.find("remark", "error")
+    if err:
+        res.fails.append("%d module=remark event=error lines" % len(err))
+        res.ev("remark errors", err)
+    if says:
+        for lg in ctx.logs:
+            if lg.errors is None:
+                res.notes.append("ScriptErrors.log not found for %s: check it by hand" % lg.path)
+            elif lg.errors:
+                res.fails.append("ScriptErrors.log has %d lines in a run with a crew line shown" % len(lg.errors))
+                res.ev("ScriptErrors.log", lg.errors)
+    else:
+        res.missing.append("no crew line shown from a due call (W-B06.1)")
+    res.ev("lines shown from the tick", says)
+    return res
+
+
+def c_wb10(ctx):
+    res = Res()
+    res.logpart = True
+    r = [x for x in remark_says(ctx, "scar") if x.get("output") == "radio"]
+    if not r:
+        res.missing.append("enter a system with a fresh FTU beacon (a lost freighter 0-4 legs old) with a squad pilot aboard: "
+                           "no event=say owner=scar output=radio result=shown")
+    res.ev("voiced beacon lines", r)
+    res.ev("own lines", ctx.find("remark", "own"))
+    return res
+
+
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
@@ -2661,6 +2845,18 @@ ITEMS = [
      "the USS line names the system ('... the guard in Debris 4 ...'); with LOC=1 the scaffold text without the name"),
     ("W-A12.8", "jump warning: the PORTAL_<X>_Action wrapper runs before the confirm box, also after a load", c_wa8,
      "the warning line on screen while the 'teleport' confirm box is up; OK still jumps, Cancel still stays"),
+    ("W-B06.1", "a remark plays as radio from a squad pilot", c_wb1,
+     "the pilot's portrait with the line ('The freighter Kestrel went missing here 12 days back. ...'), readable"),
+    ("W-B06.2", "no event told twice", c_wb2, None),
+    ("W-B06.3", "one crew line per entry", c_wb3, None),
+    ("W-B06.4", "arr_max 3 respected, the remark queued after the scar line", c_wb4, None),
+    ("W-B06.5", "absent squad pilots are filtered", c_wb5, None),
+    ("W-B06.6", "dead Lastochka is filtered (chapters 11-12)", c_wb6, None),
+    ("W-B06.7", "IsCanSayReplica usable for squad pilots", c_wb7, None),
+    ("W-B06.8", "quest safety: no remark in a gated system", c_wb8, None),
+    ("W-B06.9", "tick safety: Message from a due call", c_wb9, None),
+    ("W-B06.10", "the scar beacon line voiced by the crew", c_wb10,
+     "the beacon line in a squad pilot's portrait, ending 'That was <n> days back.'"),
 ]
 
 
@@ -2783,12 +2979,19 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "EW8.16": "NO DATA", "EW8.17": "NO DATA", "Q-WQ.11": "NO DATA", "Q-WQ.12": "NO DATA", "Q-WQ.13": "NO DATA",
             "Q-WQ.14": "NO DATA",
             "W-A12.1": "MANUAL", "W-A12.2": "FAIL", "W-A12.3": "MANUAL", "W-A12.4": "FAIL", "W-A12.5": "NO DATA",
-            "W-A12.6": "MANUAL", "W-A12.7": "NO DATA", "W-A12.8": "NO DATA"}
+            "W-A12.6": "MANUAL", "W-A12.7": "NO DATA", "W-A12.8": "NO DATA",
+            "W-B06.1": "MANUAL", "W-B06.2": "FAIL", "W-B06.3": "FAIL", "W-B06.4": "FAIL", "W-B06.5": "NO DATA",
+            "W-B06.6": "NO DATA", "W-B06.7": "FAIL", "W-B06.8": "FAIL", "W-B06.9": "PASS", "W-B06.10": "MANUAL"}
 # tests/check_ingame_warn_fixture.log: correct warning behaviour only. A dock warning for Gideon at Avalon (leg 100) after
 # the station's dock line, a second approach skipped (visit), a return at leg 102 skipped (cooldown); at XT-23 (station
 # voice deny, a station pass, no station dock line) a pass reason=scene, then a warning for XT-24; a load of an earlier
 # save with a warning at leg 98; a return at leg 110 with the warning again.
 SELFTEST_WARN = {"W-A12.1": "MANUAL", "W-A12.2": "PASS", "W-A12.3": "MANUAL", "W-A12.4": "PASS"}
+# tests/check_ingame_remark_fixture.log: correct crew remark behaviour. Kadi (chapter 6): a fresh beacon line voiced by
+# Ternie, the remark skipped (done); Gaoba: the scar line, then the remark queued after it and said as radio; Lidau: a
+# quest names it (gate skip); Gaoba again: the event told; Altair (chapter 11): Lastochka dead, the Hero speaks.
+SELFTEST_REMARK = {"W-B06.1": "MANUAL", "W-B06.2": "PASS", "W-B06.3": "PASS", "W-B06.4": "PASS", "W-B06.5": "PASS",
+                   "W-B06.6": "PASS", "W-B06.7": "PASS", "W-B06.8": "PASS", "W-B06.9": "PASS", "W-B06.10": "MANUAL"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -2808,6 +3011,10 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # a second approach skipped (visit), the jump warning at the portal, a first-visit note at Cassily (no later note=seen:
 # W-A12.5 NO DATA), then back at Avalon a pass reason=latch followed by a warning for Gideon 2 legs later (W-A12.2 and
 # W-A12.4 FAIL); no USS line (W-A12.7), no jump warning after a load (W-A12.8).
+# Crew remarks block (the very end, Gaoba twice): a remark shown after a strict-gate denial for feature remark (W-B06.8
+# FAIL) and after a voiced beacon line in the same entry (W-B06.3 FAIL), four arrival lines queued in one entry (W-B06.4
+# FAIL), every voice line silent (W-B06.7 FAIL), the same event said again on the next entry (W-B06.2 FAIL); no voice
+# line with an absent template and a speaker (W-B06.5), no chapter 11-12 voice line (W-B06.6).
 
 
 def selftest():
@@ -2829,7 +3036,12 @@ def selftest():
         if got.get(iid) != v:
             print("selftest: warn fixture %s is %s, expected %s" % (iid, got.get(iid), v))
             bad += 1
-    n = len(SELFTEST) + len(SELFTEST_EYES[1]) + len(SELFTEST_WARN)
+    got = dict((r[0], r[2]) for r in score(Ctx([Log(FIXTURE_REMARK, None, [])]), {}))
+    for iid, v in SELFTEST_REMARK.items():
+        if got.get(iid) != v:
+            print("selftest: remark fixture %s is %s, expected %s" % (iid, got.get(iid), v))
+            bad += 1
+    n = len(SELFTEST) + len(SELFTEST_EYES[1]) + len(SELFTEST_WARN) + len(SELFTEST_REMARK)
     if parse_logfmt('a=1 message="x \\"y\\" z" b=') != {"a": "1", "message": 'x "y" z', "b": ""}:
         print("selftest: logfmt quoting")
         bad += 1

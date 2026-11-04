@@ -31,6 +31,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_merc.script` | Mercenary clans, build steps 1 and 3 ([design/merc-spec.md](design/merc-spec.md)): the record of the twelve dormant clans (`TRF.mc`: standing, condition, fortune, stage, role, the fields of the later steps), updated at every region tick (presence by region demand, income and upkeep, off-screen losses, stages with the two-tick rule and two stage 4 slots, the Black Legion floor, break and re-form, decays); the hire role at stages 1-2: hire offers from chapter 5, the meeting and the conversations as dialog pages (`Data/Scripts/Trade/TRF_MercPg.xml`, box fallback), the hired wing for ten minutes across jumps, extension, settlement, collection, betrayal, the patrol board line and the Black Legion legend. Off by default (`merc` 0). Loads after `trf_parcel`. |
 | `trf_wq.script` | Freight unlock quest "Missing in Capricorn", all three commits ([design/freight-quest-spec.md](design/freight-quest-spec.md)): the FTU charter office offer at a Gefest or Golkonda loop stop (trade box 450, the Office board row and the mission card of the station jobs UI), the logbook or Job log entry `trf_wq`, the Kestrel mayday (a seeded roll at entry, the transport under a T2 clan raid, saved through the 8.5 raid help, lost, or void and retried); the grandfather rule for saves with a freighter; the Kestrel's report (trade line 40), the Marlin wreck (a quest record of `trf_survive`), the fence (pirate box 300) or the patrol board (patrol line 45); the clan hold at XB-13 (the clan base with the captain tipped there, or the Marlin's hulk with a tier-3 guard; the crew as quest pods of `trf_survive`), the hand-in and the charter office unlock of the first Wolves freighter (`TRF_FrBuyGate` reason `quest` below step 70); the presentation: campaign dialog windows (`Data/Scripts/Trade/TRF_Wq*.xml`), two letters by post, the main mission list (cfg `wq_dialog`). Loads after `trf_merc`. |
 | `trf_warn.script` | Lethal-system warnings, A12 step 1 ([design/warnings-spec.md](design/warnings-spec.md)): the list of 23 vanilla systems that kill, ambush or trap an arriving mothership with the mirror of each one's vanilla arming condition (checked by `tools/check_warn.py`), the dockmaster's warning at a trade dock one jump from an armed one (req line 20), the first-visit note (an arrival line once per system and save) and the jump warning at the portal (a wrapper over the `PORTAL_<X>_Action` globals). Host-tested only. Loads after `trf_wq`. |
+| `trf_remark.script` | Crew remarks on system history, B06 ([design/crew-remarks-spec.md](design/crew-remarks-spec.md)): on system entry one radio line from a squad pilot about a dated record of the system the player has not heard about (an off-screen trader or sweep scar, a fallen pirate base, a captain killed by an off-screen sweep), the age sentence and crew voice of the scar's beacon line, the told stamps `TRF.rm`; owns the shared crew-voice API `TRF_CrewVoice` / `TRF_CrewSay` (B03 and A01 use it). Host-tested only. Loads after `trf_warn`. |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -1018,6 +1019,41 @@ Wave 1 item 1 of the roadmap, A12 step 1 (spec [design/warnings-spec.md](design/
 
 W-A12.1 (the dock line next to an armed row), W-A12.2 (none during a mission or scene), W-A12.3 (after the station's greeting), W-A12.4 (visit and 8-leg repetition), W-A12.5 (the note once per save), W-A12.6 (the arming mirror at a jump), W-A12.7 (plain text and `$1`), W-A12.8 (the portal wrapper before the confirm box, also after a load): [design/PROGRESS.md](design/PROGRESS.md) "Wave 1 (host-tested only)", scored by `tools/check_ingame.py`.
 
+## Crew remarks (`EXP=0 TRAFFIC=1`)
+
+Wave 1 item 2 of the roadmap, B06 (A01 step 1; spec [design/crew-remarks-spec.md](design/crew-remarks-spec.md); owner decisions of spec 2.1 taken 2026-11-04): module `trf_remark`, loaded after `trf_warn` (`extra_count=17`). State `TRF.rm` (the told stamps: at most four systems with the leg of the last event told there, and a floor; 139 bytes at most; nil until the first line) and trf_captain's `dl` field (the leg of a death by an off-screen sweep, 22 bytes per record). Host-tested only (`rm-a`..`rm-g`), not run in the game; the user tests wave 1 together with the freight quest and the Jobs tab checks.
+
+### What the player sees
+
+- On entering a system with a record the player has not heard about, at most one radio line from a squad pilot, after the other arrival lines: "The freighter Kestrel went missing here 12 days back. Pirates, most likely." (an off-screen trader scar, from chapter 1), "New Empire sent a fleet against the Grey Ravens here 9 days back and lost it." or "A sweep caught the Black Comets here 3 days back." (sweep scars), "The Rust Jackals lost their base here yesterday." (a destroyed or abandoned pirate base), "A sweep caught <captain> here 5 days back. The <clan> lost their captain." (a wanted captain killed by an off-screen sweep, in the region's home); sweeps, bases and captains from chapter 5. A sweep that took a base and its captain is one line in the base system ("... <captain> went down with them.").
+- Speakers: pirate records go to Lastochka (Ternie; `Lastochka2` from mission 13), navy records to Kalem; the Hero speaks when they are not aboard, dead, on another side or cannot speak. The mod never creates a story pilot.
+- Each event is told once, the oldest first, one crew line per entry; a line dropped from a full arrival queue or lost to a jump or load is told on a later entry. Events seen in the visit (a base destroyed in view) are not told later.
+- The FTU beacon line of a fresh lost freighter gets the age ("FTU beacon: freighter Kestrel lost here. That was 2 days back.") and, the first time, plays in a squad pilot's portrait.
+- Nothing during a story mission that names the system, a scene, `__disableAction` or `__sys_SOS`; nothing marks, offers or sends the player anywhere.
+
+### Config keys (remarks)
+
+`install-test.sh` writes `REMARKS` and `REMARK_MODE` only when set (`LEVEL=v01`/`v02` write `remarks=0` unless `REMARKS` is set); `config.script` does not list them (the module defaults apply); tune keys go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `remarks` | 1 | 0: no remarks, the scar's beacon line as before |
+| `remark_mode` | 1 | 1 radio with the pilot's portrait (`Pilot:Message`, CHECK CR1/C4), 0 a screen line "Ternie: ..." |
+| tune `rm_ch` | 0 | first chapter of trader remarks (0..20; 4 is the alternative of roadmap decision 6) |
+| tune `rm_ch_late` | 5 | first chapter of sweep, base and captain remarks |
+| tune `rm_age` | 40 | oldest event told, legs (1..200) |
+| tune `rm_secs` | 8 | seconds on screen (3..20) |
+| tune `rm_csr` | 1 | 0: do not require `IsCanSayReplica` (set it if W-B06.7 fails) |
+| tune `rm_own` | 1 | 0: the beacon line keeps its screen line (still with the age) |
+
+### Log lines (remarks)
+
+`module=remark event=remark system= system_index= kind= event_leg= age= voice= speaker= clause= candidate_count= result=<queued|dropped> reason=`, `event=say owner=<remark|scar> system_index= event_leg= voice= speaker= output=<radio|line> result=<shown|not_shown> reason=`, `event=fix`, `event=error`, `event=dump`, at log 2 `event=skip`, `event=candidate`, `event=voice`, `event=own`, `event=told`; the arrival queue line carries `voiced=`; full list in [design/log-events.md](design/log-events.md) (remark).
+
+### In-game checks (remarks)
+
+W-B06.1 (radio with the portrait), W-B06.2 (no event told twice), W-B06.3 (one crew line per entry), W-B06.4 (`arr_max` 3, the remark after the scar line), W-B06.5 (absent pilots), W-B06.6 (dead Lastochka, chapters 11-12), W-B06.7 (`IsCanSayReplica`), W-B06.8 (quest safety), W-B06.9 (`Message` from a due call), W-B06.10 (the voiced beacon line): [design/PROGRESS.md](design/PROGRESS.md) "Wave 1 (host-tested only)", scored by `tools/check_ingame.py`.
+
 ## Vanilla fixes
 
 The mod does not edit vanilla scripts. Where a vanilla flow misbehaves, it corrects the result at runtime and logs it.
@@ -1123,7 +1159,7 @@ Movie and UI natives (`pe/traffic.c`, [design/mod-research/movie-state.md](desig
 ## Host checks (no game)
 
     mods/traffic/tools/get-lua4.sh                       # builds .work/lua4/bin/lua once
-    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment + v0.1 scenarios a..h (tests/host_traffic.lua) + v0.2 scenarios v02-a..n (tests/host_v02.lua) + v1 scenarios v1-a..n (tests/host_v1.lua) + station voices stn-a..h (tests/host_station.lua) + plumbing pl-a..e (tests/host_plumb.lua) + survivors sv-a..g (tests/host_survive.lua) + faction ladder lad-a..g (tests/host_ladder.lua) + charter ch-a..h (tests/host_charter.lua) + battle scars sc-a..g (tests/host_scar.lua) + wanted captains cap-a..i (tests/host_captain.lua) + demand page dm-a..h (tests/host_demand.lua) + clan stashes sh-a..h (tests/host_stash.lua) + Wolves Freight fr-a..l (tests/host_freight.lua) + pirate haunts ha-a..f (tests/host_haunt.lua) + sealed parcels pcl-a..h (tests/host_parcel.lua) + mercenary clans mc-a..k (tests/host_merc.lua) + named mercenary pilots mcp-a..c (tests/host_pilots.lua) + hail hl-a..e (tests/host_hail.lua) + strength scale str-a..e (tests/host_str.lua) + pirate fits ft-a..h (tests/host_fits.lua) + freight unlock quest wq-a..g (tests/host_wq.lua) + lethal-system warnings wn-a..g (tests/host_warn.lua)
+    mods/traffic/tests/run_host.sh                       # CRLF + luac -p + lint + loader scenario per experiment + v0.1 scenarios a..h (tests/host_traffic.lua) + v0.2 scenarios v02-a..n (tests/host_v02.lua) + v1 scenarios v1-a..n (tests/host_v1.lua) + station voices stn-a..h (tests/host_station.lua) + plumbing pl-a..e (tests/host_plumb.lua) + survivors sv-a..g (tests/host_survive.lua) + faction ladder lad-a..g (tests/host_ladder.lua) + charter ch-a..h (tests/host_charter.lua) + battle scars sc-a..g (tests/host_scar.lua) + wanted captains cap-a..i (tests/host_captain.lua) + demand page dm-a..h (tests/host_demand.lua) + clan stashes sh-a..h (tests/host_stash.lua) + Wolves Freight fr-a..l (tests/host_freight.lua) + pirate haunts ha-a..f (tests/host_haunt.lua) + sealed parcels pcl-a..h (tests/host_parcel.lua) + mercenary clans mc-a..k (tests/host_merc.lua) + named mercenary pilots mcp-a..c (tests/host_pilots.lua) + hail hl-a..e (tests/host_hail.lua) + strength scale str-a..e (tests/host_str.lua) + pirate fits ft-a..h (tests/host_fits.lua) + freight unlock quest wq-a..g (tests/host_wq.lua) + lethal-system warnings wn-a..g (tests/host_warn.lua) + crew remarks rm-a..g (tests/host_remark.lua)
     python3 -I mods/traffic/tools/check_warn.py --check          # the lethal-system list against the game scripts (read-only on the clone; exit 1 on a finding)
     python3 -I mods/traffic/tools/lint_lua.py --allow TeleportToLocation,CustomTeleportate mods/traffic/Data/Scripts/Mods/Traffic/*.script
     sh mods/traffic/tests/test_pilots.sh                 # pilot templates: the two-block Pilots.xml merge and install.sh with and without --merc-names on copies under .work/pilots/ (run_host.sh runs it last, with the scenarios mcp-a..c of tests/host_pilots.lua)

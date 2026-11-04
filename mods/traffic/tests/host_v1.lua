@@ -2187,7 +2187,7 @@ function T_V1_N()
 	TRF.cap = {};
 	for k = 1, 11 do
 		TRF.cap[k] = {nm=24, gen=999, st=6, tp=5, esc=3, noto=3, gr=9, gr_t=-99999, seen=113, due=99999, lj=99999, dj=99999, born=-99999,
-			met=1, last=113, ti=-99999, pv=24, q=3, ql=-99999};
+			met=1, last=113, ti=-99999, pv=24, q=3, ql=-99999, dl=99999};
 	end;
 	TRF.claim = {};
 	for k = 1, 3 do tinsert(TRF.claim, {slot=11, gen=999, nm=24, amt=30000, kind=2, leg=-99999}); end;
@@ -2249,6 +2249,8 @@ function T_V1_N()
 	TRF.wq = {v=1, s=90, k=7, n=9, dc=-9999999, cd=-9999999, sd=9999, lv=1, r=3, p=1, ql=90, ws=999, m=3, cg=999, pn=3, pk=3, wd=-9999999};
 	-- Lethal-system warnings worst case (design/warnings-spec.md 3.4): 113 note bits in three words, 6 dock stamps.
 	TRF.wn = {v1=1099511627775, v2=1099511627775, v3=8589934591, c={[44]=skl, [35]=skl, [111]=skl, [85]=skl, [102]=skl, [113]=skl}};
+	-- Crew remarks worst case (design/crew-remarks-spec.md 3.3): 4 told stamps and the floor (the captains' dl above).
+	TRF.rm = {[110]=skl, [111]=skl, [112]=skl, [113]=skl, f=skl};
 	local mcz = HOST_SaveSize(TRF.mc);
 	TRF_Mc_Fix();
 	HOST_Check(HOST_SaveSize(TRF.mc) == mcz and mcz <= 6000, "merc worst case kept by the repair: "..mcz.." bytes <= 6000");
@@ -2275,7 +2277,7 @@ function T_V1_N()
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");
 	local size = 8 + 3 + HOST_SaveSize(TRF);
 	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "ch", "scar",
-		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "wq", "wn", "live"};
+		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "wq", "wn", "rm", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	local lp, ll = "", {"tr", "stat", "rd", "cvs", "tq", "sw", "fq", "cr", "dc", "bs", "pg"};
 	for i = 1, getn(ll) do lp = lp.." "..ll[i].."="..HOST_SaveSize(L[ll[i]]); end;
@@ -2297,7 +2299,7 @@ function T_V1_N()
 	HOST_Check(tg == "", "no TRF_G* or flight_trf_* globals"..tg);
 	TRF_DumpState("test");
 	local dl = {"module=state event=dump_v4 ", "module=track event=dump", "module=faction event=dump", "module=clan event=dump", "module=convoy event=dump", "module=danger event=dump", "module=supply event=dump", "module=base event=dump", "module=loc event=dump", "module=scar event=dump ",
-		"module=captain event=dump ", "module=stash event=dump ", "module=freight event=dump ", "module=haunt event=dump ", "module=parcel event=dump ", "module=merc event=dump ", "module=wq event=dump "};
+		"module=captain event=dump ", "module=stash event=dump ", "module=freight event=dump ", "module=haunt event=dump ", "module=parcel event=dump ", "module=merc event=dump ", "module=wq event=dump ", "module=remark event=dump "};
 	local md = "";
 	for i = 1, getn(dl) do if V_Logs(dl[i]) == 0 then md = md.." "..dl[i]; end; end;
 	HOST_Check(md == "", "TRF_DumpState calls every v1 dump"..md);

@@ -19,7 +19,7 @@
 -- trf_gen (TRF_WindDown), trf_plumb (seed providers, event slot, patrol line 35, owed payer, box 100, raid-help resolver,
 -- ship cap, marker with an attached object, prize gap), trf_state (TRF_ModList, TRF_Repair).
 -- Saved fields: TRF.cap[slot] = {nm, gen, st, tp, esc, noto, gr, gr_t, seen, due, lj, dj, born, met, last[, ti, pv, q,
--- ql]}, TRF.claim[i] = {slot, gen, nm, amt, kind, leg} (at most 3), TRF.capch = {slot, to, hpb, leg, wn, cg} or nil,
+-- ql, dl]} (dl: the leg of a death by an off-screen sweep, crew remarks), TRF.claim[i] = {slot, gen, nm, amt, kind, leg} (at most 3), TRF.capch = {slot, to, hpb, leg, wn, cg} or nil,
 -- TRF.capg = {lc, vn[, ow, oh]}. Jump stamps (due, lj, dj, lc) are TRF.clock.j values (TRF_Jumps).
 -- Visit state lives in the chunk local CP (never saved; rebuilt by every MapInitialization), the handles in CP.h.
 -- Layout as trf_scar: helpers, accessors, static tables, pure functions (*Of), state, gates, spawn, fight, dock,
@@ -1870,6 +1870,9 @@ function TRF_Cap_Sweep(slot, L, won, how)
 		r.st = 4;
 		r.dj = J;
 		r.ti = nil;
+		-- Crew remarks (design/crew-remarks-spec.md D16): the leg of a death by an off-screen sweep, the leg trf_base and
+		-- trf_scar stamp at this outcome (TRF.clock.legs, not the tick leg L, which trails it during a region catch-up).
+		if how == "off" then r.dl = TRF_CapLegs(); end;
 		if r.q == 1 then TRF_CapQEnd(slot, r, QUEST_FAILED); end;
 		TRF_CapE("sweep", "slot", slot, "generation", r.gen, "via", how, "result", "dead");
 	else
@@ -2124,6 +2127,8 @@ function TRF_Cap_Fix()
 			if TRF_CapNum(e.q, 1, 3) then r.q = floor(e.q); end;
 			if e.nw == 1 then r.nw = 1; end;
 			if r.q and r.q >= 2 then r.ql = TRF_CapFld(e, "ql", -99999, legs, legs); end;
+			-- Crew remarks (design/crew-remarks-spec.md 3.1 D5): dl only on a dead record, 0..legs.
+			if r.st == 4 and TRF_CapNum(e.dl, 0, legs) then r.dl = floor(e.dl); end;
 			out[s] = r;
 		end;
 		TRF.cap = out;
@@ -2184,7 +2189,7 @@ function TRF_Cap_Dump()
 			n = n + 1;
 			TRF_CapE("dump_rec", "slot", s, "name", r.nm, "generation", r.gen, "state", r.st, "template", r.tp, "escapes", r.esc,
 				"notoriety", r.noto, "grudge", r.gr, "seen", TRF_CapName(r.seen), "due", r.due, "lie_low", r.lj, "died", r.dj, "born", r.born,
-				"met", r.met, "last", r.last, "tip", r.ti, "quest", r.q);
+				"met", r.met, "last", r.last, "tip", r.ti, "quest", r.q, "death_leg", r.dl);
 		end;
 	end;
 	local cl = TRF_CapClaims();

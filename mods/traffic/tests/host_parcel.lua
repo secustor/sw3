@@ -153,9 +153,9 @@ function T_PCL_A()
 	PC_Begin("altair", "9_1");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=16") >= 1, "trf_parcel loads before trf_merc (extra_count=16 with trf_wq and trf_warn)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=17") >= 1, "trf_parcel loads before trf_merc (extra_count=17 with trf_wq, trf_warn and trf_remark)");
 	local ml, pm = TRF_ModList(), TRF_PlMods();
-	HOST_Check(ml[getn(ml) - 3] == "Pc" and ml[getn(ml) - 2] == "Mc" and pm[getn(pm) - 3] == "Pc" and pm[getn(pm) - 2] == "Mc", "TRF_ModList has Pc before Mc, TRF_PlMods ends with Pc, Mc, Wq, Wn");
+	HOST_Check(ml[getn(ml) - 4] == "Pc" and ml[getn(ml) - 3] == "Mc" and pm[getn(pm) - 3] == "Pc" and pm[getn(pm) - 2] == "Mc", "TRF_ModList has Pc before Mc, TRF_PlMods ends with Pc, Mc, Wq, Wn");
 	local d = TRF_Pc_OptDef();
 	HOST_Check(d.enable_parcels == 1 and d.enable_contraband == 0 and d.enable_customs == 0 and d.enable_intercept == 0 and d.pcl_prize_gap == 1
 		and d.pcl_logbook == 1 and d.pcl_probe == 0 and TRF_PcOpt("enable_parcels") == 1 and type(TRF_PcOpt("pcl_deny")) == "table",

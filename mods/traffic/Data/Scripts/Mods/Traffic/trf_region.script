@@ -957,6 +957,8 @@ function TRF_RgSweepOut(slot, L, won, k, how, p100)
 	-- Pirate haunts (design/haunt-spec.md 5.3): a success marks the target system for the Bust count haunt_f_swept; read
 	-- before the outcome, since a won sweep destroys the active base that is the target (TRF_SweepTarget).
 	TRF_P("TRF_Haunt_Sweep", slot, L, won);
+	-- Battle scars source 3 reads the same target before the outcome (scar-spec 5.2: the base system, else the home).
+	local tgt = TRF_N("TRF_SweepTarget", slot);
 	if won then
 		c.sc = min(c.sc, 35);
 		r.sw = 1; r.sl = 0; r.sn = 0;
@@ -985,7 +987,7 @@ function TRF_RgSweepOut(slot, L, won, k, how, p100)
 		TRF_P("TRF_NewsPost", "sweep", "fail", slot);
 	end;
 	-- Battle scars source 3 (design/scar-spec.md 5.2): the off-screen attempt leaves a wreck field in its target.
-	if how == "off" then TRF_P("TRF_Sc_Sweep", slot, L, won, f); end;
+	if how == "off" then TRF_P("TRF_Sc_Sweep", slot, L, won, f, tgt); end;
 	-- Wanted captains (design/captain-spec.md 5.6): a sweep success kills or drives off the region's captain.
 	TRF_P("TRF_Cap_Sweep", slot, L, won, how);
 end;

@@ -445,7 +445,7 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `eject` | `module=plumb event=eject result_before=2 result_after=1` | 1 |
 | `event_slot` | `module=plumb event=event_slot kind=staged rank=3 result=taken` / `holder=sweep result=refused` / `result=freed` | 1 |
 | `escort_slot` | `module=plumb event=escort_slot owner=pack result=taken` / `holder=pack result=refused` | 1 |
-| `arrival_line` | `module=plumb event=arrival_line owner=beacon line_index=1 delay=8.000 result=queued` | 1 |
+| `arrival_line` | `module=plumb event=arrival_line owner=beacon line_index=1 delay=8.000 voiced=false result=queued` (`voiced=true`: a crew remark or a voiced scar line, `design/crew-remarks-spec.md` 7.3) | 1 |
 | `arrival_line` | `module=plumb event=arrival_line owner=p4 line_index=4 result=dropped reason=cap` (or `reason=no_entry`, `reason=due`) | 1 |
 | `arrival_line` | `module=plumb event=arrival_line owner=beacon result=shown` (or `result=not_shown`) | 2 |
 | `job` | `module=plumb event=job kind=1 field_count=2 result=taken` / `holder=1 result=refused` / `result=cleared` | 1 |
@@ -596,7 +596,7 @@ Wanted captains, step 1 (`design/captain-spec.md` 7). `slot` is the clan region 
 | `enter` | `module=captain event=enter system=xb13 arrival_portal=PORTAL_R plan=wait slot=4` | 2 |
 | `wind_down` | `module=captain event=wind_down slot=4 state=leave` | 1 |
 | `dump` | `module=captain event=dump record_count=8 claim_count=1 jumps=212 last_claim=197 vendettas=0 held=nil chase=nil visit=nil visit_slot=nil` | 1 |
-| `dump_rec` | `module=captain event=dump_rec slot=5 name=7 generation=1 state=1 template=4 escapes=1 notoriety=2 grudge=2 seen=xb13 due=0 lie_low=0 died=0 born=640 met=1 last=91 tip=nil quest=1` (one per record) | 1 |
+| `dump_rec` | `module=captain event=dump_rec slot=5 name=7 generation=1 state=1 template=4 escapes=1 notoriety=2 grudge=2 seen=xb13 due=0 lie_low=0 died=0 born=640 met=1 last=91 tip=nil quest=1 death_leg=nil` (one per record; `death_leg` the leg of a death by an off-screen sweep, crew remarks D16) | 1 |
 | `dump_claim` | `module=captain event=dump_claim index=1 slot=5 generation=1 amount=26700 kind=1 leg=812` (one per claim) | 1 |
 
 ## stash (`trf_stash.script`; `TRF_ShE`, `TRF_ShDE`)
@@ -881,6 +881,23 @@ Lethal-system warnings, A12 step 1 (`design/warnings-spec.md` 12; host-tested on
 | `portal` | `module=warn event=portal portal=PORTAL_U destination=argon via=map listed=false` (a wrapped portal to an unlisted system) | 2 |
 | `fix` | `module=warn event=fix field=c result=dropped dropped_count=4` (`field=wn\|v1\|v2\|v3\|<unknown key>`) | 1 |
 | `dump` | `module=warn event=dump note_words=0,4096,0 stamps=44:12,53:12` | 2 |
+
+## remark (`trf_remark.script`; `TRF_RmE`, `TRF_RmDE`)
+
+Crew remarks on system history, B06 (`design/crew-remarks-spec.md` 11; host-tested only). `system_index` is the map index, `event_leg` the record's leg (scar `leg`, base `t`, captain `dl`), `age` `TRF.clock.legs - event_leg`, `voice` a key of `TRF_CrewVoiceTab` (`pirate`, `navy`, `crew`) or `list` (a template list, B03), `speaker` the template that spoke.
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=remark event=error message=<m>` (also a raising `Pilot:Message`, then the screen line) | 1 |
+| `remark` | `module=remark event=remark system=gaoba system_index=42 kind=trader event_leg=31 age=12 voice=pirate speaker=Lastochka clause=false candidate_count=2 result=queued reason=nil` (`kind=trader\|sweep_navy\|sweep_pirate\|base\|captain`; `result=dropped reason=cap\|due\|no_entry\|no_speaker\|plumb`) | 1 |
+| `say` | `module=remark event=say owner=remark system_index=42 event_leg=31 voice=pirate speaker=Lastochka output=radio result=shown reason=nil` (`owner=scar` for the beacon line; `output=line`; `reason=msg_error\|no_speaker` on a shown fallback line; `result=not_shown reason=off\|left\|mode:<why>\|gate:<why>\|supp:<q>\|no_speaker\|line_failed`) | 1 |
+| `skip` | `module=remark event=skip system=gaoba reason=none` (`off, nomap, done, mode:<why>, gate:<why>, hold:disable_action\|sys_sos\|suppressed`) | 2 |
+| `candidate` | `module=remark event=candidate system_index=42 kind=base event_leg=20 age=23 result=ok` (`told, floor, old, chapter, ch5, own, elsewhere, merged`) | 2 |
+| `voice` | `module=remark event=voice voice=pirate speaker=Hero tried=Lastochka2:absent,Lastochka:dead,Hero:ok` (`:side, :silent, :error`; `speaker=nil` when nobody passes) | 2 |
+| `own` | `module=remark event=own owner=scar system_index=42 event_leg=40 age=2 voice=navy voiced=true result=suffix` (`result=told`: the event was told, no voice) | 2 |
+| `told` | `module=remark event=told system_index=42 event_leg=31 via=remark evicted=nil floor=nil stamp_count=1` (`via=own\|witness`; `evicted=<idx>` when the cap of 4 dropped a stamp) | 2 |
+| `fix` | `module=remark event=fix field=rm result=dropped` (`result=repaired dropped_count=<n>`) | 1 |
+| `dump` | `module=remark event=dump floor=nil stamp_count=2 stamps=7:12,42:31 remark_mode=1` | 1 |
 
 ## supply (`trf_supply.script`; `TRF_SpE`)
 

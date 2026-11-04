@@ -1141,8 +1141,10 @@ end;
 
 -- Arrival line queue (spec 5.4): traffic's own line runs at arr_delay (5 s) after entry; mod lines follow at
 -- arr_gap (3 s) steps in call order, at most arr_max per entry, the rest dropped. Only during an entry (live.ag
--- set by TRF_Pl_OnActivate; a load sets none). Returns 1 when queued.
-function TRF_ArrivalLine(owner, text)
+-- set by TRF_Pl_OnActivate; a load sets none). Returns 1 when queued. spec (optional, crew remarks, design/crew-remarks-
+-- spec.md 7.3) = {v, s, l, h}: the due call gets the table {t = text, v, s, l, h} instead of the string and trf_remark's
+-- TRF_Rm_ArrSay shows it (voice v, the told stamp of system s at event leg l, and of h).
+function TRF_ArrivalLine(owner, text, spec)
 	local L = TRF_PlLive();
 	if not L or type(text) ~= "string" or text == "" then return nil, "arg"; end;
 	owner = tostring(owner);
@@ -1166,22 +1168,37 @@ function TRF_ArrivalLine(owner, text)
 	if type(L.aqt) == "number" then due = max(due, L.aqt + K.arr_gap); end;
 	due = max(due, gt);
 	local dt = due - gt;
-	if not TRF_N("TRF_Due", dt, "TRF_PlArrSay", owner, text) then
+	local b, vo = text, nil;
+	if type(spec) == "table" then
+		b = {t=text, v=spec.v, s=spec.s, l=spec.l, h=spec.h};
+		if spec.v then vo = 1; end;
+	end;
+	if not TRF_N("TRF_Due", dt, "TRF_PlArrSay", owner, b) then
 		TRF_PlE("arrival_line", "owner", owner, "line_index", n, "result", "dropped", "reason", "due");
 		return nil, "due";
 	end;
 	L.arq = n;
 	L.aqt = due;
-	TRF_PlE("arrival_line", "owner", owner, "line_index", n, "delay", TRF_F(dt), "result", "queued");
+	TRF_PlE("arrival_line", "owner", owner, "line_index", n, "delay", TRF_F(dt), "voiced", TRF_KvB(vo), "result", "queued");
 	return 1;
 end;
 
--- Due call of a queued arrival line.
-function TRF_PlArrSay(owner, text)
+-- Due call of a queued arrival line. b is the text, or the spec table of TRF_ArrivalLine: trf_remark's TRF_Rm_ArrSay
+-- shows it (1 shown, 0 not), else (module absent) its text as a plain line.
+function TRF_PlArrSay(owner, b)
 	local secs = 8;
 	local c = TRF_N("TRF_UI_Const");
 	if type(c) == "table" and type(c.arr_secs) == "number" then secs = c.arr_secs; end;
-	local ok = TRF_PlSay(text, secs);
+	local ok = nil;
+	if type(b) == "table" then
+		if type(TRF_Rm_ArrSay) == "function" then
+			if call(TRF_Rm_ArrSay, {owner, b}, "x", TRF_PlErr) == 1 then ok = 1; end;
+		else
+			ok = TRF_PlSay(b.t, secs);
+		end;
+	else
+		ok = TRF_PlSay(b, secs);
+	end;
 	TRF_PlDE("arrival_line", "owner", tostring(owner), "result", ok and "shown" or "not_shown");
 	return ok;
 end;

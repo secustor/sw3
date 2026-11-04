@@ -147,9 +147,9 @@ function T_CAP_A()
 	CP_Begin("xb13", "9_1");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=16") >= 1, "trf_captain loads after trf_scar (extra_count=16 with trf_stash, trf_freight, trf_haunt, trf_parcel, trf_merc, trf_wq and trf_warn)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=17") >= 1, "trf_captain loads after trf_scar (extra_count=17 with trf_stash, trf_freight, trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
 	local ml = TRF_ModList();
-	HOST_Check(ml[getn(ml) - 7] == "Cap" and TRF_Opt("cap_enable") == 1 and TRF_Opt("cap_board") == 1 and TRF_Opt("cap_intel") == 1
+	HOST_Check(ml[getn(ml) - 8] == "Cap" and TRF_Opt("cap_enable") == 1 and TRF_Opt("cap_board") == 1 and TRF_Opt("cap_intel") == 1
 		and TRF_Opt("cap_chase") == 1 and TRF_Opt("cap_capture") == 0 and TRF_Opt("cap_force_eject") == 0 and TRF_Opt("cap_vendetta") == 0,
 		"TRF_ModList has Cap; toggles of design 6: board, intel, chase on; capture, force eject, vendetta off");
 	local T = TRF_CapTune();
@@ -1029,14 +1029,15 @@ function T_CAP_H()
 	local cap = {};
 	for k = 1, 11 do
 		cap[k] = {nm=24, gen=999, st=6, tp=5, esc=3, noto=3, gr=9, gr_t=-99999, seen=113, due=99999, lj=99999, dj=99999, born=-99999, met=1, last=113,
-			ti=-99999, pv=24, q=3, ql=-99999, nw=1};
+			ti=-99999, pv=24, q=3, ql=-99999, nw=1, dl=99999};
 	end;
 	local cl = {};
 	for k = 1, 3 do tinsert(cl, {slot=11, gen=999, nm=24, amt=30000, kind=2, leg=-99999}); end;
 	local sz = HOST_SaveSize(cap) + HOST_SaveSize(cl) + HOST_SaveSize({slot=11, to=113, hpb=10, leg=-99999, wn=6, cg=999}) + HOST_SaveSize({lc=99999, vn=11, ow=10000000, oh=2})
 		+ 3 * 8 + strlen("cap") + strlen("claim") + strlen("capch") + strlen("capg") + 22;
 	print("HOST captain worst case bytes "..sz.." (cap "..HOST_SaveSize(cap)..", claim "..HOST_SaveSize(cl)..")");
-	HOST_Check(sz <= 6150, "TRF.cap at 11 records, 3 claims, capch, capg and the prize stamp: "..sz.." bytes <= 6150 (spec 3.3)");
+	-- Crew remarks (design/crew-remarks-spec.md 3.3): dl on every record raises the bound from 6,150 to 6,400.
+	HOST_Check(sz <= 6400, "TRF.cap at 11 records with dl, 3 claims, capch, capg and the prize stamp: "..sz.." bytes <= 6400 (spec 3.3)");
 	TRF.cap = cap; TRF.claim = cl;
 	HOST_Check(HOST_Reserved(TRF, "TRF") == "", "no reserved key in TRF");
 	TRF.cap = nil; TRF.claim = nil;

@@ -67,7 +67,7 @@ end;
 -- v0.2 and v1 modules with TRF_<M>_OptDef, TRF_<M>_TuneDef and TRF_<M>_Dump (v0.2 spec 10.2, 10.4; v1 10.1).
 function TRF_ModList()
 	return {"Rg", "Str", "Ft", "Tier", "Raid", "Hail", "Shop", "Loc", "Track", "Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Pl", "Stn",
-		"Sv", "Lad", "Ch", "Sc", "Cap", "Sh", "Fr", "Haunt", "Pc", "Mc", "Wq", "Wn"};
+		"Sv", "Lad", "Ch", "Sc", "Cap", "Sh", "Fr", "Haunt", "Pc", "Mc", "Wq", "Wn", "Rm"};
 end;
 
 -- Value of key in the first module table getglobal("TRF_"..M..suffix)() that has it, else nil.
@@ -656,6 +656,7 @@ function TRF_Repair()
 	TRF_P("TRF_Pc_Fix");
 	TRF_P("TRF_Mc_Fix");
 	TRF_P("TRF_Wn_Fix");
+	TRF_P("TRF_Rm_Fix");
 	-- cfg enabled 2 (restore-and-stop, trf_haunt and trf_merc not loaded): the pirate haunt fields and the mercenary clan
 	-- record go (design 16 section 6, Removal; design/merc-spec.md 3).
 	if type(TRF_Cfg) == "function" and TRF_Cfg().enabled == 2 then

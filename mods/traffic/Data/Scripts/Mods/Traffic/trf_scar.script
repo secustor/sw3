@@ -877,10 +877,12 @@ end;
 
 -- Source 3 (trf_region TRF_RgSweepOut, an off-screen attempt of region slot resolved at leg L): a sweep wreck in
 -- the attempt's target (TRF_SweepTarget: the base system, else the home), owned by the sweep faction f on a failure
--- and by nobody (pirate hulls) on a success; TT(pro) x 0.6 (kv), no recorder.
-function TRF_Sc_Sweep(slot, L, won, f)
+-- and by nobody (pirate hulls) on a success; TT(pro) x 0.6 (kv), no recorder. tgt: the target read by trf_region
+-- before the outcome (a won sweep destroys the active base, so a later read finds only the home; crew-remarks-spec 16).
+function TRF_Sc_Sweep(slot, L, won, f, tgt)
 	if not TRF_ScOn() then return nil; end;
-	local t = TRF_N("TRF_SweepTarget", slot);
+	local t = tgt;
+	if type(t) ~= "number" then t = TRF_N("TRF_SweepTarget", slot); end;
 	if type(t) ~= "number" then return nil; end;
 	local fac = 0;
 	if not won and type(f) == "number" and f >= 1 and f <= 5 then fac = f; end;
@@ -1345,9 +1347,15 @@ function TRF_ScLineOf(r, mode, ch, nm, fresh)
 	return "scararriveb";
 end;
 
--- Queues the scar line: trf_plumb's arrival queue (00 order: #6 beacon, then #2 scar), else a due line at 10 s.
-function TRF_ScArr(text)
-	if type(TRF_ArrivalLine) == "function" then return TRF_ArrivalLine("scar", text); end;
+-- Queues the scar line: trf_plumb's arrival queue (00 order: #6 beacon, then #2 scar), else a due line at 10 s. With
+-- trf_remark (design/crew-remarks-spec.md 7.2) a line of record r other than scarold gets the age sentence and, once per
+-- event, the crew voice (TRF_Rm_Own, protected inside); without it the line is as before.
+function TRF_ScArr(text, r, ln)
+	local sp = nil;
+	if type(r) == "table" and ln ~= "scarold" and type(TRF_Rm_Own) == "function" and type(TRF_RmScarVoice) == "function" then
+		text, sp = TRF_Rm_Own("scar", r.sys, r.leg, TRF_RmScarVoice(r.kind, r.fac), text, r.kind);
+	end;
+	if type(TRF_ArrivalLine) == "function" then return TRF_ArrivalLine("scar", text, sp); end;
 	return TRF_N("TRF_Due", 10, "TRF_Sc_SayDue", text);
 end;
 
@@ -1414,7 +1422,7 @@ function TRF_Sc_OnActivate()
 				local names = TRF_N("TRF_Names");
 				if type(names) == "table" then a = names[r.nm]; end;
 			end;
-			TRF_ScArr(TRF_ScTxt(ln, a or "Kestrel"));
+			TRF_ScArr(TRF_ScTxt(ln, a or "Kestrel"), r, ln);
 		end;
 	end;
 	TRF_ScE("enter", "system", nm, "mode", mode, "sid", r and TRF_ScSid(r), "state", r and r.st, "result", res, "line", ln,
