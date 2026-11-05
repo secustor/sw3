@@ -552,7 +552,16 @@ function T_NE_D()
 	-- Stale generation.
 	n0 = S_Mark();
 	TRF_Haunt_Died(3, TRF.gen - 1);
-	HOST_Check(S_Logs(n0, "module=haunt event=stale index=3") == 1 and TRF.haunt[gi].k == 3, "old-generation trigger: stale, nothing counted");
+	HOST_Check(S_Logs(n0, "module=haunt event=stale index=3") == 1 and HA_Kv(HA_Line(n0, "module=haunt event=stale "), "reason") == "alive"
+		and TRF.haunt[gi].k == 3, "old-generation trigger: stale (reason alive), nothing counted");
+	-- A stale trigger of a flight gone inside the visit and not counted: reason lost (E16.6 fail); its ships come back.
+	local sh5 = v.sh[5];
+	for j = 1, getn(sh5) do sh5[j].alive = nil; end;
+	n0 = S_Mark();
+	TRF_Haunt_Died(5, TRF.gen - 1);
+	HOST_Check(HA_Kv(HA_Line(n0, "module=haunt event=stale index=5"), "reason") == "lost" and TRF.haunt[gi].k == 3 and S_Logs(n0, "module=haunt event=died ") == 0,
+		"stale trigger of a dead uncounted flight: reason lost, nothing counted");
+	for j = 1, getn(sh5) do sh5[j].alive = 1; end;
 	-- Pirate watch leaves haunt flights out.
 	local pl = v.fl[4]:GetLeader();
 	TRF_Ev_PirEject(pl);
@@ -707,11 +716,22 @@ function T_NE_E()
 	-- The old trigger fires: stale; the new one counts once.
 	n0 = S_Mark();
 	HOST_Fire("f_died", "TRF_Haunt_Died(1,"..g0..")");
-	HOST_Check(S_Logs(n0, "module=haunt event=stale index=1") == 1 and TRF.haunt[gi].k == k0, "old-generation trigger after the load: stale");
+	HOST_Check(S_Logs(n0, "module=haunt event=stale index=1") == 1 and HA_Kv(HA_Line(n0, "module=haunt event=stale index=1"), "reason") == "alive"
+		and TRF.haunt[gi].k == k0, "old-generation trigger after the load: stale (reason alive)");
 	HA_Kill(1, 1);
 	HOST_Check(TRF.haunt[gi].k == k0 + 1 and HA_Kv(HA_Line(n0, "module=haunt event=died "), "generation") == tostring(TRF.gen), "kill after the load: memory + 1 once, new gen");
+	-- The saved trigger firing after the kill: stale, reason counted, still once.
+	n0 = S_Mark();
+	TRF_Haunt_Died(1, g0);
+	HOST_Check(HA_Kv(HA_Line(n0, "module=haunt event=stale index=1"), "reason") == "counted" and TRF.haunt[gi].k == k0 + 1, "saved trigger after the kill: stale, reason counted");
+	-- The jump deletes the adopted flights; their saved (pre-load) f_died fires after the reset, before the next entry:
+	-- stale, reason left, nothing counted (E16.6 expects this burst).
+	local k1 = TRF.haunt[gi].k;
+	n0 = S_Mark();
+	HA_Jump("xb13", {pre=function() TRF_Haunt_Died(2, %g0); end});
+	HOST_Check(HA_Kv(HA_Line(n0, "module=haunt event=stale index=2"), "reason") == "left" and TRF.haunt[gi].k == k1 and S_Logs(n0, "module=haunt event=died ") == 0,
+		"jump-delete trigger after the jump: stale, reason left, nothing counted");
 	-- A load in another system drops TRF.nv.
-	HA_Jump("xb13");
 	TRF.nv = {i=gi, b="1111111111"};
 	T_SaveLoad();
 	HOST_Check(TRF.nv == nil, "load elsewhere: TRF.nv dropped");

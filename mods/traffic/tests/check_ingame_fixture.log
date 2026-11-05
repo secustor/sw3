@@ -198,8 +198,13 @@ traffic: lua: exp=v1 module=haunt event=load system=hanoi rearmed=11
 traffic: lua: exp=v1 module=haunt event=hit index=4
 traffic: lua: exp=v1 module=haunt event=stale index=4 generation=63 current=64
 traffic: lua: exp=v1 module=haunt event=died index=4 sign=Pir10 mine=true memory=2 left=10 clan_score=87 generation=64 reason=died
+traffic: lua: exp=v1 module=haunt event=stale index=4 generation=63 current=64 reason=counted
 traffic: lua: exp=v1 module=haunt event=stale index=2 generation=63 current=64
+traffic: lua: exp=v1 module=haunt event=stale index=5 generation=63 current=64 reason=lost
 traffic: lua: exp=v1 module=haunt event=jump system=hanoi deleted=10
+traffic: lua: exp=v1 module=haunt event=stale index=1 generation=63 current=64 reason=left
+traffic: lua: exp=v1 module=haunt event=stale index=3 generation=63 current=64 reason=left
+traffic: lua: exp=v1 module=haunt event=stale index=6 generation=63 current=64 reason=left
 traffic: lua: exp=v1 module=state event=leg reason=enter legs=124
 traffic: lua: exp=v1 module=state event=enter generation=65 fresh=false system=corrino legs=124
 traffic: lua: exp=v1 module=haunt event=mode system=corrino mode=haunt reason=ok phase=3 tier=4 f=100 dp=1 vanilla_count=3 memory=0 pins=0

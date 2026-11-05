@@ -447,8 +447,12 @@ def c_e16_6(ctx):
     for v in lv:
         di = set(d.int("index") for d in v.died)
         for s in v.stale:
-            if s.int("index") not in di:
-                res.fails.append("%s: index %s: only the saved trigger fired after the load (stale), no died line" % (v.name(), s.get("index")))
+            why = s.get("reason")
+            if why == "lost":
+                res.fails.append("%s: index %s: stale reason=lost: the flight is gone inside the visit and was not counted (lost kill)" % (v.name(), s.get("index")))
+            elif why is None and (v.jump is None or s.n < v.jump.n) and s.int("index") not in di:
+                # older builds without reason: stale lines after the jump line are the jump-delete burst
+                res.fails.append("%s: index %s: stale line without reason before the jump, no died line (lost kill)" % (v.name(), s.get("index")))
         if v.nload.int("rearmed", 0) > 0 and v.died:
             ok += v.died
     if not lv:

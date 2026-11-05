@@ -1635,8 +1635,18 @@ function TRF_Haunt_Died(i, g)
 	if type(TRF_Cb) == "function" then TRF_Cb("TRF_Haunt_Died", TRF_HaDiedBody, {i, g}); else TRF_HaDiedBody(i, g); end;
 end;
 
+-- An old-generation f_died (the saved trigger after a load, or the jump delete) is ignored; its reason (E16.6):
+-- counted (flight already counted), left (no visit, or the jump delete), alive (flight still lives), else lost.
 function TRF_HaDiedBody(i, g)
-	if g ~= TRF_HaGen() then TRF_HaE("stale", "index", i, "generation", g, "current", TRF_HaGen()); return; end;
+	if g ~= TRF_HaGen() then
+		local v = %HA.v;
+		local why = "lost";
+		if type(v.dead) == "table" and v.dead[i] then why = "counted";
+		elseif type(v.d) ~= "table" or v.del == 1 then why = "left";
+		elseif type(v.fl) == "table" and v.fl[i] and TRF_HaAlive(v.fl[i]) then why = "alive"; end;
+		TRF_HaE("stale", "index", i, "generation", g, "current", TRF_HaGen(), "reason", why);
+		return;
+	end;
 	TRF_HaFlightDead(i, "died");
 end;
 

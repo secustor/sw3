@@ -711,7 +711,7 @@ Pirate haunts, step 1 (`design/haunt-spec.md` 7). `index` is the row of the syst
 | `arrival` | `module=haunt event=arrival system=golkonda line=<hauntfull, hauntraid, hauntbust, hauntswept, hauntquiet, haunthurt, hauntclear> result=<queued, dropped>` | 2 |
 | `hit` | `module=haunt event=hit index=7` (first player-group hit on the flight) | 2 |
 | `died` | `module=haunt event=died index=7 sign=pir07 mine=true memory=1 left=9 clan_score=60 generation=12 reason=<died, ships>` (E16.6, E16.7) | 1 |
-| `stale` | `module=haunt event=stale index=1 generation=11 current=12` (an f_died trigger of an older generation, E16.6) | 1 |
+| `stale` | `module=haunt event=stale index=1 generation=11 current=12 reason=left` (an f_died trigger of an older generation, ignored, E16.6); `reason`: `counted` the flight was already counted, `left` no visit (the reset after the jump delete, a load elsewhere) or the jump delete ran, `alive` the flight still lives, `lost` the flight is gone inside the visit and was not counted (a lost kill) | 1 |
 | `regen` | `module=haunt event=regen system=golkonda memory_before=7 memory_after=5 ticks=1` (E16.7) | 1 |
 | `relation` | `module=haunt event=relation system=golkonda from=neutral to=war` (the 1 s mirror, E16.5) | 1 |
 | `jump` | `module=haunt event=jump system=golkonda deleted=3` | 1 |
