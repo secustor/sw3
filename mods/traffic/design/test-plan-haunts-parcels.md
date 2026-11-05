@@ -128,7 +128,7 @@ Distances from Kadi (portal graph, `map.script`): Hanoi 1, Prien 1, XK16 2 (via 
 
 ### E16.6 Load in a haunt system (run B step 4; game: needs a reload)
 - PASS: `event=load system=hanoi rearmed=<n>` with n > 0, then `event=died ... generation=<g>` with g the `module=state event=load generation=<g>` of the load; memory + 1 once. A `event=stale index=<i> generation=<g-1>` for the same index is the saved trigger and is expected.
-- FAIL: a `stale` line with `reason=lost` (older builds without `reason`: a `stale` line before the visit's `event=jump` line without a `died` line for that index; the `reason=left` burst of the flights deleted at the jump is expected), the same index twice in `event=died`. `rearmed=0` while the flights still fly after the load is a failure too; the checker shows it as NO DATA (no kill after the load counts).
+- FAIL: a `stale` line with `reason=lost` or `reason=alive` and no `died` line for that index in the visit (the re-armed trigger did not fire; the saved trigger may run before the re-armed one, so `reason=lost` followed by the `died` line of that index is a counted kill; older builds without `reason`: a `stale` line before the visit's `event=jump` line without a `died` line for that index; the `reason=left` burst of the flights deleted at the jump is expected), the same index twice in `event=died`. `rearmed=0` while the flights still fly after the load is a failure too; the checker shows it as NO DATA (no kill after the load counts).
 - Record: the save name, the load and died lines.
 
 ### E16.7 Kill memory (run B steps 3-5; game: once)

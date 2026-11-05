@@ -556,12 +556,12 @@ function T_NE_D()
 		and TRF.haunt[gi].k == 3, "old-generation trigger: stale (reason alive), nothing counted");
 	-- A stale trigger of a flight gone inside the visit and not counted: reason lost (E16.6 fail); its ships come back.
 	local sh5 = v.sh[5];
-	for j = 1, getn(sh5) do sh5[j].alive = nil; end;
+	for j = 1, 6 do if sh5[j] then sh5[j].alive = nil; end; end;
 	n0 = S_Mark();
 	TRF_Haunt_Died(5, TRF.gen - 1);
 	HOST_Check(HA_Kv(HA_Line(n0, "module=haunt event=stale index=5"), "reason") == "lost" and TRF.haunt[gi].k == 3 and S_Logs(n0, "module=haunt event=died ") == 0,
 		"stale trigger of a dead uncounted flight: reason lost, nothing counted");
-	for j = 1, getn(sh5) do sh5[j].alive = 1; end;
+	for j = 1, 6 do if sh5[j] then sh5[j].alive = 1; end; end;
 	-- Pirate watch leaves haunt flights out.
 	local pl = v.fl[4]:GetLeader();
 	TRF_Ev_PirEject(pl);
