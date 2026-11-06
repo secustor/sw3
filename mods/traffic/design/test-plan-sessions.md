@@ -90,12 +90,12 @@ Save: first `TRF lab base`, then `TRF lab route`. Route: Elio, Gredos, Elio, Gef
    - Expect `module=haunt event=regen ... memory_before=3` and fewer pirate flights than the 10 listed (E16.7, E16.4).
    - Quicksave after the flights spawned, then load that quicksave at once (E16.6).
    - Optional: destroy one haunt flight, `died memory=` + 1 (E16.7). Attack the patrol-bounty pirate if the vanilla box offers it (E16.3, eyes).
-5. **Jump to Gefest.**
-   - The beacon line of the fresh wreck is spoken by a squad pilot and ends "That was yesterday." (W-B06.10; age 1 leg; "<n> days back" from 2 legs).
-   - With the default `rm_own=1` the captain remark stays silent: `module=remark event=skip reason=done` (W-B06.3).
+5. **Jump to Valensia first (the wreck is staged at age 0; the beacon line needs 0-4 legs).**
+   - The beacon line of the fresh wreck is spoken by a squad pilot and ends "That was yesterday." (W-B06.10; "<n> days back" from 2 legs).
    - Jump back to Elio.
-6. **Jump to Valensia.**
-   - The second beacon line, from the wreck 2 legs old.
+6. **Jump to Gefest (map name Hephaestus).**
+   - No scar line here: Hephaestus is on trf_safety's deny list, so no wreck is ever placed (observed `event=hide reason=deny`). The crew speaks the captain remark instead (Lastochka, pirate voice; W-B06.1).
+   - Jump back to Elio, then to Valensia again for the dock steps below.
    - Dock at the trade station (rung 4 is staged).
      - The station news is followed by a dated ring line with source, place and age (W-A16.1).
      - The Gefest captain's ring record is dead now, so no tip names him (W-A16.3).

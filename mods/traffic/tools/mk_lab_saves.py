@@ -8,8 +8,8 @@ recovery  rg[slot] of --loc set to Recovery (ph 5) as TRF_RgEnter does at leg cl
           Raids-only fields (sw, sn, sl, sr, ct bits 1 and 2) cleared. Slot from map.script's rg field.
 pro9      pro = 9 on every TRF.sys entry (trf_state clamps it to the system's pro cap on load).
 base      no edit: the TRF table as saved (the copy gets its own header name, so the original stays untouched).
-route     session A of design/test-plan-sessions.md (save in Elio): remark records (a fresh trader scar in Valensia, a
-          pirate sweep scar in Gredos, a fresh trader scar in Gefest with the Gefest captain dead 5 legs ago), a lit
+route     session A of design/test-plan-sessions.md (save in Elio): remark records (a trader scar of age 0 in Valensia, a
+          pirate sweep scar in Gredos, the Gefest captain dead 5 legs ago; no scar in Gefest, the deny list hides it), a lit
           signal source in Escaflon (TRF.sg block of its region, point 1, state 0), a hidden cache in Escaflon's stash
           slot, dockmaster rung 4 at the Endoria 2 and Valensia trade stations (TRF.stn), Elio haunt memory (3 flights,
           last refill 6 legs ago).
@@ -211,8 +211,9 @@ def stage(variant, t, mp):
         return out
     V = lambda n: sys_rec(mp, n)
     if variant in ('route', 'raids'):
+        # No scar in Gefest: trf_safety's deny list (m=1, "Grid/Hephaestus escape") hides every scar there
+        # (observed 2026-11-06: event=hide reason=deny). The captain record alone gives the captain remark.
         g_idx, g_slot = V('gefest')
-        out.append(scar_put(t, g_idx, legs - 1, 1, 0, 3, legs))
         out.append(cap_dead(t, g_slot, legs))
     if variant == 'route':
         v_idx, _ = V('valensia')
@@ -220,7 +221,7 @@ def stage(variant, t, mp):
         e_idx, e_slot = V('escaflon')
         en_idx, _ = V('endoria2')
         el_idx, _ = V('elio')
-        out.append(scar_put(t, v_idx, legs - 2, 1, 0, 7, legs))
+        out.append(scar_put(t, v_idx, legs, 1, 0, 7, legs))    # age 0: the beacon line needs 0-4 legs, one jump from Elio
         out.append(scar_put(t, gr_idx, legs - 8, 3, 0, 0, legs))
         out.append(sg_put(t, e_idx, e_slot, legs))
         out.append(stash_put(t, e_idx, e_slot, legs))
