@@ -17,10 +17,12 @@
 --   first, each record 12 digits: kind 2, system 3, landmark 1, leg mod 1000 3, source 1, argument 1, told flags 1;
 --   nil while every block is empty.
 -- Visit state in the chunk local TI (never saved; rebuilt by every MapInitialization). No handle is stored anywhere.
+-- TI.dk: the records told by a dock surface (news, tip clause, captain tip) in the current docking, cleared by
+-- TRF_Ti_DockEnd (trf_station, after the info step) and at the next entry; no other dock surface tells them again.
 -- Layout as trf_corp: helpers, accessors, static tables, pure functions (*Of, explicit inputs, host-testable), contract
 -- functions. Top level: functions and TI only.
 
-local TI = {h={}, pr={}, d={}};
+local TI = {h={}, pr={}, d={}, dk={}};
 
 -- Helpers --------------------------------------------------------------------------
 
@@ -139,9 +141,9 @@ function TRF_TiName(idx)
 	return tostring(idx);
 end;
 
--- Display name of system idx.
+-- Display name of system idx: the English map name (trf_loc TRF_SysEn).
 function TRF_TiSysTxt(idx)
-	local s = TRF_N("TRF_UI_SysName", idx);
+	local s = TRF_N("TRF_SysEn", idx);
 	if type(s) == "string" then return s; end;
 	return TRF_TiName(idx);
 end;
@@ -843,7 +845,9 @@ function TRF_TiGate(sf)
 end;
 
 -- R5-R9 for record r on surface sf. o = {age = max, bit = told bit, cur = 1 (current only), hist = 1 (history kinds
--- only), list = the block for the merge partner's told bit}. Returns "ok", state, why, live records; else the reason.
+-- only), list = the block for the merge partner's told bit, dk = the docking's told set (TI.dk) with idx the dock's
+-- system}. Returns "ok", state, why, live records; else the reason (told_dock: told by another surface of this docking,
+-- logged as a level 1 pick line result=skipped).
 function TRF_TiCand(r, sf, o, T, ch)
 	local e = TRF_TiKinds()[r.k];
 	local res, st, why, x = "ok", nil, nil, nil;
@@ -861,12 +865,17 @@ function TRF_TiCand(r, sf, o, T, ch)
 		elseif type(o.age) == "number" and r.age > o.age then res = "old";
 		elseif o.bit and TRF_TiBit(r.f, o.bit) then res = "told";
 		elseif o.h and o.h[TRF_TiHKey(r)] then res = "told";
+		elseif o.dk and o.dk[TRF_TiHKey(r)] then res = "told_dock";
 		elseif o.bit and o.list then
 			local mt = TRF_TiMateOf(r, o.list);
 			if mt and TRF_TiBit(mt.f, o.bit) and TRF_TiLiveSt(mt) ~= "dead" then res = "told"; end;
 		end;
 	end;
 	TRF_TiDE("candidate", "surface", sf, "kind", e.nm, "target", TRF_TiName(r.s), "result", res);
+	if res == "told_dock" then
+		TRF_TiE("pick", "surface", sf, "system", TRF_TiName(o.idx), "kind", e.nm, "target", TRF_TiName(r.s), "event_leg", r.g,
+			"result", "skipped", "reason", "told_dock");
+	end;
 	if res ~= "ok" then return res; end;
 	return res, st, why, x;
 end;
@@ -964,6 +973,18 @@ end;
 
 -- Surfaces (7) -------------------------------------------------------------------------------
 
+-- Record r told by a dock surface in this docking (TI.dk, D14): the other dock surfaces of the docking leave it out.
+function TRF_TiDockTold(r)
+	local ti = %TI;
+	ti.dk[TRF_TiHKey(r)] = 1;
+end;
+
+-- End of a docking's info step (trf_station): the docking's told set is cleared.
+function TRF_Ti_DockEnd()
+	local ti = %TI;
+	ti.dk = {};
+end;
+
 -- 7.1 harbour news of the dock at system idx (station key k): one dated, sourced line or nil; pre 1 wraps it in tinews.
 function TRF_Ti_News(idx, k, pre)
 	return call(TRF_TiNewsBody, {idx, k, pre}, "x", TRF_TiErr);
@@ -978,7 +999,7 @@ function TRF_TiNewsBody(idx, k, pre)
 	local cs, xs = {}, {};
 	for i = 1, getn(all) do
 		local r = all[i];
-		local res, st, why, x = TRF_TiCand(r, "news", {age=T.ti_news_age, bit=1, hist=1, list=all}, T, ch);
+		local res, st, why, x = TRF_TiCand(r, "news", {age=T.ti_news_age, bit=1, hist=1, list=all, dk=%TI.dk, idx=idx}, T, ch);
 		if res == "ok" then tinsert(cs, r); xs[r] = x; end;
 	end;
 	local r = TRF_TiPickOf(cs, nil);
@@ -1007,6 +1028,8 @@ function TRF_TiNewsBody(idx, k, pre)
 	if pre == 1 then t = TRF_TiTxt("tinews", t); end;
 	TRF_RingMark(slot, r.k, r.s, r.g, 1);
 	if mt then TRF_RingMark(slot, mt.k, mt.s, mt.g, 1); end;
+	TRF_TiDockTold(r);
+	if mt then TRF_TiDockTold(mt); end;
 	TRF_TiPickLog("news", idx, r, "current", mt, getn(cs));
 	return t;
 end;
@@ -1028,8 +1051,9 @@ function TRF_TiClauseBody(idx, kind, slot, s)
 	local l = TRF_RingRead(slot, q);
 	for i = 1, getn(l) do
 		local r = l[i];
-		local res, st, why, x = TRF_TiCand(r, "tip", {}, T, ch);
+		local res, st, why, x = TRF_TiCand(r, "tip", {dk=%TI.dk, idx=idx}, T, ch);
 		if res == "ok" then
+			TRF_TiDockTold(r);
 			TRF_TiPickLog("tip", idx, r, st, nil, 1);
 			local t = TRF_TiTxt("tiwhen", TRF_TiSrc(r.c), TRF_TiPlace(r.s, TRF_TiLmNow(r, x)), TRF_TiAge(r.g, r.age));
 			if st == "stale" then t = t.." "..TRF_TiTxt("tistbase"); end;
@@ -1053,13 +1077,14 @@ function TRF_TiCapBody(idx)
 	local l = TRF_RingRead(slot, {k=7, nf=2});
 	local r = l[1];
 	if not r then return nil; end;
-	local res, st, why, x = TRF_TiCand(r, "tip", {}, T, ch);
+	local res, st, why, x = TRF_TiCand(r, "tip", {dk=%TI.dk, idx=idx}, T, ch);
 	if res ~= "ok" then TRF_TiPickLog("tip", idx, nil, nil, nil, 0); return nil; end;
 	local t = TRF_TiLine(r, x);
 	local nm = TRF_N("TRF_CapNm", x.cap) or "";
 	if st == "stale" and why == "moved" then t = t.." "..TRF_TiTxt("tistcap", nm, TRF_TiSysTxt(x.cap.seen));
 	elseif st == "stale" then t = t.." "..TRF_TiTxt("tistlow", nm); end;
 	TRF_RingMark(slot, r.k, r.s, r.g, 2);
+	TRF_TiDockTold(r);
 	TRF_TiPickLog("tip", idx, r, st, nil, 1);
 	return t, r.s;
 end;

@@ -1595,7 +1595,7 @@ function T_WQ_G()
 	bad = "";
 	for k, v in TRF_Wq_Text() do if strfind(v, "Gefest", 1, 1) or strfind(v, "Golkonda", 1, 1) or strfind(v, "Callipso", 1, 1) then bad = bad.." "..k; end; end;
 	if strfind(TRF_Txt("fwboxq", "1", "2"), "Gefest", 1, 1) then bad = bad.." fwboxq"; end;
-	HOST_Check(en == "Hephaestus/Golconda/Calypso/Debris 6/XB-13" and ce == "Hephaestus/Kadi" and bad == "" and TRF_WqClan() == "Grey Ravens"
+	HOST_Check(en == "Hephaestus/Golconda/Calypso/Debris 6/XB-13" and ce == "Hephaestus/Cadi" and bad == "" and TRF_WqClan() == "Grey Ravens"
 		and TRF_WqClan() == TRF_ClanName(TRF_RgOf(V_Idx("xb13"))),
 		"English map names (CombineStr of #M_location_<name>, else the table, else TRF_UI_SysName); no internal name in a text; the clan of XB-13 ("..en.." "..ce..")"..bad);
 

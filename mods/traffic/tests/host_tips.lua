@@ -7,7 +7,8 @@
 -- sweep sources); d harbour news (chapters, told bit, merges, the pre wrapper, the strict gate, the visit latch, the
 -- scene, ti_news_age, the ambient line); e dock tips (sweep and base clauses, the captain tip current, stale, dead, told
 -- once) and the informant reply; f the hail rumour (range, newest, current only, once per visit, the built chain, the
--- stash reveal of kind 11); g the repair, the full ring, the full state and the two-marker rule.
+-- stash reveal of kind 11); g the repair, the full ring, the full state and the two-marker rule; h one telling per docking
+-- across the dock surfaces (D14: news, then the sweep tip's clause) and the English map names of TRF_SysEn.
 -- Loads host_station.lua up to its first scenario (stubs of host_stubs.lua, the helpers of host_traffic.lua and
 -- host_v02.lua, the DockStation.script stubs and the S_* helpers), as host_corp.lua does. No new native stub.
 
@@ -180,7 +181,7 @@ end;
 -- A new visit: station and tips visit flags cleared, no entry.
 function TI_NewVisit()
 	local ti = TRF_TiCV();
-	ti.h = {}; ti.pr = {}; ti.q = nil;
+	ti.h = {}; ti.pr = {}; ti.q = nil; ti.dk = {};
 	S_NewVisit();
 end;
 
@@ -711,7 +712,7 @@ function T_TI_E()
 	TI_Set({[slot]={{k=2, s=home, l=0, g=TRF.clock.legs - 3, c=2, a=2, f=1}}});
 	local n0 = S_Mark();
 	local r = TI_Dock(4);
-	local tsw = TRF_Txt("stntipsweep", TRF_SweepInfo(slot).fac, TRF_ClanName(slot), TRF_StnName(home)).." "
+	local tsw = TRF_Txt("stntipsweep", TRF_SweepInfo(slot).fac, TRF_ClanName(slot), TRF_StnSysEn(home)).." "
 		..TRF_Txt("tiwhen", TRF_Txt("tisrcnav", TI_Fac(2)), TRF_UI_SysName(home), TI_Age(3));
 	HOST_Check(TI_Has(r.scr, tsw) and S_Logs(n0, "module=station event=tip station_key=42 kind=sweep") == 1 and TI_Logs(n0, "event=pick surface=tip system=gaoba kind=gather") == 1,
 		"sweep tip: the clause names who first saw the fleet, where and when ("..r.scr..")");
@@ -721,12 +722,12 @@ function T_TI_E()
 	TRF.base = {{s=xi, k=2, h=9, t=0, w=0}};
 	TI_Set({[slot]={{k=5, s=xi, l=8, g=TRF.clock.legs - 12, c=0, a=0, f=0}}});
 	r = TI_Dock(4);
-	local tb = TRF_Txt("stntipbase", TRF_StnName(xi)).." "..TRF_Txt("tiwhen", TRF_Txt("tisrcftu"), TRF_Txt("tippatrol", TI_Sys("xk10")), TI_Age(12));
+	local tb = TRF_Txt("stntipbase", TRF_StnSysEn(xi)).." "..TRF_Txt("tiwhen", TRF_Txt("tisrcftu"), TRF_Txt("tippatrol", TI_Sys("xk10")), TI_Age(12));
 	HOST_Check(TI_Has(r.scr, tb), "base tip: the clause with the landmark ("..r.scr..")");
 	TI_NewVisit();
 	TRF.ti = nil;
 	r = TI_Dock(4);
-	HOST_Check(TI_Has(r.scr, TRF_Txt("stntipbase", TRF_StnName(xi)).."|"), "base tip without a record: as built");
+	HOST_Check(TI_Has(r.scr, TRF_Txt("stntipbase", TRF_StnSysEn(xi)).."|"), "base tip without a record: as built");
 	TRF.base = {};
 	-- Captain tip: current, told once per sighting.
 	TI_NewVisit();
@@ -980,6 +981,79 @@ function T_TI_G()
 	local miss = "";
 	for k, v in TRF_Ti_Text() do if not TI_Has(ru, format("\r\n#TRF_%s = ", k)) then miss = miss.." "..k; end; end;
 	HOST_Check(miss == "" and TI_Count(ru, "\n") == TI_Count(ru, "\r\n") and not strfind(ru, "\208[\128-\191]"), "loc/trf_ru.loc: the 25 ti keys, CRLF, cp1251"..miss);
+end;
+
+-- h: one telling per docking, English map names -----------------------------------------------------------
+
+function T_TI_H()
+	local h = HOST();
+	TI_Begin("valensia", "5_1");
+	-- English map names (trf_loc TRF_SysEn): map.script en, else the vanilla key through CombineStr, else the script name.
+	local gi = V_Idx("gefest");
+	HOST_Check(TRF_SysEn(gi) == "Hephaestus" and TRF_SysEn("golkonda") == "Golconda" and TRF_SysEn("GOLKONDA") == "Golconda"
+		and TRF_SysEn(V_Idx("callipso")) == "Calypso" and TRF_SysEn(V_Idx("debris6")) == "Debris 6" and TRF_SysEn(V_Idx("kadi")) == "Cadi"
+		and TRF_UI_SysName(gi) == "Hephaestus" and TRF_SysName(gi) == "gefest",
+		"TRF_SysEn: the map.script en names; TRF_UI_SysName gives them, TRF_SysName stays the script name");
+	-- The module text helpers that name a system go through it; the log names stay the script names.
+	local ki = V_Idx("kassilia");
+	HOST_Check(TRF_StnSysEn(gi) == "Hephaestus" and TRF_CvSysEn(gi) == "Hephaestus" and TRF_SvEn(gi) == "Hephaestus" and TRF_WnEn("kassilia") == "Cassily"
+		and TRF_CapSysTxt(ki) == "Cassily" and TRF_FrSys(ki) == "Cassily" and TRF_PcSys(ki) == "Cassily" and TRF_McSysTxt(ki) == "Cassily"
+		and TRF_SgSysTxt(ki) == "Cassily" and TRF_TiSysTxt(ki) == "Cassily" and TRF_FcSysName(ki) == "Cassily" and TRF_WqSysEn(ki) == "Cassily"
+		and TRF_HlSysName(ki) == "Cassily" and TRF_StnName(ki) == "kassilia" and TRF_WnName(ki) == "kassilia" and TRF_TiName(ki) == "kassilia",
+		"station, convoy, survivors, warnings, captain, freight, parcel, merc, signal, tips, faction, wq and hail texts: Cassily; log names: kassilia");
+	HOST_Check(TRF_SysEn(9999) == TRF_Txt("unknown") and TRF_SysEn(nil) == TRF_Txt("unknown") and TRF_SysEn(0) == TRF_Txt("station")
+		and TRF_SysEn("nowhere") == "Nowhere" and TRF_UI_SysName(9999) == TRF_Txt("unknown") and TRF_UI_SysName(0) == TRF_Txt("station"),
+		"unknown index: unknown space, index 0: the trade station (as TRF_UI_SysName); unknown name: the name upper-cased");
+	local ge = TRF_Map().sys[gi].en;
+	TRF_Map().sys[gi].en = nil;
+	local cs = CombineStr;
+	CombineStr = function(k, v) if k == "#M_location_gefest" then return "Hephaestus "; end; return k.." "..tostring(v); end;
+	local a1 = TRF_SysEn(gi);
+	CombineStr = cs;
+	local a2 = TRF_SysEn(gi);
+	TRF_Map().sys[gi].en = ge;
+	HOST_Check(a1 == "Hephaestus" and a2 == "Gefest", "without en: the vanilla key through CombineStr ("..a1.."), else the script name upper-cased ("..a2..")");
+	-- One record, two dock surfaces: the harbour news tells it, the sweep tip of the same docking keeps its built text.
+	local slot = V_Slot("valensia");
+	local home = TRF_RgMap()[slot].home;
+	HOST_Check(TRF_SysName(home) == "gefest", "valensia's region home is gefest ("..TRF_SysName(home)..")");
+	TRF.cap = nil;
+	S_Rg().sl = TRF.clock.legs + 3;
+	TI_Set({[slot]={{k=2, s=home, l=0, g=TRF.clock.legs - 3, c=2, a=2, f=0}}});
+	local n0 = S_Mark();
+	local r = TI_Dock(4);
+	local src = TRF_Txt("tisrcnav", TI_Fac(2));
+	-- The built news line first (valensia's lanes: trade is good nearby), then the ring line unwrapped, then the tip.
+	local pre = TRF_Txt("stnnews", TRF_Trouble(TRF_CurIdx()), TRF_Boom(TRF_CurIdx())).."|";
+	local news = pre..TI_Line("tigather", src, TRF_ClanName(slot), "Hephaestus", TI_Age(3));
+	local tip = TRF_Txt("stntipsweep", TRF_SweepInfo(slot).fac, TRF_ClanName(slot), "Hephaestus");
+	local cl = TRF_Txt("tiwhen", src, "Hephaestus", TI_Age(3));
+	HOST_Check(r.scr == news.."|"..tip.."|" and not TI_Has(r.scr, cl) and not TI_Has(strlower(r.scr), "gefest"),
+		"one record: told once, as harbour news; the sweep tip as built, both name Hephaestus ("..r.scr..")");
+	HOST_Check(TI_Logs(n0, "event=pick surface=news system=valensia kind=gather target=gefest") == 1
+		and TI_Logs(n0, "event=pick surface=tip system=valensia kind=gather target=gefest event_leg="..(TRF.clock.legs - 3).." result=skipped reason=told_dock") == 1
+		and TI_Logs(n0, "surface=tip system=valensia kind=gather target=gefest event_leg="..(TRF.clock.legs - 3).." age=") == 0
+		and S_Logs(n0, "module=station event=tip station_key="..TRF_Stn_Key(TRF_CurIdx(), 1).." kind=sweep system=gefest") == 1
+		and TI_N(TRF_TiCV().dk) == 0,
+		"logs: the news pick, the tip's skip told_dock, the station tip line with the script name; the docking's set cleared");
+	-- Two records: each surface tells a different one (news the newest, the tip clause the next).
+	TI_NewVisit();
+	local oi = TRF_RgMap()[slot].sys[1];
+	if oi == home then oi = TRF_RgMap()[slot].sys[2]; end;
+	TI_Set({[slot]={{k=2, s=oi, l=0, g=TRF.clock.legs - 5, c=2, a=2, f=0}, {k=2, s=home, l=0, g=TRF.clock.legs - 1, c=2, a=2, f=0}}});
+	n0 = S_Mark();
+	r = TI_Dock(4);
+	news = pre..TI_Line("tigather", src, TRF_ClanName(slot), "Hephaestus", TI_Age(1));
+	cl = TRF_Txt("tiwhen", src, TRF_SysEn(oi), TI_Age(5));
+	HOST_Check(r.scr == news.."|"..tip.." "..cl.."|" and TI_Logs(n0, "result=shown") == 2
+		and TI_Logs(n0, "event=pick surface=tip system=valensia kind=gather target="..TRF_SysName(oi).." event_leg="..(TRF.clock.legs - 5)) == 1,
+		"two records: the news tells the newest, the tip clause the other ("..r.scr..")");
+	-- A later docking (the next visit) starts with an empty set: the clause may tell the record again (no saved tip bit).
+	TI_NewVisit();
+	TI_Set({[slot]={{k=2, s=home, l=0, g=TRF.clock.legs - 3, c=2, a=2, f=1}}});
+	r = TI_Dock(4);
+	HOST_Check(r.scr == pre..tip.." "..TRF_Txt("tiwhen", src, "Hephaestus", TI_Age(3)).."|", "next visit, record told as news before: the clause as built ("..r.scr..")");
+	S_Rg().sl = 0;
 end;
 
 -- Dispatch -----------------------------------------------------------------------------------------------

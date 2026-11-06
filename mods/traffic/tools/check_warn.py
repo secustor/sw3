@@ -8,8 +8,9 @@ on any finding, with or without --check; 2 when a file is missing.
 
 K1 rows: the block between "-- BEGIN warn list" and "-- END warn list" of TRF_WnData(), one row per line, only the fields
    of spec 3.3; ROWS_EXPECT rows, no duplicate s.
-K2 names: s is a map.script system; nm equals #M_location_cap_<s> of LocData/English/m_location_spec.loc, or for a
-   numbered caption ("4") the family caption plus the number ("Debris" + " 4").
+K2 names: s is a map.script system; its en (the name the texts print, TRF_SysEn) equals #M_location_cap_<s> of
+   LocData/English/m_location_spec.loc, or for a numbered caption ("4") the family caption plus the number ("Debris" +
+   " 4"). The rows carry no name of their own.
 K3 evidence: each anchor (path, line, token) of EVIDENCE holds the token on that exact line of the game scripts (the kill
    line Timer_Seq(5, __crash_FEnd), the spawn Attack(mothership) or RELATION_WAR, Block_X213, GetTeamRelation("<team>").
 K4 conditions: the labels (GetQuestLabel), teams (GetTeamRelation) and CurrentQuest values on each condition anchor line
@@ -36,7 +37,7 @@ MAP = os.path.join(MOD, "Data", "Scripts", "Mods", "Traffic", "map.script")
 LOC = os.path.join(MOD, "loc", "trf_en.loc")
 
 ROWS_EXPECT = 23
-FIELDS = {"s", "nm", "k", "lbl", "lyes", "nf", "war", "cqn", "hafa", "w", "n"}
+FIELDS = {"s", "k", "lbl", "lyes", "nf", "war", "cqn", "hafa", "w", "n"}
 CLASSES = ("kill", "ambush", "trap", "garrison")
 UNCOVERED_EXPECT = {"xt86", "vulcan", "xb13"}
 NON_PORTAL = {"disonsphere": "PORTAL_A", "precursors": "PORTAL_P"}   # trf_region TRF_Rg_NonPortal
@@ -222,7 +223,7 @@ def parse_rows(lines, finds):
             else:
                 r[k] = int(m.group(5))
         r["line"] = n
-        for k in ("s", "nm", "k", "w", "n"):
+        for k in ("s", "k", "w", "n"):
             if k not in r:
                 finds.append("K1 trf_warn.script:%d: field %s missing" % (n, k))
         if r.get("k") not in CLASSES:
@@ -237,15 +238,17 @@ def parse_rows(lines, finds):
 
 
 def parse_map(lines):
-    """map.script systems: name -> {portals: [(name, to, cond)], trade: bool}."""
+    """map.script systems: name -> {portals: [(name, to, cond)], trade: bool, en: English map name or None}."""
     sysm, cur, sec = {}, None, None
     rx_sys = re.compile(r'^\s{6}\{name="([^"]+)", idx=(\d+)')
+    rx_en = re.compile(r'\ben="([^"]*)"')
     rx_sec = re.compile(r'^\s{8}(\w+) = \{')
     rx_portal = re.compile(r'\{name="([^"]+)", to="([^"]+)"([^}]*)\}')
     for l in lines:
         m = rx_sys.match(l)
         if m:
-            cur = {"idx": int(m.group(2)), "portals": [], "trade": False}
+            e = rx_en.search(l)
+            cur = {"idx": int(m.group(2)), "portals": [], "trade": False, "en": e.group(1) if e else None}
             sysm[m.group(1)] = cur
             sec = None
             continue
@@ -411,9 +414,10 @@ def main():
         s = r.get("s")
         if s not in sysm:
             finds.append("K2 %s: not a map.script system" % s)
+            continue
         c = caption_of(s, caps)
-        if c != r.get("nm"):
-            finds.append("K2 %s: nm %r, the game caption is %r" % (s, r.get("nm"), c))
+        if c != sysm[s]["en"]:
+            finds.append("K2 %s: map.script en %r, the game caption is %r" % (s, sysm[s]["en"], c))
     # K3, K4.
     cache = {}
     for r in rows:
@@ -476,11 +480,11 @@ def main():
             finds.append("K7 %s: trade docks %s, expected %s" % (s, sorted(docks), sorted(DOCKS_EXPECT[s])))
         cond = ",".join("%s=%s" % (k, r[k] if not isinstance(r[k], list) else "/".join(r[k]))
                         for k in ("lbl", "lyes", "nf", "war", "cqn", "hafa") if k in r)
-        table.append((s, r.get("nm"), r.get("k"), cond, ", ".join(sorted(docks)) or "none"))
+        table.append((s, (sysm.get(s) or {}).get("en"), r.get("k"), cond, ", ".join(sorted(docks)) or "none"))
     if uncovered != UNCOVERED_EXPECT:
         finds.append("K7 rows without a trade dock %s, expected %s" % (sorted(uncovered), sorted(UNCOVERED_EXPECT)))
     if not a.check:
-        print("%-3s %-11s %-15s %-9s %-46s %s" % ("#", "s", "nm", "k", "condition", "trade docks one jump away"))
+        print("%-3s %-11s %-15s %-9s %-46s %s" % ("#", "s", "en", "k", "condition", "trade docks one jump away"))
         for i, t in enumerate(table, 1):
             print("%-3d %-11s %-15s %-9s %-46s %s" % ((i,) + t))
         print()

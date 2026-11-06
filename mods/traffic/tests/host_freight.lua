@@ -367,7 +367,7 @@ function T_FR_B()
 	local lp = TRF_FrLoop(TRF_RgOf(idx));
 	local list = TRF_FrListOf(1000, lp.L, 5, 1, 1);
 	HOST_Check(r.nb == 1 and r.box.title == "FTU charter office" and FR_Has(r.box.text, "FTU charter office: transports keep going missing in Capricorn.")
-		and FR_Has(r.box.text, "A bulk freighter is up for charter: "..TRF_FrNum(list).." cr. She will run the Golkonda lanes")
+		and FR_Has(r.box.text, "A bulk freighter is up for charter: "..TRF_FrNum(list).." cr. She will run the Golconda lanes")
 		and S_Logs(n0, "event=box system=debris6 region=4 list="..list.." price="..list) == 1, "box: title, rumour, price "..list..", region name");
 	local s = FR_Press(r, "cancel");
 	HOST_Check(HOST().trade_ok >= 1 and TRF.co and TRF.co.decl and TRF.co.decl.sys == idx and getn(TRF.co.ships) == 0 and S_Logs(n0, "event=buy system=debris6 result=declined") == 1,
@@ -387,7 +387,7 @@ function T_FR_B()
 	n0 = S_Mark();
 	local sh, r2, s2 = FR_Buy();
 	HOST_Check(sh and sh.id == 1 and sh.home == idx and sh.rg == TRF_RgOf(idx) and sh.p == TRF_FrStopOf(lp, idx) and sh.price == list
-		and h.credits == 1000000 - list and FR_Has(s2, "Wolves Freight: "..TRF_FrShipName(sh.nm).." registered at Debris6. Her first run leaves next leg.")
+		and h.credits == 1000000 - list and FR_Has(s2, "Wolves Freight: "..TRF_FrShipName(sh.nm).." registered at Debris 6. Her first run leaves next leg.")
 		and S_Logs(n0, "event=buy ship_id=1") == 1 and S_Logs(n0, "credits_before=1000000 credits_after="..(1000000 - list)) == 1 and TRF.co.decl == nil,
 		"OK: the ship at this stop, the price charged (EW8.1 log), the reply line");
 	FR_Visit();
@@ -492,7 +492,7 @@ function T_FR_D()
 	local n0 = S_Mark();
 	local r = FR_Dock();
 	HOST_Check(h.credits == c0 + b0 and co.bal == 0 and FR_Has(r.scr, "Wolves Freight paid "..TRF_FrNum(b0).." cr since your last visit.")
-		and FR_Has(r.scr, "Wolves Freight: "..TRF_FrShipName(s.nm).." is in Debris1, bound for xt11.") and S_Logs(n0, "event=pay visit="..co.vn.." paid_visit="..co.vn) == 1
+		and FR_Has(r.scr, "Wolves Freight: "..TRF_FrShipName(s.nm).." is in Debris 1, bound for XT-11.") and S_Logs(n0, "event=pay visit="..co.vn.." paid_visit="..co.vn) == 1
 		and S_Logs(n0, "mode=plain") == 1, "dock: payout and whereabouts lines, credits added (EW8.5, EW8.10 log) "..r.scr);
 	FR_Ticks(2);
 	r = FR_Dock();
@@ -517,7 +517,7 @@ function T_FR_D()
 	FR_Visit();
 	r = FR_Dock();
 	HOST_Check(FR_Has(r.scr, "Wolves Freight paid 29,") or FR_Has(r.scr, "Wolves Freight paid 30,000"), "payout of the full account: "..r.scr);
-	HOST_Check(FR_Has(r.scr, "Wolves Freight: account full. "..TRF_FrShipName(s.nm).." waits at Debris6 for your orders.") and r.n <= 3, "full line, at most 3 lines");
+	HOST_Check(FR_Has(r.scr, "Wolves Freight: account full. "..TRF_FrShipName(s.nm).." waits at Debris 6 for your orders.") and r.n <= 3, "full line, at most 3 lines");
 	FR_Ticks(1);
 	HOST_Check(s.st == 0, "balance paid: the ship resumes");
 	-- Heat 5: suspended, the FTU line.
@@ -1417,7 +1417,7 @@ function T_FR_L()
 	local lp = TRF_FrLoop(s.rg);
 	TRF_FrLose(TRF.co, 1, s, lp.s[s.p], "roll", nil, nil);
 	local e = TRF.newsx and TRF.newsx[slot] and TRF.newsx[slot].fw;
-	HOST_Check(e and e.v == "lost" and TRF_UI_NewsText("fw", "lost", slot) == "Wolves Freight hull lost near Golkonda", "a loss: the regional bulletin 'Wolves Freight hull lost near Golkonda'");
+	HOST_Check(e and e.v == "lost" and TRF_UI_NewsText("fw", "lost", slot) == "Wolves Freight hull lost near Golconda", "a loss: the regional bulletin 'Wolves Freight hull lost near Golconda'");
 	TRF.co.owe = 0; TRF.co.vch = 0;
 	n0 = S_Mark();
 	FR_Buy();

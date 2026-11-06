@@ -191,7 +191,7 @@ end;
 function TRF_ChRgName(slot)
 	local r = TRF_ChRg();
 	if r and type(slot) == "number" and type(r[slot]) == "table" and type(r[slot].home) == "number" then
-		local s = TRF_N("TRF_UI_SysName", r[slot].home);
+		local s = TRF_N("TRF_SysEn", r[slot].home);
 		if type(s) == "string" then return s; end;
 		return TRF_ChName(r[slot].home);
 	end;
@@ -1456,10 +1456,10 @@ end;
 -- Convoy, Sweep per faction 1..5, Base), rank titles chrk0..5, dock and progress lines.
 function TRF_Ch_Text()
 	return {
-		chtdionis = "FTU charter: Dionis region", chtdosis = "FTU charter: Dosis region", chtelinor = "FTU charter: Elinor region",
-		chtgefest = "FTU charter: Gefest region", chtgolkonda = "FTU charter: Golkonda region", chtkadi = "FTU charter: Kadi region",
-		chtmoscowia = "FTU charter: Moscowia region", chttorr = "FTU charter: Torr region", chtxk16 = "FTU charter: XK16 region",
-		chtxt24 = "FTU charter: XT24 region", chtxt27 = "FTU charter: XT27 region",
+		chtdionis = "FTU charter: Dionysus region", chtdosis = "FTU charter: Dosis region", chtelinor = "FTU charter: Elinor region",
+		chtgefest = "FTU charter: Hephaestus region", chtgolkonda = "FTU charter: Golconda region", chtkadi = "FTU charter: Cadi region",
+		chtmoscowia = "FTU charter: Muscovy region", chttorr = "FTU charter: Torr region", chtxk16 = "FTU charter: XK-16 region",
+		chtxt24 = "FTU charter: XT-24 region", chtxt27 = "FTU charter: XT-27 region",
 		chd11 = "Trade is booming in this region and every captain wants an escort. Fly three FTU escorts or raid answers here before the clan starts raiding. Progress and pay at any FTU trade dock.",
 		chd12 = "Pirates are massing on these lanes. The charter pays the Wolves for three escorts or raid answers here before the clan starts raiding in earnest. Progress and pay at any FTU trade dock.",
 		chd21 = "Trade has collapsed in this region. Two escorts or raid answers here will help it back. Progress and pay at any FTU trade dock.",

@@ -644,7 +644,7 @@ function T_CO_D()
 	HOST_Check(CO_B(gs) == "100410/"..(L + 24) and TRF.newsx[gs].crp.v == "out_4" and TRF.newsx[gs].crp.n == 1
 		and CO_Logs(n0, "event=pull region="..gs.." corp=Uss count=3 end_leg="..(L + 24).." leg="..L.." active_count=1 result=out") == 1,
 		"pull-out: USS out of Golkonda for 24 legs, the news topic out_4, the count and the mark of USS reset ("..CO_B(gs)..")");
-	HOST_Check(TRF_UI_NewsText("crp", "out_4", gs) == "USS pulls its contract carriers off the lanes near Golkonda", "news text: "..TRF_UI_NewsText("crp", "out_4", gs));
+	HOST_Check(TRF_UI_NewsText("crp", "out_4", gs) == "USS pulls its contract carriers off the lanes near Golconda", "news text: "..TRF_UI_NewsText("crp", "out_4", gs));
 	-- Labels during it: no USS carrier in Golkonda; reason=pulled for a name USS would have taken.
 	T_Jump("debris4");
 	n0 = S_Mark();
@@ -753,7 +753,7 @@ function T_CO_E()
 	CO_Put(gs, 0, 0, 0, 4, 1, 0, L + 24);
 	local n0 = S_Mark();
 	local r = CO_Dock();
-	local out = "Dockmaster: USS pulled its contract carriers off the Golkonda lanes after the losses. Free traders fly the routes until they come back.";
+	local out = "Dockmaster: USS pulled its contract carriers off the Golconda lanes after the losses. Free traders fly the routes until they come back.";
 	local is, ic = CO_At(n0, "module=station event=dock "), CO_At(n0, "module=corp event=dock ");
 	HOST_Check(r and CO_Has(r.scr, out) and r.nb == 1 and is and ic and is < ic and CO_Logs(n0, "event=dock system=golkonda region="..gs.." kind=out corp=Uss") == 1
 		and CO_B(gs) == "000400/"..(L + 24), "out line once at the first approach, after the station's line; t 1 -> 0 ("..tostring(r and r.scr)..")");
@@ -769,7 +769,7 @@ function T_CO_E()
 	n0 = S_Mark();
 	r = CO_Dock();
 	local r2 = CO_Dock();
-	HOST_Check(CO_Has(r.scr, "Dockmaster: USS carriers are back on the Golkonda lanes. Business as usual.") and not CO_Has(r2.scr, "back on")
+	HOST_Check(CO_Has(r.scr, "Dockmaster: USS carriers are back on the Golconda lanes. Business as usual.") and not CO_Has(r2.scr, "back on")
 		and CO_Logs(n0, "kind=back corp=Uss") == 1 and TRF.crp == nil, "back line once; the state string goes when all zero");
 	-- Identity line: Triada owns Golkonda; crp_id_pct 100 once per visit, 0 never.
 	h.cfg.tune = {crp_id_pct=100};
@@ -777,7 +777,7 @@ function T_CO_E()
 	n0 = S_Mark();
 	r = CO_Dock();
 	r2 = CO_Dock();
-	HOST_Check(CO_Has(r.scr, "Dockmaster: Triada carriers work the Golkonda lanes. Fair prices, and nobody asks where the cargo came from.")
+	HOST_Check(CO_Has(r.scr, "Dockmaster: Triada carriers work the Golconda lanes. Fair prices, and nobody asks where the cargo came from.")
 		and not CO_Has(r2.scr, "Triada carriers") and CO_Logs(n0, "kind=id corp=Triada") == 1, "identity line once per visit");
 	-- A USS dock in Dosis; a pulled corporation gets no identity line.
 	T_Jump("dalled");

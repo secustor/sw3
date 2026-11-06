@@ -1625,16 +1625,14 @@ end;
 -- Presentation: dialogs, letters, names (spec 13; the text design/freight-quest-dialogs.md) -------------------------
 
 -- English map name of system idx (m_location_spec.loc #M_location_<name>: Hephaestus, Golconda, Calypso, Debris 6,
--- XB-13): the vanilla key through CombineStr (a key without a placeholder comes back as its text, as trf_supply's item
--- names), else K.en, else trf_ui's TRF_UI_SysName (the map folder name).
-function TRF_WqEnRaw(nm) return CombineStr("#M_location_"..nm, ""); end;
+-- XB-13): the shared helper trf_loc TRF_SysEn (map.script en, else the vanilla key through CombineStr), else K.en, else
+-- trf_ui's TRF_UI_SysName.
+function TRF_WqEnRaw(idx) return TRF_N("TRF_SysEn", idx); end;
 
 function TRF_WqSysEn(idx)
 	local nm = TRF_WqName(idx);
-	local s = nil;
-	if type(CombineStr) == "function" then s = call(TRF_WqEnRaw, {nm}, "x", TRF_WqNoErr); end;
-	if type(s) == "string" then s = gsub(s, "^%s*(.-)%s*$", "%1"); end;
-	if type(s) == "string" and s ~= "" and strsub(s, 1, 1) ~= "#" and not strfind(s, "Not found", 1, 1) then return s; end;
+	local s = TRF_WqEnRaw(idx);
+	if type(s) == "string" and s ~= "" and s ~= "?" then return s; end;
 	local e = TRF_WqK().en[nm];
 	if e then return e; end;
 	local u = TRF_N("TRF_UI_SysName", idx);

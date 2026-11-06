@@ -114,7 +114,7 @@ function T_JB_B()
 	HOST_Check(r.nb == 0 and getn(h.boxes) == b0 and getn(h.jc) == 1 and getn(h.dlgs) == d0 and h.trade_ok == k0
 		and JB_Logs(n0, "event=dock kind=trade line_count=0 box=parcel priority=400 result=card") == 1,
 		"trade dock: one TRF_MissionCard call, no ShowMsgBox, the vanilla call waits for the answer");
-	HOST_Check(o and c and c.id == "pcl" and c.header == "Sealed parcel to Taira" and c.cost == TRF_PcNum(o.pay) and c.text == TRF_PcBoxText(o)
+	HOST_Check(o and c and c.id == "pcl" and c.header == "Sealed parcel to Tira" and c.cost == TRF_PcNum(o.pay) and c.text == TRF_PcBoxText(o)
 		and c.title == "FTU courier contract", "card: id pcl, header pcljobh, cost the pay, the box text, title jbcard ("..tostring(c and c.header)..")");
 	HOST_Check(TRF.live.box == "dock_trade", "the card holds the box lock dock_trade");
 	HOST_Check(HOST_JobTick() == "open" and PC_Logs(n0, "result=shown via=card") == 1 and JB_Logs(n0, "event=jobs_card id=pcl card_event=open result=ok") == 1,
@@ -166,7 +166,7 @@ function T_JB_C()
 		and getn(h.dlgs) == d0 + 1 and TRF.live.box == nil, "trade dock: one row before the vanilla TradeStationDlg, no box, no card, no box lock");
 	local sh = nil;
 	if o then if o.j == 1 then sh = TRF_Txt("pcljob1", o.dl); else sh = TRF_Txt("pcljobs", o.j, o.dl); end; end;
-	HOST_Check(o and w and w.id == "pcl" and w.header == "Sealed parcel to Taira" and w.cost == TRF_PcNum(o.pay) and w.text == TRF_PcBoxText(o)
+	HOST_Check(o and w and w.id == "pcl" and w.header == "Sealed parcel to Tira" and w.cost == TRF_PcNum(o.pay) and w.text == TRF_PcBoxText(o)
 		and w.title == "FTU courier contract" and sh and w.short == sh and h.jb_tab == "Jobs", "row: id pcl, header pcljobh, cost, box text, title, short pcljobs, tab jbtab ("..tostring(w and w.short)..")");
 	HOST_Check(h.trflag == FALSE and JB_Logs(n0, "event=jobs_board kind=trade row_count=1 result=set") == 1
 		and JB_Logs(n0, "event=jobs_board kind=trade row_count=1 result=armed trader_flag=false") == 1 and PC_Logs(n0, "result=listed via=board") == 1,

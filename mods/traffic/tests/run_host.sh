@@ -10,13 +10,13 @@
 # host_freight.lua, the pirate haunts scenarios ha-a..f of host_haunt.lua and the sealed parcels scenarios pcl-a..h of
 # host_parcel.lua, the station jobs scenarios jb-a..f of host_jobs.lua (steps 1-3), the mercenary clans scenarios mc-a..k of host_merc.lua (each its own entry point), the named mercenary pilots scenarios mcp-a..c of host_pilots.lua (own entry
 # point), the hail stage B and combat hail scenarios hl-a..e of host_hail.lua (own entry point), the strength scale
-# scenarios str-a..e of host_str.lua (own entry point), the pirate fits scenarios ft-a..h of host_fits.lua (own entry point), the freight unlock quest scenarios wq-a..g of host_wq.lua (own entry point), the lethal-system warnings scenarios wn-a..g of host_warn.lua (own entry point), the crew remarks scenarios rm-a..g of host_remark.lua (own entry point), the clan temperaments scenarios tp-a..h of host_temper.lua (own entry point), the corporation carriers scenarios co-a..h of host_corp.lua (own entry point), the debrief pool scenarios db-a..h of host_debrief.lua (own entry point), the sourced tips scenarios ti-a..g of host_tips.lua (own entry point), the specialist answers scenarios spc-a..g of host_spec.lua (own entry point), the static signals scenarios sg-a..g of host_signal.lua (own entry point), then tests/test_pilots.sh (Pilots.xml merge and installer dry run on copies under .work/pilots/; it skips
+# scenarios str-a..e of host_str.lua (own entry point), the pirate fits scenarios ft-a..h of host_fits.lua (own entry point), the freight unlock quest scenarios wq-a..g of host_wq.lua (own entry point), the lethal-system warnings scenarios wn-a..g of host_warn.lua (own entry point), the crew remarks scenarios rm-a..g of host_remark.lua (own entry point), the clan temperaments scenarios tp-a..h of host_temper.lua (own entry point), the corporation carriers scenarios co-a..h of host_corp.lua (own entry point), the debrief pool scenarios db-a..h of host_debrief.lua (own entry point), the sourced tips scenarios ti-a..h of host_tips.lua (own entry point), the specialist answers scenarios spc-a..g of host_spec.lua (own entry point), the static signals scenarios sg-a..g of host_signal.lua (own entry point), then tests/test_pilots.sh (Pilots.xml merge and installer dry run on copies under .work/pilots/; it skips
 # when the vanilla Pilots.xml is not found, PILOTS_TEST=0 skips it).
 # Env: LUA4 (interpreter), LUAC4, EXPS (default "default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr ha pcl jb mc mcp hl str ft wq wn rm tp co db ti spc sg"), SCENS (default a..h),
 # V02 (default a..n), V1 (default a..n), STN (default a..h), PL (default a..f), SV (default a..g), LAD (default a..g), CH
 # (default a..h), SC (default a..g), CAP (default a..i), DM (default a..h), SH (default a..h), FR (default a..l), HA (default a..f),
 # PCL (default a..h), JB (default a..f), MC (default a..k), MCP (default a..c), HL (default a..e), STR (default a..e), FT (default a..f),
-# WQ (default a..g), WN (default a..g), RM (default a..g), TP (default a..h), CO (default a..h), DB (default a..h), TI (default a..g), SPC (default a..g), SG (default a..g).
+# WQ (default a..g), WN (default a..g), RM (default a..g), TP (default a..h), CO (default a..h), DB (default a..h), TI (default a..h), SPC (default a..g), SG (default a..g).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
@@ -87,7 +87,7 @@ for e in ${EXPS:-default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr
         tp) entry=host_temper.lua; for s in ${TP:-a b c d e f g h}; do run "tp-$s" TRF_TP="$s"; done; entry=host_stubs.lua ;;
         co) entry=host_corp.lua; for s in ${CO:-a b c d e f g h}; do run "co-$s" TRF_CO="$s"; done; entry=host_stubs.lua ;;
         db) entry=host_debrief.lua; for s in ${DB:-a b c d e f g h}; do run "db-$s" TRF_DB="$s"; done; entry=host_stubs.lua ;;
-        ti) entry=host_tips.lua; for s in ${TI:-a b c d e f g}; do run "ti-$s" TRF_TI="$s"; done; entry=host_stubs.lua ;;
+        ti) entry=host_tips.lua; for s in ${TI:-a b c d e f g h}; do run "ti-$s" TRF_TI="$s"; done; entry=host_stubs.lua ;;
         spc) entry=host_spec.lua; for s in ${SPC:-a b c d e f g}; do run "spc-$s" TRF_SPC="$s"; done; entry=host_stubs.lua ;;
         sg) entry=host_signal.lua; for s in ${SG:-a b c d e f g}; do run "sg-$s" TRF_SG="$s"; done; entry=host_stubs.lua ;;
         *) run "exp$e" TRF_EXP="$e" ;;

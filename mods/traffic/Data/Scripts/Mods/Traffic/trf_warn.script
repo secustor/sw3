@@ -126,6 +126,13 @@ function TRF_WnName(idx)
 	return tostring(idx);
 end;
 
+-- English map name of map name s for the texts (trf_loc TRF_SysEn, the map.script en), else s.
+function TRF_WnEn(s)
+	local n = TRF_N("TRF_SysEn", s);
+	if type(n) == "string" and n ~= "?" then return n; end;
+	return tostring(s);
+end;
+
 -- System idx of a map name (any case), or nil.
 function TRF_WnIdx(name)
 	local m = TRF_N("TRF_Map");
@@ -239,36 +246,36 @@ end;
 
 -- The list (spec 4) ------------------------------------------------------------------
 
--- Rows in spec 4 order, one per line between the markers (tools/check_warn.py parses them). s map name, nm English
--- caption, k class, lbl armed while the label is not "yes", lyes armed while it is "yes", nf with lbl: and the team is
--- not FRIEND, war armed while one team is at WAR, cqn off during these CurrentQuest values, hafa Hafa's switch, w and
--- n the warning and note keys.
+-- Rows in spec 4 order, one per line between the markers (tools/check_warn.py parses them). s map name (the texts
+-- print its English map name, TRF_WnEn), k class, lbl armed while the label is not "yes", lyes armed while it is "yes",
+-- nf with lbl: and the team is not FRIEND, war armed while one team is at WAR, cqn off during these CurrentQuest values,
+-- hafa Hafa's switch, w and n the warning and note keys.
 function TRF_WnData()
 	return {
 		-- BEGIN warn list
-		{s="gideon", nm="Gideon", k="kill", lbl="GideonPermit", nf="Kfni", w="wnwgideon", n="wnngideon"},
-		{s="eridan", nm="Eridan", k="kill", lbl="EridanPermit", w="wnweridan", n="wnneridan"},
-		{s="xt86", nm="XT-86", k="kill", lbl="XT86permit", nf="Vks", w="wnwxt86", n="wnnxt86"},
-		{s="vulcan", nm="Vulcan", k="kill", lbl="VulcanPermit", w="wnwvulcan", n="wnnvulcan"},
-		{s="xt24", nm="XT-24", k="kill", lbl="XT24Permit", w="wnwxt24", n="wnnxt24"},
-		{s="zebos", nm="Zebos", k="kill", lbl="ZebosPermit", w="wnwzebos", n="wnnzebos"},
-		{s="debris4", nm="Debris 4", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
-		{s="xt11", nm="XT-11", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
-		{s="fiasar", nm="Fiasar", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
-		{s="ergelan", nm="Ergelan", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
-		{s="xb15", nm="XB-15", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
-		{s="xb13", nm="XB-13", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
-		{s="deosis", nm="Deosis", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
-		{s="el_ariash", nm="Al Ariash", k="ambush", war={"Uss"}, cqn={"11_1", "11_2", "12d", "12e"}, w="wnwuss", n="wnnuss"},
-		{s="xk10", nm="XK-10", k="ambush", lbl="InocoPermit", nf="Inoco", w="wnwino", n="wnnino"},
-		{s="danstag", nm="Danstag", k="ambush", lbl="InocoPermit", nf="Inoco", w="wnwino", n="wnnino"},
-		{s="ashelon", nm="Ashelon", k="ambush", lbl="InocoPermit", nf="Inoco", w="wnwino", n="wnnino"},
-		{s="hafa", nm="Hapha", k="ambush", hafa=1, w="wnwhafa", n="wnnhafa"},
-		{s="b_leftera1", nm="Beta Lethera 1", k="ambush", cqn={"6"}, w="wnwbleftera1", n="wnnbleftera1"},
-		{s="x244", nm="X244", k="trap", lyes="Block_X213", w="wnwx244", n="wnnx244"},
-		{s="endoria1", nm="Endoria 1", k="garrison", war={"Vks", "Patrol"}, w="wnwendoria1", n="wnnendoria1"},
-		{s="kron", nm="Kronos", k="garrison", war={"Patrol"}, w="wnwkron", n="wnnkron"},
-		{s="kassilia", nm="Cassily", k="garrison", war={"Kfni"}, w="wnwkassilia", n="wnnkassilia"},
+		{s="gideon", k="kill", lbl="GideonPermit", nf="Kfni", w="wnwgideon", n="wnngideon"},
+		{s="eridan", k="kill", lbl="EridanPermit", w="wnweridan", n="wnneridan"},
+		{s="xt86", k="kill", lbl="XT86permit", nf="Vks", w="wnwxt86", n="wnnxt86"},
+		{s="vulcan", k="kill", lbl="VulcanPermit", w="wnwvulcan", n="wnnvulcan"},
+		{s="xt24", k="kill", lbl="XT24Permit", w="wnwxt24", n="wnnxt24"},
+		{s="zebos", k="kill", lbl="ZebosPermit", w="wnwzebos", n="wnnzebos"},
+		{s="debris4", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
+		{s="xt11", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
+		{s="fiasar", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
+		{s="ergelan", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
+		{s="xb15", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
+		{s="xb13", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
+		{s="deosis", k="ambush", war={"Uss"}, w="wnwuss", n="wnnuss"},
+		{s="el_ariash", k="ambush", war={"Uss"}, cqn={"11_1", "11_2", "12d", "12e"}, w="wnwuss", n="wnnuss"},
+		{s="xk10", k="ambush", lbl="InocoPermit", nf="Inoco", w="wnwino", n="wnnino"},
+		{s="danstag", k="ambush", lbl="InocoPermit", nf="Inoco", w="wnwino", n="wnnino"},
+		{s="ashelon", k="ambush", lbl="InocoPermit", nf="Inoco", w="wnwino", n="wnnino"},
+		{s="hafa", k="ambush", hafa=1, w="wnwhafa", n="wnnhafa"},
+		{s="b_leftera1", k="ambush", cqn={"6"}, w="wnwbleftera1", n="wnnbleftera1"},
+		{s="x244", k="trap", lyes="Block_X213", w="wnwx244", n="wnnx244"},
+		{s="endoria1", k="garrison", war={"Vks", "Patrol"}, w="wnwendoria1", n="wnnendoria1"},
+		{s="kron", k="garrison", war={"Patrol"}, w="wnwkron", n="wnnkron"},
+		{s="kassilia", k="garrison", war={"Kfni"}, w="wnwkassilia", n="wnnkassilia"},
 		-- END warn list
 	};
 end;
@@ -531,7 +538,7 @@ function TRF_WnDockBody(kind, param)
 	local dn = TRF_WnName(idx);
 	for i = 1, getn(take) do
 		local e = take[i];
-		tinsert(out, TRF_WnTxt(e.r.w, e.r.nm));
+		tinsert(out, TRF_WnTxt(e.r.w, TRF_WnEn(e.r.s)));
 		tinsert(shown, e.r.s);
 		wv.w[e.j] = 1;
 		TRF_WnStamp(e.j, legs);
@@ -583,7 +590,7 @@ function TRF_Wn_NoteDue(idx)
 		TRF_WnE("note", "system", r.s, "kind", r.k, "result", "skipped", "reason", why);
 		return;
 	end;
-	local ok, w2 = TRF_N("TRF_ArrivalLine", "warn", TRF_WnTxt(r.n, r.nm));
+	local ok, w2 = TRF_N("TRF_ArrivalLine", "warn", TRF_WnTxt(r.n, TRF_WnEn(r.s)));
 	if ok then
 		TRF_WnNoteSet(idx);
 		TRF_WnE("note", "system", r.s, "kind", r.k, "result", "queued");
@@ -642,7 +649,7 @@ function TRF_WnJumpWarn(dest, pn, via)
 		return;
 	end;
 	wv.jw[j] = 1;
-	local ok = TRF_N("TRF_Say", TRF_WnTxt(r.w, r.nm), 8);
+	local ok = TRF_N("TRF_Say", TRF_WnTxt(r.w, TRF_WnEn(r.s)), 8);
 	TRF_WnE("jump_warn", "system", r.s, "kind", r.k, "portal", pn, "via", via, "condition", cond, "result",
 		ok and "shown" or "not_shown");
 end;

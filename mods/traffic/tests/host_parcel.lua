@@ -196,7 +196,7 @@ function T_PCL_A()
 	local dq, kq = PC_Idx("dalled"), PC_Idx("kadenoa");
 	HOST_Check(nd == 75 and miss == "" and TRF_Txt("pclq"..dq) == "Sealed parcel: Dalled"
 		and TRF_Txt("pclqd"..dq) == "Deliver the sealed parcel to the trade station at Dalled, marked on your map on arrival. The FTU holds your deposit until delivery. A late delivery forfeits it, a short one the share of the missing units."
-		and TRF_Txt("pclq"..kq) == "Sealed parcel: Kadenoa" and PC_Has(TRF_Txt("pclqd"..kq), "to the marked trade station at Kadenoa.")
+		and TRF_Txt("pclq"..kq) == "Sealed parcel: Cadenoa" and PC_Has(TRF_Txt("pclqd"..kq), "to the marked trade station at Cadenoa.")
 		and TRF_PcDstOf(0) == nil and TRF_PcDstOf(nil) == nil, "logbook keys for the 75 trade station systems (Kadenoa: the marked station)"..miss);
 	-- Pure rules.
 	HOST_Check(TRF_PcPayOf(0.35, 3, 10, 1.0, 6, 1.0, 1.25, 30000) == 15400, "pay: the design example 0.35 x 3 x 900 x 10 x 1.0 x 1.3 x 1.25 = 15,400");
@@ -265,7 +265,7 @@ function T_PCL_B()
 	local n0 = S_Mark();
 	local r = PC_Dock();
 	local o = TRF_PcPlan(cur, 1);
-	HOST_Check(r.nb == 1 and r.box.title == "FTU courier desk" and r.box.text == "Taira station is out of machinery and the refinery is idle. Sealed parcel: 3 crates for the trade station at Taira, 3 jumps, 11 legs. Deposit 4,320 cr now, back on delivery. Pay 14,400 cr. Take it?",
+	HOST_Check(r.nb == 1 and r.box.title == "FTU courier desk" and r.box.text == "Tira station is out of machinery and the refinery is idle. Sealed parcel: 3 crates for the trade station at Tira, 3 jumps, 11 legs. Deposit 4,320 cr now, back on delivery. Pay 14,400 cr. Take it?",
 		"relief offer at Altair for Taira (01 section 2): "..tostring(r.box and r.box.text));
 	HOST_Check(o and o.k == 2 and o.dst == PC_Idx("taira") and o.j == 3 and o.L == 13 and o.T == 1 and o.pay == TRF_PcPayOf(0.35, 3, 13, 0.75, 5, 1, 1.25, 30000)
 		and PC_Logs(n0, "event=offer kind=2 source=altair destination=taira jumps=3 deadline=11 item=1 units=3 class=1 level=13 tier=1 prosperity=5 pay=14400 deposit=4320") == 1
@@ -456,7 +456,7 @@ function T_PCL_D()
 	local c0, hp0, st0 = h.credits, TRF.std.help, TRF_Stn_Rung(ta);
 	n0 = S_Mark();
 	local r = PC_Dock();
-	HOST_Check(PC_Has(r.scr, "Parcel received, seals intact. Deposit returned, 14,400 cr paid.|Taira dock: the machinery shortage is over once your hold is empty.")
+	HOST_Check(PC_Has(r.scr, "Parcel received, seals intact. Deposit returned, 14,400 cr paid.|Tira dock: the machinery shortage is over once your hold is empty.")
 		and h.credits == c0 + 4320 + 14400 and TRF.std.help == hp0 + 1 and TRF_Stn_Rung(ta) == st0 + 1, "delivery: deposit back, 14,400 paid, help +1, #3 standing +1, the shortage line");
 	local e = PC_ShortE("taira", 1);
 	HOST_Check(HOST_InvCount("Cargo_crate") == 0 and TRF_PcJob() == nil and TRF.job == nil and e and e.t == TRF.clock.legs and e.job == nil
@@ -479,7 +479,7 @@ function T_PCL_D()
 	r = PC_Dock();
 	if r.nb > 0 then PC_Press(r, "cancel"); end;
 	local r2 = PC_Dock();
-	HOST_Check(PC_Has(r.scr, "Taira dock: the Wolves' crates kept the refinery running.") and not PC_Has(r2.scr, "Wolves' crates") and PC_Logs(n0, "reason=gap") == 0,
+	HOST_Check(PC_Has(r.scr, "Tira dock: the Wolves' crates kept the refinery running.") and not PC_Has(r2.scr, "Wolves' crates") and PC_Logs(n0, "reason=gap") == 0,
 		"back in Taira within 10 legs: the thank-you line once; the gap has passed after 2 jumps");
 	-- The shared prize gap holds the pay (pcl_prize_gap 1).
 	PC_Begin("altair", "9_1", {pcl_prize_gap=1});
@@ -603,7 +603,7 @@ function T_PCL_F()
 	S_NewVisit();
 	local n0 = S_Mark();
 	local r = PC_Dock();
-	HOST_Check(PC_Has(r.scr, "Courier desk: the Taira parcel is overdue. Deposit forfeited.") and PC_Has(r.scr, "Come back in a while.") and r.nb == 0
+	HOST_Check(PC_Has(r.scr, "Courier desk: the Tira parcel is overdue. Deposit forfeited.") and PC_Has(r.scr, "Come back in a while.") and r.nb == 0
 		and h.credits == c0 and TRF.std.help == 4 and TRF.pcl.ban == TRF.clock.legs + 6 and TRF.pcl.fail == 1, "overdue at the next docking: the line, deposit kept, help -1, ban 6 legs");
 	HOST_Check(TRF.job == nil and HOST_InvCount("Cargo_crate") == 0 and h.quests.trf_pcl == QUEST_FAILED and PC_ShortE("taira", 1).job == nil
 		and TRF_Stn_Rung(cur) == st0 - 1 and PC_Logs(n0, "event=fail kind=2 source=altair destination=taira units_found=3 deposit=4320 help_change=-1") == 1,
@@ -658,7 +658,7 @@ function T_PCL_F()
 	HOST_Check(TRF.job == nil and HOST_InvCount("Cargo_crate") == 0 and PC_Logs(n0, "event=void kind=2 source=altair destination=taira units_found=3 refund=4320 reason=hostile") == 1,
 		"void on arrival: the destination owner at war, crates removed");
 	r = PC_Dock();
-	HOST_Check(PC_Has(r.scr, "Courier desk: Taira station is not answering. Deposit refunded.") and h.credits == c0 + 4320 and TRF.pcl.fail == 0 and TRF.pcl.ban == nil,
+	HOST_Check(PC_Has(r.scr, "Courier desk: Tira station is not answering. Deposit refunded.") and h.credits == c0 + 4320 and TRF.pcl.fail == 0 and TRF.pcl.ban == nil,
 		"refund k/n at the next trade dock, no penalty");
 	PC_Rel("Vks", RELATION_FRIEND);
 	-- Void by a chapter change (Taira named in chapter 15), checked at the dock.
@@ -668,7 +668,7 @@ function T_PCL_F()
 	h.labels.CurrentQuest = "15_1";
 	c0 = h.credits;
 	r = PC_Dock();
-	HOST_Check(PC_Has(r.scr, "Taira station is not answering. Deposit refunded.") and h.credits == c0 + 4320, "void: the destination named by the new chapter");
+	HOST_Check(PC_Has(r.scr, "Tira station is not answering. Deposit refunded.") and h.credits == c0 + 4320, "void: the destination named by the new chapter");
 	-- Void: the destination station dead at arrival, no unit found.
 	PC_Begin("altair", "9_1");
 	PC_Short("taira", 1);
@@ -681,7 +681,7 @@ function T_PCL_F()
 	n0 = S_Mark();
 	TRF_Pc_OnActivate();
 	r = PC_Dock();
-	HOST_Check(PC_Logs(n0, "reason=dead") == 1 and PC_Has(r.scr, "Courier desk: Taira station is not answering. The parcel is void."), "void: the station dead, nothing aboard, no refund");
+	HOST_Check(PC_Logs(n0, "reason=dead") == 1 and PC_Has(r.scr, "Courier desk: Tira station is not answering. The parcel is void."), "void: the station dead, nothing aboard, no refund");
 end;
 
 -- g: guard, chapters, deny lists, toggles off, dump, probes -----------------------------------------

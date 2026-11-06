@@ -763,7 +763,7 @@ function T_STN_D()
 	n0 = S_Mark();
 	local r = S_Trade(D.trade[1]);
 	if r.nb > 0 then HOST_Press("cancel"); end;
-	HOST_Check(strfind(r.scr, TRF_Txt("stntipfeq", "gaoba"), 1, 1) and TRF.stn[k].ts == idx and TRF.stn[k].tf == TRF.clock.legs
+	HOST_Check(strfind(r.scr, TRF_Txt("stntipfeq", "Gaoba"), 1, 1) and TRF.stn[k].ts == idx and TRF.stn[k].tf == TRF.clock.legs
 		and S_Logs(n0, "module=station event=tip station_key=42 kind=feq system=gaoba") == 1, "supply-run tip at e 4 records tf/ts");
 	n0 = S_Mark();
 	TRF_AddHeat(1, "feq kill");
@@ -797,7 +797,7 @@ function T_STN_D()
 	n0 = S_Mark();
 	r = S_Trade(D.trade[1]);
 	if r.nb > 0 then HOST_Press("cancel"); end;
-	local tsw = TRF_Txt("stntipsweep", TRF_SweepInfo(slot).fac, TRF_ClanName(slot), TRF_StnName(TRF_RgMap()[slot].home));
+	local tsw = TRF_Txt("stntipsweep", TRF_SweepInfo(slot).fac, TRF_ClanName(slot), TRF_StnSysEn(TRF_RgMap()[slot].home));
 	HOST_Check(strfind(r.scr, tsw, 1, 1) and not strfind(r.scr, "supply run", 1, 1) and TRF.stn[k].tf == nil
 		and S_Logs(n0, "module=station event=tip station_key=42 kind=sweep") == 1, "sweep tip first, before the supply run");
 	TRF.feq = nil;
@@ -812,7 +812,7 @@ function T_STN_D()
 	r = S_Trade(D.trade[1]);
 	if r.nb > 0 then HOST_Press("cancel"); end;
 	TRF.base = base0;
-	HOST_Check(strfind(r.scr, TRF_Txt("stntipbase", TRF_StnName(idx)), 1, 1) and S_Logs(n0, "module=station event=tip station_key=42 kind=base system=gaoba") == 1,
+	HOST_Check(strfind(r.scr, TRF_Txt("stntipbase", TRF_StnSysEn(idx)), 1, 1) and S_Logs(n0, "module=station event=tip station_key=42 kind=base system=gaoba") == 1,
 		"base tip without sweep and supply run");
 	-- Radio spacing (stn_gap): a greeting within 6 s of another TRF line waits for the next approach.
 	T_Enter("gaoba");

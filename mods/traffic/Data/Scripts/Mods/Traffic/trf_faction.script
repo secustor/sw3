@@ -165,6 +165,10 @@ function TRF_FcSlotOf(idx)
 end;
 
 function TRF_FcSysName(idx)
+	if type(TRF_SysEn) == "function" then
+		local s = TRF_FcP(TRF_SysEn, {idx});
+		if type(s) == "string" then return s; end;
+	end;
 	if type(TRF_UI_SysName) == "function" then
 		local s = TRF_FcP(TRF_UI_SysName, {idx});
 		if type(s) == "string" then return s; end;

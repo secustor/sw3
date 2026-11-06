@@ -184,7 +184,7 @@ end;
 function TRF_CrpRgName(slot)
 	local r = TRF_CrpRgMap();
 	if r and type(slot) == "number" and type(r[slot]) == "table" and type(r[slot].home) == "number" then
-		local s = TRF_N("TRF_UI_SysName", r[slot].home);
+		local s = TRF_N("TRF_SysEn", r[slot].home);
 		if type(s) == "string" then return s; end;
 		return TRF_CrpName(r[slot].home);
 	end;

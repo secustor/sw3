@@ -177,6 +177,39 @@ function TRF_LocTxt(key)
 	return nil;
 end;
 
+-- English map name of system idx (a map index, or a script name in any case) for player texts: the map.script en field
+-- (tools/gen_map.py, #M_location_<name> of m_location_spec.loc: Hephaestus, Golconda, Calypso, Debris 6), else the
+-- vanilla key through CombineStr (a key without a placeholder comes back as its text), else the script name with the
+-- first letter upper-cased. Index 0 is the trade station and an unknown index "unknown space" (trf_ui's texts, as
+-- TRF_UI_SysName), "?" without trf_ui. Log values keep the lowercase script names (TRF_SysName).
+function TRF_SysEn(idx)
+	local m = TRF_N("TRF_Map");
+	if type(m) ~= "table" or type(m.sys) ~= "table" then m = nil; end;
+	if type(idx) == "string" and m and type(m.by) == "table" then idx = m.by[strlower(idx)] or idx; end;
+	local nm = nil;
+	if m and type(idx) == "number" and type(m.sys[idx]) == "table" then
+		local s = m.sys[idx];
+		if type(s.en) == "string" and s.en ~= "" then return s.en; end;
+		nm = s.name;
+	elseif type(idx) == "string" then
+		nm = strlower(idx);
+	end;
+	if type(nm) ~= "string" or nm == "" then
+		local u = nil;
+		if idx == 0 then u = TRF_N("TRF_Txt", "station"); else u = TRF_N("TRF_Txt", "unknown"); end;
+		if type(u) == "string" then return u; end;
+		return "?";
+	end;
+	if type(CombineStr) == "function" then
+		local r = call(TRF_LocEnRaw, {nm}, "x", TRF_LocNoErr);
+		if type(r) == "string" then r = gsub(r, "^%s*(.-)%s*$", "%1"); end;
+		if type(r) == "string" and r ~= "" and strsub(r, 1, 1) ~= "#" and not strfind(r, "Not found", 1, 1) then return r; end;
+	end;
+	return strupper(strsub(nm, 1, 1))..strsub(nm, 2);
+end;
+
+function TRF_LocEnRaw(nm) return CombineStr("#M_location_"..nm, ""); end;
+
 -- loc_mode 1: the scaffold key of key ("#TRF_<key>"), or nil when the key has no EN text.
 function TRF_LocKeyOf(key)
 	local k = TRF_LocKey(key);

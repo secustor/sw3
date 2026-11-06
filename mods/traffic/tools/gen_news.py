@@ -11,7 +11,7 @@ insert before </News> of the game's file (a reinstall replaces the block, uninst
 Record names are the ones trf_ui.script's TRF_UI_NewsRec builds: "trf_<topic>_<v>" (global) and
 "trf_r<slot>_<topic>_<v>" (region slot). Text keys: #TRF_N_<name without trf_>_Name (header) and _LDesc
 (body). Header = the TRF_UI_Text template n<topic><variant> with the static parts filled in: $1 home
-display name (map.script sys[home].dir), $2 clan name (trf_region TRF_Rg_Text clan<slot>), $3 / global $1
+display name (map.script sys[home].en, the English map name; dir without it), $2 clan name (trf_region TRF_Rg_Text clan<slot>), $3 / global $1
 the faction of a "_<f>" variant suffix (TRF_FacTeams order Vks, Kfni, Triada, Uss, Inoco). The sweep
 faction is runtime state (TRF_SweepInfo) and not in the record name, so the sweep headlines use the
 SWEEP_TEXT wording without it; the captain's name ($4 of the cap headlines) is runtime state too (the
@@ -116,8 +116,8 @@ def load_sources(src):
     rg = lua_strings(func_body(read(rg_p), "TRF_Rg_Text", rg_p))
     mtext = read(map_p)
     dirs = {}
-    for name, d in re.findall(r'\{name="([^"]+)", idx=\d+, dir="([^"]+)"', mtext):
-        dirs[name] = d
+    for name, d, en in re.findall(r'\{name="([^"]+)", idx=\d+, dir="([^"]+)"(?:, en="([^"]*)")?', mtext):
+        dirs[name] = en or d
     m = re.search(r"^\s*rg = \{\n(.*?)^\s*\}\n", mtext, re.M | re.S)
     if not m:
         die("no top-level rg table in %s (run gen_map.py)" % map_p)

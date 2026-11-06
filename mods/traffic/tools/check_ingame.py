@@ -3318,6 +3318,18 @@ def c_wi2(ctx):
             res.fails.append("%s: told before (%s)" % (r.short(), seen[k].short()))
         else:
             seen[k] = r
+    # One docking (the pick lines before its module=station event=dock line): a record told by one dock surface is not
+    # told by another (design/tips-spec.md D14, the per-docking set).
+    dock, src = {}, None
+    for r in ctx.recs:
+        if r.src != src or r.is_("station", "dock") or r.is_("state", "enter"):
+            dock, src = {}, r.src
+            continue
+        if r.is_("tips", "pick", result="shown") and r.get("surface") in ("news", "tip"):
+            k = (r.get("kind"), r.get("target"), r.get("event_leg"))
+            if k in dock and dock[k].get("surface") != r.get("surface"):
+                res.fails.append("%s: told in the same docking by %s (%s)" % (r.short(), dock[k].get("surface"), dock[k].short()))
+            dock.setdefault(k, r)
     if not sh:
         res.missing.append("no harbour news line (see W-A16.1)")
     res.ev("harbour news lines", sh)

@@ -70,7 +70,7 @@ No handle is stored anywhere.
 | Field | Meaning |
 |---|---|
 | `s` | map.script name (lowercase) |
-| `nm` | English caption (the `$1` of family texts and the name in the log) |
+| (name) | no field since 2026-11-06: the texts print the English map name of `s` (`TRF_WnEn(s)` = trf_loc `TRF_SysEn`, map.script `en`, the `$1` of family texts); the log names `s` |
 | `k` | class: `kill`, `ambush`, `trap`, `garrison` (rank 1-4 for the dock order) |
 | `lbl` | armed while `GetQuestLabel(lbl) ~= "yes"` (nil and "" count as not "yes", as in vanilla) |
 | `lyes` | armed while `GetQuestLabel(lyes) == "yes"` |
@@ -99,7 +99,7 @@ Against the last host full state of 95,376 bytes (freight-spec 3.3) the worst ca
 
 Arming conditions and evidence: LS sections given per row. Docks: the systems one jump away with a trade station (map.script `st` kind `trade`), from `TRF_RgAdj`; "none" means the row has no dock warning (16).
 
-| # | `s` | `nm` | `k` | Condition fields | Chapters (LS) | Trade docks one jump away | Texts |
+| # | `s` | English name (map.script `en`) | `k` | Condition fields | Chapters (LS) | Trade docks one jump away | Texts |
 |---|---|---|---|---|---|---|---|
 | 1 | gideon | Gideon | kill | `lbl="GideonPermit", nf="Kfni"` | ch 0-6; 7 until 7c; 7e-20 except branch c after 13c and branch a 16a-16a_3 (LS 3) | avalon, simeiz, solpuga | `wnwgideon`, `wnngideon` |
 | 2 | eridan | Eridan | kill | `lbl="EridanPermit"` | ch 0 until 14e_3/15e/16e, 15c or 16d; branch a and 16b: always (LS 3) | shula (also reached by random portals) | `wnweridan`, `wnneridan` |
@@ -153,7 +153,7 @@ For each neighbour `j` of the dock system in `WV.adj` that is a listed row `r` (
 4. C4 `c[j]` set and `legs - c[j] < wn_legs` -> skip `cooldown`.
 5. Otherwise a candidate.
 
-Sort candidates by class rank (kill, ambush, trap, garrison), then map idx; take the first `wn_dock`; the rest skip `cap`. For each taken row: text `TRF_Txt(r.w, r.nm)`, `WV.w[j] = 1`, `c[j] = legs` (WD3), `event=warn`. Return the list of lines (the dispatcher shows each through `TRF_Say(text, 8)`), or nil. One `event=dock` line per approach that had at least one listed neighbour.
+Sort candidates by class rank (kill, ambush, trap, garrison), then map idx; take the first `wn_dock`; the rest skip `cap`. For each taken row: text `TRF_Txt(r.w, TRF_WnEn(r.s))`, `WV.w[j] = 1`, `c[j] = legs` (WD3), `event=warn`. Return the list of lines (the dispatcher shows each through `TRF_Say(text, 8)`), or nil. One `event=dock` line per approach that had at least one listed neighbour.
 
 The pure part `TRF_WnPickOf(cands, n)` (sort and cut) and `TRF_WnCdOf(c, j, legs, n)` (cooldown) are host-tested without natives.
 
@@ -168,7 +168,7 @@ The pure part `TRF_WnPickOf(cands, n)` (sort and cut) and `TRF_WnCdOf(c, j, legs
 ### 6.2 Due call (`TRF_Wn_NoteDue(idx)`, `TRF_Due` drops it when the generation changed: a jump or a load)
 
 Gates, first failing ends it with `event=note result=skipped reason=<r>`, bit unchanged: `idx ~= TRF_CurIdx()` (`moved`), W3 latch or `TRF_Safe_QState()` (`latch`), `__disableAction == TRUE` or `__sys_SOS == TRUE` (`flag`), `TRF_Safe_Scene()` (`scene`), `TRF_StrictOk(idx, "warn")` not 1 (`gate:<why>`), `TRF_Chapter() < wn_ch` (`chapter`).
-Then `ok, why = TRF_ArrivalLine("warn", TRF_Txt(r.n, r.nm))`: `ok` -> set the bit (WD1), `event=note result=queued`; else `event=note result=dropped reason=<why>` (`cap`, `due`, `entry`, `arg` for an empty text, `plumb` when trf_plumb is absent), bit clear.
+Then `ok, why = TRF_ArrivalLine("warn", TRF_Txt(r.n, TRF_WnEn(r.s)))`: `ok` -> set the bit (WD1), `event=note result=queued`; else `event=note result=dropped reason=<why>` (`cap`, `due`, `entry`, `arg` for an empty text, `plumb` when trf_plumb is absent), bit clear.
 
 The note does not test the arming condition (decision 4). In an armed kill system the mothership is gone before the line (5 s against 8 s); a game over reloads a save from before the entry, so the bit stays clear.
 
@@ -193,7 +193,7 @@ Nothing but the log: after a load there is no entry, so no note (`TRF_ArrivalLin
 
 Lines are plain screen-log lines through the dispatcher (`TRF_Say(text, 8)`) and the arrival queue (`TRF_PlArrSay`, 8 s). No radio portrait: the station's greeting already uses the radio channel with its `stn_gap` spacing, and the dispatcher has no speaker. Warnings start with "Dockmaster:", as `stnnoted`.
 
-## 9. Text keys (`TRF_Wn_Text()`, EN only; `$1` = row `nm` where used)
+## 9. Text keys (`TRF_Wn_Text()`, EN only; `$1` = the English map name of the row's `s` where used)
 
 Rules: no `%`, `#` or `\n`; one sentence group, under 200 characters; the warning says what kills, how fast and what to do, and is shown only while the row is armed; the note states the rule and is shown once.
 
@@ -256,7 +256,7 @@ Constant without a key (`TRF_WnK`): `cmax` 6 (stamps kept), `words` 3, `bits` 40
 `python3 -I tools/check_warn.py [--game P] [--check]`, read-only on the game dir; prints the table of 4 with the computed dock neighbours; exit 1 on any finding (also without `--check`).
 
 1. K1 Rows: parse the `-- BEGIN warn list` block of trf_warn.script (one row per line, the fields of 3.3 only); 23 rows (`ROWS_EXPECT`), no duplicate `s`.
-2. K2 Names: every `s` is a key of map.script `by`; `nm` equals `#M_location_cap_<s>` of `L/m_location_spec.loc`, or for the numbered captions ("4", "1", "2") the family caption plus the number ("Debris" + " 4").
+2. K2 Names: every `s` is a key of map.script `by`; its map.script `en` (the name the texts print) equals `#M_location_cap_<s>` of `L/m_location_spec.loc`, or for the numbered captions ("4", "1", "2") the family caption plus the number ("Debris" + " 4").
 3. K3 Evidence: a table `EVIDENCE[s]` in the tool lists anchors `(path, line, token)`; the kill or spawn line and the condition line must hold the token on that exact line of the clone (`Timer_Seq(5, __crash_FEnd)` for kill rows, `Attack(mothership)` or `RELATION_WAR` for ambush rows, `Block_X213` for x244, `GetTeamRelation("<team>"` for garrison rows).
 4. K4 Condition match: every `lbl`/`lyes`/`nf`/`war`/`cqn` value of the row appears as a literal on its condition anchor line or the next 3 lines (`GetQuestLabel("<lbl>")`, `GetTeamRelation("<team>"`, `"<cq>"`); a condition in the script that the row lacks is a finding.
 5. K5 Windows: for each label used by a row, the tool greps every `SetQuestLabel("<label>"` (spacing variants) in `G/Quests`, `G/include` and `G/InitTeamScript.script` and compares the set of `(path, line, value)` with `SETTERS[label]` in the tool, which carries the LS 3-5 lists. A new, moved or missing setter is a finding: the chapter windows of LS must be re-derived.
@@ -395,3 +395,5 @@ Owner answers (2026-11-04, the standing rule "implement the recommendation as th
 8. The W-A12 items are in `PROGRESS.md` "Next in-game test plan", subsection "Wave 1 (host-tested only)" (the section the wave 1 items share), not in `test-plan-haunts-parcels.md` section 5.
 9. When the mod part of a wrapper errors before it read the map, the post step still reads `dest_location` after the original and may warn after the box opened (host `wn-f`).
 10. `event=warn` also logs `cooldown=<wn_legs>`, so `tools/check_ingame.py` W-A12.4 scores the repetition with the tuned cooldown.
+
+2026-11-06: the rows lost their hand-written `nm` captions; the texts take the English map name from map.script (`en`, generated by `gen_map.py` from `#M_location_<name>`) through `TRF_WnEn`, and `check_warn.py` K2 compares that `en` with the game caption. The 23 hand names equalled the generated ones.

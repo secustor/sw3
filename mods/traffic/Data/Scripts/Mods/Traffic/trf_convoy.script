@@ -163,6 +163,13 @@ function TRF_CvSysName(idx)
 	return "?";
 end;
 
+-- English map name of system idx for the texts (trf_loc TRF_SysEn), else the script name.
+function TRF_CvSysEn(idx)
+	local n = TRF_CvX("TRF_SysEn", idx);
+	if type(n) == "string" then return n; end;
+	return TRF_CvSysName(idx);
+end;
+
 -- Bit b of bit field v: 1 or 0 (no bit operators in Lua 4).
 function TRF_CvBit(v, b)
 	if type(v) ~= "number" or type(b) ~= "number" or b < 1 then return 0; end;
@@ -1063,7 +1070,7 @@ function TRF_FeqDue(idx)
 	local j = TRF_CvJumps(idx, 3)[f.s];
 	if type(j) ~= "number" then return nil; end;
 	if mod(f.t * 7 + f.s * 13 + idx * 31, 100) >= TRF_CvT("feq_announce_chance") then return nil; end;
-	return {s=f.s, f=f.f, j=j, txt=TRF_CvTxt("cvrfeq", TRF_CvFacName(f.f), TRF_CvSysName(f.s))};
+	return {s=f.s, f=f.f, j=j, txt=TRF_CvTxt("cvrfeq", TRF_CvFacName(f.f), TRF_CvSysEn(f.s))};
 end;
 
 -- Pirates took the convoy of faction f in system s (v1 8.4): salvage +3, clan score +5 (once per record, so
@@ -1766,7 +1773,7 @@ end;
 
 -- Destination text of the convoy record r: the station (path A) or the system behind its exit portal.
 function TRF_CvFeqDest(r)
-	if type(r) == "table" and r.path ~= "A" and type(r.to) == "number" and r.to > 0 then return TRF_CvSysName(r.to); end;
+	if type(r) == "table" and r.path ~= "A" and type(r.to) == "number" and r.to > 0 then return TRF_CvSysEn(r.to); end;
 	return TRF_CvTxt("feqdest");
 end;
 
@@ -1793,8 +1800,8 @@ function TRF_FeqId(id)
 	local L = TRF_CvLive();
 	if not L or type(L.fq) ~= "table" or L.fq.id ~= id then return nil; end;
 	local r = L.tr[id];
-	local from = TRF_CvSysName(TRF_CvCur());
-	if type(r) == "table" and type(r.from) == "number" and r.from > 0 then from = TRF_CvSysName(r.from); end;
+	local from = TRF_CvSysEn(TRF_CvCur());
+	if type(r) == "table" and type(r.from) == "number" and r.from > 0 then from = TRF_CvSysEn(r.from); end;
 	return TRF_CvTxt("feqid", TRF_CvFacName(L.fq.f), from, TRF_CvFeqDest(r));
 end;
 

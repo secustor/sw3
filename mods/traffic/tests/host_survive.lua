@@ -415,7 +415,7 @@ function T_SV_C()
 	HOST_Check(SV_B(1).n == 2 and SV_B(1).sl == 0 and SV_B(2).n == 1, "T1: pods kept; witnessed: no roll");
 	-- Rumour: the taken crew near the asking system (heos is a neighbour of gaoba).
 	local r = TRF_Sv_Rumour(cur);
-	HOST_Check(r == TRF_Txt("svrumtaken", TRF_SysName(g)), "rumour: pirates picked up a crew near Gaoba ("..tostring(r)..")");
+	HOST_Check(r == TRF_Txt("svrumtaken", TRF_SysEn(g)), "rumour: pirates picked up a crew near Gaoba ("..tostring(r)..")");
 	for i = 1, getn(TRF_Map().sys) do TRF_SetDis(i, 0); end;
 	local hr = TRF_HlRumourText(cur);
 	HOST_Check(hr == r or strfind(hr, "Pirates picked up", 1, 1) or type(hr) == "string", "hail rumour reads the survivors rumour ("..hr..")");
@@ -546,7 +546,7 @@ function T_SV_E()
 	for i = 1, getn(TRF_Map().sys) do TRF_SetDis(i, 0); end;
 	HOST_Check(TRF_Sv_Rumour(g) == nil, "no dis >= 3 nearby: no rumour");
 	TRF_SetDis(V_Idx("heos"), 3);
-	HOST_Check(TRF_Sv_Rumour(g) == TRF_Txt("svrumlost", "heos"), "before chapter 5: a transport lost near Heos");
+	HOST_Check(TRF_Sv_Rumour(g) == TRF_Txt("svrumlost", "Heos"), "before chapter 5: a transport lost near Heos");
 	HOST_Check(TRF_Sv_Rumour(g, "rec") == nil, "before chapter 5: not asked ahead of the rest of the hail pool");
 	-- enable_survivors 0: the module does nothing.
 	h.labels.CurrentQuest = "9_1";

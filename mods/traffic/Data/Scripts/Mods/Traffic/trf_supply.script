@@ -851,7 +851,7 @@ function TRF_SpCtOffer(id)
 	local cur = TRF_SpCur();
 	local n = floor(min(TRF_SpT("sweep_escort_mult", 3) * TRF_SpPayN(cur), TRF_SpT("pay_cap", 30000)));
 	local dest = TRF_SpSysName(cur);
-	if type(TRF_UI_SysName) == "function" then dest = TRF_SpP(TRF_UI_SysName, {cur}) or dest; end;
+	if type(TRF_SysEn) == "function" then dest = TRF_SpP(TRF_SysEn, {cur}) or dest; end;
 	return TRF_SpTxt("sescoffer", TRF_SpFacName(s.f), dest, format("%d", n)), n;
 end;
 

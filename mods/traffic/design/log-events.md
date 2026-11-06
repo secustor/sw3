@@ -1017,7 +1017,8 @@ Sourced tips and the event ring, A16 (`design/tips-spec.md` 10; host-tested only
 | `push` | `module=tips event=push kind=raid system=gredos result=refused reason=<off,arg,noregion,current>` | 2 |
 | `pick` | `module=tips event=pick surface=<news,tip,hail,intel> system=gaoba kind=raid target=lidau event_leg=118 age=2 source=3 live=<current,stale> merged=<basedn,wreck,raid,swon,nil> candidate_count=1 result=shown` (`system`: the dock or the hailed ship's system; intel: the captain's) | 1 |
 | `pick` | `module=tips event=pick surface=news system=gaoba candidate_count=0 result=none` | 2 |
-| `candidate` | `module=tips event=candidate surface=news kind=raid target=lidau result=<ok,kind,chapter,gate:<why>,dead,stale,old,told>` | 2 |
+| `candidate` | `module=tips event=candidate surface=news kind=raid target=lidau result=<ok,kind,chapter,gate:<why>,dead,stale,old,told,told_dock>` | 2 |
+| `pick` | `module=tips event=pick surface=<news,tip> system=valensia kind=gather target=gefest event_leg=296 result=skipped reason=told_dock` (told by another dock surface in this docking, tips-spec D14) | 1 |
 | `skip` | `module=tips event=skip surface=news reason=<off,latch,scene,flag>` (once per reason and visit) | 2 |
 | `prune` | `module=tips event=prune region=5 dropped_count=2 reason=<age,dead,size>` (at a push or the region tick) / `region=all reason=off` (cfg tips 0 cleared the ring) | 2 |
 | `fix` | `module=tips event=fix kept=12 dropped=3 moved=1` (only when the repair changed `TRF.ti`) | 1 |

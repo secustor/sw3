@@ -179,9 +179,9 @@ function TRF_FrName(idx)
 	return tostring(idx);
 end;
 
--- Display name of system idx (trf_ui: the location folder), for the lines.
+-- Display name of system idx (trf_loc TRF_SysEn: the English map name), for the lines.
 function TRF_FrSys(idx)
-	local n = TRF_N("TRF_UI_SysName", idx);
+	local n = TRF_N("TRF_SysEn", idx);
 	if type(n) == "string" then return n; end;
 	return TRF_FrName(idx);
 end;

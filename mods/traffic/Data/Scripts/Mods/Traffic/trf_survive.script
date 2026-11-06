@@ -147,6 +147,13 @@ function TRF_SvName(idx)
 	return tostring(idx);
 end;
 
+-- English map name of system idx for the lines (trf_loc TRF_SysEn), else the lowercase name.
+function TRF_SvEn(idx)
+	local n = TRF_N("TRF_SysEn", idx);
+	if type(n) == "string" then return n; end;
+	return TRF_SvName(idx);
+end;
+
 function TRF_SvTxt(key, a, b)
 	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b); end;
 	return tostring(key);
@@ -1487,7 +1494,7 @@ function TRF_Sv_Rumour(idx, only)
 		for k, v in near do if type(k) == "number" then tinsert(ks, k); end; end;
 		sort(ks);
 		for i = 1, getn(ks) do
-			if (TRF_N("TRF_Dis", ks[i]) or 0) >= 3 then return TRF_SvTxt("svrumlost", TRF_N("TRF_SysName", ks[i])); end;
+			if (TRF_N("TRF_Dis", ks[i]) or 0) >= 3 then return TRF_SvTxt("svrumlost", TRF_SvEn(ks[i])); end;
 		end;
 		return nil;
 	end;
@@ -1499,7 +1506,7 @@ function TRF_Sv_Rumour(idx, only)
 	local k = "svrumsaved";
 	if rm.k == 1 then k = "svrumtaken"; end;
 	TRF_SvDE("rumour", "system", TRF_SvName(idx), "rumour_system", TRF_SvName(rm.s), "kind", k);
-	return TRF_SvTxt(k, TRF_N("TRF_SysName", rm.s));
+	return TRF_SvTxt(k, TRF_SvEn(rm.s));
 end;
 
 -- Registrations (trf_plumb TRF_InstallPlumb) ----------------------------------------------

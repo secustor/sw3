@@ -145,6 +145,13 @@ function TRF_StnName(idx)
 	return tostring(idx);
 end;
 
+-- English map name of system idx for the lines (trf_loc TRF_SysEn), else TRF_StnName.
+function TRF_StnSysEn(idx)
+	local n = TRF_N("TRF_SysEn", idx);
+	if type(n) == "string" then return n; end;
+	return TRF_StnName(idx);
+end;
+
 function TRF_StnTxt(key, a, b, c)
 	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c); end;
 	return tostring(key);
@@ -943,7 +950,7 @@ function TRF_StnTip(idx, k, T)
 			local rm = TRF_N("TRF_RgMap");
 			local home = nil;
 			if type(rm) == "table" and type(rm[slot]) == "table" then home = rm[slot].home; end;
-			local tx = TRF_StnTxt("stntipsweep", i.fac, TRF_N("TRF_ClanName", slot), TRF_StnName(home));
+			local tx = TRF_StnTxt("stntipsweep", i.fac, TRF_N("TRF_ClanName", slot), TRF_StnSysEn(home));
 			-- Sourced tips (design/tips-spec.md 7.2): who first saw the gathering fleet, where and when.
 			local cl = TRF_N("TRF_Ti_TipClause", idx, "sweep", slot);
 			if type(cl) == "string" then tx = tx.." "..cl; end;
@@ -955,13 +962,13 @@ function TRF_StnTip(idx, k, T)
 		local e = TRF_StnGet(k, 1, T);
 		e.tf = TRF_StnLegs();
 		e.ts = fq.s;
-		return TRF_StnTxt("stntipfeq", TRF_StnName(fq.s)), "feq", fq.s;
+		return TRF_StnTxt("stntipfeq", TRF_StnSysEn(fq.s)), "feq", fq.s;
 	end;
 	if slot and type(TRF.base) == "table" then
 		for i = 1, getn(TRF.base) do
 			local b = TRF.base[i];
 			if type(b) == "table" and (b.k == 1 or b.k == 2) and type(b.s) == "number" and TRF_N("TRF_RgOf", b.s) == slot then
-				local tx = TRF_StnTxt("stntipbase", TRF_StnName(b.s));
+				local tx = TRF_StnTxt("stntipbase", TRF_StnSysEn(b.s));
 				-- Sourced tips (design/tips-spec.md 7.2): who first saw the base open, where and when.
 				local cl = TRF_N("TRF_Ti_TipClause", idx, "base", slot, b.s);
 				if type(cl) == "string" then tx = tx.." "..cl; end;
@@ -1070,6 +1077,8 @@ function TRF_StnTradeBody(param, stage)
 			if ak then TRF_Stn_Say(TRF_StnTxt(ak), 10); amb = ak; shown = 1; end;
 		end;
 		if shown then sv.nw[k] = 1; end;
+		-- Sourced tips (design/tips-spec.md D14): the docking's told set ends with the info step.
+		TRF_N("TRF_Ti_DockEnd");
 	end;
 	-- Fee (8.5): F1 (the gates above), F2 no story mission and no visit latch (G6: SV.mis, logged as pass
 	-- reason=latch at=dock), F3 strict not 0, F4 chapter; pv = paid or docked on credit in this visit (saved, so a

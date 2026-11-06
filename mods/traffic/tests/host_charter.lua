@@ -311,7 +311,7 @@ function T_CH_B()
 	local g1 = TRF.ch.g[1];
 	HOST_Check(h.quests.trf_ch_1 == QUEST_PROCESS and h.quests.trf_ch_2 == QUEST_PROCESS and h.qlog.trf_ch_1.t == TRF_ChTitleKey(g1)
 		and h.qlog.trf_ch_1.d == "#TRF_chd"..g1.t..g1.d and h.qlog.trf_ch_3 == nil, "logbook: trf_ch_1 and trf_ch_2 in process, title and description keys");
-	HOST_Check(C_Has(r.scr, "FTU charter office: Wolves, Unlisted.|") and C_Has(r.scr, "New posting: Golkonda region.") and C_Has(r.scr, "New posting: Moscowia region.")
+	HOST_Check(C_Has(r.scr, "FTU charter office: Wolves, Unlisted.|") and C_Has(r.scr, "New posting: Golconda region.") and C_Has(r.scr, "New posting: Muscovy region.")
 		and C_Has(r.scr, " Pays "..TRF.ch.g[1].pay.." cr.|"), "dock lines: office line, two new-posting lines with the fixed pay ("..r.scr..")");
 	-- Reload before the dock: the same postings at the same dock (saved seed).
 	TRF = HOST_SaveCopy(snap);
@@ -319,7 +319,7 @@ function T_CH_B()
 	C_Dock();
 	HOST_Check(C_Board() == b1, "simulated reload before the dock: the same postings ("..C_Board()..")");
 	r = C_Dock();
-	HOST_Check(C_Has(r.scr, "|Golkonda region: ") and C_Has(r.scr, " of ") and not C_Has(r.scr, "Moscowia region: "),
+	HOST_Check(C_Has(r.scr, "|Golconda region: ") and C_Has(r.scr, " of ") and not C_Has(r.scr, "Muscovy region: "),
 		"board line: '<home> region: <deeds> n of k.' for the dock's region at rank 0 ("..r.scr..")");
 	-- Gates of the generation: mission (quest_Help not in process), heat 5, Trade W, chapter 19; deny list.
 	local gate = "";
@@ -362,7 +362,7 @@ function T_CH_B()
 	local L = TRF.clock.legs;
 	TRF_ChClose(TRF.ch, gi, 3, "phase");
 	r = C_Dock();
-	HOST_Check(TRF.ch.g[gi] == nil and TRF.ch.cd[gi] == L + 4 and C_Open() == 1 and C_Has(r.scr, "FTU charter office: Golkonda posting closed."),
+	HOST_Check(TRF.ch.g[gi] == nil and TRF.ch.cd[gi] == L + 4 and C_Open() == 1 and C_Has(r.scr, "FTU charter office: Golconda posting closed."),
 		"closed: line at the next dock, record removed, slot free again 4 legs later, not refilled now");
 	TRF.clock.legs = L + 4;
 	C_World({golkonda={2, 80}, moscowia={4, 20}});
@@ -430,11 +430,11 @@ function T_CH_C()
 	C = TRF.ch;
 	local s0 = getn(h.screen);
 	TRF_Ch_Note(1, cur, 0);
-	HOST_Check(C.g[2].st == 1 and h.quests.trf_ch_2 == QUEST_DONE and S_Screen(s0, "Charter, Golkonda region: 3 of 3. Collect at any FTU dock."),
+	HOST_Check(C.g[2].st == 1 and h.quests.trf_ch_2 == QUEST_DONE and S_Screen(s0, "Charter, Golconda region: 3 of 3. Collect at any FTU dock."),
 		"Lanes 3 of 3: pay owed (st 1), logbook done, completion line");
 	s0 = getn(h.screen);
 	TRF_Ch_Note(4, cur, 0);
-	HOST_Check(C.g[1].p == 3 and C.g[1].st == 0 and S_Screen(s0, "Charter, Golkonda region: 3 of 3. The clan still holds; its strength must break."),
+	HOST_Check(C.g[1].p == 3 and C.g[1].st == 0 and S_Screen(s0, "Charter, Golconda region: 3 of 3. The clan still holds; its strength must break."),
 		"Break 3 of 3 without the world test: not complete");
 	n0 = S_Mark();
 	T_Enter("golkonda");
@@ -522,8 +522,8 @@ function T_CH_D()
 	TRF_Ch_RegionTick(ks, L);
 	HOST_Check(C.g[2].st == 3 and C.g[3].st == 3, "Relief at Quiet, Convoy after Raids: withdrawn");
 	local r = C_Dock();
-	HOST_Check(C_Has(r.scr, "FTU charter office: Golkonda posting closed. The clan is raiding now.|") and C_Has(r.scr, "Moscowia posting closed. Trade there is back on its feet.|")
-		and C_Has(r.scr, "Kadi posting closed. The raids there are over.|") and C_Open() == 0 and h.quests.trf_ch_1 == nil and h.quests.trf_ch_3 == nil,
+	HOST_Check(C_Has(r.scr, "FTU charter office: Golconda posting closed. The clan is raiding now.|") and C_Has(r.scr, "Muscovy posting closed. Trade there is back on its feet.|")
+		and C_Has(r.scr, "Cadi posting closed. The raids there are over.|") and C_Open() == 0 and h.quests.trf_ch_1 == nil and h.quests.trf_ch_3 == nil,
 		"close lines at the next trade dock, records and logbook entries removed ("..r.scr..")");
 	C.cd = {};
 	C_World({golkonda={2, 80}, kadi={3, 95}});
@@ -607,7 +607,7 @@ function T_CH_D()
 	h.qs = FALSE;
 	HOST_Check(C.g[1].st == 3 and C.g[1].c == "mission" and C.g[2].c == "mission", "deadline during a mission: withdrawn, no failure");
 	r = C_Dock();
-	HOST_Check(C_Has(r.scr, "FTU withdrew the Golkonda posting while you were on contract elsewhere.|"), "mission withdrawal line");
+	HOST_Check(C_Has(r.scr, "FTU withdrew the Golconda posting while you were on contract elsewhere.|"), "mission withdrawal line");
 	C.cd = {};
 	C_Post(1, 1, "golkonda", L, L + 1);
 	local f0 = C.tot.f;
@@ -648,7 +648,7 @@ function T_CH_E()
 	local r = C_Dock();
 	HOST_Check(h.credits == c0 + 7000 and C.g[1] == nil and h.quests.trf_ch_1 == nil and C.g[2].st == 1 and C.rp == 9 and C.pt == rs0 and C.lh[1] == 10
 		and TRF.std.help == h0 + 1, "first owed posting paid (oldest): 7000 cr, removed, 2 rank points, lh, help +1");
-	HOST_Check(C_Has(r.scr, "FTU charter office: Golkonda posting complete. 7000 cr to the Wolves.|Charter standing: 9 of 12 to Bonded carrier.|FTU charter office: Moscowia posting complete. Payment is being processed.|")
+	HOST_Check(C_Has(r.scr, "FTU charter office: Golconda posting complete. 7000 cr to the Wolves.|Charter standing: 9 of 12 to Bonded carrier.|FTU charter office: Muscovy posting complete. Payment is being processed.|")
 		and C_Has(r.scr, "FTU charter office: Wolves, Contracted carrier. Dues are paid up.|"), "pay, standing and wait lines, then the office line ("..r.scr..")");
 	HOST_Check(S_Logs(n0, "module=charter event=pay slot=1 type=lanes region="..C_Slot("golkonda").." amount=7000 rank=2 rank_points=9 help=1") == 1
 		and S_Logs(n0, "module=charter event=pay_wait slot=2 real_seconds="..floor(rs0).." paid_real_seconds="..floor(rs0).." gap=1800") == 1

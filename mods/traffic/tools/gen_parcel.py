@@ -9,8 +9,9 @@ lowercased, form the set of chapter c. Every name must be a system of map.script
 unknown system name, a mission name without a leading number, chapter 4 other than CH4_EXPECT, the largest set other
 than chapter 8 with 31 systems, chapter 20 other than {nk}.
 Destinations (logbook keys pclq<idx>/pclqd<idx>, design/parcel-spec.md 8): every system of TRF_MapData (map.script,
-read by Lua 4) with a station of kind "trade", as {location folder, trade station count}. Checks (exit 1): a count other
-than DST_EXPECT, a system with more than one trade station other than DST_MULTI, a folder name outside [A-Za-z0-9_].
+read by Lua 4) with a station of kind "trade", as {English map name (map.script en, else the location folder), trade
+station count}. Checks (exit 1): a count other than DST_EXPECT, a system with more than one trade station other than
+DST_MULTI, a name outside printable ASCII or with a quote or backslash.
 --write replaces the block between the BEGIN/END markers of trf_parcel.script (CRLF kept); --check exits 1 when it
 differs.
 """
@@ -30,7 +31,7 @@ MODULE = os.path.join(HERE, "..", "Data", "Scripts", "Mods", "Traffic", "trf_par
 MAP = os.path.join(HERE, "..", "Data", "Scripts", "Mods", "Traffic", "map.script")
 CH4_EXPECT = {"ahilles", "argon", "elio", "gefest", "gredos"}
 DST_EXPECT = 75
-DST_MULTI = {"Kadenoa"}
+DST_MULTI = {"Cadenoa"}
 
 
 def map_names():
@@ -55,18 +56,19 @@ def chapters(game):
 
 
 def destinations(lua):
-    """[(idx, dir, trade station count)] of the map.script systems with a trade station, by idx (Lua 4 over TRF_MapData)."""
+    """[(idx, name, trade station count)] of the map.script systems with a trade station, by idx (Lua 4 over TRF_MapData);
+    name is the English map name (en), else the folder."""
     import subprocess
     prog = ('local m = TRF_MapData(); for i = 1, getn(m.sys) do local s = m.sys[i]; local k = 0; '
             'if type(s.st) == "table" then for j = 1, getn(s.st) do if s.st[j].kind == "trade" then k = k + 1; end; end; end; '
-            'if k > 0 then write(s.idx, " ", s.dir, " ", k, "\\n"); end; end')
+            'if k > 0 then write(s.idx, " ", s.en or s.dir, " ", k, "\\n"); end; end')
     p = subprocess.run([lua, "-e", 'dofile("%s")' % MAP.replace("\\", "/"), "-e", prog], capture_output=True)
     if p.returncode != 0 or p.stderr:
         raise SystemExit("gen_parcel: lua failed (%d): %s" % (p.returncode, p.stderr.decode("latin1")[:400]))
     out = []
     for line in p.stdout.decode("latin1").split("\n"):
         if line:
-            # idx, folder, count; a folder with a space or non-ASCII byte stays whole for check_dst to report.
+            # idx, name, count; a name with spaces ("Al Trabon") or a non-ASCII byte stays whole (check_dst reports the latter).
             i, rest = line.split(" ", 1)
             d, k = rest.rsplit(" ", 1)
             out.append((int(i), d, int(k)))
@@ -80,7 +82,8 @@ def check_dst(D):
     multi = {d for i, d, k in D if k > 1}
     if multi != DST_MULTI:
         bad.append("systems with several trade stations: %s (expected %s)" % (sorted(multi), sorted(DST_MULTI)))
-    bad += ["destination %d: folder %r outside [A-Za-z0-9_]" % (i, d) for i, d, k in D if not re.match(r"^[A-Za-z0-9_]+$", d)]
+    bad += ["destination %d: name %r outside printable ASCII or with a quote" % (i, d) for i, d, k in D
+            if not re.match(r'^[ -~]+$', d) or '"' in d or "\\" in d]
     return bad
 
 
@@ -110,7 +113,7 @@ def block(C, D):
         lines.append('\t\t[%d] = "%s",' % (c, " ".join(sorted(C[c]))))
     lines += ["\t};", "end;",
               "-- Parcel destinations (logbook keys pclq<idx>, pclqd<idx>, design/parcel-spec.md 8): every map.script system",
-              "-- with a trade station, by idx: {location folder, trade station count}.",
+              "-- with a trade station, by idx: {English map name, trade station count}.",
               "function TRF_PcDstData()",
               "\treturn {"]
     for i, d, k in D:

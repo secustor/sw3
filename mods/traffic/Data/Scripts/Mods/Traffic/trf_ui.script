@@ -297,7 +297,7 @@ function TRF_UI_Leader(id)
 	return call(TRF_UI_GetLeader, {h.fl}, "x", TRF_PErr);
 end;
 
--- System display name ("Gredos"); idx 0 is the trade station.
+-- System display name, the English map name of trf_loc's TRF_SysEn ("Hephaestus" for gefest); idx 0 is the trade station.
 function TRF_UI_SysName(idx)
 	if idx == 0 then return TRF_Txt("station"); end;
 	local m = nil;
@@ -308,6 +308,8 @@ function TRF_UI_SysName(idx)
 	end;
 	if type(idx) == "number" and type(m) == "table" and type(m.sys) == "table" and type(m.sys[idx]) == "table" then
 		local s = m.sys[idx];
+		if type(TRF_SysEn) == "function" then return TRF_SysEn(idx); end;
+		if type(s.en) == "string" then return s.en; end;
 		if type(s.dir) == "string" then return s.dir; end;
 		if type(s.name) == "string" then return s.name; end;
 	end;

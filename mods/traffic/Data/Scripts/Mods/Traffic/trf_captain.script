@@ -160,9 +160,9 @@ function TRF_CapName(idx)
 	return tostring(idx);
 end;
 
--- Display name of system idx (board and radio lines).
+-- Display name of system idx (board and radio lines): the English map name (trf_loc TRF_SysEn).
 function TRF_CapSysTxt(idx)
-	local s = TRF_N("TRF_UI_SysName", idx);
+	local s = TRF_N("TRF_SysEn", idx);
 	if type(s) == "string" then return s; end;
 	return TRF_CapName(idx);
 end;
