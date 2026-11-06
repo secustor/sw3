@@ -16,6 +16,8 @@
 -- arrival line, prize gap), trf_gen (TRF_WindDown), trf_raid (TRF_Rd_ClanAlive counts the treasurer), trf_scar
 -- (object helpers, the site rule keeps 150 from a cache), trf_clan (score outside the visit cap, salvage), trf_faction
 -- (fst), traffic.script (activate, load, jump, 1 s step).
+-- Static signals (design/static-signals-spec.md 6.6, A08): TRF_Sh_Reveal marks the nearest unknown cache known (src 5, the
+-- signal recorder's last entry: no seller score, no patrol thanks at the opening).
 -- Saved fields: TRF.stash[i] = {sys, slot, clan, cls, v, seed, leg, st, src, sf, sv, rf, pl}; TRF.stx = {n, op, opp, lc, jc,
 -- lo, jo, pt, ps, ms, mc}; TRF.clan[slot].so and .sk. Visit state lives in the chunk local SH (never saved; rebuilt by
 -- every MapInitialization), handles in SH.o and SH.r.
@@ -839,7 +841,7 @@ function TRF_ShArm(i, r, o)
 			local a = TRF_ShAreaOf(p, r.seed, TRF_ShT("stash_area_r"));
 			local tx = "";
 			if TRF_N("TRF_Loc_Mode") == 1 then tx = "#TRF_stashnavarea"; end;
-			TRF_N("TRF_MarkerAdd", "stash", "TRF_STASH_AR_"..i, a.x, a.y, a.z, tx, TRF_ShK().icon);
+			TRF_N("TRF_MarkerAdd", "stash", "TRF_STASH_AR_"..i, a.x, a.y, a.z, tx, TRF_ShK().icon, nil, r.leg);
 			local ms = TRF_N("TRF_Ms");
 			if TRF_ShObj(ms) and type(Vector3) == "function" and not sh.v.fnd[i] then
 				TRF_ShTrig("inside", TRF_ShCb("TRF_ShIn", i), ms, Vector3(p.x, p.y, p.z), TRF_ShT("stash_find_r"));
@@ -1097,7 +1099,10 @@ function TRF_ShFound(i, why)
 	local p = TRF_ShSlotPos(r);
 	local tx = "#M_Name_Asteroid_inv_Val";
 	if TRF_N("TRF_Loc_Mode") == 1 then tx = "#TRF_stashnav"; end;
-	if p then TRF_N("TRF_MarkerAdd", "stash", "TRF_STASH_NP_"..i, p.x, p.y, p.z, tx, TRF_ShK().icon, sh.o[i]); end;
+	-- One marker per cache (design/static-signals-spec.md 7): the area marker goes before the attached one is added (one
+	-- record per system, so the stash markers of this visit are this cache's).
+	TRF_N("TRF_MarkerClear", "stash");
+	if p then TRF_N("TRF_MarkerAdd", "stash", "TRF_STASH_NP_"..i, p.x, p.y, p.z, tx, TRF_ShK().icon, sh.o[i], r.leg); end;
 	TRF_ShSay(TRF_ShTxt("stashfound"));
 	TRF_ShE("found", "index", i, "system", TRF_ShName(r.sys), "reason", why);
 end;
@@ -1565,6 +1570,49 @@ function TRF_Sh_Plumb()
 	TRF_N("TRF_MarkerOfferReg", "stash");
 end;
 
+-- Static signals (design/static-signals-spec.md 6.6 step 2): the nearest unknown cache (st 0) within j jumps of idx, never
+-- in idx, whose system passes TRF_ShVis, becomes known (st 1, src, sf 0); its area marker appears at the next entry into
+-- its system by the stash's own rules. Returns index, system, clan slot; or nil.
+function TRF_Sh_Reveal(idx, j, src)
+	local i, s, c = call(TRF_ShRevealBody, {idx, j, src}, "x", TRF_ShErr);
+	return i, s, c;
+end;
+
+function TRF_ShRevealBody(idx, j, src)
+	if not TRF_ShOn() or type(idx) ~= "number" or type(j) ~= "number" or j < 1 then
+		TRF_ShDE("reveal", "from", TRF_ShName(idx), "result", "none", "reason", "off");
+		return nil;
+	end;
+	if not TRF_ShNum(src, 0, 5) then src = 5; end;
+	local dist = {};
+	local nb = TRF_N("TRF_RgNear", idx, floor(j));
+	if type(nb) == "table" then for k = 1, getn(nb) do dist[nb[k].idx] = nb[k].j; end; end;
+	local w, wj, why = nil, nil, "none";
+	for i = 1, TRF_ShK().rec_max do
+		local r = TRF_ShRec(i);
+		if r and r.st == 0 and r.sys ~= idx then
+			if not dist[r.sys] then
+				if why == "none" then why = "range"; end;
+			else
+				local vw = TRF_ShVis(r.sys, "offer");
+				if vw then
+					why = vw;
+				elseif not w or dist[r.sys] < wj then
+					w = i; wj = dist[r.sys];
+				end;
+			end;
+		end;
+	end;
+	if not w then
+		TRF_ShDE("reveal", "from", TRF_ShName(idx), "result", "none", "reason", why);
+		return nil;
+	end;
+	local r = TRF_ShRec(w);
+	r.st = 1; r.src = floor(src); r.sf = 0;
+	TRF_ShE("reveal", "index", w, "system", TRF_ShName(r.sys), "source", r.src, "from", TRF_ShName(idx), "jumps", wj, "result", "ok");
+	return w, r.sys, r.clan;
+end;
+
 -- Slot positions of records in system idx (trf_scar's site rule keeps 150 units from a cache, design 7).
 function TRF_Sh_Objs(idx)
 	local o = {};
@@ -1644,7 +1692,7 @@ function TRF_Sh_Fix()
 					local sl = TRF_ShSlots(TRF_ShName(floor(e.sys)));
 					local r = {sys=floor(e.sys), slot=TRF_ShFld(e, "slot", 1, K.slot_max, 0), clan=floor(e.clan), cls=TRF_ShFld(e, "cls", 1, 3, 1),
 						v=TRF_ShFld(e, "v", 10, 450, 10), seed=TRF_ShFld(e, "seed", 0, 9999, 1), leg=TRF_ShFld(e, "leg", -99999, legs, legs),
-						st=TRF_ShFld(e, "st", 0, 2, 0), src=TRF_ShFld(e, "src", 0, 4, 0), sf=TRF_ShFld(e, "sf", 0, 11, 0), sv=TRF_ShFld(e, "sv", 0, 5, 0),
+						st=TRF_ShFld(e, "st", 0, 2, 0), src=TRF_ShFld(e, "src", 0, 5, 0), sf=TRF_ShFld(e, "sf", 0, 11, 0), sv=TRF_ShFld(e, "sv", 0, 5, 0),
 						rf=TRF_ShFld(e, "rf", 0, 2, 0)};
 					if e.pl == 1 then r.pl = 1; end;
 					if sl and r.slot >= 1 and r.slot <= getn(sl) then

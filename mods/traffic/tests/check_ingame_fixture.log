@@ -534,3 +534,15 @@ traffic: lua: exp=v1 module=raid event=flee trader_id=32 reason=hp refuge=portal
 traffic: lua: exp=v1 module=raid event=flee trader_id=31 reason=raid refuge=portal portal=PORTAL_L station_distance=900.000 portal_distance=250.000
 traffic: lua: exp=v1 module=generator event=remove trader_id=31 reason=escaped age=140.000
 traffic: lua: exp=v1 module=raid event=escaped trader_id=31 via=1
+traffic: lua: exp=v1 module=state event=enter generation=100 fresh=false system=sunji legs=320
+traffic: lua: exp=v1 module=safety event=activate system=sunji mode=mod reason=nil chapter=7 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=remark line_index=1 delay=3.000 voiced=true result=queued
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=signal line_index=2 delay=3.000 voiced=true result=queued
+traffic: lua: exp=v1 module=signal event=say system_index=78 light_leg=318 speaker=Lastochka output=line sound=spark4.wav+vapour-escape-loop.wav sound_result=error result=shown reason=nil
+traffic: lua: exp=v1 module=signal event=read system=sunji system_index=78 light_leg=318 distance=700 band=clear tier=2 word="pirate gangs" offset=120 marker=TRF_SG_AR_5 result=shown
+traffic: lua: exp=v1 module=signal event=pick system=sunji system_index=78 light_leg=318 outcome=lore stash_index=nil stash_system=nil segment=20 result=found
+traffic: lua: exp=v1 module=state event=enter generation=101 fresh=false system=sunji legs=321
+traffic: lua: exp=v1 module=safety event=activate system=sunji mode=mod reason=nil chapter=7 quest_state=1 gate=ok
+traffic: lua: exp=v1 module=signal event=orphan_delete label=TRF_SGO_5 reason=entry
+traffic: lua: exp=v1 module=signal event=skip system=sunji reason=latch
+traffic: lua: exp=v1 module=signal event=say system_index=78 light_leg=318 speaker=Lastochka output=line sound=none sound_result=off result=shown reason=nil

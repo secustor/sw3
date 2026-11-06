@@ -213,3 +213,19 @@ function TRF_StrTierMax(score)
 	if cu > 0 then b = b + 1; end;
 	return TRF_StrCl(b, 1, 4);
 end;
+
+-- Threat word of system idx (design/static-signals-spec.md D12, 12.3): the effective clan tier T = 1..4 (trf_region's
+-- TRF_EffTier) as pirw1 "scavengers", pirw2 "pirate gangs", packs, raiders (v1-spec 6.1), with trf_temper's Ghost form
+-- when it answers. One word list for trf_ui's tier arrival line, A08's reading and stash step 2. Returns word, T.
+function TRF_Str_Word(idx)
+	local t = nil;
+	if type(TRF_EffTier) == "function" then t = call(TRF_EffTier, {idx}, "x", TRF_PErr); end;
+	if type(t) ~= "number" or t < 1 then t = 1; end;
+	t = min(floor(t), 4);
+	local w = {"pirw1", "pirw2", "packs", "raiders"};
+	local tw = w[t];
+	if type(TRF_Txt) == "function" then tw = TRF_Txt(w[t]); end;
+	local gw = TRF_P("TRF_Te_ArrWord", idx, tw);
+	if type(gw) == "string" then tw = gw; end;
+	return tw, t;
+end;

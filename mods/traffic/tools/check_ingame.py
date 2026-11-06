@@ -12,7 +12,8 @@ the lethal-system warnings (W-A12.1-8, design/warnings-spec.md 15; wave 1, host-
 design/corp-carriers-spec.md 11; wave 1, host-tested only) and the debrief pool with "Report in" (W-B02.1-10,
 design/debrief-spec.md 12; wave 2, host-tested only, off by default: DEBRIEF_XP=1) and the sourced tips with the event
 ring (W-A16.1-10, design/tips-spec.md 13; wave 2, host-tested only) and the specialist answers with the Repairman patch
-(W-A05.1-12, design/specialist-spec.md 12; wave 2, host-tested only) from traffic logs.
+(W-A05.1-12, design/specialist-spec.md 12; wave 2, host-tested only) and the static signals (W-A08.1-10,
+design/static-signals-spec.md 14; wave 3, host-tested only) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -38,6 +39,7 @@ FIXTURE_CORP = os.path.join(HERE, "..", "tests", "check_ingame_corp_fixture.log"
 FIXTURE_DEBRIEF = os.path.join(HERE, "..", "tests", "check_ingame_debrief_fixture.log")
 FIXTURE_TIPS = os.path.join(HERE, "..", "tests", "check_ingame_tips_fixture.log")
 FIXTURE_SPEC = os.path.join(HERE, "..", "tests", "check_ingame_spec_fixture.log")
+FIXTURE_SIGNAL = os.path.join(HERE, "..", "tests", "check_ingame_signal_fixture.log")
 REL = ("war", "neutral", "friend")
 PHASES = ("Quiet", "Boom", "Build-up", "Raids", "Bust", "Recovery")
 # vanilla bounty flights (OutMission_kill_pirate), haunt-spec appendix A class P
@@ -3430,16 +3432,40 @@ def c_wi9(ctx):
     return res
 
 
+def offer_over(ctx, cap=2):
+    """Offer markers held at once per visit (design/tips-spec.md 7.5; static-signals-spec.md 7): an added class=offer line
+    holds its label, a bumped line and an owner's or a visit-wide cleared line release. The first line per visit that
+    holds more than cap, with the count."""
+    out = []
+    for v in ctx.visits:
+        held, bad = {}, None
+        for r in v.recs:
+            if not r.is_("plumb", "marker"):
+                continue
+            res = r.get("result")
+            if res == "added" and r.get("class") == "offer":
+                held[r.get("label")] = r.get("owner")
+                if len(held) > cap and bad is None:
+                    bad = (r, len(held))
+            elif res == "bumped":
+                held.pop(r.get("label"), None)
+            elif res == "cleared":
+                o = r.get("owner")
+                if r.get("reason") or o is None:
+                    held = {}
+                else:
+                    held = dict((k, w) for k, w in held.items() if w != o)
+        if bad:
+            out.append(bad)
+    return out
+
+
 def c_wi10(ctx):
     res = Res()
     res.logpart = True
     added = [r for r in ctx.find("plumb", "marker", result="added") if r.get("class") == "offer"]
-    per = {}
-    for r in added:
-        per.setdefault(id(r.visit), []).append(r)
-    for lst in per.values():
-        if len(lst) > 2:
-            res.fails.append("%s: %d offer markers in one visit (mk_offer 2)" % (lst[2].short(), len(lst)))
+    for r, n in offer_over(ctx):
+        res.fails.append("%s: %d offer markers held in one visit (mk_offer 2)" % (r.short(), n))
     if not added:
         res.missing.append("buy the pirate-dock stash intel (area marker): no module=plumb event=marker class=offer result=added")
     res.ev("offer markers", added)
@@ -3639,6 +3665,172 @@ def c_wsp12(ctx):
         res.missing.append("Missing in Capricorn step 40 at the fence with the Hero's Intuition perk (LOG=1): no module=wq "
                            "event=clue via=intuition result=ok")
     res.ev("Intuition clues", cl)
+    return res
+
+
+# Static signals (design/static-signals-spec.md 14, W-A08.1-10; host-tested only, wave 3) ---------------------------------
+
+SG_AREA, SG_SHOW = (150, 500), 500   # tune sg_area_min..sg_area_r, sg_show_r defaults (spec 10)
+
+
+def sg_says(ctx):
+    return ctx.find("signal", "say", result="shown")
+
+
+def c_wsg1(ctx):
+    res = Res()
+    res.logpart = True
+    lit = ctx.find("signal", "light", result="lit")
+    pushes = ctx.find("tips", "push", kind="signal")
+    fed = [r for r in lit if any(p.src == r.src and r.n < p.n <= r.n + 3 and p.get("system_index") == r.get("system_index") for p in pushes)]
+    for r in lit:
+        if r not in fed:
+            res.notes.append("%s: no ring push after it (cfg tips 0?)" % r.short())
+    if not fed:
+        res.missing.append("play chapter 5+ in Quiet or Boom regions for some legs (LOG=1): no module=signal event=light result=lit "
+                           "followed by module=tips event=push kind=signal")
+    res.ev("lights fed to the ring", fed)
+    return res
+
+
+def c_wsg2(ctx):
+    res = Res()
+    res.logpart = True
+    says = sg_says(ctx)
+    for r in says:
+        other = [q for q in r.visit.recs if q.is_("plumb", "arrival_line", result="queued") and q.get("owner") != "signal"
+                 and q.src == r.src and q.n < r.n]
+        if other:
+            res.fails.append("%s: shown in an entry that queued another line (%s)" % (r.short(), other[0].short()))
+    if not says:
+        res.missing.append("enter a system with a lit source (SIGNAL_AT=sunji, chapter 5+): no module=signal event=say result=shown")
+    res.ev("signal lines shown", says)
+    return res
+
+
+def c_wsg3(ctx):
+    res = Res()
+    res.logpart = True
+    says = sg_says(ctx)
+    for r in says:
+        if r.get("sound_result") == "error":
+            res.fails.append("%s: PlaySound3D failed (SG1)" % r.short())
+    played = [r for r in says if r.get("sound_result") == "played"]
+    if not played and not res.fails:
+        res.missing.append("a shown signal line with signal_sound 1: no event=say sound_result=played")
+    res.ev("lines with the static", played)
+    return res
+
+
+def c_wsg4(ctx):
+    res = Res()
+    res.logpart = True
+    radio = [r for r in sg_says(ctx) if r.get("output") == "radio"]
+    if not radio:
+        res.missing.append("a shown signal line with a squad pilot aboard (remark_mode 1): no event=say output=radio result=shown")
+    res.ev("radio lines", radio)
+    return res
+
+
+def c_wsg5(ctx):
+    res = Res()
+    res.logpart = True
+    says = sg_says(ctx)
+    seen = {}
+    for r in says:
+        k = (r.get("system_index"), r.get("light_leg"))
+        if k in seen:
+            res.fails.append("%s: the same source spoke before (%s)" % (r.short(), seen[k].short()))
+        else:
+            seen[k] = r
+    if not says:
+        res.missing.append("no shown signal line (see W-A08.2)")
+    res.ev("signal lines shown", says)
+    return res
+
+
+def c_wsg6(ctx):
+    res = Res()
+    res.logpart = True
+    reads = ctx.find("signal", "read", result="shown")
+    for r in reads:
+        prev = [q for q in r.visit.recs if q.src == r.src and r.n - 4 <= q.n < r.n and q.is_("plumb", "marker", owner="signal", result="added")
+                and q.get("label") == r.get("marker")]
+        if not prev:
+            res.fails.append("%s: no area marker added with the reading" % r.short())
+    if not reads:
+        res.missing.append("stay sg_read_s (10) seconds after the signal line: no module=signal event=read result=shown")
+    res.ev("readings", reads)
+    return res
+
+
+def c_wsg7(ctx):
+    res = Res()
+    res.logpart = True
+    reads = ctx.find("signal", "read", result="shown")
+    shows = ctx.find("signal", "show", result="placed")
+    for r in reads:
+        o = r.num("offset")
+        if o is None or o < SG_AREA[0] or o > SG_AREA[1]:
+            res.fails.append("%s: offset outside %d..%d" % (r.short(), SG_AREA[0], SG_AREA[1]))
+    for r in shows:
+        d = r.num("distance")
+        if d is not None and d > SG_SHOW:
+            res.fails.append("%s: shown beyond sg_show_r %d" % (r.short(), SG_SHOW))
+    if not reads and not shows:
+        res.missing.append("no reading or show (see W-A08.6, W-A08.8)")
+    res.notes.append("bounds are the tune defaults; a TUNE override of sg_area_r, sg_area_min or sg_show_r changes them")
+    res.ev("readings and shows", reads + shows)
+    return res
+
+
+def c_wsg8(ctx):
+    res = Res()
+    res.logpart = True
+    picks = ctx.find("signal", "pick", result="found")
+    for r in picks:
+        sh = [q for q in r.visit.recs if q.is_("signal", "show", result="placed") and q.src == r.src and q.n < r.n]
+        if not sh:
+            res.fails.append("%s: picked up without a show in the visit" % r.short())
+    if not picks:
+        res.missing.append("fly the mothership onto the marked source (SIGNAL_AT=sunji): no module=signal event=pick result=found")
+    res.ev("pickups", picks)
+    return res
+
+
+def c_wsg9(ctx):
+    res = Res()
+    res.logpart = True
+    den = ctx.find("safety", "gate", feature="signal", result="denied")
+    lat = ctx.find("signal", "skip", reason="latch")
+    shown = (sg_says(ctx) + ctx.find("signal", "read", result="shown") + ctx.find("signal", "show", result="placed"))
+    for r in shown:
+        for g in den:
+            if g.visit is r.visit and g.get("system") == r.visit.system and g.src == r.src and g.n < r.n:
+                res.fails.append("%s: shown after the strict gate denied %s (%s)" % (r.short(), g.get("system"), g.short()))
+                break
+        for g in lat:
+            if g.visit is r.visit and g.src == r.src and g.n < r.n:
+                res.fails.append("%s: shown after the visit latch (%s)" % (r.short(), g.short()))
+                break
+    if not den and not lat:
+        res.missing.append("enter a system with a source during a story mission (LOG=2): no event=skip reason=latch and no "
+                           "module=safety event=gate feature=signal result=denied")
+    res.ev("gate denials and latch skips", den + lat)
+    return res
+
+
+def c_wsg10(ctx):
+    res = Res()
+    res.logpart = True
+    for r in ctx.find("signal", "orphan_delete", reason="entry"):
+        res.fails.append("%s: a recorder in the location snapshot (SG6)" % r.short())
+    for r, n in offer_over(ctx):
+        res.fails.append("%s: %d offer markers held in one visit (mk_offer 2)" % (r.short(), n))
+    mk = ctx.find("plumb", "marker", owner="signal", result="added")
+    if not mk and not res.fails:
+        res.missing.append("a reading (see W-A08.6): no module=plumb event=marker owner=signal result=added")
+    res.ev("signal markers", mk)
     return res
 
 
@@ -3897,6 +4089,17 @@ ITEMS = [
      "with System firmware attached the label reads 'Mothership [Repairman]' (mark fail when the firmware is attached and "
      "event=who shows ai:noperk, SPC3)"),
     ("W-A05.12", "fence answer", c_wsp12, None),
+    ("W-A08.1", "a source lights and feeds the ring", c_wsg1, None),
+    ("W-A08.2", "line only on an empty entry", c_wsg2, None),
+    ("W-A08.3", "the static plays", c_wsg3, "a crackle and hiss with the line, also with the camera on a far fighter (SG1-SG3)"),
+    ("W-A08.4", "the broken phrase as radio", c_wsg4, "a squad pilot's portrait with the broken distress phrase"),
+    ("W-A08.5", "one line per source", c_wsg5, None),
+    ("W-A08.6", "the reading gives the marker and the threat word", c_wsg6,
+     "the 'Signal source marked' line names the threat word of the system's arrival tier line; the marker shows (SG7)"),
+    ("W-A08.7", "area bound", c_wsg7, None),
+    ("W-A08.8", "show before pickup, pickup at 8x", c_wsg8, "one pickup flown at 8x; the recorder is visible and reachable (SG4, SG5)"),
+    ("W-A08.9", "quest safety", c_wsg9, None),
+    ("W-A08.10", "nothing left behind, offer cap", c_wsg10, None),
 ]
 
 
@@ -4032,7 +4235,9 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "W-A16.6": "MANUAL", "W-A16.7": "NO DATA", "W-A16.8": "FAIL", "W-A16.9": "FAIL", "W-A16.10": "FAIL",
             "W-A05.1": "MANUAL", "W-A05.2": "NO DATA", "W-A05.3": "FAIL", "W-A05.4": "FAIL", "W-A05.5": "FAIL",
             "W-A05.6": "NO DATA", "W-A05.7": "FAIL", "W-A05.8": "FAIL", "W-A05.9": "NO DATA", "W-A05.10": "NO DATA",
-            "W-A05.11": "NO DATA", "W-A05.12": "NO DATA"}
+            "W-A05.11": "NO DATA", "W-A05.12": "NO DATA",
+            "W-A08.1": "NO DATA", "W-A08.2": "FAIL", "W-A08.3": "FAIL", "W-A08.4": "NO DATA", "W-A08.5": "FAIL",
+            "W-A08.6": "FAIL", "W-A08.7": "FAIL", "W-A08.8": "FAIL", "W-A08.9": "FAIL", "W-A08.10": "FAIL"}
 # tests/check_ingame_warn_fixture.log: correct warning behaviour only. A dock warning for Gideon at Avalon (leg 100) after
 # the station's dock line, a second approach skipped (visit), a return at leg 102 skipped (cooldown); at XT-23 (station
 # voice deny, a station pass, no station dock line) a pass reason=scene, then a warning for XT-24; a load of an earlier
@@ -4076,6 +4281,13 @@ SELFTEST_TIPS = {"W-A16.1": "MANUAL", "W-A16.2": "PASS", "W-A16.3": "PASS", "W-A
 SELFTEST_SPEC = {"W-A05.1": "MANUAL", "W-A05.2": "PASS", "W-A05.3": "PASS", "W-A05.4": "PASS", "W-A05.5": "PASS",
                  "W-A05.6": "MANUAL", "W-A05.7": "PASS", "W-A05.8": "PASS", "W-A05.9": "MANUAL", "W-A05.10": "MANUAL",
                  "W-A05.11": "MANUAL", "W-A05.12": "PASS"}
+# tests/check_ingame_signal_fixture.log: correct static signal behaviour (LOG=2). Ergelan (chapter 6): two sources lit and
+# pushed to the ring (Sunji, Farles); Sunji: the line on an empty entry, the radio say with the static, the reading with
+# its area marker, the show and the pickup (lore); Farles: a known cache's arrival line drops the signal line (queued:1),
+# the cache found (one stash marker); Farles in a mission: the latch skip; Farles again: the line, the reading beside the
+# cache marker (two offer markers held), the show, the pickup with the stash reveal; Lidau: a strict-gate denial, the skip.
+SELFTEST_SIGNAL = {"W-A08.1": "PASS", "W-A08.2": "PASS", "W-A08.3": "MANUAL", "W-A08.4": "MANUAL", "W-A08.5": "PASS",
+                   "W-A08.6": "MANUAL", "W-A08.7": "PASS", "W-A08.8": "MANUAL", "W-A08.9": "PASS", "W-A08.10": "PASS"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -4118,6 +4330,10 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # another trader (W-A05.7 FAIL) which flees again by HP (W-A05.5 FAIL), the flee_only trader escaping by portal after
 # a raid flight (W-A05.5 FAIL); an arm without a hail (W-A05.2 NO DATA), no need,
 # radio, rebuild, firmware or fence line (W-A05.6, .9, .10, .11, .12 NO DATA).
+# Static signals block (the very end, Sunji twice): a signal line shown after a remark was queued in the entry (W-A08.2
+# FAIL) with PlaySound3D failing (W-A08.3 FAIL), a reading without its marker (W-A08.6 FAIL) at offset 120 (W-A08.7 FAIL),
+# a pickup without a show (W-A08.8 FAIL); the next entry: an orphan recorder deleted at the entry (W-A08.10 FAIL), the
+# latch skip, then the same source's line again (W-A08.5, W-A08.9 FAIL); no light, no radio output (W-A08.1, .4 NO DATA).
 
 
 def selftest():
@@ -4169,8 +4385,13 @@ def selftest():
         if got.get(iid) != v:
             print("selftest: spec fixture %s is %s, expected %s" % (iid, got.get(iid), v))
             bad += 1
+    got = dict((r[0], r[2]) for r in score(Ctx([Log(FIXTURE_SIGNAL, None, [])]), {}))
+    for iid, v in SELFTEST_SIGNAL.items():
+        if got.get(iid) != v:
+            print("selftest: signal fixture %s is %s, expected %s" % (iid, got.get(iid), v))
+            bad += 1
     n = (len(SELFTEST) + len(SELFTEST_EYES[1]) + len(SELFTEST_WARN) + len(SELFTEST_REMARK) + len(SELFTEST_TEMPER) + len(SELFTEST_CORP)
-         + len(SELFTEST_DEBRIEF) + len(SELFTEST_TIPS) + len(SELFTEST_SPEC))
+         + len(SELFTEST_DEBRIEF) + len(SELFTEST_TIPS) + len(SELFTEST_SPEC) + len(SELFTEST_SIGNAL))
     if parse_logfmt('a=1 message="x \\"y\\" z" b=') != {"a": "1", "message": 'x "y" z', "b": ""}:
         print("selftest: logfmt quoting")
         bad += 1

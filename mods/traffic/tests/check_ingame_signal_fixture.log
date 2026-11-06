@@ -1,0 +1,63 @@
+traffic: lua: exp=v1 module=state event=enter generation=70 fresh=false system=ergelan legs=200
+traffic: lua: exp=v1 module=safety event=activate system=ergelan mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=signal event=light region=5 system=sunji system_index=78 point=1 phase=0 roll=12 chance=20 candidate_count=4 result=lit
+traffic: lua: exp=v1 module=tips event=push kind=signal region=5 system=sunji system_index=78 landmark=1 source=0 arg=1 event_leg=200 result=new evicted=nil record_count=1
+traffic: lua: exp=v1 module=signal event=light region=4 system=farles system_index=31 point=2 phase=1 roll=3 chance=20 candidate_count=5 result=lit
+traffic: lua: exp=v1 module=tips event=push kind=signal region=4 system=farles system_index=31 landmark=2 source=0 arg=2 event_leg=200 result=new evicted=nil record_count=1
+traffic: lua: exp=v1 module=signal event=dump on=1 record_count=2 records=4:farles/2/0/0,5:sunji/1/0/0
+traffic: lua: exp=v1 module=state event=enter generation=71 fresh=false system=sunji legs=201
+traffic: lua: exp=v1 module=safety event=activate system=sunji mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=signal event=enter system=sunji state=0 result=armed
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=signal line_index=1 delay=2.000 voiced=true result=queued
+traffic: lua: exp=v1 module=signal event=line system=sunji system_index=78 light_leg=200 variant=2 queued_count=0 result=queued reason=nil
+traffic: lua: exp=v1 module=remark event=voice voice=list speaker=Lastochka tried=Lastochka2:absent,Lastochka:ok
+traffic: lua: exp=v1 module=signal event=say system_index=78 light_leg=200 speaker=Lastochka output=radio sound=spark4.wav+vapour-escape-loop.wav sound_result=played result=shown reason=nil
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=signal result=shown
+traffic: lua: exp=v1 module=plumb event=marker owner=signal label=TRF_SG_AR_5 class=offer offer_count=1 result=added
+traffic: lua: exp=v1 module=ui event=say output=1 seconds=8 message="Signal source marked. The signal is clear. Watch for pirate gangs in this system."
+traffic: lua: exp=v1 module=signal event=read system=sunji system_index=78 light_leg=200 distance=812 band=clear tier=2 word="pirate gangs" offset=310 marker=TRF_SG_AR_5 result=shown
+traffic: lua: exp=v1 module=plumb event=marker owner=signal deleted_count=1 result=cleared
+traffic: lua: exp=v1 module=plumb event=marker owner=signal label=TRF_SG_NP_5 class=offer offer_count=1 result=added
+traffic: lua: exp=v1 module=signal event=show system=sunji system_index=78 distance=488 model=radiopod label=TRF_SGO_5 result=placed
+traffic: lua: exp=v1 module=plumb event=marker owner=signal deleted_count=1 result=cleared
+traffic: lua: exp=v1 module=signal event=pick system=sunji system_index=78 light_leg=200 outcome=lore stash_index=nil stash_system=nil segment=41 result=found
+traffic: lua: exp=v1 module=plumb event=marker reason=jump deleted_count=0 result=cleared
+traffic: lua: exp=v1 module=state event=enter generation=72 fresh=false system=farles legs=202
+traffic: lua: exp=v1 module=safety event=activate system=farles mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=stash event=reconcile index=1 system=farles label=TRF_STASH_1 state=1 object=missing hp=1000 result=create
+traffic: lua: exp=v1 module=plumb event=marker owner=stash label=TRF_STASH_AR_1 class=offer offer_count=1 result=added
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=stash line_index=1 delay=3.000 voiced=false result=queued
+traffic: lua: exp=v1 module=signal event=line system=farles system_index=31 light_leg=200 variant=1 queued_count=1 result=dropped reason=queued:1
+traffic: lua: exp=v1 module=plumb event=marker owner=stash deleted_count=1 result=cleared
+traffic: lua: exp=v1 module=plumb event=marker owner=stash label=TRF_STASH_NP_1 class=offer offer_count=1 result=added
+traffic: lua: exp=v1 module=stash event=found index=1 system=farles reason=trigger
+traffic: lua: exp=v1 module=state event=enter generation=73 fresh=false system=farles legs=203
+traffic: lua: exp=v1 module=safety event=activate system=farles mode=mod reason=nil chapter=6 quest_state=1 gate=ok
+traffic: lua: exp=v1 module=signal event=skip system=farles reason=latch
+traffic: lua: exp=v1 module=state event=enter generation=74 fresh=false system=farles legs=204
+traffic: lua: exp=v1 module=safety event=activate system=farles mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=plumb event=marker owner=stash label=TRF_STASH_AR_1 class=offer offer_count=1 result=added
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=stash line_index=1 delay=3.000 voiced=false result=queued
+traffic: lua: exp=v1 module=signal event=line system=farles system_index=31 light_leg=200 variant=1 queued_count=1 result=dropped reason=queued:1
+traffic: lua: exp=v1 module=plumb event=marker owner=stash deleted_count=1 result=cleared
+traffic: lua: exp=v1 module=plumb event=marker owner=stash label=TRF_STASH_NP_1 class=offer offer_count=1 result=added
+traffic: lua: exp=v1 module=state event=enter generation=75 fresh=false system=farles legs=205
+traffic: lua: exp=v1 module=safety event=activate system=farles mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=signal event=enter system=farles state=0 result=armed
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=signal line_index=1 delay=2.000 voiced=true result=queued
+traffic: lua: exp=v1 module=signal event=line system=farles system_index=31 light_leg=200 variant=1 queued_count=0 result=queued reason=nil
+traffic: lua: exp=v1 module=signal event=say system_index=31 light_leg=200 speaker=Lastochka output=radio sound=spark4.wav+vapour-escape-loop.wav sound_result=played result=shown reason=nil
+traffic: lua: exp=v1 module=plumb event=marker owner=stash label=TRF_STASH_AR_1 class=offer offer_count=1 result=added
+traffic: lua: exp=v1 module=plumb event=marker owner=signal label=TRF_SG_AR_4 class=offer offer_count=2 result=added
+traffic: lua: exp=v1 module=ui event=say output=1 seconds=8 message="Signal source marked. The signal is faint. Watch for scavengers in this system."
+traffic: lua: exp=v1 module=signal event=read system=farles system_index=31 light_leg=200 distance=1290 band=faint tier=1 word=scavengers offset=480 marker=TRF_SG_AR_4 result=shown
+traffic: lua: exp=v1 module=plumb event=marker owner=signal deleted_count=1 result=cleared
+traffic: lua: exp=v1 module=plumb event=marker owner=signal label=TRF_SG_NP_4 class=offer offer_count=2 result=added
+traffic: lua: exp=v1 module=signal event=show system=farles system_index=31 distance=497 model=radiopod label=TRF_SGO_4 result=placed
+traffic: lua: exp=v1 module=plumb event=marker owner=signal deleted_count=1 result=cleared
+traffic: lua: exp=v1 module=stash event=reveal index=3 system=areko source=5 from=farles jumps=1 result=ok
+traffic: lua: exp=v1 module=signal event=pick system=farles system_index=31 light_leg=200 outcome=stash stash_index=3 stash_system=areko segment=12 result=found
+traffic: lua: exp=v1 module=state event=enter generation=76 fresh=false system=lidau legs=206
+traffic: lua: exp=v1 module=safety event=activate system=lidau mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=safety event=gate feature=signal system=lidau reason=quest result=denied
+traffic: lua: exp=v1 module=signal event=skip system=lidau reason=gate:quest

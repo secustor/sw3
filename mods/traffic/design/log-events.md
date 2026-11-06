@@ -456,7 +456,7 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `settle` | `module=plumb event=settle kind=escort system=taira amount=1000 key=ct:7 result=dup` (a key already settled in this generation: no handler runs) | 1 |
 | `raid_help` | `module=plumb event=raid_help raid_id=7 credits_before=1063 credits_after=398 rule=excluded_factor resolver_count=3` (rule: none, factor, excluded, excluded_factor, cancel) | 1 |
 | `marker` | `module=plumb event=marker owner=pcl label=TRF_Pcl_1 result=added` / `result=refused reason=quest` (or `label`, `cap`) / `result=failed reason=create_nav_point_nil` | 1 |
-| `marker` | `module=plumb event=marker owner=stash label=TRF_STASH_AR_2 class=offer offer_count=1 result=added` / `class=offer offer_count=2 result=refused reason=offer_cap` (an owner of offered content, `TRF_MarkerOfferReg`, design/tips-spec.md 7.5: at most tune `mk_offer` such markers per visit; `offer_count` the offer markers held after the add, or before the refusal) | 1 |
+| `marker` | `module=plumb event=marker owner=stash label=TRF_STASH_AR_2 class=offer offer_count=1 result=added` / `class=offer offer_count=2 result=refused reason=offer_cap` (an owner of offered content, `TRF_MarkerOfferReg`, design/tips-spec.md 7.5: at most tune `mk_offer` such markers per visit; `offer_count` the offer markers held after the add, or before the refusal; `result=bumped by=<label>`: at the cap the newest held offer marker with a larger record leg gives way to an older record's, design/static-signals-spec.md 7) | 1 |
 | `marker` | `module=plumb event=marker owner=pcl deleted_count=1 result=cleared` / `reason=jump deleted_count=3 result=cleared` (or `reason=load`, `reason=quest`: a mission started) | 1 |
 | `cap_trim` | `module=plumb event=cap_trim over_count=3 group_count=2 freed_count=3` (a spawn over `cap_ships`: the planned groups' trim calls) | 1 |
 | `orphan` | `module=plumb event=orphan deleted_count=2 global_count=1` (load: ships `trf_<prefix>_<n>_<j>`, globals `TRF_G<prefix>_*`) | 1 |
@@ -628,6 +628,8 @@ Clan stashes, step 1 (`design/stash-spec.md` 7). `index` is the record index i (
 | `stale` | `module=stash event=stale index=1 generation=11 current=12` (E7.5) | 1 |
 | `hit` | `module=stash event=hit index=1` | 2 |
 | `found` | `module=stash event=found index=1 system=gaoba reason=trigger` (or `reason=poll`) | 1 |
+| `reveal` | `module=stash event=reveal index=2 system=gaoba source=5 from=sunji jumps=2 result=ok` (the signal recorder's last entry, design/static-signals-spec.md 6.6: the nearest unknown cache within `sg_stash_j` jumps becomes known, `src` 5) | 1 |
+| `reveal` | `module=stash event=reveal from=sunji result=none reason=<off,none,range,quest,guard,strict:<w>,hold:<w>,quiet>` | 2 |
 | `slot` | `module=stash event=slot system=gaoba slot=1 hp=1000 moved=0` (60 s after the entry; E7.6) | 1 |
 | `ret` | `module=stash event=ret index=1 delay=96 result=open` (or `result=rearm`; E7.11) / `... group=TRF_Sh_1 tier=3 power=15 flight_count=1 ship_count=4 portal=PORTAL_D relation=war vanilla_relation=1 result=spawn` (E7.7) / `... result=skipped reason=<writeback, no_war, caps, portal, sweep, carrier, quest, guard, strict:<w>, hold:<w>, quiet, disabled, build, no_raid_module>` (E7.9) / `... result=void reason=<jump, wind, due, system>` / `... flight=1 result=killed` / `... kill_count=4 result=dead` / `... portal=PORTAL_D result=leave reason=<hp, window, wind>` / `... deleted=3 result=gone reason=<portal, out_of_view, watchdog, jump, dead>` | 1 |
 | `intel` | `module=stash event=intel index=1 system=gaoba price=1500 jumps=3 result=offered` / `... price=1500 credits_before=100000 credits_after=98500 seller=6 result=ok` (E7.8) / `... price=1500 credits=100 result=poor` / `result=declined` / `result=stale` | 1 |
@@ -1006,7 +1008,7 @@ The debrief pool and the intro quest "Report in", B02 (`design/debrief-spec.md` 
 
 ## tips (`trf_tips.script`; `TRF_TiE`, `TRF_TiDE`)
 
-Sourced tips and the event ring, A16 (`design/tips-spec.md` 10; host-tested only). `kind` is the record kind by name (`raid`, `gather`, `swon`, `slost`, `base`, `basedn`, `cap`, `wreck`, `cache`, `capcache`), `system`/`target` the record's system, `event_leg` its leg (`TRF.clock.legs` at the push), `source` the source code (0 FTU haulers, 1..5 the faction, 6 pirate talk, 7 FTU beacons, 9 FTU mercenaries), `landmark` 0 the system, 1..6 a portal, 7 the trade station, 8 the patrol station.
+Sourced tips and the event ring, A16 (`design/tips-spec.md` 10; host-tested only). `kind` is the record kind by name (`raid`, `gather`, `swon`, `slost`, `base`, `basedn`, `cap`, `wreck`, `cache`, `capcache`, `signal`: trf_signal's lit source, design/static-signals-spec.md 4.5), `system`/`target` the record's system, `event_leg` its leg (`TRF.clock.legs` at the push), `source` the source code (0 FTU haulers, 1..5 the faction, 6 pirate talk, 7 FTU beacons, 9 FTU mercenaries), `landmark` 0 the system, 1..6 a portal, 7 the trade station, 8 the patrol station.
 
 | Event | Example line | Level |
 |---|---|---|
@@ -1038,6 +1040,29 @@ Specialist answers, A05 (`design/specialist-spec.md` 9; host-tested only). `spea
 | `who` | `module=spec event=who kind=<rep,int> speaker=Yana rank=1 tried=Kalem:absent,Yana:ok1,...,ai:noperk` | 2 |
 | `hold` | `module=spec event=hold trader_id=4 hp=300 floor=270.000 result=<held,released>` (the fallback guard, 6.5; held once per patch) | 2 |
 | `dump` | `module=spec event=dump spec=1 hold_count=0 armed_count=1` | 1 |
+
+## signal (`trf_signal.script`; `TRF_SgE`, `TRF_SgDE`)
+
+Static signals, A08 (`design/static-signals-spec.md` 11; host-tested only). `region` is the region slot, `system_index` the map index, `light_leg` the source's lighting leg, `state` the record state (0 lit, 1 heard, 2 read, 3 rest), `label` `TRF_SGO_<slot>` the recorder object, markers `TRF_SG_AR_<slot>` (area) and `TRF_SG_NP_<slot>` (attached). Skip reasons: `off`, `chapter`, `none`, `mode:<why>`, `gate:<why>`, `latch`, `hold:<disable_action,sys_sos,scene,suppressed>`.
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=signal event=error message=<m>` | 1 |
+| `light` | `module=signal event=light region=5 system=sunji system_index=78 point=2 phase=0 roll=12 chance=20 candidate_count=4 result=lit` (at most one per region tick) | 1 |
+| `light` | `module=signal event=light region=5 roll=47 chance=20 result=none reason=<off,chapter,phase,busy,rest,roll,no_system>` (`region=all` for off and chapter) | 2 |
+| `expire` | `module=signal event=expire region=5 system=sunji state=<0,1,2> age=13 reason=<ttl,gate>` (the source rests) | 1 |
+| `rest_end` | `module=signal event=rest_end region=5 system=sunji` | 2 |
+| `enter` | `module=signal event=enter system=sunji state=<0,1,2> result=<armed,reading,marker,load,due_full>` | 2 |
+| `skip` | `module=signal event=skip system=sunji reason=<see above>` (once per reason and visit) | 2 |
+| `line` | `module=signal event=line system=sunji system_index=78 light_leg=140 variant=2 queued_count=0 result=<queued,dropped> reason=<nil,queued:<n>,event:<kind>,cap,due,no_entry,heard,left,skip reasons>` (the due call, `sg_delay` s after the entry) | 1 |
+| `say` | `module=signal event=say system_index=78 light_leg=140 speaker=Lastochka output=<radio,line> sound=<spark4.wav+vapour-escape-loop.wav,none> sound_result=<played,error,pos,off> result=<shown,not_shown> reason=<nil,left,heard,supp:<q>,no_speaker,line_failed,skip reasons>` | 1 |
+| `read` | `module=signal event=read system=sunji system_index=78 light_leg=140 distance=812 band=<strong,clear,faint> tier=2 word="pirate gangs" offset=310 marker=TRF_SG_AR_5 result=shown` / `... result=wait reason=<quest,cap,offer_cap,pos,point,native>` (once per reason and visit) | 1 |
+| `show` | `module=signal event=show system=sunji system_index=78 distance=488 model=radiopod label=TRF_SGO_5 result=<placed,failed>` (failed: retried after 10 s) | 1 |
+| `pick` | `module=signal event=pick system=sunji system_index=78 light_leg=140 outcome=<trail,stash,ring,lore> stash_index=<i,nil> stash_system=<name,nil> segment=41 result=found` / `... outcome=destroyed result=found` (the recorder shot) | 1 |
+| `orphan_delete` | `module=signal event=orphan_delete label=TRF_SGO_5 reason=<entry,load,jump,wind,rest>` | 2 |
+| `debug` | `module=signal event=debug system=sunji result=<created,no_point,busy,kept>` (cfg `signal_at`) | 1 |
+| `fix` | `module=signal event=fix kept=1 dropped=2 moved=1` (only when the repair changed `TRF.sg`) | 1 |
+| `dump` | `module=signal event=dump on=1 record_count=2 records=5:sunji/2/0/3,6:lasad/1/2/9` (`<slot>:<system>/<point>/<state>/<age>`) | 1 |
 
 ## supply (`trf_supply.script`; `TRF_SpE`)
 

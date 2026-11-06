@@ -4,7 +4,8 @@
 -- Owns: one ring of dated events per region slot, packed in the digit string TRF.ti, and the shared ring API
 -- TRF_RingPush / TRF_RingRead / TRF_RingMark (stash step 2 and A08 call it). Feeds (one TRF_P("TRF_Ti_Feed", ...) line
 -- each in the owner module): off-screen raids (trf_region), sweep plans and off-screen outcomes (trf_region), a base going
--- active or dark off-screen (trf_base), a wanted captain's move (trf_captain), a lost traffic freighter (trf_scar).
+-- active or dark off-screen (trf_base), a wanted captain's move (trf_captain), a lost traffic freighter (trf_scar); and
+-- trf_signal's lit source (kind 13, pushed directly, design/static-signals-spec.md 4.5).
 -- Surfaces (existing channels only): one dated, sourced harbour news line after the built one (trf_station, rung >= 2),
 -- source, place and age clauses on the sweep and base dock tips and a captain tip (rung >= 4), the ring rumour first in
 -- the hail's where-headed answer, the informant reply's where and when (trf_captain). No arrival line, no box, no hail
@@ -224,11 +225,12 @@ function TRF_TiKinds()
 		{nm="pull", res=1},
 		{nm="cache", cl="t", ch="ti_ch_full", rk="ka", step2=1},
 		{nm="capcache", cl="t", ch="ti_ch_full", rk="ka", step2=1},
+		{nm="signal", cl="h", ch="ti_ch_full", rk="ks", tx="tisignal"},
 	};
 	return ti.kt;
 end;
 
--- Kind entry of k (an integer 1..12, not reserved), or nil.
+-- Kind entry of k (an integer 1..13, not reserved), or nil.
 function TRF_TiKindOf(k)
 	if type(k) ~= "number" or k ~= floor(k) then return nil; end;
 	local e = TRF_TiKinds()[k];
@@ -243,10 +245,11 @@ function TRF_TiKName(k)
 	return tostring(k);
 end;
 
--- Tie order of the picks (7.1): swon, slost, basedn, gather, raid, wreck, then the target kinds.
+-- Tie order of the picks (7.1): swon, slost, basedn, gather, raid, wreck, signal (design/static-signals-spec.md 4.5), then
+-- the target kinds.
 function TRF_TiRankOf(k)
-	local r = {[3]=1, [4]=2, [6]=3, [2]=4, [1]=5, [8]=6, [5]=7, [7]=8, [11]=9, [12]=10};
-	return r[k] or 11;
+	local r = {[3]=1, [4]=2, [6]=3, [2]=4, [1]=5, [8]=6, [13]=7, [5]=8, [7]=9, [11]=10, [12]=11};
+	return r[k] or 12;
 end;
 
 -- Pure functions ------------------------------------------------------------------------
@@ -494,7 +497,7 @@ function TRF_TiSwSrcOf(f)
 end;
 
 -- 7.6 truth of record r against the live records x = {base = TRF.base list, cap = the region's captain record, scar = the
--- scar record of r.s, sh = stash record r.a}: "current"; "stale", why; "dead", why.
+-- scar record of r.s, sh = stash record r.a, sg = trf_signal's record of r.s}: "current"; "stale", why; "dead", why.
 function TRF_TiLiveOf(r, x)
 	local k = r.k;
 	if k == 1 or k == 2 or k == 3 or k == 4 or k == 6 then return "current"; end;
@@ -536,6 +539,12 @@ function TRF_TiLiveOf(r, x)
 		local s = x.sh;
 		if type(s) == "table" and s.sys == r.s and (s.st == 0 or s.st == 1) then return "current"; end;
 		return "dead", "stash";
+	end;
+	if k == 13 then
+		-- The source lit at the record's leg still loops (t 0..2); a rest or a later source in the system is dead.
+		local s = x.sg;
+		if type(s) == "table" and s.s == r.s and s.t <= 2 and s.g == r.g then return "current"; end;
+		return "dead", "signal";
 	end;
 	return "dead", "kind";
 end;
@@ -588,6 +597,7 @@ function TRF_TiLiveX(r)
 		x.scar = s;
 	end;
 	if r.k == 11 or r.k == 12 then x.sh = TRF_N("TRF_ShRec", r.a); end;
+	if r.k == 13 then x.sg = TRF_N("TRF_Sg_Rec", r.s); end;
 	return x;
 end;
 
@@ -964,7 +974,7 @@ function TRF_TiNewsBody(idx, k, pre)
 	local slot = TRF_TiSlot(idx);
 	if not slot then return nil; end;
 	local T, ch = TRF_TiTune(), TRF_TiCh();
-	local all = TRF_RingRead(slot, {k={1, 2, 3, 4, 6, 8}});
+	local all = TRF_RingRead(slot, {k={1, 2, 3, 4, 6, 8, 13}});
 	local cs, xs = {}, {};
 	for i = 1, getn(all) do
 		local r = all[i];
@@ -1054,12 +1064,13 @@ function TRF_TiCapBody(idx)
 	return t, r.s;
 end;
 
--- 7.3 the ring rumour of the hail's where-headed answer at system idx, or nil (then the built chain).
-function TRF_Ti_Rumour(idx)
-	return call(TRF_TiRumourBody, {idx}, "x", TRF_TiErr);
+-- 7.3 the ring rumour of the hail's where-headed answer at system idx, or nil (then the built chain). q (optional,
+-- design/static-signals-spec.md 6.6): nk = a list of kinds left out (the signal recorder leaves out kind 13).
+function TRF_Ti_Rumour(idx, q)
+	return call(TRF_TiRumourBody, {idx, q}, "x", TRF_TiErr);
 end;
 
-function TRF_TiRumourBody(idx)
+function TRF_TiRumourBody(idx, q)
 	if TRF_TiGate("hail") or type(idx) ~= "number" then return nil; end;
 	local T, ch = TRF_TiTune(), TRF_TiCh();
 	local near = {[idx]=0};
@@ -1070,11 +1081,15 @@ function TRF_TiRumourBody(idx)
 	end;
 	local all = TRF_RingRead(nil, {s=set, age=T.ti_hail_age});
 	local ti = %TI;
+	local nk = {};
+	if type(q) == "table" and type(q.nk) == "table" then for i = 1, getn(q.nk) do nk[q.nk[i]] = 1; end; end;
 	local cs, xs = {}, {};
 	for i = 1, getn(all) do
 		local r = all[i];
-		local res, st, why, x = TRF_TiCand(r, "hail", {cur=1, h=ti.h}, T, ch);
-		if res == "ok" then tinsert(cs, r); xs[r] = x; end;
+		if not nk[r.k] then
+			local res, st, why, x = TRF_TiCand(r, "hail", {cur=1, h=ti.h}, T, ch);
+			if res == "ok" then tinsert(cs, r); xs[r] = x; end;
+		end;
 	end;
 	local r = TRF_TiPickOf(cs, near);
 	if not r then TRF_TiPickLog("hail", idx, nil, nil, nil, getn(cs)); return nil; end;
@@ -1273,5 +1288,6 @@ function TRF_Ti_Text()
 		tisrcmerc = "FTU mercenaries",
 		tisrcbeacon = "FTU beacons",
 		tiagen = "$1 days back",                                           -- age (without trf_remark)
+		tisignal = "$1 picked up a looping signal in $3 $4.",           -- source, -, place, age
 	};
 end;

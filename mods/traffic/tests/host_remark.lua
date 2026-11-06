@@ -23,10 +23,10 @@ dostring(strsub(src, 1, cut), "host_station.lua");
 -- Helpers ----------------------------------------------------------------------------------
 
 -- Config of these runs: the repo defaults with the entry events that would claim lines or slots on their own turned off,
--- scars off (rm-e turns them on), warnings off, log 2, plus t.
+-- scars off (rm-e turns them on), warnings and static signals off, log 2, plus t.
 function RM_Cfg(t)
 	local c = {sweeps=0, feq=0, staged=0, seed=0, queue=0, parked=0, voice_events=0, dconv=0, carriers=0, po=0,
-		enable_survivors=0, enable_scars=0, enable_stashes=0, enable_freight=0, warn=0, log=2};
+		enable_survivors=0, enable_scars=0, enable_stashes=0, enable_freight=0, warn=0, signals=0, log=2};
 	if t then for k, v in t do c[k] = v; end; end;
 	return c;
 end;
@@ -227,9 +227,9 @@ function T_RM_A()
 	local h = HOST();
 	RM_Begin("gaoba", "6");
 	local g, al, kd, sl = RM_Sys();
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=22") >= 1, "trf_remark loads before trf_temper, trf_corp and trf_debrief (extra_count=22)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=23") >= 1, "trf_remark loads before trf_temper, trf_corp and trf_debrief (extra_count=23)");
 	local ml, tf, uf = TRF_ModList(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml) - 5] == "Rm" and tf[getn(tf) - 6] == "TRF_Rm_Text" and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf) - 5] == "TRF_Rm_Text",
+	HOST_Check(ml[getn(ml) - 6] == "Rm" and tf[getn(tf) - 7] == "TRF_Rm_Text" and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf) - 6] == "TRF_Rm_Text",
 		"TRF_ModList ends with Rm; TRF_Rm_Text before TRF_Loc_Text and last in TRF_UI_TextFns");
 	HOST_Check(g == 42 and al == 2 and kd == 52 and sl == 5 and TRF_RgMap()[sl].home == kd and TRF_BaseAllowed(al), "fixture: gaoba 42, altair 2 (base slot), kadi 52 (home) in region 5");
 	-- Text keys (9): 14, plain sentences without %, # or a line break; the loc layer finds each one.

@@ -37,6 +37,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_debrief.script` | Debrief pool and the intro quest "Report in", B02 ([design/debrief-spec.md](design/debrief-spec.md)), **off by default** (cfg `debrief_xp` 0 until roadmap decision 1): each settled mod job (parcel, charter posting, bounty claim, sweep join, escort; trf_plumb's settlement hook `TRF_Settle`) draws one debrief from a pool of 5 per chapter (one chapter of carry-over, a bank of 10), paid as pilot experience at the next trade dock (line 80, one `AddPlayerExperience` call); the pool opens with the quest "Report in" (quest 2 of `TRF.iq`: the charter office's offer, box 420 or Office row 420, dialogs `TRF_Db1`/`TRF_Db2`). State `TRF.db` (one packed number). Host-tested only. Loads after `trf_corp`. |
 | `trf_tips.script` | Sourced tips and the event ring, A16 ([design/tips-spec.md](design/tips-spec.md)): one ring of dated events per region (4 records, `TRF.ti`, one digit string), fed by off-screen raids, sweep plans and outcomes, pirate bases going active or dark, the wanted captain's moves and lost traffic freighters; read by the harbour news (one dated, sourced line), the sweep and base dock tips (who first saw it, where, when), a captain tip, the hail's where-headed answer and the informant's reply. Owns the shared ring API `TRF_RingPush`/`TRF_RingRead`/`TRF_RingMark`; trf_plumb's two-marker rule for offered content (`TRF_MarkerOfferReg`, tune `mk_offer`). Host-tested only. Loads after `trf_debrief`. |
 | `trf_spec.script` | Specialist answers, A05 ([design/specialist-spec.md](design/specialist-spec.md)): the Repairman patch, one answer in the hail menu's spare provider slot for an FTU trader fleeing with low HP after its raid ended ("Jana [Repairman]: ..."; `SetHP` on the lead, trf_raid's `TRF_Rd_Unflee`, help +1), the missing-skill head of that menu, the re-arm of its hail at the raid end and one hail beyond `hail_max`, the patched flag `r.sk` (trf_track's pool `fl` bit 256: the free rumour and a thank-you line at the next meeting), the specialist probe for the fence page's Intuition answer (trf_wq D5). Host-tested only. Loads after `trf_tips`. |
+| `trf_signal.script` | Static signals, A08 ([design/static-signals-spec.md](design/static-signals-spec.md)): at most one looping distress source per region slot (`TRF.sg`, 8 digits a record), lit at the region tick in Quiet and Boom at a generated point (`TRF_SgPointData`, `tools/gen_stash.py --signal`) and pushed to the ring (kind 13); the static entry line through `TRF_ArrivalLine` only on an entry with no other mod line, the reading with a 1,000-unit area marker and the clan threat word (`TRF_Str_Word`), the late-created flight recorder with a swept pickup and its last entry (stash reveal `src` 5, ring rumour, lore). Host-tested only (W-A08.1-10 open). |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -1239,6 +1240,47 @@ Wave 2 item 5 of the roadmap, A05 (spec [design/specialist-spec.md](design/speci
 ### In-game checks (specialist answers)
 
 W-A05.1 (specialist found), W-A05.2 (hail after the raid end), W-A05.3 (no answer during a raid), W-A05.4 (`SetHP` works), W-A05.5 (the leg resumes), W-A05.6 (missing skill line), W-A05.7 (once per trader), W-A05.8 (quest safety), W-A05.9 (the pilot speaks), W-A05.10 (patched trader met again), W-A05.11 (firmware specialist), W-A05.12 (fence answer); [design/PROGRESS.md](design/PROGRESS.md) "Wave 2 (host-tested only)", scored by `tools/check_ingame.py`.
+
+## Static signals (`EXP=0 TRAFFIC=1`)
+
+Wave 3 item 10 of the roadmap, A08 (spec [design/static-signals-spec.md](design/static-signals-spec.md); owner decisions 1-10 of spec 2.1 taken 2026-11-06 as recommended): module `trf_signal`, loaded after `trf_spec` (`extra_count=23`). On by default (cfg `signals` 1). Saved: the string `TRF.sg`, one 8-digit record per region slot (89 bytes worst case; full state `v1-n` 97,661 bytes). Host-tested only (`sg-a`..`sg-g`), not run in the game. The clan lure branch (survivors step 2) is not built.
+
+### What the player sees
+
+- From chapter 5, a region in Quiet or Boom may light one looping distress source in a system never named by a story quest (16 systems with points from `tools/gen_stash.py --signal`; no region home, no pirate base, no survivors beacon there, never the current system). Harbour news and the hail rumour can name it: "FTU haulers picked up a looping signal in Sunji by the Ergelan portal 2 days back."
+- Entering its system, when no other mod line was queued that entry and no scripted event holds the visit, a burst of static plays and a squad pilot (Lastochka, else Kalem or the Hero) reports a broken distress phrase, last in the arrival lines. Once per source.
+- 10 real seconds later the source is marked: an area marker 150-500 units from it and "Signal source marked. The signal is clear. Watch for pirate gangs in this system." (the clan word of the arrival tier line).
+- Within 500 units the flight recorder appears with its own marker; flying the mothership within 60 units picks it up (also at 8x). Its last entry reveals the nearest unknown clan cache within 4 jumps (the stash's area marker in that system), else a ring rumour from nearby, else a lore line. Nothing is paid. Shooting the recorder ends the source.
+- Nothing shows during a story mission visit, a scene, `__disableAction` or `__sys_SOS`, or in a system the strict gate denies (`signal`).
+
+### Config keys (static signals)
+
+`install-test.sh` writes `SIGNALS`, `SIGNAL_SOUND` and `SIGNAL_AT` only when set (`LEVEL=v01`/`v02` write `signals=0` unless `SIGNALS` is set); tune keys go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `signals` | 1 | 0: no source lights, `TRF.sg` cleared at the next region tick |
+| `signal_sound` | 1 | 0 no static; 1 vanilla `spark4.wav` and `vapour-escape-loop.wav` through `PlaySound3D`; 2 an own wav (not shipped, reads as 1) |
+| `signal_at` | "" | debug: a source at the next entry of that system (chapter 5+) |
+| tune `sg_ch`, `sg_ch_end` | 5, 20 | chapter window |
+| tune `sg_ph` | {0, 1} | phases that light (Quiet, Boom) |
+| tune `sg_pct` | 20 | light chance per region tick (one light per tick map-wide) |
+| tune `sg_ttl`, `sg_rest` | 12, 20 | legs a source loops; legs a region rests after a source ended |
+| tune `sg_home` | 0 | 1: region homes may light |
+| tune `sg_delay` | 6 | seconds after the entry for the queue check (later than `wn_delay`) |
+| tune `sg_secs`, `sg_read_s` | 8, 10 | line seconds; unpaused real seconds from the line to the reading |
+| tune `sg_area_min`, `sg_area_r` | 150, 500 | marker offset from the source |
+| tune `sg_show_r`, `sg_pick_r` | 500, 60 | late-creation distance, pickup radius |
+| tune `sg_stash_j` | 4 | stash reveal range in jumps, 0 off |
+| tune `sg_vol` | 80 | sound volume in % |
+
+### Log lines (static signals)
+
+`module=signal event=light ... result=lit|none`, `event=expire reason=ttl|gate`, `event=rest_end`, `event=enter`, `event=skip reason=`, `event=line ... queued_count= result=queued|dropped reason=`, `event=say speaker= output= sound= sound_result= result=`, `event=read distance= band= tier= word= offset= marker= result=shown|wait`, `event=show distance= model= label= result=placed|failed`, `event=pick outcome=trail|stash|ring|lore|destroyed stash_index= stash_system= segment=`, `event=orphan_delete reason=`, `event=debug`, `event=fix`, `event=dump`, `event=error`; trf_tips' `event=push kind=signal`, trf_stash's `event=reveal`, trf_plumb's `event=marker ... result=bumped by=`. Full list in [design/log-events.md](design/log-events.md) (signal, tips, stash, plumb).
+
+### In-game checks (static signals)
+
+W-A08.1 (a source lights and feeds the ring), W-A08.2 (line only on an empty entry), W-A08.3 (the static plays), W-A08.4 (the broken phrase as radio), W-A08.5 (one line per source), W-A08.6 (the reading gives the marker and the threat word), W-A08.7 (area bound), W-A08.8 (show before pickup, pickup at 8x), W-A08.9 (quest safety), W-A08.10 (nothing left behind, offer cap); [design/PROGRESS.md](design/PROGRESS.md) "Wave 3 (host-tested only)", scored by `tools/check_ingame.py`. Play with `LOG=2 SIGNAL_AT=sunji` in chapter 5 or later.
 
 ## Vanilla fixes
 

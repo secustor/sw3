@@ -930,6 +930,16 @@ function HOST_Navs()
 	return n;
 end;
 
+-- PlaySound3D(name, position, volume) (0x5ed250, include/Anomalies.script Horn2; design/static-signals-spec.md 8): records
+-- {name, pos, vol, gt} in HOST().snd; HOST().snd_err raises. Undefined by default (the vanilla call shape is untested in the
+-- game, CHECK SG1); a scenario sets PlaySound3D = HOST_PlaySound3D.
+function HOST_PlaySound3D(name, pos, vol)
+	HOST_Want(type(name) == "string" and HOST_IsVec(pos) and type(vol) == "number", "PlaySound3D(wav, Vector3, volume)");
+	if HOST().snd_err then error("injected PlaySound3D error"); end;
+	if type(HOST().snd) ~= "table" then HOST().snd = {}; end;
+	tinsert(HOST().snd, {name=name, pos=pos, vol=vol, gt=HOST().gt});
+end;
+
 -- (carcass) -> current HP.
 function GetCurHP(o) HOST_Want(type(o) == "table" and o.__obj, "GetCurHP(carcass)"); return o.hp; end;
 

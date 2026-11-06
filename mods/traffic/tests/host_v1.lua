@@ -2288,6 +2288,11 @@ function T_V1_N()
 		if pr then pr.fl = TRF_BitSet(pr.fl, 256); TRF.tp[k] = TRF_TpPack(pr); end;
 	end;
 	print("HOST info specialist answers worst case: +"..(HOST_SaveSize(TRF) - spz0).." bytes");
+	-- Static signals worst case (design/static-signals-spec.md 3.4): one 8-digit record in each of the 8 region blocks.
+	local sgb = {};
+	for b = 1, 8 do sgb[b] = {s=999, p=4, g=TRF.clock.legs, t=2}; end;
+	TRF.sg = TRF_SgJoinOf(sgb, 8);
+	HOST_Check(HOST_SaveSize(TRF.sg) + 10 == 89, "TRF.sg at its bound: "..(HOST_SaveSize(TRF.sg) + 10).." bytes with its key");
 	local mcz = HOST_SaveSize(TRF.mc);
 	TRF_Mc_Fix();
 	HOST_Check(HOST_SaveSize(TRF.mc) == mcz and mcz <= 6000, "merc worst case kept by the repair: "..mcz.." bytes <= 6000");
@@ -2314,7 +2319,7 @@ function T_V1_N()
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");
 	local size = 8 + 3 + HOST_SaveSize(TRF);
 	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "ch", "scar",
-		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "wq", "wn", "rm", "iq", "crp", "db", "ti", "live"};
+		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "wq", "wn", "rm", "iq", "crp", "db", "ti", "sg", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	local lp, ll = "", {"tr", "stat", "rd", "cvs", "tq", "sw", "fq", "cr", "dc", "bs", "pg"};
 	for i = 1, getn(ll) do lp = lp.." "..ll[i].."="..HOST_SaveSize(L[ll[i]]); end;

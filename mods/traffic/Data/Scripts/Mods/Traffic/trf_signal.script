@@ -1,0 +1,1203 @@
+-- sw3-traffic static signals (Lua 4.0.1). Spec: design/static-signals-spec.md (A08, roadmap wave 3 row 10). Prefix Sg
+-- (TRF_Sg_* public, TRF_Sg<X> internal), log module=signal, cfg signals. Host-tested only, not run in the game
+-- (W-A08.1-10 open).
+-- Owns: at most one looping distress source per region slot, lit at the region tick (before trf_tips' tick) in a
+-- never-named system with points (TRF_SgPointData, tools/gen_stash.py --signal), in Quiet and Boom, chapters sg_ch to
+-- sg_ch_end. The lit source feeds the A16 ring (kind 13 signal). Entering its system, a squad pilot speaks a broken
+-- distress phrase with a burst of static (PlaySound3D, vanilla wavs), only when no other mod line was queued this entry
+-- (TRF_ArrivalCount) and last in the arrival queue; sg_read_s unpaused real seconds later the reading puts a 1,000-unit
+-- area marker near the source and names the clan's threat word (TRF_Str_Word). Within sg_show_r of the point the flight
+-- recorder (radiopod) is created late and picked up by the mothership's swept segment; its last entry reveals a stash
+-- cache (trf_stash TRF_Sh_Reveal, src 5), else tells a ring rumour, else a lore line. Nothing is paid.
+-- Gates: strict gate (feature signal), system mode, the visit latch on TRF_Safe_QState, the hold flags and the scene;
+-- never GetPlayerQuestState (trf_plumb refuses markers while it is TRUE).
+-- Saved field (version 4, created at the first light, repaired by TRF_Sg_Fix):
+--   TRF.sg = "<block 1>/<block 2>/.../<block n>", n = TRF_RgMap().n, block b the 8-digit record of region slot b or
+--   empty: system 3, point 1, leg mod 1000 3, state 1 (0 lit, 1 heard, 2 read, 3 rest); nil when every block is empty.
+-- Visit state in the chunk local SG (never saved; reset by TRF_Sg_OnEnter, rebuilt by every MapInitialization); the
+-- source object's handle lives there only (label TRF_SGO_<slot>).
+-- Layout as trf_tips: helpers, accessors (one native each, protected), static tables, the generated block, pure
+-- functions (*Of, explicit inputs, host-testable), contract functions. Top level: functions and SG only.
+
+local SG = {pr={}};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_SgCV() return %SG; end;
+
+-- logfmt event line, module=signal (design/log-format.md).
+function TRF_SgE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "signal"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_SgErr(m)
+	TRF_SgE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler (handles that may be stale): nil is the answer.
+function TRF_SgNoErr(m) end;
+
+function TRF_SgLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_SgDE(event, ...)
+	if TRF_SgLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_SgE, arg);
+end;
+
+function TRF_SgCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- a mod m, never negative (Lua 4 mod() keeps the sign of a).
+function TRF_SgMod(a, m)
+	return a - floor(a / m) * m;
+end;
+
+-- Fixed hash 0..10008 of three integers (no RAND draw: a reload replays the same answer).
+function TRF_SgHashOf(a, b, c)
+	local x = TRF_SgMod(floor((a or 0) * 131 + (b or 0) * 157 + (c or 0) * 41 + 6151), 10000);
+	x = TRF_SgMod(x * 47 + 19, 10007);
+	return TRF_SgMod(x * 59 + 31, 10009);
+end;
+
+-- Ranges of the cfg keys (outside -> default) and clamps of the tune keys (spec 10): {lo, hi}. sg_ph entries 0..5;
+-- sg_area_min is clamped to 0..sg_area_r after sg_area_r.
+function TRF_SgClampT()
+	return {signals={0, 1}, signal_sound={0, 2}, sg_ch={0, 20}, sg_ch_end={0, 20}, sg_pct={0, 100}, sg_ttl={1, 200},
+		sg_rest={0, 200}, sg_home={0, 1}, sg_delay={5, 20}, sg_secs={3, 20}, sg_read_s={1, 120}, sg_area_r={100, 1000},
+		sg_area_min={0, 1000}, sg_show_r={100, 2000}, sg_pick_r={20, 300}, sg_stash_j={0, 12}, sg_vol={0, 100}};
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Sg_OptDef), else the raw config, else the default; a wrong type or a number outside its
+-- range reads as the default.
+function TRF_SgOpt(key)
+	local d = TRF_Sg_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	local r = TRF_SgClampT()[key];
+	if type(v) == "number" and r and (v ~= floor(v) or v < r[1] or v > r[2]) then return d; end;
+	return v;
+end;
+
+-- Tune values of this module, whole and clamped (TRF_SgClampT); sg_ph a set {[phase] = 1} of whole entries 0..5. Cached
+-- in SG while TRF_Tune returns the same table; callers must not write into it.
+function TRF_SgTune()
+	local sg = %SG;
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_SgErr); end;
+	if type(sg.tc) == "table" and sg.tc.s == t then return sg.tc.t; end;
+	local d, cl, o = TRF_Sg_TuneDef(), TRF_SgClampT(), {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if k == "sg_ph" then
+			if type(x) ~= "table" then x = v; end;
+			local s = {};
+			for i = 1, getn(x) do
+				if type(x[i]) == "number" then s[TRF_SgCl(floor(x[i]), 0, 5)] = 1; end;
+			end;
+			o[k] = s;
+		else
+			if type(x) ~= "number" then x = v; end;
+			x = floor(x);
+			local c = cl[k];
+			if c then x = TRF_SgCl(x, c[1], c[2]); end;
+			o[k] = x;
+		end;
+	end;
+	o.sg_area_min = TRF_SgCl(o.sg_area_min, 0, o.sg_area_r);
+	sg.tc = {s=t, t=o};
+	return o;
+end;
+
+function TRF_SgLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+function TRF_SgGt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+function TRF_SgRs()
+	local r = TRF_N("TRF_RealSecs");
+	if type(r) == "number" then return r; end;
+	return 0;
+end;
+
+function TRF_SgCh()
+	local c = TRF_N("TRF_Chapter");
+	if type(c) == "number" then return c; end;
+	return 0;
+end;
+
+function TRF_SgCur()
+	return TRF_N("TRF_CurIdx");
+end;
+
+function TRF_SgTxt(key, a, b, c, d)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c, d); end;
+	return tostring(key);
+end;
+
+-- Lowercase map name of system idx (log values, the point table key), or the index.
+function TRF_SgName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" and n ~= "?" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+-- Display name of system idx.
+function TRF_SgSysTxt(idx)
+	local s = TRF_N("TRF_UI_SysName", idx);
+	if type(s) == "string" then return s; end;
+	return TRF_SgName(idx);
+end;
+
+-- Map data (TRF_Map), or nil.
+function TRF_SgMap()
+	local m = TRF_N("TRF_Map");
+	if type(m) == "table" and type(m.sys) == "table" and type(m.by) == "table" then return m; end;
+	return nil;
+end;
+
+-- Region table of trf_region (TRF_RgMap), or nil.
+function TRF_SgRgMap()
+	local r = TRF_N("TRF_RgMap");
+	if type(r) == "table" and type(r.n) == "number" and r.n > 0 then return r; end;
+	return nil;
+end;
+
+-- Number of region blocks, 0 without the region map.
+function TRF_SgN()
+	local r = TRF_SgRgMap();
+	if r then return r.n; end;
+	return 0;
+end;
+
+function TRF_SgSlot(idx)
+	if type(idx) ~= "number" then return nil; end;
+	local s = TRF_N("TRF_RgOf", idx);
+	if type(s) == "number" then return s; end;
+	return nil;
+end;
+
+-- Points {{x, y, z}, ...} of system idx, or nil.
+function TRF_SgPts(idx)
+	if type(idx) ~= "number" then return nil; end;
+	local l = TRF_SgPointData()[TRF_SgName(idx)];
+	if type(l) == "table" and getn(l) > 0 then return l; end;
+	return nil;
+end;
+
+-- Point p of system idx as {x, y, z}, or nil.
+function TRF_SgPt(idx, p)
+	local l = TRF_SgPts(idx);
+	if not l or type(p) ~= "number" or type(l[p]) ~= "table" then return nil; end;
+	return {x=l[p][1], y=l[p][2], z=l[p][3]};
+end;
+
+function TRF_SgDist(a, b)
+	if type(a) ~= "table" or type(b) ~= "table" then return nil; end;
+	local dx, dy, dz = a.x - b.x, a.y - b.y, a.z - b.z;
+	return sqrt(dx * dx + dy * dy + dz * dz);
+end;
+
+-- Accessors (one native each, protected) ----------------------------------------------------
+
+function TRF_SgCreateRaw(model, p, label)
+	local o = CreateCarcass(model, Vector3(p.x, p.y, p.z), Vector3(0, 0, 1));
+	if o == nil or type(o) == "number" then return nil; end;
+	SetObjectLabel(o, label);
+	return o;
+end;
+
+-- Carcass model at p labelled label (CreateCarcass, nil when no free spot), or nil.
+function TRF_SgCreate(model, p, label)
+	if type(CreateCarcass) ~= "function" or type(Vector3) ~= "function" or type(SetObjectLabel) ~= "function" then return nil; end;
+	return call(TRF_SgCreateRaw, {model, p, label}, "x", TRF_SgErr);
+end;
+
+function TRF_SgAliveRaw(o)
+	if o:IsAlive() then return 1; end;
+	return nil;
+end;
+
+-- 1 when o is an object handle that answers alive.
+function TRF_SgAlive(o)
+	if type(o) ~= "table" and type(o) ~= "userdata" then return nil; end;
+	return call(TRF_SgAliveRaw, {o}, "x", TRF_SgNoErr);
+end;
+
+function TRF_SgDelRaw(o)
+	o:Delete();
+	return 1;
+end;
+
+function TRF_SgDel(o)
+	if not TRF_SgAlive(o) then return nil; end;
+	return call(TRF_SgDelRaw, {o}, "x", TRF_SgErr);
+end;
+
+function TRF_SgPosRaw(o)
+	local p = o:GetPosition();
+	return {x=p.x, y=p.y, z=p.z};
+end;
+
+-- Position of o as {x, y, z}, or nil.
+function TRF_SgPos(o)
+	if type(o) ~= "table" and type(o) ~= "userdata" then return nil; end;
+	local p = call(TRF_SgPosRaw, {o}, "x", TRF_SgNoErr);
+	if type(p) == "table" and type(p.x) == "number" then return p; end;
+	return nil;
+end;
+
+function TRF_SgPlayRaw(name, p, vol)
+	PlaySound3D(name, Vector3(p.x, p.y, p.z), vol);
+	return 1;
+end;
+
+-- PlaySound3D(name, position, volume 0..1) (include/Anomalies.script Horn2). 1, or nil (missing native, error).
+function TRF_SgPlay(name, p, vol)
+	if type(PlaySound3D) ~= "function" or type(Vector3) ~= "function" then return nil; end;
+	return call(TRF_SgPlayRaw, {name, p, vol}, "x", TRF_SgErr);
+end;
+
+-- Live object labelled label, or nil (after a load the lookup may answer a string).
+function TRF_SgFind(label)
+	local o = TRF_N("GetObjectByLabel", label);
+	if TRF_SgAlive(o) then return o; end;
+	return nil;
+end;
+
+-- Mothership position (TRF_Ms: no GetPlayerMotherShip from a tick), or nil.
+function TRF_SgMsPos()
+	return TRF_SgPos(TRF_N("TRF_Ms"));
+end;
+
+function TRF_SgSay(text, secs)
+	return TRF_N("TRF_Say", text, secs or 8);
+end;
+
+-- Static tables ---------------------------------------------------------------------------
+
+-- Constants (spec 10).
+function TRF_SgK()
+	return {voice={"Lastochka2", "Lastochka", "Kalem", "Hero"}, snd={"spark4.wav", "vapour-escape-loop.wav"}, own="trf_static.wav",
+		model="radiopod", icon="nav_target.dds", rec_len=8, leg_mod=1000, band={600, 1200}, pts_max=4, show_retry=10, slot_max=8};
+end;
+
+-- BEGIN gen_stash.py signal (do not edit by hand)
+-- Signal points {x, y, z} per never-named system (tools/gen_stash.py --signal, design/static-signals-spec.md 4.1).
+function TRF_SgPointData()
+	return {
+		altair = {{-700, -10, -100}, {-300, -10, -100}, {200, -10, 500}, {0, -10, -400}},
+		egleon = {{-800, -10, 100}, {-300, -10, 600}, {-800, -10, -700}, {200, -10, -700}},
+		escaflon = {{-500, 0, -200}},
+		fiasar = {{-100, -20, 300}, {300, -20, -800}, {300, -20, 500}, {0, -20, -300}},
+		fort_russ = {{-900, -40, 200}, {300, -40, 400}, {0, -40, 700}, {-100, -40, -100}},
+		gaoba = {{-900, 0, -400}, {-900, 0, 600}, {-500, 0, -200}, {300, 0, 1400}},
+		golkonda = {{600, 0, -500}},
+		kitaro = {{-300, 38, 0}, {400, 38, -400}, {800, 38, -600}, {800, 38, 400}},
+		llanovar1 = {{-200, 0, 600}, {0, 0, 200}, {-600, 0, -100}, {-600, 0, 600}},
+		llanovar2 = {{-100, 0, -600}, {-100, 0, -200}, {-300, 0, 200}, {300, 0, -600}},
+		areko = {{-500, 15, -500}, {200, 15, -500}, {500, 15, 100}, {500, 15, 700}},
+		b_leftera3 = {{-900, 0, -500}, {-900, 0, 500}, {-500, 0, -300}, {-500, 0, 300}},
+		farles = {{-400, 75, 100}, {400, 75, -100}, {-700, 75, -400}, {-600, 75, 500}},
+		lasad = {{-900, 0, -400}, {-500, 0, -600}, {500, 0, -400}, {800, 0, 600}},
+		sunji = {{-400, 300, -300}, {-400, 300, 300}, {0, 300, 500}, {300, 300, -400}},
+		tarrot = {{600, 0, -1100}, {200, 0, -1100}},
+		x244 = {{-1900, 0, -700}, {-1900, 0, 300}, {-1500, 0, -500}, {-1500, 0, 100}},
+	};
+end;
+-- END gen_stash.py signal
+
+-- Pure functions ------------------------------------------------------------------------
+
+-- 8 digits of record r {s, p, g (leg), t}.
+function TRF_SgEncOf(r)
+	return format("%03d%d%03d%d", r.s, r.p, TRF_SgMod(floor(r.g or 0), 1000), r.t);
+end;
+
+-- Decoded record of the 8-character piece p at clock legs, or nil (a non-digit, a short piece, point 0, state > 3):
+-- {s, p, g = leg, age, t}.
+function TRF_SgDecOf(p, legs)
+	if type(p) ~= "string" or strlen(p) ~= 8 or strfind(p, "[^0-9]") then return nil; end;
+	local s, pt, g3, t = tonumber(strsub(p, 1, 3)), tonumber(strsub(p, 4, 4)), tonumber(strsub(p, 5, 7)), tonumber(strsub(p, 8, 8));
+	if s < 1 or pt < 1 or t > 3 then return nil; end;
+	local age = TRF_SgMod(TRF_SgMod(legs, 1000) - g3 + 1000, 1000);
+	return {s=s, p=pt, g=legs - age, age=age, t=t};
+end;
+
+-- Blocks of string str split at "/": bs[b] the decoded record or nil (b = 1..nb, nb >= n), dropped = the non-empty
+-- blocks that did not decode. Returns bs, nb, dropped.
+function TRF_SgSplitOf(str, n, legs)
+	local bs, nb, dropped = {}, n, 0;
+	if type(str) ~= "string" then return bs, nb, dropped; end;
+	local i, b = 1, 1;
+	while 1 do
+		local e = strfind(str, "/", i, 1);
+		local part = nil;
+		if e then part = strsub(str, i, e - 1); else part = strsub(str, i); end;
+		if part ~= "" then
+			local r = TRF_SgDecOf(part, legs);
+			if r then r.slot = b; bs[b] = r; else dropped = dropped + 1; end;
+		end;
+		if b > nb then nb = b; end;
+		if not e then break; end;
+		i = e + 1;
+		b = b + 1;
+	end;
+	return bs, nb, dropped;
+end;
+
+-- String of blocks 1..n, nil when every block is empty.
+function TRF_SgJoinOf(bs, n)
+	local o, any = "", nil;
+	for b = 1, n do
+		if b > 1 then o = o.."/"; end;
+		if type(bs[b]) == "table" then o = o..TRF_SgEncOf(bs[b]); any = 1; end;
+	end;
+	if not any then return nil; end;
+	return o;
+end;
+
+-- Light roll 0..99 of slot at legs (4.3 step 4) and the two hashes of the system and point choice (step 5).
+function TRF_SgRollOf(slot, legs)
+	local h = TRF_SgHashOf(slot, legs, 13);
+	local h2 = TRF_SgHashOf(h, slot, 29);
+	return TRF_SgMod(h, 100), h, h2;
+end;
+
+-- Candidate systems of a region slot (4.2). c = {cur, sys = the slot's systems, np = {[idx] = points}, home, sg_home,
+-- base = TRF.base list, sv = {[idx] = 1} (survive record), gate = {[idx] = 1} (strict gate ok), rest_s (the rest
+-- record's system or nil)}. Returns the sorted list of system indices.
+function TRF_SgCandsOf(c)
+	local o, rest = {}, nil;
+	local bad = {};
+	if type(c.base) == "table" then
+		for i = 1, getn(c.base) do
+			local b = c.base[i];
+			if type(b) == "table" and (b.k == 1 or b.k == 2) and type(b.s) == "number" then bad[b.s] = 1; end;
+		end;
+	end;
+	local l = c.sys or {};
+	for i = 1, getn(l) do
+		local s = l[i];
+		local ok = (c.np[s] or 0) > 0;
+		if ok and s == c.cur then ok = nil; end;
+		if ok and s == c.home and c.sg_home ~= 1 then ok = nil; end;
+		if ok and bad[s] then ok = nil; end;
+		if ok and c.sv and c.sv[s] then ok = nil; end;
+		if ok and not (c.gate and c.gate[s]) then ok = nil; end;
+		if ok then
+			if s == c.rest_s then rest = s; else tinsert(o, s); end;
+		end;
+	end;
+	if rest and getn(o) == 0 then tinsert(o, rest); end;
+	sort(o);
+	return o;
+end;
+
+-- Light choice (4.3 steps 4-5) over blocks bs (bs[slot] decoded or nil) and regions[slot] = {ph, cands, np} at legs:
+-- slot, system, point; or nil, why (phase, busy, rest, roll, no_system). T: the tune table.
+function TRF_SgLightOf(bs, regions, T, legs)
+	local w, wa, why, rank = nil, nil, "busy", 0;
+	local rk = {busy=1, rest=2, phase=3, no_system=4};
+	local n = getn(regions);
+	for slot = 1, n do
+		local g = regions[slot];
+		local r = bs[slot];
+		local res, age = nil, 9999;
+		if type(g) ~= "table" then res = "no_system";
+		elseif type(r) == "table" and r.t <= 2 then res = "busy";
+		elseif type(r) == "table" and r.age <= T.sg_rest then res = "rest";
+		elseif not T.sg_ph[g.ph] then res = "phase";
+		elseif getn(g.cands) == 0 then res = "no_system";
+		end;
+		if type(r) == "table" then age = r.age; end;
+		if res then
+			if rk[res] > rank then rank = rk[res]; why = res; end;
+		elseif not w or age > wa then
+			w = slot; wa = age;
+		end;
+	end;
+	if not w then return nil, why; end;
+	local roll, h, h2 = TRF_SgRollOf(w, legs);
+	if roll >= T.sg_pct then return nil, "roll", w, roll; end;
+	local g = regions[w];
+	local s = g.cands[1 + TRF_SgMod(h, getn(g.cands))];
+	local p = 1 + TRF_SgMod(h2, g.np[s]);
+	return w, s, p, roll;
+end;
+
+-- Expiry of record r at legs (4.4) in the current system cur, ok = 1 while the strict gate holds: "ttl", "gate", "end"
+-- or nil.
+function TRF_SgExpireOf(r, legs, cur, T, ok)
+	if r.t <= 2 then
+		if r.age > T.sg_ttl and r.s ~= cur then return "ttl"; end;
+		if ok ~= 1 then return "gate"; end;
+		return nil;
+	end;
+	if r.age > T.sg_rest then return "end"; end;
+	return nil;
+end;
+
+-- Area marker point of source point pt (6.4): angle and radius rmin..rmax from hash h, the same y. Returns the point and
+-- its distance from pt.
+function TRF_SgAreaOf(pt, h, rmin, rmax)
+	local a = TRF_SgMod(h, 360);
+	local d = rmin + TRF_SgMod(floor(h / 360), rmax - rmin + 1);
+	return {x=pt.x + d * cos(a), y=pt.y, z=pt.z + d * sin(a)}, d;
+end;
+
+-- Band of distance d (6.4): 3 strong below 600, 2 clear below 1,200, 1 faint; and the log word.
+function TRF_SgBandOf(d)
+	local b = TRF_SgK().band;
+	if type(d) == "number" and d < b[1] then return 3, "strong"; end;
+	if type(d) == "number" and d < b[2] then return 2, "clear"; end;
+	return 1, "faint";
+end;
+
+-- Distance from point p to the segment a-b (trf_survive's TRF_SvSegOf, a local copy when that module is absent).
+function TRF_SgSegOf(p, a, b)
+	if type(TRF_SvSegOf) == "function" then return TRF_SvSegOf(p, a, b); end;
+	local vx, vy, vz = b.x - a.x, b.y - a.y, b.z - a.z;
+	local wx, wy, wz = p.x - a.x, p.y - a.y, p.z - a.z;
+	local vv = vx * vx + vy * vy + vz * vz;
+	local t = 0;
+	if vv > 0 then t = TRF_SgCl((wx * vx + wy * vy + wz * vz) / vv, 0, 1); end;
+	local dx, dy, dz = wx - t * vx, wy - t * vy, wz - t * vz;
+	return sqrt(dx * dx + dy * dy + dz * dz);
+end;
+
+-- 1, distance when the segment a-b passes within r of pt (6.5); else nil, distance.
+function TRF_SgPickOf(pt, a, b, r)
+	local d = TRF_SgSegOf(pt, a, b);
+	if d <= r then return 1, d; end;
+	return nil, d;
+end;
+
+-- Repair of string str (6.7 F1-F5) against mp = {n, of = {[idx] = slot}, np = {[idx] = points}} at legs. Returns the new
+-- string (nil when empty), kept, dropped, moved.
+function TRF_SgFixOf(str, mp, legs)
+	if str == nil then return nil, 0, 0, 0; end;
+	if type(str) ~= "string" then return nil, 0, 1, 0; end;
+	local bs, nb, dropped = TRF_SgSplitOf(str, mp.n, legs);
+	local out, wrong = {}, {};
+	for b = 1, nb do
+		local r = bs[b];
+		if type(r) == "table" then
+			local np = mp.np[r.s] or 0;
+			local sl = mp.of[r.s];
+			if np < 1 or r.p > np or type(sl) ~= "number" or sl > mp.n then
+				dropped = dropped + 1;
+			elseif sl == b then
+				out[b] = r;
+			else
+				tinsert(wrong, r);
+			end;
+		end;
+	end;
+	local moved, kept = 0, 0;
+	for i = 1, getn(wrong) do
+		local r = wrong[i];
+		local sl = mp.of[r.s];
+		if out[sl] then dropped = dropped + 1; else out[sl] = r; r.slot = sl; moved = moved + 1; end;
+	end;
+	for b = 1, mp.n do if out[b] then kept = kept + 1; end; end;
+	return TRF_SgJoinOf(out, mp.n), kept, dropped, moved;
+end;
+
+-- State ---------------------------------------------------------------------------------
+
+-- Blocks of TRF.sg decoded at the clock's legs: bs, n.
+function TRF_SgBlocks()
+	local n = TRF_SgN();
+	local s = nil;
+	if type(TRF) == "table" and type(TRF.sg) == "string" then s = TRF.sg; end;
+	local bs = TRF_SgSplitOf(s, n, TRF_SgLegs());
+	return bs, n;
+end;
+
+function TRF_SgStore(bs, n)
+	TRF.sg = TRF_SgJoinOf(bs, n);
+end;
+
+-- Writes record r into its block (r.slot).
+function TRF_SgPut(r)
+	local bs, n = TRF_SgBlocks();
+	if type(r.slot) ~= "number" or r.slot < 1 or r.slot > n then return; end;
+	bs[r.slot] = r;
+	TRF_SgStore(bs, n);
+end;
+
+-- The record of system s in its region block, or nil.
+function TRF_SgRecAt(s)
+	local slot = TRF_SgSlot(s);
+	if not slot then return nil; end;
+	local bs = TRF_SgBlocks();
+	local r = bs[slot];
+	if type(r) == "table" and r.s == s then return r; end;
+	return nil;
+end;
+
+-- The record of the current system with t 0..2, or nil.
+function TRF_SgLive(idx)
+	local r = TRF_SgRecAt(idx);
+	if r and r.t <= 2 then return r; end;
+	return nil;
+end;
+
+-- To rest: t 3, g = legs (D19, 4.4).
+function TRF_SgRest(r)
+	r.t = 3;
+	r.g = TRF_SgLegs();
+	r.age = 0;
+end;
+
+-- Gates (5) ------------------------------------------------------------------------------
+
+-- Skip line, once per reason and visit (log 2).
+function TRF_SgSkip(idx, why)
+	local sg = %SG;
+	if sg.pr[why] then return; end;
+	sg.pr[why] = 1;
+	TRF_SgDE("skip", "system", TRF_SgName(idx), "reason", why);
+end;
+
+-- R1 and the cfg: 1 while the module runs.
+function TRF_SgOn()
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return nil; end;
+	if TRF_SgOpt("signals") ~= 1 or type(TRF_ArrivalLine) ~= "function" then return nil; end;
+	return 1;
+end;
+
+-- R7 holds: the reason or nil.
+function TRF_SgHold()
+	if __disableAction == TRUE then return "disable_action"; end;
+	if __sys_SOS == TRUE then return "sys_sos"; end;
+	if TRF_N("TRF_Safe_Scene") then return "scene"; end;
+	local sp = TRF_N("TRF_Supp");
+	if type(sp) == "number" and sp ~= 0 then return "suppressed"; end;
+	return nil;
+end;
+
+-- Visit latch R6: 1 once TRF_Safe_QState was seen in this visit.
+function TRF_SgLatch()
+	local sg = %SG;
+	if sg.q == 1 then return 1; end;
+	if TRF_N("TRF_Safe_QState") then sg.q = 1; return 1; end;
+	return nil;
+end;
+
+-- R1-R7 for system idx: nil, record; or the reason (skip line once per reason and visit).
+function TRF_SgGate(idx)
+	local why, r = nil, nil;
+	if not TRF_SgOn() then why = "off";
+	else
+		local T = TRF_SgTune();
+		local ch = TRF_SgCh();
+		if ch < T.sg_ch or ch > T.sg_ch_end then why = "chapter";
+		else
+			r = TRF_SgLive(idx);
+			if not r then why = "none";
+			else
+				local mode, mw = TRF_N("TRF_SysModeQuiet");
+				if mode ~= "mod" then why = "mode:"..tostring(mw);
+				else
+					local ok, gw = nil, "nosafety";
+					if type(TRF_StrictOk) == "function" then ok, gw = TRF_StrictOk(idx, "signal"); end;
+					if not ok then why = "gate:"..tostring(gw);
+					elseif TRF_SgLatch() then why = "latch";
+					else
+						local hw = TRF_SgHold();
+						if hw then why = "hold:"..hw; end;
+					end;
+				end;
+			end;
+		end;
+	end;
+	if why then TRF_SgSkip(idx, why); return why; end;
+	return nil, r;
+end;
+
+-- Region tick (4.3, 4.4) ----------------------------------------------------------------------
+
+-- From trf_region's TRF_RegionTick, before TRF_Ti_RegionTick.
+function TRF_Sg_RegionTick(L)
+	call(TRF_SgRegionBody, {L}, "x", TRF_SgErr);
+end;
+
+-- Strict gate of system s for the region tick: 1 or nil.
+function TRF_SgGateOk(s)
+	if type(TRF_StrictOk) ~= "function" then return nil; end;
+	if TRF_StrictOk(s, "signal") then return 1; end;
+	return nil;
+end;
+
+function TRF_SgRegionBody(L)
+	if type(TRF) ~= "table" then return; end;
+	if TRF_SgOpt("signals") ~= 1 then
+		if TRF.sg ~= nil then TRF.sg = nil; end;
+		TRF_SgDE("light", "region", "all", "result", "none", "reason", "off");
+		return;
+	end;
+	local rm = TRF_SgRgMap();
+	local m = TRF_SgMap();
+	if not rm or not m then return; end;
+	local T = TRF_SgTune();
+	local legs = TRF_SgLegs();
+	local cur = TRF_SgCur();
+	local bs, n = TRF_SgBlocks();
+	local ch = nil;
+	-- 4.4 expiry and rest.
+	for b = 1, n do
+		local r = bs[b];
+		if type(r) == "table" then
+			local ok = nil;
+			if r.t <= 2 then ok = TRF_SgGateOk(r.s); end;
+			local e = TRF_SgExpireOf(r, legs, cur, T, ok);
+			if e == "end" then
+				bs[b] = nil;
+				ch = 1;
+				TRF_SgDE("rest_end", "region", b, "system", TRF_SgName(r.s));
+			elseif e then
+				TRF_SgE("expire", "region", b, "system", TRF_SgName(r.s), "state", r.t, "age", r.age, "reason", e);
+				TRF_SgRest(r);
+				ch = 1;
+			end;
+		end;
+	end;
+	if ch then TRF_SgStore(bs, n); end;
+	local c = TRF_SgCh();
+	if c < T.sg_ch or c > T.sg_ch_end then
+		TRF_SgDE("light", "region", "all", "result", "none", "reason", "chapter");
+		return;
+	end;
+	-- 4.2 candidates per slot.
+	local regions = {};
+	local base = TRF.base;
+	for slot = 1, n do
+		local e = rm[slot];
+		local g = {ph=TRF_N("TRF_Phase", slot) or 0, cands={}, np={}};
+		if type(e) == "table" and type(e.sys) == "table" then
+			local sv, gate = {}, {};
+			for i = 1, getn(e.sys) do
+				local s = e.sys[i];
+				local pts = TRF_SgPts(s);
+				if pts then
+					g.np[s] = getn(pts);
+					if TRF_N("TRF_Sv_Site", s) then sv[s] = 1; end;
+					if s ~= cur and TRF_SgGateOk(s) then gate[s] = 1; end;
+				end;
+			end;
+			local rs = nil;
+			if type(bs[slot]) == "table" and bs[slot].t == 3 then rs = bs[slot].s; end;
+			g.cands = TRF_SgCandsOf({cur=cur, sys=e.sys, np=g.np, home=e.home, sg_home=T.sg_home, base=base, sv=sv, gate=gate,
+				rest_s=rs});
+		end;
+		regions[slot] = g;
+	end;
+	local slot, s, p, roll = TRF_SgLightOf(bs, regions, T, legs);
+	if not slot then
+		-- nil, why[, the rolled slot, roll]
+		TRF_SgDE("light", "region", p, "roll", roll, "chance", T.sg_pct, "result", "none", "reason", s);
+		return;
+	end;
+	local r = {s=s, p=p, g=legs, age=0, t=0, slot=slot};
+	bs[slot] = r;
+	TRF_SgStore(bs, n);
+	TRF_SgE("light", "region", slot, "system", TRF_SgName(s), "system_index", s, "point", p, "phase", regions[slot].ph, "roll", roll,
+		"chance", T.sg_pct, "candidate_count", getn(regions[slot].cands), "result", "lit");
+	-- 4.5 ring feed (kind 13): the landmark nearest the point.
+	local l = TRF_N("TRF_TiLmOf", m.sys[s], TRF_SgPt(s, p));
+	if type(l) ~= "number" then l = 0; end;
+	TRF_N("TRF_RingPush", slot, {k=13, s=s, l=l, c=0, a=p});
+end;
+
+-- Entry (6.1) -----------------------------------------------------------------------------
+
+-- Deletes every TRF_SGO_<slot> object found by label (reason entry, load, wind, jump). Returns the count.
+function TRF_SgOrphans(why)
+	local n = 0;
+	for slot = 1, TRF_SgK().slot_max do
+		local lb = "TRF_SGO_"..slot;
+		local o = TRF_SgFind(lb);
+		if o and TRF_SgDel(o) then
+			n = n + 1;
+			TRF_SgDE("orphan_delete", "label", lb, "reason", why);
+		end;
+	end;
+	return n;
+end;
+
+-- Debug cfg signal_at (6.1 step 2): a lit record in the named current system when its region has no live record.
+function TRF_SgDebugAt(idx)
+	local at = TRF_SgOpt("signal_at");
+	if type(at) ~= "string" or at == "" or strlower(at) ~= TRF_SgName(idx) then return; end;
+	local slot = TRF_SgSlot(idx);
+	if not TRF_SgPts(idx) or not slot then TRF_SgE("debug", "system", TRF_SgName(idx), "result", "no_point"); return; end;
+	local bs, n = TRF_SgBlocks();
+	local r = bs[slot];
+	if type(r) == "table" and r.t <= 2 then
+		local res = "busy";
+		if r.s == idx then res = "kept"; end;
+		TRF_SgE("debug", "system", TRF_SgName(idx), "result", res);
+		return;
+	end;
+	bs[slot] = {s=idx, p=1, g=TRF_SgLegs(), age=0, t=0, slot=slot};
+	TRF_SgStore(bs, n);
+	TRF_SgE("debug", "system", TRF_SgName(idx), "result", "created");
+end;
+
+-- Visit state reset (entry).
+function TRF_Sg_OnEnter()
+	local sg = %SG;
+	sg.ht = nil; sg.o = nil; sg.mp = nil; sg.mk = nil; sg.q = nil; sg.pr = {}; sg.gc = nil; sg.sr = nil; sg.ar = nil;
+end;
+
+-- The last module call of TRF_OnActivate (after trf_remark's).
+function TRF_Sg_OnActivate()
+	TRF_Sg_OnEnter();
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return; end;
+	call(TRF_SgEnterBody, {TRF_SgCur()}, "x", TRF_SgErr);
+end;
+
+function TRF_SgEnterBody(idx)
+	TRF_SgOrphans("entry");
+	if type(idx) ~= "number" then return; end;
+	if TRF_SgOn() then TRF_SgDebugAt(idx); end;
+	local why, r = TRF_SgGate(idx);
+	if why then return; end;
+	local res = nil;
+	if r.t == 0 then
+		if TRF_N("TRF_Due", TRF_SgTune().sg_delay, "TRF_Sg_LineDue", idx) then res = "armed"; else res = "due_full"; end;
+	elseif r.t == 1 then
+		%SG.ht = TRF_SgRs();
+		res = "reading";
+	else
+		TRF_SgArea(idx, r);
+		res = "marker";
+	end;
+	TRF_SgDE("enter", "system", TRF_SgName(idx), "state", r.t, "result", res);
+end;
+
+-- Line due (6.2), sg_delay s after the entry.
+function TRF_Sg_LineDue(idx)
+	call(TRF_SgDueBody, {idx}, "x", TRF_SgErr);
+end;
+
+function TRF_SgLineLog(idx, r, v, n, res, why)
+	local lg = nil;
+	if r then lg = r.g; end;
+	TRF_SgE("line", "system", TRF_SgName(idx), "system_index", idx, "light_leg", lg, "variant", v, "queued_count", n, "result", res,
+		"reason", why);
+end;
+
+function TRF_SgDueBody(idx)
+	if TRF_SgCur() ~= idx then TRF_SgLineLog(idx, nil, nil, nil, "dropped", "left"); return; end;
+	local why, r = TRF_SgGate(idx);
+	if why then TRF_SgLineLog(idx, nil, nil, nil, "dropped", why); return; end;
+	local n = TRF_N("TRF_ArrivalCount");
+	if type(n) ~= "number" then TRF_SgLineLog(idx, r, nil, n, "dropped", "no_entry"); return; end;
+	if n > 0 then TRF_SgLineLog(idx, r, nil, n, "dropped", "queued:"..n); return; end;
+	local ev = TRF_N("TRF_EventSlot");
+	if type(ev) == "string" then TRF_SgLineLog(idx, r, nil, n, "dropped", "event:"..ev); return; end;
+	if r.t ~= 0 then TRF_SgLineLog(idx, r, nil, n, "dropped", "heard"); return; end;
+	local v = 1 + TRF_SgMod(TRF_SgHashOf(r.s, r.g, 3), 3);
+	local text = TRF_SgTxt("sgline"..v);
+	local ok, aw = TRF_ArrivalLine("signal", text, {f="TRF_Sg_ArrSay", v="signal", s=idx});
+	if ok then TRF_SgLineLog(idx, r, v, n, "queued", nil); return; end;
+	if aw == "entry" then aw = "no_entry"; end;
+	TRF_SgLineLog(idx, r, v, n, "dropped", aw);
+end;
+
+-- Sound of the say (8): sound names, result (played, error, pos, off).
+function TRF_SgSound()
+	local o = TRF_SgOpt("signal_sound");
+	if o == 0 then return "none", "off"; end;
+	local K = TRF_SgK();
+	local nm = K.snd[1].."+"..K.snd[2];
+	local p = TRF_SgMsPos();
+	if not p then return nm, "pos"; end;
+	local vol = TRF_SgTune().sg_vol / 100;
+	local res = "played";
+	for i = 1, getn(K.snd) do
+		if not TRF_SgPlay(K.snd[i], p, vol) then res = "error"; end;
+	end;
+	return nm, res;
+end;
+
+-- Say (6.3), the queued line's due call through trf_plumb's TRF_PlArrSay: 1 shown, 0 not shown.
+function TRF_Sg_ArrSay(owner, b)
+	local r = call(TRF_SgSayBody, {owner, b}, "x", TRF_SgErr);
+	if r == 1 then return 1; end;
+	return 0;
+end;
+
+function TRF_SgSayLog(b, r, tpl, how, snd, sres, res, why)
+	local lg = nil;
+	if r then lg = r.g; end;
+	TRF_SgE("say", "system_index", b.s, "light_leg", lg, "speaker", tpl, "output", how, "sound", snd, "sound_result", sres,
+		"result", res, "reason", why);
+end;
+
+function TRF_SgSayBody(owner, b)
+	if type(b) ~= "table" or type(b.t) ~= "string" or type(b.s) ~= "number" then return 0; end;
+	if TRF_SgCur() ~= b.s then TRF_SgSayLog(b, nil, nil, nil, nil, nil, "not_shown", "left"); return 0; end;
+	local why, r = TRF_SgGate(b.s);
+	if why then TRF_SgSayLog(b, nil, nil, nil, nil, nil, "not_shown", why); return 0; end;
+	if r.t ~= 0 then TRF_SgSayLog(b, r, nil, nil, nil, nil, "not_shown", "heard"); return 0; end;
+	local snd, sres = TRF_SgSound();
+	local T = TRF_SgTune();
+	local ok, how, tpl = nil, nil, nil;
+	if type(TRF_CrewSay) == "function" then
+		ok, how, tpl = TRF_CrewSay(TRF_SgK().voice, b.t, T.sg_secs);
+	else
+		ok = TRF_SgSay(b.t, T.sg_secs);
+		how = "line";
+	end;
+	if not ok then TRF_SgSayLog(b, r, tpl, nil, snd, sres, "not_shown", how); return 0; end;
+	r.t = 1;
+	TRF_SgPut(r);
+	%SG.ht = TRF_SgRs();
+	TRF_SgSayLog(b, r, tpl, how, snd, sres, "shown", nil);
+	return 1;
+end;
+
+-- Reading and markers (6.4, 7) ---------------------------------------------------------------
+
+-- Wait line of the reading (level 1), once per reason and visit.
+function TRF_SgWait(idx, r, why)
+	local sg = %SG;
+	if sg.pr["read:"..why] then return; end;
+	sg.pr["read:"..why] = 1;
+	TRF_SgE("read", "system", TRF_SgName(idx), "system_index", idx, "light_leg", r.g, "result", "wait", "reason", why);
+end;
+
+-- The area marker of record r in system idx (6.4 step 4). Returns 1, the point, its offset; or nil, the reason.
+function TRF_SgArea(idx, r)
+	local sg = %SG;
+	local pt = TRF_SgPt(idx, r.p);
+	if not pt then return nil, "point"; end;
+	local T = TRF_SgTune();
+	local m, off = TRF_SgAreaOf(pt, TRF_SgHashOf(r.s, r.p, r.g), T.sg_area_min, T.sg_area_r);
+	local tx = "";
+	if TRF_N("TRF_Loc_Mode") == 1 then tx = "#TRF_sgnavarea"; end;
+	local ok, why = TRF_N("TRF_MarkerAdd", "signal", "TRF_SG_AR_"..r.slot, m.x, m.y, m.z, tx, TRF_SgK().icon, nil, r.g);
+	if not ok then return nil, why or "native"; end;
+	sg.mk = "area";
+	return 1, m, off;
+end;
+
+-- The attached marker of the shown object (6.5 step 2). 1 or nil.
+function TRF_SgObjMk(idx, r)
+	local sg = %SG;
+	local pt = TRF_SgPt(idx, r.p);
+	if not pt or not sg.o then return nil; end;
+	local tx = "";
+	if TRF_N("TRF_Loc_Mode") == 1 then tx = "#TRF_sgnav"; end;
+	if TRF_N("TRF_MarkerAdd", "signal", "TRF_SG_NP_"..r.slot, pt.x, pt.y, pt.z, tx, TRF_SgK().icon, sg.o, r.g) then
+		sg.mk = "obj";
+		return 1;
+	end;
+	return nil;
+end;
+
+-- The reading (6.4 steps 2-5).
+function TRF_SgRead(idx, r)
+	local sg = %SG;
+	local pt = TRF_SgPt(idx, r.p);
+	local ms = TRF_SgMsPos();
+	if not pt or not ms then TRF_SgWait(idx, r, "pos"); return; end;
+	local ok, m, off = TRF_SgArea(idx, r);
+	if not ok then TRF_SgWait(idx, r, m); return; end;
+	local d = TRF_SgDist(ms, pt);
+	local bi, bw = TRF_SgBandOf(d);
+	local word, tier = TRF_N("TRF_Str_Word", idx);
+	if type(word) ~= "string" then word = TRF_SgTxt("pirw1"); tier = 1; end;
+	TRF_SgSay(TRF_SgTxt("sgread", TRF_SgTxt("sgband"..bi), word), 8);
+	r.t = 2;
+	TRF_SgPut(r);
+	sg.ht = nil;
+	TRF_SgE("read", "system", TRF_SgName(idx), "system_index", idx, "light_leg", r.g, "distance", floor(d), "band", bw, "tier", tier,
+		"word", word, "offset", floor(off), "marker", "TRF_SG_AR_"..r.slot, "result", "shown");
+end;
+
+-- Every 1 s (traffic.script, after TRF_Wq_Step): the gate cache of the tick (sg.gc "ok" only for a read source that passes
+-- R1-R7), the reading, a bumped or refused marker added again.
+function TRF_Sg_Step()
+	local sg = %SG;
+	local idx = TRF_SgCur();
+	if type(TRF) ~= "table" or type(idx) ~= "number" or type(TRF.sg) ~= "string" then sg.gc = "none"; return; end;
+	call(TRF_SgStepBody, {idx}, "x", TRF_SgErr);
+end;
+
+function TRF_SgStepBody(idx)
+	local sg = %SG;
+	local why, r = TRF_SgGate(idx);
+	sg.gc = why or "wait";
+	if why then return; end;
+	if sg.mk and not TRF_N("TRF_MarkerHeld", "TRF_SG_AR_"..r.slot) and not TRF_N("TRF_MarkerHeld", "TRF_SG_NP_"..r.slot) then
+		sg.mk = nil;
+	end;
+	if r.t == 1 and type(sg.ht) == "number" and TRF_SgRs() - sg.ht >= TRF_SgTune().sg_read_s then
+		TRF_SgRead(idx, r);
+	elseif r.t == 2 and not sg.mk then
+		if sg.o then TRF_SgObjMk(idx, r); else TRF_SgArea(idx, r); end;
+	end;
+	if r.t == 2 then sg.gc = "ok"; end;
+end;
+
+-- Show and pickup (6.5, 6.6) ----------------------------------------------------------------
+
+-- Every tick after TRF_Sv_Tick.
+function TRF_Sg_Tick(dt)
+	local sg = %SG;
+	if type(dt) ~= "number" or dt <= 0 then return; end;
+	if not sg.o and sg.gc ~= "ok" then return; end;
+	call(TRF_SgTickBody, {}, "x", TRF_SgErr);
+end;
+
+-- Object and markers of the visit removed (a record that left t 2, the wind-down, a jump). Returns 1 when an object went.
+function TRF_SgDrop(why)
+	local sg = %SG;
+	local o = sg.o;
+	sg.o = nil; sg.mk = nil;
+	TRF_N("TRF_MarkerClear", "signal");
+	if o and TRF_SgDel(o) then
+		TRF_SgDE("orphan_delete", "label", sg.ol, "reason", why);
+		return 1;
+	end;
+	return nil;
+end;
+
+function TRF_SgTickBody()
+	local sg = %SG;
+	local idx = TRF_SgCur();
+	local r = TRF_SgLive(idx);
+	if not r or r.t ~= 2 then
+		if sg.o then TRF_SgDrop("rest"); end;
+		return;
+	end;
+	-- R1-R6 from the 1 s step's cache; the holds (R7) every tick.
+	if sg.gc ~= "ok" or TRF_SgHold() then return; end;
+	local b = TRF_SgMsPos();
+	if not b then return; end;
+	local a = sg.mp or b;
+	sg.mp = b;
+	local pt = TRF_SgPt(idx, r.p);
+	if not pt then return; end;
+	local T = TRF_SgTune();
+	if sg.o and not TRF_SgAlive(sg.o) then
+		local lg = r.g;
+		sg.o = nil; sg.mk = nil;
+		TRF_N("TRF_MarkerClear", "signal");
+		TRF_SgRest(r);
+		TRF_SgPut(r);
+		TRF_SgSay(TRF_SgTxt("sglost"), 8);
+		TRF_SgE("pick", "system", TRF_SgName(idx), "system_index", idx, "light_leg", lg, "outcome", "destroyed", "result", "found");
+		return;
+	end;
+	if not sg.o then
+		if type(sg.sr) == "number" and TRF_SgGt() < sg.sr then return; end;
+		local sd = TRF_SgSegOf(pt, a, b);
+		if sd > T.sg_show_r then return; end;
+		TRF_SgShow(idx, r, pt, b);
+		if not sg.o then return; end;
+	end;
+	local ok, d = TRF_SgPickOf(pt, a, b, T.sg_pick_r);
+	if ok then TRF_SgPick(idx, r, d); end;
+end;
+
+-- 6.5 step 2: the recorder at the point, the attached marker instead of the area marker, the near line.
+function TRF_SgShow(idx, r, pt, ms)
+	local sg = %SG;
+	local K = TRF_SgK();
+	local lb = "TRF_SGO_"..r.slot;
+	local o = TRF_SgCreate(K.model, pt, lb);
+	local d = TRF_SgDist(ms, pt) or 0;
+	if not o then
+		sg.sr = TRF_SgGt() + K.show_retry;
+		TRF_SgE("show", "system", TRF_SgName(idx), "system_index", idx, "distance", floor(d), "model", K.model, "label", lb, "result", "failed");
+		return;
+	end;
+	sg.o = o; sg.ol = lb; sg.sr = nil;
+	TRF_N("TRF_MarkerClear", "signal");
+	sg.mk = nil;
+	TRF_SgObjMk(idx, r);
+	TRF_SgSay(TRF_SgTxt("sgnear"), 8);
+	TRF_SgE("show", "system", TRF_SgName(idx), "system_index", idx, "distance", floor(d), "model", K.model, "label", lb, "result", "placed");
+end;
+
+-- 6.5 step 3: object deleted, markers cleared, rest first (the ring live check is dead before the outcome reads the ring).
+function TRF_SgPick(idx, r, d)
+	local sg = %SG;
+	local lg = r.g;
+	TRF_SgDel(sg.o);
+	sg.o = nil; sg.mk = nil;
+	TRF_N("TRF_MarkerClear", "signal");
+	TRF_SgRest(r);
+	TRF_SgPut(r);
+	local oc, text, si, ss = TRF_SgOutcome(idx, r.slot, lg);
+	local T = TRF_SgTune();
+	local ok = nil;
+	if type(TRF_CrewSay) == "function" then ok = TRF_CrewSay(TRF_SgK().voice, text, T.sg_secs); end;
+	if not ok then TRF_SgSay(text, T.sg_secs); end;
+	local sn = nil;
+	if ss then sn = TRF_SgName(ss); end;
+	TRF_SgE("pick", "system", TRF_SgName(idx), "system_index", idx, "light_leg", lg, "outcome", oc, "stash_index", si, "stash_system", sn,
+		"segment", floor(d), "result", "found");
+end;
+
+-- 6.6 the recorder's last entry: outcome, text, stash index, stash system.
+function TRF_SgOutcome(idx, slot, lg)
+	local t = TRF_N("TRF_Tr_SignalFrag", idx);
+	if type(t) == "string" and t ~= "" then return "trail", t; end;
+	local j = TRF_SgTune().sg_stash_j;
+	if j > 0 then
+		local i, s, clan = TRF_N("TRF_Sh_Reveal", idx, j, 5);
+		if type(i) == "number" and type(s) == "number" then
+			local cn = TRF_N("TRF_ClanName", clan) or "";
+			return "stash", TRF_SgTxt("sgrecstash", cn, TRF_SgSysTxt(s)), i, s;
+		end;
+	end;
+	t = TRF_N("TRF_Ti_Rumour", idx, {nk={13}});
+	if type(t) == "string" and t ~= "" then return "ring", TRF_SgTxt("sgrecring", t); end;
+	return "lore", TRF_SgTxt("sgreclore"..(1 + TRF_SgMod(TRF_SgHashOf(idx, lg, 7), 2)));
+end;
+
+-- Jump, load, wind-down (6.7) -------------------------------------------------------------------
+
+-- v1 jump list: the object goes, the record keeps its state; trf_plumb deletes the markers.
+function TRF_Sg_BeforeJump()
+	local sg = %SG;
+	local o = sg.o;
+	sg.o = nil; sg.mk = nil; sg.gc = nil; sg.mp = nil;
+	if o and TRF_SgDel(o) then TRF_SgDE("orphan_delete", "label", sg.ol, "reason", "jump"); end;
+end;
+
+-- v1 load list: orphans by label; no line; a heard source restarts its reading wait, a read one gets its marker again.
+function TRF_Sg_OnLoad()
+	TRF_Sg_OnEnter();
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return; end;
+	call(TRF_SgLoadBody, {TRF_SgCur()}, "x", TRF_SgErr);
+end;
+
+function TRF_SgLoadBody(idx)
+	TRF_SgOrphans("load");
+	if type(idx) ~= "number" then return; end;
+	local why, r = TRF_SgGate(idx);
+	if why then return; end;
+	if r.t == 1 then %SG.ht = TRF_SgRs(); elseif r.t == 2 then TRF_SgArea(idx, r); end;
+	TRF_SgDE("enter", "system", TRF_SgName(idx), "state", r.t, "result", "load");
+end;
+
+-- trf_gen's TRF_WindDown v1 list: marker and object go.
+function TRF_Sg_WindDown()
+	local sg = %SG;
+	sg.gc = nil;
+	if sg.o or sg.mk then TRF_SgDrop("wind"); end;
+end;
+
+-- trf_plumb TRF_InstallPlumb: the offer registry (7).
+function TRF_Sg_Plumb()
+	TRF_N("TRF_MarkerOfferReg", "signal");
+end;
+
+-- Record of system s for trf_tips' live check (4.5): {s, p, g, age, t, slot}, or nil.
+function TRF_Sg_Rec(s)
+	if type(TRF) ~= "table" or type(TRF.sg) ~= "string" then return nil; end;
+	return TRF_SgRecAt(s);
+end;
+
+-- Repair (6.7, from TRF_Repair after TRF_Ti_Fix).
+function TRF_Sg_Fix()
+	if type(TRF) ~= "table" then return; end;
+	call(TRF_SgFixBody, {}, "x", TRF_SgErr);
+end;
+
+function TRF_SgFixBody()
+	local s = TRF.sg;
+	if s == nil then return; end;
+	local rm = TRF_SgRgMap();
+	local m = TRF_SgMap();
+	if type(s) == "string" and (not rm or not m) then return; end;
+	local mp = {n=0, of={}, np={}};
+	if rm and m then
+		mp.n = rm.n;
+		for i = 1, getn(m.sys) do
+			local pts = TRF_SgPts(i);
+			if pts then mp.np[i] = getn(pts); end;
+			mp.of[i] = rm.of[i];
+		end;
+	end;
+	local o, kept, dropped, moved = TRF_SgFixOf(s, mp, TRF_SgLegs());
+	if o ~= s then
+		TRF.sg = o;
+		TRF_SgE("fix", "kept", kept, "dropped", dropped, "moved", moved);
+	end;
+end;
+
+-- "module=signal event=dump on=<cfg> record_count=<n> records=<slot>:<system>/<point>/<state>/<age>,..."
+function TRF_Sg_Dump()
+	if type(TRF) ~= "table" then return; end;
+	local bs, n = TRF_SgBlocks();
+	local o, c = nil, 0;
+	for b = 1, n do
+		local r = bs[b];
+		if type(r) == "table" then
+			local e = b..":"..TRF_SgName(r.s).."/"..r.p.."/"..r.t.."/"..r.age;
+			if o then o = o..","..e; else o = e; end;
+			c = c + 1;
+		end;
+	end;
+	TRF_SgE("dump", "on", TRF_SgOpt("signals"), "record_count", c, "records", o);
+end;
+
+-- Defaults (10) ------------------------------------------------------------------------------
+
+-- signals 0: no light, TRF.sg cleared at the next region tick. signal_sound 0 none, 1 the vanilla pair, 2 the own wav
+-- (not shipped: reads as 1). signal_at (debug): a source at the next entry of that system.
+function TRF_Sg_OptDef()
+	return {signals=1, signal_sound=1, signal_at=""};
+end;
+
+function TRF_Sg_TuneDef()
+	return {sg_ch=5, sg_ch_end=20, sg_ph={0, 1}, sg_pct=20, sg_ttl=12, sg_rest=20, sg_home=0, sg_delay=6, sg_secs=8, sg_read_s=10,
+		sg_area_r=500, sg_area_min=150, sg_show_r=500, sg_pick_r=60, sg_stash_j=4, sg_vol=80};
+end;
+
+-- Texts (9), EN. The style guide: plain spoken sentences, "portal" never "gate", no mechanic words.
+function TRF_Sg_Text()
+	return {
+		sgline1 = "Static on the open channel, then a loop: \"...any ship... drive is out... repeat, any...\" It keeps cutting out.",
+		sgline2 = "There's a recording on the distress band: \"...this is the... holding at... don't...\" Then only static.",
+		sgline3 = "Something keeps breaking through the static: \"...lost power... the log is... anyone...\" It's on a loop.",
+		sgread = "Signal source marked. The signal is $1. Watch for $2 in this system.",   -- band, threat word
+		sgband1 = "faint",
+		sgband2 = "clear",
+		sgband3 = "strong",
+		sgnear = "Signal source on the scanner. A flight recorder, still transmitting.",
+		sglost = "The signal stopped. Somebody shot the recorder.",
+		sgrecstash = "The recorder's last entry logs a $1 cache in $2.",                     -- clan, system
+		sgrecring = "The recorder's last entry: $1",                                          -- ring text
+		sgreclore1 = "Just a dead hauler's distress loop. Nobody left to answer it.",
+		sgreclore2 = "The log is wiped. Only the distress loop survived.",
+		sgnavarea = "Signal area",
+		sgnav = "Signal source",
+	};
+end;

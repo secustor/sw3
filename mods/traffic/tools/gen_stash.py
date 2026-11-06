@@ -19,6 +19,17 @@ Golkonda, XT-17 and XT-27 have none under the 600-unit pirate rule; the user kep
 2, 5.2).
 --write replaces the block between the BEGIN/END markers of trf_stash.script (CRLF kept); --check exits 1 when it
 differs.
+
+Signal points (design/static-signals-spec.md 4.1, A08; TRF_SgPointData in trf_signal.script, markers BEGIN/END SG_BEGIN,
+SG_END): per system of SIGNAL (the never-named systems of trf_safety's TRF_StrictFree without fronn) a SG_GRID-unit grid
+over the x/z box of the static objects and portals at the mean portal height, sorted by distance to the nearest portal
+(then x, then z). A candidate is a point when it is
+  >= AST_R from every asteroid, >= ST_R from every other static object, nav point and the map base site,
+  >= SG_MST_R from every station of map.script, SG_PMIN..SG_PMAX from the nearest portal,
+  >= PIR_R from every NewPirateFlight position and pirate station (every system, not only write-back ones),
+  >= NYCH_R from vanilla refilled caches, >= SG_SLOT_R from every stash slot, >= SEP from the points already kept;
+at most SG_MAX per system. A system with no point prints the tally of its failing rules and is left out.
+--signal prints only the signal report and block; --write and --check always cover both blocks.
 """
 import argparse
 import math
@@ -39,9 +50,16 @@ ST_R, PORTAL_R, NYCH_R, PIR_R, SEP = 150, 500, 300, 600, 400
 MAX_SLOTS = 4
 BEGIN = "-- BEGIN gen_stash.py (do not edit by hand)"
 END = "-- END gen_stash.py"
+SIGNAL = ["altair", "callipso", "egleon", "escaflon", "fiasar", "fort_russ", "gaoba", "golkonda", "kitaro", "llanovar1",
+          "llanovar2", "xb13", "areko", "b_leftera2", "b_leftera3", "farles", "lasad", "sunji", "tarrot", "x244", "xb19",
+          "xt17", "xt27"]
+SG_GRID, SG_MST_R, SG_PMIN, SG_PMAX, SG_SLOT_R, SG_MAX = 100, 400, 500, 1200, 400, 4
+SG_BEGIN = "-- BEGIN gen_stash.py signal (do not edit by hand)"
+SG_END = "-- END gen_stash.py signal"
 MODULE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Data", "Scripts", "Mods", "Traffic",
                       "trf_stash.script")
 MAP = os.path.join(os.path.dirname(MODULE), "map.script")
+SG_MODULE = os.path.join(os.path.dirname(MODULE), "trf_signal.script")
 
 CALL = re.compile(r"\b(CreateNavPoint|NewPirateFlight)\s*\((.*)$")
 
@@ -69,6 +87,19 @@ def base_site(name):
     if blk.count('{name="') > 1:
         return None
     return [float(m.group(1)), float(m.group(2)), float(m.group(3))]
+
+
+def map_stations(name):
+    """Station positions of the map.script entry of name."""
+    with open(MAP, encoding="cp1251", newline="") as f:
+        text = f.read()
+    i = text.find('{name="%s"' % name)
+    if i < 0:
+        return []
+    j = text.find('{name="', i + 5)
+    blk = text[i:j if j > 0 else len(text)]
+    return [[float(a), float(b), float(c)] for a, b, c in
+            re.findall(r'label="[^"]*", x=(-?[0-9.]+), y=(-?[0-9.]+), z=(-?[0-9.]+)', blk)]
 
 
 def collect(game, name):
@@ -216,33 +247,128 @@ def block(game):
     return lines, report
 
 
+def sg_fails(c, S, mst, slots_, chosen):
+    """Names of the 4.1 rules candidate c breaks (empty: c is a point)."""
+    f = []
+    dp = min(dist(c, p) for p in S["portals"])
+    for name, bad in (("ast", lambda: any(dist(c, a) < AST_R for a in S["ast"])),
+                      ("object", lambda: any(dist(c, p) < ST_R for p in S["st"])),
+                      ("station", lambda: any(dist(c, p) < SG_MST_R for p in mst)),
+                      ("slot", lambda: any(dist(c, p) < SG_SLOT_R for p in slots_)),
+                      ("portal", lambda: dp < SG_PMIN),
+                      ("far", lambda: dp > SG_PMAX),
+                      ("pirate", lambda: any(dist(c, p) < PIR_R for p in S["pir"])),
+                      ("nych", lambda: any(dist(c, p) < NYCH_R for p in S["nych"])),
+                      ("sep", lambda: any(dist(c, p) < SEP for p in chosen))):
+        if bad():
+            f.append(name)
+    return f
+
+
+def sg_points(S, mst, slots_):
+    """Points of one system and the tally of the failing rules over its candidates."""
+    allp = S["ast"] + S["st"] + S["portals"] + S["nych"]
+    if not S["portals"] or not allp:
+        return [], "no portal"
+    x0, x1 = min(q[0] for q in allp), max(q[0] for q in allp)
+    z0, z1 = min(q[2] for q in allp), max(q[2] for q in allp)
+    y = int(round(sum(p[1] for p in S["portals"]) / len(S["portals"])))
+    cands = []
+    x = int(x0 // SG_GRID) * SG_GRID
+    while x <= x1:
+        z = int(z0 // SG_GRID) * SG_GRID
+        while z <= z1:
+            if x0 <= x <= x1 and z0 <= z <= z1:
+                c = [x, y, z]
+                cands.append((min(dist(c, p) for p in S["portals"]), x, z, c))
+            z += SG_GRID
+        x += SG_GRID
+    cands.sort()
+    chosen, why = [], {}
+    for dp, _, _, c in cands:
+        f = sg_fails(c, S, mst, slots_, chosen)
+        if not f and len(chosen) < SG_MAX:
+            chosen.append(c)
+        k = "+".join(f) or "ok"
+        why[k] = why.get(k, 0) + 1
+    t = ", ".join("%s %d" % kv for kv in sorted(why.items(), key=lambda kv: (-kv[1], kv[0]))[:4])
+    return chosen, t
+
+
+def sg_block(game):
+    """The signal block (design/static-signals-spec.md 4.1) and its report lines."""
+    lines, report = [], []
+    lines.append(SG_BEGIN)
+    lines.append("-- Signal points {x, y, z} per never-named system (tools/gen_stash.py --signal, design/static-signals-spec.md 4.1).")
+    lines.append("function TRF_SgPointData()")
+    lines.append("\treturn {")
+    stash = {}
+    for name in ALLOW:
+        ch, nc, cand = slots(collect(game, name), name in WB)
+        stash[name] = ch
+    n_sys, n_pts = 0, 0
+    for name in SIGNAL:
+        S = collect(game, name)
+        ch, t = sg_points(S, map_stations(name), stash.get(name, []))
+        report.append("signal %-11s points=%d%s" % (name, len(ch), "" if ch else " no point: " + t))
+        if not ch:
+            continue
+        n_sys += 1
+        n_pts += len(ch)
+        lines.append("\t\t%s = {%s}," % (name, ", ".join("{%d, %d, %d}" % tuple(c) for c in ch)))
+    report.append("signal: %d systems, %d points" % (n_sys, n_pts))
+    lines.append("\t};")
+    lines.append("end;")
+    lines.append(SG_END)
+    return lines, report
+
+
+def splice(path, begin, end, lines):
+    """(old, new) text of path with the block between begin and end replaced; new is None without the markers."""
+    if not os.path.exists(path):
+        return None, None
+    with open(path, "rb") as f:
+        old = f.read().decode("ascii")
+    i, j = old.find(begin), old.find(end)
+    if i < 0 or j < 0:
+        return old, None
+    return old, old[:i] + "\r\n".join(lines) + old[j + len(end):]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--game", default=gen_map.GAME)
     ap.add_argument("--write", action="store_true")
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--signal", action="store_true", help="print only the signal report and block")
     a = ap.parse_args()
-    lines, report = block(a.game)
-    print("\n".join(report))
-    with open(MODULE, "rb") as f:
-        old = f.read().decode("ascii")
-    i, j = old.find(BEGIN), old.find(END)
-    if i < 0 or j < 0:
-        print("\n".join(lines))
-        return 1 if (a.write or a.check) else 0
-    new = old[:i] + "\r\n".join(lines) + old[j + len(END):]
-    if a.check:
-        if new != old:
-            print("gen_stash: trf_stash.script slots differ")
-            return 1
-        return 0
-    if a.write:
-        with open(MODULE, "wb") as f:
-            f.write(new.encode("ascii"))
-        print("gen_stash: wrote", MODULE)
-    else:
-        print("\n".join(lines))
-    return 0
+    todo = []
+    if not a.signal or a.write or a.check:
+        lines, report = block(a.game)
+        if not a.signal:
+            print("\n".join(report))
+        todo.append((MODULE, BEGIN, END, lines, "trf_stash.script slots"))
+    sl, sr = sg_block(a.game)
+    if a.signal or not (a.write or a.check):
+        print("\n".join(sr))
+    todo.append((SG_MODULE, SG_BEGIN, SG_END, sl, "trf_signal.script signal points"))
+    rc = 0
+    for path, b, e, lines, what in todo:
+        if not (a.write or a.check):
+            print("\n".join(lines))
+            continue
+        old, new = splice(path, b, e, lines)
+        if new is None:
+            print("gen_stash: %s: markers missing" % what)
+            rc = 1
+        elif a.check and new != old:
+            print("gen_stash: %s differ" % what)
+            rc = 1
+        elif a.write and new != old:
+            with open(path, "wb") as f:
+                f.write(new.encode("ascii"))
+            print("gen_stash: wrote", path)
+    return rc
 
 
 if __name__ == "__main__":

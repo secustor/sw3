@@ -19,8 +19,9 @@
 -- (TRF_Settle from the six pay points: parcel, charter, claim, sweep, escort), a repeated key of the generation dropped.
 -- The shared dialog gate TRF_PlDlgWhy (debrief-spec D23) of the dock and space dialog windows of trf_wq, trf_temper and
 -- trf_debrief.
--- The two-marker rule for offered content (design/tips-spec.md 7.5): TRF_MarkerOfferReg owners (trf_stash) get at most
--- tune mk_offer markers per visit.
+-- The two-marker rule for offered content (design/tips-spec.md 7.5): TRF_MarkerOfferReg owners (trf_stash, trf_signal) get
+-- at most tune mk_offer markers per visit; at the cap the newest held offer marker gives way to an older record's
+-- (design/static-signals-spec.md 7: the lg argument of TRF_MarkerAdd).
 -- Saved fields: TRF.job (one open job), TRF.iq (the shared intro-quest record, design/temperament-spec.md 3.1: one
 -- active intro quest, done and reward bits, the lapse and decline stamp; API TRF_Iq*; quest 1 Clan file of trf_temper,
 -- quest 2 Report in of trf_debrief), TRF.mk (packed marker labels, for
@@ -277,7 +278,7 @@ end;
 
 -- Modules whose TRF_<M>_Plumb() registers handlers (TRF_InstallPlumb).
 function TRF_PlMods()
-	return {"Shop", "Hail", "Faction", "Events", "Gen", "Stn", "Sv", "Lad", "Ch", "Cap", "Sh", "Fr", "Haunt", "Pc", "Mc", "Wq", "Wn", "Te", "Crp", "Db"};
+	return {"Shop", "Hail", "Faction", "Events", "Gen", "Stn", "Sv", "Lad", "Ch", "Cap", "Sh", "Fr", "Haunt", "Pc", "Mc", "Wq", "Wn", "Te", "Crp", "Db", "Sg"};
 end;
 
 -- Group and allocator prefixes of the worldbuilding features (00 section 6, "Group and allocator names"):
@@ -1222,7 +1223,8 @@ end;
 -- arr_gap (3 s) steps in call order, at most arr_max per entry, the rest dropped. Only during an entry (live.ag
 -- set by TRF_Pl_OnActivate; a load sets none). Returns 1 when queued. spec (optional, crew remarks, design/crew-remarks-
 -- spec.md 7.3) = {v, s, l, h}: the due call gets the table {t = text, v, s, l, h} instead of the string and trf_remark's
--- TRF_Rm_ArrSay shows it (voice v, the told stamp of system s at event leg l, and of h).
+-- TRF_Rm_ArrSay shows it (voice v, the told stamp of system s at event leg l, and of h). spec.f (static signals,
+-- design/static-signals-spec.md 6.2): the name of a global function that shows the line itself (TRF_PlArrSay).
 function TRF_ArrivalLine(owner, text, spec)
 	local L = TRF_PlLive();
 	if not L or type(text) ~= "string" or text == "" then return nil, "arg"; end;
@@ -1249,7 +1251,7 @@ function TRF_ArrivalLine(owner, text, spec)
 	local dt = due - gt;
 	local b, vo = text, nil;
 	if type(spec) == "table" then
-		b = {t=text, v=spec.v, s=spec.s, l=spec.l, h=spec.h};
+		b = {t=text, v=spec.v, s=spec.s, l=spec.l, h=spec.h, f=spec.f};
 		if spec.v then vo = 1; end;
 	end;
 	if not TRF_N("TRF_Due", dt, "TRF_PlArrSay", owner, b) then
@@ -1262,15 +1264,20 @@ function TRF_ArrivalLine(owner, text, spec)
 	return 1;
 end;
 
--- Due call of a queued arrival line. b is the text, or the spec table of TRF_ArrivalLine: trf_remark's TRF_Rm_ArrSay
--- shows it (1 shown, 0 not), else (module absent) its text as a plain line.
+-- Due call of a queued arrival line. b is the text, or the spec table of TRF_ArrivalLine: the function named by b.f
+-- (protected, 1 shown), else trf_remark's TRF_Rm_ArrSay shows it (1 shown, 0 not), else (module absent) its text as a
+-- plain line.
 function TRF_PlArrSay(owner, b)
 	local secs = 8;
 	local c = TRF_N("TRF_UI_Const");
 	if type(c) == "table" and type(c.arr_secs) == "number" then secs = c.arr_secs; end;
 	local ok = nil;
 	if type(b) == "table" then
-		if type(TRF_Rm_ArrSay) == "function" then
+		local f = nil;
+		if type(b.f) == "string" then f = getglobal(b.f); end;
+		if type(f) == "function" then
+			if call(f, {owner, b}, "x", TRF_PlErr) == 1 then ok = 1; end;
+		elseif type(TRF_Rm_ArrSay) == "function" then
 			if call(TRF_Rm_ArrSay, {owner, b}, "x", TRF_PlErr) == 1 then ok = 1; end;
 		else
 			ok = TRF_PlSay(b.t, secs);
@@ -1280,6 +1287,14 @@ function TRF_PlArrSay(owner, b)
 	end;
 	TRF_PlDE("arrival_line", "owner", tostring(owner), "result", ok and "shown" or "not_shown");
 	return ok;
+end;
+
+-- Lines queued in this entry's arrival queue (live.arq; design/static-signals-spec.md 5 R8): 0 when none was queued,
+-- nil without an entry (a load).
+function TRF_ArrivalCount()
+	local L = TRF_PlLive();
+	if not L or type(L.ag) ~= "number" then return nil; end;
+	return L.arq or 0;
 end;
 
 -- Job slot TRF.job (spec 5.5): one open job {k = kind, flat fields; names and strings up to job_len}. 1 when
@@ -1738,9 +1753,11 @@ end;
 -- a story mission runs (GetPlayerQuestState() == TRUE) and above mk_max markers. text (a loc key, default "") and
 -- icon (default nav_target.dds) are the first and third CreateNavPoint arguments (battle scars: the wreckage key and
 -- nav_Crash_site.dds). obj (optional, 2026-10-24, wanted captains): the object the marker is attached to, the fifth
--- CreateNavPoint argument (vanilla OutOfMission.script:494; the marker follows it, CHECK EW4.2). Returns 1, or nil,
--- reason.
-function TRF_MarkerAdd(owner, label, x, y, z, text, icon, obj)
+-- CreateNavPoint argument (vanilla OutOfMission.script:494; the marker follows it, CHECK EW4.2). lg (optional, offer
+-- owners, design/static-signals-spec.md 7): the leg of the record the marker shows (default TRF.clock.legs); at the
+-- mk_offer cap the newest held offer marker with a larger lg is deleted (result=bumped) and this one added. Returns 1,
+-- or nil, reason.
+function TRF_MarkerAdd(owner, label, x, y, z, text, icon, obj, lg)
 	local K = TRF_PlK();
 	if type(owner) ~= "string" or owner == "" or strlen(owner) > K.mk_own or strfind(owner, "[=;]") then return nil, "owner"; end;
 	if type(label) ~= "string" or strsub(label, 1, 4) ~= "TRF_" or strlen(label) > K.mk_len or strfind(label, "[=;]") then
@@ -1763,13 +1780,21 @@ function TRF_MarkerAdd(owner, label, x, y, z, text, icon, obj)
 	-- Offered content (design/tips-spec.md 7.5): at most mk_offer markers of offer owners per visit (0 = no cap).
 	local oc = nil;
 	local off = %P.off;
+	if type(lg) ~= "number" then lg = TRF_PlLegs(); end;
 	if off[owner] then
 		oc = TRF_PlOfferCount();
 		local mo = TRF_PlTune("mk_offer");
 		if mo > 0 and oc >= mo then
-			TRF_PlMkSave();
-			TRF_PlE("marker", "owner", owner, "label", label, "class", "offer", "offer_count", oc, "result", "refused", "reason", "offer_cap");
-			return nil, "offer_cap";
+			local bl = TRF_PlOfferNewest();
+			if not bl or (m[bl].lg or 0) <= lg then
+				TRF_PlMkSave();
+				TRF_PlE("marker", "owner", owner, "label", label, "class", "offer", "offer_count", oc, "result", "refused", "reason", "offer_cap");
+				return nil, "offer_cap";
+			end;
+			local bo = m[bl].o;
+			TRF_PlMkDel(bl);
+			oc = oc - 1;
+			TRF_PlE("marker", "owner", bo, "label", bl, "class", "offer", "offer_count", oc, "result", "bumped", "by", label);
 		end;
 	end;
 	-- The engine's RGB() value is passed through (a Vector3 in the game, trader-marker.md); without RGB the
@@ -1787,7 +1812,7 @@ function TRF_MarkerAdd(owner, label, x, y, z, text, icon, obj)
 		return nil, "create";
 	end;
 	TRF_N("SetNavPointLabel", nav, label);
-	m[label] = {o=owner, n=nav};
+	m[label] = {o=owner, n=nav, lg=lg};
 	TRF_PlMkSave();
 	if oc then
 		TRF_PlE("marker", "owner", owner, "label", label, "class", "offer", "offer_count", oc + 1, "result", "added");
@@ -1805,6 +1830,34 @@ function TRF_MarkerOfferReg(owner)
 	local p = %P;
 	p.off[owner] = 1;
 	return 1;
+end;
+
+-- 1 while marker label is held by this visit (a handle entry), else nil (design/static-signals-spec.md 7: a bumped marker).
+function TRF_MarkerHeld(label)
+	local m = TRF_PlMkH();
+	if m and type(label) == "string" and type(m[label]) == "table" then return 1; end;
+	return nil;
+end;
+
+-- Legs of the clock, 0 without it.
+function TRF_PlLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+-- Label of the newest held offer marker (largest lg, ties the larger label), or nil.
+function TRF_PlOfferNewest()
+	local m = TRF_PlMkH();
+	local off = %P.off;
+	local w = nil;
+	if not m then return nil; end;
+	for k, e in m do
+		if type(e) == "table" and off[e.o] then
+			local g = e.lg or 0;
+			if not w or g > (m[w].lg or 0) or (g == (m[w].lg or 0) and k > w) then w = k; end;
+		end;
+	end;
+	return w;
 end;
 
 -- Markers of offer owners held now (handles of this visit).

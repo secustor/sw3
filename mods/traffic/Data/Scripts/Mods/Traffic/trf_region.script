@@ -1231,6 +1231,8 @@ function TRF_RegionTick(L)
 	TRF_P("TRF_Sh_RegionTick", L);
 	-- Mercenary clans (design/merc-spec.md 6): presence, fortune, stages, roles and decays after the phase changes.
 	TRF_P("TRF_Mc_RegionTick", L);
+	-- Static signals (design/static-signals-spec.md 4.3): expiry and rest, at most one new source, before the ring prune.
+	TRF_P("TRF_Sg_RegionTick", L);
 	-- Sourced tips (design/tips-spec.md 7.7): the ring pruned, or cleared with cfg tips 0.
 	TRF_P("TRF_Ti_RegionTick", L);
 end;

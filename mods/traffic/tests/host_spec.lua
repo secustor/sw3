@@ -209,9 +209,9 @@ function SP_Lab() return "Cut your engines and hold still, we can patch that dri
 function T_SPC_A()
 	local h = HOST();
 	SP_Begin();
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=22") >= 1, "trf_spec loads last (extra_count=22)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=23") >= 1, "trf_spec loads last (extra_count=23)");
 	local ml, tf, uf = TRF_ModList(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml)] == "Spc" and tf[getn(tf) - 1] == "TRF_Spc_Text" and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf)] == "TRF_Spc_Text",
+	HOST_Check(ml[getn(ml) - 1] == "Spc" and tf[getn(tf) - 2] == "TRF_Spc_Text" and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf) - 1] == "TRF_Spc_Text",
 		"Spc last in TRF_ModList, TRF_Spc_Text before TRF_Loc_Text and last in the UI list");
 	local n, bad = 0, "";
 	for k, v in TRF_Spc_Text() do

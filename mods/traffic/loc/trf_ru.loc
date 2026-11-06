@@ -1,7 +1,7 @@
 LOCALE_FILE
 FILETYPE STANDART
 
-; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text) the wanted captains keys (#TRF_cap*, trf_captain TRF_Cap_Text), the clan stash keys (#TRF_stash*, trf_stash TRF_Sh_Text), the Wolves Freight keys (#TRF_fw*, trf_freight TRF_Fr_Text), the pirate haunt keys (#TRF_haunt*, trf_haunt TRF_Haunt_Text), the sealed parcel keys (#TRF_pcl*, trf_parcel TRF_Pc_Text), the mercenary clan keys (#TRF_mc*, trf_merc TRF_Mc_Text) and the demand page keys (#TRF_dmp*, trf_supply TRF_Supply_Text and trf_hail TRF_Hail_Text, with the answers #TRF_dmok and #TRF_dmno) and the hail page and combat hail keys (#TRF_hlp*, trf_hail TRF_Hail_Text) and the crew remark keys (#TRF_rm*, trf_remark TRF_Rm_Text) and the sourced tips keys (#TRF_ti*, trf_tips TRF_Ti_Text) and the specialist answer keys (#TRF_spc*, trf_spec TRF_Spc_Text), cp1251.
+; sw3-traffic RU text for the station voices keys (#TRF_stn*, trf_station TRF_Stn_Text), the survivors keys (#TRF_sv*, trf_survive TRF_Sv_Text), the faction ladder keys (#TRF_lad*, trf_ladder TRF_Lad_Text) the charter keys (#TRF_ch*, trf_charter TRF_Ch_Text) the battle scars keys (#TRF_scar*, trf_scar TRF_Sc_Text) the wanted captains keys (#TRF_cap*, trf_captain TRF_Cap_Text), the clan stash keys (#TRF_stash*, trf_stash TRF_Sh_Text), the Wolves Freight keys (#TRF_fw*, trf_freight TRF_Fr_Text), the pirate haunt keys (#TRF_haunt*, trf_haunt TRF_Haunt_Text), the sealed parcel keys (#TRF_pcl*, trf_parcel TRF_Pc_Text), the mercenary clan keys (#TRF_mc*, trf_merc TRF_Mc_Text) and the demand page keys (#TRF_dmp*, trf_supply TRF_Supply_Text and trf_hail TRF_Hail_Text, with the answers #TRF_dmok and #TRF_dmno) and the hail page and combat hail keys (#TRF_hlp*, trf_hail TRF_Hail_Text) and the crew remark keys (#TRF_rm*, trf_remark TRF_Rm_Text) and the sourced tips keys (#TRF_ti*, trf_tips TRF_Ti_Text) and the specialist answer keys (#TRF_spc*, trf_spec TRF_Spc_Text) and the static signal keys (#TRF_sg*, trf_signal TRF_Sg_Text), cp1251.
 ; Same keys and fixed texts as loc/trf_en.loc (no $n placeholders); used with cfg loc_mode 1 in a Russian install.
 ; Other #TRF_ keys have no RU line yet (design/station-voices-spec.md 13.5).
 
@@ -700,6 +700,7 @@ FILETYPE STANDART
 #TRF_tiptrade = у торговой станции
 #TRF_tiraid = Видели, как уходили рейдеры.
 #TRF_tiraidx = Рейдеры ушли через портал.
+#TRF_tisignal = Грузовики FTU поймали повторяющийся сигнал.
 #TRF_tislost = Флот разбит пиратами.
 #TRF_tisrcbeacon = Маяки FTU
 #TRF_tisrccrp = Экипажи корпорации
@@ -736,3 +737,18 @@ FILETYPE STANDART
 #TRF_spcsay = Готово. Их двигатель ещё продержится.
 #TRF_spcsayai = Материнский корабль: ремонтные дроны вернулись на борт. Двигатель транспорта в порядке.
 #TRF_spcsayl = Экипаж
+#TRF_sgband1 = слабый
+#TRF_sgband2 = чёткий
+#TRF_sgband3 = сильный
+#TRF_sgline1 = Помехи на открытом канале, потом запись по кругу: "...любой корабль... двигатель отказал... повторяю, любой..." Сигнал всё время пропадает.
+#TRF_sgline2 = На аварийной частоте запись: "...говорит... держимся у... не..." Дальше только помехи.
+#TRF_sgline3 = Сквозь помехи всё время прорывается: "...нет энергии... бортовой журнал... кто-нибудь..." Запись идёт по кругу.
+#TRF_sglost = Сигнал оборвался. Кто-то расстрелял самописец.
+#TRF_sgnav = Источник сигнала
+#TRF_sgnavarea = Район сигнала
+#TRF_sgnear = Источник сигнала на сканере. Бортовой самописец, ещё передаёт.
+#TRF_sgread = Источник сигнала отмечен. Будьте настороже в этой системе.
+#TRF_sgreclore1 = Просто аварийный сигнал погибшего грузовика. Отвечать на него уже некому.
+#TRF_sgreclore2 = Журнал стёрт. Уцелел только аварийный сигнал.
+#TRF_sgrecring = Последняя запись самописца
+#TRF_sgrecstash = Последняя запись самописца отмечает тайник клана.
