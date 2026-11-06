@@ -13,7 +13,8 @@ design/corp-carriers-spec.md 11; wave 1, host-tested only) and the debrief pool 
 design/debrief-spec.md 12; wave 2, host-tested only, off by default: DEBRIEF_XP=1) and the sourced tips with the event
 ring (W-A16.1-10, design/tips-spec.md 13; wave 2, host-tested only) and the specialist answers with the Repairman patch
 (W-A05.1-12, design/specialist-spec.md 12; wave 2, host-tested only) and the static signals (W-A08.1-10,
-design/static-signals-spec.md 14; wave 3, host-tested only) from traffic logs.
+design/static-signals-spec.md 14; wave 3, host-tested only) and the station approach radio (STN-NEAR.1-2,
+design/station-voices-spec.md 8.8; host-tested only) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -41,6 +42,7 @@ FIXTURE_DEBRIEF = os.path.join(HERE, "..", "tests", "check_ingame_debrief_fixtur
 FIXTURE_TIPS = os.path.join(HERE, "..", "tests", "check_ingame_tips_fixture.log")
 FIXTURE_SPEC = os.path.join(HERE, "..", "tests", "check_ingame_spec_fixture.log")
 FIXTURE_SIGNAL = os.path.join(HERE, "..", "tests", "check_ingame_signal_fixture.log")
+FIXTURE_STATION = os.path.join(HERE, "..", "tests", "check_ingame_station_fixture.log")
 REL = ("war", "neutral", "friend")
 PHASES = ("Quiet", "Boom", "Build-up", "Raids", "Bust", "Recovery")
 # vanilla bounty flights (OutMission_kill_pirate), haunt-spec appendix A class P
@@ -3367,11 +3369,12 @@ def c_wi2(ctx):
             res.fails.append("%s: told before (%s)" % (r.short(), seen[k].short()))
         else:
             seen[k] = r
-    # One docking (the pick lines before its module=station event=dock line): a record told by one dock surface is not
-    # told by another (design/tips-spec.md D14, the per-docking set).
+    # One docking (the pick lines before its module=station event=dock line, or before the approach radio's event=near
+    # result=spoken line, station-voices-spec.md 8.8): a record told by one dock surface is not told by another
+    # (design/tips-spec.md D14, the per-docking set).
     dock, src = {}, None
     for r in ctx.recs:
-        if r.src != src or r.is_("station", "dock") or r.is_("state", "enter"):
+        if r.src != src or r.is_("station", "dock") or r.is_("station", "near", result="spoken") or r.is_("state", "enter"):
             dock, src = {}, r.src
             continue
         if r.is_("tips", "pick", result="shown") and r.get("surface") in ("news", "tip"):
@@ -3895,6 +3898,70 @@ def c_wsg10(ctx):
     return res
 
 
+# ---- station approach radio (design/station-voices-spec.md 8.8; README "In-game checks (station voices)") ------------
+
+def c_stn_near1(ctx):
+    res = Res()
+    res.logpart = True
+    pairs = []
+    for v in ctx.visits:
+        sp = {}
+        for r in v.recs:
+            k = r.get("station_key")
+            if r.is_("station", "near", result="spoken"):
+                sp.setdefault(k, r)
+            elif r.is_("station", "dock"):
+                if r.get("near") == "true":
+                    if k not in sp:
+                        res.fails.append("%s: near=true without a module=station event=near station_key=%s result=spoken before "
+                                         "it in the visit" % (r.short(), k))
+                    elif r.get("greeting"):
+                        res.fails.append("%s: greeting=%s after the approach radio" % (r.short(), r.get("greeting")))
+                    else:
+                        pairs.append(r)
+                elif k in sp:
+                    res.fails.append("%s: the approach spoke (%s), the docking did not skip it (near=%s)" % (
+                        r.short(), sp[k].short(), r.get("near")))
+    if not pairs and not res.fails:
+        res.missing.append("fly toward a trade station at standing 1 or more and dock there (VOICE_NEAR default 1): no "
+                           "module=station event=near result=spoken followed by event=dock ... greeting_skip=near near=true")
+    res.ev("dockings after the approach radio", pairs)
+    return res
+
+
+def c_stn_near2(ctx):
+    res = Res()
+    res.logpart = True
+    sp_all = []
+    for v in ctx.visits:
+        sp, gd, nd = {}, {}, {}
+        for r in v.recs:
+            k = r.get("station_key")
+            if r.is_("station", "near", result="spoken"):
+                if k in sp:
+                    res.fails.append("%s: spoken again in the visit (%s)" % (r.short(), sp[k].short()))
+                else:
+                    sp[k] = r
+                    sp_all.append(r)
+            elif r.is_("station", "dock"):
+                if r.get("greeting"):
+                    if k in sp and sp[k].get("greeting"):
+                        res.fails.append("%s: greeting again after the approach radio (%s)" % (r.short(), sp[k].short()))
+                    if k in gd:
+                        res.fails.append("%s: a second dock greeting in the visit (%s)" % (r.short(), gd[k].short()))
+                    gd.setdefault(k, r)
+                if r.get("news") == "true":
+                    if k in sp and sp[k].get("news") == "true":
+                        res.fails.append("%s: harbour news again after the approach radio (%s)" % (r.short(), sp[k].short()))
+                    if k in nd:
+                        res.fails.append("%s: a second dock news line in the visit (%s)" % (r.short(), nd[k].short()))
+                    nd.setdefault(k, r)
+    if not sp_all and not res.fails:
+        res.missing.append("no module=station event=near result=spoken line (see STN-NEAR.1); then leave the radius and come back")
+    res.ev("approach radio lines", sp_all)
+    return res
+
+
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
     ("E16.1", "hook window: the wrapper runs inside activate.script, the rest of it still runs", c_e16_1, None),
@@ -4163,6 +4230,9 @@ ITEMS = [
     ("W-A08.8", "show before pickup, pickup at 8x", c_wsg8, "one pickup flown at 8x; the recorder is visible and reachable (SG4, SG5)"),
     ("W-A08.9", "quest safety", c_wsg9, None),
     ("W-A08.10", "nothing left behind, offer cap", c_wsg10, None),
+    ("STN-NEAR.1", "station greeting and news on approach, before the dock line (greeting_skip=near)", c_stn_near1,
+     "the dockmaster's radio greeting and then the news line while flying in, before the docking box opens"),
+    ("STN-NEAR.2", "approach radio: nothing spoken twice per visit", c_stn_near2, None),
 ]
 
 
@@ -4300,7 +4370,8 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "W-A05.6": "NO DATA", "W-A05.7": "FAIL", "W-A05.8": "FAIL", "W-A05.9": "NO DATA", "W-A05.10": "NO DATA",
             "W-A05.11": "NO DATA", "W-A05.12": "NO DATA",
             "W-A08.1": "NO DATA", "W-A08.2": "FAIL", "W-A08.3": "FAIL", "W-A08.4": "NO DATA", "W-A08.5": "FAIL",
-            "W-A08.6": "FAIL", "W-A08.7": "FAIL", "W-A08.8": "FAIL", "W-A08.9": "FAIL", "W-A08.10": "FAIL"}
+            "W-A08.6": "FAIL", "W-A08.7": "FAIL", "W-A08.8": "FAIL", "W-A08.9": "FAIL", "W-A08.10": "FAIL",
+            "STN-NEAR.1": "FAIL", "STN-NEAR.2": "FAIL"}
 # tests/check_ingame_warn_fixture.log: correct warning behaviour only. A dock warning for Gideon at Avalon (leg 100) after
 # the station's dock line, a second approach skipped (visit), a return at leg 102 skipped (cooldown); at XT-23 (station
 # voice deny, a station pass, no station dock line) a pass reason=scene, then a warning for XT-24; a load of an earlier
@@ -4351,6 +4422,11 @@ SELFTEST_SPEC = {"W-A05.1": "MANUAL", "W-A05.2": "PASS", "W-A05.3": "PASS", "W-A
 # cache marker (two offer markers held), the show, the pickup with the stash reveal; Lidau: a strict-gate denial, the skip.
 SELFTEST_SIGNAL = {"W-A08.1": "PASS", "W-A08.2": "PASS", "W-A08.3": "MANUAL", "W-A08.4": "MANUAL", "W-A08.5": "PASS",
                    "W-A08.6": "MANUAL", "W-A08.7": "PASS", "W-A08.8": "MANUAL", "W-A08.9": "PASS", "W-A08.10": "PASS"}
+# tests/check_ingame_station_fixture.log: correct approach radio behaviour. Kadenoa (chapter 6): both stations far, the
+# Triada station spoken empty at rung 0, the USS station's greeting and news on approach, its docking with
+# greeting_skip=near, the fee paid; a second docking after leaving the radius, nothing spoken again; Gaoba in a mission:
+# the latch skip, the dock greets as before (near=false); a load in Kadenoa: the marks start empty, spoken once more.
+SELFTEST_STATION = {"STN-NEAR.1": "MANUAL", "STN-NEAR.2": "PASS"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -4397,6 +4473,9 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # FAIL) with PlaySound3D failing (W-A08.3 FAIL), a reading without its marker (W-A08.6 FAIL) at offset 120 (W-A08.7 FAIL),
 # a pickup without a show (W-A08.8 FAIL); the next entry: an orphan recorder deleted at the entry (W-A08.10 FAIL), the
 # latch skip, then the same source's line again (W-A08.5, W-A08.9 FAIL); no light, no radio output (W-A08.1, .4 NO DATA).
+# Station approach radio block (the very end, Kadenoa): the USS station spoken twice on approach (STN-NEAR.2 FAIL), its
+# docking greeting again with near=false (STN-NEAR.1 and .2 FAIL), a Triada docking near=true without an approach line
+# (STN-NEAR.1 FAIL).
 
 
 def selftest():
@@ -4453,8 +4532,13 @@ def selftest():
         if got.get(iid) != v:
             print("selftest: signal fixture %s is %s, expected %s" % (iid, got.get(iid), v))
             bad += 1
+    got = dict((r[0], r[2]) for r in score(Ctx([Log(FIXTURE_STATION, None, [])]), {}))
+    for iid, v in SELFTEST_STATION.items():
+        if got.get(iid) != v:
+            print("selftest: station fixture %s is %s, expected %s" % (iid, got.get(iid), v))
+            bad += 1
     n = (len(SELFTEST) + len(SELFTEST_EYES[1]) + len(SELFTEST_WARN) + len(SELFTEST_REMARK) + len(SELFTEST_TEMPER) + len(SELFTEST_CORP)
-         + len(SELFTEST_DEBRIEF) + len(SELFTEST_TIPS) + len(SELFTEST_SPEC) + len(SELFTEST_SIGNAL))
+         + len(SELFTEST_DEBRIEF) + len(SELFTEST_TIPS) + len(SELFTEST_SPEC) + len(SELFTEST_SIGNAL) + len(SELFTEST_STATION))
     if parse_logfmt('a=1 message="x \\"y\\" z" b=') != {"a": "1", "message": 'x "y" z', "b": ""}:
         print("selftest: logfmt quoting")
         bad += 1

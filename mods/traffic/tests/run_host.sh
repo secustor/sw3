@@ -2,7 +2,7 @@
 # Check the mod scripts on the host: CRLF line endings, luac -p, lint_lua.py, then the loader scenario of
 # host_stubs.lua for each experiment and the v0.1 traffic scenarios a..h of host_traffic.lua under stock
 # Lua 4.0.1, then the v0.2 scenarios v02-a..n of host_v02.lua, the v1 scenarios v1-a..n of host_v1.lua and the
-# station voices scenarios stn-a..h of host_station.lua, the worldbuilding plumbing scenarios pl-a..f of
+# station voices scenarios stn-a..i of host_station.lua, the worldbuilding plumbing scenarios pl-a..f of
 # host_plumb.lua, the survivors scenarios sv-a..g of host_survive.lua, the faction ladder scenarios lad-a..g of
 # host_ladder.lua, the charter scenarios ch-a..h of host_charter.lua, the battle scars scenarios sc-a..g of
 # host_scar.lua, the wanted captains scenarios cap-a..i of host_captain.lua, the demand page scenarios dm-a..h of
@@ -13,7 +13,7 @@
 # scenarios str-a..e of host_str.lua (own entry point), the pirate fits scenarios ft-a..h of host_fits.lua (own entry point), the freight unlock quest scenarios wq-a..g of host_wq.lua (own entry point), the lethal-system warnings scenarios wn-a..g of host_warn.lua (own entry point), the crew remarks scenarios rm-a..g of host_remark.lua (own entry point), the clan temperaments scenarios tp-a..h of host_temper.lua (own entry point), the corporation carriers scenarios co-a..h of host_corp.lua (own entry point), the debrief pool scenarios db-a..h of host_debrief.lua (own entry point), the sourced tips scenarios ti-a..h of host_tips.lua (own entry point), the specialist answers scenarios spc-a..g of host_spec.lua (own entry point), the static signals scenarios sg-a..g of host_signal.lua (own entry point), then tests/test_pilots.sh (Pilots.xml merge and installer dry run on copies under .work/pilots/; it skips
 # when the vanilla Pilots.xml is not found, PILOTS_TEST=0 skips it).
 # Env: LUA4 (interpreter), LUAC4, EXPS (default "default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr ha pcl jb mc mcp hl str ft wq wn rm tp co db ti spc sg"), SCENS (default a..h),
-# V02 (default a..n), V1 (default a..n), STN (default a..h), PL (default a..f), SV (default a..g), LAD (default a..g), CH
+# V02 (default a..n), V1 (default a..n), STN (default a..i), PL (default a..f), SV (default a..g), LAD (default a..g), CH
 # (default a..h), SC (default a..g), CAP (default a..i), DM (default a..h), SH (default a..h), FR (default a..l), HA (default a..f),
 # PCL (default a..h), JB (default a..f), MC (default a..k), MCP (default a..c), HL (default a..e), STR (default a..e), FT (default a..f),
 # WQ (default a..g), WN (default a..g), RM (default a..g), TP (default a..h), CO (default a..h), DB (default a..h), TI (default a..h), SPC (default a..g), SG (default a..g).
@@ -63,7 +63,7 @@ for e in ${EXPS:-default 0 1 2 3 traffic v02 v1 stn pl sv lad ch sc cap dm sh fr
         traffic) for s in ${SCENS:-a b c d e f g h}; do run "traffic-$s" TRF_SCEN="$s"; done ;;
         v02) for s in ${V02:-a b c d e f g h i j k l m n}; do run "v02-$s" TRF_SCEN="v02-$s"; done ;;
         v1) for s in ${V1:-a b c d e f g h i j k l m n}; do run "v1-$s" TRF_SCEN="v1-$s"; done ;;
-        stn) entry=host_station.lua; for s in ${STN:-a b c d e f g h}; do run "stn-$s" TRF_STN="$s"; done; entry=host_stubs.lua ;;
+        stn) entry=host_station.lua; for s in ${STN:-a b c d e f g h i}; do run "stn-$s" TRF_STN="$s"; done; entry=host_stubs.lua ;;
         pl) entry=host_plumb.lua; for s in ${PL:-a b c d e f}; do run "pl-$s" TRF_PLUMB="$s"; done; entry=host_stubs.lua ;;
         sv) entry=host_survive.lua; for s in ${SV:-a b c d e f g}; do run "sv-$s" TRF_SV="$s"; done; entry=host_stubs.lua ;;
         lad) entry=host_ladder.lua; for s in ${LAD:-a b c d e f g}; do run "lad-$s" TRF_LAD="$s"; done; entry=host_stubs.lua ;;

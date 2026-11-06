@@ -1,6 +1,7 @@
 -- Station voices scenarios (design/station-voices-spec.md 13) under stock Lua 4.0.1: TRF_STN=a..h, run by
 -- run_host.sh as its own entry point. a install, b moods, c gates, d standing, e fees, f identity and save,
--- g station events (spec 17) and the RU text, h mood providers and the plumbing review carry-overs.
+-- g station events (spec 17) and the RU text, h mood providers and the plumbing review carry-overs, i the approach
+-- radio (spec 8.8).
 -- host_stubs.lua routes TRF_SCEN to the other scenario files, so this file loads its stubs and helpers only:
 -- the text before the line "if H.scen then" (H1), then host_traffic.lua and host_v02.lua for T_Begin,
 -- T_Enter, T_Jump, T_SaveLoad, T_Tick, V_Logs, V_Idx (H2, scenario "v1-stn": both skip their dispatch).
@@ -120,6 +121,7 @@ end;
 function S_NewVisit()
 	local sv = TRF_StnSV();
 	sv.g = {}; sv.p = {}; sv.c = {}; sv.nw = {}; sv.up = {}; sv.dn = {}; sv.pl = {}; sv.nd = {};
+	sv.nr = {}; sv.nh = {}; sv.nl = {}; sv.dk = {};
 	sv.mis = nil; sv.rt = nil; sv.k = nil; sv.box = nil;
 	if type(TRF.live) == "table" then TRF.live.line = nil; end;
 end;
@@ -1620,6 +1622,159 @@ function T_STN_H()
 	TRF.clock.vc = 7;
 	TRF_Repair();
 	HOST_Check(TRF.clock.vc == nil, "repair: vc other than 1 -> nil");
+	h.cfg.tune = nil;
+end;
+
+-- i: approach radio (8.8) ----------------------------------------------------------------------
+
+function S_MsAt(x, y, z) HOST().ms.pos = Vector3(x, y, z); end;
+
+-- n game seconds in ticks of 0.5 s: radio and screen lines sent meanwhile (texts joined by "|").
+function S_Run(n)
+	local h = HOST();
+	local m0, s0 = getn(h.msgs), getn(h.screen);
+	T_Tick(2 * n, 0.5);
+	local r = {nm=getn(h.msgs) - m0, msg="", scr=""};
+	for i = m0 + 1, getn(h.msgs) do r.msg = r.msg..h.msgs[i].t.."|"; end;
+	for i = s0 + 1, getn(h.screen) do r.scr = r.scr..h.screen[i].t.."|"; end;
+	return r;
+end;
+
+-- Index of the first mod log line after n0 matching pat (plain), or nil.
+function S_First(n0, pat)
+	local q = HOST().logs;
+	for i = n0 + 1, getn(q) do if strfind(q[i], pat, 1, 1) then return i; end; end;
+	return nil;
+end;
+
+-- Kadenoa (USS_TRADE 51 at -200, 10, 500; TRI_TRADE 251 at 200, -10, -312), chapter 5, pro 8 (hub fee at rung <= 2), the
+-- USS station at standing 2 (greeting stnr2, then news or the ambient line); the mothership far from both.
+function S_NearVisit(fresh)
+	local h = HOST();
+	if fresh then
+		h.labels.CurrentQuest = "5_01";
+		S_Begin("kadenoa");
+		TRF_SetPro(TRF_CurIdx(), 8);
+	else
+		S_Visit("kadenoa", "5_01", 8);
+	end;
+	TRF.stn[51] = {st=2, lg=TRF.clock.legs};
+	TRF.stn[251] = nil;
+	if type(TRF.live) == "table" then TRF.live.line = nil; end;
+	S_MsAt(5000, 0, 5000);
+end;
+
+function T_STN_I()
+	local h = HOST();
+	S_NearVisit(1);
+	local g2 = TRF_Txt("stnr2");
+	HOST_Check(TRF_StnOpt("voice_near") == 1 and TRF_StnT("stn_hail_r") == 1500 and TRF_StnT("stn_hail_hold") == 2,
+		"defaults: voice_near 1, stn_hail_r 1500, stn_hail_hold 2");
+	local sz0 = HOST_SaveSize(TRF.stn);
+	local n0 = S_Mark();
+	local r = S_Run(3);
+	HOST_Check(S_Count(r.msg, g2) == 0 and S_Logs(n0, "module=station event=near station_key=51 distance=6") == 1
+		and S_Logs(n0, "station_key=51 distance=6") == 1 and S_Logs(n0, "result=skipped reason=far") == 2 and S_Logs(n0, "result=spoken") == 0,
+		"far: nothing spoken, one far line per station");
+	-- Within stn_hail_r of the USS station: the greeting radio, the info line stn_hail_hold s later.
+	S_MsAt(-150, 10, 450);
+	n0 = S_Mark();
+	r = S_Run(1);
+	HOST_Check(S_Count(r.msg, g2) == 1 and TRF_StnSV().nr[51] == 1 and S_Logs(n0, "module=station event=near station_key=51 ") == 0
+		and TRF_StnSV().g[51] == 1, "near: the greeting radio, the info line held");
+	r = S_Run(3);
+	local sp = S_Line(n0, "module=station event=near station_key=51 ");
+	HOST_Check(S_Count(r.msg, g2) == 0 and strfind(sp, "result=spoken greeting=stnr2", 1, 1) and TRF_StnSV().nr[51] == 2
+		and TRF_StnSV().nw[51] == 1 and (strfind(sp, "news=true", 1, 1) or strfind(sp, "ambient=stnamb1", 1, 1))
+		and S_Logs(n0, "module=station event=near station_key=251 ") == 1 and S_Logs(n0, "result=spoken") == 2,
+		"after stn_hail_hold: the info line, one spoken line per station ("..sp..")");
+	HOST_Check(HOST_SaveSize(TRF.stn) == sz0, "the approach radio writes nothing saved");
+	-- The docking: no greeting, no news, the fee box; the dock line after the near line.
+	local D = S_Setup({});
+	local cr0, ok0 = h.credits, h.trade_ok;
+	r = S_Trade(D.trade[1]);
+	local dl = S_Line(n0, "module=station event=dock station_key=51 ");
+	HOST_Check(r.nm == 0 and r.nb == 1 and r.box.text ~= "#UI_TradeStationDockRequest" and strfind(dl, "greeting=nil greeting_skip=near news=false", 1, 1)
+		and strfind(dl, "near=true", 1, 1) and S_First(n0, "event=near station_key=51 ") < S_First(n0, "event=dock station_key=51 "),
+		"dock after the approach: no radio, no news, the fee box ("..dl..")");
+	HOST_Press("ok");
+	HOST_Check(h.credits < cr0 and h.trade_ok == ok0 + 1, "fee paid, docked");
+	-- Leave the radius and come back: nothing new; a second docking: no greeting, no box.
+	n0 = S_Mark();
+	S_MsAt(5000, 0, 5000);
+	r = S_Run(3);
+	S_MsAt(-150, 10, 450);
+	local r2 = S_Run(4);
+	local r3 = S_Trade(D.trade[1]);
+	HOST_Check(S_Count(r.msg..r2.msg..r3.msg, g2) == 0 and S_Logs(n0, "module=station event=near ") == 0 and S_Vanilla(r3),
+		"leave and return: nothing spoken twice, the second docking the vanilla box");
+	HOST_Press("cancel");
+	-- A load inside the visit (no activate): the visit marks start empty, as for the docking.
+	T_SaveLoad();
+	n0 = S_Mark();
+	if type(TRF.live) == "table" then TRF.live.line = nil; end;
+	r = S_Run(4);
+	HOST_Check(S_Count(r.msg, g2) == 1 and S_Logs(n0, "module=station event=near station_key=51 distance=71 result=spoken") == 1,
+		"load in the visit: the marks start empty, the greeting again");
+	-- voice_near 0: the old flow, greeting and news at the docking.
+	S_NearVisit();
+	h.cfg.voice_near = 0;
+	S_MsAt(-150, 10, 450);
+	n0 = S_Mark();
+	r = S_Run(4);
+	D = S_Setup({});
+	r2 = S_Trade(D.trade[1]);
+	dl = S_Line(n0, "module=station event=dock station_key=51 ");
+	HOST_Check(S_Count(r.msg, g2) == 0 and S_Logs(n0, "module=station event=near ") == 0 and S_Count(r2.msg, g2) == 1
+		and strfind(dl, "greeting=stnr2 greeting_skip=nil", 1, 1) and strfind(dl, "near=false", 1, 1) and r2.nb == 1
+		and r2.box.text ~= "#UI_TradeStationDockRequest", "voice_near 0: greeting at the docking, the fee box ("..dl..")");
+	HOST_Press("cancel");
+	h.cfg.voice_near = nil;
+	-- A scene holds the line until it clears, before the greeting and between the greeting and the news.
+	S_NearVisit();
+	S_MsAt(-150, 10, 450);
+	TRF_UiState = HOST_UiState; h.ui = 4;
+	n0 = S_Mark();
+	r = S_Run(3);
+	HOST_Check(S_Count(r.msg, g2) == 0 and S_Logs(n0, "module=station event=near station_key=51 distance=71 result=skipped reason=flag") == 1
+		and TRF_StnSV().nr[51] == nil, "scene (TRF_UiState dialog flag): the greeting held (reason flag)");
+	h.ui = nil;
+	r = S_Run(1);
+	HOST_Check(S_Count(r.msg, g2) == 1 and TRF_StnSV().nr[51] == 1, "scene cleared: the greeting");
+	__sys_SOS = TRUE;
+	r = S_Run(4);
+	HOST_Check(TRF_StnSV().nr[51] == 1 and S_Logs(n0, "station_key=51 distance=71 result=spoken") == 0, "__sys_SOS after the greeting: the info line held");
+	__sys_SOS = FALSE;
+	r = S_Run(2);
+	HOST_Check(TRF_StnSV().nr[51] == 2 and S_Logs(n0, "module=station event=near station_key=51 distance=71 result=spoken greeting=stnr2") == 1,
+		"flag cleared: the info line, once");
+	TRF_UiState = nil;
+	-- The visit latch (a story mission): nothing on approach; the docking speaks as before (G6 stops only the fee).
+	S_NearVisit();
+	TRF_StnSV().mis = 1;
+	S_MsAt(-150, 10, 450);
+	n0 = S_Mark();
+	r = S_Run(4);
+	D = S_Setup({});
+	r2 = S_Trade(D.trade[1]);
+	dl = S_Line(n0, "module=station event=dock station_key=51 ");
+	HOST_Check(S_Count(r.msg, g2) == 0 and S_Logs(n0, "module=station event=near station_key=51 distance=71 result=skipped reason=latch") == 1
+		and S_Logs(n0, "station_key=51 distance=71 result=spoken") == 0 and strfind(dl, "near=false", 1, 1) and strfind(dl, "no_fee_reason=latch", 1, 1),
+		"latch: nothing on approach, the docking as before ("..dl..")");
+	HOST_Press("cancel");
+	-- Two stations in range: the nearer greets first, the other after stn_gap.
+	S_NearVisit();
+	TRF.stn[251] = {st=1, lg=TRF.clock.legs};
+	S_MsAt(200, -10, -280);
+	n0 = S_Mark();
+	r = S_Run(12);
+	local a, b = S_First(n0, "event=near station_key=251 distance=32 result=spoken greeting=stnr1"), S_First(n0, "event=near station_key=51 distance=877 result=spoken");
+	HOST_Check(a and b and a < b and S_Logs(n0, "module=station event=near station_key=51 distance=877 result=skipped reason=gap") == 1
+		and S_Logs(n0, "module=station event=near station_key=51 distance=877 result=spoken greeting=stnr2") == 1
+		and S_Count(r.msg, TRF_Txt("stnr1")) == 1 and S_Count(r.msg, g2) == 1, "two stations: nearer first, the other after stn_gap");
+	-- Range of the tune keys.
+	h.cfg.tune = {stn_hail_r=100, stn_hail_hold=99};
+	HOST_Check(TRF_StnT("stn_hail_r") == 300 and TRF_StnT("stn_hail_hold") == 30, "tune clamps: stn_hail_r 300..5000, stn_hail_hold 0..30");
 	h.cfg.tune = nil;
 end;
 

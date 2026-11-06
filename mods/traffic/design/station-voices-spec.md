@@ -1,6 +1,6 @@
 # Station voices: implementation spec (proposal 3, steps 1 and 2, and the remainder)
 
-Status: steps 1 and 2 implemented 2026-10-21; the remainder (local station events, section 17; RU text, 13.5; the mood-provider contract, 5.5) implemented 2026-10-24. Design: `D/worldbuilding/03-station-voices.md` (cited as "03 n.n"), proposal: `D/proposals/worldbuilding-after-traffic.md` section 3 and engine facts 3, 4, 13, 14.
+Status: steps 1 and 2 implemented 2026-10-21; the remainder (local station events, section 17; RU text, 13.5; the mood-provider contract, 5.5) implemented 2026-10-24; the approach radio (8.8, cfg `voice_near`) implemented 2026-11-06, host-tested only. Design: `D/worldbuilding/03-station-voices.md` (cited as "03 n.n"), proposal: `D/proposals/worldbuilding-after-traffic.md` section 3 and engine facts 3, 4, 13, 14.
 Paths: `D` = `mods/traffic/design`, `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `T` = `mods/traffic/tests`, `G` = game `Data/Scripts` (read-only; line numbers from the test clone's `include/DockStation.script`).
 Module: new `S/trf_station.script`, prefix `Stn` (`TRF_Stn_*` public, `TRF_Stn<X>` internal), log lines `module=station`.
 
@@ -54,7 +54,7 @@ Rules:
 ### 3.2 Visit table (chunk local `SV` of trf_station; never saved, rebuilt by every MapInitialization, so entry and load both reset it)
 
 ```
-local SV = {g={}, p={}, c={}, nw={}, up={}, dn={}};  -- plus mis, k, box, rt set at run time
+local SV = {g={}, p={}, c={}, nw={}, up={}, dn={}, pl={}, nd={}, nr={}, nh={}, nl={}, dk={}};  -- plus mis, k, box, rt set at run time
 ```
 
 | Field | Meaning |
@@ -69,6 +69,10 @@ local SV = {g={}, p={}, c={}, nw={}, up={}, dn={}};  -- plus mis, k, box, rt set
 | `k` | key of the last trade approach (for `TRF_Stn_Docked`) |
 | `box` | open fee box `{k, fee, m, cr, g=TRF.gen}` |
 | `rt` | `TRF.clock.gt` of the last radio line spoken here |
+| `nr[k]` | approach radio (8.8): 1 = greeting step done on approach, 2 = greeting and info step done |
+| `nh[k]` | approach radio: `{t=gt, g=key, gs=skip}` of the greeting step (start of `stn_hail_hold`) |
+| `nl[k]` | approach radio: skip reasons logged this visit |
+| `dk[k]` | 1 = the docking ran its steps for `k` this visit (the approach radio stays silent afterwards) |
 
 No handle is stored anywhere: the speaker pilot is a function local; the station handle is read from `__system_Dock_array` at call time.
 
@@ -289,6 +293,7 @@ On every read of entry `e`: `n = floor((legs - lg) / stn_decay)`; `n > 0` -> `st
 | harbour news, region tip | `voice_news 1`, `ch >= news_ch` (4) |
 | ambient line | `voice_news 1`, rung `e >= 1` |
 | fee | `voice_fee 1`, F1-F4 |
+| approach radio (8.8) | `voice_near 1`; the greeting and the info line keep their own rows above |
 
 ### 8.2 Steps per approach
 
@@ -300,6 +305,8 @@ On every read of entry `e`: `n = floor((legs - lg) / stn_decay)`; `n > 0` -> `st
    - no news line shown and `e >= 1`: ambient line (8.3).
 4. Fee (8.5): `fee > 0` and not `SV.p[k]` -> fee box, return `"box"`.
 5. Else return nil (vanilla box follows, 6.3).
+
+With `voice_near 1` (8.8) the approach radio normally runs steps 2 and 3 before the docking: `SV.nr[k]` set skips step 2 (`greeting_skip=near` with `voice_dock 1`), `SV.nr[k] == 2` skips step 3; the dock line logs `near=true`. Step 1 (gates, identity), step 4 (fee) and step 5 run as before, and so do the other modules' dock lines and offers. When the approach did not speak (latch, a position the tick cannot read, a hold that lasted until the docking), steps 2 and 3 run at the docking as before (`near=false`). Steps 2 and 3 are `TRF_StnGreetStep` and `TRF_StnInfoStep`, shared with 8.8; `TRF_StnCtx` gives the rung and the speaker for both.
 
 ### 8.3 Tips and ambient lines
 
@@ -350,6 +357,28 @@ Ambient (decision 5; `stnamb*`): ch 0-5 `stnamb1`; ch 6 none; ch 7-9 `stnamb2`; 
 | Rebel | `DispetcherRebel` | 624, 705 |
 | Pirate | `PirateTough` | 627, 708 |
 
+### 8.8 Approach radio (cfg `voice_near`, owner request 2026-11-06)
+
+Owner request: "the dialog should trigger when being near the station, not when already docking". The engine calls `__TradeStation_Action` only when the mothership reaches the docking point, so the greeting radio, the harbour news, the tip and the ambient line (8.2 steps 2 and 3) move to a 1 s poll; the docking point keeps the fee box, the deeds, the dock lines and the offers. Owner decisions (2026-11-06): radius 1500, once per station per visit, a 2 s hold between the greeting and the news, nothing during a dialog, a scene or a mission, `voice_near` 0 restores the old flow.
+
+1. N1 Poll: `TRF_Stn_Step` (traffic.script 1 s block on game time, which stands while the station screen or a dialog is up) calls `TRF_StnNear`. Nothing runs with `voice_near 0`, `voice 0`, or `voice_dock 0` together with `voice_news 0`.
+2. N2 Stations: the trade stations of the current system from map `st` (`TRF_StnTl`, keys of 3.3). Patrol stations are left out: they have no dockmaster lines today. Pending = `SV.nr[k] ~= 2`, ordered by distance (nearest first, unknown last), so in a two-station system the nearer one greets first and the other waits `stn_gap`.
+3. N3 Position: `TRF_PlPos(TRF_Ms())` (trf_safety `TRF_Safe_Ms`: the armed visit's handle, nil inside a tick otherwise; never `GetPlayerMotherShip` from a tick), else `TRF_Stn_MsPos`; distance to the station's map position.
+4. N4 Per pending station, the first rule that fails is the skip reason:
+   - `SV.dk[k]`: the docking already ran its steps in this visit -> done, `visit`.
+   - not started (`SV.nr[k]` nil): no position -> `pos`; distance above `stn_hail_r` -> `far`. Once the greeting step ran, the distance no longer matters.
+   - `TRF_StnGate("dock")`, the gates of the docking (G1-G5, G7-G9: `off`, `nomap`, `deny`/`deny_tq`/`vdeny`, `flag` for `__disableAction` and `TRF_Supp`, `quiet` for `__sys_SOS` and a scene or dialog through `TRF_Safe_Scene`, `trade_war`, `gate:<why>` with the G8 latch, `mode:<why>`). No `event=pass` line: those stay with the docking.
+   - visit latch (`SV.mis` or `TRF_Safe_QState`, sets `SV.mis`) -> `latch`. The approach stays silent during a story mission; the docking then greets as before (G6 stops only its fee).
+   - rung, chapter and speaker as at the docking (`TRF_StnCtx`, the param is the map entry's `prm` or `""`).
+   - greeting step (`TRF_StnGreetStep`: `SV.g`, rung, `stn_gap` from the last TRF radio or focus line): `gap` waits for the next poll; otherwise `SV.nr[k] = 1`, `SV.nh[k] = {t, g, gs}`.
+   - `hold`: after a greeting that went out, `stn_hail_hold` game seconds before the info line (the greeting radio and the news do not overlap).
+   - info step (`TRF_StnInfoStep`: 8.1 unlocks, `SV.nw`, never after docking on credit, `TRF_Ti_DockEnd`); `SV.nr[k] = 2`; `result=spoken`.
+5. N5 Docking: 8.2 skips steps 2 and 3 as written there and sets `SV.dk[k]`, so leaving the radius and coming back, or undocking, speaks nothing new.
+6. N6 Visit marks: `nr`, `nh`, `nl`, `dk` are fields of `SV` (3.2), never saved (no `TRF` field, `HOST_SaveSize` unchanged), reset by every MapInitialization: a load inside the system starts them empty and the approach speaks once more, as the docking did after a load before.
+7. N7 Log: `module=station event=near station_key=<k> distance=<d> result=spoken greeting=<key|nil> greeting_skip=<gap|err|nil> news=<bool> tip=<kind|nil> ambient=<key|nil>` once per station and visit (log 1); `result=skipped reason=<visit|pos|far|latch|gap|hold|<gate reason>>`: the first reason of a station in the visit at log 1, each later new reason at log 2. The dock line gains `near=<bool>`.
+8. N8 Config: `voice_near` 1 (0 = the dock-time flow); tune `stn_hail_r` 1500 (300..5000) and `stn_hail_hold` 2 (0..30). No existing spacing covered greeting to news (`stn_gap` spaces radio lines from each other), so the hold is a new key.
+9. N9 Game-only facts (STN-NEAR.1, STN-NEAR.2 in 14 and README "In-game checks (station voices)"): the lines readable in flight before the docking box; the 1500 radius covers most of a small system (Kadenoa's two trade stations are about 880 apart), so there the greeting may come soon after the arrival, which the play test decides (tune `stn_hail_r`).
+
 ## 9. Text keys (`TRF_Stn_Text()`, EN only; keys in `TRF_UI_Key` form)
 
 | Key | EN |
@@ -398,6 +427,7 @@ Ambient (decision 5; `stnamb*`): ch 0-5 `stnamb1`; ch 6 none; ch 7-9 `stnamb2`; 
 | `voice_gate` | 1 | 1..2 | mood gate G7 |
 | `voice_force` | `""` | string | debug key for row 0 |
 | `voice_events` | 1 | 0..1 | station events (17); `install-test.sh` `VOICE_EVENTS` |
+| `voice_near` | 1 | 0..1 | approach radio (8.8); 0 = greeting and news at the docking point; `install-test.sh` `VOICE_NEAR`, listed in `config.script` and `TRF_OptEnum` |
 
 | Tune key | Default | Clamp | Meaning |
 |---|---|---|---|
@@ -417,9 +447,11 @@ Ambient (decision 5; `stnamb*`): ch 0-5 `stnamb1`; ch 6 none; ch 7-9 `stnamb2`; 
 | `heat_c2` | 7 | 0..10 | rung cap to -2 |
 | `stn_radio` | 8 | 1..30 | radio line seconds |
 | `stn_gap` | 6 | 0..30 | radio spacing |
+| `stn_hail_r` | 1500 | 300..5000 | approach radio radius, mothership to the station's map position (8.8) |
+| `stn_hail_hold` | 2 | 0..30 | game seconds from the approach greeting to its news line (8.8) |
 | `ev_cd`, `ev_p`, `ev_k`, `ev_ch`, `ev_r`, `ev_meet`, `ev_tier`, `ev_dt` | 24, 25, 40, 5, 400, 300, 1, 20 | 17.8 | station events |
 
-`config.script` is not changed: a missing key reads the module default (as v0.2/v1 keys).
+`config.script` is not changed for these keys: a missing key reads the module default (as v0.2/v1 keys). Exception: `voice_near` (2026-11-06) is listed there with its default.
 
 ## 11. Log lines (`TRF_StnE("<event>", ...)`) and dump
 
@@ -431,7 +463,8 @@ Ambient (decision 5; `stnamb*`): ch 0-5 `stnamb1`; ch 6 none; ch 7-9 `stnamb2`; 
 | `module=station event=owner system=<n> static_owner=<s> owner=<t> owner_visit=<leg>` | 5.4 |
 | `module=station event=mood system=<n> system_index=<idx> vanilla_key=<p> mood_key=<key> rule=<r> phase=<ph> disruption=<d> owner=<t> mood=<m> speaker=<tpl>` | 5.3 O4 |
 | `module=station event=pass reason=<r> system=<n> at=<none/dock>` | 4, once per reason and visit |
-| `module=station event=dock station_key=<k> param=<p> via=<prm+pos/pos/prm> distance=<dist> standing=<st> rung=<e> heat=<h> greeting=<key/nil> news=<bool> tip=<kind/nil> ambient=<key/nil> fee=<n> fee_multiplier=<m> no_fee_reason=<paid_visit/latch/strict_0/chapter>` | 8.2 |
+| `module=station event=dock station_key=<k> param=<p> via=<prm+pos/pos/prm> distance=<dist> standing=<st> rung=<e> heat=<h> greeting=<key/nil> greeting_skip=<gap/err/near/nil> news=<bool> tip=<kind/nil> ambient=<key/nil> fee=<n> fee_multiplier=<m> no_fee_reason=<paid_visit/latch/strict_0/chapter> near=<bool>` | 8.2 |
+| `module=station event=near station_key=<k> distance=<d> result=spoken greeting=<key/nil> greeting_skip=<gap/err/nil> news=<bool> tip=<kind/nil> ambient=<key/nil>` (`result=skipped reason=<r>`: the first reason at log 1, later ones at log 2) | 8.8 |
 | `module=station event=id_mismatch station_key=<k> param_station=<j> position_station=<j> distance=<dist>` | 3.3 I4 |
 | `module=station event=fee station_key=<k> fee=<n> world_level=<l> prosperity=<p> fee_multiplier=<m> difficulty_factor=<x> box=<bool>` | after the dispatcher's show: `box=true` opened (`TRF_Stn_FeeShown`), `box=false` could not open (`TRF_Stn_FeeFail`: box lock, no `ShowMsgBox`, an error) |
 | `module=station event=fee_ok station_key=<k> credits_before=<a> credits_after=<b> credit=<bool> buyback=<bool>` (`fee_cancel` with the same keys) | OK / Cancel |
@@ -461,7 +494,7 @@ Ambient (decision 5; `stnamb*`): ch 0-5 `stnamb1`; ch 6 none; ch 7-9 `stnamb2`; 
 | `TRF_Stn_Fix()` | `TRF_Repair` |
 | `TRF_Stn_Prov()` -> trf_plumb's provider list (`TRF_Voice_Prov`, 5.5) | 5.2 row 1 |
 | `TRF_Stn_FeeShown()`, `TRF_Stn_FeeFail()` | fee box spec `shown`/`fail` (trf_plumb `TRF_PlShow`) |
-| `TRF_Stn_EvSpawn()` (due call), `TRF_Stn_Step()` (1 s), `TRF_Stn_EvArrive(id, how)` (trf_gen `TRF_GnSafeArrive`), `TRF_Stn_EvHelp(n, rd, amt)` (8.5 resolver) | station events, 17 |
+| `TRF_Stn_EvSpawn()` (due call), `TRF_Stn_Step()` (1 s; also the approach radio, 8.8), `TRF_Stn_EvArrive(id, how)` (trf_gen `TRF_GnSafeArrive`), `TRF_Stn_EvHelp(n, rd, amt)` (8.5 resolver) | station events, 17 |
 | `TRF_Stn_OptDef()`, `TRF_Stn_TuneDef()`, `TRF_Stn_Text()`, `TRF_Stn_Dump()` | trf_state, trf_loc, trf_ui |
 | Pure, host-testable: `TRF_StnMoodOf(s)` (`s = {tip, ph, dis, sw, ol, own, sh, tier, heat, prov, force, moods}` -> key, rule, variant), `TRF_StnFeeOf(L, pro, m, dk, k, cap)`, `TRF_StnRungOf(st, heat, c1, c2)`, `TRF_StnDecayOf(st, lg, legs, n)`, `TRF_StnMOf(e, pro, fee_pro)`, `TRF_StnIdOf(Tl, param, pos, r)`, `TRF_StnEvKindsOf(rows)`, `TRF_StnEvPayOf(N, k)` | internal |
 
@@ -490,13 +523,13 @@ Layout as trf_shop: helpers, accessors (one native each, protected), static tabl
 | read-only files | none touched; trf_region, trf_hail, trf_safety, trf_convoy, trf_raid, trf_supply, trf_events are called through `TRF_N`/`TRF_P` only |
 | 2026-10-24 (17.10) | traffic.script `TRF_P("TRF_Stn_Step")` in the 1 s block; trf_gen `TRF_GnSafeArrive` calls `TRF_Stn_EvArrive` for `r.sev`; trf_hail `TRF_CtOffer` skips `r.sev`; trf_clan `TRF_RaidOn` keeps the asked tier for why `stn`; trf_plumb box spec `shown`; trf_faction offer stat and log after the show; trf_state leg cap counted once per visit (`clock.vc`) |
 
-## 13. Host harness (`T/host_station.lua`, scenarios `stn-a`..`stn-h`)
+## 13. Host harness (`T/host_station.lua`, scenarios `stn-a`..`stn-i`)
 
 Entry: `host_stubs.lua` routes `TRF_SCEN` to host_traffic/host_v02/host_v1 and cannot be extended append-only, so `host_station.lua` is its own entry:
 1. H1 Read `host_stubs.lua`, cut before the single line `if H.scen then`, `dostring` the prefix with chunk name `host_stubs.lua` (stubs and helpers, no scenario). Fail loudly if the marker is missing.
 2. H2 `HOST().scen = "v1-stn"` (host_traffic and host_v02 skip their dispatch for `v1-`), then `dofile` host_traffic.lua and host_v02.lua for `T_Begin`, `T_Enter`, `T_Jump`, `T_SaveLoad`, `T_Tick`, `V_Logs`, `V_Idx`; host_v1.lua is not loaded.
 3. H3 Run `T_STN_<X>` for `getenv("TRF_STN")`, then `T_LeftGlobals() == ""`, print `HOST errors= fails=`, `exit(1)` on any.
-4. H4 run_host.sh: `luac -p` and `lint --host` include host_station.lua; new `EXPS` item `stn` running `run "stn-$s" TRF_STN="$s" "$LUA4" ...` for `${STN:-a b c d e f g h}` (8 runs; 57 host runs in total since 2026-10-24). The runner calls `host_station.lua` instead of `host_stubs.lua` for these.
+4. H4 run_host.sh: `luac -p` and `lint --host` include host_station.lua; new `EXPS` item `stn` running `run "stn-$s" TRF_STN="$s" "$LUA4" ...` for `${STN:-a b c d e f g h i}` (9 runs since 2026-11-06; 57 host runs in total on 2026-10-24). The runner calls `host_station.lua` instead of `host_stubs.lua` for these.
 
 Stubs (defined in host_station.lua, since they must load before the scenario; `host_stubs.lua` gets none unless another scenario file needs them):
 - `HOST_Includes` wrapper: after the original, `dostring` with chunk name `DATA/Scripts/include/DockStation.script`: `_NoneStation_Action` (the vanilla 677-748 tables, records `CreatePilot(tpl):Message(key, 15)` through the existing `HOST_Pilot`, so `HOST().msgs` gets `{t=key}` and a new `HOST().spk` list gets `tpl`), `__system_Dock_array = {}`, `__system_Dock_current = 0`, and `__Wait_Action` reduced to lines 137-158 (`N` from an argument, `__system_Dock_current = N`, `m_func = getglobal(func)`, `IsAlive` check, `m_func(param)`).
@@ -516,6 +549,7 @@ Stubs (defined in host_station.lua, since they must load before the scenario; `h
 | `stn-f` identity and save | kadenoa both stations (param `""` and `"kadenoa_tri"`); a quest dock with param `""` 800 units from any map station; station handle whose `GetPosition` errors; T_SaveLoad; corrupted `TRF.stn`/`TRF.vo`/`TRF.ve` then `TRF_Repair`; all 76 keys filled with full records | keys 51 and 251 (`id=prm+pos`); quest dock `reason=table`; error -> `id=prm`; records survive the load; Fix clamps and drops as D4; `HOST_SaveSize(TRF.stn) <= 17700` and `8 + 3 + HOST_SaveSize(TRF) < 100000`; dump line present; `lint_lua.py --calls` clean |
 
 | `stn-g` events (17) | gaoba ch 9 with the dock rows of one class set before activation (scene hook), `staged`/`feq`/`sweeps` 0, tune `ev_p=100 ev_dt=5`: barge planned, spawned (path A, `sev`, raid T1 kind `stn`, 2 ships, `ec`), no contract offer, defended (a hit, both raid ships killed); cooldown; shuttle delivered and far; launch waiting 70 s, pickup, delivered; launch expired (lifetime removal); barge lost (killed); barge escaped to its portal before its raid ends, with counted help (defended at the raid's end) and without (no_help); barge whose `TRF_RaidOn` refuses (void, no line, no `ec`, `sev` cleared); a sweep holding the slot; kadenoa with `quest_7a` in process; a story mission; chapter 4; `voice_events 0`; a jump before the spawn; a load; prune and Fix of `ec`; dump; the pure kinds and pay; `loc/trf_ru.loc` keys | pay `floor(0.4 TRF_PayN)` through `TRF_Pay` and `module=raid event=paid ... credits=0` for the barge; deed `+1` `reason="event <kind>"` once; far, lost, expired, void pay nothing; `reason=cooldown|slot|gate:quest|latch|chapter|off`; slot kind `station`; `result=void reason=jump`; no visit record after a load, `ec` kept; RU file has exactly the 34 station keys, CRLF, cp1251 |
+| `stn-i` approach radio (8.8, 2026-11-06) | kadenoa ch 5, `pro` 8, USS station at standing 2: the mothership far, then 71 from it; the docking; leave the radius and come back, a second docking; a load in the visit; `voice_near 0`; a `TRF_UiState` dialog flag before the greeting and `__sys_SOS` between greeting and news; the visit latch; both stations in range (Triada at standing 1 nearer); tune clamps | far: one `reason=far` line per station, nothing spoken; near: the `stnr2` radio, the info line `stn_hail_hold` s later, one `result=spoken` line per station, `TRF.stn` unchanged; docking: no radio, `greeting_skip=near news=false near=true`, the fee box, the near line before the dock line; nothing spoken twice, the second docking the vanilla box; after the load the greeting once more; `voice_near 0`: greeting at the docking (`near=false`) and the fee box; the flags hold the greeting (`reason=flag`) and the info line until they clear; latch: `reason=latch`, the docking greets (`no_fee_reason=latch near=false`); two stations: the nearer first, the other `reason=gap` then spoken; `stn_hail_r` 300..5000, `stn_hail_hold` 0..30 |
 | `stn-h` providers and carry-overs | providers `S_ProvNil`, `S_ProvOne`, `S_ProvErr` on closed stations `0` (Boom, row 7) and `5`; kadenoa fee box with `ShowMsgBox` failing once, then opened; `TRF_PlShow` of a pirate offer spec with the box lock held, then free; gaoba OK on the vanilla box under `__disableAction` after a gain; tune `T_leg=5` 60 s in one visit, a load, an entry; repair of `clock.vc` | provider key `rule=1` over row 7, silent kept, error skipped, registry empty after an entry; `event=fee ... box=false` then the vanilla box, `box=true` only after the show; offer `box=false` without stat `po_box`, `box=true` with it; `event=docked` and `nd` under the flag; stat `leg_cap` and the `result=dropped` debug line once per visit |
 
 All 44 existing runs stay green except a failure that exists before this change (13.1). Since 2026-10-24 all 57 runs pass.
@@ -551,6 +585,8 @@ Coverage (2026-10-24): `loc/trf_ru.loc` (cp1251) holds 272 RU keys, all from the
 | C15 | the barge raid is a small flight and the help rule pays the event | `module=clan event=raid_on raid_id=<n> trader_id=<id> source=stn tier=1 ...`, `module=raid event=paid raid_id=<n> ... credits=0 ... help_rule=cancel`, `module=station event=ev_end kind=barge ... result=defended ... pay=<p>` |
 | C16 | the launch holds at its gate in `form` until the pickup | no `module=generator event=watchdog trader_id=<id>` while waiting; `module=station event=ev_pickup kind=launch trader_id=<id> distance=<d>` then `event=approach trader_id=<id>` |
 | C17 | `trf_ru.loc` loads in a Russian install (`loc_mode 1`) | the fee box and the greetings show the Russian text instead of `#TRF_stnfeehub` (needs a Russian game; not possible on the clone) |
+| STN-NEAR.1 | the greeting and the news come on approach, before the dock line of that station (8.8) | `module=station event=near station_key=<k> ... result=spoken` before `module=station event=dock station_key=<k> ... greeting_skip=near ... near=true` in the same visit; eyes: the radio greeting, then the news line, both readable before the docking box (`tools/check_ingame.py` STN-NEAR.1) |
+| STN-NEAR.2 | nothing spoken twice per visit (8.8 N5, N6) | per visit at most one `event=near ... result=spoken` per station; no dock line with a `greeting=` or `news=true` after it for that station; leave the radius and come back: no new line (`tools/check_ingame.py` STN-NEAR.2) |
 
 ## 15. Conformance checklist
 

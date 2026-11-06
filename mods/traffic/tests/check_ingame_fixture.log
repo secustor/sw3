@@ -551,3 +551,9 @@ traffic: lua: exp=v1 module=plumb event=dock_defer kind=trade box=wq delay=0.200
 gate t=9657 open top=3 game_log=0 camtype=2 stack=1,2,3
 traffic: lua: exp=v1 module=plumb event=dock_defer kind=trade box=wq result=run
 gate t=9671 closed reason=top top=17 game_log=0 camtype=2 stack=1,2,3,17
+traffic: lua: exp=v1 module=state event=enter generation=120 fresh=false system=kadenoa legs=300
+traffic: lua: exp=v1 module=safety event=activate system=kadenoa mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=station event=near station_key=51 distance=1400 result=spoken greeting=stnr1 greeting_skip=nil news=false tip=nil ambient=stnamb2
+traffic: lua: exp=v1 module=station event=near station_key=51 distance=900 result=spoken greeting=stnr1 greeting_skip=nil news=false tip=nil ambient=stnamb2
+traffic: lua: exp=v1 module=station event=dock station_key=51 param="" via=prm+pos distance=3 standing=1 rung=1 heat=0 greeting=stnr1 greeting_skip=nil news=false tip=nil ambient=nil fee=0 fee_multiplier=0 no_fee_reason=nil near=false
+traffic: lua: exp=v1 module=station event=dock station_key=251 param=kadenoa_tri via=prm+pos distance=2 standing=0 rung=0 heat=0 greeting=nil greeting_skip=near news=false tip=nil ambient=nil fee=0 fee_multiplier=0 no_fee_reason=nil near=true

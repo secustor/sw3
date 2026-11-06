@@ -26,6 +26,8 @@
 # loc/trf_en.loc goes to Data/LocData/English/ on every run, the logbook titles need it in every loc_mode, and
 # loc/trf_ru.loc, the station voices keys in Russian, to Data/LocData/Russian/ when the clone has that folder).
 # VOICE_EVENTS=0|1 (station events, design/station-voices-spec.md 17).
+# VOICE_NEAR=0|1 (station greeting, news and tip on approach within tune stn_hail_r, 1 default; 0 at the docking point;
+# design/station-voices-spec.md 8.8).
 # DOCK_MODE=0|1|2 (cfg dock_mode, trader docking: 0 removal at the approach point, 1 ComeToTradeStation, 2 flight to the docking position; default 2).
 # HAIL_FIGHT=0|1 (cfg hail_fight, the combat hail of design/hail-spec.md 3: a trader in a fight answers busy or offers help pay; default 1).
 # SURVIVORS=0|1 (cfg enable_survivors, survivors and beacons, design/survivors-spec.md); SV_SEEDED=0|1 (credited
@@ -182,7 +184,7 @@ for k in OVERRIDE DUMP GUARD ENABLED CYCLE PROSPERITY TIER_CAP BAND_HALF PARKED 
          HAIL_START BOARD SHOP_MODE SHORT_PRICE RESTORE NEWS_MODE HEAT_WAR STRICT TRANSIT SOS_MODE COMBAT HAIL_QUIET \
          TRACK CONV DEMAND HEAT_OFFER CARRIERS SALVAGE SALV_ADDMOD CLAN_ACE SWEEPS SWEEP_CT PO TT4 TT4_SPLIT FEQ \
          FORCED_BUST DCONV DC_SPEED BASES BASE_GLOW WRECK ESC_FLIGHT VOICE VOICE_MOODS VOICE_DOCK VOICE_NEWS VOICE_FEE VOICE_GATE \
-         WB_BOX_AFTER_FEE VOICE_EVENTS SV_SEEDED SV_SLAVERS SV_CH4 SV_DK \
+         WB_BOX_AFTER_FEE VOICE_EVENTS VOICE_NEAR SV_SEEDED SV_SLAVERS SV_CH4 SV_DK \
          LAD_RANKLINE LAD_PERMIT LAD_SETTLE LAD_HANDIN LAD_GIBDD LAD_RESET_SYNC DEMAND_PAGE DEMAND_DROP DOCK_MODE HAIL_FIGHT REMARK_MODE; do
     eval v=\${$k:-}
     [ -z "$v" ] && continue

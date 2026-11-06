@@ -15,6 +15,9 @@
 -- record flag sev), the barge with a small raid (trf_clan TRF_RaidOn, why "stn"); scripted-event slot "station";
 -- pay through TRF_PayN/TRF_Pay; result through trf_gen's arrival hook (TRF_Stn_EvArrive), the 8.5 raid-help
 -- resolver (TRF_Stn_EvHelp) and the 1 s step (TRF_Stn_Step). The visit record is SV.ev (never saved).
+-- Approach radio (spec 8.8, cfg voice_near): the same 1 s step speaks the greeting, harbour news, tip and ambient line
+-- of a trade station once the mothership is within stn_hail_r of it, under the dock gates; the docking then skips
+-- them (greeting_skip=near) and keeps the fee box, the deeds, the dock lines and the offers.
 -- Saved fields (version 4, created lazily, repaired by TRF_Stn_Fix):
 --   TRF.stn[k] = {st=-3..5, lg=leg, gv=ve, bv=ve, pv=ve, tf=leg, ts=idx, nt=1, ec=leg}, k = idx + 200 (j - 1), j =
 --   ordinal of the station among the map's trade stations of system idx; optional fields only when set (ec: leg
@@ -28,7 +31,7 @@
 -- Layout as trf_shop: helpers, accessors (one native each, protected), static tables, pure functions
 -- (*Of, explicit inputs, host-testable), contract functions. Top level: functions and SV only.
 
-local SV = {g={}, p={}, c={}, nw={}, up={}, dn={}, pl={}, nd={}};
+local SV = {g={}, p={}, c={}, nw={}, up={}, dn={}, pl={}, nd={}, nr={}, nh={}, nl={}, dk={}};
 
 -- Helpers --------------------------------------------------------------------------
 
@@ -251,6 +254,13 @@ function TRF_Stn_MsPos()
 	return nil;
 end;
 
+-- Mothership position for the approach radio (8.8): trf_plumb's TRF_PlPos over TRF_Ms (trf_safety TRF_Safe_Ms: nil in
+-- a tick outside an armed visit, never GetPlayerMotherShip from a tick), else TRF_Stn_MsPos; nil when unknown.
+function TRF_Stn_NearPos()
+	if type(TRF_PlPos) == "function" and type(TRF_Ms) == "function" then return TRF_PlPos(TRF_Ms()); end;
+	return TRF_Stn_MsPos();
+end;
+
 function TRF_Stn_RadioRaw(tpl, text, secs)
 	local p = CreatePilot(tpl);
 	p:Message(text, secs);
@@ -379,6 +389,7 @@ function TRF_StnClamp()
 		stn_decay={1, 100}, stn_near={0, 20000}, stn_pos={0, 500}, fee_k={0, 2000}, fee_pro={1, 10}, fee_cap={0, 30000},
 		fee_ch={1, 20}, news_ch={1, 20}, own_legs={0, 200}, mood_dis={1, 10}, mood_rdis={1, 10}, pir_heat={0, 10},
 		heat_c1={0, 10}, heat_c2={0, 10}, stn_radio={1, 30}, stn_gap={0, 30},
+		voice_near={0, 1}, stn_hail_r={300, 5000}, stn_hail_hold={0, 30},
 		voice_events={0, 1}, ev_cd={1, 200}, ev_p={0, 100}, ev_k={0, 200}, ev_ch={1, 20}, ev_r={0, 5000},
 		ev_meet={50, 2000}, ev_tier={1, 2}, ev_dt={5, 120}};
 end;
@@ -999,6 +1010,75 @@ function TRF_StnGreet(key, spk, T)
 	return 1;
 end;
 
+-- Rung and speaker of station key k (8.2 step 1, 8.7) for the dock param prm ("" = the location): {e, st, nt, heat,
+-- er, ch, loc, spk}.
+function TRF_StnCtx(k, prm, T)
+	local e = TRF_StnGet(k, nil, T);
+	local st, nt = 0, nil;
+	if e then st = e.st; nt = e.nt; end;
+	local heat = TRF_StnHeat();
+	local ch = TRF_N("TRF_Chapter");
+	if type(ch) ~= "number" then ch = 0; end;
+	local loc = TRF_Stn_Loc();
+	local own = nil;
+	if prm ~= "" then own = TRF_Stn_Team(prm); else own = TRF_Stn_Team(loc); end;
+	return {e=e, st=st, nt=nt, heat=heat, er=TRF_StnRungOf(st, heat, T.heat_c1, T.heat_c2), ch=ch, loc=loc,
+		spk=TRF_StnSpk()[own or "Neutral"] or "DialogSystem"};
+end;
+
+-- Greeting step (8.2 step 2), once per visit (SV.g[k]; rung 0 has no line and counts as done). Returns the key (nil
+-- when none was due) and the skip reason ("gap", "err") or nil.
+function TRF_StnGreetStep(k, er, nt, spk, T)
+	local sv = %SV;
+	if TRF_StnOpt("voice_dock") ~= 1 or sv.g[k] then return nil, nil; end;
+	local key = TRF_StnGreetOf(er, nt);
+	if not key then sv.g[k] = 1; return nil, nil; end;
+	local ok, gw = TRF_StnGreet(key, spk, T);
+	if ok then sv.g[k] = 1; return key, nil; end;
+	return key, tostring(gw);
+end;
+
+-- Info step (8.2 step 3): harbour news, region tip or ambient line, once per visit (SV.nw[k]), never after docking on
+-- credit. Returns the news flag (0, 1), the tip kind and the ambient key.
+function TRF_StnInfoStep(k, idx, er, nt, ch, T)
+	local sv = %SV;
+	local nwf, tipk, amb = 0, nil, nil;
+	if TRF_StnOpt("voice_news") ~= 1 or sv.nw[k] or sv.c[k] then return nwf, tipk, amb; end;
+	local newsok = ch >= T.news_ch;
+	local shown = nil;
+	if er >= 2 and newsok then
+		local t, ntr = TRF_N("TRF_Trouble", idx);
+		local b, nb = TRF_N("TRF_Boom", idx);
+		if (ntr or 0) + (nb or 0) > 0 then
+			TRF_Stn_Say(TRF_StnTxt("stnnews", t, b), 10);
+			nwf = 1;
+			shown = 1;
+		end;
+		-- Sourced tips (design/tips-spec.md 7.1): one dated, sourced line of the region's ring after the built one.
+		local tn = TRF_N("TRF_Ti_News", idx, k, 1 - nwf);
+		if type(tn) == "string" then TRF_Stn_Say(tn, 10); nwf = 1; shown = 1; end;
+	end;
+	if er >= 4 and newsok and nt ~= 1 then
+		local tx, kind, ts = TRF_StnTip(idx, k, T);
+		if tx then
+			TRF_Stn_Say(tx, 10);
+			tipk = kind;
+			shown = 1;
+			local tf = nil;
+			if kind == "feq" then tf = TRF_StnLegs(); end;
+			TRF_StnE("tip", "station_key", k, "kind", kind, "system", TRF_StnName(ts), "tip_leg", tf);
+		end;
+	end;
+	if not shown and er >= 1 then
+		local ak = TRF_StnAmbOf(ch);
+		if ak then TRF_Stn_Say(TRF_StnTxt(ak), 10); amb = ak; shown = 1; end;
+	end;
+	if shown then sv.nw[k] = 1; end;
+	-- Sourced tips (design/tips-spec.md D14): the docking's told set ends with the info step.
+	TRF_N("TRF_Ti_DockEnd");
+	return nwf, tipk, amb;
+end;
+
 -- Body of the trade wrapper (8.2): "pass", "go" (vanilla box follows) or "box" (fee box open). stage 1
 -- (trf_plumb): the fee box is not opened but kept in SV.fb for TRF_Stn_FeeBox ("staged").
 function TRF_StnTradeBody(param, stage)
@@ -1021,65 +1101,22 @@ function TRF_StnTradeBody(param, stage)
 		TRF_StnE("id_mismatch", "station_key", k, "param_station", jp, "position_station", jx, "distance", TRF_StnF(d));
 	end;
 	sv.k = k;
-	local e = TRF_StnGet(k, nil, T);
-	local st, nt = 0, nil;
-	if e then st = e.st; nt = e.nt; end;
-	local heat = TRF_StnHeat();
-	local er = TRF_StnRungOf(st, heat, T.heat_c1, T.heat_c2);
-	local ch = TRF_N("TRF_Chapter");
-	if type(ch) ~= "number" then ch = 0; end;
-	local loc = TRF_Stn_Loc();
-	local own = nil;
-	if prm ~= "" then own = TRF_Stn_Team(prm); else own = TRF_Stn_Team(loc); end;
-	local spk = TRF_StnSpk()[own or "Neutral"] or "DialogSystem";
-	-- Greeting, once per visit.
+	local c = TRF_StnCtx(k, prm, T);
+	local e, st, nt, heat, er, ch, loc = c.e, c.st, c.nt, c.heat, c.er, c.ch, c.loc;
+	-- Greeting and info line, once per visit (info never after docking on credit); the approach radio (8.8, SV.nr)
+	-- spoke them already: nr 1 the greeting step, 2 both.
+	local nr = sv.nr[k];
+	local nf = 0;
+	if nr then nf = 1; end;
 	local gk, gs = nil, nil;
-	if TRF_StnOpt("voice_dock") == 1 and not sv.g[k] then
-		local key = TRF_StnGreetOf(er, nt);
-		if not key then
-			sv.g[k] = 1;
-		else
-			local ok, gw = TRF_StnGreet(key, spk, T);
-			gk = key;
-			if ok then sv.g[k] = 1; else gs = tostring(gw); end;
-		end;
+	if nr then
+		if TRF_StnOpt("voice_dock") == 1 then gs = "near"; end;
+	else
+		gk, gs = TRF_StnGreetStep(k, er, nt, c.spk, T);
 	end;
-	-- Info line, once per visit, never after docking on credit.
 	local nwf, tipk, amb = 0, nil, nil;
-	if TRF_StnOpt("voice_news") == 1 and not sv.nw[k] and not sv.c[k] then
-		local newsok = ch >= T.news_ch;
-		local shown = nil;
-		if er >= 2 and newsok then
-			local t, ntr = TRF_N("TRF_Trouble", idx);
-			local b, nb = TRF_N("TRF_Boom", idx);
-			if (ntr or 0) + (nb or 0) > 0 then
-				TRF_Stn_Say(TRF_StnTxt("stnnews", t, b), 10);
-				nwf = 1;
-				shown = 1;
-			end;
-			-- Sourced tips (design/tips-spec.md 7.1): one dated, sourced line of the region's ring after the built one.
-			local tn = TRF_N("TRF_Ti_News", idx, k, 1 - nwf);
-			if type(tn) == "string" then TRF_Stn_Say(tn, 10); nwf = 1; shown = 1; end;
-		end;
-		if er >= 4 and newsok and nt ~= 1 then
-			local tx, kind, ts = TRF_StnTip(idx, k, T);
-			if tx then
-				TRF_Stn_Say(tx, 10);
-				tipk = kind;
-				shown = 1;
-				local tf = nil;
-				if kind == "feq" then tf = TRF_StnLegs(); end;
-				TRF_StnE("tip", "station_key", k, "kind", kind, "system", TRF_StnName(ts), "tip_leg", tf);
-			end;
-		end;
-		if not shown and er >= 1 then
-			local ak = TRF_StnAmbOf(ch);
-			if ak then TRF_Stn_Say(TRF_StnTxt(ak), 10); amb = ak; shown = 1; end;
-		end;
-		if shown then sv.nw[k] = 1; end;
-		-- Sourced tips (design/tips-spec.md D14): the docking's told set ends with the info step.
-		TRF_N("TRF_Ti_DockEnd");
-	end;
+	if nr ~= 2 then nwf, tipk, amb = TRF_StnInfoStep(k, idx, er, nt, ch, T); end;
+	sv.dk[k] = 1;
 	-- Fee (8.5): F1 (the gates above), F2 no story mission and no visit latch (G6: SV.mis, logged as pass
 	-- reason=latch at=dock), F3 strict not 0, F4 chapter; pv = paid or docked on credit in this visit (saved, so a
 	-- load inside the visit does not charge again).
@@ -1108,7 +1145,7 @@ function TRF_StnTradeBody(param, stage)
 	end;
 	TRF_StnE("dock", "station_key", k, "param", prm, "via", how, "distance", TRF_StnF(d), "standing", st, "rung", er,
 		"heat", heat, "greeting", gk, "greeting_skip", gs, "news", TRF_KvB(nwf), "tip", tipk, "ambient", amb, "fee", fee,
-		"fee_multiplier", m, "no_fee_reason", nofee);
+		"fee_multiplier", m, "no_fee_reason", nofee, "near", TRF_KvB(nf));
 	if fee <= 0 then return "go"; end;
 	local cr = TRF_Stn_Credits();
 	local fs = format("%d", fee);
@@ -1424,9 +1461,89 @@ function TRF_StnEvEnd(ev, res, why, d)
 		"reason", tostring(why), "pay", pay, "distance", TRF_StnF(d));
 end;
 
--- Every 1 s (traffic.script): the launch pickup and the end of an event ship that left without arriving.
+-- Approach radio (8.8) ---------------------------------------------------------------------
+
+-- Skip line of the approach radio: the first reason of station k in the visit at log 1, each later new reason at log 2.
+function TRF_StnNearSkip(k, why, d)
+	local sv = %SV;
+	local l = sv.nl[k];
+	local f = TRF_StnDE;
+	if not l then l = {}; sv.nl[k] = l; f = TRF_StnE; end;
+	if l[why] then return; end;
+	l[why] = 1;
+	f("near", "station_key", k, "distance", TRF_StnF(d), "result", "skipped", "reason", tostring(why));
+end;
+
+-- Station key k (map entry s) of system idx at distance d from the mothership (nil unknown). The docking ran its steps
+-- (SV.dk) -> "visit"; the start needs the mothership within stn_hail_r; then the dock gates G1-G10 (TRF_StnGate "dock")
+-- and the visit latch; the greeting (a stn_gap wait retries), stn_hail_hold game seconds, the info step. SV.nr[k] 1
+-- after the greeting step, 2 when done. Returns nil (spoken) or the skip reason and the distance.
+function TRF_StnNearK(idx, k, s, d, T)
+	local sv = %SV;
+	if sv.dk[k] then sv.nr[k] = 2; return "visit", d; end;
+	if not sv.nr[k] then
+		if not d then return "pos"; end;
+		if d > T.stn_hail_r then return "far", d; end;
+	end;
+	local why = TRF_StnGate("dock");
+	if why then return why, d; end;
+	if sv.mis == 1 or TRF_N("TRF_Safe_QState") then sv.mis = 1; return "latch", d; end;
+	local prm = s.prm;
+	if type(prm) ~= "string" then prm = ""; end;
+	local c = TRF_StnCtx(k, prm, T);
+	local gt = TRF_StnGt();
+	if not sv.nr[k] then
+		local gk, gs = TRF_StnGreetStep(k, c.er, c.nt, c.spk, T);
+		if gs == "gap" then return "gap", d; end;
+		sv.nr[k] = 1;
+		sv.nh[k] = {t=gt, g=gk, gs=gs};
+	end;
+	local h = sv.nh[k] or {};
+	if h.g and not h.gs and type(h.t) == "number" and gt >= h.t and gt - h.t < T.stn_hail_hold then return "hold", d; end;
+	local nwf, tipk, amb = TRF_StnInfoStep(k, idx, c.er, c.nt, c.ch, T);
+	sv.nr[k] = 2;
+	TRF_StnE("near", "station_key", k, "distance", TRF_StnF(d), "result", "spoken", "greeting", h.g, "greeting_skip", h.gs,
+		"news", TRF_KvB(nwf), "tip", tipk, "ambient", amb);
+	return nil;
+end;
+
+-- Sort order of the approach radio: nearer first, an unknown distance last.
+function TRF_StnNearLt(a, b)
+	if a.d == nil then return nil; end;
+	if b.d == nil then return 1; end;
+	return a.d < b.d;
+end;
+
+-- Every 1 s from TRF_Stn_Step (game time: it stands while the station screen or a dialog is up): the trade stations of
+-- the system not yet done in this visit, nearest first (in a two-station system the nearer one greets first, the other
+-- waits stn_gap).
+function TRF_StnNear()
+	local sv = %SV;
+	if type(TRF) ~= "table" or TRF_StnOpt("voice_near") ~= 1 or TRF_StnOpt("voice") ~= 1 then return; end;
+	if TRF_StnOpt("voice_dock") ~= 1 and TRF_StnOpt("voice_news") ~= 1 then return; end;
+	local idx = TRF_N("TRF_CurIdx");
+	if type(idx) ~= "number" then return; end;
+	local Tl = TRF_StnTl(idx);
+	local q = {};
+	for j = 1, getn(Tl) do
+		local k = TRF_Stn_Key(idx, j);
+		if sv.nr[k] ~= 2 then tinsert(q, {k=k, s=Tl[j]}); end;
+	end;
+	if getn(q) == 0 then return; end;
+	local T, ms = TRF_StnTune(), TRF_Stn_NearPos();
+	for i = 1, getn(q) do q[i].d = TRF_StnDist(ms, q[i].s); end;
+	if getn(q) > 1 then sort(q, TRF_StnNearLt); end;
+	for i = 1, getn(q) do
+		local why, d = TRF_StnNearK(idx, q[i].k, q[i].s, q[i].d, T);
+		if why then TRF_StnNearSkip(q[i].k, why, d); end;
+	end;
+end;
+
+-- Every 1 s (traffic.script): the approach radio (8.8), the launch pickup and the end of an event ship that left
+-- without arriving.
 function TRF_Stn_Step()
 	local sv = %SV;
+	call(TRF_StnNear, {}, "x", TRF_StnErr);
 	local ev = sv.ev;
 	if type(ev) ~= "table" or (ev.st ~= "wait" and ev.st ~= "run" and ev.st ~= "raid") then return; end;
 	call(TRF_StnEvStep, {ev}, "x", TRF_StnErr);
@@ -1628,13 +1745,15 @@ end;
 -- Defaults (10) ----------------------------------------------------------------------
 
 function TRF_Stn_OptDef()
-	return {voice=1, voice_moods=2, voice_dock=1, voice_news=1, voice_fee=1, voice_gate=1, voice_force="", voice_events=1};
+	return {voice=1, voice_moods=2, voice_dock=1, voice_news=1, voice_fee=1, voice_gate=1, voice_force="", voice_events=1,
+		voice_near=1};
 end;
 
 -- ev_k is the event pay constant k in percent of N_eff (40 = k 0.4); ev_p the event chance in percent per entry.
 function TRF_Stn_TuneDef()
 	return {stn_decay=12, stn_near=2500, stn_pos=60, fee_k=200, fee_pro=8, fee_cap=10000, fee_ch=5, news_ch=4,
-		own_legs=20, mood_dis=7, mood_rdis=5, pir_heat=5, heat_c1=5, heat_c2=7, stn_radio=8, stn_gap=6,
+		own_legs=20, mood_dis=7, mood_rdis=5, pir_heat=5, heat_c1=5, heat_c2=7, stn_radio=8, stn_gap=6, stn_hail_r=1500,
+		stn_hail_hold=2,
 		ev_cd=24, ev_p=25, ev_k=40, ev_ch=5, ev_r=400, ev_meet=300, ev_tier=1, ev_dt=20};
 end;
 

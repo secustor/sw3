@@ -154,7 +154,7 @@ Adds NPC traders, pirate clans, factions and jobs, written as Lua scripts loaded
 - Opt-in (`merc=1`): 12 mercenary clans work the regions, and you can hire their packs for 10 minutes. Add `--merc-names` to give their pilots names.
 
 **Stations and standing**
-- Dockmasters greet you by standing, and the harbour has news and tips. Docking fees apply from chapter 5.
+- Dockmasters greet you by standing as you come near the station, and the harbour has news and tips. Docking fees apply from chapter 5.
 - Local events: ore-barge rescue, tanker shuttle, refugee launch.
 - Rank ladder for all five factions, with transit permits, settle-the-file offers and prisoners of war.
 - The patrol board lists raid reports, booming lanes, wanted captains and sweep offers.

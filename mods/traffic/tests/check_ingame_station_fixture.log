@@ -1,0 +1,23 @@
+traffic: lua: exp=v1 module=state event=enter generation=80 fresh=false system=kadenoa legs=210
+traffic: lua: exp=v1 module=safety event=activate system=kadenoa mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=station event=enter visit=210 system=kadenoa system_index=51 latch=false pruned_count=0 owner_visit=nil
+traffic: lua: exp=v1 module=station event=near station_key=51 distance=2210 result=skipped reason=far
+traffic: lua: exp=v1 module=station event=near station_key=251 distance=1981 result=skipped reason=far
+traffic: lua: exp=v1 module=station event=near station_key=251 distance=1490 result=spoken greeting=nil greeting_skip=nil news=false tip=nil ambient=nil
+traffic: lua: exp=v1 module=station event=near station_key=51 distance=1488 result=skipped reason=hold
+traffic: lua: exp=v1 module=ui event=say output=1 seconds=10 message="Harbour news: Pirates hit a freighter near Dosis. Prices are up at Deosis."
+traffic: lua: exp=v1 module=station event=near station_key=51 distance=1402 result=spoken greeting=stnr2 greeting_skip=nil news=true tip=nil ambient=nil
+traffic: lua: exp=v1 module=station event=dock station_key=51 param="" via=prm+pos distance=3 standing=2 rung=2 heat=0 greeting=nil greeting_skip=near news=false tip=nil ambient=nil fee=3200 fee_multiplier=1 no_fee_reason=nil near=true
+traffic: lua: exp=v1 module=station event=fee station_key=51 fee=3200 world_level=11 prosperity=8 fee_multiplier=1 difficulty_factor=1 box=true
+traffic: lua: exp=v1 module=station event=fee_ok station_key=51 credits_before=90000 credits_after=86800 credit=false buyback=false
+traffic: lua: exp=v1 module=station event=docked station_key=51 standing_up=false
+traffic: lua: exp=v1 module=station event=dock station_key=51 param="" via=prm+pos distance=4 standing=2 rung=2 heat=0 greeting=nil greeting_skip=near news=false tip=nil ambient=nil fee=0 fee_multiplier=1 no_fee_reason=nil near=true
+traffic: lua: exp=v1 module=state event=enter generation=81 fresh=false system=gaoba legs=211
+traffic: lua: exp=v1 module=safety event=activate system=gaoba mode=mod reason=nil chapter=6 quest_state=1 gate=ok
+traffic: lua: exp=v1 module=station event=enter visit=211 system=gaoba system_index=42 latch=true pruned_count=0 owner_visit=nil
+traffic: lua: exp=v1 module=station event=near station_key=42 distance=640 result=skipped reason=latch
+traffic: lua: exp=v1 module=station event=dock station_key=42 param="" via=prm+pos distance=2 standing=1 rung=1 heat=0 greeting=stnr1 greeting_skip=nil news=false tip=nil ambient=stnamb2 fee=0 fee_multiplier=0 no_fee_reason=nil near=false
+traffic: lua: exp=v1 module=station event=pass reason=latch system=gaoba at=dock
+traffic: lua: exp=v1 module=state event=load generation=82 fresh=false legs=211
+traffic: lua: exp=v1 module=station event=load latch=false
+traffic: lua: exp=v1 module=station event=near station_key=51 distance=1320 result=spoken greeting=stnr2 greeting_skip=nil news=false tip=nil ambient=nil
