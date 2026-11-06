@@ -138,7 +138,7 @@ For region slot `slot`, `c = {slot, cur, legs, rest_s, home, base, sv, gate}`: e
 
 - E1 `t` 0..2 with `age > sg_ttl` (12) and `s ~= TRF_CurIdx()`: rest (`t = 3`, `g = legs`, `reason=ttl`).
 - E2 `t` 0..2 whose system fails C5 at the tick (a quest now names it): rest (`reason=gate`).
-- E3 `t` 3 with `age > sg_rest`: the block becomes empty (`event=rest_end`, level 2).
+- E3 `t` 3 with `age > sg_rest`: the rest is over and the record stays in its block, so the light choice (4.3 step 4) reads its age and C6 its system, until a light replaces it (`event=rest_end result=kept` at `age = sg_rest + 1`, level 2); at `age > sg_rest + 200` (`K.rest_keep`) the block becomes empty (`result=empty`, level 2).
 - E4 The ring record of a source that rests is dead by its live check (4.5) and pruned by trf_tips.
 
 ### 4.5 Ring feed (kind 13 `signal`)
@@ -201,7 +201,7 @@ R1-R7 are checked at the entry, again at the line's due call, at the reading, at
 ### 6.5 Show and pickup (`TRF_Sg_Tick(dt)`, every tick after `TRF_Sv_Tick`; `t 2` in the current system)
 
 1. `dt > 0`; R1-R7 (cached per visit for R4-R6, re-read every 1 s step); position `b` from `TRF_Ms()`, `a = SG.mp or b`, `SG.mp = b`.
-2. Show: no `SG.o` and `TRF_SvSegOf(pt, a, b) <= sg_show_r`: `CreateCarcass(K.model, Vector3(pt), Vector3(0, 0, 1))`, `SetObjectLabel("TRF_SGO_"..slot)`; the area marker is replaced by the attached marker `TRF_SG_NP_<slot>` (`MarkerClear("signal")`, then `TRF_MarkerAdd(..., obj)`, so A08 holds one marker); screen line `sgnear`; log `event=show`. `CreateCarcass` nil: `result=failed`, retried after 10 s.
+2. Show: no `SG.o` and `TRF_SvSegOf(pt, a, b) <= sg_show_r`: `CreateCarcass(K.model, Vector3(pt), Vector3(0, 0, 1))`, `SetObjectLabel("TRF_SGO_"..slot)`; the area marker is replaced by the attached marker `TRF_SG_NP_<slot>` (`MarkerClear("signal")`, then `TRF_MarkerAdd(..., obj)`, so A08 holds one marker); screen line `sgnear`; log `event=show` (`distance` the swept step's distance to the point, the value the show test used). `CreateCarcass` nil: `result=failed`, retried after 10 s.
 3. Pickup: `SG.o` alive and `TRF_SvSegOf(pt, a, b) <= sg_pick_r`: delete the object, `TRF_MarkerClear("signal")`, record `t = 3`, `g = legs` first (so the ring live check is dead before 6.6 reads the ring), then the outcome (6.6); log `event=pick`.
 4. `SG.o` no longer alive without a pickup (shot): `t = 3`, markers cleared, line `sglost`, `event=pick outcome=destroyed`.
 
@@ -225,7 +225,7 @@ The text goes through `TRF_CrewSay(K.voice, text, sg_secs)` (screen line without
 
 - Registration: `TRF_MarkerOfferReg("signal")` in `TRF_Sg_Plumb`. A08 holds at most one marker: the area marker, replaced by the attached one at the show.
 - trf_stash: `TRF_ShFound` deletes `TRF_STASH_AR_<i>` before it adds `TRF_STASH_NP_<i>`, so a cache holds one marker. Stash keeps one record per system, so stash and signal hold at most 2 = `mk_offer` markers in a system and the cap cannot refuse with the built owners.
-- Ordering (oldest record first): `TRF_MarkerAdd` takes an optional ninth argument `lg` (the leg of the record the offer marker shows; default `TRF.clock.legs`), kept in the handle entry. At the cap, when the newest held offer marker has a larger `lg` than the new one, it is deleted (`event=marker ... result=bumped by=<label>`) and the new one added; otherwise the refusal stands (`reason=offer_cap`). A bumped owner adds its marker again when it can: A08 retries at each 1 s step while `t 2` holds and `SG.mk` is nil; stash re-adds at the next entry. New read `TRF_MarkerHeld(label)` -> 1 or nil, used by A08 to notice a bump.
+- Ordering (oldest record first): `TRF_MarkerAdd` takes an optional ninth argument `lg` (the leg of the record the offer marker shows; default `TRF.clock.legs`), kept in the handle entry. At the cap, when the newest held offer marker has a larger `lg` than the new one, it is deleted (`event=marker ... result=bumped by=<label>`) and the new one added; otherwise the refusal stands (`reason=offer_cap`). A bumped owner adds its marker again when it can: A08 retries at each 1 s step while `t 2` holds and `SG.mk` is nil, with the tenth argument `q` 1 after a refusal of the visit, so the repeated `quest`, `cap` and `offer_cap` refusal lines go to log level 2 (a success clears it); stash re-adds at the next entry. New read `TRF_MarkerHeld(label)` -> 1 or nil, used by A08 to notice a bump.
 - trf_stash passes `lg = r.leg` for its offer markers.
 
 ## 8. Sound (`TRF_SgSound()`, at the say)
@@ -297,7 +297,7 @@ Constants (`TRF_SgK()`): `voice` {"Lastochka2", "Lastochka", "Kalem", "Hero"}, `
 | `module=signal event=light region=5 system=sunji system_index=78 point=2 phase=0 roll=12 chance=20 candidate_count=4 result=lit` | 1 |
 | `module=signal event=light region=5 result=none reason=<off/chapter/phase/busy/rest/roll/no_system>` | 2 |
 | `module=signal event=expire region=5 system=sunji state=<0/1/2> age=13 reason=<ttl/gate>` | 1 |
-| `module=signal event=rest_end region=5 system=sunji` | 2 |
+| `module=signal event=rest_end region=5 system=sunji result=<kept/empty>` | 2 |
 | `module=signal event=enter system=sunji state=<0/1/2> result=<armed/reading/marker>` | 2 |
 | `module=signal event=skip system=sunji reason=<off/chapter/none/mode:../gate:../latch/hold:..>` | 2, once per reason and visit |
 | `module=signal event=line system=sunji system_index=78 light_leg=140 variant=2 queued_count=0 result=<queued/dropped> reason=<nil/queued:<n>/event:<kind>/cap/due/no_entry/heard/left/gate:..>` | 1 |

@@ -435,6 +435,31 @@ function T_SG_B()
 	TRF_Sg_RegionTick(TRF.clock.legs);
 	TRF_StrictOk = so;
 	HOST_Check(SG_T("sunji") == 3 and SG_Logs(n0, "event=expire region="..TRF_RgOf(V_Idx("sunji")).." system=sunji state=1 age=2 reason=gate") == 1, "a quest names the system: rest (gate)");
+	-- C6 and the rest end at the region tick: a rest past sg_rest stays in its block; the region lights another system.
+	TRF.sg = nil;
+	local ss = TRF_RgOf(V_Idx("sunji"));
+	local bs2, nb2 = TRF_SgBlocks();
+	for b = 1, rm.n do
+		if b ~= ss then bs2[b] = {s=rm[b].sys[1], p=1, g=TRF.clock.legs, age=0, t=1, slot=b}; end;
+	end;
+	TRF_SgStore(bs2, nb2);
+	SG_Set("sunji", 1, 3, 21);
+	local ns = 0;
+	for i = 1, getn(rm[ss].sys) do local s = rm[ss].sys[i]; if s ~= cur and TRF_SgPts(s) then ns = ns + 1; end; end;
+	n0 = S_Mark();
+	TRF_Sg_RegionTick(TRF.clock.legs);
+	local lr = TRF_SgBlocks()[ss];
+	HOST_Check(ns >= 2 and SG_Logs(n0, "event=rest_end region="..ss.." system=sunji result=kept") == 1 and type(lr) == "table" and lr.t == 0
+		and lr.s ~= V_Idx("sunji") and SG_Logs(n0, "event=light region="..ss.." ") == 1, "rest over: kept for the light, which picks another system of the region (C6)");
+	SG_Set("sunji", 1, 3, 21);
+	SG_Tune("sg_pct", 0);
+	TRF.clock.legs = TRF.clock.legs + 1;
+	TRF_Sg_RegionTick(TRF.clock.legs);
+	HOST_Check(SG_T("sunji") == 3, "a failed roll keeps the rest record (C6 still applies at the next light)");
+	TRF.clock.legs = TRF.clock.legs + 200;
+	n0 = S_Mark();
+	TRF_Sg_RegionTick(TRF.clock.legs);
+	HOST_Check(SG_Rec("sunji") == nil and SG_Logs(n0, "event=rest_end region="..ss.." system=sunji result=empty") == 1, "sg_rest + 200 legs without a light: the block empties");
 end;
 
 -- c: entry line ----------------------------------------------------------------------------
@@ -668,9 +693,11 @@ function T_SG_D()
 		and TRF_MarkerHeld("TRF_SG_AR_"..gs) == nil and TRF_MarkerHeld("TRF_TSTB_1") == 1,
 		"a second older record bumps the newest offer marker (the signal's)");
 	HOST_Check(TRF_MarkerAdd("tsta", "TRF_TSTA_2", 30, 0, 30, "", nil, nil, g + 5) == nil, "a newer record is refused at the cap (offer_cap)");
-	SG_Run(1.5);
-	HOST_Check(SG_Nav("TRF_SG_AR_"..gs) == nil and S_Logs(n0, "owner=signal label=TRF_SG_AR_"..gs.." class=offer offer_count=2 result=refused reason=offer_cap") >= 1,
-		"A08 tries again at the step: refused while the older two hold the cap");
+	h.cfg.log = 1;
+	SG_Run(3.5);
+	h.cfg.log = 2;
+	HOST_Check(SG_Nav("TRF_SG_AR_"..gs) == nil and S_Logs(n0, "owner=signal label=TRF_SG_AR_"..gs.." class=offer offer_count=2 result=refused reason=offer_cap") == 1,
+		"A08 tries again at each step: refused while the older two hold the cap, one level 1 refusal line (the retries are level 2)");
 	TRF_MarkerClear("tsta");
 	SG_Run(1.5);
 	HOST_Check(SG_Nav("TRF_SG_AR_"..gs) ~= nil, "one test owner clears: the signal marker is back");
@@ -735,6 +762,26 @@ function T_SG_E()
 	HOST_Check(SG_T("sunji") == 3 and SG_Logs(n0, "result=placed") == 1 and SG_Logs(n0, "segment=0 result=found") == 1, "an 800-unit step through the point (8x): show and pickup in one tick (swept segment)");
 	HOST_Check(TRF_SgPickOf({x=0, y=0, z=0}, {x=-200, y=50, z=0}, {x=200, y=50, z=0}, 60) == 1 and TRF_SgPickOf({x=0, y=0, z=0}, {x=-200, y=70, z=0}, {x=200, y=70, z=0}, 60) == nil,
 		"TRF_SgPickOf: the segment's distance, not the end points");
+	-- A tangential 8x step: the show distance logged is the swept step's (480), not the end point's (768).
+	SG_Read2();
+	n0 = S_Mark();
+	SG_MsTo(p.x + 600, p.y, p.z + 480);
+	T_Tick(1, 0.5);
+	SG_MsTo(p.x - 600, p.y, p.z + 480);
+	T_Tick(1, 0.5);
+	HOST_Check(SG_Obj(slot) ~= nil and SG_Logs(n0, "event=show system=sunji system_index="..si.." distance=480 ") == 1, "a pass-by step: event=show distance=480 (the swept step)");
+	-- A hold drops the segment start: a move across the point while __disableAction holds shows nothing after it.
+	SG_Read2();
+	n0 = S_Mark();
+	SG_MsTo(p.x + 600, p.y, p.z);
+	T_Tick(1, 0.5);
+	__disableAction = TRUE;
+	T_Tick(1, 0.5);
+	SG_MsTo(p.x - 600, p.y, p.z);
+	T_Tick(1, 0.5);
+	__disableAction = FALSE;
+	T_Tick(2, 0.5);
+	HOST_Check(SG_Obj(slot) == nil and SG_T("sunji") == 2 and SG_Logs(n0, "event=show ") == 0, "after a hold the first step starts at the mothership: no show from the move made during the hold");
 	-- Outcome 1: a trail fragment (A07 hook).
 	TRF_Tr_SignalFrag = function(idx) return "A trail fragment."; end;
 	SG_Read2();

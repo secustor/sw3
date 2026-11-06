@@ -296,7 +296,8 @@ end;
 -- Constants (spec 10).
 function TRF_SgK()
 	return {voice={"Lastochka2", "Lastochka", "Kalem", "Hero"}, snd={"spark4.wav", "vapour-escape-loop.wav"}, own="trf_static.wav",
-		model="radiopod", icon="nav_target.dds", rec_len=8, leg_mod=1000, band={600, 1200}, pts_max=4, show_retry=10, slot_max=8};
+		model="radiopod", icon="nav_target.dds", rec_len=8, leg_mod=1000, band={600, 1200}, pts_max=4, show_retry=10, slot_max=8,
+		rest_keep=200};
 end;
 
 -- BEGIN gen_stash.py signal (do not edit by hand)
@@ -663,17 +664,21 @@ function TRF_SgRegionBody(L)
 	local cur = TRF_SgCur();
 	local bs, n = TRF_SgBlocks();
 	local ch = nil;
-	-- 4.4 expiry and rest.
+	-- 4.4 expiry and rest. A rest past sg_rest stays in its block (the light choice reads its age and system, 4.3 step 4
+	-- and C6) until a light replaces it or it is rest_keep legs older.
+	local K = TRF_SgK();
 	for b = 1, n do
 		local r = bs[b];
 		if type(r) == "table" then
 			local ok = nil;
 			if r.t <= 2 then ok = TRF_SgGateOk(r.s); end;
 			local e = TRF_SgExpireOf(r, legs, cur, T, ok);
-			if e == "end" then
+			if e == "end" and r.age > T.sg_rest + K.rest_keep then
 				bs[b] = nil;
 				ch = 1;
-				TRF_SgDE("rest_end", "region", b, "system", TRF_SgName(r.s));
+				TRF_SgDE("rest_end", "region", b, "system", TRF_SgName(r.s), "result", "empty");
+			elseif e == "end" then
+				if r.age == T.sg_rest + 1 then TRF_SgDE("rest_end", "region", b, "system", TRF_SgName(r.s), "result", "kept"); end;
 			elseif e then
 				TRF_SgE("expire", "region", b, "system", TRF_SgName(r.s), "state", r.t, "age", r.age, "reason", e);
 				TRF_SgRest(r);
@@ -897,8 +902,9 @@ function TRF_SgArea(idx, r)
 	local m, off = TRF_SgAreaOf(pt, TRF_SgHashOf(r.s, r.p, r.g), T.sg_area_min, T.sg_area_r);
 	local tx = "";
 	if TRF_N("TRF_Loc_Mode") == 1 then tx = "#TRF_sgnavarea"; end;
-	local ok, why = TRF_N("TRF_MarkerAdd", "signal", "TRF_SG_AR_"..r.slot, m.x, m.y, m.z, tx, TRF_SgK().icon, nil, r.g);
-	if not ok then return nil, why or "native"; end;
+	local ok, why = TRF_N("TRF_MarkerAdd", "signal", "TRF_SG_AR_"..r.slot, m.x, m.y, m.z, tx, TRF_SgK().icon, nil, r.g, sg.pr.mq);
+	if not ok then sg.pr.mq = 1; return nil, why or "native"; end;
+	sg.pr.mq = nil;
 	sg.mk = "area";
 	return 1, m, off;
 end;
@@ -910,10 +916,12 @@ function TRF_SgObjMk(idx, r)
 	if not pt or not sg.o then return nil; end;
 	local tx = "";
 	if TRF_N("TRF_Loc_Mode") == 1 then tx = "#TRF_sgnav"; end;
-	if TRF_N("TRF_MarkerAdd", "signal", "TRF_SG_NP_"..r.slot, pt.x, pt.y, pt.z, tx, TRF_SgK().icon, sg.o, r.g) then
+	if TRF_N("TRF_MarkerAdd", "signal", "TRF_SG_NP_"..r.slot, pt.x, pt.y, pt.z, tx, TRF_SgK().icon, sg.o, r.g, sg.pr.mq) then
+		sg.pr.mq = nil;
 		sg.mk = "obj";
 		return 1;
 	end;
+	sg.pr.mq = 1;
 	return nil;
 end;
 
@@ -968,7 +976,7 @@ end;
 function TRF_Sg_Tick(dt)
 	local sg = %SG;
 	if type(dt) ~= "number" or dt <= 0 then return; end;
-	if not sg.o and sg.gc ~= "ok" then return; end;
+	if not sg.o and sg.gc ~= "ok" then sg.mp = nil; return; end;
 	call(TRF_SgTickBody, {}, "x", TRF_SgErr);
 end;
 
@@ -990,13 +998,15 @@ function TRF_SgTickBody()
 	local idx = TRF_SgCur();
 	local r = TRF_SgLive(idx);
 	if not r or r.t ~= 2 then
+		sg.mp = nil;
 		if sg.o then TRF_SgDrop("rest"); end;
 		return;
 	end;
-	-- R1-R6 from the 1 s step's cache; the holds (R7) every tick.
-	if sg.gc ~= "ok" or TRF_SgHold() then return; end;
+	-- R1-R6 from the 1 s step's cache; the holds (R7) every tick. A skipped tick drops the segment start, so the first
+	-- step after a hold starts where the mothership is.
+	if sg.gc ~= "ok" or TRF_SgHold() then sg.mp = nil; return; end;
 	local b = TRF_SgMsPos();
-	if not b then return; end;
+	if not b then sg.mp = nil; return; end;
 	local a = sg.mp or b;
 	sg.mp = b;
 	local pt = TRF_SgPt(idx, r.p);
@@ -1016,20 +1026,21 @@ function TRF_SgTickBody()
 		if type(sg.sr) == "number" and TRF_SgGt() < sg.sr then return; end;
 		local sd = TRF_SgSegOf(pt, a, b);
 		if sd > T.sg_show_r then return; end;
-		TRF_SgShow(idx, r, pt, b);
+		TRF_SgShow(idx, r, pt, sd);
 		if not sg.o then return; end;
 	end;
 	local ok, d = TRF_SgPickOf(pt, a, b, T.sg_pick_r);
 	if ok then TRF_SgPick(idx, r, d); end;
 end;
 
--- 6.5 step 2: the recorder at the point, the attached marker instead of the area marker, the near line.
-function TRF_SgShow(idx, r, pt, ms)
+-- 6.5 step 2: the recorder at the point, the attached marker instead of the area marker, the near line. d: the distance of
+-- the swept step to the point (the show test).
+function TRF_SgShow(idx, r, pt, d)
 	local sg = %SG;
 	local K = TRF_SgK();
 	local lb = "TRF_SGO_"..r.slot;
 	local o = TRF_SgCreate(K.model, pt, lb);
-	local d = TRF_SgDist(ms, pt) or 0;
+	if type(d) ~= "number" then d = 0; end;
 	if not o then
 		sg.sr = TRF_SgGt() + K.show_retry;
 		TRF_SgE("show", "system", TRF_SgName(idx), "system_index", idx, "distance", floor(d), "model", K.model, "label", lb, "result", "failed");

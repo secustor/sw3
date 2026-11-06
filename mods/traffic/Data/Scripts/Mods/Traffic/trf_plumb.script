@@ -1755,9 +1755,10 @@ end;
 -- nav_Crash_site.dds). obj (optional, 2026-10-24, wanted captains): the object the marker is attached to, the fifth
 -- CreateNavPoint argument (vanilla OutOfMission.script:494; the marker follows it, CHECK EW4.2). lg (optional, offer
 -- owners, design/static-signals-spec.md 7): the leg of the record the marker shows (default TRF.clock.legs); at the
--- mk_offer cap the newest held offer marker with a larger lg is deleted (result=bumped) and this one added. Returns 1,
--- or nil, reason.
-function TRF_MarkerAdd(owner, label, x, y, z, text, icon, obj, lg)
+-- mk_offer cap the newest held offer marker with a larger lg is deleted (result=bumped) and this one added. q (optional,
+-- an owner that tries again every step): 1 writes the quest, cap and offer_cap refusals at log level 2. Returns 1, or
+-- nil, reason.
+function TRF_MarkerAdd(owner, label, x, y, z, text, icon, obj, lg, q)
 	local K = TRF_PlK();
 	if type(owner) ~= "string" or owner == "" or strlen(owner) > K.mk_own or strfind(owner, "[=;]") then return nil, "owner"; end;
 	if type(label) ~= "string" or strsub(label, 1, 4) ~= "TRF_" or strlen(label) > K.mk_len or strfind(label, "[=;]") then
@@ -1765,8 +1766,10 @@ function TRF_MarkerAdd(owner, label, x, y, z, text, icon, obj, lg)
 		return nil, "label";
 	end;
 	if type(x) ~= "number" or type(y) ~= "number" or type(z) ~= "number" then return nil, "position"; end;
+	local le = TRF_PlE;
+	if q == 1 then le = TRF_PlDE; end;
 	if TRF_N("GetPlayerQuestState") == TRUE then
-		TRF_PlE("marker", "owner", owner, "label", label, "result", "refused", "reason", "quest");
+		le("marker", "owner", owner, "label", label, "result", "refused", "reason", "quest");
 		return nil, "quest";
 	end;
 	local m = TRF_PlMkH();
@@ -1774,7 +1777,7 @@ function TRF_MarkerAdd(owner, label, x, y, z, text, icon, obj, lg)
 	TRF_PlMkDel(label);
 	if TRF_PlMkCount() >= K.mk_max then
 		TRF_PlMkSave();
-		TRF_PlE("marker", "owner", owner, "label", label, "result", "refused", "reason", "cap");
+		le("marker", "owner", owner, "label", label, "result", "refused", "reason", "cap");
 		return nil, "cap";
 	end;
 	-- Offered content (design/tips-spec.md 7.5): at most mk_offer markers of offer owners per visit (0 = no cap).
@@ -1788,7 +1791,7 @@ function TRF_MarkerAdd(owner, label, x, y, z, text, icon, obj, lg)
 			local bl = TRF_PlOfferNewest();
 			if not bl or (m[bl].lg or 0) <= lg then
 				TRF_PlMkSave();
-				TRF_PlE("marker", "owner", owner, "label", label, "class", "offer", "offer_count", oc, "result", "refused", "reason", "offer_cap");
+				le("marker", "owner", owner, "label", label, "class", "offer", "offer_count", oc, "result", "refused", "reason", "offer_cap");
 				return nil, "offer_cap";
 			end;
 			local bo = m[bl].o;
