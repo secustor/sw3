@@ -23,6 +23,9 @@ All sessions start from the user's `Quicksave-98`: Elio, chapter 8, Triada at wa
 
 ### 0.1 Risks to know before session A
 
+- **Lab saves must carry quicksave counter 0** (the saves in `.work/saves/qs98/out/` do since 2026-11-06 13:30). The first build kept Quicksave-98's counter in the header; the first in-game quicksave after that pruned six of them and Quicksave-96..98. If a `TRF lab` save disappears from the load menu, copy the rebuilt files again with the game closed.
+- **Legs pass fast at 8x**: a leg is 300 game seconds, about 37 real seconds at 8x. The staged wrecks are fresh for 4 legs and the Escaflon signal source lives 12 legs (`sg_ttl`) unless you are in its system. Run the time-critical steps straight after the load and use 8x for travel only.
+
 - **No staged save has been loaded in the game yet.** PROGRESS.md (log entries from 2026-10-24 on) builds `TRF lab pro9`/`heat4` and plans run A on them, but no entry reports a load. The clone holds no `TRF lab` save.
   - The new saves pass `savetool.py roundtrip`.
   - They decode back to the staged table.

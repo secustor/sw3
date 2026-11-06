@@ -54,7 +54,7 @@ rc=0
 for v in $VARIANTS; do
   ed "$v" "$tmp/base-in.json" "$tmp/$v.json" --loc "$loc" --map "$map"
   f="$OUT/TRF lab $v.sav"
-  st set "$BASE" --out "$f" --global TRF --json "$tmp/$v.json"
+  st set "$BASE" --out "$f" --global TRF --json "$tmp/$v.json" --quicksave 0
   st roundtrip "$f" >/dev/null || { echo "mk_lab_saves: $f does not round-trip" >&2; rc=1; }
   keys=$(ed keys "$v")
   if [ -n "$keys" ] && [ -x "$LUA4" ]; then

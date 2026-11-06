@@ -391,6 +391,7 @@ def cmd_set(a):
         sys.exit(f'savetool: bad --out/--name {a.out!r}/{name!r} (file must end in .sav, name must not contain {BADCH})')
     if name != stem: print(f'warning: header name {name!r} differs from the file name {stem!r}', file=sys.stderr)
     s = load(a.save)
+    if getattr(a, 'quicksave', None) is not None: s.qcount = a.quicksave  # header field 7; the game's post-quicksave pruner deletes files whose counter is set
     if a.nil: v = None
     elif a.lua is not None: v = parse_lua(a.lua)
     else:
@@ -523,6 +524,7 @@ def main():
     p = sub.add_parser('set', help='replace, add or remove one top-level global')
     p.add_argument('save'); p.add_argument('--out', required=True); p.add_argument('--global', dest='globl', required=True)
     p.add_argument('--name', help='header save name (default: the --out file name without .sav)')
+    p.add_argument('--quicksave', type=int, help='header quicksave counter (0 makes a normal save that the quicksave pruning leaves alone; default: keep)')
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument('--lua', help='Lua table literal, e.g. \'{version=1, s="x"}\'')
     g.add_argument('--json', help='JSON file (tables: object or array; number keys as "[n]")')
