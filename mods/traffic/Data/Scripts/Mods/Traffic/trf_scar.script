@@ -298,11 +298,11 @@ end;
 
 -- Constants without a cfg key (6.5): holds TT1-TT4, kv per kind (trader, convoy, sweep, base, fight), the site
 -- distances (portal, nav point, other mod object; stations use the raid tune raid_min_st), the off-screen offset
--- from the nav point, the decoration ring, the move-away step for an on-screen centroid, the cargo draw limits,
+-- from the nav point and the widest extra lane offset (off_far, 100-unit steps), the decoration ring, the move-away step for an on-screen centroid, the cargo draw limits,
 -- the hard record cap, the death and fight lists of a visit, the refill flag (EW2.4: 0 = inventory kept).
 function TRF_ScK()
 	return {hold={5700, 8000, 13000, 50000}, kv={1.0, 1.0, 0.6, 1.0, 0}, port_r=300, nav_r=150, obj_r=150, st_r=400,
-		off_lo=150, off_hi=250, ring_lo=30, ring_hi=60, mv_max=300, mv_step=50, items=8, draws=24, fill=0.6, rec_max=12,
+		off_lo=150, off_hi=250, off_far=300, ring_lo=30, ring_hi=60, mv_max=300, mv_step=50, items=8, draws=24, fill=0.6, rec_max=12,
 		dd_max=32, ev_max=8, refill=0, cost=1000};
 end;
 
@@ -1102,29 +1102,53 @@ function TRF_ScProbe(idx)
 	return tot;
 end;
 
--- Site of an off-screen record r in the current system idx (6.5), chosen at its first placement from the registered
--- nav points (traders for kinds 1-2; every contact for a sweep wreck, farthest from the stations first), else the
--- map lane points (portal-station midpoints), plus a 150-250 offset at an angle from the seed, by the site rule.
--- Returns {x, y, z} or nil.
+-- Site of an off-screen record r in the current system idx (6.5), chosen at its first placement: the registered
+-- nav points (traders for kinds 1-2; every contact for a sweep wreck), then the map lane points (portal-station
+-- midpoints), plus a 150-250 offset at 8 angles from the seed; the first point that passes the site rule. Vanilla
+-- trader nav points often sit at a station (Valensia, Gredos: the station + (0, 30, 0)), where no offset leaves the
+-- 400 station rule, so the lane points always follow the nav points; where the midpoints sit close to a station or
+-- portal (one-portal systems: Altair, Haron, XT20), the lane offset grows in 100-unit steps up to K.off_far more
+-- (with 300 every map system with a portal has a lane site for every seed, host sc-c). Returns {x, y, z}, or nil and B: the rejected
+-- points per rule (B.station, B.portal, B.nav, B.object), B.n candidates, B.nn of them nav points.
 function TRF_ScSitePick(r, idx)
 	local K = TRF_ScK();
 	local S = TRF_ScSiteIn(idx, TRF_ScSid(r));
 	local tr = 1;
 	if r.kind == 3 then tr = 0; end;
-	local c = TRF_Sc_Navs(tr);
-	if getn(c) == 0 then
-		for i = 1, getn(S.ports) do
-			local p = S.ports[i];
-			if getn(S.sts) == 0 then
-				tinsert(c, {x=p.x / 2, y=p.y / 2, z=p.z / 2});
-			else
-				for j = 1, getn(S.sts) do
-					local s = S.sts[j];
-					tinsert(c, {x=(p.x + s.x) / 2, y=(p.y + s.y) / 2, z=(p.z + s.z) / 2});
-				end;
+	local cn = TRF_Sc_Navs(tr);
+	local cl = TRF_ScLanes(S);
+	local B = {station=0, portal=0, nav=0, object=0, n=getn(cn) + getn(cl), nn=getn(cn)};
+	local p = TRF_ScSiteTry(cn, r, S, K, B, 0);
+	local e = 0;
+	while not p and e <= K.off_far do
+		p = TRF_ScSiteTry(cl, r, S, K, B, e);
+		e = e + 100;
+	end;
+	if p then return p; end;
+	return nil, B;
+end;
+
+-- Lane points of the site inputs S: the portal-station midpoints (half the portal position without a station).
+function TRF_ScLanes(S)
+	local c = {};
+	for i = 1, getn(S.ports) do
+		local p = S.ports[i];
+		if getn(S.sts) == 0 then
+			tinsert(c, {x=p.x / 2, y=p.y / 2, z=p.z / 2});
+		else
+			for j = 1, getn(S.sts) do
+				local s = S.sts[j];
+				tinsert(c, {x=(p.x + s.x) / 2, y=(p.y + s.y) / 2, z=(p.z + s.z) / 2});
 			end;
 		end;
 	end;
+	return c;
+end;
+
+-- The first of the candidates c plus r's offset at 8 angles that passes the site rule, in r's order (sweep: the
+-- candidate farthest from the stations first; others from a seed offset). Each rejected point counts under its
+-- rule in B. Returns the point or nil.
+function TRF_ScSiteTry(c, r, S, K, B, e)
 	local n = getn(c);
 	if n == 0 then return nil; end;
 	local ord = {};
@@ -1141,14 +1165,16 @@ function TRF_ScSitePick(r, idx)
 		local s0 = TRF_ScM(r.seed, n);
 		for i = 1, n do ord[i] = 1 + TRF_ScM(s0 + i - 1, n); end;
 	end;
-	local d = K.off_lo + TRF_ScM(r.seed, K.off_hi - K.off_lo + 1);
+	local d = K.off_lo + TRF_ScM(r.seed, K.off_hi - K.off_lo + 1) + e;
 	local a0 = TRF_ScM(r.seed * 13, 360);
 	for i = 1, n do
 		local q = c[ord[i]];
 		for a = 0, 7 do
 			local ang = a0 + 45 * a;
 			local p = {x=q.x + d * cos(ang), y=q.y or 0, z=q.z + d * sin(ang)};
-			if not TRF_ScSiteOf(p, S, K) then return p; end;
+			local why = TRF_ScSiteOf(p, S, K);
+			if not why then return p; end;
+			B[why] = B[why] + 1;
 		end;
 	end;
 	return nil;
@@ -1188,9 +1214,10 @@ function TRF_ScNav(r, mode)
 	return TRF_N("TRF_MarkerAdd", "scar", "TRF_SCAR_"..TRF_ScSid(r).."_NP", r.x, r.y, r.z, tx, "nav_Crash_site.dds");
 end;
 
--- Creates the objects of record i in the current system idx (6.5 placement order): the hulk first (off-screen
--- records; CreateCarcass nil = blocked: three spots 60 units off, else nothing is placed and the record waits for
--- the next entry), its died trigger, the decorations K.ring around it, then ClearInventory and the cargo from the
+-- Creates the objects of record i in the current system idx (6.5 placement order): an off-screen record with st 0
+-- takes its site from TRF_ScSitePick (no passing point: nothing is placed and the record waits for the next entry,
+-- st 0, until its ttl), the hulk first (off-screen records; CreateCarcass nil = blocked: three spots 60 units off,
+-- else nothing is placed and the record waits for the next entry), its died trigger, the decorations K.ring around it, then ClearInventory and the cargo from the
 -- seed while st <= 1. An opened wreck (st 2) comes back without its hulk, a stripped one (st 3) with an empty
 -- hulk. Returns 1 when placed.
 function TRF_ScPlace(i, idx, mode, why)
@@ -1200,10 +1227,10 @@ function TRF_ScPlace(i, idx, mode, why)
 	local sid = TRF_ScSid(r);
 	local nm = TRF_ScName(idx);
 	if r.on ~= 1 and r.st == 0 then
-		local p = TRF_ScSitePick(r, idx);
+		local p, B = TRF_ScSitePick(r, idx);
 		if not p then
-			TRF_ScE("place", "sid", sid, "system", nm, "result", "failed", "reason", "site");
-			TRF_ScDrop(i, "site");
+			TRF_ScE("place", "sid", sid, "system", nm, "result", "failed", "reason", "site", "blocked",
+				"station:"..B.station..",portal:"..B.portal..",nav:"..B.nav..",object:"..B.object, "candidate_count", B.n, "nav_count", B.nn);
 			return nil;
 		end;
 		r.x = floor(p.x + 0.5); r.y = floor(p.y + 0.5); r.z = floor(p.z + 0.5);

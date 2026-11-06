@@ -546,11 +546,11 @@ Battle scars, step 1 (`design/scar-spec.md` 7).
 | `fight` | `module=scar event=fight system=gaoba death_count=1 cluster=1 fights=raid kind=trader faction=0 mine=1 x=210 z=-174 moved=200 linked=true result=scar`; `module=scar event=fight system=gaoba death_count=2 cluster=2 fights=nil result=none reason=few` (reason few, position, site) | 1 |
 | `dead` | `module=scar event=dead class=3 faction=0 mine=0 position=true death_count=1` | 2 |
 | `fight_end` | `module=scar event=fight_end fight=raid mine=1 fight_count=1` (fight raid, staged, sweep, convoy, carrier, base) | 2 |
-| `place` | `module=scar event=place sid=420 system=gaoba kind=trader hulk=made decorations=3 decorations_wanted=3 cargo=Cargo_10x2/Uraniumx1/Cargo_08x1 value=5450 cap=8000 mode=full state=1 reason=enter` (hulk made, none); `module=scar event=place sid=423 system=gaoba result=failed reason=blocked` (reason blocked, site) | 1 |
+| `place` | `module=scar event=place sid=420 system=gaoba kind=trader hulk=made decorations=3 decorations_wanted=3 cargo=Cargo_10x2/Uraniumx1/Cargo_08x1 value=5450 cap=8000 mode=full state=1 reason=enter` (hulk made, none); `module=scar event=place sid=423 system=gaoba result=failed reason=blocked`; `module=scar event=place sid=833 system=valensia result=failed reason=site blocked=station:136,portal:0,nav:0,object:0 candidate_count=5 nav_count=1` (no site passed: rejected points per rule, candidates, of them nav points; the record keeps `st` 0 and waits) | 1 |
 | `reconcile` | `module=scar event=reconcile sid=420 system=gaoba state=1 hidden=0 hulk=alive lookup=alive mode=full result=reuse` (hulk alive, nil; lookup alive, dead, none, string; result create, failed, wait, reuse, opened, leave, shrink, hide) | 1 |
 | `hide` | `module=scar event=hide sid=504 system=heos state=1 deleted=3 reason=gate:quest` (reason `gate:<why>`, `mode:<why>`, `hold:<disable_action, sys_sos, suppressed>`, `deny`) | 1 |
 | `open` | `module=scar event=open sid=420 system=gaoba reason=died` (reason died, poll, jump, entry) | 1 |
-| `expire` | `module=scar event=expire sid=140 system=callipso kind=trader on_screen=0 state=2 age=13 ttl=12 deleted=0 reason=ttl` (reason ttl, cap, fight_cap, site) | 1 |
+| `expire` | `module=scar event=expire sid=140 system=callipso kind=trader on_screen=0 state=2 age=13 ttl=12 deleted=0 reason=ttl` (reason ttl, cap, fight_cap) | 1 |
 | `shrink` | `module=scar event=shrink sid=420 system=gaoba state=2 age=8 ttl=12 decorations=2` | 1 |
 | `orphan` | `module=scar event=orphan sid=425 system=gaoba deleted=1` | 1 |
 | `enter` | `module=scar event=enter system=gaoba mode=full sid=420 state=1 result=reuse line=scararrivet0 record_count=1` (mode full, ch4, visual) | 1 |

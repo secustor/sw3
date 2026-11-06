@@ -135,6 +135,24 @@ function SC_R(idx)
 	return r;
 end;
 
+-- Valensia's vanilla trader contact (activate.script 149): portals R and U, one nav point at the trade station
+-- + (0, 30, 0). SC_NoCt: no registered contact. SC_NoSite: the station rule at 100000 for this entry (the module
+-- files are loaded again at the next entry).
+function SC_ValCt()
+	__sys_LevelRegisteredContacts = {{TRADER_FLIGHT, "Trade_Group_1", {PORTAL_R, PORTAL_U}, {Vector3(-200, -20, -300)}, 40, 14}};
+end;
+function SC_NoCt() __sys_LevelRegisteredContacts = {}; end;
+function SC_SiteInFar(idx, sid)
+	local S = SC_SiteIn0(idx, sid);
+	S.st_r = 100000;
+	return S;
+end;
+function SC_NoSite()
+	SC_ValCt();
+	SC_SiteIn0 = TRF_ScSiteIn;
+	TRF_ScSiteIn = SC_SiteInFar;
+end;
+
 -- A live ship next to every spot (CreateCarcass answers nil while block_r is large).
 function SC_Block()
 	local b = HOST_Obj("BLOCK", 0, 0, 0);
@@ -448,6 +466,67 @@ function T_SC_C()
 	SC_Jump("gaoba");
 	r2 = SC_R(g);
 	HOST_Check(r2.st == 1 and SC_Objs(g * 10 + 3) >= 2, "next entry with free space: placed (convoy hulk and decorations)");
+	-- Valensia, as in the game run of leg 298: the one trader contact has a single nav point, the trade station +
+	-- (0, 30, 0) (activate.script 149), so every 150-250 offset of it is inside the 400 station rule. The lane
+	-- points (portal-station midpoints) are tried next; the staged lab record (seed 4325, st 0, x = y = z = 0).
+	TRF.scar = nil;
+	SC_Jump("heos");
+	local v = V_Idx("valensia");
+	local vs = v * 10 + 3;
+	SC_Rec(v, {k=3, kind=1, lv=1, seed=4325, nd=3, nm=7});
+	n0 = S_Mark();
+	SC_Jump("valensia", nil, SC_ValCt);
+	local rv = SC_R(v);
+	local Sv = TRF_ScSiteIn(v, vs);
+	HOST_Check(getn(Sv.sts) == 2 and getn(Sv.ports) == 2 and getn(Sv.navs) == 1, "valensia site inputs: 2 map stations, 2 portals, the station nav point");
+	HOST_Check(rv and rv.st == 1 and rv.x ~= 0 and not TRF_ScSiteOf(rv, Sv, K) and SC_Hulk(vs)
+		and S_Logs(n0, "module=scar event=place sid="..vs.." system=valensia kind=trader hulk=made") == 1,
+		"valensia, the nav point at the station: placed at a lane point ("..tostring(rv and rv.x)..", "..tostring(rv and rv.z)..")");
+	local bad, bad3 = 0, 0;
+	for s = 1, 9999 do
+		if not TRF_ScSitePick({sys=v, k=0, kind=1, seed=s}, v) then bad = bad + 1; end;
+		if not TRF_ScSitePick({sys=v, k=0, kind=3, seed=s}, v) then bad3 = bad3 + 1; end;
+	end;
+	HOST_Check(bad == 0 and bad3 == 0, "valensia: a site for every seed 1-9999 (trader misses "..bad..", sweep misses "..bad3..")");
+	-- Every map system with a portal, no registered contact: a lane site for every seventh seed (the lane offset
+	-- grows up to off_far 300 more where the midpoints sit near a station or portal: Altair, Haron, XT20).
+	local ct = __sys_LevelRegisteredContacts;
+	__sys_LevelRegisteredContacts = {};
+	local mp, miss, ns = TRF_Map(), "", 0;
+	for i = 1, getn(mp.sys) do
+		if mp.sys[i].idx == i and getn(TRF_ScSiteIn(i, -1).ports) > 0 then
+			ns = ns + 1;
+			local nb = 0;
+			for s = 1, 9999, 7 do if not TRF_ScSitePick({sys=i, k=0, kind=1, seed=s}, i) then nb = nb + 1; end; end;
+			if nb > 0 then miss = miss.." "..mp.sys[i].name..":"..nb; end;
+		elseif mp.sys[i].idx ~= i then miss = miss.." idx:"..i;
+		end;
+	end;
+	__sys_LevelRegisteredContacts = ct;
+	HOST_Check(ns >= 100 and miss == "", "lane site in each of "..ns.." map systems with a portal, every seventh seed (misses:"..miss..")");
+	-- No registered contact: the lane points only.
+	TRF.scar = nil;
+	SC_Jump("heos");
+	SC_Rec(v, {k=3, kind=1, lv=1, seed=4325, nd=3, nm=7});
+	SC_Jump("valensia", nil, SC_NoCt);
+	rv = SC_R(v);
+	HOST_Check(rv and rv.st == 1 and not TRF_ScSiteOf(rv, TRF_ScSiteIn(v, vs), K), "valensia without contacts: placed at a lane point");
+	-- No point passes (station rule 100000): the record stays (st 0, no expire line), the line names the rules, and
+	-- the next entry places it.
+	TRF.scar = nil;
+	SC_Jump("heos");
+	SC_Rec(v, {k=3, kind=1, lv=1, seed=4325, nd=3, nm=7});
+	n0 = S_Mark();
+	SC_Jump("valensia", nil, SC_NoSite);
+	rv = SC_R(v);
+	HOST_Check(rv and rv.st == 0 and rv.x == 0 and SC_Objs(vs) == 0 and S_Logs(n0, "event=expire sid="..vs) == 0
+		and S_Logs(n0, "event=place sid="..vs.." system=valensia result=failed reason=site blocked=station:136,portal:0,nav:0,object:0 candidate_count=5 nav_count=1") == 1,
+		"no passing site: record kept at st 0, the line counts the rules ("..S_Line(n0, "event=place sid="..vs)..")");
+	SC_Jump("heos");
+	SC_Jump("valensia", nil, SC_ValCt);
+	rv = SC_R(v);
+	HOST_Check(rv and rv.st == 1 and SC_Hulk(vs), "next entry with a passing site: placed");
+	TRF.scar = nil;
 end;
 
 -- d: the reconcile table --------------------------------------------------------------------------
