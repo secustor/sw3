@@ -194,10 +194,12 @@ function TRF_SgSlot(idx)
 	return nil;
 end;
 
--- Points {{x, y, z}, ...} of system idx, or nil.
+-- Points {{x, y, z}, ...} of system idx, or nil. The generated table is built once per visit (SG.pd; the tick reads it).
 function TRF_SgPts(idx)
 	if type(idx) ~= "number" then return nil; end;
-	local l = TRF_SgPointData()[TRF_SgName(idx)];
+	local sg = %SG;
+	if type(sg.pd) ~= "table" then sg.pd = TRF_SgPointData(); end;
+	local l = sg.pd[TRF_SgName(idx)];
 	if type(l) == "table" and getn(l) > 0 then return l; end;
 	return nil;
 end;
@@ -456,11 +458,12 @@ function TRF_SgExpireOf(r, legs, cur, T, ok)
 	return nil;
 end;
 
--- Area marker point of source point pt (6.4): angle and radius rmin..rmax from hash h, the same y. Returns the point and
--- its distance from pt.
+-- Area marker point of source point pt (6.4): the angle from hash h, the radius rmin..rmax from a second hash of h
+-- (h / 360 spans only 0..27 and would keep every radius within rmin + 27), the same y. Returns the point and its distance
+-- from pt.
 function TRF_SgAreaOf(pt, h, rmin, rmax)
 	local a = TRF_SgMod(h, 360);
-	local d = rmin + TRF_SgMod(floor(h / 360), rmax - rmin + 1);
+	local d = rmin + TRF_SgMod(TRF_SgHashOf(h, 5, 7), rmax - rmin + 1);
 	return {x=pt.x + d * cos(a), y=pt.y, z=pt.z + d * sin(a)}, d;
 end;
 
@@ -735,10 +738,11 @@ end;
 
 -- Entry (6.1) -----------------------------------------------------------------------------
 
--- Deletes every TRF_SGO_<slot> object found by label (reason entry, load, wind, jump). Returns the count.
+-- Deletes every TRF_SGO_<slot> object found by label (reason entry, load, wind, jump), slots 1..max(region count,
+-- K.slot_max). Returns the count.
 function TRF_SgOrphans(why)
 	local n = 0;
-	for slot = 1, TRF_SgK().slot_max do
+	for slot = 1, max(TRF_SgN(), TRF_SgK().slot_max) do
 		local lb = "TRF_SGO_"..slot;
 		local o = TRF_SgFind(lb);
 		if o and TRF_SgDel(o) then
@@ -771,7 +775,7 @@ end;
 -- Visit state reset (entry).
 function TRF_Sg_OnEnter()
 	local sg = %SG;
-	sg.ht = nil; sg.o = nil; sg.mp = nil; sg.mk = nil; sg.q = nil; sg.pr = {}; sg.gc = nil; sg.sr = nil; sg.ar = nil;
+	sg.ht = nil; sg.o = nil; sg.mp = nil; sg.mk = nil; sg.q = nil; sg.pr = {}; sg.gc = nil; sg.sr = nil; sg.ar = nil; sg.pd = nil;
 end;
 
 -- The last module call of TRF_OnActivate (after trf_remark's).
@@ -962,7 +966,10 @@ function TRF_SgStepBody(idx)
 	if sg.mk and not TRF_N("TRF_MarkerHeld", "TRF_SG_AR_"..r.slot) and not TRF_N("TRF_MarkerHeld", "TRF_SG_NP_"..r.slot) then
 		sg.mk = nil;
 	end;
-	if r.t == 1 and type(sg.ht) == "number" and TRF_SgRs() - sg.ht >= TRF_SgTune().sg_read_s then
+	-- A heard source whose entry or load was skipped by a passing gate starts its reading wait at the first step that
+	-- passes (a read one gets its marker again the same way).
+	if r.t == 1 and type(sg.ht) ~= "number" then sg.ht = TRF_SgRs(); end;
+	if r.t == 1 and TRF_SgRs() - sg.ht >= TRF_SgTune().sg_read_s then
 		TRF_SgRead(idx, r);
 	elseif r.t == 2 and not sg.mk then
 		if sg.o then TRF_SgObjMk(idx, r); else TRF_SgArea(idx, r); end;

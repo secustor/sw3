@@ -890,7 +890,7 @@ function TRF_UI_ArrDis(idx, band)
 	if type(TRF_EffTier) == "function" and type(TRF_Str_Word) == "function" then
 		-- trf_str's threat word (v1-spec 6.1: T3 packs, T4 raiders; a Ghost clan of trf_temper, design/temperament-spec.md
 		-- T12: "... and unidentified contacts"), shared with A08's reading (design/static-signals-spec.md D12).
-		text = TRF_Txt("arrt"..band, TRF_Str_Word(idx));
+		text = TRF_Txt("arrt"..band, (TRF_Str_Word(idx)));
 	else
 		text = TRF_Txt("arr"..band);
 	end;

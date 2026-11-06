@@ -85,6 +85,7 @@ The recommendation is the default above.
 | `q` | visit latch: `TRF_Safe_QState()` was seen this visit |
 | `pr[reason]` | 1 = this skip reason was logged this visit |
 | `tc` | the clamped tune table and the `TRF_Tune` table it was built from |
+| `pd` | the point table of `TRF_SgPointData()`, built once per visit (the tick reads it) |
 
 No handle in `TRF`.
 
@@ -466,5 +467,6 @@ Built as specified: `S/trf_signal.script` with the generated block of `tools/gen
 14. Scorer: W-A16.10 now counts the offer markers held at once (added minus owner clears, visit-wide clears and bumps), the rule W-A08.10 shares, because a found cache and the signal's show replace one marker by another and so log two `added` lines for one held marker. The W-A16 selftest verdicts are unchanged.
 15. Host fixture: Sunji is a dead end (one portal, no stash system within 4 jumps), so `sg-e` tests the stash outcome from Farles; the gate runs of `sg-f` give lidau and ahilles a point through a loader hook and enter without a region tick (`SG_GoNt`), since E2 rests a source whose system the strict gate denies at the tick before the entry's R5 skip could show; host_remark's config turns `signals` off (a source lit in Gaoba spoke in `rm-d` and changed its message count); the unknown-kind checks of `ti-b` and `ti-g` use kind 14.
 16. `install.sh` lists no module keys and is unchanged. pe/API.md is unchanged (no DLL native).
+18. Review fixes: the area radius comes from a second hash of `h` (`h / 360` spans only 0..27, so the radius stayed within `sg_area_min + 27`); a heard source whose entry or load was skipped by a passing gate starts its reading wait at the first 1 s step that passes (6.4: `SG.ht` set there when nil), as a read one gets its marker again there; `TRF_SgOrphans` scans `max(TRF_RgMap().n, 8)` labels.
 17. Not verifiable on the host and left to the CHECK table: after a load the engine's label lookup may answer a string for a mod object (v01-spec 3.3), in which case the load's orphan delete cannot find a recorder the save kept (SG6).
 
