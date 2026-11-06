@@ -132,10 +132,15 @@ Outputs (in the clone's save dir, listed in the load menu under the same names):
 
 ## mk_lab_saves.sh
 
-Builds the test lab saves from one save with a TRF v4 table (default `BASE=.work/saves/Base.sav`, e.g. a kit autosave) with `savetool.py get --json`, `mk_lab_saves.py` and `set --json`. `OUT` defaults to the clone's save dir; the script refuses to write there while `sw3cw.exe` runs. Run it with `OUT=.work/saves/lab` to inspect the results first.
+Builds the test lab saves from one save with a TRF v4 table (default `BASE=.work/saves/Base.sav`, e.g. a kit autosave) with `savetool.py get --json`, `mk_lab_saves.py` and `set --json`. `OUT` defaults to the clone's save dir; the script refuses to write there while `sw3cw.exe` runs. Run it with `OUT=.work/saves/lab` to inspect the results first. `VARIANTS` picks a subset; `route`, `raids` and `east` need a `BASE` saved in Elio (built for `Quicksave-98`, chapter 8, the sessions of `design/test-plan-sessions.md`) and are skipped for a save elsewhere. Every output must pass `savetool.py roundtrip`; when `.work/lua4/bin/lua` exists (`LUA4`), `lab_fixcheck.lua` loads the staged `TRF` under the host harness (`TRF_OnLoad`, so `TRF_Repair` and every module repair run, in the save's system at chapter 8) and `mk_lab_saves.py verify` compares the variant's edited keys with the repaired table: any change or any `event=fix`/`event=repair` line fails the build. `mk_lab_saves.py keys <variant>` lists those keys.
 
 | save | `TRF` edit | tests |
 |---|---|---|
 | `TRF lab heat4` | `std.heat=4`, `std.heat_t=clock.legs` | hail refusal menu (heat 3-6); heat falls 1 per `heat_decay` legs |
 | `TRF lab recovery` | `rg[slot]` of the save's system: `ph=5`, `pt=clock.legs`, Raids fields cleared | raid help pays help 2 in Recovery; the phase lasts 4-10 legs at least, so use `T_leg=300` |
 | `TRF lab pro9` | `pro=9` on every `TRF.sys` entry | high-traffic checks; region ticks move `pro` back toward the phase target (`PRO_SET` holds it) |
+| `TRF lab base` | none (renamed copy) | any check from the save as it is (session C); the original quicksave is never saved over |
+| `TRF lab charter` | `std.help` raised to 3 | charter unlock, then "Report in" (W-B02.4-6) |
+| `TRF lab route` | `scar`: fresh trader wrecks in Valensia (age 2) and Gefest (age 1), a pirate sweep scar in Gredos (age 8), at most 12 records (the oldest dropped); `cap[3]` (Gefest) `st=4`, `dl=legs-5`; `sg` block 2 = Escaflon point 1, state 0, lit now; `stash`: a hidden cache (`st=0`) in Escaflon slot 1, clan 2; `stn[33]`, `stn[83]` `st=4`; `haunt[31]` (Elio) `k=3`, `l=legs-6` | session A: W-B06, W-A08, W-A16.1/8, E7.2, E0.8, E16.7 |
+| `TRF lab raids` | `rg[3]` (Gefest) `ph=3`, `pt=legs`, `sw=0`; `iq={a=0, d=2, r=0}`, `db=70310` (chapter stamp 7, 3 left, 1 pending); `stn[83]` `st=4`; the Gefest scar and captain of `route` | session B: B10 Haggler raids around Elio, A05, W-B02.1/2/8, W-B06.4 (`rm_own=0`) |
+| `TRF lab east` | `wq={v=1, s=70, k=0, n=0, sd=4242, r=1}` (the load adds `ql=70`); `std.help` 3; `crp` block 4 `02000000000` (2 USS losses in Golkonda), block 8 cleared (XT-27 pull-out ended: frees a slot of `crp_pull_max` 2), block 6 end moved to `legs+24` | session D: Q-WQ.10, EW8.11-15, A22 |
