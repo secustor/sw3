@@ -149,7 +149,7 @@ function SC_SiteInFar(idx, sid)
 end;
 function SC_NoSite()
 	SC_ValCt();
-	SC_SiteIn0 = TRF_ScSiteIn;
+	if TRF_ScSiteIn ~= SC_SiteInFar then SC_SiteIn0 = TRF_ScSiteIn; end;
 	TRF_ScSiteIn = SC_SiteInFar;
 end;
 
