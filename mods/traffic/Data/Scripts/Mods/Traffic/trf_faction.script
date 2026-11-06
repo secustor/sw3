@@ -164,6 +164,13 @@ function TRF_FcSlotOf(idx)
 	return nil;
 end;
 
+-- Script name of system idx for log values (the texts use TRF_FcSysName).
+function TRF_FcLogSys(idx)
+	local s = TRF_N("TRF_SysName", idx);
+	if type(s) == "string" then return s; end;
+	return tostring(idx);
+end;
+
 function TRF_FcSysName(idx)
 	if type(TRF_SysEn) == "function" then
 		local s = TRF_FcP(TRF_SysEn, {idx});
@@ -1536,7 +1543,7 @@ function TRF_FcPoShown()
 	local L = TRF_FcLive();
 	if not L or type(L.po) ~= "table" then return; end;
 	TRF_FcStat("po_box");
-	TRF_FcE("offer", "offer_kind", L.po.k, "system", TRF_FcSysName(L.po.s), "system_index", L.po.s, "box", "true");
+	TRF_FcE("offer", "offer_kind", L.po.k, "system", TRF_FcLogSys(L.po.s), "system_index", L.po.s, "box", "true");
 end;
 
 -- Box answers (trf_plumb runs the original afterwards).
@@ -1547,7 +1554,7 @@ function TRF_FcPoDec() TRF_FcPoStep(0); end;
 function TRF_FcPoFail()
 	local L = TRF_FcLive();
 	if L and type(L.po) == "table" then
-		TRF_FcE("offer", "offer_kind", L.po.k, "system", TRF_FcSysName(L.po.s), "system_index", L.po.s, "box", "false");
+		TRF_FcE("offer", "offer_kind", L.po.k, "system", TRF_FcLogSys(L.po.s), "system_index", L.po.s, "box", "false");
 	end;
 	if L then L.po = nil; end;
 end;

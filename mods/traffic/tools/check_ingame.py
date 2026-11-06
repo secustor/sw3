@@ -3374,7 +3374,8 @@ def c_wi2(ctx):
     # (design/tips-spec.md D14, the per-docking set).
     dock, src = {}, None
     for r in ctx.recs:
-        if r.src != src or r.is_("station", "dock") or r.is_("station", "near", result="spoken") or r.is_("state", "enter"):
+        if r.src != src or r.is_("station", "dock") or r.is_("station", "near", result="spoken") or r.is_("state", "enter") \
+                or r.is_("state", "load"):
             dock, src = {}, r.src
             continue
         if r.is_("tips", "pick", result="shown") and r.get("surface") in ("news", "tip"):

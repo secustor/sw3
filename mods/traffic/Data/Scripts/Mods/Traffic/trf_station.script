@@ -1109,13 +1109,24 @@ function TRF_StnTradeBody(param, stage)
 	local nf = 0;
 	if nr then nf = 1; end;
 	local gk, gs = nil, nil;
-	if nr then
+	if nr and sv.g[k] then
 		if TRF_StnOpt("voice_dock") == 1 then gs = "near"; end;
 	else
+		-- Also the retry of an approach greeting whose radio failed (SV.nh[k].gs "err" leaves SV.g[k] unset).
 		gk, gs = TRF_StnGreetStep(k, er, nt, c.spk, T);
 	end;
 	local nwf, tipk, amb = 0, nil, nil;
 	if nr ~= 2 then nwf, tipk, amb = TRF_StnInfoStep(k, idx, er, nt, ch, T); end;
+	-- The approach spoke the greeting but not the info line (the hold, a gate or the latch lasted until the docking): its
+	-- near line here, once per station and visit (STN-NEAR.1), with the greeting only; the info line is the dock line's.
+	if nr == 1 then
+		local h = sv.nh[k] or {};
+		local ng = h.g;
+		if gk then ng = nil; end;
+		sv.nr[k] = 2;
+		TRF_StnE("near", "station_key", k, "distance", TRF_StnF(d), "result", "spoken", "greeting", ng, "greeting_skip", h.gs,
+			"news", TRF_KvB(0), "tip", nil, "ambient", nil);
+	end;
 	sv.dk[k] = 1;
 	-- Fee (8.5): F1 (the gates above), F2 no story mission and no visit latch (G6: SV.mis, logged as pass
 	-- reason=latch at=dock), F3 strict not 0, F4 chapter; pv = paid or docked on credit in this visit (saved, so a

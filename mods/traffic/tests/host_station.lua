@@ -1762,6 +1762,26 @@ function T_STN_I()
 		and S_Logs(n0, "station_key=51 distance=71 result=spoken") == 0 and strfind(dl, "near=false", 1, 1) and strfind(dl, "no_fee_reason=latch", 1, 1),
 		"latch: nothing on approach, the docking as before ("..dl..")");
 	HOST_Press("cancel");
+	-- The docking inside the hold (the greeting spoken, the info line not yet): the near line at the docking with the greeting
+	-- only, before the dock line; the info line the docking's; nothing more on the next ticks.
+	S_NearVisit();
+	S_Run(1);
+	S_MsAt(-150, 10, 450);
+	n0 = S_Mark();
+	r = S_Run(1);
+	D = S_Setup({});
+	r2 = S_Trade(D.trade[1]);
+	if r2.nb > 0 then HOST_Press("cancel"); end;
+	r3 = S_Run(3);
+	sp = S_Line(n0, "module=station event=near station_key=51 ");
+	dl = S_Line(n0, "module=station event=dock station_key=51 ");
+	HOST_Check(S_Count(r.msg, g2) == 1 and S_Count(r2.msg..r3.msg, g2) == 0 and TRF_StnSV().nr[51] == 2
+		and strfind(sp, "result=spoken greeting=stnr2 greeting_skip=nil news=false tip=nil ambient=nil", 1, 1)
+		and S_First(n0, "event=near station_key=51 ") < S_First(n0, "event=dock station_key=51 ")
+		and strfind(dl, "greeting=nil greeting_skip=near", 1, 1) and strfind(dl, "near=true", 1, 1)
+		and (strfind(dl, "news=true", 1, 1) or strfind(dl, "ambient=stnamb1", 1, 1))
+		and S_Logs(n0, "module=station event=near station_key=51 ") == 1,
+		"dock inside the hold: the near line with the greeting only, the info line at the docking ("..sp.." / "..dl..")");
 	-- Two stations in range: the nearer greets first, the other after stn_gap.
 	S_NearVisit();
 	TRF.stn[251] = {st=1, lg=TRF.clock.legs};
