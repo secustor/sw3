@@ -60,7 +60,7 @@ The existing wrapper thunks stay where they are, with their install guards and l
 2. Line handlers in ascending order; the owed payers run once at the kind's owe order (trade 50, patrol 30, pir 50, req none). Lines show through `TRF_Say(text, 8)`, the spacing of trf_hail's and trf_station's dock lines.
 3. While `__disableAction == TRUE` or `__sys_SOS == TRUE`, only handlers registered with `always = 1` run, no payer and no box (`event=dock ... result=skipped reason=disable_action|sys_sos`).
 4. Box: a pending box of an earlier docking is dropped (a docking needs the modal box closed). No box when kind is `trade` during the answer of a fee box (`s.fee = 1`) and cfg `wb_box_after_fee` is 0 (`reason=after_fee`), or when another owner holds the box lock (`reason=box_lock`). Otherwise the candidates by prio; the first box spec wins and opens under the lock `dock_<kind>`; lower candidates are not asked.
-5. The vanilla function exactly once: at once with its results passed through, or after the box answer (`TRF_PlBoxOk`/`TRF_PlBoxNo` -> the spec's `ok`/`no` with `a`, protected; a returned string is shown as a line; then the vanilla function). For kind `req` the box replaces the vanilla call (4.2).
+5. The vanilla function exactly once: at once with its results passed through, or after the box answer (`TRF_PlBoxOk`/`TRF_PlBoxNo` -> the spec's `ok`/`no` with `a`, protected; a returned string is shown as a line; then the vanilla function). For kind `req` the box replaces the vanilla call (4.2). A box opened as a dialog window queues the vanilla function instead (4.6).
 
 Box spec: `{title (default per kind), text, ok, no, a, own (log name), fee = 1 (a #3 fee box), fail (called when the box cannot open: lock refused, no `ShowMsgBox`, an error), shown (called after the box opened; the owner's stat and log of an open box, 2026-10-24)}`. The open box is also kept in a function global (`TRF_PlBoxThunk`), so an answer after a MapInitialization still runs the spec's handler, which tests its own generation (`event=box_answer ... result=stale`).
 
@@ -102,6 +102,19 @@ Handlers by prio: 300 #9 depot match (feature), 100 the #3 mood table (`TRF_Stn_
 ### 4.5 `Case_Eject`
 
 trf_gen's thunk calls trf_events' `TRF_CaseEject`, which calls `TRF_PlEject(pilot, "TRF_orig_Case_Eject")`: the vanilla result (unprotected), then each handler (traffic's `TRF_Ev_EjectH`, the pirate watch); a handler may return 1..3, except while `GetQuestLabel("__NoEject") ~= ""`, when the vanilla result stands.
+
+### 4.6 Dialog boxes (`s.dlg`, `TRF_PlDlgAnswer`)
+
+A box spec with `dlg` (trf_wq, trf_debrief, trf_temper; [freight-quest-spec.md](freight-quest-spec.md) 13.1) opens a dialog window instead of the box. Its owner answers from the dialog's answer callback with `TRF_PlDlgAnswer(a, esc)`: 1 or 0 run the spec's `ok` or `no` (as the box buttons), -1 neither; `esc` 1 (the window closed without a final answer, seen from the owner's due check) runs the handler without the vanilla call.
+
+The vanilla dock function of a final answer is never called inside the answer callback (2026-11-06, [mod-research/crash-undock-61b537.md](mod-research/crash-undock-61b537.md)). Called there, `TradeStationDlg` opens no station window, so the engine's trade session stays open; the next dock's `StationShop` frees the inventories that session still points at, and the undock after it reads freed memory (page fault at 0x61b537). `TRF_PlDefer` queues the call instead:
+
+- `P.dd = {n, k, o, args, own, g, j, sys}`: the saved vanilla function and its arguments (the same as the box's), the generation, `TRF_Jumps()` and `TRF_CurIdx()` at the answer. `TRF_Due(dd_dt, "TRF_PlDdRun", n)`, `dd_dt` 0.2 game s (`TRF_PlK`). The game clock stands while the window is up, so the due call runs after it has closed, from the tick, as trf_hail's due calls open `TradeStationDlg` after a hail dialog (v02-spec 6.1 item 14). The due list runs under `__disableAction` and `__sys_SOS` too, as a vanilla box OK would.
+- `TRF_PlDdRun(n)`: P.dd cleared, then the vanilla function once and `TRF_PlJbAfter` (the Office board arm, 4.1). Another generation, jump count or system drops the call (and clears an armed board); an `n` no longer queued does nothing.
+- A second answer finds no open dialog box (`result=stale`). A newer queued call replaces the older one (`reason=replaced`); `TRF_Pl_BeforeJump` and `TRF_Pl_OnLoad` drop it (`reason=jump`, `load`); a refused due drops it at once (`reason=due`, the player docks again, as after Esc).
+- Mission cards and boxes keep the direct call (the card events come from the tick, the box OK is vanilla's own context).
+
+Log: `module=plumb event=dock_defer kind=<k> box=<own> delay=0.200 result=queued`, then `result=run` or `result=dropped reason=<replaced,jump,load,generation,system,due>`. Host: `wq-g` (the accept and the close of D1 at the dock, a second answer, a jump, each guard, replace, due list full). In-game check: freight-quest-spec Q-WQ.15.
 
 ## 5. Arrival lines
 

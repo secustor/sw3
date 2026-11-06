@@ -1521,6 +1521,29 @@ function WQ_Read(rel)
 	return s;
 end;
 
+-- One D1 at the Debris 6 dock closed with Not my business (the vanilla dock call queued); then w: "j", "g", "sys" set
+-- that guard field of the queued call to -1, "rep" queues a newer call (box wq2), "full" fills the due list before the
+-- answer; then 2 s of ticks. Returns the log mark at the dock, the vanilla calls and the station windows since.
+function WQ_DdGuard(w)
+	local h = HOST();
+	WQ_Begin("debris6", "5_1", WQ_GCfg());
+	WQ_DlgUi(0);
+	WQ_Visit();
+	local tk0, nd = h.trade_ok, getn(h.dlgs);
+	PC_Dock();
+	local n0 = S_Mark();
+	if w == "full" then
+		local d = TRF_H().due;
+		while getn(d) < 32 do TRF_Due(60, "TRF_WqNoErr"); end;
+	end;
+	WQ_Picks("a_bye");
+	local dd = TRF_PlReg().dd;
+	if type(dd) == "table" and (w == "j" or w == "g" or w == "sys") then dd[w] = -1; end;
+	if w == "rep" then TRF_PlDefer({k="trade", o="TRF_orig_TradeOk", args={}, s={own="wq2"}}); end;
+	T_Tick(4, 0.5);
+	return n0, h.trade_ok - tk0, getn(h.dlgs) - nd;
+end;
+
 function WQ_GCfg(t)
 	local c = {wq_dialog=1, hail_xml=1, news_mode=2};
 	if t then for k, v in t do c[k] = v; end; end;
@@ -1623,8 +1646,28 @@ function T_WQ_G()
 	WQ_Picks("a_acc");
 	w = WQ_Dlg();
 	local open = w.cur == "msg30" and TRF.wq == nil;
+	-- The vanilla dock call is queued at the final answer, never made inside the dialog's answer callback
+	-- (design/mod-research/crash-undock-61b537.md); a second answer finds no box; the due call makes it once.
+	local tk0 = h.trade_ok;
 	WQ_Picks("a_fin");
+	local dd = TRF_PlReg().dd;
+	local ddn = dd and dd.n;
+	local n1 = S_Mark();
+	TRF_PlDlgAnswer(1);
+	HOST_Check(h.trade_ok == tk0 and getn(h.dlgs) == nd and type(dd) == "table" and dd.k == "trade" and dd.o == "TRF_orig_TradeOk"
+		and type(dd.args) == "table" and getn(dd.args) == 0 and TRF_PlReg().dd == dd
+		and S_Logs(n0, "module=plumb event=dock_defer kind=trade box=wq delay=0.200 result=queued") == 1
+		and S_Logs(n0, "event=dock_defer kind=trade box=wq result=run") == 0
+		and S_Logs(n1, "module=plumb event=box_answer answer=1 via=dialog result=stale") == 1,
+		"D1 final answer: the vanilla dock call queued (dock_defer queued, the box's function and arguments), not made in the "
+		.."answer callback; a second answer is stale and queues nothing");
 	T_Tick(2, 0.5);
+	local tk1 = h.trade_ok;
+	T_Tick(4, 0.5);
+	HOST_Check(tk1 == tk0 + 1 and h.trade_ok == tk1 and h.trade_ok_tick == 1 and getn(h.dlgs) == nd + 1
+		and h.dlgs[getn(h.dlgs)] == GetCurrentLocation() and TRF_PlReg().dd == nil and TRF_PlReg().ddn == ddn
+		and S_Logs(n0, "module=plumb event=dock_defer kind=trade box=wq result=run") == 1,
+		"D1: the due call makes the vanilla dock call once from the tick, TradeStationDlg with the dock's _param");
 	local R = TRF.wq;
 	HOST_Check(open and WQ_Has(w.text, "the first one this week") and R and R.s == 10 and h.qlog.trf_wq and h.qlog.trf_wq.d == "#TRF_wqd10"
 		and h.quests.trf_wq == QUEST_PROCESS and getn(h.dlgs) == nd + 1 and not WQ_Has(WQ_Said(m0, s0), TRF_Txt("wqok"))
@@ -1636,6 +1679,40 @@ function T_WQ_G()
 	local np0 = getn(h.posts);
 	TRF_WqLetter(1);
 	HOST_Check(getn(h.posts) == np0, "letter P1 never twice");
+	-- A jump between the final answer and the due call drops the queued call; its late due call does nothing.
+	WQ_Begin("debris6", "5_1", WQ_GCfg());
+	WQ_DlgUi(0);
+	WQ_Visit();
+	nd = getn(h.dlgs);
+	tk0 = h.trade_ok;
+	PC_Dock();
+	n0 = S_Mark();
+	WQ_Picks("a_bye");
+	ddn = TRF_PlReg().dd and TRF_PlReg().dd.n;
+	local q1 = S_Logs(n0, "event=dock_defer kind=trade box=wq delay=0.200 result=queued") == 1;
+	TRF_BeforeJump("elio");
+	local dj = TRF_PlReg().dd == nil and S_Logs(n0, "module=plumb event=dock_defer kind=trade box=wq result=dropped reason=jump") == 1;
+	TRF.active = 1;
+	TRF_PlDdRun(ddn);
+	T_Tick(4, 0.5);
+	HOST_Check(q1 and dj and ddn and h.trade_ok == tk0 and getn(h.dlgs) == nd and S_Logs(n0, "result=run") == 0,
+		"a jump after the final answer drops the queued dock call (reason jump); the late due call runs nothing");
+	-- The guards of the due call: another jump count, generation or system drops the queued call; a newer queued call
+	-- replaces it (one vanilla call); a refused due drops it at once.
+	local n0d, cd, ld = WQ_DdGuard("j");
+	local ok = cd == 0 and ld == 0 and S_Logs(n0d, "event=dock_defer kind=trade box=wq result=dropped reason=jump") == 1;
+	n0d, cd, ld = WQ_DdGuard("g");
+	ok = ok and cd == 0 and ld == 0 and S_Logs(n0d, "event=dock_defer kind=trade box=wq result=dropped reason=generation") == 1;
+	n0d, cd, ld = WQ_DdGuard("sys");
+	HOST_Check(ok and cd == 0 and ld == 0 and S_Logs(n0d, "event=dock_defer kind=trade box=wq result=dropped reason=system") == 1
+		and TRF_PlReg().dd == nil,
+		"the due call drops the queued dock call on another jump count, generation or system (no vanilla call)");
+	n0d, cd, ld = WQ_DdGuard("rep");
+	ok = cd == 1 and ld == 1 and S_Logs(n0d, "event=dock_defer kind=trade box=wq result=dropped reason=replaced") == 1
+		and S_Logs(n0d, "event=dock_defer kind=trade box=wq2 delay=0.200 result=queued") == 1 and S_Logs(n0d, "box=wq2 result=run") == 1;
+	n0d, cd, ld = WQ_DdGuard("full");
+	HOST_Check(ok and cd == 0 and ld == 0 and S_Logs(n0d, "event=dock_defer kind=trade box=wq result=dropped reason=due") == 1,
+		"a newer queued dock call replaces the older one (one vanilla call); with the due list full the call is dropped");
 	-- Old hauler: page 2 and 3 variants; decline gives the cooldown.
 	WQ_Begin("debris6", "5_1", WQ_GCfg());
 	WQ_DlgUi(0);

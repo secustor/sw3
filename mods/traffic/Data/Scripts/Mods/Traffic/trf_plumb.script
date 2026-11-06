@@ -76,9 +76,11 @@ end;
 
 -- Constants without a cfg key (spec 2): box lock stale after box_stale game s; arrival lines arr_gap s apart,
 -- at most arr_max per entry; at most mk_max markers, labels up to mk_len characters, owners up to mk_own; a job holds at most
--- job_max fields, strings up to job_len; the orphan scan probes labels trf_<x>_<n>_<j>, n 1..scan_n, j 1..scan_j.
+-- job_max fields, strings up to job_len; the orphan scan probes labels trf_<x>_<n>_<j>, n 1..scan_n, j 1..scan_j; the vanilla
+-- dock call of a dialog box runs dd_dt game s after the final answer (TRF_PlDefer).
 function TRF_PlK()
-	return {box_stale=60, arr_gap=3, arr_max=3, mk_max=8, mk_len=24, mk_own=8, job_max=6, job_len=24, scan_n=4, scan_j=6, jb_max=8};
+	return {box_stale=60, arr_gap=3, arr_max=3, mk_max=8, mk_len=24, mk_own=8, job_max=6, job_len=24, scan_n=4, scan_j=6, jb_max=8,
+		dd_dt=0.2};
 end;
 
 function TRF_PlLive()
@@ -685,8 +687,9 @@ end;
 
 -- Box buttons: the spec's handler (protected; a returned string is shown as a line), then the vanilla call
 -- once (not for the request kind, whose box replaces it). During the handler of a fee box (s.fee = 1) a
--- nested trade docking opens no box (00 section 6, until E0.6; cfg wb_box_after_fee 1 allows it). TRF_PlAnswer
--- returns the handler's reply line (the mission card logs it).
+-- nested trade docking opens no box (00 section 6, until E0.6; cfg wb_box_after_fee 1 allows it). A box opened as a
+-- dialog window (bx.dlg) queues the vanilla call instead (TRF_PlDefer: never inside the dialog's answer callback).
+-- TRF_PlAnswer returns the handler's reply line (the mission card logs it).
 function TRF_PlBoxOk() TRF_PlAnswer(1); end;
 function TRF_PlBoxNo() TRF_PlAnswer(0); end;
 
@@ -702,7 +705,9 @@ function TRF_PlAnswer(a, ev)
 	local v = TRF_Cb("TRF_PlAnswer", TRF_PlAnsBody, {b, a, ev});
 	p.fee = nil;
 	local ki = TRF_PlKinds()[b.k];
-	if type(ki) ~= "table" or ki.rep ~= 1 then TRF_PlOrig(b.o, b.args); TRF_PlJbAfter(); end;
+	if type(ki) ~= "table" or ki.rep ~= 1 then
+		if b.dlg == 1 then TRF_PlDefer(b); else TRF_PlOrig(b.o, b.args); TRF_PlJbAfter(); end;
+	end;
 	return v;
 end;
 
@@ -724,7 +729,8 @@ end;
 
 -- The answer of a box opened as a dialog window (s.dlg, TRF_PlShow), from its owner's final answer (the dialog's answer
 -- callback, as a box button): a = 1 OK, 0 Cancel (TRF_PlAnswer: the spec's handler, then the vanilla call once), -1
--- neither (the lock freed, the vanilla call once). esc 1 (the window closed without a final answer, seen from a due call
+-- neither (the lock freed, the vanilla call once). The vanilla call is queued (TRF_PlDefer), never made inside the
+-- callback. esc 1 (the window closed without a final answer, seen from a due call
 -- of the tick): the handler of a 1 or 0 runs, the vanilla call does not (as the Cancel of the vanilla dock request; the
 -- player docks again; an armed Office board is cleared, as after the vanilla call). Returns the handler's reply, or nil
 -- (also for a stale answer: no open dialog box).
@@ -746,8 +752,61 @@ function TRF_PlDlgAnswer(a, esc)
 	end;
 	TRF_PlE("box_answer", "kind", b.k, "box", tostring(b.s.own), "answer", "none", "via", "dialog", "result", "done");
 	local ki = TRF_PlKinds()[b.k];
-	if type(ki) ~= "table" or ki.rep ~= 1 then TRF_PlOrig(b.o, b.args); TRF_PlJbAfter(); end;
+	if type(ki) ~= "table" or ki.rep ~= 1 then TRF_PlDefer(b); end;
 	return nil;
+end;
+
+-- The vanilla dock call of a box opened as a dialog window (TRF_PlAnswer, TRF_PlDlgAnswer), queued instead of made inside the
+-- dialog's answer callback. Called there, TradeStationDlg opens no station window and the engine's trade session stays
+-- open; the next dock's StationShop then frees the inventories that session still points at, and the undock after it reads
+-- freed memory (design/mod-research/crash-undock-61b537.md). A due call runs it dd_dt game s later (the clock stands while
+-- the window is up), with the same function and arguments, once: P.dd holds it with the generation, the jump count and the
+-- system index. A newer queued call replaces it; a jump or a load drops it; the due call drops it on another generation,
+-- jump count or system. A refused due drops it at once (the player docks again, as after Esc). 1 when queued.
+function TRF_PlDefer(b)
+	local p = %P;
+	TRF_PlDdDrop("replaced");
+	p.ddn = (p.ddn or 0) + 1;
+	local dt = TRF_PlK().dd_dt;
+	local d = {n=p.ddn, k=b.k, o=b.o, args=b.args, own=tostring(b.s.own), j=TRF_N("TRF_Jumps"), sys=TRF_N("TRF_CurIdx")};
+	if type(TRF) == "table" then d.g = TRF.gen; end;
+	if not TRF_N("TRF_Due", dt, "TRF_PlDdRun", d.n) then
+		TRF_PlE("dock_defer", "kind", d.k, "box", d.own, "result", "dropped", "reason", "due");
+		TRF_PlJbAfter();
+		return nil;
+	end;
+	p.dd = d;
+	TRF_PlE("dock_defer", "kind", d.k, "box", d.own, "delay", TRF_F(dt), "result", "queued");
+	return 1;
+end;
+
+-- Drops the queued vanilla dock call with reason why (replaced, jump, load, generation, system); nil when none is queued.
+-- An armed Office board stays: the jump and the load clear it themselves, a replacing call belongs to a newer docking.
+function TRF_PlDdDrop(why)
+	local p = %P;
+	local d = p.dd;
+	if type(d) ~= "table" then return nil; end;
+	p.dd = nil;
+	TRF_PlE("dock_defer", "kind", d.k, "box", d.own, "result", "dropped", "reason", why);
+	return 1;
+end;
+
+-- Due call of TRF_PlDefer: the queued call number n runs once (P.dd cleared first), then the Office board check of every
+-- vanilla dock call. Another generation, jump count or system drops it (and clears an armed board); an n that is no longer
+-- queued (replaced or dropped) does nothing.
+function TRF_PlDdRun(n)
+	local p = %P;
+	local d = p.dd;
+	if type(d) ~= "table" or d.n ~= n then TRF_PlDE("dock_defer", "result", "dropped", "reason", "gone"); return; end;
+	local why = nil;
+	if type(TRF) ~= "table" or d.g ~= TRF.gen then why = "generation";
+	elseif d.j ~= TRF_N("TRF_Jumps") then why = "jump";
+	elseif d.sys ~= TRF_N("TRF_CurIdx") then why = "system"; end;
+	if why then TRF_PlDdDrop(why); TRF_PlJbAfter(); return; end;
+	p.dd = nil;
+	TRF_PlE("dock_defer", "kind", d.k, "box", d.own, "result", "run");
+	TRF_PlOrig(d.o, d.args);
+	TRF_PlJbAfter();
 end;
 
 -- The probe of a DLL native (the station jobs natives, step 1 to 3): its answer as a string, "arg" when live, "off"
@@ -1969,6 +2028,7 @@ function TRF_Pl_OnLoad()
 	local p = %P;
 	p.box = nil; p.fee = nil; p.run = {};
 	TRF_PlCardDrop();
+	TRF_PlDdDrop("load");
 	call(TRF_PlJbClear, {"load"}, "x", TRF_PlErr);
 	local L = TRF_PlLive();
 	if L then TRF_PlSlotsClear(L); end;
@@ -1982,6 +2042,7 @@ function TRF_Pl_BeforeJump()
 	local p = %P;
 	p.box = nil; p.fee = nil;
 	TRF_PlCardDrop();
+	TRF_PlDdDrop("jump");
 	call(TRF_PlJbClear, {"jump"}, "x", TRF_PlErr);
 	TRF_PlMkAll("jump");
 end;

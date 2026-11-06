@@ -5,7 +5,7 @@ the hail pages and combat hail (D-HAIL.*, design/hail-spec.md 10), the mercenary
 design/fits-spec.md 11), the vanilla extortion fix (E-EXT.1, design/extort-fix-spec.md 7), the stack leak diagnostic
 (D-DLL.1), the station jobs mission card (K0-K7, design/station-jobs-spec.md 10, step 1), the Office jobs board (M1-M8,
 step 2), the quest log's Job log (L1-L5, step 3), the freight unlock quest, commits 1-3 (Q-WQ.1-10,
-design/freight-quest-spec.md 10) and its presentation (Q-WQ.11-14, spec 13: dialogs, letters, the mission list), Wolves Freight step 2 (EW8.11-EW8.17, design/freight-spec.md 10)
+design/freight-quest-spec.md 10) and its presentation (Q-WQ.11-15, spec 13: dialogs, letters, the mission list, the dock call after a dock dialog), Wolves Freight step 2 (EW8.11-EW8.17, design/freight-spec.md 10)
 the lethal-system warnings (W-A12.1-8, design/warnings-spec.md 15; wave 1, host-tested only) and the crew remarks
 (W-B06.1-10, design/crew-remarks-spec.md 14; wave 1, host-tested only) and the clan temperaments with the Clan file
 (W-B10.1-10, design/temperament-spec.md 12; wave 1, host-tested only) and the corporation carriers (W-A22.1-9,
@@ -21,7 +21,8 @@ Read-only. PATH is a sw3tp.log or a run directory of run-test.sh ($COPY/traffic-
 sw3tp.log and, only when it was new, ScriptErrors.log). Default: $COPY/sw3tp.log (COPY defaults to
 ~/Games/Heroic/sw3-tp-test, as in trackpad/env.sh). Several --log options are scored together (the HAUNTS=0, HAUNTS=1
 and HAUNT_MODE=2 runs). Lines follow design/log-format.md: "traffic: lua: exp=<id> module=<m> event=<e> k=v ...".
-Verdicts: PASS, FAIL, NO DATA (the log lacks the case; the item says what to play), MANUAL (needs the player's eyes;
+The trackpad DLL's gate lines ("gate t=<frame> open|closed ... top=<GI state>") are kept apart (Log.gates) for
+Q-WQ.15. Verdicts: PASS, FAIL, NO DATA (the log lacks the case; the item says what to play), MANUAL (needs the player's eyes;
 the item says what to look at). --eyes folds the player's observation in: a MANUAL item becomes PASS or FAIL.
 Exit status 1 when any item is FAIL, 2 when no log was found. Test plan: design/test-plan-haunts-parcels.md.
 """
@@ -174,13 +175,20 @@ class Visit:
 
 class Log:
     def __init__(self, path, errors_path=None, errors=None, errors_implicit=False):
-        self.path, self.recs, self.visits = path, [], []
+        self.path, self.recs, self.visits, self.gates = path, [], [], []
         self.errors_implicit = errors_implicit      # ScriptErrors.log found beside a bare log: it may predate the run
         with open(path, "rb") as f:
             lines = f.read().decode("cp1251", "replace").splitlines()
         self.lua = 0
         for n, raw in enumerate(lines, 1):
             raw = raw.rstrip("\r")
+            if raw.startswith("gate t="):
+                # The trackpad DLL's input gate (sw3tp.c): open/closed and the top GI state (17 station GUI, 20 modal
+                # window, 3 flight); kept out of recs so no check sees it as a mod line.
+                kv = parse_logfmt(raw[5:])
+                kv.update({"module": "dll", "event": "gate", "state": raw.split(" ")[2] if raw.count(" ") >= 2 else ""})
+                self.gates.append(Rec(path, n, raw, kv))
+                continue
             if not raw.startswith("traffic: "):
                 continue
             self.lua += raw.startswith("traffic: lua: ")
@@ -2135,7 +2143,7 @@ def c_wq10(ctx):
     return res
 
 
-# Freight unlock quest presentation (design/freight-quest-spec.md 13.8, Q-WQ.11-14; WQ_DIALOG=1, NEWS=1) ----------------
+# Freight unlock quest presentation (design/freight-quest-spec.md 13.8, Q-WQ.11-15; WQ_DIALOG=1, NEWS=1) ----------------
 
 def c_wq11(ctx):
     res = Res()
@@ -2158,6 +2166,47 @@ def c_wq11(ctx):
     res.ev("D1 opened from the Office card", board)
     res.ev("D1 done", done)
     res.ev("D1 fallbacks", fb)
+    return res
+
+
+def c_wq15(ctx):
+    """The vanilla dock call after a dock dialog's final answer (wb-plumbing-spec 4.6, crash-undock-61b537.md): each
+    dialog via=dock result=done of wq, debrief or temper has a dock_defer line before the next plumb dock line (none: a
+    build that made the call inside the answer callback); each queued call ends in run or dropped; after a run of kind
+    trade the next gate line is the station GUI (top=17)."""
+    res = Res()
+    res.logpart = True
+    dl = [r for r in ctx.recs if r.mod in ("wq", "debrief", "temper") and r.ev == "dialog" and r.get("via") == "dock"
+          and r.get("result") == "done"]
+    dd = ctx.find("plumb", "dock_defer")
+    docks = ctx.find("plumb", "dock")
+    for r in dl:
+        nd = min([x.n for x in docks if x.src == r.src and x.n > r.n] or [10 ** 9])
+        if not [x for x in dd if x.src == r.src and r.n < x.n < nd]:
+            res.fails.append("%s: a dock dialog's final answer without a dock_defer line (the vanilla dock call ran inside the "
+                             "answer callback: a build before 2026-11-06, crash-undock-61b537.md)" % r.short())
+    q = [r for r in dd if r.get("result") == "queued"]
+    run = [r for r in dd if r.get("result") == "run"]
+    for r in q:
+        if not [x for x in dd if x.src == r.src and x.n > r.n and x.get("result") in ("run", "dropped")]:
+            res.fails.append("%s: a queued dock call that never ran or dropped" % r.short())
+    gates = [g for lg in ctx.logs for g in lg.gates]
+    tr = [r for r in run if r.get("kind") == "trade"]
+    for r in tr:
+        nx = [g for g in gates if g.src == r.src and g.n > r.n][:1]
+        if nx and nx[0].get("top") != "17":
+            res.fails.append("%s: the next gate line is %s, not the station GUI (top=17)" % (r.short(), nx[0].short()))
+        elif not nx:
+            res.missing.append("%s: no gate line after it (the trackpad DLL's gate log)" % r.short())
+    if not dl and not q:
+        res.missing.append("WQ_DIALOG=1: answer a dock dialog (D1 at a Hephaestus or Golconda loop stop): no dialog via=dock "
+                           "result=done line")
+    elif not tr:
+        res.missing.append("answer a dialog at a trade dock: no dock_defer kind=trade result=run line")
+    res.ev("dock dialogs done", dl)
+    res.ev("queued", q)
+    res.ev("run", run)
+    res.ev("dropped", [r for r in dd if r.get("result") == "dropped"])
     return res
 
 
@@ -3994,6 +4043,8 @@ ITEMS = [
      "two 'Letter from the FTU charter office:' entries in the mail, the paragraphs split at '|'"),
     ("Q-WQ.14", "the main quest log entry and its done state", c_wq14,
      "'Missing in Capricorn' in the mission list (not the Job log), its text per step, done at step 80"),
+    ("Q-WQ.15", "a dock dialog's vanilla dock call runs from a due call after the window closed: the station window opens", c_wq15,
+     "the station window after the dialog; undock, dock at another trade station, trade, undock: no crash (0x61b537)"),
     ("EW8.11", "Wolves Freight transit appearance: path C between the loop neighbours' portals, 60-120 s", c_ew8_11,
      "the freighter comes through the portal from the previous loop system and flies to the portal of the next one"),
     ("EW8.12", "Wolves Freight portal follow: a jump within T_chase after its exit, arrival 5-15 s later", c_ew8_12,
@@ -4232,7 +4283,7 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "Q-WQ.10": "PASS",
             "EW8.11": "NO DATA", "EW8.12": "NO DATA", "EW8.13": "NO DATA", "EW8.14": "NO DATA", "EW8.15": "NO DATA",
             "EW8.16": "NO DATA", "EW8.17": "NO DATA", "Q-WQ.11": "NO DATA", "Q-WQ.12": "NO DATA", "Q-WQ.13": "NO DATA",
-            "Q-WQ.14": "NO DATA",
+            "Q-WQ.14": "NO DATA", "Q-WQ.15": "MANUAL",
             "W-A12.1": "MANUAL", "W-A12.2": "FAIL", "W-A12.3": "MANUAL", "W-A12.4": "FAIL", "W-A12.5": "NO DATA",
             "W-A12.6": "MANUAL", "W-A12.7": "NO DATA", "W-A12.8": "NO DATA",
             "W-B06.1": "MANUAL", "W-B06.2": "FAIL", "W-B06.3": "FAIL", "W-B06.4": "FAIL", "W-B06.5": "NO DATA",

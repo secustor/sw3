@@ -824,7 +824,7 @@ With `wq_dialog` 1 (the default; the dialog files are installed with every insta
 
 ### In-game checks (Missing in Capricorn)
 
-Q-WQ.1 (offer, card or row, OK and Cancel), Q-WQ.2 (the mayday, the raid tier, the save), Q-WQ.3 (void and retry), Q-WQ.4 (the mothership variant), Q-WQ.5 (the report), Q-WQ.6 (the wreck, the pickup and the hand-in), Q-WQ.7 (the fence and the patrol board), Q-WQ.8 (the clan base, the tip, the pods of the base), Q-WQ.9 (the hulk guard and its pods), Q-WQ.10 (the hand-in, the unlock box, the done entry), Q-WQ.11 (D1 at the dock and from the Office card), Q-WQ.12 (an in-space dialog), Q-WQ.13 (the letters once), Q-WQ.14 (the mission-list entry and its done state): `design/test-plan-haunts-parcels.md` section 15, scored by `tools/check_ingame.py`.
+Q-WQ.1 (offer, card or row, OK and Cancel), Q-WQ.2 (the mayday, the raid tier, the save), Q-WQ.3 (void and retry), Q-WQ.4 (the mothership variant), Q-WQ.5 (the report), Q-WQ.6 (the wreck, the pickup and the hand-in), Q-WQ.7 (the fence and the patrol board), Q-WQ.8 (the clan base, the tip, the pods of the base), Q-WQ.9 (the hulk guard and its pods), Q-WQ.10 (the hand-in, the unlock box, the done entry), Q-WQ.11 (D1 at the dock and from the Office card), Q-WQ.12 (an in-space dialog), Q-WQ.13 (the letters once), Q-WQ.14 (the mission-list entry and its done state), Q-WQ.15 (the station window after a dock dialog, no crash at the next undock): `design/test-plan-haunts-parcels.md` section 15, scored by `tools/check_ingame.py`.
 
 ## Pirate haunts (`EXP=0 TRAFFIC=1`)
 

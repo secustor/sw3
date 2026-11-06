@@ -1282,7 +1282,9 @@ Syst_List = { "LRS2","LRS3", "ECM2","ECM3","AMS2","AMS3", "Stealth2","Stealth3",
 Location_SideList = { aurora = "Vks", argon = "Vks", ahilles = "Kfni", vulcan = "Inoco", gefest = "Kfni", golkonda = "Triada", debris1 = "Neutral", debris2 = "Neutral", debris3 = "Triada", debris4 = "Uss", debris6 = "Triada", callipso = "Vks", corrino = "Vks", kron = "Vks", pegas = "Neutral", poseidon = "Vks", haron = "Neutral", gredos = "Vks", dionis = "Kfni", kruger = "Vks", llanovar1 = "Kfni", llanovar2 = "Kfni", nk = "Kfni", pandora = "Neutral", proserpina = "Kfni", simeiz = "Kfni", solpuga = "Kfni", torr = "Kfni", elinor = "Kfni", elio = "Kfni", endoria1 = "Vks", endoria2 = "Vks", escaflon = "Vks", valensia = "Kfni", kassilia = "Kfni", avalon = "Kfni", gideon = "Kfni", fort_russ = "Vks", moscowia = "Vks", solncevka = "Vks", nd = "Vks", angarsk = "Kfni", xk10 = "Inoco", altair = "Vks", altrabon = "Vks", ashelon = "Inoco", b_leftera1 = "Triada", b_leftera2 = "Triada", b_leftera3 = "Triada", ergelan = "Uss", kadi = "Vks", nj1 = "Vks", nj2 = "Vks", nj3 = "Vks", prien = "Vks", sunji = "Uss", taira = "Vks", hafa = "Inoco", shula = "Vks", eridan = "Kfni", vuadil = "Uss", hanoi = "Vks", alzed = "Neutral", el_ariash = "Uss", xk16 = "Vks", xt05 = "Triada", xt11 = "Uss", xt17 = "Neutral", xt20 = "Neutral", xt23 = "Neutral", xt24 = "Neutral", xt26 = "Neutral", xt27 = "Neutral", xt39 = "Triada", xt41 = "Vks", xt45 = "Triada", xt52 = "Triada", xt54 = "Neutral", xt81 = "Vks", xt86 = "Vks", xt93 = "Triada", xb13 = "Uss", xb15 = "Uss", xb17 = "Neutral", xb19 = "Neutral", dalled = "Uss", deosis = "Uss", dosis = "Triada", kadenoa = "Uss", kondel = "Triada", kitaro = "Triada", ule = "Triada", fiasar = "Uss", fronn = "Triada", kadenoa_tri = "Triada", areko = "Inoco", gaeon = "Inoco", gaoba = "Inoco", danstag = "Inoco", lasad = "Inoco", lidau = "Inoco", tarrot = "Neutral", farles = "Inoco", heos = "Inoco", zebos = "Inoco", egleon = "Inoco", x220 = "Neutral", x203 = "Neutral", x213 = "Neutral", x244 = "Neutral", x297 = "Neutral", precursors = "Neutral", disonsphere = "Neutral", earth = "Neutral"};
 ShopList_Trader = {"trader1", "trader2", "trader3", "trader4", "trader5", "trader6", "trader7", "trader8", "trader9", "trader10", "trader11", "trader12"};
 ]], "DATA/Scripts/include/FloodTradeStations.script");
-	-- DockStation.script 173-238 and CostOfPirates.script InitExpForSaved/ExpForSaved, reduced to records.
+	-- DockStation.script 173-238 and CostOfPirates.script InitExpForSaved/ExpForSaved, reduced to records. The trade dock OK
+	-- reads the global mothership (functions.script) as vanilla does, here HOST().ms: no GetPlayerMotherShip, so the
+	-- plumbing's deferred dock call of a dialog box (TRF_PlDdRun, a due call of the tick) stays clear of that native.
 	dostring([[
 function __TradeStation_Action(param)
 	if param == "" then _param = GetCurrentLocation(); else _param = param; end;
@@ -1290,7 +1292,8 @@ function __TradeStation_Action(param)
 end;
 function __TradeStationDock_Ok()
 	HOST().trade_ok = HOST().trade_ok + 1;
-	local f = GetPlayerMotherShip():GetPilot():GetFlight();
+	HOST().trade_ok_tick = HOST().in_tick;
+	local f = HOST().ms:GetPilot():GetFlight();
 	f:Stop();
 	UpdateTradeSystem(FALSE);
 	TradeStationDlg(_param);

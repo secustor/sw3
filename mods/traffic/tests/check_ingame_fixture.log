@@ -546,3 +546,8 @@ traffic: lua: exp=v1 module=safety event=activate system=sunji mode=mod reason=n
 traffic: lua: exp=v1 module=signal event=orphan_delete label=TRF_SGO_5 reason=entry
 traffic: lua: exp=v1 module=signal event=skip system=sunji reason=latch
 traffic: lua: exp=v1 module=signal event=say system_index=78 light_leg=318 speaker=Lastochka output=line sound=none sound_result=off result=shown reason=nil
+gate t=7836 closed reason=top top=20 game_log=0 camtype=2 stack=1,2,3,20
+traffic: lua: exp=v1 module=plumb event=dock_defer kind=trade box=wq delay=0.200 result=queued
+gate t=9657 open top=3 game_log=0 camtype=2 stack=1,2,3
+traffic: lua: exp=v1 module=plumb event=dock_defer kind=trade box=wq result=run
+gate t=9671 closed reason=top top=17 game_log=0 camtype=2 stack=1,2,3,17
