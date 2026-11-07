@@ -107,7 +107,7 @@ Quest repair (`TRF_Sy_Fix`, after `TRF_Pl_Fix` has repaired `TRF.iq`): with `q` 
 | `lm` | the rows of the current system that are open now (6.1), each `{id, r}`; empty table: the tick returns at once |
 | `h[id]` | hold seconds of game time |
 | `nr[id]`, `hs[id]` | 1 = near line / hold line said this visit |
-| `ok`, `okt` | the cached result of R1-R6 and `TRF_RealSecs()` of the last 1 s step |
+| `ok` | the cached result of R1-R6 of the last 1 s step |
 | `q` | visit latch: `TRF_Safe_QState()` seen this visit |
 | `pr[reason]` | 1 = this skip reason logged this visit |
 | `mk` | 1 = the quest markers of this system are held; `mq` 1 after a refusal (quiet retry, the tenth argument of `TRF_MarkerAdd`) |
@@ -275,7 +275,7 @@ Title `#TRF_syqt` "Chart the frontier". With `TRF_JbLog()`: `TRF_JobAdd("trf_sy"
 
 Gates: R1, R2, R3, R5 (dock system), R6 (`TRF_PlQuest()` and the latch), R7 (`TRF_Quiet()`); a skip returns nothing. Then, in this order, every result a line in the returned list:
 1. Hand-in (7.3).
-2. Sale: survey open; for each region slot other than the dock's region, lowest slot first, whose block is complete and unsold, at most `sy_sell_max` per docking: value (8.2), `TRF_Pay(V, "survey_chart")`, block `s`, ring push (8.3), line `sysell` ($1 region, $2 the region's points `W_r`, $3 value); `event=sell result=sold`. A complete chart at a dock of its own region logs `result=wait reason=region` once per visit (level 2).
+2. Sale: survey open; for each region slot other than the dock's region, lowest slot first, whose block is complete and unsold, at most `sy_sell_max` per docking: value (8.2), `TRF_Pay(V, "survey_chart")`, block `s`, ring push (8.3), line `sysell` ($1 region, $2 the region's points `W_r`, $3 value); `event=sell result=sold`. A complete chart at a dock of its own region logs `result=wait reason=region` once per visit (level 2); one whose value is 0 (`sy_chart_k` 0, no pay basis) is kept too, `result=wait reason=value` once per region and visit (level 2). Each sale is stored in `TRF.sy` before its line and ring push (an error later in the docking cannot sell it again).
 3. Logbook: the quest entry (7.5) or the Survey log (8.4), rewritten when its text differs from `TRF_SyKeepThunk`'s.
 4. Count line (only without `TRF_JbLog()`, survey open, the count changed since the last shown): `sycount` ($1 rows read, $2 `N`, $3 points, $4 the regions with a chart to sell, or `synone`).
 

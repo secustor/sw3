@@ -158,7 +158,8 @@ function SY_CountLog()
 	if not SY_AQ0 then SY_AQ0 = AddQuest; end;
 	AddQuest = function(id, t, d, s) local h = HOST(); h.aq = (h.aq or 0) + 1; return SY_AQ0(id, t, d, s); end;
 	if type(TRF_JobAdd) == "function" then
-		local ja = TRF_JobAdd;
+		if not SY_JA0 then SY_JA0 = TRF_JobAdd; end;
+		local ja = SY_JA0;
 		-- The plumbing's probe TRF_JobAdd() (no argument) is not a write.
 		TRF_JobAdd = function(...) local h = HOST(); if arg.n > 0 then h.ja = (h.ja or 0) + 1; end; return call(%ja, arg); end;
 	end;
@@ -166,6 +167,7 @@ end;
 
 function SY_Uncount()
 	if SY_AQ0 then AddQuest = SY_AQ0; SY_AQ0 = nil; end;
+	if SY_JA0 then TRF_JobAdd = SY_JA0; SY_JA0 = nil; end;
 end;
 
 -- a: install and table (12.1, 4.1, 10, 9) --------------------------------------------------------------
@@ -982,6 +984,18 @@ function T_SY_E()
 	r = DB_Dock();
 	h.qs = FALSE;
 	HOST_Check(SY_Blk(7) ~= "s" and SY_Logs(n0, "event=sell ") == 0, "a mission at the dock: no sale");
+	-- A chart worth nothing (sy_chart_k 0) waits: reason=value once per region and visit, nothing paid, no ring push.
+	SY_Begin("gredos", nil, {tune={sg_pct=0, sy_chart_k=0}});
+	SY_Open();
+	SY_SetRead(41, 42, 43, 44);
+	SY_SetBlk(7, lg);
+	T_Jump("gredos");
+	c0 = h.credits;
+	n0 = S_Mark();
+	r = DB_Dock();
+	r = DB_Dock();
+	HOST_Check(SY_Blk(7) ~= "s" and h.credits == c0 and SY_Logs(n0, "event=sell region=7 dock_system=gredos dock_region=3 value=0 result=wait reason=value") == 1
+		and getn(TRF_RingRead(TRF_RgOf(TRF_CurIdx()), {k=14})) == 0 and not SY_Has(r.scr, "fresh chart"), "sy_chart_k 0: the chart waits (reason=value once), nothing paid, no ring push");
 end;
 
 -- f: save and repair (3, 6.5) ---------------------------------------------------------------------------

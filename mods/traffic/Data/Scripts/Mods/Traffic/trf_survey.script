@@ -877,7 +877,7 @@ end;
 function TRF_SyVisit()
 	local sy = %SY;
 	sy.lm = {}; sy.h = {}; sy.nr = {}; sy.hs = {}; sy.pr = {}; sy.v = {};
-	sy.ok = nil; sy.okt = nil; sy.q = nil; sy.mk = nil; sy.mq = nil; sy.offer = nil; sy.rows = nil; sy.adj = nil; sy.lk = nil;
+	sy.ok = nil; sy.q = nil; sy.mk = nil; sy.mq = nil; sy.offer = nil; sy.rows = nil; sy.adj = nil; sy.lk = nil;
 	sy.ps = nil;
 end;
 
@@ -977,7 +977,6 @@ function TRF_SyEnterBody(idx, why)
 	if type(idx) == "number" then TRF_SyDebugAt(idx); end;
 	local gw = TRF_SyGateR(idx, "space");
 	sy.ok = gw or "ok";
-	sy.okt = TRF_N("TRF_RealSecs");
 	if gw then return; end;
 	TRF_SyBuild(idx);
 	local mc = 0;
@@ -1014,7 +1013,6 @@ end;
 
 function TRF_SyStepBody()
 	local sy = %SY;
-	sy.okt = TRF_N("TRF_RealSecs");
 	if not TRF_SyOn() then sy.ok = "off"; return; end;
 	local idx = TRF_SyCur();
 	local gw = TRF_SyGateR(idx, "space");
@@ -1127,7 +1125,7 @@ function TRF_SyRoutePay(idx, slot, id)
 		local j = l[i];
 		local s = rows.ix[j];
 		local d = dist[s];
-		if j ~= id and type(d) == "number" and (not w or d < wd or (d == wd and j < w)) and not TRF_SyLmWhy(j, "count")
+		if j ~= id and type(d) == "number" and (not w or d < wd) and not TRF_SyLmWhy(j, "count")
 			and not TRF_SyLmWhy(j, "name") then
 			w = j; wd = d;
 		end;
@@ -1468,7 +1466,7 @@ function TRF_SyTradeBody()
 		local dslot = TRF_SySlot(cur);
 		local bits, bl, nrg = TRF_SyState();
 		local thr = TRF_SyThrOf(TRF_SyPtsOf(bits, rows.d), T);
-		local sold, ch = 0, nil;
+		local sold = 0;
 		for slot = 1, nrg do
 			local B = TRF_SyBlockOf(bl[slot], legs);
 			if B and B.st == 1 then
@@ -1483,11 +1481,18 @@ function TRF_SyTradeBody()
 					local V, steps = TRF_SyValueOf(TRF_SyPayN(cur), W, B.ph, ph, B.age, thr, T);
 					local paid = 0;
 					if V > 0 then paid = TRF_N("TRF_Pay", V, "survey_chart") or 0; end;
-					if V > 0 and paid <= 0 then
+					if V <= 0 then
+						-- Nothing to pay (sy_chart_k 0, no pay basis): the chart is kept, once per region and visit.
+						if not sy.pr["value"..slot] then
+							sy.pr["value"..slot] = 1;
+							TRF_SyDE("sell", "region", slot, "dock_system", TRF_SyName(cur), "dock_region", dslot, "value", V, "result", "wait", "reason", "value");
+						end;
+					elseif paid <= 0 then
 						TRF_SyE("sell", "region", slot, "dock_system", TRF_SyName(cur), "dock_region", dslot, "value", V, "result", "wait", "reason", "pay");
 					else
+						-- The sale is stored before anything else of this docking runs (a later error cannot sell it again).
 						bl[slot] = "s";
-						ch = 1;
+						TRF_SyStore(bits, bl, nrg);
 						sold = sold + 1;
 						TRF_N("TRF_RingPush", dslot, {k=14, s=cur, l=7, c=0, a=slot, w=1});
 						tinsert(out, TRF_SyTxt("sysell", TRF_SyRgTxt(slot), W, paid));
@@ -1497,7 +1502,6 @@ function TRF_SyTradeBody()
 				end;
 			end;
 		end;
-		if ch then TRF_SyStore(bits, bl, nrg); end;
 	end;
 	-- 3: the logbook.
 	TRF_SyLogbook("dock");

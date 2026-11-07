@@ -1083,7 +1083,7 @@ Survey layer and the quest "Chart the frontier", A12 step 2 (`design/survey-spec
 | `threshold` | `module=survey event=threshold points=31 threshold=30 bonus=10 result=passed` | 1 |
 | `chart` | `module=survey event=chart region=1 landmark_count=8 weight=18 phase=2 leg=212 result=complete` | 1 |
 | `sell` | `module=survey event=sell region=1 dock_system=gredos dock_region=3 weight=18 phase=4 steps=2 age=9 value=9072 result=sold` / `... result=wait reason=pay value=<V>` (the pay failed, kept) | 1 |
-| `sell` | `module=survey event=sell region=7 dock_system=torr dock_region=7 result=wait reason=region` (once per region and visit) | 2 |
+| `sell` | `module=survey event=sell region=7 dock_system=torr dock_region=7 result=wait reason=region` / `... dock_region=3 value=0 result=wait reason=value` (a chart worth nothing is kept; once per region and visit) | 2 |
 | `offer` | `module=survey event=offer system=dalled region=1 landmarks=17,18,19 result=<shown,listed> via=<box,card,board>` / `module=survey event=offer result=failed reason=box` | 1 |
 | `offer` | `module=survey event=offer system=dalled result=none reason=<off,gate,done,nomap,chapter,mission,latch,office:<why>,region,few,busy,declined,strict:<why>>` | 2 |
 | `accept` | `module=survey event=accept system=dalled landmarks=17,18,19 leg=140 result=ok` / `... result=busy reason=<why>` / `module=survey event=accept system=dalled result=stale` | 1 |
