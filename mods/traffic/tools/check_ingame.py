@@ -4399,14 +4399,17 @@ def c_wrc2(ctx):
     res.logpart = True
     seen = []
     for v in rc_visits(ctx):
+        e = v["enter"]   # the visit's tunes from its enter line (TUNE=rc_gap=15 in the test session), else the defaults
+        gap = (e.num("gap") if e is not None else None) or RC_GAP
+        cap = int((e.num("max") if e is not None else None) or RC_MAX)
         calls = [r for r in rc_shown(v["recs"]) if r.get("part") == "call"]
         seen += calls
-        if len(calls) > RC_MAX:
-            res.fails.append("%s: %d calls in one visit (rc_max %d)" % (calls[RC_MAX].short(), len(calls), RC_MAX))
+        if len(calls) > cap:
+            res.fails.append("%s: %d calls in one visit (rc_max %d)" % (calls[cap].short(), len(calls), cap))
         for a, b in zip(calls, calls[1:]):
             ta, tb = a.num("real_time"), b.num("real_time")
-            if ta is not None and tb is not None and tb - ta < RC_GAP:
-                res.fails.append("%s: %.0f real seconds after the call %s (rc_gap %d)" % (b.short(), tb - ta, a.short(), RC_GAP))
+            if ta is not None and tb is not None and tb - ta < gap:
+                res.fails.append("%s: %.0f real seconds after the call %s (rc_gap %d)" % (b.short(), tb - ta, a.short(), gap))
     if not seen:
         res.missing.append("no module=chatter event=say part=call result=shown (see W-RC.1)")
     res.ev("calls shown", seen)
@@ -5064,7 +5067,8 @@ SELFTEST_REQUEST = {"W-B03.1": "MANUAL", "W-B03.2": "PASS", "W-B03.3": "PASS", "
                     "W-B03.6": "PASS", "W-B03.7": "PASS", "W-B03.8": "PASS", "W-B03.9": "PASS", "W-B03.10": "MANUAL"}
 # tests/check_ingame_chatter_fixture.log: correct station chatter behaviour (LOG=2). Gredos (chapter 6): the approach hold and
 # its news before the first exchange, a request pair, a combat hold, a bay call and an undock call 45+ real seconds apart,
-# a dropped answer; Kadi: the latch skip, nothing said; Aurora: a scene hold, nothing said; Taira: a load, one call.
+# a dropped answer; Kadi: the latch skip, nothing said; Aurora: a scene hold, nothing said; Taira: a load, one call;
+# Gredos again with gap=15 (TUNE=rc_gap=15): two calls 20 real seconds apart.
 SELFTEST_CHATTER = {"W-RC.1": "PASS", "W-RC.2": "PASS", "W-RC.3": "PASS", "W-RC.4": "PASS", "W-RC.5": "PASS", "W-RC.6": "PASS",
                     "W-RC.7": "MANUAL", "W-RC.8": "PASS", "W-RC.9": "PASS"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})

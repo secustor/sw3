@@ -948,6 +948,15 @@ function T_RC_G()
 	h.msg_err = nil;
 	HOST_Check(ne == 1 and RC_Logs(n0, "part=call") == 1 and RC_Logs(n0, "result=failed reason=message") == 1 and TRF_RcCV().ex == 0
 		and getn(TRF_RcCV().ev) == 0 and TRF_RcCV().pend == nil, "Message raising: result=failed, the event removed, no exchange counted");
+	-- No speaker (no lead pilot, CreatePilot returns nil): no cue, result=failed.
+	RC_Fresh();
+	local cp = CreatePilot;
+	CreatePilot = function(tpl) return nil; end;
+	n0, m0 = S_Mark(), getn(h.msgs);
+	RC_Req(8, {nolead=1});
+	CreatePilot = cp;
+	HOST_Check(getn(h.psnd) == 0 and getn(h.msgs) == m0 and RC_Logs(n0, "sound=none sound_result=off result=failed reason=message") == 1
+		and TRF_RcCV().ex == 0, "no speaker: no cue, result=failed, no exchange counted");
 end;
 
 -- h: jump, load, save size (3.1, 6.1) -----------------------------------------------------------

@@ -50,7 +50,7 @@ The recommendation is the default above; the user's standing rule makes each rec
 6. Module. Recommended: new `trf_chatter` with two small getters in trf_station and one each in trf_gen and trf_plumb (10.3). Alternative: section 18 of trf_station (no loader entry, direct access to `SV`; the module grows by about 400 lines).
 7. Tips. Recommended: no ring record in chatter; chatter is flavour and must hold nothing the player has to act on. Alternative: one history-kind ring record per visit as trader gossip; it would compete with harbour news for the told bit (tips-spec 4.5).
 8. Pairs. Recommended: pairs for the request, the hold and the departure, single lines for the release (control) and the bay (trader). Alternative: single lines only.
-9. Station voices off. Recommended: chatter needs trf_station loaded with `voice` 1 (it reuses the dock gate, the dispatcher table and the approach state); with `voice` 0 it is off (`reason=station_off`). Alternative: own copies of the gate and the dispatcher table.
+9. Station voices off. Recommended: chatter needs trf_station loaded with `voice` 1 (it reuses the dock gate, the dispatcher table and the approach state); with `voice` 0 it is off (`reason=station:off`; trf_station absent: `station_off`, table 5 R5). Alternative: own copies of the gate and the dispatcher table.
 10. Save: none (3.1). Accept.
 
 ## 3. Data model
@@ -258,7 +258,7 @@ Install presets: `CHATTER=0|1`, `CHATTER_SOUND=0|1|2`; for a test session `TUNE=
 
 | Line | Level |
 |---|---|
-| `module=chatter event=enter system=gredos system_index=9 station_count=1 sound=2 radius=1500 via=<enter/load>` | 2 |
+| `module=chatter event=enter system=gredos system_index=9 station_count=1 sound=2 radius=1500 gap=45 max=6 via=<enter/load>` | 2 |
 | `module=chatter event=skip system=gredos reason=<off/nomap/none/mode:../gate:../station:../station_off/latch/hold:../combat/quiet_line/quiet_arrival/approach/player_dock/far/pos/cap/per_trader>` | 2, once per reason and visit |
 | `module=chatter event=event kind=<req/hold/go/bay/out> trader_id=9 station_key=9 result=queued` | 2 |
 | `module=chatter event=drop kind=req trader_id=9 reason=<stale/full/gone/name/station/used>` | 2 |
@@ -352,7 +352,7 @@ In-game checks for `tools/check_ingame.py` (verdicts PASS / FAIL / NO DATA / MAN
 | Id | Check | Rule |
 |---|---|---|
 | W-RC.1 | chatter is heard | PASS: an `event=say ... result=shown`; NO DATA without one |
-| W-RC.2 | rate | FAIL: two `event=say part=call result=shown` in one visit whose `real_time` differ by less than 45 (the default `rc_gap`), or more than 6 calls in one visit |
+| W-RC.2 | rate | FAIL: two `event=say part=call result=shown` in one visit whose `real_time` differ by less than the visit's `rc_gap` (the `gap` of its `event=enter` line, else 45), or more calls in one visit than its `max` (else 6) |
 | W-RC.3 | no chatter during a mission or a scene | FAIL: an `event=say result=shown` in a visit after `event=skip reason=latch` or within 10 lines after a `reason=hold:scene` skip |
 | W-RC.4 | no repeated line | FAIL: two `event=say result=shown` with the same `key` in one visit |
 | W-RC.5 | content first | FAIL: an `event=say result=shown` with `quiet_age` below 10 |
@@ -413,4 +413,5 @@ Correction of the inputs: the loader already had `trf_request` after `trf_survey
 - D-7 The click is 5 ms of unfiltered noise falling linearly from full scale (a hard 5 ms full-scale block would clip after the normalisation), and the file ends with a 10 ms linear fade so the cut makes no click; the rest is as 6.5.
 - D-8 `TRF_Gen_DockPos` runs protected with trf_gen's `TRF_GnErr` (an engine error is logged); trf_gen has no silent handler.
 - D-9 Log details: a dropped answer logs `speaker`, `key` and `distance` as nil; without the native the line logs the cue name with `sound_result=none`; a failed `Message` logs `result=failed reason=message`. Q1-Q5 are tested in the order Q1, Q2, Q3, the position (`pos`), Q4, Q5.
+- D-10 No speaker (no lead pilot and `CreatePilot` returning nil): no cue is played, the line logs `sound=none sound_result=off result=failed reason=message`. The `enter` line also logs `gap` and `max` (the active `rc_gap` and `rc_max`), which check_ingame's W-RC.2 reads per visit.
 

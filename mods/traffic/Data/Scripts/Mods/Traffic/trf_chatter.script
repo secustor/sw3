@@ -530,9 +530,10 @@ function TRF_RcSpk(sd, id, ctx)
 	return TRF_RcPilot(t), t;
 end;
 
--- Cue then message (6.5): ok, the cue name and its result.
+-- Cue then message (6.5): ok, the cue name and its result. No speaker: no cue.
 function TRF_RcSay(p, text, T)
 	local snd, sres = "none", "off";
+	if p == nil then return nil, snd, sres; end;
 	if T.rc_sound > 0 then
 		snd = TRF_RcK().snd[T.rc_sound];
 		sres = TRF_RcSnd(snd, T.rc_vol / 100);
@@ -638,7 +639,7 @@ function TRF_RcEnter(via)
 	if not TRF_RcOn() then return; end;
 	local T = TRF_RcTune();
 	TRF_RcDE("enter", "system", TRF_RcName(idx), "system_index", idx, "station_count", getn(S), "sound", T.rc_sound,
-		"radius", T.rc_r, "via", via);
+		"radius", T.rc_r, "gap", T.rc_gap, "max", T.rc_max, "via", via);
 end;
 
 -- The last module call of TRF_OnActivate (after trf_request's).
