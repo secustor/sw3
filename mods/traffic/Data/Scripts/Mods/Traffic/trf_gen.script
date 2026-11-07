@@ -484,6 +484,22 @@ function TRF_GnStation()
 	return nil;
 end;
 
+function TRF_GnDockPosBody(id)
+	local H = TRF_GnH();
+	local st = nil;
+	if H and type(id) == "number" and type(H.tr[id]) == "table" then st = H.tr[id].st; end;
+	if not TRF_GnAlive(st) then st = TRF_GnStation(); end;
+	local p = TRF_GnPos(st);
+	if p and type(p.x) == "number" then return {x=p.x, y=p.y, z=p.z}; end;
+	return nil;
+end;
+
+-- Station chatter (design/station-chatter-spec.md 4.3, 10.3), read only: {x, y, z} of trader id's station handle, else of
+-- the system's trade station (TRF_GnStation); nil when unknown (an error is logged).
+function TRF_Gen_DockPos(id)
+	return call(TRF_GnDockPosBody, {id}, "x", TRF_GnErr);
+end;
+
 -- Registered nav point of contact c nearest the station, within np_max (R6), or nil.
 function TRF_GnApproach(c, st, T)
 	local sp = TRF_GnPos(st);

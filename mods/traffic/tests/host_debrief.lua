@@ -241,10 +241,10 @@ end;
 function T_DB_A()
 	local h = HOST();
 	DB_Begin("altair", "5_1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=25") >= 1, "trf_debrief loads before trf_tips and trf_spec (extra_count=25)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=26") >= 1, "trf_debrief loads before trf_tips and trf_spec (extra_count=26)");
 	local ml, pm, tf, uf = TRF_ModList(), TRF_PlMods(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml) - 5] == "Db" and pm[getn(pm) - 3] == "Db" and tf[getn(tf) - 6] == "TRF_Db_Text" and tf[getn(tf)] == "TRF_Loc_Text"
-		and uf[getn(uf) - 5] == "TRF_Db_Text" and TRF_PlCounts().stl == 1 and TRF_IqOwners()[2] == "TRF_Db_IqLapse",
+	HOST_Check(ml[getn(ml) - 6] == "Db" and pm[getn(pm) - 3] == "Db" and tf[getn(tf) - 7] == "TRF_Db_Text" and tf[getn(tf)] == "TRF_Loc_Text"
+		and uf[getn(uf) - 6] == "TRF_Db_Text" and TRF_PlCounts().stl == 1 and TRF_IqOwners()[2] == "TRF_Db_IqLapse",
 		"Db last in TRF_PlMods and before Ti in TRF_ModList, TRF_Db_Text before TRF_Ti_Text in both text lists, one settlement handler, the lapse owner of quest 2");
 	-- cfg and tune defaults, clamps (8).
 	local d, e = TRF_Db_OptDef(), TRF_OptEnum();

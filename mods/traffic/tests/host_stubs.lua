@@ -940,6 +940,16 @@ function HOST_PlaySound3D(name, pos, vol)
 	tinsert(HOST().snd, {name=name, pos=pos, vol=vol, gt=HOST().gt});
 end;
 
+-- PlaySound(name, volume) (0x5ed1e0, the 2D player; design/station-chatter-spec.md 6.5): records {name, vol, gt} in
+-- HOST().psnd and wants exactly two arguments (the native reads the volume only then); HOST().psnd_err raises. Undefined
+-- by default (never called by vanilla, CHECK RC1); a scenario sets PlaySound = HOST_PlaySound.
+function HOST_PlaySound(...)
+	HOST_Want(arg.n == 2 and type(arg[1]) == "string" and type(arg[2]) == "number", "PlaySound(wav, volume)");
+	if HOST().psnd_err then error("injected PlaySound error"); end;
+	if type(HOST().psnd) ~= "table" then HOST().psnd = {}; end;
+	tinsert(HOST().psnd, {name=arg[1], vol=arg[2], gt=HOST().gt});
+end;
+
 -- (carcass) -> current HP.
 function GetCurHP(o) HOST_Want(type(o) == "table" and o.__obj, "GetCurHP(carcass)"); return o.hp; end;
 

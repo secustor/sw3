@@ -214,11 +214,11 @@ end;
 function T_RQ_A()
 	local h = HOST();
 	RQ_Begin("gaoba");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=25") >= 1, "trf_request loads last (extra_count=25)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=26") >= 1, "trf_request loads before trf_chatter (extra_count=26)");
 	local ml, pm, tf, uf = TRF_ModList(), TRF_PlMods(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml)] == "Rq" and ml[getn(ml) - 1] == "Sy" and pm[getn(pm)] == "Rq" and tf[getn(tf) - 1] == "TRF_Rq_Text"
-		and tf[getn(tf) - 2] == "TRF_Sy_Text" and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf)] == "TRF_Rq_Text",
-		"Rq last in TRF_ModList and TRF_PlMods; TRF_Rq_Text after TRF_Sy_Text in both text lists");
+	HOST_Check(ml[getn(ml) - 1] == "Rq" and ml[getn(ml) - 2] == "Sy" and pm[getn(pm)] == "Rq" and tf[getn(tf) - 2] == "TRF_Rq_Text"
+		and tf[getn(tf) - 3] == "TRF_Sy_Text" and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf) - 1] == "TRF_Rq_Text",
+		"Rq before Rc (trf_chatter) at the end of TRF_ModList, last in TRF_PlMods; TRF_Rq_Text after TRF_Sy_Text in both text lists");
 	HOST_Check(TRF_OptEnum().requests == 1 and TRF_OptEnum().rq_box == 1 and TRF_Opt("requests") == 1 and TRF_Opt("rq_box") == 1
 		and TRF_Opt("request_at") == "", "cfg requests 1, rq_box 1, request_at \"\" by default; enums of requests and rq_box");
 	-- Registrations: trade and patrol box 50 (last), patrol line 85 (last), the death bus.

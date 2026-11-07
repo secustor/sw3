@@ -98,6 +98,7 @@ Introduction surfaces the mod already has. Sources: [freight-quest-spec.md](frei
 
 Rules for every wave (proposals 4b):
 - Lines: every new entry line goes through `TRF_ArrivalLine` and counts in `arr_max` 3, in the 4b.1 priority order; a dropped line keeps its record for a later entry.
+- Flavour lines (station chatter) are not arrival lines: they never go through `TRF_ArrivalLine`, do not count in `arr_max`, write no spacing stamp that content lines wait on (`TRF.live.line`), wait 10 game seconds (`rc_quiet`) after any content line, and a pending answer that meets a content line is dropped (station-chatter-spec 5 Q1-Q3).
 - Markers: at most two area markers of offered, not accepted content per system (R12).
 - Dock box: one mod box per docking, one new offer per docking; a declined giver waits one region tick (R10). Intro quests take the box slot or a jobs row as the freight quest does at 450.
 - Hail: the dialog hail menu (tune `hail_box` 2, `TRF_Hail.xml` msg00) has one spare provider slot; A05 takes it, and one more provider item would drop that menu to the box chain (`reason=slots`). The shipped default `hail_box` 1 shows one box per option with no slot limit. No other roadmap item adds a hail answer.

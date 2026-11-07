@@ -39,6 +39,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_spec.script` | Specialist answers, A05 ([design/specialist-spec.md](design/specialist-spec.md)): the Repairman patch, one answer in the hail menu's spare provider slot for an FTU trader fleeing with low HP after its raid ended ("Jana [Repairman]: ..."; `SetHP` on the lead, trf_raid's `TRF_Rd_Unflee`, help +1), the missing-skill head of that menu, the re-arm of its hail at the raid end and one hail beyond `hail_max`, the patched flag `r.sk` (trf_track's pool `fl` bit 256: the free rumour and a thank-you line at the next meeting), the specialist probe for the fence page's Intuition answer (trf_wq D5). Host-tested only. Loads after `trf_tips`. |
 | `trf_signal.script` | Static signals, A08 ([design/static-signals-spec.md](design/static-signals-spec.md)): at most one looping distress source per region slot (`TRF.sg`, 8 digits a record), lit at the region tick in Quiet and Boom at a generated point (`TRF_SgPointData`, `tools/gen_stash.py --signal`) and pushed to the ring (kind 13); the static entry line through `TRF_ArrivalLine` only on an entry with no other mod line, the reading with a 1,000-unit area marker and the clan threat word (`TRF_Str_Word`), the late-created flight recorder with a swept pickup and its last entry (stash reveal `src` 5, ring rumour, lore). Host-tested only (W-A08.1-10 open). |
 | `trf_request.script` | Crew requests, B03 ([design/crew-requests-spec.md](design/crew-requests-spec.md)): 16 once-per-save requests of squad pilots (`TRF_RqData`, template lists, the Repairman holder of `TRF_Spc_Who`) on a tracked trader, the wanted captain, a seeded beacon or a patrol desk; the radio pair as the last arrival line 7 s after the entry, outcomes from trf_track's spawn hook, the death bus, the pods aboard and the patrol dock line 85, lapses, the box 50 fallback, the logbook entry `trf_rq` (`TRF.rq`, 46 bytes). Host-tested only (W-B03.1-10 open). |
+| `trf_chatter.script` | Station chatter ([design/station-chatter-spec.md](design/station-chatter-spec.md)): a 1 s poll of the plain mod trader records turns their docking steps (approach, hold, release, bay, undock) into radio exchanges between the trader's lead pilot and the station's dispatcher within 1,500 units of a trade station; one exchange per 45 real seconds, 6 per visit, 2 per trader, every line once per visit, after every content line and the approach radio; a squelch cue through `PlaySound` (`Data/SOUND/trf_squelch.wav`, `tools/gen_squelch.py`). Nothing saved. Host-tested only (W-RC.1-9 open). |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -1365,6 +1366,40 @@ Wave 4 item 14 of the roadmap, B03 (A01 step 2; spec [design/crew-requests-spec.
 ### In-game checks (requests)
 
 W-B03.1 (a request plays as a radio pair), W-B03.2 (once per save), W-B03.3 (one request at a time), W-B03.4 (B03 last in the queue), W-B03.5 (deadlines from chapter 5), W-B03.6 (quest safety), W-B03.7 (the box only as the fallback), W-B03.8 (outcomes visible), W-B03.9 (the pilot is aboard), W-B03.10 (no XP and no perk); [design/PROGRESS.md](design/PROGRESS.md) "Wave 4 (host-tested only)", scored by `tools/check_ingame.py`. Play with `LOG=2` in chapter 6-10 with Ternie launched; `REQUEST_AT=tn3` next to a seeded beacon for a forced request.
+
+## Station chatter (`EXP=0 TRAFFIC=1`)
+
+Owner request 2026-11-07 (spec [design/station-chatter-spec.md](design/station-chatter-spec.md), data [design/mod-research/station-chatter-data.md](design/mod-research/station-chatter-data.md); owner decisions 1-10 of spec 2.1 taken 2026-11-07 as recommended): module `trf_chatter`, loaded after `trf_request` (`extra_count=26`). On by default (cfg `chatter` 1); it needs trf_station with `voice` 1. Nothing is saved. Host-tested only (`rc-a`..`rc-h`), not run in the game.
+
+### What the player sees
+
+- Within 1,500 units of a trade station (the approach radio's radius), the radio traffic of the mod's own traders docking there: the approach request and the bay ("Gredos Control, Kestrel inbound with machinery. Requesting a berth." / "Kestrel, Gredos Control. Bay 4, follow the beacon in."), a hold and its release when the bay is busy, the ship in the bay, and an undocking ship with its destination ("Gredos Control, Petrel clear of bay 2, outbound for Aurora." / "Petrel, the lane is yours. Safe flight."). The trader speaks through its own lead pilot, control through the station's dispatcher portrait (Vks, New Empire, USS, Triada, InoCo, rebels, else the civil dispatcher); a corporation carrier names its contract. Kadenoa's Triada station is "Cadenoa Triada Control".
+- One exchange (a call and at most one answer 6 s later) every 45 real seconds, at most 6 per visit and 2 per trader; a line is never said twice in a visit. Vanilla traders never dock, so they get no line.
+- Content first: chatter waits 10 game seconds after any mod line with content (dock news, an arrival line, a crew request), waits for the station's own greeting and news on approach, and is silent within 300 units of the station (your own docking). An answer that meets a content line is dropped.
+- Silent during a story mission visit, a scene, `__disableAction`, `__sys_SOS`, combat, in start systems that stay vanilla and in systems the strict gate denies (`chatter`).
+- The cue: a 0.25 s squelch before every chatter line, `Data/SOUND/trf_squelch.wav` (generated by `tools/gen_squelch.py`, copied to the game's `Data/SOUND/` by `install.sh` and `install-test.sh`, removed by the uninstallers), played 2D through `PlaySound` at 60 %. The engine's own message cue is silent in the English build, so this is the only radio cue.
+
+### Config keys (chatter)
+
+`install-test.sh` writes `CHATTER` (cfg `chatter`) and `CHATTER_SOUND` (tune `rc_sound`) only when set (`LEVEL=v01`/`v02` write `chatter=0` unless `CHATTER` is set; an `rc_sound` key in `TUNE` wins over `CHATTER_SOUND`); the other tune keys go through `TUNE=key=value,...`; a test session: `TUNE=rc_gap=15,rc_stale=40`.
+
+| key | default | meaning |
+|---|---|---|
+| `chatter` | 1 | 0: no poll, line or cue |
+| tune `rc_sound` (`CHATTER_SOUND`) | 2 | 0 text only, 1 the vanilla `GUI\PM1.wav`, 2 the shipped `trf_squelch.wav` |
+| tune `rc_vol` | 60 | cue volume in % |
+| tune `rc_r`, `rc_dock_r`, `rc_pos` | 1500, 300, 300 | radius from the station, the player-docking radius, trader station to map entry |
+| tune `rc_gap`, `rc_pair`, `rc_secs` | 45, 6, 6 | real seconds between calls, from a call to its answer, message seconds |
+| tune `rc_quiet`, `rc_stale` | 10, 20 | game seconds after a content line or the last queued arrival line, game seconds an event waits |
+| tune `rc_max`, `rc_per`, `rc_bays` | 6, 2, 6 | exchanges per visit and per trader, bay numbers |
+
+### Log lines (chatter)
+
+`module=chatter event=enter ... sound= radius= via=enter|load`, `event=skip reason=` (once per reason and visit), `event=event kind=req|hold|go|bay|out`, `event=drop reason=stale|full|gone|name|station|used`, `event=say kind= part=call|answer speaker= key= distance= real_time= quiet_age= sound= sound_result=played|error|off|none result=shown|failed|dropped`, `event=dump`; rows in [design/log-events.md](design/log-events.md) "chatter".
+
+### In-game checks (chatter)
+
+W-RC.1 (chatter is heard), W-RC.2 (rate), W-RC.3 (no chatter during a mission or a scene), W-RC.4 (no repeated line), W-RC.5 (content first), W-RC.6 (radius), W-RC.7 (sound; ears), W-RC.8 (no chatter in combat), W-RC.9 (the approach radio comes first); game-only facts RC1-RC8 in the spec 12; [design/PROGRESS.md](design/PROGRESS.md) "Station chatter (host-tested only)", scored by `python3 -I tools/check_ingame.py`.
 
 ## Vanilla fixes
 

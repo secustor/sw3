@@ -599,3 +599,14 @@ traffic: lua: exp=v1 module=request event=request event_key=tn3 kind=bcn chapter
 traffic: lua: exp=v1 module=request event=line event_key=gh1 miss_count=1 line_count=0 result=miss reason=no_speaker:silent
 traffic: lua: exp=v1 module=request event=box event_key=gh1 dock_kind=trade result=shown via=nil
 traffic: lua: exp=v1 module=request event=outcome event_key=gh1 kind=bcn age=0 credits=900 help=0 standing=0 tip=false xp=10 result=done
+traffic: lua: exp=v1 module=state event=enter generation=960 fresh=false system=taira legs=700
+traffic: lua: exp=v1 module=safety event=activate system=taira mode=mod reason=nil chapter=7 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=chatter event=enter system=taira system_index=60 station_count=1 sound=2 radius=1500 via=enter
+traffic: lua: exp=v1 module=station event=near station_key=60 distance=1480 result=skipped reason=hold
+traffic: lua: exp=v1 module=chatter event=say kind=req part=call trader_id=40 station_key=60 speaker=leader key=rchreq1 distance=1700 real_time=100 quiet_age=4 sound=trf_squelch.wav sound_result=error result=shown reason=nil
+traffic: lua: exp=v1 module=chatter event=say kind=req part=call trader_id=41 station_key=61 speaker=leader key=rchreq1 distance=900 real_time=120 quiet_age=30 sound=trf_squelch.wav sound_result=played result=shown reason=nil
+traffic: lua: exp=v1 module=safety event=combat_on reason=raid source=raid game_time=900
+traffic: lua: exp=v1 module=chatter event=say kind=go part=call trader_id=42 station_key=61 speaker=DialogSystem key=rchgo1 distance=800 real_time=180 quiet_age=30 sound=trf_squelch.wav sound_result=played result=shown reason=nil
+traffic: lua: exp=v1 module=safety event=combat_off last_reason=raid game_time=930
+traffic: lua: exp=v1 module=chatter event=skip system=taira reason=latch
+traffic: lua: exp=v1 module=chatter event=say kind=bay part=call trader_id=43 station_key=61 speaker=leader key=rchin1 distance=700 real_time=240 quiet_age=30 sound=trf_squelch.wav sound_result=played result=shown reason=nil

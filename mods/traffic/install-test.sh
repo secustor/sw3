@@ -117,6 +117,12 @@
 # tn1 ... jn1, that event ignores its done bit, chapter window and gap). Tune keys (rq_ch, rq_ch_end, rq_dl_ch, rq_delay,
 # rq_secs, rq_gap, rq_miss, rq_pend_old, rq_owe_max, rq_dl_cap, rq_dl_rng, rq_trk_over, rq_trk_j, rq_bcn_j, rq_rng_j,
 # rq_rung, rq_k, rq_help, rq_fs, rq_log_keep) go through TUNE.
+# CHATTER=0|1 (cfg chatter, station chatter, design/station-chatter-spec.md, CHECK W-RC.1-9: radio exchanges between station
+# control and docking mod traders within tune rc_r; default 1 in config.script, LEVEL=v01/v02 write 0 unless CHATTER is
+# set); written only when set. CHATTER_SOUND=0|1|2 (tune rc_sound: 0 text only, 1 the vanilla GUI\PM1.wav, 2 the shipped
+# Data/SOUND/trf_squelch.wav, the default); written only when set, an rc_sound key in TUNE wins. Data/SOUND/trf_squelch.wav
+# is copied to the clone's Data/SOUND/ on every run. Tune keys (rc_r, rc_gap, rc_pair, rc_secs, rc_quiet, rc_stale, rc_max,
+# rc_per, rc_dock_r, rc_pos, rc_bays, rc_vol) go through TUNE; a test session: TUNE=rc_gap=15,rc_stale=40.
 # NEWS=1: the trf_* records of news/trf_news.xml (tools/gen_news.py) merged into the clone's Data/Game/News.xml
 # (the vanilla file is kept as News.xml.trf-orig; loc/trf_en.loc is copied on every run), and news_mode=2 unless
 # NEWS_MODE is set; unset restores News.xml from News.xml.trf-orig.
@@ -168,8 +174,8 @@ case "${MERC_NAMES:-0}" in 0) ;; 1) opt="$opt, mc_names=2" ;; *) echo "MERC_NAME
 LEVEL=${LEVEL:-v1}
 case "$LEVEL" in
 v1) pre= ;;
-v02) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0 corp=0 tips=0 spec=0 signals=0 survey=0 requests=0" ;;
-v01) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 prosperity=0 seed=0 parked=0 queue=0 raids=0 staged=0 contracts=0 meet=1 board=0 shop_mode=0 short_price=0 news_mode=0 esc_flight=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0 corp=0 tips=0 spec=0 signals=0 survey=0 requests=0" ;;
+v02) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0 corp=0 tips=0 spec=0 signals=0 survey=0 requests=0 chatter=0" ;;
+v01) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 prosperity=0 seed=0 parked=0 queue=0 raids=0 staged=0 contracts=0 meet=1 board=0 shop_mode=0 short_price=0 news_mode=0 esc_flight=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0 corp=0 tips=0 spec=0 signals=0 survey=0 requests=0 chatter=0" ;;
 *) echo "LEVEL must be v01, v02 or v1" >&2; exit 1 ;;
 esac
 for e in $pre; do
@@ -260,6 +266,8 @@ case "${SY_QUEST:-}" in "") ;; 0|1) opt="$opt, sy_quest=$SY_QUEST" ;; *) echo "S
 case "${SY_GATE:-}" in "") ;; 0|1) opt="$opt, sy_gate=$SY_GATE" ;; *) echo "SY_GATE must be 0 or 1" >&2; exit 1;; esac
 case "${REQUESTS:-}" in "") ;; 0|1) opt="$opt, requests=$REQUESTS" ;; *) echo "REQUESTS must be 0 or 1" >&2; exit 1;; esac
 case "${RQ_BOX:-}" in "") ;; 0|1) opt="$opt, rq_box=$RQ_BOX" ;; *) echo "RQ_BOX must be 0 or 1" >&2; exit 1;; esac
+case "${CHATTER:-}" in "") ;; 0|1) opt="$opt, chatter=$CHATTER" ;; *) echo "CHATTER must be 0 or 1" >&2; exit 1;; esac
+case "${CHATTER_SOUND:-}" in "") ;; 0|1|2) ;; *) echo "CHATTER_SOUND must be 0, 1 or 2" >&2; exit 1;; esac
 case "${JOBS_UI:-}" in "") ;; 0|1|2) opt="$opt, jobs_ui=$JOBS_UI" ;; *) echo "JOBS_UI must be 0, 1 or 2" >&2; exit 1;; esac
 opt="$opt, jobs_log=${JOBS_LOG:-1}"
 case "${FITS:-}" in "") ;; 0|1) opt="$opt, fits=$FITS" ;; *) echo "FITS must be 0 or 1" >&2; exit 1;; esac
@@ -294,6 +302,9 @@ if [ "$PROFILE" = lab ]; then
     done
 fi
 case ", $tn" in *", hail_box="*) ;; *) tn="$tn${tn:+, }hail_box=$HAIL_BOX" ;; esac
+if [ -n "${CHATTER_SOUND:-}" ]; then
+    case ", $tn" in *", rc_sound="*) ;; *) tn="$tn${tn:+, }rc_sound=$CHATTER_SOUND" ;; esac
+fi
 opt="$opt, hail_xml=1, tune={$tn}"
 
 cp "$tp/out/zlib1.dll" "$COPY/zlib1.dll"
@@ -315,6 +326,9 @@ locd=$COPY/Data/LocData/English
 cp "$here/loc/trf_en.loc" "$locd/trf_en.loc"
 locr=$COPY/Data/LocData/Russian
 [ ! -d "$locr" ] || cp "$here/loc/trf_ru.loc" "$locr/trf_ru.loc"
+sndd=$COPY/Data/SOUND
+mkdir -p "$sndd"
+cp "$here/Data/SOUND/trf_squelch.wav" "$sndd/trf_squelch.wav"
 newsx=$COPY/Data/Game/News.xml
 if [ "${NEWS:-0}" = 1 ]; then
     [ -f "$newsx.trf-orig" ] || cp -p "$newsx" "$newsx.trf-orig"
@@ -350,7 +364,7 @@ xattr -c "$COPY/zlib1.dll" "$ini" 2>/dev/null || true
 find "$SCRIPTS_DST" -type f -exec xattr -c {} \; 2>/dev/null || true
 xattr -c "$COPY/Data/Scripts/Trade/TRF_Hail.xml" "$COPY/Data/Scripts/Trade/TRF_HailPg.xml" "$COPY/Data/Scripts/Trade/TRF_MercPg.xml" "$COPY/Data/Scripts/Trade"/TRF_Wq*.xml \
     "$COPY/Data/Scripts/Trade"/TRF_Te*.xml "$COPY/Data/Scripts/Trade"/TRF_Db*.xml \
-    "$locd/trf_en.loc" 2>/dev/null || true
+    "$locd/trf_en.loc" "$sndd/trf_squelch.wav" 2>/dev/null || true
 [ ! -f "$locr/trf_ru.loc" ] || xattr -c "$locr/trf_ru.loc" 2>/dev/null || true
 echo "installed zlib1.dll (sha1 $(shasum "$COPY/zlib1.dll" | cut -d' ' -f1))"
 echo "scripts in $SCRIPTS_DST:"; ls "$SCRIPTS_DST" | sed 's/^/  /'
@@ -362,6 +376,7 @@ echo "Report in dialogs: $COPY/Data/Scripts/Trade/TRF_Db1.xml, TRF_Db2.xml"
 echo "pilots: $(grep -c '<GamePilot name="TRF_WqP_' "$pilx") TRF_WqP_ speakers, $(grep -c '<GamePilot name="TRF_McP_' "$pilx") TRF_McP_ templates in $pilx (vanilla in Pilots.xml.trf-orig)"
 echo "loc: $locd/trf_en.loc (loc_mode $([ "${LOC:-0}" = 1 ] && echo 1 || echo 0))"
 [ ! -f "$locr/trf_ru.loc" ] || echo "loc: $locr/trf_ru.loc"
+echo "chatter cue: $sndd/trf_squelch.wav"
 [ ! -f "$newsx.trf-orig" ] || echo "news: $(grep -c '<name>trf_' "$newsx") trf_ records in $newsx (vanilla in News.xml.trf-orig)"
 echo "sw3tp.ini [traffic]: $(awk '{sub(/\r$/,"")} /^\[/{p=($0=="[traffic]")} p&&!/^\[/{printf "%s ",$0}' "$ini")"
 echo "sw3tp.ini [stability]: $(awk '{sub(/\r$/,"")} /^\[/{p=($0=="[stability]")} p&&!/^\[/{printf "%s ",$0}' "$ini")"

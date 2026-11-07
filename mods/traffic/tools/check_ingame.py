@@ -16,7 +16,8 @@ ring (W-A16.1-10, design/tips-spec.md 13; wave 2, host-tested only) and the spec
 design/static-signals-spec.md 14; wave 3, host-tested only) and the station approach radio (STN-NEAR.1-2,
 design/station-voices-spec.md 8.8; host-tested only) and the survey layer with "Chart the frontier" (W-A12.9-18,
 design/survey-spec.md 14; wave 3, host-tested only) and the crew requests (W-B03.1-10, design/crew-requests-spec.md 14;
-wave 4, host-tested only) from traffic logs.
+wave 4, host-tested only) and the station chatter (W-RC.1-9, design/station-chatter-spec.md 12; host-tested only) from
+traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -47,6 +48,7 @@ FIXTURE_SIGNAL = os.path.join(HERE, "..", "tests", "check_ingame_signal_fixture.
 FIXTURE_STATION = os.path.join(HERE, "..", "tests", "check_ingame_station_fixture.log")
 FIXTURE_SURVEY = os.path.join(HERE, "..", "tests", "check_ingame_survey_fixture.log")
 FIXTURE_REQUEST = os.path.join(HERE, "..", "tests", "check_ingame_request_fixture.log")
+FIXTURE_CHATTER = os.path.join(HERE, "..", "tests", "check_ingame_chatter_fixture.log")
 REL = ("war", "neutral", "friend")
 PHASES = ("Quiet", "Boom", "Build-up", "Raids", "Bust", "Recovery")
 # vanilla bounty flights (OutMission_kill_pirate), haunt-spec appendix A class P
@@ -4357,6 +4359,193 @@ def c_wrq10(ctx):
     return res
 
 
+# Station chatter (design/station-chatter-spec.md 12, W-RC.1-9; host-tested only) ---------------------------------------
+
+RC_GAP, RC_MAX, RC_QUIET = 45, 6, 10   # tune rc_gap, rc_max and rc_quiet defaults (spec 8)
+
+
+def rc_visits(ctx):
+    """Chatter visits: split at module=chatter event=enter (level 2) and at module=state event=enter or load."""
+    out = []
+    for lg in ctx.logs:
+        cur = None
+        for r in lg.recs:
+            if r.is_("chatter", "enter") or (r.mod == "state" and r.ev in ("enter", "load")):
+                cur = {"enter": r if r.mod == "chatter" else None, "recs": []}
+                out.append(cur)
+                continue
+            if cur is not None:
+                cur["recs"].append(r)
+    return out
+
+
+def rc_shown(recs):
+    return [r for r in recs if r.is_("chatter", "say", result="shown")]
+
+
+def c_wrc1(ctx):
+    res = Res()
+    res.logpart = True
+    sh = rc_shown(ctx.recs)
+    if not sh:
+        res.missing.append("wait near a trade station of a mod-mode system while mod traders dock (LOG=2 CHATTER=1, "
+                           "TUNE=rc_gap=15,rc_stale=40): no module=chatter event=say result=shown")
+    res.ev("chatter lines shown", sh)
+    return res
+
+
+def c_wrc2(ctx):
+    res = Res()
+    res.logpart = True
+    seen = []
+    for v in rc_visits(ctx):
+        calls = [r for r in rc_shown(v["recs"]) if r.get("part") == "call"]
+        seen += calls
+        if len(calls) > RC_MAX:
+            res.fails.append("%s: %d calls in one visit (rc_max %d)" % (calls[RC_MAX].short(), len(calls), RC_MAX))
+        for a, b in zip(calls, calls[1:]):
+            ta, tb = a.num("real_time"), b.num("real_time")
+            if ta is not None and tb is not None and tb - ta < RC_GAP:
+                res.fails.append("%s: %.0f real seconds after the call %s (rc_gap %d)" % (b.short(), tb - ta, a.short(), RC_GAP))
+    if not seen:
+        res.missing.append("no module=chatter event=say part=call result=shown (see W-RC.1)")
+    res.ev("calls shown", seen)
+    return res
+
+
+def c_wrc3(ctx):
+    res = Res()
+    res.logpart = True
+    ev = []
+    for v in rc_visits(ctx):
+        lat, scn = None, []
+        for r in v["recs"]:
+            if r.is_("chatter", "skip", reason="latch"):
+                lat = lat or r
+                ev.append(r)
+            elif r.is_("chatter", "skip", reason="hold:scene"):
+                scn.append(r)
+                ev.append(r)
+            elif r.is_("chatter", "say", result="shown"):
+                if lat is not None:
+                    res.fails.append("%s: after the visit latch (%s)" % (r.short(), lat.short()))
+                for q in scn:
+                    if q.src == r.src and 0 < r.n - q.n <= 10:
+                        res.fails.append("%s: within 10 lines after a scene hold (%s)" % (r.short(), q.short()))
+                        break
+    if not ev:
+        res.missing.append("enter a system with a trade station during a story mission, or watch a cutscene near one (LOG=2): no "
+                           "module=chatter event=skip reason=latch or reason=hold:scene")
+    res.ev("latch and scene skips", ev)
+    return res
+
+
+def c_wrc4(ctx):
+    res = Res()
+    res.logpart = True
+    sh = []
+    for v in rc_visits(ctx):
+        keys = {}
+        for r in rc_shown(v["recs"]):
+            sh.append(r)
+            k = r.get("key")
+            if k in keys:
+                res.fails.append("%s: key %s said again in the visit (%s)" % (r.short(), k, keys[k].short()))
+            else:
+                keys[k] = r
+    if not sh:
+        res.missing.append("no module=chatter event=say result=shown (see W-RC.1)")
+    res.ev("chatter lines shown", sh)
+    return res
+
+
+def c_wrc5(ctx):
+    res = Res()
+    res.logpart = True
+    sh = [r for r in rc_shown(ctx.recs) if r.num("quiet_age") is not None]
+    for r in sh:
+        if r.num("quiet_age") < RC_QUIET:
+            res.fails.append("%s: quiet_age %s below rc_quiet %d" % (r.short(), r.get("quiet_age"), RC_QUIET))
+    if not sh:
+        res.missing.append("no chatter line with a quiet_age (a content line or a queued arrival line earlier in the visit)")
+    res.ev("chatter lines with a quiet age", sh)
+    return res
+
+
+def c_wrc6(ctx):
+    res = Res()
+    res.logpart = True
+    sh = []
+    for v in rc_visits(ctx):
+        e = v["enter"]
+        rad = e.num("radius") if e is not None else None
+        for r in rc_shown(v["recs"]):
+            d = r.num("distance")
+            if d is None or rad is None:
+                continue
+            sh.append(r)
+            if d > rad:
+                res.fails.append("%s: distance %.0f above the visit's radius %.0f" % (r.short(), d, rad))
+    if not sh:
+        res.missing.append("no chatter line with a distance in a visit with a module=chatter event=enter line (LOG=2)")
+    res.ev("chatter lines with a distance", sh)
+    return res
+
+
+def c_wrc7(ctx):
+    res = Res()
+    res.logpart = True
+    pl = [r for r in ctx.find("chatter", "say", sound_result="played") if r.get("sound") not in (None, "none")]
+    for r in ctx.find("chatter", "say", sound_result="error"):
+        res.fails.append("%s: PlaySound raised" % r.short())
+    if not pl and not res.fails:
+        res.missing.append("no module=chatter event=say sound_result=played (CHATTER_SOUND unset or 1)")
+    res.ev("cues played", pl)
+    return res
+
+
+def c_wrc8(ctx):
+    res = Res()
+    res.logpart = True
+    on = []
+    for lg in ctx.logs:
+        cur = None
+        for r in lg.recs:
+            if r.is_("safety", "combat_on"):
+                cur = r
+                on.append(r)
+            elif r.is_("safety", "combat_off") or (r.mod == "state" and r.ev in ("enter", "load")):
+                cur = None
+            elif cur is not None and r.is_("chatter", "say", result="shown"):
+                res.fails.append("%s: during combat (%s)" % (r.short(), cur.short()))
+    if not on:
+        res.missing.append("start a fight near a trade station (a raid or a pirate): no module=safety event=combat_on")
+    res.ev("combat starts", on)
+    return res
+
+
+def c_wrc9(ctx):
+    res = Res()
+    res.logpart = True
+    holds = []
+    for v in rc_visits(ctx):
+        pend = {}
+        for r in v["recs"]:
+            k = r.get("station_key")
+            if r.is_("station", "near", result="skipped", reason="hold"):
+                pend.setdefault(k, r)
+                holds.append(r)
+            elif r.is_("station", "near", result="spoken"):
+                pend.pop(k, None)
+            elif r.is_("chatter", "say", result="shown") and k in pend:
+                res.fails.append("%s: before the approach radio's news of station %s (%s)" % (r.short(), k, pend[k].short()))
+    if not holds:
+        res.missing.append("fly toward a trade station with mod traders docking (LOG=2): no module=station event=near "
+                           "result=skipped reason=hold (the greeting said, the news pending)")
+    res.ev("approach holds", holds)
+    return res
+
+
 
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
@@ -4646,6 +4835,16 @@ ITEMS = [
     ("W-B03.8", "outcomes visible", c_wrq8, None),
     ("W-B03.9", "the pilot is aboard", c_wrq9, None),
     ("W-B03.10", "no XP and no perk", c_wrq10, "the pilot's perk list and experience unchanged across an outcome"),
+    ("W-RC.1", "chatter is heard", c_wrc1, None),
+    ("W-RC.2", "rate", c_wrc2, None),
+    ("W-RC.3", "no chatter during a mission or a scene", c_wrc3, None),
+    ("W-RC.4", "no repeated line", c_wrc4, None),
+    ("W-RC.5", "content first", c_wrc5, None),
+    ("W-RC.6", "radius", c_wrc6, None),
+    ("W-RC.7", "sound", c_wrc7, "a short squelch before each chatter line, its loudness following the sound volume; silence "
+     "with CHATTER_SOUND=0 (RC1-RC3)"),
+    ("W-RC.8", "no chatter in combat", c_wrc8, None),
+    ("W-RC.9", "the approach radio comes first", c_wrc9, None),
     ("STN-NEAR.1", "station greeting and news on approach, before the dock line (greeting_skip=near)", c_stn_near1,
      "the dockmaster's radio greeting and then the news line while flying in, before the docking box opens"),
     ("STN-NEAR.2", "approach radio: nothing spoken twice per visit", c_stn_near2, None),
@@ -4791,7 +4990,9 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "W-A12.9": "FAIL", "W-A12.10": "FAIL", "W-A12.11": "FAIL", "W-A12.12": "FAIL", "W-A12.13": "FAIL",
             "W-A12.14": "FAIL", "W-A12.15": "FAIL", "W-A12.16": "FAIL", "W-A12.17": "FAIL", "W-A12.18": "NO DATA",
             "W-B03.1": "NO DATA", "W-B03.2": "FAIL", "W-B03.3": "FAIL", "W-B03.4": "FAIL", "W-B03.5": "FAIL", "W-B03.6": "FAIL",
-            "W-B03.7": "FAIL", "W-B03.8": "FAIL", "W-B03.9": "FAIL", "W-B03.10": "FAIL"}
+            "W-B03.7": "FAIL", "W-B03.8": "FAIL", "W-B03.9": "FAIL", "W-B03.10": "FAIL",
+            "W-RC.1": "PASS", "W-RC.2": "FAIL", "W-RC.3": "FAIL", "W-RC.4": "FAIL", "W-RC.5": "FAIL", "W-RC.6": "FAIL",
+            "W-RC.7": "FAIL", "W-RC.8": "FAIL", "W-RC.9": "FAIL"}
 # tests/check_ingame_warn_fixture.log: correct warning behaviour only. A dock warning for Gideon at Avalon (leg 100) after
 # the station's dock line, a second approach skipped (visit), a return at leg 102 skipped (cooldown); at XT-23 (station
 # voice deny, a station pass, no station dock line) a pass reason=scene, then a warning for XT-24; a load of an earlier
@@ -4861,6 +5062,11 @@ SELFTEST_SURVEY = {"W-A12.9": "PASS", "W-A12.10": "PASS", "W-A12.11": "PASS", "W
 # Kadi (chapter 7): hr3 with deadline 15, the reply by Greyhair, done on the death bus; Heos (chapter 13): tn4 by Lastochka2.
 SELFTEST_REQUEST = {"W-B03.1": "MANUAL", "W-B03.2": "PASS", "W-B03.3": "PASS", "W-B03.4": "PASS", "W-B03.5": "PASS",
                     "W-B03.6": "PASS", "W-B03.7": "PASS", "W-B03.8": "PASS", "W-B03.9": "PASS", "W-B03.10": "MANUAL"}
+# tests/check_ingame_chatter_fixture.log: correct station chatter behaviour (LOG=2). Gredos (chapter 6): the approach hold and
+# its news before the first exchange, a request pair, a combat hold, a bay call and an undock call 45+ real seconds apart,
+# a dropped answer; Kadi: the latch skip, nothing said; Aurora: a scene hold, nothing said; Taira: a load, one call.
+SELFTEST_CHATTER = {"W-RC.1": "PASS", "W-RC.2": "PASS", "W-RC.3": "PASS", "W-RC.4": "PASS", "W-RC.5": "PASS", "W-RC.6": "PASS",
+                    "W-RC.7": "MANUAL", "W-RC.8": "PASS", "W-RC.9": "PASS"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -4920,6 +5126,9 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # logbook end (W-B03.8 FAIL); in chapter 11 the latch skip, then Lastochka's line (W-B03.6, W-B03.9 FAIL), tn2 started again
 # (W-B03.2 FAIL) and tn3 while tn2 is open (W-B03.3 FAIL), the gh1 box after one miss (W-B03.7 FAIL), a request line with
 # xp (W-B03.10 FAIL); no part 2 shown (W-B03.1 NO DATA).
+# Station chatter block (the very end, Taira): a call before the approach radio's news (W-RC.9 FAIL) at distance 1700 above
+# the radius (W-RC.6 FAIL) with quiet_age 4 (W-RC.5 FAIL) and PlaySound raising (W-RC.7 FAIL); the same key 20 real seconds
+# later (W-RC.2, W-RC.4 FAIL); a call during combat (W-RC.8 FAIL); a call after the latch skip (W-RC.3 FAIL).
 
 
 def selftest():
@@ -4991,9 +5200,14 @@ def selftest():
         if got.get(iid) != v:
             print("selftest: request fixture %s is %s, expected %s" % (iid, got.get(iid), v))
             bad += 1
+    got = dict((r[0], r[2]) for r in score(Ctx([Log(FIXTURE_CHATTER, None, [])]), {}))
+    for iid, v in SELFTEST_CHATTER.items():
+        if got.get(iid) != v:
+            print("selftest: chatter fixture %s is %s, expected %s" % (iid, got.get(iid), v))
+            bad += 1
     n = (len(SELFTEST) + len(SELFTEST_EYES[1]) + len(SELFTEST_WARN) + len(SELFTEST_REMARK) + len(SELFTEST_TEMPER) + len(SELFTEST_CORP)
          + len(SELFTEST_DEBRIEF) + len(SELFTEST_TIPS) + len(SELFTEST_SPEC) + len(SELFTEST_SIGNAL) + len(SELFTEST_STATION)
-         + len(SELFTEST_SURVEY) + len(SELFTEST_REQUEST))
+         + len(SELFTEST_SURVEY) + len(SELFTEST_REQUEST) + len(SELFTEST_CHATTER))
     if parse_logfmt('a=1 message="x \\"y\\" z" b=') != {"a": "1", "message": 'x "y" z', "b": ""}:
         print("selftest: logfmt quoting")
         bad += 1

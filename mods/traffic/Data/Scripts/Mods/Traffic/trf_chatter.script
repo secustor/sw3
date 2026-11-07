@@ -1,0 +1,741 @@
+-- sw3-traffic station chatter (Lua 4.0.1). Spec: design/station-chatter-spec.md (owner request 2026-11-07; owner
+-- decisions 1-10 of spec 2.1 taken 2026-11-07 as recommended). Prefix Rc (TRF_Rc_* public, TRF_Rc<X> internal), log
+-- module=chatter, cfg chatter. Host-tested only, not run in the game (W-RC.1-9 open).
+-- Owns: the radio traffic the player overhears near a trade station. A 1 s poll of TRF.live.tr (TRF_Rc_Step, after
+-- trf_request's) turns the docking steps of plain mod traders (path A or B, no sev, fw, wq, own, fl) into events: approach
+-- accepted (req), holding (hold), released (go), in the bay (bay) and undocked (out). One exchange per rc_gap real seconds
+-- (a call and at most one answer rc_pair real seconds later), at most rc_max per visit and rc_per per trader, each line key
+-- once per visit; the trader's lines through its lead pilot (TRF_UI_Leader, else CreatePilot("Trader")), the control
+-- lines through the station's dispatcher template (trf_station TRF_Stn_ChatCtx). A short cue before each line through 2D
+-- PlaySound (tune rc_sound: 0 none, 1 GUI\PM1.wav, 2 the shipped trf_squelch.wav of tools/gen_squelch.py).
+-- Content first: never an arrival line (TRF_ArrivalLine), never counted in arr_max, never writes TRF.live.line or
+-- trf_station's SV.rt; waits rc_quiet game seconds after a content radio or focus line and the last queued arrival line
+-- (trf_plumb TRF_ArrivalLast), for the station's approach radio and while the mothership is within rc_dock_r of the
+-- station; a pending answer that meets a content line is dropped, never delayed.
+-- Gates: traffic and cfg chatter, a map entry with a trade station, the system mode, the strict gate (feature chatter),
+-- trf_station's dock gate (voice 0 or trf_station missing: off), the visit latch on TRF_Safe_QState, the hold flags, a scene
+-- and TRF_Combat.
+-- Saved fields: none. The visit state is the chunk local RC (never saved, rebuilt by every MapInitialization, entry and
+-- load); no handle anywhere (the speakers are function locals of the line call).
+-- Layout as trf_survey: helpers, accessors (one native each, protected), static tables, pure functions (*Of, explicit
+-- inputs, host-testable), contract functions. Top level: functions and RC only.
+
+local RC = {s={}, b={}, n={}, k={}, ev={}, pr={}, ex=0};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_RcCV() return %RC; end;
+
+-- logfmt event line, module=chatter (design/log-format.md).
+function TRF_RcE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "chatter"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_RcErr(m)
+	TRF_RcE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler (natives that may be missing or answer badly): nil is the answer.
+function TRF_RcNoErr(m) end;
+
+function TRF_RcLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_RcDE(event, ...)
+	if TRF_RcLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_RcE, arg);
+end;
+
+function TRF_RcCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- a mod m, never negative (Lua 4 mod() keeps the sign of a).
+function TRF_RcMod(a, m)
+	return a - floor(a / m) * m;
+end;
+
+-- Rounded number for a log value (one decimal with d 1), nil when not a number.
+function TRF_RcF(x, d)
+	if type(x) ~= "number" then return nil; end;
+	if d == 1 then return floor(x * 10 + 0.5) / 10; end;
+	return floor(x + 0.5);
+end;
+
+-- Ranges of the cfg key (outside -> default) and clamps of the tune keys (spec 8): {lo, hi}.
+function TRF_RcClampT()
+	return {chatter={0, 1}, rc_r={300, 5000}, rc_gap={10, 600}, rc_pair={2, 20}, rc_secs={3, 15}, rc_quiet={0, 60},
+		rc_stale={5, 120}, rc_max={1, 30}, rc_per={1, 5}, rc_dock_r={0, 1000}, rc_pos={50, 1000}, rc_bays={1, 12},
+		rc_sound={0, 2}, rc_vol={0, 100}};
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Rc_OptDef), else the raw config, else the default; a wrong type or a number outside its
+-- range reads as the default.
+function TRF_RcOpt(key)
+	local d = TRF_Rc_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	local r = TRF_RcClampT()[key];
+	if type(v) == "number" and r and (v ~= floor(v) or v < r[1] or v > r[2]) then return d; end;
+	return v;
+end;
+
+-- Tune values of this module, whole and clamped (TRF_RcClampT). Cached in RC.tc while TRF_Tune returns the same table;
+-- callers must not write into it.
+function TRF_RcTune()
+	local rc = %RC;
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_RcErr); end;
+	if type(rc.tc) == "table" and rc.tc.s == t then return rc.tc.t; end;
+	local d, cl, o = TRF_Rc_TuneDef(), TRF_RcClampT(), {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if type(x) ~= "number" then x = v; end;
+		x = floor(x);
+		local c = cl[k];
+		if c then x = TRF_RcCl(x, c[1], c[2]); end;
+		o[k] = x;
+	end;
+	rc.tc = {s=t, t=o};
+	return o;
+end;
+
+function TRF_RcGt()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.gt) == "number" then return TRF.clock.gt; end;
+	return 0;
+end;
+
+function TRF_RcNow()
+	local r = TRF_N("TRF_RealSecs");
+	if type(r) == "number" then return r; end;
+	return 0;
+end;
+
+function TRF_RcCur()
+	local i = TRF_N("TRF_CurIdx");
+	if type(i) == "number" then return i; end;
+	return nil;
+end;
+
+function TRF_RcName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+-- English map name of system idx for the lines (trf_loc TRF_SysEn), else the script name.
+function TRF_RcSysEn(idx)
+	local n = TRF_N("TRF_SysEn", idx);
+	if type(n) == "string" then return n; end;
+	return TRF_RcName(idx);
+end;
+
+function TRF_RcTxt(key, a, b, c, d)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c, d); end;
+	return tostring(key);
+end;
+
+-- Station key of station ordinal j of system idx (trf_station's TRF_Stn_Key form), for the log.
+function TRF_RcKey(idx, j)
+	if type(idx) ~= "number" or type(j) ~= "number" then return nil; end;
+	return idx + 200 * (j - 1);
+end;
+
+-- Distance of two tables with x, y, z, or nil.
+function TRF_RcDist(a, b)
+	if type(a) ~= "table" or type(b) ~= "table" or type(a.x) ~= "number" or type(b.x) ~= "number" then return nil; end;
+	local dx, dy, dz = a.x - b.x, (a.y or 0) - (b.y or 0), (a.z or 0) - (b.z or 0);
+	return sqrt(dx * dx + dy * dy + dz * dz);
+end;
+
+-- Accessors: one native each, protected --------------------------------------------
+
+function TRF_RcMsgRaw(p, text, secs)
+	p:Message(text, secs);
+	return 1;
+end;
+
+-- Pilot:Message (as trf_ui TRF_UI_Msg): 1 when sent.
+function TRF_RcMsg(p, text, secs)
+	if p == nil or type(text) ~= "string" then return nil; end;
+	if call(TRF_RcMsgRaw, {p, text, secs}, "x", TRF_RcErr) == 1 then return 1; end;
+	return nil;
+end;
+
+function TRF_RcSndRaw(name, vol)
+	PlaySound(name, vol);
+	return 1;
+end;
+
+-- 2D cue (spec 6.5): PlaySound(name, volume 0..1) with exactly two arguments (the native reads the volume only then). The
+-- native pushes no value: "played" when the call did not raise, "error" when it did, "none" without the native.
+function TRF_RcSnd(name, vol)
+	if type(PlaySound) ~= "function" then return "none"; end;
+	if call(TRF_RcSndRaw, {name, vol}, "x", TRF_RcNoErr) == 1 then return "played"; end;
+	return "error";
+end;
+
+-- Lead pilot of trader id (trf_ui TRF_UI_Leader, protected there), or nil.
+function TRF_RcLead(id)
+	local p = TRF_N("TRF_UI_Leader", id);
+	if p == nil or type(p) == "number" or type(p) == "string" then return nil; end;
+	return p;
+end;
+
+-- A speaker of template tpl (CreatePilot), or nil.
+function TRF_RcPilot(tpl)
+	if type(CreatePilot) ~= "function" or type(tpl) ~= "string" then return nil; end;
+	return call(CreatePilot, {tpl}, "x", TRF_RcErr);
+end;
+
+-- Mothership position: trf_plumb's TRF_PlPos over TRF_Ms (never GetPlayerMotherShip from a tick); nil when unknown.
+function TRF_RcMsPos()
+	if type(TRF_PlPos) ~= "function" or type(TRF_Ms) ~= "function" then return nil; end;
+	return TRF_PlPos(TRF_Ms());
+end;
+
+-- Static tables -------------------------------------------------------------------
+
+-- Constants (spec 8): the cue files of rc_sound 1 and 2, the trader fallback template, the event cap; the kinds (4.2):
+-- i the kind index of the key hash, p the priority (1 first), c the call keys and cs their speaker (t trader, c control),
+-- a the answer keys and as their speaker. req's rchreqc is the corporation carrier's first choice (4.2).
+function TRF_RcK()
+	return {snd={"GUI\\PM1.wav", "trf_squelch.wav"}, trader="Trader", evmax=4,
+		kinds={req={i=1, p=3, c={"rchreq1", "rchreq2"}, cs="t", a={"rchreqa1", "rchreqa2"}, as="c"},
+			hold={i=2, p=2, c={"rchhold1", "rchhold2"}, cs="c", a={"rchholda"}, as="t"},
+			go={i=3, p=1, c={"rchgo1", "rchgo2"}, cs="c"},
+			bay={i=4, p=5, c={"rchin1", "rchin2"}, cs="t"},
+			out={i=5, p=4, c={"rchout1", "rchout2"}, cs="t", a={"rchouta1", "rchouta2"}, as="c"}}};
+end;
+
+-- Arguments of every line key (7): c control, s ship, g cargo, o corporation, b bay, d destination.
+function TRF_RcArgK()
+	return {rchreq1={"c", "s", "g"}, rchreq2={"c", "s"}, rchreqc={"c", "s", "o", "g"}, rchreqa1={"s", "c", "b"},
+		rchreqa2={"s", "c", "b"}, rchhold1={"s", "c"}, rchhold2={"s", "c"}, rchholda={"s"}, rchgo1={"s", "b"},
+		rchgo2={"s", "b"}, rchin1={"c", "s", "b"}, rchin2={"c", "s", "b"}, rchout1={"c", "s", "b", "d"},
+		rchout2={"c", "s", "b"}, rchouta1={"s"}, rchouta2={"s"}};
+end;
+
+-- Pure functions (explicit inputs, host-testable) -----------------------------------
+
+-- 1 for a plain mod trader record (D3): path A or B, not gone, none of the flags sev, fw, wq, own, fl.
+function TRF_RcPlainOf(r)
+	if type(r) ~= "table" or (r.path ~= "A" and r.path ~= "B") or r.st == "gone" or type(r.st) ~= "string" then return nil; end;
+	local f = {"sev", "fw", "wq", "own", "fl"};
+	for i = 1, getn(f) do
+		local v = r[f[i]];
+		if v ~= nil and v ~= 0 then return nil; end;
+	end;
+	return 1;
+end;
+
+-- Docking state of record r as the visit table keeps it: "bay" with dkd 1, "go" for a released queue record (qgo 1),
+-- else r.st.
+function TRF_RcStOf(r)
+	if r.dkd == 1 then return "bay"; end;
+	if r.st == "queue" and r.qgo == 1 then return "go"; end;
+	return r.st;
+end;
+
+-- Event of record r against its last seen state prev at game time gt (4.1): kind or nil, and the new state.
+function TRF_RcSeeOf(prev, r, gt, T)
+	local cur = TRF_RcStOf(r);
+	if prev == nil then
+		if r.path == "B" and r.from == 0 and r.st == "out" and type(r.born) == "number" and gt - r.born <= T.rc_stale then
+			return "out", "out";
+		end;
+		return nil, cur;
+	end;
+	if r.path == "A" and prev == "in" and r.st == "dock" and r.dkd ~= 1 then return "req", "dock"; end;
+	if r.st == "queue" and r.qgo ~= 1 and prev ~= "queue" then return "hold", "queue"; end;
+	if prev == "queue" and (r.qgo == 1 or r.st == "in" or r.st == "dock") then return "go", "go"; end;
+	if r.dkd == 1 and prev ~= "bay" then return "bay", "bay"; end;
+	return nil, cur;
+end;
+
+-- Index of the event to say (4.2): the lowest priority number, then the oldest t; events of a trader with rc_per
+-- exchanges (n[id]) are passed over. nil when none is left.
+function TRF_RcPickOf(ev, n, T)
+	local K = TRF_RcK().kinds;
+	local best, bp, bt = nil, nil, nil;
+	for i = 1, getn(ev) do
+		local e = ev[i];
+		local p = K[e.kind].p;
+		if (n[e.id] or 0) < T.rc_per and (best == nil or p < bp or (p == bp and e.t < bt)) then best = i; bp = p; bt = e.t; end;
+	end;
+	return best;
+end;
+
+-- Key of list not in used, the list rotated by h (4.4): the first one left, or nil.
+function TRF_RcKeyOf(list, used, h)
+	local av = {};
+	for i = 1, getn(list) do if not used[list[i]] then tinsert(av, list[i]); end; end;
+	if getn(av) == 0 then return nil; end;
+	return av[1 + TRF_RcMod(h, getn(av))];
+end;
+
+-- Hash of trader id and kind index ki (4.4).
+function TRF_RcHashOf(id, ki)
+	return TRF_RcMod(id * 31 + ki * 7, 97);
+end;
+
+-- Bay number of trader id at station ordinal j among n bays (4.3).
+function TRF_RcBayOf(id, j, n)
+	return 1 + TRF_RcMod(7 * id + 3 * j, n);
+end;
+
+-- Q6: nil or the reason (gap, cap, per_trader) for the last call at real time rs (nil none), now, ex exchanges this
+-- visit and n of the trader.
+function TRF_RcRateOf(rs, now, ex, n, T)
+	if type(rs) == "number" and now - rs < T.rc_gap then return "gap"; end;
+	if (ex or 0) >= T.rc_max then return "cap"; end;
+	if (n or 0) >= T.rc_per then return "per_trader"; end;
+	return nil;
+end;
+
+-- Q1 and Q2 at game time gt: line (TRF.live.line), rt (trf_station's last radio line), last (the due time of the last
+-- queued arrival line); nil or the reason (quiet_line, quiet_arrival), and the smaller age in game seconds (nil without
+-- any stamp).
+function TRF_RcQuietOf(gt, line, rt, last, T)
+	local a1, a2 = nil, nil;
+	if type(line) == "number" then a1 = gt - line; end;
+	if type(rt) == "number" and (a1 == nil or gt - rt < a1) then a1 = gt - rt; end;
+	if type(last) == "number" then a2 = gt - last; end;
+	local age = a1;
+	if a2 and (age == nil or a2 < age) then age = a2; end;
+	if a1 and a1 < T.rc_quiet then return "quiet_line", age; end;
+	if a2 and a2 < T.rc_quiet then return "quiet_arrival", age; end;
+	return nil, age;
+end;
+
+-- Trade stations of system idx of map m in map order: {x, y, z, prm, side, j}.
+function TRF_RcTlOf(m, idx)
+	local o = {};
+	if type(m) ~= "table" or type(m.sys) ~= "table" or type(idx) ~= "number" then return o; end;
+	local s = m.sys[idx];
+	if type(s) ~= "table" or type(s.st) ~= "table" then return o; end;
+	for i = 1, getn(s.st) do
+		local e = s.st[i];
+		if type(e) == "table" and e.kind == "trade" and type(e.x) == "number" then
+			tinsert(o, {x=e.x, y=e.y or 0, z=e.z or 0, prm=e.prm, side=e.side, j=getn(o) + 1});
+		end;
+	end;
+	return o;
+end;
+
+-- Ordinal of the entry of S nearest pos within r, or nil.
+function TRF_RcNearOf(S, pos, r)
+	local best, bd = nil, r;
+	for i = 1, getn(S) do
+		local d = TRF_RcDist(pos, S[i]);
+		if d and d <= bd then best = i; bd = d; end;
+	end;
+	return best;
+end;
+
+-- The arguments of key k (TRF_RcArgK) from the names table w {c, s, g, o, b, d}.
+function TRF_RcArgsOf(k, w)
+	local l = TRF_RcArgK()[k] or {};
+	local v = {};
+	for i = 1, 4 do if l[i] then v[i] = w[l[i]]; end; end;
+	return v[1], v[2], v[3], v[4];
+end;
+
+-- Visit state (3.2) ------------------------------------------------------------------
+
+function TRF_RcVisit()
+	local rc = %RC;
+	rc.s = {}; rc.b = {}; rc.n = {}; rc.k = {}; rc.ev = {}; rc.pr = {}; rc.ex = 0;
+	rc.q = nil; rc.rs = nil; rc.pend = nil; rc.st = nil; rc.si = nil;
+end;
+
+-- Trade stations of the current system idx, built once per visit (RC.st).
+function TRF_RcSt(idx)
+	local rc = %RC;
+	if rc.st == nil or rc.si ~= idx then
+		rc.st = TRF_RcTlOf(TRF_N("TRF_Map"), idx);
+		rc.si = idx;
+	end;
+	return rc.st;
+end;
+
+-- Seen states of the records that exist now (no event for them, 6.1).
+function TRF_RcSeed()
+	local rc = %RC;
+	if type(TRF) ~= "table" or type(TRF.live) ~= "table" or type(TRF.live.tr) ~= "table" then return; end;
+	for id, r in TRF.live.tr do
+		if type(id) == "number" and TRF_RcPlainOf(r) then rc.s[id] = TRF_RcStOf(r); end;
+	end;
+end;
+
+function TRF_RcSkip(idx, why)
+	local rc = %RC;
+	if rc.pr[why] then return; end;
+	rc.pr[why] = 1;
+	TRF_RcDE("skip", "system", TRF_RcName(idx), "reason", why);
+end;
+
+-- R1: 1 while the module runs.
+function TRF_RcOn()
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return nil; end;
+	if TRF_RcOpt("chatter") ~= 1 then return nil; end;
+	return 1;
+end;
+
+-- R7: the hold reason or nil (scene first).
+function TRF_RcHold()
+	if TRF_N("TRF_Safe_Scene") then return "scene"; end;
+	if __disableAction == TRUE then return "disable_action"; end;
+	if __sys_SOS == TRUE then return "sys_sos"; end;
+	local sp = TRF_N("TRF_Supp");
+	if type(sp) == "number" and sp ~= 0 then return "suppressed"; end;
+	return nil;
+end;
+
+-- R3, R4, R6-R8 for system idx: nil or the reason.
+function TRF_RcGate(idx)
+	local rc = %RC;
+	local mode, mw = TRF_N("TRF_SysModeQuiet");
+	if mode ~= "mod" then return "mode:"..tostring(mw); end;
+	local ok, gw = nil, "nosafety";
+	if type(TRF_StrictOk) == "function" then ok, gw = TRF_StrictOk(idx, "chatter"); end;
+	if not ok then return "gate:"..tostring(gw); end;
+	if rc.q == 1 then return "latch"; end;
+	if TRF_N("TRF_Safe_QState") then rc.q = 1; return "latch"; end;
+	local hw = TRF_RcHold();
+	if hw then return "hold:"..hw; end;
+	if TRF_N("TRF_Combat") then return "combat"; end;
+	return nil;
+end;
+
+-- R5 and Q1-Q5 for station ordinal j of system idx at game time gt: nil or the reason, the context, the distance and the
+-- quiet age.
+function TRF_RcLineGate(idx, j, gt, T)
+	local rc = %RC;
+	local s = rc.st[j];
+	if type(s) ~= "table" then return "station"; end;
+	if type(TRF_Stn_ChatCtx) ~= "function" then return "station_off"; end;
+	local ctx = call(TRF_Stn_ChatCtx, {idx, j}, "x", TRF_RcErr);
+	if type(ctx) ~= "table" then return "station_off"; end;
+	if ctx.why then return "station:"..tostring(ctx.why), ctx; end;
+	local line = nil;
+	if type(TRF.live) == "table" then line = TRF.live.line; end;
+	local qw, age = TRF_RcQuietOf(gt, line, ctx.rt, TRF_N("TRF_ArrivalLast"), T);
+	if qw then return qw, ctx, nil, age; end;
+	if ctx.near == 1 then return "approach", ctx, nil, age; end;
+	local d = TRF_RcDist(TRF_RcMsPos(), s);
+	if not d then return "pos", ctx, nil, age; end;
+	if d <= T.rc_dock_r then return "player_dock", ctx, d, age; end;
+	if d > T.rc_r then return "far", ctx, d, age; end;
+	return nil, ctx, d, age;
+end;
+
+-- Station ordinal of trader id (4.3): the entry of RC.st nearest its station handle (trf_gen TRF_Gen_DockPos) within
+-- rc_pos, or nil.
+function TRF_RcStnOf(id, T)
+	local rc = %RC;
+	local p = TRF_N("TRF_Gen_DockPos", id);
+	if type(p) ~= "table" or type(rc.st) ~= "table" then return nil; end;
+	return TRF_RcNearOf(rc.st, p, T.rc_pos);
+end;
+
+-- Event kind for trader id at game time gt into RC.ev (a fifth drops the oldest).
+function TRF_RcAdd(kind, id, r, gt, T)
+	local rc = %RC;
+	local j = TRF_RcStnOf(id, T);
+	if getn(rc.ev) >= TRF_RcK().evmax then
+		local o = tremove(rc.ev, 1);
+		TRF_RcDE("drop", "kind", o.kind, "trader_id", o.id, "reason", "full");
+	end;
+	tinsert(rc.ev, {kind=kind, id=id, t=gt, j=j, r=r});
+	TRF_RcDE("event", "kind", kind, "trader_id", id, "station_key", TRF_RcKey(rc.si, j), "result", "queued");
+end;
+
+-- 6.2 step 2: every plain record against its last seen state.
+function TRF_RcPoll(gt, T)
+	local rc = %RC;
+	if type(TRF.live) ~= "table" or type(TRF.live.tr) ~= "table" then return; end;
+	for id, r in TRF.live.tr do
+		if type(id) == "number" and TRF_RcPlainOf(r) then
+			local kind, new = TRF_RcSeeOf(rc.s[id], r, gt, T);
+			rc.s[id] = new;
+			if kind then TRF_RcAdd(kind, id, r, gt, T); end;
+		end;
+	end;
+end;
+
+-- 6.2 step 3: events older than rc_stale and events of gone records (not bay: docking removes the ship) are dropped.
+function TRF_RcPrune(gt, T)
+	local rc = %RC;
+	local o = {};
+	for i = 1, getn(rc.ev) do
+		local e = rc.ev[i];
+		local why = nil;
+		if gt - e.t > T.rc_stale then why = "stale";
+		elseif e.kind ~= "bay" and not TRF_N("TRF_Rec", e.id) then why = "gone"; end;
+		if why then TRF_RcDE("drop", "kind", e.kind, "trader_id", e.id, "reason", why); else tinsert(o, e); end;
+	end;
+	rc.ev = o;
+end;
+
+-- The names of an exchange (4.3) for trader id at station ordinal j of system idx: {c, s, g, o, b, d}, or nil without a
+-- ship name.
+function TRF_RcWords(idx, j, id, r, T)
+	local rc = %RC;
+	local ship = TRF_N("TRF_UI_Name", r.nm);
+	if type(ship) ~= "string" then return nil; end;
+	local s = rc.st[j];
+	local c = nil;
+	if j >= 2 and type(s.side) == "string" and s.side ~= "" then
+		local ow = TRF_N("TRF_UI_FacName", s.side);
+		if type(ow) == "string" then c = TRF_RcTxt("rchctl2", TRF_RcSysEn(idx), ow); end;
+	end;
+	if not c then c = TRF_RcTxt("rchctl", TRF_RcSysEn(idx)); end;
+	if not rc.b[id] then rc.b[id] = TRF_RcBayOf(id, j, T.rc_bays); end;
+	local cls = r.cls;
+	if type(cls) ~= "number" or cls < 1 or cls > 6 then cls = 0; end;
+	local d = nil;
+	if type(r.to) == "number" and r.to > 0 then d = TRF_RcSysEn(r.to); end;
+	return {c=c, s=ship, g=TRF_RcTxt("cls"..cls), o=TRF_N("TRF_Crp_Owner", r), b=rc.b[id], d=d};
+end;
+
+-- The call key of event kind k for record r (4.2, 4.4): rchreqc first for a corporation carrier, rchout1 only with a
+-- destination; nil when every variant was said.
+function TRF_RcCallKey(k, id, r, w)
+	local rc = %RC;
+	local K = TRF_RcK().kinds[k];
+	if k == "req" and w.o and not rc.k["rchreqc"] then return "rchreqc"; end;
+	local l = K.c;
+	if k == "out" and not w.d then l = {"rchout2"}; end;
+	return TRF_RcKeyOf(l, rc.k, TRF_RcHashOf(id, K.i));
+end;
+
+-- Speaker of side sd ("t" trader, "c" control): the pilot and its log name (tpl or "leader").
+function TRF_RcSpk(sd, id, ctx)
+	if sd == "c" then return TRF_RcPilot(ctx.spk), ctx.spk; end;
+	local p = TRF_RcLead(id);
+	if p then return p, "leader"; end;
+	local t = TRF_RcK().trader;
+	return TRF_RcPilot(t), t;
+end;
+
+-- Cue then message (6.5): ok, the cue name and its result.
+function TRF_RcSay(p, text, T)
+	local snd, sres = "none", "off";
+	if T.rc_sound > 0 then
+		snd = TRF_RcK().snd[T.rc_sound];
+		sres = TRF_RcSnd(snd, T.rc_vol / 100);
+	end;
+	return TRF_RcMsg(p, text, T.rc_secs), snd, sres;
+end;
+
+function TRF_RcSayLog(kind, part, id, j, spk, key, d, age, snd, sres, res, why)
+	local rc = %RC;
+	TRF_RcE("say", "kind", kind, "part", part, "trader_id", id, "station_key", TRF_RcKey(rc.si, j), "speaker", spk, "key", key,
+		"distance", TRF_RcF(d), "real_time", TRF_RcF(TRF_RcNow()), "quiet_age", TRF_RcF(age, 1), "sound", snd,
+		"sound_result", sres, "result", res, "reason", why);
+end;
+
+-- 6.3: the best event's call. Returns nothing; skips log once per reason and visit.
+function TRF_RcCall(idx, gt, T)
+	local rc = %RC;
+	if getn(rc.ev) == 0 then return; end;
+	local now = TRF_RcNow();
+	local rw = TRF_RcRateOf(rc.rs, now, rc.ex, 0, T);
+	if rw then TRF_RcSkip(idx, rw); return; end;
+	local i = TRF_RcPickOf(rc.ev, rc.n, T);
+	if not i then TRF_RcSkip(idx, "per_trader"); return; end;
+	local e = rc.ev[i];
+	if not e.j then
+		tremove(rc.ev, i);
+		TRF_RcDE("drop", "kind", e.kind, "trader_id", e.id, "reason", "station");
+		return;
+	end;
+	local why, ctx, d, age = TRF_RcLineGate(idx, e.j, gt, T);
+	if why then TRF_RcSkip(idx, why); return; end;
+	local w = TRF_RcWords(idx, e.j, e.id, e.r, T);
+	local key = nil;
+	if w then key = TRF_RcCallKey(e.kind, e.id, e.r, w); end;
+	if not key then
+		tremove(rc.ev, i);
+		local dw = "used";
+		if not w then dw = "name"; end;
+		TRF_RcDE("drop", "kind", e.kind, "trader_id", e.id, "reason", dw);
+		return;
+	end;
+	local K = TRF_RcK().kinds[e.kind];
+	local p, spk = TRF_RcSpk(K.cs, e.id, ctx);
+	local ok, snd, sres = TRF_RcSay(p, TRF_RcTxt(key, TRF_RcArgsOf(key, w)), T);
+	tremove(rc.ev, i);
+	if not ok then
+		TRF_RcSayLog(e.kind, "call", e.id, e.j, spk, key, d, age, snd, sres, "failed", "message");
+		return;
+	end;
+	rc.k[key] = 1;
+	rc.rs = now;
+	rc.ex = rc.ex + 1;
+	rc.n[e.id] = (rc.n[e.id] or 0) + 1;
+	if K.a then rc.pend = {kind=e.kind, id=e.id, j=e.j, r=e.r, w=w, at=now + T.rc_pair}; end;
+	TRF_RcSayLog(e.kind, "call", e.id, e.j, spk, key, d, age, snd, sres, "shown", nil);
+end;
+
+-- Drops the pending answer with reason why (6.4).
+function TRF_RcDrop(why)
+	local rc = %RC;
+	local pd = rc.pend;
+	rc.pend = nil;
+	if type(pd) ~= "table" then return; end;
+	TRF_RcSayLog(pd.kind, "answer", pd.id, pd.j, nil, nil, nil, nil, "none", "off", "dropped", why);
+end;
+
+-- 6.4: the pending answer once due. Returns 1 when it was said or dropped, nil while it waits.
+function TRF_RcAnswer(idx, gt, T)
+	local rc = %RC;
+	local pd = rc.pend;
+	local now = TRF_RcNow();
+	if now < pd.at then return nil; end;
+	if now - pd.at > T.rc_stale then TRF_RcDrop("stale"); return 1; end;
+	local why, ctx, d, age = TRF_RcLineGate(idx, pd.j, gt, T);
+	if why then TRF_RcDrop(why); return 1; end;
+	if pd.kind ~= "out" and not TRF_N("TRF_Rec", pd.id) then TRF_RcDrop("gone"); return 1; end;
+	local K = TRF_RcK().kinds[pd.kind];
+	local key = TRF_RcKeyOf(K.a, rc.k, TRF_RcHashOf(pd.id, K.i));
+	if not key then TRF_RcDrop("used"); return 1; end;
+	local p, spk = TRF_RcSpk(K.as, pd.id, ctx);
+	local ok, snd, sres = TRF_RcSay(p, TRF_RcTxt(key, TRF_RcArgsOf(key, pd.w)), T);
+	rc.pend = nil;
+	if not ok then
+		TRF_RcSayLog(pd.kind, "answer", pd.id, pd.j, spk, key, d, age, snd, sres, "failed", "message");
+		return 1;
+	end;
+	rc.k[key] = 1;
+	TRF_RcSayLog(pd.kind, "answer", pd.id, pd.j, spk, key, d, age, snd, sres, "shown", nil);
+	return 1;
+end;
+
+-- Contract: loader callbacks (6) ------------------------------------------------------
+
+-- Entry and load: a fresh visit, the stations of the system, the latch, the records seen without events.
+function TRF_RcEnter(via)
+	local rc = %RC;
+	TRF_RcVisit();
+	if TRF_N("TRF_Safe_QState") then rc.q = 1; end;
+	if type(TRF) ~= "table" then return; end;
+	local idx = TRF_RcCur();
+	local S = TRF_RcSt(idx);
+	TRF_RcSeed();
+	if not TRF_RcOn() then return; end;
+	local T = TRF_RcTune();
+	TRF_RcDE("enter", "system", TRF_RcName(idx), "system_index", idx, "station_count", getn(S), "sound", T.rc_sound,
+		"radius", T.rc_r, "via", via);
+end;
+
+-- The last module call of TRF_OnActivate (after trf_request's).
+function TRF_Rc_OnActivate()
+	call(TRF_RcEnter, {"enter"}, "x", TRF_RcErr);
+end;
+
+-- v1 load list.
+function TRF_Rc_OnLoad()
+	call(TRF_RcEnter, {"load"}, "x", TRF_RcErr);
+end;
+
+-- v1 jump list: no answer after a jump.
+function TRF_Rc_BeforeJump(dest, how)
+	local rc = %RC;
+	rc.pend = nil;
+	rc.ev = {};
+end;
+
+-- Every 1 s (traffic.script, after trf_request's step).
+function TRF_Rc_Step()
+	if type(TRF) ~= "table" then return; end;
+	call(TRF_RcStepBody, {}, "x", TRF_RcErr);
+end;
+
+-- 6.2: R1-R2, the poll, the prune, R3-R8, the pending answer, a call.
+function TRF_RcStepBody()
+	local rc = %RC;
+	local idx = TRF_RcCur();
+	if not TRF_RcOn() then TRF_RcSkip(idx, "off"); return; end;
+	if type(idx) ~= "number" then TRF_RcSkip(idx, "nomap"); return; end;
+	local S = TRF_RcSt(idx);
+	if getn(S) == 0 then TRF_RcSkip(idx, "none"); return; end;
+	local T = TRF_RcTune();
+	local gt = TRF_RcGt();
+	TRF_RcPoll(gt, T);
+	TRF_RcPrune(gt, T);
+	local why = TRF_RcGate(idx);
+	if why then
+		-- A due answer meets a gate: dropped, never delayed.
+		if rc.pend and TRF_RcNow() >= rc.pend.at then TRF_RcDrop(why); end;
+		TRF_RcSkip(idx, why);
+		return;
+	end;
+	if rc.pend then
+		TRF_RcAnswer(idx, gt, T);
+		return;
+	end;
+	TRF_RcCall(idx, gt, T);
+end;
+
+-- "module=chatter event=dump on=1 exchange_count=3 pending=req event_count=1 keys=rchreq1,rchreqa1"
+function TRF_Rc_Dump()
+	local rc = %RC;
+	local ks = {};
+	for k, v in rc.k do tinsert(ks, k); end;
+	sort(ks);
+	local s = nil;
+	for i = 1, getn(ks) do if s then s = s..","..ks[i]; else s = ks[i]; end; end;
+	local pk = nil;
+	if type(rc.pend) == "table" then pk = rc.pend.kind; end;
+	TRF_RcE("dump", "on", TRF_RcOpt("chatter"), "exchange_count", rc.ex or 0, "pending", pk, "event_count", getn(rc.ev or {}),
+		"keys", s);
+end;
+
+-- Defaults (8) --------------------------------------------------------------------------
+
+-- chatter 0: no poll, line or sound (nothing saved, nothing to repair).
+function TRF_Rc_OptDef()
+	return {chatter=1};
+end;
+
+function TRF_Rc_TuneDef()
+	return {rc_r=1500, rc_gap=45, rc_pair=6, rc_secs=6, rc_quiet=10, rc_stale=20, rc_max=6, rc_per=2, rc_dock_r=300,
+		rc_pos=300, rc_bays=6, rc_sound=2, rc_vol=60};
+end;
+
+-- Texts (7), EN. Radio phrases; the engine prints "[name]: text", so each line names its addressee. No %, # or line break.
+function TRF_Rc_Text()
+	return {
+		rchctl = "$1 Control",                                                   -- system
+		rchctl2 = "$1 $2 Control",                                               -- system, owner word
+		rchreq1 = "$1, $2 inbound with $3. Requesting a berth.",                 -- control, ship, cargo
+		rchreq2 = "$1, this is $2 on the approach marker. Requesting docking.",  -- control, ship
+		rchreqc = "$1, $2, $3 carrier, inbound with $4. Requesting a berth.",    -- control, ship, corporation, cargo
+		rchreqa1 = "$1, $2. Bay $3, follow the beacon in.",                      -- ship, control, bay
+		rchreqa2 = "$1, cleared to bay $3. Keep it slow on the marker.",         -- ship, control, bay
+		rchhold1 = "$1, $2. Hold your position, the bay is busy.",               -- ship, control
+		rchhold2 = "$1, take the holding line. Traffic ahead of you.",           -- ship, control
+		rchholda = "$1 holding. Call us in.",                                    -- ship
+		rchgo1 = "$1, the bay is clear. Bay $2, come in.",                       -- ship, bay
+		rchgo2 = "$1, you are next. Bay $2.",                                    -- ship, bay
+		rchin1 = "$1, $2 in bay $3. Clamps on.",                                 -- control, ship, bay
+		rchin2 = "$2 docked in bay $3. Thanks, $1.",                             -- control, ship, bay
+		rchout1 = "$1, $2 clear of bay $3, outbound for $4.",                    -- control, ship, bay, destination
+		rchout2 = "$1, $2 undocking from bay $3.",                               -- control, ship, bay
+		rchouta1 = "$1, the lane is yours. Safe flight.",                        -- ship
+		rchouta2 = "Copy, $1. Good trading.",                                    -- ship
+	};
+end;

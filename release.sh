@@ -41,7 +41,7 @@ stage_infinite_view() {
     cp "$s/install.sh" "$s/uninstall.sh" "$s/README.md" "$s/LICENSE" "$s/VERSION" "$1/"
     chmod 755 "$1/install.sh" "$1/uninstall.sh"
 }
-stage_traffic() {   # own files only: scripts (CRLF, as in the repo), hail dialog XMLs, news and pilot merge files, installer, README, VERSION
+stage_traffic() {   # own files only: scripts (CRLF, as in the repo), hail dialog XMLs, the chatter cue, news and pilot merge files, installer, README, VERSION
     s=$here/mods/traffic
     mkdir -p "$1/Data/Scripts/Mods/Traffic"
     cp "$s"/Data/Scripts/Mods/Traffic/*.script "$1/Data/Scripts/Mods/Traffic/"
@@ -49,6 +49,7 @@ stage_traffic() {   # own files only: scripts (CRLF, as in the repo), hail dialo
     cp "$s"/Data/Scripts/Trade/TRF_Wq*.xml "$1/Data/Scripts/Trade/"   # the freight quest dialogs (install.sh checks all twelve)
     cp "$s"/Data/Scripts/Trade/TRF_Te*.xml "$1/Data/Scripts/Trade/"   # the Clan file dialogs (install.sh checks both)
     cp "$s"/Data/Scripts/Trade/TRF_Db*.xml "$1/Data/Scripts/Trade/"   # the Report in dialogs (install.sh checks both)
+    mkdir -p "$1/Data/SOUND"; cp "$s/Data/SOUND/trf_squelch.wav" "$1/Data/SOUND/"   # the station chatter cue (tools/gen_squelch.py)
     cp "$s/install.sh" "$s/uninstall.sh" "$s/README.md" "$s/VERSION" "$1/"
     mkdir -p "$1/loc" "$1/news"
     cp "$s"/loc/*.loc "$1/loc/"; cp "$s/news/trf_news.xml" "$s/news/merge.awk" "$1/news/"

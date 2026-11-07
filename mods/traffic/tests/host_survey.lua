@@ -175,10 +175,10 @@ end;
 function T_SY_A()
 	local h = HOST();
 	SY_Begin("gredos");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=25") >= 1, "trf_survey loads before trf_request (extra_count=25)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=26") >= 1, "trf_survey loads before trf_request (extra_count=26)");
 	local ml, pm, tf, uf = TRF_ModList(), TRF_PlMods(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml) - 1] == "Sy" and ml[getn(ml) - 2] == "Sg" and pm[getn(pm) - 1] == "Sy" and tf[getn(tf) - 2] == "TRF_Sy_Text"
-		and tf[getn(tf) - 3] == "TRF_Sg_Text" and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf) - 1] == "TRF_Sy_Text",
+	HOST_Check(ml[getn(ml) - 2] == "Sy" and ml[getn(ml) - 3] == "Sg" and pm[getn(pm) - 1] == "Sy" and tf[getn(tf) - 3] == "TRF_Sy_Text"
+		and tf[getn(tf) - 4] == "TRF_Sg_Text" and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf) - 2] == "TRF_Sy_Text",
 		"Sy before Rq (trf_request) at the end of TRF_ModList and TRF_PlMods; TRF_Sy_Text after TRF_Sg_Text in both text lists");
 	-- Registration: line 75 between the charter 70 and the debrief 80, box 410 between the debrief 420 and the parcel 400,
 	-- row 410; not an offer owner of the marker registry.
@@ -1105,8 +1105,8 @@ function T_SY_G()
 	-- The module missing: the trade chain as built.
 	h.hide = {["trf_survey.script"]=1};
 	SY_Begin("dalled");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=24") >= 1 and type(TRF_Sy_TradeLine) ~= "function",
-		"trf_survey missing: extra_count=24, no module");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=25") >= 1 and type(TRF_Sy_TradeLine) ~= "function",
+		"trf_survey missing: extra_count=25, no module");
 	DB_Office(1);
 	local n0 = S_Mark();
 	local r = DB_Dock();

@@ -15,6 +15,8 @@
 # the "Report in" dialogs TRF_Db1.xml and TRF_Db2.xml (cfg db_dialog, design/debrief-spec.md 6.7; speaker TRF_WqP_clerk).
 # Copies loc/trf_en.loc to Data/LocData/<language>/ (default.cfg __localization_folder) on every install: the logbook
 # titles of the parcel, charter and captain quests are keys in it, in every loc_mode.
+# Copies Data/SOUND/trf_squelch.wav (the station chatter cue, tools/gen_squelch.py; design/station-chatter-spec.md 6.5) to
+# the game's Data/SOUND/ on every install: PlaySound names are relative to that folder.
 # Re-running upgrades in place and keeps an edited config.script (--reset-config overwrites it).
 # --restore-only writes config.script with enabled=2: the mod then only restores changed station prices and
 # removes its pirate bases (README, Removal); run the game once that way before uninstall.sh.
@@ -94,7 +96,7 @@ for n in $dbx; do
     [ -f "$here/$f" ] || die "package file $f missing"
     crlf "$here/$f" "$f"
 done
-for f in merge/Pilots.xml merge/pilots_merge.awk; do [ -f "$here/$f" ] || die "package file $f missing"; done
+for f in merge/Pilots.xml merge/pilots_merge.awk Data/SOUND/trf_squelch.wav; do [ -f "$here/$f" ] || die "package file $f missing"; done
 crlf "$here/merge/Pilots.xml" merge/Pilots.xml
 if [ "$news" = 1 ]; then
     for f in news/trf_news.xml news/merge.awk; do [ -f "$here/$f" ] || die "--news: package file $f missing"; done
@@ -143,6 +145,10 @@ ld=$(find "$data" -mindepth 1 -maxdepth 1 -type d -iname locdata | head -1)
 lld=; [ -z "$ld" ] || lld=$(find "$ld" -mindepth 1 -maxdepth 1 -type d -iname "$lf" | head -1)
 [ -n "$lld" ] || die "no Data/LocData/$lf directory in $game. Nothing changed."
 locrel=${lld#"$game"/}/trf_en.loc
+# Chatter cue: the engine's 2D player reads PlaySound names under DATA\SOUND\ (created if missing).
+sndd=$(find "$data" -mindepth 1 -maxdepth 1 -type d -iname sound | head -1)
+[ -n "$sndd" ] || sndd=$data/SOUND
+sndrel=${sndd#"$game"/}
 # News records (--news): the engine reads only DATA\GAME\News.xml. The merge runs here into a temp file, before any write.
 newsrel=; newstmp=
 if [ "$news" = 1 ]; then
@@ -228,6 +234,8 @@ for n in $dbx; do
 done
 say "Report in dialogs: $ndb of 2 TRF_Db*.xml written or updated in $trdrel"
 if put "$here/loc/trf_en.loc" "$locrel"; then say "loc: wrote $locrel"; else say "unchanged $locrel"; fi
+if [ ! -d "$sndd" ]; then mkdir "$sndd"; rec "dir $sndrel"; fi
+if put "$here/Data/SOUND/trf_squelch.wav" "$sndrel/trf_squelch.wav"; then say "chatter cue: wrote $sndrel/trf_squelch.wav"; else say "unchanged $sndrel/trf_squelch.wav"; fi
 # Scripts of an earlier release that this one no longer ships.
 for rel in $(sed -n "s|^created \($dst/[^/]*\.script\)\$|\1|p" "$man"); do
     b=${rel##*/}

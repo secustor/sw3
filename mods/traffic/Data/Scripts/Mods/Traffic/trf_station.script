@@ -619,6 +619,34 @@ function TRF_StnGet(k, mk, T)
 	return e;
 end;
 
+-- Station chatter (design/station-chatter-spec.md 10.3), read only: trade station j of system idx as trf_chatter sees it.
+-- why = the dock gate (TRF_StnGate "dock": G1-G5, G7-G9; nil when open), spk = the dispatcher template of the station's
+-- owner (8.7), near = 1 while its approach radio (8.8) is pending (the greeting said and the info line not yet, or neither
+-- step run, no docking and the mothership within stn_hail_r), else 0; rt = the game time of this module's last radio line
+-- (SV.rt) or nil.
+function TRF_Stn_ChatCtx(idx, j)
+	local sv = %SV;
+	if type(j) ~= "number" or j < 1 then j = 1; end;
+	local why = TRF_StnGate("dock");
+	local s = nil;
+	if type(idx) == "number" then s = TRF_StnTl(idx)[j]; end;
+	local prm = "";
+	if type(s) == "table" and type(s.prm) == "string" then prm = s.prm; end;
+	local own = nil;
+	if prm ~= "" then own = TRF_Stn_Team(prm); else own = TRF_Stn_Team(TRF_Stn_Loc()); end;
+	local near = 0;
+	if type(idx) == "number" and TRF_StnOpt("voice_near") == 1 and TRF_StnOpt("voice") == 1
+		and (TRF_StnOpt("voice_dock") == 1 or TRF_StnOpt("voice_news") == 1) then
+		local k = TRF_Stn_Key(idx, j);
+		if sv.nr[k] == 1 then near = 1;
+		elseif sv.nr[k] == nil and not sv.dk[k] and type(s) == "table" then
+			local d = TRF_StnDist(TRF_Stn_NearPos(), s);
+			if d and d <= TRF_StnTune().stn_hail_r then near = 1; end;
+		end;
+	end;
+	return {why=why, spk=TRF_StnSpk()[own or "Neutral"] or "DialogSystem", near=near, rt=sv.rt};
+end;
+
 -- Rung of station j (default 1) of system idx: st, e (0, 0 when absent).
 function TRF_Stn_Rung(idx, j)
 	if type(idx) ~= "number" then return 0, 0; end;

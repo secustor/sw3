@@ -1356,6 +1356,14 @@ function TRF_ArrivalCount()
 	return L.arq or 0;
 end;
 
+-- Due game time of the last line queued in this entry's arrival queue (live.aqt; design/station-chatter-spec.md 5 Q2), nil
+-- when none was queued or without an entry. Read only.
+function TRF_ArrivalLast()
+	local L = TRF_PlLive();
+	if not L or type(L.aqt) ~= "number" then return nil; end;
+	return L.aqt;
+end;
+
 -- Job slot TRF.job (spec 5.5): one open job {k = kind, flat fields; names and strings up to job_len}. 1 when
 -- taken, else nil, reason.
 function TRF_JobTake(kind, rec)
