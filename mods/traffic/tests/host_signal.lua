@@ -219,10 +219,10 @@ end;
 function T_SG_A()
 	local h = HOST();
 	SG_Begin("gredos");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=24") >= 1, "trf_signal loads before trf_survey (extra_count=24)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=25") >= 1, "trf_signal loads before trf_survey (extra_count=25)");
 	local ml, pm, tf, uf = TRF_ModList(), TRF_PlMods(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml) - 1] == "Sg" and ml[getn(ml) - 2] == "Spc" and pm[getn(pm) - 1] == "Sg" and tf[getn(tf) - 2] == "TRF_Sg_Text"
-		and tf[getn(tf) - 3] == "TRF_Spc_Text" and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf) - 1] == "TRF_Sg_Text",
+	HOST_Check(ml[getn(ml) - 2] == "Sg" and ml[getn(ml) - 3] == "Spc" and pm[getn(pm) - 2] == "Sg" and tf[getn(tf) - 3] == "TRF_Sg_Text"
+		and tf[getn(tf) - 4] == "TRF_Spc_Text" and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf) - 2] == "TRF_Sg_Text",
 		"Sg before Sy (trf_survey) at the end of TRF_ModList and TRF_PlMods; TRF_Sg_Text after TRF_Spc_Text in both text lists");
 	HOST_Check(TRF_PlReg().off.signal == 1 and TRF_PlReg().off.stash == 1, "signal registers as an offer owner beside stash");
 	-- 15 keys; each resolves; no %, #, line break, "gate"; tisignal in TRF_Ti_Text; the scaffold has them.

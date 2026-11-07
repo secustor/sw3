@@ -895,6 +895,8 @@ function TRF_TrackSpawn(i, how)
 	TRF_TkStat("tk_spawn");
 	TRF_TkE("spawn", "pool_id", rec.id, "trader_id", id, "via", how, "origin", TRF_SysName(rec.fr), "tier", r.tier,
 		"pool_tier", rec.tt, "power", en.pw, "escort_count", rec.e, "hold_cut", cut, "damage_band", rec.dm, "flags", rec.fl);
+	-- Crew requests (design/crew-requests-spec.md 7.5): a trader request whose trader this is ends here (nm: its name).
+	TRF_P("TRF_Rq_OnTrack", rec.id, rec.nm);
 	return id;
 end;
 

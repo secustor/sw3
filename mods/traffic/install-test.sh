@@ -111,6 +111,12 @@
 # (cfg sy_gate: 0 the survey open from chapter 5 without the quest); SURVEY_AT=<system> (debug: the survey counts as open
 # in that system). Tune keys (sy_ch, sy_ch_end, sy_read_r, sy_rp_min, sy_hold, sy_near_r, sy_fee_k, sy_chart_k,
 # sy_chart_drop, sy_chart_lo, sy_chart_old, sy_thr1, sy_thr2, sy_thr_k, sy_sell_max, sy_dc, sy_secs) go through TUNE.
+# REQUESTS=0|1 (cfg requests, crew requests, design/crew-requests-spec.md, CHECK W-B03.1-10: once-per-save squad pilot
+# requests as radio pairs after a jump; default 1 in config.script, LEVEL=v01/v02 write 0 unless REQUESTS is set); written
+# only when set. RQ_BOX=0|1 (cfg rq_box: 0 no dock box when the pair could not be shown); REQUEST_AT=<event key> (debug:
+# tn1 ... jn1, that event ignores its done bit, chapter window and gap). Tune keys (rq_ch, rq_ch_end, rq_dl_ch, rq_delay,
+# rq_secs, rq_gap, rq_miss, rq_pend_old, rq_owe_max, rq_dl_cap, rq_dl_rng, rq_trk_over, rq_trk_j, rq_bcn_j, rq_rng_j,
+# rq_rung, rq_k, rq_help, rq_fs, rq_log_keep) go through TUNE.
 # NEWS=1: the trf_* records of news/trf_news.xml (tools/gen_news.py) merged into the clone's Data/Game/News.xml
 # (the vanilla file is kept as News.xml.trf-orig; loc/trf_en.loc is copied on every run), and news_mode=2 unless
 # NEWS_MODE is set; unset restores News.xml from News.xml.trf-orig.
@@ -162,8 +168,8 @@ case "${MERC_NAMES:-0}" in 0) ;; 1) opt="$opt, mc_names=2" ;; *) echo "MERC_NAME
 LEVEL=${LEVEL:-v1}
 case "$LEVEL" in
 v1) pre= ;;
-v02) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0 corp=0 tips=0 spec=0 signals=0 survey=0" ;;
-v01) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 prosperity=0 seed=0 parked=0 queue=0 raids=0 staged=0 contracts=0 meet=1 board=0 shop_mode=0 short_price=0 news_mode=0 esc_flight=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0 corp=0 tips=0 spec=0 signals=0 survey=0" ;;
+v02) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0 corp=0 tips=0 spec=0 signals=0 survey=0 requests=0" ;;
+v01) pre="voice=0 tier_cap=2 track=0 conv=0 demand=0 heat_offer=0 carriers=0 salvage=0 sweeps=0 sweep_ct=0 po=0 tt4=0 feq=0 forced_bust=0 dconv=0 bases=0 prosperity=0 seed=0 parked=0 queue=0 raids=0 staged=0 contracts=0 meet=1 board=0 shop_mode=0 short_price=0 news_mode=0 esc_flight=0 enable_survivors=0 lad_enabled=0 charter=0 enable_scars=0 cap_enable=0 enable_stashes=0 enable_freight=0 enable_parcels=0 warn=0 remarks=0 temper=0 corp=0 tips=0 spec=0 signals=0 survey=0 requests=0" ;;
 *) echo "LEVEL must be v01, v02 or v1" >&2; exit 1 ;;
 esac
 for e in $pre; do
@@ -207,6 +213,10 @@ for k in SCAR_AT SCAR_GATE_FAIL CAP_AT STASH_AT SIGNAL_AT SURVEY_AT; do
     case "$v" in *[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_]*) echo "$k: bad system name" >&2; exit 1;; esac
     opt="$opt, $(printf '%s' "$k" | tr 'A-Z' 'a-z')=\"$(printf '%s' "$v" | tr 'A-Z' 'a-z')\""
 done
+if [ -n "${REQUEST_AT:-}" ]; then
+    case "$REQUEST_AT" in *[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789]*) echo "REQUEST_AT: bad event key" >&2; exit 1;; esac
+    opt="$opt, request_at=\"$(printf '%s' "$REQUEST_AT" | tr 'A-Z' 'a-z')\""
+fi
 if [ -n "${BASE_AT:-}" ]; then
     case "$BASE_AT" in *[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_]*) echo "BASE_AT: bad system name" >&2; exit 1;; esac
     opt="$opt, base_at=\"$(printf '%s' "$BASE_AT" | tr 'A-Z' 'a-z')\""
@@ -248,6 +258,8 @@ case "${SIGNAL_SOUND:-}" in "") ;; 0|1|2) opt="$opt, signal_sound=$SIGNAL_SOUND"
 case "${SURVEY:-}" in "") ;; 0|1) opt="$opt, survey=$SURVEY" ;; *) echo "SURVEY must be 0 or 1" >&2; exit 1;; esac
 case "${SY_QUEST:-}" in "") ;; 0|1) opt="$opt, sy_quest=$SY_QUEST" ;; *) echo "SY_QUEST must be 0 or 1" >&2; exit 1;; esac
 case "${SY_GATE:-}" in "") ;; 0|1) opt="$opt, sy_gate=$SY_GATE" ;; *) echo "SY_GATE must be 0 or 1" >&2; exit 1;; esac
+case "${REQUESTS:-}" in "") ;; 0|1) opt="$opt, requests=$REQUESTS" ;; *) echo "REQUESTS must be 0 or 1" >&2; exit 1;; esac
+case "${RQ_BOX:-}" in "") ;; 0|1) opt="$opt, rq_box=$RQ_BOX" ;; *) echo "RQ_BOX must be 0 or 1" >&2; exit 1;; esac
 case "${JOBS_UI:-}" in "") ;; 0|1|2) opt="$opt, jobs_ui=$JOBS_UI" ;; *) echo "JOBS_UI must be 0, 1 or 2" >&2; exit 1;; esac
 opt="$opt, jobs_log=${JOBS_LOG:-1}"
 case "${FITS:-}" in "") ;; 0|1) opt="$opt, fits=$FITS" ;; *) echo "FITS must be 0 or 1" >&2; exit 1;; esac

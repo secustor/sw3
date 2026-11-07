@@ -188,7 +188,9 @@ end;
 
 -- Display-name keys of the screen-line form (5.1, m_pilots.loc); any other template prints its template name.
 function TRF_RmNameKeys()
-	return {Hero="rmnhero", Lastochka="rmnlast", Lastochka2="rmnlast", Kalem="rmnkalem"};
+	return {Hero="rmnhero", Lastochka="rmnlast", Lastochka2="rmnlast", Kalem="rmnkalem", Sedoy="rmnsedoy", Yana="rmnyana",
+		Josef="rmnjosef", Blade="rmnblade", Uel="rmnuel", Uel2="rmnuel", Uel3="rmnuel", Uel4="rmnuel", Aia="rmnaia", Alex="rmnalex",
+		Validol="rmnvalidol", Alisa="rmnalisa", Che="rmnche"};
 end;
 
 -- Text order of a merged remark (K2): the first kind present gives the text.
@@ -778,5 +780,16 @@ function TRF_Rm_Text()
 		rmnhero = "Hero",
 		rmnlast = "Ternie",
 		rmnkalem = "Kalem",
+		-- Crew requests (design/crew-requests-spec.md 9): the squad pilots of B03's events and their branch friends.
+		rmnsedoy = "Greyhair",
+		rmnyana = "Jana",
+		rmnjosef = "Joseph",
+		rmnblade = "Blade",
+		rmnuel = "SAM",
+		rmnaia = "Aja",
+		rmnalex = "Alex",
+		rmnvalidol = "Validol",
+		rmnalisa = "Alice",
+		rmnche = "Che",
 	};
 end;

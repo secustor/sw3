@@ -102,9 +102,10 @@ function T_PL_A()
 	-- patrol line 45; its presentation (spec 13) the talk box 460 of the trade and patrol docks; lethal-system warnings
 	-- (design/warnings-spec.md 5): req line 20; the Clan file (design/temperament-spec.md 6): patrol line 47, patrol box 350
 	-- and talk box 455; corporation carriers (design/corp-carriers-spec.md 5.5): req line 30; the debrief pool and "Report in"
-	-- (design/debrief-spec.md 10.1): trade line 80, trade boxes 420 and 455, one settlement handler.
-	HOST_Check(c2.line == 19 and c2.box == 18 and c2.none == 1 and c2.ej == 1 and c2.owe == 4 and c2.seed == 13 and c2.coh == 1 and c2.stl == 1,
-		"traffic registrations: 19 lines (survey 75), 18 boxes (survey 410), 1 none handler, 1 eject handler, 4 payers, 13 seed providers, 1 CostOfHead handler, 1 settlement handler");
+	-- (design/debrief-spec.md 10.1): trade line 80, trade boxes 420 and 455, one settlement handler; crew requests
+	-- (design/crew-requests-spec.md 12.1): patrol line 85, trade and patrol boxes 50.
+	HOST_Check(c2.line == 20 and c2.box == 20 and c2.none == 1 and c2.ej == 1 and c2.owe == 4 and c2.seed == 13 and c2.coh == 1 and c2.stl == 1,
+		"traffic registrations: 20 lines (survey 75, requests 85), 20 boxes (survey 410, requests 50 x 2), 1 none handler, 1 eject handler, 4 payers, 13 seed providers, 1 CostOfHead handler, 1 settlement handler");
 	local o1 = TRF_orig_CostOfHead;
 	T_Jump("aurora");
 	T_Jump("gredos");
@@ -664,8 +665,8 @@ function T_PL_E()
 	local nd = nil;
 	local ne = S_Expect(function() HOST().nd = TRF_Dead("raid", {g="TRF_Raid_5", n=5, j=2}, nil, 1); end);
 	nd = h.nd;
-	HOST_Check(nd == 2 and ne == 1 and getn(h.dead) == 1 and h.dead[1] == "raid|TRF_Raid_5|2|1" and S_Logs(n0, "module=plumb event=error message=") == 1,
-		"TRF_Dead: both handlers called once, the error logged");
+	HOST_Check(nd == 3 and ne == 1 and getn(h.dead) == 1 and h.dead[1] == "raid|TRF_Raid_5|2|1" and S_Logs(n0, "module=plumb event=error message=") == 1,
+		"TRF_Dead: both handlers called once (and trf_request's), the error logged");
 	-- Dump line.
 	n0 = S_Mark();
 	TRF_DumpState("test");

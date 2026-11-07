@@ -2299,6 +2299,12 @@ function T_V1_N()
 	for i = 1, syn do syb = TRF_SySetOf(syb, i, syn); end;
 	TRF.sy = TRF_SyJoinOf(syb, {"5999", "5999", "5999", "5999", "5999", "5999", "5999", "5999"});
 	HOST_Check(HOST_SaveSize(TRF.sy) + 10 == 70 and HOST_SaveSize(TRF.sy) + 10 <= 73, "TRF.sy at its bound: "..(HOST_SaveSize(TRF.sy) + 10).." bytes with its key");
+	-- Crew requests worst case with the 16 events (design/crew-requests-spec.md 3.4): every done bit, a record, an end stamp.
+	local rqn = getn(TRF_RqData());
+	local rqb = TRF_RqSetOf("", 0, rqn);
+	for i = 1, rqn do rqb = TRF_RqSetOf(rqb, i, rqn); end;
+	TRF.rq = TRF_RqJoinOf(rqb, {e=16, s=5, m=9, p=1, a=999, b=999, g=999, d=0}, 999);
+	HOST_Check(HOST_SaveSize(TRF.rq) + 10 == 45 and HOST_SaveSize(TRF.rq) + 10 <= 46, "TRF.rq at its bound: "..(HOST_SaveSize(TRF.rq) + 10).." bytes with its key");
 	local mcz = HOST_SaveSize(TRF.mc);
 	TRF_Mc_Fix();
 	HOST_Check(HOST_SaveSize(TRF.mc) == mcz and mcz <= 6000, "merc worst case kept by the repair: "..mcz.." bytes <= 6000");
@@ -2325,7 +2331,7 @@ function T_V1_N()
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");
 	local size = 8 + 3 + HOST_SaveSize(TRF);
 	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "ch", "scar",
-		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "wq", "wn", "rm", "iq", "crp", "db", "ti", "sg", "sy", "live"};
+		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "wq", "wn", "rm", "iq", "crp", "db", "ti", "sg", "sy", "rq", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	local lp, ll = "", {"tr", "stat", "rd", "cvs", "tq", "sw", "fq", "cr", "dc", "bs", "pg"};
 	for i = 1, getn(ll) do lp = lp.." "..ll[i].."="..HOST_SaveSize(L[ll[i]]); end;

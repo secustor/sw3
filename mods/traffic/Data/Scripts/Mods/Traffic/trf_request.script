@@ -1,0 +1,1794 @@
+-- sw3-traffic crew requests (Lua 4.0.1). Spec: design/crew-requests-spec.md (B03, A01 step 2; roadmap wave 4 row 14;
+-- owner decisions 1-15 of spec 2.1 taken 2026-11-07 as recommended). Prefix Rq (TRF_Rq_* public, TRF_Rq<X> internal), log
+-- module=request, cfg requests. Host-tested only, not run in the game (W-B03.1-10 open).
+-- Owns: the event table TRF_RqData (16 requests, each bound to a squad pilot by template list, or the Repairman holder
+-- named by trf_spec's TRF_Spc_Who("rep"), and to one built record kind: an overdue tracked trader of trf_track, the wanted
+-- captain of the region, a seeded beacon of trf_survive, a patrol desk of a faction at rung 2+). After a jump the module
+-- picks one event (once per save, one at a time, rq_gap legs after the last end) and queues the radio pair (the pilot's
+-- request, then the reply of the Hero or, for the Hero's own requests, of a crew pilot) through trf_plumb's arrival queue,
+-- last in the line order: the due call runs rq_delay (7) s after the entry, after A08's 6 s decision. The shown request
+-- starts it (implicit acceptance); the outcome comes from the trader's spawn (trf_track hook), the captain's death bus
+-- report with the player's fire, the pods aboard or a patrol dock in the named system; small credits through TRF_Pay, help,
+-- regional standing with a ring tip, or nothing where the record pays itself. A deadline, the chapter, the subject or the
+-- pilot can lapse it (no penalty). When the pair could not be shown at rq_miss entries, the request waits as a dock box
+-- (prio 50 at trade and patrol docks, below every built box). The logbook entry trf_rq is written at the start and at the
+-- end, from space too: the Job log (trf_plumb TRF_JbLog) with plain text, else AddQuest with fixed keys.
+-- Gates: strict gate (feature request, also for the subject's system), trf_warn's TRF_Wn_Armed for the subject's system,
+-- the system mode, the visit latch on TRF_Safe_QState, the hold flags and the scene, the scripted-event slot; dock parts
+-- TRF_PlQuest and TRF_Quiet. Never GetPlayerQuestState, no XP, no perk grant, no marker.
+-- Saved field (version 4, created at the first pick, repaired by TRF_Rq_Fix):
+--   TRF.rq = "<done>/<rec>/<end>": done ceil(N / 4) hex characters (event id done: bit mod(id - 1, 4) of character
+--   floor((id - 1) / 4) + 1); rec "" or 18 digits "ee s m pp aaaa bbb ggg dd" (event, state 1 pending, 2 active, 3 box,
+--   4 done with its line owed, 5 lapsed with its line owed; misses or owed tries; the speaker's index in the template
+--   list; the subject; the state's start leg mod 1000; the deadline legs); end "" or the leg mod 1000 of the last end. nil
+--   when empty. 46 bytes worst case with its key (spec 3.4).
+-- Visit state in the chunk local RQ (never saved, rebuilt by every MapInitialization); the logbook text and the subject's
+-- name in the function global TRF_RqKeepThunk (dropped at a load). No handle anywhere.
+-- Layout as trf_survey: helpers, accessors (one native each, protected), static tables, pure functions (*Of, explicit
+-- inputs, host-testable), contract functions. Top level: functions and RQ only.
+
+local RQ = {pr={}};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_RqCV() return %RQ; end;
+
+-- logfmt event line, module=request (design/log-format.md).
+function TRF_RqE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "request"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_RqErr(m)
+	TRF_RqE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler (natives that may be missing or answer badly): nil is the answer.
+function TRF_RqNoErr(m) end;
+
+function TRF_RqLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_RqDE(event, ...)
+	if TRF_RqLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_RqE, arg);
+end;
+
+function TRF_RqCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- a mod m, never negative (Lua 4 mod() keeps the sign of a).
+function TRF_RqMod(a, m)
+	return a - floor(a / m) * m;
+end;
+
+-- Ranges of the cfg keys (outside -> default) and clamps of the tune keys (spec 10): {lo, hi}.
+function TRF_RqClampT()
+	return {requests={0, 1}, rq_box={0, 1}, rq_ch={0, 20}, rq_ch_end={0, 20}, rq_dl_ch={0, 20}, rq_delay={7, 20}, rq_secs={3, 20},
+		rq_gap={0, 50}, rq_miss={1, 9}, rq_pend_old={5, 200}, rq_owe_max={1, 9}, rq_dl_cap={1, 99}, rq_dl_rng={1, 99},
+		rq_trk_over={0, 8}, rq_trk_j={1, 6}, rq_bcn_j={1, 6}, rq_rng_j={0, 3}, rq_rung={0, 3}, rq_k={0, 50}, rq_help={0, 3},
+		rq_fs={0, 3}, rq_log_keep={1, 100}};
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Rq_OptDef), else the raw config, else the default; a wrong type or a number outside its
+-- range reads as the default.
+function TRF_RqOpt(key)
+	local d = TRF_Rq_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	local r = TRF_RqClampT()[key];
+	if type(v) == "number" and r and (v ~= floor(v) or v < r[1] or v > r[2]) then return d; end;
+	return v;
+end;
+
+-- Tune values of this module, whole and clamped (TRF_RqClampT). Cached in RQ.tc while TRF_Tune returns the same table;
+-- callers must not write into it.
+function TRF_RqTune()
+	local rq = %RQ;
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_RqErr); end;
+	if type(rq.tc) == "table" and rq.tc.s == t then return rq.tc.t; end;
+	local d, cl, o = TRF_Rq_TuneDef(), TRF_RqClampT(), {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if type(x) ~= "number" then x = v; end;
+		x = floor(x);
+		local c = cl[k];
+		if c then x = TRF_RqCl(x, c[1], c[2]); end;
+		o[k] = x;
+	end;
+	rq.tc = {s=t, t=o};
+	return o;
+end;
+
+function TRF_RqLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+function TRF_RqGen()
+	if type(TRF) == "table" and type(TRF.gen) == "number" then return TRF.gen; end;
+	return 0;
+end;
+
+function TRF_RqCh()
+	local c = TRF_N("TRF_Chapter");
+	if type(c) == "number" then return c; end;
+	return 0;
+end;
+
+function TRF_RqCur()
+	local i = TRF_N("TRF_CurIdx");
+	if type(i) == "number" then return i; end;
+	return nil;
+end;
+
+function TRF_RqTxt(key, a, b, c, d)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c, d); end;
+	return tostring(key);
+end;
+
+-- Lowercase map name of system idx (log values), or the index.
+function TRF_RqName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" and n ~= "?" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+-- Display name of system idx: the English map name (trf_loc TRF_SysEn).
+function TRF_RqSysTxt(idx)
+	local s = TRF_N("TRF_SysEn", idx);
+	if type(s) == "string" then return s; end;
+	return TRF_RqName(idx);
+end;
+
+-- Map data (TRF_Map), or nil.
+function TRF_RqMap()
+	local m = TRF_N("TRF_Map");
+	if type(m) == "table" and type(m.sys) == "table" and type(m.by) == "table" then return m; end;
+	return nil;
+end;
+
+function TRF_RqSlot(idx)
+	if type(idx) ~= "number" then return nil; end;
+	local s = TRF_N("TRF_RgOf", idx);
+	if type(s) == "number" then return s; end;
+	return nil;
+end;
+
+-- 1 when bit b (1, 2, 4, ...) is set in v.
+function TRF_RqHas(v, b)
+	if type(v) ~= "number" or type(b) ~= "number" then return nil; end;
+	if TRF_RqMod(floor(v / b), 2) == 1 then return 1; end;
+	return nil;
+end;
+
+-- Index of v in list l, or nil.
+function TRF_RqIdx(l, v)
+	if type(l) ~= "table" then return nil; end;
+	for i = 1, getn(l) do if l[i] == v then return i; end; end;
+	return nil;
+end;
+
+-- Display name of template tpl (trf_remark's display names), else the template name.
+function TRF_RqPn(tpl)
+	local s = TRF_N("TRF_RmSpeakerName", tpl);
+	if type(s) == "string" then return s; end;
+	return tostring(tpl);
+end;
+
+-- Accessors (one native each, protected) ----------------------------------------------------
+
+function TRF_RqProbeRaw(tpl)
+	local p = GetPilot(tpl);
+	if p == nil then return {w="absent"}; end;
+	if not TRF_Is(p:IsAlive()) then return {w="dead"}; end;
+	if p:GetSide() ~= "Player" then return {w="side"}; end;
+	return {w="ok"};
+end;
+
+-- D6 presence of template tpl (GetPilot, IsAlive, GetSide; no IsCanSayReplica): 1, or nil and the reason.
+function TRF_RqProbe(tpl)
+	if type(GetPilot) ~= "function" or type(tpl) ~= "string" then return nil, "absent"; end;
+	local r = call(TRF_RqProbeRaw, {tpl}, "x", TRF_RqNoErr);
+	if type(r) ~= "table" then return nil, "error"; end;
+	if r.w == "ok" then return 1; end;
+	return nil, r.w;
+end;
+
+function TRF_RqJAddRaw(id, t, d, s) return TRF_JobAdd(id, t, d, s); end;
+function TRF_RqJRemRaw(id) return TRF_JobRemove(id); end;
+function TRF_RqJGetRaw(id) return TRF_JobLogGet(id); end;
+function TRF_RqQsRaw(id) return GetQuestState(id); end;
+
+function TRF_RqQAddRaw(id, t, d)
+	AddQuest(id, t, d, QUEST_PROCESS);
+	return 1;
+end;
+
+function TRF_RqQSetRaw(id, s)
+	SetQuestState(id, s);
+	return 1;
+end;
+
+function TRF_RqQRemRaw(id)
+	RemoveQuest(id);
+	return 1;
+end;
+
+-- Job log entry id with title t, text d (plain) and state s: 1, or nil and the reason.
+function TRF_RqJAdd(id, t, d, s)
+	if type(TRF_JobAdd) ~= "function" or type(s) ~= "number" then return nil, "native"; end;
+	return call(TRF_RqJAddRaw, {id, t, d, s}, "x", TRF_RqErr);
+end;
+
+function TRF_RqJRem(id)
+	if type(TRF_JobRemove) ~= "function" then return nil, "native"; end;
+	return call(TRF_RqJRemRaw, {id}, "x", TRF_RqErr);
+end;
+
+-- Job log state of id, nil when absent or without the native.
+function TRF_RqJGet(id)
+	if type(TRF_JobLogGet) ~= "function" then return nil; end;
+	local s = call(TRF_RqJGetRaw, {id}, "x", TRF_RqNoErr);
+	if type(s) == "number" then return s; end;
+	return nil;
+end;
+
+-- Mission-list entry id with the title and description keys t, d: 1 or nil.
+function TRF_RqQAdd(id, t, d)
+	if type(AddQuest) ~= "function" or QUEST_PROCESS == nil then return nil, "native"; end;
+	return call(TRF_RqQAddRaw, {id, t, d}, "x", TRF_RqErr);
+end;
+
+function TRF_RqQSet(id, s)
+	if type(SetQuestState) ~= "function" or type(s) ~= "number" then return nil, "native"; end;
+	return call(TRF_RqQSetRaw, {id, s}, "x", TRF_RqErr);
+end;
+
+function TRF_RqQRem(id)
+	if type(RemoveQuest) ~= "function" then return nil, "native"; end;
+	return call(TRF_RqQRemRaw, {id}, "x", TRF_RqErr);
+end;
+
+-- Mission-list state of id, nil without the native or for QUEST_NOINIT (no entry).
+function TRF_RqQs(id)
+	if type(GetQuestState) ~= "function" then return nil; end;
+	local s = call(TRF_RqQsRaw, {id}, "x", TRF_RqNoErr);
+	if s == nil or (QUEST_NOINIT ~= nil and s == QUEST_NOINIT) then return nil; end;
+	return s;
+end;
+
+-- Static tables ---------------------------------------------------------------------------
+
+-- Constants (spec 10): the Repairman candidates of trf_spec without the mothership firmware (rp1's template list).
+function TRF_RqK()
+	return {qid="trf_rq", own="rq", box=50, line=85, hex="0123456789abcdef", nmax=20, pow={1, 2, 4, 8},
+		resp={"Lastochka2", "Lastochka", "Sedoy", "Kalem"},
+		rep={"Kalem", "Yana", "Josef", "Blade", "Uel", "Uel4", "Uel2", "Uel3", "Aia", "Alex", "Hero"}};
+end;
+
+-- Events (6.1), id = row order: k key, v template list (or "rep"), kd kind (trk, cap, bcn, rng), c0, c1 chapters, dl the
+-- tune key of the deadline or nil, f filter (met, con, dmg, mc met or contract; any, esc, grudge; rung), rw reward (hc help
+-- and credits, cr credits, st standing and tip, none).
+function TRF_RqData()
+	local t2 = {"Lastochka2", "Lastochka"};
+	return {
+		{k="tn1", v=t2, kd="trk", c0=4, c1=10, f="met", rw="hc"},
+		{k="tn2", v=t2, kd="cap", c0=5, c1=10, dl="rq_dl_cap", f="any", rw="none"},
+		{k="tn3", v=t2, kd="bcn", c0=5, c1=10, f="any", rw="cr"},
+		{k="tn4", v={"Lastochka2"}, kd="cap", c0=13, c1=20, dl="rq_dl_cap", f="esc", rw="none"},
+		{k="hr1", v={"Hero"}, kd="rng", c0=4, c1=20, f="rung", rw="st"},
+		{k="hr2", v={"Hero"}, kd="trk", c0=5, c1=20, f="con", rw="hc"},
+		{k="hr3", v={"Hero"}, kd="cap", c0=5, c1=20, dl="rq_dl_cap", f="grudge", rw="none"},
+		{k="gh1", v={"Sedoy"}, kd="bcn", c0=6, c1=20, f="any", rw="cr"},
+		{k="gh2", v={"Sedoy"}, kd="rng", c0=6, c1=20, dl="rq_dl_rng", f="rung", rw="st"},
+		{k="km1", v={"Kalem"}, kd="rng", c0=13, c1=20, dl="rq_dl_rng", f="rung", rw="st"},
+		{k="rp1", v="rep", kd="trk", c0=5, c1=20, f="dmg", rw="hc"},
+		{k="vd1", v={"Validol"}, kd="rng", c0=12, c1=20, dl="rq_dl_rng", f="rung", rw="st"},
+		{k="al1", v={"Alisa"}, kd="trk", c0=12, c1=17, f="met", rw="hc"},
+		{k="ch1", v={"Che"}, kd="cap", c0=12, c1=20, dl="rq_dl_cap", f="any", rw="none"},
+		{k="ax1", v={"Alex"}, kd="trk", c0=8, c1=19, f="mc", rw="hc"},
+		{k="jn1", v={"Yana"}, kd="bcn", c0=9, c1=14, f="any", rw="cr"},
+	};
+end;
+
+-- Pure functions ------------------------------------------------------------------------
+
+-- Template list of row e: its list, or the Repairman candidates for "rep".
+function TRF_RqTplsOf(e)
+	if type(e) ~= "table" then return {}; end;
+	if e.v == "rep" then return TRF_RqK().rep; end;
+	if type(e.v) == "table" then return e.v; end;
+	return {};
+end;
+
+-- Value 0..15 of hex character c, or nil.
+function TRF_RqHexOf(c)
+	if type(c) ~= "string" or strlen(c) ~= 1 then return nil; end;
+	local i = strfind(TRF_RqK().hex, c, 1, 1);
+	if i then return i - 1; end;
+	return nil;
+end;
+
+-- 1 when event id is done in done.
+function TRF_RqBitOf(done, id)
+	if type(done) ~= "string" or type(id) ~= "number" or id < 1 then return nil; end;
+	local ci = floor((id - 1) / 4) + 1;
+	if ci > strlen(done) then return nil; end;
+	local v = TRF_RqHexOf(strsub(done, ci, ci));
+	if not v then return nil; end;
+	local p = TRF_RqK().pow[TRF_RqMod(id - 1, 4) + 1];
+	if TRF_RqMod(floor(v / p), 2) == 1 then return 1; end;
+	return nil;
+end;
+
+-- done padded or cut to ceil(n / 4) characters with event id set (an id outside 1..n sets nothing).
+function TRF_RqSetOf(done, id, n)
+	local w = floor((n + 3) / 4);
+	if type(done) ~= "string" then done = ""; end;
+	while strlen(done) < w do done = done.."0"; end;
+	if strlen(done) > w then done = strsub(done, 1, w); end;
+	if type(id) ~= "number" or id < 1 or id > n then return done; end;
+	local K = TRF_RqK();
+	local ci = floor((id - 1) / 4) + 1;
+	local v = TRF_RqHexOf(strsub(done, ci, ci)) or 0;
+	local p = K.pow[TRF_RqMod(id - 1, 4) + 1];
+	if TRF_RqMod(floor(v / p), 2) == 0 then v = v + p; end;
+	return strsub(done, 1, ci - 1)..strsub(K.hex, v + 1, v + 1)..strsub(done, ci + 1);
+end;
+
+-- Record table {e, s, m, p, a, b, g, d} of 18 digits r, or nil.
+function TRF_RqRecOf(r)
+	if type(r) ~= "string" or strlen(r) ~= 18 or strfind(r, "[^0-9]") then return nil; end;
+	local n = tonumber;
+	return {e=n(strsub(r, 1, 2)), s=n(strsub(r, 3, 3)), m=n(strsub(r, 4, 4)), p=n(strsub(r, 5, 6)), a=n(strsub(r, 7, 10)),
+		b=n(strsub(r, 11, 13)), g=n(strsub(r, 14, 16)), d=n(strsub(r, 17, 18))};
+end;
+
+-- 18 digits of record table r (fields clamped into their widths).
+function TRF_RqRecStr(r)
+	local c = TRF_RqCl;
+	return format("%02d%d%d%02d%04d%03d%03d%02d", c(floor(r.e or 0), 0, 99), c(floor(r.s or 0), 0, 9), c(floor(r.m or 0), 0, 9),
+		c(floor(r.p or 0), 0, 99), c(floor(r.a or 0), 0, 9999), c(floor(r.b or 0), 0, 999), c(floor(r.g or 0), 0, 999),
+		c(floor(r.d or 0), 0, 99));
+end;
+
+-- Parts of str (3.1): done padded to ceil(n / 4), the record table or nil, the end leg (0..999) or nil, and the number of
+-- parts found (3 for a well-formed string).
+function TRF_RqSplitOf(str, n)
+	local parts = {};
+	if type(str) == "string" then
+		local i = 1;
+		while 1 do
+			local e = strfind(str, "/", i, 1);
+			if e then tinsert(parts, strsub(str, i, e - 1)); else tinsert(parts, strsub(str, i)); break; end;
+			i = e + 1;
+		end;
+	end;
+	local done = TRF_RqSetOf(parts[1] or "", 0, n);
+	local rec = TRF_RqRecOf(parts[2]);
+	local en = nil;
+	if type(parts[3]) == "string" and strlen(parts[3]) == 3 and not strfind(parts[3], "[^0-9]") then en = tonumber(parts[3]); end;
+	return done, rec, en, getn(parts);
+end;
+
+-- String of the parts, nil when no bit is set, no record exists and no end is stamped.
+function TRF_RqJoinOf(done, rec, en)
+	if type(done) ~= "string" then done = ""; end;
+	local rs, es = "", "";
+	if type(rec) == "table" then rs = TRF_RqRecStr(rec); end;
+	if type(en) == "number" then es = format("%03d", TRF_RqMod(floor(en), 1000)); end;
+	if not strfind(done, "[1-9a-f]") and rs == "" and es == "" then return nil; end;
+	return done.."/"..rs.."/"..es;
+end;
+
+-- Age in legs of stamp g (leg mod 1000) at clock legs.
+function TRF_RqAgeOf(g, legs)
+	if type(g) ~= "number" then return 0; end;
+	return TRF_RqMod(TRF_RqMod(floor(legs), 1000) - g + 1000, 1000);
+end;
+
+-- 1 when the trk filter f holds for pool record r (met bit 1, contract bit 2, damaged dm >= 2, mc met or contract).
+function TRF_RqTrkFOf(r, f)
+	if f == "met" then return TRF_RqHas(r.fl, 1); end;
+	if f == "con" then return TRF_RqHas(r.fl, 2); end;
+	if f == "dmg" then if type(r.dm) == "number" and r.dm >= 2 then return 1; end; return nil; end;
+	if f == "mc" then return TRF_RqHas(r.fl, 1) or TRF_RqHas(r.fl, 2); end;
+	return nil;
+end;
+
+-- 6.2 trk: the first record of pool (unpacked records) for filter f: FTU (o 0), station-bound or in transit, not robbed or
+-- attacked by the player, overdue (elapsed >= rq_trk_over, <= record_ttl - 2), in another system 1..rq_trk_j jumps away
+-- whose system passes okf. Order: jumps, the oldest t, id. Returns {a = id, b = s, nm} or nil.
+function TRF_RqTrkOf(pool, cur, dist, legs, T, f, okf)
+	local best = nil;
+	if type(pool) ~= "table" or type(dist) ~= "table" then return nil; end;
+	for i = 1, getn(pool) do
+		local r = pool[i];
+		if type(r) == "table" and r.o == 0 and (r.d == 0 or r.d == 1) and not TRF_RqHas(r.fl, 4) and not TRF_RqHas(r.fl, 16)
+			and TRF_RqTrkFOf(r, f) and type(r.s) == "number" and r.s ~= cur then
+			local el = max(0, legs - (r.t or 0) - 1);
+			local j = dist[r.s];
+			if el >= T.rq_trk_over and el <= T.record_ttl - 2 and type(j) == "number" and j >= 1 and j <= T.rq_trk_j
+				and (not okf or okf(r.s)) then
+				if not best or j < best.j or (j == best.j and (r.t < best.t or (r.t == best.t and r.id < best.id))) then
+					best = {j=j, t=r.t, id=r.id, s=r.s, nm=r.nm};
+				end;
+			end;
+		end;
+	end;
+	if not best then return nil; end;
+	return {a=best.id, b=best.s, nm=best.nm};
+end;
+
+-- 6.2 cap: the active captain rec of region slot (st 1, named: cfg cap_enable 1) for filter f (any, esc: esc >= 1,
+-- grudge: met 1 and gr >= 1), his last seen system passing okf. Returns {a = gen, b = slot} or nil.
+function TRF_RqCapOf(rec, slot, f, named, okf)
+	if type(rec) ~= "table" or type(slot) ~= "number" or rec.st ~= 1 or not named or type(rec.gen) ~= "number" then return nil; end;
+	if f == "esc" and not (type(rec.esc) == "number" and rec.esc >= 1) then return nil; end;
+	if f == "grudge" and not (rec.met == 1 and type(rec.gr) == "number" and rec.gr >= 1) then return nil; end;
+	if okf and type(rec.seen) == "number" and not okf(rec.seen) then return nil; end;
+	return {a=rec.gen, b=slot};
+end;
+
+-- 6.2 bcn: the first seeded beacon (src 2) of list with pods left, no quest record, in another system 1..rq_bcn_j jumps
+-- away whose system passes okf, younger than ttl legs, its system not among the survivors aboard. Order: jumps, the
+-- newest lg. Returns {a = lg mod 1000, b = s} or nil.
+function TRF_RqBcnOf(list, aboard, cur, dist, legs, ttl, T, okf)
+	local best = nil;
+	if type(list) ~= "table" or type(dist) ~= "table" then return nil; end;
+	for i = 1, getn(list) do
+		local b = list[i];
+		if type(b) == "table" and b.src == 2 and type(b.n) == "number" and b.n > 0 and b.q == nil and type(b.s) == "number"
+			and b.s ~= cur and type(b.lg) == "number" and legs - b.lg <= ttl - 1 and not TRF_RqIdx(aboard, b.s) then
+			local j = dist[b.s];
+			if type(j) == "number" and j >= 1 and j <= T.rq_bcn_j and (not okf or okf(b.s)) then
+				if not best or j < best.j or (j == best.j and b.lg > best.lg) then best = {j=j, lg=b.lg, s=b.s}; end;
+			end;
+		end;
+	end;
+	if not best then return nil; end;
+	return {a=TRF_RqMod(best.lg, 1000), b=best.s};
+end;
+
+-- 6.2 rng over rows {x, j (jumps), pat (1: a patrol station), f, rung, war} of cur and its systems within rq_rng_j: a patrol
+-- desk of a faction f 1..5 not at war with the player, at rung >= rq_rung in its region, its system passing okf. Order: cur
+-- first, then jumps, then map idx. Returns {a = f, b = x} or nil.
+function TRF_RqRngOf(rows, cur, T, okf)
+	local best = nil;
+	if type(rows) ~= "table" then return nil; end;
+	for i = 1, getn(rows) do
+		local r = rows[i];
+		if type(r) == "table" and r.pat == 1 and type(r.f) == "number" and r.f >= 1 and r.f <= 5 and not r.war
+			and type(r.rung) == "number" and r.rung >= T.rq_rung and (not okf or okf(r.x)) then
+			if not best or r.j < best.j or (r.j == best.j and r.x < best.x) then best = r; end;
+		end;
+	end;
+	if not best then return nil; end;
+	return {a=best.f, b=best.x};
+end;
+
+-- 6.2 live check of record rec of row e (states 1-3; the outcome and lapse checks of state 2) over the inputs s = {trk (the
+-- pool record of rec.a or nil), cap (the captain record of slot rec.b), claim (1 when a claim of slot rec.b and gen rec.a
+-- exists), bcn (beacon list), pat (1: a patrol station in rec.b), war}: 1, or nil and the reason (subject); "claimed" for
+-- a captain dead with the player's claim.
+function TRF_RqLiveOf(e, rec, s)
+	if type(e) ~= "table" or type(rec) ~= "table" or type(s) ~= "table" then return nil, "subject"; end;
+	if e.kd == "trk" then
+		if type(s.trk) == "table" and s.trk.s == rec.b then return 1; end;
+		return nil, "subject";
+	end;
+	if e.kd == "cap" then
+		local c = s.cap;
+		if type(c) ~= "table" or c.gen ~= rec.a then return nil, "subject"; end;
+		if c.st == 1 or c.st == 2 or c.st == 3 then return 1; end;
+		if c.st == 4 and s.claim == 1 then return "claimed"; end;
+		return nil, "subject";
+	end;
+	if e.kd == "bcn" then
+		for i = 1, getn(s.bcn or {}) do
+			local b = s.bcn[i];
+			if type(b) == "table" and b.s == rec.b and type(b.lg) == "number" and TRF_RqMod(b.lg, 1000) == rec.a and type(b.n) == "number"
+				and b.n > 0 then
+				return 1;
+			end;
+		end;
+		return nil, "subject";
+	end;
+	if e.kd == "rng" then
+		if s.pat == 1 and not s.war then return 1; end;
+		return nil, "subject";
+	end;
+	return nil, "subject";
+end;
+
+-- Order of two candidates (c1 ascending, then id): 1 when row a goes before row b.
+function TRF_RqBefore(a, b)
+	if a.c1 ~= b.c1 then return a.c1 < b.c1; end;
+	return a.id < b.id;
+end;
+
+-- 6.3 the pick over rows with s = {ch, T, done, at (debug key or ""), only (1: inside rq_gap, only the debug row), spk(e, id)
+-- -> tpl, pp or nil, why; subj(e) -> subject or nil}. Returns the pick {id, tpl, pp, a, b, nm} or nil, and the candidate list {{id, k, res}} in row order (res ok,
+-- done, chapter, deadline_ch, no_speaker, none; the debug row first in the order of the pick).
+function TRF_RqPickOf(rows, s)
+	local res, cand = {}, {};
+	for id = 1, getn(rows) do
+		local e = rows[id];
+		local w = nil;
+		local dbg = type(s.at) == "string" and s.at ~= "" and e.k == s.at;
+		if not dbg then
+			if s.only == 1 then w = "gap";
+			elseif TRF_RqBitOf(s.done, id) then w = "done";
+			elseif s.ch < e.c0 or s.ch > e.c1 then w = "chapter";
+			elseif e.dl and s.ch < s.T.rq_dl_ch then w = "deadline_ch";
+			end;
+		end;
+		local o = {id=id, k=e.k, res=w, c1=e.c1, dbg=dbg};
+		if dbg then o.c1 = -1; end;
+		tinsert(res, o);
+		if not w then
+			local tpl, pp = s.spk(e, id);
+			if not tpl then o.res = "no_speaker";
+			else
+				local sb = s.subj(e, id);
+				if type(sb) ~= "table" then o.res = "none";
+				else
+					o.res = "ok";
+					tinsert(cand, {id=id, c1=o.c1, tpl=tpl, pp=pp, a=sb.a, b=sb.b, nm=sb.nm});
+				end;
+			end;
+		end;
+	end;
+	local best = nil;
+	for i = 1, getn(cand) do
+		if not best or TRF_RqBefore(cand[i], best) then best = cand[i]; end;
+	end;
+	return best, res;
+end;
+
+-- 7.6 the lapse reason of active record rec of row e, or nil, over s = {pres (1: a template of the event present), age
+-- (legs since the start), ch, live (1, "claimed", or nil)}: pilot, deadline, chapter, subject.
+function TRF_RqLapseOf(rec, e, s)
+	if not s.pres then return "pilot"; end;
+	if type(rec.d) == "number" and rec.d > 0 and s.age > rec.d then return "deadline"; end;
+	if s.ch > e.c1 then return "chapter"; end;
+	if not s.live then return "subject"; end;
+	return nil;
+end;
+
+-- 6.4 the reward of row e at pay basis payn: {help, cr, fs, tip}.
+function TRF_RqRewardOf(e, payn, T)
+	local o = {help=0, cr=0, fs=0, tip=0};
+	local cr = 0;
+	if type(payn) == "number" and payn > 0 then cr = floor(payn * T.rq_k / 100); end;
+	if e.rw == "hc" then o.help = T.rq_help; o.cr = cr;
+	elseif e.rw == "cr" then o.cr = cr;
+	elseif e.rw == "st" then o.fs = T.rq_fs; o.tip = 1;
+	end;
+	return o;
+end;
+
+-- 7.7 F1-F6 over str with n events and rows (the deadline keys): the repaired string (nil when empty) and the changes
+-- {{field, result}}. States 2, 4 and 5 carry their done bit, states 1 and 3 do not (RD1); at (optional) is the event id of
+-- cfg request_at, whose pending record may carry the bit (it ignores its done bit).
+function TRF_RqFixOf(str, n, rows, at)
+	local ch = {};
+	if str == nil then return nil, ch; end;
+	if type(str) ~= "string" then tinsert(ch, {"rq", "dropped"}); return nil, ch; end;
+	local parts = {};
+	local i = 1;
+	while 1 do
+		local e = strfind(str, "/", i, 1);
+		if e then tinsert(parts, strsub(str, i, e - 1)); else tinsert(parts, strsub(str, i)); break; end;
+		i = e + 1;
+	end;
+	if getn(parts) ~= 3 then tinsert(ch, {"rq", "dropped"}); return nil, ch; end;
+	-- F3 done.
+	local K = TRF_RqK();
+	local w = floor((n + 3) / 4);
+	local d0 = parts[1];
+	local d = gsub(d0, "[^0-9a-f]", "0");
+	while strlen(d) < w do d = d.."0"; end;
+	if strlen(d) > w then d = strsub(d, 1, w); end;
+	local top = 4 - (w * 4 - n);
+	if w > 0 and top < 4 then
+		local v = TRF_RqHexOf(strsub(d, w, w)) or 0;
+		local keep = 0;
+		for j = 1, top do if TRF_RqMod(floor(v / K.pow[j]), 2) == 1 then keep = keep + K.pow[j]; end; end;
+		d = strsub(d, 1, w - 1)..strsub(K.hex, keep + 1, keep + 1);
+	end;
+	if d ~= d0 then tinsert(ch, {"done", "reset"}); end;
+	-- F4 rec.
+	local rs = parts[2];
+	local r = TRF_RqRecOf(rs);
+	if rs ~= "" then
+		local ok = r ~= nil;
+		if ok then
+			local e = rows[r.e];
+			if r.e < 1 or r.e > n or type(e) ~= "table" or r.s < 1 or r.s > 5 or r.p > 20 or (r.p == 0 and r.s ~= 1) or r.d > 99
+				or (r.d > 0 and not e.dl) then
+				ok = nil;
+			end;
+		end;
+		if not ok then
+			r = nil;
+			tinsert(ch, {"rec", "dropped"});
+		elseif r.s ~= 1 and r.s ~= 3 and not TRF_RqBitOf(d, r.e) then
+			d = TRF_RqSetOf(d, r.e, n);
+			tinsert(ch, {"rec", "set"});
+		elseif (r.s == 1 or r.s == 3) and TRF_RqBitOf(d, r.e) and r.e ~= at then
+			r = nil;
+			tinsert(ch, {"rec", "dropped"});
+		end;
+	end;
+	-- F5 end.
+	local en = nil;
+	local es = parts[3];
+	if es ~= "" then
+		if strlen(es) == 3 and not strfind(es, "[^0-9]") then en = tonumber(es); else tinsert(ch, {"end", "reset"}); end;
+	end;
+	-- F6.
+	return TRF_RqJoinOf(d, r, en), ch;
+end;
+
+-- State ---------------------------------------------------------------------------------
+
+-- Parts of TRF.rq: done (padded to the table), the record table or nil, the end leg or nil.
+function TRF_RqState()
+	local s = nil;
+	if type(TRF) == "table" and type(TRF.rq) == "string" then s = TRF.rq; end;
+	local done, rec, en = TRF_RqSplitOf(s, getn(TRF_RqData()));
+	return done, rec, en;
+end;
+
+-- RD3: every write goes through here before the line or the reward that follows it.
+function TRF_RqStore(done, rec, en)
+	TRF.rq = TRF_RqJoinOf(done, rec, en);
+end;
+
+-- The record and its row, or nil.
+function TRF_RqRec()
+	local done, rec = TRF_RqState();
+	if not rec then return nil; end;
+	local e = TRF_RqData()[rec.e];
+	if type(e) ~= "table" then return nil; end;
+	return rec, e;
+end;
+
+-- Writes record rec (nil clears it; ended 1 stamps the end leg).
+function TRF_RqPut(rec, ended)
+	local done, r0, en = TRF_RqState();
+	if ended == 1 then en = TRF_RqMod(TRF_RqLegs(), 1000); end;
+	TRF_RqStore(done, rec, en);
+end;
+
+-- Sets the done bit of event id.
+function TRF_RqDone(id)
+	local done, rec, en = TRF_RqState();
+	TRF_RqStore(TRF_RqSetOf(done, id, getn(TRF_RqData())), rec, en);
+end;
+
+-- Speaker template of record rec of row e (its pp index), or nil.
+function TRF_RqTplOf(rec, e)
+	if type(rec) ~= "table" then return nil; end;
+	return TRF_RqTplsOf(e)[rec.p];
+end;
+
+-- The logbook keep table (function global, survives ClearGlobals, not a load): {txt, ent, e, nm}.
+function TRF_RqKeep()
+	if type(TRF_RqKeepThunk) == "function" then
+		local k = TRF_RqKeepThunk();
+		if type(k) == "table" then return k; end;
+	end;
+	local t = {};
+	TRF_RqKeepThunk = function() return %t; end;
+	return t;
+end;
+
+-- Managed-portal adjacency (trf_region TRF_RgAdj), cached per visit; {} without it.
+function TRF_RqAdj()
+	local rq = %RQ;
+	if type(rq.adj) == "table" then return rq.adj; end;
+	local m = TRF_RqMap();
+	local a = nil;
+	if m and type(TRF_RgAdj) == "function" then a = call(TRF_RgAdj, {m}, "x", TRF_RqErr); end;
+	if type(a) ~= "table" then a = {}; end;
+	rq.adj = a;
+	return a;
+end;
+
+-- Jump distances from system idx ({} without the adjacency).
+function TRF_RqDistFrom(idx)
+	local adj = TRF_RqAdj();
+	if type(TRF_RgDistFrom) ~= "function" or type(adj[idx]) ~= "table" then return {}; end;
+	local d = call(TRF_RgDistFrom, {adj, idx}, "x", TRF_RqErr);
+	if type(d) == "table" then return d; end;
+	return {};
+end;
+
+-- R5 and D13 for a subject's system x: 1 when the strict gate allows feature request and no trf_warn row is armed there.
+function TRF_RqSysOk(x)
+	if type(x) ~= "number" or type(TRF_StrictOk) ~= "function" then return nil; end;
+	if not TRF_StrictOk(x, "request") then return nil; end;
+	if TRF_N("TRF_Wn_Armed", x) == 1 then return nil; end;
+	return 1;
+end;
+
+-- Unpacked tracked pool (trf_track TRF.tp).
+function TRF_RqPool()
+	local o = {};
+	if type(TRF) ~= "table" or type(TRF.tp) ~= "table" then return o; end;
+	for i = 1, getn(TRF.tp) do
+		local r = TRF_N("TRF_TpUnpack", TRF.tp[i]);
+		if type(r) == "table" then tinsert(o, r); end;
+	end;
+	return o;
+end;
+
+-- Rows of the rng finder for system cur: cur and its systems within rq_rng_j jumps.
+function TRF_RqRngRows(cur, T)
+	local m = TRF_RqMap();
+	local o = {};
+	if not m or type(cur) ~= "number" then return o; end;
+	local l = {{idx=cur, j=0}};
+	if T.rq_rng_j > 0 then
+		local nr = TRF_N("TRF_RgNear", cur, T.rq_rng_j);
+		if type(nr) == "table" then for i = 1, getn(nr) do tinsert(l, nr[i]); end; end;
+	end;
+	for i = 1, getn(l) do
+		local x = l[i].idx;
+		local e = m.sys[x];
+		local pat = nil;
+		if type(e) == "table" and type(e.st) == "table" then
+			for j = 1, getn(e.st) do if type(e.st[j]) == "table" and e.st[j].kind == "patrol" then pat = 1; end; end;
+		end;
+		if pat then
+			local f = TRF_N("TRF_FacIdx", TRF_N("TRF_FcTeamOf", x));
+			local rg, war = nil, nil;
+			if type(f) == "number" then
+				rg = TRF_N("TRF_Rung", TRF_RqSlot(x), f);
+				war = TRF_N("TRF_LadWar", f);
+			end;
+			tinsert(o, {x=x, j=l[i].j, pat=1, f=f, rung=rg, war=war});
+		end;
+	end;
+	return o;
+end;
+
+-- 1 when system x has a patrol station.
+function TRF_RqPatAt(x)
+	local m = TRF_RqMap();
+	if not m or type(x) ~= "number" or type(m.sys[x]) ~= "table" or type(m.sys[x].st) ~= "table" then return nil; end;
+	local st = m.sys[x].st;
+	for j = 1, getn(st) do if type(st[j]) == "table" and st[j].kind == "patrol" then return 1; end; end;
+	return nil;
+end;
+
+-- The subject of row e from system cur (6.2), or nil.
+function TRF_RqSubj(e, cur)
+	local T = TRF_RqTune();
+	if e.kd == "trk" then
+		local t = TRF_N("TRF_Tune");
+		local Tk = {rq_trk_over=T.rq_trk_over, rq_trk_j=T.rq_trk_j, record_ttl=8};
+		if type(t) == "table" and type(t.record_ttl) == "number" then Tk.record_ttl = t.record_ttl; end;
+		return TRF_RqTrkOf(TRF_RqPool(), cur, TRF_RqDistFrom(cur), TRF_RqLegs(), Tk, e.f, TRF_RqSysOk);
+	end;
+	if e.kd == "cap" then
+		local slot = TRF_RqSlot(cur);
+		if not slot then return nil; end;
+		return TRF_RqCapOf(TRF_N("TRF_CapRec", slot), slot, e.f, TRF_N("TRF_Cap_NmIdx", slot), TRF_RqSysOk);
+	end;
+	if e.kd == "bcn" then
+		local ttl = TRF_N("TRF_SvT", "sv_ttl");
+		if type(ttl) ~= "number" then ttl = 4; end;
+		return TRF_RqBcnOf(TRF_N("TRF_Sv_Beacons") or {}, TRF_N("TRF_Sv_Aboard") or {}, cur, TRF_RqDistFrom(cur), TRF_RqLegs(), ttl, T,
+			TRF_RqSysOk);
+	end;
+	if e.kd == "rng" then return TRF_RqRngOf(TRF_RqRngRows(cur, T), cur, T, TRF_RqSysOk); end;
+	return nil;
+end;
+
+-- Inputs of TRF_RqLiveOf for record rec of row e.
+function TRF_RqLiveIn(e, rec)
+	local s = {};
+	if e.kd == "trk" then
+		local i, r = TRF_N("TRF_TpFind", rec.a);
+		s.trk = r;
+	elseif e.kd == "cap" then
+		s.cap = TRF_N("TRF_CapRec", rec.b);
+		local cl = TRF_N("TRF_CapClaims") or {};
+		for i = 1, getn(cl) do
+			if type(cl[i]) == "table" and cl[i].slot == rec.b and cl[i].gen == rec.a then s.claim = 1; end;
+		end;
+	elseif e.kd == "bcn" then
+		s.bcn = TRF_N("TRF_Sv_Beacons") or {};
+	elseif e.kd == "rng" then
+		s.pat = TRF_RqPatAt(rec.b);
+		s.war = TRF_N("TRF_LadWar", rec.a);
+	end;
+	return s;
+end;
+
+function TRF_RqLive(e, rec)
+	return TRF_RqLiveOf(e, rec, TRF_RqLiveIn(e, rec));
+end;
+
+-- D6: the first present template of row e: tpl and its index; for rep the Repairman holder of trf_spec (not the
+-- firmware); nil and the reason.
+function TRF_RqSpk(e, id)
+	if e.v == "rep" then
+		local w = TRF_N("TRF_Spc_Who", "rep");
+		if type(w) ~= "table" or type(w.tpl) ~= "string" or w.tpl == "ai" then return nil, "rep"; end;
+		local i = TRF_RqIdx(TRF_RqK().rep, w.tpl);
+		if not i or not TRF_RqProbe(w.tpl) then return nil, "rep"; end;
+		return w.tpl, i;
+	end;
+	local l = TRF_RqTplsOf(e);
+	local why = "absent";
+	for i = 1, getn(l) do
+		local ok, w = TRF_RqProbe(l[i]);
+		if ok then return l[i], i; end;
+		why = w or why;
+	end;
+	return nil, why;
+end;
+
+-- 1 when the speaker of record rec of row e is present (rep: the stored template; else any template of the event).
+function TRF_RqPres(e, rec)
+	if e.v == "rep" then
+		local tpl = TRF_RqTplOf(rec, e);
+		if tpl and TRF_RqProbe(tpl) then return 1; end;
+		return nil;
+	end;
+	local l = TRF_RqTplsOf(e);
+	for i = 1, getn(l) do if TRF_RqProbe(l[i]) then return 1; end; end;
+	return nil;
+end;
+
+-- Texts -----------------------------------------------------------------------------------
+
+-- The subject's display name of record rec of row e (the keep table holds it once the trader or the captain is gone).
+function TRF_RqSubjName(e, rec, nm)
+	local kp = TRF_RqKeep();
+	if e.kd == "trk" then
+		if type(nm) ~= "number" then
+			local i, r = TRF_N("TRF_TpFind", rec.a);
+			if type(r) == "table" then nm = r.nm; end;
+		end;
+		local names = TRF_N("TRF_Names");
+		if type(nm) == "number" and type(names) == "table" and type(names[nm]) == "string" then return names[nm]; end;
+		if kp.e == rec.e and type(kp.nm) == "string" then return kp.nm; end;
+		return "freighter";
+	end;
+	if e.kd == "cap" then
+		local c = TRF_N("TRF_CapRec", rec.b);
+		if type(c) == "table" and c.gen == rec.a then
+			local s = TRF_N("TRF_CapNm", c);
+			if type(s) == "string" then return s; end;
+		end;
+		if kp.e == rec.e and type(kp.nm) == "string" then return kp.nm; end;
+		return TRF_N("TRF_CapNm", nil) or "the captain";
+	end;
+	if e.kd == "rng" then return TRF_N("TRF_FcFacName", rec.a) or tostring(rec.a); end;
+	return nil;
+end;
+
+-- Arguments $1..$4 of the event lines of row e (9): trk trader, system; cap captain, -, days, clan; bcn -, system; rng
+-- faction, system, days.
+function TRF_RqArgs(e, rec, nm)
+	local T = TRF_RqTune();
+	local days = nil;
+	if e.dl then days = T[e.dl]; end;
+	if rec.s >= 2 and rec.d > 0 then days = rec.d; end;
+	local sn = TRF_RqSubjName(e, rec, nm);
+	if e.kd == "trk" then return sn, TRF_RqSysTxt(rec.b); end;
+	if e.kd == "cap" then return sn, nil, days, TRF_N("TRF_ClanName", rec.b) or "pirates"; end;
+	if e.kd == "bcn" then return nil, TRF_RqSysTxt(rec.b); end;
+	return sn, TRF_RqSysTxt(rec.b), days;
+end;
+
+-- Line key suffix k (a request, o outcome, x lapse) of row e with the record's arguments.
+function TRF_RqLine(e, rec, k, nm)
+	local a, b, c, d = TRF_RqArgs(e, rec, nm);
+	return TRF_RqTxt("rq"..e.k..k, a, b, c, d);
+end;
+
+-- The reply to speaker tpl of row e: key and responder template list (the Hero for a crew pilot; the responders when the
+-- Hero asks, his own requests and rp1 when he holds the Repairman perk).
+function TRF_RqReply(e, tpl)
+	if tpl == "Hero" then return "rqq"..e.kd, TRF_RqK().resp; end;
+	return "rqr"..e.kd, {"Hero"};
+end;
+
+-- Gates (4) ------------------------------------------------------------------------------
+
+-- Skip line, once per reason and visit (log 2).
+function TRF_RqSkip(idx, why)
+	local rq = %RQ;
+	if rq.pr[why] then return; end;
+	rq.pr[why] = 1;
+	TRF_RqDE("skip", "system", TRF_RqName(idx), "reason", why);
+end;
+
+-- R1: 1 while the module runs.
+function TRF_RqOn()
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return nil; end;
+	if TRF_RqOpt("requests") ~= 1 or type(TRF_RqData) ~= "function" then return nil; end;
+	return 1;
+end;
+
+-- R7 holds in space: the reason or nil.
+function TRF_RqHold()
+	if __disableAction == TRUE then return "disable_action"; end;
+	if __sys_SOS == TRUE then return "sys_sos"; end;
+	if TRF_N("TRF_Safe_Scene") then return "scene"; end;
+	local sp = TRF_N("TRF_Supp");
+	if type(sp) == "number" and sp ~= 0 then return "suppressed"; end;
+	return nil;
+end;
+
+-- Visit latch R6: 1 once TRF_Safe_QState was seen in this visit.
+function TRF_RqLatch()
+	local rq = %RQ;
+	if rq.q == 1 then return 1; end;
+	if TRF_N("TRF_Safe_QState") then rq.q = 1; return 1; end;
+	return nil;
+end;
+
+-- R1-R7 for system idx, where "space" (R4, the space hold), "dock" (TRF_PlQuest, TRF_Quiet) or "out" (space without the
+-- hold: an outcome or a lapse is recorded under a hold, its line waits): nil or the reason (the skip line once per reason
+-- and visit).
+function TRF_RqGate(idx, where)
+	local why = nil;
+	if not TRF_RqOn() then why = "off";
+	else
+		local T = TRF_RqTune();
+		local ch = TRF_RqCh();
+		if ch < T.rq_ch or ch > T.rq_ch_end then why = "chapter";
+		elseif type(idx) ~= "number" or not (TRF_RqMap() and TRF_RqMap().sys[idx]) then why = "nomap";
+		else
+			if where ~= "dock" then
+				local mode, mw = TRF_N("TRF_SysModeQuiet");
+				if mode ~= "mod" then why = "mode:"..tostring(mw); end;
+			end;
+			if not why then
+				local ok, gw = nil, "nosafety";
+				if type(TRF_StrictOk) == "function" then ok, gw = TRF_StrictOk(idx, "request"); end;
+				if not ok then why = "gate:"..tostring(gw);
+				elseif TRF_RqLatch() then why = "latch";
+				elseif where == "dock" and TRF_N("TRF_PlQuest") then why = "mission";
+				elseif where == "dock" and TRF_N("TRF_Quiet") then why = "quiet";
+				elseif where == "space" then
+					local hw = TRF_RqHold();
+					if hw then why = "hold:"..hw; end;
+				end;
+			end;
+		end;
+	end;
+	if why then TRF_RqSkip(idx, why); end;
+	return why;
+end;
+
+-- R10: 1 when the gap after the last end has passed (or no end is stamped).
+function TRF_RqGapOk(en)
+	if type(en) ~= "number" then return 1; end;
+	if TRF_RqAgeOf(en, TRF_RqLegs()) >= TRF_RqTune().rq_gap then return 1; end;
+	return nil;
+end;
+
+-- Visit (7.1) ------------------------------------------------------------------------------
+
+-- Visit state reset (entry, load, jump).
+function TRF_RqVisit()
+	local rq = %RQ;
+	rq.pr = {}; rq.q = nil; rq.mi = nil; rq.p1 = nil; rq.ow = nil; rq.adj = nil; rq.box = nil; rq.nm = nil;
+end;
+
+-- The debug row of cfg request_at, or nil.
+function TRF_RqAt()
+	local at = TRF_RqOpt("request_at");
+	if type(at) ~= "string" or at == "" then return nil; end;
+	at = strlower(at);
+	local d = TRF_RqData();
+	for i = 1, getn(d) do if d[i].k == at then return at, i; end; end;
+	return nil;
+end;
+
+-- The last module call of TRF_OnActivate (after trf_survey's).
+function TRF_Rq_OnActivate()
+	TRF_RqVisit();
+	if TRF_N("TRF_Safe_QState") then local rq = %RQ; rq.q = 1; end;
+	if type(TRF) ~= "table" then return; end;
+	call(TRF_RqEnterBody, {TRF_RqCur()}, "x", TRF_RqErr);
+end;
+
+function TRF_RqEnterBody(idx)
+	if TRF_RqOn() then TRF_RqLogbook("enter"); end;
+	if TRF_RqGate(idx, "space") then return; end;
+	local T = TRF_RqTune();
+	local rec, e = TRF_RqRec();
+	local st, ek = 0, nil;
+	if rec then st = rec.s; ek = e.k; end;
+	local res = "armed";
+	if not TRF_N("TRF_Due", T.rq_delay, "TRF_Rq_LineDue", idx) then res = "due_full"; end;
+	TRF_RqDE("enter", "system", TRF_RqName(idx), "system_index", idx, "state", st, "event_key", ek, "result", res);
+end;
+
+-- v1 load list: no line (no entry), the logbook reconcile; the keep table goes.
+function TRF_Rq_OnLoad()
+	TRF_RqVisit();
+	TRF_RqKeepThunk = nil;
+	if TRF_N("TRF_Safe_QState") then local rq = %RQ; rq.q = 1; end;
+	if not TRF_RqOn() then return; end;
+	TRF_RqLogbook("load");
+end;
+
+-- v1 jump list: nothing saved changes; queued lines die with the generation.
+function TRF_Rq_BeforeJump(dest, how)
+	if not TRF_RqOn() then TRF_RqVisit(); return; end;
+	local rec, e = TRF_RqRec();
+	local st, ek = 0, nil;
+	if rec then st = rec.s; ek = e.k; end;
+	TRF_RqDE("jump", "system", TRF_RqName(TRF_RqCur()), "state", st, "event_key", ek, "dest", tostring(dest));
+	TRF_RqVisit();
+end;
+
+-- Line due (7.2) ----------------------------------------------------------------------------
+
+function TRF_Rq_LineDue(idx)
+	call(TRF_RqDueBody, {idx}, "x", TRF_RqErr);
+end;
+
+function TRF_RqLineLog(e, rec, n, res, why)
+	local k, m = nil, nil;
+	if e then k = e.k; end;
+	if rec then m = rec.m; end;
+	TRF_RqE("line", "event_key", k, "miss_count", m, "line_count", n, "result", res, "reason", why);
+end;
+
+-- A miss of the pending record (7.2 step 5), once per entry; at rq_miss with cfg rq_box 1 the record waits as the box.
+function TRF_RqMiss(e, rec, why)
+	local rq = %RQ;
+	if rq.mi == 1 then TRF_RqLineLog(e, rec, 0, "miss", why); return; end;
+	rq.mi = 1;
+	rec.m = min(9, rec.m + 1);
+	local res = "miss";
+	if rec.m >= TRF_RqTune().rq_miss and TRF_RqOpt("rq_box") == 1 then rec.s = 3; res = "box"; end;
+	TRF_RqPut(rec);
+	TRF_RqLineLog(e, rec, 0, "miss", why);
+	if res == "box" then TRF_RqLineLog(e, rec, 0, "box", nil); end;
+end;
+
+-- RD2 for a pending or box record: the reason it is stale (subject, no_speaker, old), or nil.
+function TRF_RqStale(e, rec)
+	if TRF_RqAgeOf(rec.g, TRF_RqLegs()) > TRF_RqTune().rq_pend_old then return "old"; end;
+	if not TRF_RqPres(e, rec) then return "no_speaker"; end;
+	if not TRF_RqLive(e, rec) then return "subject"; end;
+	return nil;
+end;
+
+function TRF_RqPickLog(e, rec, res, why)
+	local k, kd, sp, a, b, sy = nil, nil, nil, nil, nil, nil;
+	if e then k = e.k; kd = e.kd; end;
+	if rec then
+		sp = TRF_RqTplOf(rec, e); a = rec.a; b = rec.b;
+		if e.kd ~= "cap" then sy = TRF_RqName(rec.b); end;
+	end;
+	if res == "none" then
+		TRF_RqDE("pick", "result", res);
+	else
+		TRF_RqE("pick", "event_key", k, "kind", kd, "speaker", sp, "subject_a", a, "subject_b", b, "system", sy, "result", res, "reason", why);
+	end;
+end;
+
+function TRF_RqDueBody(idx)
+	local rq = %RQ;
+	if TRF_RqCur() ~= idx then TRF_RqLineLog(nil, nil, 0, "dropped", "left"); return; end;
+	if TRF_RqGate(idx, "space") then return; end;
+	local rec, e = TRF_RqRec();
+	-- Step 2: maintenance.
+	if rec and rec.s == 2 then
+		if TRF_RqActive(e, rec, "due") then return; end;
+		rec, e = TRF_RqRec();
+		-- An outcome found now owes its line to the 1 s step of this visit.
+		if rec and rec.s == 4 and rq.ow == 1 then return; end;
+	end;
+	if rec and (rec.s == 4 or rec.s == 5) then TRF_RqOwe(idx, e, rec); return; end;
+	if rec and rec.s == 3 then
+		local sw = TRF_RqStale(e, rec);
+		if sw then TRF_RqPut(nil); TRF_RqPickLog(e, rec, "cleared", sw); end;
+		return;
+	end;
+	-- Step 3: the pick.
+	local done, r0, en = TRF_RqState();
+	local at, ai = TRF_RqAt();
+	local pend = nil;
+	if rec and rec.s == 1 then
+		local sw = TRF_RqStale(e, rec);
+		if sw then
+			TRF_RqPut(nil);
+			TRF_RqPickLog(e, rec, "cleared", sw);
+			rec = nil;
+		else
+			pend = rec;
+		end;
+	end;
+	local only = nil;
+	if not pend and not TRF_RqGapOk(en) then
+		if not at then TRF_RqSkip(idx, "gap"); return; end;
+		only = 1;
+	end;
+	local pk = nil;
+	local rows = TRF_RqData();
+	if pend then
+		pk = {id=pend.e, tpl=TRF_RqTplOf(pend, e), pp=pend.p, a=pend.a, b=pend.b};
+		TRF_RqPickLog(e, pend, "kept", nil);
+	else
+		local s = {ch=TRF_RqCh(), T=TRF_RqTune(), done=done, at=at or "", only=only, spk=TRF_RqSpk, subj=TRF_RqSubjAt};
+		rq.cur = idx;
+		local res = nil;
+		pk, res = TRF_RqPickOf(rows, s);
+		for i = 1, getn(res) do TRF_RqDE("candidate", "event_key", res[i].k, "result", res[i].res); end;
+		if at then
+			local dr = "none";
+			for i = 1, getn(res) do if res[i].k == at then dr = res[i].res; end; end;
+			if dr == "ok" then dr = "eligible"; end;
+			TRF_RqE("debug", "event_key", at, "result", dr);
+		end;
+		if not pk then TRF_RqPickLog(nil, nil, "none", nil); return; end;
+		e = rows[pk.id];
+		rec = {e=pk.id, s=1, m=0, p=pk.pp, a=pk.a, b=pk.b, g=TRF_RqMod(TRF_RqLegs(), 1000), d=0};
+		TRF_RqPut(rec);
+		local kp = TRF_RqKeep();
+		kp.e = pk.id; kp.nm = TRF_RqSubjName(e, rec, pk.nm);
+		TRF_RqPickLog(e, rec, "picked", nil);
+	end;
+	TRF_RqQueuePair(idx, e, rec, pk.nm);
+end;
+
+-- The subject finder of the pick (TRF_RqPickOf's subj) in the system of this due call.
+function TRF_RqSubjAt(e, id)
+	return TRF_RqSubj(e, %RQ.cur);
+end;
+
+-- 7.2 steps 5-7: R8, R9, R11; the request and the reply into the arrival queue.
+function TRF_RqQueuePair(idx, e, rec, nm)
+	local tpl = TRF_RqTplOf(rec, e);
+	local ev = TRF_N("TRF_EventSlot");
+	if type(ev) == "string" then TRF_RqMiss(e, rec, "event:"..ev); return; end;
+	local rk, rl = TRF_RqReply(e, tpl);
+	local rp, rtpl = nil, nil;
+	if type(TRF_CrewVoice) == "function" then rp, rtpl = TRF_CrewVoice(rl); end;
+	if not rp then rtpl = nil; end;
+	local need = 1;
+	if rtpl then need = 2; end;
+	local n = TRF_N("TRF_ArrivalCount");
+	local K = TRF_N("TRF_PlK") or {};
+	local amax = K.arr_max or 3;
+	if type(n) ~= "number" then TRF_RqMiss(e, rec, "queued:no_entry"); return; end;
+	if n > amax - need then TRF_RqMiss(e, rec, "queued:"..n); return; end;
+	if type(TRF_CrewVoice) == "function" then
+		local p, w = TRF_CrewVoice({tpl});
+		if not p then
+			local pw = nil;
+			if tpl then local ok, w2 = TRF_RqProbe(tpl); if ok then pw = "silent"; else pw = w2; end; end;
+			TRF_RqMiss(e, rec, "no_speaker:"..tostring(pw or w));
+			return;
+		end;
+	elseif not tpl or not TRF_RqProbe(tpl) then
+		TRF_RqMiss(e, rec, "no_speaker:absent");
+		return;
+	end;
+	local t1 = TRF_RqLine(e, rec, "a", nm);
+	local ok, aw = TRF_N("TRF_ArrivalLine", "request", t1, {f="TRF_Rq_ArrSay", v=tpl, s=idx, l=1, h=rec.e});
+	if not ok then
+		if aw == "entry" then aw = "no_entry"; end;
+		TRF_RqMiss(e, rec, "queued:"..tostring(aw));
+		return;
+	end;
+	local lc = 1;
+	if rtpl then
+		local a, b, c, d = TRF_RqArgs(e, rec, nm);
+		local t2 = TRF_RqTxt(rk, a, b, c, d);
+		if TRF_N("TRF_ArrivalLine", "request", t2, {f="TRF_Rq_ArrSay", v=rtpl, s=idx, l=2, h=rec.e}) then lc = 2; end;
+	end;
+	TRF_RqLineLog(e, rec, lc, "queued", nil);
+end;
+
+-- Say (7.3) -------------------------------------------------------------------------------
+
+-- Due call of a queued line through trf_plumb's TRF_PlArrSay (b = {t, v, s, l, h}): 1 shown, 0 not shown.
+function TRF_Rq_ArrSay(owner, b)
+	if type(b) ~= "table" or type(b.t) ~= "string" or type(b.s) ~= "number" or type(b.l) ~= "number" then return 0; end;
+	local r = call(TRF_RqSayBody, {b}, "x", TRF_RqErr);
+	if r == 1 then return 1; end;
+	return 0;
+end;
+
+function TRF_RqSayLog(e, part, tpl, how, res, why)
+	local k = nil;
+	if e then k = e.k; end;
+	TRF_RqE("say", "event_key", k, "part", part, "speaker", tpl, "output", how, "result", res, "reason", why);
+end;
+
+-- Speaks text as template tpl: 1, how (radio, line), or nil and the reason.
+function TRF_RqSpeak(tpl, text)
+	local secs = TRF_RqTune().rq_secs;
+	if type(TRF_CrewSay) == "function" then
+		local ok, how = TRF_CrewSay({tpl}, text, secs);
+		if ok then return 1, how; end;
+		return nil, how;
+	end;
+	if TRF_N("TRF_Say", TRF_RqTxt("rqsay", TRF_RqPn(tpl), text), secs) then return 1, "line"; end;
+	return nil, "line_failed";
+end;
+
+function TRF_RqSayBody(b)
+	local rq = %RQ;
+	local rec, e = TRF_RqRec();
+	local parts = {"1", "2", "owe"};
+	local part = parts[b.l] or "?";
+	if b.l == 3 and rec and rec.s == 4 then part = "outcome"; elseif b.l == 3 then part = "lapse"; end;
+	if TRF_RqCur() ~= b.s then TRF_RqSayLog(e, part, b.v, nil, "not_shown", "left"); return 0; end;
+	local want = nil;
+	if rec and rec.e == b.h then
+		if b.l == 1 and rec.s == 1 then want = 1; end;
+		if b.l == 2 and rec.s == 2 and rq.p1 == 1 then want = 1; end;
+		if b.l == 3 and (rec.s == 4 or rec.s == 5) then want = 1; end;
+	end;
+	if not want then TRF_RqSayLog(e, part, b.v, nil, "not_shown", "stale"); return 0; end;
+	local ok, how = nil, TRF_RqGate(b.s, "space");
+	if not how then ok, how = TRF_RqSpeak(b.v, b.t); end;
+	if not ok then
+		-- A refused part 1 is a miss of the entry (7.2 step 7), a refused owed line a try (7.6).
+		TRF_RqSayLog(e, part, b.v, nil, "not_shown", how);
+		if b.l == 1 then TRF_RqMiss(e, rec, "say:"..tostring(how)); end;
+		if b.l == 3 then TRF_RqOweMiss(e, rec, "say:"..tostring(how)); end;
+		return 0;
+	end;
+	TRF_RqSayLog(e, part, b.v, how, "shown", nil);
+	if b.l == 1 then
+		rq.p1 = 1;
+		TRF_RqStart(e, rec, "radio");
+	elseif b.l == 3 then
+		TRF_RqPut(nil, 1);
+		TRF_RqE("owe", "event_key", e.k, "result", "shown");
+	end;
+	return 1;
+end;
+
+-- 7.3 step 3: state 2 (the done bit, the deadline, the start leg), the logbook start, the request line.
+function TRF_RqStart(e, rec, via)
+	local T = TRF_RqTune();
+	rec.s = 2; rec.m = 0; rec.g = TRF_RqMod(TRF_RqLegs(), 1000); rec.d = 0;
+	if e.dl and e.kd ~= "bcn" then rec.d = T[e.dl]; end;
+	local done, r0, en = TRF_RqState();
+	TRF_RqStore(TRF_RqSetOf(done, rec.e, getn(TRF_RqData())), rec, en);
+	TRF_RqLogbook("start");
+	TRF_RqE("request", "event_key", e.k, "kind", e.kd, "chapter", TRF_RqCh(), "deadline", rec.d, "via", via, "result", "shown");
+end;
+
+-- Active requests (7.5, 7.6) -------------------------------------------------------------------
+
+-- State 2 checks at the due (where "due") or the 1 s step ("step"): the bcn and claimed-captain outcomes, then the lapses.
+-- Returns 1 while the record stays active.
+function TRF_RqActive(e, rec, where)
+	local live = TRF_RqLive(e, rec);
+	if e.kd == "bcn" and TRF_RqIdx(TRF_N("TRF_Sv_Aboard") or {}, rec.b) then TRF_RqOutcome(e, rec, "space"); return nil; end;
+	if live == "claimed" then TRF_RqOutcome(e, rec, "space"); return nil; end;
+	local s = {pres=TRF_RqPres(e, rec), age=TRF_RqAgeOf(rec.g, TRF_RqLegs()), ch=TRF_RqCh(), live=live};
+	local why = TRF_RqLapseOf(rec, e, s);
+	if why then TRF_RqLapse(e, rec, why); return nil; end;
+	return 1;
+end;
+
+-- 7.5: state 4, the reward, the logbook end; where "dock" returns the dock line and ends the record, "space" owes the line
+-- to the 1 s step.
+function TRF_RqOutcome(e, rec, where)
+	local rq = %RQ;
+	local T = TRF_RqTune();
+	local age = TRF_RqAgeOf(rec.g, TRF_RqLegs());
+	rec.s = 4; rec.m = 0;
+	TRF_RqPut(rec);
+	local w = TRF_RqRewardOf(e, TRF_N("TRF_PayN", rec.b), T);
+	local paid, hp, fs, tip = 0, 0, 0, nil;
+	if w.help > 0 then TRF_N("TRF_AddHelp", w.help, "rq "..e.k); hp = w.help; end;
+	if w.cr > 0 then paid = TRF_N("TRF_Pay", w.cr, "rq") or 0; end;
+	if w.fs > 0 then
+		local slot = TRF_RqSlot(rec.b);
+		if TRF_N("TRF_FsAdd", slot, rec.a, w.fs, "rq "..e.k) then fs = w.fs; end;
+	end;
+	if w.tip == 1 then
+		local r = TRF_N("TRF_Ti_Rumour", rec.b);
+		if type(r) == "string" and r ~= "" then tip = r; end;
+	end;
+	TRF_RqE("outcome", "event_key", e.k, "kind", e.kd, "age", age, "credits", paid, "help", hp, "standing", fs, "tip", TRF_KvB(tip and 1),
+		"result", "done");
+	TRF_RqLogbook("done");
+	local text = TRF_RqLine(e, rec, "o", rq.nm);
+	if where == "dock" then
+		TRF_RqPut(nil, 1);
+		local tpl = TRF_RqTplOf(rec, e);
+		local o = TRF_RqTxt("rqsay", TRF_RqPn(tpl), text);
+		if tip then o = o.." "..TRF_RqTxt("rqtip", tip); end;
+		TRF_RqSayLog(e, "outcome", tpl, "dock", "shown", nil);
+		return o;
+	end;
+	rq.ow = 1;
+	return nil;
+end;
+
+-- 7.6: a lapse; pilot clears the record at once (no line), every other reason owes the closing line (state 5).
+function TRF_RqLapse(e, rec, why)
+	local age = TRF_RqAgeOf(rec.g, TRF_RqLegs());
+	if why == "pilot" then
+		TRF_RqPut(nil, 1);
+	else
+		rec.s = 5; rec.m = 0;
+		TRF_RqPut(rec);
+	end;
+	TRF_RqE("lapse", "event_key", e.k, "age", age, "reason", why);
+	TRF_RqLogbook("lapse", e, rec);
+end;
+
+-- An owed line not shown this entry: m + 1 once per entry; at rq_owe_max the record is cleared without it.
+function TRF_RqOweMiss(e, rec, why)
+	local rq = %RQ;
+	if rq.mi == 1 then return; end;
+	rq.mi = 1;
+	rec.m = min(9, rec.m + 1);
+	if rec.m >= TRF_RqTune().rq_owe_max then
+		TRF_RqPut(nil, 1);
+		TRF_RqE("owe", "event_key", e.k, "result", "dropped", "reason", why);
+		return;
+	end;
+	TRF_RqPut(rec);
+	TRF_RqDE("owe", "event_key", e.k, "result", "missed", "reason", why, "miss_count", rec.m);
+end;
+
+-- 7.6 owed lines (states 4, 5) at the line due: one queue slot, the stored speaker.
+function TRF_RqOwe(idx, e, rec)
+	local tpl = TRF_RqTplOf(rec, e);
+	local ev = TRF_N("TRF_EventSlot");
+	if type(ev) == "string" then TRF_RqOweMiss(e, rec, "event:"..ev); return; end;
+	local n = TRF_N("TRF_ArrivalCount");
+	local K = TRF_N("TRF_PlK") or {};
+	if type(n) ~= "number" or n >= (K.arr_max or 3) then TRF_RqOweMiss(e, rec, "queued:"..tostring(n)); return; end;
+	local p = nil;
+	if type(TRF_CrewVoice) == "function" then p = TRF_CrewVoice({tpl}); elseif tpl then p = TRF_RqProbe(tpl); end;
+	if not p then TRF_RqOweMiss(e, rec, "no_speaker"); return; end;
+	local k = "o";
+	if rec.s == 5 then k = "x"; end;
+	local t = TRF_RqLine(e, rec, k, nil);
+	if TRF_N("TRF_ArrivalLine", "request", t, {f="TRF_Rq_ArrSay", v=tpl, s=idx, l=3, h=rec.e}) then
+		TRF_RqE("owe", "event_key", e.k, "result", "queued");
+	else
+		TRF_RqOweMiss(e, rec, "queued");
+	end;
+end;
+
+-- Every 1 s (traffic.script, after TRF_Sy_Step): the outcome line owed in this visit, the state 2 checks.
+function TRF_Rq_Step()
+	if type(TRF) ~= "table" or type(TRF.rq) ~= "string" then return; end;
+	call(TRF_RqStepBody, {}, "x", TRF_RqErr);
+end;
+
+function TRF_RqStepBody()
+	local rq = %RQ;
+	if not TRF_RqOn() then return; end;
+	local rec, e = TRF_RqRec();
+	if not rec then rq.ow = nil; return; end;
+	local idx = TRF_RqCur();
+	if rec.s == 2 then
+		if TRF_RqGate(idx, "out") then return; end;
+		TRF_RqActive(e, rec, "step");
+		return;
+	end;
+	if rec.s == 4 and rq.ow == 1 then
+		if TRF_RqGate(idx, "space") then return; end;
+		local tpl = TRF_RqTplOf(rec, e);
+		local ok, how = TRF_RqSpeak(tpl, TRF_RqLine(e, rec, "o", rq.nm));
+		if not ok then
+			if not rq.pr["ow:"..tostring(how)] then rq.pr["ow:"..tostring(how)] = 1; TRF_RqSayLog(e, "outcome", tpl, nil, "not_shown", how); end;
+			return;
+		end;
+		rq.ow = nil;
+		TRF_RqPut(nil, 1);
+		TRF_RqSayLog(e, "outcome", tpl, how, "shown", nil);
+	end;
+end;
+
+-- Outcome triggers (7.5) -------------------------------------------------------------------------
+
+-- trf_track TRF_TrackSpawn: the tracked trader pool_id (name index nm) spawned in the current system.
+function TRF_Rq_OnTrack(pool_id, nm)
+	call(TRF_RqTrackBody, {pool_id, nm}, "x", TRF_RqErr);
+end;
+
+function TRF_RqTrackBody(pool_id, nm)
+	local rec, e = TRF_RqRec();
+	if not rec or rec.s ~= 2 or e.kd ~= "trk" or rec.a ~= pool_id then return; end;
+	local cur = TRF_RqCur();
+	if cur ~= rec.b or TRF_RqGate(cur, "out") then return; end;
+	local rq = %RQ;
+	if type(nm) == "number" then
+		local names = TRF_N("TRF_Names");
+		if type(names) == "table" and type(names[nm]) == "string" then rq.nm = nm; end;
+	end;
+	TRF_RqOutcome(e, rec, "space");
+end;
+
+-- Death bus (wb-plumbing-spec 2): a captain's death; with the player's fire the request is done, else it lapses (other).
+function TRF_Rq_OnDeath(kind, r, ship, pfire)
+	if kind ~= "cap" or type(r) ~= "table" then return; end;
+	call(TRF_RqDeathBody, {r, pfire}, "x", TRF_RqErr);
+end;
+
+function TRF_RqDeathBody(r, pfire)
+	local rec, e = TRF_RqRec();
+	if not rec or rec.s ~= 2 or e.kd ~= "cap" or r.n ~= rec.b then return; end;
+	local c = TRF_N("TRF_CapRec", rec.b);
+	if type(c) ~= "table" or c.gen ~= rec.a then return; end;
+	if TRF_RqGate(TRF_RqCur(), "out") then return; end;
+	if pfire == 1 then TRF_RqOutcome(e, rec, "space"); else TRF_RqLapse(e, rec, "other"); end;
+end;
+
+-- Patrol dock line 85: a patrol desk request in this system is done; the line names the speaker, the tip follows.
+function TRF_Rq_PatrolLine(kind, param)
+	if kind ~= "patrol" then return nil; end;
+	return call(TRF_RqPatrolBody, {}, "x", TRF_RqErr);
+end;
+
+function TRF_RqPatrolBody()
+	local rec, e = TRF_RqRec();
+	if not rec or rec.s ~= 2 or e.kd ~= "rng" then return nil; end;
+	local cur = TRF_RqCur();
+	if cur ~= rec.b or TRF_RqGate(cur, "dock") then return nil; end;
+	if not TRF_RqLive(e, rec) then return nil; end;
+	return TRF_RqOutcome(e, rec, "dock");
+end;
+
+-- Dock box (7.4) --------------------------------------------------------------------------------
+
+-- Gate of the box at a dock of system cur: nil (show) or the reason.
+function TRF_RqBoxWhy(cur)
+	if not TRF_RqOn() or TRF_RqOpt("rq_box") ~= 1 then return "off"; end;
+	local rec, e = TRF_RqRec();
+	if not rec or rec.s ~= 3 then return "state"; end;
+	local gw = TRF_RqGate(cur, "dock");
+	if gw then return gw; end;
+	if not TRF_RqLive(e, rec) then return "subject"; end;
+	local tpl = TRF_RqTplOf(rec, e);
+	if not tpl or not TRF_RqProbe(tpl) then return "no_speaker"; end;
+	return nil;
+end;
+
+-- Box 50 at trade and patrol docks (below every built box): the waiting request.
+function TRF_Rq_DockBox(kind, param)
+	if kind ~= "trade" and kind ~= "patrol" then return nil; end;
+	local r = call(TRF_RqBoxBody, {kind}, "x", TRF_RqErr);
+	if type(r) == "table" then return r; end;
+	return nil;
+end;
+
+function TRF_RqBoxBody(kind)
+	local rq = %RQ;
+	local cur = TRF_RqCur();
+	local why = TRF_RqBoxWhy(cur);
+	local rec, e = TRF_RqRec();
+	if why then
+		if why ~= "off" and why ~= "state" then
+			local k = nil;
+			if e then k = e.k; end;
+			TRF_RqDE("box", "event_key", k, "dock_kind", kind, "result", "none", "reason", why);
+		end;
+		return nil;
+	end;
+	local tpl = TRF_RqTplOf(rec, e);
+	local title = "#UI_TradeStationWndCaption";
+	if kind == "patrol" then title = "#UI_PatrolStationWndCaption"; end;
+	rq.box = kind;
+	return {title=title, text=TRF_RqTxt("rqbox", TRF_RqPn(tpl), TRF_RqLine(e, rec, "a", nil)), ok="TRF_Rq_BoxOk", no="TRF_Rq_BoxNo",
+		shown="TRF_Rq_BoxShown", fail="TRF_Rq_BoxFail", a={g=TRF_RqGen(), e=rec.e}, own=TRF_RqK().own};
+end;
+
+function TRF_RqBoxKey(a)
+	local d = TRF_RqData();
+	if type(a) == "table" and type(a.e) == "number" and type(d[a.e]) == "table" then return d[a.e].k; end;
+	return nil;
+end;
+
+function TRF_Rq_BoxShown(a, via)
+	TRF_RqE("box", "event_key", TRF_RqBoxKey(a), "dock_kind", %RQ.box, "result", "shown", "via", via);
+end;
+
+function TRF_Rq_BoxFail(a)
+	TRF_RqE("box", "event_key", TRF_RqBoxKey(a), "dock_kind", %RQ.box, "result", "failed");
+end;
+
+-- The box's record still the one shown (same generation, event, state 3): rec, e or nil.
+function TRF_RqBoxRec(a)
+	local rec, e = TRF_RqRec();
+	if type(a) ~= "table" or a.g ~= TRF_RqGen() or not rec or rec.e ~= a.e or rec.s ~= 3 then return nil; end;
+	return rec, e;
+end;
+
+-- OK: the gate again; state 2 (via box); the reply rqboxok.
+function TRF_Rq_BoxOk(a)
+	local rec, e = TRF_RqBoxRec(a);
+	if not rec or TRF_RqBoxWhy(TRF_RqCur()) then
+		TRF_RqE("box", "event_key", TRF_RqBoxKey(a), "dock_kind", %RQ.box, "result", "stale");
+		return nil;
+	end;
+	TRF_RqStart(e, rec, "box");
+	TRF_RqE("box", "event_key", e.k, "dock_kind", %RQ.box, "result", "accepted");
+	return TRF_RqTxt("rqboxok", TRF_RqPn(TRF_RqTplOf(rec, e)));
+end;
+
+-- Cancel: the done bit, the record cleared, the end stamped; the reply rqboxno.
+function TRF_Rq_BoxNo(a)
+	local rec, e = TRF_RqBoxRec(a);
+	if not rec then
+		TRF_RqE("box", "event_key", TRF_RqBoxKey(a), "dock_kind", %RQ.box, "result", "stale");
+		return nil;
+	end;
+	local done, r0, en = TRF_RqState();
+	TRF_RqStore(TRF_RqSetOf(done, rec.e, getn(TRF_RqData())), nil, TRF_RqMod(TRF_RqLegs(), 1000));
+	TRF_RqE("box", "event_key", e.k, "dock_kind", %RQ.box, "result", "declined");
+	return TRF_RqTxt("rqboxno", TRF_RqPn(TRF_RqTplOf(rec, e)));
+end;
+
+-- Logbook (8) -------------------------------------------------------------------------------------
+
+-- The Job log text of record rec of row e (8.1): rqj<kind> plus rqjdl for a deadline; the fallback text rqd<kind> when
+-- the subject's name is gone.
+function TRF_RqJText(e, rec)
+	local tpl = TRF_RqTplOf(rec, e);
+	local pn = TRF_RqPn(tpl);
+	local sn = TRF_RqSubjName(e, rec, nil);
+	local sy, cl = nil, nil;
+	if e.kd == "cap" then cl = TRF_N("TRF_ClanName", rec.b) or "pirates"; else sy = TRF_RqSysTxt(rec.b); end;
+	local t = TRF_RqTxt("rqj"..e.kd, pn, sn, sy, cl);
+	if rec.d > 0 then t = t.." "..TRF_RqTxt("rqjdl", rec.d); end;
+	return t, TRF_RqTxt("rqjt", pn);
+end;
+
+function TRF_RqLbHas(list)
+	local K = TRF_RqK();
+	if list == "jobs" then
+		if TRF_RqJGet(K.qid) then return 1; end;
+		return nil;
+	end;
+	if TRF_RqQs(K.qid) ~= nil then return 1; end;
+	return nil;
+end;
+
+function TRF_RqLbLog(ent, list, res, why)
+	TRF_RqE("logbook", "id", TRF_RqK().qid, "entry", ent, "list", list, "result", res, "reason", why);
+end;
+
+-- Removes the entry from both lists; 1 when one was there.
+function TRF_RqLbRem()
+	local K = TRF_RqK();
+	local r = nil;
+	if TRF_RqLbHas("jobs") and TRF_RqJRem(K.qid) then r = 1; end;
+	if TRF_RqLbHas("quest") and TRF_RqQRem(K.qid) then r = 1; end;
+	return r;
+end;
+
+-- The logbook step of why: start, done, lapse, enter, load (8.1-8.3).
+function TRF_RqLogbook(why, e, rec)
+	call(TRF_RqLbBody, {why, e, rec}, "x", TRF_RqErr);
+end;
+
+function TRF_RqLbAdd(e, rec, st, ent, res)
+	local K = TRF_RqK();
+	local kp = TRF_RqKeep();
+	if TRF_N("TRF_JbLog") == 1 then
+		local t, ti = TRF_RqJText(e, rec);
+		if kp.e == rec.e and type(kp.txt) == "string" then t = kp.txt; end;
+		if ent == "start" then kp.txt = t; kp.e = rec.e; end;
+		local d = t;
+		if st == QUEST_DONE then d = t.." "..TRF_RqTxt("rqjdone"); elseif st == QUEST_FAILED then d = t.." "..TRF_RqTxt("rqjlapse"); end;
+		local ok, w = TRF_RqJAdd(K.qid, ti, d, st);
+		if ok ~= 1 then TRF_RqLbLog(ent, "jobs", "failed", tostring(w)); return nil; end;
+		TRF_RqLbLog(ent, "jobs", res, nil);
+		return 1;
+	end;
+	local ok, w = nil, nil;
+	if ent == "end" and TRF_RqQs(K.qid) ~= nil then
+		ok, w = TRF_RqQSet(K.qid, st);
+	else
+		if TRF_RqQs(K.qid) ~= nil then TRF_RqQRem(K.qid); end;
+		ok, w = TRF_RqQAdd(K.qid, "#TRF_rqt"..strsub(e.k, 1, 2), "#TRF_rqd"..e.kd);
+		if ok == 1 and st ~= QUEST_PROCESS then ok, w = TRF_RqQSet(K.qid, st); end;
+	end;
+	if ok ~= 1 then TRF_RqLbLog(ent, "quest", "failed", tostring(w)); return nil; end;
+	TRF_RqLbLog(ent, "quest", res, nil);
+	return 1;
+end;
+
+function TRF_RqLbBody(why, e0, rec0)
+	local rec, e = TRF_RqRec();
+	if rec0 then rec = rec0; e = e0; end;
+	if why == "start" then
+		TRF_RqLbRem();
+		local kp = TRF_RqKeep();
+		kp.txt = nil;
+		TRF_RqLbAdd(e, rec, QUEST_PROCESS, "start", "added");
+		return;
+	end;
+	if why == "done" or why == "lapse" then
+		local st, res = QUEST_DONE, "done";
+		if why == "lapse" then st = QUEST_FAILED; res = "lapsed"; end;
+		if TRF_N("TRF_JbLog") == 1 then TRF_RqLbRem(); end;
+		TRF_RqLbAdd(e, rec, st, "end", res);
+		return;
+	end;
+	-- enter, load (8.3): never while a story mission runs.
+	if TRF_N("TRF_PlQuest") then return; end;
+	local list = "quest";
+	if TRF_N("TRF_JbLog") == 1 then list = "jobs"; end;
+	if rec and rec.s == 2 then
+		if not TRF_RqLbHas(list) then TRF_RqLbAdd(e, rec, QUEST_PROCESS, "start", "restored"); end;
+		return;
+	end;
+	if rec and (rec.s == 4 or rec.s == 5) then return; end;
+	local done, r0, en = TRF_RqState();
+	if type(en) == "number" and TRF_RqAgeOf(en, TRF_RqLegs()) >= TRF_RqTune().rq_log_keep then
+		if TRF_RqLbRem() then TRF_RqLbLog("end", list, "removed", why); end;
+	end;
+end;
+
+-- Contract ---------------------------------------------------------------------------------
+
+-- trf_plumb TRF_InstallPlumb: box 50 at trade and patrol docks, patrol line 85, the death bus.
+function TRF_Rq_Plumb()
+	local K = TRF_RqK();
+	TRF_DockBox("trade", K.box, "TRF_Rq_DockBox");
+	TRF_DockBox("patrol", K.box, "TRF_Rq_DockBox");
+	TRF_DockLine("patrol", K.line, "TRF_Rq_PatrolLine");
+	TRF_DeathReg("Rq");
+end;
+
+-- Repair (7.7; from TRF_Repair after TRF_Sy_Fix).
+function TRF_Rq_Fix()
+	if type(TRF) ~= "table" or TRF.rq == nil then return; end;
+	call(TRF_RqFixBody, {}, "x", TRF_RqErr);
+end;
+
+function TRF_RqFixBody()
+	local rows = TRF_RqData();
+	local at, ai = TRF_RqAt();
+	local o, ch = TRF_RqFixOf(TRF.rq, getn(rows), rows, ai);
+	TRF.rq = o;
+	for i = 1, getn(ch) do TRF_RqE("fix", "field", ch[i][1], "result", ch[i][2]); end;
+end;
+
+-- "module=request event=dump on=1 event_count=16 done=0410 state=2 event_key=tn2 end_age=7"
+function TRF_Rq_Dump()
+	if type(TRF) ~= "table" then return; end;
+	local rows = TRF_RqData();
+	local done, rec, en = TRF_RqState();
+	local st, k, ea = 0, nil, nil;
+	if rec then st = rec.s; if type(rows[rec.e]) == "table" then k = rows[rec.e].k; end; end;
+	if type(en) == "number" then ea = TRF_RqAgeOf(en, TRF_RqLegs()); end;
+	TRF_RqE("dump", "on", TRF_RqOpt("requests"), "event_count", getn(rows), "done", done, "state", st, "event_key", k, "end_age", ea);
+end;
+
+-- Defaults (10) ------------------------------------------------------------------------------
+
+-- requests 0: no pick, line, box, outcome or logbook write (TRF.rq kept and repaired; an active request waits). rq_box 0:
+-- no box; a pending request is dropped after rq_pend_old legs. request_at (debug): that event ignores its done bit, its
+-- chapter window, rq_dl_ch and rq_gap.
+function TRF_Rq_OptDef()
+	return {requests=1, rq_box=1, request_at=""};
+end;
+
+function TRF_Rq_TuneDef()
+	return {rq_ch=4, rq_ch_end=20, rq_dl_ch=5, rq_delay=7, rq_secs=8, rq_gap=4, rq_miss=3, rq_pend_old=40, rq_owe_max=3,
+		rq_dl_cap=15, rq_dl_rng=10, rq_trk_over=2, rq_trk_j=3, rq_bcn_j=2, rq_rng_j=1, rq_rung=2, rq_k=10, rq_help=1, rq_fs=1,
+		rq_log_keep=10};
+end;
+
+-- Texts (9), EN. The dialog style guide: plain spoken sentences, no self-introduction (the portrait names the speaker), no
+-- mechanic words.
+function TRF_Rq_Text()
+	return {
+		rqtn1a = "The $1 has gone quiet since she left for $2. Her captain fed me once when nobody else would. If we pass through $2, let's look for her.",
+		rqtn1o = "There she is, the $1. Still flying. Thank you.",
+		rqtn1x = "No word of the $1. Whatever happened at $2, we were not there for it.",
+		rqtn2a = "$1 runs the $4 raids around here now. He burned a crew I flew with. Put him down in the next $3 days and I owe you.",
+		rqtn2o = "$1 is dead. That one I will drink to.",
+		rqtn2x = "We missed our chance at $1. Leave it.",
+		rqtn3a = "That beacon at $2 is a hauler crew in pods. I knew some of them on the other side of the lanes. Pick them up before the beacon dies?",
+		rqtn3o = "You got them out. They will remember the Wolves.",
+		rqtn3x = "The beacon at $2 went silent. We were too slow.",
+		rqtn4a = "$1 got away from us once. While the Greys had me I swore I would finish what I start. $3 days, then I let it go.",
+		rqtn4o = "$1 will not run again. Thanks for waiting on me.",
+		rqtn4x = "Let $1 go. I have had enough of chasing ghosts.",
+		rqhr1a = "The $1 desk at $2 asked after us. I want to dock there when we pass.",
+		rqhr1o = "The $1 desk at $2 kept its word. They will speak well of us in the region.",
+		rqhr1x = "We never made it to $2. The offer did not wait.",
+		rqhr2a = "The $1 flew under our contract and has not checked in since she made for $2. I want to know she got there.",
+		rqhr2o = "The $1 made it. Good.",
+		rqhr2x = "No sign of the $1 at $2. I will stop asking.",
+		rqhr3a = "We have crossed $1 of the $4 before. He will come for us again. I would rather we find him first, within $3 days.",
+		rqhr3o = "$1 is finished. One less grudge in the lanes.",
+		rqhr3x = "$1 slipped the net. Next time.",
+		rqgh1a = "Pods at $2. In my day a beacon got an answer or a eulogy. Let's be the answer before it dies.",
+		rqgh1o = "Pods aboard. That is how it should be done.",
+		rqgh1x = "The beacon at $2 is silent. I have heard that silence too often.",
+		rqgh2a = "An old friend runs the $1 patrol desk at $2. I would like to see him within $3 days, while he still remembers my face.",
+		rqgh2o = "The old man on the $1 desk at $2 says hello. He had news for us.",
+		rqgh2x = "We missed $2. He will understand. Or he will not.",
+		rqkm1a = "I served with the officer on the $1 desk at $2. Dock there within $3 days and I will ask what the patrols are not saying.",
+		rqkm1o = "My contact on the $1 desk at $2 talked. He will put in a word for us.",
+		rqkm1x = "Too late for $2. My contact has moved on.",
+		rqrp1a = "The $1 limped out toward $2 with her drive smoking. If we find her there, I can patch her up.",
+		rqrp1o = "Found the $1. A few hours on her drive and she will make port.",
+		rqrp1x = "The $1 never turned up at $2. I hope someone else got to her.",
+		rqvd1a = "The $1 desk at $2 owes me a favour from the old days. Dock there within $3 days and I will collect it for all of us.",
+		rqvd1o = "The favour at $2 came through.",
+		rqvd1x = "Forget $2. The favour keeps.",
+		rqal1a = "The $1 carried my letters once. She is overdue at $2. Look in on her if we pass?",
+		rqal1o = "The $1 is fine. Thank you.",
+		rqal1x = "Nothing from the $1 at $2. I will write anyway.",
+		rqch1a = "$1 of the $4 shot up a convoy I rode with. Give me $3 days and a clear shot.",
+		rqch1o = "$1 is down. That settles it.",
+		rqch1x = "$1 is still breathing. Not my call any more.",
+		rqax1a = "The $1 still owes my old warehouse and was last seen making for $2. If we find her there, she can pay in goodwill.",
+		rqax1o = "There is the $1. Goodwill is more than most of them pay.",
+		rqax1x = "The $1 is gone from $2. Write it off.",
+		rqjn1a = "Somebody is calling from pods at $2. Please, let's get them before the beacon dies.",
+		rqjn1o = "They are aboard. I can breathe again.",
+		rqjn1x = "The beacon at $2 stopped. I should have pushed harder.",
+		rqrtrk = "Understood. If we pass through $2, we look for the $1.",   -- Hero: trader, system
+		rqrcap = "Noted. The patrol board will know where $1 was last seen.", -- Hero: captain
+		rqrbcn = "Copy. Plotting for $2.",                                   -- Hero: system
+		rqrrng = "Fine. We dock at $2 when we can.",                         -- Hero: system
+		rqqtrk = "We will keep an eye out at $2.",                           -- responder: system
+		rqqcap = "About time. I will watch for his colours.",                -- responder
+		rqqrng = "Your call.",                                               -- responder
+		rqbox = "$1: $2 Will you take it on?",                               -- name, request
+		rqboxok = "$1: Thanks. I will not forget it.",                       -- name
+		rqboxno = "$1: Fair enough. Forget I asked.",                        -- name
+		rqsay = "$1: $2",                                                    -- name, line (dock line, screen line)
+		rqtip = "The desk officer adds: $1",                                 -- ring rumour
+		rqjt = "$1's request",                                               -- name
+		rqjtrk = "$1 asked us to look for the $2 at $3.",                    -- name, trader, system
+		rqjcap = "$1 asked us to bring down $2 of the $4.",                  -- name, captain, -, clan
+		rqjbcn = "$1 asked us to pick up the pods at $3 before the beacon dies.", -- name, -, system
+		rqjrng = "$1 asked us to dock at the $2 patrol station at $3.",      -- name, faction, system
+		rqjdl = "Within $1 days.",                                           -- days
+		rqjdone = "Done.",
+		rqjlapse = "Lapsed.",
+		rqttn = "Ternie's request",
+		rqthr = "Hero's errand",
+		rqtgh = "Greyhair's request",
+		rqtkm = "Kalem's request",
+		rqtrp = "A repair job",
+		rqtvd = "Validol's favour",
+		rqtal = "Alice's letters",
+		rqtch = "Che's grudge",
+		rqtax = "Alex's debt",
+		rqtjn = "Jana's request",
+		rqdtrk = "A squad pilot asked us to look for an overdue trader.",
+		rqdcap = "A squad pilot asked us to bring down a pirate captain.",
+		rqdbcn = "A squad pilot asked us to pick up a crew from a distress beacon.",
+		rqdrng = "A squad pilot asked us to dock at a patrol station.",
+	};
+end;

@@ -582,3 +582,20 @@ traffic: lua: exp=v1 module=survey event=sell region=2 dock_system=taira dock_re
 traffic: lua: exp=v1 module=region event=pay reason=survey_chart amount=3000
 traffic: lua: exp=v1 module=survey event=sell region=2 dock_system=taira dock_region=3 weight=18 phase=0 steps=0 age=1 value=3000 result=sold
 traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=2 result=vanilla
+traffic: lua: exp=v1 module=state event=enter generation=900 fresh=false system=ashelon legs=600
+traffic: lua: exp=v1 module=safety event=activate system=ashelon mode=mod reason=nil chapter=4 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=request event=pick event_key=tn2 kind=cap speaker=Lastochka2 subject_a=2 subject_b=5 system=nil result=picked reason=nil
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=request line_index=1 delay=8.000 voiced=true result=queued
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=hail line_index=2 delay=11.000 voiced=false result=queued
+traffic: lua: exp=v1 module=request event=say event_key=tn2 part=1 speaker=Lastochka2 output=radio result=shown reason=nil
+traffic: lua: exp=v1 module=request event=request event_key=tn2 kind=cap chapter=4 deadline=15 via=radio result=shown
+traffic: lua: exp=v1 module=request event=outcome event_key=tn2 kind=cap age=0 credits=0 help=0 standing=0 tip=false result=done
+traffic: lua: exp=v1 module=state event=enter generation=901 fresh=false system=ashelon legs=601
+traffic: lua: exp=v1 module=safety event=activate system=ashelon mode=mod reason=nil chapter=11 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=request event=skip system=ashelon reason=latch
+traffic: lua: exp=v1 module=request event=say event_key=tn2 part=1 speaker=Lastochka output=radio result=shown reason=nil
+traffic: lua: exp=v1 module=request event=request event_key=tn2 kind=cap chapter=11 deadline=15 via=radio result=shown
+traffic: lua: exp=v1 module=request event=request event_key=tn3 kind=bcn chapter=11 deadline=0 via=radio result=shown
+traffic: lua: exp=v1 module=request event=line event_key=gh1 miss_count=1 line_count=0 result=miss reason=no_speaker:silent
+traffic: lua: exp=v1 module=request event=box event_key=gh1 dock_kind=trade result=shown via=nil
+traffic: lua: exp=v1 module=request event=outcome event_key=gh1 kind=bcn age=0 credits=900 help=0 standing=0 tip=false xp=10 result=done

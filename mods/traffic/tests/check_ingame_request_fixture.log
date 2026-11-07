@@ -1,0 +1,84 @@
+traffic: lua: exp=v1 module=state event=enter generation=500 fresh=false system=gaoba legs=200
+traffic: lua: exp=v1 module=safety event=activate system=gaoba mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=request event=logbook id=trf_rq entry=end list=quest result=removed reason=enter
+traffic: lua: exp=v1 module=request event=enter system=gaoba system_index=42 state=0 event_key=nil result=armed
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=remark line_index=1 delay=8.000 voiced=true result=queued
+traffic: lua: exp=v1 module=request event=candidate event_key=tn1 result=ok
+traffic: lua: exp=v1 module=request event=pick event_key=tn1 kind=trk speaker=Lastochka subject_a=41 subject_b=59 system=lidau result=picked reason=nil
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=request line_index=2 delay=4.000 voiced=true result=queued
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=request line_index=3 delay=7.000 voiced=true result=queued
+traffic: lua: exp=v1 module=request event=line event_key=tn1 miss_count=0 line_count=2 result=queued reason=nil
+traffic: lua: exp=v1 module=request event=say event_key=tn1 part=1 speaker=Lastochka output=radio result=shown reason=nil
+traffic: lua: exp=v1 module=request event=logbook id=trf_rq entry=start list=quest result=added reason=nil
+traffic: lua: exp=v1 module=request event=request event_key=tn1 kind=trk chapter=6 deadline=0 via=radio result=shown
+traffic: lua: exp=v1 module=request event=say event_key=tn1 part=2 speaker=Hero output=radio result=shown reason=nil
+traffic: lua: exp=v1 module=state event=enter generation=501 fresh=false system=lidau legs=201
+traffic: lua: exp=v1 module=safety event=activate system=lidau mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=track event=spawn pool_id=41 trader_id=41 via=port origin=gaoba tier=1 pool_tier=1 power=3 escort_count=0 hold_cut=0 damage_band=0 flags=1
+traffic: lua: exp=v1 module=region event=pay reason=rq amount=900
+traffic: lua: exp=v1 module=request event=outcome event_key=tn1 kind=trk age=1 credits=900 help=1 standing=0 tip=false result=done
+traffic: lua: exp=v1 module=request event=logbook id=trf_rq entry=end list=quest result=done reason=nil
+traffic: lua: exp=v1 module=request event=say event_key=tn1 part=outcome speaker=Lastochka output=radio result=shown reason=nil
+traffic: lua: exp=v1 module=state event=enter generation=502 fresh=false system=heos legs=202
+traffic: lua: exp=v1 module=safety event=activate system=heos mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=request event=skip system=heos reason=latch
+traffic: lua: exp=v1 module=state event=enter generation=503 fresh=false system=gaoba legs=207
+traffic: lua: exp=v1 module=safety event=activate system=gaoba mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=request event=enter system=gaoba system_index=42 state=0 event_key=nil result=armed
+traffic: lua: exp=v1 module=request event=pick event_key=tn2 kind=cap speaker=Lastochka subject_a=2 subject_b=5 system=nil result=picked reason=nil
+traffic: lua: exp=v1 module=request event=line event_key=tn2 miss_count=1 line_count=0 result=miss reason=no_speaker:silent
+traffic: lua: exp=v1 module=state event=enter generation=504 fresh=false system=gaoba legs=208
+traffic: lua: exp=v1 module=safety event=activate system=gaoba mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=request event=enter system=gaoba system_index=42 state=1 event_key=tn2 result=armed
+traffic: lua: exp=v1 module=request event=pick event_key=tn2 kind=cap speaker=Lastochka subject_a=2 subject_b=5 system=nil result=kept reason=nil
+traffic: lua: exp=v1 module=request event=line event_key=tn2 miss_count=2 line_count=0 result=miss reason=no_speaker:silent
+traffic: lua: exp=v1 module=state event=enter generation=505 fresh=false system=gaoba legs=209
+traffic: lua: exp=v1 module=safety event=activate system=gaoba mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=request event=enter system=gaoba system_index=42 state=1 event_key=tn2 result=armed
+traffic: lua: exp=v1 module=request event=pick event_key=tn2 kind=cap speaker=Lastochka subject_a=2 subject_b=5 system=nil result=kept reason=nil
+traffic: lua: exp=v1 module=request event=line event_key=tn2 miss_count=3 line_count=0 result=miss reason=no_speaker:silent
+traffic: lua: exp=v1 module=request event=line event_key=tn2 miss_count=3 line_count=0 result=box reason=nil
+traffic: lua: exp=v1 module=request event=box event_key=tn2 dock_kind=trade result=shown via=nil
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 box=rq priority=50 result=box
+traffic: lua: exp=v1 module=request event=box event_key=tn2 dock_kind=trade result=declined via=nil
+traffic: lua: exp=v1 module=state event=enter generation=506 fresh=false system=gaoba legs=214
+traffic: lua: exp=v1 module=safety event=activate system=gaoba mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=request event=pick event_key=hr2 kind=trk speaker=Hero subject_a=77 subject_b=50 system=heos result=picked reason=nil
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=request line_index=1 delay=8.000 voiced=true result=queued
+traffic: lua: exp=v1 module=request event=line event_key=hr2 miss_count=0 line_count=1 result=queued reason=nil
+traffic: lua: exp=v1 module=request event=say event_key=hr2 part=1 speaker=Hero output=radio result=shown reason=nil
+traffic: lua: exp=v1 module=request event=logbook id=trf_rq entry=start list=quest result=added reason=nil
+traffic: lua: exp=v1 module=request event=request event_key=hr2 kind=trk chapter=6 deadline=0 via=radio result=shown
+traffic: lua: exp=v1 module=request event=lapse event_key=hr2 age=6 reason=subject
+traffic: lua: exp=v1 module=request event=logbook id=trf_rq entry=end list=quest result=lapsed reason=nil
+traffic: lua: exp=v1 module=state event=enter generation=507 fresh=false system=xk10 legs=220
+traffic: lua: exp=v1 module=safety event=activate system=xk10 mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=request line_index=1 delay=8.000 voiced=true result=queued
+traffic: lua: exp=v1 module=request event=owe event_key=hr2 result=queued reason=nil
+traffic: lua: exp=v1 module=request event=say event_key=hr2 part=lapse speaker=Hero output=radio result=shown reason=nil
+traffic: lua: exp=v1 module=request event=owe event_key=hr2 result=shown reason=nil
+traffic: lua: exp=v1 module=state event=enter generation=508 fresh=false system=kadi legs=230
+traffic: lua: exp=v1 module=safety event=activate system=kadi mode=mod reason=nil chapter=7 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=request event=pick event_key=hr3 kind=cap speaker=Hero subject_a=2 subject_b=5 system=nil result=picked reason=nil
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=request line_index=1 delay=8.000 voiced=true result=queued
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=request line_index=2 delay=11.000 voiced=true result=queued
+traffic: lua: exp=v1 module=request event=line event_key=hr3 miss_count=0 line_count=2 result=queued reason=nil
+traffic: lua: exp=v1 module=request event=say event_key=hr3 part=1 speaker=Hero output=radio result=shown reason=nil
+traffic: lua: exp=v1 module=request event=logbook id=trf_rq entry=start list=quest result=added reason=nil
+traffic: lua: exp=v1 module=request event=request event_key=hr3 kind=cap chapter=7 deadline=15 via=radio result=shown
+traffic: lua: exp=v1 module=request event=say event_key=hr3 part=2 speaker=Sedoy output=radio result=shown reason=nil
+traffic: lua: exp=v1 module=captain event=claim slot=5 gen=2 amount=12000
+traffic: lua: exp=v1 module=request event=outcome event_key=hr3 kind=cap age=2 credits=0 help=0 standing=0 tip=false result=done
+traffic: lua: exp=v1 module=request event=logbook id=trf_rq entry=end list=quest result=done reason=nil
+traffic: lua: exp=v1 module=request event=say event_key=hr3 part=outcome speaker=Hero output=radio result=shown reason=nil
+traffic: lua: exp=v1 module=state event=enter generation=509 fresh=false system=heos legs=300
+traffic: lua: exp=v1 module=safety event=activate system=heos mode=mod reason=nil chapter=13 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=request event=pick event_key=tn4 kind=cap speaker=Lastochka2 subject_a=3 subject_b=6 system=nil result=picked reason=nil
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=request line_index=1 delay=8.000 voiced=true result=queued
+traffic: lua: exp=v1 module=plumb event=arrival_line owner=request line_index=2 delay=11.000 voiced=true result=queued
+traffic: lua: exp=v1 module=request event=line event_key=tn4 miss_count=0 line_count=2 result=queued reason=nil
+traffic: lua: exp=v1 module=request event=say event_key=tn4 part=1 speaker=Lastochka2 output=radio result=shown reason=nil
+traffic: lua: exp=v1 module=request event=logbook id=trf_rq entry=start list=quest result=added reason=nil
+traffic: lua: exp=v1 module=request event=request event_key=tn4 kind=cap chapter=13 deadline=15 via=radio result=shown
+traffic: lua: exp=v1 module=request event=say event_key=tn4 part=2 speaker=Hero output=radio result=shown reason=nil
+traffic: lua: exp=v1 module=request event=dump on=1 event_count=16 done=6290 state=2 event_key=tn4 end_age=70

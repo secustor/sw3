@@ -227,12 +227,12 @@ function T_RM_A()
 	local h = HOST();
 	RM_Begin("gaoba", "6");
 	local g, al, kd, sl = RM_Sys();
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=24") >= 1, "trf_remark loads before trf_temper, trf_corp and trf_debrief (extra_count=24)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=25") >= 1, "trf_remark loads before trf_temper, trf_corp and trf_debrief (extra_count=25)");
 	local ml, tf, uf = TRF_ModList(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml) - 7] == "Rm" and tf[getn(tf) - 8] == "TRF_Rm_Text" and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf) - 7] == "TRF_Rm_Text",
+	HOST_Check(ml[getn(ml) - 8] == "Rm" and tf[getn(tf) - 9] == "TRF_Rm_Text" and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf) - 8] == "TRF_Rm_Text",
 		"TRF_ModList ends with Rm; TRF_Rm_Text before TRF_Loc_Text and last in TRF_UI_TextFns");
 	HOST_Check(g == 42 and al == 2 and kd == 52 and sl == 5 and TRF_RgMap()[sl].home == kd and TRF_BaseAllowed(al), "fixture: gaoba 42, altair 2 (base slot), kadi 52 (home) in region 5");
-	-- Text keys (9): 14, plain sentences without %, # or a line break; the loc layer finds each one.
+	-- Text keys (9): 24 (14 and the 10 squad pilot names of crew requests), plain sentences without %, # or a line break; the loc layer finds each one.
 	local tx = TRF_Rm_Text();
 	local n, bad = 0, "";
 	for k, v in tx do
@@ -240,7 +240,7 @@ function T_RM_A()
 		if strfind(v, "%", 1, 1) or strfind(v, "#", 1, 1) or strfind(v, "\n", 1, 1) or strsub(k, 1, 2) ~= "rm" then bad = bad.." "..k; end;
 		if TRF_Txt(k) == k then bad = bad.." unknown:"..k; end;
 	end;
-	HOST_Check(n == 14 and bad == "", "14 rm text keys, no %, # or line break, every key found by TRF_Txt"..bad);
+	HOST_Check(n == 24 and bad == "", "24 rm text keys, no %, # or line break, every key found by TRF_Txt"..bad);
 	-- Defaults and clamps (10).
 	local T = TRF_RmTune();
 	HOST_Check(TRF_Opt("remarks") == 1 and TRF_Opt("remark_mode") == 1 and T.rm_ch == 0 and T.rm_ch_late == 5 and T.rm_age == 40
@@ -865,22 +865,22 @@ function T_RM_G()
 	local full = 8 + 3 + HOST_SaveSize(TRF);
 	HOST_Check(full < 100000, "TRF with TRF.rm: "..full.." bytes < 100000");
 	TRF.rm = nil;
-	-- RU fixed forms: the 14 keys, cp1251, CRLF.
+	-- RU fixed forms: the 24 keys, cp1251, CRLF.
 	local ru = RM_ReadFile(h.dir.."../../../../loc/trf_ru.loc");
 	local miss = "";
 	local cr, lf = strchar(13), strchar(10);
 	for k, v in TRF_Rm_Text() do
 		if not (ru and strfind(ru, lf.."#TRF_"..TRF_LocKey(k).." = [^"..cr..lf.."]+"..cr..lf)) then miss = miss.." "..k; end;
 	end;
-	HOST_Check(ru and miss == "" and RM_Count(ru, "\n") == RM_Count(ru, "\r\n"), "loc/trf_ru.loc: the 14 rm keys, CRLF"..miss);
-	-- EN scaffold: the 14 keys in loc/trf_en.loc (gen_map.py --loc).
+	HOST_Check(ru and miss == "" and RM_Count(ru, "\n") == RM_Count(ru, "\r\n"), "loc/trf_ru.loc: the 24 rm keys, CRLF"..miss);
+	-- EN scaffold: the 24 keys in loc/trf_en.loc (gen_map.py --loc).
 	local en = RM_ReadFile(h.dir.."../../../../loc/trf_en.loc");
 	miss = "";
 	for k, v in TRF_Rm_Text() do
 		local want = cr..lf.."#TRF_"..TRF_LocKey(k).." = "..TRF_Loc_Plain(v)..cr..lf;
 		if not (en and strfind(en, want, 1, 1)) then miss = miss.." "..k; end;
 	end;
-	HOST_Check(miss == "", "loc/trf_en.loc: the 14 rm keys with their fixed forms"..miss);
+	HOST_Check(miss == "", "loc/trf_en.loc: the 24 rm keys with their fixed forms"..miss);
 	-- Owner decision 6 (16): a won off-screen sweep over the active base in altair writes its scar in altair, not at home.
 	h.cfg.enable_scars = 1;
 	TRF.scar = nil;

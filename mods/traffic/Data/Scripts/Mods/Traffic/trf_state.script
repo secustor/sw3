@@ -67,7 +67,7 @@ end;
 -- v0.2 and v1 modules with TRF_<M>_OptDef, TRF_<M>_TuneDef and TRF_<M>_Dump (v0.2 spec 10.2, 10.4; v1 10.1).
 function TRF_ModList()
 	return {"Rg", "Str", "Ft", "Tier", "Raid", "Hail", "Shop", "Loc", "Track", "Faction", "Clan", "Convoy", "Danger", "Supply", "Base", "Pl", "Stn",
-		"Sv", "Lad", "Ch", "Sc", "Cap", "Sh", "Fr", "Haunt", "Pc", "Mc", "Wq", "Wn", "Rm", "Te", "Crp", "Db", "Ti", "Spc", "Sg", "Sy"};
+		"Sv", "Lad", "Ch", "Sc", "Cap", "Sh", "Fr", "Haunt", "Pc", "Mc", "Wq", "Wn", "Rm", "Te", "Crp", "Db", "Ti", "Spc", "Sg", "Sy", "Rq"};
 end;
 
 -- Value of key in the first module table getglobal("TRF_"..M..suffix)() that has it, else nil.
@@ -93,7 +93,7 @@ function TRF_OptEnum()
 		wreck=1, loc_mode=1, transit=1, sos_mode=-2, combat=1, hail_quiet=1, wb_box_after_fee=1, ext_fix=1,
 		merc_war=1, merc_hunt=1, merc_hostile=1, merc_legion=1, jobs_ui=2, jobs_log=1, warn=1, remarks=1, remark_mode=1, temper=1, te_quest=1, te_gate=1,
 		te_dialog=1, corp=1, debrief=1, debrief_xp=1, db_gate=1, db_dialog=1, tips=1, spec=1, signals=1, signal_sound=2,
-		voice_near=1, survey=1, sy_quest=1, sy_gate=1};
+		voice_near=1, survey=1, sy_quest=1, sy_gate=1, requests=1, rq_box=1};
 end;
 
 function TRF_Clamp(x, lo, hi)
@@ -671,6 +671,8 @@ function TRF_Repair()
 	TRF_P("TRF_Sg_Fix");
 	-- Survey layer (design/survey-spec.md 6.5, 3.3): the string TRF.sy and quest 4 of TRF.iq (after TRF_Pl_Fix).
 	TRF_P("TRF_Sy_Fix");
+	-- Crew requests (design/crew-requests-spec.md 7.7): the string TRF.rq.
+	TRF_P("TRF_Rq_Fix");
 	-- Specialist answers (design/specialist-spec.md F2): the patched flag sk on the live trader records.
 	TRF_P("TRF_Spc_Fix");
 	-- cfg enabled 2 (restore-and-stop, trf_haunt and trf_merc not loaded): the pirate haunt fields and the mercenary clan

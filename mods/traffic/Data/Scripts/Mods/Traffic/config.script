@@ -126,6 +126,10 @@
 -- "Chart the frontier" and counts no reading for it; sy_gate (default 1) 1 opens the survey with the quest's hand-in, 0
 -- from chapter 5 without the quest; survey_at (debug) names a system where the survey counts as open; the tune keys sy_*
 -- read the module defaults.
+-- Crew requests (design/crew-requests-spec.md 10, B03; defaults in TRF_Rq_OptDef): requests (default 1) = 0 picks no
+-- request and shows no radio pair, box, outcome or logbook entry (TRF.rq kept and repaired); rq_box (default 1) 0 shows
+-- no dock box when the pair could not be shown; request_at (debug) names an event key (tn1 ... jn1) that ignores its done
+-- bit, chapter window and gap; the tune keys rq_* read the module defaults.
 function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1, ext_fix=1,
 	enabled=1, cycle=1, prosperity=1, tier_cap=4, cap_traders=5, cap_ships=20, spawn_scale=1.0, band_half=0,
 	parked=1, esc_flight=1, seed=1, queue=1, raids=1, staged=1, contracts=1, esc_speed=0, meet=2, hail_start=2, board=1,
@@ -147,4 +151,4 @@ function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1, ext_fix=1,
 	merc=0, merc_board=1, merc_book=0, merc_report=0, merc_marker=0, merc_calls=0, merc_transfer=0, rv_enabled=0,
 	mc_launch=0, mc_el_c=8, jobs_ui=1, jobs_log=0, warn=1, temper=1, te_quest=1, te_gate=1, te_dialog=1, corp=1,
 	debrief=1, debrief_xp=0, db_gate=1, db_dialog=1, tips=1, spec=1, signals=1, voice_near=1,
-	survey=1, sy_quest=1, sy_gate=1, survey_at=""} end
+	survey=1, sy_quest=1, sy_gate=1, survey_at="", requests=1, rq_box=1, request_at=""} end

@@ -482,6 +482,29 @@ function TRF_Sv_SiteLink(idx, sid)
 	return 1;
 end;
 
+-- Crew requests (design/crew-requests-spec.md 12.3): read-only copies {s, n, n0, lg, src, q} of the beacon records, {}
+-- without any.
+function TRF_Sv_Beacons()
+	local o = {};
+	if type(TRF) ~= "table" or type(TRF.sv) ~= "table" or type(TRF.sv.b) ~= "table" then return o; end;
+	local l = TRF.sv.b;
+	for i = 1, getn(l) do
+		local b = l[i];
+		if type(b) == "table" then tinsert(o, {s=b.s, n=b.n, n0=b.n0, lg=b.lg, src=b.src, q=b.q}); end;
+	end;
+	return o;
+end;
+
+-- Crew requests: the systems of the survivors aboard {s1[, s2]} (a copy), {} when none are aboard.
+function TRF_Sv_Aboard()
+	if type(TRF) ~= "table" or type(TRF.sv) ~= "table" or type(TRF.sv.c) ~= "table" then return {}; end;
+	local c = TRF.sv.c;
+	local o = {};
+	if type(c.s1) == "number" then tinsert(o, c.s1); end;
+	if type(c.s2) == "number" then tinsert(o, c.s2); end;
+	return o;
+end;
+
 -- 1 when the system cooldown sv_cd still runs for idx (cd stamp younger than sv_cd legs).
 function TRF_SvCdOn(idx, T)
 	local S = TRF_SvRec();

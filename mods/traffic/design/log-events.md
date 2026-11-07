@@ -449,7 +449,7 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `eject` | `module=plumb event=eject result_before=2 result_after=1` | 1 |
 | `event_slot` | `module=plumb event=event_slot kind=staged rank=3 result=taken` / `holder=sweep result=refused` / `result=freed` | 1 |
 | `escort_slot` | `module=plumb event=escort_slot owner=pack result=taken` / `holder=pack result=refused` | 1 |
-| `arrival_line` | `module=plumb event=arrival_line owner=beacon line_index=1 delay=8.000 voiced=false result=queued` (`voiced=true`: a crew remark or a voiced scar line, `design/crew-remarks-spec.md` 7.3) | 1 |
+| `arrival_line` | `module=plumb event=arrival_line owner=beacon line_index=1 delay=8.000 voiced=false result=queued` (`voiced=true`: a crew remark or a voiced scar line, `design/crew-remarks-spec.md` 7.3; `owner=request`: a crew request's pair or owed line, `design/crew-requests-spec.md` 7.2) | 1 |
 | `arrival_line` | `module=plumb event=arrival_line owner=p4 line_index=4 result=dropped reason=cap` (or `reason=no_entry`, `reason=due`) | 1 |
 | `arrival_line` | `module=plumb event=arrival_line owner=beacon result=shown` (or `result=not_shown`) | 2 |
 | `job` | `module=plumb event=job kind=1 field_count=2 result=taken` / `holder=1 result=refused` / `result=cleared` | 1 |
@@ -1097,6 +1097,35 @@ Survey layer and the quest "Chart the frontier", A12 step 2 (`design/survey-spec
 | `dump` | `module=survey event=dump on=1 row_count=46 read_count=12 points=27 charts=1:s,4:2212 quest=4/1/17/1918/3` (`<slot>:<block>`; quest `4/<step>/<t>/<sd>/<mask>`) | 1 |
 
 Other modules' lines for the survey: `module=plumb event=iq quest=4 ...` (the quest record), `module=plumb event=marker owner=survey label=TRF_SY_NP_<id> result=added` (job markers, no `class`), `module=region event=pay reason=survey` / `reason=survey_chart`, `module=tips event=push kind=chart ...` and `event=pick ... kind=chart`, `module=safety event=gate feature=survey ...`.
+
+## request (`trf_request.script`; `TRF_RqE`, `TRF_RqDE`)
+
+Crew requests, B03 (`design/crew-requests-spec.md` 11; host-tested only). `event_key` is the event of the table `TRF_RqData` (`tn1` ... `jn1`), `kind` its record kind (`trk` overdue tracked trader, `cap` wanted captain, `bcn` seeded beacon, `rng` patrol desk), `subject_a` / `subject_b` the subject (trk: trader id, system idx; cap: gen, region slot; bcn: beacon leg mod 1000, system idx; rng: faction 1..5, system idx), `state` the record state 0 (none) .. 5 (1 pending, 2 active, 3 box, 4 done with its line owed, 5 lapsed with its line owed), `speaker` a pilot template. Skip reasons: `off`, `chapter`, `nomap`, `mode:<why>`, `gate:<why>`, `latch`, `mission`, `hold:<disable_action,sys_sos,scene,suppressed>`, `quiet`, `gap`.
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=request event=error message=<m>` | 1 |
+| `enter` | `module=request event=enter system=gaoba system_index=42 state=<0..5> event_key=<tn1,nil> result=<armed,due_full>` | 2 |
+| `skip` | `module=request event=skip system=gaoba reason=<see above>` (once per reason and visit) | 2 |
+| `candidate` | `module=request event=candidate event_key=tn2 result=<ok,done,chapter,deadline_ch,no_speaker,none,gap>` (every row at the pick; `gap`: inside `rq_gap` with cfg `request_at` set, only the debug row is a candidate) | 2 |
+| `pick` | `module=request event=pick event_key=tn2 kind=cap speaker=Lastochka subject_a=3 subject_b=5 system=<subject system,nil for cap> result=<picked,kept,cleared> reason=<nil,subject,old,no_speaker>` | 1 |
+| `pick` | `module=request event=pick result=none` | 2 |
+| `line` | `module=request event=line event_key=tn2 miss_count=1 line_count=<0,1,2> result=<queued,miss,box,dropped> reason=<nil,queued:<n>,no_speaker:<absent,dead,side,silent,error>,event:<kind>,say:<why>,left>` (`miss`: the pair could not be shown at this entry, one miss per entry; `box`: `rq_miss` reached) | 1 |
+| `say` | `module=request event=say event_key=tn2 part=<1,2,outcome,lapse> speaker=Lastochka output=<radio,line,dock,nil> result=<shown,not_shown> reason=<nil,left,stale,gate:..,hold:..,supp:..,no_speaker,line_failed>` | 1 |
+| `request` | `module=request event=request event_key=tn2 kind=cap chapter=6 deadline=15 via=<radio,box> result=shown` (the request started: state 2, the done bit) | 1 |
+| `box` | `module=request event=box event_key=tn2 dock_kind=<trade,patrol> result=<shown,accepted,declined,stale,failed> via=<nil,card,board,dialog>` | 1 |
+| `box` | `module=request event=box event_key=tn2 dock_kind=trade result=none reason=<subject,no_speaker,gate:..,latch,mission,quiet,chapter>` | 2 |
+| `outcome` | `module=request event=outcome event_key=tn2 kind=cap age=7 credits=0 help=0 standing=0 tip=<true,false> result=done` | 1 |
+| `lapse` | `module=request event=lapse event_key=tn2 age=16 reason=<pilot,deadline,chapter,subject,other>` | 1 |
+| `owe` | `module=request event=owe event_key=tn2 result=<queued,shown,dropped> reason=<nil,queued:<n>,no_speaker,event:<kind>,say:<why>>` | 1 |
+| `owe` | `module=request event=owe event_key=tn2 result=missed reason=<why> miss_count=1` (an owed line not shown at this entry) | 2 |
+| `logbook` | `module=request event=logbook id=trf_rq entry=<start,end> list=<jobs,quest> result=<added,done,lapsed,restored,removed,failed> reason=<nil,enter,load,<native error>>` | 1 |
+| `debug` | `module=request event=debug event_key=<tn1> result=<eligible,no_speaker,none,done,chapter,deadline_ch>` (cfg `request_at`) | 1 |
+| `jump` | `module=request event=jump system=gaoba state=2 event_key=tn2 dest=lidau` | 2 |
+| `fix` | `module=request event=fix field=<rq,done,rec,end> result=<dropped,reset,set>` (only when the repair changed something; `rq`: not a string or not three parts) | 1 |
+| `dump` | `module=request event=dump on=1 event_count=16 done=<hex> state=<0..5> event_key=<k,nil> end_age=<n,nil>` | 1 |
+
+Other modules' lines for the requests: `module=plumb event=arrival_line owner=request line_index=<n> ... result=queued` (the pair and owed lines), `module=region event=pay reason=rq amount=900`, `module=faction event=region_standing ... reason="rq <key>"`, `module=state event=help reason="rq <key>"`, `module=safety event=gate feature=request ...`.
 
 ## supply (`trf_supply.script`; `TRF_SpE`)
 

@@ -38,6 +38,7 @@ NPC trader traffic for Star Wolves 3: Civil War (GOG v1.12). The traffic logic i
 | `trf_tips.script` | Sourced tips and the event ring, A16 ([design/tips-spec.md](design/tips-spec.md)): one ring of dated events per region (4 records, `TRF.ti`, one digit string), fed by off-screen raids, sweep plans and outcomes, pirate bases going active or dark, the wanted captain's moves and lost traffic freighters; read by the harbour news (one dated, sourced line), the sweep and base dock tips (who first saw it, where, when), a captain tip, the hail's where-headed answer and the informant's reply. Owns the shared ring API `TRF_RingPush`/`TRF_RingRead`/`TRF_RingMark`; trf_plumb's two-marker rule for offered content (`TRF_MarkerOfferReg`, tune `mk_offer`). Host-tested only. Loads after `trf_debrief`. |
 | `trf_spec.script` | Specialist answers, A05 ([design/specialist-spec.md](design/specialist-spec.md)): the Repairman patch, one answer in the hail menu's spare provider slot for an FTU trader fleeing with low HP after its raid ended ("Jana [Repairman]: ..."; `SetHP` on the lead, trf_raid's `TRF_Rd_Unflee`, help +1), the missing-skill head of that menu, the re-arm of its hail at the raid end and one hail beyond `hail_max`, the patched flag `r.sk` (trf_track's pool `fl` bit 256: the free rumour and a thank-you line at the next meeting), the specialist probe for the fence page's Intuition answer (trf_wq D5). Host-tested only. Loads after `trf_tips`. |
 | `trf_signal.script` | Static signals, A08 ([design/static-signals-spec.md](design/static-signals-spec.md)): at most one looping distress source per region slot (`TRF.sg`, 8 digits a record), lit at the region tick in Quiet and Boom at a generated point (`TRF_SgPointData`, `tools/gen_stash.py --signal`) and pushed to the ring (kind 13); the static entry line through `TRF_ArrivalLine` only on an entry with no other mod line, the reading with a 1,000-unit area marker and the clan threat word (`TRF_Str_Word`), the late-created flight recorder with a swept pickup and its last entry (stash reveal `src` 5, ring rumour, lore). Host-tested only (W-A08.1-10 open). |
+| `trf_request.script` | Crew requests, B03 ([design/crew-requests-spec.md](design/crew-requests-spec.md)): 16 once-per-save requests of squad pilots (`TRF_RqData`, template lists, the Repairman holder of `TRF_Spc_Who`) on a tracked trader, the wanted captain, a seeded beacon or a patrol desk; the radio pair as the last arrival line 7 s after the entry, outcomes from trf_track's spawn hook, the death bus, the pods aboard and the patrol dock line 85, lapses, the box 50 fallback, the logbook entry `trf_rq` (`TRF.rq`, 46 bytes). Host-tested only (W-B03.1-10 open). |
 | `exp_hooks.script` | E0.1: hooks and natives alive. |
 | `exp_state.script` | E0.2: `TRF` across jumps and a save. |
 | `exp_trader.script` | E0.3: trader life-cycle primitives and the snapshot question. |
@@ -1326,6 +1327,44 @@ Wave 3 item 12 of the roadmap, A12 step 2 (spec [design/survey-spec.md](design/s
 ### In-game checks (survey)
 
 W-A12.9 (the offer names three landmarks), W-A12.10 (every reading pays at once), W-A12.11 (one reading per landmark), W-A12.12 (the random-portal bound), W-A12.13 (quest safety), W-A12.14 (no stash named), W-A12.15 (the logbook only at docks), W-A12.16 (the hand-in opens the survey), W-A12.17 (the chart sells once and outside its region), W-A12.18 (the Wolves' name in a harbour line); [design/PROGRESS.md](design/PROGRESS.md) "Wave 3 (host-tested only)", scored by `tools/check_ingame.py`. Play with `LOG=2` in chapter 5 or later; `SURVEY_AT=xt20` for a free reading.
+
+## Crew requests (`EXP=0 TRAFFIC=1`)
+
+Wave 4 item 14 of the roadmap, B03 (A01 step 2; spec [design/crew-requests-spec.md](design/crew-requests-spec.md), data [design/mod-research/crew-requests-data.md](design/mod-research/crew-requests-data.md); owner decisions 1-15 of spec 2.1 taken 2026-11-07 as recommended): module `trf_request`, loaded after `trf_survey` (`extra_count=25`). On by default (cfg `requests` 1). Saved: the string `TRF.rq` (done bits, one record, the last end; 46 bytes worst case, 45 with the 16 events; full state `v1-n` 97,778 bytes). Host-tested only (`rq-a`..`rq-h`), not run in the game. No XP, no perk grant, no marker; RU text of the requests and dialog windows come later.
+
+### What the player sees
+
+- 16 requests, each once per save, each bound to a squad pilot by template (Ternie `Lastochka`/`Lastochka2`, the Hero, Greyhair `Sedoy`, Kalem, the Repairman holder, Validol, Alice, Che, Alex, Jana) and to a record the mod already keeps: an overdue tracked trader 1-3 jumps away, the region's wanted captain, a seeded distress beacon 1-2 jumps away, or the patrol desk of a faction at rung 2+ in this or a neighbouring system.
+- 7 s after a jump, as the last arrival line: the pilot's request on the radio ("The Kestrel has gone quiet since she left for Lidau. ... If we pass through Lidau, let's look for her."), then the Hero's reply ("Understood. If we pass through Lidau, we look for the Kestrel."); for the Hero's own requests a crew pilot answers. The shown request is accepted; a request that lapses costs nothing.
+- One request at a time, 4 legs between two; chapters 4-20, requests with a deadline (captains 15 legs, patrol desks 10) from chapter 5. Ternie's requests run in chapters 4-10 and 13-20.
+- Outcomes: the trader turns up in the named system (help +1 and 10 % of the dock pay basis, 900 cr at 9,000), the captain dies to the Wolves' fire (the captain's own claim pays), the beacon's pods come aboard (900 cr), or a docking at the named patrol desk (regional standing +1 and a ring tip from the desk officer). The pilot says a closing line; a lapse (the deadline, the chapter, the subject gone) gets one too, a pilot who left the squad ends it silently.
+- When the pair could not be shown at 3 entries (the arrival queue full, the pilot silent in the hangar), the request waits as a box at the next trade or patrol dock, below every other box: OK starts it, Cancel drops it for good.
+- The logbook entry `trf_rq` is written when the request starts and when it ends, from space too: the Job log with the names (`JOBS_LOG=1`), else the mission list with fixed texts.
+- Nothing runs during a story mission visit, a scene, `__disableAction` or `__sys_SOS`, in a system the strict gate denies (`request`, also for the subject's system) or for a subject in an armed lethal system (trf_warn).
+
+### Config keys (requests)
+
+`install-test.sh` writes `REQUESTS`, `RQ_BOX` and `REQUEST_AT` only when set (`LEVEL=v01`/`v02` write `requests=0` unless `REQUESTS` is set); tune keys go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `requests` | 1 | 0: no pick, line, box, outcome or logbook write (`TRF.rq` kept and repaired) |
+| `rq_box` | 1 | 0: no dock box; a pending request is dropped after `rq_pend_old` legs |
+| `request_at` | "" | debug: that event (`tn1` ... `jn1`) ignores its done bit, chapter window and gap |
+| tune `rq_ch`, `rq_ch_end`, `rq_dl_ch` | 4, 20, 5 | chapter window, first chapter of deadline requests |
+| tune `rq_delay`, `rq_secs` | 7, 8 | seconds after the entry (above `sg_delay` 6), line seconds |
+| tune `rq_gap`, `rq_miss`, `rq_pend_old`, `rq_owe_max` | 4, 3, 40, 3 | legs between requests, missed entries before the box, legs before a pending request drops, tries of an owed line |
+| tune `rq_dl_cap`, `rq_dl_rng` | 15, 10 | deadlines in legs |
+| tune `rq_trk_over`, `rq_trk_j`, `rq_bcn_j`, `rq_rng_j`, `rq_rung` | 2, 3, 2, 1, 2 | overdue legs, jumps to the trader, to the beacon, to the desk, the desk faction's rung |
+| tune `rq_k`, `rq_help`, `rq_fs`, `rq_log_keep` | 10, 1, 1, 10 | credits in % of `TRF_PayN`, help, standing, legs the ended entry stays |
+
+### Log lines (requests)
+
+`module=request event=enter`, `event=skip reason=`, `event=candidate`, `event=pick result=picked|kept|cleared|none`, `event=line result=queued|miss|box`, `event=say part=1|2|outcome|lapse output=radio|line|dock result=`, `event=request ... via=radio|box result=shown`, `event=box result=shown|accepted|declined|stale|failed`, `event=outcome ... credits= help= standing= tip= result=done`, `event=lapse reason=`, `event=owe result=queued|shown|dropped`, `event=logbook entry=start|end list=jobs|quest result=`, `event=debug`, `event=jump`, `event=fix`, `event=dump`, `event=error`; trf_plumb's `event=arrival_line owner=request`, trf_region's `event=pay reason=rq`. Full list in [design/log-events.md](design/log-events.md) (request, plumb).
+
+### In-game checks (requests)
+
+W-B03.1 (a request plays as a radio pair), W-B03.2 (once per save), W-B03.3 (one request at a time), W-B03.4 (B03 last in the queue), W-B03.5 (deadlines from chapter 5), W-B03.6 (quest safety), W-B03.7 (the box only as the fallback), W-B03.8 (outcomes visible), W-B03.9 (the pilot is aboard), W-B03.10 (no XP and no perk); [design/PROGRESS.md](design/PROGRESS.md) "Wave 4 (host-tested only)", scored by `tools/check_ingame.py`. Play with `LOG=2` in chapter 6-10 with Ternie launched; `REQUEST_AT=tn3` next to a seeded beacon for a forced request.
 
 ## Vanilla fixes
 

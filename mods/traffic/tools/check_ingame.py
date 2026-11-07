@@ -15,7 +15,8 @@ ring (W-A16.1-10, design/tips-spec.md 13; wave 2, host-tested only) and the spec
 (W-A05.1-12, design/specialist-spec.md 12; wave 2, host-tested only) and the static signals (W-A08.1-10,
 design/static-signals-spec.md 14; wave 3, host-tested only) and the station approach radio (STN-NEAR.1-2,
 design/station-voices-spec.md 8.8; host-tested only) and the survey layer with "Chart the frontier" (W-A12.9-18,
-design/survey-spec.md 14; wave 3, host-tested only) from traffic logs.
+design/survey-spec.md 14; wave 3, host-tested only) and the crew requests (W-B03.1-10, design/crew-requests-spec.md 14;
+wave 4, host-tested only) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -45,6 +46,7 @@ FIXTURE_SPEC = os.path.join(HERE, "..", "tests", "check_ingame_spec_fixture.log"
 FIXTURE_SIGNAL = os.path.join(HERE, "..", "tests", "check_ingame_signal_fixture.log")
 FIXTURE_STATION = os.path.join(HERE, "..", "tests", "check_ingame_station_fixture.log")
 FIXTURE_SURVEY = os.path.join(HERE, "..", "tests", "check_ingame_survey_fixture.log")
+FIXTURE_REQUEST = os.path.join(HERE, "..", "tests", "check_ingame_request_fixture.log")
 REL = ("war", "neutral", "friend")
 PHASES = ("Quiet", "Boom", "Build-up", "Raids", "Bust", "Recovery")
 # vanilla bounty flights (OutMission_kill_pirate), haunt-spec appendix A class P
@@ -4164,6 +4166,197 @@ def c_stn_near2(ctx):
     res.ev("approach radio lines", sp_all)
     return res
 
+# Crew requests (design/crew-requests-spec.md 14, W-B03.1-10; host-tested only, wave 4) -------------------------------
+
+RQ_MISS = 3                            # tune rq_miss default (spec 10)
+RQ_DL_CH = 5                           # tune rq_dl_ch default
+
+
+def rq_started(ctx):
+    return ctx.find("request", "request", result="shown")
+
+
+def c_wrq1(ctx):
+    res = Res()
+    res.logpart = True
+    pairs = []
+    for r in ctx.find("request", "say", part="1", output="radio", result="shown"):
+        k = r.get("event_key")
+        if any(q.src == r.src and q.n > r.n and q.is_("request", "say", part="2", result="shown") and q.get("event_key") == k
+               for q in r.visit.recs):
+            pairs.append(r)
+    if not pairs:
+        res.missing.append("jump with a squad pilot aboard next to a request subject (REQUEST_AT=tn3 by a seeded beacon, chapter "
+                           "5-10): no event=say part=1 output=radio result=shown followed by part=2 result=shown in the entry")
+    res.ev("radio pairs", pairs)
+    return res
+
+
+def c_wrq2(ctx):
+    res = Res()
+    res.logpart = True
+    seen = {}
+    st = rq_started(ctx)
+    for r in st:
+        k = (r.src, r.get("event_key"))
+        if k in seen:
+            res.fails.append("%s: %s started before (%s); once per save (cfg request_at set?)" % (r.short(), k[1], seen[k].short()))
+        else:
+            seen[k] = r
+    if not st:
+        res.missing.append("no module=request event=request result=shown (see W-B03.1)")
+    res.ev("requests started", st)
+    return res
+
+
+def c_wrq3(ctx):
+    res = Res()
+    res.logpart = True
+    st = rq_started(ctx)
+    by = {}
+    for r in ctx.recs:
+        if r.mod != "request":
+            continue
+        if r.ev == "request" and r.get("result") == "shown":
+            a = by.get(r.src)
+            if a is not None:
+                res.fails.append("%s: started while %s was open (%s)" % (r.short(), a.get("event_key"), a.short()))
+            by[r.src] = r
+        elif (r.ev == "outcome" and r.get("result") == "done") or r.ev == "lapse" or (r.ev == "box" and r.get("result") == "declined"):
+            by[r.src] = None
+    if not st:
+        res.missing.append("no module=request event=request result=shown (see W-B03.1)")
+    res.ev("requests started", st)
+    return res
+
+
+def c_wrq4(ctx):
+    res = Res()
+    res.logpart = True
+    q = ctx.find("plumb", "arrival_line", owner="request", result="queued")
+    by = {}
+    for r in ctx.find("plumb", "arrival_line", result="queued"):
+        by.setdefault(id(r.visit), []).append(r)
+    for v in by.values():
+        rq = [x for x in v if x.get("owner") == "request"]
+        if not rq:
+            continue
+        if len(v) > 3:
+            res.fails.append("%s: %d arrival lines queued after one entry (arr_max 3)" % (v[3].short(), len(v)))
+        for x in v:
+            if x.get("owner") != "request" and x.n > rq[0].n and x.src == rq[0].src:
+                res.fails.append("%s: queued after the request line (%s); B03 queues last" % (x.short(), rq[0].short()))
+                break
+    if not q:
+        res.missing.append("no module=plumb event=arrival_line owner=request result=queued (see W-B03.1)")
+    res.ev("request lines queued", q)
+    return res
+
+
+def c_wrq5(ctx):
+    res = Res()
+    res.logpart = True
+    st = rq_started(ctx)
+    dl = [r for r in st if r.int("deadline", 0) > 0]
+    for r in dl:
+        ch = r.int("chapter")
+        if ch is not None and ch < RQ_DL_CH:
+            res.fails.append("%s: a deadline request in chapter %d (rq_dl_ch %d)" % (r.short(), ch, RQ_DL_CH))
+    if not dl:
+        res.missing.append("start a captain or patrol desk request (chapter 5+, tn2, hr3, gh2): no event=request with deadline > 0")
+    res.ev("deadline requests", dl)
+    return res
+
+
+def c_wrq6(ctx):
+    res = Res()
+    res.logpart = True
+    den = ctx.find("safety", "gate", feature="request", result="denied")
+    lat = ctx.find("request", "skip", reason="latch")
+    shown = rq_started(ctx) + ctx.find("request", "say", result="shown") + ctx.find("request", "outcome")
+    for r in shown:
+        sysname = r.visit.system
+        for g in den:
+            if g.visit is r.visit and g.src == r.src and g.n < r.n and g.get("system") == sysname:
+                res.fails.append("%s: after the strict gate denied %s (%s)" % (r.short(), sysname, g.short()))
+                break
+        for g in lat:
+            if g.visit is r.visit and g.src == r.src and g.n < r.n:
+                res.fails.append("%s: after the visit latch (%s)" % (r.short(), g.short()))
+                break
+    if not den and not lat:
+        res.missing.append("enter a system during a story mission with a request open or pending (LOG=2): no event=skip "
+                           "reason=latch and no module=safety event=gate feature=request result=denied")
+    res.ev("gate denials and latch skips", den + lat)
+    return res
+
+
+def c_wrq7(ctx):
+    res = Res()
+    res.logpart = True
+    boxes = ctx.find("request", "box", result="shown")
+    for r in boxes:
+        k = r.get("event_key")
+        n = len([q for q in ctx.recs if q.src == r.src and q.n < r.n and q.is_("request", "line", result="miss") and q.get("event_key") == k])
+        if n < RQ_MISS:
+            res.fails.append("%s: the box after %d missed entries of %s (rq_miss %d)" % (r.short(), n, k, RQ_MISS))
+    if not boxes:
+        res.missing.append("dock Ternie in the hangar, REQUEST_AT=tn1, three jumps, then a trade dock: no event=box result=shown")
+    res.ev("request boxes", boxes)
+    return res
+
+
+def c_wrq8(ctx):
+    res = Res()
+    res.logpart = True
+    ends = ctx.find("request", "outcome", result="done") + [r for r in ctx.find("request", "lapse") if r.get("reason") != "pilot"]
+    for r in ends:
+        k = r.get("event_key")
+        lb = [q for q in ctx.recs if q.src == r.src and r.n < q.n <= r.n + 12 and q.is_("request", "logbook", entry="end")]
+        if not lb:
+            res.fails.append("%s: no event=logbook entry=end in the next 12 lines" % r.short())
+            continue
+        seen = [q for q in ctx.recs if q.src == r.src and q.n > r.n and q.get("event_key") == k and (
+            (q.is_("request", "say", result="shown") and q.get("part") in ("outcome", "lapse")) or q.is_("request", "owe", result="dropped"))]
+        if not seen:
+            res.notes.append("%s: its closing line is not in the log yet (owed to a later entry)" % r.short())
+    if not ends:
+        res.missing.append("finish or lapse a request (see the test plan): no event=outcome result=done and no event=lapse")
+    res.ev("outcomes and lapses", ends)
+    return res
+
+
+def c_wrq9(ctx):
+    res = Res()
+    res.logpart = True
+    tn = [r for r in ctx.find("request", "say") if r.get("speaker") in ("Lastochka", "Lastochka2")]
+    for r in tn:
+        ch = r.visit.chapter
+        if ch is None:
+            continue
+        if r.get("speaker") == "Lastochka" and ch in (11, 12):
+            res.fails.append("%s: Lastochka speaks in chapter %d (she is gone in 11-12)" % (r.short(), ch))
+        if r.get("speaker") == "Lastochka2" and ch < 13:
+            res.fails.append("%s: Lastochka2 speaks in chapter %d (she rejoins in 13)" % (r.short(), ch))
+    if not tn:
+        res.missing.append("no request line of Ternie (Lastochka or Lastochka2): play a tn1-tn4 request")
+    res.ev("Ternie's request lines", tn)
+    return res
+
+
+def c_wrq10(ctx):
+    res = Res()
+    res.logpart = True
+    rq = [r for r in ctx.recs if r.mod == "request"]
+    for r in rq:
+        if "xp" in r.kv or "perk" in r.kv or " xp=" in r.text or "perk" in r.text.lower():
+            res.fails.append("%s: a request line names xp or a perk" % r.short())
+    if not rq:
+        res.missing.append("no module=request line (install with REQUESTS unset, LOG=2)")
+    res.ev("request lines", rq)
+    return res
+
+
 
 ITEMS = [
     ("ERR", "no error lines (haunt, parcel, core, plumb, DLL, ScriptErrors.log)", c_err, None),
@@ -4443,6 +4636,16 @@ ITEMS = [
     ("W-A12.16", "the hand-in opens the survey", c_wsy16, None),
     ("W-A12.17", "the chart sells once and outside its region", c_wsy17, None),
     ("W-A12.18", "the Wolves' name in a harbour line", c_wsy18, "the harbour news line names the Star Wolves and the region (SY8)"),
+    ("W-B03.1", "a request plays as a radio pair", c_wrq1, "the request and the reply as two radio lines with two portraits (RQ1)"),
+    ("W-B03.2", "once per save", c_wrq2, None),
+    ("W-B03.3", "one request at a time", c_wrq3, None),
+    ("W-B03.4", "B03 last in the queue", c_wrq4, None),
+    ("W-B03.5", "deadlines from chapter 5", c_wrq5, None),
+    ("W-B03.6", "quest safety", c_wrq6, None),
+    ("W-B03.7", "the box only as the fallback", c_wrq7, None),
+    ("W-B03.8", "outcomes visible", c_wrq8, None),
+    ("W-B03.9", "the pilot is aboard", c_wrq9, None),
+    ("W-B03.10", "no XP and no perk", c_wrq10, "the pilot's perk list and experience unchanged across an outcome"),
     ("STN-NEAR.1", "station greeting and news on approach, before the dock line (greeting_skip=near)", c_stn_near1,
      "the dockmaster's radio greeting and then the news line while flying in, before the docking box opens"),
     ("STN-NEAR.2", "approach radio: nothing spoken twice per visit", c_stn_near2, None),
@@ -4586,7 +4789,9 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "W-A08.6": "FAIL", "W-A08.7": "FAIL", "W-A08.8": "FAIL", "W-A08.9": "FAIL", "W-A08.10": "FAIL",
             "STN-NEAR.1": "FAIL", "STN-NEAR.2": "FAIL",
             "W-A12.9": "FAIL", "W-A12.10": "FAIL", "W-A12.11": "FAIL", "W-A12.12": "FAIL", "W-A12.13": "FAIL",
-            "W-A12.14": "FAIL", "W-A12.15": "FAIL", "W-A12.16": "FAIL", "W-A12.17": "FAIL", "W-A12.18": "NO DATA"}
+            "W-A12.14": "FAIL", "W-A12.15": "FAIL", "W-A12.16": "FAIL", "W-A12.17": "FAIL", "W-A12.18": "NO DATA",
+            "W-B03.1": "NO DATA", "W-B03.2": "FAIL", "W-B03.3": "FAIL", "W-B03.4": "FAIL", "W-B03.5": "FAIL", "W-B03.6": "FAIL",
+            "W-B03.7": "FAIL", "W-B03.8": "FAIL", "W-B03.9": "FAIL", "W-B03.10": "FAIL"}
 # tests/check_ingame_warn_fixture.log: correct warning behaviour only. A dock warning for Gideon at Avalon (leg 100) after
 # the station's dock line, a second approach skipped (visit), a return at leg 102 skipped (cooldown); at XT-23 (station
 # voice deny, a station pass, no station dock line) a pass reason=scene, then a warning for XT-24; a load of an earlier
@@ -4649,6 +4854,13 @@ SELFTEST_STATION = {"STN-NEAR.1": "MANUAL", "STN-NEAR.2": "PASS"}
 # names it at the next docking; Lidau: a strict-gate denial for survey, the skip, no reading.
 SELFTEST_SURVEY = {"W-A12.9": "PASS", "W-A12.10": "PASS", "W-A12.11": "PASS", "W-A12.12": "MANUAL", "W-A12.13": "PASS",
                    "W-A12.14": "MANUAL", "W-A12.15": "PASS", "W-A12.16": "PASS", "W-A12.17": "PASS", "W-A12.18": "MANUAL"}
+# tests/check_ingame_request_fixture.log: correct crew request behaviour (LOG=2). Gaoba (chapter 6): a remark queued, then
+# tn1 picked and its pair shown (Lastochka, the Hero), the logbook start; Lidau: the trader's spawn, the outcome, the logbook
+# end and the line; Heos: the latch skip, nothing shown; Gaoba three times: tn2 pending with Ternie silent, three misses,
+# the box at the trade dock, declined; Gaoba: hr2 alone (no responder), lapsed (subject); XK-10: the owed lapse line;
+# Kadi (chapter 7): hr3 with deadline 15, the reply by Greyhair, done on the death bus; Heos (chapter 13): tn4 by Lastochka2.
+SELFTEST_REQUEST = {"W-B03.1": "MANUAL", "W-B03.2": "PASS", "W-B03.3": "PASS", "W-B03.4": "PASS", "W-B03.5": "PASS",
+                    "W-B03.6": "PASS", "W-B03.7": "PASS", "W-B03.8": "PASS", "W-B03.9": "PASS", "W-B03.10": "MANUAL"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -4703,6 +4915,11 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # hold at 60 units (W-A12.12 FAIL), a reading after the latch skip (W-A12.13 FAIL) whose payoff is a stash (W-A12.14 FAIL),
 # a logbook line in space (W-A12.15 FAIL), a hand-in followed by an entry with open=closed (W-A12.16 FAIL), the Elinor
 # chart sold twice, once at an Elinor dock (W-A12.17 FAIL); no harbour line after the sales (W-A12.18 NO DATA).
+# Crew requests block (the very end, Ashelon in chapter 4 and 11): tn2 started in chapter 4 with deadline 15 (W-B03.5
+# FAIL) by Lastochka2 (W-B03.9 FAIL), a hail line queued after the request line (W-B03.4 FAIL), its outcome without a
+# logbook end (W-B03.8 FAIL); in chapter 11 the latch skip, then Lastochka's line (W-B03.6, W-B03.9 FAIL), tn2 started again
+# (W-B03.2 FAIL) and tn3 while tn2 is open (W-B03.3 FAIL), the gh1 box after one miss (W-B03.7 FAIL), a request line with
+# xp (W-B03.10 FAIL); no part 2 shown (W-B03.1 NO DATA).
 
 
 def selftest():
@@ -4769,9 +4986,14 @@ def selftest():
         if got.get(iid) != v:
             print("selftest: survey fixture %s is %s, expected %s" % (iid, got.get(iid), v))
             bad += 1
+    got = dict((r[0], r[2]) for r in score(Ctx([Log(FIXTURE_REQUEST, None, [])]), {}))
+    for iid, v in SELFTEST_REQUEST.items():
+        if got.get(iid) != v:
+            print("selftest: request fixture %s is %s, expected %s" % (iid, got.get(iid), v))
+            bad += 1
     n = (len(SELFTEST) + len(SELFTEST_EYES[1]) + len(SELFTEST_WARN) + len(SELFTEST_REMARK) + len(SELFTEST_TEMPER) + len(SELFTEST_CORP)
          + len(SELFTEST_DEBRIEF) + len(SELFTEST_TIPS) + len(SELFTEST_SPEC) + len(SELFTEST_SIGNAL) + len(SELFTEST_STATION)
-         + len(SELFTEST_SURVEY))
+         + len(SELFTEST_SURVEY) + len(SELFTEST_REQUEST))
     if parse_logfmt('a=1 message="x \\"y\\" z" b=') != {"a": "1", "message": 'x "y" z', "b": ""}:
         print("selftest: logfmt quoting")
         bad += 1
