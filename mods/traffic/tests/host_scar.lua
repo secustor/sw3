@@ -25,7 +25,7 @@ dostring(strsub(src, 1, cut), "host_station.lua");
 -- and the voice are host_remark.lua's rm-e), log 2, plus t.
 function SC_Cfg(t)
 	local c = {sweeps=0, feq=0, staged=0, seed=0, queue=0, parked=0, voice_events=0, dconv=0, carriers=0, po=0,
-		enable_survivors=0, remarks=0, log=2};
+		enable_survivors=0, remarks=0, survey=0, log=2};
 	if t then for k, v in t do c[k] = v; end; end;
 	return c;
 end;
@@ -179,9 +179,9 @@ function T_SC_A()
 	SC_Begin("gaoba", "9_1");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=23") >= 1, "trf_scar loads after trf_charter (extra_count=23 with trf_captain, trf_stash, trf_freight, trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=24") >= 1, "trf_scar loads after trf_charter (extra_count=24 with trf_captain, trf_stash, trf_freight, trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
 	local ml = TRF_ModList();
-	HOST_Check(ml[getn(ml) - 15] == "Sc" and type(TRF_Sc_TuneDef) == "function" and TRF_Opt("enable_scars") == 1 and TRF_Opt("enable_scar_loot") == 1
+	HOST_Check(ml[getn(ml) - 16] == "Sc" and type(TRF_Sc_TuneDef) == "function" and TRF_Opt("enable_scars") == 1 and TRF_Opt("enable_scar_loot") == 1
 		and TRF_Opt("enable_scavengers") == 1 and TRF_Opt("enable_scar_recorder") == 1 and TRF_Opt("enable_salvage_licence") == 1,
 		"TRF_ModList has Sc; the five toggles of 6.8 default to 1");
 	local T = TRF_ScTune();

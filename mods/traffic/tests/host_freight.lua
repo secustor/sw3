@@ -36,7 +36,7 @@ dostring(strsub(src, 1, cut), "host_station.lua");
 -- that claim slots or boxes off, log 2, plus t.
 function FR_Cfg(t)
 	local c = {enable_freight=1, fw_prize_gap=0, cap_enable=0, sweeps=0, sweep_ct=0, feq=0, staged=0, seed=0, queue=0, parked=0,
-		voice_events=0, dconv=0, carriers=0, po=0, enable_survivors=0, lad_enabled=0, charter=0, enable_stashes=0, enable_scars=0, log=2, tune={},
+		voice_events=0, dconv=0, carriers=0, po=0, enable_survivors=0, lad_enabled=0, charter=0, enable_stashes=0, enable_scars=0, survey=0, log=2, tune={},
 		fw_hulls=0, fw_transit=0, fw_follow=0, fw_parked=0, fw_hooks=0};
 	if t then for k, v in t do c[k] = v; end; end;
 	return c;
@@ -198,9 +198,9 @@ function T_FR_A()
 	FR_Begin("debris6", "9_1");
 	-- design/strength-spec.md 5.6: trf_str counts as an extra module (12 -> 13).
 	-- design/fits-spec.md 7: trf_fits counts as an extra module (13 -> 14).
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=23") >= 1, "trf_freight loads after trf_stash (extra_count=23 with trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=24") >= 1, "trf_freight loads after trf_stash (extra_count=24 with trf_haunt, trf_parcel, trf_merc, trf_wq, trf_warn and trf_remark)");
 	local ml = TRF_ModList();
-	HOST_Check(ml[getn(ml) - 12] == "Fr" and TRF_Opt("enable_freight") == 1 and TRF_Opt("fw_onscreen") == 1 and TRF_Opt("fw_losses") == 1
+	HOST_Check(ml[getn(ml) - 13] == "Fr" and TRF_Opt("enable_freight") == 1 and TRF_Opt("fw_onscreen") == 1 and TRF_Opt("fw_losses") == 1
 		and TRF_Fr_OptDef().fw_max_ships == 3 and TRF_Fr_OptDef().fw_prize_gap == 1 and TRF_Fr_OptDef().fw_marker == 1
 		and TRF_Fr_OptDef().fw_hulls == 1 and TRF_Fr_OptDef().fw_transit == 1 and TRF_Fr_OptDef().fw_follow == 1 and TRF_Fr_OptDef().fw_parked == 1
 		and TRF_Fr_OptDef().fw_hooks == 1,

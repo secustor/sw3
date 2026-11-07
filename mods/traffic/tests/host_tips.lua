@@ -211,10 +211,10 @@ end;
 function T_TI_A()
 	local h = HOST();
 	TI_Begin("gaoba", "5_1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=23") >= 1, "trf_tips loads before trf_spec (extra_count=23)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=24") >= 1, "trf_tips loads before trf_spec (extra_count=24)");
 	local ml, pm, tf, uf = TRF_ModList(), TRF_PlMods(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml) - 2] == "Ti" and ml[getn(ml) - 3] == "Db" and ml[getn(ml) - 1] == "Spc" and pm[getn(pm) - 1] == "Db" and tf[getn(tf) - 3] == "TRF_Ti_Text"
-		and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf) - 2] == "TRF_Ti_Text", "Ti before Spc at the end of TRF_ModList (not a plumb module); TRF_Ti_Text in both text lists");
+	HOST_Check(ml[getn(ml) - 3] == "Ti" and ml[getn(ml) - 4] == "Db" and ml[getn(ml) - 2] == "Spc" and pm[getn(pm) - 2] == "Db" and tf[getn(tf) - 4] == "TRF_Ti_Text"
+		and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf) - 3] == "TRF_Ti_Text", "Ti before Spc at the end of TRF_ModList (not a plumb module); TRF_Ti_Text in both text lists");
 	HOST_Check(TRF_Opt("tips") == 1 and TRF_Ti_OptDef().tips == 1 and TRF_OptEnum().tips == 1, "cfg tips 1 by default, enumerated 0..1");
 	local T = TRF_TiTune();
 	HOST_Check(TI_N(TRF_Ti_TuneDef()) == 7 and T.ti_ring == 4 and T.ti_age == 30 and T.ti_news_age == 12 and T.ti_hail_age == 6
@@ -231,17 +231,17 @@ function T_TI_A()
 		if strsub(k, 1, 2) ~= "ti" or strsub(k, 1, 4) == "tier" or TRF_Txt(k) == k or TI_Has(v, "%") or TI_Has(v, "#") or TI_Has(v, "\n")
 			or TI_Has(strlower(v), "gate") then bad = bad.." "..k; end;
 	end;
-	HOST_Check(TI_N(tx) == 25 and bad == "", "25 keys, each resolves, no %, #, line break or 'gate'"..bad);
+	HOST_Check(TI_N(tx) == 26 and bad == "", "26 keys (tichart of trf_survey, design/survey-spec.md 8.3), each resolves, no %, #, line break or 'gate'"..bad);
 	-- Rule M1: no function of trf_tips starts with TRF_Tier.
 	local fs = openfile(h.dir.."trf_tips.script", "r");
 	local body = read(fs, "*a");
 	closefile(fs);
 	HOST_Check(not TI_Has(body, "function TRF_Tier") and TI_Has(body, "function TRF_TiE(") and not TI_Has(body, "\t\n"), "no name of trf_tips starts with TRF_Tier");
-	-- Scaffold: the 25 keys sorted into loc/trf_en.loc.
+	-- Scaffold: the 26 keys sorted into loc/trf_en.loc.
 	local en = TI_Read(h.dir.."../../../../loc/trf_en.loc");
 	local miss = "";
 	for k, v in tx do if not TI_Has(en, "#TRF_"..k.." = ") then miss = miss.." "..k; end; end;
-	HOST_Check(en and miss == "", "loc/trf_en.loc holds the 25 #TRF_ti keys"..miss);
+	HOST_Check(en and miss == "", "loc/trf_en.loc holds the 26 #TRF_ti keys"..miss);
 	-- tips 0: no push; the ring cleared at the region tick; the surfaces as built.
 	local slot = V_Slot("gaoba");
 	TI_Set({[slot]={TI_R(1, "lidau", 1, 1, 3)}});
@@ -284,7 +284,7 @@ function T_TI_B()
 	HOST_Check(e == "121138999973" and d.k == 12 and d.s == 113 and d.l == 8 and d.g == 1999 and d.age == 4 and d.c == 9 and d.a == 7 and d.f == 3,
 		"record round trip: 12 digits, every field, leg from the age ("..e..")");
 	HOST_Check(TRF_TiDecOf("09040100000", L) == nil and TRF_TiDecOf("090401000000", L) == nil and TRF_TiDecOf("1304010000a0", L) == nil
-		and TRF_TiDecOf("140401000000", L) == nil and TRF_TiDecOf("130401000000", L).k == 13 and TRF_TiDecOf("010401000000", L).k == 1, "decode refuses short pieces, reserved and unknown kinds (14), non-digits; kind 13 signal decodes");
+		and TRF_TiDecOf("150401000000", L) == nil and TRF_TiDecOf("130401000000", L).k == 13 and TRF_TiDecOf("140401000000", L).k == 14 and TRF_TiDecOf("010401000000", L).k == 1, "decode refuses short pieces, reserved and unknown kinds (15), non-digits; kind 13 signal and kind 14 chart decode");
 	-- Push new, refresh, replace.
 	TRF.clock.legs = 40;
 	local n0 = S_Mark();
@@ -903,14 +903,14 @@ function T_TI_G()
 	local n0 = S_Mark();
 	TRF_Ti_Fix();
 	HOST_Check(TRF.ti == nil and TI_Logs(n0, "event=fix kept=0 dropped=1 moved=0") == 1, "a number is dropped");
-	-- F2-F5: bad digits, a short tail, an unknown (14) and a reserved kind, a future-wrapped leg, a record in the wrong block,
+	-- F2-F5: bad digits, a short tail, an unknown (15) and a reserved kind, a future-wrapped leg, a record in the wrong block,
 	-- 12 records in one block, 9 blocks.
 	local li, ki, gi = V_Idx("lidau"), V_Idx("kadi"), V_Idx("gredos");
 	local enc = function(k, s, g, f) return TRF_TiEncOf({k=k, s=s, l=0, g=g, c=0, a=0, f=f or 0}); end;
 	local blk = {};
 	for b = 1, 9 do blk[b] = ""; end;
 	blk[1] = enc(1, li, 499).."01x590000000"..enc(1, li, 498, 7).."0105";
-	blk[2] = enc(14, li, 499)..enc(9, li, 499)..enc(1, ki, 600);
+	blk[2] = enc(15, li, 499)..enc(9, li, 499)..enc(1, ki, 600);
 	local twelve = {"altair", "altrabon", "alzed", "ashelon", "ergelan", "prien", "kadi", "hanoi", "nj1", "nj2", "nj3", "hafa"};
 	for i = 1, 12 do blk[slot] = blk[slot]..enc(1, V_Idx(twelve[i]), 480 + i); end;
 	blk[9] = enc(1, li, 497);
@@ -924,7 +924,7 @@ function T_TI_G()
 		"repair: the slot keeps its four newest raids (lidau moved in from block 1) ("..TI_Str(slot)..")");
 	local all = TRF_RingRead(nil, {s=li});
 	HOST_Check(getn(all) == 1 and all[1].g == 499 and all[1].slot == slot and all[1].f == 0 and TRF_RgOf(gi) ~= nil,
-		"wrong-block lidau records re-bucketed, the replace key keeps the newest (499), bad pieces, kinds 14 and 9 and the future leg dropped");
+		"wrong-block lidau records re-bucketed, the replace key keeps the newest (499), bad pieces, kinds 15 and 9 and the future leg dropped");
 	local nb = 1;
 	for i = 1, strlen(TRF.ti) do if strsub(TRF.ti, i, i) == "/" then nb = nb + 1; end; end;
 	HOST_Check(nb == n and TI_Has(S_Line(n0, "event=fix "), "moved="), "re-encoded with "..n.." blocks");
@@ -976,11 +976,11 @@ function T_TI_G()
 	HOST_Check(TRF_MarkerAdd("tstb", "TRF_TSTB_1", 30, 0, 30) == 1, "mk_offer 0: no cap");
 	h.cfg.tune = {};
 	TRF_MarkerClear();
-	-- RU fixed forms: 25 keys, CRLF, cp1251 (no UTF-8 lead bytes).
+	-- RU fixed forms: 26 keys, CRLF, cp1251 (no UTF-8 lead bytes).
 	local ru = TI_Read(h.dir.."../../../../loc/trf_ru.loc");
 	local miss = "";
 	for k, v in TRF_Ti_Text() do if not TI_Has(ru, format("\r\n#TRF_%s = ", k)) then miss = miss.." "..k; end; end;
-	HOST_Check(miss == "" and TI_Count(ru, "\n") == TI_Count(ru, "\r\n") and not strfind(ru, "\208[\128-\191]"), "loc/trf_ru.loc: the 25 ti keys, CRLF, cp1251"..miss);
+	HOST_Check(miss == "" and TI_Count(ru, "\n") == TI_Count(ru, "\r\n") and not strfind(ru, "\208[\128-\191]"), "loc/trf_ru.loc: the 26 ti keys, CRLF, cp1251"..miss);
 end;
 
 -- h: one telling per docking, English map names -----------------------------------------------------------

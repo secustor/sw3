@@ -5,7 +5,8 @@
 -- TRF_RingPush / TRF_RingRead / TRF_RingMark (stash step 2 and A08 call it). Feeds (one TRF_P("TRF_Ti_Feed", ...) line
 -- each in the owner module): off-screen raids (trf_region), sweep plans and off-screen outcomes (trf_region), a base going
 -- active or dark off-screen (trf_base), a wanted captain's move (trf_captain), a lost traffic freighter (trf_scar); and
--- trf_signal's lit source (kind 13, pushed directly, design/static-signals-spec.md 4.5).
+-- trf_signal's lit source (kind 13, pushed directly, design/static-signals-spec.md 4.5); trf_survey's chart sale (kind 14,
+-- pushed directly, design/survey-spec.md 8.3).
 -- Surfaces (existing channels only): one dated, sourced harbour news line after the built one (trf_station, rung >= 2),
 -- source, place and age clauses on the sweep and base dock tips and a captain tip (rung >= 4), the ring rumour first in
 -- the hail's where-headed answer, the informant reply's where and when (trf_captain). No arrival line, no box, no hail
@@ -228,11 +229,12 @@ function TRF_TiKinds()
 		{nm="cache", cl="t", ch="ti_ch_full", rk="ka", step2=1},
 		{nm="capcache", cl="t", ch="ti_ch_full", rk="ka", step2=1},
 		{nm="signal", cl="h", ch="ti_ch_full", rk="ks", tx="tisignal"},
+		{nm="chart", cl="h", ch="ti_ch", rk="ka", tx="tichart"},
 	};
 	return ti.kt;
 end;
 
--- Kind entry of k (an integer 1..13, not reserved), or nil.
+-- Kind entry of k (an integer 1..14, not reserved), or nil.
 function TRF_TiKindOf(k)
 	if type(k) ~= "number" or k ~= floor(k) then return nil; end;
 	local e = TRF_TiKinds()[k];
@@ -247,11 +249,11 @@ function TRF_TiKName(k)
 	return tostring(k);
 end;
 
--- Tie order of the picks (7.1): swon, slost, basedn, gather, raid, wreck, signal (design/static-signals-spec.md 4.5), then
--- the target kinds.
+-- Tie order of the picks (7.1): swon, slost, basedn, gather, raid, wreck, signal (design/static-signals-spec.md 4.5), chart
+-- (design/survey-spec.md 8.3), then the target kinds.
 function TRF_TiRankOf(k)
-	local r = {[3]=1, [4]=2, [6]=3, [2]=4, [1]=5, [8]=6, [13]=7, [5]=8, [7]=9, [11]=10, [12]=11};
-	return r[k] or 12;
+	local r = {[3]=1, [4]=2, [6]=3, [2]=4, [1]=5, [8]=6, [13]=7, [14]=8, [5]=9, [7]=10, [11]=11, [12]=12};
+	return r[k] or 13;
 end;
 
 -- Pure functions ------------------------------------------------------------------------
@@ -502,7 +504,8 @@ end;
 -- scar record of r.s, sh = stash record r.a, sg = trf_signal's record of r.s}: "current"; "stale", why; "dead", why.
 function TRF_TiLiveOf(r, x)
 	local k = r.k;
-	if k == 1 or k == 2 or k == 3 or k == 4 or k == 6 then return "current"; end;
+	-- Kind 14 (a chart sale, design/survey-spec.md 8.3) is history that stays true.
+	if k == 1 or k == 2 or k == 3 or k == 4 or k == 6 or k == 14 then return "current"; end;
 	if k == 5 then
 		local l = x.base;
 		if type(l) == "table" then
@@ -935,8 +938,13 @@ function TRF_TiLmNow(r, x)
 	return r.l;
 end;
 
--- Subject of record r: the clan of its region, the captain, the freighter.
+-- Subject of record r: the clan of its region, the captain, the freighter; kind 14 the region whose chart was sold (a).
 function TRF_TiSubj(r, x)
+	if r.k == 14 then
+		local rm = TRF_TiRgMap();
+		if rm and type(rm[r.a]) == "table" and type(rm[r.a].home) == "number" then return TRF_TiSysTxt(rm[r.a].home); end;
+		return "";
+	end;
 	if r.k == 7 then return TRF_N("TRF_CapNm", x and x.cap) or ""; end;
 	if r.k == 8 then
 		local s = x and x.scar;
@@ -995,7 +1003,7 @@ function TRF_TiNewsBody(idx, k, pre)
 	local slot = TRF_TiSlot(idx);
 	if not slot then return nil; end;
 	local T, ch = TRF_TiTune(), TRF_TiCh();
-	local all = TRF_RingRead(slot, {k={1, 2, 3, 4, 6, 8, 13}});
+	local all = TRF_RingRead(slot, {k={1, 2, 3, 4, 6, 8, 13, 14}});
 	local cs, xs = {}, {};
 	for i = 1, getn(all) do
 		local r = all[i];
@@ -1314,5 +1322,6 @@ function TRF_Ti_Text()
 		tisrcbeacon = "FTU beacons",
 		tiagen = "$1 days back",                                           -- age (without trf_remark)
 		tisignal = "$1 picked up a looping signal in $3 $4.",           -- source, -, place, age
+		tichart = "$1 say the Star Wolves sold the FTU a fresh chart of the $2 region at $3 $4.",   -- source, region, place, age
 	};
 end;

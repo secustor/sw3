@@ -14,7 +14,8 @@ design/debrief-spec.md 12; wave 2, host-tested only, off by default: DEBRIEF_XP=
 ring (W-A16.1-10, design/tips-spec.md 13; wave 2, host-tested only) and the specialist answers with the Repairman patch
 (W-A05.1-12, design/specialist-spec.md 12; wave 2, host-tested only) and the static signals (W-A08.1-10,
 design/static-signals-spec.md 14; wave 3, host-tested only) and the station approach radio (STN-NEAR.1-2,
-design/station-voices-spec.md 8.8; host-tested only) from traffic logs.
+design/station-voices-spec.md 8.8; host-tested only) and the survey layer with "Chart the frontier" (W-A12.9-18,
+design/survey-spec.md 14; wave 3, host-tested only) from traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
        python3 -I check_ingame.py --selftest
@@ -43,6 +44,7 @@ FIXTURE_TIPS = os.path.join(HERE, "..", "tests", "check_ingame_tips_fixture.log"
 FIXTURE_SPEC = os.path.join(HERE, "..", "tests", "check_ingame_spec_fixture.log")
 FIXTURE_SIGNAL = os.path.join(HERE, "..", "tests", "check_ingame_signal_fixture.log")
 FIXTURE_STATION = os.path.join(HERE, "..", "tests", "check_ingame_station_fixture.log")
+FIXTURE_SURVEY = os.path.join(HERE, "..", "tests", "check_ingame_survey_fixture.log")
 REL = ("war", "neutral", "friend")
 PHASES = ("Quiet", "Boom", "Build-up", "Raids", "Bust", "Recovery")
 # vanilla bounty flights (OutMission_kill_pirate), haunt-spec appendix A class P
@@ -3899,6 +3901,206 @@ def c_wsg10(ctx):
     return res
 
 
+# Survey layer (design/survey-spec.md 14, W-A12.9-18; host-tested only, wave 3) -------------------------------------
+
+SY_RP_MIN = 70                         # tune sy_rp_min default (spec 10)
+SY_PAYOFFS = ("trail", "chart", "signal", "base", "route", "none")
+
+
+def sy_reads(ctx):
+    return ctx.find("survey", "read", result="logged")
+
+
+def c_wsy9(ctx):
+    res = Res()
+    res.logpart = True
+    shown = ctx.find("survey", "offer", result="shown")
+    for r in shown:
+        ids = [x for x in (r.get("landmarks") or "").split(",") if x]
+        if len(ids) != 3 or len(set(ids)) != 3:
+            res.fails.append("%s: the card names %d distinct landmarks, not three" % (r.short(), len(set(ids))))
+    if not shown:
+        res.missing.append("dock at a trade station with the charter office open (chapter 5-18, help 3) in a region with three "
+                           "open landmarks: no module=survey event=offer result=shown")
+    res.ev("offers shown", shown)
+    return res
+
+
+def c_wsy10(ctx):
+    res = Res()
+    res.logpart = True
+    reads = sy_reads(ctx)
+    for r in reads:
+        pay = [q for q in r.visit.recs if q.src == r.src and r.n - 8 <= q.n < r.n and q.is_("region", "pay", reason="survey")]
+        fee = r.int("fee", 0)
+        if fee <= 0 and not pay:
+            res.fails.append("%s: fee=0 and no module=region event=pay reason=survey with it (sy_fee_k 0 in TUNE?)" % r.short())
+        elif fee > 0 and not any(q.int("amount") == fee for q in pay):
+            res.fails.append("%s: fee=%d without its module=region event=pay reason=survey amount=%d" % (r.short(), fee, fee))
+    if not reads:
+        res.missing.append("hold the mothership within 250 units of a landmark for 20 s (SURVEY_AT=<system>, chapter 5+): no "
+                           "module=survey event=read result=logged")
+    res.notes.append("the fee rule assumes tune sy_fee_k > 0 (default 5)")
+    res.ev("readings", reads)
+    return res
+
+
+def c_wsy11(ctx):
+    res = Res()
+    res.logpart = True
+    reads = sy_reads(ctx)
+    seen = {}
+    for r in reads:
+        k = (r.src, r.get("landmark"))
+        if k in seen:
+            res.fails.append("%s: landmark %s read before (%s)" % (r.short(), r.get("landmark"), seen[k].short()))
+        else:
+            seen[k] = r
+    if not reads:
+        res.missing.append("no reading (see W-A12.10)")
+    res.ev("readings", reads)
+    return res
+
+
+def c_wsy12(ctx):
+    res = Res()
+    res.logpart = True
+    rp = [r for r in sy_reads(ctx) if r.get("kind") == "rp"]
+    for r in rp:
+        holds = [q for q in r.visit.recs if q.src == r.src and q.n < r.n and q.is_("survey", "hold") and q.get("landmark") == r.get("landmark")]
+        if not holds:
+            res.notes.append("%s: no event=hold line before it (install with LOG=2)" % r.short())
+            continue
+        d = holds[-1].num("distance")
+        if d is not None and d < SY_RP_MIN:
+            res.fails.append("%s: the last hold line is %d units from the portal, below sy_rp_min %d (%s)" % (r.short(), d, SY_RP_MIN, holds[-1].short()))
+    if not rp:
+        res.missing.append("hold 75-250 units from a random portal in chapter 8 or later (Gaeon, Proserpine): no event=read kind=rp")
+    res.ev("random portal readings", rp)
+    return res
+
+
+def c_wsy13(ctx):
+    res = Res()
+    res.logpart = True
+    den = ctx.find("safety", "gate", feature="survey", result="denied")
+    lat = ctx.find("survey", "skip", reason="latch")
+    shown = sy_reads(ctx) + ctx.find("survey", "offer", result="shown") + ctx.find("survey", "sell", result="sold")
+    for r in shown:
+        sysname = r.get("system") or r.get("dock_system") or r.visit.system
+        for g in den:
+            if g.visit is r.visit and g.src == r.src and g.n < r.n and g.get("system") == sysname:
+                res.fails.append("%s: after the strict gate denied %s (%s)" % (r.short(), sysname, g.short()))
+                break
+        for g in lat:
+            if g.visit is r.visit and g.src == r.src and g.n < r.n:
+                res.fails.append("%s: after the visit latch (%s)" % (r.short(), g.short()))
+                break
+    if not den and not lat:
+        res.missing.append("enter a system with a landmark during a story mission (LOG=2): no event=skip reason=latch and no "
+                           "module=safety event=gate feature=survey result=denied")
+    res.ev("gate denials and latch skips", den + lat)
+    return res
+
+
+def c_wsy14(ctx):
+    res = Res()
+    res.logpart = True
+    reads = sy_reads(ctx)
+    rev = ctx.find("stash", "reveal")
+    for r in reads:
+        if r.get("payoff") not in SY_PAYOFFS:
+            res.fails.append("%s: payoff %s is none of %s" % (r.short(), r.get("payoff"), ",".join(SY_PAYOFFS)))
+        for q in rev:
+            if q.src == r.src and abs(q.n - r.n) <= 3:
+                res.fails.append("%s: a stash reveal with the reading (%s)" % (r.short(), q.short()))
+    if not reads:
+        res.missing.append("no reading (see W-A12.10)")
+    res.ev("readings", reads)
+    return res
+
+
+def sy_at_dock(r):
+    """1 when logbook line r is written inside a trade docking (a plumb dock kind=trade line within 12 lines of the visit) or
+    right after an accept."""
+    for q in r.visit.recs:
+        if q.src != r.src:
+            continue
+        if q.is_("plumb", "dock", kind="trade") and abs(q.n - r.n) <= 12:
+            return True
+        if q.is_("survey", "accept", result="ok") and 0 <= r.n - q.n <= 3:
+            return True
+    return False
+
+
+def c_wsy15(ctx):
+    res = Res()
+    res.logpart = True
+    lb = [r for r in ctx.find("survey", "logbook") if r.get("result") in ("added", "rewritten")]
+    for r in lb:
+        if not sy_at_dock(r):
+            res.fails.append("%s: written outside a trade docking and the accept" % r.short())
+    if not lb:
+        res.missing.append("accept the quest or hand it in: no module=survey event=logbook result=added|rewritten")
+    res.notes.append("the 5 s window is read as 12 log lines of the docking (the log has no time stamps); result=restored "
+                     "(a missing entry added again at an entry or load, spec 7.5) is not a write")
+    res.ev("logbook writes", lb)
+    return res
+
+
+def c_wsy16(ctx):
+    res = Res()
+    res.logpart = True
+    hand = ctx.find("survey", "handin", result="done")
+    ok = []
+    for r in hand:
+        later = [q for q in ctx.find("survey", "enter") if q.src == r.src and q.n > r.n]
+        if not later:
+            continue
+        if later[0].get("open") == "survey":
+            ok.append(r)
+        else:
+            res.fails.append("%s: the next entry has open=%s (%s)" % (r.short(), later[0].get("open"), later[0].short()))
+    if not ok and not res.fails:
+        res.missing.append("hand the quest in at a trade dock, then enter a system with a landmark (LOG=2): no event=handin "
+                           "result=done followed by event=enter ... open=survey")
+    res.ev("hand-ins followed by an open survey", ok)
+    return res
+
+
+def c_wsy17(ctx):
+    res = Res()
+    res.logpart = True
+    sold = ctx.find("survey", "sell", result="sold")
+    seen = {}
+    for r in sold:
+        k = (r.src, r.get("region"))
+        if k in seen:
+            res.fails.append("%s: region %s sold before (%s)" % (r.short(), r.get("region"), seen[k].short()))
+        else:
+            seen[k] = r
+        if r.get("dock_region") is not None and r.get("dock_region") == r.get("region"):
+            res.fails.append("%s: sold at a dock of its own region" % r.short())
+    if not sold:
+        res.missing.append("complete a region chart (every landmark of the region read), then dock outside it: no event=sell "
+                           "result=sold")
+    res.ev("charts sold", sold)
+    return res
+
+
+def c_wsy18(ctx):
+    res = Res()
+    res.logpart = True
+    sold = ctx.find("survey", "sell", result="sold")
+    picks = ctx.find("tips", "pick", surface="news", kind="chart", result="shown")
+    told = [r for r in sold if any(p.src == r.src and p.n > r.n for p in picks)]
+    if not told:
+        res.missing.append("after a chart sale dock again in the buyer's region: no module=tips event=pick surface=news kind=chart "
+                           "after event=sell result=sold")
+    res.ev("sales told by harbour news", told)
+    return res
+
+
 # ---- station approach radio (design/station-voices-spec.md 8.8; README "In-game checks (station voices)") ------------
 
 def c_stn_near1(ctx):
@@ -4231,6 +4433,16 @@ ITEMS = [
     ("W-A08.8", "show before pickup, pickup at 8x", c_wsg8, "one pickup flown at 8x; the recorder is visible and reachable (SG4, SG5)"),
     ("W-A08.9", "quest safety", c_wsg9, None),
     ("W-A08.10", "nothing left behind, offer cap", c_wsg10, None),
+    ("W-A12.9", "the offer at a charter office names three landmarks", c_wsy9, None),
+    ("W-A12.10", "every reading pays at once", c_wsy10, None),
+    ("W-A12.11", "one reading per landmark", c_wsy11, None),
+    ("W-A12.12", "the random-portal bound", c_wsy12, "a hold 75-250 units from a random portal reads without a jump; the vanilla jump at 50 units still works (SY2)"),
+    ("W-A12.13", "quest safety", c_wsy13, None),
+    ("W-A12.14", "no stash named", c_wsy14, "every reading line names a signal, a base, a route, the chart or nothing; never a cache"),
+    ("W-A12.15", "the logbook only at docks", c_wsy15, None),
+    ("W-A12.16", "the hand-in opens the survey", c_wsy16, None),
+    ("W-A12.17", "the chart sells once and outside its region", c_wsy17, None),
+    ("W-A12.18", "the Wolves' name in a harbour line", c_wsy18, "the harbour news line names the Star Wolves and the region (SY8)"),
     ("STN-NEAR.1", "station greeting and news on approach, before the dock line (greeting_skip=near)", c_stn_near1,
      "the dockmaster's radio greeting and then the news line while flying in, before the docking box opens"),
     ("STN-NEAR.2", "approach radio: nothing spoken twice per visit", c_stn_near2, None),
@@ -4372,7 +4584,9 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "W-A05.11": "NO DATA", "W-A05.12": "NO DATA",
             "W-A08.1": "NO DATA", "W-A08.2": "FAIL", "W-A08.3": "FAIL", "W-A08.4": "NO DATA", "W-A08.5": "FAIL",
             "W-A08.6": "FAIL", "W-A08.7": "FAIL", "W-A08.8": "FAIL", "W-A08.9": "FAIL", "W-A08.10": "FAIL",
-            "STN-NEAR.1": "FAIL", "STN-NEAR.2": "FAIL"}
+            "STN-NEAR.1": "FAIL", "STN-NEAR.2": "FAIL",
+            "W-A12.9": "FAIL", "W-A12.10": "FAIL", "W-A12.11": "FAIL", "W-A12.12": "FAIL", "W-A12.13": "FAIL",
+            "W-A12.14": "FAIL", "W-A12.15": "FAIL", "W-A12.16": "FAIL", "W-A12.17": "FAIL", "W-A12.18": "NO DATA"}
 # tests/check_ingame_warn_fixture.log: correct warning behaviour only. A dock warning for Gideon at Avalon (leg 100) after
 # the station's dock line, a second approach skipped (visit), a return at leg 102 skipped (cooldown); at XT-23 (station
 # voice deny, a station pass, no station dock line) a pass reason=scene, then a warning for XT-24; a load of an earlier
@@ -4428,6 +4642,13 @@ SELFTEST_SIGNAL = {"W-A08.1": "PASS", "W-A08.2": "PASS", "W-A08.3": "MANUAL", "W
 # greeting_skip=near, the fee paid; a second docking after leaving the radius, nothing spoken again; Gaoba in a mission:
 # the latch skip, the dock greets as before (near=false); a load in Kadenoa: the marks start empty, spoken once more.
 SELFTEST_STATION = {"STN-NEAR.1": "MANUAL", "STN-NEAR.2": "PASS"}
+# tests/check_ingame_survey_fixture.log: correct survey behaviour (LOG=2). Dalled (chapter 6): the card names landmarks
+# 4, 6 and 1, accepted (the logbook entry after the accept); XT-20, XT-39, Fiasar: the three readings with their fees, the
+# step change; Gredos: the hand-in inside the docking (the Survey log); Gaeon (chapter 8): a random portal hold at 120 and
+# its reading; Llanowar 1 and 2: the Torr chart completed; Torr: the sale waits; Gredos: the chart sold, harbour news
+# names it at the next docking; Lidau: a strict-gate denial for survey, the skip, no reading.
+SELFTEST_SURVEY = {"W-A12.9": "PASS", "W-A12.10": "PASS", "W-A12.11": "PASS", "W-A12.12": "MANUAL", "W-A12.13": "PASS",
+                   "W-A12.14": "MANUAL", "W-A12.15": "PASS", "W-A12.16": "PASS", "W-A12.17": "PASS", "W-A12.18": "MANUAL"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -4477,6 +4698,11 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # Station approach radio block (the very end, Kadenoa): the USS station spoken twice on approach (STN-NEAR.2 FAIL), its
 # docking greeting again with near=false (STN-NEAR.1 and .2 FAIL), a Triada docking near=true without an approach line
 # (STN-NEAR.1 FAIL).
+# Survey block (the very end, Elinor, Proserpine and Taira): an offer naming two landmarks (W-A12.9 FAIL), a reading
+# with fee=0 and no pay line (W-A12.10 FAIL), the same landmark read twice (W-A12.11 FAIL), a random portal read after a
+# hold at 60 units (W-A12.12 FAIL), a reading after the latch skip (W-A12.13 FAIL) whose payoff is a stash (W-A12.14 FAIL),
+# a logbook line in space (W-A12.15 FAIL), a hand-in followed by an entry with open=closed (W-A12.16 FAIL), the Elinor
+# chart sold twice, once at an Elinor dock (W-A12.17 FAIL); no harbour line after the sales (W-A12.18 NO DATA).
 
 
 def selftest():
@@ -4538,8 +4764,14 @@ def selftest():
         if got.get(iid) != v:
             print("selftest: station fixture %s is %s, expected %s" % (iid, got.get(iid), v))
             bad += 1
+    got = dict((r[0], r[2]) for r in score(Ctx([Log(FIXTURE_SURVEY, None, [])]), {}))
+    for iid, v in SELFTEST_SURVEY.items():
+        if got.get(iid) != v:
+            print("selftest: survey fixture %s is %s, expected %s" % (iid, got.get(iid), v))
+            bad += 1
     n = (len(SELFTEST) + len(SELFTEST_EYES[1]) + len(SELFTEST_WARN) + len(SELFTEST_REMARK) + len(SELFTEST_TEMPER) + len(SELFTEST_CORP)
-         + len(SELFTEST_DEBRIEF) + len(SELFTEST_TIPS) + len(SELFTEST_SPEC) + len(SELFTEST_SIGNAL) + len(SELFTEST_STATION))
+         + len(SELFTEST_DEBRIEF) + len(SELFTEST_TIPS) + len(SELFTEST_SPEC) + len(SELFTEST_SIGNAL) + len(SELFTEST_STATION)
+         + len(SELFTEST_SURVEY))
     if parse_logfmt('a=1 message="x \\"y\\" z" b=') != {"a": "1", "message": 'x "y" z', "b": ""}:
         print("selftest: logfmt quoting")
         bad += 1

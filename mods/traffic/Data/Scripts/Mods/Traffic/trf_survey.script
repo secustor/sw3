@@ -1,0 +1,1822 @@
+-- sw3-traffic survey layer and the intro quest "Chart the frontier" (Lua 4.0.1). Spec: design/survey-spec.md (A12 step 2,
+-- roadmap wave 3 row 12; owner decisions 1-15 of spec 2.1 taken 2026-11-07 as recommended). Prefix Sy (TRF_Sy_* public,
+-- TRF_Sy<X> internal; no internal name starts with TRF_Sys, the family of TRF_SysEn), log module=survey, cfg survey.
+-- Host-tested only, not run in the game (W-A12.9-18 open).
+-- Owns: the landmark table TRF_SyData (tools/gen_survey.py: 46 rows from static location.script objects, 8 regions) and the
+-- readings: the mothership within sy_read_r of a row's reading point while sy_hold seconds of game time add up (a random
+-- portal row only sy_rp_min..sy_read_r from the portal and only while OnRandomPortal_all is "yes"); leaving resets the
+-- hold, a hold flag pauses it. Every reading pays the survey fee (TRF_Pay, sy_fee_k % of TRF_PayN per weight point) and
+-- shows one information line: the A07 trail hook, the chart completion, a lit A08 signal, a pirate base's system or a
+-- route note to the region's next landmark; never a stash. A complete region chart sells once, automatically, at the first
+-- trade dock outside the region (trade line 75), its value falling with the source region's phase; the sale pushes ring
+-- kind 14 (trf_tips). 30 and 60 survey points add sy_thr_k % each to fees and chart values.
+-- Quest "Chart the frontier" (spec 7): quest id 4 of the shared intro-quest record TRF.iq (trf_plumb TRF_Iq*): the offer at
+-- a trade dock's charter office (box 410 or the Office row 410) names three landmarks of the dock's region (job markers in
+-- their systems); three readings (step 10 -> 20); the hand-in at any trade dock (line 75) sets the done bit, which opens the
+-- survey for every region and the chart sale (cfg sy_gate 1). The logbook entry trf_sy (the quest, then the Survey log) is
+-- written only at the accept and at trade docks: the Job log (trf_plumb TRF_JbLog) with plain text, else AddQuest with
+-- fixed keys.
+-- Gates: strict gate (feature survey), system mode, the visit latch on TRF_Safe_QState, the hold flags and the scene; dock
+-- parts TRF_PlQuest and TRF_Quiet; never GetPlayerQuestState (trf_plumb refuses markers while it is TRUE).
+-- Saved field (version 4, created at the first reading, repaired by TRF_Sy_Fix):
+--   TRF.sy = "<bits>/<block 1>/.../<block n>", n = TRF_RgMap().n; bits ceil(N / 4) hex characters (row id read: bit
+--   mod(id - 1, 4) of character floor((id - 1) / 4) + 1); block b "" (no chart), "<phase><leg mod 1000>" (complete, not
+--   sold) or "s" (sold); nil when no bit is set and every block is empty. 73 bytes worst case with its key (spec 3.5).
+-- Visit state in the chunk local SY (never saved, rebuilt by every MapInitialization); the logbook text on screen in the
+-- function global TRF_SyKeepThunk (dropped at a load). No handle anywhere.
+-- Layout as trf_signal: helpers, accessors (one native each, protected), static tables, the generated block, pure
+-- functions (*Of, explicit inputs, host-testable), contract functions. Top level: functions and SY only.
+
+local SY = {pr={}, v={}, h={}, nr={}, hs={}, lm={}};
+
+-- Helpers --------------------------------------------------------------------------
+
+function TRF_SyCV() return %SY; end;
+
+-- logfmt event line, module=survey (design/log-format.md).
+function TRF_SyE(event, ...)
+	tinsert(arg, 1, event); tinsert(arg, 1, "survey"); call(TRF_Lf, arg);
+end;
+
+-- Error handler for protected calls: an event=error line, counted in stat err.
+function TRF_SyErr(m)
+	TRF_SyE("error", "message", tostring(m));
+	TRF_N("TRF_Stat", "err");
+end;
+
+-- Silent handler (natives that may be missing or answer badly): nil is the answer.
+function TRF_SyNoErr(m) end;
+
+function TRF_SyLog()
+	local v = TRF_N("TRF_Opt", "log");
+	if type(v) ~= "number" then v = TRF_Cfg().log or 1; end;
+	return v;
+end;
+
+-- Debug event line (log 2).
+function TRF_SyDE(event, ...)
+	if TRF_SyLog() < 2 then return; end;
+	tinsert(arg, 1, event); call(TRF_SyE, arg);
+end;
+
+function TRF_SyCl(x, lo, hi)
+	if x < lo then return lo; end;
+	if x > hi then return hi; end;
+	return x;
+end;
+
+-- a mod m, never negative (Lua 4 mod() keeps the sign of a).
+function TRF_SyMod(a, m)
+	return a - floor(a / m) * m;
+end;
+
+-- Fixed hash 0..10008 of three integers (no RAND draw: a reload replays the same answer).
+function TRF_SyHashOf(a, b, c)
+	local x = TRF_SyMod(floor((a or 0) * 131 + (b or 0) * 157 + (c or 0) * 41 + 6151), 10000);
+	x = TRF_SyMod(x * 47 + 19, 10007);
+	return TRF_SyMod(x * 59 + 31, 10009);
+end;
+
+-- Ranges of the cfg keys (outside -> default) and clamps of the tune keys (spec 10): {lo, hi}. sy_rp_min is clamped to
+-- 60..sy_read_r, sy_near_r to sy_read_r..2000 and sy_thr2 to sy_thr1..200 after the others.
+function TRF_SyClampT()
+	return {survey={0, 1}, sy_quest={0, 1}, sy_gate={0, 1}, sy_ch={0, 20}, sy_ch_end={0, 20}, sy_read_r={100, 400},
+		sy_rp_min={60, 400}, sy_hold={5, 120}, sy_near_r={100, 2000}, sy_fee_k={0, 50}, sy_chart_k={0, 50}, sy_chart_drop={0, 50},
+		sy_chart_lo={0, 100}, sy_chart_old={1, 200}, sy_thr1={1, 200}, sy_thr2={1, 200}, sy_thr_k={0, 50}, sy_sell_max={1, 8},
+		sy_dc={0, 50}, sy_secs={3, 20}};
+end;
+
+-- cfg value: TRF_Opt (merges TRF_Sy_OptDef), else the raw config, else the default; a wrong type or a number outside its
+-- range reads as the default.
+function TRF_SyOpt(key)
+	local d = TRF_Sy_OptDef()[key];
+	local v = nil;
+	if type(TRF_Opt) == "function" then v = TRF_Opt(key); end;
+	if v == nil and type(TRF_CfgGet) == "function" then v = TRF_CfgGet(key, nil); end;
+	if v == nil or (d ~= nil and type(v) ~= type(d)) then return d; end;
+	local r = TRF_SyClampT()[key];
+	if type(v) == "number" and r and (v ~= floor(v) or v < r[1] or v > r[2]) then return d; end;
+	return v;
+end;
+
+-- Tune values of this module, whole and clamped (TRF_SyClampT). Cached in SY while TRF_Tune returns the same table;
+-- callers must not write into it.
+function TRF_SyTune()
+	local sy = %SY;
+	local t = nil;
+	if type(TRF_Tune) == "function" then t = call(TRF_Tune, {}, "x", TRF_SyErr); end;
+	if type(sy.tc) == "table" and sy.tc.s == t then return sy.tc.t; end;
+	local d, cl, o = TRF_Sy_TuneDef(), TRF_SyClampT(), {};
+	for k, v in d do
+		local x = nil;
+		if type(t) == "table" then x = t[k]; end;
+		if type(x) ~= "number" then x = v; end;
+		x = floor(x);
+		local c = cl[k];
+		if c then x = TRF_SyCl(x, c[1], c[2]); end;
+		o[k] = x;
+	end;
+	o.sy_rp_min = TRF_SyCl(o.sy_rp_min, 60, o.sy_read_r);
+	o.sy_near_r = TRF_SyCl(o.sy_near_r, o.sy_read_r, 2000);
+	o.sy_thr2 = TRF_SyCl(o.sy_thr2, o.sy_thr1, 200);
+	sy.tc = {s=t, t=o};
+	return o;
+end;
+
+function TRF_SyLegs()
+	if type(TRF) == "table" and type(TRF.clock) == "table" and type(TRF.clock.legs) == "number" then return TRF.clock.legs; end;
+	return 0;
+end;
+
+function TRF_SyGen()
+	if type(TRF) == "table" and type(TRF.gen) == "number" then return TRF.gen; end;
+	return 0;
+end;
+
+function TRF_SyCh()
+	local c = TRF_N("TRF_Chapter");
+	if type(c) == "number" then return c; end;
+	return 0;
+end;
+
+function TRF_SyCur()
+	local i = TRF_N("TRF_CurIdx");
+	if type(i) == "number" then return i; end;
+	return nil;
+end;
+
+function TRF_SyTxt(key, a, b, c, d)
+	if type(TRF_Txt) == "function" then return TRF_Txt(key, a, b, c, d); end;
+	return tostring(key);
+end;
+
+-- Lowercase map name of system idx (log values), or the index.
+function TRF_SyName(idx)
+	local n = TRF_N("TRF_SysName", idx);
+	if type(n) == "string" and n ~= "?" then return strlower(n); end;
+	return tostring(idx);
+end;
+
+-- Display name of system idx: the English map name (trf_loc TRF_SysEn).
+function TRF_SySysTxt(idx)
+	local s = TRF_N("TRF_SysEn", idx);
+	if type(s) == "string" then return s; end;
+	return TRF_SyName(idx);
+end;
+
+-- Map data (TRF_Map), or nil.
+function TRF_SyMap()
+	local m = TRF_N("TRF_Map");
+	if type(m) == "table" and type(m.sys) == "table" and type(m.by) == "table" then return m; end;
+	return nil;
+end;
+
+-- The map entry of system idx, or nil.
+function TRF_SyMapSys(idx)
+	local m = TRF_SyMap();
+	if m and type(idx) == "number" and type(m.sys[idx]) == "table" then return m.sys[idx]; end;
+	return nil;
+end;
+
+-- Region table of trf_region (TRF_RgMap), or nil.
+function TRF_SyRgMap()
+	local r = TRF_N("TRF_RgMap");
+	if type(r) == "table" and type(r.n) == "number" and r.n > 0 then return r; end;
+	return nil;
+end;
+
+-- Number of region blocks, 0 without the region map.
+function TRF_SyNRg()
+	local r = TRF_SyRgMap();
+	if r then return r.n; end;
+	return 0;
+end;
+
+function TRF_SySlot(idx)
+	if type(idx) ~= "number" then return nil; end;
+	local s = TRF_N("TRF_RgOf", idx);
+	if type(s) == "number" then return s; end;
+	return nil;
+end;
+
+-- Phase 0..5 of region slot (trf_region TRF_Phase), 0 without it.
+function TRF_SySlotPh(slot)
+	local p = TRF_N("TRF_Phase", slot);
+	if type(p) == "number" then return p; end;
+	return 0;
+end;
+
+-- Display name of region slot: the English map name of its home (Dosis, Elinor, Hephaestus, ...).
+function TRF_SyRgTxt(slot)
+	local r = TRF_SyRgMap();
+	if r and type(r[slot]) == "table" and type(r[slot].home) == "number" then return TRF_SySysTxt(r[slot].home); end;
+	return tostring(slot);
+end;
+
+-- Pay basis of system idx (trf_region TRF_PayN), 0 without it.
+function TRF_SyPayN(idx)
+	local n = TRF_N("TRF_PayN", idx);
+	if type(n) == "number" then return n; end;
+	return 0;
+end;
+
+function TRF_SyDist(a, b)
+	if type(a) ~= "table" or type(b) ~= "table" then return nil; end;
+	local dx, dy, dz = a.x - b.x, a.y - b.y, a.z - b.z;
+	return sqrt(dx * dx + dy * dy + dz * dz);
+end;
+
+function TRF_SySay(text, secs)
+	return TRF_N("TRF_Say", text, secs or 8);
+end;
+
+-- Number of set bits of mask c (0..7).
+function TRF_SyCnt(c)
+	local n = 0;
+	for i = 1, 3 do
+		if TRF_SyMod(c, 2) == 1 then n = n + 1; end;
+		c = floor(c / 2);
+	end;
+	return n;
+end;
+
+-- 1 when bit b (1, 2 or 4) is set in mask c.
+function TRF_SyMaskHas(c, b)
+	if type(c) ~= "number" or type(b) ~= "number" then return nil; end;
+	if TRF_SyMod(floor(c / b), 2) == 1 then return 1; end;
+	return nil;
+end;
+
+-- Accessors (one native each, protected) ----------------------------------------------------
+
+function TRF_SyPosRaw(o)
+	local p = o:GetPosition();
+	return {x=p.x, y=p.y, z=p.z};
+end;
+
+-- Position of o as {x, y, z}, or nil.
+function TRF_SyPos(o)
+	if type(o) ~= "table" and type(o) ~= "userdata" then return nil; end;
+	local p = call(TRF_SyPosRaw, {o}, "x", TRF_SyNoErr);
+	if type(p) == "table" and type(p.x) == "number" then return p; end;
+	return nil;
+end;
+
+-- Mothership position (TRF_Ms: no GetPlayerMotherShip from a tick), or nil.
+function TRF_SyMsPos()
+	return TRF_SyPos(TRF_N("TRF_Ms"));
+end;
+
+function TRF_SyLabRaw(n) return {v=GetQuestLabel(n)}; end;
+
+-- Quest label n, or nil (missing native, error).
+function TRF_SyLab(n)
+	if type(GetQuestLabel) ~= "function" then return nil; end;
+	local r = call(TRF_SyLabRaw, {n}, "x", TRF_SyNoErr);
+	if type(r) == "table" then return r.v; end;
+	return nil;
+end;
+
+function TRF_SyJAddRaw(id, t, d) return TRF_JobAdd(id, t, d, QUEST_PROCESS); end;
+function TRF_SyJRemRaw(id) return TRF_JobRemove(id); end;
+function TRF_SyJGetRaw(id) return TRF_JobLogGet(id); end;
+function TRF_SyQsRaw(id) return GetQuestState(id); end;
+
+function TRF_SyQAddRaw(id, t, d)
+	AddQuest(id, t, d, QUEST_PROCESS);
+	return 1;
+end;
+
+function TRF_SyQRemRaw(id)
+	RemoveQuest(id);
+	return 1;
+end;
+
+-- Job log entry id with title t and text d (plain): 1, or nil and the reason.
+function TRF_SyJAdd(id, t, d)
+	if type(TRF_JobAdd) ~= "function" or QUEST_PROCESS == nil then return nil, "native"; end;
+	return call(TRF_SyJAddRaw, {id, t, d}, "x", TRF_SyErr);
+end;
+
+function TRF_SyJRem(id)
+	if type(TRF_JobRemove) ~= "function" then return nil, "native"; end;
+	return call(TRF_SyJRemRaw, {id}, "x", TRF_SyErr);
+end;
+
+-- Job log state of id, nil when absent or without the native.
+function TRF_SyJGet(id)
+	if type(TRF_JobLogGet) ~= "function" then return nil; end;
+	local s = call(TRF_SyJGetRaw, {id}, "x", TRF_SyNoErr);
+	if type(s) == "number" then return s; end;
+	return nil;
+end;
+
+-- Mission-list entry id with the title and description keys t, d: 1 or nil.
+function TRF_SyQAdd(id, t, d)
+	if type(AddQuest) ~= "function" or QUEST_PROCESS == nil then return nil, "native"; end;
+	return call(TRF_SyQAddRaw, {id, t, d}, "x", TRF_SyErr);
+end;
+
+function TRF_SyQRem(id)
+	if type(RemoveQuest) ~= "function" then return nil, "native"; end;
+	return call(TRF_SyQRemRaw, {id}, "x", TRF_SyErr);
+end;
+
+-- Mission-list state of id, nil without the native or for QUEST_NOINIT (no entry).
+function TRF_SyQs(id)
+	if type(GetQuestState) ~= "function" then return nil; end;
+	local s = call(TRF_SyQsRaw, {id}, "x", TRF_SyNoErr);
+	if s == nil or (QUEST_NOINIT ~= nil and s == QUEST_NOINIT) then return nil; end;
+	return s;
+end;
+
+-- Static tables ---------------------------------------------------------------------------
+
+-- Constants (spec 10).
+function TRF_SyK()
+	return {q=4, qid="trf_sy", jid="sy", box=410, row=410, line=75, hex="0123456789abcdef", nmax=60, icon="nav_target.dds",
+		kinds={"rp", "gr", "sr", "hk", "wf", "cs"}, rp_label="OnRandomPortal_all", pow={1, 2, 4, 8}, mbit={1, 2, 4}};
+end;
+
+-- BEGIN gen_survey.py (do not edit by hand)
+-- Landmarks {s = map name, k = kind, w = weight, x, y, z = the reading point, p = the nearest portal's index in the map
+-- entry} in id order (tools/gen_survey.py, design/survey-spec.md 4.1).
+function TRF_SyData()
+	return {
+		{s="fiasar", k="cs", w=1, x=252, y=-5, z=200, p=1},   -- 1
+		{s="kitaro", k="cs", w=1, x=105, y=0, z=-443, p=3},   -- 2
+		{s="kitaro", k="cs", w=1, x=584, y=33, z=349, p=2},   -- 3
+		{s="xt20", k="hk", w=3, x=-687, y=0, z=382, p=1},   -- 4
+		{s="xt20", k="hk", w=3, x=-521, y=0, z=-379, p=1},   -- 5
+		{s="xt39", k="hk", w=3, x=-82, y=20, z=-200, p=1},   -- 6
+		{s="xt39", k="hk", w=3, x=398, y=0, z=228, p=1},   -- 7
+		{s="xt54", k="rp", w=3, x=-500, y=-350, z=-650, p=1},   -- 8
+		{s="avalon", k="gr", w=3, x=-50, y=0, z=700, p=1},   -- 9
+		{s="dionis", k="sr", w=3, x=-856, y=-50, z=336, p=1},   -- 10
+		{s="dionis", k="hk", w=3, x=-986, y=0, z=962, p=1},   -- 11
+		{s="elinor", k="cs", w=1, x=242, y=-48, z=-795, p=2},   -- 12
+		{s="elinor", k="cs", w=1, x=601, y=-12, z=-164, p=2},   -- 13
+		{s="pandora", k="wf", w=2, x=872, y=-8, z=199, p=1},   -- 14
+		{s="proserpina", k="rp", w=3, x=-500, y=550, z=650, p=1},   -- 15
+		{s="proserpina", k="sr", w=2, x=20, y=4, z=100, p=1},   -- 16
+		{s="kassilia", k="cs", w=1, x=-394, y=0, z=-94, p=2},   -- 17
+		{s="pegas", k="rp", w=3, x=-500, y=550, z=-650, p=1},   -- 18
+		{s="valensia", k="gr", w=3, x=-490, y=0, z=106, p=2},   -- 19
+		{s="debris3", k="sr", w=3, x=654, y=40, z=400, p=1},   -- 20
+		{s="debris3", k="cs", w=2, x=348, y=25, z=-166, p=1},   -- 21
+		{s="debris4", k="hk", w=2, x=-376, y=-60, z=181, p=1},   -- 22
+		{s="debris4", k="hk", w=2, x=370, y=70, z=-590, p=1},   -- 23
+		{s="debris6", k="sr", w=2, x=-100, y=-20, z=-500, p=2},   -- 24
+		{s="kron", k="hk", w=2, x=-264, y=10, z=361, p=1},   -- 25
+		{s="xb13", k="sr", w=2, x=-111, y=0, z=86, p=2},   -- 26
+		{s="xt17", k="hk", w=3, x=318, y=-3, z=-335, p=1},   -- 27
+		{s="altair", k="sr", w=3, x=-52, y=40, z=-282, p=1},   -- 28
+		{s="b_leftera3", k="hk", w=3, x=418, y=165, z=-505, p=1},   -- 29
+		{s="b_leftera3", k="hk", w=2, x=463, y=-344, z=225, p=1},   -- 30
+		{s="vuadil", k="hk", w=3, x=176, y=115, z=229, p=1},   -- 31
+		{s="x213", k="gr", w=3, x=-319, y=-94, z=545, p=1},   -- 32
+		{s="x213", k="gr", w=3, x=440, y=-44, z=-429, p=2},   -- 33
+		{s="x220", k="gr", w=3, x=-250, y=100, z=700, p=1},   -- 34
+		{s="x244", k="rp", w=3, x=1200, y=350, z=1250, p=1},   -- 35
+		{s="fort_russ", k="hk", w=2, x=-674, y=0, z=206, p=1},   -- 36
+		{s="gaeon", k="rp", w=3, x=-500, y=-550, z=-650, p=1},   -- 37
+		{s="gaeon", k="hk", w=2, x=883, y=15, z=-217, p=2},   -- 38
+		{s="nd", k="hk", w=3, x=-8, y=-50, z=132, p=1},   -- 39
+		{s="solncevka", k="cs", w=2, x=191, y=0, z=35, p=1},   -- 40
+		{s="llanovar1", k="wf", w=1, x=-505, y=8, z=-265, p=3},   -- 41
+		{s="llanovar1", k="cs", w=1, x=-475, y=-15, z=350, p=2},   -- 42
+		{s="llanovar2", k="hk", w=3, x=350, y=0, z=400, p=1},   -- 43
+		{s="llanovar2", k="cs", w=2, x=-187, y=0, z=52, p=1},   -- 44
+		{s="xt81", k="cs", w=1, x=208, y=-10, z=540, p=1},   -- 45
+		{s="xt93", k="hk", w=2, x=720, y=-20, z=-400, p=1},   -- 46
+	};
+end;
+-- END gen_survey.py
+
+-- Pure functions ------------------------------------------------------------------------
+
+-- Value 0..15 of hex character c, or nil.
+function TRF_SyHexOf(c)
+	if type(c) ~= "string" or strlen(c) ~= 1 then return nil; end;
+	local i = strfind(TRF_SyK().hex, c, 1, 1);
+	if i then return i - 1; end;
+	return nil;
+end;
+
+-- 1 when row id is read in bits.
+function TRF_SyBitOf(bits, id)
+	if type(bits) ~= "string" or type(id) ~= "number" or id < 1 then return nil; end;
+	local ci = floor((id - 1) / 4) + 1;
+	if ci > strlen(bits) then return nil; end;
+	local v = TRF_SyHexOf(strsub(bits, ci, ci));
+	if not v then return nil; end;
+	local p = TRF_SyK().pow[TRF_SyMod(id - 1, 4) + 1];
+	if TRF_SyMod(floor(v / p), 2) == 1 then return 1; end;
+	return nil;
+end;
+
+-- bits padded or cut to ceil(n / 4) characters with row id set (an id outside 1..n sets nothing).
+function TRF_SySetOf(bits, id, n)
+	local w = floor((n + 3) / 4);
+	if type(bits) ~= "string" then bits = ""; end;
+	while strlen(bits) < w do bits = bits.."0"; end;
+	if strlen(bits) > w then bits = strsub(bits, 1, w); end;
+	if type(id) ~= "number" or id < 1 or id > n then return bits; end;
+	local K = TRF_SyK();
+	local ci = floor((id - 1) / 4) + 1;
+	local v = TRF_SyHexOf(strsub(bits, ci, ci)) or 0;
+	local p = K.pow[TRF_SyMod(id - 1, 4) + 1];
+	if TRF_SyMod(floor(v / p), 2) == 0 then v = v + p; end;
+	return strsub(bits, 1, ci - 1)..strsub(K.hex, v + 1, v + 1)..strsub(bits, ci + 1);
+end;
+
+-- Parts of string str (3.1): the bits, the blocks (raw strings, entries 1..max(nrg, the parts found), "" when missing)
+-- and the number of blocks found. n (rows) is not needed to split; it is part of the signature for the callers.
+function TRF_SySplitOf(str, nrg, n)
+	local bits, bl, nb = "", {}, 0;
+	if type(str) == "string" then
+		local i, k = 1, 0;
+		while 1 do
+			local e = strfind(str, "/", i, 1);
+			local part = nil;
+			if e then part = strsub(str, i, e - 1); else part = strsub(str, i); end;
+			if k == 0 then bits = part; else bl[k] = part; nb = k; end;
+			if not e then break; end;
+			i = e + 1;
+			k = k + 1;
+		end;
+	end;
+	for b = nb + 1, nrg do bl[b] = ""; end;
+	return bits, bl, nb;
+end;
+
+-- String of bits and blocks (1..getn(blocks)), nil when no bit is set and every block is empty.
+function TRF_SyJoinOf(bits, blocks)
+	local any = nil;
+	if type(bits) ~= "string" then bits = ""; end;
+	if strfind(bits, "[1-9a-f]") then any = 1; end;
+	local o = bits;
+	for b = 1, getn(blocks) do
+		local x = blocks[b] or "";
+		if x ~= "" then any = 1; end;
+		o = o.."/"..x;
+	end;
+	if not any then return nil; end;
+	return o;
+end;
+
+-- Decoded block b at clock legs: {st = 0} empty, {st = 2} sold, {st = 1, ph, g = leg mod 1000, age} complete; nil for a
+-- bad block.
+function TRF_SyBlockOf(b, legs)
+	if b == nil or b == "" then return {st=0}; end;
+	if b == "s" then return {st=2}; end;
+	if type(b) ~= "string" or strlen(b) ~= 4 or strfind(b, "[^0-9]") then return nil; end;
+	local ph = tonumber(strsub(b, 1, 1));
+	if ph > 5 then return nil; end;
+	local g3 = tonumber(strsub(b, 2, 4));
+	return {st=1, ph=ph, g=g3, age=TRF_SyMod(TRF_SyMod(legs or 0, 1000) - g3 + 1000, 1000)};
+end;
+
+-- Survey points: the weights of the read rows of rows (the TRF_SyData list).
+function TRF_SyPtsOf(bits, rows)
+	local p = 0;
+	for id = 1, getn(rows) do
+		if TRF_SyBitOf(bits, id) then p = p + (rows[id].w or 1); end;
+	end;
+	return p;
+end;
+
+-- Thresholds passed (0..2) at points pts.
+function TRF_SyThrOf(pts, T)
+	local n = 0;
+	if pts >= T.sy_thr1 then n = n + 1; end;
+	if pts >= T.sy_thr2 then n = n + 1; end;
+	return n;
+end;
+
+-- Survey fee (6.3 step 2): floor(payn x sy_fee_k / 100 x w x (1 + sy_thr_k / 100 x thr)), in whole-number arithmetic.
+function TRF_SyFeeOf(payn, w, thr, T)
+	return floor(floor(payn) * T.sy_fee_k * w * (100 + T.sy_thr_k * thr) / 10000);
+end;
+
+-- Chart value (8.2): V, steps. steps = mod(ph - ph0 + 6, 6), 5 when age > sy_chart_old; f = max(sy_chart_lo, 100 -
+-- sy_chart_drop x steps) %; V = floor(payn x sy_chart_k / 100 x W x f x (1 + sy_thr_k / 100 x thr)).
+function TRF_SyValueOf(payn, W, ph0, ph, age, thr, T)
+	local steps = TRF_SyMod(ph - ph0 + 6, 6);
+	if age > T.sy_chart_old then steps = 5; end;
+	local f = max(T.sy_chart_lo, 100 - T.sy_chart_drop * steps);
+	return floor(floor(payn) * T.sy_chart_k * W * f * (100 + T.sy_thr_k * thr) / 1000000), steps;
+end;
+
+-- Hold of one row (6.2 steps 3-4): the hold h after a tick of dt game seconds at distance d (rp 1: a random portal row),
+-- and the state: out (outside, nothing held), reset (left, the hold dropped), start (the first tick of a hold), hold,
+-- done (sy_hold reached).
+function TRF_SyHoldOf(h, dt, d, rp, T)
+	if type(h) ~= "number" then h = 0; end;
+	if d > T.sy_read_r or (rp == 1 and d < T.sy_rp_min) then
+		if h > 0 then return 0, "reset"; end;
+		return 0, "out";
+	end;
+	local n = h + dt;
+	if n >= T.sy_hold then return n, "done"; end;
+	if h == 0 then return n, "start"; end;
+	return n, "hold";
+end;
+
+function TRF_SyPickLt(a, b)
+	if a.d ~= b.d then return a.d < b.d; end;
+	if a.h ~= b.h then return a.h < b.h; end;
+	return a.id < b.id;
+end;
+
+-- Card picks (4.3): ids = {{id, s}, ...} (the region's rows and their systems), dist[s] jumps from the dock, h[id] the
+-- hash, why[id] the name reason (nil: open). The first three open rows in distinct systems by (jumps, hash, id), then
+-- repeats; nil, "few" with fewer than three open rows.
+function TRF_SyPickOf(ids, dist, h, why)
+	local c = {};
+	for i = 1, getn(ids) do
+		local e = ids[i];
+		if not why[e.id] then tinsert(c, {id=e.id, s=e.s, d=dist[e.s] or 99, h=h[e.id] or 0}); end;
+	end;
+	sort(c, TRF_SyPickLt);
+	local o, used, sys = {}, {}, {};
+	for i = 1, getn(c) do
+		if getn(o) < 3 and not sys[c[i].s] then tinsert(o, c[i].id); used[c[i].id] = 1; sys[c[i].s] = 1; end;
+	end;
+	for i = 1, getn(c) do
+		if getn(o) < 3 and not used[c[i].id] then tinsert(o, c[i].id); used[c[i].id] = 1; end;
+	end;
+	if getn(o) < 3 then return nil, "few"; end;
+	return o;
+end;
+
+-- Payoff of the reading of row id (6.3 step 3) from have = {trail, chart, signal, base, route} (texts or nil): P0 trail,
+-- P4 chart, then from 1 + mod(id, 3) round P1 signal, P2 base, P3 route. Returns the kind and its text, or "none", nil.
+function TRF_SyPayoffOf(id, have)
+	if have.trail then return "trail", have.trail; end;
+	if have.chart then return "chart", have.chart; end;
+	local ks = {"signal", "base", "route"};
+	local s = TRF_SyMod(id, 3);
+	for i = 0, 2 do
+		local k = ks[1 + TRF_SyMod(s + i, 3)];
+		if have[k] then return k, have[k]; end;
+	end;
+	return "none", nil;
+end;
+
+-- Jumps from cur to tgt over adj (breadth first, neighbour lists in order) and the first hop: 0, nil in the same system;
+-- nil when unreachable.
+function TRF_SyRouteOf(adj, cur, tgt)
+	if cur == tgt then return 0, nil; end;
+	local par = {};
+	par[cur] = 0;
+	local front = {cur};
+	while getn(front) > 0 do
+		local nxt = {};
+		for i = 1, getn(front) do
+			local u = front[i];
+			local l = adj[u] or {};
+			for j = 1, getn(l) do
+				local v = l[j];
+				if par[v] == nil then
+					par[v] = u;
+					if v == tgt then
+						local n, x = 1, v;
+						while par[x] ~= cur do x = par[x]; n = n + 1; end;
+						return n, x;
+					end;
+					tinsert(nxt, v);
+				end;
+			end;
+		end;
+		front = nxt;
+	end;
+	return nil, nil;
+end;
+
+-- The three named row ids of the quest record digits t and sd (3.3).
+function TRF_SyIqOf(t, sd)
+	t = t or 0;
+	sd = sd or 0;
+	return {t, floor(sd / 100), TRF_SyMod(sd, 100)};
+end;
+
+-- Repair of string str (6.5 F1-F5) for n rows and nrg region blocks; region_of[id] the region slot of row id, phase_of[b]
+-- the phase of slot b now, legs the clock. Returns the new string (nil when empty) and the changes {field, result,
+-- reason}.
+function TRF_SyFixOf(str, n, nrg, region_of, legs, phase_of)
+	local ch = {};
+	if str == nil then return nil, ch; end;
+	if type(str) ~= "string" then tinsert(ch, {"bits", "dropped", "type"}); return nil, ch; end;
+	local bits, bl, nb = TRF_SySplitOf(str, nrg, n);
+	-- F2: hex characters, the width, no bit above n.
+	local w = floor((n + 3) / 4);
+	local why = nil;
+	local hb = "";
+	for i = 1, strlen(bits) do
+		local c = strsub(bits, i, i);
+		if not TRF_SyHexOf(c) then c = "0"; why = "char"; end;
+		hb = hb..c;
+	end;
+	if not why and strlen(hb) ~= w then why = "length"; end;
+	local nbits = TRF_SySetOf("", 0, n);
+	for id = 1, n do
+		if TRF_SyBitOf(hb, id) then nbits = TRF_SySetOf(nbits, id, n); end;
+	end;
+	if not why and nbits ~= bits then why = "above"; end;
+	if why then tinsert(ch, {"bits", "reset", why}); end;
+	-- F3: exactly nrg blocks, each "", "s" or four digits with the phase 0..5.
+	if nb ~= nrg then tinsert(ch, {"block", "reset", "count"}); end;
+	local blocks = {};
+	for b = 1, nrg do
+		local x = bl[b] or "";
+		if not TRF_SyBlockOf(x, legs) then x = ""; tinsert(ch, {"block", "reset", "bad"}); end;
+		blocks[b] = x;
+	end;
+	-- F4: a complete region gets its block, an incomplete one loses it.
+	local all, has = {}, {};
+	for b = 1, nrg do all[b] = 1; end;
+	for id = 1, n do
+		local s = region_of[id];
+		if type(s) == "number" and s >= 1 and s <= nrg then
+			has[s] = 1;
+			if not TRF_SyBitOf(nbits, id) then all[s] = nil; end;
+		end;
+	end;
+	for b = 1, nrg do
+		if has[b] then
+			local B = TRF_SyBlockOf(blocks[b], legs);
+			if all[b] and B.st == 0 then
+				blocks[b] = format("%d%03d", TRF_SyCl(floor(phase_of[b] or 0), 0, 5), TRF_SyMod(legs or 0, 1000));
+				tinsert(ch, {"block", "rebuilt", "complete"});
+			elseif not all[b] and B.st == 1 then
+				blocks[b] = "";
+				tinsert(ch, {"block", "reset", "unread"});
+			end;
+		end;
+	end;
+	return TRF_SyJoinOf(nbits, blocks), ch;
+end;
+
+-- State ---------------------------------------------------------------------------------
+
+-- The rows (TRF_SyData) and their index, built once per visit: d (the list), n, ix[id] map idx, sl[id] region slot, by[idx]
+-- = {id, ...}, rg[slot] = {id, ...}, W[slot] the region weight W_r. Callers must not write into it.
+function TRF_SyRows()
+	local sy = %SY;
+	if type(sy.rows) == "table" then return sy.rows; end;
+	local d = {};
+	if type(TRF_SyData) == "function" then d = TRF_SyData(); end;
+	local m = TRF_SyMap();
+	local o = {d=d, n=getn(d), ix={}, sl={}, by={}, rg={}, W={}};
+	for id = 1, o.n do
+		local r = d[id];
+		local s = nil;
+		if m and type(r) == "table" and type(r.s) == "string" then s = m.by[r.s]; end;
+		if type(s) == "number" then
+			o.ix[id] = s;
+			if type(o.by[s]) ~= "table" then o.by[s] = {}; end;
+			tinsert(o.by[s], id);
+			local slot = TRF_SySlot(s);
+			if slot then
+				o.sl[id] = slot;
+				if type(o.rg[slot]) ~= "table" then o.rg[slot] = {}; o.W[slot] = 0; end;
+				tinsert(o.rg[slot], id);
+				o.W[slot] = o.W[slot] + (r.w or 1);
+			end;
+		end;
+	end;
+	sy.rows = o;
+	return o;
+end;
+
+-- Parts of TRF.sy: bits (padded to the table), blocks 1..nrg, nrg.
+function TRF_SyState()
+	local rows = TRF_SyRows();
+	local nrg = TRF_SyNRg();
+	local s = nil;
+	if type(TRF) == "table" and type(TRF.sy) == "string" then s = TRF.sy; end;
+	local bits, bl = TRF_SySplitOf(s, nrg, rows.n);
+	return TRF_SySetOf(bits, 0, rows.n), bl, nrg;
+end;
+
+function TRF_SyStore(bits, bl, nrg)
+	local o = {};
+	for b = 1, nrg do o[b] = bl[b] or ""; end;
+	TRF.sy = TRF_SyJoinOf(bits, o);
+end;
+
+function TRF_SyBits()
+	local bits = TRF_SyState();
+	return bits;
+end;
+
+-- Managed-portal adjacency (trf_region TRF_RgAdj), cached per visit; {} without it.
+function TRF_SyAdj()
+	local sy = %SY;
+	if type(sy.adj) == "table" then return sy.adj; end;
+	local m = TRF_SyMap();
+	local a = nil;
+	if m and type(TRF_RgAdj) == "function" then a = call(TRF_RgAdj, {m}, "x", TRF_SyErr); end;
+	if type(a) ~= "table" then a = {}; end;
+	sy.adj = a;
+	return a;
+end;
+
+-- Jump distances from system idx ({} without the adjacency).
+function TRF_SyDistFrom(idx)
+	local adj = TRF_SyAdj();
+	if type(TRF_RgDistFrom) ~= "function" or type(adj[idx]) ~= "table" then return {}; end;
+	local d = call(TRF_RgDistFrom, {adj, idx}, "x", TRF_SyErr);
+	if type(d) == "table" then return d; end;
+	return {};
+end;
+
+-- The active "Chart the frontier": {s, t, sd, c, ids}, or nil.
+function TRF_SyRun()
+	local I = TRF_N("TRF_IqGet");
+	if type(I) ~= "table" or I.q ~= TRF_SyK().q then return nil; end;
+	return {s=I.s, t=I.t, sd=I.sd, c=I.c, ids=TRF_SyIqOf(I.t, I.sd)};
+end;
+
+-- Mask bit (1, 2, 4) of row id in run R, or nil when it is not named.
+function TRF_SyNamed(R, id)
+	if type(R) ~= "table" then return nil; end;
+	local b = TRF_SyK().mbit;
+	for i = 1, 3 do if R.ids[i] == id then return b[i]; end; end;
+	return nil;
+end;
+
+-- Survey open (4.2): cfg sy_gate 0, the done bit of quest 4, or the debug cfg survey_at naming the current system idx.
+function TRF_SyOpen(idx)
+	if TRF_SyOpt("sy_gate") == 0 then return 1; end;
+	if TRF_N("TRF_IqDone", TRF_SyK().q) == 1 then return 1; end;
+	local at = TRF_SyOpt("survey_at");
+	if type(idx) == "number" and idx == TRF_SyCur() and type(at) == "string" and at ~= "" and strlower(at) == TRF_SyName(idx) then return 1; end;
+	return nil;
+end;
+
+-- Why row id is not open for use "count" (rules 1-3) or "name" (rules 2-4) of 4.2, or nil.
+function TRF_SyLmWhy(id, use)
+	local rows = TRF_SyRows();
+	local r = rows.d[id];
+	if type(r) ~= "table" then return "row"; end;
+	local s = rows.ix[id];
+	if use == "count" and not TRF_SyOpen(s) then
+		local R = TRF_SyRun();
+		local b = TRF_SyNamed(R, id);
+		if not (TRF_SyOpt("sy_quest") == 1 and R and R.s == 1 and b and not TRF_SyMaskHas(R.c, b)) then return "closed"; end;
+	end;
+	if TRF_SyBitOf(TRF_SyBits(), id) then return "read"; end;
+	if r.k == "rp" and TRF_SyLab(TRF_SyK().rp_label) ~= "yes" then return "rp_closed"; end;
+	if use == "name" then
+		if type(s) ~= "number" then return "nomap"; end;
+		local ok, gw = nil, "nosafety";
+		if type(TRF_StrictOk) == "function" then ok, gw = TRF_StrictOk(s, "survey"); end;
+		if not ok then return "gate:"..tostring(gw); end;
+		if TRF_N("TRF_Wn_Armed", s) == 1 then return "armed"; end;
+	end;
+	return nil;
+end;
+
+-- Kind phrase of kind k (sykrp ...).
+function TRF_SyKind(k)
+	return TRF_SyTxt("syk"..tostring(k));
+end;
+
+-- Place phrase of row id (syplace: kind, system, the nearest portal's destination).
+function TRF_SyPlace(id)
+	local rows = TRF_SyRows();
+	local r = rows.d[id];
+	local s = rows.ix[id];
+	local e = TRF_SyMapSys(s);
+	local to = nil;
+	if e and type(e.portals) == "table" and type(r.p) == "number" and type(e.portals[r.p]) == "table" and type(e.portals[r.p].to) == "string" then
+		to = TRF_SySysTxt(e.portals[r.p].to);
+	end;
+	if not to then return TRF_SyKind(r.k).." in "..TRF_SySysTxt(s); end;
+	return TRF_SyTxt("syplace", TRF_SyKind(r.k), TRF_SySysTxt(s), to);
+end;
+
+-- "17,18,19" of an id list.
+function TRF_SyIds(l)
+	local o = nil;
+	for i = 1, getn(l or {}) do
+		if o then o = o..","..l[i]; else o = tostring(l[i]); end;
+	end;
+	return o;
+end;
+
+-- Gates (5) ------------------------------------------------------------------------------
+
+-- Skip line, once per reason and visit (log 2).
+function TRF_SySkip(idx, why)
+	local sy = %SY;
+	if sy.pr[why] then return; end;
+	sy.pr[why] = 1;
+	TRF_SyDE("skip", "system", TRF_SyName(idx), "reason", why);
+end;
+
+-- R1: 1 while the module runs.
+function TRF_SyOn()
+	if type(TRF) ~= "table" or not (type(TRF_Traffic) == "function" and TRF_Traffic()) then return nil; end;
+	if TRF_SyOpt("survey") ~= 1 or type(TRF_SyData) ~= "function" then return nil; end;
+	return 1;
+end;
+
+-- R7 holds in space (scene before TRF_Supp, which counts a scene too): the reason or nil.
+function TRF_SyHold()
+	if __disableAction == TRUE then return "disable_action"; end;
+	if __sys_SOS == TRUE then return "sys_sos"; end;
+	if TRF_N("TRF_Safe_Scene") then return "scene"; end;
+	local sp = TRF_N("TRF_Supp");
+	if type(sp) == "number" and sp ~= 0 then return "suppressed"; end;
+	return nil;
+end;
+
+-- Visit latch R6: 1 once TRF_Safe_QState was seen in this visit.
+function TRF_SyLatch()
+	local sy = %SY;
+	if sy.q == 1 then return 1; end;
+	if TRF_N("TRF_Safe_QState") then sy.q = 1; return 1; end;
+	return nil;
+end;
+
+-- R1-R6 for system idx, where "space" or "dock" (R4 in space only, TRF_PlQuest at a dock): nil or the reason (the skip
+-- line once per reason and visit).
+function TRF_SyGateR(idx, where)
+	local why = nil;
+	if not TRF_SyOn() then why = "off";
+	else
+		local T = TRF_SyTune();
+		local ch = TRF_SyCh();
+		if ch < T.sy_ch or ch > T.sy_ch_end then why = "chapter";
+		elseif not TRF_SyMapSys(idx) then why = "nomap";
+		else
+			if where ~= "dock" then
+				local mode, mw = TRF_N("TRF_SysModeQuiet");
+				if mode ~= "mod" then why = "mode:"..tostring(mw); end;
+			end;
+			if not why then
+				local ok, gw = nil, "nosafety";
+				if type(TRF_StrictOk) == "function" then ok, gw = TRF_StrictOk(idx, "survey"); end;
+				if not ok then why = "gate:"..tostring(gw);
+				elseif TRF_SyLatch() then why = "latch";
+				elseif where == "dock" and TRF_N("TRF_PlQuest") then why = "mission";
+				end;
+			end;
+		end;
+	end;
+	if why then TRF_SySkip(idx, why); end;
+	return why;
+end;
+
+-- Visit (6.1, 6.2) -------------------------------------------------------------------------
+
+-- Visit state reset (entry, load, jump).
+function TRF_SyVisit()
+	local sy = %SY;
+	sy.lm = {}; sy.h = {}; sy.nr = {}; sy.hs = {}; sy.pr = {}; sy.v = {};
+	sy.ok = nil; sy.okt = nil; sy.q = nil; sy.mk = nil; sy.mq = nil; sy.offer = nil; sy.rows = nil; sy.adj = nil; sy.lk = nil;
+	sy.ps = nil;
+end;
+
+-- State key of the open rows: rebuilt when the survey, the quest or the random-portal label changed.
+function TRF_SyKey()
+	local I = TRF_N("TRF_IqGet") or {};
+	local o = "c";
+	if TRF_SyOpen(TRF_SyCur()) then o = "o"; end;
+	return o..":"..tostring(I.q)..":"..tostring(I.s)..":"..tostring(I.c)..":"..tostring(TRF_SyLab(TRF_SyK().rp_label))..":"
+		..tostring(TRF_SyOpt("sy_quest"));
+end;
+
+-- SY.lm: the rows of system idx open for counting (6.1 step 3).
+function TRF_SyBuild(idx)
+	local sy = %SY;
+	local rows = TRF_SyRows();
+	local l = rows.by[idx] or {};
+	sy.lm = {};
+	for i = 1, getn(l) do
+		local id = l[i];
+		local w = TRF_SyLmWhy(id, "count");
+		if w then TRF_SySkip(idx, w); else tinsert(sy.lm, id); end;
+	end;
+	if getn(sy.lm) == 0 then TRF_SySkip(idx, "none"); end;
+	sy.lk = TRF_SyKey();
+end;
+
+-- Drops row id from SY.lm.
+function TRF_SyDrop(id)
+	local sy = %SY;
+	for i = getn(sy.lm), 1, -1 do
+		if sy.lm[i] == id then tremove(sy.lm, i); end;
+	end;
+end;
+
+-- Quest markers (6.1 step 4): the unread named rows of an active quest at step 1 in system idx as job markers of owner
+-- survey (not an offer owner). A refusal retries at each 1 s step (quiet log). Returns the markers held.
+function TRF_SyMarkers(idx)
+	local sy = %SY;
+	local R = TRF_SyRun();
+	if not R or R.s ~= 1 or TRF_SyOpt("sy_quest") ~= 1 or type(idx) ~= "number" then sy.mk = nil; sy.mq = nil; return 0; end;
+	local rows = TRF_SyRows();
+	local K = TRF_SyK();
+	local bits = TRF_SyBits();
+	local tx = "";
+	if TRF_N("TRF_Loc_Mode") == 1 then tx = "#TRF_synav"; end;
+	local n, want, fail = 0, 0, nil;
+	for i = 1, 3 do
+		local id = R.ids[i];
+		if rows.ix[id] == idx and not TRF_SyMaskHas(R.c, K.mbit[i]) and not TRF_SyBitOf(bits, id) then
+			want = want + 1;
+			local lb = "TRF_SY_NP_"..id;
+			if TRF_N("TRF_MarkerHeld", lb) then
+				n = n + 1;
+			else
+				local r = rows.d[id];
+				if TRF_N("TRF_MarkerAdd", "survey", lb, r.x, r.y, r.z, tx, K.icon, nil, nil, sy.mq) then n = n + 1; else fail = 1; end;
+			end;
+		end;
+	end;
+	if fail then sy.mq = 1; else sy.mq = nil; end;
+	sy.mk = nil;
+	if not fail then sy.mk = 1; end;
+	return n;
+end;
+
+-- Debug cfg survey_at (10): the named current system counts as open.
+function TRF_SyDebugAt(idx)
+	local at = TRF_SyOpt("survey_at");
+	if type(at) ~= "string" or at == "" or strlower(at) ~= TRF_SyName(idx) then return; end;
+	local rows = TRF_SyRows();
+	local res = "open";
+	if getn(rows.by[idx] or {}) == 0 then res = "no_rows"; end;
+	TRF_SyE("debug", "system", TRF_SyName(idx), "result", res);
+end;
+
+-- The open word of the enter line.
+function TRF_SyOpenWord(idx)
+	if TRF_SyOpen(idx) then return "survey"; end;
+	local R = TRF_SyRun();
+	if R and R.s == 1 then return "quest"; end;
+	return "closed";
+end;
+
+-- The last module call of TRF_OnActivate (after trf_signal's).
+function TRF_Sy_OnActivate()
+	TRF_SyVisit();
+	if TRF_N("TRF_Safe_QState") then local sy = %SY; sy.q = 1; end;
+	if not TRF_SyOn() then return; end;
+	call(TRF_SyEnterBody, {TRF_SyCur(), "enter"}, "x", TRF_SyErr);
+end;
+
+-- 6.1 steps 2-5 (why: enter or load) and the logbook reconcile (7.5).
+function TRF_SyEnterBody(idx, why)
+	local sy = %SY;
+	TRF_SyLogbook(why);
+	if type(idx) == "number" then TRF_SyDebugAt(idx); end;
+	local gw = TRF_SyGateR(idx, "space");
+	sy.ok = gw or "ok";
+	sy.okt = TRF_N("TRF_RealSecs");
+	if gw then return; end;
+	TRF_SyBuild(idx);
+	local mc = TRF_SyMarkers(idx);
+	TRF_SyDE("enter", "system", TRF_SyName(idx), "system_index", idx, "landmark_count", getn(sy.lm), "open", TRF_SyOpenWord(idx),
+		"marker_count", mc, "via", why);
+end;
+
+-- v1 load list: as the entry, without a near line before the first step; the keep table goes.
+function TRF_Sy_OnLoad()
+	TRF_SyVisit();
+	TRF_SyKeepThunk = nil;
+	if TRF_N("TRF_Safe_QState") then local sy = %SY; sy.q = 1; end;
+	if not TRF_SyOn() then return; end;
+	call(TRF_SyEnterBody, {TRF_SyCur(), "load"}, "x", TRF_SyErr);
+end;
+
+-- v1 jump list: holds are visit state; trf_plumb deletes the markers.
+function TRF_Sy_BeforeJump(dest, how)
+	local sy = %SY;
+	local n = 0;
+	for k, v in sy.h do if type(v) == "number" and v > 0 then n = n + 1; end; end;
+	TRF_SyDE("jump", "system", TRF_SyName(TRF_SyCur()), "hold_count", n, "dest", tostring(dest));
+	TRF_SyVisit();
+end;
+
+-- Every 1 s (traffic.script, after TRF_Sg_Step): the gate cache of the tick (SY.ok), the open rows again when the state
+-- changed, markers retried, the near line.
+function TRF_Sy_Step()
+	if type(TRF) ~= "table" then return; end;
+	call(TRF_SyStepBody, {}, "x", TRF_SyErr);
+end;
+
+function TRF_SyStepBody()
+	local sy = %SY;
+	sy.okt = TRF_N("TRF_RealSecs");
+	if not TRF_SyOn() then sy.ok = "off"; return; end;
+	local idx = TRF_SyCur();
+	local gw = TRF_SyGateR(idx, "space");
+	sy.ok = gw or "ok";
+	if gw then return; end;
+	if sy.lk ~= TRF_SyKey() then TRF_SyBuild(idx); end;
+	if not sy.mk then TRF_SyMarkers(idx); end;
+	if getn(sy.lm) == 0 or TRF_SyHold() then return; end;
+	local b = TRF_SyMsPos();
+	if not b then return; end;
+	local T = TRF_SyTune();
+	local rows = TRF_SyRows();
+	for i = 1, getn(sy.lm) do
+		local id = sy.lm[i];
+		local r = rows.d[id];
+		if not sy.nr[id] then
+			local d = TRF_SyDist(b, r);
+			if d <= T.sy_near_r then
+				sy.nr[id] = 1;
+				TRF_SySay(TRF_SyTxt("synear", TRF_SyKind(r.k), floor(d / 10 + 0.5) * 10, T.sy_read_r, T.sy_hold), T.sy_secs);
+				TRF_SyE("near", "system", TRF_SyName(idx), "landmark", id, "kind", r.k, "distance", floor(d));
+			end;
+		end;
+	end;
+end;
+
+-- Every tick after TRF_Sg_Tick (dt = dt_game).
+function TRF_Sy_Tick(dt)
+	local sy = %SY;
+	if type(dt) ~= "number" or dt <= 0 then return; end;
+	if sy.ok ~= "ok" or getn(sy.lm) == 0 then return; end;
+	call(TRF_SyTickBody, {dt}, "x", TRF_SyErr);
+end;
+
+function TRF_SyTickBody(dt)
+	local sy = %SY;
+	local idx = TRF_SyCur();
+	local hw = TRF_SyHold();
+	if hw then
+		if not sy.ps then
+			sy.ps = 1;
+			TRF_SyDE("hold", "system", TRF_SyName(idx), "reason", hw, "result", "paused");
+		end;
+		return;
+	end;
+	local b = TRF_SyMsPos();
+	if not b then return; end;
+	local T = TRF_SyTune();
+	local rows = TRF_SyRows();
+	local done = nil;
+	for i = 1, getn(sy.lm) do
+		local id = sy.lm[i];
+		local r = rows.d[id];
+		local d = TRF_SyDist(b, r);
+		local rp = nil;
+		if r.k == "rp" then rp = 1; end;
+		local h0 = sy.h[id] or 0;
+		local h, st = TRF_SyHoldOf(h0, dt, d, rp, T);
+		sy.h[id] = h;
+		if rp == 1 and d < T.sy_rp_min then TRF_SySkip(idx, "rp_near"); end;
+		if st == "reset" then
+			TRF_SyDE("hold", "system", TRF_SyName(idx), "landmark", id, "kind", r.k, "distance", floor(d), "hold", TRF_F(h0), "result", "reset");
+		elseif h0 == 0 and (st == "start" or st == "done") then
+			TRF_SyDE("hold", "system", TRF_SyName(idx), "landmark", id, "kind", r.k, "distance", floor(d), "hold", TRF_F(0), "result", "start");
+			if not sy.hs[id] then
+				sy.hs[id] = 1;
+				TRF_SySay(TRF_SyTxt("syhold", TRF_SyKind(r.k)), T.sy_secs);
+			end;
+		end;
+		if st == "done" and not done then done = id; end;
+	end;
+	if done then TRF_SyRead(done, idx); end;
+end;
+
+-- Reading and payoff (6.3, 6.4) --------------------------------------------------------------
+
+-- P1: the lit, unheard A08 source of region slot in another system: text, system.
+function TRF_SySigPay(idx, slot)
+	local r = TRF_N("TRF_Sg_SlotRec", slot);
+	if type(r) == "table" and r.t == 0 and type(r.s) == "number" and r.s ~= idx then
+		return TRF_SyTxt("sypsig", TRF_SySysTxt(r.s)), r.s;
+	end;
+	return nil, nil;
+end;
+
+-- P2: the lowest-index system of region slot (not idx) with an active pirate base (TRF.base k 2): text, system.
+function TRF_SyBasePay(idx, slot)
+	local l = TRF_N("TRF_Ba_Recs");
+	local w = nil;
+	if type(l) ~= "table" then return nil, nil; end;
+	for i = 1, getn(l) do
+		local b = l[i];
+		if type(b) == "table" and b.k == 2 and type(b.s) == "number" and b.s ~= idx and TRF_SySlot(b.s) == slot and (not w or b.s < w) then w = b.s; end;
+	end;
+	if not w then return nil, nil; end;
+	return TRF_SyTxt("sypbase", TRF_SySysTxt(w)), w;
+end;
+
+-- P3: the nearest other row of region slot open for both uses (jumps from idx, then id), with the route clause: text,
+-- system.
+function TRF_SyRoutePay(idx, slot, id)
+	local rows = TRF_SyRows();
+	local l = rows.rg[slot] or {};
+	local dist = TRF_SyDistFrom(idx);
+	local w, wd = nil, nil;
+	for i = 1, getn(l) do
+		local j = l[i];
+		local s = rows.ix[j];
+		local d = dist[s];
+		if j ~= id and type(d) == "number" and (not w or d < wd or (d == wd and j < w)) and not TRF_SyLmWhy(j, "count")
+			and not TRF_SyLmWhy(j, "name") then
+			w = j; wd = d;
+		end;
+	end;
+	if not w then return nil, nil; end;
+	local s = rows.ix[w];
+	local n, hop = TRF_SyRouteOf(TRF_SyAdj(), idx, s);
+	local rc = nil;
+	if n == 0 then rc = TRF_SyTxt("syjhere");
+	elseif n == 1 then rc = TRF_SyTxt("syj1", TRF_SySysTxt(hop));
+	elseif type(n) == "number" then rc = TRF_SyTxt("syjn", n, TRF_SySysTxt(hop));
+	else return nil, nil; end;
+	return TRF_SyTxt("syproute", TRF_SyRgTxt(slot), TRF_SyPlace(w), rc), s;
+end;
+
+-- The reading of row id in system idx (6.3). 1 when logged.
+function TRF_SyRead(id, idx)
+	local sy = %SY;
+	if TRF_SyGateR(idx, "space") or TRF_SyHold() or TRF_SyLmWhy(id, "count") then return nil; end;
+	local rows = TRF_SyRows();
+	local r = rows.d[id];
+	local T = TRF_SyTune();
+	local K = TRF_SyK();
+	local legs = TRF_SyLegs();
+	-- Step 1: the bit (SD1); 6.4 the chart block of a region now complete.
+	local bits, bl, nrg = TRF_SyState();
+	local p0 = TRF_SyPtsOf(bits, rows.d);
+	local thr0 = TRF_SyThrOf(p0, T);
+	bits = TRF_SySetOf(bits, id, rows.n);
+	TRF_SyDrop(id);
+	local slot = rows.sl[id];
+	local chart = nil;
+	if slot and slot <= nrg then
+		local all = 1;
+		local l = rows.rg[slot];
+		for i = 1, getn(l) do if not TRF_SyBitOf(bits, l[i]) then all = nil; end; end;
+		if all and (bl[slot] or "") == "" then
+			local ph = TRF_SySlotPh(slot);
+			bl[slot] = format("%d%03d", ph, TRF_SyMod(legs, 1000));
+			chart = 1;
+			TRF_SyE("chart", "region", slot, "landmark_count", getn(l), "weight", rows.W[slot], "phase", ph, "leg", legs, "result", "complete");
+		end;
+	end;
+	TRF_SyStore(bits, bl, nrg);
+	-- Step 2: the fee.
+	local fee = TRF_SyFeeOf(TRF_SyPayN(idx), r.w or 1, thr0, T);
+	local paid = 0;
+	if fee > 0 then paid = TRF_N("TRF_Pay", fee, "survey") or 0; end;
+	local text = nil;
+	if paid > 0 then
+		text = TRF_SyTxt("syread", TRF_SyKind(r.k), TRF_SySysTxt(idx), paid);
+	else
+		paid = 0;
+		text = TRF_SyTxt("syread0", TRF_SyKind(r.k), TRF_SySysTxt(idx));
+	end;
+	-- Step 3: the payoff (never a stash, D7).
+	local have, ps = {}, {};
+	local tr = TRF_N("TRF_Tr_SurveyFrag", id);
+	if type(tr) == "string" and tr ~= "" then have.trail = tr; end;
+	if chart then have.chart = TRF_SyTxt("sypchart", TRF_SyRgTxt(slot)); end;
+	if slot then
+		have.signal, ps.signal = TRF_SySigPay(idx, slot);
+		have.base, ps.base = TRF_SyBasePay(idx, slot);
+		have.route, ps.route = TRF_SyRoutePay(idx, slot, id);
+	end;
+	local pk, pt = TRF_SyPayoffOf(id, have);
+	if pt then text = text.." "..pt; end;
+	-- Step 4: the quest count.
+	local qm, clause = nil, nil;
+	local R = TRF_SyRun();
+	local b = TRF_SyNamed(R, id);
+	if R and R.s == 1 and b and TRF_SyOpt("sy_quest") == 1 and not TRF_SyMaskHas(R.c, b) then
+		qm = R.c + b;
+		if qm == 7 then
+			TRF_N("TRF_IqSet", K.q, 2, R.t, 7);
+			clause = TRF_SyTxt("syqall");
+		else
+			TRF_N("TRF_IqSet", K.q, 1, R.t, qm);
+			clause = TRF_SyTxt("syqcnt", TRF_SyCnt(qm));
+		end;
+		TRF_N("TRF_MarkerClear", "survey");
+		sy.mk = nil;
+		TRF_SyMarkers(idx);
+	end;
+	-- Step 5: thresholds.
+	local p1 = p0 + (r.w or 1);
+	local thr1 = TRF_SyThrOf(p1, T);
+	local tc = nil;
+	if thr1 > thr0 then
+		tc = TRF_SyTxt("sythr", p1, T.sy_thr_k * thr1);
+		local tv = T.sy_thr1;
+		if thr1 == 2 then tv = T.sy_thr2; end;
+		TRF_SyE("threshold", "points", p1, "threshold", tv, "bonus", T.sy_thr_k * thr1, "result", "passed");
+	end;
+	-- Step 6: one line.
+	if clause then text = text..TRF_Br()..clause; end;
+	if tc then text = text..TRF_Br()..tc; end;
+	TRF_SySay(text, T.sy_secs);
+	local pn = nil;
+	if ps[pk] then pn = TRF_SyName(ps[pk]); end;
+	TRF_SyE("read", "system", TRF_SyName(idx), "system_index", idx, "landmark", id, "kind", r.k, "weight", r.w, "points", p1,
+		"threshold_count", thr0, "fee", paid, "payoff", pk, "payoff_system", pn, "quest_mask", qm, "result", "logged");
+	sy.lk = TRF_SyKey();
+	return 1;
+end;
+
+-- A reading of row id now (later modules, A07): 1 when logged, else nil (another system, a gate, the row not open).
+function TRF_Sy_Read(id)
+	local rows = TRF_SyRows();
+	local idx = TRF_SyCur();
+	if type(id) ~= "number" or type(idx) ~= "number" or rows.ix[id] ~= idx then return nil; end;
+	local r = call(TRF_SyRead, {id, idx}, "x", TRF_SyErr);
+	if r == 1 then return 1; end;
+	return nil;
+end;
+
+-- Logbook (7.5, 8.4) ---------------------------------------------------------------------------
+-- One entry trf_sy: during the quest "Chart the frontier" (Job log: the places, logged or open; AddQuest: syqd<count> or
+-- syqd20), after the hand-in the Survey log (Job log: the counts per region; AddQuest: syld, never rewritten). Written at
+-- the accept, the hand-in and the trade dock line 75 when the text changed; at an entry or a load only a missing entry is
+-- restored; never during a mission. TRF_SyKeep (not saved): the text on screen (txt), its entry (ent), the last count line
+-- (cnt).
+
+function TRF_SyKeep()
+	if type(TRF_SyKeepThunk) == "function" then
+		local k = TRF_SyKeepThunk();
+		if type(k) == "table" then return k; end;
+	end;
+	local t = {};
+	TRF_SyKeepThunk = function() return %t; end;
+	return t;
+end;
+
+-- The quest text of run R (Job log, syqj).
+function TRF_SyQText(R)
+	local o = nil;
+	local K = TRF_SyK();
+	for i = 1, 3 do
+		local st = " (open)";
+		if TRF_SyMaskHas(R.c, K.mbit[i]) then st = " (logged)"; end;
+		local p = TRF_SyPlace(R.ids[i])..st;
+		if o then o = o..", "..p; else o = p; end;
+	end;
+	return TRF_SyTxt("syqj", o or "");
+end;
+
+-- Regions with a chart to sell (st 1) or sold (st 2), comma-joined names, or nil.
+function TRF_SyChartList(st)
+	local bits, bl, nrg = TRF_SyState();
+	local o = nil;
+	for b = 1, nrg do
+		local B = TRF_SyBlockOf(bl[b], TRF_SyLegs());
+		if B and B.st == st then
+			if o then o = o..", "..TRF_SyRgTxt(b); else o = TRF_SyRgTxt(b); end;
+		end;
+	end;
+	return o;
+end;
+
+-- Read rows, rows, points; the read rows and rows of region slot b in rd[b], rn[b].
+function TRF_SyCounts()
+	local rows = TRF_SyRows();
+	local bits = TRF_SyBits();
+	local rd, rn, n = {}, {}, 0;
+	for id = 1, rows.n do
+		local s = rows.sl[id];
+		local on = TRF_SyBitOf(bits, id);
+		if on then n = n + 1; end;
+		if s then
+			rn[s] = (rn[s] or 0) + 1;
+			if on then rd[s] = (rd[s] or 0) + 1; end;
+		end;
+	end;
+	return n, rows.n, TRF_SyPtsOf(bits, rows.d), rd, rn;
+end;
+
+-- The Survey log text (Job log, 8.4).
+function TRF_SyLogText()
+	local rows = TRF_SyRows();
+	local n, N, pts, rd, rn = TRF_SyCounts();
+	local W = 0;
+	for i = 1, rows.n do W = W + (rows.d[i].w or 1); end;
+	local o = TRF_SyTxt("syljhead", pts, W, n, N);
+	local rl = nil;
+	for b = 1, TRF_SyNRg() do
+		if rn[b] then
+			local e = TRF_SyTxt("syljrg", TRF_SyRgTxt(b), rd[b] or 0, rn[b]);
+			if rl then rl = rl..", "..e; else rl = e; end;
+		end;
+	end;
+	if rl then o = o.." "..rl.."."; end;
+	local sl = TRF_SyChartList(1);
+	if sl then o = o.." "..TRF_SyTxt("syljsell", sl); end;
+	local so = TRF_SyChartList(2);
+	if so then o = o.." "..TRF_SyTxt("syljsold", so); end;
+	return o;
+end;
+
+-- The entry wanted now: entry (quest, log), title, text or key, list (jobs, quest); nil without one.
+function TRF_SyLbWant()
+	local K = TRF_SyK();
+	local jl = TRF_N("TRF_JbLog") == 1;
+	local R = TRF_SyRun();
+	if R then
+		if jl then return "quest", TRF_SyTxt("syqt"), TRF_SyQText(R), "jobs"; end;
+		local d = "#TRF_syqd20";
+		if R.s == 1 then d = "#TRF_syqd"..TRF_SyCnt(R.c); end;
+		return "quest", "#TRF_syqt", d, "quest";
+	end;
+	if TRF_N("TRF_IqDone", K.q) == 1 then
+		if jl then return "log", TRF_SyTxt("sylt"), TRF_SyLogText(), "jobs"; end;
+		return "log", "#TRF_sylt", "#TRF_syld", "quest";
+	end;
+	return nil;
+end;
+
+-- 1 when list (jobs, quest) holds the entry.
+function TRF_SyLbHas(list)
+	local K = TRF_SyK();
+	if list == "jobs" then
+		if TRF_SyJGet(K.qid) then return 1; end;
+		return nil;
+	end;
+	if TRF_SyQs(K.qid) ~= nil then return 1; end;
+	return nil;
+end;
+
+function TRF_SyLbRem(list, ent, why)
+	local K = TRF_SyK();
+	local r = nil;
+	if list == "jobs" then r = TRF_SyJRem(K.qid); else r = TRF_SyQRem(K.qid); end;
+	if r then TRF_SyE("logbook", "id", K.qid, "entry", ent, "list", list, "result", "removed", "reason", why); end;
+	return r;
+end;
+
+function TRF_SyLbAdd(list, ent, t, d, res, why)
+	local K = TRF_SyK();
+	local r, w = nil, nil;
+	if list == "jobs" then r, w = TRF_SyJAdd(K.qid, t, d); else r, w = TRF_SyQAdd(K.qid, t, d); end;
+	if r ~= 1 then
+		TRF_SyE("logbook", "id", K.qid, "entry", ent, "list", list, "result", "failed", "reason", tostring(w));
+		return nil;
+	end;
+	TRF_SyE("logbook", "id", K.qid, "entry", ent, "list", list, "result", res, "reason", why);
+	return 1;
+end;
+
+-- The logbook step of why: accept, handin, dock (write when the text changed), enter, load (restore a missing entry),
+-- lapse (remove).
+function TRF_SyLogbook(why)
+	call(TRF_SyLbBody, {why}, "x", TRF_SyErr);
+end;
+
+function TRF_SyLbBody(why)
+	if TRF_N("TRF_PlQuest") then return; end;
+	local kp = TRF_SyKeep();
+	local ent, t, d, list = TRF_SyLbWant();
+	if why == "lapse" or not ent then
+		local ls = {"jobs", "quest"};
+		for i = 1, 2 do
+			if TRF_SyLbHas(ls[i]) then TRF_SyLbRem(ls[i], kp.ent or "quest", why); end;
+		end;
+		kp.txt = nil; kp.ent = nil;
+		return;
+	end;
+	local has = TRF_SyLbHas(list);
+	if why == "enter" or why == "load" then
+		if not has then
+			if TRF_SyLbAdd(list, ent, t, d, "restored", why) then kp.txt = d; kp.ent = ent; end;
+		elseif kp.txt == nil and list == "quest" then
+			-- After a load an existing mission-list entry counts as current (AddQuest notices at every call).
+			kp.txt = d; kp.ent = ent;
+		end;
+		return;
+	end;
+	local res = nil;
+	if why == "accept" or why == "handin" then
+		res = "added";
+	elseif not has then
+		res = "added";
+	elseif kp.ent ~= ent or (kp.txt ~= d and (list == "jobs" or ent == "quest")) then
+		res = "rewritten";
+	end;
+	if not res then
+		if kp.txt == nil then kp.txt = d; kp.ent = ent; end;
+		return;
+	end;
+	if has then
+		if why == "handin" or why == "accept" then TRF_SyLbRem(list, kp.ent or "quest", why); else TRF_SyRemQuiet(list); end;
+	end;
+	if TRF_SyLbAdd(list, ent, t, d, res, why) then
+		kp.txt = d; kp.ent = ent;
+		if list == "jobs" and (why == "accept" or why == "handin") then TRF_N("TRF_PlSay", TRF_SyTxt("sylog")); end;
+	end;
+end;
+
+-- Removes the entry before a rewrite (the rewritten line covers it).
+function TRF_SyRemQuiet(list)
+	local K = TRF_SyK();
+	if list == "jobs" then return TRF_SyJRem(K.qid); end;
+	return TRF_SyQRem(K.qid);
+end;
+
+-- Trade dock line 75 (8.1) --------------------------------------------------------------------
+
+-- After the charter's 70, before the debrief's 80: the hand-in, the chart sale, the logbook, the count line.
+function TRF_Sy_TradeLine(kind, param)
+	if kind ~= "trade" then return nil; end;
+	local o = call(TRF_SyTradeBody, {}, "x", TRF_SyErr);
+	if type(o) == "table" and getn(o) > 0 then return o; end;
+	return nil;
+end;
+
+function TRF_SyTradeBody()
+	local sy = %SY;
+	if not TRF_SyOn() then return nil; end;
+	local cur = TRF_SyCur();
+	if TRF_SyGateR(cur, "dock") then return nil; end;
+	if TRF_N("TRF_Quiet") then TRF_SySkip(cur, "quiet"); return nil; end;
+	local out = {};
+	local K = TRF_SyK();
+	local T = TRF_SyTune();
+	local legs = TRF_SyLegs();
+	-- 1: the hand-in (7.3).
+	local R = TRF_SyRun();
+	if R and R.s == 2 and TRF_SyOpt("sy_quest") == 1 and TRF_N("TRF_IqEnd", K.q, "done") == 1 then
+		tinsert(out, TRF_SyTxt("syhand"));
+		TRF_SyE("handin", "system", TRF_SyName(cur), "leg", legs, "result", "done");
+		TRF_N("TRF_MarkerClear", "survey");
+		sy.mk = nil; sy.lk = nil;
+		TRF_SyLogbook("handin");
+	end;
+	-- 2: the chart sale (8.1 step 2, 8.2, 8.3).
+	if TRF_SyOpen(nil) then
+		local rows = TRF_SyRows();
+		local dslot = TRF_SySlot(cur);
+		local bits, bl, nrg = TRF_SyState();
+		local thr = TRF_SyThrOf(TRF_SyPtsOf(bits, rows.d), T);
+		local sold, ch = 0, nil;
+		for slot = 1, nrg do
+			local B = TRF_SyBlockOf(bl[slot], legs);
+			if B and B.st == 1 then
+				if slot == dslot then
+					if not sy.pr["wait"..slot] then
+						sy.pr["wait"..slot] = 1;
+						TRF_SyDE("sell", "region", slot, "dock_system", TRF_SyName(cur), "dock_region", dslot, "result", "wait", "reason", "region");
+					end;
+				elseif sold < T.sy_sell_max then
+					local W = rows.W[slot] or 0;
+					local ph = TRF_SySlotPh(slot);
+					local V, steps = TRF_SyValueOf(TRF_SyPayN(cur), W, B.ph, ph, B.age, thr, T);
+					local paid = 0;
+					if V > 0 then paid = TRF_N("TRF_Pay", V, "survey_chart") or 0; end;
+					if V > 0 and paid <= 0 then
+						TRF_SyE("sell", "region", slot, "dock_system", TRF_SyName(cur), "dock_region", dslot, "value", V, "result", "wait", "reason", "pay");
+					else
+						bl[slot] = "s";
+						ch = 1;
+						sold = sold + 1;
+						TRF_N("TRF_RingPush", dslot, {k=14, s=cur, l=7, c=0, a=slot, w=1});
+						tinsert(out, TRF_SyTxt("sysell", TRF_SyRgTxt(slot), W, paid));
+						TRF_SyE("sell", "region", slot, "dock_system", TRF_SyName(cur), "dock_region", dslot, "weight", W, "phase", ph, "steps", steps,
+							"age", B.age, "value", paid, "result", "sold");
+					end;
+				end;
+			end;
+		end;
+		if ch then TRF_SyStore(bits, bl, nrg); end;
+	end;
+	-- 3: the logbook.
+	TRF_SyLogbook("dock");
+	-- 4: the count line (no Job log, survey open, the count changed since the last shown).
+	if TRF_SyOpen(nil) and TRF_N("TRF_JbLog") ~= 1 then
+		local kp = TRF_SyKeep();
+		local n, N, pts = TRF_SyCounts();
+		if kp.cnt ~= n then
+			kp.cnt = n;
+			tinsert(out, TRF_SyTxt("sycount", n, N, pts, TRF_SyChartList(1) or TRF_SyTxt("synone")));
+		end;
+	end;
+	return out;
+end;
+
+-- Quest step 0: the offer (7.1) ---------------------------------------------------------------
+
+-- Card picks of the dock system cur in region slot (4.3): the three ids, or nil, "few".
+function TRF_SyPicks(cur, slot)
+	local rows = TRF_SyRows();
+	local l = rows.rg[slot] or {};
+	local ids, why, hh = {}, {}, {};
+	local legs = TRF_SyLegs();
+	for i = 1, getn(l) do
+		local id = l[i];
+		tinsert(ids, {id=id, s=rows.ix[id]});
+		why[id] = TRF_SyLmWhy(id, "name");
+		hh[id] = TRF_SyHashOf(legs, cur, id);
+	end;
+	return TRF_SyPickOf(ids, TRF_SyDistFrom(cur), hh, why);
+end;
+
+-- Offer gate at a trade dock in system cur (7.1): nil and the three ids (show), or the reason.
+function TRF_SyOfferWhy(cur)
+	if not TRF_SyOn() or TRF_SyOpt("sy_quest") ~= 1 then return "off"; end;
+	if TRF_SyOpt("sy_gate") == 0 then return "gate"; end;
+	local K = TRF_SyK();
+	if TRF_N("TRF_IqDone", K.q) == 1 then return "done"; end;
+	if not TRF_SyMapSys(cur) then return "nomap"; end;
+	local T = TRF_SyTune();
+	local c = TRF_SyCh();
+	if c < T.sy_ch or c > T.sy_ch_end then return "chapter"; end;
+	if TRF_N("TRF_PlQuest") then return "mission"; end;
+	if TRF_SyLatch() then return "latch"; end;
+	if type(TRF_Ch_Office) ~= "function" then return "office:missing"; end;
+	local n, ow = TRF_Ch_Office();
+	if type(n) ~= "number" then return "office:"..tostring(ow); end;
+	local slot = TRF_SySlot(cur);
+	if not slot then return "region"; end;
+	local ids = TRF_SyPicks(cur, slot);
+	if not ids then return "few"; end;
+	local I = TRF_N("TRF_IqGet");
+	if type(I) ~= "table" then return "plumb"; end;
+	if I.q ~= 0 then return "busy"; end;
+	if TRF_N("TRF_IqWait", K.q, T.sy_dc) == 1 or %SY.v.dec == 1 then return "declined"; end;
+	local ok, gw = nil, "nosafety";
+	if type(TRF_StrictOk) == "function" then ok, gw = TRF_StrictOk(cur, "survey"); end;
+	if not ok then return "strict:"..tostring(gw); end;
+	return nil, ids;
+end;
+
+-- The box text of the offer in region slot naming ids.
+function TRF_SyBoxText(slot, ids)
+	local p = {};
+	for i = 1, 3 do p[i] = TRF_SyPlace(ids[i]); end;
+	return TRF_SyTxt("sybox", TRF_SyRgTxt(slot), p[1]..", "..p[2].." and "..p[3]);
+end;
+
+-- The offer box spec at a trade dock (gate, SY.offer), or nil.
+function TRF_SyBoxSpec(kind)
+	if kind ~= "trade" or not TRF_SyOn() or TRF_N("TRF_Quiet") then return nil; end;
+	local sy = %SY;
+	local cur = TRF_SyCur();
+	local why, ids = TRF_SyOfferWhy(cur);
+	if why then
+		TRF_SyDE("offer", "system", TRF_SyName(cur), "result", "none", "reason", why);
+		return nil;
+	end;
+	local K = TRF_SyK();
+	local slot = TRF_SySlot(cur);
+	local g = TRF_SyGen();
+	sy.offer = {sys=cur, g=g, ids=ids, slot=slot};
+	return {title="#UI_TradeStationWndCaption", text=TRF_SyBoxText(slot, ids), ok="TRF_Sy_BoxOk", no="TRF_Sy_BoxNo",
+		shown="TRF_Sy_BoxShown", fail="TRF_Sy_BoxFail", a={g=g, src=cur}, own="sy",
+		card={id=K.jid, header=TRF_SyTxt("syjobh"), title=TRF_SyTxt("sybt")}};
+end;
+
+-- Trade box 410 (above the parcel offer 400, below the debrief 420 and the freight quest 450). None after the Office board
+-- was set at this docking (cfg jobs_ui 2: the offer is its row, TRF_Sy_JobRow).
+function TRF_Sy_DockBox(kind, param)
+	if TRF_N("TRF_JbSet") then return nil; end;
+	return TRF_SyBoxSpec(kind);
+end;
+
+-- Office board row 410 (station-jobs-spec 5.2): the box spec as a row.
+function TRF_Sy_JobRow(kind, param)
+	local s = TRF_SyBoxSpec(kind);
+	local o = %SY.offer;
+	if type(s) ~= "table" or type(o) ~= "table" then return nil; end;
+	TRF_SyE("offer", "system", TRF_SyName(o.sys), "region", o.slot, "landmarks", TRF_SyIds(o.ids), "result", "listed", "via", "board");
+	return {id=s.card.id, header=s.card.header, title=s.card.title, text=s.text, short=TRF_SyTxt("syjobs", TRF_SyRgTxt(o.slot)),
+		ok="TRF_Sy_BoxOk", no=s.no, shown=s.shown, took="TRF_Sy_JobTook", a=s.a};
+end;
+
+-- 1 once the quest is taken or done (the Office row closes).
+function TRF_Sy_JobTook(a)
+	if TRF_SyRun() or TRF_N("TRF_IqDone", TRF_SyK().q) == 1 then return 1; end;
+	return nil;
+end;
+
+-- Offer shown: via "card", "board", else the box.
+function TRF_Sy_BoxShown(a, via)
+	local o = %SY.offer;
+	if type(o) ~= "table" then return; end;
+	TRF_SyE("offer", "system", TRF_SyName(o.sys), "region", o.slot, "landmarks", TRF_SyIds(o.ids), "result", "shown", "via", via or "box");
+end;
+
+function TRF_Sy_BoxFail(a)
+	local sy = %SY;
+	sy.offer = nil;
+	TRF_SyE("offer", "result", "failed", "reason", "box");
+end;
+
+-- OK (box, card, Office row): the gate again, TRF_IqTake(4, id1, id2 x 100 + id3), the logbook, the markers; the reply
+-- syok.
+function TRF_Sy_BoxOk(a)
+	local sy = %SY;
+	local o = sy.offer;
+	sy.offer = nil;
+	local cur = TRF_SyCur();
+	if type(o) ~= "table" or type(a) ~= "table" or a.g ~= TRF_SyGen() or o.g ~= a.g or o.sys ~= cur or TRF_SyOfferWhy(cur) then
+		TRF_SyE("accept", "system", TRF_SyName(cur), "result", "stale");
+		return nil;
+	end;
+	local K = TRF_SyK();
+	local ok, w = TRF_N("TRF_IqTake", K.q, o.ids[1], o.ids[2] * 100 + o.ids[3]);
+	if ok ~= 1 then
+		TRF_SyE("accept", "system", TRF_SyName(cur), "landmarks", TRF_SyIds(o.ids), "result", "busy", "reason", tostring(w));
+		return nil;
+	end;
+	TRF_SyE("accept", "system", TRF_SyName(cur), "landmarks", TRF_SyIds(o.ids), "leg", TRF_SyLegs(), "result", "ok");
+	TRF_SyLogbook("accept");
+	sy.lk = nil;
+	TRF_SyMarkers(cur);
+	return TRF_SyTxt("syok");
+end;
+
+-- Cancel: the decline stamp of TRF.iq (no offer for sy_dc legs), none again in this visit. Esc of the card (ev "esc"):
+-- nothing, the offer comes at the next docking.
+function TRF_Sy_BoxNo(a, ev)
+	local sy = %SY;
+	local o = sy.offer;
+	sy.offer = nil;
+	if ev == "esc" then
+		if type(o) == "table" then TRF_SyE("decline", "system", TRF_SyName(o.sys), "leg", TRF_SyLegs(), "result", "closed"); end;
+		return nil;
+	end;
+	sy.v.dec = 1;
+	if type(o) ~= "table" then TRF_SyE("decline", "result", "stale"); return nil; end;
+	TRF_N("TRF_IqDecline", TRF_SyK().q);
+	TRF_SyE("decline", "system", TRF_SyName(o.sys), "leg", TRF_SyLegs(), "result", "declined");
+	return nil;
+end;
+
+-- Lapse (trf_plumb TRF_IqStale through TRF_IqOwners): the run ends without a penalty, the entry and the markers go; the
+-- rows read stay read.
+function TRF_Sy_IqLapse()
+	local R = TRF_SyRun();
+	if not R then return; end;
+	TRF_N("TRF_IqEnd", TRF_SyK().q, "lapsed");
+	TRF_N("TRF_MarkerClear", "survey");
+	TRF_SyLogbook("lapse");
+	TRF_SyE("lapse", "step", R.s * 10, "quest_mask", R.c, "leg", TRF_SyLegs(), "result", "lapsed");
+end;
+
+-- Contract ---------------------------------------------------------------------------------
+
+-- trf_gen's TRF_WindDown v1 list: the quest markers go.
+function TRF_Sy_WindDown()
+	local sy = %SY;
+	sy.mk = nil;
+	TRF_N("TRF_MarkerClear", "survey");
+end;
+
+-- trf_plumb TRF_InstallPlumb: trade line 75, trade box 410, Office row 410.
+function TRF_Sy_Plumb()
+	local K = TRF_SyK();
+	TRF_DockLine("trade", K.line, "TRF_Sy_TradeLine");
+	TRF_DockBox("trade", K.box, "TRF_Sy_DockBox");
+	TRF_JobRow("trade", K.row, "TRF_Sy_JobRow");
+end;
+
+-- Repair (6.5, 3.3; from TRF_Repair after TRF_Sg_Fix, so after TRF_Pl_Fix has repaired TRF.iq).
+function TRF_Sy_Fix()
+	if type(TRF) ~= "table" then return; end;
+	call(TRF_SyFixBody, {}, "x", TRF_SyErr);
+end;
+
+function TRF_SyFixBody()
+	local rows = TRF_SyRows();
+	local nrg = TRF_SyNRg();
+	-- Without the map or the region table nothing can be checked (a string is kept as it is).
+	if nrg == 0 or rows.n == 0 or not TRF_SyMap() then return; end;
+	local ph = {};
+	for b = 1, nrg do ph[b] = TRF_SySlotPh(b); end;
+	local o, ch = TRF_SyFixOf(TRF.sy, rows.n, nrg, rows.sl, TRF_SyLegs(), ph);
+	TRF.sy = o;
+	for i = 1, getn(ch) do TRF_SyE("fix", "field", ch[i][1], "result", ch[i][2], "reason", ch[i][3]); end;
+	TRF_SyQuestFix(rows);
+end;
+
+-- Quest 4 checks of 3.3: a bad step, row or mask, or the done bit with an active run: dropped; the mask and the step
+-- made to agree.
+function TRF_SyQuestFix(rows)
+	local R = TRF_SyRun();
+	if not R then return; end;
+	local K = TRF_SyK();
+	local bad = nil;
+	if R.s ~= 1 and R.s ~= 2 then bad = "s"; end;
+	if not bad then
+		local seen, sl = {}, nil;
+		for i = 1, 3 do
+			local id = R.ids[i];
+			if type(id) ~= "number" or id < 1 or id > rows.n or seen[id] or not rows.sl[id] then bad = "t";
+			else
+				seen[id] = 1;
+				if sl and rows.sl[id] ~= sl then bad = "t"; end;
+				sl = rows.sl[id];
+			end;
+		end;
+	end;
+	if not bad and (R.c < 0 or R.c > 7) then bad = "c"; end;
+	if not bad and TRF_N("TRF_IqDone", K.q) == 1 then bad = "done"; end;
+	if bad then
+		TRF_N("TRF_IqEnd", K.q, "dropped");
+		TRF_SyE("fix", "field", "quest", "result", "dropped", "reason", bad);
+		return;
+	end;
+	if (R.s == 1 and R.c == 7) or (R.s == 2 and R.c ~= 7) then
+		TRF_N("TRF_IqSet", K.q, 2, R.t, 7);
+		TRF_SyE("fix", "field", "quest", "result", "reset", "reason", "step");
+	end;
+end;
+
+-- "module=survey event=dump on=1 row_count=46 read_count=12 points=27 charts=1:s,4:2212 quest=4/1/17/1918/3"
+function TRF_Sy_Dump()
+	if type(TRF) ~= "table" then return; end;
+	local rows = TRF_SyRows();
+	local bits, bl, nrg = TRF_SyState();
+	local n = 0;
+	for id = 1, rows.n do if TRF_SyBitOf(bits, id) then n = n + 1; end; end;
+	local ch = nil;
+	for b = 1, nrg do
+		if (bl[b] or "") ~= "" then
+			local e = b..":"..bl[b];
+			if ch then ch = ch..","..e; else ch = e; end;
+		end;
+	end;
+	local R = TRF_SyRun();
+	local q = nil;
+	if R then q = "4/"..R.s.."/"..R.t.."/"..R.sd.."/"..R.c; end;
+	TRF_SyE("dump", "on", TRF_SyOpt("survey"), "row_count", rows.n, "read_count", n, "points", TRF_SyPtsOf(bits, rows.d), "charts", ch,
+		"quest", q);
+end;
+
+-- Defaults (10) ------------------------------------------------------------------------------
+
+-- survey 0: no reading, offer, hand-in, sale, line or marker (TRF.sy and TRF.iq kept and repaired; an active run lapses
+-- after iq_stale). sy_quest 0: no offer, count or hand-in. sy_gate 0: the survey open from sy_ch without the quest (no
+-- offer). survey_at (debug): in that system the survey counts as open.
+function TRF_Sy_OptDef()
+	return {survey=1, sy_quest=1, sy_gate=1, survey_at=""};
+end;
+
+function TRF_Sy_TuneDef()
+	return {sy_ch=5, sy_ch_end=20, sy_read_r=250, sy_rp_min=70, sy_hold=20, sy_near_r=800, sy_fee_k=5, sy_chart_k=8, sy_chart_drop=15,
+		sy_chart_lo=25, sy_chart_old=40, sy_thr1=30, sy_thr2=60, sy_thr_k=10, sy_sell_max=2, sy_dc=2, sy_secs=8};
+end;
+
+-- Texts (9), EN. The style guide: plain sentences, "portal" never "gate" for a working portal ("an old gate" names the
+-- ruins), no mechanic words beyond "survey points".
+function TRF_Sy_Text()
+	return {
+		sykrp = "the random portal",
+		sykgr = "an old gate",
+		syksr = "a wrecked station",
+		sykhk = "a dead capital ship",
+		sykwf = "a field of wrecks",
+		sykcs = "a cluster of closed stations",
+		syplace = "$1 in $2 by the $3 portal",                                    -- kind, system, portal destination
+		synear = "Survey scope: $1 about $2 units out. Hold within $3 units for $4 seconds to log it.",
+		syhold = "Survey scope locked on $1. Hold position.",
+		syread = "Survey reading logged: $1 in $2. The FTU survey office credits $3 cr.",
+		syread0 = "Survey reading logged: $1 in $2.",
+		sypsig = "The scope also logs a looping distress call from $1.",
+		sypbase = "Survey traffic places a pirate base in $1.",
+		syproute = "Next for the $1 chart: $2, $3.",                               -- region, place, route
+		syjhere = "in this system",
+		syj1 = "one jump on through the $1 portal",
+		syjn = "$1 jumps on through the $2 portal",
+		sypchart = "That completes the $1 chart. It sells once to an FTU office outside the region.",
+		sythr = "Survey points: $1. The FTU office now pays $2 percent more for your readings and charts.",
+		syqcnt = "Chart the frontier: $1 of 3 readings logged.",
+		syqall = "Chart the frontier: all three readings logged. Hand them in at any FTU trade station.",
+		syhand = "FTU clerk: Three clean readings, logged and filed. The survey office is open to you now: every landmark you log pays, and a full region chart sells once to an office outside that region. Over and out.",
+		sysell = "FTU clerk: A fresh chart of the $1 region, $2 survey points. The office pays $3 cr and files it under the Star Wolves' name.",
+		sycount = "Survey log: $1 of $2 landmarks, $3 points. Charts to sell: $4.",
+		synone = "none",
+		syjobh = "Chart the frontier",
+		sybt = "Charter office",
+		sybox = "FTU clerk: The survey office needs fresh readings for the $1 chart. Hold the mothership near three places and let the scope log them: $2. Each reading pays when it is logged. Will you take it?",
+		syjobs = "Charter office: survey readings for the $1 chart",
+		syok = "FTU clerk: 'The three places are on your nav display. Over and out.'",
+		syqt = "Chart the frontier",
+		syqj = "Survey readings for the FTU charter office: $1.",
+		syqd0 = "Take three survey readings for the FTU charter office. None logged yet. The places are marked in their systems.",
+		syqd1 = "Take three survey readings for the FTU charter office. One of three logged. The places are marked in their systems.",
+		syqd2 = "Take three survey readings for the FTU charter office. Two of three logged. The places are marked in their systems.",
+		syqd20 = "All three readings are logged. Hand them in at any FTU trade station.",
+		sylt = "Survey log",
+		syld = "FTU survey office: every landmark you log pays at once, and a full region chart sells once outside its region. The trade dock line gives your count.",
+		syljhead = "Survey points $1 of $2, landmarks $3 of $4.",
+		syljrg = "$1 $2 of $3",                                                    -- region, read, rows
+		syljsell = "Charts to sell: $1.",
+		syljsold = "Sold: $1.",
+		sylog = "Survey log added to the Job log.",
+		synav = "Survey point",
+	};
+end;

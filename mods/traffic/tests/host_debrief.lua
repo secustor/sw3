@@ -23,7 +23,7 @@ dostring(strsub(src, 1, cut), "host_parcel.lua");
 -- captains (their board and informant off) and contracts on; the freight quest, temperaments, corp, warnings, remarks off;
 -- the box path of the jobs UI; log 2; plus t.
 function DB_Cfg(t)
-	local c = {debrief=1, debrief_xp=1, db_gate=1, db_dialog=0, charter=1, enable_parcels=1, pcl_prize_gap=0, cap_enable=1, cap_board=0,
+	local c = {debrief=1, debrief_xp=1, db_gate=1, db_dialog=0, survey=0, charter=1, enable_parcels=1, pcl_prize_gap=0, cap_enable=1, cap_board=0,
 		cap_intel=0, cap_chase=0, enable_wq=0, temper=0, corp=0, warn=0, remarks=0, jobs_ui=0, log=2};
 	if t then for k, v in t do c[k] = v; end; end;
 	return c;
@@ -241,10 +241,10 @@ end;
 function T_DB_A()
 	local h = HOST();
 	DB_Begin("altair", "5_1");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=23") >= 1, "trf_debrief loads before trf_tips and trf_spec (extra_count=23)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=24") >= 1, "trf_debrief loads before trf_tips and trf_spec (extra_count=24)");
 	local ml, pm, tf, uf = TRF_ModList(), TRF_PlMods(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml) - 3] == "Db" and pm[getn(pm) - 1] == "Db" and tf[getn(tf) - 4] == "TRF_Db_Text" and tf[getn(tf)] == "TRF_Loc_Text"
-		and uf[getn(uf) - 3] == "TRF_Db_Text" and TRF_PlCounts().stl == 1 and TRF_IqOwners()[2] == "TRF_Db_IqLapse",
+	HOST_Check(ml[getn(ml) - 4] == "Db" and pm[getn(pm) - 2] == "Db" and tf[getn(tf) - 5] == "TRF_Db_Text" and tf[getn(tf)] == "TRF_Loc_Text"
+		and uf[getn(uf) - 4] == "TRF_Db_Text" and TRF_PlCounts().stl == 1 and TRF_IqOwners()[2] == "TRF_Db_IqLapse",
 		"Db last in TRF_PlMods and before Ti in TRF_ModList, TRF_Db_Text before TRF_Ti_Text in both text lists, one settlement handler, the lapse owner of quest 2");
 	-- cfg and tune defaults, clamps (8).
 	local d, e = TRF_Db_OptDef(), TRF_OptEnum();

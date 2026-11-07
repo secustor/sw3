@@ -24,7 +24,7 @@
 -- (design/static-signals-spec.md 7: the lg argument of TRF_MarkerAdd).
 -- Saved fields: TRF.job (one open job), TRF.iq (the shared intro-quest record, design/temperament-spec.md 3.1: one
 -- active intro quest, done and reward bits, the lapse and decline stamp; API TRF_Iq*; quest 1 Clan file of trf_temper,
--- quest 2 Report in of trf_debrief), TRF.mk (packed marker labels, for
+-- quest 2 Report in of trf_debrief, quest 4 Chart the frontier of trf_survey), TRF.mk (packed marker labels, for
 -- the cleanup after a load), TRF.live box/bt/ev/esc/arq/ag (visit slots; TRF.live is rebuilt on entry and load). Handles:
 -- TRF_H().mk.
 -- Top level: functions and P only.
@@ -280,7 +280,7 @@ end;
 
 -- Modules whose TRF_<M>_Plumb() registers handlers (TRF_InstallPlumb).
 function TRF_PlMods()
-	return {"Shop", "Hail", "Faction", "Events", "Gen", "Stn", "Sv", "Lad", "Ch", "Cap", "Sh", "Fr", "Haunt", "Pc", "Mc", "Wq", "Wn", "Te", "Crp", "Db", "Sg"};
+	return {"Shop", "Hail", "Faction", "Events", "Gen", "Stn", "Sv", "Lad", "Ch", "Cap", "Sh", "Fr", "Haunt", "Pc", "Mc", "Wq", "Wn", "Te", "Crp", "Db", "Sg", "Sy"};
 end;
 
 -- Group and allocator prefixes of the worldbuilding features (00 section 6, "Group and allocator names"):
@@ -1582,9 +1582,10 @@ function TRF_PlTune(key)
 	return v;
 end;
 
--- The owner function of each quest id (its lapse handler); a later quest adds its own.
+-- The owner function of each quest id (its lapse handler); a later quest adds its own. "" for quest 3 (not built):
+-- TRF_IqStale ends it itself.
 function TRF_IqOwners()
-	return {"TRF_Te_IqLapse", "TRF_Db_IqLapse"};
+	return {"TRF_Te_IqLapse", "TRF_Db_IqLapse", "", "TRF_Sy_IqLapse"};
 end;
 
 -- Lapse (entry and load): an active quest without progress for iq_stale legs (0: never) calls its owner; a missing owner

@@ -1287,6 +1287,46 @@ Wave 3 item 10 of the roadmap, A08 (spec [design/static-signals-spec.md](design/
 
 W-A08.1 (a source lights and feeds the ring), W-A08.2 (line only on an empty entry), W-A08.3 (the static plays), W-A08.4 (the broken phrase as radio), W-A08.5 (one line per source), W-A08.6 (the reading gives the marker and the threat word), W-A08.7 (area bound), W-A08.8 (show before pickup, pickup at 8x), W-A08.9 (quest safety), W-A08.10 (nothing left behind, offer cap); [design/PROGRESS.md](design/PROGRESS.md) "Wave 3 (host-tested only)", scored by `tools/check_ingame.py`. Play with `LOG=2 SIGNAL_AT=sunji` in chapter 5 or later.
 
+## Survey (`EXP=0 TRAFFIC=1`)
+
+Wave 3 item 12 of the roadmap, A12 step 2 (spec [design/survey-spec.md](design/survey-spec.md), data [design/mod-research/survey-landmarks.md](design/mod-research/survey-landmarks.md); owner decisions 1-15 of spec 2.1 taken 2026-11-07 as recommended): module `trf_survey`, loaded after `trf_signal` (`extra_count=24`). On by default (cfg `survey` 1). Saved: the string `TRF.sy` (read bits and one chart block per region, 73 bytes worst case, 70 with the generated table; full state `v1-n` 97,733 bytes) and quest 4 of `TRF.iq`. Host-tested only (`sy-a`..`sy-h`), not run in the game. A07 trail pointers, `PlaceModule` finds, RU text and dialog windows come later.
+
+### What the player sees
+
+- 46 landmarks in the 8 clan regions (`tools/gen_survey.py` from the static objects of the location scripts): the random portals, old gates, wrecked stations, dead capital ships, wreck fields and clusters of closed stations. None in the lethal story systems (trf_warn's kill rows), Fronn, Elio, X297, Hephaestus or New Kyoto.
+- Within 800 units of an open landmark: "Survey scope: a dead capital ship about 700 units out. Hold within 250 units for 20 seconds to log it." Holding within 250 units for 20 seconds of game time (8x shortens the wait) logs the reading; leaving the radius resets the hold, a scene or a vanilla hold pauses it. A random portal counts only 70-250 units from it and only after chapter 8 opens the network.
+- Every reading pays the FTU survey fee at once (5 % of the dock pay basis per weight point, 450-1,350 cr at a pay basis of 9,000) and adds one line: a looping distress call in the region (A08), a pirate base's system, the way to the region's next landmark, or the completed region chart. Never a clan cache.
+- "Chart the frontier": at a trade station's charter office (chapter 5-18, help 3) the FTU clerk names three landmarks of the dock's region (job markers in their systems). Three readings, then the hand-in at any trade station opens the survey for every region. XT-27 has too few landmarks for a card; Hephaestus gets one from chapter 8.
+- A region read completely is a chart: it sells once, automatically, at the first trade station outside the region ("FTU clerk: A fresh chart of the Dosis region, 18 survey points. The office pays 12960 cr and files it under the Star Wolves' name."), worth less with every phase the region moved on since. Harbour news in the buyer's region tells that the Star Wolves sold it. 30 and 60 survey points add 10 % each to fees and charts.
+- The quest entry and then the Survey log are written only at the accept and at trade stations: the Job log with the places and counts (`JOBS_LOG=1`), else the mission list with fixed texts and a count line at the dock.
+- Nothing runs during a story mission visit, a scene, `__disableAction` or `__sys_SOS`, or in a system the strict gate denies (`survey`).
+
+### Config keys (survey)
+
+`install-test.sh` writes `SURVEY`, `SY_QUEST`, `SY_GATE` and `SURVEY_AT` only when set (`LEVEL=v01`/`v02` write `survey=0` unless `SURVEY` is set); tune keys go through `TUNE=key=value,...`.
+
+| key | default | meaning |
+|---|---|---|
+| `survey` | 1 | 0: no reading, offer, hand-in, sale, line or marker (`TRF.sy` kept) |
+| `sy_quest` | 1 | 0: no "Chart the frontier" offer, count or hand-in |
+| `sy_gate` | 1 | 1: the survey opens with the quest's hand-in; 0: open from chapter 5 without the quest, no offer |
+| `survey_at` | "" | debug: the survey counts as open in that system |
+| tune `sy_ch`, `sy_ch_end` | 5, 20 | chapter window |
+| tune `sy_read_r`, `sy_rp_min`, `sy_hold` | 250, 70, 20 | hold radius, the inner bound at a random portal, game seconds |
+| tune `sy_near_r` | 800 | near line distance |
+| tune `sy_fee_k`, `sy_chart_k` | 5, 8 | fee and chart value in % of `TRF_PayN` per weight point |
+| tune `sy_chart_drop`, `sy_chart_lo`, `sy_chart_old` | 15, 25, 40 | % lost per phase step, floor in %, legs after which a chart counts 5 steps |
+| tune `sy_thr1`, `sy_thr2`, `sy_thr_k` | 30, 60, 10 | threshold points, bonus in % per threshold |
+| tune `sy_sell_max`, `sy_dc`, `sy_secs` | 2, 2, 8 | sales per docking, decline wait in legs, line seconds |
+
+### Log lines (survey)
+
+`module=survey event=enter`, `event=skip reason=`, `event=near`, `event=hold result=start|reset|paused`, `event=read ... fee= payoff= payoff_system= quest_mask= result=logged`, `event=threshold`, `event=chart`, `event=sell ... value= result=sold|wait`, `event=offer`, `event=accept`, `event=decline`, `event=handin`, `event=logbook entry= list= result=`, `event=lapse`, `event=jump`, `event=debug`, `event=fix`, `event=dump`, `event=error`; trf_plumb's `event=iq quest=4` and `event=marker owner=survey`, trf_region's `event=pay reason=survey|survey_chart`, trf_tips' `kind=chart`. Full list in [design/log-events.md](design/log-events.md) (survey, tips, plumb).
+
+### In-game checks (survey)
+
+W-A12.9 (the offer names three landmarks), W-A12.10 (every reading pays at once), W-A12.11 (one reading per landmark), W-A12.12 (the random-portal bound), W-A12.13 (quest safety), W-A12.14 (no stash named), W-A12.15 (the logbook only at docks), W-A12.16 (the hand-in opens the survey), W-A12.17 (the chart sells once and outside its region), W-A12.18 (the Wolves' name in a harbour line); [design/PROGRESS.md](design/PROGRESS.md) "Wave 3 (host-tested only)", scored by `tools/check_ingame.py`. Play with `LOG=2` in chapter 5 or later; `SURVEY_AT=xt20` for a free reading.
+
 ## Vanilla fixes
 
 The mod does not edit vanilla scripts. Where a vanilla flow misbehaves, it corrects the result at runtime and logs it.

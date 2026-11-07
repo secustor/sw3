@@ -143,9 +143,9 @@ function T_WQ_A()
 	local h = HOST();
 	WQ_Begin("debris6", "5_1");
 	local idx = TRF_CurIdx();
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=23") >= 1, "trf_wq loads before trf_warn and trf_remark (extra_count=23)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=24") >= 1, "trf_wq loads before trf_warn and trf_remark (extra_count=24)");
 	local ml, pm, tf, uf = TRF_ModList(), TRF_PlMods(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml) - 8] == "Wq" and pm[getn(pm) - 5] == "Wq" and tf[getn(tf) - 9] == "TRF_Wq_Text" and uf[getn(uf) - 8] == "TRF_Wq_Text",
+	HOST_Check(ml[getn(ml) - 9] == "Wq" and pm[getn(pm) - 6] == "Wq" and tf[getn(tf) - 10] == "TRF_Wq_Text" and uf[getn(uf) - 9] == "TRF_Wq_Text",
 		"Wq before Wn (trf_warn) at the end of TRF_ModList and TRF_PlMods, TRF_Wq_Text in both text lists");
 	HOST_Check(TRF_Wq_OptDef().enable_wq == 1 and TRF_WqOpt("enable_wq") == 1 and TRF_Opt("enable_wq") == 1, "cfg enable_wq 1 by default");
 	local T = TRF_WqTune();
@@ -161,7 +161,7 @@ function T_WQ_A()
 	for i = 1, getn(P.dock.trade.row) do ro = ro..P.dock.trade.row[i].o..":"..TRF_PlName(P.dock.trade.row[i].f)..","; end;
 	for i = 1, getn(P.seed) do so = so..P.seed[i].o..":"..TRF_PlName(P.seed[i].f)..","; end;
 	for i = 1, getn(P.rh) do rh = rh..TRF_PlName(P.rh[i].f)..","; end;
-	HOST_Check(strsub(bo, 1, 80) == "460:TRF_Wq_TalkBox,455:TRF_Db_TalkBox,450:TRF_Wq_DockBox,420:TRF_Db_DockBox,400:" and strsub(ro, 1, 40) == "450:TRF_Wq_JobRow,420:TRF_Db_JobRow,400:" and WQ_Has(so, "650:TRF_GnSeedCarrier,620:TRF_Wq_Seed,600:TRF_GnSeedFeq,")
+	HOST_Check(strsub(bo, 1, 99) == "460:TRF_Wq_TalkBox,455:TRF_Db_TalkBox,450:TRF_Wq_DockBox,420:TRF_Db_DockBox,410:TRF_Sy_DockBox,400:" and strsub(ro, 1, 58) == "450:TRF_Wq_JobRow,420:TRF_Db_JobRow,410:TRF_Sy_JobRow,400:" and WQ_Has(so, "650:TRF_GnSeedCarrier,620:TRF_Wq_Seed,600:TRF_GnSeedFeq,")
 		and WQ_Has(rh, "TRF_Wq_Help,"), "talk box 460, trade box 450 and board row 450 first, seed provider 620 between 650 and 600, the 8.5 resolver ("..bo.." "..so..")");
 	-- Texts.
 	local tx = TRF_Wq_Text();

@@ -2293,6 +2293,12 @@ function T_V1_N()
 	for b = 1, 8 do sgb[b] = {s=999, p=4, g=TRF.clock.legs, t=2}; end;
 	TRF.sg = TRF_SgJoinOf(sgb, 8);
 	HOST_Check(HOST_SaveSize(TRF.sg) + 10 == 89, "TRF.sg at its bound: "..(HOST_SaveSize(TRF.sg) + 10).." bytes with its key");
+	-- Survey layer worst case with the generated table (design/survey-spec.md 3.5): every row read, every chart unsold.
+	local syn = getn(TRF_SyData());
+	local syb = TRF_SySetOf("", 0, syn);
+	for i = 1, syn do syb = TRF_SySetOf(syb, i, syn); end;
+	TRF.sy = TRF_SyJoinOf(syb, {"5999", "5999", "5999", "5999", "5999", "5999", "5999", "5999"});
+	HOST_Check(HOST_SaveSize(TRF.sy) + 10 == 70 and HOST_SaveSize(TRF.sy) + 10 <= 73, "TRF.sy at its bound: "..(HOST_SaveSize(TRF.sy) + 10).." bytes with its key");
 	local mcz = HOST_SaveSize(TRF.mc);
 	TRF_Mc_Fix();
 	HOST_Check(HOST_SaveSize(TRF.mc) == mcz and mcz <= 6000, "merc worst case kept by the repair: "..mcz.." bytes <= 6000");
@@ -2319,7 +2325,7 @@ function T_V1_N()
 		and V_N(L.stat) <= 49 and getn(TRF_H().due) == 32 and L.due == nil, "bounds: tp 16, lr 2, base 4, pg 8, dc 1, stat 48 (+other), due 32 in H, not saved (stat "..V_N(L.stat)..")");
 	local size = 8 + 3 + HOST_SaveSize(TRF);
 	local parts, pl = "", {"sys", "rg", "clan", "short", "shops", "news", "newsx", "fs", "tp", "lr", "base", "feq", "offer", "std", "stn", "vo", "sv", "lad", "ch", "scar",
-		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "wq", "wn", "rm", "iq", "crp", "db", "ti", "sg", "live"};
+		"cap", "claim", "capch", "capg", "stash", "stx", "co", "haunt", "nv", "nst", "pcl", "mc", "wq", "wn", "rm", "iq", "crp", "db", "ti", "sg", "sy", "live"};
 	for i = 1, getn(pl) do parts = parts.." "..pl[i].."="..HOST_SaveSize(TRF[pl[i]]); end;
 	local lp, ll = "", {"tr", "stat", "rd", "cvs", "tq", "sw", "fq", "cr", "dc", "bs", "pg"};
 	for i = 1, getn(ll) do lp = lp.." "..ll[i].."="..HOST_SaveSize(L[ll[i]]); end;

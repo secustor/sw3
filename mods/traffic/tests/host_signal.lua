@@ -219,11 +219,11 @@ end;
 function T_SG_A()
 	local h = HOST();
 	SG_Begin("gredos");
-	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=23") >= 1, "trf_signal loads last (extra_count=23)");
+	HOST_Check(S_Logs(0, "module=core event=loaded map=true module_count=18 extra_count=24") >= 1, "trf_signal loads before trf_survey (extra_count=24)");
 	local ml, pm, tf, uf = TRF_ModList(), TRF_PlMods(), TRF_Loc_TextFns(), TRF_UI_TextFns();
-	HOST_Check(ml[getn(ml)] == "Sg" and ml[getn(ml) - 1] == "Spc" and pm[getn(pm)] == "Sg" and tf[getn(tf) - 1] == "TRF_Sg_Text"
-		and tf[getn(tf) - 2] == "TRF_Spc_Text" and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf)] == "TRF_Sg_Text",
-		"Sg last in TRF_ModList and TRF_PlMods; TRF_Sg_Text after TRF_Spc_Text in both text lists");
+	HOST_Check(ml[getn(ml) - 1] == "Sg" and ml[getn(ml) - 2] == "Spc" and pm[getn(pm) - 1] == "Sg" and tf[getn(tf) - 2] == "TRF_Sg_Text"
+		and tf[getn(tf) - 3] == "TRF_Spc_Text" and tf[getn(tf)] == "TRF_Loc_Text" and uf[getn(uf) - 1] == "TRF_Sg_Text",
+		"Sg before Sy (trf_survey) at the end of TRF_ModList and TRF_PlMods; TRF_Sg_Text after TRF_Spc_Text in both text lists");
 	HOST_Check(TRF_PlReg().off.signal == 1 and TRF_PlReg().off.stash == 1, "signal registers as an offer owner beside stash");
 	-- 15 keys; each resolves; no %, #, line break, "gate"; tisignal in TRF_Ti_Text; the scaffold has them.
 	local tx, bad, n = TRF_Sg_Text(), "", 0;
@@ -425,7 +425,8 @@ function T_SG_B()
 	r.t = 3; r.g = TRF.clock.legs;
 	TRF_SgPut(r);
 	HOST_Check(TRF_TiLiveSt(rr[1]) == "dead", "dead after the rest");
-	HOST_Check(TRF_TiRankOf(13) == TRF_TiRankOf(8) + 1 and TRF_TiRankOf(5) == TRF_TiRankOf(13) + 1, "tie order: signal right after wreck");
+	HOST_Check(TRF_TiRankOf(13) == TRF_TiRankOf(8) + 1 and TRF_TiRankOf(14) == TRF_TiRankOf(13) + 1 and TRF_TiRankOf(5) == TRF_TiRankOf(14) + 1,
+		"tie order: signal right after wreck, then the survey chart (design/survey-spec.md 8.3)");
 	-- Expiry with the gate: a quest names the system now (stubbed strict gate).
 	TRF.sg = nil;
 	r = SG_Set("sunji", 1, 1, 2);

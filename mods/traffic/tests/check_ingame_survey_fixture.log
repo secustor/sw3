@@ -1,0 +1,98 @@
+traffic: lua: exp=v1 module=state event=enter generation=200 fresh=false system=dalled legs=140
+traffic: lua: exp=v1 module=safety event=activate system=dalled mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=survey event=enter system=dalled system_index=16 landmark_count=0 open=closed marker_count=0 via=enter
+traffic: lua: exp=v1 module=charter event=dock system=dalled line_count=0 board_count=1 new_count=0 suspended=nil
+traffic: lua: exp=v1 module=survey event=offer system=dalled region=1 landmarks=4,6,1 result=shown via=box
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=1 box=sy priority=410 result=box
+traffic: lua: exp=v1 module=plumb event=iq quest=4 step=1 target=4 count=0 result=taken reason=nil
+traffic: lua: exp=v1 module=survey event=accept system=dalled landmarks=4,6,1 leg=140 result=ok
+traffic: lua: exp=v1 module=survey event=logbook id=trf_sy entry=quest list=quest result=added reason=accept
+traffic: lua: exp=v1 module=survey event=dump on=1 row_count=46 read_count=0 points=0 charts=nil quest=4/1/4/601/0
+traffic: lua: exp=v1 module=state event=enter generation=201 fresh=false system=xt20 legs=141
+traffic: lua: exp=v1 module=safety event=activate system=xt20 mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=plumb event=marker owner=survey label=TRF_SY_NP_4 result=added
+traffic: lua: exp=v1 module=survey event=enter system=xt20 system_index=100 landmark_count=1 open=quest marker_count=1 via=enter
+traffic: lua: exp=v1 module=survey event=near system=xt20 landmark=4 kind=hk distance=790
+traffic: lua: exp=v1 module=survey event=hold system=xt20 landmark=4 kind=hk distance=210 hold=0.000 result=start
+traffic: lua: exp=v1 module=region event=pay reason=survey amount=1350
+traffic: lua: exp=v1 module=plumb event=iq quest=4 step=1 target=4 count=1 result=set reason=nil
+traffic: lua: exp=v1 module=plumb event=marker owner=survey deleted_count=1 result=cleared
+traffic: lua: exp=v1 module=survey event=read system=xt20 system_index=100 landmark=4 kind=hk weight=3 points=3 threshold_count=0 fee=1350 payoff=route payoff_system=xt39 quest_mask=1 result=logged
+traffic: lua: exp=v1 module=state event=enter generation=202 fresh=false system=xt45 legs=142
+traffic: lua: exp=v1 module=safety event=activate system=xt45 mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=state event=enter generation=203 fresh=false system=xt39 legs=143
+traffic: lua: exp=v1 module=safety event=activate system=xt39 mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=plumb event=marker owner=survey label=TRF_SY_NP_6 result=added
+traffic: lua: exp=v1 module=survey event=enter system=xt39 system_index=105 landmark_count=1 open=quest marker_count=1 via=enter
+traffic: lua: exp=v1 module=survey event=near system=xt39 landmark=6 kind=hk distance=640
+traffic: lua: exp=v1 module=survey event=hold system=xt39 landmark=6 kind=hk distance=180 hold=0.000 result=start
+traffic: lua: exp=v1 module=survey event=hold system=xt39 landmark=6 kind=hk distance=262 hold=8.500 result=reset
+traffic: lua: exp=v1 module=survey event=hold system=xt39 landmark=6 kind=hk distance=190 hold=0.000 result=start
+traffic: lua: exp=v1 module=region event=pay reason=survey amount=1350
+traffic: lua: exp=v1 module=plumb event=iq quest=4 step=1 target=4 count=3 result=set reason=nil
+traffic: lua: exp=v1 module=plumb event=marker owner=survey deleted_count=1 result=cleared
+traffic: lua: exp=v1 module=survey event=read system=xt39 system_index=105 landmark=6 kind=hk weight=3 points=6 threshold_count=0 fee=1350 payoff=signal payoff_system=kitaro quest_mask=3 result=logged
+traffic: lua: exp=v1 module=state event=enter generation=204 fresh=false system=fiasar legs=145
+traffic: lua: exp=v1 module=safety event=activate system=fiasar mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=plumb event=marker owner=survey label=TRF_SY_NP_1 result=added
+traffic: lua: exp=v1 module=survey event=enter system=fiasar system_index=38 landmark_count=1 open=quest marker_count=1 via=enter
+traffic: lua: exp=v1 module=survey event=near system=fiasar landmark=1 kind=cs distance=780
+traffic: lua: exp=v1 module=survey event=hold system=fiasar landmark=1 kind=cs distance=230 hold=0.000 result=start
+traffic: lua: exp=v1 module=region event=pay reason=survey amount=480
+traffic: lua: exp=v1 module=plumb event=iq quest=4 step=2 target=4 count=7 result=set reason=nil
+traffic: lua: exp=v1 module=plumb event=marker owner=survey deleted_count=1 result=cleared
+traffic: lua: exp=v1 module=survey event=read system=fiasar system_index=38 landmark=1 kind=cs weight=1 points=7 threshold_count=0 fee=480 payoff=none payoff_system=nil quest_mask=7 result=logged
+traffic: lua: exp=v1 module=state event=enter generation=205 fresh=false system=gredos legs=150
+traffic: lua: exp=v1 module=safety event=activate system=gredos mode=mod reason=nil chapter=6 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=survey event=skip system=gredos reason=none
+traffic: lua: exp=v1 module=survey event=enter system=gredos system_index=46 landmark_count=0 open=closed marker_count=0 via=enter
+traffic: lua: exp=v1 module=plumb event=iq quest=4 step=2 target=4 count=7 result=done reason=nil
+traffic: lua: exp=v1 module=survey event=handin system=gredos leg=150 result=done
+traffic: lua: exp=v1 module=survey event=logbook id=trf_sy entry=quest list=quest result=removed reason=handin
+traffic: lua: exp=v1 module=survey event=logbook id=trf_sy entry=log list=quest result=added reason=handin
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=2 result=vanilla
+traffic: lua: exp=v1 module=state event=enter generation=210 fresh=false system=gaeon legs=180
+traffic: lua: exp=v1 module=safety event=activate system=gaeon mode=mod reason=nil chapter=8 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=survey event=enter system=gaeon system_index=41 landmark_count=2 open=survey marker_count=0 via=enter
+traffic: lua: exp=v1 module=survey event=near system=gaeon landmark=37 kind=rp distance=520
+traffic: lua: exp=v1 module=survey event=hold system=gaeon landmark=37 kind=rp distance=120 hold=0.000 result=start
+traffic: lua: exp=v1 module=region event=pay reason=survey amount=1350
+traffic: lua: exp=v1 module=survey event=read system=gaeon system_index=41 landmark=37 kind=rp weight=3 points=10 threshold_count=0 fee=1350 payoff=route payoff_system=gaeon quest_mask=nil result=logged
+traffic: lua: exp=v1 module=state event=enter generation=212 fresh=false system=llanovar1 legs=190
+traffic: lua: exp=v1 module=safety event=activate system=llanovar1 mode=mod reason=nil chapter=8 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=survey event=enter system=llanovar1 system_index=60 landmark_count=2 open=survey marker_count=0 via=enter
+traffic: lua: exp=v1 module=survey event=hold system=llanovar1 landmark=41 kind=wf distance=150 hold=0.000 result=start
+traffic: lua: exp=v1 module=region event=pay reason=survey amount=450
+traffic: lua: exp=v1 module=survey event=read system=llanovar1 system_index=60 landmark=41 kind=wf weight=1 points=11 threshold_count=0 fee=450 payoff=route payoff_system=llanovar1 quest_mask=nil result=logged
+traffic: lua: exp=v1 module=survey event=hold system=llanovar1 landmark=42 kind=cs distance=90 hold=0.000 result=start
+traffic: lua: exp=v1 module=region event=pay reason=survey amount=450
+traffic: lua: exp=v1 module=survey event=read system=llanovar1 system_index=60 landmark=42 kind=cs weight=1 points=12 threshold_count=0 fee=450 payoff=route payoff_system=llanovar2 quest_mask=nil result=logged
+traffic: lua: exp=v1 module=state event=enter generation=213 fresh=false system=llanovar2 legs=191
+traffic: lua: exp=v1 module=safety event=activate system=llanovar2 mode=mod reason=nil chapter=8 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=survey event=enter system=llanovar2 system_index=61 landmark_count=2 open=survey marker_count=0 via=enter
+traffic: lua: exp=v1 module=survey event=hold system=llanovar2 landmark=43 kind=hk distance=200 hold=0.000 result=start
+traffic: lua: exp=v1 module=region event=pay reason=survey amount=1350
+traffic: lua: exp=v1 module=survey event=read system=llanovar2 system_index=61 landmark=43 kind=hk weight=3 points=15 threshold_count=0 fee=1350 payoff=route payoff_system=llanovar2 quest_mask=nil result=logged
+traffic: lua: exp=v1 module=survey event=hold system=llanovar2 landmark=44 kind=cs distance=170 hold=0.000 result=start
+traffic: lua: exp=v1 module=survey event=chart region=7 landmark_count=4 weight=7 phase=1 leg=191 result=complete
+traffic: lua: exp=v1 module=region event=pay reason=survey amount=900
+traffic: lua: exp=v1 module=survey event=read system=llanovar2 system_index=61 landmark=44 kind=cs weight=2 points=17 threshold_count=0 fee=900 payoff=chart payoff_system=nil quest_mask=nil result=logged
+traffic: lua: exp=v1 module=state event=enter generation=214 fresh=false system=torr legs=192
+traffic: lua: exp=v1 module=safety event=activate system=torr mode=mod reason=nil chapter=8 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=survey event=sell region=7 dock_system=torr dock_region=7 result=wait reason=region
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 result=vanilla
+traffic: lua: exp=v1 module=state event=enter generation=220 fresh=false system=gredos legs=200
+traffic: lua: exp=v1 module=safety event=activate system=gredos mode=mod reason=nil chapter=8 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=region event=pay reason=survey_chart amount=2016
+traffic: lua: exp=v1 module=tips event=push kind=chart region=3 system=gredos system_index=46 landmark=7 source=0 arg=7 event_leg=200 result=new evicted=nil record_count=1
+traffic: lua: exp=v1 module=survey event=sell region=7 dock_system=gredos dock_region=3 weight=7 phase=2 steps=1 age=9 value=2016 result=sold
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=1 result=vanilla
+traffic: lua: exp=v1 module=state event=enter generation=221 fresh=false system=gredos legs=201
+traffic: lua: exp=v1 module=safety event=activate system=gredos mode=mod reason=nil chapter=8 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=tips event=pick surface=news system=gredos kind=chart target=gredos event_leg=200 age=1 source=0 live=current merged=nil candidate_count=1 result=shown
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 result=vanilla
+traffic: lua: exp=v1 module=state event=enter generation=222 fresh=false system=lidau legs=202
+traffic: lua: exp=v1 module=safety event=activate system=lidau mode=mod reason=nil chapter=8 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=safety event=gate feature=survey system=lidau reason=quest result=denied
+traffic: lua: exp=v1 module=survey event=skip system=lidau reason=gate:quest
+traffic: lua: exp=v1 module=survey event=dump on=1 row_count=46 read_count=9 points=17 charts=7:s quest=nil

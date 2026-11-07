@@ -557,3 +557,28 @@ traffic: lua: exp=v1 module=station event=near station_key=51 distance=1400 resu
 traffic: lua: exp=v1 module=station event=near station_key=51 distance=900 result=spoken greeting=stnr1 greeting_skip=nil news=false tip=nil ambient=stnamb2
 traffic: lua: exp=v1 module=station event=dock station_key=51 param="" via=prm+pos distance=3 standing=1 rung=1 heat=0 greeting=stnr1 greeting_skip=nil news=false tip=nil ambient=nil fee=0 fee_multiplier=0 no_fee_reason=nil near=false
 traffic: lua: exp=v1 module=station event=dock station_key=251 param=kadenoa_tri via=prm+pos distance=2 standing=0 rung=0 heat=0 greeting=nil greeting_skip=near news=false tip=nil ambient=nil fee=0 fee_multiplier=0 no_fee_reason=nil near=true
+traffic: lua: exp=v1 module=state event=enter generation=300 fresh=false system=taira legs=400
+traffic: lua: exp=v1 module=safety event=activate system=taira mode=mod reason=nil chapter=9 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=survey event=offer system=taira region=2 landmarks=12,13 result=shown via=box
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=0 box=sy priority=410 result=box
+traffic: lua: exp=v1 module=state event=enter generation=301 fresh=false system=elinor legs=401
+traffic: lua: exp=v1 module=safety event=activate system=elinor mode=mod reason=nil chapter=9 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=survey event=read system=elinor system_index=30 landmark=12 kind=cs weight=1 points=1 threshold_count=0 fee=0 payoff=none payoff_system=nil quest_mask=nil result=logged
+traffic: lua: exp=v1 module=region event=pay reason=survey amount=450
+traffic: lua: exp=v1 module=survey event=read system=elinor system_index=30 landmark=12 kind=cs weight=1 points=2 threshold_count=0 fee=450 payoff=none payoff_system=nil quest_mask=nil result=logged
+traffic: lua: exp=v1 module=survey event=logbook id=trf_sy entry=log list=quest result=added reason=dock
+traffic: lua: exp=v1 module=state event=enter generation=302 fresh=false system=proserpina legs=402
+traffic: lua: exp=v1 module=safety event=activate system=proserpina mode=mod reason=nil chapter=9 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=survey event=skip system=proserpina reason=latch
+traffic: lua: exp=v1 module=survey event=hold system=proserpina landmark=15 kind=rp distance=60 hold=0.000 result=start
+traffic: lua: exp=v1 module=region event=pay reason=survey amount=1350
+traffic: lua: exp=v1 module=survey event=read system=proserpina system_index=73 landmark=15 kind=rp weight=3 points=5 threshold_count=0 fee=1350 payoff=stash payoff_system=nil quest_mask=nil result=logged
+traffic: lua: exp=v1 module=survey event=handin system=proserpina leg=402 result=done
+traffic: lua: exp=v1 module=state event=enter generation=303 fresh=false system=taira legs=403
+traffic: lua: exp=v1 module=safety event=activate system=taira mode=mod reason=nil chapter=9 quest_state=0 gate=ok
+traffic: lua: exp=v1 module=survey event=enter system=taira system_index=79 landmark_count=0 open=closed marker_count=0 via=enter
+traffic: lua: exp=v1 module=region event=pay reason=survey_chart amount=3000
+traffic: lua: exp=v1 module=survey event=sell region=2 dock_system=taira dock_region=2 weight=18 phase=0 steps=0 age=1 value=3000 result=sold
+traffic: lua: exp=v1 module=region event=pay reason=survey_chart amount=3000
+traffic: lua: exp=v1 module=survey event=sell region=2 dock_system=taira dock_region=3 weight=18 phase=0 steps=0 age=1 value=3000 result=sold
+traffic: lua: exp=v1 module=plumb event=dock kind=trade line_count=2 result=vanilla

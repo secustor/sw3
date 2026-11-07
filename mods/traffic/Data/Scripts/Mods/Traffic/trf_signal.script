@@ -1142,6 +1142,15 @@ function TRF_Sg_Rec(s)
 	return TRF_SgRecAt(s);
 end;
 
+-- Record of region block slot (design/survey-spec.md 6.3 P1, read only): {s, p, g, age, t, slot}, or nil.
+function TRF_Sg_SlotRec(slot)
+	if type(TRF) ~= "table" or type(TRF.sg) ~= "string" or type(slot) ~= "number" then return nil; end;
+	local bs = TRF_SgBlocks();
+	local r = bs[slot];
+	if type(r) == "table" then return r; end;
+	return nil;
+end;
+
 -- Repair (6.7, from TRF_Repair after TRF_Ti_Fix).
 function TRF_Sg_Fix()
 	if type(TRF) ~= "table" then return; end;

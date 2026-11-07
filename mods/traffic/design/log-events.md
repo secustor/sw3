@@ -453,7 +453,7 @@ Spec: [wb-plumbing-spec.md](wb-plumbing-spec.md). `kind` is the dock kind (`trad
 | `arrival_line` | `module=plumb event=arrival_line owner=p4 line_index=4 result=dropped reason=cap` (or `reason=no_entry`, `reason=due`) | 1 |
 | `arrival_line` | `module=plumb event=arrival_line owner=beacon result=shown` (or `result=not_shown`) | 2 |
 | `job` | `module=plumb event=job kind=1 field_count=2 result=taken` / `holder=1 result=refused` / `result=cleared` | 1 |
-| `iq` | `module=plumb event=iq quest=1 step=1 target=21 count=0 result=<taken,set,done,lapsed,dropped,declined> reason=nil` / `quest=2 step=nil target=nil count=nil result=busy reason=q1` / `result=owner` (the shared intro-quest record `TRF.iq`, [temperament-spec.md](temperament-spec.md) 3.1) | 1 |
+| `iq` | `module=plumb event=iq quest=1 step=1 target=21 count=0 result=<taken,set,done,lapsed,dropped,declined> reason=nil` / `quest=2 step=nil target=nil count=nil result=busy reason=q1` / `result=owner` (the shared intro-quest record `TRF.iq`, [temperament-spec.md](temperament-spec.md) 3.1; quest 1 Clan file, 2 Report in, 4 Chart the frontier of [survey-spec.md](survey-spec.md) 3.3) | 1 |
 | `iq_fix` | `module=plumb event=iq_fix field=<iq,a,d,r,l,<unknown key>> result=<dropped,reset>` (repair of `TRF.iq` in `TRF_Pl_Fix`; `field=l result=reset`: an active quest without a progress leg, or one above legs, gets legs) | 1 |
 | `settle` | `module=plumb event=settle kind=parcel system=taira amount=14400 handler_count=1` (`TRF_Settle` from a pay point, kinds `parcel`, `charter`, `claim`, `sweep`, `escort`; [debrief-spec.md](debrief-spec.md) 5.1; `handler_count=0` without trf_debrief) | 2 |
 | `settle` | `module=plumb event=settle kind=escort system=taira amount=1000 key=ct:7 result=dup` (a key already settled in this generation: no handler runs) | 1 |
@@ -1011,7 +1011,7 @@ The debrief pool and the intro quest "Report in", B02 (`design/debrief-spec.md` 
 
 ## tips (`trf_tips.script`; `TRF_TiE`, `TRF_TiDE`)
 
-Sourced tips and the event ring, A16 (`design/tips-spec.md` 10; host-tested only). `kind` is the record kind by name (`raid`, `gather`, `swon`, `slost`, `base`, `basedn`, `cap`, `wreck`, `cache`, `capcache`, `signal`: trf_signal's lit source, design/static-signals-spec.md 4.5), `system`/`target` the record's system, `event_leg` its leg (`TRF.clock.legs` at the push), `source` the source code (0 FTU haulers, 1..5 the faction, 6 pirate talk, 7 FTU beacons, 9 FTU mercenaries), `landmark` 0 the system, 1..6 a portal, 7 the trade station, 8 the patrol station.
+Sourced tips and the event ring, A16 (`design/tips-spec.md` 10; host-tested only). `kind` is the record kind by name (`raid`, `gather`, `swon`, `slost`, `base`, `basedn`, `cap`, `wreck`, `cache`, `capcache`, `signal`: trf_signal's lit source, design/static-signals-spec.md 4.5; `chart`: trf_survey's chart sale, design/survey-spec.md 8.3, `source` 0, `landmark` 7, `arg` the source region slot), `system`/`target` the record's system, `event_leg` its leg (`TRF.clock.legs` at the push), `source` the source code (0 FTU haulers, 1..5 the faction, 6 pirate talk, 7 FTU beacons, 9 FTU mercenaries), `landmark` 0 the system, 1..6 a portal, 7 the trade station, 8 the patrol station.
 
 | Event | Example line | Level |
 |---|---|---|
@@ -1067,6 +1067,36 @@ Static signals, A08 (`design/static-signals-spec.md` 11; host-tested only). `reg
 | `debug` | `module=signal event=debug system=sunji result=<created,no_point,busy,kept>` (cfg `signal_at`) | 1 |
 | `fix` | `module=signal event=fix kept=1 dropped=2 moved=1` (only when the repair changed `TRF.sg`) | 1 |
 | `dump` | `module=signal event=dump on=1 record_count=2 records=5:sunji/2/0/3,6:lasad/1/2/9` (`<slot>:<system>/<point>/<state>/<age>`) | 1 |
+
+## survey (`trf_survey.script`; `TRF_SyE`, `TRF_SyDE`)
+
+Survey layer and the quest "Chart the frontier", A12 step 2 (`design/survey-spec.md` 11; host-tested only). `landmark` is the row id of the generated table `TRF_SyData` (1..46), `kind` its kind (`rp` random portal, `gr` old gate, `sr` wrecked station, `hk` dead capital ship, `wf` wreck field, `cs` closed stations), `region` a region slot, `quest_mask` the read mask 0..7 of the three named rows (`nil` outside the quest). Skip reasons: `off`, `chapter`, `nomap`, `none`, `mode:<why>`, `gate:<why>`, `latch`, `mission`, `quiet`, `rp_near`, and the row reasons `closed`, `read`, `rp_closed`.
+
+| Event | Example line | Level |
+|---|---|---|
+| `error` | `module=survey event=error message=<m>` | 1 |
+| `enter` | `module=survey event=enter system=xt20 system_index=100 landmark_count=2 open=<quest,survey,closed> marker_count=1 via=<enter,load>` | 2 |
+| `skip` | `module=survey event=skip system=xt20 reason=<see above>` (once per reason and visit) | 2 |
+| `near` | `module=survey event=near system=xt20 landmark=4 kind=hk distance=790` (once per row and visit, within `sy_near_r`) | 1 |
+| `hold` | `module=survey event=hold system=xt20 landmark=4 kind=hk distance=210 hold=0.000 result=<start,reset>` / `module=survey event=hold system=xt20 reason=<disable_action,sys_sos,scene,suppressed> result=paused` (once per visit) | 2 |
+| `read` | `module=survey event=read system=xt20 system_index=100 landmark=4 kind=hk weight=3 points=27 threshold_count=0 fee=1350 payoff=<trail,chart,signal,base,route,none> payoff_system=<name,nil> quest_mask=<0..7,nil> result=logged` (`points` after the reading, `threshold_count` the thresholds passed before it: the fee's bonus, `fee` the amount paid, 0 when nothing was paid) | 1 |
+| `threshold` | `module=survey event=threshold points=31 threshold=30 bonus=10 result=passed` | 1 |
+| `chart` | `module=survey event=chart region=1 landmark_count=8 weight=18 phase=2 leg=212 result=complete` | 1 |
+| `sell` | `module=survey event=sell region=1 dock_system=gredos dock_region=3 weight=18 phase=4 steps=2 age=9 value=9072 result=sold` / `... result=wait reason=pay value=<V>` (the pay failed, kept) | 1 |
+| `sell` | `module=survey event=sell region=7 dock_system=torr dock_region=7 result=wait reason=region` (once per region and visit) | 2 |
+| `offer` | `module=survey event=offer system=dalled region=1 landmarks=17,18,19 result=<shown,listed> via=<box,card,board>` / `module=survey event=offer result=failed reason=box` | 1 |
+| `offer` | `module=survey event=offer system=dalled result=none reason=<off,gate,done,nomap,chapter,mission,latch,office:<why>,region,few,busy,declined,strict:<why>>` | 2 |
+| `accept` | `module=survey event=accept system=dalled landmarks=17,18,19 leg=140 result=ok` / `... result=busy reason=<why>` / `module=survey event=accept system=dalled result=stale` | 1 |
+| `decline` | `module=survey event=decline system=dalled leg=140 result=<declined,closed>` / `module=survey event=decline result=stale` | 1 |
+| `handin` | `module=survey event=handin system=gredos leg=171 result=done` | 1 |
+| `logbook` | `module=survey event=logbook id=trf_sy entry=<quest,log> list=<jobs,quest> result=<added,rewritten,removed,restored,failed> reason=<accept,handin,dock,enter,load,lapse,<native error>>` (`restored`: a missing entry added again at an entry or a load, spec 7.5) | 1 |
+| `lapse` | `module=survey event=lapse step=10 quest_mask=3 leg=180 result=lapsed` | 1 |
+| `jump` | `module=survey event=jump system=xt20 hold_count=1 dest=xt45` (the holds of the visit end) | 2 |
+| `debug` | `module=survey event=debug system=xt20 result=<open,no_rows>` (cfg `survey_at`) | 1 |
+| `fix` | `module=survey event=fix field=<bits,block,quest> result=<dropped,reset,rebuilt> reason=<type,char,length,above,count,bad,complete,unread,s,t,c,done,step>` (only when the repair changed something) | 1 |
+| `dump` | `module=survey event=dump on=1 row_count=46 read_count=12 points=27 charts=1:s,4:2212 quest=4/1/17/1918/3` (`<slot>:<block>`; quest `4/<step>/<t>/<sd>/<mask>`) | 1 |
+
+Other modules' lines for the survey: `module=plumb event=iq quest=4 ...` (the quest record), `module=plumb event=marker owner=survey label=TRF_SY_NP_<id> result=added` (job markers, no `class`), `module=region event=pay reason=survey` / `reason=survey_chart`, `module=tips event=push kind=chart ...` and `event=pick ... kind=chart`, `module=safety event=gate feature=survey ...`.
 
 ## supply (`trf_supply.script`; `TRF_SpE`)
 

@@ -601,6 +601,20 @@ end;
 
 -- Contract: jump (7) -------------------------------------------------------------------------
 
+-- 1 and the condition string when system idx is a listed row armed now (design/survey-spec.md D11: the survey names no
+-- landmark there), else nil; independent of cfg warn.
+function TRF_Wn_Armed(idx)
+	if type(TRF) ~= "table" or type(idx) ~= "number" then return nil; end;
+	local by, ix = TRF_WnRows();
+	local r = ix[idx];
+	if not r then return nil; end;
+	local q = TRF_Wn_Q(r);
+	if not q then return nil; end;
+	local a, cond = TRF_WnArmedOf(r, q);
+	if a then return 1, cond; end;
+	return nil;
+end;
+
 -- 7.1: log a jump into a listed system; no line, no write.
 function TRF_Wn_BeforeJump(dest, how)
 	if not TRF_WnOn() then return; end;
