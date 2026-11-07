@@ -764,7 +764,13 @@ def hull_check(game, src):
             bad.append("carcass %s not in Carcasses.xml" % x)
     # Every literal in the mod scripts that names a hull (stem of a fit name plus a digit or "_") must
     # resolve to a fit or a carcass (trf_danger escort lists, trf_raid, trf_clan carriers, trf_tier ...).
-    stems = set(re.match(r"[A-Za-z]+", x).group(0) for x in sd)
+    # One-letter stems (the "a" of a_mine_01) would make every dialog answer id (a_back, a_ok) a hull literal.
+    stems = set(x for x in (re.match(r"[A-Za-z]+", x).group(0) for x in sd) if len(x) > 1)
+    # The fits module's new fits (fits-spec 14.2, TRF_FtData().new): names the mod builds from a bare *_pir0 carcass.
+    newf = set()
+    ff = os.path.join(src, "trf_fits.script")
+    if os.path.isfile(ff):
+        newf = set(re.findall(r'(\w+_pir\d+)=\{c="', "".join(read_lines(ff))))
     nlit = 0
     for fn in sorted(os.listdir(src)):
         if not fn.endswith(".script") or fn == "map.script":
@@ -774,7 +780,7 @@ def hull_check(game, src):
             if not m or m.group(1) not in stems or not re.search(r"[0-9_]", s) or s.endswith("_"):
                 continue
             nlit += 1
-            if s not in sd and s not in cn and not any(re.fullmatch(re.escape(s) + r"[0-9]+", x) for x in sd):
+            if s not in sd and s not in cn and s not in newf and not any(re.fullmatch(re.escape(s) + r"[0-9]+", x) for x in sd):
                 bad.append("%s:%d hull literal %r not in ShipDescriptions.xml or Carcasses.xml" % (fn, ln, s))
     return fm, bad, {"fits": n[0], "literals": nlit, "notes": notes}
 
