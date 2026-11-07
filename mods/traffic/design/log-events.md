@@ -1134,7 +1134,7 @@ Station chatter (`design/station-chatter-spec.md` 9; host-tested only). `kind` i
 | Event | Example line | Level |
 |---|---|---|
 | `error` | `module=chatter event=error message=<m>` | 1 |
-| `enter` | `module=chatter event=enter system=gredos system_index=46 station_count=1 sound=<0,1,2> radius=1500 gap=45 max=6 via=<enter,load>` | 2 |
+| `enter` | `module=chatter event=enter system=gredos system_index=46 station_count=1 sound=<0,1,2> radius=1500 gap=45 max=6 quiet=10 via=<enter,load>` | 2 |
 | `skip` | `module=chatter event=skip system=gredos reason=<see above>` (once per reason and visit; the call waits, events keep their age) | 2 |
 | `event` | `module=chatter event=event kind=<req,hold,go,bay,out> trader_id=9 station_key=46 result=queued` | 2 |
 | `drop` | `module=chatter event=drop kind=req trader_id=9 reason=<stale,full,gone,name,station,used>` | 2 |

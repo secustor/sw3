@@ -4465,10 +4465,18 @@ def c_wrc4(ctx):
 def c_wrc5(ctx):
     res = Res()
     res.logpart = True
-    sh = [r for r in rc_shown(ctx.recs) if r.num("quiet_age") is not None]
-    for r in sh:
-        if r.num("quiet_age") < RC_QUIET:
-            res.fails.append("%s: quiet_age %s below rc_quiet %d" % (r.short(), r.get("quiet_age"), RC_QUIET))
+    sh = []
+    for v in rc_visits(ctx):
+        e = v["enter"]   # the visit's rc_quiet from its enter line (TUNE=rc_quiet=.. in a test session), else the default
+        quiet = e.num("quiet") if e is not None else None   # 0 is a valid clamp value, so no "or"
+        if quiet is None:
+            quiet = RC_QUIET
+        for r in rc_shown(v["recs"]):
+            if r.num("quiet_age") is None:
+                continue
+            sh.append(r)
+            if r.num("quiet_age") < quiet:
+                res.fails.append("%s: quiet_age %s below rc_quiet %d" % (r.short(), r.get("quiet_age"), quiet))
     if not sh:
         res.missing.append("no chatter line with a quiet_age (a content line or a queued arrival line earlier in the visit)")
     res.ev("chatter lines with a quiet age", sh)

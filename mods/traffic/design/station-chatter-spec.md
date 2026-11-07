@@ -166,7 +166,7 @@ R1-R8 are read at every 1 s step before the queue is touched. Q1-Q5 apply to cal
 
 ### 6.1 Entry, load, jump
 
-- `TRF_Rc_OnActivate()` (last module call of `TRF_OnActivate`, after `TRF_Rq_OnActivate`) and `TRF_Rc_OnLoad()` (v1 load list): `RC` is fresh (MapInitialization); build `RC.st` from `TRF_StnTl(idx)`; `TRF_Safe_QState()` -> `RC.q = 1`; log `event=enter system= station_count= sound=<0/1/2> radius= via=<enter/load>` (level 2). Records that exist now are seen at the first step without events (4.1 "none").
+- `TRF_Rc_OnActivate()` (last module call of `TRF_OnActivate`, after `TRF_Rq_OnActivate`) and `TRF_Rc_OnLoad()` (v1 load list): `RC` is fresh (MapInitialization); build `RC.st` from `TRF_StnTl(idx)`; `TRF_Safe_QState()` -> `RC.q = 1`; log `event=enter system= system_index= station_count= sound=<0/1/2> radius= gap= max= quiet= via=<enter/load>` (level 2). Records that exist now are seen at the first step without events (4.1 "none").
 - `TRF_Rc_BeforeJump()`: `RC.pend = nil`, `RC.ev = {}` (no answer after a jump).
 
 ### 6.2 Poll (`TRF_Rc_Step()`, traffic.script 1 s block after `TRF_Rq_Step`)
@@ -258,7 +258,7 @@ Install presets: `CHATTER=0|1`, `CHATTER_SOUND=0|1|2`; for a test session `TUNE=
 
 | Line | Level |
 |---|---|
-| `module=chatter event=enter system=gredos system_index=9 station_count=1 sound=2 radius=1500 gap=45 max=6 via=<enter/load>` | 2 |
+| `module=chatter event=enter system=gredos system_index=9 station_count=1 sound=2 radius=1500 gap=45 max=6 quiet=10 via=<enter/load>` | 2 |
 | `module=chatter event=skip system=gredos reason=<off/nomap/none/mode:../gate:../station:../station_off/latch/hold:../combat/quiet_line/quiet_arrival/approach/player_dock/far/pos/cap/per_trader>` | 2, once per reason and visit |
 | `module=chatter event=event kind=<req/hold/go/bay/out> trader_id=9 station_key=9 result=queued` | 2 |
 | `module=chatter event=drop kind=req trader_id=9 reason=<stale/full/gone/name/station/used>` | 2 |
@@ -413,5 +413,5 @@ Correction of the inputs: the loader already had `trf_request` after `trf_survey
 - D-7 The click is 5 ms of unfiltered noise falling linearly from full scale (a hard 5 ms full-scale block would clip after the normalisation), and the file ends with a 10 ms linear fade so the cut makes no click; the rest is as 6.5.
 - D-8 `TRF_Gen_DockPos` runs protected with trf_gen's `TRF_GnErr` (an engine error is logged); trf_gen has no silent handler.
 - D-9 Log details: a dropped answer logs `speaker`, `key` and `distance` as nil; without the native the line logs the cue name with `sound_result=none`; a failed `Message` logs `result=failed reason=message`. Q1-Q5 are tested in the order Q1, Q2, Q3, the position (`pos`), Q4, Q5.
-- D-10 No speaker (no lead pilot and `CreatePilot` returning nil): no cue is played, the line logs `sound=none sound_result=off result=failed reason=message`. The `enter` line also logs `gap` and `max` (the active `rc_gap` and `rc_max`), which check_ingame's W-RC.2 reads per visit.
+- D-10 No speaker (no lead pilot and `CreatePilot` returning nil): no cue is played, the line logs `sound=none sound_result=off result=failed reason=message`. The `enter` line also logs `gap`, `max` and `quiet` (the active `rc_gap`, `rc_max` and `rc_quiet`), which check_ingame's W-RC.2 and W-RC.5 read per visit.
 

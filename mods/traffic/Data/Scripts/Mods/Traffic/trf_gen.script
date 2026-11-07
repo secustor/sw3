@@ -495,7 +495,7 @@ function TRF_GnDockPosBody(id)
 end;
 
 -- Station chatter (design/station-chatter-spec.md 4.3, 10.3), read only: {x, y, z} of trader id's station handle, else of
--- the system's trade station (TRF_GnStation); nil when unknown (an error is logged).
+-- the system's trade station (TRF_GnStation); nil when unknown (a raised engine read is logged, TRF_GnErr).
 function TRF_Gen_DockPos(id)
 	return call(TRF_GnDockPosBody, {id}, "x", TRF_GnErr);
 end;

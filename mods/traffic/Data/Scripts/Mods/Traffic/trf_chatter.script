@@ -319,7 +319,7 @@ function TRF_RcQuietOf(gt, line, rt, last, T)
 	return nil, age;
 end;
 
--- Trade stations of system idx of map m in map order: {x, y, z, prm, side, j}.
+-- Trade stations of system idx of map m in map order (TRF_StnTl's filter, so the ordinals match): {x, y, z, prm, side, j}.
 function TRF_RcTlOf(m, idx)
 	local o = {};
 	if type(m) ~= "table" or type(m.sys) ~= "table" or type(idx) ~= "number" then return o; end;
@@ -327,7 +327,7 @@ function TRF_RcTlOf(m, idx)
 	if type(s) ~= "table" or type(s.st) ~= "table" then return o; end;
 	for i = 1, getn(s.st) do
 		local e = s.st[i];
-		if type(e) == "table" and e.kind == "trade" and type(e.x) == "number" then
+		if type(e) == "table" and e.kind == "trade" then
 			tinsert(o, {x=e.x, y=e.y or 0, z=e.z or 0, prm=e.prm, side=e.side, j=getn(o) + 1});
 		end;
 	end;
@@ -639,7 +639,7 @@ function TRF_RcEnter(via)
 	if not TRF_RcOn() then return; end;
 	local T = TRF_RcTune();
 	TRF_RcDE("enter", "system", TRF_RcName(idx), "system_index", idx, "station_count", getn(S), "sound", T.rc_sound,
-		"radius", T.rc_r, "gap", T.rc_gap, "max", T.rc_max, "via", via);
+		"radius", T.rc_r, "gap", T.rc_gap, "max", T.rc_max, "quiet", T.rc_quiet, "via", via);
 end;
 
 -- The last module call of TRF_OnActivate (after trf_request's).

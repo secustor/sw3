@@ -310,7 +310,7 @@ Station voices spec 8.8 (owner request 2026-11-06, cfg `voice_near` 1): the dock
 - W-RC.2: in one visit (split at `module=chatter event=enter`) no two `event=say part=call result=shown` whose `real_time` differ by less than the visit's `rc_gap` (the `gap` of the `event=enter` line, else 45), and at most `max` calls (else 6).
 - W-RC.3: no `event=say result=shown` in a visit after `event=skip reason=latch`, nor within 10 lines after a `reason=hold:scene` skip.
 - W-RC.4: no two `event=say result=shown` with the same `key` in one visit.
-- W-RC.5: no `event=say result=shown` with `quiet_age` below 10.
+- W-RC.5: no `event=say result=shown` with `quiet_age` below the visit's `rc_quiet` (the `quiet` of the `event=enter` line, else 10).
 - W-RC.6: no `event=say result=shown` with `distance` above the visit's `radius`.
 - W-RC.7: `sound_result=played` with `sound` not `none`, never `sound_result=error`; ears: a short squelch before each line, its loudness following the sound volume, silence with `CHATTER_SOUND=0` (RC1-RC3).
 - W-RC.8: no `event=say result=shown` between `module=safety event=combat_on` and the next `combat_off`.

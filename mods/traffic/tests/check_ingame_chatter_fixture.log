@@ -1,6 +1,6 @@
 traffic: lua: exp=v1 module=state event=enter generation=700 fresh=false system=gredos legs=300
 traffic: lua: exp=v1 module=safety event=activate system=gredos mode=mod reason=nil chapter=6 quest_state=0 gate=ok
-traffic: lua: exp=v1 module=chatter event=enter system=gredos system_index=46 station_count=1 sound=2 radius=1500 gap=45 max=6 via=enter
+traffic: lua: exp=v1 module=chatter event=enter system=gredos system_index=46 station_count=1 sound=2 radius=1500 gap=45 max=6 quiet=10 via=enter
 traffic: lua: exp=v1 module=station event=near station_key=46 distance=1460 result=skipped reason=hold
 traffic: lua: exp=v1 module=chatter event=skip system=gredos reason=approach
 traffic: lua: exp=v1 module=station event=near station_key=46 distance=1420 result=spoken greeting=stnr1 greeting_skip=nil news=true tip=nil ambient=nil
@@ -20,21 +20,21 @@ traffic: lua: exp=v1 module=chatter event=say kind=out part=answer trader_id=14 
 traffic: lua: exp=v1 module=chatter event=dump on=1 exchange_count=3 pending=nil event_count=0 keys=rchin2,rchout1,rchreq1,rchreqa2
 traffic: lua: exp=v1 module=state event=enter generation=701 fresh=false system=kadi legs=301
 traffic: lua: exp=v1 module=safety event=activate system=kadi mode=mod reason=nil chapter=6 quest_state=1 gate=ok
-traffic: lua: exp=v1 module=chatter event=enter system=kadi system_index=52 station_count=1 sound=2 radius=1500 gap=45 max=6 via=enter
+traffic: lua: exp=v1 module=chatter event=enter system=kadi system_index=52 station_count=1 sound=2 radius=1500 gap=45 max=6 quiet=10 via=enter
 traffic: lua: exp=v1 module=chatter event=skip system=kadi reason=latch
 traffic: lua: exp=v1 module=chatter event=event kind=req trader_id=20 station_key=52 result=queued
 traffic: lua: exp=v1 module=chatter event=drop kind=req trader_id=20 reason=stale
 traffic: lua: exp=v1 module=state event=enter generation=702 fresh=false system=aurora legs=302
 traffic: lua: exp=v1 module=safety event=activate system=aurora mode=mod reason=nil chapter=6 quest_state=0 gate=ok
-traffic: lua: exp=v1 module=chatter event=enter system=aurora system_index=3 station_count=1 sound=2 radius=1500 gap=45 max=6 via=enter
+traffic: lua: exp=v1 module=chatter event=enter system=aurora system_index=3 station_count=1 sound=2 radius=1500 gap=45 max=6 quiet=10 via=enter
 traffic: lua: exp=v1 module=chatter event=skip system=aurora reason=hold:scene
 traffic: lua: exp=v1 module=chatter event=event kind=hold trader_id=23 station_key=3 result=queued
 traffic: lua: exp=v1 module=chatter event=drop kind=hold trader_id=23 reason=stale
 traffic: lua: exp=v1 module=state event=load generation=703 system=taira legs=303
-traffic: lua: exp=v1 module=chatter event=enter system=taira system_index=60 station_count=1 sound=2 radius=1500 gap=45 max=6 via=load
+traffic: lua: exp=v1 module=chatter event=enter system=taira system_index=60 station_count=1 sound=2 radius=1500 gap=45 max=6 quiet=10 via=load
 traffic: lua: exp=v1 module=chatter event=say kind=go part=call trader_id=31 station_key=60 speaker=DialogSystem key=rchgo2 distance=640 real_time=1600 quiet_age=40 sound=trf_squelch.wav sound_result=played result=shown reason=nil
 traffic: lua: exp=v1 module=state event=enter generation=704 fresh=false system=gredos legs=304
 traffic: lua: exp=v1 module=safety event=activate system=gredos mode=mod reason=nil chapter=6 quest_state=0 gate=ok
-traffic: lua: exp=v1 module=chatter event=enter system=gredos system_index=46 station_count=1 sound=2 radius=1500 gap=15 max=6 via=enter
+traffic: lua: exp=v1 module=chatter event=enter system=gredos system_index=46 station_count=1 sound=2 radius=1500 gap=15 max=6 quiet=10 via=enter
 traffic: lua: exp=v1 module=chatter event=say kind=req part=call trader_id=40 station_key=46 speaker=leader key=rchreq2 distance=1100 real_time=1800 quiet_age=30 sound=trf_squelch.wav sound_result=played result=shown reason=nil
 traffic: lua: exp=v1 module=chatter event=say kind=out part=call trader_id=41 station_key=46 speaker=leader key=rchout2 distance=1050 real_time=1820 quiet_age=50 sound=trf_squelch.wav sound_result=played result=shown reason=nil
