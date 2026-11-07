@@ -798,6 +798,28 @@ function T_SY_D()
 	-- Nothing changed by the gated runs: only row 4 read.
 	local bits = TRF_SyBits();
 	HOST_Check(bits == TRF_SySetOf(TRF_SySetOf("", 0, 46), 4, 46), "the gated runs read nothing else");
+	-- R7 holds the quest markers too: after TRF_Sy_WindDown under __disableAction the steps place none, nor does an
+	-- entry under the flag; the step after the flag clears places them again.
+	SY_Begin("gredos");
+	SY_Take(4, 5, 6);
+	T_Jump("xt20");
+	HOST_Check(TRF_MarkerHeld("TRF_SY_NP_4") == 1, "R7 markers: row 4 marked");
+	__disableAction = TRUE;
+	n0 = S_Mark();
+	TRF_Sy_WindDown();
+	SY_Run(5);
+	HOST_Check(TRF_MarkerHeld("TRF_SY_NP_4") == nil and SY_Logs(n0, "event=skip system=xt20 reason=hold:disable_action") == 1,
+		"R7: no marker after the wind-down while __disableAction is set, the skip line once");
+	-- An entry clears the system's globals: the scene sets the flag again before TRF_OnEnter.
+	h.syhook = function() __disableAction = TRUE; end;
+	T_Jump("xt52");
+	T_Jump("xt20");
+	h.syhook = nil;
+	SY_Run(3);
+	HOST_Check(__disableAction == TRUE and TRF_MarkerHeld("TRF_SY_NP_4") == nil, "R7: an entry under the flag places no marker");
+	__disableAction = FALSE;
+	SY_Run(1.5);
+	HOST_Check(TRF_MarkerHeld("TRF_SY_NP_4") == 1, "the marker returns at the step after the flag clears");
 	-- TRF_Wn_Armed: an armed system's rows count, the card and the route skip them.
 	SY_Begin("gredos");
 	SY_Open();
@@ -842,6 +864,21 @@ function T_SY_E()
 	r = DB_Dock();
 	HOST_Check(h.aq == 1 and SY_Has(r.scr, TRF_Txt("sycount", 4, 46, 12, "none")), "a changed count: the count line again, no AddQuest");
 	SY_Uncount();
+	-- The hand-in's own docking sells no chart (7.4); the next trade dock does.
+	SY_Begin("gredos");
+	SY_Take(4, 5, 6);
+	TRF_IqSet(4, 2, 4, 7);
+	SY_SetRead(4, 5, 6, 41, 42, 43, 44);
+	SY_SetBlk(7, format("1%03d", mod(TRF.clock.legs, 1000)));
+	T_Jump("xt52");
+	T_Jump("gredos");
+	n0 = S_Mark();
+	DB_Dock();
+	HOST_Check(TRF_IqDone(4) == 1 and SY_Logs(n0, "event=handin ") == 1 and SY_Logs(n0, "event=sell ") == 0 and SY_Blk(7) ~= "s", "the hand-in docking sells no chart");
+	DB_Visit(); TRF_SyVisit();
+	n0 = S_Mark();
+	DB_Dock();
+	HOST_Check(SY_Logs(n0, "event=sell region=7 ") == 1 and SY_Blk(7) == "s", "the next trade dock sells it");
 	-- The Job log on: the quest entry with plain text at the accept (sylog), kept at an unchanged dock, rewritten when the
 	-- count changed, the Survey log at the hand-in; nothing written from space.
 	SY_Begin("dalled", "6", {jobs_log=1}, 1);
@@ -1021,7 +1058,7 @@ function T_SY_F()
 	TRF.clock.legs = TRF.clock.legs + 41;
 	n0 = S_Mark();
 	T_Jump("xt20");
-	HOST_Check(TRF_IqGet().q == 0 and h.qlog.trf_sy == nil and SY_Logs(n0, "event=lapse step=10 quest_mask=0 leg=") == 1 and SY_Read(4) == 1 and TRF_PlMkCount() == 0,
+	HOST_Check(TRF_IqGet().q == 0 and h.qlog.trf_sy == nil and SY_Logs(n0, "event=lapse step=1 quest_mask=0 leg=") == 1 and SY_Read(4) == 1 and TRF_PlMkCount() == 0,
 		"lapse after 40 legs: the run ends, the entry goes, row 4 stays read");
 	-- Save and load keep TRF.sy; no fix line.
 	SY_Open();

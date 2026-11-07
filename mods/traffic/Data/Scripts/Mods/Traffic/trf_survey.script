@@ -980,7 +980,9 @@ function TRF_SyEnterBody(idx, why)
 	sy.okt = TRF_N("TRF_RealSecs");
 	if gw then return; end;
 	TRF_SyBuild(idx);
-	local mc = TRF_SyMarkers(idx);
+	local mc = 0;
+	local hw = TRF_SyHold();
+	if hw then sy.mk = nil; TRF_SySkip(idx, "hold:"..hw); else mc = TRF_SyMarkers(idx); end;
 	TRF_SyDE("enter", "system", TRF_SyName(idx), "system_index", idx, "landmark_count", getn(sy.lm), "open", TRF_SyOpenWord(idx),
 		"marker_count", mc, "via", why);
 end;
@@ -1019,8 +1021,10 @@ function TRF_SyStepBody()
 	sy.ok = gw or "ok";
 	if gw then return; end;
 	if sy.lk ~= TRF_SyKey() then TRF_SyBuild(idx); end;
+	local hw = TRF_SyHold();
+	if hw then TRF_SySkip(idx, "hold:"..hw); return; end;
 	if not sy.mk then TRF_SyMarkers(idx); end;
-	if getn(sy.lm) == 0 or TRF_SyHold() then return; end;
+	if getn(sy.lm) == 0 then return; end;
 	local b = TRF_SyMsPos();
 	if not b then return; end;
 	local T = TRF_SyTune();
@@ -1052,6 +1056,7 @@ function TRF_SyTickBody(dt)
 	local idx = TRF_SyCur();
 	local hw = TRF_SyHold();
 	if hw then
+		TRF_SySkip(idx, "hold:"..hw);
 		if not sy.ps then
 			sy.ps = 1;
 			TRF_SyDE("hold", "system", TRF_SyName(idx), "reason", hw, "result", "paused");
@@ -1448,15 +1453,17 @@ function TRF_SyTradeBody()
 	local legs = TRF_SyLegs();
 	-- 1: the hand-in (7.3).
 	local R = TRF_SyRun();
+	local hd = nil;
 	if R and R.s == 2 and TRF_SyOpt("sy_quest") == 1 and TRF_N("TRF_IqEnd", K.q, "done") == 1 then
+		hd = 1;
 		tinsert(out, TRF_SyTxt("syhand"));
 		TRF_SyE("handin", "system", TRF_SyName(cur), "leg", legs, "result", "done");
 		TRF_N("TRF_MarkerClear", "survey");
 		sy.mk = nil; sy.lk = nil;
 		TRF_SyLogbook("handin");
 	end;
-	-- 2: the chart sale (8.1 step 2, 8.2, 8.3).
-	if TRF_SyOpen(nil) then
+	-- 2: the chart sale (8.1 step 2, 8.2, 8.3), from the docking after the hand-in on (7.4).
+	if not hd and TRF_SyOpen(nil) then
 		local rows = TRF_SyRows();
 		local dslot = TRF_SySlot(cur);
 		local bits, bl, nrg = TRF_SyState();
@@ -1663,7 +1670,7 @@ function TRF_Sy_IqLapse()
 	TRF_N("TRF_IqEnd", TRF_SyK().q, "lapsed");
 	TRF_N("TRF_MarkerClear", "survey");
 	TRF_SyLogbook("lapse");
-	TRF_SyE("lapse", "step", R.s * 10, "quest_mask", R.c, "leg", TRF_SyLegs(), "result", "lapsed");
+	TRF_SyE("lapse", "step", R.s, "quest_mask", R.c, "leg", TRF_SyLegs(), "result", "lapsed");
 end;
 
 -- Contract ---------------------------------------------------------------------------------

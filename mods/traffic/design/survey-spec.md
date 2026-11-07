@@ -564,3 +564,4 @@ Built as specified: `S/trf_survey.script` with the block of the new `tools/gen_s
 16. Scorer: W-A12.15 reads "within 5 s" as 12 log lines of the docking (the log has no time stamps); W-A12.16 also fails when the first entry after a hand-in has `open` other than `survey`; W-A12.10 looks for the pay line in the 8 lines before the reading.
 17. Host: the configs of `host_charter`, `host_scar`, `host_freight` and `host_debrief` turn `survey` off (the survey's offer box 410 at a charter office dock and its level 2 skip lines changed their counts); the unknown-kind checks of `ti-b` and `ti-g` use kind 15; `sg-b` checks the tie order signal, chart, base.
 18. `install.sh` lists no module keys and is unchanged; pe/API.md is unchanged (no DLL native).
+19. The paused hold line carries no row fields: `event=hold system=<n> reason=<disable_action/sys_sos/scene/suppressed> result=paused`, once per visit, next to the R7 skip line `reason=hold:<..>`.

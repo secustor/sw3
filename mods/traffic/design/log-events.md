@@ -1070,7 +1070,7 @@ Static signals, A08 (`design/static-signals-spec.md` 11; host-tested only). `reg
 
 ## survey (`trf_survey.script`; `TRF_SyE`, `TRF_SyDE`)
 
-Survey layer and the quest "Chart the frontier", A12 step 2 (`design/survey-spec.md` 11; host-tested only). `landmark` is the row id of the generated table `TRF_SyData` (1..46), `kind` its kind (`rp` random portal, `gr` old gate, `sr` wrecked station, `hk` dead capital ship, `wf` wreck field, `cs` closed stations), `region` a region slot, `quest_mask` the read mask 0..7 of the three named rows (`nil` outside the quest). Skip reasons: `off`, `chapter`, `nomap`, `none`, `mode:<why>`, `gate:<why>`, `latch`, `mission`, `quiet`, `rp_near`, and the row reasons `closed`, `read`, `rp_closed`.
+Survey layer and the quest "Chart the frontier", A12 step 2 (`design/survey-spec.md` 11; host-tested only). `landmark` is the row id of the generated table `TRF_SyData` (1..46), `kind` its kind (`rp` random portal, `gr` old gate, `sr` wrecked station, `hk` dead capital ship, `wf` wreck field, `cs` closed stations), `region` a region slot, `quest_mask` the read mask 0..7 of the three named rows (`nil` outside the quest). Skip reasons: `off`, `chapter`, `nomap`, `none`, `mode:<why>`, `gate:<why>`, `latch`, `mission`, `hold:<disable_action,sys_sos,scene,suppressed>` (R7 in space: no hold progress, near line or marker), `quiet`, `rp_near`, and the row reasons `closed`, `read`, `rp_closed`.
 
 | Event | Example line | Level |
 |---|---|---|
@@ -1090,7 +1090,7 @@ Survey layer and the quest "Chart the frontier", A12 step 2 (`design/survey-spec
 | `decline` | `module=survey event=decline system=dalled leg=140 result=<declined,closed>` / `module=survey event=decline result=stale` | 1 |
 | `handin` | `module=survey event=handin system=gredos leg=171 result=done` | 1 |
 | `logbook` | `module=survey event=logbook id=trf_sy entry=<quest,log> list=<jobs,quest> result=<added,rewritten,removed,restored,failed> reason=<accept,handin,dock,enter,load,lapse,<native error>>` (`restored`: a missing entry added again at an entry or a load, spec 7.5) | 1 |
-| `lapse` | `module=survey event=lapse step=10 quest_mask=3 leg=180 result=lapsed` | 1 |
+| `lapse` | `module=survey event=lapse step=1 quest_mask=3 leg=180 result=lapsed` | 1 |
 | `jump` | `module=survey event=jump system=xt20 hold_count=1 dest=xt45` (the holds of the visit end) | 2 |
 | `debug` | `module=survey event=debug system=xt20 result=<open,no_rows>` (cfg `survey_at`) | 1 |
 | `fix` | `module=survey event=fix field=<bits,block,quest> result=<dropped,reset,rebuilt> reason=<type,char,length,above,count,bad,complete,unread,s,t,c,done,step>` (only when the repair changed something) | 1 |
