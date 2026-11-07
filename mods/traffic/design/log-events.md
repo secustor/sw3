@@ -1108,7 +1108,7 @@ Crew requests, B03 (`design/crew-requests-spec.md` 11; host-tested only). `event
 | `enter` | `module=request event=enter system=gaoba system_index=42 state=<0..5> event_key=<tn1,nil> result=<armed,due_full>` | 2 |
 | `skip` | `module=request event=skip system=gaoba reason=<see above>` (once per reason and visit) | 2 |
 | `candidate` | `module=request event=candidate event_key=tn2 result=<ok,done,chapter,deadline_ch,no_speaker,none,gap>` (every row at the pick; `gap`: inside `rq_gap` with cfg `request_at` set, only the debug row is a candidate) | 2 |
-| `pick` | `module=request event=pick event_key=tn2 kind=cap speaker=Lastochka subject_a=3 subject_b=5 system=<subject system,nil for cap> result=<picked,kept,cleared> reason=<nil,subject,old,no_speaker>` | 1 |
+| `pick` | `module=request event=pick event_key=tn2 kind=cap speaker=Lastochka subject_a=3 subject_b=5 system=<subject system,nil for cap> result=<picked,kept,cleared> reason=<nil,subject,old,no_speaker,chapter>` (`cleared`: RD2 for a pending or box record) | 1 |
 | `pick` | `module=request event=pick result=none` | 2 |
 | `line` | `module=request event=line event_key=tn2 miss_count=1 line_count=<0,1,2> result=<queued,miss,box,dropped> reason=<nil,queued:<n>,no_speaker:<absent,dead,side,silent,error>,event:<kind>,say:<why>,left>` (`miss`: the pair could not be shown at this entry, one miss per entry; `box`: `rq_miss` reached) | 1 |
 | `say` | `module=request event=say event_key=tn2 part=<1,2,outcome,lapse> speaker=Lastochka output=<radio,line,dock,nil> result=<shown,not_shown> reason=<nil,left,stale,gate:..,hold:..,supp:..,no_speaker,line_failed>` | 1 |

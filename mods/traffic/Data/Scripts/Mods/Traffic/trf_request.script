@@ -1072,11 +1072,29 @@ function TRF_RqMiss(e, rec, why)
 	if res == "box" then TRF_RqLineLog(e, rec, 0, "box", nil); end;
 end;
 
--- RD2 for a pending or box record: the reason it is stale (subject, no_speaker, old), or nil.
+-- RD2 for a pending or box record: the reason it is stale (subject, no_speaker, old, chapter), or nil.
 function TRF_RqStale(e, rec)
 	if TRF_RqAgeOf(rec.g, TRF_RqLegs()) > TRF_RqTune().rq_pend_old then return "old"; end;
 	if not TRF_RqPres(e, rec) then return "no_speaker"; end;
+	local kw = TRF_RqKeptWhy(e, rec);
+	if kw then return kw; end;
 	if not TRF_RqLive(e, rec) then return "subject"; end;
+	return nil;
+end;
+
+-- RD2 for a kept (pending or box) record: chapter when the chapter left the row's window c0..c1 (not for the cfg
+-- request_at row), subject when its system fails R12 or D13 (TRF_RqSysOk; cap: the captain's last seen system), or nil.
+function TRF_RqKeptWhy(e, rec)
+	local ch = TRF_RqCh();
+	if e.k ~= TRF_RqAt() and (ch < e.c0 or ch > e.c1) then return "chapter"; end;
+	local x = rec.b;
+	if e.kd == "cap" then
+		local c = TRF_N("TRF_CapRec", rec.b);
+		x = nil;
+		if type(c) == "table" then x = c.seen; end;
+		if type(x) ~= "number" then return nil; end;
+	end;
+	if not TRF_RqSysOk(x) then return "subject"; end;
 	return nil;
 end;
 
@@ -1224,6 +1242,13 @@ function TRF_RqSayLog(e, part, tpl, how, res, why)
 	TRF_RqE("say", "event_key", k, "part", part, "speaker", tpl, "output", how, "result", res, "reason", why);
 end;
 
+-- Text in wrapper key k ($1 the name of template tpl, $2 text); cfg loc_mode 1: text alone, already its own key (the
+-- wrapper's fixed form would drop it).
+function TRF_RqWrap(k, tpl, text)
+	if TRF_N("TRF_Loc_Mode") == 1 then return text; end;
+	return TRF_RqTxt(k, TRF_RqPn(tpl), text);
+end;
+
 -- Speaks text as template tpl: 1, how (radio, line), or nil and the reason.
 function TRF_RqSpeak(tpl, text)
 	local secs = TRF_RqTune().rq_secs;
@@ -1232,7 +1257,7 @@ function TRF_RqSpeak(tpl, text)
 		if ok then return 1, how; end;
 		return nil, how;
 	end;
-	if TRF_N("TRF_Say", TRF_RqTxt("rqsay", TRF_RqPn(tpl), text), secs) then return 1, "line"; end;
+	if TRF_N("TRF_Say", TRF_RqWrap("rqsay", tpl, text), secs) then return 1, "line"; end;
 	return nil, "line_failed";
 end;
 
@@ -1322,7 +1347,7 @@ function TRF_RqOutcome(e, rec, where)
 	if where == "dock" then
 		TRF_RqPut(nil, 1);
 		local tpl = TRF_RqTplOf(rec, e);
-		local o = TRF_RqTxt("rqsay", TRF_RqPn(tpl), text);
+		local o = TRF_RqWrap("rqsay", tpl, text);
 		if tip then o = o.." "..TRF_RqTxt("rqtip", tip); end;
 		TRF_RqSayLog(e, "outcome", tpl, "dock", "shown", nil);
 		return o;
@@ -1470,6 +1495,8 @@ function TRF_RqBoxWhy(cur)
 	if not rec or rec.s ~= 3 then return "state"; end;
 	local gw = TRF_RqGate(cur, "dock");
 	if gw then return gw; end;
+	gw = TRF_RqKeptWhy(e, rec);
+	if gw then return gw; end;
 	if not TRF_RqLive(e, rec) then return "subject"; end;
 	local tpl = TRF_RqTplOf(rec, e);
 	if not tpl or not TRF_RqProbe(tpl) then return "no_speaker"; end;
@@ -1501,7 +1528,7 @@ function TRF_RqBoxBody(kind)
 	local title = "#UI_TradeStationWndCaption";
 	if kind == "patrol" then title = "#UI_PatrolStationWndCaption"; end;
 	rq.box = kind;
-	return {title=title, text=TRF_RqTxt("rqbox", TRF_RqPn(tpl), TRF_RqLine(e, rec, "a", nil)), ok="TRF_Rq_BoxOk", no="TRF_Rq_BoxNo",
+	return {title=title, text=TRF_RqWrap("rqbox", tpl, TRF_RqLine(e, rec, "a", nil)), ok="TRF_Rq_BoxOk", no="TRF_Rq_BoxNo",
 		shown="TRF_Rq_BoxShown", fail="TRF_Rq_BoxFail", a={g=TRF_RqGen(), e=rec.e}, own=TRF_RqK().own};
 end;
 

@@ -83,7 +83,7 @@ States: 1 pending (picked, the pair not yet shown), 2 active (shown or accepted)
 
 Rules:
 - RD1 The done bit is set at the start of state 2 (7.3 step 3, 7.4) or at the box Cancel; a record never returns to state 1 or 3 after 2.
-- RD2 A pending (1) or box (3) record whose subject or speaker is gone, or whose `ggg` is older than `rq_pend_old` (40) legs, is cleared without the done bit (4b.1 rule 1: an unshown line does not consume its record).
+- RD2 A pending (1) or box (3) record whose subject or speaker is gone, or whose `ggg` is older than `rq_pend_old` (40) legs, is cleared without the done bit (4b.1 rule 1: an unshown line does not consume its record). The same holds when the chapter has left the event's `c0..c1` (reason `chapter`; not for the cfg `request_at` row) or when the subject's system now fails R12 or D13 (`TRF_RqSysOk`; cap: the captain's last seen system; reason `subject`): the finders' checks run again for a kept record, at the line due and at the box gate, so a kept or box record never names an armed or denied system and never starts outside its chapter window.
 - RD3 Every write of `TRF.rq` happens before the line or the reward that follows it (an error later in the same call cannot pay twice).
 
 ### 3.3 Visit state (chunk local `RQ`, never saved, rebuilt by every MapInitialization)
@@ -351,7 +351,7 @@ Arguments of the event lines: trk $1 trader (`TRF_Names()[nm]`), $2 system (`TRF
 
 82 keys in `TRF_Rq_Text` (each fallback title and text counted). trf_remark's display names (RM 5.1) gain 10 rows: `rmnsedoy` Greyhair, `rmnyana` Jana, `rmnjosef` Joseph, `rmnblade` Blade, `rmnuel` SAM (`Uel`, `Uel2`, `Uel3`, `Uel4`), `rmnaia` Aja, `rmnalex` Alex, `rmnvalidol` Validol, `rmnalisa` Alice, `rmnche` Che (data note 2).
 - X1 `TRF_Rq_Text` goes into `TRF_Loc_TextFns()` after `"TRF_Sy_Text"` and at the end of `TRF_UI_TextFns()`; no key starts with `rq` today.
-- X2 `loc/trf_en.loc`: regenerate the scaffold from `TRF_Loc_LocLines()` (`gen_map.py --loc`, `--check --loc` clean); the fallback keys `rqt*` and `rqd*` must be in the file for `AddQuest`; templates lose their arguments under `loc_mode 1`, accepted (RM 17.3 deviation 6).
+- X2 `loc/trf_en.loc`: regenerate the scaffold from `TRF_Loc_LocLines()` (`gen_map.py --loc`, `--check --loc` clean); the fallback keys `rqt*` and `rqd*` must be in the file for `AddQuest`; templates lose their arguments under `loc_mode 1`, accepted (RM 17.3 deviation 6); the wrappers `rqsay` and `rqbox` are skipped under `loc_mode 1` (the inner `rq<k>a`/`rq<k>o` key is shown alone), as trf_remark does for `rmsay`.
 - X3 EN only for `rq*`; RU fixed forms for the 10 `rmn*` names in `loc/trf_ru.loc` from `G/LocData/Russian/m_pilots.loc` (owner decision 15).
 - X4 Style (`D/dialog-style-guide.md`): plain spoken sentences, no self-introduction (the portrait names the speaker), no mechanic words, parts joined with a space or `TRF_Br()`, never `"\n"`, no `%`, under 480 characters.
 
@@ -392,7 +392,7 @@ Constants (`TRF_RqK()`): `qid` "trf_rq", `own` "rq", `box` 50, `line` 85, `hex` 
 | `module=request event=enter system=gaoba system_index=42 state=<0..5> event_key=<tn1/nil>` | 2 |
 | `module=request event=skip system=gaoba reason=<off/chapter/nomap/mode:../gate:../latch/mission/hold:../quiet/event:../gap/none>` | 2, once per reason and visit |
 | `module=request event=candidate event_key=tn2 result=<ok/done/chapter/deadline_ch/no_speaker/none>` | 2 |
-| `module=request event=pick event_key=tn2 kind=cap speaker=Lastochka subject_a=3 subject_b=4 system=<subject system> result=<picked/kept/none/cleared> reason=<nil/subject/old/no_speaker>` | 1 (`none` level 2) |
+| `module=request event=pick event_key=tn2 kind=cap speaker=Lastochka subject_a=3 subject_b=4 system=<subject system> result=<picked/kept/none/cleared> reason=<nil/subject/old/no_speaker/chapter>` | 1 (`none` level 2) |
 | `module=request event=line event_key=tn2 miss_count=1 line_count=<0/1/2> result=<queued/miss/box> reason=<nil/queued:n/no_speaker:why/event:k/cap/due>` | 1 |
 | `module=request event=say event_key=tn2 part=<1/2/outcome/lapse> speaker=Lastochka output=<radio/line> result=<shown/not_shown> reason=<nil/left/gate:../supp:../no_speaker/msg_error>` | 1 |
 | `module=request event=request event_key=tn2 kind=cap chapter=6 deadline=15 via=<radio/box> result=shown` | 1 |
@@ -563,7 +563,7 @@ Built as specified: `S/trf_request.script` (prefix Rq, the 16 rows of 6.1, the f
 7. An outcome found at the line due (the pods aboard, a claimed captain) owes its line to the 1 s step of the same visit instead of a queue slot.
 8. Log order: `event=outcome` and `event=lapse` are written before the logbook end line (7.5 lists the logbook first), so W-B03.8 finds the end in the next 12 lines.
 9. Outcomes and lapses use the gate without the space hold (R1-R6 and R4; "out" form): an outcome under a scene or a hold is recorded and paid, its line waits until R1-R7 pass (7.5).
-10. The box record (state 3) gets the RD2 check (subject, speaker, `rq_pend_old`) at each line due; a pending record kept across entries keeps its pick leg in `ggg`, so RD2's age counts from the pick.
+10. The box record (state 3) gets the RD2 check (subject, speaker, `rq_pend_old`, chapter window, the subject system's R12/D13) at each line due, and the chapter and system checks again at the box gate; a pending record kept across entries keeps its pick leg in `ggg`, so RD2's age counts from the pick.
 11. The captain subject's system for R12 is the captain's last `seen` system (the record names the region slot).
 12. Pure signatures: `TRF_RqTrkOf(pool, cur, dist, legs, T, f, okf)` (pool of unpacked records, `T` with `record_ttl`), `TRF_RqCapOf(rec, slot, f, named, okf)`, `TRF_RqBcnOf(list, aboard, cur, dist, legs, ttl, T, okf)`, `TRF_RqRngOf(rows, cur, T, okf)` over rows `{x, j, pat, f, rung, war}` built by `TRF_RqRngRows`, `TRF_RqLiveOf(e, rec, s)` answering 1, `"claimed"` or nil, `TRF_RqPickOf(rows, s)` with `s.spk` and `s.subj` functions, `TRF_RqSplitOf` also answering the part count; `okf` is `TRF_RqSysOk` (strict gate `request` and `TRF_Wn_Armed`).
 13. Extra log values: `event=enter ... result=armed|due_full`, `event=line result=dropped reason=left`, `event=owe result=missed` (level 2), `event=fix field=rq` (F1, F2), `event=say ... output=dock` for the patrol dock line, `event=box ... via=`; `event=pick result=none` carries no fields. With `requests` 0 only the entry's `event=skip reason=off` and the dump line are written.

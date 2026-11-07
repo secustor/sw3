@@ -503,6 +503,22 @@ function T_RQ_B()
 	n0 = S_Mark();
 	RQ_Go("gaoba", function() RQ_Trk(44, %li, 1); end);
 	HOST_Check(RQ_Logs(n0, "result=cleared reason=old") == 1 and RQ_Logs(n0, "event=pick event_key=tn1") == 2, "RD2: pending for 41 legs dropped (old), then picked again");
+	-- RD2 for a kept record: its system armed now (D13), then the chapter past its c1.
+	TRF.tp = {};
+	RQ_Set(1, 1, {a=47, b=li});
+	n0 = S_Mark();
+	RQ_Go("gaoba", function() RQ_Trk(47, %li, 1); TRF_Wn_Armed = function(x) if x == HOST().rq_arm then return 1, "test"; end; return nil; end; end);
+	TRF_Wn_Armed = wa;
+	HOST_Check(RQ_R() == nil and not RQ_Done(1) and RQ_Logs(n0, "result=cleared reason=subject") == 1 and RQ_Logs(n0, "result=queued") == 0,
+		"RD2: a pending record whose system became armed is cleared, not queued");
+	TRF.tp = {};
+	RQ_Set(1, 1, {a=48, b=li});
+	h.labels.CurrentQuest = "11";
+	n0 = S_Mark();
+	RQ_Go("gaoba", function() RQ_Trk(48, %li, 1); end);
+	h.labels.CurrentQuest = "6";
+	HOST_Check(not (RQ_R() and RQ_R().e == 1) and not RQ_Done(1) and RQ_Logs(n0, "result=cleared reason=chapter") == 1,
+		"RD2: a pending tn1 at chapter 11 (c1 10) is cleared unconsumed");
 	-- request_at: done bit and gap ignored.
 	h.cfg.request_at = "tn1";
 	TRF.rq = TRF_RqJoinOf(TRF_RqSetOf("", 1, 16), nil, TRF_RqMod(TRF.clock.legs, 1000));
@@ -710,6 +726,14 @@ function T_RQ_D()
 	n0 = S_Mark();
 	pr = RQ_Dock("patrol");
 	HOST_Check(RQ_R() == nil and not RQ_Has(pr.scr, "desk officer") and RQ_Logs(n0, "tip=false result=done") == 1, "rng outcome without a rumour: no tip clause");
+	-- loc_mode 1: the dock line is the outcome key (the rqsay wrapper would show only its fixed form).
+	RQ_Begin("gaoba");
+	RQ_Fs(slot, f, 6);
+	RQ_Go("gaoba");
+	h.cfg.loc_mode = 1; TRF_H().loc = nil;
+	pr = RQ_Dock("patrol");
+	h.cfg.loc_mode = nil; TRF_H().loc = nil;
+	HOST_Check(RQ_R() == nil and RQ_Has(pr.scr, "#TRF_rqhr1o") and not RQ_Has(pr.scr, "#TRF_rqsay"), "loc_mode 1: the dock outcome line is the hr1o key ("..pr.scr..")");
 	-- The outcome line under a scene: retried at the steps until the scene ends.
 	RQ_Begin("gaoba");
 	RQ_Go("gaoba", function() RQ_Trk(62, %li, 1); end);
@@ -890,6 +914,22 @@ function T_RQ_F()
 	r = RQ_Dock("trade");
 	HOST_Check(not (r.box and RQ_Has(r.box.text, "Will you take it on?")), "rq_box 0: no box");
 	h.cfg.rq_box = nil;
+	-- The box gate: its system armed now (D13), the chapter past c1; loc_mode 1 shows the request key.
+	local wa = TRF_Wn_Armed;
+	h.rq_arm = V_Idx("lidau");
+	TRF_Wn_Armed = function(x) if x == HOST().rq_arm then return 1, "test"; end; return nil; end;
+	n0 = S_Mark();
+	HOST_Check(TRF_Rq_DockBox("trade") == nil and RQ_Logs(n0, "result=none reason=subject") >= 1, "box gate: an armed subject system");
+	TRF_Wn_Armed = wa;
+	h.labels.CurrentQuest = "11";
+	n0 = S_Mark();
+	HOST_Check(TRF_Rq_DockBox("trade") == nil and RQ_Logs(n0, "result=none reason=chapter") >= 1, "box gate: the chapter past c1");
+	h.labels.CurrentQuest = "6";
+	h.cfg.loc_mode = 1; TRF_H().loc = nil;
+	local lb = TRF_Rq_DockBox("trade");
+	h.cfg.loc_mode = nil; TRF_H().loc = nil;
+	HOST_Check(type(lb) == "table" and RQ_Has(lb.text, "#TRF_rqtn1a") and not RQ_Has(lb.text, "#TRF_rqbox") and RQ_R().s == 3,
+		"loc_mode 1: the box text is the request key ("..tostring(lb and lb.text)..")");
 	-- rq_box 0: no box state; the record stays pending.
 	RQ_Begin("gaoba", "6", {rq_box=0});
 	RQ_Crew({Hero={}, Lastochka={csr=0}});
