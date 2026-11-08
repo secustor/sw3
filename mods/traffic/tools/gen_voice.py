@@ -8,8 +8,8 @@ Check the shipped set (stdlib only, no Piper needed):
   python3 -I mods/traffic/tools/gen_voice.py [--check]
 Without an option it prints the table of the shipped files (speaker, spoken text, length, peak, RMS, bytes).
 --check exits 1 when a file is missing, an extra file is in trf_voice/ (dotfiles are skipped), a file is not in or
-differs (sha256, size) from the manifest tools/gen_voice.sha256, a header is not 22,050 Hz mono 16-bit PCM, a peak is
-not -3 dBFS, a length is outside 1.5..4.5 s, or the set is 14 MB or more.
+differs (sha256, size) from the manifest tools/gen_voice.sha256, a header is not 11,025 Hz mono 16-bit PCM, a peak is
+not -3 dBFS, a length is outside 1.5..4.5 s, or the set is 7 MB or more.
 
 Re-render (needs Piper; the venv and the models are scratch, never shipped):
   python3 -m venv .work/voice/venv && .work/voice/venv/bin/pip install piper-tts==1.8.0   # onnxruntime 1.31.1
@@ -20,13 +20,16 @@ Re-render (needs Piper; the venv and the models are scratch, never shipped):
 --render alone renders in memory and prints the table; --render --write writes the wav files and the manifest;
 --render --check renders and exits 1 when any shipped file differs from the new render (runs are byte identical).
 All 89 clips take about 2.5 minutes. Clip i of clips() uses seed SEED + i; the generic clips come first, so they keep
-the bytes of their first render.
+the seeds of their first render.
 Models (https://huggingface.co/rhasspy/piper-voices, each .onnx with its .onnx.json beside it), md5:
   en_US-norman-medium.onnx 829cea515dc724d694b83b71e8083f9f, .onnx.json 975830d6f230f6eccf657d265de99eba (trader)
   en_GB-cori-medium.onnx   f143307611eccea9d976235d0895f57c, .onnx.json 12b1dc45d8919f3475cf296d5f16a4c6 (control)
 Both voices: dataset LibriVox, "License: public domain" (model cards; design/mod-research/station-chatter-data.md 7).
 
-Chain per clip (22,050 Hz mono 16-bit PCM):
+Chain per clip, at Piper's 22,050 Hz (PRATE; every coefficient and time constant is computed from it); the files are
+11,025 Hz mono 16-bit PCM (RATE), step 7. The radio band ends at 3 kHz, so the lower rate keeps all of it and halves the
+set; the chain stays at 22,050 Hz so that the harmonics of the clip and overdrive stages and the broadband click and
+crackle (up to 11 kHz there) are filtered out in step 7 instead of folding back into the band at 11,025 Hz.
  1. Piper renders each sentence (fixed onnxruntime seed, the voice loaded fresh per clip). Each sentence is trimmed of
     silence (40 dB under its peak), internal pauses over 0.15 s are shortened to 0.15 s, sentences are joined with a
     short gap. A phrase longer than its clip's target (3.5 s generic, 3.8 s designator clips, less the fixed parts) is
@@ -43,7 +46,10 @@ Chain per clip (22,050 Hz mono 16-bit PCM):
     trailing silence; short phrases get open carrier before and after the voice up to MIN_LEN.
  6. Crackle: 2 to 6 pops per clip at LCG times inside the carrier, each 1 to 3 ms of noise through a one-pole 1,500 Hz
     high-pass and 5,000 Hz low-pass under a linear decay, 0.4 to 0.8 of the voice peak.
- 7. Every file normalised to the same peak, -3 dBFS.
+ 7. Decimation to 11,025 Hz (decimate()): an 81-tap linear-phase low-pass (a sinc cut at 4,500 Hz under a Kaiser window,
+    beta 9: flat to 0.001 dB up to 3,600 Hz, -33 dB at 5,000 Hz, -93 dB or less from 5,512.5 Hz up), then every second
+    sample; centred, so the length halves and nothing shifts.
+ 8. Every file normalised to the same peak, -3 dBFS.
 Nothing outside the repo is read or written; the model paths are arguments.
 """
 import argparse
@@ -56,7 +62,9 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.normpath(os.path.join(HERE, "..", "Data", "SOUND", "trf_voice"))
 MANIFEST = os.path.join(HERE, "gen_voice.sha256")
-RATE = 22050
+RATE = 11025                  # the shipped clips: the radio band ends at 3 kHz, so 11,025 Hz holds all of it
+PRATE = 22050                 # the chain's rate: Piper's own; every stage runs here, then decimate() halves the rate
+AA_TAPS, AA_HZ, AA_BETA = 81, 4500.0, 9.0   # anti-alias low-pass of decimate(): Kaiser-windowed sinc
 SEED = 0x5357                 # gen_squelch's seed; clip i uses SEED + i for its noise and the TTS
 LEAD, TRAIL = 0.050, 0.030    # seconds of silence before the click and after the tail
 CLICK, TAIL, FADE = 0.005, 0.150, 0.010
@@ -70,7 +78,7 @@ DRIVE_DB = 3.0               # overdrive: voice RMS rise
 DROP_DB = -12.0
 TRIM_REL_DB = -40.0          # trim and pause threshold relative to each sentence's peak
 PAUSE_MAX = 0.15             # internal pauses longer than this are shortened to it
-SET_MAX = 14000000           # bytes of the whole set
+SET_MAX = 7000000            # bytes of the whole set
 
 # Generic clips <key>.wav: (key, speaker, spoken text). Speaker per trf_chatter.script TRF_RcK(): cs/as "t" trader, "c"
 # control. The text is the fixed phraseology of each line (spec 7); call sign, bay, cargo and destination stay
@@ -137,7 +145,7 @@ DPHRASES = [
 
 def clips():
     """[(name, key, speaker, spoken text, target length s)]: the 18 generic clips first (clip index = seed offset, so
-    their bytes stay those of the render before the designator clips existed), then per key the designator clips in
+    they keep the seeds of the render before the designator clips existed), then per key the designator clips in
     DES order."""
     spk = dict((k, sp) for k, sp, _ in PHRASES)
     out = [(k + ".wav", k, sp, t, MAX_LEN) for k, sp, t in PHRASES]
@@ -176,10 +184,10 @@ def noise(n, seed):
 
 def onepole_band(src, hp_hz=800.0, lp_hz=3000.0):
     """gen_squelch's band limit: one-pole high-pass, then one-pole low-pass."""
-    dt = 1.0 / RATE
+    dt = 1.0 / PRATE
     rc = 1.0 / (2 * math.pi * hp_hz)
     b = rc / (rc + dt)
-    a = 1.0 - math.exp(-2 * math.pi * lp_hz / RATE)
+    a = 1.0 - math.exp(-2 * math.pi * lp_hz / PRATE)
     hp, lp, xp, out = 0.0, 0.0, 0.0, []
     for x in src:
         hp = b * (hp + x - xp)
@@ -191,7 +199,7 @@ def onepole_band(src, hp_hz=800.0, lp_hz=3000.0):
 
 def biquad(src, kind, f0, q=0.7071):
     """RBJ cookbook high-pass or low-pass, direct form I."""
-    w = 2 * math.pi * f0 / RATE
+    w = 2 * math.pi * f0 / PRATE
     cw, al = math.cos(w), math.sin(w) / (2 * q)
     if kind == "lp":
         b0, b1, b2 = (1 - cw) / 2, 1 - cw, (1 - cw) / 2
@@ -217,13 +225,13 @@ def trim(s, pad=0.015):
     shorten every internal run of such windows longer than PAUSE_MAX to PAUSE_MAX (the middle is cut out)."""
     if not s:
         return []
-    w = int(0.010 * RATE)
+    w = int(0.010 * PRATE)
     thr = max(abs(v) for v in s) * db(TRIM_REL_DB)
     loud = [rms(s[i:i + w]) > thr for i in range(0, len(s), w)]
     act = [k for k, q in enumerate(loud) if q]
     if not act:
         return []
-    p = int(pad * RATE)
+    p = int(pad * PRATE)
     keep = int(PAUSE_MAX / 0.010)
     out, k = [], act[0]
     while k <= act[-1]:
@@ -243,23 +251,42 @@ def trim(s, pad=0.015):
     return s[max(0, act[0] * w - p):act[0] * w] + out + s[(act[-1] + 1) * w:(act[-1] + 1) * w + p]
 
 
-def resample(s, src_rate):
-    if src_rate == RATE:
-        return s
-    n = int(len(s) * RATE / float(src_rate))
-    out = []
-    for i in range(n):
-        t = i * src_rate / float(RATE)
-        j = int(t)
-        f = t - j
-        a = s[j] if j < len(s) else 0.0
-        b = s[j + 1] if j + 1 < len(s) else a
-        out.append(a + (b - a) * f)
-    return out
+def bessel_i0(x):
+    """Modified Bessel function I0 (power series), for the Kaiser window."""
+    s, t, k = 1.0, 1.0, 1
+    while t > 1e-12 * s:
+        t *= (x / (2.0 * k)) ** 2
+        s += t
+        k += 1
+    return s
+
+
+def aa_taps(n=AA_TAPS, fc=AA_HZ, beta=AA_BETA, fs=PRATE):
+    """Linear-phase low-pass FIR: a sinc cut at fc Hz (-6 dB there) under a Kaiser window, unity gain at 0 Hz. The
+    defaults: flat to 0.001 dB up to 3,600 Hz, -33 dB at 5,000 Hz, -93 dB or less from 5,512.5 Hz (half of RATE) up."""
+    m = (n - 1) / 2.0
+    wc = 2 * math.pi * fc / fs
+    h = []
+    for j in range(n):
+        t = j - m
+        x = math.sin(wc * t) / (math.pi * t) if t else wc / math.pi
+        h.append(x * bessel_i0(beta * math.sqrt(1.0 - (t / m) ** 2)) / bessel_i0(beta))
+    k = sum(h)
+    return [v / k for v in h]
+
+
+def decimate(s, f=PRATE // RATE):
+    """Every f-th sample of s through aa_taps() (centred, no delay; zeros outside s): ceil(len(s) / f) samples at RATE.
+    Nothing above half of RATE folds back."""
+    h = aa_taps()
+    m = (len(h) - 1) // 2
+    xp = [0.0] * m + s + [0.0] * m
+    n = len(h)
+    return [sum(a * b for a, b in zip(h, xp[i:i + n])) for i in range(0, len(s), f)]
 
 
 def tts(model, text, seed, length):
-    """Piper sentences of text as floats at RATE, trimmed; the voice is loaded fresh with a fixed seed."""
+    """Piper sentences of text as floats at PRATE, trimmed; the voice is loaded fresh with a fixed seed."""
     import onnxruntime as ort
     from piper import PiperVoice, SynthesisConfig
     ort.set_seed(seed)
@@ -267,30 +294,32 @@ def tts(model, text, seed, length):
     cfg = SynthesisConfig(length_scale=length, normalize_audio=False)
     parts = []
     for c in v.synthesize(text, cfg):
+        if c.sample_rate != PRATE:
+            raise SystemExit("voice: %s renders %d Hz, the chain needs %d Hz" % (model, c.sample_rate, PRATE))
         raw = c.audio_int16_bytes
         a = struct.unpack("<%dh" % (len(raw) // 2), raw)
-        parts.append(resample([x / 32768.0 for x in a], c.sample_rate))
+        parts.append([x / 32768.0 for x in a])
     return [trim(p) for p in parts if p]
 
 
 def speech(model, spk, text, seed, smax):
     """The joined speech, rendered faster when longer than smax seconds; returns (samples, length_scale)."""
     length = VOICE[spk]["length"]
-    gap = [0.0] * int(VOICE[spk]["gap"] * RATE)
+    gap = [0.0] * int(VOICE[spk]["gap"] * PRATE)
     while True:
         parts = tts(model, text, seed, length)
         s = []
         for k, p in enumerate(parts):
             s += (gap if k else []) + p
-        if len(s) / float(RATE) <= smax or length <= 0.8:
+        if len(s) / float(PRATE) <= smax or length <= 0.8:
             return s, length
-        length = round(max(0.8, length * smax * RATE / len(s) - 0.01), 3)
+        length = round(max(0.8, length * smax * PRATE / len(s) - 0.01), 3)
 
 
 def compress(s):
     """Feed-forward compressor on a peak envelope: 3:1 above -24 dBFS, 5 ms attack, 60 ms release."""
-    att = math.exp(-1.0 / (0.005 * RATE))
-    rel = math.exp(-1.0 / (0.060 * RATE))
+    att = math.exp(-1.0 / (0.005 * PRATE))
+    rel = math.exp(-1.0 / (0.060 * PRATE))
     thr, ratio, env, out = db(-24.0), 3.0, 0.0, []
     for x in s:
         a = abs(x)
@@ -345,20 +374,20 @@ def overdrive(s):
 def dropouts(s, gen):
     """One (voice >= 2.0 s) or two (>= 2.8 s) dropouts of 20-40 ms at DROP_DB with 3 ms ramps, at least 0.3 s from both
     ends; returns the list of (start s, length s)."""
-    secs = len(s) / float(RATE)
+    secs = len(s) / float(PRATE)
     n = 2 if secs >= 2.8 else 1 if secs >= 2.0 else 0
     marks = []
-    lo, hi = int(0.3 * RATE), len(s) - int(0.3 * RATE)
-    ramp = int(0.003 * RATE)
+    lo, hi = int(0.3 * PRATE), len(s) - int(0.3 * PRATE)
+    ramp = int(0.003 * PRATE)
     k = db(DROP_DB)
     for i in range(n):
         span = (hi - lo) // n
-        ln = int((0.020 + (next(gen) % 21) / 1000.0) * RATE)
+        ln = int((0.020 + (next(gen) % 21) / 1000.0) * PRATE)
         st = lo + i * span + next(gen) % max(1, span - ln)
         for j in range(ln):
             e = min(1.0, j / float(ramp), (ln - 1 - j) / float(ramp))
             s[st + j] *= 1.0 - (1.0 - k) * e
-        marks.append((st / float(RATE), ln / float(RATE)))
+        marks.append((st / float(PRATE), ln / float(PRATE)))
     return marks
 
 
@@ -366,7 +395,7 @@ def crackle(body, vpeak, gen):
     """2-6 pops of 1-3 ms band-limited noise under a linear decay, 0.4-0.8 of the voice peak, added into body."""
     n = 2 + next(gen) % 5
     for _ in range(n):
-        ln = int((0.001 + (next(gen) % 3) / 1000.0) * RATE)
+        ln = int((0.001 + (next(gen) % 3) / 1000.0) * PRATE)
         at = next(gen) % max(1, len(body) - ln)
         amp = vpeak * (0.4 + (next(gen) % 41) / 100.0)
         burst = onepole_band(noise(ln + 8, next(gen)), 1500.0, 5000.0)[8:]
@@ -393,32 +422,32 @@ def clip(model, spk, text, idx, target):
     v = radio(sp)
     v, drive = overdrive(v)
     drops = dropouts(v, gen)
-    v = fade(v, int(FADE * RATE), int(FADE * RATE))
+    v = fade(v, int(FADE * PRATE), int(FADE * PRATE))
     vpeak = max(abs(x) for x in v) or 1.0
     fixed = LEAD + CLICK + TAIL + TRAIL
-    extra = max(0.0, MIN_LEN - fixed - len(v) / float(RATE))
-    pre = int(extra * 0.6 * RATE) + int(0.020 * RATE)
-    post = int(extra * 0.4 * RATE) + int(0.020 * RATE)
+    extra = max(0.0, MIN_LEN - fixed - len(v) / float(PRATE))
+    pre = int(extra * 0.6 * PRATE) + int(0.020 * PRATE)
+    post = int(extra * 0.4 * PRATE) + int(0.020 * PRATE)
     body = [0.0] * pre + v + [0.0] * post
-    src = noise(len(body) + int((CLICK + TAIL) * RATE), seed)
+    src = noise(len(body) + int((CLICK + TAIL) * PRATE), seed)
     band = onepole_band(src)
     bed = band[:len(body)]
     k = db(BED_DB) / (rms(bed) or 1.0)
-    bed = fade([x * k for x in bed], int(FADE * RATE), 0)
+    bed = fade([x * k for x in bed], int(FADE * PRATE), 0)
     body = [a + b for a, b in zip(body, bed)]
     pops = crackle(body, vpeak, gen)
-    nc = int(CLICK * RATE)
+    nc = int(CLICK * PRATE)
     click = [src[i] * (1.0 - i / float(nc)) * 0.7 * vpeak for i in range(nc)]
-    nt = int(TAIL * RATE)
+    nt = int(TAIL * PRATE)
     tb = band[len(body):len(body) + nt]
     top = max(abs(x) for x in tb) or 1.0
     kd = math.log(1000.0) / nt
-    tail = fade([x / top * 0.5 * vpeak * math.exp(-kd * i) for i, x in enumerate(tb)], 0, int(FADE * RATE))
-    out = [0.0] * int(LEAD * RATE) + click + body + tail + [0.0] * int(TRAIL * RATE)
+    tail = fade([x / top * 0.5 * vpeak * math.exp(-kd * i) for i, x in enumerate(tb)], 0, int(FADE * PRATE))
+    out = decimate([0.0] * int(LEAD * PRATE) + click + body + tail + [0.0] * int(TRAIL * PRATE))
     m = max(abs(x) for x in out) or 1.0
     g = db(PEAK_DB) / m
     pcm = [max(-32768, min(32767, int(round(x * g * 32767)))) for x in out]
-    info = {"speech": len(sp) / float(RATE), "length_scale": length, "drive": drive, "pops": pops, "drops": drops}
+    info = {"speech": len(sp) / float(PRATE), "length_scale": length, "drive": drive, "pops": pops, "drops": drops}
     return pcm, info
 
 

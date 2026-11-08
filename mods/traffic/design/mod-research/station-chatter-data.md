@@ -114,60 +114,60 @@ Design `.work/voice/atc-design.md` (phraseology, call signs, slots), owner decis
 
 ### 7.2 Clips
 
-89 files in `Data/SOUND/trf_voice/`, 22,050 Hz mono 16-bit PCM, peak -3.0 dBFS, 12,639,410 bytes in all, manifest `tools/gen_voice.sha256`; `gen_voice.py --render --check` reproduces the bytes. Since the designator step (spec 17, owner decision 15) per line key one clip per call sign designator, `<key>_<tag>.wav` (71 files, 10,545,728 bytes), and the generic `<key>.wav` without a designator (18 files, 2,093,682 bytes; the fallback for a designator without a clip; their bytes are those of the first render, the generic clips keep seeds 0..17).
+89 files in `Data/SOUND/trf_voice/`, 11,025 Hz mono 16-bit PCM, peak -3.0 dBFS, 6,321,668 bytes in all, manifest `tools/gen_voice.sha256`; `gen_voice.py --render --check` reproduces the bytes. Since the designator step (spec 17, owner decision 15) per line key one clip per call sign designator, `<key>_<tag>.wav` (71 files, 5,274,430 bytes), and the generic `<key>.wav` without a designator (18 files, 1,047,238 bytes; the fallback for a designator without a clip; the generic clips keep seeds 0..17). Rate (2026-11-08): the set was 22,050 Hz, 12,639,410 bytes (10,545,728 designator, 2,093,682 generic); the radio band ends at 3 kHz, so the clips are now 11,025 Hz, decimated from the same 22,050 Hz chain (7.3). Lengths are unchanged (largest difference 0.05 ms); the file RMS moved by -0.6 to +2.2 dB (median +0.05 dB), because the peak that sets the -3 dBFS gain was a broadband crackle pop or click in some clips and the decimation filter lowers it.
 
-Designator clips (rendered 2026-11-08): the text's call sign slot spoken as its designator, the flight number left out. D per tag: `ftu` "FTU", `triada` "Triada heavy", `uss` "USS heavy", `inoco` "InoCo heavy" (a carrier's call sign always has `heavy`, an independent's never). Piper's phonemizer (espeak-ng) [V: `PiperVoice.phonemize`, both voices]: "FTU" as the three letters ("ef tee you"), "USS" as letters ("you ess ess"), "Triada" as "try-AH-da", "InoCo" as "EE-no co" (the same phonemes as the spelling "Ino Co"). Spaced letters ("F T U", "U S S") gave the same phonemes with full stress on each letter and a pause after each (trader: "U S S heavy" 1.58 s against 1.11 s for "USS heavy"; "Control, F T U, inbound ..." 0.28 s longer), so the plain spellings are used. Designator alone at the voice's own speed (trimmed speech): FTU 0.86 s trader, 0.70 s control; USS heavy 1.11 / 0.87 s; Triada heavy 0.96 / 0.83 s; InoCo heavy 1.18 / 0.80 s. The control voice's opening vowel of "FTU" is about -18 dB under the line's peak in the raw render and within 1 dB of it after the radio compressor (25 ms RMS windows) [V]; nobody listened. Length and bytes per clip:
+Designator clips (rendered 2026-11-08, bytes at 11,025 Hz): the text's call sign slot spoken as its designator, the flight number left out. D per tag: `ftu` "FTU", `triada` "Triada heavy", `uss` "USS heavy", `inoco` "InoCo heavy" (a carrier's call sign always has `heavy`, an independent's never). Piper's phonemizer (espeak-ng) [V: `PiperVoice.phonemize`, both voices]: "FTU" as the three letters ("ef tee you"), "USS" as letters ("you ess ess"), "Triada" as "try-AH-da", "InoCo" as "EE-no co" (the same phonemes as the spelling "Ino Co"). Spaced letters ("F T U", "U S S") gave the same phonemes with full stress on each letter and a pause after each (trader: "U S S heavy" 1.58 s against 1.11 s for "USS heavy"; "Control, F T U, inbound ..." 0.28 s longer), so the plain spellings are used. Designator alone at the voice's own speed (trimmed speech): FTU 0.86 s trader, 0.70 s control; USS heavy 1.11 / 0.87 s; Triada heavy 0.96 / 0.83 s; InoCo heavy 1.18 / 0.80 s. The control voice's opening vowel of "FTU" is about -18 dB under the line's peak in the raw render and within 1 dB of it after the radio compressor (25 ms RMS windows) [V]; nobody listened. Length and bytes per clip:
 
 | Key | Speaker | Spoken text (D = designator) | ftu | triada | uss | inoco |
 |---|---|---|---|---|---|---|
-| rchreq1 | trader | Control, D, inbound with cargo, request docking. | 3.80 s, 167,488 | 3.79 s, 167,048 | 3.77 s, 166,168 | 3.74 s, 164,848 |
-| rchreq2 | trader | Control, D, at the outer marker, request docking clearance. | 3.78 s, 166,608 | 3.94 s, 173,648 | 3.92 s, 172,768 | 3.79 s, 167,048 |
-| rchreqc | trader | Control, D, full load, request docking. | - | 3.45 s, 152,088 | 3.61 s, 159,128 | 3.43 s, 151,208 |
-| rchreqa1 | control | D, cleared to dock, follow the beacon. | 3.16 s, 139,328 | 2.88 s, 127,008 | 3.04 s, 134,048 | 2.92 s, 128,768 |
-| rchreqa2 | control | D, cleared to dock, reduce speed at the marker. | 3.42 s, 150,768 | 3.33 s, 146,808 | 3.46 s, 152,528 | 3.53 s, 155,608 |
-| rchhold1 | control | D, hold position, bay occupied, expect delay. | 3.93 s, 173,208 | 3.62 s, 159,568 | 3.89 s, 171,448 | 3.77 s, 166,168 |
-| rchhold2 | control | D, standby. Traffic in the bay, hold at the outer marker. | 3.81 s, 167,938 | 3.91 s, 172,338 | 3.95 s, 174,098 | 4.02 s, 177,178 |
-| rchholda | trader | Wilco, holding, D. | 2.58 s, 113,808 | 2.57 s, 113,368 | 2.53 s, 111,608 | 2.42 s, 106,768 |
-| rchgo1 | control | D, the bay is now clear, cleared to dock. | 3.34 s, 147,248 | 3.06 s, 134,928 | 3.09 s, 136,248 | 3.17 s, 139,768 |
-| rchgo2 | control | D, number one, cleared to dock. | 2.81 s, 123,928 | 2.39 s, 105,448 | 2.76 s, 121,728 | 2.69 s, 118,648 |
-| rchgoa1 | trader | Cleared to dock, D. | 1.76 s, 77,728 | 1.98 s, 87,408 | 2.19 s, 96,648 | 2.06 s, 90,928 |
-| rchgoa2 | trader | Roger, on our way in, D. | 2.76 s, 121,728 | 2.80 s, 123,488 | 2.84 s, 125,248 | 2.99 s, 131,848 |
-| rchin1 | trader | Control, D, docked, clamps on. | 3.10 s, 136,688 | 3.28 s, 144,608 | 3.31 s, 145,928 | 3.13 s, 138,008 |
-| rchin2 | trader | Control, D, secured in the bay, shutting down. | 3.64 s, 160,448 | 3.67 s, 161,768 | 3.81 s, 167,928 | 3.78 s, 166,608 |
-| rchout1 | trader | Control, D, clear of the bay, request departure. | 3.82 s, 168,368 | 3.78 s, 166,608 | 3.82 s, 168,368 | 3.72 s, 163,968 |
-| rchout2 | trader | Control, D, undocking, ready to depart. | 3.24 s, 142,848 | 3.52 s, 155,168 | 3.49 s, 153,848 | 3.57 s, 157,368 |
-| rchouta1 | control | D, departure lane clear, cleared to depart, over and out. | 4.29 s, 189,048 | 4.12 s, 181,568 | 4.10 s, 180,688 | 4.02 s, 177,168 |
-| rchouta2 | control | D, roger, frequency change approved, over and out. | 3.98 s, 175,408 | 3.79 s, 167,048 | 3.73 s, 164,408 | 4.05 s, 178,488 |
-| all | | | 17 clips, 2,522,586 | 18 clips, 2,639,914 | 18 clips, 2,702,834 | 18 clips, 2,680,394 |
+| rchreq1 | trader | Control, D, inbound with cargo, request docking. | 3.80 s, 83,766 | 3.79 s, 83,546 | 3.77 s, 83,106 | 3.74 s, 82,446 |
+| rchreq2 | trader | Control, D, at the outer marker, request docking clearance. | 3.78 s, 83,326 | 3.94 s, 86,846 | 3.92 s, 86,406 | 3.79 s, 83,546 |
+| rchreqc | trader | Control, D, full load, request docking. | - | 3.45 s, 76,066 | 3.61 s, 79,586 | 3.43 s, 75,626 |
+| rchreqa1 | control | D, cleared to dock, follow the beacon. | 3.16 s, 69,686 | 2.88 s, 63,526 | 3.04 s, 67,046 | 2.92 s, 64,406 |
+| rchreqa2 | control | D, cleared to dock, reduce speed at the marker. | 3.42 s, 75,406 | 3.33 s, 73,426 | 3.46 s, 76,286 | 3.53 s, 77,826 |
+| rchhold1 | control | D, hold position, bay occupied, expect delay. | 3.93 s, 86,626 | 3.62 s, 79,806 | 3.89 s, 85,746 | 3.77 s, 83,106 |
+| rchhold2 | control | D, standby. Traffic in the bay, hold at the outer marker. | 3.81 s, 83,992 | 3.91 s, 86,192 | 3.95 s, 87,072 | 4.02 s, 88,612 |
+| rchholda | trader | Wilco, holding, D. | 2.58 s, 56,926 | 2.57 s, 56,706 | 2.53 s, 55,826 | 2.42 s, 53,406 |
+| rchgo1 | control | D, the bay is now clear, cleared to dock. | 3.34 s, 73,646 | 3.06 s, 67,486 | 3.09 s, 68,146 | 3.17 s, 69,906 |
+| rchgo2 | control | D, number one, cleared to dock. | 2.81 s, 61,986 | 2.39 s, 52,746 | 2.76 s, 60,886 | 2.69 s, 59,346 |
+| rchgoa1 | trader | Cleared to dock, D. | 1.76 s, 38,886 | 1.98 s, 43,726 | 2.19 s, 48,346 | 2.06 s, 45,486 |
+| rchgoa2 | trader | Roger, on our way in, D. | 2.76 s, 60,886 | 2.80 s, 61,766 | 2.84 s, 62,646 | 2.99 s, 65,946 |
+| rchin1 | trader | Control, D, docked, clamps on. | 3.10 s, 68,366 | 3.28 s, 72,326 | 3.31 s, 72,986 | 3.13 s, 69,026 |
+| rchin2 | trader | Control, D, secured in the bay, shutting down. | 3.64 s, 80,246 | 3.67 s, 80,906 | 3.81 s, 83,986 | 3.78 s, 83,326 |
+| rchout1 | trader | Control, D, clear of the bay, request departure. | 3.82 s, 84,206 | 3.78 s, 83,326 | 3.82 s, 84,206 | 3.72 s, 82,006 |
+| rchout2 | trader | Control, D, undocking, ready to depart. | 3.24 s, 71,446 | 3.52 s, 77,606 | 3.49 s, 76,946 | 3.57 s, 78,706 |
+| rchouta1 | control | D, departure lane clear, cleared to depart, over and out. | 4.29 s, 94,546 | 4.12 s, 90,806 | 4.10 s, 90,366 | 4.02 s, 88,606 |
+| rchouta2 | control | D, roger, frequency change approved, over and out. | 3.98 s, 87,726 | 3.79 s, 83,546 | 3.73 s, 82,226 | 4.05 s, 89,266 |
+| all | | | 17 clips, 1,261,668 | 18 clips, 1,320,354 | 18 clips, 1,351,814 | 18 clips, 1,340,594 |
 
 15 of the 71 clips are at Piper's fastest setting (`length_scale` 0.8); 17 end between 3.8 and 4.29 s (target 3.8 s, hard limit 4.5 s).
 
-Generic clips (rendered 2026-11-08, unchanged):
+Generic clips (rendered 2026-11-08; file RMS at 11,025 Hz):
 
 | Key | Speaker | Spoken text | Length | File RMS |
 |---|---|---|---|---|
-| rchreq1 | trader | Control, inbound with cargo, request docking. | 3.17 s | -15.1 dBFS |
-| rchreq2 | trader | Control, at the outer marker, request docking clearance. | 3.43 s | -15.8 |
-| rchreqc | trader | Control, heavy, full load, request docking. | 3.11 s | -15.3 |
-| rchreqa1 | control | Roger, cleared to dock, follow the beacon. | 2.43 s | -15.1 |
-| rchreqa2 | control | Cleared to dock, reduce speed at the marker. | 2.62 s | -16.2 |
-| rchhold1 | control | Hold position, bay occupied, expect delay. | 3.05 s | -14.8 |
-| rchhold2 | control | Standby. Traffic in the bay, hold at the outer marker. | 3.19 s | -14.4 |
-| rchholda | trader | Wilco, holding. | 1.54 s | -15.1 |
-| rchgo1 | control | The bay is now clear, cleared to dock. | 2.15 s | -15.3 |
-| rchgo2 | control | You're number one, cleared to dock. | 2.16 s | -14.4 |
-| rchgoa1 | trader | Cleared to dock. | 1.54 s | -20.0 (0.60 s of speech, open carrier to 1.5 s) |
+| rchreq1 | trader | Control, inbound with cargo, request docking. | 3.17 s | -15.0 dBFS |
+| rchreq2 | trader | Control, at the outer marker, request docking clearance. | 3.43 s | -15.3 |
+| rchreqc | trader | Control, heavy, full load, request docking. | 3.11 s | -15.1 |
+| rchreqa1 | control | Roger, cleared to dock, follow the beacon. | 2.43 s | -15.2 |
+| rchreqa2 | control | Cleared to dock, reduce speed at the marker. | 2.62 s | -14.6 |
+| rchhold1 | control | Hold position, bay occupied, expect delay. | 3.05 s | -14.7 |
+| rchhold2 | control | Standby. Traffic in the bay, hold at the outer marker. | 3.19 s | -14.5 |
+| rchholda | trader | Wilco, holding. | 1.54 s | -15.0 |
+| rchgo1 | control | The bay is now clear, cleared to dock. | 2.15 s | -14.5 |
+| rchgo2 | control | You're number one, cleared to dock. | 2.16 s | -14.5 |
+| rchgoa1 | trader | Cleared to dock. | 1.54 s | -18.3 (0.60 s of speech, open carrier to 1.5 s) |
 | rchgoa2 | trader | Roger, on our way in. | 2.05 s | -14.6 |
-| rchin1 | trader | Control, docked, clamps on. | 2.15 s | -14.7 |
-| rchin2 | trader | Control, secured in the bay, shutting down. | 2.75 s | -16.6 |
-| rchout1 | trader | Control, clear of the bay, request departure. | 2.89 s | -15.1 |
-| rchout2 | trader | Control, undocking, ready to depart. | 2.44 s | -15.3 |
-| rchouta1 | control | Departure lane clear, cleared to depart, over and out. | 3.45 s | -14.7 |
-| rchouta2 | control | Roger, frequency change approved, over and out. | 3.35 s | -14.3 |
+| rchin1 | trader | Control, docked, clamps on. | 2.15 s | -14.9 |
+| rchin2 | trader | Control, secured in the bay, shutting down. | 2.75 s | -15.4 |
+| rchout1 | trader | Control, clear of the bay, request departure. | 2.89 s | -15.3 |
+| rchout2 | trader | Control, undocking, ready to depart. | 2.44 s | -15.2 |
+| rchouta1 | control | Departure lane clear, cleared to depart, over and out. | 3.45 s | -14.4 |
+| rchouta2 | control | Roger, frequency change approved, over and out. | 3.35 s | -14.1 |
 
 ### 7.3 Pipeline
 
-Piper TTS (piper-tts 1.8.0, onnxruntime 1.31.1) in the scratch venv `.work/voice/venv`, models under `.work/untrusted/voice/`; nothing of it ships. The chain (`tools/gen_voice.py` docstring): sentences rendered with a fixed seed and trimmed, pauses over 0.15 s shortened; band-pass 300-3,000 Hz, RMS -18 dBFS, a 3:1 compressor, a tanh clip at -6 dBFS; overdrive: a soft knee (linear to half the ceiling, tanh above) after a drive gain found by bisection for +3 dB voice RMS (gain 1.46-1.52 on this set), filtered again and clipped at -6 dBFS; one or two dropouts of 20-40 ms at -12 dB in clips with at least 2.0 / 2.8 s of voice; a -40 dBFS noise bed, gen_squelch's click and a 150 ms squelch tail; 2-6 crackle pops of 1-3 ms band-limited noise at 0.4-0.8 of the voice peak; peak normalised to -3 dBFS. Against the first ATC render (no overdrive) the file RMS rose about 1.5 dB (-16.5 to -15.0 typical). Re-render:
+Piper TTS (piper-tts 1.8.0, onnxruntime 1.31.1) in the scratch venv `.work/voice/venv`, models under `.work/untrusted/voice/`; nothing of it ships. The chain (`tools/gen_voice.py` docstring): sentences rendered with a fixed seed and trimmed, pauses over 0.15 s shortened; band-pass 300-3,000 Hz, RMS -18 dBFS, a 3:1 compressor, a tanh clip at -6 dBFS; overdrive: a soft knee (linear to half the ceiling, tanh above) after a drive gain found by bisection for +3 dB voice RMS (gain 1.46-1.52 on this set), filtered again and clipped at -6 dBFS; one or two dropouts of 20-40 ms at -12 dB in clips with at least 2.0 / 2.8 s of voice; a -40 dBFS noise bed, gen_squelch's click and a 150 ms squelch tail; 2-6 crackle pops of 1-3 ms band-limited noise at 0.4-0.8 of the voice peak; all of it at Piper's 22,050 Hz; decimation to 11,025 Hz through an 81-tap Kaiser-windowed sinc low-pass (cut at 4,500 Hz, beta 9: flat to 0.001 dB up to 3,600 Hz, -33 dB at 5,000 Hz, -93 dB or less from 5,512.5 Hz up); peak normalised to -3 dBFS. The chain stays at 22,050 Hz because its clip and overdrive stages make harmonics above 5.5 kHz and the click, crackle and noise bed reach up to 11 kHz there (in the 22,050 Hz files 19 to 26 dB under the clip's energy): at 11,025 Hz these would fold back into the band, and the one-pole filters of the bed and the crackle would shift by up to 1.5 dB below 5.4 kHz. Measured on the 89 clips [V]: against an alias-free reference (the old 22,050 Hz file through the same filter response, cut at 5,512.5 Hz in the frequency domain) the residual is -81 to -86 dB of the clip's energy, the 16-bit quantisation floor; band levels from 300 to 4,000 Hz equal the 22,050 Hz files within 0.01 dB after the peak gain; 4.5-5.5 kHz holds -40 to -46 dB of the clip (was -26 to -31 dB). Against the first ATC render (no overdrive, 22,050 Hz) the file RMS rose about 1.5 dB (-16.5 to -15.0 typical). Re-render:
 ```
 U=.work/untrusted/voice
 .work/voice/venv/bin/python -I mods/traffic/tools/gen_voice.py --render \
