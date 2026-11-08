@@ -4,7 +4,7 @@ This plan covers every in-game check that has not passed in the game yet. Four s
 
 Inputs:
 - The scorer summary of 2026-11-06: 144 NO DATA, 12 MANUAL, 12 PASS (`.work/plan-summary.txt`).
-- The check rows in [PROGRESS.md](PROGRESS.md) "Wave 1/2/3 (host-tested only)".
+- The check rows in [PROGRESS.md](PROGRESS.md) "Wave 1/2/3 (host-tested only)" and "Station chatter (host-tested only)" (W-RC.1-10, added 2026-11-08).
 - The run sections of [test-plan-haunts-parcels.md](test-plan-haunts-parcels.md): 4.2 haunts, 4.5 hail pages, 11 mercs, 13 fits, 14 extortion, 15 freight quest, 16 Wolves Freight.
 - The specs named in each row.
 
@@ -50,6 +50,7 @@ All sessions start from the user's `Quicksave-98`: Elio, chapter 8, Triada at wa
 | W-A16 tips | a ring record of the dock's region; rung >= 2 (news) or 4 (tips); a live captain | the save already holds ring records in blocks 2 and 3; `route`/`raids`: rung 4 at Endoria 2 (`stn[33]`) and Valensia (`stn[83]`) | `TUNE=ti_news_age=60,ti_hail_age=60,ti_hail_j=4` | the hail, the informant purchase, a quest naming a ring system (W-A16.4) |
 | W-A05 specialist | a raided FTU trader fleeing below 60 % HP after its raid ended; a Repairman holder (Hero perk or firmware in chapter 8) | `raids` (Raids phase for the raids) | `PROFILE=lab`, `TUNE=spc_low=1,spc_arm=600` | the perk or firmware (W-A05.1/.4/.9/.11), the fence step (W-A05.12) |
 | W-A08 signals | a lit source in a never-named system; an empty arrival queue at the entry | `route`: source in Escaflon (2 jumps, the nearest point system; Elio's region has none) | `SIGNAL_AT=escaflon` (same state); `TUNE=sg_pct=100` for a natural light (W-A08.1) | the flight to the marker, the jump out and back |
+| W-RC chatter | plain mod traders docking at a trade station while the mothership waits within 1,500 units; chapter >= 5; no fight, scene or story hold; the station's approach greeting already spoken | none (the module saves nothing; traders come from the generator) | `CHATTER=1` and `CHATTER_SOUND=3` are the defaults; `TUNE=rc_gap=15,rc_stale=40` so exchanges come every 15 real seconds; `CHATTER_SOUND=0/1/2` for the cue variants (section 4) | the traders' docking steps (RC7), the music and effects sliders (RC2, RC9), ears for the clips (RC10) |
 | Stash (E7.x, E0.8) | a cache in a slot system | `route`: a hidden cache in Escaflon slot 1 (revealed by the signal recorder) | `STASH_AT=escaflon` | shooting the cache, the jump out and back |
 | E16 haunts | a jump entry into a haunt system (Elio has 10 flights), chapter >= 5 | `route`: Elio kill memory 3, last refill 6 legs ago (a refill line at the next entry, E16.7) | `HAUNTS=0/1`, `HAUNT_MODE=2` | kills, the load, a quest start (E16.9), pirates neutral (E16.5) |
 | D-FIT, E-BB1 | graded haunt flights (tier 3-4: the Gefest region is tier 4) | none | `TUNE=fits_elite_max=15,fits_hull_pct=100`; `FITS_TEST=Panthera_pir0` | the kills; a quest-gated haunt (D-FIT.4) |
@@ -63,12 +64,16 @@ All sessions start from the user's `Quicksave-98`: Elio, chapter 8, Triada at wa
 
 ### Session A: the Elio ring (about 45 min)
 
-Covers: W-B06.1/2/3/5/7/9/10, W-A08.1-8/10, W-A16.1/2/3/6/8/9, E16.3/4/6/7, D-HAIL.page/back/esc/offer, D-DOCK, the cache (E7.1-E7.3), E0.8.
+Covers: W-B06.1/2/3/5/7/9/10, W-A08.1-8/10, W-A16.1/2/3/6/8/9, W-RC.1-10 (RC1, RC4-RC10 by eye and ear), E16.3/4/6/7, D-HAIL.page/back/esc/offer, D-DOCK, the cache (E7.1-E7.3), E0.8.
+
+Before the install, listen to the shipped chatter clips once on the host: `sh .work/voice/play_shipped.sh` (speaker and text are printed before each clip). Note any clip that is unintelligible or too long.
 
 Install:
 ```
-LOG=2 EXP=0 TRAFFIC=1 HAIL_BOX=2 HAUNTS=1 NEWS=1 TUNE=sg_pct=100,sg_read_s=3,sg_pick_r=150,ti_news_age=60,ti_hail_age=60,ti_hail_j=4 sh mods/traffic/install-test.sh
+LOG=2 EXP=0 TRAFFIC=1 HAIL_BOX=2 HAUNTS=1 NEWS=1 TUNE=sg_pct=100,sg_read_s=3,sg_pick_r=150,ti_news_age=60,ti_hail_age=60,ti_hail_j=4,rc_gap=15,rc_stale=40 sh mods/traffic/install-test.sh
 ```
+
+(`CHATTER=1`, `CHATTER_SOUND=3` and `rc_vol` 80 are the defaults; `rc_gap=15` shortens the 45 s between exchanges for the session.) Set the music slider to a clearly audible level before loading: the chatter is heard at the music volume.
 
 Save: first `TRF lab base`, then `TRF lab route`. Route: Elio, Gredos, Elio, Gefest, Elio, Valensia, Elio, Endoria 2, Escaflon, Endoria 2, Escaflon, Endoria 2.
 
@@ -78,6 +83,12 @@ Save: first `TRF lab base`, then `TRF lab route`. Route: Elio, Gredos, Elio, Gef
    - If either load fails, stop (0.1).
 2. **Elio, at the trade station, 8x for 2-3 minutes.**
    - A trader flies to the docking position and vanishes there (D-DOCK).
+   - **Station chatter (stay within 1,500 units of the station, 1x for the first 5 minutes, then 8x).** The approach greeting and the station news come first (RC8), then radio exchanges between a trader and "Elio Control" as traders dock and leave: "Elio Control, FTU 78, inbound with ore, request docking." and the answer 6 s later (`module=chatter event=say part=call` / `part=answer result=shown`; W-RC.1).
+     - Ears: each line plays its own voice clip (a trader voice for the calls, a control voice for the answers), with radio crackle, at about the music's level and never louder than the music (RC1, RC9, RC10, W-RC.7, W-RC.10). `sw3tp.log` has `module=dll event=volume_init sig=ok sigs=7` after the load; `sig=bad` means the volume read failed and the clips play at 80 % of full scale.
+     - Eyes: the trader's line shows its lead pilot's portrait and name (RC4), the answer does not cut the call off (RC5), the call sign and bay number read as plain text (`FTU 78`, `Triada 947 heavy`, `bay 3`; C4), the line stays readable at 8x (RC6).
+     - Sequence to expect for one trader: request and clearance, then (if the bay is busy) hold and "Wilco, holding", then the release and the trader's readback, then "docked, clamps on" after `module=generator event=docked` (RC7), later the departure request and "Over and out." (W-RC.4: no line twice in a visit; W-RC.2: calls at least 15 s apart, at most 6 per visit).
+     - Once: lower the music slider in the options to near zero and wait for the next line (quieter clip, `volume=` lower in the log), then raise it (RC9). Open the options once more and change the effects slider: the clips should not follow it (the mod divides the effects volume out).
+     - If a raid or a pirate fight starts near the station: no chatter until `module=safety event=combat_off` (W-RC.8). If you dock yourself while a trader is on approach: no line within 300 units (`event=skip reason=player_dock`).
    - Hail a trader and pick "Where are you headed?". The answer opens as a page (D-HAIL.page).
      - A ring rumour in that answer is W-A16.6.
    - Press Back. The menu returns without that option (D-HAIL.back).
@@ -86,6 +97,7 @@ Save: first `TRF lab base`, then `TRF lab route`. Route: Elio, Gredos, Elio, Gef
 3. **Jump to Gredos.**
    - 8-14 s after arrival, a radio line from Lastochka about the lost sweep (`module=remark event=say owner=remark output=radio result=shown`): W-B06.1, W-B06.5, W-B06.7, W-B06.9.
    - Eyes: the portrait, and plain text with no `#` key (C4).
+   - Wait 2-3 minutes near the trade station for "Gredos Control" exchanges (a second station for W-RC.6, the radius, and W-RC.9: no chatter before the station's own greeting).
 4. **Jump back to Elio (a jump entry into a haunt system).**
    - Expect `module=haunt event=regen ... memory_before=3` and fewer pirate flights than the 10 listed (E16.7, E16.4).
    - Quicksave after the flights spawned, then load that quicksave at once (E16.6).
@@ -124,7 +136,7 @@ Save: first `TRF lab base`, then `TRF lab route`. Route: Elio, Gredos, Elio, Gef
     ```
     python3 -I mods/traffic/tools/check_ingame.py --log <run dir> --summary --eyes D-DOCK=pass,E16.3=pass
     ```
-    Use the verdicts you saw.
+    Use the verdicts you saw. For the chatter add your ear and eye verdicts to the report: RC4-RC6, RC9 (slider followed), RC10 (intelligible, level right), and any clip to re-render (`tools/gen_voice.py` with `--render`, the pipeline in [mod-research/station-chatter-data.md](mod-research/station-chatter-data.md) 7).
 
 ### Session B: raids around Elio, Clan file, specialist, debrief, freight quest start (about 45 min)
 
@@ -264,7 +276,7 @@ Save: `TRF lab east` (Elio). Route: Elio, Gredos, Aurora, Corrino, Debris 1, Deb
 
 ## 3. Coverage after the four sessions
 
-- Sessions A-D cover about 110 of the 156 open items (A about 30, B about 40, C about 30, D about 11).
+- Sessions A-D cover about 120 of the 166 open items (A about 40 since the chatter rows were added, B about 40, C about 30, D about 11).
 - The rest are in section 4: they need a chapter change, a running story mission, a war state, a far trip or a long run.
 - Items the log cannot decide stay MANUAL until `--eyes` (D-DOCK, E16.8-10, E-PCL.2, E-PCL.6, D-FIT.2, D-FIT.4, D-MERC.spawn/offer, W-A12.6, W-A22.7).
 
@@ -295,12 +307,15 @@ Save: `TRF lab east` (Elio). Route: Elio, Gredos, Aurora, Corrino, Debris 1, Deb
 | D-MERC.* | a free clan must sit in the current region; the roll is random | `MERCS=1 TUNE=merc_cd=0,merc_hire_s=120,merc_wait_s=120` and jumps Elio-Gredos-Valensia until `merc roll result=planned` (haunts plan section 11, 30-60 min) |
 | M6 | a pirate dock, then a trade dock in the same visit | Pegas (4 jumps) in run C2 if time allows |
 | W-A08 SG5 list | the spec asks for Sunji, B Leftera 3, Tarrot, X244 (8-12 jumps) | `SIGNAL_AT=<system>` on a trip through the Kadi region |
+| RC2, RC3, W-RC.7 cue variants | `CHATTER_SOUND=2` (squelch), `1` (vanilla cue) and `0` (silence) each need their own install | one later short run per value at Elio with `TRF lab base`, 5 minutes each; `0` also answers RC3 (no engine cue under a chatter line) |
+| W-RC.3 | a chatter visit after a story-mission hold or a scene | during normal campaign play with the default install: wait at a trade station while a mission runs, then score the run |
 
 ## 5. Known unknowns to look and listen for
 
 - **A08 sound (SG1-SG3).** At the static line in Escaflon (session A step 8), listen for `spark4.wav` (a crackle) and `vapour-escape-loop.wav` (a hiss) together with the line.
   - Then point the camera at a far fighter and enter again. The sound should still play (it is placed at the mothership).
   - `sound_result=played` without a sound means the 3D position or the volume (`sg_vol` 80) is wrong.
+- **Chatter voice (RC9, RC10; session A step 2).** Are the clips intelligible through the crackle, and is the level right under the music? Is the trader voice (US male) clearly distinct from control (UK female)? Does ", over and out." at the end of the departure answers sound natural (the clip joins it to the sentence, the text has a full stop)? Does a clip ever run into the next line (clips are 1.5 to 3.5 s, the answer comes 6 s after the call)? Note the keys of clips to re-render.
 - **C4, plain text in `Pilot:Message`.** In every radio line (remark, beacon, signal, specialist, raid opening), the text shows as words. It is never a `#TRF_...` key and never empty.
   - A key or nothing on screen means the plain-string path fails. Then set `REMARK_MODE=0` and report it.
 - **E0.6 and the .loc file.**
