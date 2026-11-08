@@ -189,13 +189,17 @@ function TRF_RcSnd(name, vol)
 	return "error";
 end;
 
--- Music volume 0..1 (DLL TRF_MusicVol: the volume_music the engine applies now; pe/API.md), 1 when unknown (no DLL, an
--- older DLL, an answer nil, why, or a value outside 0..1).
+-- Volume base 0..1 so that the heard level is the music volume (6.5): the engine's 2D player multiplies every PlaySound
+-- volume by the effects volume, so this is music / effects (DLL TRF_MusicVol: both values the engine applies now;
+-- pe/API.md), clamped to 1 (a music slider above the effects slider cannot be reached); music alone when the effects
+-- value is 0 (the engine mutes anyway) or missing; 1 when unknown (no DLL, an older DLL, nil, why, or music outside 0..1).
 function TRF_RcVol()
 	if type(TRF_MusicVol) ~= "function" then return 1; end;
-	local v = call(TRF_MusicVol, {}, "x", TRF_RcNoErr);
-	if type(v) ~= "number" or v < 0 or v > 1 then return 1; end;
-	return v;
+	local m, s = call(TRF_MusicVol, {}, "x", TRF_RcNoErr);
+	if type(m) ~= "number" or m < 0 or m > 1 then return 1; end;
+	if type(s) ~= "number" or s <= 0 or s > 1 then return m; end;
+	if m >= s then return 1; end;
+	return m / s;
 end;
 
 -- Lead pilot of trader id (trf_ui TRF_UI_Leader, protected there), or nil.

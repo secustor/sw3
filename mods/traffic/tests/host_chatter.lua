@@ -985,8 +985,15 @@ function T_RC_G()
 		"TRF_RcSndOf: mode 3 the key's clip, the squelch for a key without one; modes 1 and 2 as before");
 	-- The music volume (TRF_RcVol over the DLL native) and the clamp.
 	TRF_MusicVol = HOST_MusicVol;
-	h.mvol = 0.25; h.svol = 0.2;
-	HOST_Check(TRF_RcVol() == 0.25 and h.mvol_n == 1, "TRF_RcVol: the music volume of TRF_MusicVol");
+	h.mvol = 0.25; h.svol = 0.5;
+	HOST_Check(TRF_RcVol() == 0.5 and h.mvol_n == 1, "TRF_RcVol: music / effects of TRF_MusicVol (0.25 / 0.5)");
+	h.svol = 0.2;
+	HOST_Check(TRF_RcVol() == 1, "TRF_RcVol: music above the effects volume -> 1 (the clamp)");
+	h.svol = 0;
+	HOST_Check(TRF_RcVol() == 0.25, "TRF_RcVol: effects 0 (muted by the engine) -> music alone");
+	h.svol = 1.5;
+	HOST_Check(TRF_RcVol() == 0.25, "TRF_RcVol: effects outside 0..1 -> music alone");
+	h.svol = 1;
 	h.mvol = nil; h.mvol_why = "sig";
 	HOST_Check(TRF_RcVol() == 1, "TRF_RcVol: nil, why -> 1");
 	h.mvol = 1.5;
@@ -998,11 +1005,16 @@ function T_RC_G()
 	HOST_Check(TRF_RcVolOf(0.5, 80) == 0.4 and TRF_RcVolOf(1, 100) == 1 and TRF_RcVolOf(2, 100) == 1 and TRF_RcVolOf(-1, 50) == 0
 		and TRF_RcVolOf(0.3, 0) == 0 and TRF_RcVolOf(nil, 80) == 0.8, "TRF_RcVolOf: music x rc_vol / 100, clamped to 0..1, nil music reads as 1");
 	TRF_MusicVol = HOST_MusicVol;
-	h.mvol = 0.25;
+	h.mvol = 0.25; h.svol = 1;
 	RC_Fresh();
 	n0 = S_Mark();
 	RC_Req(2);
-	HOST_Check(getn(h.psnd) == 1 and h.psnd[1].vol == 0.2 and RC_Logs(n0, "volume=0.200 result=shown") == 1, "music 0.25 x rc_vol 80: PlaySound at 0.2");
+	HOST_Check(getn(h.psnd) == 1 and h.psnd[1].vol == 0.2 and RC_Logs(n0, "volume=0.200 result=shown") == 1, "music 0.25 / effects 1 x rc_vol 80: PlaySound at 0.2");
+	h.mvol = 0.1; h.svol = 0.2;
+	RC_Fresh();
+	n0 = S_Mark();
+	RC_Req(2);
+	HOST_Check(getn(h.psnd) == 1 and h.psnd[1].vol == 0.4 and RC_Logs(n0, "volume=0.400 result=shown") == 1, "music 0.1 / effects 0.2 x rc_vol 80: PlaySound at 0.4 (heard 0.08 = music x rc_vol)");
 	h.cfg.tune = {rc_vol=100};
 	h.mvol = 1;
 	RC_Fresh();
