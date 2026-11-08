@@ -21,7 +21,8 @@ Re-render (needs Piper; the venv and the models are scratch, never shipped):
 --render --check renders and exits 1 when any shipped file differs from the new render (runs are byte identical).
 All 89 clips take about 2.5 minutes. Clip i of clips() uses seed SEED + i; the generic clips come first, so they keep
 the seeds of their first render.
-Models (https://huggingface.co/rhasspy/piper-voices, each .onnx with its .onnx.json beside it), md5:
+Models (https://huggingface.co/rhasspy/piper-voices, each .onnx with its .onnx.json beside it), md5; both render at
+22,050 Hz (PRATE), a model at another rate stops the render (tts()):
   en_US-norman-medium.onnx 829cea515dc724d694b83b71e8083f9f, .onnx.json 975830d6f230f6eccf657d265de99eba (trader)
   en_GB-cori-medium.onnx   f143307611eccea9d976235d0895f57c, .onnx.json 12b1dc45d8919f3475cf296d5f16a4c6 (control)
 Both voices: dataset LibriVox, "License: public domain" (model cards; design/mod-research/station-chatter-data.md 7).
@@ -64,6 +65,9 @@ OUT = os.path.normpath(os.path.join(HERE, "..", "Data", "SOUND", "trf_voice"))
 MANIFEST = os.path.join(HERE, "gen_voice.sha256")
 RATE = 11025                  # the shipped clips: the radio band ends at 3 kHz, so 11,025 Hz holds all of it
 PRATE = 22050                 # the chain's rate: Piper's own; every stage runs here, then decimate() halves the rate
+DECIM = PRATE // RATE         # decimate()'s factor: the file header says RATE, so PRATE must be a whole multiple of it
+if PRATE != RATE * DECIM:
+    raise SystemExit("voice: PRATE %d is not a multiple of RATE %d" % (PRATE, RATE))
 AA_TAPS, AA_HZ, AA_BETA = 81, 4500.0, 9.0   # anti-alias low-pass of decimate(): Kaiser-windowed sinc
 SEED = 0x5357                 # gen_squelch's seed; clip i uses SEED + i for its noise and the TTS
 LEAD, TRAIL = 0.050, 0.030    # seconds of silence before the click and after the tail
@@ -270,12 +274,12 @@ def aa_taps(n=AA_TAPS, fc=AA_HZ, beta=AA_BETA, fs=PRATE):
     for j in range(n):
         t = j - m
         x = math.sin(wc * t) / (math.pi * t) if t else wc / math.pi
-        h.append(x * bessel_i0(beta * math.sqrt(1.0 - (t / m) ** 2)) / bessel_i0(beta))
+        h.append(x * bessel_i0(beta * math.sqrt(max(0.0, 1.0 - (t / m) ** 2))) / bessel_i0(beta))
     k = sum(h)
     return [v / k for v in h]
 
 
-def decimate(s, f=PRATE // RATE):
+def decimate(s, f=DECIM):
     """Every f-th sample of s through aa_taps() (centred, no delay; zeros outside s): ceil(len(s) / f) samples at RATE.
     Nothing above half of RATE folds back."""
     h = aa_taps()
@@ -586,7 +590,10 @@ def render(models, out_dir, write, check):
             if old != b:
                 print("voice: %s %s" % (path, "missing" if old is None else "differs from the new render"))
                 bad += 1
-    print("voice: %d bytes in all" % total)
+    print("voice: %d bytes in all (limit %d)" % (total, SET_MAX))
+    if total >= SET_MAX:
+        print("voice: set too large")
+        bad += 1
     if write and not bad:
         os.makedirs(out_dir, exist_ok=True)
         for name, b in rows:

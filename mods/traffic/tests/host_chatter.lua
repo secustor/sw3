@@ -995,6 +995,7 @@ function T_RC_G()
 	TRF_UI_FacOf = fo;
 	HOST_Check(getn(h.psnd) == 1 and h.psnd[1].name == "trf_voice\\rchreqc.wav" and RC_Logs(n0, "key=rchreqc callsign=\"Kestrel 947 heavy\" ") == 1,
 		"an unknown designator (Kestrel 947 heavy): the generic trf_voice\\rchreqc.wav");
+	h.cfg.corp = 0;
 	-- Every clip in the repo: per voiced key the generic <key>.wav and <key>_<tag>.wav for each designator tag it has
 	-- (rchreqc the three corporations only): 18 + 17 x 4 + 3 = 89 files.
 	local K = TRF_RcK();

@@ -4557,7 +4557,15 @@ def c_wrc9(ctx):
     return res
 
 
-RC_TAGS = ("ftu", "triada", "uss", "inoco")   # trf_chatter TRF_RcFacTag; rchreqc has no _ftu clip
+RC_TAGS = ("ftu", "triada", "uss", "inoco")   # trf_chatter TRF_RcK ft: the designator tags of the clips
+
+
+def rc_clip(key, tag):
+    """trf_voice\\<key>_<tag>.wav when the key has that designator clip (trf_chatter TRF_RcSndOf: every voiced key
+    for the four tags, rchreqc for the corporations' only), else None."""
+    if tag not in RC_TAGS or (key == "rchreqc" and tag == "ftu"):
+        return None
+    return "trf_voice\\%s_%s.wav" % (key, tag)
 
 
 def c_wrc10(ctx):
@@ -4573,12 +4581,13 @@ def c_wrc10(ctx):
             continue
         vo.append(r)
         key, cs = r.get("key"), r.get("callsign")
+        gen = "trf_voice\\%s.wav" % key
         if cs:
-            tag = cs.split()[0].lower() if cs.split() else ""
-            ok = ["trf_voice\\%s_%s.wav" % (key, tag)] if tag in RC_TAGS and not (key == "rchreqc" and tag == "ftu") \
-                else ["trf_voice\\%s.wav" % key]
+            words = cs.split()
+            tagged = rc_clip(key, words[0].lower()) if words else None
+            ok = [tagged] if tagged else [gen]
         else:
-            ok = ["trf_voice\\%s.wav" % key] + ["trf_voice\\%s_%s.wav" % (key, t) for t in RC_TAGS]
+            ok = [gen] + [c for c in (rc_clip(key, t) for t in RC_TAGS) if c]
         if snd not in ok:
             res.fails.append("%s: clip %s is not the line's key %s and call sign %s (want %s)" % (
                 r.short(), snd, key, cs, " or ".join(ok)))
