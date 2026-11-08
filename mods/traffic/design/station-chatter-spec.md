@@ -211,7 +211,7 @@ At the first step with `TRF_RealSecs() >= pend.at`: R5 and Q1-Q5 again for `pend
 
 ## 7. Text keys (`TRF_Rc_Text()`, EN; `#TRF_rch*`)
 
-ATC phraseology since 2026-11-08 (`.work/voice/atc-design.md` 4, owner decisions 11-13). One argument order for every line key (`TRF_RcArgK()`): `$1` the call sign, `$2` control, `$3` the bay, `$4` the cargo (`cls1..6` word) on the `rchreq*` keys, the destination (`TRF_SysEn(r.to)`) on the `rchout*` keys, else nil. The spoken text of each clip (6.5) leaves the slots out.
+ATC phraseology since 2026-11-08 (`.work/voice/atc-design.md` 4, owner decisions 11-13). One argument order for every line key (`TRF_RcArgsOf`): `$1` the call sign, `$2` control, `$3` the bay, `$4` the cargo (`cls1..6` word) on the `rchreq*` keys, the destination (`TRF_SysEn(r.to)`) on the `rchout*` keys, else nil. The spoken text of each clip (6.5) leaves the slots out.
 
 | Key | EN | Speaker | Spoken text (clip) |
 |---|---|---|---|

@@ -427,7 +427,7 @@ def check_files(out_dir, table):
         print("voice: manifest names differ from the phrase table")
         bad += 1
     try:
-        have = set(os.listdir(out_dir))
+        have = set(x for x in os.listdir(out_dir) if not x.startswith("."))   # dotfiles (.DS_Store) are not clips
     except OSError:
         have = set()
     for x in sorted(have - want):
@@ -461,7 +461,9 @@ def check_files(out_dir, table):
         if st["len"] < MIN_LEN - 0.005 or st["len"] > HARD_MAX:
             why.append("length %.2f s" % st["len"])
         m = man.get(name)
-        if not m or m[1] != len(b) or m[0] != hashlib.sha256(b).hexdigest():
+        if not m:
+            why.append("not in the manifest")
+        elif m[1] != len(b) or m[0] != hashlib.sha256(b).hexdigest():
             why.append("sha256 or size differs from the manifest")
         if why:
             print("voice: %s: %s" % (path, "; ".join(why)))

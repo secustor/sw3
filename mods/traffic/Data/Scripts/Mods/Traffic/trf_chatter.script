@@ -239,12 +239,6 @@ function TRF_RcK()
 			out={i=5, p=4, c={"rchout1", "rchout2"}, cs="t", a={"rchouta1", "rchouta2"}, as="c"}}};
 end;
 
--- Argument order of every line key (7): $1 s the call sign, $2 c control, $3 b the bay, $4 x the cargo (g) on the req
--- keys, the destination (d) on the out keys, else nil.
-function TRF_RcArgK()
-	return {"s", "c", "b", "x"};
-end;
-
 -- Pure functions (explicit inputs, host-testable) -----------------------------------
 
 -- 1 for a plain mod trader record (D3): path A or B, not gone, none of the flags sev, fw, wq, own, fl.
@@ -375,16 +369,14 @@ function TRF_RcNearOf(S, pos, r)
 	return best;
 end;
 
--- The arguments of key k in the order of TRF_RcArgK from the names table w {s, c, b, g, d}: x is w.g on the req keys
--- (rchreq*), w.d on the out keys (rchout*), else nil.
+-- The arguments of key k (7) from the names table w {s, c, b, g, d}, one order for every line key: $1 s the call sign,
+-- $2 c control, $3 b the bay, $4 x the cargo (w.g) on the req keys (rchreq*), the destination (w.d) on the out keys
+-- (rchout*), else nil.
 function TRF_RcArgsOf(k, w)
-	local v = {x=nil};
+	local x = nil;
 	local p = strsub(k, 1, 6);
-	if p == "rchreq" then v.x = w.g; elseif p == "rchout" then v.x = w.d; end;
-	local l = TRF_RcArgK();
-	local o = {};
-	for i = 1, 4 do o[i] = v[l[i]] or w[l[i]]; end;
-	return o[1], o[2], o[3], o[4];
+	if p == "rchreq" then x = w.g; elseif p == "rchout" then x = w.d; end;
+	return w.s, w.c, w.b, x;
 end;
 
 -- Sound of key k in mode m (6.5): the name, or nil for mode 0; mode 3 plays the key's clip, the squelch for a key

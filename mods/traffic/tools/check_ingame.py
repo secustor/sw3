@@ -4510,7 +4510,7 @@ def c_wrc7(ctx):
     for r in ctx.find("chatter", "say", sound_result="error"):
         res.fails.append("%s: PlaySound raised" % r.short())
     if not pl and not res.fails:
-        res.missing.append("no module=chatter event=say sound_result=played (CHATTER_SOUND unset or 1)")
+        res.missing.append("no module=chatter event=say sound_result=played (CHATTER_SOUND=0, or no line said)")
     res.ev("cues played", pl)
     return res
 

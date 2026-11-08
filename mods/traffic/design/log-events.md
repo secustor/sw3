@@ -1137,7 +1137,7 @@ Station chatter (`design/station-chatter-spec.md` 9; host-tested only). `kind` i
 | `enter` | `module=chatter event=enter system=gredos system_index=46 station_count=1 sound=<0,1,2,3> radius=1500 gap=45 max=6 quiet=10 via=<enter,load>` | 2 |
 | `skip` | `module=chatter event=skip system=gredos reason=<see above>` (once per reason and visit; the call waits, events keep their age) | 2 |
 | `event` | `module=chatter event=event kind=<req,hold,go,bay,out> trader_id=9 station_key=46 result=queued` | 2 |
-| `drop` | `module=chatter event=drop kind=req trader_id=9 reason=<stale,full,gone,name,station,used>` | 2 |
+| `drop` | `module=chatter event=drop kind=req trader_id=9 reason=<stale,full,gone,name,station,used>` (`name`: no call sign; since the ATC step only with an empty `owner` text, no ship name is needed) | 2 |
 | `say` | `module=chatter event=say kind=req part=<call,answer> trader_id=9 station_key=46 speaker=<tpl,leader> key=rchreq1 distance=820 real_time=1312 quiet_age=14.5 sound=<trf_voice\rchreq1.wav,trf_squelch.wav,GUI\PM1.wav,none> sound_result=<played,error,off,none> volume=<0.080,nil> result=<shown,failed,dropped> reason=<nil,message,stale,gone,used,<skip reason>>` (`dropped`: an answer whose gate failed, never delayed; then `speaker`, `key` and `distance` are nil) | 1 |
 | `dump` | `module=chatter event=dump on=1 exchange_count=3 pending=<kind,nil> event_count=1 keys=rchreq1,rchreqa1,rchout2` | 1 |
 
