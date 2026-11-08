@@ -161,7 +161,7 @@ The keys of the part (4.2) not in `RC.k`, in table order, rotated by `h = mod(id
 | R2 | `TRF_CurIdx()` a map index with at least one trade station (`RC.st` not empty) | all | `nomap` / `none` |
 | R3 | `TRF_SysModeQuiet() == "mod"` (includes `guard`: the start systems stay vanilla) | all | `mode:<why>` |
 | R4 | `TRF_StrictOk(idx, "chatter")` (feature `chatter` added to the comment list; a `TRF_DenyEntry` row may set `chatter = 0`) | all | `gate:<why>` |
-| R5 | `TRF_N("TRF_Stn_ChatCtx", idx, j).why` nil: trf_station's dock gate (SV 4: G1 incl. `voice 0`, G2, G3 deny and voice deny list, G4 flags, G4b quiet, G5 trade war, G7-G9); trf_station absent -> `station_off` | per station | `station:<why>` / `station_off` |
+| R5 | `TRF_N("TRF_Stn_ChatCtx", idx, j).why` nil: trf_station's dock gate (SV 4: G1 incl. `voice 0`, G2, G3 deny (an `m = 1` deny entry such as Elio, X297 or Gefest only while a mission names the system, i.e. `TRF_StrictOk(idx, "voice")` denies it with `quest`, `mission_q` or `mission_deny`; since 2026-11-08, host-tested only) and voice deny list, G4 flags, G4b quiet, G5 trade war, G7-G9); trf_station absent -> `station_off` | per station | `station:<why>` / `station_off` |
 | R6 | visit latch: `RC.q` nil and `TRF_Safe_QState()` nil (sets `RC.q`) | all | `latch` |
 | R7 | hold: `__disableAction`, `__sys_SOS`, `TRF_Supp() ~= 0`, `TRF_Safe_Scene()` (scene first) | all | `hold:<disable_action/sys_sos/suppressed/scene>` |
 | R8 | combat: `TRF_Combat()` nil | all | `combat` |

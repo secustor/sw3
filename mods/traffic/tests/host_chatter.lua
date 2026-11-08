@@ -635,6 +635,22 @@ function T_RC_D()
 	n0, m0 = RC_Gated(8);
 	TRF_Stn_ChatCtx = cc;
 	HOST_Check(RC_Logs(n0, "reason=station_off") == 1 and getn(h.msgs) == m0, "R5: trf_station missing -> reason=station_off");
+	-- R5 at an authored deny entry (elio): station:deny only while the strict gate denies "voice" with a mission
+	-- reason (stubbed for voice alone: a staged mission stops at R4 or R6 first); outside a mission open.
+	T_Jump("elio");
+	RC_Fresh();
+	TRF_StrictOk = function(idx, ft) if ft == "voice" then return nil, "mission_deny"; end; return %so(idx, ft); end;
+	n0, m0 = RC_Gated(17);
+	TRF_StrictOk = so;
+	HOST_Check(RC_Logs(n0, "event=skip system=elio reason=station:deny") == 1 and getn(h.msgs) == m0,
+		"R5: elio while the strict gate denies voice (mission_deny) -> reason=station:deny");
+	T_Jump("elio");
+	RC_Fresh();
+	n0, m0 = RC_Gated(18);
+	RC_Step(8);
+	HOST_Check(RC_Logs(n0, "reason=station:") == 0 and RC_Logs(n0, "event=say kind=req part=call") == 1 and getn(h.msgs) > m0,
+		"R5: elio outside a mission is open for chatter (the call shown)");
+	T_Jump("gredos");
 	-- R6: the latch at the entry and later in the visit.
 	h.qs = TRUE;
 	T_Jump("gredos");

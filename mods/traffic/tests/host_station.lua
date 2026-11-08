@@ -460,7 +460,36 @@ function T_STN_C()
 			and S_Logs(n0, "module=station event=pass reason="..why.." system="..sys.." at=none") == 1 and S_Logs(n0, "module=station event=pass reason="..why.." system="..sys.." at=dock") == 1;
 		HOST_Check(ok, "gate "..why.." in "..sys..": vanilla line and box");
 	end;
+	-- G3: an authored m = 1 entry (elio, x297, gefest) is denied only while the strict gate denies it with
+	-- mission_deny, mission_q or quest; outside a mission G4-G10 decide (elio at chapter 9, past the start-system
+	-- guard G9: mood line and dock line).
+	local cqe = h.labels.CurrentQuest;
+	h.labels.CurrentQuest = "9_01";
+	T_Enter("elio");
+	local De = S_Setup({{"0"}});
+	local e0 = S_Mark();
+	local ae = S_None(De.none[1]);
+	local be = S_Trade(De.trade[1]);
+	HOST_Press("cancel");
+	HOST_Check(S_Logs(e0, "module=station event=pass") == 0 and S_Logs(e0, "module=station event=mood system=elio ") == 1
+		and S_Logs(e0, "module=station event=dock station_key="..TRF_CurIdx().." ") == 1 and ae.n >= 1 and be.nb >= 1,
+		"G3: elio outside a mission: mood line and dock line");
+	h.qs = TRUE;
+	e0 = S_Mark();
 	T_Enter("elio"); pass("deny", "elio");
+	HOST_Check(S_Logs(e0, "module=safety event=gate feature=voice system=elio reason=mission_deny ") == 1, "G3: elio during a mission: strict gate mission_deny");
+	T_Enter("x297"); pass("deny", "x297");
+	T_Enter("gefest"); pass("deny", "gefest");
+	h.qs = FALSE;
+	h.labels.CurrentQuest = cqe;
+	-- trf_safety absent: an authored entry stays denied at any time.
+	local sok = TRF_StrictOk;
+	TRF_StrictOk = nil;
+	HOST_Check(TRF_StnDenyM(V_Idx("elio"), TRF_DenyEntry("elio")) == "deny" and TRF_StnDenyM(V_Idx("taira"), TRF_DenyEntry("taira")) == "deny_tq",
+		"G3 without TRF_StrictOk: deny and deny_tq at any time");
+	TRF_StrictOk = sok;
+	HOST_Check(TRF_StnDenyM(V_Idx("elio"), TRF_DenyEntry("elio")) == nil and TRF_StnDenyM(V_Idx("gaoba"), TRF_DenyEntry("gaoba")) == nil,
+		"G3 outside a mission: elio and gaoba open");
 	-- nk is a campaign teleport target (tq): with no nk quest in process G3 lets it through, the voice list closes it.
 	T_Enter("nk"); pass("vdeny", "nk");
 	T_Enter("x203"); pass("vdeny", "x203");
@@ -473,7 +502,7 @@ function T_STN_C()
 	HOST_Press("cancel");
 	HOST_Check(S_Logs(t0, "module=station event=pass") == 0 and S_Logs(t0, "module=station event=mood system=taira ") == 1 and S_Logs(t0, "module=station event=dock station_key="..TRF_CurIdx().." ") == 1
 		and at.n >= 1 and bt.nb >= 1, "transit: taira without a taira quest in process: mood line and dock line");
-	-- A quest naming taira in process: deny_tq on both paths; elio (authored) stays deny.
+	-- A quest naming taira in process: deny_tq on both paths.
 	h.quests.quest_6c_01 = QUEST_PROCESS;
 	T_Enter("taira"); pass("deny_tq", "taira");
 	h.quests.quest_6c_01 = nil;
@@ -508,7 +537,10 @@ function T_STN_C()
 	HOST_Check(bt.nb == 1 and bt.box.text ~= "#UI_TradeStationDockRequest" and S_Logs(t0, "no_fee_reason=nil") == 1,
 		"next entry: latch cleared, fee box");
 	h.labels.CurrentQuest = cq0;
+	-- A quest naming elio in process (quest_7a), no mission: G3 denies through the strict gate reason quest.
+	h.quests["quest_7a"] = QUEST_PROCESS;
 	T_Enter("elio"); pass("deny", "elio");
+	h.quests["quest_7a"] = nil;
 	T_Enter("gaoba");
 	__disableAction = TRUE; pass("flag", "gaoba"); __disableAction = FALSE;
 	h.rel_team = {["Trade|PlayerTeam"] = RELATION_WAR};
