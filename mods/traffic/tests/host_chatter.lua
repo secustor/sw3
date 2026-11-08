@@ -650,7 +650,6 @@ function T_RC_D()
 	RC_Step(8);
 	HOST_Check(RC_Logs(n0, "reason=station:") == 0 and RC_Logs(n0, "event=say kind=req part=call") == 1 and getn(h.msgs) > m0,
 		"R5: elio outside a mission is open for chatter (the call shown)");
-	T_Jump("gredos");
 	-- R6: the latch at the entry and later in the visit.
 	h.qs = TRUE;
 	T_Jump("gredos");
