@@ -10,7 +10,9 @@
 -- signs from the faction word of the hail box (FTU 78) or the corporation's name (Triada 947 heavy), the trader reads
 -- back the hold and the release, control signs off with "Over and out.". A sound before each line through 2D PlaySound
 -- (tune rc_sound: 0 none, 1 GUI\PM1.wav, 2 the shipped trf_squelch.wav of tools/gen_squelch.py, 3 the shipped voice clip
--- trf_voice\<key>.wav of tools/gen_voice.py, the default) at the game's music volume (DLL TRF_MusicVol) x rc_vol.
+-- trf_voice\<key>_<tag>.wav of tools/gen_voice.py with the call sign's designator spoken, tag ftu, triada, uss or inoco,
+-- the generic trf_voice\<key>.wav for another designator; the default) at the game's music volume (DLL TRF_MusicVol)
+-- x rc_vol.
 -- Content first: never an arrival line (TRF_ArrivalLine), never counted in arr_max, never writes TRF.live.line or
 -- trf_station's SV.rt; waits rc_quiet game seconds after a content radio or focus line and the last queued arrival line
 -- (trf_plumb TRF_ArrivalLast), for the station's approach radio and while the mothership is within rc_dock_r of the
@@ -224,14 +226,17 @@ end;
 -- Static tables -------------------------------------------------------------------
 
 -- Constants (spec 8): the cue files of rc_sound 1 and 2, the folder of the rc_sound 3 clips (relative to Data/SOUND, as
--- vanilla's GUI\PM1.wav) and the keys that have a clip (tools/gen_voice.py; any other key plays the squelch), the trader
+-- vanilla's GUI\PM1.wav), the keys that have a clip (tools/gen_voice.py; any other key plays the squelch): vo 1 for a
+-- clip per designator tag, 2 for the corporations' tags only (rchreqc), and the designator tags (TRF_RcFacTag) with ft 1
+-- for the independents, 2 for a corporation; a key has the clip <key>_<tag>.wav when ft[tag] >= vo[key]; the trader
 -- fallback template, the event cap; the kinds (4.2): i the kind index of the key hash, p the priority (1 first), c the
 -- call keys and cs their speaker (t trader, c control), a the answer keys and as their speaker. req's rchreqc is the
 -- corporation carrier's first choice (4.2).
 function TRF_RcK()
 	return {snd={"GUI\\PM1.wav", "trf_squelch.wav"}, vdir="trf_voice\\", trader="Trader", evmax=4,
-		vo={rchreq1=1, rchreq2=1, rchreqc=1, rchreqa1=1, rchreqa2=1, rchhold1=1, rchhold2=1, rchholda=1, rchgo1=1, rchgo2=1,
+		vo={rchreq1=1, rchreq2=1, rchreqc=2, rchreqa1=1, rchreqa2=1, rchhold1=1, rchhold2=1, rchholda=1, rchgo1=1, rchgo2=1,
 			rchgoa1=1, rchgoa2=1, rchin1=1, rchin2=1, rchout1=1, rchout2=1, rchouta1=1, rchouta2=1},
+		ft={ftu=1, triada=2, uss=2, inoco=2},
 		kinds={req={i=1, p=3, c={"rchreq1", "rchreq2"}, cs="t", a={"rchreqa1", "rchreqa2"}, as="c"},
 			hold={i=2, p=2, c={"rchhold1", "rchhold2"}, cs="c", a={"rchholda"}, as="t"},
 			go={i=3, p=1, c={"rchgo1", "rchgo2"}, cs="c", a={"rchgoa1", "rchgoa2"}, as="t"},
@@ -379,11 +384,22 @@ function TRF_RcArgsOf(k, w)
 	return w.s, w.c, w.b, x;
 end;
 
--- Sound of key k in mode m (6.5): the name, or nil for mode 0; mode 3 plays the key's clip, the squelch for a key
--- without one.
-function TRF_RcSndOf(k, m)
+-- Designator tag of a call sign's designator des (4.3, 6.5): its lower-case form when that is one of the clip tags (ftu,
+-- triada, uss, inoco: the loc words FTU of owner, Triada, USS, InoCo of TRF_UI_FacOf), else nil.
+function TRF_RcFacTag(des)
+	if type(des) ~= "string" then return nil; end;
+	local t = strlower(des);
+	if TRF_RcK().ft[t] then return t; end;
+	return nil;
+end;
+
+-- Sound of key k in mode m for designator tag fac (6.5): the name, or nil for mode 0; mode 3 plays the key's clip of
+-- that designator (<key>_<fac>.wav), the generic clip <key>.wav for another or no tag, the squelch for a key without a
+-- clip.
+function TRF_RcSndOf(k, m, fac)
 	local K = TRF_RcK();
 	if m == 3 then
+		if K.vo[k] and fac and K.ft[fac] and K.ft[fac] >= K.vo[k] then return K.vdir..k.."_"..fac..".wav"; end;
 		if K.vo[k] then return K.vdir..k..".wav"; end;
 		return K.snd[2];
 	end;
@@ -533,9 +549,9 @@ function TRF_RcPrune(gt, T)
 	rc.ev = o;
 end;
 
--- The names of an exchange (4.3) for trader id at station ordinal j of system idx: {s, c, b, g, d, h}, or nil without a
--- call sign. Designator: the corporation's name (trf_ui TRF_UI_FacOf of TRF_Crp_Of, h 1) for a corporation carrier,
--- else the hail box's faction word (key owner, "FTU").
+-- The names of an exchange (4.3) for trader id at station ordinal j of system idx: {s, c, b, g, d, h, f}, or nil without
+-- a call sign. Designator: the corporation's name (trf_ui TRF_UI_FacOf of TRF_Crp_Of, h 1) for a corporation carrier,
+-- else the hail box's faction word (key owner, "FTU"); f its clip tag (TRF_RcFacTag, 6.5).
 function TRF_RcWords(idx, j, id, r, T)
 	local rc = %RC;
 	local f, des, h = TRF_N("TRF_Crp_Of", r), nil, nil;
@@ -555,7 +571,7 @@ function TRF_RcWords(idx, j, id, r, T)
 	if type(cls) ~= "number" or cls < 1 or cls > 6 then cls = 0; end;
 	local d = nil;
 	if type(r.to) == "number" and r.to > 0 then d = TRF_RcSysEn(r.to); end;
-	return {c=c, s=cs, g=TRF_RcTxt("cls"..cls), b=rc.b[id], d=d, h=h};
+	return {c=c, s=cs, g=TRF_RcTxt("cls"..cls), b=rc.b[id], d=d, h=h, f=TRF_RcFacTag(des)};
 end;
 
 -- The call key of event kind k for record r (4.2, 4.4): rchreqc first for a corporation carrier, rchout1 only with a
@@ -578,24 +594,25 @@ function TRF_RcSpk(sd, id, ctx)
 	return TRF_RcPilot(t), t;
 end;
 
--- Sound then message (6.5) of line key: ok, the sound name, its result and its volume. No speaker: no sound.
-function TRF_RcSay(p, text, key, T)
+-- Sound then message (6.5) of line key for designator tag fac: ok, the sound name, its result and its volume. No
+-- speaker: no sound.
+function TRF_RcSay(p, text, key, fac, T)
 	local snd, sres, vol = "none", "off", nil;
 	if p == nil then return nil, snd, sres, vol; end;
 	if T.rc_sound > 0 then
-		snd = TRF_RcSndOf(key, T.rc_sound);
+		snd = TRF_RcSndOf(key, T.rc_sound, fac);
 		vol = TRF_RcVolOf(TRF_RcVol(), T.rc_vol);
 		sres = TRF_RcSnd(snd, vol);
 	end;
 	return TRF_RcMsg(p, text, T.rc_secs), snd, sres, vol;
 end;
 
-function TRF_RcSayLog(kind, part, id, j, spk, key, d, age, snd, sres, res, why, vol)
+function TRF_RcSayLog(kind, part, id, j, spk, key, d, age, snd, sres, res, why, vol, cs)
 	local rc = %RC;
 	local vs = nil;
 	if type(vol) == "number" then vs = TRF_F(vol); end;
 	TRF_RcE("say", "kind", kind, "part", part, "trader_id", id, "station_key", TRF_RcKey(rc.si, j), "speaker", spk, "key", key,
-		"distance", TRF_RcF(d), "real_time", TRF_RcF(TRF_RcNow()), "quiet_age", TRF_RcF(age, 1), "sound", snd,
+		"callsign", cs, "distance", TRF_RcF(d), "real_time", TRF_RcF(TRF_RcNow()), "quiet_age", TRF_RcF(age, 1), "sound", snd,
 		"sound_result", sres, "volume", vs, "result", res, "reason", why);
 end;
 
@@ -628,10 +645,10 @@ function TRF_RcCall(idx, gt, T)
 	end;
 	local K = TRF_RcK().kinds[e.kind];
 	local p, spk = TRF_RcSpk(K.cs, e.id, ctx);
-	local ok, snd, sres, vol = TRF_RcSay(p, TRF_RcTxt(key, TRF_RcArgsOf(key, w)), key, T);
+	local ok, snd, sres, vol = TRF_RcSay(p, TRF_RcTxt(key, TRF_RcArgsOf(key, w)), key, w.f, T);
 	tremove(rc.ev, i);
 	if not ok then
-		TRF_RcSayLog(e.kind, "call", e.id, e.j, spk, key, d, age, snd, sres, "failed", "message", vol);
+		TRF_RcSayLog(e.kind, "call", e.id, e.j, spk, key, d, age, snd, sres, "failed", "message", vol, w.s);
 		return;
 	end;
 	rc.k[key] = 1;
@@ -639,7 +656,7 @@ function TRF_RcCall(idx, gt, T)
 	rc.ex = rc.ex + 1;
 	rc.n[e.id] = (rc.n[e.id] or 0) + 1;
 	if K.a then rc.pend = {kind=e.kind, id=e.id, j=e.j, r=e.r, w=w, at=now + T.rc_pair}; end;
-	TRF_RcSayLog(e.kind, "call", e.id, e.j, spk, key, d, age, snd, sres, "shown", nil, vol);
+	TRF_RcSayLog(e.kind, "call", e.id, e.j, spk, key, d, age, snd, sres, "shown", nil, vol, w.s);
 end;
 
 -- Drops the pending answer with reason why (6.4).
@@ -648,7 +665,7 @@ function TRF_RcDrop(why)
 	local pd = rc.pend;
 	rc.pend = nil;
 	if type(pd) ~= "table" then return; end;
-	TRF_RcSayLog(pd.kind, "answer", pd.id, pd.j, nil, nil, nil, nil, "none", "off", "dropped", why);
+	TRF_RcSayLog(pd.kind, "answer", pd.id, pd.j, nil, nil, nil, nil, "none", "off", "dropped", why, nil, pd.w.s);
 end;
 
 -- 6.4: the pending answer once due. Returns 1 when it was said or dropped, nil while it waits.
@@ -665,14 +682,14 @@ function TRF_RcAnswer(idx, gt, T)
 	local key = TRF_RcKeyOf(K.a, rc.k, TRF_RcHashOf(pd.id, K.i));
 	if not key then TRF_RcDrop("used"); return 1; end;
 	local p, spk = TRF_RcSpk(K.as, pd.id, ctx);
-	local ok, snd, sres, vol = TRF_RcSay(p, TRF_RcTxt(key, TRF_RcArgsOf(key, pd.w)), key, T);
+	local ok, snd, sres, vol = TRF_RcSay(p, TRF_RcTxt(key, TRF_RcArgsOf(key, pd.w)), key, pd.w.f, T);
 	rc.pend = nil;
 	if not ok then
-		TRF_RcSayLog(pd.kind, "answer", pd.id, pd.j, spk, key, d, age, snd, sres, "failed", "message", vol);
+		TRF_RcSayLog(pd.kind, "answer", pd.id, pd.j, spk, key, d, age, snd, sres, "failed", "message", vol, pd.w.s);
 		return 1;
 	end;
 	rc.k[key] = 1;
-	TRF_RcSayLog(pd.kind, "answer", pd.id, pd.j, spk, key, d, age, snd, sres, "shown", nil, vol);
+	TRF_RcSayLog(pd.kind, "answer", pd.id, pd.j, spk, key, d, age, snd, sres, "shown", nil, vol, pd.w.s);
 	return 1;
 end;
 

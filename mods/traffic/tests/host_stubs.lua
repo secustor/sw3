@@ -943,11 +943,12 @@ end;
 -- PlaySound(name, volume) (0x5ed1e0, the 2D player; design/station-chatter-spec.md 6.5): records {name, vol, gt} in
 -- HOST().psnd and wants exactly two arguments (the native reads the volume only then); HOST().psnd_err raises. Undefined
 -- by default (never called by vanilla, CHECK RC1); a scenario sets PlaySound = HOST_PlaySound. The names the mod ships or
--- uses: GUI\PM1.wav, trf_squelch.wav, trf_voice\<rch key>.wav (relative to Data/SOUND, backslash as vanilla's GUI\Beep.wav).
+-- uses: GUI\PM1.wav, trf_squelch.wav, trf_voice\<rch key>.wav and trf_voice\<rch key>_<tag>.wav (relative to Data/SOUND, backslash as vanilla's GUI\Beep.wav).
 function HOST_PlaySound(...)
 	HOST_Want(arg.n == 2 and type(arg[1]) == "string" and type(arg[2]) == "number", "PlaySound(wav, volume)");
-	HOST_Want(arg[1] == "GUI\\PM1.wav" or arg[1] == "trf_squelch.wav" or strfind(arg[1] or "", "^trf_voice\\rch[a-z0-9]+%.wav$") ~= nil,
-		"PlaySound name GUI\\PM1.wav, trf_squelch.wav or trf_voice\\rch<key>.wav: "..tostring(arg[1]));
+	HOST_Want(arg[1] == "GUI\\PM1.wav" or arg[1] == "trf_squelch.wav" or strfind(arg[1] or "", "^trf_voice\\rch[a-z0-9]+%.wav$") ~= nil
+		or strfind(arg[1] or "", "^trf_voice\\rch[a-z0-9]+_[a-z]+%.wav$") ~= nil,
+		"PlaySound name GUI\\PM1.wav, trf_squelch.wav or trf_voice\\rch<key>[_<tag>].wav: "..tostring(arg[1]));
 	HOST_Want(arg[2] >= 0 and arg[2] <= 1, "PlaySound volume in 0..1: "..tostring(arg[2]));
 	if HOST().psnd_err then error("injected PlaySound error"); end;
 	if type(HOST().psnd) ~= "table" then HOST().psnd = {}; end;

@@ -4557,7 +4557,13 @@ def c_wrc9(ctx):
     return res
 
 
+RC_TAGS = ("ftu", "triada", "uss", "inoco")   # trf_chatter TRF_RcFacTag; rchreqc has no _ftu clip
+
+
 def c_wrc10(ctx):
+    """The clip is trf_voice\\<key>_<tag>.wav with tag the lower-cased first word of callsign= when that is a tag
+    (and the key has that clip), else the generic trf_voice\\<key>.wav; a line without callsign= (before the
+    designator clips) may play either form of its key."""
     res = Res()
     res.logpart = True
     vo = []
@@ -4566,8 +4572,16 @@ def c_wrc10(ctx):
         if not snd.startswith("trf_voice\\"):
             continue
         vo.append(r)
-        if snd != "trf_voice\\%s.wav" % r.get("key"):
-            res.fails.append("%s: clip %s is not the line's key %s" % (r.short(), snd, r.get("key")))
+        key, cs = r.get("key"), r.get("callsign")
+        if cs:
+            tag = cs.split()[0].lower() if cs.split() else ""
+            ok = ["trf_voice\\%s_%s.wav" % (key, tag)] if tag in RC_TAGS and not (key == "rchreqc" and tag == "ftu") \
+                else ["trf_voice\\%s.wav" % key]
+        else:
+            ok = ["trf_voice\\%s.wav" % key] + ["trf_voice\\%s_%s.wav" % (key, t) for t in RC_TAGS]
+        if snd not in ok:
+            res.fails.append("%s: clip %s is not the line's key %s and call sign %s (want %s)" % (
+                r.short(), snd, key, cs, " or ".join(ok)))
         try:
             v = float(r.get("volume"))
         except (TypeError, ValueError):
@@ -4575,7 +4589,7 @@ def c_wrc10(ctx):
         if v is None or not 0.0 <= v <= 1.0:
             res.fails.append("%s: volume %s not in 0..1" % (r.short(), r.get("volume")))
     if not vo and not res.fails:
-        res.missing.append("no module=chatter event=say sound=trf_voice\\<key>.wav result=shown (CHATTER_SOUND unset or 3)")
+        res.missing.append("no module=chatter event=say sound=trf_voice\\<key>_<tag>.wav result=shown (CHATTER_SOUND unset or 3)")
     res.ev("voice lines", vo)
     return res
 
@@ -5099,7 +5113,8 @@ SELFTEST_REQUEST = {"W-B03.1": "MANUAL", "W-B03.2": "PASS", "W-B03.3": "PASS", "
                     "W-B03.6": "PASS", "W-B03.7": "PASS", "W-B03.8": "PASS", "W-B03.9": "PASS", "W-B03.10": "MANUAL"}
 # tests/check_ingame_chatter_fixture.log: correct station chatter behaviour (LOG=2). Gredos (chapter 6): the approach hold and
 # its news before the first exchange, a request pair, a combat hold, a bay call and an undock call 45+ real seconds apart,
-# a dropped answer, the voice clips at volume 0.080 (W-RC.10); Kadi: the latch skip, nothing said; Aurora: a scene hold,
+# a dropped answer, the voice clips at volume 0.080 (W-RC.10: FTU 94's _ftu clips, Triada 749 heavy's _triada clip, the
+# generic clip for the unknown designator Kestrel 50); Kadi: the latch skip, nothing said; Aurora: a scene hold,
 # nothing said; Taira: a load, one call with the squelch (rc_sound 2);
 # Gredos again with gap=15 (TUNE=rc_gap=15): two calls 20 real seconds apart.
 SELFTEST_CHATTER = {"W-RC.1": "PASS", "W-RC.2": "PASS", "W-RC.3": "PASS", "W-RC.4": "PASS", "W-RC.5": "PASS", "W-RC.6": "PASS",

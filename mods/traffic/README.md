@@ -1377,7 +1377,7 @@ Owner request 2026-11-07 (spec [design/station-chatter-spec.md](design/station-c
 - One exchange (a call and at most one answer 6 s later) every 45 real seconds, at most 6 per visit and 2 per trader; a line is never said twice in a visit. Vanilla traders never dock, so they get no line.
 - Content first: chatter waits 10 game seconds after any mod line with content (dock news, an arrival line, a crew request), waits for the station's own greeting and news on approach, and is silent within 300 units of the station (your own docking). An answer that meets a content line is dropped.
 - Silent during a story mission visit, a scene, `__disableAction`, `__sys_SOS`, combat, in start systems that stay vanilla and in systems the strict gate denies (`chatter`).
-- The voice: each line plays its own radio clip (`Data/SOUND/trf_voice/<key>.wav`, 18 clips of 1.5 to 3.5 s, 2.1 MB): the fixed phrase spoken by a trader voice or a control voice through a radio filter with overdrive, crackle and the squelch click; the call sign, bay, cargo and destination are only in the text. It plays 2D through `PlaySound` so that it is heard at the game's music volume times `rc_vol` (80 %): the DLL native `TRF_MusicVol` reads the music and effects volumes and the mod divides out the effects volume the engine multiplies in; without the DLL the request is 80 % of full scale. A music slider above the effects slider cannot be exceeded. `CHATTER_SOUND=2` plays the 0.25 s squelch `Data/SOUND/trf_squelch.wav` (`tools/gen_squelch.py`) instead, `1` the vanilla menu sound, `0` nothing. The installers copy the sounds to the game's `Data/SOUND/` and the uninstallers remove them. The engine's own message cue is silent in the English build.
+- The voice: each line plays its own radio clip with the call sign's designator spoken ("Control, FTU, inbound with cargo, request docking.", "Triada heavy, cleared to dock, reduce speed at the marker."): the fixed phrase spoken by a trader voice or a control voice through a radio filter with overdrive, crackle and the squelch click; the flight number, bay, cargo and destination are only in the text. 89 clips in `Data/SOUND/trf_voice/`, 12.6 MB: `<key>_<tag>.wav` per line key and designator (tag `ftu`, `triada`, `uss`, `inoco`; 71 clips of 1.76 to 4.29 s) and the generic `<key>.wav` without a designator (18 clips of 1.5 to 3.5 s), played for a designator without its own clip (none expected). It plays 2D through `PlaySound` so that it is heard at the game's music volume times `rc_vol` (80 %): the DLL native `TRF_MusicVol` reads the music and effects volumes and the mod divides out the effects volume the engine multiplies in; without the DLL the request is 80 % of full scale. A music slider above the effects slider cannot be exceeded. `CHATTER_SOUND=2` plays the 0.25 s squelch `Data/SOUND/trf_squelch.wav` (`tools/gen_squelch.py`) instead, `1` the vanilla menu sound, `0` nothing. The installers copy the sounds to the game's `Data/SOUND/` and the uninstallers remove them. The engine's own message cue is silent in the English build.
 
 ### Config keys (chatter)
 
@@ -1386,7 +1386,7 @@ Owner request 2026-11-07 (spec [design/station-chatter-spec.md](design/station-c
 | key | default | meaning |
 |---|---|---|
 | `chatter` | 1 | 0: no poll, line or sound |
-| tune `rc_sound` (`CHATTER_SOUND`) | 3 | 0 text only, 1 the vanilla `GUI\PM1.wav`, 2 the shipped `trf_squelch.wav`, 3 the shipped voice clip of each line (`trf_voice\<key>.wav`) |
+| tune `rc_sound` (`CHATTER_SOUND`) | 3 | 0 text only, 1 the vanilla `GUI\PM1.wav`, 2 the shipped `trf_squelch.wav`, 3 the shipped voice clip of each line with the call sign's designator (`trf_voice\<key>_<tag>.wav`, generic `trf_voice\<key>.wav`) |
 | tune `rc_vol` | 80 | sound volume in % of the game's music volume (0..100; the result is clamped to 0..1) |
 | tune `rc_r`, `rc_dock_r`, `rc_pos` | 1500, 300, 300 | radius from the station, the player-docking radius, trader station to map entry |
 | tune `rc_gap`, `rc_pair`, `rc_secs` | 45, 6, 6 | real seconds between calls, from a call to its answer, message seconds |
@@ -1395,7 +1395,7 @@ Owner request 2026-11-07 (spec [design/station-chatter-spec.md](design/station-c
 
 ### Log lines (chatter)
 
-`module=chatter event=enter ... sound= radius= via=enter|load`, `event=skip reason=` (once per reason and visit), `event=event kind=req|hold|go|bay|out`, `event=drop reason=stale|full|gone|name|station|used`, `event=say kind= part=call|answer speaker= key= distance= real_time= quiet_age= sound=trf_voice\<key>.wav|trf_squelch.wav|GUI\PM1.wav|none sound_result=played|error|off|none volume= result=shown|failed|dropped`, `event=dump`; the DLL's `module=dll event=volume_init sig=ok|bad sigs=7`; rows in [design/log-events.md](design/log-events.md) "chatter".
+`module=chatter event=enter ... sound= radius= via=enter|load`, `event=skip reason=` (once per reason and visit), `event=event kind=req|hold|go|bay|out`, `event=drop reason=stale|full|gone|name|station|used`, `event=say kind= part=call|answer speaker= key= callsign= distance= real_time= quiet_age= sound=trf_voice\<key>_<tag>.wav|trf_voice\<key>.wav|trf_squelch.wav|GUI\PM1.wav|none sound_result=played|error|off|none volume= result=shown|failed|dropped`, `event=dump`; the DLL's `module=dll event=volume_init sig=ok|bad sigs=7`; rows in [design/log-events.md](design/log-events.md) "chatter".
 
 ### In-game checks (chatter)
 
@@ -1403,7 +1403,7 @@ W-RC.1 (chatter is heard), W-RC.2 (rate), W-RC.3 (no chatter during a mission or
 
 ### Credits and licences (chatter voice)
 
-The 18 clips in `Data/SOUND/trf_voice/` were synthesised offline with Piper TTS (piper-tts 1.8.0, GPL-3.0-or-later; only its output ships) from two voices of https://huggingface.co/rhasspy/piper-voices by Bryce Beattie (https://brycebeattie.com/files/tts/), trained on LibriVox recordings: trader `en_US-norman-medium`, control `en_GB-cori-medium`. Both model cards: "License: public domain"; the trainer's page: "Feel free to use these for any legal and ethical purpose." The radio filter, crackle and squelch are the mod's own (`tools/gen_voice.py`, `tools/gen_squelch.py`). Details and the re-render command: [design/mod-research/station-chatter-data.md](design/mod-research/station-chatter-data.md) 7.
+The 89 clips in `Data/SOUND/trf_voice/` were synthesised offline with Piper TTS (piper-tts 1.8.0, GPL-3.0-or-later; only its output ships) from two voices of https://huggingface.co/rhasspy/piper-voices by Bryce Beattie (https://brycebeattie.com/files/tts/), trained on LibriVox recordings: trader `en_US-norman-medium`, control `en_GB-cori-medium`. Both model cards: "License: public domain"; the trainer's page: "Feel free to use these for any legal and ethical purpose." The radio filter, crackle and squelch are the mod's own (`tools/gen_voice.py`, `tools/gen_squelch.py`). Details and the re-render command: [design/mod-research/station-chatter-data.md](design/mod-research/station-chatter-data.md) 7.
 
 ## Vanilla fixes
 

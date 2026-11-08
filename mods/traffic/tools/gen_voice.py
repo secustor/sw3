@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Station chatter voice clips mods/traffic/Data/SOUND/trf_voice/<key>.wav (design/station-chatter-spec.md 6.5).
+"""Station chatter voice clips mods/traffic/Data/SOUND/trf_voice/ (design/station-chatter-spec.md 6.5): per line key
+the designator clips <key>_<tag>.wav (tag ftu, triada, uss, inoco: the call sign's designator spoken, the flight number
+text-only; rchreqc for the three corporations only), 71 files, and the generic <key>.wav (no designator; trf_chatter's
+fallback for an unknown one), 18 files.
 
 Check the shipped set (stdlib only, no Piper needed):
   python3 -I mods/traffic/tools/gen_voice.py [--check]
 Without an option it prints the table of the shipped files (speaker, spoken text, length, peak, RMS, bytes).
---check exits 1 when a file is missing, an extra file is in trf_voice/, a file's sha256 or size differs from the
-manifest tools/gen_voice.sha256, a header is not 22,050 Hz mono 16-bit PCM, a peak is not -3 dBFS, a length is outside
-1.5..4.5 s, or the set is 2.5 MB or more.
+--check exits 1 when a file is missing, an extra file is in trf_voice/ (dotfiles are skipped), a file is not in or
+differs (sha256, size) from the manifest tools/gen_voice.sha256, a header is not 22,050 Hz mono 16-bit PCM, a peak is
+not -3 dBFS, a length is outside 1.5..4.5 s, or the set is 14 MB or more.
 
 Re-render (needs Piper; the venv and the models are scratch, never shipped):
   python3 -m venv .work/voice/venv && .work/voice/venv/bin/pip install piper-tts==1.8.0   # onnxruntime 1.31.1
@@ -16,6 +19,8 @@ Re-render (needs Piper; the venv and the models are scratch, never shipped):
     --control $U/en_GB-cori-medium/en_GB-cori-medium.onnx [--write | --check]
 --render alone renders in memory and prints the table; --render --write writes the wav files and the manifest;
 --render --check renders and exits 1 when any shipped file differs from the new render (runs are byte identical).
+All 89 clips take about 2.5 minutes. Clip i of clips() uses seed SEED + i; the generic clips come first, so they keep
+the bytes of their first render.
 Models (https://huggingface.co/rhasspy/piper-voices, each .onnx with its .onnx.json beside it), md5:
   en_US-norman-medium.onnx 829cea515dc724d694b83b71e8083f9f, .onnx.json 975830d6f230f6eccf657d265de99eba (trader)
   en_GB-cori-medium.onnx   f143307611eccea9d976235d0895f57c, .onnx.json 12b1dc45d8919f3475cf296d5f16a4c6 (control)
@@ -24,7 +29,8 @@ Both voices: dataset LibriVox, "License: public domain" (model cards; design/mod
 Chain per clip (22,050 Hz mono 16-bit PCM):
  1. Piper renders each sentence (fixed onnxruntime seed, the voice loaded fresh per clip). Each sentence is trimmed of
     silence (40 dB under its peak), internal pauses over 0.15 s are shortened to 0.15 s, sentences are joined with a
-    short gap. A phrase longer than SPEECH_MAX is rendered again faster (length_scale down to 0.8).
+    short gap. A phrase longer than its clip's target (3.5 s generic, 3.8 s designator clips, less the fixed parts) is
+    rendered again faster (length_scale down to 0.8; at 0.8 a clip may end up to the 4.5 s hard limit).
  2. Radio: band-pass 300 to 3,000 Hz (two RBJ biquad high-pass and two low-pass stages), RMS -18 dBFS, a compressor
     (3:1 above -24 dBFS, 5 ms attack, 60 ms release) with make-up to RMS -18 dBFS, a tanh soft clip at -6 dBFS.
  3. Overdrive: a soft knee (linear to half the -6 dBFS ceiling, tanh above it) after a drive gain found by bisection so
@@ -54,7 +60,8 @@ RATE = 22050
 SEED = 0x5357                 # gen_squelch's seed; clip i uses SEED + i for its noise and the TTS
 LEAD, TRAIL = 0.050, 0.030    # seconds of silence before the click and after the tail
 CLICK, TAIL, FADE = 0.005, 0.150, 0.010
-MIN_LEN, MAX_LEN, HARD_MAX = 1.5, 3.5, 4.5   # target length of a clip in seconds
+MIN_LEN, MAX_LEN, HARD_MAX = 1.5, 3.5, 4.5   # target length of a clip in seconds (generic clips)
+DES_MAX = 3.8                # target length of a designator clip
 PEAK_DB = -3.0
 RMS_DB = -18.0
 BED_DB = -40.0
@@ -63,13 +70,14 @@ DRIVE_DB = 3.0               # overdrive: voice RMS rise
 DROP_DB = -12.0
 TRIM_REL_DB = -40.0          # trim and pause threshold relative to each sentence's peak
 PAUSE_MAX = 0.15             # internal pauses longer than this are shortened to it
-SET_MAX = 2500000            # bytes of the whole set
+SET_MAX = 14000000           # bytes of the whole set
 
-# (key, speaker, spoken text). Speaker per trf_chatter.script TRF_RcK(): cs/as "t" trader, "c" control. The text is the
-# fixed phraseology of each line (spec 7); call sign, bay, cargo and destination stay text-only: a leading "Control"
-# stands in for the station, "Roger" or nothing for the call sign, "the bay" for "bay $3", "cargo" for the cargo. The
-# sign-off is joined with a comma (the text has ". Over and out."): Piper renders a separate "Over and out." sentence
-# after another one with a long tail (2.35 s instead of 1.15 s), which pushed both out clips over 4.5 s.
+# Generic clips <key>.wav: (key, speaker, spoken text). Speaker per trf_chatter.script TRF_RcK(): cs/as "t" trader, "c"
+# control. The text is the fixed phraseology of each line (spec 7); call sign, bay, cargo and destination stay
+# text-only: a leading "Control" stands in for the station, "Roger" or nothing for the call sign, "the bay" for
+# "bay $3", "cargo" for the cargo. The sign-off is joined with a comma (the text has ". Over and out."): Piper renders a
+# separate "Over and out." sentence after another one with a long tail (2.35 s instead of 1.15 s), which pushed both out
+# clips over 4.5 s.
 PHRASES = [
     ("rchreq1", "trader", "Control, inbound with cargo, request docking."),
     ("rchreq2", "trader", "Control, at the outer marker, request docking clearance."),
@@ -96,7 +104,54 @@ VOICE = {
     "trader": {"length": 1.05, "gap": 0.16},
     "control": {"length": 0.92, "gap": 0.10},
 }
-SPEECH_MAX = MAX_LEN - (LEAD + CLICK + TAIL + TRAIL) - 0.02
+
+# Designator clips <key>_<tag>.wav (spec 6.5, owner decision 15): the same lines with the call sign's designator spoken
+# where the text has the call sign ({d}); the flight number stays text-only. A trader line names it after the addressee
+# ("Control, FTU, ..."), a control line opens with it; "Roger" and "Wilco" stay where the text has them. Tags as
+# trf_chatter's TRF_RcFacTag, then the spoken form: Piper (espeak-ng) reads "FTU" and "USS" as letters ("ef tee you",
+# "you ess ess") and "InoCo" as "Ino Co"; "F T U" or "U S S" only add a pause per letter. A carrier's call sign ends in
+# "heavy"; an independent's never. rchreqc (carrier request) exists for the corporations only.
+DES = [("ftu", "FTU"), ("triada", "Triada heavy"), ("uss", "USS heavy"), ("inoco", "InoCo heavy")]
+CORP = ("triada", "uss", "inoco")
+DPHRASES = [
+    ("rchreq1", "Control, {d}, inbound with cargo, request docking."),
+    ("rchreq2", "Control, {d}, at the outer marker, request docking clearance."),
+    ("rchreqc", "Control, {d}, full load, request docking."),
+    ("rchreqa1", "{d}, cleared to dock, follow the beacon."),
+    ("rchreqa2", "{d}, cleared to dock, reduce speed at the marker."),
+    ("rchhold1", "{d}, hold position, bay occupied, expect delay."),
+    ("rchhold2", "{d}, standby. Traffic in the bay, hold at the outer marker."),
+    ("rchholda", "Wilco, holding, {d}."),
+    ("rchgo1", "{d}, the bay is now clear, cleared to dock."),
+    ("rchgo2", "{d}, number one, cleared to dock."),
+    ("rchgoa1", "Cleared to dock, {d}."),
+    ("rchgoa2", "Roger, on our way in, {d}."),
+    ("rchin1", "Control, {d}, docked, clamps on."),
+    ("rchin2", "Control, {d}, secured in the bay, shutting down."),
+    ("rchout1", "Control, {d}, clear of the bay, request departure."),
+    ("rchout2", "Control, {d}, undocking, ready to depart."),
+    ("rchouta1", "{d}, departure lane clear, cleared to depart, over and out."),
+    ("rchouta2", "{d}, roger, frequency change approved, over and out."),
+]
+
+
+def clips():
+    """[(name, key, speaker, spoken text, target length s)]: the 18 generic clips first (clip index = seed offset, so
+    their bytes stay those of the render before the designator clips existed), then per key the designator clips in
+    DES order."""
+    spk = dict((k, sp) for k, sp, _ in PHRASES)
+    out = [(k + ".wav", k, sp, t, MAX_LEN) for k, sp, t in PHRASES]
+    for k, t in DPHRASES:
+        for tag, say in DES:
+            if k == "rchreqc" and tag not in CORP:
+                continue
+            out.append(("%s_%s.wav" % (k, tag), k, spk[k], t.replace("{d}", say), DES_MAX))
+    return out
+
+
+def speech_max(target):
+    """Seconds of speech that fit a clip of target seconds."""
+    return target - (LEAD + CLICK + TAIL + TRAIL) - 0.02
 
 
 def db(x):
@@ -218,8 +273,8 @@ def tts(model, text, seed, length):
     return [trim(p) for p in parts if p]
 
 
-def speech(model, spk, text, seed):
-    """The joined speech, rendered faster when longer than SPEECH_MAX; returns (samples, length_scale)."""
+def speech(model, spk, text, seed, smax):
+    """The joined speech, rendered faster when longer than smax seconds; returns (samples, length_scale)."""
     length = VOICE[spk]["length"]
     gap = [0.0] * int(VOICE[spk]["gap"] * RATE)
     while True:
@@ -227,9 +282,9 @@ def speech(model, spk, text, seed):
         s = []
         for k, p in enumerate(parts):
             s += (gap if k else []) + p
-        if len(s) / float(RATE) <= SPEECH_MAX or length <= 0.8:
+        if len(s) / float(RATE) <= smax or length <= 0.8:
             return s, length
-        length = round(max(0.8, length * SPEECH_MAX * RATE / len(s) - 0.01), 3)
+        length = round(max(0.8, length * smax * RATE / len(s) - 0.01), 3)
 
 
 def compress(s):
@@ -330,11 +385,11 @@ def fade(s, n_in, n_out):
     return s
 
 
-def clip(model, spk, text, idx):
-    """Samples (16-bit ints) of one finished clip plus info."""
+def clip(model, spk, text, idx, target):
+    """Samples (16-bit ints) of one finished clip (target length target s) plus info."""
     seed = SEED + idx
     gen = lcg(seed * 7 + 1)
-    sp, length = speech(model, spk, text, seed)
+    sp, length = speech(model, spk, text, seed, speech_max(target))
     v = radio(sp)
     v, drive = overdrive(v)
     drops = dropouts(v, gen)
@@ -397,7 +452,7 @@ def stats(b):
 
 
 def read_manifest():
-    """{name: (sha256, size)} from tools/gen_voice.sha256 ("<sha256>  <size>  <key>.wav" per line)."""
+    """{name: (sha256, size)} from tools/gen_voice.sha256 ("<sha256>  <size>  <name>.wav" per line)."""
     m = {}
     with open(MANIFEST, "r", encoding="ascii") as f:
         for ln in f:
@@ -421,8 +476,8 @@ def check_files(out_dir, table):
     except OSError:
         print("voice: manifest %s missing" % MANIFEST)
         return 1
-    keys = [k for k, _, _ in PHRASES]
-    want = set(k + ".wav" for k in keys)
+    cl = clips()
+    want = set(c[0] for c in cl)
     if set(man) != want:
         print("voice: manifest names differ from the phrase table")
         bad += 1
@@ -433,10 +488,10 @@ def check_files(out_dir, table):
     for x in sorted(have - want):
         print("voice: extra file %s" % os.path.join(out_dir, x))
         bad += 1
-    print("key       speaker  len_s  peak_dB  rms_dB  bytes   spoken text")
+    if table:
+        print("file                 speaker  len_s  peak_dB  rms_dB  bytes   spoken text")
     target = int(round(db(PEAK_DB) * 32767))
-    for key, spk, text in PHRASES:
-        name = key + ".wav"
+    for name, key, spk, text, _ in cl:
         path = os.path.join(out_dir, name)
         try:
             with open(path, "rb") as f:
@@ -452,7 +507,8 @@ def check_files(out_dir, table):
             bad += 1
             continue
         if table:
-            print("%-9s %-8s %5.2f  %7.1f  %6.1f  %6d  %s" % (key, spk, st["len"], st["peak_db"], st["rms_db"], len(b), text))
+            print("%-20s %-8s %5.2f  %7.1f  %6.1f  %6d  %s" % (name, spk, st["len"], st["peak_db"], st["rms_db"], len(b),
+                                                               text))
         why = []
         if st["rate"] != RATE or st["ch"] != 1:
             why.append("format %d Hz %d ch" % (st["rate"], st["ch"]))
@@ -468,7 +524,7 @@ def check_files(out_dir, table):
         if why:
             print("voice: %s: %s" % (path, "; ".join(why)))
             bad += 1
-    print("voice: %d files, %d bytes in all (limit %d)" % (len(PHRASES), total, SET_MAX))
+    print("voice: %d files, %d bytes in all (limit %d)" % (len(cl), total, SET_MAX))
     if total >= SET_MAX:
         print("voice: set too large")
         bad += 1
@@ -477,21 +533,21 @@ def check_files(out_dir, table):
 
 def render(models, out_dir, write, check):
     bad, total, rows = 0, 0, []
-    print("key       speaker  len_s  speech_s  lscale  drive  pops  drops            peak_dB  rms_dB  bytes")
-    for idx, (key, spk, text) in enumerate(PHRASES):
-        pcm, i = clip(models[spk], spk, text, idx)
+    print("file                 speaker  len_s  speech_s  lscale  drive  pops  drops            peak_dB  rms_dB  bytes")
+    for idx, (name, key, spk, text, tl) in enumerate(clips()):
+        pcm, i = clip(models[spk], spk, text, idx, tl)
         b = wav_bytes(pcm)
         st = stats(b)
         total += len(b)
-        rows.append((key + ".wav", b))
+        rows.append((name, b))
         dr = ",".join("%.2f+%.3f" % d for d in i["drops"]) or "-"
-        print("%-9s %-8s %5.2f  %8.2f  %6.3f  %5.2f  %4d  %-15s  %7.1f  %6.1f  %d" % (
-            key, spk, st["len"], i["speech"], i["length_scale"], i["drive"], i["pops"], dr, st["peak_db"], st["rms_db"],
+        print("%-20s %-8s %5.2f  %8.2f  %6.3f  %5.2f  %4d  %-15s  %7.1f  %6.1f  %d" % (
+            name, spk, st["len"], i["speech"], i["length_scale"], i["drive"], i["pops"], dr, st["peak_db"], st["rms_db"],
             len(b)))
         if st["len"] > HARD_MAX:
-            print("voice: %s over %.1f s" % (key, HARD_MAX))
+            print("voice: %s over %.1f s" % (name, HARD_MAX))
             bad += 1
-        path = os.path.join(out_dir, key + ".wav")
+        path = os.path.join(out_dir, name)
         if check:
             try:
                 with open(path, "rb") as f:

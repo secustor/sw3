@@ -114,7 +114,35 @@ Design `.work/voice/atc-design.md` (phraseology, call signs, slots), owner decis
 
 ### 7.2 Clips
 
-`Data/SOUND/trf_voice/<key>.wav`, one per line key, 22,050 Hz mono 16-bit PCM, peak -3.0 dBFS, 2,093,682 bytes in all, manifest `tools/gen_voice.sha256`. Rendered 2026-11-08; `gen_voice.py --render --check` reproduces the bytes.
+89 files in `Data/SOUND/trf_voice/`, 22,050 Hz mono 16-bit PCM, peak -3.0 dBFS, 12,639,410 bytes in all, manifest `tools/gen_voice.sha256`; `gen_voice.py --render --check` reproduces the bytes. Since the designator step (spec 17, owner decision 15) per line key one clip per call sign designator, `<key>_<tag>.wav` (71 files, 10,545,728 bytes), and the generic `<key>.wav` without a designator (18 files, 2,093,682 bytes; the fallback for a designator without a clip; their bytes are those of the first render, the generic clips keep seeds 0..17).
+
+Designator clips (rendered 2026-11-08): the text's call sign slot spoken as its designator, the flight number left out. D per tag: `ftu` "FTU", `triada` "Triada heavy", `uss` "USS heavy", `inoco` "InoCo heavy" (a carrier's call sign always has `heavy`, an independent's never). Piper's phonemizer (espeak-ng) [V: `PiperVoice.phonemize`, both voices]: "FTU" as the three letters ("ef tee you"), "USS" as letters ("you ess ess"), "Triada" as "try-AH-da", "InoCo" as "EE-no co" (the same phonemes as the spelling "Ino Co"). Spaced letters ("F T U", "U S S") gave the same phonemes with full stress on each letter and a pause after each (trader: "U S S heavy" 1.58 s against 1.11 s for "USS heavy"; "Control, F T U, inbound ..." 0.28 s longer), so the plain spellings are used. Designator alone at the voice's own speed (trimmed speech): FTU 0.86 s trader, 0.70 s control; USS heavy 1.11 / 0.87 s; Triada heavy 0.96 / 0.83 s; InoCo heavy 1.18 / 0.80 s. The control voice's opening vowel of "FTU" is about -18 dB under the line's peak in the raw render and within 1 dB of it after the radio compressor (25 ms RMS windows) [V]; nobody listened. Length and bytes per clip:
+
+| Key | Speaker | Spoken text (D = designator) | ftu | triada | uss | inoco |
+|---|---|---|---|---|---|---|
+| rchreq1 | trader | Control, D, inbound with cargo, request docking. | 3.80 s, 167,488 | 3.79 s, 167,048 | 3.77 s, 166,168 | 3.74 s, 164,848 |
+| rchreq2 | trader | Control, D, at the outer marker, request docking clearance. | 3.78 s, 166,608 | 3.94 s, 173,648 | 3.92 s, 172,768 | 3.79 s, 167,048 |
+| rchreqc | trader | Control, D, full load, request docking. | - | 3.45 s, 152,088 | 3.61 s, 159,128 | 3.43 s, 151,208 |
+| rchreqa1 | control | D, cleared to dock, follow the beacon. | 3.16 s, 139,328 | 2.88 s, 127,008 | 3.04 s, 134,048 | 2.92 s, 128,768 |
+| rchreqa2 | control | D, cleared to dock, reduce speed at the marker. | 3.42 s, 150,768 | 3.33 s, 146,808 | 3.46 s, 152,528 | 3.53 s, 155,608 |
+| rchhold1 | control | D, hold position, bay occupied, expect delay. | 3.93 s, 173,208 | 3.62 s, 159,568 | 3.89 s, 171,448 | 3.77 s, 166,168 |
+| rchhold2 | control | D, standby. Traffic in the bay, hold at the outer marker. | 3.81 s, 167,938 | 3.91 s, 172,338 | 3.95 s, 174,098 | 4.02 s, 177,178 |
+| rchholda | trader | Wilco, holding, D. | 2.58 s, 113,808 | 2.57 s, 113,368 | 2.53 s, 111,608 | 2.42 s, 106,768 |
+| rchgo1 | control | D, the bay is now clear, cleared to dock. | 3.34 s, 147,248 | 3.06 s, 134,928 | 3.09 s, 136,248 | 3.17 s, 139,768 |
+| rchgo2 | control | D, number one, cleared to dock. | 2.81 s, 123,928 | 2.39 s, 105,448 | 2.76 s, 121,728 | 2.69 s, 118,648 |
+| rchgoa1 | trader | Cleared to dock, D. | 1.76 s, 77,728 | 1.98 s, 87,408 | 2.19 s, 96,648 | 2.06 s, 90,928 |
+| rchgoa2 | trader | Roger, on our way in, D. | 2.76 s, 121,728 | 2.80 s, 123,488 | 2.84 s, 125,248 | 2.99 s, 131,848 |
+| rchin1 | trader | Control, D, docked, clamps on. | 3.10 s, 136,688 | 3.28 s, 144,608 | 3.31 s, 145,928 | 3.13 s, 138,008 |
+| rchin2 | trader | Control, D, secured in the bay, shutting down. | 3.64 s, 160,448 | 3.67 s, 161,768 | 3.81 s, 167,928 | 3.78 s, 166,608 |
+| rchout1 | trader | Control, D, clear of the bay, request departure. | 3.82 s, 168,368 | 3.78 s, 166,608 | 3.82 s, 168,368 | 3.72 s, 163,968 |
+| rchout2 | trader | Control, D, undocking, ready to depart. | 3.24 s, 142,848 | 3.52 s, 155,168 | 3.49 s, 153,848 | 3.57 s, 157,368 |
+| rchouta1 | control | D, departure lane clear, cleared to depart, over and out. | 4.29 s, 189,048 | 4.12 s, 181,568 | 4.10 s, 180,688 | 4.02 s, 177,168 |
+| rchouta2 | control | D, roger, frequency change approved, over and out. | 3.98 s, 175,408 | 3.79 s, 167,048 | 3.73 s, 164,408 | 4.05 s, 178,488 |
+| all | | | 17 clips, 2,522,586 | 18 clips, 2,639,914 | 18 clips, 2,702,834 | 18 clips, 2,680,394 |
+
+15 of the 71 clips are at Piper's fastest setting (`length_scale` 0.8); 17 end between 3.8 and 4.29 s (target 3.8 s, hard limit 4.5 s).
+
+Generic clips (rendered 2026-11-08, unchanged):
 
 | Key | Speaker | Spoken text | Length | File RMS |
 |---|---|---|---|---|

@@ -157,7 +157,7 @@ Adds NPC traders, pirate clans, factions and jobs, written as Lua scripts loaded
 
 **Stations and standing**
 - Dockmasters greet you by standing as you come near the station, and the harbour has news and tips. Docking fees apply from chapter 5.
-- Station chatter: near a trade station you overhear station control and the mod's traders on the radio as they queue, dock and undock, in air traffic control style with call signs and readbacks, each line voiced at the game's music volume; at most one exchange every 45 seconds, never over another mod line (`chatter`, sound option `rc_sound`; not yet tested in game).
+- Station chatter: near a trade station you overhear station control and the mod's traders on the radio as they queue, dock and undock, in air traffic control style with call signs and readbacks, each line voiced at the game's music volume with the call sign's designator spoken (FTU, Triada, USS, InoCo); at most one exchange every 45 seconds, never over another mod line (`chatter`, sound option `rc_sound`; not yet tested in game).
 - Local events: ore-barge rescue, tanker shuttle, refugee launch.
 - Rank ladder for all five factions, with transit permits, settle-the-file offers and prisoners of war.
 - The patrol board lists raid reports, booming lanes, wanted captains and sweep offers.

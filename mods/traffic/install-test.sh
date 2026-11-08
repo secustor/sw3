@@ -120,7 +120,7 @@
 # CHATTER=0|1 (cfg chatter, station chatter, design/station-chatter-spec.md, CHECK W-RC.1-10: radio exchanges between
 # station control and docking mod traders within tune rc_r; default 1 in config.script, LEVEL=v01/v02 write 0 unless CHATTER
 # is set); written only when set. CHATTER_SOUND=0|1|2|3 (tune rc_sound: 0 text only, 1 the vanilla GUI\PM1.wav, 2 the
-# shipped Data/SOUND/trf_squelch.wav, 3 the shipped voice clips Data/SOUND/trf_voice/<key>.wav, the default); written only
+# shipped Data/SOUND/trf_squelch.wav, 3 the shipped voice clips Data/SOUND/trf_voice/<key>_<tag>.wav, the default); written only
 # when set, an rc_sound key in TUNE wins. Data/SOUND/trf_squelch.wav and Data/SOUND/trf_voice/ are copied to the clone's
 # Data/SOUND/ on every run. Tune keys (rc_r, rc_gap, rc_pair, rc_secs, rc_quiet, rc_stale, rc_max,
 # rc_per, rc_dock_r, rc_pos, rc_bays, rc_vol) go through TUNE; a test session: TUNE=rc_gap=15,rc_stale=40.

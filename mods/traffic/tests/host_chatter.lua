@@ -705,8 +705,8 @@ function T_RC_D()
 	RC_Step(8);
 	__sys_SOS = FALSE;
 	RC_Step(8);
-	HOST_Check(RC_Logs(n0, "part=call") == 1 and RC_Logs(n0, "part=answer") == 1 and RC_Logs(n0, "part=answer trader_id=16 station_key="..RC_Key(1).." speaker=nil key=nil distance=nil") == 1
-		and RC_Logs(n0, "result=dropped reason=hold:sys_sos") == 1 and TRF_RcCV().pend == nil, "a due answer under a hold is dropped, never delayed");
+	HOST_Check(RC_Logs(n0, "part=call") == 1 and RC_Logs(n0, "part=answer") == 1 and RC_Logs(n0, "part=answer trader_id=16 station_key="..RC_Key(1).." speaker=nil key=nil callsign=\"FTU 62\" distance=nil") == 1
+		and RC_Logs(n0, "result=dropped reason=hold:sys_sos") == 1 and TRF_RcCV().pend == nil, "a due answer under a hold is dropped, never delayed (the call sign logged)");
 end;
 
 -- e: content first (5 Q1-Q5) ------------------------------------------------------------------
@@ -965,24 +965,63 @@ end;
 function T_RC_G()
 	local h = HOST();
 	RC_Begin("gredos");
-	-- rc_sound 3 (default): the clip of each line key, at the music volume (no DLL: 1) x rc_vol 80.
+	-- rc_sound 3 (default): the clip of each line key and the call sign's designator (FTU 47: _ftu), at the music volume
+	-- (no DLL: 1) x rc_vol 80; the say line logs the call sign.
 	local n0, m0 = S_Mark(), getn(h.msgs);
 	RC_Req(1);
 	RC_Step(8);
 	local k1, k2 = RC_Kv(RC_Line(n0, "part=call"), "key"), RC_Kv(RC_Line(n0, "part=answer"), "key");
-	HOST_Check(getn(h.psnd) == 2 and h.psnd[1].name == "trf_voice\\"..tostring(k1)..".wav" and h.psnd[2].name == "trf_voice\\"..tostring(k2)..".wav"
+	HOST_Check(getn(h.psnd) == 2 and h.psnd[1].name == "trf_voice\\"..tostring(k1).."_ftu.wav" and h.psnd[2].name == "trf_voice\\"..tostring(k2).."_ftu.wav"
 		and h.psnd[1].vol == 0.8 and h.psnd[2].vol == 0.8 and getn(h.msgs) == m0 + 2 and RC_Logs(n0, "sound_result=played volume=0.800 result=shown") == 2
-		and RC_Logs(n0, "sound=trf_voice\\"..tostring(k1)..".wav ") == 1, "rc_sound 3 (default): the voice clip of the line's key at 0.8 (no TRF_MusicVol: 1 x 80 %), logged with the volume");
-	-- Every line key has its clip in the repo; a key without one plays the squelch.
-	local miss, nv = "", 0;
-	for k, v in TRF_RcK().vo do
+		and RC_Logs(n0, "sound=trf_voice\\"..tostring(k1).."_ftu.wav ") == 1 and RC_Logs(n0, "key="..tostring(k1).." callsign=\"FTU 47\" ") == 1
+		and RC_Logs(n0, "key="..tostring(k2).." callsign=\"FTU 47\" ") == 1 and RC_Has(RC_Msgs(m0), "FTU 47"),
+		"rc_sound 3 (default): an FTU trader's lines play <key>_ftu.wav at 0.8 (no TRF_MusicVol: 1 x 80 %), logged with the call sign and the volume");
+	-- A corporation carrier (Triada 947 heavy): rchreqc and the answer with the _triada clips.
+	h.cfg.corp = 1;
+	RC_Fresh();
+	n0, m0 = S_Mark(), getn(h.msgs);
+	RC_Req(23, {crp=3});
+	RC_Step(8);
+	k2 = RC_Kv(RC_Line(n0, "part=answer"), "key");
+	HOST_Check(getn(h.psnd) == 2 and h.psnd[1].name == "trf_voice\\rchreqc_triada.wav" and h.psnd[2].name == "trf_voice\\"..tostring(k2).."_triada.wav"
+		and RC_Logs(n0, "key=rchreqc callsign=\"Triada 947 heavy\" ") == 1 and RC_Logs(n0, "sound=trf_voice\\"..tostring(k2).."_triada.wav sound_result=played") == 1,
+		"a Triada carrier: trf_voice\\rchreqc_triada.wav, then the answer's <key>_triada.wav, logged with callsign=\"Triada 947 heavy\"");
+	-- An unknown designator (none expected: a stranger name from TRF_UI_FacOf) falls back to the generic clip <key>.wav.
+	local fo = TRF_UI_FacOf;
+	TRF_UI_FacOf = function(f) return "Kestrel"; end;
+	RC_Fresh();
+	n0 = S_Mark();
+	RC_Req(23, {crp=3});
+	TRF_UI_FacOf = fo;
+	HOST_Check(getn(h.psnd) == 1 and h.psnd[1].name == "trf_voice\\rchreqc.wav" and RC_Logs(n0, "key=rchreqc callsign=\"Kestrel 947 heavy\" ") == 1,
+		"an unknown designator (Kestrel 947 heavy): the generic trf_voice\\rchreqc.wav");
+	-- Every clip in the repo: per voiced key the generic <key>.wav and <key>_<tag>.wav for each designator tag it has
+	-- (rchreqc the three corporations only): 18 + 17 x 4 + 3 = 89 files.
+	local K = TRF_RcK();
+	local miss, nv, nf = "", 0, 0;
+	for k, v in K.vo do
 		nv = nv + 1;
+		nf = nf + 1;
 		if not RC_ReadFile(h.dir.."../../../SOUND/trf_voice/"..k..".wav") then miss = miss.." "..k; end;
+		for t, q in K.ft do
+			if q >= v then
+				nf = nf + 1;
+				if not RC_ReadFile(h.dir.."../../../SOUND/trf_voice/"..k.."_"..t..".wav") then miss = miss.." "..k.."_"..t; end;
+			end;
+		end;
 	end;
-	HOST_Check(nv == 18 and miss == "", "18 voiced keys, each with Data/SOUND/trf_voice/<key>.wav"..miss);
-	HOST_Check(TRF_RcSndOf("rchgoa2", 3) == "trf_voice\\rchgoa2.wav" and TRF_RcSndOf("rchctl", 3) == "trf_squelch.wav"
-		and TRF_RcSndOf("rchgoa2", 2) == "trf_squelch.wav" and TRF_RcSndOf("rchgoa2", 1) == "GUI\\PM1.wav",
-		"TRF_RcSndOf: mode 3 the key's clip, the squelch for a key without one; modes 1 and 2 as before");
+	HOST_Check(nv == 18 and nf == 89 and miss == "", "18 voiced keys, 89 clips in Data/SOUND/trf_voice/ (<key>.wav and <key>_<tag>.wav, "..nf..")"..miss);
+	HOST_Check(TRF_RcSndOf("rchgoa2", 3, "ftu") == "trf_voice\\rchgoa2_ftu.wav" and TRF_RcSndOf("rchgoa2", 3, "inoco") == "trf_voice\\rchgoa2_inoco.wav"
+		and TRF_RcSndOf("rchreqc", 3, "uss") == "trf_voice\\rchreqc_uss.wav" and TRF_RcSndOf("rchreqc", 3, "ftu") == "trf_voice\\rchreqc.wav"
+		and TRF_RcSndOf("rchgoa2", 3) == "trf_voice\\rchgoa2.wav" and TRF_RcSndOf("rchgoa2", 3, "kestrel") == "trf_voice\\rchgoa2.wav"
+		and TRF_RcSndOf("rchctl", 3, "ftu") == "trf_squelch.wav" and TRF_RcSndOf("rchgoa2", 2, "ftu") == "trf_squelch.wav"
+		and TRF_RcSndOf("rchgoa2", 1, "triada") == "GUI\\PM1.wav",
+		"TRF_RcSndOf: mode 3 the key's clip of the designator tag, the generic clip for no or another tag (rchreqc has no _ftu), the squelch for a key without a clip; modes 1 and 2 as before");
+	HOST_Check(TRF_RcFacTag(TRF_Txt("owner")) == "ftu" and TRF_RcFacTag(TRF_UI_FacOf(3)) == "triada" and TRF_RcFacTag(TRF_UI_FacOf(4)) == "uss"
+		and TRF_RcFacTag(TRF_UI_FacOf(5)) == "inoco" and TRF_RcFacTag(TRF_UI_FacOf(1)) == nil and TRF_RcFacTag("Kestrel") == nil
+		and TRF_RcFacTag(nil) == nil and TRF_RcFacTag("") == nil,
+		"TRF_RcFacTag: FTU, Triada, USS, InoCo -> ftu, triada, uss, inoco; "..tostring(TRF_UI_FacOf(1))..", a stranger, nil and \"\" -> nil");
+	RC_Fresh();
 	-- The music volume (TRF_RcVol over the DLL native) and the clamp.
 	TRF_MusicVol = HOST_MusicVol;
 	h.mvol = 0.25; h.svol = 0.5;

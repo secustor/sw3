@@ -16,7 +16,7 @@
 # Copies loc/trf_en.loc to Data/LocData/<language>/ (default.cfg __localization_folder) on every install: the logbook
 # titles of the parcel, charter and captain quests are keys in it, in every loc_mode.
 # Copies Data/SOUND/trf_squelch.wav (the station chatter cue, tools/gen_squelch.py; design/station-chatter-spec.md 6.5) and
-# the 18 voice clips Data/SOUND/trf_voice/*.wav (tools/gen_voice.py) to the game's Data/SOUND/ on every install: PlaySound
+# the 89 voice clips Data/SOUND/trf_voice/*.wav (tools/gen_voice.py) to the game's Data/SOUND/ on every install: PlaySound
 # names are relative to that folder.
 # Re-running upgrades in place and keeps an edited config.script (--reset-config overwrites it).
 # --restore-only writes config.script with enabled=2: the mod then only restores changed station prices and
