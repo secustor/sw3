@@ -16,7 +16,7 @@ ring (W-A16.1-10, design/tips-spec.md 13; wave 2, host-tested only) and the spec
 design/static-signals-spec.md 14; wave 3, host-tested only) and the station approach radio (STN-NEAR.1-2,
 design/station-voices-spec.md 8.8; host-tested only) and the survey layer with "Chart the frontier" (W-A12.9-18,
 design/survey-spec.md 14; wave 3, host-tested only) and the crew requests (W-B03.1-10, design/crew-requests-spec.md 14;
-wave 4, host-tested only) and the station chatter (W-RC.1-9, design/station-chatter-spec.md 12; host-tested only) from
+wave 4, host-tested only) and the station chatter (W-RC.1-10, design/station-chatter-spec.md 12; host-tested only) from
 traffic logs.
 
 Usage: python3 -I check_ingame.py [--log PATH]... [--errors FILE] [--eyes ID=pass|fail[,...]]... [--summary]
@@ -4359,7 +4359,7 @@ def c_wrq10(ctx):
     return res
 
 
-# Station chatter (design/station-chatter-spec.md 12, W-RC.1-9; host-tested only) ---------------------------------------
+# Station chatter (design/station-chatter-spec.md 12, W-RC.1-10; host-tested only) ---------------------------------------
 
 RC_GAP, RC_MAX, RC_QUIET = 45, 6, 10   # tune rc_gap, rc_max and rc_quiet defaults (spec 8)
 
@@ -4554,6 +4554,29 @@ def c_wrc9(ctx):
         res.missing.append("fly toward a trade station with mod traders docking (LOG=2): no module=station event=near "
                            "result=skipped reason=hold (the greeting said, the news pending)")
     res.ev("approach holds", holds)
+    return res
+
+
+def c_wrc10(ctx):
+    res = Res()
+    res.logpart = True
+    vo = []
+    for r in ctx.find("chatter", "say", result="shown"):
+        snd = r.get("sound") or ""
+        if not snd.startswith("trf_voice\\"):
+            continue
+        vo.append(r)
+        if snd != "trf_voice\\%s.wav" % r.get("key"):
+            res.fails.append("%s: clip %s is not the line's key %s" % (r.short(), snd, r.get("key")))
+        try:
+            v = float(r.get("volume"))
+        except (TypeError, ValueError):
+            v = None
+        if v is None or not 0.0 <= v <= 1.0:
+            res.fails.append("%s: volume %s not in 0..1" % (r.short(), r.get("volume")))
+    if not vo and not res.fails:
+        res.missing.append("no module=chatter event=say sound=trf_voice\\<key>.wav result=shown (CHATTER_SOUND unset or 3)")
+    res.ev("voice lines", vo)
     return res
 
 
@@ -4852,10 +4875,11 @@ ITEMS = [
     ("W-RC.4", "no repeated line", c_wrc4, None),
     ("W-RC.5", "content first", c_wrc5, None),
     ("W-RC.6", "radius", c_wrc6, None),
-    ("W-RC.7", "sound", c_wrc7, "a short squelch before each chatter line, its loudness following the sound volume; silence "
-     "with CHATTER_SOUND=0 (RC1-RC3)"),
+    ("W-RC.7", "sound", c_wrc7, "a voice clip (CHATTER_SOUND=3, the default; a short squelch with 2) with each chatter line, "
+     "its loudness following the music volume; silence with CHATTER_SOUND=0 (RC1-RC3, RC9)"),
     ("W-RC.8", "no chatter in combat", c_wrc8, None),
     ("W-RC.9", "the approach radio comes first", c_wrc9, None),
+    ("W-RC.10", "voice clip and volume", c_wrc10, None),
     ("STN-NEAR.1", "station greeting and news on approach, before the dock line (greeting_skip=near)", c_stn_near1,
      "the dockmaster's radio greeting and then the news line while flying in, before the docking box opens"),
     ("STN-NEAR.2", "approach radio: nothing spoken twice per visit", c_stn_near2, None),
@@ -5003,7 +5027,7 @@ SELFTEST = {"ERR": "PASS", "E16.1": "PASS", "E16.2": "PASS", "E16.3": "MANUAL", 
             "W-B03.1": "NO DATA", "W-B03.2": "FAIL", "W-B03.3": "FAIL", "W-B03.4": "FAIL", "W-B03.5": "FAIL", "W-B03.6": "FAIL",
             "W-B03.7": "FAIL", "W-B03.8": "FAIL", "W-B03.9": "FAIL", "W-B03.10": "FAIL",
             "W-RC.1": "PASS", "W-RC.2": "FAIL", "W-RC.3": "FAIL", "W-RC.4": "FAIL", "W-RC.5": "FAIL", "W-RC.6": "FAIL",
-            "W-RC.7": "FAIL", "W-RC.8": "FAIL", "W-RC.9": "FAIL"}
+            "W-RC.7": "FAIL", "W-RC.8": "FAIL", "W-RC.9": "FAIL", "W-RC.10": "FAIL"}
 # tests/check_ingame_warn_fixture.log: correct warning behaviour only. A dock warning for Gideon at Avalon (leg 100) after
 # the station's dock line, a second approach skipped (visit), a return at leg 102 skipped (cooldown); at XT-23 (station
 # voice deny, a station pass, no station dock line) a pass reason=scene, then a warning for XT-24; a load of an earlier
@@ -5075,10 +5099,11 @@ SELFTEST_REQUEST = {"W-B03.1": "MANUAL", "W-B03.2": "PASS", "W-B03.3": "PASS", "
                     "W-B03.6": "PASS", "W-B03.7": "PASS", "W-B03.8": "PASS", "W-B03.9": "PASS", "W-B03.10": "MANUAL"}
 # tests/check_ingame_chatter_fixture.log: correct station chatter behaviour (LOG=2). Gredos (chapter 6): the approach hold and
 # its news before the first exchange, a request pair, a combat hold, a bay call and an undock call 45+ real seconds apart,
-# a dropped answer; Kadi: the latch skip, nothing said; Aurora: a scene hold, nothing said; Taira: a load, one call;
+# a dropped answer, the voice clips at volume 0.080 (W-RC.10); Kadi: the latch skip, nothing said; Aurora: a scene hold,
+# nothing said; Taira: a load, one call with the squelch (rc_sound 2);
 # Gredos again with gap=15 (TUNE=rc_gap=15): two calls 20 real seconds apart.
 SELFTEST_CHATTER = {"W-RC.1": "PASS", "W-RC.2": "PASS", "W-RC.3": "PASS", "W-RC.4": "PASS", "W-RC.5": "PASS", "W-RC.6": "PASS",
-                    "W-RC.7": "MANUAL", "W-RC.8": "PASS", "W-RC.9": "PASS"}
+                    "W-RC.7": "MANUAL", "W-RC.8": "PASS", "W-RC.9": "PASS", "W-RC.10": "PASS"}
 SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.3": "FAIL", "E16.8": "PASS"})
 # E-EXT.1 in the fixture: one contact made neutral and refused, a second detected without the fix (reason=vanilla_rel,
 # FAIL); extortion_seen lines at level 1. Station jobs block (end of the fixture, Altair): init ok, three cards answered
@@ -5140,7 +5165,8 @@ SELFTEST_EYES = ("E16.3=pass,E-PCL.3=fail,E16.8=pass", {"E16.3": "PASS", "E-PCL.
 # xp (W-B03.10 FAIL); no part 2 shown (W-B03.1 NO DATA).
 # Station chatter block (the very end, Taira): a call before the approach radio's news (W-RC.9 FAIL) at distance 1700 above
 # the radius (W-RC.6 FAIL) with quiet_age 4 (W-RC.5 FAIL) and PlaySound raising (W-RC.7 FAIL); the same key 20 real seconds
-# later (W-RC.2, W-RC.4 FAIL); a call during combat (W-RC.8 FAIL); a call after the latch skip (W-RC.3 FAIL).
+# later (W-RC.2, W-RC.4 FAIL); a call during combat (W-RC.8 FAIL); a call after the latch skip (W-RC.3 FAIL); a voice line
+# whose clip is another key's and an answer at volume 1.300 (W-RC.10 FAIL).
 
 
 def selftest():

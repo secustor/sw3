@@ -1,9 +1,9 @@
 # Station chatter: implementation spec
 
-Status: implemented 2026-11-07, host-tested only (not run in the game; implementation notes and deviations in 15).
+Status: implemented 2026-11-07; ATC step 2026-11-08 (call signs, readbacks, "Over and out.", 18 voice clips at the music volume; owner decisions 11-14 of 2.1, notes in 16). Host-tested only, not run in the game (implementation notes and deviations in 15 and 16).
 Owner request (2026-11-07): "I want to have station chatter e.g. while traders are docking." Chatter here means the radio traffic the player overhears near a trade station: station control and the mod traders docking and undocking there, as short radio lines on the built channel (`Pilot:Message` with a portrait, as trf_station's greetings and the approach radio `voice_near`), plus a short sound cue per line. Motivation: [research/community-wishlist.md](research/community-wishlist.md) 1.4 (long routes feel empty; "even radio static and fragments of speech ... set the mood", E41). Built parts used: [station-voices-spec.md](station-voices-spec.md) (`trf_station`: speakers 8.7, gates 4, approach radio 8.8, radio helpers; cited as "SV"), [v01-spec.md](v01-spec.md) 4.6 and [v02-spec.md](v02-spec.md) 9.4-9.5 (the mod trader's docking steps and the queue), [wb-plumbing-spec.md](wb-plumbing-spec.md) 5 (arrival queue), [corp-carriers-spec.md](corp-carriers-spec.md) 3.2, 9.1 (`TRF_Crp_Owner`), [crew-remarks-spec.md](crew-remarks-spec.md) 5 (`TRF_CrewSay` is the squad-pilot voice; not used here), [tips-spec.md](tips-spec.md) 4 (ring; not used, owner decision 7). Data: [mod-research/station-chatter-data.md](mod-research/station-chatter-data.md) ("data note").
 Paths: `D` = `mods/traffic/design`, `S` = `mods/traffic/Data/Scripts/Mods/Traffic`, `T` = `mods/traffic/tests`, `G` = the game's `Data` (read-only).
-Module: new `S/trf_chatter.script`, prefix `Rc` (`TRF_Rc_*` public, `TRF_Rc<X>` internal; no `TRF_Rc` name exists today), log lines `module=chatter` through `TRF_RcE` / `TRF_RcDE`, text keys `rch*` (`cht*` is taken by trf_charter's region titles, `ctr*` by other keys), tune keys `rc_*`. No saved field. No DLL native (pe/API.md unchanged); one shipped wav file.
+Module: new `S/trf_chatter.script`, prefix `Rc` (`TRF_Rc_*` public, `TRF_Rc<X>` internal; no `TRF_Rc` name exists today), log lines `module=chatter` through `TRF_RcE` / `TRF_RcDE`, text keys `rch*` (`cht*` is taken by trf_charter's region titles, `ctr*` by other keys), tune keys `rc_*`. No saved field. One DLL native since the ATC step, `TRF_MusicVol` (pe/API.md, read only); shipped sounds `Data/SOUND/trf_squelch.wav` and the 18 clips `Data/SOUND/trf_voice/<key>.wav`.
 
 ## 1. Scope
 
@@ -12,13 +12,14 @@ Module: new `S/trf_chatter.script`, prefix `Rc` (`TRF_Rc_*` public, `TRF_Rc<X>` 
 | events | a 1 s poll of the mod trader records turns their docking steps into chatter events: approach accepted, holding, released, in the bay, undocked (4.1) | implement now |
 | exchanges | one call and at most one answer per event, through the trader's own pilot and the station's dispatcher, naming the station, the ship, its corporation or cargo, a bay and, for a departure, the destination (4.2, 4.3) | implement now |
 | rate and priority | at most one exchange per `rc_gap` real seconds, `rc_max` per visit, `rc_per` per trader, never the same line twice in a visit, never ahead of a mod line with content (5, 6.3) | implement now |
-| sound | a short squelch per line: a generated `trf_squelch.wav` shipped to `G/SOUND`, played 2D through `PlaySound` (6.5); tune `rc_sound` 0 text only, 1 the vanilla `GUI\PM1.wav`, 2 the shipped file | implement now |
+| sound | a sound per line, played 2D through `PlaySound` (6.5): tune `rc_sound` 3 (default since 2026-11-08) the line's voice clip `trf_voice\<key>.wav` at the music volume, 2 the generated `trf_squelch.wav`, 1 the vanilla `GUI\PM1.wav`, 0 text only | built (3: ATC step) |
 | generator | `tools/gen_squelch.py`: writes the wav deterministically, `--check` compares bytes (6.5) | implement now |
 | vanilla traders | a control advisory about vanilla transports passing the station through `TRF_Near` | not built (owner decision 3) |
 | murmur loop | a looping background layer | not possible: no loop flag, no handle, no stop (data note 2) |
 | player's docking | no chatter line for the player; chatter is silent during the player's approach radio and docking (owner decision 5) | implement now (as a gate) |
 | tips | a chatter line carrying a ring record | not built (owner decision 7) |
-| later | RU text; recorded voice clips | not in this spec |
+| voice | 18 clips of the fixed phraseology, rendered offline with Piper (two public-domain voices, a radio filter with overdrive and crackle), generator `tools/gen_voice.py` with a sha256 manifest (6.5, data note 7) | built 2026-11-08 |
+| later | RU text; voiced call signs, bays and names (data note 7: 8 to 140 MB) | not in this spec |
 
 ## 2. Decisions
 
@@ -33,8 +34,8 @@ Module: new `S/trf_chatter.script`, prefix `Rc` (`TRF_Rc_*` public, `TRF_Rc<X>` 
 | D7 | Content first | chatter is not an arrival line, does not count in `arr_max`, writes no spacing stamp (`TRF.live.line` stays the content lines' own) and waits `rc_quiet` (10) game seconds after any content radio or focus line, a queued arrival line and the station's approach radio (5 Q1-Q4); a pending answer that meets a content line is dropped | the brief: chatter never crowds a mod line with content (ROADMAP 3 rule proposed in 10.3) | `rc_quiet` |
 | D8 | Repetition | a line key is said at most once per visit; the variant is picked by a hash of trader and kind among the unused keys; none left: the exchange is dropped | "never twice the same line within a visit" | - |
 | D9 | Gates | traffic on, mod mode, the strict gate `TRF_StrictOk(idx, "chatter")`, trf_station's dock gate (G1-G5, G7-G9), the visit latch (`TRF_Safe_QState`), the hold flags, a scene, combat (`TRF_Combat`) (5) | flavour is the first thing to go quiet | `strict` |
-| D10 | Text | EN, `TRF_Txt` keys `rch*` in `loc/trf_en.loc`; at most 120 characters; no `%`, `#` or `"\n"`; real names: station control by `TRF_SysEn`, the ship's name, its corporation (`TRF_Crp_Owner`) or cargo class, a bay number, the destination system | the brief; the dialog style guide | - |
-| D11 | Sound | `rc_sound` 2: the generated `trf_squelch.wav` (0.25 s) through 2D `PlaySound(name, rc_vol / 100)` before each line; 1: vanilla `GUI\PM1.wav`; 0: none | no vanilla file is a radio cue; the engine's own message cue is silent in the English build; no loop exists (owner decision 1, data note 1, 2, 5) | `rc_sound`, `rc_vol` |
+| D10 | Text | EN, `TRF_Txt` keys `rch*` in `loc/trf_en.loc`; at most 120 characters; no `%`, `#` or `"\n"`; ATC phraseology (2026-11-08, `.work/voice/atc-design.md`): the addressee first, then the caller; real names: station control by `TRF_SysEn`, the trader's call sign (4.3: the hail box's faction word `FTU` plus two digits, or the corporation's name plus three digits and `heavy`), the cargo class, a bay number, the destination system | the brief; the dialog style guide; owner decisions 11, 13 | - |
+| D11 | Sound | `rc_sound` 3: the line's voice clip `trf_voice\<key>.wav` (1.5 to 3.5 s) through 2D `PlaySound(name, v)` before each line, `v` = the music volume (`TRF_RcVol`, DLL `TRF_MusicVol`, 1 without it) x `rc_vol` / 100 clamped to 0..1; 2: the generated `trf_squelch.wav` (0.25 s); 1: vanilla `GUI\PM1.wav`; 0: none; modes 1 and 2 use the same volume | no vanilla file is a radio cue; the engine's own message cue is silent in the English build; no loop exists (owner decisions 1, 14, data note 1, 2, 5, 7) | `rc_sound`, `rc_vol` |
 | D12 | Saved state | none: the visit table is chunk local and rebuilt at every MapInitialization | rate and repetition are per visit; a load inside a system may replay lines, as the approach radio does (SV 8.8 N6) | - |
 | D13 | Player | no line about the player's docking; silent while the station's approach radio is pending and while the mothership is within `rc_dock_r` (300) of the station | the approach radio already greets; a control line about the Wolves would double it (owner decision 5) | `rc_dock_r` |
 
@@ -49,9 +50,16 @@ The recommendation is the default above; the user's standing rule makes each rec
 5. Player's own docking. Recommended: no line; chatter waits while the approach radio of that station is pending (greeting said, news not yet; or the mothership inside `stn_hail_r` before the greeting) and while the mothership is within 300 of the station. Alternative: when a trader queues because of the player's priority (trf_gen `q.pdk`), the hold line names the Wolves ("Kestrel, hold. The Wolves have the bay."); needs a getter of the queue reason.
 6. Module. Recommended: new `trf_chatter` with two small getters in trf_station and one each in trf_gen and trf_plumb (10.3). Alternative: section 18 of trf_station (no loader entry, direct access to `SV`; the module grows by about 400 lines).
 7. Tips. Recommended: no ring record in chatter; chatter is flavour and must hold nothing the player has to act on. Alternative: one history-kind ring record per visit as trader gossip; it would compete with harbour news for the told bit (tips-spec 4.5).
-8. Pairs. Recommended: pairs for the request, the hold and the departure, single lines for the release (control) and the bay (trader). Alternative: single lines only.
+8. Pairs. Recommended: pairs for the request, the hold and the departure, single lines for the release (control) and the bay (trader). Alternative: single lines only. **Reversed for the release by owner decision 12 (2026-11-08)**: the release is a pair too (the trader's readback); the bay stays single.
 9. Station voices off. Recommended: chatter needs trf_station loaded with `voice` 1 (it reuses the dock gate, the dispatcher table and the approach state); with `voice` 0 it is off (`reason=station:off`; trf_station absent: `station_off`, table 5 R5). Alternative: own copies of the gate and the dispatcher table.
 10. Save: none (3.1). Accept.
+
+Owner decisions of the ATC step (user, 2026-11-08; design `.work/voice/atc-design.md`, built as recommended):
+
+11. Call signs. The designator is the corporation's own name for a corporation carrier (`Triada`, `USS`, `InoCo` as trf_ui's `TRF_UI_FacOf` spells them), otherwise the faction word of the hail box (`owner`, `FTU`); no invented words. Flight numbers as the design: an independent `10 + mod(37 id, 90)`, a carrier `100 + mod(389 id, 900)` plus `heavy` (4.3).
+12. Release readback. The `go` kind gets the trader's answer `rchgoa1` / `rchgoa2` (`as` "t"); this reverses decision 8 for the release.
+13. Sign-off. Control's departure answers end with the vanilla dispatcher's "Over and out." (text and clip) instead of "Good day".
+14. Voice and level. The clips carry radio overdrive and sparse crackle (pops and short dropouts, 6.5); the chatter plays at the game's music volume: `PlaySound` volume = music volume (0..1) x `rc_vol` (default 80 %), clamped to 0..1. The voice set is the default (`rc_sound` 3).
 
 ## 3. Data model
 
@@ -89,8 +97,9 @@ No handle is stored: the lead pilot and the dispatcher pilot are function locals
 | saved | 0 |
 | `RC` at its bounds (8 trader ids, 4 events, 18 keys) | about 1 KB of Lua heap per visit, freed at the next MapInitialization |
 | shipped file `G/SOUND/trf_squelch.wav` | about 11 KB on disk |
+| shipped clips `G/SOUND/trf_voice/*.wav` (18) | 2,093,682 bytes on disk (limit 2.5 MB, `gen_voice.py --check`) |
 
-Count caps: `ev` 4, `n[id]` `rc_per`, `ex` `rc_max`, `k` the 18 keys of 7.
+Count caps: `ev` 4, `n[id]` `rc_per`, `ex` `rc_max`, `k` the 18 line keys of 7.
 
 ## 4. Exchanges
 
@@ -116,19 +125,18 @@ For every record `r` of `TRF.live.tr` that is a plain trader (D3: `path` A or B,
 |---|---|---|---|---|
 | `req` | `rchreq1`, `rchreq2`, `rchreqc` (trader) | `rchreqa1`, `rchreqa2` (control) | 3 | the approach point, the docking slot given (`event=approach`) |
 | `hold` | `rchhold1`, `rchhold2` (control) | `rchholda` (trader) | 2 | the hold point (`event=queue result=hold`) |
-| `go` | `rchgo1`, `rchgo2` (control) | none | 1 | the release (`event=queue_release`) |
+| `go` | `rchgo1`, `rchgo2` (control) | `rchgoa1`, `rchgoa2` (trader; owner decision 12) | 1 | the release (`event=queue_release`) |
 | `bay` | `rchin1`, `rchin2` (trader) | none | 5 | the docking position (`event=docked arrival_kind=2`); the ship is removed `T_dock` 20 s later |
 | `out` | `rchout1`, `rchout2` (trader) | `rchouta1`, `rchouta2` (control) | 4 | a path B spawn at the approach point (the arrival seed or a planned departure) |
 
-Priority 1 first: of the pending events, the one with the lowest priority number, then the oldest `t`. `rchreqc` is used only for a corporation carrier (`TRF_Crp_Owner(r)` not nil) and is then its first choice; `rchout1` only when `r.to` names a system (`r.to > 0`).
+Priority 1 first: of the pending events, the one with the lowest priority number, then the oldest `t`. `rchreqc` is used only for a corporation carrier (`TRF_Crp_Of(r)` not nil) and is then its first choice; `rchout1` only when `r.to` names a system (`r.to > 0`).
 
 ### 4.3 Names and words
 
 | Placeholder | Source | Example |
 |---|---|---|
 | control | `TRF_Txt("rchctl", TRF_SysEn(idx))` for station ordinal 1; ordinal 2 (Kadenoa's Triada station) `TRF_Txt("rchctl2", TRF_SysEn(idx), owner)` with `owner` the faction word of the map entry's `side` through trf_ui | `Gredos Control`, `Kadenoa Triada Control` |
-| ship | `TRF_UI_Name(r.nm)`; nil -> the event is dropped (`reason=name`) | `Kestrel` |
-| corporation | `TRF_N("TRF_Crp_Owner", r)` | `InoCo contract` |
+| call sign | `TRF_RcCallOf(id, des, crp, TRF_Txt("rchhvy"))`, pure: a corporation carrier (`f = TRF_Crp_Of(r)` 3..5, so cfg `corp` 1) `des = TRF_UI_FacOf(f)`, `crp` 1: `des .. " " .. (100 + mod(389 id, 900)) .. " heavy"`; else `des = TRF_Txt("owner")` (the hail box's faction word): `des .. " " .. (10 + mod(37 id, 90))`. 37 and 389 are coprime with 90 and 900, so ids less than 90 (900) apart never share a number; deterministic, saved nowhere. Joined in code, not in a loc template. nil (no designator) -> the event is dropped (`reason=name`) | `FTU 78` (id 14), `Triada 947 heavy` (23), `USS 245 heavy` (5), `InoCo 878 heavy` (2) |
 | cargo | `TRF_Txt("cls"..r.cls)` (trf_ui, 1..6; else `cls0`) | `machinery` |
 | bay | `RC.b[id] = 1 + mod(7 x id + 3 x j, rc_bays)` | `4` |
 | destination | `TRF_SysEn(r.to)` | `Aurora` |
@@ -193,40 +201,47 @@ At the first step with `TRF_RealSecs() >= pend.at`: R5 and Q1-Q5 again for `pend
 
 ### 6.5 Sound
 
-- Mode by tune `rc_sound`: 0 none; 1 `"GUI\\PM1.wav"`; 2 `"trf_squelch.wav"`. Volume `rc_vol / 100`.
+- Mode by tune `rc_sound`: 0 none; 1 `"GUI\\PM1.wav"`; 2 `"trf_squelch.wav"`; 3 (default) `"trf_voice\\" .. key .. ".wav"`, the clip of the line's own key (`TRF_RcSndOf(key, mode)`; a key without a clip, none today, plays the squelch). Names are relative to `G/SOUND` with a backslash, as vanilla's `GUI\Beep.wav`.
+- Volume `TRF_RcVolOf(TRF_RcVol(), rc_vol)` = music volume x `rc_vol / 100`, clamped to 0..1, for every mode. `TRF_RcVol()`: the first value of the DLL native `TRF_MusicVol()` (the music volume the engine applies, data note 7), protected; 1 without the native, on `nil, why`, on an error or outside 0..1. The engine multiplies every `PlaySound` volume by the effects volume `volume_sound` as well (2D player 0x5f80ec), so the heard level is music x effects x `rc_vol` (16 2).
 - `TRF_RcSnd(name, vol)`: `type(PlaySound) == "function"`, then `call(PlaySound, {name, vol}, "x", TRF_RcNoErr)`; the native returns no value, so the result is `played` when the call did not raise, `error` when it raised, `off` for mode 0, `none` without the native. A missing file is the engine's business (it logs `Sound file not found` to `LOGfile.txt` and plays nothing; data note 2).
 - Played before each line's `Message`, call and answer alike; never for content lines of other modules.
 - `tools/gen_squelch.py [--write | --check]` (`python3 -I`, read-only outside the repo): a fixed-seed linear congruential noise source, a 5 ms click at full scale, noise band-limited by two one-pole filters (high-pass 800 Hz, low-pass 3,000 Hz), an exponential decay to -60 dB over 200 ms, 0.25 s total, peak normalised to 0.7 of full scale, 22,050 Hz mono 16-bit PCM, written to `mods/traffic/Data/SOUND/trf_squelch.wav`; `--check` rebuilds in memory and exits 1 when the bytes differ. The file is binary; it is the one non-script asset of this spec.
-- Installers: `install-test.sh` and `install.sh` copy it to `<game>/Data/SOUND/trf_squelch.wav` on every run; `uninstall-test.sh` and `uninstall.sh` delete it; `release.sh` packs it.
+- `tools/gen_voice.py` (`python3 -I`, stdlib): `--check` verifies the shipped clips against the manifest `tools/gen_voice.sha256` (sha256 and size of each file), the format (22,050 Hz mono 16-bit PCM, 44-byte header), the peak (-3 dBFS), the length (1.5 to 4.5 s), no extra file and the total under 2.5 MB, without Piper; `--render [--write | --check]` with the Piper venv and the two model paths renders the 18 clips again (byte identical runs; the chain in its docstring and data note 7).
+- Installers: `install-test.sh` and `install.sh` copy the squelch to `<game>/Data/SOUND/trf_squelch.wav` and the clips to `<game>/Data/SOUND/trf_voice/` on every run (`install.sh` records them in its manifest, the folder as a created directory); `uninstall-test.sh` and `uninstall.sh` delete them; `release.sh` packs them.
 
 ## 7. Text keys (`TRF_Rc_Text()`, EN; `#TRF_rch*`)
 
-| Key | EN | Arguments |
-|---|---|---|
-| `rchctl` | `$1 Control` | system |
-| `rchctl2` | `$1 $2 Control` | system, owner word |
-| `rchreq1` | `$1, $2 inbound with $3. Requesting a berth.` | control, ship, cargo |
-| `rchreq2` | `$1, this is $2 on the approach marker. Requesting docking.` | control, ship |
-| `rchreqc` | `$1, $2, $3 carrier, inbound with $4. Requesting a berth.` | control, ship, corporation, cargo |
-| `rchreqa1` | `$1, $2. Bay $3, follow the beacon in.` | ship, control, bay |
-| `rchreqa2` | `$1, cleared to bay $3. Keep it slow on the marker.` | ship, control, bay |
-| `rchhold1` | `$1, $2. Hold your position, the bay is busy.` | ship, control |
-| `rchhold2` | `$1, take the holding line. Traffic ahead of you.` | ship, control |
-| `rchholda` | `$1 holding. Call us in.` | ship |
-| `rchgo1` | `$1, the bay is clear. Bay $2, come in.` | ship, bay |
-| `rchgo2` | `$1, you are next. Bay $2.` | ship, bay |
-| `rchin1` | `$1, $2 in bay $3. Clamps on.` | control, ship, bay |
-| `rchin2` | `$2 docked in bay $3. Thanks, $1.` | control, ship, bay |
-| `rchout1` | `$1, $2 clear of bay $3, outbound for $4.` | control, ship, bay, destination |
-| `rchout2` | `$1, $2 undocking from bay $3.` | control, ship, bay |
-| `rchouta1` | `$1, the lane is yours. Safe flight.` | ship |
-| `rchouta2` | `Copy, $1. Good trading.` | ship |
+ATC phraseology since 2026-11-08 (`.work/voice/atc-design.md` 4, owner decisions 11-13). One argument order for every line key (`TRF_RcArgK()`): `$1` the call sign, `$2` control, `$3` the bay, `$4` the cargo (`cls1..6` word) on the `rchreq*` keys, the destination (`TRF_SysEn(r.to)`) on the `rchout*` keys, else nil. The spoken text of each clip (6.5) leaves the slots out.
 
-18 keys. Every part passes the arguments of its row; unused arguments are ignored by `TRF_Txt`.
+| Key | EN | Speaker | Spoken text (clip) |
+|---|---|---|---|
+| `rchctl` | `$1 Control` (system) | - | - |
+| `rchctl2` | `$1 $2 Control` (system, owner word) | - | - |
+| `rchhvy` | `heavy` (carrier call sign suffix) | - | - |
+| `rchreq1` | `$2, $1, inbound with $4, request docking.` | trader | Control, inbound with cargo, request docking. |
+| `rchreq2` | `$2, $1, at the outer marker, request docking clearance.` | trader | Control, at the outer marker, request docking clearance. |
+| `rchreqc` | `$2, $1, inbound, full load of $4, request docking.` | trader | Control, heavy, full load, request docking. |
+| `rchreqa1` | `$1, $2, cleared to dock bay $3, follow the beacon.` | control | Roger, cleared to dock, follow the beacon. |
+| `rchreqa2` | `$1, cleared to dock bay $3, reduce speed at the marker.` | control | Cleared to dock, reduce speed at the marker. |
+| `rchhold1` | `$1, $2, hold position, bay $3 occupied, expect delay.` | control | Hold position, bay occupied, expect delay. |
+| `rchhold2` | `$1, $2, standby. Traffic in the bay, hold at the outer marker.` | control | Standby. Traffic in the bay, hold at the outer marker. |
+| `rchholda` | `Wilco, holding, $1.` | trader | Wilco, holding. |
+| `rchgo1` | `$1, $2, bay $3 now clear, cleared to dock.` | control | The bay is now clear, cleared to dock. |
+| `rchgo2` | `$1, number one, cleared to dock bay $3.` | control | You're number one, cleared to dock. |
+| `rchgoa1` | `Cleared to dock bay $3, $1.` | trader | Cleared to dock. |
+| `rchgoa2` | `Roger, on our way in, bay $3, $1.` | trader | Roger, on our way in. |
+| `rchin1` | `$2, $1, docked bay $3, clamps on.` | trader | Control, docked, clamps on. |
+| `rchin2` | `$2, $1, secured in bay $3, shutting down.` | trader | Control, secured in the bay, shutting down. |
+| `rchout1` | `$2, $1, clear of bay $3, request departure to $4.` | trader | Control, clear of the bay, request departure. |
+| `rchout2` | `$2, $1, undocking bay $3, ready to depart.` | trader | Control, undocking, ready to depart. |
+| `rchouta1` | `$1, $2, departure lane clear, cleared to depart. Over and out.` | control | Departure lane clear, cleared to depart, over and out. |
+| `rchouta2` | `$1, roger, frequency change approved. Over and out.` | control | Roger, frequency change approved, over and out. |
+
+21 keys (18 line keys with a clip, `rchctl`, `rchctl2`, `rchhvy`). Every part passes the four arguments; unused arguments are ignored by `TRF_Txt`.
 - X1 `TRF_Rc_Text` goes into `TRF_Loc_TextFns()` after `"TRF_Rq_Text"` and at the end of `TRF_UI_TextFns()`; no key starts with `rch` today.
 - X2 `loc/trf_en.loc`: regenerate the scaffold from `TRF_Loc_LocLines()` (`gen_map.py --loc`, `--check --loc` clean); under `loc_mode 1` the templates lose their arguments, accepted as for every module.
 - X3 EN only; no RU forms (`trf_ru.loc` unchanged).
-- X4 Style (`D/dialog-style-guide.md`): plain radio phrases, no mechanic words, no `%`, `#` or `"\n"`, at most 120 characters with the longest names (`Kadenoa Triada Control`, `Shearwater`, `InoCo contract`, `ore and uranium`).
+- X4 Style (`D/dialog-style-guide.md`): plain radio phrases, no mechanic words, no `%`, `#` or `"\n"`, at most 120 characters with the longest names (`Precursor System Control` 24, the call sign `Triada 947 heavy` 16, `ore and uranium`, the destination `Precursor System`, bay 12): the longest filled line is 99 characters (`rchreqc`; host `rc-f` measures 97 with `Cadenoa Triada Control`), so a speaker prefix `[name]: ` of up to 20 characters stays within 120.
 
 ## 8. Config and tune
 
@@ -247,12 +262,12 @@ At the first step with `TRF_RealSecs() >= pend.at`: R5 and Q1-Q5 again for `pend
 | `rc_dock_r` | 300 | 0..1000 | player docking radius (Q4) |
 | `rc_pos` | 300 | 50..1000 | trader station to map entry match (4.3) |
 | `rc_bays` | 6 | 1..12 | bay numbers |
-| `rc_sound` | 2 | 0..2 | 0 text only, 1 `GUI\PM1.wav`, 2 `trf_squelch.wav` (6.5); `install-test.sh` `CHATTER_SOUND` writes it into `tune` |
-| `rc_vol` | 60 | 0..100 | cue volume in % |
+| `rc_sound` | 3 | 0..3 | 0 text only, 1 `GUI\PM1.wav`, 2 `trf_squelch.wav`, 3 the line's voice clip `trf_voice\<key>.wav` (6.5); `install-test.sh` `CHATTER_SOUND` writes it into `tune` |
+| `rc_vol` | 80 | 0..100 | sound volume in % of the game's music volume (6.5; 60 % of full scale before 2026-11-08) |
 
-Constants (`TRF_RcK()`): `snd` {"GUI\\PM1.wav", "trf_squelch.wav"}, `trader` "Trader", `evmax` 4, the kind table of 4.2. Tune values are integers.
+Constants (`TRF_RcK()`): `snd` {"GUI\\PM1.wav", "trf_squelch.wav"}, `vdir` "trf_voice\\", `vo` the 18 voiced keys, `trader` "Trader", `evmax` 4, the kind table of 4.2. Tune values are integers.
 
-Install presets: `CHATTER=0|1`, `CHATTER_SOUND=0|1|2`; for a test session `TUNE=rc_gap=15,rc_stale=40`.
+Install presets: `CHATTER=0|1`, `CHATTER_SOUND=0|1|2|3`; for a test session `TUNE=rc_gap=15,rc_stale=40`.
 
 ## 9. Log lines (`TRF_RcE`, `TRF_RcDE`; rows in `D/log-events.md`, new section `chatter`)
 
@@ -262,11 +277,11 @@ Install presets: `CHATTER=0|1`, `CHATTER_SOUND=0|1|2`; for a test session `TUNE=
 | `module=chatter event=skip system=gredos reason=<off/nomap/none/mode:../gate:../station:../station_off/latch/hold:../combat/quiet_line/quiet_arrival/approach/player_dock/far/pos/cap/per_trader>` | 2, once per reason and visit |
 | `module=chatter event=event kind=<req/hold/go/bay/out> trader_id=9 station_key=9 result=queued` | 2 |
 | `module=chatter event=drop kind=req trader_id=9 reason=<stale/full/gone/name/station/used>` | 2 |
-| `module=chatter event=say kind=req part=<call/answer> trader_id=9 station_key=9 speaker=<tpl/leader> key=rchreq1 distance=820 real_time=1312 quiet_age=14.5 sound=<trf_squelch.wav/GUI\PM1.wav/none> sound_result=<played/error/off/none> result=<shown/failed/dropped> reason=<nil/..>` | 1 |
+| `module=chatter event=say kind=req part=<call/answer> trader_id=9 station_key=9 speaker=<tpl/leader> key=rchreq1 distance=820 real_time=1312 quiet_age=14.5 sound=<trf_voice\rchreq1.wav/trf_squelch.wav/GUI\PM1.wav/none> sound_result=<played/error/off/none> volume=<0.080/nil> result=<shown/failed/dropped> reason=<nil/..>` | 1 |
 | `module=chatter event=dump on=1 exchange_count=3 pending=<kind/nil> event_count=1 keys=rchreq1,rchreqa1,rchout2` | 1 (`TRF_Rc_Dump`, through `TRF_ModList`) |
 | `module=chatter event=error message=<m>` | 1 |
 
-`real_time` is `TRF_RealSecs()` rounded (the log has no time stamps; W-RC.2 reads it); `quiet_age` the smaller of the Q1 and Q2 ages in game seconds (W-RC.5).
+`real_time` is `TRF_RealSecs()` rounded (the log has no time stamps; W-RC.2 reads it); `quiet_age` the smaller of the Q1 and Q2 ages in game seconds (W-RC.5); `volume` the `PlaySound` volume (`TRF_F`, nil without a sound; W-RC.10).
 
 ## 10. Module contract and edits
 
@@ -277,7 +292,7 @@ Install presets: `CHATTER=0|1`, `CHATTER_SOUND=0|1|2`; for a test session `TUNE=
 | `TRF_Rc_OnActivate()`, `TRF_Rc_OnLoad()`, `TRF_Rc_BeforeJump()`, `TRF_Rc_Step()` | loader dispatch |
 | `TRF_Rc_Dump()` | `TRF_ModList` |
 | `TRF_Rc_OptDef()`, `TRF_Rc_TuneDef()`, `TRF_Rc_Text()` | trf_state, trf_loc, trf_ui |
-| Pure, host-testable: `TRF_RcSeeOf(prev, r, gt, T)`, `TRF_RcPlainOf(r)`, `TRF_RcPickOf(ev, gt, T)`, `TRF_RcKeyOf(list, used, h)`, `TRF_RcBayOf(id, j, n)`, `TRF_RcRateOf(rs, now, ex, n, T)` -> nil or reason, `TRF_RcQuietOf(gt, line, rt, last, T)` -> nil or reason, age | internal |
+| Pure, host-testable: `TRF_RcSeeOf(prev, r, gt, T)`, `TRF_RcPlainOf(r)`, `TRF_RcPickOf(ev, gt, T)`, `TRF_RcKeyOf(list, used, h)`, `TRF_RcBayOf(id, j, n)`, `TRF_RcRateOf(rs, now, ex, n, T)` -> nil or reason, `TRF_RcQuietOf(gt, line, rt, last, T)` -> nil or reason, age; since the ATC step `TRF_RcCallOf(id, des, crp, hvy)` -> call sign or nil, `TRF_RcSndOf(key, mode)` -> sound name, `TRF_RcVolOf(music, pct)` -> 0..1; accessor `TRF_RcVol()` (DLL `TRF_MusicVol`) | internal |
 
 Layout as trf_survey: helpers, accessors (one native each, protected: `TRF_RcMsg`, `TRF_RcSnd`, `TRF_RcLead`, `TRF_RcPilot`, `TRF_RcMsPos`), static tables, pure `*Of` functions, contract functions. Top level: functions and the chunk local `RC` only. CRLF, ASCII. Lua 4: no `local function`, `true`/`false`, `%` operator or `#`; `mod()` and `floor` for the bay and the hash. Every call into another module through `TRF_N`/`TRF_P`.
 
@@ -328,8 +343,8 @@ Entry as host_survey.lua. Fixtures: a map with Gredos (one trade station) and Ka
 | `rc-c` rate and repetition | five traders docking in one visit; real time advancing 10, 50, 100 s; 8x (game time 8 x real) | calls `rc_gap` real seconds apart; `rc_max` and `rc_per` caps; stale drop at `rc_stale`; priority order go, hold, req, out, bay; no key twice; `used` drop after the variants of a kind |
 | `rc-d` gates | R1-R8 each: cfg off, no map, `sys_off` and `guard`, a strict denial, `voice 0` and a voice-deny system, the latch set at entry and later, each hold flag, a scene, `TRF_Combat` | `event=skip reason=` per rule; no line; events still age |
 | `rc-e` content first | `TRF.live.line` 3 s ago; `SV.rt` 5 s ago; an arrival line queued due in 8 s; the approach radio pending (`near` 1); the mothership 200 from the station; a content line between call and answer | Q1-Q4 reasons; the call waits; the answer dropped with `quiet_line`; `TRF.live.line` and `SV.rt` never written by the module |
-| `rc-f` speakers and texts | owners Neutral, Vks, Kfni, Uss, Triada, Inoco, Rebel; a trader with and without a leader handle; a corp carrier; Kadenoa station 2; `r.to` 0 and > 0; the longest names | dispatcher template per owner; leader pilot, else `Trader`; `rchreqc` first for a carrier; `rchctl2` at Kadenoa 2; `rchout1` only with a destination; bays stable per trader; every text <= 120 characters without `%`, `#`, `\n` |
-| `rc-g` sound | `rc_sound` 0, 1, 2; `rc_vol` 0 and 100; `PlaySound` missing; `PlaySound` raising | stub calls with `"GUI\\PM1.wav"` / `"trf_squelch.wav"` and 0.6 before each line; `sound_result` off, none, error; the line still shown |
+| `rc-f` speakers and texts | owners Neutral, Vks, Kfni, Uss, Triada, Inoco, Rebel; a trader with and without a leader handle; a corp carrier; Kadenoa station 2; `r.to` 0 and > 0; the longest names; call signs; `corp` 0; a hold then a release | dispatcher template per owner; leader pilot, else `Trader`; `rchreqc` first for a carrier with `InoCo 367 heavy`; `rchctl2` at Kadenoa 2; `rchout1` only with a destination, "Over and out."; bays stable per trader; every text <= 120 characters without `%`, `#`, `\n`; `FTU` + 2 digits and corporation + 3 digits + `heavy`, deterministic, no shared number for ids less than 90 (900) apart; `corp` 0 gives `FTU`; the go readback `rchgoa1/2` by the lead pilot; no ship name still gives a call sign |
+| `rc-g` sound | `rc_sound` 0, 1, 2, 3; `rc_vol` 0, 60, 80 and 100; the music volume stub (`HOST_MusicVol`: 0.25, 1, nil with a why, 1.5, raising, absent); `PlaySound` missing; `PlaySound` raising | stub calls with `"trf_voice\\<key>.wav"` of the line's key (every voiced key has its file in the repo), `"GUI\\PM1.wav"` / `"trf_squelch.wav"`; volume music x `rc_vol` clamped (0.8 without the DLL, 0.2 at music 0.25); `TRF_RcVol` 1 when unknown; `sound_result` off, none, error; the line still shown |
 | `rc-h` save, load, jump | a pending answer at a jump; a load inside the system; full state | jump clears `pend` and `ev`; a load starts a fresh visit; `HOST_SaveSize(TRF)` equal with and without the module after the same steps |
 
 What the host can verify: event detection from record states, rates, caps, priorities, gates, the content-first rules, names, texts and the sound calls. What it cannot: whether the engine plays the file, the volume, the portraits, line readability and timing on the message panel, and whether mod traders dock inside the radius often enough to be heard.
@@ -346,6 +361,8 @@ What the host can verify: event detection from record states, rates, caps, prior
 | RC6 | `Message` seconds at 8x: the line stays readable | MANUAL at 8x |
 | RC7 | mod traders reach `dkd` 1 inside `rc_r` while the player waits near the station (`dock_mode` 2) | `module=generator event=docked trader_id=<n> arrival_kind=2`, then `module=chatter event=say kind=bay` |
 | RC8 | the approach greeting and news come before any chatter at a station | `module=station event=near ... result=spoken` before the first `module=chatter event=say` of the visit |
+| RC9 | `TRF_MusicVol` reads the music volume: its first value follows the options' music slider (and `volume_music` in `Profiles/<name>/<name>.cfg`), and the voice clips' loudness follows it; `PlaySound` names under `trf_voice\` play | `traffic: module=dll event=volume_init sig=ok sigs=7`; `event=say ... sound=trf_voice\<key>.wav sound_result=played volume=<music x 0.8>`; MANUAL: music slider low and high, ears |
+| RC10 | the clips are intelligible through the radio filter at the music level, and a clip (up to 3.45 s) fits under its line (`rc_secs` 6, `rc_pair` 6) | MANUAL ears |
 
 In-game checks for `tools/check_ingame.py` (verdicts PASS / FAIL / NO DATA / MANUAL as the existing ones; visits split at `module=chatter event=enter`):
 
@@ -360,13 +377,14 @@ In-game checks for `tools/check_ingame.py` (verdicts PASS / FAIL / NO DATA / MAN
 | W-RC.7 | sound | PASS: `sound_result=played` with `sound` not `none`; FAIL on `sound_result=error`; MANUAL ears (RC1-RC3) |
 | W-RC.8 | no chatter in combat | FAIL: an `event=say result=shown` between `module=safety event=combat_on` and the next `combat_off` |
 | W-RC.9 | the approach radio comes first | FAIL: an `event=say result=shown` for a `station_key` logged after that station's `module=station event=near ... result=skipped reason=hold` and before its `event=near ... result=spoken` line in the same visit (greeting said, news pending; needs `LOG=2`) |
+| W-RC.10 | voice clip and volume | PASS: `event=say result=shown` lines with `sound=trf_voice\<key>.wav`; FAIL: such a line whose clip is not `trf_voice\` + its `key` + `.wav`, or whose `volume` is missing or outside 0..1; NO DATA without one (`CHATTER_SOUND` 0..2) |
 
 Test plan (PROGRESS subsection "Station chatter (host-tested only)"):
-1. Install `LOG=2 CHATTER=1 CHATTER_SOUND=2 TUNE=rc_gap=15,rc_stale=40`; load a save in chapter 5 or later outside a mission in Gredos (or Aurora, Kadi); fly to the trade station and wait 5 minutes at 1x near it, then 5 at 8x. Expect the approach greeting first (RC8), then calls and answers as traders dock and leave (RC7, W-RC.1), a squelch before each line (RC1, W-RC.7).
-2. Same with `CHATTER_SOUND=1` (the vanilla cue) and `0` (RC3); change the sound volume in the options (RC2).
+1. Install `LOG=2 CHATTER=1 TUNE=rc_gap=15,rc_stale=40` (`CHATTER_SOUND` 3 is the default); load a save in chapter 5 or later outside a mission in Gredos (or Aurora, Kadi); fly to the trade station and wait 5 minutes at 1x near it, then 5 at 8x. Expect the approach greeting first (RC8), then calls and answers as traders dock and leave (RC7, W-RC.1), the voice clip of each line at about the music's level (RC1, RC9, RC10, W-RC.7, W-RC.10).
+2. Move the music slider in the options low and high and listen to the next lines (RC9); same with `CHATTER_SOUND=2` (the squelch), `1` (the vanilla cue) and `0` (RC3); change the sound volume in the options (RC2).
 3. Start a fight near the station (a raid or an attack on a pirate) and check silence until combat ends (W-RC.8); dock yourself while a trader queues: no chatter line within `rc_dock_r` (`event=skip reason=player_dock`, Q4).
 4. Enter a system during a story mission: no chatter (W-RC.3).
-5. Run `python3 -I mods/traffic/tools/check_ingame.py` on the log: W-RC.1-9.
+5. Run `python3 -I mods/traffic/tools/check_ingame.py` on the log: W-RC.1-10.
 
 ## 13. Conformance checklist
 
@@ -385,6 +403,7 @@ Test plan (PROGRESS subsection "Station chatter (host-tested only)"):
 13. [x] Host `rc-a`..`rc-h` pass; every earlier run passes with `extra_count=26`.
 14. [x] README sections and the root README line; PROGRESS entry with RC1-RC8 and W-RC.1-9; `tools/README.md` section.
 15. [ ] `/code-review xhigh --fix` on the implementation range, fixes committed as `fix(traffic): ...`.
+16. [x] ATC step (16): call signs, 21 text keys, the go readback, the voice clips with `gen_voice.py --check` clean, `TRF_MusicVol` with its API row and the DLL build clean, install, uninstall and release for `trf_voice/`, W-RC.10.
 
 ## 14. Notes on the inputs
 
@@ -415,3 +434,13 @@ Correction of the inputs: the loader already had `trf_request` after `trf_survey
 - D-9 Log details: a dropped answer logs `speaker`, `key` and `distance` as nil; without the native the line logs the cue name with `sound_result=none`; a failed `Message` logs `result=failed reason=message`. Q1-Q5 are tested in the order Q1, Q2, Q3, the position (`pos`), Q4, Q5.
 - D-10 No speaker (no lead pilot and `CreatePilot` returning nil): no cue is played, the line logs `sound=none sound_result=off result=failed reason=message`. The `enter` line also logs `gap`, `max` and `quiet` (the active `rc_gap`, `rc_max` and `rc_quiet`), which check_ingame's W-RC.2 and W-RC.5 read per visit.
 
+## 16. ATC step (2026-11-08)
+
+Built from `.work/voice/atc-design.md` with owner decisions 11-14 (2.1): `TRF_RcCallOf`, `TRF_RcSndOf`, `TRF_RcVolOf`, `TRF_RcVol` in `S/trf_chatter.script`; the 21 keys of 7 (scaffold regenerated); `go` with the readback; `rc_sound` 3 and `rc_vol` 80 as defaults; the DLL native `TRF_MusicVol` (`pe/traffic.c`, pe/API.md); `tools/gen_voice.py` with the manifest `tools/gen_voice.sha256` and the 18 clips in `Data/SOUND/trf_voice/` (2,093,682 bytes); install, uninstall and release entries; host `rc-a`, `rc-f`, `rc-g` extended (`HOST_MusicVol`, the `PlaySound` stub checks the names and the 0..1 volume); W-RC.10 with fixture lines (selftest 311 of 311). Full state `v1-n` unchanged (nothing saved). Host-tested only; RC1-RC10 and W-RC.1-10 wait for the game.
+
+1. The music volume (data note 7): no vanilla Lua native or global reads it (`lua-natives.tsv`: no console-variable reader; `PlayMusic`, `AddMusicToPlayList`, `StartPlayList` only play); the DLL reads the engine's float (option 3 of the brief, before the profile file option). It is the value the engine applies now, which some windows lower while open; chatter runs only in free flight, where it is the slider's value [I]. Without the DLL, or with a mismatching signature, `TRF_RcVol` is 1 and the volume is `rc_vol` / 100 of full scale.
+2. The effects volume also applies: the 2D player multiplies the `PlaySound` volume by `volume_sound` (0x5f80ec), so the heard level is music x effects x 0.8 (on the test clone's profile 0.1 x 0.2 x 0.8 = 0.016, about -36 dB). The owner's formula is built as decided; `TRF_MusicVol` returns the effects volume as its second value, so dividing it out (music / effects, clamped) is a one-line change of `TRF_RcVol` if the clips turn out too quiet in RC9.
+3. `TRF_RcCallOf(id, des, crp, hvy)` takes the designator instead of the design's ship argument: decision 11 drops the ship name from the call sign, and the pure function stays free of module calls. A record without a ship name now speaks (`FTU 20`); `reason=name` remains for a missing designator only.
+4. The spoken sign-off is joined with a comma (", over and out."): Piper rendered a separate "Over and out." after another sentence with a long tail (2.35 s instead of 1.15 s), which pushed both departure answers over 4.5 s; the text keeps ". Over and out.".
+5. The go readback (decision 12) holds the radio `rc_pair` longer per release (D-2) and adds one line per go exchange to the visit (`rc_max` counts exchanges); priorities, `evmax` and the tune defaults are unchanged, the host runs `rc-b`..`rc-e` pass without a change.
+6. `rc_vol` applies to every mode, so a player on `rc_sound` 2 hears the squelch at 80 % of the music volume (was 60 % of full scale).

@@ -131,8 +131,9 @@
 -- no dock box when the pair could not be shown; request_at (debug) names an event key (tn1 ... jn1) that ignores its done
 -- bit, chapter window and gap; the tune keys rq_* read the module defaults.
 -- Station chatter (design/station-chatter-spec.md 8; default in TRF_Rc_OptDef): chatter (default 1) = 0 polls no trader,
--- says no line and plays no cue (nothing is saved); it needs trf_station with voice 1; the tune keys rc_* read the module
--- defaults (rc_sound 0 text only, 1 GUI\PM1.wav, 2 the shipped trf_squelch.wav).
+-- says no line and plays no sound (nothing is saved); it needs trf_station with voice 1; the tune keys rc_* read the module
+-- defaults (rc_sound 0 text only, 1 GUI\PM1.wav, 2 the shipped trf_squelch.wav, 3 the shipped voice clips trf_voice\, the
+-- default; rc_vol 80: percent of the game's music volume).
 function TRF_Config() return {exp=0, log=1, autosave=0, traffic=1, ext_fix=1,
 	enabled=1, cycle=1, prosperity=1, tier_cap=4, cap_traders=5, cap_ships=20, spawn_scale=1.0, band_half=0,
 	parked=1, esc_flight=1, seed=1, queue=1, raids=1, staged=1, contracts=1, esc_speed=0, meet=2, hail_start=2, board=1,

@@ -1,13 +1,16 @@
 -- sw3-traffic station chatter (Lua 4.0.1). Spec: design/station-chatter-spec.md (owner request 2026-11-07; owner
 -- decisions 1-10 of spec 2.1 taken 2026-11-07 as recommended). Prefix Rc (TRF_Rc_* public, TRF_Rc<X> internal), log
--- module=chatter, cfg chatter. Host-tested only, not run in the game (W-RC.1-9 open).
+-- module=chatter, cfg chatter. Host-tested only, not run in the game (W-RC.1-10 open).
 -- Owns: the radio traffic the player overhears near a trade station. A 1 s poll of TRF.live.tr (TRF_Rc_Step, after
 -- trf_request's) turns the docking steps of plain mod traders (path A or B, no sev, fw, wq, own, fl) into events: approach
 -- accepted (req), holding (hold), released (go), in the bay (bay) and undocked (out). One exchange per rc_gap real seconds
 -- (a call and at most one answer rc_pair real seconds later), at most rc_max per visit and rc_per per trader, each line key
 -- once per visit; the trader's lines through its lead pilot (TRF_UI_Leader, else CreatePilot("Trader")), the control
--- lines through the station's dispatcher template (trf_station TRF_Stn_ChatCtx). A short cue before each line through 2D
--- PlaySound (tune rc_sound: 0 none, 1 GUI\PM1.wav, 2 the shipped trf_squelch.wav of tools/gen_squelch.py).
+-- lines through the station's dispatcher template (trf_station TRF_Stn_ChatCtx). ATC phraseology (2026-11-08): call
+-- signs from the faction word of the hail box (FTU 78) or the corporation's name (Triada 947 heavy), the trader reads
+-- back the hold and the release, control signs off with "Over and out.". A sound before each line through 2D PlaySound
+-- (tune rc_sound: 0 none, 1 GUI\PM1.wav, 2 the shipped trf_squelch.wav of tools/gen_squelch.py, 3 the shipped voice clip
+-- trf_voice\<key>.wav of tools/gen_voice.py, the default) at the game's music volume (DLL TRF_MusicVol) x rc_vol.
 -- Content first: never an arrival line (TRF_ArrivalLine), never counted in arr_max, never writes TRF.live.line or
 -- trf_station's SV.rt; waits rc_quiet game seconds after a content radio or focus line and the last queued arrival line
 -- (trf_plumb TRF_ArrivalLast), for the station's approach radio and while the mothership is within rc_dock_r of the
@@ -74,7 +77,7 @@ end;
 function TRF_RcClampT()
 	return {chatter={0, 1}, rc_r={300, 5000}, rc_gap={10, 600}, rc_pair={2, 20}, rc_secs={3, 15}, rc_quiet={0, 60},
 		rc_stale={5, 120}, rc_max={1, 30}, rc_per={1, 5}, rc_dock_r={0, 1000}, rc_pos={50, 1000}, rc_bays={1, 12},
-		rc_sound={0, 2}, rc_vol={0, 100}};
+		rc_sound={0, 3}, rc_vol={0, 100}};
 end;
 
 -- cfg value: TRF_Opt (merges TRF_Rc_OptDef), else the raw config, else the default; a wrong type or a number outside its
@@ -178,12 +181,21 @@ function TRF_RcSndRaw(name, vol)
 	return 1;
 end;
 
--- 2D cue (spec 6.5): PlaySound(name, volume 0..1) with exactly two arguments (the native reads the volume only then). The
+-- 2D sound (spec 6.5): PlaySound(name, volume 0..1) with exactly two arguments (the native reads the volume only then). The
 -- native pushes no value: "played" when the call did not raise, "error" when it did, "none" without the native.
 function TRF_RcSnd(name, vol)
 	if type(PlaySound) ~= "function" then return "none"; end;
 	if call(TRF_RcSndRaw, {name, vol}, "x", TRF_RcNoErr) == 1 then return "played"; end;
 	return "error";
+end;
+
+-- Music volume 0..1 (DLL TRF_MusicVol: the volume_music the engine applies now; pe/API.md), 1 when unknown (no DLL, an
+-- older DLL, an answer nil, why, or a value outside 0..1).
+function TRF_RcVol()
+	if type(TRF_MusicVol) ~= "function" then return 1; end;
+	local v = call(TRF_MusicVol, {}, "x", TRF_RcNoErr);
+	if type(v) ~= "number" or v < 0 or v > 1 then return 1; end;
+	return v;
 end;
 
 -- Lead pilot of trader id (trf_ui TRF_UI_Leader, protected there), or nil.
@@ -207,24 +219,26 @@ end;
 
 -- Static tables -------------------------------------------------------------------
 
--- Constants (spec 8): the cue files of rc_sound 1 and 2, the trader fallback template, the event cap; the kinds (4.2):
--- i the kind index of the key hash, p the priority (1 first), c the call keys and cs their speaker (t trader, c control),
--- a the answer keys and as their speaker. req's rchreqc is the corporation carrier's first choice (4.2).
+-- Constants (spec 8): the cue files of rc_sound 1 and 2, the folder of the rc_sound 3 clips (relative to Data/SOUND, as
+-- vanilla's GUI\PM1.wav) and the keys that have a clip (tools/gen_voice.py; any other key plays the squelch), the trader
+-- fallback template, the event cap; the kinds (4.2): i the kind index of the key hash, p the priority (1 first), c the
+-- call keys and cs their speaker (t trader, c control), a the answer keys and as their speaker. req's rchreqc is the
+-- corporation carrier's first choice (4.2).
 function TRF_RcK()
-	return {snd={"GUI\\PM1.wav", "trf_squelch.wav"}, trader="Trader", evmax=4,
+	return {snd={"GUI\\PM1.wav", "trf_squelch.wav"}, vdir="trf_voice\\", trader="Trader", evmax=4,
+		vo={rchreq1=1, rchreq2=1, rchreqc=1, rchreqa1=1, rchreqa2=1, rchhold1=1, rchhold2=1, rchholda=1, rchgo1=1, rchgo2=1,
+			rchgoa1=1, rchgoa2=1, rchin1=1, rchin2=1, rchout1=1, rchout2=1, rchouta1=1, rchouta2=1},
 		kinds={req={i=1, p=3, c={"rchreq1", "rchreq2"}, cs="t", a={"rchreqa1", "rchreqa2"}, as="c"},
 			hold={i=2, p=2, c={"rchhold1", "rchhold2"}, cs="c", a={"rchholda"}, as="t"},
-			go={i=3, p=1, c={"rchgo1", "rchgo2"}, cs="c"},
+			go={i=3, p=1, c={"rchgo1", "rchgo2"}, cs="c", a={"rchgoa1", "rchgoa2"}, as="t"},
 			bay={i=4, p=5, c={"rchin1", "rchin2"}, cs="t"},
 			out={i=5, p=4, c={"rchout1", "rchout2"}, cs="t", a={"rchouta1", "rchouta2"}, as="c"}}};
 end;
 
--- Arguments of every line key (7): c control, s ship, g cargo, o corporation, b bay, d destination.
+-- Argument order of every line key (7): $1 s the call sign, $2 c control, $3 b the bay, $4 x the cargo (g) on the req
+-- keys, the destination (d) on the out keys, else nil.
 function TRF_RcArgK()
-	return {rchreq1={"c", "s", "g"}, rchreq2={"c", "s"}, rchreqc={"c", "s", "o", "g"}, rchreqa1={"s", "c", "b"},
-		rchreqa2={"s", "c", "b"}, rchhold1={"s", "c"}, rchhold2={"s", "c"}, rchholda={"s"}, rchgo1={"s", "b"},
-		rchgo2={"s", "b"}, rchin1={"c", "s", "b"}, rchin2={"c", "s", "b"}, rchout1={"c", "s", "b", "d"},
-		rchout2={"c", "s", "b"}, rchouta1={"s"}, rchouta2={"s"}};
+	return {"s", "c", "b", "x"};
 end;
 
 -- Pure functions (explicit inputs, host-testable) -----------------------------------
@@ -290,6 +304,19 @@ function TRF_RcHashOf(id, ki)
 	return TRF_RcMod(id * 31 + ki * 7, 97);
 end;
 
+-- Call sign of trader id (4.3, D10): the designator des and a flight number; an independent 10 + mod(37 id, 90) (two
+-- digits), a corporation carrier (crp 1) 100 + mod(389 id, 900) (three digits) and the word hvy. 37 and 389 are coprime
+-- with 90 and 900, so ids less than 90 (900) apart never share a number. nil without an id or a designator.
+function TRF_RcCallOf(id, des, crp, hvy)
+	if type(id) ~= "number" or type(des) ~= "string" or des == "" then return nil; end;
+	if crp == 1 then
+		local s = des.." "..(100 + TRF_RcMod(389 * floor(id), 900));
+		if type(hvy) == "string" and hvy ~= "" then s = s.." "..hvy; end;
+		return s;
+	end;
+	return des.." "..(10 + TRF_RcMod(37 * floor(id), 90));
+end;
+
 -- Bay number of trader id at station ordinal j among n bays (4.3).
 function TRF_RcBayOf(id, j, n)
 	return 1 + TRF_RcMod(7 * id + 3 * j, n);
@@ -344,12 +371,33 @@ function TRF_RcNearOf(S, pos, r)
 	return best;
 end;
 
--- The arguments of key k (TRF_RcArgK) from the names table w {c, s, g, o, b, d}.
+-- The arguments of key k in the order of TRF_RcArgK from the names table w {s, c, b, g, d}: x is w.g on the req keys
+-- (rchreq*), w.d on the out keys (rchout*), else nil.
 function TRF_RcArgsOf(k, w)
-	local l = TRF_RcArgK()[k] or {};
-	local v = {};
-	for i = 1, 4 do if l[i] then v[i] = w[l[i]]; end; end;
-	return v[1], v[2], v[3], v[4];
+	local v = {x=nil};
+	local p = strsub(k, 1, 6);
+	if p == "rchreq" then v.x = w.g; elseif p == "rchout" then v.x = w.d; end;
+	local l = TRF_RcArgK();
+	local o = {};
+	for i = 1, 4 do o[i] = v[l[i]] or w[l[i]]; end;
+	return o[1], o[2], o[3], o[4];
+end;
+
+-- Sound of key k in mode m (6.5): the name, or nil for mode 0; mode 3 plays the key's clip, the squelch for a key
+-- without one.
+function TRF_RcSndOf(k, m)
+	local K = TRF_RcK();
+	if m == 3 then
+		if K.vo[k] then return K.vdir..k..".wav"; end;
+		return K.snd[2];
+	end;
+	return K.snd[m];
+end;
+
+-- Volume of a line (6.5): the music volume mv (0..1) x rc_vol percent, clamped to 0..1.
+function TRF_RcVolOf(mv, pct)
+	if type(mv) ~= "number" then mv = 1; end;
+	return TRF_RcCl(mv * pct / 100, 0, 1);
 end;
 
 -- Visit state (3.2) ------------------------------------------------------------------
@@ -489,12 +537,16 @@ function TRF_RcPrune(gt, T)
 	rc.ev = o;
 end;
 
--- The names of an exchange (4.3) for trader id at station ordinal j of system idx: {c, s, g, o, b, d}, or nil without a
--- ship name.
+-- The names of an exchange (4.3) for trader id at station ordinal j of system idx: {s, c, b, g, d, h}, or nil without a
+-- call sign. Designator: the corporation's name (trf_ui TRF_UI_FacOf of TRF_Crp_Of, h 1) for a corporation carrier,
+-- else the hail box's faction word (key owner, "FTU").
 function TRF_RcWords(idx, j, id, r, T)
 	local rc = %RC;
-	local ship = TRF_N("TRF_UI_Name", r.nm);
-	if type(ship) ~= "string" then return nil; end;
+	local f, des, h = TRF_N("TRF_Crp_Of", r), nil, nil;
+	if type(f) == "number" then des = TRF_N("TRF_UI_FacOf", f); h = 1; end;
+	if type(des) ~= "string" then des = TRF_RcTxt("owner"); h = nil; end;
+	local cs = TRF_RcCallOf(id, des, h, TRF_RcTxt("rchhvy"));
+	if not cs then return nil; end;
 	local s = rc.st[j];
 	local c = nil;
 	if j >= 2 and type(s.side) == "string" and s.side ~= "" then
@@ -507,7 +559,7 @@ function TRF_RcWords(idx, j, id, r, T)
 	if type(cls) ~= "number" or cls < 1 or cls > 6 then cls = 0; end;
 	local d = nil;
 	if type(r.to) == "number" and r.to > 0 then d = TRF_RcSysEn(r.to); end;
-	return {c=c, s=ship, g=TRF_RcTxt("cls"..cls), o=TRF_N("TRF_Crp_Owner", r), b=rc.b[id], d=d};
+	return {c=c, s=cs, g=TRF_RcTxt("cls"..cls), b=rc.b[id], d=d, h=h};
 end;
 
 -- The call key of event kind k for record r (4.2, 4.4): rchreqc first for a corporation carrier, rchout1 only with a
@@ -515,7 +567,7 @@ end;
 function TRF_RcCallKey(k, id, r, w)
 	local rc = %RC;
 	local K = TRF_RcK().kinds[k];
-	if k == "req" and w.o and not rc.k["rchreqc"] then return "rchreqc"; end;
+	if k == "req" and w.h == 1 and not rc.k["rchreqc"] then return "rchreqc"; end;
 	local l = K.c;
 	if k == "out" and not w.d then l = {"rchout2"}; end;
 	return TRF_RcKeyOf(l, rc.k, TRF_RcHashOf(id, K.i));
@@ -530,22 +582,25 @@ function TRF_RcSpk(sd, id, ctx)
 	return TRF_RcPilot(t), t;
 end;
 
--- Cue then message (6.5): ok, the cue name and its result. No speaker: no cue.
-function TRF_RcSay(p, text, T)
-	local snd, sres = "none", "off";
-	if p == nil then return nil, snd, sres; end;
+-- Sound then message (6.5) of line key: ok, the sound name, its result and its volume. No speaker: no sound.
+function TRF_RcSay(p, text, key, T)
+	local snd, sres, vol = "none", "off", nil;
+	if p == nil then return nil, snd, sres, vol; end;
 	if T.rc_sound > 0 then
-		snd = TRF_RcK().snd[T.rc_sound];
-		sres = TRF_RcSnd(snd, T.rc_vol / 100);
+		snd = TRF_RcSndOf(key, T.rc_sound);
+		vol = TRF_RcVolOf(TRF_RcVol(), T.rc_vol);
+		sres = TRF_RcSnd(snd, vol);
 	end;
-	return TRF_RcMsg(p, text, T.rc_secs), snd, sres;
+	return TRF_RcMsg(p, text, T.rc_secs), snd, sres, vol;
 end;
 
-function TRF_RcSayLog(kind, part, id, j, spk, key, d, age, snd, sres, res, why)
+function TRF_RcSayLog(kind, part, id, j, spk, key, d, age, snd, sres, res, why, vol)
 	local rc = %RC;
+	local vs = nil;
+	if type(vol) == "number" then vs = TRF_F(vol); end;
 	TRF_RcE("say", "kind", kind, "part", part, "trader_id", id, "station_key", TRF_RcKey(rc.si, j), "speaker", spk, "key", key,
 		"distance", TRF_RcF(d), "real_time", TRF_RcF(TRF_RcNow()), "quiet_age", TRF_RcF(age, 1), "sound", snd,
-		"sound_result", sres, "result", res, "reason", why);
+		"sound_result", sres, "volume", vs, "result", res, "reason", why);
 end;
 
 -- 6.3: the best event's call. Returns nothing; skips log once per reason and visit.
@@ -577,10 +632,10 @@ function TRF_RcCall(idx, gt, T)
 	end;
 	local K = TRF_RcK().kinds[e.kind];
 	local p, spk = TRF_RcSpk(K.cs, e.id, ctx);
-	local ok, snd, sres = TRF_RcSay(p, TRF_RcTxt(key, TRF_RcArgsOf(key, w)), T);
+	local ok, snd, sres, vol = TRF_RcSay(p, TRF_RcTxt(key, TRF_RcArgsOf(key, w)), key, T);
 	tremove(rc.ev, i);
 	if not ok then
-		TRF_RcSayLog(e.kind, "call", e.id, e.j, spk, key, d, age, snd, sres, "failed", "message");
+		TRF_RcSayLog(e.kind, "call", e.id, e.j, spk, key, d, age, snd, sres, "failed", "message", vol);
 		return;
 	end;
 	rc.k[key] = 1;
@@ -588,7 +643,7 @@ function TRF_RcCall(idx, gt, T)
 	rc.ex = rc.ex + 1;
 	rc.n[e.id] = (rc.n[e.id] or 0) + 1;
 	if K.a then rc.pend = {kind=e.kind, id=e.id, j=e.j, r=e.r, w=w, at=now + T.rc_pair}; end;
-	TRF_RcSayLog(e.kind, "call", e.id, e.j, spk, key, d, age, snd, sres, "shown", nil);
+	TRF_RcSayLog(e.kind, "call", e.id, e.j, spk, key, d, age, snd, sres, "shown", nil, vol);
 end;
 
 -- Drops the pending answer with reason why (6.4).
@@ -614,14 +669,14 @@ function TRF_RcAnswer(idx, gt, T)
 	local key = TRF_RcKeyOf(K.a, rc.k, TRF_RcHashOf(pd.id, K.i));
 	if not key then TRF_RcDrop("used"); return 1; end;
 	local p, spk = TRF_RcSpk(K.as, pd.id, ctx);
-	local ok, snd, sres = TRF_RcSay(p, TRF_RcTxt(key, TRF_RcArgsOf(key, pd.w)), T);
+	local ok, snd, sres, vol = TRF_RcSay(p, TRF_RcTxt(key, TRF_RcArgsOf(key, pd.w)), key, T);
 	rc.pend = nil;
 	if not ok then
-		TRF_RcSayLog(pd.kind, "answer", pd.id, pd.j, spk, key, d, age, snd, sres, "failed", "message");
+		TRF_RcSayLog(pd.kind, "answer", pd.id, pd.j, spk, key, d, age, snd, sres, "failed", "message", vol);
 		return 1;
 	end;
 	rc.k[key] = 1;
-	TRF_RcSayLog(pd.kind, "answer", pd.id, pd.j, spk, key, d, age, snd, sres, "shown", nil);
+	TRF_RcSayLog(pd.kind, "answer", pd.id, pd.j, spk, key, d, age, snd, sres, "shown", nil, vol);
 	return 1;
 end;
 
@@ -714,29 +769,33 @@ end;
 
 function TRF_Rc_TuneDef()
 	return {rc_r=1500, rc_gap=45, rc_pair=6, rc_secs=6, rc_quiet=10, rc_stale=20, rc_max=6, rc_per=2, rc_dock_r=300,
-		rc_pos=300, rc_bays=6, rc_sound=2, rc_vol=60};
+		rc_pos=300, rc_bays=6, rc_sound=3, rc_vol=80};
 end;
 
--- Texts (7), EN. Radio phrases; the engine prints "[name]: text", so each line names its addressee. No %, # or line break.
+-- Texts (7), EN. ATC radio phraseology (2026-11-08): $1 the call sign, $2 control, $3 the bay, $4 the cargo (req) or the
+-- destination (out); the call sign is joined in code (TRF_RcCallOf, rchhvy). No %, # or line break.
 function TRF_Rc_Text()
 	return {
-		rchctl = "$1 Control",                                                   -- system
-		rchctl2 = "$1 $2 Control",                                               -- system, owner word
-		rchreq1 = "$1, $2 inbound with $3. Requesting a berth.",                 -- control, ship, cargo
-		rchreq2 = "$1, this is $2 on the approach marker. Requesting docking.",  -- control, ship
-		rchreqc = "$1, $2, $3 carrier, inbound with $4. Requesting a berth.",    -- control, ship, corporation, cargo
-		rchreqa1 = "$1, $2. Bay $3, follow the beacon in.",                      -- ship, control, bay
-		rchreqa2 = "$1, cleared to bay $3. Keep it slow on the marker.",         -- ship, control, bay
-		rchhold1 = "$1, $2. Hold your position, the bay is busy.",               -- ship, control
-		rchhold2 = "$1, take the holding line. Traffic ahead of you.",           -- ship, control
-		rchholda = "$1 holding. Call us in.",                                    -- ship
-		rchgo1 = "$1, the bay is clear. Bay $2, come in.",                       -- ship, bay
-		rchgo2 = "$1, you are next. Bay $2.",                                    -- ship, bay
-		rchin1 = "$1, $2 in bay $3. Clamps on.",                                 -- control, ship, bay
-		rchin2 = "$2 docked in bay $3. Thanks, $1.",                             -- control, ship, bay
-		rchout1 = "$1, $2 clear of bay $3, outbound for $4.",                    -- control, ship, bay, destination
-		rchout2 = "$1, $2 undocking from bay $3.",                               -- control, ship, bay
-		rchouta1 = "$1, the lane is yours. Safe flight.",                        -- ship
-		rchouta2 = "Copy, $1. Good trading.",                                    -- ship
+		rchctl = "$1 Control",                                                     -- system
+		rchctl2 = "$1 $2 Control",                                                 -- system, owner word
+		rchhvy = "heavy",                                                          -- carrier call sign suffix
+		rchreq1 = "$2, $1, inbound with $4, request docking.",                     -- call sign, control, bay, cargo
+		rchreq2 = "$2, $1, at the outer marker, request docking clearance.",
+		rchreqc = "$2, $1, inbound, full load of $4, request docking.",
+		rchreqa1 = "$1, $2, cleared to dock bay $3, follow the beacon.",
+		rchreqa2 = "$1, cleared to dock bay $3, reduce speed at the marker.",
+		rchhold1 = "$1, $2, hold position, bay $3 occupied, expect delay.",
+		rchhold2 = "$1, $2, standby. Traffic in the bay, hold at the outer marker.",
+		rchholda = "Wilco, holding, $1.",
+		rchgo1 = "$1, $2, bay $3 now clear, cleared to dock.",
+		rchgo2 = "$1, number one, cleared to dock bay $3.",
+		rchgoa1 = "Cleared to dock bay $3, $1.",
+		rchgoa2 = "Roger, on our way in, bay $3, $1.",
+		rchin1 = "$2, $1, docked bay $3, clamps on.",
+		rchin2 = "$2, $1, secured in bay $3, shutting down.",
+		rchout1 = "$2, $1, clear of bay $3, request departure to $4.",            -- call sign, control, bay, destination
+		rchout2 = "$2, $1, undocking bay $3, ready to depart.",
+		rchouta1 = "$1, $2, departure lane clear, cleared to depart. Over and out.",
+		rchouta2 = "$1, roger, frequency change approved. Over and out.",
 	};
 end;

@@ -4,13 +4,14 @@
 -- mid-way or at a load, dock_mode 0, excluded records); c rate and repetition (rc_gap in real seconds at 1x and 8x, rc_max,
 -- rc_per, stale and full drops, the priority order, no key twice, the used drop); d gates (R1-R8 one by one, events still
 -- age); e content first (Q1-Q5, the waiting call, the dropped answer, TRF.live.line and SV.rt untouched); f speakers and
--- texts (dispatcher per owner, leader or Trader, the carrier key, Kadenoa station 2, the destination key, bays, lengths); g
--- the cue (rc_sound 0-2, rc_vol, PlaySound missing or raising); h jump, load and the save size.
+-- texts (dispatcher per owner, leader or Trader, the carrier key, Kadenoa station 2, the destination key, bays, lengths, the
+-- call signs, corp 0, the go readback); g the sound (rc_sound 0-3, the voice clips, the music volume of TRF_MusicVol x
+-- rc_vol and its clamp, PlaySound missing or raising); h jump, load and the save size.
 -- Loads host_station.lua up to its first scenario, as host_request.lua does. The trader records are written into
 -- TRF.live.tr and their handles into TRF_H().tr (a flight with a recording lead pilot, the station object at the map
 -- position) per step; the 1 s step is called directly with TRF.clock.gt and TRF.clock.rs set by the scenario (RC_Step).
 -- Stubs in this file: CreatePilot pilots whose Message records the template (HOST().msgs[i].tpl); PlaySound is host_stubs'
--- HOST_PlaySound.
+-- HOST_PlaySound; TRF_MusicVol is nil (no DLL) unless a run sets host_stubs' HOST_MusicVol.
 
 local f = openfile((getenv("TRF_TESTS") or "./").."host_station.lua", "r");
 if not f then print("HOST FAIL host_chatter.lua: cannot open host_station.lua"); exit(1); end;
@@ -65,7 +66,9 @@ function RC_Begin(sys, ch, t)
 	h.qs = FALSE;
 	h.rchook = nil;
 	h.psnd = {}; h.psnd_err = nil; h.msg_err = nil;
+	h.mvol = nil; h.svol = nil; h.mvol_why = nil; h.mvol_n = 0;
 	PlaySound = HOST_PlaySound;
+	TRF_MusicVol = nil;
 	S_Begin(sys, RC_Cfg(t));
 	RC_Fresh();
 end;
@@ -213,7 +216,8 @@ function T_RC_A()
 		"Rc last in TRF_ModList (not a plumb module); TRF_Rc_Text after TRF_Rq_Text in both text lists");
 	HOST_Check(TRF_OptEnum().chatter == 1 and TRF_Opt("chatter") == 1 and TRF_Rc_OptDef().chatter == 1 and TRF_Config().chatter == 1,
 		"cfg chatter 1 in config.script and TRF_Rc_OptDef, enumerated 0..1");
-	-- Texts (7): 18 keys rch*, each found by TRF_Txt, no %, # or line break; the scaffold holds their fixed forms.
+	-- Texts (7): 21 keys rch* (18 line keys, rchctl, rchctl2, rchhvy), each found by TRF_Txt, no %, # or line break; the
+	-- scaffold holds their fixed forms.
 	local tx = TRF_Rc_Text();
 	local n, bad = 0, "";
 	for k, v in tx do
@@ -221,7 +225,9 @@ function T_RC_A()
 		if strfind(v, "%", 1, 1) or strfind(v, "#", 1, 1) or strfind(v, "\n", 1, 1) or strsub(k, 1, 3) ~= "rch" then bad = bad.." "..k; end;
 		if TRF_Txt(k) == k then bad = bad.." unknown:"..k; end;
 	end;
-	HOST_Check(n == 18 and bad == "", "18 rch text keys, no %, # or line break, every key found by TRF_Txt"..bad);
+	local nl = 0;
+	for k, v in TRF_RcK().vo do if tx[k] then nl = nl + 1; end; end;
+	HOST_Check(n == 21 and nl == 18 and bad == "", "21 rch text keys (18 line keys with a clip, rchctl, rchctl2, rchhvy), no %, # or line break, every key found by TRF_Txt"..bad);
 	local en = RC_ReadFile(h.dir.."../../../../loc/trf_en.loc");
 	local cr, lf = strchar(13), strchar(10);
 	local miss = "";
@@ -229,16 +235,16 @@ function T_RC_A()
 		local want = cr..lf.."#TRF_"..TRF_LocKey(k).." = "..TRF_Loc_Plain(v)..cr..lf;
 		if not (en and strfind(en, want, 1, 1)) then miss = miss.." "..k; end;
 	end;
-	HOST_Check(miss == "", "loc/trf_en.loc: the 18 rch keys with their fixed forms (gen_map.py --loc)"..miss);
+	HOST_Check(miss == "", "loc/trf_en.loc: the 21 rch keys with their fixed forms (gen_map.py --loc)"..miss);
 	-- Tune defaults and clamps (8).
 	local T = TRF_RcTune();
 	HOST_Check(RC_N(TRF_Rc_TuneDef()) == 13 and T.rc_r == 1500 and T.rc_gap == 45 and T.rc_pair == 6 and T.rc_secs == 6 and T.rc_quiet == 10
 		and T.rc_stale == 20 and T.rc_max == 6 and T.rc_per == 2 and T.rc_dock_r == 300 and T.rc_pos == 300 and T.rc_bays == 6
-		and T.rc_sound == 2 and T.rc_vol == 60, "13 tune keys with the defaults of spec 8");
+		and T.rc_sound == 3 and T.rc_vol == 80, "13 tune keys with the defaults of spec 8 (rc_sound 3, rc_vol 80)");
 	h.cfg.tune = {rc_r=99999, rc_gap=1, rc_pair=45.7, rc_sound=7, rc_vol=-5, rc_bays=0, rc_quiet="x"};
 	T = TRF_RcTune();
-	HOST_Check(T.rc_r == 5000 and T.rc_gap == 10 and T.rc_pair == 20 and T.rc_sound == 2 and T.rc_vol == 0 and T.rc_bays == 1
-		and T.rc_quiet == 10, "tune clamps: rc_r 5000, rc_gap 10, rc_pair 20 (45.7 floored, clamped), rc_sound 2, rc_vol 0, rc_bays 1, a string reads as the default");
+	HOST_Check(T.rc_r == 5000 and T.rc_gap == 10 and T.rc_pair == 20 and T.rc_sound == 3 and T.rc_vol == 0 and T.rc_bays == 1
+		and T.rc_quiet == 10, "tune clamps: rc_r 5000, rc_gap 10, rc_pair 20 (45.7 floored, clamped), rc_sound 3, rc_vol 0, rc_bays 1, a string reads as the default");
 	h.cfg.tune = {};
 	h.cfg.chatter = 7;
 	HOST_Check(TRF_RcOpt("chatter") == 1, "cfg chatter outside 0..1 reads as the default 1");
@@ -318,7 +324,8 @@ function T_RC_A()
 	PlaySound = nil;
 	n0, m0 = S_Mark(), getn(h.msgs);
 	RC_Req(45);
-	HOST_Check(getn(h.msgs) == m0 + 1 and RC_Logs(n0, "sound=trf_squelch.wav sound_result=none result=shown") == 1, "PlaySound missing: sound_result=none, the line shown");
+	HOST_Check(getn(h.msgs) == m0 + 1 and RC_Logs(n0, "sound=trf_voice\\rchreq") == 1 and RC_Logs(n0, "sound_result=none volume=0.800 result=shown") == 1,
+		"PlaySound missing: sound_result=none, the line shown: "..RC_Line(n0, "event=say"));
 	PlaySound = HOST_PlaySound;
 end;
 
@@ -827,7 +834,8 @@ function T_RC_F()
 	RC_Fresh();
 	n0, m0 = S_Mark(), getn(h.msgs);
 	RC_Req(3, {crp=5});
-	HOST_Check(RC_Logs(n0, "key=rchreqc ") == 1 and RC_Has(RC_Msgs(m0), "contract carrier, inbound with"), "a corporation carrier: rchreqc first: "..RC_Msgs(m0));
+	HOST_Check(RC_Logs(n0, "key=rchreqc ") == 1 and RC_Has(RC_Msgs(m0), "Gredos Control, InoCo 367 heavy, inbound, full load of "..TRF_Txt("cls1")..", request docking.|"),
+		"a corporation carrier: rchreqc first, the corporation's call sign: "..RC_Msgs(m0));
 	RC_Req(4, {crp=5});
 	RC_Step(50);
 	HOST_Check(RC_Logs(n0, "key=rchreqc ") == 1 and RC_Logs(n0, "part=call") == 2, "rchreqc once per visit, the next carrier takes another variant");
@@ -841,8 +849,9 @@ function T_RC_F()
 	n0, m0 = S_Mark(), getn(h.msgs);
 	RC_Tr(4, {path="B", from=0, st="out", to=V_Idx("aurora")});
 	RC_Step(10);
-	HOST_Check(RC_Logs(n0, "kind=out part=call") == 1 and RC_Logs(n0, "key=rchout1 ") == 1 and RC_Has(RC_Msgs(m0), " clear of bay 2, outbound for "..TRF_SysEn(V_Idx("aurora"))..".|"),
-		"a destination (r.to > 0): rchout1 by the hash of trader 4: "..RC_Msgs(m0));
+	HOST_Check(RC_Logs(n0, "kind=out part=call") == 1 and RC_Logs(n0, "key=rchout1 ") == 1 and RC_Has(RC_Msgs(m0), "Gredos Control, FTU 68, clear of bay 2, request departure to "..TRF_SysEn(V_Idx("aurora"))..".|")
+		and RC_Has(RC_Msgs(m0), "Over and out.|"),
+		"a destination (r.to > 0): rchout1 by the hash of trader 4, control signs off with Over and out.: "..RC_Msgs(m0));
 	-- Bays stable per trader; the control name with the system.
 	HOST_Check(TRF_RcCV().b[4] == TRF_RcBayOf(4, 1, 6) and TRF_RcCV().b[4] == 2 and RC_Has(RC_Msgs(m0), "Gredos Control, "), "bay of trader 4 fixed for the visit, control named by TRF_SysEn");
 	-- Kadenoa: station 2 (Triada) as rchctl2 with the owner word, station 1 as rchctl.
@@ -879,18 +888,69 @@ function T_RC_F()
 	TRF.live.tr[9].st = "dock";
 	RC_Step(2);
 	HOST_Check(RC_Logs(n0, "event=drop kind=req trader_id=9 reason=station") == 1, "no map station within rc_pos -> reason=station");
-	-- No ship name: dropped (reason=name).
+	-- No ship name: the call sign needs none (decision 11).
 	RC_Fresh();
-	n0 = S_Mark();
+	n0, m0 = S_Mark(), getn(h.msgs);
 	RC_Req(10, {j=1, nm=0});
-	HOST_Check(RC_Logs(n0, "event=drop kind=req trader_id=10 reason=name") == 1, "no ship name -> reason=name");
+	HOST_Check(RC_Logs(n0, "event=say kind=req part=call trader_id=10") == 1 and RC_Has(RC_Msgs(m0), " Control, FTU 20, "),
+		"no ship name: the call FTU 20 still said: "..RC_Msgs(m0));
+	-- Call signs (4.3, D10): independent FTU + 2 digits, carrier corporation + 3 digits + heavy; deterministic; no shared
+	-- number among ids less than 90 (900) apart.
+	local hv = TRF_Txt("rchhvy");
+	HOST_Check(TRF_RcCallOf(14, TRF_Txt("owner")) == "FTU 78" and TRF_RcCallOf(23, TRF_UI_FacOf(3), 1, hv) == "Triada 947 heavy"
+		and TRF_RcCallOf(5, TRF_UI_FacOf(4), 1, hv) == "USS 245 heavy" and TRF_RcCallOf(2, TRF_UI_FacOf(5), 1, hv) == "InoCo 878 heavy"
+		and TRF_RcCallOf(14, "FTU") == TRF_RcCallOf(14, "FTU") and TRF_RcCallOf(9014, "FTU") == "FTU 78",
+		"call signs: FTU 78 (id 14), Triada 947 heavy (23), USS 245 heavy (5), InoCo 878 heavy (2), the same on every call, 9014 as 14 (90 x 100 apart)");
+	HOST_Check(TRF_RcCallOf(nil, "FTU") == nil and TRF_RcCallOf(3, nil) == nil and TRF_RcCallOf(3, "") == nil and TRF_RcCallOf(3, "FTU", 1, nil) == "FTU 367",
+		"no call sign without an id or a designator; a carrier without the heavy word");
+	local cbad = "";
+	for b = 1, 9001, 250 do
+		local seen2, seen3 = {}, {};
+		for id = b, b + 899 do
+			local n3 = tonumber(strsub(TRF_RcCallOf(id, "X", 1), 3));
+			if n3 < 100 or n3 > 999 or seen3[n3] then cbad = cbad.." c"..id; end;
+			seen3[n3] = 1;
+			if id < b + 90 then
+				local n2 = tonumber(strsub(TRF_RcCallOf(id, "X"), 3));
+				if n2 < 10 or n2 > 99 or seen2[n2] then cbad = cbad.." i"..id; end;
+				seen2[n2] = 1;
+			end;
+		end;
+	end;
+	HOST_Check(cbad == "", "no collision for ids less than 90 (independent, 2 digits) or 900 (carrier, 3 digits) apart"..cbad);
+	-- corp 0: a record with crp is an independent (TRF_Crp_Of nil): FTU call sign, no rchreqc.
+	h.cfg.corp = 0;
+	RC_Fresh();
+	n0, m0 = S_Mark(), getn(h.msgs);
+	RC_Req(23, {crp=3});
+	HOST_Check(RC_Logs(n0, "key=rchreqc ") == 0 and RC_Logs(n0, "part=call trader_id=23") == 1 and RC_Has(RC_Msgs(m0), ", FTU 51, ")
+		and not RC_Has(RC_Msgs(m0), "heavy"), "corp 0: the independent form FTU 51, no rchreqc: "..RC_Msgs(m0));
+	h.cfg.corp = 1;
+	RC_Fresh();
+	m0 = getn(h.msgs);
+	RC_Req(23, {crp=3});
+	HOST_Check(RC_Has(RC_Msgs(m0), " Control, Triada 947 heavy, inbound, full load of "), "corp 1: Triada 947 heavy: "..RC_Msgs(m0));
+	-- The go readback (decision 12): hold, readback, release, readback by the trader's lead pilot.
+	RC_Fresh();
+	n0, m0 = S_Mark(), getn(h.msgs);
+	RC_Tr(11);
+	RC_Step(1);
+	TRF.live.tr[11].st = "queue";
+	RC_Step(8);
+	TRF.live.tr[11].qgo = 1;
+	RC_Step(20);
+	local gl = RC_Line(n0, "kind=go part=answer");
+	HOST_Check(RC_Logs(n0, "kind=hold part=answer trader_id=11 station_key="..RC_Key(1).." speaker=leader key=rchholda") == 1
+		and RC_Logs(n0, "kind=go part=call trader_id=11") == 1 and RC_Logs(n0, "kind=go part=answer trader_id=11 station_key="..RC_Key(1).." speaker=leader key=rchgoa") == 1
+		and RC_Has(RC_Msgs(m0), "|lead11:Wilco, holding, FTU 57.|") and (RC_Has(RC_Msgs(m0), "|lead11:Cleared to dock bay "..TRF_RcCV().b[11]..", FTU 57.|")
+		or RC_Has(RC_Msgs(m0), "|lead11:Roger, on our way in, bay "..TRF_RcCV().b[11]..", FTU 57.|")) and TRF_RcCV().ex == 2,
+		"go: the trader reads back the release (rchgoa1/2), as the hold: "..RC_Msgs(m0));
 	-- Every text with the longest names: at most 120 characters, no %, #, line break.
-	local ln, lg = "", "";
-	local nms = TRF_Names();
-	for i = 1, getn(nms) do if strlen(nms[i]) > strlen(ln) then ln = nms[i]; end; end;
+	local lg = "";
 	local m = TRF_Map();
 	for i = 1, getn(m.sys) do local e = TRF_SysEn(i); if type(e) == "string" and strlen(e) > strlen(lg) then lg = e; end; end;
-	local wds = {c=TRF_Txt("rchctl2", "Cadenoa", "Triada"), s=ln, g=TRF_Txt("cls3"), o="InoCo contract", b=12, d=lg};
+	local ln = TRF_RcCallOf(23, TRF_UI_FacOf(3), 1, hv);
+	local wds = {c=TRF_Txt("rchctl2", "Cadenoa", "Triada"), s=ln, g=TRF_Txt("cls3"), b=12, d=lg, h=1};
 	local long, mx = "", 0;
 	for k, v in TRF_Rc_Text() do
 		local t = TRF_Txt(k, TRF_RcArgsOf(k, wds));
@@ -900,46 +960,92 @@ function T_RC_F()
 	HOST_Check(long == "" and wds.c == "Cadenoa Triada Control", "every text <= 120 characters with the longest names ("..ln..", "..lg..", longest "..mx.."), no %, #, $n or line break"..long);
 end;
 
--- g: the cue (6.5) -----------------------------------------------------------------------------
+-- g: the sound (6.5) ---------------------------------------------------------------------------
 
 function T_RC_G()
 	local h = HOST();
 	RC_Begin("gredos");
+	-- rc_sound 3 (default): the clip of each line key, at the music volume (no DLL: 1) x rc_vol 80.
 	local n0, m0 = S_Mark(), getn(h.msgs);
 	RC_Req(1);
 	RC_Step(8);
-	HOST_Check(getn(h.psnd) == 2 and h.psnd[1].name == "trf_squelch.wav" and h.psnd[1].vol == 0.6 and h.psnd[2].name == "trf_squelch.wav"
-		and getn(h.msgs) == m0 + 2 and RC_Logs(n0, "sound=trf_squelch.wav sound_result=played result=shown") == 2,
-		"rc_sound 2 (default): trf_squelch.wav at 0.6 before the call and the answer");
-	h.cfg.tune = {rc_sound=1, rc_vol=100};
+	local k1, k2 = RC_Kv(RC_Line(n0, "part=call"), "key"), RC_Kv(RC_Line(n0, "part=answer"), "key");
+	HOST_Check(getn(h.psnd) == 2 and h.psnd[1].name == "trf_voice\\"..tostring(k1)..".wav" and h.psnd[2].name == "trf_voice\\"..tostring(k2)..".wav"
+		and h.psnd[1].vol == 0.8 and h.psnd[2].vol == 0.8 and getn(h.msgs) == m0 + 2 and RC_Logs(n0, "sound_result=played volume=0.800 result=shown") == 2
+		and RC_Logs(n0, "sound=trf_voice\\"..tostring(k1)..".wav ") == 1, "rc_sound 3 (default): the voice clip of the line's key at 0.8 (no TRF_MusicVol: 1 x 80 %), logged with the volume");
+	-- Every line key has its clip in the repo; a key without one plays the squelch.
+	local miss, nv = "", 0;
+	for k, v in TRF_RcK().vo do
+		nv = nv + 1;
+		if not RC_ReadFile(h.dir.."../../../SOUND/trf_voice/"..k..".wav") then miss = miss.." "..k; end;
+	end;
+	HOST_Check(nv == 18 and miss == "", "18 voiced keys, each with Data/SOUND/trf_voice/<key>.wav"..miss);
+	HOST_Check(TRF_RcSndOf("rchgoa2", 3) == "trf_voice\\rchgoa2.wav" and TRF_RcSndOf("rchctl", 3) == "trf_squelch.wav"
+		and TRF_RcSndOf("rchgoa2", 2) == "trf_squelch.wav" and TRF_RcSndOf("rchgoa2", 1) == "GUI\\PM1.wav",
+		"TRF_RcSndOf: mode 3 the key's clip, the squelch for a key without one; modes 1 and 2 as before");
+	-- The music volume (TRF_RcVol over the DLL native) and the clamp.
+	TRF_MusicVol = HOST_MusicVol;
+	h.mvol = 0.25; h.svol = 0.2;
+	HOST_Check(TRF_RcVol() == 0.25 and h.mvol_n == 1, "TRF_RcVol: the music volume of TRF_MusicVol");
+	h.mvol = nil; h.mvol_why = "sig";
+	HOST_Check(TRF_RcVol() == 1, "TRF_RcVol: nil, why -> 1");
+	h.mvol = 1.5;
+	HOST_Check(TRF_RcVol() == 1, "TRF_RcVol: a value outside 0..1 -> 1");
+	TRF_MusicVol = function() error("injected TRF_MusicVol error"); end;
+	HOST_Check(TRF_RcVol() == 1, "TRF_RcVol: a raising native -> 1");
+	TRF_MusicVol = nil;
+	HOST_Check(TRF_RcVol() == 1, "TRF_RcVol: no native -> 1");
+	HOST_Check(TRF_RcVolOf(0.5, 80) == 0.4 and TRF_RcVolOf(1, 100) == 1 and TRF_RcVolOf(2, 100) == 1 and TRF_RcVolOf(-1, 50) == 0
+		and TRF_RcVolOf(0.3, 0) == 0 and TRF_RcVolOf(nil, 80) == 0.8, "TRF_RcVolOf: music x rc_vol / 100, clamped to 0..1, nil music reads as 1");
+	TRF_MusicVol = HOST_MusicVol;
+	h.mvol = 0.25;
 	RC_Fresh();
 	n0 = S_Mark();
 	RC_Req(2);
+	HOST_Check(getn(h.psnd) == 1 and h.psnd[1].vol == 0.2 and RC_Logs(n0, "volume=0.200 result=shown") == 1, "music 0.25 x rc_vol 80: PlaySound at 0.2");
+	h.cfg.tune = {rc_vol=100};
+	h.mvol = 1;
+	RC_Fresh();
+	RC_Req(9);
+	HOST_Check(getn(h.psnd) == 1 and h.psnd[1].vol == 1, "music 1 x rc_vol 100: PlaySound at 1 (the clamp's top)");
+	TRF_MusicVol = nil;
+	h.cfg.tune = {rc_sound=2, rc_vol=60};
+	RC_Fresh();
+	n0 = S_Mark();
+	RC_Req(10);
+	RC_Step(8);
+	HOST_Check(getn(h.psnd) == 2 and h.psnd[1].name == "trf_squelch.wav" and h.psnd[1].vol == 0.6 and h.psnd[2].name == "trf_squelch.wav"
+		and RC_Logs(n0, "sound=trf_squelch.wav sound_result=played volume=0.600 result=shown") == 2,
+		"rc_sound 2, rc_vol 60: trf_squelch.wav at 0.6 before the call and the answer");
+	h.cfg.tune = {rc_sound=1, rc_vol=100};
+	RC_Fresh();
+	n0 = S_Mark();
+	RC_Req(11);
 	HOST_Check(getn(h.psnd) == 1 and h.psnd[1].name == "GUI\\PM1.wav" and h.psnd[1].vol == 1 and RC_Logs(n0, "sound=GUI\\PM1.wav sound_result=played") == 1,
 		"rc_sound 1, rc_vol 100: GUI\\PM1.wav at 1.0");
 	h.cfg.tune = {rc_sound=2, rc_vol=0};
 	RC_Fresh();
 	RC_Req(3);
-	HOST_Check(getn(h.psnd) == 1 and h.psnd[1].vol == 0, "rc_vol 0: the cue at volume 0");
+	HOST_Check(getn(h.psnd) == 1 and h.psnd[1].vol == 0, "rc_vol 0: the sound at volume 0");
 	h.cfg.tune = {rc_sound=0};
 	RC_Fresh();
 	n0, m0 = S_Mark(), getn(h.msgs);
 	RC_Req(4);
-	HOST_Check(getn(h.psnd) == 0 and getn(h.msgs) == m0 + 1 and RC_Logs(n0, "sound=none sound_result=off result=shown") == 1, "rc_sound 0: no cue, the line shown");
+	HOST_Check(getn(h.psnd) == 0 and getn(h.msgs) == m0 + 1 and RC_Logs(n0, "sound=none sound_result=off volume=nil result=shown") == 1, "rc_sound 0: no sound, the line shown");
 	h.cfg.tune = {};
 	RC_Fresh();
 	h.psnd_err = 1;
 	n0, m0 = S_Mark(), getn(h.msgs);
 	RC_Req(5);
 	h.psnd_err = nil;
-	HOST_Check(getn(h.msgs) == m0 + 1 and RC_Logs(n0, "sound_result=error result=shown") == 1 and RC_Logs(n0, "event=error") == 0,
+	HOST_Check(getn(h.msgs) == m0 + 1 and RC_Logs(n0, "sound_result=error volume=0.800 result=shown") == 1 and RC_Logs(n0, "event=error") == 0,
 		"PlaySound raising: sound_result=error, the line still shown, no error line");
 	RC_Fresh();
 	PlaySound = nil;
 	n0, m0 = S_Mark(), getn(h.msgs);
 	RC_Req(6);
 	PlaySound = HOST_PlaySound;
-	HOST_Check(getn(h.msgs) == m0 + 1 and RC_Logs(n0, "sound_result=none result=shown") == 1, "PlaySound missing: sound_result=none, the line shown");
+	HOST_Check(getn(h.msgs) == m0 + 1 and RC_Logs(n0, "sound_result=none volume=0.800 result=shown") == 1, "PlaySound missing: sound_result=none, the line shown");
 	-- A raising Message: result=failed, the event removed, nothing counted.
 	RC_Fresh();
 	h.msg_err = 1;
@@ -955,8 +1061,8 @@ function T_RC_G()
 	n0, m0 = S_Mark(), getn(h.msgs);
 	RC_Req(8, {nolead=1});
 	CreatePilot = cp;
-	HOST_Check(getn(h.psnd) == 0 and getn(h.msgs) == m0 and RC_Logs(n0, "sound=none sound_result=off result=failed reason=message") == 1
-		and TRF_RcCV().ex == 0, "no speaker: no cue, result=failed, no exchange counted");
+	HOST_Check(getn(h.psnd) == 0 and getn(h.msgs) == m0 and RC_Logs(n0, "sound=none sound_result=off volume=nil result=failed reason=message") == 1
+		and TRF_RcCV().ex == 0, "no speaker: no sound, result=failed, no exchange counted");
 end;
 
 -- h: jump, load, save size (3.1, 6.1) -----------------------------------------------------------

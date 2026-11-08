@@ -1,5 +1,5 @@
 #!/bin/sh
-# Remove the traffic mod scripts, dialogs, loc files, the chatter cue, the Pilots.xml merge and the [traffic] ini section
+# Remove the traffic mod scripts, dialogs, loc files, the chatter sounds, the Pilots.xml merge and the [traffic] ini section
 # from the test clone (the trackpad proxy stays).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd); . "$here/env.sh"
@@ -11,8 +11,8 @@ rm -f "$COPY/Data/Scripts/Trade/TRF_Hail.xml" "$COPY/Data/Scripts/Trade/TRF_Hail
 pilx=$COPY/Data/Game/Pilots.xml
 [ ! -f "$pilx.trf-orig" ] || mv -f "$pilx.trf-orig" "$pilx"
 rm -f "$COPY/Data/LocData/English/trf_en.loc" "$COPY/Data/LocData/Russian/trf_ru.loc"
-# The station chatter cue (install-test.sh copies it on every run).
-rm -f "$COPY/Data/SOUND/trf_squelch.wav"
+# The station chatter cue and voice clips (install-test.sh copies them on every run).
+rm -f "$COPY/Data/SOUND/trf_squelch.wav"; rm -rf "$COPY/Data/SOUND/trf_voice"
 ini="$COPY/sw3tp.ini"
 if [ -f "$ini" ]; then
     awk '{l=$0; sub(/\r$/,"",l)} l=="[traffic]"{skip=1;next} /^\[/{skip=0} !skip{print}' "$ini" > "$ini.new"

@@ -610,3 +610,5 @@ traffic: lua: exp=v1 module=chatter event=say kind=go part=call trader_id=42 sta
 traffic: lua: exp=v1 module=safety event=combat_off last_reason=raid game_time=930
 traffic: lua: exp=v1 module=chatter event=skip system=taira reason=latch
 traffic: lua: exp=v1 module=chatter event=say kind=bay part=call trader_id=43 station_key=61 speaker=leader key=rchin1 distance=700 real_time=240 quiet_age=30 sound=trf_squelch.wav sound_result=played result=shown reason=nil
+traffic: lua: exp=v1 module=chatter event=say kind=out part=call trader_id=44 station_key=61 speaker=leader key=rchout2 distance=700 real_time=300 quiet_age=30 sound=trf_voice\rchout1.wav sound_result=played volume=0.080 result=shown reason=nil
+traffic: lua: exp=v1 module=chatter event=say kind=out part=answer trader_id=44 station_key=61 speaker=DialogSystem key=rchouta1 distance=700 real_time=306 quiet_age=36 sound=trf_voice\rchouta1.wav sound_result=played volume=1.300 result=shown reason=nil

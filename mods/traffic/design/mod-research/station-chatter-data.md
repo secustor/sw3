@@ -35,7 +35,7 @@ Verdicts:
 - **2D exists.** `PlaySound` is never called by vanilla, but the engine uses the same 2D player 0x5f7200 for its own UI sounds with names relative to `G/SOUND`: `GUI\Beep.wav` (string 0x71f408, call at 0x48e32e) is the file `G/SOUND/GUI/Beep.wav`. So `PlaySound("trf_squelch.wav", v)` reads `G/SOUND/trf_squelch.wav` [I from that placement; the resolver itself was not traced].
 - **3D falloff.** `G/../Main.ini` `[SOUND] rollofFactor = 1` is read at 0x654f18 into the sound system (`+0xd0`), the DirectSound3D rolloff factor [I]. Whether the listener is the camera (free in SW3) or the mothership was not traced. A 3D cue at a station 1,500 units from the listener would be far below a 2D cue at the same volume [I]; static-signals CHECK SG3 asks the same question.
 
-Volume settings [V]: the console variables `volume_sound` (0x73b714, setter 0x5f8270) and `volume_music` (0x73b724), saved per profile (`Profiles/<name>/<name>.cfg` and `default.cfg`: `volume_sound "0.2000"`, `volume_music "0.1000"` on this clone). No voice volume variable exists; the voice stream reads a manager float at `+0x5c` (0x5731f5). Whether `volume_sound` scales the 2D player's buffers was not traced [I: it is the only sound-effects setting].
+Volume settings [V]: the console variables `volume_sound` (0x73b714, setter 0x5f8270) and `volume_music` (0x73b724), saved per profile (`Profiles/<name>/<name>.cfg` and `default.cfg`: `volume_sound "0.2000"`, `volume_music "0.1000"` on this clone). No voice volume variable exists; the voice stream reads a manager float at `+0x5c` (0x5731f5). `volume_sound` scales the 2D player's buffers [V, 2026-11-08]: the player's volume setter 0x5f80d0 multiplies the requested volume by the manager's `+0x5c` (0x5f80ec) before the dB conversion 0x5f4e20 (section 7).
 
 ## 3. Vanilla docking flows
 
@@ -94,7 +94,68 @@ No vanilla file is a radio click, a squelch tail or crowd murmur. A shipped file
 ## 6. Open (game-only)
 
 - Whether `PlaySound` with a bare name plays a file of `G/SOUND` from mod code, and whether a missing name only logs (the code says it does; spec CHECK RC1).
-- Whether `volume_sound` scales `PlaySound` (RC2).
+- That `volume_sound` scales `PlaySound` as the code says (RC2) and that `TRF_MusicVol` follows the music slider (RC9).
 - That the English `Incoming_message.wav` is inaudible in play (RC3): the data says so; ears confirm.
 - Whether `Pilot:Message` seconds count real or game time (at 8x a line could vanish early) and whether a second message replaces the first on the panel as the code suggests (RC5, RC6).
 - Whether the 3D listener is the camera (only relevant to the 3D alternative).
+
+## 7. ATC step: call signs, voice clips, music volume (2026-11-08)
+
+Design `.work/voice/atc-design.md` (phraseology, call signs, slots), owner decisions 11-14 of the spec (2.1). [V] read in code, data or the rendered files; nobody listened to the clips for this note.
+
+### 7.1 Call signs
+
+| Trader | Designator (source) | Flight number | Suffix | Examples |
+|---|---|---|---|---|
+| independent (no corporation, or cfg `corp` 0) | `FTU`: loc key `owner`, the faction word of the hail box and the focus line (`TRF_UI_Who`: `TRF_Crp_Owner(r) or TRF_Txt("owner")`) | `10 + mod(37 id, 90)` | none | `FTU 78` (id 14), `FTU 20` (10), `FTU 57` (11) |
+| corporation carrier (`TRF_Crp_Of(r)` 3, 4, 5) | the corporation's name as the mod spells it: `TRF_UI_FacOf(f)` (keys `factriada`, `facuss`, `facinoco`) | `100 + mod(389 id, 900)` | `heavy` (key `rchhvy`) | `Triada 947 heavy` (23), `USS 245 heavy` (5), `InoCo 878 heavy` (2), `InoCo 367 heavy` (3) |
+
+`id` is the trader id (`TRF.seq` at spawn). 37 and 389 are coprime with 90 and 900: ids less than 90 (900) apart never share a number (host `rc-f` checks windows of 900 ids starting every 250 ids from 1 to 9,001). Plain traders (D3) carry no `own` field, so the convoy word (`TRF_UI_FacOf(r.own)`) never applies; no other faction word reaches a plain trader's hail box.
+
+### 7.2 Clips
+
+`Data/SOUND/trf_voice/<key>.wav`, one per line key, 22,050 Hz mono 16-bit PCM, peak -3.0 dBFS, 2,093,682 bytes in all, manifest `tools/gen_voice.sha256`. Rendered 2026-11-08; `gen_voice.py --render --check` reproduces the bytes.
+
+| Key | Speaker | Spoken text | Length | File RMS |
+|---|---|---|---|---|
+| rchreq1 | trader | Control, inbound with cargo, request docking. | 3.17 s | -15.1 dBFS |
+| rchreq2 | trader | Control, at the outer marker, request docking clearance. | 3.43 s | -15.8 |
+| rchreqc | trader | Control, heavy, full load, request docking. | 3.11 s | -15.3 |
+| rchreqa1 | control | Roger, cleared to dock, follow the beacon. | 2.43 s | -15.1 |
+| rchreqa2 | control | Cleared to dock, reduce speed at the marker. | 2.62 s | -16.2 |
+| rchhold1 | control | Hold position, bay occupied, expect delay. | 3.05 s | -14.8 |
+| rchhold2 | control | Standby. Traffic in the bay, hold at the outer marker. | 3.19 s | -14.4 |
+| rchholda | trader | Wilco, holding. | 1.54 s | -15.1 |
+| rchgo1 | control | The bay is now clear, cleared to dock. | 2.15 s | -15.3 |
+| rchgo2 | control | You're number one, cleared to dock. | 2.16 s | -14.4 |
+| rchgoa1 | trader | Cleared to dock. | 1.54 s | -20.0 (0.60 s of speech, open carrier to 1.5 s) |
+| rchgoa2 | trader | Roger, on our way in. | 2.05 s | -14.6 |
+| rchin1 | trader | Control, docked, clamps on. | 2.15 s | -14.7 |
+| rchin2 | trader | Control, secured in the bay, shutting down. | 2.75 s | -16.6 |
+| rchout1 | trader | Control, clear of the bay, request departure. | 2.89 s | -15.1 |
+| rchout2 | trader | Control, undocking, ready to depart. | 2.44 s | -15.3 |
+| rchouta1 | control | Departure lane clear, cleared to depart, over and out. | 3.45 s | -14.7 |
+| rchouta2 | control | Roger, frequency change approved, over and out. | 3.35 s | -14.3 |
+
+### 7.3 Pipeline
+
+Piper TTS (piper-tts 1.8.0, onnxruntime 1.31.1) in the scratch venv `.work/voice/venv`, models under `.work/untrusted/voice/`; nothing of it ships. The chain (`tools/gen_voice.py` docstring): sentences rendered with a fixed seed and trimmed, pauses over 0.15 s shortened; band-pass 300-3,000 Hz, RMS -18 dBFS, a 3:1 compressor, a tanh clip at -6 dBFS; overdrive: a soft knee (linear to half the ceiling, tanh above) after a drive gain found by bisection for +3 dB voice RMS (gain 1.46-1.52 on this set), filtered again and clipped at -6 dBFS; one or two dropouts of 20-40 ms at -12 dB in clips with at least 2.0 / 2.8 s of voice; a -40 dBFS noise bed, gen_squelch's click and a 150 ms squelch tail; 2-6 crackle pops of 1-3 ms band-limited noise at 0.4-0.8 of the voice peak; peak normalised to -3 dBFS. Against the first ATC render (no overdrive) the file RMS rose about 1.5 dB (-16.5 to -15.0 typical). Re-render:
+```
+U=.work/untrusted/voice
+.work/voice/venv/bin/python -I mods/traffic/tools/gen_voice.py --render \
+  --trader $U/en_US-norman-medium/en_US-norman-medium.onnx --control $U/en_GB-cori-medium/en_GB-cori-medium.onnx --write
+```
+Model md5: `en_US-norman-medium.onnx` 829cea515dc724d694b83b71e8083f9f (`.onnx.json` 975830d6f230f6eccf657d265de99eba), `en_GB-cori-medium.onnx` f143307611eccea9d976235d0895f57c (`.onnx.json` 12b1dc45d8919f3475cf296d5f16a4c6), from https://huggingface.co/rhasspy/piper-voices (`en/en_US/norman/medium`, `en/en_GB/cori/medium`). `python3 -I mods/traffic/tools/gen_voice.py --check` verifies the shipped files without Piper.
+
+### 7.4 Licences
+
+- Voices: trader `en_US-norman-medium` (US male), control `en_GB-cori-medium` (UK female). Both model cards: "* URL: https://librivox.org", "* License: public domain", "Trained from scratch on medium quality settings ... All recordings came from LibriVox.org." The trainer's page https://brycebeattie.com/files/tts/: "License: public domain"; "Feel free to use these for any legal and ethical purpose." LibriVox: "Free public domain audiobooks".
+- Engine: piper-tts 1.8.0 is GPL-3.0-or-later (https://github.com/OHF-voice/piper1-gpl, with espeak-ng). Only the rendered audio ships; the GPL does not cover a program's output.
+- Rejected voices and why: `.work/voice/SHEET.md` (Lessac-derived weights, NC and SA licences, unclear cards). macOS system voices were not used (their licence does not clearly allow redistribution).
+
+### 7.5 Music volume
+
+1. Lua: no vanilla native or global reads a volume or a console variable [V: the 141 global natives of `lua-natives.tsv`; the sound natives are `PlaySound`, `PlaySound3D`, `PlayMusic`, `AddMusicToPlayList`, `AddMusicToBattlePlayList`, `StartPlayList`, `SoundLength`].
+2. Engine [V]: the console variables are registered at 0x5f539b (`volume_sound`, setter 0x5f8270) and 0x5f53f9 (`volume_music`, setter 0x5f83e0) on the console `[[0x7ba610]+0x2c]`. The music setter parses the value, clamps it to 0..1 (floats 0x7b5094 / 0x7b5098), writes the string back and calls 0x5f1e50 with the music player `MP = [SM+4]`, `SM = [[0x7ba610]+0x50]` the sound manager (0x5f853b); 0x5f1e50 clamps again (0x7b506c / 0x7b5070) and stores the float at `MP+0x2c` (0x5f1ecf) under the critical section `MP+0x1d0`; the getter 0x5f1f50 returns it (0x5f1f88). Other writers of `MP+0x2c`: windows at 0x53f86f (divides by 1.8 while open, restores at 0x53f944), 0x5516xx (options), 0x55933f..0x5597xx, 0x4a01a6 (PreMainLoop). The sound setter stores `SM+0x5c` through 0x5f79f0 (0x5f7a44); the 2D player multiplies every `PlaySound` volume by it (0x5f80ec).
+3. Profile file [V]: `volume_sound "0.2000"`, `volume_music "0.1000"` in `Profiles/<name>/<name>.cfg` and in `default.cfg` (with `g_current_profile "<name>"`) on the test clone; Lua could read them with `openfile(GetUserFolder() .. ...)`, but when the game writes them (option change or exit) was not traced, so the DLL read is preferred.
+4. Built: DLL native `TRF_MusicVol()` -> music, effects (both 0..1; `nil, why` on a signature mismatch or a null pointer; 7 byte signatures; pe/API.md), Lua `TRF_RcVol()` (1 when unknown). Heard level = music x effects x `rc_vol` / 100 (spec 16 2). In-game check RC9.

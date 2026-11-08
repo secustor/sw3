@@ -457,6 +457,47 @@ static int __cdecl n_carcasses(lua_State *L)
     return 1;
 }
 
+/* ---- music volume native (design/mod-research/station-chatter-data.md 2; API.md) ----
+ * TRF_MusicVol() -> music, sound: the volumes the engine applies now, both 0..1.
+ *   music  float [MP+0x2c], MP = [SM+4] the music player, SM = [[0x7ba610]+0x50] the sound manager. The console
+ *          variable volume_music's setter 0x5f83e0 clamps the value to 0..1 and stores it there through 0x5f1e50
+ *          (0x5f853b: [SM+4] as its argument; store 0x5f1ecf); the getter 0x5f1f50 reads it (0x5f1f88). Some windows
+ *          lower it while they are open (0x53f86f: divided by 1.8, restored at 0x53f944).
+ *   sound  float [SM+0x5c], set by volume_sound's setter 0x5f8270 through 0x5f79f0 (0x5f7a44); the 2D player's
+ *          volume setter 0x5f80d0 multiplies every PlaySound volume by it (0x5f80ec).
+ * nil, why: "sig" (g_vsig mismatch at init), "noroot" ([0x7ba610] null), "nosm" (SM or MP null or unreadable),
+ * "range" (a value that is not a float in 0..1). Plain loads through rd_ok, no engine call, no lock (the getter takes
+ * the player's critical section +0x1d0; an aligned 4-byte load cannot tear). */
+static const struct trf_msig g_vsig[] = {
+    { 0x5f852d, 21, { 0xd9,0x44,0x24,0x08,0x51,0x8b,0x0d,0x10,0xa6,0x7b,0x00,0xd9,0x1c,0x24,0x8b,0x51,0x50,0x8b,0x42,
+      0x04,0x50 }, "volume_music setter: 0x5f1e50([[R]+0x50]+4)" },
+    { 0x5f1ec8, 10, { 0x39,0x5d,0x10,0xd9,0x44,0x24,0x24,0xd9,0x5d,0x2c }, "0x5f1e50 stores the music volume at +0x2c" },
+    { 0x5f1f88, 3, { 0xd9,0x47,0x2c }, "0x5f1f50 reads the music volume at +0x2c" },
+    { 0x5f83b3, 18, { 0xd9,0x44,0x24,0x10,0x51,0x8b,0x0d,0x10,0xa6,0x7b,0x00,0xd9,0x1c,0x24,0x8b,0x51,0x50,0x52 },
+      "volume_sound setter: 0x5f79f0([[R]+0x50])" },
+    { 0x5f7a3d, 7, { 0xd9,0x44,0x24,0x10,0x53,0x33,0xdb }, "0x5f79f0 loads the clamped sound volume" },
+    { 0x5f7a44, 3, { 0xd9,0x5d,0x5c }, "0x5f79f0 stores the sound volume at +0x5c" },
+    { 0x5f80e8, 7, { 0x8b,0x44,0x24,0x08,0xd8,0x48,0x5c }, "2D player volume x [SM+0x5c]" },
+};
+#define VSIG_N (sizeof(g_vsig) / sizeof(g_vsig[0]))
+static int g_vol_ok;
+static int __cdecl n_musicvol(lua_State *L)
+{
+    unsigned R, sm, mp;
+    double mv, sv;
+    if (!g_vol_ok) return cs_fail(L, "sig");
+    rd_reset();
+    R = grd(ROOT_SLOT, 0);
+    if (!R) return cs_fail(L, "noroot");
+    sm = grd(R, 0x50); mp = grd(sm, 4);
+    if (!sm || !mp) return cs_fail(L, "nosm");
+    if (!grf(mp, 0x2c, &mv) || !grf(sm, 0x5c, &sv)) return cs_fail(L, "nosm");
+    if (mv < 0.0 || mv > 1.0 || sv < 0.0 || sv > 1.0) return cs_fail(L, "range");
+    lua_pushnumber(L, mv);
+    lua_pushnumber(L, sv);
+    return 2;
+}
+
 /* ---- station jobs, step 1: the mission card (design/station-jobs-spec.md 3, 4.1-4.4; research
  * design/mod-research/station-jobs-ui.md 5) ----
  * TRF_MissionCard{id=, header=, cost=, text= [, title=]} pushes DynWindowMission (window 0x1b, which vanilla never
@@ -1588,7 +1629,7 @@ static void __stdcall trf_register(void)          /* T1, after 0x5c7e80 */
         { "TRF_InMovie", n_inmovie }, { "TRF_UiState", n_uistate }, { "TRF_Carcasses", n_carcasses },
         { "TRF_MissionCard", n_missioncard }, { "TRF_JobBoard", n_jobboard }, { "TRF_JobBoardMark", n_jobboardmark },
         { "TRF_JobAdd", n_jobadd }, { "TRF_JobState", n_jobstate }, { "TRF_JobLogGet", n_jobget }, { "TRF_JobRemove", n_jobremove },
-        { "TRF_JobIds", n_jobids } };
+        { "TRF_JobIds", n_jobids }, { "TRF_MusicVol", n_musicvol } };
     const int nn = (int)(sizeof(nat) / sizeof(nat[0]));
     lua_State *L = lstate();
     struct tb b;
@@ -1937,6 +1978,12 @@ void trf_init(const char *ini)
         }
         tb_begin(&b, "carcasses on="); tb_i(&b, g_cs_on); tb_s(&b, g_cs_ok ? " sig=ok sigs=" : " sig=bad sigs=");
         tb_u(&b, (unsigned)CSIG_N); tb_end(&b);
+        if ((bad = sig_verify(g_vsig, VSIG_N, &e))) {
+            tb_begin(&b, "module=dll event=volume_sig_mismatch what=\""); tb_q(&b, g_vsig[e].what, 400, 0); tb_s(&b, "\" at=");
+            tb_x(&b, bad); tb_end(&b);
+        } else g_vol_ok = 1;
+        tb_begin(&b, "module=dll event=volume_init sig="); tb_s(&b, g_vol_ok ? "ok" : "bad"); tb_s(&b, " sigs=");
+        tb_u(&b, (unsigned)VSIG_N); tb_end(&b);
         if ((bad = sig_verify(g_jsig, JSIG_N, &e))) {
             tb_begin(&b, "module=dll event=jobs_sig_mismatch what=\""); tb_q(&b, g_jsig[e].what, 400, 0); tb_s(&b, "\" at=");
             tb_x(&b, bad); tb_end(&b);

@@ -11,7 +11,8 @@
 # The dialogs Data/Scripts/Trade/TRF_Hail.xml, TRF_HailPg.xml, TRF_MercPg.xml, the freight quest's TRF_Wq*.xml and the
 # Clan file's TRF_Te1.xml, TRF_Te2.xml and the Report in dialogs TRF_Db1.xml, TRF_Db2.xml are created files in the
 # manifest and are removed with the scripts. Data/SOUND/trf_squelch.wav (the station chatter cue, written by every install)
-# is a created file in the manifest (a backup if one was there) and is reverted with them.
+# and the voice clips Data/SOUND/trf_voice/*.wav are created files in the manifest (a backup if one was there) and are
+# reverted with them; the trf_voice/ folder is a created directory, removed when empty.
 # Saves made with the mod keep the TRF table (ignored without the mod). Changed station prices and pirate bases
 # stay in those saves unless the game ran once with ./install.sh --restore-only first (README, Removal).
 set -eu
